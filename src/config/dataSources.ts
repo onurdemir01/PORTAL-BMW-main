@@ -55,3 +55,15 @@ export const SCALEX_APPS: DataSource = {
   what: 'dbo.Openshift_Inventory ∪ ocp_app_cache — yalnızca ad ve tip; replika/HPA CANLI DEĞİL',
   refresh: 'Replika, HPA ve geri alınabilirlik gibi CANLI alanlar yalnızca “Kontrol et” ile gelir.',
 };
+
+/**
+ * ScaleX keşif SÜRE ölçümü — `scalex_discovery_timing`.
+ * Teyit: `server/scalex/discovery-timing.cjs` (yazan yer:
+ * `server/scalex/index.cjs` `/discover/:s/:j/status`, iş bittiğinde),
+ * kaynak satır: `scalex_runner.sh` `TIMING;INFO;...`.
+ */
+export const SCALEX_TIMING: DataSource = {
+  job: 'scalex_discovery (her keşif kendi süresini bildirir)',
+  what: 'scalex_discovery_timing — cluster başına setup/keşif/toplam süre ve önbellek isabeti',
+  refresh: 'Kendiliğinden dolar: her keşif işi bittiğinde bir satır yazılır. Elle tetiklenmez.',
+};

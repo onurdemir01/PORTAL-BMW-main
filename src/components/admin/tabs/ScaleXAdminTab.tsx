@@ -25,11 +25,12 @@ import {
   type ScaleXRbacFinding,
   type ScaleXClusterTree,
   type ScaleXHistoryRow,
+  type ScaleXDiscoveryTiming,
 } from '@/api/scalexApi';
 import { downloadCsv } from '@/utils/csv';
 import { TableEmptyRow } from '@/components/common/EmptyState';
 import { SourceNote } from '@/components/common/SourceNote';
-import { SCALEX_CAPS } from '@/config/dataSources';
+import { SCALEX_CAPS, SCALEX_TIMING } from '@/config/dataSources';
 import { fmtDateTime } from '@/utils/datetime';
 import FieldOverridesModal from '@/components/self_service/FieldOverridesModal';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
@@ -213,6 +214,164 @@ const RbacFindings: React.FC = () => {
   );
 };
 
+// ── KESIF SURE OLCUMU ────────────────────────────────────────────────────────
+//
+// NEDEN BURADA: "ScaleX kesfi cok yavas" aylarca NEREDE yavas oldugu bilinmeden
+// tartisildi. Sentetik bekci (`scalex-awx-package.test.cjs`) `oc` cagri sayisini
+// deterministik olcer ama AWX kuyrugunu ve bastion RTT'sini OLCEMEZ. Bu panel
+// URETIMDEKI sayiyi gosterir; her hizlandirma turunun etkisi burada GORULUR.
+//
+// IKI SUTUN AYRI: `setup` (bastion + `oc login` + kubeconfig) ve `kesif` (tip
+// taramasi). Toplam sureye bakip `oc` cagrisi azaltmak, darbogaz login
+// tarafindaysa hicbir sey kazandirmaz — ayrimin var olus sebebi bu.
+const TIMING_LIMIT = 50;
+
+// OLCULMEDI ile 0 AYRI GOSTERILIR. `null`u "0 ms" diye yazmak, bir adimi
+// bedava gostermek ve yanlis kaldiraca yatirim yaptirmak olurdu.
+function sureMetni(v: number | null): string {
+  if (v === null || v === undefined) return '—';
+  return v >= 1000 ? `${(v / 1000).toFixed(1)} sn` : `${v} ms`;
+}
+
+const DiscoveryTiming: React.FC = () => {
+  const [rows, setRows] = useState<ScaleXDiscoveryTiming[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setErr(null);
+    try {
+      const r = await scalexApi.discoveryTiming(TIMING_LIMIT);
+      if (!r.ok) setErr(r.message || 'Ölçümler okunamadı.');
+      else setRows(r.timings || []);
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // `useAsyncEffect` gerekcesi icin bkz. RbacFindings icindeki not.
+  useAsyncEffect(async (alive) => {
+    if (alive()) await load();
+  }, [load]);
+
+  // SICAK ve SOGUK AYRI ORTALANIR. Ikisini tek ortalamada eritmek, onbellek
+  // isabet oraninin degismesini "hizlanma" diye okutur — olcumun kendisi yalan
+  // soylerdi.
+  const ozet = useMemo(() => {
+    const ortala = (xs: number[]) =>
+      xs.length ? Math.round(xs.reduce((a, b) => a + b, 0) / xs.length) : null;
+    const gecerli = rows.filter((r) => r.elapsedMs !== null);
+    return {
+      toplam: gecerli.length,
+      sicak: ortala(gecerli.filter((r) => r.cached === true).map((r) => r.elapsedMs as number)),
+      soguk: ortala(gecerli.filter((r) => r.cached === false).map((r) => r.elapsedMs as number)),
+      setup: ortala(
+        rows.filter((r) => r.setupMs !== null).map((r) => r.setupMs as number),
+      ),
+    };
+  }, [rows]);
+
+  return (
+    <div className="card p-4 space-y-3">
+      <div className="flex items-center gap-2">
+        <h3 className="text-sm font-semibold text-[var(--text-primary)]">Keşif süresi (son {TIMING_LIMIT})</h3>
+        <button
+          type="button"
+          onClick={() => void load()}
+          className="btn-secondary text-xs ml-auto inline-flex items-center gap-1"
+        >
+          <ArrowPathIcon aria-hidden="true" className="w-3.5 h-3.5" />
+          Yenile
+        </button>
+      </div>
+
+      <SourceNote source={SCALEX_TIMING} />
+
+      {err && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-xs text-amber-900">
+          {err}
+        </div>
+      )}
+
+      {loading ? (
+        <LoadingLogo compact />
+      ) : rows.length === 0 ? (
+        <p className="text-xs text-[var(--text-muted)]">
+          Henüz ölçüm yok. Bir keşif çalıştırın — süre satırını <strong>paketin güncel sürümü</strong>{' '}
+          basar; AWX'teki paket eskiyse bu liste boş kalır.
+        </p>
+      ) : (
+        <>
+          <div className="grid grid-cols-3 gap-2 text-xs">
+            <div className="rounded-lg border border-[var(--border-subtle)] px-2.5 py-1.5">
+              <p className="text-[var(--text-muted)]">Sıcak (önbellek tuttu)</p>
+              <p className="font-mono text-[var(--text-primary)]">{sureMetni(ozet.sicak)}</p>
+            </div>
+            <div className="rounded-lg border border-[var(--border-subtle)] px-2.5 py-1.5">
+              <p className="text-[var(--text-muted)]">Soğuk (önbellek yok)</p>
+              <p className="font-mono text-[var(--text-primary)]">{sureMetni(ozet.soguk)}</p>
+            </div>
+            <div className="rounded-lg border border-[var(--border-subtle)] px-2.5 py-1.5">
+              <p className="text-[var(--text-muted)]">Ortalama setup</p>
+              <p className="font-mono text-[var(--text-primary)]">{sureMetni(ozet.setup)}</p>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-left text-[var(--text-muted)]">
+                  <th className="py-1 pr-2 font-medium">Zaman</th>
+                  <th className="py-1 pr-2 font-medium">Cluster</th>
+                  <th className="py-1 pr-2 font-medium">Namespace</th>
+                  <th className="py-1 pr-2 font-medium">Mod</th>
+                  <th className="py-1 pr-2 font-medium">Tip</th>
+                  <th className="py-1 pr-2 font-medium">Önbellek</th>
+                  <th className="py-1 pr-2 font-medium">Setup</th>
+                  <th className="py-1 pr-2 font-medium">Keşif</th>
+                  <th className="py-1 pr-2 font-medium">Toplam</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[var(--border-subtle)]">
+                {rows.map((r) => (
+                  <tr key={r.id}>
+                    <td className="py-1 pr-2 whitespace-nowrap text-[var(--text-muted)]">
+                      {fmtDateTime(r.createdAt)}
+                    </td>
+                    <td className="py-1 pr-2 font-mono truncate max-w-[10rem]" title={r.clusterName}>
+                      {r.clusterName}
+                    </td>
+                    <td
+                      className="py-1 pr-2 font-mono truncate max-w-[10rem]"
+                      title={r.namespace || ''}
+                    >
+                      {r.namespace || '—'}
+                    </td>
+                    <td className="py-1 pr-2">{r.mode}</td>
+                    <td className="py-1 pr-2 font-mono">{r.kinds ?? '—'}</td>
+                    <td className="py-1 pr-2">
+                      {/* UC DURUM: tuttu / tutmadi / o modda HIC SORULMADI. */}
+                      {r.cached === null ? '—' : r.cached ? 'evet' : 'hayır'}
+                    </td>
+                    <td className="py-1 pr-2 font-mono">{sureMetni(r.setupMs)}</td>
+                    <td className="py-1 pr-2 font-mono">{sureMetni(r.discoverMs)}</td>
+                    <td className="py-1 pr-2 font-mono text-[var(--text-primary)]">
+                      {sureMetni(r.elapsedMs)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
 const ScaleXAdminTab: React.FC = () => {
   const [rows, setRows] = useState<PlaybookRegistryEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -378,6 +537,8 @@ const ScaleXAdminTab: React.FC = () => {
       )}
 
       <IsGecmisiPanel />
+
+      <DiscoveryTiming />
 
       <RbacFindings />
 

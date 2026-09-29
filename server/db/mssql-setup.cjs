@@ -360,6 +360,42 @@ const TABLES = [
       )`,
   },
   {
+    // KESIF SURE OLCUMU - "kesif yavas" tartismasini KANITA baglayan tablo.
+    //
+    // NEDEN AYRI TABLO (denetim kaydi yerine): `scalex_discovery_result` denetim
+    // satirinin `detail` alani 2000 karakterle sinirli ve zaten dolu; olcumu
+    // oraya sikistirmak, kapsam buyudugunde ilk dusen seyin olcum olmasi
+    // demekti. Ustelik denetim kaydi SORGULANMAK icin degil OKUNMAK icin var:
+    // "son N kesfin cluster basina dagilimi" orada JSON ayristirmasi gerektirirdi.
+    //
+    // BUYUME SINIRI: her kesif cluster basina BIR satir yazar ve yazimdan sonra
+    // saklama suresinden eski satirlar silinir. Bu depoda sinirsiz birikim bir
+    // sisme/OOM sinifiydi; olcum tablosu da istisna degil.
+    name: 'scalex_discovery_timing',
+    sql: `
+      CREATE TABLE scalex_discovery_timing (
+        id             INT IDENTITY(1,1) PRIMARY KEY,
+        env            NVARCHAR(30) NOT NULL,
+        tenant         NVARCHAR(64) NOT NULL,
+        cluster_name   NVARCHAR(64) NOT NULL,
+        namespace      NVARCHAR(100) NULL,
+        mode           NVARCHAR(32) NOT NULL,
+        -- Taranan tip sayisi ve yetenek onbelleginin ISE YARAYIP yaramadigi.
+        -- Ikisi de yalnizca workloads modunda anlamli; digerlerinde NULL.
+        -- NULL = OLCULMEDI; 0 ile karistirilmamali.
+        kinds          INT NULL,
+        cached         BIT NULL,
+        -- setup: bastion + oc login + kubeconfig. discover: tip taramasi.
+        -- AYRI tutulur: toplam sureye bakip oc cagrisi azaltmak, darbogaz
+        -- login tarafindaysa hicbir sey kazandirmaz.
+        setup_ms       INT NULL,
+        discover_ms    INT NULL,
+        elapsed_ms     INT NULL,
+        awx_job_id     INT NULL,
+        created_at     DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+      )`,
+  },
+  {
     // Legacy EAR-klasor-son-eki ('-T','-D', son-ek-yok) → ortam etiketi — EnvanterApps.env
     // sutunu guvenilmez oldugu icin ortam etiketi BURADAN turetilir (admin duzeltebilir).
     name: 'logx_env_suffix_map',
@@ -3926,6 +3962,12 @@ async function setupTables() {
       name: 'IX_scalexcaps_scope',
       table: 'scalex_cluster_caps',
       cols: 'env, tenant, cluster_name',
+    },
+    // "Son N kesif" ekraninin tek sorgusu.
+    {
+      name: 'IX_scalextiming_created',
+      table: 'scalex_discovery_timing',
+      cols: 'created_at DESC',
     },
     { name: 'IX_audit_created', table: 'logx_audit_logs', cols: 'created_at DESC' },
     { name: 'IX_audit_user_created', table: 'logx_audit_logs', cols: 'username, created_at DESC' },

@@ -117,7 +117,21 @@ function statusGroupOf(rows: ScaleXWorkload[]): string {
   return 'Çalışıyor';
 }
 
-const POLL_MS = 3000;
+// YOKLAMA RITMI — IKI KADEMELI.
+//
+// Eski hal tek sabitti (3000 ms) ve dongu ONCE BEKLIYOR, SONRA SORUYORDU: AWX
+// isi 800 ms'de bitse bile kullanici GARANTILI 3 saniye bekliyordu. Kesfin
+// kendisi saniyelere indikce bu sabit gecikme toplam surenin buyuk bir parcasi
+// haline geldi.
+//
+// Ilk pencerede sik, sonra seyrek: isler ya erken biter (sicak onbellek) ya da
+// uzun surer; ikisinin ortasinda sabit bir deger her ikisine de kotu davranir.
+// Yoklamanin kendisi ARTIK UCUZ — `/discover/:s/:j/status` is bitmeden stdout
+// indirmiyor (bkz. server/scalex/index.cjs), yani sik yoklama AWX'e MB'larca
+// metin yuku bindirmiyor.
+const POLL_FAST_MS = 1000;
+const POLL_SLOW_MS = 3000;
+const POLL_FAST_WINDOW_MS = 12000;
 const MAX_POLL_ERRORS = 5;
 
 // Geri donuste eski `name\0kind` anahtarlardan yalnizca adi cikar.
@@ -303,13 +317,27 @@ const WorkloadStep: React.FC<Props> = ({
 
   async function poll(serverId: number, jobId: number) {
     let errors = 0;
+    const basladi = Date.now();
+    // ONCE SOR, SONRA BEKLE. Bekleme dongunun BASINDAYKEN, AWX isi 800 ms'de
+    // bitse bile kullanici GARANTILI 3 saniye bekliyordu.
+    //
+    // Bekleme AYRI BIR FONKSIYON: dongunun `continue` cikislari varken beklemeyi
+    // yalnizca govdenin sonuna koymak, o cikislarda beklemeyi ATLAR ve bitmemis
+    // her iste tarayiciyi %100 CPU'da donduren bir dongu birakirdi. (Bu tam
+    // olarak yasandi; YR2 bekcisi yakaladi.)
+    const bekle = () =>
+      new Promise((r) =>
+        setTimeout(r, Date.now() - basladi < POLL_FAST_WINDOW_MS ? POLL_FAST_MS : POLL_SLOW_MS),
+      );
     for (;;) {
-      await new Promise((r) => setTimeout(r, POLL_MS));
       if (!aliveRef.current) return;
       try {
         const s = await scalexApi.discoverStatus(serverId, jobId);
         errors = 0;
-        if (!s.finished) continue;
+        if (!s.finished) {
+          await bekle();
+          continue;
+        }
         if (s.result) {
           // KAYNAK ISARETLENIYOR: bu satirlar CANLI kesiften geliyor, yani
           // `specReplicas`/`readyReplicas`/`image`/`hasHpa` gercek degerler ve
@@ -363,6 +391,9 @@ const WorkloadStep: React.FC<Props> = ({
           return;
         }
       }
+      // Hata sonrasi da beklenir: hizli yeniden deneme, dusmus bir sunucuya
+      // saniyede birkac istek atmak demekti.
+      await bekle();
     }
   }
 

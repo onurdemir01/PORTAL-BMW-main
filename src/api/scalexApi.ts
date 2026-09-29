@@ -79,6 +79,33 @@ export interface ScaleXRbacFinding {
   lastSeenAt: string;
 }
 
+/**
+ * Bir keşif işinin CLUSTER BAŞINA süre ölçümü.
+ *
+ * Her alan `null` olabilir: betik ölçemediğini `-` ile bildirir ve sunucu onu
+ * `null`a çevirir. **`null` ile `0` aynı şey değildir** — uydurulmuş bir sıfır
+ * "bu adım bedava" diye okunur ve yanlış kaldıraca yatırım yaptırır.
+ */
+export interface ScaleXDiscoveryTiming {
+  id: number;
+  env: string;
+  tenant: string;
+  clusterName: string;
+  namespace: string | null;
+  mode: string;
+  /** Taranan tip sayısı — yalnızca `workloads` modunda anlamlı. */
+  kinds: number | null;
+  /** Yetenek önbelleği İŞE YARADI MI. `null` = o modda hiç sorulmadı. */
+  cached: boolean | null;
+  /** AWX'ten sonra bastion + `oc login` + kubeconfig. */
+  setupMs: number | null;
+  /** Yalnızca tip taraması. */
+  discoverMs: number | null;
+  elapsedMs: number | null;
+  awxJobId: number | null;
+  createdAt: string;
+}
+
 export interface ScaleXWorkload {
   cluster: string;
   name: string;
@@ -800,6 +827,19 @@ export const scalexApi = {
       ok: boolean;
       findings: ScaleXRbacFinding[];
       limit: number;
+      message?: string;
+    }>;
+  },
+
+  /** Admin: son keşiflerin SÜRE ölçümü. "Keşif hızlandı mı" sorusunun ÜRETİMDEKİ
+   *  cevabı — sentetik bekçi `oc` çağrı sayısını ölçer, AWX kuyruğunu ölçemez. */
+  async discoveryTiming(limit?: number) {
+    const qs = limit ? `?limit=${encodeURIComponent(String(limit))}` : '';
+    return safeJson(await fetch(`${BASE}/admin/discovery-timing${qs}`)) as Promise<{
+      ok: boolean;
+      timings: ScaleXDiscoveryTiming[];
+      limit: number;
+      retentionDays: number;
       message?: string;
     }>;
   },

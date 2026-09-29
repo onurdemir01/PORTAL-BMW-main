@@ -20,6 +20,7 @@ const catalog = require('./catalog.cjs');
 const launch = require('./launch.cjs');
 const state = require('./state.cjs');
 const rbacFindings = require('./rbac-findings.cjs');
+const discoveryTiming = require('./discovery-timing.cjs');
 const result = require('./result.cjs');
 // PAYLASILAN uygulama onbellegi — LogX'in modulu. ScaleX zaten `catalog.cjs`
 // uzerinden ayni katalogu OKUYOR (`ocp-catalog.cjs`); burada ayni onbellegi
@@ -1002,10 +1003,22 @@ function initScaleX(app) {
       const jobId = Number(req.params.jobId);
       const denied = await denyIfNotOwner(req, serverId, jobId);
       if (denied) return res.status(denied.status).json({ ok: false, message: denied.message });
-      const [status, output] = await Promise.all([
-        runner.getJobStatusOnServer(serverId, jobId),
-        runner.getJobOutputOnServer(serverId, jobId).catch(() => ({ output: '' })),
-      ]);
+      // IS BITMEDEN STDOUT INDIRILMEZ.
+      //
+      // Bu uc her 3 saniyede bir yoklaniyor ve her yoklamada isin stdout'unun
+      // TAMAMI indiriliyordu. Oysa kesif yolunda ciktiyi OKUYAN KIMSE YOK: uc
+      // cagiran da (`WorkloadStep.poll`, `ScaleXPage` saglik dongusu,
+      // `StoppedPanel` tarama dongusu) `finished` gelene kadar yanitin geri
+      // kalanini atiyor. Yani 60 saniyelik bir kesifte ~20 kez MB'larca metin
+      // indirilip cope atiliyordu — hem AWX'i hem portali yavaslatan, HICBIR
+      // seye yaramayan bir maliyet.
+      //
+      // Bitmis iste TAM cekim yapilir: yanit sozlesmesi (`output`) korunur ve
+      // arsivlenen/kullaniciya gosterilen metin artimlardan TUREMEZ.
+      const status = await runner.getJobStatusOnServer(serverId, jobId);
+      const output = status.finished
+        ? await runner.getJobOutputOnServer(serverId, jobId).catch(() => ({ output: '' }))
+        : { output: '' };
       const parsed = result.extractDiscoveryResult(status.artifacts);
 
       // KESIF SONUCU DENETIME. Baslatma ani zaten yaziliyordu (`scalex_discovery`) ama
@@ -1047,6 +1060,28 @@ function initScaleX(app) {
           // Birikim BEST-EFFORT: yazilamadiysa kesif sonucu GIZLENMEZ. Bu bir denetim
           // kaydi degil, bir kolaylik; DB tokezlemesi calisan bir kesfi dusurmemeli.
           console.warn('[ScaleX] RBAC bulgulari kaydedilemedi:', e.message);
+        }
+      }
+
+      // SURE OLCUMU KAYDEDILIR — HER MODDA.
+      //
+      // `workloads` ile sinirlandirilmadi: `capabilities` taramasi kesfin en
+      // pahali iki kalemini ONCEDEN hesaplayan mod ve onun maliyeti de tam
+      // olarak olculmesi gereken sey. `state`/`health` de ayni AWX + login
+      // sabit maliyetini odyor; yalnizca birini olcmek, tabanin yarisini
+      // gormemek olurdu.
+      if (status.finished && parsed && (parsed.timing || []).length) {
+        try {
+          await discoveryTiming.record({
+            env: parsed.environment,
+            tenant: parsed.platform,
+            namespace: parsed.namespace,
+            timing: parsed.timing,
+            awxJobId: jobId,
+          });
+        } catch (e) {
+          // BEST-EFFORT: olcum yazilamadiysa kesif sonucu GIZLENMEZ.
+          console.warn('[ScaleX] kesif suresi kaydedilemedi:', e.message);
         }
       }
 
@@ -1495,10 +1530,17 @@ function initScaleX(app) {
       const jobId = Number(req.params.jobId);
       const denied = await denyIfNotOwner(req, serverId, jobId);
       if (denied) return res.status(denied.status).json({ ok: false, message: denied.message });
-      const [status, output] = await Promise.all([
-        runner.getJobStatusOnServer(serverId, jobId),
-        runner.getJobOutputOnServer(serverId, jobId).catch(() => ({ output: '' })),
-      ]);
+      // BURADA CIKTI CANLI GOSTERILIYOR (`AnsibleLogTerminal`), bu yuzden kesif
+      // yolundaki "bitmeden indirme" cozumu UYGULANAMAZ — terminal bos kalirdi.
+      // Onun yerine `runner.cjs`'in `ss/job-status` ucunda kanitlanmis desen:
+      // is KOSARKEN artimli cekim (yalnizca yeni satirlar), is BITINCE tam cekim.
+      //
+      // Bitmis iste tam cekim SART: kullanicinin gordugu son metin ve arsiv
+      // hicbir zaman artimlardan TUREMEZ. Onbellek satiri da orada birakilir.
+      const status = await runner.getJobStatusOnServer(serverId, jobId);
+      const output = await runner
+        .getJobOutputOnServer(serverId, jobId, { artimli: !status.finished })
+        .catch(() => ({ output: '' }));
       const parsed = result.extractScaleXResult(status.artifacts);
       if (status.finished) await finalizeOperation({ serverId, jobId, status, parsed });
       res.json({
@@ -2094,6 +2136,29 @@ function initScaleX(app) {
       }
       const findings = await rbacFindings.list({ reason: req.query?.reason });
       res.json({ ok: true, findings, limit: rbacFindings.LIST_LIMIT });
+    }),
+  );
+
+  // ── ADMIN: KESIF SURE OLCUMU ──────────────────────────────────────────────
+  //
+  // "Kesif hizlandi mi" sorusunun URETIMDEKI cevabi. Sentetik bekci `oc` cagri
+  // sayisini olcer; AWX kuyrugunu ve bastion RTT'sini OLCEMEZ. Bu liste olculer.
+  //
+  // Yalnizca Admin: burada cluster adlari ve is numaralari var, ve bu bir
+  // kapasite/performans gorunumu — son kullanicinin akisinin parcasi degil.
+  router.get(
+    '/admin/discovery-timing',
+    asyncRoute(async (req, res) => {
+      if (currentUser(req).role !== 'Admin') {
+        return res.status(403).json({ ok: false, message: 'Bu liste yalnizca yoneticilere acik.' });
+      }
+      const rows = await discoveryTiming.list({ limit: req.query?.limit });
+      res.json({
+        ok: true,
+        timings: rows,
+        limit: discoveryTiming.LIST_LIMIT,
+        retentionDays: discoveryTiming.RETENTION_DAYS,
+      });
     }),
   );
 

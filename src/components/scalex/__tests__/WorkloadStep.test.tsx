@@ -920,3 +920,92 @@ describe('WorkloadStep - hedef bazli secim', () => {
 function assert2(kosul: boolean, mesaj: string) {
   if (!kosul) throw new Error(mesaj);
 }
+
+// ── PR-0: YOKLAMA RITMI ─────────────────────────────────────────────────────
+//
+// Eski dongu ONCE BEKLIYOR, SONRA SORUYORDU (sabit 3000 ms): AWX isi 800 ms'de
+// bitse bile kullanici GARANTILI 3 saniye bekliyordu. Kesfin kendisi saniyelere
+// indikce bu sabit gecikme toplam surenin buyuk bir parcasi haline geldi.
+describe('WorkloadStep - yoklama ritmi', () => {
+  it('YR1 ONCE SORAR, SONRA BEKLER — is bittiyse bekleme HIC olmaz', async () => {
+    mockDiscoverStatus.mockResolvedValue(makeStatusResponse([makeWorkload()]));
+    render(<WorkloadStep {...defaultProps} />);
+
+    // Zamani ILERLETMEDEN yalnizca mikro-gorevleri bosalt. Dongu once bekleseydi
+    // bu noktada HIC durum sorusu sorulmamis olurdu.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    expect(mockDiscover).toHaveBeenCalledTimes(1);
+    expect(mockDiscoverStatus).toHaveBeenCalledTimes(1);
+
+    // Ve sonuc da ekrana dusmus olmali: "cagrildi ama kullanildi mi" ayri soru.
+    // `findBy*` KULLANILMIYOR — sahte zamanlayicilarla `waitFor` ilerleyemez ve
+    // test 5 sn'de zaman asimina ugrar (once bu tuzaga dusuldu).
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(screen.getByText('test-app')).toBeInTheDocument();
+  });
+
+  it('YR2 bitmemis iste YINE de bekliyor (sonsuz dongu degil)', async () => {
+    mockDiscoverStatus.mockResolvedValue({
+      ok: true,
+      status: 'running',
+      finished: false,
+      failed: false,
+      output: '',
+      result: null,
+    });
+    render(<WorkloadStep {...defaultProps} />);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    // Ilk soru sorulmus olmali...
+    expect(mockDiscoverStatus).toHaveBeenCalledTimes(1);
+    // ...ama ikincisi BEKLEMEDEN gelmemeli. Bu assert olmadan YR1, beklemeyi
+    // tamamen kaldiran (CPU yakan) bir dongu ile de gecerdi.
+    expect(mockDiscoverStatus).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    expect(mockDiscoverStatus).toHaveBeenCalledTimes(2);
+  });
+
+  it('YR3 ilk pencere HIZLI (1 sn), sonrasi SEYREK (3 sn)', async () => {
+    mockDiscoverStatus.mockResolvedValue({
+      ok: true,
+      status: 'running',
+      finished: false,
+      failed: false,
+      output: '',
+      result: null,
+    });
+    render(<WorkloadStep {...defaultProps} />);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    const ilk = mockDiscoverStatus.mock.calls.length;
+
+    // Ilk 12 saniyede ~1 sn aralikla: en az 10 yoklama daha.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(12_000);
+    });
+    const pencereSonu = mockDiscoverStatus.mock.calls.length - ilk;
+    expect(pencereSonu).toBeGreaterThanOrEqual(10);
+
+    // Sonraki 12 saniyede ~3 sn aralikla: belirgin sekilde DAHA AZ.
+    const oncesi = mockDiscoverStatus.mock.calls.length;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(12_000);
+    });
+    const sonrasi = mockDiscoverStatus.mock.calls.length - oncesi;
+    expect(sonrasi).toBeLessThanOrEqual(5);
+    // Ve yoklama DURMAMIS olmali — seyreklesme, sessizce olmek DEGIL.
+    expect(sonrasi).toBeGreaterThan(0);
+  });
+});
