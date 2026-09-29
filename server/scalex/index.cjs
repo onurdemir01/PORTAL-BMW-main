@@ -776,7 +776,15 @@ function initScaleX(app) {
       //
       // `capabilities` modunda BILEREK okunmaz: o mod onbellegi URETIR,
       // tuketmez. Aksi halde bayat bir liste kendini sonsuza dek dogrularadi.
+      //
+      // IKI BICIM BIRDEN GONDERILIR:
+      //   `scalex_cluster_kinds` → CLUSTER BASINA sozluk (yeni, asil yol)
+      //   `scalex_extra_kinds`   → tek birlesik liste (ESKI paketler icin)
+      // Yeni playbook sozluk geldiginde YALNIZCA onu okur; birlesik listeye
+      // DUSMEZ. Dusseydi, sozlukte olmayan cluster baskasinin listesiyle
+      // sinirlanirdi — kismi onbellegin asil tehlikesi tam olarak buydu.
       let extraKinds = '';
+      let clusterKinds = {};
       if (mode !== 'capabilities') {
         try {
           const bulunan = await clusterCaps.kindsForScope({
@@ -789,6 +797,19 @@ function initScaleX(app) {
           // BEST-EFFORT: onbellek okunamadiysa kesif YINE calisir, yalnizca
           // hizlanmaz. Ters yon (okunamayinca kesfi dusurmek) kabul edilemez.
           console.warn('[ScaleX] yetenek onbellegi okunamadi, tam tarama:', e.message);
+        }
+        try {
+          // AYRI OKUMA, AYRI KURAL: `kindsForScope` kapsamin TAMAMI icin
+          // guvenilir kayit ister ve tek cluster eksikse hepsini soguk yola
+          // dusurur. Harita her cluster'i KENDI kaydiyla degerlendirir; eksik
+          // olan yalnizca kendisi soguk yolu kosar.
+          clusterKinds = await clusterCaps.kindsPerCluster({
+            env,
+            tenant,
+            clusterNames: clusters,
+          });
+        } catch (e) {
+          console.warn('[ScaleX] cluster basina yetenek haritasi okunamadi:', e.message);
         }
       }
 
@@ -808,6 +829,16 @@ function initScaleX(app) {
         discovery_mode: mode,
         ...(apps.length ? { target_app_names: apps.join(',') } : {}),
         ...(extraKinds ? { scalex_extra_kinds: extraKinds } : {}),
+        // BOS SOZLUK HIC GONDERILMEZ: gonderseydik yeni playbook "portal sozluk
+        // yolluyor" deyip birlesik listeyi de yok sayar ve elde HICBIR onbellek
+        // kalmazdi. Emsal: `scalex_cluster_apps` (PR #123).
+        ...(Object.keys(clusterKinds).length
+          ? {
+              scalex_cluster_kinds: Object.fromEntries(
+                Object.entries(clusterKinds).map(([c, k]) => [c, k.join(',')]),
+              ),
+            }
+          : {}),
         // CANLI YOKLAMA LISTESI — yalnizca `state` kesfinde. Portal, bu kapsamdaki
         // ayna satirlarinin uygulama adlarini gonderir; betik her biri icin bir
         // `LIVE` satiri (istenen/mevcut/hazir replica) basar. `refreshDrift` bunu
