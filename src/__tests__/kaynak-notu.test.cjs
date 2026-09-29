@@ -53,12 +53,34 @@ test('KN3 not GERCEKTEN cevapsiz kalan ekranlara baglandi', () => {
     const s = oku(dosya);
     assert.match(s, /<SourceNote/, `${dosya}: not render edilmiyor`);
     assert.ok(s.includes(anahtar), `${dosya}: ${anahtar} katalog girdisi kullanilmiyor`);
+
+    // ── VARLIK DEGIL, ULASILABILIRLIK ──────────────────────────────────────
+    // Ilk yazimda yalnizca "<SourceNote metni geciyor mu" soruluyordu ve bekci
+    // KORDU: render `{false && <SourceNote .../>}` icine alindiginda metin
+    // dosyada duruyor, not ekranda GORUNMUYOR. Bu oturumda alticinci kez ayni
+    // desen. Simdi notun OLU BIR DALDA olmadigi da siniyor.
+    const i = s.indexOf('<SourceNote');
+    const once = s.slice(Math.max(0, i - 120), i);
+    assert.doesNotMatch(
+      once,
+      /\{\s*(false|0|null|undefined)\s*&&/,
+      `${dosya}: not olu bir dalin icinde — kaynakta var, ekranda YOK`,
+    );
   }
 });
 
 test('KN4 katalogdaki her IDDIA kaynakta DOGRULANABILIR', () => {
   // Yanlis bir is/tablo adi, notu hic yazmamaktan kotudur.
-  const kat = oku('src/config/dataSources.ts');
+  //
+  // ── YORUMLAR DEGIL, ALAN DEGERLERI ────────────────────────────────────────
+  // Ilk yazimda dosyanin TAMAMI taraniyordu ve bekci KORDU: `job:` degeri
+  // bozulsa bile ayni sozcuk JSDoc yorumunda gecmeye devam ediyor ve eslesme
+  // tutuyordu. Artik yalnizca `job:` / `what:` / `refresh:` degerleri okunur.
+  const ham = oku('src/config/dataSources.ts');
+  const kat = [...ham.matchAll(/^\s*(?:job|what|refresh):\s*'([^']*)',?$/gm)]
+    .map((m) => m[1])
+    .join('\n');
+  assert.ok(kat.length > 0, 'katalog alan degerleri okunamadi — desen degismis');
 
   // ScaleX yetenekleri gercekten `scalex_cluster_caps` tablosunu okuyor mu?
   assert.match(kat, /scalex_cluster_caps/);
