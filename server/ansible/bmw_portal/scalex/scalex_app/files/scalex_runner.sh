@@ -83,15 +83,26 @@ log() {
 # optimizasyon yapmamak icin betik kendi suresini BILDIRIR; portal onu Admin'de
 # gosterir ve her iyilestirmenin etkisi URETIMDE olculur.
 #
-# `date +%s%3N` GNU'ya ozgudur. BSD/macOS `date` `%3N`i cozmez ve metni oldugu gibi
-# birakir — o yuzden olcut "cikti rakamlardan mi olusuyor ve milisaniye uzunlugunda
-# mi". `date`in hata bicimini TAHMIN eden bir desen yerine sonucun KENDISI sinanir.
+# UC KADEMELI SAAT, cunku hicbiri her yerde YOK.
+#   1) `$EPOCHREALTIME` (bash 5+): mikrosaniye, DIS SUREC CAGIRMAZ. Ondalik
+#      ayraci yerel ayara gore nokta ya da virgul olabilir.
+#   2) `date +%s%3N`: GNU'ya ozgu. BSD/macOS `%3N`i cozmez ve metni OLDUGU GIBI
+#      birakir (hata da vermez) - bu yuzden olcut "cikti rakamlardan mi olusuyor
+#      ve milisaniye uzunlugunda mi". `date`in hata BICIMINI tahmin eden bir
+#      desen yazmak, tahmin uzerine tahmin olurdu.
+#   3) `date +%s` x 1000: her yerde var ama cozunurluk 1 SANIYE. Olcum kabalasir,
+#      KAYBOLMAZ - ve bu yolun kosmasi ancak GNU olmayan bir jump sunucusunda
+#      mumkun.
 now_ms() {
-  local s
-  s="$(date +%s%3N 2>/dev/null || true)"
-  case "$s" in
-    ''|*[!0-9]*) s="" ;;
-  esac
+  local s="" e sec frac
+  e="${EPOCHREALTIME:-}"
+  if [ -n "$e" ]; then
+    sec="${e%%[.,]*}"
+    frac="${e#*[.,]}000"
+    s="${sec}${frac:0:3}"
+  fi
+  case "$s" in ''|*[!0-9]*) s="$(date +%s%3N 2>/dev/null || true)" ;; esac
+  case "$s" in ''|*[!0-9]*) s="" ;; esac
   if [ -n "$s" ] && [ "${#s}" -ge 13 ]; then
     printf '%s' "$s"
   else

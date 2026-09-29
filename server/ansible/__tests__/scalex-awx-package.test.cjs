@@ -1491,3 +1491,66 @@ test('T2b namespace dogrulamasi duruyor — gecersiz ad hala reddedilir', () => 
     'capabilities modunda gecersiz namespace de reddedilmeli',
   );
 });
+
+// ── T1d: ALANLAR GERCEKTEN OLCULUYOR (SABIT DEGIL) ──────────────────────────
+//
+// KORLUK PANZEHIRI — bu bekci bir mutasyon turunda dogdu: `setup_ms=0` diye
+// SABITLEMEK T1'i kizartmiyordu (0 da bir sayidir ve `setup + discover <=
+// elapsed` invaryanti hala tutuyordu). Burada sahte `oc` BILEREK yavaslatilir:
+// once oturum acmada, sonra namespace taramasinda birer saniye. Iki alan da
+// gecen sureyi GORMEK zorunda.
+//
+// 1 SANIYELIK gecikme sart: GNU olmayan bir `date`te betigin saati 1 saniye
+// cozunurluklu calisir (bkz. `now_ms`) ve daha kisa bir gecikme 0 olarak
+// olculebilirdi. `floor(t+1) >= floor(t)+1` her zaman dogru oldugu icin bu
+// esik her iki saat kaynaginda da guvenli.
+test('T1d setup ve kesif sureleri GERCEK gecen sureyi olcuyor', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'scalex-slow-'));
+  const stub = [
+    '#!/bin/bash',
+    'case "$1" in',
+    '  login) sleep 1; exit 0 ;;',
+    '  project) exit 0 ;;',
+    "  api-resources) printf 'deployments.apps\\n'; exit 0 ;;",
+    '  auth) echo yes; exit 0 ;;',
+    '  get)',
+    '    case "$2" in',
+    '      --raw) exit 1 ;;',
+    // Namespace basina TEK kez cagrilir (disc_load_hpa): kesif tarafindaki
+    // gecikmeyi tek noktadan verir.
+    '      hpa) sleep 1; exit 0 ;;',
+    "      deploy|deployment|deployments.apps) printf 'a|1|1|1|i||\\n'; exit 0 ;;",
+    '      *) exit 0 ;;',
+    '    esac ;;',
+    'esac',
+    'exit 0',
+  ].join('\n');
+  fs.writeFileSync(path.join(dir, 'oc'), stub, { mode: 0o755 });
+  fs.writeFileSync(path.join(dir, 'curl'), CURL_STUB, { mode: 0o755 });
+  const out = execFileSync('bash', [RUNNER], {
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      PATH: `${dir}:${process.env.PATH}`,
+      SCALEX_PHASE: 'discover',
+      DISCOVERY_MODE: 'workloads',
+      CLUSTER: 'c1',
+      JUMP_SERVER: 'j1',
+      API_URL: 'https://api.lab:6443',
+      OCP_USERNAME: 'u',
+      OCP_PASSWORD: 'x',
+      OCP_OC_PATHS: path.join(dir, 'oc'),
+      NS: 'ns1',
+      APP_RAW: '',
+      ACTION: '',
+      TLS_VERIFY: 'false',
+      JOB_ID: '1',
+    },
+  });
+  const satir = out.split('\n').find((l) => l.includes(';TIMING;'));
+  assert.ok(satir, 'TIMING satiri yok');
+  const al = (ad) => Number(new RegExp(`\\b${ad}=(\\d+)\\b`).exec(satir)[1]);
+  assert.ok(al('setup_ms') >= 900, `setup_ms gecen sureyi olcmuyor: ${satir}`);
+  assert.ok(al('discover_ms') >= 900, `discover_ms gecen sureyi olcmuyor: ${satir}`);
+  assert.ok(al('elapsed_ms') >= al('setup_ms'), `elapsed_ms setup'tan kucuk: ${satir}`);
+});
