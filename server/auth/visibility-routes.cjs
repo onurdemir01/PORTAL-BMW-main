@@ -182,11 +182,46 @@ function initVisibilityRoutes(app, { requireAuth, requireAdmin }) {
       hedef = req.query.email
         ? { username: '', mail: String(req.query.email), role: 'User', groups: [] }
         : { username: String(req.query.username), mail: '', role: 'User', groups: [] };
+      // SIMULASYON GERCEK KIMLIKLE YAPILIR (2026-09-29).
+      //
+      // Onceden hedef her zaman `role: 'User', groups: []` ile kuruluyordu. Yani bu uc,
+      // grup kuraliyla ya da Admin rolüyle yetkilendirilmis bir kullanici icin "goremez"
+      // diyordu. "Neden erisemiyor?" sorusunu cevaplamak icin yazilmis arac, tam da o
+      // soruda YANLIS cevap veriyordu.
+      //
+      // LDAP'a ulasilamazsa eski davranisa dusulur ama bu SOYLENIR: eksik veriyle verilen
+      // cevabi kesin bir cevap gibi gostermek, yanlis yerde saatler harcatir.
+      if (req.query.username) {
+        try {
+          const kimlik = await require('./users.cjs').getUserIdentity(String(req.query.username));
+          if (kimlik && kimlik.mail) hedef.mail = kimlik.mail;
+          const ldap = await require('./ldap.cjs').findLdapUserByUsername(
+            String(req.query.username),
+          );
+          if (ldap) {
+            hedef.username = ldap.username || hedef.username;
+            hedef.mail = hedef.mail || ldap.mail || '';
+            hedef.groups = Array.isArray(ldap.groups) ? ldap.groups : [];
+            hedef.kimlikKaynagi = 'ldap';
+          }
+        } catch (err) {
+          hedef.kimlikUyarisi = `LDAP kimligi okunamadi (${err.message}) — gruplar BOS varsayildi, sonuc eksik olabilir.`;
+        }
+        if (!hedef.kimlikKaynagi && !hedef.kimlikUyarisi) {
+          hedef.kimlikUyarisi =
+            'Kullanici LDAP’ta bulunamadi — gruplar BOS varsayildi, sonuc eksik olabilir.';
+        }
+      }
     }
     try {
       res.json({
         ok: true,
         simulasyon: !!simule,
+        // Simulasyonun NEYE dayandigi cevapta yazar: gruplar LDAP'tan mi geldi, yoksa
+        // bos mu varsayildi? Eksik veriyle verilen cevap, kesin cevap gibi gorunmemeli.
+        kimlikKaynagi: hedef.kimlikKaynagi || null,
+        kimlikUyarisi: hedef.kimlikUyarisi || null,
+        gruplar: Array.isArray(hedef.groups) ? hedef.groups.length : 0,
         ...(await visibilityEngine.explainVisibility(hedef, elementKey)),
       });
     } catch (err) {

@@ -119,6 +119,35 @@ test('VE6: "neden goremiyor" tanisi - explain ucu', () => {
   assert.match(blok, /status\(403\)/);
 });
 
+test('VE6b: simulasyon GERCEK kimlikle yapilir (gruplar bos varsayilmaz)', () => {
+  // Uretim (2026-09-29): "Osman Kozen kullanicisi halen erisemiyor". Teshis icin explain
+  // ucu kullanilir - ama uc, simule edilen kullaniciyi HER ZAMAN `role:'User', groups:[]`
+  // ile kuruyordu. Yani grup kuraliyla yetkilendirilmis birine "goremez" diyordu:
+  // "neden erisemiyor" sorusunu cevaplamak icin yazilmis arac, tam da o soruda YANLIS
+  // cevap uretiyordu.
+  const routes = fs.readFileSync(path.join(__dirname, '..', 'visibility-routes.cjs'), 'utf8');
+  const i = routes.search(/['"]\/explain['"]/);
+  const blok = routes.slice(i, i + 3000);
+  assert.match(blok, /findLdapUserByUsername/, 'simulasyonda gercek LDAP kimligi okunmuyor');
+  assert.match(blok, /hedef\.groups = /, 'gruplar simulasyona tasinmiyor - grup kurali gorunmez');
+  // EKSIK VERIYLE VERILEN CEVAP, KESIN CEVAP GIBI GORUNMEMELI.
+  // CATCH DALI da uyarmali: LDAP dusunce sessizce 'gruplar bos' varsaymak, yanlis
+  // cevabi kesin cevap gibi gosterirdi.
+  const duz = blok.replace(/\s+/g, ' ');
+  assert.match(
+    duz,
+    /catch \(err\) \{ hedef\.kimlikUyarisi/,
+    'LDAP okunamadiginda uyari yok - eksik cevap kesin sanilir',
+  );
+  assert.match(blok, /kimlikKaynagi/, 'cevabin neye dayandigi bildirilmiyor');
+
+  // LDAP tarafi gruplari GERCEKTEN donmeli (memberOf zaten cekiliyordu ama tasinmiyordu).
+  const ldap = fs.readFileSync(path.join(__dirname, '..', 'ldap.cjs'), 'utf8');
+  const j = ldap.indexOf('async function findLdapUserByUsername');
+  assert.ok(j > 0, 'findLdapUserByUsername yok');
+  assert.match(ldap.slice(j, j + 2500), /groups:/, 'findLdapUserByUsername gruplari donmuyor');
+});
+
 test('VE7: kullanici adi BUYUK/KUCUK harf ayrimi yapmaz', () => {
   // Uretimde gorulen (2026-09-26): "osmankoz ile girersem yetkin yok diyor, OsmanKoz ile
   // girersem goruyorum." Oturumdaki kullanici adi zaten normalizeUsername ile kucuk harfe

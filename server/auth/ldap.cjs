@@ -376,6 +376,14 @@ async function findLdapUserByUsername(username) {
       // 'mail' bos olan AD hesaplarinda userPrincipalName ayni adresi tasir
       // (bkz. USER_ATTRS yorumu) — authenticateLdap ile AYNI oncelik.
       mail: String(user.mail || user.userPrincipalName || ''),
+      // GRUPLAR DA DONER (2026-09-29): memberOf zaten USER_ATTRS'te cekiliyordu ama
+      // buradan disari verilmiyordu. Sonucu: /explain ucu baska bir kullaniciyi simule
+      // ederken gruplari BOS varsayiyor ve grup kuraliyla yetkilendirilmis birine
+      // "goremez" diyordu — yani yetki sorununu tesbit etmek icin kullanilan arac, tam
+      // da o durumda YANLIS cevap veriyordu. authenticateLdap ile ayni bicim.
+      groups: (Array.isArray(user.memberOf) ? user.memberOf : user.memberOf ? [user.memberOf] : [])
+        .map((g) => String(g || '').trim())
+        .filter(Boolean),
     };
   } catch (err) {
     console.warn('[LDAP] findLdapUserByUsername hatasi:', err.message);
