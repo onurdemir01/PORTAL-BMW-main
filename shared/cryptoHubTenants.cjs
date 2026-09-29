@@ -60,6 +60,22 @@ const METACO_CHART = 'metaco.azurecr.io/helm-next/harmonize';
 const METACO_CHART_ALT = 'metaco.azurecr.io/helm-flat/harmonize';
 const WYDEN_CHART_OCI = 'repo.wyden.io/nexus/repository/wyden/wyden';
 
+/**
+ * Metaco helm release adi = KAYNAK ADLARININ ONEKI.
+ *
+ * KURAL ALANA GORE, ORTAMA GORE DEGIL (kullanici, 2026-09-29: "DAS tarafinin prefix'i
+ * hmz, GAR tarafinin prefix'i hmzbank"):
+ *   das -> hmz        (deployment'lar hmz-harmonize-*)
+ *   gar -> hmzbank    (deployment'lar hmzbank-harmonize-*)
+ *
+ * ONCEDEN YANLISTI: deger her kiraciya elle yaziliyordu ve `metaco_gar_test` icin `hmz`
+ * kalmisti - "DAS tarafi ve testler hmz" diye not bile dusulmustu. Yani GAR test'te
+ * `helm upgrade` YANLIS RELEASE'e gidecek, "kosan surum" yanlis release'ten okunacakti.
+ * Kural artik TEK YERDE; yeni bir kiraci eklenince degeri kopyalamak gerekmiyor ve CH2b
+ * bekcisi alan ile onegin ayrismasini engelliyor.
+ */
+const metacoRelease = (domain) => (String(domain) === 'gar' ? 'hmzbank' : 'hmz');
+
 /** @type {CryptoTenant[]} */
 const CRYPTO_TENANTS = Object.freeze([
   {
@@ -75,7 +91,7 @@ const CRYPTO_TENANTS = Object.freeze([
     cluster: 'daocptest1',
     apiUrl: 'https://api.daocptest1.fw.dijitalvarlik.com.tr:6443',
     namespace: 'harmonize-test',
-    helmRelease: 'hmz',
+    helmRelease: metacoRelease('das'),
     chartRef: METACO_CHART,
     chartRefAlt: METACO_CHART_ALT,
     chartRepo: '',
@@ -95,7 +111,7 @@ const CRYPTO_TENANTS = Object.freeze([
     cluster: 'daocpprod1',
     apiUrl: 'https://api.daocpprod1.fw.dijitalvarlik.com.tr:6443',
     namespace: 'harmonize-prod',
-    helmRelease: 'hmz',
+    helmRelease: metacoRelease('das'),
     chartRef: METACO_CHART,
     chartRefAlt: METACO_CHART_ALT,
     chartRepo: '',
@@ -115,7 +131,7 @@ const CRYPTO_TENANTS = Object.freeze([
     cluster: 'daocpankprod1',
     apiUrl: 'https://api.daocpankprod1.fw.dijitalvarlik.com.tr:6443',
     namespace: 'harmonize-prod',
-    helmRelease: 'hmz',
+    helmRelease: metacoRelease('das'),
     chartRef: METACO_CHART,
     chartRefAlt: METACO_CHART_ALT,
     chartRepo: '',
@@ -135,7 +151,7 @@ const CRYPTO_TENANTS = Object.freeze([
     cluster: 'gbocp3rdcwtest1',
     apiUrl: 'https://api.gbocp3rdcwtest1.fw.garanti.com.tr:6443',
     namespace: 'harmonize-test',
-    helmRelease: 'hmz',
+    helmRelease: metacoRelease('gar'),
     chartRef: METACO_CHART,
     chartRefAlt: METACO_CHART_ALT,
     chartRepo: '',
@@ -154,10 +170,11 @@ const CRYPTO_TENANTS = Object.freeze([
     bastion: 'daaocp01',
     cluster: 'gbocp3rdcwprod1',
     apiUrl: 'https://api.gbocp3rdcwprod1.fw.garanti.com.tr:6443',
-    // GAR PROD'DA RELEASE ADI FARKLI: runbook'ta `helm upgrade --install … hmzbank ./harmonize/`
-    // ve tum deployment'lar `hmzbank-harmonize-*`. DAS tarafi ve testler `hmz`.
+    // GAR TARAFINDA RELEASE ONEKI hmzbank: runbook'ta `helm upgrade --install … hmzbank
+    // ./harmonize/` ve tum deployment'lar `hmzbank-harmonize-*`. DAS tarafi `hmz`.
+    // (Onek ALANA gore belirlenir, ortama gore DEGIL - bkz. metacoRelease.)
     namespace: 'harmonize-prod',
-    helmRelease: 'hmzbank',
+    helmRelease: metacoRelease('gar'),
     chartRef: METACO_CHART,
     chartRefAlt: METACO_CHART_ALT,
     chartRepo: '',

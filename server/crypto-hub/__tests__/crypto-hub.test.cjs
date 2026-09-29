@@ -115,6 +115,35 @@ test('CH2: Portal katalogu Ansible katalogu ile ayni', () => {
   }
 });
 
+test('CH2b: Metaco release oneki ALANA gore (das=hmz, gar=hmzbank)', () => {
+  // Kullanici (2026-09-29): "DAS tarafinin prefix'i hmz, GAR tarafinin prefix'i hmzbank."
+  //
+  // Onceden deger her kiraciya ELLE yaziliyordu ve metaco_gar_test icin `hmz` kalmisti
+  // ("DAS tarafi ve testler hmz" diye not bile dusulmustu). Sonucu: GAR test'te
+  // `helm upgrade` YANLIS RELEASE'e gider ve "kosan surum" yanlis release'ten okunurdu.
+  // Kural ORTAMA gore degil ALANA goredir.
+  for (const t of CRYPTO_TENANTS.filter((x) => x.app === 'metaco')) {
+    const beklenen = t.domain === 'gar' ? 'hmzbank' : 'hmz';
+    assert.equal(
+      t.helmRelease,
+      beklenen,
+      `${t.key}: alan ${t.domain} ise release ${beklenen} olmali (kaynak adlari ${beklenen}-harmonize-*)`,
+    );
+  }
+  // Deger elle KOPYALANMAMALI: kural tek yerde dursun ki yeni kiraci eklerken unutulmasin.
+  const src = fs.readFileSync(
+    path.join(__dirname, '..', '..', '..', 'shared', 'cryptoHubTenants.cjs'),
+    'utf8',
+  );
+  assert.match(src, /const metacoRelease = /, 'onek kurali tek bir yerde tanimli degil');
+  const metacoBloklari = src.split("key: 'metaco").slice(1);
+  for (const b of metacoBloklari) {
+    const hr =
+      (b.match(new RegExp('helmRelease: ([^,' + String.fromCharCode(10) + ']+)')) || [])[1] || '';
+    assert.match(hr, /metacoRelease\(/, `Metaco kiracisinda release elle yazilmis: ${hr}`);
+  }
+});
+
 test('CH3: surum karsilastirmasi semantik', () => {
   const sorted = ['1.10.0', '1.9.0', '1.33.2', '1.5.19', '1.5.5'].sort(cmpVersion);
   assert.deepEqual(sorted, ['1.5.5', '1.5.19', '1.9.0', '1.10.0', '1.33.2']);
