@@ -23,6 +23,8 @@ import {
 // ORTAK BICIMLENDIRICI (G19): ham `toLocaleString` deponun kuralina aykiri —
 // tarih bicimi tek yerden yonetiliyor.
 import { fmtDateTime } from '@/utils/datetime';
+import { SourceNote } from '@/components/common/SourceNote';
+import { SCALEX_APPS } from '@/config/dataSources';
 
 interface Props {
   scope: ScaleXScope;
@@ -1018,6 +1020,11 @@ const WorkloadStep: React.FC<Props> = ({
 
   return (
     <div className="space-y-4">
+      {/* Kaynak bugune kadar YALNIZCA KOD YORUMUNDA yaziliydi (bkz. loadCatalog):
+          kullanici listenin envanterden mi canli taramadan mi geldigini ve
+          replika/HPA alanlarinin neden bos oldugunu ekrandan ogrenemiyordu. */}
+      <SourceNote source={SCALEX_APPS} />
+
       {allClustersFailed && (
         <div
           role="alert"
