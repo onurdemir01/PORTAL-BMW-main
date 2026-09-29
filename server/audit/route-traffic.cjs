@@ -137,6 +137,23 @@ function buildRouteTraffic(trafficRows, inventoryRows, opt = {}) {
   // BOS kalir ve satirlar "olcum yok" gorunur - route sonuclari bundan ETKILENMEZ.
   const usage = buildUsageMap(opt.usageRows);
   const usageEslesen = new Set();
+  // NAMESPACE INDEKSI BIR KEZ KURULUR (2026-09-29, uretimde olculdu).
+  //
+  // Onek eslesmesi ilk yazildiginda her route icin `[...usage.entries()]` cagriliyordu:
+  // 70.000 elemanli dizi, her route icin her aday icin YENIDEN. 5.000 route'luk bir
+  // olcumde ekran 43,5 saniyede aciliyordu, gercek envanterde DAKIKALAR - kullanici
+  // "Route Trafigi 10 dakikadir acilmadi" dedi.
+  //
+  // Onek aramasi zaten YALNIZ AYNI NAMESPACE icinde anlamli; namespace basina kucuk bir
+  // liste tutmak hem dogru hem de ucuz.
+  const usageByNs = new Map();
+  for (const [anahtar, u] of usage) {
+    const i = anahtar.indexOf('|');
+    if (i < 0) continue;
+    const ns = anahtar.slice(0, i);
+    if (!usageByNs.has(ns)) usageByNs.set(ns, []);
+    usageByNs.get(ns).push([anahtar.slice(i + 1), u]);
+  }
 
   const rows = [];
   const keys = new Set([...agg.keys(), ...inv.keys()]);
@@ -245,16 +262,19 @@ function buildRouteTraffic(trafficRows, inventoryRows, opt = {}) {
         // HER ADAY denenir, yalnizca ilki DEGIL: route adi cogu zaman tam adresin
         // kendisidir ("apigw.apps.fw.garanti.com.tr") ve onek olarak ise yaramaz;
         // isimize yarayan aday adresin ILK ETIKETIDIR ("apigw").
+        const nsListe = usageByNs.get(nsLower);
+        if (!nsListe || !nsListe.length) return null;
         let esles = [];
         for (const c of adaylar) {
           if (!c) continue;
-          const bas = nsLower + '|' + c + '-';
-          esles = [...usage.entries()].filter(([anahtar]) => anahtar.startsWith(bas));
+          const bas = c + '-';
+          esles = nsListe.filter(([app2]) => app2.startsWith(bas));
           if (esles.length) break;
         }
         if (!esles.length) return null;
         const olculen = esles.filter(([, u]) => u.measured);
-        for (const [anahtar] of esles) usageEslesen.add(anahtar);
+        // esles artik NAMESPACE ICI liste: anahtar yalniz uygulama adi, ns basa eklenir.
+        for (const [app2] of esles) usageEslesen.add(nsLower + '|' + app2);
         const ilk = olculen[0] ? olculen[0][1] : esles[0][1];
         return {
           // Yalniz OLCULEN uygulamalarin toplami; olculemeyen bir uygulamayi 0 sayip
@@ -267,7 +287,7 @@ function buildRouteTraffic(trafficRows, inventoryRows, opt = {}) {
           servicesSkipped: esles.reduce((t, [, u]) => t + (Number(u.servicesSkipped) || 0), 0),
           note: ilk.note,
           // TOPLAMIN ICERIGI: ekranda gosterilir, tahmin degil kanit olsun diye.
-          aggregated: esles.map(([anahtar]) => anahtar.split('|')[1]).sort(),
+          aggregated: esles.map(([app2]) => app2).sort(),
           unmeasured: esles.length - olculen.length,
         };
       })(),

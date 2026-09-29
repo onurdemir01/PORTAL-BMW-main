@@ -399,3 +399,38 @@ test('RTU7: TAM AD eslesmesi varsa onek eslesmesine DUSULMEZ', () => {
   assert.equal(u.req, 7, 'tam ad eslesmesi varken onek toplami kullanilmis');
   assert.equal(u.aggregated, undefined, 'tam eslesmede toplam isareti birakilmis');
 });
+
+test('RTU8: olcum eslesmesi ROUTE x OLCUM buyuklugunde calismaz (uretim: ekran 10 dk acilmadi)', () => {
+  // 2026-09-29: onek eslesmesi ilk yazildiginda her route icin `[...usage.entries()]`
+  // cagriliyordu - 70.000 elemanli dizi, her route icin her aday icin YENIDEN. Kullanici:
+  // "Denetim -> Route Trafigi 10 dakikadir acilmadi". Olculdu: 5.000 route x 70.000 olcum
+  // -> 43,5 sn; namespace indeksinden sonra 0,2 sn.
+  //
+  // Bu bekci SURE olcer: mantigi degil, BUYUME HIZINI korur. Bilerek bol paylidir -
+  // amaci yavas bir makinede kirmizi yanmak degil, kare karmasikligin geri gelmesini
+  // yakalamak.
+  const ROUTES = 2000;
+  const OLCUM = 40000;
+  const NS = 100;
+  const trafik = [];
+  const envanter = [];
+  const olcumler = [];
+  for (let i = 0; i < ROUTES; i += 1) {
+    const ns = `ns-${i % NS}-prod`;
+    const adr = `app${i}.apps.fw.garanti.com.tr`;
+    trafik.push(row(1, ns, adr, 10));
+    envanter.push(inv(ns, adr, adr));
+  }
+  for (let i = 0; i < OLCUM; i += 1) {
+    olcumler.push(kullanim(`ns-${i % NS}-prod`, `svc${i}-1-prod`, 5));
+  }
+  const t0 = Date.now();
+  const r = buildRouteTraffic(trafik, envanter, { now: NOW, usageRows: olcumler });
+  const sn = (Date.now() - t0) / 1000;
+  assert.equal(r.rows.length, ROUTES);
+  assert.ok(
+    sn < 5,
+    `olcum eslesmesi ${sn.toFixed(1)} sn surdu - route x olcum buyuklugunde calisiyor ` +
+      `(namespace indeksi kaldirilmis olabilir). Duzeltmeden once bu deger 43,5 sn idi.`,
+  );
+});
