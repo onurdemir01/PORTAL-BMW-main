@@ -46,6 +46,18 @@
     #
     # `default(x)` BOOLEAN DEGIL: yalnizca ANAHTAR YOKSA geriye dusulur.
     SCALEX_EXTRA_KINDS: "{{ scalex_cluster_kinds_effective[scalex_target.cluster] | default(scalex_extra_kinds_fallback) }}"
+    # "TARANDI AMA BOS" — BOS LISTEDEN AYRI BIR HAL.
+    #
+    # `SCALEX_EXTRA_KINDS=''` betik tarafinda "onbellek YOK" demek ve ~50
+    # `oc get --raw` cagrisini yeniden kosturur. Oysa portal "bu cluster tarandi,
+    # olceklenebilir EKSTRA CRD YOK" da diyebiliyor ve bu bilgi tam olarak o
+    # cagrilari atlatan bilgi. Sozlukte ANAHTARIN VARLIGI bunu soyler: portal
+    # yalnizca GUVENILIR bir kaydi olan cluster'i sozluge koyar.
+    #
+    # AYRI DEGISKEN, ORTAK DEGERE ISARET KOYMAK DEGIL: `'-'` gibi bir isaret
+    # degeri ESKI bir pakette gercek bir tip adi sanilirdi. Tanimadigi bir ortam
+    # degiskenini ise eski paket sessizce YOK SAYAR.
+    SCALEX_EXTRA_KINDS_SCANNED: "{{ 'yes' if (scalex_target.cluster in scalex_cluster_kinds_effective) else 'no' }}"
     # Kesifte islem YOK. Betik `discover` fazinda `ACTION` aramaz; yine de bos
     # gecmek, degiskenin tanimsiz kalmasindan iyidir (`set -u` ile calisiyor).
     ACTION: ""

@@ -9,7 +9,7 @@
 // `server/ansible/bmw_portal/scalex/scalex_app/VERSION` ile AYNI sayi olmali (test kilitler).
 // Paket AWX'e ELLE kopyalaniyor; bu iki sayinin ayrismasi "portal yeni, AWX eski"
 // durumunun TEK kaniti. Pakette portalin okudugu bir alan degistiginde artirilir.
-const EXPECTED_PACKAGE_VERSION = '16';
+const EXPECTED_PACKAGE_VERSION = '17';
 
 function extractStatsKey(rawArtifacts, key) {
   const a = rawArtifacts || {};
@@ -237,7 +237,13 @@ function extractDiscoveryResult(rawArtifacts) {
   // CLUSTER BASINA gruplanir: her cluster kendi yetenegini tasir ve portal her
   // birini AYRI satira yazar. Tek bir birlesik liste yazmak, bir cluster'da
   // olmayan bir CRD'yi orada VARMIS gibi gostermek olurdu.
-  if (base.mode === 'capabilities') {
+  //
+  // MODA DEGIL SATIRA BAKILIR. `workloads` kesfi de soguk yolda ayni satirlari
+  // basiyor (`source=discovery`): CRD listesini zaten hesapliyor ve yalnizca
+  // kendi taramasinda kullanip atmak, bir sonraki kesfin ayni ~50 `oc get --raw`
+  // cagrisini yeniden odemesi demekti. Mod kosulu, o satirlari SESSIZCE yok
+  // sayardi — yazildigi halde hicbir yere ulasmayan bir ozellik sinifi.
+  if (items.some((i) => String(i.step || '').startsWith('CAP_'))) {
     const perCluster = new Map();
     const al = (c) => {
       const k = String(c || '');

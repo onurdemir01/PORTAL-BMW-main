@@ -144,11 +144,12 @@ async function kindsForScope({ env, tenant, clusterNames }) {
  * ── SÖZLÜĞE GİRMEYEN ÜÇ DURUM ──────────────────────────────────────────────
  *   hiç taranmamış (`kinds === null`) → kayıt yok, tahmin de yok
  *   okunamamış tarama               → "okunamadı" ≠ "CRD yok"
- *   tarandı ama BOŞ (`kinds === []`) → betikte İFADE EDİLEMİYOR: `SCALEX_EXTRA_KINDS=''`
- *                                      betik tarafında "önbellek yok" ile AYNI
- *                                      anlama geliyor. Doğru sonuç için soğuk
- *                                      yolu koşuyor; bunu ayırmak runner'da bir
- *                                      işaret değeri ister (ayrı tur).
+ *
+ * "Tarandı ama BOŞ" (`kinds === []`) ARTIK SÖZLÜĞE GİRER ve boş bir liste olarak
+ * gider. Değerin kendisi boş olduğu için betik onu "önbellek yok"tan ayıramaz;
+ * ayrımı **anahtarın varlığı** taşır (`SCALEX_EXTRA_KINDS_SCANNED`). Bu ayrım
+ * olmadan ekstra CRD'si olmayan bir cluster her keşifte ~50 `oc get --raw`
+ * ödüyordu — ve sonuç her seferinde aynı: boş.
  */
 async function kindsPerCluster({ env, tenant, clusterNames }) {
   if (!Array.isArray(clusterNames) || !clusterNames.length) return {};
@@ -157,7 +158,6 @@ async function kindsPerCluster({ env, tenant, clusterNames }) {
   for (const k of kayitlar) {
     if (!k.resourcesReadable) continue;
     if (k.kinds === null) continue;
-    if (!k.kinds.length) continue;
     if (!k.clusterName) continue;
     harita[String(k.clusterName)] = k.kinds.slice(0, MAX_KINDS);
   }
@@ -187,12 +187,26 @@ async function save({ env, tenant, clusterName, kinds, rbac, resourcesReadable, 
     Number.isFinite(Number(awxJobId)) ? Number(awxJobId) : null,
     CAPS_TTL_DAYS,
   ];
+  // ── `rbac_json` EZILMEZ ─────────────────────────────────────────────────
+  //
+  // Yetki taramasi YALNIZCA `capabilities` modunda yapiliyor. Kesfin yan urunu
+  // olarak gelen kayitta `rbac` TANIMSIZ gelir ve kosulsuz bir `rbac_json = $5`
+  // onu NULL'a EZERDI: Admin'deki yetki tablosu, kesif kostukca KENDILIGINDEN
+  // bosalirdi. "Veri yok" ile "bu yazim o alani tasimiyor" ayri seyler.
+  const rbacYazilsin = rbac !== undefined && rbac !== null;
+  const setler = [
+    'kinds_csv = $4',
+    ...(rbacYazilsin ? ['rbac_json = $5'] : []),
+    'resources_readable = $6',
+    'scanned_by = $7',
+    'awx_job_id = $8',
+    'fetched_at = GETUTCDATE()',
+    'expires_at = DATEADD(DAY, $9, GETUTCDATE())',
+  ];
   // UPDATE-once-INSERT: `portal_settings`/`ocp_app_cache` ile ayni upsert deseni.
   const upd = await db.query(
     `UPDATE scalex_cluster_caps
-        SET kinds_csv = $4, rbac_json = $5, resources_readable = $6,
-            scanned_by = $7, awx_job_id = $8,
-            fetched_at = GETUTCDATE(), expires_at = DATEADD(DAY, $9, GETUTCDATE())
+        SET ${setler.join(', ')}
       WHERE env = $1 AND tenant = $2 AND cluster_name = $3`,
     params,
   );
