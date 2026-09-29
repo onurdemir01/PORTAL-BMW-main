@@ -21,6 +21,7 @@ import {
   ExclamationTriangleIcon,
   ClockIcon,
 } from '@heroicons/react/24/outline';
+import { CodeChip } from '@/components/common/CodeChip';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { fmtDate, fmtDateTime } from '@/utils/datetime';
@@ -164,10 +165,22 @@ export default function OcoTakvimiPage() {
     const acikMi = acik === r.oco;
     return (
       <div key={r.oco} className="border-t" style={{ borderColor: 'var(--border-subtle)' }}>
-        <button
-          type="button"
+        {/* SATIR AÇICI ARTIK <button> DEĞİL, role="button" bir <div> (2026-09-29).
+            Sebep: OCO numarası kopyalanabilir olsun diye içine gerçek bir <button>
+            kondu; <button> içinde <button> geçersiz HTML'dir ve tarayıcılar iç
+            düğmenin tıklamasını öngörülemez biçimde işler. Klavye erişimi korundu:
+            tabIndex + Enter/Space. */}
+        <div
+          role="button"
+          tabIndex={0}
           onClick={() => setAcik(acikMi ? null : r.oco)}
-          className="w-full text-left px-3 py-2 hover:bg-[var(--bg-elevated)] flex items-start gap-3"
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              setAcik(acikMi ? null : r.oco);
+            }
+          }}
+          className="w-full text-left px-3 py-2 hover:bg-[var(--bg-elevated)] flex items-start gap-3 cursor-pointer"
         >
           <span
             className="text-[11px] tabular-nums pt-0.5"
@@ -180,7 +193,11 @@ export default function OcoTakvimiPage() {
               {r.subject || '(başlıksız)'}
             </span>
             <span className="flex flex-wrap items-center gap-1.5 mt-1">
-              <Chip title="OCO numarası">#{r.oco}</Chip>
+              {/* Kopyalanabilir OCO numarası (kullanıcı, 2026-09-29). Tıklama satırı
+                  AÇMAMALI: kopyalamak isteyen kişi satırı açmak istemiyor. */}
+              <span onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+                <CodeChip value={String(r.oco)} label={`#${r.oco}`} copyable tone="muted" />
+              </span>
               {r.statusText && <Chip tone={DURUM_TON[r.statusText]}>{r.statusText}</Chip>}
               {r.impactText && <Chip>{r.impactText}</Chip>}
               {r.pcabRequired && <Chip tone="var(--status-warning)">PCAB</Chip>}
@@ -192,7 +209,7 @@ export default function OcoTakvimiPage() {
           ) : (
             <ChevronRightIcon className="h-4 w-4 mt-0.5 shrink-0" />
           )}
-        </button>
+        </div>
         {acikMi && (
           <div className="px-3 pb-3 pl-[7.5rem] space-y-2">
             <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>

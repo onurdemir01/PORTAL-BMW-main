@@ -254,3 +254,41 @@ test('OC8: arama adresi ayarin YOL/SORGU kismindan bagimsiz kurulur', () => {
     /SearchChangeOrderWithOffset\/100\/\?/,
   );
 });
+
+// OC9 (kullanici, 2026-09-29): "OCO Takviminde OCO numarasini kopyalayabilmek istiyorum."
+test('OC9: OCO numarasi KOPYALANABILIR ve kopyalama satiri acmaz', () => {
+  const { flatten } = require('../../util/guard-text.cjs');
+  const ham = fs.readFileSync(
+    path.join(__dirname, '..', '..', '..', 'src', 'components', 'OcoTakvimiPage.tsx'),
+    'utf8',
+  );
+  // Yorumlar cikarilir: bekci kendi aciklamasini bulgu saymasin.
+  const LF = String.fromCharCode(10);
+  const kod = flatten(
+    ham
+      .replace(/\{\/\*[\s\S]*?\*\/\}/g, ' ')
+      .split(LF)
+      .filter((l) => !l.trim().startsWith('//'))
+      .join(LF),
+  );
+  // Kopyalama ortak bilesenle yapilir (her ekranda ayri bir kopyalama davranisi olmasin).
+  assert.match(
+    kod,
+    /<CodeChip value=\{String\(r\.oco\)\}[^>]*copyable/,
+    'OCO numarasi kopyalanabilir degil',
+  );
+  // TIKLAMA SATIRI ACMAMALI: kopyalamak isteyen kisi satiri acmak istemiyor.
+  assert.match(
+    kod,
+    /onClick=\{\(e\) => e\.stopPropagation\(\)\}/,
+    'kopyalama tiklamasi satir aciciya sizip satiri aciyor',
+  );
+  // <button> ICINDE <button> GECERSIZ HTML: satir acici artik role="button" bir div.
+  assert.match(
+    kod,
+    /<div role="button" tabIndex=\{0\}/,
+    'satir acici hala <button> - ic icinde dugme gecersiz HTML',
+  );
+  // Klavye erisimi KAYBOLMAMALI: div'in Enter/Space ile calismasi sart.
+  assert.match(kod, /e\.key === 'Enter' \|\| e\.key === ' '/, 'satir klavyeyle acilamiyor');
+});
