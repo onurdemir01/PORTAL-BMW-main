@@ -390,6 +390,85 @@ test('P5 durum kaydi yeni onekle yazilir ama ESKI onek OKUNMAYA devam eder', () 
 
 // Betigin kullandigi `oc` alt kumesini taklit eden sahte istemci. Kesif fazi
 // hicbir mutasyon yapmadigi icin bu tumuyle guvenli.
+//
+// ── USTKUME SATIRI (14 ALAN) ────────────────────────────────────────────────
+// Betik artik TEK bir jsonpath kullaniyor (cok tipli `oc get` ancak oyle
+// yapilabilir) ve alanlarin USTKUMESINI basiyor. Satirlari BURADA, JS tarafinda
+// kuruyoruz: elle yazilmis bir bos-alan dizisinde bir `|` eksigi ya da fazlasi
+// testi sessizce yanlis yere yesile dondururdu.
+const ALAN = [
+  'kind', 'name', 'specReplicas', 'statusReplicas', 'readyReplicas',
+  'suspend', 'schedule', 'desired', 'current', 'numberReady',
+  'image', 'cronImage', 'argo', 'managedBy',
+];
+function ustkumeSatiri(o) {
+  return ALAN.map((a) => String(o[a] ?? '')).join('|');
+}
+
+// GERCEK `oc` DAVRANISI: `{.kind}` YALNIZCA cok tipli cagrida dolu gelir. Tek
+// tipli `get` TypeMeta yazmaz. Stub bunu TAKLIT EDIYOR — aksi halde betik
+// satirlari tek tipli cagrida da Kind'e gore suzse test bunu goremezdi.
+const NESNELER = {
+  'deployments.apps': [
+    { kind: 'Deployment', name: 'odeme-api', specReplicas: 3, statusReplicas: 3, readyReplicas: 3, image: 'registry.gar/odeme:1.4.2', argo: 'odeme-prod-app' },
+    { kind: 'Deployment', name: 'batch-worker', specReplicas: 0, statusReplicas: 0, readyReplicas: 0, image: 'registry.gar/batch:2.0', managedBy: 'argo cd' },
+  ],
+  // BU UC TIP UZUN SURE "exit 1" DONUYORDU: sahte oc yalnizca deploy cevapladigi
+  // icin StatefulSet/DeploymentConfig/Rollout kesfi TAMAMEN silinse bile hicbir
+  // test kizarmiyordu.
+  'statefulsets.apps': [
+    { kind: 'StatefulSet', name: 'kafka', specReplicas: 3, statusReplicas: 3, readyReplicas: 3, image: 'registry.gar/kafka:3.6' },
+  ],
+  // ENVANTERDE YOK ama OKUNABILIR. Bu celiski BILEREK: `oc api-resources` KISMI
+  // donebiliyor ve o an envantere bakip tipi dusurmek, GERCEKTEN VAR OLAN is
+  // yuklerini sessizce kaybetmek olurdu. Betik bu tipi atif kuramadigi icin
+  // TEKIL cekmeli ve yine de listelemeli (D5 bunu kilitliyor).
+  'deploymentconfigs.apps.openshift.io': [
+    { kind: 'DeploymentConfig', name: 'eski-app', specReplicas: 2, statusReplicas: 2, readyReplicas: 2, image: 'registry.gar/eski:1.0' },
+  ],
+  'daemonsets.apps': [
+    { kind: 'DaemonSet', name: 'log-agent', desired: 12, current: 12, numberReady: 11, image: 'registry.gar/agent:2.1' },
+  ],
+  'cronjobs.batch': [
+    { kind: 'CronJob', name: 'gece-batch', suspend: 'true', schedule: '0 2 * * *', cronImage: 'registry.gar/batch:9' },
+  ],
+};
+
+// `oc api-resources` VARSAYILAN CIKTISI — KIND sutunu burada. Betik cok tipli
+// cagrinin satirlarini tipe bu tablodan yazabiliyor.
+// deploymentconfigs BILEREK YOK: OpenShift 4.14+ o API'yi kaldirdi (api_absent).
+const API_RESOURCES_TABLO = [
+  'NAME           SHORTNAMES   APIVERSION             NAMESPACED   KIND',
+  'deployments    deploy       apps/v1                true         Deployment',
+  'statefulsets   sts          apps/v1                true         StatefulSet',
+  'daemonsets     ds           apps/v1                true         DaemonSet',
+  'cronjobs       cj           batch/v1               true         CronJob',
+  'rollouts                    argoproj.io/v1alpha1   true         Rollout',
+  'replicasets    rs           apps/v1                true         ReplicaSet',
+];
+
+/** Her satir icin AYRI bir `printf` — kabuk kacisi tek yerde ve gozle okunur. */
+function printfSatirlari(satirlar, girinti) {
+  return satirlar.map((l) => `${girinti}printf '%s\\n' ${JSON.stringify(l)}`).join('\n');
+}
+
+function stubGetDali() {
+  return Object.entries(NESNELER)
+    .map(([res, objeler]) => {
+      const coklu = printfSatirlari(objeler.map((o) => ustkumeSatiri(o)), '              ');
+      const tekil = printfSatirlari(objeler.map((o) => ustkumeSatiri({ ...o, kind: '' })), '              ');
+      return [
+        `            ${res})`,
+        '              if [ "$COKLU" = "yes" ]; then',
+        coklu,
+        '              else',
+        tekil,
+        '              fi ;;',
+      ].join('\n');
+    })
+    .join('\n');
+}
+
 const OC_STUB = `#!/bin/bash
 case "$1 $2" in "version --client") echo "Client Version: 4.14.0"; exit 0 ;; esac
 case "$1" in
@@ -397,15 +476,22 @@ case "$1" in
   # CLUSTER'IN KAYNAK ENVANTERI. Bu dal uzun sure YOKTU: betik envanteri okuyamayinca
   # yedek yola dusuyor ve "API yok" ile "yetki yok" ayrimi HIC SINANMIYORDU -- yani
   # ayrimi tersine ceviren bir hata testlerden gecerdi (uretimde tam olarak bu oldu).
-  # deploymentconfigs BILEREK YOK: OpenShift 4.14+ o API'yi kaldirdi.
   # (Ters tirnak kullanilamaz -- bu blok bir JS sablon dizesinin ICINDE.)
   api-resources)
-    printf 'deployments.apps\\nstatefulsets.apps\\ndaemonsets.apps\\ncronjobs.batch\\nrollouts.argoproj.io\\nreplicasets.apps\\n'
+    _ONAME=no
+    for a in "\$@"; do
+      if [ "\$a" = "name" ] && [ "\${_PREV:-}" = "-o" ]; then _ONAME=yes; fi
+      _PREV="\$a"
+    done
+    if [ "\$_ONAME" = "yes" ]; then
+      printf 'deployments.apps\\nstatefulsets.apps\\ndaemonsets.apps\\ncronjobs.batch\\nrollouts.argoproj.io\\nreplicasets.apps\\n'
+    else
+${printfSatirlari(API_RESOURCES_TABLO, '      ')}
+    fi
     exit 0 ;;
   auth)
-    # "oc auth can-i list <kind>" -- rollout icin HAYIR. Boylece kesfin
-    # "bakilamadi" nedenini no_permission olarak ayirt edip etmedigi test
-    # edilebiliyor (api_absent ile ayni sey DEGIL).
+    # "oc auth can-i list <kind>" -- rollout icin HAYIR. Betik bunu PDB ve
+    # ConfigMap kapilarinda kullaniyor.
     #
     # NOT: bu blok bir JS sablon dizesinin ICINDE. Ters tirnak kullanilamaz ve
     # kabuk degisken genislemeleri MUTLAKA ters bolu ile kacirilmalidir --
@@ -420,24 +506,6 @@ case "$1" in
       --raw) exit 1 ;;
       hpa) printf 'odeme-api\\n'; exit 0 ;;
       pdb) printf 'odeme-pdb   1   N/A   0   3d\\n'; exit 0 ;;
-      deploy|deployment|deployments.apps)
-        printf 'odeme-api|3|3|3|registry.gar/odeme:1.4.2|odeme-prod-app|\\n'
-        printf 'batch-worker|0|0|0|registry.gar/batch:2.0||argo cd\\n'
-        exit 0 ;;
-      # BU UC TIP UZUN SURE "exit 1" DONUYORDU: sahte oc yalnizca deploy
-      # cevapladigi icin StatefulSet/DeploymentConfig/Rollout kesfi TAMAMEN
-      # silinse bile hicbir test kizarmiyordu. Uretimde bildirilen "StatefulSet
-      # kesifte cikmiyor" sorununun bekcisi hic yoktu.
-      sts|statefulset|statefulsets.apps)
-        printf 'kafka|3|3|3|registry.gar/kafka:3.6||\\n'; exit 0 ;;
-      dc|deploymentconfig|deploymentconfigs.apps.openshift.io)
-        printf 'eski-app|2|2|2|registry.gar/eski:1.0||\\n'; exit 0 ;;
-      ds|daemonset|daemonsets.apps)
-        printf 'log-agent|12|12|11|registry.gar/agent:2.1||\\n'; exit 0 ;;
-      cronjob|cronjobs|cronjobs.batch)
-        printf 'gece-batch|true|0 2 * * *||registry.gar/batch:9||\\n'; exit 0 ;;
-      # Rollout BILEREK okunamaz birakildi: "bakilamadi" yolunun da bir bekcisi olsun.
-      rollout|rollouts|rollouts.argoproj.io) exit 1 ;;
       cm)
         if [ "$3" != "-n" ]; then
           if [ "$3" = "scalex-state-odeme-api" ]; then
@@ -453,7 +521,25 @@ case "$1" in
         printf 'chaos-scale-state-batch-worker|||2|scaled_down|2026-08-20T10:00:00Z|onur|29001\\n'
         printf 'alakasiz-cm|||||||\\n'
         exit 0 ;;
-      *) exit 1 ;;
+      *)
+        # TEK TIP ya da VIRGULLU LISTE. Gercek 'oc' gibi davranir: bir tip duserse
+        # rc=1 doner ama DIGER tiplerin satirlari YINE BASILIR.
+        COKLU=no
+        case "$2" in *,*) COKLU=yes ;; esac
+        _RC=0
+        for r in \$(printf '%s' "$2" | tr ',' ' '); do
+          case "\$r" in
+${stubGetDali()}
+            # Rollout BILEREK okunamaz birakildi (RBAC reddi). GERCEK 'oc' gibi
+            # STDERR'e kaynak adini yaziyor: betik "hangi tip dustu" sorusunu
+            # ancak oradan cevaplayabilir (cok tipli cagrida rc TIP BAZINDA DEGIL).
+            rollout|rollouts|rollouts.argoproj.io)
+              printf 'Error from server (Forbidden): %s is forbidden\n' "\$r" >&2; _RC=1 ;;
+            *)
+              printf 'error: the server doesn'"'"'t have a resource type "%s"\n' "\$r" >&2; _RC=1 ;;
+          esac
+        done
+        exit \$_RC ;;
     esac ;;
 esac
 exit 1
@@ -1148,8 +1234,8 @@ test('D7b API YOKLUGU yetki eksikligiyle KARISTIRILMAZ', () => {
   const items = runDiscoveryWithStub((stub) =>
     stub
       .replace(
-        /^      dc\|deploymentconfig\|deploymentconfigs\.apps\.openshift\.io\)[\s\S]*?exit 0 ;;$/m,
-        '      dc|deploymentconfig|deploymentconfigs.apps.openshift.io) exit 1 ;;',
+        /^ {12}deploymentconfigs\.apps\.openshift\.io\)[\s\S]*?\n {14}fi ;;$/m,
+        '            deploymentconfigs.apps.openshift.io)\n              printf \'error: the server does not have a resource type "%s"\\n\' "$r" >&2; _RC=1 ;;',
       )
       .replace('  auth)', '  auth) echo yes; exit 0 ;;\n  _unused_auth)'),
   );
@@ -1169,8 +1255,8 @@ test('D7c istenecek RBAC TAM KAYNAK ADIYLA yazilir', () => {
   // yazilir. Kullaniciya `sts` demek, platform ekibine yanlis metin goturmesi demek.
   const items = runDiscoveryWithStub((stub) =>
     stub.replace(
-      /^      sts\|statefulset\|statefulsets\.apps\)[\s\S]*?exit 0 ;;$/m,
-      '      sts|statefulset|statefulsets.apps) exit 1 ;;',
+      /^ {12}statefulsets\.apps\)[\s\S]*?\n {14}fi ;;$/m,
+      '            statefulsets.apps)\n              printf \'Error from server (Forbidden): %s is forbidden\\n\' "$r" >&2; _RC=1 ;;',
     ),
   );
   const row = items.find((i) => i.step === 'WORKLOAD_KIND' && /kind=sts\b/.test(i.detail));
@@ -1195,8 +1281,8 @@ test('D10 cluster`da olup LISTEMIZDE OLMAYAN olceklenebilir tip de gorunur', () 
   const items = runDiscoveryWithStub((stub) =>
     stub
       .replace(
-        /^    printf 'deployments\.apps.*$/m,
-        "    printf 'deployments.apps\\nstatefulsets.apps\\ndaemonsets.apps\\ncronjobs.batch\\nrollouts.argoproj.io\\nreplicasets.apps\\nkafkas.kafka.strimzi.io\\n'",
+        /^ {6}printf 'deployments\.apps.*$/m,
+        "      printf 'deployments.apps\\nstatefulsets.apps\\ndaemonsets.apps\\ncronjobs.batch\\nrollouts.argoproj.io\\nreplicasets.apps\\nkafkas.kafka.strimzi.io\\n'",
       )
       .replace(
         '      --raw) exit 1 ;;',
@@ -1207,7 +1293,20 @@ test('D10 cluster`da olup LISTEMIZDE OLMAYAN olceklenebilir tip de gorunur', () 
           '          /apis/kafka.strimzi.io/v1beta2) echo \'{"resources":[{"name":"kafkas"},{"name":"kafkas/scale"}]}\'; exit 0 ;;',
           '          *) exit 1 ;;',
           '        esac ;;',
-          "      kafkas|kafkas.kafka.strimzi.io) printf 'ana-kafka|3|3|3|reg/kafka:3.6||\\n'; exit 0 ;;",
+        ].join('\n'),
+      )
+      // TIP DALI IC `case "$r"` ICINE girer — dis `case "$2"` degil. Ilk yazimda
+      // yanlis case'e konmustu ve dal HIC ateslenmiyordu.
+      //
+      // KIND TABLOSUNA BILEREK EKLENMIYOR: atif kurulamayan bir tipin TEKIL
+      // cekilip YINE DE listelendigi yol da kilitlensin.
+      .replace(
+        '            # Rollout BILEREK okunamaz birakildi (RBAC reddi).',
+        [
+          '            kafkas.kafka.strimzi.io)',
+          `              if [ "$COKLU" = "yes" ]; then printf '%s\\n' ${JSON.stringify(ustkumeSatiri({ kind: 'Kafka', name: 'ana-kafka', specReplicas: 3, statusReplicas: 3, readyReplicas: 3, image: 'reg/kafka:3.6' }))}`,
+          `              else printf '%s\\n' ${JSON.stringify(ustkumeSatiri({ name: 'ana-kafka', specReplicas: 3, statusReplicas: 3, readyReplicas: 3, image: 'reg/kafka:3.6' }))}; fi ;;`,
+          '            # Rollout BILEREK okunamaz birakildi (RBAC reddi).',
         ].join('\n'),
       ),
   );
@@ -1562,4 +1661,194 @@ test('T1d setup ve kesif sureleri GERCEK gecen sureyi olcuyor', () => {
   assert.ok(al('setup_ms') >= 900, `setup_ms gecen sureyi olcmuyor: ${satir}`);
   assert.ok(al('discover_ms') >= 900, `discover_ms gecen sureyi olcmuyor: ${satir}`);
   assert.ok(al('elapsed_ms') >= al('setup_ms'), `elapsed_ms setup'tan kucuk: ${satir}`);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PR-B — PROBE KALKTI, TEK COK-TIPLI `oc get`
+//
+// OLCULEN DARBOGAZ: tip basina ONCE probe (3'e kadar `oc get`), SONRA fetch.
+// Probe'un tek isi "bu tipi listeleyebiliyor muyum"du ve cevabi fetch'in KENDI
+// rc'si zaten veriyordu — eski kod onu `2>/dev/null || true` ile atiyordu.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Sahte `oc`ye sayac takar; `oc` cagrilarinin TAMAMINI dondurur. */
+function kesifCagrilari({ extraKinds = '', mutate = (x) => x } = {}) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'scalex-butce-'));
+  const log = path.join(dir, 'calls.log');
+  const stub = mutate(OC_STUB).replace(
+    '#!/bin/bash\n',
+    `#!/bin/bash\necho "$@" >> ${JSON.stringify(log)}\n`,
+  );
+  fs.writeFileSync(path.join(dir, 'oc'), stub, { mode: 0o755 });
+  fs.writeFileSync(path.join(dir, 'curl'), CURL_STUB, { mode: 0o755 });
+  const out = execFileSync('bash', [RUNNER], {
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      PATH: `${dir}:${process.env.PATH}`,
+      SCALEX_PHASE: 'discover',
+      DISCOVERY_MODE: 'workloads',
+      CLUSTER: 'c',
+      JUMP_SERVER: 'j',
+      API_URL: 'https://api.lab:6443',
+      OCP_USERNAME: 'u',
+      OCP_PASSWORD: 'x',
+      OCP_OC_PATHS: path.join(dir, 'oc'),
+      NS: 'odeme-lab',
+      APP_RAW: '',
+      ACTION: '',
+      TLS_VERIFY: 'false',
+      JOB_ID: '1',
+      SCALEX_EXTRA_KINDS: extraKinds,
+    },
+  });
+  const cagrilar = fs.readFileSync(log, 'utf8').split('\n').filter(Boolean);
+  const items = out
+    .split('\n')
+    .filter((l) => /^[^;]*;[^;]*;[^;]*;[^;]*;[^;]*;[^;]*;.*$/.test(l))
+    .map((l) => {
+      const q = l.split(';');
+      return { app: q[2], kind: q[3], step: q[4], status: q[5], detail: q.slice(6).join(';') };
+    });
+  return { cagrilar, items, out };
+}
+
+// ── B1: CAGRI BUTCESI ───────────────────────────────────────────────────────
+//
+// OLCULDU (bu kutuk, alti bilinen tip + uc ekstra CRD):
+//   once  -> soguk 23, sicak 25 cagri
+//   sonra -> soguk 13, sicak 15
+// Bastion uzerinden cagri basina ~150 ms; yani cluster+namespace basina ~1,5 sn.
+//
+// KORLUK PANZEHIRI: cagri sayisini dusurmenin EN KOLAY yolu ozelligi silmektir.
+// Bu yuzden butce ile birlikte "alti tipin ALTISI da raporlandi" assert'i var.
+test('B1 kesif cagri butcesi (probe kalkti, tek cok-tipli `oc get`)', () => {
+  const soguk = kesifCagrilari();
+  const sicak = kesifCagrilari({ extraKinds: 'kafkas.kafka.strimzi.io,widgets.a.io,gizmos.b.io' });
+
+  const bicim = (r) => `${r.cagrilar.length} cagri:\n  ${r.cagrilar.join('\n  ')}`;
+  assert.ok(soguk.cagrilar.length <= 15, `SOGUK butce asildi — ${bicim(soguk)}`);
+  assert.ok(sicak.cagrilar.length <= 16, `SICAK butce asildi — ${bicim(sicak)}`);
+
+  // Ozellik HALA CALISIYOR mu: alti tipin her biri icin rapor satiri.
+  const kinds = new Set(
+    soguk.items
+      .filter((i) => i.step === 'WORKLOAD_KIND')
+      .map((i) => /kind=([^\s]+)/.exec(i.detail)?.[1]),
+  );
+  for (const k of ['deploy', 'sts', 'dc', 'rollout', 'ds', 'cronjob']) {
+    assert.ok(kinds.has(k), `${k} icin rapor satiri yok — butce ozelligi silerek dusurulmus`);
+  }
+  // Ve gercek nesneler de listelenmis olmali.
+  const adlar = new Set(soguk.items.filter((i) => i.step === 'WORKLOAD').map((i) => i.app));
+  for (const a of ['odeme-api', 'kafka', 'eski-app', 'log-agent', 'gece-batch']) {
+    assert.ok(adlar.has(a), `${a} listede yok — tarama gercekten calismiyor`);
+  }
+});
+
+// ── B2: PROBE DONGUSU GERI GELMESIN ─────────────────────────────────────────
+//
+// Probe, AYNI tip icin birden fazla `oc get` demekti (aday adlari sirayla
+// denenirdi). Artik kaynak adi envanterden cozulur ve tip basina EN FAZLA BIR
+// cekim yapilir.
+test('B2 ayni tip icin birden fazla `oc get` YAPILMIYOR (probe yok)', () => {
+  const { cagrilar } = kesifCagrilari();
+  const hedefler = cagrilar
+    .filter((c) => /^get /.test(c) && !/^get --raw/.test(c))
+    .map((c) => c.split(/\s+/)[1])
+    .filter((t) => !['hpa', 'pdb', 'cm'].includes(t));
+  const sayac = new Map();
+  for (const h of hedefler) {
+    for (const tek of h.split(',')) sayac.set(tek, (sayac.get(tek) || 0) + 1);
+  }
+  for (const [tip, n] of sayac) {
+    assert.equal(n, 1, `${tip} icin ${n} kez \`oc get\` yapildi — probe dongusu geri gelmis`);
+  }
+});
+
+// ── B3: HER TIP ICIN TAM OLARAK BIR RAPOR SATIRI ────────────────────────────
+//
+// DEGISMEZ KURAL. Cok tipli cagriya gecerken en kolay kaybedilecek sey buydu:
+// bir tip hic satir uretmezse ya da geri dusus iki kez calisirsa, ekran
+// "StatefulSet yok" ile "StatefulSet'e bakamadim"i ayirt edemez — ya da ayni
+// tipi iki kez gosterir.
+test('B3 taranan her tip icin TAM OLARAK BIR `WORKLOAD_KIND` satiri', () => {
+  for (const extraKinds of ['', 'kafkas.kafka.strimzi.io,widgets.a.io']) {
+    const { items } = kesifCagrilari({ extraKinds });
+    const sayac = new Map();
+    for (const i of items.filter((x) => x.step === 'WORKLOAD_KIND')) {
+      const k = /kind=([^\s]+)/.exec(i.detail)?.[1];
+      sayac.set(k, (sayac.get(k) || 0) + 1);
+    }
+    const beklenen = ['deploy', 'sts', 'dc', 'rollout', 'ds', 'cronjob'].concat(
+      extraKinds ? extraKinds.split(',') : [],
+    );
+    for (const k of beklenen) {
+      assert.equal(sayac.get(k), 1, `kind=${k} icin ${sayac.get(k) ?? 0} rapor satiri (1 olmali)`);
+    }
+    // Fazlasi da olmamali: beklenmeyen bir tip satiri, atifin kaydigini gosterir.
+    assert.deepEqual(
+      [...sayac.keys()].filter((k) => !beklenen.includes(k)),
+      [],
+      'beklenmeyen tip icin rapor satiri var',
+    );
+  }
+});
+
+// ── B4: RBAC REDDI KISMI SONUCU OLDURMEZ ────────────────────────────────────
+//
+// Cok tipli `oc get` TEK bir tipte reddedilse bile rc=1 doner. Olcut RC olsaydi
+// BASARIYLA listelenmis tiplerin ciktisi da atilirdi — bu depoda tam olarak bu
+// hata yasandi ("tek tip patlayinca hepsi gitti").
+test('B4 bir tipte RBAC reddi DIGER tiplerin sonucunu OLDURMUYOR', () => {
+  const { items } = kesifCagrilari();
+  const rollout = items.find((i) => i.step === 'WORKLOAD_KIND' && /kind=rollout\b/.test(i.detail));
+  assert.ok(rollout, 'reddedilen tip icin rapor satiri yok');
+  assert.equal(rollout.status, 'WARN');
+  assert.match(rollout.detail, /reason=no_permission/);
+  // ...ve ayni cagridaki digerleri YINE geldi.
+  const adlar = new Set(items.filter((i) => i.step === 'WORKLOAD').map((i) => i.app));
+  assert.ok(adlar.has('odeme-api') && adlar.has('kafka'), 'reddedilen tip digerlerini de dusurmus');
+});
+
+// ── B5: ATIF KENDINI DOGRULUYOR ─────────────────────────────────────────────
+//
+// Cok tipli bir cagrida satirin tipini yalnizca `{.kind}` soyler. Bir `oc`
+// surumu TypeMeta yazmazsa alan BOS gelir; naif bir kod satirlari SESSIZCE
+// yanlis tipe yazardi. Burada `{.kind}` BILEREK bosaltilir ve betigin tekil
+// cagrilara DUSTUGU, hem de bunu SOYLEDIGI dogrulanir.
+test('B5 `{.kind}` bos gelirse tekil cagrilara DUSULUR ve SOYLENIR', () => {
+  const { items, cagrilar } = kesifCagrilari({
+    mutate: (stub) => stub.replace(/if \[ "\$COKLU" = "yes" \]; then/g, 'if false; then'),
+  });
+  const uyari = items.find(
+    (i) => i.step === 'SCAN' && /reason=unattributed_rows/.test(i.detail),
+  );
+  assert.ok(
+    uyari,
+    `atif kayinca geri dusus SESSIZ — portal \`problems[]\` ile gosteremez. SCAN satirlari: ${JSON.stringify(items.filter((i) => i.step === 'SCAN').map((i) => i.detail))}`,
+  );
+  assert.equal(uyari.status, 'WARN', 'geri dusus WARN degil — problems[] listesine girmez');
+  assert.match(uyari.detail, /combined_fallback=yes/, 'geri dususun kendisi yazilmamis');
+
+  // Sonuc YINE DOGRU: tipler ve nesneler kaybolmadi.
+  const adlar = new Set(items.filter((i) => i.step === 'WORKLOAD').map((i) => i.app));
+  for (const a of ['odeme-api', 'kafka', 'log-agent', 'gece-batch']) {
+    assert.ok(adlar.has(a), `geri dususte ${a} kayboldu`);
+  }
+  // Ve geri dusus GERCEKTEN tekil cagri yapti (yalnizca metin basmadi).
+  assert.ok(
+    cagrilar.some((c) => /^get statefulsets\.apps -n/.test(c)),
+    'geri dusus duyuruldu ama tekil cagri YAPILMADI',
+  );
+});
+
+// ── B6: `-o json` YASAK ─────────────────────────────────────────────────────
+// AWX artifact tavani 4 MB, stdout esigi 1 MB. `-o json` bir namespace'in tum
+// nesnelerini tasirdi; jsonpath satirlari TEK cikis yolu.
+test('B6 kesif `-o json` kullanmiyor (AWX artifact tavani)', () => {
+  const { cagrilar } = kesifCagrilari();
+  for (const c of cagrilar) {
+    assert.ok(!/-o\s+json\b/.test(c), `\`-o json\` kullanilmis: ${c}`);
+  }
 });

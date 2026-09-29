@@ -9,7 +9,7 @@ umask 077
 # "playbook'un guncel surumu kopyalanmamis olabilir" diye TAHMIN ediyordu; artik
 # calistirici surumu bildiriyor ve portal kendi bekledigi surumle karsilastirip
 # SOYLUYOR. Bu dosya `scalex_app/VERSION` ile ayni sayiyi tasimali (test kilitler).
-PACKAGE_VERSION="15"
+PACKAGE_VERSION="16"
 
 PHASE="${SCALEX_PHASE:-${CHAOS_PHASE:-precheck}}"
 CLUSTER="${CLUSTER:-}"
@@ -1403,27 +1403,263 @@ disc_app_wanted() {
   printf '%s\n' "$APPS_TEXT" | grep -qx -- "$1"
 }
 
-# Her tip icin replica/durum alanlarini veren jsonpath. Alanlar SIRAYLA:
-#   ad | istenen | mevcut | hazir | image | argocd-etiketi | managed-by-etiketi
-# DaemonSet ve CronJob'un replica'si YOKTUR; onlarin karsiliklari kullanilir
-# (DaemonSet: desired/ready dugum sayisi, CronJob: suspend durumu).
-disc_jsonpath() {
-  local argo='{.metadata.labels['"'"'argocd\.argoproj\.io/instance'"'"']}' 
+# ── TEK USTKUME JSONPATH ────────────────────────────────────────────────────
+#
+# ESKIDEN tip basina AYRI jsonpath vardi (deploy/sts/dc/rollout bir bicim, ds bir
+# bicim, cronjob bir bicim) ve bu, tip basina AYRI bir `oc get` demekti. Cok tipli
+# tek cagri ancak TEK bir jsonpath ile yapilabilir; o yuzden alanlarin USTKUMESI
+# basilir ve OLMAYAN alanlar BOS gelir (`--allow-missing-template-keys=true`).
+# Okuyan taraf hangi alanin hangi tipte anlamli oldugunu zaten biliyor.
+#
+# ALAN SIRASI (14, `|` ayracli) — DEGISTIRMEDEN once `disc_emit_row`a bak:
+#   1 kind   2 name   3 spec.replicas   4 status.replicas   5 status.readyReplicas
+#   6 spec.suspend    7 spec.schedule
+#   8 desiredNumberScheduled  9 currentNumberScheduled  10 numberReady
+#   11 image (template)  12 image (cronjob jobTemplate)  13 argocd  14 managed-by
+#
+# `{.kind}` ILK ALAN: cok tipli bir cagrida satirin hangi tipten geldigini ancak o
+# soyler. Bu desen bu depoda URETIMDE kullaniliyor (LogX `logx_ocp_app_discovery.yml`
+# cok tipli `oc get`i, `{.kind}` ile ayni sekilde ayristiriyor).
+disc_jsonpath_all() {
+  local argo='{.metadata.labels['"'"'argocd\.argoproj\.io/instance'"'"']}'
   local mgd='{.metadata.labels['"'"'app\.kubernetes\.io/managed-by'"'"']}'
-  case "$1" in
-    ds)
-      printf '%s' '{range .items[*]}{.metadata.name}{"|"}{.status.desiredNumberScheduled}{"|"}{.status.currentNumberScheduled}{"|"}{.status.numberReady}{"|"}{.spec.template.spec.containers[0].image}{"|"}'"$argo"'{"|"}'"$mgd"'{"\n"}{end}' ;;
-    cronjob)
-      # CronJob'un container'i `jobTemplate` altinda — digerlerinden FARKLI yol.
-      printf '%s' '{range .items[*]}{.metadata.name}{"|"}{.spec.suspend}{"|"}{.spec.schedule}{"|"}{.status.active}{"|"}{.spec.jobTemplate.spec.template.spec.containers[0].image}{"|"}'"$argo"'{"|"}'"$mgd"'{"\n"}{end}' ;;
-    *)
-      printf '%s' '{range .items[*]}{.metadata.name}{"|"}{.spec.replicas}{"|"}{.status.replicas}{"|"}{.status.readyReplicas}{"|"}{.spec.template.spec.containers[0].image}{"|"}'"$argo"'{"|"}'"$mgd"'{"\n"}{end}' ;;
-  esac
+  printf '%s' '{range .items[*]}{.kind}{"|"}{.metadata.name}{"|"}{.spec.replicas}{"|"}{.status.replicas}{"|"}{.status.readyReplicas}{"|"}{.spec.suspend}{"|"}{.spec.schedule}{"|"}{.status.desiredNumberScheduled}{"|"}{.status.currentNumberScheduled}{"|"}{.status.numberReady}{"|"}{.spec.template.spec.containers[0].image}{"|"}{.spec.jobTemplate.spec.template.spec.containers[0].image}{"|"}'"$argo"'{"|"}'"$mgd"'{"\n"}{end}'
+}
+
+# ── KIND -> TAM KAYNAK ADI ──────────────────────────────────────────────────
+#
+# Cok tipli cagrinin dondurdugu `{.kind}` bir KIND'dir ("Deployment"), kaynak adi
+# degil ("deployments.apps"). Bilinen alti tip icin sabit bir tablo yazilabilirdi
+# ama ekstra CRD'ler icin YAZILAMAZ ("Widget" -> "widgets.example.io" TAHMINDIR).
+# Bu yuzden esleme cluster'in KENDI envanterinden okunur; `oc api-resources`in
+# varsayilan ciktisindaki KIND sutunu tam olarak bunu veriyor.
+#
+# AYRI BIR CAGRI, cunku `load_cluster_resources` `-o name` kullaniyor ve o cikti
+# KIND sutununu TASIMIYOR. Ayni cagriyi iki bicimde ayristirmak yerine ikinci bir
+# cagri yapilmasinin sebebi: `-o name`in urettigi tam adlar `resource_exists`,
+# `full_resource_name` ve `load_extra_scalable_resources` tarafindan okunuyor ve o
+# uretimi elle yeniden kurmak, bu betikteki en pahali karar olan
+# `api_absent` / `no_permission` ayrimini riske atardi.
+CLUSTER_KIND_MAP=""
+load_cluster_kind_map() {
+  # Sutunlar: NAME [SHORTNAMES] APIVERSION NAMESPACED KIND. SHORTNAMES OLABILIR de
+  # OLMAYABILIR de, bu yuzden sutunlar SONDAN sayilir.
+  CLUSTER_KIND_MAP="$(oc api-resources --namespaced=true --verbs=list 2>/dev/null \
+    | awk 'NR > 1 && NF >= 4 {
+        name = $1; av = $(NF-2); kind = $NF; grp = av; sub(/\/.*/, "", grp);
+        if (av ~ /\//) full = name "." grp; else full = name;
+        print kind "\t" full;
+      }' | sort -u)"
+}
+
+# Verilen TAM KAYNAK ADI icin cluster'in bildirdigi KIND. Bulunamazsa bos doner —
+# ve bos donmesi cok tipli cagriyi IPTAL eder (atif kurulamaz).
+kind_of_resource() {
+  [ -z "$CLUSTER_KIND_MAP" ] && return 0
+  printf '%s\n' "$CLUSTER_KIND_MAP" | awk -F'\t' -v r="$1" '$2 == r { print $1; exit }'
+}
+
+# ── OBEK BUYUKLUGU ──────────────────────────────────────────────────────────
+# Tek cagriya konan tip sayisi. Sinirsiz birakmak, bozuk TEK bir tipin butun
+# taramayi tekil cagrilara dusurmesi demekti; 20, "cagri sayisi" ile "yikim
+# yaricapi" arasinda olculebilir bir orta yol.
+DISC_CHUNK=20
+
+DISC_FOUND_ANY=0
+
+# ── BIR TIPIN OKUNUP OKUNAMADIGI ────────────────────────────────────────────
+#
+# Probe dongusunun TEK gercek isi buydu: "bu tipi listeleyebiliyor muyum".
+# Cevabi ayri bir cagriyla (`oc auth can-i --list`) almak denendi ve GERI ALINDI:
+# RBAC "evet" dese bile okuma baska bir sebeple dusebilir (kapatilmis aggregated
+# APIService, gecici sunucu hatasi) ve o durumda ekran "namespace'te yok" derdi —
+# tam olarak probe'un engelledigi yanilgi.
+#
+# Cagrinin KENDI rc'si ve stderr'i ayni soruyu BEDAVA cevapliyor; eski kod onlari
+# `2>/dev/null || true` ile atiyordu. Artik atmiyoruz.
+
+# Tek tip icin tekil cekim (GERI DUSUS YOLU ve atif kurulamayan tipler).
+# Cikti bicimi birlesik cagriyla AYNI ustkume satiridir; tek fark `{.kind}`
+# alaninin BOS gelmesi (tek tipli `oc get` TypeMeta yazmaz) — okuyan taraf tipi
+# zaten cagirandan biliyor. DONUS DEGERI ONEMLI: 0 = okundu, 1 = okunamadi.
+disc_fetch_single() {
+  oc get "$1" -n "$NS" --allow-missing-template-keys=true \
+    -o jsonpath="$(disc_jsonpath_all)" >"$2" 2>/dev/null
+}
+
+# Bir tipin satirlarini WORKLOAD satirlarina cevirir ve SONUNDA tam olarak BIR
+# `WORKLOAD_KIND` satiri basar.
+#
+# DEGISMEZ KURAL: `kinds_to_scan` icindeki HER tip icin tam olarak BIR
+# `WORKLOAD_KIND` satiri cikar — ya `OK found=N` ya `WARN reason=...`. Ekran
+# "StatefulSet yok" ile "StatefulSet'e bakamadim"i bu satirla ayiriyor.
+#
+# $1 kind  $2 kaynak adi  $3 satir dosyasi  $4 okuma dustu mu (yes|no)
+disc_emit_kind() {
+  local kind="$1" res="$2" dosya="$3" okuma_dustu="$4"
+  local name f2 f3 f4 image argo managed
+  local k_field r3 r4 r5 susp sched dsr cur rdy img cjimg
+  local count=0 raw=0 reason verb
+  while IFS='|' read -r k_field name r3 r4 r5 susp sched dsr cur rdy img cjimg argo managed; do
+    [ -z "$name" ] && continue
+    raw=$((raw + 1))
+    disc_app_wanted "$name" || continue
+    DISC_FOUND_ANY=1
+    count=$((count + 1))
+    disc_read_state "$name"
+    # USTKUME SATIRINDAN TIPE OZGU ALANLAR. Hangi alanin hangi tipte anlamli
+    # oldugu BURADA, tek yerde yazili.
+    case "$kind" in
+      ds)      f2="$dsr"; f3="$cur"; f4="$rdy"; image="$img" ;;
+      cronjob) f2="$susp"; f3="$sched"; f4=""; image="$cjimg" ;;
+      *)       f2="$r3"; f3="$r4"; f4="$r5"; image="$img" ;;
+    esac
+    if kind_is_scalable "$kind"; then
+      [ -z "$f2" ] && f2=0
+      [ -z "$f3" ] && f3=0
+      [ -z "$f4" ] && f4=0
+      log "$CLUSTER" "$JUMP_SERVER" "$name" "$(kind_to_display "$kind")" "WORKLOAD" "OK" \
+        "resource=$(disc_val "$res") scalable=yes spec=$(disc_val "$f2") status=$(disc_val "$f3") ready=$(disc_val "$f4") hpa=$(disc_has_hpa "$name") state_phase=$(disc_val "$DISC_STATE_PHASE") previous_replicas=$(disc_val "$DISC_STATE_PREV") image=$(disc_val "$image") gitops=$(disc_gitops "$argo" "$managed")"
+    elif kind_is_discovered_crd "$kind"; then
+      # Cluster'dan kesfedildi, `scale` alt kaynagi var — ama islem yolu bu tip icin
+      # kanitlanmadi (bkz. kind_is_discovered_crd). Gorunur, secilemez.
+      [ -z "$f2" ] && f2=0
+      [ -z "$f4" ] && f4=0
+      log "$CLUSTER" "$JUMP_SERVER" "$name" "$(kind_to_display "$kind")" "WORKLOAD" "OK" \
+        "resource=$(disc_val "$res") scalable=no reason=unsupported_kind spec=$(disc_val "$f2") ready=$(disc_val "$f4") image=$(disc_val "$image") gitops=$(disc_gitops "$argo" "$managed")"
+    elif [ "$kind" = "cronjob" ]; then
+      # `spec.suspend` bos gelebilir (alan hic yazilmamissa) — o durumda CronJob
+      # AKTIFTIR, "bilinmiyor" degil.
+      [ -z "$f2" ] && f2="false"
+      log "$CLUSTER" "$JUMP_SERVER" "$name" "$(kind_to_display "$kind")" "WORKLOAD" "OK" \
+        "resource=$(disc_val "$res") scalable=no reason=suspend_not_replicas suspended=$(disc_val "$f2") schedule=$(disc_val "$f3") image=$(disc_val "$image") gitops=$(disc_gitops "$argo" "$managed")"
+    else
+      [ -z "$f2" ] && f2=0
+      [ -z "$f4" ] && f4=0
+      log "$CLUSTER" "$JUMP_SERVER" "$name" "$(kind_to_display "$kind")" "WORKLOAD" "OK" \
+        "resource=$(disc_val "$res") scalable=no reason=node_scheduled desired=$(disc_val "$f2") ready=$(disc_val "$f4") image=$(disc_val "$image") gitops=$(disc_gitops "$argo" "$managed")"
+    fi
+  done < "$dosya"
+
+  # SATIR GELDIYSE ya da OKUMA DUSMEDIYSE tip okunabilmistir. (`count` 0 olabilir —
+  # istenen uygulama suzgeci; bu "bakamadim" DEGIL.)
+  if [ "$raw" -gt 0 ] || [ "$okuma_dustu" != "yes" ]; then
+    log "$CLUSTER" "$JUMP_SERVER" "-" "$(kind_to_display "$kind")" "WORKLOAD_KIND" "OK" \
+      "kind=$(disc_val "$kind") resource=$(disc_val "$res") found=$(disc_val "$count") scalable=$(kind_is_scalable "$kind" && echo yes || echo no)$(kind_is_discovered_crd "$kind" && printf ' %s' 'discovered=yes' || true)"
+    return 0
+  fi
+
+  # ── OKUNAMADI: IKI AYRI SEBEP ─────────────────────────────────────────────
+  # Eskiden karar `oc auth can-i`nin BASARISINA dayaniyordu ve `can-i`nin KENDISI
+  # hata verdiginde sonuc TERSINE doniyordu. Olcut cluster'in kaynak envanteri:
+  # tip orada YOKSA `api_absent`, VARSA ama okunamiyorsa `no_permission`.
+  verb="list"
+  if [ "$CLUSTER_RESOURCES_OK" = "yes" ] && ! resource_exists "$res"; then
+    reason="api_absent"
+  else
+    reason="no_permission"
+  fi
+  log "$CLUSTER" "$JUMP_SERVER" "-" "$(kind_to_display "$kind")" "WORKLOAD_KIND" "WARN" \
+    "kind=$(disc_val "$kind") resource=$(disc_val "$res") reason=$(disc_val "$reason") verb=$(disc_val "$verb") namespace=$(disc_val "$NS")"
+}
+
+# Bir obegi TEK `oc get` ile tarar.
+#
+# ATIF KURULAMAYAN TIPLER OBEGI OLDURMEZ — AYRILIR. Ilk yazimda tek bir atifsiz
+# tip butun obegi tekil cagrilara dusuruyordu; `oc api-resources` KISMI
+# donebildigi icin bu, kazancin tamamini tek bir eksik satira bagli hale
+# getirirdi. Simdi yalnizca o tip tekil cekilir.
+#
+# Ve bu SESSIZ DEGILDIR: her ayrisma bir `SCAN;WARN;combined_fallback=yes`
+# satiri basar, portal onu `problems[]` ile gosterir.
+disc_scan_chunk() {
+  local kinds="$1"
+  local k r kind_name res_csv="" pairs="" tekiller="" seen="" kinds_re=""
+  local out err tek rc=0 bad=0 ayrisan=0 rf
+
+  for k in $kinds; do
+    r="$(full_resource_name "$k")"
+    kind_name="$(kind_of_resource "$r")"
+    # Atif kurulamiyor (envanterde KIND yok) ya da IKI tip ayni KIND'e dusuyor:
+    # birlesik cagrinin satirlari dogru tipe YAZILAMAZ. Tahmin etmek yerine o tip
+    # tekil cekilir.
+    if [ -z "$kind_name" ]; then
+      tekiller="$tekiller $k"; ayrisan=$((ayrisan + 1)); continue
+    fi
+    case " $seen " in
+      *" $kind_name "*) tekiller="$tekiller $k"; ayrisan=$((ayrisan + 1)); continue ;;
+    esac
+    seen="$seen $kind_name"
+    pairs="${pairs}${kind_name}	${k}	${r}
+"
+    if [ -z "$res_csv" ]; then res_csv="$r"; else res_csv="$res_csv,$r"; fi
+    if [ -z "$kinds_re" ]; then kinds_re="$kind_name"; else kinds_re="$kinds_re|$kind_name"; fi
+  done
+
+  out="$(mktemp "${WORKDIR}/.scalex_scan_XXXXXX" 2>/dev/null || true)"
+  err="$(mktemp "${WORKDIR}/.scalex_scan_err_XXXXXX" 2>/dev/null || true)"
+  tek="$(mktemp "${WORKDIR}/.scalex_scan_one_XXXXXX" 2>/dev/null || true)"
+  if [ -z "$out" ] || [ -z "$err" ] || [ -z "$tek" ]; then
+    # Buraya normalde GELINMEZ: gecici dosya yaratilamiyorsa betik kubeconfig
+    # adiminda coktan durmus olurdu. Yine de sessiz kalmiyoruz.
+    log "$CLUSTER" "$JUMP_SERVER" "-" "-" "SCAN" "FAIL" \
+      "combined_fallback=no reason=workdir_unavailable namespace=$(disc_val "$NS")"
+    rm -f "$out" "$err" "$tek" >/dev/null 2>&1 || true
+    return 0
+  fi
+
+  if [ "$ayrisan" -gt 0 ]; then
+    log "$CLUSTER" "$JUMP_SERVER" "-" "-" "SCAN" "WARN" \
+      "combined_fallback=yes reason=attribution_unavailable kinds=$(disc_val "$ayrisan") namespace=$(disc_val "$NS")"
+  fi
+
+  if [ -n "$res_csv" ]; then
+    # `|| rc=1` SART: TEK bir tip dusse bile (kapatilmis DeploymentConfig API'si,
+    # bir tipte RBAC reddi) `oc` rc=1 doner. Olcut RC DEGIL "satir geldi mi" —
+    # aksi halde BASARIYLA listelenmis tiplerin ciktisi da atilirdi. Ayni gerekce
+    # LogX'in cok tipli `oc get`inde de yazili.
+    oc get "$res_csv" -n "$NS" --allow-missing-template-keys=true \
+      -o jsonpath="$(disc_jsonpath_all)" >"$out" 2>"$err" || rc=1
+
+    # ── KENDINI DOGRULAYAN ATIF ─────────────────────────────────────────────
+    # Cok tipli bir cagrida satirin tipini yalnizca `{.kind}` soyler. Bir `oc`
+    # surumu TypeMeta yazmazsa alan BOS gelir ve satirlar SESSIZCE YANLIS tipe
+    # yazilirdi — bu depodaki en pahali hata sinifi. O yuzden atif DOGRULANIR:
+    # obege ait olmayan tek bir satir bile tekil cagrilara dusurur.
+    if [ -s "$out" ]; then
+      bad="$(awk -F'|' -v re="^($kinds_re)\$" 'NF >= 2 && $2 != "" && $1 !~ re { n++ } END { print n + 0 }' "$out")"
+    fi
+
+    if { [ ! -s "$out" ] && [ "$rc" -ne 0 ]; } || [ "$bad" -gt 0 ]; then
+      log "$CLUSTER" "$JUMP_SERVER" "-" "-" "SCAN" "WARN" \
+        "combined_fallback=yes reason=$([ "$bad" -gt 0 ] && echo unattributed_rows || echo call_failed) kinds=$(disc_val "$(printf '%s\n' "$pairs" | awk 'NF' | wc -l | tr -d ' ')") namespace=$(disc_val "$NS")"
+      tekiller="$tekiller $(printf '%s\n' "$pairs" | awk -F'\t' 'NF >= 2 { printf "%s ", $2 }')"
+    else
+      while IFS='	' read -r kind_name k r; do
+        [ -z "$k" ] && continue
+        awk -F'|' -v kn="$kind_name" '$1 == kn' "$out" > "$tek"
+        # OKUMA DUSTU MU: birlesik cagri rc=1 dondurduyse hangi tipin dustugunu
+        # stderr soyler. `oc` hata metninde komut satirinda verilen kaynak adini
+        # yazar; baska hicbir sey bunu tip bazinda soyleyemez.
+        rf=no
+        if [ "$rc" -ne 0 ] && [ ! -s "$tek" ] && grep -qF -- "$r" "$err" 2>/dev/null; then rf=yes; fi
+        disc_emit_kind "$k" "$r" "$tek" "$rf"
+      done <<EOF_DISC_PAIRS
+$pairs
+EOF_DISC_PAIRS
+    fi
+  fi
+
+  for k in $tekiller; do
+    r="$(full_resource_name "$k")"
+    if disc_fetch_single "$r" "$tek"; then rf=no; else rf=yes; fi
+    disc_emit_kind "$k" "$r" "$tek" "$rf"
+  done
+  rm -f "$out" "$err" "$tek" >/dev/null 2>&1 || true
 }
 
 discover_workloads() {
-  local kind res candidate name f2 f3 f4 image argo managed found_any=0 kind_count reason verb
-  local full_name kinds_to_scan extra
+  local kind kinds_to_scan extra obek n=0
   disc_load_hpa
   disc_pdb
   # Durum kayitlari da namespace basina TEK cagriyla yuklenir (bkz. disc_load_states).
@@ -1433,6 +1669,8 @@ discover_workloads() {
   # var mi" / "listeleyebiliyor muyum") ve cluster'da olup listemizde olmayan hicbir
   # sey gorunmuyordu. `oc api-resources` ikisini de kesinlestirir ve YETKI GEREKTIRMEZ.
   load_cluster_resources
+  # Cok tipli cagrinin satirlarini tipe yazabilmek icin KIND sutunu da gerekiyor.
+  load_cluster_kind_map
 
   # Bilinen alti tip + cluster'da bulunan, `scale` alt kaynagi olan diger tipler
   # (operator CRD'leri). Ikinci kume envanter okunamadiginda BOS kalir; davranis
@@ -1448,96 +1686,20 @@ discover_workloads() {
   fi
   TIMING_KINDS="$(printf '%s' "$kinds_to_scan" | wc -w | tr -d ' ')"
 
+  DISC_FOUND_ANY=0
+  obek=""
   for kind in $kinds_to_scan; do
-    res=""
-    # RBAC kurallari TAM ADLA yazilir; `sts` gibi kisa adlar `oc auth can-i` tarafindan
-    # guvenilir cozulmez. Hem yetki sorusu hem kullaniciya verilen cumle tam adi kullanir.
-    full_name="$(full_resource_name "$kind")"
-    # Tek tip patlayabilir (kapali DeploymentConfig API'si, kurulu olmayan Rollout
-    # CRD'si, RBAC reddi). OLCUT "satir geldi mi" olmali; rc'ye bakmak, calisan
-    # tiplerin ciktisini da atardi.
-    # PROBE DONGUSU BILEREK DURUYOR.
-    #
-    # Denendi ve GERI ALINDI: "envanterde yoksa hic deneme" kisa devresi tip basina
-    # 3'e kadar `oc get` kazandiriyordu, ama `oc api-resources` KISMI donebilir
-    # (bir aggregated APIService gecici olarak hatali oldugunda o grubun tipleri
-    # listeden duser). O anda kisa devre, GERCEKTEN VAR OLAN ve okunabilen bir tipi
-    # "api_absent" diye raporlar ve o namespace'in is yuklerini SESSIZCE dusururdu.
-    # Kazanc (~3 cagri/tip) bu riski karsilamiyor; asil kazanc zaten durum
-    # kayitlarinin toplu okunmasinda (bkz. disc_load_states, ~660 -> 1).
-    while IFS= read -r candidate; do
-      [ -z "$candidate" ] && continue
-      if oc get "$candidate" -n "$NS" >/dev/null 2>&1; then res="$candidate"; break; fi
-    done <<EOF_DISC_CAND
-$(resource_candidates "$kind")
-EOF_DISC_CAND
-
-    # ── SESSIZ ATLAMA BITTI ─────────────────────────────────────────────────
-    # Okunamayan bir tip eskiden hicbir iz birakmadan atlaniyordu: ekran
-    # "StatefulSet yok" ile "StatefulSet'e bakamadim"i AYIRT EDEMIYORDU ve
-    # uretimde hangisinin yasandigini kimse soyleyemiyordu. Artik her tip icin
-    # bir satir cikar ve nedeni AYRILIR: yetki eksikligi kullanicinin platformdan
-    # isteyecegi bir sey, API/CRD yoklugu ise hakkinda yapilacak bir sey olmayan
-    # bir olgu.
-    if [ -z "$res" ]; then
-      verb="list"
-      # ── NEDEN ARTIK TAHMIN DEGIL ───────────────────────────────────────────
-      # Eskiden karar `oc auth can-i`nin BASARISINA dayaniyordu: "yes" derse
-      # `api_absent`, aksi halde `no_permission`. `can-i`nin KENDISI hata verdiginde
-      # (kaldirilmis DeploymentConfig API'si, kurulu olmayan Rollout CRD'si) sonuc
-      # TERSINE doniyordu ve ekran kullaniciyi ASLA cozulmeyecek bir RBAC talebine
-      # gonderiyordu. Artik olcut cluster'in kaynak envanteri: tip orada YOKSA
-      # `api_absent`, VARSA ama okunamiyorsa `no_permission`.
-      if [ "$CLUSTER_RESOURCES_OK" = "yes" ] && ! resource_exists "$full_name"; then
-        reason="api_absent"
-      else
-        reason="no_permission"
-      fi
-      log "$CLUSTER" "$JUMP_SERVER" "-" "$(kind_to_display "$kind")" "WORKLOAD_KIND" "WARN" \
-        "kind=$(disc_val "$kind") resource=$(disc_val "$full_name") reason=$(disc_val "$reason") verb=$(disc_val "$verb") namespace=$(disc_val "$NS")"
-      continue
+    obek="$obek $kind"
+    n=$((n + 1))
+    if [ "$n" -ge "$DISC_CHUNK" ]; then
+      disc_scan_chunk "$obek"
+      obek=""
+      n=0
     fi
-
-    kind_count=0
-    while IFS='|' read -r name f2 f3 f4 image argo managed; do
-      [ -z "$name" ] && continue
-      disc_app_wanted "$name" || continue
-      found_any=1
-      kind_count=$((kind_count + 1))
-      disc_read_state "$name"
-      if kind_is_scalable "$kind"; then
-        [ -z "$f2" ] && f2=0
-        [ -z "$f3" ] && f3=0
-        [ -z "$f4" ] && f4=0
-        log "$CLUSTER" "$JUMP_SERVER" "$name" "$(kind_to_display "$kind")" "WORKLOAD" "OK" \
-          "resource=$(disc_val "$res") scalable=yes spec=$(disc_val "$f2") status=$(disc_val "$f3") ready=$(disc_val "$f4") hpa=$(disc_has_hpa "$name") state_phase=$(disc_val "$DISC_STATE_PHASE") previous_replicas=$(disc_val "$DISC_STATE_PREV") image=$(disc_val "$image") gitops=$(disc_gitops "$argo" "$managed")"
-      elif kind_is_discovered_crd "$kind"; then
-        # Cluster'dan kesfedildi, `scale` alt kaynagi var — ama islem yolu bu tip icin
-        # kanitlanmadi (bkz. kind_is_discovered_crd). Gorunur, secilemez.
-        [ -z "$f2" ] && f2=0
-        [ -z "$f4" ] && f4=0
-        log "$CLUSTER" "$JUMP_SERVER" "$name" "$(kind_to_display "$kind")" "WORKLOAD" "OK" \
-          "resource=$(disc_val "$res") scalable=no reason=unsupported_kind spec=$(disc_val "$f2") ready=$(disc_val "$f4") image=$(disc_val "$image") gitops=$(disc_gitops "$argo" "$managed")"
-      elif [ "$kind" = "cronjob" ]; then
-        # `spec.suspend` bos gelebilir (alan hic yazilmamissa) — o durumda CronJob
-        # AKTIFTIR, "bilinmiyor" degil.
-        [ -z "$f2" ] && f2="false"
-        log "$CLUSTER" "$JUMP_SERVER" "$name" "$(kind_to_display "$kind")" "WORKLOAD" "OK" \
-          "resource=$(disc_val "$res") scalable=no reason=suspend_not_replicas suspended=$(disc_val "$f2") schedule=$(disc_val "$f3") image=$(disc_val "$image") gitops=$(disc_gitops "$argo" "$managed")"
-      else
-        [ -z "$f2" ] && f2=0
-        [ -z "$f4" ] && f4=0
-        log "$CLUSTER" "$JUMP_SERVER" "$name" "$(kind_to_display "$kind")" "WORKLOAD" "OK" \
-          "resource=$(disc_val "$res") scalable=no reason=node_scheduled desired=$(disc_val "$f2") ready=$(disc_val "$f4") image=$(disc_val "$image") gitops=$(disc_gitops "$argo" "$managed")"
-      fi
-    done <<EOF_DISC_ITEMS
-$(oc get "$res" -n "$NS" -o jsonpath="$(disc_jsonpath "$kind")" 2>/dev/null || true)
-EOF_DISC_ITEMS
-
-    log "$CLUSTER" "$JUMP_SERVER" "-" "$(kind_to_display "$kind")" "WORKLOAD_KIND" "OK" \
-      "kind=$(disc_val "$kind") resource=$(disc_val "$res") found=$(disc_val "$kind_count") scalable=$(kind_is_scalable "$kind" && echo yes || echo no)$(kind_is_discovered_crd "$kind" && printf ' %s' 'discovered=yes' || true)"
   done
-  if [ "$found_any" -eq 0 ]; then
+  [ -n "$obek" ] && disc_scan_chunk "$obek"
+
+  if [ "$DISC_FOUND_ANY" -eq 0 ]; then
     log "$CLUSTER" "$JUMP_SERVER" "-" "-" "WORKLOAD" "WARN" "No workload matched in namespace $(disc_val "$NS")"
   fi
 }
