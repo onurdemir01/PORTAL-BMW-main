@@ -245,3 +245,92 @@ test('CC12 tablo CREATE + INDEX ile tanimli, tanecik CLUSTER duzeyi', () => {
 test('CC13 envanter okuma SINIRLI (sinirsiz okuma yedi OOM`un sinifiydi)', () => {
   assert.match(CAPS_SRC, /SELECT TOP 500 \* FROM scalex_cluster_caps/, 'okuma sinirsiz');
 });
+
+// ── CLUSTER BASINA YETENEK HARITASI (PR-A) ──────────────────────────────────
+//
+// OLCULEN ARIZA: `kindsForScope` kapsamin TAMAMI icin guvenilir kayit ister; tek
+// bir cluster taranmamissa `null` doner ve UC CLUSTERIN UCU DE soguk yolu kosar.
+// Ustelik dondurdugu sey bir BIRLESIM oldugu icin, bir cluster'da OLMAYAN CRD'ler
+// orada da yoklanirdi. Harita her cluster'i KENDI kaydiyla degerlendirir.
+
+test('CC14 haritada yalnizca GUVENILIR ve DOLU kayitlar var', async () => {
+  const caps = capsWith([
+    satir({ cluster_name: 'c1', kinds_csv: 'a.io,b.io' }),
+    satir({ cluster_name: 'c2', kinds_csv: null }), // hic taranmamis
+    satir({ cluster_name: 'c3', kinds_csv: 'z.io', resources_readable: 0 }), // okunamamis
+    satir({ cluster_name: 'c4', kinds_csv: '' }), // tarandi ama BOS
+  ]);
+  const h = await caps.kindsPerCluster({
+    env: 'prod',
+    tenant: 'ark',
+    clusterNames: ['c1', 'c2', 'c3', 'c4'],
+  });
+  assert.deepEqual(Object.keys(h).sort(), ['c1'], `harita: ${JSON.stringify(h)}`);
+  // KORLUK PANZEHIRI: `{}` donse de "yalnizca guvenilirler var" gecerdi. Saglam
+  // cluster'in anahtarinin GERCEKTEN dolu oldugu ayrica dogrulanir.
+  assert.deepEqual(h.c1, ['a.io', 'b.io'], 'saglam cluster`in listesi bos/yanlis');
+});
+
+test('CC15 EKSIK cluster yalnizca KENDINI soguk yola dusurur', async () => {
+  const kayitlar = [
+    satir({ cluster_name: 'c1', kinds_csv: 'a.io' }),
+    satir({ cluster_name: 'c2', kinds_csv: 'b.io' }),
+  ];
+  const caps = capsWith(kayitlar);
+  const kapsam = ['c1', 'c2', 'c3']; // c3'un kaydi YOK
+
+  // ESKI kural: tek eksik cluster TUM kapsami soguk yola dusururdu.
+  const eski = await caps.kindsForScope({ env: 'prod', tenant: 'ark', clusterNames: kapsam });
+  assert.equal(eski, null, 'kindsForScope davranisi degismis — eski paketlerin sozlesmesi bu');
+
+  // YENI kural: c1 ve c2 kendi listelerini alir, c3 hicbir sey almaz.
+  const h = await caps.kindsPerCluster({ env: 'prod', tenant: 'ark', clusterNames: kapsam });
+  assert.deepEqual(h.c1, ['a.io']);
+  assert.deepEqual(h.c2, ['b.io']);
+  assert.equal(h.c3, undefined, 'kaydi olmayan cluster haritaya girmis — baskasinin listesini alir');
+});
+
+test('CC16 harita BIRLESIM DEGIL — her cluster KENDI listesini alir', async () => {
+  const caps = capsWith([
+    satir({ cluster_name: 'c1', kinds_csv: 'a.io' }),
+    satir({ cluster_name: 'c2', kinds_csv: 'b.io' }),
+  ]);
+  const h = await caps.kindsPerCluster({ env: 'prod', tenant: 'ark', clusterNames: ['c1', 'c2'] });
+  // Birlesim gonderilseydi c1'de OLMAYAN `b.io` orada da yoklanirdi — kesifteki
+  // israfin bir kismi tam olarak buydu.
+  assert.ok(!h.c1.includes('b.io'), 'c1 baskasinin CRD`sini almis (birlesim sizmis)');
+  assert.ok(!h.c2.includes('a.io'), 'c2 baskasinin CRD`sini almis (birlesim sizmis)');
+});
+
+test('CC17 bos kapsam bos sozluk doner (null degil)', async () => {
+  const caps = capsWith([]);
+  assert.deepEqual(await caps.kindsPerCluster({ env: 'p', tenant: 't', clusterNames: [] }), {});
+  assert.deepEqual(await caps.kindsPerCluster({ env: 'p', tenant: 't' }), {});
+});
+
+test('CC18 portal IKI bicimi de gonderiyor, BOS sozlugu GONDERMIYOR', () => {
+  // Eski AWX paketleri yalnizca `scalex_extra_kinds`i okuyabiliyor; yeni bicim
+  // eskisinin YERINE degil YANINA konur.
+  assert.match(IX, /\.\.\.\(extraKinds \? \{ scalex_extra_kinds: extraKinds \}/, 'birlesik liste artik gonderilmiyor');
+
+  // KORLUK PANZEHIRI (mutasyon turunda bulundu): anahtarin VARLIGINA bakmak
+  // yetmiyor. `...(false && Object.keys(clusterKinds).length ? {...} : {})`
+  // yazildiginda sozluk HIC gonderilmiyor ama metin hala esliyordu — bu deponun
+  // tekrar eden bekci korlugu #4: "tanimlayici var" ile "ulasilabilir" ayni sey
+  // degil. Kosul bu yuzden `...(` ile BASLAYACAK sekilde capalaniyor.
+  const spread = /\.\.\.\(Object\.keys\(clusterKinds\)\.length\s*\?\s*\{\s*scalex_cluster_kinds:/;
+  assert.match(
+    IX,
+    spread,
+    'cluster basina sozluk gonderilmiyor ya da kosulu degismis (bos sozluk de gidiyor olabilir)',
+  );
+
+  // OLU DAL YASAGI: `false &&`/`&& false` ile kapatilmis bir gonderim, yukaridaki
+  // capayi da kacirabilirdi (or. kosulun ICINE yazilirsa).
+  const i = IX.indexOf('const extraVars = {');
+  const blok = IX.slice(i, IX.indexOf('\n      };', i));
+  assert.ok(
+    !/(false\s*&&|&&\s*false|\?\s*\{\}\s*:)/.test(blok),
+    'extra_vars blogunda OLU DAL var — gonderilmeyen bir anahtar gonderiliyormus gibi gorunur',
+  );
+});

@@ -37,7 +37,15 @@
     # (fail-safe). Portal onbellek yok/bayat/okunamadi durumlarinda bilerek bos
     # gonderir — "onbellek yok"u "CRD yok" saymak, olceklenebilir operator
     # nesnelerini SESSIZCE listeden dusurmek olurdu.
-    SCALEX_EXTRA_KINDS: "{{ scalex_extra_kinds | default('') }}"
+    #
+    # CLUSTER BASINA: oncelik BU cluster'in kendi kaydindadir. Sozlukte yoksa
+    # `scalex_extra_kinds_fallback` gelir — ve o deger, portal sozluk gonderdiyse
+    # BILEREK bos olur (bkz. 01_prepare.yml "Resolve per-cluster capability
+    # cache"): baska bir cluster'in listesiyle sinirlanmak, bu cluster'in kendi
+    # CRD'lerini sessizce dusurmek olurdu.
+    #
+    # `default(x)` BOOLEAN DEGIL: yalnizca ANAHTAR YOKSA geriye dusulur.
+    SCALEX_EXTRA_KINDS: "{{ scalex_cluster_kinds_effective[scalex_target.cluster] | default(scalex_extra_kinds_fallback) }}"
     # Kesifte islem YOK. Betik `discover` fazinda `ACTION` aramaz; yine de bos
     # gecmek, degiskenin tanimsiz kalmasindan iyidir (`set -u` ile calisiyor).
     ACTION: ""

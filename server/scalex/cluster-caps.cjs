@@ -126,6 +126,45 @@ async function kindsForScope({ env, tenant, clusterNames }) {
 }
 
 /**
+ * CLUSTER BAŞINA yetenek haritası: `{ [clusterName]: string[] }`.
+ *
+ * ── `kindsForScope` DURUYOR, BU ONUN YERİNE GEÇMİYOR ────────────────────────
+ * O fonksiyon TEK bir birleşik liste döndürür ve keşif onu HER cluster'a
+ * gönderir. Eski AWX paketleri yalnızca o biçimi (`scalex_extra_kinds`)
+ * okuyabildiği için geriye uyumluluk adına korunuyor.
+ *
+ * ── "KISMİ ÖNBELLEK TEHLİKELİDİR" NOTU NEDEN ARTIK GEÇERLİ DEĞİL ────────────
+ * Tehlike kısmi olmasından değil, **tek bir değerin her cluster'a gitmesinden**
+ * geliyordu: bir cluster'ın kaydı yokken diğerininkiyle sınırlanmak, eksik
+ * cluster'ın KENDİ CRD'lerini sessizce düşürürdü. Cluster başına harita o
+ * mekanizmayı ortadan kaldırır — sözlükte OLMAYAN cluster hiçbir liste almaz ve
+ * **yalnızca kendisi** eski (soğuk) yolu koşar. Tek eksik cluster artık tüm
+ * kapsamı soğuk yola düşürmüyor.
+ *
+ * ── SÖZLÜĞE GİRMEYEN ÜÇ DURUM ──────────────────────────────────────────────
+ *   hiç taranmamış (`kinds === null`) → kayıt yok, tahmin de yok
+ *   okunamamış tarama               → "okunamadı" ≠ "CRD yok"
+ *   tarandı ama BOŞ (`kinds === []`) → betikte İFADE EDİLEMİYOR: `SCALEX_EXTRA_KINDS=''`
+ *                                      betik tarafında "önbellek yok" ile AYNI
+ *                                      anlama geliyor. Doğru sonuç için soğuk
+ *                                      yolu koşuyor; bunu ayırmak runner'da bir
+ *                                      işaret değeri ister (ayrı tur).
+ */
+async function kindsPerCluster({ env, tenant, clusterNames }) {
+  if (!Array.isArray(clusterNames) || !clusterNames.length) return {};
+  const kayitlar = await list({ env, tenant, clusterNames });
+  const harita = {};
+  for (const k of kayitlar) {
+    if (!k.resourcesReadable) continue;
+    if (k.kinds === null) continue;
+    if (!k.kinds.length) continue;
+    if (!k.clusterName) continue;
+    harita[String(k.clusterName)] = k.kinds.slice(0, MAX_KINDS);
+  }
+  return harita;
+}
+
+/**
  * Bir cluster'ın tarama sonucunu yazar (upsert).
  *
  * `resourcesReadable === false` ise kayıt YİNE yazılır ama `kinds_csv` NULL
@@ -169,4 +208,4 @@ async function save({ env, tenant, clusterName, kinds, rbac, resourcesReadable, 
   return { written: true, kinds: kindsCsv === null ? null : kindsCsv.split(',').filter(Boolean) };
 }
 
-module.exports = { list, kindsForScope, save, CAPS_TTL_DAYS, MAX_KINDS };
+module.exports = { list, kindsForScope, kindsPerCluster, save, CAPS_TTL_DAYS, MAX_KINDS };

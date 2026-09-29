@@ -193,7 +193,16 @@ test("S6 kesif survey'i portalin `/discover` anahtarlariyla uyumlu", () => {
     .split('\n')
     .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
     .join('\n');
-  const YAPISAL = new Set(['scalex_clusters_override', 'scalex_target_clusters']);
+  // DICT/LIST TASIYANLAR SURVEY'E KONULAMAZ (AWX survey tipleri skaler); onlar
+  // "Prompt on launch > Variables" ile API govdesinden gelir. Emsal: S3'teki
+  // ayni ayrim (`scalex_cluster_apps`).
+  const YAPISAL = new Set([
+    'scalex_clusters_override',
+    'scalex_target_clusters',
+    // Cluster basina yetenek onbellegi (dict). Elle calistirmada gonderilmez ve
+    // playbook `scalex_extra_kinds`e duser — yani elle calistirma BOZULMAZ.
+    'scalex_cluster_kinds',
+  ]);
   for (const k of [...block.matchAll(/([a-z_]+):/g)].map((m) => m[1])) {
     if (
       YAPISAL.has(k) ||
