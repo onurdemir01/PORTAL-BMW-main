@@ -272,5 +272,19 @@
     "c1;j1;kafka;StatefulSet;HPA;INFO;No HPA found for application/scaleTargetRef",
     "c1;j1;kafka;StatefulSet;PRECHECK;OK;Patch permission OK for workload kind=sts",
     "c1;j1;yok-app;-;PRECHECK;FAIL;Workload detection failed: ERROR:not_found"
+  ],
+  "stop-auto-sts-liste-yasak": [
+    "c1;j1;-;-;WORKDIR;INFO;Selected writable workdir=W",
+    "c1;j1;-;-;RUNNER;INFO;package_version=N phase=precheck",
+    "c1;j1;-;-;CLIENT;OK;oc_path=OC Client Version: 4.14.0",
+    "c1;j1;-;-;API;OK;API endpoint reachable host=api.lab tls_verify=false",
+    "c1;j1;-;-;LOGIN;OK;Login success",
+    "c1;j1;-;-;NAMESPACE;OK;Using project ns1",
+    "c1;j1;-;-;RBAC;OK;HPA read permission available HPA will remain untouched",
+    "c1;j1;iki-tip;-;PRECHECK;FAIL;Workload detection failed: ERROR:ambiguous:deploy,sts:rerun_discovery_or_set_workload_kind",
+    "c1;j1;odeme-api;Deployment;DISCOVERY;OK;Detected resource=deploy current_spec_replicas=3",
+    "c1;j1;odeme-api;Deployment;OBJECT;INFO;odeme-api 3/3 3 3 5d",
+    "c1;j1;odeme-api;Deployment;HPA;INFO;HPA_PRESENT read-only policy left untouched: odeme-hpa Deployment/odeme-api <unknown>/80% 1 3 1 5d",
+    "c1;j1;odeme-api;Deployment;PRECHECK;OK;Patch permission OK for workload kind=deploy"
   ]
 }

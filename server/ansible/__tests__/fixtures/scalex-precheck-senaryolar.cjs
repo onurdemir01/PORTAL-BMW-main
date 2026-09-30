@@ -128,6 +128,14 @@ const SENARYOLAR = {
     env: { ACTION: 'stop', WORKLOAD_KINDS: HARITA, APP_RAW: 'odeme-api,kafka,yok-app' },
     model: { kindYok: true },
   },
+  // MUTASYON TURUNDA EKLENDI (J-M14): `auto` tespiti dort tipin DORDUNU de
+  // yetkili ister. StatefulSet listelenemezken `iki-tip` yalnizca dizindeki
+  // Deployment'ta gorunur; o sart gevsetilirse belirsizlik ("ambiguous")
+  // SESSIZCE "Deployment bulundu"ya donerdi — yanlis nesneye islem.
+  'stop-auto-sts-liste-yasak': {
+    env: { ACTION: 'stop', APP_RAW: 'iki-tip,odeme-api' },
+    model: { listeYasakTipler: ['sts'] },
+  },
   'stop-auto-iki-tip-yok': {
     env: { ACTION: 'stop', APP_RAW: 'odeme-api,kafka,yok-app' },
     model: { yokTipler: ['rollout', 'dc'] },
