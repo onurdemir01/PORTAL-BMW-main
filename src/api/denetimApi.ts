@@ -757,70 +757,56 @@ export interface WebAppRow {
   vhostCountOnHost: number;
 }
 
-/** Route Trafigi (2026-09-21): dbo.BMW_Openshift_Route_Traffic (route_traffic job'i, Thanos). */
-export type RouteTrafficStatus = 'active' | 'silent' | 'dead' | 'nodata';
-export interface RouteTrafficRow {
+/**
+ * Route Trafigi (2026-09-30'da UYGULAMA BAZLI'ya cevrildi): dbo.BMW_Application_Usage
+ * (application_usage job'i, Dynatrace).
+ *
+ * Eskiden birim ROUTE'du ve kaynak Thanos'tu (dbo.BMW_Openshift_Route_Traffic). O is
+ * kosmadigi icin satirlarin tamami "veri yok" gorunuyordu; kullanici "Prometheus'u bos
+ * ver, sadece Dynatrace" dedi. Gun kirilimi (req7/req30/req90, perDay) ve 4xx/5xx
+ * oranlari KALDIRILDI - Dynatrace o kirilimi vermiyor.
+ */
+export type AppTrafficStatus = 'active' | 'idle' | 'unmeasured';
+export interface AppTrafficRow {
   namespace: string;
-  route: string;
-  address: string;
-  app: string;
-  spa: boolean;
+  application: string;
+  cluster: string;
   env: string | null;
-  clusters: string[];
-  inInventory: boolean;
-  req7: number;
-  req30: number;
-  req90: number;
-  /** son 90 gunun gunluk ortalamasi (pencereye gore) */
-  perDay: number;
-  err4xxPct: number;
-  err5xxPct: number;
-  /** istek gorulen son gun (YYYY-MM-DD) */
-  lastSeen: string | null;
-  lastScan: string | null;
-  status: RouteTrafficStatus;
-  /**
-   * Dynatrace SERVİS ölçümü (application_usage job'ı). Route trafiği router'dan geçen
-   * istekleri sayar; bu ise uygulamanın aldığı tüm servis çağrılarını.
-   *
-   * `null`   = bu satır için ölçüm BULUNAMADI (eşleşme tutmadı) — "0 istek" DEMEK DEĞİL.
-   * `measured:false` = ölçüm DENENDİ ama düştü; `req` o zaman `null` olur.
-   */
-  usage: {
-    req: number | null;
-    measured: boolean;
-    windowDays: number;
-    scanDate: string;
-    services: number;
-    servicesSkipped: number;
-    note: string;
-    /** Tam ad tutmayip ONEK ile eslesildiyse: toplama giren uygulama adlari. */
-    aggregated?: string[];
-    /** Toplama giren ama olculemeyen uygulama sayisi (0 sayilmadilar). */
-    unmeasured?: number;
-  } | null;
+  spa: boolean;
+  /** Olcumun alindigi tarama gunu (YYYY-MM-DD) */
+  scanDate: string;
+  /** Olcum penceresi (gun) — istek sayisi BU pencereye aittir */
+  windowDays: number;
+  /** Ham deger; olculemediyse anlamsizdir — ekranda `reqShown` kullanilir. */
+  req: number;
+  /** `null` = OLCULEMEDI. "0 istek" DEMEK DEGIL. */
+  reqShown: number | null;
+  measured: boolean;
+  services: number;
+  servicesMeasured: number;
+  servicesSkipped: number;
+  note: string;
+  /** Envanterde eslesen route'lar; BOS OLABILIR (servisten servise cagrilan backend'ler). */
+  routes: { route: string; address: string; exact: boolean }[];
+  status: AppTrafficStatus;
 }
-export interface RouteTrafficResult {
+export interface AppTrafficResult {
   ok: boolean;
   message?: string;
   tableMissing: boolean;
-  rows: RouteTrafficRow[];
+  rows: AppTrafficRow[];
   summary: {
-    routes: number;
+    apps: number;
     active: number;
-    silent: number;
-    dead: number;
-    nodata: number;
+    idle: number;
+    unmeasured: number;
+    /** Route'u OLMAYAN uygulamalar — eski route bazli ekranin kor noktasi. */
+    routeless: number;
     spa: number;
-    spaDead: number;
+    /** Envanterde olup hicbir uygulamaya baglanamayan route sayisi. */
+    routesWithoutUsage: number;
   };
   latestScan: string | null;
-  earliestScan: string | null;
-  daysCovered: number;
-  silentDays: number;
-  deadDays: number;
-  /** Dynatrace servis ölçümünün kapsamı — route'u OLMAYAN uygulamalar burada görünür */
-  usage?: { olculenUygulama: number; eslesen: number; routesuz: number; olculemeyen: number };
 }
 
 export interface WebAppResult {
@@ -1231,7 +1217,7 @@ export const denetimApi = {
     return fetch(`${BASE}/nginx-locations?${qs.toString()}`).then(safeJson);
   },
 
-  routeTraffic: (fresh = false): Promise<RouteTrafficResult> =>
+  routeTraffic: (fresh = false): Promise<AppTrafficResult> =>
     fetch(`${BASE}/route-traffic${fresh ? '?fresh=1' : ''}`).then(safeJson),
   webApp: (source: string, q?: string, onlyUnmatched?: boolean): Promise<WebAppResult> =>
     fetch(

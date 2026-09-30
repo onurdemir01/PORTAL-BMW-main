@@ -1,9 +1,17 @@
-// src/components/denetim/RouteTraffic.tsx — "Denetim > Route Trafiği" (2026-09-21).
+// src/components/denetim/RouteTraffic.tsx — "Denetim > Route Trafiği".
 //
-// Kullanici: "SPA uygulamalari var ama kullaniliyor mu? atil mi, emekli mi olmus? ...
-// intranet uygulamalarin yasayip yasamadigini ancak route metrikleriyle anlariz."
-// Kaynak: route_traffic job'i (Thanos, OCP router sayaclari) -> BMW_Openshift_Route_Traffic;
-// siniflama sunucuda (server/audit/route-traffic.cjs). Burasi yalnizca gosterir/suzer.
+// Kullanici: "SPA uygulamalari var ama kullaniliyor mu? atil mi, emekli mi olmus?"
+//
+// 2026-09-30'DA BIRIM DEGISTI: ekran ROUTE bazliydi, artik UYGULAMA bazli.
+// Kullanici: "Prometheus'tan cektigimiz metrikler calismiyor. Orayi bos ver. Biz sadece
+// application usage playbook'unu kullanalim ve Dynatrace metriklerine bakalim. Hata
+// oranlarini bos ver."
+//
+// Kaynak: application_usage job'i (Dynatrace servis istekleri) -> BMW_Application_Usage;
+// siniflama sunucuda (server/audit/app-traffic.cjs). Burasi yalnizca gosterir/suzer.
+//
+// KALDIRILAN KOLONLAR: 7/30/90 gun, gun/ort, 4xx, 5xx, son istek. Hepsi Thanos
+// kirilimiydi; Dynatrace vermiyor. Bos kolon gostermek yerine kaldirildi.
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
 import {
@@ -11,15 +19,14 @@ import {
   ArrowDownTrayIcon,
   MagnifyingGlassIcon,
   SignalIcon,
-  SignalSlashIcon,
   QuestionMarkCircleIcon,
   MoonIcon,
 } from '@heroicons/react/24/outline';
 import {
   denetimApi,
-  type RouteTrafficResult,
-  type RouteTrafficRow,
-  type RouteTrafficStatus,
+  type AppTrafficResult,
+  type AppTrafficRow,
+  type AppTrafficStatus,
 } from '@/api/denetimApi';
 import { Select } from '@/components/ui/Form';
 import { fmtNumber, fmtDate } from '@/utils/datetime';
@@ -29,92 +36,72 @@ import { downloadCsv as csvDownload } from '@/utils/csv';
 
 const nf = (n: number) => fmtNumber(n);
 
+// UC DURUM, IKI DEGIL. "olculemedi" ile "istek yok" ayni sey degildir: olcemedigimiz bir
+// uygulamayi emekli aday saymak, bu ekranin verebilecegi en pahali yanlis karardir.
 const STATUS: Record<
-  RouteTrafficStatus,
+  AppTrafficStatus,
   { label: string; tone: Tone; icon: React.ComponentType<{ className?: string }>; hint: string }
 > = {
-  active: { label: 'aktif', tone: 'success', icon: SignalIcon, hint: 'son 30 günde istek var' },
-  silent: {
-    label: 'atıl aday',
+  active: {
+    label: 'aktif',
+    tone: 'success',
+    icon: SignalIcon,
+    hint: 'ölçüm penceresinde istek aldı',
+  },
+  idle: {
+    label: 'istek yok',
     tone: 'warning',
     icon: MoonIcon,
-    hint: '30 gündür istek yok, 90 gün içinde vardı',
+    hint: 'ölçüldü ve pencerede hiç istek almadı — atıl/emekli adayı',
   },
-  dead: {
-    label: 'emekli aday',
-    tone: 'danger',
-    icon: SignalSlashIcon,
-    hint: '90 gündür (ya da verinin tamamında) hiç istek yok',
-  },
-  nodata: {
-    label: 'veri yok',
+  unmeasured: {
+    label: 'ölçülemedi',
     tone: 'neutral',
     icon: QuestionMarkCircleIcon,
-    hint: 'envanterde var, router sayacında hiç görünmedi',
+    hint: 'ölçüm denendi ama düştü — "istek almıyor" ANLAMINA GELMEZ',
   },
 };
 
 /**
- * Dynatrace SERVIS istegi hucresi.
+ * Istek hucresi.
  *
- * UC AYRI DURUM, UC AYRI GORUNUM - ucu de "0" DEGIL:
- *   eslesmedi  : bu route icin olcum satiri yok (uygulama adi tutmadi ya da job gormedi)
- *   olculemedi : olcum DENENDI ama dustu (servisi var, hicbiri okunamadi)
- *   sayi       : gercekten olculmus istek sayisi (0 ise gercekten istek yok)
- *
- * Bunlari ayni gostermek, calisan bir uygulamayi "kullanilmiyor" diye okutur - emeklilik
- * kararinda en pahali hata budur.
+ * Sayi YALNIZ olculduyse yazilir. Olculemeyen satira "0" yazmak, calisan bir uygulamayi
+ * "kullanilmiyor" diye okutur.
  */
-function servisIstegi(r: RouteTrafficRow) {
-  const u = r.usage;
-  if (!u) {
+function istek(r: AppTrafficRow) {
+  if (r.reqShown == null) {
     return (
       <span
         style={{ color: 'var(--text-muted)' }}
-        title="Bu route için Dynatrace ölçümü bulunamadı (uygulama adı eşleşmedi ya da ölçüm hiç yapılmadı). '0 istek' anlamına GELMEZ."
-      >
-        eşleşmedi
-      </span>
-    );
-  }
-  if (!u.measured) {
-    return (
-      <span
-        style={{ color: 'var(--status-warning)' }}
-        title={`Ölçüm denendi ama düştü${u.note ? ': ' + u.note : ''}. '0 istek' anlamına GELMEZ.`}
+        title={`Ölçüm denendi ama düştü${r.note ? ': ' + r.note : ''}. "0 istek" anlamına GELMEZ.`}
       >
         ölçülemedi
       </span>
     );
   }
-  // ONEK ESLESMESI (2026-09-29): route adi "apigw", Dynatrace "apigw-1-prod",
-  // "apigw-2-prod", "apigw-3-prod" diyor - ayni gecidin uc ornegi. Toplam SESSIZCE
-  // verilmez: NELERIN toplandigi ipucunda yazar, cunku "apigw-4" gibi ayri bir uygulama
-  // da toplama girmis olabilir ve karar veren kisi bunu gormeden guvenmemeli.
-  const toplam = u.aggregated && u.aggregated.length > 1;
   return (
     <span
-      style={{ color: u.req ? 'var(--text-primary)' : 'var(--status-warning)' }}
-      title={`Dynatrace servis çağrıları · son ${u.windowDays} gün · ${u.services} servis${u.servicesSkipped ? ` (${u.servicesSkipped} tanesi yalnızca altyapı servisi çağırdığı için sayılmadı)` : ''} · ölçüm ${u.scanDate}${
-        u.aggregated
-          ? `\n\nAd birebir tutmadı; ÖNEK ile eşleşen ${u.aggregated.length} uygulama toplandı:\n${u.aggregated.join('\n')}${u.unmeasured ? `\n(${u.unmeasured} tanesi ölçülemedi, toplama KATILMADI)` : ''}`
+      style={{ color: r.reqShown ? 'var(--text-primary)' : 'var(--status-warning)' }}
+      title={`Dynatrace servis çağrıları · son ${r.windowDays} gün · ${r.servicesMeasured}/${r.services} servis ölçüldü${
+        r.servicesSkipped
+          ? ` (${r.servicesSkipped} tanesi yalnızca altyapı servisi çağırdığı için sayılmadı)`
           : ''
-      }`}
+      } · ölçüm ${r.scanDate}`}
     >
-      {nf(u.req || 0)}
-      {toplam && <span style={{ color: 'var(--text-muted)' }}> · {u.aggregated!.length} uyg.</span>}
+      {nf(r.reqShown)}
     </span>
   );
 }
 
 export default function RouteTraffic() {
-  const [data, setData] = useState<RouteTrafficResult | null>(null);
+  const [data, setData] = useState<AppTrafficResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
   const [q, setQ] = useState('');
   const [env, setEnv] = useState('all');
   const [kind, setKind] = useState<'all' | 'spa' | 'nonspa'>('all');
-  const [status, setStatus] = useState<'all' | RouteTrafficStatus | 'problem'>('all');
+  const [status, setStatus] = useState<'all' | AppTrafficStatus>('all');
+  const [routeFilter, setRouteFilter] = useState<'all' | 'with' | 'without'>('all');
 
   const load = useCallback(async (fresh = false) => {
     setLoading(true);
@@ -146,24 +133,24 @@ export default function RouteTraffic() {
       if (env !== 'all' && (r.env || '') !== env) return false;
       if (kind === 'spa' && !r.spa) return false;
       if (kind === 'nonspa' && r.spa) return false;
-      if (
-        status === 'problem'
-          ? !(r.status === 'silent' || r.status === 'dead')
-          : status !== 'all' && r.status !== status
-      )
-        return false;
+      if (status !== 'all' && r.status !== status) return false;
+      if (routeFilter === 'with' && !r.routes.length) return false;
+      if (routeFilter === 'without' && r.routes.length) return false;
       if (
         needle &&
         !(
           r.namespace.toLowerCase().includes(needle) ||
-          r.route.toLowerCase().includes(needle) ||
-          r.address.toLowerCase().includes(needle)
+          r.application.toLowerCase().includes(needle) ||
+          r.routes.some(
+            (x) =>
+              x.route.toLowerCase().includes(needle) || x.address.toLowerCase().includes(needle),
+          )
         )
       )
         return false;
       return true;
     });
-  }, [data, q, env, kind, status]);
+  }, [data, q, env, kind, status, routeFilter]);
 
   if (loading && !data) return <LoadingLogo />;
   if (err)
@@ -175,43 +162,29 @@ export default function RouteTraffic() {
   if (!data) return null;
 
   const s = data.summary;
-  const coverageShort = data.daysCovered > 0 && data.daysCovered < data.deadDays;
 
   return (
     <div className="space-y-3">
       {data.tableMissing && <Note tone="warning">{data.message}</Note>}
-      {coverageShort && (
-        <Note tone="info">
-          Veri şimdilik <b>{data.daysCovered} gün</b> kapsıyor (
-          {data.earliestScan ? fmtDate(data.earliestScan) : '?'} –{' '}
-          {data.latestScan ? fmtDate(data.latestScan) : '?'}). "Emekli aday" hükmü {data.deadDays}{' '}
-          günlük sessizlik ister; job günlük koştukça kesinleşir. Şimdilik "bu {data.daysCovered}{' '}
-          günde hiç istek almadı" diye okuyun.
-        </Note>
-      )}
 
-      {/* KOR NOKTA GORUNUR OLSUN: route trafigi yalnizca ROUTER'dan gecen istekleri sayar.
-          Route'u olmayan backend'ler bu listede HIC yok; Dynatrace olcumu onlari da goruyor.
-          Sayiyi yazmazsak "hepsini gordum" yanilgisi olusur. */}
-      {data.usage && data.usage.routesuz > 0 && (
+      {/* KOR NOKTA GORUNUR OLSUN: envanterdeki her route bir uygulamaya baglanamaz
+          (route "apigw", uygulamalar "apigw-1-prod"...). Sayiyi yazmazsak "hepsini gordum"
+          yanilgisi olusur. */}
+      {s.routesWithoutUsage > 0 && (
         <Note tone="info">
-          Dynatrace <b>{nf(data.usage.olculenUygulama)}</b> uygulama ölçtü;{' '}
-          <b>{nf(data.usage.eslesen)}</b> tanesi aşağıdaki route&apos;larla eşleşti.{' '}
-          <b>{nf(data.usage.routesuz)}</b> uygulamanın bu listede karşılığı
-          <b> yok</b> — route&apos;u olmayan backend&apos;ler (bu ekran onları göremez) ya da adı
-          eşleşmeyenler.
-          {data.usage.olculemeyen > 0 && (
-            <>
-              {' '}
-              {nf(data.usage.olculemeyen)} uygulama <b>ölçülemedi</b> — &quot;istek almıyor&quot;
-              anlamına gelmez.
-            </>
-          )}
+          Dynatrace <b>{nf(s.apps)}</b> uygulama ölçtü. Envanterdeki{' '}
+          <b>{nf(s.routesWithoutUsage)}</b> route hiçbir uygulamaya bağlanamadı — adı eşleşmeyenler
+          ya da Dynatrace&apos;in hiç görmediği route&apos;lar. Bu ekran <b>uygulama</b> bazlıdır:
+          route&apos;u olmayan backend&apos;ler de listede vardır ({nf(s.routeless)} satır).
         </Note>
       )}
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        <StatTile label="route" value={nf(s.routes)} hint="envanter ∪ trafik tablosu" />
+        <StatTile
+          label="uygulama"
+          value={nf(s.apps)}
+          hint={`Dynatrace ölçümü · son tarama ${data.latestScan ? fmtDate(data.latestScan) : '—'}`}
+        />
         <StatTile
           label="aktif"
           value={nf(s.active)}
@@ -220,24 +193,23 @@ export default function RouteTraffic() {
           hint={STATUS.active.hint}
         />
         <StatTile
-          label="atıl aday"
-          value={nf(s.silent)}
+          label="istek yok"
+          value={nf(s.idle)}
           tone="warning"
           icon={MoonIcon}
-          hint={STATUS.silent.hint}
+          hint={STATUS.idle.hint}
         />
         <StatTile
-          label="emekli aday"
-          value={nf(s.dead)}
-          tone="danger"
-          icon={SignalSlashIcon}
-          hint={STATUS.dead.hint}
+          label="ölçülemedi"
+          value={nf(s.unmeasured)}
+          tone={s.unmeasured ? 'warning' : 'neutral'}
+          icon={QuestionMarkCircleIcon}
+          hint={STATUS.unmeasured.hint}
         />
         <StatTile
-          label="SPA — sessiz"
-          value={`${nf(s.spaDead)} / ${nf(s.spa)}`}
-          tone={s.spaDead ? 'warning' : 'neutral'}
-          hint="atıl ya da emekli aday SPA / tüm SPA route'ları"
+          label="route'u yok"
+          value={nf(s.routeless)}
+          hint="dışarıya açık adresi olmayan uygulamalar — eski route bazlı ekranın göremediği küme"
         />
       </div>
 
@@ -247,8 +219,8 @@ export default function RouteTraffic() {
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="namespace, route ya da adres"
-            className="pl-8 pr-2.5 py-1.5 text-xs border border-[var(--border)] rounded-lg w-64"
+            placeholder="namespace, uygulama, route ya da adres"
+            className="pl-8 pr-2.5 py-1.5 text-xs border border-[var(--border)] rounded-lg w-72"
           />
         </div>
         <Select sizeVariant="sm" value={env} onChange={(e) => setEnv(e.target.value)}>
@@ -274,61 +246,62 @@ export default function RouteTraffic() {
           onChange={(e) => setStatus(e.target.value as typeof status)}
         >
           <option value="all">tüm durumlar</option>
-          <option value="problem">sessiz (atıl + emekli aday)</option>
+          <option value="idle">istek yok (atıl aday)</option>
           <option value="active">aktif</option>
-          <option value="silent">atıl aday</option>
-          <option value="dead">emekli aday</option>
-          <option value="nodata">veri yok</option>
+          <option value="unmeasured">ölçülemedi</option>
+        </Select>
+        <Select
+          sizeVariant="sm"
+          value={routeFilter}
+          onChange={(e) => setRouteFilter(e.target.value as typeof routeFilter)}
+        >
+          <option value="all">route farkı yok</option>
+          <option value="with">route&apos;u olanlar</option>
+          <option value="without">route&apos;u olmayanlar</option>
         </Select>
         <span className="text-xs text-[var(--text-muted)] tabular-nums">
-          {nf(rows.length)} / {nf(data.rows.length)} route
+          {nf(rows.length)} / {nf(data.rows.length)} uygulama
         </span>
         <div className="ml-auto flex items-center gap-2">
           <button
             onClick={() =>
               csvDownload(
-                'route_trafigi',
+                'uygulama_trafigi',
                 [
                   'namespace',
-                  'route',
-                  'adres',
+                  'uygulama',
                   'ortam',
                   'spa',
                   'cluster',
                   'durum',
-                  'son7g',
-                  'son30g',
-                  'son90g',
-                  'gunluk_ort',
-                  '4xx_pct',
-                  '5xx_pct',
-                  'servis_istegi',
-                  'servis_olcum',
-                  'son_istek',
-                  'son_tarama',
+                  'istek',
+                  'pencere_gun',
+                  'servis',
+                  'servis_olculen',
+                  'servis_atlanan',
+                  'route',
+                  'adres',
+                  'olcum_tarihi',
+                  'not',
                 ],
                 rows.map((r) => [
                   r.namespace,
-                  r.route,
-                  r.address,
+                  r.application,
                   r.env || '',
                   r.spa ? 'evet' : 'hayır',
-                  r.clusters.join(' '),
+                  r.cluster,
                   STATUS[r.status].label,
-                  r.req7,
-                  r.req30,
-                  r.req90,
-                  r.perDay,
-                  r.err4xxPct,
-                  r.err5xxPct,
-                  r.usage && r.usage.measured && r.usage.req != null ? r.usage.req : '',
-                  !r.usage
-                    ? 'eşleşmedi'
-                    : r.usage.measured
-                      ? `${r.usage.windowDays} gün`
-                      : 'ölçülemedi',
-                  r.lastSeen || '',
-                  r.lastScan || '',
+                  // OLCULEMEYEN SATIRA 0 YAZILMAZ: CSV'de de "ölçülemedi" ile "istek yok"
+                  // ayri kalmali, yoksa elektronik tabloda toplanip yanlis okunur.
+                  r.reqShown == null ? '' : r.reqShown,
+                  r.windowDays,
+                  r.services,
+                  r.servicesMeasured,
+                  r.servicesSkipped,
+                  r.routes.map((x) => x.route).join(' '),
+                  r.routes.map((x) => x.address).join(' '),
+                  r.scanDate,
+                  r.note,
                 ]),
               )
             }
@@ -349,35 +322,34 @@ export default function RouteTraffic() {
         <thead className="sticky top-0" style={{ background: 'var(--bg-elevated)' }}>
           <tr>
             <Th>Namespace</Th>
-            <Th>Route</Th>
+            <Th>Uygulama</Th>
             <Th>Ortam</Th>
             <Th>Durum</Th>
-            <Th align="right">7 gün</Th>
-            <Th align="right">30 gün</Th>
-            <Th align="right">90 gün</Th>
-            <Th align="right">gün/ort</Th>
-            <Th align="right">4xx</Th>
-            <Th align="right">5xx</Th>
-            <Th align="right">Servis isteği</Th>
-            <Th>Son istek</Th>
+            <Th align="right">İstek</Th>
+            <Th align="right">Servis</Th>
+            <Th>Route</Th>
             <Th>Cluster</Th>
           </tr>
         </thead>
         <tbody>
           {rows.length === 0 ? (
             <TableEmptyRow
-              colSpan={13}
-              title={data.rows.length ? 'Süzgeçle eşleşen route yok.' : 'Henüz trafik verisi yok.'}
+              colSpan={8}
+              title={
+                data.rows.length ? 'Süzgeçle eşleşen uygulama yok.' : 'Henüz kullanım verisi yok.'
+              }
               description={
-                data.rows.length ? undefined : 'route_traffic job’ı bir kez koşunca burası dolar.'
+                data.rows.length
+                  ? undefined
+                  : 'application_usage job’ı bir kez koşunca burası dolar.'
               }
             />
           ) : (
-            rows.map((r: RouteTrafficRow) => {
+            rows.map((r: AppTrafficRow) => {
               const st = STATUS[r.status];
               return (
                 <tr
-                  key={r.namespace + '|' + r.route}
+                  key={r.namespace + '|' + r.application}
                   className="border-t"
                   style={{ borderColor: 'var(--border-subtle)' }}
                 >
@@ -385,18 +357,9 @@ export default function RouteTraffic() {
                     <span className="font-mono text-[11px]">{r.namespace}</span>
                   </Td>
                   <Td>
-                    <div className="font-medium truncate max-w-[16rem]" title={r.route}>
-                      {r.route}
+                    <div className="font-medium truncate max-w-[18rem]" title={r.application}>
+                      {r.application}
                     </div>
-                    {r.address && (
-                      <div
-                        className="text-[10px] font-mono truncate max-w-[16rem]"
-                        style={{ color: 'var(--text-muted)' }}
-                        title={r.address}
-                      >
-                        {r.address}
-                      </div>
-                    )}
                   </Td>
                   <Td>
                     <span className="uppercase text-[10px] font-semibold">{r.env || '—'}</span>
@@ -415,44 +378,45 @@ export default function RouteTraffic() {
                     </Pill>
                   </Td>
                   <Td align="right" className="tabular-nums">
-                    {nf(r.req7)}
-                  </Td>
-                  <Td align="right" className="tabular-nums">
-                    {nf(r.req30)}
-                  </Td>
-                  <Td align="right" className="tabular-nums">
-                    {nf(r.req90)}
-                  </Td>
-                  <Td align="right" className="tabular-nums">
-                    {nf(r.perDay)}
-                  </Td>
-                  <Td align="right" className="tabular-nums">
-                    {r.req90 ? `${r.err4xxPct}%` : '—'}
+                    {istek(r)}
                   </Td>
                   <Td align="right" className="tabular-nums">
                     <span
-                      style={
-                        r.err5xxPct >= 5
-                          ? { color: 'var(--status-danger)', fontWeight: 600 }
-                          : undefined
-                      }
+                      title={`${r.servicesMeasured} servis ölçüldü, ${r.servicesSkipped} tanesi sayılmadı`}
                     >
-                      {r.req90 ? `${r.err5xxPct}%` : '—'}
+                      {nf(r.servicesMeasured)}
+                      {r.servicesSkipped > 0 && (
+                        <span style={{ color: 'var(--text-muted)' }}> +{nf(r.servicesSkipped)}</span>
+                      )}
                     </span>
                   </Td>
-                  <Td align="right" className="tabular-nums">
-                    {servisIstegi(r)}
-                  </Td>
                   <Td>
-                    {r.lastSeen ? (
-                      fmtDate(r.lastSeen)
+                    {r.routes.length === 0 ? (
+                      <span
+                        className="text-[10px]"
+                        style={{ color: 'var(--text-muted)' }}
+                        title="Envanterde bu uygulamaya bağlanan route yok — servisten servise çağrılan bir backend olabilir."
+                      >
+                        yok
+                      </span>
                     ) : (
-                      <span style={{ color: 'var(--text-muted)' }}>hiç</span>
+                      <div
+                        className="text-[10px] font-mono truncate max-w-[18rem]"
+                        title={r.routes.map((x) => x.address || x.route).join('\n')}
+                      >
+                        {r.routes[0].address || r.routes[0].route}
+                        {r.routes.length > 1 && (
+                          <span style={{ color: 'var(--text-muted)' }}>
+                            {' '}
+                            +{r.routes.length - 1}
+                          </span>
+                        )}
+                      </div>
                     )}
                   </Td>
                   <Td>
                     <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
-                      {r.clusters.join(', ') || '—'}
+                      {r.cluster || '—'}
                     </span>
                   </Td>
                 </tr>
@@ -463,11 +427,11 @@ export default function RouteTraffic() {
       </TableShell>
 
       <p className="text-[11px] max-w-4xl" style={{ color: 'var(--text-muted)' }}>
-        Sayılar OCP router'ının (HAProxy) route başına yanıt sayacından gelir; internet SPA'ları
-        GBNGX'e taşındıkça paket doğrudan nginx'ten sunulur ve o route'ların sayacı düşer — bu
-        "atıl" demek değildir (nginx erişim logu sayımı ayrıca planlı). 4xx/5xx yüzdeleri son{' '}
-        {data.deadDays} günün toplamına göredir; %100 4xx alan bir route "trafik var ama uygulama
-        yok" demektir.
+        Sayılar Dynatrace&apos;in uygulama başına <b>servis isteği</b> ölçümünden gelir
+        (application_usage job&apos;ı, pencere {data.rows[0]?.windowDays || 7} gün) — OCP
+        router&apos;ından değil. Bu yüzden route&apos;u olmayan backend&apos;ler de görünür.
+        &quot;İstek yok&quot; ölçülmüş bir sıfırdır; &quot;ölçülemedi&quot; ise hüküm değildir —
+        emeklilik kararında ikisini karıştırmayın.
       </p>
     </div>
   );

@@ -1,0 +1,266 @@
+// server/audit/__tests__/app-traffic.test.cjs — AT1..AT12 (2026-09-30).
+//
+// Denetim > Route Trafigi ekrani 2026-09-30'da UYGULAMA bazliya cevrildi. Kullanici:
+// "Prometheus'tan cektigimiz metrikler calismiyor. Orayi bos ver. Biz sadece application
+// usage playbook'unu kullanalim ve Dynatrace metriklerine bakalim."
+//
+// Bu bekciler, eski RT/RTU serisinden HALA GECERLI olan tuzaklari tasir:
+//   - "olculemedi" ile "istek yok" birbirine karismasin (emeklilik karari buna bakiyor)
+//   - ayni uygulamanin iki taramasi TOPLANMASIN (ayni istekleri iki kez saymak)
+//   - onek eslesmesi tire sinirinda dursun (apigw != apigwhc)
+//   - eslesme uygulama x envanter buyuklugunde calismasin (ekran 10 dk acilmamisti)
+//   - olcum sorgusu uygulama basina TEK satir cekssin (yarim milyon satir tasinmasin)
+//   - route'u OLMAYAN uygulamalar listede KALSIN (eski ekranin kor noktasi)
+//   - Thanos kolonlari geri sizmasin (bos kolon = yanlis guven)
+'use strict';
+
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const { buildAppTraffic, tekillestir, routelariBul, routeIndeksi } = require('../app-traffic.cjs');
+
+const K = (ns, app, req, extra = {}) => ({
+  scan_date: '2026-09-30',
+  window_days: 7,
+  cluster: 'gbocpprod1',
+  namespace: ns,
+  app,
+  req_total: req,
+  services_total: 3,
+  services_measured: 3,
+  services_skipped: 0,
+  measured: 1,
+  note: '',
+  ...extra,
+});
+const INV = (ns, route, address = '') => ({
+  cluster_name: 'gbocpprod1',
+  namespace_name: ns,
+  route_name: route,
+  route_address: address,
+});
+
+test('AT1: uc durum ayri - olculup istek alan / olculup almayan / OLCULEMEYEN', () => {
+  const r = buildAppTraffic(
+    [
+      K('ns-prod', 'canli', 500),
+      K('ns-prod', 'sessiz', 0),
+      K('ns-prod', 'karanlik', 0, { measured: 0, note: 'metrik sorgusu dustu' }),
+    ],
+    [],
+  );
+  const by = Object.fromEntries(r.rows.map((x) => [x.application, x]));
+  assert.equal(by.canli.status, 'active');
+  assert.equal(by.sessiz.status, 'idle');
+  assert.equal(by.karanlik.status, 'unmeasured');
+  // OLCULEMEYEN SATIRDA SAYI YOK: 0 yazmak, calisan bir uygulamayi emekli aday gosterir.
+  assert.equal(by.canli.reqShown, 500);
+  assert.equal(by.sessiz.reqShown, 0);
+  assert.equal(by.karanlik.reqShown, null);
+  assert.deepEqual(r.summary, {
+    apps: 3,
+    active: 1,
+    idle: 1,
+    unmeasured: 1,
+    routeless: 3,
+    spa: 0,
+    routesWithoutUsage: 0,
+  });
+});
+
+test('AT2: ayni uygulamanin iki taramasi TOPLANMAZ - EN YENI gecerli', () => {
+  // Her satir ZATEN window_days gunluk bir pencere tasiyor; iki taramayi toplamak ayni
+  // istekleri iki kez saymak olurdu.
+  const m = tekillestir([
+    K('ns-prod', 'app', 100, { scan_date: '2026-09-23' }),
+    K('ns-prod', 'app', 250, { scan_date: '2026-09-30' }),
+    K('ns-prod', 'app', 900, { scan_date: '2026-09-28' }),
+  ]);
+  assert.equal(m.size, 1);
+  const u = m.get('ns-prod|app');
+  assert.equal(u.req, 250, 'gunler toplanmis ya da en yeni tarama secilmemis');
+  assert.equal(u.scanDate, '2026-09-30');
+});
+
+test('AT3: onek eslesmesi TIRE sinirinda durur (apigw != apigwhc)', () => {
+  const ADR = 'apigw.apps.fw.garanti.com.tr';
+  const ix = routeIndeksi([INV('mw-prod', 'apigw', ADR)]);
+  const liste = ix.get('mw-prod');
+  assert.equal(routelariBul('apigw-1-prod', liste).length, 1, 'onek eslesmesi tutmadi');
+  assert.equal(routelariBul('apigw', liste).length, 1, 'tam ad eslesmesi tutmadi');
+  assert.equal(
+    routelariBul('apigwhc', liste).length,
+    0,
+    'tiresiz onek eslesmesi ayri bir uygulamayi route ile birlestirdi',
+  );
+});
+
+test('AT4: ayni route birden fazla uygulamaya baglanabilir - toplama YAPILMAZ', () => {
+  // Uretimde olculdu: route `apigw`, Dynatrace `apigw-1-prod`, `-2-prod`, `-3-prod`.
+  // Eski ROUTE bazli ekranda bunlar tek satirda TOPLANIYORDU ve "neyin toplandigi"
+  // ipucunda kaliyordu. Uygulama bazinda toplam GEREKMEZ: her orneginin kendi satiri var.
+  const ADR = 'apigw.apps.fw.garanti.com.tr';
+  const r = buildAppTraffic(
+    [
+      K('mw-prod', 'apigw-1-prod', 9632261646),
+      K('mw-prod', 'apigw-2-prod', 9630161449),
+      K('mw-prod', 'apigw-3-prod', 9630896886),
+    ],
+    [INV('mw-prod', 'apigw', ADR)],
+  );
+  assert.equal(r.rows.length, 3, 'uygulamalar tek satirda toplanmis');
+  for (const x of r.rows) {
+    assert.deepEqual(
+      x.routes.map((y) => y.route),
+      ['apigw'],
+      'route kolonu bos kaldi',
+    );
+    assert.equal(x.routes[0].exact, false, 'onek eslesmesi tam eslesme gibi isaretlenmis');
+  }
+  assert.equal(r.summary.routeless, 0);
+  assert.equal(r.summary.routesWithoutUsage, 0);
+});
+
+test('AT5: route’u OLMAYAN uygulama listede KALIR (eski ekranin kor noktasi)', () => {
+  // Servisten servise cagrilan bir backend router'dan hic gecmez. Route bazli listede
+  // ya hic yoktu ya "sifir istek" gorunuyordu - emekli aday diye okunurdu.
+  const r = buildAppTraffic([K('ns-prod', 'ic-backend', 42)], [INV('ns-prod', 'baska-app', '')]);
+  const satir = r.rows.find((x) => x.application === 'ic-backend');
+  assert.ok(satir, 'route’u olmayan uygulama listeden dusmus');
+  assert.deepEqual(satir.routes, []);
+  assert.equal(satir.status, 'active');
+  assert.equal(r.summary.routeless, 1);
+  // Envanterde olup hicbir uygulamaya baglanamayan route AYRICA sayilir: "hepsini gordum"
+  // yanilgisi olusmasin.
+  assert.equal(r.summary.routesWithoutUsage, 1);
+});
+
+test('AT6: ortam ve SPA isareti satira gecer', () => {
+  const r = buildAppTraffic(
+    [K('sube-prod', 'cso-app-v1', 10), K('sube-test', 'api', 10)],
+    [INV('sube-prod', 'cso-app-v1', 'cso-app-v1.apps.fw.garanti.com.tr')],
+  );
+  const by = Object.fromEntries(r.rows.map((x) => [x.application, x]));
+  assert.equal(by['cso-app-v1'].spa, true);
+  assert.equal(by['cso-app-v1'].env, 'prod');
+  assert.equal(by.api.spa, false);
+  assert.equal(r.summary.spa, 1);
+});
+
+test('AT7: siralama ISTEGE gore azalan; olculemeyen satirlar sona duser', () => {
+  const r = buildAppTraffic(
+    [
+      K('ns-prod', 'kucuk', 5),
+      K('ns-prod', 'olculemeyen', 999999, { measured: 0 }),
+      K('ns-prod', 'buyuk', 1000),
+    ],
+    [],
+  );
+  assert.deepEqual(
+    r.rows.map((x) => x.application),
+    ['buyuk', 'kucuk', 'olculemeyen'],
+    'olculemeyen satirin ham sayisi siralamaya girmis',
+  );
+});
+
+test('AT8: eslesme UYGULAMA x ENVANTER buyuklugunde calismaz (uretim: ekran 10 dk acilmadi)', () => {
+  // 2026-09-29: onek eslesmesi ilk yazildiginda her aday icin tum olcum tablosu
+  // yeniden geziliyordu. Kullanici: "Denetim -> Route Trafigi 10 dakikadir acilmadi".
+  // Olculdu: 43,5 sn -> namespace indeksinden sonra 0,2 sn.
+  //
+  // Bu bekci SURE olcer: mantigi degil BUYUME HIZINI korur. Bilerek bol paylidir.
+  const NS = 100;
+  const UYG = 40000;
+  const ROUTE = 5000;
+  const olcumler = [];
+  const envanter = [];
+  for (let i = 0; i < UYG; i += 1) olcumler.push(K(`ns-${i % NS}-prod`, `svc${i}-1-prod`, 5));
+  for (let i = 0; i < ROUTE; i += 1) {
+    const ns = `ns-${i % NS}-prod`;
+    envanter.push(INV(ns, `r${i}`, `r${i}.apps.fw.garanti.com.tr`));
+  }
+  const t0 = Date.now();
+  const r = buildAppTraffic(olcumler, envanter);
+  const sn = (Date.now() - t0) / 1000;
+  assert.equal(r.rows.length, UYG);
+  // ESIK MUTASYONLA AYARLANDI: indeks kaldirilinca ayni veri 3,1 sn suruyor, saglam
+  // halde 0,2 sn. 5 sn'lik ilk esik bu mutasyonu YAKALAMIYORDU - 2 sn hem saglam kosuya
+  // on kat pay birakir hem regresyonu gorur.
+  assert.ok(
+    sn < 2,
+    `eslesme ${sn.toFixed(1)} sn surdu - uygulama x envanter buyuklugunde calisiyor ` +
+      `(namespace indeksi kaldirilmis olabilir). Saglam halde 0,2 sn, indeks yokken 3,1 sn.`,
+  );
+});
+
+test('AT9: uc dbo.BMW_Application_Usage okur ve uygulama basina TEK satir ceker', () => {
+  // Olculdu (2026-09-30): tablo gunde ~70.000 satir yaziyor; 7 gunluk pencereyi ham
+  // cekmek ~490.000 satir demekti ve altisi zaten atiliyordu.
+  const src = fs.readFileSync(path.join(__dirname, '..', 'denetim.cjs'), 'utf8');
+  const i = src.indexOf("router.get('/route-traffic'");
+  assert.ok(i > 0, 'route-traffic ucu bulunamadi');
+  const blok = src.slice(i, i + 4000);
+  assert.match(blok, /app-traffic\.cjs/, 'uc uygulama bazli modulu kullanmiyor');
+  assert.match(
+    blok,
+    /OBJECT_ID\('dbo\.BMW_Application_Usage'\)/,
+    'tablo varlik kontrolu hala Thanos tablosuna bakiyor',
+  );
+  assert.match(
+    blok,
+    /ROW_NUMBER\(\) OVER \(PARTITION BY namespace, app ORDER BY scan_date DESC\)/,
+    'en yeni satir secimi veritabaninda yapilmiyor - yarim milyon satir tasiniyor',
+  );
+  assert.match(blok, /WHERE rn = 1/, 'ROW_NUMBER var ama suzgec yok');
+  // PENCERE KORUNMALI: son kosu dusen bir uygulama icin bir onceki olcum gecerlidir.
+  assert.match(
+    blok,
+    /DATEADD\(day, -7, CAST\(GETDATE\(\) AS DATE\)\)/,
+    '7 gunluk pencere kaybolmus',
+  );
+});
+
+test('AT10: THANOS kolonlari geri sizmedi (bos kolon = yanlis guven)', () => {
+  // Kullanici: "Hata oranlarini bos ver." Dynatrace 4xx/5xx ve gun kirilimi vermiyor;
+  // o kolonlari bos gostermek, veri varmis gibi okunurdu.
+  const uc = fs.readFileSync(path.join(__dirname, '..', 'denetim.cjs'), 'utf8');
+  const i = uc.indexOf("router.get('/route-traffic'");
+  const blok = uc.slice(i, i + 4000);
+  assert.ok(
+    !/BMW_Openshift_Route_Traffic/.test(blok),
+    'uc hala Thanos trafik tablosunu okuyor',
+  );
+  const ekran = fs.readFileSync(
+    path.join(__dirname, '..', '..', '..', 'src', 'components', 'denetim', 'RouteTraffic.tsx'),
+    'utf8',
+  );
+  for (const kolon of ['req7', 'req30', 'req90', 'err4xxPct', 'err5xxPct', 'perDay', 'lastSeen']) {
+    assert.ok(!ekran.includes(kolon), `ekranda Thanos alani geri gelmis: ${kolon}`);
+  }
+  assert.ok(
+    !fs.existsSync(path.join(__dirname, '..', 'route-traffic.cjs')),
+    'eski route bazli modul hala duruyor - iki kaynak arasinda sessiz ayrisma olur',
+  );
+});
+
+test('AT11: tablo YOKSA bos liste degil, TABLO YOK denir', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'denetim.cjs'), 'utf8');
+  const i = src.indexOf("router.get('/route-traffic'");
+  const blok = src.slice(i, i + 4000);
+  assert.match(blok, /tableMissing: true/, 'tablo yoksa ekran "hic istek yok" gibi okunur');
+  assert.match(blok, /application_usage job/, 'kullaniciya ne yapmasi gerektigi yazilmiyor');
+});
+
+test('AT12: rota + sekme kapisi + seed + sayfa sekmesi yerinde', () => {
+  const den = fs.readFileSync(path.join(__dirname, '..', 'denetim.cjs'), 'utf8');
+  assert.match(den, /\[\/\^\\\/route-traffic\(\\\/\|\$\)\/, 'routetraffic'\]/);
+  assert.match(den, /router\.get\('\/route-traffic'/);
+  const seed = fs.readFileSync(path.join(__dirname, '..', '..', 'db', 'mssql-setup.cjs'), 'utf8');
+  assert.match(seed, /element_key: 'tab:denetim:routetraffic'/);
+  const page = fs.readFileSync(
+    path.join(__dirname, '..', '..', '..', 'src', 'components', 'DenetimPage.tsx'),
+    'utf8',
+  );
+  assert.match(page, /id: 'routetraffic', label: 'Uygulama Trafiği'/);
+});

@@ -2112,56 +2112,43 @@ function initDenetim(app) {
     }
   });
 
-  // ── 3c) ROUTE TRAFIGI (2026-09-21) ───────────────────────────────────────────────────
-  // dbo.BMW_Openshift_Route_Traffic - bmw_openshift_jobs/route_traffic/openshift_route_traffic.yml
-  // doldurur (Thanos, route basina gunluk istek). Envanterle birlestirme + siniflama
-  // route-traffic.cjs'te (birim testli). Son DEAD_DAYS gun okunur; tablo yoksa bos yanit.
+  // ── 3c) ROUTE TRAFIGI — UYGULAMA BAZLI (2026-09-30) ─────────────────────────────────
+  //
+  // KULLANICI KARARI: "Prometheus'tan cektigimiz metrikler calismiyor. Orayi bos ver.
+  // Biz sadece application usage playbook'unu kullanalim ve Dynatrace metriklerine
+  // bakalim. Hata oranlarini bos ver."
+  //
+  // ONCEDEN: dbo.BMW_Openshift_Route_Traffic (Thanos, route basina gunluk istek) ana
+  // kaynakti; Dynatrace olcumu yanina bir kolondu. O is aylardir kosmadigi icin ekrandaki
+  // 15.594 satirin TAMAMI "veri yok" gorunuyordu.
+  //
+  // SIMDI: tek kaynak dbo.BMW_Application_Usage ve birim UYGULAMA. Route'lar eslesen
+  // yerde kolon olarak durur. Gun bazli gecmis / 4xx-5xx oranlari KALDIRILDI - o kirilim
+  // yalnizca Thanos'ta vardi, Dynatrace vermiyor.
   router.get('/route-traffic', async (req, res) => {
     try {
       const { query } = require('../inventory/mssql.cjs');
-      const { buildRouteTraffic, DEAD_DAYS } = require('./route-traffic.cjs');
-      const ex = await query(`SELECT OBJECT_ID('dbo.BMW_Openshift_Route_Traffic') AS oid`);
+      const { buildAppTraffic } = require('./app-traffic.cjs');
+      const ex = await query(`SELECT OBJECT_ID('dbo.BMW_Application_Usage') AS oid`);
       if (!ex.recordset?.[0]?.oid) {
+        // "TABLO YOK" ile "HIC KULLANIM YOK" AYRI: bos liste dondurmek, tum uygulamalar
+        // istek almiyormus gibi okunurdu.
         return res.json({
           ok: true,
           tableMissing: true,
           message:
-            "dbo.BMW_Openshift_Route_Traffic tablosu henüz yok — route_traffic job'ı bir kez koşmalı.",
+            "dbo.BMW_Application_Usage tablosu henüz yok — application_usage job'ı bir kez koşmalı.",
           rows: [],
-          summary: { routes: 0, active: 0, silent: 0, dead: 0, nodata: 0, spa: 0, spaDead: 0 },
+          summary: { apps: 0, active: 0, idle: 0, unmeasured: 0, routeless: 0, spa: 0, routesWithoutUsage: 0 },
           latestScan: null,
-          earliestScan: null,
-          daysCovered: 0,
-          silentDays: 30,
-          deadDays: DEAD_DAYS,
         });
       }
-      const [traffic, inventory, usage] = await Promise.all([
-        query(
-          `SELECT scan_date, window_hours, cluster, namespace, route, req_total, r2xx, r4xx, r5xx
-             FROM dbo.BMW_Openshift_Route_Traffic
-            WHERE scan_date >= DATEADD(day, -${DEAD_DAYS}, CAST(GETDATE() AS DATE))`,
-        ),
-        query(
-          `SELECT cluster_name, namespace_name, route_name, route_address FROM dbo.BMW_Openshift_Route_Inventory`,
-        ).catch(() => ({ recordset: [] })),
-        // DYNATRACE SERVIS OLCUMU (application_usage job'i). Tablo HENUZ YOKSA sorgu duser
-        // ve BOS gecilir: route trafigi bundan etkilenmemeli - bir kaynagin eksikligi
-        // otekini de karartmasin.
-        //
-        // YALNIZ SON 7 GUN: her satir ZATEN 35 gunluk bir pencereyi tasiyor ve yalnizca EN
-        // YENI olcum kullaniliyor. 90 gun cekmek, uygulama x gun kadar satiri (binlerce)
-        // bosuna tasimak olurdu. 7 gun, birkac basarisiz kosuyu atlatacak kadar genis.
+      const [usage, inventory] = await Promise.all([
         // UYGULAMA BASINA YALNIZ EN YENI SATIR - SECIM VERITABANINDA YAPILIR.
-        //
-        // Olculdu (2026-09-30): tablo gunde ~70.000 satir yaziyor. 7 gunluk pencere
-        // ~490.000 satir demek ve buildUsageMap zaten her (namespace, app) icin YALNIZ
-        // EN YENISINI tutuyordu - yani yarim milyon satirin alti bosuna tasiniyordu.
-        // Ekranin gec acilmasinin sebebi buydu; eslesme mantigi 0,3 sn suruyor.
-        //
-        // PENCERE 7 GUN KALIYOR: son kosu dusen bir uygulama icin bir onceki olcum
-        // gecerlidir. ROW_NUMBER ayni secimi yapar, sonuc DEGISMEZ - yalniz satir sayisi
-        // yedide birine iner.
+        // Tablo gunde ~70.000 satir yaziyor; 7 gunluk pencereyi ham cekmek ~490.000 satir
+        // demekti ve altisi zaten atiliyordu (2026-09-30'da olculdu, ekran bu yuzden gec
+        // aciliyordu). PENCERE 7 GUN KALIYOR: son kosuda dusen bir uygulama icin bir
+        // onceki olcum gecerlidir.
         query(
           `SELECT scan_date, window_days, cluster, namespace, app, req_total,
                   services_total, services_measured, services_skipped, measured, note
@@ -2173,19 +2160,22 @@ function initDenetim(app) {
                 WHERE scan_date >= DATEADD(day, -7, CAST(GETDATE() AS DATE))
              ) t
             WHERE rn = 1`,
+        ),
+        // Route envanteri YALNIZ bir kolon icin: uygulamanin disariya acik adresi var mi.
+        // Erisilemezse ekran calismaya devam eder, route kolonu bos kalir.
+        query(
+          `SELECT cluster_name, namespace_name, route_name, route_address FROM dbo.BMW_Openshift_Route_Inventory`,
         ).catch(() => ({ recordset: [] })),
       ]);
       res.json({
         ok: true,
         tableMissing: false,
-        ...buildRouteTraffic(traffic.recordset || [], inventory.recordset || [], {
-          usageRows: usage.recordset || [],
-        }),
+        ...buildAppTraffic(usage.recordset || [], inventory.recordset || []),
       });
     } catch (err) {
       res
         .status(500)
-        .json({ ok: false, message: err.message || 'Route trafiği verisi alınamadı.' });
+        .json({ ok: false, message: err.message || 'Uygulama kullanım verisi alınamadı.' });
     }
   });
 

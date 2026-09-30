@@ -262,7 +262,7 @@ export default function DenetimPage() {
               { id: 'ocp', label: 'OpenShift', icon: Squares2X2Icon },
               { id: 'init', label: 'Init Script', icon: DocumentDuplicateIcon },
               { id: 'deploy', label: 'Deployment Scripts', icon: DocumentDuplicateIcon },
-              { id: 'routetraffic', label: 'Route Trafiği', icon: SignalIcon },
+              { id: 'routetraffic', label: 'Uygulama Trafiği', icon: SignalIcon },
               { id: 'envanter', label: 'Envanter', icon: ChartBarSquareIcon },
               { id: 'degisim', label: 'Envanter Değişim', icon: ClockIcon },
               { id: 'appenvs', label: 'JBoss/WAS', icon: RectangleGroupIcon },
