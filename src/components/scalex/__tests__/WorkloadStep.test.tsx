@@ -1009,3 +1009,121 @@ describe('WorkloadStep - yoklama ritmi', () => {
     expect(sonrasi).toBeGreaterThan(0);
   });
 });
+
+// ── PR-G: GERI/ILERI GEZINMEDE YENIDEN KESIF YOK ────────────────────────────
+//
+// KULLANICININ SOZLERI: *"keşfi çağırdık 5-10 saniyede bitti, sonra işlemlere
+// gittik, her seferinde kontrol vs gerek yok"*.
+//
+// Sihirbaz `<div key={step}>` kullaniyor, yani bu bilesen her adim degisiminde
+// REMOUNT ediliyor ve `operation` adimindan geri donen kullanici `select`
+// fazinda buluyordu kendini — ayni uygulamalar icin AYNI kesfi bir daha
+// kosturuyordu. Sonuc sayfa duzeyinde ZATEN tutuluyordu; eksik olan tek sey onu
+// GERI VERMEKTI.
+describe('WorkloadStep - katalogdan devam (PR-G)', () => {
+  const canliSatir = (over: Partial<ScaleXWorkload> = {}) =>
+    makeWorkload({ namespace: 'ns-test', ...over });
+
+  it('KD1 TAZE onceki sonuc varsa KESIF ACILMAZ, liste ANINDA gelir', async () => {
+    render(
+      <WorkloadStep
+        {...defaultProps}
+        initialWorkloads={[canliSatir()]}
+        initialFetchedAt={Date.now() - 5_000}
+      />,
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    // Liste HEMEN acilmis olmali (secim fazi degil, sonuc fazi).
+    expect(screen.getByText('test-app')).toBeInTheDocument();
+    // Ve HICBIR AWX isi acilmamis olmali.
+    expect(mockDiscover).not.toHaveBeenCalled();
+    expect(mockDiscoverStatus).not.toHaveBeenCalled();
+  });
+
+  it('KD2 BAYAT sonuc yeniden KULLANILMAZ (bayat replica yanlis islem demek)', async () => {
+    mockDiscoverStatus.mockResolvedValue(makeStatusResponse([makeWorkload()]));
+    render(
+      <WorkloadStep
+        {...defaultProps}
+        initialWorkloads={[canliSatir()]}
+        // 2 dakikalik pencerenin DISINDA.
+        initialFetchedAt={Date.now() - 5 * 60_000}
+      />,
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    // `done` fazina ATLAMAMALI: kullanici "Kontrol et" demeli.
+    expect(screen.getByText(/Kontrol et/)).toBeInTheDocument();
+  });
+
+  it('KD3 BASKA namespace`in satirlari yeniden KULLANILMAZ', async () => {
+    render(
+      <WorkloadStep
+        {...defaultProps}
+        initialWorkloads={[canliSatir({ namespace: 'baska-ns' })]}
+        initialFetchedAt={Date.now() - 5_000}
+      />,
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(screen.getByText(/Kontrol et/)).toBeInTheDocument();
+  });
+
+  it('KD4 KAPSAM DISI cluster`in satirlari yeniden KULLANILMAZ', async () => {
+    render(
+      <WorkloadStep
+        {...defaultProps}
+        initialWorkloads={[canliSatir({ cluster: 'baska-cluster' })]}
+        initialFetchedAt={Date.now() - 5_000}
+      />,
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(screen.getByText(/Kontrol et/)).toBeInTheDocument();
+  });
+
+  it('KD5 damga YOKSA yeniden KULLANILMAZ (sentetik `mirror` satirlari)', async () => {
+    render(
+      <WorkloadStep
+        {...defaultProps}
+        // Geri alma yolunda uretilen sentetik satirlar: `fetchedAt` BILEREK null,
+        // cunku replica/HPA alanlari UYDURMA. Onlari canli sanip gostermek,
+        // kullaniciyi bilmedigi bir islemi onaylamaya birakmak olurdu.
+        initialWorkloads={[canliSatir({ source: 'mirror' })]}
+        initialFetchedAt={null}
+      />,
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(screen.getByText(/Kontrol et/)).toBeInTheDocument();
+  });
+
+  it('KD6 devralinan sonucta DAMGA korunur ("su an alindi" denmez)', async () => {
+    const damga = Date.now() - 90_000;
+    const onSubmit = vi.fn();
+    render(
+      <WorkloadStep
+        {...defaultProps}
+        onSubmit={onSubmit}
+        initial={['test-app']}
+        initialWorkloads={[canliSatir()]}
+        initialFetchedAt={damga}
+      />,
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    // `initial` ZATEN secili getiriyor; ada tiklamak onu SECIMDEN CIKARIRDI.
+    fireEvent.click(screen.getByText('Devam'));
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    // `Date.now()` YAZILMAMALI: onizlemedeki tazelik damgasi bunu soyluyor.
+    expect(onSubmit.mock.calls[0][0].fetchedAt).toBe(damga);
+  });
+});
