@@ -84,6 +84,7 @@
     _phase_rows: >-
       {{ _phase_rows + [
         scalex_target.cluster ~ ';' ~ scalex_target.jump_label ~ ';-;-;RUNNER;FAIL;Runner could not complete because of SSH/transport/shell/runtime failure'
+        ~ ' (rc=' ~ (_runner_result.rc | default('-')) ~ ': ' ~ ((_runner_result.stderr | default(_runner_result.msg | default('')) | string | regex_replace('[;\r\n\t]+', ' ') | trim)[:200]) ~ ')'
       ] }}
   when:
     - (_runner_result.unreachable | default(false)) or ((_runner_result.rc | default(0) | int) != 0)
