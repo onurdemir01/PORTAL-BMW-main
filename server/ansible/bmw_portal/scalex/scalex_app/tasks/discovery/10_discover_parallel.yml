@@ -1,0 +1,229 @@
+---
+# CLUSTER'LAR PARALEL — TEK PLAY, TEK ISTE.
+#
+# ── NEDEN AYRI BIR DOSYA ────────────────────────────────────────────────────
+# `10_discover.yml` cluster BASINA kosuyordu (`include_tasks` + `loop`) ve
+# `include_tasks` ASYNC ALAMAZ. Paralellik icin gorevin KENDISI donguyu
+# tasimali; bu dosya butun cluster'lari bir kerede baslatir ve toplar.
+#
+# Seri hali `10_discover.yml` olarak DURUYOR: paralel yol kapaliysa (bkz.
+# `discovery_parallel_effective`) davranis birebir bugunku olur.
+#
+# ── OLCULEN GERCEK 1: `ansible.builtin.script` ASYNC DESTEKLEMIYOR ──────────
+# Denendi: "This action (ansible.builtin.script) does not support async."
+# Bu yuzden betik once jump sunucusuna KOPYALANIR, sonra `shell` ile async
+# baslatilir. `script` gibi kopya BIRAKMAZ degil — o yuzden sonda SILINIR ve
+# dosya adi `job_id` tasir (ayni jump sunucusunda es zamanli iki AWX isi
+# birbirinin dosyasini ezmesin).
+#
+# ── OLCULEN GERCEK 2: DELEGASYON TUZAGI "BASARI" GIBI GORUNUYOR ─────────────
+# Async is dosyalari DELEGE EDILEN HOST'ta durur. `async_status` ayni host'a
+# delege edilmezse sonuc:
+#     finished: true,  msg: "could not find job",  stdout_lines: []
+# Yani `until: finished` ANINDA gecer ve `rc` HIC GELMEZ. Plan bunun "job not
+# found" ile GURULTULU dusecegini varsayiyordu; OLCULDU, DUSMUYOR — basarili
+# gorunuyor ve TUM cluster'lar sessizce BOS doner.
+#
+# Bu yuzden asagidaki toplama `finished`e GUVENMEZ: `rc` alaninin VARLIGINI de
+# sorar. Bir async sonucu `rc` tasimiyorsa o is HIC OKUNAMAMISTIR.
+
+- name: "DISCOVER | Copy runner to every jump server"
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/files/scalex_runner.sh"
+    dest: "{{ _disc_runner_path }}"
+    mode: "0700"
+  delegate_to: "{{ item.runtime_host }}"
+  loop: "{{ target_matrix }}"
+  loop_control:
+    label: "{{ item.cluster }} via {{ item.physical_host }}"
+  register: _disc_copy
+  changed_when: false
+  failed_when: false
+  ignore_unreachable: true
+
+- name: "DISCOVER | Launch every selected cluster in parallel"
+  ansible.builtin.shell:
+    cmd: "{{ _disc_runner_path }}"
+    executable: /bin/bash
+  environment:
+    SCALEX_PHASE: "discover"
+    DISCOVERY_MODE: "{{ discovery_mode_effective }}"
+    CLUSTER: "{{ item.cluster }}"
+    JUMP_SERVER: >-
+      {{ item.jump_label ~ (' -> ' ~ item.physical_host if item.physical_host != item.jump_label else '') }}
+    API_URL: "{{ item.api_url }}"
+    OCP_USERNAME: "{{ username }}"
+    OCP_PASSWORD: "{{ lookup('ansible.builtin.vars', item.credential) }}"
+    OCP_OC_PATHS: "{{ item.oc_paths | join(':') }}"
+    TLS_VERIFY: "{{ item.tls_verify | bool | string | lower }}"
+    NS: "{{ oc_namespace }}"
+    # TEK ISTE COK NAMESPACE. `NS` KALIYOR (eski paket ve mutasyon yolu onu
+    # okuyor); `NS_LIST` yalnizca EKLENIYOR ve bos geldiginde betik listeyi
+    # `NS`ten turetir — yani eski davranis birebir korunur.
+    #
+    # KAZANC: AWX sabit maliyeti (kuyruk + SSH + `oc login`) IS BASINA odenir.
+    # Uc namespace ayri ayri kosturuldugunda o maliyet UC KEZ odeniyordu ve `oc`
+    # cagrilarini sifira indirsen bile ~18 sn taban kaliyordu.
+    NS_LIST: "{{ oc_namespaces_effective | join(',') }}"
+    APP_RAW: "{{ target_app_list | join(',') }}"
+    # CANLI YOKLAMA LISTESI — yalnizca `state` kesfinde dolu gelir. Portal, o
+    # namespace icin AYNASINDA kayitli uygulamalarin adlarini gonderir; betik her
+    # biri icin bir `LIVE` satiri basar (istenen/mevcut/hazir replica).
+    #
+    # `APP_RAW`DAN AYRI: `APP_RAW` ConfigMap listelemesini de suzuyor. Bu listeyle
+    # suzseydik cluster'da durdurulmus ama portalda kaydi OLMAYAN uygulamalar
+    # (`unknown_to_portal`) gorunmez olurdu — sapma tespitinin YARISI kaybolurdu.
+    SCALEX_LIVE_PROBE_APPS: "{{ scalex_live_probe_apps | default('') }}"
+    # CLUSTER YETENEK ONBELLEGI — olceklenebilir CRD listesi.
+    #
+    # Bu liste cluster duzeyidir ve aylarca degismez; portal onu DB'de tutuyor.
+    # Dolu geldiginde betik ~50 `oc get --raw` cagrisini TAMAMEN atlar.
+    #
+    # BOS GECMEK GUVENLIDIR: betik eski yola duser ve listeyi kendisi hesaplar
+    # (fail-safe). Portal onbellek yok/bayat/okunamadi durumlarinda bilerek bos
+    # gonderir — "onbellek yok"u "CRD yok" saymak, olceklenebilir operator
+    # nesnelerini SESSIZCE listeden dusurmek olurdu.
+    #
+    # CLUSTER BASINA: oncelik BU cluster'in kendi kaydindadir. Sozlukte yoksa
+    # `scalex_extra_kinds_fallback` gelir — ve o deger, portal sozluk gonderdiyse
+    # BILEREK bos olur (bkz. 01_prepare.yml "Resolve per-cluster capability
+    # cache"): baska bir cluster'in listesiyle sinirlanmak, bu cluster'in kendi
+    # CRD'lerini sessizce dusurmek olurdu.
+    #
+    # `default(x)` BOOLEAN DEGIL: yalnizca ANAHTAR YOKSA geriye dusulur.
+    SCALEX_EXTRA_KINDS: "{{ scalex_cluster_kinds_effective[item.cluster] | default(scalex_extra_kinds_fallback) }}"
+    # "TARANDI AMA BOS" — BOS LISTEDEN AYRI BIR HAL.
+    #
+    # `SCALEX_EXTRA_KINDS=''` betik tarafinda "onbellek YOK" demek ve ~50
+    # `oc get --raw` cagrisini yeniden kosturur. Oysa portal "bu cluster tarandi,
+    # olceklenebilir EKSTRA CRD YOK" da diyebiliyor ve bu bilgi tam olarak o
+    # cagrilari atlatan bilgi. Sozlukte ANAHTARIN VARLIGI bunu soyler: portal
+    # yalnizca GUVENILIR bir kaydi olan cluster'i sozluge koyar.
+    #
+    # AYRI DEGISKEN, ORTAK DEGERE ISARET KOYMAK DEGIL: `'-'` gibi bir isaret
+    # degeri ESKI bir pakette gercek bir tip adi sanilirdi. Tanimadigi bir ortam
+    # degiskenini ise eski paket sessizce YOK SAYAR.
+    SCALEX_EXTRA_KINDS_SCANNED: "{{ 'yes' if (item.cluster in scalex_cluster_kinds_effective) else 'no' }}"
+    # Kesifte islem YOK. Betik `discover` fazinda `ACTION` aramaz; yine de bos
+    # gecmek, degiskenin tanimsiz kalmasindan iyidir (`set -u` ile calisiyor).
+    ACTION: ""
+    WORKLOAD_KIND: "auto"
+    JOB_ID: "{{ job_id }}"
+    CREATED_BY: "{{ username }}"
+  delegate_to: "{{ item.runtime_host }}"
+  loop: "{{ target_matrix }}"
+  loop_control:
+    label: "{{ item.cluster }} via {{ item.physical_host }}"
+  async: "{{ discovery_async_seconds_effective | int }}"
+  poll: 0
+  register: _disc_async
+  changed_when: false
+  failed_when: false
+  ignore_unreachable: true
+  no_log: true
+
+# ASYNC IS DOSYALARI DELEGE EDILEN HOST'TA DURUR — `delegate_to` BURADA DA SART.
+# Kaldirilirsa sonuc `finished: true` + `could not find job` + BOS cikti olur,
+# yani basari gibi gorunur ve tum cluster'lar sessizce kaybolur (olculdu).
+- name: "DISCOVER | Collect parallel results"
+  ansible.builtin.async_status:
+    jid: "{{ item.ansible_job_id }}"
+  delegate_to: "{{ item.item.runtime_host }}"
+  loop: "{{ _disc_async.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item.cluster }}"
+  when: item.ansible_job_id is defined
+  register: _disc_done
+  until: _disc_done.finished is defined and _disc_done.finished
+  retries: "{{ ((discovery_async_seconds_effective | int) / 3) | round(0, 'ceil') | int }}"
+  delay: 3
+  changed_when: false
+  failed_when: false
+  ignore_unreachable: true
+  no_log: true
+
+- name: "DISCOVER | Remove copied runner"
+  ansible.builtin.file:
+    path: "{{ _disc_runner_path }}"
+    state: absent
+  delegate_to: "{{ item.runtime_host }}"
+  loop: "{{ target_matrix }}"
+  loop_control:
+    label: "{{ item.cluster }}"
+  changed_when: false
+  failed_when: false
+  ignore_unreachable: true
+
+# Baslatma ve toplama sonuclari SIRA SIRA eslesir; `zip` ikisini tek listede
+# birlestirir. Atlanan (is numarasi olmayan) girdiler de listede DURUR — aksi
+# halde ulasilamayan bir cluster hic raporlanmazdi.
+- name: "DISCOVER | Pair launch and collect results"
+  ansible.builtin.set_fact:
+    _disc_pairs: "{{ (_disc_async.results | default([])) | zip(_disc_done.results | default([])) | list }}"
+  changed_when: false
+
+- name: "DISCOVER | Collect sanitized rows per cluster"
+  ansible.builtin.set_fact:
+    _discovery_rows: >-
+      {{ _discovery_rows + ((item.1.stdout_lines | default([]))
+         | select('match', '^[^;]*;[^;]*;[^;]*;[^;]*;[^;]*;[^;]*;.*$') | list) }}
+  loop: "{{ _disc_pairs }}"
+  loop_control:
+    label: "{{ item.0.item.cluster }}"
+  changed_when: false
+
+# ── BASARISIZLIK: DORT AYRI SEBEP, HEPSI ACIK ──────────────────────────────
+#   ulasilamadi        -> SSH/transport
+#   is numarasi yok    -> async hic baslamadi
+#   `rc` YOK           -> async sonucu OKUNAMADI (delegasyon/async-dir uyusmazligi)
+#   `rc` != 0          -> betik kendi icinde dustu
+# `rc` VARLIGI SART: delegasyon tuzagi `finished: true` dondurdugu icin ona
+# guvenen bir kontrol bu sinifi HIC gormez.
+- name: "DISCOVER | Record transport/runtime failure"
+  ansible.builtin.set_fact:
+    _discovery_rows: >-
+      {{ _discovery_rows + [
+        item.0.item.cluster ~ ';' ~ item.0.item.jump_label ~ ';-;-;RUNNER;FAIL;Discovery could not complete because of SSH/transport/shell/runtime failure'
+      ] }}
+    _failed_clusters: "{{ _failed_clusters + [item.0.item.cluster] }}"
+  loop: "{{ _disc_pairs }}"
+  loop_control:
+    label: "{{ item.0.item.cluster }}"
+  when:
+    - (item.0.unreachable | default(false)) or (item.1.unreachable | default(false))
+      or (item.0.ansible_job_id is not defined)
+      or (not (item.1.finished | default(false)))
+      or (item.1.rc is not defined)
+      or ((item.1.rc | default(0) | int) != 0)
+  changed_when: false
+
+- name: "DISCOVER | Record empty runner response"
+  ansible.builtin.set_fact:
+    _discovery_rows: >-
+      {{ _discovery_rows + [
+        item.0.item.cluster ~ ';' ~ item.0.item.jump_label ~ ';-;-;RUNNER;FAIL;Discovery returned no structured result rows'
+      ] }}
+    _failed_clusters: "{{ _failed_clusters + [item.0.item.cluster] }}"
+  loop: "{{ _disc_pairs }}"
+  loop_control:
+    label: "{{ item.0.item.cluster }}"
+  when:
+    - item.0.item.cluster not in _failed_clusters
+    - item.1.rc is defined
+    - (item.1.rc | int) == 0
+    - ((item.1.stdout_lines | default([])) | select('match', '^[^;]*;[^;]*;[^;]*;[^;]*;[^;]*;[^;]*;.*$') | list | length) == 0
+  changed_when: false
+
+# Betik icinde FAIL uretmis (or. RBAC reddi) bir cluster da BASARISIZ sayilir:
+# portal `failed_clusters` listesini kullanicinin "hangi cluster okunamadi"
+# sorusunu yanitlamak icin kullaniyor.
+- name: "DISCOVER | Mark cluster failed when the runner reported a FAIL row"
+  ansible.builtin.set_fact:
+    _failed_clusters: "{{ _failed_clusters + [item.0.item.cluster] }}"
+  loop: "{{ _disc_pairs }}"
+  loop_control:
+    label: "{{ item.0.item.cluster }}"
+  when:
+    - item.0.item.cluster not in _failed_clusters
+    - ((item.1.stdout_lines | default([])) | select('search', ';FAIL;') | list | length) > 0
+  changed_when: false

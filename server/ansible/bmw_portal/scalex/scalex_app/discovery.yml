@@ -56,12 +56,27 @@
             _discovery_rows: []
             _failed_clusters: []
 
-        - name: "DISCOVER | Read every selected cluster"
+        # ── CLUSTER'LAR PARALEL ya da SERI ───────────────────────────────────
+        #
+        # PLAY SAYISI 1'DE KALIR: ikinci bir play, `vars:` kapsaminin sonraki
+        # play'e TASINMAMASI (ansible-play-vars-kapsami) ve TUZAK 3/4 demekti.
+        #
+        # SERI YOL SILINMEDI. Paralel yol `async` kullaniyor ve bir jump
+        # sunucusunda async dizini yazilamazsa calismaz; o durumda tek cikis
+        # yolu `scalex_discovery_parallel: false` ile eski yola donmek.
+        - name: "DISCOVER | Read every selected cluster (parallel)"
+          ansible.builtin.include_tasks: tasks/discovery/10_discover_parallel.yml
+          vars:
+            _disc_runner_path: "/tmp/scalex_runner_{{ job_id }}.sh"
+          when: discovery_parallel_effective | bool
+
+        - name: "DISCOVER | Read every selected cluster (serial)"
           ansible.builtin.include_tasks: tasks/discovery/10_discover.yml
           loop: "{{ target_matrix }}"
           loop_control:
             loop_var: scalex_target
             label: "{{ scalex_target.cluster }} via {{ scalex_target.physical_host }}"
+          when: not (discovery_parallel_effective | bool)
 
         - name: "Publish discovery result for the portal"
           ansible.builtin.include_tasks: tasks/discovery/25_publish_result.yml
