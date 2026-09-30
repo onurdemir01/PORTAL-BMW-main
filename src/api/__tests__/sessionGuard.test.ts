@@ -155,4 +155,27 @@ describe('sessionGuard', () => {
     await window.fetch(`${window.location.origin}/api/auth/prefs`);
     expect(ag).not.toHaveBeenCalled();
   });
+
+  it('SG12 — eski oturumun gecikmis 401i yeni oturumu KAPATMAZ', async () => {
+    const haber = vi.fn();
+    let eskiYanitiVer!: (response: Response) => void;
+    const eskiYanit = new Promise<Response>((resolve) => {
+      eskiYanitiVer = resolve;
+    });
+
+    oturumBittiAbone(haber);
+    oturumDurumunuBildir(true); // oturum A
+    ag.mockReturnValueOnce(eskiYanit);
+    const eskiIstek = window.fetch('/api/visibility/version');
+
+    oturumDurumunuBildir(false); // A'dan cikis
+    oturumDurumunuBildir(true); // oturum B
+    eskiYanitiVer(yanit(401, true));
+    await eskiIstek;
+
+    expect(oturumBittiMi()).toBe(false);
+    expect(haber).not.toHaveBeenCalled();
+    await window.fetch('/api/auth/prefs');
+    expect(ag).toHaveBeenCalledTimes(2);
+  });
 });

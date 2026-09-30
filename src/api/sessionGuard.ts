@@ -52,6 +52,12 @@ let _oturumVar = false;
 /** Oturumun bittigi kanitlandi mi. Kapali kaldigi surece ag'a cikilmaz. */
 let _bitti = false;
 
+/**
+ * Oturum siniri her degistiginde ilerler. Boylece eski bir oturumda baslayan
+ * gecikmis istek, yeni girisin kapisini sonradan gelen 401 ile kapatamaz.
+ */
+let _oturumNesli = 0;
+
 const _aboneler = new Set<() => void>();
 
 /** Oturum bitince haber verilir (AuthContext kullaniciyi giris ekranina duser). */
@@ -62,6 +68,7 @@ export function oturumBittiAbone(fn: () => void): () => void {
 
 /** AuthContext her `user` degisiminde cagirir. `true` kapiyi ACAR (yeni giris). */
 export function oturumDurumunuBildir(varMi: boolean): void {
+  if (_oturumVar !== varMi || (varMi && _bitti)) _oturumNesli += 1;
   _oturumVar = varMi;
   if (varMi) _bitti = false;
 }
@@ -86,8 +93,10 @@ function apiMi(url: string): boolean {
  */
 function yolCikar(input: RequestInfo | URL): string {
   const ham =
-    typeof input === 'string' ? input
-      : input instanceof URL ? input.href
+    typeof input === 'string'
+      ? input
+      : input instanceof URL
+        ? input.href
         : (input as Request).url || '';
   if (ham.startsWith('/')) return ham;
   try {
@@ -144,8 +153,16 @@ export function sessionGuardKur(): void {
     // durdurmak, o donguyu YAZAN her gelistiriciye guvenmek demekti.
     if (_bitti && !muafMi(yol)) return sentetik401();
 
+    const istekOturumNesli = _oturumNesli;
+    const istekteOturumVardi = _oturumVar;
     const res = await _gercekFetch!(input, init);
-    if (res.status === 401 && _oturumVar && res.headers.get(SESSION_HEADER) === 'expired') {
+    if (
+      res.status === 401 &&
+      istekteOturumVardi &&
+      _oturumVar &&
+      istekOturumNesli === _oturumNesli &&
+      res.headers.get(SESSION_HEADER) === 'expired'
+    ) {
       kapiyiKapat();
     }
     return res;
@@ -159,5 +176,6 @@ export function _sessionGuardSifirla(): void {
   _gercekFetch = null;
   _oturumVar = false;
   _bitti = false;
+  _oturumNesli = 0;
   _aboneler.clear();
 }
