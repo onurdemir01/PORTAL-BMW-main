@@ -9,7 +9,7 @@ umask 077
 # "playbook'un guncel surumu kopyalanmamis olabilir" diye TAHMIN ediyordu; artik
 # calistirici surumu bildiriyor ve portal kendi bekledigi surumle karsilastirip
 # SOYLUYOR. Bu dosya `scalex_app/VERSION` ile ayni sayiyi tasimali (test kilitler).
-PACKAGE_VERSION="18"
+PACKAGE_VERSION="19"
 
 PHASE="${SCALEX_PHASE:-${CHAOS_PHASE:-precheck}}"
 CLUSTER="${CLUSTER:-}"
@@ -276,6 +276,25 @@ EXTRA_KINDS_TEXT="$(printf '%s\n' "${SCALEX_EXTRA_KINDS:-}" | tr ',;' '\n\n' | a
 # sanilirdi (`oc get -` denenir, sahte bir WARN satiri cikardi). Tanimadigi
 # bir ortam degiskenini ise eski paket sessizce YOK SAYAR.
 EXTRA_KINDS_SCANNED="$(normalize_lower "${SCALEX_EXTRA_KINDS_SCANNED:-no}")"
+
+# ── COK NAMESPACE: TEK ISTE ─────────────────────────────────────────────────
+#
+# OLCULEN TABAN: `namespace` TEKILDI, yani "3 namespace" = 3 AYRI AWX isi = AWX
+# sabit maliyeti (kuyruk + SSH + `oc login`) UC KEZ. `oc` cagrilarini sifira
+# indirsen bile 3 x ~6 sn = ~18 sn taban kaliyordu; kullanicinin ≤20 sn hedefi
+# bu olmadan TUTMUYOR.
+#
+# `NS` KALIYOR: eski AWX paketleri ve mutasyon yolu onu okuyor. `NS_LIST` yalnizca
+# EKLENIYOR ve bos geldiginde liste `NS`ten turetiliyor — yani eski davranis
+# birebir korunur.
+#
+# `NAMESPACES` ADI KULLANILMIYOR: `namespace` Jinja'nin kendi global adi ve
+# playbook tarafinda `is defined` HEP true doner (bkz. jinja-global-tuzagi).
+# Buradaki kabuk degiskeni de o aileyle karistirilmasin diye `NS_LIST`.
+NS_LIST_TEXT="$(printf '%s\n' "${NS_LIST:-}" | tr ',;' '\n\n' | awk '{$1=$1}; NF && !seen[$0]++ {print}')"
+if [ -z "$NS_LIST_TEXT" ] && [ -n "$NS" ]; then
+  NS_LIST_TEXT="$NS"
+fi
 if [ -z "$APPS_TEXT" ] && [ "$PHASE" != "discover" ]; then
   log "$CLUSTER" "$JUMP_SERVER" "-" "-" "INPUT" "FAIL" "No application remained after parsing input"
   exit 0
@@ -591,7 +610,12 @@ AR_NAME_FILE=""
 AR_KIND_FILE=""
 AR_PID_NAME=""
 AR_PID_KIND=""
+# Envanter CLUSTER duzeyidir: namespace degistiginde DEGISMEZ. Cok namespace'li
+# bir iste her namespace icin yeniden okumak, en pahali adimi namespace sayisiyla
+# CARPMAK olurdu (3 namespace = 6 `api-resources`).
+AR_DONE="no"
 disc_inventory_start() {
+  [ "$AR_DONE" = "yes" ] && return 0
   AR_NAME_FILE="$(mktemp "${WORKDIR}/.scalex_ar_name_XXXXXX" 2>/dev/null || true)"
   AR_KIND_FILE="$(mktemp "${WORKDIR}/.scalex_ar_kind_XXXXXX" 2>/dev/null || true)"
   if [ -z "$AR_NAME_FILE" ] || [ -z "$AR_KIND_FILE" ]; then
@@ -607,6 +631,8 @@ disc_inventory_start() {
 # Arka plandaki cagrilari toplar ve globalleri kurar. Baslatilamamissa SENKRON
 # yola duser — davranis ayni, yalnizca cakistirma kazanci yok.
 disc_inventory_finish() {
+  [ "$AR_DONE" = "yes" ] && return 0
+  AR_DONE="yes"
   if [ -z "$AR_NAME_FILE" ] || [ -z "$AR_KIND_FILE" ]; then
     load_cluster_resources
     load_cluster_kind_map
@@ -1615,25 +1641,25 @@ disc_emit_kind() {
       [ -z "$f3" ] && f3=0
       [ -z "$f4" ] && f4=0
       log "$CLUSTER" "$JUMP_SERVER" "$name" "$(kind_to_display "$kind")" "WORKLOAD" "OK" \
-        "resource=$(disc_val "$res") scalable=yes spec=$(disc_val "$f2") status=$(disc_val "$f3") ready=$(disc_val "$f4") hpa=$(disc_has_hpa "$name") state_phase=$(disc_val "$DISC_STATE_PHASE") previous_replicas=$(disc_val "$DISC_STATE_PREV") image=$(disc_val "$image") gitops=$(disc_gitops "$argo" "$managed")"
+        "namespace=$(disc_val "$NS") resource=$(disc_val "$res") scalable=yes spec=$(disc_val "$f2") status=$(disc_val "$f3") ready=$(disc_val "$f4") hpa=$(disc_has_hpa "$name") state_phase=$(disc_val "$DISC_STATE_PHASE") previous_replicas=$(disc_val "$DISC_STATE_PREV") image=$(disc_val "$image") gitops=$(disc_gitops "$argo" "$managed")"
     elif kind_is_discovered_crd "$kind"; then
       # Cluster'dan kesfedildi, `scale` alt kaynagi var — ama islem yolu bu tip icin
       # kanitlanmadi (bkz. kind_is_discovered_crd). Gorunur, secilemez.
       [ -z "$f2" ] && f2=0
       [ -z "$f4" ] && f4=0
       log "$CLUSTER" "$JUMP_SERVER" "$name" "$(kind_to_display "$kind")" "WORKLOAD" "OK" \
-        "resource=$(disc_val "$res") scalable=no reason=unsupported_kind spec=$(disc_val "$f2") ready=$(disc_val "$f4") image=$(disc_val "$image") gitops=$(disc_gitops "$argo" "$managed")"
+        "namespace=$(disc_val "$NS") resource=$(disc_val "$res") scalable=no reason=unsupported_kind spec=$(disc_val "$f2") ready=$(disc_val "$f4") image=$(disc_val "$image") gitops=$(disc_gitops "$argo" "$managed")"
     elif [ "$kind" = "cronjob" ]; then
       # `spec.suspend` bos gelebilir (alan hic yazilmamissa) — o durumda CronJob
       # AKTIFTIR, "bilinmiyor" degil.
       [ -z "$f2" ] && f2="false"
       log "$CLUSTER" "$JUMP_SERVER" "$name" "$(kind_to_display "$kind")" "WORKLOAD" "OK" \
-        "resource=$(disc_val "$res") scalable=no reason=suspend_not_replicas suspended=$(disc_val "$f2") schedule=$(disc_val "$f3") image=$(disc_val "$image") gitops=$(disc_gitops "$argo" "$managed")"
+        "namespace=$(disc_val "$NS") resource=$(disc_val "$res") scalable=no reason=suspend_not_replicas suspended=$(disc_val "$f2") schedule=$(disc_val "$f3") image=$(disc_val "$image") gitops=$(disc_gitops "$argo" "$managed")"
     else
       [ -z "$f2" ] && f2=0
       [ -z "$f4" ] && f4=0
       log "$CLUSTER" "$JUMP_SERVER" "$name" "$(kind_to_display "$kind")" "WORKLOAD" "OK" \
-        "resource=$(disc_val "$res") scalable=no reason=node_scheduled desired=$(disc_val "$f2") ready=$(disc_val "$f4") image=$(disc_val "$image") gitops=$(disc_gitops "$argo" "$managed")"
+        "namespace=$(disc_val "$NS") resource=$(disc_val "$res") scalable=no reason=node_scheduled desired=$(disc_val "$f2") ready=$(disc_val "$f4") image=$(disc_val "$image") gitops=$(disc_gitops "$argo" "$managed")"
     fi
   done < "$dosya"
 
@@ -1641,7 +1667,7 @@ disc_emit_kind() {
   # istenen uygulama suzgeci; bu "bakamadim" DEGIL.)
   if [ "$raw" -gt 0 ] || [ "$okuma_dustu" != "yes" ]; then
     log "$CLUSTER" "$JUMP_SERVER" "-" "$(kind_to_display "$kind")" "WORKLOAD_KIND" "OK" \
-      "kind=$(disc_val "$kind") resource=$(disc_val "$res") found=$(disc_val "$count") scalable=$(kind_is_scalable "$kind" && echo yes || echo no)$(kind_is_discovered_crd "$kind" && printf ' %s' 'discovered=yes' || true)"
+      "namespace=$(disc_val "$NS") kind=$(disc_val "$kind") resource=$(disc_val "$res") found=$(disc_val "$count") scalable=$(kind_is_scalable "$kind" && echo yes || echo no)$(kind_is_discovered_crd "$kind" && printf ' %s' 'discovered=yes' || true)"
     return 0
   fi
 
@@ -1822,14 +1848,14 @@ discover_workloads() {
   [ -n "$obek" ] && disc_scan_chunk "$obek"
 
   if [ "$DISC_FOUND_ANY" -eq 0 ]; then
-    log "$CLUSTER" "$JUMP_SERVER" "-" "-" "WORKLOAD" "WARN" "No workload matched in namespace $(disc_val "$NS")"
+    log "$CLUSTER" "$JUMP_SERVER" "-" "-" "WORKLOAD" "WARN" "No workload matched namespace=$(disc_val "$NS")"
   fi
 }
 
 discover_state() {
   local cmname app kind prev phase created_at created_by jid legacy found_any=0
   if ! oc auth can-i list configmaps -n "$NS" 2>/dev/null | grep -qi '^yes$'; then
-    log "$CLUSTER" "$JUMP_SERVER" "-" "-" "STATE" "FAIL" "Missing permission: list configmaps in namespace"
+    log "$CLUSTER" "$JUMP_SERVER" "-" "-" "STATE" "FAIL" "Missing permission: list configmaps namespace=$(disc_val "$NS")"
     return 0
   fi
   while IFS='|' read -r cmname app kind prev phase created_at created_by jid; do
@@ -1848,12 +1874,12 @@ discover_state() {
     found_any=1
     printf '%s' "$prev" | grep -Eq '^[0-9]+$' || prev="-"
     log "$CLUSTER" "$JUMP_SERVER" "$app" "$(kind_to_display "${kind:--}")" "STATE" "OK" \
-      "cm=$(disc_val "$cmname") legacy=$legacy previous_replicas=$(disc_val "$prev") phase=$(disc_val "$phase") created_at=$(disc_val "$created_at") created_by=$(disc_val "$created_by") job_id=$(disc_val "$jid")"
+      "namespace=$(disc_val "$NS") cm=$(disc_val "$cmname") legacy=$legacy previous_replicas=$(disc_val "$prev") phase=$(disc_val "$phase") created_at=$(disc_val "$created_at") created_by=$(disc_val "$created_by") job_id=$(disc_val "$jid")"
   done <<EOF_DISC_STATE
 $(oc get cm -n "$NS" -o jsonpath='{range .items[*]}{.metadata.name}{"|"}{.data.app}{"|"}{.data.kind}{"|"}{.data.previous_replicas}{"|"}{.data.phase}{"|"}{.data.created_at}{"|"}{.data.created_by}{"|"}{.data.job_id}{"\n"}{end}' 2>/dev/null || true)
 EOF_DISC_STATE
   if [ "$found_any" -eq 0 ]; then
-    log "$CLUSTER" "$JUMP_SERVER" "-" "-" "STATE" "OK" "No reversible state record found in namespace $(disc_val "$NS")"
+    log "$CLUSTER" "$JUMP_SERVER" "-" "-" "STATE" "OK" "No reversible state record found namespace=$(disc_val "$NS")"
   fi
   discover_live_probe
 }
@@ -1880,13 +1906,13 @@ discover_live_probe() {
     if ! detect_workload "$app"; then
       # Tip bulunamadi: uygulama namespace'te YOK (silinmis olabilir). Bu da bir
       # CEVAP — "bakamadim" ile karistirilmasin diye ayri bir belirtec tasiyor.
-      log "$CLUSTER" "$JUMP_SERVER" "$app" "-" "LIVE" "INFO" "workload_absent=yes"
+      log "$CLUSTER" "$JUMP_SERVER" "$app" "-" "LIVE" "INFO" "namespace=$(disc_val "$NS") workload_absent=yes"
       continue
     fi
     display="$(kind_to_display "$DETECTED_KIND")"
     read_replica_state "$DETECTED_RESOURCE" "$app"
     log "$CLUSTER" "$JUMP_SERVER" "$app" "$display" "LIVE" "OK" \
-      "spec=$(disc_val "$RV_DESIRED") status=$(disc_val "$RV_CURRENT") ready=$(disc_val "$RV_READY")"
+      "namespace=$(disc_val "$NS") spec=$(disc_val "$RV_DESIRED") status=$(disc_val "$RV_CURRENT") ready=$(disc_val "$RV_READY")"
   done <<EOF_LIVE_PROBE
 $LIVE_PROBE_TEXT
 EOF_LIVE_PROBE
@@ -2001,25 +2027,70 @@ EOF_CAPS
   done
 }
 
+# SURE RAPORU — NAMESPACE BASINA BIR SATIR.
+#
+# `INFO`: OK/WARN/FAIL sayaclarina ve `overall_status`a KARISMAZ, `problems[]`e
+# dusmez. Olcum bir ariza degildir.
+#
+# `setup_ms` oturum acmaya kadar geceni (AWX'ten sonraki bastion + `oc login` +
+# kubeconfig) olcer ve TEK ISTEKI TUM namespace satirlarinda AYNIDIR — cunku o
+# maliyet gercekten PAYLASILIR; cok namespace'e gecmenin butun kazanci zaten
+# onu bir kez odemekten geliyor. `discover_ms` yalnizca O NAMESPACE'in
+# taramasidir. Ikisini AYIRMAK sart: toplam sureye bakip `oc` cagrisi azaltmak,
+# darbogaz login tarafindaysa hicbir sey kazandirmaz.
+#
+# `elapsed_ms` betigin BASINDAN o satirin basildigi ana kadar gecen SURE. Tek
+# namespace'li bir iste bu `setup + discover`a esittir, yani onceki davranisla
+# birebir ayni. Cok namespace'te ikinci satirin `elapsed_ms`i birincinin
+# taramasini da ICERIR — bu bir hata degil, "bu is su ana kadar ne kadar surdu"
+# sorusunun cevabi; namespace'in KENDI maliyeti `discover_ms`tir.
+disc_timing_row() {
+  local bas="$1" simdi
+  simdi="$(now_ms)"
+  log "$CLUSTER" "$JUMP_SERVER" "-" "-" "TIMING" "INFO" \
+    "phase=discover mode=$(disc_val "$DISCOVERY_MODE") namespace=$(disc_val "${NS:-}") kinds=$(disc_val "$TIMING_KINDS") cached=$(disc_val "$TIMING_CACHED") setup_ms=$(ms_delta "$SCRIPT_START_MS" "$DISC_START_MS") discover_ms=$(ms_delta "$bas" "$simdi") elapsed_ms=$(ms_delta "$SCRIPT_START_MS" "$simdi")"
+}
+
 rc=0
 if [ "$PHASE" = "discover" ]; then
   DISC_START_MS="$(now_ms)"
-  case "$DISCOVERY_MODE" in
-    workloads)    discover_workloads ;;
-    state)        discover_state ;;
-    health)       discover_health ;;
-    capabilities) discover_capabilities ;;
-  esac
-  # SURE RAPORU. `INFO` — OK/WARN/FAIL sayaclarina ve `overall_status`a KARISMAZ,
-  # `problems[]`e dusmez: olcum bir ariza degildir.
-  #
-  # `setup_ms` oturum acmaya kadar geceni (AWX'ten sonraki bastion + `oc login` +
-  # kubeconfig), `discover_ms` yalnizca taramayi olcer. Ikisini AYIRMAK sart: toplam
-  # sureye bakip `oc` cagrisi azaltmak, darbogaz login tarafindaysa hicbir sey
-  # kazandirmaz.
-  TIMING_NOW_MS="$(now_ms)"
-  log "$CLUSTER" "$JUMP_SERVER" "-" "-" "TIMING" "INFO" \
-    "phase=discover mode=$(disc_val "$DISCOVERY_MODE") namespace=$(disc_val "${NS:-}") kinds=$(disc_val "$TIMING_KINDS") cached=$(disc_val "$TIMING_CACHED") setup_ms=$(ms_delta "$SCRIPT_START_MS" "$DISC_START_MS") discover_ms=$(ms_delta "$DISC_START_MS" "$TIMING_NOW_MS") elapsed_ms=$(ms_delta "$SCRIPT_START_MS" "$TIMING_NOW_MS")"
+  if [ "$DISCOVERY_MODE" = "capabilities" ]; then
+    # CLUSTER DUZEYI: namespace'e hic girmez (yukaridaki `oc project` de atlanir).
+    discover_capabilities
+    disc_timing_row "$DISC_START_MS"
+  else
+    # ── NAMESPACE DONGUSU, TEK LOGIN ─────────────────────────────────────────
+    #
+    # AWX sabit maliyeti (kuyruk + SSH + `oc login`) IS BASINA odenir, namespace
+    # basina DEGIL. Tek iste uc namespace taramak o maliyeti UCE BOLER.
+    #
+    # BIR NAMESPACE'IN DUSMESI DIGERLERINI DUSURMEZ: `oc project` basarisizsa o
+    # namespace icin FAIL satiri cikar ve dongu DEVAM eder. Aksi halde erisilemez
+    # tek bir namespace, ayni isteki digerlerinin sonucunu da goturmus olurdu —
+    # bu depoda "tek tip patlayinca hepsi gitti" olarak yasanan hata sinifi.
+    while IFS= read -r _ns; do
+      [ -z "$_ns" ] && continue
+      NS="$_ns"
+      # Ilk namespace icin `oc project` zaten yukarida kosuldu; ayni cagriyi
+      # tekrarlamak bedava degil, ama ATLAMAK da dogru degil: dongu sirasi
+      # degisebilir. Olcut "su anda hangi namespace'teyiz" — `oc project` tek
+      # cagri ve namespace basina bir kez.
+      if ! oc project "$NS" >/dev/null 2>&1; then
+        log "$CLUSTER" "$JUMP_SERVER" "-" "-" "NAMESPACE" "FAIL" \
+          "Namespace/project not found or not accessible: $NS namespace=$(disc_val "$NS")"
+        continue
+      fi
+      NS_START_MS="$(now_ms)"
+      case "$DISCOVERY_MODE" in
+        workloads)    discover_workloads ;;
+        state)        discover_state ;;
+        health)       discover_health ;;
+      esac
+      disc_timing_row "$NS_START_MS"
+    done <<EOF_NS_LIST
+$NS_LIST_TEXT
+EOF_NS_LIST
+  fi
 else
   while IFS= read -r app; do
     [ -z "$app" ] && continue

@@ -596,6 +596,22 @@ async function resolveScope(req, { requireApps = true } = {}) {
   const apps = [
     ...new Set((Array.isArray(b.apps) ? b.apps : []).map((a) => String(a).trim()).filter(Boolean)),
   ];
+  // ── EK NAMESPACE'LER (TEK ISTE COK NAMESPACE) ──────────────────────────────
+  //
+  // `namespace` TEKIL KALIYOR ve listenin ILKIDIR: her cagiran onu gonderiyor,
+  // her bekci onu kilitliyor. `namespaces` yalnizca EKLENIYOR; gelmediginde
+  // davranis birebir bugunku olur.
+  //
+  // YETKI HER NAMESPACE ICIN AYRI SORULUR (asagida). Yalnizca ilkini sormak,
+  // kullanicinin GORMEDIGI bir namespace'in uygulama adlarini ona listelemek
+  // olurdu — ve bu uc `assertNamespaceAllowed`in var olus sebebi.
+  const namespaces = [
+    ...new Set(
+      [namespace, ...(Array.isArray(b.namespaces) ? b.namespaces : [])]
+        .map((n) => String(n).trim())
+        .filter(Boolean),
+    ),
+  ];
 
   if (!env || !tenant) throw Object.assign(new Error('env ve tenant zorunlu.'), { status: 400 });
   if (!clusters.length)
@@ -604,11 +620,15 @@ async function resolveScope(req, { requireApps = true } = {}) {
     throw Object.assign(new Error('En az bir uygulama seçilmeli.'), { status: 400 });
 
   await catalog.assertClustersExist({ env, tenant, clusters });
-  await catalog.assertNamespaceAllowed({ env, tenant, clusters, namespace, user });
+  // HER namespace icin AYRI yetki kontrolu. `namespaces` bos degilse `namespace`
+  // de onun ilk elemanidir, yani tek namespace'li cagrilarda davranis ayni.
+  for (const ns of namespaces.length ? namespaces : [namespace]) {
+    await catalog.assertNamespaceAllowed({ env, tenant, clusters, namespace: ns, user });
+  }
   if (apps.length)
     await catalog.assertAppsAllowed({ env, tenant, clusters, namespace, apps, user });
 
-  return { user, env, tenant, namespace, clusters, apps };
+  return { user, env, tenant, namespace, namespaces, clusters, apps };
 }
 
 async function launchOnAwx({ keyName, extraVars, req, label }) {
@@ -760,9 +780,27 @@ function initScaleX(app) {
       const mode = ['workloads', 'state', 'health', 'capabilities'].includes(req.body?.mode)
         ? req.body.mode
         : 'workloads';
-      const { env, tenant, namespace, clusters, apps } = await resolveScope(req, {
+      const { env, tenant, namespace, namespaces, clusters, apps } = await resolveScope(req, {
         requireApps: mode === 'health',
       });
+      // ── COK NAMESPACE YALNIZCA `workloads` ve `state`TE ──────────────────────
+      //
+      // `health` satirlari (PODS/EVENTS) SERBEST METIN tasiyor ve namespace
+      // alani yok; cok namespace'li bir saglik kesfinde satirlar hangi
+      // namespace'e ait oldugu ANLASILMAZ hale gelirdi. `capabilities` ise
+      // cluster duzeyi — namespace'e hic girmiyor.
+      //
+      // Sessizce ilkine dusmek yerine REDDEDILIYOR: sessiz daralma, kullanicinin
+      // taradigini sandigi namespace'lerin hic taranmamasi demekti.
+      const ekNamespaceVar = namespaces.length > 1;
+      if (ekNamespaceVar && mode !== 'workloads' && mode !== 'state') {
+        throw Object.assign(
+          new Error(
+            `Çoklu namespace yalnızca 'workloads' ve 'state' keşfinde desteklenir (mode=${mode}).`,
+          ),
+          { status: 400 },
+        );
+      }
       // Kesif de bu degerleri playbook'a, oradan `oc` komut satirina tasiyor — `/preview`
       // ve `/run` ile AYNI format kurallari burada da gecerli (bkz. launch.cjs basligi).
       // `mode` GECILIR: `capabilities` cluster duzeyi bir taramadir ve namespace istemez.
@@ -825,6 +863,11 @@ function initScaleX(app) {
         target_platform: tenant,
         target_environment: env,
         target_namespace: namespace,
+        // EK NAMESPACE'LER — yalnizca BIRDEN FAZLA varsa gonderilir. Tek
+        // elemanli bir liste gondermek, eski paketlerde hicbir sey degistirmezdi
+        // ama yeni paketin "cok namespace" yoluna girmesine yol acardi; kazanci
+        // olmayan bir yol degisikligi.
+        ...(ekNamespaceVar ? { scalex_target_namespaces: namespaces } : {}),
         scalex_target_clusters: clusters,
         discovery_mode: mode,
         ...(apps.length ? { target_app_names: apps.join(',') } : {}),
@@ -885,6 +928,7 @@ function initScaleX(app) {
         env,
         tenant,
         namespace,
+        namespaces,
         clusters,
         mode,
         full: apps.length === 0,
@@ -1065,6 +1109,7 @@ function initScaleX(app) {
             mode: parsed ? parsed.mode : null,
             overallStatus: parsed ? parsed.overallStatus : null,
             namespace: parsed ? parsed.namespace : null,
+            namespaces: parsed ? parsed.namespaces : [],
             clusters: parsed ? parsed.clusters : [],
             failedClusters: parsed ? parsed.failedClusters : [],
             counts: parsed ? parsed.counts : null,
@@ -1081,11 +1126,17 @@ function initScaleX(app) {
       // yaptirmak, sekmesini kapatan her kullanicida kaydin sessizce dusmesi demekti.
       if (status.finished && parsed && parsed.mode === 'workloads') {
         try {
+          // SATIR BASINA NAMESPACE: tablo `UNIQUE(env,tenant,cluster,namespace,kind)`.
+          // Tek bir `parsed.namespace` gecmek, cok namespace'li bir iste B
+          // namespace'inin eksiklerini A'nin satirina yazmak olurdu.
           await rbacFindings.record({
             env: parsed.environment,
             tenant: parsed.platform,
             namespace: parsed.namespace,
-            kindReports: parsed.kindReports || [],
+            kindReports: (parsed.kindReports || []).map((k) => ({
+              ...k,
+              namespace: k.namespace || parsed.namespace,
+            })),
           });
         } catch (e) {
           // Birikim BEST-EFFORT: yazilamadiysa kesif sonucu GIZLENMEZ. Bu bir denetim
@@ -1134,7 +1185,9 @@ function initScaleX(app) {
               env: parsed.environment,
               tenant: parsed.platform,
               clusterName: st.cluster,
-              namespace: parsed.namespace,
+              // SATIR BASINA: tek bir `parsed.namespace`, cok namespace'li bir iste
+              // sapma isaretlerini YANLIS namespace'e yazardi.
+              namespace: st.namespace || parsed.namespace,
               appName: st.appName,
               previousReplicas: st.previousReplicas,
               phase: st.phase,
@@ -1147,7 +1200,7 @@ function initScaleX(app) {
               env: parsed.environment,
               tenant: parsed.platform,
               clusterName: lv.cluster,
-              namespace: parsed.namespace,
+              namespace: lv.namespace || parsed.namespace,
               appName: lv.appName,
               readyReplicas: lv.readyReplicas,
               workloadAbsent: lv.workloadAbsent,
@@ -1207,22 +1260,35 @@ function initScaleX(app) {
       const kapsam = DISCOVERY_SCOPE_CACHE.get(`${serverId}:${jobId}`);
       if (status.finished && parsed && parsed.mode === 'workloads' && kapsam && kapsam.full) {
         try {
+          // ── ANAHTAR (CLUSTER, NAMESPACE) ─────────────────────────────────
+          //
+          // Bir is artik birden fazla namespace tarayabiliyor. Gruplamayi
+          // yalnizca cluster'a gore yapip tek bir `parsed.namespace` yazmak, B
+          // namespace'inin is yuklerini A altina yazmak demekti — ve `putApps`
+          // gorulmeyen uygulamalari `is_deleted=1` yaptigi icin B'nin katalogu
+          // KOMPLE SILINIRDI. Bu depoda en pahali hata sinifi olan "sessiz
+          // eksik"in en yikici bicimi.
           const basarisiz = new Set(parsed.failedClusters || []);
-          const perCluster = new Map();
+          const taranan = (parsed.namespaces || []).filter(Boolean);
+          const perScope = new Map();
+          const anahtar = (c, ns) => `${c}\u0000${ns}`;
           for (const c of parsed.clusters || []) {
-            if (!basarisiz.has(c)) perCluster.set(c, []);
+            if (basarisiz.has(c)) continue;
+            // TARANMIS her namespace icin bir girdi — is yuku BULUNMASA DA.
+            // Bos birakmak, "tarandi ve hicbir sey yok" halini yazamamak olurdu
+            // ve o namespace'in bayat katalogu sonsuza dek kalirdi.
+            for (const ns of taranan) perScope.set(anahtar(c, ns), []);
           }
           for (const w of parsed.workloads || []) {
-            const arr = perCluster.get(w.cluster);
-            // Taranamayan bir cluster'in satiri olmamali; olduysa da yazmayiz.
+            const arr = perScope.get(anahtar(w.cluster, w.namespace || parsed.namespace));
+            // Taranamayan bir cluster'in ya da taranmamis bir namespace'in satiri
+            // olmamali; olduysa da yazmayiz.
             if (arr) arr.push({ name: w.name, kind: w.kind, replicas: null, image: null });
           }
-          const entries = [...perCluster.entries()].map(([clusterName, objects]) => ({
-            clusterName,
-            namespace: parsed.namespace,
-            status: 'ok',
-            objects,
-          }));
+          const entries = [...perScope.entries()].map(([k, objects]) => {
+            const [clusterName, namespace] = k.split('\u0000');
+            return { clusterName, namespace, status: 'ok', objects };
+          });
           if (entries.length) {
             await ocpCache.putApps({
               env: parsed.environment,

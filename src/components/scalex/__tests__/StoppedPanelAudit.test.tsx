@@ -166,8 +166,66 @@ describe('StoppedPanel sapma taramasi', () => {
 
   // SA5 — TAVAN. Her grup bir AWX isi; kapsamsiz liste 500 satira kadar gelebilir.
   // Tavan asilinca tarama HIC baslamamali (sessizce kirpmak yalani geri getirirdi).
-  it('SA5 kapsam sayisi tavani asarsa HIC kesif baslatmaz', async () => {
+  //
+  // KAPSAM ARTIK (ortam, tenant, CLUSTER): namespace'ler tek iste gonderiliyor.
+  // Bu yuzden tavani asmak icin CLUSTER cesitlendiriliyor — eskiden namespace
+  // cesitlendirmek yetiyordu ve o hal artik TEK is demek.
+  it('SA5 kapsam (is) sayisi tavani asarsa HIC kesif baslatmaz', async () => {
     const many = Array.from({ length: 13 }, (_, i) =>
+      makeItem({ id: i + 1, clusterName: `gbocptest${i}`, appName: `app-${i}` }),
+    );
+    mockStopped.mockResolvedValue(listOf(many));
+    mockDiscover.mockResolvedValue({ ok: true, serverId: 1, jobId: 42, status: 'pending' });
+
+    render(<StoppedPanel env="" tenant="" />);
+    await screen.findByText(/app-0/);
+    await clickRefresh();
+
+    await waitFor(() => {
+      expect(screen.getByText(/Tarama başlatılmadı/)).toBeTruthy();
+    });
+    expect(mockDiscover).not.toHaveBeenCalled();
+  });
+
+  // ── SA6: AYNI CLUSTER'IN NAMESPACE'LERI TEK ISTE ──────────────────────────
+  //
+  // OLCULEN TABAN: AWX sabit maliyeti (kuyruk + SSH + `oc login`) IS BASINA
+  // odenir. Uc namespace uc ayri is demekti ve `oc` cagrilarini sifira indirsen
+  // bile ~18 sn taban kaliyordu.
+  it('SA6 ayni cluster`in UC namespace`i TEK iste taranir', async () => {
+    mockStopped.mockResolvedValue(
+      listOf([
+        makeItem({ id: 1, namespace: 'ns-a', appName: 'app-a' }),
+        makeItem({ id: 2, namespace: 'ns-b', appName: 'app-b' }),
+        makeItem({ id: 3, namespace: 'ns-c', appName: 'app-c' }),
+      ]),
+    );
+    mockDiscover.mockResolvedValue({ ok: true, serverId: 1, jobId: 42, status: 'pending' });
+    mockDiscoverStatus.mockResolvedValue({ ok: true, finished: true, status: 'successful' });
+
+    render(<StoppedPanel env="" tenant="" />);
+    await screen.findByText(/app-a/);
+    await clickRefresh();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(8000);
+    });
+
+    expect(mockDiscover).toHaveBeenCalledTimes(1);
+    const kapsam = mockDiscover.mock.calls[0][0];
+    // `namespace` TEKIL KALIYOR ve listenin ILKIDIR: sunucu onu boyle bekliyor.
+    expect(kapsam.namespace).toBe('ns-a');
+    expect([...kapsam.namespaces].sort()).toEqual(['ns-a', 'ns-b', 'ns-c']);
+    expect(mockDiscover.mock.calls[0][1]).toBe('state');
+  });
+
+  // ── SA7: NAMESPACE TAVANI ─────────────────────────────────────────────────
+  //
+  // Is sayisi tavani, namespace'ler tek iste gonderilmeye baslayinca GEVSEDI:
+  // ayni cluster'in kac namespace'i olursa olsun tek is sayiliyor. Is SURESI ise
+  // namespace sayisiyla buyuyor — 300 namespace'lik tek bir is, tavanin
+  // engellemek istedigi seyin ta kendisi.
+  it('SA7 namespace sayisi tavani asarsa HIC kesif baslatmaz', async () => {
+    const many = Array.from({ length: 61 }, (_, i) =>
       makeItem({ id: i + 1, namespace: `ns-${i}`, appName: `app-${i}` }),
     );
     mockStopped.mockResolvedValue(listOf(many));

@@ -48,6 +48,18 @@ const MAX_POLL_ERRORS = 3;
 // olmali — bekci ikisini birden kilitler.
 const MAX_AUDIT_GROUPS = 12;
 
+// ── NAMESPACE TAVANI ────────────────────────────────────────────────────────
+//
+// `maxAuditGroups` AWX ISI sayisini sinirliyor ve namespace'ler tek iste
+// gonderilmeye baslayinca o sinir GEVSEDI: ayni cluster'in kac namespace'i olursa
+// olsun tek is sayiliyor. Is sayisi korunmali tavandi, ama IS SURESI namespace
+// sayisiyla buyuyor — 300 namespace'lik tek bir is, tavanin engellemek istedigi
+// seyin ta kendisi.
+//
+// Bu yuzden IKINCI bir tavan: toplam namespace sayisi. Ayni ilke — SESSIZCE
+// KIRPILMAZ, tarama hic BASLAMAZ ve kullanicidan kapsami daraltmasi istenir.
+const MAX_AUDIT_NAMESPACES = 60;
+
 function daysSince(iso: string | null): number | null {
   if (!iso) return null;
   const t = new Date(iso).getTime();
@@ -170,14 +182,35 @@ const StoppedPanel: React.FC<Props> = ({
   async function runAudit() {
     if (busyRef.current || !items.length) return;
 
-    const groups = new Map<string, { env: string; tenant: string; cluster: string; namespace: string }>();
-    for (const it of items)
-      groups.set(`${it.env}|${it.tenant}|${it.clusterName}|${it.namespace}`, {
-        env: it.env,
-        tenant: it.tenant,
-        cluster: it.clusterName,
-        namespace: it.namespace,
-      });
+    // ── KAPSAM = (ortam, tenant, cluster); NAMESPACE'LER TEK ISTE ────────────
+    //
+    // Eskiden anahtar namespace'i de iceriyordu, yani AYNI cluster'in uc
+    // namespace'i UC AYRI AWX isi demekti. AWX sabit maliyeti (kuyruk + SSH +
+    // `oc login`) IS BASINA odenir: uc is, o maliyeti UC KEZ odemek ve ~18 sn
+    // taban yaratmakti. Artik namespace'ler TEK ISTE gonderiliyor.
+    //
+    // Satirlar namespace bazinda ayirt edilmeye DEVAM EDIYOR: betik her satira
+    // `namespace=` yaziyor ve `refreshDrift` satir basina namespace kullaniyor.
+    // Aksi halde iki namespace'teki ayni ad tek kayda coker ve biri SESSIZCE
+    // kaybolurdu.
+    const groups = new Map<
+      string,
+      { env: string; tenant: string; cluster: string; namespaces: string[] }
+    >();
+    for (const it of items) {
+      const k = `${it.env}|${it.tenant}|${it.clusterName}`;
+      const g = groups.get(k);
+      if (g) {
+        if (!g.namespaces.includes(it.namespace)) g.namespaces.push(it.namespace);
+      } else {
+        groups.set(k, {
+          env: it.env,
+          tenant: it.tenant,
+          cluster: it.clusterName,
+          namespaces: [it.namespace],
+        });
+      }
+    }
 
     // TAVAN. Kapsamsiz liste 500 satira kadar gelebilir ve her GRUP bir AWX isi
     // demek. Sessizce kirpmak "hepsi tarandi" yalanini geri getirirdi; tarama hic
@@ -186,6 +219,18 @@ const StoppedPanel: React.FC<Props> = ({
       setAuditNote(null);
       setError(
         `Bu listede ${groups.size} ayrı kapsam var (sınır ${maxAuditGroups}). ` +
+          'Tarama başlatılmadı — üstten ortam/platform seçip listeyi daraltın.',
+      );
+      return;
+    }
+
+    // IKINCI TAVAN: namespace sayisi. Is sayisi tavani, namespace'ler tek iste
+    // gonderilmeye baslayinca gevsedi (bkz. MAX_AUDIT_NAMESPACES notu).
+    const toplamNs = [...groups.values()].reduce((a, g) => a + g.namespaces.length, 0);
+    if (toplamNs > MAX_AUDIT_NAMESPACES) {
+      setAuditNote(null);
+      setError(
+        `Bu listede ${toplamNs} namespace var (sınır ${MAX_AUDIT_NAMESPACES}). ` +
           'Tarama başlatılmadı — üstten ortam/platform seçip listeyi daraltın.',
       );
       return;
@@ -201,11 +246,19 @@ const StoppedPanel: React.FC<Props> = ({
       const failures: string[] = [];
       let scanned = 0;
       for (const g of groups.values()) {
-        const label = `${g.env}/${g.tenant} ${g.cluster}:${g.namespace}`;
+        const label = `${g.env}/${g.tenant} ${g.cluster}:${g.namespaces.join(',')}`;
         let launched;
         try {
           launched = await scalexApi.discover(
-            { env: g.env, tenant: g.tenant, namespace: g.namespace, clusters: [g.cluster] },
+            {
+              env: g.env,
+              tenant: g.tenant,
+              // `namespace` ILK eleman olarak duruyor: sunucu onu tekil alan
+              // olarak bekliyor ve `namespaces` yalnizca ekliyor.
+              namespace: g.namespaces[0],
+              namespaces: g.namespaces,
+              clusters: [g.cluster],
+            },
             'state',
           );
         } catch (e) {
@@ -245,7 +298,13 @@ const StoppedPanel: React.FC<Props> = ({
           `${groups.size} kapsamdan ${scanned}'i tarandı. Taranamayanlar: ${failures.join('; ')}`,
         );
       } else {
-        setAuditNote(`${scanned} kapsam tarandı, sapma durumu güncellendi.`);
+        // SAYI ISLERI DEGIL NAMESPACE'LERI SAYAR. Artik bir is birden fazla
+        // namespace tariyor; "3 kapsam tarandi" demek, kullanicinin 9
+        // namespace'i 3 sanmasina yol acardi.
+        const nsSayisi = [...groups.values()].reduce((a, g) => a + g.namespaces.length, 0);
+        setAuditNote(
+          `${nsSayisi} namespace ${scanned} işte tarandı, sapma durumu güncellendi.`,
+        );
       }
     } catch (e) {
       setError(`Sapma taraması tamamlanamadı: ${(e as Error).message}`);

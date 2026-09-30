@@ -202,6 +202,10 @@ test("S6 kesif survey'i portalin `/discover` anahtarlariyla uyumlu", () => {
     // Cluster basina yetenek onbellegi (dict). Elle calistirmada gonderilmez ve
     // playbook `scalex_extra_kinds`e duser — yani elle calistirma BOZULMAZ.
     'scalex_cluster_kinds',
+    // Ek namespace'ler (LIST). Ayni gerekce: AWX survey tipleri SKALER.
+    // Elle calistirmada gonderilmez ve playbook `target_namespace`e duser —
+    // yani elle calistirma tek namespace tarar, BOZULMAZ.
+    'scalex_target_namespaces',
   ]);
   for (const k of [...block.matchAll(/([a-z_]+):/g)].map((m) => m[1])) {
     if (
@@ -1672,7 +1676,7 @@ test('T1d setup ve kesif sureleri GERCEK gecen sureyi olcuyor', () => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /** Sahte `oc`ye sayac takar; `oc` cagrilarinin TAMAMINI dondurur. */
-function kesifCagrilari({ extraKinds = '', scanned = 'no', mutate = (x) => x } = {}) {
+function kesifCagrilari({ extraKinds = '', scanned = 'no', nsList = '', mutate = (x) => x } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'scalex-butce-'));
   const log = path.join(dir, 'calls.log');
   const stub = mutate(OC_STUB).replace(
@@ -1701,6 +1705,7 @@ function kesifCagrilari({ extraKinds = '', scanned = 'no', mutate = (x) => x } =
       JOB_ID: '1',
       SCALEX_EXTRA_KINDS: extraKinds,
       SCALEX_EXTRA_KINDS_SCANNED: scanned,
+      NS_LIST: nsList,
     },
   });
   const cagrilar = fs.readFileSync(log, 'utf8').split('\n').filter(Boolean);
@@ -2113,4 +2118,129 @@ test('PD3 KIND ayristirmasi TEK yerde tanimli', () => {
   // Ayristirmanin govdesi (`print kind "\t" full`) yalnizca BIR kez gecmeli.
   const n = (src.match(/print kind "\\t" full;/g) || []).length;
   assert.equal(n, 1, `KIND ayristirmasi ${n} yerde kopyalanmis — biri sessizce eskir`);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PR-E — TEK ISTE COK NAMESPACE
+//
+// OLCULEN TABAN: `namespace` TEKILDI, yani "3 namespace" = 3 AYRI AWX isi = AWX
+// sabit maliyeti (kuyruk + SSH + `oc login`) UC KEZ. `oc` cagrilarini sifira
+// indirsen bile 3 x ~6 sn = ~18 sn taban kaliyordu; kullanicinin ≤20 sn hedefi
+// bu olmadan TUTMUYOR.
+//
+// EN BUYUK RISK HIZ DEGIL SESSIZ VERI KAYBI: `putApps` gorulmeyen uygulamalari
+// `is_deleted=1` yapiyor. B namespace'inin is yuklerini A altina yazmak, B'nin
+// katalogunu KOMPLE silerdi.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ── E1: TEK LOGIN, UC NAMESPACE ─────────────────────────────────────────────
+test('E1 uc namespace TEK oturumda taranir (login bir kez)', () => {
+  const { cagrilar, items } = kesifCagrilari({ nsList: 'ns-a,ns-b,ns-c' });
+
+  // ASIL KAZANC: oturum acma IS BASINA, namespace basina DEGIL.
+  assert.equal(
+    cagrilar.filter((c) => /^login /.test(c)).length,
+    1,
+    'namespace basina yeniden login yapiliyor — cok namespace`in tum kazanci buydu',
+  );
+  // Ve envanter de CLUSTER duzeyi: namespace sayisiyla CARPILMAMALI.
+  assert.equal(
+    cagrilar.filter((c) => /^api-resources/.test(c)).length,
+    2,
+    'envanter namespace basina yeniden okunuyor — en pahali adim namespace sayisiyla carpilmis',
+  );
+  // Her namespace GERCEKTEN taranmis olmali.
+  for (const ns of ['ns-a', 'ns-b', 'ns-c']) {
+    assert.ok(
+      cagrilar.some((c) => new RegExp(`^project ${ns}$`).test(c)),
+      `${ns} icin \`oc project\` yapilmamis — namespace atlanmis`,
+    );
+    assert.ok(
+      items.some((i) => i.step === 'TIMING' && new RegExp(`namespace=${ns}\\b`).test(i.detail)),
+      `${ns} icin olcum satiri yok`,
+    );
+  }
+});
+
+// ── E2: SATIRLAR NAMESPACE TASIYOR ──────────────────────────────────────────
+//
+// BU BEKCININ VAR OLUS SEBEBI: satirda namespace olmadan portal tek bir kapsam
+// degeri kullanmak zorunda kalir ve `putApps` B'nin katalogunu siler.
+test('E2 her is yuku satiri KENDI namespace`ini tasiyor', () => {
+  const { items } = kesifCagrilari({ nsList: 'ns-a,ns-b' });
+  const yukler = items.filter((i) => i.step === 'WORKLOAD' && i.status === 'OK');
+  assert.ok(yukler.length >= 2, 'is yuku satiri gelmedi');
+  for (const w of yukler) {
+    assert.match(w.detail, /\bnamespace=(ns-a|ns-b)\b/, `satir namespace tasimiyor: ${w.detail}`);
+  }
+  // Ve IKI namespace'in de satiri var — biri sessizce kaybolmamis.
+  const nsler = new Set(yukler.map((w) => /\bnamespace=([^\s]+)/.exec(w.detail)[1]));
+  assert.deepEqual([...nsler].sort(), ['ns-a', 'ns-b']);
+
+  // TIP RAPORLARI da namespace tasimali: `scalex_rbac_findings` tablosu
+  // UNIQUE(env,tenant,cluster,namespace,kind) — namespace olmadan B'nin eksigi
+  // A'nin satirina yazilirdi.
+  for (const k of items.filter((i) => i.step === 'WORKLOAD_KIND')) {
+    assert.match(k.detail, /\bnamespace=(ns-a|ns-b)\b/, `tip raporu namespace tasimiyor: ${k.detail}`);
+  }
+});
+
+// ── E3: AYNI AD IKI NAMESPACE'TE TEK SATIRA COKMEZ ──────────────────────────
+//
+// PLANIN ACIKCA UYARDIGI RISK. `odeme-api` iki namespace'te de var; portalin
+// ayristiricisi onlari AYRI satir olarak tutmali.
+test('E3 iki namespace`teki AYNI ad tek satira COKMEZ', () => {
+  const { items } = kesifCagrilari({ nsList: 'ns-a,ns-b' });
+  const parsed = result.extractDiscoveryResult({
+    scalex_discovery_result: {
+      mode: 'workloads',
+      namespace: 'ns-a',
+      namespaces: ['ns-a', 'ns-b'],
+      items,
+      clusters: ['c'],
+    },
+  });
+  const odeme = (parsed.workloads || []).filter((w) => w.name === 'odeme-api');
+  assert.equal(odeme.length, 2, `ayni ad ${odeme.length} satira dusmus (2 olmali)`);
+  assert.deepEqual(odeme.map((w) => w.namespace).sort(), ['ns-a', 'ns-b']);
+  // Ve taranan namespace listesi de dogru gelmeli — katalog supurmesi buna bakar.
+  assert.deepEqual(parsed.namespaces, ['ns-a', 'ns-b']);
+});
+
+// ── E4: BIR NAMESPACE DUSERSE DIGERLERI DUSMEZ ──────────────────────────────
+//
+// "Tek tip patlayinca hepsi gitti" hatasinin namespace surumu. Erisilemez tek
+// bir namespace, ayni isteki digerlerinin sonucunu da goturmemeli.
+test('E4 erisilemez bir namespace DIGERLERINI dusurmez', () => {
+  const { items } = kesifCagrilari({
+    nsList: 'ns-a,yok-ns,ns-b',
+    mutate: (stub) => stub.replace('  login|project) exit 0 ;;', '  login) exit 0 ;;\n  project) case "$2" in yok-ns) exit 1 ;; *) exit 0 ;; esac ;;'),
+  });
+  const fail = items.find((i) => i.step === 'NAMESPACE' && i.status === 'FAIL');
+  assert.ok(fail, 'erisilemez namespace icin FAIL satiri yok — sessizce atlanmis');
+  assert.match(fail.detail, /namespace=yok-ns\b/, 'FAIL satiri hangi namespace oldugunu soylemiyor');
+
+  const nsler = new Set(
+    items
+      .filter((i) => i.step === 'WORKLOAD' && i.status === 'OK')
+      .map((w) => /\bnamespace=([^\s]+)/.exec(w.detail)[1]),
+  );
+  assert.deepEqual([...nsler].sort(), ['ns-a', 'ns-b'], 'saglam namespace`ler de dusmus');
+});
+
+// ── E5: GERIYE UYUM — `NS_LIST` GELMEZSE ────────────────────────────────────
+test('E5 `NS_LIST` bos gelirse davranis BIREBIR eskisi gibi', () => {
+  const tek = kesifCagrilari();
+  const acik = kesifCagrilari({ nsList: 'odeme-lab' });
+  const sadelestir = (r) =>
+    r.items
+      .filter((i) => i.step === 'WORKLOAD' || i.step === 'WORKLOAD_KIND')
+      .map((i) => `${i.step}|${i.app}|${i.kind}|${i.status}`)
+      .sort();
+  assert.deepEqual(sadelestir(tek), sadelestir(acik), '`NS_LIST` yoksa davranis degismis');
+  assert.equal(
+    tek.items.filter((i) => i.step === 'TIMING').length,
+    1,
+    'tek namespace`te birden fazla olcum satiri var',
+  );
 });

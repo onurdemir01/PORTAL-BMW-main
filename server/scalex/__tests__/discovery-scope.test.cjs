@@ -87,3 +87,32 @@ test('DS7 `scanUnknown` ScaleX katalogundan GECIYOR (ucuncu durum kaybolmuyor)',
   // Iki donus yolu var: erken (bos liste) ve normal. IKISINDE de olmali.
   assert.equal(kez, 2, `\`scanUnknown\` ${kez} donus yolunda gecirilmis, 2 olmali`);
 });
+
+// ── COK NAMESPACE: KATALOG SUPURMESI (PR-E) ─────────────────────────────────
+//
+// EN YIKICI SESSIZ KAYIP. `putApps` gorulmeyen uygulamalari `is_deleted=1`
+// yapiyor. Bir is artik birden fazla namespace tarayabildigi icin, gruplamayi
+// yalnizca cluster'a gore yapip TEK bir `parsed.namespace` yazmak B
+// namespace'inin is yuklerini A altina yazmak — ve B'nin katalogunu KOMPLE
+// silmek — demekti.
+test('DS8 katalog yazimi (CLUSTER, NAMESPACE) anahtariyla gruplanir', () => {
+  const g = norm(blok('const kapsam = DISCOVERY_SCOPE_CACHE.get', 'CIKTI KIRPILIR'));
+  // Tek bir kapsam degeri ARTIK yazilmamali.
+  assert.ok(
+    !/namespace: parsed\.namespace/.test(g),
+    'katalog hala TEK kapsam namespace`i yaziyor — B namespace`inin katalogu silinir',
+  );
+  // Gruplama anahtari cluster VE namespace olmali.
+  assert.match(g, /anahtar\(w\.cluster, w\.namespace/, 'is yuku satirlari namespace`e gore gruplanmiyor');
+  // Ve girdiler TARANMIS namespace listesinden turemeli: taranmamis bir
+  // namespace icin bos girdi yazmak, o namespace`in katalogunu silmek olurdu.
+  assert.match(g, /parsed\.namespaces/, 'taranan namespace listesi kullanilmiyor');
+});
+
+// Kapsam ve satir namespace'i CELISIRSE satir YAZILMAZ. Aksi halde bozuk bir
+// satir, taranmamis bir namespace'in katalogunu supururdu.
+test('DS9 taranmamis namespace`in satiri katalogu BESLEMEZ', () => {
+  const g = norm(blok('const kapsam = DISCOVERY_SCOPE_CACHE.get', 'CIKTI KIRPILIR'));
+  // `perScope.get(...)` yoksa `if (arr)` ile atlanmali — bu kontrol DURMALI.
+  assert.match(g, /if \(arr\) arr\.push/, 'bilinmeyen kapsamin satiri da yaziliyor');
+});

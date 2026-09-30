@@ -50,6 +50,20 @@
     oc_cluster_mode: "{{ cluster_selection_mode | default('all') | string | trim | lower }}"
     oc_cluster_name: "{{ target_cluster_name | default('all') | string | trim | lower }}"
     oc_namespace: "{{ target_namespace | default('') | string | trim }}"
+    # ── COK NAMESPACE, TEK IS ────────────────────────────────────────────────
+    #
+    # `target_namespace` AYNEN duruyor (eski paket/eski portal onu okuyor) ve
+    # listenin ILK elemani olarak korunuyor. `scalex_target_namespaces` yalnizca
+    # EKLENIYOR; gelmediginde liste `target_namespace`ten turer ve davranis
+    # birebir bugunku olur.
+    #
+    # `namespaces` ADI ASLA KULLANILMAZ: `namespace` Jinja'nin kendi global adi;
+    # o aileden bir ad `is defined` testinde HEP true doner ve kapi olu kalir
+    # (bkz. jinja-global-shadowing.test.cjs). Bu yuzden `oc_namespaces_effective`.
+    oc_namespaces_effective: >-
+      {{ ([target_namespace | default('') | string | trim]
+          + (scalex_target_namespaces | default([]) | map('string') | map('trim') | list))
+         | reject('equalto', '') | unique | list }}
     target_app_names: "{{ target_app_names | default(oc_app | default('')) | string | trim }}"
     job_id: "{{ lookup('env', 'AWX_JOB_ID') | default(lookup('env', 'JOB_ID'), true) | default('N/A', true) }}"
     scalex_target_clusters_effective: >-
@@ -123,6 +137,11 @@
       - (discovery_mode_effective == 'capabilities') or (oc_namespace | length > 0)
       - oc_namespace | length <= 63
       - (oc_namespace | length == 0) or (oc_namespace is match('^[a-z0-9]([-a-z0-9]*[a-z0-9])?$'))
+      # LISTENIN TAMAMI AYNI KURALDAN GECER. Yalnizca ilkini dogrulamak, listeye
+      # konan gecersiz bir adin betige kadar gitmesi demekti — ve orada
+      # reddedilse bile kullaniciya sebebi ALAKASIZ gorunurdu.
+      - (oc_namespaces_effective | reject('match', '^[a-z0-9]([-a-z0-9]*[a-z0-9])?$') | list | length) == 0
+      - (oc_namespaces_effective | map('length') | select('gt', 63) | list | length) == 0
       - username | default('') | string | length > 0
     fail_msg: "Keşif girdileri eksik/geçersiz (mod, platform, ortam, namespace veya vault kullanıcısı)."
 

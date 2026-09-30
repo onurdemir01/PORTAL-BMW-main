@@ -118,14 +118,29 @@ test('LP1 yoklama listesindeki her uygulama icin bir `LIVE` satiri basiliyor', (
     workloads: { app1: '1|1|1', app2: '3|3|2' },
     probeApps: ['app1', 'app2'],
   });
-  assert.match(r.out, /app1;Deployment;LIVE;OK;spec=1 status=1 ready=1/, 'app1 LIVE satiri yok');
-  assert.match(r.out, /app2;Deployment;LIVE;OK;spec=3 status=3 ready=2/, 'app2 LIVE satiri yok');
+  // `namespace=` ALANI PR-E ILE EKLENDI: bir is artik birden fazla namespace
+  // tarayabiliyor ve satirin hangi namespace'e ait oldugu ancak boyle bilinir
+  // (`refreshDrift` satir basina namespace kullaniyor).
+  assert.match(
+    r.out,
+    /app1;Deployment;LIVE;OK;namespace=ns1 spec=1 status=1 ready=1/,
+    'app1 LIVE satiri yok',
+  );
+  assert.match(
+    r.out,
+    /app2;Deployment;LIVE;OK;namespace=ns1 spec=3 status=3 ready=2/,
+    'app2 LIVE satiri yok',
+  );
 });
 
 test('LP2 namespace`te OLMAYAN uygulama `workload_absent` ile raporlaniyor', () => {
   // "Bakamadim" ile "yok" karistirilmamali — ikincisi de bir CEVAP.
   const r = discoverState({ configMaps: [CM], workloads: {}, probeApps: ['silinmis-app'] });
-  assert.match(r.out, /silinmis-app;-;LIVE;INFO;workload_absent=yes/, 'yok olan uygulama raporlanmadi');
+  assert.match(
+    r.out,
+    /silinmis-app;-;LIVE;INFO;namespace=ns1 workload_absent=yes/,
+    'yok olan uygulama raporlanmadi',
+  );
 });
 
 // LP3 — EN KRITIK. Yoklama listesi ConfigMap LISTELEMESINI SUZMEMELI.

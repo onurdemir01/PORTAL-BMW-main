@@ -82,6 +82,12 @@
         overall_status: "{{ discovery_overall_status | trim }}"
         mode: "{{ discovery_mode_effective }}"
         namespace: "{{ oc_namespace }}"
+        # TARANAN NAMESPACE'LERIN TAMAMI. Tekil `namespace` alani geriye uyumluluk
+        # icin DURUYOR (ilk namespace); portal satir basina namespace kullanir ama
+        # "hangi namespace'ler GERCEKTEN tarandi" sorusunu bu liste cevaplar —
+        # katalog supurmesi (`is_deleted=1`) yalnizca taranmis bir namespace icin
+        # mesru.
+        namespaces: "{{ oc_namespaces_effective }}"
         platform: "{{ oc_platform }}"
         environment: "{{ oc_environment }}"
         catalog_source: "{{ catalog_source | default('file') }}"

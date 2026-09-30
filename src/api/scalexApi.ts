@@ -108,6 +108,8 @@ export interface ScaleXDiscoveryTiming {
 
 export interface ScaleXWorkload {
   cluster: string;
+  /** Satırın geldiği namespace. Tek namespace'li işlerde kapsamın kendisi. */
+  namespace?: string;
   name: string;
   kind: string;
   resource: string;
@@ -367,6 +369,21 @@ export interface ScaleXScope {
   env: string;
   tenant: string;
   namespace: string;
+  /**
+   * EK namespace'ler — tek AWX işinde birden fazla namespace taramak için.
+   *
+   * `namespace` TEKİL KALIYOR ve listenin **ilki**dir; bu alan yalnızca eklenir
+   * ve gönderilmediğinde davranış birebir bugünküdür. AWX sabit maliyeti
+   * (kuyruk + SSH + `oc login`) **iş başına** ödendiği için üç namespace'i ayrı
+   * ayrı taramak o maliyeti üç kez ödemek demekti.
+   *
+   * Yalnızca `workloads` ve `state` keşfinde desteklenir: `health` satırları
+   * serbest metin taşıyor ve hangi namespace'e ait olduğu anlaşılmaz olurdu,
+   * `capabilities` ise cluster düzeyi. Sunucu diğer modlarda 400 döner —
+   * sessizce ilkine düşmek, kullanıcının taradığını sandığı namespace'lerin hiç
+   * taranmaması demekti.
+   */
+  namespaces?: string[];
   clusters: string[];
   apps?: string[];
 }
