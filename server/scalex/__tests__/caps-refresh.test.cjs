@@ -95,6 +95,36 @@ test('CR2b ayni anda gelen iki kesif AYNI cluster icin iki is ACMAZ', async () =
   assert.equal(kayit.launch.length, 1, 'es zamanli kesifler ayni cluster icin iki is acti');
 });
 
+// ── CR2c: SOGUMADAN UZUN SUREN IS ────────────────────────────────────────────
+//
+// MUTASYON TURUNDA EKLENDI: "ucan is" kontrolu silindiginde CR2/CR2b YESIL
+// kaliyordu — ikisinde de soguma suresi ayni isi goruyordu. `_ucan`in asil isi
+// soguma DOLDUKTAN sonra: is AWX kuyrugunda 10 dakikadan uzun beklediginde
+// ikinci bir kesif ayni cluster icin IKINCI bir is acmamali.
+test('CR2c soguma dolsa da is SURERKEN ayni cluster icin ikinci is ACILMAZ', async () => {
+  cr._sifirla();
+  const { deps, kayit } = sahteDeps({ statusler: [{ finished: false }] });
+  let ikinci = null;
+  const esikSorgu = Math.ceil(cr.SOGUMA_MS / cr.YOKLAMA_MS) + 2;
+  const asilDurum = deps.getStatus;
+  deps.getStatus = async (s, j) => {
+    // Izleyici YOKLAMA_MS adimlariyla zamani ilerletiyor; soguma dolduktan
+    // sonra ikinci bir kesif gelir, ardindan ilk is biter.
+    if (kayit.getStatus === esikSorgu) {
+      ikinci = cr.arkaPlandaTazele({ env: 'qa', tenant: 'ark', clusters: ['uzun'], deps });
+    }
+    if (kayit.getStatus > esikSorgu) {
+      kayit.getStatus += 1;
+      return { finished: true, artifacts: {} };
+    }
+    return asilDurum(s, j);
+  };
+  await cr.arkaPlandaTazele({ env: 'qa', tenant: 'ark', clusters: ['uzun'], deps });
+  await ikinci;
+  assert.ok(ikinci, 'senaryo kurulamadi: ikinci kesif hic tetiklenmedi');
+  assert.equal(kayit.launch.length, 1, 'is surerken ayni cluster icin ikinci AWX isi acildi');
+});
+
 // ── CR3: SONUC KIMSE YOKLAMASA DA YAZILIR ────────────────────────────────────
 test('CR3 izleyici is bitene kadar sorar ve YALNIZCA ozeti gelen cluster`i yazar', async () => {
   const parsed = {
