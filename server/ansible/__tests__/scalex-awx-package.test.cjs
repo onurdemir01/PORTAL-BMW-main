@@ -2039,23 +2039,52 @@ test('PD1 envanter cagrilari namespace okumalariyla CAKISTIRILIYOR', () => {
     'cok tipli cagri kurulamamis — KIND haritasi okunmuyor demektir',
   );
 
-  // OLCUT: namespace okumasi, envanter cagrilari BITMEDEN gerceklesmis olmali.
-  // Seri kosulsa IKI `AR_END` de NS_READ'den ONCE gorunurdu.
+  // ── OLCUT: IKI ENVANTER CAGRISI AYNI ANDA UCUYOR MU ─────────────────────
   //
-  // "AR_START once mi" DIYE BAKILMIYOR: arka plan sureci fork+exec suresi kadar
-  // gecikebiliyor ve on plandaki okuma onu gecebiliyor — bu da CAKISTIRMANIN
-  // kendisidir, ihlali degil. Ilk yazim tam bu yuzden yanlis yere kirmizi dondu.
-  const nsOkuma = iz.indexOf('NS_READ');
-  const sonBitis = iz.lastIndexOf('AR_END');
-  assert.ok(nsOkuma >= 0, `namespace okumasi iz birakmadi: ${JSON.stringify(iz)}`);
+  // MUTASYON TURUNDA DUZELTILDI. Ilk olcut "namespace okumasi son `AR_END`den
+  // once mi" idi ve SERI kosuyu da geciriyordu: seri halde namespace okumalari
+  // ZATEN ONCE kosuyor, yani NS_READ en basa yaziliyor ve kosul kendiliginden
+  // saglaniyordu. Bekci, olcmeye calistigi seyin TERSINI de kabul ediyordu.
+  //
+  // Dogru olcut: IKINCI `AR_START`, ILK `AR_END`den ONCE gelmis olmali — yani
+  // iki cagri bir an icin AYNI ANDA ucmus. Seri kosuda iz `START,END,START,END`
+  // olur ve bu tutmaz. Makine hizindan BAGIMSIZ.
+  //
+  // "AR_START namespace okumasindan once mi" DIYE BAKILMIYOR: arka plan sureci
+  // fork+exec kadar gecikebiliyor ve on plandaki okuma onu gecebiliyor — bu
+  // cakistirmanin KENDISI, ihlali degil.
+  assert.equal(
+    iz.filter((x) => x === 'AR_START').length,
+    2,
+    `iki envanter cagrisi baslamamis: ${JSON.stringify(iz)}`,
+  );
   assert.equal(
     iz.filter((x) => x === 'AR_END').length,
     2,
     `iki envanter cagrisi da bitmemis: ${JSON.stringify(iz)}`,
   );
   assert.ok(
-    nsOkuma < sonBitis,
-    `envanter cagrilari SERI kosuyor — namespace okumasi ikisi de bittikten SONRA: ${JSON.stringify(iz)}`,
+    iz.lastIndexOf('AR_START') < iz.indexOf('AR_END'),
+    `envanter cagrilari SERI kosuyor (biri bitmeden oteki baslamamis): ${JSON.stringify(iz)}`,
+  );
+  // Namespace okumasi da o pencerenin ICINDE olmali.
+  const nsOkuma = iz.indexOf('NS_READ');
+  assert.ok(nsOkuma >= 0, `namespace okumasi iz birakmadi: ${JSON.stringify(iz)}`);
+  assert.ok(
+    nsOkuma < iz.indexOf('AR_END'),
+    `namespace okumasi envanter bittikten SONRA kosmus: ${JSON.stringify(iz)}`,
+  );
+
+  // YAPISAL TEYIT: baslatma namespace okumalarindan ONCE, toplama SONRA.
+  // Davranissal olcut fork gecikmesine dayanikli olsun diye siralamayi burada
+  // ayrica kilitliyoruz.
+  const src = read(RUNNER);
+  const iBasla = src.indexOf('disc_inventory_start');
+  const iHpa = src.indexOf('disc_load_hpa\n', iBasla);
+  const iBitir = src.indexOf('disc_inventory_finish\n', iHpa);
+  assert.ok(
+    iBasla > 0 && iHpa > iBasla && iBitir > iHpa,
+    'envanter baslatma/toplama namespace okumalarini SARMIYOR',
   );
 });
 
