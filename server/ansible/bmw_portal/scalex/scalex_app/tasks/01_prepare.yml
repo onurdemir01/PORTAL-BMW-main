@@ -97,6 +97,9 @@
       {{ verify_fail_seconds
          | default(((verification_timeout | default('300') | int) * 2) | string, true) | string | trim }}
     allow_partial_execution_effective: "{{ allow_partial_execution | default(false) | bool }}"
+    # CLUSTER PARALELLIGI (precheck ve execute). Acil geri donus:
+    # `scalex_parallel_clusters: false` -> cluster basina seri yol (silinmedi).
+    phase_parallel_effective: "{{ (scalex_parallel_clusters | default(true)) | bool }}"
     change_confirmation_effective: "{{ change_confirmation | default(false) | bool }}"
     bulk_change_confirmation_effective: "{{ bulk_change_confirmation | default(false) | bool }}"
     _target_replicas_input: "{{ target_replicas | default('') | string | trim }}"
