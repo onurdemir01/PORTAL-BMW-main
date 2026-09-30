@@ -27,11 +27,23 @@
 # Bu yuzden asagidaki toplama `finished`e GUVENMEZ: `rc` alaninin VARLIGINI de
 # sorar. Bir async sonucu `rc` tasimiyorsa o is HIC OKUNAMAMISTIR.
 
+# ── URETIM ARIZASI (2026-09-30, AWX isi 3365082): `/tmp` NOEXEC ───────────
+# Betik `/tmp`ye kopyalanip DOGRUDAN calistiriliyordu ve jump sunucusunda
+# `/tmp` noexec bagli: "Permission denied", rc=126, UC cluster da dustu.
+# Seri yol (`ansible.builtin.script`) betigi ev dizinindeki gecici alanda
+# calistirdigi icin bu hic gorunmemisti; paralel yol uretimde ILK kosusunda
+# patladi. Yerel bekciler de goremedi: test dizini noexec degildi ve dosya
+# 0700 ile kopyalaniyordu.
+#
+# COZUM: betik YORUMLAYICIYA okutulur (`/bin/bash <dosya>`). noexec yalnizca
+# `execve`yi engeller, bir yorumlayicinin dosyayi OKUMASINI degil. Izin 0600:
+# calistirma biti artik GEREKMIYOR — ve biri dogrudan calistirmaya donerse
+# yerel bekci (PF8) noexec bagi olmadan AYNI hatayi uretir.
 - name: "DISCOVER | Copy runner to every jump server"
   ansible.builtin.copy:
     src: "{{ playbook_dir }}/files/scalex_runner.sh"
     dest: "{{ _disc_runner_path }}"
-    mode: "0700"
+    mode: "0600"
   delegate_to: "{{ item.runtime_host }}"
   loop: "{{ target_matrix }}"
   loop_control:
@@ -43,7 +55,7 @@
 
 - name: "DISCOVER | Launch every selected cluster in parallel"
   ansible.builtin.shell:
-    cmd: "{{ _disc_runner_path }}"
+    cmd: "/bin/bash {{ _disc_runner_path | quote }}"
     executable: /bin/bash
   environment:
     SCALEX_PHASE: "discover"
@@ -193,6 +205,7 @@
     _discovery_rows: >-
       {{ _discovery_rows + [
         item.0.item.cluster ~ ';' ~ item.0.item.jump_label ~ ';-;-;RUNNER;FAIL;Discovery could not complete because of SSH/transport/shell/runtime failure'
+        ~ ' (rc=' ~ (item.1.rc | default('-')) ~ ': ' ~ ((item.1.stderr | default(item.1.msg | default('')) | string | regex_replace('[;\r\n\t]+', ' ') | trim)[:200]) ~ ')'
       ] }}
     _failed_clusters: "{{ _failed_clusters + [item.0.item.cluster] }}"
   loop: "{{ _disc_pairs }}"

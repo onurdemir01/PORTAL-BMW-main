@@ -73,6 +73,8 @@ function paralelKostur({
         `printf 'BASLA %s\\n' "$CLUSTER" >> ${JSON.stringify(iz)}`,
         `sleep ${sleepSaniye}`,
         `printf 'BITTI %s\\n' "$CLUSTER" >> ${JSON.stringify(iz)}`,
+        // Sifir disi cikista teshis metni: hata satirina TASINMALI (PF9).
+        `[ ${exitKodu} -ne 0 ] && echo 'sahte runner patladi; sebep=deneme' >&2`,
         'printf \'%s;%s;odeme-api;Deployment;WORKLOAD;OK;namespace=ns1 resource=deployments.apps scalable=yes spec=3 status=3 ready=3\\n\' "$CLUSTER" "$JUMP_SERVER"',
         `exit ${exitKodu}`,
       ].join('\n'),
@@ -314,4 +316,45 @@ test('PF7 betik sifir disi cikarsa cluster FAIL (satir gelse bile)', { skip: !HA
     r.rows.some((x) => x.startsWith('c1;jump-c1;odeme-api;')),
     `betik kosmamis: ${JSON.stringify(r.rows)}`,
   );
+});
+
+// ── PF8: BETIK YORUMLAYICIYA OKUTULUR (NOEXEC `/tmp`) ───────────────────────
+//
+// URETIM ARIZASI (2026-09-30, AWX isi 3365082): jump sunucusunda `/tmp`
+// noexec bagli ve betik DOGRUDAN calistiriliyordu: "Permission denied",
+// rc=126, UC cluster da dustu. Bu bekci ailesi goremedi: test dizini noexec
+// degildi ve kopya 0700 idi.
+//
+// Artik kopya 0600 (calistirma biti YOK) ve PF2 bu kosulda satir topluyor —
+// yani dogrudan calistirmaya donen HER degisiklik yerelde de rc=126 ile
+// kirmiziya doner, noexec bagi gerekmeden. Bu bekci iki yarisini acikca
+// kilitler: izin gercekten calistirilamaz VE cagri yorumlayici uzerinden.
+test('PF8 kopya calistirilamaz (0600) ve betik `/bin/bash` ile okutuluyor', () => {
+  const src = fs.readFileSync(path.join(DISC, '10_discover_parallel.yml'), 'utf8');
+  assert.match(src, /dest: "\{\{ _disc_runner_path \}\}"\n\s+mode: "0600"/, 'kopya izni 0600 degil');
+  assert.match(
+    src,
+    /cmd: "\/bin\/bash \{\{ _disc_runner_path \| quote \}\}"/,
+    'betik yorumlayiciya okutulmuyor — noexec `/tmp`de rc=126',
+  );
+});
+
+test('PF8b 0600 kopya ile paralel kesif GERCEKTEN satir topluyor', { skip: !HAS_ANSIBLE }, () => {
+  const r = paralelKostur({ clusters: ['c1'], sleepSaniye: 0 });
+  assert.deepEqual(r.failed, [], `calistirilamadi: ${JSON.stringify(r.rows)}\n${r.out.slice(-1500)}`);
+  assert.ok(r.rows.some((x) => x.startsWith('c1;jump-c1;odeme-api;')), `satir yok: ${JSON.stringify(r.rows)}`);
+});
+
+// ── PF9: HATA SATIRI SEBEBI SOYLUYOR ────────────────────────────────────────
+//
+// Uretim arizasinda ekran yalnizca "SSH/transport/shell/runtime failure"
+// diyordu; rc ve stderr AWX logunun derinine gomuluydu. Satir artik ikisini de
+// tasiyor — tek satir ve `;` icermeden (satir ayraci).
+test('PF9 calistirma hatasinda satir rc ve stderr tasiyor', { skip: !HAS_ANSIBLE }, () => {
+  const r = paralelKostur({ clusters: ['c1'], exitKodu: 3, sleepSaniye: 0 });
+  const fail = r.rows.find((x) => /;RUNNER;FAIL;/.test(x));
+  assert.ok(fail, `FAIL satiri yok: ${JSON.stringify(r.rows)}`);
+  assert.match(fail, /rc=3/, `rc yazilmamis: ${fail}`);
+  assert.match(fail, /sahte runner patladi/, `stderr yazilmamis: ${fail}`);
+  assert.equal(fail.split(';').length, 7, `sebep metni satir bicimini bozdu: ${fail}`);
 });
