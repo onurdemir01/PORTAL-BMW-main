@@ -35,6 +35,9 @@
       durum kayitlarina es zamanli iki yazici demek olurdu. Clusters:
       {{ target_matrix | map(attribute='cluster') | list | join(',') }}
 
+# HER FAZ BASINDA BOS: precheck satirlari execute tamponuna tekrar eklenmesin
+# (L2). Tek sifirlama noktasi burasi — sonda ikinci bir sifirlama kanitlanamayan
+# kod olurdu (mutasyon turunda etkisiz cikti, kaldirildi).
 - name: "{{ scalex_phase | upper }} | Initialize parallel row buffer"
   ansible.builtin.set_fact:
     _phase_rows_all: []
@@ -192,10 +195,3 @@
   ansible.builtin.set_fact:
     _execute_rows: "{{ _execute_rows + _phase_rows_all }}"
   when: scalex_phase == 'execute'
-
-# Bir sonraki faz ayni degiskeni BOS bulmali (precheck satirlari execute'a
-# tekrar eklenmesin).
-- name: "{{ scalex_phase | upper }} | Reset parallel row buffer"
-  ansible.builtin.set_fact:
-    _phase_rows_all: []
-  changed_when: false
