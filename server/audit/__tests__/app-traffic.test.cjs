@@ -170,6 +170,13 @@ test('AT8: eslesme UYGULAMA x ENVANTER buyuklugunde calismaz (uretim: ekran 10 d
   // Olculdu: 43,5 sn -> namespace indeksinden sonra 0,2 sn.
   //
   // Bu bekci SURE olcer: mantigi degil BUYUME HIZINI korur. Bilerek bol paylidir.
+  //
+  // DUVAR SAATI DEGIL, SURECIN CPU SURESI (2026-09-30). Ilk yazim `Date.now()`
+  // farkini olcuyordu ve tek basina yesil, TUM SUIT paralel kosarken ara sira
+  // KIRMIZI donuyordu: diger test surecleriyle CPU paylasilirken BEKLEME de
+  // duvar saatine eklenir — esik kodu degil makinenin YUKUNU olcer (bu depoda
+  // PD1'de ayni tuzaga dusulmustu). `process.cpuUsage()` yalnizca bu surecin
+  // gercekten harcadigi hesaplamayi sayar; esik ve mutasyon ayni kaldi.
   const NS = 100;
   const UYG = 40000;
   const ROUTE = 5000;
@@ -180,10 +187,11 @@ test('AT8: eslesme UYGULAMA x ENVANTER buyuklugunde calismaz (uretim: ekran 10 d
     const ns = `ns-${i % NS}-prod`;
     envanter.push(INV(ns, `r${i}`, `r${i}.apps.fw.garanti.com.tr`));
   }
-  const t0 = Date.now();
+  const c0 = process.cpuUsage();
   // TAVAN KALDIRILIR: olculen sey ESLESME maliyeti, kirpma degil.
   const r = buildAppTraffic(olcumler, envanter, { limit: UYG });
-  const sn = (Date.now() - t0) / 1000;
+  const cpu = process.cpuUsage(c0);
+  const sn = (cpu.user + cpu.system) / 1e6;
   assert.equal(r.rows.length, UYG);
   assert.equal(r.totalMatched, UYG);
   // ESIK MUTASYONLA AYARLANDI: indeks kaldirilinca ayni veri 3,1 sn suruyor, saglam
@@ -191,7 +199,7 @@ test('AT8: eslesme UYGULAMA x ENVANTER buyuklugunde calismaz (uretim: ekran 10 d
   // on kat pay birakir hem regresyonu gorur.
   assert.ok(
     sn < 2,
-    `eslesme ${sn.toFixed(1)} sn surdu - uygulama x envanter buyuklugunde calisiyor ` +
+    `eslesme ${sn.toFixed(1)} sn CPU harcadi - uygulama x envanter buyuklugunde calisiyor ` +
       `(namespace indeksi kaldirilmis olabilir). Saglam halde 0,2 sn, indeks yokken 3,1 sn.`,
   );
 });
