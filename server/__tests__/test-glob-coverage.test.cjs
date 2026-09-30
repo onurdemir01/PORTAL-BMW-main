@@ -171,6 +171,10 @@ test('glob’da var olmayan dizin YOK (bayat girdi kalmasin)', () => {
 // Geriye kalan 118in TAMAMI yukarida anlatilan react-hooks birikimidir; sinir
 // BILEREK 118e cekildi. Bu bir KAZANIM DEGIL, kaybedilen zeminin KAYDIDIR:
 // 87den 118e cikis, bekci kor oldugu donemde sessizce olmustu.
+//
+// 2026-09-30: 118 -> 117. Uygulama Trafigi duzeltmesi (RouteTraffic) bir uyariyi
+// kaldirdi ve bekci tam da tasarlandigi gibi KIRMIZIYA dondu: sinir gercekle
+// esit kalmali, yoksa kazanilan zemin sessizce geri kaybedilebilir.
 test('RT1 `--max-warnings` siniri GERCEK uyari sayisiyla AYNI', () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
   const declared = Number((pkg.scripts.lint.match(/--max-warnings\s+(\d+)/) || [])[1]);
