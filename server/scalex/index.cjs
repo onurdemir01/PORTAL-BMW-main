@@ -1168,7 +1168,10 @@ function initScaleX(app) {
       // OKUNAMAMIS tarama da yazilir ama `resourcesReadable: false` ile — o
       // satir ekranda gorunur (admin "burada yetki eksik" der) ama kesfi
       // HIZLANDIRMAK icin KULLANILMAZ.
-      if (status.finished && parsed && parsed.mode === 'capabilities') {
+      // MODA DEGIL SATIRA BAKILIR: `workloads` kesfi de soguk yolda yetenek
+      // satirlarini basiyor ve onbellek kendi kendini dolduruyor. Mod kosulu o
+      // satirlari sessizce yok sayardi.
+      if (status.finished && parsed && (parsed.capabilities || []).length) {
         try {
           for (const c of parsed.capabilities || []) {
             if (!c.cluster || !c.scanned) continue; // ozet satiri gelmemisse yazma

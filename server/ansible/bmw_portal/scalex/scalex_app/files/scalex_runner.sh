@@ -9,7 +9,7 @@ umask 077
 # "playbook'un guncel surumu kopyalanmamis olabilir" diye TAHMIN ediyordu; artik
 # calistirici surumu bildiriyor ve portal kendi bekledigi surumle karsilastirip
 # SOYLUYOR. Bu dosya `scalex_app/VERSION` ile ayni sayiyi tasimali (test kilitler).
-PACKAGE_VERSION="16"
+PACKAGE_VERSION="17"
 
 PHASE="${SCALEX_PHASE:-${CHAOS_PHASE:-precheck}}"
 CLUSTER="${CLUSTER:-}"
@@ -263,6 +263,19 @@ LIVE_PROBE_TEXT="$(printf '%s\n' "${SCALEX_LIVE_PROBE_APPS:-}" | tr ',;' '\n\n' 
 # kosar. "Onbellek yok"u "CRD yok" saymak, olceklenebilir operator nesnelerini
 # SESSIZCE listeden dusurmek olurdu — bu depodaki en pahali hata sinifi.
 EXTRA_KINDS_TEXT="$(printf '%s\n' "${SCALEX_EXTRA_KINDS:-}" | tr ',;' '\n\n' | awk '{$1=$1}; NF && !seen[$0]++ {print}')"
+# ── "TARANDI AMA BOS" — BOS LISTEDEN AYRI BIR HAL ───────────────────────────
+#
+# `SCALEX_EXTRA_KINDS=''` betik tarafinda "onbellek YOK" demek ve eski yolu
+# kosturur. Ama portal "bu cluster tarandi, olceklenebilir EKSTRA CRD YOK" da
+# diyebiliyor ve bu bilgi tam olarak en pahali adimi (API grubu basina
+# `oc get --raw`, ~50 cagri) atlatan bilgi. Ikisini ayni degerle anlatmak,
+# ekstra CRD'si olmayan cluster'lari sonsuza dek soguk yolda birakiyordu.
+#
+# AYRI DEGISKEN, ORTAK DEGERE ISARET KOYMAK DEGIL: `SCALEX_EXTRA_KINDS='-'`
+# gibi bir isaret degeri, ESKI bir paket tarafindan gercek bir tip adi
+# sanilirdi (`oc get -` denenir, sahte bir WARN satiri cikardi). Tanimadigi
+# bir ortam degiskenini ise eski paket sessizce YOK SAYAR.
+EXTRA_KINDS_SCANNED="$(normalize_lower "${SCALEX_EXTRA_KINDS_SCANNED:-no}")"
 if [ -z "$APPS_TEXT" ] && [ "$PHASE" != "discover" ]; then
   log "$CLUSTER" "$JUMP_SERVER" "-" "-" "INPUT" "FAIL" "No application remained after parsing input"
   exit 0
@@ -628,6 +641,12 @@ load_extra_scalable_resources() {
   # portala doner — yani onbellek bir sonraki kesif icin kendiliginden dolar.
   if [ -n "$EXTRA_KINDS_TEXT" ]; then
     printf '%s\n' "$EXTRA_KINDS_TEXT"
+    return 0
+  fi
+  # TARANDI AMA BOS: liste bos GELDI, "gelmedi" degil. Enumerasyon atlanir.
+  # Bu ayrim olmadan ekstra CRD'si olmayan bir cluster her kesifte ~50
+  # `oc get --raw` oduyordu — ve sonuc her seferinde ayni: bos.
+  if [ "$EXTRA_KINDS_SCANNED" = "yes" ]; then
     return 0
   fi
   [ "$CLUSTER_RESOURCES_OK" = "yes" ] || return 0
@@ -1459,6 +1478,27 @@ kind_of_resource() {
   printf '%s\n' "$CLUSTER_KIND_MAP" | awk -F'\t' -v r="$1" '$2 == r { print $1; exit }'
 }
 
+# Kesfin YAN URUNU olarak yetenek envanterini yayinlar. `capabilities` modunun
+# bastigi satirlarin AYNISI; tek fark `source=discovery` isaretidir — admin
+# ekranda kaydin nereden geldigini gorebilsin.
+#
+# `resources_readable` OKUNAMADI ile BOS'u ayirir: `oc api-resources` dusmusse
+# liste bos gorunur ama bu "CRD yok" DEMEK DEGILDIR. Portal okunamamis bir
+# taramayi onbellege YAZMAZ.
+disc_publish_caps() {
+  local liste="$1" k n=0
+  while IFS= read -r k; do
+    [ -z "$k" ] && continue
+    n=$((n + 1))
+    log "$CLUSTER" "$JUMP_SERVER" "-" "-" "CAP_KIND" "OK" "kind=$(disc_val "$k") source=discovery"
+  done <<EOF_PUBCAPS
+$liste
+EOF_PUBCAPS
+  log "$CLUSTER" "$JUMP_SERVER" "-" "-" "CAP_SUMMARY" \
+    "$([ "$CLUSTER_RESOURCES_OK" = "yes" ] && echo OK || echo WARN)" \
+    "kinds=$n resources_readable=$(disc_val "$CLUSTER_RESOURCES_OK") source=discovery"
+}
+
 # ── OBEK BUYUKLUGU ──────────────────────────────────────────────────────────
 # Tek cagriya konan tip sayisi. Sinirsiz birakmak, bozuk TEK bir tipin butun
 # taramayi tekil cagrilara dusurmesi demekti; 20, "cagri sayisi" ile "yikim
@@ -1679,12 +1719,34 @@ discover_workloads() {
   # `load_extra_scalable_resources` KOMUT IKAMESI icinde kosar, yani ALT KABUKTA:
   # icinde yapilan atama buraya DONMEZ. Onbellek isabeti bu yuzden cagrinin
   # kendisinden degil, onun baktigi AYNI degiskenden okunur.
-  if [ -n "$EXTRA_KINDS_TEXT" ]; then TIMING_CACHED="yes"; else TIMING_CACHED="no"; fi
+  if [ -n "$EXTRA_KINDS_TEXT" ] || [ "$EXTRA_KINDS_SCANNED" = "yes" ]; then
+    TIMING_CACHED="yes"
+  else
+    TIMING_CACHED="no"
+  fi
   extra="$(load_extra_scalable_resources 2>/dev/null | awk 'NF' | sort -u || true)"
   if [ -n "$extra" ]; then
     kinds_to_scan="$kinds_to_scan $(printf '%s' "$extra" | tr '\n' ' ')"
   fi
   TIMING_KINDS="$(printf '%s' "$kinds_to_scan" | wc -w | tr -d ' ')"
+
+  # ── ONBELLEK KENDI KENDINI DOLDURUR ───────────────────────────────────────
+  #
+  # Soguk yolda CRD listesi ZATEN hesaplandi (`load_extra_scalable_resources`).
+  # Onu yalnizca kendi taramamizda kullanip atmak, bir sonraki kesfin ayni ~50
+  # `oc get --raw` cagrisini yeniden odemesi demekti. Tabloyu dolduran TEK yol
+  # Admin'deki elle "Tara" dugmesiydi; cogu kapsamda tablo BOS kaliyordu.
+  #
+  # YENI BIR `step` ADI UYDURULMADI: `CAP_KIND` / `CAP_SUMMARY` ayristiricisi
+  # portalda hazir ve ESKI portal bu satirlari sessizce yok sayar — kademeli
+  # acilim bedava.
+  #
+  # YALNIZCA SOGUK YOLDA: onbellek doluyken yeniden yayinlamak, BAYAT bir
+  # listenin kendini sonsuza dek yeniden dogrulamasi olurdu (bu, tam olarak
+  # `discover_capabilities`in `EXTRA_KINDS_TEXT=""` yapmasinin sebebi).
+  if [ "$TIMING_CACHED" = "no" ]; then
+    disc_publish_caps "$extra"
+  fi
 
   DISC_FOUND_ANY=0
   obek=""

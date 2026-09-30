@@ -46,7 +46,11 @@ function envIfadesi(ad) {
  * `10_discover.yml`den okunan ifadeyi her cluster icin degerlendirir.
  */
 function cozumle(vars, clusters) {
-  const ifade = envIfadesi('SCALEX_EXTRA_KINDS');
+  return cozumleIfade(envIfadesi('SCALEX_EXTRA_KINDS'), vars, clusters);
+}
+
+/** Verilen ifadeyi `01_prepare.yml` kostuktan SONRA her cluster icin degerlendirir. */
+function cozumleIfade(ifade, vars, clusters) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'scalex-ck-'));
   try {
     const play = path.join(tmp, 'p.yml');
@@ -203,4 +207,27 @@ test('CK7 `default(x, true)` boolean bicimi kullanilmiyor', () => {
     /\|\s*default\([^)]*,\s*(true|True|1)\s*\)/,
     'boolean `default` bicimi: kasitli bos deger birlesik listeye geri duser',
   );
+});
+
+// ── CK8: "TARANDI AMA BOS" ISARETI GERCEKTEN DOGRU DEGERLENIYOR ─────────────
+//
+// MUTASYON TURUNDA BULUNDU: isaret degiskenini `10_discover.yml`den silmek
+// yalnizca bir METIN bekcisini kizartiyordu. Metin bekcisi satirin VAR oldugunu
+// kanitlar, DOGRU DEGERLENDIGINI degil — bu depodaki "calismayan kapi" sinifi.
+//
+// Ayrim ANAHTARIN VARLIGI ile tasiniyor: portal yalnizca GUVENILIR bir kaydi
+// olan cluster'i sozluge koyar, dolayisiyla sozlukte olmak "bu cluster tarandi"
+// demektir — listesi BOS olsa bile.
+test('CK8 isaret YALNIZCA sozlukteki cluster icin `yes`', { skip: !HAS_ANSIBLE }, () => {
+  const ifade = envIfadesi('SCALEX_EXTRA_KINDS_SCANNED');
+  const c = cozumleIfade(
+    ifade,
+    { scalex_cluster_kinds: { c1: 'a.io', c2: '' }, scalex_extra_kinds: 'u.io' },
+    ['c1', 'c2', 'c3'],
+  );
+  assert.equal(c.c1, 'yes', 'dolu kaydi olan cluster taranmamis sayildi');
+  // ASIL NOKTA: BOS deger de "tarandi"dir. Aksi halde ekstra CRD'si olmayan
+  // cluster her kesifte ~50 `oc get --raw` odemeye devam ederdi.
+  assert.equal(c.c2, 'yes', '"tarandi ama BOS" taranmamis sayildi — enumerasyon geri geldi');
+  assert.equal(c.c3, 'no', 'kaydi OLMAYAN cluster taranmis sayildi — enumerasyon sessizce atlanir');
 });

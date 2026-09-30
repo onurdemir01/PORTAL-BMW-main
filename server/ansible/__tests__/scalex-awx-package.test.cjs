@@ -1672,7 +1672,7 @@ test('T1d setup ve kesif sureleri GERCEK gecen sureyi olcuyor', () => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /** Sahte `oc`ye sayac takar; `oc` cagrilarinin TAMAMINI dondurur. */
-function kesifCagrilari({ extraKinds = '', mutate = (x) => x } = {}) {
+function kesifCagrilari({ extraKinds = '', scanned = 'no', mutate = (x) => x } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'scalex-butce-'));
   const log = path.join(dir, 'calls.log');
   const stub = mutate(OC_STUB).replace(
@@ -1700,6 +1700,7 @@ function kesifCagrilari({ extraKinds = '', mutate = (x) => x } = {}) {
       TLS_VERIFY: 'false',
       JOB_ID: '1',
       SCALEX_EXTRA_KINDS: extraKinds,
+      SCALEX_EXTRA_KINDS_SCANNED: scanned,
     },
   });
   const cagrilar = fs.readFileSync(log, 'utf8').split('\n').filter(Boolean);
@@ -1851,4 +1852,134 @@ test('B6 kesif `-o json` kullanmiyor (AWX artifact tavani)', () => {
   for (const c of cagrilar) {
     assert.ok(!/-o\s+json\b/.test(c), `\`-o json\` kullanilmis: ${c}`);
   }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PR-C — ONBELLEK KENDI KENDINI DOLDURUR
+//
+// Tabloyu dolduran TEK yol Admin'deki elle "Tara" dugmesiydi; cogu kapsamda
+// tablo BOS kaliyordu ve her kesif soguk yolu kosuyordu. Oysa `workloads`
+// kesfi CRD listesini ZATEN hesapliyor — yalnizca kendi taramasinda kullanip
+// atiyordu.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** D10'un CRD'li varyanti: envanterde `kafkas`, grup belgesinde `kafkas/scale`. */
+function crdliStub(stub) {
+  return stub
+    .replace(
+      /^ {6}printf 'deployments\.apps.*$/m,
+      "      printf 'deployments.apps\\nstatefulsets.apps\\ndaemonsets.apps\\ncronjobs.batch\\nrollouts.argoproj.io\\nreplicasets.apps\\nkafkas.kafka.strimzi.io\\n'",
+    )
+    .replace(
+      '      --raw) exit 1 ;;',
+      [
+        '      --raw)',
+        '        case "$3" in',
+        '          /apis/kafka.strimzi.io) echo \'{"groupVersion":"kafka.strimzi.io/v1beta2"}\'; exit 0 ;;',
+        '          /apis/kafka.strimzi.io/v1beta2) echo \'{"resources":[{"name":"kafkas"},{"name":"kafkas/scale"}]}\'; exit 0 ;;',
+        '          *) exit 1 ;;',
+        '        esac ;;',
+      ].join('\n'),
+    );
+}
+
+// ── SD1: SOGUK YOLDA YETENEK SATIRLARI DA CIKAR ──────────────────────────────
+test('SD1 `workloads` kesfi SOGUK yolda yetenek envanterini de yayinliyor', () => {
+  const { items } = kesifCagrilari({ mutate: crdliStub });
+  const capKinds = items.filter((i) => i.step === 'CAP_KIND');
+  const ozet = items.find((i) => i.step === 'CAP_SUMMARY');
+
+  assert.ok(capKinds.length > 0, 'kesif yetenek satiri basmiyor — onbellek elle doldurulmaya devam eder');
+  assert.ok(
+    capKinds.some((i) => /kind=kafkas\.kafka\.strimzi\.io/.test(i.detail)),
+    'kesfedilen CRD yetenek satirina girmemis',
+  );
+  // KAYNAK ISARETLENIYOR: admin kaydin nereden geldigini gorebilmeli.
+  assert.match(capKinds[0].detail, /source=discovery/, 'kaydin kaynagi yazilmamis');
+  assert.ok(ozet, 'ozet satiri yok — "okunamadi" ile "bos" ayrimi kaybolur');
+  assert.match(ozet.detail, /resources_readable=yes/);
+  assert.match(ozet.detail, /source=discovery/);
+
+  // Portalin GERCEK ayristiricisi bu satirlari `capabilities` olarak okumali —
+  // mod `workloads` oldugu halde.
+  const parsed = result.extractDiscoveryResult({
+    scalex_discovery_result: { mode: 'workloads', items, clusters: ['c'] },
+  });
+  const c = (parsed.capabilities || [])[0];
+  assert.ok(c, 'ayristirici `workloads` modunda yetenek satirlarini YOK SAYIYOR');
+  assert.equal(c.scanned, true);
+  assert.ok(c.kinds.includes('kafkas.kafka.strimzi.io'));
+});
+
+// ── SD2: SICAK YOLDA YENIDEN YAYINLAMAZ ──────────────────────────────────────
+//
+// Bayat bir liste kendini sonsuza dek yeniden dogrulardi. `discover_capabilities`
+// `EXTRA_KINDS_TEXT=""` yapmasinin sebebi TAM OLARAK budur.
+test('SD2 onbellek DOLUYKEN yetenek satiri yayinlanmaz (bayat liste kendini dogrulamasin)', () => {
+  const { items } = kesifCagrilari({
+    mutate: crdliStub,
+    extraKinds: 'kafkas.kafka.strimzi.io',
+  });
+  assert.equal(
+    items.filter((i) => i.step === 'CAP_KIND' || i.step === 'CAP_SUMMARY').length,
+    0,
+    'sicak yolda yetenek yeniden yayinlaniyor — bayat liste kendini dogrular',
+  );
+  // IKINCI ASSERT SART: yalnizca "CAP_KIND yok" demek, ozelligi tamamen
+  // silerek de gecerdi. Tarama GERCEKTEN kosmus olmali.
+  assert.ok(
+    items.some((i) => i.step === 'WORKLOAD_KIND' && /kind=kafkas\./.test(i.detail)),
+    'onbellekten gelen tip hic taranmamis',
+  );
+});
+
+// ── SD3: "TARANDI AMA BOS" ───────────────────────────────────────────────────
+//
+// `SCALEX_EXTRA_KINDS=''` betik tarafinda "onbellek YOK" demek. Ekstra CRD'si
+// OLMAYAN bir cluster bu yuzden her kesifte ~50 `oc get --raw` oduyordu ve
+// sonuc her seferinde ayniydi: bos.
+test('SD3 "tarandi ama BOS" enumerasyonu atlatiyor', () => {
+  const soguk = kesifCagrilari({ mutate: crdliStub });
+  const taranmisBos = kesifCagrilari({
+    mutate: crdliStub,
+    scanned: 'yes',
+  });
+
+  const raw = (r) => r.cagrilar.filter((c) => /^get --raw/.test(c)).length;
+  assert.ok(raw(soguk) > 0, 'soguk yol zaten enumerasyon yapmiyor — test olctugu seyi kaybetti');
+  assert.equal(raw(taranmisBos), 0, '"tarandi ama bos" halinde hala `--raw` cagrisi var');
+
+  // Ve davranis GERILEMEDI: bilinen alti tip yine raporlanmis olmali.
+  const kinds = new Set(
+    taranmisBos.items
+      .filter((i) => i.step === 'WORKLOAD_KIND')
+      .map((i) => /kind=([^\s]+)/.exec(i.detail)?.[1]),
+  );
+  for (const k of ['deploy', 'sts', 'ds', 'cronjob']) {
+    assert.ok(kinds.has(k), `${k} kaybolmus`);
+  }
+  // Olcum de "sicak" demeli — aksi halde Admin paneli soguk/sicak ortalamalari
+  // yanlis kovaya yazar.
+  const t = taranmisBos.items.find((i) => i.step === 'TIMING');
+  assert.match(t.detail, /cached=yes/, '"tarandi ama bos" olcumde SOGUK sayilmis');
+  // Ve bu halde yetenek YENIDEN YAYINLANMAZ (bayat liste kendini dogrulamasin).
+  assert.equal(
+    taranmisBos.items.filter((i) => i.step === 'CAP_SUMMARY').length,
+    0,
+    '"tarandi ama bos" halinde yetenek yeniden yayinlaniyor',
+  );
+});
+
+// ── SD4: ESKI PAKET KIRILMAZ ─────────────────────────────────────────────────
+// Isaret AYRI bir ortam degiskeni; ortak degere konan bir isaret (`'-'`) eski
+// bir pakette GERCEK bir tip adi sanilirdi.
+test('SD4 "tarandi ama bos" isareti ORTAK degere konmamis', () => {
+  const src = read(path.join(APP, 'tasks', 'discovery', '10_discover.yml'));
+  const m = /^\s*SCALEX_EXTRA_KINDS:\s*"(.+)"\s*$/m.exec(src);
+  assert.ok(m, 'SCALEX_EXTRA_KINDS satiri yok');
+  assert.ok(
+    !/['"]-['"]/.test(m[1]),
+    'isaret degeri ORTAK degiskene konmus — eski paket onu tip adi sanar',
+  );
+  assert.match(src, /SCALEX_EXTRA_KINDS_SCANNED:/, 'ayri isaret degiskeni yok');
 });

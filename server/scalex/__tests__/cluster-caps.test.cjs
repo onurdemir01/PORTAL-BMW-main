@@ -253,7 +253,7 @@ test('CC13 envanter okuma SINIRLI (sinirsiz okuma yedi OOM`un sinifiydi)', () =>
 // Ustelik dondurdugu sey bir BIRLESIM oldugu icin, bir cluster'da OLMAYAN CRD'ler
 // orada da yoklanirdi. Harita her cluster'i KENDI kaydiyla degerlendirir.
 
-test('CC14 haritada yalnizca GUVENILIR ve DOLU kayitlar var', async () => {
+test('CC14 haritada yalnizca GUVENILIR kayitlar var ("tarandi ama BOS" DAHIL)', async () => {
   const caps = capsWith([
     satir({ cluster_name: 'c1', kinds_csv: 'a.io,b.io' }),
     satir({ cluster_name: 'c2', kinds_csv: null }), // hic taranmamis
@@ -265,7 +265,11 @@ test('CC14 haritada yalnizca GUVENILIR ve DOLU kayitlar var', async () => {
     tenant: 'ark',
     clusterNames: ['c1', 'c2', 'c3', 'c4'],
   });
-  assert.deepEqual(Object.keys(h).sort(), ['c1'], `harita: ${JSON.stringify(h)}`);
+  // "TARANDI AMA BOS" ARTIK SOZLUKTE. Deger bos, ama ANAHTARIN VARLIGI betige
+  // "tarandi, ekstra CRD yok" diyor ve ~50 `oc get --raw` cagrisini atlatiyor.
+  // Onceki turda disarida birakilmisti cunku betik ikisini ayirt EDEMIYORDU.
+  assert.deepEqual(Object.keys(h).sort(), ['c1', 'c4'], `harita: ${JSON.stringify(h)}`);
+  assert.deepEqual(h.c4, [], '"tarandi ama bos" bos liste olarak gelmeli');
   // KORLUK PANZEHIRI: `{}` donse de "yalnizca guvenilirler var" gecerdi. Saglam
   // cluster'in anahtarinin GERCEKTEN dolu oldugu ayrica dogrulanir.
   assert.deepEqual(h.c1, ['a.io', 'b.io'], 'saglam cluster`in listesi bos/yanlis');
@@ -332,5 +336,80 @@ test('CC18 portal IKI bicimi de gonderiyor, BOS sozlugu GONDERMIYOR', () => {
   assert.ok(
     !/(false\s*&&|&&\s*false|\?\s*\{\}\s*:)/.test(blok),
     'extra_vars blogunda OLU DAL var — gonderilmeyen bir anahtar gonderiliyormus gibi gorunur',
+  );
+});
+
+// ── `rbac_json` EZILMEZ (PR-C) ──────────────────────────────────────────────
+//
+// Yetki taramasi YALNIZCA `capabilities` modunda yapiliyor. Kesfin yan urunu
+// olarak gelen kayitta `rbac` TANIMSIZ gelir ve kosulsuz bir `rbac_json = $5`
+// onu NULL'a EZERDI: Admin'deki yetki tablosu, kesif kostukca KENDILIGINDEN
+// bosalirdi. Onbellegin kendi kendini doldurmasi bu hatayi HER KESIFTE
+// tetikleyecekti.
+//
+// KORLUK PANZEHIRI: `save`in DONUS DEGERINE bakmak bunu goremez (fonksiyon yine
+// `{written: true}` doner). URETILEN SQL'e bakilir.
+function saveSql() {
+  const yazilan = [];
+  const file = path.join(__dirname, '..', 'cluster-caps.cjs');
+  const Module = require('node:module');
+  const m = new Module(file);
+  m.filename = file;
+  m.paths = Module._nodeModulePaths(path.dirname(file));
+  const sahte = {
+    query: async (sql, p) => {
+      yazilan.push({ sql, p });
+      return { rows: [], rowCount: sql.startsWith('UPDATE') ? 1 : 0 };
+    },
+  };
+  const fn = new Function('exports', 'require', 'module', '__filename', '__dirname', CAPS_SRC);
+  fn(m.exports, (id) => (id.includes('db/index') ? sahte : m.require(id)), m, m.filename, path.dirname(file));
+  return { save: m.exports.save, yazilan };
+}
+
+test('CC19 `rbac` TANIMSIZ iken `rbac_json` SET listesine GIRMEZ', async () => {
+  const { save, yazilan } = saveSql();
+  await save({
+    env: 'prod', tenant: 'ark', clusterName: 'c1',
+    kinds: ['a.io'], resourcesReadable: true, scannedBy: 'kesif', awxJobId: 5,
+  });
+  const upd = yazilan.find((x) => x.sql.startsWith('UPDATE'));
+  assert.ok(upd, 'UPDATE hic calismadi');
+  assert.ok(
+    !/rbac_json\s*=/.test(upd.sql),
+    'kesif kokenli yazim `rbac_json`u NULL`a eziyor — Admin yetki tablosu kendiliginden bosalir',
+  );
+  // Ve yazilmasi GEREKEN alanlar hala yaziliyor.
+  assert.match(upd.sql, /kinds_csv\s*=/, 'CRD listesi yazilmiyor');
+  assert.match(upd.sql, /resources_readable\s*=/, 'okunabilirlik yazilmiyor');
+});
+
+test('CC20 `rbac` VERILDIGINDE `rbac_json` YAZILIR (kural gevsemedi)', async () => {
+  const { save, yazilan } = saveSql();
+  await save({
+    env: 'prod', tenant: 'ark', clusterName: 'c1',
+    kinds: ['a.io'], rbac: { deployments: true }, resourcesReadable: true,
+  });
+  const upd = yazilan.find((x) => x.sql.startsWith('UPDATE'));
+  assert.match(upd.sql, /rbac_json\s*=\s*\$5/, '`capabilities` taramasi yetkiyi artik yazmiyor');
+  assert.equal(upd.p[4], JSON.stringify({ deployments: true }));
+});
+
+test('CC21 yetenek yazimi MODA degil SATIRA bagli', () => {
+  // `workloads` kesfi de yetenek satiri basiyor; mod kosulu onlari SESSIZCE yok
+  // sayardi — yazildigi halde hicbir yere ulasmayan bir ozellik sinifi.
+  assert.ok(
+    !/parsed\.mode === 'capabilities'/.test(IX),
+    'yetenek yazimi hala moda bagli — kesif kokenli satirlar yok sayilir',
+  );
+  assert.match(
+    IX,
+    /\(parsed\.capabilities \|\| \[\]\)\.length/,
+    'yetenek yazimi satir varligina bagli degil',
+  );
+  const RES = fs.readFileSync(path.join(__dirname, '..', 'result.cjs'), 'utf8');
+  assert.ok(
+    !/base\.mode === 'capabilities'/.test(RES),
+    'ayristirici hala moda bakiyor — `workloads` kokenli CAP_ satirlari dusuruluyor',
   );
 });
