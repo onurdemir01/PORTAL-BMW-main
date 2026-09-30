@@ -611,5 +611,62 @@
       },
       "hpaPin": []
     }
+  },
+  "restore-hazir-olmayan": {
+    "gruplu": {
+      "-": [
+        "c1;j1;-;-;RUNNER;INFO;package_version=N phase=execute"
+      ],
+      "faz-app": [
+        "c1;j1;faz-app;Deployment;GERI_AL;INFO;Current replicas=0 target=5 workload spec.replicas will be patched. HPA will not be changed.",
+        "c1;j1;faz-app;Deployment;GERI_AL;OK;Patch accepted replicas=5. HPA was not changed.",
+        "c1;j1;faz-app;Deployment;VERIFY;WARN;applied=yes aciliyor, 0/5, 4 sn bekleniyor replica degisikligi UYGULANDI, pod hazir olmayi surduruyor",
+        "c1;j1;faz-app;Deployment;STATE;OK;Deleted restore state ConfigMap scalex-state-faz-app after successful restore",
+        "c1;j1;faz-app;Deployment;OBJECT;INFO;faz-app 0/5 5 0 5d",
+        "c1;j1;faz-app;Deployment;PODS;INFO;No matching pod visible yet readiness may still be converging"
+      ]
+    },
+    "son": {
+      "nesneler": {
+        "deploy/odeme-api": 3,
+        "deploy/sifir-app": 0,
+        "deploy/iki-tip": 1,
+        "deploy/legacy-app": 0,
+        "deploy/faz-app": 5,
+        "sts/kafka": 3,
+        "sts/iki-tip": 1,
+        "dc/eski-app": 0
+      },
+      "cm": {
+        "chaos-scale-state-eski-app": {
+          "version": "2",
+          "namespace": "ns1",
+          "cluster": "c1",
+          "phase": "scaled_down",
+          "app": "eski-app",
+          "kind": "dc",
+          "resource": "dc",
+          "previous_replicas": "2"
+        },
+        "scalex-state-kafka": {
+          "version": "2",
+          "namespace": "baska-ns",
+          "cluster": "c1",
+          "phase": "scaled_down",
+          "app": "kafka",
+          "kind": "sts",
+          "resource": "sts",
+          "previous_replicas": "3"
+        },
+        "scalex-state-legacy-app": {
+          "app": "legacy-app",
+          "previous_replicas": "4"
+        },
+        "alakasiz-cm": {
+          "foo": "bar"
+        }
+      },
+      "hpaPin": []
+    }
   }
 }

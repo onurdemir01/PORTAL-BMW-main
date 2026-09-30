@@ -166,9 +166,11 @@ function durumOku(o) {
     return o._eski;
   }
   if (o._eski) {
+    // `hazirTakili`: pod'lar OLUSUR (status hedefte) ama HAZIR olmaz — acma
+    // olcutunun "ready de hedefte" sartini sinar.
+    o.ready = o.hazirTakili ? o._eski.ready : o.spec;
     delete o._eski;
     o.status = o.spec;
-    o.ready = o.spec;
     modelDegisti = true;
   }
   return { status: o.status ?? o.spec, ready: o.ready ?? o.status ?? o.spec };

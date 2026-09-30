@@ -67,6 +67,14 @@ const SENARYOLAR = {
       m.hpa.push({ name: 'eski-hpa', target: 'eski-app', kind: 'DeploymentConfig' });
     }),
   },
+  // MUTASYON TURUNDA EKLENDI (K-M10): pod'lar olusuyor ama HAZIR olmuyor.
+  // Acma "desired=current=hedef" ile YETINMEMELI; WARN applied=yes beklenir.
+  'restore-hazir-olmayan': {
+    env: { ACTION: 'restore', WORKLOAD_KINDS: HARITA, APP_RAW: 'faz-app' },
+    model: modelle((m) => {
+      nesne(m, 'deploy', 'faz-app').hazirTakili = true;
+    }),
+  },
   'stop-patch-red': {
     env: { ACTION: 'stop', WORKLOAD_KINDS: HARITA, APP_RAW: 'kafka,odeme-api' },
     model: { patchRed: ['sts'] },
