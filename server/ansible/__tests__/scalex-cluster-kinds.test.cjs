@@ -231,3 +231,79 @@ test('CK8 isaret YALNIZCA sozlukteki cluster icin `yes`', { skip: !HAS_ANSIBLE }
   assert.equal(c.c2, 'yes', '"tarandi ama BOS" taranmamis sayildi — enumerasyon geri geldi');
   assert.equal(c.c3, 'no', 'kaydi OLMAYAN cluster taranmis sayildi — enumerasyon sessizce atlanir');
 });
+
+// ── CK9: NAMESPACE LISTESININ TAMAMI DOGRULANIR ──────────────────────────────
+//
+// MUTASYON TURUNDA BULUNDU: liste dogrulamasini yalnizca ILK namespace'e
+// indirgemek hicbir bekciyi kizartmiyordu. Listeye konan gecersiz bir ad betige
+// kadar gider ve orada reddedilse bile kullaniciya sebebi ALAKASIZ gorunurdu
+// ("Namespace failed shell-side Kubernetes-safe validation") — hangi namespace
+// oldugu bile yazmazdi.
+//
+// Bu bekci gorev dosyasini GERCEKTEN kosturur: `assert` calisma aninda
+// degerlenir, kaynak taramasi bunu goremez.
+function prepareKosar(vars) {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'scalex-ck9-'));
+  try {
+    const play = path.join(tmp, 'p.yml');
+    const temel = {
+      scalex_clusters_override: {
+        version: 1,
+        clusters: {
+          c1: {
+            api_url: 'https://a',
+            credential: 'k',
+            enabled: true,
+            environments: ['test'],
+            jump_server: 'j',
+            platform: 'ark',
+          },
+        },
+        defaults: {},
+      },
+      target_platform: 'ark',
+      target_environment: 'test',
+      target_namespace: 'ns1',
+      discovery_mode: 'workloads',
+      username: 'uxmid',
+      ...vars,
+    };
+    fs.writeFileSync(
+      play,
+      [
+        '---',
+        '- hosts: localhost',
+        '  gather_facts: false',
+        `  vars: ${JSON.stringify(temel)}`,
+        '  tasks:',
+        '    - block:',
+        `        - ansible.builtin.include_tasks: ${path.join(DISC, '01_prepare.yml')}`,
+        '        - ansible.builtin.debug: { msg: "PREPARE_OK" }',
+        '      rescue:',
+        '        - ansible.builtin.debug: { msg: "PREPARE_FAILED" }',
+      ].join('\n'),
+    );
+    const r = spawnSync('ansible-playbook', [play], {
+      encoding: 'utf8',
+      env: { ...process.env, ANSIBLE_LOCALHOST_WARNING: 'False' },
+    });
+    const out = `${r.stdout || ''}${r.stderr || ''}`;
+    return { ok: /PREPARE_OK/.test(out), out };
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+test('CK9 LISTEDEKI gecersiz namespace REDDEDILIR (ilk degil, HEPSI)', { skip: !HAS_ANSIBLE }, () => {
+  // Gecerli liste GECER.
+  assert.ok(
+    prepareKosar({ scalex_target_namespaces: ['ns2', 'ns3'] }).ok,
+    'gecerli namespace listesi reddedildi',
+  );
+  // ILK gecerli ama SONRAKI gecersiz: yalnizca ilkine bakan bir dogrulama bunu
+  // KACIRIR.
+  for (const kotu of ['Gecersiz_NS', 'ns with space', 'UPPER', '-basta-tire', 'a'.repeat(64)]) {
+    const r = prepareKosar({ scalex_target_namespaces: ['ns2', kotu] });
+    assert.equal(r.ok, false, `gecersiz namespace KABUL EDILDI: ${JSON.stringify(kotu)}`);
+  }
+});
