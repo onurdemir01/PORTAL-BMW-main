@@ -130,33 +130,51 @@ test('CC6 okunamamis tarama YINE YAZILIR ama kinds NULL kalir', async () => {
 
 // ── RUNNER SOZLESMESI ───────────────────────────────────────────────────────
 
-test('CC7 runner onbellek doluysa HIC `oc` cagirmiyor', () => {
-  const i = RUNNER.indexOf('load_extra_scalable_resources() {');
-  const govde = RUNNER.slice(i, RUNNER.indexOf('resource_candidates()', i));
-  // Kisa devre, `oc` cagrilarindan ONCE olmali; sonra olsaydi hic ates almazdi.
-  const kisaDevre = govde.indexOf('if [ -n "$EXTRA_KINDS_TEXT" ]; then');
-  const ilkOc = govde.indexOf('load_preferred_group_versions');
-  assert.ok(kisaDevre > 0, 'onbellek kisa devresi YOK');
-  assert.ok(kisaDevre < ilkOc, 'kisa devre `oc` cagrilarindan SONRA — hic ates almaz');
-  assert.ok(
-    govde.includes('printf \'%s\\n\' "$EXTRA_KINDS_TEXT"'),
-    'onbellek listesi dondurulmuyor',
+// PAKET v21: enumerasyon KESIFTEN CIKTI (uretimde cluster basina 11-15 sn).
+// Kesif yalnizca bilinen tipleri + onbellekteki listeyi tarar; onbellek bos ise
+// "eski yol" (soguk enumerasyon) ARTIK YOK — onu arka plan `capabilities` isi
+// kosar (bkz. caps-refresh.cjs). Bu iki bekci METIN bekcisidir; davranisi
+// runner testleri (H1: `--raw`/`api-resources` sifir, D10: onbellekteki tip
+// taraniyor, H3: suzgec) kanitliyor.
+test('CC7 kesif enumerasyon CAGIRMIYOR; onbellek listesi suzgecten gecip taraniyor', () => {
+  const i = RUNNER.indexOf('discover_workloads() {');
+  const govde = RUNNER.slice(i, RUNNER.indexOf('\ndiscover_state() {', i));
+  for (const yasak of ['load_extra_scalable_resources', 'enumerate_extra_kinds', 'load_cluster_resources']) {
+    assert.ok(!govde.includes(yasak), `kesif ${yasak} cagiriyor — enumerasyon kritik yola donmus`);
+  }
+  assert.match(
+    govde,
+    /printf '%s\\n' "\$EXTRA_KINDS_TEXT" \| extra_kind_filter/,
+    'onbellek listesi suzgecten gecmiyor — bayat tekrarlar taranir',
   );
 });
 
-test('CC8 BOS onbellek ESKI yolu kosturuyor (fail-safe)', () => {
-  const i = RUNNER.indexOf('load_extra_scalable_resources() {');
-  const govde = RUNNER.slice(i, RUNNER.indexOf('resource_candidates()', i));
-  // Kisa devre `-n` ile: BOS string eski yola duser. `-z` olsaydi ters calisirdi.
-  assert.match(govde, /if \[ -n "\$EXTRA_KINDS_TEXT" \]/, 'bos onbellek eski yolu kosturmuyor');
-  assert.match(govde, /load_preferred_group_versions/, 'eski yol SILINMIS — fail-safe yok');
+test('CC8 enumerasyon yalnizca `capabilities` modunda ve suzgecle', () => {
+  const i = RUNNER.indexOf('discover_capabilities() {');
+  const govde = RUNNER.slice(i, RUNNER.indexOf('\n}\n', i));
+  assert.match(govde, /load_cluster_resources/, 'capabilities envanteri okumuyor');
+  assert.match(govde, /enumerate_extra_kinds/, 'capabilities suzgecli enumerasyonu kullanmiyor');
+  const e = RUNNER.indexOf('enumerate_extra_kinds() {');
+  assert.match(
+    RUNNER.slice(e, RUNNER.indexOf('\n}\n', e)),
+    /load_extra_scalable_resources \| extra_kind_filter/,
+    'enumerasyon ciktisi suzulmuyor',
+  );
 });
 
 test('CC9 `capabilities` modu onbellegi URETIR, TUKETMEZ', () => {
   const i = RUNNER.indexOf('discover_capabilities() {');
   assert.ok(i > 0, 'capabilities modu yok');
   const govde = RUNNER.slice(i, RUNNER.indexOf('\nrc=0', i));
-  assert.match(govde, /EXTRA_KINDS_TEXT=""/, 'onbellegi tuketiyor — bayat liste kendini dogrular');
+  // ONBELLEGI TUKETEMEZ — YAPISI GEREGI: enumerasyon (`load_extra_scalable_resources`)
+  // `EXTRA_KINDS_TEXT`e HIC bakmiyor. Eskiden bakiyordu ve bu mod onu elle
+  // bosaltmak zorundaydi; o satir artik etkisiz oldugu icin kaldirildi.
+  const l = RUNNER.indexOf('load_extra_scalable_resources() {');
+  assert.doesNotMatch(
+    RUNNER.slice(l, RUNNER.indexOf('\n}\n', l)),
+    /EXTRA_KINDS_TEXT|EXTRA_KINDS_SCANNED/,
+    'enumerasyon onbellegi okuyor — capabilities bayat listeyi kendine dogrulatir',
+  );
   assert.match(govde, /CAP_SUMMARY/, 'ozet satiri yok — "okunamadi" ayrimi kaybolur');
   assert.match(govde, /resources_readable=/, 'okunabilirlik bildirilmiyor');
   // Portal da onu gecirmemeli.

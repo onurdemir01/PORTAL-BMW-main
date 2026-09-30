@@ -9,7 +9,7 @@ umask 077
 # "playbook'un guncel surumu kopyalanmamis olabilir" diye TAHMIN ediyordu; artik
 # calistirici surumu bildiriyor ve portal kendi bekledigi surumle karsilastirip
 # SOYLUYOR. Bu dosya `scalex_app/VERSION` ile ayni sayiyi tasimali (test kilitler).
-PACKAGE_VERSION="20"
+PACKAGE_VERSION="21"
 
 PHASE="${SCALEX_PHASE:-${CHAOS_PHASE:-precheck}}"
 CLUSTER="${CLUSTER:-}"
@@ -441,19 +441,29 @@ if [ "$PHASE" = "precheck" ]; then
 fi
 
 API_HOST="$(printf '%s' "$API_URL" | sed -E 's#^https?://([^/:]+).*#\1#')"
-if command -v curl >/dev/null 2>&1; then
-  CURL_TLS_ARGS=""
-  [ "$TLS_VERIFY" = "false" ] && CURL_TLS_ARGS="-k"
-  if curl $CURL_TLS_ARGS -sS -o /dev/null --connect-timeout 5 "${API_URL%/}/version" >/dev/null 2>&1; then
-    [ "$PHASE" = "precheck" ] && log "$CLUSTER" "$JUMP_SERVER" "-" "-" "API" "OK" "API endpoint reachable host=$API_HOST tls_verify=$TLS_VERIFY"
+# API ERISILEBILIRLIGI — bir TESHIS adimi: `oc login` dustugunde "API'ye
+# ulasilamiyor" ile "kimlik reddedildi"yi ayirir.
+#
+# KESIFTE YALNIZCA LOGIN DUSERSE sorulur. Basarili bir login erisilebilirligin
+# KENDISI kanitidir; o halde curl ayni cevabi bir TLS el sikismasi (~0,1-0,5 sn,
+# cluster basina, her kesifte) pahasina verir. Precheck/execute'ta sira ve
+# satirlar AYNEN korunur (kullanici o satirlari rapor olarak okuyor).
+api_check() {
+  if command -v curl >/dev/null 2>&1; then
+    CURL_TLS_ARGS=""
+    [ "$TLS_VERIFY" = "false" ] && CURL_TLS_ARGS="-k"
+    if curl $CURL_TLS_ARGS -sS -o /dev/null --connect-timeout 5 "${API_URL%/}/version" >/dev/null 2>&1; then
+      [ "$PHASE" = "precheck" ] && log "$CLUSTER" "$JUMP_SERVER" "-" "-" "API" "OK" "API endpoint reachable host=$API_HOST tls_verify=$TLS_VERIFY"
+    else
+      STEP="API"; [ "$PHASE" = "execute" ] && STEP="RECHECK"
+      log "$CLUSTER" "$JUMP_SERVER" "-" "-" "$STEP" "FAIL" "API endpoint is not reachable from jump server host=$API_HOST"
+      exit 0
+    fi
   else
-    STEP="API"; [ "$PHASE" = "execute" ] && STEP="RECHECK"
-    log "$CLUSTER" "$JUMP_SERVER" "-" "-" "$STEP" "FAIL" "API endpoint is not reachable from jump server host=$API_HOST"
-    exit 0
+    [ "$PHASE" = "precheck" ] && log "$CLUSTER" "$JUMP_SERVER" "-" "-" "API" "WARN" "curl is unavailable; API reachability will be determined by oc login"
   fi
-else
-  [ "$PHASE" = "precheck" ] && log "$CLUSTER" "$JUMP_SERVER" "-" "-" "API" "WARN" "curl is unavailable; API reachability will be determined by oc login"
-fi
+}
+[ "$PHASE" != "discover" ] && api_check
 
 KUBECONFIG_FILE="$(mktemp "${WORKDIR}/.chaos_kubeconfig_${CLUSTER}_XXXXXX" 2>/dev/null || true)"
 if [ -z "$KUBECONFIG_FILE" ]; then
@@ -470,6 +480,9 @@ else
   LOGIN_RC=$?
 fi
 if [ "$LOGIN_RC" -ne 0 ]; then
+  # Kesifte teshis simdi: API'ye ulasilamiyorsa `api_check` kendi FAIL satirini
+  # basip cikar; ulasiliyorsa sorun kimlikte.
+  [ "$PHASE" = "discover" ] && api_check
   STEP="LOGIN"; [ "$PHASE" = "execute" ] && STEP="RECHECK"
   log "$CLUSTER" "$JUMP_SERVER" "-" "-" "$STEP" "FAIL" "OpenShift login failed for configured service user"
   exit 0
@@ -589,63 +602,19 @@ load_cluster_resources() {
   if [ -n "$CLUSTER_RESOURCES" ]; then CLUSTER_RESOURCES_OK="yes"; fi
 }
 
-# ── ENVANTER CAGRILARI KRITIK YOLDAN CIKARILIR ──────────────────────────────
+# ── KESIF KRITIK YOLUNDA `api-resources` YOK ────────────────────────────────
 #
-# `oc api-resources` SUNUCU TARAFINDA ucuz ama ISTEMCI TARAFINDA pahali: butun
-# API gruplarinin discovery belgesini indirir, olculen suresi 1-3 SANIYE. Betik
-# bunu IKI KEZ cagiriyor (`-o name` tam adlar icin, varsayilan cikti KIND sutunu
-# icin) ve ikisi de namespace okumalarindan BAGIMSIZ.
+# OLCULDU (uretim AWX loglari, 2026-09-30): `oc api-resources` ISTEMCI tarafinda
+# 1-3 SANIYE, ve arka plana alinmasi bile yetmedi — kesif cluster basina 11-15 sn
+# surdu. Kesif (`workloads`) artik onu HIC cagirmaz:
 #
-# SILINEMEZ: `resource_exists` (`api_absent` ↔ `no_permission` ayrimi),
-# `full_resource_name` (RBAC cumlesindeki tam ad) ve cok tipli cagrinin atifi
-# ona dayaniyor. Ama BEKLENMESI GEREKMIYOR: arka planda baslatilir, namespace
-# okumalari (hpa/pdb/ConfigMap) o sirada kosar ve sonuc en son toplanir.
+#   * bilinen alti tipin KIND'i SABIT tablodan gelir (`kind_of_resource`);
+#   * `api_absent` / `no_permission` ayrimi `oc get`in KENDI stderr'inden okunur
+#     (`disc_reason`) — kubectl API yoklugunda "doesn't have a resource type",
+#     yetki reddinde "Forbidden" yazar; ikisi karismaz.
 #
-# IKI CAGRI AYNI DISCOVERY ONBELLEGINI (`~/.kube/cache`) paylasir; kubectl o
-# onbellegi atomik yazimla kurdugu icin es zamanli kullanim guvenli. Yine de
-# HERHANGI bir aksilikte dosyalar BOS kalir, `CLUSTER_RESOURCES_OK=no` olur ve
-# betik bugunku fail-safe yoluna duser: tekil cagrilar + `SCAN;WARN`. Yani en
-# kotu halde YAVASLAR, YANILMAZ.
-AR_NAME_FILE=""
-AR_KIND_FILE=""
-AR_PID_NAME=""
-AR_PID_KIND=""
-# Envanter CLUSTER duzeyidir: namespace degistiginde DEGISMEZ. Cok namespace'li
-# bir iste her namespace icin yeniden okumak, en pahali adimi namespace sayisiyla
-# CARPMAK olurdu (3 namespace = 6 `api-resources`).
-AR_DONE="no"
-disc_inventory_start() {
-  [ "$AR_DONE" = "yes" ] && return 0
-  AR_NAME_FILE="$(mktemp "${WORKDIR}/.scalex_ar_name_XXXXXX" 2>/dev/null || true)"
-  AR_KIND_FILE="$(mktemp "${WORKDIR}/.scalex_ar_kind_XXXXXX" 2>/dev/null || true)"
-  if [ -z "$AR_NAME_FILE" ] || [ -z "$AR_KIND_FILE" ]; then
-    AR_NAME_FILE=""; AR_KIND_FILE=""
-    return 0
-  fi
-  oc api-resources --namespaced=true --verbs=list -o name >"$AR_NAME_FILE" 2>/dev/null &
-  AR_PID_NAME=$!
-  oc api-resources --namespaced=true --verbs=list >"$AR_KIND_FILE" 2>/dev/null &
-  AR_PID_KIND=$!
-}
-
-# Arka plandaki cagrilari toplar ve globalleri kurar. Baslatilamamissa SENKRON
-# yola duser — davranis ayni, yalnizca cakistirma kazanci yok.
-disc_inventory_finish() {
-  [ "$AR_DONE" = "yes" ] && return 0
-  AR_DONE="yes"
-  if [ -z "$AR_NAME_FILE" ] || [ -z "$AR_KIND_FILE" ]; then
-    load_cluster_resources
-    load_cluster_kind_map
-    return 0
-  fi
-  [ -n "$AR_PID_NAME" ] && wait "$AR_PID_NAME" 2>/dev/null
-  [ -n "$AR_PID_KIND" ] && wait "$AR_PID_KIND" 2>/dev/null
-  CLUSTER_RESOURCES="$(awk 'NF' "$AR_NAME_FILE" 2>/dev/null | sort -u)"
-  if [ -n "$CLUSTER_RESOURCES" ]; then CLUSTER_RESOURCES_OK="yes"; fi
-  CLUSTER_KIND_MAP="$(awk "$AR_KIND_AWK" "$AR_KIND_FILE" 2>/dev/null | sort -u)"
-  rm -f "$AR_NAME_FILE" "$AR_KIND_FILE" >/dev/null 2>&1 || true
-  AR_NAME_FILE=""; AR_KIND_FILE=""
-}
+# `load_cluster_resources` YALNIZCA `capabilities` modunda (Admin / arka plan
+# taramasi) kosar. Orada sure kullaniciyi BEKLETMEZ.
 
 # Tam ad ("statefulsets.apps") ya da grupsuz ad ("statefulsets") ile eslesir.
 resource_exists() {
@@ -710,22 +679,42 @@ preferred_gv() {
   printf '%s\n' "$_APIS_PREFERRED" | grep -m1 "^$1/" 2>/dev/null || return 1
 }
 
+# ── YALNIZCA ISE YARAYAN EKSTRA TIPLER ──────────────────────────────────────
+#
+# URETIMDE OLCULDU (2026-09-30, iki AWX isi): enumerasyonun buldugu "ekstra"
+# tiplerin HICBIRI kullaniciya bir sey kazandirmadi:
+#   * `apps` grubunun KENDI tipleri (statefulsets.apps, replicasets.apps,
+#     deployments.apps) YENIDEN basiliyordu. Sebep: grup bir kez atlanmayan
+#     bir kaynak (controllerrevisions.apps) yuzunden taranir ve o grubun BUTUN
+#     `*/scale` kaynaklari yayilirdi. Tekrar eden tip cok tipli cagrinin atifini
+#     bozuyor ve tekil cagrilara dusuruyordu.
+#   * Geri kalanlar platform altyapisi (machine/operator.openshift.io,
+#     monitoring.coreos.com): uygulama ekibinin olcekleyecegi bir sey degil ve
+#     servis hesabinin zaten okuma yetkisi yok — her kesifte bir `no_permission`
+#     WARN'i uretip ekrani kirletiyordu.
+#
+# TEK SUZGEC, IKI KULLANIM: enumerasyonun ciktisi da, portaldan gelen (BAYAT
+# olabilecek) onbellek listesi de buradan gecer. Yalnizca birine uygulamak,
+# eski onbellekteki tekrarlari sonsuza dek tasirdi.
+extra_kind_filter() {
+  awk '
+    NF == 0 { next }
+    # Bilinen ve BILEREK disarida birakilan tipler (tam adlariyla).
+    $0 == "deployments.apps" || $0 == "statefulsets.apps" || $0 == "daemonsets.apps" { next }
+    $0 == "replicasets.apps" || $0 == "controllerrevisions.apps" { next }
+    $0 == "cronjobs.batch" || $0 == "jobs.batch" { next }
+    $0 == "deploymentconfigs.apps.openshift.io" || $0 == "rollouts.argoproj.io" { next }
+    # Grupsuz ad: cekirdek API (replicationcontrollers, pods) — sahip olunan nesneler.
+    $0 !~ /\./ { next }
+    # Platform altyapisi gruplari.
+    $0 ~ /\.openshift\.io$/ || $0 ~ /\.k8s\.io$/ { next }
+    $0 ~ /\.monitoring\.coreos\.com$/ || $0 ~ /\.operators\.coreos\.com$/ { next }
+    !seen[$0]++ { print }
+  '
+}
+
 load_extra_scalable_resources() {
   local res group seen_groups="" gv
-  # ONBELLEK VARSA HIC `oc` CAGIRMA. Portal listeyi `SCALEX_EXTRA_KINDS` ile
-  # gecirdiyse ~50 API cagrisi tamamen atlanir. Bos ise asagidaki eski yol kosar
-  # (fail-safe) ve sonuc yine `WORKLOAD_KIND;...;discovered=yes` satirlariyla
-  # portala doner — yani onbellek bir sonraki kesif icin kendiliginden dolar.
-  if [ -n "$EXTRA_KINDS_TEXT" ]; then
-    printf '%s\n' "$EXTRA_KINDS_TEXT"
-    return 0
-  fi
-  # TARANDI AMA BOS: liste bos GELDI, "gelmedi" degil. Enumerasyon atlanir.
-  # Bu ayrim olmadan ekstra CRD'si olmayan bir cluster her kesifte ~50
-  # `oc get --raw` oduyordu — ve sonuc her seferinde ayni: bos.
-  if [ "$EXTRA_KINDS_SCANNED" = "yes" ]; then
-    return 0
-  fi
   [ "$CLUSTER_RESOURCES_OK" = "yes" ] || return 0
   load_preferred_group_versions
   while IFS= read -r res; do
@@ -755,6 +744,11 @@ load_extra_scalable_resources() {
   done <<EOF_EXTRA
 $CLUSTER_RESOURCES
 EOF_EXTRA
+}
+
+# Enumerasyon + suzgec. `capabilities` modunun TEK girisi.
+enumerate_extra_kinds() {
+  load_extra_scalable_resources | extra_kind_filter | sort -u
 }
 
 resource_candidates() {
@@ -1410,11 +1404,10 @@ disc_has_hpa() {
 # ucuza ve dogru kanitlamak mumkun degil (selector eslesmesi gerekir). Portal da
 # bunu namespace uyarisi olarak gosteriyor.
 disc_pdb() {
-  local lines count
-  if ! oc auth can-i list poddisruptionbudgets -n "$NS" 2>/dev/null | grep -qi '^yes$'; then
-    return 0
-  fi
-  lines="$(oc get pdb -n "$NS" --no-headers 2>/dev/null || true)"
+  disc_pdb_emit "$(oc get pdb -n "$NS" --no-headers 2>/dev/null || true)"
+}
+disc_pdb_emit() {
+  local lines="$1" count
   [ -z "$lines" ] && return 0
   count="$(printf '%s\n' "$lines" | grep -c . || true)"
   log "$CLUSTER" "$JUMP_SERVER" "-" "-" "PDB" "WARN" \
@@ -1442,20 +1435,19 @@ DISC_STATE_PREV="-"
 # NOT: `disc_load_hpa` ve `disc_pdb` namespace basina BIRER cagridir (uygulama
 # basina degil) — onlar darbogaz DEGILDI, dokunulmadi.
 DISC_STATES=""
-DISC_STATES_LOADED="no"
 
 disc_load_states() {
-  [ "$DISC_STATES_LOADED" = "yes" ] && return 0
-  DISC_STATES_LOADED="yes"
-  # Yetki yoksa toplu okuma da yapilmaz; durum alanlari "-" kalir. Kesif bundan
-  # dolayi DUSMEZ: durum kaydi bir zenginlestirmedir, listenin kendisi degil.
-  if ! oc auth can-i list configmaps -n "$NS" 2>/dev/null | grep -qi '^yes$'; then
-    return 0
-  fi
-  # `discover_state` ile BIREBIR AYNI cagri ve alan duzeni:
-  #   name|app|kind|previous_replicas|phase|created_at|created_by|job_id
-  # Iki yerin ayni sozlesmeyi paylasmasi, birinin sessizce eskimesini onler.
-  DISC_STATES="$(oc get cm -n "$NS" -o jsonpath='{range .items[*]}{.metadata.name}{"|"}{.data.app}{"|"}{.data.kind}{"|"}{.data.previous_replicas}{"|"}{.data.phase}{"|"}{.data.created_at}{"|"}{.data.created_by}{"|"}{.data.job_id}{"\n"}{end}' 2>/dev/null || true)"
+  # Yetki yoksa `get` reddedilir ve cikti BOS kalir; durum alanlari "-" olur.
+  # Kesif bundan dolayi DUSMEZ: durum kaydi bir zenginlestirmedir. (Ayri bir
+  # `oc auth can-i` on kontrolu ayni sonucu bir gidis-donus PAHASINA veriyordu.)
+  DISC_STATES="$(oc get cm -n "$NS" -o jsonpath="$(disc_states_jsonpath)" 2>/dev/null || true)"
+}
+
+# `discover_state` ile BIREBIR AYNI alan duzeni:
+#   name|app|kind|previous_replicas|phase|created_at|created_by|job_id
+# Iki yerin ayni sozlesmeyi paylasmasi, birinin sessizce eskimesini onler.
+disc_states_jsonpath() {
+  printf '%s' '{range .items[*]}{.metadata.name}{"|"}{.data.app}{"|"}{.data.kind}{"|"}{.data.previous_replicas}{"|"}{.data.phase}{"|"}{.data.created_at}{"|"}{.data.created_by}{"|"}{.data.job_id}{"\n"}{end}'
 }
 
 disc_read_state() {
@@ -1522,63 +1514,54 @@ disc_jsonpath_all() {
   printf '%s' '{range .items[*]}{.kind}{"|"}{.metadata.name}{"|"}{.spec.replicas}{"|"}{.status.replicas}{"|"}{.status.readyReplicas}{"|"}{.spec.suspend}{"|"}{.spec.schedule}{"|"}{.status.desiredNumberScheduled}{"|"}{.status.currentNumberScheduled}{"|"}{.status.numberReady}{"|"}{.spec.template.spec.containers[0].image}{"|"}{.spec.jobTemplate.spec.template.spec.containers[0].image}{"|"}'"$argo"'{"|"}'"$mgd"'{"\n"}{end}'
 }
 
-# ── KIND -> TAM KAYNAK ADI ──────────────────────────────────────────────────
+# ── KIND -> TAM KAYNAK ADI: SABIT TABLO ─────────────────────────────────────
 #
 # Cok tipli cagrinin dondurdugu `{.kind}` bir KIND'dir ("Deployment"), kaynak adi
-# degil ("deployments.apps"). Bilinen alti tip icin sabit bir tablo yazilabilirdi
-# ama ekstra CRD'ler icin YAZILAMAZ ("Widget" -> "widgets.example.io" TAHMINDIR).
-# Bu yuzden esleme cluster'in KENDI envanterinden okunur; `oc api-resources`in
-# varsayilan ciktisindaki KIND sutunu tam olarak bunu veriyor.
+# degil. Bilinen alti tip icin esleme DEGISMEZ (Kubernetes/OpenShift API'si), bu
+# yuzden cluster'a SORULMAZ — eskiden `oc api-resources` ile okunuyordu ve kesfin
+# en pahali tek adimiydi (istemci tarafi 1-3 sn).
 #
-# AYRI BIR CAGRI, cunku `load_cluster_resources` `-o name` kullaniyor ve o cikti
-# KIND sutununu TASIMIYOR. Ayni cagriyi iki bicimde ayristirmak yerine ikinci bir
-# cagri yapilmasinin sebebi: `-o name`in urettigi tam adlar `resource_exists`,
-# `full_resource_name` ve `load_extra_scalable_resources` tarafindan okunuyor ve o
-# uretimi elle yeniden kurmak, bu betikteki en pahali karar olan
-# `api_absent` / `no_permission` ayrimini riske atardi.
-CLUSTER_KIND_MAP=""
-# Sutunlar: NAME [SHORTNAMES] APIVERSION NAMESPACED KIND. SHORTNAMES OLABILIR de
-# OLMAYABILIR de, bu yuzden sutunlar SONDAN sayilir.
-#
-# TEK YERDE: senkron yol ile arka plan yolu AYNI ayristirmayi kullanmali. Iki
-# kopya, birinde yapilan duzeltmenin digerinde sessizce eskimesi demekti — bu
-# depoda tekrar eden hata sinifi.
-AR_KIND_AWK='NR > 1 && NF >= 4 {
-  name = $1; av = $(NF-2); kind = $NF; grp = av; sub(/\/.*/, "", grp);
-  if (av ~ /\//) full = name "." grp; else full = name;
-  print kind "\t" full;
-}'
-load_cluster_kind_map() {
-  CLUSTER_KIND_MAP="$(oc api-resources --namespaced=true --verbs=list 2>/dev/null \
-    | awk "$AR_KIND_AWK" | sort -u)"
-}
-
-# Verilen TAM KAYNAK ADI icin cluster'in bildirdigi KIND. Bulunamazsa bos doner —
-# ve bos donmesi cok tipli cagriyi IPTAL eder (atif kurulamaz).
+# Ekstra CRD'lerin KIND'i burada YOK ve TAHMIN EDILMEZ: coguldan tekile giden
+# bir kural yok ("prometheuses" -> "Prometheus", "kafkas" -> "Kafka"). Bos donmesi o tipin TEKIL cekilmesi demek; satirlarin tipi o zaman cagirandan
+# bilinir, atif gerekmez.
 kind_of_resource() {
-  [ -z "$CLUSTER_KIND_MAP" ] && return 0
-  printf '%s\n' "$CLUSTER_KIND_MAP" | awk -F'\t' -v r="$1" '$2 == r { print $1; exit }'
+  case "$1" in
+    deployments.apps) echo "Deployment" ;;
+    statefulsets.apps) echo "StatefulSet" ;;
+    deploymentconfigs.apps.openshift.io) echo "DeploymentConfig" ;;
+    rollouts.argoproj.io) echo "Rollout" ;;
+    daemonsets.apps) echo "DaemonSet" ;;
+    cronjobs.batch) echo "CronJob" ;;
+    *) echo "" ;;
+  esac
 }
 
-# Kesfin YAN URUNU olarak yetenek envanterini yayinlar. `capabilities` modunun
-# bastigi satirlarin AYNISI; tek fark `source=discovery` isaretidir — admin
-# ekranda kaydin nereden geldigini gorebilsin.
+# ── OKUNAMAYAN TIPIN SEBEBI: `oc`NIN KENDI HATA METNINDEN ───────────────────
 #
-# `resources_readable` OKUNAMADI ile BOS'u ayirir: `oc api-resources` dusmusse
-# liste bos gorunur ama bu "CRD yok" DEMEK DEGILDIR. Portal okunamamis bir
-# taramayi onbellege YAZMAZ.
-disc_publish_caps() {
-  local liste="$1" k n=0
-  while IFS= read -r k; do
-    [ -z "$k" ] && continue
-    n=$((n + 1))
-    log "$CLUSTER" "$JUMP_SERVER" "-" "-" "CAP_KIND" "OK" "kind=$(disc_val "$k") source=discovery"
-  done <<EOF_PUBCAPS
-$liste
-EOF_PUBCAPS
-  log "$CLUSTER" "$JUMP_SERVER" "-" "-" "CAP_SUMMARY" \
-    "$([ "$CLUSTER_RESOURCES_OK" = "yes" ] && echo OK || echo WARN)" \
-    "kinds=$n resources_readable=$(disc_val "$CLUSTER_RESOURCES_OK") source=discovery"
+# kubectl API yoklugunu kaynak cozumlemesinde yakalar ve SUNUCUYA GITMEDEN
+# `the server doesn't have a resource type "<kaynak>"` yazar (grup kismi YOK:
+# `rollouts.argoproj.io` icin "rollouts"). Yetki reddi ise sunucudan gelir:
+# `Error from server (Forbidden): ...`. Ikisi ayri metinler; `oc auth can-i`ye
+# bakilmaz (kendisi hata verdiginde sonuc TERSINE doner — D7b'nin sebebi).
+#
+# Envanter okunmussa (`capabilities` modu) o da kabul edilir; okunmamissa karar
+# yalnizca hata metnine dayanir. Metin taninmazsa `no_permission` — eski
+# davranis: "bakamadim" demek, "yok" demekten GUVENLI.
+disc_reason() {
+  local res="$1" hata="${2:-}" kisa
+  kisa="${res%%.*}"
+  if [ -n "$hata" ] && [ -s "$hata" ] && grep -Eq -- "resource type \"($kisa|$res)\"" "$hata" 2>/dev/null; then
+    echo "api_absent"; return 0
+  fi
+  if [ "$CLUSTER_RESOURCES_OK" = "yes" ] && ! resource_exists "$res"; then
+    echo "api_absent"; return 0
+  fi
+  echo "no_permission"
+}
+
+# Hata metnindeki YOK tiplerin kisa adlari (satir basina bir tane).
+disc_absent_names() {
+  sed -n 's/.*resource type "\([^"]*\)".*/\1/p' "$1" 2>/dev/null | sed 's/\..*//' | sort -u
 }
 
 # ── OBEK BUYUKLUGU ──────────────────────────────────────────────────────────
@@ -1606,7 +1589,7 @@ DISC_FOUND_ANY=0
 # zaten cagirandan biliyor. DONUS DEGERI ONEMLI: 0 = okundu, 1 = okunamadi.
 disc_fetch_single() {
   oc get "$1" -n "$NS" --allow-missing-template-keys=true \
-    -o jsonpath="$(disc_jsonpath_all)" >"$2" 2>/dev/null
+    -o jsonpath="$(disc_jsonpath_all)" >"$2" 2>"${3:-/dev/null}"
 }
 
 # Bir tipin satirlarini WORKLOAD satirlarina cevirir ve SONUNDA tam olarak BIR
@@ -1617,8 +1600,9 @@ disc_fetch_single() {
 # "StatefulSet yok" ile "StatefulSet'e bakamadim"i bu satirla ayiriyor.
 #
 # $1 kind  $2 kaynak adi  $3 satir dosyasi  $4 okuma dustu mu (yes|no)
+# $5 o cagrinin stderr dosyasi (sebep oradan okunur; bos olabilir)
 disc_emit_kind() {
-  local kind="$1" res="$2" dosya="$3" okuma_dustu="$4"
+  local kind="$1" res="$2" dosya="$3" okuma_dustu="$4" hata="${5:-}"
   local name f2 f3 f4 image argo managed
   local k_field r3 r4 r5 susp sched dsr cur rdy img cjimg
   local count=0 raw=0 reason verb
@@ -1673,49 +1657,50 @@ disc_emit_kind() {
 
   # ── OKUNAMADI: IKI AYRI SEBEP ─────────────────────────────────────────────
   # Eskiden karar `oc auth can-i`nin BASARISINA dayaniyordu ve `can-i`nin KENDISI
-  # hata verdiginde sonuc TERSINE doniyordu. Olcut cluster'in kaynak envanteri:
-  # tip orada YOKSA `api_absent`, VARSA ama okunamiyorsa `no_permission`.
+  # hata verdiginde sonuc TERSINE doniyordu. Olcut artik `oc get`in KENDI hata
+  # metni (bkz. disc_reason).
   verb="list"
-  if [ "$CLUSTER_RESOURCES_OK" = "yes" ] && ! resource_exists "$res"; then
-    reason="api_absent"
-  else
-    reason="no_permission"
-  fi
+  reason="$(disc_reason "$res" "$hata")"
   log "$CLUSTER" "$JUMP_SERVER" "-" "$(kind_to_display "$kind")" "WORKLOAD_KIND" "WARN" \
     "kind=$(disc_val "$kind") resource=$(disc_val "$res") reason=$(disc_val "$reason") verb=$(disc_val "$verb") namespace=$(disc_val "$NS")"
 }
 
 # Bir obegi TEK `oc get` ile tarar.
 #
-# ATIF KURULAMAYAN TIPLER OBEGI OLDURMEZ — AYRILIR. Ilk yazimda tek bir atifsiz
-# tip butun obegi tekil cagrilara dusuruyordu; `oc api-resources` KISMI
-# donebildigi icin bu, kazancin tamamini tek bir eksik satira bagli hale
-# getirirdi. Simdi yalnizca o tip tekil cekilir.
+# $1 tipler  $2..$4 (opsiyonel) ONCEDEN CEKILMIS ilk denemenin cikti/hata/rc
+# dosyalari — `disc_ns_prefetch` ilk cagriyi namespace okumalariyla AYNI ANDA
+# yapar; burada yeniden yapilmaz.
 #
-# Ve bu SESSIZ DEGILDIR: her ayrisma bir `SCAN;WARN;combined_fallback=yes`
-# satiri basar, portal onu `problems[]` ile gosterir.
+# ATIF KURULAMAYAN TIPLER OBEGI OLDURMEZ — AYRILIR ve tekil cekilir. Bilinen bir
+# tip icin bu bir GERI DUSUSTUR ve `SCAN;WARN;combined_fallback=yes` ile SOYLENIR.
+# Kesfedilen bir CRD icin ise BEKLENEN yoldur (KIND'i sabit tabloda yok) ve WARN
+# basilmaz — her kesifte ayni uyariyi basmak ekrani anlamsiz kirletirdi.
+#
+# API'SI OLMAYAN TIP: kubectl kaynak cozumlemesinde durur ve obekteki HICBIR tipin
+# satirini basmaz. Hata metni hangi tipin olmadigini soyler; o tip `api_absent`
+# ile raporlanir, obekten cikarilir ve cagri KALANLARLA bir kez daha yapilir.
+# Tekil cagrilara dusmekten ucuz (Argo Rollouts kurulu olmayan her cluster'da
+# 6 cagri yerine 2) ve SESSIZ DEGIL: tipin kendi `WORKLOAD_KIND;WARN` satiri var.
 disc_scan_chunk() {
-  local kinds="$1"
-  local k r kind_name res_csv="" pairs="" tekiller="" seen="" kinds_re=""
-  local out err tek rc=0 bad=0 ayrisan=0 rf
+  local kinds="$1" on_out="${2:-}" on_err="${3:-}" on_rc="${4:-}"
+  local k r kind_name pairs="" tekiller="" seen="" kinds_re="" res_csv=""
+  local out err tek rc bad ayrisan=0 rf yok kalan cikan deneme=0
 
   for k in $kinds; do
     r="$(full_resource_name "$k")"
     kind_name="$(kind_of_resource "$r")"
-    # Atif kurulamiyor (envanterde KIND yok) ya da IKI tip ayni KIND'e dusuyor:
-    # birlesik cagrinin satirlari dogru tipe YAZILAMAZ. Tahmin etmek yerine o tip
-    # tekil cekilir.
     if [ -z "$kind_name" ]; then
-      tekiller="$tekiller $k"; ayrisan=$((ayrisan + 1)); continue
+      tekiller="$tekiller $k"
+      kind_is_discovered_crd "$k" || ayrisan=$((ayrisan + 1))
+      continue
     fi
+    # IKI tip ayni KIND'e dusuyor: satirlar dogru tipe YAZILAMAZ, tahmin yok.
     case " $seen " in
       *" $kind_name "*) tekiller="$tekiller $k"; ayrisan=$((ayrisan + 1)); continue ;;
     esac
     seen="$seen $kind_name"
     pairs="${pairs}${kind_name}	${k}	${r}
 "
-    if [ -z "$res_csv" ]; then res_csv="$r"; else res_csv="$res_csv,$r"; fi
-    if [ -z "$kinds_re" ]; then kinds_re="$kind_name"; else kinds_re="$kinds_re|$kind_name"; fi
   done
 
   out="$(mktemp "${WORKDIR}/.scalex_scan_XXXXXX" 2>/dev/null || true)"
@@ -1735,15 +1720,52 @@ disc_scan_chunk() {
       "combined_fallback=yes reason=attribution_unavailable kinds=$(disc_val "$ayrisan") namespace=$(disc_val "$NS")"
   fi
 
-  if [ -n "$res_csv" ]; then
-    # `|| rc=1` SART: TEK bir tip dusse bile (kapatilmis DeploymentConfig API'si,
-    # bir tipte RBAC reddi) `oc` rc=1 doner. Olcut RC DEGIL "satir geldi mi" —
-    # aksi halde BASARIYLA listelenmis tiplerin ciktisi da atilirdi. Ayni gerekce
-    # LogX'in cok tipli `oc get`inde de yazili.
-    oc get "$res_csv" -n "$NS" --allow-missing-template-keys=true \
-      -o jsonpath="$(disc_jsonpath_all)" >"$out" 2>"$err" || rc=1
+  while [ -n "$(printf '%s' "$pairs" | awk 'NF')" ]; do
+    res_csv="$(printf '%s' "$pairs" | awk -F'\t' 'NF >= 3 { printf "%s%s", s, $3; s = "," }')"
+    kinds_re="$(printf '%s' "$pairs" | awk -F'\t' 'NF >= 3 { printf "%s%s", s, $1; s = "|" }')"
+    rc=0; bad=0
+    if [ "$deneme" -eq 0 ] && [ -n "$on_out" ] && [ -f "$on_out" ]; then
+      cat "$on_out" >"$out" 2>/dev/null || true
+      cat "$on_err" >"$err" 2>/dev/null || true
+      rc="$(cat "$on_rc" 2>/dev/null || echo 1)"
+      case "$rc" in 0) ;; *) rc=1 ;; esac
+    else
+      # `|| rc=1` SART: TEK bir tip dusse bile (bir tipte RBAC reddi) `oc` rc=1
+      # doner. Olcut RC DEGIL "satir geldi mi" — aksi halde BASARIYLA listelenmis
+      # tiplerin ciktisi da atilirdi. Ayni gerekce LogX'in cok tipli `oc get`inde.
+      oc get "$res_csv" -n "$NS" --allow-missing-template-keys=true \
+        -o jsonpath="$(disc_jsonpath_all)" >"$out" 2>"$err" || rc=1
+    fi
+    deneme=$((deneme + 1))
 
-    # ── KENDINI DOGRULAYAN ATIF ─────────────────────────────────────────────
+    # ── API'SI OLMAYAN TIP: CIKAR VE KALANLARLA TEKRAR DENE ─────────────────
+    # Ust sinir obekteki tip sayisi: her turda EN AZ bir tip cikar, yoksa dongu
+    # bu daldan cikmaz ve asagidaki genel geri dususe gider.
+    if [ ! -s "$out" ] && [ "$rc" -ne 0 ]; then
+      yok="$(disc_absent_names "$err")"
+      if [ -n "$yok" ]; then
+        kalan=""; cikan=0
+        while IFS='	' read -r kind_name k r; do
+          [ -z "$k" ] && continue
+          if printf '%s\n' "$yok" | grep -qx -- "${r%%.*}"; then
+            : >"$tek"
+            disc_emit_kind "$k" "$r" "$tek" "yes" "$err"
+            cikan=$((cikan + 1))
+          else
+            kalan="${kalan}${kind_name}	${k}	${r}
+"
+          fi
+        done <<EOF_DISC_ABSENT
+$pairs
+EOF_DISC_ABSENT
+        if [ "$cikan" -gt 0 ]; then
+          pairs="$kalan"
+          continue
+        fi
+      fi
+    fi
+
+    # ── KENDINI DOGRULAYAN ATIF ───────────────────────────────────────────────
     # Cok tipli bir cagrida satirin tipini yalnizca `{.kind}` soyler. Bir `oc`
     # surumu TypeMeta yazmazsa alan BOS gelir ve satirlar SESSIZCE YANLIS tipe
     # yazilirdi — bu depodaki en pahali hata sinifi. O yuzden atif DOGRULANIR:
@@ -1765,78 +1787,121 @@ disc_scan_chunk() {
         # yazar; baska hicbir sey bunu tip bazinda soyleyemez.
         rf=no
         if [ "$rc" -ne 0 ] && [ ! -s "$tek" ] && grep -qF -- "$r" "$err" 2>/dev/null; then rf=yes; fi
-        disc_emit_kind "$k" "$r" "$tek" "$rf"
+        disc_emit_kind "$k" "$r" "$tek" "$rf" "$err"
       done <<EOF_DISC_PAIRS
 $pairs
 EOF_DISC_PAIRS
     fi
-  fi
+    break
+  done
 
   for k in $tekiller; do
     r="$(full_resource_name "$k")"
-    if disc_fetch_single "$r" "$tek"; then rf=no; else rf=yes; fi
-    disc_emit_kind "$k" "$r" "$tek" "$rf"
+    if disc_fetch_single "$r" "$tek" "$err"; then rf=no; else rf=yes; fi
+    disc_emit_kind "$k" "$r" "$tek" "$rf" "$err"
   done
   rm -f "$out" "$err" "$tek" >/dev/null 2>&1 || true
 }
 
+# ── NAMESPACE OKUMALARI + ILK TARAMA: AYNI ANDA ─────────────────────────────
+#
+# Dort cagri (HPA hedefleri, PDB, durum kayitlari, bilinen tiplerin birlesik
+# `oc get`i) birbirinden BAGIMSIZ ve eskiden SIRAYLA kosuyordu: bastion uzerinden
+# her biri ~150 ms+, namespace basina ~4 gidis-donus. Hepsi arka planda baslatilir
+# ve BIRLIKTE beklenir: sure en yavasinin suresine iner.
+#
+# `oc auth can-i` ON KONTROLLERI KALDIRILDI (pdb, configmaps): `get` reddedilirse
+# cikti zaten BOS kalir ve sonuc can-i'nin "no" dedigi hal ile BIREBIR ayni
+# (PDB satiri yok, durum alanlari "-"). Kontrol bilgi eklemiyor, gidis-donus
+# ekliyordu.
+#
+# FAIL-SAFE: gecici dizin kurulamazsa her okuma SENKRON yapilir; davranis ayni.
+DISC_PF_DIR=""
+disc_ns_prefetch() {
+  local known_csv="$1" p_hpa p_pdb p_cm p_wl
+  DISC_PF_DIR="$(mktemp -d "${WORKDIR}/.scalex_ns_XXXXXX" 2>/dev/null || true)"
+  if [ -z "$DISC_PF_DIR" ]; then
+    disc_load_hpa
+    disc_pdb
+    disc_load_states
+    return 0
+  fi
+  oc get hpa -n "$NS" -o jsonpath='{range .items[*]}{.spec.scaleTargetRef.name}{"\n"}{end}' \
+    >"$DISC_PF_DIR/hpa" 2>/dev/null &
+  p_hpa=$!
+  oc get pdb -n "$NS" --no-headers >"$DISC_PF_DIR/pdb" 2>/dev/null &
+  p_pdb=$!
+  oc get cm -n "$NS" -o jsonpath="$(disc_states_jsonpath)" >"$DISC_PF_DIR/cm" 2>/dev/null &
+  p_cm=$!
+  p_wl=""
+  if [ -n "$known_csv" ]; then
+    {
+      _prc=0
+      oc get "$known_csv" -n "$NS" --allow-missing-template-keys=true \
+        -o jsonpath="$(disc_jsonpath_all)" >"$DISC_PF_DIR/wl" 2>"$DISC_PF_DIR/wl.err" || _prc=1
+      printf '%s' "$_prc" >"$DISC_PF_DIR/wl.rc"
+    } &
+    p_wl=$!
+  fi
+  wait "$p_hpa" 2>/dev/null
+  wait "$p_pdb" 2>/dev/null
+  wait "$p_cm" 2>/dev/null
+  [ -n "$p_wl" ] && wait "$p_wl" 2>/dev/null
+  DISC_HPA_TARGETS="$(cat "$DISC_PF_DIR/hpa" 2>/dev/null || true)"
+  disc_pdb_emit "$(cat "$DISC_PF_DIR/pdb" 2>/dev/null || true)"
+  DISC_STATES="$(cat "$DISC_PF_DIR/cm" 2>/dev/null || true)"
+}
+
+disc_ns_prefetch_cleanup() {
+  [ -n "$DISC_PF_DIR" ] && rm -rf "$DISC_PF_DIR" >/dev/null 2>&1
+  DISC_PF_DIR=""
+}
+
 discover_workloads() {
-  local kind kinds_to_scan extra obek n=0
-  # CLUSTER NE DIYORSA O. Sabit liste iki soruyu birden cevaplayamiyordu ("bu tip
-  # var mi" / "listeleyebiliyor muyum") ve cluster'da olup listemizde olmayan hicbir
-  # sey gorunmuyordu. `oc api-resources` ikisini de kesinlestirir ve YETKI GEREKTIRMEZ.
+  local kind extra obek n=0 known_csv="" k
+  # ── KRITIK YOLDA ENUMERASYON YOK ──────────────────────────────────────────
   #
-  # EN BASTA BASLATILIR, SONDA TOPLANIR: istemci tarafi discovery 1-3 sn suruyor ve
-  # namespace okumalarindan tamamen bagimsiz. Beklemek, o sureyi kullanicinin
-  # toplam suresine EKLEMEK demekti.
-  disc_inventory_start
-
-  disc_load_hpa
-  disc_pdb
-  # Durum kayitlari da namespace basina TEK cagriyla yuklenir (bkz. disc_load_states).
-  disc_load_states
-
-  disc_inventory_finish
-
-  # Bilinen alti tip + cluster'da bulunan, `scale` alt kaynagi olan diger tipler
-  # (operator CRD'leri). Ikinci kume envanter okunamadiginda BOS kalir; davranis
-  # bugunku sabit listeye duser, gerilemez.
-  kinds_to_scan="$DISCOVERY_KINDS"
-  # `load_extra_scalable_resources` KOMUT IKAMESI icinde kosar, yani ALT KABUKTA:
-  # icinde yapilan atama buraya DONMEZ. Onbellek isabeti bu yuzden cagrinin
-  # kendisinden degil, onun baktigi AYNI degiskenden okunur.
+  # URETIMDE OLCULDU (2026-09-30): her kesif SOGUK yolu kosuyordu (`cached=no`)
+  # ve soguk yol API grubu basina bir `oc get --raw` (~50 cagri) + iki
+  # `oc api-resources` demekti — cluster basina 11-15 sn. Bulunan "ekstra"
+  # tiplerin hepsi ya `apps` tekrari ya da platform altyapisiydi (bkz.
+  # extra_kind_filter). Yani kullanici en pahali adimi HIC BIR SEY icin
+  # bekliyordu.
+  #
+  # Artik: bilinen alti tip HER ZAMAN, ekstra CRD'ler YALNIZCA onbellekten
+  # (`SCALEX_EXTRA_KINDS`). Onbellegi portal ARKA PLANDA bir `capabilities` isiyle
+  # doldurur — kullanici onu beklemez, bir sonraki kesif yeni tipi kendiliginden
+  # tarar. Soguk ve sicak yol artik AYNI hizda.
   if [ -n "$EXTRA_KINDS_TEXT" ] || [ "$EXTRA_KINDS_SCANNED" = "yes" ]; then
     TIMING_CACHED="yes"
   else
     TIMING_CACHED="no"
   fi
-  extra="$(load_extra_scalable_resources 2>/dev/null | awk 'NF' | sort -u || true)"
-  if [ -n "$extra" ]; then
-    kinds_to_scan="$kinds_to_scan $(printf '%s' "$extra" | tr '\n' ' ')"
-  fi
-  TIMING_KINDS="$(printf '%s' "$kinds_to_scan" | wc -w | tr -d ' ')"
+  # Onbellek BAYAT olabilir (bu surumden once yazilmis `statefulsets.apps` gibi
+  # tekrarlar): ayni suzgecten gecer.
+  extra="$(printf '%s\n' "$EXTRA_KINDS_TEXT" | extra_kind_filter | sort -u)"
 
-  # ── ONBELLEK KENDI KENDINI DOLDURUR ───────────────────────────────────────
-  #
-  # Soguk yolda CRD listesi ZATEN hesaplandi (`load_extra_scalable_resources`).
-  # Onu yalnizca kendi taramamizda kullanip atmak, bir sonraki kesfin ayni ~50
-  # `oc get --raw` cagrisini yeniden odemesi demekti. Tabloyu dolduran TEK yol
-  # Admin'deki elle "Tara" dugmesiydi; cogu kapsamda tablo BOS kaliyordu.
-  #
-  # YENI BIR `step` ADI UYDURULMADI: `CAP_KIND` / `CAP_SUMMARY` ayristiricisi
-  # portalda hazir ve ESKI portal bu satirlari sessizce yok sayar — kademeli
-  # acilim bedava.
-  #
-  # YALNIZCA SOGUK YOLDA: onbellek doluyken yeniden yayinlamak, BAYAT bir
-  # listenin kendini sonsuza dek yeniden dogrulamasi olurdu (bu, tam olarak
-  # `discover_capabilities`in `EXTRA_KINDS_TEXT=""` yapmasinin sebebi).
-  if [ "$TIMING_CACHED" = "no" ]; then
-    disc_publish_caps "$extra"
-  fi
+  for k in $DISCOVERY_KINDS; do
+    if [ -z "$known_csv" ]; then known_csv="$(full_resource_name "$k")"; else known_csv="$known_csv,$(full_resource_name "$k")"; fi
+  done
+  TIMING_KINDS="$(printf '%s %s' "$DISCOVERY_KINDS" "$(printf '%s' "$extra" | tr '\n' ' ')" | wc -w | tr -d ' ')"
+
+  # NAMESPACE BASINA TAZE: durum kayitlari ve HPA hedefleri her namespace icin
+  # YENIDEN okunur (asagidaki cagri ikisini de kosulsuz atar). Eskiden durum
+  # kayitlari bir bayrakla "bir kez" yukleniyordu ve bayrak namespace degisince
+  # SIFIRLANMIYORDU: ikinci namespace ILKININ kayitlarini kullaniyordu (H5).
+  disc_ns_prefetch "$known_csv"
 
   DISC_FOUND_ANY=0
+  if [ -n "$DISC_PF_DIR" ] && [ -f "$DISC_PF_DIR/wl.rc" ]; then
+    disc_scan_chunk "$DISCOVERY_KINDS" "$DISC_PF_DIR/wl" "$DISC_PF_DIR/wl.err" "$DISC_PF_DIR/wl.rc"
+  else
+    disc_scan_chunk "$DISCOVERY_KINDS"
+  fi
+  disc_ns_prefetch_cleanup
+
   obek=""
-  for kind in $kinds_to_scan; do
+  for kind in $extra; do
     obek="$obek $kind"
     n=$((n + 1))
     if [ "$n" -ge "$DISC_CHUNK" ]; then
@@ -1876,7 +1941,7 @@ discover_state() {
     log "$CLUSTER" "$JUMP_SERVER" "$app" "$(kind_to_display "${kind:--}")" "STATE" "OK" \
       "namespace=$(disc_val "$NS") cm=$(disc_val "$cmname") legacy=$legacy previous_replicas=$(disc_val "$prev") phase=$(disc_val "$phase") created_at=$(disc_val "$created_at") created_by=$(disc_val "$created_by") job_id=$(disc_val "$jid")"
   done <<EOF_DISC_STATE
-$(oc get cm -n "$NS" -o jsonpath='{range .items[*]}{.metadata.name}{"|"}{.data.app}{"|"}{.data.kind}{"|"}{.data.previous_replicas}{"|"}{.data.phase}{"|"}{.data.created_at}{"|"}{.data.created_by}{"|"}{.data.job_id}{"\n"}{end}' 2>/dev/null || true)
+$(oc get cm -n "$NS" -o jsonpath="$(disc_states_jsonpath)" 2>/dev/null || true)
 EOF_DISC_STATE
   if [ "$found_any" -eq 0 ]; then
     log "$CLUSTER" "$JUMP_SERVER" "-" "-" "STATE" "OK" "No reversible state record found namespace=$(disc_val "$NS")"
@@ -1989,13 +2054,12 @@ EOF_DISC_HEALTH
 #
 # BU MOD NAMESPACE ISTEMEZ ve hicbir namespace nesnesine BAKMAZ.
 discover_capabilities() {
-  # `EXTRA_KINDS_TEXT` BILEREK bosaltilir: bu mod onbellegi URETIR, tuketmez.
-  # Aksi halde bayat bir liste kendini sonsuza dek yeniden dogrularadi.
-  EXTRA_KINDS_TEXT=""
+  # Bu mod onbellegi URETIR, tuketmez: enumerasyon `EXTRA_KINDS_TEXT`e hic
+  # bakmaz, yani bayat bir liste kendini yeniden dogrulatamaz.
   load_cluster_resources
 
   local kinds n=0
-  kinds="$(load_extra_scalable_resources | awk 'NF' | sort -u)"
+  kinds="$(enumerate_extra_kinds)"
   while IFS= read -r k; do
     [ -z "$k" ] && continue
     n=$((n + 1))
@@ -2068,14 +2132,17 @@ if [ "$PHASE" = "discover" ]; then
     # namespace icin FAIL satiri cikar ve dongu DEVAM eder. Aksi halde erisilemez
     # tek bir namespace, ayni isteki digerlerinin sonucunu da goturmus olurdu —
     # bu depoda "tek tip patlayinca hepsi gitti" olarak yasanan hata sinifi.
+    _aktif_ns="$NS"
     while IFS= read -r _ns; do
       [ -z "$_ns" ] && continue
       NS="$_ns"
-      # Ilk namespace icin `oc project` zaten yukarida kosuldu; ayni cagriyi
-      # tekrarlamak bedava degil, ama ATLAMAK da dogru degil: dongu sirasi
-      # degisebilir. Olcut "su anda hangi namespace'teyiz" — `oc project` tek
-      # cagri ve namespace basina bir kez.
-      if ! oc project "$NS" >/dev/null 2>&1; then
+      # `oc project` ERISIM KANITIDIR (butun okumalar zaten `-n` ile yapiliyor;
+      # var olmayan bir namespace'te `oc get` BOS doner, hata vermez). Kurulumda
+      # dogrulanan namespace icin ikinci kez sorulmaz — ayni cevabin bedeli bir
+      # gidis-donus. Olcut SIRA degil AD: liste o namespace ile baslamasa da dogru.
+      if [ "$NS" = "$_aktif_ns" ]; then
+        _aktif_ns=""
+      elif ! oc project "$NS" >/dev/null 2>&1; then
         log "$CLUSTER" "$JUMP_SERVER" "-" "-" "NAMESPACE" "FAIL" \
           "Namespace/project not found or not accessible: $NS namespace=$(disc_val "$NS")"
         continue

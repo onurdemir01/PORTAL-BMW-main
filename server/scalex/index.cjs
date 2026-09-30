@@ -28,6 +28,7 @@ const result = require('./result.cjs');
 // Ikinci bir tablo/modul acmak, ayni verinin iki yerde ayrismasi demekti.
 const ocpCache = require('../logx/v2/ocp-cache.cjs');
 const clusterCaps = require('./cluster-caps.cjs');
+const capsRefresh = require('./caps-refresh.cjs');
 
 const RUN_KEY = 'scalex_run';
 const DISCOVERY_KEY = 'scalex_discovery';
@@ -669,6 +670,37 @@ async function launchOnAwx({ keyName, extraVars, req, label }) {
   return { serverId, templateId, jobId: job.jobId, status: job.status };
 }
 
+// `capabilities` isinin extra_vars'i. `/discover` (Admin > Tara) ile arka plan
+// tazeleyicisi AYNI bicimi kullanir: iki kopya, birinde yapilan duzeltmenin
+// digerinde sessizce eskimesi demekti.
+async function capabilitiesExtraVars({ env, tenant, clusters }) {
+  const admin = require('../logx/v2/admin.cjs');
+  return {
+    scalex_clusters_override: launch.buildScaleXClusterCatalog({
+      env,
+      tenant,
+      clusters,
+      hosts: (await admin.resolveTerminalHosts(env, tenant, clusters)).hosts,
+      meta: await admin.resolveClusterMeta(env, tenant, clusters),
+    }),
+    target_platform: tenant,
+    target_environment: env,
+    target_namespace: '',
+    scalex_target_clusters: clusters,
+    discovery_mode: 'capabilities',
+  };
+}
+
+// Arka plan izleyicisinin AWX/DB baglantilari.
+function capsDeps() {
+  return {
+    list: (q) => clusterCaps.list(q),
+    getStatus: (serverId, jobId) => runner.getJobStatusOnServer(serverId, jobId),
+    parse: (artifacts) => result.extractDiscoveryResult(artifacts),
+    save: (rec) => clusterCaps.save(rec),
+  };
+}
+
 function initScaleX(app) {
   const express = require('express');
   const router = express.Router();
@@ -920,6 +952,48 @@ function initScaleX(app) {
         req,
         label: `ScaleX keşif (${mode}) — ${namespace}`,
       });
+
+      // ── YETENEK ONBELLEGI: ARKA PLANDA, KULLANICI BEKLEMEZ ─────────────────
+      //
+      // Kesif artik ekstra CRD'leri ENUMERE ETMIYOR (cluster basina ~50 `oc get
+      // --raw`, uretimde 11-15 sn). Kaydi olmayan ya da bayat cluster'lar icin
+      // ayri bir `capabilities` isi baslatilir ve sonucu SUNUCU izler. Donusu
+      // BEKLENMEZ ve hicbir hatasi bu istegi dusurmez. Kullanicinin isi ONCE
+      // baslatildi: AWX kuyrugunda arka plan isi onun onune gecemez.
+      const scannedBy = currentUser(req).username;
+      if (mode === 'workloads') {
+        capsRefresh
+          .arkaPlandaTazele({
+            env,
+            tenant,
+            clusters,
+            scannedBy,
+            deps: {
+              ...capsDeps(),
+              launch: async (hedefler) =>
+                launchOnAwx({
+                  keyName: DISCOVERY_KEY,
+                  extraVars: await capabilitiesExtraVars({ env, tenant, clusters: hedefler }),
+                  req,
+                  label: 'ScaleX yetenek taraması (arka plan)',
+                }),
+            },
+          })
+          .catch(() => {});
+      }
+      // ADMIN > TARA: sonuc eskiden YALNIZCA `/status` yoklandiginda yaziliyordu
+      // ve o dugmeden sonra hicbir sey yoklamiyordu — tarama yapiliyor, sonuc
+      // tabloya HIC yazilmiyordu. Artik sunucu izler.
+      if (mode === 'capabilities') {
+        capsRefresh
+          .izleVeKaydet({
+            serverId: job.serverId,
+            jobId: job.jobId,
+            scannedBy,
+            deps: capsDeps(),
+          })
+          .catch((e) => console.warn('[ScaleX] yetenek taramasi izlenemedi:', e.message));
+      }
       // KAPSAM HATIRLANIR: is bittiginde sonucun paylasilan uygulama katalogunu
       // besleyip beslemeyecegine bu belirliyor. `full` yalnizca uygulama listesi
       // GONDERILMEDIGINDE true — daraltilmis bir kesfi katalog yazimi saymak,
@@ -1221,24 +1295,16 @@ function initScaleX(app) {
       // OKUNAMAMIS tarama da yazilir ama `resourcesReadable: false` ile — o
       // satir ekranda gorunur (admin "burada yetki eksik" der) ama kesfi
       // HIZLANDIRMAK icin KULLANILMAZ.
-      // MODA DEGIL SATIRA BAKILIR: `workloads` kesfi de soguk yolda yetenek
-      // satirlarini basiyor ve onbellek kendi kendini dolduruyor. Mod kosulu o
-      // satirlari sessizce yok sayardi.
+      // MODA DEGIL SATIRA BAKILIR: paket v18-20'nin `workloads` kesfi de soguk
+      // yolda yetenek satirlari basiyordu (v21 basmaz; onbellegi arka plan isi
+      // doldurur). AWX'te eski paket kosarken o satirlar yok sayilmasin.
       if (status.finished && parsed && (parsed.capabilities || []).length) {
         try {
-          for (const c of parsed.capabilities || []) {
-            if (!c.cluster || !c.scanned) continue; // ozet satiri gelmemisse yazma
-            await clusterCaps.save({
-              env: parsed.environment,
-              tenant: parsed.platform,
-              clusterName: c.cluster,
-              kinds: c.kinds,
-              rbac: c.rbac,
-              resourcesReadable: c.resourcesReadable,
-              scannedBy: currentUser(req).username,
-              awxJobId: jobId,
-            });
-          }
+          await capsRefresh.kaydetYetenekler(parsed, {
+            save: (rec) => clusterCaps.save(rec),
+            scannedBy: currentUser(req).username,
+            awxJobId: jobId,
+          });
         } catch (e) {
           // BEST-EFFORT: yazilamadiysa tarama sonucu GIZLENMEZ; yalnizca bir
           // sonraki kesif hizlanmaz.
