@@ -59,6 +59,9 @@ function verify({ state, target, warn, fail }) {
         `eval "$(awk '/^RV_DESIRED=0; RV_CURRENT=0; RV_READY=0/,/^}$/' "$1" | head -20)"`,
         `eval "$(awk '/^human_seconds\\(\\)/,/^}$/' "$1")"`,
         `eval "$(awk '/^verify_sleep_for\\(\\)/,/^}$/' "$1")"`,
+        // Karar tablosu `verify_eval`de (seri ve toplu dogrulama AYNI tabloyu
+        // kullanir); `verify_replicas` onu dongude cagirir.
+        `eval "$(awk '/^VE_WARNED=0$/,/^}$/' "$1")"`,
         `eval "$(awk '/^verify_replicas\\(\\)/,/^}$/' "$1")"`,
         'verify_replicas app1 Deployment deploy "$2"',
         'echo "RC=$?"',

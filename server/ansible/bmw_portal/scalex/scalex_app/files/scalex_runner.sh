@@ -9,7 +9,7 @@ umask 077
 # "playbook'un guncel surumu kopyalanmamis olabilir" diye TAHMIN ediyordu; artik
 # calistirici surumu bildiriyor ve portal kendi bekledigi surumle karsilastirip
 # SOYLUYOR. Bu dosya `scalex_app/VERSION` ile ayni sayiyi tasimali (test kilitler).
-PACKAGE_VERSION="22"
+PACKAGE_VERSION="23"
 
 PHASE="${SCALEX_PHASE:-${CHAOS_PHASE:-precheck}}"
 CLUSTER="${CLUSTER:-}"
@@ -1349,7 +1349,7 @@ save_scale_down_state() {
 }
 
 mark_state_scaled_down() {
-  local cm; cm="$(state_cm_name "$1")"
+  local cm; cm="${2:-}"; [ -z "$cm" ] && cm="$(state_cm_name "$1")"
   oc patch cm "$cm" -n "$NS" --type=merge -p "{\"data\":{\"phase\":\"scaled_down\",\"updated_at\":\"$(date -u +%FT%TZ)\"}}" >/dev/null 2>&1 || true
 }
 mark_state_restore_completed() {
@@ -1357,7 +1357,7 @@ mark_state_restore_completed() {
   oc patch cm "$cm" -n "$NS" --type=merge -p "{\"data\":{\"phase\":\"restore_completed\",\"updated_at\":\"$(date -u +%FT%TZ)\"}}" >/dev/null 2>&1 || true
 }
 finalize_restore_state() {
-  local app="$1" kind_display="$2" cm; cm="$(state_cm_name "$app")"
+  local app="$1" kind_display="$2" cm; cm="${3:-}"; [ -z "$cm" ] && cm="$(state_cm_name "$app")"
   if oc auth can-i delete configmaps -n "$NS" 2>/dev/null | grep -qi '^yes$'; then
     if oc delete cm "$cm" -n "$NS" --ignore-not-found=true >/dev/null 2>&1; then
       # Silindi: bayat ad "kayit hala var" yanilgisi uretmesin.
@@ -1470,72 +1470,158 @@ log_pod_state() {
 #   KAPATMA (target = 0): WARN esiginde uyari yaz ama BEKLEMEYE DEVAM; FAIL esiginde FAIL.
 #
 # "0/0" ve "0/1": olcut artik `ready`yi de iceriyor (kullanicinin kendi ifadesi).
+# TEK DEGERLENDIRME — seri ve toplu dogrulama AYNI karar tablosunu kullanir.
+# RV_* (okunmus durum) ve gecen sure verilir; satiri basar ve doner:
+#   0 = bitti, basarili   1 = bitti, FAIL   2 = beklemeye devam
+# $5 bu uygulama icin uyari DAHA ONCE basildi mi (0/1). Kapatma uyarisini
+# basarsa `VE_WARNED=1` yapar; cagiran bunu hatirlamali (uyari BIR kez).
+VE_WARNED=0
+verify_eval() {
+  local app="$1" display="$2" target="$3" elapsed="$4" warned="$5"
+  VE_WARNED=0
+  # BASARI OLCUTU — IKI YONDE FARKLI.
+  #
+  # KAPATMA ("0/0"): istenen 0 VE ayakta pod yok.
+  # ACMA   ("N/N"): istenen ve ayakta olan hedefte OLMASI YETMEZ, HAZIR da olmali.
+  #
+  # OLCULDU: `.status.replicas` pod olusur olusmaz hedefe esitleniyor, yani eski
+  # olcutle acma HEMEN "OK" donuyordu ve kullanicinin istedigi "aciliyor, 0/1,
+  # 5 dk'dir" uyarisi HIC ATESLENEMIYORDU. Beklenen sey pod'un HAZIR olmasi.
+  if [ "$target" = "0" ]; then
+    if [ "$RV_DESIRED" = "0" ] && [ "$RV_CURRENT" = "0" ]; then
+      log "$CLUSTER" "$JUMP_SERVER" "$app" "$display" "VERIFY" "OK" \
+        "desired=$RV_DESIRED current=$RV_CURRENT ready=$RV_READY target=0"
+      return 0
+    fi
+  else
+    if [ "$RV_DESIRED" = "$target" ] && [ "$RV_CURRENT" = "$target" ] && [ "$RV_READY" = "$target" ]; then
+      log "$CLUSTER" "$JUMP_SERVER" "$app" "$display" "VERIFY" "OK" \
+        "desired=$RV_DESIRED current=$RV_CURRENT ready=$RV_READY target=$target"
+      return 0
+    fi
+  fi
+
+  if [ "$elapsed" -ge "$VERIFY_WARN_SECONDS" ] && [ "$warned" -eq 0 ]; then
+    VE_WARNED=1
+    if [ "$target" = "0" ]; then
+      # KAPATMA: uyar ama BEKLEMEYE DEVAM.
+      log "$CLUSTER" "$JUMP_SERVER" "$app" "$display" "VERIFY" "WARN" \
+        "scale 0 komutu calisti ama 0 olmasi $(human_seconds "$VERIFY_WARN_SECONDS") gecti; hala $RV_CURRENT pod var — beklemeye devam ediliyor (fail esigi $(human_seconds "$VERIFY_FAIL_SECONDS"))"
+    else
+      # ACMA: uyar ve BIRAK — is basarili sayilir.
+      #
+      # `applied=yes` MAKINE BELIRTECI. `VERIFY;OK` BASMIYORUZ: pod hazir degilken
+      # "dogrulandi" demek yalan olurdu. Ama rapor asamasi (20_build_report.yml)
+      # hedef durumunu `VERIFY;OK` satirinin VARLIGINA gore veriyordu, yani bu
+      # satir hicbir makine-okunur sinyal tasimadigi icin hedef "yalnizca uyari"
+      # dalina dusuyor, portal de onu GERI ALMA HATASI sayiyordu (2026-09-17
+      # uretim tespiti: is ConfigMap'i silmisti, ekran "geri alinamadi" diyordu).
+      # Dogru bilgi "uygulandi ama hazir degil" ve satir artik bunu SOYLUYOR.
+      log "$CLUSTER" "$JUMP_SERVER" "$app" "$display" "VERIFY" "WARN" \
+        "applied=yes aciliyor, $RV_READY/$target, $(human_seconds "$VERIFY_WARN_SECONDS") bekleniyor; replica degisikligi UYGULANDI, pod hazir olmayi surduruyor"
+      return 0
+    fi
+  fi
+
+  # FAIL ESIGI YALNIZCA KAPATMADA. Acma yukarida zaten donmus olur.
+  if [ "$target" = "0" ] && [ "$elapsed" -ge "$VERIFY_FAIL_SECONDS" ]; then
+    log "$CLUSTER" "$JUMP_SERVER" "$app" "$display" "VERIFY" "FAIL" \
+      "0 olmasi $(human_seconds "$VERIFY_FAIL_SECONDS") gecti expected=$target desired=$RV_DESIRED current=$RV_CURRENT ready=$RV_READY"
+    return 1
+  fi
+  return 2
+}
+
 verify_replicas() {
   local app="$1" display="$2" res="$3" target="$4"
-  local start now elapsed warned=0 sl
+  local start now elapsed warned=0 sl v
   start="$(date +%s)"
-  warned=0
-
   while :; do
     read_replica_state "$res" "$app"
-    # BASARI OLCUTU — IKI YONDE FARKLI.
-    #
-    # KAPATMA ("0/0"): istenen 0 VE ayakta pod yok.
-    # ACMA   ("N/N"): istenen ve ayakta olan hedefte OLMASI YETMEZ, HAZIR da olmali.
-    #
-    # OLCULDU: `.status.replicas` pod olusur olusmaz hedefe esitleniyor, yani eski
-    # olcutle acma HEMEN "OK" donuyordu ve kullanicinin istedigi "aciliyor, 0/1,
-    # 5 dk'dir" uyarisi HIC ATESLENEMIYORDU. Beklenen sey pod'un HAZIR olmasi.
-    if [ "$target" = "0" ]; then
-      [ "$RV_DESIRED" = "0" ] && [ "$RV_CURRENT" = "0" ] && {
-        log "$CLUSTER" "$JUMP_SERVER" "$app" "$display" "VERIFY" "OK" \
-          "desired=$RV_DESIRED current=$RV_CURRENT ready=$RV_READY target=0"
-        return 0
-      }
-    else
-      [ "$RV_DESIRED" = "$target" ] && [ "$RV_CURRENT" = "$target" ] && [ "$RV_READY" = "$target" ] && {
-        log "$CLUSTER" "$JUMP_SERVER" "$app" "$display" "VERIFY" "OK" \
-          "desired=$RV_DESIRED current=$RV_CURRENT ready=$RV_READY target=$target"
-        return 0
-      }
-    fi
-
     now="$(date +%s)"; elapsed=$((now - start))
-
-    if [ "$elapsed" -ge "$VERIFY_WARN_SECONDS" ] && [ "$warned" -eq 0 ]; then
-      warned=1
-      if [ "$target" = "0" ]; then
-        # KAPATMA: uyar ama BEKLEMEYE DEVAM.
-        log "$CLUSTER" "$JUMP_SERVER" "$app" "$display" "VERIFY" "WARN" \
-          "scale 0 komutu calisti ama 0 olmasi $(human_seconds "$VERIFY_WARN_SECONDS") gecti; hala $RV_CURRENT pod var — beklemeye devam ediliyor (fail esigi $(human_seconds "$VERIFY_FAIL_SECONDS"))"
-      else
-        # ACMA: uyar ve BIRAK — is basarili sayilir.
-        #
-        # `applied=yes` MAKINE BELIRTECI. `VERIFY;OK` BASMIYORUZ: pod hazir degilken
-        # "dogrulandi" demek yalan olurdu. Ama rapor asamasi (20_build_report.yml)
-        # hedef durumunu `VERIFY;OK` satirinin VARLIGINA gore veriyordu, yani bu
-        # satir hicbir makine-okunur sinyal tasimadigi icin hedef "yalnizca uyari"
-        # dalina dusuyor, portal de onu GERI ALMA HATASI sayiyordu (2026-09-17
-        # uretim tespiti: is ConfigMap'i silmisti, ekran "geri alinamadi" diyordu).
-        # Dogru bilgi "uygulandi ama hazir degil" ve satir artik bunu SOYLUYOR.
-        # Bu dosyadaki tum detaylar zaten `anahtar=deger` tasiyor (expected=,
-        # desired=, ready=) — yeni bir sozlesme degil, mevcut sozlesmenin kullanimi.
-        log "$CLUSTER" "$JUMP_SERVER" "$app" "$display" "VERIFY" "WARN" \
-          "applied=yes aciliyor, $RV_READY/$target, $(human_seconds "$VERIFY_WARN_SECONDS") bekleniyor; replica degisikligi UYGULANDI, pod hazir olmayi surduruyor"
-        return 0
-      fi
-    fi
-
-    # FAIL ESIGI YALNIZCA KAPATMADA. Acma yukarida zaten donmus olur.
-    if [ "$target" = "0" ] && [ "$elapsed" -ge "$VERIFY_FAIL_SECONDS" ]; then
-      log "$CLUSTER" "$JUMP_SERVER" "$app" "$display" "VERIFY" "FAIL" \
-        "0 olmasi $(human_seconds "$VERIFY_FAIL_SECONDS") gecti expected=$target desired=$RV_DESIRED current=$RV_CURRENT ready=$RV_READY"
-      return 1
-    fi
-
+    verify_eval "$app" "$display" "$target" "$elapsed" "$warned"; v=$?
+    [ "$v" -eq 0 ] && return 0
+    [ "$v" -eq 1 ] && return 1
+    [ "$VE_WARNED" -eq 1 ] && warned=1
     sl="$(verify_sleep_for "$elapsed")"
     sleep "$sl"
   done
+}
+
+# ── TOPLU DOGRULAMA: TEK DONGU, TUM UYGULAMALAR ─────────────────────────────
+#
+# Seri yolda her uygulama KENDI dogrulamasini bitirene kadar sonrakine
+# gecilmiyordu: 19 uygulama = 19 ardisik pod sonlanma beklemesi. Oysa pod'lar
+# PARALEL kapanir; beklemeyi sirayla yapmak toplam sureyi uygulama sayisiyla
+# carpiyordu.
+#
+# Burada her turda bekleyen HER uygulama yoklanir — tip basina TEK liste
+# okumasiyla — ve karar `verify_eval`e (seri yolun AYNI tablosu) birakilir.
+# Biten duser; esigi asan KENDI WARN/FAIL satirini alir. Toplam bekleme = EN
+# YAVAS uygulamanin suresi.
+#
+# $1: satir basina `app|display|res|target|...` (ek alanlar tasinir)
+# Sonuc: `VM_OK` — basariyla biten satirlar (girdi sirasi korunur).
+VM_OK=""
+verify_many() {
+  local liste="$1" start now elapsed sl pending yeni warned=" " satir a d r t kalan tipler tip dosya rcs v
+  VM_OK=""
+  start="$(date +%s)"
+  pending="$liste"
+  dosya="$(mktemp -d "${WORKDIR}/.scalex_vm_XXXXXX" 2>/dev/null || true)"
+  while :; do
+    # Bekleyen tiplerin HER BIRI icin tek liste okumasi.
+    tipler="$(printf '%s' "$pending" | awk -F'|' 'NF >= 4 && !s[$3]++ { print $3 }')"
+    rcs=" "
+    if [ -n "$dosya" ]; then
+      for tip in $tipler; do
+        if oc get "$tip" -n "$NS" \
+            -o 'jsonpath={range .items[*]}{.metadata.name}|{.spec.replicas}|{.status.replicas}|{.status.readyReplicas}{"\n"}{end}' \
+            >"$dosya/$tip" 2>/dev/null; then
+          rcs="$rcs$tip "
+        fi
+      done
+    fi
+    now="$(date +%s)"; elapsed=$((now - start))
+    yeni=""
+    while IFS= read -r satir; do
+      [ -z "$satir" ] && continue
+      IFS='|' read -r a d r t kalan <<EOF_VM_SATIR
+$satir
+EOF_VM_SATIR
+      case "$rcs" in
+        *" $r "*)
+          # Listede YOKSA (silinmis) tekil okuma gibi 0/0/0 sayilir.
+          IFS='|' read -r RV_DESIRED RV_CURRENT RV_READY <<EOF_VM_DURUM
+$(awk -F'|' -v a="$a" '$1 == a { print $2 "|" $3 "|" $4; exit }' "$dosya/$r")
+EOF_VM_DURUM
+          [ -z "$RV_DESIRED" ] && RV_DESIRED=0
+          [ -z "$RV_CURRENT" ] && RV_CURRENT=0
+          [ -z "$RV_READY" ] && RV_READY=0
+          ;;
+        # Liste okunamadi (yetki/gecici hata): o uygulama TEKIL okunur.
+        *) read_replica_state "$r" "$a" ;;
+      esac
+      case "$warned" in *" $a "*) w=1 ;; *) w=0 ;; esac
+      verify_eval "$a" "$d" "$t" "$elapsed" "$w"; v=$?
+      if [ "$v" -eq 0 ]; then
+        VM_OK="${VM_OK}${satir}
+"
+      elif [ "$v" -eq 2 ]; then
+        [ "$VE_WARNED" -eq 1 ] && warned="$warned$a "
+        yeni="${yeni}${satir}
+"
+      fi
+    done <<EOF_VM_LISTE
+$pending
+EOF_VM_LISTE
+    pending="$yeni"
+    [ -z "$(printf '%s' "$pending" | awk 'NF')" ] && break
+    sl="$(verify_sleep_for "$elapsed")"
+    sleep "$sl"
+  done
+  [ -n "$dosya" ] && rm -rf "$dosya" >/dev/null 2>&1
+  return 0
 }
 
 precheck_app() {
@@ -1585,17 +1671,31 @@ precheck_app() {
   return 0
 }
 
-execute_app() {
+# ── EXECUTE DORT PARCA ──────────────────────────────────────────────────────
+#
+# Seri yol (`execute_app`) ve toplu yol (`execute_batch`) AYNI parcalari
+# kullanir; seri yol parcalarin art arda cagrilmasindan ibaret. Boylece iki
+# yolun satirlari ve kararlari TANIM GEREGI ayni kalir — toplu yol yalnizca
+# SIRAYI degistirir (once hepsi hazirlanir, sonra hepsi patch'lenir, sonra
+# TEK dogrulama dongusu).
+#
+# 1. execute_prepare — TAZE okuma + durum kaydi + "zaten hedefte" kisa devresi.
+#    GUVENLIK SIRASI KORUNUR: `stop`ta durum kaydi YAZILAMAYAN uygulama patch
+#    listesine HIC girmez (bugunku "kayit yoksa patch yok" kurali, uygulama
+#    basina).
+# 2. ex_patch       — `spec.replicas` patch'i (+ acikca istenmisse HPA sabitleme).
+# 3. dogrulama      — `verify_replicas` (seri) / `verify_many` (toplu).
+# 4. ex_finish      — durum kaydini isaretle/sonlandir, OBJECT ve PODS satirlari.
+#    Dogrulamasi DUSEN uygulamada KOSMAZ (bugunku davranis).
+EX_DISPLAY=""; EX_TARGET=""; EX_STEP=""; EX_CURRENT=""; EX_CM=""; EX_PATCH="no"; EX_POST="none"
+execute_prepare() {
   local app="$1" display current effective_target action_step cm prev
+  EX_PATCH="no"; EX_POST="none"
   if ! detect_workload "$app"; then
     log "$CLUSTER" "$JUMP_SERVER" "$app" "-" "RECHECK" "FAIL" "Workload detection failed immediately before mutation: ERROR:$DETECT_ERROR"
     return 1
   fi
   display="$(kind_to_display "$DETECTED_KIND")"; current="$(get_spec_replicas "$DETECTED_RESOURCE" "$app")"
-  # AD ONBELLEGI ANA KABUKTA DOLAR. `cm="$(state_cm_name ...)"` alt kabukta
-  # kosuyordu ve onbellege yazilan deger KAYBOLUYORDU: ayni uygulama icin ad
-  # aramasi (iki `oc get cm`) her cagrida yeniden yapiliyordu. Burada bir kez
-  # dogrudan cagrilir; sonraki `$(state_cm_name ...)`ler onbellekten okur.
   state_cm_name "$app" >/dev/null; cm="$_STATE_CM_NAME"
   if ! can_patch_kind "$DETECTED_KIND"; then
     log "$CLUSTER" "$JUMP_SERVER" "$app" "$display" "RECHECK" "FAIL" "Patch permission is no longer available for workload kind=$DETECTED_KIND"
@@ -1608,22 +1708,21 @@ execute_app() {
         if validate_restore_state "$app" "$DETECTED_KIND" "$DETECTED_RESOURCE" "no"; then
           prev="$(get_restore_target "$app" || true)"
           log "$CLUSTER" "$JUMP_SERVER" "$app" "$display" "$action_step" "OK" "Already replicas=0; existing reversible state retained previous_replicas=$prev cm=$cm"
-          verify_replicas "$app" "$display" "$DETECTED_RESOURCE" "0" || return 1
-          log_object_line "$app" "$display" "$DETECTED_RESOURCE"
-          log_pod_state "$app" "$display" "0"
-          return 0
+        else
+          log "$CLUSTER" "$JUMP_SERVER" "$app" "$display" "RECHECK" "FAIL" "Already replicas=0 but reversible state is missing/invalid"
+          return 1
         fi
-        log "$CLUSTER" "$JUMP_SERVER" "$app" "$display" "RECHECK" "FAIL" "Already replicas=0 but reversible state is missing/invalid"
-        return 1
+      else
+        if ! save_scale_down_state "$app" "$DETECTED_KIND" "$DETECTED_RESOURCE" "$current"; then
+          log "$CLUSTER" "$JUMP_SERVER" "$app" "$display" "STATE" "FAIL" "Failed to save previous_replicas=$current to $cm"
+          return 1
+        fi
+        log "$CLUSTER" "$JUMP_SERVER" "$app" "$display" "STATE" "OK" "Saved reversible state previous_replicas=$current cm=$cm job_id=$JOB_ID"
+        EX_PATCH="yes"; EX_POST="mark"
       fi
-      if ! save_scale_down_state "$app" "$DETECTED_KIND" "$DETECTED_RESOURCE" "$current"; then
-        log "$CLUSTER" "$JUMP_SERVER" "$app" "$display" "STATE" "FAIL" "Failed to save previous_replicas=$current to $cm"
-        return 1
-      fi
-      log "$CLUSTER" "$JUMP_SERVER" "$app" "$display" "STATE" "OK" "Saved reversible state previous_replicas=$current cm=$cm job_id=$JOB_ID"
       ;;
     restore)
-      action_step="GERI_AL"
+      action_step="GERI_AL"; EX_POST="finalize"
       if ! validate_restore_state "$app" "$DETECTED_KIND" "$DETECTED_RESOURCE" "no"; then
         log "$CLUSTER" "$JUMP_SERVER" "$app" "$display" "RECHECK" "FAIL" "Restore state became missing/invalid before mutation"
         return 1
@@ -1631,49 +1730,115 @@ execute_app() {
       effective_target="$(get_restore_target "$app" || true)"
       if [ "$current" = "$effective_target" ]; then
         log "$CLUSTER" "$JUMP_SERVER" "$app" "$display" "$action_step" "OK" "Already at restore target replicas=$effective_target; no patch required"
-        verify_replicas "$app" "$display" "$DETECTED_RESOURCE" "$effective_target" || return 1
-        finalize_restore_state "$app" "$display"
-        log_object_line "$app" "$display" "$DETECTED_RESOURCE"; log_pod_state "$app" "$display" "$effective_target"
-        return 0
+      else
+        EX_PATCH="yes"
       fi
       ;;
     scale)
       action_step="SCALE"; effective_target="$TARGET"
       if [ "$current" = "$effective_target" ]; then
         log "$CLUSTER" "$JUMP_SERVER" "$app" "$display" "$action_step" "OK" "Already at requested replicas=$effective_target; no patch required"
-        verify_replicas "$app" "$display" "$DETECTED_RESOURCE" "$effective_target" || return 1
-        log_object_line "$app" "$display" "$DETECTED_RESOURCE"; log_pod_state "$app" "$display" "$effective_target"
-        return 0
+      else
+        EX_PATCH="yes"
       fi
       ;;
   esac
-  log "$CLUSTER" "$JUMP_SERVER" "$app" "$display" "$action_step" "INFO" "Current replicas=$current target=$effective_target; workload spec.replicas will be patched. HPA will not be changed."
-  if ! patch_replicas "$DETECTED_KIND" "$app" "$effective_target"; then
-    log "$CLUSTER" "$JUMP_SERVER" "$app" "$display" "$action_step" "FAIL" "Patch command failed for target replicas=$effective_target"
+  EX_DISPLAY="$display"; EX_TARGET="$effective_target"; EX_STEP="$action_step"; EX_CURRENT="$current"; EX_CM="$cm"
+  return 0
+}
+
+# DETECTED_KIND / DETECTED_RESOURCE ve EX_* kurulmus olmali. Basarida
+# DETECTED_RESOURCE patch'in GERCEKTEN uygulandigi aday adina guncellenir.
+ex_patch() {
+  local app="$1"
+  log "$CLUSTER" "$JUMP_SERVER" "$app" "$EX_DISPLAY" "$EX_STEP" "INFO" "Current replicas=$EX_CURRENT target=$EX_TARGET; workload spec.replicas will be patched. HPA will not be changed."
+  if ! patch_replicas "$DETECTED_KIND" "$app" "$EX_TARGET"; then
+    log "$CLUSTER" "$JUMP_SERVER" "$app" "$EX_DISPLAY" "$EX_STEP" "FAIL" "Patch command failed for target replicas=$EX_TARGET"
     return 1
   fi
-  log "$CLUSTER" "$JUMP_SERVER" "$app" "$display" "$action_step" "OK" "Patch accepted replicas=$effective_target.$(hpa_pin_wanted "$effective_target" && printf '%s' ' HPA will be pinned to the target.' || printf '%s' ' HPA was not changed.')"
+  log "$CLUSTER" "$JUMP_SERVER" "$app" "$EX_DISPLAY" "$EX_STEP" "OK" "Patch accepted replicas=$EX_TARGET.$(hpa_pin_wanted "$EX_TARGET" && printf '%s' ' HPA will be pinned to the target.' || printf '%s' ' HPA was not changed.')"
   # HPA SABITLEME. Varsayilan davranis (bayrak kapali) DEGISMEDI: HPA okunur,
   # dokunulmaz. Bayrak acikken bile hedef 0 ise sabitleme YAPILMAZ — `minReplicas: 0`
   # ya API tarafindan reddedilir (HPAScaleToZero kapali) ya da uygulamayi 0'da
   # KILITLER, yani "geri al" hicbir seyi ayaga kaldirmaz.
-  if hpa_pin_wanted "$effective_target"; then
-    pin_hpa "$app" "$display" "$effective_target"
+  if hpa_pin_wanted "$EX_TARGET"; then
+    pin_hpa "$app" "$EX_DISPLAY" "$EX_TARGET"
   fi
-  if ! verify_replicas "$app" "$display" "$DETECTED_RESOURCE" "$effective_target"; then
-    return 1
-  fi
-  if [ "$ACTION" = "stop" ]; then
-    mark_state_scaled_down "$app"
-    log "$CLUSTER" "$JUMP_SERVER" "$app" "$display" "STATE" "OK" "Marked state ConfigMap $cm as scaled_down"
-  elif [ "$ACTION" = "restore" ]; then
-    finalize_restore_state "$app" "$display"
-  fi
-  log_object_line "$app" "$display" "$DETECTED_RESOURCE"
-  log_pod_state "$app" "$display" "$effective_target"
   return 0
 }
 
+# $1 app $2 display $3 res $4 target $5 post (mark|finalize|none) $6 cm
+ex_finish() {
+  local app="$1" display="$2" res="$3" target="$4" post="$5" cm="$6"
+  if [ "$post" = "mark" ]; then
+    mark_state_scaled_down "$app" "$cm"
+    log "$CLUSTER" "$JUMP_SERVER" "$app" "$display" "STATE" "OK" "Marked state ConfigMap $cm as scaled_down"
+  elif [ "$post" = "finalize" ]; then
+    finalize_restore_state "$app" "$display" "$cm"
+  fi
+  log_object_line "$app" "$display" "$res"
+  log_pod_state "$app" "$display" "$target"
+  return 0
+}
+
+execute_app() {
+  local app="$1"
+  execute_prepare "$app" || return 1
+  if [ "$EX_PATCH" = "yes" ]; then
+    ex_patch "$app" || return 1
+  fi
+  verify_replicas "$app" "$EX_DISPLAY" "$DETECTED_RESOURCE" "$EX_TARGET" || return 1
+  ex_finish "$app" "$EX_DISPLAY" "$DETECTED_RESOURCE" "$EX_TARGET" "$EX_POST" "$EX_CM"
+}
+
+# ── TOPLU EXECUTE ───────────────────────────────────────────────────────────
+#
+# OLCULDU: seri yolda her uygulama kendi dogrulamasini BITIRMEDEN sonrakine
+# gecilmiyordu; kapatmada bu, pod'larin terminationGracePeriod'u kadar bekleme
+# demek — 19 uygulama x 30 sn = ~10 dk, CLUSTER BASINA. Pod'lar ise PARALEL
+# kapanir. Toplu yolda toplam bekleme en yavas uygulamanin suresi.
+#
+# Satirlar uygulama ICINDE ayni sirada basilir; uygulamalar ARASI sira degisir
+# (rapor (cluster, uygulama) ile grupladigi icin bu anlamsiz — bkz. altin cikti
+# bekcisi K2).
+#
+# GERI DONUS: `SCALEX_BATCH_EXECUTE=false` -> seri yol birebir (kod silinmedi).
+execute_batch() {
+  local app plan="" dogrulanacak="" a d k r t p post cm cur step
+  while IFS= read -r app; do
+    [ -z "$app" ] && continue
+    execute_prepare "$app" || continue
+    plan="${plan}${app}|${EX_DISPLAY}|${DETECTED_KIND}|${DETECTED_RESOURCE}|${EX_TARGET}|${EX_PATCH}|${EX_POST}|${EX_CM}|${EX_CURRENT}|${EX_STEP}
+"
+  done <<EOF_EX_APPS
+$APPS_TEXT
+EOF_EX_APPS
+
+  while IFS='|' read -r a d k r t p post cm cur step; do
+    [ -z "$a" ] && continue
+    if [ "$p" = "yes" ]; then
+      DETECTED_KIND="$k"; DETECTED_RESOURCE="$r"
+      EX_DISPLAY="$d"; EX_TARGET="$t"; EX_STEP="$step"; EX_CURRENT="$cur"
+      ex_patch "$a" || continue
+      r="$DETECTED_RESOURCE"
+    fi
+    dogrulanacak="${dogrulanacak}${a}|${d}|${r}|${t}|${post}|${cm}
+"
+  done <<EOF_EX_PLAN
+$plan
+EOF_EX_PLAN
+
+  [ -z "$dogrulanacak" ] && return 0
+  verify_many "$dogrulanacak"
+
+  while IFS='|' read -r a d r t post cm; do
+    [ -z "$a" ] && continue
+    ex_finish "$a" "$d" "$r" "$t" "$post" "$cm"
+  done <<EOF_EX_OK
+$VM_OK
+EOF_EX_OK
+  return 0
+}
 
 # ═══════════════════════════════════════════════════════════════════════════
 # KESIF (salt okunur) — portalin `scalex_discovery` template'i buradan beslenir.
@@ -2456,6 +2621,8 @@ if [ "$PHASE" = "discover" ]; then
 $NS_LIST_TEXT
 EOF_NS_LIST
   fi
+elif [ "$PHASE" = "execute" ] && [ "$(normalize_lower "${SCALEX_BATCH_EXECUTE:-true}")" != "false" ]; then
+  execute_batch
 else
   while IFS= read -r app; do
     [ -z "$app" ] && continue

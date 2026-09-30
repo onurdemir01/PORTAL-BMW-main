@@ -150,16 +150,40 @@ function jsonpath(sablon, kok) {
 
 // ── Tablo satirlari (`--no-headers`) — tek nesne ve liste AYNI satiri uretir ─
 function tabloSatiri(k, o) {
-  const hazir = o.ready ?? o.status ?? o.spec;
-  if (k === 'dc') return `${o.name}   ${o.rev || 1}   ${o.spec}   ${o.status ?? o.spec}   config`;
-  return `${o.name}   ${hazir}/${o.spec}   ${o.status ?? o.spec}   ${hazir}   5d`;
+  const d = durumOku(o);
+  if (k === 'dc') return `${o.name}   ${o.rev || 1}   ${o.spec}   ${d.status}   config`;
+  return `${o.name}   ${d.ready}/${o.spec}   ${d.status}   ${d.ready}   5d`;
 }
+// ── YAKINSAMA: patch sonrasi pod'lar hedefe GECIKMEYLE ulasir ──────────────
+// `gecikme: N` -> patch'ten sonraki N okumada eski durum gorunur, sonra hedef.
+// `takili: true` -> hic yakinsamaz (WARN/FAIL esikleri). Her okuma modeli
+// gunceller; toplu ve tekil okuma AYNI sayaci tuketir (ayni cluster gibi).
+let modelDegisti = false;
+function durumOku(o) {
+  if (o._eski && (o.takili || o._kalan > 0)) {
+    if (!o.takili) o._kalan -= 1;
+    modelDegisti = true;
+    return o._eski;
+  }
+  if (o._eski) {
+    delete o._eski;
+    o.status = o.spec;
+    o.ready = o.spec;
+    modelDegisti = true;
+  }
+  return { status: o.status ?? o.spec, ready: o.ready ?? o.status ?? o.spec };
+}
+process.on('exit', () => {
+  if (modelDegisti) kaydet();
+});
+
 function kubeNesne(k, o, kindYaz) {
+  const d = durumOku(o);
   return {
     ...(kindYaz ? { kind: TIPLER[k].kind } : {}),
     metadata: { name: o.name, labels: o.labels || {} },
     spec: { replicas: o.spec, template: { spec: { containers: [{ image: o.image || 'img:1' }] } } },
-    status: { replicas: o.status ?? o.spec, readyReplicas: o.ready ?? o.status ?? o.spec },
+    status: { replicas: d.status, readyReplicas: d.ready },
   };
 }
 function hpaSatiri(h) {
@@ -325,8 +349,15 @@ if (k1 === 'patch') {
     kaydet();
     process.exit(0);
   }
-  if (args[1] === 'hpa') process.exit(0);
-  if (!o) process.exit(1);
+  if (args[1] === 'hpa') {
+    model.hpaPin = [...(model.hpaPin || []), `${args[2]}=${JSON.stringify(p.spec)}`];
+    kaydet();
+    process.exit(0);
+  }
+  if (!o || (model.patchRed || []).includes(k)) process.exit(1);
+  const d = durumOku(o);
+  o._eski = { status: d.status, ready: d.ready };
+  o._kalan = o.gecikme ?? 0;
   o.spec = p.spec.replicas;
   kaydet();
   process.exit(0);
@@ -349,6 +380,7 @@ if (k1 === 'create' || k1 === 'apply') {
     process.exit(0);
   }
   const girdi = fs.readFileSync(0, 'utf8');
+  if (model.cmYazmaRed) process.exit(1);
   try {
     const { ad, data } = JSON.parse(girdi);
     model.cm = model.cm || {};
