@@ -79,6 +79,21 @@
     # dogrulamalari (change_confirmation / bulk_change_confirmation) devre disi
     # kalmali. O dosya bu iki degeri `execution_mode_effective == 'apply'`
     # kosuluyla ariyor; kesifte mod `dry_run` verilir ve kontroller atlanir.
+    # ── CLUSTER PARALELLIGI ──────────────────────────────────────────────────
+    #
+    # VARSAYILAN ACIK ama KAPATILABILIR: paralel yol `async` kullaniyor ve async
+    # is dosyalari DELEGE EDILEN HOST'ta duruyor. Bir jump sunucusunda
+    # `~/.ansible_async` yazilamazsa (dolu disk, kisitli home) paralel yol
+    # calismaz ve KAPANABILIR olmasi tek cikis yolu olur. Seri yol
+    # (`10_discover.yml`) silinmedi.
+    discovery_parallel_effective: >-
+      {{ (scalex_discovery_parallel | default(true)) | bool }}
+    # Async ust siniri. Betik cok namespace tarayabiliyor; tavan cok dar olursa
+    # calisan bir is "zaman asimi" diye FAIL raporlanir. 60-3600 arasina
+    # KIRPILIR: sinirsiz bir deger, asili kalan bir isi AWX job'i bitene kadar
+    # bekletirdi.
+    discovery_async_seconds_effective: >-
+      {{ [[(scalex_discovery_async_seconds | default(900)) | int, 60] | max, 3600] | min }}
     execution_mode_effective: "dry_run"
     allow_partial_execution_effective: true
     change_confirmation_effective: false
