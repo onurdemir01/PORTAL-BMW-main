@@ -1704,6 +1704,10 @@ function kesifCagrilari({ extraKinds = '', scanned = 'no', mutate = (x) => x } =
     },
   });
   const cagrilar = fs.readFileSync(log, 'utf8').split('\n').filter(Boolean);
+  const izDosyasi = path.join(dir, 'iz.log');
+  const iz = fs.existsSync(izDosyasi)
+    ? fs.readFileSync(izDosyasi, 'utf8').split('\n').filter(Boolean)
+    : [];
   const items = out
     .split('\n')
     .filter((l) => /^[^;]*;[^;]*;[^;]*;[^;]*;[^;]*;[^;]*;.*$/.test(l))
@@ -1711,7 +1715,7 @@ function kesifCagrilari({ extraKinds = '', scanned = 'no', mutate = (x) => x } =
       const q = l.split(';');
       return { app: q[2], kind: q[3], step: q[4], status: q[5], detail: q.slice(6).join(';') };
     });
-  return { cagrilar, items, out };
+  return { cagrilar, items, out, iz };
 }
 
 // ── B1: CAGRI BUTCESI ───────────────────────────────────────────────────────
@@ -1982,4 +1986,102 @@ test('SD4 "tarandi ama bos" isareti ORTAK degere konmamis', () => {
     'isaret degeri ORTAK degiskene konmus — eski paket onu tip adi sanar',
   );
   assert.match(src, /SCALEX_EXTRA_KINDS_SCANNED:/, 'ayri isaret degiskeni yok');
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PR-D — ENVANTER CAGRILARI KRITIK YOLDAN CIKAR
+//
+// `oc api-resources` SUNUCU tarafinda ucuz, ISTEMCI tarafinda pahali: butun API
+// gruplarinin discovery belgesini indirir, olculen suresi 1-3 SANIYE. Betik onu
+// IKI KEZ cagiriyor ve ikisi de namespace okumalarindan BAGIMSIZ.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ── PD1: CAKISTIRMA GERCEKTEN OLUYOR ────────────────────────────────────────
+//
+// SURE OLCULMUYOR — BILEREK. Ilk yazim `discover_ms < 2500` diyordu ve tek
+// basina yesil, TUM SUIT paralel kosarken KIRMIZI doniyordu: bir duvar saati
+// esigi, makinenin o anki yukunu olcer, kodu olcmez. (Bu depoda ayni tuzaga
+// "timeout temali testler" ailesinde de dusuldu.)
+//
+// Onun yerine IC ICE GECME olculur: sahte `oc`nin `api-resources` dali bir
+// saniye uyur ve giris/cikis izi birakir; namespace okumasi da iz birakir.
+// Cakistirma varsa namespace okumasi `api-resources`in BASLAMASI ile BITISI
+// ARASINDA gorunur. Seri kosulursa ARASINDA GORUNEMEZ — makine hizindan
+// BAGIMSIZ bir olcut.
+//
+// KORLUK PANZEHIRI: hizlanmanin en kolay yolu envanteri HIC OKUMAMAK. Bu yuzden
+// ayni testte envanterin GERCEKTEN okundugu ve KULLANILDIGI da dogrulanir.
+test('PD1 envanter cagrilari namespace okumalariyla CAKISTIRILIYOR', () => {
+  const izSatiri = (ad) => `printf '${ad}\\n' >> "$(dirname "$0")/iz.log"`;
+  const yavas = (stub) =>
+    stub
+      .replace(
+        '  api-resources)',
+        `  api-resources)\n    ${izSatiri('AR_START')}\n    sleep 1\n    ${izSatiri('AR_END')}`,
+      )
+      .replace(
+        "      hpa) printf 'odeme-api\\n'; exit 0 ;;",
+        `      hpa) ${izSatiri('NS_READ')}; printf 'odeme-api\\n'; exit 0 ;;`,
+      );
+
+  const { cagrilar, iz } = kesifCagrilari({ mutate: yavas });
+
+  // Iki `api-resources` GERCEKTEN yapilmis olmali (silinerek hizlanmamis).
+  assert.equal(
+    cagrilar.filter((c) => /^api-resources/.test(c)).length,
+    2,
+    'envanter cagrilari silinmis — hiz kazanci ozelligi kaybederek elde edilmis',
+  );
+  // Ve envanter GERCEKTEN kullanilmis: cok tipli tek cagri ancak KIND haritasi
+  // okunduysa kurulabilir.
+  assert.ok(
+    cagrilar.some((c) => /^get [a-z0-9.]+,[a-z0-9.,]+ -n/.test(c)),
+    'cok tipli cagri kurulamamis — KIND haritasi okunmuyor demektir',
+  );
+
+  // OLCUT: namespace okumasi, envanter cagrilari BITMEDEN gerceklesmis olmali.
+  // Seri kosulsa IKI `AR_END` de NS_READ'den ONCE gorunurdu.
+  //
+  // "AR_START once mi" DIYE BAKILMIYOR: arka plan sureci fork+exec suresi kadar
+  // gecikebiliyor ve on plandaki okuma onu gecebiliyor — bu da CAKISTIRMANIN
+  // kendisidir, ihlali degil. Ilk yazim tam bu yuzden yanlis yere kirmizi dondu.
+  const nsOkuma = iz.indexOf('NS_READ');
+  const sonBitis = iz.lastIndexOf('AR_END');
+  assert.ok(nsOkuma >= 0, `namespace okumasi iz birakmadi: ${JSON.stringify(iz)}`);
+  assert.equal(
+    iz.filter((x) => x === 'AR_END').length,
+    2,
+    `iki envanter cagrisi da bitmemis: ${JSON.stringify(iz)}`,
+  );
+  assert.ok(
+    nsOkuma < sonBitis,
+    `envanter cagrilari SERI kosuyor — namespace okumasi ikisi de bittikten SONRA: ${JSON.stringify(iz)}`,
+  );
+});
+
+// ── PD2: BASLATILAMAZSA SENKRON YOLA DUSER ──────────────────────────────────
+// Arka plan kurulamadiginda (gecici dosya yok) davranis DEGISMEMELI — yalnizca
+// cakistirma kazanci kaybolur. Sessizce envantersiz kalmak, `api_absent` /
+// `no_permission` ayrimini yok etmek olurdu.
+test('PD2 arka plan kurulamazsa SENKRON yola duser (davranis ayni)', () => {
+  const src = read(RUNNER);
+  const i = src.indexOf('disc_inventory_finish() {');
+  assert.ok(i > 0, 'toplama fonksiyonu yok');
+  const govde = src.slice(i, src.indexOf('\n}', i));
+  assert.match(
+    govde,
+    /if \[ -z "\$AR_NAME_FILE" \] \|\| \[ -z "\$AR_KIND_FILE" \]; then\s*\n\s*load_cluster_resources\s*\n\s*load_cluster_kind_map/,
+    'arka plan kurulamadiginda senkron yola dusulmuyor — envanter SESSIZCE bos kalir',
+  );
+});
+
+// ── PD3: KIND AYRISTIRMASI TEK YERDE ────────────────────────────────────────
+// Senkron yol ile arka plan yolu AYNI ayristirmayi kullanmali; iki kopya,
+// birinde yapilan duzeltmenin digerinde sessizce eskimesi demekti.
+test('PD3 KIND ayristirmasi TEK yerde tanimli', () => {
+  const src = read(RUNNER);
+  assert.match(src, /^AR_KIND_AWK='/m, 'ortak awk tanimi yok');
+  // Ayristirmanin govdesi (`print kind "\t" full`) yalnizca BIR kez gecmeli.
+  const n = (src.match(/print kind "\\t" full;/g) || []).length;
+  assert.equal(n, 1, `KIND ayristirmasi ${n} yerde kopyalanmis — biri sessizce eskir`);
 });

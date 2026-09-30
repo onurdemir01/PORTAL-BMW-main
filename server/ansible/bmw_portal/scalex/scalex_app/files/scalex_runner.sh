@@ -9,7 +9,7 @@ umask 077
 # "playbook'un guncel surumu kopyalanmamis olabilir" diye TAHMIN ediyordu; artik
 # calistirici surumu bildiriyor ve portal kendi bekledigi surumle karsilastirip
 # SOYLUYOR. Bu dosya `scalex_app/VERSION` ile ayni sayiyi tasimali (test kilitler).
-PACKAGE_VERSION="17"
+PACKAGE_VERSION="18"
 
 PHASE="${SCALEX_PHASE:-${CHAOS_PHASE:-precheck}}"
 CLUSTER="${CLUSTER:-}"
@@ -568,6 +568,57 @@ CLUSTER_RESOURCES_OK="no"
 load_cluster_resources() {
   CLUSTER_RESOURCES="$(oc api-resources --namespaced=true --verbs=list -o name 2>/dev/null | awk 'NF' | sort -u)"
   if [ -n "$CLUSTER_RESOURCES" ]; then CLUSTER_RESOURCES_OK="yes"; fi
+}
+
+# ── ENVANTER CAGRILARI KRITIK YOLDAN CIKARILIR ──────────────────────────────
+#
+# `oc api-resources` SUNUCU TARAFINDA ucuz ama ISTEMCI TARAFINDA pahali: butun
+# API gruplarinin discovery belgesini indirir, olculen suresi 1-3 SANIYE. Betik
+# bunu IKI KEZ cagiriyor (`-o name` tam adlar icin, varsayilan cikti KIND sutunu
+# icin) ve ikisi de namespace okumalarindan BAGIMSIZ.
+#
+# SILINEMEZ: `resource_exists` (`api_absent` ↔ `no_permission` ayrimi),
+# `full_resource_name` (RBAC cumlesindeki tam ad) ve cok tipli cagrinin atifi
+# ona dayaniyor. Ama BEKLENMESI GEREKMIYOR: arka planda baslatilir, namespace
+# okumalari (hpa/pdb/ConfigMap) o sirada kosar ve sonuc en son toplanir.
+#
+# IKI CAGRI AYNI DISCOVERY ONBELLEGINI (`~/.kube/cache`) paylasir; kubectl o
+# onbellegi atomik yazimla kurdugu icin es zamanli kullanim guvenli. Yine de
+# HERHANGI bir aksilikte dosyalar BOS kalir, `CLUSTER_RESOURCES_OK=no` olur ve
+# betik bugunku fail-safe yoluna duser: tekil cagrilar + `SCAN;WARN`. Yani en
+# kotu halde YAVASLAR, YANILMAZ.
+AR_NAME_FILE=""
+AR_KIND_FILE=""
+AR_PID_NAME=""
+AR_PID_KIND=""
+disc_inventory_start() {
+  AR_NAME_FILE="$(mktemp "${WORKDIR}/.scalex_ar_name_XXXXXX" 2>/dev/null || true)"
+  AR_KIND_FILE="$(mktemp "${WORKDIR}/.scalex_ar_kind_XXXXXX" 2>/dev/null || true)"
+  if [ -z "$AR_NAME_FILE" ] || [ -z "$AR_KIND_FILE" ]; then
+    AR_NAME_FILE=""; AR_KIND_FILE=""
+    return 0
+  fi
+  oc api-resources --namespaced=true --verbs=list -o name >"$AR_NAME_FILE" 2>/dev/null &
+  AR_PID_NAME=$!
+  oc api-resources --namespaced=true --verbs=list >"$AR_KIND_FILE" 2>/dev/null &
+  AR_PID_KIND=$!
+}
+
+# Arka plandaki cagrilari toplar ve globalleri kurar. Baslatilamamissa SENKRON
+# yola duser — davranis ayni, yalnizca cakistirma kazanci yok.
+disc_inventory_finish() {
+  if [ -z "$AR_NAME_FILE" ] || [ -z "$AR_KIND_FILE" ]; then
+    load_cluster_resources
+    load_cluster_kind_map
+    return 0
+  fi
+  [ -n "$AR_PID_NAME" ] && wait "$AR_PID_NAME" 2>/dev/null
+  [ -n "$AR_PID_KIND" ] && wait "$AR_PID_KIND" 2>/dev/null
+  CLUSTER_RESOURCES="$(awk 'NF' "$AR_NAME_FILE" 2>/dev/null | sort -u)"
+  if [ -n "$CLUSTER_RESOURCES" ]; then CLUSTER_RESOURCES_OK="yes"; fi
+  CLUSTER_KIND_MAP="$(awk "$AR_KIND_AWK" "$AR_KIND_FILE" 2>/dev/null | sort -u)"
+  rm -f "$AR_NAME_FILE" "$AR_KIND_FILE" >/dev/null 2>&1 || true
+  AR_NAME_FILE=""; AR_KIND_FILE=""
 }
 
 # Tam ad ("statefulsets.apps") ya da grupsuz ad ("statefulsets") ile eslesir.
@@ -1460,15 +1511,20 @@ disc_jsonpath_all() {
 # uretimi elle yeniden kurmak, bu betikteki en pahali karar olan
 # `api_absent` / `no_permission` ayrimini riske atardi.
 CLUSTER_KIND_MAP=""
+# Sutunlar: NAME [SHORTNAMES] APIVERSION NAMESPACED KIND. SHORTNAMES OLABILIR de
+# OLMAYABILIR de, bu yuzden sutunlar SONDAN sayilir.
+#
+# TEK YERDE: senkron yol ile arka plan yolu AYNI ayristirmayi kullanmali. Iki
+# kopya, birinde yapilan duzeltmenin digerinde sessizce eskimesi demekti — bu
+# depoda tekrar eden hata sinifi.
+AR_KIND_AWK='NR > 1 && NF >= 4 {
+  name = $1; av = $(NF-2); kind = $NF; grp = av; sub(/\/.*/, "", grp);
+  if (av ~ /\//) full = name "." grp; else full = name;
+  print kind "\t" full;
+}'
 load_cluster_kind_map() {
-  # Sutunlar: NAME [SHORTNAMES] APIVERSION NAMESPACED KIND. SHORTNAMES OLABILIR de
-  # OLMAYABILIR de, bu yuzden sutunlar SONDAN sayilir.
   CLUSTER_KIND_MAP="$(oc api-resources --namespaced=true --verbs=list 2>/dev/null \
-    | awk 'NR > 1 && NF >= 4 {
-        name = $1; av = $(NF-2); kind = $NF; grp = av; sub(/\/.*/, "", grp);
-        if (av ~ /\//) full = name "." grp; else full = name;
-        print kind "\t" full;
-      }' | sort -u)"
+    | awk "$AR_KIND_AWK" | sort -u)"
 }
 
 # Verilen TAM KAYNAK ADI icin cluster'in bildirdigi KIND. Bulunamazsa bos doner —
@@ -1700,17 +1756,21 @@ EOF_DISC_PAIRS
 
 discover_workloads() {
   local kind kinds_to_scan extra obek n=0
+  # CLUSTER NE DIYORSA O. Sabit liste iki soruyu birden cevaplayamiyordu ("bu tip
+  # var mi" / "listeleyebiliyor muyum") ve cluster'da olup listemizde olmayan hicbir
+  # sey gorunmuyordu. `oc api-resources` ikisini de kesinlestirir ve YETKI GEREKTIRMEZ.
+  #
+  # EN BASTA BASLATILIR, SONDA TOPLANIR: istemci tarafi discovery 1-3 sn suruyor ve
+  # namespace okumalarindan tamamen bagimsiz. Beklemek, o sureyi kullanicinin
+  # toplam suresine EKLEMEK demekti.
+  disc_inventory_start
+
   disc_load_hpa
   disc_pdb
   # Durum kayitlari da namespace basina TEK cagriyla yuklenir (bkz. disc_load_states).
   disc_load_states
 
-  # CLUSTER NE DIYORSA O. Sabit liste iki soruyu birden cevaplayamiyordu ("bu tip
-  # var mi" / "listeleyebiliyor muyum") ve cluster'da olup listemizde olmayan hicbir
-  # sey gorunmuyordu. `oc api-resources` ikisini de kesinlestirir ve YETKI GEREKTIRMEZ.
-  load_cluster_resources
-  # Cok tipli cagrinin satirlarini tipe yazabilmek icin KIND sutunu da gerekiyor.
-  load_cluster_kind_map
+  disc_inventory_finish
 
   # Bilinen alti tip + cluster'da bulunan, `scale` alt kaynagi olan diger tipler
   # (operator CRD'leri). Ikinci kume envanter okunamadiginda BOS kalir; davranis
