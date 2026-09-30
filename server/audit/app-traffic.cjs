@@ -109,11 +109,50 @@ function routelariBul(app, nsRoutes) {
   return bulunan;
 }
 
+/** Varsayilan satir tavani. Bkz. buildAppTraffic'teki OLCUM notu. */
+const LIMIT_DEFAULT = 1000;
+/** CSV icin acik istek uzerine cikilabilecek tavan. */
+const LIMIT_MAX = 100000;
+
+/**
+ * Suzgecler SUNUCUDA uygulanir.
+ *
+ * NEDEN SUNUCUDA (2026-09-30, kullanici: "sayfa dondu ve hicbir sey yuklenmiyor"):
+ * ekran once tum kumeyi indirip tarayicida suzuyordu. Olculdu: 70.059 uygulama =
+ * 20,9 MB JSON ve 70.059 x 8 hucre DOM. Yanit 8 MB'lik onbellek tavanini da astigi
+ * icin her acilis bastan hesaplaniyordu. Suzgeci sunucuya almak govdeyi birkac yuz
+ * KB'ye indirir ve yaniti yeniden onbelleklenebilir kilar (anahtar sorgu dizesini
+ * icerir, bkz. response-cache.cjs).
+ */
+function suz(rows, { q = '', env = '', status = '', kind = '', routes = '' } = {}) {
+  const needle = L(q);
+  const e = L(env);
+  return rows.filter((r) => {
+    if (e && e !== 'all' && L(r.env || '') !== e) return false;
+    if (kind === 'spa' && !r.spa) return false;
+    if (kind === 'nonspa' && r.spa) return false;
+    if (status && status !== 'all' && r.status !== status) return false;
+    if (routes === 'with' && !r.routes.length) return false;
+    if (routes === 'without' && r.routes.length) return false;
+    if (
+      needle &&
+      !(
+        L(r.namespace).includes(needle) ||
+        L(r.application).includes(needle) ||
+        r.routes.some((x) => L(x.route).includes(needle) || L(x.address).includes(needle))
+      )
+    )
+      return false;
+    return true;
+  });
+}
+
 /**
  * @param {object[]} usageRows dbo.BMW_Application_Usage satirlari
  * @param {object[]} invRows   dbo.BMW_Openshift_Route_Inventory satirlari
+ * @param {object}   opt       suzgecler + `limit` (satir tavani)
  */
-function buildAppTraffic(usageRows, invRows) {
+function buildAppTraffic(usageRows, invRows, opt = {}) {
   const olcumler = tekillestir(usageRows);
   const nsIndeks = routeIndeksi(invRows);
 
@@ -142,10 +181,23 @@ function buildAppTraffic(usageRows, invRows) {
       a.application.localeCompare(b.application),
   );
 
+  // SUZGEC SONRASI KIRPMA. Ozet ve ortam listesi HER ZAMAN TUM KUMEDEN hesaplanir:
+  // kirpilmis bir listeden sayi uretmek, 70.059 uygulamalik bir kumeyi 1.000 sanmaya
+  // yol acardi - bu ekranin isi tam olarak "kac uygulama atil" sorusuna cevap vermek.
+  const limit = Math.min(Math.max(Number(opt.limit) || LIMIT_DEFAULT, 1), LIMIT_MAX);
+  const eslesen = suz(rows, opt);
+  const kirpilmis = eslesen.slice(0, limit);
+  const envs = [...new Set(rows.map((r) => r.env).filter(Boolean))].sort();
+
   const say = (f) => rows.filter(f).length;
   return {
     latestScan,
-    rows,
+    rows: kirpilmis,
+    envs,
+    total: rows.length,
+    totalMatched: eslesen.length,
+    limit,
+    truncated: eslesen.length > kirpilmis.length,
     summary: {
       apps: rows.length,
       active: say((r) => r.status === 'active'),
@@ -169,4 +221,12 @@ function buildAppTraffic(usageRows, invRows) {
   };
 }
 
-module.exports = { buildAppTraffic, tekillestir, routelariBul, routeIndeksi };
+module.exports = {
+  buildAppTraffic,
+  tekillestir,
+  routelariBul,
+  routeIndeksi,
+  suz,
+  LIMIT_DEFAULT,
+  LIMIT_MAX,
+};

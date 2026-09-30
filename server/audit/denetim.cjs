@@ -2167,10 +2167,22 @@ function initDenetim(app) {
           `SELECT cluster_name, namespace_name, route_name, route_address FROM dbo.BMW_Openshift_Route_Inventory`,
         ).catch(() => ({ recordset: [] })),
       ]);
+      // SUZGECLER SUNUCUDA (2026-09-30): kullanici "sayfa dondu ve hicbir sey
+      // yuklenmiyor" dedi. Olculdu: 70.059 uygulama = 20,9 MB JSON; yanit 8 MB'lik
+      // onbellek tavanini da asiyordu, yani her acilis bastan hesaplaniyordu ve
+      // tarayici 70.059 x 8 hucreyi cizmeye calisiyordu. Ozet TUM kumeden gelir.
+      const s = (v) => String(v || '').trim();
       res.json({
         ok: true,
         tableMissing: false,
-        ...buildAppTraffic(usage.recordset || [], inventory.recordset || []),
+        ...buildAppTraffic(usage.recordset || [], inventory.recordset || [], {
+          q: s(req.query.q),
+          env: s(req.query.env),
+          status: s(req.query.status),
+          kind: s(req.query.kind),
+          routes: s(req.query.routes),
+          limit: req.query.limit,
+        }),
       });
     } catch (err) {
       res

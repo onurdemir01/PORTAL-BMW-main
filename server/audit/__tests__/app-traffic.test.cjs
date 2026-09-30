@@ -181,9 +181,11 @@ test('AT8: eslesme UYGULAMA x ENVANTER buyuklugunde calismaz (uretim: ekran 10 d
     envanter.push(INV(ns, `r${i}`, `r${i}.apps.fw.garanti.com.tr`));
   }
   const t0 = Date.now();
-  const r = buildAppTraffic(olcumler, envanter);
+  // TAVAN KALDIRILIR: olculen sey ESLESME maliyeti, kirpma degil.
+  const r = buildAppTraffic(olcumler, envanter, { limit: UYG });
   const sn = (Date.now() - t0) / 1000;
   assert.equal(r.rows.length, UYG);
+  assert.equal(r.totalMatched, UYG);
   // ESIK MUTASYONLA AYARLANDI: indeks kaldirilinca ayni veri 3,1 sn suruyor, saglam
   // halde 0,2 sn. 5 sn'lik ilk esik bu mutasyonu YAKALAMIYORDU - 2 sn hem saglam kosuya
   // on kat pay birakir hem regresyonu gorur.
@@ -263,4 +265,65 @@ test('AT12: rota + sekme kapisi + seed + sayfa sekmesi yerinde', () => {
     'utf8',
   );
   assert.match(page, /id: 'routetraffic', label: 'Uygulama Trafiği'/);
+});
+
+test('AT13: liste TAVANA kirpilir ama OZET TUM KUMEDEN gelir', () => {
+  // URETIM (2026-09-30): kullanici "Uygulama Trafigi sayfasi dondu ve hicbir sey
+  // yuklenmiyor" dedi. Olculdu: 70.059 uygulama = 20,9 MB JSON ve 70.059 x 8 hucre DOM;
+  // yanit 8 MB'lik onbellek tavanini da astigi icin her acilis bastan hesaplaniyordu.
+  //
+  // Kirpma sart AMA ozet kirpilmis listeden hesaplanmamali: o zaman 70.059 uygulamalik
+  // bir kume ekranda 1.000 gorunurdu ve "kac uygulama atil" sorusu YANLIS cevaplanirdi.
+  const satirlar = [];
+  for (let i = 0; i < 2500; i += 1) satirlar.push(K('ns-prod', 'app-' + i, i % 5 === 0 ? 0 : i));
+  const r = buildAppTraffic(satirlar, [], { limit: 100 });
+  assert.equal(r.rows.length, 100, 'tavan uygulanmiyor - govde sinirsiz buyur');
+  assert.equal(r.totalMatched, 2500, 'uyan satir sayisi tasinmiyor');
+  assert.equal(r.total, 2500);
+  assert.equal(r.truncated, true, 'kirpma isareti yok - ekran "hepsi bu" der');
+  assert.equal(r.summary.apps, 2500, 'OZET KIRPILMIS LISTEDEN hesaplanmis');
+  assert.equal(r.summary.idle, 500, 'atil sayisi kirpilmis listeden hesaplanmis');
+  // Ortam listesi de tum kumeden gelmeli, yoksa suzgec kendi kendini kisitlar.
+  assert.deepEqual(r.envs, ['prod']);
+});
+
+test('AT14: suzgecler SUNUCUDA uygulanir ve tavani asmaz', () => {
+  const satirlar = [
+    K('a-prod', 'canli', 10),
+    K('a-prod', 'sessiz', 0),
+    K('b-test', 'canli-test', 7),
+    K('a-prod', 'karanlik', 0, { measured: 0 }),
+  ];
+  const durum = buildAppTraffic(satirlar, [], { status: 'idle' });
+  assert.deepEqual(
+    durum.rows.map((x) => x.application),
+    ['sessiz'],
+  );
+  assert.equal(durum.summary.apps, 4, 'ozet suzgecten etkilenmis');
+  const ortam = buildAppTraffic(satirlar, [], { env: 'test' });
+  assert.deepEqual(
+    ortam.rows.map((x) => x.application),
+    ['canli-test'],
+  );
+  const arama = buildAppTraffic(satirlar, [], { q: 'KARANLIK' });
+  assert.deepEqual(
+    arama.rows.map((x) => x.application),
+    ['karanlik'],
+    'arama buyuk/kucuk harf duyarli olmamali',
+  );
+  // 'all' suzgec DEGIL: ekran varsayilan olarak bunu gonderiyor.
+  const hepsi = buildAppTraffic(satirlar, [], { status: 'all', env: 'all' });
+  assert.equal(hepsi.rows.length, 4, "'all' bir durum degeri gibi suzuluyor");
+});
+
+test('AT15: uc suzgecleri sorgu dizesinden OKUR (yoksa govde 20 MB kalir)', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'denetim.cjs'), 'utf8');
+  const i = src.indexOf("router.get('/route-traffic'");
+  const blok = src.slice(i, i + 4500);
+  for (const ad of ['q', 'env', 'status', 'kind', 'routes', 'limit']) {
+    assert.ok(
+      new RegExp('req\.query\.' + ad).test(blok),
+      `uc '${ad}' suzgecini okumuyor - suzgec tarayiciya kalir ve tum kume inmek zorunda kalir`,
+    );
+  }
 });

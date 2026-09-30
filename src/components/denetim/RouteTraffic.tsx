@@ -12,7 +12,7 @@
 //
 // KALDIRILAN KOLONLAR: 7/30/90 gun, gun/ort, 4xx, 5xx, son istek. Hepsi Thanos
 // kirilimiydi; Dynatrace vermiyor. Bos kolon gostermek yerine kaldirildi.
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
 import {
   ArrowPathIcon,
@@ -103,54 +103,100 @@ export default function RouteTraffic() {
   const [status, setStatus] = useState<'all' | AppTrafficStatus>('all');
   const [routeFilter, setRouteFilter] = useState<'all' | 'with' | 'without'>('all');
 
-  const load = useCallback(async (fresh = false) => {
-    setLoading(true);
-    try {
-      const r = await denetimApi.routeTraffic(fresh);
-      if (r.ok) {
-        setData(r);
-        setErr('');
-      } else setErr(r.message || 'Veri alınamadı.');
-    } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  // SUZGECLER SUNUCUDA UYGULANIR (2026-09-30). Kullanici: "sayfa dondu ve hicbir sey
+  // yuklenmiyor". Olculdu: 70.059 uygulama = 20,9 MB JSON ve 70.059 x 8 hucre DOM;
+  // yanit 8 MB'lik onbellek tavanini da astigi icin her acilis bastan hesaplaniyordu.
+  // Artik sunucu suzer ve tavana kadar kirpar; ozet TUM kumeden gelir.
+  const load = useCallback(
+    async (fresh = false) => {
+      setLoading(true);
+      try {
+        const r = await denetimApi.routeTraffic({ q, env, kind, status, routes: routeFilter }, fresh);
+        if (r.ok) {
+          setData(r);
+          setErr('');
+        } else setErr(r.message || 'Veri alınamadı.');
+      } catch (e: unknown) {
+        setErr(e instanceof Error ? e.message : String(e));
+      } finally {
+        setLoading(false);
+      }
+    },
+    [q, env, kind, status, routeFilter],
+  );
+
+  // SUZGEC DEGISIMI GECIKMELI: her tus vurusunda sunucuya gitmek, 70.000 satirlik
+  // kumeyi tekrar tekrar suzdururdu. Onbellek 60 sn oldugu icin ayni bilesim ikinci
+  // kez aninda doner.
   useEffect(() => {
-    load();
+    const t = window.setTimeout(() => {
+      void load();
+    }, 300);
+    return () => window.clearTimeout(t);
   }, [load]);
 
-  const envs = useMemo(() => {
-    const s = new Set<string>();
-    for (const r of data?.rows || []) if (r.env) s.add(r.env);
-    return [...s].sort();
-  }, [data]);
+  const envs = data?.envs || [];
+  const rows = data?.rows || [];
 
-  const rows = useMemo(() => {
-    const needle = q.trim().toLowerCase();
-    return (data?.rows || []).filter((r) => {
-      if (env !== 'all' && (r.env || '') !== env) return false;
-      if (kind === 'spa' && !r.spa) return false;
-      if (kind === 'nonspa' && r.spa) return false;
-      if (status !== 'all' && r.status !== status) return false;
-      if (routeFilter === 'with' && !r.routes.length) return false;
-      if (routeFilter === 'without' && r.routes.length) return false;
-      if (
-        needle &&
-        !(
-          r.namespace.toLowerCase().includes(needle) ||
-          r.application.toLowerCase().includes(needle) ||
-          r.routes.some(
-            (x) =>
-              x.route.toLowerCase().includes(needle) || x.address.toLowerCase().includes(needle),
-          )
-        )
-      )
-        return false;
-      return true;
-    });
-  }, [data, q, env, kind, status, routeFilter]);
+  // CSV TUM SUZGEC SONUCUNU indirir, ekrandaki kirpilmis listeyi DEGIL. Kirpilmis
+  // listeyi CSV'ye yazmak, elektronik tabloda "bu kadar uygulama var" diye okunurdu.
+  const [csvBusy, setCsvBusy] = useState(false);
+  const csvIndir = useCallback(async () => {
+    setCsvBusy(true);
+    try {
+      const r = await denetimApi.routeTraffic({
+        q,
+        env,
+        kind,
+        status,
+        routes: routeFilter,
+        limit: 100000,
+      });
+      csvDownload(
+        'uygulama_trafigi',
+        [
+          'namespace',
+          'uygulama',
+          'ortam',
+          'spa',
+          'cluster',
+          'durum',
+          'istek',
+          'pencere_gun',
+          'servis',
+          'servis_olculen',
+          'servis_atlanan',
+          'route',
+          'adres',
+          'olcum_tarihi',
+          'not',
+        ],
+        (r.rows || []).map((x) => [
+          x.namespace,
+          x.application,
+          x.env || '',
+          x.spa ? 'evet' : 'hayır',
+          x.cluster,
+          STATUS[x.status].label,
+          // OLCULEMEYEN SATIRA 0 YAZILMAZ: CSV'de de "ölçülemedi" ile "istek yok"
+          // ayri kalmali, yoksa elektronik tabloda toplanip yanlis okunur.
+          x.reqShown == null ? '' : x.reqShown,
+          x.windowDays,
+          x.services,
+          x.servicesMeasured,
+          x.servicesSkipped,
+          x.routes.map((y) => y.route).join(' '),
+          x.routes.map((y) => y.address).join(' '),
+          x.scanDate,
+          x.note,
+        ]),
+      );
+    } catch {
+      /* indirme hatasi ekranin geri kalanini bozmaz */
+    } finally {
+      setCsvBusy(false);
+    }
+  }, [q, env, kind, status, routeFilter]);
 
   if (loading && !data) return <LoadingLogo />;
   if (err)
@@ -166,6 +212,17 @@ export default function RouteTraffic() {
   return (
     <div className="space-y-3">
       {data.tableMissing && <Note tone="warning">{data.message}</Note>}
+
+      {/* KIRPMA SESSIZ OLMAZ: ekran 1.000 satir gosterip 70.059 uygulamalik bir kumeyi
+          "hepsi bu" gibi okutamaz. Kullanici suzgeci daraltarak ya da CSV ile tamamina
+          ulasir. */}
+      {data.truncated && (
+        <Note tone="info">
+          Süzgece <b>{nf(data.totalMatched)}</b> uygulama uyuyor; ekranda <b>ilk {nf(data.limit)}</b>{' '}
+          gösteriliyor (istek sayısına göre azalan). Tamamı için süzgeci daraltın ya da{' '}
+          <b>CSV</b> indirin — CSV süzgece uyan <b>tüm</b> satırları yazar.
+        </Note>
+      )}
 
       {/* KOR NOKTA GORUNUR OLSUN: envanterdeki her route bir uygulamaya baglanamaz
           (route "apigw", uygulamalar "apigw-1-prod"...). Sayiyi yazmazsak "hepsini gordum"
@@ -260,54 +317,17 @@ export default function RouteTraffic() {
           <option value="without">route&apos;u olmayanlar</option>
         </Select>
         <span className="text-xs text-[var(--text-muted)] tabular-nums">
-          {nf(rows.length)} / {nf(data.rows.length)} uygulama
+          {nf(rows.length)} / {nf(data.totalMatched)} uygulama
+          {data.totalMatched !== data.total && <> (toplam {nf(data.total)})</>}
         </span>
         <div className="ml-auto flex items-center gap-2">
           <button
-            onClick={() =>
-              csvDownload(
-                'uygulama_trafigi',
-                [
-                  'namespace',
-                  'uygulama',
-                  'ortam',
-                  'spa',
-                  'cluster',
-                  'durum',
-                  'istek',
-                  'pencere_gun',
-                  'servis',
-                  'servis_olculen',
-                  'servis_atlanan',
-                  'route',
-                  'adres',
-                  'olcum_tarihi',
-                  'not',
-                ],
-                rows.map((r) => [
-                  r.namespace,
-                  r.application,
-                  r.env || '',
-                  r.spa ? 'evet' : 'hayır',
-                  r.cluster,
-                  STATUS[r.status].label,
-                  // OLCULEMEYEN SATIRA 0 YAZILMAZ: CSV'de de "ölçülemedi" ile "istek yok"
-                  // ayri kalmali, yoksa elektronik tabloda toplanip yanlis okunur.
-                  r.reqShown == null ? '' : r.reqShown,
-                  r.windowDays,
-                  r.services,
-                  r.servicesMeasured,
-                  r.servicesSkipped,
-                  r.routes.map((x) => x.route).join(' '),
-                  r.routes.map((x) => x.address).join(' '),
-                  r.scanDate,
-                  r.note,
-                ]),
-              )
-            }
-            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs border border-[var(--border)] rounded-lg hover:bg-[var(--bg-elevated)]"
+            onClick={() => void csvIndir()}
+            disabled={csvBusy}
+            title="Süzgece uyan TÜM satırlar indirilir (ekrandaki kırpılmış liste değil)."
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs border border-[var(--border)] rounded-lg hover:bg-[var(--bg-elevated)] disabled:opacity-50"
           >
-            <ArrowDownTrayIcon className="w-3.5 h-3.5" /> CSV
+            <ArrowDownTrayIcon className="w-3.5 h-3.5" /> {csvBusy ? 'CSV…' : 'CSV'}
           </button>
           <button
             onClick={() => load(true)}
@@ -333,15 +353,15 @@ export default function RouteTraffic() {
         </thead>
         <tbody>
           {rows.length === 0 ? (
+            // SUZGEC ARTIK SUNUCUDA: bos liste "veri yok" DEMEK DEGIL. Karar
+            // `data.total`a bakar (olculen tum uygulama sayisi); `rows` zaten
+            // suzulmus ve kirpilmis geldigi icin ona bakmak, suzgece uymayan her
+            // aramayi "job hic kosmamis" gibi okuturdu.
             <TableEmptyRow
               colSpan={8}
-              title={
-                data.rows.length ? 'Süzgeçle eşleşen uygulama yok.' : 'Henüz kullanım verisi yok.'
-              }
+              title={data.total ? 'Süzgeçle eşleşen uygulama yok.' : 'Henüz kullanım verisi yok.'}
               description={
-                data.rows.length
-                  ? undefined
-                  : 'application_usage job’ı bir kez koşunca burası dolar.'
+                data.total ? undefined : 'application_usage job’ı bir kez koşunca burası dolar.'
               }
             />
           ) : (

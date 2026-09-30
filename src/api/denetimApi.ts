@@ -790,11 +790,30 @@ export interface AppTrafficRow {
   routes: { route: string; address: string; exact: boolean }[];
   status: AppTrafficStatus;
 }
+export interface AppTrafficFilters {
+  q?: string;
+  env?: string;
+  status?: string;
+  kind?: string;
+  routes?: string;
+  limit?: number;
+}
 export interface AppTrafficResult {
   ok: boolean;
   message?: string;
   tableMissing: boolean;
+  /** SUZGECTEN GECIP TAVANA KADAR KIRPILAN satirlar - tum kume DEGIL. */
   rows: AppTrafficRow[];
+  /** Ortam suzgeci icin secenekler; TUM kumeden gelir, kirpilmis listeden degil. */
+  envs: string[];
+  /** Olculen tum uygulama sayisi (suzgecsiz). */
+  total: number;
+  /** Suzgece uyan satir sayisi (kirpmadan ONCE). */
+  totalMatched: number;
+  /** Uygulanan satir tavani. */
+  limit: number;
+  /** true ise liste tavanda kesildi - ekran bunu SOYLEMEK ZORUNDA. */
+  truncated: boolean;
   summary: {
     apps: number;
     active: number;
@@ -1217,8 +1236,19 @@ export const denetimApi = {
     return fetch(`${BASE}/nginx-locations?${qs.toString()}`).then(safeJson);
   },
 
-  routeTraffic: (fresh = false): Promise<AppTrafficResult> =>
-    fetch(`${BASE}/route-traffic${fresh ? '?fresh=1' : ''}`).then(safeJson),
+  // SUZGECLER SUNUCUYA GIDER: tum kume 20,9 MB ve 70.059 satir (2026-09-30'da olculdu,
+  // ekran donuyordu). Sorgu dizesi onbellek anahtarina girer, her suzgec bilesimi
+  // kendi onbellegini alir.
+  routeTraffic: (f: AppTrafficFilters = {}, fresh = false): Promise<AppTrafficResult> => {
+    const p = new URLSearchParams();
+    for (const [k, v] of Object.entries(f)) {
+      const sv = String(v ?? '').trim();
+      if (sv && sv !== 'all') p.set(k, sv);
+    }
+    if (fresh) p.set('fresh', '1');
+    const qs = p.toString();
+    return fetch(`${BASE}/route-traffic${qs ? `?${qs}` : ''}`).then(safeJson);
+  },
   webApp: (source: string, q?: string, onlyUnmatched?: boolean): Promise<WebAppResult> =>
     fetch(
       `${BASE}/web-app?source=${encodeURIComponent(source)}` +
