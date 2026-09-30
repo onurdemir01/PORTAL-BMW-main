@@ -72,7 +72,12 @@ const TIPLER = {
 };
 function tipBul(ad) {
   for (const [k, t] of Object.entries(TIPLER)) if (t.adlar.includes(ad)) return k;
+  // KESFEDILEN CRD (`model.crdler`): kodu tam kaynak adinin kendisi.
+  if (model.crdler && model.crdler[ad]) return ad;
   return null;
+}
+function tipBilgi(k) {
+  return TIPLER[k] || { tam: k, kind: model.crdler[k].kind, tablo: k };
 }
 function yokMu(k) {
   return (model.yokTipler || []).includes(k);
@@ -86,6 +91,7 @@ function listeYasakMi(k) {
   return (model.listeYasakTipler || []).includes(k);
 }
 function nesneler(k) {
+  if (model.crdler && model.crdler[k]) return model.crdler[k].nesneler || [];
   return (model.nesneler && model.nesneler[k]) || [];
 }
 
@@ -182,10 +188,16 @@ process.on('exit', () => {
 function kubeNesne(k, o, kindYaz) {
   const d = durumOku(o);
   return {
-    ...(kindYaz ? { kind: TIPLER[k].kind } : {}),
+    ...(kindYaz ? { kind: tipBilgi(k).kind } : {}),
     metadata: { name: o.name, labels: o.labels || {} },
-    spec: { replicas: o.spec, template: { spec: { containers: [{ image: o.image || 'img:1' }] } } },
-    status: { replicas: d.status, readyReplicas: d.ready },
+    // `hamSpec`/`hamStatus`: tipe ozgu alanlar (DaemonSet sayaclari, CronJob
+    // `suspend`/`schedule`/`jobTemplate`).
+    spec: {
+      replicas: o.spec,
+      template: { spec: { containers: [{ image: o.image || 'img:1' }] } },
+      ...(o.hamSpec || {}),
+    },
+    status: { replicas: d.status, readyReplicas: d.ready, ...(o.hamStatus || {}) },
   };
 }
 function hpaSatiri(h) {
@@ -241,14 +253,29 @@ function workloadGet() {
     }
   }
   const coklu = tipler.length > 1;
+  // `yavas: { <tip kodu>: ms }` — TEK tipli okuma bekletilir ve SAHTE_OC_IZ'e
+  // BASLA/BITTI yazilir: tekil cekimlerin AYNI ANDA kostugunu kanitlamak icin
+  // (duvar saati degil, iz ic ice mi).
+  const yavasMs = !coklu && model.yavas ? model.yavas[kodlar[0]] : 0;
+  if (yavasMs) {
+    const iz = process.env.SAHTE_OC_IZ;
+    if (iz) fs.appendFileSync(iz, `BASLA ${kodlar[0]}\n`);
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, yavasMs);
+    if (iz) fs.appendFileSync(iz, `BITTI ${kodlar[0]}\n`);
+  }
   let rc = 0;
   const sablon = jp();
   let buf = '';
   for (let i = 0; i < kodlar.length; i++) {
     const k = kodlar[i];
     if (yasakMi(k) || (!adli && listeYasakMi(k))) {
+      // Gercek kubectl metni: kaynak TAM adiyla (`deployments.apps`) basta.
+      const tam = tipBilgi(k).tam;
+      const nokta = tam.indexOf('.');
       err(
-        `Error from server (Forbidden): ${TIPLER[k].tam} is forbidden: User cannot list resource\n`,
+        `Error from server (Forbidden): ${tam} is forbidden: User "u" cannot list resource ` +
+          `"${nokta < 0 ? tam : tam.slice(0, nokta)}" in API group "${nokta < 0 ? '' : tam.slice(nokta + 1)}" ` +
+          `in the namespace "${secenek('-n') || ''}"\n`,
       );
       rc = 1;
       continue;
@@ -256,13 +283,13 @@ function workloadGet() {
     if (adli) {
       const o = nesneler(k).find((x) => x.name === adli);
       if (!o) {
-        err(`Error from server (NotFound): ${TIPLER[k].tam} "${adli}" not found\n`);
+        err(`Error from server (NotFound): ${tipBilgi(k).tam} "${adli}" not found\n`);
         rc = 1;
         continue;
       }
       if (sablon !== null) buf += jsonpath(sablon, kubeNesne(k, o, false));
       else if (noHeaders) buf += tabloSatiri(k, o) + '\n';
-      else buf += `${TIPLER[k].tablo}/${o.name}\n`;
+      else buf += `${tipBilgi(k).tablo}/${o.name}\n`;
     } else {
       const liste = nesneler(k);
       // `kindYok`: TypeMeta yazmayan bir `oc` surumu (atif dogrulamasini sinar).
@@ -273,7 +300,7 @@ function workloadGet() {
       else
         for (const o of liste)
           buf +=
-            (noHeaders && !coklu ? tabloSatiri(k, o) : `${TIPLER[k].tablo}/${o.name}   x`) + '\n';
+            (noHeaders && !coklu ? tabloSatiri(k, o) : `${tipBilgi(k).tablo}/${o.name}   x`) + '\n';
     }
   }
   out(buf);
@@ -335,7 +362,10 @@ if (k1 === 'get') {
   if (k2 === 'cm' || k2 === 'configmap' || k2 === 'configmaps') cmGet();
   if (k2 === 'hpa') hpaGet();
   if (k2 === 'pods') podGet();
-  if (k2 === 'pdb') process.exit(0);
+  if (k2 === 'pdb') {
+    for (const p of model.pdb || []) out(`${p}   1   N/A   0   5d\n`);
+    process.exit(0);
+  }
   workloadGet();
 }
 
