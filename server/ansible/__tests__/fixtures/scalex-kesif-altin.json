@@ -306,5 +306,18 @@
   "c1;j1;-;CronJob;WORKLOAD_KIND;WARN;kind=cronjob resource=cronjobs.batch reason=no_permission verb=list namespace=ns1",
   "c1;j1;-;-;WORKLOAD;WARN;No workload matched namespace=ns1",
   "c1;j1;-;-;TIMING;INFO;phase=discover mode=workloads namespace=ns1 kinds=6 cached=no setup_ms=T discover_ms=T elapsed_ms=T"
+ ],
+ "uzun-ad": [
+  "c1;j1;-;-;RUNNER;INFO;package_version=N phase=discover",
+  "c1;j1;-;-;NAMESPACE;OK;Using project ns1",
+  "c1;j1;-;-;PDB;WARN;PDB_COUNT=2 namespace=ns1 pdb=odeme-pdb,kafka-pdb",
+  "c1;j1;uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu;Deployment;WORKLOAD;OK;namespace=ns1 resource=deployments.apps scalable=yes spec=0 status=0 ready=0 hpa=no state_phase=scaled_down previous_replicas=6 image=img:1 gitops=no",
+  "c1;j1;-;Deployment;WORKLOAD_KIND;OK;namespace=ns1 kind=deploy resource=deployments.apps found=1 scalable=yes",
+  "c1;j1;-;StatefulSet;WORKLOAD_KIND;OK;namespace=ns1 kind=sts resource=statefulsets.apps found=0 scalable=yes",
+  "c1;j1;-;DeploymentConfig;WORKLOAD_KIND;OK;namespace=ns1 kind=dc resource=deploymentconfigs.apps.openshift.io found=0 scalable=yes",
+  "c1;j1;-;ArgoRollout;WORKLOAD_KIND;OK;namespace=ns1 kind=rollout resource=rollouts.argoproj.io found=0 scalable=yes",
+  "c1;j1;-;DaemonSet;WORKLOAD_KIND;OK;namespace=ns1 kind=ds resource=daemonsets.apps found=0 scalable=no",
+  "c1;j1;-;CronJob;WORKLOAD_KIND;OK;namespace=ns1 kind=cronjob resource=cronjobs.batch found=0 scalable=no",
+  "c1;j1;-;-;TIMING;INFO;phase=discover mode=workloads namespace=ns1 kinds=6 cached=no setup_ms=T discover_ms=T elapsed_ms=T"
  ]
 }

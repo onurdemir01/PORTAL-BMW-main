@@ -256,12 +256,14 @@ function workloadGet() {
   // `yavas: { <tip kodu>: ms }` — TEK tipli okuma bekletilir ve SAHTE_OC_IZ'e
   // BASLA/BITTI yazilir: tekil cekimlerin AYNI ANDA kostugunu kanitlamak icin
   // (duvar saati degil, iz ic ice mi).
-  const yavasMs = !coklu && model.yavas ? model.yavas[kodlar[0]] : 0;
+  // Cok tipli cagri icin anahtar `coklu`.
+  const yavasAd = coklu ? 'coklu' : kodlar[0];
+  const yavasMs = model.yavas ? model.yavas[yavasAd] : 0;
   if (yavasMs) {
     const iz = process.env.SAHTE_OC_IZ;
-    if (iz) fs.appendFileSync(iz, `BASLA ${kodlar[0]}\n`);
+    if (iz) fs.appendFileSync(iz, `BASLA ${yavasAd}\n`);
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, yavasMs);
-    if (iz) fs.appendFileSync(iz, `BITTI ${kodlar[0]}\n`);
+    if (iz) fs.appendFileSync(iz, `BITTI ${yavasAd}\n`);
   }
   let rc = 0;
   const sablon = jp();

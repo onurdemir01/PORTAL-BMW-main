@@ -249,6 +249,9 @@ test('N5 ekstra CRD tekil cekimleri AYNI ANDA ve on-cekimle birlikte', () => {
     model: {
       ...s.model,
       yavas: {
+        // Bilinen tiplerin birlesik on-cekimi de yavas: CRD'ler onunla AYNI
+        // dalgadaysa hepsi o bitmeden baslar.
+        coklu: 1500,
         'kafkas.kafka.strimzi.io': 1500,
         'conjurfollowers.conjur.cyberark.com': 1500,
         'prometheuses.metrics.example.com': 1500,
@@ -259,7 +262,7 @@ test('N5 ekstra CRD tekil cekimleri AYNI ANDA ve on-cekimle birlikte', () => {
   const satirlar = fs.readFileSync(iz, 'utf8').split('\n').filter(Boolean);
   const ilkBitti = satirlar.findIndex((l) => l.startsWith('BITTI'));
   const bastanBasla = satirlar.slice(0, ilkBitti).filter((l) => l.startsWith('BASLA')).length;
-  assert.equal(bastanBasla, 3, `iz ic ice degil:\n${satirlar.join('\n')}`);
+  assert.equal(bastanBasla, 4, `iz ic ice degil:\n${satirlar.join('\n')}`);
   // Satirlar yine SIRALI ve altinla ayni.
   assert.deepEqual(r.satirlar, ALTIN.crd);
 });

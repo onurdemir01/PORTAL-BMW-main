@@ -152,6 +152,21 @@ const SENARYOLAR = [
   },
   { ad: 'cok-ns', env: { NS_LIST: 'ns1,ns2' } },
   {
+    // `safe_name` 180 karakterde keser: durum kaydinin ADI uzun uygulama adinin
+    // ilk 180 karakteri. `data.app` BILEREK farkli (ad eslesmesini kurtarmasin).
+    ad: 'uzun-ad',
+    model: {
+      nesneler: { deploy: [{ name: 'u'.repeat(200), spec: 0 }] },
+      cm: {
+        ['scalex-state-' + 'u'.repeat(180)]: {
+          app: 'baska',
+          previous_replicas: '6',
+          phase: 'scaled_down',
+        },
+      },
+    },
+  },
+  {
     // Bos namespace + TEK tip yetkisiz: birlesik cagri SATIRSIZ ve rc=1 doner.
     // v23 bunu `call_failed` ile tekil cagrilara dusuruyordu (bkz. N3 —
     // v24'te bilincli fark).
