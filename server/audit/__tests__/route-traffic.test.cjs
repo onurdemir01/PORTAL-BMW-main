@@ -434,3 +434,26 @@ test('RTU8: olcum eslesmesi ROUTE x OLCUM buyuklugunde calismaz (uretim: ekran 1
       `(namespace indeksi kaldirilmis olabilir). Duzeltmeden once bu deger 43,5 sn idi.`,
   );
 });
+
+test('RTU9: olcum sorgusu uygulama basina TEK satir ceker (yarim milyon satir tasinmasin)', () => {
+  // Olculdu (2026-09-30): tablo gunde ~70.000 satir yaziyor; 7 gunluk pencere ~490.000
+  // satir demekti ve buildUsageMap zaten her (namespace, app) icin YALNIZ EN YENISINI
+  // tutuyordu - altisi bosuna tasiniyordu. Ekranin gec acilmasinin sebebi buydu
+  // (eslesme mantigi ayni veride 0,3 sn suruyor).
+  const src = fs.readFileSync(path.join(__dirname, '..', 'denetim.cjs'), 'utf8');
+  const i = src.indexOf('FROM dbo.BMW_Application_Usage');
+  assert.ok(i > 0, 'olcum sorgusu bulunamadi');
+  const blok = src.slice(Math.max(0, i - 1200), i + 600);
+  assert.match(
+    blok,
+    /ROW_NUMBER\(\) OVER \(PARTITION BY namespace, app ORDER BY scan_date DESC\)/,
+    'en yeni satir secimi veritabaninda yapilmiyor - yarim milyon satir tasiniyor',
+  );
+  assert.match(blok, /WHERE rn = 1/, 'ROW_NUMBER var ama suzgec yok');
+  // PENCERE KORUNMALI: son kosu dusen bir uygulama icin bir onceki olcum gecerlidir.
+  assert.match(
+    blok,
+    /DATEADD\(day, -7, CAST\(GETDATE\(\) AS DATE\)\)/,
+    '7 gunluk pencere kaybolmus',
+  );
+});

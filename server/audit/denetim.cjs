@@ -2152,11 +2152,27 @@ function initDenetim(app) {
         // YALNIZ SON 7 GUN: her satir ZATEN 35 gunluk bir pencereyi tasiyor ve yalnizca EN
         // YENI olcum kullaniliyor. 90 gun cekmek, uygulama x gun kadar satiri (binlerce)
         // bosuna tasimak olurdu. 7 gun, birkac basarisiz kosuyu atlatacak kadar genis.
+        // UYGULAMA BASINA YALNIZ EN YENI SATIR - SECIM VERITABANINDA YAPILIR.
+        //
+        // Olculdu (2026-09-30): tablo gunde ~70.000 satir yaziyor. 7 gunluk pencere
+        // ~490.000 satir demek ve buildUsageMap zaten her (namespace, app) icin YALNIZ
+        // EN YENISINI tutuyordu - yani yarim milyon satirin alti bosuna tasiniyordu.
+        // Ekranin gec acilmasinin sebebi buydu; eslesme mantigi 0,3 sn suruyor.
+        //
+        // PENCERE 7 GUN KALIYOR: son kosu dusen bir uygulama icin bir onceki olcum
+        // gecerlidir. ROW_NUMBER ayni secimi yapar, sonuc DEGISMEZ - yalniz satir sayisi
+        // yedide birine iner.
         query(
           `SELECT scan_date, window_days, cluster, namespace, app, req_total,
                   services_total, services_measured, services_skipped, measured, note
-             FROM dbo.BMW_Application_Usage
-            WHERE scan_date >= DATEADD(day, -7, CAST(GETDATE() AS DATE))`,
+             FROM (
+               SELECT scan_date, window_days, cluster, namespace, app, req_total,
+                      services_total, services_measured, services_skipped, measured, note,
+                      ROW_NUMBER() OVER (PARTITION BY namespace, app ORDER BY scan_date DESC) AS rn
+                 FROM dbo.BMW_Application_Usage
+                WHERE scan_date >= DATEADD(day, -7, CAST(GETDATE() AS DATE))
+             ) t
+            WHERE rn = 1`,
         ).catch(() => ({ recordset: [] })),
       ]);
       res.json({
