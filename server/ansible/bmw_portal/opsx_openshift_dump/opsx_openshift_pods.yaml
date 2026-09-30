@@ -149,6 +149,11 @@
         when: my_ocp_clusters | length > 0
         changed_when: false
 
+      - name: "Secilen oc ikilisini AWX log'una yaz"
+        ansible.builtin.debug:
+          msg: "oc={{ oc_bin | default('') }} aranan={{ oc_probe_paths | join(', ') }}"
+        when: my_ocp_clusters | length > 0
+
       # Her cluster icin baglanti bilgisi (url/username/password) TEK bir dongude cozulur —
       # portal metadata'si (api_url+credential_key) VARSA o, yoksa openshift_inventory_vars.
       # yaml'daki eski `clusters[tenant_env][cluster_name]` yoluna dusulur (GERIYE UYUM).

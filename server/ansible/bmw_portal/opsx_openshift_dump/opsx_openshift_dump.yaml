@@ -159,6 +159,11 @@
         when: my_ocp_clusters | length > 0
         changed_when: false
 
+      - name: "Secilen oc ikilisini AWX log'una yaz"
+        ansible.builtin.debug:
+          msg: "oc={{ oc_bin | default('') }} aranan={{ oc_probe_paths | join(', ') }}"
+        when: my_ocp_clusters | length > 0
+
       - name: "Resolve connection details for each owned cluster"
         ansible.builtin.set_fact:
           resolved_clusters: >-
