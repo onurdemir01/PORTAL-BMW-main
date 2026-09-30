@@ -623,6 +623,14 @@ const ScaleXPage: React.FC = () => {
               setEnv(v.env);
               setTenant(v.tenant);
               setClusters(v.clusters);
+              // KAPSAM DEGISTI — ONCEKI KESFIN SATIRLARI ARTIK EKSIK YA DA YABANCI.
+              //
+              // Adim bileseni "her satir BU cluster'lardan biri mi" diye bakiyor ve
+              // bu, cluster CIKARILDIGINDA yeterli. Ama cluster EKLENDIGINDE eski
+              // satirlarin hepsi kontrolden GECER ve yeni cluster'in uygulamalari
+              // SESSIZCE eksik kalir — "uygulamam listede yok" sinifi bir ariza.
+              setWorkloads([]);
+              setWorkloadsFetchedAt(null);
               setStep('namespace');
             }}
           />
@@ -639,18 +647,36 @@ const ScaleXPage: React.FC = () => {
               setNamespace(ns);
               setApps([]);
               setWorkloadKeys([]);
+              // KAPSAM DEGISTI — ONCEKI KESFIN SATIRLARI ARTIK YABANCI.
+              //
+              // `workloads` sayfa duzeyinde tutuluyor ve artik adima GERI
+              // VERILIYOR; temizlemezsek namespace degistiren kullanici BASKA bir
+              // namespace'in replica sayilarini "canli" diye gorurdu. Adim
+              // bileseni bunu ayrica dogruluyor (satir basina namespace) — ama
+              // kaynagi kirli birakmak, o dogrulamanin tek savunma hatti olmasi
+              // demekti.
+              setWorkloads([]);
+              setWorkloadsFetchedAt(null);
               setStep('workloads');
             }}
           />
         )}
 
         {/* `initial` AD+TIP ANAHTARI: duz ad veriliyordu ve belirsiz bir uygulamada
-            geri donuste secim kaybolup karsilikli kilit cozuluyordu. */}
+            geri donuste secim kaybolup karsilikli kilit cozuluyordu.
+
+            `initialWorkloads` / `initialFetchedAt`: GERI/ILERI GEZINMEDE YENIDEN
+            KESIF YOK. Sonuc burada ZATEN tutuluyordu; eksik olan tek sey onu
+            adima GERI VERMEKTI. Tazeligi ve KAPSAMI adim bileseni kendisi
+            dogrular (bkz. `yenidenKullanilabilirSatirlar`) — bayat ya da yabanci
+            veri "canli" diye gosterilmez. */}
         {step === 'workloads' && (
           <WorkloadStep
             scope={{ env, tenant, namespace, clusters }}
             busy={busy}
             initial={workloadKeys}
+            initialWorkloads={workloads}
+            initialFetchedAt={workloadsFetchedAt}
             autoScanMemo={autoScanMemo}
             onBack={() => setStep('namespace')}
             onSubmit={(v) => {

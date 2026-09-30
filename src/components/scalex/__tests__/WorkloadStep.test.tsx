@@ -1009,3 +1009,193 @@ describe('WorkloadStep - yoklama ritmi', () => {
     expect(sonrasi).toBeGreaterThan(0);
   });
 });
+
+// ── PR-G: GERI/ILERI GEZINMEDE YENIDEN KESIF YOK ────────────────────────────
+//
+// KULLANICININ SOZLERI: *"keşfi çağırdık 5-10 saniyede bitti, sonra işlemlere
+// gittik, her seferinde kontrol vs gerek yok"*.
+//
+// Sihirbaz `<div key={step}>` kullaniyor, yani bu bilesen her adim degisiminde
+// REMOUNT ediliyor ve `operation` adimindan geri donen kullanici `select`
+// fazinda buluyordu kendini — ayni uygulamalar icin AYNI kesfi bir daha
+// kosturuyordu. Sonuc sayfa duzeyinde ZATEN tutuluyordu; eksik olan tek sey onu
+// GERI VERMEKTI.
+describe('WorkloadStep - katalogdan devam (PR-G)', () => {
+  const canliSatir = (over: Partial<ScaleXWorkload> = {}) =>
+    makeWorkload({ namespace: 'ns-test', ...over });
+
+  // KATALOG DOLU VE TARANMIS: otomatik tam tarama ACILMAZ (bkz. HS1/HS4).
+  //
+  // BU SART: varsayilan kutukte katalog BOS ve hic taranmamis, yani otomatik
+  // tarama kosuyor ve fazi `done`a tasiyor. O durumda "devralma reddedildi mi"
+  // sorusu OLCULEMEZ — tarama zaten `done` uretir ve bekci yanlis yere yesile
+  // doner. (Mutasyon turu tam bunu yakaladi.)
+  const taranmisKatalog = () =>
+    mockApps.mockResolvedValue({
+      ok: true,
+      items: [{ name: 'test-app', kind: 'Deployment', clusters: ['cluster-a'] }],
+      clusters: {},
+      sources: {},
+      hiddenCount: 0,
+      scannedAt: new Date().toISOString(),
+      scannedEmpty: false,
+      scanUnknown: false,
+    });
+
+  it('KD1 TAZE onceki sonuc varsa KESIF ACILMAZ, liste ANINDA gelir', async () => {
+    render(
+      <WorkloadStep
+        {...defaultProps}
+        initialWorkloads={[canliSatir()]}
+        initialFetchedAt={Date.now() - 5_000}
+      />,
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    // Liste HEMEN acilmis olmali (secim fazi DEGIL, sonuc fazi).
+    //
+    // FAZ AYIRT EDICI `Devam` DUGMESI. "Kontrol et" metni IKI FAZDA DA var
+    // (secim fazindaki ipucu cumlesi de onu yaziyor), yani ona bakan bir bekci
+    // fazi AYIRT ETMEZ — mutasyon turu bunu KD2-KD5'te yakaladi.
+    expect(screen.getByText('test-app')).toBeInTheDocument();
+    expect(screen.getByText('Devam')).toBeInTheDocument();
+    // Ve HICBIR AWX isi acilmamis olmali.
+    expect(mockDiscover).not.toHaveBeenCalled();
+    expect(mockDiscoverStatus).not.toHaveBeenCalled();
+  });
+
+  it('KD2 BAYAT sonuc yeniden KULLANILMAZ (bayat replica yanlis islem demek)', async () => {
+    mockDiscoverStatus.mockResolvedValue(makeStatusResponse([makeWorkload()]));
+    taranmisKatalog();
+    render(
+      <WorkloadStep
+        {...defaultProps}
+        initialWorkloads={[canliSatir()]}
+        // 2 dakikalik pencerenin DISINDA.
+        initialFetchedAt={Date.now() - 5 * 60_000}
+      />,
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    // `done` fazina ATLAMAMALI: kullanici "Kontrol et" demeli.
+    // SECIM FAZINDA KALMALI. Olcut `Devam` dugmesinin YOKLUGU: "Kontrol et"
+    // metni her iki fazda da gectigi icin fazi AYIRT ETMEZ.
+    expect(screen.queryByText('Devam')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Kontrol et' })).toBeInTheDocument();
+  });
+
+  it('KD3 BASKA namespace`in satirlari yeniden KULLANILMAZ', async () => {
+    taranmisKatalog();
+    render(
+      <WorkloadStep
+        {...defaultProps}
+        initialWorkloads={[canliSatir({ namespace: 'baska-ns' })]}
+        initialFetchedAt={Date.now() - 5_000}
+      />,
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    // SECIM FAZINDA KALMALI. Olcut `Devam` dugmesinin YOKLUGU: "Kontrol et"
+    // metni her iki fazda da gectigi icin fazi AYIRT ETMEZ.
+    expect(screen.queryByText('Devam')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Kontrol et' })).toBeInTheDocument();
+  });
+
+  it('KD4 KAPSAM DISI cluster`in satirlari yeniden KULLANILMAZ', async () => {
+    taranmisKatalog();
+    render(
+      <WorkloadStep
+        {...defaultProps}
+        initialWorkloads={[canliSatir({ cluster: 'baska-cluster' })]}
+        initialFetchedAt={Date.now() - 5_000}
+      />,
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    // SECIM FAZINDA KALMALI. Olcut `Devam` dugmesinin YOKLUGU: "Kontrol et"
+    // metni her iki fazda da gectigi icin fazi AYIRT ETMEZ.
+    expect(screen.queryByText('Devam')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Kontrol et' })).toBeInTheDocument();
+  });
+
+  it('KD5 damga YOKSA yeniden KULLANILMAZ (`null` VE `undefined`)', async () => {
+    // IKI DEGER DE SINANIR. `null`u TTL kontrolu de reddediyor (`Date.now() - null`
+    // buyuk bir sayi), ama `undefined` icin `Date.now() - undefined` NaN eder ve
+    // `NaN > TTL` FALSE doner — yani tip kontrolu olmadan damgasiz satirlar
+    // SESSIZCE kabul edilirdi. Mutasyon turu bunu yakaladi: yalnizca `null`u
+    // sinayan bekci, tip kontrolunun silinmesini GORMUYORDU.
+    for (const damga of [null, undefined] as (number | null | undefined)[]) {
+      taranmisKatalog();
+      const { unmount } = render(
+        <WorkloadStep
+          {...defaultProps}
+          // Geri alma yolunda uretilen sentetik satirlar: damga BILEREK yok,
+          // cunku replica/HPA alanlari UYDURMA. Onlari canli sanip gostermek,
+          // kullaniciyi bilmedigi bir islemi onaylamaya birakmak olurdu.
+          initialWorkloads={[canliSatir({ source: 'mirror' })]}
+          initialFetchedAt={damga}
+        />,
+      );
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(screen.queryByText('Devam')).toBeNull();
+      expect(screen.getByRole('button', { name: 'Kontrol et' })).toBeInTheDocument();
+      unmount();
+    }
+  });
+
+  it('KD6 devralinan sonucta DAMGA korunur ("su an alindi" denmez)', async () => {
+    const damga = Date.now() - 90_000;
+    const onSubmit = vi.fn();
+    render(
+      <WorkloadStep
+        {...defaultProps}
+        onSubmit={onSubmit}
+        initial={['test-app']}
+        initialWorkloads={[canliSatir()]}
+        initialFetchedAt={damga}
+      />,
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    // `initial` ZATEN secili getiriyor; ada tiklamak onu SECIMDEN CIKARIRDI.
+    fireEvent.click(screen.getByText('Devam'));
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    // `Date.now()` YAZILMAMALI: onizlemedeki tazelik damgasi bunu soyluyor.
+    expect(onSubmit.mock.calls[0][0].fetchedAt).toBe(damga);
+  });
+});
+
+// ── KD7: KAYNAK DA TEMIZLENIYOR ─────────────────────────────────────────────
+//
+// KD3/KD4 davranissal savunmadir: adim bileseni yabanci satiri REDDEDER. Ama
+// kaynagi kirli birakmak, o reddin TEK savunma hatti olmasi demekti — ve o hat
+// cluster EKLENDIGINDE yetmiyor: eski satirlarin hepsi "kapsamda mi" kontrolunden
+// GECER, yalnizca yeni cluster'in uygulamalari SESSIZCE eksik kalir. Bu yuzden
+// sayfa, kapsam degistiginde kaynagi da bosaltir.
+//
+// BU BIR METIN BEKCISI ve oldugunu biliyoruz: `ScaleXPage` bu kutukte
+// render edilmiyor (kendi testi yok). Yine de mutasyonla kanitlanabiliyor —
+// temizlemeyi kaldirmak bu bekciyi kizartir.
+describe('WorkloadStep - kaynak temizligi (PR-G)', () => {
+  it('KD7 sayfa, namespace VE kapsam degisiminde onceki sonucu bosaltiyor', async () => {
+    const src = await import('node:fs').then((fs) =>
+      fs.readFileSync('src/components/scalex/ScaleXPage.tsx', 'utf8'),
+    );
+    // NamespaceStep `onSubmit` blogu
+    const nsBlok = src.slice(src.indexOf('<NamespaceStep'), src.indexOf('{step === \'workloads\''));
+    expect(nsBlok).toMatch(/setWorkloads\(\[\]\)/);
+    expect(nsBlok).toMatch(/setWorkloadsFetchedAt\(null\)/);
+    // ScopeStep `onSubmit` blogu
+    const scopeBlok = src.slice(src.indexOf('<ScopeStep'), src.indexOf('<NamespaceStep'));
+    expect(scopeBlok).toMatch(/setWorkloads\(\[\]\)/);
+    expect(scopeBlok).toMatch(/setWorkloadsFetchedAt\(null\)/);
+  });
+});

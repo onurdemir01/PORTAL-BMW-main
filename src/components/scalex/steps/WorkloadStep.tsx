@@ -30,6 +30,20 @@ interface Props {
   scope: ScaleXScope;
   busy: boolean;
   initial?: string[];
+  /**
+   * ÖNCEKİ KEŞFİN SONUCU — geri/ileri gezinmede YENİDEN KEŞİF YAPILMASIN.
+   *
+   * Sihirbaz `<div key={step}>` kullanıyor, yani bu bileşen her adım değişiminde
+   * REMOUNT ediliyor. `operation` adımından geri dönen kullanıcı `select`
+   * fazında buluyordu kendini ve aynı uygulamalar için AYNI keşfi bir daha
+   * koşturuyordu. Kullanıcının sözleri: *"keşfi çağırdık 5-10 saniyede bitti,
+   * sonra işlemlere gittik, her seferinde kontrol vs gerek yok"*.
+   *
+   * Sonuç sayfa düzeyinde ZATEN tutuluyor (`ScaleXPage` `workloads` +
+   * `workloadsFetchedAt`); eksik olan tek şey onu GERİ VERMEKTİ.
+   */
+  initialWorkloads?: ScaleXWorkload[];
+  initialFetchedAt?: number | null;
   onSubmit: (v: {
     apps: string[];
     /** Ad+tip anahtarlari — `initial` olarak geri verilince secim korunur. */
@@ -129,6 +143,50 @@ function statusGroupOf(rows: ScaleXWorkload[]): string {
 // Yoklamanin kendisi ARTIK UCUZ — `/discover/:s/:j/status` is bitmeden stdout
 // indirmiyor (bkz. server/scalex/index.cjs), yani sik yoklama AWX'e MB'larca
 // metin yuku bindirmiyor.
+// ── ÖNCEKİ SONUCUN YENİDEN KULLANILABİLECEĞİ SÜRE ───────────────────────────
+//
+// Geri/ileri gezinmede yeniden keşif koşturmamak için önceki sonuç kullanılır —
+// ama SONSUZA DEK DEĞİL. `specReplicas`/`readyReplicas` CANLI değerler ve bayat
+// bir replica sayısı YANLIŞ İŞLEME yol açar (R2 bekçisinin gerekçesi).
+//
+// 2 dakika: bir adım ileri gidip geri gelmek saniyeler sürer, yani gezinme
+// tamamen kapsanır. Üstelik `/preview` bugün ZATEN bu yaşta veriyi kabul ediyor
+// (yeniden keşif YAPMIYOR, damgayı gösteriyor) — yani burada kabul edilen
+// bayatlık, akışın geri kalanında kabul edilenden DAHA AZ.
+//
+// Süresi geçmişse davranış BUGÜNKÜ ile aynı: `select` fazı, kullanıcı "Kontrol
+// et" der. Sessizce bayat veri göstermek yerine AÇIKÇA yeniden sorulur.
+const SONUC_TAZELIK_MS = 120000;
+
+/**
+ * Önceki keşfin satırları bu kapsamda YENİDEN KULLANILABİLİR Mİ?
+ *
+ * Dört koşulun HEPSİ gerekli; biri bile gevşetilirse ekran bayat ya da YABANCI
+ * veriyi "canlı" diye gösterir:
+ *   1. damga var ve `SONUC_TAZELIK_MS` içinde — bayat replica yanlış işlem demek
+ *   2. satır var — boş liste "keşif yapıldı, hiçbir şey yok" ile karıştırılmamalı
+ *   3. her satır BU cluster'lardan biri — kapsam değiştiyse satırlar yabancı
+ *   4. her satır BU namespace'ten — namespace değiştirip geri gelen kullanıcı
+ *      başka bir namespace'in replica sayılarını görürdü. (Satır başına
+ *      namespace PR-E ile geldi; alanı taşımayan eski satırlar `undefined`
+ *      bırakır ve o durumda kapsam kontrolü YAPILAMAZ, bu yüzden reddedilir.)
+ */
+function yenidenKullanilabilirSatirlar(
+  scope: ScaleXScope,
+  rows: ScaleXWorkload[] | undefined,
+  fetchedAt: number | null | undefined,
+): ScaleXWorkload[] | null {
+  if (!rows || !rows.length) return null;
+  if (typeof fetchedAt !== 'number' || !Number.isFinite(fetchedAt)) return null;
+  if (Date.now() - fetchedAt > SONUC_TAZELIK_MS) return null;
+  const kapsamCluster = new Set(scope.clusters);
+  for (const w of rows) {
+    if (!kapsamCluster.has(w.cluster)) return null;
+    if (w.namespace !== scope.namespace) return null;
+  }
+  return rows;
+}
+
 const POLL_FAST_MS = 1000;
 const POLL_SLOW_MS = 3000;
 const POLL_FAST_WINDOW_MS = 12000;
@@ -145,6 +203,8 @@ const WorkloadStep: React.FC<Props> = ({
   scope,
   busy,
   initial,
+  initialWorkloads,
+  initialFetchedAt,
   onSubmit,
   onBack,
   autoScanMemo,
@@ -158,9 +218,24 @@ const WorkloadStep: React.FC<Props> = ({
   //   YENI:  namespace -> liste ANINDA (paylasilan katalog, DB) -> sec -> [Kontrol et]
   //
   // 'select' fazi AWX'e HIC DOKUNMAZ.
-  const [phase, setPhase] = useState<'select' | 'running' | 'done' | 'error'>('select');
+  //
+  // ÖNCEKİ SONUÇ VARSA DOĞRUDAN `done`: geri/ileri gezinmede aynı keşfi bir daha
+  // koşturmak, kullanıcının şikâyet ettiği "her seferinde kontrol"ün ta kendisi.
+  // Yeniden kullanılabilirlik ölçütü `yenidenKullanilabilirSatirlar` içinde ve
+  // KAPSAMI DA DOĞRULAR — başka bir namespace'in satırlarını göstermek, canlı
+  // sanılan bayat veriyle işlem yaptırmak olurdu.
+  const devralinan = useMemo(
+    () => yenidenKullanilabilirSatirlar(scope, initialWorkloads, initialFetchedAt),
+    // Yalnızca MOUNT'ta değerlendirilir: sonraki render'larda `Date.now()` ilerler
+    // ve taze bir sonuç render sırasında bayatlayıp ekranı `select`e atardı.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+  const [phase, setPhase] = useState<'select' | 'running' | 'done' | 'error'>(
+    devralinan ? 'done' : 'select',
+  );
   const [message, setMessage] = useState<string | null>(null);
-  const [workloads, setWorkloads] = useState<ScaleXWorkload[]>([]);
+  const [workloads, setWorkloads] = useState<ScaleXWorkload[]>(devralinan || []);
   // ON-LISTE: paylasilan katalogdan gelen ad/tip listesi. Ekran bunu ANINDA acar;
   // canli sutunlar (replica, HPA, GitOps) kesif bitince dolar. Ad listesi yavas
   // degisir, canli veri degismez sayilamaz — bu yuzden yalnizca ADLAR onbellekten.
@@ -182,7 +257,11 @@ const WorkloadStep: React.FC<Props> = ({
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [catalogError, setCatalogError] = useState<string | null>(null);
   // Kesfin TAMAMLANDIGI an — onizlemedeki tazelik damgasi buradan gelir.
-  const fetchedAtRef = useRef<number | null>(null);
+  //
+  // DEVRALINAN SONUCTA ESKI DAMGA KORUNUR. `Date.now()` yazmak, onizlemeye
+  // "su anda alindi" dedirtmek olurdu — oysa veri bir-iki dakika oncesine ait.
+  // Damganin tek isi bunu SOYLEMEK.
+  const fetchedAtRef = useRef<number | null>(devralinan ? initialFetchedAt ?? null : null);
   const [failedClusters, setFailedClusters] = useState<string[]>([]);
   const [problems, setProblems] = useState<{ cluster: string; detail: string }[]>([]);
   const [pdbWarning, setPdbWarning] = useState<string | null>(null);
@@ -415,6 +494,11 @@ const WorkloadStep: React.FC<Props> = ({
       //                               SAYILMAZ, aksi halde her sayfa girisinde
       //                               yeni bir AWX isi acilir (uretimde yasandi)
       //   hicbiri yok & scannedAt yok -> ilk kez bakiliyor, TAM tarama mesru
+      // DEVRALINAN SONUC VARSA TARAMA YOK. Katalog bos olsa bile elimizde TAZE
+      // canli satirlar var; yeni bir AWX isi acmak, geri/ileri gezinmenin tam da
+      // engellemek icin yazildigi seyi geri getirirdi.
+      if (devralinan) return;
+
       const bos = !(r.items || []).length;
       if (!bos || r.scannedEmpty || r.scanUnknown || r.scannedAt) return;
 
