@@ -94,6 +94,16 @@
     # bekletirdi.
     discovery_async_seconds_effective: >-
       {{ [[(scalex_discovery_async_seconds | default(900)) | int, 60] | max, 3600] | min }}
+    # ── TASIMA: jump basina TEK tur (batch) ya da cluster basina async ──────
+    #
+    # `batch` (varsayilan): runner STDIN ile gider, cluster'lar jump uzerinde
+    # arka planda kosar, TEK SSH turu (10_discover_batch.yml). Olculen kayip
+    # buydu: cluster basina copy+launch+status+remove = ~12 tur, ~25 sn.
+    # `async`: onceki paralel yol (10_discover_parallel.yml), geri donus icin.
+    # Paralellik kapaliysa (`scalex_discovery_parallel: false`) her zaman seri.
+    discovery_transport_effective: >-
+      {{ 'serial' if not ((scalex_discovery_parallel | default(true)) | bool)
+         else ('async' if (scalex_discovery_transport | default('batch') | string | lower) == 'async' else 'batch') }}
     execution_mode_effective: "dry_run"
     allow_partial_execution_effective: true
     change_confirmation_effective: false

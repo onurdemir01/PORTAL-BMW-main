@@ -155,6 +155,9 @@
     ansible_connection: ssh
     ansible_user: "{{ username }}"
     ansible_become: false
+    # Modul turu: ayri sftp + chmod + exec yerine TEK ssh exec (AWX 3365181:
+    # tur basina ~2-3 sn). become yok -> requiretty riski yok.
+    ansible_pipelining: true
   loop: "{{ target_matrix }}"
   loop_control:
     label: "{{ item.cluster }} -> {{ item.physical_host }}"

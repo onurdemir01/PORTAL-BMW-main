@@ -1,0 +1,177 @@
+---
+# CLUSTER'LAR PARALEL — JUMP SUNUCUSU BASINA TEK SSH TURU.
+#
+# ── NEDEN (AWX 3365168/3365181/3365188, 2026-09-30) ────────────────────────
+# `10_discover_parallel.yml` dogru calisiyordu ama is 1 uygulamada da 19'da da
+# 40+ sn suruyordu. Runner'in kendisi 3-8 sn idi; kalan sure cluster BASINA
+# ayri SSH modul turlariydi (copy x3 ~9 sn, launch x3 SERI ~3.5 sn,
+# async_status x3, remove x3). Bu dosya hepsini jump sunucusu basina TEK
+# `shell` gorevine indirir:
+#   * runner STDIN ile gider — kopya yok, silinecek dosya yok,
+#   * sarmalayici (files/scalex_batch.sh) cluster'lari arka planda AYNI ANDA
+#     kosar ve `wait` ile bekler — async yoklamasi yok,
+#   * basarisizlik satirlarini sarmalayici yazar, metin eski yolla ayni.
+#
+# Eski yol DURUYOR: `scalex_discovery_transport: async` (paralel, eski) ya da
+# `scalex_discovery_parallel: false` (seri).
+#
+# ── TEK JUMP / COK JUMP ─────────────────────────────────────────────────────
+# Tek jump (olagan durum): gorev SENKRON kosar — `async: 0`, yoklama turu yok.
+# Birden fazla jump: jump'lar birbirini beklemesin diye async + DELEGE
+# `async_status` + `rc` varligi (ansible-async-tuzaklari) — eski yolun deseni.
+#
+# ── BITTI ISARETI ───────────────────────────────────────────────────────────
+# Sarmalayici her cluster'in sonunda `__SCALEX_DONE__;<cluster>` yazar. Isareti
+# gelmeyen cluster (SSH koptu, sarmalayici olduruldu, jump'a ulasilamadi)
+# asagida TASIMA HATASI sayilir. Kismi satir gelse bile isaret yoksa sonuc
+# guvenilmez.
+
+- name: "DISCOVER | Group clusters by jump server"
+  ansible.builtin.set_fact:
+    _disc_batch_hosts: "{{ target_matrix | map(attribute='runtime_host') | unique | list }}"
+    # ORTAK ORTAM — 10_discover_parallel.yml launch blogundaki cluster'dan
+    # BAGIMSIZ anahtarlarin AYNISI (bekci M6 anahtar kumesini karsilastirir).
+    _disc_batch_common:
+      SCALEX_PHASE: "discover"
+      DISCOVERY_MODE: "{{ discovery_mode_effective }}"
+      OCP_USERNAME: "{{ username }}"
+      NS: "{{ oc_namespace }}"
+      NS_LIST: "{{ oc_namespaces_effective | join(',') }}"
+      APP_RAW: "{{ target_app_list | join(',') }}"
+      SCALEX_LIVE_PROBE_APPS: "{{ scalex_live_probe_apps | default('') }}"
+      ACTION: ""
+      WORKLOAD_KIND: "auto"
+      JOB_ID: "{{ job_id }}"
+      CREATED_BY: "{{ username }}"
+      SCALEX_BATCH_TIMEOUT: "{{ discovery_async_seconds_effective | int }}"
+    _disc_batch_env: {}
+  changed_when: false
+
+# CLUSTER'A OZGU ORTAM, jump basina sozlukte `SCALEX_T<i>_*` adlariyla. Bir
+# jump'in sarmalayicisi YALNIZCA kendi cluster'larinin degerlerini (parola
+# dahil) gorur; sarmalayici da her runner'a yalnizca KENDI degerlerini verir.
+- name: "DISCOVER | Build per-jump environment"
+  ansible.builtin.set_fact:
+    _disc_batch_env: >-
+      {{ _disc_batch_env | combine({ scalex_target.runtime_host:
+           (_disc_batch_env[scalex_target.runtime_host] | default(_disc_batch_common))
+           | combine({
+               'SCALEX_BATCH_IDX': ((_disc_batch_env[scalex_target.runtime_host].SCALEX_BATCH_IDX | default('')) ~ ' ' ~ _i) | trim,
+               'SCALEX_T' ~ _i ~ '_CLUSTER': scalex_target.cluster,
+               'SCALEX_T' ~ _i ~ '_JUMP_LABEL': scalex_target.jump_label,
+               'SCALEX_T' ~ _i ~ '_JUMP_SERVER': scalex_target.jump_label ~ (' -> ' ~ scalex_target.physical_host if scalex_target.physical_host != scalex_target.jump_label else ''),
+               'SCALEX_T' ~ _i ~ '_API_URL': scalex_target.api_url,
+               'SCALEX_T' ~ _i ~ '_OCP_PASSWORD': lookup('ansible.builtin.vars', scalex_target.credential),
+               'SCALEX_T' ~ _i ~ '_OCP_OC_PATHS': scalex_target.oc_paths | join(':'),
+               'SCALEX_T' ~ _i ~ '_TLS_VERIFY': scalex_target.tls_verify | bool | string | lower,
+               'SCALEX_T' ~ _i ~ '_SCALEX_EXTRA_KINDS': scalex_cluster_kinds_effective[scalex_target.cluster] | default(scalex_extra_kinds_fallback),
+               'SCALEX_T' ~ _i ~ '_SCALEX_EXTRA_KINDS_SCANNED': 'yes' if (scalex_target.cluster in scalex_cluster_kinds_effective) else 'no'
+             }) }) }}
+  loop: "{{ target_matrix }}"
+  loop_control:
+    loop_var: scalex_target
+    index_var: _i
+    label: "{{ scalex_target.cluster }}"
+  changed_when: false
+  no_log: true
+
+# RUNNER STDIN ILE, SARMALAYICI `cmd` ILE. Ikisi de denetleyicideki paketten
+# okunur; jump'a dosya YAZILMAZ (sarmalayici kendi gecici dizinini kurar ve
+# her durumda siler).
+- name: "DISCOVER | Run every cluster of each jump server in one session"
+  ansible.builtin.shell:
+    cmd: "{{ lookup('ansible.builtin.file', playbook_dir ~ '/files/scalex_batch.sh') }}"
+    stdin: "{{ lookup('ansible.builtin.file', playbook_dir ~ '/files/scalex_runner.sh') }}"
+    executable: /bin/bash
+  environment: "{{ _disc_batch_env[_disc_host] }}"
+  delegate_to: "{{ _disc_host }}"
+  loop: "{{ _disc_batch_hosts }}"
+  loop_control:
+    loop_var: _disc_host
+  async: "{{ ((discovery_async_seconds_effective | int) + 60) if (_disc_batch_hosts | length) > 1 else 0 }}"
+  poll: 0
+  register: _disc_batch_run
+  changed_when: false
+  failed_when: false
+  ignore_unreachable: true
+  no_log: true
+
+# YALNIZCA COK JUMP'TA. Delegasyon SART: async is dosyasi jump'ta durur;
+# delegasyonsuz `async_status` "finished: true, rc YOK" doner (olculdu).
+- name: "DISCOVER | Collect results from every jump server"
+  ansible.builtin.async_status:
+    jid: "{{ item.ansible_job_id }}"
+  delegate_to: "{{ item._disc_host }}"
+  loop: "{{ _disc_batch_run.results | default([]) }}"
+  loop_control:
+    label: "{{ item._disc_host }}"
+  when:
+    - (_disc_batch_hosts | length) > 1
+    - item.ansible_job_id is defined
+  register: _disc_batch_done
+  until: _disc_batch_done.finished is defined and _disc_batch_done.finished
+  retries: "{{ (((discovery_async_seconds_effective | int) + 60) / 2) | round(0, 'ceil') | int }}"
+  delay: 2
+  changed_when: false
+  failed_when: false
+  ignore_unreachable: true
+  no_log: true
+
+# Tek jump'ta sonuc dogrudan kosudan gelir; cok jump'ta toplamadan. Toplamada
+# atlanan (is numarasi olmayan) girdi `stdout` TASIMAZ ve cluster'lari asagida
+# tasima hatasi olarak raporlanir.
+- name: "DISCOVER | Merge jump server output"
+  ansible.builtin.set_fact:
+    _disc_batch_lines: >-
+      {{ ((_disc_batch_done.results | default([])) if (_disc_batch_hosts | length) > 1
+          else (_disc_batch_run.results | default([])))
+         | map(attribute='stdout_lines', default=[]) | flatten }}
+    # Yalnizca teshis alanlari: sonucun tamami runner metnini (stdin) tasir.
+    _disc_batch_rc: >-
+      {{ ((_disc_batch_done.results | default([])) if (_disc_batch_hosts | length) > 1
+          else (_disc_batch_run.results | default([])))
+         | map(attribute='rc', default='-') | list }}
+    _disc_batch_err: >-
+      {{ ((_disc_batch_done.results | default([])) if (_disc_batch_hosts | length) > 1
+          else (_disc_batch_run.results | default([])))
+         | map(attribute='stderr', default='') | zip(
+           ((_disc_batch_done.results | default([])) if (_disc_batch_hosts | length) > 1
+            else (_disc_batch_run.results | default([])))
+           | map(attribute='msg', default='')) | map('join', ' ') | list }}
+  changed_when: false
+
+- name: "DISCOVER | Collect sanitized rows"
+  ansible.builtin.set_fact:
+    _discovery_rows: >-
+      {{ _discovery_rows + (_disc_batch_lines
+         | select('match', '^[^;]*;[^;]*;[^;]*;[^;]*;[^;]*;[^;]*;.*$') | list) }}
+  changed_when: false
+
+# ISARETSIZ CLUSTER = TASIMA HATASI. Sebep olarak jump gorevinin kendi rc/stderr
+# (ya da ulasilamazlik mesaji) tasinir.
+- name: "DISCOVER | Record transport failure for clusters without a completion mark"
+  ansible.builtin.set_fact:
+    _discovery_rows: >-
+      {{ _discovery_rows + [
+        scalex_target.cluster ~ ';' ~ scalex_target.jump_label ~ ';-;-;RUNNER;FAIL;Discovery could not complete because of SSH/transport/shell/runtime failure'
+        ~ ' (rc=' ~ (_disc_batch_rc[_hi | int] | default('-')) ~ ': ' ~ (((_disc_batch_err[_hi | int] | default('')) | string | regex_replace('[;\r\n\t]+', ' ') | trim)[:200]) ~ ')'
+      ] }}
+  vars:
+    _hi: "{{ _disc_batch_hosts.index(scalex_target.runtime_host) }}"
+  loop: "{{ target_matrix }}"
+  loop_control:
+    loop_var: scalex_target
+    label: "{{ scalex_target.cluster }}"
+  when: ('__SCALEX_DONE__;' ~ scalex_target.cluster) not in _disc_batch_lines
+  changed_when: false
+
+# FAIL satiri olan cluster BASARISIZ sayilir (eski yolla ayni kural): tasima
+# hatasi, sifir disi cikis, bos cevap ve runner'in kendi FAIL satirlari.
+- name: "DISCOVER | Mark clusters with a FAIL row"
+  ansible.builtin.set_fact:
+    _failed_clusters: >-
+      {{ (_failed_clusters + (target_matrix | map(attribute='cluster')
+          | select('in', _discovery_rows | select('search', ';FAIL;')
+                         | map('regex_replace', ';.*$', '') | list)
+          | list)) | unique | list }}
+  changed_when: false

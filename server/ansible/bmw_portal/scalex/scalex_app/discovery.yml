@@ -64,11 +64,16 @@
         # SERI YOL SILINMEDI. Paralel yol `async` kullaniyor ve bir jump
         # sunucusunda async dizini yazilamazsa calismaz; o durumda tek cikis
         # yolu `scalex_discovery_parallel: false` ile eski yola donmek.
+        # TEK TUR (varsayilan): jump basina bir SSH oturumu, runner STDIN ile.
+        - name: "DISCOVER | Read every selected cluster (one session per jump server)"
+          ansible.builtin.include_tasks: tasks/discovery/10_discover_batch.yml
+          when: discovery_transport_effective == 'batch'
+
         - name: "DISCOVER | Read every selected cluster (parallel)"
           ansible.builtin.include_tasks: tasks/discovery/10_discover_parallel.yml
           vars:
             _disc_runner_path: "/tmp/scalex_runner_{{ job_id }}.sh"
-          when: discovery_parallel_effective | bool
+          when: discovery_parallel_effective | bool and discovery_transport_effective == 'async'
 
         - name: "DISCOVER | Read every selected cluster (serial)"
           ansible.builtin.include_tasks: tasks/discovery/10_discover.yml
