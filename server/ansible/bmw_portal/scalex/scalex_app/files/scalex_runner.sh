@@ -9,7 +9,7 @@ umask 077
 # "playbook'un guncel surumu kopyalanmamis olabilir" diye TAHMIN ediyordu; artik
 # calistirici surumu bildiriyor ve portal kendi bekledigi surumle karsilastirip
 # SOYLUYOR. Bu dosya `scalex_app/VERSION` ile ayni sayiyi tasimali (test kilitler).
-PACKAGE_VERSION="21"
+PACKAGE_VERSION="22"
 
 PHASE="${SCALEX_PHASE:-${CHAOS_PHASE:-precheck}}"
 CLUSTER="${CLUSTER:-}"
@@ -130,6 +130,8 @@ cleanup() {
   if [ -n "$KUBECONFIG_FILE" ]; then
     rm -f "$KUBECONFIG_FILE" >/dev/null 2>&1 || true
   fi
+  # Precheck toplu okuma dizini (RBAC blogu erken `exit` yapabilir).
+  [ -n "${PC_DIR:-}" ] && rm -rf "$PC_DIR" >/dev/null 2>&1
   unset OCP_PASSWORD 2>/dev/null || true
 }
 trap cleanup EXIT INT TERM HUP
@@ -429,6 +431,214 @@ oc() {
   "$OC_BIN" "$@"
 }
 
+# Hata metnindeki YOK tiplerin kisa adlari (satir basina bir tane). Kesif ve
+# precheck ortak kullanir; precheck ust duzeyde (RBAC blogunda) kostugu icin
+# tanim burada, cagrilardan ONCE.
+disc_absent_names() {
+  sed -n 's/.*resource type "\([^"]*\)".*/\1/p' "$1" 2>/dev/null | sed 's/\..*//' | sort -u
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# PRECHECK TOPLU OKUMA — UYGULAMA BASINA DEGIL, NAMESPACE BASINA.
+#
+# OLCULDU (sahte `oc` ile, gercek betik): 5 uygulamalik bir `stop` precheck'i 64,
+# `restore` precheck'i 104 `oc` cagrisi yapiyordu. Uygulama basina: tespit (1-3
+# `get`), spec, durum kaydi adi (1-2), OBJECT satiri, HPA (2), `can-i patch`
+# (1-3) ve geri alma icin durum dogrulamasi (9 ayri `get`). Bastion uzerinden
+# cagri basina ~150 ms: 19 uygulama x 3 cluster'da precheck tek basina dakikalar.
+#
+# Bu katman ayni bilgiyi NAMESPACE BASINA BIR KEZ ve AYNI ANDA okur:
+#   is yuku dizini (dc/deploy/sts/rollout, tek cok tipli `get`), HPA listesi,
+#   durum kayitlari (tek liste), OBJECT tablolari (tip basina), `can-i` sorulari.
+#
+# SATIRLAR DEGISMEZ: rapor bu satirlardan kuruluyor. Altin cikti bekcisi (J2)
+# on senaryoda satirlarin BIREBIR ayni oldugunu kilitliyor.
+#
+# YALNIZCA YETKILI BILGI KULLANILIR. Bir tip okunamadiysa (yetki reddi, atif
+# dogrulanamadi) ya da liste yasaksa o soru icin ESKI uygulama-basina yol kosar.
+# "Listede yok" yalnizca liste GERCEKTEN okunduysa "yok" demektir — aksi halde
+# var olan bir uygulamayi "bulunamadi" diye reddederdik.
+#
+# YALNIZCA PRECHECK'TE: execute her uygulamayi mutasyondan HEMEN once taze okur
+# (arada baska biri degistirmis olabilir) ve orada faz basindan kalma bir
+# onbellek tehlikelidir.
+# ═══════════════════════════════════════════════════════════════════════════
+PC_ON="no"
+PC_DIR=""
+PC_INDEX_OK=" "     # dizini YETKILI olan tipler (okundu ya da API'si yok)
+PC_CM_OK="no"       # durum kaydi listesi okundu mu
+PC_HPA_OK="no"
+
+pc_kind_of() {
+  case "$1" in
+    DeploymentConfig) echo dc ;; Deployment) echo deploy ;;
+    StatefulSet) echo sts ;; Rollout) echo rollout ;; *) echo "" ;;
+  esac
+}
+pc_full() {
+  case "$1" in
+    dc) echo deploymentconfigs.apps.openshift.io ;; deploy) echo deployments.apps ;;
+    sts) echo statefulsets.apps ;; rollout) echo rollouts.argoproj.io ;;
+  esac
+}
+
+# Durum kayitlarinin TUM alanlari tek satirda. `validate_restore_state` dokuz
+# ayri `get` yapiyordu; bu tek liste (ya da liste yasaksa kayit basina TEK
+# `get`) ayni bilgiyi verir.
+PC_CM_FIELDS='{.data.previous_replicas}|{.data.app}|{.data.namespace}|{.data.cluster}|{.data.kind}|{.data.resource}|{.data.phase}|{.data.version}'
+
+# Precheck'in sordugu `can-i`ler. Sira ve anlam RBAC blogundakiyle ayni.
+pc_cani_sorulari() {
+  printf '%s\n' "list hpa" "list pods"
+  case "$ACTION" in
+    stop) printf '%s\n' "get configmaps" "create configmaps" "patch configmaps" ;;
+    restore) printf '%s\n' "get configmaps" "delete configmaps" "patch configmaps" ;;
+  esac
+  printf '%s\n' "patch dc" "patch deploy" "patch sts" "patch rollout"
+}
+pc_cani_dosya() { printf '%s/cani_%s' "$PC_DIR" "$(printf '%s' "$1" | tr ' ' '_')"; }
+
+# `oc auth can-i` CIKTISINI dondurur (onbellekten ya da canli). Cagiranlar
+# ciktiyi `grep -qi '^yes$'` ile degerlendiriyor — anlam degismez.
+pc_cani_raw() {
+  local f
+  if [ "$PC_ON" = "yes" ]; then
+    f="$(pc_cani_dosya "$1 $2")"
+    if [ -f "$f" ]; then cat "$f"; return 0; fi
+  fi
+  oc auth can-i "$1" "$2" -n "$NS" 2>/dev/null || true
+}
+pc_cani() { pc_cani_raw "$1" "$2" | grep -qi '^yes$'; }
+
+# Kullanilacak tipler: haritada/istenen tipte gecenler, `auto`da dordu birden.
+pc_kinds_needed() {
+  local k
+  if [ "$REQUESTED_KIND" != "auto" ]; then printf '%s\n' "$REQUESTED_KIND"; fi
+  if [ -n "$WORKLOAD_KINDS_MAP" ]; then
+    printf '%s\n' "$WORKLOAD_KINDS_MAP" | tr ',' '\n' | sed -n 's/^[^=]*=//p' | while IFS= read -r k; do normalize_lower "$k"; echo; done
+  fi
+  if [ "$REQUESTED_KIND" = "auto" ]; then printf '%s\n' dc deploy sts rollout; fi
+}
+
+pc_prefetch() {
+  local q f k kinds csv="" pids="" p
+  PC_DIR="$(mktemp -d "${WORKDIR}/.scalex_pc_XXXXXX" 2>/dev/null || true)"
+  [ -z "$PC_DIR" ] && return 0
+  kinds="$(pc_kinds_needed | awk '$0 ~ /^(dc|deploy|sts|rollout)$/ && !s[$0]++')"
+  for k in $kinds; do
+    if [ -z "$csv" ]; then csv="$(pc_full "$k")"; else csv="$csv,$(pc_full "$k")"; fi
+  done
+  # Hepsi AYNI ANDA: bagimsiz sorular, sure en yavasinin suresi.
+  while IFS= read -r q; do
+    [ -z "$q" ] && continue
+    f="$(pc_cani_dosya "$q")"
+    # shellcheck disable=SC2086
+    ( oc auth can-i $q -n "$NS" >"$f" 2>/dev/null || true ) &
+    pids="$pids $!"
+  done <<EOF_PC_CANI
+$(pc_cani_sorulari)
+EOF_PC_CANI
+  ( oc get hpa -n "$NS" --no-headers >"$PC_DIR/hpa" 2>/dev/null; echo "$?" >"$PC_DIR/hpa.rc" ) &
+  pids="$pids $!"
+  ( oc get cm -n "$NS" -o "jsonpath={range .items[*]}{.metadata.name}|${PC_CM_FIELDS}{\"\\n\"}{end}" \
+      >"$PC_DIR/cm" 2>/dev/null; echo "$?" >"$PC_DIR/cm.rc" ) &
+  pids="$pids $!"
+  if [ -n "$csv" ]; then
+    ( oc get "$csv" -n "$NS" --allow-missing-template-keys=true \
+        -o 'jsonpath={range .items[*]}{.kind}|{.metadata.name}|{.spec.replicas}{"\n"}{end}' \
+        >"$PC_DIR/wl" 2>"$PC_DIR/wl.err"; echo "$?" >"$PC_DIR/wl.rc" ) &
+    pids="$pids $!"
+  fi
+  # OBJECT satirlari: tip basina TEK tablo. Kisa ad (`deploy`) BILEREK: eski
+  # `log_object_line` da `oc get <kisa-ad> <app> --no-headers` basiyordu ve
+  # tablo sutunlari ada gore degismez.
+  for k in $kinds; do
+    ( oc get "$k" -n "$NS" --no-headers >"$PC_DIR/obj_$k" 2>/dev/null; echo "$?" >"$PC_DIR/obj_$k.rc" ) &
+    pids="$pids $!"
+  done
+  for p in $pids; do wait "$p" 2>/dev/null; done
+  PC_ON="yes"
+  [ "$(cat "$PC_DIR/hpa.rc" 2>/dev/null)" = "0" ] && PC_HPA_OK="yes"
+  [ "$(cat "$PC_DIR/cm.rc" 2>/dev/null)" = "0" ] && PC_CM_OK="yes"
+  [ -n "$csv" ] && pc_index_finish "$kinds" "$csv"
+  return 0
+}
+
+# Dizinin hangi tipler icin YETKILI oldugunu belirler; API'si olmayan tipi
+# cikarip kalanla yeniden dener (kesifteki `disc_scan_chunk` ile ayni kural).
+pc_index_finish() {
+  local kinds="$1" csv="$2" rc yok k bad kalan tur=0
+  : >"$PC_DIR/wl.yok"
+  while :; do
+    rc="$(cat "$PC_DIR/wl.rc" 2>/dev/null || echo 1)"
+    if [ ! -s "$PC_DIR/wl" ] && [ "$rc" != "0" ]; then
+      yok="$(disc_absent_names "$PC_DIR/wl.err")"
+      [ -z "$yok" ] && return 0            # sebebi bilinmiyor: HICBIR tip yetkili degil
+      kalan=""
+      for k in $kinds; do
+        if printf '%s\n' "$yok" | grep -qx -- "$(pc_full "$k" | sed 's/\..*//')"; then
+          echo "$k" >>"$PC_DIR/wl.yok"       # API YOK: "bulunamadi" yetkili bir cevap
+        else
+          kalan="$kalan $k"
+        fi
+      done
+      [ "$kalan" = " $kinds" ] && return 0
+      kinds="$kalan"; csv=""
+      for k in $kinds; do
+        if [ -z "$csv" ]; then csv="$(pc_full "$k")"; else csv="$csv,$(pc_full "$k")"; fi
+      done
+      tur=$((tur + 1))
+      if [ -z "$csv" ] || [ "$tur" -gt 4 ]; then
+        PC_INDEX_OK=" $(tr '\n' ' ' <"$PC_DIR/wl.yok")"
+        return 0
+      fi
+      rc=0
+      oc get "$csv" -n "$NS" --allow-missing-template-keys=true \
+        -o 'jsonpath={range .items[*]}{.kind}|{.metadata.name}|{.spec.replicas}{"\n"}{end}' \
+        >"$PC_DIR/wl" 2>"$PC_DIR/wl.err" || rc=1
+      echo "$rc" >"$PC_DIR/wl.rc"
+      continue
+    fi
+    break
+  done
+  # ATIF DOGRULANIR: `{.kind}` bos ya da beklenmeyen bir satir varsa dizin
+  # hicbir tip icin kullanilmaz (eski yol kosar).
+  bad="$(awk -F'|' 'NF >= 2 && $2 != "" && $1 !~ /^(DeploymentConfig|Deployment|StatefulSet|Rollout)$/ { n++ } END { print n + 0 }' "$PC_DIR/wl")"
+  [ "$bad" -gt 0 ] && return 0
+  PC_INDEX_OK=" $(tr '\n' ' ' <"$PC_DIR/wl.yok")"
+  for k in $kinds; do
+    # Cagri rc=1 dondu ve hata metni bu tipi aniyorsa (yetki reddi) tip YETKILI DEGIL.
+    if [ "$rc" != "0" ] && grep -qF -- "$(pc_full "$k")" "$PC_DIR/wl.err" 2>/dev/null; then continue; fi
+    PC_INDEX_OK="$PC_INDEX_OK$k "
+  done
+}
+
+pc_index_ok() { [ "$PC_ON" = "yes" ] && case "$PC_INDEX_OK" in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
+# Uygulama o tipte var mi (dizin YETKILI iken cagrilir).
+pc_index_has() {
+  grep -qx -- "$1" "$PC_DIR/wl.yok" 2>/dev/null && return 1
+  awk -F'|' -v a="$2" -v k="$1" '
+    ($1 == "DeploymentConfig" && k == "dc") || ($1 == "Deployment" && k == "deploy") ||
+    ($1 == "StatefulSet" && k == "sts") || ($1 == "Rollout" && k == "rollout") { if ($2 == a) f = 1 }
+    END { exit f ? 0 : 1 }' "$PC_DIR/wl"
+}
+# Kisa ad: eski `first_working_resource`in ILK adayi — satirlarda ve durum
+# kaydinda (`resource=`) gorunen ad budur.
+pc_short() { resource_candidates "$1" | head -n 1; }
+
+# 0 = bulundu, 1 = yok (YETKILI cevap), 2 = bilinmiyor (eski yol kossun)
+pc_detect_kind() {
+  pc_index_ok "$1" || return 2
+  pc_index_has "$1" "$2" && return 0
+  return 1
+}
+pc_kind_name() {
+  case "$1" in
+    dc) echo DeploymentConfig ;; deploy) echo Deployment ;;
+    sts) echo StatefulSet ;; rollout) echo Rollout ;;
+  esac
+}
+
 # PAKET SURUMU HER FAZDA BILDIRILIR. Portal bunu okuyup kendi bekledigi surumle
 # karsilastiriyor; uyusmazlikta ekran "guncel olmayabilir" diye tahmin etmek yerine
 # hangi surumun kostugunu SOYLUYOR. AWX'e elle kopyalanan bir pakette tek kanit bu.
@@ -503,30 +713,31 @@ fi
 
 # Namespace-level RBAC checks. HPA visibility is mandatory because the policy is deliberately HPA-aware/read-only.
 if [ "$PHASE" = "precheck" ]; then
+  pc_prefetch
   _rbac_block=0
-  if ! oc auth can-i list hpa -n "$NS" 2>/dev/null | grep -qi '^yes$'; then
+  if ! pc_cani list hpa; then
     log "$CLUSTER" "$JUMP_SERVER" "-" "-" "RBAC" "FAIL" "Missing permission: list horizontalpodautoscalers in namespace"
     _rbac_block=1
   else
     log "$CLUSTER" "$JUMP_SERVER" "-" "-" "RBAC" "OK" "HPA read permission available; HPA will remain untouched"
   fi
-  if ! oc auth can-i list pods -n "$NS" 2>/dev/null | grep -qi '^yes$'; then
+  if ! pc_cani list pods; then
     log "$CLUSTER" "$JUMP_SERVER" "-" "-" "RBAC" "WARN" "Missing list pods permission; post-operation pod reporting will be limited"
   fi
   if [ "$ACTION" = "stop" ]; then
     for _verb in get create patch; do
-      if ! oc auth can-i "$_verb" configmaps -n "$NS" 2>/dev/null | grep -qi '^yes$'; then
+      if ! pc_cani "$_verb" configmaps; then
         log "$CLUSTER" "$JUMP_SERVER" "-" "-" "RBAC" "FAIL" "Missing ConfigMap permission: $_verb (required for reversible scale-down state)"
         _rbac_block=1
       fi
     done
   elif [ "$ACTION" = "restore" ]; then
-    if ! oc auth can-i get configmaps -n "$NS" 2>/dev/null | grep -qi '^yes$'; then
+    if ! pc_cani get configmaps; then
       log "$CLUSTER" "$JUMP_SERVER" "-" "-" "RBAC" "FAIL" "Missing ConfigMap get permission required for restore"
       _rbac_block=1
     fi
-    _can_delete="$(oc auth can-i delete configmaps -n "$NS" 2>/dev/null || true)"
-    _can_patch_cm="$(oc auth can-i patch configmaps -n "$NS" 2>/dev/null || true)"
+    _can_delete="$(pc_cani_raw delete configmaps)"
+    _can_patch_cm="$(pc_cani_raw patch configmaps)"
     if ! printf '%s\n%s\n' "$_can_delete" "$_can_patch_cm" | grep -qi '^yes$'; then
       log "$CLUSTER" "$JUMP_SERVER" "-" "-" "RBAC" "FAIL" "Restore requires either delete or patch permission on ConfigMaps for state finalization"
       _rbac_block=1
@@ -824,6 +1035,10 @@ detect_workload() {
     if ! kind_is_scalable "$mapped"; then
       DETECT_ERROR="not_scalable:$mapped"; return 1
     fi
+    pc_detect_kind "$mapped" "$app"; case "$?" in
+      0) DETECTED_KIND="$mapped"; DETECTED_RESOURCE="$(pc_short "$mapped")"; return 0 ;;
+      1) DETECT_ERROR="not_found_as_portal_kind:$mapped"; return 1 ;;
+    esac
     res="$(first_working_resource "$mapped" "$app" || true)"
     if [ -n "$res" ]; then
       DETECTED_KIND="$mapped"; DETECTED_RESOURCE="$res"; return 0
@@ -833,11 +1048,35 @@ detect_workload() {
   fi
 
   if [ "$REQUESTED_KIND" != "auto" ]; then
+    pc_detect_kind "$REQUESTED_KIND" "$app"; case "$?" in
+      0) DETECTED_KIND="$REQUESTED_KIND"; DETECTED_RESOURCE="$(pc_short "$REQUESTED_KIND")"; return 0 ;;
+      1) DETECT_ERROR="not_found_as_requested_kind:$REQUESTED_KIND"; return 1 ;;
+    esac
     res="$(first_working_resource "$REQUESTED_KIND" "$app" || true)"
     if [ -n "$res" ]; then
       DETECTED_KIND="$REQUESTED_KIND"; DETECTED_RESOURCE="$res"; return 0
     fi
     DETECT_ERROR="not_found_as_requested_kind:$REQUESTED_KIND"
+    return 1
+  fi
+  # AUTO: dort tipin DORDU de yetkiliyse dizinden; biri bile degilse hepsi eski
+  # yoldan — karisik kaynakli bir "tek tipte bulundu" karari, okunamayan tipteki
+  # ayni adi gormeyip belirsizligi SESSIZCE kaybederdi.
+  if pc_index_ok dc && pc_index_ok deploy && pc_index_ok sts && pc_index_ok rollout; then
+    for kind in dc deploy sts rollout; do
+      pc_index_has "$kind" "$app" && found="${found}${kind}|$(pc_short "$kind")\n"
+    done
+    found_count="$(printf '%b' "$found" | awk 'NF{c++} END{print c+0}')"
+    if [ "$found_count" -eq 1 ]; then
+      DETECTED_KIND="$(printf '%b' "$found" | awk -F'|' 'NF{print $1; exit}')"
+      DETECTED_RESOURCE="$(printf '%b' "$found" | awk -F'|' 'NF{print $2; exit}')"
+      return 0
+    fi
+    if [ "$found_count" -gt 1 ]; then
+      DETECT_ERROR="ambiguous:$(printf '%b' "$found" | awk -F'|' 'NF{print $1}' | paste -sd ',' -):rerun_discovery_or_set_workload_kind"
+      return 1
+    fi
+    DETECT_ERROR="not_found"
     return 1
   fi
   for kind in dc deploy sts rollout; do
@@ -878,7 +1117,7 @@ can_patch_kind() {
   local kind="$1" candidate
   while IFS= read -r candidate; do
     [ -z "$candidate" ] && continue
-    if oc auth can-i patch "$candidate" -n "$NS" 2>/dev/null | grep -qi '^yes$'; then
+    if pc_cani patch "$candidate"; then
       return 0
     fi
   done <<EOF_PATCH_CANDIDATES
@@ -891,7 +1130,17 @@ oc_get_jsonpath() {
   local res="$1" app="$2" jp="$3"
   oc get "$res" "$app" -n "$NS" -o "jsonpath=${jp}" 2>/dev/null || true
 }
-get_spec_replicas() { local v; v="$(oc_get_jsonpath "$1" "$2" '{.spec.replicas}')"; [ -z "$v" ] && v=0; echo "$v"; }
+get_spec_replicas() {
+  local v k
+  # Dizin yetkiliyse spec oradan (ayni `{.spec.replicas}` alani).
+  k="$(canonical_kind_from_resource "$1")"
+  if [ -n "$k" ] && pc_index_ok "$k" && pc_index_has "$k" "$2"; then
+    v="$(awk -F'|' -v a="$2" -v kn="$(pc_kind_name "$k")" '$1 == kn && $2 == a { print $3; exit }' "$PC_DIR/wl")"
+  else
+    v="$(oc_get_jsonpath "$1" "$2" '{.spec.replicas}')"
+  fi
+  [ -z "$v" ] && v=0; echo "$v"
+}
 get_status_replicas() { local v; v="$(oc_get_jsonpath "$1" "$2" '{.status.replicas}')"; [ -z "$v" ] && v=0; echo "$v"; }
 get_ready_replicas() { local v; v="$(oc_get_jsonpath "$1" "$2" '{.status.readyReplicas}')"; [ -z "$v" ] && v=0; echo "$v"; }
 
@@ -974,6 +1223,9 @@ STATE_CM_PREFIX_LEGACY="chaos-scale-state-"
 # basina birkac kez cagriliyor. Onbelleksiz her cagri fazladan bir `oc get` demekti.
 _STATE_CM_APP=""
 _STATE_CM_NAME=""
+# Ad aramasi kaydin VAR olup olmadigini da ogrenir; `state_exists` ayni soruyu
+# ikinci bir `oc get` ile sormasin.
+_STATE_CM_EXISTS=""
 state_cm_name() {
   local app="$1" n l
   if [ -n "$_STATE_CM_APP" ] && [ "$_STATE_CM_APP" = "$app" ]; then
@@ -981,12 +1233,17 @@ state_cm_name() {
   fi
   n="${STATE_CM_PREFIX}$(safe_name "$app")"
   l="${STATE_CM_PREFIX_LEGACY}$(safe_name "$app")"
-  if oc get cm "$n" -n "$NS" >/dev/null 2>&1; then
+  _STATE_CM_EXISTS="yes"
+  if [ "$PC_ON" = "yes" ] && [ "$PC_CM_OK" = "yes" ]; then
+    if pc_cm_has "$n"; then _STATE_CM_NAME="$n"
+    elif pc_cm_has "$l"; then _STATE_CM_NAME="$l"
+    else _STATE_CM_NAME="$n"; _STATE_CM_EXISTS="no"; fi
+  elif oc get cm "$n" -n "$NS" >/dev/null 2>&1; then
     _STATE_CM_NAME="$n"
   elif oc get cm "$l" -n "$NS" >/dev/null 2>&1; then
     _STATE_CM_NAME="$l"
   else
-    _STATE_CM_NAME="$n"
+    _STATE_CM_NAME="$n"; _STATE_CM_EXISTS="no"
   fi
   _STATE_CM_APP="$app"
   printf '%s' "$_STATE_CM_NAME"
@@ -994,11 +1251,35 @@ state_cm_name() {
 
 # Kayit silindiginde/olusturuldugunda onbellek BAYATLAR. Silme sonrasi bayat ad,
 # "hala var" yanilgisi uretirdi.
-state_cm_cache_clear() { _STATE_CM_APP=""; _STATE_CM_NAME=""; }
+state_cm_cache_clear() { _STATE_CM_APP=""; _STATE_CM_NAME=""; _STATE_CM_EXISTS=""; }
 get_cm_data() { oc get cm "$1" -n "$NS" -o "jsonpath={.data.$2}" 2>/dev/null || true; }
-state_exists() { oc get cm "$(state_cm_name "$1")" -n "$NS" >/dev/null 2>&1; }
+state_exists() {
+  # Onbellek BU uygulama icin gecerliyse ad aramasinin ogrendigi yeterli.
+  if [ "$_STATE_CM_APP" = "$1" ] && [ -n "$_STATE_CM_EXISTS" ]; then
+    [ "$_STATE_CM_EXISTS" = "yes" ]; return
+  fi
+  if [ "$PC_ON" = "yes" ] && [ "$PC_CM_OK" = "yes" ]; then pc_cm_has "$(state_cm_name "$1")"; return; fi
+  oc get cm "$(state_cm_name "$1")" -n "$NS" >/dev/null 2>&1
+}
+pc_cm_has() { awk -F'|' -v n="$1" '$1 == n { f = 1 } END { exit f ? 0 : 1 }' "$PC_DIR/cm"; }
+
+# DURUM KAYDININ TUM ALANLARI — TEK OKUMA. `validate_restore_state` ve
+# `get_restore_target` eskiden alan basina ayri `get` yapiyordu (dokuz cagri).
+# Precheck'te listeden, degilse kayit basina TEK `get` (execute'ta TAZE okuma).
+CMR_PREV=""; CMR_APP=""; CMR_NS=""; CMR_CLUSTER=""; CMR_KIND=""; CMR_RES=""; CMR_PHASE=""; CMR_VERSION=""
+cm_record() {
+  local line
+  if [ "$PC_ON" = "yes" ] && [ "$PC_CM_OK" = "yes" ]; then
+    line="$(awk -F'|' -v n="$1" '$1 == n { sub(/^[^|]*\|/, ""); print; exit }' "$PC_DIR/cm")"
+  else
+    line="$(oc get cm "$1" -n "$NS" -o "jsonpath=${PC_CM_FIELDS}" 2>/dev/null || true)"
+  fi
+  IFS='|' read -r CMR_PREV CMR_APP CMR_NS CMR_CLUSTER CMR_KIND CMR_RES CMR_PHASE CMR_VERSION <<EOF_CMR
+$line
+EOF_CMR
+}
 get_restore_target() {
-  local cm v; cm="$(state_cm_name "$1")"; v="$(get_cm_data "$cm" previous_replicas)"
+  local cm v; cm="$(state_cm_name "$1")"; cm_record "$cm"; v="$CMR_PREV"
   printf '%s' "$v" | grep -Eq '^[0-9]+$' || return 1
   echo "$v"
 }
@@ -1010,9 +1291,10 @@ validate_restore_state() {
     [ "$verbose" = "yes" ] && log "$CLUSTER" "$JUMP_SERVER" "$app" "$display" "STATE" "FAIL" "Restore state ConfigMap not found: $cm. Run stop first."
     return 1
   fi
-  prev="$(get_cm_data "$cm" previous_replicas)"
-  state_app="$(get_cm_data "$cm" app)"; state_ns="$(get_cm_data "$cm" namespace)"; state_cluster="$(get_cm_data "$cm" cluster)"
-  state_kind="$(get_cm_data "$cm" kind)"; state_res="$(get_cm_data "$cm" resource)"; state_phase="$(get_cm_data "$cm" phase)"; state_version="$(get_cm_data "$cm" version)"
+  cm_record "$cm"
+  prev="$CMR_PREV"
+  state_app="$CMR_APP"; state_ns="$CMR_NS"; state_cluster="$CMR_CLUSTER"
+  state_kind="$CMR_KIND"; state_res="$CMR_RES"; state_phase="$CMR_PHASE"; state_version="$CMR_VERSION"
   if ! printf '%s' "$prev" | grep -Eq '^[0-9]+$'; then
     [ "$verbose" = "yes" ] && log "$CLUSTER" "$JUMP_SERVER" "$app" "$display" "STATE" "FAIL" "State $cm contains invalid previous_replicas=$prev"
     return 1
@@ -1133,8 +1415,15 @@ pin_hpa() {
 
 log_hpa_state() {
   local app="$1" display="$2" exact target lines
-  exact="$(oc get hpa "$app" -n "$NS" --no-headers 2>/dev/null || true)"
-  target="$(oc get hpa -n "$NS" --no-headers 2>/dev/null | awk -v app="$app" 'index($0, "/" app) > 0 {print}' || true)"
+  if [ "$PC_ON" = "yes" ] && [ "$PC_HPA_OK" = "yes" ]; then
+    # Tek liste: adi uygulamayla ayni olan satir (`oc get hpa <app>`in basacagi
+    # satirin AYNISI) + hedefi uygulamayi gosterenler.
+    exact="$(awk -v app="$app" '$1 == app' "$PC_DIR/hpa")"
+    target="$(awk -v app="$app" 'index($0, "/" app) > 0 {print}' "$PC_DIR/hpa")"
+  else
+    exact="$(oc get hpa "$app" -n "$NS" --no-headers 2>/dev/null || true)"
+    target="$(oc get hpa -n "$NS" --no-headers 2>/dev/null | awk -v app="$app" 'index($0, "/" app) > 0 {print}' || true)"
+  fi
   lines="$(printf '%s\n%s\n' "$exact" "$target" | awk 'NF && !seen[$0]++')"
   if [ -n "$lines" ]; then
     log "$CLUSTER" "$JUMP_SERVER" "$app" "$display" "HPA" "INFO" "HPA_PRESENT read-only policy; left untouched: $lines"
@@ -1144,7 +1433,11 @@ log_hpa_state() {
 }
 log_object_line() {
   local app="$1" display="$2" res="$3" line
-  line="$(oc get "$res" "$app" -n "$NS" --no-headers 2>/dev/null || true)"
+  if [ "$PC_ON" = "yes" ] && [ "$(cat "$PC_DIR/obj_$res.rc" 2>/dev/null)" = "0" ]; then
+    line="$(awk -v app="$app" '$1 == app' "$PC_DIR/obj_$res")"
+  else
+    line="$(oc get "$res" "$app" -n "$NS" --no-headers 2>/dev/null || true)"
+  fi
   [ -n "$line" ] && log "$CLUSTER" "$JUMP_SERVER" "$app" "$display" "OBJECT" "INFO" "$line"
 }
 log_pod_state() {
@@ -1251,7 +1544,12 @@ precheck_app() {
     log "$CLUSTER" "$JUMP_SERVER" "$app" "-" "PRECHECK" "FAIL" "Workload detection failed: ERROR:$DETECT_ERROR"
     return 1
   fi
-  display="$(kind_to_display "$DETECTED_KIND")"; current="$(get_spec_replicas "$DETECTED_RESOURCE" "$app")"; cm="$(state_cm_name "$app")"
+  display="$(kind_to_display "$DETECTED_KIND")"; current="$(get_spec_replicas "$DETECTED_RESOURCE" "$app")"
+  # AD ONBELLEGI ANA KABUKTA DOLAR. `cm="$(state_cm_name ...)"` alt kabukta
+  # kosuyordu ve onbellege yazilan deger KAYBOLUYORDU: ayni uygulama icin ad
+  # aramasi (iki `oc get cm`) her cagrida yeniden yapiliyordu. Burada bir kez
+  # dogrudan cagrilir; sonraki `$(state_cm_name ...)`ler onbellekten okur.
+  state_cm_name "$app" >/dev/null; cm="$_STATE_CM_NAME"
   log "$CLUSTER" "$JUMP_SERVER" "$app" "$display" "DISCOVERY" "OK" "Detected resource=$DETECTED_RESOURCE current_spec_replicas=$current"
   log_object_line "$app" "$display" "$DETECTED_RESOURCE"
   log_hpa_state "$app" "$display"
@@ -1293,7 +1591,12 @@ execute_app() {
     log "$CLUSTER" "$JUMP_SERVER" "$app" "-" "RECHECK" "FAIL" "Workload detection failed immediately before mutation: ERROR:$DETECT_ERROR"
     return 1
   fi
-  display="$(kind_to_display "$DETECTED_KIND")"; current="$(get_spec_replicas "$DETECTED_RESOURCE" "$app")"; cm="$(state_cm_name "$app")"
+  display="$(kind_to_display "$DETECTED_KIND")"; current="$(get_spec_replicas "$DETECTED_RESOURCE" "$app")"
+  # AD ONBELLEGI ANA KABUKTA DOLAR. `cm="$(state_cm_name ...)"` alt kabukta
+  # kosuyordu ve onbellege yazilan deger KAYBOLUYORDU: ayni uygulama icin ad
+  # aramasi (iki `oc get cm`) her cagrida yeniden yapiliyordu. Burada bir kez
+  # dogrudan cagrilir; sonraki `$(state_cm_name ...)`ler onbellekten okur.
+  state_cm_name "$app" >/dev/null; cm="$_STATE_CM_NAME"
   if ! can_patch_kind "$DETECTED_KIND"; then
     log "$CLUSTER" "$JUMP_SERVER" "$app" "$display" "RECHECK" "FAIL" "Patch permission is no longer available for workload kind=$DETECTED_KIND"
     return 1
@@ -1557,11 +1860,6 @@ disc_reason() {
     echo "api_absent"; return 0
   fi
   echo "no_permission"
-}
-
-# Hata metnindeki YOK tiplerin kisa adlari (satir basina bir tane).
-disc_absent_names() {
-  sed -n 's/.*resource type "\([^"]*\)".*/\1/p' "$1" 2>/dev/null | sed 's/\..*//' | sort -u
 }
 
 # ── OBEK BUYUKLUGU ──────────────────────────────────────────────────────────
