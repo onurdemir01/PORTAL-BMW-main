@@ -62,8 +62,14 @@ for i in $SCALEX_BATCH_IDX; do
       case "$v" in SCALEX_T[0-9]*) unset "$v" ;; esac
     done
     unset SCALEX_BATCH_IDX SCALEX_BATCH_TIMEOUT
+    # Arka planda + `wait`: alt kabuk sinyal alinca `timeout`u (o da runner'i)
+    # oldurebilsin. On planda kosan cocuk, alt kabuk olunce OKSUZ kalip
+    # cluster'a `oc` cagirmaya devam ediyordu (mutasyon turunda olculdu).
+    timeout "$t" /bin/bash "$d/runner.sh" >"$d/out.$i" 2>"$d/err.$i" &
+    tp=$!
+    trap 'kill "$tp" 2>/dev/null; exit 143' TERM INT HUP
     rc=0
-    timeout "$t" /bin/bash "$d/runner.sh" >"$d/out.$i" 2>"$d/err.$i" || rc=$?
+    wait "$tp" || rc=$?
     printf '%s' "$rc" >"$d/rc.$i"
   ) &
 done

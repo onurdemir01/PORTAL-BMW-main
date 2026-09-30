@@ -84,7 +84,8 @@ function sarmalayiciKostur(clusters, { zamanAsimi = 30, tmpdir, sinyal } = {}) {
       killSignal: 'SIGTERM',
     });
     // Sinyal senaryosunda cocuklarin kapanmasina firsat ver.
-    if (sinyal) spawnSync('sleep', ['1']);
+    // Yavas runner 5 sn uyuyor: 6 sn sonra hala yazmadiysa GERCEKTEN olduruldu.
+    if (sinyal) spawnSync('sleep', ['6']);
     const trace = fs.existsSync(iz) ? fs.readFileSync(iz, 'utf8').split('\n').filter(Boolean) : [];
     const kalan = fs.readdirSync(kok).filter((x) => x.startsWith('scalex_batch_'));
     return { status: r.status, out: r.stdout || '', err: r.stderr || '', trace, kalan };
@@ -155,6 +156,13 @@ test(
     assert.deepEqual(s.kalan, [], 'SIGTERM sonrasi dizin kaldi');
     // Sinyal yolunda cikti yari kalir; ansible tarafi isaretsiz cluster'i tasima hatasi sayar.
     assert.ok(!s.out.includes('__SCALEX_DONE__;yavas1'), s.out);
+    // TERM tuzagi COCUKLARI da oldurur. Olmasa bile EXIT tuzagi dizini siler
+    // (bash sinyalde de EXIT'i kosar, olculdu) — ama runner oksuz kalir ve
+    // cluster'a `oc` cagirmaya devam ederdi. Iptal edilen is arkada is birakmaz.
+    assert.ok(
+      !s.trace.includes('BITTI yavas1'),
+      `runner sinyalden sonra yasamaya devam etti: ${JSON.stringify(s.trace)}`,
+    );
   },
 );
 
@@ -392,6 +400,8 @@ test('M9 batch / async / serial yollari birbirini dislar', () => {
   assert.match(kosul('10_discover_parallel.yml'), /discovery_transport_effective == 'async'/);
   assert.match(kosul('10_discover.yml'), /not \(discovery_parallel_effective \| bool\)/);
   const prep = fs.readFileSync(path.join(DISC, '01_prepare.yml'), 'utf8');
+  // VARSAYILAN tek tur: anahtar verilmediginde hizli yol secilir.
+  assert.match(prep, /scalex_discovery_transport \| default\('batch'\)/);
   // Seri secildiginde transport ASLA batch/async olamaz.
   assert.match(
     prep,
