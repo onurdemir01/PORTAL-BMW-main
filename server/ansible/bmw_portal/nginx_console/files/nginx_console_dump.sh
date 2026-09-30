@@ -93,10 +93,10 @@ done
 #### Sertifika kullanimlari (conf dosyasi -> server_name -> cert/key) ve sertifika ayrintilari
 for d in "$PREFIX/conf.d" "$PREFIX/conf"; do
   [ -d "$d" ] || continue
-  grep -rl --include='*.conf' -E '^\s*ssl_certificate\s' "$d" 2>/dev/null | sort | while IFS= read -r conf; do
-    sn="$(grep -m1 -E '^\s*server_name\s' "$conf" 2>/dev/null | sed -E 's/^\s*server_name\s+//; s/;.*$//' | awk '{print $1}')"
-    crt="$(grep -m1 -E '^\s*ssl_certificate\s' "$conf" | sed -E 's/^\s*ssl_certificate\s+//; s/;.*$//' | tr -d "\"'")"
-    key="$(grep -m1 -E '^\s*ssl_certificate_key\s' "$conf" | sed -E 's/^\s*ssl_certificate_key\s+//; s/;.*$//' | tr -d "\"'")"
+  grep -rl --include='*.conf' -E '^[[:space:]]*ssl_certificate[[:space:]]' "$d" 2>/dev/null | sort | while IFS= read -r conf; do
+    sn="$(grep -m1 -E '^[[:space:]]*server_name[[:space:]]' "$conf" 2>/dev/null | sed -E 's/^[[:space:]]*server_name[[:space:]]+//; s/;.*$//' | awk '{print $1}')"
+    crt="$(grep -m1 -E '^[[:space:]]*ssl_certificate[[:space:]]' "$conf" | sed -E 's/^[[:space:]]*ssl_certificate[[:space:]]+//; s/;.*$//' | tr -d "\"'")"
+    key="$(grep -m1 -E '^[[:space:]]*ssl_certificate_key[[:space:]]' "$conf" | sed -E 's/^[[:space:]]*ssl_certificate_key[[:space:]]+//; s/;.*$//' | tr -d "\"'")"
     case "$crt" in /*) ;; *) crt="$PREFIX/$crt" ;; esac
     [ -n "$key" ] && case "$key" in /*) ;; *) key="$PREFIX/$key" ;; esac
     keystate="missing"; [ -n "$key" ] && [ -f "$key" ] && keystate="present"
