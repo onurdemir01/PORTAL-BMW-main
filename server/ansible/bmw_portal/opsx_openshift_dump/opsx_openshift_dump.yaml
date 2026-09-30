@@ -430,6 +430,11 @@
             results: "{{ flat_results }}"
         per_host: false
 
+    - name: "Basarisiz (cluster,namespace) ciftlerinin SEBEBINI AWX log'una yaz"
+      ansible.builtin.debug:
+        msg: "{{ flat_results | rejectattr('ok') | map(attribute='error') | list }}"
+      when: (flat_results | rejectattr('ok') | list | length) > 0
+
     # AWX ISI KIRMIZI KALSIN (2026-08-28). Yukaridaki `rescue` host'u ayakta tutuyor;
     # bu gorev olmasaydi hicbir sey calismadigi halde is "successful" gorunurdu —
     # mevcut durumdan DAHA KOTU olurdu. `set_stats` BU GOREVDEN ONCE calistigi icin
@@ -437,6 +442,9 @@
     # "failed" der.
     - name: "Hicbir sonuc uretilemediyse isi BASARISIZ yap"
       ansible.builtin.fail:
-        msg: "Dump tamamlanamadi — hicbir cluster sonuc bildirmedi."
+        msg: >-
+          Dump tamamlanamadi. Hicbir hedef sonuc bildirmedi.
+          Sebepler: {{ flat_results | rejectattr('ok') | map(attribute='error')
+                       | map('trim') | unique | join(' | ') | default('bildirilmedi', true) }}
       when: (flat_results | length) == 0
             or (flat_results | selectattr('ok', 'equalto', true) | list | length) == 0

@@ -1075,21 +1075,30 @@ function initOpsX(app) {
       if (!TERMINAL.has(statusInfo.status)) {
         return res.json({ ok: true, status: statusInfo.status });
       }
-      if (statusInfo.status !== 'successful') {
-        return res.json({
-          ok: true,
-          status: statusInfo.status,
-          message: 'JVM listesi alınamadı (iş başarısız oldu).',
-        });
-      }
-
+      // BASARISIZ ISTE DE ARTIFACT OKUNUR (2026-09-30, uretimde yakalandi).
+      //
+      // Kullanici: Crypto Hub cluster'i (daocptest1 / harmonize-test) icin pod kesfi
+      // "patliyor" ama SEBEP gorunmuyordu. Job 3364180'de playbook her seyi dogru
+      // yapmis: (cluster,namespace) ciftinin hatasini toplayip `set_stats` ile
+      // YAYINLAMIS, sonra AWX isi kirmizi kalsin diye BILEREK `fail` etmis - playbook
+      // dosyasinin kendi notu bunu soyluyor: "set_stats BU GOREVDEN ONCE calistigi icin
+      // artifact zaten yayinlanmistir: portal duzgun sonucu alir".
+      //
+      // Portal ise `status !== 'successful'` gorunce artifact'i HIC OKUMUYOR ve sabit bir
+      // metin donduruyordu. Iki taraf birbiriyle celisiyordu: sebep hem AWX log'unda
+      // (login gorevi `no_log: true`) hem ekranda kayboluyordu.
+      //
+      // Artik artifact once okunur; VARSA gercek sonuc/hata donulur. `status` DEGISMEZ -
+      // is basarisiz kaldi, ekran da oyle gosterir.
       const raw = extractOpsxJvmResult(statusInfo.artifacts);
       if (!raw) {
         return res.json({
           ok: true,
           status: statusInfo.status,
           message:
-            "İş tamamlandı ancak JVM listesi alınamadı — playbook'un set_stats adımını kontrol edin.",
+            statusInfo.status === 'successful'
+              ? "İş tamamlandı ancak JVM listesi alınamadı — playbook'un set_stats adımını kontrol edin."
+              : 'JVM listesi alınamadı (iş başarısız oldu).',
         });
       }
       res.json({ ok: true, status: statusInfo.status, jvms: raw.results || [] });
@@ -1231,21 +1240,30 @@ function initOpsX(app) {
         if (!TERMINAL.has(statusInfo.status)) {
           return res.json({ ok: true, status: statusInfo.status });
         }
-        if (statusInfo.status !== 'successful') {
-          return res.json({
-            ok: true,
-            status: statusInfo.status,
-            message: 'Server-Config listesi alınamadı (iş başarısız oldu).',
-          });
-        }
-
+        // BASARISIZ ISTE DE ARTIFACT OKUNUR (2026-09-30, uretimde yakalandi).
+        //
+        // Kullanici: Crypto Hub cluster'i (daocptest1 / harmonize-test) icin pod kesfi
+        // "patliyor" ama SEBEP gorunmuyordu. Job 3364180'de playbook her seyi dogru
+        // yapmis: (cluster,namespace) ciftinin hatasini toplayip `set_stats` ile
+        // YAYINLAMIS, sonra AWX isi kirmizi kalsin diye BILEREK `fail` etmis - playbook
+        // dosyasinin kendi notu bunu soyluyor: "set_stats BU GOREVDEN ONCE calistigi icin
+        // artifact zaten yayinlanmistir: portal duzgun sonucu alir".
+        //
+        // Portal ise `status !== 'successful'` gorunce artifact'i HIC OKUMUYOR ve sabit bir
+        // metin donduruyordu. Iki taraf birbiriyle celisiyordu: sebep hem AWX log'unda
+        // (login gorevi `no_log: true`) hem ekranda kayboluyordu.
+        //
+        // Artik artifact once okunur; VARSA gercek sonuc/hata donulur. `status` DEGISMEZ -
+        // is basarisiz kaldi, ekran da oyle gosterir.
         const raw = extractOpsxServerConfigResult(statusInfo.artifacts);
         if (!raw) {
           return res.json({
             ok: true,
             status: statusInfo.status,
             message:
-              "İş tamamlandı ancak Server-Config listesi alınamadı — playbook'un set_stats adımını kontrol edin.",
+              statusInfo.status === 'successful'
+                ? "İş tamamlandı ancak Server-Config listesi alınamadı — playbook'un set_stats adımını kontrol edin."
+                : 'Server-Config listesi alınamadı (iş başarısız oldu).',
           });
         }
         res.json({ ok: true, status: statusInfo.status, serverConfigs: raw.results || [] });
@@ -1548,21 +1566,30 @@ function initOpsX(app) {
       if (!TERMINAL.has(statusInfo.status)) {
         return res.json({ ok: true, status: statusInfo.status });
       }
-      if (statusInfo.status !== 'successful') {
-        return res.json({
-          ok: true,
-          status: statusInfo.status,
-          message: 'Pod listesi alınamadı (iş başarısız oldu).',
-        });
-      }
-
+      // BASARISIZ ISTE DE ARTIFACT OKUNUR (2026-09-30, uretimde yakalandi).
+      //
+      // Kullanici: Crypto Hub cluster'i (daocptest1 / harmonize-test) icin pod kesfi
+      // "patliyor" ama SEBEP gorunmuyordu. Job 3364180'de playbook her seyi dogru
+      // yapmis: (cluster,namespace) ciftinin hatasini toplayip `set_stats` ile
+      // YAYINLAMIS, sonra AWX isi kirmizi kalsin diye BILEREK `fail` etmis - playbook
+      // dosyasinin kendi notu bunu soyluyor: "set_stats BU GOREVDEN ONCE calistigi icin
+      // artifact zaten yayinlanmistir: portal duzgun sonucu alir".
+      //
+      // Portal ise `status !== 'successful'` gorunce artifact'i HIC OKUMUYOR ve sabit bir
+      // metin donduruyordu. Iki taraf birbiriyle celisiyordu: sebep hem AWX log'unda
+      // (login gorevi `no_log: true`) hem ekranda kayboluyordu.
+      //
+      // Artik artifact once okunur; VARSA gercek sonuc/hata donulur. `status` DEGISMEZ -
+      // is basarisiz kaldi, ekran da oyle gosterir.
       const raw = extractOpsxPodsResult(statusInfo.artifacts);
       if (!raw) {
         return res.json({
           ok: true,
           status: statusInfo.status,
           message:
-            "İş tamamlandı ancak pod listesi alınamadı — playbook'un set_stats adımını kontrol edin.",
+            statusInfo.status === 'successful'
+              ? "İş tamamlandı ancak pod listesi alınamadı — playbook'un set_stats adımını kontrol edin."
+              : 'Pod listesi alınamadı (iş başarısız oldu).',
         });
       }
       // COK-CLUSTER: bir cluster basarisiz olsa bile DIGERLERININ pod'lari gosterilir
@@ -1966,17 +1993,30 @@ function initOpsX(app) {
       if (!TERMINAL.has(statusInfo.status)) {
         return res.json({ ok: true, status: statusInfo.status });
       }
-      if (statusInfo.status !== 'successful') {
-        return res.json({ ok: true, status: statusInfo.status, message: 'İşlem başarısız oldu.' });
-      }
-
+      // BASARISIZ ISTE DE ARTIFACT OKUNUR (2026-09-30, uretimde yakalandi).
+      //
+      // Kullanici: Crypto Hub cluster'i (daocptest1 / harmonize-test) icin pod kesfi
+      // "patliyor" ama SEBEP gorunmuyordu. Job 3364180'de playbook her seyi dogru
+      // yapmis: (cluster,namespace) ciftinin hatasini toplayip `set_stats` ile
+      // YAYINLAMIS, sonra AWX isi kirmizi kalsin diye BILEREK `fail` etmis - playbook
+      // dosyasinin kendi notu bunu soyluyor: "set_stats BU GOREVDEN ONCE calistigi icin
+      // artifact zaten yayinlanmistir: portal duzgun sonucu alir".
+      //
+      // Portal ise `status !== 'successful'` gorunce artifact'i HIC OKUMUYOR ve sabit bir
+      // metin donduruyordu. Iki taraf birbiriyle celisiyordu: sebep hem AWX log'unda
+      // (login gorevi `no_log: true`) hem ekranda kayboluyordu.
+      //
+      // Artik artifact once okunur; VARSA gercek sonuc/hata donulur. `status` DEGISMEZ -
+      // is basarisiz kaldi, ekran da oyle gosterir.
       const dumpResult = extractOpsxDumpResult(statusInfo.artifacts);
       if (!dumpResult) {
         return res.json({
           ok: true,
           status: statusInfo.status,
           message:
-            "İşlem tamamlandı ancak sonuç alınamadı — playbook'un set_stats adımını kontrol edin.",
+            statusInfo.status === 'successful'
+              ? "İşlem tamamlandı ancak sonuç alınamadı — playbook'un set_stats adımını kontrol edin."
+              : 'İşlem başarısız oldu.',
         });
       }
 
