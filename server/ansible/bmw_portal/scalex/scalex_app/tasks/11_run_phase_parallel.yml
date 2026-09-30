@@ -1,0 +1,197 @@
+---
+# PRECHECK / EXECUTE — CLUSTER'LAR PARALEL, TEK PLAY.
+#
+# ── NEDEN ───────────────────────────────────────────────────────────────────
+# `10_run_phase.yml` cluster BASINA kosuyor (`include_tasks` + `loop`) ve
+# `include_tasks` ASYNC ALAMAZ: uc cluster = uc ardisik is. Execute'ta bu,
+# her cluster'in dogrulama beklemesinin (pod'larin kapanmasi) TOPLANMASI
+# demekti. Bu dosya butun cluster'lari bir kerede baslatir ve toplar.
+#
+# Seri hali `10_run_phase.yml` olarak DURUYOR: `scalex_parallel_clusters: false`
+# ile birebir bugunku davranis.
+#
+# ── GUVENLIK SIRASI DEGISMEDI ───────────────────────────────────────────────
+# Bu dosya BIR fazi (precheck YA DA execute) paralel kosturur. Iki faz arasi
+# `main.yml`de: TUM cluster'larin precheck'i bu dosyadan DONMEDEN "STRICT MODE"
+# karari verilmez ve execute baslamaz — yani bir cluster'in precheck'i
+# dusmusken baska bir cluster'da mutasyon BASLAYAMAZ.
+#
+# ── URETIMDE OGRENILENLER (kesif paralelliginden, aynen uygulanir) ──────────
+# 1. `ansible.builtin.script` ASYNC ALMAZ -> `copy` + `shell` + `async`.
+# 2. `async_status` DELEGE EDILMEZSE "finished: true, rc YOK" doner ve BASARI
+#    gibi gorunur -> toplama `rc`nin VARLIGINI sorar.
+# 3. Jump sunucusunda `/tmp` NOEXEC (AWX 3365082, rc=126) -> betik YORUMLAYICIYA
+#    okutulur (`/bin/bash <dosya>`), kopya 0600.
+# 4. AYNI cluster IKI KEZ hedefte olamaz: ayni durum kayitlarina (ConfigMap)
+#    es zamanli iki yazici demek olurdu -> baslatmadan ONCE dogrulanir.
+
+- name: "{{ scalex_phase | upper }} | Every cluster appears once (parallel writers guard)"
+  ansible.builtin.assert:
+    that:
+      - (target_matrix | map(attribute='cluster') | list | length)
+        == (target_matrix | map(attribute='cluster') | unique | list | length)
+    fail_msg: >-
+      Ayni cluster hedef listesinde birden fazla kez var; paralel calistirma ayni
+      durum kayitlarina es zamanli iki yazici demek olurdu. Clusters:
+      {{ target_matrix | map(attribute='cluster') | list | join(',') }}
+
+# HER FAZ BASINDA BOS: precheck satirlari execute tamponuna tekrar eklenmesin
+# (L2). Tek sifirlama noktasi burasi — sonda ikinci bir sifirlama kanitlanamayan
+# kod olurdu (mutasyon turunda etkisiz cikti, kaldirildi).
+- name: "{{ scalex_phase | upper }} | Initialize parallel row buffer"
+  ansible.builtin.set_fact:
+    _phase_rows_all: []
+  changed_when: false
+
+- name: "{{ scalex_phase | upper }} | Copy runner to every jump server"
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/files/scalex_runner.sh"
+    dest: "{{ _phase_runner_path }}"
+    mode: "0600"
+  delegate_to: "{{ scalex_target.runtime_host }}"
+  loop: "{{ target_matrix }}"
+  loop_control:
+    loop_var: scalex_target
+    label: "{{ scalex_target.cluster }} via {{ scalex_target.physical_host }}"
+  changed_when: false
+  failed_when: false
+  ignore_unreachable: true
+
+# ORTAM `10_run_phase.yml` ile METIN OLARAK AYNI (dongu degiskeni de
+# `scalex_target`). Iki kopya kayarsa bir yol digerinden farkli degerle
+# kosar; bekci (L7) iki blogu karsilastiriyor.
+- name: "{{ scalex_phase | upper }} | Launch every cluster in parallel"
+  ansible.builtin.shell:
+    cmd: "/bin/bash {{ _phase_runner_path | quote }}"
+    executable: /bin/bash
+  environment:
+    SCALEX_PHASE: "{{ scalex_phase }}"
+    CLUSTER: "{{ scalex_target.cluster }}"
+    JUMP_SERVER: >-
+      {{ scalex_target.jump_label ~ (' -> ' ~ scalex_target.physical_host if scalex_target.physical_host != scalex_target.jump_label else '') }}
+    API_URL: "{{ scalex_target.api_url }}"
+    OCP_USERNAME: "{{ username }}"
+    OCP_PASSWORD: "{{ lookup('ansible.builtin.vars', scalex_target.credential) }}"
+    OCP_OC_PATHS: "{{ scalex_target.oc_paths | join(':') }}"
+    TLS_VERIFY: "{{ scalex_target.tls_verify | bool | string | lower }}"
+    NS: "{{ oc_namespace }}"
+    SCALEX_BATCH_EXECUTE: "{{ scalex_batch_execute | default(true) | bool | string | lower }}"
+    APP_RAW: "{{ scalex_cluster_apps_effective[scalex_target.cluster] | default(target_app_list | join(',')) }}"
+    ACTION: "{{ operation_action_effective }}"
+    TARGET: "{{ target_replicas_effective }}"
+    WORKLOAD_KIND: "{{ workload_kind_effective }}"
+    WORKLOAD_KINDS: "{{ cluster_workload_kinds_effective[scalex_target.cluster] | default(workload_kinds_effective) | default('') }}"
+    VERIFY_WARN_SECONDS: "{{ verify_warn_seconds_effective }}"
+    VERIFY_FAIL_SECONDS: "{{ verify_fail_seconds_effective }}"
+    WAIT_ATTEMPTS: "{{ wait_attempts }}"
+    WAIT_SECONDS: "{{ wait_seconds }}"
+    JOB_ID: "{{ job_id }}"
+    CREATED_BY: "{{ username }}"
+    SCALE_WARN_THRESHOLD: "100"
+    HPA_PIN: "{{ hpa_pin_effective | default(false) | string | lower }}"
+  delegate_to: "{{ scalex_target.runtime_host }}"
+  loop: "{{ target_matrix }}"
+  loop_control:
+    loop_var: scalex_target
+    label: "{{ scalex_target.cluster }} via {{ scalex_target.physical_host }}"
+  async: "{{ _phase_async_seconds | int }}"
+  poll: 0
+  register: _phase_async
+  changed_when: false
+  failed_when: false
+  ignore_unreachable: true
+  no_log: true
+
+# `retries = ceil(async / 3)`: yoklama HER ZAMAN async butcesini kapsar; butce
+# asilirsa `async_status` `rc != 0` ile doner. Delegasyon SART (bkz. basi, 2).
+- name: "{{ scalex_phase | upper }} | Collect parallel results"
+  ansible.builtin.async_status:
+    jid: "{{ item.ansible_job_id }}"
+  delegate_to: "{{ item.scalex_target.runtime_host }}"
+  loop: "{{ _phase_async.results | default([]) }}"
+  loop_control:
+    label: "{{ item.scalex_target.cluster }}"
+  when: item.ansible_job_id is defined
+  register: _phase_done
+  until: _phase_done.finished is defined and _phase_done.finished
+  retries: "{{ ((_phase_async_seconds | int) / 3) | round(0, 'ceil') | int }}"
+  delay: 3
+  changed_when: false
+  failed_when: false
+  ignore_unreachable: true
+  no_log: true
+
+- name: "{{ scalex_phase | upper }} | Remove copied runner"
+  ansible.builtin.file:
+    path: "{{ _phase_runner_path }}"
+    state: absent
+  delegate_to: "{{ scalex_target.runtime_host }}"
+  loop: "{{ target_matrix }}"
+  loop_control:
+    loop_var: scalex_target
+    label: "{{ scalex_target.cluster }}"
+  changed_when: false
+  failed_when: false
+  ignore_unreachable: true
+
+- name: "{{ scalex_phase | upper }} | Pair launch and collect results"
+  ansible.builtin.set_fact:
+    _phase_pairs: "{{ (_phase_async.results | default([])) | zip(_phase_done.results | default([])) | list }}"
+  changed_when: false
+
+# ── SATIRLAR: `10_run_phase.yml` ile AYNI UC KURAL, cluster BASINA ─────────
+#   betik satirlari (bicim suzgeciyle)
+#   calistirma hatasi -> RUNNER;FAIL + sebep (rc/stderr)
+#   bos cevap         -> RUNNER;FAIL
+- name: "{{ scalex_phase | upper }} | Build sanitized result rows per cluster"
+  ansible.builtin.set_fact:
+    _phase_rows_all: >-
+      {{ _phase_rows_all + ((item.1.stdout_lines | default([]))
+         | select('match', '^[^;]*;[^;]*;[^;]*;[^;]*;[^;]*;[^;]*;.*$') | list) }}
+  loop: "{{ _phase_pairs }}"
+  loop_control:
+    label: "{{ item.0.scalex_target.cluster }}"
+  changed_when: false
+
+- name: "{{ scalex_phase | upper }} | Record transport/runtime failure per cluster"
+  ansible.builtin.set_fact:
+    _phase_rows_all: >-
+      {{ _phase_rows_all + [
+        item.0.scalex_target.cluster ~ ';' ~ item.0.scalex_target.jump_label ~ ';-;-;RUNNER;FAIL;Runner could not complete because of SSH/transport/shell/runtime failure'
+        ~ ' (rc=' ~ (item.1.rc | default('-')) ~ ': ' ~ ((item.1.stderr | default(item.1.msg | default(item.0.msg | default(''))) | string | regex_replace('[;\r\n\t]+', ' ') | trim)[:200]) ~ ')'
+      ] }}
+  loop: "{{ _phase_pairs }}"
+  loop_control:
+    label: "{{ item.0.scalex_target.cluster }}"
+  when:
+    - (item.0.unreachable | default(false)) or (item.1.unreachable | default(false))
+      or (item.0.ansible_job_id is not defined)
+      or (item.1.rc is not defined)
+      or ((item.1.rc | default(0) | int) != 0)
+  changed_when: false
+
+- name: "{{ scalex_phase | upper }} | Record empty runner response per cluster"
+  ansible.builtin.set_fact:
+    _phase_rows_all: >-
+      {{ _phase_rows_all + [
+        item.0.scalex_target.cluster ~ ';' ~ item.0.scalex_target.jump_label ~ ';-;-;RUNNER;FAIL;Runner returned no structured result rows'
+      ] }}
+  loop: "{{ _phase_pairs }}"
+  loop_control:
+    label: "{{ item.0.scalex_target.cluster }}"
+  when:
+    - item.1.rc is defined
+    - (item.1.rc | int) == 0
+    - ((item.1.stdout_lines | default([]))
+       | select('match', '^[^;]*;[^;]*;[^;]*;[^;]*;[^;]*;[^;]*;.*$') | list | length) == 0
+  changed_when: false
+
+- name: "{{ scalex_phase | upper }} | Append precheck rows (parallel)"
+  ansible.builtin.set_fact:
+    _precheck_rows: "{{ _precheck_rows + _phase_rows_all }}"
+  when: scalex_phase == 'precheck'
+
+- name: "{{ scalex_phase | upper }} | Append execution rows (parallel)"
+  ansible.builtin.set_fact:
+    _execute_rows: "{{ _execute_rows + _phase_rows_all }}"
+  when: scalex_phase == 'execute'

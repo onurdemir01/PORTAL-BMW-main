@@ -77,6 +77,21 @@
               GROUP={{ scope_key_effective }} CLUSTER_MODE={{ oc_cluster_mode }} CLUSTERS={{ cluster_list | join(',') }}
               CATALOG={{ catalog_source }} CLUSTER_SOURCE={{ _cluster_source }} HPA_PIN={{ hpa_pin_effective | string | lower }}
 
+        # ── CLUSTER'LAR PARALEL ya da SERI ─────────────────────────────────
+        # Paralel yol (varsayilan) `tasks/11_run_phase_parallel.yml`; seri yol
+        # aynen duruyor (`scalex_parallel_clusters: false`). Iki yol da AYNI
+        # satir tamponlarina (`_precheck_rows` / `_execute_rows`) yazar.
+        #
+        # GUVENLIK SIRASI: precheck gorevi TUM cluster'lar bitmeden donmez;
+        # asagidaki STRICT MODE karari ve execute ondan SONRA gelir.
+        - name: "PRECHECK | Validate every target before mutation (parallel)"
+          ansible.builtin.include_tasks: tasks/11_run_phase_parallel.yml
+          vars:
+            scalex_phase: precheck
+            _phase_runner_path: "/tmp/scalex_runner_{{ job_id }}_precheck.sh"
+            _phase_async_seconds: 900
+          when: phase_parallel_effective | bool
+
         - name: "PRECHECK | Validate every target before mutation"
           ansible.builtin.include_tasks: tasks/10_run_phase.yml
           loop: "{{ target_matrix }}"
@@ -85,6 +100,7 @@
             label: "{{ scalex_target.cluster }} via {{ scalex_target.physical_host }}"
           vars:
             scalex_phase: precheck
+          when: not (phase_parallel_effective | bool)
 
         - name: "Count precheck failures"
           ansible.builtin.set_fact:
@@ -113,6 +129,19 @@
             - not allow_partial_execution_effective
             - _precheck_fail_count | int > 0
 
+        # Async butcesi dogrulamanin FAIL esiginden GENIS olmali: dar bir tavan,
+        # mesru olarak uzun suren bir kapatmayi "zaman asimi" diye FAIL gosterirdi.
+        - name: "EXECUTE | Apply verified operations in parallel"
+          ansible.builtin.include_tasks: tasks/11_run_phase_parallel.yml
+          vars:
+            scalex_phase: execute
+            _phase_runner_path: "/tmp/scalex_runner_{{ job_id }}_execute.sh"
+            _phase_async_seconds: "{{ [(verify_fail_seconds_effective | int) + 900, 600] | max }}"
+          when:
+            - execution_mode_effective == 'apply'
+            - not _strict_blocked
+            - phase_parallel_effective | bool
+
         - name: "EXECUTE | Apply verified operations serially"
           ansible.builtin.include_tasks: tasks/10_run_phase.yml
           loop: "{{ target_matrix }}"
@@ -124,6 +153,7 @@
           when:
             - execution_mode_effective == 'apply'
             - not _strict_blocked
+            - not (phase_parallel_effective | bool)
 
         - name: "Build consolidated report"
           ansible.builtin.include_tasks: tasks/20_build_report.yml
