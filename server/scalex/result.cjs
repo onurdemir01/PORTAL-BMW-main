@@ -9,7 +9,7 @@
 // `server/ansible/bmw_portal/scalex/scalex_app/VERSION` ile AYNI sayi olmali (test kilitler).
 // Paket AWX'e ELLE kopyalaniyor; bu iki sayinin ayrismasi "portal yeni, AWX eski"
 // durumunun TEK kaniti. Pakette portalin okudugu bir alan degistiginde artirilir.
-const EXPECTED_PACKAGE_VERSION = '18';
+const EXPECTED_PACKAGE_VERSION = '19';
 
 function extractStatsKey(rawArtifacts, key) {
   const a = rawArtifacts || {};
@@ -177,6 +177,16 @@ function extractDiscoveryResult(rawArtifacts) {
       .toLowerCase(),
     mode: String(raw.mode || ''),
     namespace: String(raw.namespace || ''),
+    // TARANAN NAMESPACE'LERIN TAMAMI. Tekil `namespace` alani geriye uyumluluk
+    // icin DURUYOR (ilk namespace'i tasir); yazicilar SATIR BASINA namespace
+    // kullanir. Bu liste "hangi namespace'ler GERCEKTEN tarandi" sorusunu
+    // cevaplar — katalog supurmesi (`is_deleted=1`) yalnizca taranmis bir
+    // namespace icin mesrudur.
+    namespaces: Array.isArray(raw.namespaces)
+      ? raw.namespaces.map((x) => String(x).trim()).filter(Boolean)
+      : String(raw.namespace || '').trim()
+        ? [String(raw.namespace).trim()]
+        : [],
     platform: String(raw.platform || ''),
     environment: String(raw.environment || ''),
     catalogSource: String(raw.catalog_source || 'file'),
@@ -194,6 +204,22 @@ function extractDiscoveryResult(rawArtifacts) {
         detail: String(i.detail || ''),
       })),
   };
+
+  // ── SATIR BASINA NAMESPACE ─────────────────────────────────────────────────
+  //
+  // Bir is artik BIRDEN FAZLA namespace tarayabiliyor (tek AWX isi, tek `oc
+  // login`). Ust duzeydeki `namespace` alani o durumda YALNIZCA ILKIDIR ve onu
+  // tum satirlara uygulamak SESSIZ VERI KAYBI uretirdi:
+  //   * `putApps` gorulmeyen uygulamalari `is_deleted=1` yapar — B namespace'inin
+  //     is yuklerini A altina yazmak, B'nin katalogunu SILERDI.
+  //   * `refreshDrift` sapma isaretlerini yanlis namespace'e yazardi.
+  //   * `scalex_rbac_findings` UNIQUE(env,tenant,cluster,namespace,kind) — yanlis
+  //     satiri gunceller.
+  //
+  // GERI DUSUS SART: `namespace=` alanini basmayan ESKI bir paket kosuyorsa ust
+  // duzey deger dogrudur (o paket zaten tek namespace tariyordu).
+  const satirNs = (d) =>
+    d && d.namespace && d.namespace !== '-' ? String(d.namespace) : base.namespace;
 
   // ── SURE OLCUMU ────────────────────────────────────────────────────────────
   //
@@ -283,6 +309,7 @@ function extractDiscoveryResult(rawArtifacts) {
         const d = parseDetailPairs(i.detail);
         return {
           cluster: String(i.cluster || ''),
+          namespace: satirNs(d),
           kind: String(d.kind || ''),
           display: String(i.kind || d.kind || ''),
           // TAM KAYNAK ADI ("statefulsets.apps"). RBAC kurallari tam adla yazilir ve
@@ -309,6 +336,7 @@ function extractDiscoveryResult(rawArtifacts) {
           : null;
         return {
           cluster: String(i.cluster || ''),
+          namespace: satirNs(d),
           name: String(i.app || ''),
           kind: String(i.kind || '-'),
           // OLCEKLENEBILIRLIK. DaemonSet dugum sayisiyla olceklenir, CronJob
@@ -351,6 +379,7 @@ function extractDiscoveryResult(rawArtifacts) {
         const d = parseDetailPairs(i.detail);
         return {
           cluster: String(i.cluster || ''),
+          namespace: satirNs(d),
           appName: String(i.app || ''),
           kind: String(i.kind || '-'),
           configMap: d.cm || '',
@@ -382,6 +411,7 @@ function extractDiscoveryResult(rawArtifacts) {
         const d = parseDetailPairs(i.detail);
         return {
           cluster: String(i.cluster || ''),
+          namespace: satirNs(d),
           appName: String(i.app || ''),
           kind: String(i.kind || '-'),
           // `workload_absent=yes` → uygulama namespace'te YOK (silinmis olabilir).

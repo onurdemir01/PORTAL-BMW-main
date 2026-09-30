@@ -43,7 +43,11 @@ async function record({ env, tenant, namespace, kindReports }) {
       S(env, 30),
       S(tenant, 64),
       S(k.cluster, 64),
-      S(namespace, 100),
+      // SATIR BASINA NAMESPACE, kapsam degerine GERI DUSUSLE. Bir kesif isi artik
+      // birden fazla namespace tarayabiliyor; tek bir kapsam degeri yazmak,
+      // `UNIQUE(env,tenant,cluster,namespace,kind)` yuzunden B namespace'inin
+      // eksigini A'nin satirina yazmak ve birini SESSIZCE kaybetmek olurdu.
+      S(k.namespace || namespace, 100),
       S(k.kind, 64),
       S(k.resource, 200) || null,
       S(k.reason, 32),

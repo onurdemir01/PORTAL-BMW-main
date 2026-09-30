@@ -19,6 +19,14 @@
     OCP_OC_PATHS: "{{ scalex_target.oc_paths | join(':') }}"
     TLS_VERIFY: "{{ scalex_target.tls_verify | bool | string | lower }}"
     NS: "{{ oc_namespace }}"
+    # TEK ISTE COK NAMESPACE. `NS` KALIYOR (eski paket ve mutasyon yolu onu
+    # okuyor); `NS_LIST` yalnizca EKLENIYOR ve bos geldiginde betik listeyi
+    # `NS`ten turetir — yani eski davranis birebir korunur.
+    #
+    # KAZANC: AWX sabit maliyeti (kuyruk + SSH + `oc login`) IS BASINA odenir.
+    # Uc namespace ayri ayri kosturuldugunda o maliyet UC KEZ odeniyordu ve `oc`
+    # cagrilarini sifira indirsen bile ~18 sn taban kaliyordu.
+    NS_LIST: "{{ oc_namespaces_effective | join(',') }}"
     APP_RAW: "{{ target_app_list | join(',') }}"
     # CANLI YOKLAMA LISTESI — yalnizca `state` kesfinde dolu gelir. Portal, o
     # namespace icin AYNASINDA kayitli uygulamalarin adlarini gonderir; betik her

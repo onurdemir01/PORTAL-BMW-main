@@ -207,3 +207,52 @@ test('RB9 gecersiz kimlikle silme REDDEDILIR', async () => {
     await assert.rejects(() => findings.remove(bad), /Gecersiz kayit kimligi/);
   }
 });
+
+// ── SATIR BASINA NAMESPACE (PR-E) ───────────────────────────────────────────
+//
+// MUTASYON TURUNDA BULUNDU: satir namespace'ini yok saymak hicbir bekciyi
+// kizartmiyordu. Bir kesif isi artik BIRDEN FAZLA namespace tarayabiliyor ve
+// tablo `UNIQUE(env, tenant, cluster_name, namespace, kind)` — tek bir kapsam
+// degeri yazmak, B namespace'inin eksigini A'nin satirina yazmak ve birini
+// SESSIZCE kaybetmek demekti. Ustelik ekran o satira bakip yanlis namespace
+// icin RBAC talebi acilmasina yol acardi.
+test('RB10 satir namespace`i kapsam degerini EZER (cok namespace`li is)', async () => {
+  await withDb(async (calls) => {
+    await findings.record({
+      env: 'test',
+      tenant: 'ark',
+      // KAPSAM DEGERI ilk namespace; satirlar kendi namespace'lerini tasiyor.
+      namespace: 'ns-a',
+      kindReports: [
+        { cluster: 'c1', namespace: 'ns-a', kind: 'sts', resource: 'statefulsets.apps', readable: false, reason: 'no_permission', verb: 'list' },
+        { cluster: 'c1', namespace: 'ns-b', kind: 'sts', resource: 'statefulsets.apps', readable: false, reason: 'no_permission', verb: 'list' },
+      ],
+    });
+    const ins = calls.filter((c) => /^\s*INSERT/i.test(c.sql));
+    assert.equal(ins.length, 2, `iki ayri satir beklenirdi, ${ins.length} yazildi`);
+    // 4. parametre = namespace
+    assert.deepEqual(
+      ins.map((c) => c.params[3]).sort(),
+      ['ns-a', 'ns-b'],
+      'satirlar AYNI namespace`e yazilmis — biri SESSIZCE kayboldu',
+    );
+  });
+});
+
+test('RB11 satirda namespace YOKSA kapsam degerine DUSER (eski paket)', async () => {
+  await withDb(async (calls) => {
+    await findings.record({
+      env: 'test',
+      tenant: 'ark',
+      namespace: 'ns-a',
+      // `namespace=` alanini basmayan ESKI bir paket: o paket zaten tek namespace
+      // tariyordu, yani kapsam degeri DOGRU.
+      kindReports: [
+        { cluster: 'c1', kind: 'sts', resource: 'statefulsets.apps', readable: false, reason: 'no_permission', verb: 'list' },
+      ],
+    });
+    const ins = calls.find((c) => /^\s*INSERT/i.test(c.sql));
+    assert.ok(ins, 'satir hic yazilmadi');
+    assert.equal(ins.params[3], 'ns-a', 'geri dusus calismiyor — eski paket kirilir');
+  });
+});
