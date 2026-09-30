@@ -51,11 +51,20 @@ test('PF0 CI`da ansible KURULU (PF ailesi sessizce atlanmasin)', () => {
  * ve her birine AYRI `ansible_async_dir` verilir: gercek hayatta async is
  * dosyalari delege edilen host'ta durur, burada da oyle.
  */
-function paralelKostur({ delegasyon = true, clusters = ['c1', 'c2'], sleepSaniye = 2 } = {}) {
+function paralelKostur({
+  delegasyon = true,
+  clusters = ['c1', 'c2'],
+  sleepSaniye = 2,
+  asyncSaniye = 60,
+  exitKodu = 0,
+} = {}) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'scalex-pf-'));
   try {
     fs.mkdirSync(path.join(tmp, 'files'));
     const iz = path.join(tmp, 'iz.log');
+    // KOPYALANAN BETIGIN YOLU GECICI DIZINDE: silinip silinmedigi olculebilsin
+    // (uretimde `/tmp/scalex_runner_<job_id>.sh`).
+    const runnerYolu = path.join(tmp, 'kopyalanan_runner.sh');
     // SAHTE RUNNER: giris/cikis izi birakir ve gercek satir bicimini basar.
     fs.writeFileSync(
       path.join(tmp, 'files', 'scalex_runner.sh'),
@@ -65,7 +74,7 @@ function paralelKostur({ delegasyon = true, clusters = ['c1', 'c2'], sleepSaniye
         `sleep ${sleepSaniye}`,
         `printf 'BITTI %s\\n' "$CLUSTER" >> ${JSON.stringify(iz)}`,
         'printf \'%s;%s;odeme-api;Deployment;WORKLOAD;OK;namespace=ns1 resource=deployments.apps scalable=yes spec=3 status=3 ready=3\\n\' "$CLUSTER" "$JUMP_SERVER"',
-        'exit 0',
+        `exit ${exitKodu}`,
       ].join('\n'),
       { mode: 0o755 },
     );
@@ -97,8 +106,8 @@ function paralelKostur({ delegasyon = true, clusters = ['c1', 'c2'], sleepSaniye
 
     const vars = {
       target_matrix: matrix,
-      _disc_runner_path: '/tmp/scalex_pf_runner.sh',
-      discovery_async_seconds_effective: 60,
+      _disc_runner_path: runnerYolu,
+      discovery_async_seconds_effective: asyncSaniye,
       discovery_mode_effective: 'workloads',
       username: 'uxmid',
       pf_sifre: 'gizli',
@@ -155,7 +164,8 @@ function paralelKostur({ delegasyon = true, clusters = ['c1', 'c2'], sleepSaniye
     const rows = yakala(/ROWS=(.*?)"/).split('~~').filter(Boolean);
     const failed = yakala(/FAILED=(.*?)"/).split(',').filter(Boolean);
     const trace = fs.existsSync(iz) ? fs.readFileSync(iz, 'utf8').split('\n').filter(Boolean) : [];
-    return { out, rows, failed, trace, playFailed: /PLAY_FAILED/.test(out) };
+    const kopyaKaldi = fs.existsSync(runnerYolu);
+    return { out, rows, failed, trace, kopyaKaldi, playFailed: /PLAY_FAILED/.test(out) };
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
@@ -216,5 +226,92 @@ test('PF3 delegasyon kaldirilirsa cluster`lar SESSIZCE degil FAIL ile duser', { 
   assert.ok(
     r.rows.filter((x) => /;RUNNER;FAIL;/.test(x)).length === 2,
     `FAIL satirlari yok: ${JSON.stringify(r.rows)}`,
+  );
+});
+
+// ── PF4: ZAMAN ASIMI DA GURULTULU ───────────────────────────────────────────
+//
+// MUTASYON TURUNDA BULUNDU: `finished` kontrolunu kaldirmak hicbir bekciyi
+// kizartmiyordu. Delegasyon tuzaginda `finished` ZATEN true doner (PF3), yani o
+// kontrol baska bir sinifi koruyor: yoklama TUKENDIGI halde is HALA KOSUYOR.
+// Bu halde `rc` de gelmez ama sebebi FARKLI — ve kontrol kalkarsa cluster
+// SESSIZCE bos doner.
+test('PF4 yoklama tukenirse (is hala kosuyor) cluster FAIL ile duser', { skip: !HAS_ANSIBLE }, () => {
+  // Async butcesi 3 sn -> `retries = 1`, `delay = 3`. Betik 12 sn uyur, yani ILK
+  // yoklamada is BITMEMISTIR ve yoklama TUKENIR.
+  const r = paralelKostur({ clusters: ['c1'], sleepSaniye: 12, asyncSaniye: 3 });
+  assert.ok(!r.playFailed, `play dustu:\n${r.out.slice(-2000)}`);
+  assert.deepEqual(
+    r.failed,
+    ['c1'],
+    `bitmemis is basarili sayildi — failed=${JSON.stringify(r.failed)} rows=${JSON.stringify(r.rows)}`,
+  );
+  assert.equal(
+    r.rows.filter((x) => /;RUNNER;FAIL;/.test(x)).length,
+    1,
+    `FAIL satiri yok: ${JSON.stringify(r.rows)}`,
+  );
+});
+
+// ── PF5: KOPYALANAN BETIK SILINIYOR ─────────────────────────────────────────
+//
+// `ansible.builtin.script` kopya BIRAKMIYORDU; `copy` + `shell` birakir. Jump
+// sunucularinda biriken kopyalar hem cop hem de "hangi surum kosuyor" sorusunu
+// bulandiran bir iz. Silme ATLANIRSA bu bekci kizarir.
+test('PF5 kopyalanan betik SONDA siliniyor', { skip: !HAS_ANSIBLE }, () => {
+  const r = paralelKostur({ clusters: ['c1'] });
+  assert.ok(!r.playFailed, `play dustu:\n${r.out.slice(-2000)}`);
+  assert.equal(r.kopyaKaldi, false, 'kopyalanan betik jump sunucusunda KALDI');
+  // Ve kopyalama GERCEKTEN yapilmis olmali: silme testini, kopyalamayi silerek
+  // gecmek mumkun olmasin.
+  assert.equal(r.rows.length, 1, `betik kosmamis: ${JSON.stringify(r.rows)}`);
+});
+
+// ── PF6: PARALEL ve SERI YOL BIRBIRINI DISLIYOR ─────────────────────────────
+//
+// DURUST NOT — BU BIR METIN BEKCISI. `discovery.yml`in tamamini yerel kosturmak
+// cluster katalogu, vault kimlikleri ve SSH `add_host` gerektiriyor; bu kutuk
+// gorev dosyasini DOGRUDAN kosturuyor. Yine de kilitleniyor, cunku iki yolun
+// AYNI ANDA kosmasi her satiri IKI KEZ toplamak demek: `_discovery_rows`
+// ciftlenir ve ekran her uygulamayi iki kez gosterir.
+test('PF6 paralel ve seri yol AYNI ANDA kosamaz', () => {
+  const play = fs.readFileSync(path.join(APP, 'discovery.yml'), 'utf8');
+  const par = /10_discover_parallel\.yml[\s\S]{0,400}?when: (.+)/.exec(play);
+  const ser = /include_tasks: tasks\/discovery\/10_discover\.yml[\s\S]{0,400}?when: (.+)/.exec(play);
+  assert.ok(par, 'paralel yolun `when` kosulu yok — her zaman kosar');
+  assert.ok(ser, 'seri yolun `when` kosulu yok — her zaman kosar');
+  assert.match(par[1], /discovery_parallel_effective \| bool/);
+  assert.match(ser[1], /not \(discovery_parallel_effective \| bool\)/);
+  // PLAY SAYISI 1'DE KALMALI: ikinci bir play `vars:` kapsamini TASIMAZ (TUZAK 3/4).
+  assert.equal((play.match(/^- name:/gm) || []).length, 1, 'play sayisi 1 degil');
+});
+
+// ── PF7: BETIK SIFIR DISI CIKARSA CLUSTER FAIL ──────────────────────────────
+//
+// MUTASYON TURUNDA BULUNDU: `rc != 0` dalini kaldirmak hicbir bekciyi
+// kizartmiyordu. PF4 (yoklama tukendi) `rc` HIC TASIMIYOR, yani o dali
+// sinamiyor; bu ayri bir yol.
+//
+// Runner sozlesmesi "is hatalari SATIRLA bildirilir, surec 0 doner" diyor — ama
+// betik CALISTIRILAMAZSA (kopya bozuk, izin yok, kabuk yok) `shell` sifir disi
+// doner. O halde satirlar gelse bile cluster GUVENILMEZ: seri yol da ayni kurali
+// uyguluyor (`10_discover.yml`).
+test('PF7 betik sifir disi cikarsa cluster FAIL (satir gelse bile)', { skip: !HAS_ANSIBLE }, () => {
+  const r = paralelKostur({ clusters: ['c1'], exitKodu: 3 });
+  assert.ok(!r.playFailed, `play dustu:\n${r.out.slice(-2000)}`);
+  assert.deepEqual(
+    r.failed,
+    ['c1'],
+    `sifir disi cikan is basarili sayildi — failed=${JSON.stringify(r.failed)} rows=${JSON.stringify(r.rows)}`,
+  );
+  assert.ok(
+    r.rows.some((x) => /;RUNNER;FAIL;/.test(x)),
+    `FAIL satiri yok: ${JSON.stringify(r.rows)}`,
+  );
+  // Ve betigin GERCEKTEN kostugunun kaniti: kendi satiri da toplanmis olmali.
+  // Aksi halde bu test, betigi hic kosturmadan da gecerdi.
+  assert.ok(
+    r.rows.some((x) => x.startsWith('c1;jump-c1;odeme-api;')),
+    `betik kosmamis: ${JSON.stringify(r.rows)}`,
   );
 });

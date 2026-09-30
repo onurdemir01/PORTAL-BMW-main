@@ -175,10 +175,19 @@
 # ── BASARISIZLIK: DORT AYRI SEBEP, HEPSI ACIK ──────────────────────────────
 #   ulasilamadi        -> SSH/transport
 #   is numarasi yok    -> async hic baslamadi
-#   `rc` YOK           -> async sonucu OKUNAMADI (delegasyon/async-dir uyusmazligi)
-#   `rc` != 0          -> betik kendi icinde dustu
+#   `rc` YOK           -> async sonucu OKUNAMADI (delegasyon/async-dir uyusmazligi,
+#                         yoklamanin kendi hatasi, ya da bitmemis is)
+#   `rc` != 0          -> betik kendi icinde dustu ya da async butcesi asildi
+#
 # `rc` VARLIGI SART: delegasyon tuzagi `finished: true` dondurdugu icin ona
 # guvenen bir kontrol bu sinifi HIC gormez.
+#
+# `finished` AYRICA SORULMUYOR — MUTASYONLA OLCULDU, ULASILAMAZ:
+# `retries = ceil(async / 3)` ve `delay = 3` oldugu icin yoklama HER ZAMAN async
+# butcesini kapsar; butce asildiginda `async_status` `rc != 0` ile doner
+# ("did not complete within the requested time"). Yoklamanin kendisi patlarsa da
+# sonuc `rc` TASIMAZ ve ustteki kosul yakalar. Kanitlanamayan savunma kodu bu
+# depoda tutulmuyor (bkz. PR-A'daki `is mapping` karari).
 - name: "DISCOVER | Record transport/runtime failure"
   ansible.builtin.set_fact:
     _discovery_rows: >-
@@ -192,7 +201,6 @@
   when:
     - (item.0.unreachable | default(false)) or (item.1.unreachable | default(false))
       or (item.0.ansible_job_id is not defined)
-      or (not (item.1.finished | default(false)))
       or (item.1.rc is not defined)
       or ((item.1.rc | default(0) | int) != 0)
   changed_when: false
