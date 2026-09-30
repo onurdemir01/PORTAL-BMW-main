@@ -128,6 +128,24 @@ test('OR5 dump betigi (sahte nginx + dzdo): @@NGINX_T ok, @@LOADED nginx -T list
   assert.deepEqual(o.ssl.map((f) => f.path), [`${pp}/ssl/orphan.crt`]);
 });
 
+// OR5 macOS'ta kirmiziydi: dump betigi `sed -E` icinde `\s` kullaniyordu. `\s`
+// GNU sed EKLENTISIDIR; BSD sed (macOS) onu tanimaz ve degistirme HIC yapilmaz —
+// server_name "server_name", sertifika yolu satirin tamami olarak okunuyordu ve
+// kullanilan sertifika "kullanilmayan" gorunuyordu. Linux'ta (jump sunuculari,
+// CI) GNU araclari oldugu icin OR5 orada bu hatayi GOREMEZ; bu bekci platformdan
+// bagimsiz olarak POSIX karakter sinifini zorunlu kilar.
+test('OR7 dump betigi `\\s` GNU eklentisine dayanmiyor (POSIX [[:space:]])', () => {
+  const script = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'ansible', 'bmw_portal', 'nginx_console', 'files', 'nginx_console_dump.sh'),
+    'utf8',
+  );
+  const satirlar = script
+    .split('\n')
+    .map((l, i) => `${i + 1}: ${l}`)
+    .filter((l) => /(sed|grep)[^|]*\\s/.test(l) && !/^\d+:\s*#/.test(l));
+  assert.deepEqual(satirlar, [], 'GNU\'ya ozgu `\\s` kullanan sed/grep satirlari');
+});
+
 test('OR6 UI/uc sozlesmesi: /orphans ucu, Kullanilmayan sekmesi, Sertifikalar "kullanilmayan" filtresi', () => {
   const idx = fs.readFileSync(path.join(__dirname, '..', 'index.cjs'), 'utf8');
   assert.ok(idx.includes("router.get('/orphans'") && idx.includes('orphansOf(sm, now)'), '/orphans ucu');
