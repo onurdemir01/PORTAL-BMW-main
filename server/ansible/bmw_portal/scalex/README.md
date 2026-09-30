@@ -30,12 +30,20 @@ AWX_PROJECT_DIR/
 │           ├── discovery.yml    (keşif: workloads / state / health — SALT OKUNUR)
 │           ├── openshift_inventory_scalex.yaml   (yedek cluster kataloğu)
 │           ├── tasks/
-│           └── files/scalex_runner.sh
+│           └── files/
+│               ├── scalex_runner.sh
+│               └── scalex_batch.sh   (keşif: jump başına tek SSH turu sarmalayıcısı)
 └── bmw_openshift_jobs/
     └── global_variables/        ← ZATEN VAR, bu pakette YOK
         ├── credentials.yaml     (vault: OCP servis kullanıcısı parolaları + `username`)
         └── mail_vars.yml        (SMTP: smtp_host, smtp_port, mail_from, mail_subject_prefix)
 ```
+
+> **Keşif taşıması (`scalex_discovery_transport`)** — varsayılan `batch`: jump sunucusu
+> başına TEK SSH oturumu; runner STDIN ile gider, cluster'lar `scalex_batch.sh` içinde aynı
+> anda koşar (kopya/async yoklaması yok). `async` eski paralel yol (`10_discover_parallel.yml`),
+> `scalex_discovery_parallel: false` seri yol. `scalex_batch.sh` kopyalanmazsa keşif
+> `lookup` hatasıyla düşer — iki dosya birlikte kopyalanır.
 
 `main.yml` ve `discovery.yml`,
 `../../../bmw_openshift_jobs/global_variables/` yolunu kullanır. Bu yüzden yukarıdaki
