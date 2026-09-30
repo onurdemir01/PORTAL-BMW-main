@@ -49,7 +49,16 @@ function scanFiles() {
 
 // Yorum satirlari elenir: aciklamalarda "oc login patladi" gibi cumleler geciyor
 // ve bunlari komut saymak bekciyi gurultuye bogar.
-const codeLines = (src) => src.split('\n').filter((l) => !/^\s*(#|\/\/)/.test(l));
+// GOREV ADLARI DA ELENIR: `- name: "..."` duzyazidir, CALISTIRILMAZ. Eskiden
+// adlardaki kelimeler tek tek istisna listesine ekleniyordu ("Probe candidate
+// oc paths" -> `paths`); 2026-09-30'da OpsX'in "Secilen oc ikilisini AWX
+// log'una yaz" gorev adi `oc ikilisini` diye yakalandi ve bekci, OpsX kodunda
+// hicbir hata yokken KIRMIZIYA dondu. Kelime kelime yamamak yerine SINIF
+// kapatildi. Olculdu: ad satirlari atlaninca kaybolan tek "komutlar" `paths`
+// ve `ikilisini` — gercek komutlarin hicbiri (patch/get/exec/...) yalnizca bir
+// gorev adinda gecmiyor.
+const codeLines = (src) =>
+  src.split('\n').filter((l) => !/^\s*(#|\/\/)/.test(l) && !/^\s*(-\s+)?name:/.test(l));
 
 /**
  * Bir satirdaki `oc <alt-komut>` cagrisini bulur.
@@ -66,7 +75,6 @@ function ocSubcommand(line) {
 // gercek bir komut yanlislikla susturulmasin.
 const KOMUT_DEGIL = new Set([
   'binary', // "oc binary bulunamadi" (gorev adi)
-  'paths', // "Probe candidate oc paths" (gorev adi)
   'client', // "oc client ... " (mesaj)
   'bin', // degisken adi
 ]);
