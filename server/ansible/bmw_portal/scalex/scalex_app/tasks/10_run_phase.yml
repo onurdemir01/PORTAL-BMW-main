@@ -14,6 +14,12 @@
     OCP_OC_PATHS: "{{ scalex_target.oc_paths | join(':') }}"
     TLS_VERIFY: "{{ scalex_target.tls_verify | bool | string | lower }}"
     NS: "{{ oc_namespace }}"
+    # TOPLU EXECUTE (paket v23): once butun uygulamalar hazirlanir, sonra hepsi
+    # patch'lenir, sonra TEK dogrulama dongusu — toplam bekleme en yavas
+    # uygulamanin suresi. ACIL GERI DONUS: `scalex_batch_execute: false` ile
+    # uygulama-basina seri yol (kod silinmedi). `default(true)` BOOLEAN DEGIL:
+    # acikca `false` gonderilmisse o kullanilir.
+    SCALEX_BATCH_EXECUTE: "{{ scalex_batch_execute | default(true) | bool | string | lower }}"
     # CLUSTER BASINA UYGULAMA LISTESI — hedef bazli secim.
     #
     # Secim eskiden AD BAZLIYDI ve hedefler `uygulama × cluster` CARPIMI olarak
