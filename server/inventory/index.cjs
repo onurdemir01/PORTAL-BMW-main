@@ -1446,6 +1446,18 @@ function initInventory(app) {
       const pool = await getPool();
       if (!pool) return res.status(503).json({ ok: false, error: 'Veritabanı bağlantısı yok.' });
 
+      // UYGULANAN KOSUL GORUNUR OLSUN (kullanici, 2026-10-01: "envanterde sorgular bir
+      // sapitiyor... cluster name gbocpqa1 icerir OR cluster name gbocpqa2 icerir deyip
+      // uyguladigimiz zaman sorgu adam akilli calismiyor").
+      //
+      // Gelismis filtre TEK BASINA calismiyor: arama kutusu, kolon basligi suzgecleri ve
+      // cok-secimli suzgecler de ayni WHERE'e AND ile ekleniyor. Kullanici yalniz kendi
+      // yazdigi iki kurali goruyor, aradaki AND'i GORMUYOR - "sapitti" dedigi sey cogu
+      // zaman budur. Artik calisan kosul yanitta doner ve ekranda yazar.
+      //
+      // DEGERLER YERINE KONUR ama yalnizca GOSTERIM icin: calisan sorgu hala
+      // parametrelidir (enjeksiyon yuzeyi acilmaz).
+      let _appliedWhere = '';
       const buildWhere = (req2) => {
         const parts = [];
         if (search.length >= 3 && searchCols.length > 0) {
@@ -1492,7 +1504,21 @@ function initInventory(app) {
           const advancedWhere = buildAdvancedWhereClause(filterGroup, allCols, req2, colTypes);
           if (advancedWhere) parts.push(`(${advancedWhere})`);
         }
-        return parts.length ? `WHERE ${parts.join(' AND ')}` : '';
+        const w = parts.length ? `WHERE ${parts.join(' AND ')}` : '';
+        // Gosterim metni: @param adlarini baglanan degerlerle degistir.
+        if (!_appliedWhere && w) {
+          let metin = w;
+          for (const [ad, deger] of Object.entries(req2.parameters || {})) {
+            if (ad === 'limitVal' || ad === 'offsetVal') continue;
+            const v = deger && typeof deger === 'object' ? deger.value : deger;
+            metin = metin.replace(
+              new RegExp('@' + ad + '\b', 'g'),
+              typeof v === 'string' ? `'${v.replace(/'/g, "''")}'` : String(v),
+            );
+          }
+          _appliedWhere = metin;
+        }
+        return w;
       };
 
       // TOPLAM SAYIM: pencere fonksiyonu KALDIRILDI (2026-09-10, kullanici karari).
@@ -1563,6 +1589,9 @@ function initInventory(app) {
         table,
         columns: responseCols,
         rows: responseRows,
+        // CALISAN KOSUL: kullanici kendi kurallarini goruyor ama arama kutusu / kolon
+        // suzgecleriyle AND'lendigini GORMUYORDU. Artik ne kostuysa o yaziyor.
+        appliedWhere: _appliedWhere || null,
         // `pages` yalnizca toplam KESIN oldugunda gercek sayfa sayisidir; aksi halde
         // "en az bu kadar" anlamina gelir ve `hasMore` bir sonraki sayfanin varligini
         // soyler. Arayuz ikisini ayirt eder (kesin degilse sayinin yanina "+" konur).

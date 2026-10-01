@@ -60,6 +60,12 @@ export interface PaginationInfo {
 }
 
 export interface TableDataResult {
+  /**
+   * SUNUCUDA GERÇEKTEN ÇALIŞAN WHERE (2026-10-01). Gelişmiş filtre tek başına
+   * çalışmaz: arama kutusu ve kolon süzgeçleri aynı WHERE'e AND ile eklenir.
+   * Kullanıcı yalnız kendi kurallarını gördüğü için sonuç "sapıtmış" görünüyordu.
+   */
+  appliedWhere?: string | null;
   ok: boolean;
   table: string;
   columns: string[];

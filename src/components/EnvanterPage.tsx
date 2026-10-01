@@ -157,6 +157,11 @@ const EnvanterPage: React.FC = () => {
   const [allColumns, setAllColumns] = useState<string[]>([]);
   const [visibleCols, setVisibleCols] = useState<string[]>([]);
   const [rows, setRows] = useState<Record<string, unknown>[]>([]);
+  // SUNUCUDA CALISAN KOSUL (2026-10-01). Kullanici: "sorgular bir sapitiyor... gbocpqa1
+  // icerir OR gbocpqa2 icerir deyip uyguladigimiz zaman adam akilli calismiyor."
+  // Gelismis filtre TEK BASINA kosmuyor - arama kutusu ve kolon suzgecleri ayni WHERE'e
+  // AND ile ekleniyor; kullanici o AND'i gormuyordu. Artik ne kostuysa ekranda yaziyor.
+  const [appliedWhere, setAppliedWhere] = useState<string | null>(null);
   // `exact` false ise `total` bir ALT SINIRDIR: sunucu COUNT(*) OVER() kullanmayi
   // birakti (her aramada tum tabloyu taramak zorunda kaliyordu) ve artik limit+1 satir
   // yoklamasi yapiyor. Dar sonuc kumelerinde sayi yine KESIN; genis olanlarda "200+"
@@ -257,6 +262,7 @@ const EnvanterPage: React.FC = () => {
         });
         if (!r.ok) throw new Error((r as unknown as { error: string }).error || 'Veri alınamadı');
         setRows(r.rows);
+        setAppliedWhere(r.appliedWhere ?? null);
         setPagination(r.pagination);
       } catch (e: unknown) {
         setError(e instanceof Error ? e.message : String(e));
@@ -802,6 +808,23 @@ const EnvanterPage: React.FC = () => {
             </button>
           </div>
         </div>
+      )}
+
+      {/* CALISAN KOSUL: "neden bu satirlar geldi" sorusunun tek cevabi. Suzgec paneli
+          kapaliyken de gorunur - sapma cogu zaman GORUNMEYEN bir suzgecten geliyor. */}
+      {appliedWhere && (
+        <details className="bg-gray-50 border border-gray-100 rounded-xl px-3 py-2">
+          <summary className="text-[11px] text-gray-500 cursor-pointer select-none">
+            Çalışan koşul {totalActiveFilters > 0 || search ? '(süzgeçleriniz birleştirildi)' : ''}
+          </summary>
+          <code className="block mt-1 text-[11px] text-gray-700 break-all whitespace-pre-wrap">
+            {appliedWhere}
+          </code>
+          <div className="mt-1 text-[10px] text-gray-400">
+            Arama kutusu, kolon süzgeçleri ve gelişmiş filtre <b>AND</b> ile birleşir;
+            gelişmiş filtrenin kendi içindeki AND/OR seçimi parantez içinde uygulanır.
+          </div>
+        </details>
       )}
 
       {/* Error */}

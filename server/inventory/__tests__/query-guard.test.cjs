@@ -150,3 +150,73 @@ test('custom sorgu varsayilan limiti 200 DEGIL ust sinir (10000); truncated bayr
   assert.ok(/parseInt\(limitParam \|\| String\(MAX_ROWS\), 10\)/.test(src));
   assert.ok(/truncated: result\.recordset\.length >= limit/.test(src), 'sinira takilma yanitta bildirilmeli');
 });
+
+// ── GELISMIS FILTRE: OR GRUBU (GF1..GF4, 2026-10-01) ────────────────────────────────
+//
+// Kullanici: "envanterde sorgular bir sapitiyor. cluster name gbocpqa1 icerir OR cluster
+// name gbocpqa2 icerir deyip uyguladigimiz zaman sorgu adam akilli calismiyor."
+//
+// Olculdu: uretilen SQL DOGRU. Asil sorun GORUNURLUK - gelismis filtre tek basina
+// kosmuyor, arama kutusu ve kolon suzgecleri ayni WHERE'e AND ile ekleniyor ve kullanici
+// o AND'i gormuyordu. Bu bekciler hem SQL'i hem gorunurlugu kilitler.
+const INV_SRC = require('node:fs').readFileSync(
+  require('node:path').join(__dirname, '..', 'index.cjs'),
+  'utf8',
+);
+
+function sahteReq() {
+  return { parameters: {}, input(n, t, v) { this.parameters[n] = { value: v }; } };
+}
+
+test('GF1 OR grubu OR ile birlesir, AND grubu AND ile', () => {
+  const b = buildAdvancedWhereClause;
+  const f = (v) => ({ col: 'cluster_name', op: 'contains', value: v });
+  const types = new Map([['cluster_name', 'nvarchar']]);
+  const orSql = b({ mode: 'OR', filters: [f('gbocpqa1'), f('gbocpqa2')] }, ['cluster_name'], sahteReq(), types);
+  assert.match(orSql, / OR /, 'OR grubu AND ile birlestirilmis - kullanicinin sikayeti');
+  assert.ok(!/ AND /.test(orSql), 'OR grubunda AND var');
+  const andSql = b({ mode: 'AND', filters: [f('a'), f('b')] }, ['cluster_name'], sahteReq(), types);
+  assert.match(andSql, / AND /);
+  assert.ok(!/ OR /.test(andSql));
+});
+
+test('GF2 OR grubu WHERE icinde PARANTEZLENIR (yoksa AND once baglar)', () => {
+  // `x = 1 AND a LIKE .. OR b LIKE ..` SQL'de `(x=1 AND a) OR b` demektir - bambaska
+  // bir sonuc kumesi. Parantez kaybolursa arama kutusuyla birlikte kullanildiginda
+  // sessizce yanlis satirlar doner.
+  const i = INV_SRC.indexOf('const advancedWhere = buildAdvancedWhereClause(');
+  assert.ok(i > 0, 'advanced filtre cagrisi bulunamadi');
+  assert.match(
+    INV_SRC.slice(i, i + 200),
+    /parts\.push\(`\(\$\{advancedWhere\}\)`\)/,
+    'OR grubu parantezlenmeden WHERE e ekleniyor',
+  );
+});
+
+test('GF3 bilinmeyen kolon SESSIZCE suzgeci dusurur ama TUM kosulu dusurmez', () => {
+  // Beyaz liste disi kolon atlanir (enjeksiyon savunmasi). Iki kuraldan biri gecersizse
+  // oteki calismaya devam eder - hepsini atip TUM tabloyu dondurmek en kotusu olurdu.
+  const b = buildAdvancedWhereClause;
+  const sql2 = b(
+    { mode: 'OR', filters: [
+      { col: 'yok_boyle_kolon', op: 'contains', value: 'x' },
+      { col: 'cluster_name', op: 'contains', value: 'gbocpqa2' },
+    ] },
+    ['cluster_name'],
+    sahteReq(),
+    new Map([['cluster_name', 'nvarchar']]),
+  );
+  assert.match(sql2, /cluster_name/);
+  assert.ok(!/yok_boyle_kolon/.test(sql2));
+  assert.ok(!/ OR /.test(sql2), 'tek gecerli kural kaldi, yine de OR uretilmis');
+});
+
+test('GF4 CALISAN KOSUL yanitta doner ve ekranda gosterilir', () => {
+  assert.match(INV_SRC, /appliedWhere: _appliedWhere \|\| null/, 'kosul yanitta donmuyor');
+  const ui = require('node:fs').readFileSync(
+    require('node:path').join(__dirname, '..', '..', '..', 'src', 'components', 'EnvanterPage.tsx'),
+    'utf8',
+  );
+  assert.match(ui, /setAppliedWhere\(r\.appliedWhere \?\? null\)/, 'ekran kosulu almiyor');
+  assert.match(ui, /Çalışan koşul/, 'kosul ekranda gosterilmiyor');
+});
