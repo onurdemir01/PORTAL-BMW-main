@@ -195,6 +195,8 @@ const AppNameStep: React.FC<Props> = ({
   // "Kayit yok" ile "yetkin yok" AYRI seyler. Eskiden ikisi de ayni bos ekrani gosteriyordu;
   // kullanici "tara" deyip ancak o zaman 403 goruyordu.
   const [denied, setDenied] = useState(false);
+  // Sunucunun ret açıklaması (kural + izinli gruplar + başvuru yolu).
+  const [deniedMessage, setDeniedMessage] = useState('');
   const [failed, setFailed] = useState<string[]>([]);
   // Tarandı ama BOŞ çıktı: "hiç taranmadı"dan ayrı bir durum (bkz. ocp_app_scan_log).
   // Bu bilgi olmadan sihirbaz aynı namespace'e her girişte yeni bir AWX job'ı açıyordu.
@@ -232,6 +234,20 @@ const AppNameStep: React.FC<Props> = ({
           .inventoryApps(env, tenant, clusterKey.split(','), namespace)
           .catch(() => null);
         if (cancelled) return;
+        // KISITLI NAMESPACE: otomatik canlı tarama YAPILMAZ. Eskiden liste boş
+        // (cached:false) geldiği için sihirbaz "taranmamış" sanıp AWX taramasını
+        // başlatıyor, o da 403 ile düşüyordu — kullanıcı sebepsiz bir "hata" görüyordu.
+        if (r?.restriction) {
+          setItems([]);
+          setFailed([]);
+          setDenied(true);
+          setDeniedMessage(r.message || '');
+          setCache(null);
+          setSources({});
+          setMembership({});
+          return;
+        }
+        setDeniedMessage('');
         if (!r || !r.cached) {
           setItems([]);
           setFailed([]);
@@ -565,7 +581,8 @@ const AppNameStep: React.FC<Props> = ({
           <div className="rounded-xl border border-[var(--border)] p-4 text-center space-y-2">
             <p className="text-xs text-[var(--text-muted)]">
               {denied
-                ? "Bu namespace'in uygulama listesini görme yetkiniz yok. Uygulama adını biliyorsanız yukarıya yazabilirsiniz."
+                ? deniedMessage ||
+                  "Bu namespace'in uygulama listesini görme yetkiniz yok. Erişim için LogX yöneticisine (Admin) başvurun."
                 : scannedAt
                   ? `Bu namespace ${shortDate(scannedAt)} tarihinde tarandı ve çalışan bir uygulama bulunamadı — namespace boş görünüyor.`
                   : 'Bu namespace için kayıtlı uygulama listesi yok. Adını biliyorsanız yukarıya yazın.'}
