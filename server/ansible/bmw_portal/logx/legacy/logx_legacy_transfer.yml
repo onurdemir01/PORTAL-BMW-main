@@ -89,7 +89,9 @@
   # ATLAR ve `set_stats` yazan toplayici play (play2) hic calismaz.
   ignore_unreachable: true
   gather_facts: false
-  become: false
+  become: true
+  become_user: "{{ logx_legacy_user | default('was') }}"
+  become_method: dzdo
   strategy: free
 
   vars:
@@ -193,7 +195,11 @@
         ansible.builtin.assert:
           that:
             - valid_source_paths | length > 0
-          fail_msg: "Arsivlenecek mevcut ve okunabilir bir dosya bulunamadi."
+          fail_msg: >-
+            Arsivlenecek mevcut ve okunabilir bir dosya bulunamadi.
+            Dosya basina sebep: {{ per_file_status | default([]) | map(attribute='reason') | list }}.
+            Yollar: {{ host_selected_files | default([]) | map(attribute='path') | list }}.
+            Okuma {{ logx_legacy_user | default('was') }} kullanicisiyla denendi.
         when: single_host | bool
 
       - name: "Staging dizininin durumunu kontrol et (tek-host)"
@@ -475,7 +481,9 @@
 - name: "LogX v2 - Coklu-host per-host ZIP'leri tek arsivde birlestir"
   hosts: "{{ selected_files | map(attribute='host') | unique | list }}"
   gather_facts: false
-  become: false
+  become: true
+  become_user: "{{ logx_legacy_user | default('was') }}"
+  become_method: dzdo
   run_once: true
 
   vars:

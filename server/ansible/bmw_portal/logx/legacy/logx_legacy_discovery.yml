@@ -39,7 +39,9 @@
 - name: "LogX v2 — Legacy log dosyası keşfi"
   hosts: "{{ target_hosts | default('all') }}"
   gather_facts: false
-  become: false
+  become: true
+  become_user: "{{ logx_legacy_user | default('was') }}"
+  become_method: dzdo
   strategy: free
   # `rescue` YALNIZCA GOREV hatalarini yakalar; SSH/DNS kesintisini (unreachable)
   # YAKALAMAZ. O durumda host "unreachable" isaretlenir ve TUM host'lar boyle
