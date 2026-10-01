@@ -474,7 +474,7 @@ export const scalexApi = {
       status: string;
       finished: boolean;
       failed: boolean;
-      output: string;
+      // `output` YOK: keşif durum ucu AWX stdout'unu indirmez (sonuç artifact'tan).
       result: ScaleXDiscoveryResult | null;
       message?: string;
     }>;

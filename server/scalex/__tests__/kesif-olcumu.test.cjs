@@ -91,28 +91,28 @@ test('T3c TIMING satiri yoksa dizi BOS (uydurulmus satir yok)', () => {
   assert.deepEqual(r.timing, []);
 });
 
-// ══ T4: IS BITMEDEN STDOUT INDIRILMEZ ═══════════════════════════════════════
+// ══ T4: KESIF YOKLAMASI STDOUT INDIRMEZ — BITMIS ISTE DE ═══════════════════
 //
-// OLCULEN ISRAF: `/discover/:s/:j/status` her 3 saniyede bir yoklaniyordu ve her
-// yoklamada isin TUM stdout'u indiriliyordu — oysa kesif yolunda ciktiyi OKUYAN
-// KIMSE YOK (`WorkloadStep.poll`, `ScaleXPage` saglik dongusu ve `StoppedPanel`
-// `finished` gelene kadar yanitin geri kalanini atiyor).
-test('T4 kesif yoklamasi is BITMEDEN stdout indirmiyor', () => {
+// ILK ADIM (PR-0): `/discover/:s/:j/status` her yoklamada TUM stdout'u
+// indiriyordu; is bitene kadar indirmez oldu. IKINCI ADIM (2026-10): bitmis
+// iste de indirmez. Uc cagiran (`WorkloadStep.poll`, `ScaleXPage` saglik
+// dongusu, `StoppedPanel`) yalnizca `finished` ve `result` okuyor; tam cekim
+// SONUCU kullaniciya gecikmeyle veriyordu (stdout indirmesi uretimde ~20 sn).
+test('T4 kesif durum ucu AWX stdout`unu HIC indirmiyor (sonuc artifact`tan)', () => {
   const g = rota('/discover/:serverId/:jobId/status');
-  assert.ok(
-    !/Promise\.all\(\[[\s\S]{0,200}getJobOutputOnServer/.test(g),
-    'durum ve cikti hala AYNI ANDA cekiliyor — yoklama basina tam stdout indirilir',
-  );
   assert.match(g, /getJobStatusOnServer/, 'durum hic cekilmiyor');
-  // KARAR NOKTASI: cikti cagrisi `status.finished` kosuluna BAGLI olmali.
-  // Yalnizca "Promise.all yok" demek, cagriyi kosulsuz bir satira tasiyarak da
-  // gecerdi.
-  const c = /status\.finished\s*\?[\s\S]{0,300}?getJobOutputOnServer/.test(g);
-  assert.ok(c, 'stdout cekimi `status.finished` kosuluna bagli degil');
-  // Durum ciktidan ONCE gelmeli; sonra gelseydi kosul degerlendirilemezdi.
-  assert.ok(
-    g.indexOf('getJobStatusOnServer') < g.indexOf('getJobOutputOnServer'),
-    'cikti cekimi durum cekiminden ONCE — kosul anlamsiz',
+  assert.match(g, /extractDiscoveryResult\(status\.artifacts\)/, 'sonuc artifact`tan okunmuyor');
+  assert.doesNotMatch(g, /getJobOutputOnServer/, 'kesif durum ucu stdout indiriyor');
+  // Istemci tipi de alani tasimaz: bir ekran onu okumaya kalkarsa tsc duser.
+  const api = oku('src/api/scalexApi.ts');
+  const tip = api.slice(
+    api.indexOf('async discoverStatus('),
+    api.indexOf('async discoverStatus(') + 600,
+  );
+  assert.doesNotMatch(
+    tip.slice(0, tip.indexOf('}>;')),
+    /\boutput:/,
+    'discoverStatus tipi `output` tasiyor',
   );
 });
 
