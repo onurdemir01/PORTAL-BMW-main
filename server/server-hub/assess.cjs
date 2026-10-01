@@ -911,11 +911,16 @@ function assess(data) {
     for (const h of genel) if ((h.web || []).some((w) => w.product === p)) out.add(U(h.host));
     return out;
   };
+  // ENVANTER SUTUNU YOK MU: dbo.Inventory'de o urunun surum sutunu hic yoksa envanter
+  // sayisi 0 DEGIL, BILINMIYOR'dur. Uretimde RHA tam olarak boyle okundu (`apache_version`
+  // da `httpd_version` da yok) ve panel "envanterde 0 RHA" dedi.
+  const invUnknown = data.invProductUnknown || {};
   const kapsamaSatiri = (p) => {
     const env = envanterUrun(p);
     const tar = taranmisUrun(p);
     const eslesen = [...env].filter((h) => tar.has(h));
     return {
+      inventoryUnknown: !!invUnknown[p],
       inventory: env.size,
       scanned: eslesen.length,
       // ENVANTERDE OLMAYAN AMA TARAMADA CIKAN: envanter eksik demektir, gizlenmemeli.

@@ -65,15 +65,35 @@ async function loadLatest() {
     { col: 'httpd_version', product: 'RHA' },
     { col: 'jboss_version', product: 'JBOSS' },
     { col: 'was_version', product: 'WAS' },
-  ].filter((x) => hasCol(x.col));
-  const invSelect = ['host', hasCol('env') ? 'env' : null, ...PRODUCT_COLS.map((x) => x.col)]
+  ];
+  // HANGI URUNUN ENVANTER SUTUNU YOK (2026-10-01): olmayan sutunu sessizce atmak, o urunun
+  // envanterini 0 gosteriyordu. Uretimde RHA tam olarak boyle okundu - `apache_version` da
+  // `httpd_version` da dbo.Inventory'de YOK, panel "envanterde 0 RHA var" dedi ve tablo
+  // tutarsiz gorundu. "Sutun yok" ile "envanterde yok" AYRI seylerdir; hangisinin eksik
+  // oldugu yukari tasinir ve ekran 0 yerine "envanter sutunu yok" yazar.
+  const PRODUCT_COLS_ALL = PRODUCT_COLS;
+  const invProductCols = {};
+  for (const { col, product } of PRODUCT_COLS_ALL) {
+    if (!invProductCols[product]) invProductCols[product] = { cols: [], present: [] };
+    invProductCols[product].cols.push(col);
+    if (hasCol(col)) invProductCols[product].present.push(col);
+  }
+  const invProductUnknown = Object.fromEntries(
+    Object.entries(invProductCols).map(([p, v]) => [p, v.present.length === 0]),
+  );
+  const invSelect = [
+    'host',
+    hasCol('env') ? 'env' : null,
+    ...[...new Set(PRODUCT_COLS_ALL.filter((x) => hasCol(x.col)).map((x) => x.col))],
+  ]
     .filter(Boolean)
     .join(', ');
   const invEnv = await query(`SELECT ${invSelect} FROM dbo.Inventory WHERE host IS NOT NULL`)
     .then((r) =>
       (r.recordset || []).map((row) => {
         const products = [];
-        for (const { col, product } of PRODUCT_COLS) {
+        for (const { col, product } of PRODUCT_COLS_ALL) {
+          if (!hasCol(col)) continue;
           const v = row[col] == null ? '' : String(row[col]).trim();
           if (v && !products.includes(product)) products.push(product);
         }
@@ -93,7 +113,7 @@ async function loadLatest() {
   ]);
   return {
     tableMissing: false,
-    data: { hosts, init, jboss, jvms, web, vhosts, ips, sshd, mwApps, invEnv },
+    data: { hosts, init, jboss, jvms, web, vhosts, ips, sshd, mwApps, invEnv, invProductUnknown },
   };
 }
 

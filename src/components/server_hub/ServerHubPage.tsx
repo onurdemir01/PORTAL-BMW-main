@@ -260,13 +260,38 @@ function KapsamaPaneli({ c }: { c: NonNullable<ShOverview['summary']>['scanCover
     tar,
     eksikHosts,
     birim = 'sunucu',
+    envBilinmiyor = false,
   }: {
     ad: string;
     env: number;
     tar: number;
     eksikHosts?: string[];
     birim?: string;
+    /** Envanterde bu ürünün sütunu YOK — sayı 0 değil, BİLİNMİYOR. */
+    envBilinmiyor?: boolean;
   }) => {
+    // "SUTUN YOK" ILE "ENVANTERDE YOK" AYRI: ikisini 0 diye gostermek, envanterde hic
+    // kayit olmadigi izlenimi verir ve kapsama yuzdesi uydurma olur.
+    if (envBilinmiyor)
+      return (
+        <tr className="border-t" style={{ borderColor: 'var(--border-subtle)' }}>
+          <td className="px-2.5 py-1.5 font-semibold">{ad}</td>
+          <td
+            className="px-2.5 py-1.5 text-right"
+            colSpan={2}
+            style={{ color: SEV.warning.color }}
+            title="dbo.Inventory'de bu ürünün sürüm sütunu yok — envanter tarafı ölçülemiyor."
+          >
+            envanter sütunu yok
+          </td>
+          <td className="px-2.5 py-1.5 text-right" style={{ color: 'var(--text-muted)' }}>
+            —
+          </td>
+          <td className="px-2.5 py-1.5 text-right tabular-nums" style={{ color: 'var(--text-muted)' }}>
+            taramada {tar.toLocaleString('tr-TR')}
+          </td>
+        </tr>
+      );
     const p = yuzde(tar, env);
     // RENK OLCUTU KAPSAMA: %100 yesil, %90+ sari, altinda kirmizi. Dusuk kapsama bir
     // "bulgu yok" degil, "bakamadik" demektir.
@@ -318,11 +343,11 @@ function KapsamaPaneli({ c }: { c: NonNullable<ShOverview['summary']>['scanCover
         </thead>
         <tbody>
           <Satir ad="Sunucu (tümü)" env={c.hosts.inventory} tar={c.hosts.scanned} />
-          <Satir ad="JBoss" env={c.products.JBOSS.inventory} tar={c.products.JBOSS.scanned} eksikHosts={c.products.JBOSS.missingHosts} />
+          <Satir ad="JBoss" env={c.products.JBOSS.inventory} tar={c.products.JBOSS.scanned} eksikHosts={c.products.JBOSS.missingHosts} envBilinmiyor={c.products.JBOSS.inventoryUnknown} />
           <Satir ad="JVM" env={c.jvm.inventory} tar={c.jvm.scanned} birim="JVM" />
-          <Satir ad="Red Hat Apache" env={c.products.RHA.inventory} tar={c.products.RHA.scanned} eksikHosts={c.products.RHA.missingHosts} />
-          <Satir ad="IBM HTTP Server" env={c.products.IHS.inventory} tar={c.products.IHS.scanned} eksikHosts={c.products.IHS.missingHosts} />
-          <Satir ad="Nginx" env={c.products.NGINX.inventory} tar={c.products.NGINX.scanned} eksikHosts={c.products.NGINX.missingHosts} />
+          <Satir ad="Red Hat Apache" env={c.products.RHA.inventory} tar={c.products.RHA.scanned} eksikHosts={c.products.RHA.missingHosts} envBilinmiyor={c.products.RHA.inventoryUnknown} />
+          <Satir ad="IBM HTTP Server" env={c.products.IHS.inventory} tar={c.products.IHS.scanned} eksikHosts={c.products.IHS.missingHosts} envBilinmiyor={c.products.IHS.inventoryUnknown} />
+          <Satir ad="Nginx" env={c.products.NGINX.inventory} tar={c.products.NGINX.scanned} eksikHosts={c.products.NGINX.missingHosts} envBilinmiyor={c.products.NGINX.inventoryUnknown} />
         </tbody>
       </table>
       <div className="px-3 py-1.5 text-[10px]" style={{ color: 'var(--text-muted)' }}>

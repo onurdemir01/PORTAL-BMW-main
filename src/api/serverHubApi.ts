@@ -194,6 +194,8 @@ export interface ShSummary {
     products: Record<
       'JBOSS' | 'RHA' | 'IHS' | 'NGINX',
       {
+        /** true = dbo.Inventory'de bu ürünün sürüm sütunu YOK; sayı 0 değil BİLİNMİYOR. */
+        inventoryUnknown?: boolean;
         inventory: number;
         scanned: number;
         scannedNotInInventory: number;

@@ -717,3 +717,14 @@ test('KP5 ESKI `coverage` alani EZILMEDI (ekranin urun kartlari ona bagli)', () 
   assert.equal(sm.coverage.JBOSS.inventory, 1, 'eski coverage anlami degismis');
   assert.equal(sm.scanCoverage.products.JBOSS.inventory, 2, 'yeni kapsama envanterin tamamini almiyor');
 });
+
+test('KP6 ENVANTER SUTUNU YOKSA 0 degil BILINMIYOR (uretimde RHA boyle okundu)', () => {
+  // dbo.Inventory'de `apache_version` da `httpd_version` da YOK. Kod olmayan sutunu
+  // sessizce atiyordu, panel "envanterde 0 RHA var" diyordu ve tablo tutarsiz gorundu.
+  // "Sutun yok" ile "envanterde yok" AYRI seylerdir.
+  const c = assess({ ...KP_DATA, invProductUnknown: { RHA: true } }).summary.scanCoverage;
+  assert.equal(c.products.RHA.inventoryUnknown, true, 'eksik sutun yukari tasinmiyor');
+  // Olculebilen urunler ETKILENMEZ.
+  assert.ok(!c.products.NGINX.inventoryUnknown);
+  assert.ok(!c.products.JBOSS.inventoryUnknown);
+});
