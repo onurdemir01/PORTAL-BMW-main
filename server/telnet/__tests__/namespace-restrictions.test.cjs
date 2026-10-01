@@ -52,6 +52,11 @@ test('kontrol fail-safe: hata REDDE dusurur, gecirmez', () => {
   // `evaluate` yolunda hata `null` doner; KARAR OKUNAMADIYSA da reddedilmeli.
   if (/\.evaluate\(/.test(SRC)) {
     assert.match(SRC, /if \(!karar \|\| !karar\.allowed\)/, 'karar okunamazsa reddedilmiyor');
+    assert.match(
+      norm(SRC),
+      /\.evaluate\("ocp_namespace", resourceKey, user\) \.catch\(\(\) => null\)/,
+      'evaluate hatasi KARARSIZ (null) degil — izin uydurulabilir',
+    );
   }
   assert.match(SRC, /res\.status\(403\)/, 'reddedilen istek 403 donmeli');
 });
