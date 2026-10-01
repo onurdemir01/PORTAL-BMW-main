@@ -163,7 +163,7 @@ function kaynakEtiketi(resourceType, resourceKey) {
   return `"${k}"`;
 }
 
-function denyDetails(resourceType, resourceKey, rows) {
+function denyDetails(resourceType, resourceKey, rows, owners = []) {
   const users = [...new Set(rows.map((r) => r.username).filter(Boolean).map(String))];
   const groups = [...new Set(rows.map((r) => r.group_dn).filter(Boolean).map(kisaGrup))];
   return {
@@ -172,8 +172,35 @@ function denyDetails(resourceType, resourceKey, rows) {
     label: kaynakEtiketi(resourceType, resourceKey),
     allowedUsers: users,
     allowedGroups: groups,
-    contact: BASVURU,
+    owners,
+    // KAYNAK SAHIBI VARSA basvuru yolu onlar (L4); yoksa LogX yoneticisi.
+    contact: owners.length ? `kaynak sahipleri (${liste(owners)}) ya da ${BASVURU}` : BASVURU,
   };
+}
+
+// Kaynagin SAHIPLERI (logx_v2_restriction_owners) — ret mesajinin basvuru yolu.
+// `owners.cjs` BURAYI kullandigi icin dongu olmasin diye tablo dogrudan okunur.
+// Tablo yoksa / okunamazsa bos: ret mesaji yine LogX yoneticisini gosterir.
+async function sahipler(resourceType, resourceKey) {
+  try {
+    const { rows } = await db.query(
+      `SELECT principal_type, principal FROM logx_v2_restriction_owners
+        WHERE resource_type = $1 AND resource_key = $2
+        ORDER BY principal_type, principal`,
+      [resourceType, resourceKey],
+    );
+    return (rows || [])
+      .filter((r) => (r.principal_type === 'user' || r.principal_type === 'group') && r.principal)
+      .map((r) => (r.principal_type === 'group' ? `grup ${kisaGrup(r.principal)}` : String(r.principal)));
+  } catch {
+    return [];
+  }
+}
+
+// Sahiplerle birlikte ret ayrintisi (rota katmani bunu kullanir).
+async function redAyrintisi(resourceType, resourceKey, rows) {
+  const k = normKey(resourceType, resourceKey);
+  return denyDetails(resourceType, k, rows, await sahipler(resourceType, k));
 }
 
 function liste(xs) {
@@ -220,7 +247,7 @@ async function filterAllowed(resourceType, resourceKeys, user) {
 async function assertAllowed(resourceType, resourceKey, user) {
   const { allowed, rows } = await evaluate(resourceType, resourceKey, user);
   if (!allowed) {
-    const d = denyDetails(resourceType, normKey(resourceType, resourceKey), rows);
+    const d = await redAyrintisi(resourceType, resourceKey, rows);
     throw Object.assign(new Error(denyMessage(d)), { status: 403, restriction: d });
   }
 }
@@ -298,6 +325,15 @@ async function updateRestriction(id, { description }) {
   return rows[0] || null;
 }
 
+async function getRestrictionById(id) {
+  const { rows } = await db.query(
+    `SELECT id, resource_type, resource_key, description FROM logx_v2_restrictions WHERE id = $1`,
+    [id],
+  );
+  const r = rows[0];
+  return r ? { id: r.id, resourceType: r.resource_type, resourceKey: r.resource_key, description: r.description } : null;
+}
+
 async function deleteRestriction(id) {
   const { rowCount } = await db.query(`DELETE FROM logx_v2_restrictions WHERE id = $1`, [id]);
   return rowCount > 0;
@@ -350,7 +386,7 @@ async function removeGrant(restrictionId, username) {
 module.exports = {
   RESOURCE_TYPES,
   isAllowed, assertAllowed, filterAllowed, evaluate, denyDetails, denyMessage,
-  assertEnvAllowed, envKey,
+  assertEnvAllowed, envKey, redAyrintisi, getRestrictionById,
   listRestrictions, createRestriction, updateRestriction, deleteRestriction,
   addGrant, removeGrant, addGroupGrant, removeGroupGrant,
 };

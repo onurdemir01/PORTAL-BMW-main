@@ -11,6 +11,7 @@ const jobsMod = require('./jobs.cjs');
 const downloads = require('./downloads.cjs');
 const ingest = require('./ingest.cjs');
 const restrictions = require('./restrictions.cjs');
+const owners = require('./owners.cjs');
 const adminData = require('./admin.cjs');
 const cleanup = require('./cleanup.cjs');
 const audit = require('../audit.cjs');
@@ -98,7 +99,7 @@ async function ortamReddi(req, envLabel) {
   if (!k) return null;
   const karar = await restrictions.evaluate('env', k, currentUser(req));
   if (karar.allowed) return null;
-  const d = restrictions.denyDetails('env', k, karar.rows);
+  const d = await restrictions.redAyrintisi('env', k, karar.rows);
   redKaydet(req, d);
   return d;
 }
@@ -733,7 +734,7 @@ function initLogXv2(app) {
           .catch(() => null);
         if (!karar || !karar.allowed) {
           const restriction = karar
-            ? restrictions.denyDetails('ocp_namespace', resourceKey, karar.rows)
+            ? await restrictions.redAyrintisi('ocp_namespace', resourceKey, karar.rows)
             : undefined;
           if (restriction) redKaydet(req, restriction);
           return res.json({
@@ -1139,6 +1140,142 @@ function initLogXv2(app) {
       const ok = await adminData.deleteMaskRule(req.params.id);
       await masker.reloadMaskRules().catch(() => {});
       res.json({ ok });
+    }),
+  );
+
+  // ── LogX YONETIMI: Admin + KAYNAK SAHIBI (L4, 2026-10-01) ────────────────────
+  //
+  // `/admin/restrictions*` uclari AYNEN duruyor (mevcut ekran onlari kullaniyor).
+  // `/manage/*` ayni islemleri `canManage` (Admin || kaynak sahibi) ile acar; sahip
+  // ekleme/silme YALNIZCA Admin. Her degisiklik portal_audit_logs'a (`logx_manage_*`).
+  router.use('/manage', (req, res, next) => {
+    try {
+      return require('../../audit/index.cjs').auditMutations('logx_manage')(req, res, next);
+    } catch {
+      return next();
+    }
+  });
+
+  // Yonetebildigim kaynaklar: Admin hepsini (kisitli olanlar + sahibi atanmislar),
+  // sahip yalnizca KENDI kaynaklarini gorur. Sahibi olmayan admin-disi kullanici bos.
+  router.get(
+    '/manage/resources',
+    asyncRoute(async (req, res) => {
+      const user = currentUser(req);
+      const admin = user.role === 'Admin';
+      const kisitlar = await restrictions.listRestrictions();
+      const tumSahipler = await owners.listAllOwners().catch(() => []);
+      const anahtar = (t, k) => `${t}\u0000${k}`;
+      const kaynaklar = new Map();
+      const ekle = (t, k) => {
+        const a = anahtar(t, k);
+        if (!kaynaklar.has(a))
+          kaynaklar.set(a, { resourceType: t, resourceKey: k, restriction: null, owners: [] });
+        return kaynaklar.get(a);
+      };
+      for (const r of kisitlar) {
+        const {
+          resourceType: t,
+          resourceKey: k,
+          id,
+          description,
+          grants,
+          groupGrants,
+          createdBy,
+          createdAt,
+        } = r;
+        ekle(t, k).restriction = { id, description, grants, groupGrants, createdBy, createdAt };
+      }
+      for (const o of tumSahipler) ekle(o.resourceType, o.resourceKey).owners.push(o);
+      let liste = [...kaynaklar.values()];
+      if (!admin) {
+        const benim = new Set(
+          (await owners.ownedBy(user)).map((x) => anahtar(x.resourceType, x.resourceKey)),
+        );
+        liste = liste.filter((x) => benim.has(anahtar(x.resourceType, x.resourceKey)));
+      }
+      res.json({ ok: true, isAdmin: admin, resources: liste });
+    }),
+  );
+
+  // Kaynagi KISITLA (sahip kendi kaynagini da kisitlayabilir).
+  router.post(
+    '/manage/restrictions',
+    asyncRoute(async (req, res) => {
+      const { resourceType, resourceKey } = req.body || {};
+      await owners.assertCanManage(currentUser(req), resourceType, resourceKey);
+      const row = await restrictions.createRestriction(req.body || {}, currentUser(req).username);
+      res.json({ ok: true, restriction: row });
+    }),
+  );
+
+  // Var olan bir kisitlama uzerindeki islemler: yetki kisitlamanin KAYNAGINA gore.
+  async function yonetilenKisit(req) {
+    const r = await restrictions.getRestrictionById(req.params.id);
+    if (!r) throw Object.assign(new Error('Kısıtlama bulunamadı.'), { status: 404 });
+    await owners.assertCanManage(currentUser(req), r.resourceType, r.resourceKey);
+    return r;
+  }
+  router.delete(
+    '/manage/restrictions/:id',
+    asyncRoute(async (req, res) => {
+      await yonetilenKisit(req);
+      res.json({ ok: await restrictions.deleteRestriction(req.params.id) });
+    }),
+  );
+  router.post(
+    '/manage/restrictions/:id/grants',
+    asyncRoute(async (req, res) => {
+      await yonetilenKisit(req);
+      const grant = await restrictions.addGrant(
+        req.params.id,
+        req.body?.username,
+        currentUser(req).username,
+      );
+      res.json({ ok: true, grant });
+    }),
+  );
+  router.delete(
+    '/manage/restrictions/:id/grants',
+    asyncRoute(async (req, res) => {
+      await yonetilenKisit(req);
+      res.json({ ok: await restrictions.removeGrant(req.params.id, req.body?.username) });
+    }),
+  );
+  router.post(
+    '/manage/restrictions/:id/group-grants',
+    asyncRoute(async (req, res) => {
+      await yonetilenKisit(req);
+      const grant = await restrictions.addGroupGrant(
+        req.params.id,
+        req.body?.groupDn,
+        currentUser(req).username,
+      );
+      res.json({ ok: true, grant });
+    }),
+  );
+  router.delete(
+    '/manage/restrictions/:id/group-grants',
+    asyncRoute(async (req, res) => {
+      await yonetilenKisit(req);
+      res.json({ ok: await restrictions.removeGroupGrant(req.params.id, req.body?.groupDn) });
+    }),
+  );
+
+  // SAHIP ekle/sil — YALNIZCA Admin. Sahip kendi sahipligini devredemez/genisletemez.
+  router.post(
+    '/manage/owners',
+    requireAdmin,
+    asyncRoute(async (req, res) => {
+      const owner = await owners.addOwner(req.body || {}, currentUser(req).username);
+      res.json({ ok: true, owner });
+    }),
+  );
+  router.delete(
+    '/manage/owners/:id',
+    requireAdmin,
+    asyncRoute(async (req, res) => {
+      res.json({ ok: await owners.removeOwner(req.params.id) });
     }),
   );
 

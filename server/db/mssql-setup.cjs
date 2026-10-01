@@ -454,6 +454,26 @@ const TABLES = [
       )`,
   },
   {
+    // LogX KAYNAK SAHIPLERI (2026-10-01). Admin bir kaynaga (tip + anahtar) sahip
+    // atar; sahip YALNIZCA o kaynagin kisitini ve izinlerini yonetir, sahip ekleyemez.
+    // Kisitlama SATIRINA degil (tip, anahtar) ciftine bagli: kaynak henuz kisitli
+    // degilken de sahip atanabilir. Baslangicta BOS — kimse sahip degil.
+    // `principal_type` + `principal` NOT NULL: username/group_dn'i iki NULL'lanabilir
+    // kolonda tutmak UNIQUE'i bozardi (MSSQL tek NULL'a izin verir — grant tablosu notu).
+    name: 'logx_v2_restriction_owners',
+    sql: `
+      CREATE TABLE logx_v2_restriction_owners (
+        id             INT IDENTITY(1,1) PRIMARY KEY,
+        resource_type  NVARCHAR(20) NOT NULL,
+        resource_key   NVARCHAR(255) NOT NULL,
+        principal_type NVARCHAR(10) NOT NULL,
+        principal      NVARCHAR(500) NOT NULL,
+        created_by     NVARCHAR(255) NOT NULL,
+        created_at     DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+        UNIQUE(resource_type, resource_key, principal_type, principal)
+      )`,
+  },
+  {
     // ScaleX — her (cluster x calistirma) icin BIR satir. Bes cluster'dan biri
     // dustugunde hangisinin geri alinmasi gerektigi ancak boyle belli olur.
     name: 'scalex_operations',
