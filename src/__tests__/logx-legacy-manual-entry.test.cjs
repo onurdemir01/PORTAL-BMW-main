@@ -63,7 +63,12 @@ test('ME3 gonderilecek deger BUYUK HARFE cevrilir ve ekranda GOSTERILIR', () => 
   assert.match(norm(APP_STEP), /const typed = search\.trim\(\)\.toUpperCase\(\)/);
   assert.match(norm(APP_STEP), /\{typed\}/, 'gonderilecek deger ekranda gosterilmiyor');
   assert.match(norm(HOST_STEP), /const manualTyped = manualInput\.trim\(\)\.toUpperCase\(\)/);
-  assert.match(norm(HOST_STEP), /\{manualTyped\}/, 'gonderilecek sunucu adi gosterilmiyor');
+  // COKLU EKLEME (2026-10-02): gonderilecek adlar LISTE olarak gosterilir.
+  assert.match(
+    norm(HOST_STEP),
+    /\{manualNew\.join\(", "\)\}/,
+    'gonderilecek sunucu adlari gosterilmiyor',
+  );
 });
 
 test('ME4 listede ZATEN VARSA serbest metin yolu CIKMAZ (yinelenen giris olmasin)', () => {
@@ -75,7 +80,7 @@ test('ME4 listede ZATEN VARSA serbest metin yolu CIKMAZ (yinelenen giris olmasin
   assert.match(norm(APP_STEP), /!exactExists/, 'kontrol hesaplaniyor ama KULLANILMIYOR');
   assert.match(
     norm(HOST_STEP),
-    /const manualInInventory = \(hosts \|\| \[\]\)\.some\(/,
+    /const manualInInventory = manualTokens\.filter\(\(t\) => inventoryNames\.has\(t\)\)/,
     'sunucu icin envanterde-var kontrolu yok',
   );
 });
@@ -93,9 +98,10 @@ test('ME5 bicim hatasi ANINDA soylenir (400 beklenmez)', () => {
   // sessizce kaybolmustu.
   assert.match(
     n,
-    /const manualFormatBad =[^;]*SAFE_MANUAL_HOST_RE\.test\(manualTyped\)/,
+    /const manualBad = manualTokens\.filter\(\(t\) => !SAFE_MANUAL_HOST_RE\.test\(t\)/,
     'bicim durumu regex`ten TURETILMIYOR — denetim sahte olabilir',
   );
+  assert.match(n, /const manualFormatBad = manualBad\.length > 0/);
   assert.match(n, /\{manualTyped && manualFormatBad && \(/, 'hata mesaji RENDER EDILMIYOR');
   assert.match(n, /Geçersiz karakter/, 'kullaniciya ne oldugunu soyleyen metin yok');
 });
@@ -104,7 +110,7 @@ test('ME6 gecersiz deger EKLENEMEZ (dugme kapali)', () => {
   const n = norm(HOST_STEP);
   assert.match(
     n,
-    /const manualCanAdd = manualTyped\.length >= 2 && !manualFormatBad && !manualInInventory && !manualAlreadyAdded/,
+    /const manualCanAdd = manualNew\.length > 0 && !manualFormatBad/,
     'ekleme kosulu eksik',
   );
   assert.match(n, /disabled=\{busy \|\| !manualCanAdd\}/, 'dugme kosula BAGLI degil');
@@ -124,18 +130,19 @@ test('ME8 envanterde HIC sunucu yokken de elle giris YAPILABILIR', () => {
   // Bu cikmaz ozellikle ELLE GIRILEN bir uygulamada KESIN olusur: envanterde kaydi
   // olmayan bir uygulamanin sunucusu da yoktur. Acilmazsa uygulama adini elle girme
   // ozelligi tek basina ISE YARAMAZDI.
+  // TEK DUZEN (2026-10-02): erken donus ekrani ilk "Ekle"de liste ekranina geciyor,
+  // tarama dugmesi ise HIC acilmiyordu. Artik ayri bir "envanter bos" ekrani YOK;
+  // davranis LogXSihirbaz.test.tsx H1-H3'te render edilerek kanitlanir.
   const n = norm(HOST_STEP);
-  assert.match(
+  assert.doesNotMatch(
     n,
     /if \(hosts\.length === 0 && manual\.length === 0\)/,
-    'bos envanter hala mutlak cikmaz',
+    'ayri "envanter bos" ekrani geri gelmis — tarama dugmesi orada yok',
   );
-  assert.match(n, /\{manualEntryBlock\}/, 'cikmaz ekraninda elle giris sunulmuyor');
-  // TEK TANIM, IKI KULLANIM: iki kopya sessizce ayrisirdi.
   assert.equal(
     (n.match(/\{manualEntryBlock\}/g) || []).length,
-    2,
-    'elle giris blogu iki yerde de kullanilmiyor (ya da kopyalanmis)',
+    1,
+    'elle giris blogu tek duzende bir kez cizilmeli',
   );
 });
 
@@ -147,4 +154,7 @@ test('ME9 elle girilenler gonderilen listeye DAHIL ediliyor', () => {
     /onSubmit\(\[\.\.\.selectedHostNames, \.\.\.manual\], \{ manual \}\)/,
     'elle girilen sunucular gonderime dahil edilmiyor — kullanici ekledi saniyor',
   );
+  // DUGME ELLE EKLENENLERI DE SAYAR — raporlanan hata buydu.
+  assert.match(norm(HOST_STEP), /const toplam = selectedHostNames\.length \+ manual\.length/);
+  assert.match(norm(HOST_STEP), /disabled=\{busy \|\| toplam === 0\}/);
 });

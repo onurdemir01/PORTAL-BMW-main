@@ -21,9 +21,17 @@ type Props = {
   /** Yalnızca Admin yanıtında gelir; normal kullanıcıya hiç gönderilmez. */
   technicalDetail?: string;
   onRestart: () => void;
+  /** Legacy: sunucu secimine don (uygulama ve elle eklenen sunucular korunur). */
+  onBackToHosts?: () => void;
 };
 
-const FailedStep: React.FC<Props> = ({ jobId, message, technicalDetail, onRestart }) => {
+const FailedStep: React.FC<Props> = ({
+  jobId,
+  message,
+  technicalDetail,
+  onRestart,
+  onBackToHosts,
+}) => {
   const [showOutput, setShowOutput] = useState(false);
   const [output, setOutput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -55,7 +63,14 @@ const FailedStep: React.FC<Props> = ({ jobId, message, technicalDetail, onRestar
       <p className="text-sm max-w-xl text-[var(--text-primary)]">{message}</p>
 
       <div className="flex items-center gap-2">
-        <button onClick={onRestart} className="btn-primary">
+        {/* Tek secenek "her seyi sil, bastan basla" degil: Legacy'de uygulama ve elle
+            girilen sunucular korunarak sunucu secimine donulebilir. */}
+        {onBackToHosts && (
+          <button onClick={onBackToHosts} className="btn-primary">
+            Sunucu seçimine dön
+          </button>
+        )}
+        <button onClick={onRestart} className={onBackToHosts ? 'btn-secondary' : 'btn-primary'}>
           <ArrowPathIcon className="w-4 h-4" />
           Yeniden Başla
         </button>

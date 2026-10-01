@@ -46,17 +46,21 @@ const JobProgress: React.FC<Props> = ({
   // terminal kullaniciya hicbir sey anlatmiyordu.
   const [outputError, setOutputError] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
+  // Iptal BASARISIZ olursa soylenir (eskiden sessizce yutuluyordu).
+  const [cancelError, setCancelError] = useState<string | null>(null);
   const doneRef = useRef(false);
 
   async function handleCancel() {
     if (cancelling || doneRef.current) return;
     setCancelling(true);
+    setCancelError(null);
     try {
       await logxV2Api.cancelJob(jobId);
       doneRef.current = true;
       onDone({ status: 'canceled', artifacts: null, errorMessage: null });
-    } catch {
+    } catch (e) {
       setCancelling(false); // iptal başarısızsa poll'e devam etsin
+      setCancelError(e instanceof Error ? e.message : String(e));
     }
   }
 
@@ -185,6 +189,11 @@ const JobProgress: React.FC<Props> = ({
           {cancelling ? 'İptal ediliyor…' : 'İşlemi İptal Et'}
         </button>
       </div>
+      {cancelError && (
+        <p className="mt-2 text-xs text-red-600 text-center" data-testid="logx-iptal-hata">
+          İptal edilemedi: {cancelError}. İş sürüyor; tekrar deneyebilirsiniz.
+        </p>
+      )}
 
       <div className="mt-4">
         <button

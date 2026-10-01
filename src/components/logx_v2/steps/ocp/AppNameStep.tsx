@@ -364,8 +364,22 @@ const AppNameStep: React.FC<Props> = ({
   }
 
   // Listede olmayan bir ad: serbest metin kaçış yolu (yeni uygulama, envanter gecikmesi).
+  // Sunucudaki `SAFE_OCP_NAME_RE` ile AYNI desen (server/logx/v2/ocp.cjs).
   const exactExists = groups.some((g) => g.name.toLowerCase() === query);
-  const canAddFreeText = query.length > 0 && !exactExists && !selected.has(search.trim());
+  const freeName = search.trim();
+  const freeFormatBad = freeName.length > 0 && !/^[A-Za-z0-9._-]{1,253}$/.test(freeName);
+  const canAddFreeText =
+    query.length > 0 && !exactExists && !selected.has(freeName) && !freeFormatBad;
+  function addFreeText() {
+    if (!canAddFreeText || atLimit) return;
+    toggle(freeName);
+    setSearch('');
+  }
+  // ELLE EKLENEN ADLAR GORUNUR. Eskiden "Listede yok — X'i ekle" adi seçime ekleyip
+  // aramayi temizliyordu; satirlar yalnizca listeden kuruldugu icin eklenen ad HICBIR
+  // YERDE gorunmuyor ve kaldirilamiyordu (yalnizca gonder dugmesindeki sayi artiyordu).
+  const listedeki = new Set(groups.map((g) => g.name));
+  const elleSecilen = [...selected].filter((n) => !listedeki.has(n));
 
   return (
     <div className="space-y-3">
@@ -409,17 +423,51 @@ const AppNameStep: React.FC<Props> = ({
           autoFocus
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Ara veya listede olmayan bir uygulama adı yazın"
+          // Enter: listede yoksa yazilan adi secime ekler.
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && canAddFreeText) {
+              e.preventDefault();
+              addFreeText();
+            }
+          }}
+          placeholder="Ara veya listede olmayan bir uygulama adı yazın (Enter ekler)"
           className="w-full pl-9 pr-3 py-2.5 text-sm border border-[var(--border)] rounded-xl outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)] transition font-mono"
         />
       </div>
 
+      {freeFormatBad && (
+        <p className="text-xs text-[var(--status-danger)]" data-testid="logx-ocp-app-bicim">
+          Geçersiz karakter. Uygulama adında yalnızca harf, rakam, nokta, alt çizgi ve tire
+          kullanılabilir.
+        </p>
+      )}
+
+      {elleSecilen.length > 0 && (
+        <div className="flex flex-wrap gap-1.5" data-testid="logx-elle-uygulamalar">
+          {elleSecilen.map((n) => (
+            <span
+              key={n}
+              className="inline-flex items-center gap-1 rounded-lg border border-[var(--status-warning)] bg-[var(--status-warning-bg)] px-2 py-0.5 text-xs"
+            >
+              <span className="font-mono">{n}</span>
+              <span className="text-[10px] text-[var(--text-muted)]">listede yok</span>
+              <button
+                type="button"
+                onClick={() => toggle(n)}
+                disabled={busy}
+                aria-label={`${n} kaldır`}
+                className="text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+              >
+                ✕
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+
       {canAddFreeText && (
         <button
-          onClick={() => {
-            toggle(search.trim());
-            setSearch('');
-          }}
+          onClick={addFreeText}
           disabled={atLimit}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-dashed border-[var(--accent)] text-[var(--accent)] hover:bg-[var(--bg-elevated)] transition-colors disabled:opacity-50 disabled:pointer-events-none"
         >

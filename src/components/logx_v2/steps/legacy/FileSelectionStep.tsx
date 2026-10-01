@@ -58,6 +58,11 @@ interface Props {
   result: LegacyDiscoveryResult;
   onSubmit: (selected: { host: string; path: string }[]) => void;
   busy?: boolean;
+  /** Envanterde OLMAYAN, elle eklenmis sunucular (istek kaydindaki `manualHosts`).
+   *  Taranamazlarsa en olasi sebep adin yanlis yazilmasidir; ekran bunu soyler. */
+  manualHosts?: string[];
+  /** Sunucu secimine geri don (uygulama ve elle eklenen sunucular korunur). */
+  onBackToHosts?: () => void;
 }
 
 const ROW_HEIGHT = 34; // dosya satırı
@@ -138,7 +143,13 @@ type Row =
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-const FileSelectionStep: React.FC<Props> = ({ result, onSubmit, busy }) => {
+const FileSelectionStep: React.FC<Props> = ({
+  result,
+  onSubmit,
+  busy,
+  manualHosts = [],
+  onBackToHosts,
+}) => {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState('');
   const [onlySelected, setOnlySelected] = useState(false);
@@ -387,9 +398,39 @@ const FileSelectionStep: React.FC<Props> = ({ result, onSubmit, busy }) => {
           Bazı sunuculara erişilemedi — aşağıda yalnızca başarıyla taranan sunucular gösteriliyor.
         </div>
       )}
+      {/* TARANAMAYAN SUNUCULAR SEBEPLERIYLE. Eskiden yalnizca adlar listeleniyordu;
+          `h.error` hic gosterilmiyordu. Elle eklenen (envanterde olmayan) bir sunucu
+          taranamadiysa en olasi sebep adin yanlis yazilmasidir — bu da soylenir. */}
       {failedHosts.length > 0 && (
-        <div className="text-xs text-[var(--text-muted)]">
-          Erişilemeyen sunucular: {failedHosts.map((h) => h.host).join(', ')}
+        <div className="text-xs space-y-1" data-testid="logx-taranamayan">
+          <p className="text-[var(--text-muted)]">Taranamayan sunucular:</p>
+          <ul className="space-y-0.5">
+            {failedHosts.map((h) => {
+              const elle = manualHosts.map((x) => x.toUpperCase()).includes(h.host.toUpperCase());
+              return (
+                <li key={h.host} className="text-[var(--text-secondary)]">
+                  <span className="font-mono font-semibold">{h.host}</span>
+                  {elle && (
+                    <span className="ml-1 text-amber-700">(envanterde yok — adı doğru mu?)</span>
+                  )}
+                  {': '}
+                  <span className="text-[var(--text-muted)]">
+                    {h.error || 'sebep bildirilmedi'}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+          {onBackToHosts && (
+            <button
+              type="button"
+              onClick={onBackToHosts}
+              disabled={busy}
+              className="btn-secondary text-xs"
+            >
+              Sunucu seçimine dön
+            </button>
+          )}
         </div>
       )}
 

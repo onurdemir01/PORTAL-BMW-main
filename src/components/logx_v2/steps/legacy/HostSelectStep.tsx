@@ -21,7 +21,7 @@
 // host'un iki kurulumunun log dizinlerini de (`/vhosting`, `/vhosting8`) tarıyor ve bu
 // DOĞRU davranış. Yani buradaki ayrıştırma bir ekran doğruluğu meselesidir; seçim
 // gönderilirken host adları tekilleştirilir.
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { MagnifyingGlassIcon, ServerIcon } from '@heroicons/react/24/outline';
 import { logxV2Api, type LegacyHost } from '@/api/logxV2Api';
 import {
@@ -41,6 +41,8 @@ interface Props {
    *  gonderilmezse sunucu envanter disi her adi 400 ile REDDEDER (anti-TOCTOU
    *  kapisi BILEREK varsayilan-kapali). */
   onSubmit: (hosts: string[], opts: { manual: string[] }) => void;
+  /** Daha once elle eklenmis sunucular (geri donuste korunur). */
+  initialManual?: string[];
 }
 
 // Sunucu tarafindaki `SAFE_MANUAL_HOST_RE`nin AYNISI. Deger AWX'te `--limit`
@@ -53,7 +55,7 @@ const STATUS_META: Record<string, { label: string; className: string }> = {
   stopped: { label: 'DURMUŞ', className: 'bg-red-50 text-red-700 border-red-100' },
 };
 
-const HostSelectStep: React.FC<Props> = ({ app, busy, onSubmit }) => {
+const HostSelectStep: React.FC<Props> = ({ app, busy, onSubmit, initialManual = [] }) => {
   const [hosts, setHosts] = useState<LegacyHost[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
@@ -61,8 +63,11 @@ const HostSelectStep: React.FC<Props> = ({ app, busy, onSubmit }) => {
   // Aktif hızlı filtreler (ortam veya JBoss sürümü). Boşsa filtre yok.
   const [facet, setFacet] = useState<string | null>(null);
   // ELLE GIRILEN sunucular ve o an yazilmakta olan ad.
-  const [manual, setManual] = useState<string[]>([]);
+  const [manual, setManual] = useState<string[]>(initialManual);
   const [manualInput, setManualInput] = useState('');
+  // Ekledikten sonra odak elle giris kutusunda KALIR (eskiden ekran duzen degistirip
+  // arama kutusuna `autoFocus` veriyordu; ikinci sunucu adi yanlis kutuya yaziliyordu).
+  const manualInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     logxV2Api
@@ -139,21 +144,36 @@ const HostSelectStep: React.FC<Props> = ({ app, busy, onSubmit }) => {
   // ELLE GIRIS — turetilmis durum. Hepsi RENDER sirasinda hesaplanir ki geri
   // bildirim kullanici yazarken ANINDA guncellensin (bir `useEffect` gecikmesi,
   // "yazdim ama bir sey olmadi" hissi verirdi).
+  //
+  // COKLU EKLEME (2026-10-02): kutu bir LISTE kabul eder — virgul, bosluk ya da
+  // noktali virgulle ayrilmis ("GBCJAP07, GBCJAP08"). Eskiden tek ad kabul ediyordu;
+  // yapistirilan liste "Gecersiz karakter" ile reddediliyor ve kullanici sunuculari
+  // TEK TEK girmek zorunda kaliyordu.
   const manualTyped = manualInput.trim().toUpperCase();
-  const manualFormatBad = manualTyped.length > 0 && !SAFE_MANUAL_HOST_RE.test(manualTyped);
-  const manualInInventory = (hosts || []).some((h) => h.host.toUpperCase() === manualTyped);
-  const manualAlreadyAdded = manual.includes(manualTyped);
-  const manualCanAdd =
-    manualTyped.length >= 2 && !manualFormatBad && !manualInInventory && !manualAlreadyAdded;
+  const manualTokens = [...new Set(manualTyped.split(/[\s,;]+/).filter(Boolean))];
+  const manualBad = manualTokens.filter((t) => !SAFE_MANUAL_HOST_RE.test(t) || t.length < 2);
+  const manualFormatBad = manualBad.length > 0;
+  const inventoryNames = new Set((hosts || []).map((h) => h.host.toUpperCase()));
+  const manualInInventory = manualTokens.filter((t) => inventoryNames.has(t));
+  const manualAlreadyAdded = manualTokens.filter((t) => manual.includes(t));
+  const manualNew = manualTokens.filter(
+    (t) => !manualBad.includes(t) && !inventoryNames.has(t) && !manual.includes(t),
+  );
+  const manualCanAdd = manualNew.length > 0 && !manualFormatBad;
 
   function addManual() {
     if (!manualCanAdd) return;
-    setManual((prev) => [...prev, manualTyped]);
+    setManual((prev) => [...prev, ...manualNew]);
     setManualInput('');
+    manualInputRef.current?.focus();
   }
 
-  // Elle giris blogu IKI yerde kullaniliyor: normal listede ve envanterde HIC
-  // sunucu olmadigi durumda. Tek tanim, iki kullanim — ikisi ayrisamaz.
+  // GONDERILECEK TOPLAM: listeden isaretlenen + elle eklenen. Dugme ESKIDEN yalnizca
+  // listeden isaretlenenleri sayiyordu; envanterde sunucusu olmayan (elle girilen)
+  // bir uygulamada dugme HICBIR ZAMAN acilmiyordu — akis burada kilitleniyordu.
+  const toplam = selectedHostNames.length + manual.length;
+
+  // Elle giris blogu TEK duzende her zaman cizilir (envanter dolu da bos da).
   // ── LISTEDE OLMAYAN SUNUCU ────────────────────────────────────────────
   // Sunucu SADECE envanter listesinden secilebiliyordu; envantere henuz
   // girmemis bir sunucu icin kullanicinin hicbir yolu yoktu.
@@ -178,6 +198,7 @@ const HostSelectStep: React.FC<Props> = ({ app, busy, onSubmit }) => {
       </p>
       <div className="flex gap-2">
         <input
+          ref={manualInputRef}
           value={manualInput}
           onChange={(e) => setManualInput(e.target.value)}
           onKeyDown={(e) => {
@@ -186,7 +207,7 @@ const HostSelectStep: React.FC<Props> = ({ app, busy, onSubmit }) => {
               addManual();
             }
           }}
-          placeholder="ör. GBCJAP07"
+          placeholder="ör. GBCJAP07, GBCJAP08"
           aria-label="Sunucu adını elle girin"
           disabled={busy}
           className="pf-input flex-1 text-sm font-mono"
@@ -197,28 +218,40 @@ const HostSelectStep: React.FC<Props> = ({ app, busy, onSubmit }) => {
           disabled={busy || !manualCanAdd}
           className="btn-secondary text-sm"
         >
-          Ekle
+          {manualNew.length > 1 ? `${manualNew.length} sunucu ekle` : 'Ekle'}
         </button>
       </div>
+      <p className="text-[11px] text-[var(--text-muted)]">
+        Birden fazla sunucuyu virgül ya da boşlukla ayırarak tek seferde ekleyebilirsiniz; Enter da
+        ekler.
+      </p>
 
       {/* CANLI GERI BILDIRIM — yazarken. Once HATA, sonra BILGI. */}
       {manualTyped && manualFormatBad && (
         <p className="text-xs text-[var(--status-danger)]">
-          Geçersiz karakter. Yalnızca harf, rakam, nokta, tire ve alt çizgi kullanılabilir — bu
-          değer sunucuda da reddedilir.
+          Geçersiz karakter: <span className="font-mono">{manualBad.join(', ')}</span>. Yalnızca
+          harf, rakam, nokta, tire ve alt çizgi (en az 2 karakter) — bu değer sunucuda da
+          reddedilir.
         </p>
       )}
-      {manualTyped && !manualFormatBad && manualInInventory && (
+      {manualTyped && !manualFormatBad && manualInInventory.length > 0 && (
         <p className="text-xs text-[var(--text-muted)]">
-          <span className="font-mono">{manualTyped}</span> zaten listede — yukarıdan işaretleyin,
-          elle eklemeye gerek yok.
+          <span className="font-mono">{manualInInventory.join(', ')}</span> zaten listede —
+          yukarıdan işaretleyin, elle eklemeye gerek yok.
         </p>
       )}
-      {manualTyped && !manualFormatBad && !manualInInventory && !manualAlreadyAdded && (
+      {manualTyped && !manualFormatBad && manualAlreadyAdded.length > 0 && (
         <p className="text-xs text-[var(--text-muted)]">
-          <span className="font-mono font-semibold text-[var(--text-primary)]">{manualTyped}</span>{' '}
-          olarak eklenecek. Bu ad <strong>{app}</strong> için envanterde yok; ortamı da bilinmiyor.
-          Sunucu gerçekten yoksa tarama o ad için sonuç döndürmez.
+          <span className="font-mono">{manualAlreadyAdded.join(', ')}</span> zaten eklendi.
+        </p>
+      )}
+      {manualTyped && !manualFormatBad && manualNew.length > 0 && (
+        <p className="text-xs text-[var(--text-muted)]">
+          <span className="font-mono font-semibold text-[var(--text-primary)]">
+            {manualNew.join(', ')}
+          </span>{' '}
+          olarak eklenecek. Bu ad(lar) <strong>{app}</strong> için envanterde yok; ortamı da
+          bilinmiyor. Sunucu gerçekten yoksa tarama o ad için sonuç döndürmez.
         </p>
       )}
 
@@ -247,130 +280,134 @@ const HostSelectStep: React.FC<Props> = ({ app, busy, onSubmit }) => {
     </div>
   );
 
-  if (error) {
-    return (
-      <div className="bg-red-50 border border-red-100 rounded-xl p-4 text-sm text-red-700">
-        {error}
-      </div>
-    );
-  }
-  if (!hosts) {
+  if (!hosts && !error) {
     return (
       <div className="py-8 text-center text-sm text-[var(--text-muted)]">Sunucular yükleniyor…</div>
     );
   }
-  // ENVANTERDE HIC SUNUCU YOKSA AKIS BURADA BITIYORDU: ekran "bulunamadi" deyip
-  // KAPANIYOR, kullaniciya hicbir cikis yolu birakmiyordu. Ozellikle elle girilen
-  // (envantere hic kayitli olmayan) bir uygulamada bu durum KESIN olusur — yani
-  // uygulama adini elle girme ozelligi tek basina ise yaramazdi.
-  // Artik ayni ekranda elle sunucu eklenebiliyor.
-  if (hosts.length === 0 && manual.length === 0) {
-    return (
-      <div className="space-y-3">
-        <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 text-sm text-amber-800">
-          <span className="font-mono">{app}</span> için envanterde sunucu bulunamadı. Aşağıdan elle
-          ekleyebilirsiniz.
-        </div>
-        {manualEntryBlock}
-      </div>
-    );
-  }
 
+  const envanterVar = (hosts || []).length > 0;
   const allVisibleSelected =
     visible.length > 0 && visible.every((h) => selected.has(hostKey(h.host, majorOfHost(h))));
 
+  // TEK DUZEN (2026-10-02). Eskiden uc ayri ekran vardi (hata / envanter bos / liste) ve
+  // envanter bos ekranindan ilk "Ekle"de liste ekranina GECILIYORDU: bilesen yeniden
+  // cizildigi icin odak kayboluyor, tarama dugmesi ise hic gorunmuyordu. Artik ayni
+  // ekran; envanter listesi yalnizca envanterde sunucu VARSA cizilir, elle giris ve
+  // tarama dugmesi HER ZAMAN oradadir. Liste OKUNAMASA bile (503/403) kullanici elle
+  // ekleyip devam edebilir.
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <p className="text-sm text-[var(--text-secondary)]">Hangi sunucularda log aranacak?</p>
-        <span className="text-xs text-[var(--text-muted)]">
-          {selected.size} / {hosts.length} seçili
+        <span className="text-xs text-[var(--text-muted)]" data-testid="logx-host-sayac">
+          {toplam} seçili{envanterVar ? ` · envanterde ${(hosts || []).length}` : ''}
         </span>
       </div>
 
-      <div className="relative">
-        <MagnifyingGlassIcon className="w-4 h-4 text-[var(--text-muted)] absolute left-3 top-1/2 -translate-y-1/2" />
-        <input
-          autoFocus
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Sunucu ara… (ör. GBCJAP01)"
-          className="w-full pl-9 pr-3 py-2.5 text-sm border border-[var(--border)] rounded-xl outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)] transition font-mono"
-        />
-      </div>
+      {error && (
+        <div className="bg-red-50 border border-red-100 rounded-xl p-3 text-sm text-red-700">
+          Sunucu listesi okunamadı: {error}. Sunucu adlarını biliyorsanız aşağıdan elle ekleyip
+          devam edebilirsiniz.
+        </div>
+      )}
 
-      <div className="flex flex-wrap gap-1.5">
-        <button
-          onClick={toggleAllVisible}
-          disabled={busy || visible.length === 0}
-          className="px-3 py-1 text-xs rounded-full border border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--accent)] transition-colors disabled:opacity-50"
-        >
-          {allVisibleSelected
-            ? 'Görünenlerin seçimini kaldır'
-            : `Görünenleri seç (${visible.length})`}
-        </button>
-        {[...envs.map((e) => ({ key: e, label: e })), ...majorFacets].map((f) => (
-          <button
-            key={f.key}
-            onClick={() => setFacet((cur) => (cur === f.key ? null : f.key))}
-            className={`px-3 py-1 text-xs rounded-full border transition-colors ${
-              facet === f.key
-                ? 'bg-[var(--accent)] text-white border-[var(--accent)]'
-                : 'border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--text-muted)]'
-            }`}
-          >
-            {f.label}
-          </button>
-        ))}
-      </div>
+      {!error && !envanterVar && (
+        <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 text-sm text-amber-800">
+          <span className="font-mono">{app}</span> için envanterde sunucu yok. Sunucu adlarını
+          aşağıya yazıp <strong>Ekle</strong>&apos;ye basın, sonra <strong>Tara</strong>.
+        </div>
+      )}
 
-      <div className="max-h-72 overflow-y-auto border border-[var(--border)] rounded-xl divide-y divide-[var(--border)]">
-        {visible.length === 0 ? (
-          <p className="text-sm text-[var(--text-muted)] text-center py-6">Eşleşen sunucu yok.</p>
-        ) : (
-          visible.map((h) => {
-            const meta = STATUS_META[h.status];
-            const major = majorOfHost(h);
-            const key = hostKey(h.host, major);
-            return (
-              <label
-                key={key}
-                className="flex items-center gap-3 px-4 py-2.5 hover:bg-[var(--bg-elevated)] transition-colors cursor-pointer"
+      {envanterVar && (
+        <>
+          <div className="relative">
+            <MagnifyingGlassIcon className="w-4 h-4 text-[var(--text-muted)] absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              autoFocus
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Sunucu ara… (ör. GBCJAP01)"
+              className="w-full pl-9 pr-3 py-2.5 text-sm border border-[var(--border)] rounded-xl outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)] transition font-mono"
+            />
+          </div>
+
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              onClick={toggleAllVisible}
+              disabled={busy || visible.length === 0}
+              className="px-3 py-1 text-xs rounded-full border border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--accent)] transition-colors disabled:opacity-50"
+            >
+              {allVisibleSelected
+                ? 'Görünenlerin seçimini kaldır'
+                : `Görünenleri seç (${visible.length})`}
+            </button>
+            {[...envs.map((e) => ({ key: e, label: e })), ...majorFacets].map((f) => (
+              <button
+                key={f.key}
+                onClick={() => setFacet((cur) => (cur === f.key ? null : f.key))}
+                className={`px-3 py-1 text-xs rounded-full border transition-colors ${
+                  facet === f.key
+                    ? 'bg-[var(--accent)] text-white border-[var(--accent)]'
+                    : 'border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--text-muted)]'
+                }`}
               >
-                <input
-                  type="checkbox"
-                  checked={selected.has(key)}
-                  onChange={() => toggle(key)}
-                  className="rounded"
-                />
-                <ServerIcon
-                  aria-hidden="true"
-                  className="w-4 h-4 text-[var(--text-muted)] flex-shrink-0"
-                />
-                <span
-                  className="text-sm font-mono text-[var(--text-primary)] flex-1 truncate"
-                  title={h.host}
-                >
-                  {h.host}
-                </span>
-                {h.env && <span className="text-xs text-[var(--text-muted)]">{h.env}</span>}
-                <JbossTag major={major} version={normalizeJbossVersion(h.jbossVersion)} />
-                {meta ? (
-                  <span
-                    className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${meta.className}`}
+                {f.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="max-h-72 overflow-y-auto border border-[var(--border)] rounded-xl divide-y divide-[var(--border)]">
+            {visible.length === 0 ? (
+              <p className="text-sm text-[var(--text-muted)] text-center py-6">
+                Eşleşen sunucu yok.
+              </p>
+            ) : (
+              visible.map((h) => {
+                const meta = STATUS_META[h.status];
+                const major = majorOfHost(h);
+                const key = hostKey(h.host, major);
+                return (
+                  <label
+                    key={key}
+                    className="flex items-center gap-3 px-4 py-2.5 hover:bg-[var(--bg-elevated)] transition-colors cursor-pointer"
                   >
-                    {meta.label}
-                  </span>
-                ) : (
-                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-[var(--bg-elevated)] text-[var(--text-muted)] border-[var(--border)]">
-                    BİLİNMİYOR
-                  </span>
-                )}
-              </label>
-            );
-          })
-        )}
-      </div>
+                    <input
+                      type="checkbox"
+                      checked={selected.has(key)}
+                      onChange={() => toggle(key)}
+                      className="rounded"
+                    />
+                    <ServerIcon
+                      aria-hidden="true"
+                      className="w-4 h-4 text-[var(--text-muted)] flex-shrink-0"
+                    />
+                    <span
+                      className="text-sm font-mono text-[var(--text-primary)] flex-1 truncate"
+                      title={h.host}
+                    >
+                      {h.host}
+                    </span>
+                    {h.env && <span className="text-xs text-[var(--text-muted)]">{h.env}</span>}
+                    <JbossTag major={major} version={normalizeJbossVersion(h.jbossVersion)} />
+                    {meta ? (
+                      <span
+                        className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${meta.className}`}
+                      >
+                        {meta.label}
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-[var(--bg-elevated)] text-[var(--text-muted)] border-[var(--border)]">
+                        BİLİNMİYOR
+                      </span>
+                    )}
+                  </label>
+                );
+              })
+            )}
+          </div>
+        </>
+      )}
 
       {manualEntryBlock}
 
@@ -390,11 +427,19 @@ const HostSelectStep: React.FC<Props> = ({ app, busy, onSubmit }) => {
 
       <button
         onClick={() => onSubmit([...selectedHostNames, ...manual], { manual })}
-        disabled={busy || selectedHostNames.length === 0}
+        disabled={busy || toplam === 0}
         className="btn-primary w-full"
       >
-        {busy ? 'Başlatılıyor…' : `Seçilenleri Tara (${selectedHostNames.length})`}
+        {busy ? 'Başlatılıyor…' : `Seçilenleri Tara (${toplam})`}
       </button>
+      {/* KAPALI DUGMENIN SEBEBI soylenir — sessizce kapali bir dugme "bozuk" gorunur. */}
+      {!busy && toplam === 0 && (
+        <p className="text-xs text-[var(--text-muted)] text-center" data-testid="logx-tara-sebep">
+          {envanterVar
+            ? 'Taramak için listeden en az bir sunucu işaretleyin ya da elle ekleyin.'
+            : 'Taramak için en az bir sunucu adı ekleyin.'}
+        </p>
+      )}
     </div>
   );
 };

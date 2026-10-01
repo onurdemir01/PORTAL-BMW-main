@@ -10,6 +10,11 @@ import {
 } from '@heroicons/react/24/outline';
 import { logxV2Api } from '@/api/logxV2Api';
 
+// Sunucudaki `SAFE_MANUAL_APP_RE` ile AYNI (server/logx/v2/legacy.cjs). Eskiden
+// istemci yalnizca uzunluga bakiyordu; kotu bicimli bir ad (bosluk iceren gibi)
+// kullanici sunuculari da sectikten SONRA, kesif aninda reddediliyordu.
+const SAFE_MANUAL_APP_RE = /^[A-Za-z0-9._-]{1,128}$/;
+
 const AppSearchStep: React.FC<{ onSelect: (app: string) => void; busy?: boolean }> = ({
   onSelect,
   busy,
@@ -41,7 +46,8 @@ const AppSearchStep: React.FC<{ onSelect: (app: string) => void; busy?: boolean 
   // Listede zaten varsa serbest metin dugmesi CIKMAZ — kullanici ayni adi iki
   // farkli yoldan girip yinelenen kayit uretmesin.
   const exactExists = apps.some((a) => a.toUpperCase() === typed);
-  const canAddFreeText = typed.length >= 2 && !loading && !exactExists;
+  const typedFormatBad = typed.length > 0 && !SAFE_MANUAL_APP_RE.test(typed);
+  const canAddFreeText = typed.length >= 2 && !loading && !exactExists && !typedFormatBad;
 
   return (
     <div className="space-y-3">
@@ -60,11 +66,28 @@ const AppSearchStep: React.FC<{ onSelect: (app: string) => void; busy?: boolean 
           autoFocus
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Uygulama adı ara..."
+          // ENTER: tam eslesme varsa onu, listede yoksa yazilan adi, tek sonuc varsa
+          // onu secer; fareye gerek kalmadan ilerlenir.
+          onKeyDown={(e) => {
+            if (e.key !== 'Enter' || busy) return;
+            const tam = apps.find((a) => a.toUpperCase() === typed);
+            if (tam) onSelect(tam);
+            else if (canAddFreeText) onSelect(typed);
+            else if (!loading && apps.length === 1) onSelect(apps[0]);
+            else return;
+            e.preventDefault();
+          }}
+          placeholder="Uygulama adı ara ya da yazın (Enter ile devam)..."
           className="w-full pl-9 pr-3 py-2.5 text-sm border border-[var(--border)] rounded-xl outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)] transition"
         />
       </div>
       {error && <p className="text-sm text-red-600">{error}</p>}
+      {typedFormatBad && (
+        <p className="text-xs text-[var(--status-danger)]" data-testid="logx-app-bicim">
+          Geçersiz karakter. Uygulama adında yalnızca harf, rakam, nokta, alt çizgi ve tire
+          kullanılabilir (boşluk olamaz).
+        </p>
+      )}
 
       {/* LISTEDE OLMAYAN UYGULAMA — SERBEST METIN.
           Uygulama SADECE envanter listesinden secilebiliyordu; envantere henuz
