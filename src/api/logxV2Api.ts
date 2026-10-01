@@ -313,6 +313,35 @@ export const logxV2Api = {
       groupDn?: string;
     }) => postJson<{ ok: boolean; owner: ResourceOwner }>('/manage/owners', data),
     removeOwner: (id: number) => del<{ ok: boolean }>(`/manage/owners/${id}`),
+    /** Admin: bir kullanıcıyı bir kaynak için adım adım sınar (gruplar LDAP'tan canlı). */
+    explain: (q: { username: string; resourceType?: string; resourceKey?: string; env?: string }) =>
+      fetch(
+        `${BASE}/manage/explain?${new URLSearchParams(
+          Object.entries(q).filter(([, v]) => v) as [string, string][],
+        ).toString()}`,
+      ).then((r) => json<ExplainResult>(r)),
+    denials: (username?: string) =>
+      fetch(
+        `${BASE}/manage/denials${username ? `?username=${encodeURIComponent(username)}` : ''}`,
+      ).then((r) => json<{ ok: boolean; denials: DenialRow[] }>(r)),
+    envLabels: () =>
+      fetch(`${BASE}/manage/env-labels`).then((r) =>
+        json<{ ok: boolean; labels: { label: string; sources: string[] }[] }>(r),
+      ),
+    infra: () =>
+      fetch(`${BASE}/manage/infra`).then((r) =>
+        json<{
+          ok: boolean;
+          clusters: {
+            env: string;
+            tenant: string;
+            cluster: string;
+            active: boolean;
+            eksik: string[];
+            notlar: string[];
+          }[];
+        }>(r),
+      ),
   },
 
   /** LogX'in bağlı olduğu AWX template'leri launch'a hazır mı? Sihirbaz, başarısız
@@ -565,6 +594,26 @@ export interface EnvSuffixRow {
 }
 /** Önbellekten dönen liste + tazelik bilgisi. `stale` true ise veri TTL'ini geçmiştir
  *  ama yine de gösterilir (bayat liste, hiç liste olmamasından iyidir). */
+/** "Neden reddedildi?" açıklayıcısının cevabı. */
+export interface ExplainResult {
+  ok: boolean;
+  kullanici: { username: string; grupSayisi: number };
+  kimlikKaynagi: string | null;
+  kimlikUyarisi: string | null;
+  adimlar: { ad: string; izin: boolean | null; aciklama: string; restriction?: LogXRestriction }[];
+  sonuc: 'izin' | 'red';
+}
+
+/** Red günlüğü satırı (logx_audit_logs `v2_denied`). */
+export interface DenialRow {
+  id: number;
+  at: string;
+  username: string;
+  resourceType: string | null;
+  resourceKey: string | null;
+  route: string | null;
+}
+
 /** Kaynak sahibi (kullanıcı ya da AD grubu). */
 export interface ResourceOwner {
   id: number;
