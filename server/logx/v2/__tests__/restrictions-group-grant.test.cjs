@@ -138,3 +138,25 @@ test('tek sorgu, anahtarlar parametreye KONMAZ, iki grant tablosu da okunur', as
     assert.ok(!calls[0].params.includes(GROUP), 'grup listesi SQL parametresi olmamali');
   });
 });
+
+// Admin listesi de ayni dususu kullanir: grup tablosu yokken 500 DEGIL, kullanici
+// adi grant'lariyla doner (eskiden birlesimi elle yaziyordu ve dogrudan dusuyordu).
+test('listRestrictions grup tablosu YOKSA dusmez, kullanici grant`lariyla doner', async () => {
+  const orig = db.query;
+  const sorgular = [];
+  db.query = async (sql) => {
+    sorgular.push(String(sql));
+    if (/logx_v2_restriction_group_grants/.test(sql)) {
+      throw Object.assign(new Error("Invalid object name 'logx_v2_restriction_group_grants'."), { number: 208 });
+    }
+    return { rows: [{ id: 1, resource_type: 'legacy_app', resource_key: 'a', grant_username: 'ali', grant_group: null }] };
+  };
+  try {
+    const liste = await restrictions.listRestrictions();
+    assert.equal(liste.length, 1);
+    assert.ok(sorgular.length >= 2, 'grup tablosuz yeniden deneme yapilmadi');
+    assert.ok(!/logx_v2_restriction_group_grants/.test(sorgular[sorgular.length - 1]));
+  } finally {
+    db.query = orig;
+  }
+});
