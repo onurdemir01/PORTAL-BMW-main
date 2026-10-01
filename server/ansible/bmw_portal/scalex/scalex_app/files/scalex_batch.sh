@@ -18,13 +18,18 @@
 #                         onek-siz verilir. Diger cluster'larin degerleri (parola
 #                         dahil) runner'in ortamindan SILINIR.
 #   ortak degiskenler     (NS, APP_RAW, ...) oldugu gibi gecer.
+#   SCALEX_BATCH_KEYS     (ops.) cluster'a ozgu anahtar listesi; yoksa kesifinki.
+#                         Precheck/execute (12_run_phase_batch.yml) kendi
+#                         listesini verir (APP_RAW, WORKLOAD_KINDS cluster'a ozgu).
+#   SCALEX_BATCH_LABEL    (ops.) FAIL metninin oznesi: "Discovery" (varsayilan)
+#                         ya da "Runner" — her yolun ESKI metniyle ayni kalsin.
 #
 # CIKTI: her cluster icin, sirayla, runner'in satirlari. Basarisizlik satirlari
 # BURADA yazilir ve metni eski paralel yolunkiyle (10_discover_parallel.yml)
 # AYNIDIR:
-#   rc != 0      -> RUNNER;FAIL;Discovery could not complete ... (rc=N: stderr)
+#   rc != 0      -> RUNNER;FAIL;<LABEL> could not complete ... (rc=N: stderr)
 #                   (zaman asimi: rc=124)
-#   satir yok    -> RUNNER;FAIL;Discovery returned no structured result rows
+#   satir yok    -> RUNNER;FAIL;<LABEL> returned no structured result rows
 # Her cluster'in sonunda `__SCALEX_DONE__;<cluster>` yazilir: bu isaret
 # gelmediyse (sarmalayici oldurulduyse, SSH koptuysa) Ansible o cluster'i
 # tasima hatasi sayar. Isaret 7 alanli satir bicimine UYMAZ, satir sayilmaz.
@@ -33,6 +38,8 @@
 # yalnizca dosya yolu.
 set -u
 PER_CLUSTER_KEYS="CLUSTER JUMP_SERVER API_URL OCP_PASSWORD OCP_OC_PATHS TLS_VERIFY SCALEX_EXTRA_KINDS SCALEX_EXTRA_KINDS_SCANNED"
+PER_CLUSTER_KEYS="${SCALEX_BATCH_KEYS:-$PER_CLUSTER_KEYS}"
+LABEL="${SCALEX_BATCH_LABEL:-Discovery}"
 ROW_RE='^[^;]*;[^;]*;[^;]*;[^;]*;[^;]*;[^;]*;'
 
 # Gecici dizin: `/tmp` NOEXEC olabilir (AWX 3365082) — betik yalnizca OKUNUR
@@ -61,7 +68,7 @@ for i in $SCALEX_BATCH_IDX; do
     for v in $(compgen -e); do
       case "$v" in SCALEX_T[0-9]*) unset "$v" ;; esac
     done
-    unset SCALEX_BATCH_IDX SCALEX_BATCH_TIMEOUT
+    unset SCALEX_BATCH_IDX SCALEX_BATCH_TIMEOUT SCALEX_BATCH_KEYS SCALEX_BATCH_LABEL
     # Arka planda + `wait`: alt kabuk sinyal alinca `timeout`u (o da runner'i)
     # oldurebilsin. On planda kosan cocuk, alt kabuk olunce OKSUZ kalip
     # cluster'a `oc` cagirmaya devam ediyordu (mutasyon turunda olculdu).
@@ -82,9 +89,9 @@ for i in $SCALEX_BATCH_IDX; do
   cat "$d/out.$i" 2>/dev/null
   if [ "$rc" != "0" ]; then
     sebep="$(tr '\n' '\t' <"$d/err.$i" 2>/dev/null | awk '{ gsub(/[;\r\t]+/, " "); sub(/^[ ]+/, ""); sub(/[ ]+$/, ""); printf "%s", substr($0, 1, 200) }')"
-    printf '%s;%s;-;-;RUNNER;FAIL;Discovery could not complete because of SSH/transport/shell/runtime failure (rc=%s: %s)\n' "$c" "$j" "$rc" "$sebep"
+    printf '%s;%s;-;-;RUNNER;FAIL;%s could not complete because of SSH/transport/shell/runtime failure (rc=%s: %s)\n' "$c" "$j" "$LABEL" "$rc" "$sebep"
   elif ! grep -Eq "$ROW_RE" "$d/out.$i" 2>/dev/null; then
-    printf '%s;%s;-;-;RUNNER;FAIL;Discovery returned no structured result rows\n' "$c" "$j"
+    printf '%s;%s;-;-;RUNNER;FAIL;%s returned no structured result rows\n' "$c" "$j" "$LABEL"
   fi
   printf '__SCALEX_DONE__;%s\n' "$c"
 done

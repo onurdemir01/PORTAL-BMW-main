@@ -100,6 +100,14 @@
     # CLUSTER PARALELLIGI (precheck ve execute). Acil geri donus:
     # `scalex_parallel_clusters: false` -> cluster basina seri yol (silinmedi).
     phase_parallel_effective: "{{ (scalex_parallel_clusters | default(true)) | bool }}"
+    # PARALEL YOLUN TASIMASI. `batch` (varsayilan): jump basina TEK SSH turu
+    # (12_run_phase_batch.yml) — kesifte olculen kayip (cluster basina
+    # copy+launch+status+remove turlari) burada da vardi. `async`: onceki
+    # paralel yol (11_run_phase_parallel.yml), geri donus icin. Paralellik
+    # kapaliysa her zaman seri.
+    phase_transport_effective: >-
+      {{ 'serial' if not ((scalex_parallel_clusters | default(true)) | bool)
+         else ('async' if (scalex_phase_transport | default('batch') | string | lower) == 'async' else 'batch') }}
     change_confirmation_effective: "{{ change_confirmation | default(false) | bool }}"
     bulk_change_confirmation_effective: "{{ bulk_change_confirmation | default(false) | bool }}"
     _target_replicas_input: "{{ target_replicas | default('') | string | trim }}"
