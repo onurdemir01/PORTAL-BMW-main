@@ -174,6 +174,35 @@ export interface ShSummary {
   ips: { total: number; unused: number };
   ssh: { hosts: number; lowMaxSessions: number; near: number };
   scan: { avgCpuS: number | null; maxCpuS: number | null; maxCpuHost: string | null };
+  /**
+   * TARAMA KAPSAMASI (2026-10-01): envanterde kaç var, tarama kaçına erişebildi.
+   *
+   * Yukarıdaki `coverage` ile KARIŞTIRILMAMALI: o yalnız TARANAN sunucular içinde ürün
+   * eşleşmesine bakar, erişilemeyen sunucular orada hiç görünmez. Bu alan envanterin
+   * TAMAMINI payda alır.
+   *
+   * Bu ekranın bütün sayıları TARANAN sunuculardan hesaplanır; erişilemeyen bir sunucu
+   * hiçbir bulgu üretmez. Kapsama yazılmazsa "sorun yok" ile "bakamadık" aynı görünür.
+   */
+  scanCoverage?: {
+    hosts: {
+      inventory: number;
+      scanned: number;
+      scannedNotInInventory: number;
+      missing: number;
+    };
+    products: Record<
+      'JBOSS' | 'RHA' | 'IHS' | 'NGINX',
+      {
+        inventory: number;
+        scanned: number;
+        scannedNotInInventory: number;
+        missing: number;
+        missingHosts: string[];
+      }
+    >;
+    jvm: { inventory: number; scanned: number; fromInventory: number };
+  };
 }
 export interface ShOverview {
   ok: boolean;

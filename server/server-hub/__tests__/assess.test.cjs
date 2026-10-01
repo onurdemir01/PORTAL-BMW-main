@@ -632,3 +632,88 @@ test('SH10: nginx sozdizimi OLCULEMEDI ile HATALI ayri raporlanir', () => {
   assert.equal(r.summary.web.NGINX.syntaxUnknown, 1);
   assert.equal(r.summary.web.NGINX.syntaxFail, 0);
 });
+
+// ── KAPSAMA: ENVANTER vs TARAMA (KP1..KP5, 2026-10-01) ──────────────────────────────
+//
+// Kullanici: "envanterde kac JBoss oldugunu, ancak Server Hub'in kacina erisip veri
+// cekebildigini; kac JVM oldugunu, Server Hub'in kac JVM'in bilgisini cekebildigini...
+// aynisini Red Hat Apache, IBM Apache ve Nginx icin de. Inventory tablosunda 1800-1900
+// kusur sunucu var, Server Hub playbook'undan su kadarina erisebildik gibi bir sey."
+//
+// NEDEN: bu ekranin butun sayilari TARANAN sunuculardan hesaplanir. Erisilemeyen sunucu
+// hicbir bulgu uretmez - kapsama gorunmezse "sorun yok" ile "bakamadik" ayni okunur.
+const KP_INV = [
+  { host: 'GBAPP01', env: 'PROD', invProducts: ['JBOSS', 'NGINX'] },
+  { host: 'GBAPP02', env: 'PROD', invProducts: ['JBOSS'] },
+  { host: 'GBWEB01', env: 'PROD', invProducts: ['RHA'] },
+  { host: 'GBWEB02', env: 'PROD', invProducts: ['IHS'] },
+];
+const KP_DATA = {
+  hosts: [
+    { host: 'GBAPP01', scan_date: '2026-10-01', products: 'JBOSS7 NGINX' },
+    { host: 'GBWEB01', scan_date: '2026-10-01', products: 'RHA' },
+    { host: 'GBEKSTRA', scan_date: '2026-10-01', products: 'NGINX' },
+  ],
+  init: [],
+  jboss: [],
+  jvms: [
+    { host: 'GBAPP01', gen: 7, jvm: 'app1', running: 1, auto_start: 'true', server_state: 'running', ports: '' },
+  ],
+  web: [
+    { host: 'GBAPP01', product: 'NGINX', running: 1, syntax: 'OK', detail: '' },
+    { host: 'GBWEB01', product: 'RHA', running: 1, syntax: 'OK', detail: '' },
+    { host: 'GBEKSTRA', product: 'NGINX', running: 1, syntax: 'OK', detail: '' },
+  ],
+  vhosts: [],
+  ips: [],
+  sshd: [],
+  mwApps: [
+    { host: 'GBAPP01', app: 'app1', env: 'PROD', status: 'running', jvm_count: 1, autostarts: 'true' },
+    { host: 'GBAPP02', app: 'app2', env: 'PROD', status: 'running', jvm_count: 3, autostarts: 'true true false' },
+  ],
+  invEnv: KP_INV,
+};
+
+test('KP1 SUNUCU kapsamasi envanterin TAMAMINI payda alir', () => {
+  const c = assess(KP_DATA).summary.scanCoverage;
+  assert.equal(c.hosts.inventory, 4, 'envanterdeki tum sunucular sayilmiyor');
+  assert.equal(c.hosts.scanned, 2, 'erisilen sunucu sayisi yanlis');
+  assert.equal(c.hosts.missing, 2, 'erisilemeyen sayisi yanlis');
+  // Envanterde olmayip taramada cikan GIZLENMEZ: envanterin eksik oldugunu gosterir.
+  assert.equal(c.hosts.scannedNotInInventory, 1, 'envanter disi taranan sunucu sayilmiyor');
+});
+
+test('KP2 JBOSS kapsamasi JVM VERISI GELDI MI diye bakar ("urun kurulu" yetmez)', () => {
+  const c = assess(KP_DATA).summary.scanCoverage;
+  assert.equal(c.products.JBOSS.inventory, 2);
+  assert.equal(c.products.JBOSS.scanned, 1, 'JVM verisi gelmeyen sunucu "cekildi" sayilmis');
+  assert.deepEqual(c.products.JBOSS.missingHosts, ['GBAPP02'], 'erisilemeyen host listelenmiyor');
+});
+
+test('KP3 RHA / IHS / NGINX ayri ayri sayiliyor', () => {
+  const c = assess(KP_DATA).summary.scanCoverage;
+  assert.equal(c.products.RHA.inventory, 1);
+  assert.equal(c.products.RHA.scanned, 1);
+  assert.equal(c.products.IHS.inventory, 1);
+  assert.equal(c.products.IHS.scanned, 0, 'hic taranmamis IHS "cekildi" sayilmis');
+  assert.equal(c.products.NGINX.inventory, 1);
+  assert.equal(c.products.NGINX.scanned, 1);
+  assert.equal(c.products.NGINX.scannedNotInInventory, 1, 'envanter disi NGINX sayilmiyor');
+});
+
+test('KP4 JVM: envanter (MWAppsInventory) vs taramadan GELEN', () => {
+  const c = assess(KP_DATA).summary.scanCoverage;
+  assert.equal(c.jvm.inventory, 4, 'envanter JVM toplami yanlis (1 + 3)');
+  assert.equal(c.jvm.scanned, 1, 'taramadan gelen JVM sayisi yanlis');
+  // Envanterden TAMAMLANAN satirlar "cekildi" sayilmaz - odunc alinmis bilgidir.
+  assert.equal(typeof c.jvm.fromInventory, 'number');
+});
+
+test('KP5 ESKI `coverage` alani EZILMEDI (ekranin urun kartlari ona bagli)', () => {
+  const sm = assess(KP_DATA).summary;
+  assert.ok(sm.coverage, 'eski coverage alani kaybolmus');
+  assert.ok(sm.coverage.JBOSS, 'eski coverage urun kirilimi kaybolmus');
+  // Iki alan FARKLI seyi olcer: eski yalniz TARANAN sunucular icinde bakar.
+  assert.equal(sm.coverage.JBOSS.inventory, 1, 'eski coverage anlami degismis');
+  assert.equal(sm.scanCoverage.products.JBOSS.inventory, 2, 'yeni kapsama envanterin tamamini almiyor');
+});

@@ -244,6 +244,107 @@ function Kpi({
   );
 }
 
+/**
+ * Envanter <-> tarama kapsamasi.
+ *
+ * IKI KAYNAK AYRI TUTULUR: envanter `dbo.Inventory` (urun sutunlari) ve
+ * `dbo.MWAppsInventory` (JVM sayisi); tarama ise `Server_Hub_*` tablolari. Biri otekini
+ * DUZELTMEZ - aradaki fark bilgidir ve gosterilmesi gereken sey tam olarak odur.
+ */
+function KapsamaPaneli({ c }: { c: NonNullable<ShOverview['summary']>['scanCoverage'] }) {
+  if (!c) return null;
+  const yuzde = (a: number, b: number) => (b > 0 ? Math.round((a / b) * 100) : 0);
+  const Satir = ({
+    ad,
+    env,
+    tar,
+    eksikHosts,
+    birim = 'sunucu',
+  }: {
+    ad: string;
+    env: number;
+    tar: number;
+    eksikHosts?: string[];
+    birim?: string;
+  }) => {
+    const p = yuzde(tar, env);
+    // RENK OLCUTU KAPSAMA: %100 yesil, %90+ sari, altinda kirmizi. Dusuk kapsama bir
+    // "bulgu yok" degil, "bakamadik" demektir.
+    const renk = env === 0 ? 'var(--status-neutral)' : p >= 100 ? SEV.ok.color : p >= 90 ? SEV.warning.color : SEV.danger.color;
+    return (
+      <tr className="border-t" style={{ borderColor: 'var(--border-subtle)' }}>
+        <td className="px-2.5 py-1.5 font-semibold">{ad}</td>
+        <td className="px-2.5 py-1.5 text-right tabular-nums">{env.toLocaleString('tr-TR')}</td>
+        <td className="px-2.5 py-1.5 text-right tabular-nums" style={{ color: renk, fontWeight: 600 }}>
+          {tar.toLocaleString('tr-TR')}
+        </td>
+        <td className="px-2.5 py-1.5 text-right tabular-nums" style={{ color: renk }}>
+          %{p}
+        </td>
+        <td
+          className="px-2.5 py-1.5 text-right tabular-nums"
+          style={{ color: env - tar > 0 ? SEV.danger.color : 'var(--text-muted)' }}
+          title={
+            eksikHosts && eksikHosts.length
+              ? `Erişilemeyen (ilk ${eksikHosts.length}): ${eksikHosts.join(', ')}`
+              : undefined
+          }
+        >
+          {env - tar > 0 ? `${(env - tar).toLocaleString('tr-TR')} ${birim}` : '—'}
+        </td>
+      </tr>
+    );
+  };
+  return (
+    <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--border-subtle)' }}>
+      <div
+        className="px-3 py-2 text-[12px] font-semibold border-b"
+        style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)' }}
+      >
+        Kapsama — envanterde ne var, tarama neye erişebildi
+        <span className="ml-2 font-normal" style={{ color: 'var(--text-muted)' }}>
+          aşağıdaki tüm sayılar yalnız <b>taranan</b> sunuculardan hesaplanır
+        </span>
+      </div>
+      <table className="w-full text-xs border-collapse">
+        <thead style={{ background: 'var(--bg-surface)' }}>
+          <tr style={{ color: 'var(--text-muted)' }}>
+            <th className="px-2.5 py-1.5 text-left text-[11px] font-semibold">Kapsam</th>
+            <th className="px-2.5 py-1.5 text-right text-[11px] font-semibold">Envanter</th>
+            <th className="px-2.5 py-1.5 text-right text-[11px] font-semibold">Veri çekilen</th>
+            <th className="px-2.5 py-1.5 text-right text-[11px] font-semibold">Kapsama</th>
+            <th className="px-2.5 py-1.5 text-right text-[11px] font-semibold">Erişilemeyen</th>
+          </tr>
+        </thead>
+        <tbody>
+          <Satir ad="Sunucu (tümü)" env={c.hosts.inventory} tar={c.hosts.scanned} />
+          <Satir ad="JBoss" env={c.products.JBOSS.inventory} tar={c.products.JBOSS.scanned} eksikHosts={c.products.JBOSS.missingHosts} />
+          <Satir ad="JVM" env={c.jvm.inventory} tar={c.jvm.scanned} birim="JVM" />
+          <Satir ad="Red Hat Apache" env={c.products.RHA.inventory} tar={c.products.RHA.scanned} eksikHosts={c.products.RHA.missingHosts} />
+          <Satir ad="IBM HTTP Server" env={c.products.IHS.inventory} tar={c.products.IHS.scanned} eksikHosts={c.products.IHS.missingHosts} />
+          <Satir ad="Nginx" env={c.products.NGINX.inventory} tar={c.products.NGINX.scanned} eksikHosts={c.products.NGINX.missingHosts} />
+        </tbody>
+      </table>
+      <div className="px-3 py-1.5 text-[10px]" style={{ color: 'var(--text-muted)' }}>
+        {/* ENVANTERDE OLMAYAN AMA TARAMADA CIKAN: envanterin eksik oldugunu gosterir,
+            gizlenmemeli - "kapsama %100" yazip envanteri kusursuz sanmak yaniltici olurdu. */}
+        {c.hosts.scannedNotInInventory > 0 && (
+          <>
+            {c.hosts.scannedNotInInventory} sunucu taramada çıktı ama <b>envanterde yok</b> —
+            envanter eksik olabilir.{' '}
+          </>
+        )}
+        {c.jvm.fromInventory > 0 && (
+          <>
+            {c.jvm.fromInventory} JVM’in bilgisi sunucudan okunamadı, <b>envanterden</b>{' '}
+            tamamlandı — &quot;veri çekilen&quot; sayısına dahil değil.
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function SevPill({ s, n }: { s: ShSeverity; n?: number }) {
   const t = SEV[s];
   const I = t.icon;
@@ -468,6 +569,17 @@ function HostsTab({
 
       {s && (
         <>
+          {/* ── KAPSAMA: envanterde kac var, tarama kacina erisebildi ──────────────
+              Kullanici (2026-10-01): "envanterde kac JBoss oldugunu, ancak Server Hub'in
+              kacina erisip veri cekebildigini... Inventory tablosunda 1800-1900 kusur
+              sunucu var, Server Hub playbook'undan su kadarina erisebildik gibi bir sey
+              yapabilir miyiz?"
+
+              EN BASTA DURUYOR cunku altindaki TUM sayilar yalnizca TARANAN sunuculardan
+              hesaplaniyor. Erisilemeyen sunucu hicbir bulgu uretmez; kapsama gorunmezse
+              "sorun yok" ile "bakamadik" ayni okunur. */}
+          {s.scanCoverage && <KapsamaPaneli c={s.scanCoverage} />}
+
           {/* ── Genel durum: yuvarlak + bar ── */}
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <Kpi

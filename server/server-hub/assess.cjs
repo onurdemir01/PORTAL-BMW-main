@@ -871,6 +871,99 @@ function assess(data) {
       ),
     };
   }
+  // ── KAPSAMA: ENVANTERDE KAC VAR, TARAMA KACINA ERISEBILDI (kullanici, 2026-10-01) ──
+  //
+  // "Envanterde kac JBoss oldugunu, ancak Server Hub'in kacina erisip veri cekebildigini;
+  //  kac JVM oldugunu, Server Hub'in kac JVM'in bilgisini cekebildigini... aynisini Red Hat
+  //  Apache, IBM Apache ve Nginx'ler icin de. Inventory tablosunda 1800-1900 kusur sunucu
+  //  var, Server Hub playbook'undan su kadarina erisebildik gibi bir sey yapabilir miyiz?"
+  //
+  // NEDEN ONEMLI: bu ekranin butun sayilari TARANAN sunuculardan hesaplaniyor. Erisilemeyen
+  // bir sunucu hicbir bulgu uretmez - yani kapsama yazilmazsa "sorun yok" ile "bakamadik"
+  // ayni gorunur. Bu blok farki ACIKCA sayiya dokuyor.
+  //
+  // IKI KAYNAK AYRI: envanter dbo.Inventory (urun sutunlari) ve dbo.MWAppsInventory (JVM
+  // sayisi); tarama ise Server_Hub_* tablolari. Biri otekini DUZELTMEZ - fark bilgidir.
+  const tarananlar = new Set(genel.map((h) => U(h.host)));
+  const envanterHostlari = new Set();
+  for (const r of data.invEnv || []) {
+    const k = U(shortHost(r.host));
+    if (k) envanterHostlari.add(k);
+  }
+  /** Envanterde bu urunu tasiyan host'lar. */
+  const envanterUrun = (p) => {
+    const out = new Set();
+    for (const [host, urunler] of invProductsByHost) if (urunler.includes(p)) out.add(host);
+    return out;
+  };
+  /** Taramada bu urun icin GERCEKTEN veri gelen host'lar. */
+  const taranmisUrun = (p) => {
+    const out = new Set();
+    if (p === 'JBOSS') {
+      // JBoss icin olcut: JVM satiri geldi mi. "urun kurulu" demek yetmez - veri cekemediysek
+      // o sunucu hakkinda hicbir sey bilmiyoruz.
+      for (const h of genel) if ((h.jvms || []).length) out.add(U(h.host));
+      return out;
+    }
+    // `web` host basina GOMULU satirlardan geliyor (genel.flatMap) ve `host` alani
+    // TASIMIYOR - w.host kullanmak hepsini bos anahtara toplar (ilk surumde oldu, smoke
+    // testte RHA/NGINX kapsamasi 0 cikti).
+    for (const h of genel) if ((h.web || []).some((w) => w.product === p)) out.add(U(h.host));
+    return out;
+  };
+  const kapsamaSatiri = (p) => {
+    const env = envanterUrun(p);
+    const tar = taranmisUrun(p);
+    const eslesen = [...env].filter((h) => tar.has(h));
+    return {
+      inventory: env.size,
+      scanned: eslesen.length,
+      // ENVANTERDE OLMAYAN AMA TARAMADA CIKAN: envanter eksik demektir, gizlenmemeli.
+      scannedNotInInventory: [...tar].filter((h) => !env.has(h)).length,
+      missing: env.size - eslesen.length,
+      // Erisilemeyen ILK 50 sunucu: ekran "kimler" sorusunu da cevaplayabilsin.
+      missingHosts: [...env].filter((h) => !tar.has(h)).sort().slice(0, 50),
+    };
+  };
+
+  // JVM SAYISI: envanter tarafi MWAppsInventory'nin jvm_count toplamidir; yalniz ENVANTERDE
+  // JBoss tasiyan sunucular sayilir (JBoss olmayan sunucunun uygulamasi JVM degildir).
+  const jbossEnvHosts = envanterUrun('JBOSS');
+  let envJvm = 0;
+  for (const [host, apps] of appsByHost) {
+    if (!jbossEnvHosts.has(U(host))) continue;
+    for (const a of apps) envJvm += a.jvmCount || (a.autoStarts || []).length || 0;
+  }
+  // AD `scanCoverage` - yukaridaki `summary.coverage` ILE KARISTIRILMAMALI (2026-09-24).
+  // O, yalniz TARANAN sunucular icinde "envanter bu urunu diyor mu" diye bakar; yani
+  // taramanin hic ulasamadigi sunucular ORADA GORUNMEZ. Kullanicinin sordugu sey tam
+  // olarak o eksik: "Inventory tablosunda 1800-1900 kusur sunucu var, playbook'tan su
+  // kadarina erisebildik". Bu blok envanterin TAMAMINI payda alir.
+  summary.scanCoverage = {
+    // SUNUCU: envanterdeki toplam ve taramanin erisebildigi.
+    hosts: {
+      inventory: envanterHostlari.size,
+      scanned: [...envanterHostlari].filter((h) => tarananlar.has(h)).length,
+      scannedNotInInventory: [...tarananlar].filter((h) => !envanterHostlari.has(h)).length,
+      missing:
+        envanterHostlari.size - [...envanterHostlari].filter((h) => tarananlar.has(h)).length,
+    },
+    products: {
+      JBOSS: kapsamaSatiri('JBOSS'),
+      RHA: kapsamaSatiri('RHA'),
+      IHS: kapsamaSatiri('IHS'),
+      NGINX: kapsamaSatiri('NGINX'),
+    },
+    jvm: {
+      // Envanter (MWAppsInventory) ne diyor, tarama kac JVM satiri getirdi.
+      inventory: envJvm,
+      scanned: jvms.filter((j) => j.source !== 'envanter').length,
+      // CLI'dan okunamayip ENVANTERDEN tamamlanan satirlar ayri durur: bunlar "bilgisini
+      // cektik" sayilmaz, envanterden odunc alindi.
+      fromInventory: jvms.filter((j) => j.source === 'envanter').length,
+    },
+  };
+
   const cpu = genel.filter((h) => h.cpuS != null);
   if (cpu.length) {
     summary.scan.avgCpuS = Math.round((cpu.reduce((a, h) => a + h.cpuS, 0) / cpu.length) * 10) / 10;
