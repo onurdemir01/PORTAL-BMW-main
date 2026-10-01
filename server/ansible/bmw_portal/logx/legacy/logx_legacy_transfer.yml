@@ -89,9 +89,7 @@
   # ATLAR ve `set_stats` yazan toplayici play (play2) hic calismaz.
   ignore_unreachable: true
   gather_facts: false
-  become: true
-  become_user: "{{ logx_legacy_user | default('was') }}"
-  become_method: dzdo
+  become: false
   strategy: free
 
   vars:
@@ -102,6 +100,15 @@
     staging_archive_path: "{{ staging_dir }}/{{ archive_name }}"
     fallback_archive_path: "{{ fallback_dir }}/{{ archive_name }}"
     host_part_path: "{{ staging_dir }}/{{ archive_name | regex_replace('[.]zip$', '') }}__parts/{{ inventory_hostname }}.zip"
+    ansible_pipelining: true
+    was_tmp_dir: >-
+      {{
+        ('/vhosting8/dumpdir'
+         if ((valid_source_paths | default([]) | first | default('')) is match('^/vhosting8/'))
+         else '/vhosting/dumpdir')
+        ~ '/logx-' ~ (archive_name | regex_replace('[.]zip$', ''))
+      }}
+    was_tmp_archive: "{{ was_tmp_dir }}/{{ archive_name }}"
 
   tasks:
     - block:
@@ -119,6 +126,9 @@
         changed_when: false
 
       - name: "Secilen kaynak dosyalarin durumunu kontrol et"
+        become: true
+        become_user: "{{ logx_legacy_user | default('was') }}"
+        become_method: dzdo
         ansible.builtin.stat:
           path: "{{ item.path }}"
           follow: false
@@ -171,6 +181,12 @@
                         and item.stat.readable | default(true)
                       )
                       else (
+                        (
+                          'Dosya ' ~ (logx_legacy_user | default('was')) ~ ' ile denetlenemedi: '
+                          ~ ((item.msg | default('')) ~ ' ' ~ (item.module_stderr | default(''))) | trim
+                        )
+                        if item.stat is not defined
+                        else
                         'Dosya bulunamadi'
                         if not (item.stat.exists | default(false))
                         else (
@@ -214,19 +230,48 @@
         failed_when: false
         when: single_host | bool
 
-      - name: "ZIP arsivini dogrudan staging dizininde olustur (tek-host)"
+      - name: "Okuma kullanicisinin gecici dizinini hazirla"
+        become: true
+        become_user: "{{ logx_legacy_user | default('was') }}"
+        become_method: dzdo
+        ansible.builtin.file:
+          path: "{{ was_tmp_dir }}"
+          state: directory
+          mode: "0711"
+        register: was_tmp_dir_result
+        when: valid_source_paths | length > 0
+        ignore_errors: true
+
+      - name: "Loglari okuma kullanicisiyla gecici ZIP'e yaz"
+        become: true
+        become_user: "{{ logx_legacy_user | default('was') }}"
+        become_method: dzdo
         community.general.archive:
           path: "{{ valid_source_paths }}"
-          dest: "{{ staging_archive_path }}"
+          dest: "{{ was_tmp_archive }}"
           format: zip
-          mode: "0775"
+          mode: "0644"
           force_archive: true
+        register: was_archive_result
+        when:
+          - valid_source_paths | length > 0
+          - not (was_tmp_dir_result.failed | default(false))
+        ignore_errors: true
+
+      - name: "ZIP arsivini staging dizinine kopyala (tek-host)"
+        ansible.builtin.copy:
+          src: "{{ was_tmp_archive }}"
+          dest: "{{ staging_archive_path }}"
+          remote_src: true
+          mode: "0775"
         register: staging_archive_result
         when:
           - single_host | bool
+          - was_archive_result is not skipped
+          - not (was_archive_result.failed | default(false))
           - staging_dir_stat.stat.exists | default(false)
           - staging_dir_stat.stat.isdir | default(false)
-        failed_when: false
+        ignore_errors: true
 
       - name: "Staging kullanilamiyorsa fallback dizinini olustur (tek-host)"
         ansible.builtin.file:
@@ -236,22 +281,25 @@
         register: fallback_dir_result
         when:
           - single_host | bool
+          - was_archive_result is not skipped
+          - not (was_archive_result.failed | default(false))
           - staging_archive_result is skipped or staging_archive_result.failed | default(false)
-        failed_when: false
+        ignore_errors: true
 
-      - name: "Staging kullanilamiyorsa ZIP arsivini fallback dizininde olustur (tek-host)"
-        community.general.archive:
-          path: "{{ valid_source_paths }}"
+      - name: "Staging kullanilamiyorsa ZIP arsivini fallback dizinine kopyala (tek-host)"
+        ansible.builtin.copy:
+          src: "{{ was_tmp_archive }}"
           dest: "{{ fallback_archive_path }}"
-          format: zip
+          remote_src: true
           mode: "0775"
-          force_archive: true
         register: fallback_archive_result
         when:
           - single_host | bool
+          - was_archive_result is not skipped
+          - not (was_archive_result.failed | default(false))
           - staging_archive_result is skipped or staging_archive_result.failed | default(false)
           - not (fallback_dir_result.failed | default(false))
-        failed_when: false
+        ignore_errors: true
 
       - name: "Nihai arsiv yolunu ve transfer durumunu belirle (tek-host)"
         ansible.builtin.set_fact:
@@ -325,12 +373,19 @@
                 ''
                 if (archive_written_to_staging or archive_written_to_fallback)
                 else (
-                  fallback_archive_result.msg
-                  | default(
-                      staging_archive_result.msg
-                      | default('ZIP arsivi olusturulamadi'),
-                      true
-                    )
+                  (
+                    'Loglar ' ~ (logx_legacy_user | default('was'))
+                    ~ ' kullanicisiyla ziplenemedi: ' ~ (was_archive_result.msg | default('?'))
+                  )
+                  if (was_archive_result.failed | default(false))
+                  else (
+                    fallback_archive_result.msg
+                    | default(
+                        staging_archive_result.msg
+                        | default('ZIP arsivi olusturulamadi'),
+                        true
+                      )
+                  )
                 )
               }}
         changed_when: false
@@ -346,21 +401,22 @@
           mode: "0775"
         register: parts_dir_result
         when: not (single_host | bool)
-        failed_when: false
+        ignore_errors: true
 
-      - name: "Bu hostun loglarini per-host parca ZIP'ine yaz (coklu-host)"
-        community.general.archive:
-          path: "{{ valid_source_paths }}"
+      - name: "Bu hostun gecici ZIP'ini per-host parca olarak kopyala (coklu-host)"
+        ansible.builtin.copy:
+          src: "{{ was_tmp_archive }}"
           dest: "{{ host_part_path }}"
-          format: zip
+          remote_src: true
           mode: "0775"
-          force_archive: true
         register: host_part_result
         when:
           - not (single_host | bool)
           - valid_source_paths | length > 0
+          - was_archive_result is not skipped
+          - not (was_archive_result.failed | default(false))
           - not (parts_dir_result.failed | default(false))
-        failed_when: false
+        ignore_errors: true
 
       - name: "Per-host parca bilgisini al (coklu-host)"
         ansible.builtin.stat:
@@ -406,11 +462,19 @@
                 else (
                   'Bu hostta arsivlenecek okunabilir dosya bulunamadi'
                   if (valid_source_paths | length == 0)
-                  else (host_part_result.msg | default('Per-host ZIP olusturulamadi'))
+                  else (
+                    (
+                      'Loglar ' ~ (logx_legacy_user | default('was'))
+                      ~ ' kullanicisiyla ziplenemedi: ' ~ (was_archive_result.msg | default('?'))
+                    )
+                    if (was_archive_result.failed | default(false))
+                    else (host_part_result.msg | default('Per-host ZIP olusturulamadi'))
+                  )
                 )
               }}
         changed_when: false
         when: not (single_host | bool)
+
 
 
   # ── TEK-HOST: sonucu dogrudan yayinla (ESKISIYLE AYNI) ────────────────────────────────
@@ -426,6 +490,17 @@
           ansible.builtin.set_fact:
             host_blocked_reason: >-
               {{ ansible_failed_result.msg | default('Bu host uzerinde is tamamlanamadi.') }}
+      always:
+        - name: "Okuma kullanicisinin ise ozel gecici dizinini temizle"
+          become: true
+          become_user: "{{ logx_legacy_user | default('was') }}"
+          become_method: dzdo
+          ansible.builtin.file:
+            path: "{{ was_tmp_dir }}"
+            state: absent
+          when: was_tmp_dir_result is defined and was_tmp_dir_result is not skipped
+          failed_when: false
+          changed_when: false
 - name: "LogX v2 - Tek-host birlesik artifact sonucunu yayinla"
   hosts: localhost
   connection: local
@@ -481,9 +556,7 @@
 - name: "LogX v2 - Coklu-host per-host ZIP'leri tek arsivde birlestir"
   hosts: "{{ selected_files | map(attribute='host') | unique | list }}"
   gather_facts: false
-  become: true
-  become_user: "{{ logx_legacy_user | default('was') }}"
-  become_method: dzdo
+  become: false
   run_once: true
 
   vars:
@@ -521,7 +594,7 @@
       when:
         - source_hosts | length > 1
         - (part_files.files | default([]) | length) > 0
-      failed_when: false
+      ignore_errors: true
 
     - name: "Birlesik arsivin bilgisini al (coklu-host)"
       ansible.builtin.stat:

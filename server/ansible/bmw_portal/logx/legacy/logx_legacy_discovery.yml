@@ -50,6 +50,7 @@
   ignore_unreachable: true
 
   vars:
+    ansible_pipelining: true
     legacy_log_roots:
       - /vhosting
       - /vhosting8
