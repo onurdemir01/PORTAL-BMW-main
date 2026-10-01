@@ -61,8 +61,11 @@ async function loadLatest() {
   const PRODUCT_COLS = [
     { col: 'nginx_version', product: 'NGINX' },
     { col: 'ihs_version', product: 'IHS' },
-    { col: 'apache_version', product: 'RHA' },
-    { col: 'httpd_version', product: 'RHA' },
+    // RHA SUTUNU `rha_version` (2026-10-01'de uretimde OLCULDU). Burada once
+    // `apache_version` / `httpd_version` yaziyordu; IKISI DE dbo.Inventory'de YOK, bu
+    // yuzden RHA envanteri her zaman 0 okunuyordu. Tablonun gercek sutunlari:
+    //   ihs_version · jboss_version · nginx_version · rha_version · was_version · ctg_version
+    { col: 'rha_version', product: 'RHA' },
     { col: 'jboss_version', product: 'JBOSS' },
     { col: 'was_version', product: 'WAS' },
   ];

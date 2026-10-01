@@ -728,3 +728,35 @@ test('KP6 ENVANTER SUTUNU YOKSA 0 degil BILINMIYOR (uretimde RHA boyle okundu)',
   assert.ok(!c.products.NGINX.inventoryUnknown);
   assert.ok(!c.products.JBOSS.inventoryUnknown);
 });
+
+test('KP7 envanter urun sutunlari GERCEK tablo sutunlariyla ayni', () => {
+  // 2026-10-01'de uretimde olculdu: dbo.Inventory'de `apache_version` da `httpd_version`
+  // da YOK, RHA sutunu `rha_version`. Yanlis sutun adi sessiz 0 uretir - bu bekci ad
+  // degisirse yakalar.
+  const idx = require('node:fs').readFileSync(
+    require('node:path').join(__dirname, '..', 'index.cjs'),
+    'utf8',
+  );
+  const i = idx.indexOf('const PRODUCT_COLS = [');
+  assert.ok(i > 0, 'PRODUCT_COLS bulunamadi');
+  const blok = idx.slice(i, idx.indexOf('];', i));
+  for (const [col, prod] of [
+    ['nginx_version', 'NGINX'],
+    ['ihs_version', 'IHS'],
+    ['rha_version', 'RHA'],
+    ['jboss_version', 'JBOSS'],
+    ['was_version', 'WAS'],
+  ]) {
+    assert.ok(
+      new RegExp(`col: '${col}', product: '${prod}'`).test(blok),
+      `envanter sutun eslemesi eksik/yanlis: ${col} -> ${prod}`,
+    );
+  }
+  // Var OLMAYAN sutunlar geri gelmesin: sessiz 0'in kaynagi buydu.
+  for (const yok of ['apache_version', 'httpd_version']) {
+    assert.ok(
+      !new RegExp(`col: '${yok}'`).test(blok),
+      `dbo.Inventory'de olmayan sutun geri gelmis: ${yok}`,
+    );
+  }
+});
