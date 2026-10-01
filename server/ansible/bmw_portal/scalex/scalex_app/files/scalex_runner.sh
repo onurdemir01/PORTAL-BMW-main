@@ -9,7 +9,7 @@ umask 077
 # "playbook'un guncel surumu kopyalanmamis olabilir" diye TAHMIN ediyordu; artik
 # calistirici surumu bildiriyor ve portal kendi bekledigi surumle karsilastirip
 # SOYLUYOR. Bu dosya `scalex_app/VERSION` ile ayni sayiyi tasimali (test kilitler).
-PACKAGE_VERSION="23"
+PACKAGE_VERSION="24"
 
 PHASE="${SCALEX_PHASE:-${CHAOS_PHASE:-precheck}}"
 CLUSTER="${CLUSTER:-}"
@@ -61,19 +61,50 @@ DISCOVERY_MODE="${DISCOVERY_MODE:-workloads}"
 WORKDIR=""
 KUBECONFIG_FILE=""
 
+# ── SATIR BASMA YOLUNDA ALT KABUK YOK ───────────────────────────────────────
+#
+# OLCULDU (AWX 3365168/81/88, 2026-09-30): 19 uygulamalik kesif 1 uygulamalikten
+# ~3,5 sn uzun suruyordu. Sebep `oc` degil, satir basina acilan surecler: eski
+# `log` alanin her biri icin `$(sanitize)` = bir alt kabuk + `tr | sed | cut`;
+# satir basina ~28 surec, kesif satirinda ~70-80. Jump sunucusunda surec acmak
+# ~2-3 ms. Donusumler artik bash parametre acilimi; SONUC eski boru hattiyla
+# BAYT BAYT ayni (N2 altin cikti + N4 fuzz bekcisi kilitler).
+_NL=$'\n'
+_CR=$'\r'
+_TAB=$'\t'
+
+# `sanitize`in alt kabuksuz esi: sonucu $1 adli degiskene yazar.
+#   tr '\n\r;' '   '  ->  sed 's/[[:space:]][[:space:]]*/ /g'  ->  cut -c1-1600
+# `cut -c` GNU'da BAYT sayar (jump sunuculari Linux): kesim C yerel ayariyla.
+sanitize_v() {
+  local _s="${2:-}"
+  _s="${_s//$_NL/ }"
+  _s="${_s//$_CR/ }"
+  _s="${_s//;/ }"
+  _s="${_s//[[:space:]]/ }"
+  while [[ "$_s" == *"  "* ]]; do _s="${_s//  / }"; done
+  if [ "${#_s}" -gt 400 ]; then
+    local LC_ALL=C
+    _s="${_s:0:1600}"
+  fi
+  printf -v "$1" '%s' "$_s"
+}
+
 sanitize() {
-  printf '%s' "${1:-}" | tr '\n\r;' '   ' | sed 's/[[:space:]][[:space:]]*/ /g' | cut -c1-1600
+  local _sv
+  sanitize_v _sv "${1:-}"
+  printf '%s' "$_sv"
 }
 
 log() {
   local cluster jump app kind step result detail
-  cluster="$(sanitize "${1:-GLOBAL}")"
-  jump="$(sanitize "${2:--}")"
-  app="$(sanitize "${3:--}")"
-  kind="$(sanitize "${4:--}")"
-  step="$(sanitize "${5:-INFO}")"
-  result="$(sanitize "${6:-INFO}")"
-  detail="$(sanitize "${7:-}")"
+  sanitize_v cluster "${1:-GLOBAL}"
+  sanitize_v jump "${2:--}"
+  sanitize_v app "${3:--}"
+  sanitize_v kind "${4:--}"
+  sanitize_v step "${5:-INFO}"
+  sanitize_v result "${6:-INFO}"
+  sanitize_v detail "${7:-}"
   printf '%s;%s;%s;%s;%s;%s;%s\n' "$cluster" "$jump" "$app" "$kind" "$step" "$result" "$detail"
 }
 
@@ -438,6 +469,14 @@ disc_absent_names() {
   sed -n 's/.*resource type "\([^"]*\)".*/\1/p' "$1" 2>/dev/null | sed 's/\..*//' | sort -u
 }
 
+# Hata metnindeki YETKISIZ tiplerin TAM kaynak adlari (satir basina bir tane).
+# kubectl her reddedilen tip icin sunucunun metnini basar:
+#   Error from server (Forbidden): deployments.apps is forbidden: User "..." cannot list ...
+# Kaynak adi komut satirindaki TAM adla gelir (cekirdek grupta grupsuz: `pods`).
+disc_forbidden_names() {
+  sed -n 's/^Error from server (Forbidden): \([^ ]*\) is forbidden.*/\1/p' "$1" 2>/dev/null | sort -u
+}
+
 # ═══════════════════════════════════════════════════════════════════════════
 # PRECHECK TOPLU OKUMA — UYGULAMA BASINA DEGIL, NAMESPACE BASINA.
 #
@@ -747,6 +786,22 @@ if [ "$PHASE" = "precheck" ]; then
     exit 0
   fi
 fi
+
+# `kind_to_display`in alt kabuksuz esi (sonuc $1 adli degiskene).
+kind_to_display_v() {
+  local _b
+  case "$2" in
+    dc) _b="DeploymentConfig" ;;
+    deploy) _b="Deployment" ;;
+    sts) _b="StatefulSet" ;;
+    rollout) _b="ArgoRollout" ;;
+    ds) _b="DaemonSet" ;;
+    cronjob) _b="CronJob" ;;
+    *.*) _b="${2%%.*}"; _b="${_b%s} (${2#*.})" ;;
+    *) _b="$2" ;;
+  esac
+  printf -v "$1" '%s' "$_b"
+}
 
 kind_to_display() {
   case "$1" in
@@ -1852,10 +1907,22 @@ EOF_EX_OK
 # Bosluk/`;` iceren ya da bos olan degeri guvenli hale getirir. `;` YASAK cunku
 # satir ayraci odur; bosluk YASAK cunku `detail` icindeki cift ayracidir.
 disc_val() {
-  local v
-  v="$(printf '%s' "${1:-}" | tr -d '\n\r' | tr ' \t;' '___')"
-  [ -z "$v" ] && v="-"
-  printf '%s' "$v"
+  local _dvv
+  disc_val_v _dvv "${1:-}"
+  printf '%s' "$_dvv"
+}
+
+# `disc_val`in alt kabuksuz esi (sonuc $1 adli degiskene):
+#   tr -d '\n\r'  ->  tr ' \t;' '___'  ->  bos ise "-"
+disc_val_v() {
+  local _v="${2:-}"
+  _v="${_v//$_NL/}"
+  _v="${_v//$_CR/}"
+  _v="${_v// /_}"
+  _v="${_v//$_TAB/_}"
+  _v="${_v//;/_}"
+  [ -z "$_v" ] && _v="-"
+  printf -v "$1" '%s' "$_v"
 }
 
 # Namespace'teki HPA hedefleri — uygulama basina `oc get hpa` yerine TEK cagri.
@@ -1863,9 +1930,18 @@ DISC_HPA_TARGETS=""
 disc_load_hpa() {
   DISC_HPA_TARGETS="$(oc get hpa -n "$NS" -o jsonpath='{range .items[*]}{.spec.scaleTargetRef.name}{"\n"}{end}' 2>/dev/null || true)"
 }
+# DUZ METIN esleme (eskiden `grep -qx`, yani REGEX: `a.b` adi `axb` hedefini
+# de "HPA'li" sayiyordu). Satir basina surec acmaz.
+disc_has_hpa_v() {
+  case "$_NL$DISC_HPA_TARGETS$_NL" in
+    *"$_NL$2$_NL"*) printf -v "$1" '%s' "yes" ;;
+    *) printf -v "$1" '%s' "no" ;;
+  esac
+}
 disc_has_hpa() {
-  [ -z "$DISC_HPA_TARGETS" ] && { printf '%s' "no"; return 0; }
-  if printf '%s\n' "$DISC_HPA_TARGETS" | grep -qx -- "$1"; then printf '%s' "yes"; else printf '%s' "no"; fi
+  local _hv
+  disc_has_hpa_v _hv "$1"
+  printf '%s' "$_hv"
 }
 
 # PDB namespace duzeyinde bildirilir: bir PDB'nin hangi workload'u kapsadigini
@@ -1942,21 +2018,81 @@ disc_read_state() {
   printf '%s' "$DISC_STATE_PREV" | grep -Eq '^[0-9]+$' || DISC_STATE_PREV="-"
 }
 
+# ── DURUM KAYITLARI: TIP BASINA TEK `awk` ───────────────────────────────────
+#
+# `disc_read_state` SATIR BASINA iki `safe_name` alt kabugu, uc `awk`, iki
+# `cut` ve bir `grep` aciyordu (uygulama sayisiyla buyuyen maliyet). Burada
+# AYNI kural tip BASINA bir kez uygulanir: her satirin ONUNE `prev|phase`
+# eklenir. Oncelik ve bicim `disc_read_state` ile BIREBIR:
+#   yeni onek + safe_name  >  eski onek + safe_name  >  `data.app` eslesmesi
+#   ilk eslesen kayit; `phase` bossa "-"; `prev` yalnizca rakamsa, degilse "-"
+# `safe_name` awk'ta: kucuk harf, [^a-z0-9.-] -> "-", bastaki/sondaki "-"
+# kirpilir, SONRA 180 karakter.
+#
+# $1 satir dosyasi  $2 cikti dosyasi. Basarisizsa (awk yok/yazilamadi) satirlar
+# `?|?|` ile isaretlenir ve cagiran eski tekil yola (`disc_read_state`) duser —
+# durum bilgisi SESSIZCE kaybolmaz.
+disc_join_states() {
+  local src="$1" dst="$2" stf="${2}.s" l
+  if printf '%s\n' "$DISC_STATES" >"$stf" 2>/dev/null && awk -F'|' \
+      -v sf="$stf" -v np="$STATE_CM_PREFIX" -v lp="$STATE_CM_PREFIX_LEGACY" '
+    function sn(x) {
+      x = tolower(x); gsub(/[^a-z0-9.-]/, "-", x)
+      sub(/^-+/, "", x); sub(/-+$/, "", x)
+      return substr(x, 1, 180)
+    }
+    FILENAME == sf {
+      if ($0 == "") next
+      if (!($1 in byn)) byn[$1] = $0
+      if ($2 != "" && !($2 in bya)) bya[$2] = $0
+      next
+    }
+    {
+      line = ""; s = sn($2)
+      if ((np s) in byn) line = byn[np s]
+      else if ((lp s) in byn) line = byn[lp s]
+      else if ($2 != "" && ($2 in bya)) line = bya[$2]
+      prev = "-"; phase = "-"
+      if (line != "") {
+        split(line, f, "|"); prev = f[4]; phase = f[5]
+        if (phase == "") phase = "-"
+        if (prev !~ /^[0-9]+$/) prev = "-"
+      }
+      print prev "|" phase "|" $0
+    }' "$stf" "$src" >"$dst" 2>/dev/null; then
+    rm -f "$stf" >/dev/null 2>&1
+    return 0
+  fi
+  rm -f "$stf" >/dev/null 2>&1
+  while IFS= read -r l; do printf '?|?|%s\n' "$l"; done <"$src" >"$dst"
+}
+
 # ArgoCD/operator etiketleri. ArgoCD auto-sync acikken replica 0 birkac DAKIKADA
 # sessizce geri alinir — dogrula-ve-tut penceresi (saniyeler) bunu yakalayamaz,
 # o yuzden kullaniciya ONCEDEN soylenmesi gerekiyor.
 disc_gitops() {
-  local argo="$1" managed="$2"
-  if [ -n "$argo" ]; then printf 'argocd:%s' "$(disc_val "$argo")"; return 0; fi
-  if [ -n "$managed" ]; then printf 'managed_by:%s' "$(disc_val "$managed")"; return 0; fi
-  printf '%s' "no"
+  local _gv
+  disc_gitops_v _gv "$1" "$2"
+  printf '%s' "$_gv"
+}
+disc_gitops_v() {
+  local _g
+  if [ -n "$2" ]; then disc_val_v _g "$2"; printf -v "$1" 'argocd:%s' "$_g"; return 0; fi
+  if [ -n "$3" ]; then disc_val_v _g "$3"; printf -v "$1" 'managed_by:%s' "$_g"; return 0; fi
+  printf -v "$1" '%s' "no"
 }
 
 # Istenen uygulama listesi bosken NAMESPACE'IN TAMAMI listelenir (ekran uygulama
 # adini ezberden bilmek zorunda kalmasin); doluysa yalnizca istenenler.
+#
+# Ham satir BASINA cagrilir (istenmeyen uygulamalar dahil): surec acmaz. Esleme
+# DUZ METIN (eskiden `grep -qx` = regex; `.` her karakterle eslesiyordu).
 disc_app_wanted() {
   [ -z "$APPS_TEXT" ] && return 0
-  printf '%s\n' "$APPS_TEXT" | grep -qx -- "$1"
+  case "$_NL$APPS_TEXT$_NL" in
+    *"$_NL$1$_NL"*) return 0 ;;
+  esac
+  return 1
 }
 
 # ── TEK USTKUME JSONPATH ────────────────────────────────────────────────────
@@ -2055,6 +2191,49 @@ disc_fetch_single() {
     -o jsonpath="$(disc_jsonpath_all)" >"$2" 2>"${3:-/dev/null}"
 }
 
+# ── TEKIL CEKIMLER: AYNI ANDA, SINIRLI ──────────────────────────────────────
+#
+# URETIMDE OLCULDU (AWX 3365168/81/88): onbellekteki ekstra CRD'ler (KIND'leri
+# sabit tabloda yok, atif kurulamaz) her kesifte SIRAYLA tekil cekiliyordu;
+# yetkisiz iki tip bile bastion uzerinden saniyeler ekliyordu. Cagrilar
+# birbirinden BAGIMSIZ: dalga basina en fazla DISC_PAR tanesi arka planda
+# kosar (bash 3.2'de `wait -n` yok — dalga dalga).
+#
+# $1 dizin, kalan argumanlar TIP kodlari. i. tip -> $1/s.<i> (satirlar),
+# $1/s.<i>.err, $1/s.<i>.rc (0 okundu / 1 okunamadi). Sonuclar
+# `disc_emit_fetched` ile SIRAYLA basilir.
+DISC_PAR=8
+disc_fetch_many() {
+  local dir="$1" i=0 n=0 k pids=""
+  shift
+  for k in "$@"; do
+    (
+      r="$(full_resource_name "$k")"
+      _src=0
+      disc_fetch_single "$r" "$dir/s.$i" "$dir/s.$i.err" || _src=1
+      printf '%s' "$_src" >"$dir/s.$i.rc"
+    ) &
+    pids="$pids $!"
+    i=$((i + 1)); n=$((n + 1))
+    if [ "$n" -ge "$DISC_PAR" ]; then
+      wait $pids 2>/dev/null
+      pids=""; n=0
+    fi
+  done
+  [ -n "$pids" ] && wait $pids 2>/dev/null
+  return 0
+}
+
+# `disc_fetch_many`in i. sonucunu basar. `.rc` dosyasi YOKSA (alt kabuk
+# oldu) okuma DUSMUS sayilir — "bulunamadi" demek "bakamadim"dan tehlikeli.
+disc_emit_fetched() {
+  local k="$1" dir="$2" i="$3" r rf=yes
+  r="$(full_resource_name "$k")"
+  [ -f "$dir/s.$i" ] || : >"$dir/s.$i"
+  [ "$(cat "$dir/s.$i.rc" 2>/dev/null)" = "0" ] && rf=no
+  disc_emit_kind "$k" "$r" "$dir/s.$i" "$rf" "$dir/s.$i.err"
+}
+
 # Bir tipin satirlarini WORKLOAD satirlarina cevirir ve SONUNDA tam olarak BIR
 # `WORKLOAD_KIND` satiri basar.
 #
@@ -2066,16 +2245,27 @@ disc_fetch_single() {
 # $5 o cagrinin stderr dosyasi (sebep oradan okunur; bos olabilir)
 disc_emit_kind() {
   local kind="$1" res="$2" dosya="$3" okuma_dustu="$4" hata="${5:-}"
-  local name f2 f3 f4 image argo managed
+  local name f2 f3 f4 image argo managed sprev sphase
   local k_field r3 r4 r5 susp sched dsr cur rdy img cjimg
   local count=0 raw=0 reason verb
-  while IFS='|' read -r k_field name r3 r4 r5 susp sched dsr cur rdy img cjimg argo managed; do
+  local disp v_ns v_res v2 v3 v4 v_img v_ph v_pr v_hpa v_git j
+  # SATIR DONGUSUNDE `$(...)` YOK (N1 bekcisi kilitler): tipe ve namespace'e
+  # ait degerler burada BIR KEZ, satira ait olanlar `*_v` ile degiskene yazilir.
+  kind_to_display_v disp "$kind"
+  disc_val_v v_ns "$NS"
+  disc_val_v v_res "$res"
+  j="${dosya}.j"
+  disc_join_states "$dosya" "$j"
+  while IFS='|' read -r sprev sphase k_field name r3 r4 r5 susp sched dsr cur rdy img cjimg argo managed; do
     [ -z "$name" ] && continue
     raw=$((raw + 1))
     disc_app_wanted "$name" || continue
     DISC_FOUND_ANY=1
     count=$((count + 1))
-    disc_read_state "$name"
+    if [ "$sprev" = "?" ]; then
+      disc_read_state "$name"
+      sprev="$DISC_STATE_PREV"; sphase="$DISC_STATE_PHASE"
+    fi
     # USTKUME SATIRINDAN TIPE OZGU ALANLAR. Hangi alanin hangi tipte anlamli
     # oldugu BURADA, tek yerde yazili.
     case "$kind" in
@@ -2083,32 +2273,41 @@ disc_emit_kind() {
       cronjob) f2="$susp"; f3="$sched"; f4=""; image="$cjimg" ;;
       *)       f2="$r3"; f3="$r4"; f4="$r5"; image="$img" ;;
     esac
+    disc_val_v v_img "$image"
+    disc_gitops_v v_git "$argo" "$managed"
     if kind_is_scalable "$kind"; then
       [ -z "$f2" ] && f2=0
       [ -z "$f3" ] && f3=0
       [ -z "$f4" ] && f4=0
-      log "$CLUSTER" "$JUMP_SERVER" "$name" "$(kind_to_display "$kind")" "WORKLOAD" "OK" \
-        "namespace=$(disc_val "$NS") resource=$(disc_val "$res") scalable=yes spec=$(disc_val "$f2") status=$(disc_val "$f3") ready=$(disc_val "$f4") hpa=$(disc_has_hpa "$name") state_phase=$(disc_val "$DISC_STATE_PHASE") previous_replicas=$(disc_val "$DISC_STATE_PREV") image=$(disc_val "$image") gitops=$(disc_gitops "$argo" "$managed")"
+      disc_val_v v2 "$f2"; disc_val_v v3 "$f3"; disc_val_v v4 "$f4"
+      disc_has_hpa_v v_hpa "$name"
+      disc_val_v v_ph "$sphase"; disc_val_v v_pr "$sprev"
+      log "$CLUSTER" "$JUMP_SERVER" "$name" "$disp" "WORKLOAD" "OK" \
+        "namespace=$v_ns resource=$v_res scalable=yes spec=$v2 status=$v3 ready=$v4 hpa=$v_hpa state_phase=$v_ph previous_replicas=$v_pr image=$v_img gitops=$v_git"
     elif kind_is_discovered_crd "$kind"; then
       # Cluster'dan kesfedildi, `scale` alt kaynagi var — ama islem yolu bu tip icin
       # kanitlanmadi (bkz. kind_is_discovered_crd). Gorunur, secilemez.
       [ -z "$f2" ] && f2=0
       [ -z "$f4" ] && f4=0
-      log "$CLUSTER" "$JUMP_SERVER" "$name" "$(kind_to_display "$kind")" "WORKLOAD" "OK" \
-        "namespace=$(disc_val "$NS") resource=$(disc_val "$res") scalable=no reason=unsupported_kind spec=$(disc_val "$f2") ready=$(disc_val "$f4") image=$(disc_val "$image") gitops=$(disc_gitops "$argo" "$managed")"
+      disc_val_v v2 "$f2"; disc_val_v v4 "$f4"
+      log "$CLUSTER" "$JUMP_SERVER" "$name" "$disp" "WORKLOAD" "OK" \
+        "namespace=$v_ns resource=$v_res scalable=no reason=unsupported_kind spec=$v2 ready=$v4 image=$v_img gitops=$v_git"
     elif [ "$kind" = "cronjob" ]; then
       # `spec.suspend` bos gelebilir (alan hic yazilmamissa) — o durumda CronJob
       # AKTIFTIR, "bilinmiyor" degil.
       [ -z "$f2" ] && f2="false"
-      log "$CLUSTER" "$JUMP_SERVER" "$name" "$(kind_to_display "$kind")" "WORKLOAD" "OK" \
-        "namespace=$(disc_val "$NS") resource=$(disc_val "$res") scalable=no reason=suspend_not_replicas suspended=$(disc_val "$f2") schedule=$(disc_val "$f3") image=$(disc_val "$image") gitops=$(disc_gitops "$argo" "$managed")"
+      disc_val_v v2 "$f2"; disc_val_v v3 "$f3"
+      log "$CLUSTER" "$JUMP_SERVER" "$name" "$disp" "WORKLOAD" "OK" \
+        "namespace=$v_ns resource=$v_res scalable=no reason=suspend_not_replicas suspended=$v2 schedule=$v3 image=$v_img gitops=$v_git"
     else
       [ -z "$f2" ] && f2=0
       [ -z "$f4" ] && f4=0
-      log "$CLUSTER" "$JUMP_SERVER" "$name" "$(kind_to_display "$kind")" "WORKLOAD" "OK" \
-        "namespace=$(disc_val "$NS") resource=$(disc_val "$res") scalable=no reason=node_scheduled desired=$(disc_val "$f2") ready=$(disc_val "$f4") image=$(disc_val "$image") gitops=$(disc_gitops "$argo" "$managed")"
+      disc_val_v v2 "$f2"; disc_val_v v4 "$f4"
+      log "$CLUSTER" "$JUMP_SERVER" "$name" "$disp" "WORKLOAD" "OK" \
+        "namespace=$v_ns resource=$v_res scalable=no reason=node_scheduled desired=$v2 ready=$v4 image=$v_img gitops=$v_git"
     fi
-  done < "$dosya"
+  done < "$j"
+  rm -f "$j" >/dev/null 2>&1
 
   # SATIR GELDIYSE ya da OKUMA DUSMEDIYSE tip okunabilmistir. (`count` 0 olabilir —
   # istenen uygulama suzgeci; bu "bakamadim" DEGIL.)
@@ -2147,7 +2346,7 @@ disc_emit_kind() {
 disc_scan_chunk() {
   local kinds="$1" on_out="${2:-}" on_err="${3:-}" on_rc="${4:-}"
   local k r kind_name pairs="" tekiller="" seen="" kinds_re="" res_csv=""
-  local out err tek rc bad ayrisan=0 rf yok kalan cikan deneme=0
+  local out err tek rc bad ayrisan=0 rf yok yasak kalan cikan deneme=0 i tdir
 
   for k in $kinds; do
     r="$(full_resource_name "$k")"
@@ -2226,6 +2425,39 @@ EOF_DISC_ABSENT
           continue
         fi
       fi
+
+      # ── YETKISIZ TIP: CIKAR VE KALANLARLA TEKRAR DENE ─────────────────────
+      # Satirsiz + rc=1 ve API YOKLUGU degilse, sebep cogunlukla bir tipin
+      # RBAC reddidir (bos bir namespace'te digerleri zaten satir basmaz).
+      # Eskiden bu hal `call_failed` ile obegin TAMAMINI SIRAYLA tekil
+      # cagrilara dusuruyordu (6 tip = 6 gidis-donus). Hata metni reddedilen
+      # tipleri TAM adiyla soyler: onlar `no_permission` ile basilir, kalanlar
+      # TEK cagriyla yeniden denenir. Tanimadigimiz bir metin gelirse (hicbir
+      # tip eslesmez) asagidaki genel geri dusus AYNEN calisir.
+      yasak="$(disc_forbidden_names "$err")"
+      if [ -n "$yasak" ]; then
+        kalan=""; cikan=0
+        while IFS='	' read -r kind_name k r; do
+          [ -z "$k" ] && continue
+          case "$_NL$yasak$_NL" in
+            *"$_NL$r$_NL"*)
+              : >"$tek"
+              disc_emit_kind "$k" "$r" "$tek" "yes" "$err"
+              cikan=$((cikan + 1))
+              ;;
+            *)
+              kalan="${kalan}${kind_name}	${k}	${r}
+"
+              ;;
+          esac
+        done <<EOF_DISC_FORBIDDEN
+$pairs
+EOF_DISC_FORBIDDEN
+        if [ "$cikan" -gt 0 ]; then
+          pairs="$kalan"
+          continue
+        fi
+      fi
     fi
 
     # ── KENDINI DOGRULAYAN ATIF ───────────────────────────────────────────────
@@ -2258,11 +2490,27 @@ EOF_DISC_PAIRS
     break
   done
 
-  for k in $tekiller; do
-    r="$(full_resource_name "$k")"
-    if disc_fetch_single "$r" "$tek" "$err"; then rf=no; else rf=yes; fi
-    disc_emit_kind "$k" "$r" "$tek" "$rf" "$err"
-  done
+  # TEKIL CEKIMLER AYNI ANDA (eskiden SIRAYLA: tip basina bir gidis-donus).
+  # Satirlar yine `tekiller` SIRASIYLA basilir.
+  if [ -n "${tekiller// /}" ]; then
+    tdir="$(mktemp -d "${WORKDIR}/.scalex_one_XXXXXX" 2>/dev/null || true)"
+    if [ -n "$tdir" ]; then
+      set -- $tekiller
+      disc_fetch_many "$tdir" "$@"
+      i=0
+      for k in $tekiller; do
+        disc_emit_fetched "$k" "$tdir" "$i"
+        i=$((i + 1))
+      done
+      rm -rf "$tdir" >/dev/null 2>&1 || true
+    else
+      for k in $tekiller; do
+        r="$(full_resource_name "$k")"
+        if disc_fetch_single "$r" "$tek" "$err"; then rf=no; else rf=yes; fi
+        disc_emit_kind "$k" "$r" "$tek" "$rf" "$err"
+      done
+    fi
+  fi
   rm -f "$out" "$err" "$tek" >/dev/null 2>&1 || true
 }
 
@@ -2279,9 +2527,16 @@ EOF_DISC_PAIRS
 # ekliyordu.
 #
 # FAIL-SAFE: gecici dizin kurulamazsa her okuma SENKRON yapilir; davranis ayni.
+#
+# EKSTRA CRD'LER DE BURADA: KIND'leri sabit tabloda olmadigi icin zaten TEKIL
+# cekiliyorlardi — ama taramanin SONUNDA ve SIRAYLA. Artik ($2...) ayni dalgada,
+# `$DISC_PF_DIR/x` altinda baslarlar; `discover_workloads` sonuclari SIRAYLA basar.
 DISC_PF_DIR=""
+DISC_PF_EXTRA="no"
 disc_ns_prefetch() {
-  local known_csv="$1" p_hpa p_pdb p_cm p_wl
+  local known_csv="$1" p_hpa p_pdb p_cm p_wl p_x=""
+  shift
+  DISC_PF_EXTRA="no"
   DISC_PF_DIR="$(mktemp -d "${WORKDIR}/.scalex_ns_XXXXXX" 2>/dev/null || true)"
   if [ -z "$DISC_PF_DIR" ]; then
     disc_load_hpa
@@ -2306,10 +2561,16 @@ disc_ns_prefetch() {
     } &
     p_wl=$!
   fi
+  if [ "$#" -gt 0 ] && mkdir "$DISC_PF_DIR/x" 2>/dev/null; then
+    disc_fetch_many "$DISC_PF_DIR/x" "$@" &
+    p_x=$!
+    DISC_PF_EXTRA="yes"
+  fi
   wait "$p_hpa" 2>/dev/null
   wait "$p_pdb" 2>/dev/null
   wait "$p_cm" 2>/dev/null
   [ -n "$p_wl" ] && wait "$p_wl" 2>/dev/null
+  [ -n "$p_x" ] && wait "$p_x" 2>/dev/null
   DISC_HPA_TARGETS="$(cat "$DISC_PF_DIR/hpa" 2>/dev/null || true)"
   disc_pdb_emit "$(cat "$DISC_PF_DIR/pdb" 2>/dev/null || true)"
   DISC_STATES="$(cat "$DISC_PF_DIR/cm" 2>/dev/null || true)"
@@ -2318,6 +2579,7 @@ disc_ns_prefetch() {
 disc_ns_prefetch_cleanup() {
   [ -n "$DISC_PF_DIR" ] && rm -rf "$DISC_PF_DIR" >/dev/null 2>&1
   DISC_PF_DIR=""
+  DISC_PF_EXTRA="no"
 }
 
 discover_workloads() {
@@ -2353,13 +2615,28 @@ discover_workloads() {
   # YENIDEN okunur (asagidaki cagri ikisini de kosulsuz atar). Eskiden durum
   # kayitlari bir bayrakla "bir kez" yukleniyordu ve bayrak namespace degisince
   # SIFIRLANMIYORDU: ikinci namespace ILKININ kayitlarini kullaniyordu (H5).
-  disc_ns_prefetch "$known_csv"
+  # `$extra` BILEREK tirnaksiz: satir basina bir tip, bosluk icermez
+  # (`extra_kind_filter` yalnizca `grup.adi` bicimini gecirir).
+  # shellcheck disable=SC2086
+  disc_ns_prefetch "$known_csv" $extra
 
   DISC_FOUND_ANY=0
   if [ -n "$DISC_PF_DIR" ] && [ -f "$DISC_PF_DIR/wl.rc" ]; then
     disc_scan_chunk "$DISCOVERY_KINDS" "$DISC_PF_DIR/wl" "$DISC_PF_DIR/wl.err" "$DISC_PF_DIR/wl.rc"
   else
     disc_scan_chunk "$DISCOVERY_KINDS"
+  fi
+
+  # Ekstra CRD'ler on-cekimde okunduysa sonuclari SIRAYLA basilir. Eski yolla
+  # (asagidaki obek dongusu) AYNI satirlar: o yolda da her CRD tekil cekilir.
+  if [ "$DISC_PF_EXTRA" = "yes" ]; then
+    n=0
+    for kind in $extra; do
+      disc_emit_fetched "$kind" "$DISC_PF_DIR/x" "$n"
+      n=$((n + 1))
+    done
+    extra=""
+    n=0
   fi
   disc_ns_prefetch_cleanup
 
