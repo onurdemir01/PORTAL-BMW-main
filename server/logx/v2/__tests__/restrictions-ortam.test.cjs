@@ -265,6 +265,48 @@ test('O5 ortam kapaliyken namespace listesi TAMAMEN gizli: sayi + sebep, ad yok'
   assert.deepEqual(t.body.items, ['acik', 'kisitli']);
 });
 
+test('O5b onbellek namespace listesi de ortam kapaliyken tamamen gizli', async () => {
+  const ocpCache = require('../ocp-cache.cjs');
+  const y = ocpCache.getNamespaces;
+  ocpCache.getNamespaces = async () => ({
+    items: ['acik', 'kisitli'],
+    cached: true,
+    fetchedAt: null,
+    stale: false,
+    source: 'x',
+  });
+  try {
+    const r = await istek('GET', '/ocp/cache/namespaces?env=prod&tenant=ark&cluster=c1', yabanci);
+    assert.deepEqual(r.body.items, []);
+    assert.equal(r.body.hiddenCount, 2);
+    assert.equal(r.body.restriction.resourceType, 'env');
+    const p = await istek('GET', '/ocp/cache/namespaces?env=prod&tenant=ark&cluster=c1', prodcu);
+    assert.deepEqual(p.body.items, ['acik'], 'ortam acik: yalnizca namespace kurali kalir');
+  } finally {
+    ocpCache.getNamespaces = y;
+  }
+});
+
+test('O5c CANLI kesif sonucu (kucuk harfli `prod` girdisi) ortam kapaliyken tamamen gizli', async () => {
+  const requests = require('../requests.cjs');
+  requests.getRequestRow = async () => ({ request_id: 'r3' });
+  requests.normalizeRequest = () => ({
+    state: 'ocp_namespace_picker',
+    platform: 'openshift',
+    input: { tenant: 'ark', env: 'prod', clusters: ['c1'] },
+    discoveryResult: {
+      overall_status: 'ok',
+      clusters: [{ cluster_name: 'c1', status: 'ok', namespaces: ['acik', 'kisitli'] }],
+    },
+  });
+  const r = await istek('GET', '/requests/r3', yabanci);
+  const c = r.body.request.discoveryResult.clusters[0];
+  assert.deepEqual(c.namespaces, []);
+  assert.equal(c.hiddenCount, 2);
+  const p = await istek('GET', '/requests/r3', prodcu);
+  assert.deepEqual(p.body.request.discoveryResult.clusters[0].namespaces, ['acik']);
+});
+
 test('O6 ortam kapaliyken uygulama listesi bos + sebep', async () => {
   const r = await istek(
     'GET',
