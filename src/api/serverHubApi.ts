@@ -225,33 +225,6 @@ const json = (body: unknown) => ({
   body: JSON.stringify(body),
 });
 
-export interface ShBulkItem {
-  host: string;
-  env: string | null;
-  gen: number;
-  jvm: string;
-  action: string;
-  text: string;
-}
-export interface ShBulkPlan {
-  ok: boolean;
-  message?: string;
-  action?: string;
-  items?: ShBulkItem[];
-  hosts?: number;
-  truncated?: boolean;
-  latestScan?: string | null;
-}
-export interface ShBulkResult {
-  ok: boolean;
-  message?: string;
-  action?: string;
-  started?: { host: string; jvm: string; gen: number }[];
-  failed?: { host: string; jvm: string; gen: number; message: string }[];
-  truncated?: boolean;
-  total?: number;
-  limit?: number;
-}
 
 export const serverHubApi = {
   overview: (fresh = false): Promise<ShOverview> =>
@@ -283,10 +256,6 @@ export const serverHubApi = {
       }),
     ).then(safeJson),
   // TOPLU AUTO-START: once plan (hicbir is baslatmaz), sonra onayli uygulama.
-  bulkPlan: (code: string): Promise<ShBulkPlan> =>
-    fetch(`${BASE}/bulk-plan`, json({ code })).then(safeJson),
-  bulkFix: (code: string): Promise<ShBulkResult> =>
-    fetch(`${BASE}/bulk-fix`, json({ code, confirm: true })).then(safeJson),
   jobStatus: (awxServerId: number, jobId: number): Promise<ShJobStatus> =>
     fetch(`${BASE}/job-status/${awxServerId}/${jobId}`).then(safeJson),
 };

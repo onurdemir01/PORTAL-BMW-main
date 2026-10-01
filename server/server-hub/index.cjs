@@ -372,116 +372,16 @@ function initServerHub(app) {
   // tersi: "auto-start'ı açık olup process'i kapalı olanları tek tuşla kapat".
   //
   // ÖNCE PLAN, SONRA ONAY (kullanıcının seçimi): plan HİÇBİR İŞ BAŞLATMAZ — liste zaten
-  // değerlendirmede var, sunucuya gitmeye gerek yok. Böylece kullanıcı neyin değişeceğini
-  // bedelsiz görür. Uygulama ayrı bir çağrıdır ve `confirm: true` ister.
+  // TOPLU DUZELTME KALDIRILDI (kullanici, 2026-10-01): "jboss jvm auto start da toplu ac
+  // toplu kapat sakin getirme o cok riskli... toplu islem sakin olmasin cok tehlikeli."
   //
-  // HER SUNUCU AYRI İŞ: düzeltme playbook'u tek hedef kabul eder (virgül reddedilir —
-  // bilinçli bir koruma). Toplu iş, o korumayı delmek yerine onu N kez çağırır.
-  const BULK_CODES = Object.freeze({
-    // çalışıyor ama auto-start kapalı  -> aç
-    REBOOT_RISK: 'jboss_autostart_on',
-    // kapalı ama auto-start açık       -> kapat
-    STOPPED_AUTOSTART_ON: 'jboss_autostart_off',
-  });
-  // ÜST SINIR: tek tıkla açılacak iş sayısı sınırsız olmamalı. Sınıra takılırsa liste
-  // KIRPILDIĞI SÖYLENİR — sessizce yarısını yapmak "hepsi bitti" gibi okunurdu.
-  const BULK_MAX = 100;
-
-  async function bulkPlan(code) {
-    const action = BULK_CODES[code];
-    if (!action)
-      throw Object.assign(new Error('Bu kod için toplu düzeltme tanımlı değil.'), { status: 400 });
-    const a = await getAssessment(true);
-    const items = [];
-    for (const h of a.hosts || []) {
-      for (const f of h.findings || []) {
-        if (f.code !== code || !f.fix || f.fix.action !== action) continue;
-        items.push({
-          host: h.host,
-          env: h.env || null,
-          gen: f.fix.gen,
-          jvm: f.fix.jvm,
-          action,
-          text: f.text,
-        });
-      }
-    }
-    items.sort(
-      (x, y) => x.host.localeCompare(y.host) || String(x.jvm).localeCompare(String(y.jvm)),
-    );
-    return { action, items, truncated: items.length > BULK_MAX, latestScan: a.latestScan || null };
-  }
-
-  router.post('/bulk-plan', async (req, res) => {
-    try {
-      const p = await bulkPlan(String(req.body?.code || ''));
-      res.json({ ok: true, ...p, hosts: [...new Set(p.items.map((i) => i.host))].length });
-    } catch (err) {
-      res.status(err.status || 500).json({ ok: false, message: err.message });
-    }
-  });
-
-  router.post('/bulk-fix', async (req, res) => {
-    if (req.body?.confirm !== true) {
-      return res
-        .status(400)
-        .json({ ok: false, message: 'Toplu düzeltme için açık onay gerekir (önce planı görün).' });
-    }
-    try {
-      const { action, items, truncated } = await bulkPlan(String(req.body?.code || ''));
-      if (!items.length)
-        return res.json({
-          ok: true,
-          action,
-          started: [],
-          failed: [],
-          truncated: false,
-          message: 'Bu koda uyan bulgu kalmamış — tarama tazelenmiş olabilir.',
-        });
-      const sirada = items.slice(0, BULK_MAX);
-      const started = [];
-      const failed = [];
-      for (const it of sirada) {
-        try {
-          const extraVars = {
-            target_host: it.host,
-            action,
-            plan_only: false,
-            reload: false,
-            gen: it.gen,
-            jvm: it.jvm,
-          };
-          const r = await launch(
-            req,
-            REGISTRY_KEYS.fix,
-            `Server Hub: toplu ${action} @ ${it.host}`,
-            extraVars,
-            {
-              op: 'bulk-fix',
-              host: it.host,
-              code: String(req.body?.code || ''),
-              fix: { action, gen: it.gen, jvm: it.jvm },
-            },
-          );
-          started.push({ host: it.host, jvm: it.jvm, gen: it.gen, ...r });
-        } catch (err) {
-          // BIR SUNUCU DUSERSE DIGERLERI DEVAM EDER, ama hangisi dustu SOYLENIR.
-          failed.push({ host: it.host, jvm: it.jvm, gen: it.gen, message: err.message });
-        }
-      }
-      res.json({
-        ok: true,
-        action,
-        started,
-        failed,
-        truncated: truncated || items.length > sirada.length,
-        total: items.length,
-        limit: BULK_MAX,
-      });
-    } catch (err) {
-      res.status(err.status || 500).json({ ok: false, message: err.message });
-    }
-  });
+  // Tek tiklamayla yuzlerce sunucuda auto-start degistirmek, yanlis bir taramanin
+  // sonucunu da yuzlerce sunucuya yayardi. Dogrusu satir bazinda tek tek onay:
+  // `POST /fix` ZATEN bunu yapiyor (tek host + tek JVM) ve duzeltme playbook'u virgullu
+  // hedef listesini BILEREK reddediyor. Toplu uc o korumayi N kez cagirarak deliyordu.
+  //
+  // Geri getirmek isteyen once su soruyu cevaplasin: yanlis bir tarama sonucu kac
+  // sunucuya yayilir?
 
   router.get('/job-status/:serverId/:jobId', async (req, res) => {
     const serverId = Number(req.params.serverId);

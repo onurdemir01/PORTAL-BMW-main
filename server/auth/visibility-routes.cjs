@@ -238,10 +238,18 @@ function initVisibilityRoutes(app, { requireAuth, requireAdmin }) {
   });
 
   // Bir elementin tum rol/kullanici kurallarini degistirir (idempotent replace).
+  //
+  // SIKI TORUNLARA YAYILIM (2026-10-01): ataya yazilan kisi kurali, siki bir cocuk icin
+  // HICBIR SEY YAPMAZ - kaskad yalnizca kisitlar, siki ogede varsayilan kapalidir. Crypto
+  // Hub'da tam bu oldu: kural `navgroup:cryptohub`a yazildi, `CryptoHub` sayfasi siki
+  // oldugu icin kullanici 403 aldi ve ekranda bunu soyleyen hicbir sey yoktu. Artik ayni
+  // kural siki torunlara da yaziliyor ve HANGILERINE yazildigi yanitta donuyor.
   router.put('/elements/:key/rules', requireAdmin, async (req, res) => {
-    await elementsStore.setElementRules(req.params.key, req.body?.rules || []);
+    const rules = req.body?.rules || [];
+    await elementsStore.setElementRules(req.params.key, rules);
+    const strictChildren = await elementsStore.propagateToStrictDescendants(req.params.key, rules);
     visibilityEngine.bumpVersion();
-    res.json({ ok: true });
+    res.json({ ok: true, strictChildren });
   });
 
   // ── Denetim Erisimi (2026-09-17): kullanici / AD grubu -> sekme listesi ─────────────

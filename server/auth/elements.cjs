@@ -111,6 +111,93 @@ async function setElementRules(key, rules) {
   return true;
 }
 
+/** metadata'dan strict bayragi (string ya da nesne olabilir). */
+function isStrict(el) {
+  try {
+    const m = el.metadata ? (typeof el.metadata === 'string' ? JSON.parse(el.metadata) : el.metadata) : null;
+    return !!(m && m.strict);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * KISI KURALINI SIKI TORUNLARA DA YAZAR (2026-10-01).
+ *
+ * URETIM: "Crypto Hub'a halen osmankoz@garantibbva.com.tr giremiyor." Admin ekraninda
+ * `navgroup:cryptohub` ogesine UC kisi kurali girilmisti ve ekran onlari gosteriyordu -
+ * ama kullanici 403 aliyordu.
+ *
+ * SEBEP: `CryptoHub` SAYFASI `metadata.strict = true` (kullanicinin 2026-09-26 istegi:
+ * "sadece istedigim kisiler goruntuleyebilsin"). Motorda ata kaskadi yalnizca KISITLAR,
+ * asla YETKI VERMEZ; siki ogede ise varsayilan her zaman kapalidir. Yani ataya yazilan
+ * kural siki cocuk icin HICBIR SEY YAPMIYOR - ve ekranda bunu soyleyen hicbir sey yoktu.
+ * Ayni tuzaga birden fazla kez dusuldu.
+ *
+ * COZUM: ataya kisi kurali yazilinca ayni kural SIKI torunlara da yazilir ve HANGILERINE
+ * yazildigi cagirana bildirilir (ekran soyler). Motorun anlambilimi DEGISMEDI; eksik olan
+ * satir artik otomatik olusuyor.
+ *
+ * YALNIZ EKLER, SILMEZ: ata kuralini kaldirmak cocuktaki kurali silmez - cocuga DOGRUDAN
+ * verilmis bir yetkiyi sessizce iptal etmek, bundan daha kotu bir surpriz olurdu. Kaldirma
+ * ekranda iki yerden yapilir ve ikisi de gorunur.
+ *
+ * @returns {Promise<string[]>} kural yazilan siki torun anahtarlari
+ */
+async function propagateToStrictDescendants(key, rules) {
+  const kisiKurallari = (rules || []).filter(
+    (r) => ['user', 'email', 'group'].includes(r.principalType) && r.allow !== false,
+  );
+  if (!kisiKurallari.length) return [];
+
+  const { rows: els } = await db.query(
+    `SELECT element_key, parent_key, metadata FROM portal_elements`,
+  );
+  const cocuklar = new Map();
+  for (const el of els) {
+    const p = el.parent_key || '';
+    if (!cocuklar.has(p)) cocuklar.set(p, []);
+    cocuklar.get(p).push(el);
+  }
+  // TORUNLARI GEZ - DONGUYE KARSI `gorulen` (bozuk parent zinciri motorda da korunuyor).
+  const siki = [];
+  const gorulen = new Set([key]);
+  const kuyruk = [key];
+  while (kuyruk.length) {
+    for (const el of cocuklar.get(kuyruk.shift()) || []) {
+      if (gorulen.has(el.element_key)) continue;
+      gorulen.add(el.element_key);
+      kuyruk.push(el.element_key);
+      if (isStrict(el)) siki.push(el.element_key);
+    }
+  }
+  if (!siki.length) return [];
+
+  const yazilan = [];
+  for (const ck of siki) {
+    const { rows: mevcut } = await db.query(
+      `SELECT principal_type, principal_id FROM portal_element_visibility WHERE element_key = $1`,
+      [ck],
+    );
+    const var_ = new Set(
+      mevcut.map((r) => `${r.principal_type}|${String(r.principal_id || '').toLowerCase()}`),
+    );
+    let eklendi = false;
+    for (const r of kisiKurallari) {
+      const pid = String(r.principalId || '').trim().toLowerCase();
+      if (!pid || var_.has(`${r.principalType}|${pid}`)) continue;
+      await db.query(
+        `INSERT INTO portal_element_visibility (element_key, principal_type, principal_id, allow)
+         VALUES ($1,$2,$3,1)`,
+        [ck, r.principalType, pid],
+      );
+      eklendi = true;
+    }
+    if (eklendi) yazilan.push(ck);
+  }
+  return yazilan;
+}
+
 // Yalnizca enabled bayragini degistirir (global kill-switch).
 async function setElementEnabled(key, enabled) {
   const { rowCount } = await db.query(
@@ -140,5 +227,6 @@ async function setElementStrict(key, strict) {
 
 module.exports = {
   listElements, listRules, upsertElement, deleteElement, setElementRules, setElementEnabled,
+  propagateToStrictDescendants,
   setElementStrict,
 };
