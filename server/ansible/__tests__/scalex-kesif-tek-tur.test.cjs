@@ -23,19 +23,23 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
 const { SCALEX_PKG: PKG } = require('../paths.cjs');
+const { BASH, PS_ARGV_KOMUTU, bekle, kabukPath, posixYol } = require('./fixtures/kabuk.cjs');
 const APP = path.join(PKG, 'scalex_app');
 const DISC = path.join(APP, 'tasks', 'discovery');
 const BATCH = path.join(APP, 'files', 'scalex_batch.sh');
 
 const HAS_ANSIBLE = spawnSync('ansible-playbook', ['--version'], { stdio: 'ignore' }).status === 0;
-const HAS_TIMEOUT = spawnSync('timeout', ['1', 'true'], { stdio: 'ignore' }).status === 0;
+// `timeout` node'un calistirilabilir aramasiyla DEGIL, betigin kullandigi
+// kabugun gozuyle olculur: Windows'ta ayni adli bir Windows komutu var ve
+// varligi YANLIS raporlanabiliyor.
+const HAS_TIMEOUT = spawnSync(BASH, ['-c', 'timeout 1 true'], { stdio: 'ignore' }).status === 0;
 
 /**
  * Sahte runner: giris/cikis izi, kendi ortamindaki `SCALEX_T*` sayisi ve
  * gordugu parolalar. `mod` cluster adina gore davranisi secer.
  */
 function sahteRunner(iz) {
-  const q = JSON.stringify(iz);
+  const q = JSON.stringify(posixYol(iz));
   return [
     `printf 'BASLA %s\\n' "$CLUSTER" >> ${q}`,
     'case "$CLUSTER" in',
@@ -45,8 +49,13 @@ function sahteRunner(iz) {
     `printf 'BITTI %s\\n' "$CLUSTER" >> ${q}`,
     `printf 'ENV %s %s\\n' "$CLUSTER" "$(env | grep -c '^SCALEX_T' || true)" >> ${q}`,
     `printf 'PW %s %s\\n' "$CLUSTER" "$OCP_PASSWORD" >> ${q}`,
-    // Parola hicbir surecin argv'sinde gorunmemeli (M5).
-    `ps -eo args= 2>/dev/null | grep -F -- "$OCP_PASSWORD" | grep -v grep >/dev/null && printf 'ARGV_SIZINTI %s\\n' "$CLUSTER" >> ${q}`,
+    // Parola hicbir surecin argv'sinde gorunmemeli (M5). `ps -eo args=` her
+    // kabukta YOK (Git Bash: "unknown option -- o"); yoksa cikis bos kalir,
+    // `grep` eslesmez ve bekci "sizinti yok" sanip HEP yesil yanardi.
+    // Bakilamadigi durumu ayrica bildirir: M5 onu da kirmizi sayar.
+    `_ps="$(${PS_ARGV_KOMUTU})"`,
+    `case "$_ps" in ps_yok|'') printf 'PS_YOK %s\\n' "$CLUSTER" >> ${q} ;; esac`,
+    `printf '%s' "$_ps" | grep -F -- "$OCP_PASSWORD" >/dev/null && printf 'ARGV_SIZINTI %s\\n' "$CLUSTER" >> ${q}`,
     'case "$CLUSTER" in',
     '  bos*) exit 0 ;;',
     "  kirik*) echo 'sahte patladi' >&2; exit 7 ;;",
@@ -54,6 +63,38 @@ function sahteRunner(iz) {
     'printf \'%s;%s;odeme-api;Deployment;WORKLOAD;OK;ns=%s\\n\' "$CLUSTER" "$JUMP_SERVER" "$NS"',
     'exit 0',
   ].join('\n');
+}
+
+/**
+ * Sarmalayiciya GERCEK SIGTERM gonderir (AWX iptali / SSH kopmasi).
+ *
+ * Sinyali KABUK ICINDEN gonderiyoruz, `spawnSync`in `killSignal`i ile DEGIL:
+ * node Windows'ta POSIX sinyali tasiyamaz, `SIGTERM` TerminateProcess'e doner
+ * ve bash TERM/EXIT tuzaklarini HIC kosturmaz. Bekci o zaman betigin degil
+ * platformun yuzunden kizarir. `kill -TERM` ayni kabuk ad uzayindan gidince
+ * tuzaklar iki platformda da calisir.
+ */
+function termGonder(tmp, env, iz) {
+  const bat = path.join(tmp, 'batch.sh');
+  const run = path.join(tmp, 'runner.sh');
+  fs.writeFileSync(bat, fs.readFileSync(BATCH, 'utf8'));
+  fs.writeFileSync(run, sahteRunner(iz));
+  const q = (x) => `'${posixYol(x)}'`;
+  return spawnSync(
+    BASH,
+    [
+      '-c',
+      [
+        `bash ${q(bat)} < ${q(run)} &`,
+        'p=$!',
+        'sleep 1.5',
+        'kill -TERM "$p" 2>/dev/null',
+        'wait "$p" 2>/dev/null',
+        'exit 0',
+      ].join('\n'),
+    ],
+    { env, encoding: 'utf8', timeout: 60000 },
+  );
 }
 
 /** Sarmalayiciyi Ansible'in `shell` gorevi gibi kosturur: `bash -c <metin>`, stdin = runner. */
@@ -64,8 +105,8 @@ function sarmalayiciKostur(clusters, { zamanAsimi = 30, tmpdir, sinyal } = {}) {
   const iz = path.join(tmp, 'iz.log');
   try {
     const env = {
-      PATH: process.env.PATH,
-      TMPDIR: kok,
+      PATH: kabukPath(),
+      TMPDIR: posixYol(kok),
       NS: 'ns1',
       SCALEX_BATCH_TIMEOUT: String(zamanAsimi),
       SCALEX_BATCH_IDX: clusters.map((_, i) => i).join(' '),
@@ -76,16 +117,17 @@ function sarmalayiciKostur(clusters, { zamanAsimi = 30, tmpdir, sinyal } = {}) {
       env[`SCALEX_T${i}_JUMP_SERVER`] = `jump-${c}`;
       env[`SCALEX_T${i}_OCP_PASSWORD`] = `gizli-${c}-parola`;
     });
-    const r = spawnSync('/bin/bash', ['-c', fs.readFileSync(BATCH, 'utf8')], {
-      input: sahteRunner(iz),
-      env,
-      encoding: 'utf8',
-      timeout: sinyal ? 1500 : 60000,
-      killSignal: 'SIGTERM',
-    });
+    const r = sinyal
+      ? termGonder(tmp, env, iz)
+      : spawnSync(BASH, ['-c', fs.readFileSync(BATCH, 'utf8')], {
+          input: sahteRunner(iz),
+          env,
+          encoding: 'utf8',
+          timeout: 60000,
+        });
     // Sinyal senaryosunda cocuklarin kapanmasina firsat ver.
     // Yavas runner 5 sn uyuyor: 6 sn sonra hala yazmadiysa GERCEKTEN olduruldu.
-    if (sinyal) spawnSync('sleep', ['6']);
+    if (sinyal) bekle(6);
     const trace = fs.existsSync(iz) ? fs.readFileSync(iz, 'utf8').split('\n').filter(Boolean) : [];
     const kalan = fs.readdirSync(kok).filter((x) => x.startsWith('scalex_batch_'));
     return { status: r.status, out: r.stdout || '', err: r.stderr || '', trace, kalan };
@@ -173,6 +215,11 @@ test(
   () => {
     const r = sarmalayiciKostur(['c1', 'c2']);
     assert.equal(r.status, 0, r.err);
+    // `ps` bakamadiysa bu bekci hicbir sey KANITLAMAZ: bos cikis basari degil.
+    assert.ok(
+      !r.trace.some((x) => x.startsWith('PS_YOK')),
+      `ps argv'ye bakamadi: ${JSON.stringify(r.trace)}`,
+    );
     assert.ok(!r.trace.some((x) => x.startsWith('ARGV_SIZINTI')), JSON.stringify(r.trace));
     assert.ok(r.trace.includes('PW c1 gizli-c1-parola'), JSON.stringify(r.trace));
     assert.ok(r.trace.includes('PW c2 gizli-c2-parola'), JSON.stringify(r.trace));

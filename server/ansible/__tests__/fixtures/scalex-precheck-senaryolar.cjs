@@ -11,6 +11,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
+const { BASH, kabukPath, posixYol } = require('./kabuk.cjs');
 
 const ROOT = path.join(__dirname, '..', '..', '..', '..');
 const RUNNER = path.join(
@@ -157,11 +158,11 @@ function kostur(senaryo, { runner = RUNNER, faz = 'precheck', modelEk = null } =
     { mode: 0o755 },
   );
   fs.writeFileSync(path.join(dir, 'curl'), '#!/bin/bash\nexit 0\n', { mode: 0o755 });
-  const cikti = execFileSync('bash', [runner], {
+  const cikti = execFileSync(BASH, [runner], {
     encoding: 'utf8',
     env: {
       ...process.env,
-      PATH: `${dir}:${process.env.PATH}`,
+      PATH: kabukPath(dir),
       SAHTE_OC_MODEL: modelYolu,
       SAHTE_OC_LOG: log,
       SCALEX_PHASE: faz,
@@ -170,7 +171,7 @@ function kostur(senaryo, { runner = RUNNER, faz = 'precheck', modelEk = null } =
       API_URL: 'https://api.lab:6443',
       OCP_USERNAME: 'u',
       OCP_PASSWORD: 'x',
-      OCP_OC_PATHS: path.join(dir, 'oc'),
+      OCP_OC_PATHS: posixYol(path.join(dir, 'oc')),
       NS: 'ns1',
       TLS_VERIFY: 'false',
       JOB_ID: '42',
