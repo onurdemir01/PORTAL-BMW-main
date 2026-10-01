@@ -1,8 +1,8 @@
 // src/api/nginxConsoleApi.ts — Nginx Hub (2026-09-19): sunucu listesi, konfigurasyon
 // agaci/icerik (Ansible dokumundan, /sw), sertifika envanteri, dokum yenileme ve tek dosya push.
-import { safeJson } from "./http";
+import { safeJson } from './http';
 
-const BASE = "/api/nginx-console";
+const BASE = '/api/nginx-console';
 
 export interface NcHost {
   host: string;
@@ -23,7 +23,7 @@ export interface NcHost {
   dumpedAt: string | null;
   /** fetch job'inin bu sunucuya son ulastigi an (_seen.json ya da dokum); Online bunun uzerinden */
   seenAt?: string | null;
-  nginxT: "ok" | "fail" | null;
+  nginxT: 'ok' | 'fail' | null;
   fileCount: number | null;
   certCount: number | null;
   certMinDays: number | null;
@@ -32,8 +32,19 @@ export interface NcHost {
   inventoryMissing?: boolean;
 }
 
-export interface NcTreeFile { name: string; path: string; size: number; mtime: string; sha256: string }
-export interface NcTreeDir { name: string; path: string; dirs: NcTreeDir[]; files: NcTreeFile[] }
+export interface NcTreeFile {
+  name: string;
+  path: string;
+  size: number;
+  mtime: string;
+  sha256: string;
+}
+export interface NcTreeDir {
+  name: string;
+  path: string;
+  dirs: NcTreeDir[];
+  files: NcTreeFile[];
+}
 
 export interface NcCert {
   path: string;
@@ -57,7 +68,13 @@ export interface NcCert {
   selfSigned: boolean;
   daysLeft: number | null;
 }
-export interface NcCertUse { conf: string; serverName: string; cert: string; key: string; keyState: string }
+export interface NcCertUse {
+  conf: string;
+  serverName: string;
+  cert: string;
+  key: string;
+  keyState: string;
+}
 
 export interface NcTree {
   ok: boolean;
@@ -66,7 +83,7 @@ export interface NcTree {
   dumpedAt?: string;
   time?: string;
   prefix?: string;
-  nginxT?: { status: "ok" | "fail" | "unknown"; output: string };
+  nginxT?: { status: 'ok' | 'fail' | 'unknown'; output: string };
   tree?: NcTreeDir;
   fileCount?: number;
   certs?: NcCert[];
@@ -86,9 +103,20 @@ export interface NcFile {
   message?: string;
 }
 
-export interface NcAggCert extends Omit<NcCert, "path" | "sha256" | "size" | "mtime" | "exists"> {
+export interface NcAggCert extends Omit<NcCert, 'path' | 'sha256' | 'size' | 'mtime' | 'exists'> {
   exists: boolean;
-  hosts: { host: string; path: string; sha256: string | null; uses: { conf: string; serverName: string; key: string; keyState: string; loaded?: boolean | null }[] }[];
+  hosts: {
+    host: string;
+    path: string;
+    sha256: string | null;
+    uses: {
+      conf: string;
+      serverName: string;
+      key: string;
+      keyState: string;
+      loaded?: boolean | null;
+    }[];
+  }[];
   hostCount: number;
   useCount: number;
   /** yalniz nginx -T'nin YUKLEDIGI conf'lardaki kullanim (eski dokumda = useCount) */
@@ -98,33 +126,84 @@ export interface NcCertsResult {
   ok: boolean;
   hostsScanned: number;
   certs: NcAggCert[];
-  summary: { total: number; expired: number; within30: number; within90: number; missing: number; selfSigned: number; unused?: number; generatedAt: string };
+  summary: {
+    total: number;
+    expired: number;
+    within30: number;
+    within90: number;
+    missing: number;
+    selfSigned: number;
+    unused?: number;
+    generatedAt: string;
+  };
 }
 
 // Kullanilmayan dosyalar (2026-09-22): nginx -T'nin yuklemedigi conf'lar, yalniz onlarda gecen
 // sertifikalar, ssl/ altinda referanssiz dosyalar. Sunucu bazinda.
-export interface NcOrphanFile { path: string; size: number; mtime: string | null; owner?: string | null }
+export interface NcOrphanFile {
+  path: string;
+  size: number;
+  mtime: string | null;
+  owner?: string | null;
+}
 export interface NcOrphanHost {
   host: string;
   known: boolean;
   reason: string | null;
   unloaded: NcOrphanFile[];
   backups: NcOrphanFile[];
-  certs: { path: string; exists: boolean; cn: string | null; issuerCn: string | null; notAfter: string | null; daysLeft: number | null; usedBy: string[] }[];
+  certs: {
+    path: string;
+    exists: boolean;
+    cn: string | null;
+    issuerCn: string | null;
+    notAfter: string | null;
+    daysLeft: number | null;
+    usedBy: string[];
+  }[];
   ssl: { path: string; size: number; mtime: string | null; isKey: boolean }[];
 }
 // Tutarlilik (2026-09-22): servis+ortam gruplarinda dosya bazinda sha farki
-export interface NcDriftFile { path: string; status: 'differ' | 'missing' | 'local' | 'same'; variants: { sha: string; hosts: string[]; size: number; mtime: string | null }[]; missing: string[]; majority: string | null }
-export interface NcDriftGroup { key: string; service: string; env: string; hosts: string[]; dumped: string[]; dumpMissing: string[]; files: NcDriftFile[]; counts: { same: number; differ: number; missing: number; local: number } }
-export interface NcDriftResult { ok: boolean; message?: string; groups: NcDriftGroup[]; services: string[]; generatedAt: string }
+export interface NcDriftFile {
+  path: string;
+  status: 'differ' | 'missing' | 'local' | 'same';
+  variants: { sha: string; hosts: string[]; size: number; mtime: string | null }[];
+  missing: string[];
+  majority: string | null;
+}
+export interface NcDriftGroup {
+  key: string;
+  service: string;
+  env: string;
+  hosts: string[];
+  dumped: string[];
+  dumpMissing: string[];
+  files: NcDriftFile[];
+  counts: { same: number; differ: number; missing: number; local: number };
+}
+export interface NcDriftResult {
+  ok: boolean;
+  message?: string;
+  groups: NcDriftGroup[];
+  services: string[];
+  generatedAt: string;
+}
 export interface NcOrphansResult {
   ok: boolean;
   hosts: NcOrphanHost[];
-  summary: { hostsScanned: number; hostsUnknown: number; unloaded: number; backups: number; certs: number; ssl: number; generatedAt: string };
+  summary: {
+    hostsScanned: number;
+    hostsUnknown: number;
+    unloaded: number;
+    backups: number;
+    certs: number;
+    ssl: number;
+    generatedAt: string;
+  };
 }
 
 // Gecmis (Git benzeri, 2026-09-19): yalniz degisiklikte satir; icerik blob deposunda (sha256)
-export type NcChangeSource = "first-seen" | "server" | "portal-publish" | "deleted";
+export type NcChangeSource = 'first-seen' | 'server' | 'portal-publish' | 'deleted';
 export interface NcChange {
   id: number;
   host: string;
@@ -144,17 +223,37 @@ export interface NcChange {
   hasNew: boolean;
 }
 
-export interface NcLaunch { ok: boolean; jobId: number | null; status: string | null; awxServerId: number; message?: string; newSha256?: string; currentSha256?: string | null; conflicts?: { host: string; reason: string; currentSha256?: string }[]; hosts?: string[] }
-export interface NcJobStatus { ok: boolean; status: string; output: string; result?: unknown; message?: string }
+export interface NcLaunch {
+  ok: boolean;
+  jobId: number | null;
+  status: string | null;
+  awxServerId: number;
+  message?: string;
+  newSha256?: string;
+  currentSha256?: string | null;
+  conflicts?: { host: string; reason: string; currentSha256?: string }[];
+  hosts?: string[];
+}
+export interface NcJobStatus {
+  ok: boolean;
+  status: string;
+  output: string;
+  result?: unknown;
+  message?: string;
+}
 
-const json = (body: unknown) => ({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+const json = (body: unknown) => ({
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(body),
+});
 
 export interface NcOrphanCleanupResult {
   ok: boolean;
   message?: string;
   job?: { jobId?: number | null; status?: string | null; awxServerId?: number };
   host?: string;
-  mode?: "plan" | "apply";
+  mode?: 'plan' | 'apply';
   paths?: string[];
   /** sunucunun "kullanılmayan" listesinde bulunmayan yollar (döküm bayatsa dolar) */
   rejected?: string[];
@@ -178,6 +277,13 @@ export interface NgSpaDiscoveryRow {
   image: string;
   /** Eşleşme kurulamadıysa sebebi. Satır yine listede durur. */
   note: string;
+  /**
+   * Eşleşme kanıtı: `selector` (servis selector'u pod etiketlerine uydu) ya da `ad`
+   * (servis OKUNAMADI, servisle aynı adlı iş yüküne düşüldü — daha zayıf kanıt). Boş: eşleşmedi.
+   */
+  matchBy: string;
+  /** Bu satırın geldiği tarama (cluster başına en yeni tarama gösterilir). */
+  scanDate: string;
   /** Route, route envanterinde kayıtlı mı. */
   inInventory: boolean;
   /** Eski yöntem (`-app-v` / `-app-emb-v`) bunu SPA sayar mıydı. */
@@ -186,7 +292,14 @@ export interface NgSpaDiscoveryRow {
   patternMiss: boolean;
   /** Ad kalıbına uyuyor ama kabinde nginx yok. */
   patternFalse: boolean;
-  usage: { scanDate: string; windowDays: number; req: number; measured: boolean; services: number; note: string } | null;
+  usage: {
+    scanDate: string;
+    windowDays: number;
+    req: number;
+    measured: boolean;
+    services: number;
+    note: string;
+  } | null;
   /** `null` = ölçülemedi ya da ölçüm yok — "istek yok" DEĞİL. */
   reqShown: number | null;
 }
@@ -211,7 +324,51 @@ export interface NgSpaDiscovery {
     trafficUnmeasured: number;
     trafficNone: number;
     unmatched: number;
+    /** Eşleşmeme sebebi kovaları ("servis okunamadi" = yetki, "servis bulunamadi" = bulgu). */
+    unmatchedReasons?: Record<string, number>;
+    /** Eşleşme kanıtı kırılımı: selector / ad. */
+    byMatch?: Record<string, number>;
   } | null;
+  /** Cluster kapsamı: "taranamadı" ile "SPA'sı yok" AYRI. */
+  coverage?: NgSpaCoverage | null;
+}
+
+export interface NgSpaCoverageCluster {
+  cluster: string;
+  /** ok | kismi | login | hata | erisilemedi | bilinmiyor */
+  status: string;
+  /** Ayrık kova: taranamadi | kismi | bilinmiyor | onceki | guncel */
+  bucket: 'taranamadi' | 'kismi' | 'bilinmiyor' | 'onceki' | 'guncel';
+  runDate: string;
+  dataDate: string;
+  routes: number | null;
+  spa: number | null;
+  unmatched: number | null;
+  svcMode: string;
+  svcUnreadableNs: number | null;
+  reason: string;
+  /** Ekrandaki veri bu cluster'ın son koşusundan değil (önceki bir koşudan). */
+  stale: boolean;
+  /** Son koşuya dahil değildi (hata değil; tek cluster'a koşulan iş ötekileri hedeflemez). */
+  notInLastRun: boolean;
+  noData: boolean;
+}
+export interface NgSpaCoverage {
+  /** Durum tablosu hiç yoksa kapsam ÖLÇÜLMEMİŞTİR. */
+  measured: boolean;
+  /** Durum tablosu okunamadıysa sebebi (boş değilse kapsam bilinmiyor). */
+  error: string;
+  lastRun: string;
+  clusters: NgSpaCoverageCluster[];
+  /** Kovalar ayrıktır: ok + older + partial + failed + unknown = total. */
+  total: number;
+  ok: number;
+  older: number;
+  partial: number;
+  failed: number;
+  unknown: number;
+  /** Kova değil, alt bilgi: ekranda hiç satırı olmayan cluster sayısı. */
+  noData: number;
 }
 
 export const nginxConsoleApi = {
@@ -219,39 +376,98 @@ export const nginxConsoleApi = {
   spaDiscovery: (): Promise<NgSpaDiscovery> => fetch(`${BASE}/spa-discovery`).then((r) => r.json()),
   /** Tüm Nginx sunucularının rate limit dökümü (satır düzeyinde). */
   rateLimit: (scanDate?: string): Promise<NginxRateLimitResult> =>
-    fetch(`${BASE}/ratelimit${scanDate ? `?scanDate=${encodeURIComponent(scanDate)}` : ''}`).then(safeJson),
+    fetch(`${BASE}/ratelimit${scanDate ? `?scanDate=${encodeURIComponent(scanDate)}` : ''}`).then(
+      safeJson,
+    ),
 
-  hosts: (): Promise<{ ok: boolean; hosts: NcHost[]; consoleDir: string; inventoryError: string | null }> => fetch(`${BASE}/hosts`).then(safeJson),
-  tree: (host: string): Promise<NcTree> => fetch(`${BASE}/tree/${encodeURIComponent(host)}`).then(safeJson),
-  file: (host: string, path: string): Promise<NcFile> => fetch(`${BASE}/file/${encodeURIComponent(host)}?path=${encodeURIComponent(path)}`).then(safeJson),
-  compare: (path: string, hosts?: string[]): Promise<{ ok: boolean; path: string; rows: { host: string; exists: boolean; sha256: string | null; size: number | null; mtime: string | null }[]; variants: number }> =>
-    fetch(`${BASE}/compare?path=${encodeURIComponent(path)}${hosts?.length ? `&hosts=${encodeURIComponent(hosts.join(","))}` : ""}`).then(safeJson),
-  certs: (host?: string): Promise<NcCertsResult> => fetch(`${BASE}/certs${host ? `?host=${encodeURIComponent(host)}` : ""}`).then(safeJson),
-  drift: (service?: string, env?: string): Promise<NcDriftResult> => { const u = new URLSearchParams(); if (service) u.set("service", service); if (env) u.set("env", env); const qs = u.toString(); return fetch(`${BASE}/drift${qs ? "?" + qs : ""}`).then(safeJson); },
-  orphans: (host?: string): Promise<NcOrphansResult> => fetch(`${BASE}/orphans${host ? `?host=${encodeURIComponent(host)}` : ""}`).then(safeJson),
+  hosts: (): Promise<{
+    ok: boolean;
+    hosts: NcHost[];
+    consoleDir: string;
+    inventoryError: string | null;
+  }> => fetch(`${BASE}/hosts`).then(safeJson),
+  tree: (host: string): Promise<NcTree> =>
+    fetch(`${BASE}/tree/${encodeURIComponent(host)}`).then(safeJson),
+  file: (host: string, path: string): Promise<NcFile> =>
+    fetch(`${BASE}/file/${encodeURIComponent(host)}?path=${encodeURIComponent(path)}`).then(
+      safeJson,
+    ),
+  compare: (
+    path: string,
+    hosts?: string[],
+  ): Promise<{
+    ok: boolean;
+    path: string;
+    rows: {
+      host: string;
+      exists: boolean;
+      sha256: string | null;
+      size: number | null;
+      mtime: string | null;
+    }[];
+    variants: number;
+  }> =>
+    fetch(
+      `${BASE}/compare?path=${encodeURIComponent(path)}${hosts?.length ? `&hosts=${encodeURIComponent(hosts.join(','))}` : ''}`,
+    ).then(safeJson),
+  certs: (host?: string): Promise<NcCertsResult> =>
+    fetch(`${BASE}/certs${host ? `?host=${encodeURIComponent(host)}` : ''}`).then(safeJson),
+  drift: (service?: string, env?: string): Promise<NcDriftResult> => {
+    const u = new URLSearchParams();
+    if (service) u.set('service', service);
+    if (env) u.set('env', env);
+    const qs = u.toString();
+    return fetch(`${BASE}/drift${qs ? '?' + qs : ''}`).then(safeJson);
+  },
+  orphans: (host?: string): Promise<NcOrphansResult> =>
+    fetch(`${BASE}/orphans${host ? `?host=${encodeURIComponent(host)}` : ''}`).then(safeJson),
   /** Kullanılmayan dosyaları karantinaya alır. mode=plan hiçbir şeye dokunmaz. */
-  orphansCleanup: (body: { host: string; paths: string[]; mode: "plan" | "apply" }): Promise<NcOrphanCleanupResult> =>
+  orphansCleanup: (body: {
+    host: string;
+    paths: string[];
+    mode: 'plan' | 'apply';
+  }): Promise<NcOrphanCleanupResult> =>
     fetch(`${BASE}/orphans/cleanup`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     }).then(safeJson),
   // hosts bos + all:true -> playbook tum nginx filosunu envanterden kesfeder (30-40 dk)
-  refresh: (hosts: string[], all = false): Promise<NcLaunch & { hosts: string[]; all?: boolean }> => fetch(`${BASE}/refresh`, json({ hosts, all })).then(safeJson),
+  refresh: (hosts: string[], all = false): Promise<NcLaunch & { hosts: string[]; all?: boolean }> =>
+    fetch(`${BASE}/refresh`, json({ hosts, all })).then(safeJson),
   // Publish (NIM "Publish"): bir dosya, bir ya da daha fazla sunucu (instance group = servis).
   // expectedSha: host -> Portal'in gordugu sha (anti-TOCTOU); force ile atlanir.
-  push: (body: { hosts: string[]; path: string; mode: "create" | "update"; content: string; expectedSha?: Record<string, string>; force?: boolean }): Promise<NcLaunch> =>
-    fetch(`${BASE}/push`, json(body)).then(safeJson),
-  jobStatus: (awxServerId: number, jobId: number): Promise<NcJobStatus> => fetch(`${BASE}/job-status/${awxServerId}/${jobId}`).then(safeJson),
+  push: (body: {
+    hosts: string[];
+    path: string;
+    mode: 'create' | 'update';
+    content: string;
+    expectedSha?: Record<string, string>;
+    force?: boolean;
+  }): Promise<NcLaunch> => fetch(`${BASE}/push`, json(body)).then(safeJson),
+  jobStatus: (awxServerId: number, jobId: number): Promise<NcJobStatus> =>
+    fetch(`${BASE}/job-status/${awxServerId}/${jobId}`).then(safeJson),
   // Gecmis
-  history: (host: string, path: string): Promise<{ ok: boolean; versions: NcChange[]; message?: string }> =>
-    fetch(`${BASE}/history/${encodeURIComponent(host)}?path=${encodeURIComponent(path)}`).then(safeJson),
-  changes: (q: { host?: string; path?: string; source?: string; since?: string; limit?: number } = {}): Promise<{ ok: boolean; changes: NcChange[]; message?: string }> => {
+  history: (
+    host: string,
+    path: string,
+  ): Promise<{ ok: boolean; versions: NcChange[]; message?: string }> =>
+    fetch(`${BASE}/history/${encodeURIComponent(host)}?path=${encodeURIComponent(path)}`).then(
+      safeJson,
+    ),
+  changes: (
+    q: { host?: string; path?: string; source?: string; since?: string; limit?: number } = {},
+  ): Promise<{ ok: boolean; changes: NcChange[]; message?: string }> => {
     const u = new URLSearchParams();
-    Object.entries(q).forEach(([k, v]) => { if (v != null && v !== "") u.set(k, String(v)); });
+    Object.entries(q).forEach(([k, v]) => {
+      if (v != null && v !== '') u.set(k, String(v));
+    });
     return fetch(`${BASE}/changes?${u.toString()}`).then(safeJson);
   },
-  blob: (sha: string): Promise<{ ok: boolean; sha256: string; content: string; message?: string }> => fetch(`${BASE}/blob/${encodeURIComponent(sha)}`).then(safeJson),
+  blob: (
+    sha: string,
+  ): Promise<{ ok: boolean; sha256: string; content: string; message?: string }> =>
+    fetch(`${BASE}/blob/${encodeURIComponent(sha)}`).then(safeJson),
 };
 
 // ── Rate Limit sekmesi (v2, 2026-09-26) ──────────────────────────────────────────────
@@ -289,7 +505,8 @@ export interface NginxRateLimitHost {
   /** eksik = zone yok YA DA tanımlı ama uygulanmıyor */
   /** bilinmiyor = ölçülmedi; kurulumyok/calismiyor/configbozuk = sunucunun kendi durumu.
    *  Hiçbiri EKSİK ile karıştırılmaz: eksik olan limit değil, ölçümdür. */
-  durum: 'standart' | 'farkli' | 'eksik' | 'bilinmiyor' | 'kurulumyok' | 'calismiyor' | 'configbozuk';
+  durum:
+    'standart' | 'farkli' | 'eksik' | 'bilinmiyor' | 'kurulumyok' | 'calismiyor' | 'configbozuk';
   /** null = ölçülmedi */
   kurulu: boolean | null;
   /** null = ölçülmedi. false iken değerler DOSYADA yazandır, şu an uygulanmıyor. */

@@ -31,12 +31,130 @@ const T = (s) => String(s == null ? '' : s).trim();
  */
 const uygulamaAdi = (r) => T(r.workload) || T(r.route);
 
+/** 'YYYY-MM-DD' ya da '' (Date, ISO metin ya da bos). */
+const gunu = (v) => {
+  if (!v) return '';
+  if (v instanceof Date) return v.toISOString().slice(0, 10);
+  return String(v).slice(0, 10);
+};
+
 /**
- * @param {object[]} discovery  dbo.BMW_Spa_Discovery (EN YENI tarama)
+ * Eslesmeme notunu KOVAYA indirger: "servis bulunamadi: x-svc" -> "servis bulunamadi".
+ * Kovalar AYRI sayilir cunku anlamlari zittir: "servis okunamadi" bir OLCUM sorunudur
+ * (yetki), "servis bulunamadi" ise route'un kendisinde bir BULGUDUR.
+ */
+const notKovasi = (note) => T(note).split(':')[0].trim() || 'bilinmiyor';
+
+const BASARISIZ = new Set(['login', 'hata', 'erisilemedi']);
+
+/**
+ * CLUSTER KAPSAMI (2026-10-01, ilk uretim kosusu): 43 cluster'in 27'si hic veri uretmedi
+ * ama ekran yalnizca "0 SPA" diyordu. "Taranamadi" ile "SPA'si yok" AYRI gosterilir.
+ *
+ * KOVALAR AYRIKTIR (dusmanca dogrulama bulgusu: bir cluster iki sayida birden geciyordu).
+ * Oncelik sirasi: taranamadi > kismi > bilinmiyor > onceki kosudan > guncel. Her cluster
+ * TEK kovadadir; kovalarin toplami cluster sayisidir.
+ *
+ * "SON KOSUYA GIRMEDI" BIR HATA DEGILDIR: tek cluster'a kosulan bir is digerlerini hedeflemez.
+ * Hedeflenip sonuc vermeyen cluster'i yukleyici `erisilemedi` diye ZATEN yazar (hedef listesi);
+ * burada tahmin yurutulmez, yalnizca "onceki kosudan" diye notr isaretlenir.
+ *
+ * @param {object[]|null} runs  dbo.BMW_Spa_Discovery_Run, cluster basina EN YENI satir;
+ *                              null = tablo OKUNAMADI (bos dizi ile ayni sey DEGIL)
+ * @param {Map<string,string>} veriGunu  cluster -> ekranda gosterilen verinin tarihi
+ */
+function kapsam(runs, veriGunu) {
+  const out = new Map();
+  for (const r of runs || []) {
+    const c = T(r.cluster);
+    if (!c) continue;
+    out.set(c, {
+      cluster: c,
+      status: T(r.durum) || 'bilinmiyor',
+      runDate: gunu(r.scan_date),
+      routes: r.routes == null ? null : Number(r.routes),
+      spa: r.spa == null ? null : Number(r.spa),
+      unmatched: r.eslesmeyen == null ? null : Number(r.eslesmeyen),
+      svcMode: T(r.svc_kip),
+      svcUnreadableNs: r.svc_okunamayan_ns == null ? null : Number(r.svc_okunamayan_ns),
+      reason: T(r.sebep),
+    });
+  }
+  // Verisi olup durum satiri OLMAYAN cluster: yukleyicinin durum yazmayan eski surumu.
+  // Sonucu BILINMIYOR - "ok" diye boyanmaz.
+  for (const c of veriGunu.keys()) {
+    if (!out.has(c))
+      out.set(c, {
+        cluster: c,
+        status: 'bilinmiyor',
+        runDate: '',
+        routes: null,
+        spa: null,
+        unmatched: null,
+        svcMode: '',
+        svcUnreadableNs: null,
+        reason: 'bu cluster icin tarama durumu kaydi yok',
+      });
+  }
+  const sonKosu = [...out.values()].reduce((m, k) => (k.runDate > m ? k.runDate : m), '');
+  const SIRA = { taranamadi: 0, kismi: 1, bilinmiyor: 2, onceki: 3, guncel: 4 };
+  const clusters = [...out.values()]
+    .map((k) => {
+      const dataDate = veriGunu.get(k.cluster) || '';
+      const basarisiz = BASARISIZ.has(k.status);
+      // VERI DURUMDAN YENI: veri yazilmis ama durum satiri yazilmamis (yarim yukleme ya da
+      // eski surum). Ne oldugunu bilmiyoruz.
+      const veriIleride = !!(dataDate && k.runDate && dataDate > k.runDate);
+      // ESKI VERI: basarisiz bir kosu VERI YAZMAZ; o cluster'in ekrandaki satirlari mutlaka
+      // ONCEKI bir kosudan. Ayni gun iki kez kosulsa bile (tarih esit) bu boyle.
+      const stale = !!(dataDate && (basarisiz || (k.runDate && dataDate < k.runDate)));
+      const oncekiKosudan = !!(k.runDate && sonKosu && k.runDate < sonKosu);
+      let bucket;
+      if (basarisiz) bucket = 'taranamadi';
+      else if (k.status === 'kismi') bucket = 'kismi';
+      else if (k.status !== 'ok' || veriIleride) bucket = 'bilinmiyor';
+      else if (oncekiKosudan) bucket = 'onceki';
+      else bucket = 'guncel';
+      return {
+        ...k,
+        reason: veriIleride
+          ? `veri (${dataDate}) durum kaydından (${k.runDate}) yeni — yükleme yarım kalmış olabilir` +
+            (k.reason ? `; ${k.reason}` : '')
+          : k.reason,
+        dataDate,
+        bucket,
+        stale,
+        notInLastRun: oncekiKosudan,
+        noData: !dataDate,
+      };
+    })
+    .sort((a, b) => SIRA[a.bucket] - SIRA[b.bucket] || a.cluster.localeCompare(b.cluster));
+  const say = (b) => clusters.filter((k) => k.bucket === b).length;
+  return {
+    // Durum tablosu hic yoksa (yukleyicinin eski surumu) kapsam OLCULMEMISTIR; okunamadiysa
+    // (runs === null) bu AYRICA soylenir.
+    measured: (runs || []).length > 0,
+    error: runs === null ? 'cluster tarama durumu okunamadı' : '',
+    lastRun: sonKosu,
+    clusters,
+    total: clusters.length,
+    ok: say('guncel'),
+    older: say('onceki'),
+    partial: say('kismi'),
+    failed: say('taranamadi'),
+    unknown: say('bilinmiyor'),
+    // KOVA DEGIL, ALT BILGI: hangi kovada olursa olsun ekranda hic satiri olmayan cluster.
+    noData: clusters.filter((k) => k.noData).length,
+  };
+}
+
+/**
+ * @param {object[]} discovery  dbo.BMW_Spa_Discovery (cluster basina EN YENI tarama)
  * @param {object[]} inventory  dbo.BMW_Openshift_Route_Inventory
  * @param {object[]} usage      dbo.BMW_Application_Usage (uygulama basina EN YENI satir)
+ * @param {object[]} [runs]     dbo.BMW_Spa_Discovery_Run (cluster basina EN YENI satir)
  */
-function buildSpaDiscovery(discovery, inventory, usage) {
+function buildSpaDiscovery(discovery, inventory, usage, runs) {
   // ENVANTER INDEKSI: (namespace, route) ve (namespace, adres) ayri ayri aranir - kesif
   // route ADINI, envanter bazen yalniz ADRESI tasiyor.
   const envRoute = new Set();
@@ -69,8 +187,7 @@ function buildSpaDiscovery(discovery, inventory, usage) {
     const ns = T(d.namespace);
     const app = uygulamaAdi(d);
     const u = olcum.get(`${L(ns)}|${L(app)}`) || null;
-    const envVar =
-      envRoute.has(`${L(ns)}|${L(d.route)}`) || envAdres.has(`${L(ns)}|${L(d.host)}`);
+    const envVar = envRoute.has(`${L(ns)}|${L(d.route)}`) || envAdres.has(`${L(ns)}|${L(d.host)}`);
     const spa = Number(d.is_spa) === 1;
     const kalip = isSpaApp(app);
     return {
@@ -87,6 +204,10 @@ function buildSpaDiscovery(discovery, inventory, usage) {
       signal: T(d.signal),
       image: T(d.image),
       note: T(d.note),
+      // ESLESME KANITI: 'selector' (servis selector'u pod etiketlerine uydu) ya da 'ad'
+      // (servis OKUNAMADI, servisle ayni adli is yukune dusuldu - daha zayif kanit).
+      matchBy: T(d.match_by),
+      scanDate: gunu(d.scan_date),
       // ENVANTER KARSILASTIRMASI: route envanterde kayitli mi.
       inInventory: envVar,
       // AD KALIBI: eski yontem bu uygulamayi SPA sayar miydi?
@@ -110,8 +231,14 @@ function buildSpaDiscovery(discovery, inventory, usage) {
 
   const say = (f) => rows.filter(f).length;
   const spaSatir = rows.filter((r) => r.isSpa);
+  const veriGunu = new Map();
+  for (const r of rows) {
+    if (r.cluster && r.scanDate > (veriGunu.get(r.cluster) || ''))
+      veriGunu.set(r.cluster, r.scanDate);
+  }
   return {
     rows,
+    coverage: kapsam(runs, veriGunu),
     clusters: [...new Set(rows.map((r) => r.cluster).filter(Boolean))].sort(),
     envs: [...new Set(rows.map((r) => r.env).filter(Boolean))].sort(),
     summary: {
@@ -136,8 +263,22 @@ function buildSpaDiscovery(discovery, inventory, usage) {
       trafficNone: spaSatir.filter((r) => !r.usage).length,
       // ESLESMEYEN KESIF SATIRLARI: sebebi `note`ta yazan satirlar.
       unmatched: say((r) => !!r.note),
+      // ...ve SEBEP KIRILIMI. Ilk uretim kosusunda 4532 satirin tamami tek kovadaydi
+      // ("servis bulunamadi") ve ekran yalnizca "0 SPA" diyordu; kovayi gormek sorunun
+      // bir YETKI sorunu oldugunu bir bakista soylerdi.
+      unmatchedReasons: rows.reduce((m, r) => {
+        if (!r.note) return m;
+        const k = notKovasi(r.note);
+        m[k] = (m[k] || 0) + 1;
+        return m;
+      }, {}),
+      // ESLESME KANITI KIRILIMI: 'ad' ile eslesen satirlar daha zayif kanittir.
+      byMatch: rows.reduce((m, r) => {
+        if (r.matchBy) m[r.matchBy] = (m[r.matchBy] || 0) + 1;
+        return m;
+      }, {}),
     },
   };
 }
 
-module.exports = { buildSpaDiscovery, uygulamaAdi };
+module.exports = { buildSpaDiscovery, uygulamaAdi, notKovasi };

@@ -15,24 +15,47 @@ const ROOT = path.join(__dirname, '..', '..', '..');
 const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
 
 const SAMPLE = [
-  '@@HOST GBNGXP40', '@@TIME 2026-09-19T10:00:00Z', '@@PREFIX /usr/nginx',
-  '@@NGINX_T ok', 'nginx: the configuration file /usr/nginx/nginx.conf syntax is ok', '@@END',
+  '@@HOST GBNGXP40',
+  '@@TIME 2026-09-19T10:00:00Z',
+  '@@PREFIX /usr/nginx',
+  '@@NGINX_T ok',
+  'nginx: the configuration file /usr/nginx/nginx.conf syntax is ok',
+  '@@END',
   '@@TREE',
   '181\t2026-09-19 12:00:00\taaa111\t/usr/nginx/conf.d/GLOMO-PROD.conf',
   '20\t2026-09-19 12:00:00\tbbb222\t/usr/nginx/conf.d/application-confs/glomo-x-y.conf',
   '999\t2026-09-19 12:00:00\tccc333\t/usr/nginx/conf/bmw_defaults.conf',
   '@@END',
   '@@FILE /usr/nginx/conf.d/GLOMO-PROD.conf aaa111 181',
-  'server {', '  server_name glomo.garanti.com.tr;', '  ssl_certificate certs/glomo.crt;', '}', '@@END',
-  '@@FILE /usr/nginx/conf.d/application-confs/glomo-x-y.conf bbb222 20', 'proxy_pass http://x;', '@@END',
+  'server {',
+  '  server_name glomo.garanti.com.tr;',
+  '  ssl_certificate certs/glomo.crt;',
+  '}',
+  '@@END',
+  '@@FILE /usr/nginx/conf.d/application-confs/glomo-x-y.conf bbb222 20',
+  'proxy_pass http://x;',
+  '@@END',
   '@@CERTUSE /usr/nginx/conf.d/GLOMO-PROD.conf\tglomo.garanti.com.tr\t/usr/nginx/certs/glomo.crt\t/usr/nginx/certs/glomo.key\tpresent',
   '@@CERT /usr/nginx/certs/glomo.crt',
-  'exists=1', 'sha256=deadbeef', 'size=1200', 'mtime=2026-01-01 00:00:00',
-  'subject=CN=glomo.garanti.com.tr, O=GT', 'issuer=CN=Garanti Internal CA, O=GT', 'serial=01AB',
-  'notBefore=Jan  1 00:00:00 2026 GMT', 'notAfter=Oct 19 00:00:00 2026 GMT',
-  'fingerprint=AA:BB:CC', 'sigalg=sha256WithRSAEncryption', 'keybits=2048', 'san=glomo.garanti.com.tr,www.glomo.garanti.com.tr', 'chain=2', 'chain2=CN=Garanti Internal CA, O=GT',
+  'exists=1',
+  'sha256=deadbeef',
+  'size=1200',
+  'mtime=2026-01-01 00:00:00',
+  'subject=CN=glomo.garanti.com.tr, O=GT',
+  'issuer=CN=Garanti Internal CA, O=GT',
+  'serial=01AB',
+  'notBefore=Jan  1 00:00:00 2026 GMT',
+  'notAfter=Oct 19 00:00:00 2026 GMT',
+  'fingerprint=AA:BB:CC',
+  'sigalg=sha256WithRSAEncryption',
+  'keybits=2048',
+  'san=glomo.garanti.com.tr,www.glomo.garanti.com.tr',
+  'chain=2',
+  'chain2=CN=Garanti Internal CA, O=GT',
   '@@END',
-  '@@CERT /usr/nginx/certs/missing.crt', 'exists=0', '@@END',
+  '@@CERT /usr/nginx/certs/missing.crt',
+  'exists=0',
+  '@@END',
 ].join('\n');
 
 test('NH1 parseDump: baslik, nginx -t, agac, dosya icerigi, sertifika kullanimi ve alanlari', () => {
@@ -64,7 +87,10 @@ test('NH2 buildTree: prefix altinda ic ice dizinler, dosyalar sirali', () => {
   const names = t.dirs.map((x) => x.name);
   assert.deepEqual(names, ['conf', 'conf.d']);
   const confd = t.dirs.find((x) => x.name === 'conf.d');
-  assert.deepEqual(confd.files.map((f) => f.name), ['GLOMO-PROD.conf']);
+  assert.deepEqual(
+    confd.files.map((f) => f.name),
+    ['GLOMO-PROD.conf'],
+  );
   assert.equal(confd.dirs[0].name, 'application-confs');
   assert.equal(confd.dirs[0].files[0].path, '/usr/nginx/conf.d/application-confs/glomo-x-y.conf');
 });
@@ -79,7 +105,10 @@ test('NH3 aggregateCerts: ayni parmak izi iki sunucuda TEK satir; hostCount/useC
   assert.equal(glomo.hostCount, 2);
   assert.equal(glomo.useCount, 2);
   assert.equal(glomo.daysLeft, 30);
-  assert.deepEqual(glomo.hosts.map((h) => h.host), ['GBNGXP40', 'GBNGXP41']);
+  assert.deepEqual(
+    glomo.hosts.map((h) => h.host),
+    ['GBNGXP40', 'GBNGXP41'],
+  );
   assert.equal(glomo.hosts[0].uses[0].serverName, 'glomo.garanti.com.tr');
   // eksik dosya host basina ayri (parmak izi yok)
   assert.equal(list.filter((c) => !c.exists).length, 2);
@@ -110,27 +139,48 @@ test('NH6 kayitlar: PLAYBOOKS, registry seed, sayfa elementi (Admin), nav, route
   assert.equal(PLAYBOOKS.nginxConsoleFetch, 'nginx_console/nginx_console_fetch.yml');
   assert.equal(PLAYBOOKS.nginxConsolePush, 'nginx_console/nginx_console_push.yml');
   for (const k of Object.values(REGISTRY_KEYS)) {
-    assert.ok(fs.existsSync(path.join(ROOT, 'server/ansible/bmw_portal', PLAYBOOKS[k === 'nginx_console_fetch' ? 'nginxConsoleFetch' : 'nginxConsolePush'])), `${k} playbook dosyasi yok`);
+    assert.ok(
+      fs.existsSync(
+        path.join(
+          ROOT,
+          'server/ansible/bmw_portal',
+          PLAYBOOKS[k === 'nginx_console_fetch' ? 'nginxConsoleFetch' : 'nginxConsolePush'],
+        ),
+      ),
+      `${k} playbook dosyasi yok`,
+    );
   }
   const setup = read('server/db/mssql-setup.cjs');
   assert.match(setup, /key_name: 'nginx_console_fetch'/);
   assert.match(setup, /key_name: 'nginx_console_push'/);
   assert.match(setup, /element_key: 'NginxConsole'[\s\S]{0,400}roles: \['Admin'\]/);
   assert.match(setup, /page_name: 'NginxConsole', roles: 'Admin'/);
-  assert.match(read('src/config/elements.ts'), /id: 'NginxConsole', label: 'Nginx Hub', route: '\/nginx-console'/);
+  assert.match(
+    read('src/config/elements.ts'),
+    /id: 'NginxConsole', label: 'Nginx Hub', route: '\/nginx-console'/,
+  );
   // 2026-09-19: kendi nav grubu (Envanter'den ayri) + nginx yesili lazer cerceve / parlayan Hub
-  assert.match(read('src/config/elements.ts'), /id: 'nginxhub', label: 'Nginx Hub', itemIds: \['NginxConsole'\]/);
+  assert.match(
+    read('src/config/elements.ts'),
+    /id: 'nginxhub', label: 'Nginx Hub', itemIds: \['NginxConsole'\]/,
+  );
   assert.match(setup, /element_key: 'navgroup:nginxhub'/);
   assert.match(setup, /parent_key = 'navgroup:nginxhub' WHERE element_key = 'NginxConsole'/);
   assert.match(read('src/components/layout/PageNav.tsx'), /nginx-hub-link/);
   const css = read('src/index.css');
   assert.match(css, /\.nginx-hub-link::before[\s\S]{0,600}conic-gradient\(from var\(--nh-angle\)/);
   assert.match(css, /--nginx-green:\s*#009639/); // marka rengi TOKEN (nav blogunda sabit hex yasak, bkz. pf6-palette D)
-  assert.match(css, /prefers-reduced-motion: reduce\) \{\s*\.nginx-hub-link::before, \.nginx-hub-word \{ animation: none; \}/);
+  assert.match(
+    css,
+    /prefers-reduced-motion: reduce\) \{\s*\.nginx-hub-link::before, \.nginx-hub-word \{ animation: none; \}/,
+  );
   assert.match(read('src/App.tsx'), /PageVisibilityRoute pageId="NginxConsole"/);
   assert.match(read('server/index.cjs'), /nginx-console\/index\.cjs'\)\.initNginxConsole\(app\)/);
   // sunucu tarafi Admin kapisi
-  assert.match(read('server/nginx-console/index.cjs'), /isAdmin\(req\) \? next\(\) : res\.status\(403\)/);
+  assert.match(
+    read('server/nginx-console/index.cjs'),
+    /isAdmin\(req\) \? next\(\) : res\.status\(403\)/,
+  );
 });
 
 test('NH7 push betigi sozlesmesi: beyaz liste, kilit, yedek, nginx -t geri alma, reload, RESULT satiri', () => {
@@ -184,20 +234,34 @@ test('NH9 diffState: eklenen / degisen / silinen; degismeyen dosya HIC olay uret
     { path: '/usr/nginx/conf.d/new.conf', sha256: '9', size: 1, mtime: 't' },
   ];
   const d = history.diffState(prev, tree);
-  assert.deepEqual(d.added.map((f) => f.path), ['/usr/nginx/conf.d/new.conf']);
-  assert.deepEqual(d.changed.map((f) => [f.path, f.oldSha, f.sha256]), [['/usr/nginx/conf.d/b.conf', '2', '22']]);
+  assert.deepEqual(
+    d.added.map((f) => f.path),
+    ['/usr/nginx/conf.d/new.conf'],
+  );
+  assert.deepEqual(
+    d.changed.map((f) => [f.path, f.oldSha, f.sha256]),
+    [['/usr/nginx/conf.d/b.conf', '2', '22']],
+  );
   assert.deepEqual(d.deleted, [{ path: '/usr/nginx/conf.d/gone.conf', oldSha: '3' }]);
 });
 
 test('NH10 agac satiri 5 alan (sahip) ve eski 4 alan ikisi de okunur', () => {
-  const d5 = parseDump('@@TREE\n10\t2026-01-01 00:00:00\tabc\twww\t/usr/nginx/conf.d/x y.conf\n@@END');
-  assert.deepEqual(d5.tree[0], { size: 10, mtime: '2026-01-01 00:00:00', sha256: 'abc', owner: 'www', path: '/usr/nginx/conf.d/x y.conf' });
+  const d5 = parseDump(
+    '@@TREE\n10\t2026-01-01 00:00:00\tabc\twww\t/usr/nginx/conf.d/x y.conf\n@@END',
+  );
+  assert.deepEqual(d5.tree[0], {
+    size: 10,
+    mtime: '2026-01-01 00:00:00',
+    sha256: 'abc',
+    owner: 'www',
+    path: '/usr/nginx/conf.d/x y.conf',
+  });
   const d4 = parseDump('@@TREE\n10\t2026-01-01 00:00:00\tabc\t/usr/nginx/conf.d/x.conf\n@@END');
   assert.equal(d4.tree[0].owner, null);
   assert.equal(d4.tree[0].path, '/usr/nginx/conf.d/x.conf');
 });
 
-test('NH11 gecmis tablolari + indeksler seed\'de; publish niyeti + ingest kaynak eslestirme sozlesmesi', () => {
+test("NH11 gecmis tablolari + indeksler seed'de; publish niyeti + ingest kaynak eslestirme sozlesmesi", () => {
   const setup = read('server/db/mssql-setup.cjs');
   assert.match(setup, /CREATE TABLE nginx_hub_file_state/);
   assert.match(setup, /CREATE TABLE nginx_hub_file_history/);
@@ -210,7 +274,10 @@ test('NH11 gecmis tablolari + indeksler seed\'de; publish niyeti + ingest kaynak
   assert.match(idx, /router\.get\('\/blob\/:sha'/);
   const h = read('server/nginx-console/history.cjs');
   // degismeyen dosya icin satir yazilmaz: yalniz added/changed/deleted olaylari INSERT eder
-  assert.match(h, /for \(const f of added\)[\s\S]*for \(const f of changed\)[\s\S]*for \(const d of deleted\)/);
+  assert.match(
+    h,
+    /for \(const f of added\)[\s\S]*for \(const f of changed\)[\s\S]*for \(const d of deleted\)/,
+  );
   assert.match(h, /pending = 1 AND seen_at > DATEADD\(day, -7, GETUTCDATE\(\)\)/);
   const ui = read('src/components/nginx_console/NginxConsolePage.tsx');
   assert.match(ui, /function FileHistory\(/);
@@ -229,18 +296,51 @@ test('NH11 gecmis tablolari + indeksler seed\'de; publish niyeti + ingest kaynak
 const { buildSpaDiscovery } = require('../spa-discovery.cjs');
 
 const D = (o) => ({
-  cluster: 'gbocpprod1', namespace: 'sube-prod', route: 'r', host: 'h.apps', termination: '',
-  workload_kind: 'Deployment', workload: 'app', is_spa: 0, signal: '', image: '', note: '',
+  cluster: 'gbocpprod1',
+  namespace: 'sube-prod',
+  route: 'r',
+  host: 'h.apps',
+  termination: '',
+  workload_kind: 'Deployment',
+  workload: 'app',
+  is_spa: 0,
+  signal: '',
+  image: '',
+  note: '',
   ...o,
 });
 const GS_DISC = [
-  D({ route: 'r1', host: 'a.apps', workload: 'sube-portali-app-v1', is_spa: 1, signal: 'nginx-start.sh' }),
+  D({
+    route: 'r1',
+    host: 'a.apps',
+    workload: 'sube-portali-app-v1',
+    is_spa: 1,
+    signal: 'nginx-start.sh',
+  }),
   D({ route: 'r2', host: 'b.apps', workload: 'eski-portal', is_spa: 1, signal: 'image' }),
   D({ route: 'r3', host: 'c.apps', workload: 'java-app-v2', is_spa: 0 }),
   D({ route: 'r4', host: 'd.apps', workload_kind: '', workload: '', note: 'servis bulunamadi: x' }),
 ];
-const GS_INV = [{ cluster_name: 'gbocpprod1', namespace_name: 'sube-prod', route_name: 'r1', route_address: 'a.apps' }];
-const GS_USE = [{ namespace: 'sube-prod', app: 'eski-portal', scan_date: '2026-10-01', window_days: 7, req_total: 1500, services_total: 2, measured: 1, note: '' }];
+const GS_INV = [
+  {
+    cluster_name: 'gbocpprod1',
+    namespace_name: 'sube-prod',
+    route_name: 'r1',
+    route_address: 'a.apps',
+  },
+];
+const GS_USE = [
+  {
+    namespace: 'sube-prod',
+    app: 'eski-portal',
+    scan_date: '2026-10-01',
+    window_days: 7,
+    req_total: 1500,
+    services_total: 2,
+    measured: 1,
+    note: '',
+  },
+];
 const GS = () => buildSpaDiscovery(GS_DISC, GS_INV, GS_USE);
 
 test('GS1 ad kalibinin KACIRDIGI gercek SPA isaretlenir ve EN USTE gelir', () => {
@@ -290,4 +390,263 @@ test('GS5 ESLESMEYEN route LISTEDE KALIR ve sebebi tasinir', () => {
 test('GS6 IKI SINYAL AYRI sayilir (biri otekinden zayif)', () => {
   const r = GS();
   assert.deepEqual(r.summary.bySignal, { 'nginx-start.sh': 1, image: 1 });
+});
+
+// ── SPA KESFI: ILK URETIM KOSUSUNUN DERSLERI (GS7..GS13, 2026-10-01) ─────────────────
+//
+// Job 3367728: yukleyici 4532 satir yazdi, ekran BOS gorundu. Uc sebep ust uste bindi:
+//   - servis listesi cluster kapsaminda Forbidden -> 4532 route'un tamami "eslesmedi",
+//   - 43 cluster'in 27'si hic veri uretmedi (login / Python 3.6) ama is yesildi,
+//   - sayfa varsayilan "kacanlar" gorunumuyle aciliyor, SPA=0 iken o gorunum bos.
+// Bu bekciler ekranin "olculemedi" ile "yok"u bir daha karistirmamasini kilitler.
+const { normalize: gsNorm } = require('../../util/guard-text.cjs');
+
+const GS_RUNS = [
+  {
+    cluster: 'gbocpprod1',
+    durum: 'ok',
+    routes: 4,
+    svc_kip: 'namespace',
+    svc_okunamayan_ns: 0,
+    spa: 2,
+    eslesmeyen: 1,
+    sebep: '',
+    scan_date: '2026-10-01',
+  },
+  {
+    cluster: 'giocp3rdprod1',
+    durum: 'login',
+    routes: null,
+    svc_kip: '',
+    svc_okunamayan_ns: null,
+    spa: null,
+    eslesmeyen: null,
+    sebep: 'oc login rc=1: Login failed',
+    scan_date: '2026-10-01',
+  },
+  {
+    cluster: 'gbocpqa1',
+    durum: 'hata',
+    routes: null,
+    svc_kip: '',
+    svc_okunamayan_ns: null,
+    spa: null,
+    eslesmeyen: null,
+    sebep: 'kesif dustu: TypeError',
+    scan_date: '2026-10-01',
+  },
+];
+const GS_DISC2 = [
+  ...GS_DISC.map((d) => ({
+    ...d,
+    scan_date: '2026-10-01',
+    match_by: d.is_spa || d.workload === 'java-app-v2' ? 'selector' : '',
+  })),
+  // Dun taranmis, bugun taranamamis cluster: verisi DURUR ama ESKI diye isaretlenir.
+  D({
+    cluster: 'gbocpqa1',
+    route: 'q1',
+    workload: 'qa-portal',
+    is_spa: 1,
+    signal: 'image',
+    scan_date: '2026-09-30',
+    match_by: 'ad',
+  }),
+  D({
+    cluster: 'gbocpqa1',
+    route: 'q2',
+    workload: '',
+    workload_kind: '',
+    note: 'servis okunamadi (yetki yok), ayni adli is yuku de yok: q2-svc',
+    scan_date: '2026-09-30',
+  }),
+  // Durum kaydi OLMAYAN cluster (yukleyicinin eski surumu).
+  D({ cluster: 'daocpprod1', route: 'z1', workload: 'z', is_spa: 0, scan_date: '2026-10-01' }),
+];
+const GS2 = () => buildSpaDiscovery(GS_DISC2, GS_INV, GS_USE, GS_RUNS);
+
+test('GS7 TARANAMAYAN cluster "SPA yok" diye gorunmez; sebebi kapsamda yazar', () => {
+  const k = GS2().coverage;
+  assert.equal(k.measured, true);
+  const by = Object.fromEntries(k.clusters.map((c) => [c.cluster, c]));
+  assert.equal(by.giocp3rdprod1.status, 'login');
+  assert.equal(by.giocp3rdprod1.noData, true, 'verisi olmayan cluster isaretlenmiyor');
+  assert.match(by.giocp3rdprod1.reason, /Login failed/);
+  assert.equal(k.failed, 2, 'login + hata taranamayan sayilmali');
+  assert.equal(
+    k.clusters[0].status === 'login' || k.clusters[0].status === 'hata',
+    true,
+    'sorunlu cluster en ustte degil',
+  );
+});
+
+test('GS8 bugun taranamayan cluster DUNKU verisini korur ama ESKI diye isaretlenir', () => {
+  const r = GS2();
+  const q = r.rows.filter((x) => x.cluster === 'gbocpqa1');
+  assert.equal(q.length, 2, 'taranamayan cluster in onceki verisi kayboldu');
+  assert.equal(q[0].scanDate, '2026-09-30');
+  const k = Object.fromEntries(r.coverage.clusters.map((c) => [c.cluster, c]));
+  assert.equal(k.gbocpqa1.stale, true, 'eski veri ESKI diye isaretlenmiyor');
+  assert.equal(k.gbocpqa1.dataDate, '2026-09-30');
+});
+
+test('GS9 durum kaydi olmayan cluster "ok" diye BOYANMAZ', () => {
+  const k = Object.fromEntries(GS2().coverage.clusters.map((c) => [c.cluster, c]));
+  assert.equal(k.daocpprod1.status, 'bilinmiyor');
+  // Durum tablosu hic yoksa kapsam OLCULMEMISTIR - "0 taranamayan" demek yalan olurdu.
+  assert.equal(buildSpaDiscovery(GS_DISC2, GS_INV, GS_USE, []).coverage.measured, false);
+  assert.equal(buildSpaDiscovery(GS_DISC2, GS_INV, GS_USE).coverage.measured, false);
+});
+
+test('GS10 eslesmeme SEBEP KOVALARI ayri: "okunamadi" (yetki) != "bulunamadi" (bulgu)', () => {
+  const s = GS2().summary;
+  assert.equal(s.unmatchedReasons['servis bulunamadi'], 1);
+  assert.equal(s.unmatchedReasons['servis okunamadi (yetki yok), ayni adli is yuku de yok'], 1);
+});
+
+test('GS11 eslesme KANITI satira ve ozete tasinir (ad eslesmesi daha zayif)', () => {
+  const r = GS2();
+  const q1 = r.rows.find((x) => x.route === 'q1');
+  assert.equal(q1.matchBy, 'ad');
+  assert.equal(r.summary.byMatch.ad, 1);
+  assert.equal(r.summary.byMatch.selector, 3);
+});
+
+test('GS12 uc nokta CLUSTER BASINA en yeni taramayi okur; match_by yoksa da calisir', () => {
+  const src = gsNorm(read('server/nginx-console/index.cjs'));
+  // Tek MAX(scan_date) bugun login'i dusen cluster'in dunku verisini ekrandan siliyordu.
+  assert.doesNotMatch(
+    src,
+    /FROM dbo\.BMW_Spa_Discovery WHERE scan_date = \(SELECT MAX\(scan_date\) FROM dbo\.BMW_Spa_Discovery\)/,
+    'tek global MAX(scan_date) geri gelmis',
+  );
+  assert.match(
+    src,
+    /SELECT cluster, MAX\(scan_date\) AS sd FROM dbo\.BMW_Spa_Discovery GROUP BY cluster/,
+  );
+  assert.match(src, /COL_LENGTH\('dbo\.BMW_Spa_Discovery', 'match_by'\)/);
+  assert.match(src, /CAST\(NULL AS NVARCHAR\(16\)\) AS match_by/, 'sutun yokken sorgu patlar');
+  assert.match(src, /dbo\.BMW_Spa_Discovery_Run/);
+  assert.match(src, /buildSpaDiscovery\(disc, inv, usage, runs\)/);
+});
+
+test('GS13 ekran bos gorunumun SEBEBINI soyler ve kapsami gosterir', () => {
+  const ui = gsNorm(read('src/components/nginx_console/NginxSpaDiscovery.tsx'));
+  assert.match(ui, /Hiçbir route bir iş yüküne eşlenemedi/, '"hepsi eslesmesiz" uyarisi yok');
+  assert.match(ui, /Bu görünümde satır yok; keşifte toplam/, 'bos gorunum sebebini soylemiyor');
+  assert.match(ui, /<Kapsam k=\{data\.coverage\} \/>/, 'kapsam paneli yok');
+  assert.match(ui, /r\.matchBy === 'ad'/, 'ad eslesmesi satirda isaretlenmiyor');
+});
+
+test('GS14 kisitli kosu OTEKI cluster lari kirmiziya boyamaz; hedeflenip sonuc vermeyen ise TARANAMADI', () => {
+  // Dusmanca dogrulama: "son kosuda yok" sezgisi, tek cluster a kosulan bir isten sonra
+  // denenmemis 42 cluster i "erisilememis olabilir" diye kirmiziya boyuyordu. Artik
+  // hedeflenip sonuc vermeyen cluster i YUKLEYICI 'erisilemedi' diye yazar; tahmin yok.
+  const runs = [
+    ...GS_RUNS,
+    {
+      cluster: 'gbocpdrcprod1',
+      durum: 'ok',
+      routes: 1,
+      svc_kip: 'namespace',
+      svc_okunamayan_ns: 0,
+      spa: 1,
+      eslesmeyen: 0,
+      sebep: '',
+      scan_date: '2026-09-30',
+    },
+    {
+      cluster: 'gbocpprod2',
+      durum: 'erisilemedi',
+      routes: null,
+      svc_kip: '',
+      svc_okunamayan_ns: null,
+      spa: null,
+      eslesmeyen: null,
+      sebep: "sonuc gelmedi: jump server'a erisilemedi ya da gorev kosmadi",
+      scan_date: '2026-10-01',
+    },
+  ];
+  const disc = [
+    ...GS_DISC2,
+    D({
+      cluster: 'gbocpdrcprod1',
+      route: 'x1',
+      workload: 'x',
+      is_spa: 1,
+      signal: 'image',
+      scan_date: '2026-09-30',
+    }),
+    D({
+      cluster: 'gbocpprod2',
+      route: 'y1',
+      workload: 'y',
+      is_spa: 1,
+      signal: 'image',
+      scan_date: '2026-09-29',
+    }),
+  ];
+  const k = buildSpaDiscovery(disc, GS_INV, GS_USE, runs).coverage;
+  const by = Object.fromEntries(k.clusters.map((c) => [c.cluster, c]));
+  assert.equal(by.gbocpdrcprod1.bucket, 'onceki', 'kosuya girmeyen cluster yanlis kovada');
+  assert.equal(by.gbocpdrcprod1.notInLastRun, true);
+  assert.doesNotMatch(
+    by.gbocpdrcprod1.reason,
+    /erişilememiş|erisilememis/,
+    'hedeflenmeyen cluster icin erisim tahmini yapiliyor',
+  );
+  assert.equal(
+    by.gbocpprod2.bucket,
+    'taranamadi',
+    "yukleyicinin 'erisilemedi' kaydi taranamadi sayilmiyor",
+  );
+  assert.equal(by.gbocpprod2.stale, true);
+  assert.equal(k.older, 1);
+  assert.equal(k.failed, 3, 'login + hata + erisilemedi');
+  // AYRIK KOVALAR: her cluster tek sayida.
+  assert.equal(k.ok + k.older + k.partial + k.failed + k.unknown, k.total, 'kovalar ayrik degil');
+  assert.equal(k.total, k.clusters.length);
+});
+
+test('GS15 basarisiz son kosu VERI YAZMAZ: ayni gunun satirlari da ESKI sayilir', () => {
+  // Dusmanca dogrulama: ilk (hatali) kosuyla ayni gun yeniden kosulup login dusen cluster in
+  // satirlari tarih esit oldugu icin "guncel" gorunuyordu.
+  const runs = [
+    { cluster: 'gbocpprod1', durum: 'login', sebep: 'Login failed', scan_date: '2026-10-01' },
+  ];
+  const disc = [D({ route: 'z', workload: 'z', scan_date: '2026-10-01' })];
+  const c = buildSpaDiscovery(disc, GS_INV, GS_USE, runs).coverage.clusters[0];
+  assert.equal(c.stale, true, 'ayni gun basarisiz kosunun gosterdigi veri guncel saniliyor');
+  // VERI DURUMDAN YENI: yarim yukleme ya da durum yazilamamis -> bilinmiyor, 'guncel' DEGIL.
+  const c2 = buildSpaDiscovery(
+    [D({ route: 'z', workload: 'z', scan_date: '2026-10-02' })],
+    GS_INV,
+    GS_USE,
+    [{ cluster: 'gbocpprod1', durum: 'ok', scan_date: '2026-10-01' }],
+  ).coverage.clusters[0];
+  assert.equal(c2.bucket, 'bilinmiyor', 'durum kaydindan yeni veri tam tarama sayiliyor');
+  assert.match(c2.reason, /yarım kalmış olabilir/);
+});
+
+test('GS16 durum tablosu OKUNAMAZSA kapsam "bilinmiyor" der, uc nokta 500 e dusmez', () => {
+  const k = buildSpaDiscovery(GS_DISC2, GS_INV, GS_USE, null).coverage;
+  assert.equal(k.measured, false);
+  assert.match(k.error, /okunamadı/);
+  const src = gsNorm(read('server/nginx-console/index.cjs'));
+  const i = src.indexOf('FROM dbo.BMW_Spa_Discovery_Run');
+  assert.ok(i > 0, 'durum sorgusu bulunamadi');
+  assert.ok(
+    src.slice(i, i + 400).includes('.catch(() => null)'),
+    'durum sorgusu hatasi tum uc noktayi dusuruyor',
+  );
+});
+
+test('GS17 ekran: API hatasi "satir yok" gibi gorunmez; eksik taramada "kacirilan yok" NITELENIR', () => {
+  const ui = gsNorm(read('src/components/nginx_console/NginxSpaDiscovery.tsx'));
+  const var_ = (parca, mesaj) => assert.ok(ui.includes(parca), mesaj + ' :: ' + parca);
+  var_('if (d && d.ok === false) { setHata(', 'ok:false cevabi veri gibi isleniyor');
+  var_('SPA keşfi okunamadı: {hata}', 'hata ekranda gosterilmiyor');
+  var_('hepsiEslesmesiz ? null : eksikTarama ?', '"kacirilan yok" cumlesi nitelenmiyor');
+  var_('Taranabilen kısımda ad kalıbının kaçırdığı uygulama yok', 'nitelenmis cumle yok');
+  var_("c.bucket !== 'guncel'", 'kapsam paneli ayrik kovaya gore listelemiyor');
 });

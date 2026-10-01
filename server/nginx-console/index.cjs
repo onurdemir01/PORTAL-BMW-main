@@ -18,7 +18,14 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { parseDump, parseDumpFileSync, buildTree, aggregateCerts, daysLeft, orphansOf } = require('./dump-parse.cjs');
+const {
+  parseDump,
+  parseDumpFileSync,
+  buildTree,
+  aggregateCerts,
+  daysLeft,
+  orphansOf,
+} = require('./dump-parse.cjs');
 const history = require('./history.cjs');
 const { computeDrift } = require('./drift.cjs');
 
@@ -150,7 +157,9 @@ function loadSummary(host) {
       if (!raw.ingested) scheduleIngest(H, st);
       return raw;
     }
-  } catch { /* yok/bozuk -> yeniden uret */ }
+  } catch {
+    /* yok/bozuk -> yeniden uret */
+  }
   // COK BUYUK DOKUM HOST'U LISTEDEN DUSURMEZ.
   //
   // Bu fonksiyon `/hosts` icin 311 host'un hepsinde cagriliyor. Tavani asan TEK
@@ -178,7 +187,10 @@ function loadSummary(host) {
         ozet.contentAvailable = false;
         _summaries.set(H, { mtimeMs: st.mtimeMs, summary: ozet });
         writeSummary(H, ozet);
-        console.warn(`[NginxHub] dokum tavani asiyor (${Math.round(st.size / 1048576)} MB), ozet AKISLA uretildi (icerik yok):`, H);
+        console.warn(
+          `[NginxHub] dokum tavani asiyor (${Math.round(st.size / 1048576)} MB), ozet AKISLA uretildi (icerik yok):`,
+          H,
+        );
         return ozet;
       } catch (akisHatasi) {
         console.warn('[NginxHub] akisli ozet de uretilemedi:', H, akisHatasi.message);
@@ -304,7 +316,11 @@ function listDumpedHosts() {
       .filter((f) => f.endsWith('.txt') && !f.endsWith('.summary.json'))
       .map((f) => {
         const st = fs.statSync(path.join(rawDir(), f));
-        return { host: f.slice(0, -4).toUpperCase(), dumpedAt: st.mtime.toISOString(), size: st.size };
+        return {
+          host: f.slice(0, -4).toUpperCase(),
+          dumpedAt: st.mtime.toISOString(),
+          size: st.size,
+        };
       });
   } catch {
     return [];
@@ -325,10 +341,17 @@ function seenMap() {
     const st = fs.statSync(p);
     if (st.mtimeMs !== _seen.mtimeMs) {
       const j = JSON.parse(fs.readFileSync(p, 'utf8')) || {};
-      const at = j.at && !Number.isNaN(new Date(j.at).getTime()) ? new Date(j.at).toISOString() : st.mtime.toISOString();
+      const at =
+        j.at && !Number.isNaN(new Date(j.at).getTime())
+          ? new Date(j.at).toISOString()
+          : st.mtime.toISOString();
       const hosts = new Map();
       if (Array.isArray(j.hosts)) for (const h of j.hosts) hosts.set(String(h).toUpperCase(), at);
-      else if (j.hosts && typeof j.hosts === 'object') for (const [h, v] of Object.entries(j.hosts)) { const d = new Date(v); if (!Number.isNaN(d.getTime())) hosts.set(String(h).toUpperCase(), d.toISOString()); }
+      else if (j.hosts && typeof j.hosts === 'object')
+        for (const [h, v] of Object.entries(j.hosts)) {
+          const d = new Date(v);
+          if (!Number.isNaN(d.getTime())) hosts.set(String(h).toUpperCase(), d.toISOString());
+        }
       _seen = { mtimeMs: st.mtimeMs, at, hosts };
     }
   } catch {
@@ -360,29 +383,60 @@ async function inventoryHosts() {
     const rr = await query(
       `SELECT host, TRY_CONVERT(float, cpu) AS cpu, TRY_CONVERT(float, memory) AS memory, os, os_version FROM dbo.Inventory WHERE nginx_version IS NOT NULL AND LTRIM(RTRIM(nginx_version)) <> ''`,
     );
-    res = new Map((rr.recordset || []).map((x) => [String(x.host || '').trim().toUpperCase(), x]));
+    res = new Map(
+      (rr.recordset || []).map((x) => [
+        String(x.host || '')
+          .trim()
+          .toUpperCase(),
+        x,
+      ]),
+    );
   } catch (e) {
     console.warn('[NginxHub] Inventory kaynak sorgusu:', e.message);
   }
   const { siteOfHost } = require('../audit/nginx-hosts.cjs');
-  return (r.recordset || []).map((x) => ({
-    host: String(x.hostname || '').trim().toUpperCase(),
-    env: String(x.env || '').trim().toLowerCase() || null,
-    location: x.location || null,
-    site: siteOfHost(x.hostname) || null,
-    cpu: res.get(String(x.hostname || '').trim().toUpperCase())?.cpu ?? null,
-    memoryGb: res.get(String(x.hostname || '').trim().toUpperCase())?.memory ?? null,
-    os: (() => { const i = res.get(String(x.hostname || '').trim().toUpperCase()); return i ? [i.os, i.os_version].filter(Boolean).join(' ') || null : null; })(),
-    service: x.service || null,
-    services: String(x.services || '')
-      .split(/[,\s]+/)
-      .map((s) => s.trim())
-      .filter(Boolean),
-    nginxVersion: x.nginx_version || null,
-    prefix: x.nginx_prefix || null,
-    configCount: x.config_count == null ? null : Number(x.config_count),
-    ip: x.ip || null,
-  })).filter((h) => h.host);
+  return (r.recordset || [])
+    .map((x) => ({
+      host: String(x.hostname || '')
+        .trim()
+        .toUpperCase(),
+      env:
+        String(x.env || '')
+          .trim()
+          .toLowerCase() || null,
+      location: x.location || null,
+      site: siteOfHost(x.hostname) || null,
+      cpu:
+        res.get(
+          String(x.hostname || '')
+            .trim()
+            .toUpperCase(),
+        )?.cpu ?? null,
+      memoryGb:
+        res.get(
+          String(x.hostname || '')
+            .trim()
+            .toUpperCase(),
+        )?.memory ?? null,
+      os: (() => {
+        const i = res.get(
+          String(x.hostname || '')
+            .trim()
+            .toUpperCase(),
+        );
+        return i ? [i.os, i.os_version].filter(Boolean).join(' ') || null : null;
+      })(),
+      service: x.service || null,
+      services: String(x.services || '')
+        .split(/[,\s]+/)
+        .map((s) => s.trim())
+        .filter(Boolean),
+      nginxVersion: x.nginx_version || null,
+      prefix: x.nginx_prefix || null,
+      configCount: x.config_count == null ? null : Number(x.config_count),
+      ip: x.ip || null,
+    }))
+    .filter((h) => h.host);
 }
 
 // ── AWX ─────────────────────────────────────────────────────────────────────────────────
@@ -399,26 +453,48 @@ async function launch(req, keyName, templateName, extraVars, platformDetail) {
   const { templateId, serverId } = await resolveByKey(keyName);
   if (!templateId) {
     throw Object.assign(
-      new Error(`AWX job template'i tanımlı değil: Admin › Playbook Kayıtları › "${keyName}" satırına Template ID girilmeli.`),
+      new Error(
+        `AWX job template'i tanımlı değil: Admin › Playbook Kayıtları › "${keyName}" satırına Template ID girilmeli.`,
+      ),
       { status: 501 },
     );
   }
   const runner = require('../ansible/runner.cjs');
-  await require('../ansible/template-preflight.cjs').assertTemplateAcceptsExtraVars(serverId, templateId, extraVars, { label: keyName });
+  await require('../ansible/template-preflight.cjs').assertTemplateAcceptsExtraVars(
+    serverId,
+    templateId,
+    extraVars,
+    { label: keyName },
+  );
   const user = req.session?.user || {};
   const result = await runner.launchJobOnServer(serverId, templateId, extraVars, '', user);
   try {
     const db = require('../db/index.cjs');
     await db.query(
       `INSERT INTO ansible_job_history (username, awx_server_id, template_id, template_name, job_id, status, params) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [user.username || 'unknown', serverId, templateId, templateName, result?.jobId, result?.status || 'pending', JSON.stringify({ ...extraVars, content_b64: extraVars.content_b64 ? `<${extraVars.content_b64.length} b64>` : undefined })],
+      [
+        user.username || 'unknown',
+        serverId,
+        templateId,
+        templateName,
+        result?.jobId,
+        result?.status || 'pending',
+        JSON.stringify({
+          ...extraVars,
+          content_b64: extraVars.content_b64 ? `<${extraVars.content_b64.length} b64>` : undefined,
+        }),
+      ],
     );
   } catch (e) {
     console.warn('[NginxConsole] job gecmisi yazilamadi:', e.message);
   }
   try {
-    require('../audit/index.cjs').auditPortal(req, 'nginx_console', { detail: JSON.stringify({ ...platformDetail, jobId: result?.jobId ?? null }) });
-  } catch { /* best-effort */ }
+    require('../audit/index.cjs').auditPortal(req, 'nginx_console', {
+      detail: JSON.stringify({ ...platformDetail, jobId: result?.jobId ?? null }),
+    });
+  } catch {
+    /* best-effort */
+  }
   return { jobId: result?.jobId ?? null, status: result?.status ?? null, awxServerId: serverId };
 }
 
@@ -436,7 +512,9 @@ function initNginxConsole(app) {
   router.use(requireAuth);
   // YALNIZ Admin (kullanici, 2026-09-19): sayfa elementi de Admin'e seed'lenir; burada
   // sunucu tarafinda da kapali ki gorunurluk kurali degistirilse bile uclar acilmasin.
-  router.use((req, res, next) => (isAdmin(req) ? next() : res.status(403).json({ ok: false, message: 'Nginx Hub yalnız Admin.' })));
+  router.use((req, res, next) =>
+    isAdmin(req) ? next() : res.status(403).json({ ok: false, message: 'Nginx Hub yalnız Admin.' }),
+  );
   try {
     const { requireVisiblePrefix, requireVisible } = require('../auth/visibility.cjs');
     router.use(requireVisiblePrefix('NginxConsole'));
@@ -457,7 +535,9 @@ function initNginxConsole(app) {
       if (!hit) return next();
       return requireVisible('tab:nginx:' + hit[1])(req, res, next);
     });
-  } catch { /* motor yoksa yoksay */ }
+  } catch {
+    /* motor yoksa yoksay */
+  }
 
   // Sunucu listesi: envanter (env/servis) + dokum durumu (var mi, ne zaman, nginx -t, sertifika sayisi)
   router.get('/hosts', async (_req, res) => {
@@ -492,9 +572,37 @@ function initNginxConsole(app) {
       for (const d of dumped.values()) {
         if (seen.has(d.host)) continue;
         const parsed = loadDump(d.host);
-        hosts.push({ host: d.host, env: null, location: null, site: null, cpu: null, memoryGb: null, os: null, service: null, services: [], nginxVersion: null, prefix: null, configCount: null, ip: null, dumpedAt: d.dumpedAt, seenAt: seenAtOf(d.host, d.dumpedAt), nginxT: parsed?.nginxT ? parsed.nginxT.status : null, fileCount: parsed?.tree ? parsed.tree.length : null, certCount: parsed?.certs ? parsed.certs.length : null, certMinDays: parsed ? minDays(parsed) : null, dumpTooLarge: parsed?.tooLarge ? Math.round((parsed.tooLargeBytes || 0) / 1048576) : null, inventoryMissing: true });
+        hosts.push({
+          host: d.host,
+          env: null,
+          location: null,
+          site: null,
+          cpu: null,
+          memoryGb: null,
+          os: null,
+          service: null,
+          services: [],
+          nginxVersion: null,
+          prefix: null,
+          configCount: null,
+          ip: null,
+          dumpedAt: d.dumpedAt,
+          seenAt: seenAtOf(d.host, d.dumpedAt),
+          nginxT: parsed?.nginxT ? parsed.nginxT.status : null,
+          fileCount: parsed?.tree ? parsed.tree.length : null,
+          certCount: parsed?.certs ? parsed.certs.length : null,
+          certMinDays: parsed ? minDays(parsed) : null,
+          dumpTooLarge: parsed?.tooLarge ? Math.round((parsed.tooLargeBytes || 0) / 1048576) : null,
+          inventoryMissing: true,
+        });
       }
-      res.json({ ok: true, hosts, consoleDir: consoleDir(), inventoryError: invError, seenAt: seenMap().at });
+      res.json({
+        ok: true,
+        hosts,
+        consoleDir: consoleDir(),
+        inventoryError: invError,
+        seenAt: seenMap().at,
+      });
     } catch (err) {
       res.status(500).json({ ok: false, message: err.message });
     }
@@ -502,9 +610,16 @@ function initNginxConsole(app) {
 
   router.get('/tree/:host', (req, res) => {
     const host = String(req.params.host || '').toUpperCase();
-    if (!HOST_RE.test(host)) return res.status(400).json({ ok: false, message: 'Geçersiz sunucu adı.' });
+    if (!HOST_RE.test(host))
+      return res.status(400).json({ ok: false, message: 'Geçersiz sunucu adı.' });
     const d = loadDump(host);
-    if (!d) return res.json({ ok: true, host, dumped: false, message: 'Bu sunucu için henüz dokum yok — "Yenile" ile alın.' });
+    if (!d)
+      return res.json({
+        ok: true,
+        host,
+        dumped: false,
+        message: 'Bu sunucu için henüz dokum yok — "Yenile" ile alın.',
+      });
     res.json({
       ok: true,
       host,
@@ -523,26 +638,47 @@ function initNginxConsole(app) {
   router.get('/file/:host', (req, res) => {
     const host = String(req.params.host || '').toUpperCase();
     const p = String(req.query.path || '');
-    if (!HOST_RE.test(host)) return res.status(400).json({ ok: false, message: 'Geçersiz sunucu adı.' });
+    if (!HOST_RE.test(host))
+      return res.status(400).json({ ok: false, message: 'Geçersiz sunucu adı.' });
     const d = loadFull(host);
     if (!d) return res.status(400).json({ ok: false, message: 'Dokum yok.' });
     const f = d.files.get(p);
     const t = d.tree.find((x) => x.path === p);
     if (!f && !t) return res.status(400).json({ ok: false, message: 'Dosya dokumde yok.' });
-    res.json({ ok: true, host, path: p, sha256: f ? f.sha256 : t.sha256, size: f ? f.size : t.size, mtime: t ? t.mtime : null, content: f ? f.content : null, tooLarge: !f });
+    res.json({
+      ok: true,
+      host,
+      path: p,
+      sha256: f ? f.sha256 : t.sha256,
+      size: f ? f.size : t.size,
+      mtime: t ? t.mtime : null,
+      content: f ? f.content : null,
+      tooLarge: !f,
+    });
   });
 
   // Ayni dosya farkli sunucularda: (host -> sha) — "bu dosya hangi sunucuda farkli?"
   router.get('/compare', (req, res) => {
     const p = String(req.query.path || '');
     const hostsParam = String(req.query.hosts || '');
-    const hosts = hostsParam ? hostsParam.split(',').map((h) => h.trim().toUpperCase()).filter((h) => HOST_RE.test(h)) : listDumpedHosts().map((d) => d.host);
+    const hosts = hostsParam
+      ? hostsParam
+          .split(',')
+          .map((h) => h.trim().toUpperCase())
+          .filter((h) => HOST_RE.test(h))
+      : listDumpedHosts().map((d) => d.host);
     const rows = [];
     for (const h of hosts) {
       const d = loadDump(h);
       if (!d) continue;
       const t = d.tree.find((x) => x.path === p);
-      rows.push({ host: h, exists: !!t, sha256: t ? t.sha256 : null, size: t ? t.size : null, mtime: t ? t.mtime : null });
+      rows.push({
+        host: h,
+        exists: !!t,
+        sha256: t ? t.sha256 : null,
+        size: t ? t.size : null,
+        mtime: t ? t.mtime : null,
+      });
     }
     const groups = new Map();
     for (const r of rows) if (r.exists) groups.set(r.sha256, (groups.get(r.sha256) || 0) + 1);
@@ -571,8 +707,10 @@ function initNginxConsole(app) {
       summary: {
         total: certs.length,
         expired: certs.filter((c) => c.daysLeft != null && c.daysLeft < 0).length,
-        within30: certs.filter((c) => c.daysLeft != null && c.daysLeft >= 0 && c.daysLeft <= 30).length,
-        within90: certs.filter((c) => c.daysLeft != null && c.daysLeft > 30 && c.daysLeft <= 90).length,
+        within30: certs.filter((c) => c.daysLeft != null && c.daysLeft >= 0 && c.daysLeft <= 30)
+          .length,
+        within90: certs.filter((c) => c.daysLeft != null && c.daysLeft > 30 && c.daysLeft <= 90)
+          .length,
         missing: certs.filter((c) => !c.exists).length,
         selfSigned: certs.filter((c) => c.selfSigned).length,
         // yuklu hicbir conf'ta gecmeyen (yalniz yedek/eski dosyada ya da hic) - loaded bilinen sunucularda
@@ -590,7 +728,9 @@ function initNginxConsole(app) {
   router.get('/ratelimit', async (req, res) => {
     try {
       const { loadRateLimits } = require('./ratelimit.cjs');
-      res.json(await loadRateLimits({ scanDate: String(req.query.scanDate || '').trim() || undefined }));
+      res.json(
+        await loadRateLimits({ scanDate: String(req.query.scanDate || '').trim() || undefined }),
+      );
     } catch (err) {
       // Tablo yoksa ekran calismaya devam etsin ama SEBEBI soylesin: "limit yok" ile
       // "tarama hic kosmadi" ayri seylerdir.
@@ -598,9 +738,12 @@ function initNginxConsole(app) {
       res.status(yok ? 200 : 503).json({
         ok: !yok ? false : true,
         tableMissing: yok,
-        hosts: [], summary: null, availableDates: [], scanDate: null,
+        hosts: [],
+        summary: null,
+        availableDates: [],
+        scanDate: null,
         message: yok
-          ? 'dbo.NginxRateLimitInventory tablosu yok — nginx_ratelimit_inventory job\'i hic kosmamis olabilir.'
+          ? "dbo.NginxRateLimitInventory tablosu yok — nginx_ratelimit_inventory job'i hic kosmamis olabilir."
           : err.message,
       });
     }
@@ -611,7 +754,9 @@ function initNginxConsole(app) {
   router.get('/ratelimit.csv', async (req, res) => {
     try {
       const { loadRateLimits, toCsv } = require('./ratelimit.cjs');
-      const data = await loadRateLimits({ scanDate: String(req.query.scanDate || '').trim() || undefined });
+      const data = await loadRateLimits({
+        scanDate: String(req.query.scanDate || '').trim() || undefined,
+      });
       const ad = `nginx-rate-limit-${data.scanDate || 'bos'}.csv`;
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
       res.setHeader('Content-Disposition', `attachment; filename="${ad}"`);
@@ -624,15 +769,39 @@ function initNginxConsole(app) {
   router.get('/drift', async (req, res) => {
     try {
       let inv = [];
-      try { inv = await inventoryHosts(); } catch (e) { return res.status(500).json({ ok: false, message: 'Envanter okunamadı: ' + e.message }); }
-      const svc = String(req.query.service || '').trim().toUpperCase();
-      const env = String(req.query.env || '').trim().toLowerCase();
-      const hosts = inv.filter((h) => (!svc || (h.services || []).map((x) => x.toUpperCase()).includes(svc) || String(h.service || '').toUpperCase() === svc) && (!env || String(h.env || '').toLowerCase() === env));
+      try {
+        inv = await inventoryHosts();
+      } catch (e) {
+        return res.status(500).json({ ok: false, message: 'Envanter okunamadı: ' + e.message });
+      }
+      const svc = String(req.query.service || '')
+        .trim()
+        .toUpperCase();
+      const env = String(req.query.env || '')
+        .trim()
+        .toLowerCase();
+      const hosts = inv.filter(
+        (h) =>
+          (!svc ||
+            (h.services || []).map((x) => x.toUpperCase()).includes(svc) ||
+            String(h.service || '').toUpperCase() === svc) &&
+          (!env || String(h.env || '').toLowerCase() === env),
+      );
       const dumps = new Map();
-      for (const h of hosts) { const sm = loadSummary(h.host); if (sm) dumps.set(h.host, { tree: sm.tree }); }
+      for (const h of hosts) {
+        const sm = loadSummary(h.host);
+        if (sm) dumps.set(h.host, { tree: sm.tree });
+      }
       const r = computeDrift(hosts, dumps);
       if (svc) r.groups = r.groups.filter((g) => g.service === svc);
-      res.json({ ok: true, ...r, services: [...new Set(inv.flatMap((h) => (h.services || []).map((x) => x.toUpperCase())))].sort(), generatedAt: new Date().toISOString() });
+      res.json({
+        ok: true,
+        ...r,
+        services: [
+          ...new Set(inv.flatMap((h) => (h.services || []).map((x) => x.toUpperCase()))),
+        ].sort(),
+        generatedAt: new Date().toISOString(),
+      });
     } catch (err) {
       res.status(500).json({ ok: false, message: err.message });
     }
@@ -662,18 +831,38 @@ function initNginxConsole(app) {
           clusters: [],
           envs: [],
           summary: null,
+          coverage: null,
           scanDate: null,
         });
       }
-      const gun = await query(`SELECT CONVERT(varchar(10), MAX(scan_date), 23) AS d FROM dbo.BMW_Spa_Discovery`)
+      const gun = await query(
+        `SELECT CONVERT(varchar(10), MAX(scan_date), 23) AS d FROM dbo.BMW_Spa_Discovery`,
+      )
         .then((r) => r.recordset?.[0]?.d || null)
         .catch(() => null);
-      const [disc, inv, usage] = await Promise.all([
+      // SEMA SONRADAN BUYUDU (2026-10-01): `match_by` ve durum tablosu ilk uretim kosusundan
+      // SONRA eklendi; yukleyicinin yeni surumu bir kez kosana kadar ikisi de olmayabilir.
+      const sema = await query(
+        `SELECT COL_LENGTH('dbo.BMW_Spa_Discovery', 'match_by') AS mb,
+                OBJECT_ID('dbo.BMW_Spa_Discovery_Run') AS run`,
+      )
+        .then((r) => r.recordset?.[0] || {})
+        .catch(() => ({}));
+      const [disc, inv, usage, runs] = await Promise.all([
+        // CLUSTER BASINA EN YENI TARAMA. Eskiden tek bir MAX(scan_date) aliniyordu: bugun
+        // login'i dusen bir cluster, dunku verisiyle birlikte ekrandan SILINIYORDU ve
+        // "SPA'si yok" gibi gorunuyordu. Simdi her cluster kendi son verisini, TARIHIYLE
+        // tasir; eskiligi kapsam panelinde yazar.
         query(
-          `SELECT cluster, namespace, route, host, termination, workload_kind, workload,
-                  is_spa, signal, image, note
-             FROM dbo.BMW_Spa_Discovery
-            WHERE scan_date = (SELECT MAX(scan_date) FROM dbo.BMW_Spa_Discovery)`,
+          `SELECT d.cluster, d.namespace, d.route, d.host, d.termination, d.workload_kind,
+                  d.workload, d.is_spa, d.signal, d.image, d.note,
+                  ${sema.mb ? 'd.match_by' : 'CAST(NULL AS NVARCHAR(16)) AS match_by'},
+                  CONVERT(varchar(10), d.scan_date, 23) AS scan_date
+             FROM dbo.BMW_Spa_Discovery d
+             JOIN (SELECT cluster, MAX(scan_date) AS sd
+                     FROM dbo.BMW_Spa_Discovery
+                    GROUP BY cluster) m
+               ON m.cluster = d.cluster AND m.sd = d.scan_date`,
         ).then((r) => r.recordset || []),
         query(
           `SELECT cluster_name, namespace_name, route_name, route_address
@@ -695,9 +884,30 @@ function initNginxConsole(app) {
         )
           .then((r) => r.recordset || [])
           .catch(() => []),
+        // CLUSTER DURUMU: cluster basina EN YENI kosu - taranamayan cluster'in sebebi burada.
+        sema.run
+          ? query(
+              `SELECT cluster, durum, routes, svc_kip, svc_okunamayan_ns, spa, eslesmeyen, sebep,
+                      CONVERT(varchar(10), scan_date, 23) AS scan_date
+                 FROM (
+                   SELECT *, ROW_NUMBER() OVER (PARTITION BY cluster ORDER BY scan_date DESC, id DESC) AS rn
+                     FROM dbo.BMW_Spa_Discovery_Run
+                 ) t
+                WHERE rn = 1`,
+            )
+              .then((r) => r.recordset || [])
+              // OKUNAMADI ile YOK AYRI: null -> kapsam "okunamadi" der, tum uc nokta 500'e
+              // dusup ekran "satir yok" gostermez.
+              .catch(() => null)
+          : Promise.resolve([]),
       ]);
       const { buildSpaDiscovery } = require('./spa-discovery.cjs');
-      res.json({ ok: true, tableMissing: false, scanDate: gun, ...buildSpaDiscovery(disc, inv, usage) });
+      res.json({
+        ok: true,
+        tableMissing: false,
+        scanDate: gun,
+        ...buildSpaDiscovery(disc, inv, usage, runs),
+      });
     } catch (err) {
       res.status(err.status || 500).json({ ok: false, message: err.message });
     }
@@ -707,7 +917,11 @@ function initNginxConsole(app) {
     const only = String(req.query.host || '').toUpperCase();
     const hosts = only ? [only] : listDumpedHosts().map((d) => d.host);
     const now = Date.now();
-    const rows = hosts.map(loadSummary).filter(Boolean).map((sm) => orphansOf(sm, now)).sort((a, b) => a.host.localeCompare(b.host));
+    const rows = hosts
+      .map(loadSummary)
+      .filter(Boolean)
+      .map((sm) => orphansOf(sm, now))
+      .sort((a, b) => a.host.localeCompare(b.host));
     res.json({
       ok: true,
       hosts: rows,
@@ -729,14 +943,39 @@ function initNginxConsole(app) {
     // (nginx_audit ile ayni betik). 30-40 dk; istemci ayrica onaylatir.
     const all = req.body?.all === true;
     const list = Array.isArray(req.body?.hosts) ? req.body.hosts : [];
-    const hosts = [...new Set(list.map((h) => String(h || '').trim().toUpperCase()).filter((h) => HOST_RE.test(h)))];
-    if (!all && !hosts.length) return res.status(400).json({ ok: false, message: 'En az bir sunucu seçilmeli (ya da tüm filo).' });
-    if (hosts.length > 400) return res.status(400).json({ ok: false, message: 'Tek seferde en fazla 400 sunucu.' });
+    const hosts = [
+      ...new Set(
+        list
+          .map((h) =>
+            String(h || '')
+              .trim()
+              .toUpperCase(),
+          )
+          .filter((h) => HOST_RE.test(h)),
+      ),
+    ];
+    if (!all && !hosts.length)
+      return res
+        .status(400)
+        .json({ ok: false, message: 'En az bir sunucu seçilmeli (ya da tüm filo).' });
+    if (hosts.length > 400)
+      return res.status(400).json({ ok: false, message: 'Tek seferde en fazla 400 sunucu.' });
     try {
       // Ekrandan tetiklenen yenileme her zaman TAM dokum (force_full); zamanlanmis gece/30 dk
       // kosusu bunu gondermez -> playbook parmak iziyle degismeyen sunucuyu atlar.
-      const extraVars = { ...(all ? {} : { target_hosts: hosts }), force_full: true, console_dir: consoleDir(), requester: req.session?.user?.username || '' };
-      const r = await launch(req, REGISTRY_KEYS.fetch, all ? 'Nginx Hub: TUM filo dokumu' : 'Nginx Hub: dokum yenile', extraVars, { op: 'fetch', hosts: all ? 'ALL' : hosts });
+      const extraVars = {
+        ...(all ? {} : { target_hosts: hosts }),
+        force_full: true,
+        console_dir: consoleDir(),
+        requester: req.session?.user?.username || '',
+      };
+      const r = await launch(
+        req,
+        REGISTRY_KEYS.fetch,
+        all ? 'Nginx Hub: TUM filo dokumu' : 'Nginx Hub: dokum yenile',
+        extraVars,
+        { op: 'fetch', hosts: all ? 'ALL' : hosts },
+      );
       res.json({ ok: true, ...r, hosts: all ? [] : hosts, all });
     } catch (err) {
       res.status(err.status || 500).json({ ok: false, message: err.message });
@@ -752,7 +991,8 @@ function initNginxConsole(app) {
   // olcumdur ve bu dokum bayat olabilir - aradan gecen surede biri o conf'u include
   // etmis olabilir. Playbook da bu listeye guvenmez, sunucuda taze `nginx -T` kosup
   // yuklu/referansli olani reddeder. Buradaki dogrulama ONCE degil, EK bir kapidir.
-  const CLEAN_PATH_RE = /^\/usr\/nginx\/(conf\.d\/|conf\/|ssl\/)[A-Za-z0-9._\-/]+$|^\/usr\/nginx\/[A-Za-z0-9._-]+\.conf$/;
+  const CLEAN_PATH_RE =
+    /^\/usr\/nginx\/(conf\.d\/|conf\/|ssl\/)[A-Za-z0-9._\-/]+$|^\/usr\/nginx\/[A-Za-z0-9._-]+\.conf$/;
   const MAX_CLEAN_PATHS = 200;
 
   function validateCleanPaths(raw) {
@@ -768,7 +1008,10 @@ function initNginxConsole(app) {
       if (!p || /[\r\n\0]/.test(p)) return { ok: false, message: 'Geçersiz karakter içeren yol.' };
       if (p.includes('..')) return { ok: false, message: `Yolda '..' olamaz: ${p}` };
       if (!CLEAN_PATH_RE.test(p)) {
-        return { ok: false, message: `Yol yalnız /usr/nginx/conf.d/, /usr/nginx/conf/ veya /usr/nginx/ssl/ altında olabilir: ${p}` };
+        return {
+          ok: false,
+          message: `Yol yalnız /usr/nginx/conf.d/, /usr/nginx/conf/ veya /usr/nginx/ssl/ altında olabilir: ${p}`,
+        };
       }
       paths.push(p);
     }
@@ -776,11 +1019,18 @@ function initNginxConsole(app) {
   }
 
   router.post('/orphans/cleanup', async (req, res) => {
-    if (!isAdmin(req)) return res.status(403).json({ ok: false, message: 'Dosya temizliği yalnız Admin.' });
-    const host = String(req.body?.host || '').trim().toUpperCase();
-    if (!HOST_RE.test(host)) return res.status(400).json({ ok: false, message: 'Geçersiz sunucu adı.' });
-    const mode = String(req.body?.mode || 'plan').trim().toLowerCase();
-    if (!['plan', 'apply'].includes(mode)) return res.status(400).json({ ok: false, message: "mode 'plan' ya da 'apply' olmalı." });
+    if (!isAdmin(req))
+      return res.status(403).json({ ok: false, message: 'Dosya temizliği yalnız Admin.' });
+    const host = String(req.body?.host || '')
+      .trim()
+      .toUpperCase();
+    if (!HOST_RE.test(host))
+      return res.status(400).json({ ok: false, message: 'Geçersiz sunucu adı.' });
+    const mode = String(req.body?.mode || 'plan')
+      .trim()
+      .toLowerCase();
+    if (!['plan', 'apply'].includes(mode))
+      return res.status(400).json({ ok: false, message: "mode 'plan' ya da 'apply' olmalı." });
 
     const v = validateCleanPaths(req.body?.paths);
     if (!v.ok) return res.status(400).json({ ok: false, message: v.message });
@@ -789,9 +1039,18 @@ function initNginxConsole(app) {
     // dokumunden hesaplanan orphan listesiyle karsilastiririz. Ekran bayatsa ya da istek
     // elle uydurulduysa burada durur. (Sunucudaki taze kontrol yine de playbook'ta.)
     const sm = loadSummary(host);
-    if (!sm) return res.status(409).json({ ok: false, message: `${host} için döküm yok — önce "Yenile" ile döküm alın.` });
+    if (!sm)
+      return res
+        .status(409)
+        .json({ ok: false, message: `${host} için döküm yok — önce "Yenile" ile döküm alın.` });
     const orp = orphansOf(sm, Date.now());
-    if (!orp.known) return res.status(409).json({ ok: false, message: `${host}: ${orp.reason || 'yüklenen dosya listesi bilinmiyor'} — temizlik yapılmaz.` });
+    if (!orp.known)
+      return res
+        .status(409)
+        .json({
+          ok: false,
+          message: `${host}: ${orp.reason || 'yüklenen dosya listesi bilinmiyor'} — temizlik yapılmaz.`,
+        });
     const bilinen = new Set([
       ...orp.unloaded.map((f) => f.path),
       ...orp.backups.map((f) => f.path),
@@ -802,9 +1061,10 @@ function initNginxConsole(app) {
     if (disarida.length) {
       return res.status(409).json({
         ok: false,
-        message: `Bu dosyalar ${host} için "kullanılmayan" listesinde DEĞİL: ${disarida.slice(0, 5).join(', ')}`
-          + (disarida.length > 5 ? ` (+${disarida.length - 5})` : '')
-          + '. Döküm bayat olabilir — "Yenile" deyip tekrar deneyin.',
+        message:
+          `Bu dosyalar ${host} için "kullanılmayan" listesinde DEĞİL: ${disarida.slice(0, 5).join(', ')}` +
+          (disarida.length > 5 ? ` (+${disarida.length - 5})` : '') +
+          '. Döküm bayat olabilir — "Yenile" deyip tekrar deneyin.',
         rejected: disarida,
       });
     }
@@ -818,9 +1078,17 @@ function initNginxConsole(app) {
       const job = await launch(
         req,
         'nginx_orphan_cleanup',
-        mode === 'apply' ? 'Nginx: kullanılmayan dosyaları karantinaya al' : 'Nginx: kullanılmayan dosya temizliği (plan)',
+        mode === 'apply'
+          ? 'Nginx: kullanılmayan dosyaları karantinaya al'
+          : 'Nginx: kullanılmayan dosya temizliği (plan)',
         extraVars,
-        { action: 'orphan_cleanup', host, mode, count: v.paths.length, paths: v.paths.slice(0, 50) },
+        {
+          action: 'orphan_cleanup',
+          host,
+          mode,
+          count: v.paths.length,
+          paths: v.paths.slice(0, 50),
+        },
       );
       res.json({ ok: true, job, host, mode, paths: v.paths });
     } catch (err) {
@@ -829,24 +1097,58 @@ function initNginxConsole(app) {
   });
 
   router.post('/push', async (req, res) => {
-    if (!isAdmin(req)) return res.status(403).json({ ok: false, message: 'Konfigürasyon değişikliği yalnız Admin.' });
-    const list = Array.isArray(req.body?.hosts) ? req.body.hosts : req.body?.host ? [req.body.host] : [];
-    const hosts = [...new Set(list.map((h) => String(h || '').trim().toUpperCase()).filter(Boolean))];
+    if (!isAdmin(req))
+      return res
+        .status(403)
+        .json({ ok: false, message: 'Konfigürasyon değişikliği yalnız Admin.' });
+    const list = Array.isArray(req.body?.hosts)
+      ? req.body.hosts
+      : req.body?.host
+        ? [req.body.host]
+        : [];
+    const hosts = [
+      ...new Set(
+        list
+          .map((h) =>
+            String(h || '')
+              .trim()
+              .toUpperCase(),
+          )
+          .filter(Boolean),
+      ),
+    ];
     const filePath = String(req.body?.path || '').trim();
     const mode = String(req.body?.mode || 'update');
     const content = typeof req.body?.content === 'string' ? req.body.content : null;
-    const expectedIn = req.body?.expectedSha && typeof req.body.expectedSha === 'object' ? req.body.expectedSha : {};
-    if (req.body?.expectedSha256 && hosts.length === 1) expectedIn[hosts[0]] = String(req.body.expectedSha256);
+    const expectedIn =
+      req.body?.expectedSha && typeof req.body.expectedSha === 'object' ? req.body.expectedSha : {};
+    if (req.body?.expectedSha256 && hosts.length === 1)
+      expectedIn[hosts[0]] = String(req.body.expectedSha256);
     const force = req.body?.force === true;
-    if (!hosts.length || hosts.some((h) => !HOST_RE.test(h))) return res.status(400).json({ ok: false, message: 'Geçersiz sunucu adı.' });
-    if (hosts.length > 50) return res.status(400).json({ ok: false, message: 'Tek seferde en fazla 50 sunucu.' });
-    if (!ALLOWED_PATH_RE.test(filePath) || filePath.includes('..') || filePath.includes('/.console_backup/')) {
-      return res.status(400).json({ ok: false, message: 'Yol yalnız /usr/nginx/conf.d/ veya /usr/nginx/conf/ altında olabilir.' });
+    if (!hosts.length || hosts.some((h) => !HOST_RE.test(h)))
+      return res.status(400).json({ ok: false, message: 'Geçersiz sunucu adı.' });
+    if (hosts.length > 50)
+      return res.status(400).json({ ok: false, message: 'Tek seferde en fazla 50 sunucu.' });
+    if (
+      !ALLOWED_PATH_RE.test(filePath) ||
+      filePath.includes('..') ||
+      filePath.includes('/.console_backup/')
+    ) {
+      return res
+        .status(400)
+        .json({
+          ok: false,
+          message: 'Yol yalnız /usr/nginx/conf.d/ veya /usr/nginx/conf/ altında olabilir.',
+        });
     }
-    if (!['create', 'update'].includes(mode)) return res.status(400).json({ ok: false, message: 'mode create|update olmalı.' });
-    if (content == null || !content.trim()) return res.status(400).json({ ok: false, message: 'İçerik boş.' });
-    if (Buffer.byteLength(content, 'utf8') > MAX_CONTENT) return res.status(400).json({ ok: false, message: 'İçerik 512 KB sınırını aşıyor.' });
-    if (content.includes('\0')) return res.status(400).json({ ok: false, message: 'İçerikte geçersiz karakter.' });
+    if (!['create', 'update'].includes(mode))
+      return res.status(400).json({ ok: false, message: 'mode create|update olmalı.' });
+    if (content == null || !content.trim())
+      return res.status(400).json({ ok: false, message: 'İçerik boş.' });
+    if (Buffer.byteLength(content, 'utf8') > MAX_CONTENT)
+      return res.status(400).json({ ok: false, message: 'İçerik 512 KB sınırını aşıyor.' });
+    if (content.includes('\0'))
+      return res.status(400).json({ ok: false, message: 'İçerikte geçersiz karakter.' });
 
     // Host basina on kontrol (dokum uzerinden): update'te dosya var mi + sha; create'te dosya yok mu.
     const expected = {};
@@ -855,15 +1157,31 @@ function initNginxConsole(app) {
       const d = loadDump(h);
       const t = d ? d.tree.find((x) => x.path === filePath) : null;
       if (mode === 'update') {
-        if (!t) { conflicts.push({ host: h, reason: 'dosya dokumde yok (önce Yenile)' }); continue; }
+        if (!t) {
+          conflicts.push({ host: h, reason: 'dosya dokumde yok (önce Yenile)' });
+          continue;
+        }
         const exp = String(expectedIn[h] || '').trim();
-        if (!force && exp && exp !== t.sha256) conflicts.push({ host: h, reason: 'dosya siz açtıktan sonra değişmiş', currentSha256: t.sha256 });
+        if (!force && exp && exp !== t.sha256)
+          conflicts.push({
+            host: h,
+            reason: 'dosya siz açtıktan sonra değişmiş',
+            currentSha256: t.sha256,
+          });
         expected[h] = t.sha256; // sunucuda son gorulen hal; betik bununla karsilastirir
       } else if (t && !force) {
         conflicts.push({ host: h, reason: 'bu yolda dosya zaten var — update kullanın' });
       }
     }
-    if (conflicts.length) return res.status(409).json({ ok: false, message: `Ön kontrol: ${conflicts.map((c) => `${c.host}: ${c.reason}`).join('; ')}`, conflicts, currentSha256: conflicts[0]?.currentSha256 || null });
+    if (conflicts.length)
+      return res
+        .status(409)
+        .json({
+          ok: false,
+          message: `Ön kontrol: ${conflicts.map((c) => `${c.host}: ${c.reason}`).join('; ')}`,
+          conflicts,
+          currentSha256: conflicts[0]?.currentSha256 || null,
+        });
 
     const normalized = content.replace(/\r\n/g, '\n');
     const body = normalized.endsWith('\n') ? normalized : normalized + '\n';
@@ -880,10 +1198,23 @@ function initNginxConsole(app) {
         console_dir: consoleDir(),
         requester: req.session?.user?.username || '',
       };
-      const r = await launch(req, REGISTRY_KEYS.push, `Nginx Hub: ${mode} ${path.basename(filePath)} → ${hosts.length === 1 ? hosts[0] : hosts.length + ' sunucu'}`, extraVars, { op: 'publish', hosts, filePath, mode, newSha256: newSha, force });
+      const r = await launch(
+        req,
+        REGISTRY_KEYS.push,
+        `Nginx Hub: ${mode} ${path.basename(filePath)} → ${hosts.length === 1 ? hosts[0] : hosts.length + ' sunucu'}`,
+        extraVars,
+        { op: 'publish', hosts, filePath, mode, newSha256: newSha, force },
+      );
       // Gecmis: yeni icerik blob olarak simdiden saklanir + beklemede publish satiri (dokum baglar)
       history.putBlob(newSha, body);
-      await history.recordPublishIntent({ hosts, filePath, newSha, expected, requester: req.session?.user?.username || '', jobId: r.jobId });
+      await history.recordPublishIntent({
+        hosts,
+        filePath,
+        newSha,
+        expected,
+        requester: req.session?.user?.username || '',
+        jobId: r.jobId,
+      });
       res.json({ ok: true, ...r, hosts, path: filePath, mode, newSha256: newSha });
     } catch (err) {
       res.status(err.status || 500).json({ ok: false, message: err.message });
@@ -894,7 +1225,8 @@ function initNginxConsole(app) {
   router.get('/history/:host', async (req, res) => {
     const host = String(req.params.host || '').toUpperCase();
     const p = String(req.query.path || '');
-    if (!HOST_RE.test(host) || !p) return res.status(400).json({ ok: false, message: 'Geçersiz istek.' });
+    if (!HOST_RE.test(host) || !p)
+      return res.status(400).json({ ok: false, message: 'Geçersiz istek.' });
     try {
       res.json({ ok: true, host, path: p, versions: await history.fileHistory(host, p) });
     } catch (err) {
@@ -922,7 +1254,10 @@ function initNginxConsole(app) {
   router.get('/blob/:sha', (req, res) => {
     const sha = String(req.params.sha || '').toLowerCase();
     const content = history.getBlob(sha);
-    if (content == null) return res.status(404).json({ ok: false, message: 'İçerik depoda yok (512 KB üstü ya da geçmiş öncesi).' });
+    if (content == null)
+      return res
+        .status(404)
+        .json({ ok: false, message: 'İçerik depoda yok (512 KB üstü ya da geçmiş öncesi).' });
     res.json({ ok: true, sha256: sha, content });
   });
 
@@ -930,16 +1265,23 @@ function initNginxConsole(app) {
   router.get('/job-status/:serverId/:jobId', async (req, res) => {
     const serverId = Number(req.params.serverId);
     const jobId = Number(req.params.jobId);
-    if (!Number.isInteger(serverId) || !Number.isInteger(jobId) || jobId <= 0) return res.status(400).json({ ok: false, message: 'Geçersiz iş numarası.' });
+    if (!Number.isInteger(serverId) || !Number.isInteger(jobId) || jobId <= 0)
+      return res.status(400).json({ ok: false, message: 'Geçersiz iş numarası.' });
     try {
       const runner = require('../ansible/runner.cjs');
-      const [statusInfo, outputInfo] = await Promise.all([runner.getJobStatusOnServer(serverId, jobId), runner.getJobOutputOnServer(serverId, jobId)]);
+      const [statusInfo, outputInfo] = await Promise.all([
+        runner.getJobStatusOnServer(serverId, jobId),
+        runner.getJobOutputOnServer(serverId, jobId),
+      ]);
       const TERMINAL = new Set(['successful', 'failed', 'error', 'canceled']);
       let result = null;
       if (TERMINAL.has(statusInfo.status)) {
         // Dokum degismis olabilir -> onbellek mtime ile kendini yeniler; ek is yok.
         const { extractStatsKey } = require('../opsx/index.cjs');
-        result = extractStatsKey(statusInfo.artifacts, 'nginx_console_push_result') || extractStatsKey(statusInfo.artifacts, 'nginx_console_fetch_result') || null;
+        result =
+          extractStatsKey(statusInfo.artifacts, 'nginx_console_push_result') ||
+          extractStatsKey(statusInfo.artifacts, 'nginx_console_fetch_result') ||
+          null;
       }
       res.json({ ok: true, status: statusInfo.status, output: outputInfo.output || '', result });
     } catch (err) {
@@ -961,4 +1303,15 @@ function minDays(parsed) {
   return m;
 }
 
-module.exports = { initNginxConsole, REGISTRY_KEYS, ALLOWED_PATH_RE, HOST_RE, consoleDir, _loadDumpForTest: loadDump, _loadFullForTest: loadFull, _loadSummaryForTest: loadSummary, _seenAtOfForTest: seenAtOf, _seenMapForTest: seenMap };
+module.exports = {
+  initNginxConsole,
+  REGISTRY_KEYS,
+  ALLOWED_PATH_RE,
+  HOST_RE,
+  consoleDir,
+  _loadDumpForTest: loadDump,
+  _loadFullForTest: loadFull,
+  _loadSummaryForTest: loadSummary,
+  _seenAtOfForTest: seenAtOf,
+  _seenMapForTest: seenMap,
+};
