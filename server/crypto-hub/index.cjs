@@ -604,14 +604,55 @@ function initCryptoHub(app) {
     /* motor yoksa yoksay */
   }
 
+  // ── UYGULAMA BAZLI YETKI (kullanici, 2026-10-01) ──────────────────────────────────
+  // "Metaco ve Wyden tarafini farkli ekiplere gosterecegiz."
+  //
+  // MENUDEN GIZLEMEK YETMEZ: kullanici tenant anahtarini elle gonderip otekinin verisini
+  // cekebilirdi. Yetki HER tenant'li ucta, SUNUCUDA sorulur.
+  //
+  // Ogeler SIKI: acik kural yoksa kapali ve admin muafiyeti de yok. Gorunurluk motoru
+  // okunamazsa `canSee` fail-closed davranir - yani olcum yapilamadiginda erisim VERILMEZ.
+  async function gorunenUygulamalar(req) {
+    try {
+      const { canSee } = require('../auth/visibility.cjs');
+      const { getRequestUser } = require('../auth/utils.cjs');
+      const user = getRequestUser(req) || {};
+      const out = new Set();
+      for (const app of ['metaco', 'wyden']) {
+        if (await canSee(user, 'cryptohub:app:' + app)) out.add(app);
+      }
+      return out;
+    } catch {
+      return new Set();
+    }
+  }
+
+  /** Tenant'in uygulamasi bu kullaniciya acik mi? Degilse 403 yazar ve false doner. */
+  async function uygulamaKapisi(req, res, tenant) {
+    const acik = await gorunenUygulamalar(req);
+    if (acik.has(tenant.app)) return true;
+    res.status(403).json({
+      ok: false,
+      message:
+        `Bu alana erişiminiz yok (${tenant.appLabel || tenant.app}). ` +
+        'Erişim için yöneticinize başvurun (Admin > Crypto Hub Erişimi).',
+    });
+    return false;
+  }
+
   // Secim agaci: uygulama -> domain -> ortam. Tarama HIC kosmamis olsa da doner ki
   // kullanici ekrani bos gormesin, neyin eksik oldugunu okusun.
-  router.get('/tenants', (_req, res) => {
-    res.json({ ok: true, apps: selectionTree() });
+  //
+  // AGAC DA SUZULUR: gormeyecegi bir uygulamayi listelemek, kullaniciyi 403 alacagi bir
+  // secime davet etmek olurdu.
+  router.get('/tenants', async (req, res) => {
+    const acik = await gorunenUygulamalar(req);
+    res.json({ ok: true, apps: selectionTree().filter((a) => acik.has(a.app)) });
   });
 
   router.get('/overview', async (req, res) => {
     const tenant = tenantOf(req.query.tenant);
+    if (tenant && !(await uygulamaKapisi(req, res, tenant))) return;
     if (!tenant) {
       return res.status(400).json({
         ok: false,
@@ -660,6 +701,7 @@ function initCryptoHub(app) {
 
   router.get('/plan', async (req, res) => {
     const tenant = tenantOf(req.query.tenant);
+    if (tenant && !(await uygulamaKapisi(req, res, tenant))) return;
     if (!tenant) return res.status(400).json({ ok: false, message: 'Bilinmeyen kiracı.' });
     if (!isOpen(tenant))
       return res.status(403).json({ ok: false, closed: true, message: CLOSED_MSG });
@@ -715,6 +757,7 @@ function initCryptoHub(app) {
   // sunucu tarafi bir kapidir - ekranin onay penceresini atlamasi yetmez.
   router.post('/ops', async (req, res) => {
     const tenant = tenantOf(req.body?.tenant);
+    if (tenant && !(await uygulamaKapisi(req, res, tenant))) return;
     if (!tenant) return res.status(400).json({ ok: false, message: 'Bilinmeyen kiracı.' });
     if (!isOpen(tenant))
       return res.status(403).json({ ok: false, closed: true, message: CLOSED_MSG });
@@ -966,8 +1009,9 @@ function initCryptoHub(app) {
   //
   // YAML mantigi values-compare.cjs'te TEK KOPYA: karsilastirma da guncelleme de ayni
   // ayristiriciyi kullanir, yoksa "farkli" diyen ile "yazan" bir gun ayrisirdi.
-  router.post('/values-apply', (req, res) => {
+  router.post('/values-apply', async (req, res) => {
     const tenant = tenantOf(req.body?.tenant);
+    if (tenant && !(await uygulamaKapisi(req, res, tenant))) return;
     if (!tenant) return res.status(400).json({ ok: false, message: 'Bilinmeyen kiracı.' });
     if (!isOpen(tenant))
       return res.status(403).json({ ok: false, closed: true, message: CLOSED_MSG });
@@ -1007,6 +1051,7 @@ function initCryptoHub(app) {
   // Taramayi SIMDI kostur (yalniz secili kiraci). Yazan bir is DEGIL - tarama salt okunur.
   router.post('/rescan', async (req, res) => {
     const tenant = tenantOf(req.body?.tenant);
+    if (tenant && !(await uygulamaKapisi(req, res, tenant))) return;
     if (!tenant) return res.status(400).json({ ok: false, message: 'Bilinmeyen kiracı.' });
     if (!isOpen(tenant))
       return res.status(403).json({ ok: false, closed: true, message: CLOSED_MSG });

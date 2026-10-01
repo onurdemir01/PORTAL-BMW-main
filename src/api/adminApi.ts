@@ -167,7 +167,8 @@ async function okJson(res: Response) {
 }
 
 // Denetim Erisimi (Admin, 2026-09-17): kullanici / AD grubu -> Denetim sekmeleri
-export interface DenetimAccessGrant { principalType: 'user' | 'group'; principalId: string; page: boolean; tabs: string[] }
+// E-POSTA DA OLABILIR (2026-10-01): Crypto Hub kurallari uretimde e-postayla giriliyor.
+export interface DenetimAccessGrant { principalType: 'user' | 'group' | 'email'; principalId: string; page: boolean; tabs: string[] }
 export const denetimAccessApi = {
   async list(): Promise<{ tabs: string[]; grants: DenetimAccessGrant[] }> {
     const d: { ok: boolean; tabs: string[]; grants: DenetimAccessGrant[] } = await okJson(await fetch("/api/visibility/denetim-access")) as never;
@@ -193,6 +194,21 @@ export const nginxAccessApi = {
   },
   async remove(principalType: 'user' | 'group', principalId: string): Promise<void> {
     await okJson(await fetch(`/api/visibility/nginx-access?principalType=${principalType}&principalId=${encodeURIComponent(principalId)}`, { method: "DELETE" }));
+  },
+};
+
+// Crypto Hub Erisimi (2026-10-01): Metaco / Wyden ayri ekiplere acilabilsin diye
+// uygulama bazinda yetki. Nginx Hub panelinin AYNISI, "sekme" yerine "uygulama".
+export const cryptoAccessApi = {
+  async list(): Promise<{ tabs: string[]; grants: DenetimAccessGrant[] }> {
+    const d: { ok: boolean; tabs: string[]; grants: DenetimAccessGrant[] } = await okJson(await fetch("/api/visibility/crypto-access")) as never;
+    return { tabs: d.tabs ?? [], grants: d.grants ?? [] };
+  },
+  async set(body: { principalType: 'user' | 'group' | 'email'; principalId: string; tabs: string[] | 'all' }): Promise<void> {
+    await okJson(await fetch("/api/visibility/crypto-access", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }));
+  },
+  async remove(principalType: 'user' | 'group' | 'email', principalId: string): Promise<void> {
+    await okJson(await fetch(`/api/visibility/crypto-access?principalType=${principalType}&principalId=${encodeURIComponent(principalId)}`, { method: "DELETE" }));
   },
 };
 

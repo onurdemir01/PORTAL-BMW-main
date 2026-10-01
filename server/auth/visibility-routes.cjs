@@ -389,6 +389,122 @@ function initVisibilityRoutes(app, { requireAuth, requireAdmin }) {
   ];
   const nginxKeys = () => ['NginxConsole', ...NGINX_TAB_KEYS.map((t) => 'tab:nginx:' + t)];
 
+  // ── Crypto Hub Erisimi (2026-10-01) ────────────────────────────────────────────────
+  // Kullanici: "Admin merkezinde Crypto Hub'in gorunumunu komple ayir, erisime, Nginx Hub
+  // erisimi gibi ekle. Cunku Metaco ve Wyden tarafini farkli ekiplere gosterecegiz."
+  //
+  // Nginx/Denetim ile AYNI model: sayfa + secilen UYGULAMALAR. Fark, buradaki ogelerin
+  // SIKI olmasi - Crypto Hub zaten siki, uygulama ogeleri de oyle; acik kural olmadan
+  // hicbiri gorunmez ve admin muafiyeti de yoktur.
+  const CRYPTO_APP_KEYS = ['metaco', 'wyden'];
+  const cryptoKeys = () => ['CryptoHub', ...CRYPTO_APP_KEYS.map((a) => 'cryptohub:app:' + a)];
+
+  router.get('/crypto-access', requireAdmin, async (_req, res) => {
+    try {
+      const rules = (await elementsStore.listRules()).filter(
+        (r) => cryptoKeys().includes(r.elementKey) && r.principalType !== 'role',
+      );
+      const byP = new Map();
+      for (const r of rules) {
+        const k = r.principalType + '|' + r.principalId;
+        if (!byP.has(k))
+          byP.set(k, {
+            principalType: r.principalType,
+            principalId: r.principalId,
+            page: false,
+            tabs: [],
+          });
+        const e = byP.get(k);
+        if (r.elementKey === 'CryptoHub') e.page = r.allow;
+        else if (r.allow) e.tabs.push(r.elementKey.replace('cryptohub:app:', ''));
+      }
+      res.json({
+        ok: true,
+        tabs: CRYPTO_APP_KEYS,
+        grants: [...byP.values()].sort(
+          (a, b) =>
+            a.principalType.localeCompare(b.principalType) ||
+            a.principalId.localeCompare(b.principalId),
+        ),
+      });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  // body: { principalType: 'user'|'group'|'email', principalId, tabs: string[] | 'all' }
+  router.put('/crypto-access', requireAdmin, async (req, res) => {
+    try {
+      // E-POSTA DA KABUL EDILIR: Crypto Hub kurallari uretimde e-postayla giriliyor
+      // (LDAP kullanici adi bilinmeden). Nginx/Denetim panelleri yalniz user|group
+      // kabul ediyordu; burada o kisit SORUN cikarirdi.
+      const pt = ['user', 'group', 'email'].includes(req.body?.principalType)
+        ? req.body.principalType
+        : null;
+      const pid = String(req.body?.principalId || '')
+        .trim()
+        .toLowerCase();
+      if (!pt || !pid)
+        return res.status(400).json({
+          ok: false,
+          error: 'principalType (user|group|email) ve principalId zorunlu.',
+        });
+      const want =
+        req.body?.tabs === 'all'
+          ? CRYPTO_APP_KEYS
+          : (Array.isArray(req.body?.tabs) ? req.body.tabs : []).filter((t) =>
+              CRYPTO_APP_KEYS.includes(t),
+            );
+      if (want.length === 0)
+        return res.status(400).json({ ok: false, error: 'En az bir uygulama secilmeli.' });
+      const all = await elementsStore.listRules();
+      for (const key of cryptoKeys()) {
+        const others = all.filter(
+          (r) =>
+            r.elementKey === key &&
+            !(r.principalType === pt && r.principalId.toLowerCase() === pid),
+        );
+        const app = key.replace('cryptohub:app:', '');
+        const allow = key === 'CryptoHub' ? true : want.includes(app);
+        // SECILMEYEN UYGULAMAYA KURAL YAZILMAZ: oge SIKI, kuralsiz zaten kapali.
+        const mine =
+          key === 'CryptoHub' || allow ? [{ principalType: pt, principalId: pid, allow: true }] : [];
+        await elementsStore.setElementRules(key, [...others, ...mine]);
+      }
+      visibilityEngine.bumpVersion();
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  router.delete('/crypto-access', requireAdmin, async (req, res) => {
+    try {
+      const pt = ['user', 'group', 'email'].includes(req.query.principalType)
+        ? req.query.principalType
+        : 'user';
+      const pid = String(req.query.principalId || '')
+        .trim()
+        .toLowerCase();
+      if (!pid) return res.status(400).json({ ok: false, error: 'principalId zorunlu.' });
+      const all = await elementsStore.listRules();
+      for (const key of cryptoKeys()) {
+        await elementsStore.setElementRules(
+          key,
+          all.filter(
+            (r) =>
+              r.elementKey === key &&
+              !(r.principalType === pt && r.principalId.toLowerCase() === pid),
+          ),
+        );
+      }
+      visibilityEngine.bumpVersion();
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
   router.get('/nginx-access', requireAdmin, async (_req, res) => {
     try {
       const rules = (await elementsStore.listRules()).filter(

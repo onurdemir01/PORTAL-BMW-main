@@ -18,14 +18,24 @@ import { LdapUserPicker } from '../LdapUserPicker';
 
 export type TabAccessGrant = DenetimAccessGrant;
 
+// E-POSTA PRINCIPAL'I (2026-10-01): Crypto Hub kurallari uretimde e-postayla giriliyor
+// (LDAP kullanici adi bilinmeden). Varsayilan DEGISMEDI - Denetim ve Nginx panelleri
+// yalniz kullanici/grup gostermeye devam eder.
+export type TabAccessPrincipal = 'user' | 'group' | 'email';
+const PRINCIPAL_LABEL: Record<TabAccessPrincipal, string> = {
+  user: 'kullanıcı',
+  group: 'AD grubu',
+  email: 'e-posta',
+};
+
 export interface TabAccessApi {
   list(): Promise<{ tabs: string[]; grants: TabAccessGrant[] }>;
   set(body: {
-    principalType: 'user' | 'group';
+    principalType: TabAccessPrincipal;
     principalId: string;
     tabs: string[] | 'all';
   }): Promise<void>;
-  remove(principalType: 'user' | 'group', principalId: string): Promise<void>;
+  remove(principalType: TabAccessPrincipal, principalId: string): Promise<void>;
 }
 
 export function TabAccessPanel({
@@ -35,6 +45,8 @@ export function TabAccessPanel({
   intro,
   emptyText,
   subject,
+  principalTypes = ['user', 'group'],
+  tabWord = 'sekme',
 }: {
   api: TabAccessApi;
   labels: Record<string, string>;
@@ -43,13 +55,17 @@ export function TabAccessPanel({
   emptyText: string;
   /** Bildirimlerde geçen ad: "<subject> erişimi kaydedildi" */
   subject: string;
+  /** Hangi principal türleri seçilebilir (varsayılan: kullanıcı + grup). */
+  principalTypes?: TabAccessPrincipal[];
+  /** "sekme" yerine başka bir kelime (Crypto Hub'da "uygulama"). */
+  tabWord?: string;
 }) {
   const [tabs, setTabs] = useState<string[]>([]);
   const [grants, setGrants] = useState<TabAccessGrant[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
   // form
-  const [ptype, setPtype] = useState<'user' | 'group'>('user');
+  const [ptype, setPtype] = useState<TabAccessPrincipal>(principalTypes[0]);
   const [pid, setPid] = useState('');
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
@@ -118,7 +134,7 @@ export function TabAccessPanel({
   const remove = async (g: TabAccessGrant) => {
     if (
       !window.confirm(
-        `${g.principalId} (${g.principalType === 'group' ? 'AD grubu' : 'kullanıcı'}) için ${subject} erişimi kaldırılsın mı?`,
+        `${g.principalId} (${PRINCIPAL_LABEL[g.principalType] || g.principalType}) için ${subject} erişimi kaldırılsın mı?`,
       )
     )
       return;
@@ -182,11 +198,18 @@ export function TabAccessPanel({
             </span>
             <select
               value={ptype}
-              onChange={(e) => setPtype(e.target.value as 'user' | 'group')}
+              onChange={(e) => setPtype(e.target.value as TabAccessPrincipal)}
               className={inputCls}
             >
-              <option value="user">Kullanıcı (kullanıcı adı)</option>
-              <option value="group">LDAP grubu (CN ya da DN)</option>
+              {principalTypes.includes('user') && (
+                <option value="user">Kullanıcı (kullanıcı adı)</option>
+              )}
+              {principalTypes.includes('group') && (
+                <option value="group">LDAP grubu (CN ya da DN)</option>
+              )}
+              {principalTypes.includes('email') && (
+                <option value="email">E-posta (ad.soyad@garantibbva.com.tr)</option>
+              )}
             </select>
           </label>
           <label className="flex flex-col gap-1 flex-1 min-w-[16rem]">
@@ -300,7 +323,7 @@ export function TabAccessPanel({
                     {g.principalId}
                   </td>
                   <td className="px-2 py-2" style={{ color: 'var(--text-secondary)' }}>
-                    {g.principalType === 'group' ? 'AD grubu' : 'kullanıcı'}
+                    {PRINCIPAL_LABEL[g.principalType] || g.principalType}
                   </td>
                   <td className="px-2 py-2">
                     {g.tabs.length === tabs.length ? (

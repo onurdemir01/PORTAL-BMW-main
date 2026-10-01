@@ -1755,6 +1755,30 @@ const ELEMENT_SEED = [
     // yetkilendirilmis olmak gerekir. Kill-switch degildir; oge acik kalir.
     metadata: { strict: true },
   },
+  // CRYPTO HUB UYGULAMA AYRIMI (kullanici, 2026-10-01): "Metaco ve Wyden tarafini farkli
+  // ekiplere gosterecegiz." Sayfanin TAMAMI yerine uygulama bazinda yetki verilir; bu
+  // ogeler Admin > Crypto Hub Erisimi panelinden yonetilir.
+  //
+  // SIKI: sayfanin kendisi gibi bunlar da acik kural olmadan KAPALI. Aksi halde sayfaya
+  // erisen herkes her iki uygulamayi da gorurdu - ayrimin anlami kalmazdi.
+  {
+    element_key: 'cryptohub:app:metaco',
+    element_type: 'feature',
+    parent_key: 'CryptoHub',
+    label: 'Crypto Hub — Metaco',
+    sort_order: 1,
+    default_visible: 0,
+    metadata: { strict: true },
+  },
+  {
+    element_key: 'cryptohub:app:wyden',
+    element_type: 'feature',
+    parent_key: 'CryptoHub',
+    label: 'Crypto Hub — Wyden',
+    sort_order: 2,
+    default_visible: 0,
+    metadata: { strict: true },
+  },
   {
     // NGINX ARK SPA RAPORU (kullanici, 2026-09-28): tum servisler icin SPA listesi.
     // EKIPLERE ACIK (roller Admin+User): beyani girecek olan, veriyi bilen ekiptir;
@@ -2065,6 +2089,14 @@ const ELEMENT_SEED = [
   {
     // Elle girilmis (envanterde olmayan) adlarin takip ekrani. Kayitsiz birakilirsa
     // sekme "varsayilan gorunur" olur ve Sayfa Erisimi'nden YONETILEMEZ.
+    element_key: 'admintab:cryptoaccess',
+    element_type: 'admin_tab',
+    parent_key: 'Admin',
+    label: 'Crypto Hub Erişimi',
+    sort_order: 12,
+    default_visible: 1,
+  },
+  {
     element_key: 'admintab:inventorygaps',
     element_type: 'admin_tab',
     parent_key: 'Admin',
