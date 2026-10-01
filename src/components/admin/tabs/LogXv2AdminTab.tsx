@@ -574,7 +574,9 @@ const RestrictionsSection: React.FC = () => {
   const [restrictions, setRestrictions] = useState<RestrictionRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [resourceType, setResourceType] = useState<'legacy_app' | 'ocp_namespace'>('legacy_app');
+  const [resourceType, setResourceType] = useState<'legacy_app' | 'ocp_namespace' | 'env'>(
+    'legacy_app',
+  );
   const [resourceKey, setResourceKey] = useState('');
   const [description, setDescription] = useState('');
   const [grantInputs, setGrantInputs] = useState<Record<number, string>>({});
@@ -670,16 +672,23 @@ const RestrictionsSection: React.FC = () => {
           <Select
             sizeVariant="sm"
             value={resourceType}
-            onChange={(e) => setResourceType(e.target.value as 'legacy_app' | 'ocp_namespace')}
+            onChange={(e) =>
+              setResourceType(e.target.value as 'legacy_app' | 'ocp_namespace' | 'env')
+            }
           >
             <option value="legacy_app">Legacy Uygulama</option>
             <option value="ocp_namespace">OCP Namespace</option>
+            <option value="env">Ortam (Legacy + OCP)</option>
           </Select>
           <input
             value={resourceKey}
             onChange={(e) => setResourceKey(e.target.value)}
             placeholder={
-              resourceType === 'legacy_app' ? 'GBCEPPOSDASHBOARD' : 'tenant/env/cluster/namespace'
+              resourceType === 'legacy_app'
+                ? 'GBCEPPOSDASHBOARD'
+                : resourceType === 'env'
+                  ? 'PROD'
+                  : 'tenant/env/cluster/namespace'
             }
             className="px-2 py-1.5 text-sm border border-gray-200 rounded-lg outline-none focus:border-black focus:ring-1 focus:ring-black"
           />
@@ -709,7 +718,11 @@ const RestrictionsSection: React.FC = () => {
             <div className="flex items-center justify-between">
               <div>
                 <span className="text-xs px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600 mr-2">
-                  {r.resourceType === 'legacy_app' ? 'Legacy' : 'OCP'}
+                  {r.resourceType === 'legacy_app'
+                    ? 'Legacy'
+                    : r.resourceType === 'env'
+                      ? 'Ortam'
+                      : 'OCP'}
                 </span>
                 <span className="text-sm font-semibold text-gray-800">{r.resourceKey}</span>
                 {editingDescId !== r.id && (

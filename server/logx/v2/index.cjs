@@ -90,6 +90,19 @@ function asyncRoute(fn) {
   };
 }
 
+// ORTAM KAPISI — LISTE UCLARI ICIN (2026-10-01). Ortam kapaliysa liste TAMAMEN
+// gizlenir; cagiran gizlenen sayiyi ve bu ayrintiyi doner. Red denetime yazilir.
+// Ortam acik / etiket yoksa `null`.
+async function ortamReddi(req, envLabel) {
+  const k = restrictions.envKey(envLabel);
+  if (!k) return null;
+  const karar = await restrictions.evaluate('env', k, currentUser(req));
+  if (karar.allowed) return null;
+  const d = restrictions.denyDetails('env', k, karar.rows);
+  redKaydet(req, d);
+  return d;
+}
+
 async function loadOwnedRequest(req) {
   const row = await requests.getRequestRow(req.params.requestId);
   requests.assertOwnership(row, currentUser(req));
@@ -270,9 +283,39 @@ function initLogXv2(app) {
   // OCP namespace kesfi degilse (legacy, uygulama kesfi vb.) OLDUGU GIBI doner.
   async function filterDiscoveryResult(request, user) {
     const result = request.discoveryResult;
+    // LEGACY: ortam etiketi DOSYA basina (EAR son-eki). Kapali ortamin dosyalari
+    // gizlenir, SAYISI soylenir (`hiddenFiles`).
+    if (request.platform === 'legacy' && Array.isArray(result?.hosts)) {
+      const etiketler = new Set();
+      for (const h of result.hosts) for (const f of h.files || []) etiketler.add(restrictions.envKey(f.environment));
+      etiketler.delete('');
+      const kapali = new Set();
+      for (const e of etiketler) {
+        if (!(await restrictions.evaluate('env', e, user)).allowed) kapali.add(e);
+      }
+      if (!kapali.size) return result;
+      let gizli = 0;
+      const hosts = result.hosts.map((h) => {
+        const files = (h.files || []).filter((f) => !kapali.has(restrictions.envKey(f.environment)));
+        gizli += (h.files || []).length - files.length;
+        return { ...h, files };
+      });
+      return { ...result, hosts, hiddenFiles: gizli, hiddenEnvs: [...kapali] };
+    }
     if (request.platform !== 'openshift' || !Array.isArray(result?.clusters)) return result;
     const input = request.input || {};
     if (!input.tenant || !input.env) return result;
+    // ORTAM KAPALIYSA tum namespace'ler gizli (adlar sizmaz, sayi soylenir).
+    if (!(await restrictions.evaluate('env', input.env, user)).allowed) {
+      return {
+        ...result,
+        clusters: result.clusters.map((c) =>
+          Array.isArray(c?.namespaces)
+            ? { ...c, namespaces: [], hiddenCount: c.namespaces.length }
+            : c,
+        ),
+      };
+    }
 
     const clusters = [];
     for (const c of result.clusters) {
@@ -415,6 +458,17 @@ function initLogXv2(app) {
     '/legacy/:requestId/transfer',
     asyncRoute(async (req, res) => {
       const row = await loadOwnedRequest(req);
+      // ORTAM KAPISI dosya basina: istemci gizlenmis bir dosyanin yolunu dogrudan
+      // gonderebilir (ekran bir sinir degil). Etiket ham kesif sonucundan okunur.
+      const sonuc = row.discovery_result_json ? JSON.parse(row.discovery_result_json) : null;
+      const etiket = new Map();
+      for (const h of sonuc?.hosts || [])
+        for (const f of h.files || []) etiket.set(`${h.host}::${f.path}`, f.environment);
+      const ortamlar = new Set(
+        (req.body?.selected || []).map((x) => restrictions.envKey(etiket.get(`${x?.host}::${x?.path}`))),
+      );
+      ortamlar.delete('');
+      for (const e of ortamlar) await restrictions.assertEnvAllowed(e, currentUser(req));
       const job = await legacy.transfer(row, req.body?.selected || []);
       res.json({ ok: true, jobId: job.id });
     }),
@@ -432,6 +486,8 @@ function initLogXv2(app) {
   // ikinci cluster secilerek atlanabiliyordu. Bu yardimci, ayni mantigin iki ayri uctan
   // (uygulama kesfi ve log cekme) farkli sekilde yazilmasini da onler.
   async function assertNamespaceAllowed(input, namespace, user) {
+    // ORTAM once: kapaliysa hangi namespace oldugunun onemi yok.
+    await restrictions.assertEnvAllowed(input?.env, user);
     const clusters = Array.isArray(input?.clusters) ? input.clusters : [];
     for (const cluster of clusters) {
       await restrictions.assertAllowed(
@@ -454,6 +510,9 @@ function initLogXv2(app) {
     asyncRoute(async (req, res) => {
       const row = await loadOwnedRequest(req);
       const { env, tenant, clusters } = req.body || {};
+      // EN ERKEN ve EN ACIK red: kapali bir ortam secildiginde kullanici namespace
+      // listesine hic gecmeden sebebi gorur.
+      await restrictions.assertEnvAllowed(env, currentUser(req));
       const result = await ocp.selectClusters(row, env, tenant, clusters);
       res.json({ ok: true, ...result });
     }),
@@ -463,6 +522,8 @@ function initLogXv2(app) {
     '/ocp/:requestId/namespaces/discover',
     asyncRoute(async (req, res) => {
       const row = await loadOwnedRequest(req);
+      const girdi = row.input_json ? JSON.parse(row.input_json) : {};
+      await restrictions.assertEnvAllowed(girdi.env, currentUser(req));
       const job = await ocp.discoverNamespaces(row);
       res.json({ ok: true, jobId: job.id });
     }),
@@ -503,6 +564,20 @@ function initLogXv2(app) {
         tenant,
         clusterName: cluster,
       });
+      // Ortam kapaliysa liste TAMAMEN gizli: adlar sizmaz, sayi + sebep soylenir.
+      const ortamRed = await ortamReddi(req, env);
+      if (ortamRed)
+        return res.json({
+          ok: true,
+          ...out,
+          items: [],
+          sources: {},
+          counts: {},
+          clusters: {},
+          hiddenCount: out.items.length,
+          restriction: ortamRed,
+          message: restrictions.denyMessage(ortamRed),
+        });
       // Kisitli namespace'ler listeden DUSURULUR. Tek bir on-kontrol mumkun degil (liste
       // donuyoruz), bu yuzden filtreleme sonda yapilir — icerik ucuyla (`/cache/apps`) ayni
       // kapi, farkli bicimde. Admin icin isAllowed her zaman true doner.
@@ -530,6 +605,7 @@ function initLogXv2(app) {
           .json({ ok: false, message: 'env, tenant, cluster ve namespace gerekli.' });
       }
       const resourceKey = `${tenant}/${env}/${cluster}/${namespace}`;
+      await restrictions.assertEnvAllowed(env, currentUser(req));
       await restrictions.assertAllowed('ocp_namespace', resourceKey, currentUser(req));
       const out = await require('./ocp-cache.cjs').getApps({
         env,
@@ -567,6 +643,19 @@ function initLogXv2(app) {
         tenant,
         clusterNames: clusters,
       });
+      const ortamRed = await ortamReddi(req, env);
+      if (ortamRed)
+        return res.json({
+          ok: true,
+          ...out,
+          items: [],
+          sources: {},
+          counts: {},
+          clusters: {},
+          hiddenCount: out.items.length,
+          restriction: ortamRed,
+          message: restrictions.denyMessage(ortamRed),
+        });
       const allowedKeys = new Set();
       for (const clusterName of clusters) {
         const prefix = `${tenant}/${env}/${clusterName}/`;
@@ -620,6 +709,19 @@ function initLogXv2(app) {
           .status(400)
           .json({ ok: false, message: 'env, tenant, namespace ve clusters gerekli.' });
       }
+      // Ortam kapaliysa namespace'e bakmadan gizli (ayrinti + denetim).
+      const ortamRed = await ortamReddi(req, env);
+      if (ortamRed)
+        return res.json({
+          ok: true,
+          items: [],
+          cached: false,
+          fetchedAt: null,
+          stale: false,
+          source: null,
+          restriction: ortamRed,
+          message: restrictions.denyMessage(ortamRed),
+        });
       // Bu namespace HERHANGI bir secili cluster'da kisitlanmissa liste tamamen gizlenir
       // (fail-safe — restart tetikleyen OpsX ile ayni gerekce).
       for (const clusterName of clusters) {

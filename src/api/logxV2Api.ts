@@ -129,6 +129,10 @@ export interface DiscoveredHost {
 export interface LegacyDiscoveryResult {
   overall_status: string;
   hosts: DiscoveredHost[];
+  /** Ortamı LogX'te kısıtlı olduğu için gizlenen dosya sayısı (adlar gönderilmez). */
+  hiddenFiles?: number;
+  /** Gizlenen dosyaların ortam etiketleri ("PROD" gibi). */
+  hiddenEnvs?: string[];
 }
 
 export interface DiscoveredCluster {

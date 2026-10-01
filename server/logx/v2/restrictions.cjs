@@ -7,7 +7,12 @@
 
 const db = require('../../db/index.cjs');
 
-// resourceType: 'legacy_app' | 'ocp_namespace' | 'ocp_app'
+// resourceType: 'legacy_app' | 'ocp_namespace' | 'ocp_app' | 'env'
+// `env` (2026-10-01): ORTAM birimi — anahtar ortam etiketi, BUYUK harf ("PROD").
+//   OCP'de istegin `env` alani, Legacy'de dosyanin EAR son-ekinden turetilen etiket
+//   (logx_env_suffix_map). Kaynak kuraliyla BIRLIKTE (AND) uygulanir; o da
+//   varsayilan-acik. Anahtar burada normalize edilir — cagiran "prod" de
+//   "PROD" de gecse ayni satira eslesir.
 // resourceKey: Legacy icin app adi (orn. "GBCEPPOSDASHBOARD"), OCP namespace icin
 //   "<tenant>/<env>/<cluster>/<namespace>", OCP uygulamasi icin
 //   "<tenant>/<env>/<cluster>/<namespace>/<app>" birlesik anahtari.
@@ -97,7 +102,16 @@ async function isAllowed(resourceType, resourceKey, user) {
 
 // Karar + karari ureten satirlar (ret ayrintisi bunlardan kurulur). Tek sorgu;
 // `isAllowed` ile AYNI mantik — ikisi ayri yazilsa ret mesaji ile karar kayabilirdi.
+// Ortam anahtari: bas/son bosluk yok, BUYUK harf (dil-bagimsiz; "prod" -> "PROD").
+function envKey(label) {
+  return String(label || '').trim().toUpperCase();
+}
+function normKey(resourceType, resourceKey) {
+  return resourceType === 'env' ? envKey(resourceKey) : resourceKey;
+}
+
 async function evaluate(resourceType, resourceKey, user) {
+  resourceKey = normKey(resourceType, resourceKey);
   if (user.role === 'Admin') return { allowed: true, rows: [] };
 
   // Eslesme artik SQL'de degil JS'te yapiliyor: grup listesi degisken uzunlukta ve
@@ -145,6 +159,7 @@ function kaynakEtiketi(resourceType, resourceKey) {
     if (p.length >= 5) return `"${p[4]}" uygulaması ("${p[3]}" namespace'i, ${p[2]})`;
   }
   if (resourceType === 'legacy_app') return `"${k}" uygulaması`;
+  if (resourceType === 'env') return `${envKey(k)} ortamı`;
   return `"${k}"`;
 }
 
@@ -205,7 +220,7 @@ async function filterAllowed(resourceType, resourceKeys, user) {
 async function assertAllowed(resourceType, resourceKey, user) {
   const { allowed, rows } = await evaluate(resourceType, resourceKey, user);
   if (!allowed) {
-    const d = denyDetails(resourceType, resourceKey, rows);
+    const d = denyDetails(resourceType, normKey(resourceType, resourceKey), rows);
     throw Object.assign(new Error(denyMessage(d)), { status: 403, restriction: d });
   }
 }
@@ -245,7 +260,19 @@ async function listRestrictions() {
 // (`isAllowed`) tipi taniyordu ama YAZMA yolu reddediyordu — yani uygulama bazli kisit
 // hicbir zaman OLUSTURULAMIYORDU ve `catalog.assertAppsAllowed` her cagrisinda
 // varsayilan-acik donuyordu. Kapi kodda vardi, yurulukte yoktu.
-const RESOURCE_TYPES = ['legacy_app', 'ocp_namespace', 'ocp_app'];
+const RESOURCE_TYPES = ['legacy_app', 'ocp_namespace', 'ocp_app', 'env'];
+
+// ORTAM KAPISI. Etiket bos ya da turetilemiyorsa kural UYGULANMAZ (varsayilan-acik
+// semantigi) ama SESSIZ DEGIL: uyari loglanir — "ortam kisiti neden calismadi"
+// sorusunun cevabi sunucu logunda durur.
+async function assertEnvAllowed(envLabel, user) {
+  const k = envKey(envLabel);
+  if (!k) {
+    console.warn('[restrictions] ortam etiketi bos — ortam kisiti uygulanamadi.');
+    return;
+  }
+  await assertAllowed('env', k, user);
+}
 
 async function createRestriction({ resourceType, resourceKey, description }, createdBy) {
   if (!RESOURCE_TYPES.includes(resourceType)) {
@@ -258,7 +285,7 @@ async function createRestriction({ resourceType, resourceKey, description }, cre
     `INSERT INTO logx_v2_restrictions (resource_type, resource_key, description, created_by)
      OUTPUT INSERTED.*
      VALUES ($1,$2,$3,$4)`,
-    [resourceType, String(resourceKey).trim(), description || null, createdBy]
+    [resourceType, String(normKey(resourceType, String(resourceKey).trim())), description || null, createdBy]
   );
   return rows[0];
 }
@@ -323,6 +350,7 @@ async function removeGrant(restrictionId, username) {
 module.exports = {
   RESOURCE_TYPES,
   isAllowed, assertAllowed, filterAllowed, evaluate, denyDetails, denyMessage,
+  assertEnvAllowed, envKey,
   listRestrictions, createRestriction, updateRestriction, deleteRestriction,
   addGrant, removeGrant, addGroupGrant, removeGroupGrant,
 };

@@ -40,6 +40,8 @@ interface Props {
   unreadableSources?: string[];
   /** Kısıtlı olduğu için listeden çıkarılan namespace sayısı. */
   hiddenCount?: number;
+  /** Ortam kısıtlıysa sunucunun açıklaması — sayı notunun yerine gösterilir. */
+  restrictionMessage?: string;
   onRediscover?: () => void;
   busy?: boolean;
   onSelect: (ns: string) => void;
@@ -56,6 +58,7 @@ const NamespacePickerStep: React.FC<Props> = ({
   selectedClusters = [],
   unreadableSources = [],
   hiddenCount = 0,
+  restrictionMessage,
   onRediscover,
   busy,
   onSelect,
@@ -259,13 +262,13 @@ const NamespacePickerStep: React.FC<Props> = ({
 
       {/* KISITLI OLDUĞU İÇİN GİZLENENLER: adlar gösterilmez, ama sayı söylenir —
           yoksa kullanıcı "namespace'im yok" sanıp yanlış yere bakıyordu. */}
-      {hiddenCount > 0 && (
+      {(hiddenCount > 0 || restrictionMessage) && (
         <p
           data-testid="logx-hidden-namespaces"
           className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2"
         >
-          {hiddenCount} namespace LogX'te kısıtlı olduğu için bu listede gösterilmiyor. Erişim için
-          LogX yöneticisine (Admin) başvurun.
+          {restrictionMessage ||
+            `${hiddenCount} namespace LogX'te kısıtlı olduğu için bu listede gösterilmiyor. Erişim için LogX yöneticisine (Admin) başvurun.`}
         </p>
       )}
 
