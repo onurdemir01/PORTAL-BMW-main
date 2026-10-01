@@ -27,6 +27,7 @@ import JobProgress from './shared/JobProgress';
 import DownloadStep from './shared/DownloadStep';
 import FailedStep from './shared/FailedStep';
 import ContextChips from '@/components/common/ContextChips';
+import LogXYonetimDugmesi from './shared/LogXYonetimDugmesi';
 import { isProdEnv } from '@/utils/env';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
 
@@ -480,7 +481,13 @@ const LogXWizardPage: React.FC = () => {
           </button>
         )}
         <div className="flex-1">
-          <h1 className="page-title">LogX v2 — Güvenli Log İndirme</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="page-title">LogX v2 — Güvenli Log İndirme</h1>
+            {/* Yalnızca kaynak SAHİPLERİNE görünür (Admin'in yeri Admin > LogX v2 > Erişim). */}
+            <span className="ml-auto">
+              <LogXYonetimDugmesi />
+            </span>
+          </div>
           {STEP_TITLES[step] && (
             <p className="mt-1 text-sm font-medium text-[var(--text-muted)]">{STEP_TITLES[step]}</p>
           )}

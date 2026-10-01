@@ -1146,7 +1146,7 @@ function initLogXv2(app) {
   // ── LogX YONETIMI: Admin + KAYNAK SAHIBI (L4, 2026-10-01) ────────────────────
   //
   // `/admin/restrictions*` uclari AYNEN duruyor (mevcut ekran onlari kullaniyor).
-  // `/manage/*` ayni islemleri `canManage` (Admin || kaynak sahibi) ile acar; sahip
+  // `/manage/...` uclari ayni islemleri `canManage` (Admin || kaynak sahibi) ile acar; sahip
   // ekleme/silme YALNIZCA Admin. Her degisiklik portal_audit_logs'a (`logx_manage_*`).
   router.use('/manage', (req, res, next) => {
     try {
@@ -1259,6 +1259,162 @@ function initLogXv2(app) {
     asyncRoute(async (req, res) => {
       await yonetilenKisit(req);
       res.json({ ok: await restrictions.removeGroupGrant(req.params.id, req.body?.groupDn) });
+    }),
+  );
+
+  // ── "NEDEN REDDEDILDI?" ACIKLAYICISI (L5, yalnizca Admin) ────────────────────
+  //
+  // Bir kullaniciyi bir kaynak icin ADIM ADIM sinar: LogX sayfa gorunurlugu → ortam
+  // kurali → kaynak kurali. Gruplar LDAP'tan CANLI okunur (gorunurluk `/explain`
+  // ucuyla ayni desen); LDAP'a ulasilamazsa bu SOYLENIR — eksik veriyle verilen cevap
+  // kesin cevap gibi gorunmemeli. OCP namespace anahtarindan ortam kendiliginden
+  // turetilir (`tenant/env/cluster/ns`).
+  router.get(
+    '/manage/explain',
+    requireAdmin,
+    asyncRoute(async (req, res) => {
+      const username = String(req.query.username || '').trim();
+      const resourceType = String(req.query.resourceType || '').trim();
+      const resourceKey = String(req.query.resourceKey || '').trim();
+      if (!username)
+        return res.status(400).json({ ok: false, message: 'username gerekli.' });
+      const hedef = { username, role: 'User', groups: [] };
+      let kimlikKaynagi = null;
+      let kimlikUyarisi = null;
+      try {
+        const ldap = await require('../../auth/ldap.cjs').findLdapUserByUsername(username);
+        if (ldap) {
+          hedef.username = ldap.username || username;
+          hedef.mail = ldap.mail || '';
+          hedef.groups = Array.isArray(ldap.groups) ? ldap.groups : [];
+          kimlikKaynagi = 'ldap';
+        } else {
+          kimlikUyarisi = "Kullanıcı LDAP'ta bulunamadı — gruplar BOŞ varsayıldı, sonuç eksik olabilir.";
+        }
+      } catch (err) {
+        kimlikUyarisi = `LDAP okunamadı (${err.message}) — gruplar BOŞ varsayıldı, sonuç eksik olabilir.`;
+      }
+
+      const adimlar = [];
+      try {
+        const v = await require('../../auth/visibility.cjs').explainVisibility(hedef, 'LogX');
+        adimlar.push({
+          ad: 'LogX sayfa görünürlüğü',
+          izin: !!v.gorunur,
+          aciklama: v.sebep || (v.gorunur ? 'görünür' : 'gizli'),
+        });
+      } catch (err) {
+        adimlar.push({ ad: 'LogX sayfa görünürlüğü', izin: null, aciklama: `okunamadı: ${err.message}` });
+      }
+      let env = String(req.query.env || '').trim();
+      if (!env && resourceType === 'ocp_namespace') env = resourceKey.split('/')[1] || '';
+      if (resourceType === 'env') env = resourceKey;
+      const kuralAdimi = async (ad, tip, anahtar) => {
+        const karar = await restrictions.evaluate(tip, anahtar, hedef);
+        if (karar.allowed) {
+          adimlar.push({
+            ad,
+            izin: true,
+            aciklama: karar.rows.length ? 'kısıtlı, kullanıcı izinli' : 'kısıtlama yok (herkese açık)',
+          });
+        } else {
+          const d = await restrictions.redAyrintisi(tip, anahtar, karar.rows);
+          adimlar.push({ ad, izin: false, aciklama: restrictions.denyMessage(d), restriction: d });
+        }
+      };
+      if (env) await kuralAdimi(`Ortam kuralı (${restrictions.envKey(env)})`, 'env', env);
+      if (resourceType && resourceType !== 'env' && resourceKey)
+        await kuralAdimi('Kaynak kuralı', resourceType, resourceKey);
+      res.json({
+        ok: true,
+        kullanici: { username: hedef.username, grupSayisi: hedef.groups.length },
+        kimlikKaynagi,
+        kimlikUyarisi,
+        adimlar,
+        sonuc: adimlar.every((a) => a.izin !== false) ? 'izin' : 'red',
+      });
+    }),
+  );
+
+  // RED GUNLUGU (yalnizca Admin): son `v2_denied` kayitlari (logx_audit_logs).
+  router.get(
+    '/manage/denials',
+    requireAdmin,
+    asyncRoute(async (req, res) => {
+      const limit = Math.min(Math.max(Number(req.query.limit) || 100, 1), 500);
+      const rows = await audit.getLogs({
+        action: 'v2_denied',
+        username: String(req.query.username || '').trim() || undefined,
+        limit,
+      });
+      res.json({
+        ok: true,
+        denials: rows.map((r) => {
+          let d = {};
+          try {
+            d = JSON.parse(r.detail || '{}');
+          } catch {
+            // eski/bozuk detay: bos ayrintiyla doner
+          }
+          return {
+            id: r.id,
+            at: r.created_at,
+            username: r.username,
+            resourceType: d.type || null,
+            resourceKey: d.key || null,
+            route: d.route || null,
+          };
+        }),
+      });
+    }),
+  );
+
+  // ORTAM ETIKETLERI (yalnizca Admin): OCP cluster katalogu + Legacy son-ek eslemesi
+  // YAN YANA. Iki kaynak ayni ortami farkli yaziyorsa ("prd"/"PROD") ekranda gorunur.
+  router.get(
+    '/manage/env-labels',
+    requireAdmin,
+    asyncRoute(async (req, res) => {
+      const etiket = new Map();
+      const ekle = (l, kaynak) => {
+        const k = restrictions.envKey(l);
+        if (!k) return;
+        if (!etiket.has(k)) etiket.set(k, new Set());
+        etiket.get(k).add(kaynak);
+      };
+      for (const r of await adminData.listClusterIndex().catch(() => [])) ekle(r.env, 'ocp');
+      for (const r of await adminData.listEnvSuffixMap().catch(() => [])) ekle(r.env_label, 'legacy');
+      res.json({
+        ok: true,
+        labels: [...etiket.entries()]
+          .map(([label, k]) => ({ label, sources: [...k].sort() }))
+          .sort((a, b) => a.label.localeCompare(b.label)),
+      });
+    }),
+  );
+
+  // ALTYAPI TESHISI (salt okunur, yalnizca Admin): kural DISI prod sebeplerini
+  // ayirt etmek icin cluster kimlik alanlari. Canli RBAC sorgusu YOK (bilgi).
+  router.get(
+    '/manage/infra',
+    requireAdmin,
+    asyncRoute(async (req, res) => {
+      const rows = await adminData.listClusterIndex().catch(() => []);
+      res.json({
+        ok: true,
+        clusters: rows.map((r) => ({
+          env: r.env,
+          tenant: r.tenant,
+          cluster: r.cluster_name,
+          active: r.is_active === true || r.is_active === 1,
+          eksik: [!r.api_url && 'api_url', !r.vault_credential_key && 'vault anahtarı'].filter(
+            Boolean,
+          ),
+          notlar: [
+            !r.terminal_host && 'bastion cluster satırında yok; tenant/env yedeği kullanılır',
+          ].filter(Boolean),
+        })),
+      });
     }),
   );
 

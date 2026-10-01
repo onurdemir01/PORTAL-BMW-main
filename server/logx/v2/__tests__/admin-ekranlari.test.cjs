@@ -34,14 +34,19 @@ function dilim(src, bas, son) {
 const TAB = () => kodOnly(oku('src/components/admin/tabs/LogXv2AdminTab.tsx'));
 const API = () => kodOnly(oku('src/api/logxV2Api.ts'));
 
+// 2026-10 (L5): grup izinleri artik "LogX Yonetimi > Erisim" ekranindan
+// (`logxV2Api.manage.*`, Admin + kaynak sahibi) verilir; eski "Kisitlamalar"
+// bolumunun yerini aldi. Bekcinin amaci ayni: EKRANDAN verilebiliyor/silinebiliyor.
+const ERISIM = () => kodOnly(oku('src/components/admin/tabs/logxv2/LogXErisim.tsx'));
 test('AE1 grup grant`lari EKRANDAN verilebiliyor ve silinebiliyor', () => {
   const api = API();
   assert.match(api, /addGroupGrant:/, 'istemci sarmalayicisi yok');
   assert.match(api, /removeGroupGrant:/, 'istemci sarmalayicisi yok');
-  const t = TAB();
-  assert.match(t, /logxV2Api\.admin\.addGroupGrant\(/, 'ekran grup grant EKLEYEMIYOR');
-  assert.match(t, /logxV2Api\.admin\.removeGroupGrant\(/, 'ekran grup grant SILEMIYOR');
-  assert.match(t, /r\.groupGrants/, 'mevcut grup grant`lari listelenmiyor');
+  const t = TAB() + ERISIM();
+  assert.match(t, /<LogXErisim \/>/, 'Erisim ekrani admin sekmesine bagli degil');
+  assert.match(t, /logxV2Api\.(admin|manage)\.addGroupGrant\(/, 'ekran grup grant EKLEYEMIYOR');
+  assert.match(t, /logxV2Api\.(admin|manage)\.removeGroupGrant\(/, 'ekran grup grant SILEMIYOR');
+  assert.match(t, /\.groupGrants\.map/, 'mevcut grup grant`lari listelenmiyor');
 });
 
 test('AE2 grup DN`i GOVDEDE gider, yol parametresinde DEGIL', () => {

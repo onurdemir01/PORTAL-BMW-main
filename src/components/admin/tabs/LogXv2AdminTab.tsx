@@ -29,6 +29,7 @@ import {
 import SimpleCrudTable, { type ColumnDef } from './logxv2/SimpleCrudTable';
 import { useToast } from '@/hooks/useToast';
 import OcpRuntimeSettings from './logxv2/OcpRuntimeSettings';
+import LogXErisim from './logxv2/LogXErisim';
 import { Select } from '@/components/ui/Form';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
 import { TableEmptyRow } from '@/components/common/EmptyState';
@@ -41,7 +42,9 @@ const SUB_TABS = [
   { id: 'terminals', label: 'Terminal/Bastion Host', icon: CommandLineIcon },
   { id: 'ocpruntime', label: 'OCP Çalıştırma Ayarları', icon: WrenchScrewdriverIcon },
   { id: 'envsuffix', label: 'Legacy Ortam Son-Eki', icon: TagIcon },
-  { id: 'restrictions', label: 'Kısıtlamalar', icon: LockClosedIcon },
+  // ERİŞİM (L5): kaynak seçici, izin + sahip yönetimi, açıklayıcı, red günlüğü.
+  // Eski "Kısıtlamalar" ekranı aynı tabloyu yönetiyordu; yerini aldı.
+  { id: 'restrictions', label: 'Erişim', icon: LockClosedIcon },
   { id: 'maskrules', label: 'Maskeleme Kuralları', icon: EyeSlashIcon },
   { id: 'requests', label: 'İstek İzleme', icon: ClipboardDocumentListIcon },
 ] as const;
@@ -570,278 +573,6 @@ const RequestsSection: React.FC = () => {
   );
 };
 
-const RestrictionsSection: React.FC = () => {
-  const [restrictions, setRestrictions] = useState<RestrictionRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [resourceType, setResourceType] = useState<'legacy_app' | 'ocp_namespace' | 'env'>(
-    'legacy_app',
-  );
-  const [resourceKey, setResourceKey] = useState('');
-  const [description, setDescription] = useState('');
-  const [grantInputs, setGrantInputs] = useState<Record<number, string>>({});
-  const [groupInputs, setGroupInputs] = useState<Record<number, string>>({});
-  const [editingDescId, setEditingDescId] = useState<number | null>(null);
-  const [editDescValue, setEditDescValue] = useState('');
-
-  async function load() {
-    setLoading(true);
-    setError(null);
-    try {
-      const r = await logxV2Api.admin.listRestrictions();
-      setRestrictions(r.restrictions);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setLoading(false);
-    }
-  }
-  useAsyncEffect(async () => {
-    await load();
-  }, []);
-
-  async function create() {
-    if (!resourceKey.trim()) return;
-    try {
-      await logxV2Api.admin.createRestriction({
-        resourceType,
-        resourceKey: resourceKey.trim(),
-        description,
-      });
-      setResourceKey('');
-      setDescription('');
-      await load();
-    } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : String(err));
-    }
-  }
-
-  async function saveDescription(id: number) {
-    try {
-      await logxV2Api.admin.updateRestriction(id, { description: editDescValue });
-      setEditingDescId(null);
-      await load();
-    } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : String(err));
-    }
-  }
-
-  async function addGrant(id: number) {
-    const username = (grantInputs[id] || '').trim();
-    if (!username) return;
-    try {
-      await logxV2Api.admin.addGrant(id, username);
-      setGrantInputs((prev) => ({ ...prev, [id]: '' }));
-      await load();
-    } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : String(err));
-    }
-  }
-
-  // ── GRUP GRANT'LARI ──────────────────────────────────────────────────────────
-  // Sunucu route'lari ve `restrictions.cjs` mantigi vardi; ekran YOKTU. Sunucudaki
-  // not bunu aciklikla yaziyordu: "yetki bir AD grubuna verilebiliyor GIBI
-  // gorunuyor, ama portal uzerinden verilmesinin bir yolu YOKTU". Bu, ozelligin
-  // ON YUZ yarisiydi ve hala oluydu.
-  async function addGroupGrant(id: number) {
-    const dn = (groupInputs[id] || '').trim();
-    if (!dn) return;
-    try {
-      await logxV2Api.admin.addGroupGrant(id, dn);
-      setGroupInputs((prev) => ({ ...prev, [id]: '' }));
-      await load();
-    } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : String(err));
-    }
-  }
-
-  if (loading) return <LoadingLogo compact />;
-  if (error) return <div className="bg-red-50 rounded-xl p-4 text-sm text-red-700">{error}</div>;
-
-  return (
-    <div className="space-y-4">
-      <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 text-xs text-amber-800">
-        Varsayılan olarak TÜM uygulama/namespace'ler HERKESE AÇIKTIR. Burada bir kayıt oluşturmak, o
-        kaynağı yalnızca aşağıya eklenen kullanıcılara (+ her zaman Admin'lere) KISITLAR — kayıt
-        eklemek erişimi AÇMAZ, DARALTIR.
-      </div>
-
-      <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 space-y-3">
-        <p className="text-sm font-medium text-gray-800">Yeni Kısıtlama</p>
-        <div className="grid grid-cols-3 gap-2">
-          <Select
-            sizeVariant="sm"
-            value={resourceType}
-            onChange={(e) =>
-              setResourceType(e.target.value as 'legacy_app' | 'ocp_namespace' | 'env')
-            }
-          >
-            <option value="legacy_app">Legacy Uygulama</option>
-            <option value="ocp_namespace">OCP Namespace</option>
-            <option value="env">Ortam (Legacy + OCP)</option>
-          </Select>
-          <input
-            value={resourceKey}
-            onChange={(e) => setResourceKey(e.target.value)}
-            placeholder={
-              resourceType === 'legacy_app'
-                ? 'GBCEPPOSDASHBOARD'
-                : resourceType === 'env'
-                  ? 'PROD'
-                  : 'tenant/env/cluster/namespace'
-            }
-            className="px-2 py-1.5 text-sm border border-gray-200 rounded-lg outline-none focus:border-black focus:ring-1 focus:ring-black"
-          />
-          <input
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="Açıklama (opsiyonel)"
-            className="px-2 py-1.5 text-sm border border-gray-200 rounded-lg outline-none focus:border-black focus:ring-1 focus:ring-black"
-          />
-        </div>
-        <button
-          onClick={create}
-          className="px-3 py-1.5 bg-black text-white text-xs rounded-lg hover:bg-gray-800 transition-colors"
-        >
-          Kısıtlama Ekle
-        </button>
-      </div>
-
-      <div className="space-y-2">
-        {restrictions.length === 0 && (
-          <p className="text-sm text-gray-400 text-center py-4">
-            Hiç kısıtlama yok — her şey herkese açık.
-          </p>
-        )}
-        {restrictions.map((r) => (
-          <div key={r.id} className="border border-gray-100 rounded-xl p-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <span className="text-xs px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600 mr-2">
-                  {r.resourceType === 'legacy_app'
-                    ? 'Legacy'
-                    : r.resourceType === 'env'
-                      ? 'Ortam'
-                      : 'OCP'}
-                </span>
-                <span className="text-sm font-semibold text-gray-800">{r.resourceKey}</span>
-                {editingDescId !== r.id && (
-                  <button
-                    onClick={() => {
-                      setEditingDescId(r.id);
-                      setEditDescValue(r.description || '');
-                    }}
-                    className="text-xs text-gray-400 hover:text-gray-700 ml-2 underline decoration-dotted"
-                  >
-                    {r.description || 'açıklama ekle'}
-                  </button>
-                )}
-              </div>
-              <button
-                onClick={async () => {
-                  await logxV2Api.admin.deleteRestriction(r.id);
-                  await load();
-                }}
-                className="text-xs text-red-500 hover:underline"
-              >
-                Kısıtlamayı Kaldır
-              </button>
-            </div>
-            {editingDescId === r.id && (
-              <div className="mt-2 flex items-center gap-1.5">
-                <input
-                  value={editDescValue}
-                  onChange={(e) => setEditDescValue(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') saveDescription(r.id);
-                    if (e.key === 'Escape') setEditingDescId(null);
-                  }}
-                  placeholder="Açıklama"
-                  autoFocus
-                  className="px-2 py-1 text-xs border border-gray-200 rounded-lg outline-none focus:border-black flex-1"
-                />
-                <button
-                  onClick={() => saveDescription(r.id)}
-                  className="text-xs text-black hover:underline"
-                >
-                  Kaydet
-                </button>
-                <button
-                  onClick={() => setEditingDescId(null)}
-                  className="text-xs text-gray-400 hover:underline"
-                >
-                  İptal
-                </button>
-              </div>
-            )}
-            <div className="mt-2 flex flex-wrap items-center gap-1.5">
-              {r.grants.map((g) => (
-                <span
-                  key={g}
-                  className="flex items-center gap-1 text-xs bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full"
-                >
-                  {g}
-                  <button
-                    onClick={async () => {
-                      await logxV2Api.admin.removeGrant(r.id, g);
-                      await load();
-                    }}
-                    className="text-emerald-500 hover:text-emerald-800"
-                  >
-                    ×
-                  </button>
-                </span>
-              ))}
-              <input
-                value={grantInputs[r.id] || ''}
-                onChange={(e) => setGrantInputs((prev) => ({ ...prev, [r.id]: e.target.value }))}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') addGrant(r.id);
-                }}
-                placeholder="kullanıcı adı ekle..."
-                className="px-2 py-1 text-xs border border-gray-200 rounded-full outline-none focus:border-black w-32"
-              />
-            </div>
-
-            {/* GRUP GRANT'LARI — kullanıcı çiplerinden AYRI satır. İkisini aynı
-                kümede göstermek "bu bir kişi mi ekip mi" sorusunu doğururdu ve
-                bir DN'i yanlışlıkla kullanıcı adı sanmak kolay olurdu. */}
-            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-              <span className="text-[10px] uppercase tracking-wide text-gray-400">grup</span>
-              {(r.groupGrants || []).map((g) => (
-                <span
-                  key={g}
-                  title={g}
-                  className="flex items-center gap-1 text-xs bg-sky-50 text-sky-800 px-2 py-0.5 rounded-full max-w-[22rem]"
-                >
-                  <span className="truncate" title={g}>{g}</span>
-                  <button
-                    onClick={async () => {
-                      await logxV2Api.admin.removeGroupGrant(r.id, g);
-                      await load();
-                    }}
-                    className="text-sky-500 hover:text-sky-900 flex-shrink-0"
-                  >
-                    ×
-                  </button>
-                </span>
-              ))}
-              <input
-                value={groupInputs[r.id] || ''}
-                onChange={(e) => setGroupInputs((prev) => ({ ...prev, [r.id]: e.target.value }))}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') addGroupGrant(r.id);
-                }}
-                placeholder="AD grubu DN'i ekle (CN=...,OU=...)"
-                className="px-2 py-1 text-xs border border-gray-200 rounded-full outline-none focus:border-black w-64"
-              />
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-};
 
 // Cluster satırının canlı kontrolleri. Bu iki aksiyon eskiden Admin > Ansible
 // Yapılandırma altındaki AYRI OCP kataloğundaydı; o katalog bu kataloğdan bağımsızdı ve
@@ -1159,7 +890,7 @@ const LogXv2AdminTab: React.FC = () => {
           />
         ))}
       {subTab === 'ocpruntime' && <OcpRuntimeSettings />}
-      {subTab === 'restrictions' && <RestrictionsSection />}
+      {subTab === 'restrictions' && <LogXErisim />}
       {subTab === 'maskrules' && <MaskRulesSection />}
       {subTab === 'requests' && <RequestsSection />}
     </div>
