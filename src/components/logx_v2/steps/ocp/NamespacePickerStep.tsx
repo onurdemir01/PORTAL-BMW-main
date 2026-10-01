@@ -38,6 +38,8 @@ interface Props {
    *  eksik bir listeyi tam liste gibi gösterirdi. `failedClusters` bunu KARŞILAMAZ:
    *  o canlı taramanın düşen cluster'larını sayar, katalog DB okumasını değil. */
   unreadableSources?: string[];
+  /** Kısıtlı olduğu için listeden çıkarılan namespace sayısı. */
+  hiddenCount?: number;
   onRediscover?: () => void;
   busy?: boolean;
   onSelect: (ns: string) => void;
@@ -53,6 +55,7 @@ const NamespacePickerStep: React.FC<Props> = ({
   clusterMembership,
   selectedClusters = [],
   unreadableSources = [],
+  hiddenCount = 0,
   onRediscover,
   busy,
   onSelect,
@@ -252,6 +255,18 @@ const NamespacePickerStep: React.FC<Props> = ({
             </button>
           ))}
         </div>
+      )}
+
+      {/* KISITLI OLDUĞU İÇİN GİZLENENLER: adlar gösterilmez, ama sayı söylenir —
+          yoksa kullanıcı "namespace'im yok" sanıp yanlış yere bakıyordu. */}
+      {hiddenCount > 0 && (
+        <p
+          data-testid="logx-hidden-namespaces"
+          className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2"
+        >
+          {hiddenCount} namespace LogX'te kısıtlı olduğu için bu listede gösterilmiyor. Erişim için
+          LogX yöneticisine (Admin) başvurun.
+        </p>
       )}
 
       <div className="max-h-72 overflow-y-auto border border-[var(--border)] rounded-xl divide-y divide-[var(--border)]">

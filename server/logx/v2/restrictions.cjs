@@ -92,7 +92,13 @@ async function queryWithGrants(buildSql, params) {
 // hic satir donmez, varsayilan-acik); satir varsa grant eslesmesi ayni sorguda gelir
 // (kurumsal AI kod incelemesi, review.md #11).
 async function isAllowed(resourceType, resourceKey, user) {
-  if (user.role === 'Admin') return true;
+  return (await evaluate(resourceType, resourceKey, user)).allowed;
+}
+
+// Karar + karari ureten satirlar (ret ayrintisi bunlardan kurulur). Tek sorgu;
+// `isAllowed` ile AYNI mantik — ikisi ayri yazilsa ret mesaji ile karar kayabilirdi.
+async function evaluate(resourceType, resourceKey, user) {
+  if (user.role === 'Admin') return { allowed: true, rows: [] };
 
   // Eslesme artik SQL'de degil JS'te yapiliyor: grup listesi degisken uzunlukta ve
   // MSSQL'de degisken uzunlukta IN listesini parametrelemek STRING_SPLIT'e (uyumluluk
@@ -105,9 +111,67 @@ async function isAllowed(resourceType, resourceKey, user) {
      ) x ON x.restriction_id = r.id
      WHERE r.resource_type = $1 AND r.resource_key = $2`,
   [resourceType, resourceKey]);
-  if (rows.length === 0) return true; // kisitlama satiri yok → varsayilan acik
+  if (rows.length === 0) return { allowed: true, rows }; // kisitlama satiri yok → varsayilan acik
   const groups = normalizedGroups(user);
-  return rows.some((r) => grantMatches(r, user.username, groups));
+  return { allowed: rows.some((r) => grantMatches(r, user.username, groups)), rows };
+}
+
+// ── RET AYRINTISI (2026-10-01) ──────────────────────────────────────────────
+//
+// Eski mesaj "ekibiniz bu kaynagi kisitlamis olabilir" idi: kullanici HANGI
+// kuralin, KIMIN icin acik oldugunu ve KIME basvuracagini bilmiyordu; admin de
+// hangi satirin calistigini goremiyordu (prod'da grup izni hatasi bu yuzden
+// haftalarca "yetkisel bir sey" olarak kaldi). Kullanici karari: kural + izinli
+// gruplar/kisiler + basvuru yolu gosterilir.
+//
+// DN'ler ekranda CN'ye kisaltilir ("CN=odeme-ekibi,OU=..." -> "odeme-ekibi").
+// Liste uzunsa ilk RET_LISTE_MAX gosterilir, kalani sayiyla.
+const RET_LISTE_MAX = 10;
+const BASVURU = 'LogX yöneticisi (Admin)';
+
+function kisaGrup(dn) {
+  const m = /^\s*cn=([^,]+)/i.exec(String(dn || ''));
+  return (m ? m[1] : String(dn || '')).trim();
+}
+
+function kaynakEtiketi(resourceType, resourceKey) {
+  const k = String(resourceKey || '');
+  if (resourceType === 'ocp_namespace') {
+    const [tenant, env, cluster, ns] = k.split('/');
+    if (ns) return `"${ns}" namespace'i (${cluster}, ${env}/${tenant})`;
+  }
+  if (resourceType === 'ocp_app') {
+    const p = k.split('/');
+    if (p.length >= 5) return `"${p[4]}" uygulaması ("${p[3]}" namespace'i, ${p[2]})`;
+  }
+  if (resourceType === 'legacy_app') return `"${k}" uygulaması`;
+  return `"${k}"`;
+}
+
+function denyDetails(resourceType, resourceKey, rows) {
+  const users = [...new Set(rows.map((r) => r.username).filter(Boolean).map(String))];
+  const groups = [...new Set(rows.map((r) => r.group_dn).filter(Boolean).map(kisaGrup))];
+  return {
+    resourceType,
+    resourceKey: String(resourceKey || ''),
+    label: kaynakEtiketi(resourceType, resourceKey),
+    allowedUsers: users,
+    allowedGroups: groups,
+    contact: BASVURU,
+  };
+}
+
+function liste(xs) {
+  if (xs.length <= RET_LISTE_MAX) return xs.join(', ');
+  return `${xs.slice(0, RET_LISTE_MAX).join(', ')} ve ${xs.length - RET_LISTE_MAX} diğer`;
+}
+
+function denyMessage(d) {
+  const parca = [];
+  if (d.allowedGroups.length) parca.push(`grup ${liste(d.allowedGroups)}`);
+  if (d.allowedUsers.length) parca.push(`kullanıcı ${liste(d.allowedUsers)}`);
+  const izinli = parca.length ? `İzinli: ${parca.join('; ')}.` : 'Bu kaynakta henüz izinli kimse yok.';
+  return `${d.label} LogX'te kısıtlı. ${izinli} Erişim için: ${d.contact}.`;
 }
 
 // Liste filtreleme icin toplu surum. `isAllowed`'i dongude cagirmak 1000 namespace'lik bir
@@ -135,13 +199,14 @@ async function filterAllowed(resourceType, resourceKeys, user) {
   return keys.filter((k) => !grantedByKey.has(k) || grantedByKey.get(k));
 }
 
+// 403 + `restriction` (yapilandirilmis ayrinti). `code` BILEREK konmaz: LogX'in
+// `asyncRoute`u `err.code`u yanitin `error` alanina yaziyor ve istemci once onu
+// gosteriyor — ekranda aciklama yerine "logx_restricted" yazardi.
 async function assertAllowed(resourceType, resourceKey, user) {
-  const allowed = await isAllowed(resourceType, resourceKey, user);
+  const { allowed, rows } = await evaluate(resourceType, resourceKey, user);
   if (!allowed) {
-    throw Object.assign(
-      new Error('Bu kaynağa erişim yetkiniz yok — ekibiniz bu kaynağı kısıtlamış olabilir.'),
-      { status: 403 }
-    );
+    const d = denyDetails(resourceType, resourceKey, rows);
+    throw Object.assign(new Error(denyMessage(d)), { status: 403, restriction: d });
   }
 }
 
@@ -257,7 +322,7 @@ async function removeGrant(restrictionId, username) {
 
 module.exports = {
   RESOURCE_TYPES,
-  isAllowed, assertAllowed, filterAllowed,
+  isAllowed, assertAllowed, filterAllowed, evaluate, denyDetails, denyMessage,
   listRestrictions, createRestriction, updateRestriction, deleteRestriction,
   addGrant, removeGrant, addGroupGrant, removeGroupGrant,
 };

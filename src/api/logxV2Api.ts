@@ -136,6 +136,8 @@ export interface DiscoveredCluster {
   status: string;
   error?: string;
   namespaces: string[];
+  /** Kısıtlı olduğu için bu cluster'dan gizlenen namespace sayısı. */
+  hiddenCount?: number;
 }
 export interface OcpNamespaceDiscoveryResult {
   overall_status: string;
@@ -531,6 +533,16 @@ export interface EnvSuffixRow {
 }
 /** Önbellekten dönen liste + tazelik bilgisi. `stale` true ise veri TTL'ini geçmiştir
  *  ama yine de gösterilir (bayat liste, hiç liste olmamasından iyidir). */
+/** Sunucunun kısıtlama reddi ayrıntısı (server/logx/v2/restrictions.cjs `denyDetails`). */
+export interface LogXRestriction {
+  resourceType: string;
+  resourceKey: string;
+  label: string;
+  allowedUsers: string[];
+  allowedGroups: string[];
+  contact: string;
+}
+
 export interface CachedList<T> {
   ok: boolean;
   items: T[];
@@ -549,6 +561,12 @@ export interface CachedList<T> {
    *  patladığında diğeriyle devam eder ve istek yine `ok: true` döner; bu alan
    *  olmasa eksik bir liste TAM liste gibi görünürdü. Boş dizi = iki kaynak da okundu. */
   unreadableSources?: string[];
+  /** Kısıtlı olduğu için listeden çıkarılan öğe SAYISI (adlar bilerek gönderilmez).
+   *  0/yok = gizlenen yok. Kullanıcı "namespace'im yok" sanmasın diye gösterilir. */
+  hiddenCount?: number;
+  /** Kaynak kısıtlıysa yapılandırılmış ret ayrıntısı (uygulama listesi ucunda). */
+  restriction?: LogXRestriction;
+  message?: string;
   /** Ad → hangi cluster'larda var. Çoklu cluster seçiminde liste BİRLEŞİK gösterilir,
    *  fark rozetle belirtilir; cluster süzgeci de bunun üzerinden çalışır. Anahtar yoksa
    *  üyelik bilinmiyor demektir — süzgeç o satırı GİZLEMEZ (bilgisizlik ≠ yokluk). */

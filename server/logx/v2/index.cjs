@@ -50,14 +50,41 @@ function currentUser(req) {
   };
 }
 
+// HER KISITLAMA REDDI DENETIME (2026-10-01). Eskiden 403'ler HICBIR yere
+// yazilmiyordu: "prod'da kim, hangi kural yuzunden reddedildi" sorusunun cevabi
+// yoktu. `logx_audit_logs` (hash zincirli) — `v2_download` ile ayni defter.
+// Yazim BEST-EFFORT: denetim tokezlemesi kullaniciya giden 403'u degistirmez.
+function redKaydet(req, d) {
+  const u = currentUser(req);
+  audit
+    .log({
+      sessionId: req.sessionID,
+      username: u.username,
+      authSource: u.authSource,
+      role: u.role,
+      action: 'v2_denied',
+      result: 'denied',
+      detail: JSON.stringify({
+        type: d.resourceType,
+        key: d.resourceKey,
+        route: `${req.method} ${String(req.originalUrl || '').split('?')[0]}`,
+      }),
+      clientIp: req.ip,
+    })
+    .catch(() => {});
+}
+
 function asyncRoute(fn) {
   return (req, res) => {
     fn(req, res).catch((err) => {
       const status = err.status || 500;
+      if (err.restriction) redKaydet(req, err.restriction);
       res.status(status).json({
         ok: false,
         message: err.message,
         ...(err.code ? { error: err.code, invalid: err.invalid } : {}),
+        // Yapilandirilmis ret ayrintisi (kaynak, izinli grup/kisiler, basvuru).
+        ...(err.restriction ? { restriction: err.restriction } : {}),
       });
     });
   };
@@ -261,7 +288,9 @@ function initLogXv2(app) {
           user,
         ),
       );
-      clusters.push({ ...c, namespaces: c.namespaces.filter((n) => allowed.has(prefix + n)) });
+      const kalan = c.namespaces.filter((n) => allowed.has(prefix + n));
+      // Gizlenen SAYI (adlar degil) — sihirbaz "N namespace kisitli" diyebilsin.
+      clusters.push({ ...c, namespaces: kalan, hiddenCount: c.namespaces.length - kalan.length });
     }
     return { ...result, clusters };
   }
@@ -485,7 +514,9 @@ function initLogXv2(app) {
           currentUser(req),
         ),
       );
-      res.json({ ok: true, ...out, items: out.items.filter((ns) => allowedKeys.has(prefix + ns)) });
+      const items = out.items.filter((ns) => allowedKeys.has(prefix + ns));
+      // SESSIZ DUSURME YOK: ADLAR sizdirilmaz, yalnizca SAYI (bkz. hiddenCount notu).
+      res.json({ ok: true, ...out, items, hiddenCount: out.items.length - items.length });
     }),
   );
 
@@ -561,7 +592,18 @@ function initLogXv2(app) {
       const clusterMap = Object.fromEntries(
         items.filter((ns) => out.clusters?.[ns]).map((ns) => [ns, out.clusters[ns]]),
       );
-      res.json({ ok: true, ...out, items, sources, counts, clusters: clusterMap });
+      // KISITLI OLDUGU ICIN GIZLENEN namespace SAYISI. Adlar BILEREK sizdirilmaz (yukaridaki
+      // gerekce); ama sayi soylenmezse kullanici "namespace'im yok" sanip yanlis yere
+      // bakiyordu — prod'daki grup izni hatasi tam olarak boyle gorunmez kaldi.
+      res.json({
+        ok: true,
+        ...out,
+        items,
+        sources,
+        counts,
+        clusters: clusterMap,
+        hiddenCount: out.items.length - items.length,
+      });
     }),
   );
 
@@ -582,10 +624,16 @@ function initLogXv2(app) {
       // (fail-safe — restart tetikleyen OpsX ile ayni gerekce).
       for (const clusterName of clusters) {
         const resourceKey = `${tenant}/${env}/${clusterName}/${namespace}`;
-        const allowed = await restrictions
-          .isAllowed('ocp_namespace', resourceKey, currentUser(req))
-          .catch(() => false);
-        if (!allowed)
+        // Karar okunamazsa (DB) KAPALI kalir ama "kisitli" diye etiketlenmez — sebep
+        // kisitlama degil. Kisitliysa yapilandirilmis ayrinti doner ve red DENETIME yazilir.
+        const karar = await restrictions
+          .evaluate('ocp_namespace', resourceKey, currentUser(req))
+          .catch(() => null);
+        if (!karar || !karar.allowed) {
+          const restriction = karar
+            ? restrictions.denyDetails('ocp_namespace', resourceKey, karar.rows)
+            : undefined;
+          if (restriction) redKaydet(req, restriction);
           return res.json({
             ok: true,
             items: [],
@@ -593,7 +641,11 @@ function initLogXv2(app) {
             fetchedAt: null,
             stale: false,
             source: null,
+            ...(restriction
+              ? { restriction, message: restrictions.denyMessage(restriction) }
+              : {}),
           });
+        }
       }
       const out = await require('./ocp-catalog.cjs').getApps({
         env,

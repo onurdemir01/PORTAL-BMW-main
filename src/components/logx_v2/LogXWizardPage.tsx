@@ -67,6 +67,8 @@ interface NamespaceList {
    *  patladığında diğeriyle devam eder ve istek `ok: true` döner — eksik liste,
    *  tam liste gibi görünürdü. */
   unreadableSources?: string[];
+  /** Kısıtlı olduğu için gizlenen namespace sayısı (adlar sunucuda kalır). */
+  hiddenCount?: number;
 }
 
 interface OcpInput {
@@ -103,6 +105,7 @@ async function loadNamespaceCache(input: OcpInput | undefined): Promise<Namespac
     counts: out.counts,
     clusters: out.clusters,
     unreadableSources: out.unreadableSources,
+    hiddenCount: out.hiddenCount || 0,
   };
 }
 
@@ -242,9 +245,11 @@ const LogXWizardPage: React.FC = () => {
     const failed: string[] = [];
     const failedDetails: { cluster: string; error: string }[] = [];
     let looksLikeNamespaces = false;
+    let hiddenCount = 0;
     for (const c of result.clusters) {
       if (!Array.isArray(c?.namespaces)) continue;
       looksLikeNamespaces = true;
+      hiddenCount += Number(c.hiddenCount) || 0;
       if (c.status === 'ok') {
         items.push(...c.namespaces.filter((n) => typeof n === 'string'));
         continue;
@@ -254,7 +259,7 @@ const LogXWizardPage: React.FC = () => {
       const detail = String((c as { error?: string }).error || '').trim();
       failedDetails.push({ cluster: c.cluster_name, error: detail || 'Bilinmeyen hata.' });
     }
-    return looksLikeNamespaces ? { items, failed, failedDetails, cache: null } : null;
+    return looksLikeNamespaces ? { items, failed, failedDetails, cache: null, hiddenCount } : null;
   }, [request?.discoveryResult]);
 
   // Önbellekten gelen liste (varsa) sunucu sonucunu EZER — kullanıcı bilerek onu istedi.
@@ -698,6 +703,7 @@ const LogXWizardPage: React.FC = () => {
             counts={namespaceList.counts}
             clusterMembership={namespaceList.clusters}
             unreadableSources={namespaceList.unreadableSources}
+            hiddenCount={namespaceList.hiddenCount}
             selectedClusters={(request?.input as OcpInput | undefined)?.clusters || []}
             busy={busy}
             onRediscover={() =>
