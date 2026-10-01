@@ -46,6 +46,7 @@ const KOD_ANLAMI = Object.freeze({
   SYNTAX_UNKNOWN: { tip: 'unknown', aciklama: 'web sözdizimi ölçülemedi' },
   AUTOSTART_UNKNOWN: { tip: 'unknown', aciklama: 'JVM auto-start durumu okunamadı' },
   CLI_FAIL: { tip: 'unknown', aciklama: 'JBoss CLI okunamadı' },
+  CLI_SKIP: { tip: 'unknown', aciklama: 'JBoss CLI hiç çalıştırılamadı (kurulum/süreç)' },
 });
 
 const DURUM_SIRASI = ['blocked', 'unknown', 'risk', 'ok', 'notScanned'];

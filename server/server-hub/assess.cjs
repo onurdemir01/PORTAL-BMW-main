@@ -474,6 +474,15 @@ function assess(data) {
     for (const b of h.jboss) {
       if (b.cli === 'FAIL')
         add('info', 'jboss', 'CLI_FAIL', `JBoss ${b.gen} CLI erişilemedi: ${b.note}`.trim());
+      // CLI HIC DENENMEDI (2026-10-01). Tarama UC durum uretiyor - OK / FAIL / SKIP - ama
+      // burada yalnizca FAIL raporlaniyordu. SKIP sebebi (jboss-cli yok, host controller
+      // calismiyor) veritabanina YAZILIYOR ama ekranda GORUNMUYORDU; sonucta "1748 JVM'de
+      // auto-start okunamadi" deniyor ve NEDEN sorusu cevapsiz kaliyordu.
+      //
+      // AYRI KOD: "denendi ve dustu" ile "hic denenmedi" ayri tesihslerdir - birincisi
+      // CLI/baglanti sorunu, ikincisi kurulum/surec sorunudur.
+      if (b.cli === 'SKIP' && b.note)
+        add('info', 'jboss', 'CLI_SKIP', `JBoss ${b.gen} CLI çalıştırılamadı: ${b.note}`.trim());
       if (b.hostState === 'restart-required' || b.hostState === 'reload-required')
         add('warning', 'jboss', 'HOST_RESTART', `JBoss ${b.gen} host controller ${b.hostState}`);
     }
@@ -1000,6 +1009,10 @@ function flattenFindings(hosts) {
         code: f.code,
         text: f.text,
         fixable: !!f.fix,
+        // DUZELTME AYRINTISI DA TASINIR (2026-10-01): Bulgular sekmesinde satir bazinda
+        // islem yapabilmek icin hedefin (gen, jvm) bilinmesi gerekiyor. `fixable`
+        // yalnizca "duzeltilebilir mi" diyordu, NEYIN duzeltilecegini soylemiyordu.
+        fix: f.fix || null,
       });
   out.sort(
     (a, b) =>

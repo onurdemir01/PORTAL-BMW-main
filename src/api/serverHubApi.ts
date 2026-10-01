@@ -226,6 +226,8 @@ export interface ShFindingRow {
   code: string;
   text: string;
   fixable: boolean;
+  /** Düzeltme hedefi (gen, jvm…) — satır bazında işlem için gerekli. */
+  fix?: ShFix | null;
 }
 export interface ShFindingsResult {
   ok: boolean;

@@ -23,6 +23,7 @@ import {
   type ShOverview,
   type ShHostRow,
   type ShHostDetail,
+  type ShFindingRow,
   type ShReadiness,
   type ShFinding,
   type ShSeverity,
@@ -2224,6 +2225,45 @@ export function FindingsTab({
   const [product, setProduct] = useState<string>(initial?.product || 'all');
   const [envGroup, setEnvGroup] = useState<string>(initial?.envGroup || 'all');
   const [fCls, setFCls] = useState<'genel' | 'ozel' | 'all'>('genel');
+  // SATIR BAZINDA AUTO-START (kullanici, 2026-10-01). Dugme once yalniz sunucu detayinin
+  // JVM sekmesindeydi; auto-start sorunlarina BAKILAN yer ise burasi - her bulgu icin
+  // sunucuyu acip JVM sekmesine gecmek gereksiz bir tur attiriyordu.
+  //
+  // TOPLU ISLEM YOK (kullanici: "cok tehlikeli"): her satir kendi onayini ister, her tiklama
+  // TEK (host, jvm) hedefler.
+  const [asBusy, setAsBusy] = useState<string | null>(null);
+  const autoStartDuzelt = async (f: ShFindingRow) => {
+    const fix = f.fix;
+    if (!fix || !fix.jvm || fix.gen == null) return;
+    const ac = fix.action === 'jboss_autostart_on';
+    const k = `${f.host}|${fix.gen}|${fix.jvm}`;
+    if (
+      !window.confirm(
+        `${f.host} üzerinde ${fix.jvm} (JBoss ${fix.gen}) için auto-start ` +
+          `${ac ? 'AÇILACAK' : 'KAPATILACAK'}.\n\nYalnız bu JVM etkilenir. Devam edilsin mi?`,
+      )
+    )
+      return;
+    setAsBusy(k);
+    try {
+      const r = await serverHubApi.jvmAutoStart({
+        host: f.host,
+        gen: fix.gen,
+        jvm: fix.jvm,
+        enable: ac,
+      });
+      if (!r.ok) {
+        toast.error(r.message || 'İş başlatılamadı.');
+        return;
+      }
+      toast.success(`${fix.jvm}: iş başlatıldı (#${r.jobId ?? '?'}). Tarama tazelenince durum güncellenir.`);
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    } finally {
+      setAsBusy(null);
+    }
+  };
+
   const load = useCallback(async (fresh = false) => {
     setLoading(true);
     try {
@@ -2448,6 +2488,7 @@ export function FindingsTab({
               <th className="px-3 py-2">Kod</th>
               <th className="px-3 py-2">Bulgu</th>
               <th className="px-3 py-2">Ürünler</th>
+              <th className="px-3 py-2">İşlem</th>
             </tr>
           </thead>
           <tbody>
@@ -2474,11 +2515,37 @@ export function FindingsTab({
                 <td className="px-3 py-1.5 text-[11px]" style={{ color: 'var(--text-muted)' }}>
                   {f.products.join(' · ')}
                 </td>
+                <td className="px-3 py-1.5">
+                  {/* Yalniz auto-start bulgulari: oteki duzeltmeler plan/onay akisindan
+                      gecer (sunucu detayindaki "Duzelt" dugmesi). */}
+                  {f.fix &&
+                  (f.fix.action === 'jboss_autostart_on' || f.fix.action === 'jboss_autostart_off') ? (
+                    <button
+                      onClick={() => autoStartDuzelt(f)}
+                      disabled={asBusy === `${f.host}|${f.fix.gen}|${f.fix.jvm}`}
+                      title={
+                        f.fix.action === 'jboss_autostart_on'
+                          ? `${f.fix.jvm} için auto-start'ı AÇ (yalnız bu JVM)`
+                          : `${f.fix.jvm} için auto-start'ı KAPAT (yalnız bu JVM)`
+                      }
+                      className="px-1.5 py-0.5 text-[10px] border rounded disabled:opacity-50"
+                      style={{ borderColor: 'var(--border)' }}
+                    >
+                      {asBusy === `${f.host}|${f.fix.gen}|${f.fix.jvm}`
+                        ? '…'
+                        : f.fix.action === 'jboss_autostart_on'
+                          ? 'Auto-start AÇ'
+                          : 'Auto-start KAPAT'}
+                    </button>
+                  ) : (
+                    <span style={{ color: 'var(--text-muted)' }}>—</span>
+                  )}
+                </td>
               </tr>
             ))}
             {!loading && rows.length === 0 && (
               <TableEmptyRow
-                colSpan={7}
+                colSpan={8}
                 title={all.length ? 'Süzgeçle eşleşen bulgu yok.' : 'Bulgu yok.'}
                 description={
                   data?.tableMissing ? "server_hub_scan job'ı henüz koşmadı." : undefined
