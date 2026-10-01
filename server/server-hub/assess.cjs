@@ -481,6 +481,13 @@ function assess(data) {
       //
       // AYRI KOD: "denendi ve dustu" ile "hic denenmedi" ayri tesihslerdir - birincisi
       // CLI/baglanti sorunu, ikincisi kurulum/surec sorunudur.
+      // DZDO REDDI AYRI BULGU (2026-10-01 uretim bulgusu): 809 sunucuda CLI "cevap
+      // vermedi" sanilan sey aslinda yetki reddiydi - "Sorry, user www is not allowed to
+      // execute '/bin/bash -lc ...'". Bu bir kurulum ya da baglanti sorunu DEGIL; dzdo
+      // kural listesine jboss-cli eklenmesi gerekiyor. Ayri kod olmazsa yanlis yerde
+      // aranir (nitekim arandi).
+      if (b.cli === 'DENIED')
+        add('warning', 'jboss', 'CLI_DENIED', `JBoss ${b.gen} CLI yetki reddi: ${b.note}`.trim());
       if (b.cli === 'SKIP' && b.note)
         add('info', 'jboss', 'CLI_SKIP', `JBoss ${b.gen} CLI çalıştırılamadı: ${b.note}`.trim());
       if (b.hostState === 'restart-required' || b.hostState === 'reload-required')

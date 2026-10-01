@@ -47,6 +47,7 @@ const KOD_ANLAMI = Object.freeze({
   AUTOSTART_UNKNOWN: { tip: 'unknown', aciklama: 'JVM auto-start durumu okunamadı' },
   CLI_FAIL: { tip: 'unknown', aciklama: 'JBoss CLI okunamadı' },
   CLI_SKIP: { tip: 'unknown', aciklama: 'JBoss CLI hiç çalıştırılamadı (kurulum/süreç)' },
+  CLI_DENIED: { tip: 'unknown', aciklama: 'JBoss CLI yetki reddi (dzdo kuralı eksik)' },
 });
 
 const DURUM_SIRASI = ['blocked', 'unknown', 'risk', 'ok', 'notScanned'];
