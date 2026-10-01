@@ -254,6 +254,24 @@ function extractDiscoveryResult(rawArtifacts) {
       };
     });
 
+  // ── PLAYBOOK SURE KIRILIMI ─────────────────────────────────────────────────
+  //
+  // Runner'in TIMING satiri yalnizca cluster ICINI olcer. "40 sn nerede"
+  // sorusunun cevabi ise runner'in DISINDAYDI (SSH modul turlari, AWX
+  // 3365168/81/88). Playbook kendi paylarini `playbook_timing` ile yayinlar;
+  // olculemeyen deger -1 gelir ve burada NULL olur. Alan yoksa (eski playbook)
+  // `null` — ekran "olculmedi" der, sifir uydurmaz.
+  const pt = raw.playbook_timing;
+  base.playbookTiming =
+    pt && typeof pt === 'object'
+      ? {
+          startEpochMs: msOrNull(pt.start_epoch_ms),
+          prepMs: msOrNull(pt.prep_ms),
+          transportMs: msOrNull(pt.transport_ms),
+          publishMs: msOrNull(pt.publish_ms),
+        }
+      : null;
+
   // ── CLUSTER YETENEK TARAMASI ───────────────────────────────────────────────
   //
   // `capabilities` modu CLUSTER DUZEYI bir envanter uretir: olceklenebilir CRD

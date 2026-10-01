@@ -64,6 +64,6 @@ export const SCALEX_APPS: DataSource = {
  */
 export const SCALEX_TIMING: DataSource = {
   job: 'scalex_discovery (her keşif kendi süresini bildirir)',
-  what: 'scalex_discovery_timing — cluster başına setup/keşif/toplam süre ve önbellek isabeti',
+  what: 'scalex_discovery_timing — cluster başına setup/keşif/toplam süre ve önbellek isabeti; iş başına kuyruk/açılış/hazırlık/taşıma/yayın kırılımı',
   refresh: 'Kendiliğinden dolar: her keşif işi bittiğinde bir satır yazılır. Elle tetiklenmez.',
 };

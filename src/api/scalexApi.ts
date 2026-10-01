@@ -104,6 +104,20 @@ export interface ScaleXDiscoveryTiming {
   elapsedMs: number | null;
   awxJobId: number | null;
   createdAt: string;
+  // İŞ DÜZEYİ kırılım — aynı işin her cluster satırında aynıdır. Eski
+  // playbook/eski satırlarda `null` (ölçülmedi).
+  /** AWX kuyruğu: `started - created`. */
+  queueMs?: number | null;
+  /** Proje güncellemesi + EE açılışı: oyun başı - `started`. */
+  bootMs?: number | null;
+  /** Playbook: girdi doğrulama + hedef seçimi. */
+  prepMs?: number | null;
+  /** Playbook: SSH + runner (cluster'lar aynı anda). */
+  transportMs?: number | null;
+  /** Playbook: satır ayrıştırma + `set_stats`. */
+  publishMs?: number | null;
+  /** AWX'in gördüğü toplam: `finished - started`. */
+  jobMs?: number | null;
 }
 
 export interface ScaleXWorkload {

@@ -101,9 +101,24 @@ ScaleX iki Job Template kullanmaktadır.
 | Playbook                     | `bmw_portal/scalex/scalex_app/discovery.yml`  |
 | Credential                   | `application_was_credentials`                 |
 | Vault Credential             | `uxmid_all_credentials_vault`                 |
-| Verbosity                    | `1`                                           |
+| Verbosity                    | `0` (Normal)                                  |
 | Variables → Prompt on launch | **Açık**                                      |
 | Survey                       | **Açık**                                      |
+
+**Keşif hızı için iki ayar (ikisi de kodla ayarlanamaz, elle yapılır):**
+
+- **Verbosity `0`.** `-v` ile her görev sonucu (birleştirilen satır listeleri
+  dahil) AWX olayı olarak yazılır. Keşif çıktısı MB'larca büyür ve AWX olay
+  yazımı işin sonunu uzatır. Admin > ScaleX Yönetimi > Keşif süresi >
+  **İş kırılımı** tablosundaki **Kalan** sütunu bu payı gösterir.
+- **Proje → "Update Revision on Launch" kapalı.** Açıkken her keşif, oyun
+  başlamadan önce bir proje güncellemesi (git çekme) bekler. Bu süre
+  **Açılış** sütununda görünür. Paket AWX'e elle kopyalandığı için
+  güncellemeye ihtiyaç yoktur.
+
+Kırılımın sütunları: **Kuyruk** (`started - created`), **Açılış** (proje + EE),
+**Hazırlık**, **Taşıma** (SSH + runner), **Runner (maks)**, **Yayın** ve
+**Kalan**.
 
 ---
 

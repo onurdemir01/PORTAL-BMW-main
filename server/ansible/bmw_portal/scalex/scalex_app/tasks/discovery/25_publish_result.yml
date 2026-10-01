@@ -75,6 +75,29 @@
       {{- ns.v -}}
   changed_when: false
 
+# ── SURE KIRILIMI (PR-O) ────────────────────────────────────────────────────
+# "40 sn nerede" sorusu loglardaki zaman damgalarindan elle cikarildi
+# (AWX 3365168/81/88): asil kayip runner degil TASIMAYDI. Bir daha tahminle
+# cevaplanmasin diye playbook kendi paylarini yayinlar; portal AWX isinin
+# created/started/finished alanlariyla birlestirip kuyruk | acilis | hazirlik |
+# tasima | yayin olarak gosterir.
+#
+# OLCULEMEYEN deger -1 (damga eksikse): portal onu NULL yapar, SIFIR degil.
+- name: "Stamp discovery playbook timing"
+  ansible.builtin.set_fact:
+    _disc_playbook_timing:
+      start_epoch_ms: "{{ _t_play_start_ms | default(-1) | int }}"
+      prep_ms: >-
+        {{- ((_t_transport_start_ms | int) - (_t_play_start_ms | int))
+            if (_t_play_start_ms is defined and _t_transport_start_ms is defined) else -1 -}}
+      transport_ms: >-
+        {{- ((_t_transport_end_ms | int) - (_t_transport_start_ms | int))
+            if (_t_transport_start_ms is defined and _t_transport_end_ms is defined) else -1 -}}
+      publish_ms: >-
+        {{- ((now().timestamp() * 1000) | int - (_t_transport_end_ms | int))
+            if _t_transport_end_ms is defined else -1 -}}
+  changed_when: false
+
 - name: "Publish ScaleX discovery result for the portal"
   ansible.builtin.set_stats:
     data:
@@ -107,6 +130,8 @@
           warn: "{{ _disc_warn | int }}"
           fail: "{{ _disc_fail | int }}"
         items: "{{ _discovery_items }}"
+        # Ek alan: eski portal bilinmeyen anahtari yok sayar.
+        playbook_timing: "{{ _disc_playbook_timing }}"
     per_host: false
 
 - name: "Mark result as published"

@@ -392,6 +392,14 @@ const TABLES = [
         discover_ms    INT NULL,
         elapsed_ms     INT NULL,
         awx_job_id     INT NULL,
+        -- IS DUZEYI kirilim (her cluster satirinda ayni): AWX kuyrugu, acilis
+        -- (proje + EE), playbook hazirlik/tasima/yayin ve AWX toplam suresi.
+        queue_ms       INT NULL,
+        boot_ms        INT NULL,
+        prep_ms        INT NULL,
+        transport_ms   INT NULL,
+        publish_ms     INT NULL,
+        job_ms         INT NULL,
         created_at     DATETIME2 NOT NULL DEFAULT GETUTCDATE()
       )`,
   },
@@ -3452,6 +3460,39 @@ async function setupTables() {
       table: 'nginx_migration_tracking',
       col: 'delete_job_status',
       sql: `ALTER TABLE nginx_migration_tracking ADD delete_job_status NVARCHAR(20) NULL`,
+    },
+    // ScaleX kesif sure kirilimi (PR-O). Portalin KENDI, 30 gunle budanan kucuk
+    // tablosu; NULL kolon eklemek SQL Server'da yalnizca meta veri degisikligi
+    // (satir yeniden yazilmaz, log buyumez — bkz. dis DB DDL olayi).
+    {
+      table: 'scalex_discovery_timing',
+      col: 'queue_ms',
+      sql: `ALTER TABLE scalex_discovery_timing ADD queue_ms INT NULL`,
+    },
+    {
+      table: 'scalex_discovery_timing',
+      col: 'boot_ms',
+      sql: `ALTER TABLE scalex_discovery_timing ADD boot_ms INT NULL`,
+    },
+    {
+      table: 'scalex_discovery_timing',
+      col: 'prep_ms',
+      sql: `ALTER TABLE scalex_discovery_timing ADD prep_ms INT NULL`,
+    },
+    {
+      table: 'scalex_discovery_timing',
+      col: 'transport_ms',
+      sql: `ALTER TABLE scalex_discovery_timing ADD transport_ms INT NULL`,
+    },
+    {
+      table: 'scalex_discovery_timing',
+      col: 'publish_ms',
+      sql: `ALTER TABLE scalex_discovery_timing ADD publish_ms INT NULL`,
+    },
+    {
+      table: 'scalex_discovery_timing',
+      col: 'job_ms',
+      sql: `ALTER TABLE scalex_discovery_timing ADD job_ms INT NULL`,
     },
     {
       // MEVCUT KURULUMLAR ICIN — CREATE TABLE bloku tablo zaten varsa hic calismaz.
