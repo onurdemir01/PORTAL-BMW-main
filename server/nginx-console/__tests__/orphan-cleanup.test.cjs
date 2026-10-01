@@ -17,11 +17,16 @@ const path = require('node:path');
 const SRC = fs.readFileSync(path.join(__dirname, '..', 'index.cjs'), 'utf8');
 
 function kodSatirlari(s) {
-  return s.split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
+  return s
+    .split('\n')
+    .filter((l) => !l.trim().startsWith('//'))
+    .join('\n');
 }
 
 test('OC1: yol dogrulama - yalniz /usr/nginx agaci, .. ve satir sonu yok', () => {
-  const m = SRC.match(/const CLEAN_PATH_RE = (\/.*\/);/);
+  // BICIMDEN BAGIMSIZ: prettier uzun sabiti `=`'den sonra alt satira boluyor (2026-10-01
+  // lint-staged bu yuzden testi kirdi); atama ile regex arasindaki her bosluk kabul edilir.
+  const m = SRC.match(/const CLEAN_PATH_RE =\s*(\/.*\/);/);
   assert.ok(m, 'CLEAN_PATH_RE bulunamadi');
   const re = eval(m[1]);
 
@@ -57,12 +62,19 @@ test('OC1: yol dogrulama - yalniz /usr/nginx agaci, .. ve satir sonu yok', () =>
 
 test('OC2: sozlesme - base64 satir listesi, mod plan|apply, admin kapisi', () => {
   const kod = kodSatirlari(SRC);
-  const rota = kod.slice(kod.indexOf("router.post('/orphans/cleanup'"), kod.indexOf("router.post('/push'"));
+  const rota = kod.slice(
+    kod.indexOf("router.post('/orphans/cleanup'"),
+    kod.indexOf("router.post('/push'"),
+  );
   assert.ok(rota.length > 200, 'temizlik rotasi bulunamadi');
 
   assert.match(rota, /isAdmin\(req\)/, 'dosya tasiyan uc admin kapisi olmadan aciliyor');
   assert.match(rota, /\['plan', 'apply'\]\.includes\(mode\)/, 'mod dogrulanmiyor');
-  assert.match(rota, /mode = String\(req\.body\?\.mode \|\| 'plan'\)/, "varsayilan mod 'plan' degil");
+  assert.match(
+    rota,
+    /mode = String\(req\.body\?\.mode \|\| 'plan'\)/,
+    "varsayilan mod 'plan' degil",
+  );
   assert.match(rota, /paths_b64:/, 'playbook sozlesmesi paths_b64 bekliyor');
   assert.match(rota, /join\('\\n'\)/, 'yollar satir basina bir tane gonderilmiyor');
   assert.match(rota, /toString\('base64'\)/, 'base64 kodlama yok');
@@ -75,14 +87,18 @@ test('OC2: sozlesme - base64 satir listesi, mod plan|apply, admin kapisi', () =>
 
 test('OC3: ekran - secim sunucu bazinda, "karantinaya al" ayri dugme', () => {
   const ui = fs.readFileSync(
-    path.join(__dirname, '..', '..', '..', 'src', 'components', 'nginx_console', 'OrphansTab.tsx'), 'utf8');
+    path.join(__dirname, '..', '..', '..', 'src', 'components', 'nginx_console', 'OrphansTab.tsx'),
+    'utf8',
+  );
 
   assert.match(ui, /temizle\(h\.host, 'plan'\)/, 'plan dugmesi yok');
   assert.match(ui, /temizle\(h\.host, 'apply'\)/, 'karantina dugmesi yok');
   // Plan ile apply AYRI dugme olmali: tek dugme "plan sonra otomatik uygula" yapsaydi,
   // kullanici RED edilen dosyalari gormeden tasima baslamis olurdu.
-  assert.ok(!/temizle\([^)]*'plan'[^)]*\)\s*;\s*temizle\([^)]*'apply'/.test(ui),
-    'plan, apply\'i otomatik tetikliyor');
+  assert.ok(
+    !/temizle\([^)]*'plan'[^)]*\)\s*;\s*temizle\([^)]*'apply'/.test(ui),
+    "plan, apply'i otomatik tetikliyor",
+  );
   assert.match(ui, /isAdmin &&/, 'secim kutulari admin disina da aciliyor');
 
   // Sunucu bazinda secim: tek dugmeyle tum filoyu temizlemek, bir sunucudaki yanlisi

@@ -9,17 +9,22 @@
 //   - Yalniz GET, yalniz 200 + JSON. Anahtar: yol + sorgu dizesi (kullaniciya gore DEGIL:
 //     bu uclar kullaniciya ozel veri donmez; gorunurluk kapisi router'da onbellekten once).
 //   - ?fresh=1 onbellegi ATLAR ve yeniler ("Yenile" dugmesi bunu gonderir).
-//   - Yanit basligi X-Portal-Cache: HIT | MISS | BYPASS (log/teshis icin).
+//   - Yanit basligi X-Portal-Cache: HIT | MISS | BYPASS | SKIP-SIZE (log/teshis icin).
 //   - Sinir: en fazla MAX_ENTRIES giris; dolunca en eski atilir. Cok buyuk govdeler
-//     (> MAX_BODY_BYTES) onbellege alinmaz.
+//     (> MAX_BODY_BYTES) onbellege alinmaz - baslik SKIP-SIZE olur ve bir kez loglanir.
 'use strict';
 
 const DEFAULT_TTL_MS = 60 * 1000;
 const MAX_ENTRIES = 64;
 const MAX_BODY_BYTES = 8 * 1024 * 1024;
 
-function createResponseCache({ ttlMs = DEFAULT_TTL_MS } = {}) {
+function createResponseCache({ ttlMs = DEFAULT_TTL_MS, maxBodyBytes = MAX_BODY_BYTES } = {}) {
   const store = new Map(); // key -> { at, body }
+  // SINIR ASIMI SESSIZ DEGIL (2026-10-01, Gercek SPA Kesfi dogrulama bulgusu): govde siniri
+  // asinca onbellek hicbir sey saklamiyor, baslik yine 'MISS' diyordu - her acilis tum
+  // sorgulari yeniden kosturuyor ve kimse bilmiyordu. Simdi baslik 'SKIP-SIZE' olur ve
+  // anahtar basina BIR KEZ uyari loglanir.
+  const uyarildi = new Set();
 
   function middleware(req, res, next) {
     if (req.method !== 'GET') return next();
@@ -37,9 +42,18 @@ function createResponseCache({ ttlMs = DEFAULT_TTL_MS } = {}) {
       try {
         if (res.statusCode === 200 && payload && payload.ok !== false) {
           const body = JSON.stringify(payload);
-          if (body.length <= MAX_BODY_BYTES) {
+          if (body.length <= maxBodyBytes) {
             if (store.size >= MAX_ENTRIES) store.delete(store.keys().next().value);
             store.set(key, { at: Date.now(), body });
+          } else {
+            res.setHeader('X-Portal-Cache', 'SKIP-SIZE');
+            if (!uyarildi.has(key)) {
+              if (uyarildi.size >= MAX_ENTRIES) uyarildi.clear();
+              uyarildi.add(key);
+              console.warn(
+                `[response-cache] ${key}: govde ${body.length} > ${maxBodyBytes} karakter - onbellege ALINMADI (her istek yeniden hesaplanir)`,
+              );
+            }
           }
         }
       } catch {
@@ -53,4 +67,4 @@ function createResponseCache({ ttlMs = DEFAULT_TTL_MS } = {}) {
   return { middleware, store, clear: () => store.clear() };
 }
 
-module.exports = { createResponseCache, DEFAULT_TTL_MS };
+module.exports = { createResponseCache, DEFAULT_TTL_MS, MAX_BODY_BYTES };

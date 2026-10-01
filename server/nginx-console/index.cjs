@@ -498,6 +498,352 @@ async function launch(req, keyName, templateName, extraVars, platformDetail) {
   return { jobId: result?.jobId ?? null, status: result?.status ?? null, awxServerId: serverId };
 }
 
+// ── GERCEK SPA KESFI: hesap (router disinda; ana uc ve ayrinti ucu ayni hesabi kullanir) ──
+//
+// KAYNAKLAR (hepsi tek Promise.all'da, paralel):
+//   dbo.BMW_Spa_Discovery          kabinde nginx var mi + route TLS termination'i (Ag)
+//   dbo.BMW_Openshift_Route_Inventory  route envanterde kayitli mi + termination_type
+//   dbo.BMW_Application_Usage      uygulama istek aliyor mu (Dynatrace)
+//   dbo.BMW_Spa_Discovery_Run      cluster tarama durumu
+//   dbo.Nginx_Config_Audit / Nginx_Intranet_Audit / Nginx_Audit_Upstreams / Nginx_Spa_Traffic
+//                                  RP'de tanimli mi + RP tanimi istek aliyor mu (spa-rp.cjs)
+// EN YENI TARAMA VERITABANINDA secilir (MAX alt sorgusu) ve yalniz internet RP hostlarina
+// suzulur: Route Trafigi'nde tum tabloyu tasimak 20 MB yanitla tarayiciyi dondurmustu.
+// OKUNAMADI ile YOK AYRI: her sorgu hatasi null doner ve ekranda 'olculemedi' olur.
+async function spaKesfiHesapla() {
+  const { query, sql } = require('../inventory/mssql.cjs');
+  const ex = await query(`SELECT OBJECT_ID('dbo.BMW_Spa_Discovery') AS oid`);
+  if (!ex.recordset?.[0]?.oid) {
+    // TABLO YOK ile SPA YOK AYRI: bos liste dondurmek "hic SPA bulunmadi" diye okunur.
+    return {
+      ok: true,
+      tableMissing: true,
+      message:
+        "dbo.BMW_Spa_Discovery tablosu henüz yok — openshift_spa_discovery job'ı bir kez koşmalı.",
+      rows: [],
+      apps: [],
+      appSummary: null,
+      platformHidden: null,
+      namespaces: [],
+      clusters: [],
+      envs: [],
+      summary: null,
+      coverage: null,
+      rpKapsam: null,
+      scanDate: null,
+    };
+  }
+  const gun = await query(
+    `SELECT CONVERT(varchar(10), MAX(scan_date), 23) AS d FROM dbo.BMW_Spa_Discovery`,
+  )
+    .then((r) => r.recordset?.[0]?.d || null)
+    .catch(() => null);
+  // SEMA SONRADAN BUYUDU (2026-10-01): `match_by` ve durum tablosu ilk uretim kosusundan
+  // SONRA eklendi; yukleyicinin yeni surumu bir kez kosana kadar ikisi de olmayabilir.
+  // RP tablolarinin varligi ve proxy kolonlari da AYNI gidis-donuste okunur. Tablo yoksa
+  // sorgu hic atilmaz ('tablo-yok'); sema sorgusu dusmusse (null) hepsi 'okunamadi' sayilir.
+  const sema = await query(
+    `SELECT COL_LENGTH('dbo.BMW_Spa_Discovery', 'match_by') AS mb,
+            OBJECT_ID('dbo.BMW_Spa_Discovery_Run') AS run,
+            OBJECT_ID('dbo.Nginx_Config_Audit') AS cfg,
+            OBJECT_ID('dbo.Nginx_Intranet_Audit') AS dir,
+            OBJECT_ID('dbo.Nginx_Spa_Traffic') AS trf,
+            OBJECT_ID('dbo.Nginx_Audit_Upstreams') AS ups,
+            (SELECT COUNT(*) FROM sys.columns
+              WHERE object_id = OBJECT_ID('dbo.Nginx_Config_Audit')
+                AND name IN ('kind', 'upstream_name', 'target_url', 'upstream_defined')) AS prx,
+            COL_LENGTH('dbo.Nginx_Spa_Traffic', 'first_seen') AS fs`,
+  )
+    .then((r) => r.recordset?.[0] || {})
+    .catch(() => null);
+  const s = sema || {};
+  const prxKolon = sema === null ? null : Number(s.prx || 0);
+
+  // INTERNET RP HOSTLARI tek yerden (nginx-hosts.cjs; PROD listesi MIGRATION_GROUPS).
+  const { internetRpHosts } = require('../audit/nginx-hosts.cjs');
+  const RP = internetRpHosts();
+  const inList = (prefix, arr) => ({
+    sqlText: arr.map((_, i) => `@${prefix}${i}`).join(', '),
+    params: arr.map((h, i) => ({ name: `${prefix}${i}`, type: sql.NVarChar(64), value: h })),
+  });
+  const rpIn = inList('r', [...RP.all]);
+  const yeniIn = inList('n', [...RP.prodNew]);
+  // UPSTREAM TUM INTERNET RP'LERDEN (dogrulama bulgusu, 2026-10-01): takma adla yazilmis ve
+  // gercek arka ucu bulunamayan proxy tanimi, o ortamda "tanimsiz" kararini olculemedi'ye
+  // cevirir. Non-prod RP'lerde de proxy_pass satiri var (nginx_config_scan.sh PRX satirini her
+  // sunucuda uretir) ve nginx_audit TUM bilinen nginx sunucularini tarar; yalniz eski PROD'u
+  // okumak non-prod takma adlarini hic cozulemez birakirdi.
+  const upsIn = inList('u', [...RP.all]);
+  // TRAFIK yalniz olculebilen hostlardan: non-prod RP + ESKI PROD (is su an oradan akiyor).
+  const trfIn = inList('t', [...RP.nonProd, ...RP.prodOld]);
+  const yoksaNull = (p) => p.then((r) => r.recordset || []).catch(() => null);
+
+  const [disc, inv, usage, runs, cfg, dir, ups, trf] = await Promise.all([
+    // CLUSTER BASINA EN YENI TARAMA. Eskiden tek bir MAX(scan_date) aliniyordu: bugun
+    // login'i dusen bir cluster, dunku verisiyle birlikte ekrandan SILINIYORDU ve
+    // "SPA'si yok" gibi gorunuyordu. Simdi her cluster kendi son verisini, TARIHIYLE
+    // tasir; eskiligi kapsam panelinde yazar.
+    query(
+      `SELECT d.cluster, d.namespace, d.route, d.host, d.termination, d.workload_kind,
+              d.workload, d.is_spa, d.signal, d.image, d.note,
+              ${s.mb ? 'd.match_by' : 'CAST(NULL AS NVARCHAR(16)) AS match_by'},
+              CONVERT(varchar(10), d.scan_date, 23) AS scan_date
+         FROM dbo.BMW_Spa_Discovery d
+         JOIN (SELECT cluster, MAX(scan_date) AS sd
+                 FROM dbo.BMW_Spa_Discovery
+                GROUP BY cluster) m
+           ON m.cluster = d.cluster AND m.sd = d.scan_date`,
+    ).then((r) => r.recordset || []),
+    // ROUTE ENVANTERI + termination_type (Ag capraz kontrolu). OKUNAMADI ile KAYITLI DEGIL
+    // AYRI: eskiden hata [] olup TUM uygulamalar 'kayitli degil' gorunuyordu.
+    yoksaNull(
+      query(
+        `SELECT cluster_name, namespace_name, route_name, route_address, termination_type
+           FROM dbo.BMW_Openshift_Route_Inventory`,
+      ),
+    ),
+    // OLCUM: CLUSTER BASINA EN YENI satir - secim VERITABANINDA yapilir (yarim milyon
+    // satir tasimamak icin; ayni ders Route Trafigi'nde olculdu). Hata null: eskiden []
+    // olup TUM uygulamalar 'olcum yok' gorunuyordu.
+    // CLUSTER (dogrulama bulgusu, 2026-10-01): tablonun tekil anahtari (scan_date, cluster,
+    // namespace, app). Eskiden bolumleme (namespace, app) idi; ayni gunun prod1/prod2 satirlari
+    // arasinda secim BELIRSIZDI ve pasif cluster'in 0'i "istek yok" gosterebiliyordu. Cluster
+    // satirlari spa-discovery.cjs'te TOPLANIR.
+    yoksaNull(
+      query(
+        `SELECT cluster, namespace, app, scan_date, window_days, req_total, services_total, measured, note
+           FROM (
+             SELECT cluster, namespace, app, scan_date, window_days, req_total, services_total, measured, note,
+                    ROW_NUMBER() OVER (PARTITION BY cluster, namespace, app ORDER BY scan_date DESC) AS rn
+               FROM dbo.BMW_Application_Usage
+              WHERE scan_date >= DATEADD(day, -7, CAST(GETDATE() AS DATE))
+           ) t
+          WHERE rn = 1`,
+      ),
+    ),
+    // CLUSTER DURUMU: cluster basina EN YENI kosu - taranamayan cluster'in sebebi burada.
+    s.run
+      ? query(
+          `SELECT cluster, durum, routes, svc_kip, svc_okunamayan_ns, spa, eslesmeyen, sebep,
+                  CONVERT(varchar(10), scan_date, 23) AS scan_date
+             FROM (
+               SELECT *, ROW_NUMBER() OVER (PARTITION BY cluster ORDER BY scan_date DESC, id DESC) AS rn
+                 FROM dbo.BMW_Spa_Discovery_Run
+             ) t
+            WHERE rn = 1`,
+        )
+          .then((r) => r.recordset || [])
+          // OKUNAMADI ile YOK AYRI: null -> kapsam "okunamadi" der, tum uc nokta 500'e
+          // dusup ekran "satir yok" gostermez.
+          .catch(() => null)
+      : Promise.resolve([]),
+    // (1) RP TANIMLARI: LOC (include) + PRX (eski PROD proxy_pass). kind kolonlari yoksa
+    // NULL secilir - kolon yokken adini yazmak sorguyu derleme aninda dusururdu.
+    s.cfg
+      ? yoksaNull(
+          query(
+            `SELECT host, vhost, service, env, location_path, application, namespace, status,
+                    ${
+                      prxKolon === 4
+                        ? 'kind, upstream_name, target_url'
+                        : 'CAST(NULL AS NVARCHAR(16)) AS kind, CAST(NULL AS NVARCHAR(400)) AS upstream_name, CAST(NULL AS NVARCHAR(400)) AS target_url'
+                    },
+                    CONVERT(varchar(10), scan_date, 23) AS scan_date
+               FROM dbo.Nginx_Config_Audit
+              WHERE scan_date = (SELECT MAX(scan_date) FROM dbo.Nginx_Config_Audit)
+                AND host IN (${rpIn.sqlText})`,
+            rpIn.params,
+          ),
+        )
+      : Promise.resolve(null),
+    // (2) YENI PROD DIZIN KURULUMU (GBNGXP4x/AP3x): conf_exists = tanim.
+    s.dir
+      ? yoksaNull(
+          query(
+            `SELECT host, namespace, application, hys_deployed, app_deployed, conf_exists, conf_name,
+                    CONVERT(varchar(10), scan_date, 23) AS scan_date
+               FROM dbo.Nginx_Intranet_Audit
+              WHERE scan_date = (SELECT MAX(scan_date) FROM dbo.Nginx_Intranet_Audit)
+                AND host IN (${yeniIn.sqlText})`,
+            yeniIn.params,
+          ),
+        )
+      : Promise.resolve(null),
+    // (3) UPSTREAM TAKMA ADININ GERCEK SERVER'I (tum internet RP'ler; 2 gun saklama, ayri is).
+    s.ups
+      ? yoksaNull(
+          query(
+            `SELECT host, name, server, CONVERT(varchar(10), scan_date, 23) AS scan_date
+               FROM dbo.Nginx_Audit_Upstreams
+              WHERE scan_date = (SELECT MAX(scan_date) FROM dbo.Nginx_Audit_Upstreams)
+                AND host IN (${upsIn.sqlText})`,
+            upsIn.params,
+          ),
+        )
+      : Promise.resolve(null),
+    // (4) RP TRAFIGI. first_seen kolonu yoksa NULL secilir (CASE WHEN COL_LENGTH kalibi
+    // KULLANILMAZ: kolon yoksa SQL Server derleme aninda 'Invalid column name' verir).
+    s.trf
+      ? yoksaNull(
+          query(
+            `SELECT host, vhost, location, req_24h, req_7d, hc_24h, sampled, last_seen, error,
+                    ${s.fs ? 'first_seen' : 'CAST(NULL AS NVARCHAR(20)) AS first_seen'},
+                    CONVERT(varchar(10), scan_date, 23) AS scan_date
+               FROM dbo.Nginx_Spa_Traffic
+              WHERE scan_date = (SELECT MAX(scan_date) FROM dbo.Nginx_Spa_Traffic)
+                AND host IN (${trfIn.sqlText})`,
+            trfIn.params,
+          ),
+        )
+      : Promise.resolve(null),
+  ]);
+  // TABLO DURUMU: 'var' | 'yok' (OBJECT_ID NULL) | 'okunamadi' (sema ya da sorgu dustu).
+  const durum = (varMi, rows) =>
+    sema === null ? 'okunamadi' : !varMi ? 'yok' : rows === null ? 'okunamadi' : 'var';
+  const rpKaynak = {
+    tablolar: {
+      cfg: durum(s.cfg, cfg),
+      dir: durum(s.dir, dir),
+      trf: durum(s.trf, trf),
+      ups: durum(s.ups, ups),
+    },
+    prxKolon,
+    cfg,
+    dir,
+    ups,
+    trf,
+  };
+  const { buildSpaDiscovery } = require('./spa-discovery.cjs');
+  const sonuc = buildSpaDiscovery(disc, inv, usage, runs, rpKaynak);
+  // HESAP KIMLIGI: satir (ana uc) ile ayrinti paneli (/spa-discovery/rp) AYNI hesaptan mi?
+  // Istemci ikisini karsilastirir; farkliysa panel bunu yazar (sessiz celiski yok;
+  // NginxSpaDiscovery.tsx RpAyrinti, vitest bekcisi).
+  const out = {
+    ok: true,
+    tableMissing: false,
+    scanDate: gun,
+    ...sonuc,
+    hesaplandi: new Date().toISOString(),
+  };
+  // rpDetay SAYILAMAZ (JSON'a girmez); spread onu kopyalamadigi icin acikca tasinir.
+  Object.defineProperty(out, 'rpDetay', { value: sonuc.rpDetay, enumerable: false });
+  return out;
+}
+
+// AYRINTI UCU ICIN BELLEK OZETI: son tam hesabin tanim haritasi + uygulama basina KUCUK ozet.
+// Ana uc her hesapta yeniler; ayrinti ucu eskiyse kendisi hesaplar. Yalniz son hesap tutulur.
+// Tam uygulama satirlari TUTULMAZ (2026-09-20 OOM dersi: bu modulde buyuk nesneyi bellekte
+// birakmak heap'i doldurmustu); panel satirin kendisini istemciden zaten biliyor.
+const SPA_MEMO_TTL_MS = 10 * 60 * 1000;
+let _spaMemo = null;
+function spaMemoYaz(sonuc) {
+  const apps = new Map();
+  for (const a of sonuc.apps || [])
+    apps.set(`${String(a.namespace).toLowerCase()}|${String(a.application).toLowerCase()}`, {
+      namespace: a.namespace,
+      application: a.application,
+      env: a.env,
+      rp: a.rp,
+      rpNeden: a.rpNeden,
+      rpIstek: a.rpIstek,
+    });
+  _spaMemo = {
+    at: Date.now(),
+    hesaplandi: sonuc.hesaplandi,
+    detay: sonuc.rpDetay,
+    kapsam: sonuc.rpKapsam,
+    apps,
+  };
+  return _spaMemo;
+}
+
+// DEVAM EDEN HESAP PAYLASILIR (dogrulama bulgusu, 2026-10-01): bellek ozeti eskiyken gelen
+// ayni anda uc tiklama uc AYRI tam hesap (3 x 8 sorgu + ~0,5 sn senkron CPU) baslatiyordu.
+// Ana uc ve ayrinti ucu ayni promise'i bekler; hesap bitince bellek ozeti BIR KEZ yazilir.
+// Ana uc donen nesneyi DEGISTIRMEZ (paylasilan nesne: ?satir=1 isteyen baska bir cagri olabilir).
+let _spaHesap = null;
+function spaHesapPaylas() {
+  if (!_spaHesap) {
+    _spaHesap = spaKesfiHesapla()
+      .then((sonuc) => {
+        if (!sonuc.tableMissing) spaMemoYaz(sonuc);
+        return sonuc;
+      })
+      .finally(() => {
+        _spaHesap = null;
+      });
+  }
+  return _spaHesap;
+}
+
+// ── UC ISLEYICILERI (router disinda: davranis testleri sahte mssql ile DOGRUDAN cagirir) ──
+//
+// GET /spa-discovery: SAYFA UYGULAMA SATIRLARINI KULLANIR (uygulama basina tek satir,
+// 2026-10-01). Route satirlari yanitin boyutunu ikiye katlardi; yalniz `?satir=1` ile
+// istenirse gonderilir. GOVDE KUCULTULUR: varsayilan degerler satira yazilmaz
+// (spaYanitGovdesi; istemci nginxConsoleApi.spaDiscovery AYNI degerlerle geri doldurur -
+// SR27 iki listeyi esitler). Paylasilan sonuc nesnesi DEGISMEZ.
+async function spaKesfiUcu(req, res) {
+  try {
+    const sonuc = await spaHesapPaylas();
+    const { spaYanitGovdesi } = require('./spa-discovery.cjs');
+    res.json(spaYanitGovdesi(sonuc, { satir: String(req.query.satir || '') === '1' }));
+  } catch (err) {
+    res.status(err.status || 500).json({ ok: false, message: err.message });
+  }
+}
+
+// GET /spa-discovery/rp: AYRINTI PANELI - bir uygulamanin RP tanimlari (host, vhost,
+// location, yol, durum) ve tanim basina trafik (24s/7g, son gorulme, pencere, olculemedi
+// nedeni). Satira gomulmez.
+//
+// NAMESPACE SUZGECLI SORGU DEGIL: proxy satirlarinda namespace NULL'dur (hedef adresten
+// eslenir); ns ile suzmek PROD tanimlarini kacirirdi. Son tam hesabin bellekteki ozeti
+// kullanilir (ana uc her hesapta yeniler); yoksa/eskiyse ya da ?fresh=1 ise yeniden hesaplanir
+// - devam eden hesap varsa ONA katilir (ayni anda gelen tiklamalar tek hesap; SR36).
+async function spaRpAyrintiUcu(req, res) {
+  try {
+    const ns = String(req.query.ns || '').trim();
+    const app = String(req.query.app || '').trim();
+    if (!ns || !app)
+      return res.status(400).json({ ok: false, message: 'ns ve app parametreleri gerekli.' });
+    let memo = _spaMemo;
+    if (!memo || Date.now() - memo.at > SPA_MEMO_TTL_MS || String(req.query.fresh || '') === '1') {
+      const sonuc = await spaHesapPaylas();
+      if (sonuc.tableMissing)
+        return res.json({ ok: false, message: sonuc.message || 'SPA keşif tablosu yok.' });
+      memo = _spaMemo;
+    }
+    const { rpTanimlari } = require('./spa-rp.cjs');
+    const a = memo.apps.get(`${ns.toLowerCase()}|${app.toLowerCase()}`);
+    if (!a)
+      return res.status(404).json({ ok: false, message: `Uygulama keşifte yok: ${ns}/${app}` });
+    const ENV = String(a.env || '').toUpperCase();
+    const k = memo.kapsam || {};
+    res.json({
+      ok: true,
+      app: a,
+      tanimlar: rpTanimlari(memo.detay, ns, app),
+      // Uygulamanin ortaminin beklenen RP hostlari ve o gunku durumlari: 'tanimsiz' ya da
+      // 'olculemedi' kararinin GEREKCESI burada gorunur.
+      beklenen: (k.hostlar || []).filter((h) => h.env === ENV),
+      kapsam: {
+        configTarih: k.configTarih,
+        dizinTarih: k.dizinTarih,
+        trafikTarih: k.trafikTarih,
+        upsTarih: k.upsTarih,
+        proxyKolonu: k.proxyKolonu,
+        tablolar: k.tablolar,
+      },
+      // Satirin geldigi hesapla AYNI mi: istemci ana yanitin `hesaplandi`siyla karsilastirir
+      // ve farkliysa panelde "tablodan daha yeni bir hesap" uyarisi gosterir.
+      hesaplandi: memo.hesaplandi || new Date(memo.at).toISOString(),
+    });
+  } catch (err) {
+    res.status(err.status || 500).json({ ok: false, message: err.message });
+  }
+}
+
 function isAdmin(req) {
   return req.session?.user?.role === 'Admin';
 }
@@ -812,109 +1158,24 @@ function initNginxConsole(app) {
   // ── GERCEK SPA KESFI (kullanici, 2026-10-01) ───────────────────────────────────────
   // "Nginx Hub icerisinde gercekten SPA olan tum uygulamalarin cekilmesi, route
   // envanterinin karsilastirilmasi ve route'larinin yazilmasi, uygulama trafiginin de
-  // yanlarina islenmesi."
+  // yanlarina islenmesi." + ayni gun: "intranet mi internet mi, internet ise BIZIM reverse
+  // proxy sunucularimizda tanimli mi ve RP tanimi istek aliyor mu - hepsi tek yerde."
   //
-  // UC KAYNAK: kesif (kabinde nginx var mi) + route envanteri + Dynatrace olcumu.
-  // Hicbiri otekini DUZELTMEZ; aradaki fark BILGIDIR ve ekranin varlik sebebidir.
-  router.get('/spa-discovery', async (req, res) => {
-    try {
-      const { query } = require('../inventory/mssql.cjs');
-      const ex = await query(`SELECT OBJECT_ID('dbo.BMW_Spa_Discovery') AS oid`);
-      if (!ex.recordset?.[0]?.oid) {
-        // TABLO YOK ile SPA YOK AYRI: bos liste dondurmek "hic SPA bulunmadi" diye okunur.
-        return res.json({
-          ok: true,
-          tableMissing: true,
-          message:
-            "dbo.BMW_Spa_Discovery tablosu henüz yok — openshift_spa_discovery job'ı bir kez koşmalı.",
-          rows: [],
-          apps: [],
-          appSummary: null,
-          platformHidden: null,
-          namespaces: [],
-          clusters: [],
-          envs: [],
-          summary: null,
-          coverage: null,
-          scanDate: null,
-        });
-      }
-      const gun = await query(
-        `SELECT CONVERT(varchar(10), MAX(scan_date), 23) AS d FROM dbo.BMW_Spa_Discovery`,
-      )
-        .then((r) => r.recordset?.[0]?.d || null)
-        .catch(() => null);
-      // SEMA SONRADAN BUYUDU (2026-10-01): `match_by` ve durum tablosu ilk uretim kosusundan
-      // SONRA eklendi; yukleyicinin yeni surumu bir kez kosana kadar ikisi de olmayabilir.
-      const sema = await query(
-        `SELECT COL_LENGTH('dbo.BMW_Spa_Discovery', 'match_by') AS mb,
-                OBJECT_ID('dbo.BMW_Spa_Discovery_Run') AS run`,
-      )
-        .then((r) => r.recordset?.[0] || {})
-        .catch(() => ({}));
-      const [disc, inv, usage, runs] = await Promise.all([
-        // CLUSTER BASINA EN YENI TARAMA. Eskiden tek bir MAX(scan_date) aliniyordu: bugun
-        // login'i dusen bir cluster, dunku verisiyle birlikte ekrandan SILINIYORDU ve
-        // "SPA'si yok" gibi gorunuyordu. Simdi her cluster kendi son verisini, TARIHIYLE
-        // tasir; eskiligi kapsam panelinde yazar.
-        query(
-          `SELECT d.cluster, d.namespace, d.route, d.host, d.termination, d.workload_kind,
-                  d.workload, d.is_spa, d.signal, d.image, d.note,
-                  ${sema.mb ? 'd.match_by' : 'CAST(NULL AS NVARCHAR(16)) AS match_by'},
-                  CONVERT(varchar(10), d.scan_date, 23) AS scan_date
-             FROM dbo.BMW_Spa_Discovery d
-             JOIN (SELECT cluster, MAX(scan_date) AS sd
-                     FROM dbo.BMW_Spa_Discovery
-                    GROUP BY cluster) m
-               ON m.cluster = d.cluster AND m.sd = d.scan_date`,
-        ).then((r) => r.recordset || []),
-        query(
-          `SELECT cluster_name, namespace_name, route_name, route_address
-             FROM dbo.BMW_Openshift_Route_Inventory`,
-        )
-          .then((r) => r.recordset || [])
-          .catch(() => []),
-        // OLCUM: uygulama basina EN YENI satir - secim VERITABANINDA yapilir (yarim milyon
-        // satir tasimamak icin; ayni ders Route Trafigi'nde olculdu).
-        query(
-          `SELECT namespace, app, scan_date, window_days, req_total, services_total, measured, note
-             FROM (
-               SELECT namespace, app, scan_date, window_days, req_total, services_total, measured, note,
-                      ROW_NUMBER() OVER (PARTITION BY namespace, app ORDER BY scan_date DESC) AS rn
-                 FROM dbo.BMW_Application_Usage
-                WHERE scan_date >= DATEADD(day, -7, CAST(GETDATE() AS DATE))
-             ) t
-            WHERE rn = 1`,
-        )
-          .then((r) => r.recordset || [])
-          .catch(() => []),
-        // CLUSTER DURUMU: cluster basina EN YENI kosu - taranamayan cluster'in sebebi burada.
-        sema.run
-          ? query(
-              `SELECT cluster, durum, routes, svc_kip, svc_okunamayan_ns, spa, eslesmeyen, sebep,
-                      CONVERT(varchar(10), scan_date, 23) AS scan_date
-                 FROM (
-                   SELECT *, ROW_NUMBER() OVER (PARTITION BY cluster ORDER BY scan_date DESC, id DESC) AS rn
-                     FROM dbo.BMW_Spa_Discovery_Run
-                 ) t
-                WHERE rn = 1`,
-            )
-              .then((r) => r.recordset || [])
-              // OKUNAMADI ile YOK AYRI: null -> kapsam "okunamadi" der, tum uc nokta 500'e
-              // dusup ekran "satir yok" gostermez.
-              .catch(() => null)
-          : Promise.resolve([]),
-      ]);
-      const { buildSpaDiscovery } = require('./spa-discovery.cjs');
-      const sonuc = buildSpaDiscovery(disc, inv, usage, runs);
-      // SAYFA UYGULAMA SATIRLARINI KULLANIR (uygulama basina tek satir, 2026-10-01). Route
-      // satirlari yanitin boyutunu ikiye katlardi; yalniz `?satir=1` ile istenirse gonderilir.
-      if (String(req.query.satir || '') !== '1') delete sonuc.rows;
-      res.json({ ok: true, tableMissing: false, scanDate: gun, ...sonuc });
-    } catch (err) {
-      res.status(err.status || 500).json({ ok: false, message: err.message });
-    }
-  });
+  // Hesap spaKesfiHesapla() icinde (yukarida, router disinda). Hicbir kaynak otekini
+  // DUZELTMEZ; aradaki fark BILGIDIR ve ekranin varlik sebebidir.
+  //
+  // YANIT ONBELLEGI (2026-10-01): her acilis 8 sorgu kosturuyordu (kesif + envanter +
+  // Dynatrace + dort RP tablosu). Veri gunde bir degisir; 60 sn onbellek ayni sayfayi ard
+  // arda acan kullanici icin sorguyu sifirlar. "Yenile" ?fresh=1 gonderir ve atlar. Gorunurluk
+  // kapisindan SONRA (router.use'lar yukarida): onbellek yetki kontrolunu atlayamaz.
+  // SINIR: govde 8 MB'i asarsa response-cache saklamaz (baslik SKIP-SIZE + bir kez uyari) -
+  // satira yalniz kod ve sayi yazilir, varsayilanlar govdeye girmez, tanim listesi ayri
+  // uctan gelir (SR21 boyut bekcisi, iki profil).
+  const { createResponseCache } = require('../audit/response-cache.cjs');
+  const spaCache = createResponseCache();
+  // Isleyiciler yukarida (spaKesfiUcu / spaRpAyrintiUcu): govde kucultme ve ?satir=1 orada.
+  router.get('/spa-discovery', spaCache.middleware, spaKesfiUcu);
+  router.get('/spa-discovery/rp', spaRpAyrintiUcu);
 
   router.get('/orphans', (req, res) => {
     const only = String(req.query.host || '').toUpperCase();
@@ -1311,4 +1572,12 @@ module.exports = {
   _loadSummaryForTest: loadSummary,
   _seenAtOfForTest: seenAtOf,
   _seenMapForTest: seenMap,
+  _spaKesfiHesaplaForTest: spaKesfiHesapla,
+  // Uc isleyicileri: sahte req/res ile davranis testi (onbellek ara katmani HARIC).
+  _spaUclariForTest: { kesif: spaKesfiUcu, ayrinti: spaRpAyrintiUcu },
+  // Testler arasi bellek ozeti / devam eden hesap sizmasin (uc nokta davranis testleri).
+  _spaSifirlaForTest: () => {
+    _spaMemo = null;
+    _spaHesap = null;
+  },
 };

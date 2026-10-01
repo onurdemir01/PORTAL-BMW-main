@@ -527,7 +527,9 @@ test('GS12 uc nokta CLUSTER BASINA en yeni taramayi okur; match_by yoksa da cali
   assert.match(src, /COL_LENGTH\('dbo\.BMW_Spa_Discovery', 'match_by'\)/);
   assert.match(src, /CAST\(NULL AS NVARCHAR\(16\)\) AS match_by/, 'sutun yokken sorgu patlar');
   assert.match(src, /dbo\.BMW_Spa_Discovery_Run/);
-  assert.match(src, /buildSpaDiscovery\(disc, inv, usage, runs\)/);
+  // 2026-10-01: besinci arguman RP kaynaklari (Nginx_Config_Audit/Intranet/Traffic/Upstreams);
+  // durum tablosu (runs) yine dorduncu arguman olarak gecmeli.
+  assert.match(src, /buildSpaDiscovery\(disc, inv, usage, runs, rpKaynak\)/);
 });
 
 test('GS13 ekran bos gorunumun SEBEBINI soyler ve kapsami gosterir', () => {
@@ -837,11 +839,21 @@ test('GS25 istek DORT durumlu; envanter "kismen" route sayisiyla', () => {
 });
 
 test('GS26 uc nokta route satirlarini yalniz ?satir=1 ile gonderir (yanit boyutu)', () => {
+  // 2026-10-01: govde spaYanitGovdesi ile kurulur (paylasilan hesap nesnesi DEGISTIRILMEZ;
+  // eskiden `delete sonuc.rows` ayni anda ?satir=1 isteyen cagrinin satirlarini da siliyordu).
   const src = gsNorm(read('server/nginx-console/index.cjs'));
   assert.ok(
-    src.includes("if (String(req.query.satir || '') !== '1') delete sonuc.rows;"),
+    src.includes(
+      "res.json(spaYanitGovdesi(sonuc, { satir: String(req.query.satir || '') === '1' }));",
+    ),
     'route satirlari her zaman gonderiliyor',
   );
+  assert.ok(!src.includes('delete sonuc.rows'), 'paylasilan hesap nesnesi yerinde degistiriliyor');
+  const { spaYanitGovdesi } = require('../spa-discovery.cjs');
+  const sonuc = { ok: true, rows: [{ route: 'r' }], apps: [] };
+  assert.ok(!('rows' in spaYanitGovdesi(sonuc)), '?satir=1 olmadan route satirlari govdede');
+  assert.deepEqual(spaYanitGovdesi(sonuc, { satir: true }).rows, sonuc.rows);
+  assert.deepEqual(sonuc.rows, [{ route: 'r' }], 'hesap nesnesi degisti');
 });
 
 test('GS27 ekran: tek satir duzeni, is yuku kolonu yok, "KALIP KACIRDI" rozeti yok, bes suzgec var', () => {
@@ -849,12 +861,17 @@ test('GS27 ekran: tek satir duzeni, is yuku kolonu yok, "KALIP KACIRDI" rozeti y
   const var_ = (parca, mesaj) => assert.ok(ui.includes(parca), mesaj + ' :: ' + parca);
   // KOLON SIRASI bicimden bagimsiz: prettier diziyi cok satira bolup sonuna virgul ekliyor
   // (ilk yazimda bu yuzden kirmiziya dondu); bosluk ve sondaki virgul yok sayilir.
+  // 2026-10-01 (kullanici): 'Istek' -> 'Uygulama istegi' (Dynatrace oldugu ipucunda) ve
+  // ayni tabloya Ag / Reverse proxy / RP istegi kolonlari eklendi. Bilerek degisen duzen.
   const kolonlar = [
     'Uygulama',
     'Namespace',
     'SPA',
     'Ad kalıbı',
-    'İstek',
+    'Uygulama isteği',
+    'Ağ',
+    'Reverse proxy',
+    'RP isteği',
     'Route envanteri',
     'Adresler',
     "Cluster'lar",
@@ -880,6 +897,14 @@ test('GS27 ekran: tek satir duzeni, is yuku kolonu yok, "KALIP KACIRDI" rozeti y
       'ad kalibi',
     ],
     ['istek', 'setIstek', "if (istek !== 'tumu' && a.istek !== istek) return false;", 'istek'],
+    ['ag', 'setAg', "if (ag !== 'tumu' && a.ag !== ag) return false;", 'ag'],
+    ['rp', 'setRp', "if (rp !== 'tumu' && a.rp !== rp) return false;", 'reverse proxy'],
+    [
+      'rpIstek',
+      'setRpIstek',
+      "if (rpIstek !== 'tumu' && a.rpIstek !== rpIstek) return false;",
+      'RP istegi',
+    ],
     [
       'cluster',
       'setCluster',

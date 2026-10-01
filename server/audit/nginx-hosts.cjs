@@ -29,13 +29,23 @@ const HOST_ENV_OVERRIDE = { GBNGXT51: 'EDU' };
 // Burada OLMAYAN her nginx hostu internete acik kabul edilir; liste degisirse BURASI
 // guncellenmeli (Denetim'deki internet/intranet kapsam ayrimi buna dayanir).
 const INTRANET_HOSTS = new Set([
-  'GBNGXD50', 'GBNGXT50', 'GBNGXT51', 'GBNGXQ50',
-  'GBNGXP50', 'GBNGXP51', 'GBNGXP52', 'GBNGXP53', 'GBNGXAP50', 'GBNGXAP51',
+  'GBNGXD50',
+  'GBNGXT50',
+  'GBNGXT51',
+  'GBNGXQ50',
+  'GBNGXP50',
+  'GBNGXP51',
+  'GBNGXP52',
+  'GBNGXP53',
+  'GBNGXAP50',
+  'GBNGXAP51',
 ]);
 
 /** @returns {'DEV'|'TEST'|'QA'|'PROD'|'BILINMIYOR'} */
 function envOfHost(host) {
-  const h = String(host || '').trim().toUpperCase();
+  const h = String(host || '')
+    .trim()
+    .toUpperCase();
   if (!h) return UNKNOWN_ENV;
   if (HOST_ENV_OVERRIDE[h]) return HOST_ENV_OVERRIDE[h];
   // Reverse proxy production (GBRVPP.. / GBRVPAP..) - ortam harfi tasimaz, hepsi prod.
@@ -48,7 +58,9 @@ function envOfHost(host) {
 
 /** Production lokasyonu: 'Ankara' | 'Pendik' | '' (non-prod'da anlamsiz). */
 function siteOfHost(host) {
-  const h = String(host || '').trim().toUpperCase();
+  const h = String(host || '')
+    .trim()
+    .toUpperCase();
   // GBNGXAP.. (intranet SPA, 2026-09-10) da Ankara'dir - eklenmeden once bu hostlar
   // lokasyonsuz gorunuyordu. 'AP' onceki desende yoktu, testle yakalandi.
   if (/^GBNGWAP|^GBNGXAP|^GBRVPAP/.test(h)) return 'Ankara';
@@ -62,13 +74,21 @@ function siteOfHost(host) {
 // Kalip tutuyorsa kalip kazanir: envanter kurali daha kaba (D.. -> Test, harf yoksa
 // Production) ve GBNGXT51=EDU gibi istisnalari bilmez.
 const INVENTORY_ENV = {
-  PRODUCTION: 'PROD', PROD: 'PROD', TEST: 'TEST', QA: 'QA', ALPHA: 'ALPHA', ODM: 'ODM',
-  DEV: 'DEV', EDU: 'EDU',
+  PRODUCTION: 'PROD',
+  PROD: 'PROD',
+  TEST: 'TEST',
+  QA: 'QA',
+  ALPHA: 'ALPHA',
+  ODM: 'ODM',
+  DEV: 'DEV',
+  EDU: 'EDU',
 };
 
 /** dbo.Inventory.env -> Portal ortam etiketi; taninmayan deger BILINMIYOR. */
 function envFromInventory(v) {
-  const k = String(v || '').trim().toUpperCase();
+  const k = String(v || '')
+    .trim()
+    .toUpperCase();
   return INVENTORY_ENV[k] || UNKNOWN_ENV;
 }
 
@@ -81,7 +101,58 @@ function orderEnvs(seen) {
 /** nginx sunucusunun AG KATMANI: 'intranet' | 'internet'.
  *  Listede olmayan her host internete acik sayilir (bkz. INTRANET_HOSTS notu). */
 function tierOfHost(host) {
-  return INTRANET_HOSTS.has(String(host || '').trim().toUpperCase()) ? 'intranet' : 'internet';
+  return INTRANET_HOSTS.has(
+    String(host || '')
+      .trim()
+      .toUpperCase(),
+  )
+    ? 'intranet'
+    : 'internet';
+}
+
+// INTERNET REVERSE PROXY sunuculari (kullanici onayi, 2026-10-01: "liste AYNEN dogru,
+// GBNGXT07 SAYILMAZ"). Gercek SPA Kesfi "RP'de tanimli mi" kararini YALNIZ bu listeye
+// dayandirir; "tanimsiz" ancak ortamin bu hostlarinin TAMAMI taranmissa soylenir.
+//
+// NEDEN tierOfHost DEGIL: o fonksiyon FAIL-OPEN - listede olmayan her host'u (GBNGW* API
+// gateway'leri, GBNGXT07) internet sayar. "Tanimsiz" karari icin ACIK liste gerekir.
+//
+// TEK KAYNAK: non-prod listesi BURADA; PROD eski/yeni listesi nginx-migration.cjs
+// MIGRATION_GROUPS'tan OKUNUR (kopyalanmaz). Dongusel yukleme olmasin diye tembel require.
+// EDU icin internet RP yok: o ortamdaki uygulamalar "kapsam disi" kalir.
+const INTERNET_RP_NONPROD = Object.freeze({
+  DEV: Object.freeze(['GBNGXD01', 'GBNGXD02']),
+  TEST: Object.freeze(['GBNGXT33', 'GBNGXT34']),
+  QA: Object.freeze(['GBNGXQ01', 'GBNGXQ02']),
+});
+
+let _rpHosts = null;
+/**
+ * @returns {{ byEnv: Record<string, string[]>, prodOld: Set<string>, prodNew: Set<string>,
+ *             nonProd: Set<string>, all: Set<string>, groups: {oldHosts:string[], newHosts:string[]}[] }}
+ */
+function internetRpHosts() {
+  if (_rpHosts) return _rpHosts;
+  const { MIGRATION_GROUPS } = require('./nginx-migration.cjs');
+  const U = (h) =>
+    String(h || '')
+      .trim()
+      .toUpperCase();
+  const prodOld = [...new Set(MIGRATION_GROUPS.flatMap((g) => g.oldHosts.map(U)))];
+  const prodNew = [...new Set(MIGRATION_GROUPS.flatMap((g) => g.newHosts.map(U)))];
+  const nonProd = Object.values(INTERNET_RP_NONPROD).flat();
+  _rpHosts = Object.freeze({
+    byEnv: Object.freeze({ ...INTERNET_RP_NONPROD, PROD: Object.freeze([...prodOld, ...prodNew]) }),
+    prodOld: new Set(prodOld),
+    prodNew: new Set(prodNew),
+    nonProd: new Set(nonProd),
+    all: new Set([...nonProd, ...prodOld, ...prodNew]),
+    groups: MIGRATION_GROUPS.map((g) => ({
+      oldHosts: g.oldHosts.map(U),
+      newHosts: g.newHosts.map(U),
+    })),
+  });
+  return _rpHosts;
 }
 
 module.exports = {
@@ -89,6 +160,7 @@ module.exports = {
   envFromInventory,
   siteOfHost,
   tierOfHost,
+  internetRpHosts,
   orderEnvs,
   ENV_ORDER,
   UNKNOWN_ENV,

@@ -265,7 +265,12 @@ export interface NgSpaDiscoveryRow {
   namespace: string;
   route: string;
   host: string;
-  termination: string;
+  /** Route TLS termination'ı: passthrough | reencrypt | edge | '' (TLS yok) | null (bilinmiyor). */
+  termination: string | null;
+  /** Route envanterindeki termination_type (route envanterde bulunmadıysa yok). */
+  invTermination?: string;
+  /** Keşifteki termination ile envanterdeki farklı (yalnız uyarı; Ağ'ı ezmez). */
+  agCelisik: boolean;
   workloadKind: string;
   workload: string;
   application: string;
@@ -284,8 +289,8 @@ export interface NgSpaDiscoveryRow {
   matchBy: string;
   /** Bu satırın geldiği tarama (cluster başına en yeni tarama gösterilir). */
   scanDate: string;
-  /** Route, route envanterinde kayıtlı mı. */
-  inInventory: boolean;
+  /** Route, route envanterinde kayıtlı mı. `null` = envanter OKUNAMADI. */
+  inInventory: boolean | null;
   /** Eski yöntem (`-app-v` / `-app-emb-v`) bunu SPA sayar mıydı. */
   patternMatch: boolean;
   /** ASIL BULGU: gerçekten SPA ama ad kalıbına uymuyor. */
@@ -319,12 +324,53 @@ export interface NgSpaApp {
   patternMiss: boolean;
   /** Adı kurala uyuyor ama nginx yok. */
   patternFalse: boolean;
-  istek: 'var' | 'yok' | 'olculemedi' | 'olcum-yok';
+  /**
+   * Uygulama isteği (Dynatrace). `servis-yok`: Dynatrace'te servis oluşmamış (measured=1,
+   * services_total=0) — "istek yok" DEĞİL. `olculemedi`: ölçüm düştü ya da tablo okunamadı.
+   */
+  istek: 'var' | 'yok' | 'servis-yok' | 'olculemedi' | 'olcum-yok';
   reqShown: number | null;
-  usage: NgSpaDiscoveryRow['usage'];
-  inventory: 'kayitli' | 'kayitli-degil' | 'kismen';
-  invRoutes: number;
-  routeCount: number;
+  usage: NgSpaAppUsage | null;
+  /** Ağ: route TLS termination'ından (passthrough=internet, reencrypt=intranet). */
+  ag: NgSpaAg;
+  /** Route sayıları (yalnız sıfırdan büyükler): passthrough, reencrypt, edge, tlsYok, bos (NULL). */
+  agSay: Partial<Record<'passthrough' | 'reencrypt' | 'edge' | 'tlsYok' | 'bos', number>>;
+  /** Route envanteriyle çapraz kontrol — Ağ değerini EZMEZ, yalnız uyarır. */
+  agEnvanter: 'uyumlu' | 'celisik' | 'envanterde-yok' | 'olculemedi';
+  agCelisikRoute?: number;
+  /** Intranet (reencrypt) SPA internet RP'de tanımlı: kural ile tanım çelişiyor. */
+  agCelisme?: boolean;
+  /** Reverse proxy'de tanımlı mı (yalnız SPA + internet/karışık; diğerleri uygulanamaz). */
+  rp: NgSpaRp;
+  /** proxy: eski PROD proxy_pass · include: servis vhost location · dizin: yeni PROD kurulumu */
+  rpYol?: ('proxy' | 'include' | 'dizin')[];
+  /** 'bulunan/beklenen' RP host sayısı. */
+  rpHost?: string;
+  /**
+   * En zayıf eşleşme yolu (yoksa kesin). `paylasimli`: hedef adresi farklı route'lar paylaşıyor;
+   * `belirsiz`: ad birden çok uygulamaya çözülüyor — ikisinde de tanımın trafiği bu uygulamaya
+   * AYRILAMAZ.
+   */
+  rpEsles?: 'ek-prod' | 'ad' | 'envanter' | 'zayif' | 'paylasimli' | 'belirsiz';
+  rpSorun?: string[];
+  /** olculemedi / kapsam-disi nedeni: kod[:ayrıntı] */
+  rpNeden?: string;
+  /** RP tanımı istek alıyor mu (access log; yalnız rp=tanimli). */
+  rpIstek: NgSpaRpIstek;
+  /** rpIstek='kismi' iken 0'ın neden ALT SINIR olduğu (birden çok olabilir). */
+  rpIstekNeden?: NgSpaRpIstekNeden[];
+  rpReq7?: number;
+  rpReq24?: number;
+  /** En yeni istek (yyyymmddHHMMSS). */
+  rpSon?: string;
+  /** Ölçülen tanımlar arasındaki EN KISA pencere (saat). */
+  rpPencereSa?: number;
+  /** 'ölçülen/ölçülebilir' tanım sayısı. */
+  rpOlcum?: string;
+  inventory: 'kayitli' | 'kayitli-degil' | 'kismen' | 'olculemedi';
+  /** Yalnız inventory='kismen' iken gelir (yanıt boyutu). */
+  invRoutes?: number;
+  routeCount?: number;
   hosts: string[];
   routes: string[];
   clusters: string[];
@@ -340,8 +386,108 @@ export interface NgSpaAppSummary {
   patternFalse: number;
   spaRequestActive: number;
   spaRequestIdle: number;
+  spaRequestNoService?: number;
   spaRequestUnknown: number;
   spaNotInInventory: number;
+  /** SPA'lar için Ağ / RP / RP isteği kırılımları. */
+  spaAg?: Record<string, number>;
+  spaRp?: Record<string, number>;
+  spaRpIstek?: Record<string, number>;
+}
+
+/** Uygulama satırındaki kısa Dynatrace özeti (yalnız ipucunda gösterilen alanlar). */
+export interface NgSpaAppUsage {
+  scanDate: string;
+  windowDays: number;
+  services: number;
+  note?: string;
+}
+export type NgSpaAg = 'internet' | 'intranet' | 'karisik' | 'diger' | 'bilinmiyor';
+export type NgSpaRp = 'tanimli' | 'tanimsiz' | 'olculemedi' | 'kapsam-disi' | 'uygulanamaz';
+/** `ayrilamaz`: yalnız uygulamaya ayrılamayan (paylaşımlı / belirsiz) tanım var. */
+export type NgSpaRpIstek =
+  'var' | 'yok' | 'kismi' | 'olculemedi' | 'kaynak-yok' | 'ayrilamaz' | 'uygulanamaz';
+/**
+ * 0 isteğin neden ALT SINIR olduğu: pencere < 7 gün / örnekleme / first_seen yok · ölçüm kaynağı
+ * olmayan (yeni PROD) tanım da var · ayrılamayan tanım da var · ortamın bir RP sunucusu taranmadı.
+ */
+export type NgSpaRpIstekNeden = 'pencere' | 'kaynak-yok' | 'ayrilamaz' | 'host-taranmadi';
+export type NgSpaTabloDurumu = 'var' | 'yok' | 'okunamadi';
+
+/** Internet RP sunucusu ve o günkü durumu. */
+export interface NgSpaRpHost {
+  host: string;
+  env: string;
+  rol: 'nonprod' | 'prod-eski' | 'prod-yeni' | '';
+  /** O günün Nginx_Config_Audit / Nginx_Intranet_Audit taramasında satırı var mı. */
+  taranan: boolean;
+  trafik: 'var' | 'hata' | 'satir-yok' | 'kaynak-yok' | 'olculemedi';
+  trafikHata?: number;
+}
+/** Üst bant: RP kaynaklarının tarihleri ve kapsamı ("ölçülemedi"nin nereden geldiği). */
+export interface NgSpaRpKapsam {
+  configTarih: string;
+  dizinTarih: string;
+  trafikTarih: string;
+  upsTarih: string;
+  proxyKolonu: boolean | null;
+  tablolar: Record<'cfg' | 'dir' | 'trf' | 'ups', NgSpaTabloDurumu>;
+  hostlar: NgSpaRpHost[];
+  /** Ortam -> o gün taranmamış beklenen RP host'ları (o ortamda "tanımsız" denmez). */
+  taranmayan: Record<string, string[]>;
+  /** Keşifteki hiçbir uygulamaya bağlanamayan RP tanımı sayısı (ortam başına). */
+  cozulemeyen: Record<string, number>;
+  /**
+   * Ortam başına gerçek arka ucu BULUNAMAYAN takma adlı proxy tanımı (upstream tablosu
+   * okunamadı/yok ya da adı içermiyor) — o ortamda "tanımsız" denmez.
+   */
+  hedefCozulemeyen?: Record<string, number>;
+  belirsiz: number;
+  /** Dizin taraması config taramasından FARKLI günden — PROD için "tanımsız" denmez. */
+  dizinFarkli?: boolean;
+  envanterOkunamadi: boolean;
+  dynatraceOkunamadi: boolean;
+}
+/** Bir RP tanımı (ayrıntı paneli). */
+export interface NgSpaRpTanim {
+  host: string;
+  rol: string;
+  env: string;
+  vhost: string;
+  location: string;
+  status: string;
+  yol: 'proxy' | 'include' | 'dizin';
+  esles: string;
+  hedef?: string;
+  hedefKaynak?: string;
+  conf?: string;
+  /** null: bu tanım için ölçüm kaynağı yok (yeni PROD / dizin). */
+  trafik: {
+    durum: 'var' | 'sifir' | 'sifir-kismi' | 'olculemedi';
+    neden?: string;
+    hata?: string;
+    req7?: number;
+    req24?: number;
+    hc24?: number;
+    sampled?: boolean;
+    pencereSa?: number | null;
+    son?: string | null;
+    ilk?: string | null;
+    tarih?: string;
+  } | null;
+}
+export interface NgSpaRpDetay {
+  ok: boolean;
+  message?: string;
+  /** Sunucunun bellekteki kısa özeti (tam satır istemcide zaten var). */
+  app?: Pick<NgSpaApp, 'namespace' | 'application' | 'env' | 'rp' | 'rpNeden' | 'rpIstek'>;
+  tanimlar?: NgSpaRpTanim[];
+  beklenen?: NgSpaRpHost[];
+  kapsam?: Pick<
+    NgSpaRpKapsam,
+    'configTarih' | 'dizinTarih' | 'trafikTarih' | 'upsTarih' | 'proxyKolonu' | 'tablolar'
+  >;
+  hesaplandi?: string;
 }
 
 export interface NgSpaDiscovery {
@@ -367,6 +513,7 @@ export interface NgSpaDiscovery {
     bySignal: Record<string, number>;
     trafficActive: number;
     trafficIdle: number;
+    trafficNoService?: number;
     trafficUnmeasured: number;
     trafficNone: number;
     unmatched: number;
@@ -377,6 +524,44 @@ export interface NgSpaDiscovery {
   } | null;
   /** Cluster kapsamı: "taranamadı" ile "SPA'sı yok" AYRI. */
   coverage?: NgSpaCoverage | null;
+  /** Reverse proxy kaynaklarının tarihleri, tablo durumları ve taranan host'lar. */
+  rpKapsam?: NgSpaRpKapsam | null;
+  /** Bu yanıtın geldiği sunucu hesabının anı (ayrıntı paneli kendi hesabıyla karşılaştırır). */
+  hesaplandi?: string;
+}
+
+/**
+ * SUNUCUNUN YANIT GÖVDESİNE YAZMADIĞI VARSAYILANLAR (8 MB önbellek sınırı, 2026-10-01).
+ * server/nginx-console/spa-discovery.cjs YANIT_VARSAYILAN / YANIT_BOS_DIZI ile BİREBİR aynı
+ * olmalı — bekçi: spa-rp.test.cjs SR27. Eksik alan doldurulmazsa ekran `staleClusters.includes`
+ * üzerinde çöker ve `rp` alanı olmayan satır "ölçülemedi" görünür (uygulanamaz ≠ ölçülemedi).
+ */
+export const SPA_YANIT_VARSAYILAN = {
+  rp: 'uygulanamaz',
+  rpIstek: 'uygulanamaz',
+  agEnvanter: 'uyumlu',
+  weakEvidence: false,
+  patternMiss: false,
+  patternFalse: false,
+  usage: null,
+  reqShown: null,
+} as const satisfies Partial<NgSpaApp>;
+/** Boşken gövdeye yazılmayan diziler. */
+export const SPA_YANIT_BOS_DIZI = ['signals', 'staleClusters', 'notes', 'routes', 'hosts'] as const;
+
+/** Kısaltılmış uygulama satırını tam hale getirir (varsayılanlar + boş diziler + boş agSay). */
+export function spaUygulamaDoldur(a: Partial<NgSpaApp>): NgSpaApp {
+  const o: Record<string, unknown> = { ...a };
+  for (const [k, v] of Object.entries(SPA_YANIT_VARSAYILAN)) if (o[k] === undefined) o[k] = v;
+  for (const k of SPA_YANIT_BOS_DIZI) if (!Array.isArray(o[k])) o[k] = [];
+  if (!o.agSay) o.agSay = {};
+  return o as unknown as NgSpaApp;
+}
+
+/** /spa-discovery yanıtı: uygulama satırları sunucunun yazmadığı varsayılanlarla doldurulur. */
+export function spaYanitDoldur(d: NgSpaDiscovery): NgSpaDiscovery {
+  if (!d || !Array.isArray(d.apps)) return d;
+  return { ...d, apps: d.apps.map((a) => spaUygulamaDoldur(a)) };
 }
 
 export interface NgSpaCoverageCluster {
@@ -419,7 +604,17 @@ export interface NgSpaCoverage {
 
 export const nginxConsoleApi = {
   // Gercek SPA kesfi (2026-10-01): ad kalibina bakmadan, kabinde nginx kosan uygulamalar.
-  spaDiscovery: (): Promise<NgSpaDiscovery> => fetch(`${BASE}/spa-discovery`).then((r) => r.json()),
+  // Sunucu 60 sn onbellekler; "Yenile" fresh=1 ile onbellegi atlar. Govdede yazilmayan
+  // varsayilanlar BURADA geri doldurulur (spaYanitDoldur).
+  spaDiscovery: (fresh = false): Promise<NgSpaDiscovery> =>
+    fetch(`${BASE}/spa-discovery${fresh ? '?fresh=1' : ''}`)
+      .then((r) => r.json())
+      .then(spaYanitDoldur),
+  /** Bir uygulamanın RP tanımları ve tanım başına trafik (satıra tıklayınca açılan panel). */
+  spaRp: (ns: string, app: string, fresh = false): Promise<NgSpaRpDetay> =>
+    fetch(
+      `${BASE}/spa-discovery/rp?ns=${encodeURIComponent(ns)}&app=${encodeURIComponent(app)}${fresh ? '&fresh=1' : ''}`,
+    ).then(safeJson),
   /** Tüm Nginx sunucularının rate limit dökümü (satır düzeyinde). */
   rateLimit: (scanDate?: string): Promise<NginxRateLimitResult> =>
     fetch(`${BASE}/ratelimit${scanDate ? `?scanDate=${encodeURIComponent(scanDate)}` : ''}`).then(

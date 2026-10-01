@@ -9,22 +9,41 @@
 // kolonları önemli; 'kalıp kaçırdı' ne demek anlamadım." Satırlar sunucuda uygulama başına
 // gruplanır (spa-discovery.cjs uygulamalar()); bu bileşen yalnız gösterir ve süzer.
 //
-// ÜÇ KAYNAK, ÜÇ AYRI SORU — hiçbiri ötekini düzeltmez, fark bilgidir:
-//   keşif           → kabinde gerçekten nginx var mı (SPA kolonu)
-//   route envanteri → route'u envanterde kayıtlı mı (Route envanteri kolonu)
-//   Dynatrace       → uygulama istek alıyor mu (İstek kolonu)
-import { useCallback, useMemo, useState } from 'react';
-import { ArrowPathIcon, ArrowDownTrayIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
+// AYNI TABLODA ÜÇ SORU DAHA (kullanıcı, aynı gün): "uygulamanın istek alıp almadığı, intranet
+// mi internet mi, internet ise BİZİM reverse proxy sunucularımızda tanımlı mı ve RP tanımı
+// istek alıyor mu — hepsi tek yerde."
+//
+// KAYNAKLAR — hiçbiri ötekini düzeltmez, fark bilgidir:
+//   keşif            → kabinde gerçekten nginx var mı (SPA) + route TLS tipi (Ağ)
+//   route envanteri  → route'u envanterde kayıtlı mı (Route envanteri) + Ağ çapraz kontrolü
+//   Dynatrace        → uygulama (pod) istek alıyor mu (Uygulama isteği)
+//   nginx denetimi   → internet RP'de tanımlı mı (Reverse proxy) ve access log (RP isteği)
+// ÖLÇÜLEMEDİ ile YOK/TANIMSIZ ASLA KARIŞMAZ: her hücre ayrı etiket taşır; satırda yalnız kod
+// ve sayı var, tanım listesi satıra tıklayınca ayrı uçtan (/spa-discovery/rp) gelir.
+import { Fragment, memo, useCallback, useMemo, useState } from 'react';
+import {
+  ArrowPathIcon,
+  ArrowDownTrayIcon,
+  MagnifyingGlassIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
+} from '@heroicons/react/24/outline';
 import {
   nginxConsoleApi,
   type NgSpaApp,
   type NgSpaCoverage,
   type NgSpaDiscovery,
+  type NgSpaRpDetay,
+  type NgSpaRpIstekNeden,
+  type NgSpaRpKapsam,
+  type NgSpaRpTanim,
 } from '@/api/nginxConsoleApi';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { downloadCsv } from '@/utils/csv';
+import { fmtDateTime, fmtNumber } from '@/utils/datetime';
 
-const nf = (n: number) => n.toLocaleString('tr-TR');
+// ORTAK BICIMLENDIRICI (G19): yerel ayar ve saat dilimi tek yerde (utils/datetime.ts).
+const nf = (n: number) => fmtNumber(n);
 
 const DURUM_ETIKETI: Record<string, { t: string; renk: string }> = {
   ok: { t: 'tarandı', renk: 'var(--status-success)' },
@@ -34,6 +53,193 @@ const DURUM_ETIKETI: Record<string, { t: string; renk: string }> = {
   erisilemedi: { t: 'sonuç gelmedi', renk: 'var(--status-danger)' },
   bilinmiyor: { t: 'durum bilinmiyor', renk: 'var(--text-muted)' },
 };
+
+// ── AĞ / RP / RP İSTEĞİ ETİKETLERİ ─────────────────────────────────────────────────────
+const MUTED = 'var(--text-muted)';
+const WARN = 'var(--status-warning)';
+const DANGER = 'var(--status-danger)';
+const OK = 'var(--status-success)';
+
+const AG_ETIKET: Record<NgSpaApp['ag'], { t: string; renk: string; ipucu: string }> = {
+  internet: {
+    t: 'internet',
+    renk: 'var(--text-primary)',
+    ipucu: 'Route TLS passthrough → internet (kural).',
+  },
+  intranet: {
+    t: 'intranet',
+    renk: 'var(--text-secondary)',
+    ipucu: 'Route TLS reencrypt → intranet (kural).',
+  },
+  karisik: {
+    t: 'karışık',
+    renk: WARN,
+    ipucu: "Hem passthrough hem reencrypt route var. RP'de internet gibi aranır.",
+  },
+  diger: {
+    t: 'diğer',
+    renk: MUTED,
+    ipucu: "Yalnız edge ya da TLS'siz route — kural dışında, sınıflanmaz; RP aranmaz.",
+  },
+  bilinmiyor: {
+    t: 'bilinmiyor',
+    renk: WARN,
+    ipucu: 'Route TLS bilgisi boş (NULL) — ağ ölçülemedi; "intranet" sayılmaz.',
+  },
+};
+const AG_SAY_ADI: Record<string, string> = {
+  passthrough: 'passthrough',
+  reencrypt: 'reencrypt',
+  edge: 'edge/diğer',
+  tlsYok: "TLS'siz",
+  bos: 'bilinmiyor',
+};
+const AG_ENVANTER_METNI: Record<NgSpaApp['agEnvanter'], string> = {
+  uyumlu: 'termination_type keşifle aynı',
+  celisik: 'termination_type keşiften FARKLI (Ağ keşiften alınır, bu yalnız uyarı)',
+  'envanterde-yok': 'route envanterde yok (haftalık tablo; bilgi)',
+  olculemedi: 'route envanteri okunamadı ya da termination_type gelmedi',
+};
+
+const RP_ETIKET: Record<NgSpaApp['rp'], { t: string; renk: string }> = {
+  tanimli: { t: 'tanımlı', renk: OK },
+  tanimsiz: { t: 'tanımsız', renk: DANGER },
+  olculemedi: { t: 'ölçülemedi', renk: WARN },
+  'kapsam-disi': { t: 'kapsam dışı', renk: MUTED },
+  uygulanamaz: { t: '—', renk: MUTED },
+};
+const RPI_ETIKET: Record<NgSpaApp['rpIstek'], { t: string; renk: string; ipucu: string }> = {
+  var: {
+    t: 'istek var',
+    renk: 'var(--text-primary)',
+    ipucu: 'RP access log: son 7 günde istek var (hc.jsp/hc.html hariç).',
+  },
+  yok: {
+    t: 'istek yok',
+    renk: WARN,
+    ipucu: 'Tüm tanımlar ölçüldü, pencere ≥ 7 gün, örnekleme yok ve toplam 0.',
+  },
+  kismi: {
+    t: 'kısmi',
+    renk: WARN,
+    ipucu: '0 istek bir ALT SINIRDIR — "istek yok" DEĞİL. Neden:',
+  },
+  olculemedi: {
+    t: 'ölçülemedi',
+    renk: WARN,
+    ipucu:
+      'En az bir tanım ölçülemedi (log okunamadı, satır yok, location tipi) ve hiçbir yerde istek görülmedi.',
+  },
+  'kaynak-yok': {
+    t: 'ölçüm kaynağı yok',
+    renk: MUTED,
+    ipucu:
+      "Yalnız yeni PROD / dizin tabanlı tanım var; bu sunucuların uygulama vhost'ları için access log sayımı yok.",
+  },
+  ayrilamaz: {
+    t: 'ayrılamaz',
+    renk: MUTED,
+    ipucu:
+      'Tanım bu uygulamaya ayrılamıyor (adresi başka route\'larla paylaşılıyor ya da ad birden çok uygulamaya çözülüyor) — trafiği bu uygulamanın "istek var/yok" kararına katılmaz. Ayrıntı için satıra tıklayın.',
+  },
+  uygulanamaz: {
+    t: '—',
+    renk: MUTED,
+    ipucu: 'RP tanımı yok ya da RP kolonları bu uygulama için hesaplanmıyor.',
+  },
+};
+/** rpIstek='kismi' iken 0'ın neden alt sınır olduğu (sunucu: spa-rp.cjs KODLAR.rpIstekNeden). */
+const RPI_NEDEN_METNI: Record<NgSpaRpIstekNeden, string> = {
+  pencere:
+    'ölçülen pencere 7 günden kısa, log örneklendi (512 MB kuyruk) ya da pencere başı bilinmiyor',
+  'kaynak-yok': 'ölçüm kaynağı olmayan (yeni PROD / dizin) tanım da var',
+  ayrilamaz: 'uygulamaya ayrılamayan (paylaşımlı / belirsiz) tanım da var',
+  'host-taranmadi':
+    'ortamın bir RP sunucusu son taramada yok — orada görülmeyen bir tanım istek alıyor olabilir',
+};
+const YOL_ADI: Record<string, { t: string; ipucu: string }> = {
+  proxy: { t: 'proxy', ipucu: 'Eski PROD (GBRVP*) proxy_pass → OpenShift route' },
+  include: { t: 'include', ipucu: 'Servis vhost location → application-confs include' },
+  dizin: {
+    t: 'dizin',
+    ipucu: 'Yeni PROD (GBNGXP4x/AP3x) dizin kurulumu (application-confs conf var)',
+  },
+};
+const ESLES_ADI: Record<string, string> = {
+  kesin: 'kesin',
+  'ek-prod': "'-prod' eki eklenerek eşlendi",
+  ad: 'ad kalıbından eşlendi',
+  envanter: 'route envanteri üzerinden eşlendi',
+  zayif: 'zayıf eşleşme (yalnız ad + ortam)',
+  paylasimli: "aynı adresi paylaşan route'lar — tanım bu uygulamaya ayrılamaz",
+  belirsiz: 'ad birden çok uygulamaya çözülüyor — tanım bu uygulamaya ayrılamaz',
+};
+const TABLO_ADI: Record<string, string> = {
+  config: 'Nginx_Config_Audit',
+  dizin: 'Nginx_Intranet_Audit',
+  upstream: 'Nginx_Audit_Upstreams',
+};
+const TRAFIK_NEDEN: Record<string, string> = {
+  log: 'log okunamadı',
+  'location-tipi': 'location tipi ölçülmüyor (=, ~ ya da regex)',
+  host: "host'un o gün hiç trafik satırı yok (zaman aşımı, ulaşılamadı ya da spa_traffic=false)",
+  'satir-yok': 'bu location için trafik satırı yok',
+  'tablo-yok': 'trafik tablosu yok',
+  okunamadi: 'trafik tablosu okunamadı',
+};
+
+/** 'yyyymmddHHMMSS' → 'yyyy-mm-dd HH:MM' */
+const zaman = (s?: string | null) =>
+  s && s.length >= 12
+    ? `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)} ${s.slice(8, 10)}:${s.slice(10, 12)}`
+    : s || '—';
+const pencere = (sa?: number | null) =>
+  sa == null ? 'bilinmiyor' : sa >= 48 ? `${Math.floor(sa / 24)} gün` : `${sa} sa`;
+
+/** rpNeden kodu → okunur metin (ortamın taranmayan host listesi kapsamdan). */
+function rpNedenMetni(a: NgSpaApp, k?: NgSpaRpKapsam | null): string {
+  const [kod, ek] = String(a.rpNeden || '').split(':');
+  const ENV = String(a.env || '').toUpperCase();
+  switch (kod) {
+    case 'host-taranmadi': {
+      const l = k?.taranmayan?.[ENV] || [];
+      return `${l.join(', ') || 'Ortamın RP sunucularından biri'} son taramada yok → ${ENV} için "tanımsız" denmiyor.`;
+    }
+    case 'proxy-kolonu-yok':
+      return "Nginx_Config_Audit'te proxy kolonları (kind/upstream_name/target_url/upstream_defined) yok: PROD proxy_pass satırları yazılmıyor.";
+    case 'tablo-yok':
+      return `${TABLO_ADI[ek] || ek || 'Tablo'} tablosu yok.`;
+    case 'okunamadi':
+      return `${TABLO_ADI[ek] || ek || 'Tablo'} okunamadı (sorgu düştü).`;
+    case 'ortam-yok':
+      return "Namespace'ten ortam çıkmıyor (-dev/-test/-qa/-edu/-prod eki yok).";
+    case 'rp-listesi-yok':
+      return `${ENV} ortamı için internet RP listesi yok (kapsam dışı).`;
+    case 'platform':
+      return 'ARK dışı platform — bizim RP\'lerden geçtiği teyit edilmedi; tanım bulunamazsa "tanımsız" denmez.';
+    case 'hedef-cozulemedi':
+      return `${ENV} RP'lerinde gerçek arka ucu bulunamayan upstream takma adlı proxy tanımı var (Nginx_Audit_Upstreams adı içermiyor) — bu uygulamaya gidiyor olabilir; "tanımsız" denmiyor.`;
+    case 'belirsiz':
+      return "Aynı adlı uygulama birden çok namespace'te; RP'deki namespace'siz (flat) tanım hangisine ait bilinmiyor — \"tanımsız\" denmiyor.";
+    case 'tarih-farkli':
+      return `${TABLO_ADI[ek] || ek || 'Tablo'} taraması (${k?.dizinTarih || '?'}) config taramasından (${k?.configTarih || '?'}) farklı günden — yeni PROD sunucularının o günkü durumu bilinmiyor; PROD için "tanımsız" denmiyor.`;
+    default:
+      return a.rpNeden || '';
+  }
+}
+
+/** RP isteği 'kısmi'nin NEDEN alt sınır olduğu (taranmayan sunucular kapsamdan). */
+function rpIstekNedenMetni(a: NgSpaApp, k?: NgSpaRpKapsam | null): string {
+  const ENV = String(a.env || '').toUpperCase();
+  return (a.rpIstekNeden || [])
+    .map((n) => {
+      const m = RPI_NEDEN_METNI[n] || n;
+      if (n !== 'host-taranmadi') return `• ${m}`;
+      const l = k?.taranmayan?.[ENV] || [];
+      return `• ${m}${l.length ? ` (taranmayan: ${l.join(', ')})` : ''}`;
+    })
+    .join('\n');
+}
 
 /**
  * CLUSTER KAPSAMI (2026-10-01, ilk üretim koşusu): 43 cluster'ın 27'si hiç veri üretmedi
@@ -120,6 +326,99 @@ function Kapsam({ k }: { k: NgSpaCoverage }) {
   );
 }
 
+/** Tablo durumu + tarih: "2026-10-01" | "tablo yok" | "okunamadı". */
+const kaynakMetni = (durum: string | undefined, tarih: string) =>
+  durum === 'yok' ? 'tablo yok' : durum === 'okunamadi' ? 'okunamadı' : tarih || 'satır yok';
+
+/**
+ * RP KAYNAK KAPSAMI: "ölçülemedi"nin NEREDEN geldiği burada yazar. Bir ortamın "tanımsız"
+ * sayısı yalnız o ortamın tüm RP sunucuları taranmışsa anlamlıdır.
+ */
+function RpKapsamBand({ k }: { k: NgSpaRpKapsam }) {
+  const taranan = k.hostlar.filter((h) => h.taranan).length;
+  const eksikler = Object.entries(k.taranmayan || {});
+  const cozulemeyen = Object.entries(k.cozulemeyen || {}).filter(([, n]) => n > 0);
+  const hedefYok = Object.entries(k.hedefCozulemeyen || {}).filter(([, n]) => n > 0);
+  const t = k.tablolar;
+  return (
+    <details
+      open={
+        eksikler.length > 0 ||
+        k.envanterOkunamadi ||
+        k.dynatraceOkunamadi ||
+        !!k.dizinFarkli ||
+        hedefYok.length > 0
+      }
+      className="text-[11px]"
+    >
+      <summary className="cursor-pointer" style={{ color: 'var(--text-secondary)' }}>
+        Reverse proxy kaynakları: config {kaynakMetni(t.cfg, k.configTarih)} · dizin{' '}
+        {kaynakMetni(t.dir, k.dizinTarih)} · trafik {kaynakMetni(t.trf, k.trafikTarih)} · upstream{' '}
+        {kaynakMetni(t.ups, k.upsTarih)} · taranan internet RP {nf(taranan)}/{nf(k.hostlar.length)}
+        {k.proxyKolonu === false && (
+          <b style={{ color: WARN }}> · proxy kolonları yok (PROD "tanımsız" denmiyor)</b>
+        )}
+      </summary>
+      <div className="mt-1 space-y-0.5">
+        {eksikler.map(([env, l]) => (
+          <div key={env} style={{ color: WARN }}>
+            {l.join(', ')} son taramada yok → {env} için "tanımsız" ve "RP isteği yok" denmiyor
+            (ölçülemedi / kısmi).
+          </div>
+        ))}
+        {k.dizinFarkli && (
+          <div style={{ color: WARN }}>
+            Dizin taraması (Nginx_Intranet_Audit {k.dizinTarih || '?'}) config taramasından (
+            {k.configTarih || '?'}) farklı günden → yeni PROD sunucuları o gün taranmış sayılmıyor;
+            PROD için "tanımsız" denmiyor (ölçülemedi).
+          </div>
+        )}
+        {hedefYok.length > 0 && (
+          <div style={{ color: WARN }}>
+            Gerçek arka ucu bulunamayan upstream takma adlı proxy tanımı:{' '}
+            {hedefYok.map(([e, n]) => `${e} ${nf(n)}`).join(' · ')} (upstream{' '}
+            {kaynakMetni(t.ups, k.upsTarih)}) → bu ortamlarda "tanımsız" denmiyor (ölçülemedi).
+          </div>
+        )}
+        {k.envanterOkunamadi && (
+          <div style={{ color: WARN }}>
+            Route envanteri okunamadı — "Route envanteri" ve Ağ çapraz kontrolü ölçülemedi.
+          </div>
+        )}
+        {k.dynatraceOkunamadi && (
+          <div style={{ color: WARN }}>
+            Dynatrace ölçümü okunamadı — "Uygulama isteği" tüm satırlarda ölçülemedi.
+          </div>
+        )}
+        {cozulemeyen.length > 0 && (
+          <div style={{ color: MUTED }}>
+            Keşifteki hiçbir uygulamaya bağlanamayan RP tanımı:{' '}
+            {cozulemeyen.map(([e, n]) => `${e} ${nf(n)}`).join(' · ')}
+            {k.belirsiz > 0 && <> · {nf(k.belirsiz)} belirsiz (birden çok aday)</>} (keşfe girmeyen
+            cluster, API ya da özel alan adı olabilir).
+          </div>
+        )}
+        <div style={{ color: MUTED }}>
+          Sunucular:{' '}
+          {k.hostlar.map((h, i) => (
+            <span key={h.host}>
+              {i > 0 && ' · '}
+              <span
+                className="font-mono"
+                style={{ color: h.taranan ? 'var(--text-secondary)' : WARN }}
+                title={`${h.env} · ${h.rol} · ${h.taranan ? 'tarandı' : 'son taramada YOK'} · trafik: ${h.trafik}${h.trafikHata ? ` (${h.trafikHata} log hatası)` : ''}`}
+              >
+                {h.host}
+                {!h.taranan && '✗'}
+              </span>
+            </span>
+          ))}
+        </div>
+      </div>
+    </details>
+  );
+}
+
 /** SPA kolonu. ÜÇ DURUM AYRI: hiçbir route eşleşmediyse "bilinmiyor" — "hayır" DEĞİL. */
 function SpaHucre({ a }: { a: NgSpaApp }) {
   if (a.spa === 'evet')
@@ -182,7 +481,11 @@ function KalipHucre({ a }: { a: NgSpaApp }) {
   return <span style={{ color: 'var(--text-secondary)' }}>{a.pattern}</span>;
 }
 
-/** İstek kolonu. DÖRT DURUM AYRI: istek var ≠ istek yok ≠ ölçülemedi ≠ ölçüm yok. */
+/**
+ * Uygulama isteği kolonu (Dynatrace). BEŞ DURUM AYRI: istek var ≠ istek yok ≠ Dynatrace
+ * servisi yok ≠ ölçülemedi ≠ ölçüm yok. Statik SPA'nın pod'una istek gitmeyebilir: "istek yok"
+ * ile "RP isteği var" birlikte tutarlıdır.
+ */
 function IstekHucre({ a }: { a: NgSpaApp }) {
   if (a.istek === 'olcum-yok')
     return (
@@ -197,24 +500,394 @@ function IstekHucre({ a }: { a: NgSpaApp }) {
     return (
       <span
         style={{ color: 'var(--status-warning)' }}
-        title={`Ölçüm denendi ama düştü${a.usage?.note ? ': ' + a.usage.note : ''}. “0 istek” anlamına GELMEZ.`}
+        title={
+          a.usage
+            ? `Dynatrace ölçümü denendi ama düştü${a.usage.note ? ': ' + a.usage.note : ''}. “0 istek” anlamına GELMEZ.`
+            : 'Dynatrace ölçüm tablosu okunamadı. “0 istek” anlamına GELMEZ.'
+        }
       >
         ölçülemedi
       </span>
     );
-  const pencere = a.usage
+  const pencereMetni = a.usage
     ? `Dynatrace servis çağrıları · son ${a.usage.windowDays} gün · ${a.usage.services} servis · ölçüm ${a.usage.scanDate}`
     : '';
+  if (a.istek === 'servis-yok')
+    return (
+      <span
+        style={{ color: 'var(--text-muted)' }}
+        title={`Dynatrace'te bu uygulama için servis oluşmamış — “istek yok” DEMEK DEĞİL (statik SPA'nın pod'u istek almayabilir).\n${pencereMetni}`}
+      >
+        Dynatrace servisi yok
+      </span>
+    );
   if (a.istek === 'yok')
     return (
-      <span style={{ color: 'var(--status-warning)' }} title={pencere}>
+      <span style={{ color: 'var(--status-warning)' }} title={pencereMetni}>
         istek yok
       </span>
     );
   return (
-    <span style={{ color: 'var(--text-primary)' }} title={pencere}>
+    <span style={{ color: 'var(--text-primary)' }} title={pencereMetni}>
       {nf(a.reqShown || 0)}
     </span>
+  );
+}
+
+/** Ağ kolonu: route TLS tipinden; envanter çapraz kontrolü rozet, değeri EZMEZ. */
+function AgHucre({ a }: { a: NgSpaApp }) {
+  const e = AG_ETIKET[a.ag] || AG_ETIKET.bilinmiyor;
+  const say = Object.entries(a.agSay || {})
+    .map(([k, v]) => `${AG_SAY_ADI[k] || k} ${v}`)
+    .join(' · ');
+  const title =
+    `${e.ipucu}\nRoute'lar: ${say || '—'}\nRoute envanteri: ${AG_ENVANTER_METNI[a.agEnvanter] || a.agEnvanter}` +
+    (a.staleClusters.length ? '\nBir cluster son koşuda taranamadı; değer önceki koşudan.' : '');
+  return (
+    <span style={{ color: e.renk }} title={title}>
+      {e.t}
+      {a.agEnvanter === 'celisik' && (
+        <span className="ml-1 text-[10px]" style={{ color: WARN }}>
+          (envanter farklı{a.agCelisikRoute ? `: ${a.agCelisikRoute} route` : ''})
+        </span>
+      )}
+      {a.agCelisme && (
+        <span className="ml-1 text-[10px]" style={{ color: DANGER }}>
+          (internet RP'de tanımlı)
+        </span>
+      )}
+    </span>
+  );
+}
+
+/** Reverse proxy kolonu: tanımlı / tanımsız / ölçülemedi / kapsam dışı / —. */
+function RpHucre({ a, k }: { a: NgSpaApp; k?: NgSpaRpKapsam | null }) {
+  const e = RP_ETIKET[a.rp] || RP_ETIKET.olculemedi;
+  if (a.rp === 'uygulanamaz')
+    return (
+      <span
+        style={{ color: e.renk }}
+        title={
+          a.spa !== 'evet'
+            ? 'RP kolonları yalnız SPA uygulamalar için hesaplanır.'
+            : `Ağ "${AG_ETIKET[a.ag]?.t || a.ag}": RP yalnız internet ve karışık uygulamalarda aranır.`
+        }
+      >
+        {e.t}
+      </span>
+    );
+  if (a.rp === 'tanimli')
+    return (
+      <span
+        title={[
+          `Internet RP'de tanımlı · ${a.rpHost || '?'} sunucu (bulunan/beklenen)`,
+          a.rpEsles ? `Eşleşme: ${ESLES_ADI[a.rpEsles] || a.rpEsles}` : 'Eşleşme: kesin',
+          a.rpSorun?.length ? `Sorun: ${a.rpSorun.join(', ')}` : '',
+          'Ayrıntı için satıra tıklayın.',
+        ]
+          .filter(Boolean)
+          .join('\n')}
+      >
+        <span style={{ color: e.renk, fontWeight: 600 }}>{e.t}</span>
+        {(a.rpYol || []).map((y) => (
+          <span
+            key={y}
+            className="ml-1 px-1 rounded text-[10px] border"
+            style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}
+            title={YOL_ADI[y]?.ipucu}
+          >
+            {YOL_ADI[y]?.t || y}
+          </span>
+        ))}
+        {a.rpHost && (
+          <span className="ml-1 text-[10px]" style={{ color: MUTED }}>
+            {a.rpHost}
+          </span>
+        )}
+        {a.rpEsles && (
+          <span className="ml-1 text-[10px]" style={{ color: WARN }}>
+            ({a.rpEsles})
+          </span>
+        )}
+        {(a.rpSorun || []).map((s) => (
+          <span key={s} className="ml-1 text-[10px]" style={{ color: DANGER }}>
+            {s}
+          </span>
+        ))}
+      </span>
+    );
+  return (
+    <span
+      style={{ color: e.renk, fontWeight: a.rp === 'tanimsiz' ? 600 : 400 }}
+      title={
+        a.rp === 'tanimsiz'
+          ? 'Ortamın tüm internet RP sunucuları tarandı, tablolar okundu; bu uygulamaya bağlanan tanım yok.'
+          : rpNedenMetni(a, k)
+      }
+    >
+      {e.t}
+    </span>
+  );
+}
+
+/**
+ * RP isteği kolonu (access log). Ölçülemeyen hücreye 0 YAZILMAZ. 'kısmi'nin ipucu genel bir
+ * metin DEĞİL, sunucunun yazdığı nedenlerdir (rpIstekNeden) — "pencere kısa" demek, asıl neden
+ * "Ankara taranmadı" iken ipucunu kendisiyle çelişkiye düşürürdü (doğrulama bulgusu).
+ */
+function RpIstekHucre({ a, k }: { a: NgSpaApp; k?: NgSpaRpKapsam | null }) {
+  const e = RPI_ETIKET[a.rpIstek] || RPI_ETIKET.olculemedi;
+  const ipucu = [
+    e.ipucu,
+    a.rpIstek === 'kismi' ? rpIstekNedenMetni(a, k) : '',
+    a.rpReq24 != null ? `son 24 saat: ${nf(a.rpReq24)}` : '',
+    a.rpReq7 != null ? `son 7 gün: ${nf(a.rpReq7)}` : '',
+    a.rpSon ? `son istek: ${zaman(a.rpSon)}` : '',
+    a.rpPencereSa != null ? `ölçülen pencere (en kısa): ${pencere(a.rpPencereSa)}` : '',
+    a.rpOlcum ? `ölçülen/ölçülebilir tanım: ${a.rpOlcum}` : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
+  if (a.rpIstek === 'var')
+    return (
+      <span style={{ color: e.renk }} title={ipucu}>
+        {nf(a.rpReq7 ?? 0)}
+        <span className="text-[10px]" style={{ color: MUTED }}>
+          {' '}
+          /7g
+        </span>
+      </span>
+    );
+  if (a.rpIstek === 'kismi')
+    return (
+      <span style={{ color: e.renk }} title={ipucu}>
+        0 · {e.t}
+        {a.rpIstekNeden?.includes('host-taranmadi')
+          ? ' (sunucu taranmadı)'
+          : a.rpPencereSa != null && ` (${pencere(a.rpPencereSa)})`}
+      </span>
+    );
+  return (
+    <span style={{ color: e.renk }} title={ipucu}>
+      {e.t}
+      {a.rpIstek === 'olculemedi' && a.rpOlcum && ` (${a.rpOlcum})`}
+    </span>
+  );
+}
+
+/** Tanım başına trafik metni (ayrıntı paneli). */
+function TrafikHucre({ t }: { t: NgSpaRpTanim['trafik'] }) {
+  if (!t) return <span style={{ color: MUTED }}>ölçüm kaynağı yok</span>;
+  if (t.durum === 'olculemedi')
+    return (
+      <span style={{ color: WARN }} title={t.hata || ''}>
+        ölçülemedi: {TRAFIK_NEDEN[t.neden || ''] || t.neden}
+      </span>
+    );
+  return (
+    <span
+      style={{ color: t.durum === 'var' ? 'var(--text-primary)' : WARN }}
+      title={`ilk kayıt (pencere başı): ${zaman(t.ilk)}${t.sampled ? ' · log örneklendi (512 MB kuyruk)' : ''}`}
+    >
+      {nf(t.req24 ?? 0)} / {nf(t.req7 ?? 0)}
+      {t.durum === 'sifir-kismi' && ' · kısmi'}
+    </span>
+  );
+}
+
+/**
+ * Satıra tıklayınca açılan panel: tanımlar + tanım başına trafik + beklenen sunucular.
+ *
+ * İKİ KAYNAK TEK EKRANDA ÇELİŞMEZ (doğrulama bulguları, 2026-10-01):
+ *   surum      tablo her yüklendiğinde artar; bağımlılıkta olduğu için "Yenile" sonrası açık
+ *              panel YENİDEN çekilir (eskiden satır yeni hesabı, panel eski hesabı gösteriyordu).
+ *   tabloHesap tablonun geldiği sunucu hesabı; panelin hesabı farklıysa (bellek özeti 10 dk'da
+ *              eskidi ya da başka bir kullanıcı yeniledi) bu AÇIKÇA yazılır ve Yenile önerilir.
+ */
+function RpAyrinti({
+  a,
+  k,
+  surum,
+  tabloHesap,
+  onYenile,
+}: {
+  a: NgSpaApp;
+  k?: NgSpaRpKapsam | null;
+  surum: number;
+  tabloHesap?: string;
+  onYenile: () => void;
+}) {
+  // Yanit HANGI tablo surumu icin cekildi: eski surumun yaniti yenisi gelene kadar GOSTERILMEZ
+  // ("Yükleniyor…"), yoksa Yenile sonrasi bir an eski tanimlar yeni satirin altinda kalirdi.
+  const [yanit, setYanit] = useState<{ r: NgSpaRpDetay; surum: number } | null>(null);
+  const [hata, setHata] = useState('');
+  useAsyncEffect(
+    async (alive) => {
+      try {
+        const r = await nginxConsoleApi.spaRp(a.namespace, a.application);
+        if (!alive()) return;
+        if (r && r.ok === false) setHata(r.message || 'Ayrıntı okunamadı.');
+        else {
+          setHata('');
+          setYanit({ r, surum });
+        }
+      } catch (e: unknown) {
+        if (alive()) setHata(e instanceof Error ? e.message : String(e));
+      }
+    },
+    [a.namespace, a.application, surum],
+  );
+  const d = yanit && yanit.surum === surum ? yanit.r : null;
+  const ag = AG_ETIKET[a.ag] || AG_ETIKET.bilinmiyor;
+  const tanimlar = d?.tanimlar || [];
+  const farkliHesap = !!(d?.hesaplandi && tabloHesap && d.hesaplandi !== tabloHesap);
+  return (
+    <div
+      className="space-y-2 text-[11px] p-2 rounded-lg"
+      style={{ background: 'var(--bg-surface)' }}
+    >
+      {farkliHesap && (
+        <div style={{ color: WARN }} data-testid="rp-ayrinti-farkli-hesap">
+          Bu ayrıntı tablodan farklı bir hesaptan geliyor (tablo {fmtDateTime(tabloHesap)}, ayrıntı{' '}
+          {fmtDateTime(d?.hesaplandi)}) — satırdaki değerlerle çelişebilir; tabloyu yenileyin.{' '}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onYenile();
+            }}
+            className="ml-1 px-1.5 py-0.5 text-[11px] border rounded"
+            style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}
+          >
+            Yenile
+          </button>
+        </div>
+      )}
+      <div style={{ color: 'var(--text-secondary)' }}>
+        <b>Ağ</b>: {ag.t} — {ag.ipucu} Route'lar:{' '}
+        {Object.entries(a.agSay || {})
+          .map(([x, v]) => `${AG_SAY_ADI[x] || x} ${v}`)
+          .join(' · ') || '—'}
+        . Envanter: {AG_ENVANTER_METNI[a.agEnvanter] || a.agEnvanter}.
+      </div>
+      <div style={{ color: 'var(--text-secondary)' }}>
+        <b>Reverse proxy</b>: {RP_ETIKET[a.rp]?.t || a.rp}
+        {a.rpNeden ? ` — ${rpNedenMetni(a, k)}` : ''}
+        {a.rp === 'tanimli' && a.rpEsles ? ` — ${ESLES_ADI[a.rpEsles] || a.rpEsles}` : ''} ·{' '}
+        <b>RP isteği</b>: {RPI_ETIKET[a.rpIstek]?.t || a.rpIstek}
+        {a.rpIstek === 'kismi' && a.rpIstekNeden?.length
+          ? ` (${a.rpIstekNeden.map((n) => RPI_NEDEN_METNI[n] || n).join('; ')})`
+          : ''}{' '}
+        · <b>Uygulama isteği (Dynatrace)</b>: {a.istek}
+      </div>
+      {hata ? (
+        <div style={{ color: DANGER }}>Ayrıntı okunamadı: {hata}</div>
+      ) : !d ? (
+        <div style={{ color: MUTED }}>Yükleniyor…</div>
+      ) : (
+        <>
+          {tanimlar.length ? (
+            <table className="w-full">
+              <thead>
+                <tr style={{ color: MUTED }}>
+                  {[
+                    'Sunucu',
+                    'Vhost',
+                    'Location / dizin',
+                    'Yol',
+                    'Durum',
+                    'Hedef',
+                    '24s / 7g',
+                    'Son istek',
+                    'Pencere',
+                  ].map((h) => (
+                    <th key={h} className="text-left pr-2 font-semibold whitespace-nowrap">
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {tanimlar.map((t) => (
+                  <tr
+                    key={`${t.host}|${t.yol}|${t.vhost}|${t.location}`}
+                    className="border-t align-top"
+                    style={{ borderColor: 'var(--border-subtle)' }}
+                  >
+                    <td className="pr-2 font-mono whitespace-nowrap">
+                      {t.host}{' '}
+                      <span className="text-[10px]" style={{ color: MUTED }}>
+                        {t.env} {t.rol}
+                      </span>
+                    </td>
+                    <td className="pr-2 font-mono">{t.vhost || '—'}</td>
+                    <td className="pr-2 font-mono break-all">{t.location}</td>
+                    <td className="pr-2" title={YOL_ADI[t.yol]?.ipucu}>
+                      {YOL_ADI[t.yol]?.t || t.yol}
+                    </td>
+                    <td className="pr-2 whitespace-nowrap">
+                      <span style={{ color: t.status === 'OK' ? 'var(--text-secondary)' : DANGER }}>
+                        {t.status}
+                      </span>
+                      {t.esles !== 'kesin' && (
+                        <span className="ml-1 text-[10px]" style={{ color: WARN }}>
+                          ({ESLES_ADI[t.esles] || t.esles})
+                        </span>
+                      )}
+                    </td>
+                    <td className="pr-2 font-mono break-all" title={t.hedefKaynak}>
+                      {t.hedef || t.conf || '—'}
+                    </td>
+                    <td className="pr-2 whitespace-nowrap tabular-nums">
+                      <TrafikHucre t={t.trafik} />
+                    </td>
+                    <td className="pr-2 whitespace-nowrap">
+                      {t.trafik?.son ? zaman(t.trafik.son) : '—'}
+                    </td>
+                    <td className="pr-2 whitespace-nowrap">
+                      {t.trafik && t.trafik.durum !== 'olculemedi'
+                        ? pencere(t.trafik.pencereSa)
+                        : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <div style={{ color: MUTED }}>
+              Bu uygulamaya bağlanan internet RP tanımı yok
+              {a.rp === 'tanimsiz' ? ' (ortamın tüm RP sunucuları tarandı).' : '.'}
+            </div>
+          )}
+          {!!d.beklenen?.length && (
+            <div style={{ color: MUTED }}>
+              {String(a.env || '').toUpperCase()} internet RP sunucuları:{' '}
+              {d.beklenen.map((h, i) => (
+                <span key={h.host}>
+                  {i > 0 && ' · '}
+                  <span
+                    className="font-mono"
+                    style={{ color: h.taranan ? 'var(--text-secondary)' : WARN }}
+                  >
+                    {h.host}
+                  </span>{' '}
+                  {h.taranan ? 'tarandı' : 'TARANMADI'}
+                  {h.rol !== 'prod-yeni' && `, trafik ${h.trafik}`}
+                </span>
+              ))}
+            </div>
+          )}
+          {d.kapsam && (
+            <div style={{ color: MUTED }}>
+              Kaynak tarihleri: config {kaynakMetni(d.kapsam.tablolar?.cfg, d.kapsam.configTarih)} ·
+              dizin {kaynakMetni(d.kapsam.tablolar?.dir, d.kapsam.dizinTarih)} · trafik{' '}
+              {kaynakMetni(d.kapsam.tablolar?.trf, d.kapsam.trafikTarih)} · upstream{' '}
+              {kaynakMetni(d.kapsam.tablolar?.ups, d.kapsam.upsTarih)}
+              {d.hesaplandi ? ` · hesaplandı ${fmtDateTime(d.hesaplandi)}` : ''}
+            </div>
+          )}
+        </>
+      )}
+    </div>
   );
 }
 
@@ -222,6 +895,15 @@ function IstekHucre({ a }: { a: NgSpaApp }) {
 function EnvanterHucre({ a }: { a: NgSpaApp }) {
   const title =
     "Bu uygulamanın route'u Openshift route envanterinde (dbo.BMW_Openshift_Route_Inventory) kayıtlı mı";
+  if (a.inventory === 'olculemedi')
+    return (
+      <span
+        style={{ color: 'var(--status-warning)' }}
+        title="Route envanteri okunamadı — “kayıtlı değil” DEMEK DEĞİL."
+      >
+        ölçülemedi
+      </span>
+    );
   if (a.inventory === 'kayitli')
     return (
       <span style={{ color: 'var(--text-secondary)' }} title={title}>
@@ -247,6 +929,9 @@ function EnvanterHucre({ a }: { a: NgSpaApp }) {
 type SpaSecim = 'tumu' | NgSpaApp['spa'];
 type KalipSecim = 'tumu' | NgSpaApp['pattern'];
 type IstekSecim = 'tumu' | NgSpaApp['istek'];
+type AgSecim = 'tumu' | NgSpaApp['ag'];
+type RpSecim = 'tumu' | NgSpaApp['rp'];
+type RpIstekSecim = 'tumu' | NgSpaApp['rpIstek'];
 
 const sayac = <K extends string>(apps: NgSpaApp[], f: (a: NgSpaApp) => K) =>
   apps.reduce<Record<string, number>>((m, a) => {
@@ -254,6 +939,117 @@ const sayac = <K extends string>(apps: NgSpaApp[], f: (a: NgSpaApp) => K) =>
     m[k] = (m[k] || 0) + 1;
     return m;
   }, {});
+
+const anahtar = (a: NgSpaApp) => `${a.namespace}|${a.application}`;
+const KOLON_SAYISI = 11;
+
+interface SpaSatirProps {
+  a: NgSpaApp;
+  acik: boolean;
+  k?: NgSpaRpKapsam | null;
+  /** SABIT referans (useCallback): degisirse memo her satiri yeniden cizer. */
+  onSec: (key: string) => void;
+  surum: number;
+  tabloHesap?: string;
+  onYenile: () => void;
+}
+
+/**
+ * TEK UYGULAMA SATIRI — React.memo (doğrulama bulgusu, 2026-10-01): seçili satır state'i üst
+ * bileşende; satırlar memo'suzken her tıklama 10 bin satırın 11 hücresini (ipucu dizgeleri
+ * dahil) yeniden hesaplıyordu (jsdom: tık başına 300-400 ms). Props'lar tıklamada yalnız
+ * açılan/kapanan iki satır için değişir (acik); onSec/onYenile sabit, a ve k veri yüklenene
+ * kadar aynı nesne.
+ */
+const SpaSatir = memo(function SpaSatir({
+  a,
+  acik,
+  k,
+  onSec,
+  surum,
+  tabloHesap,
+  onYenile,
+}: SpaSatirProps) {
+  return (
+    <Fragment>
+      <tr
+        className="border-t align-top cursor-pointer"
+        style={{
+          borderColor: 'var(--border-subtle)',
+          background: acik ? 'var(--bg-elevated)' : undefined,
+        }}
+        onClick={() => onSec(anahtar(a))}
+      >
+        <td className="px-2 py-1 font-mono font-medium">
+          {acik ? (
+            <ChevronDownIcon className="w-3 h-3 inline mr-1" />
+          ) : (
+            <ChevronRightIcon className="w-3 h-3 inline mr-1" />
+          )}
+          {a.application}
+        </td>
+        <td className="px-2 py-1 font-mono" style={{ color: 'var(--text-secondary)' }}>
+          {a.namespace}
+          {a.env && (
+            <span className="ml-1 text-[10px] uppercase" style={{ color: 'var(--text-muted)' }}>
+              {a.env}
+            </span>
+          )}
+        </td>
+        <td className="px-2 py-1 whitespace-nowrap">
+          <SpaHucre a={a} />
+        </td>
+        <td className="px-2 py-1 whitespace-nowrap">
+          <KalipHucre a={a} />
+        </td>
+        <td className="px-2 py-1 tabular-nums whitespace-nowrap">
+          <IstekHucre a={a} />
+        </td>
+        <td className="px-2 py-1 whitespace-nowrap">
+          <AgHucre a={a} />
+        </td>
+        <td className="px-2 py-1 whitespace-nowrap">
+          <RpHucre a={a} k={k} />
+        </td>
+        <td className="px-2 py-1 tabular-nums whitespace-nowrap">
+          <RpIstekHucre a={a} k={k} />
+        </td>
+        <td className="px-2 py-1 whitespace-nowrap">
+          <EnvanterHucre a={a} />
+        </td>
+        <td className="px-2 py-1 font-mono text-[11px] break-all">
+          {a.hosts.length
+            ? a.hosts.map((h) => <div key={h}>{h}</div>)
+            : a.routes.map((r) => <div key={r}>{r}</div>)}
+        </td>
+        <td className="px-2 py-1 text-[11px]" style={{ color: 'var(--text-muted)' }}>
+          {/* ESKI VERI SUNUCUDAN: son kosusu basarisiz cluster'in satiri onceki bir
+              kosudan (staleClusters, kapsamdan turetilir). */}
+          {a.clusters.map((c) =>
+            a.staleClusters.includes(c) ? (
+              <div
+                key={c}
+                style={{ color: 'var(--status-warning)' }}
+                title="Bu cluster son koşusunda taranamadı; veri önceki bir koşudan."
+              >
+                {c} · önceki koşudan
+              </div>
+            ) : (
+              <div key={c}>{c}</div>
+            ),
+          )}
+        </td>
+      </tr>
+      {acik && (
+        <tr>
+          <td colSpan={KOLON_SAYISI} className="px-2 pb-2">
+            <RpAyrinti a={a} k={k} surum={surum} tabloHesap={tabloHesap} onYenile={onYenile} />
+          </td>
+        </tr>
+      )}
+    </Fragment>
+  );
+});
 
 export default function NginxSpaDiscovery() {
   const [data, setData] = useState<NgSpaDiscovery | null>(null);
@@ -263,20 +1059,34 @@ export default function NginxSpaDiscovery() {
   const [spa, setSpa] = useState<SpaSecim>('tumu');
   const [kalip, setKalip] = useState<KalipSecim>('tumu');
   const [istek, setIstek] = useState<IstekSecim>('tumu');
+  const [ag, setAg] = useState<AgSecim>('tumu');
+  const [rp, setRp] = useState<RpSecim>('tumu');
+  const [rpIstek, setRpIstek] = useState<RpIstekSecim>('tumu');
   const [cluster, setCluster] = useState('tumu');
+  // AYRINTI: tıklanan satırın altında RP tanımları paneli (tek satır açık). onSec SABİT
+  // (useCallback, anahtarı parametre alır): memo'lu satırlar tıklamada yeniden çizilmez.
+  const [secili, setSecili] = useState<string | null>(null);
+  const onSec = useCallback((key: string) => setSecili((s) => (s === key ? null : key)), []);
+  // TABLO SURUMU: her basarili yuklemede artar; acik ayrinti paneli buna bagli olarak
+  // YENIDEN cekilir ("Yenile" sonrasi satir yeni, panel eski hesabi gostermesin).
+  const [surum, setSurum] = useState(0);
 
   // HATA GORUNUR: uc nokta 500 ya da ag hatasi verdiginde ekran "bu suzgeclerle satir yok"
   // DEMEZ (dusmanca dogrulama bulgusu - hata "yok" gibi sunuluyordu).
   const [hata, setHata] = useState('');
-  const yukle = useCallback(async () => {
+  // fresh: "Yenile" sunucudaki 60 sn yanit onbellegini atlar.
+  const yukle = useCallback(async (fresh = false) => {
     setYukleniyor(true);
     setHata('');
     try {
-      const d = await nginxConsoleApi.spaDiscovery();
+      const d = await nginxConsoleApi.spaDiscovery(fresh);
       if (d && d.ok === false) {
         setHata(d.message || 'SPA keşfi okunamadı.');
         setData(null);
-      } else setData(d);
+      } else {
+        setData(d);
+        setSurum((n) => n + 1);
+      }
     } catch (e: unknown) {
       setHata(e instanceof Error ? e.message : String(e));
       setData(null);
@@ -284,6 +1094,7 @@ export default function NginxSpaDiscovery() {
       setYukleniyor(false);
     }
   }, []);
+  const yenile = useCallback(() => void yukle(true), [yukle]);
   useAsyncEffect(async () => {
     await yukle();
   }, [yukle]);
@@ -294,6 +1105,9 @@ export default function NginxSpaDiscovery() {
       spa: sayac(apps, (a) => a.spa),
       kalip: sayac(apps, (a) => a.pattern),
       istek: sayac(apps, (a) => a.istek),
+      ag: sayac(apps, (a) => a.ag),
+      rp: sayac(apps, (a) => a.rp),
+      rpIstek: sayac(apps, (a) => a.rpIstek),
     }),
     [apps],
   );
@@ -305,6 +1119,9 @@ export default function NginxSpaDiscovery() {
       if (spa !== 'tumu' && a.spa !== spa) return false;
       if (kalip !== 'tumu' && a.pattern !== kalip) return false;
       if (istek !== 'tumu' && a.istek !== istek) return false;
+      if (ag !== 'tumu' && a.ag !== ag) return false;
+      if (rp !== 'tumu' && a.rp !== rp) return false;
+      if (rpIstek !== 'tumu' && a.rpIstek !== rpIstek) return false;
       if (cluster !== 'tumu' && !a.clusters.includes(cluster)) return false;
       if (!ara) return true;
       return (
@@ -314,7 +1131,7 @@ export default function NginxSpaDiscovery() {
         a.routes.some((r) => r.toLowerCase().includes(ara))
       );
     });
-  }, [apps, q, ns, spa, kalip, istek, cluster]);
+  }, [apps, q, ns, spa, kalip, istek, ag, rp, rpIstek, cluster]);
 
   const suzgecVar =
     !!q ||
@@ -322,6 +1139,9 @@ export default function NginxSpaDiscovery() {
     spa !== 'tumu' ||
     kalip !== 'tumu' ||
     istek !== 'tumu' ||
+    ag !== 'tumu' ||
+    rp !== 'tumu' ||
+    rpIstek !== 'tumu' ||
     cluster !== 'tumu';
   const temizle = () => {
     setQ('');
@@ -329,6 +1149,9 @@ export default function NginxSpaDiscovery() {
     setSpa('tumu');
     setKalip('tumu');
     setIstek('tumu');
+    setAg('tumu');
+    setRp('tumu');
+    setRpIstek('tumu');
     setCluster('tumu');
   };
 
@@ -344,6 +1167,17 @@ export default function NginxSpaDiscovery() {
         'ad_kalibi',
         'istek',
         'olcum_penceresi_gun',
+        'ag',
+        'ag_envanter',
+        'reverse_proxy',
+        'rp_yol',
+        'rp_host',
+        'rp_neden',
+        'rp_istegi',
+        'rp_istegi_nedeni',
+        'rp_istek_7g',
+        'rp_istek_24s',
+        'rp_son_istek',
         'route_envanteri',
         'adresler',
         'clusterlar',
@@ -359,6 +1193,18 @@ export default function NginxSpaDiscovery() {
         // OLCULEMEYEN SATIRA 0 YAZILMAZ: elektronik tabloda toplanip "istek yok" okunurdu.
         a.istek === 'var' || a.istek === 'yok' ? (a.reqShown ?? '') : a.istek,
         a.usage?.windowDays ?? '',
+        a.ag,
+        a.agEnvanter,
+        a.rp,
+        (a.rpYol || []).join(' '),
+        a.rpHost || '',
+        a.rpNeden || '',
+        a.rpIstek,
+        (a.rpIstekNeden || []).join(' '),
+        // Ayni kural: olculmeyen RP istegine 0 yazilmaz (sayi yalniz olculen tanimlardan).
+        a.rpReq7 ?? '',
+        a.rpReq24 ?? '',
+        a.rpSon ? zaman(a.rpSon) : '',
         a.inventory === 'kismen' ? `kısmen (${a.invRoutes}/${a.routeCount})` : a.inventory,
         a.hosts.join(' '),
         a.clusters.join(' '),
@@ -386,6 +1232,10 @@ export default function NginxSpaDiscovery() {
   const SELECT = 'px-2 py-1.5 text-xs border rounded-lg';
   const selStyle = { borderColor: 'var(--border)', background: 'var(--bg-surface)' };
   const sec = (n?: number) => (n != null ? ` (${nf(n)})` : '');
+  const kirilim = (m: Record<string, number> | undefined, ad: Record<string, { t: string }>) =>
+    Object.entries(m || {})
+      .map(([k, v]) => `${ad[k]?.t === '—' ? 'uygulanamaz' : ad[k]?.t || k} ${nf(v)}`)
+      .join(' · ');
 
   return (
     <div className="space-y-3">
@@ -441,13 +1291,22 @@ export default function NginxSpaDiscovery() {
           </div>
           <div className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>
             SPA'lardan {nf(s.spaRequestActive)} tanesi istek alıyor · {nf(s.spaRequestIdle)} istek
-            almıyor · {nf(s.spaRequestUnknown)} ölçülemedi/ölçüm yok
+            almıyor
+            {!!s.spaRequestNoService && (
+              <> · {nf(s.spaRequestNoService)} Dynatrace servisi yok</>
+            )} · {nf(s.spaRequestUnknown)} ölçülemedi/ölçüm yok
             {s.spaNotInInventory > 0 && (
               <> · {nf(s.spaNotInInventory)} SPA route envanterinde tam kayıtlı değil</>
             )}
             {s.unknown > 0 && <> · {nf(s.unknown)} uygulamada SPA olup olmadığı ölçülemedi</>}
             {data?.scanDate ? ` · keşif ${data.scanDate}` : ''}
           </div>
+          {s.spa > 0 && s.spaAg && (
+            <div className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>
+              SPA'ların ağı: {kirilim(s.spaAg, AG_ETIKET)} · reverse proxy:{' '}
+              {kirilim(s.spaRp, RP_ETIKET)} · RP isteği: {kirilim(s.spaRpIstek, RPI_ETIKET)}
+            </div>
+          )}
           {!!data?.platformHidden?.routes && (
             <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
               OpenShift platform namespace'leri (openshift-*, kube-*, default) kapsam dışı:{' '}
@@ -456,13 +1315,18 @@ export default function NginxSpaDiscovery() {
             </div>
           )}
           {data?.coverage && <Kapsam k={data.coverage} />}
+          {data?.rpKapsam && <RpKapsamBand k={data.rpKapsam} />}
         </div>
       )}
 
       <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
         <b>SPA</b>: kabinde nginx çalışıyor mu · <b>Ad kalıbı</b>: uygulama adı -app-v / -app-emb-v
-        kuralına uyuyor mu (eski yöntem SPA'yı yalnız adından tanıyordu) · <b>İstek</b>: Dynatrace'e
-        göre istek alıyor mu · <b>Route envanteri</b>: route'u envanterde kayıtlı mı.
+        kuralına uyuyor mu (eski yöntem SPA'yı yalnız adından tanıyordu) · <b>Uygulama isteği</b>:
+        Dynatrace'e göre uygulama (pod) istek alıyor mu · <b>Ağ</b>: route TLS tipi (passthrough =
+        internet, reencrypt = intranet) · <b>Reverse proxy</b>: internet SPA bizim RP
+        sunucularımızda tanımlı mı · <b>RP isteği</b>: RP access log'una göre tanım istek alıyor mu
+        · <b>Route envanteri</b>: route'u envanterde kayıtlı mı. Satıra tıklayınca RP tanımları
+        açılır.
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -521,13 +1385,58 @@ export default function NginxSpaDiscovery() {
           onChange={(e) => setIstek(e.target.value as IstekSecim)}
           className={SELECT}
           style={selStyle}
-          title="İstek"
+          title="Uygulama isteği (Dynatrace)"
         >
-          <option value="tumu">istek: tümü</option>
+          <option value="tumu">uygulama isteği: tümü</option>
           <option value="var">istek alıyor{sec(say.istek.var)}</option>
           <option value="yok">istek almıyor{sec(say.istek.yok)}</option>
+          <option value="servis-yok">Dynatrace servisi yok{sec(say.istek['servis-yok'])}</option>
           <option value="olculemedi">istek ölçülemedi{sec(say.istek.olculemedi)}</option>
           <option value="olcum-yok">istek ölçümü yok{sec(say.istek['olcum-yok'])}</option>
+        </select>
+        <select
+          value={ag}
+          onChange={(e) => setAg(e.target.value as AgSecim)}
+          className={SELECT}
+          style={selStyle}
+          title="Ağ (route TLS tipi)"
+        >
+          <option value="tumu">ağ: tümü</option>
+          <option value="internet">ağ: internet{sec(say.ag.internet)}</option>
+          <option value="intranet">ağ: intranet{sec(say.ag.intranet)}</option>
+          <option value="karisik">ağ: karışık{sec(say.ag.karisik)}</option>
+          <option value="diger">ağ: diğer{sec(say.ag.diger)}</option>
+          <option value="bilinmiyor">ağ: bilinmiyor{sec(say.ag.bilinmiyor)}</option>
+        </select>
+        <select
+          value={rp}
+          onChange={(e) => setRp(e.target.value as RpSecim)}
+          className={SELECT}
+          style={selStyle}
+          title="Reverse proxy'de tanımlı mı"
+        >
+          <option value="tumu">reverse proxy: tümü</option>
+          <option value="tanimli">RP: tanımlı{sec(say.rp.tanimli)}</option>
+          <option value="tanimsiz">RP: tanımsız{sec(say.rp.tanimsiz)}</option>
+          <option value="olculemedi">RP: ölçülemedi{sec(say.rp.olculemedi)}</option>
+          <option value="kapsam-disi">RP: kapsam dışı{sec(say.rp['kapsam-disi'])}</option>
+          <option value="uygulanamaz">RP: uygulanamaz{sec(say.rp.uygulanamaz)}</option>
+        </select>
+        <select
+          value={rpIstek}
+          onChange={(e) => setRpIstek(e.target.value as RpIstekSecim)}
+          className={SELECT}
+          style={selStyle}
+          title="RP isteği (access log)"
+        >
+          <option value="tumu">RP isteği: tümü</option>
+          <option value="var">RP isteği var{sec(say.rpIstek.var)}</option>
+          <option value="yok">RP isteği yok{sec(say.rpIstek.yok)}</option>
+          <option value="kismi">RP isteği kısmi{sec(say.rpIstek.kismi)}</option>
+          <option value="olculemedi">RP isteği ölçülemedi{sec(say.rpIstek.olculemedi)}</option>
+          <option value="kaynak-yok">RP ölçüm kaynağı yok{sec(say.rpIstek['kaynak-yok'])}</option>
+          <option value="ayrilamaz">RP isteği ayrılamaz{sec(say.rpIstek.ayrilamaz)}</option>
+          <option value="uygulanamaz">RP isteği uygulanamaz{sec(say.rpIstek.uygulanamaz)}</option>
         </select>
         <select
           value={cluster}
@@ -565,9 +1474,10 @@ export default function NginxSpaDiscovery() {
             <ArrowDownTrayIcon className="w-3.5 h-3.5" /> CSV ({nf(satirlar.length)})
           </button>
           <button
-            onClick={() => void yukle()}
+            onClick={() => void yukle(true)}
             className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs border rounded-lg"
             style={{ borderColor: 'var(--border)' }}
+            title="Sunucudaki 60 sn önbelleği atlayıp yeniden hesaplar"
           >
             <ArrowPathIcon className={`w-3.5 h-3.5 ${yukleniyor ? 'animate-spin' : ''}`} /> Yenile
           </button>
@@ -586,12 +1496,23 @@ export default function NginxSpaDiscovery() {
                 'Namespace',
                 'SPA',
                 'Ad kalıbı',
-                'İstek',
+                'Uygulama isteği',
+                'Ağ',
+                'Reverse proxy',
+                'RP isteği',
                 'Route envanteri',
                 'Adresler',
                 "Cluster'lar",
               ].map((h) => (
-                <th key={h} className="text-left px-2 py-1.5 font-semibold whitespace-nowrap">
+                <th
+                  key={h}
+                  className="text-left px-2 py-1.5 font-semibold whitespace-nowrap"
+                  title={
+                    h === 'Uygulama isteği'
+                      ? 'Dynatrace: uygulamanın pod/servis çağrıları (RP access log değil)'
+                      : undefined
+                  }
+                >
                   {h}
                 </th>
               ))}
@@ -599,62 +1520,24 @@ export default function NginxSpaDiscovery() {
           </thead>
           <tbody>
             {satirlar.map((a) => (
-              <tr
-                key={`${a.namespace}|${a.application}`}
-                className="border-t align-top"
-                style={{ borderColor: 'var(--border-subtle)' }}
-              >
-                <td className="px-2 py-1 font-mono font-medium">{a.application}</td>
-                <td className="px-2 py-1 font-mono" style={{ color: 'var(--text-secondary)' }}>
-                  {a.namespace}
-                  {a.env && (
-                    <span
-                      className="ml-1 text-[10px] uppercase"
-                      style={{ color: 'var(--text-muted)' }}
-                    >
-                      {a.env}
-                    </span>
-                  )}
-                </td>
-                <td className="px-2 py-1 whitespace-nowrap">
-                  <SpaHucre a={a} />
-                </td>
-                <td className="px-2 py-1 whitespace-nowrap">
-                  <KalipHucre a={a} />
-                </td>
-                <td className="px-2 py-1 tabular-nums whitespace-nowrap">
-                  <IstekHucre a={a} />
-                </td>
-                <td className="px-2 py-1 whitespace-nowrap">
-                  <EnvanterHucre a={a} />
-                </td>
-                <td className="px-2 py-1 font-mono text-[11px] break-all">
-                  {a.hosts.length
-                    ? a.hosts.map((h) => <div key={h}>{h}</div>)
-                    : a.routes.map((r) => <div key={r}>{r}</div>)}
-                </td>
-                <td className="px-2 py-1 text-[11px]" style={{ color: 'var(--text-muted)' }}>
-                  {/* ESKI VERI SUNUCUDAN: son kosusu basarisiz cluster'in satiri onceki bir
-                      kosudan (staleClusters, kapsamdan turetilir). */}
-                  {a.clusters.map((c) =>
-                    a.staleClusters.includes(c) ? (
-                      <div
-                        key={c}
-                        style={{ color: 'var(--status-warning)' }}
-                        title="Bu cluster son koşusunda taranamadı; veri önceki bir koşudan."
-                      >
-                        {c} · önceki koşudan
-                      </div>
-                    ) : (
-                      <div key={c}>{c}</div>
-                    ),
-                  )}
-                </td>
-              </tr>
+              <SpaSatir
+                key={anahtar(a)}
+                a={a}
+                acik={secili === anahtar(a)}
+                k={data?.rpKapsam}
+                onSec={onSec}
+                surum={surum}
+                tabloHesap={data?.hesaplandi}
+                onYenile={yenile}
+              />
             ))}
             {!satirlar.length && !yukleniyor && (
               <tr>
-                <td colSpan={8} className="px-2 py-3" style={{ color: 'var(--text-muted)' }}>
+                <td
+                  colSpan={KOLON_SAYISI}
+                  className="px-2 py-3"
+                  style={{ color: 'var(--text-muted)' }}
+                >
                   {hata ? (
                     // HATA "SATIR YOK" DEGIL: ust bantta sebep yazar; burada da bos sonuc
                     // gibi konusulmaz.

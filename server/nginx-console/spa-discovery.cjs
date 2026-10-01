@@ -1,4 +1,4 @@
-// server/nginx-console/spa-discovery.cjs — Nginx Hub > "Gerçek SPA Keşfi" (2026-10-01).
+// server/nginx-console/spa-discovery.cjs — Nginx Hub > "Gercek SPA Kesfi" (2026-10-01).
 //
 // Kullanici: "Nginx Hub icerisinde gercekten SPA olan tum uygulamalarin cekilmesi, bu
 // uygulamalara nazaran route envanterinin karsilastirilmasi ve route'larinin yazilmasi,
@@ -12,10 +12,21 @@
 // EKRANIN ASIL ISI: ad kalibina (`-app-v` / `-app-emb-v`) UYMAYAN ama gercekten SPA olan
 // uygulamalari gostermek. Kullanici bu sayfayi tam da onun icin istedi; o yuzden
 // `patternMiss` hem satirda hem ozette ayri durur.
+//
+// UC SORU DAHA (kullanici, 2026-10-01): "ayni tabloda uygulamanin istek alip almadigi,
+// intranet mi internet mi, internet ise BIZIM reverse proxy sunucularimizda tanimli mi ve
+// RP tanimi istek aliyor mu - hepsi tek yerde."
+//   Ag          route TLS termination'i (passthrough=internet, reencrypt=intranet, ikisi
+//               birden=karisik, edge/TLS'siz=diger, NULL=bilinmiyor); route envanteriyle
+//               capraz kontrol EDILIR ama ag degerini EZMEZ.
+//   RP / istegi spa-rp.cjs (Nginx_Config_Audit, Nginx_Intranet_Audit, Nginx_Spa_Traffic).
+// SATIRA yalniz KOD ve SAYI yazilir (yanit 8 MB onbellek siniri altinda kalmali); tanim
+// listesi GET /spa-discovery/rp ucundan gelir.
 'use strict';
 
 const { isSpaApp } = require('../audit/spa-pattern.cjs');
 const { envOfNamespace } = require('../audit/ocp-platforms.cjs');
+const { rpUygula } = require('./spa-rp.cjs');
 
 const L = (s) =>
   String(s == null ? '' : s)
@@ -24,7 +35,7 @@ const L = (s) =>
 const T = (s) => String(s == null ? '' : s).trim();
 
 /**
- * Keşif satırından UYGULAMA adını türetir.
+ * Kesif satirindan UYGULAMA adini turetir.
  *
  * Is yukunun adi (DeploymentConfig/Deployment) uygulamanin adidir; yoksa route adina
  * dusulur. Dynatrace olcumu de uygulama adiyla tutuluyor, eslesme bunun uzerinden kurulur.
@@ -44,6 +55,66 @@ const gunu = (v) => {
  * (yetki), "servis bulunamadi" ise route'un kendisinde bir BULGUDUR.
  */
 const notKovasi = (note) => T(note).split(':')[0].trim() || 'bilinmiyor';
+
+/**
+ * OLCUM INDEKSI: (namespace, uygulama) -> Dynatrace ozeti, CLUSTER'LAR TOPLANARAK.
+ *
+ * NEDEN (dogrulama bulgusu, 2026-10-01): dbo.BMW_Application_Usage satiri CLUSTER basinadir
+ * (tekil anahtar scan_date, cluster, namespace, app). Eskiden (namespace, app) basina tek satir
+ * seciliyordu; prod1/prod2'den hangisinin gelecegi belirsizdi ve aktif/pasif bir uygulamada
+ * pasif cluster'in 0'i ekranda "istek yok" gorunebiliyordu.
+ *
+ * KURAL: cluster basina EN YENI satir alinir (sorgu da oyle secer; burada ikinci kez
+ * guvenceye alinir), sonra cluster'lar birlestirilir:
+ *   req / services  yalniz OLCULEN cluster'larin toplami
+ *   reqShown        olculen cluster'larda istek varsa toplam ('var' - biri gorduyse yeter);
+ *                   0 ise YALNIZ hepsi olculduyse 0 ('yok'), degilse null ('olculemedi')
+ *   measured        HEPSI olculdu mu
+ * @param {object[]|null} usage
+ * @returns {Map<string, object>}
+ */
+function olcumIndeksi(usage) {
+  const sonCluster = new Map();
+  for (const u of usage || []) {
+    const k = `${L(u.namespace)}|${L(u.app)}|${L(u.cluster)}`;
+    const gun = gunu(u.scan_date);
+    const onceki = sonCluster.get(k);
+    if (onceki && onceki.gun >= gun) continue;
+    sonCluster.set(k, { u, gun });
+  }
+  const olcum = new Map();
+  for (const { u, gun } of sonCluster.values()) {
+    const k = `${L(u.namespace)}|${L(u.app)}`;
+    let o = olcum.get(k);
+    if (!o) {
+      o = {
+        scanDate: '',
+        windowDays: 0,
+        req: 0,
+        services: 0,
+        measured: true,
+        clusters: 0,
+        olculen: 0,
+        note: '',
+      };
+      olcum.set(k, o);
+    }
+    o.clusters += 1;
+    if (gun > o.scanDate) o.scanDate = gun;
+    const wd = Number(u.window_days) || 0;
+    // EN KISA pencere: kapsam, en dar olculen cluster'in kapsamidir.
+    if (wd && (!o.windowDays || wd < o.windowDays)) o.windowDays = wd;
+    if (u.measured === true || Number(u.measured) === 1) {
+      o.olculen += 1;
+      o.req += Number(u.req_total) || 0;
+      o.services += Number(u.services_total) || 0;
+    } else o.measured = false;
+    if (!o.note && T(u.note)) o.note = T(u.note);
+  }
+  for (const o of olcum.values())
+    o.reqShown = o.olculen > 0 && (o.req > 0 || o.measured) ? o.req : null;
+  return olcum;
+}
 
 const BASARISIZ = new Set(['login', 'hata', 'erisilemedi']);
 
@@ -149,39 +220,37 @@ function kapsam(runs, veriGunu) {
 }
 
 /**
- * @param {object[]} discovery  dbo.BMW_Spa_Discovery (cluster basina EN YENI tarama)
- * @param {object[]} inventory  dbo.BMW_Openshift_Route_Inventory
- * @param {object[]} usage      dbo.BMW_Application_Usage (uygulama basina EN YENI satir)
- * @param {object[]} [runs]     dbo.BMW_Spa_Discovery_Run (cluster basina EN YENI satir)
+ * @param {object[]|null} discovery  dbo.BMW_Spa_Discovery (cluster basina EN YENI tarama)
+ * @param {object[]|null} inventory  dbo.BMW_Openshift_Route_Inventory; null = OKUNAMADI
+ *                                   (bos dizi ile ayni sey DEGIL: 'kayitli degil' denmez)
+ * @param {object[]|null} usage      dbo.BMW_Application_Usage; null = OKUNAMADI
+ * @param {object[]} [runs]          dbo.BMW_Spa_Discovery_Run (cluster basina EN YENI satir)
+ * @param {object} [rpKaynak]        spa-rp.cjs kaynaklari; verilmezse RP 'olculemedi' der
  */
-function buildSpaDiscovery(discovery, inventory, usage, runs) {
+function buildSpaDiscovery(discovery, inventory, usage, runs, rpKaynak) {
+  const envanterOkunamadi = !Array.isArray(inventory);
+  const dynatraceOkunamadi = !Array.isArray(usage);
   // ENVANTER INDEKSI: (namespace, route) ve (namespace, adres) ayri ayri aranir - kesif
-  // route ADINI, envanter bazen yalniz ADRESI tasiyor.
-  const envRoute = new Set();
-  const envAdres = new Set();
+  // route ADINI, envanter bazen yalniz ADRESI tasiyor. Deger: route'un termination_type'i
+  // (Ag capraz kontrolu; NULL ve '' ikisi de TLS yok). Kolon yoksa undefined: karsilastirilmaz.
+  const envRoute = new Map();
+  const envAdres = new Map();
+  // AYNI CLUSTER ONCE: ayni (namespace, route) prod1/prod2'de ayri satirdir; termination
+  // karsilastirmasi once ayni cluster'in satiriyla yapilir (ilk gelen satir yanlis celiski uretmesin).
+  const envRouteC = new Map();
   for (const r of inventory || []) {
     const ns = L(r.namespace_name);
     if (!ns) continue;
-    if (r.route_name) envRoute.add(`${ns}|${L(r.route_name)}`);
-    if (r.route_address) envAdres.add(`${ns}|${L(r.route_address)}`);
+    const tt = r.termination_type === undefined ? undefined : L(r.termination_type);
+    const k1 = `${ns}|${L(r.route_name)}`;
+    const k2 = `${ns}|${L(r.route_address)}`;
+    if (r.route_name && !envRoute.has(k1)) envRoute.set(k1, tt);
+    if (r.route_address && !envAdres.has(k2)) envAdres.set(k2, tt);
+    if (r.route_name && r.cluster_name) envRouteC.set(`${L(r.cluster_name)}|${k1}`, tt);
+    if (r.route_address && r.cluster_name) envRouteC.set(`${L(r.cluster_name)}|${k2}`, tt);
   }
 
-  // OLCUM INDEKSI: (namespace, uygulama) -> en yeni kullanim satiri.
-  const olcum = new Map();
-  for (const u of usage || []) {
-    const k = `${L(u.namespace)}|${L(u.app)}`;
-    const gun = u.scan_date ? new Date(u.scan_date).toISOString().slice(0, 10) : '';
-    const onceki = olcum.get(k);
-    if (onceki && onceki.scanDate >= gun) continue;
-    olcum.set(k, {
-      scanDate: gun,
-      windowDays: Number(u.window_days) || 0,
-      req: Number(u.req_total) || 0,
-      measured: u.measured === true || Number(u.measured) === 1,
-      services: Number(u.services_total) || 0,
-      note: T(u.note),
-    });
-  }
+  const olcum = olcumIndeksi(usage);
 
   // ROUTE'U SIFIRA INEN CLUSTER: son kosu 'ok' ve 0 route buldu; ekrandaki onceki satirlar
   // artik var olmayan route'lardir. Gosterilirlerse "KALIP KACIRDI" rozeti ve ozet sayilari
@@ -215,8 +284,21 @@ function buildSpaDiscovery(discovery, inventory, usage, runs) {
       const ns = T(d.namespace);
       const app = uygulamaAdi(d);
       const u = olcum.get(`${L(ns)}|${L(app)}`) || null;
-      const envVar =
-        envRoute.has(`${L(ns)}|${L(d.route)}`) || envAdres.has(`${L(ns)}|${L(d.host)}`);
+      const k1 = `${L(ns)}|${L(d.route)}`;
+      const k2 = `${L(ns)}|${L(d.host)}`;
+      // OKUNAMADI ile KAYITLI DEGIL AYRI: envanter sorgusu dustuyse null.
+      const envVar = envanterOkunamadi ? null : envRoute.has(k1) || envAdres.has(k2);
+      const c = L(d.cluster);
+      const invTt = envRouteC.has(`${c}|${k1}`)
+        ? envRouteC.get(`${c}|${k1}`)
+        : envRouteC.has(`${c}|${k2}`)
+          ? envRouteC.get(`${c}|${k2}`)
+          : envRoute.has(k1)
+            ? envRoute.get(k1)
+            : envAdres.get(k2);
+      // NULL KORUNUR (2026-10-01): '' = route'ta TLS yok ('diger'), NULL = bilinmiyor. Eski
+      // T() ikisini de '' yapiyordu ve 'bilinmiyor' hic olusmuyordu.
+      const termination = d.termination == null ? null : L(d.termination);
       const spa = Number(d.is_spa) === 1;
       const kalip = isSpaApp(app);
       return {
@@ -224,7 +306,11 @@ function buildSpaDiscovery(discovery, inventory, usage, runs) {
         namespace: ns,
         route: T(d.route),
         host: T(d.host),
-        termination: T(d.termination),
+        termination,
+        // AG CAPRAZ KONTROLU: envanterdeki termination_type kesiftekiyle FARKLI. Yalniz uyari;
+        // ag degeri kesiften gelir (cluster basina tarihli ve route duzeyinde tam).
+        invTermination: invTt,
+        agCelisik: invTt !== undefined && termination != null && invTt !== termination,
         workloadKind: T(d.workload_kind),
         workload: T(d.workload),
         application: app,
@@ -247,7 +333,7 @@ function buildSpaDiscovery(discovery, inventory, usage, runs) {
         patternFalse: !spa && kalip,
         // OLCUM: "olculemedi" ile "istek yok" AYRI; sayi yalniz olculduyse anlamli.
         usage: u,
-        reqShown: u && u.measured ? u.req : null,
+        reqShown: u ? u.reqShown : null,
       };
     });
 
@@ -266,11 +352,22 @@ function buildSpaDiscovery(discovery, inventory, usage, runs) {
       veriGunu.set(r.cluster, r.scanDate);
   }
   const coverage = kapsam(runs, veriGunu);
-  const apps = uygulamalar(rows, coverage);
-  return {
+  const apps = uygulamalar(rows, coverage, { dynatraceOkunamadi });
+  // RP KOLONLARI: indeks platform haric TUM route satirlarindan kurulur (yalniz SPA'lardan
+  // degil) - proxy hedefi SPA olmayan bir route'a da gidebilir, dogru uygulamaya baglanmali.
+  const rp = rpUygula({
+    rows,
+    apps,
+    inventory: envanterOkunamadi ? null : inventory,
+    kaynak: rpKaynak,
+  });
+  const out = {
     rows,
     apps,
     appSummary: uygulamaOzeti(apps),
+    // UST BANT: RP kaynaklarinin tarihleri, tablo durumlari, taranan hostlar ve 'olculemedi'
+    // nin nereden geldigi. Ek sorgu yok; yukaridaki sonuclardan turetilir.
+    rpKapsam: { ...rp.kapsam, envanterOkunamadi, dynatraceOkunamadi },
     platformHidden: { routes: platform.routes, namespaces: platform.namespaces.size },
     namespaces: [...new Set(apps.map((a) => a.namespace).filter(Boolean))].sort(),
     coverage,
@@ -283,8 +380,9 @@ function buildSpaDiscovery(discovery, inventory, usage, runs) {
       // EKRANIN SEBEBI: ad kalibinin kacirdiklari.
       patternMiss: say((r) => r.patternMiss),
       patternFalse: say((r) => r.patternFalse),
-      // ENVANTER FARKI: gercekten SPA ama route envanterinde YOK.
-      spaNotInInventory: spaSatir.filter((r) => !r.inInventory).length,
+      // ENVANTER FARKI: gercekten SPA ama route envanterinde YOK. Envanter okunamadiysa
+      // (inInventory null) "yok" diye SAYILMAZ.
+      spaNotInInventory: spaSatir.filter((r) => r.inInventory === false).length,
       // SINYAL KIRILIMI: iki sinyal ayri sayilir, biri otekinden zayiftir.
       bySignal: spaSatir.reduce((m, r) => {
         const k = r.signal || 'bilinmiyor';
@@ -293,8 +391,12 @@ function buildSpaDiscovery(discovery, inventory, usage, runs) {
       }, {}),
       // OLCUM: kac SPA'nin trafigi var. "olculemedi" AYRI sayilir.
       trafficActive: spaSatir.filter((r) => r.reqShown != null && r.reqShown > 0).length,
-      trafficIdle: spaSatir.filter((r) => r.reqShown === 0).length,
-      trafficUnmeasured: spaSatir.filter((r) => r.usage && !r.usage.measured).length,
+      // Dynatrace servisi OLUSMAMIS (services_total=0) satir measured=1, req=0 yazilir;
+      // "istek yok" degil "servis yok" - ayri sayilir.
+      trafficIdle: spaSatir.filter((r) => r.reqShown === 0 && r.usage.services !== 0).length,
+      trafficNoService: spaSatir.filter((r) => r.reqShown === 0 && r.usage.services === 0).length,
+      // Olcum denendi ama sonuc yok (cluster'larin biri olculemedi ve gorulen istek yok).
+      trafficUnmeasured: spaSatir.filter((r) => r.usage && r.reqShown == null).length,
       trafficNone: spaSatir.filter((r) => !r.usage).length,
       // ESLESMEYEN KESIF SATIRLARI: sebebi `note`ta yazan satirlar.
       unmatched: say((r) => !!r.note),
@@ -314,6 +416,52 @@ function buildSpaDiscovery(discovery, inventory, usage, runs) {
       }, {}),
     },
   };
+  // AYRINTI (uygulama -> RP tanimlari + tanim basina trafik) YANITA GIRMEZ: satira gommek
+  // yaniti 8 MB onbellek sinirinin ustune tasirdi. Sayilamaz alan: JSON'a hic yazilmaz,
+  // /spa-discovery/rp ucu bunu kullanir.
+  Object.defineProperty(out, 'rpDetay', { value: rp.detay, enumerable: false });
+  return out;
+}
+
+/** Uygulama satirindaki Dynatrace ozeti: yalniz ipucunda gosterilen alanlar. */
+function kisaUsage(u) {
+  const o = { scanDate: u.scanDate, windowDays: u.windowDays, services: u.services };
+  if (u.note) o.note = u.note;
+  // Cluster'larin yalniz bir kismi olculduyse ipucunda yazilir ('olculen/toplam').
+  if (u.olculen < u.clusters) o.olcum = `${u.olculen}/${u.clusters}`;
+  return o;
+}
+
+/**
+ * AG (kullanici karari K1, 2026-10-01): route TLS termination'indan.
+ *   passthrough -> internet, reencrypt -> intranet, ikisi birden -> karisik (RP internet gibi
+ *   aranir, ayrica GORUNUR - Denetim bunu internet sayip gizliyor), yalniz edge/TLS'siz ->
+ *   diger (siniflanmaz, RP aranmaz), yalniz NULL -> bilinmiyor.
+ * Route BIR KEZ sayilir (ayni route birden cok is yukune eslesip cok satir uretebilir).
+ * @param {Map<string, string|null>} term  'cluster|route' -> termination
+ */
+function agKarari(term) {
+  const s = { passthrough: 0, reencrypt: 0, edge: 0, tlsYok: 0, bos: 0 };
+  for (const t of term.values()) {
+    if (t == null) s.bos += 1;
+    else if (t === '') s.tlsYok += 1;
+    else if (t === 'passthrough' || t === 'reencrypt') s[t] += 1;
+    else s.edge += 1;
+  }
+  const ag =
+    s.passthrough && s.reencrypt
+      ? 'karisik'
+      : s.passthrough
+        ? 'internet'
+        : s.reencrypt
+          ? 'intranet'
+          : s.edge || s.tlsYok
+            ? 'diger'
+            : 'bilinmiyor';
+  // Yalniz sifirdan buyuk anahtarlar (yanit boyutu).
+  const agSay = {};
+  for (const [k, v] of Object.entries(s)) if (v) agSay[k] = v;
+  return { ag, agSay };
 }
 
 /**
@@ -325,10 +473,14 @@ function buildSpaDiscovery(discovery, inventory, usage, runs) {
  *   spa      'evet'       en az bir route'un ardinda nginx bulundu
  *            'hayir'      route'lar eslesti ve hicbirinde nginx yok
  *            'bilinmiyor' HICBIR route eslesmedi (olculemedi - "SPA degil" DEMEK DEGIL)
- *   istek    'var' | 'yok' | 'olculemedi' | 'olcum-yok'   (Dynatrace, uygulama basina)
- *   envanter 'kayitli' | 'kayitli-degil' | 'kismen'        (route envanteri, route basina)
+ *   istek    'var' | 'yok' | 'servis-yok' | 'olculemedi' | 'olcum-yok'  (Dynatrace)
+ *   envanter 'kayitli' | 'kayitli-degil' | 'kismen' | 'olculemedi'  (route envanteri)
+ *   ag       'internet' | 'intranet' | 'karisik' | 'diger' | 'bilinmiyor' (agKarari)
+ *   agEnvanter 'uyumlu' | 'celisik' | 'envanterde-yok' | 'olculemedi' (ag degerini EZMEZ)
+ * @param {{dynatraceOkunamadi?: boolean}} [opt]  Dynatrace sorgusu dustuyse TUM satirlar
+ *   'olculemedi' (eskiden 'olcum-yok' gorunuyordu: okunamadi ile olcum yok karisiyordu).
  */
-function uygulamalar(rows, coverage) {
+function uygulamalar(rows, coverage, opt = {}) {
   const eski = new Map((coverage?.clusters || []).map((c) => [c.cluster, c]));
   const m = new Map();
   for (const r of rows) {
@@ -349,11 +501,25 @@ function uygulamalar(rows, coverage) {
         spaRoutes: 0,
         unmatchedRoutes: 0,
         invRoutes: 0,
+        invOkunamadi: false,
+        // AG: route basina BIR KEZ ('cluster|route' -> termination / envanter karsilastirmasi)
+        term: new Map(),
+        invBulundu: new Set(),
+        invKiyas: new Set(),
+        invCelisik: new Set(),
         patternMatch: r.patternMatch,
         usage: r.usage,
         reqShown: r.reqShown,
       };
       m.set(k, a);
+    }
+    const rk = `${r.cluster}|${r.route}`;
+    if (!a.term.has(rk)) a.term.set(rk, r.termination === undefined ? null : r.termination);
+    if (r.inInventory === null) a.invOkunamadi = true;
+    if (r.inInventory) {
+      a.invBulundu.add(rk);
+      if (r.invTermination !== undefined && r.termination != null) a.invKiyas.add(rk);
+      if (r.agCelisik) a.invCelisik.add(rk);
     }
     a.routeCount += 1;
     if (r.host) a.hosts.add(r.host);
@@ -374,6 +540,31 @@ function uygulamalar(rows, coverage) {
     const spa =
       a.spaRoutes > 0 ? 'evet' : a.unmatchedRoutes === a.routeCount ? 'bilinmiyor' : 'hayir';
     const clusters = [...a.clusters].sort();
+    const { ag, agSay } = agKarari(a.term);
+    // ENVANTER CAPRAZ KONTROLU (ag'i EZMEZ): okunamadi > celisik > uyumlu > envanterde yok.
+    // Envanterde bulunup termination_type kolonu gelmeyen route karsilastirilamaz.
+    const agEnvanter = a.invOkunamadi
+      ? 'olculemedi'
+      : a.invCelisik.size
+        ? 'celisik'
+        : a.invKiyas.size
+          ? 'uyumlu'
+          : a.invBulundu.size
+            ? 'olculemedi'
+            : 'envanterde-yok';
+    const istek = opt.dynatraceOkunamadi
+      ? 'olculemedi'
+      : a.reqShown != null
+        ? a.reqShown > 0
+          ? 'var'
+          : a.usage.services === 0
+            ? 'servis-yok'
+            : 'yok'
+        : a.usage && !a.usage.measured
+          ? 'olculemedi'
+          : 'olcum-yok';
+    const ek = {};
+    if (a.invCelisik.size) ek.agCelisikRoute = a.invCelisik.size;
     return {
       application: a.application,
       namespace: a.namespace,
@@ -388,18 +579,22 @@ function uygulamalar(rows, coverage) {
       pattern: a.patternMatch ? 'uyuyor' : 'uymuyor',
       patternMiss: spa === 'evet' && !a.patternMatch,
       patternFalse: spa === 'hayir' && a.patternMatch,
-      istek:
-        a.reqShown != null
-          ? a.reqShown > 0
-            ? 'var'
-            : 'yok'
-          : a.usage && !a.usage.measured
-            ? 'olculemedi'
-            : 'olcum-yok',
+      istek,
       reqShown: a.reqShown,
-      usage: a.usage,
-      inventory:
-        a.invRoutes === a.routeCount ? 'kayitli' : a.invRoutes === 0 ? 'kayitli-degil' : 'kismen',
+      // YANIT BOYUTU: req (= reqShown) ve measured (istek'ten okunur) tekrarlanmaz; bos not
+      // yazilmaz. Ipucunda gosterilen alanlar kalir.
+      usage: a.usage ? kisaUsage(a.usage) : null,
+      ag,
+      agSay,
+      agEnvanter,
+      ...ek,
+      inventory: a.invOkunamadi
+        ? 'olculemedi'
+        : a.invRoutes === a.routeCount
+          ? 'kayitli'
+          : a.invRoutes === 0
+            ? 'kayitli-degil'
+            : 'kismen',
       invRoutes: a.invRoutes,
       routeCount: a.routeCount,
       hosts: [...a.hosts].sort(),
@@ -434,14 +629,110 @@ function uygulamaOzeti(apps) {
     patternFalse: say((a) => a.patternFalse),
     spaRequestActive: spa.filter((a) => a.istek === 'var').length,
     spaRequestIdle: spa.filter((a) => a.istek === 'yok').length,
+    // Dynatrace servisi yok: "istek yok" DEGIL (statik SPA'nin pod'u istek almayabilir).
+    spaRequestNoService: spa.filter((a) => a.istek === 'servis-yok').length,
     spaRequestUnknown: spa.filter((a) => a.istek === 'olculemedi' || a.istek === 'olcum-yok')
       .length,
-    spaNotInInventory: spa.filter((a) => a.inventory !== 'kayitli').length,
+    // Envanter okunamadiysa 'olculemedi': "kayitli degil" diye SAYILMAZ.
+    spaNotInInventory: spa.filter(
+      (a) => a.inventory === 'kayitli-degil' || a.inventory === 'kismen',
+    ).length,
+    // AG / RP / RP ISTEGI kirilimlari (yalniz SPA'lar; RP kolonlari zaten yalniz onlar icin).
+    spaAg: kirilim(spa, 'ag'),
+    spaRp: kirilim(spa, 'rp'),
+    spaRpIstek: kirilim(spa, 'rpIstek'),
   };
+}
+
+/** apps -> { deger: sayi } (yalniz gorulen degerler). */
+function kirilim(apps, alan) {
+  const m = {};
+  for (const a of apps) {
+    const v = a[alan];
+    if (v) m[v] = (m[v] || 0) + 1;
+  }
+  return m;
+}
+
+/**
+ * YANIT GOVDESINDE YAZILMAYAN VARSAYILANLAR (dogrulama bulgusu, 2026-10-01: gercekci profilde
+ * /spa-discovery 8 MB onbellek sinirini asiyordu). Istemci (src/api/nginxConsoleApi.ts
+ * SPA_YANIT_VARSAYILAN / SPA_YANIT_BOS_DIZI, spaYanitDoldur) eksik alani AYNI degerle geri
+ * doldurur - iki liste birlikte degismeli (SR27 bekcisi esitler; doldurma olmadan ekran
+ * `a.staleClusters.includes` uzerinde cokuyor ve rp alani olmayan satir 'olculemedi'
+ * gorunuyordu - vitest NginxSpaDiscovery.test.tsx).
+ * Bellekteki tam nesne DEGISMEZ (testler, ayrinti ucu ve ozet onu kullanir).
+ */
+const YANIT_VARSAYILAN = Object.freeze({
+  rp: 'uygulanamaz',
+  rpIstek: 'uygulanamaz',
+  agEnvanter: 'uyumlu',
+  weakEvidence: false,
+  patternMiss: false,
+  patternFalse: false,
+  usage: null,
+  reqShown: null,
+});
+/** Bos oldugunda yazilmayan diziler (istemci [] doldurur). */
+const YANIT_BOS_DIZI = new Set(['signals', 'staleClusters', 'notes', 'routes', 'hosts']);
+
+/**
+ * Uygulama satirinin HTTP govdesindeki kisa hali.
+ *   - YANIT_VARSAYILAN'daki degerler ve bos diziler yazilmaz.
+ *   - invRoutes/routeCount yalniz envanter 'kismen' iken anlamli (ekran yalniz orada yazar).
+ *   - ADRESIN ICINDE GECEN route adlari yazilmaz: ekran adres varken route adini gostermez;
+ *     arama icin de kayip yok - route adi bir adresin alt dizgisiyse, o adin her parcasi da
+ *     adreste gecer. Adres yoksa route'lar OLDUGU GIBI kalir.
+ */
+function yanitUygulamasi(a) {
+  const o = {};
+  for (const [k, v] of Object.entries(a)) {
+    if (Object.prototype.hasOwnProperty.call(YANIT_VARSAYILAN, k) && YANIT_VARSAYILAN[k] === v)
+      continue;
+    if (YANIT_BOS_DIZI.has(k) && Array.isArray(v) && !v.length) continue;
+    o[k] = v;
+  }
+  if (a.inventory !== 'kismen') {
+    delete o.invRoutes;
+    delete o.routeCount;
+  }
+  if (o.routes && Array.isArray(a.hosts) && a.hosts.length) {
+    const adres = a.hosts.map(L);
+    const kalan = a.routes.filter((r) => !adres.some((h) => h.includes(L(r))));
+    if (kalan.length) o.routes = kalan;
+    else delete o.routes;
+  }
+  if (o.agSay && !Object.keys(o.agSay).length) delete o.agSay;
+  return o;
+}
+
+/**
+ * /spa-discovery HTTP GOVDESI: hesap sonucunu DEGISTIRMEDEN kisa kopyasini kurar (sonuc
+ * nesnesi devam eden hesabi bekleyen baska cagrilarla paylasilir).
+ * @param {object} sonuc  spaKesfiHesapla() ciktisi
+ * @param {{satir?: boolean}} [opt]  satir: route satirlarini da gonder (?satir=1)
+ */
+function spaYanitGovdesi(sonuc, opt = {}) {
+  const { rows, apps, ...govde } = sonuc;
+  if (opt.satir) govde.rows = rows;
+  if (Array.isArray(apps)) govde.apps = apps.map(yanitUygulamasi);
+  return govde;
 }
 
 /** OpenShift platform namespace'i mi: openshift, openshift-*, kube-*, default. */
 const PLATFORM_NS_RE = /^(openshift|kube)(-|$)|^default$/i;
 const platformNamespace = (ns) => PLATFORM_NS_RE.test(T(ns));
 
-module.exports = { buildSpaDiscovery, uygulamaAdi, notKovasi, platformNamespace, uygulamalar };
+module.exports = {
+  buildSpaDiscovery,
+  spaYanitGovdesi,
+  yanitUygulamasi,
+  YANIT_VARSAYILAN,
+  YANIT_BOS_DIZI,
+  olcumIndeksi,
+  uygulamaAdi,
+  notKovasi,
+  platformNamespace,
+  uygulamalar,
+  agKarari,
+};
