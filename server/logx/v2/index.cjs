@@ -15,6 +15,11 @@ const adminData = require('./admin.cjs');
 const cleanup = require('./cleanup.cjs');
 const audit = require('../audit.cjs');
 
+// `groups` SART (2026-10-01): kisitlamalarin grup izinleri `user.groups`'tan okunur
+// (restrictions.cjs). Bu alan eskiden ATILIYORDU ve grup izinleri HICBIR ZAMAN
+// eslesmiyordu — yalnizca grup izinli bir kisitlama o gruptaki herkese 403 veriyordu
+// (uretimde "prod'da hata, test'te yok"; test DB'de kisitlama yoktu). Bekci:
+// restrictions-group-route.test.cjs (gercek router + oturum).
 function currentUser(req) {
   const s = req.session?.user;
   if (s)
@@ -22,6 +27,7 @@ function currentUser(req) {
       username: s.username,
       role: s.role || 'User',
       authSource: s.authSource || 'local',
+      groups: Array.isArray(s.groups) ? s.groups : [],
       sessionToken: req.sessionID,
     };
   // requireAuth'un header-fallback yolu (bkz. server/auth/index.cjs requireAuth) —
@@ -32,12 +38,14 @@ function currentUser(req) {
       username: h.username,
       role: h.role || 'User',
       authSource: h.authSource || 'header',
+      groups: Array.isArray(h.groups) ? h.groups : [],
       sessionToken: req.sessionID || 'header',
     };
   return {
     username: 'anonymous',
     role: 'User',
     authSource: 'local',
+    groups: [],
     sessionToken: req.sessionID || '',
   };
 }

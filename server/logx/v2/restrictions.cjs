@@ -148,16 +148,14 @@ async function assertAllowed(resourceType, resourceKey, user) {
 // ── Admin CRUD ─────────────────────────────────────────────────────────────────
 
 async function listRestrictions() {
-  const { rows } = await db.query(
+  // `queryWithGrants` UZERINDEN: grup tablosu yoksa admin listesi 500 vermesin,
+  // kullanici adi grant'lariyla gelsin (isAllowed/filterAllowed ile ayni dusus).
+  const { rows } = await queryWithGrants((grants) =>
     `SELECT r.id, r.resource_type, r.resource_key, r.description, r.created_by, r.created_at,
             x.username AS grant_username, x.group_dn AS grant_group
      FROM logx_v2_restrictions r
      LEFT JOIN (
-       SELECT restriction_id, username, CAST(NULL AS NVARCHAR(500)) AS group_dn
-         FROM logx_v2_restriction_grants
-       UNION ALL
-       SELECT restriction_id, CAST(NULL AS NVARCHAR(255)) AS username, group_dn
-         FROM logx_v2_restriction_group_grants
+       ${grants}
      ) x ON x.restriction_id = r.id
      ORDER BY r.resource_type, r.resource_key`
   );
