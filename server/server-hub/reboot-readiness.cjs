@@ -44,6 +44,10 @@ const KOD_ANLAMI = Object.freeze({
   RESTART_REQUIRED: { tip: 'risk', aciklama: 'JVM yeniden başlatma bekliyor (server-state)' },
   // OLCULEMEYENLER: "sorun yok" DEGIL.
   SYNTAX_UNKNOWN: { tip: 'unknown', aciklama: 'web sözdizimi ölçülemedi' },
+  SYNTAX_UNVERIFIED: {
+    tip: 'unknown',
+    aciklama: 'web sözdizimi doğrulanamadı (dosya erişimi) — açılış belirsiz',
+  },
   AUTOSTART_UNKNOWN: { tip: 'unknown', aciklama: 'JVM auto-start durumu okunamadı' },
   CLI_FAIL: { tip: 'unknown', aciklama: 'JBoss CLI okunamadı' },
   CLI_SKIP: { tip: 'unknown', aciklama: 'JBoss CLI hiç çalıştırılamadı (kurulum/süreç)' },

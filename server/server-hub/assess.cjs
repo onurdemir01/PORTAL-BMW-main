@@ -50,6 +50,19 @@ function parseTargets(text) {
 }
 
 /**
+ * Web sunucusu `-t` ciktisi bir DOSYA ERISIMI sorununu mu anlatiyor?
+ *
+ * IHS/RHA'da yetki reddi de "Syntax error on line N of F" bicimiyle gelir (dosyayi acamayan
+ * direktif satir numarasiyla raporlanir). Bu desenler sozdizimini DEGIL, taramanin dosyaya
+ * ulasip ulasamadigini anlatir. Desen listesi bilerek GENIS: yanlislikla "dogrulanamadi"
+ * demek yalniz bir uyari dusurur; yanlislikla "sozdizimi hatali" demek uretimde satir
+ * yorumlatir.
+ */
+const ERISIM_DESENI =
+  /permission denied|operation not permitted|\(13\)|does not exist or is empty|could not open|cannot open|can't open|unable to open|cannot load|bio_new_file|memmanagerfile|can't create directory|read-only file system|key database|\bgsk|\bssl0\d{3}e|no such file or directory/i;
+const erisimKaynakli = (detail) => ERISIM_DESENI.test(String(detail || ''));
+
+/**
  * @param {object} data  { hosts, init, jboss, jvms, web, vhosts, ips }  — her sunucu icin SON taramanin satirlari
  * @returns {{ hosts: object[], summary: object, latestScan: string|null }}
  */
@@ -631,6 +644,23 @@ function assess(data) {
     }
     // web
     for (const w of h.web) {
+      // ERISIM KAYNAKLI "SOZDIZIMI HATASI" (2026-10-01, sartname tasarim incelemesi):
+      // tarama www ile kosar; www bir sertifikayi / anahtari / log dosyasini okuyamazsa
+      // `apachectl -t` "Syntax error on line N of F: SSLCertificateFile: file ... does not
+      // exist or is empty" der. Bu bir SOZDIZIMI hatasi DEGIL, bir ERISIM sonucudur. Eskiden
+      // bunun icin "satiri yorumla" duzeltmesi oneriliyordu: SSLCertificateFile satirini
+      // yorumlamak uretimde SSL'i kirar. Erisim kaynakli cikti "dogrulanamadi"dir ve ona
+      // config degistiren HICBIR eylem onerilmez.
+      if (w.syntax === 'FAIL' && erisimKaynakli(w.detail)) {
+        add(
+          'warning',
+          'web',
+          'SYNTAX_UNVERIFIED',
+          `${w.product} sözdizimi DOĞRULANAMADI — hata bir dosyaya erişimden kaynaklanıyor ` +
+            `(yetki ya da eksik dosya); config satırını yorumlamak çözüm değildir: ${w.detail}`.trim(),
+        );
+        continue;
+      }
       if (w.syntax === 'FAIL') {
         const m = w.detail.match(/line (\d+) of (\S+?):?(\s|$)/i);
         add(
@@ -943,7 +973,10 @@ function assess(data) {
       scannedNotInInventory: [...tar].filter((h) => !env.has(h)).length,
       missing: env.size - eslesen.length,
       // Erisilemeyen ILK 50 sunucu: ekran "kimler" sorusunu da cevaplayabilsin.
-      missingHosts: [...env].filter((h) => !tar.has(h)).sort().slice(0, 50),
+      missingHosts: [...env]
+        .filter((h) => !tar.has(h))
+        .sort()
+        .slice(0, 50),
     };
   };
 

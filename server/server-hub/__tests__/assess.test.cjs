@@ -657,7 +657,15 @@ const KP_DATA = {
   init: [],
   jboss: [],
   jvms: [
-    { host: 'GBAPP01', gen: 7, jvm: 'app1', running: 1, auto_start: 'true', server_state: 'running', ports: '' },
+    {
+      host: 'GBAPP01',
+      gen: 7,
+      jvm: 'app1',
+      running: 1,
+      auto_start: 'true',
+      server_state: 'running',
+      ports: '',
+    },
   ],
   web: [
     { host: 'GBAPP01', product: 'NGINX', running: 1, syntax: 'OK', detail: '' },
@@ -668,8 +676,22 @@ const KP_DATA = {
   ips: [],
   sshd: [],
   mwApps: [
-    { host: 'GBAPP01', app: 'app1', env: 'PROD', status: 'running', jvm_count: 1, autostarts: 'true' },
-    { host: 'GBAPP02', app: 'app2', env: 'PROD', status: 'running', jvm_count: 3, autostarts: 'true true false' },
+    {
+      host: 'GBAPP01',
+      app: 'app1',
+      env: 'PROD',
+      status: 'running',
+      jvm_count: 1,
+      autostarts: 'true',
+    },
+    {
+      host: 'GBAPP02',
+      app: 'app2',
+      env: 'PROD',
+      status: 'running',
+      jvm_count: 3,
+      autostarts: 'true true false',
+    },
   ],
   invEnv: KP_INV,
 };
@@ -715,7 +737,11 @@ test('KP5 ESKI `coverage` alani EZILMEDI (ekranin urun kartlari ona bagli)', () 
   assert.ok(sm.coverage.JBOSS, 'eski coverage urun kirilimi kaybolmus');
   // Iki alan FARKLI seyi olcer: eski yalniz TARANAN sunucular icinde bakar.
   assert.equal(sm.coverage.JBOSS.inventory, 1, 'eski coverage anlami degismis');
-  assert.equal(sm.scanCoverage.products.JBOSS.inventory, 2, 'yeni kapsama envanterin tamamini almiyor');
+  assert.equal(
+    sm.scanCoverage.products.JBOSS.inventory,
+    2,
+    'yeni kapsama envanterin tamamini almiyor',
+  );
 });
 
 test('KP6 ENVANTER SUTUNU YOKSA 0 degil BILINMIYOR (uretimde RHA boyle okundu)', () => {
@@ -768,14 +794,38 @@ test('KP7 envanter urun sutunlari GERCEK tablo sutunlariyla ayni', () => {
 const { rebootReadiness, KOD_ANLAMI } = require('../reboot-readiness.cjs');
 
 const AH_HOSTS = [
-  { host: 'GBAPP01', scanDate: '2026-10-01', findings: [{ code: 'SYNTAX_FAIL', area: 'web', text: 'nginx -t FAIL' }] },
-  { host: 'GBAPP02', scanDate: '2026-10-01', findings: [{ code: 'REBOOT_RISK', area: 'jvm', text: 'kosuyor, auto-start kapali' }] },
-  { host: 'GBAPP03', scanDate: '2026-10-01', findings: [{ code: 'STOPPED_AUTOSTART_ON', area: 'jvm', text: 'kapali, auto-start acik' }] },
-  { host: 'GBAPP04', scanDate: '2026-10-01', findings: [{ code: 'SYNTAX_UNKNOWN', area: 'web', text: 'yetki' }] },
-  { host: 'GBAPP05', scanDate: '2026-10-01', findings: [{ code: 'VHOST_IDLE', area: 'web', text: 'atil vhost' }] },
+  {
+    host: 'GBAPP01',
+    scanDate: '2026-10-01',
+    findings: [{ code: 'SYNTAX_FAIL', area: 'web', text: 'nginx -t FAIL' }],
+  },
+  {
+    host: 'GBAPP02',
+    scanDate: '2026-10-01',
+    findings: [{ code: 'REBOOT_RISK', area: 'jvm', text: 'kosuyor, auto-start kapali' }],
+  },
+  {
+    host: 'GBAPP03',
+    scanDate: '2026-10-01',
+    findings: [{ code: 'STOPPED_AUTOSTART_ON', area: 'jvm', text: 'kapali, auto-start acik' }],
+  },
+  {
+    host: 'GBAPP04',
+    scanDate: '2026-10-01',
+    findings: [{ code: 'SYNTAX_UNKNOWN', area: 'web', text: 'yetki' }],
+  },
+  {
+    host: 'GBAPP05',
+    scanDate: '2026-10-01',
+    findings: [{ code: 'VHOST_IDLE', area: 'web', text: 'atil vhost' }],
+  },
 ];
 const AH = () =>
-  rebootReadiness(AH_HOSTS, ['gbapp01', 'GBAPP02', 'gbapp03', 'gbapp04', 'gbapp05', 'GBYOK99'], '2026-10-01');
+  rebootReadiness(
+    AH_HOSTS,
+    ['gbapp01', 'GBAPP02', 'gbapp03', 'gbapp04', 'gbapp05', 'GBYOK99'],
+    '2026-10-01',
+  );
 
 test('AH1 TARANMAMIS sunucu "hazir" SAYILMAZ (en pahali yanlis)', () => {
   const r = AH();
@@ -831,4 +881,55 @@ test('AH5 sebepler sunucu adlariyla toplanir; uc SALT OKUNUR', () => {
   const blok = idx.slice(i, i + 1600);
   assert.ok(!/launch\(/.test(blok), 'SALT OKUNUR olmasi gereken uc is baslatiyor');
   assert.match(blok, /getAssessment\(false\)/, 'her istekte yeniden tarama tetikleniyor');
+});
+
+// ── ERISIM KAYNAKLI "SOZDIZIMI HATASI" (SHX1..SHX3, 2026-10-01) ─────────────────────────
+//
+// Tarama www ile kosar. www bir sertifikayi/anahtari/log dosyasini okuyamazsa `apachectl -t`
+// "Syntax error on line N of F: SSLCertificateFile: file ... does not exist or is empty"
+// der. Eskiden bunun icin "satiri yorumla" duzeltmesi oneriliyordu - SSLCertificateFile
+// satirini yorumlamak uretimde SSL'i kirar.
+const webBul = (detail, product = 'IHS') => {
+  const d = base();
+  d.web.push({ host: 'DACRWAP01', product, running: 1, syntax: 'FAIL', detail });
+  return assess(d).hosts.find((h) => h.host === 'DACRWAP01').findings;
+};
+
+test('SHX1 erisim kaynakli FAIL "dogrulanamadi" olur ve HICBIR config eylemi onerilmez', () => {
+  for (const detail of [
+    'AH00526: Syntax error on line 45 of /etc/httpd/conf.d/ssl.conf: SSLCertificateFile: file /x.crt does not exist or is empty',
+    '(13)Permission denied: AH00091: httpd: could not open error log file /web_log/error.log.',
+    "Syntax error on line 9 of /usr/IBMIHS/conf/httpd.conf: Can't create directory corresponding to MemManagerFile",
+  ]) {
+    const f = webBul(detail);
+    assert.equal(
+      f.filter((x) => x.code === 'SYNTAX_FAIL').length,
+      0,
+      `erisim sozdizimi hatasi sayildi: ${detail}`,
+    );
+    const u = f.find((x) => x.code === 'SYNTAX_UNVERIFIED');
+    assert.ok(u, `dogrulanamadi bulgusu yok: ${detail}`);
+    assert.equal(u.fix, null, `erisim hatasina config eylemi onerildi: ${detail}`);
+  }
+});
+
+test('SHX2 GERCEK sozdizimi hatasi (satir 13 dahil) yine SYNTAX_FAIL + duzeltme', () => {
+  // Regresyon: desen ilk yaziminda '\(13\)' bir JS dizgisinde '(13)' oluyordu ve
+  // "line 13" iceren GERCEK bir hatayi da "erisim kaynakli" sayiyordu.
+  const f = webBul(
+    'AH00526: Syntax error on line 13 of /usr/IBMIHS/conf/httpd.conf: Invalid command Foo',
+  );
+  const s = f.find((x) => x.code === 'SYNTAX_FAIL');
+  assert.ok(s, 'gercek sozdizimi hatasi dusuruldu');
+  assert.deepEqual(s.fix, {
+    action: 'apache_comment_line',
+    product: 'IHS',
+    file: '/usr/IBMIHS/conf/httpd.conf',
+    line: 13,
+  });
+});
+
+test('SHX3 hazirlik raporu dogrulanamayan sozdizimini "belirsiz" sayar, engel ya da temiz DEGIL', () => {
+  const { KOD_ANLAMI } = require('../reboot-readiness.cjs');
+  assert.equal((KOD_ANLAMI.SYNTAX_UNVERIFIED || {}).tip, 'unknown');
 });
