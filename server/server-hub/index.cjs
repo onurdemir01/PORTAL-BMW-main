@@ -10,7 +10,7 @@
 'use strict';
 
 const express = require('express');
-const { assess, flattenFindings } = require('./assess.cjs');
+const { assess, flattenFindings, parseTargets } = require('./assess.cjs');
 
 const REGISTRY_KEYS = Object.freeze({ scan: 'server_hub_scan', fix: 'server_hub_fix' });
 const HOST_RE = /^[A-Za-z0-9][A-Za-z0-9-]{1,62}$/;
@@ -395,6 +395,33 @@ function initServerHub(app) {
   // tersi: "auto-start'ı açık olup process'i kapalı olanları tek tuşla kapat".
   //
   // ÖNCE PLAN, SONRA ONAY (kullanıcının seçimi): plan HİÇBİR İŞ BAŞLATMAZ — liste zaten
+  // ── ACILIS HAZIRLIGI (kullanici, 2026-10-01) ───────────────────────────────────────
+  // "Ben sana sunucu listesi verdigimde o sunucularin sorunsuz acilip acilmayacagini bana
+  // bir executive summary gibi vermeni istiyorum."
+  //
+  // SALT OKUNUR: hicbir is baslatmaz, hicbir sunucuya dokunmaz. Mevcut taramanin
+  // bulgularini "yeniden baslatirsam geri gelir mi" sorusuna gore yeniden siniflar.
+  router.post('/reboot-readiness', async (req, res) => {
+    try {
+      const ham = req.body?.hosts;
+      const metin = Array.isArray(ham) ? ham.join(',') : String(ham || '');
+      // parseTargets ZATEN var ve tarama ekraninda kullaniliyor: ayni yapistirma bicimi
+      // (virgul / satir / FQDN / port eki) burada da calissin diye AYNI ayristirici.
+      const istenen = parseTargets(metin.replace(/[\s;]+/g, ',')).map((t) => t.host);
+      if (!istenen.length)
+        return res.status(400).json({ ok: false, message: 'Sunucu listesi boş.' });
+      if (istenen.length > 500)
+        return res
+          .status(400)
+          .json({ ok: false, message: 'Tek seferde en fazla 500 sunucu sorgulanabilir.' });
+      const a = await getAssessment(false);
+      const { rebootReadiness } = require('./reboot-readiness.cjs');
+      res.json({ ok: true, ...rebootReadiness(a.hosts || [], istenen, a.latestScan || null) });
+    } catch (err) {
+      res.status(err.status || 500).json({ ok: false, message: err.message });
+    }
+  });
+
   // ── SATIR BAZINDA JVM AUTO-START (kullanici, 2026-10-01) ───────────────────────────
   // "Ben oraya girdigim zaman satir satir hangi jvm'lerde auto start kapaliysa onun
   // saginda bir buton olsun ben tikladigimda acilsin veya ben tikladigimda kapansin."

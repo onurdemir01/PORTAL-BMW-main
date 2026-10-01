@@ -23,6 +23,7 @@ import {
   type ShOverview,
   type ShHostRow,
   type ShHostDetail,
+  type ShReadiness,
   type ShFinding,
   type ShSeverity,
   type ShFindingsResult,
@@ -370,6 +371,171 @@ function KapsamaPaneli({ c }: { c: NonNullable<ShOverview['summary']>['scanCover
   );
 }
 
+/**
+ * "Bu sunucular sorunsuz acilir mi?" — kullanici (2026-10-01): "sunucu listesi verdigimde
+ * ... bana bir executive summary gibi vermeni istiyorum."
+ *
+ * SORU "SORUN VAR MI" DEGIL, "YENIDEN BASLATSAM GERI GELIR MI". Server Hub bulgularinin
+ * cogu (atil vhost, SSH tavani, envanter uyusmazligi) yeniden baslatmayi etkilemez ve
+ * ozeti kalabaliklastirirdi; yalniz ilgili olanlar siniflanir.
+ *
+ * TARANMAMIS SUNUCU "HAZIR" SAYILMAZ - ayri kova. Onu yesil saymak, bu raporun
+ * verebilecegi en pahali yanlis olurdu.
+ */
+function ReadinessTab() {
+  const [metin, setMetin] = useState('');
+  const [r, setR] = useState<ShReadiness | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const calistir = async () => {
+    if (!metin.trim()) return;
+    setBusy(true);
+    try {
+      const cevap = await serverHubApi.rebootReadiness(metin);
+      if (!cevap.ok) toast.error(cevap.message || 'Rapor alınamadı.');
+      setR(cevap.ok ? cevap : null);
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const K: Record<string, { label: string; color: string; aciklama: string }> = {
+    blocked: { label: 'AÇILMAZ', color: SEV.danger.color, aciklama: 'yeniden başlatınca servis gelmez' },
+    unknown: { label: 'BİLİNMİYOR', color: SEV.warning.color, aciklama: 'ölçülemedi — "sorun yok" demek değil' },
+    risk: { label: 'DİKKAT', color: SEV.info.color, aciklama: 'açılır ama sürpriz var' },
+    ok: { label: 'HAZIR', color: SEV.ok.color, aciklama: 'bilinen engel yok' },
+    notScanned: { label: 'TARANMADI', color: 'var(--status-neutral)', aciklama: 'bu sunucu taramada yok' },
+  };
+  const s = r?.summary;
+
+  return (
+    <div className="space-y-3">
+      <div className="rounded-xl border p-3 space-y-2" style={{ borderColor: 'var(--border-subtle)' }}>
+        <div className="text-xs font-semibold">Sunucu listesi</div>
+        <textarea
+          value={metin}
+          onChange={(e) => setMetin(e.target.value)}
+          rows={3}
+          placeholder="GBAPP01, GBAPP02 … (virgül, boşluk ya da satır ile ayırın; FQDN de olur)"
+          className="w-full px-2 py-1.5 text-xs font-mono border rounded-lg"
+          style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)' }}
+        />
+        <div className="flex items-center gap-2">
+          <button onClick={calistir} disabled={busy || !metin.trim()} className={SM_BTN} style={smBtn(true)}>
+            {busy ? 'Bakılıyor…' : 'Açılır mı?'}
+          </button>
+          <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
+            Salt okunur — hiçbir iş başlatmaz. Son taramanın verisine bakar
+            {r?.latestScan ? ` (${r.latestScan})` : ''}.
+          </span>
+        </div>
+      </div>
+
+      {s && (
+        <>
+          <div className="rounded-xl border p-3" style={{ borderColor: 'var(--border-subtle)' }}>
+            <div className="text-sm">
+              <b>{s.requested}</b> sunucu soruldu.{' '}
+              {s.blocked > 0 ? (
+                <b style={{ color: SEV.danger.color }}>
+                  {s.blocked} tanesi şu an yeniden başlatılırsa sorunsuz açılmaz.{' '}
+                </b>
+              ) : (
+                <>Bilinen bir açılış engeli <b>yok</b>. </>
+              )}
+              {s.unknown > 0 && (
+                <>
+                  <b style={{ color: SEV.warning.color }}>{s.unknown} sunucuda ölçüm yapılamadı</b> —
+                  bunlar için güvence verilemez.{' '}
+                </>
+              )}
+              {s.notScanned > 0 && (
+                <>
+                  <b>{s.notScanned} sunucu hiç taranmamış</b>; listede duruyor ama hakkında bir şey
+                  söylenemez.{' '}
+                </>
+              )}
+              {s.risk > 0 && <>{s.risk} sunucuda açılışta sürpriz var (durdurulmuş JVM kalkar gibi).</>}
+            </div>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {(['blocked', 'unknown', 'risk', 'ok', 'notScanned'] as const).map((k) => (
+                <span
+                  key={k}
+                  className="px-2 py-0.5 text-[11px] rounded-full border"
+                  title={K[k].aciklama}
+                  style={{ borderColor: K[k].color, color: K[k].color }}
+                >
+                  {K[k].label} {s[k]}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          {!!r?.topReasons?.length && (
+            <div className="rounded-xl border p-3" style={{ borderColor: 'var(--border-subtle)' }}>
+              <div className="text-xs font-semibold mb-1">Sebepler</div>
+              {r.topReasons.map((t) => (
+                <div key={t.code} className="text-[11px] py-0.5">
+                  <span
+                    style={{
+                      color:
+                        t.tip === 'blocker'
+                          ? SEV.danger.color
+                          : t.tip === 'unknown'
+                            ? SEV.warning.color
+                            : SEV.info.color,
+                    }}
+                  >
+                    ●
+                  </span>{' '}
+                  {t.aciklama} — <b>{t.hostCount}</b> sunucu
+                  <span className="ml-1 font-mono" style={{ color: 'var(--text-muted)' }}>
+                    {t.hosts.slice(0, 8).join(', ')}
+                    {t.hostCount > 8 ? ` +${t.hostCount - 8}` : ''}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--border-subtle)' }}>
+            <table className="w-full text-xs border-collapse">
+              <thead style={{ background: 'var(--bg-elevated)' }}>
+                <tr style={{ color: 'var(--text-muted)' }}>
+                  {['Sunucu', 'Sonuç', 'Sebep'].map((h) => (
+                    <th key={h} className="px-2.5 py-1.5 text-left text-[11px] font-semibold">
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {(r?.rows || []).map((x) => (
+                  <tr key={x.host} className="border-t" style={{ borderColor: 'var(--border-subtle)' }}>
+                    <td className="px-2.5 py-1.5 font-mono font-semibold">{x.host}</td>
+                    <td
+                      className="px-2.5 py-1.5 font-semibold"
+                      style={{ color: K[x.verdict].color }}
+                      title={K[x.verdict].aciklama}
+                    >
+                      {K[x.verdict].label}
+                    </td>
+                    <td className="px-2.5 py-1.5" style={{ color: 'var(--text-secondary)' }}>
+                      {x.note || x.reasons.map((y) => y.aciklama).join(' · ') || 'bilinen engel yok'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function SevPill({ s, n }: { s: ShSeverity; n?: number }) {
   const t = SEV[s];
   const I = t.icon;
@@ -388,7 +554,7 @@ function SevPill({ s, n }: { s: ShSeverity; n?: number }) {
 // ── Sayfa ────────────────────────────────────────────────────────────────────────────
 export default function ServerHubPage() {
   // Sekmeler: Sunucular (tarama raporu) | Retirement (uygulama emeklilik akisi, 2026-09-21)
-  const [tab, setTab] = useState<'hosts' | 'findings' | 'retirement'>('hosts');
+  const [tab, setTab] = useState<'hosts' | 'findings' | 'readiness' | 'retirement'>('hosts');
   // Kartlardan bulgu detayina gecis (kullanici, 2026-09-22): kart -> Bulgular sekmesi + hazir suzgec
   const [findingsFilter, setFindingsFilter] = useState<{
     area?: string;
@@ -427,6 +593,7 @@ export default function ServerHubPage() {
             [
               { id: 'hosts', label: 'Sunucular' },
               { id: 'findings', label: 'Bulgular' },
+              { id: 'readiness', label: 'Açılış Hazırlığı' },
               { id: 'retirement', label: 'Retirement' },
             ] as const
           ).map((t) => (
@@ -446,6 +613,7 @@ export default function ServerHubPage() {
       </div>
       {tab === 'hosts' && <HostsTab onGoFindings={goFindings} />}
       {tab === 'findings' && <FindingsTab initial={findingsFilter} />}
+      {tab === 'readiness' && <ReadinessTab />}
       {tab === 'retirement' && <RetirementTab />}
     </div>
   );

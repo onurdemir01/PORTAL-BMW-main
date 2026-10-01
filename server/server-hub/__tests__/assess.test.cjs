@@ -760,3 +760,75 @@ test('KP7 envanter urun sutunlari GERCEK tablo sutunlariyla ayni', () => {
     );
   }
 });
+
+// ── ACILIS HAZIRLIGI (AH1..AH5, 2026-10-01) ─────────────────────────────────────────
+//
+// Kullanici: "Ben sana sunucu listesi verdigimde o sunucularin sorunsuz acilip
+// acilmayacagini bana bir executive summary gibi vermeni istiyorum."
+const { rebootReadiness, KOD_ANLAMI } = require('../reboot-readiness.cjs');
+
+const AH_HOSTS = [
+  { host: 'GBAPP01', scanDate: '2026-10-01', findings: [{ code: 'SYNTAX_FAIL', area: 'web', text: 'nginx -t FAIL' }] },
+  { host: 'GBAPP02', scanDate: '2026-10-01', findings: [{ code: 'REBOOT_RISK', area: 'jvm', text: 'kosuyor, auto-start kapali' }] },
+  { host: 'GBAPP03', scanDate: '2026-10-01', findings: [{ code: 'STOPPED_AUTOSTART_ON', area: 'jvm', text: 'kapali, auto-start acik' }] },
+  { host: 'GBAPP04', scanDate: '2026-10-01', findings: [{ code: 'SYNTAX_UNKNOWN', area: 'web', text: 'yetki' }] },
+  { host: 'GBAPP05', scanDate: '2026-10-01', findings: [{ code: 'VHOST_IDLE', area: 'web', text: 'atil vhost' }] },
+];
+const AH = () =>
+  rebootReadiness(AH_HOSTS, ['gbapp01', 'GBAPP02', 'gbapp03', 'gbapp04', 'gbapp05', 'GBYOK99'], '2026-10-01');
+
+test('AH1 TARANMAMIS sunucu "hazir" SAYILMAZ (en pahali yanlis)', () => {
+  const r = AH();
+  const yok = r.rows.find((x) => x.host === 'GBYOK99');
+  assert.equal(yok.verdict, 'notScanned', 'taranmamis sunucu baska bir kovaya girmis');
+  assert.equal(r.summary.ok, 1, 'taranmamis sunucu "hazir" sayilmis');
+  assert.equal(r.summary.notScanned, 1);
+  assert.match(yok.note, /taramada yok/i, 'sebep yazilmiyor');
+});
+
+test('AH2 ACILISI ENGELLEYEN bulgular "blocked" (sozdizimi / auto-start kapali)', () => {
+  const r = AH();
+  const by = Object.fromEntries(r.rows.map((x) => [x.host, x]));
+  assert.equal(by.GBAPP01.verdict, 'blocked', 'sozdizimi hatasi acilisi engellemiyor sayilmis');
+  assert.equal(by.GBAPP02.verdict, 'blocked', 'auto-start kapali kosan JVM engel sayilmamis');
+  assert.equal(r.summary.blocked, 2);
+});
+
+test('AH3 OLCULEMEYEN, RISKTEN DAHA AGIR siralanir', () => {
+  // Bilmedigimiz bir seyi, bildigimiz bir surprizden daha masum gostermek yanlis olurdu.
+  const r = AH();
+  const by = Object.fromEntries(r.rows.map((x) => [x.host, x]));
+  assert.equal(by.GBAPP04.verdict, 'unknown');
+  assert.equal(by.GBAPP03.verdict, 'risk');
+  const sira = r.rows.map((x) => x.verdict);
+  assert.ok(sira.indexOf('unknown') < sira.indexOf('risk'), 'olculemeyen riskin altina dusmus');
+  assert.ok(sira.indexOf('blocked') < sira.indexOf('unknown'), 'engel en uste gelmemis');
+});
+
+test('AH4 ILGISIZ bulgular ozete GIRMEZ (atil vhost acilisi etkilemez)', () => {
+  const r = AH();
+  const by = Object.fromEntries(r.rows.map((x) => [x.host, x]));
+  assert.equal(by.GBAPP05.verdict, 'ok', 'acilisla ilgisiz bulgu sunucuyu kirmizi yapmis');
+  assert.equal(by.GBAPP05.reasons.length, 0);
+  assert.ok(!KOD_ANLAMI.VHOST_IDLE, 'ilgisiz kod haritaya girmis');
+  assert.ok(!KOD_ANLAMI.SSH_SESSIONS_NEAR, 'ilgisiz kod haritaya girmis');
+});
+
+test('AH5 sebepler sunucu adlariyla toplanir; uc SALT OKUNUR', () => {
+  const r = AH();
+  const sf = r.topReasons.find((t) => t.code === 'SYNTAX_FAIL');
+  assert.ok(sf, 'sebep listesi uretilmiyor');
+  assert.equal(sf.hostCount, 1);
+  assert.deepEqual(sf.hosts, ['GBAPP01']);
+  // Engeller once gelmeli: ozet okunurken ilk goze carpan sey en agir olani olsun.
+  assert.equal(r.topReasons[0].tip, 'blocker');
+  const idx = require('node:fs').readFileSync(
+    require('node:path').join(__dirname, '..', 'index.cjs'),
+    'utf8',
+  );
+  const i = idx.indexOf("router.post('/reboot-readiness'");
+  assert.ok(i > 0, 'uc yok');
+  const blok = idx.slice(i, i + 1600);
+  assert.ok(!/launch\(/.test(blok), 'SALT OKUNUR olmasi gereken uc is baslatiyor');
+  assert.match(blok, /getAssessment\(false\)/, 'her istekte yeniden tarama tetikleniyor');
+});

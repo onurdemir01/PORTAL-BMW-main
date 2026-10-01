@@ -242,6 +242,31 @@ export interface ShLaunch {
   awxServerId: number;
   planOnly?: boolean;
 }
+/** Açılış hazırlığı satırı. `notScanned` ASLA "sorunsuz" sayılmaz. */
+export interface ShReadinessRow {
+  host: string;
+  verdict: 'ok' | 'risk' | 'blocked' | 'unknown' | 'notScanned';
+  scanDate: string | null;
+  reasons: { code: string; tip: 'blocker' | 'risk' | 'unknown'; aciklama: string; text: string; area: string | null }[];
+  note: string;
+}
+export interface ShReadiness {
+  ok: boolean;
+  message?: string;
+  latestScan?: string | null;
+  summary?: {
+    requested: number;
+    scanned: number;
+    notScanned: number;
+    ok: number;
+    risk: number;
+    blocked: number;
+    unknown: number;
+  };
+  rows?: ShReadinessRow[];
+  topReasons?: { code: string; tip: string; aciklama: string; hostCount: number; hosts: string[] }[];
+}
+
 export interface ShJobStatus {
   ok: boolean;
   status: string;
@@ -301,6 +326,11 @@ export const serverHubApi = {
     awxServerId?: number;
     action?: string;
   }> => fetch(`${BASE}/jvm-autostart`, json({ ...p, confirmed: true })).then(safeJson),
+  // ACILIS HAZIRLIGI (2026-10-01): "bu sunucular sorunsuz acilir mi" - SALT OKUNUR,
+  // hicbir is baslatmaz. Mevcut taramanin bulgularini yeniden baslatma sorusuna gore
+  // siniflar.
+  rebootReadiness: (hosts: string): Promise<ShReadiness> =>
+    fetch(`${BASE}/reboot-readiness`, json({ hosts })).then(safeJson),
   jobStatus: (awxServerId: number, jobId: number): Promise<ShJobStatus> =>
     fetch(`${BASE}/job-status/${awxServerId}/${jobId}`).then(safeJson),
 };
