@@ -26,7 +26,7 @@ import { LdapUserPicker } from '../LdapUserPicker';
 
 interface Editable {
   enabled: boolean;
-  /** SIKI: admin muafiyeti yok — açık kural olmadan kimse göremez */
+  /** SIKI: normal kullanıcı için açık kural şart (default_visible yok sayılır); yöneticiler muaf */
   strict: boolean;
   userVisible: boolean; // 'User' rol kuralı (allow)
   // Kişi bazlı kurallar: kullanıcı adı ya da E-POSTA (2026-09-26, kullanıcı isteği —
@@ -297,8 +297,8 @@ export default function PageVisibilityTab() {
               }`}
               title={
                 e.strict
-                  ? 'SIKI: yalnız açık kuralı olanlar görür (admin dahil). Kapatmak için tıkla.'
-                  : 'Normal: Admin her zaman görür. Sıkı yapmak için tıkla — o zaman yöneticinin de kuralı olmalı.'
+                  ? 'SIKI: normal kullanıcı için açık kural şart (“User görür” yok sayılır). Yöneticiler her zaman görür. Kapatmak için tıkla.'
+                  : 'Normal: açık kural yoksa “User görür” kutusu karar verir. Sıkı yapmak için tıkla — o zaman normal kullanıcı için AÇIK KURAL şart olur (yöneticiler her zaman görür).'
               }
             >
               {e.strict && <LockClosedIcon className="h-3.5 w-3.5" />}
@@ -437,7 +437,7 @@ export default function PageVisibilityTab() {
               </th>
               <th
                 className="px-3 py-2.5 text-center text-xs font-semibold text-gray-500"
-                title="Sıkı: admin muafiyeti yok, açık kural şart"
+                title="Sıkı: normal kullanıcı için açık kural şart (“User görür” yok sayılır). Yöneticiler her zaman görür."
               >
                 Sıkı
               </th>

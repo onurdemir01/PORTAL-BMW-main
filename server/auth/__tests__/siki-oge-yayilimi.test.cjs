@@ -4,7 +4,7 @@
 // `navgroup:cryptohub` ogesinde UC kisi kurali duruyordu (ekran goruntusu: "3 kisi kurali")
 // ama kullanici 403 aliyordu.
 //
-// SEBEP: `CryptoHub` SAYFASI `metadata.strict = true` (kullanicinin 2026-09-26 istegi:
+// SEBEP (o gun): `CryptoHub` SAYFASI `metadata.strict = true` idi (2026-09-26 istegi:
 // "sadece istedigim kisiler goruntuleyebilsin"). Motorda:
 //   * ata kaskadi yalnizca KISITLAR, asla YETKI VERMEZ
 //   * siki ogede varsayilan HER ZAMAN kapalidir (default_visible bakilmaz)
@@ -117,12 +117,56 @@ test('SY5 uc yayilimi CAGIRIYOR ve sonucu BILDIRIYOR; CryptoHub hala siki', () =
     "kural ucu yayilimi cagirmiyor - ataya yazilan kural siki cocukta ISE YARAMAZ",
   );
   assert.match(ROUTES, /strictChildren/, 'hangi siki cocuklara yazildigi bildirilmiyor');
-  // Sikilik KALDIRILARAK "cozulmesin": kullanici 2026-09-26'da bunu acikca istedi.
+  // 2026-10-01: sikilik KALDIRILDI (kullanici: "adminlerin yetkisi gitti bu sefer").
+  // Yeni iddia: CryptoHub sayfasi SIKI OLMAMALI ama normal kullaniciya da ACIK OLMAMALI -
+  // `roles: ['Admin']` default_visible=0 yazar, yani kurali olmayan kullanici goremez.
   const i = SEED.indexOf("element_key: 'CryptoHub'");
   assert.ok(i > 0, 'CryptoHub seed bulunamadi');
-  assert.match(
-    SEED.slice(i, i + 900),
-    /metadata: \{ strict: true \}/,
-    'CryptoHub artik SIKI degil - erisim sorunu sikiligi kaldirarak "cozulmus" olabilir',
+  const blok = SEED.slice(i, i + 900);
+  assert.ok(
+    !/metadata: \{ strict: true \}/.test(blok),
+    'CryptoHub yeniden SIKI yapilmis - yoneticiler kapida kalir (2026-10-01 karari)',
   );
+  assert.match(blok, /roles: \['Admin'\]/, 'sayfa normal kullaniciya acilmis olabilir');
+});
+
+// ── ADMIN MUAFIYETI KOSULSUZ (AM1..AM3, 2026-10-01) ─────────────────────────────────
+//
+// Kullanici: "adminlerin yetkisi gitti bu sefer. Adminler default olarak her seyi
+// gorebilir ve her seyi yapabiliyor olsun. O akisi niye bozuyorsun?"
+//
+// `strict` ESKIDEN admin muafiyetini de kaldiriyordu; Crypto Hub siki yapilinca
+// yoneticiler de kapida kaldi. Artik strict YALNIZ non-admin tarafi baglar.
+const VIS = fs.readFileSync(path.join(__dirname, '..', 'visibility.cjs'), 'utf8');
+
+test('AM1 decide(): Admin SIKI ogede de gecer', () => {
+  assert.match(
+    VIS,
+    /if \(role === 'Admin'\) \{ not\('admin muafiyeti'\); return true; \}/,
+    'admin muafiyeti hala sikilige bagli - yoneticiler kapida kalir',
+  );
+  assert.ok(
+    !/role === 'Admin' && !strict/.test(VIS),
+    "eski kosul geri gelmis (role === 'Admin' && !strict)",
+  );
+});
+
+test('AM2 strict NON-ADMIN icin hala baglayici (yalniz istedigin kisiler korunuyor)', () => {
+  assert.match(
+    VIS,
+    /if \(strict\) \{ not\('SIKI oge ve eslesen kural YOK -> kapali'\); return false; \}/,
+    'strict tamamen islevsiz kalmis - "yalniz istedigim kisiler" kurali kaybolur',
+  );
+});
+
+test('AM3 canli veritabani icin TEK SEFERLIK migration var (seed mevcut satiri GUNCELLEMEZ)', () => {
+  // Seed `if (exists) continue` yapar: seed'deki metadata degisikligi mevcut kurulumlara
+  // ULASMAZ. Migration olmadan uretimde yoneticiler kapida kalmaya devam ederdi.
+  assert.match(SEED, /migration:cryptohub-strict-off-2026-10-01/, 'migration isareti yok');
+  const i = SEED.indexOf('migration:cryptohub-strict-off-2026-10-01');
+  const blok = SEED.slice(i, i + 900);
+  assert.match(blok, /UPDATE portal_elements SET metadata = NULL/, 'strict bayragi temizlenmiyor');
+  for (const k of ['CryptoHub', 'cryptohub:app:metaco', 'cryptohub:app:wyden']) {
+    assert.ok(blok.includes(k), `migration bu ogeyi atlamis: ${k}`);
+  }
 });

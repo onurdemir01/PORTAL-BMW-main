@@ -25,11 +25,19 @@ test('VE1: e-posta kurali kullanici kuralindan SONRA, grup kuralindan ONCE', () 
   assert.match(SRC, /memoKey = `\$\{role\}\|\$\{usernameLower\}\|\$\{mailLower\}\|/);
 });
 
-test('VE2: SIKI ogede admin muafiyeti YOK ve varsayilan kapali', () => {
+test('VE2: SIKI oge NON-ADMIN icin kapali; ADMIN MUAF (2026-10-01 karari)', () => {
   // NOT: bu iddialar KODUN YAZIMINA degil ANLAMINA baksin diye desen esnek tutuldu;
   // 2026-09-26'da iz (explain) eklenince birebir metin eslesmesi bosuna dusmustu.
-  // Admin muafiyeti yalnizca strict DEGILKEN gecerli olmali.
-  assert.match(SRC, /role === 'Admin' && !strict[\s\S]{0,120}return true/);
+  //
+  // ANLAM DEGISTI (kullanici, 2026-10-01): "adminlerin yetkisi gitti bu sefer. Adminler
+  // default olarak her seyi gorebilir ve her seyi yapabiliyor olsun." Eskiden strict
+  // admin muafiyetini DE kaldiriyordu; Crypto Hub siki yapilinca yoneticiler kapida
+  // kaldi. Artik muafiyet KOSULSUZ, strict yalnizca non-admin tarafi baglar.
+  assert.match(SRC, /role === 'Admin'\)[\s\S]{0,120}return true/);
+  assert.ok(
+    !/role === 'Admin' && !strict/.test(SRC),
+    'admin muafiyeti yine sikilige baglanmis - yoneticiler kapida kalir',
+  );
   // Acik kural yoksa strict oge KAPALIDIR (default_visible'a bakilmaz).
   const iStrictFalse = SRC.search(/if \(strict\)[\s\S]{0,120}return false/);
   const iDefault = SRC.indexOf('return truthy(el.default_visible)');
@@ -41,13 +49,22 @@ test('VE2: SIKI ogede admin muafiyeti YOK ve varsayilan kapali', () => {
   assert.ok(iEnabled > 0 && iEnabled < iStrict, "enabled kontrolu strict'ten once olmali");
 });
 
-test('VE3: Crypto Hub SIKI olarak seed ediliyor', () => {
+test('VE3: Crypto Hub SIKI DEGIL ama normal kullaniciya KAPALI', () => {
+  // 2026-10-01: sikilik kaldirildi (yoneticiler kapida kaliyordu). Sayfanin normal
+  // kullaniciya kapali kalmasi `roles: ['Admin']`den gelir - seed onu default_visible=0
+  // olarak yazar. Ikisini birlikte olcmek sart: yalniz sikiligi kaldirmak, sayfayi
+  // herkese acmak anlamina GELMEMELI.
   const setup = fs.readFileSync(path.join(__dirname, '..', '..', 'db', 'mssql-setup.cjs'), 'utf8');
   const i = setup.indexOf("element_key: 'CryptoHub'");
   assert.ok(i > 0, 'CryptoHub seed satiri olmali');
   const blok = setup.slice(i, i + 900);
-  assert.match(blok, /metadata: \{ strict: true \}/, 'CryptoHub siki oge olmali');
-  // Seed metadata kolonunu GERCEKTEN yazmali; yoksa strict hic etkili olmaz.
+  assert.ok(
+    !/metadata: \{ strict: true \}/.test(blok),
+    'CryptoHub yeniden SIKI yapilmis - yoneticiler kapida kalir',
+  );
+  assert.match(blok, /roles: \['Admin'\]/, 'sayfa normal kullaniciya acilmis');
+  assert.match(setup, /restricted\s*\?\s*0/, "roles verilen oge default_visible=0 olmali");
+  // Seed metadata kolonunu GERCEKTEN yazmali; baska siki ogeler icin hala gerekli.
   assert.match(setup, /INSERT INTO portal_elements \([^)]*metadata\)/);
 });
 

@@ -1750,10 +1750,10 @@ const ELEMENT_SEED = [
     route: '/crypto-hub',
     sort_order: 1,
     roles: ['Admin'],
-    // SIKI (kullanici, 2026-09-26: "sadece istedigim kisiler goruntuleyebilsin"):
-    // admin olmak YETMEZ, kullanici/e-posta/grup kurallarindan biriyle acikca
-    // yetkilendirilmis olmak gerekir. Kill-switch degildir; oge acik kalir.
-    metadata: { strict: true },
+    // SIKI DEGIL (2026-10-01, kullanici: "Adminler default olarak her seyi gorebilir ve
+    // her seyi yapabiliyor olsun"). Sayfa yine HERKESE KAPALI - `roles: ['Admin']`
+    // default_visible=0 yaziyor, yani acik kurali olmayan normal kullanici goremez.
+    // Degisen tek sey: yoneticiler kapida kalmiyor.
   },
   // CRYPTO HUB UYGULAMA AYRIMI (kullanici, 2026-10-01): "Metaco ve Wyden tarafini farkli
   // ekiplere gosterecegiz." Sayfanin TAMAMI yerine uygulama bazinda yetki verilir; bu
@@ -1767,8 +1767,9 @@ const ELEMENT_SEED = [
     parent_key: 'CryptoHub',
     label: 'Crypto Hub — Metaco',
     sort_order: 1,
+    // default_visible=0 YETER: acik kurali olmayan normal kullanici goremez. `strict`
+    // KULLANILMIYOR cunku o, yoneticileri de disarida birakirdi (2026-10-01 karari).
     default_visible: 0,
-    metadata: { strict: true },
   },
   {
     element_key: 'cryptohub:app:wyden',
@@ -1776,8 +1777,9 @@ const ELEMENT_SEED = [
     parent_key: 'CryptoHub',
     label: 'Crypto Hub — Wyden',
     sort_order: 2,
+    // default_visible=0 YETER: acik kurali olmayan normal kullanici goremez. `strict`
+    // KULLANILMIYOR cunku o, yoneticileri de disarida birakirdi (2026-10-01 karari).
     default_visible: 0,
-    metadata: { strict: true },
   },
   {
     // NGINX ARK SPA RAPORU (kullanici, 2026-09-28): tum servisler icin SPA listesi.
@@ -2362,6 +2364,36 @@ async function seedPortalElements(pool) {
   // kaydi ekledigi icin mevcut kurulumlarda role=User allow kurali ve default_visible=1
   // kalirdi; asagidaki tek seferlik migration (isaret: portal_config_blobs) bunu kapatir.
   // Admin'in verecegi kullanici/grup grant'lari (Denetim Erisimi paneli) dokunulmaz.
+  // CRYPTO HUB SIKILIGI KALDIRILIR (2026-10-01). Kullanici: "adminlerin yetkisi gitti bu
+  // sefer. Adminler default olarak her seyi gorebilir."
+  //
+  // SEED YALNIZ EKSIK KAYDI EKLER (yukarida `continue`), yani seed'deki metadata
+  // degisikligi MEVCUT kurulumlara ULASMAZ. Bu migration o uc satirin strict bayragini
+  // temizler. Kullanici/grup/e-posta kurallari ve default_visible DOKUNULMAZ - sayfa
+  // normal kullaniciya kapali kalir, yalniz yoneticiler kapida kalmaz.
+  try {
+    const MARK = 'migration:cryptohub-strict-off-2026-10-01';
+    const done = await pool
+      .request()
+      .input('n', MARK)
+      .query(`SELECT 1 FROM portal_config_blobs WHERE name = @n`);
+    if (!done.recordset.length) {
+      await pool.request().query(
+        `UPDATE portal_elements SET metadata = NULL
+          WHERE element_key IN ('CryptoHub', 'cryptohub:app:metaco', 'cryptohub:app:wyden')`,
+      );
+      await pool
+        .request()
+        .input('n', MARK)
+        .query(
+          `INSERT INTO portal_config_blobs (name, data) VALUES (@n, '{"done":true}')`,
+        );
+      console.log('[DB] Crypto Hub sikiligi kaldirildi (admin muafiyeti geri geldi).');
+    }
+  } catch (err) {
+    console.warn('[DB] cryptohub-strict-off migration:', err.message);
+  }
+
   try {
     const MARK = 'migration:denetim-admin-only-2026-09-17';
     const done = await pool

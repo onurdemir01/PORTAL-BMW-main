@@ -133,10 +133,18 @@ function decide(el, ruleIndex, role, usernameLower, groupKeys, mailLower, iz) {
   const not = (sebep, kural) => { if (iz) { iz.sebep = sebep; iz.kural = kural || null; } };
   if (!truthy(el.enabled)) { not('kill-switch: oge kapali (enabled=false)'); return false; }
 
-  // SIKI ELEMENT (2026-09-26, kullanici: "sadece istedigim kisiler goruntuleyebilsin"):
-  // metadata.strict=true olan ogede ADMIN MUAFIYETI YOKTUR - yonetici de acikca
-  // yetkilendirilmis olmali. Kill-switch'ten farki: oge kapanmiyor, yalnizca listeye
-  // girenlere aciliyor. Varsayilan davranis DEGISMEDI (strict yoksa admin yine gorur).
+  // SIKI ELEMENT.
+  //
+  // ANLAMI DEGISTI (2026-10-01, kullanici: "adminlerin yetkisi gitti bu sefer. Adminler
+  // default olarak her sey gorebilir ve her seyi yapabiliyor olsun. O akisi niye
+  // bozuyorsun?").
+  //
+  // ESKIDEN: strict ADMIN MUAFIYETINI DE kaldiriyordu (2026-09-26 istegi). Sonuc: Crypto
+  // Hub'da yoneticiler de kapida kaldi ve portalin "admin her seyi gorur" akisi bozuldu.
+  //
+  // SIMDI: admin muafiyeti HER ZAMAN gecerli. strict yalnizca NON-ADMIN tarafi baglar -
+  // `default_visible` ne olursa olsun acik bir kural (kullanici/e-posta/grup/rol) sart.
+  // Yani "yalniz istedigim kisiler" kurali korunuyor, yoneticiler disinda.
   let strict = false;
   try {
     const m = el.metadata ? (typeof el.metadata === 'string' ? JSON.parse(el.metadata) : el.metadata) : null;
@@ -144,7 +152,8 @@ function decide(el, ruleIndex, role, usernameLower, groupKeys, mailLower, iz) {
   } catch { strict = false; }
 
   if (iz) iz.strict = strict;
-  if (role === 'Admin' && !strict) { not('admin muafiyeti (oge siki degil)'); return true; }
+  // ADMIN MUAFIYETI KOSULSUZ: siki oge de olsa yonetici gorur (bkz. yukaridaki not).
+  if (role === 'Admin') { not('admin muafiyeti'); return true; }
   const uKey = `${el.element_key}|user|${usernameLower}`;
   if (ruleIndex.has(uKey)) {
     const v = ruleIndex.get(uKey);
@@ -185,8 +194,9 @@ function decide(el, ruleIndex, role, usernameLower, groupKeys, mailLower, iz) {
 // altindaki tab/buton da gizlenir" kurali artik GERCEKTEN uygulanir. Bir ogenin ATA
 // zincirinde gorunmeyen tek bir halka varsa oge de gorunmez.
 //
-// SIKI OGE NOTU: metadata.strict=true olan ogede admin muafiyeti yoktur; erisim yalnizca
-// acik kurallarla (user / email / group / role) verilir. Seed, roles: ['Admin'] verildiginde
+// SIKI OGE NOTU: metadata.strict=true olan ogede NON-ADMIN erisimi yalnizca acik
+// kurallarla (user / email / group / role) verilir; `default_visible` yok sayilir.
+// Yoneticiler 2026-10-01'den beri MUAFTIR (kullanici karari). Seed, roles: ['Admin'] verildiginde
 // bir ROL kurali yazar - yani ilk kurulumda yoneticiler gorur; listeyi daraltmak isteyen o
 // rol kuralini Admin ekranindan kaldirir.
 //

@@ -144,7 +144,7 @@ export interface PortalElement {
   enabled: boolean;
   defaultVisible: boolean;
   metadata: string | null;
-  /** true = SIKI öge: admin muafiyeti yok, açık kural olmadan kimse göremez */
+  /** true = SIKI öge: normal kullanıcı için açık kural şart (default_visible yok sayılır); yöneticiler muaf */
   strict?: boolean;
   // actions.md #15 — eskiden yalniz kullanilmayan metadata JSON blob'unda gizliydi.
   description: string | null;

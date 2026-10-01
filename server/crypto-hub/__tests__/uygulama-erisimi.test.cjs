@@ -60,14 +60,20 @@ test('UE3 kapi KAPALI TARAFA dusuyor (motor okunamazsa erisim YOK)', () => {
   assert.match(blok, /canSee\(user, 'cryptohub:app:' \+ app\)/, 'yetki motora sorulmuyor');
 });
 
-test('UE4 uygulama ogeleri SIKI ve varsayilan KAPALI', () => {
+test('UE4 uygulama ogeleri varsayilan KAPALI; SIKI DEGIL (admin muaf kalsin)', () => {
+  // 2026-10-01: ogeler SIKI yapilmisti, sonuc olarak YONETICILER de uygulamalari
+  // goremiyordu (kullanici: "adminlerin yetkisi gitti bu sefer"). `default_visible: 0`
+  // zaten yeterli: acik kurali olmayan NORMAL kullanici goremez, yonetici gorur.
   for (const app of ['metaco', 'wyden']) {
     const i = SEED.indexOf(`element_key: 'cryptohub:app:${app}'`);
     assert.ok(i > 0, `seed yok: ${app}`);
-    const blok = SEED.slice(i, i + 400);
+    const blok = SEED.slice(i, i + 500);
     assert.match(blok, /parent_key: 'CryptoHub'/, `${app}: ata CryptoHub degil`);
     assert.match(blok, /default_visible: 0/, `${app}: varsayilan ACIK - ayrimin anlami kalmaz`);
-    assert.match(blok, /metadata: \{ strict: true \}/, `${app}: SIKI degil`);
+    assert.ok(
+      !/metadata: \{ strict: true \}/.test(blok),
+      `${app}: SIKI yapilmis - yoneticiler uygulamalari goremez`,
+    );
   }
 });
 
