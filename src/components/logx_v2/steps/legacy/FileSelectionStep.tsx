@@ -372,6 +372,16 @@ const FileSelectionStep: React.FC<Props> = ({ result, onSubmit, busy }) => {
 
   return (
     <div className="space-y-3">
+      {/* ORTAM KISITI: gizlenen dosyalar sessizce kaybolmaz. */}
+      {(result.hiddenFiles || 0) > 0 && (
+        <div
+          data-testid="logx-hidden-files"
+          className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800"
+        >
+          {result.hiddenFiles} dosya {(result.hiddenEnvs || []).join(', ')} ortamı LogX'te kısıtlı
+          olduğu için gösterilmiyor. Erişim için LogX yöneticisine (Admin) başvurun.
+        </div>
+      )}
       {result.overall_status === 'partial' && (
         <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 text-xs text-amber-800">
           Bazı sunuculara erişilemedi — aşağıda yalnızca başarıyla taranan sunucular gösteriliyor.

@@ -10,6 +10,7 @@ import { screen, waitFor } from '@testing-library/react';
 import { render } from '@/test/test-utils';
 import NamespacePickerStep from '@/components/logx_v2/steps/ocp/NamespacePickerStep';
 import AppNameStep from '@/components/logx_v2/steps/ocp/AppNameStep';
+import FileSelectionStep from '@/components/logx_v2/steps/legacy/FileSelectionStep';
 
 const mockInventoryApps = vi.hoisted(() => vi.fn());
 const mockReadiness = vi.hoisted(() => vi.fn());
@@ -101,5 +102,50 @@ describe('K2 AppNameStep kısıtlı namespace', () => {
       />,
     );
     await waitFor(() => expect(onDiscover).toHaveBeenCalledTimes(1));
+  });
+});
+
+describe('K3 ortam kısıtı (L3)', () => {
+  it('namespace listesi ortam reddinde sunucunun açıklamasını gösterir', () => {
+    const MESAJ =
+      "PROD ortamı LogX'te kısıtlı. İzinli: grup prod-log. Erişim için: LogX yöneticisi (Admin).";
+    render(
+      <NamespacePickerStep
+        namespaces={[]}
+        hiddenCount={4}
+        restrictionMessage={MESAJ}
+        onSelect={() => {}}
+      />,
+    );
+    expect(screen.getByTestId('logx-hidden-namespaces').textContent).toBe(MESAJ);
+  });
+
+  it('legacy dosya seçimi gizlenen dosya SAYISINI ve ortamı söyler', () => {
+    render(
+      <FileSelectionStep
+        result={
+          {
+            overall_status: 'ok',
+            hosts: [{ host: 'h1', status: 'ok', files: [] }],
+            hiddenFiles: 3,
+            hiddenEnvs: ['PROD'],
+          } as never
+        }
+        onSubmit={() => {}}
+      />,
+    );
+    expect(screen.getByTestId('logx-hidden-files').textContent).toMatch(
+      /3 dosya PROD ortamı LogX'te kısıtlı/,
+    );
+  });
+
+  it('gizlenen dosya yoksa not çıkmaz', () => {
+    render(
+      <FileSelectionStep
+        result={{ overall_status: 'ok', hosts: [{ host: 'h1', status: 'ok', files: [] }] } as never}
+        onSubmit={() => {}}
+      />,
+    );
+    expect(screen.queryByTestId('logx-hidden-files')).toBeNull();
   });
 });

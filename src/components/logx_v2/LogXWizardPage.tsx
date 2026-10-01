@@ -69,6 +69,8 @@ interface NamespaceList {
   unreadableSources?: string[];
   /** Kısıtlı olduğu için gizlenen namespace sayısı (adlar sunucuda kalır). */
   hiddenCount?: number;
+  /** Ortam kısıtlıysa sunucunun açıklaması (kural + izinliler + başvuru yolu). */
+  restrictionMessage?: string;
 }
 
 interface OcpInput {
@@ -106,6 +108,7 @@ async function loadNamespaceCache(input: OcpInput | undefined): Promise<Namespac
     clusters: out.clusters,
     unreadableSources: out.unreadableSources,
     hiddenCount: out.hiddenCount || 0,
+    restrictionMessage: out.restriction ? out.message : undefined,
   };
 }
 
@@ -704,6 +707,7 @@ const LogXWizardPage: React.FC = () => {
             clusterMembership={namespaceList.clusters}
             unreadableSources={namespaceList.unreadableSources}
             hiddenCount={namespaceList.hiddenCount}
+            restrictionMessage={namespaceList.restrictionMessage}
             selectedClusters={(request?.input as OcpInput | undefined)?.clusters || []}
             busy={busy}
             onRediscover={() =>
