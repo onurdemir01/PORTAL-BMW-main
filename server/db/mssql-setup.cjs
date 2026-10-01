@@ -2284,6 +2284,14 @@ const ELEMENT_SEED = [
     default_visible: 0,
   },
   {
+    element_key: 'tab:nginx:spadiscovery',
+    element_type: 'tab',
+    parent_key: 'NginxConsole',
+    label: 'Gerçek SPA Keşfi',
+    sort_order: 29,
+    default_visible: 0,
+  },
+  {
     element_key: 'tab:nginx:api',
     element_type: 'tab',
     parent_key: 'NginxConsole',

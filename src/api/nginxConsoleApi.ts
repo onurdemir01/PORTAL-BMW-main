@@ -160,7 +160,63 @@ export interface NcOrphanCleanupResult {
   rejected?: string[];
 }
 
+/** Gerçek SPA keşfi satırı — keşif + route envanteri + Dynatrace ölçümü bir arada. */
+export interface NgSpaDiscoveryRow {
+  cluster: string;
+  namespace: string;
+  route: string;
+  host: string;
+  termination: string;
+  workloadKind: string;
+  workload: string;
+  application: string;
+  env: string | null;
+  /** Kabinde gerçekten nginx koşuyor mu (ada BAKMADAN). */
+  isSpa: boolean;
+  /** `nginx-start.sh` (güçlü) ya da `image` (zayıf) — hangi kanıtla işaretlendi. */
+  signal: string;
+  image: string;
+  /** Eşleşme kurulamadıysa sebebi. Satır yine listede durur. */
+  note: string;
+  /** Route, route envanterinde kayıtlı mı. */
+  inInventory: boolean;
+  /** Eski yöntem (`-app-v` / `-app-emb-v`) bunu SPA sayar mıydı. */
+  patternMatch: boolean;
+  /** ASIL BULGU: gerçekten SPA ama ad kalıbına uymuyor. */
+  patternMiss: boolean;
+  /** Ad kalıbına uyuyor ama kabinde nginx yok. */
+  patternFalse: boolean;
+  usage: { scanDate: string; windowDays: number; req: number; measured: boolean; services: number; note: string } | null;
+  /** `null` = ölçülemedi ya da ölçüm yok — "istek yok" DEĞİL. */
+  reqShown: number | null;
+}
+export interface NgSpaDiscovery {
+  ok: boolean;
+  message?: string;
+  tableMissing?: boolean;
+  scanDate?: string | null;
+  rows?: NgSpaDiscoveryRow[];
+  clusters?: string[];
+  envs?: string[];
+  summary?: {
+    routes: number;
+    spa: number;
+    notSpa: number;
+    patternMiss: number;
+    patternFalse: number;
+    spaNotInInventory: number;
+    bySignal: Record<string, number>;
+    trafficActive: number;
+    trafficIdle: number;
+    trafficUnmeasured: number;
+    trafficNone: number;
+    unmatched: number;
+  } | null;
+}
+
 export const nginxConsoleApi = {
+  // Gercek SPA kesfi (2026-10-01): ad kalibina bakmadan, kabinde nginx kosan uygulamalar.
+  spaDiscovery: (): Promise<NgSpaDiscovery> => fetch(`${BASE}/spa-discovery`).then((r) => r.json()),
   /** Tüm Nginx sunucularının rate limit dökümü (satır düzeyinde). */
   rateLimit: (scanDate?: string): Promise<NginxRateLimitResult> =>
     fetch(`${BASE}/ratelimit${scanDate ? `?scanDate=${encodeURIComponent(scanDate)}` : ''}`).then(safeJson),

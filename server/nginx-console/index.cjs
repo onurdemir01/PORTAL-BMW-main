@@ -450,6 +450,7 @@ function initNginxConsole(app) {
       [/^\/orphans(\/|$)/, 'orphans'],
       [/^\/drift(\/|$)/, 'drift'],
       [/^\/ratelimit(\/|\.|$)/, 'ratelimit'],
+      [/^\/spa-discovery(\/|$)/, 'spadiscovery'],
     ];
     router.use((req, res, next) => {
       const hit = TAB_OF_PATH.find(([re]) => re.test(req.path));
@@ -639,6 +640,69 @@ function initNginxConsole(app) {
 
   // Kullanilmayan dosyalar (2026-09-22): nginx -T'nin yuklemedigi conf dosyalari, yalniz onlarda
   // gecen sertifikalar, ssl/ altinda referanssiz dosyalar. Sunucu bazinda; ?host= tek sunucu.
+  // ── GERCEK SPA KESFI (kullanici, 2026-10-01) ───────────────────────────────────────
+  // "Nginx Hub icerisinde gercekten SPA olan tum uygulamalarin cekilmesi, route
+  // envanterinin karsilastirilmasi ve route'larinin yazilmasi, uygulama trafiginin de
+  // yanlarina islenmesi."
+  //
+  // UC KAYNAK: kesif (kabinde nginx var mi) + route envanteri + Dynatrace olcumu.
+  // Hicbiri otekini DUZELTMEZ; aradaki fark BILGIDIR ve ekranin varlik sebebidir.
+  router.get('/spa-discovery', async (req, res) => {
+    try {
+      const { query } = require('../inventory/mssql.cjs');
+      const ex = await query(`SELECT OBJECT_ID('dbo.BMW_Spa_Discovery') AS oid`);
+      if (!ex.recordset?.[0]?.oid) {
+        // TABLO YOK ile SPA YOK AYRI: bos liste dondurmek "hic SPA bulunmadi" diye okunur.
+        return res.json({
+          ok: true,
+          tableMissing: true,
+          message:
+            "dbo.BMW_Spa_Discovery tablosu henüz yok — openshift_spa_discovery job'ı bir kez koşmalı.",
+          rows: [],
+          clusters: [],
+          envs: [],
+          summary: null,
+          scanDate: null,
+        });
+      }
+      const gun = await query(`SELECT CONVERT(varchar(10), MAX(scan_date), 23) AS d FROM dbo.BMW_Spa_Discovery`)
+        .then((r) => r.recordset?.[0]?.d || null)
+        .catch(() => null);
+      const [disc, inv, usage] = await Promise.all([
+        query(
+          `SELECT cluster, namespace, route, host, termination, workload_kind, workload,
+                  is_spa, signal, image, note
+             FROM dbo.BMW_Spa_Discovery
+            WHERE scan_date = (SELECT MAX(scan_date) FROM dbo.BMW_Spa_Discovery)`,
+        ).then((r) => r.recordset || []),
+        query(
+          `SELECT cluster_name, namespace_name, route_name, route_address
+             FROM dbo.BMW_Openshift_Route_Inventory`,
+        )
+          .then((r) => r.recordset || [])
+          .catch(() => []),
+        // OLCUM: uygulama basina EN YENI satir - secim VERITABANINDA yapilir (yarim milyon
+        // satir tasimamak icin; ayni ders Route Trafigi'nde olculdu).
+        query(
+          `SELECT namespace, app, scan_date, window_days, req_total, services_total, measured, note
+             FROM (
+               SELECT namespace, app, scan_date, window_days, req_total, services_total, measured, note,
+                      ROW_NUMBER() OVER (PARTITION BY namespace, app ORDER BY scan_date DESC) AS rn
+                 FROM dbo.BMW_Application_Usage
+                WHERE scan_date >= DATEADD(day, -7, CAST(GETDATE() AS DATE))
+             ) t
+            WHERE rn = 1`,
+        )
+          .then((r) => r.recordset || [])
+          .catch(() => []),
+      ]);
+      const { buildSpaDiscovery } = require('./spa-discovery.cjs');
+      res.json({ ok: true, tableMissing: false, scanDate: gun, ...buildSpaDiscovery(disc, inv, usage) });
+    } catch (err) {
+      res.status(err.status || 500).json({ ok: false, message: err.message });
+    }
+  });
+
   router.get('/orphans', (req, res) => {
     const only = String(req.query.host || '').toUpperCase();
     const hosts = only ? [only] : listDumpedHosts().map((d) => d.host);

@@ -386,6 +386,7 @@ function initVisibilityRoutes(app, { requireAuth, requireAdmin }) {
     'api',
     'envanter',
     'audit',
+    'spadiscovery',
   ];
   const nginxKeys = () => ['NginxConsole', ...NGINX_TAB_KEYS.map((t) => 'tab:nginx:' + t)];
 

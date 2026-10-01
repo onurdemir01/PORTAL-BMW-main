@@ -217,3 +217,77 @@ test('NH11 gecmis tablolari + indeksler seed\'de; publish niyeti + ingest kaynak
   assert.match(ui, /function ChangesTab\(/);
   assert.match(ui, /bu sürüme dön/);
 });
+
+// ── GERCEK SPA KESFI (GS1..GS6, 2026-10-01) ─────────────────────────────────────────
+//
+// Kullanici: "gercekten SPA olan tum uygulamalarin cekilmesi, route envanterinin
+// karsilastirilmasi ve route'larinin yazilmasi, uygulama trafiginin de yanlarina
+// islenmesi."
+//
+// EKRANIN SEBEBI: SPA'yi ADINDAN tanimak bir TAHMINDI (`-app-v`). Bu sayfa canli duruma
+// bakar ve ad kalibinin KACIRDIKLARINI one cikarir.
+const { buildSpaDiscovery } = require('../spa-discovery.cjs');
+
+const D = (o) => ({
+  cluster: 'gbocpprod1', namespace: 'sube-prod', route: 'r', host: 'h.apps', termination: '',
+  workload_kind: 'Deployment', workload: 'app', is_spa: 0, signal: '', image: '', note: '',
+  ...o,
+});
+const GS_DISC = [
+  D({ route: 'r1', host: 'a.apps', workload: 'sube-portali-app-v1', is_spa: 1, signal: 'nginx-start.sh' }),
+  D({ route: 'r2', host: 'b.apps', workload: 'eski-portal', is_spa: 1, signal: 'image' }),
+  D({ route: 'r3', host: 'c.apps', workload: 'java-app-v2', is_spa: 0 }),
+  D({ route: 'r4', host: 'd.apps', workload_kind: '', workload: '', note: 'servis bulunamadi: x' }),
+];
+const GS_INV = [{ cluster_name: 'gbocpprod1', namespace_name: 'sube-prod', route_name: 'r1', route_address: 'a.apps' }];
+const GS_USE = [{ namespace: 'sube-prod', app: 'eski-portal', scan_date: '2026-10-01', window_days: 7, req_total: 1500, services_total: 2, measured: 1, note: '' }];
+const GS = () => buildSpaDiscovery(GS_DISC, GS_INV, GS_USE);
+
+test('GS1 ad kalibinin KACIRDIGI gercek SPA isaretlenir ve EN USTE gelir', () => {
+  const r = GS();
+  assert.equal(r.summary.patternMiss, 1);
+  assert.equal(r.rows[0].application, 'eski-portal', 'kacan uygulama listenin basinda degil');
+  assert.equal(r.rows[0].patternMiss, true);
+});
+
+test('GS2 ada gore SPA ama kabinde nginx YOK ayri sayilir (yanlis pozitif)', () => {
+  const r = GS();
+  assert.equal(r.summary.patternFalse, 1);
+  const j = r.rows.find((x) => x.application === 'java-app-v2');
+  assert.equal(j.patternFalse, true);
+  assert.equal(j.isSpa, false);
+});
+
+test('GS3 ROUTE ENVANTERI karsilastirilir (ad ya da adres uzerinden)', () => {
+  const r = GS();
+  const by = Object.fromEntries(r.rows.map((x) => [x.application, x]));
+  assert.equal(by['sube-portali-app-v1'].inInventory, true, 'envanterdeki route bulunamadi');
+  assert.equal(by['eski-portal'].inInventory, false);
+  assert.equal(r.summary.spaNotInInventory, 1, 'envanterde olmayan SPA sayilmiyor');
+});
+
+test('GS4 TRAFIK yanina islenir; UC DURUM ayri kalir', () => {
+  const r = GS();
+  const by = Object.fromEntries(r.rows.map((x) => [x.application, x]));
+  assert.equal(by['eski-portal'].reqShown, 1500);
+  // Olcumu olmayan satira 0 YAZILMAZ - "istek yok" ile "olcum yok" ayri.
+  assert.equal(by['sube-portali-app-v1'].reqShown, null);
+  assert.equal(by['sube-portali-app-v1'].usage, null);
+  assert.equal(r.summary.trafficActive, 1);
+  assert.equal(r.summary.trafficNone, 1);
+});
+
+test('GS5 ESLESMEYEN route LISTEDE KALIR ve sebebi tasinir', () => {
+  const r = GS();
+  const e = r.rows.find((x) => x.note);
+  assert.ok(e, 'eslesmeyen satir listeden dusmus - aranan uygulama o olabilir');
+  assert.match(e.note, /servis bulunamadi/);
+  assert.equal(r.summary.unmatched, 1);
+  // "SPA degil" kovasina DA girmemeli: olculemeyeni olculmus gibi saymak yanlis olurdu.
+  assert.equal(r.summary.notSpa, 1, 'eslesmeyen satir "SPA degil" diye sayilmis');
+});
+
+test('GS6 IKI SINYAL AYRI sayilir (biri otekinden zayif)', () => {
+  const r = GS();
+  assert.deepEqual(r.summary.bySignal, { 'nginx-start.sh': 1, image: 1 });
+});

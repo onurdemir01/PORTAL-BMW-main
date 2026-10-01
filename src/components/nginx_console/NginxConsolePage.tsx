@@ -31,6 +31,7 @@ import { SourceNote, type SourceKey } from './SourceNote';
 // DENETIM'DEN TASINDI (kullanici, 2026-09-22): "Denetim'deki tum nginx sayfalarini Nginx Hub'a
 // gom." Bilesenler yerinde kaldi (denetim/), yalniz sekme burada. Denetim'de artik nginx sekmesi yok.
 import { NginxSpaAudit, NGINX_DENETIM_HELP } from '@/components/DenetimPage';
+import NginxSpaDiscovery from '@/components/nginx_console/NginxSpaDiscovery';
 import { NginxApiEnvanteri } from '@/components/denetim/NginxApiEnvanteri';
 import { NginxEnvanteri } from '@/components/denetim/NginxEnvanteri';
 import { NginxAudit } from '@/components/denetim/NginxAudit';
@@ -38,8 +39,8 @@ import HelpModal from '@/components/common/HelpModal';
 import { nginxConsoleApi, type NcHost, type NcTree, type NcTreeDir, type NcFile, type NcCertsResult, type NcAggCert, type NcCert, type NcChange } from '@/api/nginxConsoleApi';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
 
-type Tab = 'dashboard' | 'instances' | 'config' | 'certs' | 'changes' | 'orphans' | 'drift' | 'cis' | 'ratelimit' | 'spa' | 'api' | 'envanter' | 'audit';
-const TABS: readonly Tab[] = ['dashboard', 'instances', 'config', 'changes', 'certs', 'orphans', 'drift', 'cis', 'ratelimit', 'spa', 'api', 'envanter', 'audit'];
+type Tab = 'dashboard' | 'instances' | 'config' | 'certs' | 'changes' | 'orphans' | 'drift' | 'cis' | 'ratelimit' | 'spa' | 'spadiscovery' | 'api' | 'envanter' | 'audit';
+const TABS: readonly Tab[] = ['dashboard', 'instances', 'config', 'changes', 'certs', 'orphans', 'drift', 'cis', 'ratelimit', 'spa', 'spadiscovery', 'api', 'envanter', 'audit'];
 // Panel basliklarindaki kucuk dugmeler: HEPSI ayni boyut/yazi (2026-09-19: btn-primary'nin buyuk
 // dolgusu "Sunucular" basligini eziyordu, iki dugmenin yazisi da farkli buyuklukteydi).
 const SM_BTN = 'inline-flex items-center gap-1 h-7 px-2.5 text-[11px] font-medium leading-none rounded-lg border whitespace-nowrap disabled:opacity-40';
@@ -63,6 +64,7 @@ const HUB_TABS = [
 ] as const;
 const HUB_AUDIT_TABS = [
   { id: 'spa', label: 'SPA' },
+  { id: 'spadiscovery', label: 'Gerçek SPA Keşfi' },
   { id: 'api', label: 'API Envanteri' },
   { id: 'envanter', label: 'Envanter' },
   { id: 'audit', label: 'Audit' },
@@ -162,7 +164,7 @@ export default function NginxConsolePage() {
   // her sekmenin basinda kaynak isi, verinin tarihi ve nasil tazelenecegi yazar.
   const SOURCE_OF: Record<Tab, SourceKey> = {
     dashboard: 'console', instances: 'console', config: 'console', changes: 'console', certs: 'console',
-    orphans: 'console', drift: 'console', audit: 'audit', cis: 'cis', ratelimit: 'api', spa: 'spa', api: 'api', envanter: 'inventory',
+    orphans: 'console', drift: 'console', audit: 'audit', cis: 'cis', ratelimit: 'api', spa: 'spa', spadiscovery: 'spa', api: 'api', envanter: 'inventory',
   };
   // Dokum tabanli sekmelerde "son tarama" = en yeni dokum/gorulme ani.
   const lastDump = useMemo(() => {
@@ -217,6 +219,7 @@ export default function NginxConsolePage() {
       {tab === 'cis' && canSee('tab:nginx:cis') && <CisTab isAdmin={isAdmin} onOpenHost={(h) => go('config', h)} />}
       {tab === 'ratelimit' && canSee('tab:nginx:ratelimit') && <RateLimitTab />}
       {tab === 'spa' && canSee('tab:nginx:spa') && <NginxSpaAudit />}
+      {tab === 'spadiscovery' && canSee('tab:nginx:spadiscovery') && <NginxSpaDiscovery />}
       {tab === 'api' && canSee('tab:nginx:api') && <NginxApiEnvanteri />}
       {tab === 'envanter' && canSee('tab:nginx:envanter') && <NginxEnvanteri />}
       {tab === 'audit' && canSee('tab:nginx:audit') && <NginxAudit />}

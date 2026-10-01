@@ -23,6 +23,7 @@ const TAB_LABELS: Record<string, string> = {
   api: 'API Envanteri',
   envanter: 'Envanter',
   audit: 'Audit',
+  spadiscovery: 'Gerçek SPA Keşfi',
 };
 
 export default function NginxAccessTab() {
