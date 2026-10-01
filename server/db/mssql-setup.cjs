@@ -1515,6 +1515,41 @@ const TABLES = [
         UNIQUE(table_name)
       )`,
   },
+  {
+    // Nginx ARK SPA Raporu > LOCATION BAZLI ekip beyani (2026-10-01, kullanici):
+    // "aynı uygulamaya tanımlı 3 tane location bulunuyor. Birine kullanılmıyor dediğim
+    // zaman hepsine kullanılmıyor olarak işaretleniyor."
+    //
+    // Sebep: beyan nginx_migration_tracking.in_use alaninda tutuluyordu ve o tablo
+    // UYGULAMA basina tek satir (UNIQUE(group_id, namespace, application)). Location
+    // kirilimi oraya SIGMAZ; unique kisiti degistirmek, SPA Tasimalari ekraninin
+    // dayandigi canli bir tabloyu riske atardi. Bu yuzden AYRI tablo.
+    //
+    // UYGULAMA SEVIYESI BEYAN KALDI: SPA Tasimalari'nda girilen deger burada hala
+    // VARSAYILAN olarak gorunur (devralinan), location'a ozel beyan girilince onu EZER.
+    // Boylece "hangisi gecerli" sorusunun tek cevabi var: EN OZEL olan kazanir.
+    //
+    // decl_key NEDEN VAR: (namespace, application, location_path) uzerinde UNIQUE kisit
+    // SQL Server'in 900 baytlik indeks anahtari sinirini asiyor (200+200+400 NVARCHAR
+    // karakter = 1600 bayt). Anahtar, bu uc degerin SHA-256 ozeti (Node tarafinda
+    // hesaplanir); okunabilir degerler ayri sutunlarda DURUR.
+    name: 'nginx_spa_location_in_use',
+    sql: `
+      CREATE TABLE nginx_spa_location_in_use (
+        id            INT IDENTITY(1,1) PRIMARY KEY,
+        decl_key      CHAR(64)      NOT NULL,
+        namespace     NVARCHAR(200) NOT NULL,
+        application   NVARCHAR(200) NOT NULL,
+        location_path NVARCHAR(400) NOT NULL,
+        in_use        NVARCHAR(16)  NULL,
+        in_use_by     NVARCHAR(128) NULL,
+        in_use_at     DATETIME2 NULL,
+        note          NVARCHAR(500) NULL,
+        updated_by    NVARCHAR(128) NULL,
+        updated_at    DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+        UNIQUE(decl_key)
+      )`,
+  },
 ];
 
 // LogX v2 EAR-klasor-son-eki → ortam etiketi varsayilan seed'i (admin ekranindan duzenlenebilir).
