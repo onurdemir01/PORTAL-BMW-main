@@ -49,7 +49,7 @@ async function loadBeyanlar() {
   const m = new Map();
   try {
     const r = await db.query(
-      `SELECT namespace, application, in_use, in_use_by, note, updated_at
+      `SELECT namespace, application, in_use, in_use_by, in_use_at, note, updated_at
          FROM nginx_migration_tracking
         ORDER BY updated_at ASC`,
     );
@@ -59,6 +59,9 @@ async function loadBeyanlar() {
       m.set(k, {
         inUse: x.in_use == null ? null : String(x.in_use),
         inUseBy: x.in_use_by || null,
+        // BEYAN TARIHI (2026-10-01): ekran "kim" yaninda "ne zaman"i da gostersin -
+        // bir yil onceki beyan bugunku kadar guvenilir degildir.
+        inUseAt: x.in_use_at || x.updated_at || null,
         note: x.note || '',
       });
     }
@@ -69,7 +72,7 @@ async function loadBeyanlar() {
   // beyanının üzerine YAZMAZ, build.cjs ikisini ayrı ayrı sorar (önce location).
   try {
     const r = await db.query(
-      `SELECT namespace, application, location_path, in_use, in_use_by, note, updated_at
+      `SELECT namespace, application, location_path, in_use, in_use_by, in_use_at, note, updated_at
          FROM nginx_spa_location_in_use
         ORDER BY updated_at ASC`,
     );
@@ -78,6 +81,7 @@ async function loadBeyanlar() {
       m.set(k, {
         inUse: x.in_use == null ? null : String(x.in_use),
         inUseBy: x.in_use_by || null,
+        inUseAt: x.in_use_at || x.updated_at || null,
         note: x.note || '',
       });
     }

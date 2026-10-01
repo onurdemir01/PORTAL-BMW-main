@@ -23,6 +23,8 @@ export interface ArkSatir {
   /** EKİBİN BEYANI. null = ekip beyan etmemiş ("kullanmıyor" DEĞİL). */
   inUse: string | null;
   inUseBy: string | null;
+  /** Beyanın girildiği an (ISO). Eski bir beyan bugünkü kadar güvenilir değildir. */
+  inUseAt: string | null;
   note: string;
   /**
    * Beyan HANGİ SEVİYEDEN geldi (2026-10-01):
