@@ -63,10 +63,6 @@ function rememberDiscoveryScope(serverId, jobId, scope) {
   DISCOVERY_SCOPE_CACHE.set(`${serverId}:${jobId}`, scope);
 }
 
-// AWX ciktisi istemciye TAMAMEN gonderiliyordu. Bir kesif isinin log'u MB'larca
-// olabilir ve portal 2026-09'da UC KEZ bu sinif yuzunden OOM ile coktu.
-const DISCOVERY_OUTPUT_MAX = 256 * 1024;
-
 // FAIL-CLOSED: sahiplik dogrulanamiyorsa erisim REDDEDILIR (503). Fail-open olsaydi bir
 // DB kesintisi tum islerin herkese acilmasi demek olurdu.
 async function denyIfNotOwner(req, serverId, jobId) {
@@ -1162,12 +1158,15 @@ function initScaleX(app) {
       // indirilip cope atiliyordu — hem AWX'i hem portali yavaslatan, HICBIR
       // seye yaramayan bir maliyet.
       //
-      // Bitmis iste TAM cekim yapilir: yanit sozlesmesi (`output`) korunur ve
-      // arsivlenen/kullaniciya gosterilen metin artimlardan TUREMEZ.
+      // BITMIS ISTE DE INDIRILMEZ (2026-10). Uc cagiran da yalnizca `finished`
+      // ve `result` okuyor; sonuc `set_stats` artifact'indan (`status.artifacts`)
+      // geliyor. Bitmis iste tam cekim YANITI BEKLETIYORDU: kullanici sonucu,
+      // kimsenin okumadigi bir indirme bitene kadar goremiyordu (AWX stdout
+      // indirmesi uretimde ortalama ~20 sn olculdu, bkz. runner.cjs
+      // `getJobOutputOnServer`). Bu bekleme AWX isinin DISINDA oldugu icin
+      // Admin > Kesif suresi kirilimi onu gostermez. Ciktiya ihtiyac duyan
+      // AWX arayuzunden isin ciktisina bakar.
       const status = await runner.getJobStatusOnServer(serverId, jobId);
-      const output = status.finished
-        ? await runner.getJobOutputOnServer(serverId, jobId).catch(() => ({ output: '' }))
-        : { output: '' };
       const parsed = result.extractDiscoveryResult(status.artifacts);
 
       // KESIF SONUCU DENETIME. Baslatma ani zaten yaziliyordu (`scalex_discovery`) ama
@@ -1373,23 +1372,11 @@ function initScaleX(app) {
         }
       }
 
-      // CIKTI KIRPILIR. AWX log'u MB'larca olabiliyor ve tamami istemciye
-      // gonderiliyordu; portal 2026-09'da UC KEZ bu sinif yuzunden coktu.
-      // Kirpma SESSIZ DEGIL: metin kullaniciya nereye bakacagini soyler.
-      let ciktiMetni = output.output || '';
-      if (ciktiMetni.length > DISCOVERY_OUTPUT_MAX) {
-        ciktiMetni =
-          ciktiMetni.slice(0, DISCOVERY_OUTPUT_MAX) +
-          '\n... [PORTAL] Çıktı bellek koruması nedeniyle KIRPILDI. ' +
-          'Tamamı için AWX arayüzünden işin çıktısını inceleyin.';
-      }
-
       res.json({
         ok: true,
         status: status.status,
         finished: !!status.finished,
         failed: !!status.failed,
-        output: ciktiMetni,
         result: parsed,
       });
     }),
