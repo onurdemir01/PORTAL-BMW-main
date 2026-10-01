@@ -238,3 +238,42 @@ test('R7 kisitli namespace`in uygulama listesi: bos + `restriction` + mesaj + de
   assert.equal(acik.body.restriction, undefined);
   assert.equal(acik.body.items.length, 1);
 });
+
+// ── R8: CANLI KESIF SONUCU da gizlenen SAYIYI tasir ─────────────────────────
+// Onbellek/envanter listesinden ayri yol: AWX kesfinin sonucu `GET /requests/:id`
+// ile okunur ve `filterDiscoveryResult` cluster BASINA suzer.
+test('R8 canli kesif sonucu: cluster basina hiddenCount, ad sizmiyor', async () => {
+  const requests = require('../requests.cjs');
+  const jobsMod = require('../jobs.cjs');
+  const y = {
+    row: requests.getRequestRow,
+    own: requests.assertOwnership,
+    norm: requests.normalizeRequest,
+    jobs: jobsMod.listJobsForRequest,
+  };
+  requests.getRequestRow = async () => ({ request_id: 'r1' });
+  requests.assertOwnership = () => {};
+  requests.normalizeRequest = () => ({
+    state: 'ocp_namespace_picker',
+    platform: 'openshift',
+    input: { tenant: 'ark', env: 'prod', clusters: ['c1'] },
+    discoveryResult: {
+      overall_status: 'ok',
+      clusters: [{ cluster_name: 'c1', status: 'ok', namespaces: ['acik', 'kisitli'] }],
+    },
+  });
+  jobsMod.listJobsForRequest = async () => [];
+  try {
+    const r = await al('/requests/r1', veli);
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    const c = r.body.request.discoveryResult.clusters[0];
+    assert.deepEqual(c.namespaces, ['acik']);
+    assert.equal(c.hiddenCount, 1);
+    assert.ok(!JSON.stringify(r.body).includes('kisitli'), 'kisitli ad sizdi');
+  } finally {
+    requests.getRequestRow = y.row;
+    requests.assertOwnership = y.own;
+    requests.normalizeRequest = y.norm;
+    jobsMod.listJobsForRequest = y.jobs;
+  }
+});
