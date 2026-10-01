@@ -828,6 +828,10 @@ function initNginxConsole(app) {
           message:
             "dbo.BMW_Spa_Discovery tablosu henüz yok — openshift_spa_discovery job'ı bir kez koşmalı.",
           rows: [],
+          apps: [],
+          appSummary: null,
+          platformHidden: null,
+          namespaces: [],
           clusters: [],
           envs: [],
           summary: null,
@@ -902,12 +906,11 @@ function initNginxConsole(app) {
           : Promise.resolve([]),
       ]);
       const { buildSpaDiscovery } = require('./spa-discovery.cjs');
-      res.json({
-        ok: true,
-        tableMissing: false,
-        scanDate: gun,
-        ...buildSpaDiscovery(disc, inv, usage, runs),
-      });
+      const sonuc = buildSpaDiscovery(disc, inv, usage, runs);
+      // SAYFA UYGULAMA SATIRLARINI KULLANIR (uygulama basina tek satir, 2026-10-01). Route
+      // satirlari yanitin boyutunu ikiye katlardi; yalniz `?satir=1` ile istenirse gonderilir.
+      if (String(req.query.satir || '') !== '1') delete sonuc.rows;
+      res.json({ ok: true, tableMissing: false, scanDate: gun, ...sonuc });
     } catch (err) {
       res.status(err.status || 500).json({ ok: false, message: err.message });
     }
@@ -1045,12 +1048,10 @@ function initNginxConsole(app) {
         .json({ ok: false, message: `${host} için döküm yok — önce "Yenile" ile döküm alın.` });
     const orp = orphansOf(sm, Date.now());
     if (!orp.known)
-      return res
-        .status(409)
-        .json({
-          ok: false,
-          message: `${host}: ${orp.reason || 'yüklenen dosya listesi bilinmiyor'} — temizlik yapılmaz.`,
-        });
+      return res.status(409).json({
+        ok: false,
+        message: `${host}: ${orp.reason || 'yüklenen dosya listesi bilinmiyor'} — temizlik yapılmaz.`,
+      });
     const bilinen = new Set([
       ...orp.unloaded.map((f) => f.path),
       ...orp.backups.map((f) => f.path),
@@ -1134,12 +1135,10 @@ function initNginxConsole(app) {
       filePath.includes('..') ||
       filePath.includes('/.console_backup/')
     ) {
-      return res
-        .status(400)
-        .json({
-          ok: false,
-          message: 'Yol yalnız /usr/nginx/conf.d/ veya /usr/nginx/conf/ altında olabilir.',
-        });
+      return res.status(400).json({
+        ok: false,
+        message: 'Yol yalnız /usr/nginx/conf.d/ veya /usr/nginx/conf/ altında olabilir.',
+      });
     }
     if (!['create', 'update'].includes(mode))
       return res.status(400).json({ ok: false, message: 'mode create|update olmalı.' });
@@ -1174,14 +1173,12 @@ function initNginxConsole(app) {
       }
     }
     if (conflicts.length)
-      return res
-        .status(409)
-        .json({
-          ok: false,
-          message: `Ön kontrol: ${conflicts.map((c) => `${c.host}: ${c.reason}`).join('; ')}`,
-          conflicts,
-          currentSha256: conflicts[0]?.currentSha256 || null,
-        });
+      return res.status(409).json({
+        ok: false,
+        message: `Ön kontrol: ${conflicts.map((c) => `${c.host}: ${c.reason}`).join('; ')}`,
+        conflicts,
+        currentSha256: conflicts[0]?.currentSha256 || null,
+      });
 
     const normalized = content.replace(/\r\n/g, '\n');
     const body = normalized.endsWith('\n') ? normalized : normalized + '\n';

@@ -533,9 +533,9 @@ test('GS12 uc nokta CLUSTER BASINA en yeni taramayi okur; match_by yoksa da cali
 test('GS13 ekran bos gorunumun SEBEBINI soyler ve kapsami gosterir', () => {
   const ui = gsNorm(read('src/components/nginx_console/NginxSpaDiscovery.tsx'));
   assert.match(ui, /Hiçbir route bir iş yüküne eşlenemedi/, '"hepsi eslesmesiz" uyarisi yok');
-  assert.match(ui, /Bu görünümde satır yok; keşifte toplam/, 'bos gorunum sebebini soylemiyor');
+  assert.match(ui, /Bu süzgeçlerle uygulama yok; toplam/, 'bos gorunum sebebini soylemiyor');
   assert.match(ui, /<Kapsam k=\{data\.coverage\} \/>/, 'kapsam paneli yok');
-  assert.match(ui, /r\.matchBy === 'ad'/, 'ad eslesmesi satirda isaretlenmiyor');
+  assert.match(ui, /a\.weakEvidence &&/, 'ad eslesmesi (zayif kanit) satirda isaretlenmiyor');
 });
 
 test('GS14 kisitli kosu OTEKI cluster lari kirmiziya boyamaz; hedeflenip sonuc vermeyen ise TARANAMADI', () => {
@@ -647,7 +647,7 @@ test('GS17 ekran: API hatasi "satir yok" gibi gorunmez; eksik taramada "kacirila
   var_('if (d && d.ok === false) { setHata(', 'ok:false cevabi veri gibi isleniyor');
   var_('SPA keşfi okunamadı: {hata}', 'hata ekranda gosterilmiyor');
   var_(') : eksikTarama ? (', '"kacirilan yok" cumlesi nitelenmiyor');
-  var_('Taranabilen kısımda ad kalıbının kaçırdığı uygulama yok', 'nitelenmis cumle yok');
+  var_('Taranabilen kısımda adı kurala uymayan SPA yok', 'nitelenmis cumle yok');
   var_("c.bucket !== 'guncel'", 'kapsam paneli ayrik kovaya gore listelemiyor');
 });
 
@@ -673,13 +673,212 @@ test('GS18 route u SIFIRA inen ok cluster in eski satirlari GOSTERILMEZ', () => 
 test('GS19-21 ekran: eski veri isareti kapsamdan; veri yokken "yok" denmez; hata tabloda da yazar', () => {
   const ui = gsNorm(read('src/components/nginx_console/NginxSpaDiscovery.tsx'));
   const var_ = (parca, mesaj) => assert.ok(ui.includes(parca), mesaj + ' :: ' + parca);
-  var_('kapsamBy.get(r.cluster)?.stale', 'satir isareti kapsamdan turetilmiyor');
+  var_('a.staleClusters.includes(c)', 'satir isareti kapsamdan (staleClusters) turetilmiyor');
   assert.ok(
-    !ui.includes('r.scanDate < data.scanDate'),
+    !ui.includes('scanDate < data.scanDate'),
     'satir isareti yine global en yeni tarihle karsilastiriyor',
   );
-  var_('s.routes === 0 ? (', 'veri yokken "kacirilan yok" deniyor');
+  var_('s.apps === 0 ? (', 'veri yokken "kacirilan yok" deniyor');
   var_('Keşif verisi yok.', 'veri yok cumlesi yok');
   var_('{hata ? (', 'hata varken tablo "satir yok" diyor');
   var_('Veri okunamadı — sebep yukarıda.', 'tablo hata metni yok');
+});
+
+// ── UYGULAMA BASINA TEK SATIR (GS22..GS27, 2026-10-01) ────────────────────────────────
+//
+// Kullanici: "her uygulama icin tek satir olsun; route adresleri ve cluster isimleri ayni
+// satira yazilsin; is yuku kolonuna gerek yok; SPA, ad kalibi ve istek kolonlari onemli;
+// 'kalip kacirdi' ne demek anlamadim; namespace okunamadi hatalari OpenShift'in default
+// namespace'leri mi?"
+const { uygulamalar: gsUyg, platformNamespace } = require('../spa-discovery.cjs');
+
+test('GS22 ayni uygulama iki cluster da iki route la TEK satir; adresler ve cluster lar birlesik', () => {
+  const disc = [
+    D({
+      cluster: 'gbocpprod1',
+      route: 'web',
+      host: 'web-p1.apps',
+      workload: 'web-ui',
+      is_spa: 1,
+      signal: 'image',
+    }),
+    D({ cluster: 'gbocpprod2', route: 'web', host: 'web-p2.apps', workload: 'web-ui', is_spa: 0 }),
+  ];
+  const r = buildSpaDiscovery(disc, GS_INV, GS_USE, []);
+  const a = r.apps.filter((x) => x.application === 'web-ui');
+  assert.equal(a.length, 1, 'ayni uygulama birden cok satira bolunmus');
+  assert.deepEqual(a[0].hosts, ['web-p1.apps', 'web-p2.apps']);
+  assert.deepEqual(a[0].clusters, ['gbocpprod1', 'gbocpprod2']);
+  assert.equal(a[0].spa, 'evet', 'bir route da bile nginx varsa uygulama SPA');
+  assert.equal(r.appSummary.apps, r.apps.length);
+});
+
+test('GS23 SPA karari UC DURUMLU: hicbir route eslesmediyse "bilinmiyor", "hayir" DEGIL', () => {
+  const r = buildSpaDiscovery(
+    [
+      D({
+        route: 'x1',
+        workload: '',
+        workload_kind: '',
+        note: 'servis okunamadi (yetki yok), ayni adli is yuku de yok: x1',
+      }),
+      D({ route: 'y1', workload: 'java-svc', is_spa: 0 }),
+    ],
+    GS_INV,
+    GS_USE,
+    [],
+  );
+  const by = Object.fromEntries(r.apps.map((a) => [a.application, a]));
+  assert.equal(by.x1.spa, 'bilinmiyor', 'olculemeyen uygulama "SPA degil" diye gosteriliyor');
+  assert.equal(by['java-svc'].spa, 'hayir');
+  assert.equal(r.appSummary.unknown, 1);
+});
+
+test('GS24 OpenShift platform namespace leri kapsam disi ama SAYILIR', () => {
+  for (const ns of [
+    'openshift',
+    'openshift-console',
+    'openshift-monitoring',
+    'kube-system',
+    'default',
+  ])
+    assert.equal(platformNamespace(ns), true, ns);
+  for (const ns of ['sube-prod', 'openshiftapp-prod', 'kubernetes-dash', 'mydefault'])
+    assert.equal(platformNamespace(ns), false, `uygulama namespace i platform sayildi: ${ns}`);
+  const r = buildSpaDiscovery(
+    [
+      D({
+        namespace: 'openshift-console',
+        route: 'console',
+        workload: '',
+        note: 'servis okunamadi (yetki yok), ayni adli is yuku de yok: console',
+      }),
+      D({
+        namespace: 'openshift-monitoring',
+        route: 'grafana',
+        workload: '',
+        note: 'servis okunamadi (yetki yok), ayni adli is yuku de yok: grafana',
+      }),
+      D({ route: 'r1', workload: 'app-1', is_spa: 1, signal: 'image' }),
+    ],
+    GS_INV,
+    GS_USE,
+    [],
+  );
+  assert.equal(r.apps.length, 1, 'platform route lari uygulama sayiliyor');
+  assert.deepEqual(
+    r.platformHidden,
+    { routes: 2, namespaces: 2 },
+    'atlanan platform route lari sayilmiyor',
+  );
+  assert.equal(r.summary.unmatched, 0, 'platform namespace lerinin "okunamadi" notu ozete giriyor');
+});
+
+test('GS25 istek DORT durumlu; envanter "kismen" route sayisiyla', () => {
+  const use = [
+    {
+      namespace: 'sube-prod',
+      app: 'a-var',
+      scan_date: '2026-10-01',
+      window_days: 7,
+      req_total: 10,
+      services_total: 1,
+      measured: 1,
+    },
+    {
+      namespace: 'sube-prod',
+      app: 'a-yok',
+      scan_date: '2026-10-01',
+      window_days: 7,
+      req_total: 0,
+      services_total: 1,
+      measured: 1,
+    },
+    {
+      namespace: 'sube-prod',
+      app: 'a-olcu',
+      scan_date: '2026-10-01',
+      window_days: 7,
+      req_total: 0,
+      services_total: 0,
+      measured: 0,
+      note: 'zaman asimi',
+    },
+  ];
+  const inv = [
+    {
+      cluster_name: 'gbocpprod1',
+      namespace_name: 'sube-prod',
+      route_name: 'k1',
+      route_address: 'k1.apps',
+    },
+  ];
+  const r = buildSpaDiscovery(
+    [
+      D({ route: 'v', workload: 'a-var', is_spa: 1, signal: 'image' }),
+      D({ route: 'y', workload: 'a-yok', is_spa: 1, signal: 'image' }),
+      D({ route: 'o', workload: 'a-olcu', is_spa: 1, signal: 'image' }),
+      D({ route: 'n', workload: 'a-none', is_spa: 1, signal: 'image' }),
+      D({ route: 'k1', host: 'k1.apps', workload: 'a-kis', is_spa: 1, signal: 'image' }),
+      D({ route: 'k2', host: 'k2.apps', workload: 'a-kis', is_spa: 1, signal: 'image' }),
+    ],
+    inv,
+    use,
+    [],
+  );
+  const by = Object.fromEntries(r.apps.map((a) => [a.application, a]));
+  assert.equal(by['a-var'].istek, 'var');
+  assert.equal(by['a-yok'].istek, 'yok');
+  assert.equal(by['a-olcu'].istek, 'olculemedi', 'olculemedi "istek yok" sayiliyor');
+  assert.equal(by['a-none'].istek, 'olcum-yok');
+  assert.equal(by['a-kis'].inventory, 'kismen');
+  assert.equal(by['a-kis'].invRoutes, 1);
+  assert.equal(by['a-kis'].routeCount, 2);
+});
+
+test('GS26 uc nokta route satirlarini yalniz ?satir=1 ile gonderir (yanit boyutu)', () => {
+  const src = gsNorm(read('server/nginx-console/index.cjs'));
+  assert.ok(
+    src.includes("if (String(req.query.satir || '') !== '1') delete sonuc.rows;"),
+    'route satirlari her zaman gonderiliyor',
+  );
+});
+
+test('GS27 ekran: tek satir duzeni, is yuku kolonu yok, "KALIP KACIRDI" rozeti yok, bes suzgec var', () => {
+  const ui = gsNorm(read('src/components/nginx_console/NginxSpaDiscovery.tsx'));
+  const var_ = (parca, mesaj) => assert.ok(ui.includes(parca), mesaj + ' :: ' + parca);
+  var_(
+    gsNorm(
+      "['Uygulama', 'Namespace', 'SPA', 'Ad kalıbı', 'İstek', 'Route envanteri', 'Adresler', \"Cluster'lar\"]",
+    ),
+    'kolon listesi beklenen sade duzende degil',
+  );
+  assert.ok(!ui.includes("'İş yükü'"), 'is yuku kolonu hala var');
+  assert.ok(!ui.includes('KALIP KAÇIRDI'), 'anlasilmayan "KALIP KACIRDI" rozeti hala var');
+  // HER SUZGEC: kutusu degiskene BAGLI (value + onChange) VE suzme mantiginda UYGULANIYOR.
+  // Yalniz `setX(` aramak kordu: "suzgecleri temizle" de ayni setter'i cagiriyor, kutu
+  // silinse bile test yesil kaliyordu (mutasyon T7).
+  for (const [deg, set, kosul, ad] of [
+    ['ns', 'setNs', "if (ns !== 'tumu' && a.namespace !== ns) return false;", 'namespace'],
+    ['spa', 'setSpa', "if (spa !== 'tumu' && a.spa !== spa) return false;", 'SPA'],
+    [
+      'kalip',
+      'setKalip',
+      "if (kalip !== 'tumu' && a.pattern !== kalip) return false;",
+      'ad kalibi',
+    ],
+    ['istek', 'setIstek', "if (istek !== 'tumu' && a.istek !== istek) return false;", 'istek'],
+    [
+      'cluster',
+      'setCluster',
+      "if (cluster !== 'tumu' && !a.clusters.includes(cluster)) return false;",
+      'cluster',
+    ],
+  ]) {
+    var_(`value={${deg}} onChange={(e) => ${set}(`, `${ad} suzgec kutusu yok/bagli degil`);
+    var_(kosul, `${ad} suzgeci satirlara uygulanmiyor`);
+  }
+  var_('a.hosts.map((h) =>', 'adresler ayni satirda listelenmiyor');
+  var_('a.clusters.map((c) =>', 'cluster lar ayni satirda listelenmiyor');
+  var_('Bilinmiyor', 'olculemeyen SPA "bilinmiyor" diye gosterilmiyor');
 });

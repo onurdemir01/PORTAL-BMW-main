@@ -4,26 +4,22 @@
 // nazaran route envanterinin karşılaştırılması ve route'larının yazılması, aynı zamanda
 // uygulama trafiğinin de yanlarına işlenmesi."
 //
-// EKRANIN VARLIK SEBEBİ: SPA'yı bugüne kadar ADINDAN tanıyorduk (`-app-v` / `-app-emb-v`).
-// Bu bir TAHMİN; kurala uymayan uygulama görünmez kalıyordu. Bu sayfa tahmini bırakıp canlı
-// duruma bakar (kabinde nginx koşuyor mu) ve ikisi ARASINDAKİ FARKI öne çıkarır.
+// SADELEŞTİRME (kullanıcı, aynı gün): "her uygulama için tek satır olsun; route adresleri ve
+// cluster isimleri aynı satıra yazılsın; iş yükü kolonuna gerek yok; SPA, ad kalıbı ve istek
+// kolonları önemli; 'kalıp kaçırdı' ne demek anlamadım." Satırlar sunucuda uygulama başına
+// gruplanır (spa-discovery.cjs uygulamalar()); bu bileşen yalnız gösterir ve süzer.
 //
 // ÜÇ KAYNAK, ÜÇ AYRI SORU — hiçbiri ötekini düzeltmez, fark bilgidir:
-//   keşif         → kabinde gerçekten nginx var mı
-//   route envanteri → bu route kayıtlı mı
-//   Dynatrace     → uygulama istek alıyor mu
+//   keşif           → kabinde gerçekten nginx var mı (SPA kolonu)
+//   route envanteri → route'u envanterde kayıtlı mı (Route envanteri kolonu)
+//   Dynatrace       → uygulama istek alıyor mu (İstek kolonu)
 import { useCallback, useMemo, useState } from 'react';
-import {
-  ArrowPathIcon,
-  ArrowDownTrayIcon,
-  MagnifyingGlassIcon,
-  ExclamationTriangleIcon,
-} from '@heroicons/react/24/outline';
+import { ArrowPathIcon, ArrowDownTrayIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
 import {
   nginxConsoleApi,
+  type NgSpaApp,
   type NgSpaCoverage,
   type NgSpaDiscovery,
-  type NgSpaDiscoveryRow,
 } from '@/api/nginxConsoleApi';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { downloadCsv } from '@/utils/csv';
@@ -124,9 +120,71 @@ function Kapsam({ k }: { k: NgSpaCoverage }) {
   );
 }
 
-/** Trafik hücresi. ÜÇ DURUM AYRI: ölçülemedi ≠ istek yok ≠ ölçüm yok. */
-function Trafik({ r }: { r: NgSpaDiscoveryRow }) {
-  if (!r.usage)
+/** SPA kolonu. ÜÇ DURUM AYRI: hiçbir route eşleşmediyse "bilinmiyor" — "hayır" DEĞİL. */
+function SpaHucre({ a }: { a: NgSpaApp }) {
+  if (a.spa === 'evet')
+    return (
+      <span
+        style={{ color: 'var(--status-success)', fontWeight: 600 }}
+        title={`Kabinde nginx çalışıyor · kanıt: ${a.signals.join(', ') || '—'}`}
+      >
+        Evet
+        {a.weakEvidence && (
+          <span
+            className="ml-1 text-[10px] font-normal"
+            style={{ color: 'var(--status-warning)' }}
+            title="Servis okunamadı; route, servisle aynı adı taşıyan iş yüküne bağlandı. Selector eşleşmesinden zayıf bir kanıt."
+          >
+            (zayıf kanıt)
+          </span>
+        )}
+      </span>
+    );
+  if (a.spa === 'hayir')
+    return (
+      <span
+        style={{ color: 'var(--text-muted)' }}
+        title="Route'un ardındaki iş yükünde nginx bulunamadı"
+      >
+        Hayır
+      </span>
+    );
+  return (
+    <span
+      style={{ color: 'var(--status-warning)' }}
+      title={`Hiçbir route bir iş yüküne eşlenemedi — SPA olup olmadığı ölçülemedi.\n${a.notes.join('\n')}`}
+    >
+      Bilinmiyor
+    </span>
+  );
+}
+
+/** Ad kalıbı kolonu: uygulama adı -app-v / -app-emb-v kuralına uyuyor mu. */
+function KalipHucre({ a }: { a: NgSpaApp }) {
+  if (a.patternMiss)
+    return (
+      <span
+        style={{ color: 'var(--status-danger)', fontWeight: 600 }}
+        title="Gerçekten SPA ama adı -app-v / -app-emb-v kuralına uymuyor. Eski (ada bakan) yöntem bu uygulamayı SPA saymıyordu."
+      >
+        uymuyor
+      </span>
+    );
+  if (a.patternFalse)
+    return (
+      <span
+        style={{ color: 'var(--status-warning)' }}
+        title="Adı SPA kuralına uyuyor ama kabinde nginx bulunamadı."
+      >
+        uyuyor · nginx yok
+      </span>
+    );
+  return <span style={{ color: 'var(--text-secondary)' }}>{a.pattern}</span>;
+}
+
+/** İstek kolonu. DÖRT DURUM AYRI: istek var ≠ istek yok ≠ ölçülemedi ≠ ölçüm yok. */
+function IstekHucre({ a }: { a: NgSpaApp }) {
+  if (a.istek === 'olcum-yok')
     return (
       <span
         style={{ color: 'var(--text-muted)' }}
@@ -135,35 +193,77 @@ function Trafik({ r }: { r: NgSpaDiscoveryRow }) {
         ölçüm yok
       </span>
     );
-  if (!r.usage.measured)
+  if (a.istek === 'olculemedi')
     return (
       <span
         style={{ color: 'var(--status-warning)' }}
-        title={`Ölçüm denendi ama düştü${r.usage.note ? ': ' + r.usage.note : ''}. “0 istek” anlamına GELMEZ.`}
+        title={`Ölçüm denendi ama düştü${a.usage?.note ? ': ' + a.usage.note : ''}. “0 istek” anlamına GELMEZ.`}
       >
         ölçülemedi
       </span>
     );
+  const pencere = a.usage
+    ? `Dynatrace servis çağrıları · son ${a.usage.windowDays} gün · ${a.usage.services} servis · ölçüm ${a.usage.scanDate}`
+    : '';
+  if (a.istek === 'yok')
+    return (
+      <span style={{ color: 'var(--status-warning)' }} title={pencere}>
+        istek yok
+      </span>
+    );
   return (
-    <span
-      style={{ color: r.reqShown ? 'var(--text-primary)' : 'var(--status-warning)' }}
-      title={`Dynatrace servis çağrıları · son ${r.usage.windowDays} gün · ${r.usage.services} servis · ölçüm ${r.usage.scanDate}`}
-    >
-      {nf(r.reqShown || 0)}
+    <span style={{ color: 'var(--text-primary)' }} title={pencere}>
+      {nf(a.reqShown || 0)}
     </span>
   );
 }
+
+/** Route envanteri kolonu: uygulamanın route'u Openshift route envanterinde kayıtlı mı. */
+function EnvanterHucre({ a }: { a: NgSpaApp }) {
+  const title =
+    "Bu uygulamanın route'u Openshift route envanterinde (dbo.BMW_Openshift_Route_Inventory) kayıtlı mı";
+  if (a.inventory === 'kayitli')
+    return (
+      <span style={{ color: 'var(--text-secondary)' }} title={title}>
+        kayıtlı
+      </span>
+    );
+  if (a.inventory === 'kismen')
+    return (
+      <span style={{ color: 'var(--status-warning)' }} title={title}>
+        kısmen ({a.invRoutes}/{a.routeCount})
+      </span>
+    );
+  return (
+    <span
+      style={{ color: a.spa === 'evet' ? 'var(--status-warning)' : 'var(--text-muted)' }}
+      title={title}
+    >
+      kayıtlı değil
+    </span>
+  );
+}
+
+type SpaSecim = 'tumu' | NgSpaApp['spa'];
+type KalipSecim = 'tumu' | NgSpaApp['pattern'];
+type IstekSecim = 'tumu' | NgSpaApp['istek'];
+
+const sayac = <K extends string>(apps: NgSpaApp[], f: (a: NgSpaApp) => K) =>
+  apps.reduce<Record<string, number>>((m, a) => {
+    const k = f(a);
+    m[k] = (m[k] || 0) + 1;
+    return m;
+  }, {});
 
 export default function NginxSpaDiscovery() {
   const [data, setData] = useState<NgSpaDiscovery | null>(null);
   const [yukleniyor, setYukleniyor] = useState(true);
   const [q, setQ] = useState('');
-  const [env, setEnv] = useState('all');
-  const [cluster, setCluster] = useState('all');
-  // VARSAYILAN SUZGEC "kacanlar": sayfanin sebebi bu kume. Kullanici isterse hepsini acar.
-  const [gorunum, setGorunum] = useState<'miss' | 'spa' | 'all' | 'false' | 'noinv' | 'unmatched'>(
-    'miss',
-  );
+  const [ns, setNs] = useState('tumu');
+  const [spa, setSpa] = useState<SpaSecim>('tumu');
+  const [kalip, setKalip] = useState<KalipSecim>('tumu');
+  const [istek, setIstek] = useState<IstekSecim>('tumu');
+  const [cluster, setCluster] = useState('tumu');
 
   // HATA GORUNUR: uc nokta 500 ya da ag hatasi verdiginde ekran "bu suzgeclerle satir yok"
   // DEMEZ (dusmanca dogrulama bulgusu - hata "yok" gibi sunuluyordu).
@@ -188,99 +288,104 @@ export default function NginxSpaDiscovery() {
     await yukle();
   }, [yukle]);
 
+  const apps = useMemo(() => data?.apps || [], [data]);
+  const say = useMemo(
+    () => ({
+      spa: sayac(apps, (a) => a.spa),
+      kalip: sayac(apps, (a) => a.pattern),
+      istek: sayac(apps, (a) => a.istek),
+    }),
+    [apps],
+  );
+
   const satirlar = useMemo(() => {
     const ara = q.trim().toLowerCase();
-    return (data?.rows || []).filter((r) => {
-      if (env !== 'all' && (r.env || '') !== env) return false;
-      if (cluster !== 'all' && r.cluster !== cluster) return false;
-      if (gorunum === 'miss' && !r.patternMiss) return false;
-      if (gorunum === 'spa' && !r.isSpa) return false;
-      if (gorunum === 'false' && !r.patternFalse) return false;
-      if (gorunum === 'noinv' && !(r.isSpa && !r.inInventory)) return false;
-      if (gorunum === 'unmatched' && !r.note) return false;
+    return apps.filter((a) => {
+      if (ns !== 'tumu' && a.namespace !== ns) return false;
+      if (spa !== 'tumu' && a.spa !== spa) return false;
+      if (kalip !== 'tumu' && a.pattern !== kalip) return false;
+      if (istek !== 'tumu' && a.istek !== istek) return false;
+      if (cluster !== 'tumu' && !a.clusters.includes(cluster)) return false;
       if (!ara) return true;
       return (
-        r.application.toLowerCase().includes(ara) ||
-        r.namespace.toLowerCase().includes(ara) ||
-        r.host.toLowerCase().includes(ara) ||
-        r.route.toLowerCase().includes(ara)
+        a.application.toLowerCase().includes(ara) ||
+        a.namespace.toLowerCase().includes(ara) ||
+        a.hosts.some((h) => h.toLowerCase().includes(ara)) ||
+        a.routes.some((r) => r.toLowerCase().includes(ara))
       );
     });
-  }, [data, q, env, cluster, gorunum]);
+  }, [apps, q, ns, spa, kalip, istek, cluster]);
+
+  const suzgecVar =
+    !!q ||
+    ns !== 'tumu' ||
+    spa !== 'tumu' ||
+    kalip !== 'tumu' ||
+    istek !== 'tumu' ||
+    cluster !== 'tumu';
+  const temizle = () => {
+    setQ('');
+    setNs('tumu');
+    setSpa('tumu');
+    setKalip('tumu');
+    setIstek('tumu');
+    setCluster('tumu');
+  };
 
   const csv = useCallback(() => {
     downloadCsv(
       'gercek_spa_kesfi',
       [
-        'cluster',
-        'namespace',
-        'route',
-        'host',
-        'termination',
         'uygulama',
-        'is_yuku_turu',
-        'is_yuku',
+        'namespace',
         'ortam',
-        'spa_mi',
-        'sinyal',
-        'imaj',
-        'eslesme_kaniti',
-        'tarama_tarihi',
-        'ad_kalibina_uyuyor',
-        'kalibin_kacirdigi',
-        'envanterde_var',
+        'spa',
+        'kanit',
+        'ad_kalibi',
         'istek',
         'olcum_penceresi_gun',
+        'route_envanteri',
+        'adresler',
+        'clusterlar',
         'not',
       ],
-      satirlar.map((r) => [
-        r.cluster,
-        r.namespace,
-        r.route,
-        r.host,
-        r.termination,
-        r.application,
-        r.workloadKind,
-        r.workload,
-        r.env || '',
-        r.isSpa ? 'evet' : 'hayır',
-        r.signal,
-        r.image,
-        r.matchBy || '',
-        r.scanDate || '',
-        r.patternMatch ? 'evet' : 'hayır',
-        r.patternMiss ? 'EVET' : '',
-        r.inInventory ? 'evet' : 'hayır',
+      satirlar.map((a) => [
+        a.application,
+        a.namespace,
+        a.env || '',
+        a.spa === 'evet' ? 'evet' : a.spa === 'hayir' ? 'hayır' : 'bilinmiyor',
+        a.signals.join(' ') + (a.weakEvidence ? ' (zayıf kanıt)' : ''),
+        a.patternMiss ? 'uymuyor (SPA)' : a.pattern,
         // OLCULEMEYEN SATIRA 0 YAZILMAZ: elektronik tabloda toplanip "istek yok" okunurdu.
-        r.reqShown == null ? '' : r.reqShown,
-        r.usage?.windowDays ?? '',
-        r.note,
+        a.istek === 'var' || a.istek === 'yok' ? (a.reqShown ?? '') : a.istek,
+        a.usage?.windowDays ?? '',
+        a.inventory === 'kismen' ? `kısmen (${a.invRoutes}/${a.routeCount})` : a.inventory,
+        a.hosts.join(' '),
+        a.clusters.join(' '),
+        a.notes.join(' | '),
       ]),
     );
   }, [satirlar]);
 
-  const s = data?.summary;
+  const s = data?.appSummary;
+  const rs = data?.summary;
   // HICBIR route ESLESMEDI: "SPA yok" DEGIL, "bakamadik". Ilk uretim kosusunda 4532 route'un
   // tamami eslesmesizdi (servis yetkisi) ve ekran yalnizca "0 SPA" diyordu.
-  const hepsiEslesmesiz = !!s && s.routes > 0 && s.unmatched === s.routes;
-  const kovalar = Object.entries(s?.unmatchedReasons || {}).sort((a, b) => b[1] - a[1]);
-  // TARAMA EKSIGI: "kacirilan yok" cumlesi ancak tam taramada nitelemesiz soylenir.
+  const hepsiEslesmesiz = !!rs && rs.routes > 0 && rs.unmatched === rs.routes;
+  const kovalar = Object.entries(rs?.unmatchedReasons || {}).sort((a, b) => b[1] - a[1]);
+  // TARAMA EKSIGI: "adi kurala uymayan SPA yok" cumlesi ancak tam taramada nitelemesiz soylenir.
   const cv = data?.coverage;
-  // Satir duzeyindeki "eski veri" isareti kapsamdan turetilir (cluster -> kova/eskilik).
-  const kapsamBy = useMemo(
-    () => new Map((data?.coverage?.clusters || []).map((c) => [c.cluster, c] as const)),
-    [data],
-  );
   const eksikTarama = [
     cv && cv.failed > 0 ? `${nf(cv.failed)} cluster taranamadı` : '',
     cv && cv.partial > 0 ? `${nf(cv.partial)} cluster kısmi tarandı` : '',
-    cv && (cv.error || (!cv.measured && (s?.routes || 0) > 0)) ? 'cluster kapsamı bilinmiyor' : '',
-    s && s.unmatched > 0 ? `${nf(s.unmatched)} route eşleşmedi` : '',
+    cv && (cv.error || (!cv.measured && (s?.apps || 0) > 0)) ? 'cluster kapsamı bilinmiyor' : '',
+    s && s.unknown > 0 ? `${nf(s.unknown)} uygulamada SPA olup olmadığı ölçülemedi` : '',
   ]
     .filter(Boolean)
     .join(', ');
   const SELECT = 'px-2 py-1.5 text-xs border rounded-lg';
   const selStyle = { borderColor: 'var(--border)', background: 'var(--bg-surface)' };
+  const sec = (n?: number) => (n != null ? ` (${nf(n)})` : '');
 
   return (
     <div className="space-y-3">
@@ -309,120 +414,58 @@ export default function NginxSpaDiscovery() {
         >
           <b>Hiçbir route bir iş yüküne eşlenemedi</b> — bu “SPA yok” demek DEĞİL, keşif route'ların
           arkasına bakamadı. Sebep: {kovalar.map(([k, v]) => `${k} (${nf(v)})`).join(' · ') || '—'}.
-          Keşif job'ının son sürümü bir kez koşunca bu ekran dolar.
         </div>
       )}
 
       {s && (
-        <div className="rounded-xl border p-3" style={{ borderColor: 'var(--border-subtle)' }}>
+        <div
+          className="rounded-xl border p-3 space-y-1"
+          style={{ borderColor: 'var(--border-subtle)' }}
+        >
           <div className="text-sm">
-            Keşif <b>{nf(s.routes)}</b> route inceledi; <b>{nf(s.spa)}</b> tanesinin ardındaki
-            kabinde <b>gerçekten nginx</b> koşuyor.{' '}
+            <b>{nf(s.apps)}</b> uygulama tarandı; <b>{nf(s.spa)}</b> tanesi gerçekten SPA (kabinde
+            nginx çalışıyor).{' '}
             {s.patternMiss > 0 ? (
               <b style={{ color: 'var(--status-danger)' }}>
-                Bunların {nf(s.patternMiss)} tanesini ad kalıbı (-app-v / -app-emb-v) kaçırıyordu.
+                Bunların {nf(s.patternMiss)} tanesinin adı -app-v / -app-emb-v kuralına uymuyor —
+                eski yöntem bunları SPA saymıyordu.
               </b>
-            ) : hepsiEslesmesiz ? null : s.routes === 0 ? (
+            ) : hepsiEslesmesiz ? null : s.apps === 0 ? (
               // VERI YOKKEN "KACIRILAN YOK" DENMEZ: olculmemis sey yok diye sunulmaz.
               <>Keşif verisi yok.</>
             ) : eksikTarama ? (
-              <>Taranabilen kısımda ad kalıbının kaçırdığı uygulama yok ({eksikTarama}).</>
+              <>Taranabilen kısımda adı kurala uymayan SPA yok ({eksikTarama}).</>
             ) : (
-              <>
-                Ad kalıbının kaçırdığı uygulama <b>yok</b>.
-              </>
+              <>Adı kurala uymayan SPA yok.</>
             )}
           </div>
-          <div className="mt-1 text-[11px]" style={{ color: 'var(--text-secondary)' }}>
-            {s.patternFalse > 0 && (
-              <>
-                {nf(s.patternFalse)} uygulama ada göre SPA görünüyor ama kabinde nginx <b>yok</b>
-                .{' '}
-              </>
-            )}
+          <div className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>
+            SPA'lardan {nf(s.spaRequestActive)} tanesi istek alıyor · {nf(s.spaRequestIdle)} istek
+            almıyor · {nf(s.spaRequestUnknown)} ölçülemedi/ölçüm yok
             {s.spaNotInInventory > 0 && (
-              <>
-                {nf(s.spaNotInInventory)} SPA route'u <b>route envanterinde yok</b>.{' '}
-              </>
+              <> · {nf(s.spaNotInInventory)} SPA route envanterinde tam kayıtlı değil</>
             )}
-            {s.unmatched > 0 && (
-              <>
-                {nf(s.unmatched)} route'ta iş yükü eşleşmedi
-                {kovalar.length > 0
-                  ? ` (${kovalar.map(([k, v]) => `${k}: ${nf(v)}`).join(' · ')})`
-                  : ''}
-                .{' '}
-              </>
-            )}
-            {(s.byMatch?.ad || 0) > 0 && (
-              <>
-                {nf(s.byMatch?.ad || 0)} route servis okunamadığı için <b>ad eşleşmesiyle</b>{' '}
-                bağlandı (daha zayıf kanıt).{' '}
-              </>
-            )}
-            Sinyal kırılımı:{' '}
-            {Object.entries(s.bySignal)
-              .map(([k, v]) => `${k}=${nf(v)}`)
-              .join(' · ') || '—'}
-          </div>
-          <div className="mt-1 text-[11px]" style={{ color: 'var(--text-secondary)' }}>
-            Trafik: {nf(s.trafficActive)} istek alıyor · {nf(s.trafficIdle)} istek yok ·{' '}
-            {nf(s.trafficUnmeasured)} ölçülemedi · {nf(s.trafficNone)} ölçüm yok
+            {s.unknown > 0 && <> · {nf(s.unknown)} uygulamada SPA olup olmadığı ölçülemedi</>}
             {data?.scanDate ? ` · keşif ${data.scanDate}` : ''}
           </div>
-          {data?.coverage && (
-            <div className="mt-2">
-              <Kapsam k={data.coverage} />
+          {!!data?.platformHidden?.routes && (
+            <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+              OpenShift platform namespace'leri (openshift-*, kube-*, default) kapsam dışı:{' '}
+              {nf(data.platformHidden.namespaces)} namespace, {nf(data.platformHidden.routes)} route
+              gösterilmiyor (konsol, oauth, monitoring gibi platform route'ları; uygulama değil).
             </div>
           )}
+          {data?.coverage && <Kapsam k={data.coverage} />}
         </div>
       )}
 
+      <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+        <b>SPA</b>: kabinde nginx çalışıyor mu · <b>Ad kalıbı</b>: uygulama adı -app-v / -app-emb-v
+        kuralına uyuyor mu (eski yöntem SPA'yı yalnız adından tanıyordu) · <b>İstek</b>: Dynatrace'e
+        göre istek alıyor mu · <b>Route envanteri</b>: route'u envanterde kayıtlı mı.
+      </div>
+
       <div className="flex flex-wrap items-center gap-2">
-        <select
-          value={gorunum}
-          onChange={(e) => setGorunum(e.target.value as typeof gorunum)}
-          className={SELECT}
-          style={selStyle}
-        >
-          {/* SAYILAR SECENEKTE: bos bir gorunumun BOS oldugu acmadan gorunsun. */}
-          <option value="miss">kalıbın KAÇIRDIKLARI{s ? ` (${nf(s.patternMiss)})` : ''}</option>
-          <option value="spa">gerçek SPA'ların hepsi{s ? ` (${nf(s.spa)})` : ''}</option>
-          <option value="false">
-            ada göre SPA ama nginx yok{s ? ` (${nf(s.patternFalse)})` : ''}
-          </option>
-          <option value="noinv">
-            SPA ama envanterde yok{s ? ` (${nf(s.spaNotInInventory)})` : ''}
-          </option>
-          <option value="unmatched">eşleşmeyen route'lar{s ? ` (${nf(s.unmatched)})` : ''}</option>
-          <option value="all">hepsi{s ? ` (${nf(s.routes)})` : ''}</option>
-        </select>
-        <select
-          value={env}
-          onChange={(e) => setEnv(e.target.value)}
-          className={SELECT}
-          style={selStyle}
-        >
-          <option value="all">tüm ortamlar</option>
-          {(data?.envs || []).map((e) => (
-            <option key={e} value={e}>
-              {e}
-            </option>
-          ))}
-        </select>
-        <select
-          value={cluster}
-          onChange={(e) => setCluster(e.target.value)}
-          className={SELECT}
-          style={selStyle}
-        >
-          <option value="all">tüm cluster'lar</option>
-          {(data?.clusters || []).map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </select>
         <div className="relative">
           <MagnifyingGlassIcon
             className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2"
@@ -431,13 +474,86 @@ export default function NginxSpaDiscovery() {
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="uygulama, namespace, route ya da adres"
-            className="pl-8 pr-2.5 py-1.5 text-xs border rounded-lg w-64"
+            placeholder="uygulama, namespace ya da adres"
+            className="pl-8 pr-2.5 py-1.5 text-xs border rounded-lg w-56"
             style={{ borderColor: 'var(--border)' }}
           />
         </div>
+        <select
+          value={ns}
+          onChange={(e) => setNs(e.target.value)}
+          className={SELECT}
+          style={selStyle}
+          title="Namespace"
+        >
+          <option value="tumu">tüm namespace'ler</option>
+          {(data?.namespaces || []).map((n) => (
+            <option key={n} value={n}>
+              {n}
+            </option>
+          ))}
+        </select>
+        <select
+          value={spa}
+          onChange={(e) => setSpa(e.target.value as SpaSecim)}
+          className={SELECT}
+          style={selStyle}
+          title="SPA"
+        >
+          <option value="tumu">SPA: tümü</option>
+          <option value="evet">SPA: evet{sec(say.spa.evet)}</option>
+          <option value="hayir">SPA: hayır{sec(say.spa.hayir)}</option>
+          <option value="bilinmiyor">SPA: bilinmiyor{sec(say.spa.bilinmiyor)}</option>
+        </select>
+        <select
+          value={kalip}
+          onChange={(e) => setKalip(e.target.value as KalipSecim)}
+          className={SELECT}
+          style={selStyle}
+          title="Ad kalıbı"
+        >
+          <option value="tumu">ad kalıbı: tümü</option>
+          <option value="uyuyor">ad kalıbı: uyuyor{sec(say.kalip.uyuyor)}</option>
+          <option value="uymuyor">ad kalıbı: uymuyor{sec(say.kalip.uymuyor)}</option>
+        </select>
+        <select
+          value={istek}
+          onChange={(e) => setIstek(e.target.value as IstekSecim)}
+          className={SELECT}
+          style={selStyle}
+          title="İstek"
+        >
+          <option value="tumu">istek: tümü</option>
+          <option value="var">istek alıyor{sec(say.istek.var)}</option>
+          <option value="yok">istek almıyor{sec(say.istek.yok)}</option>
+          <option value="olculemedi">istek ölçülemedi{sec(say.istek.olculemedi)}</option>
+          <option value="olcum-yok">istek ölçümü yok{sec(say.istek['olcum-yok'])}</option>
+        </select>
+        <select
+          value={cluster}
+          onChange={(e) => setCluster(e.target.value)}
+          className={SELECT}
+          style={selStyle}
+          title="Cluster"
+        >
+          <option value="tumu">tüm cluster'lar</option>
+          {(data?.clusters || []).map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
+        {suzgecVar && (
+          <button
+            onClick={temizle}
+            className="px-2 py-1.5 text-xs border rounded-lg"
+            style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}
+          >
+            süzgeçleri temizle
+          </button>
+        )}
         <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-          {nf(satirlar.length)} satır
+          {nf(satirlar.length)} uygulama
         </span>
         <div className="ml-auto flex items-center gap-2">
           <button
@@ -468,171 +584,96 @@ export default function NginxSpaDiscovery() {
               {[
                 'Uygulama',
                 'Namespace',
-                'Route / Adres',
-                'SPA?',
+                'SPA',
                 'Ad kalıbı',
-                'Envanter',
                 'İstek',
-                'İş yükü',
-                'Cluster',
+                'Route envanteri',
+                'Adresler',
+                "Cluster'lar",
               ].map((h) => (
-                <th key={h} className="text-left px-2 py-1.5 font-semibold">
+                <th key={h} className="text-left px-2 py-1.5 font-semibold whitespace-nowrap">
                   {h}
                 </th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {satirlar.map((r, i) => (
+            {satirlar.map((a) => (
               <tr
-                key={`${r.cluster}|${r.namespace}|${r.route}|${i}`}
-                className="border-t"
+                key={`${a.namespace}|${a.application}`}
+                className="border-t align-top"
                 style={{ borderColor: 'var(--border-subtle)' }}
               >
-                <td className="px-2 py-1 font-mono font-medium">
-                  {r.application}
-                  {r.patternMiss && (
+                <td className="px-2 py-1 font-mono font-medium">{a.application}</td>
+                <td className="px-2 py-1 font-mono" style={{ color: 'var(--text-secondary)' }}>
+                  {a.namespace}
+                  {a.env && (
                     <span
-                      className="ml-1.5 text-[9px] px-1 rounded"
-                      style={{ background: 'var(--status-danger)', color: 'white' }}
-                      title="Gerçekten SPA ama ad kalıbına uymuyor — eski yöntem bunu kaçırıyordu."
+                      className="ml-1 text-[10px] uppercase"
+                      style={{ color: 'var(--text-muted)' }}
                     >
-                      KALIP KAÇIRDI
+                      {a.env}
                     </span>
                   )}
                 </td>
-                <td className="px-2 py-1 font-mono" style={{ color: 'var(--text-secondary)' }}>
-                  {r.namespace}
-                  <span
-                    className="ml-1 text-[10px] uppercase"
-                    style={{ color: 'var(--text-muted)' }}
-                  >
-                    {r.env || ''}
-                  </span>
+                <td className="px-2 py-1 whitespace-nowrap">
+                  <SpaHucre a={a} />
+                </td>
+                <td className="px-2 py-1 whitespace-nowrap">
+                  <KalipHucre a={a} />
+                </td>
+                <td className="px-2 py-1 tabular-nums whitespace-nowrap">
+                  <IstekHucre a={a} />
+                </td>
+                <td className="px-2 py-1 whitespace-nowrap">
+                  <EnvanterHucre a={a} />
                 </td>
                 <td className="px-2 py-1 font-mono text-[11px] break-all">
-                  {r.host || r.route}
-                  {r.termination && (
-                    <span className="ml-1 text-[10px]" style={{ color: 'var(--text-muted)' }}>
-                      {r.termination}
-                    </span>
-                  )}
+                  {a.hosts.length
+                    ? a.hosts.map((h) => <div key={h}>{h}</div>)
+                    : a.routes.map((r) => <div key={r}>{r}</div>)}
                 </td>
-                <td className="px-2 py-1">
-                  {r.note ? (
-                    <span style={{ color: 'var(--text-muted)' }} title={r.note}>
-                      <ExclamationTriangleIcon className="w-3.5 h-3.5 inline" /> eşleşmedi
-                    </span>
-                  ) : r.isSpa ? (
-                    <span
-                      style={{ color: 'var(--status-success)', fontWeight: 600 }}
-                      title={`Kanıt: ${r.signal}${r.image ? ` · ${r.image}` : ''}`}
-                    >
-                      evet
-                      <span
-                        className="ml-1 text-[10px] font-normal"
-                        style={{ color: 'var(--text-muted)' }}
+                <td className="px-2 py-1 text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                  {/* ESKI VERI SUNUCUDAN: son kosusu basarisiz cluster'in satiri onceki bir
+                      kosudan (staleClusters, kapsamdan turetilir). */}
+                  {a.clusters.map((c) =>
+                    a.staleClusters.includes(c) ? (
+                      <div
+                        key={c}
+                        style={{ color: 'var(--status-warning)' }}
+                        title="Bu cluster son koşusunda taranamadı; veri önceki bir koşudan."
                       >
-                        {r.signal}
-                      </span>
-                      {r.matchBy === 'ad' && (
-                        <span
-                          className="ml-1 text-[9px] px-1 rounded font-normal"
-                          style={{
-                            border: '1px solid var(--status-warning)',
-                            color: 'var(--status-warning)',
-                          }}
-                          title="Servis okunamadı (yetki); route, servisle AYNI ADI taşıyan iş yüküne bağlandı. Selector eşleşmesinden zayıf bir kanıt."
-                        >
-                          ad eşleşmesi
-                        </span>
-                      )}
-                    </span>
-                  ) : (
-                    <span style={{ color: 'var(--text-muted)' }}>hayır</span>
+                        {c} · önceki koşudan
+                      </div>
+                    ) : (
+                      <div key={c}>{c}</div>
+                    ),
                   )}
-                </td>
-                <td
-                  className="px-2 py-1"
-                  style={{
-                    color: r.patternFalse ? 'var(--status-warning)' : 'var(--text-secondary)',
-                  }}
-                >
-                  {r.patternMatch ? 'uyuyor' : 'uymuyor'}
-                </td>
-                <td
-                  className="px-2 py-1"
-                  style={{
-                    color:
-                      r.isSpa && !r.inInventory ? 'var(--status-warning)' : 'var(--text-secondary)',
-                  }}
-                >
-                  {r.inInventory ? 'var' : 'yok'}
-                </td>
-                <td className="px-2 py-1 tabular-nums">
-                  <Trafik r={r} />
-                </td>
-                <td className="px-2 py-1 text-[11px]" style={{ color: 'var(--text-muted)' }}>
-                  {r.workloadKind ? `${r.workloadKind} · ${r.workload}` : '—'}
-                </td>
-                <td className="px-2 py-1 text-[11px]" style={{ color: 'var(--text-muted)' }}>
-                  {r.cluster}
-                  {/* ESKI VERI KAPSAMDAN: global en yeni tarihle karsilastirmak kisitli bir
-                      kosudan sonra oteki tum cluster'lari "taranamadi" gosteriyor, ayni gun
-                      basarisiz kosunun eski verisini ise kaciriyordu (ikinci dogrulama turu). */}
-                  {kapsamBy.get(r.cluster)?.stale ? (
-                    <span
-                      className="ml-1 text-[10px]"
-                      style={{ color: 'var(--status-warning)' }}
-                      title="Bu cluster son koşusunda taranamadı; satır önceki bir koşudan."
-                    >
-                      {r.scanDate} · önceki koşudan
-                    </span>
-                  ) : kapsamBy.get(r.cluster)?.bucket === 'onceki' ? (
-                    <span
-                      className="ml-1 text-[10px]"
-                      style={{ color: 'var(--text-muted)' }}
-                      title="Bu cluster son koşuya dahil edilmedi (hata değil); satır kendi son taramasından."
-                    >
-                      {r.scanDate}
-                    </span>
-                  ) : null}
                 </td>
               </tr>
             ))}
             {!satirlar.length && !yukleniyor && (
               <tr>
-                <td colSpan={9} className="px-2 py-3" style={{ color: 'var(--text-muted)' }}>
-                  {/* BOS GORUNUM SEBEBINI SOYLER: varsayilan gorunum "kacanlar"; keşif hic SPA
-                      bulamadiysa ekran "veri yok" gibi gorunuyordu (2026-10-01). */}
+                <td colSpan={8} className="px-2 py-3" style={{ color: 'var(--text-muted)' }}>
                   {hata ? (
                     // HATA "SATIR YOK" DEGIL: ust bantta sebep yazar; burada da bos sonuc
                     // gibi konusulmaz.
                     <span style={{ color: 'var(--status-danger)' }}>
                       Veri okunamadı — sebep yukarıda.
                     </span>
-                  ) : data?.rows?.length ? (
+                  ) : apps.length ? (
                     <>
-                      Bu görünümde satır yok; keşifte toplam {nf(data.rows.length)} satır var.{' '}
-                      {(['spa', 'unmatched', 'all'] as const)
-                        .filter((g) => g !== gorunum)
-                        .map((g) => (
-                          <button
-                            key={g}
-                            onClick={() => setGorunum(g)}
-                            className="ml-1 px-1.5 py-0.5 text-[11px] border rounded"
-                            style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}
-                          >
-                            {g === 'spa'
-                              ? `gerçek SPA'lar (${nf(s?.spa || 0)})`
-                              : g === 'unmatched'
-                                ? `eşleşmeyenler (${nf(s?.unmatched || 0)})`
-                                : `hepsi (${nf(s?.routes || 0)})`}
-                          </button>
-                        ))}
+                      Bu süzgeçlerle uygulama yok; toplam {nf(apps.length)} uygulama var.{' '}
+                      <button
+                        onClick={temizle}
+                        className="ml-1 px-1.5 py-0.5 text-[11px] border rounded"
+                        style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}
+                      >
+                        süzgeçleri temizle
+                      </button>
                     </>
                   ) : (
-                    'Bu süzgeçlerle satır yok.'
+                    'Keşif verisi yok.'
                   )}
                 </td>
               </tr>

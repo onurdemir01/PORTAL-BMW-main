@@ -198,8 +198,19 @@ function buildSpaDiscovery(discovery, inventory, usage, runs) {
     );
   };
 
+  // PLATFORM NAMESPACE'LERI KAPSAM DISI (kullanici, 2026-10-01): openshift-*, kube-*, default
+  // altindaki route'lar konsol/oauth/monitoring gibi PLATFORM route'larudur, uygulama degil;
+  // uxmid'in orada servis yetkisi de yok ve "namespace okunamadi" diye yanlis yonlendiriyordu.
+  // Atlanir ama SAYILIR - sessizce dusurulmez.
+  const platform = { routes: 0, namespaces: new Set() };
   const rows = (discovery || [])
     .filter((d) => !bosaldi(d))
+    .filter((d) => {
+      if (!platformNamespace(d.namespace)) return true;
+      platform.routes += 1;
+      platform.namespaces.add(L(d.namespace));
+      return false;
+    })
     .map((d) => {
       const ns = T(d.namespace);
       const app = uygulamaAdi(d);
@@ -254,9 +265,15 @@ function buildSpaDiscovery(discovery, inventory, usage, runs) {
     if (r.cluster && r.scanDate > (veriGunu.get(r.cluster) || ''))
       veriGunu.set(r.cluster, r.scanDate);
   }
+  const coverage = kapsam(runs, veriGunu);
+  const apps = uygulamalar(rows, coverage);
   return {
     rows,
-    coverage: kapsam(runs, veriGunu),
+    apps,
+    appSummary: uygulamaOzeti(apps),
+    platformHidden: { routes: platform.routes, namespaces: platform.namespaces.size },
+    namespaces: [...new Set(apps.map((a) => a.namespace).filter(Boolean))].sort(),
+    coverage,
     clusters: [...new Set(rows.map((r) => r.cluster).filter(Boolean))].sort(),
     envs: [...new Set(rows.map((r) => r.env).filter(Boolean))].sort(),
     summary: {
@@ -299,4 +316,132 @@ function buildSpaDiscovery(discovery, inventory, usage, runs) {
   };
 }
 
-module.exports = { buildSpaDiscovery, uygulamaAdi, notKovasi };
+/**
+ * UYGULAMA BASINA TEK SATIR (kullanici, 2026-10-01): "her uygulama icin tek satir olsun;
+ * route adresleri ve cluster isimleri ayni satira yazilsin; is yuku kolonuna gerek yok."
+ *
+ * Anahtar (namespace, uygulama): ayni uygulama birden cok cluster'da / route'ta olabilir.
+ * Kararlar route'lardan TURETILIR, uydurulmaz:
+ *   spa      'evet'       en az bir route'un ardinda nginx bulundu
+ *            'hayir'      route'lar eslesti ve hicbirinde nginx yok
+ *            'bilinmiyor' HICBIR route eslesmedi (olculemedi - "SPA degil" DEMEK DEGIL)
+ *   istek    'var' | 'yok' | 'olculemedi' | 'olcum-yok'   (Dynatrace, uygulama basina)
+ *   envanter 'kayitli' | 'kayitli-degil' | 'kismen'        (route envanteri, route basina)
+ */
+function uygulamalar(rows, coverage) {
+  const eski = new Map((coverage?.clusters || []).map((c) => [c.cluster, c]));
+  const m = new Map();
+  for (const r of rows) {
+    const k = `${L(r.namespace)}|${L(r.application)}`;
+    let a = m.get(k);
+    if (!a) {
+      a = {
+        application: r.application,
+        namespace: r.namespace,
+        env: r.env,
+        hosts: new Set(),
+        routes: new Set(),
+        clusters: new Set(),
+        signals: new Set(),
+        matchBy: new Set(),
+        notes: new Set(),
+        routeCount: 0,
+        spaRoutes: 0,
+        unmatchedRoutes: 0,
+        invRoutes: 0,
+        patternMatch: r.patternMatch,
+        usage: r.usage,
+        reqShown: r.reqShown,
+      };
+      m.set(k, a);
+    }
+    a.routeCount += 1;
+    if (r.host) a.hosts.add(r.host);
+    if (r.route) a.routes.add(r.route);
+    if (r.cluster) a.clusters.add(r.cluster);
+    if (r.isSpa) {
+      a.spaRoutes += 1;
+      if (r.signal) a.signals.add(r.signal);
+    }
+    if (r.matchBy) a.matchBy.add(r.matchBy);
+    if (r.note) {
+      a.unmatchedRoutes += 1;
+      a.notes.add(r.note);
+    }
+    if (r.inInventory) a.invRoutes += 1;
+  }
+  const out = [...m.values()].map((a) => {
+    const spa =
+      a.spaRoutes > 0 ? 'evet' : a.unmatchedRoutes === a.routeCount ? 'bilinmiyor' : 'hayir';
+    const clusters = [...a.clusters].sort();
+    return {
+      application: a.application,
+      namespace: a.namespace,
+      env: a.env,
+      spa,
+      // KANIT: nginx-start.sh (guclu) / image (zayif). Yalniz 'ad' eslesmesiyle bulunduysa
+      // (servis okunamadi, ayni adli is yukune dusuldu) kanit zayiftir ve oyle gosterilir.
+      signals: [...a.signals].sort(),
+      weakEvidence: spa === 'evet' && a.matchBy.size > 0 && !a.matchBy.has('selector'),
+      // AD KALIBI: uygulama adi `-app-v` / `-app-emb-v` kuralina uyuyor mu. Gercekten SPA
+      // olup UYMAYANLAR eski (ada dayali) yontemle bulunamiyordu - sayfanin varlik sebebi.
+      pattern: a.patternMatch ? 'uyuyor' : 'uymuyor',
+      patternMiss: spa === 'evet' && !a.patternMatch,
+      patternFalse: spa === 'hayir' && a.patternMatch,
+      istek:
+        a.reqShown != null
+          ? a.reqShown > 0
+            ? 'var'
+            : 'yok'
+          : a.usage && !a.usage.measured
+            ? 'olculemedi'
+            : 'olcum-yok',
+      reqShown: a.reqShown,
+      usage: a.usage,
+      inventory:
+        a.invRoutes === a.routeCount ? 'kayitli' : a.invRoutes === 0 ? 'kayitli-degil' : 'kismen',
+      invRoutes: a.invRoutes,
+      routeCount: a.routeCount,
+      hosts: [...a.hosts].sort(),
+      routes: [...a.routes].sort(),
+      clusters,
+      // ESKI VERI: bu cluster'in son kosusu basarisiz, satir onceki bir kosudan.
+      staleClusters: clusters.filter((c) => eski.get(c)?.stale),
+      notes: [...a.notes].sort(),
+    };
+  });
+  const SPA_SIRA = { evet: 0, bilinmiyor: 1, hayir: 2 };
+  out.sort(
+    (a, b) =>
+      SPA_SIRA[a.spa] - SPA_SIRA[b.spa] ||
+      Number(b.patternMiss) - Number(a.patternMiss) ||
+      a.namespace.localeCompare(b.namespace) ||
+      a.application.localeCompare(b.application),
+  );
+  return out;
+}
+
+/** Uygulama duzeyinde ozet: ust bantta ve suzgec seceneklerinde sayilar. */
+function uygulamaOzeti(apps) {
+  const say = (f) => apps.filter(f).length;
+  const spa = apps.filter((a) => a.spa === 'evet');
+  return {
+    apps: apps.length,
+    spa: spa.length,
+    notSpa: say((a) => a.spa === 'hayir'),
+    unknown: say((a) => a.spa === 'bilinmiyor'),
+    patternMiss: say((a) => a.patternMiss),
+    patternFalse: say((a) => a.patternFalse),
+    spaRequestActive: spa.filter((a) => a.istek === 'var').length,
+    spaRequestIdle: spa.filter((a) => a.istek === 'yok').length,
+    spaRequestUnknown: spa.filter((a) => a.istek === 'olculemedi' || a.istek === 'olcum-yok')
+      .length,
+    spaNotInInventory: spa.filter((a) => a.inventory !== 'kayitli').length,
+  };
+}
+
+/** OpenShift platform namespace'i mi: openshift, openshift-*, kube-*, default. */
+const PLATFORM_NS_RE = /^(openshift|kube)(-|$)|^default$/i;
+const platformNamespace = (ns) => PLATFORM_NS_RE.test(T(ns));
+
+module.exports = { buildSpaDiscovery, uygulamaAdi, notKovasi, platformNamespace, uygulamalar };

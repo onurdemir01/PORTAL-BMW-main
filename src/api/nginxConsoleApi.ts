@@ -303,12 +303,58 @@ export interface NgSpaDiscoveryRow {
   /** `null` = ölçülemedi ya da ölçüm yok — "istek yok" DEĞİL. */
   reqShown: number | null;
 }
+/** Uygulama başına tek satır — route'lar, adresler ve cluster'lar birleşik. */
+export interface NgSpaApp {
+  application: string;
+  namespace: string;
+  env: string | null;
+  /** evet: en az bir route'un ardında nginx var · hayir · bilinmiyor: hiçbir route eşleşmedi */
+  spa: 'evet' | 'hayir' | 'bilinmiyor';
+  signals: string[];
+  /** Yalnız ad eşleşmesiyle bulundu (servis okunamadı) — zayıf kanıt. */
+  weakEvidence: boolean;
+  /** Ad -app-v / -app-emb-v kuralına uyuyor mu. */
+  pattern: 'uyuyor' | 'uymuyor';
+  /** Gerçekten SPA ama adı kurala uymuyor (eski yöntem bulamıyordu). */
+  patternMiss: boolean;
+  /** Adı kurala uyuyor ama nginx yok. */
+  patternFalse: boolean;
+  istek: 'var' | 'yok' | 'olculemedi' | 'olcum-yok';
+  reqShown: number | null;
+  usage: NgSpaDiscoveryRow['usage'];
+  inventory: 'kayitli' | 'kayitli-degil' | 'kismen';
+  invRoutes: number;
+  routeCount: number;
+  hosts: string[];
+  routes: string[];
+  clusters: string[];
+  staleClusters: string[];
+  notes: string[];
+}
+export interface NgSpaAppSummary {
+  apps: number;
+  spa: number;
+  notSpa: number;
+  unknown: number;
+  patternMiss: number;
+  patternFalse: number;
+  spaRequestActive: number;
+  spaRequestIdle: number;
+  spaRequestUnknown: number;
+  spaNotInInventory: number;
+}
+
 export interface NgSpaDiscovery {
   ok: boolean;
   message?: string;
   tableMissing?: boolean;
   scanDate?: string | null;
   rows?: NgSpaDiscoveryRow[];
+  apps?: NgSpaApp[];
+  appSummary?: NgSpaAppSummary | null;
+  /** OpenShift platform namespace'leri (openshift-*, kube-*, default) kapsam dışı. */
+  platformHidden?: { routes: number; namespaces: number } | null;
+  namespaces?: string[];
   clusters?: string[];
   envs?: string[];
   summary?: {
