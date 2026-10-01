@@ -287,6 +287,34 @@ export const logxV2Api = {
       `${BASE}/ocp/inventory/apps?env=${encodeURIComponent(env)}&tenant=${encodeURIComponent(tenant)}&clusters=${encodeURIComponent(clusters.join(','))}&namespace=${encodeURIComponent(namespace)}`,
     ).then((r) => json<CachedList<OcpAppItem>>(r)),
 
+  // ── LogX YÖNETİMİ: Admin + kaynak sahibi (sunucu: /manage/*) ───────────────
+  // Admin hepsini, kaynak sahibi YALNIZCA kendi kaynaklarını yönetir; sahip
+  // ekleme/silme yalnızca Admin. Ekran: LogX Yönetimi (L5).
+  manage: {
+    resources: () =>
+      fetch(`${BASE}/manage/resources`).then((r) =>
+        json<{ ok: boolean; isAdmin: boolean; resources: ManagedResource[] }>(r),
+      ),
+    restrict: (data: { resourceType: string; resourceKey: string; description?: string }) =>
+      postJson<{ ok: boolean; restriction: RestrictionRow }>('/manage/restrictions', data),
+    unrestrict: (id: number) => del<{ ok: boolean }>(`/manage/restrictions/${id}`),
+    addGrant: (id: number, username: string) =>
+      postJson<{ ok: boolean }>(`/manage/restrictions/${id}/grants`, { username }),
+    removeGrant: (id: number, username: string) =>
+      delJson<{ ok: boolean }>(`/manage/restrictions/${id}/grants`, { username }),
+    addGroupGrant: (id: number, groupDn: string) =>
+      postJson<{ ok: boolean }>(`/manage/restrictions/${id}/group-grants`, { groupDn }),
+    removeGroupGrant: (id: number, groupDn: string) =>
+      delJson<{ ok: boolean }>(`/manage/restrictions/${id}/group-grants`, { groupDn }),
+    addOwner: (data: {
+      resourceType: string;
+      resourceKey: string;
+      username?: string;
+      groupDn?: string;
+    }) => postJson<{ ok: boolean; owner: ResourceOwner }>('/manage/owners', data),
+    removeOwner: (id: number) => del<{ ok: boolean }>(`/manage/owners/${id}`),
+  },
+
   /** LogX'in bağlı olduğu AWX template'leri launch'a hazır mı? Sihirbaz, başarısız
    *  olacağı belli bir job'ı hiç başlatmamak için okur (bkz. server playbook-readiness.cjs).
    *  Yanıt bilerek sade: altyapı ayrıntısı (template adı/ID) admin ucunda kalır. */
@@ -537,6 +565,32 @@ export interface EnvSuffixRow {
 }
 /** Önbellekten dönen liste + tazelik bilgisi. `stale` true ise veri TTL'ini geçmiştir
  *  ama yine de gösterilir (bayat liste, hiç liste olmamasından iyidir). */
+/** Kaynak sahibi (kullanıcı ya da AD grubu). */
+export interface ResourceOwner {
+  id: number;
+  resourceType: string;
+  resourceKey: string;
+  principalType: 'user' | 'group';
+  principal: string;
+  createdBy: string;
+  createdAt: string;
+}
+
+/** Yönetilebilir kaynak: kısıt (yoksa null) + sahipler. */
+export interface ManagedResource {
+  resourceType: string;
+  resourceKey: string;
+  restriction: {
+    id: number;
+    description: string | null;
+    grants: string[];
+    groupGrants: string[];
+    createdBy: string;
+    createdAt: string;
+  } | null;
+  owners: ResourceOwner[];
+}
+
 /** Sunucunun kısıtlama reddi ayrıntısı (server/logx/v2/restrictions.cjs `denyDetails`). */
 export interface LogXRestriction {
   resourceType: string;
@@ -544,6 +598,8 @@ export interface LogXRestriction {
   label: string;
   allowedUsers: string[];
   allowedGroups: string[];
+  /** Kaynak sahipleri ("ali", "grup odeme-lider"); boşsa başvuru LogX yöneticisi. */
+  owners?: string[];
   contact: string;
 }
 
