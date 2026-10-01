@@ -512,14 +512,18 @@ function initTelnet(app) {
         for (const ns of cleanNamespaces) {
           for (const clusterName of groupClusters) {
             const resourceKey = `${tenantKey}/${envKey}/${clusterName}/${ns}`;
-            const allowed = await restrictions
-              .isAllowed('ocp_namespace', resourceKey, user)
-              .catch(() => false);
-            if (!allowed) {
-              return res.status(403).json({
-                ok: false,
-                message: `"${ns}" namespace'i için erişim yetkiniz yok — ekibiniz bu kaynağı kısıtlamış olabilir.`,
-              });
+            // LogX ile AYNI aciklayici ret (kural + izinliler + basvuru yolu). Karar
+            // okunamazsa KAPALI kalir ama "kisitli" diye etiketlenmez.
+            const karar = await restrictions
+              .evaluate('ocp_namespace', resourceKey, user)
+              .catch(() => null);
+            if (!karar || !karar.allowed) {
+              const message = karar
+                ? restrictions.denyMessage(
+                    await restrictions.redAyrintisi('ocp_namespace', resourceKey, karar.rows),
+                  )
+                : `"${ns}" namespace'i için erişim kontrolü yapılamadı; lütfen tekrar deneyin.`;
+              return res.status(403).json({ ok: false, message });
             }
           }
         }
@@ -555,7 +559,7 @@ function initTelnet(app) {
             ok: false,
             message:
               `Şu cluster'lar için Jump Server (bastion) tanımlı değil: ${missing.join(', ')} — ` +
-              `Admin > LogX Yapılandırma ekranından cluster satırına Jump Server girin.`,
+              `Admin > OCP Yapılandırma ekranından cluster satırına Jump Server girin.`,
           });
         }
         const meta = await adminData

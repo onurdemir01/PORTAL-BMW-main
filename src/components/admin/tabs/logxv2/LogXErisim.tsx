@@ -1,10 +1,10 @@
 // src/components/admin/tabs/logxv2/LogXErisim.tsx — LogX YÖNETİMİ: ERİŞİM (L5, 2026-10-01).
 //
 // Tek bileşen, iki kullanıcı:
-//   * Admin (Admin > LogX v2 > Erişim): her kaynak, sahip atama, "neden reddedildi?"
+//   * Admin (Admin > LogX Yönetimi > Erişim): her kaynak, sahip atama, "neden reddedildi?"
 //     açıklayıcısı, red günlüğü, ortam etiketleri ve altyapı teşhisi.
 //   * Kaynak sahibi (LogX sayfası > "LogX Yönetimi"): YALNIZCA kendi kaynaklarının
-//     kısıtı ve izinleri. Sunucu (`/manage/*`) aynı sınırı ayrıca uygular.
+//     kısıtı ve izinleri. Sunucu (`/manage/...` uçları) aynı sınırı ayrıca uygular.
 //
 // Model (kullanıcı kararı): her şey varsayılan olarak HERKESE AÇIK; kısıt eklenince
 // yalnızca izinli kişi/gruplar (+ Admin) erişir. Ortam kuralı kaynak kuralıyla
@@ -19,6 +19,7 @@ import {
 import { useToast } from '@/hooks/useToast';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { fmtDateTime } from '@/utils/datetime';
+import { LoadingLogo } from '@/components/common/LoadingLogo';
 
 type Tip = 'legacy_app' | 'ocp_namespace' | 'env';
 const TIP_ETIKET: Record<string, string> = {
@@ -31,12 +32,11 @@ const TIP_ETIKET: Record<string, string> = {
 const kisaGrup = (dn: string) => (/^\s*cn=([^,]+)/i.exec(dn)?.[1] || dn).trim();
 const hataMetni = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
-const inputCls =
-  'px-2 py-1.5 text-sm border border-gray-200 rounded-lg outline-none focus:border-black focus:ring-1 focus:ring-black';
-const btnCls =
-  'px-3 py-1.5 text-xs rounded-lg border border-gray-200 hover:border-black transition-colors disabled:opacity-50';
-const btnKoyu =
-  'px-3 py-1.5 bg-black text-white text-xs rounded-lg hover:bg-gray-800 transition-colors disabled:opacity-50';
+// TEMA SINIFLARI (2026-10-02): diger admin sekmeleriyle ayni gorunum, koyu temada da
+// okunur. Eskiden sabit gri/siyah Tailwind sinifliydi.
+const inputCls = 'pf-input text-sm';
+const btnCls = 'btn-secondary text-xs disabled:opacity-50';
+const btnKoyu = 'btn-primary text-xs disabled:opacity-50';
 
 // ── Tek kaynak kartı ─────────────────────────────────────────────────────────
 const KaynakKarti: React.FC<{
@@ -65,12 +65,12 @@ const KaynakKarti: React.FC<{
   const k = r.restriction;
 
   return (
-    <div className="border border-gray-100 rounded-xl p-3 space-y-2" data-testid="logx-kaynak">
+    <div className="border border-[var(--border)] rounded-xl p-3 space-y-2" data-testid="logx-kaynak">
       <div className="flex items-center gap-2 flex-wrap">
-        <span className="text-xs px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600">
+        <span className="text-xs px-1.5 py-0.5 rounded-full bg-[var(--bg-elevated)] text-[var(--text-secondary)]">
           {TIP_ETIKET[r.resourceType] || r.resourceType}
         </span>
-        <span className="text-sm font-semibold text-gray-800 font-mono">{r.resourceKey}</span>
+        <span className="text-sm font-semibold text-[var(--text-primary)] font-mono">{r.resourceKey}</span>
         <span
           className={`text-xs px-1.5 py-0.5 rounded-full ${
             k ? 'bg-amber-50 text-amber-800' : 'bg-green-50 text-green-700'
@@ -115,7 +115,7 @@ const KaynakKarti: React.FC<{
 
       {k && (
         <div className="space-y-1.5">
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-[var(--text-muted)]">
             İzinliler{' '}
             {k.grants.length + k.groupGrants.length === 0 && (
               <strong className="text-amber-700">— henüz kimse yok (yalnızca Admin erişir)</strong>
@@ -123,11 +123,11 @@ const KaynakKarti: React.FC<{
           </p>
           <div className="flex flex-wrap gap-1.5">
             {k.grants.map((u) => (
-              <span key={`u-${u}`} className="text-xs px-2 py-0.5 rounded-full bg-gray-100">
+              <span key={`u-${u}`} className="text-xs px-2 py-0.5 rounded-full bg-[var(--bg-elevated)]">
                 {u}
                 <button
                   aria-label={`${u} iznini kaldır`}
-                  className="ml-1 text-gray-400 hover:text-red-600"
+                  className="ml-1 text-[var(--text-muted)] hover:text-[var(--status-danger)]"
                   disabled={mesgul}
                   onClick={() =>
                     yap(() => logxV2Api.manage.removeGrant(k.id, u), 'İzin kaldırıldı.')
@@ -146,7 +146,7 @@ const KaynakKarti: React.FC<{
                 grup {kisaGrup(g)}
                 <button
                   aria-label={`${kisaGrup(g)} grup iznini kaldır`}
-                  className="ml-1 text-gray-400 hover:text-red-600"
+                  className="ml-1 text-[var(--text-muted)] hover:text-[var(--status-danger)]"
                   disabled={mesgul}
                   onClick={() =>
                     yap(() => logxV2Api.manage.removeGroupGrant(k.id, g), 'Grup izni kaldırıldı.')
@@ -202,11 +202,11 @@ const KaynakKarti: React.FC<{
         </div>
       )}
 
-      <div className="space-y-1.5 border-t border-gray-50 pt-2">
-        <p className="text-xs text-gray-500">
+      <div className="space-y-1.5 border-t border-[var(--border)] pt-2">
+        <p className="text-xs text-[var(--text-muted)]">
           Kaynak sahipleri{' '}
           {r.owners.length === 0 && (
-            <span className="text-gray-400">— yok (yalnızca Admin yönetir)</span>
+            <span className="text-[var(--text-muted)]">— yok (yalnızca Admin yönetir)</span>
           )}
         </p>
         <div className="flex flex-wrap gap-1.5">
@@ -220,7 +220,7 @@ const KaynakKarti: React.FC<{
               {isAdmin && (
                 <button
                   aria-label="sahibi kaldır"
-                  className="ml-1 text-gray-400 hover:text-red-600"
+                  className="ml-1 text-[var(--text-muted)] hover:text-[var(--status-danger)]"
                   disabled={mesgul}
                   onClick={() => yap(() => logxV2Api.manage.removeOwner(o.id), 'Sahip kaldırıldı.')}
                 >
@@ -340,8 +340,8 @@ const YeniKaynak: React.FC<{ yenile: () => Promise<void> }> = ({ yenile }) => {
   const tekKaynakli = etiketler.filter((e) => e.sources.length === 1);
 
   return (
-    <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 space-y-3">
-      <p className="text-sm font-medium text-gray-800">Kaynak kısıtla</p>
+    <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-elevated)] p-4 space-y-3">
+      <p className="text-sm font-medium text-[var(--text-primary)]">Kaynak kısıtla</p>
       <div className="flex gap-2 flex-wrap items-center">
         <select
           aria-label="kaynak tipi"
@@ -453,7 +453,7 @@ const YeniKaynak: React.FC<{ yenile: () => Promise<void> }> = ({ yenile }) => {
           ortamı farklı yazıyorsa her iki yazımı da kısıtlayın.
         </p>
       )}
-      <p className="text-xs text-gray-500">
+      <p className="text-xs text-[var(--text-muted)]">
         Kaynağa sahip atamak için önce kısıtlayın ya da listedeki kartından &quot;Sahip ata&quot;yı
         kullanın.
       </p>
@@ -480,8 +480,8 @@ const Aciklayici: React.FC = () => {
     }
   };
   return (
-    <div className="border border-gray-100 rounded-xl p-4 space-y-3">
-      <p className="text-sm font-medium text-gray-800">Neden reddedildi?</p>
+    <div className="border border-[var(--border)] rounded-xl p-4 space-y-3">
+      <p className="text-sm font-medium text-[var(--text-primary)]">Neden reddedildi?</p>
       <div className="flex gap-2 flex-wrap">
         <input
           className={inputCls}
@@ -523,7 +523,7 @@ const Aciklayici: React.FC = () => {
               {sonuc.kimlikUyarisi}
             </p>
           )}
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-[var(--text-muted)]">
             {sonuc.kullanici.username} — {sonuc.kullanici.grupSayisi} AD grubu
             {sonuc.kimlikKaynagi ? ' (LDAP)' : ''}
           </p>
@@ -574,9 +574,9 @@ const RedGunlugu: React.FC = () => {
     if (alive()) await yukle();
   }, []);
   return (
-    <div className="border border-gray-100 rounded-xl p-4 space-y-2">
+    <div className="border border-[var(--border)] rounded-xl p-4 space-y-2">
       <div className="flex items-center gap-2">
-        <p className="text-sm font-medium text-gray-800">Red günlüğü</p>
+        <p className="text-sm font-medium text-[var(--text-primary)]">Red günlüğü</p>
         <input
           className={`${inputCls} ml-auto`}
           placeholder="kullanıcıya göre süz"
@@ -589,27 +589,27 @@ const RedGunlugu: React.FC = () => {
       </div>
       {hata && <p className="text-xs text-red-700">{hata}</p>}
       {satirlar.length === 0 ? (
-        <p className="text-xs text-gray-400">Kayıtlı red yok.</p>
+        <p className="text-xs text-[var(--text-muted)]">Kayıtlı red yok.</p>
       ) : (
         <table className="w-full text-xs">
           <thead>
-            <tr className="text-left text-gray-500">
+            <tr className="text-left text-[var(--text-muted)]">
               <th className="py-1 pr-2 font-medium">Zaman</th>
               <th className="py-1 pr-2 font-medium">Kullanıcı</th>
               <th className="py-1 pr-2 font-medium">Kaynak</th>
               <th className="py-1 pr-2 font-medium">Uç</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-50">
+          <tbody className="divide-y divide-[var(--border)]">
             {satirlar.map((d) => (
               <tr key={d.id}>
-                <td className="py-1 pr-2 whitespace-nowrap text-gray-500">{fmtDateTime(d.at)}</td>
+                <td className="py-1 pr-2 whitespace-nowrap text-[var(--text-muted)]">{fmtDateTime(d.at)}</td>
                 <td className="py-1 pr-2">{d.username}</td>
                 <td className="py-1 pr-2 font-mono">
                   {d.resourceType ? `${TIP_ETIKET[d.resourceType] || d.resourceType}: ` : ''}
                   {d.resourceKey || '—'}
                 </td>
-                <td className="py-1 pr-2 font-mono text-gray-500">{d.route || '—'}</td>
+                <td className="py-1 pr-2 font-mono text-[var(--text-muted)]">{d.route || '—'}</td>
               </tr>
             ))}
           </tbody>
@@ -639,9 +639,9 @@ const Altyapi: React.FC = () => {
   }, []);
   const sorunlu = rows.filter((r) => r.active && r.eksik.length);
   return (
-    <div className="border border-gray-100 rounded-xl p-4 space-y-2">
-      <p className="text-sm font-medium text-gray-800">Kural dışı sebepler (altyapı)</p>
-      <p className="text-xs text-gray-500">
+    <div className="border border-[var(--border)] rounded-xl p-4 space-y-2">
+      <p className="text-sm font-medium text-[var(--text-primary)]">Kural dışı sebepler (altyapı)</p>
+      <p className="text-xs text-[var(--text-muted)]">
         Kural izin verdiği hâlde prod&apos;da hata alınıyorsa sebep çoğunlukla altyapıdadır:
         OCP&apos;de servis hesabının <code>projects</code> list ve <code>pods/log</code> get yetkisi
         (cluster başına; bkz. docs/OCP-YETKILERI.yaml), Legacy&apos;de <code>dzdo</code> ile{' '}
@@ -697,11 +697,11 @@ const LogXErisim: React.FC = () => {
     return s ? kaynaklar.filter((k) => k.resourceKey.toLowerCase().includes(s)) : kaynaklar;
   }, [kaynaklar, suzgec]);
 
-  if (yukleniyor) return <p className="text-sm text-gray-400">Yükleniyor…</p>;
+  if (yukleniyor) return <LoadingLogo compact />;
 
   return (
     <div className="space-y-4">
-      <p className="text-xs text-gray-500">
+      <p className="text-xs text-[var(--text-muted)]">
         Varsayılan olarak her şey <strong>herkese açık</strong>. Kısıtlanan kaynağa yalnızca izinli
         kişi/gruplar ve Admin erişir; ortam kuralı kaynak kuralıyla <strong>birlikte</strong>{' '}
         uygulanır.
@@ -717,10 +717,13 @@ const LogXErisim: React.FC = () => {
           onChange={(e) => setSuzgec(e.target.value)}
         />
         {gorunen.length === 0 && (
-          <p className="text-sm text-gray-400 text-center py-4">
-            {isAdmin
-              ? 'Hiç kısıtlama ya da sahip yok — her şey herkese açık.'
-              : 'Sahibi olduğunuz bir kaynak yok.'}
+          <p className="text-sm text-[var(--text-muted)] text-center py-4">
+            {/* Arama varsa "eşleşen yok" — "her şey herkese açık" demek yanlış olurdu. */}
+            {suzgec.trim()
+              ? 'Aramayla eşleşen kaynak yok.'
+              : isAdmin
+                ? 'Hiç kısıtlama ya da sahip yok — her şey herkese açık.'
+                : 'Sahibi olduğunuz bir kaynak yok.'}
           </p>
         )}
         {gorunen.map((r) => (

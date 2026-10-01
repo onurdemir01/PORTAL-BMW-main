@@ -49,7 +49,7 @@ const OcpClusterPickStep: React.FC<{
     return (
       <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 text-sm text-amber-800">
         <strong>{tenant} / {env}</strong> için envanterde tanımlı gerçek cluster bulunamadı —
-        Admin &gt; LogX Yapılandırma ekranından cluster kataloğunu kontrol edin.
+        Admin &gt; OCP Yapılandırma ekranından cluster kataloğunu kontrol edin.
       </div>
     );
   }

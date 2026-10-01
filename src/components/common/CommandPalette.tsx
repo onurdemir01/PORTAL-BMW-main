@@ -28,7 +28,6 @@ const META: Record<string, { description: string; keywords?: string }> = {
   "Performance":  { description: "Dynatrace/Instana metrikler",   keywords: "dynatrace instana metric alarm" },
   "AI Analist":   { description: "AI destekli analiz sohbeti",    keywords: "ai analist llm" },
   "Nöbet":        { description: "Nöbet çizelgesi",               keywords: "nobet roster" },
-  "Linkler":      { description: "Sık kullanılan bağlantılar",    keywords: "link url onemli" },
   "Admin":        { description: "Sistem yönetimi",               keywords: "admin yonetim" },
 };
 

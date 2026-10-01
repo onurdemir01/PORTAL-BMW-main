@@ -20,7 +20,7 @@ interface AuthContextType {
   pageVisibilityLoaded: boolean;
   canViewPage: (pageId: string) => boolean;
   // Dinamik görünürlük motoru: her element (page/tab/button/...) için per-user çözülmüş
-  // görünürlük. `canSee` sayfa+tab+buton her seviyede kullanılır (bkz. <Gate>/useCanSee).
+  // görünürlük. `canSee` sayfa+tab+buton her seviyede kullanılır (bkz. useCanSee).
   // `canViewPage` geriye-uyumlu olarak bunun üzerine kuruludur.
   canSee: (elementKey: string) => boolean;
   // Görünürlük haritası SUNUCUDAN BAŞARIYLA yüklendi mi? Gated veri fetch'lerinin (ör.

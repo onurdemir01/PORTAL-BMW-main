@@ -1,52 +1,39 @@
-// src/components/admin/tabs/LogXv2AdminTab.tsx — LogX v2'nin 4 admin-yönetimli veri
-// kaynağı için tek sekme: OCP cluster hiyerarşisi, terminal/bastion host eşlemesi, Legacy
-// ortam-etiketi son-ek eşlemesi ve varsayılan-açık yetkilendirme kısıtlamaları.
+// src/components/admin/tabs/LogXv2AdminTab.tsx — Admin > OCP YAPILANDIRMA.
+//
+// LogX, OpsX, Telnet ve ScaleX'in ORTAK OpenShift ayarları: cluster hiyerarşisi, vault
+// anahtarları, terminal/bastion eşlemesi ve OCP çalıştırma ayarları. Dosya adı ve sekme
+// kimliği (`logxv2`) tarihsel — kayıtlı görünürlük kuralları bozulmasın diye korunur.
+//
+// 2026-10-02: LogX'e özgü bölümler (Erişim, Maskeleme, İstek İzleme, Legacy son-ek,
+// AWX hazırlık) Admin > LogX Yönetimi'ne taşındı (LogXAdminTab).
 import React, { useEffect, useState } from 'react';
-import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import {
   ServerStackIcon,
   CommandLineIcon,
-  TagIcon,
-  LockClosedIcon,
   WrenchScrewdriverIcon,
   KeyIcon,
   SignalIcon,
   CubeIcon,
-  EyeSlashIcon,
-  ClipboardDocumentListIcon,
 } from '@heroicons/react/24/outline';
 import {
   logxV2Api,
   type OcpClusterIndexRow,
   type OcpTerminalHostRow,
-  type EnvSuffixRow,
-  type RestrictionRow,
   type OcpVaultKeyRow,
-  type PlaybookReadinessRow,
-  type MaskRuleRow,
-  type AdminRequestRow,
 } from '@/api/logxV2Api';
 import SimpleCrudTable, { type ColumnDef } from './logxv2/SimpleCrudTable';
+import { useCrudSection } from './logxv2/useCrudSection';
+import { SourceNote } from '@/components/common/SourceNote';
+import { OCP_CLUSTER_INDEX } from '@/config/dataSources';
 import { useToast } from '@/hooks/useToast';
 import OcpRuntimeSettings from './logxv2/OcpRuntimeSettings';
-import LogXErisim from './logxv2/LogXErisim';
-import { Select } from '@/components/ui/Form';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
-import { TableEmptyRow } from '@/components/common/EmptyState';
-import { downloadCsv } from '@/utils/csv';
-import { fmtDateTime } from '@/utils/datetime';
 
 const SUB_TABS = [
   { id: 'clusters', label: 'OCP Cluster Hiyerarşisi', icon: ServerStackIcon },
   { id: 'vaultkeys', label: 'Vault Anahtarları', icon: KeyIcon },
   { id: 'terminals', label: 'Terminal/Bastion Host', icon: CommandLineIcon },
   { id: 'ocpruntime', label: 'OCP Çalıştırma Ayarları', icon: WrenchScrewdriverIcon },
-  { id: 'envsuffix', label: 'Legacy Ortam Son-Eki', icon: TagIcon },
-  // ERİŞİM (L5): kaynak seçici, izin + sahip yönetimi, açıklayıcı, red günlüğü.
-  // Eski "Kısıtlamalar" ekranı aynı tabloyu yönetiyordu; yerini aldı.
-  { id: 'restrictions', label: 'Erişim', icon: LockClosedIcon },
-  { id: 'maskrules', label: 'Maskeleme Kuralları', icon: EyeSlashIcon },
-  { id: 'requests', label: 'İstek İzleme', icon: ClipboardDocumentListIcon },
 ] as const;
 type SubTabId = (typeof SUB_TABS)[number]['id'];
 
@@ -212,18 +199,6 @@ const TERMINAL_EMPTY: Partial<OcpTerminalHostRow> = {
   is_active: true,
 };
 
-const ENVSUFFIX_COLUMNS: ColumnDef<EnvSuffixRow>[] = [
-  { key: 'suffix', label: 'EAR Klasör Son-Eki', placeholder: '-T (boş = son-ek yok)' },
-  { key: 'env_label', label: 'Ortam Etiketi', placeholder: 'TEST' },
-  { key: 'sort_order', label: 'Sıra', type: 'number' },
-  { key: 'is_active', label: 'Aktif', type: 'checkbox' },
-];
-const ENVSUFFIX_EMPTY: Partial<EnvSuffixRow> = {
-  suffix: '',
-  env_label: '',
-  sort_order: 0,
-  is_active: true,
-};
 
 // Envanter tohumlaması (bootstrap seed) durumu. Portal ilk açılışta ~60 cluster'ı DB'ye
 // PASİF olarak ekler; bu panel onun çalışıp çalışmadığını gösterir ve gerekirse yeniden
@@ -265,314 +240,23 @@ const BootstrapSeedPanel: React.FC<{ onSeeded: () => void }> = ({ onSeeded }) =>
   const durum = seeded === null ? 'okunamadı' : seeded ? 'yapıldı' : 'henüz yapılmadı';
 
   return (
-    <div className="flex items-start justify-between gap-3 rounded-xl border border-gray-100 bg-gray-50/60 px-3 py-2.5 text-xs text-gray-600">
+    <div className="flex items-start justify-between gap-3 rounded-xl border border-[var(--border)] bg-[var(--bg-elevated)]/60 px-3 py-2.5 text-xs text-[var(--text-secondary)]">
       <div className="min-w-0">
-        <span className="font-medium text-gray-700">Envanter tohumlaması:</span> {durum}. Yeniden
+        <span className="font-medium text-[var(--text-secondary)]">Envanter tohumlaması:</span> {durum}. Yeniden
         çalıştırmak mevcut satırlara dokunmaz, yalnızca eksik cluster'ları <strong>pasif</strong>{' '}
         olarak ekler.
-        {note && <div className="mt-1 text-gray-500">{note}</div>}
+        {note && <div className="mt-1 text-[var(--text-muted)]">{note}</div>}
       </div>
       <button
         onClick={rerun}
         disabled={busy}
-        className="flex-shrink-0 px-3 py-1.5 rounded-lg border border-gray-200 bg-white font-medium hover:border-black transition-colors active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none"
+        className="flex-shrink-0 px-3 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] font-medium hover:border-[var(--accent)] transition-colors active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none"
       >
         {busy ? 'Çalışıyor…' : 'Yeniden çalıştır'}
       </button>
     </div>
   );
 };
-
-function useCrudSection<T extends { id: number }>(
-  list: () => Promise<{ ok: boolean; rows: T[] }>,
-  create: (data: Partial<T>) => Promise<{ ok: boolean; row: T }>,
-  update: (id: number, data: Partial<T>) => Promise<{ ok: boolean; row: T }>,
-  remove: (id: number) => Promise<{ ok: boolean }>,
-) {
-  const [rows, setRows] = useState<T[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  async function load() {
-    setLoading(true);
-    setError(null);
-    try {
-      const r = await list();
-      setRows(r.rows);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useAsyncEffect(async () => {
-    await load();
-  }, []);
-
-  return {
-    rows,
-    loading,
-    error,
-    reload: load,
-    onCreate: async (data: Partial<T>) => {
-      const r = await create(data);
-      setRows((prev) => [...prev, r.row]);
-    },
-    onUpdate: async (id: number, data: Partial<T>) => {
-      const r = await update(id, data);
-      setRows((prev) => prev.map((x) => (x.id === id ? r.row : x)));
-    },
-    onDelete: async (id: number) => {
-      await remove(id);
-      setRows((prev) => prev.filter((x) => x.id !== id));
-    },
-  };
-}
-
-/**
- * MASKELEME KURALLARI.
- *
- * `logx_mask_rules` tablosu, sunucu CRUD'u ve `masker.reloadMaskRules()`
- * (her mutasyondan sonra cagriliyor, yani degisiklik ANINDA etkili) yazilmisti
- * — ama hicbir ekran bu dort ucu cagirmiyordu. Kural yazmanin portal icinde
- * bir yolu yoktu.
- *
- * ONEMLI SINIR: bu kurallar BUGUN yalnizca AI analiz yolunda uygulaniyor
- * (`server/logx/ai-analyzer.cjs`, `server/ai-analyst/portal-tools.cjs`).
- * Indirilen ARSIVE uygulanmiyor — ekran bunu acikca soyluyor ki admin
- * "maskeleme var" sanip yanlis bir guvence hissetmesin.
- */
-const MaskRulesSection: React.FC = () => {
-  const [rows, setRows] = useState<MaskRuleRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState<string | null>(null);
-
-  const load = React.useCallback(async () => {
-    setLoading(true);
-    try {
-      const r = await logxV2Api.admin.listMaskRules();
-      setRows(r.rows || []);
-      setErr(null);
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useAsyncEffect(async (alive) => {
-    if (alive()) await load();
-  }, [load]);
-
-  const columns: ColumnDef<MaskRuleRow>[] = [
-    { key: 'name', label: 'Ad', placeholder: 'tc_kimlik' },
-    { key: 'pattern', label: 'Desen (RegExp)', placeholder: '\\b\\d{11}\\b', truncate: true },
-    { key: 'flags', label: 'Bayrak', placeholder: 'g' },
-    { key: 'replacement', label: 'Yerine', placeholder: '[TCKN]' },
-    { key: 'sort_order', label: 'Sıra', type: 'number' },
-    { key: 'enabled', label: 'Açık', type: 'checkbox' },
-  ];
-
-  return (
-    <div className="space-y-3">
-      <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
-        <strong>Bu kurallar bugün yalnızca AI analiz yolunda uygulanıyor.</strong> İndirilen
-        arşive <em>uygulanmıyor</em> — yani buraya kural yazmak indirilen log dosyalarını
-        maskelemez. Teslim yoluna bağlanması ayrı bir iş.
-      </div>
-      <p className="text-xs text-gray-500">
-        Desen sunucuda <code>new RegExp(desen, bayrak)</code> ile <strong>derlenerek</strong>
-        doğrulanır; derlenmeyen kural kaydedilmez. Kayıttan sonra maskeleyici önbelleği
-        yeniden yüklenir — değişiklik <strong>anında</strong> etkilidir.
-      </p>
-      {err && (
-        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-2.5 text-xs text-red-700">
-          {err}
-        </div>
-      )}
-      {loading && !rows.length ? (
-        <LoadingLogo compact />
-      ) : (
-        <SimpleCrudTable<MaskRuleRow>
-          columns={columns}
-          rows={rows}
-          emptyRow={{ name: '', pattern: '', flags: 'g', replacement: '', sort_order: 0, enabled: true }}
-          onCreate={async (d) => {
-            await logxV2Api.admin.createMaskRule(d);
-            await load();
-          }}
-          onUpdate={async (id, d) => {
-            await logxV2Api.admin.updateMaskRule(id, d);
-            await load();
-          }}
-          onDelete={async (id) => {
-            await logxV2Api.admin.deleteMaskRule(id);
-            await load();
-          }}
-        />
-      )}
-    </div>
-  );
-};
-
-/** Sihirbazin takildigi yeri gosteren durumlar — bunlar "devam ediyor" demek. */
-const SURUYOR = new Set([
-  'discovering', 'namespace_discovering', 'app_discovering', 'transferring',
-]);
-
-/**
- * ISTEK IZLEME — `GET /admin/requests`.
- *
- * Uc ve istemci sarmalayicisi (`logxV2Api.admin.listRequests`) yazilmisti ama
- * HICBIR BILESEN cagirmiyordu: admin, hangi istegin hangi state'te takildigini
- * goremiyordu. LogX'in TEK gercegi `logx_v2_requests.state` oldugu icin bu,
- * "kullanici bekliyor ama neden" sorusunun tek cevap yeriydi.
- */
-const RequestsSection: React.FC = () => {
-  const [rows, setRows] = useState<AdminRequestRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState<string | null>(null);
-  const [state, setState] = useState('');
-  const [platform, setPlatform] = useState('');
-
-  const load = React.useCallback(async () => {
-    setLoading(true);
-    try {
-      const r = await logxV2Api.admin.listRequests({
-        ...(state ? { state } : {}),
-        ...(platform ? { platform } : {}),
-      });
-      setRows(r.requests || []);
-      setErr(null);
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
-    }
-  }, [state, platform]);
-
-  useAsyncEffect(async (alive) => {
-    if (alive()) await load();
-  }, [load]);
-
-  const durumlar = React.useMemo(
-    () => [...new Set(rows.map((r) => r.state).filter(Boolean))],
-    [rows],
-  );
-
-  return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <select
-          value={platform}
-          onChange={(e) => setPlatform(e.target.value)}
-          className="px-2 py-1.5 text-xs rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-primary)]"
-        >
-          <option value="">tüm platformlar</option>
-          <option value="legacy">legacy</option>
-          <option value="openshift">openshift</option>
-        </select>
-        <select
-          value={state}
-          onChange={(e) => setState(e.target.value)}
-          className="px-2 py-1.5 text-xs rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-primary)]"
-        >
-          <option value="">tüm durumlar</option>
-          {durumlar.map((d) => (
-            <option key={d} value={d}>{d}</option>
-          ))}
-        </select>
-        <button type="button" onClick={load} className="text-xs text-[var(--accent)] hover:underline">
-          Yenile
-        </button>
-        <button
-          type="button"
-          disabled={!rows.length}
-          onClick={() =>
-            downloadCsv(
-              'logx_istekler',
-              ['İstek', 'Kullanıcı', 'Platform', 'Durum', 'Hata', 'Oluşturma', 'Güncelleme', 'Son kullanma'],
-              rows.map((r) => [
-                r.id, r.username, r.platform, r.state, r.errorMessage,
-                r.createdAt, r.updatedAt, r.expiresAt,
-              ]),
-            )
-          }
-          className="text-xs text-[var(--accent)] hover:underline disabled:opacity-50"
-        >
-          CSV
-        </button>
-        <span className="text-xs text-gray-500">{rows.length} kayıt</span>
-      </div>
-
-      {err && (
-        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-2.5 text-xs text-red-700">
-          {err}
-        </div>
-      )}
-
-      {loading && !rows.length ? (
-        <LoadingLogo compact />
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="text-left text-gray-400">
-                <th className="py-1.5 pr-3 font-medium">İstek</th>
-                <th className="py-1.5 pr-3 font-medium">Kullanıcı</th>
-                <th className="py-1.5 pr-3 font-medium">Platform</th>
-                <th className="py-1.5 pr-3 font-medium">Durum</th>
-                <th className="py-1.5 pr-3 font-medium">Güncelleme</th>
-                <th className="py-1.5 font-medium">Not</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {!rows.length && (
-                <TableEmptyRow
-                  colSpan={6}
-                  title={state || platform ? 'Süzgece uyan istek yok.' : 'Hiç LogX isteği yok.'}
-                  description={
-                    state || platform
-                      ? 'Süzgeçleri gevşetin.'
-                      : 'Bir kullanıcı LogX sihirbazını başlattığında burası dolar.'
-                  }
-                />
-              )}
-              {rows.map((r) => (
-                <tr key={r.id} className="align-top">
-                  <td className="py-1.5 pr-3 font-mono text-gray-500">{r.id.slice(0, 8)}</td>
-                  <td className="py-1.5 pr-3">{r.username}</td>
-                  <td className="py-1.5 pr-3">{r.platform}</td>
-                  <td className="py-1.5 pr-3">
-                    <span
-                      className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
-                        r.state === 'failed'
-                          ? 'bg-red-100 text-red-800'
-                          : r.state === 'ready'
-                            ? 'bg-green-100 text-green-800'
-                            : SURUYOR.has(r.state)
-                              ? 'bg-blue-100 text-blue-800'
-                              : 'bg-gray-100 text-gray-600'
-                      }`}
-                    >
-                      {r.state}
-                    </span>
-                  </td>
-                  <td className="py-1.5 pr-3 whitespace-nowrap text-gray-500">
-                    {fmtDateTime(r.updatedAt || r.createdAt)}
-                  </td>
-                  <td className="py-1.5 text-gray-500">{r.errorMessage || '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
-  );
-};
-
 
 // Cluster satırının canlı kontrolleri. Bu iki aksiyon eskiden Admin > Ansible
 // Yapılandırma altındaki AYRI OCP kataloğundaydı; o katalog bu kataloğdan bağımsızdı ve
@@ -610,7 +294,7 @@ const ClusterRowActions: React.FC<{ row: OcpClusterIndexRow }> = ({ row }) => {
         disabled={busy !== null}
         aria-label={`${row.cluster_name} bağlantısını test et`}
         title="Bağlantı Testi (API /version)"
-        className="p-1.5 text-gray-400 hover:bg-gray-100 rounded-lg transition disabled:opacity-40"
+        className="p-1.5 text-[var(--text-muted)] hover:bg-[var(--bg-elevated)] rounded-lg transition disabled:opacity-40"
       >
         <SignalIcon className="w-3.5 h-3.5" />
       </button>
@@ -619,7 +303,7 @@ const ClusterRowActions: React.FC<{ row: OcpClusterIndexRow }> = ({ row }) => {
         disabled={busy !== null}
         aria-label={`${row.cluster_name} pod durumunu getir`}
         title="Pod Durumu (jump server üzerinden)"
-        className="p-1.5 text-gray-400 hover:bg-gray-100 rounded-lg transition disabled:opacity-40"
+        className="p-1.5 text-[var(--text-muted)] hover:bg-[var(--bg-elevated)] rounded-lg transition disabled:opacity-40"
       >
         <CubeIcon className="w-3.5 h-3.5" />
       </button>
@@ -636,102 +320,23 @@ const ClusterRowActions: React.FC<{ row: OcpClusterIndexRow }> = ({ row }) => {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-2">
-              <h4 className="text-sm font-semibold text-gray-700">
+              <h4 className="text-sm font-semibold text-[var(--text-secondary)]">
                 {row.cluster_name} — pod durumu
               </h4>
               <button
                 onClick={() => setPodOutput(null)}
-                className="text-xs text-gray-500 hover:text-gray-800"
+                className="text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)]"
               >
                 Kapat
               </button>
             </div>
-            <pre className="text-[11px] font-mono whitespace-pre-wrap text-gray-700">
+            <pre className="text-[11px] font-mono whitespace-pre-wrap text-[var(--text-secondary)]">
               {podOutput}
             </pre>
           </div>
         </div>
       )}
     </>
-  );
-};
-
-// LogX'in kullandigi playbook kayitlarinin hazirlik durumu. Uretimde "Bu namespace'i tara"
-// 503 dondu ve sebebi (template ID tanimsiz ya da AWX'te "Prompt on launch" KAPALI —
-// bu durumda AWX gonderilen extra_vars'i sessizce yok sayar) hicbir ekranda gorunmuyordu.
-const PlaybookReadinessPanel: React.FC = () => {
-  const [rows, setRows] = useState<PlaybookReadinessRow[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  async function load() {
-    setLoading(true);
-    setError(null);
-    try {
-      const r = await logxV2Api.admin.getPlaybookReadiness();
-      setRows(r.rows);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useAsyncEffect(async () => {
-    await load();
-  }, []);
-
-  const problems = (rows || []).filter(
-    (r) => !r.templateId || r.foundOnAwx === false || r.promptOnLaunch === false || !r.enabled,
-  );
-
-  return (
-    <div className="border border-gray-200 rounded-xl p-3 space-y-2">
-      <div className="flex items-center justify-between">
-        <h4 className="text-xs font-semibold text-gray-700">Playbook hazırlık durumu</h4>
-        <button
-          onClick={load}
-          disabled={loading}
-          className="text-xs text-gray-500 hover:text-gray-800 disabled:opacity-50"
-        >
-          {loading ? 'Kontrol ediliyor…' : 'Yenile'}
-        </button>
-      </div>
-      {error && <p className="text-xs text-red-700">{error}</p>}
-      {rows && problems.length === 0 && (
-        <p className="text-xs text-emerald-700">Tüm LogX playbook kayıtları hazır.</p>
-      )}
-      {rows && problems.length > 0 && (
-        <ul className="space-y-1.5">
-          {problems.map((r) => (
-            <li
-              key={r.keyName}
-              className="text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-2 py-1.5"
-            >
-              <span className="font-mono font-medium">{r.keyName}</span>
-              {' — '}
-              {!r.enabled && 'kayıt devre dışı. '}
-              {!r.templateId && 'AWX template ID tanımlı değil (Admin > Playbook Kayıtları). '}
-              {r.foundOnAwx === false &&
-                `Template ${r.templateId}, AWX ${r.awxServerId} üzerinde bulunamadı. `}
-              {r.promptOnLaunch === false && (
-                <>
-                  AWX'te <strong>"Prompt on launch" (Variables) KAPALI</strong> — bu durumda AWX,
-                  portalın gönderdiği değişkenleri sessizce yok sayar ve playbook boş girdiyle hata
-                  verir. AWX &gt; Job Templates &gt; {r.templateName || r.templateId} &gt; Variables
-                  bölümünde kutuyu işaretleyin.
-                </>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
-      {rows && rows.some((r) => r.foundOnAwx === null && r.templateId) && (
-        <p className="text-xs text-gray-400">
-          Bazı template'lerin durumu AWX'ten okunamadı (ağ/yetki) — "kapalı" anlamına gelmez.
-        </p>
-      )}
-    </div>
   );
 };
 
@@ -750,12 +355,6 @@ const LogXv2AdminTab: React.FC = () => {
     logxV2Api.admin.updateTerminalHost,
     logxV2Api.admin.deleteTerminalHost,
   );
-  const envSuffix = useCrudSection(
-    logxV2Api.admin.listEnvSuffixMap,
-    logxV2Api.admin.createEnvSuffix,
-    logxV2Api.admin.updateEnvSuffix,
-    logxV2Api.admin.deleteEnvSuffix,
-  );
   const vaultKeys = useCrudSection(
     logxV2Api.admin.listVaultKeys,
     logxV2Api.admin.createVaultKey,
@@ -771,7 +370,7 @@ const LogXv2AdminTab: React.FC = () => {
 
   return (
     <div className="space-y-4">
-      <div className="flex gap-1 rounded-lg p-1 bg-gray-50 flex-wrap">
+      <div className="flex gap-1 rounded-lg p-1 bg-[var(--bg-elevated)] flex-wrap">
         {SUB_TABS.map((t) => {
           const Icon = t.icon;
           const active = subTab === t.id;
@@ -780,7 +379,7 @@ const LogXv2AdminTab: React.FC = () => {
               key={t.id}
               onClick={() => setSubTab(t.id)}
               className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                active ? 'bg-white text-black shadow-sm' : 'text-gray-500 hover:text-gray-800'
+                active ? 'bg-[var(--bg-surface)] text-[var(--text-primary)] shadow-sm' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
               }`}
             >
               <Icon className="w-3.5 h-3.5" />
@@ -813,7 +412,7 @@ const LogXv2AdminTab: React.FC = () => {
             </div>
             <VaultKeyWarning />
             <UnknownVaultKeyBanner clusterRows={clusters.rows} vaultRows={vaultKeys.rows} />
-            <PlaybookReadinessPanel />
+            <SourceNote source={OCP_CLUSTER_INDEX} />
             <BootstrapSeedPanel onSeeded={clusters.reload} />
             <SimpleCrudTable
               columns={clusterCols}
@@ -874,25 +473,7 @@ const LogXv2AdminTab: React.FC = () => {
             />
           </div>
         ))}
-      {subTab === 'envsuffix' &&
-        (envSuffix.loading ? (
-          <LoadingLogo compact />
-        ) : envSuffix.error ? (
-          <div className="bg-red-50 rounded-xl p-4 text-sm text-red-700">{envSuffix.error}</div>
-        ) : (
-          <SimpleCrudTable
-            columns={ENVSUFFIX_COLUMNS}
-            rows={envSuffix.rows}
-            emptyRow={ENVSUFFIX_EMPTY}
-            onCreate={envSuffix.onCreate}
-            onUpdate={envSuffix.onUpdate}
-            onDelete={envSuffix.onDelete}
-          />
-        ))}
       {subTab === 'ocpruntime' && <OcpRuntimeSettings />}
-      {subTab === 'restrictions' && <LogXErisim />}
-      {subTab === 'maskrules' && <MaskRulesSection />}
-      {subTab === 'requests' && <RequestsSection />}
     </div>
   );
 };

@@ -574,7 +574,7 @@ Prod ortamındaki gerçek değişiklikler için ScaleX onay mekanizmaları uygul
 
 Yapılandırma:
 
-**Admin → Ansible → Self Servis Özelleştirmeleri**
+**Admin → ScaleX Yönetimi → Onay kapıları**
 
 üzerinden ScaleX template kaydı için gerçekleştirilir.
 

@@ -47,7 +47,7 @@ kimlik_kaynagi: >-
 # 1. CLUSTER LISTESI
 # ─────────────────────────────────────────────────────────────────────────────
 # Yetki HER CLUSTER'DA ayri ayri gerekir. Cluster listesi portalda
-# `ocp_cluster_index` tablosunda durur (Admin > LogX Yapilandirma > OCP Cluster
+# `ocp_cluster_index` tablosunda durur (Admin > OCP Yapilandirma > OCP Cluster
 # Hiyerarsisi); burada tek tek sayilmaz ki iki liste birbirinden ayrismasin.
 #
 # TALEP EDERKEN: o tablodaki AKTIF cluster'larin tamami icin isteyin. Eksik

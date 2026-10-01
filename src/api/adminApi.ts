@@ -1,5 +1,4 @@
 // src/api/adminApi.ts
-import type { InventoryHost } from "./logxApi";
 import { safeJson } from "./http";
 
 const BASE_LOGX = "/api/logx";
@@ -17,39 +16,6 @@ async function json<T>(res: Response): Promise<T> {
   if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
   return data;
 }
-
-// ── Inventory ────────────────────────────────────────────────────────────────
-
-export const inventoryApi = {
-  async list(): Promise<InventoryHost[]> {
-    const res = await fetch(`${BASE_LOGX}/admin/inventory`, { headers: headers() });
-    const d: { ok: boolean; hosts?: InventoryHost[] } = await json(res);
-    return d.hosts ?? [];
-  },
-
-  async create(data: Partial<InventoryHost>): Promise<InventoryHost> {
-    const res = await fetch(`${BASE_LOGX}/admin/inventory`, {
-      method: "POST", headers: headers(), body: JSON.stringify(data),
-    });
-    const d: { ok: boolean; host: InventoryHost } = await json(res);
-    return d.host;
-  },
-
-  async update(id: number, data: Partial<InventoryHost>): Promise<InventoryHost> {
-    const res = await fetch(`${BASE_LOGX}/admin/inventory/${id}`, {
-      method: "PUT", headers: headers(), body: JSON.stringify(data),
-    });
-    const d: { ok: boolean; host: InventoryHost } = await json(res);
-    return d.host;
-  },
-
-  async remove(id: number): Promise<void> {
-    const res = await fetch(`${BASE_LOGX}/admin/inventory/${id}`, {
-      method: "DELETE", headers: headers(),
-    });
-    await json(res);
-  },
-};
 
 // ── Page Visibility ───────────────────────────────────────────────────────────
 

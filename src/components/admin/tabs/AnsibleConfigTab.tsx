@@ -161,7 +161,7 @@ export default function AnsibleConfigTab() {
           LogX'in ocp_cluster_index'i. Ortak anahtarlari yoktu; sihirbazlar yalnizca
           ikincisini okudugu icin bu ekran uretimde BOS duruyor ama "tek gercek katalog"
           izlenimi veriyordu. Tek katalog artik:
-            Admin > LogX Yapilandirma > OCP Cluster Hiyerarsisi
+            Admin > OCP Yapılandırma > OCP Cluster Hiyerarşisi
           "Baglanti Testi" ve "Pod Durumu" aksiyonlari da oradaki satirlara tasindi
           (bkz. server/logx/v2/ocp-health.cjs). Eski /api/ansible/clusters* uclari ve
           ansible_ocp_clusters tablosu VERI KAYBI OLMASIN diye silinmedi; artik hicbir

@@ -18,7 +18,7 @@ const ArkSpaRaporuPage = lazyWithRetry(() => import('@/components/ArkSpaRaporuPa
 const NginxAuditHostPage = lazyWithRetry(() => import('@/components/denetim/NginxAuditHostPage'));
 const EnvanterPage = lazyWithRetry(() => import('@/components/EnvanterPage'));
 const DutyRosterPage = lazyWithRetry(() => import('@/components/DutyRosterPage'));
-// ImportantLinksPage: 2026-09-19'da menu ve route kaldirildi (bilesen duruyor; bkz. elements.ts)
+// Linkler sayfasi 2026-10-02'de tamamen kaldirildi (API ve tablo duruyor; bkz. elements.ts)
 const DynatracePage = lazyWithRetry(() => import('@/components/dynatrace/DynatracePage'));
 const SelfServicePage = lazyWithRetry(() => import('@/components/SelfServicePage'));
 const AnsiblePage = lazyWithRetry(() => import('@/components/ansible/AnsiblePage'));

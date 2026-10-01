@@ -3,7 +3,7 @@
 // Kaynak sahibi (L4) portal Admin'i değildir ve Admin ekranlarına giremez. Sahibi
 // olduğu kaynak VARSA LogX sayfasında bu düğme görünür ve LogX Yönetimi'ni (yalnızca
 // kendi kaynakları) bir pencerede açar. Admin bu düğmeyi görmez: tam ekran Admin >
-// LogX v2 > Erişim'dedir. Sahip değilse hiçbir şey çizilmez.
+// LogX Yönetimi > Erişim'dedir. Sahip değilse hiçbir şey çizilmez.
 import React, { useState } from 'react';
 import { logxV2Api } from '@/api/logxV2Api';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';

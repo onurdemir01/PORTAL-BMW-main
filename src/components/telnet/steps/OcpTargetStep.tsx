@@ -68,7 +68,7 @@ const OcpTargetStep: React.FC<{
   if (envs.length === 0) {
     return (
       <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 text-sm text-amber-800">
-        Henüz hiç cluster tanımlanmamış — admin panelinden "LogX v2 Yapılandırma" sekmesinden eklenmeli.
+        Henüz hiç cluster tanımlanmamış — Admin &gt; OCP Yapılandırma &gt; OCP Cluster Hiyerarşisi&apos;nden eklenmeli.
       </div>
     );
   }

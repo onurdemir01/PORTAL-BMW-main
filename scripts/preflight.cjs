@@ -234,7 +234,7 @@ function checkEnvSuffixMap() {
     'Ortam eki haritasi: QA satiri YOK',
     `logx_env_suffix_map seed'inde yalnizca ${labels.join(', ')} var.`,
     'QA ortamindaki EAR klasorleri ortam etiketi ALMAZ (bos gorunur). Dogru son eki ' +
-      'Admin > LogX Yapilandirma > Ortam Eki Haritasi ekranindan ekleyin. ' +
+      'Admin > LogX Yonetimi > Legacy Ortam Son-Eki bolumunden ekleyin. ' +
       "Seed'e yazilmadi cunku ekin harfi dogrulanmadi; yanlis bir deger prod'da " +
       'yanlis ortam etiketi uretirdi.',
   );

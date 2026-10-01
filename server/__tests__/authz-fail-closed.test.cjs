@@ -36,7 +36,7 @@ function serverFiles() {
 
 // Yetki KARARI veren cagrilar — "bu kullanici bunu yapabilir mi" sorusunu yanitlayanlar.
 const DECISION =
-  /\b(isAllowed|assertAllowed|filterAllowed|denyIfNotOwner|assertOwnership|assertNamespaceAllowed|assertAppsAllowed)\s*\(/;
+  /\b(isAllowed|evaluate|assertAllowed|filterAllowed|denyIfNotOwner|assertOwnership|assertNamespaceAllowed|assertAppsAllowed)\s*\(/;
 
 test('AZ1 yetki karari hatasi IZIN olarak yorumlanmiyor', () => {
   const offenders = [];

@@ -21,9 +21,7 @@ import {
   MinusCircleIcon,
 } from '@heroicons/react/24/solid';
 import { dynatraceApi, type DtProblem } from '@/api/dynatraceApi';
-import { linksApi, type PortalLink } from '@/api/linksApi';
 import { ansibleApi, type RecentAwxJobsServer } from '@/api/ansibleApi';
-import { openExternalUrl } from '@/utils/url';
 import { seedAiAnalystChat } from '@/utils/aiHandoff';
 import { AuthContext } from '@/contexts/AuthContext';
 import { useAppData } from '@/contexts/AppContext';
@@ -89,13 +87,12 @@ const HELP_SECTIONS: HelpSection[] = [
   {
     icon: LinkIcon,
     title: 'Başlangıç kaynakları',
-    body: 'En sık kullanılan sayfaların kısayolları ve Önemli Linkler kataloğunda favori olarak işaretlenmiş bağlantılar.',
+    body: 'En sık kullanılan sayfaların kısayolları.',
   },
   {
     icon: ShieldCheckIcon,
-    title: 'Yalnızca yöneticilere görünen bölümler',
-    body: 'Ansible ve Admin kısayolları ile bazı istatistikler Admin rolüne sahip kullanıcılara gösterilir.',
-    adminOnly: true,
+    title: 'Herkese görünmeyen bölümler',
+    body: 'Bazı kısayollar ve istatistikler yalnızca o sayfaya erişimi olan kullanıcılara görünür.',
   },
 ];
 
@@ -203,24 +200,9 @@ const DashboardPage: React.FC = () => {
   const [onlineUsers, setOnlineUsers] = useState<
     { username: string; displayName: string; hasAvatar: boolean }[]
   >([]);
-  const [spotlightLinks, setSpotlightLinks] = useState<PortalLink[]>([]);
   const [awxJobServers, setAwxJobServers] = useState<RecentAwxJobsServer[]>([]);
   const [awxJobsLoaded, setAwxJobsLoaded] = useState(false);
   const [awxJobsFetchError, setAwxJobsFetchError] = useState<string | null>(null);
-
-  useEffect(() => {
-    linksApi
-      .list()
-      .then((r) => {
-        if (!r.ok) return;
-        setSpotlightLinks(
-          (r.links || [])
-            .filter((l) => l.isActive && l.isFavorite)
-            .sort((a, b) => a.order - b.order),
-        );
-      })
-      .catch(() => {});
-  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -243,11 +225,6 @@ const DashboardPage: React.FC = () => {
       clearInterval(iv);
     };
   }, []);
-
-  useEffect(() => {
-    // Gorunurluk sunucudan yuklenene kadar gated uc'lara istek atma (403 cascade onlemi).
-    if (!visibilityReady) return;
-  }, [isAdmin, canViewPage, visibilityReady]);
 
   // "Kuyruktaki Ansible İşleri" — Maestro/Maestro2'de pending/waiting/running job'lar,
   // sayfa yenilenmeden kendiliğinden güncellensin diye periyodik olarak yeniden çekilir.
@@ -670,31 +647,6 @@ const DashboardPage: React.FC = () => {
           })}
         </div>
 
-        {spotlightLinks.length > 0 && (
-          <div className="mt-4">
-            <p className="text-[0.8125rem] mb-2" style={{ color: 'var(--text-muted)' }}>
-              Favori bağlantılar
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {spotlightLinks.slice(0, 8).map((l) => (
-                <button
-                  key={l.id}
-                  onClick={() => openExternalUrl(l.url)}
-                  className="flex items-center gap-1.5 px-3 py-1 text-[0.875rem]"
-                  style={{
-                    border: '1px solid var(--border)',
-                    borderRadius: 'var(--radius-sm)',
-                    color: 'var(--accent)',
-                  }}
-                  title={l.description || l.url}
-                >
-                  <LinkIcon className="w-3.5 h-3.5" />
-                  {l.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
       </CardShell>
 
       <HelpModal
