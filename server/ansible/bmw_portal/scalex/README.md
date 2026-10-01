@@ -32,7 +32,7 @@ AWX_PROJECT_DIR/
 │           ├── tasks/
 │           └── files/
 │               ├── scalex_runner.sh
-│               └── scalex_batch.sh   (keşif: jump başına tek SSH turu sarmalayıcısı)
+│               └── scalex_batch.sh   (keşif + precheck/execute: jump başına tek SSH turu)
 └── bmw_openshift_jobs/
     └── global_variables/        ← ZATEN VAR, bu pakette YOK
         ├── credentials.yaml     (vault: OCP servis kullanıcısı parolaları + `username`)
@@ -44,6 +44,11 @@ AWX_PROJECT_DIR/
 > anda koşar (kopya/async yoklaması yok). `async` eski paralel yol (`10_discover_parallel.yml`),
 > `scalex_discovery_parallel: false` seri yol. `scalex_batch.sh` kopyalanmazsa keşif
 > `lookup` hatasıyla düşer — iki dosya birlikte kopyalanır.
+
+> **Precheck/execute taşıması (`scalex_phase_transport`)** — varsayılan `batch`
+> (`tasks/12_run_phase_batch.yml`): aynı sarmalayıcı, jump başına tek oturum. Execute tek
+> jump'ta da `async` koşar: SSH koparsa ölçekleme yarıda kalmasın. `async` eski paralel yol
+> (`11_run_phase_parallel.yml`), `scalex_parallel_clusters: false` seri yol.
 
 `main.yml` ve `discovery.yml`,
 `../../../bmw_openshift_jobs/global_variables/` yolunu kullanır. Bu yüzden yukarıdaki
