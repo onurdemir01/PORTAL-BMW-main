@@ -847,10 +847,22 @@ test('GS26 uc nokta route satirlarini yalniz ?satir=1 ile gonderir (yanit boyutu
 test('GS27 ekran: tek satir duzeni, is yuku kolonu yok, "KALIP KACIRDI" rozeti yok, bes suzgec var', () => {
   const ui = gsNorm(read('src/components/nginx_console/NginxSpaDiscovery.tsx'));
   const var_ = (parca, mesaj) => assert.ok(ui.includes(parca), mesaj + ' :: ' + parca);
-  var_(
-    gsNorm(
-      "['Uygulama', 'Namespace', 'SPA', 'Ad kalıbı', 'İstek', 'Route envanteri', 'Adresler', \"Cluster'lar\"]",
-    ),
+  // KOLON SIRASI bicimden bagimsiz: prettier diziyi cok satira bolup sonuna virgul ekliyor
+  // (ilk yazimda bu yuzden kirmiziya dondu); bosluk ve sondaki virgul yok sayilir.
+  const kolonlar = [
+    'Uygulama',
+    'Namespace',
+    'SPA',
+    'Ad kalıbı',
+    'İstek',
+    'Route envanteri',
+    'Adresler',
+    "Cluster'lar",
+  ];
+  const kac = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  assert.match(
+    ui,
+    new RegExp('\\[\\s*' + kolonlar.map((k) => kac(`'${k}'`)).join('\\s*,\\s*') + '\\s*,?\\s*\\]'),
     'kolon listesi beklenen sade duzende degil',
   );
   assert.ok(!ui.includes("'İş yükü'"), 'is yuku kolonu hala var');
