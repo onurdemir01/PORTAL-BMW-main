@@ -160,3 +160,26 @@ test('"dosya bulunamadi" hatasi SEBEBI tasir', () => {
   assert.match(blok, /host_selected_files/, 'denenen yollar mesaja girmiyor');
   assert.match(blok, /kullanicisiyla denendi/, 'hangi kullaniciyla denendigi yazmiyor');
 });
+
+test('mesajin okudugu alanlar per_file_status kaydinda GERCEKTEN var', () => {
+  // URETIM (job 3368084): mesaj `map(attribute='reason')` okuyordu, kayitta alan `error`.
+  // Ansible gorevin argumanlarini CALISTIRMADAN ONCE render eder: tanimsiz alan, dogrulama
+  // GECECEK olsa bile gorevi dusurur. Yukaridaki test yalniz `per_file_status` adinin
+  // VARLIGINA baktigi icin bunu goremedi; burada okunan her alan, set_fact'in kurdugu
+  // sozluk anahtarlariyla karsilastirilir.
+  const t = metin('logx_legacy_transfer.yml');
+  const kur = t.indexOf('per_file_status: >-');
+  assert.ok(kur > 0, 'per_file_status set_fact bulunamadi');
+  const sozluk = t.slice(kur, t.indexOf('loop:', kur));
+  const anahtarlar = new Set([...sozluk.matchAll(/'(\w+)':/g)].map((m) => m[1]));
+  assert.ok(anahtarlar.has('path'), `anahtarlar ayristirilamadi: ${[...anahtarlar]}`);
+  const okunan = [...t.matchAll(/per_file_status[^}\n]*?map\(attribute='(\w+)'\)/g)].map(
+    (m) => m[1],
+  );
+  assert.ok(okunan.length > 0, 'per_file_status uzerinde alan okuyan ifade bulunamadi');
+  for (const a of okunan)
+    assert.ok(
+      anahtarlar.has(a),
+      `per_file_status kaydinda '${a}' alani yok (var olanlar: ${[...anahtarlar]})`,
+    );
+});

@@ -197,7 +197,7 @@
             - valid_source_paths | length > 0
           fail_msg: >-
             Arsivlenecek mevcut ve okunabilir bir dosya bulunamadi.
-            Dosya basina sebep: {{ per_file_status | default([]) | map(attribute='reason') | list }}.
+            Dosya basina sebep: {{ per_file_status | default([]) | map(attribute='error') | list }}.
             Yollar: {{ host_selected_files | default([]) | map(attribute='path') | list }}.
             Okuma {{ logx_legacy_user | default('was') }} kullanicisiyla denendi.
         when: single_host | bool
