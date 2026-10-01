@@ -266,6 +266,11 @@ export default function NginxSpaDiscovery() {
   const kovalar = Object.entries(s?.unmatchedReasons || {}).sort((a, b) => b[1] - a[1]);
   // TARAMA EKSIGI: "kacirilan yok" cumlesi ancak tam taramada nitelemesiz soylenir.
   const cv = data?.coverage;
+  // Satir duzeyindeki "eski veri" isareti kapsamdan turetilir (cluster -> kova/eskilik).
+  const kapsamBy = useMemo(
+    () => new Map((data?.coverage?.clusters || []).map((c) => [c.cluster, c] as const)),
+    [data],
+  );
   const eksikTarama = [
     cv && cv.failed > 0 ? `${nf(cv.failed)} cluster taranamadı` : '',
     cv && cv.partial > 0 ? `${nf(cv.partial)} cluster kısmi tarandı` : '',
@@ -317,7 +322,10 @@ export default function NginxSpaDiscovery() {
               <b style={{ color: 'var(--status-danger)' }}>
                 Bunların {nf(s.patternMiss)} tanesini ad kalıbı (-app-v / -app-emb-v) kaçırıyordu.
               </b>
-            ) : hepsiEslesmesiz ? null : eksikTarama ? (
+            ) : hepsiEslesmesiz ? null : s.routes === 0 ? (
+              // VERI YOKKEN "KACIRILAN YOK" DENMEZ: olculmemis sey yok diye sunulmaz.
+              <>Keşif verisi yok.</>
+            ) : eksikTarama ? (
               <>Taranabilen kısımda ad kalıbının kaçırdığı uygulama yok ({eksikTarama}).</>
             ) : (
               <>
@@ -569,16 +577,26 @@ export default function NginxSpaDiscovery() {
                 </td>
                 <td className="px-2 py-1 text-[11px]" style={{ color: 'var(--text-muted)' }}>
                   {r.cluster}
-                  {/* ESKI VERI: bu cluster son kosuda taranamadi, satir onceki taramadan. */}
-                  {r.scanDate && data?.scanDate && r.scanDate < data.scanDate && (
+                  {/* ESKI VERI KAPSAMDAN: global en yeni tarihle karsilastirmak kisitli bir
+                      kosudan sonra oteki tum cluster'lari "taranamadi" gosteriyor, ayni gun
+                      basarisiz kosunun eski verisini ise kaciriyordu (ikinci dogrulama turu). */}
+                  {kapsamBy.get(r.cluster)?.stale ? (
                     <span
                       className="ml-1 text-[10px]"
                       style={{ color: 'var(--status-warning)' }}
-                      title="Bu cluster son koşuda taranamadı; satır önceki taramadan."
+                      title="Bu cluster son koşusunda taranamadı; satır önceki bir koşudan."
+                    >
+                      {r.scanDate} · önceki koşudan
+                    </span>
+                  ) : kapsamBy.get(r.cluster)?.bucket === 'onceki' ? (
+                    <span
+                      className="ml-1 text-[10px]"
+                      style={{ color: 'var(--text-muted)' }}
+                      title="Bu cluster son koşuya dahil edilmedi (hata değil); satır kendi son taramasından."
                     >
                       {r.scanDate}
                     </span>
-                  )}
+                  ) : null}
                 </td>
               </tr>
             ))}
@@ -587,7 +605,13 @@ export default function NginxSpaDiscovery() {
                 <td colSpan={9} className="px-2 py-3" style={{ color: 'var(--text-muted)' }}>
                   {/* BOS GORUNUM SEBEBINI SOYLER: varsayilan gorunum "kacanlar"; keşif hic SPA
                       bulamadiysa ekran "veri yok" gibi gorunuyordu (2026-10-01). */}
-                  {data?.rows?.length ? (
+                  {hata ? (
+                    // HATA "SATIR YOK" DEGIL: ust bantta sebep yazar; burada da bos sonuc
+                    // gibi konusulmaz.
+                    <span style={{ color: 'var(--status-danger)' }}>
+                      Veri okunamadı — sebep yukarıda.
+                    </span>
+                  ) : data?.rows?.length ? (
                     <>
                       Bu görünümde satır yok; keşifte toplam {nf(data.rows.length)} satır var.{' '}
                       {(['spa', 'unmatched', 'all'] as const)

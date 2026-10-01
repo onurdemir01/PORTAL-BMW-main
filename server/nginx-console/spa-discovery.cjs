@@ -183,44 +183,62 @@ function buildSpaDiscovery(discovery, inventory, usage, runs) {
     });
   }
 
-  const rows = (discovery || []).map((d) => {
-    const ns = T(d.namespace);
-    const app = uygulamaAdi(d);
-    const u = olcum.get(`${L(ns)}|${L(app)}`) || null;
-    const envVar = envRoute.has(`${L(ns)}|${L(d.route)}`) || envAdres.has(`${L(ns)}|${L(d.host)}`);
-    const spa = Number(d.is_spa) === 1;
-    const kalip = isSpaApp(app);
-    return {
-      cluster: T(d.cluster),
-      namespace: ns,
-      route: T(d.route),
-      host: T(d.host),
-      termination: T(d.termination),
-      workloadKind: T(d.workload_kind),
-      workload: T(d.workload),
-      application: app,
-      env: envOfNamespace(ns),
-      isSpa: spa,
-      signal: T(d.signal),
-      image: T(d.image),
-      note: T(d.note),
-      // ESLESME KANITI: 'selector' (servis selector'u pod etiketlerine uydu) ya da 'ad'
-      // (servis OKUNAMADI, servisle ayni adli is yukune dusuldu - daha zayif kanit).
-      matchBy: T(d.match_by),
-      scanDate: gunu(d.scan_date),
-      // ENVANTER KARSILASTIRMASI: route envanterde kayitli mi.
-      inInventory: envVar,
-      // AD KALIBI: eski yontem bu uygulamayi SPA sayar miydi?
-      patternMatch: kalip,
-      // ASIL BULGU: gercekten SPA ama ad kalibina UYMUYOR - eski yontemin kacirdigi.
-      patternMiss: spa && !kalip,
-      // YANLIS POZITIF: ad kalibina uyuyor ama kabinde nginx YOK.
-      patternFalse: !spa && kalip,
-      // OLCUM: "olculemedi" ile "istek yok" AYRI; sayi yalniz olculduyse anlamli.
-      usage: u,
-      reqShown: u && u.measured ? u.req : null,
-    };
-  });
+  // ROUTE'U SIFIRA INEN CLUSTER: son kosu 'ok' ve 0 route buldu; ekrandaki onceki satirlar
+  // artik var olmayan route'lardir. Gosterilirlerse "KALIP KACIRDI" rozeti ve ozet sayilari
+  // olmayan uygulamalari sayar (ikinci dogrulama turu).
+  const sonDurum = new Map();
+  for (const r of runs || []) sonDurum.set(T(r.cluster), r);
+  const bosaldi = (d) => {
+    const r = sonDurum.get(T(d.cluster));
+    return !!(
+      r &&
+      T(r.durum) === 'ok' &&
+      Number(r.routes) === 0 &&
+      gunu(d.scan_date) < gunu(r.scan_date)
+    );
+  };
+
+  const rows = (discovery || [])
+    .filter((d) => !bosaldi(d))
+    .map((d) => {
+      const ns = T(d.namespace);
+      const app = uygulamaAdi(d);
+      const u = olcum.get(`${L(ns)}|${L(app)}`) || null;
+      const envVar =
+        envRoute.has(`${L(ns)}|${L(d.route)}`) || envAdres.has(`${L(ns)}|${L(d.host)}`);
+      const spa = Number(d.is_spa) === 1;
+      const kalip = isSpaApp(app);
+      return {
+        cluster: T(d.cluster),
+        namespace: ns,
+        route: T(d.route),
+        host: T(d.host),
+        termination: T(d.termination),
+        workloadKind: T(d.workload_kind),
+        workload: T(d.workload),
+        application: app,
+        env: envOfNamespace(ns),
+        isSpa: spa,
+        signal: T(d.signal),
+        image: T(d.image),
+        note: T(d.note),
+        // ESLESME KANITI: 'selector' (servis selector'u pod etiketlerine uydu) ya da 'ad'
+        // (servis OKUNAMADI, servisle ayni adli is yukune dusuldu - daha zayif kanit).
+        matchBy: T(d.match_by),
+        scanDate: gunu(d.scan_date),
+        // ENVANTER KARSILASTIRMASI: route envanterde kayitli mi.
+        inInventory: envVar,
+        // AD KALIBI: eski yontem bu uygulamayi SPA sayar miydi?
+        patternMatch: kalip,
+        // ASIL BULGU: gercekten SPA ama ad kalibina UYMUYOR - eski yontemin kacirdigi.
+        patternMiss: spa && !kalip,
+        // YANLIS POZITIF: ad kalibina uyuyor ama kabinde nginx YOK.
+        patternFalse: !spa && kalip,
+        // OLCUM: "olculemedi" ile "istek yok" AYRI; sayi yalniz olculduyse anlamli.
+        usage: u,
+        reqShown: u && u.measured ? u.req : null,
+      };
+    });
 
   rows.sort(
     (a, b) =>

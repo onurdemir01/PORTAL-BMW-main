@@ -646,7 +646,40 @@ test('GS17 ekran: API hatasi "satir yok" gibi gorunmez; eksik taramada "kacirila
   const var_ = (parca, mesaj) => assert.ok(ui.includes(parca), mesaj + ' :: ' + parca);
   var_('if (d && d.ok === false) { setHata(', 'ok:false cevabi veri gibi isleniyor');
   var_('SPA keşfi okunamadı: {hata}', 'hata ekranda gosterilmiyor');
-  var_('hepsiEslesmesiz ? null : eksikTarama ?', '"kacirilan yok" cumlesi nitelenmiyor');
+  var_(') : eksikTarama ? (', '"kacirilan yok" cumlesi nitelenmiyor');
   var_('Taranabilen kısımda ad kalıbının kaçırdığı uygulama yok', 'nitelenmis cumle yok');
   var_("c.bucket !== 'guncel'", 'kapsam paneli ayrik kovaya gore listelemiyor');
+});
+
+// ── IKINCI DOGRULAMA TURU (GS18..GS21) ───────────────────────────────────────────────
+test('GS18 route u SIFIRA inen ok cluster in eski satirlari GOSTERILMEZ', () => {
+  const runs = [{ cluster: 'gbocpprod1', durum: 'ok', routes: 0, scan_date: '2026-10-02' }];
+  const disc = [
+    D({ route: 'eski', workload: 'eski-app', is_spa: 1, signal: 'image', scan_date: '2026-10-01' }),
+  ];
+  const r = buildSpaDiscovery(disc, GS_INV, GS_USE, runs);
+  assert.equal(r.rows.length, 0, 'artik var olmayan route lar gosteriliyor');
+  assert.equal(r.summary.spa, 0, 'olmayan uygulamalar ozete sayiliyor');
+  // Ayni gunun (bugunku) satirlari ETKILENMEZ.
+  const r2 = buildSpaDiscovery(
+    [D({ route: 'yeni', scan_date: '2026-10-02' })],
+    GS_INV,
+    GS_USE,
+    runs,
+  );
+  assert.equal(r2.rows.length, 1);
+});
+
+test('GS19-21 ekran: eski veri isareti kapsamdan; veri yokken "yok" denmez; hata tabloda da yazar', () => {
+  const ui = gsNorm(read('src/components/nginx_console/NginxSpaDiscovery.tsx'));
+  const var_ = (parca, mesaj) => assert.ok(ui.includes(parca), mesaj + ' :: ' + parca);
+  var_('kapsamBy.get(r.cluster)?.stale', 'satir isareti kapsamdan turetilmiyor');
+  assert.ok(
+    !ui.includes('r.scanDate < data.scanDate'),
+    'satir isareti yine global en yeni tarihle karsilastiriyor',
+  );
+  var_('s.routes === 0 ? (', 'veri yokken "kacirilan yok" deniyor');
+  var_('Keşif verisi yok.', 'veri yok cumlesi yok');
+  var_('{hata ? (', 'hata varken tablo "satir yok" diyor');
+  var_('Veri okunamadı — sebep yukarıda.', 'tablo hata metni yok');
 });
