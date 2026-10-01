@@ -31,6 +31,7 @@ import { downloadCsv } from '@/utils/csv';
 import { TableEmptyRow } from '@/components/common/EmptyState';
 import { SourceNote } from '@/components/common/SourceNote';
 import { SCALEX_CAPS, SCALEX_TIMING } from '@/config/dataSources';
+import { jobBreakdowns } from '@/utils/scalexTiming';
 import { fmtDateTime } from '@/utils/datetime';
 import FieldOverridesModal from '@/components/self_service/FieldOverridesModal';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
@@ -274,6 +275,8 @@ const DiscoveryTiming: React.FC = () => {
     };
   }, [rows]);
 
+  const isler = useMemo(() => jobBreakdowns(rows), [rows]);
+
   return (
     <div className="card p-4 space-y-3">
       <div className="flex items-center gap-2">
@@ -319,6 +322,53 @@ const DiscoveryTiming: React.FC = () => {
               <p className="font-mono text-[var(--text-primary)]">{sureMetni(ozet.setup)}</p>
             </div>
           </div>
+
+          {/* İŞ KIRILIMI: "süre nerede" sorusu iş başına. Runner, cluster'ların
+              en uzunu; taşıma onu İÇERİR (SSH + runner). Kalan: AWX olay yazımı
+              ve istatistik yükleme. Ölçülmeyen pay "—", sıfır değil. */}
+          {isler.length > 0 && (
+            <div className="overflow-x-auto">
+              <p className="text-xs font-medium text-[var(--text-secondary)] mb-1">İş kırılımı</p>
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-left text-[var(--text-muted)]">
+                    <th className="py-1 pr-2 font-medium">Zaman</th>
+                    <th className="py-1 pr-2 font-medium">İş</th>
+                    <th className="py-1 pr-2 font-medium">Cluster</th>
+                    <th className="py-1 pr-2 font-medium">Kuyruk</th>
+                    <th className="py-1 pr-2 font-medium">Açılış</th>
+                    <th className="py-1 pr-2 font-medium">Hazırlık</th>
+                    <th className="py-1 pr-2 font-medium">Taşıma</th>
+                    <th className="py-1 pr-2 font-medium">Runner (maks)</th>
+                    <th className="py-1 pr-2 font-medium">Yayın</th>
+                    <th className="py-1 pr-2 font-medium">Kalan</th>
+                    <th className="py-1 pr-2 font-medium">Toplam</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[var(--border-subtle)]">
+                  {isler.map((j) => (
+                    <tr key={j.awxJobId}>
+                      <td className="py-1 pr-2 whitespace-nowrap text-[var(--text-muted)]">
+                        {fmtDateTime(j.createdAt)}
+                      </td>
+                      <td className="py-1 pr-2 font-mono">{j.awxJobId}</td>
+                      <td className="py-1 pr-2 font-mono">{j.clusters}</td>
+                      <td className="py-1 pr-2 font-mono">{sureMetni(j.queueMs)}</td>
+                      <td className="py-1 pr-2 font-mono">{sureMetni(j.bootMs)}</td>
+                      <td className="py-1 pr-2 font-mono">{sureMetni(j.prepMs)}</td>
+                      <td className="py-1 pr-2 font-mono">{sureMetni(j.transportMs)}</td>
+                      <td className="py-1 pr-2 font-mono">{sureMetni(j.runnerMaxMs)}</td>
+                      <td className="py-1 pr-2 font-mono">{sureMetni(j.publishMs)}</td>
+                      <td className="py-1 pr-2 font-mono">{sureMetni(j.restMs)}</td>
+                      <td className="py-1 pr-2 font-mono text-[var(--text-primary)]">
+                        {sureMetni(j.jobMs)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
 
           <div className="overflow-x-auto">
             <table className="w-full text-xs">

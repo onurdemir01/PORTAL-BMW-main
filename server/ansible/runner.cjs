@@ -1398,6 +1398,9 @@ async function getJobStatusOnServer(serverId, jobId) {
   return {
     jobId: data.id,
     status: data.status, // pending | waiting | running | successful | failed | error | canceled
+    // Is kuyruga girdigi an. `started - created` = AWX kuyrugu (ScaleX kesif
+    // sure kirilimi bunu "kuyruk" payi olarak gosterir).
+    created: data.created,
     started: data.started,
     finished: data.finished,
     elapsed: data.elapsed,

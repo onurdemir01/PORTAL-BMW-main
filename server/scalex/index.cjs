@@ -1234,6 +1234,9 @@ function initScaleX(app) {
             namespace: parsed.namespace,
             timing: parsed.timing,
             awxJobId: jobId,
+            // Is duzeyi kirilim: AWX zamanlari + playbook paylari.
+            job: { created: status.created, started: status.started, finished: status.finished },
+            playbookTiming: parsed.playbookTiming,
           });
         } catch (e) {
           // BEST-EFFORT: olcum yazilamadiysa kesif sonucu GIZLENMEZ.

@@ -41,6 +41,10 @@
     - name: "Initialize publication flag"
       ansible.builtin.set_fact:
         _result_published: false
+        # SURE KIRILIMI (PR-O): oyunun basladigi an, epoch ms. Portal bunu AWX
+        # isinin `started` alaniyla karsilastirip "acilis" payini (proje
+        # guncellemesi + EE) hesaplar. `now()` kontrol dugumunun saati.
+        _t_play_start_ms: "{{ (now().timestamp() * 1000) | int }}"
       changed_when: false
 
     - name: "ScaleX discovery"
@@ -55,6 +59,8 @@
           ansible.builtin.set_fact:
             _discovery_rows: []
             _failed_clusters: []
+            # Hazirlik burada biter, tasima (SSH + runner) burada baslar.
+            _t_transport_start_ms: "{{ (now().timestamp() * 1000) | int }}"
 
         # ── CLUSTER'LAR PARALEL ya da SERI ───────────────────────────────────
         #
@@ -82,6 +88,11 @@
             loop_var: scalex_target
             label: "{{ scalex_target.cluster }} via {{ scalex_target.physical_host }}"
           when: not (discovery_parallel_effective | bool)
+
+        - name: "Record discovery transport end"
+          ansible.builtin.set_fact:
+            _t_transport_end_ms: "{{ (now().timestamp() * 1000) | int }}"
+          changed_when: false
 
         - name: "Publish discovery result for the portal"
           ansible.builtin.include_tasks: tasks/discovery/25_publish_result.yml

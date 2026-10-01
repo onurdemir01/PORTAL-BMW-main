@@ -83,7 +83,9 @@ test('T3c TIMING satiri yoksa dizi BOS (uydurulmus satir yok)', () => {
   const r = RESULT.extractDiscoveryResult({
     scalex_discovery_result: {
       mode: 'workloads',
-      items: [{ cluster: 'c1', step: 'WORKLOAD_KIND', status: 'OK', detail: 'kind=deploy found=1' }],
+      items: [
+        { cluster: 'c1', step: 'WORKLOAD_KIND', status: 'OK', detail: 'kind=deploy found=1' },
+      ],
     },
   });
   assert.deepEqual(r.timing, []);
@@ -284,7 +286,10 @@ test('T8 olcum tablosu CREATE + INDEX ile tanimli', () => {
   // NULL KABUL EDEN sutunlar: "olculmedi" ile 0 ayri kalmali.
   const t = setup.slice(
     setup.indexOf('CREATE TABLE scalex_discovery_timing ('),
-    setup.indexOf('created_at     DATETIME2', setup.indexOf('CREATE TABLE scalex_discovery_timing (')),
+    setup.indexOf(
+      'created_at     DATETIME2',
+      setup.indexOf('CREATE TABLE scalex_discovery_timing ('),
+    ),
   );
   for (const sutun of ['kinds', 'cached', 'setup_ms', 'discover_ms', 'elapsed_ms']) {
     assert.ok(
@@ -306,4 +311,135 @@ test('T8b olcum ucu YALNIZCA Admin`e acik', () => {
     g.indexOf("!== 'Admin'") < g.indexOf('discoveryTiming.list'),
     'yetki kontrolu listeden SONRA — kapi hic ates almaz',
   );
+});
+
+// ══ T9: IS DUZEYI SURE KIRILIMI (PR-O) ═════════════════════════════════════
+//
+// "40 sn nerede" sorusu AWX 3365168/81/88'de loglardan ELLE cevaplandi: asil
+// kayip runner degil SSH tasimasiydi. Kirilim artik her iste kendiliginden
+// yazilir; bekciler NULL/sifir ayrimini ve hesabin yonunu kilitler.
+test('T9a jobBreakdown: kuyruk/acilis/toplam AWX zamanlarindan, paylar playbook`tan', () => {
+  const { jobBreakdown } = require('../discovery-timing.cjs');
+  const started = Date.parse('2026-10-01T10:00:05.000Z');
+  const k = jobBreakdown(
+    {
+      created: '2026-10-01T10:00:00.000Z',
+      started: '2026-10-01T10:00:05.000Z',
+      finished: '2026-10-01T10:00:25.500Z',
+    },
+    { startEpochMs: started + 9000, prepMs: 2500, transportMs: 4000, publishMs: 800 },
+  );
+  assert.deepStrictEqual(k, {
+    queueMs: 5000,
+    bootMs: 9000,
+    prepMs: 2500,
+    transportMs: 4000,
+    publishMs: 800,
+    jobMs: 20500,
+  });
+});
+
+test('T9b jobBreakdown: eksik damga ve saat kaymasi NULL, sifir DEGIL', () => {
+  const { jobBreakdown } = require('../discovery-timing.cjs');
+  const k = jobBreakdown(
+    { created: null, started: '2026-10-01T10:00:05Z', finished: null },
+    { startEpochMs: Date.parse('2026-10-01T10:00:04Z'), prepMs: null, transportMs: -1 },
+  );
+  assert.equal(k.queueMs, null, 'created yokken kuyruk uydurulmus');
+  assert.equal(k.bootMs, null, 'negatif acilis (saat kaymasi) yazilmis');
+  assert.equal(k.transportMs, null, '-1 sifira/negatife cevrilmis');
+  assert.equal(k.jobMs, null);
+  assert.deepStrictEqual(jobBreakdown(null, null), {
+    queueMs: null,
+    bootMs: null,
+    prepMs: null,
+    transportMs: null,
+    publishMs: null,
+    jobMs: null,
+  });
+});
+
+test('T9c record kirilimi HER cluster satirina yazar (sutun sirasi sabit)', async () => {
+  const kayit = [];
+  const { mod, geriAl } = sahteDb(kayit);
+  try {
+    await mod.record({
+      env: 'lab',
+      tenant: 'gar',
+      awxJobId: 42,
+      job: {
+        created: '2026-10-01T10:00:00Z',
+        started: '2026-10-01T10:00:02Z',
+        finished: '2026-10-01T10:00:12Z',
+      },
+      playbookTiming: {
+        startEpochMs: Date.parse('2026-10-01T10:00:05Z'),
+        prepMs: 1000,
+        transportMs: 3000,
+        publishMs: 500,
+      },
+      timing: [
+        { cluster: 'c1', mode: 'workloads', elapsedMs: 10 },
+        { cluster: 'c2', mode: 'workloads', elapsedMs: 20 },
+      ],
+    });
+  } finally {
+    geriAl();
+  }
+  const ins = kayit.filter((k) => /INSERT INTO scalex_discovery_timing/.test(k.sql));
+  assert.equal(ins.length, 2);
+  assert.match(ins[0].sql, /queue_ms, boot_ms, prep_ms, transport_ms, publish_ms, job_ms\)/);
+  for (const i of ins)
+    assert.deepStrictEqual(i.params.slice(11), [2000, 3000, 1000, 3000, 500, 10000]);
+});
+
+test('T9d sonuc ayristirma: playbook_timing -1 -> NULL, alan yoksa null', () => {
+  const r = RESULT.extractDiscoveryResult({
+    scalex_discovery_result: {
+      mode: 'workloads',
+      items: [],
+      playbook_timing: {
+        start_epoch_ms: '1790000000000',
+        prep_ms: -1,
+        transport_ms: '1500',
+        publish_ms: 40,
+      },
+    },
+  });
+  assert.deepStrictEqual(r.playbookTiming, {
+    startEpochMs: 1790000000000,
+    prepMs: null,
+    transportMs: 1500,
+    publishMs: 40,
+  });
+  const eski = RESULT.extractDiscoveryResult({
+    scalex_discovery_result: { mode: 'workloads', items: [] },
+  });
+  assert.equal(eski.playbookTiming, null);
+});
+
+test('T9e durum ucu kirilimi record`a GERCEKTEN geciriyor + AWX `created` okunuyor', () => {
+  const g = rota('/discover/:serverId/:jobId/status');
+  const i = g.indexOf('discoveryTiming.record(');
+  const cagri = g.slice(i, g.indexOf('});', i));
+  assert.match(cagri, /created:\s*status\.created/);
+  assert.match(cagri, /started:\s*status\.started/);
+  assert.match(cagri, /finished:\s*status\.finished/);
+  assert.match(cagri, /playbookTiming:\s*parsed\.playbookTiming/);
+  const runner = kodOnly(oku('server/ansible/runner.cjs'));
+  const f = runner.slice(runner.indexOf('async function getJobStatusOnServer'));
+  assert.match(f.slice(0, f.indexOf('\n}\n')), /created:\s*data\.created/);
+});
+
+test('T9f kirilim sutunlari CREATE + ALTER ile tanimli ve NULL', () => {
+  const setup = oku('server/db/mssql-setup.cjs');
+  const bas = setup.indexOf('CREATE TABLE scalex_discovery_timing (');
+  const t = setup.slice(bas, setup.indexOf(')`', bas));
+  for (const c of ['queue_ms', 'boot_ms', 'prep_ms', 'transport_ms', 'publish_ms', 'job_ms']) {
+    assert.match(t, new RegExp(`${c}\\s+INT NULL`), `${c} CREATE'te yok/NOT NULL`);
+    assert.ok(
+      setup.includes(`ALTER TABLE scalex_discovery_timing ADD ${c} INT NULL`),
+      `${c} mevcut kurulumlara ALTER ile eklenmiyor`,
+    );
+  }
 });
