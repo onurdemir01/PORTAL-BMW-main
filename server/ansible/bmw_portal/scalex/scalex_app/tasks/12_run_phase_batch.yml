@@ -37,7 +37,6 @@
 
 - name: "{{ scalex_phase | upper }} | Group clusters by jump server"
   ansible.builtin.set_fact:
-    _phase_rows_all: []
     _phase_batch_hosts: "{{ target_matrix | map(attribute='runtime_host') | unique | list }}"
     _phase_batch_async: >-
       {{ ((target_matrix | map(attribute='runtime_host') | unique | list | length) > 1)

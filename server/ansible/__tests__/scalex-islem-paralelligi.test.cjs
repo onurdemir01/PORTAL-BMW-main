@@ -46,6 +46,8 @@ function kostur({
   gorevDegistir = null,
   dosya = '11_run_phase_parallel.yml',
   tekJump = false,
+  uygulamalar = {},
+  tipler = {},
 } = {}) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'scalex-lp-'));
   try {
@@ -61,7 +63,7 @@ function kostur({
         `printf 'BITTI %s %s\\n' "$SCALEX_PHASE" "$CLUSTER" >> ${JSON.stringify(iz)}`,
         bosCikti
           ? 'true'
-          : 'printf \'%s;%s;odeme-api;Deployment;%s;OK;faz=%s batch=%s\\n\' "$CLUSTER" "$JUMP_SERVER" "$(printf %s "$SCALEX_PHASE" | tr a-z A-Z)" "$SCALEX_PHASE" "$SCALEX_BATCH_EXECUTE"',
+          : 'printf \'%s;%s;odeme-api;Deployment;%s;OK;faz=%s batch=%s apps=%s kinds=%s\\n\' "$CLUSTER" "$JUMP_SERVER" "$(printf %s "$SCALEX_PHASE" | tr a-z A-Z)" "$SCALEX_PHASE" "$SCALEX_BATCH_EXECUTE" "${APP_RAW:-}" "${WORKLOAD_KINDS:-}"',
         `[ ${exitKodu} -ne 0 ] && echo 'sahte runner patladi; sebep=deneme' >&2`,
         `exit ${exitKodu}`,
       ].join('\n'),
@@ -107,12 +109,12 @@ function kostur({
       username: 'uxmid',
       lp_sifre: 'gizli',
       oc_namespace: 'ns1',
-      scalex_cluster_apps_effective: {},
+      scalex_cluster_apps_effective: uygulamalar,
       target_app_list: ['odeme-api'],
       operation_action_effective: 'stop',
       target_replicas_effective: '0',
       workload_kind_effective: 'auto',
-      cluster_workload_kinds_effective: {},
+      cluster_workload_kinds_effective: tipler,
       workload_kinds_effective: '',
       verify_warn_seconds_effective: '300',
       verify_fail_seconds_effective: '600',
@@ -642,3 +644,27 @@ test('P8 varsayilan tasima batch; async ve seri geri donusler duruyor', () => {
   assert.match(prep, /scalex_phase_transport \| default\('batch'\)/);
   assert.match(prep, /'serial' if not \(\(scalex_parallel_clusters \| default\(true\)\) \| bool\)/);
 });
+
+// ── P9: CLUSTER'A OZGU UYGULAMA/TIP HARITASI DOGRU RUNNER'A ─────────────────
+// Execute'ta EN PAHALI hata: bir cluster'in uygulama listesi bos ya da baska
+// cluster'inki olarak gitmesi. Tek jump'ta (ayni sarmalayici) ve iki yolda.
+for (const dosya of ['12_run_phase_batch.yml', '11_run_phase_parallel.yml']) {
+  test(
+    `P9 [${dosya}] cluster basina APP_RAW/WORKLOAD_KINDS kendi runner'ina gidiyor`,
+    { skip: !HAS_ANSIBLE },
+    () => {
+      const r = kostur({
+        dosya,
+        fazlar: ['execute'],
+        tekJump: dosya === '12_run_phase_batch.yml',
+        sleepSaniye: 0,
+        uygulamalar: { c1: 'a1,a2', c2: 'b1' },
+        tipler: { c1: 'a1=deploy,a2=sts', c2: 'b1=dc' },
+      });
+      assert.ok(!r.playFailed, r.out.slice(-1500));
+      const c = (ad) => r.exe.find((x) => x.startsWith(`${ad};`)) || '';
+      assert.match(c('c1'), / apps=a1,a2 kinds=a1=deploy,a2=sts$/, JSON.stringify(r.exe));
+      assert.match(c('c2'), / apps=b1 kinds=b1=dc$/, JSON.stringify(r.exe));
+    },
+  );
+}
