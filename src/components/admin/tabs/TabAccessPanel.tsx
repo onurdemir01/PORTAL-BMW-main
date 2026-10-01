@@ -103,7 +103,11 @@ export function TabAccessPanel({
     const id = pid.trim();
     if (!id) {
       toast.error(
-        ptype === 'user' ? 'Kullanıcı adı girin.' : 'AD grubu girin (CN adı ya da tam DN).',
+        ptype === 'user'
+          ? 'Kullanıcı adı girin.'
+          : ptype === 'email'
+            ? 'E-posta girin ya da listeden seçin.'
+            : 'AD grubu girin (CN adı ya da tam DN).',
       );
       return;
     }
@@ -217,13 +221,27 @@ export function TabAccessPanel({
               className="text-[10px] uppercase tracking-wide"
               style={{ color: 'var(--text-muted)' }}
             >
-              {ptype === 'user' ? 'Kullanıcı adı' : 'AD grubu'}
+              {ptype === 'user' ? 'Kullanıcı adı' : ptype === 'email' ? 'E-posta' : 'AD grubu'}
             </span>
             {/* KULLANICIDA SECIM, GRUPTA ELLE: grup DN'i dizinde aranabilir ama yetki
                 genelde CN ile veriliyor; kullanici adi ise elle yazilinca hem yazim hatasi
                 hem BUYUK/KUCUK HARF farki uretiyordu (kullanici, 2026-09-28). */}
-            {ptype === 'user' ? (
-              <LdapUserPicker value={pid} onChange={setPid} className={inputCls + ' w-full'} />
+            {/* E-POSTA KIPINDE DE LDAP'TAN SECILIR (2026-10-01): kullanici kisiyi dizinden
+                seciyor ama kural e-posta turunde yaziliyordu ve motor e-posta kuralini
+                KULLANICI ADIYLA eslestirmediği icin hicbir zaman tutmuyordu. Artik
+                secilen kisiden dogru alan yazilir. */}
+            {ptype === 'user' || ptype === 'email' ? (
+              <LdapUserPicker
+                value={pid}
+                onChange={setPid}
+                field={ptype === 'email' ? 'mail' : 'username'}
+                placeholder={
+                  ptype === 'email'
+                    ? 'ad, kullanıcı adı ya da e-posta ile ara — e-posta yazılır'
+                    : undefined
+                }
+                className={inputCls + ' w-full'}
+              />
             ) : (
               <input
                 value={pid}

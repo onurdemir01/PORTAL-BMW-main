@@ -202,3 +202,123 @@ test('AR10: "olculemedi" ipucu jargonla degil OLAN BITENLE anlatilir', () => {
   const kez = (src.match(/yük almıyor” demek değil|“yük almıyor” denemez/g) || []).length;
   assert.ok(kez >= 2, '"olculemedi" ile "yuk almiyor" farki her iki sebepte de yazilmamis');
 });
+
+// ── LOCATION BAZLI BEYAN (LB1..LB5, 2026-10-01) ──────────────────────────────────────
+//
+// Kullanici: "ayni uygulamaya tanimli 3 tane location bulunuyor. Birine kullanilmiyor
+// dedigim zaman hepsine kullanilmiyor olarak isaretleniyor."
+//
+// IKI AYRI HATA VARDI ve ikisi de duzeltildi:
+//   1. istek `location` TASIMIYORDU -> sunucu uygulama satirina yaziyordu
+//   2. yanit gelince EKRAN ayni uygulamanin TUM satirlarini guncelliyordu
+const SPA_UI = fs.readFileSync(
+  path.join(__dirname, '..', '..', '..', 'src', 'components', 'ArkSpaRaporuPage.tsx'),
+  'utf8',
+);
+const SPA_API = fs.readFileSync(
+  path.join(__dirname, '..', '..', '..', 'src', 'api', 'arkSpaApi.ts'),
+  'utf8',
+);
+const SPA_IDX = fs.readFileSync(path.join(__dirname, '..', 'index.cjs'), 'utf8');
+
+const satirlar3 = [
+  { service: 'GLOMO', env: 'PROD', application: 'app-v1', namespace: 'ns-prod', location_path: '/a/', host: 'H1' },
+  { service: 'GLOMO', env: 'PROD', application: 'app-v1', namespace: 'ns-prod', location_path: '/b/', host: 'H1' },
+  { service: 'GLOMO', env: 'PROD', application: 'app-v1', namespace: 'ns-prod', location_path: '/c/', host: 'H1' },
+];
+
+test('LB1 location beyani YALNIZ o satiri etkiler; otekiler uygulamadan devralir', () => {
+  const beyanlar = new Map([
+    ['ns-prod/app-v1', { inUse: 'yes', inUseBy: 'uyg', note: 'uygulama geneli' }],
+    ['ns-prod/app-v1\u0000/b/', { inUse: 'no', inUseBy: 'loc', note: 'bu location' }],
+  ]);
+  const r = buildSpaReport({
+    rows: satirlar3,
+    beyanlar,
+    trafficOf: () => null,
+    ekipOf: () => ['EKIP-A'],
+    env: 'PROD',
+  });
+  const by = Object.fromEntries(r.rows.map((x) => [x.location, x]));
+  assert.equal(by['/b/'].inUse, 'no', 'location beyani gecmiyor');
+  assert.equal(by['/b/'].inUseScope, 'location');
+  assert.equal(by['/b/'].note, 'bu location');
+  for (const l of ['/a/', '/c/']) {
+    assert.equal(by[l].inUse, 'yes', `${l}: location beyani sizmis - hata geri gelmis`);
+    assert.equal(by[l].inUseScope, 'application', `${l}: devralinma isareti yok`);
+  }
+});
+
+test('LB2 hic beyan yoksa inUseScope null (uydurma beyan yok)', () => {
+  const r = buildSpaReport({
+    rows: satirlar3,
+    beyanlar: new Map(),
+    trafficOf: () => null,
+    ekipOf: () => [],
+    env: 'PROD',
+  });
+  for (const x of r.rows) {
+    assert.equal(x.inUse, null);
+    assert.equal(x.inUseScope, null);
+  }
+});
+
+test('LB3 ekran istegi LOCATION gonderiyor', () => {
+  const i = SPA_UI.indexOf('arkSpaApi.declare({');
+  assert.ok(i > 0, 'declare cagrisi bulunamadi');
+  assert.match(
+    SPA_UI.slice(i, i + 300),
+    /location: r\.location,/,
+    "istek location TASIMIYOR - sunucu uygulama satirina yazar ve hata geri gelir",
+  );
+  assert.match(SPA_API, /location: string;/, 'API tipi location almiyor');
+});
+
+test('LB4 ekran YALNIZ o satiri guncelliyor (uygulama geneli DEGIL)', () => {
+  assert.ok(
+    !/x\.namespace === r\.namespace && x\.application === r\.application/.test(SPA_UI),
+    'yanit gelince ayni uygulamanin TUM satirlari guncelleniyor - hatanin ikinci yarisi',
+  );
+  assert.match(
+    SPA_UI,
+    /satirAnahtari\(x\) === k/,
+    'satir anahtari location icermiyor olabilir',
+  );
+  assert.match(
+    SPA_UI,
+    /const satirAnahtari = \(r: ArkSatir\) =>[^\n]*r\.location/,
+    'satir anahtari location TASIMIYOR',
+  );
+});
+
+test('LB5 sunucu location verildiginde AYRI tabloya yaziyor', () => {
+  const i = SPA_IDX.indexOf("router.put('/declare'");
+  const blok = SPA_IDX.slice(i, i + 5000);
+  assert.match(blok, /nginx_spa_location_in_use/, 'location beyani ayri tabloya yazilmiyor');
+  assert.match(blok, /scope: 'location'/, 'yanit hangi seviyeye yazildigini soylemiyor');
+  // LOCATION YOKSA ESKI DAVRANIS KORUNUR: SPA Tasimalari ekrani bu ucu location'siz cagirir.
+  assert.match(blok, /scope: 'application'/, 'uygulama seviyesi yol kaybolmus');
+});
+
+// ── EKIP VE YUK SUZGECLERI (SF1..SF2, kullanici 2026-10-01) ─────────────────────────
+test('SF1 ekip suzgeci var ve "bilinmiyor" AYRI secenek', () => {
+  assert.match(SPA_UI, /setEkip\(/, 'ekip suzgeci yok');
+  assert.match(SPA_UI, /ekip: bilinmiyor/, 'ekibi cozulemeyen satirlar suzulemez');
+  // Ekip listesi TUM satirlardan turetilmeli; suzulmus listeden turetmek tek yon olurdu.
+  const i = SPA_UI.indexOf('const ekipler = useMemo');
+  assert.ok(i > 0, 'ekip listesi yok');
+  assert.match(SPA_UI.slice(i, i + 260), /data\?\.rows \|\| \[\]/, 'ekip listesi suzulmus satirlardan');
+});
+
+test('SF2 yuk suzgeci UC durumu AYRI tutuyor ("olcum yok" != "yuk almiyor")', () => {
+  for (const d of ['active', 'idle', 'unknown', 'none']) {
+    assert.ok(SPA_UI.includes(`value="${d}"`), `yuk suzgecinde secenek yok: ${d}`);
+  }
+  const i = SPA_UI.indexOf("if (yuk !== 'all')");
+  assert.ok(i > 0, 'yuk suzgec mantigi yok');
+  assert.match(
+    SPA_UI.slice(i, i + 200),
+    /r\.traffic \? r\.traffic\.state : 'none'/,
+    'olcumu olmayan satir "yuk almiyor" ile ayni kefeye konmus',
+  );
+});

@@ -24,6 +24,15 @@ export interface ArkSatir {
   inUse: string | null;
   inUseBy: string | null;
   note: string;
+  /**
+   * Beyan HANGİ SEVİYEDEN geldi (2026-10-01):
+   *   'location'    = bu satıra özel beyan
+   *   'application' = SPA Taşımaları'ndaki uygulama beyanı DEVRALINDI
+   *   null          = beyan yok
+   * Devralınmış bir beyanı satırın kendi beyanı gibi göstermek, "birine yazdım hepsine
+   * işlendi" izlenimini sürdürürdü.
+   */
+  inUseScope: 'location' | 'application' | null;
 }
 
 export interface ArkServis {
@@ -53,12 +62,20 @@ const safeJson = (r: Response) =>
 export const arkSpaApi = {
   report: (fresh = false): Promise<ArkRapor> =>
     fetch(`${BASE}${fresh ? '?fresh=1' : ''}`).then(safeJson),
+  // LOCATION ZORUNLU GÖNDERİLİR: beyan artık satır bazında. Gönderilmezse sunucu eski
+  // davranışa (uygulama seviyesi) düşer ve aynı uygulamanın TÜM location'larını etkiler.
   declare: (p: {
     namespace: string;
     application: string;
+    location: string;
     inUse: string | null;
     note: string;
-  }): Promise<{ ok: boolean; message?: string; inUseBy?: string | null }> =>
+  }): Promise<{
+    ok: boolean;
+    message?: string;
+    inUseBy?: string | null;
+    scope?: 'location' | 'application';
+  }> =>
     fetch(`${BASE}/declare`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },

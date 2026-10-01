@@ -40,13 +40,25 @@ export function LdapUserPicker({
   placeholder,
   className,
   search = ldapUserSearch,
+  field = 'username',
 }: {
   value: string;
-  onChange: (username: string) => void;
+  onChange: (value: string) => void;
   placeholder?: string;
   className?: string;
   /** test için enjekte edilebilir */
   search?: (q: string) => Promise<{ users: LdapUser[]; error?: string }>;
+  /**
+   * Seçilen kişiden HANGİ alan yazılsın (2026-10-01).
+   *
+   * Kullanıcı: "LDAP'tan tüm kullanıcıları getiriyorsun ama o kullanıcıya tıkladığımda
+   * seçtiğim kişiye işlemiyor." Seçim alana işliyordu; sorun YAZILAN DEĞERDİ. Picker her
+   * zaman `username` döndürüyordu, ama kural türü `email` ise motor o kuralı KULLANICI
+   * ADIYLA değil E-POSTAYLA eşleştirir — yani yazılan kural hiçbir zaman tutmuyordu.
+   * Crypto Hub kuralları üretimde e-postayla giriliyor (bkz. ekran görüntüsündeki üç
+   * kayıt), dolayısıyla panel e-posta kipindeyken picker da e-posta yazmalı.
+   */
+  field?: 'username' | 'mail';
 }) {
   const [sonuc, setSonuc] = useState<LdapUser[]>([]);
   const [acik, setAcik] = useState(false);
@@ -96,7 +108,16 @@ export function LdapUserPicker({
   };
 
   const sec = (u: LdapUser) => {
-    onChange(u.username);
+    const deger = field === 'mail' ? String(u.mail || '').trim().toLowerCase() : u.username;
+    // E-POSTASI OLMAYAN KAYIT SESSIZCE GECILMEZ: kullanici adini e-posta kuralina yazmak,
+    // asla eslesmeyecek bir kural uretirdi - sikayetin ta kendisi.
+    if (!deger) {
+      setHata(
+        `${u.displayName || u.username} için dizinde e-posta yok; e-posta kuralı yazılamaz.`,
+      );
+      return;
+    }
+    onChange(deger);
     setAcik(false);
     setSonuc([]);
   };
