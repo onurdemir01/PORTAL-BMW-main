@@ -8,8 +8,10 @@
 // kurallar ve `admin_active_tab` tercihi aynen calisir. `admin_tab_order` tercihi artik
 // okunmaz (siralama sabit); eski kayit DB'de zararsiz durur.
 //
-// 2026-09-07: "Test Senaryolari" ve "Akis Testleri" sekmeleri kaldirildi — bilesen dosyalari
-// duruyor (TestScenariosTab.tsx / FlowTestsTab.tsx), yalnizca baglantilari kesik.
+// 2026-10-02: "LogX Yonetimi" ayri sekme oldu (ScaleX Yonetimi gibi). LogX'e ozgu
+// bolumler OCP Yapilandirma'dan, "Envanter Bosluklari" Kayitlar'dan oraya tasindi.
+// 2026-09-07'de baglantisi kesilen "Test Senaryolari" / "Akis Testleri" dosyalari
+// silindi; gorunurluk ogeleri setup'ta temizlenir (removeRetiredAdminTabs).
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { prefsApi } from '../../api/prefsApi';
@@ -28,8 +30,8 @@ import {
   CircleStackIcon,
   ArrowsPointingOutIcon,
   TableCellsIcon,
-  ExclamationTriangleIcon,
   BookOpenIcon,
+  DocumentMagnifyingGlassIcon,
 } from '@heroicons/react/24/outline';
 import AuditLogTab from './tabs/AuditLogTab';
 import AnsibleConfigTab from './tabs/AnsibleConfigTab';
@@ -43,7 +45,7 @@ import CryptoAccessTab from './tabs/CryptoAccessTab';
 import LogXv2AdminTab from './tabs/LogXv2AdminTab';
 import ScaleXAdminTab from './tabs/ScaleXAdminTab';
 import InventoryVisibilityTab from './tabs/InventoryVisibilityTab';
-import InventoryGapsTab from './tabs/InventoryGapsTab';
+import LogXAdminTab from './tabs/LogXAdminTab';
 import BrandingTab from './tabs/BrandingTab';
 import DbBackupTab from './tabs/DbBackupTab';
 import SmartTicketsTab from './tabs/SmartTicketsTab';
@@ -55,6 +57,7 @@ const DEFAULT_TABS = [
   // ORTAK SEKME: cluster / vault / bastion / kisitlama tablolari LogX'e ozel degil,
   // LogX + OpsX + Telnet + ScaleX tarafindan PAYLASILIYOR. Kimlik (`logxv2`) bilerek korunuyor.
   { id: 'logxv2', label: 'OCP Yapılandırma', icon: ServerStackIcon, hint: 'OpenShift cluster, vault anahtarı ve bastion tanımları — LogX, OpsX, Telnet ve ScaleX ortak kullanır.' },
+  { id: 'logx', label: 'LogX Yönetimi', icon: DocumentMagnifyingGlassIcon, hint: 'LogX erişimi ve kaynak sahipleri, AWX hazırlığı, istekler, maskeleme, Legacy ortam son-eki, envanter boşlukları.' },
   { id: 'scalex', label: 'ScaleX Yönetimi', icon: ArrowsPointingOutIcon, hint: 'Replica durdurma/ölçekleme kuralları ve RBAC bulguları.' },
   { id: 'audit', label: 'Denetim Kaydı', icon: ClipboardDocumentListIcon, hint: 'Kim, ne zaman, ne yaptı — hash zincirli, değiştirilemez kayıt.' },
   { id: 'smarttickets', label: 'Smart Talepleri', icon: TicketIcon, hint: 'Smart üzerinden açılan taleplerin durumu ve eşleşen işler.' },
@@ -68,7 +71,6 @@ const DEFAULT_TABS = [
   { id: 'nginxaccess', label: 'Nginx Hub Erişimi', icon: ShieldCheckIcon, hint: 'Nginx Hub sekmelerini kişi ya da LDAP grubu bazında sınırlama (varsayılan: hepsi açık).' },
   { id: 'cryptoaccess', label: 'Crypto Hub Erişimi', icon: ShieldCheckIcon, hint: 'Crypto Hub uygulamalarını (Metaco / Wyden) kişi, e-posta ya da LDAP grubu bazında açma (varsayılan: hepsi kapalı).' },
   { id: 'inventoryvis', label: 'Envanter Görünürlüğü', icon: TableCellsIcon, hint: 'Envanter tablolarının ve sütunlarının kimlere açık olduğu.' },
-  { id: 'inventorygaps', label: 'Envanter Boşlukları', icon: ExclamationTriangleIcon, hint: 'Envanterde eksik ya da tutarsız kayıtlar.' },
   { id: 'branding', label: 'Logo', icon: PhotoIcon, hint: 'Portal logosu ve sekme simgesi.' },
 ] as const;
 
@@ -80,8 +82,8 @@ const TAB_BY_ID = new Map<TabId, (typeof DEFAULT_TABS)[number]>(DEFAULT_TABS.map
 // duser; bolum bosalirsa basligi da gizlenir.
 const SECTIONS: { title: string; icon: React.ElementType; ids: TabId[] }[] = [
   { title: 'Erişim', icon: KeyIcon, ids: ['users', 'visibility', 'denetimaccess', 'nginxaccess', 'cryptoaccess', 'inventoryvis'] },
-  { title: 'Otomasyon', icon: CommandLineIcon, ids: ['playbooks', 'ansible', 'logxv2', 'scalex'] },
-  { title: 'Kayıtlar', icon: ArchiveBoxIcon, ids: ['audit', 'smarttickets', 'dbbackup', 'inventorygaps'] },
+  { title: 'Otomasyon', icon: CommandLineIcon, ids: ['playbooks', 'ansible', 'logxv2', 'logx', 'scalex'] },
+  { title: 'Kayıtlar', icon: ArchiveBoxIcon, ids: ['audit', 'smarttickets', 'dbbackup'] },
   { title: 'Sistem', icon: CogIcon, ids: ['system', 'branding'] },
 ];
 
@@ -204,7 +206,7 @@ const AdminPage: React.FC = () => {
               {activeTab === 'logxv2' && <LogXv2AdminTab />}
               {activeTab === 'scalex' && <ScaleXAdminTab />}
               {activeTab === 'inventoryvis' && <InventoryVisibilityTab />}
-              {activeTab === 'inventorygaps' && <InventoryGapsTab />}
+              {activeTab === 'logx' && <LogXAdminTab />}
               {activeTab === 'branding' && <BrandingTab />}
             </div>
           </div>

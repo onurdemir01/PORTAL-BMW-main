@@ -503,7 +503,7 @@ async function ocpResolveHosts(env, tenant, clusters) {
     throw Object.assign(
       new Error(
         `Şu cluster'lar için Jump Server tanımlı değil: ${missing.join(', ')} — ` +
-          `Admin > LogX Yapılandırma ekranından cluster satırına Jump Server girin.`,
+          `Admin > OCP Yapılandırma ekranından cluster satırına Jump Server girin.`,
       ),
       { status: 400 },
     );

@@ -16,7 +16,7 @@ template** olarak tanımlanır. Portal bu template'leri sadece "başlat + durumu
    Kapalıysa AWX gönderilen değişkenleri **sessizce yok sayar**, job başlar ve playbook boş
    girdiyle düşer. Portal bunu launch öncesi yakalar (`server/ansible/template-preflight.cjs`),
    **409** ile reddeder ve sihirbaz o işi hiç başlatmaz. Hangi template'te kapalı olduğunu
-   Admin > LogX Yapılandırma > playbook hazırlık listesinden görebilirsiniz
+   Admin > LogX Yönetimi > AWX hazırlık durumu bölümünden görebilirsiniz
    (`GET /api/logx/v2/admin/playbook-readiness`).
 4. Template ID'lerini ve **hangi AWX sunucusunda** olduklarını `.env.local`'a yaz (Bölüm 3).
 5. Bitti — portalda LogX ekranından kullan.
@@ -121,7 +121,7 @@ gizler). Bu yüzden arşiv, **portal sunucusunun okuyabildiği bir konumda** olm
 (tüm hostlar fail olunca Ansible toplayıcı play'i de atlar). Alınan önlemler:
 
 1. **`oc` yolu artık sabit değil** — her jump server'da sırayla admin override → aday yollar
-   → `PATH` denenir. Aday listesi ve zaman aşımları **Admin → LogX Yapılandırma → OCP
+   → `PATH` denenir. Aday listesi ve zaman aşımları **Admin → OCP Yapılandırma → OCP
    Çalıştırma Ayarları** ekranından, deploy gerekmeden değiştirilir.
 2. **Bastion başına hata izolasyonu** — bir jump server çökse bile diğerleri devam eder,
    toplayıcı play her zaman çalışır; sonuç `partial` döner ve hangi cluster'ın neden

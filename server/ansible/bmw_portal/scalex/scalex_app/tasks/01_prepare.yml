@@ -2,7 +2,7 @@
 # ── KATALOG: PORTAL KAZANIR, DOSYA YEDEKTIR ─────────────────────────────────
 #
 # Portal cluster katalogunu `scalex_clusters_override` extra_var'i ile gonderir ve
-# icerigi Admin > LogX Yapilandirma'dan gelir (jump_server, api_url, vault anahtar
+# icerigi Admin > OCP Yapilandirma'dan gelir (jump_server, api_url, vault anahtar
 # ADI). Yani cluster/bastion/vault bilgisi TEK yerden yonetilir ve ScaleX onu miras
 # alir; bu dosyadaki katalog yalnizca AWX'ten ELLE calistirma icin yedektir.
 #

@@ -1145,7 +1145,6 @@ function initLogXv2(app) {
 
   // ── LogX YONETIMI: Admin + KAYNAK SAHIBI (L4, 2026-10-01) ────────────────────
   //
-  // `/admin/restrictions*` uclari AYNEN duruyor (mevcut ekran onlari kullaniyor).
   // `/manage/...` uclari ayni islemleri `canManage` (Admin || kaynak sahibi) ile acar; sahip
   // ekleme/silme YALNIZCA Admin. Her degisiklik portal_audit_logs'a (`logx_manage_*`).
   router.use('/manage', (req, res, next) => {
@@ -1212,7 +1211,7 @@ function initLogXv2(app) {
   // Var olan bir kisitlama uzerindeki islemler: yetki kisitlamanin KAYNAGINA gore.
   async function yonetilenKisit(req) {
     const r = await restrictions.getRestrictionById(req.params.id);
-    if (!r) throw Object.assign(new Error('Kısıtlama bulunamadı.'), { status: 404 });
+    if (!r) throw Object.assign(new Error('Erişim kuralı bulunamadı.'), { status: 404 });
     await owners.assertCanManage(currentUser(req), r.resourceType, r.resourceKey);
     return r;
   }
@@ -1435,83 +1434,9 @@ function initLogXv2(app) {
     }),
   );
 
-  // ── Admin: restrictions (varsayilan-acik, opt-in kisitlama) ─────────────────
-  router.get(
-    '/admin/restrictions',
-    requireAdmin,
-    asyncRoute(async (req, res) => {
-      res.json({ ok: true, restrictions: await restrictions.listRestrictions() });
-    }),
-  );
-  router.post(
-    '/admin/restrictions',
-    requireAdmin,
-    asyncRoute(async (req, res) => {
-      const row = await restrictions.createRestriction(req.body || {}, currentUser(req).username);
-      res.json({ ok: true, restriction: row });
-    }),
-  );
-  router.put(
-    '/admin/restrictions/:id',
-    requireAdmin,
-    asyncRoute(async (req, res) => {
-      const row = await restrictions.updateRestriction(req.params.id, req.body || {});
-      res.json({ ok: true, restriction: row });
-    }),
-  );
-  router.delete(
-    '/admin/restrictions/:id',
-    requireAdmin,
-    asyncRoute(async (req, res) => {
-      res.json({ ok: await restrictions.deleteRestriction(req.params.id) });
-    }),
-  );
-  router.post(
-    '/admin/restrictions/:id/grants',
-    requireAdmin,
-    asyncRoute(async (req, res) => {
-      const grant = await restrictions.addGrant(
-        req.params.id,
-        req.body?.username,
-        currentUser(req).username,
-      );
-      res.json({ ok: true, grant });
-    }),
-  );
-  router.delete(
-    '/admin/restrictions/:id/grants/:username',
-    requireAdmin,
-    asyncRoute(async (req, res) => {
-      res.json({ ok: await restrictions.removeGrant(req.params.id, req.params.username) });
-    }),
-  );
-
-  // GRUP GRANT'LARI. `addGroupGrant`/`removeGroupGrant` uzun sure yazilmis ama HICBIR
-  // ROUTE'TAN cagrilmiyordu: yetki bir AD grubuna verilebiliyor "gibi" gorunuyor, ama
-  // portal uzerinden verilmesinin bir yolu YOKTU — ozellik bastan sona olu kodu.
-  //
-  // DN YOL PARAMETRESINDE DEGIL GOVDEDE: bir AD DN'i virgul, esittir ve bosluk icerir
-  // ("CN=odeme-ekibi,OU=Groups,DC=..."); URL'e komak hem kacis sorunlari cikarir hem de
-  // grup adlarini erisim loglarina yazardi.
-  router.post(
-    '/admin/restrictions/:id/group-grants',
-    requireAdmin,
-    asyncRoute(async (req, res) => {
-      const grant = await restrictions.addGroupGrant(
-        req.params.id,
-        req.body?.groupDn,
-        currentUser(req).username,
-      );
-      res.json({ ok: true, grant });
-    }),
-  );
-  router.delete(
-    '/admin/restrictions/:id/group-grants',
-    requireAdmin,
-    asyncRoute(async (req, res) => {
-      res.json({ ok: await restrictions.removeGroupGrant(req.params.id, req.body?.groupDn) });
-    }),
-  );
+  // `/admin/restrictions*` uclari 2026-10-02'de SILINDI: tek yonetim yolu `/manage/...`
+  // (Admin + kaynak sahibi, `canManage`, denetim `logx_manage_*`). Eski ekran zaten
+  // kaldirilmisti; uclari tutmak denetimsiz ikinci bir yazma yolu demekti.
 
   // ── Admin: izleme ────────────────────────────────────────────────────────────
   router.get(

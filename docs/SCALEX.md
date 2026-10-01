@@ -50,7 +50,7 @@ Kapı politikası `launch.gatePolicyFor` ile belirlenir:
 
 Kapılar **ortak modülden** gelir (`server/ansible/change-gates.cjs`) — Self Service'teki
 nginx işleriyle aynı yol. Ayarlar `ansible_ss_customizations` tablosunda ScaleX'in kendi
-`(awx_server_id, template_id)` satırında durur ve **Admin > Ansible > FieldOverridesModal**
+`(awx_server_id, template_id)` satırında durur ve **Admin > ScaleX Yönetimi > Onay kapıları**
 ile yönetilir.
 
 > **SMART yapılandırılmadan prod'da `apply` çalışmaz.** Sunucu `smart_not_configured` ile
@@ -97,7 +97,7 @@ Ayrıntılı adımlar (AWX template alanları, survey'in API ile yüklenmesi, s�
 2. **Portal**: Admin > Playbook Kayıtları'nda `scalex_run` / `scalex_discovery`
    satırlarına AWX şablon ve sunucu kimliğini girin (ya da `.env`'deki
    `SCALEX_TEMPLATE_ID` / `SCALEX_DISCOVERY_TEMPLATE_ID` / `SCALEX_AWX_SERVER_ID`).
-3. **SMART/OCO**: Admin > Ansible > FieldOverridesModal ile ScaleX şablonu için
+3. **SMART/OCO**: Admin > ScaleX Yönetimi > Onay kapıları ile ScaleX şablonu için
    `flowKey`, `metadataFields` ve `ocoCheck` tanımlayın. Prod `apply` için SMART
    yapılandırması **zorunludur** (fail-closed).
 4. **Görünürlük**: sunucu açılışında element bazında otomatik seed edilir. Yeniden

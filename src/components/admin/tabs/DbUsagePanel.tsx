@@ -206,7 +206,7 @@ const DbUsagePanel: React.FC = () => {
       <div className="p-4 border border-gray-200 rounded-xl space-y-2">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div className="text-sm">
-            <div className="font-semibold">Gece temizliği (LogX v2 kayıtları)</div>
+            <div className="font-semibold">Gece temizliği (LogX kayıtları)</div>
             <div className="text-xs" style={{ color: "var(--text-muted)" }}>
               {config && (
                 <>

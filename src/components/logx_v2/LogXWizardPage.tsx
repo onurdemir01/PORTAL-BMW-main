@@ -549,8 +549,8 @@ const LogXWizardPage: React.FC = () => {
         )}
         <div className="flex-1">
           <div className="flex items-center gap-2">
-            <h1 className="page-title">LogX v2 — Güvenli Log İndirme</h1>
-            {/* Yalnızca kaynak SAHİPLERİNE görünür (Admin'in yeri Admin > LogX v2 > Erişim). */}
+            <h1 className="page-title">LogX — Güvenli Log İndirme</h1>
+            {/* Yalnızca kaynak SAHİPLERİNE görünür (Admin'in yeri Admin > LogX Yönetimi > Erişim). */}
             <span className="ml-auto">
               <LogXYonetimDugmesi />
             </span>

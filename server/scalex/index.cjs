@@ -505,7 +505,7 @@ async function runScaleXGates({
         gates: { oco: 'passed', smart: 'not_configured' },
         message:
           'ScaleX için SMART onay yapılandırması yapılmamış; değişiklik uygulanmadı. ' +
-          'Admin > Ansible > Self Servis Özelleştirmeleri ekranından ScaleX şablonu için ' +
+          'Admin > ScaleX Yönetimi > Onay kapıları ekranından ScaleX şablonu için ' +
           'SMART onayını (flowKey ve metadata alanları) tanımlayın. ' +
           'Bu arada "Önce kontrol et" modu kullanılabilir — hiçbir değişiklik yapmaz.',
       },

@@ -33,7 +33,7 @@ salt-okunur (read-only), parametreleri AI'ın kendisinin doldurduğu tanılama a
    satırları döner, template ID'nin kendisini asla sızdırmaz).
 6. `src/components/admin/tabs/PlaybookRegistryTab.tsx` — Admin > Playbook Kayıtları ekranı
    (ekle/düzenle/sil, template ID kaynağını "DB" / ".env" / "Tanımsız" rozetiyle gösterir).
-7. `src/components/logx/LogXPage.tsx` — seçili host için `available()`'dan gelen araçları
+7. `src/components/logx_v2/LogXWizardPage.tsx` (eski: `src/components/logx/LogXPage.tsx`, kaldırıldı) — seçili host için `available()`'dan gelen araçları
    dinamik buton listesi olarak gösterir, `POST /api/logx/playbook-run` ile çalıştırır.
 
 ## Yeni bir tanılama playbook'u eklemek (kod değişikliği GEREKMEZ)

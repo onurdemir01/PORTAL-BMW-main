@@ -303,7 +303,7 @@
           kullanıcı adı yok: {{ units_missing_username | default([]) | join(', ') | default('-', true) }} |
           vault parolası çözülemedi: {{ units_missing_password | default([]) | join(', ') | default('-', true) }} |
           api_url yok: {{ units_missing_url | default([]) | join(', ') | default('-', true) }}.
-          Kullanıcı adı cluster satırından (Admin > LogX Yapılandırma > OCP Cluster Hiyerarşisi)
+          Kullanıcı adı cluster satırından (Admin > OCP Yapılandırma > OCP Cluster Hiyerarşisi)
           ya da genel varsayılandan (OCP Çalıştırma Ayarları) gelir; parola `credentials.yaml`
           içindeki vault anahtarından çözülür.
       when:

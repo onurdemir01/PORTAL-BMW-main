@@ -1992,6 +1992,15 @@ const ELEMENT_SEED = [
     default_visible: 1,
   },
   {
+    // 2026-10-02: LogX'e ozgu yonetim ayri sekme (ScaleX Yonetimi gibi).
+    element_key: 'admintab:logx',
+    element_type: 'admin_tab',
+    parent_key: 'Admin',
+    label: 'LogX Yönetimi',
+    sort_order: 2,
+    default_visible: 1,
+  },
+  {
     element_key: 'admintab:scalex',
     element_type: 'admin_tab',
     parent_key: 'Admin',
@@ -2017,14 +2026,7 @@ const ELEMENT_SEED = [
     sort_order: 4,
     default_visible: 1,
   },
-  {
-    element_key: 'admintab:testscenarios',
-    element_type: 'admin_tab',
-    parent_key: 'Admin',
-    label: 'Test Senaryoları',
-    sort_order: 5,
-    default_visible: 1,
-  },
+
   {
     element_key: 'admintab:dbbackup',
     element_type: 'admin_tab',
@@ -2033,14 +2035,7 @@ const ELEMENT_SEED = [
     sort_order: 12,
     default_visible: 1,
   },
-  {
-    element_key: 'admintab:flowtests',
-    element_type: 'admin_tab',
-    parent_key: 'Admin',
-    label: 'Akış Testleri',
-    sort_order: 14,
-    default_visible: 1,
-  },
+
   {
     element_key: 'admintab:ansible',
     element_type: 'admin_tab',
@@ -2077,7 +2072,7 @@ const ELEMENT_SEED = [
     element_key: 'admintab:visibility',
     element_type: 'admin_tab',
     parent_key: 'Admin',
-    label: 'Görünürlük',
+    label: 'Sayfa Erişimi',
     sort_order: 10,
     default_visible: 1,
   },
@@ -2118,19 +2113,12 @@ const ELEMENT_SEED = [
     sort_order: 12,
     default_visible: 1,
   },
-  {
-    element_key: 'admintab:inventorygaps',
-    element_type: 'admin_tab',
-    parent_key: 'Admin',
-    label: 'Envanter Boşlukları',
-    sort_order: 12,
-    default_visible: 1,
-  },
+
   {
     element_key: 'admintab:branding',
     element_type: 'admin_tab',
     parent_key: 'Admin',
-    label: 'Marka',
+    label: 'Logo',
     sort_order: 13,
     default_visible: 1,
   },
@@ -3328,6 +3316,29 @@ async function removeMovedDenetimTabs(pool) {
   }
 }
 
+// 2026-10-02: kaldirilan / tasinan admin sekmeleri. "Test Senaryolari" ve "Akis
+// Testleri" dosyalari silindi; "Envanter Bosluklari" LogX Yonetimi'nin bolumu oldu.
+// Ogeler kalirsa Admin > Sayfa Erisimi var olmayan sekmeleri listeler.
+async function removeRetiredAdminTabs(pool) {
+  try {
+    let removed = 0;
+    for (const key of ['admintab:testscenarios', 'admintab:flowtests', 'admintab:inventorygaps']) {
+      await pool
+        .request()
+        .input('k', key)
+        .query(`DELETE FROM portal_element_visibility WHERE element_key = @k`);
+      const r = await pool
+        .request()
+        .input('k', key)
+        .query(`DELETE FROM portal_elements WHERE element_key = @k`);
+      removed += r.rowsAffected?.[0] || 0;
+    }
+    if (removed) console.log(`[DB] kaldirilan admin sekmeleri temizlendi: ${removed} element`);
+  } catch (e) {
+    console.warn('[DB] removeRetiredAdminTabs:', e.message);
+  }
+}
+
 // portal_links tablosu ve server/links/* API'si HIC ELLENMEDI, link verisi duruyor.
 async function removeKaynaklarNavGroup(pool) {
   try {
@@ -3444,6 +3455,7 @@ async function setupTables() {
   // 2026-09-19: Yardımcı Araçlar / Faydalı Linkler menuden kaldirildi (bkz. elements.ts)
   await removeKaynaklarNavGroup(pool);
   await removeMovedDenetimTabs(pool);
+  await removeRetiredAdminTabs(pool);
   await allowMultipleCisOverrides(pool);
   // removeKaynaklarNavGroup ARTIK CAGRILMIYOR (2026-09-07): "Linkler" sayfasi geri
   // acildi. Cagri kalsaydi kayit HER ACILISTA silinir, sayfa her restart'ta menuden

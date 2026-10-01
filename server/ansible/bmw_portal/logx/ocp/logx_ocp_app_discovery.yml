@@ -56,7 +56,7 @@
     #
     # Deger `npm run playbook:rev` ile uretilir (dosya iceriginin sha256'sinin ilk
     # 10 hanesi). ELLE DEGISTIRMEYIN — bekci PV1 icerikle damgayi karsilastirir.
-    logx_playbook_revision: "4d2594521a"
+    logx_playbook_revision: "c0190edb0c"
     logx_bastions: >-
       {{
         (terminal_hosts | default([]) | union([terminal_host | default('')]))
@@ -257,7 +257,7 @@
                   'status': 'error',
                   'error': (
                   (
-                    'OCP kullanici adi tanimli degil (oc login --username). Admin > LogX '
+                    'OCP kullanici adi tanimli degil (oc login --username). Admin > OCP '
                     ~ 'Yapilandirma > OCP Cluster Hiyerarsisi satirindaki "OCP Kullanici Adi" '
                     ~ "alanini doldurun ya da OCP Calistirma Ayarlari'nda genel varsayilani girin: "
                     ~ (item.cluster_name | default('?'))

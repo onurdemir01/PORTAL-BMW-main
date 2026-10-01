@@ -96,7 +96,8 @@ test('TY3 HER kapi PAYLASILAN modulu kullanir (yerel taklit kabul edilmez)', () 
 
 test('TY4 OCP dalindaki mevcut namespace kapisi DURUYOR (gerileme yok)', () => {
   const t = TELNET();
-  assert.match(t, /isAllowed\(\s*'ocp_namespace'/, 'OCP namespace kapisi kaybolmus');
+  // 2026-10-02: `evaluate` (karar + aciklayici ret) de ayni kapidir.
+  assert.match(t, /(isAllowed|evaluate)\(\s*'ocp_namespace'/, 'OCP namespace kapisi kaybolmus');
 });
 
 test('TY5 `assertAllowed` gercekten 403 sinifi bir hata firlatir', async () => {

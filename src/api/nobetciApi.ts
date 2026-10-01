@@ -88,7 +88,7 @@ export const nobetciApi = {
   },
 
   // B-08: 6min cache for duty-roster links (called 6x per HAR)
-  // Nöbet hızlı linkleri artık genel PortalLink sisteminin (src/api/linksApi.ts)
+  // Nöbet hızlı linkleri artık genel PortalLink sisteminin (sunucu: server/links)
   // category="Nöbet" alt kümesi — eski /api/duty-roster/links endpoint'i kaldırıldı.
   links: (): Promise<QuickLink[]> => {
     if (_linksData && Date.now() - _linksAt < TTL_LINKS) return Promise.resolve(_linksData);

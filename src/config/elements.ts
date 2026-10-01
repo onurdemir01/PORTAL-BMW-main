@@ -46,23 +46,13 @@ export const PAGES: PageElement[] = [
   { id: 'Nöbet', label: 'Nöbet', route: '/duty-roster' },
   { id: 'OcoTakvimi', label: 'OCO Takvimi', route: '/oco-takvimi' },
   { id: 'ArkSpaRaporu', label: 'Nginx ARK SPA Raporu', route: '/ark-spa-raporu' },
-  // 2026-09-19: "Yardımcı Araçlar" / "Faydalı Linkler" MENUDEN KALDIRILDI (kullanici: "su an
-  // hicbir ise yaramiyor"). Ilk kaldirma 2026-08-26, geri acma 2026-09-07 — uc yer birden:
-  // burasi (ELEMENTS + NAV_GROUPS), src/App.tsx route'u, mssql-setup removeKaynaklarNavGroup().
-  // Sayfa bileseni, /api/links ve portal_links tablosu YERINDE; geri acmak icin ayni uc yer.
+  // "Linkler" sayfasi: 2026-09-19 menu/route kaldirildi, 2026-10-02 sayfa bileseni ve
+  // Dashboard'daki favori bolumu de silindi (Dashboard /api/links'e 403 aliyordu).
+  // /api/links ve portal_links tablosu YERINDE (veri kaybolmadi); geri acmak icin sayfa
+  // bileseni git gecmisinden, route + ELEMENTS + NAV_GROUPS + removeKaynaklarNavGroup().
   { id: 'Admin', label: 'Admin', route: '/admin' },
 ];
 
-// 2026-08-26'da "Yardımcı Araçlar" grubu ve tek öğesi "Linkler" geçici olarak kaldırılmıştı;
-// 2026-09-07'de GERİ AÇILDI (kullanıcı talebi: portal bir "super app" gibi diğer
-// uygulamalara/dokümanlara yönlendirsin). Sayfa, API ve tablo hep yerinde durdu.
-//
-// ⚠️ GERİ AÇMAK ÜÇ YERİ BİRDEN GEREKTİRDİ — biri unutulursa sayfa görünmez:
-//   1) buradaki ELEMENTS satırı + NAV_GROUPS grubu
-//   2) src/App.tsx route'u
-//   3) mssql-setup.cjs içindeki removeKaynaklarNavGroup() temizliği (HER AÇILIŞTA
-//      "Linkler" kaydını siliyordu — kaldırılmasaydı sayfa her restart'ta menüden
-//      düşerdi ve sebebi hiçbir yerde görünmezdi).
 // ── Navigasyon grupları (Sidebar render'ı) ────────────────────────────────────
 // "Gözlemlenebilirlik" grubu kaldırıldı (actions.md #19) — LogX ve Performance
 // artık kendi tek-öğeli üst-seviye gruplarında, tek bir belirsiz şemsiye altında
@@ -114,14 +104,13 @@ export const PERF_TABS: TabElement[] = [
 // sekme demek. (Etiketler de AdminPage ile eşitlendi.)
 export const ADMIN_TABS: TabElement[] = [
   { id: 'admintab:logxv2', label: 'OCP Yapılandırma' },
+  { id: 'admintab:logx', label: 'LogX Yönetimi' },
   { id: 'admintab:scalex', label: 'ScaleX Yönetimi' },
   { id: 'admintab:audit', label: 'Denetim Kaydı' },
   // Bu dordu AdminPage'te VARDI ama burada ve seed'de YOKTU: sekme goruntyor ama
   // Sayfa Erisimi ekranindan YONETILEMIYORDU (kayitsiz anahtar → varsayilan gorunur).
   { id: 'admintab:smarttickets', label: 'Smart Talepleri' },
-  { id: 'admintab:testscenarios', label: 'Test Senaryoları' },
   { id: 'admintab:dbbackup', label: 'DB Yedekleme' },
-  { id: 'admintab:flowtests', label: 'Akış Testleri' },
   { id: 'admintab:ansible', label: 'Ansible Info' },
   { id: 'admintab:playbooks', label: 'Playbook Kayıtları' },
   { id: 'admintab:system', label: 'Sistem' },
@@ -131,6 +120,5 @@ export const ADMIN_TABS: TabElement[] = [
   { id: 'admintab:denetimaccess', label: 'Denetim Erişimi' },
   { id: 'admintab:nginxaccess', label: 'Nginx Hub Erişimi' },
   { id: 'admintab:cryptoaccess', label: 'Crypto Hub Erişimi' },
-  { id: 'admintab:inventorygaps', label: 'Envanter Boşlukları' },
-  { id: 'admintab:branding', label: 'Marka' },
+  { id: 'admintab:branding', label: 'Logo' },
 ];

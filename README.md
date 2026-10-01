@@ -219,7 +219,7 @@ Limitler kullanıcı başına: log analizi 10/saat, AI Analist sohbeti 20/saat.
 │   ├── api/                 # Fetch client'lar
 │   ├── components/          # Sayfalar (ai_analyst/, dynatrace/, logx/, admin/tabs/ ...)
 │   ├── contexts/            # Auth + AppData
-│   └── layouts/             # AppLayout + Sidebar
+│   └── layouts/             # AppLayout + PageNav
 │
 ├── deploy/                  # systemd unit, nginx conf, RHEL hazırlık scripti
 ├── scripts/                 # deploy.sh, MCP test scriptleri, fetch-mcp-ca.sh

@@ -127,7 +127,7 @@ async function assertVaultKeysKnownOrThrow(meta) {
     new Error(
       `Vault anahtarı katalogda kayıtlı değil: ${list}. ` +
         `Bu haliyle iş AWX'te "vault parolası çözülemedi" ile düşer. ` +
-        `Admin > LogX Yapılandırma > Vault Anahtarları ekranından anahtarı ekleyin ` +
+        `Admin > OCP Yapılandırma > Vault Anahtarları ekranından anahtarı ekleyin ` +
         `(ve AWX'teki credentials.yaml içinde de tanımlı olduğundan emin olun).`,
     ),
     { status: 400, code: 'vault_key_unknown' },
@@ -148,7 +148,7 @@ async function resolveHostsOrThrow(env, tenant, clusters) {
     throw Object.assign(
       new Error(
         `Şu cluster'lar için Jump Server (bastion) tanımlı değil: ${missing.join(', ')} — ` +
-          `Admin > LogX Yapılandırma ekranından cluster satırına Jump Server girin ` +
+          `Admin > OCP Yapılandırma ekranından cluster satırına Jump Server girin ` +
           `veya "${tenant}/${env}" için yedek eşleme tanımlayın.`,
       ),
       { status: 400 },

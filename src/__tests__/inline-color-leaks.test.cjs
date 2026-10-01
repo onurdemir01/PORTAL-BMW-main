@@ -33,9 +33,7 @@ const TSX = walk(ROOT);
 // BILINCLI ISTISNALAR:
 //  - LoginPage: temayi IZLEMEYEN ayri bir marka ekrani. Her zaman koyu zemin uzerinde
 //    BEYAZ bir kart; token'a baglamak koyu temada karti da koyulastirir, okunmaz olurdu.
-//  - MissionOrbit: `${item.color}1a` ile HEX-ALFA birlestirmesi yapiyor.
-//    `var(--accent)1a` gecersiz CSS'tir; tarayici kurali tumden atar ve HATA DA VERMEZ.
-const ALLOWED = new Set(['LoginPage.tsx', 'MissionOrbit.tsx']);
+const ALLOWED = new Set(['LoginPage.tsx']);
 
 // ── UYUM KATMANININ KAPSAMI ─────────────────────────────────────────────────
 //

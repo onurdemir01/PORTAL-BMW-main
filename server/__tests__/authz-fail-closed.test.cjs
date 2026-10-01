@@ -36,7 +36,7 @@ function serverFiles() {
 
 // Yetki KARARI veren cagrilar — "bu kullanici bunu yapabilir mi" sorusunu yanitlayanlar.
 const DECISION =
-  /\b(isAllowed|assertAllowed|filterAllowed|denyIfNotOwner|assertOwnership|assertNamespaceAllowed|assertAppsAllowed)\s*\(/;
+  /\b(isAllowed|evaluate|assertAllowed|filterAllowed|denyIfNotOwner|assertOwnership|assertNamespaceAllowed|assertAppsAllowed)\s*\(/;
 
 test('AZ1 yetki karari hatasi IZIN olarak yorumlanmiyor', () => {
   const offenders = [];
@@ -63,7 +63,8 @@ test('AZ1 yetki karari hatasi IZIN olarak yorumlanmiyor', () => {
       }
       const handler = src.slice(re.lastIndex, end - 1).replace(/\s+/g, ' ');
       // TEHLIKELI: hata durumunda "izin var" anlamina gelen bir deger donmek.
-      if (/=>\s*(true|\[\s*\]|\{\s*\})/.test(handler)) {
+      // `evaluate` karar NESNESI doner: hata halinde `{ allowed: true }` donmek de izin.
+      if (/=>\s*(true|\[\s*\]|\{\s*\})|allowed\s*:\s*true/.test(handler)) {
         const line = src.slice(0, m.index).split('\n').length;
         offenders.push(`${path.relative(SERVER, f)}:${line}  .catch(${handler})`);
       }

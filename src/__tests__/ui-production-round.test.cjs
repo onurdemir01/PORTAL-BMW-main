@@ -123,10 +123,10 @@ test('G9: "olculemedi" cizgisi TOKEN renginde (koyu temada gorunur)', () => {
 });
 
 // ── G14: eski aksan ─────────────────────────────────────────────────────────
-test('G14: eski aksan (#4F8EFF) yalnizca giris dekoratiflerinde', () => {
+test('G14: eski aksan (#4F8EFF) hicbir bilesende yok (giris dekoratifleri 2026-10-02 silindi)', () => {
   // rgba(79,142,255) portalin aksani (#0066cc / #b9dafc) DEGIL; ucuncu bir maviydi
   // ve tema degisince hic degismiyordu.
-  const ALLOWED = new Set(['LoginBackgroundCanvas.tsx', 'ArtisticBackdrop.tsx']);
+  const ALLOWED = new Set([]);
   const bad = [];
   for (const f of SRC_FILES) {
     if (ALLOWED.has(path.basename(f))) continue;

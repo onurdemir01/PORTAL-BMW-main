@@ -32,7 +32,7 @@ Tüm OCP akışları tek fonksiyondan geçer: `resolveTerminalHosts(env, tenant,
 Dönüş: `{ hosts: { [clusterName]: host }, missing: [...] }`. Bastion'lar **her job
 başlatmadan önce DB'den taze** çözülür; istemcinin gönderdiği `input_json`'a asla güvenilmez.
 
-**Admin ekranı:** Admin → LogX Yapılandırma → *OCP Cluster Hiyerarşisi* sekmesinde her satırda
+**Admin ekranı:** Admin → OCP Yapılandırma → *OCP Cluster Hiyerarşisi* sekmesinde her satırda
 "Jump Server (bastion)" kolonu. Boş bırakılan hücrede devreye girecek yedek değer soluk gösterilir
 (`— yedek: gbaocp01`), yedek de yoksa `⚠ eşleme yok` uyarısı.
 
@@ -94,7 +94,7 @@ Kullanıcı adı kabuk komut satırına gittiği için hem portalda hem playbook
 
 **Vault anahtarı kataloğu:** `ocp_vault_key_catalog` tablosu `credentials.yaml` içindeki
 değişken adlarını (uxmid_gar, uxmid_gtek, uxmid_das, uxmid_gtdmz, uxmid_gtekdmz,
-uxmid_takasnet, uxmid_gohas) tutar; Admin > LogX Yapılandırma > **Vault Anahtarları**
+uxmid_takasnet, uxmid_gohas) tutar; Admin > OCP Yapılandırma > **Vault Anahtarları**
 sekmesinden yönetilir ve cluster satırındaki "Vault Anahtarı" alanının önerilerini besler.
 Kullanımdaki bir anahtar silinemez. **Parola burada da tutulmaz.**
 
@@ -158,7 +158,7 @@ arşivi** gösterir; yeni `staged_files[]` her arşivi taşır (bastion başına
 Doğrulama + bastion çözümleme + extra_vars üretimi artık **ortak** `server/opsx/ocp-target.cjs`
 (Telnet'in kopyası ve koda sabit anahtar adları kaldırıldı).
 
-Cluster listesinin biçimi Admin → OpsX Yapılandırma'dan seçilir (deploy gerekmez):
+Cluster listesinin biçimi Admin → OCP Yapılandırma'dan seçilir (deploy gerekmez):
 
 | `clusterListStyle` | Davranış |
 |---|---|
@@ -244,7 +244,7 @@ ihtiyacı azaltmak. **Sync bütünüyle varsayılan KAPALI** (`periodicSyncEnabl
 
 ### 5f. Playbook hazırlık paneli
 
-Admin > LogX Yapılandırma > OCP Cluster Hiyerarşisi'nde: beş LogX playbook kaydı için
+Admin > OCP Yapılandırma > OCP Cluster Hiyerarşisi'nde: beş LogX playbook kaydı için
 template ID tanımlı mı, AWX'te bulunuyor mu, **Prompt on launch açık mı**. Üretimde bir
 keşif 503 döndüğünde sebebini AWX'e girmeden görmek için
 (`GET /admin/playbook-readiness`, `template-preflight.cjs` yeniden kullanılır).
@@ -336,7 +336,7 @@ mesajını verdi ve gerçek neden (`oc` yok) hiçbir yerde görünmedi.
 | Tek bastion tüm işi öldürüyor | Play2'nin oc'ye bağımlı kısmı `block`/`rescue` içinde; çöken bastion'ın cluster'ları `status: error` olur, host FAIL sayılmaz, diğerleri devam eder. |
 | Play3 hiç çalışmıyor | Artık hiçbir host FAIL olmadığı için garanti çalışır; ek sigorta `meta: clear_host_errors`. |
 | Kullanıcı gerçek nedeni göremiyor | Mesaj sadeleşti (iş no + yöneticiye başvur); başarısız ekranında **Ansible çıktı paneli** açılabiliyor; teknik ayrıntı Admin'e ve audit'e gidiyor. |
-| Yollar koda gömülü | Admin → LogX Yapılandırma → **OCP Çalıştırma Ayarları** (aday yollar + zaman aşımları), deploy gerektirmez. |
+| Yollar koda gömülü | Admin → OCP Yapılandırma → **OCP Çalıştırma Ayarları** (aday yollar + zaman aşımları), deploy gerektirmez. |
 
 ## 10b. Keşif önbelleği ve uygulama keşfi
 
@@ -423,7 +423,7 @@ Bu repodaki playbook'lar **referans kopyadır**; çalıştırılan sürüm AWX p
 3. Portalı deploy et. İlk açılışta şema `ocp_cluster_index.ocp_username` kolonunu ve
    `ocp_vault_key_catalog` tablosunu ekler; vault anahtarları bir kerelik seed edilir
    (işaret: `portal_settings.ocp_vault_key_seed_v1`).
-4. Admin > LogX Yapılandırma > OCP Cluster Hiyerarşisi'nde kullanılan cluster'ların
+4. Admin > OCP Yapılandırma > OCP Cluster Hiyerarşisi'nde kullanılan cluster'ların
    **OCP Kullanıcı Adı** alanını doldur (boş bırakılırsa OCP Çalıştırma Ayarları'ndaki
    genel varsayılan — `uxmid` — devreye girer).
 

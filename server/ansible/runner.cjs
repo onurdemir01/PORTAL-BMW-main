@@ -4972,8 +4972,8 @@ function initAnsibleRunner(app) {
               filtreUyarisi =
                 `[PORTAL] Çıktı filtresi hiçbir satırla eşleşmedi ` +
                 `(aranan: "${filtered.needle}", taranan satır: ${filtered.totalLines}). ` +
-                `İş çalıştı; görüntülenecek eşleşme yok. Filtreyi Admin > Ansible > ` +
-                `Self Servis Özelleştirmeleri ekranından gözden geçirebilirsiniz.`;
+                `İş çalıştı; görüntülenecek eşleşme yok. Filtreyi Self Service sayfasında ` +
+                `ilgili öğenin "Alanları Yönet" penceresinden gözden geçirebilirsiniz.`;
             }
           } else if (overrides && Object.keys(overrides).length > 0) {
             // Ozellestirme kaydi VAR ama outputFilter yok/kapali — beklenen: tam cikti donuyor.

@@ -287,7 +287,7 @@ export const logxV2Api = {
       `${BASE}/ocp/inventory/apps?env=${encodeURIComponent(env)}&tenant=${encodeURIComponent(tenant)}&clusters=${encodeURIComponent(clusters.join(','))}&namespace=${encodeURIComponent(namespace)}`,
     ).then((r) => json<CachedList<OcpAppItem>>(r)),
 
-  // ── LogX YÖNETİMİ: Admin + kaynak sahibi (sunucu: /manage/*) ───────────────
+  // ── LogX YÖNETİMİ: Admin + kaynak sahibi (sunucu: /manage/... uclari) ───────────────
   // Admin hepsini, kaynak sahibi YALNIZCA kendi kaynaklarını yönetir; sahip
   // ekleme/silme yalnızca Admin. Ekran: LogX Yönetimi (L5).
   manage: {
@@ -488,35 +488,6 @@ export const logxV2Api = {
     updateEnvSuffix: (id: number, data: Partial<EnvSuffixRow>) =>
       putJson<{ ok: boolean; row: EnvSuffixRow }>(`/admin/env-suffix-map/${id}`, data),
     deleteEnvSuffix: (id: number) => del<{ ok: boolean }>(`/admin/env-suffix-map/${id}`),
-
-    listRestrictions: () =>
-      fetch(`${BASE}/admin/restrictions`).then((r) =>
-        json<{ ok: boolean; restrictions: RestrictionRow[] }>(r),
-      ),
-    createRestriction: (data: {
-      resourceType: string;
-      resourceKey: string;
-      description?: string;
-    }) => postJson<{ ok: boolean; restriction: RestrictionRow }>('/admin/restrictions', data),
-    updateRestriction: (id: number, data: { description?: string }) =>
-      putJson<{ ok: boolean; restriction: RestrictionRow }>(`/admin/restrictions/${id}`, data),
-    deleteRestriction: (id: number) => del<{ ok: boolean }>(`/admin/restrictions/${id}`),
-    addGrant: (restrictionId: number, username: string) =>
-      postJson<{ ok: boolean }>(`/admin/restrictions/${restrictionId}/grants`, { username }),
-    removeGrant: (restrictionId: number, username: string) =>
-      del<{ ok: boolean }>(
-        `/admin/restrictions/${restrictionId}/grants/${encodeURIComponent(username)}`,
-      ),
-
-    // ── GRUP GRANT'LARI ────────────────────────────────────────────────────────
-    // Sunucu route'lari vardi, istemci sarmalayicisi YOKTU. DN GOVDEDE gonderilir,
-    // yol parametresinde DEGIL: bir AD DN'i virgul, esittir ve bosluk icerir
-    // ("CN=odeme-ekibi,OU=Groups,DC=...") — URL'e komak hem kacis sorunlari
-    // cikarir hem de grup adlarini erisim loglarina yazardi (sunucudaki not).
-    addGroupGrant: (restrictionId: number, groupDn: string) =>
-      postJson<{ ok: boolean }>(`/admin/restrictions/${restrictionId}/group-grants`, { groupDn }),
-    removeGroupGrant: (restrictionId: number, groupDn: string) =>
-      delJson<{ ok: boolean }>(`/admin/restrictions/${restrictionId}/group-grants`, { groupDn }),
 
     // ── MASKELEME KURALLARI ────────────────────────────────────────────────────
     // Tablo, sunucu CRUD'u ve `masker.reloadMaskRules()` vardi; istemci YOKTU.

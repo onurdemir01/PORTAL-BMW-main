@@ -32,7 +32,8 @@ test('Openshift dalinda restrictions.isAllowed cagriliyor', () => {
   // `norm()` tek tirnagi cift tirnaga cevirir; desen de oyle yazilir.
   assert.match(
     norm(SRC),
-    /\.isAllowed\( ?"ocp_namespace", ?resourceKey, ?user,? ?\)/,
+    // 2026-10-02: `evaluate` (karar + aciklayici ret icin satirlar) de ayni kapidir.
+    /\.(isAllowed|evaluate)\( ?"ocp_namespace", ?resourceKey, ?user,? ?\)/,
     'namespace yetki kapisi yok — kisitli namespace Telnet ile erisilebilir',
   );
 });
@@ -45,9 +46,18 @@ test('resourceKey OpsX/LogX ile AYNI bicimde uretilir', () => {
 test('kontrol fail-safe: hata REDDE dusurur, gecirmez', () => {
   assert.match(
     SRC,
-    /\.catch\(\(\) => false\)/,
+    /\.catch\(\(\) => (false|null)\)/,
     "isAllowed patladiginda true'ya dusen bir varsayilan kapiyi ise yaramaz hale getirir",
   );
+  // `evaluate` yolunda hata `null` doner; KARAR OKUNAMADIYSA da reddedilmeli.
+  if (/\.evaluate\(/.test(SRC)) {
+    assert.match(SRC, /if \(!karar \|\| !karar\.allowed\)/, 'karar okunamazsa reddedilmiyor');
+    assert.match(
+      norm(SRC),
+      /\.evaluate\("ocp_namespace", resourceKey, user\) \.catch\(\(\) => null\)/,
+      'evaluate hatasi KARARSIZ (null) degil — izin uydurulabilir',
+    );
+  }
   assert.match(SRC, /res\.status\(403\)/, 'reddedilen istek 403 donmeli');
 });
 
@@ -55,7 +65,7 @@ test('kapi, AWX job tetiklenmeden ONCE gelir', () => {
   // SIRA korunur: `norm()` yalnizca bosluk/tirnak esitler, satirlari yeniden
   // siralamaz — indeks karsilastirmasi anlamli kalir.
   const N = norm(SRC);
-  const gateIdx = N.search(/\.isAllowed\( ?"ocp_namespace"/);
+  const gateIdx = N.search(/\.(isAllowed|evaluate)\( ?"ocp_namespace"/);
   const launchIdx = N.search(/launchJobTemplate|launchJobOnServer|runner\.launch|awx\.launch/);
   assert.ok(gateIdx > 0, 'kapi bulunamadi');
   assert.ok(launchIdx > 0, 'AWX tetikleme cagrisi bulunamadi — test guncellenmeli');

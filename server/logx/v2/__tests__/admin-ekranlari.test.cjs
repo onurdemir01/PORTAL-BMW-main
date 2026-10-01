@@ -38,12 +38,17 @@ const API = () => kodOnly(oku('src/api/logxV2Api.ts'));
 // (`logxV2Api.manage.*`, Admin + kaynak sahibi) verilir; eski "Kisitlamalar"
 // bolumunun yerini aldi. Bekcinin amaci ayni: EKRANDAN verilebiliyor/silinebiliyor.
 const ERISIM = () => kodOnly(oku('src/components/admin/tabs/logxv2/LogXErisim.tsx'));
+// 2026-10-02: LogX'e ozgu bolumler "OCP Yapilandirma"dan Admin > LogX Yonetimi'ne
+// (LogXAdminTab + logxv2/LogXBolumleri) tasindi. Bekcilerin amaci ayni, yeri degisti.
+const LOGX = () => kodOnly(oku('src/components/admin/tabs/LogXAdminTab.tsx'));
+const BOLUM_HAM = () => oku('src/components/admin/tabs/logxv2/LogXBolumleri.tsx');
+const BOLUM = () => kodOnly(BOLUM_HAM());
 test('AE1 grup grant`lari EKRANDAN verilebiliyor ve silinebiliyor', () => {
   const api = API();
   assert.match(api, /addGroupGrant:/, 'istemci sarmalayicisi yok');
   assert.match(api, /removeGroupGrant:/, 'istemci sarmalayicisi yok');
-  const t = TAB() + ERISIM();
-  assert.match(t, /<LogXErisim \/>/, 'Erisim ekrani admin sekmesine bagli degil');
+  const t = LOGX() + ERISIM();
+  assert.match(t, /<LogXErisim \/>/, 'Erisim ekrani LogX Yonetimi sekmesine bagli degil');
   assert.match(t, /logxV2Api\.(admin|manage)\.addGroupGrant\(/, 'ekran grup grant EKLEYEMIYOR');
   assert.match(t, /logxV2Api\.(admin|manage)\.removeGroupGrant\(/, 'ekran grup grant SILEMIYOR');
   assert.match(t, /\.groupGrants\.map/, 'mevcut grup grant`lari listelenmiyor');
@@ -67,17 +72,15 @@ test('AE3 maskeleme kurallari CRUD`u ekrana bagli', () => {
   for (const m of ['listMaskRules:', 'createMaskRule:', 'updateMaskRule:', 'deleteMaskRule:']) {
     assert.ok(api.includes(m), `${m} istemcide yok`);
   }
-  const t = TAB();
-  assert.match(t, /MaskRulesSection/, 'maskeleme bolumu yok');
-  assert.match(t, /subTab === 'maskrules'/, 'maskeleme alt sekmesi render edilmiyor');
+  assert.match(BOLUM(), /export const MaskRulesSection/, 'maskeleme bolumu yok');
+  assert.match(LOGX(), /<MaskRulesSection \/>/, 'maskeleme bolumu LogX Yonetimi`nde render edilmiyor');
 });
 
 test('AE4 maskelemenin GERCEK KAPSAMI ekranda soyleniyor (yanlis guvence yok)', () => {
   // Kurallar bugun YALNIZCA AI analiz yolunda uygulaniyor; indirilen arsive
   // uygulanmiyor. Bunu yazmazsak admin "maskeleme var" sanip yanlis bir
   // guvence hisseder — bu depoda en pahali hata sinifi.
-  const ham = oku('src/components/admin/tabs/LogXv2AdminTab.tsx');
-  const d = dilim(ham, 'const MaskRulesSection', 'const SURUYOR');
+  const d = dilim(BOLUM_HAM(), 'export const MaskRulesSection', 'const SURUYOR');
   assert.match(d, /yalnızca AI analiz yolunda/i, 'maskelemenin sinirli kapsami soylenmiyor');
   assert.match(d, /uygulanmıyor/i, 'indirilen arsive uygulanmadigi soylenmiyor');
 
@@ -87,9 +90,9 @@ test('AE4 maskelemenin GERCEK KAPSAMI ekranda soyleniyor (yanlis guvence yok)', 
 });
 
 test('AE5 istek izleme ekrani uca bagli', () => {
-  const t = TAB();
+  const t = BOLUM();
   assert.match(t, /logxV2Api\.admin\.listRequests\(/, 'istek izleme ucu hala cagrilmiyor');
-  assert.match(t, /subTab === 'requests'/, 'istek izleme alt sekmesi render edilmiyor');
+  assert.match(LOGX(), /<RequestsSection \/>/, 'istek izleme LogX Yonetimi`nde render edilmiyor');
   assert.match(t, /TableEmptyRow/, 'bos durum ortak bilesenle anlatilmiyor');
 });
 
@@ -112,9 +115,14 @@ test('AE6 OCO zamanlama paneli NE zamanlandigini gosterir', () => {
 test('AE7 SUNUCUYA DOKUNULMADI', () => {
   const s = kodOnly(oku('server/logx/v2/index.cjs'));
   // Uc route da yerinde ve requireAdmin ile korunuyor.
-  for (const yol of ['/admin/mask-rules', '/admin/requests', '/admin/restrictions/:id/group-grants']) {
+  for (const yol of ['/admin/mask-rules', '/admin/requests']) {
     assert.ok(s.includes(`'${yol}'`), `${yol} kaybolmus`);
   }
+  // AD5 (2026-10-02): eski `/admin/restrictions*` uclari SILINDI — tek yonetim yolu
+  // `/manage/...` (yetki + denetim orada). Geri gelirse denetimsiz ikinci yazma yolu olur.
+  assert.ok(!s.includes("'/admin/restrictions"), 'eski /admin/restrictions uclari geri gelmis');
+  const api = API();
+  assert.doesNotMatch(api, /\/admin\/restrictions/, 'istemci eski uclari cagiriyor');
   const mask = dilim(s, "'/admin/mask-rules',", 'asyncRoute');
   assert.match(mask, /requireAdmin/, 'mask-rules admin kapisini kaybetmis');
 });

@@ -556,8 +556,10 @@ test("INFRA: grup grant'i olusturma/silme ucu VAR (yoksa ozellik kullanilamazdi)
   const LOGX = codeOnly(read('server/logx/v2/index.cjs'));
   // Prettier `router.post(` cagrisini cok satira boluyor; desen bosluga toleransli
   // olmali (bkz. bekci-korlugu-desenleri #2b).
-  assert.match(LOGX, /router\.post\(\s*'\/admin\/restrictions\/:id\/group-grants'/);
-  assert.match(LOGX, /router\.delete\(\s*'\/admin\/restrictions\/:id\/group-grants'/);
+  // 2026-10-02: uclar `/manage/...` altinda (Admin + kaynak sahibi, denetimli); eski
+  // `/admin/restrictions*` silindi.
+  assert.match(LOGX, /router\.post\(\s*'\/manage\/restrictions\/:id\/group-grants'/);
+  assert.match(LOGX, /router\.delete\(\s*'\/manage\/restrictions\/:id\/group-grants'/);
   assert.match(LOGX, /restrictions\.addGroupGrant\(/);
   assert.match(LOGX, /restrictions\.removeGroupGrant\(/);
 });

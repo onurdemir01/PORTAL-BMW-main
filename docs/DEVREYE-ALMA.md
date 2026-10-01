@@ -76,7 +76,7 @@ Repo'daki dosya **yalnızca referanstır**; portal onu çalıştırmaz.
 | -------------------------------- | --------------------------------------------------------------------- | --------------------------------------- |
 | AWX şablon kimlikleri            | Admin > Playbook Kayıtları (`ansible_playbook_registry`) ya da `.env` | İlgili özellik **501** ile kapanır      |
 | ScaleX onay kapıları (SMART/OCO) | Admin > ScaleX Yönetimi → Alanları Yönet                              | Prod `apply` **fail-closed** reddedilir |
-| Ortam son-eki eşlemesi           | Admin > LogX Yapılandırma > Ortam Son-ekleri                          | Son-eksiz ad **PROD** sayılır           |
+| Ortam son-eki eşlemesi           | Admin > LogX Yönetimi > Legacy Ortam Son-Eki                          | Son-eksiz ad **PROD** sayılır           |
 | Log rotasyon ayarları            | `.env` (`LOG_*`)                                                      | Varsayılan: 20 MB eşik, 5 dosya         |
 
 ---

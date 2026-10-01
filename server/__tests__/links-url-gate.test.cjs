@@ -99,18 +99,9 @@ test('LU3 ONYUZ ikinci katmani da ayni kararlari verir', () => {
   }
 });
 
-test('LU4 ekran guvensiz adresi TIKLANABILIR yapmaz', () => {
-  const ui = fs.readFileSync(path.join(ROOT, 'src/components/ImportantLinksPage.tsx'), 'utf8');
-  // Ham `link.url` DOGRUDAN href'e basilmamali.
-  assert.doesNotMatch(
-    ui.replace(/\s+/g, ' '),
-    /href=\{link\.url\}/,
-    "ham link.url dogrudan href'e basiliyor — eski kayitlardaki javascript: hala calisir",
-  );
-  assert.match(ui, /safeLinkUrl\(/, 'render aninda kapi uygulanmiyor');
-  // Guvensizse `<a>` YERINE metin gosterilmeli.
-  assert.match(ui, /Güvensiz adres/, 'guvensiz adres kullaniciya bildirilmiyor');
-});
+// LU4 (ekran guvensiz adresi tiklanabilir yapmaz) 2026-10-02'de KALDIRILDI: Linkler
+// sayfasi silindi, portal_links'i render eden bir ekran YOK. Sayfa geri gelirse
+// `safeLinkUrl` (src/utils/safeUrl.ts) ile render edilmeli ve bu bekci geri yazilmali.
 
 test('LU5 validate() URL kapisini GERCEKTEN cagiriyor', () => {
   const src = fs.readFileSync(path.join(ROOT, 'server/links/index.cjs'), 'utf8');
