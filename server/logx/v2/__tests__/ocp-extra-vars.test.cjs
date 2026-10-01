@@ -247,3 +247,19 @@ test('MAX_TARGETS: sunucu tarafinda ust sinir TANIMLI', () => {
   // Sinirsiz olsaydi tek POST ile yuzlerce `oc login` + pod taramasi tetiklenebilirdi.
   assert.ok(Number.isInteger(MAX_TARGETS) && MAX_TARGETS > 0 && MAX_TARGETS <= 100);
 });
+
+// BICIM KAPISI (2026-10-02): istemci AppNameStep yazarken uyariyor ama ekran bir
+// SINIR degil; sunucu kendi kapisini uygular. Kubernetes ad karakterleri disi 400.
+test('normalizeTargets gecersiz karakterli namespace/uygulama adini 400 ile reddeder', () => {
+  const { normalizeTargets } = require('../ocp.cjs');
+  for (const kotu of [
+    { namespace: 'ns', appName: 'a b' },
+    { namespace: 'ns;rm', appName: 'a' },
+    { namespace: 'ns', appName: '$(id)' },
+  ]) {
+    assert.throws(() => normalizeTargets([kotu]), (e) => e.status === 400, JSON.stringify(kotu));
+  }
+  assert.deepEqual(normalizeTargets([{ namespace: 'odeme-ns', appName: 'risk.engine_v3' }]), [
+    { namespace: 'odeme-ns', appName: 'risk.engine_v3' },
+  ]);
+});

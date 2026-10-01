@@ -285,7 +285,8 @@ const NamespacePickerStep: React.FC<Props> = ({
             <button
               key={ns}
               onClick={() => onSelect(ns)}
-              className="w-full text-left px-4 py-2.5 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-elevated)] transition-colors font-mono"
+              disabled={busy}
+              className="w-full text-left px-4 py-2.5 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-elevated)] transition-colors font-mono disabled:opacity-50 disabled:pointer-events-none"
             >
               {ns}
               {counts?.[ns] !== undefined && (

@@ -387,6 +387,12 @@ async function finalizeNamespaceDiscovery(requestRow, job) {
 // atar, tekillestirir. Saf fonksiyon — dogrudan test edilir.
 // Tek cift gonderen ESKI cagrilar da buradan gecer (dizi haline getirilir), boylece
 // tek-hedef davranisi coklu-hedefin ozel hali olur ve iki ayri kod yolu olusmaz.
+// BICIM KAPISI (2026-10-02): uygulama ve namespace adlari Kubernetes ad karakterleri
+// disinda bir sey tasiyamaz. Playbook adlari Jinja icinde kullaniyor (kabuga girmiyor)
+// ama ekrandaki kontrol bir SINIR degil; sunucu kendi kapisini uygular. Istemci
+// (AppNameStep) ayni deseni kullaniciya yazarken soyler.
+const SAFE_OCP_NAME_RE = /^[A-Za-z0-9._-]{1,253}$/;
+
 function normalizeTargets(targets) {
   const list = Array.isArray(targets) ? targets : [targets];
   const seen = new Set();
@@ -395,6 +401,14 @@ function normalizeTargets(targets) {
     const namespace = String(t?.namespace ?? '').trim();
     const appName = String(t?.appName ?? t?.app_name ?? '').trim();
     if (!namespace || !appName) continue;
+    if (!SAFE_OCP_NAME_RE.test(namespace) || !SAFE_OCP_NAME_RE.test(appName)) {
+      throw Object.assign(
+        new Error(
+          `Geçersiz ad: "${namespace}/${appName}". Yalnızca harf, rakam, nokta, alt çizgi ve tire kullanılabilir.`,
+        ),
+        { status: 400 },
+      );
+    }
     const key = `${namespace}\u0000${appName}`;
     if (seen.has(key)) continue;
     seen.add(key);

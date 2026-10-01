@@ -145,6 +145,31 @@ const MAX_OCP_TARGETS = 20;
 // isteği silerse, iş kaydı yazılamazsa) tam olarak bu olur.
 //
 // Sessiz bir boş ekran yerine ne olduğunu söyleyip ÇIKIŞ YOLU veriyoruz.
+// IS DURUMU SORGULANAMADI. JobProgress art arda bes hatadan sonra yoklamayi birakir;
+// eskiden sihirbaz ayni adimda kalip spinner'i sonsuza dek donduruyordu (yoklama da
+// durmus oldugu icin hicbir sey degismiyordu). Simdi sebep ve cikis yolu gosterilir.
+const JobPollErrorCard: React.FC<{ message: string; onRetry: () => void; onRestart: () => void }> = ({
+  message,
+  onRetry,
+  onRestart,
+}) => (
+  <div className="py-8 flex flex-col items-center gap-3 text-center" data-testid="logx-job-poll-error">
+    <ExclamationTriangleIcon aria-hidden="true" className="w-6 h-6 text-[var(--status-warning)]" />
+    <p className="text-sm text-[var(--text-primary)]">{message}</p>
+    <p className="text-xs text-[var(--text-muted)] max-w-md">
+      İş arka planda sürüyor olabilir. Durumu yenileyin; sorun sürerse baştan başlayın.
+    </p>
+    <div className="flex gap-2">
+      <button type="button" onClick={onRetry} className="btn-secondary text-xs">
+        Durumu yenile
+      </button>
+      <button type="button" onClick={onRestart} className="btn-secondary text-xs">
+        Baştan başla
+      </button>
+    </div>
+  </div>
+);
+
 const MissingJobCard: React.FC<{ label: string; onRetry: () => void; onRestart: () => void }> = ({
   label,
   onRetry,
@@ -190,6 +215,13 @@ const LogXWizardPage: React.FC = () => {
   // Legacy: uygulama seçildi ama keşif henüz başlamadı — araya sunucu seçimi girer.
   // Sunucu seçimi client state'idir; sunucu durumu bu aşamada hâlâ 'draft'tir.
   const [legacyApp, setLegacyApp] = useState<string | null>(null);
+  // ELLE EKLENEN SUNUCULAR sihirbaz duzeyinde tutulur: geri donuste ve "Sunucu
+  // secimine don"de kaybolmasin (eskiden HostSelectStep icinde yasiyordu, her
+  // yeniden cizimde siliniyordu).
+  const [legacyManual, setLegacyManual] = useState<string[]>([]);
+  // Is durumu ART ARDA sorgulanamadiysa (baglanti) sonsuz spinner yerine kurtarma
+  // karti gosterilir; JobProgress yoklamayi durdurmus olur.
+  const [jobPollError, setJobPollError] = useState<string | null>(null);
   // ÖNBELLEKTEN gelen namespace listesi. Canlı keşif sonucu sunucudan türetilir
   // (`nsFromServer`); bu state yalnızca "kullanıcı önbelleği seçti" durumunu taşır.
   const [nsList, setNsList] = useState<NamespaceList | null>(null);
@@ -315,6 +347,33 @@ const LogXWizardPage: React.FC = () => {
     setNsList(null);
     setTargets([]);
     setLegacyApp(null);
+    setLegacyManual([]);
+    setJobPollError(null);
+  }
+
+  // Bir is bittiginde (ya da durumu artik sorgulanamadiginda) ortak isleyici.
+  function jobBitti(r: { status: string; artifacts: unknown; errorMessage: string | null; technicalDetail?: string }) {
+    setTechnicalDetail(r.technicalDetail ?? null);
+    if (r.status === 'error' && !r.artifacts) {
+      setJobPollError(r.errorMessage || 'İşin durumu sorgulanamadı.');
+    }
+    if (requestId) refresh(requestId).catch(() => {});
+  }
+
+  // LEGACY: SUNUCU SECIMINE DON — uygulama ve elle eklenen sunucular KORUNUR.
+  // Sunucudaki `legacy_app` geri sarmasi istegin `input`unu silmez; degerler oradan okunur.
+  async function backToHosts() {
+    if (!requestId) return;
+    const girdi = (request?.input as { app?: string; manualHosts?: string[] } | null) || {};
+    const app = girdi.app || legacyApp;
+    const elle = Array.isArray(girdi.manualHosts) ? girdi.manualHosts : legacyManual;
+    await guarded(async () => {
+      await logxV2Api.resetRequest(requestId, 'legacy_app');
+      setJobPollError(null);
+      await refresh(requestId);
+      if (app) setLegacyApp(app);
+      setLegacyManual(elle);
+    });
   }
 
   // Adıma göre "← Geri": client-state adımları anında geri alınır; sunucu-durumlu adımlar
@@ -352,10 +411,15 @@ const LogXWizardPage: React.FC = () => {
       restart();
       return;
     }
+    if (currentStep === 'legacy_file_select') {
+      await backToHosts();
+      return;
+    }
     if (target === 'client') {
       // Legacy sunucu adımından geri = uygulama seçimine dön.
       if (currentStep === 'legacy_hosts') {
         setLegacyApp(null);
+        setLegacyManual([]);
         return;
       }
       // Uygulama adımından geri = namespace seçimi. Sepet (targets) korunur: kullanıcı
@@ -383,6 +447,9 @@ const LogXWizardPage: React.FC = () => {
   if (request) {
     if (request.state === 'failed') step = 'failed';
     else if (request.state === 'ready' && download) step = 'ready';
+    // SAHIPSIZ DURUMLAR platform adimina DUSMEZ: istek varken "platform sec" ekrani
+    // kullaniciyi neyin oldugunu bilmeden bastan basladiyordu.
+    else if (request.state === 'expired' || request.state === 'ready') step = 'expired';
     else if (request.platform === 'legacy') {
       if (request.state === 'draft') step = legacyApp ? 'legacy_hosts' : 'legacy_app';
       else if (request.state === 'discovering') step = 'legacy_discovering';
@@ -503,7 +570,11 @@ const LogXWizardPage: React.FC = () => {
               if (request?.platform === 'legacy') {
                 return [
                   { label: 'Platform', value: 'Legacy' },
-                  { label: 'Uygulama', value: legacyApp || '' },
+                  {
+                    label: 'Uygulama',
+                    // Sayfa yenilenince istemci durumu bos; deger istek kaydindan okunur.
+                    value: legacyApp || String((i as { app?: string }).app || ''),
+                  },
                 ];
               }
               const cl = i.clusters || [];
@@ -565,8 +636,10 @@ const LogXWizardPage: React.FC = () => {
           <HostSelectStep
             app={legacyApp}
             busy={busy}
+            initialManual={legacyManual}
             onSubmit={(hosts, opts) =>
               guarded(async () => {
+                setLegacyManual(opts.manual);
                 // BAYRAK YALNIZCA GEREKTIGINDE. Elle girilen sunucu yoksa istek
                 // eskisiyle BIREBIR ayni gider ve sunucudaki anti-TOCTOU kapisi
                 // tam gucuyle calisir.
@@ -592,14 +665,23 @@ const LogXWizardPage: React.FC = () => {
                 />
               );
             }
+            if (jobPollError) {
+              return (
+                <JobPollErrorCard
+                  message={jobPollError}
+                  onRetry={() => {
+                    setJobPollError(null);
+                    refresh(requestId).catch(() => {});
+                  }}
+                  onRestart={restart}
+                />
+              );
+            }
             return (
               <JobProgress
                 jobId={job.id}
                 discoveringLabel="Dosyalar taranıyor…"
-                onDone={(r) => {
-                  setTechnicalDetail(r.technicalDetail ?? null);
-                  refresh(requestId);
-                }}
+                onDone={jobBitti}
               />
             );
           })()}
@@ -608,6 +690,10 @@ const LogXWizardPage: React.FC = () => {
           <FileSelectionStep
             busy={busy}
             result={request.discoveryResult as LegacyDiscoveryResult}
+            manualHosts={
+              ((request.input as { manualHosts?: string[] } | null)?.manualHosts as string[]) || []
+            }
+            onBackToHosts={() => void backToHosts()}
             onSubmit={(selected) =>
               guarded(async () => {
                 await logxV2Api.transferLegacy(requestId, selected);
@@ -632,14 +718,23 @@ const LogXWizardPage: React.FC = () => {
                 />
               );
             }
+            if (jobPollError) {
+              return (
+                <JobPollErrorCard
+                  message={jobPollError}
+                  onRetry={() => {
+                    setJobPollError(null);
+                    refresh(requestId).catch(() => {});
+                  }}
+                  onRestart={restart}
+                />
+              );
+            }
             return (
               <JobProgress
                 jobId={job.id}
                 discoveringLabel="Dosyalar aktarılıyor ve zip'leniyor…"
-                onDone={(r) => {
-                  setTechnicalDetail(r.technicalDetail ?? null);
-                  refresh(requestId);
-                }}
+                onDone={jobBitti}
               />
             );
           })()}
@@ -686,14 +781,23 @@ const LogXWizardPage: React.FC = () => {
                 />
               );
             }
+            if (jobPollError) {
+              return (
+                <JobPollErrorCard
+                  message={jobPollError}
+                  onRetry={() => {
+                    setJobPollError(null);
+                    refresh(requestId).catch(() => {});
+                  }}
+                  onRestart={restart}
+                />
+              );
+            }
             return (
               <JobProgress
                 jobId={job.id}
                 discoveringLabel="Namespace'ler taranıyor…"
-                onDone={(r) => {
-                  setTechnicalDetail(r.technicalDetail ?? null);
-                  refresh(requestId);
-                }}
+                onDone={jobBitti}
               />
             );
           })()}
@@ -791,14 +895,25 @@ const LogXWizardPage: React.FC = () => {
                 />
               );
             }
+            if (jobPollError) {
+              return (
+                <JobPollErrorCard
+                  message={jobPollError}
+                  onRetry={() => {
+                    setJobPollError(null);
+                    refresh(requestId).catch(() => {});
+                  }}
+                  onRestart={restart}
+                />
+              );
+            }
             return (
               <JobProgress
                 jobId={job.id}
                 discoveringLabel="Namespace içindeki uygulamalar taranıyor…"
                 onDone={(r) => {
-                  setTechnicalDetail(r.technicalDetail ?? null);
                   setAppCacheToken((t) => t + 1); // AppNameStep önbelleği yeniden okusun
-                  refresh(requestId);
+                  jobBitti(r);
                 }}
               />
             );
@@ -819,20 +934,43 @@ const LogXWizardPage: React.FC = () => {
                 />
               );
             }
+            if (jobPollError) {
+              return (
+                <JobPollErrorCard
+                  message={jobPollError}
+                  onRetry={() => {
+                    setJobPollError(null);
+                    refresh(requestId).catch(() => {});
+                  }}
+                  onRestart={restart}
+                />
+              );
+            }
             return (
               <JobProgress
                 jobId={job.id}
                 discoveringLabel="Pod'lar taranıyor ve loglar toplanıyor…"
-                onDone={(r) => {
-                  setTechnicalDetail(r.technicalDetail ?? null);
-                  refresh(requestId);
-                }}
+                onDone={jobBitti}
               />
             );
           })()}
 
         {step === 'ready' && download && (
           <DownloadStep download={download} downloads={downloadList} onRestart={restart} />
+        )}
+
+        {step === 'expired' && (
+          <div className="py-8 flex flex-col items-center gap-3 text-center" data-testid="logx-suresi-doldu">
+            <ExclamationTriangleIcon aria-hidden="true" className="w-6 h-6 text-[var(--status-warning)]" />
+            <p className="text-sm text-[var(--text-primary)]">
+              {request?.state === 'expired'
+                ? 'Bu isteğin süresi doldu; indirme bağlantısı artık geçerli değil.'
+                : 'İstek tamamlandı ama indirilecek arşiv bulunamadı (temizlenmiş olabilir).'}
+            </p>
+            <button type="button" onClick={restart} className="btn-primary">
+              Yeni istek başlat
+            </button>
+          </div>
         )}
 
         {step === 'failed' && (
@@ -855,6 +993,11 @@ const LogXWizardPage: React.FC = () => {
                 : undefined)
             }
             onRestart={restart}
+            onBackToHosts={
+              request?.platform === 'legacy' && (request?.input as { app?: string } | null)?.app
+                ? () => void backToHosts()
+                : undefined
+            }
           />
         )}
       </div>
