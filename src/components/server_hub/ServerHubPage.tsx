@@ -1062,6 +1062,56 @@ function HostModal({
     reload: boolean;
   } | null>(null);
 
+  // SATIR BAZINDA AUTO-START (kullanici, 2026-10-01): "satir satir hangi jvm'lerde auto
+  // start kapaliysa onun saginda bir buton olsun ben tikladigimda acilsin veya ben
+  // tikladigimda kapansin. Toplu islem sakin olmasin cok tehlikeli."
+  //
+  // ONAY TARAYICIDA: tek satir icin ayri bir plan turu, kullaniciyi her JVM'de iki tiklamaya
+  // zorlardi. Yine de sessiz DEGIL - ne yapilacagi ve hangi sunucuda oldugu aciklanir.
+  const [asBusy, setAsBusy] = useState<string | null>(null);
+  const jvmAutoStart = async (j: { gen: number; name: string; autoStart: string }) => {
+    const ac = j.autoStart !== 'true';
+    const k = `${j.gen}|${j.name}`;
+    if (
+      !window.confirm(
+        `${host} üzerinde ${j.name} (JBoss ${j.gen}) için auto-start ` +
+          `${ac ? 'AÇILACAK' : 'KAPATILACAK'}.
+
+` +
+          'Yalnız bu JVM etkilenir. Devam edilsin mi?',
+      )
+    )
+      return;
+    setAsBusy(k);
+    try {
+      const r = await serverHubApi.jvmAutoStart({ host, gen: j.gen, jvm: j.name, enable: ac });
+      if (!r.ok) {
+        toast.error(r.message || 'İş başlatılamadı.');
+        return;
+      }
+      trackJob(
+        `Server Hub: auto-start ${ac ? 'AÇ' : 'KAPAT'} @ ${host}/${j.name}`,
+        { jobId: r.jobId ?? null, awxServerId: r.awxServerId ?? 0 },
+        (status) => {
+          if (status === 'successful') {
+            toast.success(`${j.name}: auto-start ${ac ? 'açıldı' : 'kapatıldı'}.`);
+            reload();
+            // TARAMA TAZELENIR: ekran eski degeri gostermeye devam ederse kullanici
+            // islemin olmadigini sanir ve ikinci kez tiklar.
+            serverHubApi
+              .host(host, true)
+              .then((x) => x.ok && setD(x.host))
+              .catch(() => {});
+          } else toast.error(`${j.name}: iş ${status}.`);
+        },
+      );
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    } finally {
+      setAsBusy(null);
+    }
+  };
+
   useEffect(() => {
     let alive = true;
     serverHubApi
@@ -1320,6 +1370,27 @@ function HostModal({
                                 ? 'kapalı'
                                 : '?'}
                           </span>
+                          {/* TEK SATIR, TEK TIK. Toplu islem 2026-10-01'de kaldirildi:
+                              yanlis bir tarama sonucu yuzlerce sunucuya yayilirdi. */}
+                          <button
+                            onClick={() => jvmAutoStart(j)}
+                            disabled={asBusy === `${j.gen}|${j.name}`}
+                            className="ml-2 px-1.5 py-0.5 text-[10px] border rounded disabled:opacity-50"
+                            style={{ borderColor: 'var(--border)' }}
+                            title={
+                              j.autoStart === 'true'
+                                ? `${j.name} için auto-start'ı KAPAT (yalnız bu JVM)`
+                                : j.autoStart === 'false'
+                                  ? `${j.name} için auto-start'ı AÇ (yalnız bu JVM)`
+                                  : `${j.name} için auto-start ölçülemedi — AÇ'a basarsanız açıkça açılır`
+                            }
+                          >
+                            {asBusy === `${j.gen}|${j.name}`
+                              ? '…'
+                              : j.autoStart === 'true'
+                                ? 'Kapat'
+                                : 'Aç'}
+                          </button>
                         </td>
                         <td
                           className="px-2.5 py-1.5"

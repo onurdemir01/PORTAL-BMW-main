@@ -256,6 +256,20 @@ export const serverHubApi = {
       }),
     ).then(safeJson),
   // TOPLU AUTO-START: once plan (hicbir is baslatmaz), sonra onayli uygulama.
+  // SATIR BAZINDA JVM auto-start (2026-10-01). Toplu uc kaldirildi; bu uc TEK (host, jvm)
+  // alir ve sunucuda hedef son taramadan DOGRULANIR.
+  jvmAutoStart: (p: {
+    host: string;
+    gen: number;
+    jvm: string;
+    enable: boolean;
+  }): Promise<{
+    ok: boolean;
+    message?: string;
+    jobId?: number;
+    awxServerId?: number;
+    action?: string;
+  }> => fetch(`${BASE}/jvm-autostart`, json({ ...p, confirmed: true })).then(safeJson),
   jobStatus: (awxServerId: number, jobId: number): Promise<ShJobStatus> =>
     fetch(`${BASE}/job-status/${awxServerId}/${jobId}`).then(safeJson),
 };

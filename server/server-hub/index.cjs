@@ -372,6 +372,73 @@ function initServerHub(app) {
   // tersi: "auto-start'ı açık olup process'i kapalı olanları tek tuşla kapat".
   //
   // ÖNCE PLAN, SONRA ONAY (kullanıcının seçimi): plan HİÇBİR İŞ BAŞLATMAZ — liste zaten
+  // ── SATIR BAZINDA JVM AUTO-START (kullanici, 2026-10-01) ───────────────────────────
+  // "Ben oraya girdigim zaman satir satir hangi jvm'lerde auto start kapaliysa onun
+  // saginda bir buton olsun ben tikladigimda acilsin veya ben tikladigimda kapansin."
+  //
+  // `/fix`ten FARKI: orasi BULGU bazlidir - yalniz bir bulgu uretmis JVM'ler duzeltilebilir
+  // (kosan ama auto-start kapali / kapali ama auto-start acik). Kullanici ise HER satirda
+  // dugme istiyor, bulgu olsun olmasin.
+  //
+  // HEDEF TARAMADAN DOGRULANIR: host/gen/jvm uclusu son taramada GERCEKTEN var mi diye
+  // bakilir. Istemciden gelen bir JVM adini dogrudan playbook'a gecirmek, extra_vars
+  // uzerinden keyfi hedef secmeye acik kapi birakirdi.
+  //
+  // TOPLU YOK: bu uc TEK (host, jvm) alir. Duzeltme playbook'u da virgullu hedef listesini
+  // BILEREK reddeder; o koruma 2026-09-28'de toplu uc tarafindan deliniyordu, kaldirildi.
+  const JVM_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+
+  router.post('/jvm-autostart', async (req, res) => {
+    const host = String(req.body?.host || '').toUpperCase();
+    const jvm = String(req.body?.jvm || '').trim();
+    const gen = Number(req.body?.gen);
+    const enable = req.body?.enable === true;
+    // ACIK ONAY SART: istemciden kazara gelen bir istek sunucuda bir sey DEGISTIRMEMELI.
+    if (req.body?.confirmed !== true)
+      return res
+        .status(400)
+        .json({ ok: false, message: 'Bu işlem açık onay ister (confirmed).' });
+    if (!HOST_RE.test(host))
+      return res.status(400).json({ ok: false, message: 'Geçersiz sunucu adı.' });
+    if (!JVM_RE.test(jvm))
+      return res.status(400).json({ ok: false, message: 'Geçersiz JVM adı.' });
+    if (!Number.isInteger(gen))
+      return res.status(400).json({ ok: false, message: 'Geçersiz JBoss sürümü (gen).' });
+    try {
+      const a = await getAssessment(true);
+      const h = (a.hosts || []).find((x) => x.host === host);
+      if (!h)
+        return res.status(400).json({ ok: false, message: `${host} için tarama verisi yok.` });
+      const j = (h.jvms || []).find((x) => x.name === jvm && Number(x.gen) === gen);
+      if (!j)
+        return res.status(400).json({
+          ok: false,
+          message: `${host} üzerinde ${jvm} (JBoss ${gen}) taramada yok — sayfayı yenileyin.`,
+        });
+      // ZATEN ISTENEN DURUMDAYSA IS ACILMAZ. "unknown" ise ACILIR: olculemedigi icin
+      // kullanici bilerek bir tarafa cekmek isteyebilir.
+      const hedef = enable ? 'true' : 'false';
+      if (j.autoStart === hedef)
+        return res.status(400).json({
+          ok: false,
+          message: `${jvm} zaten auto-start ${enable ? 'AÇIK' : 'KAPALI'} görünüyor — iş açılmadı.`,
+        });
+      const action = enable ? 'jboss_autostart_on' : 'jboss_autostart_off';
+      if (!FIX_ACTIONS.has(action))
+        return res.status(400).json({ ok: false, message: 'Bilinmeyen eylem.' });
+      const r = await launch(
+        req,
+        REGISTRY_KEYS.fix,
+        `Server Hub: ${action} @ ${host}/${jvm}`,
+        { target_host: host, action, plan_only: false, reload: false, gen, jvm },
+        { op: 'jvm-autostart', host, fix: { action, gen, jvm } },
+      );
+      res.json({ ok: true, ...r, action, host, jvm, gen });
+    } catch (err) {
+      res.status(err.status || 500).json({ ok: false, message: err.message });
+    }
+  });
+
   // TOPLU DUZELTME KALDIRILDI (kullanici, 2026-10-01): "jboss jvm auto start da toplu ac
   // toplu kapat sakin getirme o cok riskli... toplu islem sakin olmasin cok tehlikeli."
   //
