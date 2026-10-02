@@ -1,17 +1,29 @@
-import React, { createContext, useState, useEffect, useCallback, useRef, useContext } from "react";
+import React, { createContext, useState, useEffect, useCallback, useRef, useContext, useMemo } from "react";
 import { User } from "@/types";
 import { pageVisibilityApi, visibilityApi } from "@/api/adminApi";
 import { fetchSessionWithRetry } from "./sessionRestore";
-import { oturumBittiAbone, oturumDurumunuBildir } from "@/api/sessionGuard";
+import {
+  oturumBasligiAbone,
+  oturumBittiAbone,
+  oturumDurumunuBildir,
+  type OturumBitisSebebi,
+} from "@/api/sessionGuard";
+import { oturumSaatiOlustur, tarayiciKanali, uyariHesapla, type OturumOzeti } from "./sessionClock";
+import ReloginOverlay from "@/components/ReloginOverlay";
 
 interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
-  login: (username: string, password: string) => Promise<void>;
+  login: (username: string, password: string, remember?: boolean) => Promise<void>;
   logout: () => void;
   showTimeoutModal: boolean;
   countdown: number;
+  /** "Surdur": sunucuda oturumu uzatir (POST /api/auth/session/extend). */
   extendSession: () => void;
+  /** Uyariyi KAPATIR ama sureyi UZATMAZ (eskiden kapatmak da uzatiyordu). */
+  dismissTimeoutModal: () => void;
+  /** false: sinir mutlak sure — uzatilamaz, yalnizca yeniden giris. */
+  timeoutExtendable: boolean;
   // Sayfa görünürlüğü: tek yerden fetch edilip hem Sidebar (nav gizleme) hem
   // route guard'ları (gerçek erişim engeli) tarafından paylaşılır — bkz.
   // src/routes/PageVisibilityRoute.tsx. "Admin" sayfası bilinçli olarak bu
@@ -43,13 +55,47 @@ export const useAuth = () => {
   return ctx;
 };
 
-const SESSION_TIMEOUT = 30 * 60 * 1000; // 30 minutes
-const TIMEOUT_WARNING = 2 * 60 * 1000;  // 2 minutes before
+// Giris yaniti JSON degilse (502/HTML: portal yeniden basliyor) ham "Unexpected token
+// '<'" yerine anlasilir mesaj.
+async function girisYanitiOku(res: Response): Promise<any> {
+  try {
+    return await res.json();
+  } catch {
+    throw new Error(
+      res.status >= 500
+        ? "Portal şu an güncelleniyor ya da yanıt vermiyor. Birkaç saniye sonra tekrar deneyin."
+        : "Sunucudan beklenmeyen yanıt alındı. Lütfen tekrar deneyin.",
+    );
+  }
+}
+
+function kullaniciCikar(d: any): User {
+  return {
+    username:    d.username,
+    role:        d.role,
+    displayName: d.displayName || d.username,
+    mail:        d.mail || "",
+    photoUrl:    d.photoUrl || null,
+    authSource:  d.authSource || "local",
+  };
+}
+
+// Kullanici etkinligi sayilan olaylar. Eskiden yalnizca mousemove/keydown/mousedown/
+// touchstart idi: kaydirarak okuyan ya da baska sekmeden donen kullanici "bosta" sayiliyordu.
+const ETKINLIK_OLAYLARI = ["pointerdown", "keydown", "wheel", "scroll", "touchstart", "mousemove", "focus"];
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [showTimeoutModal, setShowTimeoutModal] = useState(false);
-  const [countdown, setCountdown] = useState(TIMEOUT_WARNING / 1000);
+  // Uyarinin acildigi bitis ani (null = kapali). Gorunurluk bundan TURETILIR: bitis
+  // degisince (baska sekme uzatti) eski uyari kendiliginden kapanir.
+  const [uyariBitis, setUyariBitis] = useState<number | null>(null);
+  const [countdown, setCountdown] = useState(0);
+  // Oturum sunucuda bitti ama uygulama SOKULMEDI: ustte yeniden giris katmani acik.
+  // Eskiden `setUser(null)` ile tum uygulama sokuluyor, acik form/sihirbaz kayboluyordu.
+  const [oturumDustu, setOturumDustu] = useState<{ sebep: OturumBitisSebebi } | null>(null);
+  // Kanal dinleyicileri guncel degeri okusun diye (abonelik bir kez kurulur).
+  const userRef = useRef<User | null>(null);
+  const oturumDustuRef = useRef<{ sebep: OturumBitisSebebi } | null>(null);
   const [loading, setLoading] = useState(true);
   // Acilista sunucuya ulasilamiyorsa (release penceresi) kacinci denemede oldugumuz:
   // 0 = sorun yok. >0 iken bos ekran yerine "Portal guncelleniyor" mesaji gosterilir.
@@ -61,44 +107,43 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [visibilityReady, setVisibilityReady] = useState(false);
   const [visibilityFailed, setVisibilityFailed] = useState(false);
   const visibilityVersion = useRef(0);
+  useEffect(() => {
+    userRef.current = user;
+    oturumDustuRef.current = oturumDustu;
+  }, [user, oturumDustu]);
 
-  const timeoutId = useRef<number | null>(null);
-  const warningTimeoutId = useRef<number | null>(null);
-  const countdownIntervalId = useRef<number | null>(null);
+  // Tek oturum saati; sekmeler arasi kanal (sessionClock.ts).
+  const [saat] = useState(() => oturumSaatiOlustur({ kanal: tarayiciKanali() }));
+  useEffect(() => () => saat.kapat(), [saat]);
+  // Her /api yanitindaki bitis basliklari saati tazeler (ek yoklama yok).
+  useEffect(() => oturumBasligiAbone((b) => saat.basliklariUygula(b)), [saat]);
 
-  const clearTimers = useCallback(() => {
-    if (timeoutId.current) window.clearTimeout(timeoutId.current);
-    if (warningTimeoutId.current) window.clearTimeout(warningTimeoutId.current);
-    if (countdownIntervalId.current) window.clearInterval(countdownIntervalId.current);
-  }, []);
-
+  // Kullanicinin BILEREK yaptigi cikis. Diger sekmelere de yayilir — onlar sunucuya
+  // ayrica gitmez. Istemci bunun DISINDA hicbir kosulda kendi basina logout CAGIRMAZ.
   const logout = useCallback(async () => {
     try {
       await fetch("/api/auth/logout", { method: "POST" });
     } catch {
       // ignore network errors on logout
     }
+    saat.cikisYay();
+    saat.sifirla();
+    setOturumDustu(null);
     setUser(null);
-    setShowTimeoutModal(false);
-    clearTimers();
-  }, [clearTimers]);
+    setUyariBitis(null);
+  }, [saat]);
 
-  const resetSessionTimeout = useCallback(() => {
-    clearTimers();
-    setShowTimeoutModal(false);
+  const extendSession = useCallback(() => {
+    setUyariBitis(null);
+    void saat.uzat();
+  }, [saat]);
 
-    warningTimeoutId.current = window.setTimeout(() => {
-      setShowTimeoutModal(true);
-      setCountdown(TIMEOUT_WARNING / 1000);
-      countdownIntervalId.current = window.setInterval(() => {
-        setCountdown((prev) => (prev > 0 ? prev - 1 : 0));
-      }, 1000);
-    }, SESSION_TIMEOUT - TIMEOUT_WARNING);
-
-    timeoutId.current = window.setTimeout(logout, SESSION_TIMEOUT);
-  }, [clearTimers, logout]);
-
-  const extendSession = () => resetSessionTimeout();
+  // Uyariyi yalnizca BU bitis ani icin kapatir; sure uzamaz, bitis aninda yine sorulur.
+  const kapatilanBitis = useRef(0);
+  const dismissTimeoutModal = useCallback(() => {
+    kapatilanBitis.current = uyariHesapla(saat.durum()).bitis;
+    setUyariBitis(null);
+  }, [saat]);
 
   // Restore session from backend on mount
   useEffect(() => {
@@ -119,15 +164,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
       if (cancelled) return;
       if (data?.ok && data.user) {
-        setUser({
-          username:    data.user.username,
-          role:        data.user.role,
-          displayName: data.user.displayName || data.user.username,
-          mail:        data.user.mail || "",
-          photoUrl:    data.user.photoUrl || null,
-          authSource:  data.user.authSource || "local",
-        });
-        resetSessionTimeout();
+        setUser(kullaniciCikar(data.user));
+        void saat.tazele();
       }
       setLoading(false);
     })();
@@ -183,7 +221,47 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // `sessionGuard` kapiyi kapatir; burasi yalnizca kullaniciyi giris ekranina
   // duser. Dongulerin durmasi bu satira BAGLI DEGIL — kapi zaten agi kesiyor;
   // bu, kullaniciya NE OLDUGUNU soyleyen kisim.
-  useEffect(() => oturumBittiAbone(() => setUser(null)), []);
+  //
+  // 2026-10-02 (Faz B): kullanici giris ekranina ATILMAZ; uygulama yerinde kalir ve
+  // ustte yeniden giris katmani acilir (AWS konsolu deseni) — acik form ve sihirbaz
+  // durumu korunur. Sebep (bosta / mutlak) sunucunun basligindan gelir.
+  useEffect(() => oturumBittiAbone((sebep) => {
+    setUyariBitis(null);
+    setOturumDustu({ sebep });
+  }), []);
+
+  // Diger sekmeden cikis: bu sekme de giris ekranina duser (sunucuya ayrica gitmez).
+  useEffect(() => saat.cikisAbone(() => {
+    saat.sifirla();
+    setOturumDustu(null);
+    setUser(null);
+    setUyariBitis(null);
+  }), [saat]);
+
+  // Diger sekmede giris yapildi: bu sekme giris ekranindaysa ya da yeniden giris
+  // katmani aciksa oturumu sunucudan okuyup devam eder. Farkli kullanici ise TAM
+  // yenileme — onceki kullanicinin ekran verisi yeni kullaniciya gorunmesin.
+  useEffect(() => saat.girisAbone(async (gelen) => {
+    const mevcut = userRef.current;
+    if (mevcut && !oturumDustuRef.current) return;
+    if (mevcut && gelen.toLowerCase() !== mevcut.username.toLowerCase()) {
+      window.location.reload();
+      return;
+    }
+    oturumDurumunuBildir(true);
+    try {
+      const r = await fetch("/api/auth/me");
+      const d = r.ok ? await r.json() : null;
+      if (!d?.ok || !d.user) return;
+      setOturumDustu(null);
+      setUser(kullaniciCikar(d.user));
+      void saat.tazele();
+      void refreshVisibility();
+    } catch {
+      /* ag hatasi: katman acik kalir, kullanici kendisi girer */
+    }
+  }), [saat]); // eslint-disable-line react-hooks/exhaustive-deps
+
 
   // Kapi "oturum VARDI ve OLDU" ayrimini yapabilsin diye istemcinin inancini
   // bildirir. Giris ekranindaki 401 bitmis bir oturum DEGILDIR; orada kapi
@@ -206,10 +284,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const id = window.setInterval(() => {
       visibilityApi.getVersion()
         .then(({ version, unauthorized }) => {
-          if (unauthorized) {
-            setUser(null);
-            return;
-          }
+          // Karar YALNIZCA sessionGuard'in (imzali 401). Eskiden burada ciplak 401
+          // kullaniciyi dusuruyordu — kapinin "yalnizca imzali 401" kuralini atlayan
+          // ikinci bir yoldu (AWX token 401'i de buradan dusurebilirdi).
+          if (unauthorized) return;
           if (version !== visibilityVersion.current) refreshVisibility();
         })
         .catch(() => {});
@@ -230,40 +308,98 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return canSee(pageId);
   }, [canSee, user]);
 
-  const login = async (username: string, password: string): Promise<void> => {
+  const girisIstegi = async (username: string, password: string, remember: boolean) => {
     const res = await fetch("/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username: username.trim(), password }),
+      body: JSON.stringify({ username: username.trim(), password, remember }),
     });
-    const data = await res.json();
+    const data = await girisYanitiOku(res);
     if (!data.ok) throw new Error(data.error || "Giriş başarısız");
+    return data as { session?: OturumOzeti } & Record<string, any>;
+  };
 
-    setUser({
-      username:    data.username,
-      role:        data.role,
-      displayName: data.displayName || data.username,
-      mail:        data.mail || "",
-      photoUrl:    data.photoUrl || null,
-      authSource:  data.authSource || "local",
-    });
-    resetSessionTimeout();
+  const login = async (username: string, password: string, remember = false): Promise<void> => {
+    const data = await girisIstegi(username, password, remember);
+    setOturumDustu(null);
+    setUser(kullaniciCikar(data));
+    saat.ozetUygula(data.session);
+    saat.girisYay(data.username);
     // Login ÖNCESİ çekilen harita 401 aldığı için boştur. Burada tazelenmezse kullanıcı
     // ilk versiyon poll'üne (45 sn) kadar boş haritayla, yani varsayılan-açık gezerdi.
     await refreshVisibility();
   };
 
-  // Activity resets timeout
+  // Yerinde yeniden giris. AYNI kullanici: kapi yeniden acilir, uygulama yerinde devam
+  // eder. FARKLI kullanici: tam yenileme (ekrandaki veri baskasina ait).
+  const yenidenGiris = async (username: string, password: string): Promise<void> => {
+    const data = await girisIstegi(username, password, saat.durum().remember);
+    const onceki = userRef.current;
+    if (onceki && String(data.username).toLowerCase() !== onceki.username.toLowerCase()) {
+      saat.girisYay(data.username);
+      window.location.reload();
+      return;
+    }
+    oturumDurumunuBildir(true);
+    setUser(kullaniciCikar(data));
+    saat.ozetUygula(data.session);
+    setOturumDustu(null);
+    saat.girisYay(data.username);
+    await refreshVisibility();
+  };
+
+  // ── Uyari zamanlayicisi: SUNUCUNUN bitis zamanlarina gore ─────────────────────
+  // Bitis aninda istemci logout CAGIRMAZ; sunucuya "saatim ne" diye sorar. Oturum
+  // gercekten bittiyse imzali 401 kapiyi kapatir (yukaridaki abone katmani acar);
+  // baska bir sekme uzattiysa yeni bitisler gelir ve uyari kendiliginden kapanir.
+  const [saatDurumu, setSaatDurumu] = useState(() => saat.durum());
+  useEffect(() => saat.abone(setSaatDurumu), [saat]);
+  const uyariBilgisi = useMemo(() => (saatDurumu.bilinen ? uyariHesapla(saatDurumu) : null), [saatDurumu]);
+  const timeoutExtendable = uyariBilgisi?.uzatilabilir ?? true;
+  const showTimeoutModal = !!user && !oturumDustu && !!uyariBilgisi && uyariBitis === uyariBilgisi.bitis;
   useEffect(() => {
-    if (!user) return;
-    const events = ["mousemove", "keydown", "mousedown", "touchstart"];
-    const handle = () => resetSessionTimeout();
-    events.forEach((e) => window.addEventListener(e, handle, { passive: true }));
-    return () => {
-      events.forEach((e) => window.removeEventListener(e, handle));
-      clearTimers();
+    if (!user || oturumDustu || !uyariBilgisi) return;
+    const { bitis, uyariAni } = uyariBilgisi;
+    let geriSayim: number | null = null;
+    const kalanSn = () => Math.max(0, Math.round((bitis - Date.now()) / 1000));
+    const uyar = () => {
+      if (kapatilanBitis.current === bitis) return;
+      setCountdown(kalanSn());
+      setUyariBitis(bitis);
+      geriSayim = window.setInterval(() => setCountdown(kalanSn()), 1000);
     };
-  }, [user, resetSessionTimeout, clearTimers]);
+    const t1 = window.setTimeout(uyar, Math.max(0, uyariAni - Date.now()));
+    const t2 = window.setTimeout(() => void saat.tazele(), Math.max(0, bitis - Date.now()) + 1000);
+    return () => {
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+      if (geriSayim !== null) window.clearInterval(geriSayim);
+    };
+  }, [user, oturumDustu, uyariBilgisi, saat]);
+
+  // Etkinlik: sunucuya kisitli bildirilir (sessionClock.etkinlik). UYARI PENCERESINDE
+  // bildirilmez — karar kullanicinin acik tiklamasi ("Surdur") olmali. Pencere saatten
+  // HESAPLANIR (ref/state degil): uyari acilirken Modal odagi tasir ve `focus` olayi
+  // state guncellenmeden once gelir; ref'e bakan surum uyariyi kendi kendine uzatiyordu.
+  useEffect(() => {
+    if (!user || oturumDustu) return;
+    const handle = () => {
+      const d = saat.durum();
+      if (d.bilinen && Date.now() >= uyariHesapla(d).uyariAni) return;
+      saat.etkinlik();
+    };
+    const gorunurluk = () => {
+      if (document.visibilityState !== "visible") return;
+      // Sekmeye donus: once saati esitle (baska sekme uzatmis olabilir), sonra etkinlik.
+      void saat.tazele().then(handle);
+    };
+    ETKINLIK_OLAYLARI.forEach((e) => window.addEventListener(e, handle, { passive: true, capture: true }));
+    document.addEventListener("visibilitychange", gorunurluk);
+    return () => {
+      ETKINLIK_OLAYLARI.forEach((e) => window.removeEventListener(e, handle, { capture: true }));
+      document.removeEventListener("visibilitychange", gorunurluk);
+    };
+  }, [user, oturumDustu, saat]);
 
   if (loading) {
     if (restoreAttempt === 0) return null;
@@ -286,10 +422,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     <AuthContext.Provider
       value={{
         user, isAuthenticated: !!user, login, logout, showTimeoutModal, countdown, extendSession,
+        dismissTimeoutModal, timeoutExtendable,
         pageVisibility, pageVisibilityLoaded, canViewPage, canSee, visibilityReady, visibilityFailed, refreshVisibility,
       }}
     >
       {children}
+      {user && oturumDustu && (
+        <ReloginOverlay
+          username={user.username}
+          sebep={oturumDustu.sebep}
+          onLogin={yenidenGiris}
+          onLogout={logout}
+        />
+      )}
     </AuthContext.Provider>
   );
 };

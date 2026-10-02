@@ -2,7 +2,7 @@
 // koyu bir zemin ustunde ortalanmis beyaz form karti. Onceki surumdeki canvas ag
 // animasyonu, aurora ve firca-darbesi aksani PF diline uymadigi icin kaldirildi;
 // hareket yerine tipografi ve bosluk tasiyor.
-import React, { useState, useContext } from "react";
+import React, { useState, useContext, useEffect, useRef } from "react";
 import { AuthContext } from "@/contexts/AuthContext";
 import { EyeIcon, EyeSlashIcon, ExclamationCircleIcon } from "@heroicons/react/24/outline";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -15,33 +15,56 @@ const LoginPage: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  // "Beni hatirla" Admin'den kapatilabilir (SESSION_REMEMBER_DAYS=0): o zaman kutu
+  // gosterilmez. Eskiden kutu vardi ama HICBIR SEY yapmiyordu (sunucuya gitmiyordu).
+  const [hatirlaGun, setHatirlaGun] = useState<number | null>(null);
+  const gonderiliyor = useRef(false);
+
+  useEffect(() => {
+    let iptal = false;
+    fetch("/api/auth/session-policy")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!iptal && d?.ok) setHatirlaGun(d.rememberEnabled ? Number(d.rememberDays) || 0 : 0);
+      })
+      .catch(() => {});
+    return () => {
+      iptal = true;
+    };
+  }, []);
 
   const { login } = useContext(AuthContext);
   const navigate = useNavigate();
   const location = useLocation();
 
+  // Donus adresi YOL + SORGU + HASH: eskiden yalnizca yol korunuyordu; filtreli bir
+  // listeden (`?q=...`) atilan kullanici filtresiz sayfaya donuyordu.
+  const kaynak = (location.state as any)?.from;
   const from =
-    (location.state as any)?.from?.pathname && typeof (location.state as any)?.from?.pathname === "string"
-      ? (location.state as any).from.pathname
+    kaynak && typeof kaynak.pathname === "string" && kaynak.pathname.startsWith("/") && kaynak.pathname !== "/login"
+      ? `${kaynak.pathname}${typeof kaynak.search === "string" ? kaynak.search : ""}${typeof kaynak.hash === "string" ? kaynak.hash : ""}`
       : "/dashboard";
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    // Cift gonderim (Enter + tik) iki giris istegi = iki oturum + bosa harcanan deneme.
+    if (gonderiliyor.current) return;
     setError("");
-    setIsLoading(true);
 
-    if (!username || !password) {
+    if (!username.trim() || !password) {
       setError("Kullanıcı adı ve şifre gereklidir.");
-      setIsLoading(false);
       return;
     }
 
+    gonderiliyor.current = true;
+    setIsLoading(true);
     try {
-      await login(username, password);
+      await login(username, password, rememberMe && !!hatirlaGun);
       navigate(from, { replace: true });
     } catch (err: any) {
       setError(err?.message || "Giriş başarısız. Lütfen tekrar deneyin.");
     } finally {
+      gonderiliyor.current = false;
       setIsLoading(false);
     }
   };
@@ -96,6 +119,8 @@ const LoginPage: React.FC = () => {
                   name="username"
                   type="text"
                   autoComplete="username"
+                  autoCapitalize="off"
+                  spellCheck={false}
                   required
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
@@ -128,6 +153,7 @@ const LoginPage: React.FC = () => {
                 </div>
               </div>
 
+              {!!hatirlaGun && (
               <div className="flex items-center gap-2">
                 <input
                   id="remember-me"
@@ -139,9 +165,10 @@ const LoginPage: React.FC = () => {
                   style={{ accentColor: "var(--accent)" }}
                 />
                 <label htmlFor="remember-me" className="text-[0.875rem]" style={{ color: "#151515" }}>
-                  Oturumumu açık tut
+                  Beni hatırla ({hatirlaGun} gün)
                 </label>
               </div>
+              )}
 
               <button type="submit" disabled={isLoading} className="btn-primary w-full py-2">
                 {isLoading ? (

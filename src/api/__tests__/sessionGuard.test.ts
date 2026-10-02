@@ -12,6 +12,7 @@ import {
   oturumBittiMi,
   _sessionGuardSifirla,
   SESSION_HEADER,
+  oturumBasligiAbone,
 } from '../sessionGuard';
 import { safeJson } from '../http';
 
@@ -177,5 +178,46 @@ describe('sessionGuard', () => {
     expect(haber).not.toHaveBeenCalled();
     await window.fetch('/api/auth/prefs');
     expect(ag).toHaveBeenCalledTimes(2);
+  });
+
+  it('SG13 — her yanittaki bitis basliklari oturum saatine iletilir; bozuk deger iletilmez', async () => {
+    const dinle = vi.fn();
+    oturumBasligiAbone(dinle);
+    ag.mockResolvedValueOnce(
+      new Response('{}', {
+        status: 200,
+        headers: { 'X-Portal-Session-Expires': '1000', 'X-Portal-Session-Absolute': '2000' },
+      }),
+    );
+    await window.fetch('/api/herhangi');
+    expect(dinle).toHaveBeenCalledWith({ idleExpiresAt: 1000, absoluteExpiresAt: 2000 });
+    ag.mockResolvedValueOnce(
+      new Response('{}', { status: 200, headers: { 'X-Portal-Session-Expires': 'abc' } }),
+    );
+    await window.fetch('/api/herhangi');
+    expect(dinle).toHaveBeenCalledTimes(1);
+  });
+
+  it('SG14 — kapanis sebebi (idle/absolute) aboneye iletilir; bilinmeyen deger iletilmez', async () => {
+    const haber = vi.fn();
+    oturumBittiAbone(haber);
+    oturumDurumunuBildir(true);
+    ag.mockResolvedValueOnce(
+      new Response('{}', {
+        status: 401,
+        headers: { [SESSION_HEADER]: 'expired', 'X-Portal-Session-Reason': 'absolute' },
+      }),
+    );
+    await window.fetch('/api/x');
+    expect(haber).toHaveBeenCalledWith('absolute');
+    oturumDurumunuBildir(true);
+    ag.mockResolvedValueOnce(
+      new Response('{}', {
+        status: 401,
+        headers: { [SESSION_HEADER]: 'expired', 'X-Portal-Session-Reason': '<script>' },
+      }),
+    );
+    await window.fetch('/api/x');
+    expect(haber).toHaveBeenLastCalledWith(undefined);
   });
 });
