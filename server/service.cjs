@@ -79,11 +79,11 @@ function createApp() {
       res.setHeader("Access-Control-Allow-Origin", origin);
       res.setHeader("Access-Control-Allow-Credentials", "true");
       res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
-      res.setHeader("Access-Control-Allow-Headers", "Content-Type,Authorization,x-portal-user,x-portal-role");
+      res.setHeader("Access-Control-Allow-Headers", "Content-Type,Authorization,x-portal-user,x-portal-role,x-portal-activity");
       // Oturum-bitti imzasi CAPRAZ KOKENDE de okunabilmeli. Expose edilmezse
       // tarayici `X-Portal-Session`i istemci koduna HIC vermez ve kapi yalnizca
       // ayni-kokende calisir — yani uretimde calisip gelistirmede sessizce olur.
-      res.setHeader("Access-Control-Expose-Headers", "X-Portal-Session");
+      res.setHeader("Access-Control-Expose-Headers", "X-Portal-Session, X-Portal-Session-Reason, X-Portal-Session-Expires, X-Portal-Session-Absolute");
     }
     if (req.method === "OPTIONS") return res.sendStatus(204);
     next();

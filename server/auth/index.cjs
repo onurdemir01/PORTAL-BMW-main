@@ -14,6 +14,7 @@ const roleStore = require("./role-store.cjs");
 const { initPresenceRoutes, removePresence } = require("./presence-routes.cjs");
 const { initVisibilityRoutes } = require("./visibility-routes.cjs");
 const { initRolesRoutes } = require("./roles-routes.cjs");
+const sessionPolicy = require("./session-policy.cjs");
 
 // Production'da bos SESSION_SECRET'i sessizce hardcoded degerle karsilamak guvenlik
 // acigi olurdu (herkesce bilinen bir imza anahtariyla session sahteciligi) — bu yuzden
@@ -28,7 +29,6 @@ if (process.env.NODE_ENV === "production" && !process.env.SESSION_SECRET) {
   process.exit(1);
 }
 const SESSION_SECRET  = process.env.SESSION_SECRET || "bmw-portal-dev-secret-change-in-prod";
-const SESSION_MAX_AGE = 8 * 60 * 60 * 1000; // 8 hours
 
 // ── Auth init ────────────────────────────────────────────────────────────────
 function initAuth(app) {
@@ -46,20 +46,25 @@ function initAuth(app) {
     }
   }
 
+  // Sureler (bosta kalma / mutlak / beni hatirla) burada DEGIL: session-policy.cjs her
+  // istekte process.env'den okur ve asagidaki yaptirim katmani uygular. Eskiden cerez
+  // giristen 8 sa sonra kesin bitiyordu ve etkinlik sureyi uzatmiyordu ("sik atiyor").
+  // `rolling`: cerez her yanitta yeniden yazilir (kalici/oturum cerezi karari orada).
   app.use(
     session({
       ...(sessionStore ? { store: sessionStore } : {}),
       secret: SESSION_SECRET,
       resave: false,
       saveUninitialized: false,
+      rolling: true,
       cookie: {
         secure: process.env.NODE_ENV === "production",
         httpOnly: true,
-        maxAge: SESSION_MAX_AGE,
         sameSite: "lax",
       },
     })
   );
+  app.use(sessionPolicy.oturumYaptirimi());
 
   const router = express.Router();
   router.use(express.json());
@@ -75,7 +80,7 @@ function initAuth(app) {
 
   // ── Login ──────────────────────────────────────────────────────────────────
   router.post("/login", async (req, res) => {
-    const { username, password } = req.body || {};
+    const { username, password, remember } = req.body || {};
     if (!username || !password) {
       return res.status(400).json({ ok: false, error: "Kullanıcı adı ve şifre gerekli." });
     }
@@ -122,10 +127,16 @@ function initAuth(app) {
           groups:     Array.isArray(user.groups) ? user.groups : [],
           loginAt:    new Date().toISOString(),
         };
+        // Oturum kunyesi: bosta kalma / mutlak sure buradan sayilir. "Beni hatirla"
+        // yalnizca Admin acik biraktiysa (SESSION_REMEMBER_DAYS > 0) gecerlidir.
+        const pol = sessionPolicy.policy();
+        req.session.meta = sessionPolicy.yeniMeta(req, { remember: remember === true && pol.rememberEnabled });
+        sessionPolicy.cerezAyarla(req.session, pol);
         req.session.save((saveErr) => {
           if (saveErr) return res.status(500).json({ ok: false, error: "Oturum kaydedilemedi." });
           res.json({
             ok:          true,
+            session:     sessionPolicy.oturumOzeti(req.session, pol),
             username:    user.username,
             role:        user.role,
             displayName: user.displayName,
@@ -166,6 +177,35 @@ function initAuth(app) {
       return oturumYok(res).status(401).json({ ok: false, error: "Oturum bulunamadı." });
     }
     res.json({ ok: true, user: req.session.user });
+  });
+
+  // ── Oturum saati (istemci geri sayimi) ──────────────────────────────────────
+  // GET etkinlik SAYILMAZ (session-policy ARKA_PLAN_YOLLARI): istemcinin saatini
+  // tazelemesi oturumu sonsuza dek acik tutmamali. "Surdur" POST /session/extend'dir.
+  router.get("/session", (req, res) => {
+    if (!req.session?.user) {
+      return oturumYok(res).status(401).json({ ok: false, error: "Oturum bulunamadı." });
+    }
+    res.json(sessionPolicy.oturumOzeti(req.session));
+  });
+
+  router.post("/session/extend", (req, res) => {
+    if (!req.session?.user) {
+      return oturumYok(res).status(401).json({ ok: false, error: "Oturum bulunamadı." });
+    }
+    res.json(sessionPolicy.uzat(req, res));
+  });
+
+  // Giris ekrani "beni hatirla" kutusunu gostermeli mi (oturumsuz okunur; sir yok).
+  router.get("/session-policy", (_req, res) => {
+    const p = sessionPolicy.policy();
+    res.json({
+      ok: true,
+      rememberEnabled: p.rememberEnabled,
+      rememberDays: Math.round(p.rememberMs / 86400000),
+      idleMinutes: Math.round(p.idleMs / 60000),
+      absoluteHours: Math.round(p.absoluteMs / 3600000),
+    });
   });
 
   // ── Kullanici tercihleri (portal_user_preferences) ──────────────────────────
@@ -219,7 +259,10 @@ function initAuth(app) {
       reqSecure: req.secure,                                   // trust proxy sonrasi
       xForwardedProto: req.headers["x-forwarded-proto"] || null,
       nodeEnv: process.env.NODE_ENV || null,
-      sessionStore: process.env.SESSION_STORE === "mssql" ? "mssql" : "memory",
+      // Eskiden `SESSION_STORE === "mssql"` soruluyordu: varsayilan (bos) MSSQL iken de
+      // "memory" diyordu — teshis ekrani yanlis yola gonderiyordu.
+      sessionStore: sessionStore ? "mssql" : "memory",
+      sessionPolicy: sessionPolicy.policy(),
       cookieSecureConfigured: process.env.NODE_ENV === "production",
       hint: !req.session?.user && /connect\.sid=/.test(rawCookie)
         ? "Cookie var ama session yok → farklı proses/MemoryStore ya da store'da kayıt yok. SESSION_STORE=mssql önerilir."

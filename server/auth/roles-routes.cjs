@@ -6,6 +6,7 @@
 const express = require('express');
 const roleStore = require('./role-store.cjs');
 const { clearCache } = require('./ldap.cjs');
+const sessionPolicy = require('./session-policy.cjs');
 
 function initRolesRoutes(app, { requireAdmin }) {
   const router = express.Router();
@@ -41,10 +42,20 @@ function initRolesRoutes(app, { requireAdmin }) {
     }
     // Cache'i temizle ki sonraki login'de yeni rol gecerli olsun
     clearCache(target);
-    // Aktif oturumu(lari) sonlandir — kullanici bir sonraki istekte 401 alir, ESKI rolle
-    // devam edemez; yeniden giris yaptiginda YENI rol gecerli olur (actions.md #14).
-    const { revokeSessionsForUser } = require("./mssql-session-store.cjs");
-    const revoked = await revokeSessionsForUser(target).catch(() => 0);
+    const store = require("./mssql-session-store.cjs");
+    // YUKSELTME (Admin) oturumu DUSURMEZ, yerinde yansir (2026-10-02): eskiden her rol
+    // degisikligi kullaniciyi atiyordu — "sik atiyor" sikayetinin bir kaynagi. Hem acik
+    // oturum satirlari yeniden yazilir hem bellege kayit duser (o an suren bir istegin
+    // eski rolle geri yazmasina karsi).
+    if (role === "Admin") {
+      sessionPolicy.rolYukseltmesiKaydet(target, role);
+      const refreshed = await store.rewriteRoleForUser(target, role).catch(() => 0);
+      return res.json({ ok: true, username: target, role, sessionsRevoked: 0, sessionsRefreshed: refreshed });
+    }
+    // DUSURME: guvenlik — kullanici ESKI (yuksek) rolle tek istek bile yapamamali.
+    // Aktif oturumlar sonlandirilir; yeniden giriste yeni rol gecerli olur.
+    sessionPolicy.rolKaydiniSil(target);
+    const revoked = await store.revokeSessionsForUser(target).catch(() => 0);
     res.json({ ok: true, username: target, role, sessionsRevoked: revoked });
   });
 
@@ -52,6 +63,9 @@ function initRolesRoutes(app, { requireAdmin }) {
     const target = req.params.username.toLowerCase();
     await roleStore.removeRoleOverride(target);
     clearCache(target);
+    // Override kaldirilinca rol LDAP'a doner — yukari mi asagi mi bilinemez: guvenli
+    // yon, oturumlari sonlandirmak.
+    sessionPolicy.rolKaydiniSil(target);
     const { revokeSessionsForUser } = require("./mssql-session-store.cjs");
     const revoked = await revokeSessionsForUser(target).catch(() => 0);
     res.json({ ok: true, username: target, removed: true, sessionsRevoked: revoked });

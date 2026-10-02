@@ -719,7 +719,10 @@ const TABLES = [
       CREATE TABLE portal_sessions (
         sid      NVARCHAR(128) NOT NULL PRIMARY KEY,
         sess     NVARCHAR(MAX) NOT NULL,
-        expires  DATETIME2 NOT NULL
+        expires  DATETIME2 NOT NULL,
+        username NVARCHAR(256) NULL,
+        created_at DATETIME2 NULL,
+        last_seen_at DATETIME2 NULL
       )`,
   },
   {
@@ -3539,6 +3542,13 @@ async function setupTables() {
 
   // Alter existing tables to add missing columns
   const alters = [
+    // Oturum modeli (2026-10-02): oturum iptali `sess` JSON'unda LIKE yerine sutunla
+    // eslesir; Faz D "aktif oturumlarim" listesi de buradan okur. Portalin KENDI
+    // tablosu, NULL'a izin veren sutun = yalnizca meta veri islemi. Indeks YOK
+    // (tablo kucuk; dis DB'de otomatik indeks dersi).
+    { table: 'portal_sessions', col: 'username', sql: `ALTER TABLE portal_sessions ADD username NVARCHAR(256) NULL` },
+    { table: 'portal_sessions', col: 'created_at', sql: `ALTER TABLE portal_sessions ADD created_at DATETIME2 NULL` },
+    { table: 'portal_sessions', col: 'last_seen_at', sql: `ALTER TABLE portal_sessions ADD last_seen_at DATETIME2 NULL` },
     {
       // SPA Tasima Plani (2026-09-26): ekibin BEYANI - uygulama kullanimda mi?
       // Olcum (access log) ayri durur; bu alan ekibin dedigi seydir.
