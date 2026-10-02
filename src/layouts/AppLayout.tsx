@@ -40,7 +40,8 @@ function PageSkeleton() {
 
 export default function AppLayout() {
   const location = useLocation();
-  const { showTimeoutModal, extendSession, logout, countdown } = useContext(AuthContext);
+  const { showTimeoutModal, extendSession, dismissTimeoutModal, timeoutExtendable, logout, countdown } =
+    useContext(AuthContext);
 
   // Sekme basligi yol degistikce guncellenir (bkz. useDocumentTitle: etiketler
   // menuyle AYNI kaynaktan gelir, ayri bir liste tutulmaz).
@@ -141,7 +142,9 @@ export default function AppLayout() {
         <SessionTimeoutModal
           isOpen={showTimeoutModal}
           countdown={countdown}
+          extendable={timeoutExtendable}
           onExtend={extendSession}
+          onDismiss={dismissTimeoutModal}
           onLogout={logout}
         />
         <ToastContainer />

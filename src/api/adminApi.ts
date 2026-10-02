@@ -74,7 +74,8 @@ export const visibilityApi = {
    * turunda **İKİ** istek atılırdı. Üretim ölçümü bunu birebir gösteriyor:
    * `/version` 3.007, `/resolved` 3.683.
    *
-   * Artık 401 ayrı bir sonuç olarak döner; çağıran yoklamayı DURDURUR.
+   * Artık 401 ayrı bir sonuç olarak döner. Kullanıcıyı düşürme kararı çağıranın DEĞİL,
+   * `sessionGuard`ın (yalnızca imzalı 401; kapı kapanınca istek ağa hiç çıkmaz).
    */
   async getVersion(): Promise<{ version: number; unauthorized: boolean }> {
     const res = await fetch("/api/visibility/version");

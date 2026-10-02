@@ -58,12 +58,50 @@ let _bitti = false;
  */
 let _oturumNesli = 0;
 
-const _aboneler = new Set<() => void>();
+/**
+ * Oturumun NEDEN bittigi (sunucu `X-Portal-Session-Reason`): `idle` = bosta kalma,
+ * `absolute` = mutlak sure. Baslik yoksa (sunucu yeniden basladi, iptal edildi...)
+ * `undefined` — istemci genel bir mesaj gosterir.
+ */
+export type OturumBitisSebebi = 'idle' | 'absolute' | undefined;
 
-/** Oturum bitince haber verilir (AuthContext kullaniciyi giris ekranina duser). */
-export function oturumBittiAbone(fn: () => void): () => void {
+/** Sunucunun her yanita bastigi oturum bitis zamanlari (epoch ms, sunucu saati). */
+export const BASLIK_SEBEP = 'X-Portal-Session-Reason';
+export const BASLIK_BOSTA = 'X-Portal-Session-Expires';
+export const BASLIK_MUTLAK = 'X-Portal-Session-Absolute';
+
+const _aboneler = new Set<(sebep: OturumBitisSebebi) => void>();
+const _baslikAboneleri = new Set<(bitis: { idleExpiresAt: number; absoluteExpiresAt: number }) => void>();
+
+/** Oturum bitince haber verilir (AuthContext yerinde yeniden giris katmanini acar). */
+export function oturumBittiAbone(fn: (sebep: OturumBitisSebebi) => void): () => void {
   _aboneler.add(fn);
   return () => _aboneler.delete(fn);
+}
+
+/**
+ * Her `/api` yanitindaki bitis basliklari (oturum saati bunlarla tazelenir — ayri
+ * yoklama gerekmez). Yalnizca IKI baslik da gecerli sayi ise cagrilir.
+ */
+export function oturumBasligiAbone(
+  fn: (bitis: { idleExpiresAt: number; absoluteExpiresAt: number }) => void,
+): () => void {
+  _baslikAboneleri.add(fn);
+  return () => _baslikAboneleri.delete(fn);
+}
+
+function basliklariYay(res: Response): void {
+  if (!_baslikAboneleri.size || !res.headers) return;
+  const idleExpiresAt = Number(res.headers.get(BASLIK_BOSTA));
+  const absoluteExpiresAt = Number(res.headers.get(BASLIK_MUTLAK));
+  if (!(idleExpiresAt > 0) || !(absoluteExpiresAt > 0)) return;
+  for (const fn of _baslikAboneleri) {
+    try {
+      fn({ idleExpiresAt, absoluteExpiresAt });
+    } catch {
+      /* bir abonenin hatasi digerlerini engellemesin */
+    }
+  }
 }
 
 /** AuthContext her `user` degisiminde cagirir. `true` kapiyi ACAR (yeni giris). */
@@ -120,12 +158,12 @@ function sentetik401(): Response {
   );
 }
 
-function kapiyiKapat(): void {
+function kapiyiKapat(sebep: OturumBitisSebebi): void {
   if (_bitti) return;
   _bitti = true;
   for (const fn of _aboneler) {
     try {
-      fn();
+      fn(sebep);
     } catch {
       /* bir abonenin hatasi digerlerini engellemesin */
     }
@@ -156,6 +194,7 @@ export function sessionGuardKur(): void {
     const istekOturumNesli = _oturumNesli;
     const istekteOturumVardi = _oturumVar;
     const res = await _gercekFetch!(input, init);
+    basliklariYay(res);
     if (
       res.status === 401 &&
       istekteOturumVardi &&
@@ -163,7 +202,8 @@ export function sessionGuardKur(): void {
       istekOturumNesli === _oturumNesli &&
       res.headers.get(SESSION_HEADER) === 'expired'
     ) {
-      kapiyiKapat();
+      const ham = res.headers.get(BASLIK_SEBEP);
+      kapiyiKapat(ham === 'idle' || ham === 'absolute' ? ham : undefined);
     }
     return res;
   };
@@ -178,4 +218,5 @@ export function _sessionGuardSifirla(): void {
   _bitti = false;
   _oturumNesli = 0;
   _aboneler.clear();
+  _baslikAboneleri.clear();
 }
