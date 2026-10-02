@@ -14,6 +14,7 @@ import SessionTimeoutModal from "@/components/SessionTimeoutModal";
 import PageErrorBoundary from "@/components/common/PageErrorBoundary";
 import { AuthContext } from "@/contexts/AuthContext";
 import { ToastContainer } from "@/components/common/Toast";
+import { toast as globalToast } from "@/hooks/useToast";
 import { CommandPalette } from "@/components/common/CommandPalette";
 import { AppDataProvider } from "@/contexts/AppContext";
 import { JobTrackerProvider } from "@/contexts/JobTrackerContext";
@@ -40,8 +41,19 @@ function PageSkeleton() {
 
 export default function AppLayout() {
   const location = useLocation();
-  const { showTimeoutModal, extendSession, dismissTimeoutModal, timeoutExtendable, logout, countdown } =
-    useContext(AuthContext);
+  const {
+    showTimeoutModal, extendSession, dismissTimeoutModal, timeoutExtendable, logout, countdown,
+    girisNotu, girisNotunuTemizle,
+  } = useContext(AuthContext);
+  // Giris notu (or. esanli oturum siniri): toast kabi burada dogar, not burada gosterilir.
+  useEffect(() => {
+    if (!girisNotu) return;
+    const id = window.setTimeout(() => {
+      globalToast.warning(girisNotu, 10000);
+      girisNotunuTemizle();
+    }, 0);
+    return () => window.clearTimeout(id);
+  }, [girisNotu, girisNotunuTemizle]);
 
   // Sekme basligi yol degistikce guncellenir (bkz. useDocumentTitle: etiketler
   // menuyle AYNI kaynaktan gelir, ayri bir liste tutulmaz).

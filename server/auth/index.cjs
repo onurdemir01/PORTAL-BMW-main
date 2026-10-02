@@ -17,6 +17,7 @@ const { initRolesRoutes } = require("./roles-routes.cjs");
 const sessionPolicy = require("./session-policy.cjs");
 const { normalizeLoginInput, checkPassword } = require("./login-input.cjs");
 const loginThrottle = require("./login-throttle.cjs");
+const { initSessionsRoutes, esanliSiniriUygula } = require("./sessions-routes.cjs");
 
 // Production'da bos SESSION_SECRET'i sessizce hardcoded degerle karsilamak guvenlik
 // acigi olurdu (herkesce bilinen bir imza anahtariyla session sahteciligi) — bu yuzden
@@ -150,10 +151,13 @@ function initAuth(app) {
         const pol = sessionPolicy.policy();
         req.session.meta = sessionPolicy.yeniMeta(req, { remember: remember === true && pol.rememberEnabled });
         sessionPolicy.cerezAyarla(req.session, pol);
-        req.session.save((saveErr) => {
+        req.session.save(async (saveErr) => {
           if (saveErr) return res.status(500).json({ ok: false, error: "Oturum kaydedilemedi." });
+          // Esanli oturum siniri (Admin acarsa): en eski oturumlar kapatilir, kullaniciya soylenir.
+          const closedOthers = await esanliSiniriUygula(req, user.username).catch(() => 0);
           res.json({
             ok:          true,
+            closedOthers,
             session:     sessionPolicy.oturumOzeti(req.session, pol),
             username:    user.username,
             role:        user.role,
@@ -243,6 +247,9 @@ function initAuth(app) {
       absoluteHours: Math.round(p.absoluteMs / 3600000),
     });
   });
+
+  // ── Aktif oturumlar (Faz D) ───────────────────────────────────────────────
+  initSessionsRoutes(router, { requireAdmin });
 
   // ── Kullanici tercihleri (portal_user_preferences) ──────────────────────────
   // UI durumu (tema, envanter kolon secimi/filtre/siralama, aktif admin sekmesi...)

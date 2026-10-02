@@ -5,6 +5,7 @@ import { useToast } from "@/hooks/useToast";
 import { PencilSquareIcon, TrashIcon, PlusIcon, ShieldCheckIcon, UserIcon } from "@heroicons/react/24/outline";
 import { Select } from "@/components/ui/Form";
 import { LoadingLogo } from '@/components/common/LoadingLogo';
+import OturumListesi from '@/components/oturum/OturumListesi';
 
 type RoleMap = Record<string, string>;
 
@@ -15,6 +16,9 @@ export default function UserManagementTab() {
   const [addUser, setAddUser] = useState("");
   const [addRole, setAddRole] = useState<"Admin" | "User">("Admin");
   const [saving, setSaving] = useState(false);
+  // Oturumlari incelenen kullanici (Faz D) ve arama kutusu.
+  const [oturumKullanici, setOturumKullanici] = useState("");
+  const [oturumArama, setOturumArama] = useState("");
 
   useEffect(() => {
     roleApi.list().then(setRoles).catch(() => toast.error("Roller yüklenemedi.")).finally(() => setLoading(false));
@@ -139,6 +143,13 @@ export default function UserManagementTab() {
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-1">
                       <button
+                        onClick={() => { setOturumArama(username); setOturumKullanici(username); }}
+                        className="px-2 py-1 text-xs text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                        title="Bu kullanıcının açık oturumları"
+                      >
+                        Oturumlar
+                      </button>
+                      <button
                         onClick={() => handleChange(username, role === "Admin" ? "User" : "Admin")}
                         className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                         title={`${role === "Admin" ? "User" : "Admin"} yap`}
@@ -162,10 +173,39 @@ export default function UserManagementTab() {
       )}
 
       <p className="text-xs text-amber-600">
-        Not: Bir rol değiştirildiğinde veya kaldırıldığında, o kullanıcının TÜM aktif oturumları
-        anında sonlandırılır — bir sonraki isteğinde oturumu düşer, yeniden giriş yapması gerekir
-        (yeni rolle).
+        Not: Admin yetkisi VERİLDİĞİNDE kullanıcı atılmaz, yeni rol açık oturumuna anında yansır.
+        Yetki DÜŞÜRÜLDÜĞÜNDE ya da override kaldırıldığında kullanıcının tüm aktif oturumları
+        sonlandırılır; bir sonraki isteğinde yeniden giriş yapması gerekir.
       </p>
+
+      {/* Faz D: bir kullanicinin acik oturumlari — gor ve sonlandir (denetime yazilir). */}
+      <div className="space-y-3 border-t border-gray-100 pt-5">
+        <div>
+          <h3 className="text-sm font-semibold text-gray-800 mb-1">Kullanıcı oturumları</h3>
+          <p className="text-xs text-gray-500">
+            Bir kullanıcının açık oturumlarını görün ve gerekirse sonlandırın (ör. kaybolan cihaz,
+            ayrılan çalışan). Her sonlandırma denetim kaydına yazılır.
+          </p>
+        </div>
+        <form
+          className="flex gap-2 items-end"
+          onSubmit={(e) => { e.preventDefault(); setOturumKullanici(oturumArama.trim().toLowerCase()); }}
+        >
+          <div className="flex-1">
+            <label htmlFor="oturum-kullanici" className="block text-xs font-medium text-gray-600 mb-1">Kullanıcı adı</label>
+            <input
+              id="oturum-kullanici"
+              type="text"
+              value={oturumArama}
+              onChange={(e) => setOturumArama(e.target.value)}
+              placeholder="ahmet.yilmaz"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <button type="submit" disabled={!oturumArama.trim()} className="btn-secondary">Oturumları göster</button>
+        </form>
+        {oturumKullanici && <OturumListesi key={oturumKullanici} adminKullanici={oturumKullanici} />}
+      </div>
     </div>
   );
 }

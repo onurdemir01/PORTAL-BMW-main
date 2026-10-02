@@ -106,6 +106,28 @@ function createMssqlSessionStore(session) {
         .catch((err) => { console.error("[SessionStore] destroy() basarisiz:", err.message); cb && cb(err); });
     }
 
+    // Faz D: bir kullanicinin acik oturumlari ("aktif oturumlarim", admin). Yalnizca
+    // `username` sutunu; sutun yoksa bos liste (eski sema — liste ozelligi calismaz ama
+    // giris etkilenmez).
+    listByUser(username, cb) {
+      if (!kolonlarVar) return cb(null, []);
+      db.query(
+        `SELECT sid, sess FROM portal_sessions WHERE username = $1 AND expires > GETUTCDATE()`,
+        [String(username || '').toLowerCase()],
+      )
+        .then(({ rows }) => {
+          const out = [];
+          for (const r of rows || []) {
+            try { out.push({ sid: r.sid, sess: JSON.parse(r.sess) }); } catch { /* bozuk satir */ }
+          }
+          cb(null, out);
+        })
+        .catch((err) => {
+          if (kolonHatasi(err)) { kolonlarVar = false; return cb(null, []); }
+          cb(err);
+        });
+    }
+
     // express-session degismeyen oturumda HER istekte touch cagirir. Kunyeli oturumda
     // satir omru yalnizca kunye degisince degisir — o da `set` ile yazilir. Bu yuzden
     // burada DB'ye gidilmez (eskiden her istek bir UPDATE'ti).

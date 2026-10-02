@@ -63,6 +63,7 @@ const TEST_DIRS = [
   'src/components/logx_v2/__tests__',
   'src/components/__tests__',
   'src/contexts/__tests__',
+  'src/components/oturum/__tests__',
   'src/components/admin/__tests__',
   'src/components/denetim/__tests__',
   'src/components/nginx_console/__tests__',

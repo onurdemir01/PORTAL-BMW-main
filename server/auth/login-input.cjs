@@ -13,6 +13,8 @@
 'use strict';
 
 const AD_YASAK = /["/\\[\]:;|=,+*?<>]/; // sAMAccountName'de gecemeyen karakterler
+// Kontrol karakterlerini YAKALAMAK bu regex'in amaci (yapistirilan gorunmez karakter).
+// eslint-disable-next-line no-control-regex
 const KONTROL = /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028\u2029\u2060\ufeff]/;
 const NETBIOS = /^[A-Za-z0-9][A-Za-z0-9._-]{0,14}$/;
 const AD_UST = 256;
