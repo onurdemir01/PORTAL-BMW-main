@@ -14,6 +14,7 @@ const {
 // tutuluyordu (kurumsal AI kod incelemesi, review.md #21); artik ikisi de bagimliliksiz
 // server/config/secret-pattern.cjs'i require eder, dongusel bagimlilik riski yok.
 const { SECRET_PATTERN } = require('../config/secret-pattern.cjs');
+const { oturumAyariHatasi } = require('../auth/oturum-ayarlari.cjs');
 
 function maskValue(key, value) {
   if (!value) return "";
@@ -55,6 +56,10 @@ function initSystemConfig(app) {
     if (strValue.includes("\n")) {
       return res.status(400).json({ ok: false, error: "Değer tek satır olmalı." });
     }
+    // Oturum anahtarlari KAYDETMEDEN once dogrulanir (Faz E): bozuk deger okuyan tarafta
+    // sessizce varsayilana duserdi, admin "kaydettim ama etki etmedi" durumuna duserdi.
+    const oturumHatasi = oturumAyariHatasi(key, strValue);
+    if (oturumHatasi) return res.status(400).json({ ok: false, error: oturumHatasi });
     try {
       await setEnvOverride(key, strValue, req.session.user.username);
       // Denetim kaydi — deger secret olabilir, yalnizca anahtar adi yazilir.

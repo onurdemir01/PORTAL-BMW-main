@@ -166,6 +166,19 @@ const SYSTEM_CONFIG_KEYS = [
   'SCALEX_MAX_TARGETS',
   'SCALEX_PROD_CONFIRM_THRESHOLD',
   'SCALEX_MAX_AUDIT_GROUPS',
+  // ── Oturum ve giris (Faz E) — SICAK YUKLENIR ─────────────────────────────
+  // Okuyan kod her istekte process.env'den okur; dogrulama server/auth/oturum-ayarlari.cjs.
+  'SESSION_IDLE_MINUTES',
+  'SESSION_ABSOLUTE_HOURS',
+  'SESSION_REMEMBER_DAYS',
+  'SESSION_WARN_SECONDS',
+  'SESSION_MAX_CONCURRENT',
+  'LOGIN_USER_MAX_FAILS',
+  'LOGIN_IP_MAX_PER_MIN',
+  'AUTH_ALLOWED_DOMAINS',
+  'AUTH_ALLOWED_UPN_SUFFIXES',
+  'PORTAL_ALLOWED_ORIGINS',
+  'CSRF_ORIGIN_CHECK',
 ];
 
 // RESTART GEREKTIRMEYEN anahtarlar. Portalin cogu modulu env'i boot'ta okuyup
@@ -181,6 +194,18 @@ const HOT_RELOADABLE_KEYS = [
   'SCALEX_MAX_TARGETS',
   'SCALEX_PROD_CONFIRM_THRESHOLD',
   'SCALEX_MAX_AUDIT_GROUPS',
+  // Oturum ve giris (Faz E): hepsi her istekte okunur.
+  'SESSION_IDLE_MINUTES',
+  'SESSION_ABSOLUTE_HOURS',
+  'SESSION_REMEMBER_DAYS',
+  'SESSION_WARN_SECONDS',
+  'SESSION_MAX_CONCURRENT',
+  'LOGIN_USER_MAX_FAILS',
+  'LOGIN_IP_MAX_PER_MIN',
+  'AUTH_ALLOWED_DOMAINS',
+  'AUTH_ALLOWED_UPN_SUFFIXES',
+  'PORTAL_ALLOWED_ORIGINS',
+  'CSRF_ORIGIN_CHECK',
 ];
 
 const LOAD_TIMEOUT_MS = 8000; // olu DB boot'u sonsuza dek bloklamasin

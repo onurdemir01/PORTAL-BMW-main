@@ -4,6 +4,9 @@ const rateLimit = require("express-rate-limit");
 const { ipKeyGenerator } = require("express-rate-limit");
 const compression = require("compression");
 
+const { istektekiOturumCerezi } = require("./auth/oturum-cerezi.cjs");
+const { originKontrolu } = require("./auth/origin-kontrolu.cjs");
+
 function createApp() {
   const app = express();
 
@@ -96,10 +99,11 @@ function createApp() {
   // (server/auth/login-throttle.cjs) — tek hesaba karsi denemeyi o durdurur.
   const loginLimiter = rateLimit({
     windowMs: 60_000,     // 1 minute
-    max: (() => {
+    // Fonksiyon: her istekte okunur — Admin'den degisince restart gerekmez (Faz E).
+    max: () => {
       const n = parseInt(process.env.LOGIN_IP_MAX_PER_MIN || "30", 10);
       return Number.isInteger(n) && n >= 5 && n <= 1000 ? n : 30;
-    })(),
+    },
     standardHeaders: true,
     legacyHeaders: false,
     message: { ok: false, error: "Çok fazla giriş denemesi. 1 dakika sonra tekrar deneyin." },
@@ -112,8 +116,10 @@ function createApp() {
   // header'dan okuruz (her oturum benzersiz) → kullanici basina ayri butce. Cookie yoksa
   // (login oncesi) IP'ye duser; login'in kendi limiti zaten var.
   function sessionOrIpKey(req) {
-    const cookie = req.headers.cookie || "";
-    const m = /connect\.sid=s%3A([^;.]+)/.exec(cookie) || /connect\.sid=([^;.]+)/.exec(cookie);
+    // Cerez adi ortama gore degisir (uretimde `__Host-portal.sid`, gecis suresince eski
+    // `connect.sid` de) — tek yerden okunur (server/auth/oturum-cerezi.cjs).
+    const ham = istektekiOturumCerezi(req) || "";
+    const m = /^s(?::|%3A)([^.]+)/.exec(ham) || /^([^.]+)/.exec(ham);
     if (m && m[1]) return `sid:${m[1].slice(0, 48)}`;
     const hdrUser = req.headers["x-portal-user"];
     if (hdrUser) return `usr:${String(hdrUser).slice(0, 64)}`;
@@ -131,6 +137,10 @@ function createApp() {
     message: { ok: false, error: "İstek limiti aşıldı. Lütfen bekleyin." },
   });
   app.use("/api", apiLimiter);
+
+  // CSRF ikinci katmani (Faz E): durum degistiren /api isteklerinde koken kontrolu.
+  // TUM route'lardan once — modul sirasina bagli kalmasin.
+  app.use("/api", originKontrolu());
 
   // N-01: API response time logging
   app.use("/api", (req, res, next) => {
