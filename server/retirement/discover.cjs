@@ -62,12 +62,22 @@ function buildTargets(base, invRows, certRows, jvmRows) {
     const gen = genOf(r.jboss_version);
     const web = matchWebForApp({ app, appHost: host, domain: r.domain || '' }, certByHost);
     const j = jvms.get(jvmKey(host, app));
+    // SOZLESME v3 (D1-C15, D1-C28): running=0 tek basina "kapali" DEGIL. running_src
+    // UNMEASURED (hidepid / ps korlugu) ise calisma durumu BILINMIYOR; NULL (eski satir ya da
+    // kolon henuz yok) bilinen sayilir.
+    const runningSrc = j && j.running_src != null && j.running_src !== '' ? U(j.running_src) : null;
     targets.push({
       host, site: siteOf(host), env, appName: app, gen,
       appPath: r.app_path || '', inventoryStatus: r.status || '', domain: r.domain || '', tier: web.tier,
       web: web.web.map((w) => ({ host: w.host, serverName: w.serverName, product: w.product, port: w.port, confFile: w.confFile })),
       webHow: web.how,
-      hub: j ? { running: Number(j.running) === 1, autoStart: String(j.auto_start || 'unknown'), scanDate: j.scan_date ? new Date(j.scan_date).toISOString().slice(0, 10) : null } : null,
+      hub: j ? {
+        running: Number(j.running) === 1,
+        runningSrc,
+        runningKnown: runningSrc !== 'UNMEASURED',
+        autoStart: String(j.auto_start || 'unknown'),
+        scanDate: j.scan_date ? new Date(j.scan_date).toISOString().slice(0, 10) : null,
+      } : null,
     });
   }
   const order = { PROD: 0, QA: 1, TEST: 2, DEV: 3 };
@@ -82,17 +92,50 @@ function buildTargets(base, invRows, certRows, jvmRows) {
   return { base, targets, summary };
 }
 
-async function discover(base) {
-  const { query, sql } = require('../inventory/mssql.cjs');
+/**
+ * @param {string} base
+ * @param {{ query: Function, sql: object }} [db]  test icin enjekte edilebilir (varsayilan mssql.cjs)
+ */
+async function discover(base, db) {
+  const { query, sql } = db || require('../inventory/mssql.cjs');
   const p = [{ name: 'b', type: sql.NVarChar(128), value: base }];
+  // KOLON LISTESI sys.columns'tan (sozlesme v3 P9): running_src yalniz semada VARSA secilir.
+  // Eskiden sorgu sabitti ve asagidaki .catch, kolon eksikligini de yutup TUM hedefleri
+  // "tarama yok" gosterebilirdi; artik eksik kolon sorguyu dusurmez.
+  // KOLON SORGUSU DUSERSE KAPALI (C3): eskiden .catch(() => []) running_src'yi sessizce
+  // dusuruyor, v3 UNMEASURED JVM "kapali" okunuyordu. Artik bu Server Hub'in OKUNAMAMASIDIR:
+  // hubUnavailable=true ve hicbir hedefe hub verisi baglanmaz (ekran "okunamadi" der).
+  let hubError = null;
+  const jvmCols = await query(
+    `SELECT name FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Server_Hub_Jvms')`,
+  )
+    .then((r) => (r.recordset || []).map((c) => String(c.name).toLowerCase()))
+    .catch((e) => {
+      hubError = `sema okunamadi: ${String((e && e.message) || e || 'okunamadi')}`;
+      console.warn('[Retirement] Server_Hub_Jvms kolonlari okunamadi:', hubError);
+      return null;
+    });
+  const jvmSel = ['host', 'jvm', 'running', 'auto_start', 'scan_date']
+    .concat(jvmCols && jvmCols.includes('running_src') ? ['running_src'] : [])
+    .map((c) => `t.${c}`)
+    .join(', ');
   const [inv, certs, jvms] = await Promise.all([
     query(`SELECT DISTINCT app, host, env, domain, jboss_version, app_path, status FROM dbo.MWAppsInventory WHERE app = @b OR app LIKE @b + '-_'`, p).then((r) => r.recordset || []),
     query(`SELECT host, ip, port, server_name, conf_file, product, env FROM dbo.BMW_Certificates_Inventory`).then((r) => r.recordset || []).catch(() => []),
-    query(`SELECT t.host, t.jvm, t.running, t.auto_start, t.scan_date FROM dbo.Server_Hub_Jvms t
+    jvmCols == null
+      ? Promise.resolve([])
+      : query(`SELECT ${jvmSel} FROM dbo.Server_Hub_Jvms t
              JOIN (SELECT host, MAX(scan_date) AS d FROM dbo.Server_Hub_Hosts GROUP BY host) m ON m.host = t.host AND m.d = t.scan_date
-            WHERE t.jvm = @b OR t.jvm LIKE @b + '-_'`, p).then((r) => r.recordset || []).catch(() => []),
+            WHERE t.jvm = @b OR t.jvm LIKE @b + '-_'`, p).then((r) => r.recordset || []).catch((e) => {
+          // OLCULEMEDI != YOK: Server Hub okunamadiysa bu "tarama yok" degil; ozet bunu tasir.
+          hubError = String((e && e.message) || e || 'okunamadi');
+          console.warn('[Retirement] Server_Hub_Jvms okunamadi:', hubError);
+          return [];
+        }),
   ]);
-  return buildTargets(base, inv, certs, jvms);
+  const out = buildTargets(base, inv, certs, jvms);
+  out.summary.hubUnavailable = hubError != null;
+  return out;
 }
 
 async function searchApps(q) {

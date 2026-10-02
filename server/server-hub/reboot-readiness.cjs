@@ -48,10 +48,70 @@ const KOD_ANLAMI = Object.freeze({
     tip: 'unknown',
     aciklama: 'web sözdizimi doğrulanamadı (dosya erişimi) — açılış belirsiz',
   },
-  AUTOSTART_UNKNOWN: { tip: 'unknown', aciklama: 'JVM auto-start durumu okunamadı' },
+  // "okunamadi" DEGIL "bilinmiyor": sebeplerden biri (tanimsiz-surec) okuma hatasi degildir.
+  AUTOSTART_UNKNOWN: { tip: 'unknown', aciklama: 'JVM auto-start durumu bilinmiyor' },
   CLI_FAIL: { tip: 'unknown', aciklama: 'JBoss CLI okunamadı' },
   CLI_SKIP: { tip: 'unknown', aciklama: 'JBoss CLI hiç çalıştırılamadı (kurulum/süreç)' },
   CLI_DENIED: { tip: 'unknown', aciklama: 'JBoss CLI yetki reddi (dzdo kuralı eksik)' },
+  // ── SOZLESME v3 (dalga 1): olculemeyen her sey "sorun yok" DEGIL ──
+  RUNNING_UNMEASURED: {
+    tip: 'unknown',
+    aciklama: 'JVM çalışma durumu ölçülemedi (hidepid / ps körlüğü)',
+  },
+  INIT_UNREADABLE: { tip: 'unknown', aciklama: 'init script okunamadı — var/yok bilinmiyor' },
+  LOAD_EXCLUDED: {
+    tip: 'unknown',
+    aciklama: 'son tarama yüklenemedi — gösterilen veri eski yükleme',
+  },
+  JVM_DATA_MISSING: { tip: 'unknown', aciklama: 'JBoss var ama JVM verisi gelmedi' },
+  JVM_INVENTORY_UNMEASURED: {
+    tip: 'unknown',
+    aciklama: 'tanımlı JVM envanteri ölçülemedi — durmuş JVM listede olmayabilir',
+  },
+  // T2-C2 (cfg_src=UNAVAILABLE): tanim kaynagi OKUNDU, calisan JVM orada tanimli degil. Liste
+  // eksik iddiasi YOK; bilinmeyen, bu surecin reboot'ta kimin tarafindan acilacagidir.
+  JVM_UNDEFINED_PROCESS: {
+    tip: 'unknown',
+    aciklama: "çalışan JVM tanım kaynağında yok (ps'te tanımsız süreç) — reboot sonrası açılışı belirsiz",
+  },
+  // Yalniz zaman butcesi (deadline) bir fazi atlattiysa olculemedi; yalniz sigorta (fuse)
+  // kesmesi acilisi etkilemez (vhost envanteri).
+  SCAN_PARTIAL: {
+    tip: 'unknown',
+    aciklama: 'tarama zaman bütçesine takıldı — bazı fazlar ölçülmedi',
+    kosul: (f) => f.deadline === true,
+  },
+  // EK-5: varligi olculemeyen web urunu ve envanterde olup taramanin goremedigi urun
+  WEB_PRESENCE_UNKNOWN: {
+    tip: 'unknown',
+    aciklama: 'web ürününün varlığı ölçülemedi (yetki/dzdo)',
+  },
+  PRODUCT_NOT_SCANNED: {
+    tip: 'unknown',
+    aciklama: 'envanterdeki ürün taramada görülemedi',
+  },
+});
+
+/**
+ * BAYAT KANIT (sozlesme v3 EK-2): taze olmayan (bayat ya da son yuklemede disarida kalan)
+ * sunucunun kovasi `unknown`dur - eski bir taramanin engeli de temizligi de bugunu anlatmaz.
+ * Sunucu nesnesinde `fresh` alani yoksa (eski cagiranlar) taze sayilir.
+ */
+const BAYAT = Object.freeze({
+  code: 'STALE_EVIDENCE',
+  tip: 'unknown',
+  aciklama: 'tarama bayat ya da son yükleme dışlandı — güncel durum bilinmiyor',
+});
+
+/**
+ * SEMA BILINMIYOR (C3): Portal Server Hub kolon listesini (sys.columns) okuyamadi; v3
+ * kanitlari (running_src, vhost_trust, scan_errors, LoadIssues izi) hic secilmedi. Eski
+ * kolonlarla verilecek "ok" ya da "risk" kanitsizdir - kova `unknown`.
+ */
+const SEMA = Object.freeze({
+  code: 'SCHEMA_UNKNOWN',
+  tip: 'unknown',
+  aciklama: 'Server Hub şeması okunamadı — güncel durum bilinmiyor',
 });
 
 const DURUM_SIRASI = ['blocked', 'unknown', 'risk', 'ok', 'notScanned'];
@@ -81,6 +141,7 @@ function rebootReadiness(hosts, istenen, latestScan = null) {
     for (const f of h.findings || []) {
       const anlam = KOD_ANLAMI[f.code];
       if (!anlam) continue;
+      if (typeof anlam.kosul === 'function' && !anlam.kosul(f)) continue;
       reasons.push({
         code: f.code,
         tip: anlam.tip,
@@ -89,17 +150,48 @@ function rebootReadiness(hosts, istenen, latestScan = null) {
         area: f.area || null,
       });
     }
+    const bayat = h.fresh === false;
+    if (bayat)
+      reasons.push({
+        code: BAYAT.code,
+        tip: BAYAT.tip,
+        aciklama: BAYAT.aciklama,
+        text: `son tarama ${h.scanDate || '?'}`,
+        area: 'scan',
+      });
+    const sema = h.schemaUnknown === true;
+    if (sema)
+      reasons.push({
+        code: SEMA.code,
+        tip: SEMA.tip,
+        aciklama: SEMA.aciklama,
+        text: 'sys.columns okunamadı',
+        area: 'scan',
+      });
     const varMi = (t) => reasons.some((r) => r.tip === t);
     // SIRA ONEMLI: engel > olculemedi > risk. Olculemeyeni "risk"in altina koymak,
     // bilmedigimiz bir seyi bildigimiz bir seyden daha masum gostermek olurdu.
-    const verdict = varMi('blocker')
-      ? 'blocked'
-      : varMi('unknown')
-        ? 'unknown'
-        : varMi('risk')
-          ? 'risk'
-          : 'ok';
-    return { host, verdict, scanDate: h.scanDate || null, reasons, note: '' };
+    // BAYAT sunucu engel/risk/hazir DEGIL, olculemedidir (EK-2); sema bilinmiyorsa da (C3).
+    const verdict = bayat || sema
+      ? 'unknown'
+      : varMi('blocker')
+        ? 'blocked'
+        : varMi('unknown')
+          ? 'unknown'
+          : varMi('risk')
+            ? 'risk'
+            : 'ok';
+    return {
+      host,
+      verdict,
+      scanDate: h.scanDate || null,
+      reasons,
+      note: bayat
+        ? `Tarama bayat (${h.scanDate || '?'}) — güncel durum bilinmiyor.`
+        : sema
+          ? 'Server Hub şeması okunamadı — güncel durum bilinmiyor.'
+          : '',
+    };
   });
 
   satirlar.sort(
@@ -141,4 +233,4 @@ function rebootReadiness(hosts, istenen, latestScan = null) {
   return { summary, rows: satirlar, topReasons, latestScan, verdictOrder: DURUM_SIRASI };
 }
 
-module.exports = { rebootReadiness, KOD_ANLAMI, DURUM_SIRASI };
+module.exports = { rebootReadiness, KOD_ANLAMI, DURUM_SIRASI, BAYAT, SEMA };

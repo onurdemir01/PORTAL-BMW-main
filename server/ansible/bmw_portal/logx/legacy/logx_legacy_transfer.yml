@@ -1,32 +1,4 @@
 ---
-# LogX v2 - Legacy log dosyalarini kaynak sunucuda ZIP'leyip dogrudan staging'e yazar.
-#
-# Gerekli extra_vars:
-#   selected_files:
-#     - host: GBJBOQ01
-#       path: /vhosting/application/logs/application.log
-#     - host: GBJBOQ02                       # ← ARTIK COKLU HOST desteklenir
-#       path: /vhosting/application/logs/application.log
-#   staging_dir: /sw/BMW_PORTAL/logs/legacy
-#   fallback_dir: /tmp/logx-v2-fallback
-#   archive_name: fa52e9adfd9fc71572ea8c7b15b65ed4.zip
-#
-# COKLU-HOST DAVRANISI (yeni):
-# - TEK host secildiginde: dosyalar kaynak hostta dogrudan tek ZIP'e yazilir + staging
-#   erisilemezse fallback_dir'e yazilir (A4 ingest fetch-back ile portal'a itilir). Bu yol
-#   ESKISIYLE BIREBIR AYNI — calisani bozmadik.
-# - BIRDEN COK host secildiginde: her host KENDI dosyalarini paylasimli staging altindaki
-#   "<stem>__parts/<HOST>.zip" per-host ZIP'ine yazar; ardindan run_once bir aggregator
-#   (staging NFS'i mount eden bir kaynak host) tum per-host ZIP'leri TEK "archive_name"
-#   ZIP'i icinde birlestirir. Sonuc yine TEK arsiv (staged_path/filename/size_bytes) →
-#   backend/download sozlesmesi degismez. Kullanici tek ZIP acinca her sunucunun ZIP'ini bulur.
-#   NOT: Coklu-host, tum kaynak hostlarin ayni paylasimli staging_dir'i mount etmesini gerektirir
-#   (tek-host fallback yolu coklu-host'ta uygulanmaz).
-#
-# Onemli:
-# - Dosyalar AWX/controller'a fetch edilmez; her host kendi diskindeki loglari kendisi zipler.
-# - community.general collection'i gerekli: community.general.archive
-
 - name: "LogX v2 - Legacy transfer girdilerini dogrula"
   hosts: localhost
   connection: local
@@ -84,9 +56,6 @@
 
 - name: "LogX v2 - Legacy loglari kaynak hosttan arsivle (tek-host: dogrudan / coklu-host: per-host parca)"
   hosts: "{{ selected_files | map(attribute='host') | unique | list }}"
-  # `rescue` YALNIZCA GOREV hatalarini yakalar; unreachable'i YAKALAMAZ. Tum
-  # host'lar boyle duserse Ansible "NO MORE HOSTS LEFT" ile sonraki play'leri
-  # ATLAR ve `set_stats` yazan toplayici play (play2) hic calismaz.
   ignore_unreachable: true
   gather_facts: false
   become: false
@@ -108,11 +77,10 @@
          else '/vhosting/dumpdir')
         ~ '/logx-' ~ (archive_name | regex_replace('[.]zip$', ''))
       }}
-    was_tmp_archive: "{{ was_tmp_dir }}/{{ archive_name }}"
+    was_tmp_archive: "{{ was_tmp_dir }}/{{ was_tmp_zip }}"
 
   tasks:
     - block:
-      # ── ORTAK: bu hostun secilen dosyalarini hazirla + durumlarini kontrol et ──────────
       - name: "Bu hosta ait secilen dosyalari hazirla"
         ansible.builtin.set_fact:
           host_selected_files: >-
@@ -123,6 +91,7 @@
             }}
           valid_source_paths: []
           per_file_status: []
+          was_tmp_zip: "{{ lookup('ansible.builtin.password', '/dev/null chars=ascii_lowercase,digits length=24') }}.zip"
         changed_when: false
 
       - name: "Secilen kaynak dosyalarin durumunu kontrol et"
@@ -204,9 +173,6 @@
           label: "{{ item.item.path }}"
         changed_when: false
 
-      # ══════════════════════════════════════════════════════════════════════════════════
-      # TEK-HOST YOLU (ESKISIYLE BIREBIR AYNI): dogrudan staging'e ZIP + fallback
-      # ══════════════════════════════════════════════════════════════════════════════════
       - name: "En az bir gecerli kaynak dosya oldugunu dogrula (tek-host)"
         ansible.builtin.assert:
           that:
@@ -391,9 +357,6 @@
         changed_when: false
         when: single_host | bool
 
-      # ══════════════════════════════════════════════════════════════════════════════════
-      # COKLU-HOST YOLU: her host KENDI dosyalarini paylasimli staging'de per-host ZIP'e yazar
-      # ══════════════════════════════════════════════════════════════════════════════════
       - name: "Paylasimli parca dizinini olustur (coklu-host)"
         ansible.builtin.file:
           path: "{{ parts_dir }}"
@@ -446,7 +409,22 @@
                   and host_part_stat.stat is defined
                   and host_part_stat.stat.exists | default(false)
                 )
-                else 'error'
+                else (
+                  'unreachable'
+                  if (
+                    source_file_stats is defined
+                    and (
+                      source_file_stats is unreachable
+                      or (
+                        source_file_stats.results | default([])
+                        | selectattr('unreachable', 'defined')
+                        | selectattr('unreachable')
+                        | list | length
+                      ) > 0
+                    )
+                  )
+                  else 'error'
+                )
               }}
             part_filename: "{{ inventory_hostname }}.zip"
             size_bytes: "{{ host_part_stat.stat.size | default(0) | int if (host_part_stat is defined and host_part_stat.stat is defined) else 0 }}"
@@ -460,7 +438,10 @@
                   and host_part_stat.stat.exists | default(false)
                 )
                 else (
-                  'Bu hostta arsivlenecek okunabilir dosya bulunamadi'
+                  (
+                    'Bu hostta arsivlenecek okunabilir dosya yok; dosya basina sebep: '
+                    ~ (per_file_status | map(attribute='error') | join(' | '))
+                  )
                   if (valid_source_paths | length == 0)
                   else (
                     (
@@ -475,21 +456,22 @@
         changed_when: false
         when: not (single_host | bool)
 
-
-
-  # ── TEK-HOST: sonucu dogrudan yayinla (ESKISIYLE AYNI) ────────────────────────────────
-
-      # RESCUE (2026-08-28): bir gorev duserse host OLMEZ; sebep kaydedilir.
-      # Neden sart: bu play'deki TUM host'lar duserse Ansible "NO MORE HOSTS
-      # LEFT" ile SONRAKI PLAY'LERI ATLAR ve `set_stats`'in TEK yazari olan
-      # toplayici play HIC calismaz — sonuc sozlesmesi yayinlanmaz, portal
-      # "sonuc gelmedi" der. Uretimde Telnet'te yasandi; toplayici play (play2) bu play'e bagli.
-      # BILEREK yeniden `fail` ETMEZ: amaci host'u ayakta tutmak.
       rescue:
         - name: "Hata kaydedilir (host ayakta kalir)"
           ansible.builtin.set_fact:
             host_blocked_reason: >-
               {{ ansible_failed_result.msg | default('Bu host uzerinde is tamamlanamadi.') }}
+
+        - name: "Coklu-host: hata host sonucu olarak kaydedilir (toplayicidan sessizce dusmesin)"
+          ansible.builtin.set_fact:
+            host_logx_result:
+              host: "{{ inventory_hostname | upper }}"
+              status: error
+              error: "{{ host_blocked_reason }}"
+              part_filename: ''
+              size_bytes: 0
+              per_file_status: "{{ per_file_status | default([]) }}"
+          when: not (single_host | bool)
       always:
         - name: "Okuma kullanicisinin ise ozel gecici dizinini temizle"
           become: true
@@ -501,6 +483,7 @@
           when: was_tmp_dir_result is defined and was_tmp_dir_result is not skipped
           failed_when: false
           changed_when: false
+
 - name: "LogX v2 - Tek-host birlesik artifact sonucunu yayinla"
   hosts: localhost
   connection: local
@@ -512,11 +495,6 @@
     source_host: "{{ selected_files | map(attribute='host') | unique | list | first }}"
 
   tasks:
-    # SIRA DEGISTI (2026-08-28): `assert` ONCE gelip `set_stats`'i ATLIYORDU. Kaynak
-    # host sonuc uretememisse (transfer dustu, host erisilemedi) is dogru sekilde
-    # kirmizi doniyordu AMA sonuc sozlesmesi HIC yayinlanmiyordu — portal
-    # "yapilandirilmis sonuc gelmedi" deyip ham AWX log'u gosteriyordu. Artik once
-    # SONUC yayinlanir (gercek ya da sentetik "failed"), SONRA is basarisiz yapilir.
     - name: "Sonucu yayinla (tek-host) — sonuc yoksa SENTETIK failed"
       ansible.builtin.set_stats:
         data:
@@ -549,10 +527,6 @@
       when: source_hosts | length == 1
 
 
-# ── COKLU-HOST: per-host ZIP'leri TEK arsivde birlestir + yayinla (run_once aggregator) ──
-# Aggregator, staging NFS'i mount eden bir kaynak host uzerinde run_once calisir; tum
-# per-host ZIP'ler ayni paylasimli parts_dir'de oldugundan onlari tek "archive_name" ZIP'i
-# icinde birlestirir. Sonuc yine TEK arsiv (staged_path/filename/size_bytes) → downstream degismez.
 - name: "LogX v2 - Coklu-host per-host ZIP'leri tek arsivde birlestir"
   hosts: "{{ selected_files | map(attribute='host') | unique | list }}"
   gather_facts: false
@@ -563,13 +537,6 @@
     source_hosts: "{{ selected_files | map(attribute='host') | unique | list }}"
     parts_dir: "{{ staging_dir }}/{{ archive_name | regex_replace('[.]zip$', '') }}__parts"
     staging_archive_path: "{{ staging_dir }}/{{ archive_name }}"
-    host_results: >-
-      {{
-        selected_files | map(attribute='host') | unique | list
-        | map('extract', hostvars, 'host_logx_result')
-        | select('defined')
-        | list
-      }}
 
   tasks:
     - name: "Mevcut per-host parca ZIP'lerini bul (coklu-host)"
@@ -624,52 +591,145 @@
       failed_when: false
       changed_when: false
 
-    - name: "Coklu-host birlesik sonucu yayinla (logx_result)"
+    - name: "Birlesik arsivin durumunu kaydet (yayini sonraki localhost play'i yapar)"
+      ansible.builtin.set_fact:
+        logx_cok_host_arsiv:
+          mevcut: >-
+            {{
+              combined_archive_stat is defined
+              and combined_archive_stat.stat is defined
+              and (combined_archive_stat.stat.exists | default(false))
+            }}
+          boyut: >-
+            {{
+              (combined_archive_stat.stat.size | default(0) | int)
+              if (combined_archive_stat is defined and combined_archive_stat.stat is defined)
+              else 0
+            }}
+          parca_sayisi: "{{ part_files.files | default([]) | length }}"
+          hata: >-
+            {{
+              (combined_archive_result.msg | default(''))
+              if (combined_archive_result is defined and (combined_archive_result.failed | default(false)))
+              else (
+                ('Parca dizini aranamadi: ' ~ (part_files.msg | default('erisilemedi')))
+                if (part_files is defined and part_files is unreachable)
+                else ''
+              )
+            }}
+      when: source_hosts | length > 1
+
+
+- name: "LogX v2 - Coklu-host birlesik sonucu yayinla (toplayici kosmadiysa SENTETIK failed)"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: false
+
+  vars:
+    cok_kaynaklar: "{{ selected_files | map(attribute='host') | unique | list }}"
+    cok_bildirenler: >-
+      {{
+        cok_kaynaklar
+        | map('extract', hostvars, 'host_logx_result')
+        | select('defined')
+        | selectattr('host', 'defined')
+        | list
+      }}
+    cok_arsiv: >-
+      {{
+        cok_kaynaklar
+        | map('extract', hostvars, 'logx_cok_host_arsiv')
+        | select('defined')
+        | list
+        | first
+        | default({}, true)
+      }}
+    cok_arsiv_var: "{{ cok_arsiv.mevcut | default(false) | bool }}"
+    cok_staging_arsivi: "{{ staging_dir }}/{{ archive_name }}"
+    cok_tum_hostlar: "{{ cok_bildirenler + (cok_eksikler | default([])) }}"
+
+  tasks:
+    - name: "Sonuc bildirmeyen kaynak hostlari unreachable olarak ekle (coklu-host)"
+      ansible.builtin.set_fact:
+        cok_eksikler: >-
+          {{
+            (cok_eksikler | default([]))
+            + [{
+                'host': item,
+                'status': 'unreachable',
+                'error': 'sonuc bildirmedi',
+                'part_filename': '',
+                'size_bytes': 0,
+                'per_file_status': [],
+              }]
+          }}
+      loop: >-
+        {{
+          []
+          if (cok_kaynaklar | length) < 2
+          else (
+            cok_kaynaklar
+            | map('upper')
+            | reject('in', cok_bildirenler | map(attribute='host') | map('upper') | list)
+            | list
+          )
+        }}
+      when: cok_kaynaklar | length > 1
+
+    - name: "Coklu-host birlesik sonucu yayinla (logx_result) - sonuc yoksa SENTETIK failed"
       ansible.builtin.set_stats:
         data:
           logx_result:
             overall_status: >-
               {{
                 'failed'
-                if not (
-                  combined_archive_stat is defined
-                  and combined_archive_stat.stat is defined
-                  and combined_archive_stat.stat.exists | default(false)
-                )
+                if not (cok_arsiv_var | bool)
                 else (
                   'success'
                   if (
-                    (host_results | rejectattr('status', 'equalto', 'ok') | list | length) == 0
-                    and (host_results
+                    (cok_tum_hostlar | rejectattr('status', 'equalto', 'ok') | list | length) == 0
+                    and (cok_bildirenler
                           | map(attribute='per_file_status') | flatten
                           | selectattr('status', 'equalto', 'error') | list | length) == 0
                   )
                   else 'partial'
                 )
               }}
-            staged_path: >-
-              {{
-                staging_archive_path
-                if (
-                  combined_archive_stat is defined
-                  and combined_archive_stat.stat is defined
-                  and combined_archive_stat.stat.exists | default(false)
-                )
-                else ''
-              }}
+            staged_path: "{{ cok_staging_arsivi if (cok_arsiv_var | bool) else '' }}"
             filename: "{{ archive_name }}"
-            size_bytes: "{{ combined_archive_stat.stat.size | default(0) | int if (combined_archive_stat is defined and combined_archive_stat.stat is defined) else 0 }}"
+            size_bytes: "{{ (cok_arsiv.boyut | default(0) | int) if (cok_arsiv_var | bool) else 0 }}"
             is_fallback: false
-            hosts: "{{ host_results }}"
+            hosts: "{{ cok_tum_hostlar }}"
             error: >-
               {{
                 ''
-                if (
-                  combined_archive_stat is defined
-                  and combined_archive_stat.stat is defined
-                  and combined_archive_stat.stat.exists | default(false)
+                if (cok_arsiv_var | bool)
+                else (
+                  'Coklu-host toplayici calismadi; birlesik arsiv olusturulmadi.'
+                  if (cok_arsiv | length) == 0
+                  else (
+                    'Birlesik arsiv olusturulamadi: '
+                    ~ (
+                        cok_arsiv.hata
+                        if (cok_arsiv.hata | default('') | length) > 0
+                        else (
+                          'hicbir kaynak hosttan parca ZIP gelmedi (host sebepleri hosts[].error alaninda)'
+                          if ((cok_arsiv.parca_sayisi | default(0) | int) == 0)
+                          else 'birlesik arsiv dogrulanamadi'
+                        )
+                      )
+                  )
                 )
-                else 'Hicbir kaynak hosttan arsivlenecek dosya bulunamadi veya birlesik arsiv olusturulamadi'
               }}
         per_host: false
-      when: source_hosts | length > 1
+      when: cok_kaynaklar | length > 1
+
+    - name: "Coklu-host toplayici sonuc uretmediyse isi BASARISIZ yap"
+      ansible.builtin.fail:
+        msg: >-
+          Coklu-host toplayici calismadi; logx_result SENTETIK failed olarak yayinlandi.
+          Kaynak hostlar: {{ cok_kaynaklar | join(', ') }}.
+      when:
+        - cok_kaynaklar | length > 1
+        - (cok_arsiv | length) == 0

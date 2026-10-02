@@ -10,7 +10,99 @@
 'use strict';
 
 const express = require('express');
-const { assess, flattenFindings, parseTargets } = require('./assess.cjs');
+const { assess, flattenFindings, parseTargets, hedefUserinfoSil } = require('./assess.cjs');
+const { maskText, maskJvmArgs, maskJvmArgDiff } = require('./mask.cjs');
+
+// ── KOLON LISTELERI (sozlesme v3 P9) ───────────────────────────────────────────────
+// Yildizli (tum kolon) SELECT YOK. Her tablo icin BEKLENEN kolonlar (sozlesme kayit_tipleri + DDL) ile
+// tablodaki MEVCUT kolonlarin kesisimi secilir; mevcut kolonlar TEK sys.columns sorgusundan
+// gelir. Boylece DDL henuz kosmamis eski 8 tablolu semada da uclar dusmez (eksik kolon JS'te
+// null okunur). Eskiden Hosts/Jvms/Web/Vhosts sorgularinda catch yoktu; tek "Invalid column
+// name" tum Promise.all'i reddederdi.
+const SH_KOLONLAR = Object.freeze({
+  'dbo.Server_Hub_Hosts': [
+    'host', 'scan_date', 'products', 'wall_s', 'cpu_s', 'note',
+    'scan_ver', 'rec_counts', 'scan_errors', 'proc_visibility', 'sock_visibility', 'loaded_at',
+  ],
+  'dbo.Server_Hub_Init': ['host', 'scan_date', 'root', 'file', 'status', 'sha512'],
+  'dbo.Server_Hub_Jboss': [
+    'host', 'scan_date', 'gen', 'host_name', 'host_state', 'cli', 'note',
+    'mgmt_cfg', 'mgmt_state', 'cli_rescue', 'cli_run_as', 'host_config', 'dc_role',
+  ],
+  // FILO sorgusu: jvm_args / configured_jvm_args / jvm_arg_diff YOK (agir; yalniz tek
+  // sunucu ayrintisinda, maskeli - JVM_AGIR_KOLONLAR).
+  'dbo.Server_Hub_Jvms': [
+    'host', 'scan_date', 'gen', 'jvm', 'grp', 'running', 'auto_start', 'server_state', 'ports',
+    'running_src', 'cfg_src', 'state_src', 'config_changed', 'config_risk',
+    'config_mtime_epoch', 'process_start_epoch', 'os_startup', 'reboot_expected',
+    'reboot_status', 'cfg_ports', 'cfg_ports_src', 'jvm_arg_status', 'jvm_args_src',
+  ],
+  'dbo.Server_Hub_Web': [
+    'host', 'scan_date', 'product', 'running', 'syntax', 'detail',
+    'check_class', 'syntax_verification', 'run_as', 'check_rc', 'vhost_trust', 'running_src',
+  ],
+  'dbo.Server_Hub_Vhosts': [
+    'host', 'scan_date', 'product', 'listen', 'server_name', 'aliases', 'access_log',
+    'proxy_targets', 'req_24h', 'req_7d', 'hc_24h', 'shared', 'sampled', 'conf_file',
+    'traffic_state', 'traffic_reason', 'cover_from_epoch', 'last_req_epoch',
+    'last_line_epoch', 'log_read_as',
+  ],
+  'dbo.Server_Hub_Ips': ['host', 'scan_date', 'ip', 'iface', 'used_by', 'is_primary'],
+  'dbo.Server_Hub_Sshd': ['host', 'scan_date', 'max_sessions', 'max_startups', 'active_sessions'],
+});
+const JVM_AGIR_KOLONLAR = Object.freeze(['jvm_args', 'configured_jvm_args', 'jvm_arg_diff']);
+// sys.columns OKUNAMAZSA yalniz eski semanin kolonlari secilir - bunlar her zaman var.
+// KAPALI KALIR (C3): SQL Server'da yetkisiz sys.columns hata atmaz (satirlari suzer); bu
+// dal pratikte GECICI hatada (zaman asimi, kilitlenme, baglanti) calisir. O zaman
+// running_src / scan_ver / vhost_trust secilmez ve v3 UNMEASURED JVM "kapali" okunurdu.
+// loadLatest bu durumda data.schemaUnknown=true isaretler: assess HICBIR eylem onermez,
+// running=0 bilinmiyor sayilir, geri alma serbest denmez; sonuc ONBELLEGE ALINMAZ.
+const SH_ESKI_KOLONLAR = Object.freeze({
+  'dbo.Server_Hub_Hosts': ['host', 'scan_date', 'products', 'wall_s', 'cpu_s', 'note'],
+  'dbo.Server_Hub_Init': ['host', 'scan_date', 'root', 'file', 'status', 'sha512'],
+  'dbo.Server_Hub_Jboss': ['host', 'scan_date', 'gen', 'host_name', 'host_state', 'cli', 'note'],
+  'dbo.Server_Hub_Jvms': [
+    'host', 'scan_date', 'gen', 'jvm', 'grp', 'running', 'auto_start', 'server_state', 'ports',
+  ],
+  'dbo.Server_Hub_Web': ['host', 'scan_date', 'product', 'running', 'syntax', 'detail'],
+  'dbo.Server_Hub_Vhosts': [
+    'host', 'scan_date', 'product', 'listen', 'server_name', 'aliases', 'access_log',
+    'proxy_targets', 'req_24h', 'req_7d', 'hc_24h', 'shared', 'sampled', 'conf_file',
+  ],
+  'dbo.Server_Hub_Ips': ['host', 'scan_date', 'ip', 'iface', 'used_by', 'is_primary'],
+  'dbo.Server_Hub_Sshd': ['host', 'scan_date', 'max_sessions', 'max_startups', 'active_sessions'],
+});
+
+/**
+ * Server_Hub tablolarinin mevcut kolonlari, TEK sys.columns sorgusuyla.
+ * @returns {Promise<{ ok: boolean, cols: Map<string, Set<string>> }>}  ok=false: okunamadi
+ */
+async function shKolonlari(query) {
+  const tablolar = Object.keys(SH_KOLONLAR);
+  const ids = tablolar.map((t) => `OBJECT_ID('${t}')`).join(', ');
+  try {
+    const r = await query(
+      `SELECT OBJECT_NAME(c.object_id) AS tbl, c.name AS name FROM sys.columns c WHERE c.object_id IN (${ids})`,
+    );
+    const cols = new Map();
+    for (const row of r.recordset || []) {
+      const t = `dbo.${String(row.tbl)}`.toLowerCase();
+      if (!cols.has(t)) cols.set(t, new Set());
+      cols.get(t).add(String(row.name).toLowerCase());
+    }
+    return { ok: true, cols };
+  } catch {
+    return { ok: false, cols: new Map() };
+  }
+}
+
+/** Beklenen (SPEC) kolonlarin tabloda MEVCUT olanlari. Tablo yoksa []. */
+function secilecekKolonlar(tablo, kol, beklenen) {
+  if (!kol.ok) return SH_ESKI_KOLONLAR[tablo] || [];
+  const var_ = kol.cols.get(tablo.toLowerCase());
+  if (!var_) return [];
+  return beklenen.filter((c) => var_.has(c.toLowerCase()));
+}
 
 const REGISTRY_KEYS = Object.freeze({ scan: 'server_hub_scan', fix: 'server_hub_fix' });
 const HOST_RE = /^[A-Za-z0-9][A-Za-z0-9-]{1,62}$/;
@@ -31,13 +123,18 @@ async function loadLatest() {
   const { query } = require('../inventory/mssql.cjs');
   const ex = await query(`SELECT OBJECT_ID('dbo.Server_Hub_Hosts') AS oid`);
   if (!ex.recordset?.[0]?.oid) return { tableMissing: true, data: null };
-  // her sunucunun SON taramasi (gun): Hosts tablosundaki max scan_date
-  const q = (table) =>
-    query(
-      `SELECT t.* FROM ${table} t
+  const kol = await shKolonlari(query);
+  // her sunucunun SON taramasi (gun): Hosts tablosundaki max scan_date. Kolonlar acikca
+  // (sys.columns ile kesisim); [koseli] ad: 'file' SQL Server'da ayrilmis sozcuk.
+  const q = (table) => {
+    const cols = secilecekKolonlar(table, kol, SH_KOLONLAR[table]);
+    if (!cols.length) return Promise.resolve([]);
+    return query(
+      `SELECT ${cols.map((c) => `t.[${c}]`).join(', ')} FROM ${table} t
        JOIN (SELECT host, MAX(scan_date) AS d FROM dbo.Server_Hub_Hosts GROUP BY host) m
          ON m.host = t.host AND m.d = t.scan_date`,
     ).then((r) => r.recordset || []);
+  };
   // JVM GERCEGI (kullanici, 2026-09-22): "JVM bilgilerini middleware_applications_inventory/jboss
   // job'inin veritabanindan cek." dbo.MWAppsInventory uygulama basina satir tutar: status
   // (running/stopped), jvm_count, autostarts ("true false ..."), env, tier. Server Hub'in kendi CLI
@@ -114,10 +211,61 @@ async function loadLatest() {
     q('dbo.Server_Hub_Ips'),
     q('dbo.Server_Hub_Sshd').catch(() => []), // tablo eski taramada yoksa
   ]);
+  // YUKLEME IZI (sozlesme v3): sunucu basina EN YENI scan_date'in LoadIssues satirlari.
+  // Ayni (host, scan_date) icin loader yalniz son kosunun satirlarini tutar. Tablo henuz
+  // yoksa (DDL kosmamis) bos liste: LOAD_EXCLUDED uretilmez, uclar dusmez.
+  const loadIssues = await query(
+    `SELECT li.host, li.scan_date, li.issue, li.detail, li.run_at FROM dbo.Server_Hub_LoadIssues li
+     JOIN (SELECT host, MAX(scan_date) AS d FROM dbo.Server_Hub_LoadIssues GROUP BY host) m
+       ON m.host = li.host AND m.d = li.scan_date`,
+  )
+    .then((r) => r.recordset || [])
+    .catch(() => []);
   return {
     tableMissing: false,
-    data: { hosts, init, jboss, jvms, web, vhosts, ips, sshd, mwApps, invEnv, invProductUnknown },
+    data: {
+      hosts,
+      init,
+      jboss,
+      jvms,
+      web,
+      vhosts,
+      ips,
+      sshd,
+      loadIssues,
+      mwApps,
+      invEnv,
+      invProductUnknown,
+      // C3: kolon listesi okunamadi -> sema bilinmiyor (assess kapali kalir)
+      schemaUnknown: !kol.ok,
+    },
   };
+}
+
+/**
+ * Tek sunucu ayrintisi icin AGIR JVM kolonlari (jvm_args ailesi). Filo sorgusunda yoktur
+ * (hacim; P9). Kolon semada yoksa (eski sema / dalga 3 oncesi) bos Map.
+ * @returns {Promise<Map<string, object>>}  anahtar `${gen}|${jvm kucuk harf}`
+ */
+async function loadJvmAgir(host) {
+  const { query, sql } = require('../inventory/mssql.cjs');
+  const kol = await shKolonlari(query);
+  if (!kol.ok) return new Map();
+  const var_ = kol.cols.get('dbo.server_hub_jvms') || new Set();
+  const agir = JVM_AGIR_KOLONLAR.filter((c) => var_.has(c));
+  if (!agir.length) return new Map();
+  const rows = await query(
+    `SELECT t.[gen], t.[jvm], ${agir.map((c) => `t.[${c}]`).join(', ')} FROM dbo.Server_Hub_Jvms t
+     JOIN (SELECT host, MAX(scan_date) AS d FROM dbo.Server_Hub_Hosts GROUP BY host) m
+       ON m.host = t.host AND m.d = t.scan_date
+     WHERE t.host = @h OR t.host LIKE @h + '.%'`,
+    [{ name: 'h', type: sql.NVarChar(64), value: host }],
+  )
+    .then((r) => r.recordset || [])
+    .catch(() => []);
+  const out = new Map();
+  for (const r of rows) out.set(`${Number(r.gen)}|${String(r.jvm || '').trim().toLowerCase()}`, r);
+  return out;
 }
 
 async function getAssessment(fresh) {
@@ -126,8 +274,32 @@ async function getAssessment(fresh) {
   const value = tableMissing
     ? { tableMissing: true, hosts: [], summary: null, latestScan: null }
     : { tableMissing: false, ...assess(data) };
-  _cache = { at: Date.now(), value };
+  // SEMA BILINMIYOR (C3) sonucu onbellege ALINMAZ: gecici hata 60 sn boyunca "kapali" /
+  // "geri alma serbest" gostermesin; bir sonraki istek kolonlari yeniden okur. Onceki
+  // (saglam) onbellek de silinir - ekran ayni dakika icinde iki farkli gercek gostermesin.
+  if (value.schemaUnknown) _cache = { at: 0, value: null };
+  else _cache = { at: Date.now(), value };
   return value;
+}
+
+/** /overview rollback alani (EK-1). Sema bilinmiyorsa v3 sayimi yapilamaz: geri alma YOK. */
+function rollbackBilgisi(a) {
+  const sv = (a.summary && a.summary.scanVersion) || null;
+  if (a.schemaUnknown || (sv && sv.schemaUnknown))
+    return {
+      allowed: false,
+      v3Hosts: null,
+      schemaUnknown: true,
+      message:
+        'Server Hub şeması (sys.columns) okunamadı — v3 tarama sayısı bilinmiyor; Portal eski sürüme geri alınmamalı. Sayfayı yenileyin.',
+    };
+  if (sv && sv.v3Hosts > 0)
+    return {
+      allowed: false,
+      v3Hosts: sv.v3Hosts,
+      message: `${sv.v3Hosts} sunucunun son taraması yeni tarayıcıdan (scan_ver dolu) — Portal eski sürüme geri alınmamalı; önce Ansible geri alınıp eski tarayıcıyla bir tarama yüklenmeli.`,
+    };
+  return { allowed: true, v3Hosts: 0, message: '' };
 }
 
 // Yanit sekli: sunucu listesi HAFIF (bulgu sayilari + urunler), ayrinti /host/:host ile.
@@ -144,40 +316,92 @@ function hostRow(h) {
     wallS: h.wallS,
     cpuS: h.cpuS,
     jvms: h.jvms.length,
-    jvmsRunning: h.jvms.filter((j) => j.running).length,
+    // v3: calisma durumu OLCULEMEYEN JVM "calisiyor" da "kapali" da sayilmaz; ayri sayac
+    jvmsRunning: h.jvms.filter((j) => j.runningKnown !== false && j.running).length,
+    jvmsUnmeasured: h.jvms.filter((j) => j.runningKnown === false).length,
+    // tazelik kapisi (bayat / son yuklemede disarida kalan sunucuda eylem yok)
+    fresh: h.fresh !== false,
     vhosts: h.vhosts.length,
     unusedIps: h.ips.filter((i) => i.usedBy === 'none' && !i.primary).length,
+    // bulgu metni serbest metin tasiyabilir (note/detail) -> maskeli (kural 9)
     topFinding:
-      h.findings
-        .slice()
-        .sort(
-          (a, b) =>
-            (({ danger: 3, warning: 2, info: 1 })[b.severity] || 0) -
-            ({ danger: 3, warning: 2, info: 1 }[a.severity] || 0),
-        )[0]?.text || null,
+      maskText(
+        h.findings
+          .slice()
+          .sort(
+            (a, b) =>
+              (({ danger: 3, warning: 2, info: 1 })[b.severity] || 0) -
+              ({ danger: 3, warning: 2, info: 1 }[a.severity] || 0),
+          )[0]?.text,
+      ) || null,
   };
 }
 
-function hostDetail(h) {
+/**
+ * Tek sunucu ayrintisi. MASKE (kural 9, ucuncu katman): serbest metin alanlari (note,
+ * detail, cli_rescue, bulgu metni) desen maskesiyle, jvm_args ailesi BEYAZ LISTEYLE.
+ * Maske idempotenttir; assess zaten maskeli yuklese de cikista yeniden uygulanir.
+ * @param {object} h      assess() sunucusu
+ * @param {Map<string, object>} [agir]  loadJvmAgir() ciktisi (jvm_args ailesi, ham)
+ */
+function hostDetail(h, agir) {
+  const agirOf = (j) => (agir ? agir.get(`${j.gen}|${String(j.name || '').toLowerCase()}`) : null);
   return {
     ...hostRow(h),
-    findings: h.findings,
+    scanVer: h.scanVer || null,
+    scanErrors: h.scanErrors || [],
+    procVisibility: h.procVisibility || null,
+    sockVisibility: h.sockVisibility || null,
+    note: maskText(h.note || ''),
+    loadExcluded: !!h.loadExcluded,
+    // C3: sema okunamadi -> bu sunucuda hicbir eylem yok, calisma durumlari bilinmiyor
+    schemaUnknown: h.schemaUnknown === true,
+    findings: h.findings.map((f) => ({ ...f, text: maskText(f.text) })),
     init: h.init,
-    jboss: h.jboss,
-    jvms: h.jvms.map((j) => ({
-      ...j,
-      vhosts: j.vhosts.map((m) => ({
-        host: m.host,
-        product: m.v.product,
-        serverName: m.v.serverName,
-        req24h: m.v.req24h,
-        req7d: m.v.req7d,
-        hc24h: m.v.hc24h,
-        sampled: m.v.sampled,
-      })),
+    jboss: h.jboss.map((b) => ({
+      ...b,
+      note: maskText(b.note),
+      cliRescue: b.cliRescue == null ? b.cliRescue : maskText(b.cliRescue),
     })),
-    web: h.web,
-    vhosts: h.vhosts.map((v) => ({ ...v, proxyTargets: v.proxyTargetsRaw })),
+    jvms: h.jvms.map((j) => {
+      const a = agirOf(j) || {};
+      const ham = (k, alan) => (a[k] !== undefined ? a[k] : j[alan]);
+      return {
+        ...j,
+        // runningKnown / runningSrc donuk arayuz (UI 'bilinmiyor' gosterir)
+        runningKnown: j.runningKnown !== false,
+        runningSrc: j.runningSrc || null,
+        jvmArgs: maskJvmArgs(ham('jvm_args', 'jvmArgs') ?? null),
+        configuredJvmArgs: maskJvmArgs(ham('configured_jvm_args', 'configuredJvmArgs') ?? null),
+        jvmArgDiff: maskJvmArgDiff(ham('jvm_arg_diff', 'jvmArgDiff') ?? null),
+        vhosts: j.vhosts.map((m) => ({
+          host: m.host,
+          product: m.v.product,
+          serverName: m.v.serverName,
+          req24h: m.v.req24h,
+          req7d: m.v.req7d,
+          hc24h: m.v.hc24h,
+          sampled: m.v.sampled,
+          kind: m.kind || null,
+          trafficState: m.v.trafficState || null,
+          trafficReason: m.v.trafficReason || null,
+        })),
+      };
+    }),
+    // Ekran web durumunu runningSrc'den okur: calisma durumu bilinmeyen satir (sema okunamadi,
+    // C3) 'UNMEASURED' olarak gider - "calismiyor" gosterilmesin.
+    web: h.web.map((w) => ({
+      ...w,
+      runningSrc: w.runningSrc || (w.runningKnown === false ? 'UNMEASURED' : null),
+      detail: maskText(w.detail),
+    })),
+    // proxy_targets (C5): userinfo YAPISAL silinir (assess zaten siler; burada ucuncu katman
+    // olarak yeniden). Spread'deki proxyTargetsRaw da AYNI temiz degerle ezilir - eski
+    // tarayicinin 'svc:S3cr@backend:8080' satiri yanita hicbir alandan cikmaz.
+    vhosts: h.vhosts.map((v) => {
+      const pt = hedefUserinfoSil(v.proxyTargetsRaw || '');
+      return { ...v, proxyTargetsRaw: pt, proxyTargets: pt };
+    }),
     ips: h.ips,
     sshd: h.sshd,
   };
@@ -275,6 +499,14 @@ function initServerHub(app) {
         ok: true,
         tableMissing: false,
         latestScan: a.latestScan,
+        // EK-2: son basarili yukleme FRESH_MAX_DAYS'ten eskiyse { lastLoad, ageDays };
+        // bu durumda hicbir sunucu taze degildir ve tum eylemler kapalidir.
+        staleFleet: a.staleFleet || null,
+        // C3: sys.columns okunamadi -> tum eylemler kapali, sonuc onbellekte degil
+        schemaUnknown: a.schemaUnknown === true,
+        // EK-1: v3 tarayici verisi varken (ya da sema bilinmiyorken) Portal eski surume
+        // geri ALINMAZ.
+        rollback: rollbackBilgisi(a),
         summary: a.summary,
         hosts: a.hosts.map(hostRow),
       });
@@ -294,6 +526,9 @@ function initServerHub(app) {
         ok: true,
         tableMissing: false,
         latestScan: a.latestScan,
+        // EK-2 (C7): Bulgular sekmesinin kirmizi bandi bu alani okur; /overview ile AYNI.
+        staleFleet: a.staleFleet || null,
+        schemaUnknown: a.schemaUnknown === true,
         findings: flattenFindings(a.hosts),
       });
     } catch (err) {
@@ -310,7 +545,9 @@ function initServerHub(app) {
       const h = a.hosts.find((x) => x.host === host);
       if (!h)
         return res.status(400).json({ ok: false, message: `${host} için tarama verisi yok.` });
-      res.json({ ok: true, host: hostDetail(h) });
+      // jvm_args ailesi yalniz burada (tek sunucu) okunur ve maskelenir (P9 / kural 9)
+      const agir = await loadJvmAgir(host).catch(() => new Map());
+      res.json({ ok: true, host: hostDetail(h, agir) });
     } catch (err) {
       res.status(500).json({ ok: false, message: err.message });
     }
@@ -390,11 +627,11 @@ function initServerHub(app) {
     }
   });
 
-  // ── TOPLU AUTO-START DÜZELTMESİ (kullanıcı, 2026-09-28) ─────────────────────────────
-  // "auto-start'ı kapalı olup JVM process'i açık olan TÜM bulguları tek tuşla aç" ve
-  // tersi: "auto-start'ı açık olup process'i kapalı olanları tek tuşla kapat".
+  // -- TOPLU AUTO-START DUZELTMESI (kullanici, 2026-09-28; 2026-10-01'de KALDIRILDI, asagi) --
+  // "auto-start'i kapali olup JVM process'i acik olan TUM bulgulari tek tusla ac" ve
+  // tersi: "auto-start'i acik olup process'i kapali olanlari tek tusla kapat".
   //
-  // ÖNCE PLAN, SONRA ONAY (kullanıcının seçimi): plan HİÇBİR İŞ BAŞLATMAZ — liste zaten
+  // ONCE PLAN, SONRA ONAY (kullanicinin secimi): plan HICBIR IS BASLATMAZ - liste zaten
   // ── ACILIS HAZIRLIGI (kullanici, 2026-10-01) ───────────────────────────────────────
   // "Ben sana sunucu listesi verdigimde o sunucularin sorunsuz acilip acilmayacagini bana
   // bir executive summary gibi vermeni istiyorum."
@@ -531,4 +768,14 @@ function initServerHub(app) {
   console.log('[ServerHub] mounted at /api/server-hub');
 }
 
-module.exports = { initServerHub, REGISTRY_KEYS, FIX_ACTIONS, HOST_RE, hostRow, hostDetail };
+module.exports = {
+  initServerHub,
+  REGISTRY_KEYS,
+  FIX_ACTIONS,
+  HOST_RE,
+  hostRow,
+  hostDetail,
+  loadLatest,
+  SH_KOLONLAR,
+  JVM_AGIR_KOLONLAR,
+};

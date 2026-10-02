@@ -28,6 +28,12 @@ import {
   type ShFinding,
   type ShSeverity,
   type ShFindingsResult,
+  type ShJvm,
+  type ShSummary,
+  type ShEnvBlock,
+  type ShStaleFleet,
+  type ShRollback,
+  type ShUnattributed,
 } from '@/api/serverHubApi';
 import { useJobTracker } from '@/contexts/JobTrackerContext';
 import { Modal } from '@/components/common/Modal';
@@ -94,6 +100,464 @@ const AREA: Record<string, string> = {
   ssh: 'SSH',
   scan: 'Tarama',
 };
+
+// ── Sozlesme v3, dalga 1: "OLCULEMEDI" ILE "YOK / KAPALI / 0" AYRI ──────────────────────
+//
+// Kural 6: okunamayan sey ekranda 0 / yok / kapali / temiz diye GOSTERILMEZ. Sunucu (assess +
+// index) olculemeyeni artik ayri tasiyor (runningKnown, runningSrc, jvmsUnmeasured,
+// summary.jvm.unmeasured, notRunningUnmeasured, 'unverified' IP, INIT UNREADABLE, staleFleet);
+// bu blok o alanlari OKUR ve ayri etiketle basar.
+//
+// YEREL TIP GENISLETMESI: alanlarin bir kismi burada yerel (sayaclar, runningKnown). Dalga 2 ile
+// eklenenler (staleFleet, rollback, schemaUnknown, targetsTruncated, unattributed) serverHubApi.ts'te.
+// Yeni alanlarin hepsi ISTEGE BAGLIDIR: eski sunucu yaniti alani tasimaz, ekran o zaman eski
+// davranisi gosterir ve eksik sayaci "0" diye UYDURMAZ (alan yoksa satir hic basilmaz).
+//
+// Bekci: server/server-hub/__tests__/ui-v2.test.cjs (bu yardimcilari kaynaktan derleyip cagirir;
+// bantlari jsx fabrikasiyla CAGIRIR, yerlesimi AST ile denetler).
+type ShHostRowV3 = ShHostRow & { jvmsUnmeasured?: number };
+type ShJvmV3 = ShJvm & { runningKnown?: boolean | null; runningSrc?: string | null };
+type ShWebV3 = ShHostDetail['web'][number] & { runningSrc?: string | null };
+type ShHostDetailV3 = Omit<ShHostDetail, 'jvms' | 'web'> & { jvms: ShJvmV3[]; web: ShWebV3[] };
+type ShSummaryV3 = ShSummary & {
+  jvm: ShSummary['jvm'] & { unmeasured?: number; retireBlockedByWebTier?: number };
+  /** unverified: sozlesmede donuk DEGIL; gelirse ayri dilim, gelmezse etiket durumu soyler. */
+  ips: ShSummary['ips'] & { unverified?: number };
+  web: Record<string, ShSummary['web'][string] & { notRunningUnmeasured?: number }>;
+  byEnv?: Record<string, ShEnvBlock & { jvmUnmeasured?: number }>;
+};
+type ShOverviewV3 = Omit<ShOverview, 'hosts' | 'summary'> & {
+  hosts: ShHostRowV3[];
+  summary: ShSummaryV3 | null;
+};
+type CalismaKaniti = { running: boolean; runningKnown?: boolean | null; runningSrc?: string | null };
+
+/** Sayi alani GELDIYSE sayidir; gelmediyse (eski sunucu) "bilinmiyor" - asla 0 degil. */
+const sayiMi = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n);
+
+/**
+ * runningKnown (sozlesme v3) = running_src !== 'UNMEASURED'. hidepid'li sunucuda ps baskasinin
+ * surecini gostermez; JVM'in "running=0" satiri o zaman "kapali" DEGIL "bilinmiyor"dur.
+ * Alan yoksa (eski satir / eski sunucu) bilinen sayilir - C'nin NULL kurali ile ayni.
+ */
+function jvmCalismaBilinir(j: { runningKnown?: boolean | null; runningSrc?: string | null }): boolean {
+  if (j.runningKnown === false) return false;
+  return String(j.runningSrc || '').toUpperCase() !== 'UNMEASURED';
+}
+
+/**
+ * JVM tablosu "Durum" hucresi. `sema` = sunucu ayrintisinin schemaUnknown'u (C3): sys.columns
+ * okunamadiginda running_src hic secilmez ve running=0 satiri "bilinmiyor" gelir. Sebep o zaman
+ * hidepid/ps korlugu DEGIL semadir; yanlis sebep operatoru yanlis yere baktirir.
+ */
+function jvmDurumu(j: CalismaKaniti, sema = false): { metin: string; renk: string; aciklama: string } {
+  if (!jvmCalismaBilinir(j))
+    return sema
+      ? {
+          metin: 'bilinmiyor (şema okunamadı)',
+          renk: SEV.warning.color,
+          aciklama:
+            'Çalışma durumu ölçülemedi: Server Hub şeması (sys.columns) okunamadığı için çalışma kaynağı (running_src) seçilemedi. Bu "kapalı" demek DEĞİL.',
+        }
+      : {
+          metin: 'bilinmiyor (süreç görünmüyor)',
+          renk: SEV.warning.color,
+          aciklama:
+            'Çalışma durumu ölçülemedi: sunucuda süreç listesi kısıtlı (hidepid) ve JBoss CLI durum vermedi. Bu "kapalı" demek DEĞİL.',
+        };
+  if (j.running) return { metin: 'çalışıyor', renk: SEV.ok.color, aciklama: '' };
+  return { metin: 'kapalı', renk: 'var(--status-neutral)', aciklama: '' };
+}
+
+/** Web urunu karti: running_src=UNMEASURED iken "calismiyor" DEGIL. `sema`: bkz. jvmDurumu. */
+function webDurumu(
+  w: { running: boolean; runningSrc?: string | null },
+  sema = false,
+): {
+  metin: string;
+  renk: string;
+} {
+  if (String(w.runningSrc || '').toUpperCase() === 'UNMEASURED')
+    return {
+      metin: sema ? 'bilinmiyor (şema okunamadı)' : 'bilinmiyor (süreç görünmüyor)',
+      renk: 'var(--status-neutral)',
+    };
+  if (w.running) return { metin: 'çalışıyor', renk: SEV.ok.color };
+  return { metin: 'çalışmıyor', renk: SEV.warning.color };
+}
+
+/**
+ * Sunucular sekmesindeki ozet kartlari ve liste hucresi basliklari icin OLCULEMEYEN calisma
+ * durumunun SEBEBI. `sema` = /overview schemaUnknown (C3): sys.columns okunamadiginda running_src
+ * hic secilmez; sebep o zaman hidepid/ps korlugu DEGIL semadir (bkz. jvmDurumu).
+ */
+function olcumSebebi(sema: boolean): string {
+  return sema ? 'şema okunamadı' : 'süreç görünmüyor';
+}
+function olculemeyenAciklama(tur: 'jvm' | 'web', sema: boolean): string {
+  if (sema)
+    return tur === 'jvm'
+      ? "Server Hub şeması (sys.columns) okunamadı: çalışma kaynağı (running_src) seçilemedi — bu JVM'ler ne çalışan ne kapalı sayıldı."
+      : "Server Hub şeması (sys.columns) okunamadı: web sürecinin çalışma kaynağı (running_src) seçilemedi — 'çalışmıyor' sayılmadı.";
+  return tur === 'jvm'
+    ? "Süreç listesi kısıtlı (hidepid) ve CLI durum vermedi: bu JVM'ler ne çalışan ne kapalı sayıldı."
+    : "Süreç listesi kısıtlı (hidepid): bu sunucularda web sürecinin çalışıp çalışmadığı ölçülemedi — 'çalışmıyor' sayılmadı.";
+}
+
+/** Sunucu listesi JVM hucresi: "calisan/toplam" + olculemeyen varsa "? N". */
+function jvmSayimMetni(h: { jvms: number; jvmsRunning: number; jvmsUnmeasured?: number }): string {
+  if (!h.jvms) return '—';
+  const u = sayiMi(h.jvmsUnmeasured) ? h.jvmsUnmeasured : 0;
+  return `${h.jvmsRunning}/${h.jvms}${u > 0 ? ` · ? ${u}` : ''}`;
+}
+
+/**
+ * Tek-JVM auto-start onayi. Olculemeyen JVM'de dugme admine ACIK kalir (kural 7) ama kullanici
+ * neyi bilmeden degistirdigini gorur.
+ */
+function autoStartOnayMetni(
+  host: string,
+  j: { gen: number; name: string } & CalismaKaniti,
+  ac: boolean,
+  sema = false,
+): string {
+  const uyari = jvmCalismaBilinir(j)
+    ? ''
+    : `UYARI: bu JVM'in çalışma durumu ölçülemedi (${sema ? 'Server Hub şeması okunamadı' : 'süreç görünmüyor'}) — çalışıyor da olabilir, kapalı da. ` +
+      'Kararı bunu bilerek verin.\n\n';
+  return (
+    `${host} üzerinde ${j.name} (JBoss ${j.gen}) için auto-start ${ac ? 'AÇILACAK' : 'KAPATILACAK'}.\n\n` +
+    uyari +
+    'Yalnız bu JVM etkilenir. Devam edilsin mi?'
+  );
+}
+
+/** IP "Kullanan" hucresi. 'unverified' BOSTA degildir ve urun adi da degildir. */
+function ipKullanan(usedBy: string): { etiket: string; renk: string; kalin: boolean; aciklama: string } {
+  const u = String(usedBy || '').toLowerCase();
+  if (u === 'none')
+    return { etiket: 'BOŞTA', renk: SEV.warning.color, kalin: true, aciklama: 'hiçbir vhost/soket kullanmıyor' };
+  if (u === 'unverified')
+    return {
+      etiket: 'DOĞRULANAMADI',
+      renk: SEV.info.color,
+      kalin: true,
+      aciklama:
+        'Kullanım doğrulanamadı: web sunucusu ölçülemedi ya da soketler görünmüyor. Boşta SAYILMAZ.',
+    };
+  if (u === 'wildcard')
+    return { etiket: 'joker dinleyici (*)', renk: 'var(--text-primary)', kalin: false, aciklama: '' };
+  if (u === 'other') return { etiket: 'web dışı soket', renk: 'var(--text-primary)', kalin: false, aciklama: '' };
+  return { etiket: String(usedBy || '').toUpperCase(), renk: 'var(--text-primary)', kalin: false, aciklama: '' };
+}
+
+/** Log kaniti OLCULDU mu: okundu VE sayi >= 0. -1 / null olcum DEGILDIR. */
+const logOlculdu = (l: { read: boolean; req7d: number | null }) =>
+  !!l.read && l.req7d != null && l.req7d >= 0;
+
+/** Log kaniti satirinin sayi kismi. Okunamayan dosya "7g 0" ya da "7g -1" diye BASILMAZ. */
+function logKanitMetni(l: { read: boolean; req7d: number | null; sampled: boolean }): string {
+  if (!logOlculdu(l)) return ' · OKUNAMADI — bu dosya kanıt sayılmaz';
+  return ` · 7g ${l.req7d}${l.sampled ? ' (alt sınır: log kuyruğu okundu)' : ''}`;
+}
+
+/** Init script durumu. UNREADABLE (bakilamadi) "yok" DEGILDIR. */
+function initDurumu(status: string): { etiket: string; renk: string } {
+  const s = String(status || '').toUpperCase();
+  if (s === 'OK') return { etiket: 'referansla aynı', renk: SEV.ok.color };
+  if (s === 'DIFF') return { etiket: 'FARKLI', renk: SEV.warning.color };
+  if (s === 'MISSING') return { etiket: 'yok', renk: 'var(--status-neutral)' };
+  if (s === 'UNREADABLE') return { etiket: 'okunamadı (ölçülemedi)', renk: SEV.info.color };
+  return { etiket: `bilinmiyor (${s || '—'})`, renk: SEV.info.color };
+}
+
+/**
+ * Bulgu kodu etiketleri. Ham kod listede kalir (arama/CSV icin); yaninda ne demek oldugu yazar.
+ * v3 dalga 1 kodlarinin HEPSI burada olmali (bekci D1-U03/U09); EK-3/EK-5 kodlari dahil.
+ * Acilis hazirliginda 'unknown' sayilan her kod (reboot-readiness KOD_ANLAMI) ve hazirlik sebep
+ * kodlari (SCHEMA_UNKNOWN, STALE_EVIDENCE) da burada olmali: bekci bunu GERCEK modulden okur.
+ */
+const KOD_ETIKET: Record<string, string> = {
+  RUNNING_UNMEASURED: 'JVM çalışma durumu ölçülemedi (süreç görünmüyor ya da şema okunamadı) — kapalı sayılmadı',
+  TRAFFIC_UNVERIFIED: 'JVM kapalı, web trafiği doğrulanamadı — retire kanıtı yok',
+  INIT_UNREADABLE: 'init script okunamadı — eksik ya da farklı sayılmadı',
+  LOAD_EXCLUDED: 'sunucu son yüklemede yazılamadı — önceki tarama gösteriliyor, eylemler kapalı',
+  JVM_DATA_MISSING: 'JBoss var ama taramada JVM verisi yok (ölçülemedi)',
+  JVM_INVENTORY_UNMEASURED: "tanımlı JVM envanteri ölçülemedi (CLI ve host XML okunamadı) — durmuş JVM'ler listede olmayabilir",
+  // T2-C2 (cfg_src=UNAVAILABLE): tanim kaynagi OKUNDU; sorun erisim degil tanim.
+  JVM_UNDEFINED_PROCESS: "çalışan JVM tanım kaynağında yok (ps'te tanımsız süreç) — tanım listesi alındı; reboot sonrası kimin açacağı bilinmiyor",
+  SCAN_PARTIAL: 'tarama kısmi (zaman bütçesi ya da çıktı sigortası)',
+  LOAD_DUPLICATE: 'aynı makine AWX envanterinde iki adla',
+  // C1/C4: engel artik KATMAN genisliginde (ortam+site); hedef baska sunucuda olabilir.
+  TRAFFIC_UNATTRIBUTED:
+    "web katmanında hiçbir JVM'e atfedilemeyen proxy trafiği (port, çözülemeyen hedef ya da kesik hedef listesi) — retire önerilmez",
+  WEB_PRESENCE_UNKNOWN: 'web ürününün varlığı ölçülemedi — "kurulu değil" sayılmadı',
+  PRODUCT_NOT_SCANNED: 'envanterdeki ürün taramada görülemedi — "kurulu değil" sayılmadı',
+  AUTOSTART_UNKNOWN: 'JVM auto-start durumu bilinmiyor — "kapalı" sayılmadı (sebep bulgu metninde)',
+  CLI_FAIL: 'JBoss CLI okunamadı',
+  CLI_SKIP: 'JBoss CLI hiç çalıştırılamadı (kurulum/süreç)',
+  CLI_DENIED: 'JBoss CLI yetki reddi (dzdo kuralı eksik)',
+  // Acilis hazirligi sebep kodlari (bulgu degil; reboot-readiness.cjs SEMA / BAYAT)
+  SCHEMA_UNKNOWN: 'Server Hub şeması (sys.columns) okunamadı — tarayıcı şema sürümü bilinmiyor, eylemler kapalı',
+  STALE_EVIDENCE: 'tarama bayat ya da son yükleme dışlandı — güncel durum bilinmiyor',
+  REBOOT_RISK: 'JVM çalışıyor ama auto-start kapalı — reboot sonrası açılmaz',
+  STOPPED_AUTOSTART_ON: "JVM kapalı ama auto-start açık — reboot'ta açılır",
+  RETIRE_CANDIDATE: 'JVM kapalı ve web katmanında 7 gündür istek yok — retire adayı',
+  NO_LOAD: 'JVM çalışıyor ama 7 gündür istek yok',
+  SYNTAX_FAIL: 'web sunucusu sözdizimi hatalı',
+  SYNTAX_UNVERIFIED: 'web sözdizimi doğrulanamadı (dosya erişimi)',
+  SYNTAX_UNKNOWN: 'web sözdizimi ölçülemedi',
+  INIT_MISSING: 'init script yok',
+  IP_UNUSED: 'boşta IP',
+};
+
+/** "KOD — anlami"; etiketsiz kod oldugu gibi. */
+function kodEtiketi(code: string): string {
+  const e = KOD_ETIKET[code];
+  return e ? `${code} — ${e}` : code;
+}
+
+/**
+ * Acilis hazirligi sebep satiri: sunucunun aciklamasi; bossa ekran etiketi; o da yoksa kod.
+ * SCHEMA_UNKNOWN / STALE_EVIDENCE gibi hazirlik kodlari ham kod olarak basilmasin diye.
+ */
+function hazirlikSebebi(r: { code: string; aciklama?: string | null }): string {
+  return String(r.aciklama || '').trim() || KOD_ETIKET[r.code] || r.code;
+}
+
+/**
+ * summary.jvm.autoUnknownBy anahtarlari (assess AUTOSTART_SEBEP). "Bilinmiyor" hicbirinde
+ * "KAPALI" demek DEGILDIR. tanimsiz-surec (T2-C2): tanim kaynagi OKUNDU, bu JVM orada yok -
+ * "CLI cevap vermedi" DEGIL.
+ */
+const AUTOSTART_SEBEP_ETIKET: Record<string, string> = {
+  'cli-okunamadi': 'CLI cevap vermedi',
+  'envanterde-yok': 'envanterde alan boş',
+  'envanter-celiskili': 'envanter çelişkili',
+  'tanimsiz-surec': "JVM tanımda yok (ps'te tanımsız süreç)",
+};
+
+/** autoUnknownBy kirilimi; etiketi olmayan (yeni) anahtar DUSURULMEZ, ham adiyla yazilir. */
+function autoBilinmiyorKirilimi(by: Record<string, number> | null | undefined): string {
+  if (!by || typeof by !== 'object') return '';
+  const bilinen = Object.keys(AUTOSTART_SEBEP_ETIKET);
+  const sira = [...bilinen, ...Object.keys(by).filter((k) => !bilinen.includes(k)).sort()];
+  return sira
+    .filter((k) => sayiMi(by[k]) && by[k] > 0)
+    .map((k) => `${AUTOSTART_SEBEP_ETIKET[k] || k}: ${by[k]}`)
+    .join(' · ');
+}
+
+/**
+ * Tarama isinin yukleyici sonucu (server_hub_scan_result.loader = LOADER_RESULT json'u).
+ * Sonuc YOKSA "hepsi yazildi" DENMEZ: kac sunucunun yazildigi bilinmiyordur.
+ */
+function yukleyiciOzeti(result: unknown): { satirlar: string[]; sorun: boolean } {
+  let ld: unknown = result && typeof result === 'object' ? (result as { loader?: unknown }).loader : null;
+  if (typeof ld === 'string') {
+    try {
+      ld = JSON.parse(ld);
+    } catch {
+      ld = null;
+    }
+  }
+  const o = (ld && typeof ld === 'object' ? ld : {}) as {
+    hosts_total?: number;
+    hosts_written?: number;
+    hosts_excluded?: number;
+    hosts_not_attempted?: number;
+    excluded?: { host?: string; issue?: string }[];
+  };
+  if (!sayiMi(o.hosts_total) && !sayiMi(o.hosts_written) && !sayiMi(o.hosts_excluded))
+    return {
+      satirlar: ['Yükleyici sonucu okunamadı — kaç sunucunun veritabanına yazıldığı bilinmiyor.'],
+      sorun: true,
+    };
+  const satirlar: string[] = [];
+  if (sayiMi(o.hosts_written) && sayiMi(o.hosts_total))
+    satirlar.push(`${o.hosts_written}/${o.hosts_total} sunucu yazıldı`);
+  const ex = sayiMi(o.hosts_excluded) ? o.hosts_excluded : 0;
+  const na = sayiMi(o.hosts_not_attempted) ? o.hosts_not_attempted : 0;
+  if (ex > 0) {
+    const liste = Array.isArray(o.excluded) ? o.excluded : [];
+    const sebep = liste
+      .slice(0, 5)
+      .map((x) => `${x.host || '?'}: ${x.issue || '?'}`)
+      .join(', ');
+    satirlar.push(
+      `${ex} sunucu yazılamadı (${sebep || 'sebep bildirilmedi'}${liste.length > 5 ? ` +${liste.length - 5}` : ''}) — bu sunucularda önceki tarama gösterilir`,
+    );
+  }
+  if (na > 0)
+    satirlar.push(
+      `${na} sunucu denenmedi (NOT_ATTEMPTED — yükleyici veritabanı hatasında durdu)`,
+    );
+  return { satirlar, sorun: ex > 0 || na > 0 };
+}
+
+/** EK-2 kirmizi bant metni; bayat degilse null. */
+function bayatFiloMetni(sf: ShStaleFleet | undefined): string | null {
+  if (!sf) return null;
+  return sayiMi(sf.ageDays)
+    ? `Son başarılı yükleme ${sf.ageDays} gün önce — eylemler kapalı`
+    : 'Son başarılı yükleme zamanı bilinmiyor — eylemler kapalı';
+}
+
+function BayatFiloBandi({ sf }: { sf: ShStaleFleet | undefined }) {
+  const metin = bayatFiloMetni(sf);
+  if (!metin) return null;
+  return (
+    <div
+      role="alert"
+      className="rounded-xl border px-4 py-2.5 text-[12px] font-semibold"
+      style={{
+        borderColor: 'var(--status-danger)',
+        background: 'var(--status-danger-bg)',
+        color: 'var(--status-danger)',
+      }}
+      title="Tarama verisi bayat: düzeltme eylemleri sunucuda kapatıldı (bayat kanıtla satır yorumlanmaz, JVM emekliye ayrılmaz). Açılış hazırlığı bu sunucular için 'bilinmiyor' der."
+    >
+      {metin}
+      {sf?.lastLoad ? (
+        <span className="ml-2 font-normal">(son yükleme {fmtDate(sf.lastLoad)})</span>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * EK-1 geri alma bandi metni. Yalniz sunucu ACIKCA allowed=false dediginde metin doner; alan
+ * yoksa (eski Portal yaniti) ya da allowed=true ise null. Sunucunun mesaji oldugu gibi basilir,
+ * mesaj bossa v3Hosts'tan kurulur. schemaUnknown (C3): v3 sayimi YAPILAMADI - "N sunucu yeni
+ * tarayicidan" denmez (bilinmiyor), sebep sema okunamamasidir.
+ */
+function geriAlmaMetni(rb: ShRollback | null | undefined): string | null {
+  if (!rb || rb.allowed !== false) return null;
+  const ayrinti =
+    (rb.message || '').trim() ||
+    (rb.schemaUnknown === true
+      ? 'Server Hub şeması okunamadı — kaç sunucunun yeni tarayıcıdan tarandığı bilinmiyor; Portal eski sürüme geri alınmamalı'
+      : `${sayiMi(rb.v3Hosts) ? rb.v3Hosts : 'Bazı'} sunucunun son taraması yeni tarayıcıdan (scan_ver dolu) — Portal eski sürüme geri alınmamalı`);
+  return `Portal'ı geri almadan önce: ${ayrinti}`;
+}
+
+/**
+ * C3 SEMA BILINMIYOR bandi: sys.columns okunamadi -> sunucu TUM eylemleri kapatti, running_src /
+ * vhost_trust / scan_errors secilemedi. /overview, /findings ve sunucu ayrintisi schemaUnknown
+ * tasir; alan yoksa (eski yanit) ya da false ise bant yok.
+ */
+const SEMA_ACIKLAMA =
+  "Server Hub tablolarının kolon listesi (sys.columns) okunamadı: verinin hangi tarayıcı sürümünden geldiği ve v3 kanıtları (running_src, vhost_trust, scan_errors) seçilemedi. Düzeltme eylemleri sunucuda kapatıldı; çalışma durumu kanıtsız satırlar 'bilinmiyor (şema okunamadı)' gösterilir — süreç görünürlüğü (hidepid) ile ilgisi yok. Sayfayı yenileyin.";
+function semaBilinmiyorMetni(su: boolean | null | undefined): string | null {
+  return su === true ? 'Tarayıcı şema sürümü bilinmiyor; eylemler kapalı' : null;
+}
+function SemaBandi({ su }: { su: boolean | null | undefined }) {
+  const metin = semaBilinmiyorMetni(su);
+  if (!metin) return null;
+  return (
+    <div
+      role="alert"
+      className="rounded-xl border px-4 py-2.5 text-[12px] font-semibold"
+      style={{
+        borderColor: 'var(--status-danger)',
+        background: 'var(--status-danger-bg)',
+        color: 'var(--status-danger)',
+      }}
+      title={SEMA_ACIKLAMA}
+    >
+      {metin}
+    </div>
+  );
+}
+
+/** C4 rozeti: yukleyici proxy hedef listesini kesti (~); kesilen kisimdaki sunucu:port bilinmez. */
+function hedefKesikRozeti(kesik: boolean | null | undefined): { metin: string; aciklama: string } | null {
+  if (kesik !== true) return null;
+  return {
+    metin: 'hedef listesi kesik',
+    aciklama:
+      "Proxy hedef listesi yükleyicide kesildi (~): kesilen kısımda hangi sunucu:port olduğu bilinmiyor. Bu web sunucusu atıf için ölçülmemiş sayılır; katmandaki portu bilinmeyen durmuş JVM'lere retire önerilmez.",
+  };
+}
+function HedefKesikRozeti({ kesik }: { kesik: boolean | null | undefined }) {
+  const r = hedefKesikRozeti(kesik);
+  if (!r) return null;
+  return (
+    <span
+      className="mt-0.5 inline-flex px-1.5 py-0.5 rounded-full border font-sans text-[9px] font-semibold whitespace-nowrap"
+      style={{ color: SEV.warning.color, borderColor: SEV.warning.color }}
+      title={r.aciklama}
+    >
+      {r.metin}
+    </span>
+  );
+}
+
+/** EK-3 unattributed[].kind -> ekran etiketi. Bilinmeyen tur ham adiyla yazilir. */
+const ATF_TUR: Record<string, string> = {
+  PORT: "port hiçbir JVM'e ait değil",
+  HEDEF: 'hedef hiçbir sunucuya çözülemedi',
+  EKSIK: 'hedef listesi kesik',
+};
+/** TRAFFIC_UNATTRIBUTED ekindeki tek kayit: nereden -> nereye · tur · trafik. */
+function atfedilemeyenSatiri(x: ShUnattributed): string {
+  const kind = String(x.kind || '');
+  const tur = ATF_TUR[kind] || `tür: ${kind || '—'}`;
+  const hedef =
+    kind === 'EKSIK'
+      ? '~ (kesilen kısım bilinmiyor)'
+      : kind === 'PORT'
+        ? `:${x.port ?? '?'}`
+        : `${x.target || '?'}${x.target && x.port != null && !String(x.target).endsWith(`:${x.port}`) ? ` (:${x.port})` : ''}`;
+  const trafik =
+    x.trafficState || (sayiMi(x.req7d) && x.req7d > 0 ? `7g ${x.req7d}` : 'trafik ölçülemedi');
+  return `${x.host || '?'}/${x.serverName || '?'} → ${hedef} · ${tur} · ${trafik}`;
+}
+/** Bulgunun ayrinti paneli: atfedilemeyen proxy kayitlari (kind + target). */
+function AtfedilemeyenTrafik({ f }: { f: ShFinding }) {
+  const liste = Array.isArray(f.unattributed) ? f.unattributed : [];
+  if (!liste.length) return null;
+  return (
+    <details className="mt-1">
+      <summary
+        className="text-[10px] cursor-pointer select-none"
+        style={{ color: 'var(--text-muted)' }}
+      >
+        Atfedilemeyen proxy: {liste.length}
+      </summary>
+      <ul className="mt-1 space-y-0.5">
+        {liste.map((x, i) => (
+          <li
+            key={i}
+            className="text-[10px] font-mono break-all"
+            style={{ color: 'var(--text-secondary)' }}
+          >
+            {atfedilemeyenSatiri(x)}
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}
+
+function GeriAlmaBandi({ rb }: { rb: ShRollback | null | undefined }) {
+  const metin = geriAlmaMetni(rb);
+  if (!metin) return null;
+  return (
+    <div
+      role="note"
+      className="rounded-xl border px-4 py-1.5 text-[11px] truncate"
+      style={{
+        borderColor: 'var(--status-warning)',
+        background: 'var(--status-warning-bg)',
+        color: 'var(--text-secondary)',
+      }}
+      title={metin}
+    >
+      {metin}
+    </div>
+  );
+}
 
 // ── Grafik parcalari (SVG; kutuphane yok) ──────────────────────────────────────────
 function Donut({
@@ -478,7 +942,7 @@ function ReadinessTab() {
             <div className="rounded-xl border p-3" style={{ borderColor: 'var(--border-subtle)' }}>
               <div className="text-xs font-semibold mb-1">Sebepler</div>
               {r.topReasons.map((t) => (
-                <div key={t.code} className="text-[11px] py-0.5">
+                <div key={t.code} className="text-[11px] py-0.5" title={kodEtiketi(t.code)}>
                   <span
                     style={{
                       color:
@@ -491,7 +955,7 @@ function ReadinessTab() {
                   >
                     ●
                   </span>{' '}
-                  {t.aciklama} — <b>{t.hostCount}</b> sunucu
+                  {hazirlikSebebi(t)} — <b>{t.hostCount}</b> sunucu
                   <span className="ml-1 font-mono" style={{ color: 'var(--text-muted)' }}>
                     {t.hosts.slice(0, 8).join(', ')}
                     {t.hostCount > 8 ? ` +${t.hostCount - 8}` : ''}
@@ -524,7 +988,7 @@ function ReadinessTab() {
                       {K[x.verdict].label}
                     </td>
                     <td className="px-2.5 py-1.5" style={{ color: 'var(--text-secondary)' }}>
-                      {x.note || x.reasons.map((y) => y.aciklama).join(' · ') || 'bilinen engel yok'}
+                      {x.note || x.reasons.map((y) => hazirlikSebebi(y)).join(' · ') || 'bilinen engel yok'}
                     </td>
                   </tr>
                 ))}
@@ -626,9 +1090,13 @@ function HostsTab({
   onGoFindings: (f: { area?: string; code?: string; product?: string; envGroup?: string }) => void;
 }) {
   const { addJob } = useJobTracker();
-  const [data, setData] = useState<ShOverview | null>(null);
+  const [data, setData] = useState<ShOverviewV3 | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
+  // Son tarama isinin yukleyici sonucu (D1-U04/U09): toast gecicidir, bant kalici.
+  const [yukleme, setYukleme] = useState<{ baslik: string; satirlar: string[]; sorun: boolean } | null>(
+    null,
+  );
   const [q, setQ] = useState('');
   const [sev, setSev] = useState<'all' | ShSeverity>('all');
   const [product, setProduct] = useState('all');
@@ -642,7 +1110,7 @@ function HostsTab({
     try {
       const r = await serverHubApi.overview(fresh);
       if (r.ok) {
-        setData(r);
+        setData(r as ShOverviewV3);
         setErr('');
       } else setErr(r.message || 'Veri alınamadı.');
     } catch (e: unknown) {
@@ -685,10 +1153,18 @@ function HostsTab({
         return;
       }
       toast.success(`Tarama başladı (iş #${r.jobId}). Bitince liste yenilenir.`);
+      const baslik = `Tarama #${r.jobId} (${hosts.length === 1 ? hosts[0] : hosts.length + ' sunucu'})`;
       trackJob(
         `Server Hub: tara ${hosts.length === 1 ? hosts[0] : hosts.length + ' sunucu'}`,
         r,
-        () => load(true),
+        (status, result) => {
+          // YUKLEYICI SONUCU GORUNUR (D1-U04/U09): dislanan sunucu "yazildi" sanilmasin;
+          // NOT_ATTEMPTED yukleyicinin durdugunu gosterir. Sonuc yoksa "bilinmiyor" denir.
+          const oz = yukleyiciOzeti(result);
+          setYukleme({ baslik: `${baslik}: ${status}`, ...oz });
+          if (oz.sorun) toast.warning(`${baslik}: ${oz.satirlar.join(' · ')}`);
+          load(true);
+        },
       );
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : String(e));
@@ -736,6 +1212,8 @@ function HostsTab({
     );
   if (!data) return null;
   const s = data.summary;
+  // C3: sema okunamadiysa olculemeyen sayaclarin sebebi hidepid DEGIL sema (kart basliklari).
+  const sema = data.schemaUnknown === true;
 
   return (
     <div className="space-y-4">
@@ -747,6 +1225,39 @@ function HostsTab({
           <ArrowPathIcon className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} /> Yenile
         </button>
       </div>
+
+      {/* EK-2: son basarili yukleme bayatsa KIRMIZI bant - sunucu tum fix eylemlerini kapatir. */}
+      <BayatFiloBandi sf={data.staleFleet} />
+      {/* C3: sys.columns okunamadi - tarayici sema surumu bilinmiyor, tum eylemler kapali. */}
+      <SemaBandi su={data.schemaUnknown} />
+      {/* EK-1: v3 tarayici verisi varken Portal eski surume geri ALINMAZ - tek satir uyari. */}
+      <GeriAlmaBandi rb={data.rollback} />
+
+      {yukleme && (
+        <div
+          className="rounded-xl border px-4 py-2.5 text-[12px] flex items-start gap-2"
+          style={{
+            borderColor: yukleme.sorun ? 'var(--status-warning)' : 'var(--border-subtle)',
+            background: yukleme.sorun ? 'var(--status-warning-bg)' : 'var(--bg-surface)',
+            color: 'var(--text-secondary)',
+          }}
+        >
+          <div className="min-w-0 flex-1">
+            <b>{yukleme.baslik}</b>
+            {yukleme.satirlar.map((s, i) => (
+              <div key={i}>{s}</div>
+            ))}
+          </div>
+          <button
+            onClick={() => setYukleme(null)}
+            className="p-0.5 rounded"
+            style={{ color: 'var(--text-muted)' }}
+            title="Kapat"
+          >
+            <XMarkIcon className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
 
       {data.tableMissing && (
         <div
@@ -806,21 +1317,9 @@ function HostsTab({
                   {
                     value: s.jvm.autoUnknown,
                     color: 'var(--status-neutral)',
-                    // NE BILINMIYOR (kullanici, 2026-09-28): tek kelime uc apayri durumu
+                    // NE BILINMIYOR (kullanici, 2026-09-28): tek kelime dort apayri durumu
                     // ortuyordu. "Bilinmiyor" hicbirinde "KAPALI" demek DEGILDIR.
-                    title: `bilinmiyor${
-                      s.jvm.autoUnknownBy
-                        ? ' — ' +
-                          [
-                            ['cli-okunamadi', 'CLI cevap vermedi'],
-                            ['envanterde-yok', 'envanterde alan boş'],
-                            ['envanter-celiskili', 'envanter çelişkili'],
-                          ]
-                            .filter(([k]) => (s.jvm.autoUnknownBy || {})[k])
-                            .map(([k, ad]) => `${ad}: ${(s.jvm.autoUnknownBy || {})[k]}`)
-                            .join(' · ')
-                        : ''
-                    }`,
+                    title: `bilinmiyor${autoBilinmiyorKirilimi(s.jvm.autoUnknownBy) ? ` — ${autoBilinmiyorKirilimi(s.jvm.autoUnknownBy)}` : ''}`,
                   },
                 ]}
               />
@@ -857,6 +1356,17 @@ function HostsTab({
                 parts={[
                   { value: s.jvm.running, color: SEV.ok.color, title: 'çalışıyor' },
                   { value: s.jvm.stopped, color: 'var(--status-neutral)', title: 'kapalı' },
+                  // OLCULEMEYEN AYRI DILIM (v3): hidepid'li sunucuda gorunmeyen JVM "kapali"
+                  // dilimine KARISMAZ. Alan yoksa (eski sunucu) dilim de yok - 0 uydurulmaz.
+                  ...(sayiMi(s.jvm.unmeasured)
+                    ? [
+                        {
+                          value: s.jvm.unmeasured,
+                          color: SEV.warning.color,
+                          title: `bilinmiyor (${olcumSebebi(sema)})`,
+                        },
+                      ]
+                    : []),
                 ]}
               />
               {/* Kullanici (2026-09-22): "ne gosteriyor anlamadim" -> her sayi acik yazilir */}
@@ -868,6 +1378,31 @@ function HostsTab({
                 <b style={{ color: SEV.warning.color }}>{s.jvm.retireCandidates}</b> retire adayı
                 (kapalı + 7 gün istek yok) · <b>{s.jvm.noLoad}</b> çalışıyor ama 7 gün istek yok ·{' '}
                 {s.jvm.mapped}/{s.jvm.total} JVM web vhost'una eşlendi
+                {sayiMi(s.jvm.unmeasured) && (
+                  <>
+                    {' '}
+                    ·{' '}
+                    <b
+                      style={s.jvm.unmeasured ? { color: SEV.warning.color } : undefined}
+                      title={olculemeyenAciklama('jvm', sema)}
+                    >
+                      {s.jvm.unmeasured}
+                    </b>{' '}
+                    JVM'in çalışma durumu ölçülemedi
+                  </>
+                )}
+                {sayiMi(s.jvm.retireBlockedByWebTier) && (
+                  <>
+                    {' '}
+                    ·{' '}
+                    <b
+                      title="RETIRE_CANDIDATE bulgusu duruyor ama aynı ortam+sitedeki web katmanında ölçülemeyen sunucu olduğu için retire eylemi önerilmedi."
+                    >
+                      {s.jvm.retireBlockedByWebTier}
+                    </b>{' '}
+                    retire adayı eylemsiz (web katmanında ölçülemeyen sunucu var)
+                  </>
+                )}
               </div>
             </Kpi>
             <Kpi
@@ -878,10 +1413,28 @@ function HostsTab({
               <Donut
                 label={String(s.ips.unused)}
                 sub="boşta"
-                parts={[
-                  { value: s.ips.total - s.ips.unused, color: SEV.ok.color, title: 'kullanımda' },
-                  { value: s.ips.unused, color: SEV.warning.color, title: 'boşta' },
-                ]}
+                parts={
+                  // 'unverified' IP (v3) BOSTA da KULLANIMDA da degildir. Sunucu ayri sayi
+                  // verirse ayri dilim; vermezse "bosta degil" dilimi onu da icerdigini SOYLER.
+                  sayiMi(s.ips.unverified)
+                    ? [
+                        {
+                          value: s.ips.total - s.ips.unused - s.ips.unverified,
+                          color: SEV.ok.color,
+                          title: 'kullanımda',
+                        },
+                        { value: s.ips.unverified, color: SEV.info.color, title: 'doğrulanamadı' },
+                        { value: s.ips.unused, color: SEV.warning.color, title: 'boşta' },
+                      ]
+                    : [
+                        {
+                          value: s.ips.total - s.ips.unused,
+                          color: SEV.ok.color,
+                          title: 'boşta değil (doğrulanamayan dahil)',
+                        },
+                        { value: s.ips.unused, color: SEV.warning.color, title: 'boşta' },
+                      ]
+                }
               />
               {s.ssh && s.ssh.hosts > 0 && (
                 <div
@@ -951,7 +1504,17 @@ function HostsTab({
                     >
                       {w.syntaxFail} hatalı
                     </span>{' '}
-                    · {w.notRunning} çalışmıyor · {w.vhosts} vhost, {w.idleVhosts} yüksüz
+                    · {w.notRunning} çalışmıyor
+                    {sayiMi(w.notRunningUnmeasured) && (
+                      <span
+                        style={w.notRunningUnmeasured ? { color: SEV.warning.color } : undefined}
+                        title={olculemeyenAciklama('web', sema)}
+                      >
+                        {' '}
+                        · {w.notRunningUnmeasured} durumu ölçülemedi
+                      </span>
+                    )}{' '}
+                    · {w.vhosts} vhost, {w.idleVhosts} yüksüz
                   </div>
                   {s.coverage?.[p] && (
                     <div
@@ -1000,6 +1563,12 @@ function HostsTab({
                       <th className="px-2 py-1 text-right">Uyarı</th>
                       <th className="px-2 py-1 text-right">JVM</th>
                       <th className="px-2 py-1 text-right">Çalışan</th>
+                      <th
+                        className="px-2 py-1 text-right"
+                        title={`Çalışma durumu ölçülemeyen JVM (${olcumSebebi(sema)}) — kapalı sayılmadı`}
+                      >
+                        Ölçülemeyen
+                      </th>
                       <th className="px-2 py-1 text-right">auto-start kapalı</th>
                       <th className="px-2 py-1 text-right">Reboot riski</th>
                       <th className="px-2 py-1 text-right">Init farkı</th>
@@ -1031,6 +1600,12 @@ function HostsTab({
                         </td>
                         <td className="px-2 py-1 text-right tabular-nums">{nf(e.jvms)}</td>
                         <td className="px-2 py-1 text-right tabular-nums">{nf(e.jvmRunning)}</td>
+                        <td
+                          className="px-2 py-1 text-right tabular-nums"
+                          style={e.jvmUnmeasured ? { color: SEV.warning.color } : undefined}
+                        >
+                          {nf(e.jvmUnmeasured)}
+                        </td>
                         <td className="px-2 py-1 text-right tabular-nums">{nf(e.autoOff)}</td>
                         <td
                           className="px-2 py-1 text-right tabular-nums"
@@ -1170,6 +1745,7 @@ function HostsTab({
                 'bilgi',
                 'jvm',
                 'calisan_jvm',
+                'olculemeyen_jvm',
                 'vhost',
                 'bosta_ip',
                 'tarama_cpu_s',
@@ -1187,6 +1763,8 @@ function HostsTab({
                   h.counts.info,
                   h.jvms,
                   h.jvmsRunning,
+                  // alan yoksa bos hucre: "0 olculemeyen" UYDURULMAZ
+                  sayiMi(h.jvmsUnmeasured) ? h.jvmsUnmeasured : '',
                   h.vhosts,
                   h.unusedIps,
                   h.cpuS ?? '',
@@ -1286,8 +1864,15 @@ function HostsTab({
                       {h.products.join(' · ') || '—'}
                     </span>
                   </td>
-                  <td className="px-3 py-1.5 text-right tabular-nums">
-                    {h.jvms ? `${h.jvmsRunning}/${h.jvms}` : '—'}
+                  <td
+                    className="px-3 py-1.5 text-right tabular-nums"
+                    title={
+                      (h.jvmsUnmeasured || 0) > 0
+                        ? `çalışan/toplam · ? ${h.jvmsUnmeasured} = çalışma durumu ölçülemeyen JVM (${olcumSebebi(sema)}) — kapalı sayılmadı`
+                        : undefined
+                    }
+                  >
+                    {jvmSayimMetni(h)}
                   </td>
                   <td className="px-3 py-1.5 text-right tabular-nums">{h.vhosts || '—'}</td>
                   <td
@@ -1357,7 +1942,8 @@ function HostModal({
   ) => void;
   reload: () => void;
 }) {
-  const [d, setD] = useState<ShHostDetail | null>(null);
+  // v3 alanlari (runningKnown, runningSrc) yerel tipte ve istege bagli; API tipi aynen atanir.
+  const [d, setD] = useState<ShHostDetailV3 | null>(null);
   const [err, setErr] = useState('');
   const [tab, setTab] = useState<'findings' | 'jvm' | 'web' | 'init' | 'ip'>('findings');
   const [fix, setFix] = useState<{
@@ -1375,19 +1961,12 @@ function HostModal({
   // ONAY TARAYICIDA: tek satir icin ayri bir plan turu, kullaniciyi her JVM'de iki tiklamaya
   // zorlardi. Yine de sessiz DEGIL - ne yapilacagi ve hangi sunucuda oldugu aciklanir.
   const [asBusy, setAsBusy] = useState<string | null>(null);
-  const jvmAutoStart = async (j: { gen: number; name: string; autoStart: string }) => {
+  // OLCULEMEYEN JVM (v3, kural 7): dugme admine ACIK kalir; onay metni "calisma durumu
+  // olculemedi" uyarisini tasir (bkz. autoStartOnayMetni).
+  const jvmAutoStart = async (j: ShJvmV3) => {
     const ac = j.autoStart !== 'true';
     const k = `${j.gen}|${j.name}`;
-    if (
-      !window.confirm(
-        `${host} üzerinde ${j.name} (JBoss ${j.gen}) için auto-start ` +
-          `${ac ? 'AÇILACAK' : 'KAPATILACAK'}.
-
-` +
-          'Yalnız bu JVM etkilenir. Devam edilsin mi?',
-      )
-    )
-      return;
+    if (!window.confirm(autoStartOnayMetni(host, j, ac, d?.schemaUnknown === true))) return;
     setAsBusy(k);
     try {
       const r = await serverHubApi.jvmAutoStart({ host, gen: j.gen, jvm: j.name, enable: ac });
@@ -1531,6 +2110,8 @@ function HostModal({
       {!d && !err && <LoadingLogo compact />}
       {d && (
         <div className="space-y-3">
+          {/* C3: bu sunucuda sema okunamadi - eylem yok; durum hucreleri sebebi soyler. */}
+          <SemaBandi su={d.schemaUnknown} />
           <div
             className="flex gap-1 rounded-lg p-0.5 w-fit"
             style={{ background: 'var(--bg-elevated)' }}
@@ -1583,9 +2164,10 @@ function HostModal({
                           {f.text}
                         </div>
                         <div className="text-[10px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                          {AREA[f.area] || f.area} · {f.code}
+                          {AREA[f.area] || f.area} · {kodEtiketi(f.code)}
                         </div>
                         <LogKanit f={f} />
+                        <AtfedilemeyenTrafik f={f} />
                       </div>
                       {f.fix && (
                         <button
@@ -1649,13 +2231,21 @@ function HostModal({
                           {j.group || '—'}
                         </td>
                         <td className="px-2.5 py-1.5">
+                          {/* OLCULEMEDI != KAPALI (v3): hidepid'li sunucuda gorunmeyen JVM
+                              "kapali" yazilmaz (runningKnown=false). Sema okunamadiysa (C3)
+                              sebep hidepid DEGIL sema: ayrintinin schemaUnknown'u verilir. */}
                           <span
-                            style={{
-                              color: j.running ? SEV.ok.color : 'var(--status-neutral)',
-                              fontWeight: 600,
-                            }}
+                            style={{ color: jvmDurumu(j, d.schemaUnknown === true).renk, fontWeight: 600 }}
+                            title={
+                              [
+                                jvmDurumu(j, d.schemaUnknown === true).aciklama,
+                                j.runningSrc ? `kaynak: ${j.runningSrc}` : '',
+                              ]
+                                .filter(Boolean)
+                                .join(' · ') || undefined
+                            }
                           >
-                            {j.running ? 'çalışıyor' : 'kapalı'}
+                            {jvmDurumu(j, d.schemaUnknown === true).metin}
                           </span>
                         </td>
                         <td className="px-2.5 py-1.5">
@@ -1684,11 +2274,12 @@ function HostModal({
                             className="ml-2 px-1.5 py-0.5 text-[10px] border rounded disabled:opacity-50"
                             style={{ borderColor: 'var(--border)' }}
                             title={
-                              j.autoStart === 'true'
+                              (j.autoStart === 'true'
                                 ? `${j.name} için auto-start'ı KAPAT (yalnız bu JVM)`
                                 : j.autoStart === 'false'
                                   ? `${j.name} için auto-start'ı AÇ (yalnız bu JVM)`
-                                  : `${j.name} için auto-start ölçülemedi — AÇ'a basarsanız açıkça açılır`
+                                  : `${j.name} için auto-start ölçülemedi — AÇ'a basarsanız açıkça açılır`) +
+                              (jvmCalismaBilinir(j) ? '' : ' · çalışma durumu ölçülemedi')
                             }
                           >
                             {asBusy === `${j.gen}|${j.name}`
@@ -1726,7 +2317,17 @@ function HostModal({
                             <span style={{ color: 'var(--text-muted)' }}>eşlenemedi</span>
                           )}
                         </td>
-                        <td className="px-2.5 py-1.5 tabular-nums text-right">{nf(j.req24h)}</td>
+                        {/* Esli vhost var ama sayi yok = trafik DOGRULANAMADI ("?"), "—" degil. */}
+                        <td
+                          className="px-2.5 py-1.5 tabular-nums text-right"
+                          title={
+                            j.req24h == null && j.vhosts.length
+                              ? 'trafik doğrulanamadı (log okunamadı ya da web katmanı ölçülemedi)'
+                              : undefined
+                          }
+                        >
+                          {j.req24h == null && j.vhosts.length ? '?' : nf(j.req24h)}
+                        </td>
                         <td
                           className="px-2.5 py-1.5 tabular-nums text-right"
                           style={
@@ -1734,8 +2335,13 @@ function HostModal({
                               ? { color: SEV.warning.color, fontWeight: 600 }
                               : undefined
                           }
+                          title={
+                            j.req7d == null && j.vhosts.length
+                              ? 'trafik doğrulanamadı (log okunamadı ya da web katmanı ölçülemedi)'
+                              : undefined
+                          }
                         >
-                          {nf(j.req7d)}
+                          {j.req7d == null && j.vhosts.length ? '?' : nf(j.req7d)}
                         </td>
                       </tr>
                     ))
@@ -1764,8 +2370,12 @@ function HostModal({
                   style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}
                 >
                   <b>{w.product}</b>
-                  <span style={{ color: w.running ? SEV.ok.color : SEV.warning.color }}>
-                    {w.running ? 'çalışıyor' : 'çalışmıyor'}
+                  {/* running_src=UNMEASURED (hidepid ya da sema okunamadi) "calismiyor" DEGIL */}
+                  <span
+                    style={{ color: webDurumu(w, d.schemaUnknown === true).renk }}
+                    title={w.runningSrc ? `kaynak: ${w.runningSrc}` : undefined}
+                  >
+                    {webDurumu(w, d.schemaUnknown === true).metin}
                   </span>
                   <span
                     style={{
@@ -1847,6 +2457,8 @@ function HostModal({
                             <div className="truncate max-w-[14rem]" title={v.proxyTargets}>
                               {v.proxyTargets || '—'}
                             </div>
+                            {/* C4: kesik liste rozeti truncate disinda - her zaman gorunur */}
+                            <HedefKesikRozeti kesik={v.targetsTruncated} />
                           </td>
                           <td className="px-2.5 py-1.5 text-[10px]">
                             {v.jvm || <span style={{ color: 'var(--text-muted)' }}>—</span>}
@@ -1925,22 +2537,16 @@ function HostModal({
                         <td className="px-2.5 py-1.5 font-mono text-[10px]">{i.root}</td>
                         <td className="px-2.5 py-1.5 font-mono">{i.file}</td>
                         <td className="px-2.5 py-1.5">
+                          {/* UNREADABLE (bakilamadi) "yok" DEGIL - kural 6. */}
                           <span
-                            style={{
-                              color:
-                                i.status === 'OK'
-                                  ? SEV.ok.color
-                                  : i.status === 'DIFF'
-                                    ? SEV.warning.color
-                                    : 'var(--status-neutral)',
-                              fontWeight: 600,
-                            }}
+                            style={{ color: initDurumu(i.status).renk, fontWeight: 600 }}
+                            title={
+                              String(i.status).toUpperCase() === 'UNREADABLE'
+                                ? 'Dosyaya bakılamadı (yetki reddi ya da okunamadı) — eksik ya da farklı sayılmadı.'
+                                : undefined
+                            }
                           >
-                            {i.status === 'OK'
-                              ? 'referansla aynı'
-                              : i.status === 'DIFF'
-                                ? 'FARKLI'
-                                : 'yok'}
+                            {initDurumu(i.status).etiket}
                           </span>
                         </td>
                       </tr>
@@ -1983,21 +2589,19 @@ function HostModal({
                         <td className="px-2.5 py-1.5 font-mono">{ip.ip}</td>
                         <td className="px-2.5 py-1.5">{ip.iface}</td>
                         <td className="px-2.5 py-1.5">
-                          <span
-                            style={{
-                              color:
-                                ip.usedBy === 'none' ? SEV.warning.color : 'var(--text-primary)',
-                              fontWeight: ip.usedBy === 'none' ? 600 : 400,
-                            }}
-                          >
-                            {ip.usedBy === 'none'
-                              ? 'BOŞTA'
-                              : ip.usedBy === 'wildcard'
-                                ? 'joker dinleyici (*)'
-                                : ip.usedBy === 'other'
-                                  ? 'web dışı soket'
-                                  : ip.usedBy.toUpperCase()}
-                          </span>
+                          {/* 'unverified' (v3): kullanim DOGRULANAMADI - bosta sayilmaz, urun
+                              adi gibi buyuk harfle de basilmaz (D1-U01). */}
+                          {(() => {
+                            const k = ipKullanan(ip.usedBy);
+                            return (
+                              <span
+                                style={{ color: k.renk, fontWeight: k.kalin ? 600 : 400 }}
+                                title={k.aciklama || undefined}
+                              >
+                                {k.etiket}
+                              </span>
+                            );
+                          })()}
                         </td>
                         <td
                           className="px-2.5 py-1.5 text-[10px]"
@@ -2167,8 +2771,9 @@ function HostModal({
  */
 function LogKanit({ f }: { f: ShFinding }) {
   if (!f.logs || !f.logs.length) return null;
-  const okunan = f.logs.filter((l) => l.read);
-  const okunamayan = f.logs.filter((l) => !l.read);
+  // OLCULDU = okundu VE sayi >= 0 (v3: -1 degismezi). Sunucu read=true dese bile -1/null kanit degil.
+  const okunan = f.logs.filter((l) => logOlculdu(l));
+  const okunamayan = f.logs.filter((l) => !logOlculdu(l));
   return (
     <details className="mt-1">
       <summary
@@ -2184,15 +2789,13 @@ function LogKanit({ f }: { f: ShFinding }) {
           <li
             key={i}
             className="text-[10px] font-mono break-all"
-            style={{ color: l.read ? 'var(--text-secondary)' : 'var(--status-warning)' }}
+            style={{ color: logOlculdu(l) ? 'var(--text-secondary)' : 'var(--status-warning)' }}
           >
             {l.path || '(access_log tanımsız)'}
             <span className="font-sans" style={{ color: 'var(--text-muted)' }}>
               {' — '}
               {l.host}/{l.serverName || '?'}
-              {l.read
-                ? ` · 7g ${l.req7d ?? 0}${l.sampled ? ' (alt sınır: log kuyruğu okundu)' : ''}`
-                : ' · OKUNAMADI — bu dosya kanıt sayılmaz'}
+              {logKanitMetni(l)}
               {l.shared ? ' · paylaşımlı log' : ''}
             </span>
           </li>
@@ -2343,6 +2946,8 @@ export function FindingsTab({
   };
   return (
     <div className="space-y-3">
+      <BayatFiloBandi sf={data?.staleFleet} />
+      <SemaBandi su={data?.schemaUnknown} />
       <div className="flex flex-wrap items-center gap-2">
         <input
           value={q}
@@ -2378,7 +2983,7 @@ export function FindingsTab({
           <option value="all">tüm kodlar</option>
           {codes.map((c) => (
             <option key={c} value={c}>
-              {c}
+              {kodEtiketi(c)}
             </option>
           ))}
         </select>
@@ -2459,6 +3064,7 @@ export function FindingsTab({
             <button
               key={c}
               onClick={() => setCode(code === c ? 'all' : c)}
+              title={kodEtiketi(c)}
               className="px-2 py-0.5 rounded-full border text-[11px]"
               style={{
                 borderColor: code === c ? 'var(--accent)' : 'var(--border-subtle)',
@@ -2506,7 +3112,14 @@ export function FindingsTab({
                   <SevPill s={f.severity} />
                 </td>
                 <td className="px-3 py-1.5">{AREA_TR[f.area] || f.area}</td>
-                <td className="px-3 py-1.5 font-mono text-[11px]">{f.code}</td>
+                <td className="px-3 py-1.5 font-mono text-[11px]" title={kodEtiketi(f.code)}>
+                  {f.code}
+                  {KOD_ETIKET[f.code] ? (
+                    <div className="font-sans text-[10px]" style={{ color: 'var(--text-muted)' }}>
+                      {KOD_ETIKET[f.code]}
+                    </div>
+                  ) : null}
+                </td>
                 <td className="px-3 py-1.5">
                   <div className="max-w-[40rem] truncate" title={f.text}>
                     {f.text}

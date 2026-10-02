@@ -1,41 +1,4 @@
 ---
-# logx_legacy_discovery.yml — LogX v2 / Legacy log dosyası keşfi (REFERANS PLAYBOOK).
-#
-# ÖNEMLİ: Bu dosya YALNIZCA REFERANS/teslim amaçlıdır — portal bu playbook'u ÇALIŞTIRMAZ.
-# Gerçek prod playbook ayrı bir Ansible projesinde deploy edilir. Bu dosyanın amacı, o
-# playbook'u yazacak kişinin hangi extra_vars'ı alması ve hangi JSON çıktı sözleşmesini
-# üretmesi gerektiğini net biçimde belgelemektir (bkz. LogX v2 uygulama planı, Bölüm H).
-#
-# Gerekli extra_vars:
-#   app_name      (string)  — Kullanıcının seçtiği uygulama adı (uygulama envanteri tablosunun app sütunu).
-#                              Yalnızca dosya adı/klasör filtrelemesi için kullanılır,
-#                              ASLA bir shell komutuna string-interpolate EDİLMEZ.
-#   target_hosts  (string)  — Virgülle ayrılmış, BÜYÜK HARF hostname listesi (portal
-#                              tarafından uygulama envanteri tablosundan önceden çözülür).
-#
-# Çıktı sözleşmesi (ansible.builtin.set_stats ile "logx_result" anahtarı altında,
-# AWX Job'ın `artifacts` alanında görünür — backend BUNU okur, ham stdout'u ASLA parse
-# etmez):
-#   {
-#     "overall_status": "success" | "partial" | "failed",
-#     "hosts": [
-#       { "host": "GBJBOT22", "status": "ok" | "unreachable" | "error", "error": "...",
-#         "files": [ { "path": "/vhosting8/APP-T.ear/logs/SystemOut.log",
-#                       "size": 12345, "mtime": "2026-07-14T10:00:00Z" } ] }
-#     ]
-#   }
-#
-# Güvenlik notu: Dosya keşfi `ansible.builtin.find` MODÜLÜ ile yapılır (shell/find komutu
-# DEĞİL) — app_name'in shell metacharacter içermesi (`;`, `` ` ``, `$()` vb.) hiçbir
-# injection riski oluşturmaz çünkü hiçbir zaman bir shell komutuna enjekte edilmez;
-# yalnızca Ansible'ın kendi Jinja `select`/`search` filtresiyle sonuç listesi içinde
-# post-filtrelenir. `follow: false` symlink escape'i engeller.
-#
-# Karşılaştırma: server/ansible/playbooks/fetch_remote_logs.yml (mevcut, kaldırılacak
-# fallback) `ansible.builtin.shell` ile `"{{ log_path }}"` Jinja string'ini doğrudan
-# komuta enjekte ediyordu — gerçek bir shell injection yüzeyiydi. Bu playbook o deseni
-# BİLİNÇLİ OLARAK kullanmaz.
-
 - name: "LogX v2 — Legacy log dosyası keşfi"
   hosts: "{{ target_hosts | default('all') }}"
   gather_facts: false
@@ -43,10 +6,6 @@
   become_user: "{{ logx_legacy_user | default('was') }}"
   become_method: dzdo
   strategy: free
-  # `rescue` YALNIZCA GOREV hatalarini yakalar; SSH/DNS kesintisini (unreachable)
-  # YAKALAMAZ. O durumda host "unreachable" isaretlenir ve TUM host'lar boyle
-  # duserse Ansible "NO MORE HOSTS LEFT" ile SONRAKI PLAY'LERI ATLAR — toplayici
-  # play hic calismaz. Ikisi BIRLIKTE gerekir.
   ignore_unreachable: true
 
   vars:
@@ -130,44 +89,114 @@
               | selectattr('path', 'search', app_name)
               | list
             }}
-      # files: [{path,size,mtime}, ...] — find modülünün ham dict'i; gerçek implementasyon
-      # yalnızca bu 3 anahtarı seçecek şekilde daraltmalı.
+
+      - name: "Keşif ölçüm sorunlarını topla (find hatası, erişilemeyen host, okunamayan yol)"
+        ansible.builtin.set_fact:
+          kesif_sorunlari: >-
+            {{
+              (kesif_sorunlari | default([]))
+              + (
+                  [{
+                    'tur': ('unreachable' if (item.sonuc is unreachable) else 'error'),
+                    'metin': (
+                      item.gorev ~ ': '
+                      ~ (
+                          (item.sonuc.msg | default('erisilemedi'))
+                          if (item.sonuc is unreachable)
+                          else (
+                            (
+                              (item.sonuc.msg | default(''))
+                              ~ ' '
+                              ~ ((item.sonuc.module_stderr | default(''))[:300])
+                            ) | trim
+                            if (item.sonuc is failed)
+                            else (
+                              'okunamayan ' ~ (kesif_atlanan | length) ~ ' yol: '
+                              ~ ((kesif_atlanan | map(attribute='key') | list)[:5] | join(', '))
+                              ~ ' (ilk sebep: ' ~ ((kesif_atlanan | first)['value']) ~ ')'
+                            )
+                          )
+                        )
+                      ~ ' (kosan: ' ~ (logx_legacy_user | default('was')) ~ ')'
+                    ),
+                  }]
+                  if (
+                    item.sonuc is failed
+                    or item.sonuc is unreachable
+                    or (kesif_atlanan | length) > 0
+                  )
+                  else []
+                )
+            }}
+        vars:
+          kesif_kok_yok: >-
+            {{
+              item.sonuc.skipped_paths | default({}) | dict2items
+              | selectattr('key', 'in', item.kokler)
+              | selectattr('value', 'search', 'is not a directory')
+              | map(attribute='key')
+              | list
+            }}
+          kesif_atlanan: >-
+            {{
+              item.sonuc.skipped_paths | default({}) | dict2items
+              | rejectattr('key', 'in', kesif_kok_yok)
+              | list
+            }}
+        loop:
+          - gorev: "Önce app'a ait EAR klasörlerini bul (daraltılmış keşif)"
+            sonuc: "{{ found_ear_dirs }}"
+            kokler: "{{ legacy_log_roots }}"
+          - gorev: "EAR altındaki mevcut log/logs dizinlerini bul (stat döngüsü olmadan)"
+            sonuc: "{{ found_log_dirs }}"
+            kokler: []
+          - gorev: "Sadece ilgili log dizinlerinde dosyaları bul"
+            sonuc: "{{ found_files }}"
+            kokler: []
+        loop_control:
+          label: "{{ item.gorev }}"
+
       - name: "Sonucu bu host için yapılandır"
         ansible.builtin.set_fact:
           host_result:
             host: "{{ inventory_hostname | upper }}"
-            status: "{{ 'ok' if (found_files is not failed) else 'error' }}"
-            error: "{{ found_files.msg | default('') if (found_files is failed) else '' }}"
-            files: "{{ matched_files | default([]) }}"
+            status: >-
+              {{
+                'ok'
+                if (kesif_sorunlari | default([]) | length) == 0
+                else (
+                  'unreachable'
+                  if (kesif_sorunlari | default([]) | selectattr('tur', 'equalto', 'unreachable') | list | length) > 0
+                  else 'error'
+                )
+              }}
+            error: "{{ kesif_sorunlari | default([]) | map(attribute='metin') | join(' | ') }}"
+            files: "{{ (matched_files | default([])) if (kesif_sorunlari | default([]) | length) == 0 else [] }}"
 
-      # ÖNEMLİ (çoklu-host düzeltmesi): Burada per-host `set_stats` ÇAĞIRMIYORUZ. Eskiden her
-      # host `logx_result.hosts: [<yalnızca kendisi>]`'i `aggregate: true` ile yayıyordu; bir
-      # DICT üzerinde aggregate son gelen host'un öncekini EZMESİNE yol açıyor → birleşik
-      # artifact tek host kalıyordu (5 sunuculu app'te yalnız 1 sunucu görünme kök nedeni).
-      # Çözüm: her host'u bir gruba ekle; birleştirmeyi AŞAĞIDAKİ ayrı localhost play'inde,
-      # tüm hostvars'tan `host_result` toplayıp TEK KEZ yayınlayarak yap.
       - name: "Bu host'u sonuç grubuna ekle (aggregation için)"
         ansible.builtin.group_by:
           key: logx_discovered
         changed_when: false
 
-  # ── Tüm host sonuçlarını TEK artifact'te birleştir (localhost, run_once) ───────────────
-  # `strategy: free` altında in-play `run_once` güvenilmez olduğundan aggregation AYRI bir
-  # localhost play'inde yapılır. Her host'un `host_result` fact'i hostvars'ta durur; buradan
-  # map('extract', ...) ile TÜM host'lar toplanıp set_stats ile BİR KEZ (aggregate: false)
-  # yayılır. Tek-host durumunda da doğru çalışır (grup 1 host içerir) → mevcut akış korunur.
-
-      # RESCUE (2026-08-28): bir gorev duserse host OLMEZ; sebep kaydedilir.
-      # Neden sart: bu play'deki TUM host'lar duserse Ansible "NO MORE HOSTS
-      # LEFT" ile SONRAKI PLAY'LERI ATLAR ve `set_stats`'in TEK yazari olan
-      # toplayici play HIC calismaz — sonuc sozlesmesi yayinlanmaz, portal
-      # "sonuc gelmedi" der. Uretimde Telnet'te yasandi.
-      # BILEREK yeniden `fail` ETMEZ: amaci host'u ayakta tutmak.
       rescue:
         - name: "Hata kaydedilir (host ayakta kalir)"
           ansible.builtin.set_fact:
             host_blocked_reason: >-
               {{ ansible_failed_result.msg | default('Bu host uzerinde is tamamlanamadi.') }}
+
+        - name: "Hata host sonucu olarak kaydedilir (toplayicidan sessizce dusmesin)"
+          ansible.builtin.set_fact:
+            host_result:
+              host: "{{ inventory_hostname | upper }}"
+              status: error
+              error: "{{ host_blocked_reason }} (kosan: {{ logx_legacy_user | default('was') }})"
+              files: []
+
+        - name: "Bu host'u sonuç grubuna ekle (rescue)"
+          ansible.builtin.group_by:
+            key: logx_discovered
+          changed_when: false
+
 - name: "LogX v2 — Legacy keşif sonuçlarını birleştir (tek artifact)"
   hosts: localhost
   connection: local
@@ -176,15 +205,62 @@
   run_once: true
 
   vars:
-    aggregated_hosts: >-
+    bildiren_hostlar: >-
       {{
         groups['logx_discovered'] | default([])
         | map('extract', hostvars, 'host_result')
         | select('defined')
         | list
       }}
+    hedef_terimler: >-
+      {{
+        (
+          target_hosts
+          if (target_hosts is defined and target_hosts is sequence and target_hosts is not string)
+          else ((target_hosts | default('all') | string).split(','))
+        )
+        | map('string')
+        | map('trim')
+        | reject('equalto', '')
+        | list
+      }}
+    hedef_hostlar: >-
+      {{
+        (
+          (hedef_terimler | select('in', groups) | map('extract', groups) | flatten)
+          + (hedef_terimler | reject('in', groups) | list)
+        )
+        | map('upper')
+        | unique
+        | list
+      }}
+    envanter_hostlari: "{{ groups['all'] | default([]) | map('upper') | list }}"
+    aggregated_hosts: "{{ bildiren_hostlar + (bildirmeyen_hostlar | default([])) }}"
 
   tasks:
+    - name: "Hedeflenip sonuç bildirmeyen hostları unreachable olarak ekle"
+      ansible.builtin.set_fact:
+        bildirmeyen_hostlar: >-
+          {{
+            (bildirmeyen_hostlar | default([]))
+            + [{
+                'host': item,
+                'status': 'unreachable',
+                'error': (
+                  'sonuc bildirmedi'
+                  if (item in envanter_hostlari)
+                  else 'sonuc bildirmedi (AWX envanterinde eslesmedi)'
+                ),
+                'files': [],
+              }]
+          }}
+      loop: >-
+        {{
+          hedef_hostlar
+          | reject('in', bildiren_hostlar | map(attribute='host') | map('upper') | list)
+          | list
+        }}
+
     - name: "Birleşik sonucu tek artifact olarak yayınla (logx_result)"
       ansible.builtin.set_stats:
         data:
@@ -192,7 +268,7 @@
             overall_status: >-
               {{
                 'failed'
-                if (aggregated_hosts | length == 0)
+                if ((aggregated_hosts | selectattr('status', 'equalto', 'ok') | list | length) == 0)
                 else (
                   'success'
                   if ((aggregated_hosts | rejectattr('status', 'equalto', 'ok') | list | length) == 0)
@@ -203,15 +279,10 @@
         per_host: false
         aggregate: false
 
-    # AWX ISI KIRMIZI KALSIN (2026-08-28). Yukaridaki `rescue` host'u ayakta tutuyor;
-    # bu gorev olmasaydi hicbir sey calismadigi halde is "successful" gorunurdu —
-    # mevcut durumdan DAHA KOTU olurdu. `set_stats` BU GOREVDEN ONCE calistigi icin
-    # artifact zaten yayinlanmistir: portal duzgun sonucu alir, AWX dogru sekilde
-    # "failed" der.
-    - name: "Hicbir host sonuc bildirmediyse isi BASARISIZ yap"
+    - name: "Hicbir host basarili sonuc bildirmediyse isi BASARISIZ yap"
       ansible.builtin.fail:
         msg: >-
-          Kesif tamamlanamadi — hicbir host sonuc bildirmedi.
-          Sebep icin yukaridaki "Hata kaydedilir" gorevine ve host'larin
-          erisilebilirligine bakin.
-      when: (aggregated_hosts | length) == 0
+          Kesif tamamlanamadi — hicbir host basarili sonuc bildirmedi
+          ({{ aggregated_hosts | length }} host). Sebep icin artifact'taki hosts[].error
+          alanina, yukaridaki "Hata kaydedilir" gorevine ve host'larin erisilebilirligine bakin.
+      when: (aggregated_hosts | selectattr('status', 'equalto', 'ok') | list | length) == 0

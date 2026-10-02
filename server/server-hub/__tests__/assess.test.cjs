@@ -5,9 +5,14 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { assess, parseTargets } = require('../assess.cjs');
+const { assess: assessHam, parseTargets } = require('../assess.cjs');
 
 const D = '2026-09-21';
+// SOZLESME v3 EK-2 (2026-10-01): tazelik DUVAR SAATINE de baglidir - assess(data, { now }).
+// Bu dosyanin fixture'lari 2026-09-21 tarihli; duvar saati sabitlenmezse her sunucu "bayat"
+// olur ve tum eylemler (fix) kalkar. Testler tarama gunune sabitlenir.
+const NOW = Date.parse(`${D}T12:00:00Z`);
+const assess = (d, o) => assessHam(d, { now: NOW, ...(o || {}) });
 const base = () => ({
   hosts: [
     { host: 'DACRAAP01', scan_date: D, products: 'JBOSS7 RHA', wall_s: 4.2, cpu_s: 1.1 },
@@ -126,7 +131,11 @@ test('SH3: bulgu kodlari ve siddet: REBOOT_RISK danger, RETIRE_CANDIDATE warning
   assert.equal(codes.REBOOT_RISK.severity, 'danger');
   assert.deepEqual(codes.REBOOT_RISK.fix, { action: 'jboss_autostart_on', gen: 7, jvm: 'crm' });
   assert.equal(codes.RETIRE_CANDIDATE.severity, 'warning');
-  assert.deepEqual(codes.RETIRE_CANDIDATE.fix, { action: 'jboss_retire', gen: 7, jvm: 'oldapp' });
+  // SOZLESME v3 D1-C04: ESKI tarama satirlari (traffic_state / vhost_trust NULL) v2 trafik
+  // kaniti degildir -> bulgu kalir, jboss_retire ONERILMEZ. Tam v2 kanitiyla eylem
+  // v2-guvenlik.test.cjs D1-C04'te sinanir.
+  assert.equal(codes.RETIRE_CANDIDATE.fix, null);
+  assert.equal(codes.RETIRE_CANDIDATE.retireBlock, 'LEGACY');
   assert.equal(codes.RESTART_REQUIRED.severity, 'warning');
   assert.equal(codes.INIT_DIFF.severity, 'warning');
   assert.equal(app.status, 'danger');
@@ -155,12 +164,10 @@ test('SH4: web sunucusu: bosta IP warning, JVM\'e esli vhost "idle" sayilmaz, es
   assert.ok(codes.includes('IP_UNUSED'));
   const idle = web.findings.filter((f) => f.code === 'VHOST_IDLE');
   assert.equal(idle.length, 1, "oldapp vhost JVM'e esli, idle bulgusu vermez; lonely verir");
-  assert.deepEqual(idle[0].fix, {
-    action: 'apache_retire_vhost',
-    product: 'RHA',
-    file: '/usr/apache/conf/lonely.conf',
-    server_name: 'lonely.fw.local',
-  });
+  // SOZLESME v3 D1-C12: eski satirda (traffic_state NULL) bulgu KALIR, apache_retire_vhost
+  // ONERILMEZ (NO_RECENT_TRAFFIC + OK + FULL kaniti yok). v2 satiriyla eylem
+  // v2-guvenlik.test.cjs D1-C12'de sinanir.
+  assert.equal(idle[0].fix, null);
   assert.equal(web.status, 'warning');
 });
 
@@ -228,6 +235,22 @@ test('SH8: parseTargets host:port / ajp / IPv6 / bos', () => {
   ]);
   assert.deepEqual(parseTargets('app1_up'), [{ host: 'APP1_UP', port: null }]);
   assert.deepEqual(parseTargets(''), []);
+  // koseli IPv6 literal (2026-10-02, C1): eskiden desene uymadigi icin hedef DUSUYORDU
+  assert.deepEqual(parseTargets('[::1]:8180, [FE80::1]'), [
+    { host: '::1', port: 8180 },
+    { host: 'fe80::1', port: null },
+  ]);
+  // kesik liste (C4): '~' iceren parca (yarim hedef ya da ~TRUNC jetonu) hedef SAYILMAZ
+  const { hedefListesi } = require('../assess.cjs');
+  assert.deepEqual(hedefListesi('a.bmw.de:80,gbcja ~'), {
+    parcalar: ['a.bmw.de:80'],
+    eksik: true,
+    gosterim: 'a.bmw.de:80,~',
+  });
+  assert.deepEqual(hedefListesi('a.bmw.de:80,~TRUNC').parcalar, ['a.bmw.de:80']);
+  // ayristirici da jetonu hedef saymaz (README: '~TRUNC' host[:port] desenine uyar)
+  assert.deepEqual(parseTargets('a.bmw.de:80,~TRUNC'), [{ host: 'A', port: 80 }]);
+  assert.deepEqual(hedefListesi('u:p@a.bmw.de:80'), { parcalar: ['a.bmw.de:80'], eksik: false, gosterim: 'a.bmw.de:80' });
 });
 
 // ── 2026-09-22 (job 3339002 sonrasi) ─────────────────────────────────────────────
@@ -344,6 +367,20 @@ test('SH9c: NO_LOAD bulgusu HANGI LOGA dayandigini tasir; okunamayan log KANIT D
       conf_file: '/usr/apache/conf/vhosts.conf',
     },
   ];
+  // SOZLESME v3 (K0#0, D1-C01): esli loglardan biri OKUNAMADIYSA "7 gundur istek yok"
+  // iddiasi HIC kurulmaz - eskiden yalniz okunabilen loglar toplaniyor ve okunamayan log
+  // sessizce "0" gibi davraniyordu. Bu senaryoda NO_LOAD artik URETILMEZ.
+  const r0 = assess(d);
+  const h0 = r0.hosts.find((x) => x.host === 'DACRAAP01');
+  assert.ok(
+    !h0.findings.some((x) => x.code === 'NO_LOAD'),
+    'okunamayan log varken "yuk yok" iddia edildi',
+  );
+  assert.equal(h0.jvms.find((j) => j.name === 'crm').req7d, null);
+  // Ikinci log da okununca (0) NO_LOAD gelir ve HANGI loglara dayandigini tasir.
+  d.vhosts[1].req_24h = 0;
+  d.vhosts[1].req_7d = 0;
+  d.vhosts[1].hc_24h = 0;
   const r = assess(d);
   const h = r.hosts.find((x) => x.host === 'DACRAAP01');
   const f = h.findings.find((x) => x.code === 'NO_LOAD');
@@ -354,14 +391,13 @@ test('SH9c: NO_LOAD bulgusu HANGI LOGA dayandigini tasir; okunamayan log KANIT D
   );
   assert.deepEqual(f.logs.map((l) => l.path).sort(), ['/l/crm', '/l/crm2']);
   const a = f.logs.find((l) => l.path === '/l/crm');
-  const b = f.logs.find((l) => l.path === '/l/crm2');
   assert.equal(a.read, true);
   assert.equal(a.req7d, 0);
-  // OKUNAMAYAN LOG "0 ISTEK" SAYILMAZ: aksi halde olculemeyen bir dosya, "yuk yok"
-  // iddiasinin kaniti gibi gorunurdu.
-  assert.equal(b.read, false, 'okunamayan log okunmus gibi isaretlenmis');
-  assert.equal(b.req7d, null, 'okunamayan log 0 istek gibi yazilmis');
   assert.equal(f.scanDate, D, 'loglarin NE ZAMAN okundugu tasinmiyor');
+  // OKUNAMAYAN LOG "0 ISTEK" SAYILMAZ (-1 de okunamadi demektir; v3 D1-C13).
+  d.vhosts[1].req_7d = -1;
+  const hb = assess(d).hosts.find((x) => x.host === 'DACRAAP01');
+  assert.ok(!hb.findings.some((x) => x.code === 'NO_LOAD'), '-1 log "0 istek" sayildi');
 });
 
 test('SH9d: auto-start "bilinmiyor" SEBEBIYLE gelir; ucu ayri sayilir', () => {

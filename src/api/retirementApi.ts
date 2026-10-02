@@ -7,9 +7,12 @@ export interface RtWeb { host: string; serverName: string; product: string; port
 export interface RtDiscoveredTarget {
   host: string; site: 'Pendik' | 'Ankara'; env: 'PROD' | 'QA' | 'TEST' | 'DEV'; appName: string; gen: number | null;
   appPath: string; inventoryStatus: string; domain: string; tier: string; web: RtWeb[]; webHow: string;
-  hub: { running: boolean; autoStart: string; scanDate: string | null } | null;
+  // runningKnown (sozlesme v3) = running_src !== 'UNMEASURED'; alan yoksa (eski sunucu) bilinen sayilir.
+  hub: { running: boolean; autoStart: string; scanDate: string | null; runningSrc?: string | null; runningKnown?: boolean | null } | null;
 }
-export interface RtDiscovery { ok: boolean; message?: string; base: string; targets: RtDiscoveredTarget[]; summary: { total: number; bySite: { Pendik: number; Ankara: number }; byEnv: Record<string, number>; webMatched: number; prod: boolean } }
+// hubUnavailable (kural 6): Server_Hub_Jvms (ya da kolon listesi) okunamadi -> TUM hedeflerde hub null;
+// bu "tarama yok" DEGIL "olculemedi"dir. Alan yoksa (eski sunucu yaniti) okundu sayilir.
+export interface RtDiscovery { ok: boolean; message?: string; base: string; targets: RtDiscoveredTarget[]; summary: { total: number; bySite: { Pendik: number; Ankara: number }; byEnv: Record<string, number>; webMatched: number; prod: boolean; hubUnavailable?: boolean } }
 export type RtTargetStatus = 'pending' | 'planning' | 'planned' | 'stopping' | 'stopped' | 'failed' | 'skipped';
 export interface RtTarget {
   id: number; recordId: number; host: string; site: string; env: string; appName: string; gen: number | null; appPath: string | null;

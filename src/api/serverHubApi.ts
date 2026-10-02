@@ -26,6 +26,18 @@ export interface ShFindingLog {
   shared: boolean;
   read: boolean;
 }
+/** EK-3 (sozlesme v3): TRAFFIC_UNATTRIBUTED bulgusunun ekindeki tek kayit. kind: PORT (bu
+ *  sunucuya giden port hicbir JVM'e ait degil), HEDEF (hedef hicbir sunucuya cozulemedi:
+ *  balancer, VIP, upstream adi), EKSIK (hedef listesi yukleyicide kesildi; target '~'). */
+export interface ShUnattributed {
+  host?: string;
+  serverName?: string;
+  port?: number | null;
+  target?: string | null;
+  kind?: string;
+  req7d?: number | null;
+  trafficState?: string | null;
+}
 export interface ShFinding {
   severity: Exclude<ShSeverity, 'ok'>;
   area: 'init' | 'jboss' | 'jvm' | 'web' | 'ip' | 'ssh' | 'scan';
@@ -35,6 +47,10 @@ export interface ShFinding {
   logs?: ShFindingLog[];
   scanDate?: string | null;
   matchKind?: string | null;
+  /** EK-3: yalniz TRAFFIC_UNATTRIBUTED; en fazla 20 kayit (sunucu keser). */
+  unattributed?: ShUnattributed[];
+  /** AUTOSTART_UNKNOWN sebebi (cli-okunamadi | envanterde-yok | envanter-celiskili | tanimsiz-surec). */
+  autoStartReason?: string;
 }
 export interface ShHostRow {
   env?: string;
@@ -96,8 +112,12 @@ export interface ShVhost {
   sampled: boolean;
   confFile: string;
   jvm: string | null;
+  /** C4: proxy hedef listesi yukleyicide kesildi (~); kesilen kisimdaki sunucu:port bilinmez. */
+  targetsTruncated?: boolean;
 }
 export interface ShHostDetail extends Omit<ShHostRow, 'jvms' | 'vhosts'> {
+  /** C3: sys.columns okunamadi - tarayici sema surumu bilinmiyor, bu sunucuda eylem yok. */
+  schemaUnknown?: boolean;
   findings: ShFinding[];
   init: { root: string; file: string; status: string }[];
   jboss: { gen: number; hostName: string; hostState: string; cli: string; note: string }[];
@@ -206,6 +226,16 @@ export interface ShSummary {
     jvm: { inventory: number; scanned: number; fromInventory: number };
   };
 }
+/** EK-2: son basarili yukleme FRESH_MAX_DAYS'ten eskiyse /overview ve /findings bunu tasir. */
+export type ShStaleFleet = { lastLoad?: string | null; ageDays?: number | null } | null;
+/** EK-1: /overview geri alma kapisi. allowed=false: v3 tarayici verisi var ya da (schemaUnknown)
+ *  sema okunamadigi icin v3 sayimi yapilamadi (v3Hosts null). */
+export interface ShRollback {
+  allowed?: boolean;
+  v3Hosts?: number | null;
+  message?: string;
+  schemaUnknown?: boolean;
+}
 export interface ShOverview {
   ok: boolean;
   message?: string;
@@ -213,6 +243,10 @@ export interface ShOverview {
   latestScan: string | null;
   summary: ShSummary | null;
   hosts: ShHostRow[];
+  staleFleet?: ShStaleFleet;
+  rollback?: ShRollback;
+  /** C3: sys.columns okunamadi - tum eylemler kapali, sonuc onbellekte degil. */
+  schemaUnknown?: boolean;
 }
 export interface ShFindingRow {
   host: string;
@@ -235,6 +269,8 @@ export interface ShFindingsResult {
   tableMissing: boolean;
   latestScan: string | null;
   findings: ShFindingRow[];
+  staleFleet?: ShStaleFleet;
+  schemaUnknown?: boolean;
 }
 export interface ShLaunch {
   ok: boolean;

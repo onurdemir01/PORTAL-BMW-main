@@ -47,7 +47,7 @@ function playler(src) {
   const parcalar = src.split(/^(?=- name:)/m).slice(1);
   for (const p of parcalar) {
     const satirlar = p.split('\n');
-    const ad = (satirlar[0].match(/^- name:\s*"?(.*?)"?\s*$/) || [, satirlar[0]])[1];
+    const ad = (satirlar[0].match(/^- name:\s*"?(.*?)"?\s*$/) || [null, satirlar[0]])[1];
     const basSatirlari = [];
     for (const s of satirlar.slice(1)) {
       if (/^- /.test(s)) break;

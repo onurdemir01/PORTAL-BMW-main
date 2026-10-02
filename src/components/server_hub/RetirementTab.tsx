@@ -4,9 +4,9 @@
 // sunuculari (tum ortamlar, Pendik + Ankara) envanterden kesfedilir, web sunuculari Web-App kuraliyla;
 // her hedef icin STOP once PLAN kosar, onaylaninca uygulanir. Silme tarihi: kaydi acan secer, bos ise
 // stop + N gun (varsayilan 45). Silme ve IP/LB/DNS adimlari sonraki surum (kayitta alanlari var).
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { PlusIcon, ArrowPathIcon, XMarkIcon, StopCircleIcon, ClipboardDocumentCheckIcon, TrashIcon } from '@heroicons/react/24/outline';
-import { retirementApi, type RtRecordRow, type RtRecord, type RtDiscovery, type RtTarget, type RtTargetStatus } from '@/api/retirementApi';
+import { retirementApi, type RtRecordRow, type RtRecord, type RtDiscovery, type RtDiscoveredTarget, type RtTarget, type RtTargetStatus } from '@/api/retirementApi';
 import { useJobTracker } from '@/contexts/JobTrackerContext';
 import { Modal } from '@/components/common/Modal';
 import { TableEmptyRow } from '@/components/common/EmptyState';
@@ -30,6 +30,56 @@ const RSTATUS: Record<string, { label: string; color: string }> = {
   deleted: { label: 'silindi', color: 'var(--status-neutral)' }, cancelled: { label: 'iptal', color: 'var(--status-neutral)' },
 };
 const Pill = ({ label, color }: { label: string; color: string }) => <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border whitespace-nowrap" style={{ color, borderColor: color, background: 'var(--bg-surface)' }}>{label}</span>;
+
+// SERVER HUB CALISMA DURUMU (sozlesme v3, D1-U05): discover.cjs hub.runningKnown tasir
+// (running_src !== 'UNMEASURED'). hidepid'li sunucuda gorunmeyen JVM "kapali" DEGIL "bilinmiyor"dur
+// - kural 6. Alan yoksa (eski sunucu yaniti) eski davranis. Alan retirementApi.ts'te (istege bagli).
+type HubV3 = NonNullable<RtDiscoveredTarget['hub']>;
+function hubDurumu(hub: HubV3): { metin: string; renk: string; aciklama: string } {
+  if (hub.runningKnown === false)
+    return { metin: 'bilinmiyor', renk: 'var(--status-warning)', aciklama: 'Server Hub çalışma durumunu ölçemedi (süreç görünmüyor) — kapalı sayılmadı.' };
+  if (hub.running) return { metin: 'çalışıyor', renk: 'var(--status-success)', aciklama: '' };
+  return { metin: 'kapalı', renk: 'var(--text-muted)', aciklama: '' };
+}
+
+// SERVER HUB OKUNAMADI (kural 6): discover.cjs Server_Hub_Jvms sorgusu duserse
+// summary.hubUnavailable=true dondurur; o zaman TUM hedeflerin hub alani null'dur. Bu "tarama yok"
+// (sunucu taranmadi) DEGIL, "olculemedi"dir. Alan yoksa (eski sunucu yaniti) okundu sayilir.
+const hubOkunamadi = (d: RtDiscovery | null | undefined): boolean => d?.summary?.hubUnavailable === true;
+
+/** Kesif tablosundaki Server Hub hucresi: okunamadi > olcum (hubDurumu) > tarama yok. */
+function hubHucresi(hub: HubV3 | null, okunamadi: boolean): { metin: string; renk: string; aciklama: string } {
+  if (okunamadi)
+    return { metin: 'Server Hub okunamadı', renk: 'var(--status-warning)', aciklama: "Server Hub verisi okunamadı — JVM'in çalışıp çalışmadığı ölçülemedi (taranmamış ya da kapalı SAYILMADI)." };
+  if (!hub) return { metin: 'tarama yok', renk: 'var(--text-muted)', aciklama: '' };
+  const d = hubDurumu(hub);
+  return { metin: `${d.metin} · auto-start ${hub.autoStart}`, renk: d.renk, aciklama: d.aciklama };
+}
+function HubHucresi({ hub, okunamadi }: { hub: HubV3 | null; okunamadi: boolean }) {
+  const hc = hubHucresi(hub, okunamadi);
+  return <span style={{ color: hc.renk }} title={hc.aciklama || undefined}>{hc.metin}</span>;
+}
+
+// STOP ONAYINDA SERVER HUB: kayit acilirken alinan kesif saklanmaz; onay penceresi acilinca
+// kesif yeniden okunur. Yanit gelmezse, ok degilse ya da hubUnavailable ise "okunamadi".
+type StopHubDurumu = 'denetleniyor' | 'okundu' | 'okunamadi';
+function stopHubDurumu(d: RtDiscovery | null | undefined): StopHubDurumu {
+  if (!d || d.ok !== true) return 'okunamadi';
+  return hubOkunamadi(d) ? 'okunamadi' : 'okundu';
+}
+/** STOP onay metnine eklenen uyari; Server Hub okunduysa null. Dugmeyi KAPATMAZ (yalniz bilgi). */
+function stopHubUyarisi(durum: StopHubDurumu): string | null {
+  if (durum === 'okundu') return null;
+  if (durum === 'denetleniyor') return 'Server Hub durumu denetleniyor…';
+  return "Server Hub okunamadı — JVM'in çalışıp çalışmadığı ölçülemedi (kapalı ya da taranmamış SAYILMADI). Durdurmadan önce sunucuda doğrulayın.";
+}
+/** STOP onay penceresindeki uyari kutusu (ayri bilesen: ekrana cikip cikmadigi bekcide CAGRILARAK
+ *  sinanir). Okunamadiysa role=alert; okunduysa hicbir sey basilmaz. Gizlenmez (hidden yok). */
+function StopHubUyari({ durum }: { durum: StopHubDurumu }) {
+  const metin = stopHubUyarisi(durum);
+  if (!metin) return null;
+  return <div role={durum === 'okunamadi' ? 'alert' : undefined} className="text-[12px] rounded-lg border px-3 py-2" style={durum === 'okunamadi' ? { color: 'var(--status-warning)', borderColor: 'var(--status-warning)', background: 'var(--status-warning-bg)' } : { color: 'var(--text-muted)', borderColor: 'var(--border-subtle)' }}>{metin}</div>;
+}
 
 export default function RetirementTab() {
   const [rows, setRows] = useState<RtRecordRow[]>([]);
@@ -109,6 +159,7 @@ function CreateModal({ defaultDays, onClose, onCreated }: { defaultDays: number;
   const key = (t: { host: string; appName: string }) => `${t.host}|${t.appName}`;
   const selected = (disc?.targets || []).filter((t) => sel.has(key(t)));
   const needsOco = selected.some((t) => t.env === 'PROD');
+  const hubYok = hubOkunamadi(disc);
   const create = async () => {
     if (!app || !f.smartNo.trim()) { toast.error('Uygulama ve Smart kayıt numarası gerekli.'); return; }
     if (needsOco && !f.ocoNo.trim()) { toast.error('PROD hedef seçili: OCO numarası zorunlu.'); return; }
@@ -166,7 +217,7 @@ function CreateModal({ defaultDays, onClose, onCreated }: { defaultDays: number;
                       <td className="px-2 py-1">{t.appName}</td>
                       <td className="px-2 py-1">{t.gen ? `JBoss ${t.gen}` : <span style={{ color: 'var(--status-danger)' }}>?</span>}</td>
                       <td className="px-2 py-1 text-[10px]" style={{ color: 'var(--text-muted)' }}>{t.inventoryStatus || '—'}</td>
-                      <td className="px-2 py-1 text-[10px]">{t.hub ? <span style={{ color: t.hub.running ? 'var(--status-success)' : 'var(--text-muted)' }}>{t.hub.running ? 'çalışıyor' : 'kapalı'} · auto-start {t.hub.autoStart}</span> : <span style={{ color: 'var(--text-muted)' }}>tarama yok</span>}</td>
+                      <td className="px-2 py-1 text-[10px]"><HubHucresi hub={t.hub} okunamadi={hubYok} /></td>
                       <td className="px-2 py-1 text-[10px]">{t.web.length ? t.web.map((w) => <div key={w.host + w.serverName} title={t.webHow}>{w.host} · {w.serverName}{w.product ? ` (${w.product})` : ''}</div>) : <span style={{ color: 'var(--status-warning)' }} title={t.webHow}>eşlenemedi</span>}</td>
                       <td className="px-2 py-1 font-mono text-[10px]"><div className="truncate max-w-[14rem]" title={t.appPath}>{t.appPath || '—'}</div></td>
                     </tr>
@@ -189,12 +240,25 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState<number | null>(null);
   const [ask, setAsk] = useState<{ t: RtTarget } | null>(null);
+  const [hubDurum, setHubDurum] = useState<StopHubDurumu>('denetleniyor');
+  const hubIstek = useRef(0);
 
   const load = useCallback(async () => {
     try { const r = await retirementApi.get(id); if (r.ok) { setRec(r.record); setErr(''); } else setErr(r.message || 'Kayıt alınamadı.'); }
     catch (e: unknown) { setErr(e instanceof Error ? e.message : String(e)); }
   }, [id]);
   useEffect(() => { load(); }, [load]);
+
+  // STOP onayi acilinca Server Hub kesifle yeniden okunur; yalniz SON istegin yaniti yazilir.
+  const stopSor = (t: RtTarget) => {
+    if (!rec) return;
+    setAsk({ t });
+    setHubDurum('denetleniyor');
+    const no = ++hubIstek.current;
+    retirementApi.discover(rec.app)
+      .then((d) => { if (hubIstek.current === no) setHubDurum(stopHubDurumu(d)); })
+      .catch(() => { if (hubIstek.current === no) setHubDurum('okunamadi'); });
+  };
 
   const stop = async (t: RtTarget, confirmed: boolean) => {
     setBusy(t.id); setAsk(null);
@@ -257,7 +321,7 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
                         {canAct && (
                           <div className="flex gap-1">
                             <button disabled={busy != null} onClick={() => stop(t, false)} className={SM_BTN} style={smBtn()} title="Sunucuda plan koş: ne yapılacağını göster, hiçbir şey değişmez"><ClipboardDocumentCheckIcon className="w-3.5 h-3.5" /> Plan</button>
-                            {t.status === 'planned' && <button disabled={busy != null} onClick={() => setAsk({ t })} className={SM_BTN} style={{ ...smBtn(true), background: 'var(--status-danger)', borderColor: 'var(--status-danger)' }}><StopCircleIcon className="w-3.5 h-3.5" /> STOP</button>}
+                            {t.status === 'planned' && <button disabled={busy != null} onClick={() => stopSor(t)} className={SM_BTN} style={{ ...smBtn(true), background: 'var(--status-danger)', borderColor: 'var(--status-danger)' }}><StopCircleIcon className="w-3.5 h-3.5" /> STOP</button>}
                           </div>
                         )}
                       </td>
@@ -287,6 +351,7 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
             <div className="text-sm font-semibold">STOP — {ask.t.appName} @ {ask.t.host} ({ask.t.env}, {ask.t.site})</div>
             <div className="text-[12px] rounded-lg border px-3 py-2" style={{ borderColor: 'var(--status-info)', background: 'var(--status-info-bg)' }}><b>Plan:</b> {ask.t.planText}</div>
             <p className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>auto-start kapatılır, JVM durdurulur, paket(ler) <code>.{rec?.smartNo}.old</code> yapılır. {ask.t.env === 'PROD' ? 'PROD: SCC bilgilendirme maili gider.' : ''} Geri almak için JVM elle başlatılır ve paket adı düzeltilir.</p>
+            <StopHubUyari durum={hubDurum} />
             <div className="flex justify-end gap-2"><button onClick={() => setAsk(null)} className={SM_BTN} style={smBtn()}>İptal</button><button onClick={() => stop(ask.t, true)} className={SM_BTN} style={{ ...smBtn(true), background: 'var(--status-danger)', borderColor: 'var(--status-danger)' }}>Onayla ve durdur</button></div>
           </div>
         </div>
