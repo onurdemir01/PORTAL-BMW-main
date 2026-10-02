@@ -45,9 +45,14 @@ function eskiCereziTasi(ad) {
   return function eskiCereziTasiMw(req, res, next) {
     if (ad === ESKI_AD) return next();
     const baslik = req.headers.cookie;
-    if (!baslik || cerezOku(baslik, ad) !== null) return next();
+    if (!baslik) return next();
     const eski = cerezOku(baslik, ESKI_AD);
     if (!eski) return next();
+    // Yeni ad zaten varsa YENI kazanir; artakalan eski cerez yalnizca silinir.
+    if (cerezOku(baslik, ad) !== null) {
+      res.clearCookie(ESKI_AD, { path: '/' });
+      return next();
+    }
     req.headers.cookie = `${baslik}; ${ad}=${eski}`;
     // Eski cerez yanitla silinir; yeni cerezi express-session (rolling) yazar.
     res.clearCookie(ESKI_AD, { path: '/' });

@@ -9,6 +9,8 @@
 //   OS3 koken kontrolu: yabanci koken 403; ayni Host gecer; GET etkilenmez; basliksiz
 //       (betik) gecer; Origin null reddedilir; Referer yedegi; ek izinli liste; mod log/off
 //   OS4 koken kontrolu TUM /api route'larindan ONCE baglanir (service.cjs)
+//   OS5b sistem ayari PUT gecersiz degeri yazmaz (HTTP)
+//   OS6 initAuth cerez adini gercekten kullanir
 //   OS5 oturum ayarlari kaydetmeden once dogrulanir; sicak yuklenir ve ekranda gorunur
 'use strict';
 
@@ -34,6 +36,23 @@ function ortam(env, fn) {
   }
   try {
     return fn();
+  } finally {
+    for (const k of Object.keys(env)) {
+      if (eski[k] === undefined) delete process.env[k];
+      else process.env[k] = eski[k];
+    }
+  }
+}
+
+async function ortamA(env, fn) {
+  const eski = {};
+  for (const k of Object.keys(env)) {
+    eski[k] = process.env[k];
+    if (env[k] === undefined) delete process.env[k];
+    else process.env[k] = env[k];
+  }
+  try {
+    return await fn();
   } finally {
     for (const k of Object.keys(env)) {
       if (eski[k] === undefined) delete process.env[k];
@@ -105,6 +124,10 @@ test('OS2 gecis kimseyi atmaz: eski cerezle oturum bulunur, yeni ad yazilir, esk
   // Iki ad birden gelirse YENI ad kazanir (eski cerez yeniyi ezemez).
   const r3 = await fetch(`${yeni}/ben`, { headers: { cookie: `connect.sid=s%3Asahte.x; ${yeniCerez}` } });
   assert.deepEqual((await r3.json()).user, { username: 'ayse' });
+  assert.ok(
+    r3.headers.getSetCookie().some((c) => /^connect\.sid=;/.test(c) && /Expires=Thu, 01 Jan 1970/.test(c)),
+    'artakalan eski cerez silinmedi',
+  );
   // Gelistirme (ayni ad): dokunulmaz.
   const dev = dinle(uygulama('connect.sid'));
   const d = await fetch(`${dev}/ben`, { headers: { cookie: 'connect.sid=x' } });
@@ -163,6 +186,76 @@ test('OS4 koken kontrolu tum /api route`larindan once baglanir', () => {
   }
   const idx = fs.readFileSync(path.join(ROOT, 'server/index.cjs'), 'utf8');
   assert.ok(idx.indexOf('createApp(') < idx.indexOf('initAuth(app)'), 'moduller service.cjs`ten once baglaniyor');
+});
+
+test('OS5b sistem ayari PUT: gecersiz oturum degeri 400 ve YAZILMAZ; gecerli deger yazilir', async () => {
+  const db = require('../../db/index.cjs');
+  const asil = db.query;
+  const yazilan = [];
+  db.query = async (sql, params) => {
+    if (/portal_env_overrides/.test(sql) && /INSERT|UPDATE|MERGE/i.test(sql)) yazilan.push(params);
+    return { rows: [], rowCount: 1 };
+  };
+  const eskiDeger = process.env.SESSION_IDLE_MINUTES;
+  try {
+    const app = express();
+    app.use((req, _res, next) => {
+      req.session = { user: { username: 'adm', role: 'Admin' } };
+      next();
+    });
+    require('../../admin/system-config.cjs').initSystemConfig(app);
+    const url = dinle(app);
+    const put = (key, value) =>
+      fetch(`${url}/api/admin/system-config`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ key, value }),
+      });
+    const kotu = await put('SESSION_IDLE_MINUTES', '3');
+    assert.equal(kotu.status, 400);
+    assert.match((await kotu.json()).error, /5 ile 720/);
+    assert.equal(yazilan.length, 0, 'gecersiz deger yazildi');
+    assert.notEqual(process.env.SESSION_IDLE_MINUTES, '3');
+    const iyi = await put('SESSION_IDLE_MINUTES', '90');
+    assert.equal(iyi.status, 200);
+    assert.equal((await iyi.json()).restartRequired, false, 'sicak anahtar icin restart deniyor');
+    assert.equal(process.env.SESSION_IDLE_MINUTES, '90');
+  } finally {
+    db.query = asil;
+    if (eskiDeger === undefined) delete process.env.SESSION_IDLE_MINUTES;
+    else process.env.SESSION_IDLE_MINUTES = eskiDeger;
+  }
+});
+
+test('OS6 initAuth cerez adini express-session`a verir', async () => {
+  const db = require('../../db/index.cjs');
+  const asil = db.query;
+  db.query = async () => ({ rows: [], rowCount: 0 });
+  try {
+    await ortamA(
+      {
+        SESSION_STORE: 'memory',
+        SESSION_COOKIE_NAME: 'portal-test.sid',
+        LOCAL_USER: 'yereluser',
+        LOCAL_USER_PASS: 'Guclu-Sifre-123!',
+        LDAP_URL: undefined,
+      },
+      async () => {
+        const app = express();
+        require('../index.cjs').initAuth(app);
+        const url = dinle(app);
+        const r = await fetch(`${url}/api/auth/login`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ username: 'yereluser', password: 'Guclu-Sifre-123!' }),
+        });
+        assert.equal(r.status, 200);
+        assert.match(r.headers.get('set-cookie') || '', /^portal-test\.sid=/, 'cerez adi kullanilmadi');
+      },
+    );
+  } finally {
+    db.query = asil;
+  }
 });
 
 test('OS5 oturum ayarlari dogrulanir; beyaz listede, sicak ve ekranda', () => {
