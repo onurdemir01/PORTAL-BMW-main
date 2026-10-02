@@ -21,7 +21,9 @@
 //   UNATTRIBUTED  : portu bilinmeyen JVM'in sunucusuna atfedilemeyen proxy trafigi (EK-3);
 //                   hedef IP/localhost ile de sunucuya cozulur, cozulemeyen ya da kesik
 //                   hedef listesi katmandaki DURMUS JVM'lerin retire'ini engeller (cfg_ports
-//                   bilinse de: cozulemeyen hedefte port esitligi atif degildir)
+//                   bilinse de: cozulemeyen hedefte port esitligi atif degildir); dinamik
+//                   proxy ('~DYNAMIC') ve JVM'siz / taranmamis sunucuya cozulen hedef de
+//                   hedefi bilinmeyen sayilir (tur 3, #6)
 //   SEMA          : sys.columns okunamadiysa (data.schemaUnknown) hicbir eylem yok
 //   Olculemedi != yok: -1 / UNREADABLE / UNVERIFIED trafik "0 istek" SAYILMAZ.
 'use strict';
@@ -130,19 +132,42 @@ function hedefUserinfoSil(text) {
 }
 
 /**
+ * DINAMIK PROXY JETONU (tur 3, #6): tarayici hedef kaydi BIRAKMAYAN bir proxy mekanizmasi
+ * gordugunde (Apache RewriteRule [P], JkMount/mod_jk, vhost ici Include/IncludeOptional;
+ * nginx include, fastcgi_pass, uwsgi_pass, grpc_pass) proxy_targets'a tam olarak bu parcayi
+ * ekler. Bu bir KESME degildir (liste tamdir) ama trafigin gittigi hedef bilinmez: HEDEF.
+ */
+const DINAMIK_JETON = '~DYNAMIC';
+const dinamikMi = (p) => String(p).trim().toUpperCase() === DINAMIK_JETON;
+
+/**
  * Hedef listesi + KESME (C4). Yukleyici serbest metin kolonunu ' ~' ekiyle keser; tasma
  * jetonu ('~TRUNC') da '~' tasir. Gecerli bir host:port '~' ICERMEZ: '~' iceren parca ya
  * kesilmis bir hedefin yarisidir ya da jetondur - AYRISTIRILMAZ (yarim port yanlis JVM'e
  * eslenirdi) ve liste "eksik" sayilir. Gosterimde kesik parcanin icerigi yerine yalniz '~'
  * kalir (userinfo ortasindan kesilmis bir parca '@' tasimadigi icin temizlenemezdi).
- * @returns {{ parcalar: string[], eksik: boolean, gosterim: string }}
+ * ISTISNA: tam olarak '~DYNAMIC' parcasi kesme DEGIL, dinamik proxy isaretidir (dinamik=true;
+ * hedef de degildir). Yarim kalmis jeton ('~DYN ~') kesmedir.
+ * @returns {{ parcalar: string[], eksik: boolean, dinamik: boolean, gosterim: string }}
  */
 function hedefListesi(raw) {
   const temiz = hedefUserinfoSil(raw == null ? '' : String(raw));
   const hepsi = temiz.split(',');
   const parcalar = hepsi.map((p) => p.trim()).filter((p) => p && !p.includes('~'));
-  const eksik = hepsi.some((p) => p.includes('~'));
-  return { parcalar, eksik, gosterim: eksik ? [...parcalar, '~'].join(',') : temiz };
+  const dinamik = hepsi.some(dinamikMi);
+  const eksik = hepsi.some((p) => p.includes('~') && !dinamikMi(p));
+  // gosterim: sira korunur (tarayici jetonu basa yazar); kesik parca yerine sonda '~'
+  const gosterim =
+    eksik || dinamik
+      ? [
+          ...hepsi
+            .map((p) => p.trim())
+            .filter((p) => p && (!p.includes('~') || dinamikMi(p)))
+            .map((p) => (dinamikMi(p) ? DINAMIK_JETON : p)),
+          ...(eksik ? ['~'] : []),
+        ].join(',')
+      : temiz;
+  return { parcalar, eksik, dinamik, gosterim };
 }
 
 /**
@@ -329,6 +354,9 @@ function assess(data, opts = {}) {
       proxyTargetsRaw: hl.gosterim,
       // hedef listesi yukleyicide kesildi: EK-3 icin bu vhost'un hedefleri bilinmiyor
       targetsTruncated: hl.eksik,
+      // hedef kaydi birakmayan proxy (RewriteRule [P], JkMount, Include...; '~DYNAMIC'):
+      // trafigin hangi JVM'e gittigi bilinmez (EK-3 icin HEDEF)
+      targetsDynamic: hl.dinamik,
       req24h: r.req_24h == null ? null : Number(r.req_24h),
       req7d: r.req_7d == null ? null : Number(r.req_7d),
       hc24h: r.hc_24h == null ? null : Number(r.hc_24h),
@@ -344,7 +372,7 @@ function assess(data, opts = {}) {
       logReadAs: nz(r.log_read_as),
       jvm: null,
     };
-    vhostHedef.set(v, hl.parcalar);
+    vhostHedef.set(v, hl);
     H(r.host).vhosts.push(v);
   }
   // YUKLEME IZI (dbo.Server_Hub_LoadIssues): yalniz taramasi olan sunuculara baglanir;
@@ -472,7 +500,14 @@ function assess(data, opts = {}) {
           hit.mismatch.push(
             `durum: envanter ${a.status}, tarama ${hit.running ? 'çalışıyor' : 'kapalı'}`,
           );
+        // TANIMSIZ SUREC (T2-C2, tur 3 #8): cfg_src=UNAVAILABLE satirinda tanim kaynagi OKUNDU
+        // ve bu JVM orada YOK. Yetkili kaynagin "tanimsiz" kaniti, yetkisiz envanterin
+        // "auto-start kapali/acik" iddiasina yenilmez: envanter degeri yalniz invAutoStart'ta
+        // bilgi olarak kalir (aksi halde 'false' REBOOT_RISK + jboss_autostart_on uretiyordu).
+        // Tanimsiz JVM'in auto-start'i yoktur; "celiski" de kurulamaz.
+        const tanimsizSurec = !hit.source && hit.cfgSrc === 'UNAVAILABLE';
         if (
+          !tanimsizSurec &&
           invAuto !== 'unknown' &&
           invAuto !== 'karisik' &&
           hit.autoStart !== 'unknown' &&
@@ -480,7 +515,7 @@ function assess(data, opts = {}) {
         )
           hit.mismatch.push(`auto-start: envanter ${invAuto}, tarama ${hit.autoStart}`);
         // CLI auto-start okuyamadiysa ENVANTER kazanir (kullanici: "JVM bilgisi envanterden gelsin")
-        if (hit.autoStart === 'unknown' && invAuto !== 'unknown') {
+        if (!tanimsizSurec && hit.autoStart === 'unknown' && invAuto !== 'unknown') {
           hit.autoStart = invAuto === 'karisik' ? 'unknown' : invAuto;
           hit.autoStartSource = 'envanter';
           // Envanter de cevap veremediyse SEBEBI yaz: "karisik" demek, ayni uygulamanin
@@ -529,9 +564,13 @@ function assess(data, opts = {}) {
     // TANIMSIZ SUREC (T2-C2): cfg_src=UNAVAILABLE = tanim kaynagi (CLI listesi ya da host XML)
     // OKUNDU ama ps'te calisan bu JVM orada tanimli degil. auto-start'in bilinmemesinin sebebi
     // "CLI cevap vermedi" DEGIL, tanimin olmamasidir; envanter sebepleri de bunu ortmez.
+    // Tanimi olmayan JVM'in auto-start degeri de YOKTUR (tur 3 #8): tarayici ya da envanter
+    // ne derse desin deger 'unknown' kalir; REBOOT_RISK / STOPPED_AUTOSTART_ON uretilmez.
     for (const j of h.jvms)
-      if (j.source === 'cli' && j.cfgSrc === 'UNAVAILABLE' && j.autoStart === 'unknown')
+      if (j.source === 'cli' && j.cfgSrc === 'UNAVAILABLE') {
+        j.autoStart = 'unknown';
         j.autoStartReason = 'tanimsiz-surec';
+      }
   }
 
   // ── JVM <-> vhost eslemesi ──────────────────────────────────────────────────────
@@ -586,6 +625,8 @@ function assess(data, opts = {}) {
   // atfedilemez; ayni katmandaki durmus JVM'ler icin (port bilgisinden bagimsiz) retire
   // onerilmez. Eskiden
   // yalniz kisa adla eslesme vardi; IP / localhost / balancer hedefli proxy EK-3'u deliyordu.
+  // Tur 3 (#6): '~DYNAMIC' (hedef kaydi birakmayan proxy) ve trafigi teslim alacak JVM'i
+  // olmayan sunucuya cozulen hedef (sonrakiHop, asagida) de hedefi bilinmeyendir.
   const YEREL_HEDEF = new Set(['localhost', 'ip6-localhost', '::1', '0:0:0:0:0:0:0:1', '0.0.0.0']);
   const ipSahipleri = new Map();
   for (const h of byHost.values())
@@ -615,22 +656,52 @@ function assess(data, opts = {}) {
   // bir hedef sunucu icin bir kez yer alir (ayni vhost'ta iki hedef ayni sunucuya gidebilir).
   // Hedefi bilinmeyenler web sunucusunun bilinmeyenHedef listesine (EK-3, C1/C4).
   const proxyIdx = new Map();
+  // JVM'SIZ (ya da taranmamis) sunucuya cozulen hedefler: karar tazelik/olcum hesaplandiktan
+  // sonra verilir (asagida, sonrakiHop).
+  const jvmsizHedefler = [];
   for (const h of byHost.values()) h.bilinmeyenHedef = [];
   for (const { host, v } of allVhosts) {
     const w = byHost.get(host);
     const perHost = new Map();
-    for (const parca of vhostHedef.get(v) || []) {
+    const hl = vhostHedef.get(v) || { parcalar: [], dinamik: false };
+    for (const parca of hl.parcalar) {
       // unix soketi web sunucusunun kendi yerel surecidir (JBoss unix soketi dinlemez)
       if (/^unix:/i.test(parca)) continue;
       const t = hedefAyristir(parca);
       const th = t ? hedefSunucu(host, t.host) : null;
       if (!th) {
-        w.bilinmeyenHedef.push({ v, target: parca, port: t ? t.port : null, tur: 'HEDEF' });
+        w.bilinmeyenHedef.push({
+          v,
+          target: parca,
+          port: t ? t.port : null,
+          tur: 'HEDEF',
+          neden: 'COZULEMEDI',
+        });
         continue;
       }
+      // Cozulen sunucuda trafigi alacak JVM yoksa EK-3 PORT kapisi orada HIC calismaz (yalniz
+      // JVM'in kendi sunucusunda calisir): trafik ancak o sunucudaki olculmus bir vhost onu
+      // yeniden sayarsa kaybolmaz.
+      const ts = byHost.get(th);
+      if (!ts || !ts.jvms.length) jvmsizHedefler.push({ w, v, target: parca, port: t.port, th });
       if (!perHost.has(th)) perHost.set(th, []);
       perHost.get(th).push(t.port);
     }
+    // DINAMIK proxy (#6): hedef kaydi birakmayan mekanizma ('~DYNAMIC'); liste tam ama trafigin
+    // gittigi yer bilinmez -> HEDEF (kesik liste degil: olculmus 0 trafikte engellemez).
+    // CONF OKUNAMADI (tur 4, derinlemesine savunma): vhost'un kendi conf'u okunamadiysa
+    // (traffic_reason CONF_UNREADABLE) hedefleri HIC gorulmedi. Tarayici artik '~DYNAMIC' yazar;
+    // daha once yuklenmis satir '' tasiyabilir - o '' "proxy yok" DEGILDIR. Neden ayri tutulur:
+    // metin "hedef kaydi yok" degil "conf okunamadi" demeli (kural 6).
+    const confOkunamadi = v.trafficReason === 'CONF_UNREADABLE';
+    if (hl.dinamik || confOkunamadi)
+      w.bilinmeyenHedef.push({
+        v,
+        target: hl.dinamik ? DINAMIK_JETON : null,
+        port: null,
+        tur: 'HEDEF',
+        neden: confOkunamadi ? 'CONF_OKUNAMADI' : 'DINAMIK',
+      });
     // KESIK liste (C4): kesilen kisimda hangi sunucu:port oldugu bilinmez
     if (v.targetsTruncated) w.bilinmeyenHedef.push({ v, target: '~', port: null, tur: 'EKSIK' });
     for (const [th, ports] of perHost) {
@@ -717,6 +788,33 @@ function assess(data, opts = {}) {
     v.req7d != null &&
     v.req7d >= 0 &&
     (v.trafficState == null || TRAFIK_OLCULDU.has(v.trafficState));
+
+  // ── JVM'SIZ / TARANMAMIS SUNUCUYA COZULEN HEDEF (tur 3, #6) ───────────────────────
+  // Hedef bir sunucuya cozuldu ama o sunucuda trafigi alacak JVM yok (ayri WEB'deki
+  // 'localhost:8180', WEB'in kendi IP'si:8443) ya da sunucu hic taranmadi (envanterdeki LB/RP):
+  // trafik hicbir JVM'in kapisinda degerlendirilmez ve kaybolurdu. Yalniz o sunucu TAM
+  // olculmusse (measured) ve hedef portu dinleyen bir vhost'u varsa trafik orada yeniden
+  // sayilir (RP -> WEB zinciri); aksi halde hedef HEDEF'tir (hedefi bilinmeyen proxy).
+  const listenPortlari = (s) =>
+    String(s || '')
+      .split(',')
+      .map((x) => (/(?:^|:)(\d+)$/.exec(x.trim()) || [])[1])
+      .filter(Boolean)
+      .map(Number);
+  const sonrakiHop = (th, port) => {
+    const t = byHost.get(th);
+    if (!t || !t.measured) return false;
+    return t.vhosts.some((x) => port == null || listenPortlari(x.listen).includes(port));
+  };
+  for (const c of jvmsizHedefler)
+    if (!sonrakiHop(c.th, c.port))
+      c.w.bilinmeyenHedef.push({
+        v: c.v,
+        target: c.target,
+        port: c.port,
+        tur: 'HEDEF',
+        neden: byHost.has(c.th) ? 'JVMSIZ' : 'TARANMAMIS',
+      });
 
   for (const h of byHost.values()) {
     for (const j of h.jvms) {
@@ -892,6 +990,7 @@ function assess(data, opts = {}) {
           port: e.port,
           target: e.target,
           tur: e.tur,
+          neden: e.neden || null,
           req7d: e.v.req7d,
           trafficState: e.v.trafficState,
           trafik: true,
@@ -901,22 +1000,39 @@ function assess(data, opts = {}) {
     }
     return out;
   };
+  // unattributed[].reason (tur 3): HEDEF girdisinin NEDEN hedefi bilinmeyen sayildigi.
+  //   COZULEMEDI : hedef hicbir sunucuya cozulmedi (balancer/upstream adi, VIP, DNS adi)
+  //   DINAMIK    : hedef kaydi birakmayan proxy ('~DYNAMIC': RewriteRule [P], JkMount, Include...)
+  //   JVMSIZ     : taranmis ama JVM'siz sunucuya cozuldu; o portu dinleyen olculmus vhost yok
+  //   TARANMAMIS : envanterde olup taranmamis sunucuya cozuldu
+  //   CONF_OKUNAMADI : vhost'un kendi conf'u okunamadi (CONF_UNREADABLE); hedefleri hic gorulmedi
+  // PORT ve EKSIK girdilerinde null.
   const atfDisa = (x) => ({
     host: x.host,
     serverName: x.serverName,
     port: x.port,
     target: x.target,
     kind: x.tur,
+    reason: x.neden || null,
     req7d: x.req7d,
     trafficState: x.trafficState,
   });
+  const HEDEF_NEDEN_METNI = {
+    COZULEMEDI: 'hedefi bilinmiyor',
+    JVMSIZ: "hedef sunucuda JVM ya da bu portu dinleyen ölçülmüş vhost yok",
+    TARANMAMIS: 'hedef sunucu taranmamış',
+  };
   /** Bulgu metni parcasi: hangi web sunucusu/vhost, nereye. */
   const atfMetni = (x) =>
     x.tur === 'EKSIK'
       ? `${x.host}/${x.serverName || '?'} → hedef listesi kesik`
-      : x.tur === 'HEDEF'
-        ? `${x.host}/${x.serverName || '?'} → ${x.target} (hedefi bilinmiyor)`
-        : `${x.host}/${x.serverName || '?'} → :${x.port}`;
+      : x.tur === 'HEDEF' && x.neden === 'DINAMIK'
+        ? `${x.host}/${x.serverName || '?'} → dinamik proxy (hedef kaydı yok)`
+        : x.tur === 'HEDEF' && x.neden === 'CONF_OKUNAMADI'
+          ? `${x.host}/${x.serverName || '?'} → hedef bilinmiyor (vhost conf'u okunamadı)`
+          : x.tur === 'HEDEF'
+            ? `${x.host}/${x.serverName || '?'} → ${x.target} (${HEDEF_NEDEN_METNI[x.neden] || 'hedefi bilinmiyor'})`
+            : `${x.host}/${x.serverName || '?'} → :${x.port}`;
 
   // ── WEB KATMANI (S3: tierMeasured) ───────────────────────────────────────────────
   // JVM'in ortam+sitesindeki WEB satiri olan, envanterde web urunu tasiyan ya da web urunu
@@ -1230,8 +1346,12 @@ function assess(data, opts = {}) {
       );
     for (const j of h.jvms) {
       const id = `JBoss${j.gen} ${j.name}`;
-      const fixOn = { action: 'jboss_autostart_on', gen: j.gen, jvm: j.name };
-      const fixOff = { action: 'jboss_autostart_off', gen: j.gen, jvm: j.name };
+      // Tanim kaynaginda OLMAYAN JVM'e (cfg_src=UNAVAILABLE) auto-start eylemi ONERILMEZ (EK-6.7):
+      // playbook onu host XML'de bulamaz. autoStart yukarida 'unknown'a sabitlendigi icin bu iki
+      // bulgu zaten uretilmez; kapi derinlemesine savunmadir.
+      const tanimsiz = j.source === 'cli' && j.cfgSrc === 'UNAVAILABLE';
+      const fixOn = tanimsiz ? null : { action: 'jboss_autostart_on', gen: j.gen, jvm: j.name };
+      const fixOff = tanimsiz ? null : { action: 'jboss_autostart_off', gen: j.gen, jvm: j.name };
       // runningKnown (v3): hidepid/ps korlugunde (running_src=UNMEASURED) running=0
       // "kapali" DEGILDIR. Bu JVM icin calisma durumuna dayanan HICBIR bulgu/eylem uretilmez.
       const rk = j.runningKnown !== false;

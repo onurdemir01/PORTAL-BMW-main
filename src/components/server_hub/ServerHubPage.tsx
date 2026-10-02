@@ -109,7 +109,8 @@ const AREA: Record<string, string> = {
 // bu blok o alanlari OKUR ve ayri etiketle basar.
 //
 // YEREL TIP GENISLETMESI: alanlarin bir kismi burada yerel (sayaclar, runningKnown). Dalga 2 ile
-// eklenenler (staleFleet, rollback, schemaUnknown, targetsTruncated, unattributed) serverHubApi.ts'te.
+// eklenenler (staleFleet, rollback, schemaUnknown, targetsTruncated, unattributed) serverHubApi.ts'te;
+// tur 4: targetsDynamic, trafficState/trafficReason, unattributed[].reason, cfgSrc, fresh.
 // Yeni alanlarin hepsi ISTEGE BAGLIDIR: eski sunucu yaniti alani tasimaz, ekran o zaman eski
 // davranisi gosterir ve eksik sayaci "0" diye UYDURMAZ (alan yoksa satir hic basilmaz).
 //
@@ -232,6 +233,26 @@ function autoStartOnayMetni(
   );
 }
 
+/**
+ * Tek-JVM auto-start dugmesi gosterilsin mi (tur 4). Sunucu /jvm-autostart su durumlarda 400 doner
+ * ve is ACMAZ; dugme de gizlenir, yerine sebep yazilir (tiklayip hata toast'i almak yerine):
+ *   - cfg_src=UNAVAILABLE (EK-7.6): JVM tanim kaynaginda yok - degistirilecek bir auto-start yok
+ *   - sema okunamadi (EK-6.13) ya da bayat / son yuklemede disarida kalan sunucu (v3)
+ * Calisma durumu OLCULEMEYEN JVM'de dugme ACIK kalir (v3, kural 7): onay metni uyarir.
+ */
+function autoStartDugmesi(
+  j: { source?: string; cfgSrc?: string | null },
+  h: { schemaUnknown?: boolean; fresh?: boolean } | null | undefined,
+): { goster: boolean; neden: string } {
+  if (String(j.source || 'cli') === 'cli' && String(j.cfgSrc || '').toUpperCase() === 'UNAVAILABLE')
+    return { goster: false, neden: "tanım kaynağında yok (ps'te tanımsız süreç) — auto-start değiştirilemez" };
+  if (h?.schemaUnknown === true)
+    return { goster: false, neden: 'Server Hub şeması okunamadı — eylemler kapalı' };
+  if (h?.fresh === false)
+    return { goster: false, neden: 'tarama bayat ya da son yükleme dışlandı — eylemler kapalı' };
+  return { goster: true, neden: '' };
+}
+
 /** IP "Kullanan" hucresi. 'unverified' BOSTA degildir ve urun adi da degildir. */
 function ipKullanan(usedBy: string): { etiket: string; renk: string; kalin: boolean; aciklama: string } {
   const u = String(usedBy || '').toLowerCase();
@@ -255,10 +276,67 @@ function ipKullanan(usedBy: string): { etiket: string; renk: string; kalin: bool
 const logOlculdu = (l: { read: boolean; req7d: number | null }) =>
   !!l.read && l.req7d != null && l.req7d >= 0;
 
+/**
+ * sampled=1 (EK-7.3): sayi ALT SINIRDIR. Iki sebebi var: log kuyrugu 7 gunu kapsamadi (kesildi /
+ * boyut bilinmiyor) YA DA trafigin bir kismi okunan logda yok (location duzeyi ya da kosullu log,
+ * acilamayan include). Eski metin yalniz ilkini soyluyordu; logu 7 gunu kapsayan satirda yanlis kok
+ * neden olurdu.
+ */
+const ALT_SINIR_ACIKLAMA =
+  'sayı alt sınır: log kuyruğu 7 günü kapsamadı ya da trafiğin bir kısmı bu logda yok (location düzeyi / koşullu log, açılamayan include)';
+
 /** Log kaniti satirinin sayi kismi. Okunamayan dosya "7g 0" ya da "7g -1" diye BASILMAZ. */
 function logKanitMetni(l: { read: boolean; req7d: number | null; sampled: boolean }): string {
   if (!logOlculdu(l)) return ' · OKUNAMADI — bu dosya kanıt sayılmaz';
-  return ` · 7g ${l.req7d}${l.sampled ? ' (alt sınır: log kuyruğu okundu)' : ''}`;
+  return ` · 7g ${l.req7d}${l.sampled ? ' (alt sınır: kuyruk 7 günü kapsamadı ya da trafiğin bir kısmı bu logda yok)' : ''}`;
+}
+
+/**
+ * vhost tablosu trafik sebebi (tur 4). '?' hucresi eskiden hep "log okunamadi" diye
+ * aciklaniyordu; oysa UNVERIFIED satirlarin cogunda log OKUNDU (LOCATION_LOG, CONDITIONAL_LOG,
+ * INCLUDE_UNRESOLVED, NO_HOST_FIELD, WINDOW_NOT_COVERED): sayi kanit degildir ama sebep "okunamadi"
+ * DEGIL. UNREADABLE'da (log ya da conf okunamadi) "okunamadi" dogrudur. Bilinmeyen sebep ham kodla.
+ */
+const TRAFIK_SEBEP_ETIKET: Record<string, string> = {
+  CONF_UNREADABLE: "vhost conf'u okunamadı (hedefleri de görülmedi)",
+  NO_VHOST_LOG: 'vhost için access log tanımı görülmedi',
+  LOG_OFF: 'access_log off',
+  PIPED_LOG_UNRESOLVED: 'log bir programa yönlendiriliyor (dosyası çözülemedi)',
+  UNSUPPORTED_LOG_TARGET: 'desteklenmeyen log hedefi (syslog vb.)',
+  READ_ERROR: 'log okunamadı',
+  EMPTY_LOG: 'log okundu ama boş',
+  NO_TIMESTAMP: 'log okundu ama zaman damgası çözülemedi',
+  DZDO_DENIED: 'log okunamadı (dzdo izni yok)',
+  PERM_DENIED: 'log okunamadı (dosya izni yok)',
+  TIMEOUT: 'log okunamadı (zaman aşımı)',
+  LOG_MISSING: 'log dosyası yok',
+  BUDGET_EXCEEDED: 'log okunamadı (tarama bütçesi)',
+  DEADLINE: 'log okunamadı (tarama süresi doldu)',
+  NO_HOST_FIELD: "log okundu ama paylaşımlı logda bu vhost'un istekleri ayırt edilemedi",
+  WINDOW_NOT_COVERED: 'log okundu ama 7 günü kapsamıyor',
+  VHOST_INVENTORY_PARTIAL: 'vhost envanteri kısmi (yapılandırma tam çözülemedi)',
+  LOCATION_LOG: "log okundu ama proxy'li bir location başka loga yazıyor (ya da logu kapalı)",
+  INCLUDE_UNRESOLVED: 'log okundu ama server bloğundaki bir include açılamadı',
+  CONDITIONAL_LOG: 'log okundu ama koşullu (yalnız koşulu tutan istekler yazılıyor)',
+};
+const TRAFIK_DURUM_ETIKET: Record<string, string> = {
+  ACTIVE: 'istek var',
+  NO_RECENT_TRAFFIC: '7 gündür istek yok (log okundu)',
+  UNVERIFIED: 'doğrulanamadı — sayı kanıt değil',
+  UNREADABLE: 'ölçülemedi',
+};
+function vhostTrafikAciklamasi(v: {
+  trafficState?: string | null;
+  trafficReason?: string | null;
+  sampled?: boolean;
+}): string {
+  const ts = String(v.trafficState || '').toUpperCase();
+  const rs = String(v.trafficReason || '').toUpperCase();
+  const parca: string[] = [];
+  if (ts) parca.push(TRAFIK_DURUM_ETIKET[ts] || ts);
+  if (rs && rs !== 'OK') parca.push(`sebep: ${TRAFIK_SEBEP_ETIKET[rs] || rs}`);
+  if (v.sampled) parca.push(ALT_SINIR_ACIKLAMA);
+  return parca.join(' · ');
 }
 
 /** Init script durumu. UNREADABLE (bakilamadi) "yok" DEGILDIR. */
@@ -274,6 +352,9 @@ function initDurumu(status: string): { etiket: string; renk: string } {
 /**
  * Bulgu kodu etiketleri. Ham kod listede kalir (arama/CSV icin); yaninda ne demek oldugu yazar.
  * v3 dalga 1 kodlarinin HEPSI burada olmali (bekci D1-U03/U09); EK-3/EK-5 kodlari dahil.
+ * EK-6.13: assess.cjs kaynagindaki HER add(..., 'KOD') ve code: 'KOD' degismezi burada olmali;
+ * ui-v2 bekcisi kaynagi tarar, etiketsiz kod KIRMIZI. Kod adini sablon dizgeyle/degiskenle
+ * ureten add() cagrisi da KIRMIZI (etiketi denetlenemez).
  * Acilis hazirliginda 'unknown' sayilan her kod (reboot-readiness KOD_ANLAMI) ve hazirlik sebep
  * kodlari (SCHEMA_UNKNOWN, STALE_EVIDENCE) da burada olmali: bekci bunu GERCEK modulden okur.
  */
@@ -289,8 +370,10 @@ const KOD_ETIKET: Record<string, string> = {
   SCAN_PARTIAL: 'tarama kısmi (zaman bütçesi ya da çıktı sigortası)',
   LOAD_DUPLICATE: 'aynı makine AWX envanterinde iki adla',
   // C1/C4: engel artik KATMAN genisliginde (ortam+site); hedef baska sunucuda olabilir.
+  // Tur 4 (EK-7.5): HEDEF nedenleri - cozulemeyen, dinamik (hedef kaydi yok), JVM'siz/taranmamis
+  // hedef sunucu, okunamayan vhost conf'u.
   TRAFFIC_UNATTRIBUTED:
-    "web katmanında hiçbir JVM'e atfedilemeyen proxy trafiği (port, çözülemeyen hedef ya da kesik hedef listesi) — retire önerilmez",
+    "web katmanında hiçbir JVM'e atfedilemeyen proxy trafiği (port; çözülemeyen ya da dinamik hedef; JVM'siz ya da taranmamış hedef sunucu; okunamayan vhost conf'u; kesik hedef listesi) — retire önerilmez",
   WEB_PRESENCE_UNKNOWN: 'web ürününün varlığı ölçülemedi — "kurulu değil" sayılmadı',
   PRODUCT_NOT_SCANNED: 'envanterdeki ürün taramada görülemedi — "kurulu değil" sayılmadı',
   AUTOSTART_UNKNOWN: 'JVM auto-start durumu bilinmiyor — "kapalı" sayılmadı (sebep bulgu metninde)',
@@ -309,6 +392,20 @@ const KOD_ETIKET: Record<string, string> = {
   SYNTAX_UNKNOWN: 'web sözdizimi ölçülemedi',
   INIT_MISSING: 'init script yok',
   IP_UNUSED: 'boşta IP',
+  // EK-6.13: assess.cjs'in urettigi kalan kodlar (bekci: kaynaktaki her add(..., 'KOD') etiketli).
+  // Olculmus durumlar olculmus diye, olculemeyenler "bilinmiyor" diye yazilir (kural 6).
+  HOST_RESTART: 'JBoss host controller restart/reload bekliyor (restart-required / reload-required)',
+  RESTART_REQUIRED: "JVM restart/reload bekliyor — runtime'da etkin olmayan yapılandırma değişikliği var",
+  INIT_DIFF: 'init script filo çoğunluğundan farklı',
+  INIT_HOST_SPECIFIC: 'sunucuya özel init dosyası çoğunluktan farklı — beklenen durum, uyumsuzluk sayılmaz',
+  INV_MISMATCH: 'JVM envanteri (MWAppsInventory) ile tarama çelişiyor (çalışma durumu ya da auto-start)',
+  STOPPED: 'JVM kapalı, auto-start kapalı; web katmanı eşlenemedi — trafiği bilinmiyor, retire önerilmez',
+  NOT_RUNNING: 'web sunucusu çalışmıyor (süreç listesinde görülmedi) ama vhost tanımları var',
+  VHOST_IDLE: "JVM'e eşlenmemiş vhost'a 7 gündür istek yok (access log okundu)",
+  PRODUCT_NOT_IN_INVENTORY: 'taramada bulunan ürün envanterde (dbo.Inventory) yok',
+  SSH_SESSIONS_NEAR: 'sshd açık oturum sayısı MaxSessions sınırına yakın (mux_client_request_session riski)',
+  SSH_MAXSESSIONS_LOW: 'sshd MaxSessions düşük (10 ya da altı, varsayılan) — Ansible delegate/forks ile tıkanabilir',
+  SCAN_COST: "tarama 10 sn'den fazla CPU harcadı",
 };
 
 /** "KOD — anlami"; etiketsiz kod oldugu gibi. */
@@ -470,13 +567,17 @@ function SemaBandi({ su }: { su: boolean | null | undefined }) {
   );
 }
 
-/** C4 rozeti: yukleyici proxy hedef listesini kesti (~); kesilen kisimdaki sunucu:port bilinmez. */
+/**
+ * C4 rozeti: yukleyici proxy hedef listesini kesti (~); kesilen kisimdaki sunucu:port bilinmez.
+ * EK-6.9: kesik liste katmandaki durmus JVM'in retire'ini JVM'in port bilgisinden (otoriter
+ * cfg_ports dahil) BAGIMSIZ olarak engeller; aciklama engeli "portu bilinmeyen" ile daraltmaz.
+ */
 function hedefKesikRozeti(kesik: boolean | null | undefined): { metin: string; aciklama: string } | null {
   if (kesik !== true) return null;
   return {
     metin: 'hedef listesi kesik',
     aciklama:
-      "Proxy hedef listesi yükleyicide kesildi (~): kesilen kısımda hangi sunucu:port olduğu bilinmiyor. Bu web sunucusu atıf için ölçülmemiş sayılır; katmandaki portu bilinmeyen durmuş JVM'lere retire önerilmez.",
+      "Proxy hedef listesi yükleyicide kesildi (~): kesilen kısımda hangi sunucu:port olduğu bilinmiyor. Kesilen kısımdaki hedef bilinmediği için katmandaki durmuş JVM'lere (port bilgisinden bağımsız) retire önerilmez.",
   };
 }
 function HedefKesikRozeti({ kesik }: { kesik: boolean | null | undefined }) {
@@ -493,16 +594,58 @@ function HedefKesikRozeti({ kesik }: { kesik: boolean | null | undefined }) {
   );
 }
 
-/** EK-3 unattributed[].kind -> ekran etiketi. Bilinmeyen tur ham adiyla yazilir. */
+/**
+ * Tur 4 (EK-7.4/7.5) rozeti: vhosts[].targetsDynamic - proxy_targets '~DYNAMIC'. Trafik conf'ta
+ * hedef kaydi birakmayan bir mekanizmayla tasiniyor ya da vhost conf'u okunamadi / blogu
+ * bulunamadi: hedef bilinmez. "Proxy yok" DEGIL; kesik liste de degil (liste tam, hedef yok).
+ */
+function dinamikProxyRozeti(dinamik: boolean | null | undefined): { metin: string; aciklama: string } | null {
+  if (dinamik !== true) return null;
+  return {
+    metin: 'dinamik proxy',
+    aciklama:
+      "Bu vhost'un trafiği conf'ta hedef kaydı bırakmayan bir mekanizmayla (RewriteRule [P], JkMount, Include, mod_proxy_cluster, fastcgi/uwsgi/grpc_pass) taşınıyor ya da vhost conf'u okunamadığı / bloğu bulunamadığı için hedefleri görülmedi (~DYNAMIC). Hedef bilinmediği için trafiği varsa ya da ölçülemediyse katmandaki durmuş JVM'lere (port bilgisinden bağımsız) retire önerilmez.",
+  };
+}
+function DinamikProxyRozeti({ dinamik }: { dinamik: boolean | null | undefined }) {
+  const r = dinamikProxyRozeti(dinamik);
+  if (!r) return null;
+  return (
+    <span
+      className="mt-0.5 inline-flex px-1.5 py-0.5 rounded-full border font-sans text-[9px] font-semibold whitespace-nowrap"
+      style={{ color: SEV.warning.color, borderColor: SEV.warning.color }}
+      title={r.aciklama}
+    >
+      {r.metin}
+    </span>
+  );
+}
+
+/**
+ * EK-3 unattributed[].kind -> ekran etiketi. Bilinmeyen tur ham adiyla yazilir. HEDEF genel
+ * etikettir ("hedefi bilinmeyen proxy"); NEDENI (EK-7.5 reason) ATF_NEDEN'den eklenir. Eski
+ * etiket "hedef hicbir sunucuya cozulemedi" JVMSIZ / TARANMAMIS / DINAMIK icin yanlis kok
+ * nedendi (o hedefler bir sunucuya cozuldu ya da hic hedef kaydi yok).
+ */
 const ATF_TUR: Record<string, string> = {
   PORT: "port hiçbir JVM'e ait değil",
-  HEDEF: 'hedef hiçbir sunucuya çözülemedi',
+  HEDEF: 'hedefi bilinmeyen proxy',
   EKSIK: 'hedef listesi kesik',
 };
-/** TRAFFIC_UNATTRIBUTED ekindeki tek kayit: nereden -> nereye · tur · trafik. */
+/** EK-7.5 unattributed[].reason (yalniz HEDEF) -> ekran etiketi; assess metniyle ayni kok neden. */
+const ATF_NEDEN: Record<string, string> = {
+  COZULEMEDI: 'hedef hiçbir sunucuya çözülemedi (balancer / VIP / DNS adı)',
+  DINAMIK: 'dinamik proxy — hedef kaydı yok',
+  JVMSIZ: 'hedef sunucuda JVM ya da bu portu dinleyen ölçülmüş vhost yok',
+  TARANMAMIS: 'hedef sunucu taranmamış',
+  CONF_OKUNAMADI: "vhost conf'u okunamadı — hedefleri görülmedi",
+};
+/** TRAFFIC_UNATTRIBUTED ekindeki tek kayit: nereden -> nereye · tur (neden) · trafik. */
 function atfedilemeyenSatiri(x: ShUnattributed): string {
   const kind = String(x.kind || '');
-  const tur = ATF_TUR[kind] || `tür: ${kind || '—'}`;
+  const tur0 = ATF_TUR[kind] || `tür: ${kind || '—'}`;
+  const nd = kind === 'HEDEF' && x.reason ? ATF_NEDEN[x.reason] || `neden: ${x.reason}` : '';
+  const tur = nd ? `${tur0} (${nd})` : tur0;
   const hedef =
     kind === 'EKSIK'
       ? '~ (kesilen kısım bilinmiyor)'
@@ -2267,27 +2410,39 @@ function HostModal({
                                 : '?'}
                           </span>
                           {/* TEK SATIR, TEK TIK. Toplu islem 2026-10-01'de kaldirildi:
-                              yanlis bir tarama sonucu yuzlerce sunucuya yayilirdi. */}
-                          <button
-                            onClick={() => jvmAutoStart(j)}
-                            disabled={asBusy === `${j.gen}|${j.name}`}
-                            className="ml-2 px-1.5 py-0.5 text-[10px] border rounded disabled:opacity-50"
-                            style={{ borderColor: 'var(--border)' }}
-                            title={
-                              (j.autoStart === 'true'
-                                ? `${j.name} için auto-start'ı KAPAT (yalnız bu JVM)`
-                                : j.autoStart === 'false'
-                                  ? `${j.name} için auto-start'ı AÇ (yalnız bu JVM)`
-                                  : `${j.name} için auto-start ölçülemedi — AÇ'a basarsanız açıkça açılır`) +
-                              (jvmCalismaBilinir(j) ? '' : ' · çalışma durumu ölçülemedi')
-                            }
-                          >
-                            {asBusy === `${j.gen}|${j.name}`
-                              ? '…'
-                              : j.autoStart === 'true'
-                                ? 'Kapat'
-                                : 'Aç'}
-                          </button>
+                              yanlis bir tarama sonucu yuzlerce sunucuya yayilirdi. Tur 4: tanimsiz
+                              surec (UNAVAILABLE), sema okunamadi ya da bayat sunucuda dugme YOK
+                              (sunucu 400 doner); sebep yazilir. */}
+                          {autoStartDugmesi(j, d).goster ? (
+                            <button
+                              onClick={() => jvmAutoStart(j)}
+                              disabled={asBusy === `${j.gen}|${j.name}`}
+                              className="ml-2 px-1.5 py-0.5 text-[10px] border rounded disabled:opacity-50"
+                              style={{ borderColor: 'var(--border)' }}
+                              title={
+                                (j.autoStart === 'true'
+                                  ? `${j.name} için auto-start'ı KAPAT (yalnız bu JVM)`
+                                  : j.autoStart === 'false'
+                                    ? `${j.name} için auto-start'ı AÇ (yalnız bu JVM)`
+                                    : `${j.name} için auto-start ölçülemedi — AÇ'a basarsanız açıkça açılır`) +
+                                (jvmCalismaBilinir(j) ? '' : ' · çalışma durumu ölçülemedi')
+                              }
+                            >
+                              {asBusy === `${j.gen}|${j.name}`
+                                ? '…'
+                                : j.autoStart === 'true'
+                                  ? 'Kapat'
+                                  : 'Aç'}
+                            </button>
+                          ) : (
+                            <span
+                              className="ml-2 text-[10px]"
+                              style={{ color: 'var(--text-muted)' }}
+                              title={autoStartDugmesi(j, d).neden}
+                            >
+                              değiştirilemez
+                            </span>
+                          )}
                         </td>
                         <td
                           className="px-2.5 py-1.5"
@@ -2459,6 +2614,8 @@ function HostModal({
                             </div>
                             {/* C4: kesik liste rozeti truncate disinda - her zaman gorunur */}
                             <HedefKesikRozeti kesik={v.targetsTruncated} />
+                            {/* EK-7.4/7.5: '~DYNAMIC' - hedef bilinmiyor ("proxy yok" DEGIL) */}
+                            <DinamikProxyRozeti dinamik={v.targetsDynamic} />
                           </td>
                           <td className="px-2.5 py-1.5 text-[10px]">
                             {v.jvm || <span style={{ color: 'var(--text-muted)' }}>—</span>}
@@ -2473,6 +2630,7 @@ function HostModal({
                                 ? { color: SEV.warning.color, fontWeight: 600 }
                                 : undefined
                             }
+                            title={vhostTrafikAciklamasi(v) || undefined}
                           >
                             {v.req7d == null || v.req7d < 0 ? '?' : nf(v.req7d)}
                             {v.sampled ? '~' : ''}
@@ -2496,8 +2654,9 @@ function HostModal({
                 </table>
               </div>
               <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
-                "~" = log kuyruğu 7 günü kapsamadı (örneklem). Sayılar hc.html/hc.jsp hariç; "?" =
-                log okunamadı.
+                "~" = sayı alt sınır (log kuyruğu 7 günü kapsamadı ya da trafiğin bir kısmı bu logda
+                yok). Sayılar hc.html/hc.jsp hariç; "?" = sayı yok: log ya da conf okunamadı veya
+                trafik bu logdan doğrulanamadı — sebep hücrenin üzerinde.
               </p>
             </div>
           )}

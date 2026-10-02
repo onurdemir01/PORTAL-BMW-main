@@ -722,6 +722,85 @@ test("T2-C2 UNAVAILABLE + cli=OK: metin 'okunamadi/cevap vermedi' demez, JVM adi
   assert.equal(bul(k, APP, 'JVM_UNDEFINED_PROCESS').length + bul(k, APP, 'JVM_INVENTORY_UNMEASURED').length, 0);
 });
 
+// ── TUR 3 #8: tanimsiz surece (UNAVAILABLE) envanter auto-start degeri yazilmaz ──────────
+// Dogrulayici probe_unavail: MWAppsInventory autostarts='false' gelince hayalet icin
+// REBOOT_RISK (danger) + jboss_autostart_on ve hazirlik 'blocked' cikiyordu; T2-C2 bekcisi
+// yalniz envanteri BOS vakayi sinadi. Yetkili kaynagin "tanimsiz" kaniti yetkisiz envanterin
+// "kapali/acik" iddiasina yenilmez: deger yalniz invAutoStart'ta bilgi olarak kalir.
+const tanimsizKur = (o = {}) => ({
+  hosts: [H3(APP, { products: 'JBOSS7' })],
+  jboss: [{ host: APP, gen: 7, host_name: 'm', host_state: 'running', cli: o.cli || 'OK', note: '' }],
+  jvms: [
+    ...(o.tanimli === false
+      ? []
+      : [J3(APP, 'tanimli', { running: 1, running_src: 'PS', auto_start: 'true', server_state: 'running', cfg_src: o.tanimliSrc || 'CLI_WILDCARD', ports: '8080' })]),
+    J3(APP, 'hayalet', { running: 1, running_src: 'PS', auto_start: o.taramaAuto || 'unknown', server_state: 'unknown', cfg_src: 'UNAVAILABLE', ports: '8180' }),
+  ],
+  mwApps: o.inv == null ? [] : [{ host: APP, app: 'hayalet', domain: 'd', status: 'running', autostarts: o.inv, jvm_count: 1 }],
+});
+
+test("T3-C8 UNAVAILABLE + envanter auto-start 'false'/'true': deger EZMEZ (unknown, tanimsiz-surec), REBOOT_RISK ve eylem yok, hazirlik unknown", () => {
+  for (const inv of ['false', 'true']) {
+    const r = A(tanimsizKur({ inv }));
+    const j = sunucu(r, APP).jvms.find((x) => x.name === 'hayalet');
+    assert.equal(j.autoStart, 'unknown', `inv=${inv}: envanter tanimsiz surecin auto-start'ini ezdi`);
+    assert.equal(j.autoStartReason, 'tanimsiz-surec', `inv=${inv}: sebep ${j.autoStartReason}`);
+    assert.notEqual(j.autoStartSource, 'envanter', `inv=${inv}: kaynak envanter yazildi`);
+    assert.equal(j.invAutoStart, inv, `inv=${inv}: envanter bilgisi kayboldu`);
+    const kodlar = sunucu(r, APP).findings.filter((f) => f.text.includes('hayalet')).map((f) => f.code).sort();
+    assert.deepEqual(kodlar, ['AUTOSTART_UNKNOWN', 'JVM_UNDEFINED_PROCESS'], `inv=${inv}: kodlar`);
+    assert.equal(bul(r, APP, 'AUTOSTART_UNKNOWN')[0].autoStartReason, 'tanimsiz-surec');
+    assert.ok(!sunucu(r, APP).findings.some((f) => f.fix && f.fix.jvm === 'hayalet'), `inv=${inv}: tanimsiz surece eylem`);
+    assert.ok(!bul(r, APP, 'INV_MISMATCH').some((f) => /auto-start/.test(f.text)), `inv=${inv}: tanimsiz surecte auto-start celiskisi`);
+    assert.equal(r.summary.jvm.autoStartFromInventory, 0, `inv=${inv}: envanterden auto-start sayildi`);
+    assert.equal(r.summary.jvm.autoUnknownBy['tanimsiz-surec'], 1);
+    const hz = rebootReadiness(r.hosts, [APP]).rows[0];
+    assert.equal(hz.verdict, 'unknown', `inv=${inv}: hazirlik ${hz.verdict}`);
+    assert.ok(!hz.reasons.some((x) => x.code === 'REBOOT_RISK' || x.code === 'STOPPED_AUTOSTART_ON'));
+  }
+  // tarayici (varsayimsal) deger yazsa bile tanimi olmayan JVM'in auto-start'i yoktur. TUR 4:
+  // tarayicinin 'true' degeri de ZORLANIR (EK-7.6 "tarayici ne derse desin"); yalniz 'false'u
+  // sinamak "zorlama yalniz 'true' degilken" mutantini (W1) goremiyordu.
+  for (const o of [
+    { taramaAuto: 'false', inv: 'true' },
+    { taramaAuto: 'true' },
+    { taramaAuto: 'true', inv: 'false' },
+  ]) {
+    const t = A(tanimsizKur(o));
+    const th = sunucu(t, APP).jvms.find((x) => x.name === 'hayalet');
+    assert.equal(th.autoStart, 'unknown', `${JSON.stringify(o)}: tanimsiz surecin auto-start'i ${th.autoStart}`);
+    assert.equal(th.autoStartReason, 'tanimsiz-surec', `${JSON.stringify(o)}: sebep ${th.autoStartReason}`);
+    assert.equal(bul(t, APP, 'REBOOT_RISK').length, 0, 'tanimsiz surece REBOOT_RISK');
+    assert.ok(!bul(t, APP, 'INV_MISMATCH').some((f) => /auto-start/.test(f.text)));
+    assert.equal(t.summary.jvm.autoUnknownBy['tanimsiz-surec'], 1, `${JSON.stringify(o)}: sayac`);
+  }
+  // KONTROL: TANIMLI (CLI_WILDCARD) JVM'de envanter kurali aynen: CLI okuyamadiysa envanter kazanir
+  const kd = A({
+    hosts: [H3(APP, { products: 'JBOSS7' })],
+    jvms: [J3(APP, 'normal', { running: 1, running_src: 'PS', auto_start: 'unknown', server_state: 'running', ports: '8080' })],
+    mwApps: [{ host: APP, app: 'normal', domain: 'd', status: 'running', autostarts: 'false', jvm_count: 1 }],
+  });
+  const kj = sunucu(kd, APP).jvms[0];
+  assert.equal(kj.autoStart, 'false');
+  assert.equal(kj.autoStartSource, 'envanter');
+  assert.deepEqual(bul(kd, APP, 'REBOOT_RISK')[0].fix, { action: 'jboss_autostart_on', gen: 7, jvm: 'normal' }, 'kontrol: tanimli JVM\'de eylem kalkti');
+});
+
+test("T3-C10b JVM_UNDEFINED_PROCESS okunan kaynagi dogru soyler: XML -> '(host XML)' ('(CLI)' degil); bos liste + CLI FAIL -> '(CLI)' yok; bos liste + CLI OK -> '(CLI)'", () => {
+  const metin = (o) => {
+    const f = bul(A(tanimsizKur(o)), APP, 'JVM_UNDEFINED_PROCESS');
+    assert.equal(f.length, 1, `${JSON.stringify(o)}: bulgu yok`);
+    return normalize(f[0].text);
+  };
+  const x = metin({ tanimliSrc: 'XML' });
+  assert.ok(x.includes('(host XML)'), `XML kaynagi soylenmedi: ${x}`);
+  assert.ok(!x.includes('(CLI)'), `XML kaynagi CLI diye yazildi: ${x}`);
+  const bf = metin({ tanimli: false, cli: 'FAIL' });
+  assert.ok(!bf.includes('(CLI)'), `CLI dustugu halde kaynak CLI dendi: ${bf}`);
+  const bo = metin({ tanimli: false, cli: 'OK' });
+  assert.ok(bo.includes('(CLI)'), `bos liste + CLI OK kaynagi soylemedi: ${bo}`);
+});
+
 test('D1-C27 SCAN_PARTIAL: deadline -> hazirlik unknown; yalniz fuse -> hazirlik etkilenmez', () => {
   const r1 = A({ hosts: [H3(WEB, { scan_errors: 'deadline:IHS,ps_blind' })] });
   const f1 = bul(r1, WEB, 'SCAN_PARTIAL');
@@ -1021,6 +1100,216 @@ test('T2-C1 cfg_ports=8180 (CLI) bilinen durmus JVM: cozulemeyen hedef ve kesik 
   const ra = A(d);
   assert.ok(!sunucu(ra, APP).findings.some((x) => x.code === 'TRAFFIC_UNATTRIBUTED' && x.text.startsWith('JBoss7 api ')), 'calisan JVM\'e gurultu');
   assert.equal(bul(ra, APP, 'TRAFFIC_UNATTRIBUTED').length, 1, 'kontrol: durmus crm icin bulgu yok');
+
+  // ── TUR 3 (#7): EK-6.9'un cfg_ports'lu JVM'de kilitlenmemis maddeleri ──
+  // Her vaka mutasyonla dogrulandi (A1 port cevirisi dislamasi, A2 cfg'li JVM'de olculemeyen
+  // HEDEF'i saymama, A10 cfg'li JVM'de olculmus 0'li EKSIK'i saymama, A6 capasiz unix atlamasi).
+  const engel = (d, tur, ad) => {
+    const r = A(d);
+    const f = bul(r, APP, 'RETIRE_CANDIDATE')[0];
+    assert.ok(f, `${ad}: senaryo kurulamadi`);
+    assert.equal(f.fix, null, `${ad}: cfg_ports=8180 bilinen durmus crm'e retire onerildi`);
+    assert.equal(f.retireBlock, 'UNATTRIBUTED', `${ad}: engel kodu ${f.retireBlock}`);
+    const u = bul(r, APP, 'TRAFFIC_UNATTRIBUTED');
+    assert.equal(u.length, 1, `${ad}: TRAFFIC_UNATTRIBUTED yok`);
+    assert.deepEqual([...new Set(u[0].unattributed.map((x) => x.kind))], [tur], `${ad}: tur`);
+    return u[0];
+  };
+  // (a) VIP PORT CEVIRISI: VIP:443 -> JVM:8180. Port esitligi HICBIR yerde dislama olcutu degil.
+  const a = engel(cfgli('crm-vip.bmw.local:443'), 'HEDEF', 'VIP:443');
+  assert.equal(a.unattributed[0].port, 443);
+  assert.equal(a.unattributed[0].target, 'crm-vip.bmw.local:443');
+  // (b) trafigi OLCULEMEYEN (UNREADABLE, -1) hedefi bilinmeyen proxy cfg'li JVM'de de engeldir
+  const okunamadi = { req_24h: -1, req_7d: -1, hc_24h: -1, traffic_state: 'UNREADABLE', traffic_reason: 'PERM_DENIED' };
+  engel(cfgli('crm-vip.bmw.local:8180', { vek: okunamadi }), 'HEDEF', 'UNREADABLE');
+  // (c) KESIK liste + OLCULMUS 0: EKSIK "her zaman" engeldir (kesilen kisim hic bilinmez)
+  engel(cfgli('gbzzap09.bmw.local:80,~TRUNC', { vek: sifir }), 'EKSIK', 'kesik+0');
+  // (d) adinda 'unix' gecen VIP unix soketi DEGIL; yalniz 'unix:' onekli parca yerel surectir
+  engel(cfgli('unixgw-vip.bmw.local:8180'), 'HEDEF', 'unixgw-vip');
+  // KONTROL: gercek unix soketi (5000 ACTIVE) engel uretmez
+  assert.deepEqual(crmRetire(cfgli('unix:/run/x.sock')).fix, CRM_FIX, 'unix soketi hedef sayildi');
+  assert.equal(bul(A(cfgli('unix:/run/x.sock')), APP, 'TRAFFIC_UNATTRIBUTED').length, 0);
+});
+
+// ── TUR 3 #6: hedef kaydi birakmayan proxy ve JVM'siz / taranmamis sunucuya cozulen hedef ──
+// Dogrulayici probe_c1: RewriteRule [P] / JkMount / Include / nginx include ile 5000 istek
+// tasiyan vhost proxy_targets='' basiyordu ve durmus crm'e jboss_retire oneriliyordu. Tarayici
+// artik '~DYNAMIC' parcasi ekler (A); Portal onu HEDEF sayar (kesik liste DEGIL: olculmus 0
+// trafikte engellemez). Ayni ailede: hedef JVM'siz bir sunucuya (ayri WEB'deki localhost:8180,
+// WEB'in kendi IP'si:8443) ya da envanterde olup taranmamis sunucuya cozulurse trafik hicbir
+// JVM'in kapisinda degerlendirilmiyordu. KORLUK: tarayici isareti koymazsa (yeni bir mekanizma)
+// Portal yine goremez; RP -> olculmus WEB (hedef portu dinleyen vhost) zinciri bilerek HEDEF
+// sayilmaz (trafik WEB'de yeniden sayilir).
+
+const CFG_CRM = J3(APP, 'crm', { cfg_ports: '8180', cfg_ports_src: 'CLI' });
+const SIFIR = { req_24h: 0, req_7d: 0, traffic_state: 'NO_RECENT_TRAFFIC' };
+const OKUNAMADI = { req_24h: -1, req_7d: -1, hc_24h: -1, traffic_state: 'UNREADABLE', traffic_reason: 'PERM_DENIED' };
+/** crm retire engellendi mi; engellendiyse tek TRAFFIC_UNATTRIBUTED girdisini dondurur. */
+const engelli = (d, ad) => {
+  const r = A(d);
+  const f = bul(r, APP, 'RETIRE_CANDIDATE')[0];
+  assert.ok(f, `${ad}: senaryo kurulamadi`);
+  assert.equal(f.fix, null, `${ad}: 5000 istekli atfedilemeyen proxy varken retire onerildi`);
+  assert.equal(f.retireBlock, 'UNATTRIBUTED', `${ad}: engel kodu ${f.retireBlock}`);
+  const u = bul(r, APP, 'TRAFFIC_UNATTRIBUTED');
+  assert.equal(u.length, 1, `${ad}: TRAFFIC_UNATTRIBUTED yok`);
+  return { r, u: u[0] };
+};
+
+test("T3-C6 '~DYNAMIC' dinamik proxy HEDEF'tir (kesik degil): 5000 ACTIVE -> retire yok (cfg'siz ve cfg_ports'lu); olculmus 0 engellemez; olculemeyen engeller", () => {
+  // kontrol: isaretsiz bos proxy_targets (tarayici kacisi) retire'i gecirir - isaret sart
+  assert.deepEqual(crmRetire(ek3Kur('')).fix, CRM_FIX);
+  for (const [ad, crm] of [['cfgsiz', null], ['cfg_ports CLI', CFG_CRM]]) {
+    const kur = (hedef, o = {}) => {
+      const d = ek3Kur(hedef, o);
+      if (crm) d.jvms[0] = crm;
+      return d;
+    };
+    const { r, u } = engelli(kur('~DYNAMIC'), `${ad} ~DYNAMIC`);
+    assert.deepEqual(
+      u.unattributed.map((x) => [x.kind, x.target, x.reason, x.port, x.host, x.serverName]),
+      [['HEDEF', '~DYNAMIC', 'DINAMIK', null, WEB, 'api.bmw.de']],
+      `${ad}: dinamik proxy girdisi`,
+    );
+    assert.ok(normalize(u.text).includes('dinamik proxy (hedef kaydı yok)'), u.text);
+    assert.ok(!normalize(u.text).includes('hedef listesi kesik'), `dinamik proxy kesik liste diye anlatildi: ${u.text}`);
+    const v = sunucu(r, WEB).vhosts.find((x) => x.serverName === 'api.bmw.de');
+    assert.equal(v.targetsDynamic, true, 'vhost targetsDynamic tasimiyor');
+    assert.equal(v.targetsTruncated, false, 'dinamik proxy kesik liste sayildi');
+    assert.deepEqual(v.proxyTargets, [], 'jeton hedef sanildi');
+    assert.equal(v.proxyTargetsRaw, '~DYNAMIC');
+    // hostDetail (ekran yaniti) alani tasir
+    const { hostDetail } = require('../index.cjs');
+    assert.equal(hostDetail(sunucu(r, WEB)).vhosts.find((x) => x.serverName === 'api.bmw.de').targetsDynamic, true);
+    // HEDEF semantigi: OLCULMUS 0 trafikte engel YOK (EKSIK olsaydi her zaman engellerdi)
+    assert.deepEqual(crmRetire(kur('~DYNAMIC', { vek: SIFIR })).fix, CRM_FIX, `${ad}: olculmus 0 dinamik proxy engelledi (EKSIK sanildi)`);
+    // trafigi OLCULEMEYEN dinamik proxy engeller
+    engelli(kur('~DYNAMIC', { vek: OKUNAMADI }), `${ad} ~DYNAMIC okunamadi`);
+    // cozulen (crm'e ait olmayan) hedefle birlikte; tarayici bicimi (jeton BASTA) ve tersi
+    for (const hedef of ['~DYNAMIC,gbcjap01.bmw.local:9000', 'gbcjap01.bmw.local:9000,~DYNAMIC']) {
+      const k = engelli(kur(hedef), `${ad} karisik ${hedef}`).u;
+      assert.ok(k.unattributed.some((x) => x.reason === 'DINAMIK'), `${ad}: karisik listede dinamik parca kayboldu (${hedef})`);
+    }
+    // TUR 4 (v): dinamik vhost'un literal hedefi BASKA bir calisan JVM'e (api:8280) EXACT esli.
+    // Dinamik kisim yine bilinmez: trafigin bir kismi durmus crm'e gidiyor olabilir. "vhost zaten
+    // bir JVM'e esli, trafik onundur" kisayolu (mutant V3) retire'i geri acardi.
+    const KOSAN_8280 = J3(APP, 'api', { running: 1, running_src: 'PS', auto_start: 'true', server_state: 'running', ports: '8280' });
+    const dx = kur('~DYNAMIC,gbcjap01.bmw.local:8280', { ekJvm: [KOSAN_8280] });
+    const ex = engelli(dx, `${ad} dinamik + baska JVM'e EXACT esli`);
+    const apiJ = sunucu(ex.r, APP).jvms.find((j) => j.name === 'api');
+    assert.equal(apiJ.mapping, 'EXACT_JVM', `${ad}: duzenek: api 8280 hedefine EXACT esli degil (${apiJ.mapping})`);
+    assert.deepEqual(
+      ex.u.unattributed.map((x) => [x.kind, x.reason, x.target]),
+      [['HEDEF', 'DINAMIK', '~DYNAMIC']],
+      `${ad}: baska JVM'e esli dinamik vhost'un dinamik payi kayboldu`,
+    );
+  }
+  // baska sitedeki (Ankara) web sunucusundaki dinamik proxy katman disidir (bilinen korluk)
+  const d = ek3Kur('');
+  d.hosts.push(H3('GBXXWAP05', { products: 'IHS' }));
+  d.web.push(W3('GBXXWAP05'));
+  d.vhosts.push(V3('GBXXWAP05', 'api.bmw.de', { proxy_targets: '~DYNAMIC', req_7d: 5000, traffic_state: 'ACTIVE' }));
+  assert.deepEqual(crmRetire(d).fix, CRM_FIX, 'baska sitedeki dinamik proxy engelledi');
+});
+
+test("T3-C6b JVM'siz ya da taranmamis sunucuya cozulen hedef HEDEF'tir; olculmus ve hedef portu dinleyen vhost'u olan sunucu (RP -> WEB) yeniden sayar", () => {
+  // ayri WEB (JVM'siz) uzerindeki 'localhost:8180': WEB'de 8180'i dinleyen vhost yok
+  for (const hedef of ['localhost:8180', '10.0.0.1:8443', 'gbcjwp01.bmw.local:8443']) {
+    const o = { ips: [{ host: APP, ip: '10.1.2.3', iface: 'eth0', used_by: 'other', is_primary: 1 }, { host: WEB, ip: '10.0.0.1', iface: 'eth0', used_by: 'IHS', is_primary: 1 }] };
+    for (const crm of [null, CFG_CRM]) {
+      const d = ek3Kur(hedef, o);
+      if (crm) d.jvms[0] = crm;
+      const { u } = engelli(d, `${hedef}${crm ? ' cfg' : ''}`);
+      assert.deepEqual(u.unattributed.map((x) => [x.kind, x.reason, x.target]), [['HEDEF', 'JVMSIZ', hedef]], `${hedef}: girdi`);
+      assert.ok(normalize(u.text).includes('hedef sunucuda JVM ya da bu portu dinleyen ölçülmüş vhost yok'), u.text);
+    }
+    // olculmus 0 trafik engellemez
+    assert.deepEqual(crmRetire(ek3Kur(hedef, { ...o, vek: SIFIR })).fix, CRM_FIX, `${hedef}: olculmus 0 engelledi`);
+  }
+  // envanterde olup TARANMAMIS sunucu (LB/RP)
+  const tar = (hedef, o) => {
+    const d = ek3Kur(hedef, o);
+    d.invEnv = [{ host: 'GBCJLB01', env: 'PROD', invProducts: [] }];
+    return d;
+  };
+  const t = engelli(tar('gbcjlb01.bmw.local:443'), 'taranmamis').u;
+  assert.deepEqual(t.unattributed.map((x) => [x.kind, x.reason, x.port]), [['HEDEF', 'TARANMAMIS', 443]]);
+  assert.ok(normalize(t.text).includes('hedef sunucu taranmamış'), t.text);
+  assert.deepEqual(crmRetire(tar('gbcjlb01.bmw.local:443', { vek: SIFIR })).fix, CRM_FIX);
+
+  // SONRAKI HOP: hedef sunucu (Ankara, katman disi) JVM'siz ama OLCULMUS ve hedef portu
+  // dinleyen vhost'u var -> trafik orada yeniden sayilir, HEDEF degil.
+  const W2 = 'GBCJWAP05';
+  const hop = (w2web, listen, o = {}) => {
+    const d = ek3Kur(`${W2.toLowerCase()}.bmw.local:8180`);
+    const hRow = H3(W2, { products: 'IHS', ...(o.host || {}) });
+    const vRow = V3(W2, 'ic.bmw.local', { listen });
+    d.hosts.push(o.eski ? eski('host')(hRow) : hRow);
+    d.web.push(o.eski ? eski('web')(w2web) : w2web);
+    d.vhosts.push(o.eski ? eski('vhost')(vRow) : vRow);
+    return d;
+  };
+  assert.deepEqual(crmRetire(hop(W3(W2), '*:8180')).fix, CRM_FIX, 'olculmus ve 8180 dinleyen sonraki hop HEDEF sayildi');
+  assert.deepEqual(crmRetire(hop(W3(W2), '10.9.9.9:443,8180')).fix, CRM_FIX, 'coklu listen ayristirilmadi');
+  // port tutmuyor: sonraki hop yok
+  assert.deepEqual(engelli(hop(W3(W2), '*:443'), 'port tutmuyor').u.unattributed.map((x) => x.reason), ['JVMSIZ']);
+  // olculmemis (vhost_trust NONE) sonraki hop: vhost envanteri eksik olabilir -> HEDEF
+  assert.deepEqual(engelli(hop(NONE3(W2), '*:8180'), 'olculmemis hop').u.unattributed.map((x) => x.reason), ['JVMSIZ']);
+  // ── TUR 4: sonrakiHop'un port ve OLCUM kosulu (mutantlar V1, V2, V4 yesil kaliyordu) ──
+  const jvmsiz = (d, ad) => {
+    const { u } = engelli(d, ad);
+    assert.deepEqual(u.unattributed.map((x) => [x.kind, x.reason]), [['HEDEF', 'JVMSIZ']], `${ad}: girdi`);
+  };
+  // (i) port eslesmesi SAYI ile: '*:18180' 8180'i dinlemez (alt dizge degil)
+  jvmsiz(hop(W3(W2), '*:18180'), "listen '*:18180' hedef 8180");
+  jvmsiz(hop(W3(W2), '10.9.9.9:81800,18180'), "coklu listen '81800,18180' hedef 8180");
+  // (ii) sonraki hop TAM olculmus olmali: trafik guveni (trustOk) yetmez - bayat ya da ESKI satirli
+  // (scan_ver / vhost_trust NULL) sunucunun vhost envanteri bugunu anlatmaz
+  jvmsiz(hop(W3(W2), '*:8180', { host: { scan_date: gunOnce(10) } }), 'bayat hop (10 gun once)');
+  jvmsiz(hop(W3(W2), '*:8180', { eski: true }), 'eski satirli hop (scan_ver/vhost_trust NULL)');
+  // (iii) listen'i BOS vhost port eslesmesi SAYMAZ (EK-7.5 guvenli yon; joker degil)
+  jvmsiz(hop(W3(W2), ''), "hop vhost listen ''");
+  // (iv) trafigi OLCULEMEYEN (UNREADABLE, -1) JVM'siz / taranmamis hedef de engeldir (EK-6.9:
+  // "trafigi > 0 YA DA olculemediyse"); yalniz 5000 ACTIVE ile sinamak V5 mutantini goremiyordu
+  const oIp = { ips: [{ host: APP, ip: '10.1.2.3', iface: 'eth0', used_by: 'other', is_primary: 1 }, { host: WEB, ip: '10.0.0.1', iface: 'eth0', used_by: 'IHS', is_primary: 1 }] };
+  for (const crm of [null, CFG_CRM]) {
+    const d = ek3Kur('localhost:8180', { ...oIp, vek: OKUNAMADI });
+    if (crm) d.jvms[0] = crm;
+    const { u } = engelli(d, `localhost:8180 UNREADABLE${crm ? ' cfg' : ''}`);
+    assert.deepEqual(u.unattributed.map((x) => [x.kind, x.reason, x.trafficState]), [['HEDEF', 'JVMSIZ', 'UNREADABLE']]);
+  }
+  const tu = engelli(tar('gbcjlb01.bmw.local:443', { vek: OKUNAMADI }), 'taranmamis UNREADABLE').u;
+  assert.deepEqual(tu.unattributed.map((x) => [x.kind, x.reason, x.trafficState]), [['HEDEF', 'TARANMAMIS', 'UNREADABLE']]);
+  // KONTROL: JVM'li sunucuya cozulen hedef PORT kapisinda kalir (degismedi)
+  assert.equal(engelli(ek3Kur('10.1.2.3:8180'), 'PORT').u.unattributed[0].kind, 'PORT');
+});
+
+test("T3-MS3 gateHosts: crm'in esli vhost'u BASKA sitedeki WEB2'de; WEB2'de hedefi bilinmeyen ACTIVE proxy -> retire yok (katman disi ama gateHost)", () => {
+  // WEB2 PROD/Ankara: crm'in katmani (PROD/Pendik) DEGIL. crm WEB2'deki crm.bmw.de'ye proxy
+  // hedefiyle (kendi IP'si:8180, cfg_ports CLI) EXACT_JVM esli; WEB2 bu yuzden gateHosts'ta.
+  const W2 = 'GBCJWAP05';
+  const kur = (ek) => ({
+    hosts: [H3(APP, { products: 'JBOSS7' }), H3(W2, { products: 'IHS' })],
+    jvms: [CFG_CRM],
+    web: [W3(W2)],
+    ips: [{ host: APP, ip: '10.1.2.3', iface: 'eth0', used_by: 'other', is_primary: 1 }],
+    vhosts: [V3(W2, 'crm.bmw.de', { proxy_targets: '10.1.2.3:8180' }), ...ek],
+  });
+  const k = A(kur([]));
+  const crm = sunucu(k, APP).jvms.find((j) => j.name === 'crm');
+  assert.equal(crm.mapping, 'EXACT_JVM', 'duzenek: crm WEB2 vhost\'una esli degil');
+  assert.ok(crm.gateHosts.includes(W2), 'duzenek: WEB2 gateHosts\'ta degil');
+  assert.deepEqual(bul(k, APP, 'RETIRE_CANDIDATE')[0].fix, CRM_FIX, 'kontrol: engel yokken retire yok');
+  const { u } = engelli(kur([V3(W2, 'api.bmw.de', { proxy_targets: 'balancer://x', req_24h: 700, req_7d: 5000, traffic_state: 'ACTIVE' })]), 'gateHost');
+  assert.deepEqual(u.unattributed.map((x) => [x.host, x.kind, x.target]), [[W2, 'HEDEF', 'balancer://x']]);
+});
+
+test("T3-C10 TRAFFIC_UNATTRIBUTED metni olculeni anlatir: cfg'siz durmus JVM'de 'portu olculemedi' VAR, cfg_ports'lu JVM'de YOK", () => {
+  const { u } = engelli(ek3Kur('crmcluster'), 'cfgsiz');
+  assert.ok(normalize(u.text).includes('portu ölçülemedi ve'), `cfg'siz JVM'de port bilgisi yoklugu soylenmedi: ${u.text}`);
+  const d = ek3Kur('crmcluster');
+  d.jvms[0] = CFG_CRM;
+  assert.ok(!normalize(engelli(d, 'cfgli').u.text).includes('portu ölçülemedi'));
 });
 
 // ── C5: proxy_targets userinfo (eski tarayici satirlari) ────────────────────────────
@@ -1128,16 +1417,16 @@ const VAKALAR = JSON.parse(
 ).vakalar;
 const sekme = (s) => String(s).replace(/<TAB>/g, '\t');
 
-test('D1-C26 ortak 33 maske vakasi (14 sozlesme + M1-M3 + Unicode + jvm_arg_diff) mask.cjs\'te birebir (G7)', () => {
+test('D1-C26 ortak 40 maske vakasi (14 sozlesme + M1-M3 + Unicode + jvm_arg_diff + EK-7.8) mask.cjs\'te birebir (G7)', () => {
   assert.equal(
     VAKALAR.length,
-    33,
-    'ortak vaka listesi 33 degil (14 + M1-M3 5 + T2-M1 Unicode 8 + T2-M2 jvm_arg_diff 6)',
+    40,
+    'ortak vaka listesi 40 degil (14 + M1-M3 5 + T2-M1 Unicode 8 + T2-M2 jvm_arg_diff 6 + R8a 1 + bicimsiz/devam 6)',
   );
   assert.deepEqual(
     VAKALAR.map((v) => v.no),
-    Array.from({ length: 33 }, (_, i) => i + 1),
-    'vaka numaralari 1..33 sirali degil (TSV ile birebir karsilastirilir)',
+    Array.from({ length: 40 }, (_, i) => i + 1),
+    'vaka numaralari 1..40 sirali degil (TSV ile birebir karsilastirilir)',
   );
   const ISLEV = {
     serbest: mask.maskText,
@@ -1593,4 +1882,126 @@ test('C7 /findings staleFleet tasir (HTTP): bayat filoda /overview ile AYNI, taz
     const f = await (await fetch(`${kok}/findings?fresh=1`)).json();
     assert.equal(f.staleFleet, null);
   });
+});
+
+// ── TUR 3 #8: /jvm-autostart tanimsiz surece (cfg_src=UNAVAILABLE) is ACMAZ ─────────────
+// Satir dugmesi bulgudan bagimsizdir; eskiden cfgSrc'ye bakmadan plan_only:false is aciyordu
+// (playbook 'host xml'de tanimli degil' ile dusuyordu). Gercek router + sahte mssql; AWX'e
+// gidilmez: playbook kaydi sahte (template yok -> 501), yani kontrol JVM'i TUM kapilardan
+// gecip launch'a ulasir, tanimsiz surec ondan ONCE 400 ile durur.
+test("T3-C8b /jvm-autostart: UNAVAILABLE JVM 400 'tanim kaynaginda yok' (envanter 'false' olsa da); tanimli JVM kapilari gecer", async () => {
+  stub('../../ansible/playbook-registry.cjs', { getByKey: async () => null, getEffectiveTemplateId: () => null });
+  const g = gunumuz;
+  const satirlar = {
+    ...v3Satirlar(g),
+    Server_Hub_Jboss: [{ id: 1, scan_date: g, host: APP, gen: 7, host_name: 'm', host_state: 'running', cli: 'OK', note: '' }],
+    Server_Hub_Jvms: [
+      { id: 1, scan_date: g, ...J3(APP, 'kosan', { running: 1, running_src: 'PS', auto_start: 'false', server_state: 'running', ports: '8080' }) },
+      { id: 2, scan_date: g, ...J3(APP, 'hayalet', { running: 1, running_src: 'PS', auto_start: 'unknown', server_state: 'unknown', cfg_src: 'UNAVAILABLE', ports: '8180' }) },
+    ],
+  };
+  const ic = sahteSorgu(V3_SEMA, satirlar, []);
+  const inv = [{ host: APP, app: 'hayalet', env: 'PROD', domain: 'd', status: 'running', jvm_count: 1, autostarts: 'false', tier: null }];
+  aktifSorgu = async (s, p) => (/dbo\.MWAppsInventory/.test(String(s)) ? { recordset: inv } : ic(s, p));
+  await httpIle(async (kok) => {
+    const post = (body) =>
+      fetch(`${kok}/jvm-autostart`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ host: APP, gen: 7, confirmed: true, ...body }),
+      });
+    for (const enable of [true, false]) {
+      const r = await post({ jvm: 'hayalet', enable });
+      assert.equal(r.status, 400, `tanimsiz surece auto-start ${enable ? 'acma' : 'kapama'} isi kabul edildi (${r.status})`);
+      const j = await r.json();
+      assert.ok(normalize(j.message).includes('tanım kaynağında yok'), j.message);
+    }
+    // KONTROL: tanimli JVM tum kapilari gecer ve launch'a ulasir (sahte kayit: template yok)
+    const k = await post({ jvm: 'kosan', enable: true });
+    assert.equal(k.status, 501, `kontrol: tanimli JVM launch'a ulasmadi (${k.status})`);
+  });
+});
+
+// ── TUR 4: /jvm-autostart YAZMA KAPILARI (EK-7.10 C acik isi) ─────────────────────────────
+// Satir dugmesi bulgudan bagimsizdir; /fix'in finding.fix kapilarini (bayat / sema) devralmaz.
+// Eskiden yalniz cfg_src=UNAVAILABLE reddediliyordu: 5 gun once taranmis sunucuda ya da sema
+// okunamadiyken plan_only:false is aciliyordu (v3 "bayat sunucuda TUM yazma eylemleri
+// onerilmez", EK-6.13 "schemaUnknown: HICBIR eylem"). running_src=UNMEASURED BILEREK kapi degil
+// (v3: tek-JVM dugmesi admine acik, onay metni uyarir) - kontrol vakasi launch'a ulasir.
+test('T4-C11 /jvm-autostart: bayat sunucu ve sema okunamadi 400 (is acilmaz); running_src=UNMEASURED kapi DEGIL', async () => {
+  stub('../../ansible/playbook-registry.cjs', { getByKey: async () => null, getEffectiveTemplateId: () => null });
+  const satir = (appGun) => {
+    const s = v3Satirlar(gunumuz);
+    s.Server_Hub_Hosts = s.Server_Hub_Hosts.map((x) =>
+      x.host === APP ? { ...x, scan_date: appGun, loaded_at: `${appGun}T06:00:00Z` } : x,
+    );
+    return s;
+  };
+  const post = (kok, body) =>
+    fetch(`${kok}/jvm-autostart`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ host: APP, gen: 7, confirmed: true, ...body }),
+    });
+  // (a) BAYAT: APP 5 gun once taranmis, WEB bugun (latestScan bugun) -> APP !fresh
+  const bes = new Date(Date.now() - 5 * 86400000).toISOString().slice(0, 10);
+  aktifSorgu = sahteSorgu(V3_SEMA, satir(bes), []);
+  await httpIle(async (kok) => {
+    for (const enable of [true, false]) {
+      const r = await post(kok, { jvm: 'kosan', enable });
+      assert.equal(r.status, 400, `bayat sunucuda auto-start ${enable ? 'acma' : 'kapama'} isi kabul edildi (${r.status})`);
+      const j = await r.json();
+      assert.ok(normalize(j.message).includes('bayat'), j.message);
+      assert.ok(normalize(j.message).includes('iş açılmadı'), j.message);
+    }
+  });
+  // (b) SEMA OKUNAMADI: sys.columns (coklu tablo) dusuyor
+  const ic = sahteSorgu(V3_SEMA, satir(gunumuz), []);
+  aktifSorgu = async (s, p) => {
+    if (SYS_COLUMNS_COK.test(String(s))) throw new Error('Timeout expired');
+    return ic(s, p);
+  };
+  await httpIle(async (kok) => {
+    const r = await post(kok, { jvm: 'kosan', enable: true });
+    assert.equal(r.status, 400, `sema okunamadiyken auto-start isi kabul edildi (${r.status})`);
+    assert.ok(normalize((await r.json()).message).includes('şeması'), 'sebep sema degil');
+  });
+  // KONTROL: taze sunucu + okunan sema -> kapilar gecilir (launch: sahte kayit -> 501); calisma
+  // durumu OLCULEMEYEN 'gizli' JVM de launch'a ulasir (running_src kapi degil, v3)
+  aktifSorgu = sahteSorgu(V3_SEMA, satir(gunumuz), []);
+  await httpIle(async (kok) => {
+    const k = await post(kok, { jvm: 'kosan', enable: true });
+    assert.equal(k.status, 501, `kontrol: taze sunucuda tanimli JVM launch'a ulasmadi (${k.status})`);
+    const g = await post(kok, { jvm: 'gizli', enable: false });
+    assert.equal(g.status, 501, `running_src=UNMEASURED JVM kapida kaldi (${g.status}) - v3: dugme admine acik`);
+  });
+});
+
+// ── TUR 4: vhost conf'u OKUNAMADI (CONF_UNREADABLE) -> hedefleri bilinmiyor ────────────────
+// Dogrulayici probe_confunr: tarayici conf'u okunamayan vhost'a proxy_targets='' basiyordu;
+// Portal onu "proxy yok" sayip ayni katmandaki durmus crm'e jboss_retire oneriyordu. Tarayici
+// artik '~DYNAMIC' yazar (A, sc_H3); Portal ayrica (derinlemesine savunma, eski satirlar)
+// CONF_UNREADABLE vhost'u HEDEF/CONF_OKUNAMADI sayar ve metni "conf okunamadi" der.
+test("T4-C12 CONF_UNREADABLE vhost: '' (eski satir) ve '~DYNAMIC' (yeni tarayici) -> retire yok, HEDEF/CONF_OKUNAMADI; blok bulunamadi '~DYNAMIC' -> DINAMIK", () => {
+  const confU = { req_24h: -1, req_7d: -1, hc_24h: -1, access_log: '', traffic_state: 'UNREADABLE', traffic_reason: 'CONF_UNREADABLE' };
+  for (const [ad, crm] of [['cfgsiz', null], ['cfg_ports CLI', CFG_CRM]]) {
+    for (const hedef of ['', '~DYNAMIC']) {
+      const d = ek3Kur(hedef, { vek: confU });
+      if (crm) d.jvms[0] = crm;
+      const { u } = engelli(d, `${ad} CONF_UNREADABLE '${hedef}'`);
+      assert.deepEqual(
+        u.unattributed.map((x) => [x.kind, x.reason, x.target, x.serverName]),
+        [['HEDEF', 'CONF_OKUNAMADI', hedef ? '~DYNAMIC' : null, 'api.bmw.de']],
+        `${ad} '${hedef}': tek girdi (CONF_OKUNAMADI) bekleniyordu`,
+      );
+      const t = normalize(u.text);
+      assert.ok(t.includes("hedef bilinmiyor (vhost conf'u okunamadı)"), u.text);
+      assert.ok(!t.includes('hedef kaydı yok'), `conf okunamadigi halde "hedef kaydi yok" dendi: ${u.text}`);
+    }
+  }
+  // blok bulunamadi (conf okundu): '~DYNAMIC' + NO_VHOST_LOG -> DINAMIK (trafik olculemedi -> engel)
+  const nvl = { req_24h: -1, req_7d: -1, hc_24h: -1, access_log: '', traffic_state: 'UNVERIFIED', traffic_reason: 'NO_VHOST_LOG' };
+  assert.deepEqual(engelli(ek3Kur('~DYNAMIC', { vek: nvl }), 'blok bulunamadi').u.unattributed.map((x) => x.reason), ['DINAMIK']);
+  // KONTROL: okunan conf'ta proxy'siz vhost (gercekten proxy yok) retire'i engellemez
+  assert.deepEqual(crmRetire(ek3Kur('')).fix, CRM_FIX);
 });

@@ -27,14 +27,19 @@ export interface ShFindingLog {
   read: boolean;
 }
 /** EK-3 (sozlesme v3): TRAFFIC_UNATTRIBUTED bulgusunun ekindeki tek kayit. kind: PORT (bu
- *  sunucuya giden port hicbir JVM'e ait degil), HEDEF (hedef hicbir sunucuya cozulemedi:
- *  balancer, VIP, upstream adi), EKSIK (hedef listesi yukleyicide kesildi; target '~'). */
+ *  sunucuya giden port hicbir JVM'e ait degil), HEDEF (hedefi bilinmeyen proxy; neden `reason`'da),
+ *  EKSIK (hedef listesi yukleyicide kesildi; target '~'). */
 export interface ShUnattributed {
   host?: string;
   serverName?: string;
   port?: number | null;
   target?: string | null;
   kind?: string;
+  /** EK-7.5 (tur 3/4): HEDEF girdisinin nedeni - COZULEMEDI (hicbir sunucuya cozulemedi),
+   *  DINAMIK ('~DYNAMIC': conf'ta hedef kaydi yok), JVMSIZ (hedef sunucuda trafigi alacak JVM ya da
+   *  olculmus vhost yok), TARANMAMIS (hedef sunucu taranmamis), CONF_OKUNAMADI (vhost conf'u
+   *  okunamadi, hedefleri gorulmedi). PORT ve EKSIK'te null. */
+  reason?: string | null;
   req7d?: number | null;
   trafficState?: string | null;
 }
@@ -69,6 +74,8 @@ export interface ShHostRow {
   vhosts: number;
   unusedIps: number;
   topFinding: string | null;
+  /** v3 tazelik kapisi: false = tarama bayat ya da son yuklemede disarida kaldi (yazma eylemi yok). */
+  fresh?: boolean;
 }
 export interface ShJvm {
   gen: number;
@@ -80,6 +87,9 @@ export interface ShJvm {
   ports: number[];
   /** 2026-09-22: 'cli' (JBoss CLI taramasi) | 'envanter' (dbo.MWAppsInventory) */
   source?: string;
+  /** v3 JVM.cfg_src: CLI_WILDCARD | XML | PS_ONLY | UNAVAILABLE (tanim kaynagi okundu, JVM orada
+   *  tanimli degil - auto-start'i yok, /jvm-autostart 400). */
+  cfgSrc?: string | null;
   autoStartSource?: string;
   invStatus?: string | null;
   invAutoStart?: string;
@@ -114,6 +124,13 @@ export interface ShVhost {
   jvm: string | null;
   /** C4: proxy hedef listesi yukleyicide kesildi (~); kesilen kisimdaki sunucu:port bilinmez. */
   targetsTruncated?: boolean;
+  /** EK-7.4/7.5: proxy_targets '~DYNAMIC' tasiyor - trafik conf'ta hedef kaydi birakmayan bir
+   *  mekanizmayla tasiniyor ya da vhost conf'u okunamadi / blogu bulunamadi (hedefler gorulmedi). */
+  targetsDynamic?: boolean;
+  /** v3 trafik alanlari (eski satirda null): ACTIVE | NO_RECENT_TRAFFIC | UNVERIFIED | UNREADABLE */
+  trafficState?: string | null;
+  /** v3 trafik sebebi (OK, CONF_UNREADABLE, LOCATION_LOG, CONDITIONAL_LOG, INCLUDE_UNRESOLVED, ...) */
+  trafficReason?: string | null;
 }
 export interface ShHostDetail extends Omit<ShHostRow, 'jvms' | 'vhosts'> {
   /** C3: sys.columns okunamadi - tarayici sema surumu bilinmiyor, bu sunucuda eylem yok. */

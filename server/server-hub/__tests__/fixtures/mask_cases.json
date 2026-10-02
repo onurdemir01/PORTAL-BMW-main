@@ -1,6 +1,6 @@
 {
   "kaynak": "serverhub_sozlesme_v3 maskeleme.ortak_vakalar (G7). Ansible deposundaki bmw_nginx/tests/fixtures/server_hub_mask_cases.tsv ile AYNI vakalar; iki dosyanin esitligi yayin kontrol listesindedir.",
-  "yazim": "<TAB> gercek sekme karakterini temsil eder (TSV ile ayni yazim). tur: serbest = R1-R7 desen maskesi (serbest metin alani), alan = sekmeli girdi; desen sekmeyi ASMAMALI, jvm_args = beyaz liste, jvm_arg_diff = jvm_arg_diff maskesi (loader maske_jvm_diff, Portal maskJvmArgDiff, tarayici --mask jvmdiff). Vakalar 20-25, 32 ve 33 Unicode anahtar/kullanici adi (T2-M1; 33 R4/R8a/R8b katlamasi; 32 astral harf: JS 'u' bayragi ve Python U+FFFF siniri korlugu), 26-31 jvm_arg_diff (T2-M2).",
+  "yazim": "<TAB> gercek sekme karakterini temsil eder (TSV ile ayni yazim). tur: serbest = R1-R7 desen maskesi (serbest metin alani), alan = sekmeli girdi; desen sekmeyi ASMAMALI, jvm_args = beyaz liste, jvm_arg_diff = jvm_arg_diff maskesi (loader maske_jvm_diff, Portal maskJvmArgDiff, tarayici --mask jvmdiff). Vakalar 20-25, 32 ve 33 Unicode anahtar/kullanici adi (T2-M1; 33 R4/R8a/R8b katlamasi; 32 astral harf: JS 'u' bayragi ve Python U+FFFF siniri korlugu), 26-31 jvm_arg_diff (T2-M2). 34 literal '<password value=...>' (R8a). 35-40 jvm_arg_diff bicimsiz oge (degerdeki '; ' ve cift bosluk; ilk belirtec acik degilse ilk bosluktan sonrasi '***') ve devam kurali (gizlenen ogeden sonraki bicimsiz ogeler '***', yapisal oge devami bitirir).",
   "vakalar": [
     { "no": 1, "tur": "serbest", "girdi": "-Djavax.net.ssl.keyStorePassword=k1", "beklenen": "-Djavax.net.ssl.keyStorePassword=***" },
     { "no": 2, "tur": "serbest", "girdi": "db.password = s3cr3t", "beklenen": "db.password = ***" },
@@ -29,11 +29,18 @@
     { "no": 25, "tur": "jvm_args", "girdi": "-Djboss.APİ_KEY=abc APİ_KEY=abc", "beklenen": "-Djboss.APİ_KEY=*** APİ_KEY=***" },
     { "no": 26, "tur": "jvm_arg_diff", "girdi": "reason=CLI_FAIL password=x", "beklenen": "reason=CLI_FAIL password=***" },
     { "no": 27, "tur": "jvm_arg_diff", "girdi": "k running=password=x configured=y", "beklenen": "k running=*** configured=*** (farkli)" },
-    { "no": 28, "tur": "jvm_arg_diff", "girdi": "garbage token=abc", "beklenen": "garbage token=***" },
+    { "no": 28, "tur": "jvm_arg_diff", "girdi": "garbage token=abc", "beklenen": "garbage ***" },
     { "no": 29, "tur": "jvm_arg_diff", "girdi": "partial; -Dfoo.bar running=a configured=b; -Djboss.node.name running=n1 configured=n2; -Dzz.token running=t1 configured=t2 ...+3", "beklenen": "partial; -Dfoo.bar running=*** configured=*** (farkli); -Djboss.node.name running=n1 configured=n2; -Dzz.token running=*** configured=*** (farkli) ...+3" },
     { "no": 30, "tur": "jvm_arg_diff", "girdi": "-Xfoo running=password=x configured=y", "beklenen": "-Xfoo running=password=*** configured=y" },
     { "no": 31, "tur": "jvm_arg_diff", "girdi": "-Djboss.APİ_KEY running=a configured=b", "beklenen": "-Djboss.APİ_KEY running=*** configured=*** (farkli)" },
     { "no": 32, "tur": "serbest", "girdi": "app😀/Parola9@dbhost", "beklenen": "app😀/***@dbhost" },
-    { "no": 33, "tur": "serbest", "girdi": "--paſs abc <ſecret value=\"v\"/> <PAſSWORD>w</paſsword>", "beklenen": "--paſs *** <ſecret value=\"***\"/> <PAſSWORD>***</paſsword>" }
+    { "no": 33, "tur": "serbest", "girdi": "--paſs abc <ſecret value=\"v\"/> <PAſSWORD>w</paſsword>", "beklenen": "--paſs *** <ſecret value=\"***\"/> <PAſSWORD>***</paſsword>" },
+    { "no": 34, "tur": "serbest", "girdi": "<password value=\"abc\"/>", "beklenen": "<password value=\"***\"/>" },
+    { "no": 35, "tur": "jvm_arg_diff", "girdi": "-Ddb.password running=a; b configured=c; d", "beklenen": "-Ddb.password ***; ***; ***" },
+    { "no": 36, "tur": "jvm_arg_diff", "girdi": "-Ddb.password running=Gizli1; configured=Yeni3", "beklenen": "-Ddb.password ***; ***" },
+    { "no": 37, "tur": "jvm_arg_diff", "girdi": "-Dfoo  running=abc configured=def", "beklenen": "-Dfoo ***" },
+    { "no": 38, "tur": "jvm_arg_diff", "girdi": "-Dapp.secret running=a configured=b; c", "beklenen": "-Dapp.secret running=*** configured=*** (farkli); ***" },
+    { "no": 39, "tur": "jvm_arg_diff", "girdi": "-Djboss.node.name running=n1; token=t1 x; y", "beklenen": "-Djboss.node.name running=n1; token=*** ***; ***" },
+    { "no": 40, "tur": "jvm_arg_diff", "girdi": "-Dapp.secret running=a configured=b; -Djava.home running=/a configured=/b; token=t2; c; -Dk.pwd running=d configured=e; -Xmx running=1g configured=2g;  g", "beklenen": "-Dapp.secret running=*** configured=*** (farkli); -Djava.home running=/a configured=/b; token=***; c; -Dk.pwd running=*** configured=*** (farkli); -Xmx running=1g configured=2g;  ***" }
   ]
 }

@@ -77,10 +77,18 @@ test('BA5: tek hedef korumasi anlatiliyor (geri getirmek isteyen sebebi gorsun)'
 //
 // Toplu islemin yerine gecen sey BU: tek (host, jvm), tek tik, tek is.
 
+/** `router.post('/jvm-autostart'` ile baslayan rota govdesi: bir sonraki `router.` cagrisina
+ * kadar (sabit 3500 karakterlik pencere, rotaya yeni kapi eklenince sonunu kaciriyordu). */
+function rotaBlogu(i) {
+  assert.ok(i >= 0, 'jvm-autostart rotasi yok');
+  const son = SRC.indexOf('\n  router.', i + 1);
+  return SRC.slice(i, son > i ? son : undefined);
+}
+
 test('SB1 JVM hedefli uc var ve TEK (host, jvm) aliyor', () => {
   assert.match(SRC, /router\.post\('\/jvm-autostart'/, 'satir bazli uc yok');
   const i = SRC.indexOf("router.post('/jvm-autostart'");
-  const blok = SRC.slice(i, i + 3500);
+  const blok = rotaBlogu(i);
   // Virgullu hedef listesi YOK: duzeltme playbook'u zaten reddediyor, uc de uretmemeli.
   assert.ok(!/join\(','\)/.test(blok), 'uc virgullu hedef listesi uretiyor - toplu islem geri gelmis');
   assert.match(blok, /target_host: host/, 'tek hedef gonderilmiyor');
@@ -88,7 +96,7 @@ test('SB1 JVM hedefli uc var ve TEK (host, jvm) aliyor', () => {
 
 test('SB2 HEDEF TARAMADAN DOGRULANIR (istemciden gelen JVM adi dogrudan gecmez)', () => {
   const i = SRC.indexOf("router.post('/jvm-autostart'");
-  const blok = SRC.slice(i, i + 3500);
+  const blok = rotaBlogu(i);
   assert.match(blok, /HOST_RE\.test\(host\)/, 'sunucu adi dogrulanmiyor');
   assert.match(blok, /JVM_RE\.test\(jvm\)/, 'JVM adi dogrulanmiyor');
   assert.match(
@@ -100,7 +108,7 @@ test('SB2 HEDEF TARAMADAN DOGRULANIR (istemciden gelen JVM adi dogrudan gecmez)'
 
 test('SB3 ACIK ONAY sart (kazara gelen istek sunucuyu degistirmemeli)', () => {
   const i = SRC.indexOf("router.post('/jvm-autostart'");
-  const blok = SRC.slice(i, i + 3500);
+  const blok = rotaBlogu(i);
   assert.match(blok, /req\.body\?\.confirmed !== true/, 'onay kapisi yok');
 });
 
@@ -108,7 +116,7 @@ test('SB4 ZATEN ISTENEN DURUMDA is ACILMAZ', () => {
   // Gereksiz is acmak, degisiklik yonetimi acisindan gurultu; ustelik kullanici
   // "olmadi galiba" deyip tekrar tiklar.
   const i = SRC.indexOf("router.post('/jvm-autostart'");
-  const blok = SRC.slice(i, i + 3500);
+  const blok = rotaBlogu(i);
   assert.match(blok, /if \(j\.autoStart === hedef\)/, 'mevcut durum kontrolu yok');
   assert.match(blok, /zaten auto-start/, 'kullaniciya sebep soylenmiyor');
 });

@@ -696,11 +696,34 @@ function initServerHub(app) {
       const h = (a.hosts || []).find((x) => x.host === host);
       if (!h)
         return res.status(400).json({ ok: false, message: `${host} için tarama verisi yok.` });
+      // YAZMA KAPILARI (v3 "bayat sunucuda TUM yazma eylemleri onerilmez", EK-6.13; tur 4): satir
+      // dugmesi bulgudan bagimsizdir, /fix'in finding.fix kapilarini (bayat / sema) devralmaz.
+      // Sema okunamadiysa running_src / cfg_src / auto_start kaniti secilmedi; bayat ya da son
+      // yuklemede disarida kalan sunucunun auto-start degeri bugunu anlatmaz. Is ACILMAZ.
+      // running_src=UNMEASURED BILEREK kapi degil (v3: tek-JVM dugmesi admine acik, onay uyarir).
+      if (a.schemaUnknown === true || h.schemaUnknown === true)
+        return res.status(400).json({
+          ok: false,
+          message:
+            'Server Hub şeması (sys.columns) okunamadı — eylem önerilmez; auto-start değiştirilemez, iş açılmadı. Sayfayı yenileyin.',
+        });
+      if (h.fresh !== true)
+        return res.status(400).json({
+          ok: false,
+          message: `${host} taraması bayat (bayat kanıt: ${h.scanDate || '?'}${h.loadExcluded ? ', son yükleme dışlandı' : ''}) — auto-start değiştirilemez, iş açılmadı. Önce sunucuyu yeniden tarayın.`,
+        });
       const j = (h.jvms || []).find((x) => x.name === jvm && Number(x.gen) === gen);
       if (!j)
         return res.status(400).json({
           ok: false,
           message: `${host} üzerinde ${jvm} (JBoss ${gen}) taramada yok — sayfayı yenileyin.`,
+        });
+      // TANIMSIZ SUREC (EK-6.7, tur 3 #8): cfg_src=UNAVAILABLE JVM tanim kaynaginda YOK;
+      // auto-start'i olmayan bir sey degistirilemez (playbook da host XML'de bulamaz).
+      if (j.source === 'cli' && j.cfgSrc === 'UNAVAILABLE')
+        return res.status(400).json({
+          ok: false,
+          message: `${jvm} (JBoss ${gen}) tanım kaynağında yok (ps'te tanımsız süreç) — auto-start değiştirilemez, iş açılmadı.`,
         });
       // ZATEN ISTENEN DURUMDAYSA IS ACILMAZ. "unknown" ise ACILIR: olculemedigi icin
       // kullanici bilerek bir tarafa cekmek isteyebilir.

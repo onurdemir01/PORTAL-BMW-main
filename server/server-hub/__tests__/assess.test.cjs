@@ -245,12 +245,43 @@ test('SH8: parseTargets host:port / ajp / IPv6 / bos', () => {
   assert.deepEqual(hedefListesi('a.bmw.de:80,gbcja ~'), {
     parcalar: ['a.bmw.de:80'],
     eksik: true,
+    dinamik: false,
     gosterim: 'a.bmw.de:80,~',
   });
   assert.deepEqual(hedefListesi('a.bmw.de:80,~TRUNC').parcalar, ['a.bmw.de:80']);
   // ayristirici da jetonu hedef saymaz (README: '~TRUNC' host[:port] desenine uyar)
   assert.deepEqual(parseTargets('a.bmw.de:80,~TRUNC'), [{ host: 'A', port: 80 }]);
-  assert.deepEqual(hedefListesi('u:p@a.bmw.de:80'), { parcalar: ['a.bmw.de:80'], eksik: false, gosterim: 'a.bmw.de:80' });
+  assert.deepEqual(hedefListesi('u:p@a.bmw.de:80'), { parcalar: ['a.bmw.de:80'], eksik: false, dinamik: false, gosterim: 'a.bmw.de:80' });
+  // DINAMIK PROXY JETONU (tur 3, #6): '~DYNAMIC' kesme DEGIL (liste tam), hedef de DEGIL
+  assert.deepEqual(hedefListesi('a.bmw.de:80,~DYNAMIC'), {
+    parcalar: ['a.bmw.de:80'],
+    eksik: false,
+    dinamik: true,
+    gosterim: 'a.bmw.de:80,~DYNAMIC',
+  });
+  assert.deepEqual(hedefListesi('~DYNAMIC'), { parcalar: [], eksik: false, dinamik: true, gosterim: '~DYNAMIC' });
+  // tarayici bicimi (A, scan.sh rec()): jeton listenin BASINDA; sira gosterimde korunur
+  assert.deepEqual(hedefListesi('~DYNAMIC,crm-vip.bmw.local:8180'), {
+    parcalar: ['crm-vip.bmw.local:8180'],
+    eksik: false,
+    dinamik: true,
+    gosterim: '~DYNAMIC,crm-vip.bmw.local:8180',
+  });
+  // dinamik + kesik birlikte: ikisi de isaretlenir
+  assert.deepEqual(hedefListesi('a.bmw.de:80,~DYNAMIC,~TRUNC'), {
+    parcalar: ['a.bmw.de:80'],
+    eksik: true,
+    dinamik: true,
+    gosterim: 'a.bmw.de:80,~DYNAMIC,~',
+  });
+  // yarim kalmis jeton (yukleyici kesmesi) dinamik DEGIL, kesiktir
+  assert.deepEqual(hedefListesi('a.bmw.de:80,~DYN ~'), {
+    parcalar: ['a.bmw.de:80'],
+    eksik: true,
+    dinamik: false,
+    gosterim: 'a.bmw.de:80,~',
+  });
+  assert.deepEqual(parseTargets('a.bmw.de:80,~DYNAMIC'), [{ host: 'A', port: 80 }], 'jeton hedef sanildi');
 });
 
 // ── 2026-09-22 (job 3339002 sonrasi) ─────────────────────────────────────────────

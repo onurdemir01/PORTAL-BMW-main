@@ -4,7 +4,8 @@
 // Uc uygulama AYNI desenlerle ve AYNI ortak vaka listesiyle esdegerligi sinanir
 // (__tests__/fixtures/mask_cases.json; Ansible deposunda server_hub_mask_cases.tsv).
 // Liste 14 sozlesme vakasi + dalga 1 duzeltmesinin M1-M3 vakalari (15-19) + Unicode anahtar/kullanici
-// adi vakalari (20-25, 32, 33; T2-M1) + jvm_arg_diff vakalari (26-31, tur 'jvm_arg_diff', T2-M2).
+// adi vakalari (20-25, 32, 33; T2-M1) + jvm_arg_diff vakalari (26-31, tur 'jvm_arg_diff', T2-M2) +
+// 34 (literal '<password value=...>', R8a) + 35-40 (jvm_arg_diff bicimsiz oge ve devam kurali, #5).
 //
 // NEREYE UYGULANIR (sozlesme maskeleme.serbest_metin_alanlari):
 //   - desen maskesi (R1-R7) YALNIZ serbest metin alanlarina: HOST.note, JBOSS.note,
@@ -181,16 +182,28 @@ function maskJvmArgs(s) {
 const DIFF_OGE = /^([^ ]+) running=(.*) configured=(.*)$/s;
 const DIFF_KESME = / \.\.\.\+[0-9]+$/;
 
+/** -D oneki atilmis anahtar adi (beyaz liste karari -D'siz ad uzerinden verilir). */
+const dAdi = (anahtar) => (anahtar.startsWith('-D') ? anahtar.slice(2) : anahtar);
+
 /**
- * jvm_arg_diff (T2-M2): loader maske_jvm_diff ve tarayici jd() ile bire bir, DAHA COK maskeleyen yon.
+ * jvm_arg_diff (T2-M2 + #5): loader maske_jvm_diff ve tarayici jd() ile bire bir, DAHA COK maskeleyen yon.
  *   'partial; ' oneki korunur; 'reason=<SEBEP>...' metni serbest metin maskesinden gecer;
  *   sondaki ' ...+N' kesme isareti korunur; kalan '; ' ile ogelere bolunur:
  *   '<anahtar> running=<v> configured=<v>' ve anahtar -X DEGIL -> beyaz liste karari (-D oneki
  *       atilarak); liste disi ya da sir anahtarinda '<anahtar> running=*** configured=*** (farkli)'
- *   -X ogesi ve bu bicime uymayan her oge -> serbest metin maskesi (maskText).
+ *   -X ogesi (bu bicimde) -> serbest metin maskesi (maskText).
+ *   BICIMSIZ oge (#5: degerdeki '; ' ogeyi boler, ' running=' / cift bosluk bicimi bozar): ilk
+ *       belirtec (ilk bosluga kadar) -D atilarak acik degilse (degerAcik: sir ERE'si ya da beyaz liste
+ *       disi) belirtec maskText'ten gecer, ilk bosluktan sonrasi '***'; boslugu yoksa ya da belirteci
+ *       aciksa maskText.
+ *   DEVAM: gizlenen ogeden (yapisal sir/liste disi ya da gizlenen bicimsiz oge) sonraki bicimsiz
+ *       ogeler o degerin parcasidir -> TAMAMEN '***'; devam yalniz yapisal bir ogede biter.
+ *       '-Ddb.password running=a; b configured=c; d' -> '-Ddb.password ***; ***; ***'.
  * Eskiden -X ogesi duz birakiliyordu ve loader yalniz '-D' ogelerini isliyordu
  * ('reason=CLI_FAIL password=x', 'k running=password=x configured=y', 'garbage token=abc'
- * loader'da duz kaliyordu). '\S' yerine '[^ ]': JS ve Python bosluk kumeleri farkli. Ortak vakalar 26-31.
+ * loader'da duz kaliyordu); tur 3'e dek bicimsiz oge yalniz serbest maskeden gecip anahtarli sirri
+ * ('-Ddb.password running=Gizli1') uc katmanda acik birakiyordu. '\S' yerine '[^ ]': JS ve Python
+ * bosluk kumeleri farkli. Ortak vakalar 26-31, 35-40.
  */
 function maskJvmArgDiff(s) {
   if (s == null) return s;
@@ -208,13 +221,24 @@ function maskJvmArgDiff(s) {
     son = kes[0];
     govde = govde.slice(0, kes.index);
   }
+  let devam = false;
   const ogeler = govde.split('; ').map((oge) => {
     const m = DIFF_OGE.exec(oge);
-    if (!m || m[1].startsWith('-X')) return maskText(oge);
-    const anahtar = m[1];
-    const ad = anahtar.startsWith('-D') ? anahtar.slice(2) : anahtar;
-    if (degerAcik(ad)) return oge;
-    return `${anahtar} running=*** configured=*** (farkli)`;
+    if (m) {
+      const anahtar = m[1];
+      devam = false;
+      if (anahtar.startsWith('-X')) return maskText(oge);
+      if (degerAcik(dAdi(anahtar))) return oge;
+      devam = true;
+      return `${anahtar} running=*** configured=*** (farkli)`;
+    }
+    if (devam) return '***';
+    const bosluk = oge.indexOf(' ');
+    if (bosluk < 0) return maskText(oge);
+    const ilk = oge.slice(0, bosluk);
+    if (degerAcik(dAdi(ilk))) return maskText(oge);
+    devam = true;
+    return `${maskText(ilk)} ***`;
   });
   return onek + ogeler.join('; ') + son;
 }

@@ -1,6 +1,7 @@
 // server/server-hub/__tests__/mask-unicode-diff.test.cjs - maskenin Unicode (T2-M1) ve jvm_arg_diff
-// (T2-M2) kurallari. Ortak vakalar (20-33) mask_cases.json'da ve D1-C26'da; burasi her anahtar kelime
-// konumunu (KEY_ERE, R4, R8a, R8b) ve jvm_arg_diff'in sinir durumlarini ayrica kilitler.
+// (T2-M2, #5 bicimsiz oge + devam) kurallari. Ortak vakalar (20-40) mask_cases.json'da ve D1-C26'da;
+// burasi her anahtar kelime konumunu (KEY_ERE, R4, R8a, R8b) ve jvm_arg_diff'in sinir durumlarini
+// ayrica kilitler.
 // Ucuncu katman loader (server_hub_loader.py) ve tarayici awk (server_hub_scan.sh --mask) ile bire bir;
 // uc katman diferansiyeli Ansible deposundaki harness'lerde (L24, sc_K).
 // Dosya ASCII kalir (lint:ascii): Unicode harfler String.fromCharCode ile.
@@ -78,8 +79,8 @@ test('T2-M2 jvm_arg_diff sinir durumlari (loader maske_jvm_diff ve tarayici jd()
   // acgozlu: SON ' configured=' ayirir; deger satir sonu tasisa da ('s') oge bicimine uyar
   assert.equal(d('k running=a configured=b configured=c'), 'k running=*** configured=*** (farkli)');
   assert.equal(d('k running=a\nb configured=c'), 'k running=*** configured=*** (farkli)');
-  // ' configured=' yoksa oge bicimsizdir: serbest maske
-  assert.equal(d('k running=password=p1'), 'k running=password=***');
+  // ' configured=' yoksa oge bicimsizdir: ilk belirtec ('k') liste disi -> ilk bosluktan sonrasi '***'
+  assert.equal(d('k running=password=p1'), 'k ***');
   // -X ogesi serbest maskeden gecer (normal -X degeri degismez)
   assert.equal(d('-Xmx running=2048m configured=4096m'), '-Xmx running=2048m configured=4096m');
   // kesme isareti yalniz SONDA korunur; ortadaki ' ...+N' oge metnidir
@@ -90,4 +91,41 @@ test('T2-M2 jvm_arg_diff sinir durumlari (loader maske_jvm_diff ve tarayici jd()
   // zaten maskeli deger ayni kalir (loader mask_hits saymaz)
   const m = '-Dfoo running=*** configured=*** (farkli)';
   assert.equal(d(m), m);
+});
+
+test('#5 jvm_arg_diff bicimsiz oge: ilk belirtec karari + devam (loader ve tarayici jd() ile ayni)', () => {
+  const d = mask.maskJvmArgDiff;
+  // degerdeki '; ' sir anahtarli ogeyi boler: hicbir parca acik kalmaz (ortak vaka 35, 36)
+  const sizinti = '-Ddb.password running=Gizli1; Parola2 configured=Yeni3; Parola4';
+  const cikti = d(sizinti);
+  assert.equal(cikti, '-Ddb.password ***; ***; ***');
+  for (const sir of ['Gizli1', 'Parola2', 'Yeni3', 'Parola4']) assert.ok(!cikti.includes(sir), sir);
+  // 'partial; ' oneki ve ' ...+N' kesme isareti bicimsiz ogede de korunur
+  assert.equal(
+    d('partial; -Ddb.password running=a; b configured=c ...+2'),
+    'partial; -Ddb.password ***; *** ...+2',
+  );
+  // cift bosluk yapisal bicimi bozar (ortak vaka 37); beyaz listedeki ilk belirtec serbest maskeden gecer
+  assert.equal(d('-Dfoo  running=abc configured=def'), '-Dfoo ***');
+  assert.equal(
+    d('-Djboss.node.name  running=password=x configured=y'),
+    '-Djboss.node.name  running=password=*** configured=y',
+  );
+  // -D'siz anahtar da ayni karar; ilk belirtecin kendisi serbest maskeden gecer
+  assert.equal(d('jboss.node.name running=n1'), 'jboss.node.name running=n1');
+  assert.equal(d('-Ddb.password=Pw1 x'), '-Ddb.password=*** ***');
+  assert.equal(d('http://u:Pw2@h x'), 'http://u:***@h ***');
+  // ilk belirteci bos (bosluk ile baslayan) oge: '' liste disi
+  assert.equal(d(' running=a'), ' ***');
+  // boslugu olmayan bicimsiz oge yalniz serbest maske; devam BASLATMAZ
+  assert.equal(d('token=t3; x y'), 'token=***; x ***');
+  assert.equal(d('a; b'), 'a; b');
+  // devam yalniz yapisal ogede biter (-X yapisal ogesi de bitirir); bos parca devamda '***'
+  assert.equal(
+    d('-Dapp.secret running=s1 configured=s2; ; -Xmx running=1g configured=2g; z'),
+    '-Dapp.secret running=*** configured=*** (farkli); ***; -Xmx running=1g configured=2g; z',
+  );
+  // idempotans: maskeli cikti yeniden maskelenince degismez
+  for (const g of [sizinti, '-Dfoo  running=abc configured=def', 'token=t3; x y', ' running=a'])
+    assert.equal(d(d(g)), d(g), g);
 });
