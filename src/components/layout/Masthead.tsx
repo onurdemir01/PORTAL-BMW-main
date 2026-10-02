@@ -16,6 +16,7 @@ import {
   SunIcon,
   MoonIcon,
   ArrowRightOnRectangleIcon,
+  ShieldCheckIcon,
   ChevronDownIcon,
   UserCircleIcon,
 } from "@heroicons/react/24/outline";
@@ -24,6 +25,8 @@ import { useTheme } from "@/contexts/ThemeContext";
 import { prefsApi } from "@/api/prefsApi";
 import { CSV_SEPARATOR_PREF, csvSeparator, type CsvSeparator } from "@/utils/csv";
 import { PortalLogo } from "@/components/common/PortalLogo";
+import { Modal } from "@/components/common/Modal";
+import OturumListesi from "@/components/oturum/OturumListesi";
 
 interface Props {
   onToggleNav: () => void;
@@ -33,6 +36,7 @@ export default function Masthead({ onToggleNav }: Props) {
   const { user, logout } = useContext(AuthContext);
   const { theme, toggleTheme } = useTheme();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [oturumlarAcik, setOturumlarAcik] = useState(false);
   // Sunucudaki tercih acilista ASENKRON dolar. Ilk deger onbellekten okunur
   // (dolmussa dogru, dolmamissa varsayilan) ve asagidaki effect dolduktan
   // sonra tazeler — yoksa menu her zaman varsayilani gosterirdi.
@@ -183,6 +187,13 @@ export default function Masthead({ onToggleNav }: Props) {
                 </label>
               </div>
               <button
+                onClick={() => { setMenuOpen(false); setOturumlarAcik(true); }}
+                className="flex w-full items-center gap-2 px-4 py-2 text-left text-[0.875rem] hover:bg-[var(--bg-elevated)]"
+                style={{ color: "var(--text-primary)", borderTop: "1px solid var(--border)" }}
+              >
+                <ShieldCheckIcon className="h-4 w-4" /> Aktif oturumlarım
+              </button>
+              <button
                 onClick={() => { setMenuOpen(false); logout(); }}
                 className="flex w-full items-center gap-2 px-4 py-2 text-left text-[0.875rem] hover:bg-[var(--bg-elevated)]"
                 style={{ color: "var(--text-primary)" }}
@@ -193,6 +204,15 @@ export default function Masthead({ onToggleNav }: Props) {
           )}
         </div>
       </div>
+      <Modal
+        open={oturumlarAcik}
+        onClose={() => setOturumlarAcik(false)}
+        title="Aktif oturumlarım"
+        icon={ShieldCheckIcon}
+        size="xl"
+      >
+        {oturumlarAcik && <OturumListesi />}
+      </Modal>
     </header>
   );
 }

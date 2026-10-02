@@ -8,6 +8,16 @@ const roleStore = require('./role-store.cjs');
 const { clearCache } = require('./ldap.cjs');
 const sessionPolicy = require('./session-policy.cjs');
 
+// Faz D: rol nedeniyle kapanan oturumlar denetime sebebiyle yazilir.
+function oturumIptaliDenetimi(req, target, count, sebep) {
+  if (!count) return;
+  try {
+    require("../audit/index.cjs").auditPortal(req, "session_revoked", {
+      detail: `by=role reason=${sebep} target=${target} count=${count}`,
+    });
+  } catch { /* denetim yoksa yoksay */ }
+}
+
 function initRolesRoutes(app, { requireAdmin }) {
   const router = express.Router();
   router.use(express.json());
@@ -56,6 +66,7 @@ function initRolesRoutes(app, { requireAdmin }) {
     // Aktif oturumlar sonlandirilir; yeniden giriste yeni rol gecerli olur.
     sessionPolicy.rolKaydiniSil(target);
     const revoked = await store.revokeSessionsForUser(target).catch(() => 0);
+    oturumIptaliDenetimi(req, target, revoked, "role_downgrade");
     res.json({ ok: true, username: target, role, sessionsRevoked: revoked });
   });
 
@@ -68,6 +79,7 @@ function initRolesRoutes(app, { requireAdmin }) {
     sessionPolicy.rolKaydiniSil(target);
     const { revokeSessionsForUser } = require("./mssql-session-store.cjs");
     const revoked = await revokeSessionsForUser(target).catch(() => 0);
+    oturumIptaliDenetimi(req, target, revoked, "role_removed");
     res.json({ ok: true, username: target, removed: true, sessionsRevoked: revoked });
   });
 

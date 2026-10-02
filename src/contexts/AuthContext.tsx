@@ -24,6 +24,9 @@ interface AuthContextType {
   dismissTimeoutModal: () => void;
   /** false: sinir mutlak sure — uzatilamaz, yalnizca yeniden giris. */
   timeoutExtendable: boolean;
+  /** Giristen sonra BIR KEZ gosterilecek not (or. esanli oturum siniri eski oturumu kapatti). */
+  girisNotu: string | null;
+  girisNotunuTemizle: () => void;
   // Sayfa görünürlüğü: tek yerden fetch edilip hem Sidebar (nav gizleme) hem
   // route guard'ları (gerçek erişim engeli) tarafından paylaşılır — bkz.
   // src/routes/PageVisibilityRoute.tsx. "Admin" sayfası bilinçli olarak bu
@@ -90,6 +93,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // degisince (baska sekme uzatti) eski uyari kendiliginden kapanir.
   const [uyariBitis, setUyariBitis] = useState<number | null>(null);
   const [countdown, setCountdown] = useState(0);
+  const [girisNotu, setGirisNotu] = useState<string | null>(null);
+  const girisNotunuTemizle = useCallback(() => setGirisNotu(null), []);
   // Oturum sunucuda bitti ama uygulama SOKULMEDI: ustte yeniden giris katmani acik.
   // Eskiden `setUser(null)` ile tum uygulama sokuluyor, acik form/sihirbaz kayboluyordu.
   const [oturumDustu, setOturumDustu] = useState<{ sebep: OturumBitisSebebi } | null>(null);
@@ -329,6 +334,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = async (username: string, password: string, remember = false): Promise<void> => {
     const data = await girisIstegi(username, password, remember);
+    if (Number(data.closedOthers) > 0) {
+      setGirisNotu(
+        `Eşzamanlı oturum sınırı nedeniyle en eski ${data.closedOthers} oturumunuz kapatıldı. ` +
+          "Tanımadığınız bir giriş olduysa şifrenizi değiştirin.",
+      );
+    }
     setOturumDustu(null);
     setUser(kullaniciCikar(data));
     saat.ozetUygula(data.session);
@@ -430,7 +441,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     <AuthContext.Provider
       value={{
         user, isAuthenticated: !!user, login, logout, showTimeoutModal, countdown, extendSession,
-        dismissTimeoutModal, timeoutExtendable,
+        dismissTimeoutModal, timeoutExtendable, girisNotu, girisNotunuTemizle,
         pageVisibility, pageVisibilityLoaded, canViewPage, canSee, visibilityReady, visibilityFailed, refreshVisibility,
       }}
     >

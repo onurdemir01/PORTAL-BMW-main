@@ -178,6 +178,16 @@ function rolYukseltmesiUygula(sess, now = saat()) {
 // 401 doner, sebep basligi zaten yanitta durur.
 function oturumuBitir(req, res, sebep, next) {
   res.setHeader(BASLIK_SEBEP, sebep);
+  // Denetim (Faz D): "sik atiliyoruz" sikayeti sebebe gore olculebilsin (idle/absolute).
+  try {
+    const m = req.session.meta || {};
+    require('../audit/index.cjs').auditPortal(req, 'session_expired', {
+      username: req.session.user && req.session.user.username,
+      detail: `reason=${sebep} id=${m.id || '-'} ageMin=${Math.round((saat() - (m.createdAt || saat())) / 60000)}`,
+    });
+  } catch {
+    /* denetim yoksa yoksay */
+  }
   req.oturumBitti = sebep;
   req.session.regenerate((err) => {
     if (err) console.warn('[Oturum] suresi dolan oturum silinemedi:', err.message);
