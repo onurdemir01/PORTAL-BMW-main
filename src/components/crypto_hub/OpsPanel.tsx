@@ -25,6 +25,7 @@ import {
   XCircleIcon,
   ClipboardDocumentIcon,
   CheckIcon,
+  CpuChipIcon,
 } from '@heroicons/react/24/outline';
 import { Modal } from '@/components/common/Modal';
 import { TableEmptyRow } from '@/components/common/EmptyState';
@@ -33,8 +34,10 @@ import {
   type CryptoOpsAction,
   type CryptoOpsResult,
   type CryptoPod,
+  type CryptoTenant,
 } from '@/api/cryptoHubApi';
 import { toast } from '@/hooks/useToast';
+import { ResourcesModal } from './ResourcesModal';
 
 const SM_BTN =
   'inline-flex items-center gap-1 h-7 px-2.5 text-[11px] font-medium leading-none rounded-lg border whitespace-nowrap disabled:opacity-40';
@@ -131,6 +134,13 @@ cat ${req.valuesPath}                    # uygulanacak dosya`;
       return req.targets.map((t) => `oc rollout restart ${t} ${ns}`).join('\n');
     case 'scale':
       return req.targets.map((t) => `oc scale ${t} ${ns} --replicas=${req.replicas}`).join('\n');
+    // CPU / bellek: dosya yolu ve release KATALOGDAN; ekran yalniz neyin kosacagini anlatir.
+    case 'resources_get':
+      return `oc get deploy,sts,limitrange,resourcequota ${ns} -o json\n# values dosyasından YALNIZ resources satırları okunur`;
+    case 'resources_plan':
+      return `# geçici kopyada düzenle + helm template (dosyaya ve kümeye YAZMAZ)`;
+    case 'resources_apply':
+      return `flock + yedek + atomik yazım + helm upgrade --atomic (aynı chart sürümü) ${ns}`;
     default:
       return '';
   }
@@ -153,6 +163,10 @@ const WRITES: Record<CryptoOpsAction, boolean> = {
   rollout: true,
   scale: true,
   values_put: true,
+  // Sunucudaki OPS haritasiyla AYNI (B1): plan salt okunur, apply yazar.
+  resources_get: false,
+  resources_plan: false,
+  resources_apply: true,
 };
 
 /** AWX işini başlatır ve bitene kadar yoklar. Sonuç ile hata AYRI döner. */
@@ -186,7 +200,14 @@ export function useOps(tenantKey: string) {
         // helm upgrade --atomic 10 dakikaya kadar bekleyebilir; 5 dakikalik ust sinir
         // ekranin "hala suruyor" deyip birakmasina yol acardi - is biterken kullanici
         // sonucu GORMEZ, route olcumu de kaybolurdu.
-        const bitis = Date.now() + (req.action === 'helm_upgrade' ? 16 : 5) * 60 * 1000;
+        // resources_apply: playbook async alt siniri 2400 sn + AWX kuyrugu -> 45 dk.
+        const dakika =
+          req.action === 'resources_apply'
+            ? 45
+            : req.action === 'helm_upgrade' || req.action === 'resources_plan'
+              ? 16
+              : 5;
+        const bitis = Date.now() + dakika * 60 * 1000;
         for (;;) {
           const r = await cryptoOpsApi.result(serverId, jobId, req.reveal === true);
           if (!r.ok) {
@@ -789,6 +810,7 @@ export function ComponentOps({
   name,
   want,
   onDone,
+  tenant,
 }: {
   tenantKey: string;
   tenantLabel: string;
@@ -797,10 +819,13 @@ export function ComponentOps({
   name: string;
   want: number | null;
   onDone: () => void;
+  /** CPU/bellek penceresi icin katalog kaydi (yoksa "Kaynak" dugmesi gosterilmez) */
+  tenant?: CryptoTenant;
 }) {
   const { run, busy } = useOps(tenantKey);
   const [onay, setOnay] = useState<OpsRequest | null>(null);
   const [replika, setReplika] = useState(false);
+  const [kaynak, setKaynak] = useState(false);
   const [sayi, setSayi] = useState(String(want ?? 1));
   const hedef = `${String(kind).toLowerCase().startsWith('stateful') ? 'statefulset' : 'deployment'}/${name}`;
 
@@ -842,6 +867,30 @@ export function ComponentOps({
       >
         <AdjustmentsHorizontalIcon className="h-3.5 w-3.5" /> Replika
       </button>
+      {tenant && (
+        <button
+          type="button"
+          className={SM_BTN}
+          style={btn()}
+          disabled={!!busy}
+          title="CPU / bellek: canlı ve dosya değerleri; önizle → onayla → uygula (Helm'e kalıcı)"
+          onClick={() => setKaynak(true)}
+        >
+          <CpuChipIcon className="h-3.5 w-3.5" /> Kaynak
+        </button>
+      )}
+      {kaynak && tenant && (
+        <ResourcesModal
+          tenant={tenant}
+          tenantLabel={tenantLabel}
+          kind={kind}
+          name={name}
+          onClose={() => {
+            setKaynak(false);
+            onDone();
+          }}
+        />
+      )}
 
       {replika && (
         <Modal
@@ -878,6 +927,10 @@ export function ComponentOps({
           <div className="space-y-2">
             <div className="text-sm" style={{ color: 'var(--text-secondary)' }}>
               Şu anki istenen replika: <b>{want ?? '—'}</b>
+            </div>
+            <div className="text-[11px]" style={{ color: 'var(--status-warning)' }}>
+              Elle ölçekleme helm’in bildiği replikadan ayrışır: CPU/bellek önizlemesinin replika
+              kapısı bu farkı görünce durur (bir sonraki helm upgrade replikayı geri alabilir).
             </div>
             <input
               value={sayi}

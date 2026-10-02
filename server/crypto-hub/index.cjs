@@ -26,8 +26,13 @@ const {
 const CLOSED_MSG = "Production ortamları Crypto Hub'da şimdilik kapalı.";
 
 const { ACTIONS, actionOf, buildPlan } = require('../../shared/cryptoHubActions.cjs');
+const KR = require('../../shared/cryptoHubResources.cjs');
+const RES = require('./resources.cjs');
 
 const OPS_KEY = 'crypto_hub_ops';
+
+/** Istegi yapan kullanici (oturum ya da guvenilir baslik). */
+const kullanici = (req) => req.session?.user || req.user || {};
 
 // Hangi islem OKUR, hangisi YAZAR. Bu ayrim tek yerde durur: ekran da, sunucu kapisi da
 // buradan okur (ikinci bir liste tutmak, bir gun yazan bir islemi "okur" sanmaya yol acardi).
@@ -66,6 +71,12 @@ const OPS = {
   // values_put dosyayi degistirir (yedegini alarak); tek basina kumeye dokunmaz ama
   // ardindan gelen upgrade onu kullanir - bu yuzden YAZAN sayilir ve onay ister.
   values_put: { writes: true },
+  // CPU / BELLEK (2026-10-02). get ve plan SALT OKUNUR: plan dosyanin GECICI kopyasinda
+  // manifest uretir, dosyaya da kumeye de yazmaz. apply dosyaya yazar + helm upgrade.
+  // Bu liste playbook'taki ch_islemler ve betikteki case listesiyle AYNI olmali (B1).
+  resources_get: { writes: false },
+  resources_plan: { writes: false },
+  resources_apply: { writes: true },
 };
 
 // SIR MASKELEME. values.yaml icinde veritabani parolasi, token, keystore sifresi bulunur.
@@ -126,7 +137,14 @@ function normalizeOps(body) {
   // tehlikeli hatadir (tum namespace'i sondurmek).
   // values_put ve helm_upgrade'de "hedef" bir k8s nesnesi DEGIL: biri DOSYA YOLU, oteki
   // HELM RELEASE'idir; ikisi de asagida ayrica dogrulanir.
-  const hedefsiz = ['values_put', 'helm_upgrade', 'values_restore', 'configmap_put'];
+  const hedefsiz = [
+    'values_put',
+    'helm_upgrade',
+    'values_restore',
+    'configmap_put',
+    // Hedef plan jetonundan gelir (bilesen + kap), k8s hedef listesinden degil.
+    'resources_apply',
+  ];
   if (writes && !hedefsiz.includes(action) && targets.length === 0)
     throw new Error('Hedef seçilmedi.');
   if (action === 'logs' && targets.length === 0)
@@ -269,6 +287,54 @@ function normalizeOps(body) {
     }
     out.content = icerik;
   }
+  // CPU / BELLEK ONIZLEME. Values ICERIGI ve DOSYA YOLU istemciden ALINMAZ: yalniz
+  // {bilesen yolu, kap, is yuku, alan, eski, yeni}. Yol ve release katalogdan cozulur.
+  if (action === 'resources_plan') {
+    out.component = String(body?.component || '').trim();
+    if (!KR.BILESEN_RE.test(out.component)) throw new Error('Geçersiz bileşen yolu.');
+    out.container = String(body?.container || '').trim();
+    if (!KR.KAP_RE.test(out.container)) throw new Error('Geçersiz kap adı.');
+    out.workloadKind = String(body?.kind || '').trim();
+    if (!/^(Deployment|StatefulSet)$/.test(out.workloadKind)) {
+      throw new Error('İş yükü türü Deployment ya da StatefulSet olmalı.');
+    }
+    out.workloadName = String(body?.name || '').trim();
+    if (!TARGET_RE.test(out.workloadName) || out.workloadName.includes('/')) {
+      throw new Error(`Geçersiz iş yükü adı: ${out.workloadName}`);
+    }
+    try {
+      out.changes = KR.degisiklikleriCoz(body?.changes);
+    } catch (e) {
+      throw Object.assign(new Error(e.message), { kod: e.kod });
+    }
+    out.policyOverride = body?.policyOverride === true;
+    out.reason = String(body?.reason || '')
+      .trim()
+      .slice(0, 1000);
+    // Istemcinin gordugu canli degerler yalniz ON ELEME icindir (sunucu kendi olcumunu
+    // tercih eder). Bicimi bozuk deger "olculemedi" sayilir.
+    const canli = body && body.live && typeof body.live === 'object' ? body.live : null;
+    // null = spec'te YOK; bicimi bozuk bir deger varsa TUMU olculemedi sayilir ("yok" DEGIL).
+    out.live = null;
+    if (canli) {
+      const l = {};
+      let bozuk = false;
+      for (const a of KR.ALANLAR) {
+        const v = canli[a];
+        if (v == null) l[a] = null;
+        else if (KR.miktarYaDaNull(v, KR.turOf(a))) l[a] = String(v).slice(0, 32);
+        else bozuk = true;
+      }
+      out.live = bozuk ? null : l;
+    }
+  }
+  if (action === 'resources_apply') {
+    out.planToken = String(body?.planToken || '').trim();
+    if (!/^[0-9a-f]{64}$/.test(out.planToken)) throw new Error('Plan jetonu yok ya da geçersiz.');
+    out.riskyAck = body?.riskyAck === true;
+    out.acceptPending = body?.acceptPending === true;
+  }
+
   if (action === 'scale') {
     const r = Number(body?.replicas);
     if (!Number.isFinite(r) || r < 0 || r > 50 || Math.trunc(r) !== r) {
@@ -277,6 +343,63 @@ function normalizeOps(body) {
     out.replicas = r;
   }
   return out;
+}
+
+/**
+ * resources_plan / resources_apply icin AWX extra_vars. Sozlesme: crypto_hub README
+ * "extra_vars" tablosu; playbook bunlari RES_* ortam degiskenlerine gecirir (B2).
+ *
+ * HICBIRI dosya icerigi ya da sir tasimaz: degisiklik ozeti <= 2048 karakter (B3).
+ * Dosya yolu, release ve chart BURADA YOK - playbook katalogdan cozer.
+ * @param {'resources_plan'|'resources_apply'} action
+ * @param {{bilesen:string, kap:string, degisiklikler:Array<object>, kosan:string, asim?:boolean,
+ *          awxSha?:string, awxJeton?:string, riskyAck?:boolean, acceptPending?:boolean}} g
+ */
+function kaynakExtraVars(action, g) {
+  const ev = {
+    crypto_hub_res_component: g.bilesen,
+    crypto_hub_res_container: g.kap,
+    crypto_hub_res_changes_b64: KR.degisiklikB64(g.degisiklikler),
+    crypto_hub_expect_version: g.kosan,
+  };
+  // Asim plan VE uygulamada AYNI verilmeli (betik iki yerde de denetler). Gerekce AWX'e
+  // GITMEZ: Portal denetim kaydinda kalir.
+  if (g.asim) ev.crypto_hub_res_policy_override = true;
+  if (action === 'resources_plan') {
+    ev.crypto_hub_timeout = 900;
+  } else if (action === 'resources_apply') {
+    ev.crypto_hub_res_plan_sha = g.awxSha;
+    ev.crypto_hub_res_plan_token = g.awxJeton;
+    if (g.acceptPending) ev.crypto_hub_res_accept_pending = true;
+    if (g.riskyAck) ev.crypto_hub_res_risky_ack = true;
+    ev.crypto_hub_res_observe_sec = 180;
+    ev.crypto_hub_helm_timeout = '10m';
+    // Playbook'un async alt siniri 2400 sn; Portal'in yoklama penceresi bundan genis.
+    ev.crypto_hub_timeout = 2400;
+  } else {
+    throw new Error(`kaynakExtraVars: beklenmeyen islem ${action}`);
+  }
+  return ev;
+}
+
+/**
+ * ansible_job_history.params icin (K-3): once Crypto Hub icerik ozeti (dosya / patch icerigi
+ * yerine sha256 + boyut, uzun her deger ozet), sonra runner'in survey redaksiyonu (Admin'in
+ * gizli isaretledigi ya da AWX'te parola tipli alanlar). Redaksiyon okunamazsa ozet yine
+ * icerik tasimaz.
+ */
+async function gecmisIcin(serverId, templateId, extraVars) {
+  const ozet = RES.gecmisParametreleri(extraVars);
+  try {
+    const runner = require('../ansible/runner.cjs');
+    if (typeof runner.redactExtraVarsForHistory !== 'function') return ozet;
+    const ov = await require('../ansible/ss-customizations.cjs')
+      .readCustom(serverId, templateId)
+      .catch(() => ({}));
+    return runner.redactExtraVarsForHistory(ozet, [], ov || {});
+  } catch {
+    return ozet;
+  }
 }
 
 /** Betigin TAB ayrilmis satirlarini ekranin anlayacagi bicime cevirir. */
@@ -591,9 +714,105 @@ async function loadTenant(tenant) {
   };
 }
 
+const TERMINAL = ['successful', 'failed', 'error', 'canceled'];
+
+/**
+ * resources_apply isi TERMINAL: kilidi birakir ve - kilidi GERCEKTEN bu cagri biraktiysa -
+ * SONUC denetim kaydini yazar (tasarim 7: "hem baslatmada hem sonucta").
+ *
+ * ONCEKI ACIK (dogrulayici bulgusu): sonuc kaydi yalniz ekranin /ops-result yoklamasinda,
+ * bellekteki bir isaretle yaziliyordu. Pencere kapanirsa, is /job-status ile izlenirse ya da
+ * kilit bir sonraki uygulamada devralinirsa 'geri_alinamadi' gibi sonuclar HIC kaydedilmiyordu;
+ * yazildiginda da yoklayana atfediliyordu.
+ *
+ * SIMDI: tek kez yazma isareti DB'deki kilit birakma compare-and-set'idir (kilitBirakIs true):
+ * yol (ekran / job-status / devralma / arka plan taramasi), Portal ornegi ya da yeniden
+ * baslatma fark etmez. Kayit IS SAHIBI adina yazilir; yoklayan ayri alandir.
+ * @param {object|null} req  yoklayan istek (arka plan taramasinda null)
+ * @param {string} yol       'ops-result' | 'job-status' | 'devralma' | 'tarama'
+ */
+async function uygulamaSonucunuKapat(req, serverId, jobId, statusInfo, yol) {
+  const db = require('../db/index.cjs');
+  const birakti = await RES.kilitBirakIs(db, serverId, jobId, statusInfo && statusInfo.status);
+  if (!birakti) return false;
+  let r = null;
+  try {
+    const { extractStatsKey } = require('../opsx/index.cjs');
+    const stats = extractStatsKey(statusInfo && statusInfo.artifacts, 'crypto_hub_ops_result');
+    r = RES.parseResourceLines(stats && stats.lines);
+  } catch {
+    r = null;
+  }
+  let kayit = null;
+  try {
+    kayit = await RES.isKaydiBul(db, serverId, jobId);
+  } catch {
+    kayit = null;
+  }
+  const sahip = kayit && !kayit.yabanci ? kayit.username || '' : '';
+  const yoklayan = req ? kullanici(req).username || '' : '';
+  try {
+    require('../audit/index.cjs').auditPortal(req, 'crypto_hub_resources_apply', {
+      username: sahip || undefined,
+      result: r && r.end && r.end.sonuc === 'uygulandi' ? 'ok' : 'fail',
+      detail: JSON.stringify({
+        asama: 'sonuc',
+        tenant: (kayit && kayit.tenantKey) || '',
+        jobId,
+        awx: statusInfo && statusInfo.status,
+        // Sonuc satiri yoksa "olculemedi" - "uygulandi" ya da "dur" UYDURULMAZ.
+        sonuc: r && r.end ? r.end.sonuc : 'olculemedi',
+        kod: r && r.end ? r.end.kod : '',
+        adimlar: r ? r.steps.map((s) => `${s.adim}:${s.durum}`) : [],
+        gozlem: r ? r.obs.filter((o) => o.durum !== 'gecti').map((o) => o.kontrol) : [],
+        isSahibi: sahip || 'bilinmiyor',
+        yoklayan: yoklayan || 'sistem',
+        yol,
+      }),
+    });
+  } catch {
+    /* denetim yazilamadi - kilit yine de birakildi */
+  }
+  return true;
+}
+
+/**
+ * Arka plan taramasi: bir ise bagli ve hala tutulan her uygulama kilidi icin AWX durumunu
+ * sorar; is bittiyse sonucu kapatir. Ekran kapali olsa da sonuc kaydi ve kilit birakma
+ * gerceklesir. Birden cok Portal ornegi ayni anda tarasa da kayit TEK kez yazilir (CAS).
+ */
+async function uygulamaSonuclariniTara() {
+  const db = require('../db/index.cjs');
+  const runner = require('../ansible/runner.cjs');
+  let n = 0;
+  for (const k of await RES.tutulanKilitler(db)) {
+    try {
+      const st = await runner.getJobStatusOnServer(k.awx_server_id, k.awx_job_id);
+      if (st && TERMINAL.includes(st.status)) {
+        if (await uygulamaSonucunuKapat(null, Number(k.awx_server_id), Number(k.awx_job_id), st, 'tarama')) n += 1;
+      }
+    } catch {
+      /* bu is icin AWX okunamadi - bir sonraki turda yeniden denenir */
+    }
+  }
+  return n;
+}
+
 function initCryptoHub(app) {
   const { requireAuth } = require('../auth/index.cjs');
   const router = express.Router();
+
+  // Sonuc taramasi (varsayilan 5 dk). CRYPTO_HUB_SONUC_TARAMA_SN=0 kapatir (testler). Zamanlayici
+  // surecin kapanmasini engellemez (unref).
+  const taramaSn = Number(process.env.CRYPTO_HUB_SONUC_TARAMA_SN ?? 300);
+  if (Number.isFinite(taramaSn) && taramaSn > 0) {
+    const zam = setInterval(() => {
+      uygulamaSonuclariniTara().catch((e) =>
+        console.warn('[CryptoHub] uygulama sonuc taramasi yapilamadi:', e.message),
+      );
+    }, taramaSn * 1000);
+    if (typeof zam.unref === 'function') zam.unref();
+  }
   router.use(express.json({ limit: '256kb' }));
   router.use(requireAuth);
 
@@ -638,6 +857,52 @@ function initCryptoHub(app) {
         'Erişim için yöneticinize başvurun (Admin > Crypto Hub Erişimi).',
     });
     return false;
+  }
+
+  // ── IS ERISIM KAPISI (K-4, 2026-10-02) ──────────────────────────────────────────────
+  //
+  // ONCEKI ACIK: /ops-result yalniz prod kapisina bakiyordu (uygulama kapisi yoktu) ve
+  // /job-status HERHANGI bir AWX isinin ciktisini donduruyordu - serverId/jobId kucuk
+  // tamsayilar; deneyerek baska ekibin (ya da baska modulun) is ciktisi okunabilirdi.
+  //
+  // KURAL: is bu Portal'in Crypto Hub kaydinda olmali (bellek ya da ansible_job_history),
+  // isin kiracisinin uygulamasi kullaniciya acik olmali ve is o kullanicinin olmali (Admin
+  // herkesinkini gorur). Kayit yoksa / DB okunamazsa ERISIM YOK (fail-closed).
+  async function isKapisi(req, res, serverId, jobId) {
+    let kayit;
+    try {
+      kayit = await RES.isKaydiBul(require('../db/index.cjs'), serverId, jobId);
+    } catch (e) {
+      console.warn('[CryptoHub] is sahipligi okunamadi - erisim reddedildi:', e.message);
+      res
+        .status(503)
+        .json({ ok: false, message: 'İş sahipliği doğrulanamadı, lütfen tekrar deneyin.' });
+      return null;
+    }
+    const karar = RES.isErisimKarari({
+      kayit,
+      user: kullanici(req),
+      gorunen: await gorunenUygulamalar(req),
+      tenantOf,
+      isOpen,
+    });
+    if (karar.izin) return karar;
+    try {
+      require('../audit/index.cjs').auditPortal(req, 'cryptohub_is_erisim_reddi', {
+        result: 'fail',
+        detail: JSON.stringify({ serverId, jobId, neden: karar.mesaj }),
+      });
+    } catch {
+      /* denetim yazilamadi - kapi yine de kapali */
+    }
+    res
+      .status(karar.status)
+      .json(
+        karar.closed
+          ? { ok: false, closed: true, message: CLOSED_MSG }
+          : { ok: false, message: karar.mesaj },
+      );
+    return null;
   }
 
   // Secim agaci: uygulama -> domain -> ortam. Tarama HIC kosmamis olsa da doner ki
@@ -768,7 +1033,7 @@ function initCryptoHub(app) {
     try {
       params = normalizeOps(req.body);
     } catch (err) {
-      return res.status(400).json({ ok: false, message: err.message });
+      return res.status(400).json({ ok: false, code: err.kod || undefined, message: err.message });
     }
     if (params.writes && req.body?.confirmed !== true) {
       return res.status(428).json({
@@ -778,6 +1043,119 @@ function initCryptoHub(app) {
       });
     }
 
+    // ── CPU / BELLEK KAPILARI (2026-10-02) ─────────────────────────────────────────────
+    // resources_get (okuma) icin AYRI bir kaynak kapisi yok - ama yukaridaki GENEL kapilar
+    // gecerli: production kiracida PRODUCTION_ENABLED kapaliyken (bugun) 403 doner, playbook'un
+    // genel prod kapisi da reddeder. Onizleme ve uygulama: production KAPALI (PRODUCTION_ENABLED
+    // acilsa bile), Metaco KAPALI (chart dizini cozumu yok), values dosyasi katalogda yoksa
+    // KAPALI (yol tahmin edilmez).
+    const ben = kullanici(req);
+    const admin = ben.role === 'Admin';
+    let kaynak = null;
+    if (KR.KAYNAK_YAZAN.includes(params.action)) {
+      const kapi = KR.kaynakYazmaKapisi(tenant);
+      if (!kapi.acik) {
+        return res.status(kapi.status).json({
+          ok: false,
+          code: kapi.kod,
+          closed: kapi.kod === 'PROD_KAPALI' || undefined,
+          message: kapi.mesaj,
+        });
+      }
+    }
+    if (params.action === 'resources_plan') {
+      // YALNIZ KAYITLI YOLA YAZILIR: kayit chart sablonundan kanitli eslemedir; tahmin,
+      // olu ya da kapsam disi yol reddedilir. Kap ve is yuku de kayitla AYNI olmali.
+      const kayit = KR.yolKaydi(tenant.app, params.component);
+      if (!KR.yazilabilirKayit(kayit)) {
+        return res.status(409).json({
+          ok: false,
+          code: 'KAYITSIZ_YOL',
+          message: kayit
+            ? `Bu values yolu yazmaya kapalı (${kayit.durum}): ${kayit.not || kayit.kanit}`
+            : `Bu bileşen yolu kayıtlı değil: ${params.component}. Yalnız kayıtlı yollara yazılır (shared/cryptoHubResources.cjs).`,
+        });
+      }
+      if (
+        kayit.kap !== params.container ||
+        kayit.kind !== params.workloadKind ||
+        `${tenant.helmRelease}-${kayit.is}` !== params.workloadName
+      ) {
+        return res.status(409).json({
+          ok: false,
+          code: 'KAYIT_UYUSMUYOR',
+          message: `Kayıtta ${params.component} → ${kayit.kind}/${tenant.helmRelease}-${kayit.is} kap "${kayit.kap}"; istek başka bir iş yükü/kap gösteriyor.`,
+        });
+      }
+      if (params.policyOverride && !admin) {
+        return res.status(403).json({
+          ok: false,
+          code: 'YETKI',
+          message: 'Sınır aşımı yalnız Admin tarafından, gerekçe yazılarak yapılabilir.',
+        });
+      }
+      // GIRILMEYEN ALAN CANLIDAN: once sunucunun kendi olcumu (resources_get ciktisi),
+      // yoksa istemcinin gordugu deger (yalniz on eleme - kesin karar bastion'da).
+      const snap = RES.canliAl(tenant.key);
+      const canliSunucu = RES.kapCanli(snap, kayit.kind, params.workloadName, kayit.kap);
+      const d = KR.dogrula({
+        degisiklikler: params.changes,
+        canli: canliSunucu || params.live,
+        limitRange: snap ? snap.limitRange : { durum: 'olculemedi' },
+        asim: params.policyOverride,
+        admin,
+        gerekce: params.reason,
+      });
+      if (!d.ok) {
+        return res.status(422).json({
+          ok: false,
+          code: d.hatalar[0].kod,
+          dogrulama: d,
+          message: d.hatalar.map((h) => h.mesaj).join(' '),
+        });
+      }
+      kaynak = {
+        kayit,
+        asim: d.asimKullanildi,
+        dogrulama: d,
+        canliKaynagi: canliSunucu ? 'sunucu' : params.live ? 'istemci' : 'olculemedi',
+      };
+    }
+    if (params.action === 'resources_apply') {
+      const r = RES.planAl(params.planToken, ben.username, tenant.key);
+      if (r.hata) return res.status(409).json({ ok: false, code: r.hata, message: r.mesaj });
+      const plan = r.plan;
+      if (plan.asim && !admin) {
+        return res.status(403).json({
+          ok: false,
+          code: 'YETKI',
+          message: 'Bu plan Admin sınır aşımıyla üretildi; yalnız Admin uygulayabilir.',
+        });
+      }
+      // RISKLI BILESEN: ayri onay kutusu SUNUCUDA da zorunlu (kullanici karari 1).
+      if (plan.riskli && !params.riskyAck) {
+        return res.status(428).json({
+          ok: false,
+          needsRiskyAck: true,
+          code: 'RISKLI_ONAYSIZ',
+          message:
+            'Riskli (durumlu) bileşen: ayrı "riskli bileşen" onay kutusu işaretlenmeden uygulanmaz.',
+        });
+      }
+      if (plan.bekleyen && !params.acceptPending) {
+        return res.status(428).json({
+          ok: false,
+          needsPendingAck: true,
+          code: 'BEKLEYEN_ONAYSIZ',
+          message:
+            'Dosyada canlıya henüz uygulanmamış kaynak farkları var; bunlar da uygulanacak — açık onay gerekli.',
+        });
+      }
+      kaynak = { plan };
+    }
+
+    // Uygulama kilidi (crypto_hub_locks): try icinde alinir, baslatma dusurse burada birakilir.
+    let kilit = null;
     try {
       const reg = require('../ansible/playbook-registry.cjs');
       const row = await reg.getByKey(OPS_KEY).catch(() => null);
@@ -869,6 +1247,55 @@ function initCryptoHub(app) {
         extraVars.crypto_hub_values_path = params.valuesPath;
         extraVars.crypto_hub_values_b64 = Buffer.from(params.content, 'utf8').toString('base64');
       }
+      if (params.action === 'resources_plan' || params.action === 'resources_apply') {
+        // KOSAN SURUM taramadan; betik bastion'da helm list ile ayrica karsilastirir.
+        const veri = await loadTenant(tenant).catch(() => null);
+        const kosan = String((veri && veri.versions && veri.versions.running) || '').trim();
+        if (!kosan) {
+          return res.status(409).json({
+            ok: false,
+            code: 'SURUM_OLCULEMEDI',
+            message:
+              'Koşan sürüm ÖLÇÜLEMEDİ (tarama sürümü okuyamamış). "Aynı sürüm" güvencesi verilemeyeceği için işlem başlatılmadı.',
+          });
+        }
+        if (params.action === 'resources_plan') {
+          Object.assign(
+            extraVars,
+            kaynakExtraVars('resources_plan', {
+              bilesen: params.component,
+              kap: params.container,
+              degisiklikler: params.changes,
+              kosan,
+              asim: kaynak.asim,
+            }),
+          );
+        } else {
+          const plan = kaynak.plan;
+          // Plan ile uygulama arasinda surum degistiyse plan BAYAT: yeniden onizlenmeli.
+          if (kosan !== plan.expectVersion) {
+            return res.status(409).json({
+              ok: false,
+              code: 'SURUM_BAYAT',
+              message: `Koşan sürüm önizlemeden sonra değişti (${plan.expectVersion} → ${kosan}). Önizlemeyi yeniden çalıştırın.`,
+            });
+          }
+          Object.assign(
+            extraVars,
+            kaynakExtraVars('resources_apply', {
+              bilesen: plan.bilesen,
+              kap: plan.kap,
+              degisiklikler: plan.degisiklikler,
+              kosan,
+              asim: plan.asim,
+              awxSha: plan.awxSha,
+              awxJeton: plan.awxJeton,
+              riskyAck: params.riskyAck,
+              acceptPending: params.acceptPending,
+            }),
+          );
+        }
+      }
 
       await require('../ansible/template-preflight.cjs').assertTemplateAcceptsExtraVars(
         serverId,
@@ -876,7 +1303,79 @@ function initCryptoHub(app) {
         extraVars,
         { label: OPS_KEY },
       );
-      const user = req.session?.user || {};
+      const db = require('../db/index.cjs');
+      const user = ben;
+      // ONCEKI UYGULAMANIN ISI BITTIYSE (kimse yoklamadi): sonucu ONCE kapatilir - kilit
+      // birakilir ve sonuc denetime yazilir - sonra devralinir. Suresi dolmus kilit de boyle:
+      // yoksa CAS UPDATE onu sessizce devralip onceki isin sonucunu kaybederdi.
+      const oncekiniKapat = async () => {
+        const row = await RES.kilitOku(db, tenant.key, tenant.helmRelease);
+        if (!row || !row.held || !row.awx_job_id) return row;
+        const st = await require('../ansible/runner.cjs')
+          .getJobStatusOnServer(row.awx_server_id, row.awx_job_id)
+          .catch(() => null);
+        if (st && TERMINAL.includes(st.status)) {
+          await uygulamaSonucunuKapat(req, Number(row.awx_server_id), Number(row.awx_job_id), st, 'devralma');
+          return RES.kilitOku(db, tenant.key, tenant.helmRelease);
+        }
+        return row;
+      };
+      // AYNI DOSYAYA YAZAN ESKI ISLEMLER: CPU/bellek uygulamasi surerken values_put /
+      // values_restore / helm_upgrade baslamaz (bastion'da ayrica ayni <dosya>.lock flock'u).
+      // Kilit okunamazsa baslatilmaz (fail-closed, resources_apply ile ayni kural).
+      if (['values_put', 'values_restore', 'helm_upgrade'].includes(params.action)) {
+        let row;
+        try {
+          row = await oncekiniKapat();
+        } catch (e) {
+          console.warn('[CryptoHub] uygulama kilidi okunamadi:', e.message);
+          return res.status(503).json({
+            ok: false,
+            code: 'KILIT',
+            message: 'Uygulama kilidi okunamadı — işlem başlatılmadı, lütfen tekrar deneyin.',
+          });
+        }
+        if (RES.kilitAktifMi(row)) {
+          return res.status(409).json({
+            ok: false,
+            code: 'KILIT',
+            message: `Bu ortamda bir CPU/bellek uygulaması sürüyor (${row.holder || 'bilinmiyor'}); values dosyasına yazan işlem o bitince yapılabilir.`,
+          });
+        }
+      }
+      if (params.action === 'resources_apply') {
+        // TEK UYGULAMA: ayni kiraci+release'e ikinci bir uygulama baslamaz. Bastion'da ayrica
+        // flock + sha onkosulu var; bu kapi AWX'e hic gitmeden keser.
+        const lockId = require('node:crypto').randomBytes(16).toString('hex');
+        const al = () =>
+          RES.kilitAl(db, {
+            tenantKey: tenant.key,
+            release: tenant.helmRelease,
+            username: user.username || 'unknown',
+            lockId,
+          });
+        let k;
+        try {
+          // Sahibi olan is AWX'te BITMISSE (kimse sonucu yoklamadi) sonucu kapatilip devralinir.
+          await oncekiniKapat();
+          k = await al();
+        } catch (e) {
+          console.warn('[CryptoHub] uygulama kilidi alinamadi:', e.message);
+          return res.status(503).json({
+            ok: false,
+            code: 'KILIT',
+            message: 'Uygulama kilidi alınamadı — işlem başlatılmadı, lütfen tekrar deneyin.',
+          });
+        }
+        if (k.durum !== 'alindi') {
+          return res.status(409).json({
+            ok: false,
+            code: 'KILIT',
+            message: `Bu ortamda başka bir CPU/bellek uygulaması sürüyor (${(k.sahip && k.sahip.holder) || 'bilinmiyor'}). Bitince yeniden önizleyin.`,
+          });
+        }
+        kilit = { key: k.key, lockId };
+      }
       const result = await require('../ansible/runner.cjs').launchJobOnServer(
         serverId,
         templateId,
@@ -884,9 +1383,40 @@ function initCryptoHub(app) {
         '',
         user,
       );
+      // Jeton TEK KULLANIMLIK: is BASLADIYSA ayni plan ikinci kez uygulanamaz. (Baslatma
+      // duserse jeton kalir ve kilit birakilir; ayni anda iki istek kilitte ayrisir.)
+      if (params.action === 'resources_apply') RES.planTuket(params.planToken);
+      // IS SAHIPLIGI: /ops-result ve /job-status yalniz bu kayitla acilir (K-4).
+      RES.isKaydet(serverId, result?.jobId, {
+        username: user.username || 'unknown',
+        tenantKey: tenant.key,
+        action: params.action,
+      });
+      if (kilit && result?.jobId != null) {
+        await RES.kilitIseBagla(db, kilit.key, kilit.lockId, serverId, result.jobId).catch((e) =>
+          console.warn('[CryptoHub] kilit ise baglanamadi:', e.message),
+        );
+      }
+      if (params.action === 'resources_plan' && result?.jobId != null) {
+        RES.planIsiKaydet(serverId, result.jobId, {
+          username: user.username || 'unknown',
+          tenantKey: tenant.key,
+          release: tenant.helmRelease,
+          bilesen: params.component,
+          kap: params.container,
+          kind: params.workloadKind,
+          ad: params.workloadName,
+          degisiklikler: params.changes,
+          expectVersion: extraVars.crypto_hub_expect_version,
+          asim: kaynak.asim,
+          gerekce: kaynak.asim ? params.reason : '',
+        });
+      }
       // DENETIM KAYDI: "kim yapti" servis hesabinin ardinda kaybolmasin (isler uxmid ile kosar).
+      // K-3: params'a dosya/patch ICERIGI GITMEZ - yalniz sha256 + boyut; uzun her deger de
+      // ozetlenir. Ardindan runner'in survey redaksiyonu (gizli / parola alanlari) uygulanir.
       try {
-        await require('../db/index.cjs').query(
+        await db.query(
           `INSERT INTO ansible_job_history (username, awx_server_id, template_id, template_name, job_id, status, params) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
           [
             user.username || 'unknown',
@@ -895,11 +1425,41 @@ function initCryptoHub(app) {
             `Crypto Hub: ${params.action} @ ${tenant.key}`,
             result?.jobId,
             result?.status || 'pending',
-            JSON.stringify(extraVars),
+            JSON.stringify(await gecmisIcin(serverId, templateId, extraVars)),
           ],
         );
       } catch (e) {
         console.warn('[CryptoHub] islem gecmisi yazilamadi:', e.message);
+      }
+      if (params.action === 'resources_plan' || params.action === 'resources_apply') {
+        // Gerekce AWX'e gitmez; denetim kaydinda kalir (kullanici karari 3).
+        try {
+          const olay =
+            params.action === 'resources_plan'
+              ? 'crypto_hub_resources_plan'
+              : 'crypto_hub_resources_apply';
+          require('../audit/index.cjs').auditPortal(req, olay, {
+            detail: JSON.stringify({
+              asama: 'baslatildi',
+              tenant: tenant.key,
+              jobId: result?.jobId ?? null,
+              bilesen: params.component || (kaynak.plan && kaynak.plan.bilesen),
+              kap: params.container || (kaynak.plan && kaynak.plan.kap),
+              degisiklikler: params.changes || (kaynak.plan && kaynak.plan.degisiklikler),
+              asim: params.action === 'resources_plan' ? kaynak.asim : kaynak.plan.asim,
+              gerekce:
+                params.action === 'resources_plan'
+                  ? kaynak.asim
+                    ? params.reason
+                    : undefined
+                  : kaynak.plan.gerekce || undefined,
+              riskliOnay: params.riskyAck || undefined,
+              bekleyenOnay: params.acceptPending || undefined,
+            }),
+          });
+        } catch {
+          /* denetim yazilamadi - is yine de basladi */
+        }
       }
       if (params.writes) _cache = { at: 0, key: '', value: null };
       res.json({
@@ -908,8 +1468,15 @@ function initCryptoHub(app) {
         status: result?.status ?? null,
         awxServerId: serverId,
         action: params.action,
+        dogrulama: kaynak && kaynak.dogrulama ? kaynak.dogrulama : undefined,
+        canliKaynagi: kaynak && kaynak.canliKaynagi ? kaynak.canliKaynagi : undefined,
       });
     } catch (err) {
+      if (kilit) {
+        await RES.kilitBirak(require('../db/index.cjs'), kilit.key, kilit.lockId, 'baslatilamadi').catch(
+          (e) => console.warn('[CryptoHub] kilit birakilamadi:', e.message),
+        );
+      }
       res.status(err.status || 500).json({ ok: false, message: err.message });
     }
   });
@@ -921,10 +1488,20 @@ function initCryptoHub(app) {
     if (!Number.isInteger(serverId) || !Number.isInteger(jobId) || jobId <= 0) {
       return res.status(400).json({ ok: false, message: 'Geçersiz iş numarası.' });
     }
+    // K-4: uygulama kapisi + is sahipligi, AWX'e sorulmadan ONCE (fail-closed).
+    const erisim = await isKapisi(req, res, serverId, jobId);
+    if (!erisim) return;
     try {
       const runner = require('../ansible/runner.cjs');
       const statusInfo = await runner.getJobStatusOnServer(serverId, jobId);
-      const terminal = ['successful', 'failed', 'error', 'canceled'].includes(statusInfo.status);
+      const terminal = TERMINAL.includes(statusInfo.status);
+      // UYGULAMA KILIDI + SONUC KAYDI: is bittiyse - sonucu ne olursa olsun - kilit birakilir
+      // (UPDATE, DELETE yok) ve kilidi birakan cagri sonucu denetime TEK kez yazar.
+      if (terminal && erisim.kayit.action === 'resources_apply') {
+        await uygulamaSonucunuKapat(req, serverId, jobId, statusInfo, 'ops-result').catch((e) =>
+          console.warn('[CryptoHub] uygulama sonucu kapatilamadi:', e.message),
+        );
+      }
       let parsed = null;
       if (terminal) {
         const { extractStatsKey } = require('../opsx/index.cjs');
@@ -939,6 +1516,50 @@ function initCryptoHub(app) {
           if (tenant && !isOpen(tenant))
             return res.status(403).json({ ok: false, closed: true, message: CLOSED_MSG });
           parsed.action = (stats && stats.action) || null;
+          // Cikti, kayittaki kiraciyla/islemle CELISIYORSA sonuc verilmez (kayit esastir).
+          if (
+            (parsed.tenantKey && parsed.tenantKey !== erisim.tenant.key) ||
+            (parsed.action && erisim.kayit.action && parsed.action !== erisim.kayit.action)
+          ) {
+            return res
+              .status(403)
+              .json({ ok: false, message: 'İş çıktısı kayıtlı ortam/işlemle uyuşmuyor.' });
+          }
+          // ONIZLEME (helm_template) MASKELI: Secret data/stringData degerleri ve sir adli
+          // anahtarlar '****'. Bastion da maskeler; AWX'in kosturdugu revizyon bilinmedigi
+          // icin (K-5) Portal ayrica maskeler. Maske DUSERSE ham manifest DONMEZ.
+          if (parsed.template && parsed.template.lines.length) {
+            try {
+              parsed.template.lines = RES.maskeleManifest(parsed.template.lines, SIR_ANAHTARI);
+              parsed.template.masked = true;
+            } catch (e) {
+              console.warn('[CryptoHub] onizleme maskelenemedi - satirlar donmuyor:', e.message);
+              parsed.template.lines = [];
+              parsed.template.maskeHatasi = true;
+            }
+          }
+          // CPU / BELLEK: RES* satirlari (icerik yok; yalniz resources degerleri, yollar, sha).
+          if (KR.KAYNAK_ISLEMLERI.includes(parsed.action)) {
+            const r = RES.parseResourceLines(stats.lines);
+            if (r && parsed.action === 'resources_get') RES.canliKaydet(erisim.tenant.key, r);
+            if (r && parsed.action === 'resources_plan') {
+              // Jeton YALNIZ plani baslatan kullaniciya ve YALNIZ temiz plana verilir; 15 dk
+              // plan URETILDIGINDE baslar (AWX'in bildirdigi bitis), ilk yoklamada degil.
+              const bitti = Date.parse(statusInfo.finished || '');
+              const ps = RES.planSonucu(
+                serverId,
+                jobId,
+                r,
+                kullanici(req).username,
+                Date.now(),
+                Number.isFinite(bitti) ? bitti : null,
+              );
+              r.planJetonu = ps.durum === 'ok' ? ps.token : null;
+              r.planBitis = ps.bitis || null;
+              r.planJetonDurumu = ps.durum;
+            }
+            parsed.resources = r;
+          }
           // VARSAYILAN MASKELI. Ham icerik icin ayri ve denetlenen bir uc var (?reveal=1).
           if (parsed.values && parsed.values.length) {
             parsed.masked = String(req.query.reveal || '') !== '1';
@@ -1075,7 +1696,7 @@ function initCryptoHub(app) {
         extraVars,
         { label: REGISTRY_KEY },
       );
-      const user = req.session?.user || {};
+      const user = kullanici(req);
       const result = await require('../ansible/runner.cjs').launchJobOnServer(
         serverId,
         templateId,
@@ -1083,6 +1704,12 @@ function initCryptoHub(app) {
         '',
         user,
       );
+      // IS SAHIPLIGI: /job-status bu kayitla acilir (K-4).
+      RES.isKaydet(serverId, result?.jobId, {
+        username: user.username || 'unknown',
+        tenantKey: tenant.key,
+        action: 'rescan',
+      });
       try {
         await require('../db/index.cjs').query(
           `INSERT INTO ansible_job_history (username, awx_server_id, template_id, template_name, job_id, status, params) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
@@ -1093,7 +1720,7 @@ function initCryptoHub(app) {
             `Crypto Hub: ${tenant.key}`,
             result?.jobId,
             result?.status || 'pending',
-            JSON.stringify(extraVars),
+            JSON.stringify(await gecmisIcin(serverId, templateId, extraVars)),
           ],
         );
       } catch (e) {
@@ -1113,20 +1740,31 @@ function initCryptoHub(app) {
 
   // Ekran "Taramayi tazele" isini is-takipcisinde izler; bitince onbellek dusurulur ki
   // kullanici F5'siz taze veriyi gorsun.
+  //
+  // K-4 (2026-10-02): bu uc ONCEDEN HERHANGI bir AWX isinin ciktisini donduruyordu.
+  // Artik yalniz bu kullanicinin (Admin: herkesin) ve gorebildigi uygulamanin Crypto Hub isi.
   router.get('/job-status/:serverId/:jobId', async (req, res) => {
     const serverId = Number(req.params.serverId);
     const jobId = Number(req.params.jobId);
     if (!Number.isInteger(serverId) || !Number.isInteger(jobId) || jobId <= 0) {
       return res.status(400).json({ ok: false, message: 'Geçersiz iş numarası.' });
     }
+    const erisim = await isKapisi(req, res, serverId, jobId);
+    if (!erisim) return;
     try {
       const runner = require('../ansible/runner.cjs');
       const [statusInfo, outputInfo] = await Promise.all([
         runner.getJobStatusOnServer(serverId, jobId),
         runner.getJobOutputOnServer(serverId, jobId),
       ]);
-      if (['successful', 'failed', 'error', 'canceled'].includes(statusInfo.status)) {
+      if (TERMINAL.includes(statusInfo.status)) {
         _cache = { at: 0, key: '', value: null };
+        if (erisim.kayit.action === 'resources_apply') {
+          // Ekran kapali, is-takipcisi yokluyor: sonuc kaydi BURADA da yazilir (tek kez).
+          await uygulamaSonucunuKapat(req, serverId, jobId, statusInfo, 'job-status').catch((e) =>
+            console.warn('[CryptoHub] uygulama sonucu kapatilamadi:', e.message),
+          );
+        }
       }
       res.json({ ok: true, status: statusInfo.status, output: outputInfo.output || '' });
     } catch (err) {
@@ -1145,5 +1783,10 @@ module.exports = {
   normalizeOps,
   parseOpsLines,
   maskValues,
+  kaynakExtraVars,
+  gecmisIcin,
+  uygulamaSonucunuKapat,
+  uygulamaSonuclariniTara,
+  SIR_ANAHTARI,
   OPS,
 };

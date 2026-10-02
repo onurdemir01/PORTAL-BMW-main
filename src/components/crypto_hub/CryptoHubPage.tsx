@@ -453,6 +453,7 @@ function DurumTab({
                         name={c.name}
                         want={c.want}
                         onDone={onDone}
+                        tenant={data.tenant}
                       />
                     </td>
                   </tr>

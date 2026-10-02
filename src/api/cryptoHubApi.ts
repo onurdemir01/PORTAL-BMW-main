@@ -42,6 +42,16 @@ export interface CryptoTenant {
   namespace: string;
   helmRelease: string;
   chartRef: string;
+  /** klasik helm deposu chart'ı (Wyden); boş = Metaco yerel dizin chart'ı (upgrade kapalı) */
+  chartName?: string;
+  /** CPU/bellek için values dosyası (katalog). Boş = tanımlı değil: önizleme/uygulama kapalı,
+   *  yol tahmin EDİLMEZ ve istemciden ALINMAZ. */
+  resValuesPath?: string;
+  /** canlı release'in bu dosyadan uygulandığı ölçüldü mü (bugün hepsi false) */
+  resValuesVerified?: boolean;
+  resValuesEvidence?: string;
+  /** aktif-pasif eş kiracılar: aynı düzenleme eş dosyaya YALNIZ yazılır (upgrade yok) */
+  resPeerTenants?: string[];
 }
 
 export interface CryptoComponent {
@@ -204,7 +214,115 @@ export type CryptoOpsAction =
   | 'values_restore'
   | 'configmaps'
   | 'configmap_get'
-  | 'configmap_put';
+  | 'configmap_put'
+  | 'resources_get'
+  | 'resources_plan'
+  | 'resources_apply';
+
+// ── CPU / bellek (2026-10-02) ─────────────────────────────────────────────────────────
+// Sunucu karşılığı: server/crypto-hub/resources.cjs (RES* satırları). Values İÇERİĞİ hiç
+// gelmez: yalnız resources değerleri, yollar, sayılar ve sha256 özetleri.
+export type CryptoResAlan = 'requests.cpu' | 'requests.memory' | 'limits.cpu' | 'limits.memory';
+export interface CryptoResChange {
+  alan: CryptoResAlan;
+  /** dosyadaki değer; '' = dosyada yok (değer chart varsayılanından gelir) */
+  eski: string;
+  /** standart biçim: cpu 1500m / 2, bellek 512Mi / 4Gi */
+  yeni: string;
+}
+export interface CryptoResLive {
+  kind: string;
+  ad: string;
+  kap: string;
+  /** kap | init */
+  tur: string;
+  /** spec'teki ham değer; null = spec'te YOK (LimitRange varsayılanı uygulanır) */
+  'requests.cpu': string | null;
+  'requests.memory': string | null;
+  'limits.cpu': string | null;
+  'limits.memory': string | null;
+}
+export interface CryptoResLimitKural {
+  ad: string;
+  tur: string;
+  ozellik: string;
+  kaynak: string;
+  deger: string;
+}
+export interface CryptoResCheck {
+  kontrol: string;
+  /** gecti | dur | uyari | bilgi | olculemedi — "ölçülemedi" "geçti" DEĞİLDİR */
+  durum: string;
+  mesaj: string;
+}
+export interface CryptoResources {
+  tools: { arac: string; durum: string; surum: string }[];
+  release: { ad: string; surum: string; olculdu: boolean } | null;
+  src: {
+    yol: string;
+    /** okundu | tanimsiz | olculemedi */
+    durum: string;
+    dogrulama: string;
+    sha256: string;
+    bayt: number | null;
+    yazilabilir: string;
+    aciklama: string;
+  } | null;
+  /** RESFILE: deger 'YOK' = dosyada yok · 'OKUNAMADI' / 'GECERSIZ' = ölçülemedi */
+  files: { bilesen: string; alan: string; deger: string; satir: number | null }[];
+  workloads: {
+    kind: string;
+    ad: string;
+    replika: number | null;
+    hazir: number;
+    strateji: string;
+    release: string;
+  }[];
+  live: CryptoResLive[];
+  /** durum: olculdu | yok (ölçüldü, LimitRange yok) | olculemedi */
+  limitRange: { durum: 'olculdu' | 'yok' | 'olculemedi'; kurallar: CryptoResLimitKural[] };
+  quota: {
+    durum: 'olculdu' | 'yok' | 'olculemedi';
+    satirlar: { ad: string; kaynak: string; hard: string; used: string }[];
+  };
+  peers: { kiraci: string; yol: string; durum: string; sha256: string; mesaj: string }[];
+  checks: CryptoResCheck[];
+  edits: { rol: string; bilesen: string; alan: string; eski: string; yeni: string; islem: string }[];
+  diffs: { kind: string; ad: string; kap: string; alan: string; eski: string; yeni: string }[];
+  /** `bekleyen`: iş yükü istenen değişiklik yüzünden değil, dosyadaki canlıya uygulanmamış
+   *  kaynak farkı yüzünden yeniden başlıyor (riskli onay ve kontroller onu da kapsar). */
+  affect: { kind: string; ad: string; strateji: string; replika: string; riskli: boolean; bekleyen?: boolean }[];
+  /** bekleyen farklar: `kaynak_disi` satırlarda DEĞER YOK (gösterilmez) */
+  pending: { tur: string; kind: string; ad: string; yer: string; canli: string; dosya: string }[];
+  drift: { kind: string; ad: string; kap: string; alan: string; canli: string; manifest: string }[];
+  repl: { kind: string; ad: string; canli: string; manifest: string }[];
+  plan: {
+    durum: 'ok' | 'dur';
+    kod: string;
+    dosyaSha: string;
+    yeniSha: string;
+    chartSha: string;
+    bekleyen: string;
+    riskli: boolean;
+    jeton: string;
+  } | null;
+  steps: { adim: string; durum: string; mesaj: string }[];
+  obs: { kontrol: string; durum: string; mesaj: string }[];
+  errors: { asama: string; mesaj: string }[];
+  end: { islem: string; sonuc: string; kod: string } | null;
+  /** Portal plan jetonu: YALNIZ planı başlatan kullanıcıya, YALNIZ temiz plana; 15 dk */
+  planJetonu?: string | null;
+  planBitis?: number | null;
+  planJetonDurumu?: string;
+}
+export interface CryptoResDogrulama {
+  ok: boolean;
+  hatalar: { kod: string; mesaj: string; asilabilir: boolean }[];
+  uyarilar: { kod: string; durum: string; mesaj: string }[];
+  kontroller: { kontrol: string; durum: string }[];
+  asimKullanildi: boolean;
+  politikaIhlali: boolean;
+}
 
 export interface CryptoPod {
   name: string;
@@ -256,7 +374,16 @@ export interface CryptoOpsResult {
   /** helm_template: uygulanınca oluşacak nesneler (özet) ve ham manifest.
    *  `--validate` KULLANILMAZ: önizleme küme erişimine bağlı değildir, dolayısıyla
    *  "kümenin bunu kabul edeceği" GARANTİSİ DEĞİL, "ne üretileceği"nin gösterimidir. */
-  template?: { objects: { kind: string; name: string }[]; lines: string[] };
+  template?: {
+    objects: { kind: string; name: string }[];
+    lines: string[];
+    /** Secret data/stringData ve sır adlı anahtarlar maskeli */
+    masked?: boolean;
+    /** maske uygulanamadı: satırlar GÖNDERİLMEDİ (ham manifest dönmez) */
+    maskeHatasi?: boolean;
+  };
+  /** resources_get / resources_plan / resources_apply çıktısı */
+  resources?: CryptoResources | null;
   /** values_backups: dosyanın `.bak` sürümleri, EN YENİSİ BAŞTA. values_put her yazmadan
    *  önce yedek bıraktığı için geçmiş zaten diskte duruyordu; bu onu görünür kılar. */
   backups?: { path: string; size: number; mtime: string }[];
@@ -302,11 +429,31 @@ export const cryptoOpsApi = {
     /** values_diff / helm_template / helm_upgrade: chart ve koşan sürüm SUNUCUDA çözülür;
      *  gövdeye yazılan chart/sürüm dikkate ALINMAZ (aksi halde "yalnız values değişecek"
      *  diyen bir istek sessizce başka bir sürüm uygulayabilirdi). */
+    /** resources_plan: values bileşen yolu (KAYITLI olmalı), kap, iş yükü ve değişiklik.
+     *  Dosya yolu / release GÖNDERİLMEZ — sunucu katalogdan çözer. */
+    component?: string;
+    kind?: string;
+    name?: string;
+    changes?: CryptoResChange[];
+    /** yalnız Admin + gerekçe: oran/tavan/taban sınırını aşar (K8S kuralı ve LimitRange aşılamaz) */
+    policyOverride?: boolean;
+    reason?: string;
+    /** ekranın gördüğü canlı değerler (yalnız ön eleme; sunucu kendi ölçümünü tercih eder) */
+    live?: Partial<Record<CryptoResAlan, string | null>>;
+    /** resources_apply: yalnız Portal plan jetonu (AWX sha/jeton sunucuda saklı) */
+    planToken?: string;
+    riskyAck?: boolean;
+    acceptPending?: boolean;
   }): Promise<{
     ok: boolean;
     jobId?: number | null;
     awxServerId?: number;
     needsConfirm?: boolean;
+    needsRiskyAck?: boolean;
+    needsPendingAck?: boolean;
+    code?: string;
+    dogrulama?: CryptoResDogrulama;
+    canliKaynagi?: 'sunucu' | 'istemci' | 'olculemedi';
     message?: string;
   }> =>
     fetch(`${BASE}/ops`, {

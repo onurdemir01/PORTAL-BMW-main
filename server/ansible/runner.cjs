@@ -1616,6 +1616,32 @@ function probeClusterApiVersion(cluster, { httpLib = http, httpsLib = https } = 
   });
 }
 
+// Launch gecmisine yazilacak/API yanitinda donulecek extraVars kopyasini redakte eder —
+// gizli (override hidden:true) VEYA AWX tarafinda type==="password" olan her alanin degeri
+// "***gizli***" ile degistirilir. `specFields`/`overrides` yoksa (survey yok/devre disi)
+// hicbir alan bu kritere uymadigindan extraVars oldugu gibi doner.
+// SAF fonksiyon: initAnsibleRunner icinden modul kapsamina tasindi (2026-10-02) ki Crypto
+// Hub da kendi ansible_job_history kaydinda AYNI redaksiyonu uygulasin (K-3).
+function redactExtraVarsForHistory(extraVars, specFields, overrides) {
+  if (!extraVars || Object.keys(extraVars).length === 0) return extraVars;
+  const redacted = {};
+  for (const [key, value] of Object.entries(extraVars)) {
+    const field = (specFields || []).find((f) => f.variable === key);
+    const ov = (overrides?.fieldOverrides || []).find((o) => o.fieldName === key);
+    // Survey Tasarimcisi (customSurveyFields) alanlari AYRI bir dizide yasar (AWX
+    // specFields'ta degil) — password-tipi veya gizli olarak isaretlenmis bir custom
+    // alan da AYNI sekilde redakte edilmeli, aksi halde gecmis kaydinda acikta kalirdi.
+    const customField = (overrides?.customSurveyFields || []).find((f) => f.name === key);
+    const isSensitive =
+      !!ov?.hidden ||
+      field?.type === 'password' ||
+      !!customField?.hidden ||
+      customField?.type === 'password';
+    redacted[key] = isSensitive ? '***gizli***' : value;
+  }
+  return redacted;
+}
+
 function initAnsibleRunner(app) {
   // Tum /api/ansible mutasyonlari (launch, SS item/customization, OCP cluster CRUD)
   // portal_audit_logs'a yazilir — bkz. server/audit/index.cjs (secret'lar redakte edilir).
@@ -2749,29 +2775,8 @@ function initAnsibleRunner(app) {
     return { status, message: err.message || 'AWX isteği başarısız.' };
   }
 
-  // Launch gecmisine yazilacak/API yanitinda donulecek extraVars kopyasini redakte eder —
-  // gizli (override hidden:true) VEYA AWX tarafinda type==="password" olan her alanin degeri
-  // "***gizli***" ile degistirilir. `specFields`/`overrides` yoksa (survey yok/devre disi)
-  // hicbir alan bu kritere uymadigindan extraVars oldugu gibi doner.
-  function redactExtraVarsForHistory(extraVars, specFields, overrides) {
-    if (!extraVars || Object.keys(extraVars).length === 0) return extraVars;
-    const redacted = {};
-    for (const [key, value] of Object.entries(extraVars)) {
-      const field = (specFields || []).find((f) => f.variable === key);
-      const ov = (overrides?.fieldOverrides || []).find((o) => o.fieldName === key);
-      // Survey Tasarimcisi (customSurveyFields) alanlari AYRI bir dizide yasar (AWX
-      // specFields'ta degil) — password-tipi veya gizli olarak isaretlenmis bir custom
-      // alan da AYNI sekilde redakte edilmeli, aksi halde gecmis kaydinda acikta kalirdi.
-      const customField = (overrides?.customSurveyFields || []).find((f) => f.name === key);
-      const isSensitive =
-        !!ov?.hidden ||
-        field?.type === 'password' ||
-        !!customField?.hidden ||
-        customField?.type === 'password';
-      redacted[key] = isSensitive ? '***gizli***' : value;
-    }
-    return redacted;
-  }
+  // redactExtraVarsForHistory: modul kapsaminda (initAnsibleRunner'in ustunde) - Crypto Hub
+  // da ayni redaksiyonu kullansin diye disari acildi (K-3, 2026-10-02).
 
   // AWX'e GERCEKTEN job baslatan tek yer — hem POST /launch-ss'in dogrudan (Smart onayi
   // gerekmeyen) yolundan, hem de server/smart/poller.cjs'in "talep onaylandi" callback'inden
@@ -5058,7 +5063,10 @@ function initAnsibleRunner(app) {
           : `SELECT TOP 100 ${HISTORY_COLUMNS} FROM ansible_job_history WHERE username = $1 AND started_at >= DATEADD(day, -${days}, GETUTCDATE()) ORDER BY started_at DESC`;
       const params = role === 'Admin' ? [] : [username];
       const r = await db.query(sql, params);
-      res.json({ ok: true, history: r.rows });
+      // K-3 (2026-10-02): Crypto Hub'in ESKI satirlarinda values dosyasinin tamami duruyor
+      // olabilir (values_put); cevaba icerik degil sha256 + boyut gider.
+      const { gecmisSatiriniTemizle } = require('../crypto-hub/resources.cjs');
+      res.json({ ok: true, history: (r.rows || []).map(gecmisSatiriniTemizle) });
     } catch (err) {
       res.status(500).json({ ok: false, message: err.message, history: [] });
     }
@@ -5143,4 +5151,6 @@ module.exports = {
   // YESIL kalabiliyordu; davranisin kendisi olculebilsin diye disari acildi
   // (bkz. server/auth/__tests__/user-identity.test.cjs).
   withRequesterVars,
+  // Saf yardimci — gecmis kaydi redaksiyonu; Crypto Hub da ayni kurali uygular (K-3).
+  redactExtraVarsForHistory,
 };

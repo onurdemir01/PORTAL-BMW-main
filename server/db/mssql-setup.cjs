@@ -1624,6 +1624,31 @@ const TABLES = [
         UNIQUE(decl_key)
       )`,
   },
+  {
+    // Crypto Hub CPU/bellek uygulama kilidi (2026-10-02) - compare-and-set, ScaleX
+    // tryLockRestore deseni (bkz. server/crypto-hub/resources.cjs kilitAl). Anahtar
+    // `<kiraci>|<release>` basina TEK satir; satir SILINMEZ, kilit `held = 0` UPDATE'iyle
+    // birakilir (TBMWANS'ta DELETE yok). locked_until: yetim kilit (Portal coktu) bu sure
+    // dolunca devralinir. lock_key disindaki kolonlar NULL olabilir.
+    name: 'crypto_hub_locks',
+    sql: `
+      CREATE TABLE crypto_hub_locks (
+        id             INT IDENTITY(1,1) PRIMARY KEY,
+        lock_key       NVARCHAR(200) NOT NULL,
+        tenant_key     NVARCHAR(64) NULL,
+        release_name   NVARCHAR(128) NULL,
+        held           BIT NULL,
+        holder         NVARCHAR(255) NULL,
+        lock_id        NVARCHAR(64) NULL,
+        awx_server_id  INT NULL,
+        awx_job_id     INT NULL,
+        locked_until   DATETIME2 NULL,
+        last_result    NVARCHAR(64) NULL,
+        created_at     DATETIME2 NULL DEFAULT GETUTCDATE(),
+        updated_at     DATETIME2 NULL DEFAULT GETUTCDATE(),
+        UNIQUE(lock_key)
+      )`,
+  },
 ];
 
 // LogX v2 EAR-klasor-son-eki → ortam etiketi varsayilan seed'i (admin ekranindan duzenlenebilir).

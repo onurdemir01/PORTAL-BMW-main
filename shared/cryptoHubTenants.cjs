@@ -50,6 +50,14 @@
  * @property {string} chartRepo    klasik helm deposu alias'ı (Wyden)
  * @property {string} chartName    alias/chart (Wyden)
  * @property {boolean} chartListing  depo SURUM LISTESI verebiliyor mu (Metaco'da HAYIR)
+ * @property {string} resValuesPath    CPU/bellek (resources_plan/apply) icin values dosyasi.
+ *                                     BOS = katalogda tanimli degil: plan/uygula REDDEDILIR,
+ *                                     yol ASLA tahmin edilmez ve istemciden ALINMAZ.
+ * @property {boolean} resValuesVerified canli release'in bu dosyadan uygulandigi olculdu mu
+ *                                     (hepsi false: her plan 'bekleyen' kontrolu ile olcer)
+ * @property {string} resValuesEvidence  esleme kaniti (runbook satiri) ya da BULUNAMADI / MAKUL
+ * @property {string[]} resPeerTenants  aktif-pasif es kiracilar: ayni duzenleme es dosyaya
+ *                                     YALNIZ yazilir, upgrade YAPILMAZ (kullanici karari 4)
  */
 
 // Metaco chart yolu 2026-09-26'da DEGISMIS gorunuyor: runbook (1.34.0) `helm-flat`,
@@ -104,6 +112,10 @@ const CRYPTO_TENANTS = Object.freeze([
     chartRepo: '',
     chartName: '',
     chartListing: false,
+    resValuesPath: '',
+    resValuesVerified: false,
+    resValuesEvidence: 'BULUNAMADI: Metaco values dizini kosan surume gore degisiyor, katalogda yok',
+    resPeerTenants: [],
   },
   {
     key: 'metaco_das_prod',
@@ -124,6 +136,10 @@ const CRYPTO_TENANTS = Object.freeze([
     chartRepo: '',
     chartName: '',
     chartListing: false,
+    resValuesPath: '',
+    resValuesVerified: false,
+    resValuesEvidence: 'BULUNAMADI: Metaco values dizini kosan surume gore degisiyor, katalogda yok',
+    resPeerTenants: [],
   },
   {
     key: 'metaco_das_prod_ank',
@@ -144,6 +160,10 @@ const CRYPTO_TENANTS = Object.freeze([
     chartRepo: '',
     chartName: '',
     chartListing: false,
+    resValuesPath: '',
+    resValuesVerified: false,
+    resValuesEvidence: 'BULUNAMADI: Metaco values dizini kosan surume gore degisiyor, katalogda yok',
+    resPeerTenants: [],
   },
   {
     key: 'metaco_gar_test',
@@ -164,6 +184,10 @@ const CRYPTO_TENANTS = Object.freeze([
     chartRepo: '',
     chartName: '',
     chartListing: false,
+    resValuesPath: '',
+    resValuesVerified: false,
+    resValuesEvidence: 'BULUNAMADI: Metaco values dizini kosan surume gore degisiyor, katalogda yok',
+    resPeerTenants: [],
   },
   {
     key: 'metaco_gar_prod',
@@ -187,6 +211,10 @@ const CRYPTO_TENANTS = Object.freeze([
     chartRepo: '',
     chartName: '',
     chartListing: false,
+    resValuesPath: '',
+    resValuesVerified: false,
+    resValuesEvidence: 'BULUNAMADI: Metaco values dizini kosan surume gore degisiyor, katalogda yok',
+    resPeerTenants: [],
   },
 
   // ── WYDEN ───────────────────────────────────────────────────────────────────────────
@@ -212,6 +240,10 @@ const CRYPTO_TENANTS = Object.freeze([
     chartRepo: 'wyden',
     chartName: 'wyden/wyden',
     chartListing: true,
+    resValuesPath: '',
+    resValuesVerified: false,
+    resValuesEvidence: "BULUNAMADI: dev cluster alt dizini (cldev1/cldev2) eslemesi runbook'ta yok",
+    resPeerTenants: [],
   },
   {
     key: 'wyden_test',
@@ -232,6 +264,10 @@ const CRYPTO_TENANTS = Object.freeze([
     chartRepo: 'wyden',
     chartName: 'wyden/wyden',
     chartListing: true,
+    resValuesPath: '/vhosting/setup-wyden/4-wyden/test2/1.14.0/garanti_values.yaml',
+    resValuesVerified: false,
+    resValuesEvidence: 'wyden runbook 1:20,27,83 (2026-09-23) giocp3rdwytest2 / wyden-test kurulumu bu dosyayla; canli release ile eslesmesi olculmedi',
+    resPeerTenants: [],
   },
   {
     key: 'wyden_qa_h2',
@@ -252,6 +288,10 @@ const CRYPTO_TENANTS = Object.freeze([
     chartRepo: 'wyden',
     chartName: 'wyden/wyden',
     chartListing: true,
+    resValuesPath: '/vhosting/setup-wyden/4-wyden/qa/1.5.19/clqa1/garanti_values.yaml',
+    resValuesVerified: false,
+    resValuesEvidence: 'wyden runbook 3:20,27,141 (2026-08-05) giocp3rdwytest1 / wyden-qa 1.5.19 clqa1; canli release ile eslesmesi olculmedi',
+    resPeerTenants: ['wyden_qa_h3'],
   },
   {
     key: 'wyden_qa_h3',
@@ -272,6 +312,10 @@ const CRYPTO_TENANTS = Object.freeze([
     chartRepo: 'wyden',
     chartName: 'wyden/wyden',
     chartListing: true,
+    resValuesPath: '/vhosting/setup-wyden/4-wyden/qa/1.5.19/clqa2/garanti_values.yaml',
+    resValuesVerified: false,
+    resValuesEvidence: 'MAKUL: runbook 5:150,162,242 (2026-04-30) giocp3rdwytest2 / wyden-qa 1.5.17/clqa2 kullandi; 1.5.19/clqa2 dizini clqa1 ile ayni surumde (runbook 3:141)',
+    resPeerTenants: ['wyden_qa_h2'],
   },
   {
     key: 'wyden_prod_h3',
@@ -292,6 +336,10 @@ const CRYPTO_TENANTS = Object.freeze([
     chartRepo: 'wyden',
     chartName: 'wyden/wyden',
     chartListing: true,
+    resValuesPath: '/vhosting/setup-wyden/4-wyden/prod/1.5.19/clprod2/garanti_values.yaml',
+    resValuesVerified: false,
+    resValuesEvidence: 'wyden runbook 2:20,27,147 (2026-08-05) giocp3rdwyprod2 / wyden-prod 1.5.19 clprod2; canli release ile eslesmesi olculmedi',
+    resPeerTenants: ['wyden_prod_h2', 'wyden_prod_ank'],
   },
   {
     key: 'wyden_prod_h2',
@@ -312,6 +360,10 @@ const CRYPTO_TENANTS = Object.freeze([
     chartRepo: 'wyden',
     chartName: 'wyden/wyden',
     chartListing: true,
+    resValuesPath: '/vhosting/setup-wyden/4-wyden/prod/1.5.19/clprod1/garanti_values.yaml',
+    resValuesVerified: false,
+    resValuesEvidence: 'MAKUL: runbook 6:20,121 (2026-04-13) giocp3rdwyprod1 prod/1.5.16/clprod1 kullandi; 1.5.19/clprod1 dizini clprod2 ile ayni surumde (runbook 2:147)',
+    resPeerTenants: ['wyden_prod_h3', 'wyden_prod_ank'],
   },
   {
     key: 'wyden_prod_ank',
@@ -332,6 +384,10 @@ const CRYPTO_TENANTS = Object.freeze([
     chartRepo: 'wyden',
     chartName: 'wyden/wyden',
     chartListing: true,
+    resValuesPath: '',
+    resValuesVerified: false,
+    resValuesEvidence: 'BULUNAMADI: clANKprod1 <-> giocpank3rdwyprod1 icin runbook kaniti yok',
+    resPeerTenants: ['wyden_prod_h3', 'wyden_prod_h2'],
   },
 ]);
 
