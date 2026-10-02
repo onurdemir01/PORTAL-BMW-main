@@ -117,7 +117,55 @@ const USER_ATTRS = [
   'userPrincipalName',
 ];
 
-async function authenticateLdap(username, password) {
+// ── Giris hatalari (Faz C, 2026-10-02) ─────────────────────────────────────────
+// Eskiden kullanici bind'indeki HER hata "Kullanici adi veya sifre hatali" idi: kilitli,
+// devre disi, sifresi dolmus hesap da, LDAP'a ulasilamamasi da. Kullanici dogru sifreyi
+// tekrar tekrar deniyor, sonunda AD kilidine dusuyordu. AD bind hatasi mesajinda neden
+// kodunu tasir ("... data 775, ..."); burada kullaniciya donuk mesaja cevrilir.
+//
+// NUMARALANDIRMA: "kullanici yok" ile "sifre yanlis" AYRILMAZ (ikisi de `kimlik`).
+// Hesap durumu kodlari (533/701/532/773) AD'de yalnizca sifre DOGRUYSA doner; 775 ise
+// hesabin kilitli oldugunu soyler — kurumsal SSO'larin da gosterdigi bilgi.
+class GirisHatasi extends Error {
+  constructor(code, message, status = 401) {
+    super(message);
+    this.code = code;
+    this.status = status;
+  }
+}
+
+const KIMLIK_MESAJI = 'Kullanıcı adı veya şifre hatalı.';
+const AD_KODLARI = {
+  '525': ['kimlik', KIMLIK_MESAJI],
+  '52e': ['kimlik', KIMLIK_MESAJI],
+  '775': ['kilitli', 'Hesabınız kilitli (çok fazla hatalı deneme). Kilidin açılmasını bekleyin ya da BT destekle iletişime geçin.'],
+  '533': ['devre_disi', 'Hesabınız devre dışı. BT destekle iletişime geçin.'],
+  '701': ['hesap_suresi', 'Hesabınızın süresi dolmuş. BT destekle iletişime geçin.'],
+  '532': ['sifre_suresi', 'Şifrenizin süresi dolmuş. Kurumsal şifre ekranından yenileyip tekrar deneyin.'],
+  '773': ['sifre_degismeli', 'Şifrenizi değiştirmeniz gerekiyor. Kurumsal şifre ekranından değiştirip tekrar deneyin.'],
+  '530': ['saat_kisiti', 'Hesabınızın şu saatte oturum açma izni yok.'],
+  '531': ['istasyon_kisiti', 'Hesabınızın bu sunucudan oturum açma izni yok. BT destekle iletişime geçin.'],
+};
+
+function adHatasi(err) {
+  const m = /\bdata ([0-9a-f]{3})\b/i.exec(String((err && err.message) || ''));
+  const kod = m ? m[1].toLowerCase() : null;
+  const [code, message] = (kod && AD_KODLARI[kod]) || ['kimlik', KIMLIK_MESAJI];
+  return new GirisHatasi(code, message, code === 'kimlik' ? 401 : 403);
+}
+
+const AG_KODLARI = new Set(['ECONNREFUSED', 'ETIMEDOUT', 'ENOTFOUND', 'ECONNRESET', 'EHOSTUNREACH', 'ENETUNREACH']);
+function agHatasiMi(err) {
+  const msg = String((err && err.message) || '').toLowerCase();
+  return (
+    AG_KODLARI.has(err && err.code) ||
+    msg.includes('connect') ||
+    msg.includes('timeout') ||
+    msg.includes('servis hesabı bağlanamadı')
+  );
+}
+
+async function authenticateLdap(username, password, lookup) {
   if (!isConfigured()) throw new Error('LDAP yapılandırılmamış');
 
   const baseDn = process.env.LDAP_BASE_DN;
@@ -138,7 +186,8 @@ async function authenticateLdap(username, password) {
   let userEntry;
   try {
     const { searchEntries } = await svcClient.search(baseDn, {
-      filter: `(${searchAttr}=${escapeFilter(username)})`,
+      // `lookup`: login-input.cjs'nin karari (or. UPN girildiyse userPrincipalName).
+      filter: `(${(lookup && lookup.attr) || searchAttr}=${escapeFilter((lookup && lookup.value) || username)})`,
       scope: 'sub',
       attributes: USER_ATTRS,
     });
@@ -155,15 +204,23 @@ async function authenticateLdap(username, password) {
   const userClient = createClient();
   try {
     await userClient.bind(userEntry.dn, password);
-  } catch {
+  } catch (err) {
     await userClient.unbind().catch(() => {});
-    throw new Error('Kullanıcı adı veya şifre hatalı');
+    // Baglanti koptuysa bu bir KIMLIK hatasi degildir (sayaca yazilmamali).
+    if (agHatasiMi(err)) throw err;
+    throw adHatasi(err);
   }
   await userClient.unbind().catch(() => {});
 
   // ── Adim 4: Rol ve fotograf ─────────────────────────────────────────────────
   const role = determineRole(userEntry.memberOf);
-  if (!role) throw new Error('Portal erişim grubunuzda bulunamadı.');
+  if (!role) {
+    throw new GirisHatasi(
+      'grup',
+      'Hesabınız doğrulandı ama portal erişim grubunda değilsiniz. Erişim için yöneticinize başvurun.',
+      403,
+    );
+  }
 
   const rawPhoto = userEntry.thumbnailPhoto || userEntry.jpegPhoto || null;
   const avatarUrl = normalizePhotoToDataUrl(rawPhoto);
@@ -215,8 +272,12 @@ async function authenticateLdap(username, password) {
   }
   const groups = allGroups.slice(0, MAX_GROUPS);
 
+  // UPN ile girildiyse oturum adi AD'deki hesap adidir (yerel kisim farkli olabilir).
+  const kanonik = lookup && /^(userPrincipalName|mail)$/i.test(lookup.attr) && userEntry.sAMAccountName
+    ? userEntry.sAMAccountName
+    : username;
   return {
-    username: normalizeUsername(username),
+    username: normalizeUsername(kanonik),
     dn: userEntry.dn,
     groups,
     displayName: String(userEntry.displayName || userEntry.cn || username),
@@ -393,35 +454,33 @@ async function findLdapUserByUsername(username) {
   }
 }
 
-async function authenticate(username, password) {
+// Harf duyarsiz esitlik; BOS deger hicbir seyle eslesmez (asagidaki ?? / || notuna bak).
+function ayniAd(a, b) {
+  return !!a && String(a).toLowerCase() === String(b || '').toLowerCase();
+}
+
+async function authenticate(username, password, lookup) {
   // Local users bypass LDAP entirely — prevents collisions when a real LDAP user
   // has the same name as a configured local fallback account.
   const localAdmin = process.env.LOCAL_ADMIN_USER ?? 'admin';
   const localUser = process.env.LOCAL_USER ?? 'user';
-  if (username === localAdmin || username === localUser) {
-    return authenticateLocal(username, password);
+  if (ayniAd(localAdmin, username) || ayniAd(localUser, username)) {
+    return yerelVeyaKimlikHatasi(username, password);
   }
 
   if (isConfigured()) {
     try {
       // module.exports uzerinden cagrilir (dogrudan yerel referans degil) — testlerin
       // gercek bir LDAP baglantisi kurmadan authenticateLdap'i mock'layabilmesi icin.
-      const result = await module.exports.authenticateLdap(username, password);
+      const result = await module.exports.authenticateLdap(username, password, lookup);
       _cache.set(username.toLowerCase(), { ...result, ts: Date.now() });
       return result;
     } catch (ldapErr) {
       const msg = ldapErr.message || '';
-      console.warn('[LDAP] Auth hatasi:', msg);
+      console.warn('[LDAP] Auth hatasi:', ldapErr.code || '', msg);
+      if (ldapErr instanceof GirisHatasi) throw ldapErr;
 
-      const isNetworkErr =
-        ldapErr.code === 'ECONNREFUSED' ||
-        ldapErr.code === 'ETIMEDOUT' ||
-        ldapErr.code === 'ENOTFOUND' ||
-        ldapErr.code === 'ECONNRESET' ||
-        msg.toLowerCase().includes('connect') ||
-        msg.toLowerCase().includes('timeout') ||
-        msg.includes('Servis hesabı bağlanamadı');
-
+      const isNetworkErr = agHatasiMi(ldapErr);
       const isNotFound = msg === 'ldap_user_not_found';
 
       // isNotFound: LDAP'a basariyla ulasildi VE arama sonucu bos dondu — bu kod-sahipli,
@@ -433,12 +492,39 @@ async function authenticate(username, password) {
       // deneme yolu acabiliyordu (kurumsal AI kod incelemesi, review.md #14). Artik SADECE
       // gercek ag erisilemezligi (isNetworkErr) yerel hesaba dusuyor; kullanici-yok sinyali
       // KESIN kabul edilip dogrudan reddedilir.
-      if (!isNetworkErr) throw new Error('Kullanıcı adı veya şifre hatalı');
+      if (isNotFound) throw new GirisHatasi('kimlik', KIMLIK_MESAJI);
+      if (!isNetworkErr) {
+        // Ne kimlik ne ag: dizin tarafinda beklenmeyen hata (arama limiti, sema...).
+        // Kullaniciya "sifren yanlis" DEMEK yanlis olurdu; deneme sayacina da yazilmaz.
+        throw new GirisHatasi(
+          'dizin_hatasi',
+          'Giriş şu an doğrulanamadı (dizin hatası). Birkaç dakika sonra tekrar deneyin.',
+          503,
+        );
+      }
 
       console.warn('[LDAP] Aga erisilemiyor, yerel hesaplara fallback...');
+      // Yerel hesap eslesmezse "sifre hatali" DEGIL: asil sorun sunucuya ulasilamamasi.
+      try {
+        return authenticateLocal(username, password);
+      } catch {
+        throw new GirisHatasi(
+          'ldap_erisilemez',
+          'Kimlik doğrulama sunucusuna şu an ulaşılamıyor. Birkaç dakika sonra tekrar deneyin.',
+          503,
+        );
+      }
     }
   }
-  return authenticateLocal(username, password);
+  return yerelVeyaKimlikHatasi(username, password);
+}
+
+function yerelVeyaKimlikHatasi(username, password) {
+  try {
+    return authenticateLocal(username, password);
+  } catch {
+    throw new GirisHatasi('kimlik', KIMLIK_MESAJI);
+  }
 }
 
 function authenticateLocal(username, password) {
@@ -459,21 +545,24 @@ function authenticateLocal(username, password) {
   // gerekirse ALLOW_WEAK_LOCAL_PASS=true yeterli; varsayilan KAPALI.
   const allowWeak = String(process.env.ALLOW_WEAK_LOCAL_PASS || '').toLowerCase() === 'true';
   const isWeak = (u, p) => !!p && p.toLowerCase() === u.toLowerCase();
-  if (!allowWeak && (username === localAdmin || username === localUser)) {
-    const configured = username === localAdmin ? localAdminPass : localUserPass;
+  // Harf duyarsiz (Faz C): `Admin` ile `admin` ayni yerel hesap.
+  const adminMi = ayniAd(localAdmin, username);
+  const userMi = !adminMi && ayniAd(localUser, username);
+  if (!allowWeak && (adminMi || userMi)) {
+    const configured = adminMi ? localAdminPass : localUserPass;
     if (isWeak(username, configured)) {
       console.warn(
         `[Auth] "${username}" yerel hesabinin sifresi kullanici adiyla ayni ` +
-          `(${username}:${username}) - giris ENGELLENDI. LOCAL_${username === localAdmin ? 'ADMIN' : 'USER'}_PASS ` +
+          `(${username}:${username}) - giris ENGELLENDI. LOCAL_${adminMi ? 'ADMIN' : 'USER'}_PASS ` +
           `degerini guclu bir sifreyle degistirin (ya da bilerek acmak icin ALLOW_WEAK_LOCAL_PASS=true).`,
       );
       throw new Error('Kullanıcı adı veya şifre hatalı');
     }
   }
 
-  if (username === localAdmin && localAdminPass && password === localAdminPass) {
+  if (adminMi && localAdminPass && password === localAdminPass) {
     return {
-      username,
+      username: localAdmin.toLowerCase(),
       dn: null,
       displayName: username,
       mail: '',
@@ -483,9 +572,9 @@ function authenticateLocal(username, password) {
       photoUrl: null,
     };
   }
-  if (username === localUser && localUserPass && password === localUserPass) {
+  if (userMi && localUserPass && password === localUserPass) {
     return {
-      username,
+      username: localUser.toLowerCase(),
       dn: null,
       displayName: username,
       mail: '',
@@ -514,4 +603,6 @@ module.exports = {
   // test-only (ayrica authenticate() ic-cagrisi da bunun uzerinden gecer — bkz. yukarida):
   // gercek LDAP baglantisi kurmadan authenticate()'in fallback mantigini dogrulamak icin.
   authenticateLdap,
+  GirisHatasi,
+  adHatasi,
 };

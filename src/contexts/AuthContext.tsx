@@ -315,7 +315,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       body: JSON.stringify({ username: username.trim(), password, remember }),
     });
     const data = await girisYanitiOku(res);
-    if (!data.ok) throw new Error(data.error || "Giriş başarısız");
+    if (!data.ok) {
+      // Sunucu bekleme suresi verdiyse (kullanici basina geri cekilme / IP siniri) giris
+      // ekrani geri sayim gosterir.
+      const e = new Error(data.error || "Giriş başarısız") as Error & { retryAfter?: number; code?: string };
+      const ra = Number(data.retryAfter ?? res.headers.get("Retry-After"));
+      if (ra > 0) e.retryAfter = ra;
+      if (data.code) e.code = data.code;
+      throw e;
+    }
     return data as { session?: OturumOzeti } & Record<string, any>;
   };
 

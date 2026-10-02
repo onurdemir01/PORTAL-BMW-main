@@ -90,9 +90,16 @@ function createApp() {
   });
 
   // L-03: Rate limiting
+  // IP basina sinir KABA bir taban (betik saldirisi). Faz C (2026-10-02): 10 -> 30, cunku
+  // kurumsal agda yuzlerce kisi ayni NAT IP'sinden gelir ve biri yanlis sifreyle denerken
+  // digerleri de kilitleniyordu. Asil koruma artik KULLANICI basina geri cekilme
+  // (server/auth/login-throttle.cjs) — tek hesaba karsi denemeyi o durdurur.
   const loginLimiter = rateLimit({
     windowMs: 60_000,     // 1 minute
-    max: 10,              // 10 login attempts per IP per minute
+    max: (() => {
+      const n = parseInt(process.env.LOGIN_IP_MAX_PER_MIN || "30", 10);
+      return Number.isInteger(n) && n >= 5 && n <= 1000 ? n : 30;
+    })(),
     standardHeaders: true,
     legacyHeaders: false,
     message: { ok: false, error: "Çok fazla giriş denemesi. 1 dakika sonra tekrar deneyin." },

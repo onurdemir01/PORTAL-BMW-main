@@ -19,6 +19,26 @@ const LoginPage: React.FC = () => {
   // gosterilmez. Eskiden kutu vardi ama HICBIR SEY yapmiyordu (sunucuya gitmiyordu).
   const [hatirlaGun, setHatirlaGun] = useState<number | null>(null);
   const gonderiliyor = useRef(false);
+  // Sunucu "bekle" dediyse (429 / esik asimi) dugme geri sayim boyunca kapali.
+  const [bekleBitis, setBekleBitis] = useState(0);
+  const [bekleSn, setBekleSn] = useState(0);
+  const [capsLock, setCapsLock] = useState(false);
+
+  useEffect(() => {
+    if (!bekleBitis) return;
+    const tik = () => {
+      const kalan = Math.max(0, Math.ceil((bekleBitis - Date.now()) / 1000));
+      setBekleSn(kalan);
+      if (kalan === 0) setBekleBitis(0);
+    };
+    tik();
+    const id = window.setInterval(tik, 1000);
+    return () => window.clearInterval(id);
+  }, [bekleBitis]);
+
+  const capsKontrol = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (typeof e.getModifierState === "function") setCapsLock(e.getModifierState("CapsLock"));
+  };
 
   useEffect(() => {
     let iptal = false;
@@ -48,7 +68,7 @@ const LoginPage: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     // Cift gonderim (Enter + tik) iki giris istegi = iki oturum + bosa harcanan deneme.
-    if (gonderiliyor.current) return;
+    if (gonderiliyor.current || bekleSn > 0) return;
     setError("");
 
     if (!username.trim() || !password) {
@@ -63,6 +83,7 @@ const LoginPage: React.FC = () => {
       navigate(from, { replace: true });
     } catch (err: any) {
       setError(err?.message || "Giriş başarısız. Lütfen tekrar deneyin.");
+      if (err?.retryAfter > 0) setBekleBitis(Date.now() + err.retryAfter * 1000);
     } finally {
       gonderiliyor.current = false;
       setIsLoading(false);
@@ -139,6 +160,8 @@ const LoginPage: React.FC = () => {
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
+                    onKeyDown={capsKontrol}
+                    onKeyUp={capsKontrol}
                     className="pf-input pr-10"
                   />
                   <button
@@ -151,6 +174,11 @@ const LoginPage: React.FC = () => {
                     {showPassword ? <EyeSlashIcon className="h-5 w-5" /> : <EyeIcon className="h-5 w-5" />}
                   </button>
                 </div>
+                {capsLock && (
+                  <p className="mt-1 text-[0.8125rem]" role="status" style={{ color: "#8a6100" }}>
+                    Caps Lock açık — şifre büyük/küçük harfe duyarlıdır.
+                  </p>
+                )}
               </div>
 
               {!!hatirlaGun && (
@@ -170,12 +198,14 @@ const LoginPage: React.FC = () => {
               </div>
               )}
 
-              <button type="submit" disabled={isLoading} className="btn-primary w-full py-2">
+              <button type="submit" disabled={isLoading || bekleSn > 0} className="btn-primary w-full py-2">
                 {isLoading ? (
                   <span className="flex items-center justify-center gap-2">
                     <span className="h-4 w-4 rounded-full border-2 border-white/40 border-t-white animate-spin" />
                     Oturum açılıyor
                   </span>
+                ) : bekleSn > 0 ? (
+                  `Tekrar denemek için ${bekleSn} sn`
                 ) : (
                   "Oturum aç"
                 )}
