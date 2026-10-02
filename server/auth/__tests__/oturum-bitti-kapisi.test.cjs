@@ -80,10 +80,15 @@ test('OB4 — server/auth icindeki HER oturum 401i oturumYokdan gecer', () => {
       imzasiz.push(`${f}: ${satir.trim()}`);
     }
   }
-  // TEK istisna: GIRIS DENEMESININ basarisizligi. Ortada bitmis bir oturum yok;
-  // imzalanirsa yanlis parola, giris ekranindaki istemciye "oturumun bitti" derdi.
-  assert.strictEqual(imzasiz.length, 1, `beklenmeyen imzasiz 401:\n${imzasiz.join('\n')}`);
-  assert.match(imzasiz[0], /index\.cjs.*err\.message/, 'imzasiz kalan tek 401 giris hatasi olmali');
+  // TEK istisna GIRIS DENEMESININ basarisizligiydi. Faz C (2026-10-02): durumu artik
+  // hatanin turu belirler (401 kimlik / 403 hesap durumu / 503 dizin) — `res.status(status)`.
+  // Kural ayni: giris hatasi IMZASIZDIR (ortada bitmis oturum yok; imzalansa yanlis parola
+  // giris ekranindaki istemciye "oturumun bitti" derdi), baska imzasiz 401 yoktur.
+  assert.deepStrictEqual(imzasiz, [], `beklenmeyen imzasiz 401:\n${imzasiz.join('\n')}`);
+  const giris = kodOnly(oku('server/auth/index.cjs'));
+  const d = giris.slice(giris.indexOf('router.post("/login"'), giris.indexOf('router.post("/logout"'));
+  assert.match(d, /res\.status\(status\)\.json\(/, 'giris hatasi yaniti bulunamadi');
+  assert.doesNotMatch(d, /oturumYok\(/, 'giris hatasi imzalanmis — yanlis parola "oturum bitti" sayilir');
 });
 
 test('OB5 — imza capraz kokende OKUNABILIR olsun diye expose edilir', () => {

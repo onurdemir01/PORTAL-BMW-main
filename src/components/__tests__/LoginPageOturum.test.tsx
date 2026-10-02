@@ -4,9 +4,11 @@
 //   LP2 Admin kapattiysa kutu gosterilmez ve remember gonderilmez
 //   LP3 donus adresi yol + sorgu + hash korur
 //   LP4 cift gonderim tek giris istegi
+//   LP5 Caps Lock uyarisi
+//   LP6 sunucu bekleme suresi verdiyse geri sayim ve dugme kapali
 import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import LoginPage from '../LoginPage';
 import { AuthContext } from '@/contexts/AuthContext';
@@ -74,5 +76,40 @@ describe('LoginPage oturum', () => {
     fireEvent.submit(form);
     expect(login).toHaveBeenCalledTimes(1);
     bitir();
+  });
+
+  it('LP5 Caps Lock acikken uyari', async () => {
+    kur();
+    const sifre = screen.getByLabelText('Şifre');
+    fireEvent.keyDown(sifre, { key: 'A', modifierCapsLock: true });
+    expect(screen.getByText(/Caps Lock açık/)).toBeInTheDocument();
+    fireEvent.keyDown(sifre, { key: 'a', modifierCapsLock: false });
+    expect(screen.queryByText(/Caps Lock açık/)).not.toBeInTheDocument();
+  });
+
+  it('LP6 bekleme suresi: geri sayim, dugme kapali, sure bitince acilir', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] });
+    try {
+      const login = kur({
+        login: vi.fn(async () => {
+          throw Object.assign(new Error('Çok fazla hatalı deneme.'), { retryAfter: 3 });
+        }),
+      });
+      doldur();
+      fireEvent.click(screen.getByRole('button', { name: 'Oturum aç' }));
+      await act(async () => {
+        await Promise.resolve();
+      });
+      const dugme = screen.getByRole('button', { name: /Tekrar denemek için 3 sn/ });
+      expect(dugme).toBeDisabled();
+      fireEvent.submit(dugme.closest('form')!);
+      expect(login).toHaveBeenCalledTimes(1);
+      await act(async () => {
+        vi.advanceTimersByTime(3000);
+      });
+      expect(screen.getByRole('button', { name: 'Oturum aç' })).not.toBeDisabled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

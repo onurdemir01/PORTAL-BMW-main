@@ -15,6 +15,8 @@ const { initPresenceRoutes, removePresence } = require("./presence-routes.cjs");
 const { initVisibilityRoutes } = require("./visibility-routes.cjs");
 const { initRolesRoutes } = require("./roles-routes.cjs");
 const sessionPolicy = require("./session-policy.cjs");
+const { normalizeLoginInput, checkPassword } = require("./login-input.cjs");
+const loginThrottle = require("./login-throttle.cjs");
 
 // Production'da bos SESSION_SECRET'i sessizce hardcoded degerle karsilamak guvenlik
 // acigi olurdu (herkesce bilinen bir imza anahtariyla session sahteciligi) — bu yuzden
@@ -81,13 +83,29 @@ function initAuth(app) {
   // ── Login ──────────────────────────────────────────────────────────────────
   router.post("/login", async (req, res) => {
     const { username, password, remember } = req.body || {};
-    if (!username || !password) {
-      return res.status(400).json({ ok: false, error: "Kullanıcı adı ve şifre gerekli." });
+    // Faz C (2026-10-02): girdi TEK yerde normalize edilir (login-input.cjs) —
+    // `KURUM\ad`, `ad@kurum`, Turkce I, gorunmez karakter. Hata mesaji kullaniciya aynen.
+    const girdi = normalizeLoginInput(username, { searchAttr: process.env.AUTH_LDAP_SEARCH_ATTR || "sAMAccountName" });
+    if (!girdi.ok) return res.status(400).json({ ok: false, code: girdi.code, error: girdi.message });
+    const sifreDurumu = checkPassword(password);
+    if (!sifreDurumu.ok) return res.status(400).json({ ok: false, code: sifreDurumu.code, error: sifreDurumu.message });
+
+    // Kullanici basina geri cekilme: esik asildiysa AD'ye HIC gidilmez (AD kilidi korunur).
+    const kilit = loginThrottle.kontrol(girdi.username);
+    if (!kilit.ok) {
+      res.setHeader("Retry-After", String(kilit.retryAfter));
+      return res.status(429).json({
+        ok: false,
+        code: "cok_deneme",
+        retryAfter: kilit.retryAfter,
+        error: `Çok fazla hatalı deneme. ${kilit.retryAfter} saniye sonra tekrar deneyin.`,
+      });
     }
 
     try {
-      const trimmedPass = String(password);
-      const user = await authenticate(String(username).trim(), trimmedPass);
+      // Sifre KIRPILMAZ: bosluk sifrenin parcasi olabilir.
+      const user = await authenticate(girdi.username, password, girdi.lookup);
+      loginThrottle.basariKaydet(girdi.username);
       // NOT: eskiden burada LogX'in kendi LDAP oturumunu acabilmesi icin kullanicinin
       // sifresi bellekte (sifreli) 8 saat cache'leniyordu (server/auth/cred-cache.cjs) —
       // hicbir gercek tuketicisi olmadigi icin kaldirildi (kurumsal AI kod incelemesi,
@@ -147,13 +165,31 @@ function initAuth(app) {
         });
       });
     } catch (err) {
-      // Denetim kaydi: basarisiz giris denemesi.
+      const code = err.code && typeof err.code === "string" && !/^E[A-Z]+$/.test(err.code) ? err.code : "kimlik";
+      const status = Number.isInteger(err.status) ? err.status : 401;
+      // Yalnizca KIMLIK hatasi sayilir: sunucuya ulasilamamasi ya da kilitli hesap
+      // kullanicinin deneme hakkini yememeli.
+      let sayac = null;
+      if (code === "kimlik") sayac = loginThrottle.hataKaydet(girdi.username);
+      // Denetim kaydi: basarisiz giris denemesi (sebep kodu; sifre ASLA yazilmaz).
       try {
         require('../audit/index.cjs').auditPortal(req, 'login_failed', {
-          username: String(username).trim(), result: 'fail', detail: err.message,
+          username: girdi.username, result: 'fail', detail: `code=${code} ${err.message}`,
         });
       } catch { /* yoksay */ }
-      res.status(401).json({ ok: false, error: err.message });
+      let mesaj = err.message;
+      if (sayac && sayac.retryAfter) {
+        res.setHeader("Retry-After", String(sayac.retryAfter));
+        mesaj += ` Çok fazla hatalı deneme: ${sayac.retryAfter} saniye bekleyin.`;
+      } else if (sayac && sayac.kalan > 0 && sayac.kalan <= 2) {
+        mesaj += ` (${sayac.kalan} deneme hakkınız kaldı, sonra kısa bir bekleme uygulanır.)`;
+      }
+      res.status(status).json({
+        ok: false,
+        code,
+        error: mesaj,
+        ...(sayac && sayac.retryAfter ? { retryAfter: sayac.retryAfter } : {}),
+      });
     }
   });
 
