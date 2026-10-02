@@ -15,6 +15,7 @@ import {
   type OpsxRunResult, type OpsxDumpType, type OpsxDumpLaunchResult, type OpsxDumpStatus,
   type OpsxPodDeleteStatus,
   type OpsxPidSelection, type OpsxServerConfigSelection,
+  opsxWasApi, type WasTarget, type WasOperation, type WasRunResult, type WasRunStatus,
 } from "@/api/opsxApi";
 import { useJobTracker } from "@/contexts/JobTrackerContext";
 import AnsibleLogTerminal from "@/components/common/AnsibleLogTerminal";
@@ -29,9 +30,24 @@ import OcpClusterPickStep from "./steps/OcpClusterPickStep";
 import OcpPodSelectStep from "./steps/OcpPodSelectStep";
 import LegacyJvmSelectStep from "./steps/LegacyJvmSelectStep";
 import ServerConfigSelectStep from "./steps/ServerConfigSelectStep";
+import LegacyProductStep from "./steps/LegacyProductStep";
+import WasAppSearchStep, { type WasAppSelection } from "./steps/WasAppSearchStep";
+import WasJvmSelectStep, { type WasDiscoveryRef } from "./steps/WasJvmSelectStep";
+import WasConfirmStep from "./steps/WasConfirmStep";
+import WasResultPanel from "./steps/WasResultPanel";
 
+// WAS (WebSphere) akışı JBoss'tan AYRI adımlardan geçer (2026-10-02):
+//   legacy_product → was_app (uygulama + keşif sunucuları) → was_jvm (canlı keşif, TEK JVM,
+//   işlem) → was_confirm (JVM adı elle yazılır) → was_done (canlı çıktı + sonuç).
+// TOPLU İŞLEM YOK: tek sunucu + tek JVM; "tümünü seç" yok. Sunucu (server/opsx/was.cjs)
+// aynı kuralları ayrıca uygular — bu ekranlar bir kolaylık katmanıdır, güvenlik sınırı değil.
 type Step =
   | "platform"
+  | "legacy_product"
+  | "was_app"
+  | "was_jvm"
+  | "was_confirm"
+  | "was_done"
   | "legacy_app"
   | "legacy_jboss_version"
   | "legacy_hosts"
@@ -46,6 +62,11 @@ type Step =
 
 const STEP_TITLES: Record<Step, string> = {
   platform: "",
+  legacy_product: "Uygulama Sunucusu",
+  was_app: "WAS Uygulama Seçimi",
+  was_jvm: "WAS JVM Seçimi",
+  was_confirm: "Onay",
+  was_done: "İşlem Başlatıldı",
   legacy_app: "Uygulama Seçimi",
   legacy_jboss_version: "JBoss Sürümü",
   legacy_hosts: "Sunucu Seçimi",
@@ -125,6 +146,12 @@ const OpsXWizardPage: React.FC = () => {
   // restart/stop/start artık doğrudan tetiklenmez — önce hangi JVM(ler)e (server-config)
   // dokunulacağı seçilir (dumpType'ın restart/stop/start için AYNI amaçlı karşılığı).
   const [pendingOperation, setPendingOperation] = useState<OpsxOperation | null>(null);
+  // WAS akışının durumu — JBoss alanlarından AYRI tutulur.
+  const [wasSel, setWasSel] = useState<WasAppSelection | null>(null);
+  const [wasTarget, setWasTarget] = useState<WasTarget | null>(null);
+  const [wasOperation, setWasOperation] = useState<WasOperation | null>(null);
+  const [wasDiscovery, setWasDiscovery] = useState<WasDiscoveryRef | null>(null);
+  const [wasRun, setWasRun] = useState<WasRunResult | null>(null);
   const { addJob, jobs } = useJobTracker();
   // Bu sayfa açıkken CANLI çıktıyı kendi içinde (inline) gösterir — takipçiden aynı
   // job'ın güncel verisini okur, kendi polling'ini yapmaz. Sayfadan ayrılınca (ya da
@@ -153,6 +180,11 @@ const OpsXWizardPage: React.FC = () => {
     setDumpStatus(null);
     setDumpType(null);
     setPendingOperation(null);
+    setWasSel(null);
+    setWasTarget(null);
+    setWasOperation(null);
+    setWasDiscovery(null);
+    setWasRun(null);
   }
 
   function trackJob(r: OpsxRunResult | OpsxDumpLaunchResult) {
@@ -196,9 +228,16 @@ const OpsXWizardPage: React.FC = () => {
   // Adıma göre "← Geri" hedefi. Hedefi olmayan adımlarda buton hiç render edilmez.
   function backTargetFor(s: Step): Step | null {
     switch (s) {
-      case "legacy_app":
+      case "legacy_product":
       case "ocp_target":
         return "platform";
+      case "legacy_app":
+      case "was_app":
+        return "legacy_product";
+      case "was_jvm":
+        return "was_app";
+      case "was_confirm":
+        return "was_jvm";
       case "legacy_jboss_version":
         return "legacy_app";
       case "legacy_hosts":
@@ -301,6 +340,61 @@ const OpsXWizardPage: React.FC = () => {
       setStep("legacy_serverconfig");
     }
   }
+
+  // WAS işinin canlı çıktısı + yapılandırılmış sonucu. Takipçi (JobTrackerContext) sonucu
+  // `result` alanında TAŞIR; sayfadan ayrılınca da iş alt çubukta izlenmeye devam eder.
+  // Durum ucu 4xx/5xx döndürürse hata FIRLATILIR ki takipçi bunu "çalışıyor" sanmasın.
+  function trackWasJob(awxServerId: number, jobId: number, label: string) {
+    const id = addJob({
+      title: `OpsX WAS ${label} #${jobId}`,
+      fetchStatus: async () => {
+        const s = await opsxWasApi.runStatus(awxServerId, jobId);
+        if (!s.ok) throw new Error(s.message || "Durum okunamadı.");
+        return { status: s.status, output: s.output || "", result: s.result ? s : undefined };
+      },
+    });
+    setTrackedJobId(id);
+  }
+
+  // WAS: TEK sunucu + TEK JVM. Sunucu; onayı, JVM adını, keşfin sahibini/yaşını (≤15 dk),
+  // ölçülen durumu ve kilidi YENİDEN doğrular — bu fonksiyon yalnız gövdeyi kurar.
+  async function runWas(v: { confirmed: boolean; confirmText: string; ackWarnings: boolean }) {
+    if (!wasSel || !wasTarget || !wasOperation || !wasDiscovery) return;
+    if (busyRef.current) return;
+    busyRef.current = true;
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await opsxWasApi.run({
+        app: wasSel.app,
+        host: wasTarget.host,
+        profile: wasTarget.profile,
+        cell: wasTarget.cell,
+        node: wasTarget.node,
+        server: wasTarget.server,
+        operation: wasOperation,
+        confirmed: v.confirmed,
+        confirmText: v.confirmText,
+        discoverJobId: wasDiscovery.jobId,
+        discoverServerId: wasDiscovery.awxServerId,
+        ackWarnings: v.ackWarnings,
+      });
+      if (!r.ok || r.jobId == null || r.awxServerId == null) {
+        setError(r.message || "İşlem başlatılamadı.");
+        return;
+      }
+      setWasRun(r);
+      setStep("was_done");
+      trackWasJob(r.awxServerId, r.jobId, `${wasOperation} ${wasTarget.server}@${wasTarget.host}`);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+    }
+  }
+
+  const wasEnv = (wasSel && wasTarget && wasSel.hostInfo.find((h) => h.host === wasTarget.host)?.env) || "";
 
   function submitOcpTarget(v: { env: string; tenant: string; pairs: OpsxOcpPair[] }) {
     setEnv(v.env); setTenant(v.tenant); setPairs(v.pairs);
@@ -464,8 +558,70 @@ const OpsXWizardPage: React.FC = () => {
             busy={busy}
             onSelect={(p) => {
               setPlatform(p);
-              setStep(p === "legacy" ? "legacy_app" : "ocp_target");
+              setStep(p === "legacy" ? "legacy_product" : "ocp_target");
             }}
+          />
+        )}
+
+        {step === "legacy_product" && (
+          <LegacyProductStep busy={busy} onSelect={(p) => { setError(null); setStep(p === "was" ? "was_app" : "legacy_app"); }} />
+        )}
+
+        {step === "was_app" && (
+          <WasAppSearchStep
+            busy={busy}
+            onSubmit={(v) => {
+              setError(null);
+              setWasSel(v);
+              setWasTarget(null);
+              setWasOperation(null);
+              setWasDiscovery(null);
+              setStep("was_jvm");
+            }}
+          />
+        )}
+
+        {step === "was_jvm" && wasSel && (
+          <WasJvmSelectStep
+            app={wasSel.app}
+            hosts={wasSel.hosts}
+            hostInfo={wasSel.hostInfo}
+            busy={busy}
+            resume={wasDiscovery ? { jobId: wasDiscovery.jobId, awxServerId: wasDiscovery.awxServerId } : null}
+            onSubmit={(v) => {
+              setError(null);
+              setWasTarget(v.target);
+              setWasOperation(v.operation);
+              setWasDiscovery(v.discovery);
+              setStep("was_confirm");
+            }}
+          />
+        )}
+
+        {step === "was_confirm" && wasSel && wasTarget && wasOperation && (
+          <WasConfirmStep
+            app={wasSel.app}
+            target={wasTarget}
+            operation={wasOperation}
+            env={wasEnv}
+            busy={busy}
+            onConfirm={runWas}
+          />
+        )}
+
+        {step === "was_done" && wasTarget && wasOperation && wasRun?.jobId != null && (
+          <WasResultPanel
+            target={wasTarget}
+            operation={wasOperation}
+            env={wasEnv}
+            jobId={wasRun.jobId}
+            awxStatus={trackedJob?.status || wasRun.status || "pending"}
+            output={trackedJob?.output || ""}
+            run={trackedJob?.result as WasRunStatus | undefined}
+            pollErr={trackedJob?.pollErr}
+            title={trackedJob?.title || `OpsX WAS #${wasRun.jobId}`}
+            onNew={restart}
+            launchWarning={wasRun.historyWritten === false ? wasRun.warning : undefined}
           />
         )}
 

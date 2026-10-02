@@ -4843,13 +4843,21 @@ function initAnsibleRunner(app) {
     // OLMAYANLAR icin yapilir, ama template_id ARAMASI HERKES icin gerekli oldugundan sorgu
     // rol farki gozetmeden calistirilir.
     let jobTemplateId = null;
+    // OpsX WAS isi (2026-10-02): bu uc da WAS isini gosterir (Self Service Gecmis). WAS'in kendi
+    // uclari gibi sahiplik FAIL-CLOSED, cikti MASKELI olmali; asagida AWX'ten playbook adi
+    // geldikten sonra uygulanir (gecmis okunamasa bile WAS isi playbook adindan taninir).
+    let wasIsi = false;
+    let gecmisVar = false;
+    let gecmisOkunamadi = false;
     try {
       const reqUser = req.session?.user || req.user || {};
       const { rows } = await dbx.query(
-        `SELECT TOP 1 username, template_id FROM ansible_job_history WHERE job_id = $1 AND awx_server_id = $2`,
+        `SELECT TOP 1 username, template_id, params FROM ansible_job_history WHERE job_id = $1 AND awx_server_id = $2`,
         [Number(req.params.jobId), Number(req.params.serverId)],
       );
       if (rows.length) {
+        gecmisVar = true;
+        wasIsi = require('../opsx/was.cjs').isWasPlatform(rows[0].params);
         jobTemplateId = Number(rows[0].template_id) || null;
         if (
           reqUser.role !== 'Admin' &&
@@ -4861,6 +4869,8 @@ function initAnsibleRunner(app) {
       }
     } catch {
       /* DB hiccup → fail-open (mesru polling bozulmasin) */
+      // OpsX WAS isi HARIC: asagida AWX playbook adindan taninir ve 503 doner.
+      gecmisOkunamadi = true;
     }
 
     try {
@@ -4871,6 +4881,16 @@ function initAnsibleRunner(app) {
         'GET',
         `/api/v2/jobs/${req.params.jobId}/`,
       );
+      if (!wasIsi && require('../opsx/was.cjs').isWasPlaybook(data.playbook)) wasIsi = true;
+      if (wasIsi) {
+        const wasUser = req.session?.user || req.user || {};
+        if (gecmisOkunamadi) {
+          return res.status(503).json({ ok: false, message: 'İş sahipliği doğrulanamadı, lütfen tekrar deneyin.' });
+        }
+        if (!gecmisVar && wasUser.role !== 'Admin') {
+          return res.status(403).json({ ok: false, message: 'Bu iş size ait değil.' });
+        }
+      }
       // ARTIMLI CEKIM YALNIZCA IS KOSARKEN. Terminal durumda TAM cekim yapilir
       // cunku birkac satir asagida `ansible_job_output`a ARSIVLENEN metin budur:
       // arsiv ve kullanicinin gordugu son metin hicbir zaman artimlardan
@@ -4879,11 +4899,13 @@ function initAnsibleRunner(app) {
       const TERMINAL_DURUMLAR = ['successful', 'failed', 'error', 'canceled'];
       const bittiMi = TERMINAL_DURUMLAR.includes(data.status);
       if (bittiMi) stdoutCache.sil(req.params.serverId, req.params.jobId);
-      const { output: stdoutText } = await getJobOutputOnServer(
+      const { output: hamCikti } = await getJobOutputOnServer(
         req.params.serverId,
         req.params.jobId,
         { artimli: !bittiMi },
       );
+      // OpsX WAS ciktisi ekrana da arsive de MASKELI gider (WAS durum ucuyla ayni kural).
+      const stdoutText = wasIsi ? require('../opsx/was-state.cjs').maskSecrets(hamCikti) : hamCikti;
 
       // Is gecmisi durumunu SONLANDIR: ansible_job_history yalniz launch aninda (pending) yaziliyor;
       // canli durum terminal ise gecmis satirini guncelle (herhangi biri job'i goruntulediginde) —

@@ -52,6 +52,10 @@ const PLAYBOOKS = {
   opsxOpenshiftDump: 'opsx_openshift_dump/opsx_openshift_dump.yaml',
   opsxOpenshiftPods: 'opsx_openshift_dump/opsx_openshift_pods.yaml',
   opsxOpenshiftPodDelete: 'opsx_openshift_pod_delete/opsx_openshift_pod_delete.yaml',
+  // OpsX WAS (2026-10-02): salt okunur kesif + tek host/tek JVM restart/stop/start.
+  // AWX'e limit GITMEZ; hedef target_host(s) extra_var'i + add_host ile kurulur.
+  opsxWasDiscover: 'opsx_was/opsx_was_discover.yml',
+  opsxWasOperation: 'opsx_was/opsx_was_operation.yml',
   // Nginx Hub (2026-09-19): dokum (salt okunur) + tek dosya push
   nginxConsoleFetch: 'nginx_console/nginx_console_fetch.yml',
   nginxConsolePush: 'nginx_console/nginx_console_push.yml',

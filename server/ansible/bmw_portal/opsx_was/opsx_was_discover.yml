@@ -1,0 +1,232 @@
+---
+
+- name: --- [Play] OpsX WAS kesif - girdi kapisi ve hedefler ---
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - name: --- [Task] Girdi kapisi ---
+      block:
+        - name: --- [Task] Hedef listesi (virgulle ayrilmis) ---
+          ansible.builtin.set_fact:
+            opsx_was_hosts: "{{ (target_hosts | default('') | string).split(',') | map('trim') | reject('equalto', '') | unique | list }}"
+
+        - name: --- [Task] En cok 10 host, gecerli JVM suzgeci ---
+          ansible.builtin.assert:
+            that:
+              - target_hosts is defined
+              - target_hosts is string
+              - (opsx_was_hosts | length) >= 1
+              - (opsx_was_hosts | length) <= 10
+              - (was_server_filter | default('') | string) is match('^([A-Za-z0-9_.-]+)?$')
+            fail_msg: "target_hosts virgulle ayrilmis 1-10 host (string) olmali; was_server_filter yalniz ^[A-Za-z0-9_.-]+$ olabilir."
+            quiet: true
+
+        - name: --- [Task] Host adi bicimi (yalniz harf, rakam, alt cizgi, nokta, tire) ---
+          ansible.builtin.assert:
+            that:
+              - item is string
+              - item is match('^[A-Za-z0-9_.-]+$')
+            fail_msg: "gecersiz host adi: {{ item | string | truncate(80) }}"
+            quiet: true
+          loop: "{{ opsx_was_hosts }}"
+          loop_control:
+            label: "{{ item | string | truncate(40) }}"
+
+        - name: --- [Task] Kesif betiginin kaynak sha1'i ---
+          ansible.builtin.stat:
+            path: "{{ playbook_dir }}/files/opsx_was.sh"
+            checksum_algorithm: sha1
+          register: opsx_was_src_stat
+
+        - name: --- [Task] Kaynak sha1 ---
+          ansible.builtin.set_fact:
+            opsx_was_src_sha1: "{{ opsx_was_src_stat.stat.checksum | default('') }}"
+
+        - name: --- [Task] Dinamik hedefler (AWX limit KULLANILMAZ) ---
+          ansible.builtin.add_host:
+            name: "{{ item }}"
+            groups: opsx_was_disc_targets
+          loop: "{{ opsx_was_hosts }}"
+          changed_when: false
+
+      rescue:
+        - name: --- [Task] Girdi reddedildi, kesif YAPILMAZ ---
+          ansible.builtin.set_fact:
+            opsx_was_input_err: >-
+              {{ ((ansible_failed_result.results | default([]) | selectattr('failed', 'defined') | selectattr('failed') | map(attribute='msg') | list | first)
+                  | default(ansible_failed_result.msg | default('girdi dogrulanamadi'))) | string | truncate(300) }}
+
+- name: --- [Play] OpsX WAS kesif - olcum (yalniz was, salt okunur) ---
+  hosts: opsx_was_disc_targets
+  gather_facts: no
+  become: true
+  become_method: dzdo
+  become_user: was
+  ignore_unreachable: true
+  vars:
+    ansible_pipelining: true
+    opsx_was_disc_deadline_s: 300
+    opsx_was_script: "{{ opsx_was_tmp.path | default('') }}"
+  tasks:
+    - name: --- [Task] Kesif ---
+      block:
+        - name: --- [Task] Baglanan kullanicinin uid'i (kopya sahibi kapisi) ---
+          become: false
+          ansible.builtin.command:
+            cmd: id -u
+          register: opsx_was_me
+          changed_when: false
+          failed_when: false
+
+        - name: --- [Task] Kosuya ozel rastgele betik adi (mktemp) ---
+          become: false
+          ansible.builtin.tempfile:
+            state: file
+            path: /var/tmp
+            prefix: .opsx_was_disc.
+            suffix: .sh
+          register: opsx_was_tmp
+          changed_when: false
+          failed_when: false
+
+        - name: --- [Task] Kesif betigi sunucuya ---
+          become: false
+          ansible.builtin.copy:
+            src: files/opsx_was.sh
+            dest: "{{ opsx_was_script }}"
+            mode: '0644'
+          register: opsx_was_copy
+          changed_when: false
+          ignore_errors: true
+
+        - name: --- [Task] Kopyanin dogrulanmasi (sha1, sahip uid, duzenli dosya, izin) ---
+          become: false
+          ansible.builtin.stat:
+            path: "{{ opsx_was_script }}"
+            checksum_algorithm: sha1
+            get_checksum: true
+          register: opsx_was_stat
+          failed_when: false
+
+        - name: --- [Task] WAS kesfi (yalniz was, salt okunur) ---
+          ansible.builtin.command:
+            cmd: "timeout -k 30 {{ (opsx_was_disc_deadline_s | int) + 120 }} bash {{ opsx_was_script }}"
+          environment:
+            MODE: discover
+            SERVER_FILTER: "{{ was_server_filter | default('') | string }}"
+            DISC_DEADLINE_S: "{{ opsx_was_disc_deadline_s | int | string }}"
+          register: opsx_was_run
+          changed_when: false
+          failed_when: false
+          when: >-
+            (opsx_was_copy is not failed)
+            and ((hostvars['localhost'].opsx_was_src_sha1 | default('') | length) > 0)
+            and ((opsx_was_stat.stat.checksum | default('')) == (hostvars['localhost'].opsx_was_src_sha1 | default('')))
+            and ((opsx_was_stat.stat.uid | default(-1) | string) == (opsx_was_me.stdout | default('') | trim))
+            and (opsx_was_stat.stat.isreg | default(false))
+            and not (opsx_was_stat.stat.wgrp | default(true))
+            and not (opsx_was_stat.stat.woth | default(true))
+
+        - name: --- [Task] Betik ciktisi ---
+          ansible.builtin.debug:
+            msg: "{{ opsx_was_run.stdout_lines | default([]) | reject('match', '^DISCOVER\t') | list }}"
+
+        - name: --- [Task] Kesif ve sonuc satirlari ---
+          ansible.builtin.set_fact:
+            opsx_was_dline: "{{ (opsx_was_run.stdout_lines | default([]) | select('match', '^DISCOVER\t[{]') | list | last) | default('') }}"
+            opsx_was_rline: "{{ (opsx_was_run.stdout_lines | default([]) | select('match', '^RESULT\t') | list | last) | default('') }}"
+
+        - name: --- [Task] Sonuc turu ---
+          ansible.builtin.set_fact:
+            opsx_was_kind: >-
+              {{ 'line' if (((opsx_was_dline | length) > 0) and ((opsx_was_rline.split('\t') | length) >= 6) and (opsx_was_rline.split('\t')[2] in ['OK', 'FAIL', 'OLCULEMEDI']))
+                 else ('ran' if ((opsx_was_run is defined) and (opsx_was_run is not skipped))
+                 else ('unreach' if ((opsx_was_me.unreachable | default(false)) or (opsx_was_tmp.unreachable | default(false)) or (opsx_was_copy.unreachable | default(false)) or (opsx_was_stat.unreachable | default(false)))
+                 else 'gate')) }}
+
+        - name: --- [Task] Betik kesif verisi ---
+          ansible.builtin.set_fact:
+            opsx_was_disc_data: "{{ (opsx_was_dline.split('\t', 1)[1] | from_json) if opsx_was_kind == 'line' else {} }}"
+
+        - name: --- [Task] Sonuc satiri yoksa sebep ---
+          ansible.builtin.set_fact:
+            opsx_was_fbmsg: >-
+              {{ '' if opsx_was_kind == 'line'
+                 else (('betik kesif satiri basmadi (rc ' ~ (opsx_was_run.rc | default('?')) ~ '): '
+                        ~ ((opsx_was_run.stderr | default('')) ~ ' ' ~ (opsx_was_run.msg | default('')) ~ ' ' ~ (opsx_was_run.module_stderr | default(''))) | trim | truncate(300)
+                        ~ '; JVM listesi ve durumlar bilinmiyor') if opsx_was_kind == 'ran'
+                 else (('hedefe ulasilamadi: ' ~ ((opsx_was_me.msg | default('')) | string | truncate(300)) ~ '; JVM listesi ve durumlar bilinmiyor') if opsx_was_kind == 'unreach'
+                 else ('betik kopyasi dogrulanamadi (kopya ' ~ ('basarisiz' if (opsx_was_copy is failed) else 'ok')
+                       ~ ', sha1 ' ~ ('esit' if ((opsx_was_stat.stat.checksum | default('')) == (hostvars['localhost'].opsx_was_src_sha1 | default('-'))) else 'FARKLI')
+                       ~ ', sahip_uid ' ~ (opsx_was_stat.stat.uid | default('?') | string) ~ '/' ~ (opsx_was_me.stdout | default('?') | string | trim)
+                       ~ ', duzenli ' ~ (opsx_was_stat.stat.isreg | default('?') | string)
+                       ~ ', wgrp ' ~ (opsx_was_stat.stat.wgrp | default('?') | string)
+                       ~ ', woth ' ~ (opsx_was_stat.stat.woth | default('?') | string) ~ '); kesif YAPILMADI'))) }}
+
+        - name: --- [Task] Host sonucu ---
+          ansible.builtin.set_fact:
+            opsx_was_disc_host:
+              host: "{{ inventory_hostname }}"
+              overall: "{{ 'ok' if ((opsx_was_kind == 'line') and ((opsx_was_disc_data.overall | default('')) == 'ok') and (opsx_was_rline.split('\t')[2] == 'OK')) else 'olculemedi' }}"
+              reason: "{{ ((opsx_was_disc_data.reason | default('') | string) ~ ((' (' ~ opsx_was_rline.split('\t')[5] ~ ')') if ((opsx_was_rline.split('\t')[2] | default('')) != 'OK') else '')) | trim | truncate(400) if opsx_was_kind == 'line' else opsx_was_fbmsg }}"
+              profiles: "{{ (opsx_was_disc_data.profiles | default([])) if opsx_was_kind == 'line' else [] }}"
+
+      rescue:
+        - name: --- [Task] Kesif play'i hata verdi (host listeden DUSMEZ) ---
+          ansible.builtin.set_fact:
+            opsx_was_disc_host:
+              host: "{{ inventory_hostname }}"
+              overall: olculemedi
+              reason: "kesif play'i hata verdi: {{ ansible_failed_result.msg | default('beklenmeyen hata') | string | truncate(300) }}; JVM listesi ve durumlar bilinmiyor"
+              profiles: []
+
+      always:
+        - name: --- [Task] Kosuya ozel betik silinir ---
+          become: false
+          ansible.builtin.file:
+            path: "{{ opsx_was_script }}"
+            state: absent
+          changed_when: false
+          failed_when: false
+          when: (opsx_was_script | length) > 0
+
+- name: --- [Play] OpsX WAS kesif - sonuc ---
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - name: --- [Task] Host sonuclari derlenir (erisilemeyen host listeden DUSMEZ) ---
+      ansible.builtin.set_fact:
+        opsx_was_disc_hosts: >-
+          {{ (opsx_was_disc_hosts | default([])) + [hostvars[item].opsx_was_disc_host | default({
+               'host': item, 'overall': 'olculemedi', 'profiles': [],
+               'reason': 'kesif play sonuc bildirmedi (erisilemedi ya da play dustu); JVM listesi ve durumlar bilinmiyor'})] }}
+      loop: "{{ [] if (opsx_was_input_err is defined) else (opsx_was_hosts | default([])) }}"
+      loop_control:
+        label: "{{ item }}"
+
+    - name: --- [Task] Sonuc derlenir ---
+      ansible.builtin.set_fact:
+        opsx_was_disc_final:
+          hosts: "{{ opsx_was_disc_hosts | default([]) }}"
+          reason: "{{ ('girdi reddedildi, kesif YAPILMADI: ' ~ opsx_was_input_err) if (opsx_was_input_err is defined) else '' }}"
+
+    - name: --- [Task] Sonuc (set_stats) ---
+      ansible.builtin.set_stats:
+        data:
+          opsx_was_discover_result: "{{ opsx_was_disc_final }}"
+        per_host: false
+        aggregate: false
+
+    - name: --- [Task] Ozet ---
+      ansible.builtin.debug:
+        msg: "olculen: {{ opsx_was_disc_final.hosts | selectattr('overall', 'eq', 'ok') | map(attribute='host') | join(', ') }}; olculemeyen: {{ opsx_was_disc_final.hosts | selectattr('overall', 'ne', 'ok') | map(attribute='host') | join(', ') }}"
+
+    - name: --- [Task] Girdi reddi ya da olculemeyen host varsa job dusurulur ---
+      ansible.builtin.fail:
+        msg: >-
+          {{ opsx_was_disc_final.reason if (opsx_was_input_err is defined)
+             else ('olculemeyen host(lar): ' ~ (opsx_was_disc_final.hosts | selectattr('overall', 'ne', 'ok') | map(attribute='host') | join(', '))) }}
+      when: >-
+        (opsx_was_input_err is defined)
+        or ((opsx_was_disc_final.hosts | length) == 0)
+        or ((opsx_was_disc_final.hosts | selectattr('overall', 'ne', 'ok') | list | length) > 0)

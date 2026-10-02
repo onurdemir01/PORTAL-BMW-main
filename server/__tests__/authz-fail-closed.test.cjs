@@ -85,10 +85,12 @@ test('AZ1 yetki karari hatasi IZIN olarak yorumlanmiyor', () => {
   );
 });
 
-test('AZ2 sahiplik sorgusu DB hatasinda REDDEDIYOR (iki modulde de)', () => {
+test('AZ2 sahiplik sorgusu DB hatasinda REDDEDIYOR (her modulde)', () => {
   // ScaleX ve FileX ayni soruyu yanitliyor; ikisi de DB okunamadiginda erisimi
-  // KESMELI. FileX bir donem kesmiyordu (PR #82) — iki modul ayrismasin.
-  for (const rel of ['scalex/index.cjs', 'filex/index.cjs']) {
+  // KESMELI. FileX bir donem kesmiyordu (PR #82) — moduller ayrismasin.
+  // OpsX WAS (2026-10-02): restart/stop/start tetikleyen ve kilit birakan uclar; JBoss
+  // OpsX'in fail-open sahiplik deseni (opsx/index.cjs) BILEREK tasinmadi.
+  for (const rel of ['scalex/index.cjs', 'filex/index.cjs', 'opsx/was.cjs']) {
     const src = fs.readFileSync(path.join(SERVER, rel), 'utf8');
     const at = src.indexOf('SELECT TOP 1 username FROM ansible_job_history');
     assert.ok(at > 0, `${rel}: sahiplik sorgusu bulunamadi`);

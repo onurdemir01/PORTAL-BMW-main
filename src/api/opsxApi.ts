@@ -224,6 +224,176 @@ export interface OpsxServerConfigSelection {
   jbossMajor: string;
 }
 
+// ── WAS (WebSphere) — 2026-10-02 ─────────────────────────────────────────────
+// JBoss akışından AYRI uçlar (server/opsx/was.cjs). Kurallar: TEK host + TEK JVM,
+// işlem öncesi canlı keşif (en çok 15 dk geçerli), JVM adı elle yazılarak onay.
+// "Ölçülemedi" ile "durmuş" ASLA karışmaz: OLCULEMEDI ayrı bir durumdur ve işlem yapılmaz.
+export type WasState = "RUNNING" | "STOPPED" | "ASKIDA" | "COKLU_SUREC" | "OLCULEMEDI";
+export type WasOperation = "restart" | "stop" | "start";
+export type WasOpResultCode = "OK" | "SKIP" | "FAIL" | "OLCULEMEDI";
+
+export interface WasHost {
+  host: string;
+  env: string;     // normalize edilmiş: PROD → Production
+  envRaw: string;  // envanterdeki ham değer
+  os: string;
+  wasVersion: string;
+  status: string;  // envanterdeki (gece taraması) durum — canlı DEĞİL
+  selectable: boolean; // yalnız Linux
+  reason: string;
+}
+
+export interface WasWarning {
+  code: string; // "ASKIDA" | "SON_CALISAN"
+  message: string;
+}
+
+export interface WasTarget {
+  host: string;
+  profile: string;
+  cell: string;
+  node: string;
+  server: string;
+  cluster: string;
+  state: WasState;
+  pids: number;
+  ss: string;
+  reason: string;
+  kimlik: "var" | "yok" | "olculemedi";
+  hostOverall: "ok" | "olculemedi";
+  selectable: boolean;
+  allowedOps: WasOperation[];
+  // clusterKnown=false: küme bilgisi ölçülemedi (cluster "?") — "son çalışan" uyarısı her zaman sorulur.
+  peers: { total: number; running: number; unknown: number; clusterKnown?: boolean };
+  warnings: Record<WasOperation, WasWarning[]>;
+}
+
+export interface WasHostResult {
+  host: string;
+  overall: "ok" | "olculemedi";
+  reason: string;
+  hasApp: boolean;
+}
+
+export interface WasDiscoverLaunch {
+  ok: boolean;
+  jobId?: number | null;
+  status?: string | null;
+  awxServerId?: number;
+  hosts?: string[];
+  message?: string;
+  code?: string;
+}
+
+export interface WasDiscoverStatus {
+  ok: boolean;
+  status: string;
+  message?: string;
+  app?: string;
+  hosts?: WasHostResult[];
+  targets?: WasTarget[];
+  finishedAt?: string | null;
+  validUntil?: string | null;
+  appLock?: { holder: string | null; target: string | null; jobId: number | null } | null;
+}
+
+export interface WasRunBody {
+  app: string;
+  host: string; // TEK sunucu — dizi gönderilirse sunucu 400 döner
+  profile: string;
+  cell: string;
+  node: string;
+  server: string;
+  operation: WasOperation;
+  confirmed: boolean;
+  confirmText: string; // JVM adı, elle yazılır
+  discoverJobId: number;
+  discoverServerId: number;
+  ackWarnings?: boolean;
+}
+
+export interface WasRunResult {
+  ok: boolean;
+  jobId?: number | null;
+  status?: string | null;
+  awxServerId?: number;
+  templateId?: number;
+  requestId?: string;
+  // false: iş başladı ama Portal kaydı yazılamadı — sonuç bu ekrandan izlenemeyebilir (warning metni).
+  historyWritten?: boolean;
+  warning?: string;
+  sentBody?: { extra_vars: Record<string, unknown> };
+  message?: string;
+  code?: string;
+  warnings?: WasWarning[];
+  lock?: { scope: "app" | "target"; holder: string | null; target: string | null; jobId: number | null };
+}
+
+// status = adımın HEDEFİNE ulaşıp ulaşmadığı. warning: OK ama mesajı "UYARI:" ile başlıyor
+// (adım tamam, dikkat gerektiren durum var) — yeşil "Başarılı" değil, sarı "Uyarı" gösterilir.
+export interface WasOpStep {
+  step: string;
+  status: WasOpResultCode;
+  msg: string;
+  warning?: boolean;
+}
+
+export interface WasOpResult {
+  host: string;
+  profile: string;
+  cell: string;
+  node: string;
+  server: string;
+  op: string;
+  requestId?: string;
+  before: string;
+  after: string;
+  result: WasOpResultCode;
+  steps: WasOpStep[];
+  line: string;
+}
+
+export interface WasRunStatus {
+  ok: boolean;
+  status: string;
+  output?: string;
+  result?: WasOpResult;
+  severity?: "ok" | "skip" | "fail" | "unknown";
+  message?: string;
+}
+
+const WAS = `${BASE}/was`;
+
+export const opsxWasApi = {
+  // NOAPP satırları ve (Admin değilseniz) kısıtlı uygulamalar listelenmez.
+  searchApps: (search: string): Promise<{ ok: boolean; apps?: string[]; truncated?: boolean; message?: string }> =>
+    fetch(`${WAS}/apps?search=${encodeURIComponent(search)}`).then(safeJson),
+
+  getHosts: (app: string): Promise<{ ok: boolean; hosts?: WasHost[]; maxDiscoverHosts?: number; message?: string }> =>
+    fetch(`${WAS}/hosts?app=${encodeURIComponent(app)}`).then(safeJson),
+
+  // Salt okunur keşif. `hosts` verilmezse uygulamanın tüm Linux sunucuları (en çok 10).
+  discover: (app: string, hosts?: string[]): Promise<WasDiscoverLaunch> =>
+    fetch(`${WAS}/discover`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(hosts ? { app, hosts } : { app }),
+    }).then(safeJson),
+
+  discoverStatus: (awxServerId: number, jobId: number): Promise<WasDiscoverStatus> =>
+    fetch(`${WAS}/discover/${awxServerId}/${jobId}/status`).then(safeJson),
+
+  run: (body: WasRunBody): Promise<WasRunResult> =>
+    fetch(`${WAS}/run`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).then(safeJson),
+
+  runStatus: (awxServerId: number, jobId: number): Promise<WasRunStatus> =>
+    fetch(`${WAS}/run/${awxServerId}/${jobId}/status`).then(safeJson),
+};
+
 export const opsxApi = {
   // Uygulama arama — LogX legacy ile aynı kaynak; DB erişilemezse fallbackMode=true
   // ile son bilinen snapshot döner.

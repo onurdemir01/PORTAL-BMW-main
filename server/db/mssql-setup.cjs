@@ -181,6 +181,57 @@ const TABLES = [
       )`,
   },
   {
+    // OpsX WAS kilidi (2026-10-02) - compare-and-set, ScaleX tryLockRestore deseni
+    // (bkz. server/opsx/was-state.cjs). Anahtar basina TEK satir; satir SILINMEZ,
+    // kilit `held = 0` UPDATE'iyle birakilir (TBMWANS'ta DELETE yok). Iki anahtar tipi:
+    //   A|<APP>                          - ayni uygulamanin baska hostunda is suruyorsa 409
+    //   T|<HOST>|<cell>|<node>|<server>  - ayni JVM'e ikinci is
+    // lock_key disindaki tum kolonlar NULL olabilir: eski/yarim satir CAS'i bozmaz.
+    name: 'opsx_was_locks',
+    sql: `
+      CREATE TABLE opsx_was_locks (
+        id             INT IDENTITY(1,1) PRIMARY KEY,
+        lock_key       NVARCHAR(450) NOT NULL,
+        held           BIT NULL,
+        holder         NVARCHAR(255) NULL,
+        lock_id        NVARCHAR(64) NULL,
+        target_desc    NVARCHAR(500) NULL,
+        locked_until   DATETIME2 NULL,
+        awx_server_id  INT NULL,
+        awx_job_id     INT NULL,
+        last_op_finished_at NVARCHAR(40) NULL,
+        created_at     DATETIME2 NULL DEFAULT GETUTCDATE(),
+        updated_at     DATETIME2 NULL DEFAULT GETUTCDATE(),
+        UNIQUE(lock_key)
+      )`,
+  },
+  {
+    // OpsX WAS islem kaydi (2026-10-02) - baslatilan her WAS isi icin TEK satir; satir
+    // SILINMEZ. (1) Sonuc denetimi isareti: audited_at IS NULL kosullu UPDATE (CAS) -
+    // opsx_was_result denetimi yalniz bir kez yazilir; genel ss/job-status ucunun
+    // ansible_job_history.finished_at'i doldurmasi bunu etkilemez. (2) Sahiplik yedegi:
+    // ansible_job_history yazilamadiysa WAS durum ucu sahibi buradan okur. (3) Sunucu
+    // tarafi uzlastiricinin kuyrugu (sekme kapansa da sonuc yazilir, kilit birakilir).
+    name: 'opsx_was_ops',
+    sql: `
+      CREATE TABLE opsx_was_ops (
+        id             INT IDENTITY(1,1) PRIMARY KEY,
+        awx_server_id  INT NOT NULL,
+        awx_job_id     INT NOT NULL,
+        request_id     NVARCHAR(64) NULL,
+        username       NVARCHAR(255) NULL,
+        params         NVARCHAR(MAX) NULL,
+        result         NVARCHAR(20) NULL,
+        before_state   NVARCHAR(20) NULL,
+        after_state    NVARCHAR(20) NULL,
+        awx_status     NVARCHAR(20) NULL,
+        awx_finished   NVARCHAR(40) NULL,
+        audited_at     DATETIME2 NULL,
+        created_at     DATETIME2 NULL DEFAULT GETUTCDATE(),
+        UNIQUE(awx_server_id, awx_job_id)
+      )`,
+  },
+  {
     // A4 fetch-back: log-kaynak host NFS'e ERISEMEZSE arsivi portal'a HTTP ile push eder.
     // Bu tablo tek-kullanimlik, TTL'li ingest token'larini tutar (kaynak host bu token'li
     // URL'ye upload yapar → portal fallback dizinine yazar). Bkz. server/logx/v2/ingest.cjs.
@@ -2694,9 +2745,34 @@ const PLAYBOOK_REGISTRY_SEED = [
     category: 'opsx',
     handler: 'opsx_legacy',
     description:
-      'JBoss/WAS geleneksel Linux sunucularda uygulama restart/stop/start/thread dump/heap dump islemi.',
+      'JBoss geleneksel Linux sunucularda uygulama restart/stop/start/thread dump/heap dump islemi.',
     playbook_path: null,
     env_var_name: 'OPSX_LEGACY_TEMPLATE_ID',
+  },
+  // ── OpsX WAS (WebSphere, 2026-10-02) — JBoss akisindan AYRI iki template. Ikisinde de
+  // AWX'e limit GONDERILMEZ (AWX, Limit icin "Prompt on launch" kapaliyken limit'i
+  // SESSIZCE yutar); hedef target_host(s) extra_var'i + playbook icinde add_host ile kurulur.
+  // playbook_path DOLU: Portal launch'tan once AWX template'inin playbook dosya adini
+  // bununla karsilastirir, uyusmazsa 409 (yanlis template'e restart gitmesin).
+  {
+    key_name: 'opsx_was_discover',
+    display_name: 'OpsX — WAS JVM Keşfi (salt okunur)',
+    category: 'opsx',
+    handler: 'opsx_was_discover',
+    description:
+      'bmw_portal/opsx_was/opsx_was_discover.yml — target_hosts (virgulle, en cok 10) uzerinde was kullanicisiyla profil/cell/node/server ve durum (ps + serverStatus) okur, hicbir seyi degistirmez; sonuc set_stats opsx_was_discover_result. Erisilemeyen host listeden dusmez (olculemedi). Prompt on launch > Variables ACIK olmali.',
+    playbook_path: 'server/ansible/bmw_portal/opsx_was/opsx_was_discover.yml',
+    env_var_name: 'OPSX_WAS_DISCOVER_TEMPLATE_ID',
+  },
+  {
+    key_name: 'opsx_was_operation',
+    display_name: 'OpsX — WAS JVM Restart/Stop/Start',
+    category: 'opsx',
+    handler: 'opsx_was_operation',
+    description:
+      'bmw_portal/opsx_was/opsx_was_operation.yml — TEK host + TEK JVM (target_host, was_profile/cell/node/server, operation, consent, confirm_text); was kullanicisiyla stopServer/startServer/serverStatus; sonuc set_stats opsx_was_op_result, FAIL/OLCULEMEDI ise job FAILED. dbo.WASAppsInventory yalniz olculmus running/stopped ile tek satir UPDATE (GBLABT02, tbmwans_pwd credential). Template timeout en cok 30 dk, allow_simultaneous KAPALI (Portal kilidi 60 dk).',
+    playbook_path: 'server/ansible/bmw_portal/opsx_was/opsx_was_operation.yml',
+    env_var_name: 'OPSX_WAS_OPERATION_TEMPLATE_ID',
   },
   {
     key_name: 'opsx_openshift_operation',
@@ -2984,6 +3060,22 @@ async function seedPlaybookRegistry(pool) {
     } catch (err) {
       console.warn(`[DB] Playbook kaydi eklenemedi (${row.key_name}):`, err.message);
     }
+  }
+  // opsx_legacy_operation aciklamasi "JBoss/WAS" diyordu ama o akis WAS'i HIC calistirmiyor
+  // (WAS artik opsx_was_* kayitlarinda). Seed "yoksa ekle" oldugu icin mevcut satir eski
+  // metinle kalirdi; YALNIZ metin hala BIREBIR eski seed ise tek satir duzeltilir - admin
+  // aciklamayi elle degistirdiyse dokunulmaz.
+  try {
+    await pool
+      .request()
+      .input('old_desc', 'JBoss/WAS geleneksel Linux sunucularda uygulama restart/stop/start/thread dump/heap dump islemi.')
+      .input('new_desc', 'JBoss geleneksel Linux sunucularda uygulama restart/stop/start/thread dump/heap dump islemi.')
+      .query(
+        `UPDATE ansible_playbook_registry SET description = @new_desc
+          WHERE key_name = 'opsx_legacy_operation' AND CAST(description AS NVARCHAR(400)) = @old_desc`,
+      );
+  } catch (err) {
+    console.warn('[DB] opsx_legacy_operation aciklamasi guncellenemedi:', err.message);
   }
 }
 
@@ -4100,6 +4192,14 @@ async function setupTables() {
       table: 'smart_tickets',
       col: 'cancelled_by',
       sql: `ALTER TABLE smart_tickets ADD cancelled_by NVARCHAR(200) NULL`,
+    },
+    {
+      // OpsX WAS (2026-10-02): anahtardaki SON islemin AWX bitis zamani (ISO metin). Bu
+      // islemden ONCE baslamis kesif /run'da reddedilir (LB cifti: bayat kesifle ikinci
+      // host SON_CALISAN uyarisi olmadan indirilmesin). Bkz. server/opsx/was-state.cjs.
+      table: 'opsx_was_locks',
+      col: 'last_op_finished_at',
+      sql: `ALTER TABLE opsx_was_locks ADD last_op_finished_at NVARCHAR(40) NULL`,
     },
   ];
 

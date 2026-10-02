@@ -19,7 +19,7 @@ const PlatformStep: React.FC<{ onSelect: (p: OpsxPlatform) => void; busy?: boole
         <ServerStackIcon className="w-8 h-8 text-[var(--text-primary)]" />
         <span className="text-sm font-semibold text-[var(--text-primary)]">Legacy</span>
         <span className="text-xs text-[var(--text-muted)] text-center">
-          Jboss/WAS geleneksel Linux sunucu uygulamalar için
+          JBoss ve WAS (WebSphere) geleneksel Linux sunucu uygulamaları için
         </span>
       </button>
       <button

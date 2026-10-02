@@ -39,4 +39,31 @@ function getAppsTable() {
   return raw;
 }
 
-module.exports = { getAppsTable, DEFAULT_APPS_TABLE };
+// ── WAS (WebSphere) uygulama envanteri ──────────────────────────────────────
+// JBoss tablosundan AYRI bir tablodur (bkz. bmw_inventory/.../was/files/create_table.sql):
+// kolonlar env, host, domain, os, os_version, was_version, app, jdk_type, jre_version,
+// status. `app` burada WAS application server (JVM) adidir.
+//
+// LOGX_APPS_TABLE'dan BAGIMSIZ: o degisken LogX ile ortak; OpsX WAS'i ona baglamak
+// LogX'i WAS tablosuna yonlendirirdi. Ayni SAFE_IDENTIFIER kapisindan gecer.
+const DEFAULT_WAS_APPS_TABLE = 'WASAppsInventory';
+
+let warnedWas = false;
+
+function getWasAppsTable() {
+  const raw = String(process.env.OPSX_WAS_APPS_TABLE || '').trim();
+  if (!raw) return DEFAULT_WAS_APPS_TABLE;
+  if (!SAFE_IDENTIFIER.test(raw)) {
+    if (!warnedWas) {
+      console.warn(
+        `[Config] OPSX_WAS_APPS_TABLE gecersiz bicimde ("${raw}") — yok sayildi, ` +
+          `varsayilan kullaniliyor: ${DEFAULT_WAS_APPS_TABLE}`,
+      );
+      warnedWas = true;
+    }
+    return DEFAULT_WAS_APPS_TABLE;
+  }
+  return raw;
+}
+
+module.exports = { getAppsTable, DEFAULT_APPS_TABLE, getWasAppsTable, DEFAULT_WAS_APPS_TABLE };

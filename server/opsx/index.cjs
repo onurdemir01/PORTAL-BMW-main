@@ -65,6 +65,10 @@ const REGISTRY_KEYS = Object.freeze({
   openshiftPodDelete: 'opsx_openshift_pod_delete',
   legacyJvmDiscover: 'opsx_legacy_jvm_discover',
   legacyServerConfigDiscover: 'opsx_legacy_serverconfig_discover',
+  // WAS (WebSphere, 2026-10-02) - uclari server/opsx/was.cjs icinde; o dosya ayni
+  // anahtarlari WAS_KEYS olarak tasir (bekci ikisinin ayni oldugunu kilitler).
+  wasDiscover: 'opsx_was_discover',
+  wasOperation: 'opsx_was_operation',
 });
 
 // Template ID + AWX sunucusu Playbook Kayitlari'ndan cozulur. getEffectiveTemplateId()
@@ -448,6 +452,10 @@ function initOpsX(app) {
     /* motor yoksa yoksay */
   }
 
+  // WAS (WebSphere) restart/stop/start - AYRI dosya (server/opsx/was.cjs). Sayfa kapisindan
+  // SONRA baglanir ki /api/opsx/was/* de requireVisiblePrefix('OpsX')'ten gecsin.
+  require('./was.cjs').initOpsXWas(app, { requireAuth });
+
   // GET /api/opsx/apps?search= — LogX ile AYNI kaynak (uygulama envanteri + snapshot
   // fallback). Kod tekrarlamak yerine legacy modulunun searchApps'i kullanilir.
   app.get('/api/opsx/apps', requireAuth, async (req, res) => {
@@ -549,24 +557,36 @@ function initOpsX(app) {
     // (admin degilse) reddet — Self Service'teki ayni kontrol. Kayit yoksa/DB hatasi
     // varsa fail-open (mesru akisi bozmaz; OpsX kendi launch'inda bu satiri zaten
     // await ile yaziyor, yani normal akista kayit her zaman mevcuttur).
+    //
+    // WAS ISLERI BU UCTAN OKUNMAZ (2026-10-02): WAS'in kendi durum uclari sahipligi
+    // FAIL-CLOSED denetler ve ciktiyi maskeler (server/opsx/was.cjs). Bu uc ayni AWX job
+    // id'siyle ikisini de atliyordu. WAS isi iki yoldan taninir: gecmis satirinin platform
+    // alani VE (DB okunamasa bile) AWX isinin playbook dosya adi. Admin de yonlendirilir.
+    const wasUcu = () =>
+      res.status(409).json({
+        ok: false,
+        code: 'was_ucu',
+        message: 'Bu bir OpsX WAS işi; durumu ve çıktısı yalnız WAS ekranından (/api/opsx/was/...) okunur.',
+      });
+    const was = require('./was.cjs');
     try {
       const db = require('../db/index.cjs');
       const reqUser = req.session?.user || {};
-      if (reqUser.role !== 'Admin') {
-        const { rows } = await db.query(
-          `SELECT TOP 1 username FROM ansible_job_history WHERE job_id = $1 AND awx_server_id = $2`,
-          [jobId, serverId],
-        );
-        if (
-          rows.length &&
-          rows[0].username &&
-          String(rows[0].username).toLowerCase() !== String(reqUser.username || '').toLowerCase()
-        ) {
-          return res.status(403).json({ ok: false, message: 'Bu iş size ait değil.' });
-        }
+      const { rows } = await db.query(
+        `SELECT TOP 1 username, params FROM ansible_job_history WHERE job_id = $1 AND awx_server_id = $2`,
+        [jobId, serverId],
+      );
+      if (rows.length && was.isWasPlatform(rows[0].params)) return wasUcu();
+      if (
+        reqUser.role !== 'Admin' &&
+        rows.length &&
+        rows[0].username &&
+        String(rows[0].username).toLowerCase() !== String(reqUser.username || '').toLowerCase()
+      ) {
+        return res.status(403).json({ ok: false, message: 'Bu iş size ait değil.' });
       }
     } catch {
-      /* DB hiccup -> fail-open */
+      /* DB hiccup -> fail-open (WAS isi asagida playbook adindan yine reddedilir) */
     }
 
     try {
@@ -575,6 +595,7 @@ function initOpsX(app) {
         runner.getJobStatusOnServer(serverId, jobId),
         runner.getJobOutputOnServer(serverId, jobId),
       ]);
+      if (was.isWasPlaybook(statusInfo.playbook)) return wasUcu();
       res.json({
         ok: true,
         status: statusInfo.status,
@@ -2064,4 +2085,5 @@ module.exports = {
   OCP_OPERATIONS,
   extractOpsxJvmResult,
   extractOpsxServerConfigResult,
+  REGISTRY_KEYS,
 };

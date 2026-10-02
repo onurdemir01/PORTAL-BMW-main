@@ -1,0 +1,382 @@
+---
+
+- name: --- [Play] OpsX WAS islem - girdi kapisi ve tek hedef ---
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - name: --- [Task] Girdi kapisi ---
+      block:
+        - name: --- [Task] Tek host, tek JVM, gecerli islem, acik onay ---
+          ansible.builtin.assert:
+            that:
+              - target_host is defined
+              - target_host is string
+              - "',' not in target_host"
+              - (target_host | trim | length) > 0
+              - was_server is defined
+              - was_server is string
+              - (operation | default('') | string) in ['restart', 'stop', 'start']
+              - (consent | default(false) | string | lower) == 'true'
+              - (confirm_text | default('') | string) == (was_server | string)
+              - (opsx_request_id | default('') | string) is match('^[A-Za-z0-9_.:-]{0,64}$')
+            fail_msg: "target_host TEK host (string, virgulsuz), operation restart|stop|start, consent=true ve confirm_text == was_server gerekli; toplu islem yok."
+            quiet: true
+
+        - name: --- [Task] Ad bicimi (yalniz harf, rakam, alt cizgi, nokta, tire) ---
+          ansible.builtin.assert:
+            that:
+              - item is string
+              - item is match('^[A-Za-z0-9_.-]+$')
+              - (item | length) == (item | trim | length)
+            fail_msg: "gecersiz ad: {{ item | string | truncate(80) }}"
+            quiet: true
+          loop:
+            - "{{ target_host }}"
+            - "{{ was_profile | default('') }}"
+            - "{{ was_cell | default('') }}"
+            - "{{ was_node | default('') }}"
+            - "{{ was_server }}"
+          loop_control:
+            label: "{{ item | string | truncate(40) }}"
+
+        - name: --- [Task] Islem betiginin kaynak sha1'i ---
+          ansible.builtin.stat:
+            path: "{{ playbook_dir }}/files/opsx_was.sh"
+            checksum_algorithm: sha1
+          register: opsx_was_src_stat
+
+        - name: --- [Task] Envanter betiginin kaynak sha1'i ---
+          ansible.builtin.stat:
+            path: "{{ playbook_dir }}/files/update_wasapp_status.py"
+            checksum_algorithm: sha1
+          register: opsx_was_upd_src_stat
+
+        - name: --- [Task] Kaynak sha1 degerleri ve hedef ---
+          ansible.builtin.set_fact:
+            opsx_was_src_sha1: "{{ opsx_was_src_stat.stat.checksum | default('') }}"
+            opsx_was_upd_src_sha1: "{{ opsx_was_upd_src_stat.stat.checksum | default('') }}"
+            opsx_was_target: "{{ target_host | trim }}"
+
+        - name: --- [Task] Dinamik hedef (AWX limit KULLANILMAZ) ---
+          ansible.builtin.add_host:
+            name: "{{ opsx_was_target }}"
+            groups: opsx_was_op_target
+          changed_when: false
+
+      rescue:
+        - name: --- [Task] Girdi reddedildi, islem YAPILMAZ ---
+          ansible.builtin.set_fact:
+            opsx_was_input_err: >-
+              {{ ((ansible_failed_result.results | default([]) | selectattr('failed', 'defined') | selectattr('failed') | map(attribute='msg') | list | first)
+                  | default(ansible_failed_result.msg | default('girdi dogrulanamadi'))) | string | truncate(300) }}
+
+- name: --- [Play] OpsX WAS islem - uygula (yalniz was) ---
+  hosts: opsx_was_op_target
+  gather_facts: no
+  become: true
+  become_method: dzdo
+  become_user: was
+  ignore_unreachable: true
+  vars:
+    ansible_pipelining: true
+    opsx_was_op_budget_s: 1500
+    opsx_was_script: "{{ opsx_was_tmp.path | default('') }}"
+    opsx_was_upd_script: "{{ opsx_was_upd_tmp.path | default('') }}"
+  tasks:
+    - name: --- [Task] Islem ---
+      block:
+        - name: --- [Task] Baglanan kullanicinin uid'i (kopya sahibi kapisi) ---
+          become: false
+          ansible.builtin.command:
+            cmd: id -u
+          register: opsx_was_me
+          changed_when: false
+          failed_when: false
+
+        - name: --- [Task] Kosuya ozel rastgele betik adi (mktemp) ---
+          become: false
+          ansible.builtin.tempfile:
+            state: file
+            path: /var/tmp
+            prefix: .opsx_was.
+            suffix: .sh
+          register: opsx_was_tmp
+          changed_when: false
+          failed_when: false
+
+        - name: --- [Task] Islem betigi sunucuya ---
+          become: false
+          ansible.builtin.copy:
+            src: files/opsx_was.sh
+            dest: "{{ opsx_was_script }}"
+            mode: '0644'
+          register: opsx_was_copy
+          changed_when: false
+          ignore_errors: true
+
+        - name: --- [Task] Kopyanin dogrulanmasi (sha1, sahip uid, duzenli dosya, izin) ---
+          become: false
+          ansible.builtin.stat:
+            path: "{{ opsx_was_script }}"
+            checksum_algorithm: sha1
+            get_checksum: true
+          register: opsx_was_stat
+          failed_when: false
+
+        - name: --- [Task] WAS islemi (yalniz was, tek JVM) ---
+          ansible.builtin.command:
+            cmd: "timeout -k 30 {{ (opsx_was_op_budget_s | int) + 60 }} bash {{ opsx_was_script }}"
+          environment:
+            MODE: op
+            OP_BUDGET_S: "{{ opsx_was_op_budget_s | int | string }}"
+            OP: "{{ operation }}"
+            PROFILE: "{{ was_profile }}"
+            CELL: "{{ was_cell }}"
+            NODE: "{{ was_node }}"
+            SERVER: "{{ was_server }}"
+            CONSENT: "{{ consent | default(false) | string | lower }}"
+            CONFIRM: "{{ confirm_text | default('') }}"
+          register: opsx_was_run
+          changed_when: "('RESULT\t' ~ operation ~ '\tOK\t') in (opsx_was_run.stdout | default(''))"
+          failed_when: false
+          when: >-
+            (opsx_was_copy is not failed)
+            and ((hostvars['localhost'].opsx_was_src_sha1 | default('') | length) > 0)
+            and ((opsx_was_stat.stat.checksum | default('')) == (hostvars['localhost'].opsx_was_src_sha1 | default('')))
+            and ((opsx_was_stat.stat.uid | default(-1) | string) == (opsx_was_me.stdout | default('') | trim))
+            and (opsx_was_stat.stat.isreg | default(false))
+            and not (opsx_was_stat.stat.wgrp | default(true))
+            and not (opsx_was_stat.stat.woth | default(true))
+
+        - name: --- [Task] Betik ciktisi ---
+          ansible.builtin.debug:
+            msg: "{{ opsx_was_run.stdout_lines | default([]) }}"
+
+        - name: --- [Task] Sonuc satiri ---
+          ansible.builtin.set_fact:
+            opsx_was_rline: "{{ (opsx_was_run.stdout_lines | default([]) | select('match', '^RESULT\t') | list | last) | default('') }}"
+
+        - name: --- [Task] Adimlar (STEP satirlari) ---
+          ansible.builtin.set_fact:
+            opsx_was_steps: "{{ (opsx_was_steps | default([])) + [{'step': item.split('\t')[1] | default('?'), 'status': item.split('\t')[2] | default('?'), 'msg': item.split('\t')[3] | default('')}] }}"
+          loop: "{{ opsx_was_run.stdout_lines | default([]) | select('match', '^STEP\t') | list }}"
+          loop_control:
+            label: "{{ item.split('\t')[1] | default('?') }}"
+
+        - name: --- [Task] Sonuc turu ---
+          ansible.builtin.set_fact:
+            opsx_was_kind: >-
+              {{ 'line' if (((opsx_was_rline.split('\t') | length) >= 6) and (opsx_was_rline.split('\t')[2] in ['OK', 'SKIP', 'FAIL', 'OLCULEMEDI']))
+                 else ('ran' if ((opsx_was_run is defined) and (opsx_was_run is not skipped))
+                 else ('unreach' if ((opsx_was_me.unreachable | default(false)) or (opsx_was_tmp.unreachable | default(false)) or (opsx_was_copy.unreachable | default(false)) or (opsx_was_stat.unreachable | default(false)))
+                 else 'gate')) }}
+
+        - name: --- [Task] Sonuc satiri yoksa sebep ---
+          ansible.builtin.set_fact:
+            opsx_was_fbmsg: >-
+              {{ '' if opsx_was_kind == 'line'
+                 else (('betik RESULT satiri basmadi (rc ' ~ (opsx_was_run.rc | default('?')) ~ '): '
+                        ~ ((opsx_was_run.stderr | default('')) ~ ' ' ~ (opsx_was_run.msg | default('')) ~ ' ' ~ (opsx_was_run.module_stderr | default(''))) | trim | truncate(300)
+                        ~ '; islem durumu bilinmiyor') if opsx_was_kind == 'ran'
+                 else (('hedefe ulasilamadi: ' ~ ((opsx_was_me.msg | default('')) | string | truncate(300)) ~ '; islem yapilamadi, durum olculemedi') if opsx_was_kind == 'unreach'
+                 else ('betik kopyasi dogrulanamadi (kopya ' ~ ('basarisiz' if (opsx_was_copy is failed) else 'ok')
+                       ~ ', sha1 ' ~ ('esit' if ((opsx_was_stat.stat.checksum | default('')) == (hostvars['localhost'].opsx_was_src_sha1 | default('-'))) else 'FARKLI')
+                       ~ ', sahip_uid ' ~ (opsx_was_stat.stat.uid | default('?') | string) ~ '/' ~ (opsx_was_me.stdout | default('?') | string | trim)
+                       ~ ', duzenli ' ~ (opsx_was_stat.stat.isreg | default('?') | string)
+                       ~ ', wgrp ' ~ (opsx_was_stat.stat.wgrp | default('?') | string)
+                       ~ ', woth ' ~ (opsx_was_stat.stat.woth | default('?') | string) ~ '); islem YAPILMADI'))) }}
+
+        - name: --- [Task] Host sonucu ---
+          ansible.builtin.set_fact:
+            opsx_was_host_result:
+              host: "{{ inventory_hostname }}"
+              profile: "{{ was_profile }}"
+              cell: "{{ was_cell }}"
+              node: "{{ was_node }}"
+              server: "{{ was_server }}"
+              op: "{{ operation }}"
+              request_id: "{{ opsx_request_id | default('') | string }}"
+              result: "{{ opsx_was_rline.split('\t')[2] if opsx_was_kind == 'line' else ('FAIL' if opsx_was_kind == 'gate' else 'OLCULEMEDI') }}"
+              before: "{{ opsx_was_rline.split('\t')[3] if opsx_was_kind == 'line' else '-' }}"
+              after: "{{ opsx_was_rline.split('\t')[4] if opsx_was_kind == 'line' else '-' }}"
+              steps: "{{ (opsx_was_steps | default([])) + ([] if opsx_was_kind == 'line' else [{'step': ('kopya' if opsx_was_kind == 'gate' else ('baglanti' if opsx_was_kind == 'unreach' else 'betik')), 'status': ('FAIL' if opsx_was_kind == 'gate' else 'OLCULEMEDI'), 'msg': opsx_was_fbmsg}]) }}"
+              line: "{{ opsx_was_rline if opsx_was_kind == 'line' else ('RESULT\t' ~ operation ~ '\t' ~ ('FAIL' if opsx_was_kind == 'gate' else 'OLCULEMEDI') ~ '\t-\t-\t' ~ opsx_was_fbmsg) }}"
+
+        - name: --- [Task] Envanter durumu (yalniz OK/SKIP ve olculmus RUNNING/STOPPED) ---
+          ansible.builtin.set_fact:
+            opsx_was_inv_status: >-
+              {{ (({'RUNNING': 'running', 'STOPPED': 'stopped'})[opsx_was_host_result.after] | default(''))
+                 if (opsx_was_host_result.result in ['OK', 'SKIP']) else '' }}
+
+        - name: --- [Task] Envanter yazimi (GBLABT02, tek satir UPDATE) ---
+          when: (opsx_was_inv_status | length) > 0
+          block:
+            - name: --- [Task] tbmwans_pwd yoksa envanter yazilmaz ---
+              ansible.builtin.set_fact:
+                opsx_was_inv_line: "WASAPP_UPDATE\tFAIL\ttbmwans_pwd tanimli degil (AWX credential); envanter guncellenmedi"
+              when: (tbmwans_pwd | default('') | string | length) == 0
+
+            - name: --- [Task] GBLABT02 baglanan kullanicinin uid'i ---
+              become: false
+              delegate_to: GBLABT02
+              ansible.builtin.command:
+                cmd: id -u
+              register: opsx_was_upd_me
+              changed_when: false
+              failed_when: false
+              when: (tbmwans_pwd | default('') | string | length) > 0
+
+            - name: --- [Task] GBLABT02 kosuya ozel rastgele betik adi (mktemp) ---
+              become: false
+              delegate_to: GBLABT02
+              ansible.builtin.tempfile:
+                state: file
+                path: /var/tmp
+                prefix: .opsx_was_upd.
+                suffix: .py
+              register: opsx_was_upd_tmp
+              changed_when: false
+              failed_when: false
+              when: (tbmwans_pwd | default('') | string | length) > 0
+
+            - name: --- [Task] Envanter betigi GBLABT02'ye ---
+              become: false
+              delegate_to: GBLABT02
+              ansible.builtin.copy:
+                src: files/update_wasapp_status.py
+                dest: "{{ opsx_was_upd_script }}"
+                mode: '0644'
+              register: opsx_was_upd_copy
+              changed_when: false
+              ignore_errors: true
+              when: (tbmwans_pwd | default('') | string | length) > 0
+
+            - name: --- [Task] Envanter betigi kopyasinin dogrulanmasi ---
+              become: false
+              delegate_to: GBLABT02
+              ansible.builtin.stat:
+                path: "{{ opsx_was_upd_script }}"
+                checksum_algorithm: sha1
+                get_checksum: true
+              register: opsx_was_upd_stat
+              failed_when: false
+              when: (tbmwans_pwd | default('') | string | length) > 0
+
+            - name: --- [Task] dbo.WASAppsInventory tek satir UPDATE (parola yalniz stdin) ---
+              delegate_to: GBLABT02
+              no_log: true
+              ansible.builtin.command:
+                argv:
+                  - python3
+                  - "{{ opsx_was_upd_script }}"
+                  - "--host={{ inventory_hostname.split('.')[0] | upper }}"
+                  - "--app={{ was_server }}"
+                  - "--status={{ opsx_was_inv_status }}"
+                  - "--pwd-stdin"
+                stdin: "{{ tbmwans_pwd }}"
+              register: opsx_was_upd
+              changed_when: false
+              failed_when: false
+              when: >-
+                ((tbmwans_pwd | default('') | string | length) > 0)
+                and (opsx_was_upd_copy is not failed)
+                and ((hostvars['localhost'].opsx_was_upd_src_sha1 | default('') | length) > 0)
+                and ((opsx_was_upd_stat.stat.checksum | default('')) == (hostvars['localhost'].opsx_was_upd_src_sha1 | default('')))
+                and ((opsx_was_upd_stat.stat.uid | default(-1) | string) == (opsx_was_upd_me.stdout | default('') | trim))
+                and (opsx_was_upd_stat.stat.isreg | default(false))
+                and not (opsx_was_upd_stat.stat.wgrp | default(true))
+                and not (opsx_was_upd_stat.stat.woth | default(true))
+
+            - name: --- [Task] Envanter sonucu (parolasiz satir) ---
+              ansible.builtin.set_fact:
+                opsx_was_inv_line: >-
+                  {{ (opsx_was_upd.stdout_lines | default([]) | select('match', '^WASAPP_UPDATE\t') | list | last)
+                     | default('WASAPP_UPDATE\tFAIL\tguncelleyici kosmadi ya da sonuc satiri yok (kopya dogrulanamadi ya da python3/pyodbc hatasi)') }}
+              when: (tbmwans_pwd | default('') | string | length) > 0
+
+            - name: --- [Task] Envanter sonucu ---
+              ansible.builtin.debug:
+                msg: "{{ opsx_was_inv_line | default('') }}"
+
+        - name: --- [Task] Envanter adimi sonuca eklenir ---
+          ansible.builtin.set_fact:
+            opsx_was_host_result: >-
+              {{ opsx_was_host_result | combine({'steps': opsx_was_host_result.steps + [
+                   {'step': 'envanter',
+                    'status': (({'OK': 'OK', 'NOROW': 'SKIP'})[(opsx_was_inv_line | default('')).split('\t')[1] | default('')] | default('FAIL'))
+                              if (opsx_was_inv_status | length) > 0 else 'SKIP',
+                    'msg': ((opsx_was_inv_line | default('')).split('\t')[2] | default('') | string | truncate(300))
+                           if (opsx_was_inv_status | length) > 0
+                           else ('envanter yazilmadi: sonuc ' ~ opsx_was_host_result.result ~ ', son durum ' ~ opsx_was_host_result.after ~ ' (yalniz OK/SKIP ve olculmus RUNNING/STOPPED yazilir)')}]}) }}
+
+      rescue:
+        - name: --- [Task] Beklenmeyen hata ---
+          ansible.builtin.set_fact:
+            opsx_was_rescue: "{{ (ansible_failed_result.msg | default('beklenmeyen hata') | string | truncate(300)) }}"
+
+      always:
+        - name: --- [Task] Kosuya ozel betik silinir ---
+          become: false
+          ansible.builtin.file:
+            path: "{{ opsx_was_script }}"
+            state: absent
+          changed_when: false
+          failed_when: false
+          when: (opsx_was_script | length) > 0
+
+        - name: --- [Task] GBLABT02 kosuya ozel betik silinir ---
+          become: false
+          delegate_to: GBLABT02
+          ansible.builtin.file:
+            path: "{{ opsx_was_upd_script }}"
+            state: absent
+          changed_when: false
+          failed_when: false
+          when: (opsx_was_upd_script | length) > 0
+
+- name: --- [Play] OpsX WAS islem - sonuc ---
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - name: --- [Task] Sonuc derlenir ---
+      ansible.builtin.set_fact:
+        opsx_was_final: >-
+          {{ (opsx_was_hr | combine({'steps': (opsx_was_hr.steps | default([])) + ([{'step': 'beklenmeyen_hata', 'status': 'FAIL', 'msg': opsx_was_resc}] if (opsx_was_resc | length) > 0 else [])}))
+             if ((opsx_was_hr.result | default('')) in ['OK', 'SKIP', 'FAIL', 'OLCULEMEDI'])
+             else {'host': (target_host | default('') | string | truncate(100)),
+                   'profile': (was_profile | default('') | string | truncate(100)),
+                   'cell': (was_cell | default('') | string | truncate(100)),
+                   'node': (was_node | default('') | string | truncate(100)),
+                   'server': (was_server | default('') | string | truncate(100)),
+                   'op': opsx_was_op,
+                   'request_id': (opsx_request_id | default('') | string | truncate(64)),
+                   'result': opsx_was_fb_result,
+                   'before': '-',
+                   'after': '-',
+                   'steps': [{'step': opsx_was_fb_step, 'status': opsx_was_fb_result, 'msg': opsx_was_fb_msg}],
+                   'line': 'RESULT\t' ~ opsx_was_op ~ '\t' ~ opsx_was_fb_result ~ '\t-\t-\t' ~ opsx_was_fb_msg} }}
+      vars:
+        opsx_was_hr: "{{ {} if (opsx_was_input_err is defined) else (hostvars[opsx_was_target | default('')].opsx_was_host_result | default({})) }}"
+        opsx_was_resc: "{{ '' if (opsx_was_input_err is defined) else (hostvars[opsx_was_target | default('')].opsx_was_rescue | default('') | string) }}"
+        opsx_was_op: "{{ operation | default('') | string | truncate(20) }}"
+        opsx_was_fb_result: "{{ 'FAIL' if (opsx_was_input_err is defined) else 'OLCULEMEDI' }}"
+        opsx_was_fb_step: "{{ 'girdi' if (opsx_was_input_err is defined) else 'hedef' }}"
+        opsx_was_fb_msg: >-
+          {{ ('girdi reddedildi, islem YAPILMADI: ' ~ opsx_was_input_err) if (opsx_was_input_err is defined)
+             else ('hedef play sonuc bildirmedi (erisilemedi ya da play dustu' ~ ((': ' ~ opsx_was_resc) if (opsx_was_resc | length) > 0 else '') ~ '); gercek durum bilinmiyor') }}
+
+    - name: --- [Task] Sonuc (set_stats) ---
+      ansible.builtin.set_stats:
+        data:
+          opsx_was_op_result: "{{ opsx_was_final }}"
+        per_host: false
+        aggregate: false
+
+    - name: --- [Task] Sonuc satiri ---
+      ansible.builtin.debug:
+        msg: "{{ opsx_was_final.line | default('') }}"
+
+    - name: --- [Task] FAIL ya da OLCULEMEDI ise job dusurulur ---
+      ansible.builtin.fail:
+        msg: "{{ opsx_was_final.line | default('sonuc yok') }}"
+      when: (opsx_was_final.result | default('OLCULEMEDI')) not in ['OK', 'SKIP']
