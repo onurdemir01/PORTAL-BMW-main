@@ -34,7 +34,7 @@ const express = require('express');
 const policy = require('../session-policy.cjs');
 const throttle = require('../login-throttle.cjs');
 const { initAuth } = require('../index.cjs');
-const { cihazOzeti } = require('../sessions-routes.cjs');
+const { initSessionsRoutes, cihazOzeti } = require('../sessions-routes.cjs');
 
 const DK = 60 * 1000;
 let simdi = Date.now();
@@ -222,4 +222,48 @@ test('AK8 cihaz ozeti', () => {
   assert.equal(cihazOzeti('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0) Version/17 Mobile Safari/604.1'), 'Safari · iOS');
   assert.equal(cihazOzeti('Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko Firefox/130.0'), 'Firefox · Linux');
   assert.equal(cihazOzeti(''), 'Bilinmiyor');
+});
+
+test('AK10 store silme hatasi tekli, toplu ve admin iptalini basarili gostermez', async () => {
+  const mini = express();
+  const router = express.Router();
+  router.use((req, _res, next) => {
+    req.session = { user: { username: 'yereluser' } };
+    req.sessionID = 'sid-current';
+    req.sessionStore = {
+      all: (cb) => cb(null, {
+        'sid-other': {
+          user: { username: 'yereluser' },
+          meta: {
+            id: 'deadbeef', createdAt: simdi, lastSeenAt: simdi,
+            remember: false, ip: '', ua: UA.mac,
+          },
+        },
+      }),
+      destroy: (_sid, cb) => cb(new Error('MSSQL unavailable')),
+    };
+    next();
+  });
+  initSessionsRoutes(router, { requireAdmin: (_req, _res, next) => next() });
+  mini.use('/api/auth', router);
+
+  const miniServer = mini.listen(0);
+  await new Promise((resolve) => miniServer.once('listening', resolve));
+  const oncekiDenetim = denetimler.length;
+  try {
+    const port = miniServer.address().port;
+    for (const yol of [
+      '/api/auth/sessions/deadbeef',
+      '/api/auth/sessions?scope=others',
+      '/api/auth/sessions/admin/yereluser?id=deadbeef',
+    ]) {
+      const r = await fetch(`http://127.0.0.1:${port}${yol}`, { method: 'DELETE' });
+      const d = await r.json();
+      assert.equal(r.status, 503, yol);
+      assert.equal(d.ok, false, yol);
+    }
+    assert.equal(denetimler.length, oncekiDenetim, 'basarisiz iptal denetime basarili yazildi');
+  } finally {
+    await new Promise((resolve) => miniServer.close(resolve));
+  }
 });

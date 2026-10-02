@@ -48,7 +48,9 @@ function oturumlariOku(store, username) {
 }
 
 function sil(store, sid) {
-  return new Promise((resolve) => store.destroy(sid, () => resolve()));
+  return new Promise((resolve, reject) =>
+    store.destroy(sid, (err) => (err ? reject(err) : resolve())),
+  );
 }
 
 // UA'dan kisa cihaz ozeti ("Chrome · Windows"). Tam UA da doner (title olarak).
