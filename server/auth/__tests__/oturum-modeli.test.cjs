@@ -159,6 +159,11 @@ test('OM5 cerez: beni-hatirla KALICI (Expires = mutlak sinir), degilse oturum ce
   assert.doesNotMatch(normal.setCookie, /Expires=|Max-Age=/i, 'beni-hatirla yokken cerez kalici');
   assert.match(normal.setCookie, /HttpOnly/i);
   assert.equal(normal.body.session.remember, false);
+  // rolling: oturum DEGISMEYEN istekte de (yazma kisitlamasi icinde) cerez yeniden gelir —
+  // eski 8 sa'lik kalici cerezler ancak boyle yeni modele gecer.
+  simdi += 10 * 1000;
+  const sabit = await iste(normal.cerez);
+  assert.match(sabit.headers.get('set-cookie') || '', /^connect\.sid=/, 'rolling yok');
 
   const t0 = simdi;
   const hatirla = await giris({ remember: true });
@@ -190,6 +195,12 @@ test('OM6 Admin beni-hatirla`yi kapatinca istek yok sayilir', async () => {
   assert.equal(g.body.session.absoluteExpiresAt - simdi, 12 * SA);
   const p = await (await fetch(`${base}/api/auth/session-policy`)).json();
   assert.equal(p.rememberEnabled, false);
+  // Admin sonradan yeniden acsa da, kapaliyken acilmis oturum "hatirlanan" olmaz.
+  process.env.SESSION_REMEMBER_DAYS = '7';
+  const t0 = simdi;
+  simdi += 61 * 1000;
+  const r = await iste(g.cerez);
+  assert.equal(Number(r.headers.get('x-portal-session-absolute')), t0 + 12 * SA, 'kapaliyken istenen beni-hatirla sonradan devreye girdi');
 });
 
 test('OM7 suresi dolan cerezle /login calisir', async () => {
@@ -237,6 +248,10 @@ test('OM9 kunyesiz (eski) oturum ATILMAZ, kunye tamamlanir', () => {
   assert.equal(s2.meta.createdAt, now);
   // Kunyesi tam olan oturuma dokunulmaz.
   assert.equal(policy.eksikMetaTamamla(sess, now + 1000), false);
+  // Eski 8 sa'lik KALICI cerez, beni-hatirla yoksa tarayici-oturumu cerezine doner.
+  sess.cookie = { expires: new Date(now + SA) };
+  policy.cerezAyarla(sess, policy.policy(), now);
+  assert.equal(sess.cookie.expires, null, 'eski kalici cerez oyle kaldi');
 });
 
 test('OM10 bozuk / sinir disi ayar varsayilana duser', () => {
