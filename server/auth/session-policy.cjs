@@ -86,6 +86,10 @@ function etkinlikMi(req) {
 // ── Yaptirim ────────────────────────────────────────────────────────────────
 // Saat enjekte edilebilir: bekciler sinirlari +-1 sn ile sinar (gercek bekleme yok).
 let saat = () => Date.now();
+// Yaptirimla AYNI saat: liste/rapor kodu "bitti mi" sorusunu ayni ana gore cevaplasin.
+function simdi() {
+  return saat();
+}
 function _saatAyarla(fn) {
   saat = typeof fn === 'function' ? fn : () => Date.now();
 }
@@ -263,6 +267,7 @@ module.exports = {
   BASLIK_SEBEP,
   BASLIK_BOSTA,
   BASLIK_MUTLAK,
+  simdi,
   _saatAyarla,
   _rolYukseltmeleri: rolYukseltmeleri,
 };

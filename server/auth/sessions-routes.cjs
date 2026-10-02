@@ -100,7 +100,7 @@ function satir(sid, sess, mevcutSid, p) {
 
 async function liste(req, username) {
   const p = sessionPolicy.policy();
-  const now = Date.now();
+  const now = sessionPolicy.simdi();
   const ham = await oturumlariOku(req.sessionStore, username);
   return ham
     .map(({ sid, sess }) => ({ sid, sess, r: satir(sid, sess, req.sessionID, p) }))

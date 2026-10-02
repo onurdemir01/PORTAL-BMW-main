@@ -10,6 +10,7 @@
 //   AK6 esanli sinir: en eski oturum kapanir, yanitta closedOthers
 //   AK7 suresi dolan oturum denetime sebebiyle yazilir (session_expired reason=idle)
 //   AK8 cihaz ozeti
+//   AK9 suresi dolmus ama henuz silinmemis oturum listelenmez
 'use strict';
 
 const { test, beforeEach, after } = require('node:test');
@@ -125,6 +126,12 @@ test('AK3 baskasinin oturumu kapatilamaz', async () => {
   const saldirgan = await giris('yereluser');
   const r = await iste(saldirgan.cerez, `/api/auth/sessions/${kurbanId}`, 'DELETE');
   assert.equal(r.status, 404);
+  // Hedef kullanici HICBIR istek parametresinden alinmaz (yalnizca oturumdaki kimlik).
+  for (const q of ['?u=yereladmin', '?username=yereladmin', '?user=yereladmin']) {
+    assert.equal((await iste(saldirgan.cerez, `/api/auth/sessions/${kurbanId}${q}`, 'DELETE')).status, 404, q);
+  }
+  const liste = await (await iste(saldirgan.cerez, '/api/auth/sessions?u=yereladmin&username=yereladmin')).json();
+  assert.ok(liste.sessions.every((x) => x.id !== kurbanId), 'baskasinin oturumu listede');
   assert.equal((await iste(kurban.cerez, '/api/auth/me')).status, 200, 'baskasinin oturumu kapandi');
   // Admin uclari da User'a kapali.
   assert.equal((await iste(saldirgan.cerez, '/api/auth/sessions/admin/yereladmin')).status, 403);
@@ -193,6 +200,18 @@ test('AK7 suresi dolan oturum denetime sebebiyle yazilir', async () => {
   assert.ok(k, 'session_expired yazilmadi');
   assert.equal(k.username, 'yereluser');
   assert.match(k.detail, /reason=idle id=[0-9a-f]{8} ageMin=61/);
+});
+
+test('AK9 bosta kalma suresi dolmus (henuz silinmemis) oturum acik listelenmez', async () => {
+  await hepsiniKapat();
+  const a = await giris();
+  await giris('yereluser', UA.mac); // bu oturum bir daha kullanilmayacak
+  simdi += 50 * DK;
+  await iste(a.cerez, '/api/auth/session/extend', 'POST');
+  simdi += 11 * DK; // ikinci oturum 61 dk bosta: yaptirim acisindan bitti, store'da duruyor
+  const l = (await (await iste(a.cerez, '/api/auth/sessions')).json()).sessions;
+  assert.equal(l.length, 1, 'bitmis oturum "acik" diye listelendi');
+  assert.equal(l[0].current, true);
 });
 
 test('AK8 cihaz ozeti', () => {

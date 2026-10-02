@@ -7,6 +7,7 @@
 //   OI2 sutunlar yoksa (ALTER calismadi) giris KIRILMAZ: eski sema ile yazilir
 //   OI3 satir omru kunyeden: mutlak bitis (bosta kalma middleware'de, sebep soylenebilsin)
 //   OI4 rol YUKSELTMESI oturumu dusurmez, yerinde yansir; DUSURME oturumlari sonlandirir
+//   OI6 listByUser username sutunuyla okur, bozuk satiri atlar, sutun yoksa bos liste
 //   OI5 yukseltme kaydi yalnizca kayittan ONCE acilmis oturuma uygulanir; dusurme kaydi siler
 'use strict';
 
@@ -168,4 +169,27 @@ test('OI5 yukseltme kaydi yalnizca kayittan ONCE acilmis oturuma uygulanir', () 
     policy.rolKaydiniSil('veli');
     policy._saatAyarla(null);
   }
+});
+
+test('OI6 listByUser username sutunuyla okur; bozuk satir atlanir; sutun yoksa bos liste', async () => {
+  const cagri = [];
+  const oku = (s) => new Promise((resolve, reject) => s.listByUser('Ayse', (e, l) => (e ? reject(e) : resolve(l))));
+  await withMock(
+    async (sql, params) => {
+      cagri.push({ sql, params });
+      return { rows: [{ sid: 's1', sess: JSON.stringify({ user: { username: 'ayse' } }) }, { sid: 's2', sess: '{bozuk' }] };
+    },
+    async () => {
+      const l = await oku(store.createMssqlSessionStore(session));
+      assert.deepEqual(l, [{ sid: 's1', sess: { user: { username: 'ayse' } } }]);
+    },
+  );
+  assert.match(cagri[0].sql, /WHERE username = \$1 AND expires > GETUTCDATE\(\)/);
+  assert.equal(cagri[0].params[0], 'ayse');
+  await withMock(
+    async () => {
+      throw new Error("Invalid column name 'username'.");
+    },
+    async () => assert.deepEqual(await oku(store.createMssqlSessionStore(session)), []),
+  );
 });
