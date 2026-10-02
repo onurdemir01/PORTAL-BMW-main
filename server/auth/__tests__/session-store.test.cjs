@@ -61,11 +61,13 @@ test('set(): önce UPDATE, satır yoksa INSERT (upsert) — sess JSON serileşti
     }
   );
   assert.equal(calls.length, 2, 'UPDATE (0 satır) + INSERT');
-  assert.match(calls[0].sql, /UPDATE portal_sessions SET sess = \$1, expires = \$2 WHERE sid = \$3/);
-  assert.match(calls[1].sql, /INSERT INTO portal_sessions \(sid, sess, expires\)/);
-  // INSERT paramlari: [sid, json, expires] — json icinde user olmali.
+  // 2026-10-02: sorgulanabilir sutunlar (username/created_at/last_seen_at) da yazilir.
+  assert.match(calls[0].sql, /UPDATE portal_sessions SET sess = \$1, expires = \$2, username = \$3, created_at = \$4, last_seen_at = \$5 WHERE sid = \$6/);
+  assert.match(calls[1].sql, /INSERT INTO portal_sessions \(sid, sess, expires, username, created_at, last_seen_at\)/);
+  // INSERT paramlari: [sid, json, expires, username, ...] — json icinde user olmali.
   assert.equal(calls[1].params[0], 'sid-2');
   assert.match(calls[1].params[1], /"username":"u"/);
+  assert.equal(calls[1].params[3], 'u');
 });
 
 test('set(): UPDATE satır bulursa INSERT YAPILMAZ', async () => {
