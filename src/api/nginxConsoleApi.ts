@@ -340,11 +340,19 @@ export interface NgSpaApp {
   agCelisikRoute?: number;
   /** Intranet (reencrypt) SPA internet RP'de tanımlı: kural ile tanım çelişiyor. */
   agCelisme?: boolean;
-  /** Reverse proxy'de tanımlı mı (yalnız SPA + internet/karışık; diğerleri uygulanamaz). */
+  /**
+   * Reverse proxy'de tanımlı mı (yalnız SPA + internet/karışık; diğerleri uygulanamaz). KENDİ
+   * ortamının kararıdır: yalnız başka ortamın RP'sinde tanımlıysa tanımsız / ölçülemedi /
+   * kapsam dışı (K1).
+   */
   rp: NgSpaRp;
-  /** proxy: eski PROD proxy_pass · include: servis vhost location · dizin: yeni PROD kurulumu */
+  /**
+   * proxy: eski PROD proxy_pass · include: servis vhost location · dizin: yeni PROD kurulumu.
+   * rpYol, rpHost, rpEsles, rpSorun durum kodları, rpIstek ve sayılar YALNIZ kendi ortamının
+   * tanımlarındandır (K3); başka ortamın tanımı yalnız ORTAM_DISI + rpOrtamDisi + rpReq7Disi.
+   */
   rpYol?: ('proxy' | 'include' | 'dizin')[];
-  /** 'bulunan/beklenen' RP host sayısı. */
+  /** 'bulunan/beklenen' RP host sayısı (kendi ortamının sunucuları). */
   rpHost?: string;
   /**
    * En zayıf eşleşme yolu (yoksa kesin). `paylasimli`: hedef adresi farklı route'lar paylaşıyor;
@@ -352,14 +360,33 @@ export interface NgSpaApp {
    * AYRILAMAZ.
    */
   rpEsles?: 'ek-prod' | 'ad' | 'envanter' | 'zayif' | 'paylasimli' | 'belirsiz';
+  /**
+   * Sorunlu tanım kodları (BROKEN_INCLUDE, NOT_DEPLOYED, NON_PROD_TARGET, MISSING_APP; kendi
+   * ortamının tanımlarından) ve ORTAM_DISI: başka ortamın RP'sinde tanım var. Yalnız orada
+   * tanımlıysa `rp` KENDİ ortamının kararıdır (tanımsız / ölçülemedi / kapsam dışı) ve
+   * ORTAM_DISI yalnız uyarıdır; başka ortamdaki tanımın durumu ayrıntı panelinde.
+   */
   rpSorun?: string[];
+  /** Tanımın bulunduğu BAŞKA ortamlar (ör. ['PROD']); ORTAM_DISI ile birlikte gelir. */
+  rpOrtamDisi?: string[];
   /** olculemedi / kapsam-disi nedeni: kod[:ayrıntı] */
   rpNeden?: string;
-  /** RP tanımı istek alıyor mu (access log; yalnız rp=tanimli). */
+  /**
+   * RP tanımı istek alıyor mu (access log; YALNIZ kendi ortamının RP tanımlarından — K3). rp
+   * tanımlı değilse (kendi ortamının RP'sinde tanım yok / bulunamadı / kapsam dışı) 'uygulanamaz'.
+   */
   rpIstek: NgSpaRpIstek;
   /** rpIstek='kismi' iken 0'ın neden ALT SINIR olduğu (birden çok olabilir). */
   rpIstekNeden?: NgSpaRpIstekNeden[];
+  /** Kendi ortamının ölçülen tanımlarının 7 günlük isteği (başka ortamınki EKLENMEZ). */
   rpReq7?: number;
+  /**
+   * YALNIZ BİLGİ (K3): başka ortamın RP'sindeki (rpOrtamDisi) ölçülmüş, ayrılabilir tanımlarda
+   * GÖRÜLEN 7 günlük istek. rpReq7'ye eklenmez, rpIstek kararını değiştirmez. Karışık durumda da
+   * yalnız başka ortamda tanımlıyken de (rpIstek 'uygulanamaz') gelir; yalnız > 0 iken yazılır
+   * (ölçülmüş 0 bile kısa pencerede "7 günde yok" değildir).
+   */
+  rpReq7Disi?: number;
   rpReq24?: number;
   /** En yeni istek (yyyymmddHHMMSS). */
   rpSon?: string;
@@ -404,14 +431,24 @@ export interface NgSpaAppUsage {
 }
 export type NgSpaAg = 'internet' | 'intranet' | 'karisik' | 'diger' | 'bilinmiyor';
 export type NgSpaRp = 'tanimli' | 'tanimsiz' | 'olculemedi' | 'kapsam-disi' | 'uygulanamaz';
-/** `ayrilamaz`: yalnız uygulamaya ayrılamayan (paylaşımlı / belirsiz) tanım var. */
+/**
+ * `ayrilamaz`: yalnız uygulamaya ayrılamayan (paylaşımlı / belirsiz) tanım var.
+ * `uygulanamaz`: RP kolonları hesaplanmıyor (rp 'uygulanamaz') ya da KENDİ ortamının RP'sinde
+ * tanım yok (rp tanımsız / ölçülemedi / kapsam dışı; başka ortamın isteği yalnız rpReq7Disi).
+ */
 export type NgSpaRpIstek =
   'var' | 'yok' | 'kismi' | 'olculemedi' | 'kaynak-yok' | 'ayrilamaz' | 'uygulanamaz';
 /**
- * 0 isteğin neden ALT SINIR olduğu: pencere < 7 gün / örnekleme / first_seen yok · ölçüm kaynağı
- * olmayan (yeni PROD) tanım da var · ayrılamayan tanım da var · ortamın bir RP sunucusu taranmadı.
+ * 0 isteğin neden ALT SINIR olduğu: pencere < 7 gün / örnekleme / first_seen yok · yeni PROD
+ * sunucusunda hiçbir uygulamaya yazılamayan istek var (eşleşmeyen Host / IP / Host alanı yok) ·
+ * ölçüm kaynağı olmayan tanım da var · ayrılamayan tanım da var · ortamın bir RP sunucusu taranmadı.
  */
-export type NgSpaRpIstekNeden = 'pencere' | 'kaynak-yok' | 'ayrilamaz' | 'host-taranmadi';
+export type NgSpaRpIstekNeden =
+  | 'pencere'
+  | 'eslesmeyen-host'
+  | 'kaynak-yok'
+  | 'ayrilamaz'
+  | 'host-taranmadi';
 export type NgSpaTabloDurumu = 'var' | 'yok' | 'okunamadi';
 
 /** Internet RP sunucusu ve o günkü durumu. */
@@ -421,8 +458,13 @@ export interface NgSpaRpHost {
   rol: 'nonprod' | 'prod-eski' | 'prod-yeni' | '';
   /** O günün Nginx_Config_Audit / Nginx_Intranet_Audit taramasında satırı var mı. */
   taranan: boolean;
+  /** kaynak-yok: yeni PROD ve o gün HİÇBİR sunucuda host kipi satırı yok (eski betik). */
   trafik: 'var' | 'hata' | 'satir-yok' | 'kaynak-yok' | 'olculemedi';
   trafikHata?: number;
+  /** Yeni PROD: o günkü host kipi ('@') satır sayısı (uygulama vhost'ları + kovalar). */
+  hostKipi?: number;
+  /** Hiçbir uygulamaya yazılmayan 7 günlük istek (eşleşmeyen Host / IP / Host alanı yok). */
+  kova?: { eslesmeyen: number; ip: number; alansiz: number };
 }
 /** Üst bant: RP kaynaklarının tarihleri ve kapsamı ("ölçülemedi"nin nereden geldiği). */
 export interface NgSpaRpKapsam {
@@ -445,6 +487,11 @@ export interface NgSpaRpKapsam {
   belirsiz: number;
   /** Dizin taraması config taramasından FARKLI günden — PROD için "tanımsız" denmez. */
   dizinFarkli?: boolean;
+  /**
+   * O günün trafik taramasında host kipi ('@') satırı var mı. Yoksa yeni PROD dizin
+   * tanımlarının ölçüm kaynağı yok (eski betik/analyzer ya da SPA_HOST_MODE kapalı).
+   */
+  hostKipi?: boolean;
   envanterOkunamadi: boolean;
   dynatraceOkunamadi: boolean;
 }
@@ -461,11 +508,18 @@ export interface NgSpaRpTanim {
   hedef?: string;
   hedefKaynak?: string;
   conf?: string;
-  /** null: bu tanım için ölçüm kaynağı yok (yeni PROD / dizin). */
+  /** null: bu tanım için ölçüm kaynağı yok (yeni PROD dizin, host kipi hiç üretilmemiş). */
   trafik: {
     durum: 'var' | 'sifir' | 'sifir-kismi' | 'olculemedi';
     neden?: string;
     hata?: string;
+    /** sifir-kismi iken 0'ın neden alt sınır olduğu. */
+    kismi?: NgSpaRpIstekNeden[];
+    /** Host kipi: eşleşen uygulama vhost'u (conf.d dosya adı) ve birincil server_name. */
+    vhost?: string;
+    ad?: string;
+    /** Host kipi: sunucuda hiçbir uygulamaya yazılamayan 7 günlük istek. */
+    atanmamis?: number;
     req7?: number;
     req24?: number;
     hc24?: number;
@@ -485,7 +539,13 @@ export interface NgSpaRpDetay {
   beklenen?: NgSpaRpHost[];
   kapsam?: Pick<
     NgSpaRpKapsam,
-    'configTarih' | 'dizinTarih' | 'trafikTarih' | 'upsTarih' | 'proxyKolonu' | 'tablolar'
+    | 'configTarih'
+    | 'dizinTarih'
+    | 'trafikTarih'
+    | 'upsTarih'
+    | 'proxyKolonu'
+    | 'tablolar'
+    | 'hostKipi'
   >;
   hesaplandi?: string;
 }

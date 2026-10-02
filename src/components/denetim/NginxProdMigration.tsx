@@ -40,6 +40,7 @@ import {
 import { Panel, StatTile, Pill, Code, Note } from './ui';
 import { OwnerCell, ownerText } from './OwnerCell';
 import { DirCell, HacLegend } from './HacCell';
+import { kismiEtiket, kismiAciklama, yolYukOzeti } from './yukPencere';
 import { downloadCsv as csvDownload } from '@/utils/csv';
 import { toast } from '@/hooks/useToast';
 
@@ -64,7 +65,7 @@ const YUK: Record<'active' | 'idle' | 'unknown', { isaret: string; label: string
 //   log okunamadi  -> betik access log'a erisemedi (izin / yol / dosya yok)
 //   kismi olcum    -> log kuyrugu 7 gunu KAPSAMIYOR (LOG_TAIL_MB kucuk), req7 ALT SINIR
 /** yyyyMMddHHmmss -> Date. Bozuk/eksik degerde null (asla patlamaz). */
-function damgaTarih(v: string | null): Date | null {
+function damgaTarih(v: string | null | undefined): Date | null {
   if (!v || v.length < 8) return null;
   const y = Number(v.slice(0, 4));
   const m = Number(v.slice(4, 6));
@@ -76,29 +77,20 @@ function damgaTarih(v: string | null): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-/** Olcumun gercekten kapsadigi gun sayisi (asagi yuvarlanir). null = bilinmiyor. */
-function kapsananGun(t: NonNullable<YukBilgi>): number | null {
-  const bas = damgaTarih(t.firstSeen);
-  if (!bas) return null;
-  const gun = (Date.now() - bas.getTime()) / 86_400_000;
-  return gun < 0 ? null : Math.floor(gun);
-}
-
 // "Kismi olcum" ETIKETI TEK BASINA YORUMLANAMIYORDU (kullanici 2026-09-27: "bunlari tam
 // anlamlandiramiyorum"). Eksik olan bilgi, olcumun GERCEKTEN kac gunu kapsadigi: log
 // kuyrugu 7 gunu kapsamiyorsa "0 istek" sonucu "atil" DEMEK DEGIL - yalnizca o kadar
 // gunde istek gorulmedi demek. Etiket artik o sureyi soyluyor.
+//
+// SURE SUNUCUDAN (2026-10-02): eskiden tarayicinin saatiyle (Date.now() - firstSeen)
+// hesaplaniyordu; sunucu artik pencereSaat'i (scan_date 00:00 - first_seen, mirror'larda
+// EN DAR olan) ve nedeni (kismi) veriyor. Metin Denetim ve ARK SPA Raporu ile ortak
+// (yukPencere.ts): "son 3 gunde istek yok (7 gun olculemedi)". Pencere bilinmiyorsa SURE
+// UYDURULMAZ.
 function yukEtiket(t: NonNullable<YukBilgi>): string {
   if (t.state !== 'unknown') return YUK[t.state].label;
   if (t.hosts === 0) return 'log okunamadı';
-  const gun = kapsananGun(t);
-  if (gun == null) return 'kısmi ölçüm';
-  if (gun < 1) {
-    const bas = damgaTarih(t.firstSeen);
-    const saat = bas ? Math.max(1, Math.round((Date.now() - bas.getTime()) / 3_600_000)) : null;
-    return saat ? `son ${saat} saatte istek yok` : 'kısmi ölçüm';
-  }
-  return `son ${gun} günde istek yok`;
+  return kismiEtiket(t) || 'kısmi ölçüm';
 }
 
 type YukBilgi = NginxMigrationApp['paths'][number]['traffic'];
@@ -115,16 +107,8 @@ const BEYAN: Record<string, { isaret: string; label: string; color: string }> = 
 function yukIpucu(t: NonNullable<YukBilgi>): string {
   if (t.state === 'unknown') {
     if (t.hosts === 0) return `Log okunamadı (${t.unknownHosts} sunucu) — "yük yok" DEMEK DEĞİL.`;
-    const gun = kapsananGun(t);
     const bas = damgaTarih(t.firstSeen);
-    const pencere = bas
-      ? `Okunan log ${fmtDateTime(bas)} tarihinden beri, yani ${gun != null ? `${gun} gün` : 'kısmi bir süre'}.`
-      : 'Okunan log 7 günü kapsamıyor (ne kadarını kapsadığı bu taramada ölçülmemiş).';
-    return (
-      `${pencere} Bu pencerede sağlık kontrolü dışında istek GÖRÜLMEDİ. ` +
-      '"Yük almıyor" DENMİYOR: 7 günün tamamına bakılmadı, o yüzden bu bir alt sınır. ' +
-      'Daha uzun pencere için spa_traffic_tail_mb yükseltilmeli.'
-    );
+    return (bas ? `Okunan log ${fmtDateTime(bas)} tarihinden beri. ` : '') + kismiAciklama(t);
   }
   const parca = [
     `24 saat: ${nf(t.req24 || 0)} istek`,
@@ -136,14 +120,10 @@ function yukIpucu(t: NonNullable<YukBilgi>): string {
   return parca.join(' · ') + ' — ölçüm ESKİ sunucuların access log’undan (hc.jsp/hc.html hariç).';
 }
 
-/** Uygulamanın en yüksek yük durumu: bir yolu bile yük alıyorsa uygulama aktiftir. */
+/** Uygulamanın en yüksek yük durumu: bir yolu bile yük alıyorsa uygulama aktiftir; hiç
+ *  ölçülmemiş yol varsa (ve aktif yol yoksa) "yük almıyor" DENMEZ (yukPencere.yolYukOzeti). */
 function yukOzet(paths: NginxMigrationApp['paths']): YukBilgi {
-  const olcumler = paths.map((p) => p.traffic).filter(Boolean) as NonNullable<YukBilgi>[];
-  if (!olcumler.length) return null;
-  const aktif = olcumler.find((t) => t.state === 'active');
-  if (aktif) return aktif;
-  const bilinmeyen = olcumler.find((t) => t.state === 'unknown');
-  return bilinmeyen || olcumler[0];
+  return yolYukOzeti(paths);
 }
 
 const STATUS: Record<
@@ -633,9 +613,10 @@ export default function NginxProdMigration() {
                     );
                   })(),
                   // YUK: olcum yoksa BOS birakilir - "yuk almiyor" yazmak uydurma olurdu.
+                  // Ekrandaki etiketin AYNISI (kisa pencere: "son 3 gunde istek yok ...").
                   (() => {
                     const t = yukOzet(a.paths);
-                    return t ? YUK[t.state].label : '';
+                    return t ? yukEtiket(t) : '';
                   })(),
                   (() => {
                     const t = yukOzet(a.paths);

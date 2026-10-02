@@ -220,51 +220,236 @@ function buildResolverMaps(routeRows, ocpRows) {
 // alinir. Kaynak dbo.Nginx_Spa_Traffic (bmw_nginx/nginx_config_audit/files/
 // nginx_spa_traffic.sh, hc.jsp/hc.html HARIC sayar).
 //
-// ANAHTAR (service, location): ayni tanim mirror sunucularda durur, sayilar TOPLANIR.
-// Log okunamayan sunucu sayiya KATILMAZ ama "bilinmiyor" bayragini kaldirir - "yuk yok"
-// demek DEGILDIR.
-function trafficIndex(trafficRows, oldHostSet) {
-  const idx = new Map();
-  for (const r of trafficRows || []) {
-    const host = H(r.host);
-    if (oldHostSet && oldHostSet.size && !oldHostSet.has(host)) continue;
-    const k = String(r.service || '').toUpperCase() + '|' + String(r.location || '');
-    if (!idx.has(k))
-      idx.set(k, {
-        req24: 0,
-        req7: 0,
-        hc24: 0,
-        hosts: 0,
-        unknownHosts: 0,
-        lastSeen: null,
-        firstSeen: null,
-        sampled: false,
-      });
-    const c = idx.get(k);
-    if (r.error) {
-      c.unknownHosts += 1;
-      continue;
-    }
-    c.hosts += 1;
-    c.req24 += Number(r.req_24h) || 0;
-    c.req7 += Number(r.req_7d) || 0;
-    c.hc24 += Number(r.hc_24h) || 0;
-    if (r.sampled) c.sampled = true;
-    const ls = r.last_seen ? String(r.last_seen) : null;
-    if (ls && (!c.lastSeen || ls > c.lastSeen)) c.lastSeen = ls;
-    // OLCULEN PENCERENIN BASI: mirror sunucular arasinda EN ESKI olan alinir - kapsam,
-    // en kotu sunucunun kapsamidir. En yenisini almak "7 gun olctuk" demek olurdu.
-    const fs = r.first_seen ? String(r.first_seen) : null;
-    if (fs && (!c.firstSeen || fs < c.firstSeen)) c.firstSeen = fs;
-  }
-  return idx;
+// ── YUK OLCUMU: UC TUKETICININ ORTAK KURALI (2026-10-02) ──────────────────────────────
+// Denetim > Nginx SPA (denetim.cjs /nginx-spa), Nginx ARK SPA Raporu (spa-report/index.cjs)
+// ve Production Tasimalari (asagida buildMigration) dbo.Nginx_Spa_Traffic'i BU kuralla
+// okur. Kural tek yerde: bir ekran "yuk almiyor", oteki "olculemedi" demesin.
+//
+// KESIN KURAL: "olculemedi" ile "yok" ASLA karismaz. Durum UC degerdir:
+//   active   7 gun icinde hc DISI istek goruldu (bir sunucuda bile: yuk VAR)
+//   idle     YALNIZ su dort kosulun HEPSI tutarsa: (1) tanimin durdugu HER sunucu olculdu
+//            (log okunamayan ya da o gun satiri olmayan sunucu yok), (2) hicbirinde
+//            sampled=1 yok, (3) olculen pencere HER sunucuda >= 7 gun, (4) pencere biliniyor
+//   unknown  kalan her sey. req7 = 0 iken `kismi` NEDENI soyler:
+//              pencere             olculen pencere < 7 gun ("son N gunde istek yok")
+//              pencere-bilinmiyor  first_seen yok (eski analyzer: kolon yok / eski betik)
+//              sampled             okunan veri 7 gunu kapsamiyor (butce / donmus dosya)
+//              okunamayan-sunucu   bir sunucunun logu okunamadi (LOADERR)
+//              satirsiz-sunucu     tanimin bir sunucusunun o gun olcum satiri yok
+//
+// NEDEN PENCERE: gunluk rotasyonlu hostlarda (bmw_disk_jobs nginx_log_rotate 'rotate 3')
+// okuyucu TUM donmus dosyalari okur, veri yine 1-4 gun kalir ve sampled=0 basar (butce
+// bitmedi). Eskiden durum `req7 > 0 ? active : sampled ? unknown : idle` idi: 1-4 gunluk
+// olcum 7 gunluk "yuk yok" (atil / emekli adayi) gorunuyordu. Pencere = scan_date 00:00 -
+// first_seen (spa-rp.cjs pencereSaat ile AYNI hesap; bekci: spa-traffic-pencere.test.cjs).
+// Mirror sunucularda pencere EN DAR olanidir (en YENI first_seen): bir sunucu 1 gun
+// gorduyse oteki 6 gun gormus olsa da kalan 5 gunde o sunucuya gelen istek bilinmez.
+//
+// SATIR TURLERI: host kipi satirlari (location '@...': uygulama basina vhost olcumu ve
+// vhost '_' kovalari @_/@ip/@-) bu uc ekranin konusu DEGILDIR - burada tanim location
+// yoludur ('/...'). O satirlar spa-rp.cjs'te (Gercek SPA Kesfi) dizin tanimlarina baglanir.
+// SQL'de (spaTrafikSorgusu) ve JS'te (spaTrafikIndeksi) AYRI AYRI suzulur.
+// Hata satiri (LOADERR) analyzer'da service/env/location NULL yazilir: (HOST, VHOST) ya da
+// (HOST, '*' = betik basinda tarih hatasi) anahtariyla tutulur ve tanimin O sunucusunu
+// olculemedi yapar. Eskiden SERVICE|ENV|location anahtarina yaziliyordu: anahtar '||' olup
+// hicbir tanima ulasmiyor, okunamayan mirror sessizce yok sayiliyordu.
+
+/** 7 gun: 'idle' (istek yok) diyebilmek icin olculen pencerenin alt siniri (saat). */
+const PENCERE_TAM_SA = 7 * 24;
+
+const gunu = (v) => {
+  if (!v) return '';
+  if (v instanceof Date) return v.toISOString().slice(0, 10);
+  return String(v).slice(0, 10);
+};
+
+/** 'yyyymmddHHMMSS' -> epoch ms (spa-rp.cjs zamanMs ile ayni). */
+function zamanMs(v) {
+  const m = /^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})/.exec(String(v == null ? '' : v).trim());
+  if (!m) return null;
+  return Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]);
 }
 
-/** UC DURUM: active / idle / unknown. Ikiye indirmek yaniltirdi - olcememek "yuk yok"
- *  degildir. `sampled` ise req7 ALT SINIRDIR, "atil" demeden once soylenir. */
-function trafficState(c) {
-  if (!c || (c.hosts === 0 && c.unknownHosts === 0)) return null;
-  if (c.hosts === 0) {
+/**
+ * OLCULEN PENCERE (saat): scan_date 00:00 - first_seen. spa-rp.cjs pencereSaat ile BIREBIR
+ * (oradan require EDILEMEZ: spa-rp.cjs bu dosyayi yukler, dongu olurdu). Bilinmiyorsa null.
+ */
+function pencereSaat(scanDate, firstSeen) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(gunu(scanDate));
+  const ilk = zamanMs(firstSeen);
+  if (!m || ilk == null) return null;
+  const bas = Date.UTC(+m[1], +m[2] - 1, +m[3]);
+  return Math.max(0, Math.floor((bas - ilk) / 36e5));
+}
+
+/**
+ * Tanim anahtari: SERVICE|ENV|location (Denetim + ARK). Config ve trafik satiri AYNI fonksiyon.
+ * Location '^~ /x/' yaziliysa trafik betigi onu '/x/' olarak olcer (nginx_spa_traffic.sh onekleri
+ * atar; spa-rp.cjs normLoc ile ayni): anahtar da oneksiz kurulur, yoksa o tanim HER GUN
+ * "olcum yok" kalirdi (2026-10-02 dogrulama bulgusu). '=' / '~' location'lari betik olcmez.
+ */
+const spaTrafikAnahtari = (service, env, location) =>
+  `${String(service || '').toUpperCase()}|${String(env || '').toUpperCase()}|${String(location || '').replace(/^\^~\s+(?=\/)/, '')}`;
+
+/** Sema sorgusu: tablo var mi, first_seen kolonu var mi (tek gidis-donus). */
+const SPA_TRAFIK_SEMA_SQL = `SELECT OBJECT_ID('dbo.Nginx_Spa_Traffic') AS trf,
+       COL_LENGTH('dbo.Nginx_Spa_Traffic', 'first_seen') AS fs`;
+
+/**
+ * Nginx_Spa_Traffic okuma sorgusu (uc tuketici AYNI govde).
+ *   - first_seen kolonu YOKSA NULL secilir. Kolonun adini yazmak sorguyu DERLEME aninda
+ *     dusurur ('Invalid column name'); CASE WHEN COL_LENGTH(...) kalibi bunu ONLEMEZ.
+ *   - scan_date pencere hesabi icin 'yyyy-mm-dd' olarak secilir.
+ *   - host kipi satirlari ('@...') ALINMAZ (bkz. dosya ustu SATIR TURLERI).
+ * @param {boolean} firstSeenVar  COL_LENGTH sonucu
+ * @param {string} [ekKosul]      ' AND host IN (...)' gibi
+ */
+function spaTrafikSorgusu(firstSeenVar, ekKosul = '') {
+  return `SELECT host, vhost, service, env, location, req_24h, req_7d, hc_24h, sampled, last_seen, error,
+              ${firstSeenVar ? 'first_seen' : 'CAST(NULL AS NVARCHAR(20)) AS first_seen'},
+              CONVERT(varchar(10), scan_date, 23) AS scan_date
+         FROM dbo.Nginx_Spa_Traffic
+        WHERE scan_date = (SELECT MAX(scan_date) FROM dbo.Nginx_Spa_Traffic)
+          AND (location IS NULL OR location NOT LIKE '@%')${ekKosul}`;
+}
+
+/**
+ * Trafik indeksi (location kipi).
+ * @param {object[]} rows    Nginx_Spa_Traffic satirlari
+ * @param {(r:object)=>string} keyOf  tuketicinin tanim anahtari (olcum satirindan)
+ * @param {(host:string)=>boolean} [hostOk]  yalniz bu sunucular (Tasimalar: eski sunucular)
+ * @returns {{ olcum: Map<string, Map<string, object>>, anahtarHata: Map<string, Map<string,string>>,
+ *             hata: Map<string,string>, satir: number, hostKipi: number }}
+ *   olcum        anahtar -> HOST -> o sunucunun toplami (pencereSaat: o sunucunun penceresi)
+ *   anahtarHata  location'i DOLU hata satiri (anahtara ozel)
+ *   hata         location'i BOS hata satiri (LOADERR): HOST|VHOST ya da HOST|*
+ *   satir        alinan (location kipi) satir sayisi - "olcum var mi" bayragi buradan
+ *   hostKipi     ATLANAN host kipi / kova satiri sayisi
+ */
+function spaTrafikIndeksi(rows, keyOf, hostOk) {
+  const olcum = new Map();
+  const anahtarHata = new Map();
+  const hata = new Map();
+  let satir = 0;
+  let hostKipi = 0;
+  for (const r of rows || []) {
+    const host = H(r.host);
+    if (!host) continue;
+    if (hostOk && !hostOk(host)) continue;
+    const loc = String(r.location == null ? '' : r.location).trim();
+    // HOST KIPI / KOVA: hicbir location tanimina yazilmaz.
+    if (loc.startsWith('@') || H(r.vhost) === '_') {
+      hostKipi += 1;
+      continue;
+    }
+    satir += 1;
+    const err = String(r.error == null ? '' : r.error).trim();
+    if (err && !loc) {
+      const k = `${host}|${H(r.vhost) || '*'}`;
+      if (!hata.has(k)) hata.set(k, err);
+      continue;
+    }
+    const key = keyOf(r);
+    if (err) {
+      if (!anahtarHata.has(key)) anahtarHata.set(key, new Map());
+      if (!anahtarHata.get(key).has(host)) anahtarHata.get(key).set(host, err);
+      continue;
+    }
+    if (!olcum.has(key)) olcum.set(key, new Map());
+    const m = olcum.get(key);
+    const ls = r.last_seen ? String(r.last_seen) : null;
+    const fs = r.first_seen ? String(r.first_seen).trim() || null : null;
+    const p = pencereSaat(r.scan_date, fs);
+    const o = m.get(host);
+    if (!o) {
+      m.set(host, {
+        req24: Number(r.req_24h) || 0,
+        req7: Number(r.req_7d) || 0,
+        hc24: Number(r.hc_24h) || 0,
+        sampled: bit(r.sampled),
+        lastSeen: ls,
+        firstSeen: p == null ? null : fs,
+        pencereSaat: p,
+      });
+      continue;
+    }
+    // Ayni sunucuda ayni anahtara ikinci satir (iki vhost dosyasi): TOPLANIR, pencere EN DAR.
+    o.req24 += Number(r.req_24h) || 0;
+    o.req7 += Number(r.req_7d) || 0;
+    o.hc24 += Number(r.hc_24h) || 0;
+    o.sampled = o.sampled || bit(r.sampled);
+    if (ls && (!o.lastSeen || ls > o.lastSeen)) o.lastSeen = ls;
+    if (o.pencereSaat == null || p == null) {
+      o.pencereSaat = null;
+      o.firstSeen = null;
+    } else if (p < o.pencereSaat) {
+      o.pencereSaat = p;
+      o.firstSeen = fs;
+    }
+  }
+  return { olcum, anahtarHata, hata, satir, hostKipi };
+}
+
+/**
+ * Bir tanimin yuk durumu (bkz. dosya ustu ORTAK KURAL).
+ * @param {object} idx   spaTrafikIndeksi ciktisi (null = tablo yok/okunamadi -> null)
+ * @param {string} key   tanim anahtari
+ * @param {{host:string, vhost?:string}[]} [defs]  tanimin DURDUGU (host, vhost) ciftleri
+ *        (config satirlari). Olcum satiri olmayan tanim sunucusu 'satirsiz-sunucu' olur;
+ *        verilmezse yalniz satiri olan sunucular bilinir.
+ * @returns {null|object} null = bu tanim icin HIC olcum yok (ekran "olcum yok" der)
+ */
+function spaTrafikDurumu(idx, key, defs) {
+  if (!idx) return null;
+  const olc = idx.olcum.get(key) || new Map();
+  const kh = idx.anahtarHata.get(key) || new Map();
+  const tanim = new Map(); // HOST -> Set(VHOST)
+  for (const d of defs || []) {
+    const h = H(d && d.host);
+    if (!h) continue;
+    if (!tanim.has(h)) tanim.set(h, new Set());
+    tanim.get(h).add(H(d.vhost) || '*');
+  }
+  const hostlar = new Set([...tanim.keys(), ...olc.keys(), ...kh.keys()]);
+  let hosts = 0;
+  let unknownHosts = 0;
+  let missingHosts = 0;
+  let req24 = 0;
+  let req7 = 0;
+  let hc24 = 0;
+  let sampled = false;
+  let lastSeen = null;
+  let firstSeen = null;
+  let pencere = Infinity;
+  for (const h of hostlar) {
+    // OLCULEMEDI KAZANIR: ayni sunucu icin hem hata hem olcum gelirse emin olunmayan taraf.
+    let err = kh.get(h) || idx.hata.get(`${h}|*`) || null;
+    for (const v of tanim.get(h) || []) err = err || idx.hata.get(`${h}|${v}`) || null;
+    if (err) {
+      unknownHosts += 1;
+      continue;
+    }
+    const o = olc.get(h);
+    if (!o) {
+      missingHosts += 1;
+      continue;
+    }
+    hosts += 1;
+    req24 += o.req24;
+    req7 += o.req7;
+    hc24 += o.hc24;
+    sampled = sampled || o.sampled;
+    if (o.lastSeen && (!lastSeen || o.lastSeen > lastSeen)) lastSeen = o.lastSeen;
+    if (pencere === null || o.pencereSaat == null) {
+      pencere = null;
+      firstSeen = null;
+    } else if (o.pencereSaat < pencere) {
+      pencere = o.pencereSaat;
+      firstSeen = o.firstSeen;
+    }
+  }
+  if (!hosts) {
+    if (!unknownHosts) return null;
     return {
       state: 'unknown',
       req24: null,
@@ -272,22 +457,107 @@ function trafficState(c) {
       hc24: null,
       lastSeen: null,
       firstSeen: null,
+      pencereSaat: null,
       sampled: false,
       hosts: 0,
-      unknownHosts: c.unknownHosts,
+      unknownHosts,
+      missingHosts,
     };
   }
-  return {
-    state: c.req7 > 0 ? 'active' : c.sampled ? 'unknown' : 'idle',
-    req24: c.req24,
-    req7: c.req7,
-    hc24: c.hc24,
-    lastSeen: c.lastSeen,
-    firstSeen: c.firstSeen,
-    sampled: c.sampled,
-    hosts: c.hosts,
-    unknownHosts: c.unknownHosts,
+  const kismi = [];
+  if (req7 === 0) {
+    if (unknownHosts) kismi.push('okunamayan-sunucu');
+    if (missingHosts) kismi.push('satirsiz-sunucu');
+    if (sampled) kismi.push('sampled');
+    if (pencere == null) kismi.push('pencere-bilinmiyor');
+    else if (pencere < PENCERE_TAM_SA) kismi.push('pencere');
+  }
+  const o = {
+    state: req7 > 0 ? 'active' : kismi.length ? 'unknown' : 'idle',
+    req24,
+    req7,
+    hc24,
+    lastSeen,
+    firstSeen,
+    pencereSaat: pencere,
+    sampled,
+    hosts,
+    unknownHosts,
+    missingHosts,
   };
+  if (kismi.length) o.kismi = kismi;
+  return o;
+}
+
+/**
+ * Birden cok tanimin (ayni hucredeki location'lar) yuk durumu: bir location bile yuk
+ * aliyorsa ACTIVE; biri olculemediyse UNKNOWN; ancak HEPSI idle ise IDLE. Sayilar olculen
+ * tanimlardan toplanir, pencere en dar olanidir. Tek tanimda girdiyi aynen dondurur.
+ *
+ * OLCULMEYEN LOCATION (2026-10-02 dogrulama bulgusu): listedeki null = trafik tablosu VAR ama
+ * o tanimin hicbir sunucusundan o gun satir ya da hata yok (trafik adimi o sunucuda kosmadi /
+ * async zaman asimi / location yazimi farkli, or. '^~ /b/'). Eskiden null ATILIYORDU: /a/ 7
+ * gun olculmus 0 + /b/ hic olculmemis hucre "yuk yok - atil aday" gorunuyordu ("olculemedi"
+ * ile "yok" karisiyordu). Artik en az bir location olculmusken null, hicbiri active degilse
+ * sonucu UNKNOWN yapar (kismi 'satirsiz-sunucu', missingHosts o tanimin sunucu sayisi kadar
+ * artar). HEPSI null ise null kalir (bu hucre icin hic olcum yok; tablo yoksa da boyle).
+ * @param {(object|null)[]} list
+ * @param {number[]} [tanimSunucu]  list[i] null ise o tanimin sunucu sayisi (en az 1 sayilir)
+ */
+function spaTrafikBirlesik(list, tanimSunucu) {
+  const girdi = list || [];
+  const xs = girdi.filter(Boolean);
+  if (!xs.length) return null;
+  let olculmeyen = 0;
+  let olculmeyenSunucu = 0;
+  girdi.forEach((t, i) => {
+    if (t) return;
+    olculmeyen += 1;
+    olculmeyenSunucu += Math.max(1, Number(tanimSunucu && tanimSunucu[i]) || 0);
+  });
+  if (xs.length === 1 && !olculmeyen) return xs[0];
+  const olculen = xs.filter((t) => t.hosts > 0);
+  const top = (f) => (olculen.length ? olculen.reduce((a, t) => a + (Number(t[f]) || 0), 0) : null);
+  const enCok = (f) => xs.reduce((a, t) => Math.max(a, Number(t[f]) || 0), 0);
+  let pencere = olculen.length ? Infinity : null;
+  let firstSeen = null;
+  for (const t of olculen) {
+    if (pencere === null || t.pencereSaat == null) {
+      pencere = null;
+      firstSeen = null;
+    } else if (t.pencereSaat < pencere) {
+      pencere = t.pencereSaat;
+      firstSeen = t.firstSeen || null;
+    }
+  }
+  const state = xs.some((t) => t.state === 'active')
+    ? 'active'
+    : olculmeyen || xs.some((t) => t.state === 'unknown')
+      ? 'unknown'
+      : 'idle';
+  const o = {
+    state,
+    req24: top('req24'),
+    req7: top('req7'),
+    hc24: top('hc24'),
+    lastSeen: xs.reduce((a, t) => (t.lastSeen && (!a || t.lastSeen > a) ? t.lastSeen : a), null),
+    firstSeen,
+    pencereSaat: pencere,
+    sampled: xs.some((t) => t.sampled),
+    hosts: enCok('hosts'),
+    unknownHosts: enCok('unknownHosts'),
+    missingHosts: enCok('missingHosts') + olculmeyenSunucu,
+    locations: girdi.length,
+  };
+  if (state === 'unknown') {
+    const k = new Set(xs.flatMap((t) => t.kismi || []));
+    // Tamamen okunamayan bir location (hosts 0) da bu hucrenin 0'ini alt sinir yapar.
+    if (xs.some((t) => t.state === 'unknown' && !t.hosts)) k.add('okunamayan-sunucu');
+    // Hic olculmeyen location: tanimin sunucusunun o gun olcum satiri yok.
+    if (olculmeyen) k.add('satirsiz-sunucu');
+    if (k.size) o.kismi = [...k];
+  }
+  return o;
 }
 
 function buildMigration({
@@ -338,7 +608,13 @@ function buildMigration({
   for (const g of groups) {
     const oldSet = new Set(g.oldHosts.map(H));
     // Trafik YALNIZ bu grubun ESKI sunucularindan okunur: is su an oradan akiyor.
-    const trafIdx = trafficIndex(trafficRows, oldSet);
+    // ANAHTAR (service, location): ayni tanim mirror sunucularda durur, sayilar TOPLANIR.
+    // Kural (pencere, okunamayan/satirsiz sunucu): spaTrafikDurumu.
+    const trafIdx = spaTrafikIndeksi(
+      trafficRows,
+      (r) => String(r.service || '').toUpperCase() + '|' + String(r.location || ''),
+      (h) => !oldSet.size || oldSet.has(h),
+    );
     const apps = new Map(); // "ns/app" -> satir
     const nonSpa = new Map(); // hedef host -> satir
     const unresolved = new Map(); // hedef host -> satir
@@ -389,8 +665,11 @@ function buildMigration({
         // birden fazla location'dan sunuluyorsa kullanici birini secer.
         const pk = svc + '|' + loc;
         if (!row.paths.has(pk))
-          row.paths.set(pk, { service: svc, location: loc, hosts: new Set() });
+          row.paths.set(pk, { service: svc, location: loc, hosts: new Set(), defs: [] });
         row.paths.get(pk).hosts.add(host);
+        // Yuk olcumu icin tanimin (host, vhost) ciftleri: o sunucunun logu okunamadiysa
+        // (LOADERR host|vhost) ya da o gun satiri yoksa "istek yok" DENMEZ.
+        row.paths.get(pk).defs.push({ host, vhost: r.vhost });
       };
 
       if (res.namespace && res.application) {
@@ -458,8 +737,10 @@ function buildMigration({
           location: x.location,
           hosts: [...x.hosts].sort(),
           ...newLocStatus(x.service, x.location),
-          traffic: trafficState(
-            trafIdx.get(String(x.service).toUpperCase() + '|' + String(x.location)),
+          traffic: spaTrafikDurumu(
+            trafIdx,
+            String(x.service).toUpperCase() + '|' + String(x.location),
+            x.defs,
           ),
         }))
         .sort((a, b) => a.service.localeCompare(b.service) || a.location.localeCompare(b.location)),
@@ -598,12 +879,18 @@ async function loadMigration({ query, sql, hasProxyColumns }) {
     };
   }
 
-  const [proxyDate, dirDate] = await Promise.all([
+  const [proxyDate, dirDate, trfSema] = await Promise.all([
     query(`SELECT CONVERT(varchar(10), MAX(scan_date), 23) AS d FROM dbo.Nginx_Config_Audit`)
       .then((r) => r.recordset?.[0]?.d || null)
       .catch(() => null),
     query(`SELECT CONVERT(varchar(10), MAX(scan_date), 23) AS d FROM dbo.Nginx_Intranet_Audit`)
       .then((r) => r.recordset?.[0]?.d || null)
+      .catch(() => null),
+    // TRAFIK SEMASI: first_seen kolonu yoksa sorgu NULL secer (eskiden CASE WHEN COL_LENGTH
+    // kalibi vardi; kolon yokken SQL Server onu da derleme aninda dusuruyor, catch [] donuyor
+    // ve gosterge SESSIZCE kayboluyordu).
+    query(SPA_TRAFIK_SEMA_SQL)
+      .then((r) => r.recordset?.[0] || {})
       .catch(() => null),
   ]);
 
@@ -656,17 +943,11 @@ async function loadMigration({ query, sql, hasProxyColumns }) {
       : Promise.resolve([]),
     // YUK OLCUMU (2026-09-27): trafik ESKI sunuculardan okunur - is su an oradan akiyor.
     // Tablo yoksa ekran eskisi gibi calisir, gosterge gorunmez (uydurma yapmaz).
-    query(
-      `SELECT host, service, env, location, req_24h, req_7d, hc_24h, sampled, last_seen, error,
-              CASE WHEN COL_LENGTH('dbo.Nginx_Spa_Traffic', 'first_seen') IS NULL
-                   THEN NULL ELSE first_seen END AS first_seen
-         FROM dbo.Nginx_Spa_Traffic
-        WHERE scan_date = (SELECT MAX(scan_date) FROM dbo.Nginx_Spa_Traffic)
-          AND host IN (${oldIn.sqlText})`,
-      oldIn.params,
-    )
-      .then((r) => r.recordset || [])
-      .catch(() => []),
+    trfSema && trfSema.trf
+      ? query(spaTrafikSorgusu(!!trfSema.fs, ` AND host IN (${oldIn.sqlText})`), oldIn.params)
+          .then((r) => r.recordset || [])
+          .catch(() => [])
+      : Promise.resolve([]),
   ]);
 
   const groups = buildMigration({
@@ -686,7 +967,8 @@ async function loadMigration({ query, sql, hasProxyColumns }) {
     ok: true,
     ownersReady: owners.ready,
     proxyReady: !!proxyDate,
-    trafficReady: (traffic || []).length > 0,
+    // Host kipi / kova satirlari "olcum var" SAYILMAZ (bu ekranin tanimlari location yolu).
+    trafficReady: spaTrafikIndeksi(traffic, () => '').satir > 0,
     dirsReady: !!dirDate,
     proxyScanDate: proxyDate,
     dirScanDate: dirDate,
@@ -705,4 +987,13 @@ module.exports = {
   MIGRATION_GROUPS,
   SPA_RE,
   _hostOf: hostOf,
+  // Yuk olcumu ortak kurali (denetim.cjs + spa-report/index.cjs + bu dosya).
+  PENCERE_TAM_SA,
+  pencereSaat,
+  spaTrafikAnahtari,
+  SPA_TRAFIK_SEMA_SQL,
+  spaTrafikSorgusu,
+  spaTrafikIndeksi,
+  spaTrafikDurumu,
+  spaTrafikBirlesik,
 };

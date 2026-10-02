@@ -1,25 +1,25 @@
-// server/spa-report/index.cjs — "Nginx ARK SPA Raporu" uçları.
+// server/spa-report/index.cjs — "Nginx ARK SPA Raporu" uclari.
 //
-// Kullanıcı (2026-09-28): tüm servisler (Glomo / Webforms / Saklama / Geintdigital vb.)
-// için tek liste; kolonlar Ekip Beyanı, Uygulama, Namespace, Ekip, Yük Durumu, Location,
-// Açıklama. "Buraya ekiplerin giriş yapabilmesini istiyorum."
+// Kullanici (2026-09-28): tum servisler (Glomo / Webforms / Saklama / Geintdigital vb.)
+// icin tek liste; kolonlar Ekip Beyani, Uygulama, Namespace, Ekip, Yuk Durumu, Location,
+// Aciklama. "Buraya ekiplerin giris yapabilmesini istiyorum."
 //
-// KİM YAZABİLİR: giriş yapmış her kullanıcı — sayfa görünürlük motorundan geçer, yani
-// kimin göreceğini Admin > Sayfa Erişimi belirler. Beyan bir ÖLÇÜM DEĞİL, ekibin kendi
-// ifadesidir; kim/ne zaman yazdığı kaydedilir ve ekranda görünür. Salt okunur bir rapor
-// yapıp beyanı Admin'e bırakmak, veriyi bilen kişiyi devre dışı bırakırdı.
+// KIM YAZABILIR: giris yapmis her kullanici — sayfa gorunurluk motorundan gecer, yani
+// kimin gorecegini Admin > Sayfa Erisimi belirler. Beyan bir OLCUM DEGIL, ekibin kendi
+// ifadesidir; kim/ne zaman yazdigi kaydedilir ve ekranda gorunur. Salt okunur bir rapor
+// yapip beyani Admin'e birakmak, veriyi bilen kisiyi devre disi birakirdi.
 //
-// BEYAN İKİ SEVİYELİ (2026-10-01). Kullanıcı: "aynı uygulamaya tanımlı 3 tane location
-// bulunuyor. Birine kullanılmıyor dediğim zaman hepsine kullanılmıyor olarak
-// işaretleniyor."
+// BEYAN IKI SEVIYELI (2026-10-01). Kullanici: "ayni uygulamaya tanimli 3 tane location
+// bulunuyor. Birine kullanilmiyor dedigim zaman hepsine kullanilmiyor olarak
+// isaretleniyor."
 //
-// Sebep: beyan nginx_migration_tracking.in_use alanındaydı ve o tablo UYGULAMA başına tek
-// satır tutar (UNIQUE(group_id, namespace, application)) — location kırılımı oraya sığmaz.
-// Artık location'a özel beyanlar ayrı tabloda (nginx_spa_location_in_use).
+// Sebep: beyan nginx_migration_tracking.in_use alanindaydi ve o tablo UYGULAMA basina tek
+// satir tutar (UNIQUE(group_id, namespace, application)) — location kirilimi oraya sigmaz.
+// Artik location'a ozel beyanlar ayri tabloda (nginx_spa_location_in_use).
 //
-// EN ÖZEL OLAN KAZANIR: location beyanı varsa o, yoksa SPA Taşımaları'ndaki UYGULAMA
-// beyanı DEVRALINIR (ekranda "devralındı" diye işaretlenir). Böylece "hangisi geçerli"
-// sorusunun tek bir cevabı var ve iki ekran birbirini görmeye devam ediyor.
+// EN OZEL OLAN KAZANIR: location beyani varsa o, yoksa SPA Tasimalari'ndaki UYGULAMA
+// beyani DEVRALINIR (ekranda "devralindi" diye isaretlenir). Boylece "hangisi gecerli"
+// sorusunun tek bir cevabi var ve iki ekran birbirini gormeye devam ediyor.
 'use strict';
 
 const express = require('express');
@@ -30,10 +30,10 @@ const TTL_MS = 60 * 1000;
 let _cache = { at: 0, value: null };
 
 /**
- * Location beyanının birincil anahtarı.
+ * Location beyaninin birincil anahtari.
  *
- * ÖZET KULLANILIR çünkü (namespace, application, location_path) üzerindeki UNIQUE kısıt
- * SQL Server'ın 900 baytlık indeks anahtarı sınırını aşıyor (bkz. mssql-setup.cjs).
+ * OZET KULLANILIR cunku (namespace, application, location_path) uzerindeki UNIQUE kisit
+ * SQL Server'in 900 baytlik indeks anahtari sinirini asiyor (bkz. mssql-setup.cjs).
  */
 const declKey = (ns, app, loc) =>
   crypto
@@ -43,7 +43,7 @@ const declKey = (ns, app, loc) =>
 
 /**
  * Beyanlar: "ns/app" (uygulama seviyesi) + "ns/app\u0000loc" (location seviyesi).
- * group_id'den BAĞIMSIZ, en yeni kazanır.
+ * group_id'den BAGIMSIZ, en yeni kazanir.
  */
 async function loadBeyanlar() {
   const m = new Map();
@@ -55,7 +55,7 @@ async function loadBeyanlar() {
     );
     for (const x of r.rows || []) {
       const k = `${String(x.namespace || '').trim()}/${String(x.application || '').trim()}`;
-      // ORDER BY updated_at ASC + üzerine yazma = EN YENİ kazanır.
+      // ORDER BY updated_at ASC + uzerine yazma = EN YENI kazanir.
       m.set(k, {
         inUse: x.in_use == null ? null : String(x.in_use),
         inUseBy: x.in_use_by || null,
@@ -66,10 +66,10 @@ async function loadBeyanlar() {
       });
     }
   } catch {
-    /* tablo yoksa beyan sütunu boş kalır - rapor yine çalışır */
+    /* tablo yoksa beyan sutunu bos kalir - rapor yine calisir */
   }
-  // LOCATION BEYANLARI SONRA YÜKLENİR ama AYRI anahtar alanında durur: uygulama
-  // beyanının üzerine YAZMAZ, build.cjs ikisini ayrı ayrı sorar (önce location).
+  // LOCATION BEYANLARI SONRA YUKLENIR ama AYRI anahtar alaninda durur: uygulama
+  // beyaninin uzerine YAZMAZ, build.cjs ikisini ayri ayri sorar (once location).
   try {
     const r = await db.query(
       `SELECT namespace, application, location_path, in_use, in_use_by, in_use_at, note, updated_at
@@ -86,7 +86,7 @@ async function loadBeyanlar() {
       });
     }
   } catch {
-    /* tablo henüz yoksa yalnız uygulama seviyesi beyan görünür */
+    /* tablo henuz yoksa yalniz uygulama seviyesi beyan gorunur */
   }
   return m;
 }
@@ -104,9 +104,17 @@ async function loadReport(fresh) {
     .then((r) => r.recordset?.[0]?.d || null)
     .catch(() => null);
   if (!tarih) {
-    // TARAMA YOKSA BOŞ LİSTE DÖNMEYİZ: "hiç SPA yok" ile "henüz taranmadı" ayrı şeyler.
+    // TARAMA YOKSA BOS LISTE DONMEYIZ: "hic SPA yok" ile "henuz taranmadi" ayri seyler.
     return { ok: true, notScanned: true, scanDate: null, rows: [], services: [], skipped: 0 };
   }
+
+  const {
+    SPA_TRAFIK_SEMA_SQL,
+    spaTrafikSorgusu,
+    spaTrafikIndeksi,
+    spaTrafikDurumu,
+    spaTrafikAnahtari,
+  } = require('../audit/nginx-migration.cjs');
 
   const { spaSatirlari, trafikSatirlari } = await (async () => {
     const [a, b] = await Promise.all([
@@ -119,60 +127,40 @@ async function loadReport(fresh) {
       )
         .then((r) => r.recordset || [])
         .catch(() => []),
-      query(
-        `SELECT service, env, location, req_24h, req_7d, hc_24h, sampled, last_seen, error
-           FROM dbo.Nginx_Spa_Traffic
-          WHERE scan_date = (SELECT MAX(scan_date) FROM dbo.Nginx_Spa_Traffic)`,
-      )
-        .then((r) => r.recordset || [])
+      // TRAFIK: first_seen kolonu yoksa NULL secilir (kolon adini yazmak sorguyu derleme
+      // aninda dusururdu); host kipi satirlari ('@...') alinmaz. Bkz. nginx-migration.cjs.
+      query(SPA_TRAFIK_SEMA_SQL)
+        .then((r) => r.recordset?.[0] || {})
+        .then((s) => (s.trf ? query(spaTrafikSorgusu(!!s.fs)).then((r) => r.recordset || []) : []))
         .catch(() => []),
     ]);
     return { spaSatirlari: a, trafikSatirlari: b };
   })();
 
-  // YÜK: Denetim > Nginx SPA ile AYNI ölçüt. Üç durum ayrı kalır; ölçülemeyen bir
-  // location "yük yok" DEĞİLDİR (bkz. denetim.cjs trafficOf).
-  const trafik = new Map();
-  for (const x of trafikSatirlari) {
-    const k = `${String(x.service || '').toUpperCase()}|${String(x.env || '').toUpperCase()}|${String(x.location || '')}`;
-    if (!trafik.has(k))
-      trafik.set(k, { req24: 0, req7: 0, hosts: 0, unknown: 0, sampled: false, lastSeen: null });
-    const c = trafik.get(k);
-    if (x.error) {
-      c.unknown += 1;
-      continue;
-    }
-    c.hosts += 1;
-    c.req24 += Number(x.req_24h) || 0;
-    c.req7 += Number(x.req_7d) || 0;
-    if (x.sampled) c.sampled = true;
-    const ls = x.last_seen ? String(x.last_seen) : null;
-    if (ls && (!c.lastSeen || ls > c.lastSeen)) c.lastSeen = ls;
+  // YUK: Denetim > Nginx SPA ve Production Tasimalari ile AYNI kural (nginx-migration.cjs
+  // spaTrafikDurumu). Olculemeyen bir location "yuk yok" DEGILDIR; 'idle' (emekli adayi
+  // suzgeci) YALNIZ tanimin her sunucusu olculmus, sampled=0 ve olculen pencere >= 7 gun
+  // iken verilir. Kisa pencerede durum 'unknown' + kismi=['pencere'] ("son N gunde istek
+  // yok, 7 gun olculemedi").
+  const trfIdx = spaTrafikIndeksi(trafikSatirlari, (x) =>
+    spaTrafikAnahtari(x.service, x.env, x.location),
+  );
+  // TANIMIN SUNUCULARI: build.cjs satiri (U(service), U(env), T(location)) ile anahtarlar;
+  // ayni normalizasyon burada da yapilir ki tanim sunuculari kaybolmasin.
+  const nU = (s) =>
+    String(s == null ? '' : s)
+      .trim()
+      .toUpperCase();
+  const nT = (s) => String(s == null ? '' : s).trim();
+  const tanimlar = new Map();
+  for (const r of spaSatirlari) {
+    const k = spaTrafikAnahtari(nU(r.service), nU(r.env), nT(r.location_path));
+    if (!tanimlar.has(k)) tanimlar.set(k, []);
+    tanimlar.get(k).push({ host: r.host, vhost: r.vhost });
   }
   const trafficOf = (service, env, location) => {
-    const c = trafik.get(
-      `${String(service || '').toUpperCase()}|${String(env || '').toUpperCase()}|${String(location || '')}`,
-    );
-    if (!c || (c.hosts === 0 && c.unknown === 0)) return null;
-    if (c.hosts === 0)
-      return {
-        state: 'unknown',
-        req7: null,
-        req24: null,
-        sampled: false,
-        lastSeen: null,
-        hosts: 0,
-        unknownHosts: c.unknown,
-      };
-    return {
-      state: c.req7 > 0 ? 'active' : c.sampled ? 'unknown' : 'idle',
-      req7: c.req7,
-      req24: c.req24,
-      sampled: c.sampled,
-      lastSeen: c.lastSeen,
-      hosts: c.hosts,
-      unknownHosts: c.unknown,
-    };
+    const k = spaTrafikAnahtari(service, env, location);
+    return spaTrafikDurumu(trfIdx, k, tanimlar.get(k));
   };
 
   const { loadNamespaceOwners, ownersFor } = require('../audit/ns-owners.cjs');
@@ -191,7 +179,8 @@ async function loadReport(fresh) {
     notScanned: false,
     scanDate: tarih,
     ownersReady: owners.ready !== false,
-    trafficReady: trafikSatirlari.length > 0,
+    // Host kipi / kova satirlari "olcum var" SAYILMAZ (bu raporun tanimi location yolu).
+    trafficReady: trfIdx.satir > 0,
     ...r,
   };
   _cache = { at: Date.now(), value };
@@ -220,8 +209,8 @@ function initSpaReport(app) {
     }
   });
 
-  // BEYAN YAZMA: giriş yapmış kullanıcı. Kim yazdı KAYDEDİLİR - beyan bir ölçüm değil,
-  // bir ifadedir; kimin söylediği bilinmeden değeri olmaz.
+  // BEYAN YAZMA: giris yapmis kullanici. Kim yazdi KAYDEDILIR - beyan bir olcum degil,
+  // bir ifadedir; kimin soyledigi bilinmeden degeri olmaz.
   router.put('/declare', async (req, res) => {
     const ns = String(req.body?.namespace || '').trim();
     const app2 = String(req.body?.application || '').trim();
@@ -235,9 +224,9 @@ function initSpaReport(app) {
     const user = require('../auth/utils.cjs').getRequestUser(req) || {};
     const by = user.username || null;
 
-    // LOCATION VERİLDİYSE BEYAN YALNIZ O LOCATION'A YAZILIR (2026-10-01). Eskiden her
-    // beyan uygulama satırına gidiyordu; aynı uygulamanın üç location'ı varsa birine
-    // "kullanmıyor" demek üçüne de yazıyordu — kullanıcının bildirdiği hata buydu.
+    // LOCATION VERILDIYSE BEYAN YALNIZ O LOCATION'A YAZILIR (2026-10-01). Eskiden her
+    // beyan uygulama satirina gidiyordu; ayni uygulamanin uc location'i varsa birine
+    // "kullanmiyor" demek ucune de yaziyordu — kullanicinin bildirdigi hata buydu.
     if (loc) {
       const key = declKey(ns, app2, loc);
       try {
@@ -268,7 +257,7 @@ function initSpaReport(app) {
       }
     }
 
-    // LOCATION YOKSA ESKİ DAVRANIŞ: uygulama seviyesi beyan (SPA Taşımaları ile AYNI alan).
+    // LOCATION YOKSA ESKI DAVRANIS: uygulama seviyesi beyan (SPA Tasimalari ile AYNI alan).
     try {
       // MEVCUT SATIR VARSA ONU GUNCELLE: beyan tek alandir, ikinci bir satir acmak ayni
       // uygulama icin iki farkli cevap uretirdi (bkz. dosya basligi).

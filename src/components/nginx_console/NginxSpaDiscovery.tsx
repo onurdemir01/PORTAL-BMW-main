@@ -20,6 +20,13 @@
 //   nginx denetimi   → internet RP'de tanımlı mı (Reverse proxy) ve access log (RP isteği)
 // ÖLÇÜLEMEDİ ile YOK/TANIMSIZ ASLA KARIŞMAZ: her hücre ayrı etiket taşır; satırda yalnız kod
 // ve sayı var, tanım listesi satıra tıklayınca ayrı uçtan (/spa-discovery/rp) gelir.
+//
+// KULLANICI KARARLARI (2026-10-02): (1) yeni PROD dizin tanımlarının RP isteği host kipiyle
+// (uygulama vhost'u, Host/SNI) ölçülür; (2) yalnız başka ortamın RP'sinde tanımlı uygulama
+// KENDİ ortamında "tanımsız" (ya da ölçülemedi) görünür, "ortam dışı" yalnız uyarıdır;
+// (3, K3) hem kendi hem başka ortamın RP'sinde tanımlıysa RP isteği kararı ve sayısı YALNIZ
+// kendi ortamının tanımlarındandır — başka ortamın isteği (rpReq7Disi) yalnız bilgi olarak
+// hücrede/ipucunda görünür, sayıya eklenmez, kararı değiştirmez.
 import { Fragment, memo, useCallback, useMemo, useState } from 'react';
 import {
   ArrowPathIcon,
@@ -34,6 +41,7 @@ import {
   type NgSpaCoverage,
   type NgSpaDiscovery,
   type NgSpaRpDetay,
+  type NgSpaRpHost,
   type NgSpaRpIstekNeden,
   type NgSpaRpKapsam,
   type NgSpaRpTanim,
@@ -112,12 +120,14 @@ const RPI_ETIKET: Record<NgSpaApp['rpIstek'], { t: string; renk: string; ipucu: 
   var: {
     t: 'istek var',
     renk: 'var(--text-primary)',
-    ipucu: 'RP access log: son 7 günde istek var (hc.jsp/hc.html hariç).',
+    ipucu:
+      "RP access log: kendi ortamının RP tanımlarında son 7 günde istek var (hc.jsp/hc.html hariç).",
   },
   yok: {
     t: 'istek yok',
     renk: WARN,
-    ipucu: 'Tüm tanımlar ölçüldü, pencere ≥ 7 gün, örnekleme yok ve toplam 0.',
+    ipucu:
+      "Kendi ortamının tüm RP tanımları ölçüldü, pencere ≥ 7 gün, örnekleme yok ve toplam 0 (başka ortamın RP'sindeki istek bu karara girmez).",
   },
   kismi: {
     t: 'kısmi',
@@ -134,7 +144,7 @@ const RPI_ETIKET: Record<NgSpaApp['rpIstek'], { t: string; renk: string; ipucu: 
     t: 'ölçüm kaynağı yok',
     renk: MUTED,
     ipucu:
-      "Yalnız yeni PROD / dizin tabanlı tanım var; bu sunucuların uygulama vhost'ları için access log sayımı yok.",
+      "Yalnız yeni PROD dizin tanımı var ve o gün hiçbir sunucuda host kipi satırı üretilmedi (nginx_spa_traffic.sh host kipi henüz koşmadı ya da SPA_HOST_MODE kapalı) — uygulama vhost'ları için access log sayımı yok.",
   },
   ayrilamaz: {
     t: 'ayrılamaz',
@@ -145,14 +155,18 @@ const RPI_ETIKET: Record<NgSpaApp['rpIstek'], { t: string; renk: string; ipucu: 
   uygulanamaz: {
     t: '—',
     renk: MUTED,
-    ipucu: 'RP tanımı yok ya da RP kolonları bu uygulama için hesaplanmıyor.',
+    ipucu:
+      "Kendi ortamının RP'sinde tanım yok, bulunamadı (RP ölçülemedi — 'yok' denmedi) ya da RP kapsam dışı; veya RP kolonları bu uygulama için hesaplanmıyor.",
   },
 };
 /** rpIstek='kismi' iken 0'ın neden alt sınır olduğu (sunucu: spa-rp.cjs KODLAR.rpIstekNeden). */
 const RPI_NEDEN_METNI: Record<NgSpaRpIstekNeden, string> = {
   pencere:
-    'ölçülen pencere 7 günden kısa, log örneklendi (512 MB kuyruk) ya da pencere başı bilinmiyor',
-  'kaynak-yok': 'ölçüm kaynağı olmayan (yeni PROD / dizin) tanım da var',
+    'ölçülen pencere 7 günden kısa, log örneklendi (512 MB kuyruk ya da Host alanı olmayan satır) veya pencere başı bilinmiyor',
+  'eslesmeyen-host':
+    "yeni PROD sunucusunda hiçbir uygulamaya yazılamayan istek var (eşleşmeyen Host / IP / Host alanı yok) — nginx bunları varsayılan sunucuya düşürür, o vhost bu uygulama olabilir",
+  'kaynak-yok':
+    'ölçüm kaynağı olmayan tanım da var (yeni PROD dizin tanımı; host kipi satırı hiç üretilmedi)',
   ayrilamaz: 'uygulamaya ayrılamayan (paylaşımlı / belirsiz) tanım da var',
   'host-taranmadi':
     'ortamın bir RP sunucusu son taramada yok — orada görülmeyen bir tanım istek alıyor olabilir',
@@ -162,7 +176,8 @@ const YOL_ADI: Record<string, { t: string; ipucu: string }> = {
   include: { t: 'include', ipucu: 'Servis vhost location → application-confs include' },
   dizin: {
     t: 'dizin',
-    ipucu: 'Yeni PROD (GBNGXP4x/AP3x) dizin kurulumu (application-confs conf var)',
+    ipucu:
+      "Yeni PROD (GBNGXP4x/AP3x) dizin kurulumu (application-confs conf var). RP isteği: uygulama vhost'unun (conf.d/<app>-<ns>.conf) ortak log'unda Host/SNI sayımı (host kipi).",
   },
 };
 const ESLES_ADI: Record<string, string> = {
@@ -179,14 +194,51 @@ const TABLO_ADI: Record<string, string> = {
   dizin: 'Nginx_Intranet_Audit',
   upstream: 'Nginx_Audit_Upstreams',
 };
+/** Tanım başına trafik 'ölçülemedi' nedeni (sunucu: spa-rp.cjs KODLAR.trafikNeden). */
 const TRAFIK_NEDEN: Record<string, string> = {
-  log: 'log okunamadı',
+  log: 'log / betik hatası',
   'location-tipi': 'location tipi ölçülmüyor (=, ~ ya da regex)',
-  host: "host'un o gün hiç trafik satırı yok (zaman aşımı, ulaşılamadı ya da spa_traffic=false)",
-  'satir-yok': 'bu location için trafik satırı yok',
+  host: "sunucunun o gün hiç trafik satırı yok (zaman aşımı, ulaşılamadı ya da spa_traffic=false)",
+  'satir-yok': "bu location / uygulama vhost'u için trafik satırı yok",
+  'host-kipi-yok':
+    "sunucuda host kipi (uygulama vhost'u) satırı yok — SPA_HOST_MODE kapalı ya da conf.d'de uygulama vhost'u bulunamadı",
   'tablo-yok': 'trafik tablosu yok',
   okunamadi: 'trafik tablosu okunamadı',
 };
+/** Ortam dışı tanım uyarısı: "PROD RP'de tanımlı". */
+const ortamDisiMetni = (a: NgSpaApp) =>
+  `${(a.rpOrtamDisi || []).join(', ') || 'başka ortam'} RP'sinde tanımlı`;
+/**
+ * K3 BİLGİSİ: başka ortamın RP tanımlarında görülen istek (rpReq7Disi). Sayıya EKLENMEZ, kararı
+ * değiştirmez; yalnız sunucu yazdıysa (> 0) metin döner.
+ */
+const disiIstekMetni = (a: NgSpaApp) =>
+  a.rpReq7Disi != null
+    ? `Bilgi (ortam dışı): ${(a.rpOrtamDisi || []).join('/') || 'başka ortam'} RP tanımında son 7 günde ${nf(a.rpReq7Disi)} istek görüldü — ${String(a.env || '').toUpperCase() || 'kendi ortamının'} RP isteği kararına ve sayısına girmez.`
+    : '';
+/**
+ * rpIstek='uygulanamaz' GEREKÇESİ: RP kolonları hesaplanmıyor (K4) ya da uygulama KENDİ
+ * ortamının RP'sinde tanımlı değil (K1/K3 — başka ortamın tanımı RP isteği sorusunu açmaz).
+ * rp 'ölçülemedi' iken "tanım yok" denmez: tanım BULUNAMADI (olmadığı kesin değil).
+ */
+function rpIstekUygulanamazMetni(a: NgSpaApp): string {
+  if (a.rp === 'uygulanamaz')
+    return a.spa !== 'evet'
+      ? 'RP kolonları yalnız SPA uygulamalar için hesaplanır.'
+      : `Ağ "${AG_ETIKET[a.ag]?.t || a.ag}": RP yalnız internet ve karışık uygulamalarda aranır.`;
+  const ENV = String(a.env || '').toUpperCase() || '?';
+  if (a.rp === 'olculemedi')
+    return `Kendi ortamının (${ENV}) RP'sinde tanım bulunamadı — RP ölçülemedi ("tanımsız" da denmedi); RP isteği sorulmaz.`;
+  if (a.rp === 'kapsam-disi')
+    return `RP kapsam dışı (${ENV}) — kendi ortamının RP'sinde tanım aranmıyor; RP isteği sorulmaz.`;
+  return `Kendi ortamının (${ENV}) RP'sinde tanım yok — RP isteği sorulmaz.`;
+}
+/** Kovanın 7 günlük toplamı (hiçbir uygulamaya yazılmayan istek). */
+const kovaToplam = (k?: NgSpaRpHost['kova']) => (k ? k.eslesmeyen + k.ip + k.alansiz : 0);
+const kovaMetni = (k?: NgSpaRpHost['kova']) =>
+  k
+    ? `uygulamaya yazılamayan istek (7g): eşleşmeyen Host ${nf(k.eslesmeyen)} · IP ${nf(k.ip)} · Host alanı yok ${nf(k.alansiz)}`
+    : '';
 
 /** 'yyyymmddHHMMSS' → 'yyyy-mm-dd HH:MM' */
 const zaman = (s?: string | null) =>
@@ -340,6 +392,10 @@ function RpKapsamBand({ k }: { k: NgSpaRpKapsam }) {
   const cozulemeyen = Object.entries(k.cozulemeyen || {}).filter(([, n]) => n > 0);
   const hedefYok = Object.entries(k.hedefCozulemeyen || {}).filter(([, n]) => n > 0);
   const t = k.tablolar;
+  // YENI PROD host kipi: o gun hicbir sunucuda '@' satiri yoksa dizin tanimlari olculmez.
+  const yeniProd = k.hostlar.filter((h) => h.rol === 'prod-yeni');
+  const hostKipiYok = t.trf === 'var' && k.hostKipi === false && yeniProd.length > 0;
+  const kovali = k.hostlar.filter((h) => kovaToplam(h.kova) > 0);
   return (
     <details
       open={
@@ -380,6 +436,20 @@ function RpKapsamBand({ k }: { k: NgSpaRpKapsam }) {
             {kaynakMetni(t.ups, k.upsTarih)}) → bu ortamlarda "tanımsız" denmiyor (ölçülemedi).
           </div>
         )}
+        {hostKipiYok && (
+          <div style={{ color: MUTED }} data-testid="rp-host-kipi-yok">
+            Yeni PROD uygulama vhost'ları için host kipi ölçümü yok (trafik taramasında '@'
+            satırı üretilmedi: nginx_spa_traffic.sh host kipi henüz koşmadı ya da SPA_HOST_MODE
+            kapalı) → dizin tanımlarının RP isteği "ölçüm kaynağı yok".
+          </div>
+        )}
+        {kovali.length > 0 && (
+          <div style={{ color: MUTED }}>
+            Hiçbir uygulamaya yazılamayan RP isteği (7 gün):{' '}
+            {kovali.map((h) => `${h.host} ${nf(kovaToplam(h.kova))}`).join(' · ')} — bu
+            sunuculardaki uygulamaların 0 isteği alt sınırdır (kısmi).
+          </div>
+        )}
         {k.envanterOkunamadi && (
           <div style={{ color: WARN }}>
             Route envanteri okunamadı — "Route envanteri" ve Ağ çapraz kontrolü ölçülemedi.
@@ -406,7 +476,13 @@ function RpKapsamBand({ k }: { k: NgSpaRpKapsam }) {
               <span
                 className="font-mono"
                 style={{ color: h.taranan ? 'var(--text-secondary)' : WARN }}
-                title={`${h.env} · ${h.rol} · ${h.taranan ? 'tarandı' : 'son taramada YOK'} · trafik: ${h.trafik}${h.trafikHata ? ` (${h.trafikHata} log hatası)` : ''}`}
+                title={[
+                  `${h.env} · ${h.rol} · ${h.taranan ? 'tarandı' : 'son taramada YOK'} · trafik: ${h.trafik}${h.trafikHata ? ` (${h.trafikHata} log hatası)` : ''}`,
+                  h.hostKipi != null ? `host kipi satırı: ${nf(h.hostKipi)}` : '',
+                  kovaMetni(h.kova),
+                ]
+                  .filter(Boolean)
+                  .join('\n')}
               >
                 {h.host}
                 {!h.taranan && '✗'}
@@ -576,13 +652,15 @@ function RpHucre({ a, k }: { a: NgSpaApp; k?: NgSpaRpKapsam | null }) {
         {e.t}
       </span>
     );
+  const ortamDisi = !!a.rpSorun?.includes('ORTAM_DISI');
   if (a.rp === 'tanimli')
     return (
       <span
         title={[
-          `Internet RP'de tanımlı · ${a.rpHost || '?'} sunucu (bulunan/beklenen)`,
+          `Internet RP'de tanımlı · ${a.rpHost || '?'} sunucu (bulunan/beklenen, ${String(a.env || '').toUpperCase()} RP'leri)`,
           a.rpEsles ? `Eşleşme: ${ESLES_ADI[a.rpEsles] || a.rpEsles}` : 'Eşleşme: kesin',
           a.rpSorun?.length ? `Sorun: ${a.rpSorun.join(', ')}` : '',
+          ortamDisi ? `Ortam dışı: ${ortamDisiMetni(a)} (uyarı)` : '',
           'Ayrıntı için satıra tıklayın.',
         ]
           .filter(Boolean)
@@ -611,21 +689,40 @@ function RpHucre({ a, k }: { a: NgSpaApp; k?: NgSpaRpKapsam | null }) {
         )}
         {(a.rpSorun || []).map((s) => (
           <span key={s} className="ml-1 text-[10px]" style={{ color: DANGER }}>
-            {s}
+            {s === 'ORTAM_DISI' ? `ortam dışı: ${(a.rpOrtamDisi || []).join(', ')}` : s}
           </span>
         ))}
       </span>
     );
+  // YALNIZ BASKA ORTAMIN RP'SINDE TANIMLI (kullanici karari, 2026-10-02): hucre KENDI
+  // ortaminin kararini gosterir (tanimsiz / olculemedi / kapsam disi); oteki ortamdaki tanim
+  // yalniz uyaridir ve "tanimsiz" suzgecinde gorunur.
+  const ENV = String(a.env || '').toUpperCase();
+  const ana =
+    a.rp === 'tanimsiz'
+      ? `Ortamın (${ENV}) tüm internet RP sunucuları tarandı, tablolar okundu; ${ENV} RP'lerinde bu uygulamaya bağlanan tanım yok.`
+      : rpNedenMetni(a, k);
   return (
     <span
-      style={{ color: e.renk, fontWeight: a.rp === 'tanimsiz' ? 600 : 400 }}
-      title={
-        a.rp === 'tanimsiz'
-          ? 'Ortamın tüm internet RP sunucuları tarandı, tablolar okundu; bu uygulamaya bağlanan tanım yok.'
-          : rpNedenMetni(a, k)
-      }
+      title={[
+        ana,
+        ortamDisi
+          ? `Uyarı: yalnız ${ortamDisiMetni(a)} — ${ENV} için sayılmaz. Ayrıntı için satıra tıklayın.`
+          : '',
+      ]
+        .filter(Boolean)
+        .join('\n')}
     >
-      {e.t}
+      <span style={{ color: e.renk, fontWeight: a.rp === 'tanimsiz' ? 600 : 400 }}>{e.t}</span>
+      {ortamDisi && (
+        <span
+          className="ml-1 text-[10px]"
+          style={{ color: WARN }}
+          data-testid="rp-ortam-disi"
+        >
+          ({ortamDisiMetni(a)})
+        </span>
+      )}
     </span>
   );
 }
@@ -637,17 +734,33 @@ function RpHucre({ a, k }: { a: NgSpaApp; k?: NgSpaRpKapsam | null }) {
  */
 function RpIstekHucre({ a, k }: { a: NgSpaApp; k?: NgSpaRpKapsam | null }) {
   const e = RPI_ETIKET[a.rpIstek] || RPI_ETIKET.olculemedi;
+  // K3 (2026-10-02): karar ve sayı YALNIZ kendi ortamının RP tanımlarından. Başka ortamın RP
+  // tanımında görülen istek (rpReq7Disi) yalnız BİLGİ: sayıya eklenmez, kararı değiştirmez;
+  // hücrede ayrı rozet, ipucunda ayrı satır. Yazılmazsa TEST RP'de 0 alan uygulamanın "istek
+  // yok"u, PROD RP'nin test adresine proxy'sinin isteğini gizlerdi.
+  const ENV = String(a.env || '').toUpperCase();
+  const disiOrt = (a.rpOrtamDisi || []).join('/') || 'başka ortam';
+  const kendiRp = a.rpOrtamDisi?.length && ENV ? ` (${ENV} RP'leri)` : '';
   const ipucu = [
-    e.ipucu,
+    a.rpIstek === 'uygulanamaz' ? rpIstekUygulanamazMetni(a) : e.ipucu,
     a.rpIstek === 'kismi' ? rpIstekNedenMetni(a, k) : '',
-    a.rpReq24 != null ? `son 24 saat: ${nf(a.rpReq24)}` : '',
-    a.rpReq7 != null ? `son 7 gün: ${nf(a.rpReq7)}` : '',
+    a.rpReq24 != null ? `son 24 saat${kendiRp}: ${nf(a.rpReq24)}` : '',
+    a.rpReq7 != null ? `son 7 gün${kendiRp}: ${nf(a.rpReq7)}` : '',
     a.rpSon ? `son istek: ${zaman(a.rpSon)}` : '',
     a.rpPencereSa != null ? `ölçülen pencere (en kısa): ${pencere(a.rpPencereSa)}` : '',
     a.rpOlcum ? `ölçülen/ölçülebilir tanım: ${a.rpOlcum}` : '',
+    disiIstekMetni(a),
   ]
     .filter(Boolean)
     .join('\n');
+  // Başka ortamın isteği: kendi kararının YANINDA ayrı rozet (uygulanamaz satırda yalnız ipucu).
+  const disiRozet =
+    a.rpIstek !== 'uygulanamaz' && a.rpReq7Disi != null && a.rpReq7Disi > 0 ? (
+      <span className="text-[10px]" style={{ color: '#d97706' }} data-testid="rp-istek-disi">
+        {' '}
+        (ortam dışı {disiOrt} RP: {nf(a.rpReq7Disi)})
+      </span>
+    ) : null;
   if (a.rpIstek === 'var')
     return (
       <span style={{ color: e.renk }} title={ipucu}>
@@ -656,6 +769,7 @@ function RpIstekHucre({ a, k }: { a: NgSpaApp; k?: NgSpaRpKapsam | null }) {
           {' '}
           /7g
         </span>
+        {disiRozet}
       </span>
     );
   if (a.rpIstek === 'kismi')
@@ -664,30 +778,56 @@ function RpIstekHucre({ a, k }: { a: NgSpaApp; k?: NgSpaRpKapsam | null }) {
         0 · {e.t}
         {a.rpIstekNeden?.includes('host-taranmadi')
           ? ' (sunucu taranmadı)'
-          : a.rpPencereSa != null && ` (${pencere(a.rpPencereSa)})`}
+          : a.rpIstekNeden?.includes('eslesmeyen-host')
+            ? ' (atanamayan istek)'
+            : a.rpPencereSa != null && ` (${pencere(a.rpPencereSa)})`}
+        {disiRozet}
       </span>
     );
   return (
     <span style={{ color: e.renk }} title={ipucu}>
       {e.t}
       {a.rpIstek === 'olculemedi' && a.rpOlcum && ` (${a.rpOlcum})`}
+      {disiRozet}
     </span>
   );
 }
 
 /** Tanım başına trafik metni (ayrıntı paneli). */
-function TrafikHucre({ t }: { t: NgSpaRpTanim['trafik'] }) {
-  if (!t) return <span style={{ color: MUTED }}>ölçüm kaynağı yok</span>;
+function TrafikHucre({ t, yol }: { t: NgSpaRpTanim['trafik']; yol?: NgSpaRpTanim['yol'] }) {
+  if (!t)
+    return (
+      <span
+        style={{ color: MUTED }}
+        title={
+          yol === 'dizin'
+            ? "O gün hiçbir sunucuda host kipi satırı üretilmedi (eski betik ya da SPA_HOST_MODE kapalı) — uygulama vhost'u sayılmadı. 0 DEĞİL."
+            : ''
+        }
+      >
+        ölçüm kaynağı yok
+      </span>
+    );
   if (t.durum === 'olculemedi')
     return (
       <span style={{ color: WARN }} title={t.hata || ''}>
         ölçülemedi: {TRAFIK_NEDEN[t.neden || ''] || t.neden}
+        {t.neden === 'log' && t.hata ? ` — ${t.hata}` : ''}
       </span>
     );
+  const kismi = (t.kismi || []).map((n) => RPI_NEDEN_METNI[n] || n);
   return (
     <span
       style={{ color: t.durum === 'var' ? 'var(--text-primary)' : WARN }}
-      title={`ilk kayıt (pencere başı): ${zaman(t.ilk)}${t.sampled ? ' · log örneklendi (512 MB kuyruk)' : ''}`}
+      title={[
+        `ilk kayıt (pencere başı): ${zaman(t.ilk)}${t.sampled ? ' · log örneklendi (512 MB kuyruk ya da Host alanı olmayan satır)' : ''}`,
+        t.atanmamis
+          ? `bu sunucuda hiçbir uygulamaya yazılamayan istek (7g): ${nf(t.atanmamis)}`
+          : '',
+        kismi.length ? `0 alt sınır: ${kismi.join('; ')}` : '',
+      ]
+        .filter(Boolean)
+        .join('\n')}
     >
       {nf(t.req24 ?? 0)} / {nf(t.req7 ?? 0)}
       {t.durum === 'sifir-kismi' && ' · kısmi'}
@@ -740,6 +880,13 @@ function RpAyrinti({
   const d = yanit && yanit.surum === surum ? yanit.r : null;
   const ag = AG_ETIKET[a.ag] || AG_ETIKET.bilinmiyor;
   const tanimlar = d?.tanimlar || [];
+  const ENV = String(a.env || '').toUpperCase();
+  // ORTAM DISI: uygulamanin ortami biliniyorsa baska ortamin RP'sindeki tanim isaretlenir.
+  const disiMi = (t: NgSpaRpTanim) => !!ENV && t.env !== ENV;
+  const yalnizDisi = tanimlar.length > 0 && tanimlar.every(disiMi);
+  // K3: hem kendi hem başka ortamın tanımı var — başka ortamınki satırdaki karara ve sayıya
+  // girmez; panelde listelenir ve işaretlenir.
+  const karisik = !yalnizDisi && tanimlar.some(disiMi);
   const farkliHesap = !!(d?.hesaplandi && tabloHesap && d.hesaplandi !== tabloHesap);
   return (
     <div
@@ -772,11 +919,21 @@ function RpAyrinti({
       <div style={{ color: 'var(--text-secondary)' }}>
         <b>Reverse proxy</b>: {RP_ETIKET[a.rp]?.t || a.rp}
         {a.rpNeden ? ` — ${rpNedenMetni(a, k)}` : ''}
-        {a.rp === 'tanimli' && a.rpEsles ? ` — ${ESLES_ADI[a.rpEsles] || a.rpEsles}` : ''} ·{' '}
+        {a.rp === 'tanimli' && a.rpEsles ? ` — ${ESLES_ADI[a.rpEsles] || a.rpEsles}` : ''}
+        {a.rpSorun?.includes('ORTAM_DISI') ? ` — uyarı: ${ortamDisiMetni(a)}` : ''} ·{' '}
         <b>RP isteği</b>: {RPI_ETIKET[a.rpIstek]?.t || a.rpIstek}
         {a.rpIstek === 'kismi' && a.rpIstekNeden?.length
           ? ` (${a.rpIstekNeden.map((n) => RPI_NEDEN_METNI[n] || n).join('; ')})`
-          : ''}{' '}
+          : ''}
+        {a.rpIstek === 'uygulanamaz' && a.rp !== 'uygulanamaz'
+          ? ` — ${rpIstekUygulanamazMetni(a)}`
+          : ''}
+        {a.rpReq7Disi != null && (
+          <span style={{ color: '#d97706' }} data-testid="rp-ayrinti-disi-istek">
+            {' '}
+            — {disiIstekMetni(a)}
+          </span>
+        )}{' '}
         · <b>Uygulama isteği (Dynatrace)</b>: {a.istek}
       </div>
       {hata ? (
@@ -785,6 +942,19 @@ function RpAyrinti({
         <div style={{ color: MUTED }}>Yükleniyor…</div>
       ) : (
         <>
+          {yalnizDisi && (
+            <div style={{ color: WARN }} data-testid="rp-ayrinti-yalniz-disi">
+              {ENV} RP'lerinde tanım yok — aşağıdaki tanımlar yalnız başka ortamın RP'sinde
+              (ortam dışı) ve {ENV} kararına sayılmaz: Reverse proxy "{RP_ETIKET[a.rp]?.t || a.rp}",
+              RP isteği sorulmaz; ortam dışı tanımların isteği yalnız bilgidir.
+            </div>
+          )}
+          {karisik && (
+            <div style={{ color: WARN }} data-testid="rp-ayrinti-karisik">
+              "ortam dışı" işaretli tanımlar başka ortamın RP'sinde: {ENV} RP isteği kararına ve
+              sayısına girmez (satırdaki RP isteği yalnız {ENV} RP tanımlarından), yalnız bilgi.
+            </div>
+          )}
           {tanimlar.length ? (
             <table className="w-full">
               <thead>
@@ -818,8 +988,20 @@ function RpAyrinti({
                       <span className="text-[10px]" style={{ color: MUTED }}>
                         {t.env} {t.rol}
                       </span>
+                      {disiMi(t) && (
+                        <span className="ml-1 text-[10px]" style={{ color: WARN }}>
+                          ortam dışı
+                        </span>
+                      )}
                     </td>
-                    <td className="pr-2 font-mono">{t.vhost || '—'}</td>
+                    <td className="pr-2 font-mono">
+                      {t.vhost || '—'}
+                      {t.trafik?.ad && (
+                        <div className="text-[10px]" style={{ color: MUTED }} title="server_name">
+                          {t.trafik.ad}
+                        </div>
+                      )}
+                    </td>
                     <td className="pr-2 font-mono break-all">{t.location}</td>
                     <td className="pr-2" title={YOL_ADI[t.yol]?.ipucu}>
                       {YOL_ADI[t.yol]?.t || t.yol}
@@ -838,7 +1020,7 @@ function RpAyrinti({
                       {t.hedef || t.conf || '—'}
                     </td>
                     <td className="pr-2 whitespace-nowrap tabular-nums">
-                      <TrafikHucre t={t.trafik} />
+                      <TrafikHucre t={t.trafik} yol={t.yol} />
                     </td>
                     <td className="pr-2 whitespace-nowrap">
                       {t.trafik?.son ? zaman(t.trafik.son) : '—'}
@@ -870,8 +1052,13 @@ function RpAyrinti({
                   >
                     {h.host}
                   </span>{' '}
-                  {h.taranan ? 'tarandı' : 'TARANMADI'}
-                  {h.rol !== 'prod-yeni' && `, trafik ${h.trafik}`}
+                  {h.taranan ? 'tarandı' : 'TARANMADI'}, trafik {h.trafik}
+                  {kovaToplam(h.kova) > 0 && (
+                    <span title={kovaMetni(h.kova)} style={{ color: WARN }}>
+                      {' '}
+                      (atanamayan {nf(kovaToplam(h.kova))})
+                    </span>
+                  )}
                 </span>
               ))}
             </div>
@@ -1173,9 +1360,11 @@ export default function NginxSpaDiscovery() {
         'rp_yol',
         'rp_host',
         'rp_neden',
+        'rp_sorun',
         'rp_istegi',
         'rp_istegi_nedeni',
         'rp_istek_7g',
+        'rp_istek_7g_ortam_disi',
         'rp_istek_24s',
         'rp_son_istek',
         'route_envanteri',
@@ -1199,10 +1388,19 @@ export default function NginxSpaDiscovery() {
         (a.rpYol || []).join(' '),
         a.rpHost || '',
         a.rpNeden || '',
+        // ORTAM_DISI hangi ortam(lar)la birlikte: "tanimsiz" satirin baska ortamdaki tanimi.
+        (a.rpSorun || [])
+          .map((s) =>
+            s === 'ORTAM_DISI' && a.rpOrtamDisi?.length ? `${s}(${a.rpOrtamDisi.join('+')})` : s,
+          )
+          .join(' '),
         a.rpIstek,
         (a.rpIstekNeden || []).join(' '),
         // Ayni kural: olculmeyen RP istegine 0 yazilmaz (sayi yalniz olculen tanimlardan).
+        // K3: rp_istek_7g YALNIZ kendi ortaminin RP tanimlari; baska ortamin RP tanimlarinda
+        // gorulen istek AYRI kolonda (bilgi; toplanmaz, rp_istegi kararina girmez).
         a.rpReq7 ?? '',
+        a.rpReq7Disi ?? '',
         a.rpReq24 ?? '',
         a.rpSon ? zaman(a.rpSon) : '',
         a.inventory === 'kismen' ? `kısmen (${a.invRoutes}/${a.routeCount})` : a.inventory,
@@ -1323,10 +1521,12 @@ export default function NginxSpaDiscovery() {
         <b>SPA</b>: kabinde nginx çalışıyor mu · <b>Ad kalıbı</b>: uygulama adı -app-v / -app-emb-v
         kuralına uyuyor mu (eski yöntem SPA'yı yalnız adından tanıyordu) · <b>Uygulama isteği</b>:
         Dynatrace'e göre uygulama (pod) istek alıyor mu · <b>Ağ</b>: route TLS tipi (passthrough =
-        internet, reencrypt = intranet) · <b>Reverse proxy</b>: internet SPA bizim RP
-        sunucularımızda tanımlı mı · <b>RP isteği</b>: RP access log'una göre tanım istek alıyor mu
-        · <b>Route envanteri</b>: route'u envanterde kayıtlı mı. Satıra tıklayınca RP tanımları
-        açılır.
+        internet, reencrypt = intranet) · <b>Reverse proxy</b>: internet SPA kendi ortamının RP
+        sunucularında tanımlı mı (yalnız başka ortamın RP'sinde tanımlıysa "tanımsız" + ortam dışı
+        uyarısı) · <b>RP isteği</b>: RP access log'una göre kendi ortamının RP tanımı istek alıyor
+        mu (yeni PROD: uygulama vhost'unun Host/SNI sayımı; başka ortamın RP'sindeki istek yalnız
+        "ortam dışı" bilgisi, karara ve sayıya girmez) · <b>Route envanteri</b>: route'u
+        envanterde kayıtlı mı. Satıra tıklayınca RP tanımları açılır.
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -1436,7 +1636,11 @@ export default function NginxSpaDiscovery() {
           <option value="olculemedi">RP isteği ölçülemedi{sec(say.rpIstek.olculemedi)}</option>
           <option value="kaynak-yok">RP ölçüm kaynağı yok{sec(say.rpIstek['kaynak-yok'])}</option>
           <option value="ayrilamaz">RP isteği ayrılamaz{sec(say.rpIstek.ayrilamaz)}</option>
-          <option value="uygulanamaz">RP isteği uygulanamaz{sec(say.rpIstek.uygulanamaz)}</option>
+          <option value="uygulanamaz">
+            RP isteği uygulanamaz (kendi ortamında tanım yok, bulunamadı ya da kapsam dışı / RP
+            hesaplanmıyor)
+            {sec(say.rpIstek.uygulanamaz)}
+          </option>
         </select>
         <select
           value={cluster}

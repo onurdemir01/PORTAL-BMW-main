@@ -1,13 +1,10 @@
 // src/api/arkSpaApi.ts — Nginx ARK SPA Raporu uçları.
-export interface ArkYuk {
-  state: 'active' | 'idle' | 'unknown';
-  req7: number | null;
-  req24: number | null;
-  sampled: boolean;
-  lastSeen: string | null;
-  hosts: number;
-  unknownHosts: number;
-}
+import type { SpaYukOlcumu } from './denetimApi';
+
+/** Yük ölçümü: Denetim > Nginx SPA ve Production Taşımaları ile AYNI biçim ve kural
+ *  (server/audit/nginx-migration.cjs spaTrafikDurumu). 'idle' yalnız 7 günün tamamı ve
+ *  tanımın her sunucusu ölçülmüşken gelir. */
+export type ArkYuk = SpaYukOlcumu;
 
 export interface ArkSatir {
   service: string;

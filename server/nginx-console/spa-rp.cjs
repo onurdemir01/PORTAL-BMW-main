@@ -8,7 +8,13 @@
 //                             PRX satirlari (kind proxy: eski PROD proxy_pass -> route)
 //   dbo.Nginx_Intranet_Audit  yeni PROD (GBNGXP4x/AP3x) dizin kurulumu (conf_exists)
 //   dbo.Nginx_Audit_Upstreams upstream takma adinin gercek server'i (eski PROD)
-//   dbo.Nginx_Spa_Traffic     RP access log sayimi (host, vhost, location)
+//   dbo.Nginx_Spa_Traffic     RP access log sayimi, IKI KIP (nginx_spa_traffic.sh):
+//     location kipi  location '/' ile baslar; anahtar (host, vhost, location)
+//     host kipi      location '@' ile baslar (2026-10-02, yeni PROD): uygulama basina vhost
+//                    (conf.d/<app>-<ns>.conf) ortak log'da Host/SNI ile sayilir; anahtar
+//                    (host, vhost=<app>-<ns>); location = '@' + birincil server_name.
+//                    vhost '_' satirlari KOVADIR (@_ eslesmeyen Host, @ip, @- alansiz) ve
+//                    hicbir uygulamaya EKLENMEZ.
 //
 // KESIN KURAL: "olculemedi" ile "tanimsiz/yok" ASLA karismaz.
 //   - 'tanimsiz' ancak ortamin beklenen RP hostlarinin TAMAMI o gunun taramasinda
@@ -16,6 +22,22 @@
 //   - sorgu dustu (null) -> 'olculemedi'; [] gibi davranip 'tanimsiz' uretmek YASAK.
 //   - RP istegi 'yok' ancak olculebilir tanimlarin HEPSI olculmus, pencere >= 7 gun,
 //     sampled=0 ve toplam 0 ise; kismi pencere 'kismi', olcum kaynagi olmayan 'kaynak-yok'.
+//   - host kipinde tanimin vhost satiri YOKSA olculemedi (0 DEGIL); sunucuda hicbir
+//     uygulamaya yazilamayan istek (kova) varsa 0 bir ALT SINIRDIR ('eslesmeyen-host').
+//   - dizin tanimi yalniz KENDI '<app>-<ns>' vhost'una (ya da '-N' ekli conf_name'ine)
+//     baglanir; ayni conf.d adina iki dizin satiri duserse tanim 'belirsiz' (ayrilamaz).
+//
+// ORTAM (kullanici karari K1, 2026-10-02): uygulama YALNIZ baska ortamin RP'sinde tanimliysa
+// KENDI ortaminda tanimsiz sayilir (ortamin RP hostlari taranmadiysa olculemedi);
+// 'baska ortamda tanimli' bilgisi rpSorun ORTAM_DISI + rpOrtamDisi (ortamlar) uyarisidir.
+// KARISIK DURUM (K3, K1'in dogal uzantisi, 2026-10-02): uygulama hem kendi ortaminin hem
+// baska ortamin RP'sinde tanimliysa satirdaki her karar ve sayi (rp, rpYol, rpHost, rpEsles,
+// rpSorun durum kodlari, rpIstek, rpIstekNeden, rpReq7/24, rpSon, rpPencereSa, rpOlcum)
+// YALNIZ kendi ortaminin tanimlarindan hesaplanir. Baska ortamin tanimi yalniz sunlari
+// verir: rpSorun ORTAM_DISI + rpOrtamDisi uyarisi ve (olculmusse) rpReq7Disi BILGISI -
+// rpReq7'ye EKLENMEZ, rpIstek kararini DEGISTIRMEZ (kendi tanimi olculemediyse 900 istek de
+// 'olculemedi'yi kurtarmaz). Kendi ortaminda tanim yoksa rpIstek 'uygulanamaz' (gerekce:
+// kendi ortaminin RP'sinde tanim yok); baska ortamin olculmus istegi yine rpReq7Disi'dir.
 //
 // KAPSAM (kullanici karari K4): RP kolonlari YALNIZ spa='evet' VE ag internet/karisik
 // uygulamalar icin hesaplanir; digerleri 'uygulanamaz'.
@@ -118,10 +140,29 @@ const KODLAR = Object.freeze({
     'hedef-cozulemedi',
     'belirsiz',
   ]),
-  rpIstekNeden: Object.freeze(['pencere', 'kaynak-yok', 'ayrilamaz', 'host-taranmadi']),
+  rpIstekNeden: Object.freeze([
+    'pencere',
+    'eslesmeyen-host',
+    'kaynak-yok',
+    'ayrilamaz',
+    'host-taranmadi',
+  ]),
   // Satira yalniz 'kesin' DISINDAKILER yazilir (kesin = alan yok).
   rpEsles: ESLES_SIRA.slice(1),
+  // Ayrinti paneli: tanim basina trafik 'olculemedi' nedeni (NginxSpaDiscovery.tsx TRAFIK_NEDEN).
+  trafikNeden: Object.freeze([
+    'tablo-yok',
+    'okunamadi',
+    'log',
+    'location-tipi',
+    'host',
+    'satir-yok',
+    'host-kipi-yok',
+  ]),
 });
+
+/** Host kipi kova isaretleri (vhost '_'): uygulamaya EKLENMEZ, tanilama ve alt sinir icindir. */
+const KOVA = Object.freeze({ '@_': 'eslesmeyen', '@ip': 'ip', '@-': 'alansiz' });
 
 /**
  * Location'i trafik betiginin yazdigi bicime cevirir (nginx_spa_traffic.sh ile BIREBIR):
@@ -194,15 +235,21 @@ function tabloDurumu(kaynak, ad) {
 }
 
 /**
- * Trafik: tanim basina durum. RP isteginin olculebildigi tanimlar yalniz non-prod RP'ler ve
- * ESKI PROD (GBRVP*) hostlarindaki location/proxy tanimlaridir: PROD'da trafik hala eski
- * sunuculardan akiyor (nginx-migration.cjs). Yeni PROD tanimlari ve dizin kurulumu icin olcum
- * kaynagi YOK (betik uygulama basina vhost'larin include'larini acmiyor) -> null = kaynak-yok.
+ * Trafik indeksi (Nginx_Spa_Traffic, o gunun satirlari). IKI KIP AYRI haritalarda tutulur:
+ * host kipi hata satiri location kipinin (host, vhost) hatasini zehirlemez, tersi de olmaz.
+ * Kovalar (vhost '_') hicbir haritaya girmez; yalniz sunucu basina toplam olarak tutulur.
+ * hostKipi: o gunun taramasinda HERHANGI bir '@' satiri var mi. Yoksa host kipi hic
+ * uretilmemistir (eski betik/analyzer ya da SPA_HOST_MODE kapali) -> dizin tanimlarinin
+ * olcum kaynagi yok ('kaynak-yok'; eski davranisla ayni).
  */
 function trafikIndeksi(rows) {
-  const satir = new Map(); // HOST|VHOST|location -> satir
-  const hata = new Map(); // HOST|VHOST ya da HOST|* -> mesaj
-  const host = new Map(); // HOST -> { satir, hata }
+  const satir = new Map(); // location kipi: HOST|VHOST|location -> satir
+  const hata = new Map(); // location kipi: HOST|VHOST ya da HOST|* -> mesaj
+  const hSatir = new Map(); // host kipi: HOST|VHOST -> satir
+  const hHata = new Map(); // host kipi: HOST|VHOST -> { hata, vhost, ad }
+  const kova = new Map(); // HOST -> { eslesmeyen, ip, alansiz } (7 gun istek)
+  const host = new Map(); // HOST -> { satir, hata, hk (host kipi satir sayisi) }
+  let hostKipi = 0;
   let tarih = '';
   for (const r of rows || []) {
     const h = U(r.host);
@@ -210,7 +257,35 @@ function trafikIndeksi(rows) {
     const g = gunu(r.scan_date);
     if (g > tarih) tarih = g;
     let hs = host.get(h);
-    if (!hs) host.set(h, (hs = { satir: 0, hata: 0 }));
+    if (!hs) host.set(h, (hs = { satir: 0, hata: 0, hk: 0 }));
+    const loc = T(r.location);
+    if (loc.startsWith('@')) {
+      // HOST KIPI (sozlesme: location LIKE '@%'; location kipi daima '/' ile baslar).
+      hostKipi += 1;
+      hs.hk += 1;
+      const vh = U(r.vhost);
+      const err = T(r.error);
+      if (vh === '_') {
+        if (err) continue;
+        hs.satir += 1;
+        const ad = KOVA[L(loc)];
+        if (!ad) continue;
+        let kv = kova.get(h);
+        if (!kv) kova.set(h, (kv = { eslesmeyen: 0, ip: 0, alansiz: 0 }));
+        kv[ad] += num(r.req_7d);
+        continue;
+      }
+      if (!vh) continue;
+      const k = `${h}|${vh}`;
+      if (err) {
+        hs.hata += 1;
+        if (!hHata.has(k)) hHata.set(k, { hata: err, vhost: T(r.vhost), ad: loc.slice(1) });
+        continue;
+      }
+      hs.satir += 1;
+      if (!hSatir.has(k)) hSatir.set(k, r);
+      continue;
+    }
     const vh = U(r.vhost) || '*';
     if (T(r.error)) {
       hs.hata += 1;
@@ -219,34 +294,35 @@ function trafikIndeksi(rows) {
       continue;
     }
     hs.satir += 1;
-    const k = `${h}|${vh}|${T(r.location)}`;
+    const k = `${h}|${vh}|${loc}`;
     if (!satir.has(k)) satir.set(k, r);
   }
-  return { satir, hata, host, tarih };
+  return { satir, hata, hSatir, hHata, kova, host, hostKipi, tarih };
 }
 
-function tanimTrafigi(d, trfTablo, idx) {
-  if (!((d.rol === 'nonprod' || d.rol === 'prod-eski') && d.yol !== 'dizin')) return null;
-  if (trfTablo !== 'var')
-    return { durum: 'olculemedi', neden: trfTablo === 'yok' ? 'tablo-yok' : 'okunamadi' };
-  const vh = U(d.vhost) || '*';
-  const hata = idx.hata.get(`${d.host}|${vh}`) || idx.hata.get(`${d.host}|*`);
-  if (hata) return { durum: 'olculemedi', neden: 'log', hata };
-  const loc = normLoc(d.location);
-  if (loc == null) return { durum: 'olculemedi', neden: 'location-tipi' };
-  const r = idx.satir.get(`${d.host}|${vh}|${loc}`);
-  if (!r) return { durum: 'olculemedi', neden: idx.host.has(d.host) ? 'satir-yok' : 'host' };
+/**
+ * Olculmus bir trafik satirinin durumu (iki kip ayni kural). 0 istek bir ALT SINIRDIR, eger:
+ *   pencere          sampled=1 / pencere < 7 gun / first_seen yok
+ *   eslesmeyen-host  (yalniz host kipi) sunucuda hicbir uygulamaya yazilamayan istek var:
+ *                    eslesmeyen Host / IP / alansiz satirlar nginx'te varsayilan sunucuya
+ *                    (bilinmeyen bir uygulama vhost'u olabilir) duser.
+ * HOST KIPINDE sampled=1 IKI SEY demektir (nginx_spa_traffic.sh, 2026-10-02): daha eski veri
+ * okunamadi (pencere) YA DA logda uygulamaya yazilamayan istek var (@-, @_, @ip). kovaVar:
+ * sunucuda kova > 0. Pencere tam (>= 7 gun) ve kova varken sampled'in sebebi kovadir: neden
+ * 'pencere' DEGIL, yalniz 'eslesmeyen-host' yazilir (ipucu kendisiyle celismesin).
+ */
+function olcumDurumu(r, ekKismi, kovaVar) {
   const req7 = num(r.req_7d);
   const sampled = bit(r.sampled);
   const pencereSa = pencereSaat(r.scan_date, r.first_seen);
-  const durum =
-    req7 > 0
-      ? 'var'
-      : sampled || pencereSa == null || pencereSa < PENCERE_TAM_SA
-        ? 'sifir-kismi'
-        : 'sifir';
-  return {
-    durum,
+  const kismi = [];
+  if (req7 === 0) {
+    const kisa = pencereSa == null || pencereSa < PENCERE_TAM_SA;
+    if (kisa || (sampled && !kovaVar)) kismi.push('pencere');
+    for (const n of ekKismi || []) kismi.push(n);
+  }
+  const o = {
+    durum: req7 > 0 ? 'var' : kismi.length ? 'sifir-kismi' : 'sifir',
     req7,
     req24: num(r.req_24h),
     hc24: num(r.hc_24h),
@@ -256,6 +332,65 @@ function tanimTrafigi(d, trfTablo, idx) {
     ilk: T(r.first_seen) || null,
     tarih: gunu(r.scan_date),
   };
+  if (kismi.length) o.kismi = kismi;
+  return o;
+}
+
+/**
+ * Trafik: location / proxy tanimi basina durum (location kipi). Eski PROD, non-prod VE yeni
+ * PROD'un servis vhost'lari (<SERVICE>-PROD.conf) location kipinde olculur. Dizin tanimlari
+ * host kipindedir (dizinTrafigi).
+ */
+function tanimTrafigi(d, trfTablo, idx) {
+  if (trfTablo !== 'var')
+    return { durum: 'olculemedi', neden: trfTablo === 'yok' ? 'tablo-yok' : 'okunamadi' };
+  const vh = U(d.vhost) || '*';
+  const hata = idx.hata.get(`${d.host}|${vh}`) || idx.hata.get(`${d.host}|*`);
+  if (hata) return { durum: 'olculemedi', neden: 'log', hata };
+  const loc = normLoc(d.location);
+  if (loc == null) return { durum: 'olculemedi', neden: 'location-tipi' };
+  const r = idx.satir.get(`${d.host}|${vh}|${loc}`);
+  if (!r) return { durum: 'olculemedi', neden: idx.host.has(d.host) ? 'satir-yok' : 'host' };
+  return olcumDurumu(r);
+}
+
+/**
+ * YENI PROD DIZIN TANIMININ TRAFIGI (host kipi, sozlesme 2026-10-02). Tanim
+ * Nginx_Intranet_Audit'ten (host, namespace, application, conf_name) gelir; trafik satiri
+ * ayni host'ta vhost = '<application>-<namespace>' (conf.d dosya adi; harf duyarsiz) olan
+ * '@' satiridir. Yedek aday YALNIZ '<application>-<namespace>-N' bicimli conf_name govdesi
+ * (bkz. rpUygula: cekirdek eslesmesiyle gelen baska uygulamanin dosyasi aday OLMAZ).
+ *   null          o gun HICBIR sunucuda host kipi satiri yok -> olcum kaynagi yok
+ *   olculemedi    tablo yok/okunamadi | HOST|* LOADERR | HLOADERR | sunucunun hic satiri yok
+ *                 ('host') | sunucuda host kipi satiri yok ('host-kipi-yok') | bu vhost'un
+ *                 satiri yok ('satir-yok')  -- HICBIRI 0 DEGIL.
+ */
+function dizinTrafigi(host, adaylar, trfTablo, idx) {
+  if (trfTablo !== 'var')
+    return { durum: 'olculemedi', neden: trfTablo === 'yok' ? 'tablo-yok' : 'okunamadi' };
+  if (!idx.hostKipi) return null;
+  const genel = idx.hata.get(`${host}|*`);
+  if (genel) return { durum: 'olculemedi', neden: 'log', hata: genel };
+  for (const vh of adaylar) {
+    const k = `${host}|${vh}`;
+    const e = idx.hHata.get(k);
+    if (e) {
+      const o = { durum: 'olculemedi', neden: 'log', hata: e.hata, vhost: e.vhost };
+      if (e.ad) o.ad = e.ad;
+      return o;
+    }
+    const r = idx.hSatir.get(k);
+    if (!r) continue;
+    const kv = idx.kova.get(host);
+    const atanmamis = kv ? kv.eslesmeyen + kv.ip + kv.alansiz : 0;
+    const o = olcumDurumu(r, atanmamis > 0 ? ['eslesmeyen-host'] : [], atanmamis > 0);
+    o.vhost = T(r.vhost);
+    o.ad = T(r.location).slice(1);
+    if (atanmamis > 0) o.atanmamis = atanmamis;
+    return o;
+  }
+  const hs = idx.host.get(host);
+  return { durum: 'olculemedi', neden: !hs ? 'host' : !hs.hk ? 'host-kipi-yok' : 'satir-yok' };
 }
 
 const OLCULDU = new Set(['var', 'sifir', 'sifir-kismi']);
@@ -391,6 +526,9 @@ function rpUygula({ rows, apps, inventory, kaynak }) {
     return null;
   };
 
+  // ── TRAFIK INDEKSI (dizin tanimlari olusurken host kipi satirina baglanir) ────────────
+  const tIdx = trafikIndeksi(satirlar('trf'));
+
   // ── TANIMLAR ─────────────────────────────────────────────────────────────────────────
   const upsServer = new Map();
   let upsTarih = '';
@@ -477,6 +615,16 @@ function rpUygula({ rows, apps, inventory, kaynak }) {
 
   let dizinTarih = '';
   const tarananDizin = new Set();
+  // CONF.D ADININ SAHIPLERI (dogrulama bulgusu, 2026-10-02): HOST|U(<app>-<ns>) -> dizin
+  // satirlari ('ns|app'). '<app>-<ns>' bolmesi carpisabilir (kart-ui/x-prod ile kart/ui-x-prod
+  // ayni 'kart-ui-x-prod.conf'u yazar; nginx yalniz sonuncuyu sunar): o vhost'un trafigi iki
+  // uygulamadan hangisinin bilinmez. Uygulamaya cozulemeyen satir da adi isgal eder.
+  const dizinSahip = new Map();
+  for (const r of satirlar('dir')) {
+    const host = U(r.host);
+    if (!host || !RP.prodNew.has(host) || !bit(r.conf_exists)) continue;
+    ekle(dizinSahip, `${host}|${U(`${L(r.application)}-${L(r.namespace)}`)}`, `${L(r.namespace)}|${L(r.application)}`);
+  }
   for (const r of satirlar('dir')) {
     const host = U(r.host);
     if (!host || !RP.prodNew.has(host)) continue;
@@ -498,16 +646,36 @@ function rpUygula({ rows, apps, inventory, kaynak }) {
       cozulmedi(host);
       continue;
     }
+    // RP ISTEGI (host kipi): vhost = conf.d dosya adi = '<application>-<namespace>' (dizin
+    // satirinin KENDI ns'i; ek-prod eslesmesi uygulamaya baglar, dosya adini degistirmez).
+    const vhAd = U(`${app}-${ns}`);
+    // Ayni conf.d adina BASKA bir dizin satiri da dusuyor: trafik bu uygulamaya AYRILAMAZ.
+    if ((dizinSahip.get(`${host}|${vhAd}`) || new Set()).size > 1) esles = 'belirsiz';
+    // conf_name YEDEGI yalniz '<app>-<ns>-N' (nginx_ops'un -N eki) ve o ad baska bir dizin
+    // satirinin '<app>-<ns>'i DEGILSE. Analyzer conf_name'i cekirdek eslesmesiyle (servis
+    // oneki atilarak) yazar: 'ui/odeme-prod' satirina 'kart-ui-odeme-prod.conf' dusebilir -
+    // kosulsuz yedek, kendi vhost satiri olmayan uygulamaya BASKA uygulamanin istegini
+    // 'kesin var' diye yaziyordu (dogrulama bulgusu, 2026-10-02).
+    const conf = T(r.conf_name);
+    const confAd = U(conf.replace(/\.conf$/i, ''));
+    const confYedek =
+      confAd.startsWith(`${vhAd}-`) &&
+      /^\d+$/.test(confAd.slice(vhAd.length + 1)) &&
+      !dizinSahip.has(`${host}|${confAd}`);
+    const adaylar = confYedek ? [vhAd, confAd] : [vhAd];
+    const trafik = dizinTrafigi(host, adaylar, tablolar.trf, tIdx);
     bagla(keys, {
       host,
       rol: 'prod-yeni',
       env: 'PROD',
-      vhost: '',
+      // Eslesen trafik satirinin vhost'u (diskteki ad); eslesmediyse bos.
+      vhost: (trafik && trafik.vhost) || '',
       location: `${ns}/${app}`,
       status: bit(r.app_deployed) ? 'OK' : 'MISSING_APP',
       yol: 'dizin',
       esles,
-      conf: T(r.conf_name),
+      conf,
+      trafik,
     });
   }
 
@@ -522,11 +690,11 @@ function rpUygula({ rows, apps, inventory, kaynak }) {
   if (!dizinFarkli) for (const h of tarananDizin) taranan.add(h);
 
   // ── TRAFIK: tanim basina BIR KEZ hesaplanir (ayni tanim birden cok uygulamaya bagliysa) ─
-  const tIdx = trafikIndeksi(satirlar('trf'));
+  // Dizin tanimlarinin trafigi olusturulurken (host kipi) hesaplandi.
   const islendi = new Set();
   for (const m of detay.values()) {
     for (const d of m.values()) {
-      if (islendi.has(d)) continue;
+      if (islendi.has(d) || d.yol === 'dizin') continue;
       islendi.add(d);
       d.trafik = tanimTrafigi(d, tablolar.trf, tIdx);
     }
@@ -601,7 +769,28 @@ function rpUygula({ rows, apps, inventory, kaynak }) {
     }
     const env = envOfNamespace(a.namespace);
     const ENV = env ? env.toUpperCase() : '';
-    if (!defs.length) {
+    // ORTAM DISI (kullanici karari, 2026-10-02): tanim uygulamanin ortamina ait olmayan bir
+    // RP'de (ornek: PROD RP test adresine proxy ediyor). Ortamsiz namespace'te (ENV yok)
+    // "kendi ortami" bilinmez; tum tanimlar kendi sayilir.
+    const disi = ENV ? defs.filter((d) => d.env !== ENV) : [];
+    const kendi = ENV ? defs.filter((d) => d.env === ENV) : defs;
+    if (disi.length) a.rpOrtamDisi = [...new Set(disi.map((d) => d.env || '?'))].sort();
+    // BASKA ORTAMIN OLCULMUS ISTEGI (K3): YALNIZ BILGI - rpReq7'ye eklenmez, rpIstek kararina
+    // girmez. Yalniz uygulamaya AYRILABILEN ve OLCULMUS tanimlar: olculemeyen tanima 0
+    // yazilmaz; paylasimli/belirsiz tanimin istegi bu uygulamaninki diye yazilmaz.
+    // 0 YAZILMAZ: bilgi alanidir ve karar tasimaz; olculmus 0 bile pencere kisaysa "7 gunde
+    // yok" DEGILDIR. Yalniz GORULEN istek (> 0, bir alt sinir) yazilir.
+    const disiReq7 = disi
+      .filter((d) => !AYRILAMAZ.has(d.esles) && d.trafik && OLCULDU.has(d.trafik.durum))
+      .reduce((t, d) => t + d.trafik.req7, 0);
+    if (disiReq7 > 0) a.rpReq7Disi = disiReq7;
+    if (!kendi.length) {
+      // YALNIZ BASKA ORTAMIN RP'SINDE TANIMLI ya da hic tanim yok: karar KENDI ortamin
+      // kapsamiyla verilir - ortamin tum RP hostlari taranmis ve tablolar okunmussa
+      // 'tanimsiz', degilse 'olculemedi' (neden ile). Eskiden baska ortamdaki tanim 'tanimli'
+      // sayiliyordu: yalniz PROD RP'de tanimi olan bir TEST uygulamasi rp=tanimli, rpHost=0/2
+      // gorunup 'tanimsiz' suzgecinde CIKMIYORDU (dogrulama probu P5). Baska ortamdaki tanim
+      // rpSorun ORTAM_DISI + rpOrtamDisi uyarisi olarak kalir; ayrinti panelinde listelenir.
       // BELIRSIZ ADAY: bu uygulamaya ait OLABILECEK bir tanim biliniyor (ayni adli birden cok
       // namespace) - "tanimsiz" denmez.
       const kr = belirsizAday.has(key)
@@ -609,28 +798,39 @@ function rpUygula({ rows, apps, inventory, kaynak }) {
         : tanimYokKarari(a, ENV);
       a.rp = kr.rp;
       if (kr.neden) a.rpNeden = kr.neden;
+      if (disi.length) a.rpSorun = ['ORTAM_DISI'];
+      // Kendi ortaminda tanim yok: RP istegi sorulmaz ('uygulanamaz'; gerekce ekranda: kendi
+      // ortaminin RP'sinde tanim yok). rp 'olculemedi' iken de ayni: tanim bulunamadi, istek
+      // sorulamaz. Baska ortamin olculmus istegi yukarida rpReq7Disi (bilgi) olarak yazildi.
       a.rpIstek = 'uygulanamaz';
       continue;
     }
+    // K3: bundan sonraki her alan YALNIZ kendi ortaminin tanimlarindan. Eskiden rpYol, rpEsles,
+    // rpSorun ve RP istegi TUM tanimlardan (kendi + baska ortam) hesaplaniyordu: TEST RP'de
+    // olculmus gercek 0 alan TEST uygulamasi, PROD RP'nin test adresine proxy'sinin 900
+    // istegiyle "istek var 900" gorunuyordu (dogrulama bulgusu, 2026-10-02).
     a.rp = 'tanimli';
-    a.rpYol = [...new Set(defs.map((d) => d.yol))].sort();
-    const bulunan = new Set(defs.map((d) => d.host));
+    a.rpYol = [...new Set(kendi.map((d) => d.yol))].sort();
+    // rpHost: pay ve payda KENDI ortaminin hostlari (baska ortamin hostu paya girmez).
+    const bulunan = new Set(kendi.map((d) => d.host));
     const beklenen = beklenenHostlar(ENV, bulunan);
     a.rpHost = beklenen.length
       ? `${beklenen.filter((h) => bulunan.has(h)).length}/${beklenen.length}`
       : String(bulunan.size);
-    const enZayif = defs.reduce((z, d) => Math.max(z, ESLES_SIRA.indexOf(d.esles)), 0);
+    const enZayif = kendi.reduce((z, d) => Math.max(z, ESLES_SIRA.indexOf(d.esles)), 0);
     if (enZayif > 0) a.rpEsles = ESLES_SIRA[enZayif];
-    const sorun = new Set(defs.map((d) => d.status).filter((s) => SORUNLU.has(s)));
-    // ORTAM DISI: tanim uygulamanin ortamina ait olmayan bir RP'de (ornek: PROD RP test
-    // adresine proxy ediyor). Tanim sayilir ama isaretlenir.
-    if (ENV && defs.some((d) => d.env !== ENV)) sorun.add('ORTAM_DISI');
+    const sorun = new Set(kendi.map((d) => d.status).filter((s) => SORUNLU.has(s)));
+    // Kendi ortaminda da tanim var: 'tanimli' kalir, baska ortamdaki tanim YALNIZ uyaridir
+    // (o tanimin durum kodlari ayrinti panelinde, tanim satirinda gorunur).
+    if (disi.length) sorun.add('ORTAM_DISI');
     if (sorun.size) a.rpSorun = [...sorun].sort();
 
     // RP ISTEGI (yalniz tanimli). Karar UYGULAMAYA AYRILABILEN tanimlardan verilir; paylasimli
     // ya da belirsiz tanimin trafigi "istek var" demeye yetmez, 0'i da "yok" demeye.
-    const ayrilir = defs.filter((d) => !AYRILAMAZ.has(d.esles));
-    const ayrilamaz = defs.length - ayrilir.length;
+    // YALNIZ KENDI ORTAMININ TANIMLARI (K3): baska ortamin istegi kararin hicbir dalina
+    // (var / yok / kismi / olculemedi / kaynak-yok / ayrilamaz) ve sayilara girmez.
+    const ayrilir = kendi.filter((d) => !AYRILAMAZ.has(d.esles));
+    const ayrilamaz = kendi.length - ayrilir.length;
     const olculebilir = ayrilir.filter((d) => d.trafik);
     const kaynakYok = ayrilir.length - olculebilir.length;
     if (!olculebilir.length) {
@@ -640,7 +840,9 @@ function rpUygula({ rows, apps, inventory, kaynak }) {
     const olculen = olculebilir.filter((d) => OLCULDU.has(d.trafik.durum));
     // 0 ISTEK BIR ALT SINIRDIR (KESIN KURAL: olculemedi ile yok karismaz), eger:
     //   pencere     en az bir tanimin penceresi < 7 gun / sampled / first_seen yok
-    //   kaynak-yok  olcum kaynagi olmayan tanim da var (yeni PROD / dizin)
+    //   eslesmeyen-host  bir dizin taniminin sunucusunda hicbir uygulamaya yazilamayan istek
+    //               var (kova: eslesmeyen Host / IP / alansiz) - varsayilan sunucuya duser
+    //   kaynak-yok  olcum kaynagi olmayan tanim da var (host kipi hic uretilmemis dizin)
     //   ayrilamaz   uygulamaya ayrilamayan tanim da var (trafigi bu uygulamanin olabilir)
     //   host-taranmadi  ortamin bir RP host'u o gun taranmadi: orada gorulmeyen bir tanim
     //               trafik aliyor olabilir (or. Ankara ulasilamadi, trafik Ankara'da)
@@ -651,7 +853,8 @@ function rpUygula({ rows, apps, inventory, kaynak }) {
     // "istek yok" ondan gevsek olamaz. rpHost paydasi (bilgi) tasima grubuyla kalir.
     const eksikHost = taranmayan[ENV] || [];
     const altSinir = [];
-    if (olculen.some((d) => d.trafik.durum === 'sifir-kismi')) altSinir.push('pencere');
+    const kismiNeden = new Set(olculen.flatMap((d) => d.trafik.kismi || []));
+    for (const n of ['pencere', 'eslesmeyen-host']) if (kismiNeden.has(n)) altSinir.push(n);
     if (kaynakYok > 0) altSinir.push('kaynak-yok');
     if (ayrilamaz > 0) altSinir.push('ayrilamaz');
     if (eksikHost.length) altSinir.push('host-taranmadi');
@@ -664,6 +867,7 @@ function rpUygula({ rows, apps, inventory, kaynak }) {
     a.rpOlcum = `${olculen.length}/${olculebilir.length}`;
     if (olculen.length) {
       // OLCULEMEYEN HUCREYE 0 YAZILMAZ: sayilar yalniz olculen tanimlarin toplamidir.
+      // Yalniz kendi ortaminin olculen tanimlari (K3); baska ortaminki rpReq7Disi (bilgi).
       a.rpReq7 = olculen.reduce((t, d) => t + d.trafik.req7, 0);
       a.rpReq24 = olculen.reduce((t, d) => t + d.trafik.req24, 0);
       const son = olculen
@@ -677,21 +881,29 @@ function rpUygula({ rows, apps, inventory, kaynak }) {
     }
   }
 
+  // SUNUCU TRAFIK DURUMU: yeni PROD da artik olculur (servis vhost'lari location kipinde,
+  // uygulama vhost'lari host kipinde). 'kaynak-yok' yalniz o gun HIC satir uretmemis bir yeni
+  // PROD sunucusunda ve HICBIR sunucuda host kipi satiri yokken (eski betik/analyzer) yazilir;
+  // location kipi satiri olan sunucu 'var'dir (servis vhost tanimlari olculur).
   const hostlar = [...RP.all].map((h) => {
     const rol = rolOf(h, RP);
     const hs = tIdx.host.get(h);
     const trafik =
-      rol === 'prod-yeni'
-        ? 'kaynak-yok'
-        : tablolar.trf !== 'var'
-          ? 'olculemedi'
-          : !hs
-            ? 'satir-yok'
-            : hs.satir > 0
-              ? 'var'
-              : 'hata';
+      tablolar.trf !== 'var'
+        ? 'olculemedi'
+        : !hs
+          ? rol === 'prod-yeni' && !tIdx.hostKipi
+            ? 'kaynak-yok'
+            : 'satir-yok'
+          : hs.satir > 0
+            ? 'var'
+            : 'hata';
     const o = { host: h, env: rpEnvOf(h, RP), rol, taranan: taranan.has(h), trafik };
     if (hs && hs.hata) o.trafikHata = hs.hata;
+    if (rol === 'prod-yeni' && hs) o.hostKipi = hs.hk;
+    // KOVA (7 gun): hicbir uygulamaya yazilmayan istekler; sifirdan buyukse yazilir.
+    const kv = tIdx.kova.get(h);
+    if (kv && kv.eslesmeyen + kv.ip + kv.alansiz > 0) o.kova = { ...kv };
     return o;
   });
 
@@ -711,6 +923,9 @@ function rpUygula({ rows, apps, inventory, kaynak }) {
       belirsiz,
       // Dizin taramasi config taramasindan farkli gunden (PROD icin tanimsiz denmez).
       dizinFarkli,
+      // O gunun trafik taramasinda host kipi ('@') satiri var mi: yoksa yeni PROD dizin
+      // tanimlarinin olcum kaynagi yok (eski betik/analyzer ya da SPA_HOST_MODE kapali).
+      hostKipi: tIdx.hostKipi > 0,
     },
     detay,
   };

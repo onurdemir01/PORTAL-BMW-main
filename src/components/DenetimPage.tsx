@@ -50,6 +50,7 @@ import NginxSpaSummary from '@/components/denetim/NginxSpaSummary';
 import AppEnvs from '@/components/denetim/AppEnvs';
 import WebApp from '@/components/denetim/WebApp';
 import RouteTraffic from '@/components/denetim/RouteTraffic';
+import { kismiEtiket, kismiAciklama } from '@/components/denetim/yukPencere';
 import { toast } from '@/hooks/useToast';
 import { TableEmptyRow } from '@/components/common/EmptyState';
 import CodeChip from '@/components/common/CodeChip';
@@ -536,8 +537,9 @@ export function NginxSpaAudit() {
           <span className="px-1.5 py-0.5 rounded border bg-red-50 text-red-700 border-red-200">yük yok: {fmtNumber(data.trafficStats.idle)}</span>
           {!!data.trafficStats.unknown && (
             <span className="px-1.5 py-0.5 rounded border" style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)', borderColor: 'var(--border)' }}
-                  title="Log okunamadı ya da log kuyruğu 7 günü kapsamıyor — “yük yok” demek DEĞİLDİR.">
+                  title="Log okunamadı ya da okunan log 7 günü / tanımın her sunucusunu kapsamıyor (günlük rotasyonlu sunucularda okunan süre 1-4 gün kalabilir) — “yük yok” demek DEĞİLDİR.">
               ölçülemedi: {fmtNumber(data.trafficStats.unknown)}
+              {!!data.trafficStats.kismi && ` · istek yok ama 7 gün / her sunucu ölçülemedi: ${fmtNumber(data.trafficStats.kismi)}`}
             </span>
           )}
           <span style={{ color: 'var(--text-muted)' }}>hc.jsp / hc.html sayılmaz</span>
@@ -772,27 +774,37 @@ export function NginxSpaAudit() {
  * UC DURUM (ikiye indirmek yaniltirdi): yuk var / yuk yok / BILINMIYOR. Log okunamadiysa ya
  * da kuyruk 7 gunu kapsamiyorsa "yuk yok" demek yanlis olurdu - atil sanip tanim silmeye
  * goturebilirdi.
+ *
+ * ISTEK YOK AMA 7 GUN OLCULEMEDI (2026-10-02): gunluk rotasyonlu sunucuda okunan log 1-4 gun
+ * kalir; sunucu durumu 'unknown' verir ve etiket olculen sureyi soyler ("son 3 gunde istek
+ * yok (7 gun olculemedi)"). Metin ARK SPA Raporu ve Production Tasimalari ile ortak
+ * (denetim/yukPencere.ts).
  */
 function TrafficBadge({ t }: { t?: NginxSpaEnvCell['traffic'] }) {
   if (!t) return null;
+  const kismi = kismiEtiket(t);
   const meta =
     t.state === 'active'
       ? { label: 'yük var', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' }
       : t.state === 'idle'
         ? { label: 'yük yok', cls: 'bg-red-50 text-red-700 border-red-200' }
-        : { label: 'yük ?', cls: 'bg-[var(--bg-elevated)] text-[var(--text-muted)] border-[var(--border)]' };
+        : { label: kismi || 'yük ?', cls: 'bg-[var(--bg-elevated)] text-[var(--text-muted)] border-[var(--border)]' };
   const sonIstek = t.lastSeen && /^\d{14}$/.test(t.lastSeen)
     ? `${t.lastSeen.slice(6, 8)}.${t.lastSeen.slice(4, 6)}.${t.lastSeen.slice(0, 4)} ${t.lastSeen.slice(8, 10)}:${t.lastSeen.slice(10, 12)}`
     : null;
   const title = [
     t.state === 'active' ? 'Access log’da istek var (hc.jsp / hc.html hariç).'
-      : t.state === 'idle' ? '7 gündür hc dışı istek YOK — atıl aday.'
-        : 'Ölçülemedi: log okunamadı ya da log kuyruğu 7 günü kapsamıyor. “Yük yok” demek DEĞİLDİR.',
+      : t.state === 'idle' ? '7 günün tamamı ve tanımın her sunucusu ölçüldü: hc dışı istek YOK — atıl aday.'
+        : kismi ? kismiAciklama(t)
+          : 'Ölçülemedi: access log okunamadı. “Yük yok” demek DEĞİLDİR.',
     t.req24 != null ? `Son 24 saat: ${t.req24} istek` : null,
-    t.req7 != null ? `Son 7 gün: ${t.req7} istek${t.sampled ? ' (alt sınır — log kuyruğu 7 günü kapsamıyor)' : ''}` : null,
+    t.req7 != null ? `Son 7 gün: ${t.req7} istek${t.sampled ? ' (alt sınır — okunan log 7 günü kapsamıyor)' : ''}` : null,
     t.hc24 ? `Sağlık kontrolü (hariç tutuldu): ${t.hc24}` : null,
     sonIstek ? `Son istek: ${sonIstek}` : null,
-    t.hosts ? `Okunan sunucu: ${t.hosts}${t.unknownHosts ? ` · log okunamayan: ${t.unknownHosts}` : ''}` : null,
+    t.locations && t.locations > 1 ? `${t.locations} location birleşik (biri yük alıyorsa “yük var”)` : null,
+    t.hosts || t.unknownHosts
+      ? `Okunan sunucu: ${t.hosts}${t.unknownHosts ? ` · log okunamayan: ${t.unknownHosts}` : ''}${t.missingHosts ? ` · ölçüm satırı olmayan: ${t.missingHosts}` : ''}`
+      : null,
   ].filter(Boolean).join('\n');
   return (
     <span className={`px-1.5 py-0.5 rounded border text-[10px] whitespace-nowrap ${meta.cls}`} title={title}>

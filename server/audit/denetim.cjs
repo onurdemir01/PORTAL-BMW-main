@@ -25,6 +25,12 @@ const {
   resolveTarget,
   buildResolverMaps,
   MIGRATION_GROUPS,
+  spaTrafikAnahtari,
+  SPA_TRAFIK_SEMA_SQL,
+  spaTrafikSorgusu,
+  spaTrafikIndeksi,
+  spaTrafikDurumu,
+  spaTrafikBirlesik,
 } = require('./nginx-migration.cjs');
 const { buildRouteStats } = require('./route-stats.cjs');
 const { loadNamespaceOwners, ownersFor } = require('./ns-owners.cjs');
@@ -162,79 +168,26 @@ function initDenetim(app) {
       // HARIC: saglik kontrolu yuk degildir). Tablo yoksa ekran eskisi gibi calisir.
       //
       // ANAHTAR (service, env, location): ayni tanim birden fazla mirror sunucuda durur,
-      // sayilar TOPLANIR; "son istek" en yenisi alinir. Log okunamayan sunucu sayiya
-      // KATILMAZ ama "bilinmiyor" bayragini kaldirir - "yuk yok" demek degildir.
-      const traffic = new Map(); // SERVICE|ENV|LOCATION -> {req24, req7, hc24, hosts, lastSeen, sampled, unknown}
+      // sayilar TOPLANIR; "son istek" en yenisi alinir.
+      //
+      // DURUM KURALI TEK YERDE (2026-10-02): nginx-migration.cjs spaTrafikDurumu - ARK SPA
+      // Raporu ve Production Tasimalari ile AYNI. 'idle' (yuk yok) YALNIZ tanimin HER sunucusu
+      // olculmus, sampled=0 ve olculen pencere (scan_date - first_seen) >= 7 gun iken. Eskiden
+      // `req7 > 0 ? active : sampled ? unknown : idle` idi: gunluk rotasyonlu hostta 1-4 gunluk
+      // olcum "7 gundur yuk yok - atil aday" gorunuyordu; okunamayan mirror (LOADERR satiri
+      // service/env/location NULL) hicbir hucreye ulasmiyordu.
+      let trfIdx = null; // null = tablo yok / okunamadi -> trafik hic gosterilmez
       try {
-        const tr = await query(
-          `SELECT service, env, location, req_24h, req_7d, hc_24h, sampled, last_seen, error
-             FROM dbo.Nginx_Spa_Traffic
-            WHERE scan_date = (SELECT MAX(scan_date) FROM dbo.Nginx_Spa_Traffic)`,
-        );
-        for (const x of tr.recordset || []) {
-          const k = `${String(x.service || '').toUpperCase()}|${String(x.env || '').toUpperCase()}|${String(x.location || '')}`;
-          if (!traffic.has(k))
-            traffic.set(k, {
-              req24: 0,
-              req7: 0,
-              hc24: 0,
-              hosts: 0,
-              lastSeen: null,
-              sampled: false,
-              unknown: 0,
-            });
-          const c = traffic.get(k);
-          if (x.error) {
-            c.unknown += 1;
-            continue;
-          }
-          c.hosts += 1;
-          c.req24 += Number(x.req_24h) || 0;
-          c.req7 += Number(x.req_7d) || 0;
-          c.hc24 += Number(x.hc_24h) || 0;
-          if (x.sampled) c.sampled = true;
-          const ls = x.last_seen ? String(x.last_seen) : null;
-          if (ls && (!c.lastSeen || ls > c.lastSeen)) c.lastSeen = ls;
+        const sema = (await query(SPA_TRAFIK_SEMA_SQL)).recordset?.[0] || {};
+        if (sema.trf) {
+          const tr = await query(spaTrafikSorgusu(!!sema.fs));
+          trfIdx = spaTrafikIndeksi(tr.recordset || [], (x) =>
+            spaTrafikAnahtari(x.service, x.env, x.location),
+          );
         }
       } catch {
         /* tablo yoksa trafik gosterilmez - ekran calismaya devam eder */
       }
-
-      /**
-       * Hucrenin yuk durumu. UC AYRI DURUM (ikiye indirmek yaniltirdi):
-       *   active   : 7 gun icinde hc DISI istek var
-       *   idle     : log OKUNDU ve 7 gundur hc disi istek YOK
-       *   unknown  : log okunamadi / tarama bu location'i hic gormedi
-       * `sampled` ise req7 ALT SINIRDIR (log kuyrugu 7 gunu kapsamiyor): "yuk yok" demeden
-       * once bunu soyleriz, aksi halde buyuk loglu sunucuda yanlis "atil" cikardik.
-       */
-      const trafficOf = (service, env, location) => {
-        const c = traffic.get(
-          `${String(service || '').toUpperCase()}|${String(env || '').toUpperCase()}|${String(location || '')}`,
-        );
-        if (!c || (c.hosts === 0 && c.unknown === 0)) return null;
-        if (c.hosts === 0)
-          return {
-            state: 'unknown',
-            req24: null,
-            req7: null,
-            hc24: null,
-            lastSeen: null,
-            sampled: false,
-            hosts: 0,
-            unknownHosts: c.unknown,
-          };
-        return {
-          state: c.req7 > 0 ? 'active' : c.sampled ? 'unknown' : 'idle',
-          req24: c.req24,
-          req7: c.req7,
-          hc24: c.hc24,
-          lastSeen: c.lastSeen,
-          sampled: c.sampled,
-          hosts: c.hosts,
-          unknownHosts: c.unknown,
-        };
-      };
 
       // PROD MATRISTE (2026-09-14, kullanici: "prod uygulamalarin bilgileri gozukmuyor"):
       // eski GBRVP* vhost'lari SPA include'u degil proxy_pass kullanir; bu satirlar
@@ -304,6 +257,17 @@ function initDenetim(app) {
           console.warn('[denetim] PROD proxy satirlari matrise katilamadi:', e.message);
         }
       }
+
+      // TANIMIN SUNUCULARI (yuk olcumu icin): anahtar -> [(host, vhost)]. PROD proxy satirlari
+      // yukarida raw'a eklendi, onlar da dahil. Bir sunucunun logu okunamadiysa ya da o gun
+      // satiri yoksa o tanim icin "istek yok" DENMEZ (spaTrafikDurumu).
+      const trafikTanim = new Map();
+      for (const r of raw) {
+        const k = spaTrafikAnahtari(r.service, r.env, r.location_path);
+        if (!trafikTanim.has(k)) trafikTanim.set(k, []);
+        trafikTanim.get(k).push({ host: r.host, vhost: r.vhost });
+      }
+      const trafficOfKey = (k) => spaTrafikDurumu(trfIdx, k, trafikTanim.get(k));
 
       // ENV LISTESI VERIDEN TURETILIR. Kanonik dortlu her zaman gosterilir (bir ortam
       // hic taranmadiysa "bos" olarak GORUNMESI gerekir, sessizce kaybolmasi degil);
@@ -379,6 +343,11 @@ function initDenetim(app) {
         BROKEN_INCLUDE: 5,
       };
       const map = new Map();
+      // HUCRENIN LOCATION'LARI: ayni (servis, uygulama, ortam) birden cok location'da
+      // olabilir. Yuk TUM location'larindan birlesir (spaTrafikBirlesik): eskiden hucre
+      // yalniz ilk/en ciddi satirin location'ini olcuyordu ve /a/ yuk alirken /b/'nin 0'i
+      // hucreyi "yuk yok - atil aday" gosterebiliyordu.
+      const hucreAnahtar = new WeakMap(); // hucre -> Set(trafik anahtari)
       for (const r of raw) {
         const service = r.service || '(bilinmiyor)';
         const application = r.application || r.include_name || '(bilinmiyor)';
@@ -401,15 +370,36 @@ function initDenetim(app) {
           hosts: [r.host],
           proxyTarget: r._proxyTarget || null,
           suffixAdded: r._suffixAdded === true,
-          traffic: trafficOf(r.service, r.env, r.location_path),
+          traffic: null,
         };
+        const tk = spaTrafikAnahtari(r.service, r.env, r.location_path);
         if (!prev) {
           entry.envs[env] = cell;
+          hucreAnahtar.set(cell, new Set([tk]));
         } else {
           if (!prev.hosts.includes(r.host)) prev.hosts.push(r.host);
+          hucreAnahtar.get(prev).add(tk);
           if ((SEVERITY[r.status] ?? 0) > (SEVERITY[prev.status] ?? 0)) {
             Object.assign(prev, cell, { hosts: prev.hosts });
           }
+        }
+      }
+      // Hic olculmeyen location (null) atilmaz: digerleri idle olsa da hucre UNKNOWN olur
+      // (spaTrafikBirlesik). Ikinci dizi o tanimin sunucu sayisi (missingHosts icin).
+      const tanimSunucuSayisi = (k) =>
+        new Set(
+          (trafikTanim.get(k) || []).map((d) =>
+            String(d.host || '')
+              .trim()
+              .toUpperCase(),
+          ),
+        ).size;
+      for (const entry of map.values()) {
+        for (const cell of Object.values(entry.envs)) {
+          const ks = hucreAnahtar.get(cell);
+          cell.traffic = ks
+            ? spaTrafikBirlesik([...ks].map(trafficOfKey), [...ks].map(tanimSunucuSayisi))
+            : null;
         }
       }
 
@@ -541,7 +531,7 @@ function initDenetim(app) {
       }
       // PROXY hucresi (kullanici, 2026-09-17: "8 sunucu vardi, hepsi icin tanim var mi yok mu
       // belirt"): tasima grubunun ESKI sunucularinin hangilerinde proxy tanimi VAR, hangileri
-      // EKSIK. Grup, tanimin gorüldugu ilk eski sunucudan bulunur.
+      // EKSIK. Grup, tanimin goruldugu ilk eski sunucudan bulunur.
       const oldGroupOf = new Map();
       for (const g of MIGRATION_GROUPS) for (const oh of g.oldHosts) oldGroupOf.set(oh, g.oldHosts);
       for (const r of rows) {
@@ -587,8 +577,17 @@ function initDenetim(app) {
         r.owner = { ...ownersFor(owners.byNs, nss), namespaces: nss };
       }
 
-      // Filo ozeti: kac location yuk aliyor / almiyor / bilinmiyor (ekranda tek bakista)
-      const trafficStats = { ready: traffic.size > 0, active: 0, idle: 0, unknown: 0 };
+      // Filo ozeti: kac location yuk aliyor / almiyor / bilinmiyor (ekranda tek bakista).
+      // `kismi`: unknown'larin OLCULEBILEN kismi (log okundu, istek yok, ama 7 gun / her
+      // sunucu olculemedi) - "yuk yok" sayisina KATILMAZ, ayri gosterilir.
+      // ready: host kipi / kova satirlari "olcum var" SAYILMAZ (bu ekranin tanimi location).
+      const trafficStats = {
+        ready: !!trfIdx && trfIdx.satir > 0,
+        active: 0,
+        idle: 0,
+        unknown: 0,
+        kismi: 0,
+      };
       for (const r of rows) {
         for (const c of Object.values(r.envs)) {
           if (!c || !c.traffic) continue;
@@ -599,6 +598,7 @@ function initDenetim(app) {
                 ? 'idle'
                 : 'unknown'
           ] += 1;
+          if (c.traffic.state === 'unknown' && c.traffic.hosts > 0) trafficStats.kismi += 1;
         }
       }
 
@@ -2274,7 +2274,7 @@ function initDenetim(app) {
   console.log('[Denetim] module mounted at /api/denetim');
 }
 
-// hasProxyColumns 2026-09-26'da disari veriliyordu: "Taşıma Planı" ekrani ayni tasima
+// hasProxyColumns 2026-09-26'da disari veriliyordu: "Tasima Plani" ekrani ayni tasima
 // verisini kuruyordu ve kolon kontrolunun ikinci bir kopyasi iki ekranin sessizce farkli
 // veri gostermesine yol acardi. O ekran 2026-09-27'de kaldirildi; tek tuketicisi oydu,
 // ihrac da kaldirildi. loadMigration cagiranlar zaten null geciyor.

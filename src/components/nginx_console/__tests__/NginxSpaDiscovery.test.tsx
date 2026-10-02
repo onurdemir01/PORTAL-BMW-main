@@ -18,11 +18,19 @@ import { render, fireEvent, waitFor, act } from '@testing-library/react';
 import { createRequire } from 'node:module';
 import NginxSpaDiscovery from '@/components/nginx_console/NginxSpaDiscovery';
 import { spaUygulamaDoldur, type NgSpaApp, type NgSpaDiscovery } from '@/api/nginxConsoleApi';
+import { downloadCsv } from '@/utils/csv';
+
+// CSV içeriği (K3 süzgeç/CSV tutarlılığı): indirme yerine çağrı argümanları okunur.
+vi.mock('@/utils/csv', async (orijinal) => ({
+  ...(await orijinal<typeof import('@/utils/csv')>()),
+  downloadCsv: vi.fn(),
+}));
 
 const requireCjs = createRequire(import.meta.url);
 const KOK = '../../../../server';
 const { buildSpaDiscovery, spaYanitGovdesi } = requireCjs(`${KOK}/nginx-console/spa-discovery.cjs`);
 const { internetRpHosts } = requireCjs(`${KOK}/audit/nginx-hosts.cjs`);
+const { rpTanimlari } = requireCjs(`${KOK}/nginx-console/spa-rp.cjs`);
 const RP = internetRpHosts() as { byEnv: Record<string, string[]>; all: Set<string> };
 
 const GUN = '2026-10-01';
@@ -135,6 +143,8 @@ interface Sahte {
   govde: (n: number) => unknown;
   /** Ayrıntı ucunun `hesaplandi` değeri. */
   rpHesap: () => string;
+  /** Ayrıntı ucunun tanım listesi (varsayılan boş). */
+  rpTanim?: (u: URL) => unknown[];
 }
 let sahte: Sahte;
 beforeEach(() => {
@@ -152,7 +162,7 @@ beforeEach(() => {
         sahte.rp.push(u);
         return yanit({
           ok: true,
-          tanimlar: [],
+          tanimlar: sahte.rpTanim ? sahte.rpTanim(new URL(u, 'http://x')) : [],
           beklenen: [],
           kapsam: null,
           hesaplandi: sahte.rpHesap(),
@@ -392,5 +402,372 @@ describe('NginxSpaDiscovery — satır memo', () => {
     expect(cagri, `tıklamada ${cagri} sayı biçimleme: tüm satırlar yeniden çizildi`).toBeLessThan(
       N,
     );
+  });
+});
+
+// ── KULLANICI KARARLARI (2026-10-02): ORTAM DIŞI TANIM + YENİ PROD HOST KİPİ ─────────────
+// Gövde ve ayrıntı SUNUCUNUN GERÇEK hesabından (buildSpaDiscovery / rpTanimlari) gelir.
+const PROD_ALL = RP.byEnv.PROD;
+const PA = (app: string) =>
+  A(app, 'odeme-prod', {
+    cluster: 'gbocpprod1',
+    host: `${app}-odeme-prod.apps.fw.garanti.com.tr`,
+  });
+const DIZIN = (host: string, app: string): Satir => ({
+  host,
+  namespace: 'odeme-prod',
+  application: app,
+  hys_deployed: 1,
+  app_deployed: 1,
+  conf_exists: 1,
+  conf_name: `${app}-odeme-prod.conf`,
+  scan_date: GUN,
+});
+const HTRF = (host: string, vhost: string, o: Satir = {}): Satir => ({
+  host,
+  vhost,
+  service: null,
+  env: null,
+  location: `@${vhost}.irp.garantibbva.com.tr`,
+  req_24h: 0,
+  req_7d: 0,
+  hc_24h: 0,
+  sampled: 0,
+  last_seen: null,
+  error: null,
+  first_seen: '20260901000000',
+  scan_date: GUN,
+  ...o,
+});
+function kararSonucu() {
+  const disc = [
+    A('disi-ui', 'kart-test'),
+    PA('yp-var'),
+    PA('yp-kova'),
+    PA('yp-err'),
+  ];
+  const cfg = [
+    ...RP.byEnv.TEST.map(IZ),
+    ...PROD_ALL.map(IZ),
+    // TEST uygulaması YALNIZ PROD RP'de (proxy_pass test adresine).
+    {
+      host: 'GBRVPP07',
+      vhost: 'GLOMO-PROD',
+      service: 'GLOMO',
+      env: 'PROD',
+      location_path: '/disi/',
+      application: 'disi-ui-kart-test',
+      namespace: null,
+      status: 'NON_PROD_TARGET',
+      kind: 'proxy',
+      upstream_name: 'disi-ui-kart-test.apps-t.fw.garanti.com.tr',
+      target_url: 'disi-ui-kart-test.apps-t.fw.garanti.com.tr',
+      scan_date: GUN,
+    },
+  ];
+  const dir = [
+    DIZIN('GBNGXP40', 'yp-var'),
+    DIZIN('GBNGXP41', 'yp-kova'),
+    DIZIN('GBNGXP44', 'yp-err'),
+  ];
+  const trf = [
+    HTRF('GBNGXP40', 'yp-var-odeme-prod', { req_7d: 50, req_24h: 5 }),
+    HTRF('GBNGXP41', 'yp-kova-odeme-prod'),
+    { ...HTRF('GBNGXP41', '_'), location: '@_', req_7d: 31 },
+    {
+      ...HTRF('GBNGXP44', 'yp-err-odeme-prod'),
+      req_24h: null,
+      req_7d: null,
+      hc_24h: null,
+      first_seen: null,
+      error: 'access_log off - vhost loglamiyor',
+    },
+  ];
+  const kaynak = {
+    prxKolon: 4,
+    cfg,
+    dir,
+    ups: [],
+    trf,
+    tablolar: { cfg: 'var', dir: 'var', trf: 'var', ups: 'var' },
+  };
+  // rpDetay sayılamaz alan: yayma (spread) onu kopyalamaz, ayrıca taşınır.
+  const s = buildSpaDiscovery(disc, [], [], [], kaynak);
+  return {
+    sonuc: { ok: true, tableMissing: false, scanDate: GUN, ...s, hesaplandi: 'H1' },
+    detay: s.rpDetay,
+  };
+}
+
+describe('NginxSpaDiscovery — ortam dışı tanım ve yeni PROD host kipi', () => {
+  beforeEach(() => {
+    const { sonuc, detay } = kararSonucu();
+    sahte.govde = () => spaYanitGovdesi(sonuc);
+    sahte.rpTanim = (u) =>
+      rpTanimlari(detay, u.searchParams.get('ns'), u.searchParams.get('app'));
+  });
+
+  it('yalnız başka ortamın RP\'sinde tanımlı: hücre "tanımsız" + ortam dışı uyarısı, "tanımsız" süzgecinde görünür', async () => {
+    const { container } = render(<NginxSpaDiscovery />);
+    await waitFor(() => expect(satirlar(container).length).toBe(4));
+    const disi = hucre(satirOf(container, 'disi-ui'), 6);
+    expect(disi.textContent).toContain('tanımsız');
+    expect(disi.textContent).toContain("PROD RP'sinde tanımlı");
+    expect(disi.firstElementChild?.getAttribute('title') || '').toContain('TEST için sayılmaz');
+    // "tanımsız" süzgeci bu satırı getirir (eskiden 'tanımlı' görünüp süzgeçte çıkmıyordu).
+    const rpSec = container.querySelector('select[title="Reverse proxy\'de tanımlı mı"]');
+    if (!rpSec) throw new Error('RP süzgeci yok');
+    fireEvent.change(rpSec, { target: { value: 'tanimsiz' } });
+    await waitFor(() => expect(satirlar(container).length).toBe(1));
+    expect(satirlar(container)[0].textContent).toContain('disi-ui');
+    // Panel: başka ortamın tanımı listelenir ve kendi ortamına sayılmadığı yazar.
+    fireEvent.click(satirOf(container, 'disi-ui'));
+    await waitFor(() =>
+      expect(container.querySelector('[data-testid="rp-ayrinti-yalniz-disi"]')).not.toBeNull(),
+    );
+    expect(container.textContent).toContain('ortam dışı');
+  });
+
+  it('yeni PROD dizin tanımı: istek sayısı satırda, kova "atanamayan istek", HLOADERR sebebi panelde', async () => {
+    const { container } = render(<NginxSpaDiscovery />);
+    await waitFor(() => expect(satirlar(container).length).toBe(4));
+    expect(hucre(satirOf(container, 'yp-var'), 7).textContent).toContain('50');
+    const kova = hucre(satirOf(container, 'yp-kova'), 7);
+    expect(kova.textContent).toContain('atanamayan istek');
+    expect(kova.firstElementChild?.getAttribute('title') || '').toContain('varsayılan sunucuya');
+    const err = hucre(satirOf(container, 'yp-err'), 7);
+    expect(err.textContent).toContain('ölçülemedi');
+    expect(err.textContent).not.toContain('istek yok');
+    fireEvent.click(satirOf(container, 'yp-err'));
+    await waitFor(() => expect(container.textContent).toContain('access_log off'));
+    expect(container.textContent).toContain('log / betik hatası');
+    fireEvent.click(satirOf(container, 'yp-err'));
+    fireEvent.click(satirOf(container, 'yp-var'));
+    await waitFor(() =>
+      expect(container.textContent).toContain('yp-var-odeme-prod.irp.garantibbva.com.tr'),
+    );
+    expect(container.textContent).not.toContain('undefined');
+  });
+});
+
+// ── K3 (2026-10-02): KARIŞIK DURUMDA RP İSTEĞİ YALNIZ KENDİ ORTAMININ TANIMLARINDAN ──────
+// Eskiden karar iki ortamın TOPLAMIYDI: TEST RP'de ölçülmüş 0 alan TEST uygulaması, PROD RP'nin
+// test adresine proxy'sindeki 900 istekle "var 900" görünüyordu (hücre yalnız kaynağını
+// yazıyordu). K3: karar ve sayı yalnız kendi ortamının; başka ortamın isteği yalnız bilgi.
+// Gövde ve ayrıntı SUNUCUNUN GERÇEK hesabından gelir. Her TEST uygulamasında PROD RP'nin test
+// adresine proxy'si 900 istek alıyor:
+//   k3-yok  kendi TEST tanımı ölçülmüş gerçek 0        → 'yok', 7g 0
+//   k3-var  kendi TEST tanımı 50 istek                  → 'var', 7g 50 (950 DEĞİL)
+//   k3-olc  kendi TEST tanımı LOADERR                   → 'olculemedi' (900 kurtarmaz)
+//   k3-disi kendi ortamında tanım yok (yalnız PROD RP)  → rp 'tanimsiz', rpIstek 'uygulanamaz'
+const K3_UST = (app: string) => `${app}-kart-test.apps-t.fw.garanti.com.tr`;
+const K3_TRF = (host: string, vhost: string, location: string, o: Satir = {}): Satir => ({
+  host,
+  vhost,
+  location,
+  req_24h: 0,
+  req_7d: 0,
+  hc_24h: 0,
+  sampled: 0,
+  last_seen: null,
+  error: null,
+  first_seen: '20260901000000',
+  scan_date: GUN,
+  ...o,
+});
+const K3_PRX = (app: string, loc: string): Satir => ({
+  host: 'GBRVPP07',
+  vhost: 'GLOMO-PROD',
+  service: 'GLOMO',
+  env: 'PROD',
+  location_path: loc,
+  application: `${app}-kart-test`,
+  namespace: null,
+  status: 'NON_PROD_TARGET',
+  kind: 'proxy',
+  upstream_name: K3_UST(app),
+  target_url: K3_UST(app),
+  scan_date: GUN,
+});
+function k3Sonucu() {
+  const apps = ['k3-yok', 'k3-var', 'k3-olc', 'k3-disi'];
+  const s = buildSpaDiscovery(
+    apps.map((x) => A(x, 'kart-test')),
+    [],
+    [],
+    [],
+    {
+      prxKolon: 4,
+      cfg: [
+        ...RP.byEnv.TEST.map(IZ),
+        LOC('GBNGXT33', 'kart-test', 'k3-yok'),
+        LOC('GBNGXT33', 'kart-test', 'k3-var'),
+        { ...LOC('GBNGXT33', 'kart-test', 'k3-olc'), vhost: 'OLC-TEST' },
+        ...apps.map((x) => K3_PRX(x, `/${x}-p/`)),
+      ],
+      dir: [],
+      ups: [],
+      trf: [
+        K3_TRF('GBNGXT33', 'KART-TEST', '/k3-yok/'),
+        K3_TRF('GBNGXT33', 'KART-TEST', '/k3-var/', { req_7d: 50, req_24h: 5 }),
+        { ...K3_TRF('GBNGXT33', 'OLC-TEST', ''), location: null, error: 'log dosyası yok' },
+        ...apps.map((x) => K3_TRF('GBRVPP07', 'GLOMO-PROD', `/${x}-p/`, { req_7d: 900 })),
+      ],
+      tablolar: { cfg: 'var', dir: 'var', trf: 'var', ups: 'var' },
+    },
+  );
+  return {
+    sonuc: { ok: true, tableMissing: false, scanDate: GUN, ...s, hesaplandi: 'H1' },
+    detay: s.rpDetay,
+  };
+}
+
+describe('NginxSpaDiscovery — K3: RP isteği yalnız kendi ortamından, başka ortamın isteği bilgi', () => {
+  beforeEach(() => {
+    const { sonuc, detay } = k3Sonucu();
+    sahte.govde = () => spaYanitGovdesi(sonuc);
+    sahte.rpTanim = (u) =>
+      rpTanimlari(detay, u.searchParams.get('ns'), u.searchParams.get('app'));
+  });
+  const ipucuOf = (h: HTMLElement) => h.firstElementChild?.getAttribute('title') || '';
+
+  it('hücre kendi kararını ve sayısını yazar; başka ortamın 900 isteği ayrı "ortam dışı" rozeti ve ipucu bilgisi', async () => {
+    const { container } = render(<NginxSpaDiscovery />);
+    await waitFor(() => expect(satirlar(container).length).toBe(4));
+    // (a) kendi 0 (tam pencere) + PROD RP 900 → "istek yok"; 900 yalnız bilgi.
+    const yok = hucre(satirOf(container, 'k3-yok'), 7);
+    expect(yok.textContent).toContain('istek yok');
+    expect(yok.textContent).toContain('ortam dışı PROD RP: 900');
+    expect(ipucuOf(yok)).toContain("son 7 gün (TEST RP'leri): 0");
+    expect(ipucuOf(yok)).toContain('PROD RP tanımında son 7 günde 900 istek görüldü');
+    expect(ipucuOf(yok)).toContain('TEST RP isteği kararına ve sayısına girmez');
+    // Kendi isteği varken sayı YALNIZ kendi (50), toplam (950) DEĞİL.
+    const v = hucre(satirOf(container, 'k3-var'), 7);
+    expect(v.textContent?.startsWith('50')).toBe(true);
+    expect(v.textContent).not.toContain('950');
+    expect(v.textContent).toContain('ortam dışı PROD RP: 900');
+    expect(ipucuOf(v)).toContain("son 7 gün (TEST RP'leri): 50");
+    // (b) kendi tanımı ölçülemedi: 900 kararı kurtarmaz.
+    const olc = hucre(satirOf(container, 'k3-olc'), 7);
+    expect(olc.textContent).toContain('ölçülemedi (0/1)');
+    expect(olc.textContent).not.toContain('istek var');
+    expect(olc.textContent).toContain('ortam dışı PROD RP: 900');
+    // (c) kendi ortamında tanım yok: RP "tanımsız", RP isteği "—"; gerekçe ve 900 ipucunda.
+    const disiSatir = satirOf(container, 'k3-disi');
+    expect(hucre(disiSatir, 6).textContent).toContain('tanımsız');
+    const disi = hucre(disiSatir, 7);
+    expect(disi.textContent).toBe('—');
+    expect(ipucuOf(disi)).toContain("Kendi ortamının (TEST) RP'sinde tanım yok — RP isteği sorulmaz");
+    expect(ipucuOf(disi)).toContain('PROD RP tanımında son 7 günde 900 istek görüldü');
+    expect(container.textContent).not.toContain('undefined');
+  });
+
+  it('süzgeçler ve CSV aynı K3 kodlarını taşır; CSV kendi sayısını ve başka ortamın isteğini AYRI kolonda yazar', async () => {
+    vi.mocked(downloadCsv).mockClear();
+    const { container } = render(<NginxSpaDiscovery />);
+    await waitFor(() => expect(satirlar(container).length).toBe(4));
+    const sec = container.querySelector('select[title="RP isteği (access log)"]');
+    if (!sec) throw new Error('RP isteği süzgeci yok');
+    // Seçenek sayıları satır kodlarıyla aynı (eskiden dördü de "var" sayılırdı).
+    const secenek = (v: string) =>
+      sec.querySelector(`option[value="${v}"]`)?.textContent?.replace(/\s+/g, ' ') || '';
+    expect(secenek('var')).toContain('(1)');
+    expect(secenek('yok')).toContain('(1)');
+    expect(secenek('olculemedi')).toContain('(1)');
+    // 'uygulanamaz' süzgecine rp 'ölçülemedi' (tanım BULUNAMADI) ve 'kapsam dışı' satırları da
+    // düşer: seçenek nitelemesiz "tanım yok" demez (doğrulama bulgusu, 2026-10-02 — hücre
+    // ipucu 'bulunamadı' derken süzgeç 'yok' diyordu).
+    const uyg = secenek('uygulanamaz');
+    expect(uyg).toContain('kendi ortamında tanım yok, bulunamadı ya da kapsam dışı');
+    if (uyg.includes('tanım yok')) expect(uyg).toContain('bulunamadı');
+    expect(uyg).not.toMatch(/tanım yok \//);
+    expect(uyg).toContain('(1)');
+    for (const [deger, app] of [
+      ['var', 'k3-var'],
+      ['yok', 'k3-yok'],
+      ['olculemedi', 'k3-olc'],
+      ['uygulanamaz', 'k3-disi'],
+    ] as const) {
+      fireEvent.change(sec, { target: { value: deger } });
+      await waitFor(() => expect(satirlar(container).length).toBe(1));
+      expect(satirlar(container)[0].textContent, deger).toContain(app);
+    }
+    fireEvent.change(sec, { target: { value: 'tumu' } });
+    await waitFor(() => expect(satirlar(container).length).toBe(4));
+    const csvDugme = [...container.querySelectorAll('button')].find((b) =>
+      b.textContent?.includes('CSV'),
+    );
+    if (!csvDugme) throw new Error('CSV düğmesi yok');
+    fireEvent.click(csvDugme);
+    expect(vi.mocked(downloadCsv)).toHaveBeenCalledTimes(1);
+    const [, baslik, satir] = vi.mocked(downloadCsv).mock.calls[0] as unknown as [
+      string,
+      string[],
+      unknown[][],
+    ];
+    const i = (k: string) => {
+      const n = baslik.indexOf(k);
+      expect(n, `CSV kolonu yok: ${k}`).toBeGreaterThanOrEqual(0);
+      return n;
+    };
+    const [iApp, iIstek, i7, iDisi] = [
+      i('uygulama'),
+      i('rp_istegi'),
+      i('rp_istek_7g'),
+      i('rp_istek_7g_ortam_disi'),
+    ];
+    const csvSatir = Object.fromEntries(
+      satir.map((r) => [String(r[iApp]), [r[iIstek], r[i7], r[iDisi]]]),
+    );
+    expect(csvSatir).toEqual({
+      'k3-yok': ['yok', 0, 900],
+      'k3-var': ['var', 50, 900],
+      // Ölçülemeyen / sorulmayan RP isteğine 0 YAZILMAZ (boş hücre).
+      'k3-olc': ['olculemedi', '', 900],
+      'k3-disi': ['uygulanamaz', '', 900],
+    });
+  });
+
+  it('ayrıntı paneli: karışık satırda başka ortamın tanımının karara girmediği, yalnız başka ortamdakinde gerekçe yazar', async () => {
+    const { container } = render(<NginxSpaDiscovery />);
+    await waitFor(() => expect(satirlar(container).length).toBe(4));
+    fireEvent.click(satirOf(container, 'k3-yok'));
+    await waitFor(() =>
+      expect(container.querySelector('[data-testid="rp-ayrinti-karisik"]')).not.toBeNull(),
+    );
+    expect(container.querySelector('[data-testid="rp-ayrinti-yalniz-disi"]')).toBeNull();
+    expect(
+      container.querySelector('[data-testid="rp-ayrinti-disi-istek"]')?.textContent || '',
+    ).toContain('900 istek');
+    fireEvent.click(satirOf(container, 'k3-yok'));
+    fireEvent.click(satirOf(container, 'k3-disi'));
+    await waitFor(() =>
+      expect(container.querySelector('[data-testid="rp-ayrinti-yalniz-disi"]')).not.toBeNull(),
+    );
+    expect(container.querySelector('[data-testid="rp-ayrinti-karisik"]')).toBeNull();
+    expect(container.textContent).toContain("Kendi ortamının (TEST) RP'sinde tanım yok");
+  });
+
+  it('rp "ölçülemedi" iken RP isteği "—" ve gerekçe "tanım bulunamadı" (tanım yok DENMEZ)', async () => {
+    sahte.govde = () =>
+      govdeElle([
+        elle({
+          application: 'olc-ui',
+          namespace: 'kart-test',
+          env: 'test',
+          rp: 'olculemedi',
+          rpNeden: 'host-taranmadi',
+          rpSorun: ['ORTAM_DISI'],
+          rpOrtamDisi: ['PROD'],
+          rpReq7Disi: 900,
+        }),
+      ]);
+    const { container } = render(<NginxSpaDiscovery />);
+    await waitFor(() => expect(satirlar(container).length).toBe(1));
+    const h = hucre(satirOf(container, 'olc-ui'), 7);
+    expect(h.textContent).toBe('—');
+    expect(ipucuOf(h)).toContain("Kendi ortamının (TEST) RP'sinde tanım bulunamadı");
+    expect(ipucuOf(h)).not.toContain('tanım yok —');
+    expect(ipucuOf(h)).toContain('900 istek');
   });
 });

@@ -574,8 +574,11 @@ async function spaKesfiHesapla() {
   // sunucuda uretir) ve nginx_audit TUM bilinen nginx sunucularini tarar; yalniz eski PROD'u
   // okumak non-prod takma adlarini hic cozulemez birakirdi.
   const upsIn = inList('u', [...RP.all]);
-  // TRAFIK yalniz olculebilen hostlardan: non-prod RP + ESKI PROD (is su an oradan akiyor).
-  const trfIn = inList('t', [...RP.nonProd, ...RP.prodOld]);
+  // TRAFIK TUM INTERNET RP'LERDEN (2026-10-02): yeni PROD (GBNGXP4x/AP3x) artik olculur -
+  // servis vhost'lari location kipinde ('/' satirlari), uygulama basina vhost'lar host
+  // kipinde ('@' satirlari; nginx_spa_traffic.sh SPA_HOST_MODE). Eskiden yalniz non-prod +
+  // eski PROD okunuyor, yeni PROD tanimlari 'kaynak-yok' kaliyordu.
+  const trfIn = inList('t', [...RP.all]);
   const yoksaNull = (p) => p.then((r) => r.recordset || []).catch(() => null);
 
   const [disc, inv, usage, runs, cfg, dir, ups, trf] = await Promise.all([
@@ -683,6 +686,9 @@ async function spaKesfiHesapla() {
       : Promise.resolve(null),
     // (4) RP TRAFIGI. first_seen kolonu yoksa NULL secilir (CASE WHEN COL_LENGTH kalibi
     // KULLANILMAZ: kolon yoksa SQL Server derleme aninda 'Invalid column name' verir).
+    // HOST KIPI SEMA DEGISTIRMEDI: satir turu location'in ilk karakterinden ayrilir ('/' =
+    // location kipi, '@' = host kipi; vhost '_' = kova). Eski analyzer '@' satiri yazmaz ->
+    // spa-rp.cjs hostKipi=false -> dizin tanimlari 'kaynak-yok' (eski davranis).
     s.trf
       ? yoksaNull(
           query(
@@ -834,6 +840,7 @@ async function spaRpAyrintiUcu(req, res) {
         upsTarih: k.upsTarih,
         proxyKolonu: k.proxyKolonu,
         tablolar: k.tablolar,
+        hostKipi: k.hostKipi,
       },
       // Satirin geldigi hesapla AYNI mi: istemci ana yanitin `hesaplandi`siyla karsilastirir
       // ve farkliysa panelde "tablodan daha yeni bir hesap" uyarisi gosterir.

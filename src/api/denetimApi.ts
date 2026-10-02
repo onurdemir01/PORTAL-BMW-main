@@ -26,21 +26,49 @@ export interface NginxSpaEnvCell {
   dirs?: { host: string; flags: { hys: boolean; app: boolean; conf: boolean } | null }[];
   /**
    * YUK (2026-09-24): access log'dan location basina istek sayisi. hc.jsp / hc.html HARIC -
-   * saglik kontrolu yuk degildir, ayri sayilir.
-   *   active  : 7 gun icinde istek var
-   *   idle    : log okundu, 7 gundur istek YOK
-   *   unknown : log okunamadi ya da kuyruk 7 gunu kapsamiyor ("yuk yok" DEMEK DEGILDIR)
+   * saglik kontrolu yuk degildir, ayri sayilir. Hucrede birden cok location varsa
+   * birlesir (biri yuk aliyorsa active). Kural: SpaYukOlcumu.
    */
-  traffic?: {
-    state: 'active' | 'idle' | 'unknown';
-    req24: number | null;
-    req7: number | null;
-    hc24: number | null;
-    lastSeen: string | null;
-    sampled: boolean;
-    hosts: number;
-    unknownHosts: number;
-  } | null;
+  traffic?: SpaYukOlcumu | null;
+}
+
+/** 'unknown' durumunun gerekce kodlari (server/audit/nginx-migration.cjs spaTrafikDurumu). */
+export type SpaYukKismiNeden =
+  | 'pencere'
+  | 'pencere-bilinmiyor'
+  | 'sampled'
+  | 'okunamayan-sunucu'
+  | 'satirsiz-sunucu';
+
+/**
+ * dbo.Nginx_Spa_Traffic olcumu - UC UC AYNI bicimi doner: Denetim > Nginx SPA, Nginx ARK SPA
+ * Raporu, Production Tasimalari (2026-10-02, kural tek yerde: spaTrafikDurumu).
+ *   active  : 7 gun icinde hc disi istek var
+ *   idle    : tanimin HER sunucusu olculdu, 7 gunun tamami okundu, istek YOK
+ *   unknown : log okunamadi YA DA istek yok ama 7 gun / her sunucu olculemedi (`kismi`)
+ *             - "yuk yok" DEMEK DEGILDIR (gunluk rotasyonlu sunucuda pencere 1-4 gun kalir)
+ */
+export interface SpaYukOlcumu {
+  state: 'active' | 'idle' | 'unknown';
+  req24: number | null;
+  req7: number | null;
+  hc24?: number | null;
+  lastSeen: string | null;
+  /** Olculen pencerenin basi (yyyyMMddHHmmss), mirror'lar arasinda EN DAR olani. */
+  firstSeen?: string | null;
+  /** Olculen pencere (saat): tarama gunu 00:00 - firstSeen. null = bilinmiyor. */
+  pencereSaat?: number | null;
+  sampled: boolean;
+  /** Olculen sunucu sayisi. */
+  hosts: number;
+  /** Access log'u okunamayan sunucu sayisi. */
+  unknownHosts: number;
+  /** Tanimin durdugu ama o gun olcum satiri olmayan sunucu sayisi. */
+  missingHosts?: number;
+  /** Yalniz state 'unknown' ve req7 0 iken: neden "yuk almiyor" DENMEDI. */
+  kismi?: SpaYukKismiNeden[];
+  /** Hucre birden cok location'i birlestiriyorsa kac tanesi. */
+  locations?: number;
 }
 
 /** Uygulamanin sorumlu ekibi = namespace'inin CMDB sahibi (dbo.Openshift_Namespace_Owners). */
@@ -102,22 +130,9 @@ export interface NginxMigrationApp {
     newHosts: string[];
     newStatus: 'defined' | 'partial' | 'none' | 'not-scanned';
     /** YÜK ÖLÇÜMÜ (2026-09-27): ESKİ sunuculardan (GBRVPP07-10 vb.) okunur — iş şu an
-     *  oradan akıyor. null = bu location için ölçüm satırı yok.
-     *  active = 7 günde hc dışı istek var · idle = log okundu, istek yok ·
-     *  unknown = log okunamadı ya da örneklem 7 günü kapsamıyor (req7 ALT SINIR). */
-    traffic: {
-      state: 'active' | 'idle' | 'unknown';
-      req24: number | null;
-      req7: number | null;
-      hc24: number | null;
-      lastSeen: string | null;
-      /** ÖLÇÜLEN pencerenin başı (yyyyMMddHHmmss). sampled iken "0 istek" ancak bununla
-       *  yorumlanabilir: 7 gün mü bakıldı, 3 saat mi? null = eski tarama, bilinmiyor. */
-      firstSeen: string | null;
-      sampled: boolean;
-      hosts: number;
-      unknownHosts: number;
-    } | null;
+     *  oradan akıyor. null = bu location için ölçüm satırı yok. Kural ve alanlar
+     *  SpaYukOlcumu (Denetim ve ARK SPA Raporu ile AYNI). */
+    traffic: SpaYukOlcumu | null;
   }[];
   /** yeni host -> bayraklar; null = o sunucu henuz taranmadi */
   perHost: Record<string, NginxMigrationDirFlags | null>;
@@ -196,8 +211,15 @@ export interface NginxSpaResult {
   services: string[];
   envs: string[];
   envStats?: NginxEnvStat[];
-  /** 2026-09-24: kac location yuk aliyor / almiyor / bilinmiyor (dbo.Nginx_Spa_Traffic) */
-  trafficStats?: { ready: boolean; active: number; idle: number; unknown: number };
+  /** 2026-09-24: kac location yuk aliyor / almiyor / bilinmiyor (dbo.Nginx_Spa_Traffic).
+   *  kismi (2026-10-02): unknown'larin log OKUNMUS ama 7 gun / her sunucu olculememis kismi. */
+  trafficStats?: {
+    ready: boolean;
+    active: number;
+    idle: number;
+    unknown: number;
+    kismi?: number;
+  };
   rows: NginxSpaRow[];
   /** dbo.Openshift_Namespace_Owners okunabildi mi */
   ownersReady?: boolean;
