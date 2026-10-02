@@ -224,11 +224,15 @@ describe('istemci oturum (Faz B)', () => {
     expect(screen.queryByText('giris-ekrani')).not.toBeInTheDocument();
     expect(screen.getByLabelText('taslak')).toHaveValue('yarim kalan is');
 
+    const haritaOnce = sayi('/api/visibility/resolved');
     fireEvent.change(screen.getByLabelText('Şifre'), { target: { value: 'x' } });
     fireEvent.click(screen.getByText('Giriş yap ve devam et'));
     await ileri(10);
     expect(screen.queryByTestId('relogin-overlay')).not.toBeInTheDocument();
     expect(screen.getByLabelText('taslak')).toHaveValue('yarim kalan is');
+    // Kapi girisin HEMEN ardindan acik: gorunurluk haritasi gercekten aga gidip tazelenir
+    // (kapali kalsaydi sentetik 401 alir, kullanici bayat haritayla devam ederdi).
+    expect(sayi('/api/visibility/resolved')).toBe(haritaOnce + 1);
     // Kapi yeniden acik: istek aga cikiyor.
     const once = cagrilar.length;
     await act(async () => {
