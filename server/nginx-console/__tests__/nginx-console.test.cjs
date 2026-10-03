@@ -856,32 +856,62 @@ test('GS26 uc nokta route satirlarini yalniz ?satir=1 ile gonderir (yanit boyutu
   assert.deepEqual(sonuc.rows, [{ route: 'r' }], 'hesap nesnesi degisti');
 });
 
-test('GS27 ekran: tek satir duzeni, is yuku kolonu yok, "KALIP KACIRDI" rozeti yok, bes suzgec var', () => {
+test('GS27 ekran: tek satir duzeni (KOLONLAR), is yuku kolonu yok, "KALIP KACIRDI" rozeti yok, suzgecler bagli', () => {
   const ui = gsNorm(read('src/components/nginx_console/NginxSpaDiscovery.tsx'));
   const var_ = (parca, mesaj) => assert.ok(ui.includes(parca), mesaj + ' :: ' + parca);
   // KOLON SIRASI bicimden bagimsiz: prettier diziyi cok satira bolup sonuna virgul ekliyor
   // (ilk yazimda bu yuzden kirmiziya dondu); bosluk ve sondaki virgul yok sayilir.
   // 2026-10-01 (kullanici): 'Istek' -> 'Uygulama istegi' (Dynatrace oldugu ipucunda) ve
   // ayni tabloya Ag / Reverse proxy / RP istegi kolonlari eklendi. Bilerek degisen duzen.
-  const kolonlar = [
-    'Uygulama',
-    'Namespace',
-    'SPA',
-    'Ad kalıbı',
-    'Uygulama isteği',
-    'Ağ',
-    'Reverse proxy',
-    'RP isteği',
-    'Route envanteri',
-    'Adresler',
-    "Cluster'lar",
-  ];
-  const kac = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  assert.match(
-    ui,
-    new RegExp('\\[\\s*' + kolonlar.map((k) => kac(`'${k}'`)).join('\\s*,\\s*') + '\\s*,?\\s*\\]'),
-    'kolon listesi beklenen sade duzende degil',
+  // 2026-10-03 (kullanici: "kolonlar cok genis gorunuyor, okumakta cok zorlaniyorum"):
+  // duzen KOLONLAR tablosundan cizilir (baslik VE satir ayni gorunur listeden). Uygulama +
+  // Namespace tek hucre, SPA + Ad kalibi tek hucre, 'Reverse proxy' ust basligi altinda
+  // Ag / Tanim / Istek; Route envanteri, Adresler ve Cluster'lar gizlenebilir (varsayilan
+  // gorunur). Bilerek degisen duzen. Ayni guvencenin DAVRANIS hali vitest'te
+  // (NginxSpaDiscovery.test.tsx "kolon duzeni": baslik sirasi = her satirin hucre sirasi).
+  const bas = ui.indexOf('const KOLONLAR: readonly KolonTanim[] = [');
+  const son = ui.indexOf('];', bas);
+  assert.ok(bas >= 0 && son > bas, 'KOLONLAR tablosu yok');
+  // Her kolon nesnesi: id, baslik, grup, gizlenebilir. Deger tirnak icinde kesme isareti
+  // tasiyabilir ("Cluster'lar" normalize sonrasi 'Cluster'lar'): tembel eslesme + virgul/son.
+  const alan = (s, ad) => {
+    const m = s.match(new RegExp(`(?:^|[\\s,])${ad}: '(.*?)'\\s*(?:,|$)`));
+    return m ? m[1] : '';
+  };
+  const kolonlar = [...ui.slice(bas, son).matchAll(/\{([^{}]*)\}/g)].map((m) => [
+    alan(m[1].trim(), 'id'),
+    alan(m[1].trim(), 'baslik'),
+    alan(m[1].trim(), 'grup'),
+    /(?:^|[\s,])gizlenebilir: true/.test(m[1]),
+  ]);
+  assert.deepEqual(
+    kolonlar,
+    [
+      ['uygulama', 'Uygulama', '', false],
+      ['spa', 'SPA', '', false],
+      ['istek', 'Uygulama isteği', '', false],
+      ['ag', 'Ağ', 'rp', false],
+      ['rp', 'Tanım', 'rp', false],
+      ['rpIstek', 'İstek', 'rp', false],
+      ['envanter', 'Route envanteri', '', true],
+      ['adresler', 'Adresler', '', true],
+      ['clusterlar', "Cluster'lar", '', true],
+    ],
+    'kolon duzeni beklenen sade duzende degil',
   );
+  var_("const RP_GRUP_BASLIGI = 'Reverse proxy';", 'Reverse proxy ust basligi yok');
+  // Baslik ve satir AYNI gorunur listeden; ayrinti ve bos sonuc satiri colSpan'i da oradan.
+  // Sabit kolon sayisi geri gelirse gizli kolonda colSpan kayar.
+  var_('<TabloBasligi gorunur={gorunur} />', 'baslik gorunur kolon listesinden cizilmiyor');
+  var_(
+    '{gorunur.map((id) => ( <td key={id} data-kolon={id}',
+    'satir hucreleri gorunur kolon listesinden cizilmiyor',
+  );
+  assert.ok(
+    ui.split('colSpan={gorunur.length}').length - 1 >= 2,
+    'ayrinti / bos sonuc satiri colSpan gorunur kolon sayisindan degil',
+  );
+  assert.ok(!ui.includes('KOLON_SAYISI'), 'sabit kolon sayisi geri geldi');
   assert.ok(!ui.includes("'İş yükü'"), 'is yuku kolonu hala var');
   assert.ok(!ui.includes('KALIP KAÇIRDI'), 'anlasilmayan "KALIP KACIRDI" rozeti hala var');
   // HER SUZGEC: kutusu degiskene BAGLI (value + onChange) VE suzme mantiginda UYGULANIYOR.
@@ -915,7 +945,151 @@ test('GS27 ekran: tek satir duzeni, is yuku kolonu yok, "KALIP KACIRDI" rozeti y
     var_(`value={${deg}} onChange={(e) => ${set}(`, `${ad} suzgec kutusu yok/bagli degil`);
     var_(kosul, `${ad} suzgeci satirlara uygulanmiyor`);
   }
-  var_('a.hosts.map((h) =>', 'adresler ayni satirda listelenmiyor');
-  var_('a.clusters.map((c) =>', 'cluster lar ayni satirda listelenmiyor');
+  // ADRESLER VE CLUSTER'LAR AYNI SATIRDA (2026-10-03): ilk oge + '+N', tamami ipucunda ve
+  // ayrinti panelinde (davranis: vitest '+N' testi).
+  var_('const liste = a.hosts.length ? a.hosts : a.routes;', 'adresler (yoksa route) satirda yok');
+  var_('<CokluDeger liste={liste}', 'adresler ayni satirda gosterilmiyor');
+  var_('<CokluDeger liste={a.clusters}', 'cluster lar ayni satirda gosterilmiyor');
   var_('Bilinmiyor', 'olculemeyen SPA "bilinmiyor" diye gosterilmiyor');
+});
+
+// ── GS28 EKRAN CSS (dogrulama bulgulari, 2026-10-03) ─────────────────────────────────
+// Gorsel olculer (yapisma, kirpma, kontrast) jsdom'da yok; tarayicida olculdu. Bu bekci,
+// o olcumleri saglayan KURALLARIN index.css'te durdugunu ve token'lardan hesaplanan
+// kontrastin AA'yi (4.5) gectigini soyler. Bicimden bagimsiz: yorumlar atilir, bosluklar
+// tek bosluga iner; kural govdesi secici adiyla bulunur.
+//   - kap yuksekligi sinirsizken yapiskan baslik HIC yapismiyordu (K11: max-height silinir);
+//   - scroll-padding yokken Shift+Tab ile odaklanan satir dugmesi basligin ALTINDA kaliyordu
+//     (WCAG 2.4.11; baslik Siki 48 px / Rahat 52 px olculdu);
+//   - ikinci satir 11rem'de "..." ile kesilince ardindaki rozet HIC cizilmiyordu: satir
+//     artik SARAR, yalniz .ng-kisa duz metni kisalir;
+//   - adresin alan adi soneki kisalmaz (once uygulama-namespace oneki kisalir);
+//   - ikincil metin --text-muted iken koyu temada 4.33 / zebra 3.92 / secili 3.11 idi.
+test('GS28 ekran CSS: yapiskan baslik ve ilk kolon, kap siniri + klavye odagi, ikinci satir kirpmaz, ikincil metin kontrasti', () => {
+  const css = read('src/index.css')
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/\s+/g, ' ');
+  const govdeler = (sec) => {
+    const l = [];
+    const re = /([^{}]+)\{([^{}]*)\}/g;
+    let m;
+    // Secici, govdeden onceki son ';'ten sonrasidir (@import satiri ilk kurala yapismasin).
+    while ((m = re.exec(css)))
+      if (m[1].split(';').pop().split(',').some((s) => s.trim() === sec)) l.push(m[2]);
+    return l;
+  };
+  const kural = (sec) => {
+    const l = govdeler(sec);
+    assert.ok(l.length, `kural yok: ${sec}`);
+    return l.join(';');
+  };
+  // Ayni ozellik birden cok kez yazilmissa SONUNCUSU gecerli (cascade).
+  const oz = (govde, ad) => {
+    const l = [...govde.matchAll(new RegExp(`(?:^|;)\\s*${ad}\\s*:\\s*([^;]+)`, 'g'))];
+    return l.length ? l[l.length - 1][1].trim() : null;
+  };
+  const px = (v) => {
+    const m = String(v || '').match(/^([\d.]+)(rem|px)$/);
+    return m ? Number(m[1]) * (m[2] === 'rem' ? 16 : 1) : NaN;
+  };
+
+  // YAPISKAN BASLIK + ILK KOLON, KAP SINIRI, KLAVYE ODAGI
+  const thead = kural('.ng-spa-tablo > thead');
+  assert.equal(oz(thead, 'position'), 'sticky', 'baslik yapiskan degil');
+  assert.equal(oz(thead, 'top'), '0', 'baslik ustte yapismiyor');
+  const ilk = kural('.ng-spa-tablo .ng-yapiskan');
+  assert.equal(oz(ilk, 'position'), 'sticky', 'ilk kolon yapiskan degil');
+  assert.equal(oz(ilk, 'left'), '0', 'ilk kolon solda yapismiyor');
+  const kap = kural('.ng-spa-kap');
+  const mh = oz(kap, 'max-height');
+  assert.ok(mh && mh !== 'none', 'kaydirma kabinin yuksekligi sinirsiz: baslik yapismaz');
+  assert.ok(
+    px(oz(kap, 'scroll-padding-top')) >= 52,
+    'scroll-padding-top yapiskan basligin yuksekligini (Rahat 52 px) kapsamiyor: odak basligin altinda kalir',
+  );
+
+  // IKINCI SATIR: sarar, kirpmaz; yalniz duz metin kisalir
+  const ik = kural('.ng-spa-tablo .ng-ikinci');
+  assert.equal(oz(ik, 'flex-wrap'), 'wrap', 'ikinci satir sarmiyor: sigmayan rozet kaybolur');
+  assert.equal(oz(ik, 'min-width'), 'min-content', 'genis tek rozet yan hucreye tasar');
+  for (const yasak of ['overflow', 'overflow-x', 'text-overflow'])
+    assert.equal(oz(ik, yasak), null, `ikinci satir yine kirpiyor (${yasak}): rozet "..." arkasinda kalir`);
+  const kisa = kural('.ng-spa-tablo .ng-kisa');
+  assert.equal(oz(kisa, 'text-overflow'), 'ellipsis', 'duz metin kisalmiyor');
+  assert.equal(oz(kisa, 'overflow'), 'hidden', 'duz metin kisalmiyor');
+
+  // ADRES: alan adi soneki kisalmaz; esneyen kolonun icerigi tabloyu genisletmez
+  const son = kural('.ng-spa-tablo .ng-adres-son');
+  assert.match(oz(son, 'flex') || '', /^0 0 /, 'alan adi soneki kisaliyor (flex-shrink 0 degil)');
+  assert.equal(oz(kural('.ng-spa-tablo .ng-adresler'), 'contain'), 'inline-size', 'adres kolonu tabloyu genisletir');
+
+  // KONTRAST: ikincil metin her satir zemininde (iki tema) >= 4.5
+  const tokenlar = (sec) => {
+    const t = {};
+    for (const g of govdeler(sec))
+      for (const m of g.matchAll(/--([\w-]+)\s*:\s*([^;]+)/g)) t[m[1]] = m[2].trim();
+    return t;
+  };
+  const ACIK = tokenlar(':root');
+  const KOYU = { ...ACIK, ...tokenlar(':root[data-theme="dark"]') };
+  const hex = (h) => {
+    const s = h.replace('#', '');
+    const t = s.length === 3 ? [...s].map((c) => c + c).join('') : s;
+    assert.match(t, /^[0-9a-f]{6}$/i, `hex degil: ${h}`);
+    return [0, 2, 4].map((i) => parseInt(t.slice(i, i + 2), 16));
+  };
+  const renk = (deger, tok) => {
+    const v = deger.trim();
+    const t = v.match(/^var\(--([\w-]+)\)$/);
+    if (t) return renk(tok[t[1]] || assert.fail(`token yok: ${t[1]}`), tok);
+    const c = v.match(/^color-mix\(in srgb, (.+?) ([\d.]+)%, (.+)\)$/);
+    if (c) {
+      const [a, b, p] = [renk(c[1], tok), renk(c[3], tok), Number(c[2]) / 100];
+      return a.map((x, i) => x * p + b[i] * (1 - p));
+    }
+    return hex(v);
+  };
+  const L = (rgb) => {
+    const [r, g, b] = rgb.map((x) => {
+      const s = x / 255;
+      return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  };
+  const oran = (a, b) => {
+    const [x, y] = [L(a), L(b)].sort((p, q) => q - p);
+    return (x + 0.05) / (y + 0.05);
+  };
+  const zemin = (sec) => oz(kural(sec), '--ng-zemin');
+  const ZEMINLER = {
+    normal: zemin('.ng-spa-tablo > tbody > tr.ng-satir'),
+    zebra: zemin('.ng-spa-tablo > tbody > tr.ng-satir.ng-cizgili'),
+    hover: zemin('.ng-spa-tablo > tbody > tr.ng-satir:hover'),
+    secili: zemin('.ng-spa-tablo > tbody > tr.ng-satir.ng-secili'),
+  };
+  const baslikZemin = oz(kural('.ng-spa-tablo > thead > tr > th'), 'background');
+  const olc = [
+    ['.ng-spa-tablo .ng-ikinci', ZEMINLER],
+    ['.ng-spa-tablo .ng-baslik-alt', { baslik: baslikZemin }],
+  ];
+  // Namespace satiri bilesende SOLUK; SOLUK'un token'i da ayni olcuye girer.
+  const ui = gsNorm(read('src/components/nginx_console/NginxSpaDiscovery.tsx'));
+  const soluk = ui.match(/const SOLUK = '([^']+)';/);
+  assert.ok(soluk, 'SOLUK sabiti yok');
+  for (const [tema, tok] of [
+    ['acik', ACIK],
+    ['koyu', KOYU],
+  ]) {
+    for (const [sec, zeminler] of olc) {
+      const on = renk(oz(kural(sec), 'color'), tok);
+      for (const [ad, z] of Object.entries(zeminler)) {
+        const r = oran(on, renk(z, tok));
+        assert.ok(r >= 4.5, `${tema} tema ${sec} / ${ad} zemin: kontrast ${r.toFixed(2)} < 4.5`);
+      }
+    }
+    for (const [ad, z] of Object.entries(ZEMINLER)) {
+      const r = oran(renk(soluk[1], tok), renk(z, tok));
+      assert.ok(r >= 4.5, `${tema} tema SOLUK (namespace) / ${ad} zemin: kontrast ${r.toFixed(2)} < 4.5`);
+    }
+  }
 });

@@ -27,13 +27,35 @@
 // (3, K3) hem kendi hem başka ortamın RP'sinde tanımlıysa RP isteği kararı ve sayısı YALNIZ
 // kendi ortamının tanımlarındandır — başka ortamın isteği (rpReq7Disi) yalnız bilgi olarak
 // hücrede/ipucunda görünür, sayıya eklenmez, kararı değiştirmez.
-import { Fragment, memo, useCallback, useMemo, useState } from 'react';
+//
+// OKUNURLUK (kullanıcı, 2026-10-03): "kolonlar çok geniş görünüyor, okumakta çok
+// zorlanıyorum". Ölçülen sebepler ve çözüm index.css `.ng-spa-tablo` başında. Düzen:
+// Uygulama+namespace tek hücre (yapışkan ilk kolon), SPA+ad kalıbı tek hücre, "Reverse
+// proxy" üst başlığı altında Ağ / Tanım / İstek, Adresler ve Cluster'lar ilk öğe + "+N"
+// (tamamı ipucunda ve ayrıntı panelinde). Yoğunluk (Sıkı/Rahat) ve gizlenebilir kolonlar
+// tarayıcıda hatırlanır. Süzgeçler ve CSV DEĞİŞMEDİ.
+// DOĞRULAMA TURU (aynı gün): ikinci satırdaki rozetler kırpılmaz (yalnız düz metin kısalır);
+// adresin alan adı ve uygulama adının "-app-v" eki görünür kalır (baş kısım kısalır); artan
+// genişliği Adresler alır; yapışkan başlık klavye odağını örtmez (scroll-padding); ikincil
+// metin --text-secondary (AA); "Reverse proxy" başlığı kendi <colgroup>'unda.
+import {
+  Fragment,
+  memo,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import {
   ArrowPathIcon,
   ArrowDownTrayIcon,
   MagnifyingGlassIcon,
   ChevronDownIcon,
   ChevronRightIcon,
+  ViewColumnsIcon,
 } from '@heroicons/react/24/outline';
 import {
   nginxConsoleApi,
@@ -64,6 +86,12 @@ const DURUM_ETIKETI: Record<string, { t: string; renk: string }> = {
 
 // ── AĞ / RP / RP İSTEĞİ ETİKETLERİ ─────────────────────────────────────────────────────
 const MUTED = 'var(--text-muted)';
+/**
+ * TABLODA ikincil ama ANLAM taşıyan metin (namespace, "Hayır", "kapsam dışı", "—" ...).
+ * --text-muted küçük metinde AA'nın altında kalıyordu (doğrulama, 2026-10-03: koyu temada
+ * normal satır 4.33, zebra 3.92, seçili satır 3.11; eşik 4.5). MUTED yalnız süs ekleri ("/7g").
+ */
+const SOLUK = 'var(--text-secondary)';
 const WARN = 'var(--status-warning)';
 const DANGER = 'var(--status-danger)';
 const OK = 'var(--status-success)';
@@ -86,7 +114,7 @@ const AG_ETIKET: Record<NgSpaApp['ag'], { t: string; renk: string; ipucu: string
   },
   diger: {
     t: 'diğer',
-    renk: MUTED,
+    renk: SOLUK,
     ipucu: "Yalnız edge ya da TLS'siz route — kural dışında, sınıflanmaz; RP aranmaz.",
   },
   bilinmiyor: {
@@ -113,8 +141,8 @@ const RP_ETIKET: Record<NgSpaApp['rp'], { t: string; renk: string }> = {
   tanimli: { t: 'tanımlı', renk: OK },
   tanimsiz: { t: 'tanımsız', renk: DANGER },
   olculemedi: { t: 'ölçülemedi', renk: WARN },
-  'kapsam-disi': { t: 'kapsam dışı', renk: MUTED },
-  uygulanamaz: { t: '—', renk: MUTED },
+  'kapsam-disi': { t: 'kapsam dışı', renk: SOLUK },
+  uygulanamaz: { t: '—', renk: SOLUK },
 };
 const RPI_ETIKET: Record<NgSpaApp['rpIstek'], { t: string; renk: string; ipucu: string }> = {
   var: {
@@ -154,7 +182,7 @@ const RPI_ETIKET: Record<NgSpaApp['rpIstek'], { t: string; renk: string; ipucu: 
   },
   uygulanamaz: {
     t: '—',
-    renk: MUTED,
+    renk: SOLUK,
     ipucu:
       "Kendi ortamının RP'sinde tanım yok, bulunamadı (RP ölçülemedi — 'yok' denmedi) ya da RP kapsam dışı; veya RP kolonları bu uygulama için hesaplanmıyor.",
   },
@@ -332,7 +360,8 @@ function Kapsam({ k }: { k: NgSpaCoverage }) {
         {k.noData > 0 && <> (bunların {nf(k.noData)} tanesinin ekranda hiç verisi yok)</>}
       </summary>
       {sorunlu.length > 0 && (
-        <table className="mt-1.5 w-full">
+        // font-size inherit: index.css `table` kurali (katmansiz, 14 px) ozetin 11 px'ini eziyordu.
+        <table className="mt-1.5 w-full" style={{ fontSize: 'inherit' }}>
           <tbody>
             {sorunlu.map((c) => {
               const e =
@@ -495,66 +524,176 @@ function RpKapsamBand({ k }: { k: NgSpaRpKapsam }) {
   );
 }
 
-/** SPA kolonu. ÜÇ DURUM AYRI: hiçbir route eşleşmediyse "bilinmiyor" — "hayır" DEĞİL. */
-function SpaHucre({ a }: { a: NgSpaApp }) {
-  if (a.spa === 'evet')
-    return (
-      <span
-        style={{ color: 'var(--status-success)', fontWeight: 600 }}
-        title={`Kabinde nginx çalışıyor · kanıt: ${a.signals.join(', ') || '—'}`}
-      >
-        Evet
-        {a.weakEvidence && (
-          <span
-            className="ml-1 text-[10px] font-normal"
-            style={{ color: 'var(--status-warning)' }}
-            title="Servis okunamadı; route, servisle aynı adı taşıyan iş yüküne bağlandı. Selector eşleşmesinden zayıf bir kanıt."
-          >
-            (zayıf kanıt)
-          </span>
-        )}
-      </span>
-    );
-  if (a.spa === 'hayir')
-    return (
-      <span
-        style={{ color: 'var(--text-muted)' }}
-        title="Route'un ardındaki iş yükünde nginx bulunamadı"
-      >
-        Hayır
-      </span>
-    );
+// ── HÜCRE YAPI TAŞLARI (2026-10-03) ───────────────────────────────────────────────────
+// Kullanıcı: "kolonlar çok geniş, okumakta zorlanıyorum". Her hücre İKİ SATIR: 1. satır
+// karar (rozet ya da sayı), 2. satır ikincil işaret (ad kalıbı, envanter farkı, ortam dışı,
+// ölçülemedi nedeni...). Uzun açıklama ipucunda kalır; hücre tek satırda uzamaz.
+type Ton = 'iyi' | 'kotu' | 'uyari' | 'notr' | 'bilgi';
+/** PF Label tonları (index.css .pf-label--*): metin rengi iki temada da okunur. */
+const TON_SINIFI: Record<Ton, string> = {
+  iyi: 'pf-label--green',
+  kotu: 'pf-label--red',
+  uyari: 'pf-label--gold',
+  notr: 'pf-label--grey',
+  bilgi: 'pf-label--orange',
+};
+
+/**
+ * Durum rozeti. `olcum`: ÖLÇÜLEMEDİ türü durum (ölçülemedi / bilinmiyor / ölçüm yok / ölçüm
+ * kaynağı yok) KESİK çerçeveyle çizilir; "yok" ve "tanımsız" düz çerçeve. Ayrım yalnız renge
+ * kalmaz: rozet metni her zaman yazar, çerçeve ikinci işarettir.
+ */
+function Rozet({
+  ton,
+  olcum,
+  testId,
+  ipucu,
+  children,
+}: {
+  ton: Ton;
+  olcum?: boolean;
+  testId?: string;
+  ipucu?: string;
+  children: ReactNode;
+}) {
   return (
     <span
-      style={{ color: 'var(--status-warning)' }}
-      title={`Hiçbir route bir iş yüküne eşlenemedi — SPA olup olmadığı ölçülemedi.\n${a.notes.join('\n')}`}
+      className={`pf-label ${TON_SINIFI[ton]}${olcum ? ' ng-olcum' : ''}`}
+      data-testid={testId}
+      title={ipucu}
     >
-      Bilinmiyor
+      {children}
     </span>
   );
 }
 
-/** Ad kalıbı kolonu: uygulama adı -app-v / -app-emb-v kuralına uyuyor mu. */
-function KalipHucre({ a }: { a: NgSpaApp }) {
+/**
+ * İki satırlı hücre. İpucu (title) DIŞ kapta: td'nin ilk öğesi bütün hücrenin ipucunu taşır.
+ * Satırlar arasındaki boşluk metin düğümü: kopyalanan metin "istek yok ortam dışı ..." diye
+ * ayrılır (bloklar arasında görünmez).
+ *
+ * İKİNCİ SATIR SIRASI YAPIDAN GELİR (doğrulama bulgusu, 2026-10-03): önce `rozetler`, en sonda
+ * `kisa` düz metin. Eskiden ikinci satır TEK kırpılan satırdı (11rem + "…"); rozet bölünmeyen
+ * bir kutu olduğundan kısa neden metninin ARKASINDAKİ rozet hiç çizilmiyordu ("ölçülemedi /
+ * sunucu taranmadı…" görünür, "PROD RP'sinde tanımlı" görünmez; tanımlı hücrede
+ * BROKEN_INCLUDE "…" arkasında). Şimdi rozetler KIRPILMAZ (sığmazsa alt satıra sarar,
+ * index.css `.ng-ikinci`); yalnız `kisa` metin (`.ng-kisa`) kısalır, tamamı ipucunda.
+ * Rozet sırası çağıranda: kötü (kırmızı) → uyarı → bilgi.
+ */
+function Hucre({
+  ipucu,
+  rozetler,
+  kisa,
+  children,
+}: {
+  ipucu?: string;
+  rozetler?: ReactNode[];
+  kisa?: string;
+  children: ReactNode;
+}) {
+  const dolu = (rozetler || []).filter((r) => r != null && r !== false && r !== '');
+  return (
+    <span className="block" title={ipucu || undefined}>
+      <span className="block">{children}</span>
+      {dolu.length || kisa ? (
+        <>
+          {' '}
+          <span className="ng-ikinci">
+            {dolu.map((r, i) => (
+              // Boşluk metni kopyalamada ayırır; flex kapta görünmez (gap aralığı verir).
+              <Fragment key={i}>
+                {i > 0 && ' '}
+                {r}
+              </Fragment>
+            ))}
+            {kisa && (
+              <>
+                {dolu.length > 0 && ' '}
+                <span className="ng-kisa">{kisa}</span>
+              </>
+            )}
+          </span>
+        </>
+      ) : null}
+    </span>
+  );
+}
+
+/**
+ * Ad kalıbı (SPA hücresinin 2. satırı): uygulama adı -app-v / -app-emb-v kuralına uyuyor mu.
+ * İşaretli durumlar (gerçek SPA ama ad uymuyor / ad uyuyor ama nginx yok) ROZET; olağan durum
+ * kısa metin. Kalıbın kendisi hücrenin ipucunda.
+ */
+const KALIP_IPUCU = 'Ad kalıbı: -app-v / -app-emb-v';
+function kalipIsareti(a: NgSpaApp): { rozet?: ReactNode; kisa?: string } {
   if (a.patternMiss)
-    return (
-      <span
-        style={{ color: 'var(--status-danger)', fontWeight: 600 }}
-        title="Gerçekten SPA ama adı -app-v / -app-emb-v kuralına uymuyor. Eski (ada bakan) yöntem bu uygulamayı SPA saymıyordu."
-      >
-        uymuyor
-      </span>
-    );
+    return {
+      rozet: (
+        <Rozet
+          ton="kotu"
+          ipucu="Gerçekten SPA ama adı -app-v / -app-emb-v kuralına uymuyor. Eski (ada bakan) yöntem bu uygulamayı SPA saymıyordu."
+        >
+          kalıba uymuyor
+        </Rozet>
+      ),
+    };
   if (a.patternFalse)
+    return {
+      rozet: (
+        <Rozet ton="uyari" ipucu="Adı SPA kuralına uyuyor ama kabinde nginx bulunamadı.">
+          kalıba uyuyor
+        </Rozet>
+      ),
+    };
+  return { kisa: `kalıba ${a.pattern}` };
+}
+
+/**
+ * SPA kolonu (ad kalıbı ikinci satırda). ÜÇ DURUM AYRI: hiçbir route eşleşmediyse
+ * "bilinmiyor" — "hayır" DEĞİL.
+ */
+function SpaHucre({ a }: { a: NgSpaApp }) {
+  const kalip = kalipIsareti(a);
+  const kalipSatiri = `\n${KALIP_IPUCU} → ${a.pattern}`;
+  if (a.spa === 'evet')
     return (
-      <span
-        style={{ color: 'var(--status-warning)' }}
-        title="Adı SPA kuralına uyuyor ama kabinde nginx bulunamadı."
+      <Hucre
+        ipucu={`Kabinde nginx çalışıyor · kanıt: ${a.signals.join(', ') || '—'}${kalipSatiri}`}
+        rozetler={[kalip.rozet]}
+        kisa={kalip.kisa}
       >
-        uyuyor · nginx yok
-      </span>
+        <Rozet ton="iyi">Evet</Rozet>
+        {a.weakEvidence && (
+          <span
+            className="ml-1"
+            title="Servis okunamadı; route, servisle aynı adı taşıyan iş yüküne bağlandı. Selector eşleşmesinden zayıf bir kanıt."
+          >
+            <Rozet ton="uyari">zayıf kanıt</Rozet>
+          </span>
+        )}
+      </Hucre>
     );
-  return <span style={{ color: 'var(--text-secondary)' }}>{a.pattern}</span>;
+  if (a.spa === 'hayir')
+    return (
+      <Hucre
+        ipucu={`Route'un ardındaki iş yükünde nginx bulunamadı${kalipSatiri}`}
+        rozetler={[kalip.rozet]}
+        kisa={kalip.kisa}
+      >
+        <span style={{ color: SOLUK }}>Hayır</span>
+      </Hucre>
+    );
+  return (
+    <Hucre
+      ipucu={`Hiçbir route bir iş yüküne eşlenemedi — SPA olup olmadığı ölçülemedi.\n${a.notes.join('\n')}${kalipSatiri}`}
+      rozetler={[kalip.rozet]}
+      kisa={kalip.kisa}
+    >
+      <Rozet ton="uyari" olcum>
+        Bilinmiyor
+      </Rozet>
+    </Hucre>
+  );
 }
 
 /**
@@ -565,98 +704,151 @@ function KalipHucre({ a }: { a: NgSpaApp }) {
 function IstekHucre({ a }: { a: NgSpaApp }) {
   if (a.istek === 'olcum-yok')
     return (
-      <span
-        style={{ color: 'var(--text-muted)' }}
-        title="Bu uygulama için Dynatrace ölçümü bulunamadı — “istek almıyor” DEMEK DEĞİL."
-      >
-        ölçüm yok
-      </span>
+      <Hucre ipucu="Bu uygulama için Dynatrace ölçümü bulunamadı — “istek almıyor” DEMEK DEĞİL.">
+        <Rozet ton="notr" olcum>
+          ölçüm yok
+        </Rozet>
+      </Hucre>
     );
   if (a.istek === 'olculemedi')
     return (
-      <span
-        style={{ color: 'var(--status-warning)' }}
-        title={
+      <Hucre
+        ipucu={
           a.usage
             ? `Dynatrace ölçümü denendi ama düştü${a.usage.note ? ': ' + a.usage.note : ''}. “0 istek” anlamına GELMEZ.`
             : 'Dynatrace ölçüm tablosu okunamadı. “0 istek” anlamına GELMEZ.'
         }
       >
-        ölçülemedi
-      </span>
+        <Rozet ton="uyari" olcum>
+          ölçülemedi
+        </Rozet>
+      </Hucre>
     );
   const pencereMetni = a.usage
     ? `Dynatrace servis çağrıları · son ${a.usage.windowDays} gün · ${a.usage.services} servis · ölçüm ${a.usage.scanDate}`
     : '';
   if (a.istek === 'servis-yok')
     return (
-      <span
-        style={{ color: 'var(--text-muted)' }}
-        title={`Dynatrace'te bu uygulama için servis oluşmamış — “istek yok” DEMEK DEĞİL (statik SPA'nın pod'u istek almayabilir).\n${pencereMetni}`}
+      <Hucre
+        ipucu={`Dynatrace servisi yok: Dynatrace'te bu uygulama için servis oluşmamış — “istek yok” DEMEK DEĞİL (statik SPA'nın pod'u istek almayabilir).\n${pencereMetni}`}
       >
-        Dynatrace servisi yok
-      </span>
+        <Rozet ton="notr">servis yok</Rozet>
+      </Hucre>
     );
   if (a.istek === 'yok')
     return (
-      <span style={{ color: 'var(--status-warning)' }} title={pencereMetni}>
-        istek yok
-      </span>
+      <Hucre ipucu={pencereMetni}>
+        <Rozet ton="uyari">istek yok</Rozet>
+      </Hucre>
     );
   return (
-    <span style={{ color: 'var(--text-primary)' }} title={pencereMetni}>
-      {nf(a.reqShown || 0)}
-    </span>
+    <Hucre ipucu={pencereMetni}>
+      <span style={{ color: 'var(--text-primary)' }}>{nf(a.reqShown || 0)}</span>
+    </Hucre>
   );
 }
 
-/** Ağ kolonu: route TLS tipinden; envanter çapraz kontrolü rozet, değeri EZMEZ. */
+/** Ağ kolonu: route TLS tipinden; envanter çapraz kontrolü 2. satırda rozet, değeri EZMEZ. */
 function AgHucre({ a }: { a: NgSpaApp }) {
   const e = AG_ETIKET[a.ag] || AG_ETIKET.bilinmiyor;
+  const celisik = a.agEnvanter === 'celisik';
   const say = Object.entries(a.agSay || {})
     .map(([k, v]) => `${AG_SAY_ADI[k] || k} ${v}`)
     .join(' · ');
   const title =
-    `${e.ipucu}\nRoute'lar: ${say || '—'}\nRoute envanteri: ${AG_ENVANTER_METNI[a.agEnvanter] || a.agEnvanter}` +
+    `${e.ipucu}\nRoute'lar: ${say || '—'}\nRoute envanteri: ${AG_ENVANTER_METNI[a.agEnvanter] || a.agEnvanter}${celisik && a.agCelisikRoute ? ` (${a.agCelisikRoute} route)` : ''}` +
+    (a.agCelisme ? "\nÇelişki: intranet uygulama internet RP'de tanımlı (kural ile tanım çelişiyor)." : '') +
     (a.staleClusters.length ? '\nBir cluster son koşuda taranamadı; değer önceki koşudan.' : '');
+  // Kırmızı çelişki ÖNCE: ikisi birlikteyse sayılı uyarı rozeti onu satırın dışına itmesin.
+  const rozetler = [
+    a.agCelisme && (
+      <Rozet ton="kotu" testId="ag-celisme">
+        RP'de tanımlı
+      </Rozet>
+    ),
+    celisik && (
+      <Rozet ton="uyari" testId="ag-envanter-farkli">
+        envanter farklı{a.agCelisikRoute ? ` (${a.agCelisikRoute})` : ''}
+      </Rozet>
+    ),
+  ];
   return (
-    <span style={{ color: e.renk }} title={title}>
-      {e.t}
-      {a.agEnvanter === 'celisik' && (
-        <span className="ml-1 text-[10px]" style={{ color: WARN }}>
-          (envanter farklı{a.agCelisikRoute ? `: ${a.agCelisikRoute} route` : ''})
-        </span>
+    <Hucre ipucu={title} rozetler={rozetler}>
+      {a.ag === 'karisik' ? (
+        <Rozet ton="uyari">{e.t}</Rozet>
+      ) : a.ag === 'bilinmiyor' ? (
+        <Rozet ton="uyari" olcum>
+          {e.t}
+        </Rozet>
+      ) : (
+        <span style={{ color: e.renk, fontWeight: a.ag === 'internet' ? 600 : 400 }}>{e.t}</span>
       )}
-      {a.agCelisme && (
-        <span className="ml-1 text-[10px]" style={{ color: DANGER }}>
-          (internet RP'de tanımlı)
-        </span>
-      )}
-    </span>
+    </Hucre>
   );
 }
 
-/** Reverse proxy kolonu: tanımlı / tanımsız / ölçülemedi / kapsam dışı / —. */
+/**
+ * RP 'ölçülemedi' / 'kapsam dışı' NEDENİNİN kısa adı (hücrenin 2. satırı; tam metin ipucunda,
+ * rpNedenMetni). Listede olmayan kod 2. satırda HAM görünmez (yalnız ipucu).
+ */
+const RP_NEDEN_KISA: Record<string, string> = {
+  'ortam-yok': 'ortam çıkmıyor',
+  'rp-listesi-yok': 'RP listesi yok',
+  platform: 'ARK dışı platform',
+  'tablo-yok': 'tablo yok',
+  okunamadi: 'tablo okunamadı',
+  'tarih-farkli': 'tarama günü farklı',
+  'proxy-kolonu-yok': 'proxy kolonu yok',
+  'host-taranmadi': 'sunucu taranmadı',
+  'hedef-cozulemedi': 'hedef çözülemedi',
+  belirsiz: 'birden çok namespace',
+};
+/** Eşleşme yolunun kısa adı (tanımlı hücrenin 2. satırı; tam metin ESLES_ADI ipucunda). */
+const ESLES_KISA: Record<string, string> = {
+  'ek-prod': "'-prod' eki",
+  ad: 'ad kalıbından',
+  envanter: 'envanterden',
+  zayif: 'zayıf eşleşme',
+  paylasimli: 'paylaşımlı',
+  belirsiz: 'belirsiz',
+};
+
+/** Reverse proxy › Tanım kolonu: tanımlı / tanımsız / ölçülemedi / kapsam dışı / —. */
 function RpHucre({ a, k }: { a: NgSpaApp; k?: NgSpaRpKapsam | null }) {
   const e = RP_ETIKET[a.rp] || RP_ETIKET.olculemedi;
   if (a.rp === 'uygulanamaz')
     return (
-      <span
-        style={{ color: e.renk }}
-        title={
+      <Hucre
+        ipucu={
           a.spa !== 'evet'
             ? 'RP kolonları yalnız SPA uygulamalar için hesaplanır.'
             : `Ağ "${AG_ETIKET[a.ag]?.t || a.ag}": RP yalnız internet ve karışık uygulamalarda aranır.`
         }
       >
-        {e.t}
-      </span>
+        <span style={{ color: e.renk }}>{e.t}</span>
+      </Hucre>
     );
   const ortamDisi = !!a.rpSorun?.includes('ORTAM_DISI');
-  if (a.rp === 'tanimli')
+  if (a.rp === 'tanimli') {
+    const sorunlar = (a.rpSorun || []).filter((s) => s !== 'ORTAM_DISI');
+    // SIRA: sorun kodları (kırmızı, her biri AYRI rozet) → ortam dışı (bilgi) → eşleşme yolu.
+    // Satırda yeşil "tanımlı" görünürken sorun kodu "…" arkasında kalmaz (doğrulama bulgusu).
+    const rozetler = [
+      ...sorunlar.map((s) => (
+        <Rozet key={s} ton="kotu" testId="rp-sorun">
+          {s}
+        </Rozet>
+      )),
+      ortamDisi && (
+        <Rozet ton="bilgi" testId="rp-ortam-disi">
+          ortam dışı: {(a.rpOrtamDisi || []).join(', ')}
+        </Rozet>
+      ),
+      a.rpEsles && <Rozet ton="uyari">{ESLES_KISA[a.rpEsles] || a.rpEsles}</Rozet>,
+    ];
     return (
-      <span
-        title={[
+      <Hucre
+        ipucu={[
           `Internet RP'de tanımlı · ${a.rpHost || '?'} sunucu (bulunan/beklenen, ${String(a.env || '').toUpperCase()} RP'leri)`,
           a.rpEsles ? `Eşleşme: ${ESLES_ADI[a.rpEsles] || a.rpEsles}` : 'Eşleşme: kesin',
           a.rpSorun?.length ? `Sorun: ${a.rpSorun.join(', ')}` : '',
@@ -665,35 +857,22 @@ function RpHucre({ a, k }: { a: NgSpaApp; k?: NgSpaRpKapsam | null }) {
         ]
           .filter(Boolean)
           .join('\n')}
+        rozetler={rozetler}
       >
-        <span style={{ color: e.renk, fontWeight: 600 }}>{e.t}</span>
+        <Rozet ton="iyi">{e.t}</Rozet>
         {(a.rpYol || []).map((y) => (
-          <span
-            key={y}
-            className="ml-1 px-1 rounded text-[10px] border"
-            style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}
-            title={YOL_ADI[y]?.ipucu}
-          >
+          <span key={y} className="ml-1" style={{ color: SOLUK }} title={YOL_ADI[y]?.ipucu}>
             {YOL_ADI[y]?.t || y}
           </span>
         ))}
         {a.rpHost && (
-          <span className="ml-1 text-[10px]" style={{ color: MUTED }}>
+          <span className="ml-1 tabular-nums" style={{ color: SOLUK }}>
             {a.rpHost}
           </span>
         )}
-        {a.rpEsles && (
-          <span className="ml-1 text-[10px]" style={{ color: WARN }}>
-            ({a.rpEsles})
-          </span>
-        )}
-        {(a.rpSorun || []).map((s) => (
-          <span key={s} className="ml-1 text-[10px]" style={{ color: DANGER }}>
-            {s === 'ORTAM_DISI' ? `ortam dışı: ${(a.rpOrtamDisi || []).join(', ')}` : s}
-          </span>
-        ))}
-      </span>
+      </Hucre>
     );
+  }
   // YALNIZ BASKA ORTAMIN RP'SINDE TANIMLI (kullanici karari, 2026-10-02): hucre KENDI
   // ortaminin kararini gosterir (tanimsiz / olculemedi / kapsam disi); oteki ortamdaki tanim
   // yalniz uyaridir ve "tanimsiz" suzgecinde gorunur.
@@ -702,9 +881,12 @@ function RpHucre({ a, k }: { a: NgSpaApp; k?: NgSpaRpKapsam | null }) {
     a.rp === 'tanimsiz'
       ? `Ortamın (${ENV}) tüm internet RP sunucuları tarandı, tablolar okundu; ${ENV} RP'lerinde bu uygulamaya bağlanan tanım yok.`
       : rpNedenMetni(a, k);
+  const kisa = a.rp === 'tanimsiz' ? '' : RP_NEDEN_KISA[String(a.rpNeden || '').split(':')[0]] || '';
+  // Ortam dışı uyarısı neden metninden ÖNCE (Hucre sırası): "ölçülemedi / sunucu taranmadı"
+  // kısalınca "PROD RP'sinde tanımlı" kaybolmaz (2026-10-02 kararı: hücrede görünür).
   return (
-    <span
-      title={[
+    <Hucre
+      ipucu={[
         ana,
         ortamDisi
           ? `Uyarı: yalnız ${ortamDisiMetni(a)} — ${ENV} için sayılmaz. Ayrıntı için satıra tıklayın.`
@@ -712,25 +894,32 @@ function RpHucre({ a, k }: { a: NgSpaApp; k?: NgSpaRpKapsam | null }) {
       ]
         .filter(Boolean)
         .join('\n')}
+      rozetler={[
+        ortamDisi && (
+          <Rozet ton="bilgi" testId="rp-ortam-disi">
+            {ortamDisiMetni(a)}
+          </Rozet>
+        ),
+      ]}
+      kisa={kisa}
     >
-      <span style={{ color: e.renk, fontWeight: a.rp === 'tanimsiz' ? 600 : 400 }}>{e.t}</span>
-      {ortamDisi && (
-        <span
-          className="ml-1 text-[10px]"
-          style={{ color: WARN }}
-          data-testid="rp-ortam-disi"
-        >
-          ({ortamDisiMetni(a)})
-        </span>
+      {a.rp === 'tanimsiz' ? (
+        <Rozet ton="kotu">{e.t}</Rozet>
+      ) : a.rp === 'olculemedi' ? (
+        <Rozet ton="uyari" olcum>
+          {e.t}
+        </Rozet>
+      ) : (
+        <span style={{ color: e.renk }}>{e.t}</span>
       )}
-    </span>
+    </Hucre>
   );
 }
 
 /**
- * RP isteği kolonu (access log). Ölçülemeyen hücreye 0 YAZILMAZ. 'kısmi'nin ipucu genel bir
- * metin DEĞİL, sunucunun yazdığı nedenlerdir (rpIstekNeden) — "pencere kısa" demek, asıl neden
- * "Ankara taranmadı" iken ipucunu kendisiyle çelişkiye düşürürdü (doğrulama bulgusu).
+ * Reverse proxy › İstek kolonu (access log). Ölçülemeyen hücreye 0 YAZILMAZ. 'kısmi'nin ipucu
+ * genel bir metin DEĞİL, sunucunun yazdığı nedenlerdir (rpIstekNeden) — "pencere kısa" demek,
+ * asıl neden "Ankara taranmadı" iken ipucunu kendisiyle çelişkiye düşürürdü (doğrulama bulgusu).
  */
 function RpIstekHucre({ a, k }: { a: NgSpaApp; k?: NgSpaRpKapsam | null }) {
   const e = RPI_ETIKET[a.rpIstek] || RPI_ETIKET.olculemedi;
@@ -753,43 +942,54 @@ function RpIstekHucre({ a, k }: { a: NgSpaApp; k?: NgSpaRpKapsam | null }) {
   ]
     .filter(Boolean)
     .join('\n');
-  // Başka ortamın isteği: kendi kararının YANINDA ayrı rozet (uygulanamaz satırda yalnız ipucu).
+  // Başka ortamın isteği: kendi kararının ALTINDA ayrı rozet (uygulanamaz satırda yalnız ipucu).
   const disiRozet =
     a.rpIstek !== 'uygulanamaz' && a.rpReq7Disi != null && a.rpReq7Disi > 0 ? (
-      <span className="text-[10px]" style={{ color: '#d97706' }} data-testid="rp-istek-disi">
-        {' '}
-        (ortam dışı {disiOrt} RP: {nf(a.rpReq7Disi)})
-      </span>
+      <Rozet ton="bilgi" testId="rp-istek-disi">
+        ortam dışı {disiOrt}: {nf(a.rpReq7Disi)}
+      </Rozet>
     ) : null;
   if (a.rpIstek === 'var')
     return (
-      <span style={{ color: e.renk }} title={ipucu}>
-        {nf(a.rpReq7 ?? 0)}
+      <Hucre ipucu={ipucu} rozetler={[disiRozet]}>
+        <span style={{ color: e.renk }}>{nf(a.rpReq7 ?? 0)}</span>
         <span className="text-[10px]" style={{ color: MUTED }}>
           {' '}
           /7g
         </span>
-        {disiRozet}
-      </span>
+      </Hucre>
     );
-  if (a.rpIstek === 'kismi')
+  if (a.rpIstek === 'kismi') {
+    const neden = a.rpIstekNeden?.includes('host-taranmadi')
+      ? 'sunucu taranmadı'
+      : a.rpIstekNeden?.includes('eslesmeyen-host')
+        ? 'atanamayan istek'
+        : a.rpPencereSa != null
+          ? `pencere ${pencere(a.rpPencereSa)}`
+          : '';
+    // Başka ortamın isteği (rozet) nedenden ÖNCE: "sunucu taranmadı" kısalınca kaybolmaz.
     return (
-      <span style={{ color: e.renk }} title={ipucu}>
-        0 · {e.t}
-        {a.rpIstekNeden?.includes('host-taranmadi')
-          ? ' (sunucu taranmadı)'
-          : a.rpIstekNeden?.includes('eslesmeyen-host')
-            ? ' (atanamayan istek)'
-            : a.rpPencereSa != null && ` (${pencere(a.rpPencereSa)})`}
-        {disiRozet}
-      </span>
+      <Hucre ipucu={ipucu} rozetler={[disiRozet]} kisa={neden}>
+        0 <Rozet ton="uyari">{e.t}</Rozet>
+      </Hucre>
+    );
+  }
+  if (a.rpIstek === 'uygulanamaz')
+    return (
+      <Hucre ipucu={ipucu}>
+        <span style={{ color: SOLUK }}>{e.t}</span>
+      </Hucre>
     );
   return (
-    <span style={{ color: e.renk }} title={ipucu}>
-      {e.t}
-      {a.rpIstek === 'olculemedi' && a.rpOlcum && ` (${a.rpOlcum})`}
-      {disiRozet}
-    </span>
+    <Hucre ipucu={ipucu} rozetler={[disiRozet]}>
+      <Rozet
+        ton={a.rpIstek === 'yok' || a.rpIstek === 'olculemedi' ? 'uyari' : 'notr'}
+        olcum={a.rpIstek === 'olculemedi' || a.rpIstek === 'kaynak-yok'}
+      >
+        {e.t}
+        {a.rpIstek === 'olculemedi' && a.rpOlcum && ` (${a.rpOlcum})`}
+      </Rozet>
+    </Hucre>
   );
 }
 
@@ -914,7 +1114,16 @@ function RpAyrinti({
         {Object.entries(a.agSay || {})
           .map(([x, v]) => `${AG_SAY_ADI[x] || x} ${v}`)
           .join(' · ') || '—'}
-        . Envanter: {AG_ENVANTER_METNI[a.agEnvanter] || a.agEnvanter}.
+        . Envanter: {AG_ENVANTER_METNI[a.agEnvanter] || a.agEnvanter}
+        {a.agEnvanter === 'celisik' && a.agCelisikRoute ? ` (${nf(a.agCelisikRoute)} route)` : ''}.
+        {/* ÇELİŞKİ PANELDE DE YAZAR (doğrulama bulgusu, 2026-10-03): hücrede rozet, ama ipucu
+            fareyle okunur; klavye / dokunmatik kullanıcı bu bilgiye panelden ulaşır. */}
+        {a.agCelisme && (
+          <span style={{ color: DANGER }} data-testid="ayrinti-ag-celisme">
+            {' '}
+            Çelişki: intranet uygulama internet RP'de tanımlı (kural ile tanım çelişiyor).
+          </span>
+        )}
       </div>
       <div style={{ color: 'var(--text-secondary)' }}>
         <b>Reverse proxy</b>: {RP_ETIKET[a.rp]?.t || a.rp}
@@ -1084,33 +1293,428 @@ function EnvanterHucre({ a }: { a: NgSpaApp }) {
     "Bu uygulamanın route'u Openshift route envanterinde (dbo.BMW_Openshift_Route_Inventory) kayıtlı mı";
   if (a.inventory === 'olculemedi')
     return (
-      <span
-        style={{ color: 'var(--status-warning)' }}
-        title="Route envanteri okunamadı — “kayıtlı değil” DEMEK DEĞİL."
-      >
-        ölçülemedi
-      </span>
+      <Hucre ipucu="Route envanteri okunamadı — “kayıtlı değil” DEMEK DEĞİL.">
+        <Rozet ton="uyari" olcum>
+          ölçülemedi
+        </Rozet>
+      </Hucre>
     );
   if (a.inventory === 'kayitli')
     return (
-      <span style={{ color: 'var(--text-secondary)' }} title={title}>
-        kayıtlı
-      </span>
+      <Hucre ipucu={title}>
+        <span style={{ color: 'var(--text-secondary)' }}>kayıtlı</span>
+      </Hucre>
     );
   if (a.inventory === 'kismen')
     return (
-      <span style={{ color: 'var(--status-warning)' }} title={title}>
-        kısmen ({a.invRoutes}/{a.routeCount})
-      </span>
+      <Hucre ipucu={title}>
+        <Rozet ton="uyari">
+          kısmen ({a.invRoutes}/{a.routeCount})
+        </Rozet>
+      </Hucre>
     );
   return (
-    <span
-      style={{ color: a.spa === 'evet' ? 'var(--status-warning)' : 'var(--text-muted)' }}
-      title={title}
-    >
-      kayıtlı değil
+    <Hucre ipucu={title}>
+      {a.spa === 'evet' ? (
+        <Rozet ton="uyari">kayıtlı değil</Rozet>
+      ) : (
+        <span style={{ color: SOLUK }}>kayıtlı değil</span>
+      )}
+    </Hucre>
+  );
+}
+
+/**
+ * Uygulama adını İKİYE böler: baş kısım kısalır, AYIRT EDEN SON kısım ("-app-v" /
+ * "-app-emb-v"; kalıp dışı adda son "-parça") her zaman görünür. Sondan kesmek aynı
+ * namespace'teki "<ad>-app-v" ile "<ad>-app-emb-v" kardeşlerini aynı gösteriyordu (doğrulama
+ * bulgusu, 2026-10-03). Kısa adda iki parça yan yana: görünüm ve metin aynı.
+ */
+function adParcala(ad: string): [string, string] {
+  const m = /-app(?:-emb)?-v$/.exec(ad);
+  if (m && m.index > 0) return [ad.slice(0, m.index), m[0]];
+  const i = ad.lastIndexOf('-');
+  return i > 0 && ad.length - i <= 12 ? [ad.slice(0, i), ad.slice(i)] : [ad, ''];
+}
+
+/**
+ * Uygulama + namespace TEK hücre (yapışkan ilk kolon). Ad bir düğme: satır klavyeyle de açılır
+ * (tıklama satırın onClick'ine kabarır; düğmenin kendi işleyicisi YOK, çift tetiklenmez).
+ */
+function UygulamaHucre({ a, acik }: { a: NgSpaApp; acik: boolean }) {
+  const [bas, son] = adParcala(a.application);
+  return (
+    <span className="flex items-start gap-1">
+      {acik ? (
+        <ChevronDownIcon className="w-3 h-3 mt-0.5 shrink-0" aria-hidden="true" />
+      ) : (
+        <ChevronRightIcon className="w-3 h-3 mt-0.5 shrink-0" aria-hidden="true" />
+      )}
+      <span className="block min-w-0">
+        {/* Erişilebilir ad = iki parçanın birleşimi = tam ad (aralarında boşluk yok). */}
+        <button
+          type="button"
+          aria-expanded={acik}
+          title={a.application}
+          className="flex max-w-[14rem] text-left font-semibold"
+          style={{ color: 'var(--text-primary)' }}
+        >
+          <span className="truncate min-w-0" title={a.application}>
+            {bas}
+          </span>
+          {son && <span className="shrink-0 ng-ad-son">{son}</span>}
+        </button>
+        {/* Namespace satırı ANLAM taşır: SOLUK (--text-secondary), MUTED değil (kontrast). */}
+        <span
+          className="flex items-center gap-1 max-w-[14rem] text-[11px] leading-4"
+          style={{ color: SOLUK }}
+        >
+          <span className="truncate" title={a.namespace}>
+            {a.namespace}
+          </span>
+          {a.env && (
+            <>
+              {' '}
+              <span className="shrink-0 text-[10px] uppercase" data-testid="ortam">
+                {a.env}
+              </span>
+            </>
+          )}
+        </span>
+      </span>
     </span>
   );
+}
+
+/**
+ * İlk öğe + "+N" çipi. Tamamı hücrenin ipucunda ve ayrıntı panelinde (UygulamaAyrinti).
+ * `ilk` verilirse ilk öğeyi o çizer (adres: iki parça); verilmezse `genislik`te sondan kısalır.
+ */
+function CokluDeger({
+  liste,
+  genislik,
+  ilk,
+  sinif,
+}: {
+  liste: string[];
+  genislik: string;
+  ilk?: (s: string) => ReactNode;
+  sinif?: string;
+}) {
+  if (!liste.length) return <span style={{ color: SOLUK }}>—</span>;
+  return (
+    <span className={`flex items-center gap-1${sinif ? ` ${sinif}` : ''}`}>
+      {ilk ? (
+        ilk(liste[0])
+      ) : (
+        <span className="truncate" style={{ maxWidth: genislik }}>
+          {liste[0]}
+        </span>
+      )}
+      {liste.length > 1 && <span className="ng-cip">+{liste.length - 1}</span>}
+    </span>
+  );
+}
+
+/**
+ * Adres İKİ PARÇA (doğrulama bulgusu, 2026-10-03): varsayılan route adresi
+ * "<uygulama>-<namespace>.apps(-t).fw.garanti.com.tr" sondan kesilince görünen kısım yalnız
+ * 1. kolonun tekrarıydı (54 adresin 52'si); ayırt eden alan adı (apps / apps-t / kurumsal alan
+ * adı) hep kesilen sondaydı. İlk etiket uygulama adıyla başlıyorsa (tekrar) ÖNCE o kısalır ve
+ * soluk yazılır; alan adı soneki (`.ng-adres-son`) en son kısalır. Kurumsal adreste
+ * ("kartlimit.garantibbva.com.tr") baş kısım anlamlıdır: bölünmez, sondan kısalır.
+ */
+function AdresMetni({ h, a }: { h: string; a: NgSpaApp }) {
+  const i = h.indexOf('.');
+  const tekrar = i > 0 && h.toLowerCase().startsWith(a.application.toLowerCase());
+  if (!tekrar) return <span className="ng-adres-tek">{h}</span>;
+  return (
+    <span className="ng-adres">
+      <span className="ng-adres-on" style={{ color: SOLUK }}>
+        {h.slice(0, i)}
+      </span>
+      <span className="ng-adres-son">{h.slice(i)}</span>
+    </span>
+  );
+}
+
+/**
+ * Adresler: adres yoksa route adları (sunucu adreste geçen route adını göndermez). ESNEYEN
+ * KOLON: tablodaki artan genişlik buraya verilir (<col> genişliksiz; index.css `.ng-adresler`
+ * içeriğin genişliğe katkısını 11rem'de tutar) — geniş ekranda adres daha az kısalır, dar
+ * ekranda tabloyu genişletmez.
+ */
+function AdresHucre({ a }: { a: NgSpaApp }) {
+  const liste = a.hosts.length ? a.hosts : a.routes;
+  return (
+    <Hucre ipucu={`${a.hosts.length ? 'Adresler' : "Route'lar"} (${liste.length}):\n${liste.join('\n')}`}>
+      <CokluDeger
+        liste={liste}
+        genislik="11rem"
+        sinif="ng-adresler"
+        ilk={(h) => <AdresMetni h={h} a={a} />}
+      />
+    </Hucre>
+  );
+}
+
+/**
+ * Cluster'lar. ESKI VERI SUNUCUDAN: son kosusu basarisiz cluster'in satiri onceki bir kosudan
+ * (staleClusters, kapsamdan turetilir) — ipucunda cluster basina, 2. satirda rozetle.
+ */
+function ClusterHucre({ a }: { a: NgSpaApp }) {
+  const eski = a.clusters.filter((c) => a.staleClusters.includes(c)).length;
+  const ipucu = [
+    `Cluster'lar (${a.clusters.length}):`,
+    ...a.clusters.map((c) => (a.staleClusters.includes(c) ? `${c} · önceki koşudan` : c)),
+    eski ? '"Önceki koşudan": cluster son koşusunda taranamadı; veri önceki bir koşudan.' : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
+  return (
+    <Hucre
+      ipucu={ipucu}
+      rozetler={[
+        eski > 0 && (
+          <Rozet ton="uyari">
+            {eski === a.clusters.length
+              ? 'önceki koşudan'
+              : `${eski}/${a.clusters.length} önceki koşudan`}
+          </Rozet>
+        ),
+      ]}
+    >
+      <CokluDeger liste={a.clusters} genislik="9rem" />
+    </Hucre>
+  );
+}
+
+/** Ayrıntı panelinin başı: satırda kısaltılan adreslerin ve cluster'ların TAMAMI. */
+function UygulamaAyrinti({ a }: { a: NgSpaApp }) {
+  const liste = a.hosts.length ? a.hosts : a.routes;
+  return (
+    <div
+      className="grid gap-x-3 gap-y-0.5 text-[11px] p-2 mb-1.5 rounded-lg"
+      style={{
+        background: 'var(--bg-surface)',
+        color: 'var(--text-secondary)',
+        gridTemplateColumns: 'max-content minmax(0, 1fr)',
+      }}
+      data-testid="ayrinti-uygulama"
+    >
+      <b>
+        {a.hosts.length ? 'Adresler' : "Route'lar"} ({nf(liste.length)})
+      </b>
+      <span className="font-mono break-all">{liste.join(' · ') || '—'}</span>
+      <b>Cluster'lar ({nf(a.clusters.length)})</b>
+      <span className="font-mono">
+        {a.clusters.map((c, i) => (
+          <Fragment key={c}>
+            {i > 0 && ' · '}
+            {c}
+            {a.staleClusters.includes(c) && (
+              <>
+                {' '}
+                <Rozet ton="uyari">önceki koşudan</Rozet>
+              </>
+            )}
+          </Fragment>
+        ))}
+      </span>
+      <b>SPA kanıtı</b>
+      <span>
+        {a.signals.join(', ') || '—'}
+        {a.weakEvidence ? ' (zayıf kanıt: route servis yerine ad eşleşmesiyle bağlandı)' : ''}
+      </span>
+      {a.notes.length > 0 && (
+        <>
+          <b>Not</b>
+          <span>{a.notes.join(' | ')}</span>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ── KOLON DÜZENİ (2026-10-03) ─────────────────────────────────────────────────────────
+// Başlık VE satır AYNI listeden (görünür kolonlar) çizilir: sıra, colSpan ve hücre sayısı
+// tek kaynaktan; gizlenen kolon ikisinden birlikte düşer. Eski düzen (11 kolon) ve CSV
+// kolonları: CSV DEĞİŞMEDİ (aşağıda csv()).
+type KolonId =
+  | 'uygulama'
+  | 'spa'
+  | 'istek'
+  | 'ag'
+  | 'rp'
+  | 'rpIstek'
+  | 'envanter'
+  | 'adresler'
+  | 'clusterlar';
+interface KolonTanim {
+  id: KolonId;
+  baslik: string;
+  /** Başlığın altındaki küçük satır (birleşik hücrenin ikinci bilgisi). */
+  alt?: string;
+  ipucu?: string;
+  /** Üst başlık grubu (iki satırlı thead, colSpan). */
+  grup?: 'rp';
+  /** Sayısal: sağa yaslı, tabular rakam. */
+  sag?: boolean;
+  /** "Kolonlar" menüsünden gizlenebilir (varsayılan GÖRÜNÜR). */
+  gizlenebilir?: boolean;
+}
+const RP_GRUP_BASLIGI = 'Reverse proxy';
+const KOLONLAR: readonly KolonTanim[] = [
+  {
+    id: 'uygulama',
+    baslik: 'Uygulama',
+    alt: 'namespace · ortam',
+    ipucu: "Satıra tıklayınca adreslerin, cluster'ların ve RP tanımlarının tamamı açılır.",
+  },
+  {
+    id: 'spa',
+    baslik: 'SPA',
+    alt: 'ad kalıbı',
+    ipucu:
+      "Kabinde nginx çalışıyor mu · altında: uygulama adı -app-v / -app-emb-v kuralına uyuyor mu (eski yöntem SPA'yı yalnız adından tanıyordu)",
+  },
+  {
+    id: 'istek',
+    baslik: 'Uygulama isteği',
+    alt: 'Dynatrace',
+    sag: true,
+    ipucu: 'Dynatrace: uygulamanın pod/servis çağrıları (RP access log değil)',
+  },
+  {
+    id: 'ag',
+    baslik: 'Ağ',
+    grup: 'rp',
+    ipucu:
+      'Route TLS tipi: passthrough = internet, reencrypt = intranet. Reverse proxy yalnız internet ve karışık uygulamalarda aranır.',
+  },
+  {
+    id: 'rp',
+    baslik: 'Tanım',
+    grup: 'rp',
+    ipucu:
+      'Internet SPA kendi ortamının RP sunucularında tanımlı mı (yalnız başka ortamın RP\'sinde tanımlıysa "tanımsız" + ortam dışı uyarısı)',
+  },
+  {
+    id: 'rpIstek',
+    baslik: 'İstek',
+    grup: 'rp',
+    sag: true,
+    ipucu:
+      'RP access log\'una göre kendi ortamının RP tanımı istek alıyor mu (son 7 gün; yeni PROD: uygulama vhost\'unun Host/SNI sayımı; başka ortamın RP\'sindeki istek yalnız "ortam dışı" bilgisi, karara ve sayıya girmez)',
+  },
+  {
+    id: 'envanter',
+    baslik: 'Route envanteri',
+    gizlenebilir: true,
+    ipucu: "Route'u Openshift route envanterinde kayıtlı mı",
+  },
+  {
+    id: 'adresler',
+    baslik: 'Adresler',
+    gizlenebilir: true,
+    ipucu:
+      'İlk adres ve "+N" (alan adı soneki hep görünür, uygulama-namespace öneki önce kısalır); tamamı ipucunda ve ayrıntı panelinde',
+  },
+  {
+    id: 'clusterlar',
+    baslik: "Cluster'lar",
+    gizlenebilir: true,
+    ipucu: 'İlk cluster ve "+N"; tamamı ipucunda ve ayrıntı panelinde',
+  },
+];
+const KOLON = Object.fromEntries(KOLONLAR.map((k) => [k.id, k])) as Record<KolonId, KolonTanim>;
+const GIZLENEBILIR: KolonId[] = KOLONLAR.filter((k) => k.gizlenebilir).map((k) => k.id);
+/** İlk kolon yapışkan (yatay kaydırmada), sayısal kolonlar sağa yaslı. */
+const kolonSinifi = (id: KolonId) =>
+  [id === 'uygulama' ? 'ng-yapiskan' : '', KOLON[id].sag ? 'ng-sag' : '']
+    .filter(Boolean)
+    .join(' ') || undefined;
+/**
+ * <colgroup> PARÇALARI: ardışık aynı gruptaki kolonlar bir <colgroup>. "Reverse proxy"
+ * başlığı scope="colgroup": HTML tablo modelinde bu başlık AYNI sütun grubundaki hücrelere
+ * bağlanır. Tek <colgroup> bütün kolonları kapsadığında başlık Route envanteri / Adresler /
+ * Cluster'lar hücrelerine de bağlanıyordu (doğrulama bulgusu, 2026-10-03); RP kolonları
+ * artık KENDİ grubunda.
+ */
+function kolonParcalari(gorunur: readonly KolonId[]) {
+  const l: { grup?: 'rp'; idler: KolonId[] }[] = [];
+  for (const id of gorunur) {
+    const g = KOLON[id].grup;
+    const son = l[l.length - 1];
+    if (son && son.grup === g) son.idler.push(id);
+    else l.push({ grup: g, idler: [id] });
+  }
+  return l;
+}
+/** Artan genişliği alan TEK kolon: Adresler (gizliyse son kolon). Ötekiler içerik kadar. */
+const esneyenKolon = (gorunur: readonly KolonId[]): KolonId | undefined =>
+  gorunur.includes('adresler') ? 'adresler' : gorunur[gorunur.length - 1];
+
+function hucreIcerigi(
+  id: KolonId,
+  a: NgSpaApp,
+  acik: boolean,
+  k?: NgSpaRpKapsam | null,
+): ReactNode {
+  switch (id) {
+    case 'uygulama':
+      return <UygulamaHucre a={a} acik={acik} />;
+    case 'spa':
+      return <SpaHucre a={a} />;
+    case 'istek':
+      return <IstekHucre a={a} />;
+    case 'ag':
+      return <AgHucre a={a} />;
+    case 'rp':
+      return <RpHucre a={a} k={k} />;
+    case 'rpIstek':
+      return <RpIstekHucre a={a} k={k} />;
+    case 'envanter':
+      return <EnvanterHucre a={a} />;
+    case 'adresler':
+      return <AdresHucre a={a} />;
+    case 'clusterlar':
+      return <ClusterHucre a={a} />;
+  }
+}
+
+// ── GÖRÜNÜM TERCİHİ: yoğunluk + gizli kolonlar ─────────────────────────────────────────
+// Yalnız BU tarayıcının görünüm tercihi (paylaşılan durum değil). Okunamazsa ya da bozuksa
+// VARSAYILAN: Sıkı, tüm kolonlar görünür. Erişim try/catch içinde: gizli pencere ya da
+// engelli site verisinde localStorage hata atabilir; ekran yine çizilir.
+type Yogunluk = 'siki' | 'rahat';
+interface Gorunum {
+  yogunluk: Yogunluk;
+  gizli: KolonId[];
+}
+const GORUNUM_ANAHTARI = 'nginx-hub:spa-kesfi:gorunum';
+const VARSAYILAN_GORUNUM: Gorunum = { yogunluk: 'siki', gizli: [] };
+function gorunumOku(): Gorunum {
+  try {
+    const ham = window.localStorage.getItem(GORUNUM_ANAHTARI);
+    if (!ham) return VARSAYILAN_GORUNUM;
+    const o = JSON.parse(ham) as { yogunluk?: unknown; gizli?: unknown } | null;
+    const gizli: unknown[] = Array.isArray(o?.gizli) ? o.gizli : [];
+    return {
+      yogunluk: o?.yogunluk === 'rahat' ? 'rahat' : 'siki',
+      // Yalnız GİZLENEBİLİR kolonlar: bozuk/eski kayıt zorunlu kolonu gizleyemez.
+      gizli: GIZLENEBILIR.filter((id) => gizli.includes(id)),
+    };
+  } catch {
+    return VARSAYILAN_GORUNUM;
+  }
+}
+function gorunumYaz(g: Gorunum) {
+  try {
+    window.localStorage.setItem(GORUNUM_ANAHTARI, JSON.stringify(g));
+  } catch {
+    // Yazılamazsa tercih yalnız bu sayfa açıkken geçerli kalır.
+  }
 }
 
 type SpaSecim = 'tumu' | NgSpaApp['spa'];
@@ -1128,7 +1732,6 @@ const sayac = <K extends string>(apps: NgSpaApp[], f: (a: NgSpaApp) => K) =>
   }, {});
 
 const anahtar = (a: NgSpaApp) => `${a.namespace}|${a.application}`;
-const KOLON_SAYISI = 11;
 
 interface SpaSatirProps {
   a: NgSpaApp;
@@ -1139,14 +1742,18 @@ interface SpaSatirProps {
   surum: number;
   tabloHesap?: string;
   onYenile: () => void;
+  /** Zebra: tablodaki sıranın tek/çift oluşu (yalnız süzgeç değişince değişir). */
+  cizgili: boolean;
+  /** Görünür kolonlar — SABIT referans (useMemo); yalnız kolon menüsünde değişir. */
+  gorunur: readonly KolonId[];
 }
 
 /**
  * TEK UYGULAMA SATIRI — React.memo (doğrulama bulgusu, 2026-10-01): seçili satır state'i üst
- * bileşende; satırlar memo'suzken her tıklama 10 bin satırın 11 hücresini (ipucu dizgeleri
+ * bileşende; satırlar memo'suzken her tıklama 10 bin satırın tüm hücrelerini (ipucu dizgeleri
  * dahil) yeniden hesaplıyordu (jsdom: tık başına 300-400 ms). Props'lar tıklamada yalnız
- * açılan/kapanan iki satır için değişir (acik); onSec/onYenile sabit, a ve k veri yüklenene
- * kadar aynı nesne.
+ * açılan/kapanan iki satır için değişir (acik); onSec/onYenile/gorunur sabit, a ve k veri
+ * yüklenene kadar aynı nesne. Yoğunluk tablo özniteliğinde (CSS): satırlar yeniden çizilmez.
  */
 const SpaSatir = memo(function SpaSatir({
   a,
@@ -1156,87 +1763,186 @@ const SpaSatir = memo(function SpaSatir({
   surum,
   tabloHesap,
   onYenile,
+  cizgili,
+  gorunur,
 }: SpaSatirProps) {
   return (
     <Fragment>
       <tr
-        className="border-t align-top cursor-pointer"
-        style={{
-          borderColor: 'var(--border-subtle)',
-          background: acik ? 'var(--bg-elevated)' : undefined,
-        }}
+        className={`ng-satir cursor-pointer${cizgili ? ' ng-cizgili' : ''}${acik ? ' ng-secili' : ''}`}
         onClick={() => onSec(anahtar(a))}
       >
-        <td className="px-2 py-1 font-mono font-medium">
-          {acik ? (
-            <ChevronDownIcon className="w-3 h-3 inline mr-1" />
-          ) : (
-            <ChevronRightIcon className="w-3 h-3 inline mr-1" />
-          )}
-          {a.application}
-        </td>
-        <td className="px-2 py-1 font-mono" style={{ color: 'var(--text-secondary)' }}>
-          {a.namespace}
-          {a.env && (
-            <span className="ml-1 text-[10px] uppercase" style={{ color: 'var(--text-muted)' }}>
-              {a.env}
-            </span>
-          )}
-        </td>
-        <td className="px-2 py-1 whitespace-nowrap">
-          <SpaHucre a={a} />
-        </td>
-        <td className="px-2 py-1 whitespace-nowrap">
-          <KalipHucre a={a} />
-        </td>
-        <td className="px-2 py-1 tabular-nums whitespace-nowrap">
-          <IstekHucre a={a} />
-        </td>
-        <td className="px-2 py-1 whitespace-nowrap">
-          <AgHucre a={a} />
-        </td>
-        <td className="px-2 py-1 whitespace-nowrap">
-          <RpHucre a={a} k={k} />
-        </td>
-        <td className="px-2 py-1 tabular-nums whitespace-nowrap">
-          <RpIstekHucre a={a} k={k} />
-        </td>
-        <td className="px-2 py-1 whitespace-nowrap">
-          <EnvanterHucre a={a} />
-        </td>
-        <td className="px-2 py-1 font-mono text-[11px] break-all">
-          {a.hosts.length
-            ? a.hosts.map((h) => <div key={h}>{h}</div>)
-            : a.routes.map((r) => <div key={r}>{r}</div>)}
-        </td>
-        <td className="px-2 py-1 text-[11px]" style={{ color: 'var(--text-muted)' }}>
-          {/* ESKI VERI SUNUCUDAN: son kosusu basarisiz cluster'in satiri onceki bir
-              kosudan (staleClusters, kapsamdan turetilir). */}
-          {a.clusters.map((c) =>
-            a.staleClusters.includes(c) ? (
-              <div
-                key={c}
-                style={{ color: 'var(--status-warning)' }}
-                title="Bu cluster son koşusunda taranamadı; veri önceki bir koşudan."
-              >
-                {c} · önceki koşudan
-              </div>
-            ) : (
-              <div key={c}>{c}</div>
-            ),
-          )}
-        </td>
+        {gorunur.map((id) => (
+          <td key={id} data-kolon={id} className={kolonSinifi(id)}>
+            {hucreIcerigi(id, a, acik, k)}
+          </td>
+        ))}
       </tr>
       {acik && (
-        <tr>
-          <td colSpan={KOLON_SAYISI} className="px-2 pb-2">
-            <RpAyrinti a={a} k={k} surum={surum} tabloHesap={tabloHesap} onYenile={onYenile} />
+        <tr className="ng-ayrinti">
+          <td colSpan={gorunur.length}>
+            <div className="ng-ayrinti-ic">
+              <UygulamaAyrinti a={a} />
+              <RpAyrinti a={a} k={k} surum={surum} tabloHesap={tabloHesap} onYenile={onYenile} />
+            </div>
           </td>
         </tr>
       )}
     </Fragment>
   );
 });
+
+/**
+ * İKİ SATIRLI BAŞLIK: gruplu kolonlar (Reverse proxy › Ağ / Tanım / İstek) üst satırda tek
+ * başlık (colSpan), alt satırda kendi başlıkları; ötekiler iki satırı kaplar (rowSpan).
+ */
+function TabloBasligi({ gorunur }: { gorunur: readonly KolonId[] }) {
+  const grupta = gorunur.filter((id) => KOLON[id].grup === 'rp');
+  const th = (kol: KolonTanim, ikiSatir: boolean) => (
+    <th
+      key={kol.id}
+      scope="col"
+      rowSpan={ikiSatir ? 2 : undefined}
+      data-kolon={kol.id}
+      title={kol.ipucu}
+      className={kolonSinifi(kol.id)}
+    >
+      {kol.baslik}
+      {kol.alt && <span className="ng-baslik-alt">{kol.alt}</span>}
+    </th>
+  );
+  return (
+    <thead>
+      <tr>
+        {gorunur.map((id) => {
+          const kol = KOLON[id];
+          if (!kol.grup) return th(kol, true);
+          return id === grupta[0] ? (
+            <th
+              key="grup-rp"
+              scope="colgroup"
+              colSpan={grupta.length}
+              className="ng-grup"
+              title="Internet SPA kendi ortamının reverse proxy sunucularında tanımlı mı ve tanım istek alıyor mu. Satıra tıklayınca tanımlar açılır."
+            >
+              {RP_GRUP_BASLIGI}
+            </th>
+          ) : null;
+        })}
+      </tr>
+      <tr>{grupta.map((id) => th(KOLON[id], false))}</tr>
+    </thead>
+  );
+}
+
+/** Satır yoğunluğu: Sıkı (varsayılan) / Rahat. */
+function YogunlukSecimi({ deger, onDegis }: { deger: Yogunluk; onDegis: (y: Yogunluk) => void }) {
+  return (
+    <div
+      role="group"
+      aria-label="Satır yoğunluğu"
+      className="flex rounded-lg border overflow-hidden text-xs"
+      style={{ borderColor: 'var(--border)' }}
+    >
+      {(['siki', 'rahat'] as const).map((y) => (
+        <button
+          key={y}
+          type="button"
+          aria-pressed={deger === y}
+          onClick={() => onDegis(y)}
+          className="px-2.5 py-1.5"
+          title={y === 'siki' ? 'Sıkı: ekrana daha çok satır sığar' : 'Rahat: hücreler daha geniş'}
+          style={
+            deger === y
+              ? { background: 'var(--bg-elevated)', color: 'var(--text-primary)', fontWeight: 600 }
+              : { color: SOLUK }
+          }
+        >
+          {y === 'siki' ? 'Sıkı' : 'Rahat'}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * "Kolonlar" menüsü: Route envanteri / Adresler / Cluster'lar gizlenebilir. Klavye: düğme
+ * Enter/Space ile açılır, Tab onay kutularına geçer, Esc kapatıp odağı düğmeye döndürür;
+ * dışarı tıklamak kapatır.
+ */
+function KolonMenusu({
+  gizli,
+  onDegis,
+}: {
+  gizli: readonly KolonId[];
+  onDegis: (gizli: KolonId[]) => void;
+}) {
+  const [acik, setAcik] = useState(false);
+  const kapRef = useRef<HTMLDivElement>(null);
+  const dugmeRef = useRef<HTMLButtonElement>(null);
+  const panelId = useId();
+  useEffect(() => {
+    if (!acik) return;
+    const disari = (e: MouseEvent) => {
+      if (kapRef.current && !kapRef.current.contains(e.target as Node)) setAcik(false);
+    };
+    const tus = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      setAcik(false);
+      dugmeRef.current?.focus();
+    };
+    document.addEventListener('mousedown', disari);
+    document.addEventListener('keydown', tus);
+    return () => {
+      document.removeEventListener('mousedown', disari);
+      document.removeEventListener('keydown', tus);
+    };
+  }, [acik]);
+  return (
+    <div ref={kapRef} className="relative">
+      <button
+        ref={dugmeRef}
+        type="button"
+        aria-expanded={acik}
+        aria-controls={panelId}
+        onClick={() => setAcik((v) => !v)}
+        className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs border rounded-lg"
+        style={{ borderColor: 'var(--border)' }}
+        title="Route envanteri, Adresler ve Cluster'lar kolonlarını gizle / göster"
+      >
+        <ViewColumnsIcon className="w-3.5 h-3.5" aria-hidden="true" /> Kolonlar
+        {gizli.length ? ` (${gizli.length} gizli)` : ''}
+      </button>
+      {acik && (
+        <div
+          id={panelId}
+          role="group"
+          aria-label="Gösterilecek kolonlar"
+          className="absolute right-0 z-20 mt-1 w-56 rounded-lg border p-2 space-y-1 text-xs shadow-md"
+          style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)' }}
+        >
+          {GIZLENEBILIR.map((id) => (
+            <label key={id} className="flex items-center gap-2 px-1 py-0.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={!gizli.includes(id)}
+                onChange={(e) =>
+                  onDegis(
+                    GIZLENEBILIR.filter((x) => (x === id ? !e.target.checked : gizli.includes(x))),
+                  )
+                }
+              />
+              {KOLON[id].baslik}
+            </label>
+          ))}
+          <div className="pt-1 text-[10px]" style={{ color: SOLUK }}>
+            Uygulama, SPA, uygulama isteği ve reverse proxy kolonları her zaman görünür.
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function NginxSpaDiscovery() {
   const [data, setData] = useState<NgSpaDiscovery | null>(null);
@@ -1257,6 +1963,18 @@ export default function NginxSpaDiscovery() {
   // TABLO SURUMU: her basarili yuklemede artar; acik ayrinti paneli buna bagli olarak
   // YENIDEN cekilir ("Yenile" sonrasi satir yeni, panel eski hesabi gostermesin).
   const [surum, setSurum] = useState(0);
+  // GORUNUM (2026-10-03): yogunluk + gizli kolonlar; ilk deger tarayicidan (yoksa varsayilan),
+  // degisiklik olay isleyicisinde yazilir (effect yok).
+  const [gorunum, setGorunum] = useState<Gorunum>(gorunumOku);
+  const gorunumDegis = (g: Gorunum) => {
+    setGorunum(g);
+    gorunumYaz(g);
+  };
+  // SABIT referans: memo'lu satirlar yalniz kolon menusu degisince yeniden cizilir.
+  const gorunur = useMemo(
+    () => KOLONLAR.map((kol) => kol.id).filter((id) => !gorunum.gizli.includes(id)),
+    [gorunum.gizli],
+  );
 
   // HATA GORUNUR: uc nokta 500 ya da ag hatasi verdiginde ekran "bu suzgeclerle satir yok"
   // DEMEZ (dusmanca dogrulama bulgusu - hata "yok" gibi sunuluyordu).
@@ -1427,7 +2145,9 @@ export default function NginxSpaDiscovery() {
   ]
     .filter(Boolean)
     .join(', ');
-  const SELECT = 'px-2 py-1.5 text-xs border rounded-lg';
+  // max-w: kutu genisligi en uzun SECENEGE gore buyuyordu (RP istegi "uygulanamaz" secenegi
+  // kutuyu ~270 px yapip suzgec satirini ikiye boluyordu); acilan listede secenek tam okunur.
+  const SELECT = 'px-2 py-1.5 text-xs border rounded-lg max-w-[12rem]';
   const selStyle = { borderColor: 'var(--border)', background: 'var(--bg-surface)' };
   const sec = (n?: number) => (n != null ? ` (${nf(n)})` : '');
   const kirilim = (m: Record<string, number> | undefined, ad: Record<string, { t: string }>) =>
@@ -1517,17 +2237,27 @@ export default function NginxSpaDiscovery() {
         </div>
       )}
 
-      <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-        <b>SPA</b>: kabinde nginx çalışıyor mu · <b>Ad kalıbı</b>: uygulama adı -app-v / -app-emb-v
-        kuralına uyuyor mu (eski yöntem SPA'yı yalnız adından tanıyordu) · <b>Uygulama isteği</b>:
-        Dynatrace'e göre uygulama (pod) istek alıyor mu · <b>Ağ</b>: route TLS tipi (passthrough =
-        internet, reencrypt = intranet) · <b>Reverse proxy</b>: internet SPA kendi ortamının RP
-        sunucularında tanımlı mı (yalnız başka ortamın RP'sinde tanımlıysa "tanımsız" + ortam dışı
-        uyarısı) · <b>RP isteği</b>: RP access log'una göre kendi ortamının RP tanımı istek alıyor
-        mu (yeni PROD: uygulama vhost'unun Host/SNI sayımı; başka ortamın RP'sindeki istek yalnız
-        "ortam dışı" bilgisi, karara ve sayıya girmez) · <b>Route envanteri</b>: route'u
-        envanterde kayıtlı mı. Satıra tıklayınca RP tanımları açılır.
-      </div>
+      {/* KOLON AÇIKLAMASI katlanır (2026-10-03): tablonun üstündeki uzun gri paragraf her açılışta
+          okunmuyordu; her başlığın ipucu da aynı açıklamayı taşır. */}
+      <details className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+        <summary className="cursor-pointer select-none" style={{ color: 'var(--text-secondary)' }}>
+          Kolonlar ne anlatıyor? · rozetlerde kesik çerçeve = ölçülemedi (yok / tanımsız değil) ·
+          satıra tıklayınca adreslerin, cluster'ların ve RP tanımlarının tamamı açılır
+        </summary>
+        <div className="mt-1">
+          <b>SPA</b>: kabinde nginx çalışıyor mu; altında <b>ad kalıbı</b>: uygulama adı -app-v /
+          -app-emb-v kuralına uyuyor mu (eski yöntem SPA'yı yalnız adından tanıyordu) ·{' '}
+          <b>Uygulama isteği</b>: Dynatrace'e göre uygulama (pod) istek alıyor mu ·{' '}
+          <b>Reverse proxy › Ağ</b>: route TLS tipi (passthrough = internet, reencrypt = intranet)
+          · <b>Reverse proxy › Tanım</b>: internet SPA kendi ortamının RP sunucularında tanımlı mı
+          (yalnız başka ortamın RP'sinde tanımlıysa "tanımsız" + ortam dışı uyarısı) ·{' '}
+          <b>Reverse proxy › İstek</b>: RP access log'una göre kendi ortamının RP tanımı istek
+          alıyor mu (yeni PROD: uygulama vhost'unun Host/SNI sayımı; başka ortamın RP'sindeki
+          istek yalnız "ortam dışı" bilgisi, karara ve sayıya girmez) · <b>Route envanteri</b>:
+          route'u envanterde kayıtlı mı. <b>Adresler</b> ve <b>Cluster'lar</b> ilk öğeyi ve "+N"
+          gösterir; tamamı ipucunda ve ayrıntıda.
+        </div>
+      </details>
 
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative">
@@ -1669,6 +2399,14 @@ export default function NginxSpaDiscovery() {
           {nf(satirlar.length)} uygulama
         </span>
         <div className="ml-auto flex items-center gap-2">
+          <YogunlukSecimi
+            deger={gorunum.yogunluk}
+            onDegis={(y) => gorunumDegis({ ...gorunum, yogunluk: y })}
+          />
+          <KolonMenusu
+            gizli={gorunum.gizli}
+            onDegis={(gizli) => gorunumDegis({ ...gorunum, gizli })}
+          />
           <button
             onClick={csv}
             disabled={!satirlar.length}
@@ -1688,42 +2426,33 @@ export default function NginxSpaDiscovery() {
         </div>
       </div>
 
-      <div
-        className="overflow-auto rounded-xl border"
-        style={{ borderColor: 'var(--border-subtle)' }}
-      >
-        <table className="w-full text-[12px]">
-          <thead className="sticky top-0" style={{ background: 'var(--bg-elevated)' }}>
-            <tr style={{ color: 'var(--text-muted)' }}>
-              {[
-                'Uygulama',
-                'Namespace',
-                'SPA',
-                'Ad kalıbı',
-                'Uygulama isteği',
-                'Ağ',
-                'Reverse proxy',
-                'RP isteği',
-                'Route envanteri',
-                'Adresler',
-                "Cluster'lar",
-              ].map((h) => (
-                <th
-                  key={h}
-                  className="text-left px-2 py-1.5 font-semibold whitespace-nowrap"
-                  title={
-                    h === 'Uygulama isteği'
-                      ? 'Dynatrace: uygulamanın pod/servis çağrıları (RP access log değil)'
-                      : undefined
-                  }
-                >
-                  {h}
-                </th>
+      {/* KAYDIRMA KABI SINIRLI YUKSEKLIKTE (2026-10-03): eskiden yuksekligi sinirsizdi; kap
+          yatay kaydirma icin `overflow-auto` oldugundan yapiskan baslik ONA gore yapisiyor ve
+          sayfa kayarken HIC yapismiyordu (tarayicida olculdu). Kap dikeyde de kayinca baslik
+          ve ilk kolon (uygulama) yerinde kalir. Yukseklik siniri ve klavye odagi icin
+          scroll-padding index.css `.ng-spa-kap`ta (bekci: nginx-console.test.cjs GS28). */}
+      <div className="ng-spa-kap overflow-auto rounded-xl border" style={{ borderColor: 'var(--border-subtle)' }}>
+        {/* GENISLIK: tablo icerigi kadar (w-max), en az kap kadar (min-w-full). Esneyen kolon
+            (Adresler; gizliyse son kolon) disindakiler <col> ile icerige sikisir (1px =
+            "icerik kadar"); kalan bosluk YALNIZ esneyen kolona gider, kolonlar arasina
+            yayilip tabloyu seyreltmez. */}
+        <table className="ng-spa-tablo w-max min-w-full" data-yogunluk={gorunum.yogunluk}>
+          <caption className="sr-only">
+            Gerçek SPA keşfi: uygulama başına tek satır. Satırdaki düğme ayrıntıyı açar.
+          </caption>
+          {kolonParcalari(gorunur).map((p) => (
+            <colgroup key={p.idler[0]} data-grup={p.grup}>
+              {p.idler.map((id) => (
+                <col
+                  key={id}
+                  style={id === esneyenKolon(gorunur) ? undefined : { width: '1px' }}
+                />
               ))}
-            </tr>
-          </thead>
+            </colgroup>
+          ))}
+          <TabloBasligi gorunur={gorunur} />
           <tbody>
-            {satirlar.map((a) => (
+            {satirlar.map((a, i) => (
               <SpaSatir
                 key={anahtar(a)}
                 a={a}
@@ -1733,14 +2462,16 @@ export default function NginxSpaDiscovery() {
                 surum={surum}
                 tabloHesap={data?.hesaplandi}
                 onYenile={yenile}
+                cizgili={i % 2 === 1}
+                gorunur={gorunur}
               />
             ))}
             {!satirlar.length && !yukleniyor && (
               <tr>
                 <td
-                  colSpan={KOLON_SAYISI}
-                  className="px-2 py-3"
-                  style={{ color: 'var(--text-muted)' }}
+                  colSpan={gorunur.length}
+                  style={{ color: SOLUK, whiteSpace: 'normal', padding: '12px 8px' }}
+                  data-testid="bos-sonuc"
                 >
                   {hata ? (
                     // HATA "SATIR YOK" DEGIL: ust bantta sebep yazar; burada da bos sonuc

@@ -559,6 +559,198 @@ thead th {
   background-color: rgb(var(--accent-rgb) / 0.06);
 }
 
+/* ── NGINX HUB > GERCEK SPA KESFI TABLOSU (2026-10-03) ─────────────────────────────
+   Kullanici: "kolonlar cok genis gorunuyor, okumakta cok zorlaniyorum". Tarayicida
+   OLCULDU (54 uygulama, 1540 px alan): tablo 1679 px (yatay kaydirma), ortalama satir
+   204 px, en yuksek 1093 px. Sebepler:
+     - yukaridaki `table { font-size: 0.875rem }` KATMANSIZ oldugu icin Tailwind'in
+       `text-[12px]`'sini eziyordu: hucreler 14 px, basliklar 14 px Display 700;
+     - yedi kolon `whitespace-nowrap` (Reverse proxy 408 px: tanim + yol + sunucu +
+       eslesme + sorun tek satirda), buna karsilik Adresler `break-all` ile 71 px'e
+       sikisip adresi harf harf alt alta yaziyordu;
+     - `overflow-auto` kabin yuksekligi sinirsiz oldugu icin yapiskan baslik HIC
+       yapismiyordu (kaydirma kabi tablo kutusuydu, sayfa degil).
+   Bu blok yalniz `.ng-spa-tablo` icindir. Zebra BURADA bilincli: dokuz kolon ve iki
+   satirli hucrede goz satiri kaybediyor (pf-table-sticky notu bes kolonluk tablo icin).
+   Renkler yalniz token'lardan (color-mix ile opak; yapiskan ilk kolon altindaki
+   hucreleri gostermesin diye saydam zemin KULLANILMAZ). */
+.ng-spa-tablo {
+  font-size: 12px;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+.ng-spa-tablo[data-yogunluk='rahat'] { font-size: 13px; }
+/* Ayrinti panelindeki ic tablo (RP tanimlari) yukaridaki `table` kuralindan 14 px aliyordu;
+   panelin 11 px metnini izler. */
+.ng-spa-tablo table { font-size: inherit; }
+.ng-spa-tablo > thead {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+}
+/* Baslik KIRILABILIR ("Uygulama / isteği"): iki satirlik baslikta yer var; kolon
+   genisligini hucre icerigi belirler, uzun baslik degil. */
+.ng-spa-tablo > thead > tr > th {
+  background: var(--bg-elevated);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--text-secondary);
+  text-align: left;
+  vertical-align: bottom;
+  padding: 4px 8px;
+  box-shadow: inset 0 -1px 0 var(--border);
+}
+.ng-spa-tablo > thead > tr > th.ng-grup {
+  text-align: center;
+  vertical-align: middle;
+  white-space: nowrap;
+  color: var(--text-primary);
+  padding-bottom: 2px;
+}
+/* KONTRAST (dogrulama bulgusu, 2026-10-03): 10-11 px ikincil metin --text-muted ile AA'nin
+   (4.5) altindaydi (koyu tema: normal satir 4.33, zebra 3.92, secili satir 3.11; baslik alt
+   satiri 3.49). Anlam tasiyan ikincil metin --text-secondary (her zeminde >= 6:1); bekci
+   nginx-console.test.cjs GS28 zeminleri token'lardan hesaplayip olcer. */
+.ng-spa-tablo .ng-baslik-alt {
+  display: block;
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--text-secondary);
+}
+.ng-spa-tablo > tbody > tr > td {
+  padding: 4px 8px;
+  vertical-align: top;
+  white-space: nowrap;
+  background: var(--ng-zemin, var(--bg-surface));
+  border-top: 1px solid var(--border-subtle);
+}
+.ng-spa-tablo[data-yogunluk='rahat'] > tbody > tr > td { padding: 8px 12px; }
+.ng-spa-tablo[data-yogunluk='rahat'] > thead > tr > th { padding: 6px 12px; }
+.ng-spa-tablo .ng-sag {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+/* Hucrenin ikinci satiri (ikincil isaret): kucuk, ikincil renk. ROZETLER KIRPILMAZ
+   (dogrulama bulgusu, 2026-10-03): eskiden butun satir 11rem'de "..." ile kesiliyordu;
+   rozet bolunmeyen bir kutu oldugundan kisa neden metninin ARDINDAKI rozet (ortam disi,
+   BROKEN_INCLUDE, Ag celiskisi) hic cizilmiyordu. Simdi satir esnek ve SARAR: sigmayan rozet
+   alt satira iner; yalniz duz metin (.ng-kisa, bilesende her zaman EN SONDA) kisalir.
+   min-width: min-content -> 11rem'den genis TEK rozet de tasip yan hucreye binmez. */
+.ng-spa-tablo .ng-ikinci {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 4px;
+  max-width: 11rem;
+  min-width: min-content;
+  margin-top: 2px;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--text-secondary);
+}
+.ng-spa-tablo .ng-kisa {
+  min-width: 0;
+  max-width: 11rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ng-spa-tablo .ng-sag .ng-ikinci { margin-left: auto; justify-content: flex-end; }
+/* ADRES iki parca (bilesen: AdresMetni). Uygulama adiyla baslayan ilk etiket (1. kolonun
+   tekrari) kisalir; alan adi soneki KISALMAZ (flex-shrink 0), yalniz kendisi bile sigmazsa
+   (max-width) sondan kisalir. Oransal kucultme (1000:1) soneki yine 1 px kirpiyordu
+   (tarayicida olculdu). Kurumsal adres (.ng-adres-tek) bolunmez, sondan kisalir. */
+.ng-spa-tablo .ng-adres { display: flex; min-width: 0; }
+.ng-spa-tablo .ng-adres-on,
+.ng-spa-tablo .ng-adres-son,
+.ng-spa-tablo .ng-adres-tek {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ng-spa-tablo .ng-adres-on { flex: 0 1 auto; min-width: 1em; }
+.ng-spa-tablo .ng-adres-son { flex: 0 0 auto; max-width: calc(100% - 1em); }
+/* ESNEYEN KOLON (Adresler): icerigin genislige katkisi 11rem (contain: inline-size); tablo
+   kaptan darsa kolon 11rem kalir, genisse artan genisligi bu kolon alir ve adres daha az
+   kisalir. Eskiden artan genislik son kolona (Cluster'lar) gidiyordu: 1850 px'te 633 px'lik
+   kolonda 176 px cluster, adreslerin 52/54'u yine kesik. */
+.ng-spa-tablo .ng-adresler {
+  contain: inline-size;
+  min-width: 11rem;
+}
+.ng-spa-tablo .ng-yapiskan {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  box-shadow: inset -1px 0 0 var(--border-subtle);
+}
+.ng-spa-tablo > thead > tr > th.ng-yapiskan {
+  z-index: 4;
+  box-shadow: inset -1px 0 0 var(--border-subtle), inset 0 -1px 0 var(--border);
+}
+.ng-spa-tablo > tbody > tr.ng-satir { --ng-zemin: var(--bg-surface); }
+.ng-spa-tablo > tbody > tr.ng-satir.ng-cizgili {
+  --ng-zemin: color-mix(in srgb, var(--bg-elevated) 45%, var(--bg-surface));
+}
+.ng-spa-tablo > tbody > tr.ng-satir:hover {
+  --ng-zemin: color-mix(in srgb, var(--accent) 7%, var(--bg-surface));
+}
+.ng-spa-tablo > tbody > tr.ng-satir.ng-secili {
+  --ng-zemin: color-mix(in srgb, var(--accent) 13%, var(--bg-surface));
+}
+.ng-spa-tablo > tbody > tr.ng-satir.ng-secili > td.ng-yapiskan {
+  box-shadow: inset 3px 0 0 var(--accent), inset -1px 0 0 var(--border-subtle);
+}
+.ng-spa-tablo > tbody > tr.ng-ayrinti > td {
+  --ng-zemin: color-mix(in srgb, var(--accent) 5%, var(--bg-surface));
+  white-space: normal;
+  border-top: 0;
+  padding: 0 8px 8px;
+}
+/* AYRINTI PANELI kap genisliginde ve SOLA YAPISIK: tablo kaptan genisken panel tablo
+   kadar uzayip yatay kaydirmadan okunmuyordu. 100cqw = kaydirma kabinin genisligi.
+   YUKSEKLIK SINIRI: kap sinirsizken yapiskan baslik HIC yapismiyordu (kaydirma kabi tablo
+   kutusuydu); bekci GS28.
+   KLAVYE ODAGI (WCAG 2.4.11, dogrulama bulgusu): yapiskan baslik ~48 px (Siki) / ~52 px
+   (Rahat; tarayicida olculdu). scroll-padding olmadan Shift+Tab ile odaklanan satir dugmesi
+   basligin ALTINDA kaliyordu (tarayici yalniz 11 px kaydiriyordu). 3.5rem iki yogunlugu da
+   kapsar; fazlasi yalniz birkac px bosluk. */
+.ng-spa-kap {
+  container-type: inline-size;
+  max-height: max(24rem, calc(100vh - 12rem));
+  scroll-padding-top: 3.5rem;
+}
+.ng-spa-tablo .ng-ayrinti-ic {
+  position: sticky;
+  left: 8px;
+  max-width: calc(100cqw - 16px);
+}
+/* Rozetler tabloda kucuk ve tek boy (PF Label 14 px'ti). */
+.ng-spa-tablo .pf-label {
+  font-size: 11px;
+  line-height: 16px;
+  padding: 0 6px;
+  gap: 2px;
+}
+.ng-spa-tablo[data-yogunluk='rahat'] .pf-label { font-size: 12px; line-height: 18px; }
+/* OLCULEMEDI turu durum KESIK cerceve: "yok"tan renk disinda da ayrilir. */
+.ng-spa-tablo .pf-label.ng-olcum { border-style: dashed; }
+.ng-spa-tablo .ng-cip {
+  display: inline-block;
+  flex-shrink: 0;
+  padding: 0 5px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  font-size: 10px;
+  line-height: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ── Masthead / Nav (yeni layout bilesenleri) ──────────────────────────────────
    TEMAYI IZLER (2026-08-28). Bu blokta eskiden yedi sabit renk vardi (#fff,
    #d2d2d2, #3c3f42, #8a8d90) ve masthead her temada SIYAHTI. PF6'da ust bant ve

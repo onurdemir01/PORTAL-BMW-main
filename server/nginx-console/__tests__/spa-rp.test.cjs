@@ -2016,9 +2016,11 @@ test('SR23 ekran: uc yeni kolon ve suzgec, ayrinti paneli, Yenile onbellegi atla
     '/spa-discovery/rp?ns=${encodeURIComponent(ns)}&app=${encodeURIComponent(app)}',
     'ayrinti ucu cagrisi yok',
   );
+  // 2026-10-03: basliklar KOLONLAR tablosundan (kolon basina ipucu); "Uygulama istegi"
+  // kolonunun IPUCU Dynatrace oldugunu soyler (alt satirdaki 'Dynatrace' yetmez, ipucu sart).
   assert.match(
     ui,
-    /h === 'Uygulama isteği' \? '[^']*Dynatrace/,
+    /baslik: 'Uygulama isteği',[^}]*ipucu: '[^']*Dynatrace/,
     '"Uygulama istegi" basliginin ipucu Dynatrace oldugunu soylemiyor',
   );
   // OLCULEMEDI ile YOK/TANIMSIZ ayri etiketlenir - her etiket KENDI haritasinda aranir
@@ -2132,6 +2134,15 @@ test('SR35 kod sozlugu: uretilen her kod listede, listedeki her kod uretiliyor v
   const neden = blok('function rpNedenMetni(', 'function rpIstekNedenMetni(');
   for (const k of KODLAR.rpNeden)
     assert.ok(neden.includes(`case '${k}':`), `rpNedenMetni: '${k}' metni yok (ham kod gorunur)`);
+  // 2026-10-03: hucrenin IKINCI SATIRI neden ve eslesmeyi kisa adla yazar (tam metin ipucunda).
+  // Kisa adi olmayan kod ikinci satirda ham gorunmez ama "neden olculemedi" bilgisi satirdan
+  // duser; liste bayatlamasin.
+  const nedenKisa = blok('const RP_NEDEN_KISA', 'const ESLES_KISA');
+  for (const k of KODLAR.rpNeden)
+    assert.ok(anahtarVar(nedenKisa, k), `RP_NEDEN_KISA: '${k}' kisa adi yok`);
+  const eslesKisa = blok('const ESLES_KISA', 'function RpHucre(');
+  for (const k of KODLAR.rpEsles)
+    assert.ok(anahtarVar(eslesKisa, k), `ESLES_KISA: '${k}' kisa adi yok`);
   const tablo = blok('const TABLO_ADI', 'const TRAFIK_NEDEN');
   for (const k of ['config', 'dizin', 'upstream'])
     assert.ok(anahtarVar(tablo, k), `TABLO_ADI: '${k}' yok`);
