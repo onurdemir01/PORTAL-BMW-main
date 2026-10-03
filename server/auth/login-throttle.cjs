@@ -11,13 +11,36 @@
 // 15 dk). Basarili giris sayaci sifirlar. Esik Admin'den (LOGIN_USER_MAX_FAILS)
 // AD'nin kilit esiginin ALTINA cekilebilir.
 //
+// AD'NIN KILIT ESIGI BILINMIYOR (2026-10-03, kullanici: "ulasamayiz, bizi ilgilendirmemeli").
+// Esigi bilmeden yapilabilecek en etkili sey, AD'ye GEREKSIZ hata gondermemek: gercek
+// hayatta kilitlenmelerin cogu AYNI yanlis sifrenin ust uste denenmesinden gelir (eski
+// sifre, tarayicinin hatirladigi sifre, cift tiklama). Ayni kullanici icin ayni hatali
+// sifre kisa bir pencere icinde yeniden gelirse AD'ye GONDERILMEZ ve sayaca yazilmaz:
+// AD o sifre icin yalnizca BIR hata gorur. Sifrenin kendisi tutulmaz; surec basina
+// rastgele bir anahtarla HMAC ozeti, yalnizca bellekte, kisa omurlu.
+//
 // BELLEK SINIRLI (OOM dersi): en fazla 10.000 kayit; eski kayitlar her yazimda budanir.
 'use strict';
+
+const crypto = require('node:crypto');
 
 const PENCERE_MS = 15 * 60 * 1000; // son hatadan bu kadar sonra sayac unutulur
 const ILK_BEKLEME_MS = 30 * 1000;
 const UST_BEKLEME_MS = 15 * 60 * 1000;
 const KAYIT_UST = 10000;
+// Ayni hatali sifrenin AD'ye yeniden gonderilmedigi pencere. Kisa tutulur: sifre AD'de
+// az once degistiyse / hesap az once acildiysa kullanici en fazla bu kadar bekler.
+const AYNI_SIFRE_PENCERE_MS = 90 * 1000;
+const OZET_ANAHTARI = crypto.randomBytes(32);
+
+function sifreOzeti(username, password) {
+  return crypto
+    .createHmac('sha256', OZET_ANAHTARI)
+    .update(anahtar(username))
+    .update('\u0000')
+    .update(String(password))
+    .digest();
+}
 
 let saat = () => Date.now();
 function _saatAyarla(fn) {
@@ -59,8 +82,24 @@ function kontrol(username) {
   return { ok: true };
 }
 
-/** Kimlik hatasi (yanlis sifre / kullanici yok). Sunucu erisilemezligi SAYILMAZ. */
-function hataKaydet(username) {
+/**
+ * Bu kullanici icin bu sifre az once HATALI cikti mi? Oyleyse cagiran AD'ye gitmez.
+ * Donus: kalan bekleme (sn) ya da 0.
+ */
+function ayniHataliSifre(username, password) {
+  const v = kayitlar.get(anahtar(username));
+  if (!v || !v.sonOzet) return 0;
+  const kalan = v.sonOzetAn + AYNI_SIFRE_PENCERE_MS - saat();
+  if (kalan <= 0) return 0;
+  const ozet = sifreOzeti(username, password);
+  return crypto.timingSafeEqual(ozet, v.sonOzet) ? Math.ceil(kalan / 1000) : 0;
+}
+
+/**
+ * Kimlik hatasi (yanlis sifre / kullanici yok). Sunucu erisilemezligi SAYILMAZ.
+ * `password` verilirse ozeti saklanir (ayni hatali sifre AD'ye yeniden gitmesin).
+ */
+function hataKaydet(username, password) {
   const k = anahtar(username);
   const now = saat();
   const eski = kayitlar.get(k);
@@ -72,7 +111,13 @@ function hataKaydet(username) {
     lockedUntil = now + bekleme;
   }
   kayitlar.delete(k); // sona tasi (budama sirasi)
-  kayitlar.set(k, { fails, lastFail: now, lockedUntil });
+  kayitlar.set(k, {
+    fails,
+    lastFail: now,
+    lockedUntil,
+    sonOzet: password === undefined ? null : sifreOzeti(username, password),
+    sonOzetAn: now,
+  });
   buda(now);
   return {
     fails,
@@ -91,6 +136,8 @@ function _sifirla() {
 
 module.exports = {
   kontrol,
+  ayniHataliSifre,
+  AYNI_SIFRE_PENCERE_MS,
   hataKaydet,
   basariKaydet,
   esik,
