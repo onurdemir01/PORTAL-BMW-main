@@ -267,6 +267,8 @@ test('GT5 ayni hatali sifre pencere icinde taninir; sifre saklanmaz', () => {
   assert.equal(throttle.ayniHataliSifre('ayse', 'EskiSifre!1'), 1);
   simdi += 1000;
   assert.equal(throttle.ayniHataliSifre('ayse', 'EskiSifre!1'), 0, 'pencere dolmasina ragmen hala engelli');
+  simdi += 30 * 1000;
+  assert.equal(throttle.ayniHataliSifre('ayse', 'EskiSifre!1'), 0, 'pencere disinda negatif / anlamsiz deger donuyor');
   // Basarili giris kaydi siler.
   throttle.hataKaydet('ayse', 'x');
   throttle.basariKaydet('ayse');
