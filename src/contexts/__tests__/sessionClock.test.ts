@@ -189,7 +189,9 @@ describe('sessionClock', () => {
     // Efekt: bagla -> sok -> yeniden bagla.
     const ayir1 = a.baglan(k1);
     ayir1();
-    const [k1b, k2b] = kanalCifti();
+    const [k1bHam, k2b] = kanalCifti();
+    // `storage` yedegi gibi: kapat() dinleyiciyi KALDIRMAZ — ayirma dinleyiciyi kendisi birakmali.
+    const k1b = { ...k1bHam, kapat: () => {} };
     const b2 = oturumSaatiOlustur({ kanal: k2b, simdi: () => 0 });
     const ayir2 = a.baglan(k1b);
     b2.girisYay('ayse');

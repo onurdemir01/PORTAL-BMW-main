@@ -436,8 +436,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
     const handle = (e: Event) => {
       // Programatik odak (acilan/kapanan pencere, autofocus) kullanici girdisi degildir;
-      // yalnizca PENCERENIN odagi geri almasi (baska uygulamadan donus) sayilir.
-      if (e.type === "focus" && e.target !== window) return;
+      // yalnizca PENCERENIN odagi geri almasi (baska uygulamadan donus) sayilir. Bir OGENIN
+      // odaklanmasinda hedef bir DOM dugumudur; pencerenin odaklanmasinda degildir.
+      if (e.type === "focus" && e.target instanceof Node) return;
       etkin();
     };
     const gorunurluk = () => {

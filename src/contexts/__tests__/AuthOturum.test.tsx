@@ -38,6 +38,8 @@ interface Sunucu {
   abs: number;
   sebep?: string;
   versiyon401?: boolean;
+  /** true: extend 500 doner (ag/sunucu aksamasi) ve sureyi uzatmaz. */
+  extendHata?: boolean;
 }
 let sv: Sunucu;
 let cagrilar: { url: string; method: string; isaret: string | null }[];
@@ -108,6 +110,7 @@ async function sahteAg(input: RequestInfo | URL, init?: RequestInit): Promise<Re
   if (url === '/api/auth/session-policy') return json({ ok: true, rememberEnabled: true, rememberDays: 7 });
   if (url === '/api/visibility/version' && sv.versiyon401) return json({ ok: false }, 401);
   if (!sv.oturum) return oturumYok();
+  if (url === '/api/auth/session/extend' && sv.extendHata) return json({ ok: false, error: 'gecici hata' }, 500);
   if (url === '/api/auth/session/extend' || sunucuEtkinlikSayar(url, method, isaret)) sv.idle = now + 60 * DK;
   if (url.startsWith('/api/auth/session')) {
     return json({ ok: true, serverNow: now, idleExpiresAt: sv.idle, absoluteExpiresAt: sv.abs, warnSeconds: 120 });
@@ -223,6 +226,9 @@ describe('istemci oturum (Faz B)', () => {
 
   it('AO3 uyari warnSeconds once acilir; kapatmak uzatmaz, Surdur uzatir', async () => {
     await baslat();
+    // Kullanici bir alanda yaziyordu: uyari kapaninca Modal odagi BURAYA geri verir. Bu
+    // programatik odak "girdi" sayilirsa kapatmak sureyi kendiliginden uzatirdi.
+    screen.getByLabelText('taslak').focus();
     await ileri(58 * DK - 1000);
     expect(screen.queryByText('Oturumu Sürdür')).not.toBeInTheDocument();
     await ileri(2000);
@@ -368,6 +374,35 @@ describe('istemci oturum (Faz B)', () => {
     expect(sayi('/extend', 'POST')).toBe(1);
     await ileri(3 * DK);
     expect(screen.queryByTestId('relogin-overlay')).not.toBeInTheDocument();
+  });
+
+  it('AO10c girdi tazeyken acilan uyariyi yoklama gecersiz kilmaz (extend dusmustu)', async () => {
+    await baslat();
+    sv.extendHata = true;
+    await ileri(57 * DK + 45_000);
+    // Gercek girdi: extend denenir ama DUSER (aksama). Girdi "taze" kalir.
+    fireEvent.pointerDown(window);
+    await ileri(10);
+    expect(sayi('/extend', 'POST')).toBe(1);
+    await ileri(16_000); // 58:01 — uyari acik
+    expect(screen.getByText('Oturumu Sürdür')).toBeInTheDocument();
+    const bitis = sv.idle;
+    // Girdiden 20 sn sonra bir yoklama: uyari acilirken girdi sifirlanmasaydi ISARETSIZ
+    // gider, sunucu etkinlik sayar ve uyari kullaniciya sorulmadan kapanirdi.
+    await act(async () => {
+      await window.fetch('/api/herhangi/yoklama');
+    });
+    expect(cagrilar[cagrilar.length - 1].isaret).toBe('background');
+    expect(sv.idle).toBe(bitis);
+    expect(screen.getByText('Oturumu Sürdür')).toBeInTheDocument();
+  });
+
+  it('AO7b baska uygulamadan PENCEREYE donus etkinliktir', async () => {
+    await baslat();
+    await ileri(6 * DK);
+    fireEvent.focus(window);
+    await ileri(10);
+    expect(sayi('/extend', 'POST')).toBe(1);
   });
 
   it('AO10b arka plana tiklamak uyariyi kapatmaz', async () => {
