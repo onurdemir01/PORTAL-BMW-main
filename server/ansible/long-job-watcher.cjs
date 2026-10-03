@@ -3,8 +3,10 @@
 // bir job varsa bildirim gonder").
 //
 // TASARIM: server/smart/poller.cjs ile AYNI periyodik-tick deseni (setInterval + unref,
-// tek zamanlayici TUM sunuculara bakar). Job listesi runner.cjs.listRunningJobsAcrossServers()
-// ile gelir (sadece status=running, started alani olanlar).
+// tek zamanlayici TUM sunuculara bakar). Tarama runner.cjs.listLongJobCandidatesAcrossServers()
+// ile gelir (job + workflow job, pending/waiting/running, en eski once, tum sayfalar,
+// sunucu basina ok/error). Otomatik iptal + dogrulama long-job-cancel.cjs runCycle()'da;
+// 30 dk bildirimi burada (yalniz calisan klasik job'lar, eski davranis).
 //
 // TEKRAR-BILDIRIM ONLEME: bellek-ici bir Set (serverId:jobId) — process yeniden
 // baslarsa sifirlanir (kabul edilebilir: en kotu ihtimalle zaten uzun surmus bir is icin
@@ -28,13 +30,10 @@ function isConfigured() {
 
 // Otomatik iptal (long-job-cancel.cjs) Teams webhook'u OLMASA DA calisir: bildirim
 // yalnizca webhook varsa gider, iptal karari DB'deki izin listesine baglidir.
-async function cancelEnabled() {
-  try {
-    const cfg = await require('./long-job-cancel.cjs').readConfig(require('../db/index.cjs'));
-    return cfg.enabled && cfg.templates.length > 0;
-  } catch {
-    return false;
-  }
+// readConfig DB hatasinda son gecerli yapilandirmayi doner (ve hatayi durum ekranina yazar).
+async function cancelEnabled(db) {
+  const cfg = await require('./long-job-cancel.cjs').readConfig(db || require('../db/index.cjs'));
+  return cfg.enabled && cfg.templates.length > 0;
 }
 
 const _notified = new Set(); // "serverId:jobId"
@@ -129,37 +128,130 @@ async function sendTeamsNotification(job, elapsedMinutes) {
   }
 }
 
-async function tick() {
-  const notify = isConfigured();
-  const cancel = await cancelEnabled();
-  if (!notify && !cancel) return;
-  const cfg = getConfig();
-  const runner = require('./runner.cjs');
-  let jobs;
+let _inFlight = false;
+let _skipStreak = 0; // onceki tarama surerken ust uste atlanan tick sayisi
+const STUCK_SKIPS = 3; // bu kadar tick (~15 dk) atlanirsa "tarama bitmiyor" alarmi
+const _tickInfo = { startedAt: null, finishedAt: null, error: null };
+
+const auditOf = (deps) =>
+  deps.audit ||
+  ((action, opts) => require('../audit/index.cjs').auditPortal(null, action, { username: 'system', ...opts }));
+
+/**
+ * Tek tarama. Ust uste binmez (onceki tarama surerken gelen tick atlanir ve loglanir):
+ * yavas bir AWX tick'i 5 dk'yi asarsa ayni isi iki kez iptal etmeye/alarmlamaya calismayalim.
+ * Tarama HIC bitmiyorsa (STUCK_SKIPS tick atlandi) bu da sessiz bir arizadir: Teams +
+ * denetim + durum (long-job-cancel.reportWatcherStuck, tarama basina bir kez).
+ * `deps` yalniz testler icin (db/runner/audit enjeksiyonu); uretimde bos gecer.
+ */
+async function tick(deps = {}) {
+  if (_inFlight) {
+    _skipStreak += 1;
+    console.warn(`[LongJobWatcher] onceki tarama hala suruyor; bu tick atlandi (${_skipStreak} ust uste)`);
+    if (_skipStreak >= STUCK_SKIPS) {
+      try {
+        await require('./long-job-cancel.cjs').reportWatcherStuck({
+          startedAt: _tickInfo.startedAt,
+          skips: _skipStreak,
+          intervalSeconds: pollIntervalSeconds(),
+          webhookUrl: getConfig().webhookUrl,
+          audit: auditOf(deps),
+          runner: deps.runner,
+        });
+      } catch (e) {
+        console.error('[LongJobWatcher] tarama-bitmiyor alarmi verilemedi:', e && e.message);
+      }
+    }
+    return { skipped: 'in-flight' };
+  }
+  _inFlight = true;
+  _tickInfo.startedAt = new Date().toISOString();
   try {
-    jobs = await runner.listRunningJobsAcrossServers();
+    await tickInner(deps);
+    _tickInfo.error = null;
   } catch (e) {
-    console.warn('[LongJobWatcher] calisan job listesi alinamadi:', e.message);
+    _tickInfo.error = e && e.message ? e.message : String(e);
+    throw e;
+  } finally {
+    _inFlight = false;
+    _skipStreak = 0;
+    _tickInfo.finishedAt = new Date().toISOString();
+  }
+  return { skipped: null };
+}
+
+/** Tarama TAMAMEN patladiysa: her sunucu "taranamadi" (complete:false) sayilir. */
+function failedScanOf(runner, message) {
+  let servers = [];
+  try {
+    servers = typeof runner.getServers === 'function' ? runner.getServers() : [];
+  } catch {
+    servers = [];
+  }
+  return {
+    jobs: [],
+    servers: servers.map((s) => ({
+      serverId: s.id,
+      serverName: s.name,
+      ok: false,
+      error: message,
+      kinds: {},
+      running: 0,
+      queued: 0,
+      truncated: false,
+      complete: { job: false, workflow: false },
+    })),
+  };
+}
+
+async function tickInner(deps) {
+  const db = deps.db || require('../db/index.cjs');
+  const runner = deps.runner || require('./runner.cjs');
+  const audit = auditOf(deps);
+  const ljc = require('./long-job-cancel.cjs');
+  const notify = isConfigured();
+  const cfg = getConfig();
+  // readConfig DB hatasinda ATMAZ: son gecerli yapilandirma (hic yoksa kapali) + durum
+  // ekraninda "yapilandirma okunamadi" (eskiden burada sessizce false donuluyordu).
+  const cancelCfg = await ljc.readConfig(db);
+  const cancel = cancelCfg.enabled && cancelCfg.templates.length > 0;
+  const verifying = ljc.hasOpenWork();
+  if (!notify && !cancel && !verifying) {
+    ljc.recordSkippedTick(
+      cancelCfg.enabled
+        ? 'Otomatik iptal AÇIK ama izin listesi BOŞ — hiçbir iş iptal edilmez; AWX taranmadı.'
+        : 'Otomatik iptal KAPALI — AWX taranmadı.',
+    );
     return;
   }
 
-  // ONCE IPTAL (izin listesindeki, esigi asan job'lar) - iptal edilen job bir sonraki
-  // tick'te listede gorunmez; bildirim adimi bu tick'te yine calisir (ayni job'a
-  // "uzun suruyor" + "iptal edildi" iki kart gidebilir, kabul edilebilir).
-  if (cancel) {
-    try {
-      await require('./long-job-cancel.cjs').processJobs(jobs, {
-        db: require('../db/index.cjs'),
-        runner,
-        webhookUrl: cfg.webhookUrl,
-        audit: (action, opts) => require('../audit/index.cjs').auditPortal(null, action, { username: 'system', ...opts }),
-      });
-    } catch (e) {
-      console.warn('[LongJobCancel] islem hatasi:', e.message);
-    }
+  let scan;
+  try {
+    scan = await runner.listLongJobCandidatesAcrossServers();
+  } catch (e) {
+    // Eskiden burada recordSkippedTick + return vardi: tarama hatasi YALNIZ durum ekranina
+    // dusuyordu. Simdi her sunucu "taranamadi" sayilip runCycle'a verilir: dogrulama
+    // kayitlari korunur (complete:false) ve tarama sagligi sayaci ilerler (Teams + denetim).
+    const m = e && e.message ? e.message : String(e);
+    console.error('[LongJobWatcher] AWX taramasi basarisiz:', m);
+    scan = failedScanOf(runner, `AWX taraması başarısız: ${m}`);
+  }
+
+  // ONCE IPTAL + DOGRULAMA (izin listesindeki, esigi asan isler). Otomatik iptal kapali
+  // olsa da cagrilir: durum ekrani kararlari ("kapali") gosterir ve daha once istenen
+  // iptallerin dogrulamasi/alarmi surer. Ayni is icin "uzun suruyor" + "iptal edildi"
+  // iki kart gidebilir (kabul edilebilir).
+  try {
+    await ljc.runCycle(scan, { db, runner, webhookUrl: cfg.webhookUrl, audit });
+  } catch (e) {
+    console.error('[LongJobCancel] islem hatasi:', e.message);
+    ljc.recordSkippedTick(`İptal döngüsü hata verdi: ${e.message}`);
   }
   if (!notify) return;
 
+  // 30 dk BILDIRIMI: yalniz CALISAN klasik job'lar (eski davranis; workflow'un ic
+  // job'lari zaten bu listede oldugu icin workflow'a ayrica kart gonderilmez).
+  const jobs = (scan.jobs || []).filter((j) => j.kind === 'job' && j.status === 'running' && j.started);
   const stillRunningKeys = new Set();
   for (const job of jobs) {
     const key = `${job.serverId}:${job.jobId}`;
@@ -181,21 +273,35 @@ async function tick() {
     }
   }
 
-  // Artik calismayan job'lari Set'ten temizle (sinirsiz buyumesin).
+  // Artik calismayan job'lari Set'ten temizle (sinirsiz buyumesin) — YALNIZ job listesi
+  // tam taranan sunucularda; tarama hatasinda silmek ayni isi yeniden bildirirdi.
+  const complete = new Set(
+    (scan.servers || []).filter((s) => s.complete && s.complete.job).map((s) => Number(s.serverId)),
+  );
   for (const key of _notified) {
-    if (!stillRunningKeys.has(key)) _notified.delete(key);
+    const sid = Number(key.split(':')[0]);
+    if (!stillRunningKeys.has(key) && complete.has(sid)) _notified.delete(key);
   }
 }
 
 let _timer = null;
+let _firstTimer = null;
+const FIRST_TICK_DELAY_MS = 60 * 1000;
+
+// (function bildirimi hoisting ile tick() icinden de cagrilabilir)
+function pollIntervalSeconds() {
+  // Gecersiz/cok kucuk deger setInterval'i milisaniyelik donguye cevirmesin.
+  return Math.max(60, Number(getConfig().pollIntervalSeconds) || 300);
+}
 
 function startWatcher() {
   if (_timer) return; // zaten calisiyor (or. hot-reload/test ortami)
-  const cfg = getConfig();
-  _timer = setInterval(() => {
-    tick().catch((e) => console.warn('[LongJobWatcher] tick hatasi:', e.message));
-  }, cfg.pollIntervalSeconds * 1000);
+  const run = () => tick().catch((e) => console.warn('[LongJobWatcher] tick hatasi:', e.message));
+  _timer = setInterval(run, pollIntervalSeconds() * 1000);
   _timer.unref?.();
+  // Ilk tarama restart'tan 1 dk sonra: durum ekrani 5 dk bos kalmasin.
+  _firstTimer = setTimeout(run, FIRST_TICK_DELAY_MS);
+  _firstTimer.unref?.();
 }
 
 function stopWatcher() {
@@ -203,6 +309,24 @@ function stopWatcher() {
     clearInterval(_timer);
     _timer = null;
   }
+  if (_firstTimer) {
+    clearTimeout(_firstTimer);
+    _firstTimer = null;
+  }
 }
 
-module.exports = { startWatcher, stopWatcher, tick, isConfigured, getConfig, cancelEnabled };
+/** Durum ekrani: izleyici hic baslamadiysa bu da "sessiz" bir arizadir — gosterilir. */
+function getWatcherInfo() {
+  return {
+    started: !!_timer,
+    pollIntervalSeconds: pollIntervalSeconds(),
+    inFlight: _inFlight,
+    skippedWhileInFlight: _skipStreak,
+    lastTickStartedAt: _tickInfo.startedAt,
+    lastTickFinishedAt: _tickInfo.finishedAt,
+    lastTickError: _tickInfo.error,
+    notifyConfigured: isConfigured(),
+  };
+}
+
+module.exports = { startWatcher, stopWatcher, tick, isConfigured, getConfig, cancelEnabled, getWatcherInfo };

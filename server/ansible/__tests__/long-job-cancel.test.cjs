@@ -15,11 +15,16 @@ const CFG = ljc.normalizeConfig({ enabled: true, thresholdMinutes: 60, templates
 
 test('normalizeConfig: varsayilan kapali, esik 5..1440 arasi, gecersiz template atilir', () => {
   const c = ljc.normalizeConfig(null);
-  assert.deepEqual(c, { enabled: false, thresholdMinutes: 60, templates: [] });
-  const d = ljc.normalizeConfig({ enabled: 'true', thresholdMinutes: 2, templates: [{ serverId: 0, templateId: 5 }, { serverId: '1', templateId: '7', name: 'x' }] });
+  // 'Kuyrukta takili isler' (cancelQueued) varsayilan KAPALI (2026-10-03).
+  assert.deepEqual(c, { enabled: false, thresholdMinutes: 60, cancelQueued: false, templates: [] });
+  const d = ljc.normalizeConfig({ enabled: 'true', thresholdMinutes: 2, cancelQueued: 'true', templates: [{ serverId: 0, templateId: 5 }, { serverId: '1', templateId: '7', name: 'x' }] });
   assert.equal(d.enabled, false, "'true' metni true DEGIL - yalnizca boolean");
+  assert.equal(d.cancelQueued, false, "'true' metni true DEGIL - yalnizca boolean");
   assert.equal(d.thresholdMinutes, 5);
-  assert.deepEqual(d.templates, [{ serverId: 1, templateId: 7, name: 'x' }]);
+  // Eski kayitlarda tur yok -> 'job' sayilir.
+  assert.deepEqual(d.templates, [{ serverId: 1, templateId: 7, kind: 'job', name: 'x' }]);
+  const w = ljc.normalizeConfig({ templates: [{ serverId: 1, templateId: 7, kind: 'workflow' }, { serverId: 1, templateId: 7, kind: 'workflow' }, { serverId: 1, templateId: 7, kind: 'bogus' }] });
+  assert.deepEqual(w.templates.map((t) => t.kind), ['workflow', 'job'], 'tekrar atilir, taninmayan tur job sayilir');
 });
 
 test('shouldCancel: esik + izin listesi + started; liste disi ASLA iptal edilmez', () => {
@@ -31,6 +36,10 @@ test('shouldCancel: esik + izin listesi + started; liste disi ASLA iptal edilmez
   assert.equal(ljc.shouldCancel(CFG, job({ started: null }), T0).reason, 'started yok');
   // tam esik: 60 dk -> iptal (>=)
   assert.equal(ljc.shouldCancel(CFG, job({ started: '2026-09-14T09:00:00Z' }), T0).cancel, true);
+  // tur eslesmesi: ayni id'li WORKFLOW template'i job izin listesine girmez (ayri tablolar)
+  assert.equal(ljc.shouldCancel(CFG, job({ kind: 'workflow' }), T0).reason, 'izin listesinde degil');
+  // izin listesi BOS -> acik olsa da hicbir sey iptal edilmez
+  assert.equal(ljc.shouldCancel({ ...CFG, templates: [] }, job(), T0).cancel, false);
 });
 
 test('processJobs: iptal + audit + Teams; ayni job ikinci tick te TEKRAR iptal edilmez; zaten bitmis sessiz', async () => {

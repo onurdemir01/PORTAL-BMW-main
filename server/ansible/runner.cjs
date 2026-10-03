@@ -238,9 +238,11 @@ async function getTokenForServer(server) {
 // (page_size=100 → 5.000 template kapasitesi).
 const MAX_TEMPLATE_PAGES = 50;
 
-async function fetchAllTemplatePages(requestFn, baseUrl) {
+// `startPath`: varsayilan job_templates; uzun-is iptali ekrani ayni sayfalayiciyla
+// workflow_job_templates'i de dolasir (bkz. listCancelableTemplatesForServer).
+async function fetchAllTemplatePages(requestFn, baseUrl, startPath = '/api/v2/job_templates/?page_size=100') {
   const allResults = [];
-  let nextUrl = '/api/v2/job_templates/?page_size=100';
+  let nextUrl = startPath;
   let pageCount = 0;
   while (nextUrl && pageCount < MAX_TEMPLATE_PAGES) {
     const data = await requestFn(nextUrl);
@@ -1495,42 +1497,157 @@ async function getJobOutputOnServer(serverId, jobId, { artimli = false } = {}) {
   return { output, artimliKullanildi: false };
 }
 
-// AWX'te calisan bir job'i iptal eder (POST /api/v2/jobs/:id/cancel/). AWX zaten terminal
-// duruma gelmis bir job icin 405/400 doner — bunu yutup sessizce basarili sayariz (idempotent
-// iptal: kullanici "Iptal Et"e bastiginda job o an bitmisse yine de temiz sonuc donsun).
-async function cancelJobOnServer(serverId, jobId) {
+// AWX'te "aktif" (iptal edilebilir) is durumlari: UnifiedJob.CAN_CANCEL.
+const AWX_ACTIVE_JOB_STATUSES = new Set(['new', 'pending', 'waiting', 'running']);
+const awxJobSegment = (kind) => (kind === 'workflow' ? 'workflow_jobs' : 'jobs');
+
+/**
+ * Bir isin SU ANKI durumunu okur (GET /api/v2/{jobs|workflow_jobs}/<id>/, AAP esleme
+ * awxRequestToServer'da). 404 -> { status: 'missing' } (silinmis: artik calismiyor).
+ * Diger hatalar FIRLATILIR: cagiran "olculemedi" der, "bitti" ya da "calisiyor" DEMEZ.
+ */
+async function readJobState(server, token, kind, id) {
+  try {
+    const j = await awxRequestToServer(server, token, 'GET', `/api/v2/${awxJobSegment(kind)}/${id}/`);
+    const status = j && j.status ? String(j.status) : null;
+    if (!status) throw new Error('AWX yanıtında iş durumu (status) yok');
+    return { status, createdBy: (j.summary_fields && j.summary_fields.created_by && j.summary_fields.created_by.username) || null };
+  } catch (err) {
+    if (err && err.status === 404) return { status: 'missing', createdBy: null };
+    throw err;
+  }
+}
+
+/** Disari acik sarmalayici (long-job-cancel dogrulamasi): { status, createdBy } ya da hata. */
+async function getJobStateOnServer(serverId, jobId, kind = 'job') {
+  const server = getServerById(serverId);
+  if (!server) throw Object.assign(new Error('AWX sunucusu bulunamadı.'), { status: 404 });
+  const id = Number(jobId);
+  if (!Number.isInteger(id) || id <= 0) throw Object.assign(new Error('Geçersiz job ID.'), { status: 400 });
+  const token = await getTokenForServer(server);
+  return readJobState(server, token, kind === 'workflow' ? 'workflow' : 'job', id);
+}
+
+/** Portal'in bu sunucudaki AWX kullanici adi: kullanici/sifreyle ise o, statik token'da /api/v2/me/. */
+async function awxWhoAmI(server, token) {
+  if (!server.token && server.user) return String(server.user);
+  try {
+    const me = await awxRequestToServer(server, token, 'GET', '/api/v2/me/');
+    const u = me && Array.isArray(me.results) ? me.results[0] : null;
+    return u && u.username ? String(u.username) : null;
+  } catch {
+    return null;
+  }
+}
+
+// AWX'te calisan bir job'i iptal eder (POST /api/v2/jobs/:id/cancel/). Is zaten terminal
+// durumdaysa `{ canceled: false, alreadyTerminal: true }` doner (idempotent iptal:
+// kullanici "Iptal Et"e bastiginda job o an bitmisse yine de temiz sonuc donsun).
+//
+// WORKFLOW JOB'LARI (2026-10-03): AWX'te ayri bir kaynak; /api/v2/jobs/<id>/ onlari
+// TANIMAZ (404). `opts.kind === 'workflow'` ise iptal /api/v2/workflow_jobs/<id>/cancel/
+// ucuna gider. Iki argumanli eski cagrilar (ScaleX, LogX, Telnet) degismeden 'job'dur.
+//
+// 403/405/409 DURUMU OKUNMADAN YORUMLANMAZ (2026-10-03 dogrulayici bulgusu, AWX kaynagi):
+// superuser OLMAYAN kullanici BITMIS bir isin iptaline de 403 alir (permissions.py
+// check_post_permissions -> JobAccess.can_cancel ilk satiri `if not obj.can_cancel:
+// return False`); 405 ("zaten bitmis") yalniz superuser'a doner. Yani 403 tek basina "yetki
+// yok, is CALISIYOR" demek DEGIL, 405 de tek basina "bitti" demek degil (araya giren vekil
+// POST'u 405 ile reddedebilir). Bu yuzden isin durumu okunur:
+//   - terminal (ya da silinmis)        -> alreadyTerminal (alarm yok; coklu Portal ornegi zararsiz)
+//   - aktif + 403                      -> KALICI yetki reddi, is CALISMAYA DEVAM EDIYOR
+//   - aktif + 405/409                  -> celiski (vekil/gateway): gecici hata, is calisiyor
+//   - durum okunamadi + 403            -> gecici hata, "durum OLCULEMEDI" (calisiyor DENMEZ)
+//   - durum okunamadi + 405/409        -> eski davranis (alreadyTerminal) ama stateVerified:false;
+//                                         otomatik iptal bunu sonraki taramalarda yine dogrular.
+async function cancelJobOnServer(serverId, jobId, opts = {}) {
   const server = getServerById(serverId);
   if (!server) throw Object.assign(new Error('AWX sunucusu bulunamadı.'), { status: 404 });
 
   const id = Number(jobId);
   if (isNaN(id) || id <= 0) throw Object.assign(new Error('Geçersiz job ID.'), { status: 400 });
 
+  const kind = opts && opts.kind === 'workflow' ? 'workflow' : 'job';
+  const segment = awxJobSegment(kind);
   const token = await getTokenForServer(server);
   try {
-    await awxRequestToServer(server, token, 'POST', `/api/v2/jobs/${id}/cancel/`);
+    await awxRequestToServer(server, token, 'POST', `/api/v2/${segment}/${id}/cancel/`);
     return { canceled: true };
   } catch (err) {
     const status = err && err.status;
-    // 405 Method Not Allowed = job zaten terminal (iptal edilemez); bunu hata sayma.
-    if (status === 405 || status === 409) return { canceled: false, alreadyTerminal: true };
+    if (status !== 403 && status !== 405 && status !== 409) throw err;
+    const awxMsg = err && err.message ? ` [AWX yanıtı: ${String(err.message).slice(0, 300)}]` : '';
+    let state = null;
+    let stateError = null;
+    try {
+      state = await readJobState(server, token, kind, id);
+    } catch (e) {
+      stateError = (e && e.message) || String(e);
+    }
+    // Saniyeler once aktif listede olan isin detayi 404 ise bu "bitti" kaniti DEGIL
+    // (AWX calisan isin silinmesine izin vermez): durum OLCULEMEDI sayilir.
+    if (state && state.status === 'missing') {
+      stateError = 'AWX iş kaydını bulamadı (HTTP 404)';
+      state = null;
+    }
+    if (state && !AWX_ACTIVE_JOB_STATUSES.has(state.status)) {
+      return { canceled: false, alreadyTerminal: true, awxStatus: state.status, stateVerified: true };
+    }
+    if (status === 405 || status === 409) {
+      if (!state) return { canceled: false, alreadyTerminal: true, awxStatus: null, stateVerified: false, stateError };
+      throw Object.assign(
+        new Error(
+          `İş İPTAL EDİLEMEDİ: iptal isteği HTTP ${status} ile reddedildi ama iş AWX'te hâlâ '${state.status}' ` +
+            "(araya giren vekil/WAF/gateway POST'u reddediyor olabilir). İş AWX üzerinde ÇALIŞMAYA DEVAM EDİYOR — " +
+            'AWX arayüzünden iptal edin.' +
+            awxMsg,
+        ),
+        { status, permanent: false, jobState: 'active', awxStatus: state.status },
+      );
+    }
     // ── YETKI YOKSA MESAJ ACIK OLMALI ────────────────────────────────────────
     //
     // Uretimde 8 kez: `POST /api/v2/jobs/N/cancel/ -> 403 "You do not have
-    // permission to perform this action."` Portalin AWX token'i `cancel`
-    // yetkisine sahip degil. AWX'in ham mesaji kullaniciya ISIN HALA KOSTUGUNU
-    // SOYLEMIYOR — kesinti sirasinda tehlikeli bir belirsizlik.
+    // permission to perform this action."`. AWX'in ham mesaji kullaniciya ISIN HALA
+    // KOSTUGUNU SOYLEMIYOR — kesinti sirasinda tehlikeli bir belirsizlik. Is aktifse bu
+    // red KALICIDIR: yetki bir sonraki denemede belirmez (PR #108 `tooLarge` ile ayni sinif).
     //
-    // Ayrica bu red KALICIDIR: yetki bir sonraki denemede belirmez. Tekrar
-    // denemek hem bosuna hem de kullaniciya "belki olur" hissi verir.
-    // (PR #108'deki `tooLarge` ile ayni sinif.)
+    // Neden (cozum) burada YAZILMAZ: bu fonksiyonu Telnet/ScaleX/LogX de cagirir ve
+    // onlar Portal'in KENDI baslattigi isi iptal eder (AWX'te baslatan her zaman iptal
+    // edebilir; orada sebep template Admin rolu olamaz, token 'write' kapsami olabilir).
+    // Teshis icin `createdBy`/`portalUser`/`createdByPortal` tasinir; ipucunu
+    // long-job-cancel.cjs yazar.
     if (status === 403) {
+      if (!state) {
+        throw Object.assign(
+          new Error(
+            `İş İPTAL EDİLEMEDİ (AWX 403). İşin şu anki durumu ÖLÇÜLEMEDİ (${stateError}) — iş bu arada ` +
+              'bitmiş de olabilir, hâlâ çalışıyor da olabilir; AWX arayüzünden kontrol edin.' +
+              awxMsg,
+          ),
+          { status: 403, permanent: false, jobState: 'unknown' },
+        );
+      }
+      const portalUser = await awxWhoAmI(server, token);
+      const createdByPortal =
+        portalUser && state.createdBy ? portalUser.toLowerCase() === state.createdBy.toLowerCase() : null;
       throw Object.assign(
         new Error(
-          'İş İPTAL EDİLEMEDİ: portalın AWX kullanıcısında iptal yetkisi yok. ' +
-            'İş AWX üzerinde ÇALIŞMAYA DEVAM EDİYOR — AWX arayüzünden iptal edin. ' +
-            '(Kalıcı bir yetki eksiği; tekrar denemek sonucu değiştirmez.)',
+          'İş İPTAL EDİLEMEDİ: portalın AWX kullanıcısında bu işi iptal yetkisi yok (AWX 403). ' +
+            `İş AWX üzerinde ÇALIŞMAYA DEVAM EDİYOR (AWX durumu: ${state.status}) — AWX arayüzünden iptal edin. ` +
+            '(Kalıcı bir yetki eksiği; tekrar denemek sonucu değiştirmez.)' +
+            awxMsg,
         ),
-        { status: 403, permanent: true, jobStillRunning: true },
+        {
+          status: 403,
+          permanent: true,
+          jobStillRunning: true,
+          jobState: 'active',
+          awxStatus: state.status,
+          createdBy: state.createdBy,
+          portalUser,
+          createdByPortal,
+        },
       );
     }
     throw err;
@@ -1860,29 +1977,21 @@ function initAnsibleRunner(app) {
   });
 
   // ── Uzun suren job'lari otomatik iptal (Admin > Ansible Info) ─────────────────────
-  // Ayrinti: long-job-cancel.cjs basligi. Yalnizca Admin okur/yazar.
-  app.get('/api/ansible/longjob-cancel', requireAuth, requireAdmin, async (_req, res) => {
-    try {
-      const ljc = require('./long-job-cancel.cjs');
-      const db = require('../db/index.cjs');
-      res.json({ ok: true, config: await ljc.readConfig(db), teamsConfigured: !!(process.env.TEAMS_LONGJOB_WEBHOOK_URL || '').trim() });
-    } catch (err) {
-      res.status(503).json({ ok: false, message: err.message });
-    }
-  });
-  app.put('/api/ansible/longjob-cancel', requireAuth, requireAdmin, async (req, res) => {
-    try {
-      const ljc = require('./long-job-cancel.cjs');
-      const db = require('../db/index.cjs');
-      const cfg = await ljc.writeConfig(db, req.body || {});
-      try {
-        require('../audit/index.cjs').auditPortal(req, 'awx_long_job_cancel_config', { result: 'ok', detail: JSON.stringify(cfg) });
-      } catch { /* audit yoksa yoksay */ }
-      res.json({ ok: true, config: cfg });
-    } catch (err) {
-      res.status(503).json({ ok: false, message: err.message });
-    }
-  });
+  // Ayrinti: long-job-cancel.cjs basligi. Uclarin TAMAMI (yapilandirma, durum, kuru
+  // calistirma, yetki on kontrolu, template listesi) requireAuth + requireAdmin arkasinda;
+  // kayit long-job-cancel.cjs registerRoutes() icinde (davranis testi oradan baglar).
+  try {
+    require('./long-job-cancel.cjs').registerRoutes(app, {
+      requireAuth,
+      requireAdmin,
+      getRunner: () => module.exports,
+      getDb: () => require('../db/index.cjs'),
+      getWatcherInfo: () => require('./long-job-watcher.cjs').getWatcherInfo(),
+      audit: (req, action, opts) => require('../audit/index.cjs').auditPortal(req, action, opts),
+    });
+  } catch (e) {
+    console.error('[LongJobCancel] uclar kaydedilemedi:', e.message);
+  }
 
   // GET /api/ansible/templates/:serverId — templates for a specific server
   // F-09: ?search=query filters by name/description
@@ -5078,47 +5187,282 @@ function clearTokenCache() {
   console.log('[Cache] AWX token onbellegi temizlendi.');
 }
 
-// Tum yapilandirilmis AWX sunucularinda su an GERCEKTEN calisan (status=running) job'lari
-// tek duz listede doner — server/ansible/long-job-watcher.cjs bunu kullanir. `pending`/
-// `waiting` KASITLI DISLANIR: henuz baslamamis bir isin `started` zamani yok, sure asimi
-// kavrami sadece fiilen calisan isler icin anlamlidir. Bir sunucuya erisilemezse o sunucu
-// SESSIZCE atlanir (diger sunuculardaki taramayi dusurmez) — cagiran taraf loglar.
-async function listRunningJobsAcrossServers() {
+// ── UZUN SUREN IS TARAMASI (otomatik iptal + 30 dk bildirimi) ─────────────────
+//
+// 2026-10-03 uretim olayi: "belirledigim surede bitmeyen isler kesilmiyor". Eski
+// tarayici (listRunningJobsAcrossServers) su KORLUKLARI tasiyordu:
+//   - yalniz /api/v2/jobs/ : WORKFLOW job'lari (/api/v2/workflow_jobs/) hic gorulmuyordu;
+//   - yalniz status=running : kuyrukta (pending/waiting) takili isler hic gorulmuyordu;
+//   - TEK sayfa + order_by=-started (EN YENI once): esigi asmis EN ESKI isler sayfa
+//     disinda kalabiliyordu;
+//   - sunucu hatasi YALNIZ console.warn: "tarandi, aday yok" ile "taranamadi" ayni
+//     gorunuyordu.
+// Simdi: iki tur (job + workflow), pending/waiting/running, EN ESKI once
+// (order_by=started,id), TUM sayfalar (next takibi, ust sinir + `truncated` uyarisi) ve
+// sunucu/tur basina ok/error kaydi. Durum ekrani bu kaydi aynen gosterir.
+const LONGJOB_LIST_KINDS = [
+  { kind: 'job', path: '/api/v2/jobs/', templateField: 'job_template', uiSegment: 'playbook' },
+  { kind: 'workflow', path: '/api/v2/workflow_jobs/', templateField: 'workflow_job_template', uiSegment: 'workflow' },
+];
+const LONGJOB_PAGE_SIZE = 200;
+const LONGJOB_MAX_PAGES = 10; // tur basina 2.000 is; asilirsa `truncated` + uyari
+const LONGJOB_SERVER_DEADLINE_MS = 60 * 1000;
+
+/** `next` mutlak ya da goreli olabilir; yalniz yol + sorgu alinir (fetchAllTemplatePages ile ayni). */
+function awxNextPath(next, baseUrl) {
+  if (!next) return null;
+  try {
+    const u = new URL(next, baseUrl);
+    return u.pathname + u.search;
+  } catch {
+    return null;
+  }
+}
+
+async function listAwxPages(server, token, startPath, maxPages) {
+  const results = [];
+  const seen = new Set();
+  let next = startPath;
+  let pages = 0;
+  while (next && pages < maxPages) {
+    const data = await awxRequestToServer(server, token, 'GET', next);
+    for (const r of (data && data.results) || []) {
+      // Sayfalar arasinda kayma olursa (yeni is eklendi) ayni is iki kez gelmesin.
+      // TERSI (one dusen bir is bitti -> bir is HIC gorunmez) burada FARK EDILEMEZ: AWX
+      // sayfalamasi ofset tabanli. Bu yuzden long-job-cancel "listede yok" sonucunu
+      // isin durumunu ayrica okuyarak (getJobStateOnServer) teyit eder.
+      if (r && r.id != null && seen.has(r.id)) continue;
+      if (r && r.id != null) seen.add(r.id);
+      results.push(r);
+    }
+    pages++;
+    next = data && data.next ? awxNextPath(data.next, server.url) : null;
+  }
+  return { results, pages, truncated: !!next };
+}
+
+function toLongJobCandidate(server, spec, j) {
+  const sf = (j && j.summary_fields) || {};
+  const tpl = sf[spec.templateField] || {};
+  return {
+    serverId: server.id,
+    serverName: server.name,
+    kind: spec.kind,
+    jobId: j.id,
+    jobName: tpl.name || j.name || `Job #${j.id}`,
+    // Otomatik iptal izin listesi (long-job-cancel.cjs) (tur, template KIMLIGI) ile eslesir.
+    templateId: Number(j[spec.templateField] ?? tpl.id) || null,
+    status: j.status || null,
+    started: j.started || null,
+    created: j.created || null,
+    executer: sf.launched_by?.name || sf.created_by?.username || sf.created_by?.name || '—',
+    createdBy: sf.created_by?.username || null,
+    // Bir workflow'un alt isi ise ust workflow job'i: o iptal edilirse AWX bu isi de keser.
+    parentWorkflowJobId: Number(sf.source_workflow_job?.id) || null,
+    url: `${String(server.url || '').replace(/\/+$/, '')}/#/jobs/${spec.uiSegment}/${j.id}/output`,
+  };
+}
+
+/** Taranamayan sunucu kaydi: `complete` HER ZAMAN false (listede yok != bitti). */
+function failedServerScan(server, error) {
+  return {
+    serverId: server.id,
+    serverName: server.name,
+    ok: false,
+    error,
+    kinds: {},
+    running: 0,
+    queued: 0,
+    truncated: false,
+    complete: { job: false, workflow: false },
+    jobs: [],
+  };
+}
+
+/**
+ * Tum AWX sunucularinda calisan + kuyruktaki (pending/waiting) job VE workflow job'larini
+ * EN ESKI once, tum sayfalariyla listeler.
+ * @returns {Promise<{ jobs: object[], servers: object[] }>} servers[]: sunucu basina
+ *   { serverId, serverName, ok, error, kinds: { job|workflow: { ok, error, count, pages, truncated } },
+ *     running, queued, truncated, complete: { job: bool, workflow: bool } }
+ *   `complete[kind]` = o tur HATASIZ ve KIRPILMADAN tarandi; iptal dogrulamasi "listede
+ *   yok" sonucunu YALNIZ bu durumda dikkate alir (ve yine de isin durumunu okuyarak teyit eder).
+ * `deadlineMs` / `onServerScan`: sunucu basina son tarih ve tarama oncesi kanca (testler
+ *   son tarih ve beklenmedik hata yolunu bunlarla olcer; uretimde varsayilan).
+ */
+async function listLongJobCandidatesAcrossServers({
+  maxPages = LONGJOB_MAX_PAGES,
+  deadlineMs = LONGJOB_SERVER_DEADLINE_MS,
+  onServerScan = null,
+} = {}) {
   const servers = getServers();
-  const out = [];
-  for (const server of servers) {
-    if (!server.token && !(server.user && server.password)) continue;
+  const scanOne = async (server) => {
+    if (typeof onServerScan === 'function') await onServerScan(server);
+    const out = {
+      serverId: server.id,
+      serverName: server.name,
+      ok: false,
+      error: null,
+      kinds: {},
+      running: 0,
+      queued: 0,
+      truncated: false,
+      complete: { job: false, workflow: false },
+      jobs: [],
+    };
+    if (!server.token && !(server.user && server.password)) {
+      out.error = 'Kimlik bilgisi eksik (token ya da kullanıcı/şifre yok) — bu sunucu TARANMADI.';
+      return out;
+    }
+    let token;
     try {
-      const token = await getTokenForServer(server);
-      const data = await awxRequestToServer(
-        server,
-        token,
-        'GET',
-        '/api/v2/jobs/?status=running&order_by=-started&page_size=200',
-      );
-      for (const j of data.results || []) {
-        if (!j.started) continue; // guvenlik: started yoksa sure hesaplanamaz
-        out.push({
-          serverId: server.id,
-          serverName: server.name,
-          jobId: j.id,
-          jobName: j.summary_fields?.job_template?.name || j.name || `Job #${j.id}`,
-          // Otomatik iptal izin listesi (long-job-cancel.cjs) template KIMLIGI ile eslesir.
-          templateId: Number(j.job_template ?? j.summary_fields?.job_template?.id) || null,
-          executer:
-            j.summary_fields?.launched_by?.name ||
-            j.summary_fields?.created_by?.username ||
-            j.summary_fields?.created_by?.name ||
-            '—',
-          started: j.started,
-          url: `${String(server.url || '').replace(/\/+$/, '')}/#/jobs/playbook/${j.id}/output`,
-        });
-      }
+      token = await getTokenForServer(server);
     } catch (err) {
-      console.warn(`[Ansible] ${server.name}: calisan job listesi alinamadi:`, err.message);
+      out.error = `Token alınamadı — bu sunucu TARANMADI: ${err.message}`;
+      return out;
+    }
+    const errors = [];
+    for (const spec of LONGJOB_LIST_KINDS) {
+      const q = `?status__in=pending,waiting,running&order_by=started,id&page_size=${LONGJOB_PAGE_SIZE}`;
+      try {
+        const r = await listAwxPages(server, token, spec.path + q, maxPages);
+        for (const j of r.results) {
+          const c = toLongJobCandidate(server, spec, j);
+          out.jobs.push(c);
+          if (c.status === 'running') out.running++;
+          else out.queued++;
+        }
+        out.kinds[spec.kind] = { ok: true, error: null, count: r.results.length, pages: r.pages, truncated: r.truncated };
+        out.complete[spec.kind] = !r.truncated;
+        if (r.truncated) {
+          out.truncated = true;
+          errors.push(
+            `${spec.kind === 'workflow' ? 'workflow' : 'job'} listesi ${maxPages} sayfada kesildi ` +
+              `(${r.results.length} iş okundu, devamı okunmadı)`,
+          );
+        }
+      } catch (err) {
+        out.kinds[spec.kind] = { ok: false, error: err.message, count: 0, pages: 0, truncated: false };
+        errors.push(`${spec.kind === 'workflow' ? 'workflow' : 'job'} listesi alınamadı: ${err.message}`);
+      }
+    }
+    out.ok = LONGJOB_LIST_KINDS.every((s) => out.kinds[s.kind] && out.kinds[s.kind].ok);
+    out.error = errors.length ? errors.join(' | ') : null;
+    return out;
+  };
+
+  const results = await Promise.all(
+    servers.map((server) =>
+      sonTarihli(
+        scanOne(server).catch((err) =>
+          failedServerScan(server, `Tarama beklenmedik hata verdi — bu sunucu bu turda TARANMADI: ${(err && err.message) || err}`),
+        ),
+        deadlineMs,
+        () =>
+          failedServerScan(
+            server,
+            `AWX ${Math.max(1, Math.round(deadlineMs / 1000))} sn içinde taranamadı — bu sunucu bu turda TARANMADI.`,
+          ),
+      ),
+    ),
+  );
+  const jobs = [];
+  for (const r of results) {
+    for (const j of r.jobs) jobs.push(j);
+    if (!r.ok || r.truncated) {
+      console.error(`[LongJobScan] ${r.serverName}: tarama eksik:`, redactAwxSecrets(r.error || 'bilinmeyen hata'));
     }
   }
-  return out;
+  return { jobs, servers: results.map(({ jobs: _j, ...rest }) => rest) };
+}
+
+// Geriye uyum: yalniz CALISAN (running) klasik job'lar. 30 dk bildirimi bu kumeyi kullanir.
+async function listRunningJobsAcrossServers() {
+  const { jobs } = await listLongJobCandidatesAcrossServers();
+  return jobs.filter((j) => j.kind === 'job' && j.status === 'running' && j.started);
+}
+
+/**
+ * Uzun-is iptali ekrani icin template listesi: job_templates + workflow_job_templates.
+ * AWX_READ_ONLY_TEMPLATE_IDS BURADA UYGULANMAZ — o liste "Portal'dan calistirilabilir"
+ * sablonlar icindir; iptal izin listesi baska bir karar (salt-okunur ad listesi, Admin).
+ */
+async function listCancelableTemplatesForServer(server) {
+  const token = await getTokenForServer(server);
+  const req = (p) => awxRequestToServer(server, token, 'GET', p);
+  const [jobTpls, wfTpls] = await Promise.all([
+    fetchAllTemplatePages(req, server.url, '/api/v2/job_templates/?page_size=100&order_by=name'),
+    fetchAllTemplatePages(req, server.url, '/api/v2/workflow_job_templates/?page_size=100&order_by=name'),
+  ]);
+  return [
+    ...jobTpls.map((t) => ({ id: t.id, name: t.name, kind: 'job' })),
+    ...wfTpls.map((t) => ({ id: t.id, name: t.name, kind: 'workflow' })),
+  ];
+}
+
+/**
+ * YETKI ON KONTROLU: AWX'in bu KULLANICI icin hesapladigi `user_capabilities`.
+ * `edit` = template Admin rolu (JobTemplateAccess.can_change) — baskalarinin baslattigi
+ * isi iptal edebilmenin sarti. Alan yoksa `edit: undefined` doner (cagiran "olculemedi" der).
+ *
+ * `tokenScope`: user_capabilities TOKEN KAPSAMINA BAKMAZ; 'read' kapsamli bir token'la
+ * her POST (iptal dahil) 403 alir (APIView.check_permissions, MAKUL). Kapsam yalniz Portal
+ * token'i kullanici/sifreyle /api/v2/tokens/ ucundan KENDISI aldiginda bilinir ('write',
+ * AWX varsayilani; fetchTokenV2 bos govde gonderir). Statik AWX_N_TOKEN ya da OAuth2
+ * istemcisiyle alinan token'in kapsami OLCULEMEZ (AWX token degerini geri vermez):
+ * 'unknown' doner — cagiran "olculemedi" der, "var" DEMEZ.
+ */
+async function getTemplateCapabilitiesOnServer(serverId, templateId, kind = 'job') {
+  const server = getServerById(serverId);
+  if (!server) throw Object.assign(new Error('AWX sunucusu bulunamadı.'), { status: 404 });
+  const id = Number(templateId);
+  if (!Number.isInteger(id) || id <= 0) throw Object.assign(new Error('Geçersiz template ID.'), { status: 400 });
+  const token = await getTokenForServer(server);
+  const seg = kind === 'workflow' ? 'workflow_job_templates' : 'job_templates';
+  const t = await awxRequestToServer(server, token, 'GET', `/api/v2/${seg}/${id}/`);
+  const caps = t && t.summary_fields && t.summary_fields.user_capabilities;
+  const ownToken = !server.token && !!(server.user && server.password) && !(server.clientId && server.clientSecret);
+  return {
+    name: (t && t.name) || '',
+    tokenScope: ownToken ? 'write' : 'unknown',
+    tokenSource: server.token ? 'static' : server.clientId && server.clientSecret ? 'oauth2' : 'password',
+    capabilities:
+      caps && typeof caps === 'object'
+        ? {
+            edit: typeof caps.edit === 'boolean' ? caps.edit : undefined,
+            start: typeof caps.start === 'boolean' ? caps.start : undefined,
+          }
+        : null,
+  };
+}
+
+/**
+ * SIR SIZINTISI ONLEME: durum/denetim/Teams'e giden her hata metni buradan gecer.
+ * Bilinen AWX sirlari (statik token, sifre, client secret, onbellekteki token'lar)
+ * ve `Bearer <deger>` kaliplari maskelenir.
+ */
+function redactAwxSecrets(text) {
+  let s = String(text == null ? '' : text);
+  const secrets = new Set();
+  const add = (v) => {
+    const x = v == null ? '' : String(v).trim();
+    if (x.length >= 6) secrets.add(x);
+  };
+  try {
+    for (const sv of getServers()) {
+      add(sv.token);
+      add(sv.password);
+      add(sv.clientSecret);
+    }
+  } catch {
+    /* sunucu listesi okunamazsa genel kaliplar yine uygulanir */
+  }
+  for (const c of _serverTokenCaches.values()) add(c && c.token);
+  add(_tokenCache.token);
+  add(process.env.AWX_TOKEN);
+  add(process.env.AWX_PASSWORD);
+  for (const v of secrets) s = s.split(v).join('***');
+  return s.replace(/(Bearer\s+)[A-Za-z0-9._~+/=-]+/gi, '$1***');
 }
 
 module.exports = {
@@ -5141,8 +5485,14 @@ module.exports = {
   getJobStatusOnServer,
   getJobOutputOnServer,
   cancelJobOnServer,
+  getJobStateOnServer,
   getServerById,
   listRunningJobsAcrossServers,
+  // Uzun suren is iptali (long-job-cancel.cjs / long-job-watcher.cjs):
+  listLongJobCandidatesAcrossServers,
+  listCancelableTemplatesForServer,
+  getTemplateCapabilitiesOnServer,
+  redactSecrets: redactAwxSecrets,
   // Saf yardimci — "kullaniciya log gozukmuyor" senaryosunun test edilebilmesi icin
   // disari acildi (bkz. server/ansible/__tests__/output-filter.test.cjs).
   applyOutputFilter,
