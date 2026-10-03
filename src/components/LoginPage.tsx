@@ -53,7 +53,7 @@ const LoginPage: React.FC = () => {
     };
   }, []);
 
-  const { login } = useContext(AuthContext);
+  const { login, isAuthenticated } = useContext(AuthContext);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -64,6 +64,15 @@ const LoginPage: React.FC = () => {
     kaynak && typeof kaynak.pathname === "string" && kaynak.pathname.startsWith("/") && kaynak.pathname !== "/login"
       ? `${kaynak.pathname}${typeof kaynak.search === "string" ? kaynak.search : ""}${typeof kaynak.hash === "string" ? kaynak.hash : ""}`
       : "/dashboard";
+
+  // Zaten girisli kullanici giris formunu GORMEZ (2026-10-03). Iki durum:
+  //   * baska bir sekmede giris yapildi — AuthContext kanaldan haber alip oturumu yukler;
+  //     bu sekme eskiden formda takili kaliyordu (gercek tarayici testinde bulundu);
+  //   * girisli kullanici adresi elle /login yazdi ya da yer imiyle acti.
+  // Hedef, atildigi sayfadir (yoksa pano).
+  useEffect(() => {
+    if (isAuthenticated) navigate(from, { replace: true });
+  }, [isAuthenticated, from, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

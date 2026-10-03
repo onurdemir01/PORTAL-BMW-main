@@ -20,6 +20,8 @@
 //   AO12 sebebi BASKA sekme "tuketmis" olsa da bu sekme nedenini kendi saatinden bilir
 //   AO13 React StrictMode'da (gelistirme) sekmeler arasi kanal OLMEZ: baska sekmedeki
 //        giris bu sekmenin katmanini kapatir
+//   AO14 baska sekme oturumu uzatinca bu sekmedeki uyari kendiliginden kapanir; sonraki
+//        girdi yeniden sayilir (isaret takili kalmaz)
 //
 // Sahte sunucu GERCEK sunucunun etkinlik kuralini uygular (session-policy.cjs etkinlikMi):
 // her istek etkinliktir; `X-Portal-Activity: background` ve bilinen yoklama yollari degildir.
@@ -31,6 +33,12 @@ import { sessionGuardKur, _sessionGuardSifirla, SESSION_HEADER } from '@/api/ses
 import SessionTimeoutModal from '@/components/SessionTimeoutModal';
 
 const DK = 60_000;
+// GERCEKCI SAAT FARKI: sunucu yaniti urettigi an, istemcinin onu aldigi andan ONCEDIR (ag
+// gecikmesi). Sahte sunucunun saati istemcininkiyle birebir ayniyken (fark 0) uretimde
+// cikan bir hata hic gorunmedi: iki ayri yerde hesaplanan "bitis ani" birkac ms farkli
+// cikiyor, "uyari ekrandayken girdi sayilmaz" kurali islemiyordu (2026-10-03).
+const SAPMA = -7;
+const sunucuSimdi = () => Date.now() + SAPMA;
 
 interface Sunucu {
   oturum: boolean;
@@ -90,7 +98,7 @@ async function sahteAg(input: RequestInfo | URL, init?: RequestInit): Promise<Re
   const method = init?.method || 'GET';
   const isaret = new Headers(init?.headers).get('x-portal-activity');
   cagrilar.push({ url, method, isaret });
-  const now = Date.now();
+  const now = sunucuSimdi();
   // Sunucu yaptirimi (Faz A): sure dolduysa oturum yok.
   if (sv.oturum && (now >= sv.idle || now >= sv.abs)) {
     sv.sebep = now >= sv.abs ? 'absolute' : 'idle';
@@ -349,7 +357,7 @@ describe('istemci oturum (Faz B)', () => {
       await window.fetch('/api/herhangi/yoklama');
     });
     expect(cagrilar[cagrilar.length - 1].isaret).toBeNull();
-    expect(sv.idle).toBe(Date.now() + 60 * DK);
+    expect(sv.idle).toBe(sunucuSimdi() + 60 * DK);
   });
 
   it('AO10 uyari ekrandayken yoklama uyariyi gecersiz kilmaz; kapatip calisan kullanicinin girdisi sayilir', async () => {
@@ -490,5 +498,25 @@ describe('istemci oturum (Faz B)', () => {
     } finally {
       bc?.close();
     }
+  });
+
+  it('AO14 baska sekme uzatinca uyari kendiliginden kapanir ve girdi yeniden sayilir', async () => {
+    await baslat();
+    await ileri(58 * DK + 1000);
+    expect(screen.getByText('Oturumu Sürdür')).toBeInTheDocument();
+    // "Diger sekme" Surdur'e basti: sunucuda bitis ilerledi; bu sekme bunu bir sonraki
+    // yanitin basliklarindan (ya da kanaldan) ogrenir.
+    sv.idle = sunucuSimdi() + 60 * DK;
+    await act(async () => {
+      await window.fetch('/api/auth/session');
+    });
+    await ileri(10);
+    expect(screen.queryByText('Oturumu Sürdür')).not.toBeInTheDocument();
+    expect(sayi('/extend')).toBe(0);
+    // Uyari isareti takili kalmadi: 6 dk sonra gercek girdi olagan sekilde bildirilir.
+    await ileri(6 * DK);
+    fireEvent.pointerDown(window);
+    await ileri(10);
+    expect(sayi('/extend', 'POST')).toBe(1);
   });
 });

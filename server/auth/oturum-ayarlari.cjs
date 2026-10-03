@@ -22,6 +22,16 @@ const KURALLAR = [
   { anahtar: 'AUTH_ALLOWED_UPN_SUFFIXES', tur: 'liste', desen: /^[A-Za-z0-9.-]{1,253}$/ },
   { anahtar: 'PORTAL_ALLOWED_ORIGINS', tur: 'liste', desen: /^https?:\/\/[A-Za-z0-9.-]+(:\d{1,5})?$/ },
   { anahtar: 'CSRF_ORIGIN_CHECK', tur: 'secim', secenekler: ['enforce', 'log', 'off'] },
+  // Okuyan taraf (guvenlik-basliklari.cjs) bozuk degerde 'self'e duser; burada reddedilir.
+  {
+    anahtar: 'PORTAL_FRAME_ANCESTORS',
+    tur: 'ozel',
+    kontrol: (v) => {
+      const kotu = v.split(/[\s,]+/).filter((o) => o && !/^('self'|'none'|\*|https?:\/\/[A-Za-z0-9.*-]+(:\d{1,5})?)$/.test(o));
+      return kotu.length ? `PORTAL_FRAME_ANCESTORS geçersiz öğe: ${kotu.join(', ')} ('self', 'none', * ya da https://alan)` : null;
+    },
+  },
+  SAYI('PORTAL_HSTS_MAX_AGE', 0, 63072000),
 ];
 
 const OTURUM_AYAR_ANAHTARLARI = KURALLAR.map((k) => k.anahtar);
@@ -38,6 +48,7 @@ function oturumAyariHatasi(anahtar, deger) {
     if (n < k.min || n > k.max) return `${anahtar} ${k.min} ile ${k.max} arasında olmalı.`;
     return null;
   }
+  if (k.tur === 'ozel') return k.kontrol(v);
   if (k.tur === 'secim') {
     return k.secenekler.includes(v.toLowerCase()) ? null : `${anahtar}: ${k.secenekler.join(' | ')}`;
   }

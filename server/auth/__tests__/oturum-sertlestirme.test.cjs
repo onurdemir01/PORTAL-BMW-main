@@ -12,6 +12,8 @@
 //   OS5b sistem ayari PUT gecersiz degeri yazmaz (HTTP)
 //   OS6 initAuth cerez adini gercekten kullanir
 //   OS7 cerez SILME basligi Secure tasir (production): __Host- adi Secure'suz silinemez
+//   OS8 guvenlik basliklari: cerceveye gomulme korumasi, nosniff, Referrer-Policy; HSTS
+//       varsayilan KAPALI ve yalnizca HTTPS isteginde; gercek createApp'te HER yanitta
 //   OS5 oturum ayarlari kaydetmeden once dogrulanir; sicak yuklenir ve ekranda gorunur
 'use strict';
 
@@ -326,4 +328,76 @@ test('OS7 production`da silme cerezi Secure tasir; iki ad da silinir', async () 
   const idx = fs.readFileSync(path.join(ROOT, 'server/auth/index.cjs'), 'utf8');
   assert.match(idx, /oturumCerezi\.cerezleriSil\(res, COOKIE_NAME\)/, 'logout cerezi ortak yardimciyla silmiyor');
   assert.doesNotMatch(idx, /res\.clearCookie\(/, 'initAuth`ta niteliksiz clearCookie kaldi');
+});
+
+test('OS8 guvenlik basliklari', async () => {
+  const { guvenlikBasliklari, cerceveAtalari } = require('../guvenlik-basliklari.cjs');
+  // Deger tablosu: bozuk deger korumayi KAPATMAZ, guvenli varsayilana duser.
+  const fa = (v) => ortam({ PORTAL_FRAME_ANCESTORS: v }, () => cerceveAtalari());
+  assert.equal(fa(undefined), "'self'");
+  assert.equal(fa(''), "'self'");
+  assert.equal(fa("'self' https://pano.kurum.com.tr"), "'self' https://pano.kurum.com.tr");
+  assert.equal(fa('https://a.kurum, https://b.kurum:8443'), 'https://a.kurum https://b.kurum:8443');
+  assert.equal(fa('*'), null, '* = koruma kapali');
+  assert.equal(fa("'none' https://x.y"), "'none'", "'none' her seyi ezer");
+  assert.equal(fa('javascript:alert(1)'), "'self'");
+  assert.equal(fa("'self'; script-src *"), "'self'", 'CSP enjeksiyonu');
+
+  const app = express();
+  app.set('trust proxy', 'loopback');
+  app.use(guvenlikBasliklari());
+  app.get('/x', (req, res) => res.send('ok'));
+  const url = dinle(app);
+  const al = async (env, headers = {}) =>
+    ortamA(env, async () => {
+      const r = await fetch(`${url}/x`, { headers });
+      return Object.fromEntries(['content-security-policy', 'x-frame-options', 'x-content-type-options', 'referrer-policy', 'strict-transport-security'].map((k) => [k, r.headers.get(k)]));
+    });
+
+  const v = await al({ PORTAL_FRAME_ANCESTORS: undefined, PORTAL_HSTS_MAX_AGE: undefined });
+  assert.equal(v['content-security-policy'], "frame-ancestors 'self'");
+  assert.equal(v['x-frame-options'], 'SAMEORIGIN');
+  assert.equal(v['x-content-type-options'], 'nosniff');
+  assert.equal(v['referrer-policy'], 'strict-origin-when-cross-origin');
+  assert.equal(v['strict-transport-security'], null, 'HSTS varsayilan olarak acik — ayni addaki HTTP servisleri kirar');
+
+  // Koken listesi: CSP yeter; X-Frame-Options EKLENMEZ (mesru cerceveyi engellerdi).
+  const l = await al({ PORTAL_FRAME_ANCESTORS: "'self' https://pano.kurum.com.tr" });
+  assert.equal(l['content-security-policy'], "frame-ancestors 'self' https://pano.kurum.com.tr");
+  assert.equal(l['x-frame-options'], null);
+  const k = await al({ PORTAL_FRAME_ANCESTORS: '*' });
+  assert.equal(k['content-security-policy'], null);
+  assert.equal(k['x-frame-options'], null);
+  assert.equal(k['x-content-type-options'], 'nosniff', 'cerceve korumasi kapaninca digerleri de gitti');
+  const n = await al({ PORTAL_FRAME_ANCESTORS: "'none'" });
+  assert.equal(n['x-frame-options'], 'DENY');
+
+  // HSTS: acik olsa da duz HTTP isteginde GONDERILMEZ; HTTPS (vekil) isteginde gonderilir.
+  const h1 = await al({ PORTAL_HSTS_MAX_AGE: '31536000' });
+  assert.equal(h1['strict-transport-security'], null);
+  const h2 = await al({ PORTAL_HSTS_MAX_AGE: '31536000' }, { 'x-forwarded-proto': 'https' });
+  assert.equal(h2['strict-transport-security'], 'max-age=31536000');
+  const h3 = await al({ PORTAL_HSTS_MAX_AGE: 'abc' }, { 'x-forwarded-proto': 'https' });
+  assert.equal(h3['strict-transport-security'], null);
+
+  // Dogrulama (Admin kaydi).
+  assert.equal(oturumAyariHatasi('PORTAL_FRAME_ANCESTORS', "'self' https://pano.kurum.com.tr"), null);
+  assert.equal(oturumAyariHatasi('PORTAL_FRAME_ANCESTORS', '*'), null);
+  assert.match(oturumAyariHatasi('PORTAL_FRAME_ANCESTORS', 'javascript:alert(1)'), /geçersiz öğe/);
+  assert.match(oturumAyariHatasi('PORTAL_HSTS_MAX_AGE', 'abc'), /tam sayı/);
+  assert.equal(oturumAyariHatasi('PORTAL_HSTS_MAX_AGE', '31536000'), null);
+
+  // GERCEK uygulama iskeleti: basliklar tum route'lardan ONCE baglanir, API ve belge yanitinda var.
+  // (Express'in kendi 404 sayfasi basliklari ezer — o yuzden gercek bir route ile olculur.)
+  const { createApp } = require('../../service.cjs');
+  const gercek = createApp();
+  gercek.get('/api/test/yol', (req, res) => res.json({ ok: true }));
+  gercek.get('/sayfa', (req, res) => res.type('html').send('<!doctype html><title>x</title>'));
+  const gUrl = dinle(gercek);
+  const r = await fetch(`${gUrl}/api/test/yol`);
+  assert.equal(r.status, 200);
+  assert.equal(r.headers.get('content-security-policy'), "frame-ancestors 'self'", 'createApp guvenlik basliklarini baglamiyor');
+  assert.equal(r.headers.get('x-content-type-options'), 'nosniff');
+  const html = await fetch(`${gUrl}/sayfa`);
+  assert.equal(html.headers.get('x-frame-options'), 'SAMEORIGIN', 'belge yanitinda cerceve korumasi yok');
 });

@@ -93,9 +93,10 @@ const ETKINLIK_OLAYLARI = ["pointerdown", "keydown", "wheel", "scroll", "touchst
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
-  // Uyarinin acildigi bitis ani (null = kapali). Gorunurluk bundan TURETILIR: bitis
-  // degisince (baska sekme uzatti) eski uyari kendiliginden kapanir.
-  const [uyariBitis, setUyariBitis] = useState<number | null>(null);
+  // Uyarinin acildigi SAAT SURUMU (null = kapali). Gorunurluk bundan TURETILIR: sunucunun
+  // bitisi degisince (baska sekme uzatti) surum artar ve eski uyari kendiliginden kapanir.
+  // Bitis ANI karsilastirilmaz: saat farki olcumu onu birkac ms oynatir (sessionClock.surum).
+  const [uyariSurum, setUyariSurum] = useState<number | null>(null);
   const [countdown, setCountdown] = useState(0);
   const [girisNotu, setGirisNotu] = useState<string | null>(null);
   const girisNotunuTemizle = useCallback(() => setGirisNotu(null), []);
@@ -141,31 +142,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     saat.sifirla();
     setOturumDustu(null);
     setUser(null);
-    setUyariBitis(null);
+    setUyariSurum(null);
   }, [saat]);
 
-  // Uyarinin EKRANDA oldugu bitis ani (0 = ekranda degil). `uyar()` icinde SENKRON
+  // Uyarinin EKRANDA oldugu saat surumu (0 = ekranda degil). `uyar()` icinde SENKRON
   // yazilir: uyari acilirken Modal odagi tasir ve o olay state guncellenmeden once gelir —
-  // state'e bakan surum uyariyi kendi kendine uzatiyordu (Faz B dersi). Deger bitis ANI
-  // oldugu icin saat ilerlediginde (baska sekme uzatti) kendiliginden gecersiz kalir;
+  // state'e bakan surum uyariyi kendi kendine uzatiyordu (Faz B dersi). Deger SURUM oldugu
+  // icin sunucunun bitisi degisince (baska sekme uzatti) kendiliginden gecersiz kalir;
   // "takili kalan isaret" yuzunden etkinligin hic sayilmamasi mumkun degildir.
-  const uyariEkrandaBitis = useRef(0);
+  //
+  // ILK YAZIMDA bitis ANI tutuluyor ve canli saatle `===` karsilastiriliyordu. Uretim
+  // derlemesiyle gercek tarayicida bozuldu: ag gecikmesinden dogan birkac ms'lik saat farki
+  // iki degeri esitsiz kiliyor, uyari ekrandayken fare hareketi oturumu sessizce uzatiyordu.
+  const uyariEkrandaSurum = useRef(0);
 
   const extendSession = useCallback(() => {
-    uyariEkrandaBitis.current = 0;
+    uyariEkrandaSurum.current = 0;
     kullaniciEtkinligiBildir();
-    setUyariBitis(null);
+    setUyariSurum(null);
     void saat.uzat();
   }, [saat]);
 
   // Uyariyi yalnizca BU bitis ani icin kapatir; KAPATMAK sureyi uzatmaz. Kullanici
   // kapatip calismaya devam ederse sonraki GERCEK girdisi olagan kurallarla sayilir;
   // kapatip masadan kalkarsa oturum bitis aninda kapanir.
-  const kapatilanBitis = useRef(0);
+  const kapatilanSurum = useRef(0);
   const dismissTimeoutModal = useCallback(() => {
-    kapatilanBitis.current = uyariHesapla(saat.durum()).bitis;
-    uyariEkrandaBitis.current = 0;
-    setUyariBitis(null);
+    kapatilanSurum.current = saat.durum().surum;
+    uyariEkrandaSurum.current = 0;
+    setUyariSurum(null);
   }, [saat]);
 
   // Restore session from backend on mount
@@ -249,7 +254,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // ustte yeniden giris katmani acilir (AWS konsolu deseni) — acik form ve sihirbaz
   // durumu korunur. Sebep (bosta / mutlak) sunucunun basligindan gelir.
   useEffect(() => oturumBittiAbone((sebep) => {
-    setUyariBitis(null);
+    setUyariSurum(null);
     // Sunucu sebebi yalnizca ILK istege soyler; diger sekmeler kendi saatinden cikarir.
     setOturumDustu({ sebep: sebep ?? bitisSebebi(saat.durum(), Date.now()) });
   }), [saat]);
@@ -259,7 +264,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     saat.sifirla();
     setOturumDustu(null);
     setUser(null);
-    setUyariBitis(null);
+    setUyariSurum(null);
   }), [saat]);
 
   // Diger sekmede giris yapildi: bu sekme giris ekranindaysa ya da yeniden giris
@@ -399,19 +404,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => saat.abone(setSaatDurumu), [saat]);
   const uyariBilgisi = useMemo(() => (saatDurumu.bilinen ? uyariHesapla(saatDurumu) : null), [saatDurumu]);
   const timeoutExtendable = uyariBilgisi?.uzatilabilir ?? true;
-  const showTimeoutModal = !!user && !oturumDustu && !!uyariBilgisi && uyariBitis === uyariBilgisi.bitis;
+  const showTimeoutModal = !!user && !oturumDustu && !!uyariBilgisi && uyariSurum === saatDurumu.surum;
   useEffect(() => {
     if (!user || oturumDustu || !uyariBilgisi) return;
     const { bitis, uyariAni } = uyariBilgisi;
+    const surum = saatDurumu.surum;
     let geriSayim: number | null = null;
     const kalanSn = () => Math.max(0, Math.round((bitis - Date.now()) / 1000));
     const uyar = () => {
-      if (kapatilanBitis.current === bitis) return;
+      if (kapatilanSurum.current === surum) return;
       // Uyari ekrandayken karar kullanicinin: ne girdi ne otomatik istek sureyi uzatir.
-      uyariEkrandaBitis.current = bitis;
+      uyariEkrandaSurum.current = surum;
       kullaniciEtkinligiSifirla();
       setCountdown(kalanSn());
-      setUyariBitis(bitis);
+      setUyariSurum(surum);
       geriSayim = window.setInterval(() => setCountdown(kalanSn()), 1000);
     };
     const t1 = window.setTimeout(uyar, Math.max(0, uyariAni - Date.now()));
@@ -421,7 +427,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       window.clearTimeout(t2);
       if (geriSayim !== null) window.clearInterval(geriSayim);
     };
-  }, [user, oturumDustu, uyariBilgisi, saat]);
+  }, [user, oturumDustu, uyariBilgisi, saatDurumu.surum, saat]);
 
   // Etkinlik iki yere bildirilir: sessionGuard (isteklerin arka plan isareti) ve
   // sessionClock (API cagrisi uretmeyen etkinlik icin kisitli `extend`). Uyari
@@ -429,8 +435,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     if (!user || oturumDustu) return;
     const etkin = () => {
-      const ekrandaki = uyariEkrandaBitis.current;
-      if (ekrandaki && ekrandaki === uyariHesapla(saat.durum()).bitis) return;
+      const ekrandaki = uyariEkrandaSurum.current;
+      if (ekrandaki && ekrandaki === saat.durum().surum) return;
       kullaniciEtkinligiBildir();
       saat.etkinlik();
     };

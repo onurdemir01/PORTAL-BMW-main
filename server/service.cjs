@@ -6,6 +6,7 @@ const compression = require("compression");
 
 const { istektekiOturumCerezi } = require("./auth/oturum-cerezi.cjs");
 const { originKontrolu } = require("./auth/origin-kontrolu.cjs");
+const { guvenlikBasliklari } = require("./auth/guvenlik-basliklari.cjs");
 
 function createApp() {
   const app = express();
@@ -70,6 +71,10 @@ function createApp() {
 
   // L-06: Gzip compression — nobetci/list 55KB → ~8KB
   app.use(compression());
+
+  // Guvenlik basliklari HER yanitta (HTML, statik, API): cerceveye gomulme korumasi belge
+  // yanitinda olmali — tum route'lardan ve statik sunumdan ONCE.
+  app.use(guvenlikBasliklari());
 
   // common middlewares
   app.use(express.json({ limit: "2mb" }));

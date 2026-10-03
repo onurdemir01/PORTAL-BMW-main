@@ -27,6 +27,12 @@ export interface OturumOzeti {
 
 /** Istemci saatine cevrilmis durum. `bilinen` false iken zamanlayici kurulmaz. */
 export interface SaatDurumu {
+  /**
+   * SUNUCUNUN bitis degerleri her degistiginde artar. "Bu, ayni oturum bitisi mi?" sorusu
+   * ZAMAN karsilastirmasiyla degil bununla cevaplanir: istemci saatine cevrilmis degerler
+   * saat farki olcumuyle birkac ms oynar, esitlik karsilastirmasi guvenilmezdir.
+   */
+  surum: number;
   bilinen: boolean;
   idleExpiresAt: number;
   absoluteExpiresAt: number;
@@ -118,6 +124,8 @@ export function oturumSaatiOlustur(sec: SaatSecenekleri = {}) {
   let sunucuBosta = 0;
   let sunucuMutlak = 0;
   let sapma = 0;
+  let sapmaOlculdu = false;
+  let surum = 0;
   let warnSeconds = 120;
   let remember = false;
   let sonUzatma = 0;
@@ -129,6 +137,7 @@ export function oturumSaatiOlustur(sec: SaatSecenekleri = {}) {
 
   function durum(): SaatDurumu {
     return {
+      surum,
       bilinen: sunucuBosta > 0 && sunucuMutlak > 0,
       idleExpiresAt: sunucuBosta - sapma,
       absoluteExpiresAt: sunucuMutlak - sapma,
@@ -147,6 +156,7 @@ export function oturumSaatiOlustur(sec: SaatSecenekleri = {}) {
   function uygula(idle: number, abs: number, ek?: { warnSeconds?: number; remember?: boolean }): boolean {
     if (!(idle > 0) || !(abs > 0)) return false;
     let degisti = idle !== sunucuBosta || abs !== sunucuMutlak;
+    if (degisti) surum += 1;
     // Ilk deger (giris / sayfa acilisi) de sunucunun etkinligi az once kaydettigi andir:
     // hemen ardindan gelen ilk fare hareketi gereksiz bir extend uretmesin.
     if (idle > sunucuBosta) sonUzatma = simdi();
@@ -171,8 +181,22 @@ export function oturumSaatiOlustur(sec: SaatSecenekleri = {}) {
   /** Sunucu ozetini uygular (GET /session, /extend, /login yaniti) ve diger sekmelere yayar. */
   function ozetUygula(o: OturumOzeti | null | undefined, { yayinla = true } = {}) {
     if (!o) return;
-    if (typeof o.serverNow === 'number' && o.serverNow > 0) sapma = o.serverNow - simdi();
+    // Saat farki: ILK olcum her zaman uygulanir; sonrakiler yalnizca 1 sn'den fazla
+    // degistiyse (gercek saat degisimi). Aradaki birkac ms'lik oynama ag gecikmesidir —
+    // her yanitta saati kipirdatmak zamanlayicilari bosuna yeniden kurardi.
+    let sapmaDegisti = false;
+    if (typeof o.serverNow === 'number' && o.serverNow > 0) {
+      const yeni = o.serverNow - simdi();
+      if (!sapmaOlculdu || Math.abs(yeni - sapma) > 1000) {
+        sapmaDegisti = yeni !== sapma;
+        sapma = yeni;
+        sapmaOlculdu = true;
+      }
+    }
     const degisti = uygula(o.idleExpiresAt, o.absoluteExpiresAt, o);
+    // Sunucu degerleri ayni kalsa da saat farki degistiyse istemci-saatindeki degerler
+    // degisti: aboneler haberdar edilmeli (yoksa abonenin elindeki durum bayat kalir).
+    if (!degisti && sapmaDegisti) bildir();
     if (degisti && yayinla) {
       yay({
         tur: 'saat',
@@ -249,6 +273,7 @@ export function oturumSaatiOlustur(sec: SaatSecenekleri = {}) {
   function sifirla() {
     sunucuBosta = 0;
     sunucuMutlak = 0;
+    surum += 1;
     sonUzatma = 0;
     bildir();
   }
