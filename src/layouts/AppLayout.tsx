@@ -42,7 +42,7 @@ function PageSkeleton() {
 export default function AppLayout() {
   const location = useLocation();
   const {
-    showTimeoutModal, extendSession, dismissTimeoutModal, timeoutExtendable, logout, countdown,
+    showTimeoutModal, extendSession, dismissTimeoutModal, timeoutExtendable, extendFailed, logout, countdown,
     girisNotu, girisNotunuTemizle,
   } = useContext(AuthContext);
   // Giris notu (or. esanli oturum siniri): toast kabi burada dogar, not burada gosterilir.
@@ -155,6 +155,7 @@ export default function AppLayout() {
           isOpen={showTimeoutModal}
           countdown={countdown}
           extendable={timeoutExtendable}
+          extendFailed={extendFailed}
           onExtend={extendSession}
           onDismiss={dismissTimeoutModal}
           onLogout={logout}

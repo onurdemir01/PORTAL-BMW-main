@@ -26,6 +26,8 @@ interface AuthContextType {
   dismissTimeoutModal: () => void;
   /** false: sinir mutlak sure — uzatilamaz, yalnizca yeniden giris. */
   timeoutExtendable: boolean;
+  /** "Surdur" sunucuya ulasamadi: uyari ACIK kalir ve bunu soyler. */
+  extendFailed: boolean;
   /** Giristen sonra BIR KEZ gosterilecek not (or. esanli oturum siniri eski oturumu kapatti). */
   girisNotu: string | null;
   girisNotunuTemizle: () => void;
@@ -156,11 +158,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // iki degeri esitsiz kiliyor, uyari ekrandayken fare hareketi oturumu sessizce uzatiyordu.
   const uyariEkrandaSurum = useRef(0);
 
+  // "Surdur": sunucuda uzatir. Uyari IYIMSER kapatilmaz — basarili uzatmada sunucunun
+  // bitisi degisir, saat surumu artar ve uyari KENDILIGINDEN kapanir. Istek dusturse
+  // (ag aksamasi) uyari acik kalir ve bunu soyler; eskiden pencere her durumda kapaniyor,
+  // kullanici "uzattim" sanip 2 dk sonra oturumunu kaybediyordu.
+  const [extendFailed, setExtendFailed] = useState(false);
   const extendSession = useCallback(() => {
-    uyariEkrandaSurum.current = 0;
     kullaniciEtkinligiBildir();
-    setUyariSurum(null);
-    void saat.uzat();
+    setExtendFailed(false);
+    void saat.uzat().then((ok) => setExtendFailed(!ok));
   }, [saat]);
 
   // Uyariyi yalnizca BU bitis ani icin kapatir; KAPATMAK sureyi uzatmaz. Kullanici
@@ -170,6 +176,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const dismissTimeoutModal = useCallback(() => {
     kapatilanSurum.current = saat.durum().surum;
     uyariEkrandaSurum.current = 0;
+    setExtendFailed(false);
     setUyariSurum(null);
   }, [saat]);
 
@@ -416,6 +423,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Uyari ekrandayken karar kullanicinin: ne girdi ne otomatik istek sureyi uzatir.
       uyariEkrandaSurum.current = surum;
       kullaniciEtkinligiSifirla();
+      setExtendFailed(false);
       setCountdown(kalanSn());
       setUyariSurum(surum);
       geriSayim = window.setInterval(() => setCountdown(kalanSn()), 1000);
@@ -481,7 +489,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     <AuthContext.Provider
       value={{
         user, isAuthenticated: !!user, login, logout, showTimeoutModal, countdown, extendSession,
-        dismissTimeoutModal, timeoutExtendable, girisNotu, girisNotunuTemizle,
+        dismissTimeoutModal, timeoutExtendable, extendFailed, girisNotu, girisNotunuTemizle,
         pageVisibility, pageVisibilityLoaded, canViewPage, canSee, visibilityReady, visibilityFailed, refreshVisibility,
       }}
     >

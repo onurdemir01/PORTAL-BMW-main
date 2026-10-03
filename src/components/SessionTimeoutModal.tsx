@@ -12,6 +12,8 @@ interface SessionTimeoutModalProps {
   isOpen: boolean;
   countdown: number;
   extendable: boolean;
+  /** "Surdur" sunucuya ulasamadi (ag aksamasi): pencere acik kalir, bunu soyler. */
+  extendFailed?: boolean;
   onExtend: () => void;
   onDismiss: () => void;
   onLogout: () => void;
@@ -21,6 +23,7 @@ const SessionTimeoutModal: React.FC<SessionTimeoutModalProps> = ({
   isOpen,
   countdown,
   extendable,
+  extendFailed = false,
   onExtend,
   onDismiss,
   onLogout,
@@ -62,6 +65,11 @@ const SessionTimeoutModal: React.FC<SessionTimeoutModalProps> = ({
           ? 'Güvenliğiniz için oturumunuz otomatik olarak sonlandırılacak. Devam etmek için "Oturumu Sürdür"e basın.'
           : 'Bu süre uzatılamaz. Süre dolunca yeniden giriş yapmanız istenecek; açık sayfanız korunur.'}
       </p>
+      {extendFailed && (
+        <p className="text-sm mt-2" role="alert" style={{ color: 'var(--status-danger)' }}>
+          Oturum uzatılamadı (bağlantı sorunu olabilir). Tekrar deneyin.
+        </p>
+      )}
       <p className="text-sm mt-2" style={{ color: 'var(--text-secondary)' }}>
         Kalan süre:{' '}
         <span className="font-bold tabular-nums" style={{ color: 'var(--text-primary)' }}>

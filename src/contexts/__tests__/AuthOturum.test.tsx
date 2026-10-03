@@ -22,6 +22,9 @@
 //        giris bu sekmenin katmanini kapatir
 //   AO14 baska sekme oturumu uzatinca bu sekmedeki uyari kendiliginden kapanir; sonraki
 //        girdi yeniden sayilir (isaret takili kalmaz)
+//   AO15 "Surdur" sunucuya ulasamazsa uyari ACIK kalir ve bunu soyler; yeniden denenince kapanir
+//   AO16 X ile kapatilan uyari, oturum bitisi degismeden gelen bir durum degisikliginde
+//        (or. uyari suresi ayari) yeniden ACILMAZ
 //
 // Sahte sunucu GERCEK sunucunun etkinlik kuralini uygular (session-policy.cjs etkinlikMi):
 // her istek etkinliktir; `X-Portal-Activity: background` ve bilinen yoklama yollari degildir.
@@ -160,6 +163,7 @@ function Uygulama() {
         isOpen={a.showTimeoutModal}
         countdown={a.countdown}
         extendable={a.timeoutExtendable}
+        extendFailed={a.extendFailed}
         onExtend={a.extendSession}
         onDismiss={a.dismissTimeoutModal}
         onLogout={a.logout}
@@ -518,5 +522,83 @@ describe('istemci oturum (Faz B)', () => {
     fireEvent.pointerDown(window);
     await ileri(10);
     expect(sayi('/extend', 'POST')).toBe(1);
+  });
+
+  it('AO15 Surdur sunucuya ulasamazsa uyari acik kalir ve soyler; yeniden denenince kapanir', async () => {
+    await baslat();
+    await ileri(58 * DK + 1000);
+    sv.extendHata = true;
+    fireEvent.click(screen.getByText('Oturumu Sürdür'));
+    await ileri(10);
+    expect(sayi('/extend', 'POST')).toBe(1);
+    // Pencere KAPANMADI: kullanici "uzattim" sanip oturumunu kaybetmemeli.
+    expect(screen.getByText('Oturumu Sürdür')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('Oturum uzatılamadı');
+    // Uyari hala ekranda: girdi sureyi kendiliginden uzatmaz.
+    fireEvent.keyDown(window, { key: 'a' });
+    await ileri(10);
+    expect(sayi('/extend', 'POST')).toBe(1);
+
+    sv.extendHata = false;
+    fireEvent.click(screen.getByText('Oturumu Sürdür'));
+    await ileri(10);
+    expect(sayi('/extend', 'POST')).toBe(2);
+    expect(screen.queryByText('Oturumu Sürdür')).not.toBeInTheDocument();
+    await ileri(3 * DK);
+    expect(screen.queryByTestId('relogin-overlay')).not.toBeInTheDocument();
+  });
+
+  it('AO15b eski uzatma hatasi SONRAKI uyariya tasinmaz', async () => {
+    await baslat();
+    await ileri(58 * DK + 1000);
+    sv.extendHata = true;
+    fireEvent.click(screen.getByText('Oturumu Sürdür'));
+    await ileri(10);
+    expect(screen.getByRole('alert')).toHaveTextContent('Oturum uzatılamadı');
+    // Oturumu BASKA sekme uzatti: bu sekmedeki uyari kapanir (hata durumu geride kalir).
+    sv.extendHata = false;
+    sv.idle = sunucuSimdi() + 60 * DK;
+    await act(async () => {
+      await window.fetch('/api/auth/session');
+    });
+    await ileri(10);
+    expect(screen.queryByText('Oturumu Sürdür')).not.toBeInTheDocument();
+    // 58 dk sonra yeni uyari: bayat "uzatilamadi" mesaji GORUNMEMELI.
+    await ileri(58 * DK);
+    expect(screen.getByText('Oturumu Sürdür')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('AO16 kapatilan uyari, bitis degismeden gelen durum degisikliginde yeniden acilmaz', async () => {
+    await baslat();
+    await ileri(58 * DK + 1000);
+    fireEvent.click(screen.getByLabelText('Kapat'));
+    await ileri(10);
+    expect(screen.queryByText('Oturumu Sürdür')).not.toBeInTheDocument();
+    // Baska sekmeden ayni bitisle ama farkli uyari suresiyle saat mesaji (Admin ayari
+    // degistirdi): sunucu bitisi AYNI, yani ayni uyari — kullanici onu zaten kapatti.
+    // Uyari suresi UZADI (150 sn): yeni uyari ani gecmiste kalir, zamanlayici hemen atesler.
+    const mesaj = { tur: 'saat', idleExpiresAt: sv.idle, absoluteExpiresAt: sv.abs, warnSeconds: 150 };
+    let bc: BroadcastChannel | null = null;
+    if (typeof BroadcastChannel !== 'undefined') {
+      bc = new BroadcastChannel('portal-session');
+      bc.postMessage(mesaj);
+    } else {
+      window.dispatchEvent(
+        new StorageEvent('storage', { key: 'portal-session-msg', newValue: JSON.stringify(mesaj) }),
+      );
+    }
+    try {
+      for (let i = 0; i < 30; i++) {
+        await act(async () => {
+          await new Promise((r) => setImmediate(r));
+          await vi.advanceTimersByTimeAsync(5);
+        });
+      }
+      expect(screen.queryByText('Oturumu Sürdür')).not.toBeInTheDocument();
+      expect(sayi('/extend')).toBe(0);
+    } finally {
+      bc?.close();
+    }
   });
 });

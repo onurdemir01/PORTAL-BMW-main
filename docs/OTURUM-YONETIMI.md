@@ -1,6 +1,6 @@
 # Oturum ve Giriş Yönetimi
 
-Portalın oturum modeli. 2026-10'da beş adımda (PR #166–#170) yeniden kuruldu; etkinlik sayımı #173'te düzeltildi. Kullanıcıların şikâyeti şuydu: "login aşamasında çokça atıyor, ne kadar bağlı kalabileceği ayarlanabilsin."
+Portalın oturum modeli. 2026-10'da beş adımda (PR #166–#170) yeniden kuruldu; etkinlik sayımı #173'te, üretim modu bulguları #174'te düzeltildi. Kullanıcıların şikâyeti şuydu: "login aşamasında çokça atıyor, ne kadar bağlı kalabileceği ayarlanabilsin."
 
 ## Model
 
@@ -29,7 +29,7 @@ Boşta kalma sınırının işe yaraması için "kullanıcı gerçekten burada m
 - Girdi tazeyken giden istekler işaretlenmez ve etkinlik sayılır. Bu yüzden yeni bir yoklama eklemek için hiçbir liste güncellenmez.
 - API çağrısı üretmeyen etkinlik (okuma, kaydırma) `POST /api/auth/session/extend` ile bildirilir; en sık 5 dakikada bir.
 - Sunucudaki yol listesi (`ARKA_PLAN_YOLLARI`) yalnızca **yedektir**: eski JavaScript'i taşıyan, yenilenmemiş sekmeler içindir.
-- **Uyarı ekrandayken** ne girdi ne otomatik istek süreyi uzatır; karar kullanıcınındır ("Oturumu Sürdür"). Uyarı X ya da Esc ile kapatılırsa süre uzamaz; kullanıcı çalışmaya devam ederse sonraki gerçek girdisi olağan kurallarla sayılır, masadan kalkarsa oturum biter. Arka plana tıklamak uyarıyı kapatmaz.
+- **Uyarı ekrandayken** ne girdi ne otomatik istek süreyi uzatır; karar kullanıcınındır ("Oturumu Sürdür"). Pencere yalnızca uzatma sunucuda gerçekten başarılı olunca kapanır; istek ulaşamazsa açık kalır ve "Oturum uzatılamadı" der. Uyarı X ya da Esc ile kapatılırsa süre uzamaz; kullanıcı çalışmaya devam ederse sonraki gerçek girdisi olağan kurallarla sayılır, masadan kalkarsa oturum biter. Arka plana tıklamak uyarıyı kapatmaz.
 - Uzun süren bir işi (ör. log indirme) hiç dokunmadan izleyen kullanıcı da boşta sayılır: bitişten 2 dakika önce uyarı çıkar; oturum düşerse yerinde yeniden girişle iş ekranı korunur.
 
 ## Sekmeler ve istemci
