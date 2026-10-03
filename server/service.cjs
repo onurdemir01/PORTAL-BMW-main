@@ -4,7 +4,7 @@ const rateLimit = require("express-rate-limit");
 const { ipKeyGenerator } = require("express-rate-limit");
 const compression = require("compression");
 
-const { istektekiOturumCerezi } = require("./auth/oturum-cerezi.cjs");
+const { oturumHizAnahtari } = require("./auth/oturum-cerezi.cjs");
 const { originKontrolu } = require("./auth/origin-kontrolu.cjs");
 const { guvenlikBasliklari } = require("./auth/guvenlik-basliklari.cjs");
 
@@ -123,9 +123,8 @@ function createApp() {
   function sessionOrIpKey(req) {
     // Cerez adi ortama gore degisir (uretimde `__Host-portal.sid`, gecis suresince eski
     // `connect.sid` de) — tek yerden okunur (server/auth/oturum-cerezi.cjs).
-    const ham = istektekiOturumCerezi(req) || "";
-    const m = /^s(?::|%3A)([^.]+)/.exec(ham) || /^([^.]+)/.exec(ham);
-    if (m && m[1]) return `sid:${m[1].slice(0, 48)}`;
+    const oturum = oturumHizAnahtari(req);
+    if (oturum) return oturum;
     const hdrUser = req.headers["x-portal-user"];
     if (hdrUser) return `usr:${String(hdrUser).slice(0, 64)}`;
     // IPv6-guvenli IP anahtari (express-rate-limit helper'i — ERR_ERL_KEY_GEN_IPV6 onler).

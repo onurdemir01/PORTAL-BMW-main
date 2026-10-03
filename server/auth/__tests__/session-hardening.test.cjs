@@ -54,20 +54,23 @@ test('SH3 CSRF yuzeyi dar (sameSite)', () => {
   assert.match(b, /sameSite:\s*'(lax|strict)'/, 'sameSite yok ya da none — CSRF yuzeyi acilir');
 });
 
-test('SH4 production`da BOS SESSION_SECRET ile ACILMAZ', () => {
-  // Bilinen bir imza anahtariyla oturum SAHTECILIGI mumkun olur. Kontrol
-  // GURULTULU olmali: uyarip devam etmek, kimsenin fark etmedigi bir acik birakir.
+test('SH4 HICBIR ortamda sabit / bilinen imza anahtari yok; bos anahtar sureci DUSURMEZ', () => {
+  // 2026-10-03: oturum artik SESSION_SECRET'e bagli degil (kullanici: "buna bagimli bir sey
+  // olmamali" — uretimde rastgele uretiliyor, her seferinde degisebiliyor). Eski kural
+  // "bos anahtarla ACILMAZ" idi; yeni kural: bossa SUREC BASINA RASTGELE uretilir.
+  // Korunan sey ayni: kaynak kodda duran, herkesce bilinen bir anahtar ASLA kullanilmaz.
   assert.match(
     flat,
-    /NODE_ENV === 'production' && !process\.env\.SESSION_SECRET/,
-    'production`da bos SESSION_SECRET kontrolu yok',
+    /const SESSION_SECRET = process\.env\.SESSION_SECRET \|\| require\('node:crypto'\)\.randomBytes\(32\)\.toString\('hex'\)/,
+    'bos anahtarin yedegi surec basina rastgele degil',
   );
-  const at = codeOnly.indexOf('!process.env.SESSION_SECRET');
-  assert.match(
-    codeOnly.slice(at, at + 700),
-    /process\.exit\(1\)/,
-    'bos secret ile SUSARAK devam ediliyor — uyarmak yetmez, ACILMAMALI',
-  );
+  // Atamada dize SABITI yedek olamaz (eski "bmw-portal-dev-secret..." deseni).
+  const atama = flat.slice(flat.indexOf('const SESSION_SECRET'), flat.indexOf(';', flat.indexOf('const SESSION_SECRET')));
+  assert.doesNotMatch(atama, /\|\| *'[^']+'/, 'sabit bir anahtar yedegi geri gelmis');
+  assert.doesNotMatch(SRC, /dev-secret/, 'eski sabit gelistirme anahtari geri gelmis');
+  // Anahtar yok diye surec dusurulmez: buna bagimli hicbir sey yok.
+  const ust = codeOnly.slice(0, codeOnly.indexOf('function initAuth'));
+  assert.doesNotMatch(ust, /process\.exit\(/, 'SESSION_SECRET yoklugu sureci dusuruyor');
 });
 
 test('SH5 oturum SUNUCUDA saklaniyor ve bos oturum YAZILMIYOR', () => {
@@ -77,15 +80,12 @@ test('SH5 oturum SUNUCUDA saklaniyor ve bos oturum YAZILMIYOR', () => {
   assert.match(flat, /resave:\s*false/, 'her istekte oturum yeniden yaziliyor');
 });
 
-test('SH6 gelistirme fallback`i PRODUCTION`a sizamaz', () => {
-  // Sabit fallback anahtari YERELDE mesru (sifir-kurulum). Tehlike, production
-  // kontrolunun kaldirilip fallback`in oraya sizmasi. SH4 o kontrolu kilitliyor;
-  // burada fallback`in TEK basina kalmadigini dogruluyoruz.
-  const at = codeOnly.indexOf('const SESSION_SECRET');
-  assert.ok(at > 0, 'SESSION_SECRET tanimi bulunamadi');
-  // Tanimdan ONCE production kontrolu gelmeli — sonra gelseydi fallback zaten atanmis olurdu.
-  assert.ok(
-    codeOnly.indexOf('!process.env.SESSION_SECRET') < at,
-    'production kontrolu SESSION_SECRET atamasindan SONRA — fallback yine de kullanilir',
-  );
+test('SH6 oturum kimligi belirtecten turer; imza her istekte gecerli anahtarla yenilenir', () => {
+  // Anahtardan bagimsizligin iki ayagi initAuth'ta BAGLI olmali (davranis bekcisi:
+  // oturum-belirteci.test.cjs). Biri duserse anahtar degisimi yine herkesi atar.
+  assert.match(flat, /genid: oturumBelirteci\.kimlikUret/, 'yeni oturumlar belirtec tabanli degil');
+  const katman = flat.indexOf('oturumBelirteci.belirtecKatmani({ ad: COOKIE_NAME, secret: SESSION_SECRET })');
+  assert.ok(katman > 0, 'belirtec katmani baglanmamis');
+  assert.ok(katman < flat.indexOf('session({'), 'belirtec katmani express-session`dan SONRA — cerez cevrilmeden okunur');
+  assert.ok(flat.indexOf('eskiCereziTasi(COOKIE_NAME)') < katman, 'eski ad tasinmadan belirtec katmani calisiyor');
 });

@@ -187,17 +187,13 @@ ensure_dependencies_and_build() {
   fi
 }
 
-# ── On-ucus dogrulamasi: SESSION_SECRET production'da bos kalamaz ───────────────
+# ── On-ucus dogrulamasi ─────────────────────────────────────────────────────────
+# SESSION_SECRET ARTIK ZORUNLU DEGIL (2026-10-03): oturum bu anahtara bagli degildir
+# (server/auth/oturum-belirteci.cjs). Bossa uygulama surec basina rastgele uretir;
+# degismesi ya da bos kalmasi kimseyi oturumdan atmaz. Eskiden bos ise baslatma
+# reddediliyordu.
 preflight_check_env_file() {
   [[ -f "$ENV_FILE" ]] || { echo "HATA: $ENV_FILE yok — once .env.example'dan turetin." >&2; exit 1; }
-
-  local secret; secret="$(read_env_key "$ENV_FILE" "SESSION_SECRET")"
-  if [[ -z "$secret" ]]; then
-    echo "HATA: $ENV_FILE icinde SESSION_SECRET bos." >&2
-    echo "      Uretmek icin: openssl rand -hex 32" >&2
-    echo "      Sonra $ENV_FILE icine SESSION_SECRET=<uretilen> yazin." >&2
-    exit 1
-  fi
 
   local dbpass mssqlpass
   dbpass="$(read_env_key "$ENV_FILE" "PORTAL_DB_PASSWORD")"

@@ -21,6 +21,15 @@ Bütün ayarlar **Admin > Sistem Yapılandırması > Oturum ve Giriş** ekranın
 - Değişiklikler anında geçerli olur; yeniden başlatma gerekmez.
 - Sunucu, değeri kaydetmeden önce doğrular.
 
+## Oturum belirteci (`SESSION_SECRET`'ten bağımsızlık)
+
+Eskiden çerez `oturum kimliği + imza` taşıyordu ve imza `SESSION_SECRET` ile üretiliyordu. Anahtar değişince bütün çerezler geçersiz kalıyor, oturumlar veritabanında dururken herkes atılıyordu. Üretimde anahtar rastgele üretildiği ve değişebildiği için model değişti (`server/auth/oturum-belirteci.cjs`):
+
+- **Çerez rastgele bir belirteç taşır:** `v2.<32 bayt>`. Sunucudaki oturum kimliği bu belirtecin **özetidir** (SHA-256). Belirteç sunucuda hiçbir yere yazılmaz.
+- **Anahtar bir güvenlik denetimi değildir.** Güvenlik, belirtecin 256 bitlik rastgeleliğindedir. Anahtar değişse de, boş kalsa da oturum bulunur.
+- **Veritabanını okuyan biri oturum çalamaz.** Oturum tablosunda, denetim kayıtlarında ve LogX indirme bağlamasında duran değer özettir; çereze konamaz. Eskiden bu değerler düz oturum kimliğiydi ve anahtarı da ele geçiren biri oturum çalabiliyordu.
+- Girişte belirteç yenilenir; çıkışta sunucudaki kayıt silinir.
+
 ## Etkinlik nasıl sayılır
 
 Boşta kalma sınırının işe yaraması için "kullanıcı gerçekten burada mı" sorusunun doğru cevaplanması gerekir. Portalda ondan fazla otomatik yoklama vardır (her sayfadaki "Taleplerim" paneli, pano, iş durumu…); bunlar etkinlik sayılırsa açık unutulan bir sekme oturumu mutlak süreye kadar açık tutar.
@@ -65,7 +74,7 @@ Boşta kalma sınırının işe yaraması için "kullanıcı gerçekten burada m
 - **Hatalı deneme sınırı kullanıcı başınadır.**
   - `LOGIN_USER_MAX_FAILS` (varsayılan 5) hatadan sonra bekleme süresi 30 sn → 2 dk → 8 dk → en çok 15 dk olarak artar.
   - Bekleme sırasında istek AD'ye **hiç gitmez**; bu, AD hesap kilidini korur.
-  - **Bu eşik AD'nin kilitleme eşiğinin altında tutulmalıdır.**
+  - **AD'nin kilitleme eşiğini bilmek gerekmez.** Eşik bilinmeden yapılabilecek en etkili şey AD'ye gereksiz hata göndermemektir: aynı kullanıcı için **aynı hatalı şifre** 90 saniye içinde yeniden gelirse AD'ye gönderilmez ve sayaca yazılmaz (eski şifreyi, tarayıcının hatırladığı şifreyi üst üste denemek kilitlenmelerin en yaygın sebebidir). Şifrenin kendisi tutulmaz; süreç başına rastgele anahtarlı özeti yalnızca bellekte, kısa ömürlü durur. Kilitlenmeler yine de görülürse `LOGIN_USER_MAX_FAILS` düşürülür.
   - IP başına taban sınır `LOGIN_IP_MAX_PER_MIN`'dir (varsayılan 30).
 
 ## Aktif oturumlar ve iptal
@@ -117,7 +126,7 @@ Boşta kalma sınırının işe yaraması için "kullanıcı gerçekten burada m
 ## Operasyon notları
 
 - **`SESSION_STORE=memory` üretimde kullanılmaz.** Bu modda her yeniden başlatma herkesi oturumdan atar. Varsayılan MSSQL'dir.
-- **`SESSION_SECRET` döndürülürse tüm oturumlar düşer.** Değişiklik bilerek ve duyurularak yapılmalıdır.
+- **`SESSION_SECRET` zorunlu değildir ve oturum ona bağlı değildir.** Boş bırakılabilir (süreç başına rastgele üretilir), her yeniden başlatmada değişebilir; kimse oturumdan atılmaz (bkz. "Oturum belirteci"). Tek istisna geçiş dönemidir: 2026-10-03 öncesinde açılmış eski biçimli oturumlar anahtar değişirse düşer; bunlar en geç mutlak süre (12 saat, "beni hatırla" ile 7 gün) sonunda zaten biter.
 - **`portal_sessions` tablosu:** `username`, `created_at` ve `last_seen_at` sütunları NULL'a izin verir, setup bunları ekler. Eklenemezlerse giriş yine çalışır, yalnızca oturum listesi boş görünür.
 - **Teşhis:** `GET /api/auth/session-debug` (yalnızca Admin). Store'u, çerez adını, oturum politikasını ve proxy başlıklarını döner.
 

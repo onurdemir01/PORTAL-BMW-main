@@ -14,6 +14,9 @@
 //   GH6 HTTP: esik asilinca 429 + Retry-After ve AD'ye HIC GIDILMEZ (AD kilidi korunur)
 //   GH7 HTTP: farkli kullanicilar ayni IP'den birbirini kilitlemez; KURUM\ad ve ad ayni sayac
 //   GH8 HTTP: 503 / kilitli hesap deneme hakkini yemez; 400 girdi hatasi AD'ye gitmez
+//   GT5 ayni hatali sifre 90 sn icinde taninir; sifrenin kendisi SAKLANMAZ
+//   GH10 HTTP: AYNI hatali sifre AD'ye yalnizca BIR kez gider (AD kilit esigi bilinmeden
+//        hesaplari korur), sayaca yazilmaz; dogru sifre hemen calisir
 'use strict';
 
 const { test, beforeEach, after } = require('node:test');
@@ -192,13 +195,13 @@ test('GT4 esik dinamik; sinir disi varsayilana duser', () => {
 
 test('GH6 HTTP: esik asilinca 429 + Retry-After ve AD`ye hic gidilmez', async () => {
   for (let i = 1; i <= 3; i++) {
-    const r = await giris('ayse', 'yanlis');
+    const r = await giris('ayse', `yanlis-${i}`);
     assert.equal(r.status, 401);
     assert.equal(r.body.code, 'kimlik');
   }
-  const d4 = await giris('ayse', 'yanlis');
+  const d4 = await giris('ayse', 'yanlis-4');
   assert.match(d4.body.error, /1 deneme hakkınız kaldı/);
-  const d5 = await giris('ayse', 'yanlis');
+  const d5 = await giris('ayse', 'yanlis-5');
   assert.equal(d5.body.retryAfter, 30);
   assert.equal(d5.retryAfterBaslik, '30');
   const adOnce = adCagrisi.length;
@@ -212,7 +215,7 @@ test('GH6 HTTP: esik asilinca 429 + Retry-After ve AD`ye hic gidilmez', async ()
 });
 
 test('GH7 HTTP: ayni IP`deki farkli kullanicilar birbirini kilitlemez; KURUM\\ad ve ad ayni sayac', async () => {
-  for (let i = 0; i < 5; i++) await giris('ayse', 'yanlis');
+  for (let i = 0; i < 5; i++) await giris('ayse', `yanlis-${i}`);
   assert.equal((await giris('ayse', 'dogru')).status, 429);
   assert.equal((await giris('mehmet', 'dogru2')).status, 200, 'baska kullanici kilitlendi');
   assert.equal((await giris('KURUM\\Ayse', 'dogru')).status, 429, 'alan adli yazim sayaci atlatti');
@@ -247,4 +250,55 @@ test('GH9 HTTP: UPN girildiyse userPrincipalName ile aranir, sifre kirpilmadan g
   const r = await giris('Ayse@Kurum.com', ' bosluklu ');
   assert.equal(r.status, 200);
   assert.equal(gelenSifre, ' bosluklu ');
+});
+
+test('GT5 ayni hatali sifre pencere icinde taninir; sifre saklanmaz', () => {
+  throttle.hataKaydet('Ayse', 'EskiSifre!1');
+  assert.equal(throttle.ayniHataliSifre('ayse', 'EskiSifre!1'), 90, 'ayni hatali sifre taninmadi');
+  assert.equal(throttle.ayniHataliSifre('ayse', 'EskiSifre!2'), 0, 'FARKLI sifre "ayni" sayildi — dogru sifre de reddedilirdi');
+  assert.equal(throttle.ayniHataliSifre('veli', 'EskiSifre!1'), 0, 'baska kullanicinin sifresi eslesti');
+  assert.equal(throttle.ayniHataliSifre('hic-yok', 'x'), 0);
+  // Bellekteki kayit sifreyi DUZ tasimaz.
+  const kayit = throttle._kayitlar.get('ayse');
+  assert.ok(!JSON.stringify({ ...kayit, sonOzet: kayit.sonOzet.toString('latin1') }).includes('EskiSifre'), 'sifre bellekte duz duruyor');
+  assert.equal(kayit.sonOzet.length, 32);
+  // Pencere: 1 sn kala hala taninir, dolunca AD'ye yeniden gidilebilir.
+  simdi += 89 * 1000;
+  assert.equal(throttle.ayniHataliSifre('ayse', 'EskiSifre!1'), 1);
+  simdi += 1000;
+  assert.equal(throttle.ayniHataliSifre('ayse', 'EskiSifre!1'), 0, 'pencere dolmasina ragmen hala engelli');
+  // Basarili giris kaydi siler.
+  throttle.hataKaydet('ayse', 'x');
+  throttle.basariKaydet('ayse');
+  assert.equal(throttle.ayniHataliSifre('ayse', 'x'), 0);
+});
+
+test('GH10 HTTP: ayni hatali sifre AD`ye bir kez gider, sayaca yazilmaz; dogru sifre hemen calisir', async () => {
+  const ilk = await giris('ayse', 'eski-sifrem');
+  assert.equal(ilk.status, 401);
+  assert.equal(ilk.body.code, 'kimlik');
+  assert.equal(adCagrisi.length, 1);
+  // Kullanici ayni sifreyi 7 kez daha dener (tarayici hatirliyor, cift tiklama...).
+  for (let i = 0; i < 7; i++) {
+    const r = await giris('ayse', 'eski-sifrem');
+    assert.equal(r.status, 401);
+    assert.equal(r.body.code, 'kimlik_tekrar');
+    assert.match(r.body.error, /yeniden gönderilmedi/);
+  }
+  assert.equal(adCagrisi.length, 1, 'ayni hatali sifre AD`ye yeniden gitti — AD kilidine dogru ilerler');
+  // Sayaca yazilmadi: 8 denemeye ragmen bekleme YOK (esik 5).
+  assert.equal(throttle.kontrol('ayse').ok, true, 'tekrar denemeleri kullanicinin hakkini yedi');
+  // Alan adli / buyuk harfli yazim da ayni kullanicidir.
+  assert.equal((await giris('KURUM\\AYSE', 'eski-sifrem')).body.code, 'kimlik_tekrar');
+  assert.equal(adCagrisi.length, 1);
+  // Dogru sifre HEMEN calisir (farkli sifre AD'ye gider).
+  assert.equal((await giris('ayse', 'dogru')).status, 200);
+  assert.equal(adCagrisi.length, 2);
+
+  // Pencere dolunca ayni sifre AD'ye yeniden gidebilir (sifre AD'de degismis olabilir).
+  await giris('mehmet', 'yanlis');
+  const once = adCagrisi.length;
+  simdi += 91 * 1000;
+  assert.equal((await giris('mehmet', 'yanlis')).body.code, 'kimlik');
+  assert.equal(adCagrisi.length, once + 1);
 });
