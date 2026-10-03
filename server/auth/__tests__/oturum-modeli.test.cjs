@@ -14,6 +14,8 @@
 //   OM8 /session etkinlik saymaz; /session/extend kisitlamayi beklemeden uzatir
 //   OM9 kunyesiz (eski) oturum ATILMAZ, kunye tamamlanir
 //   OM10 bozuk/sinir disi ayar varsayilana duser
+//   OM11 her sayfadaki "Taleplerim" yoklamasi ve isaretli POST sureyi uzatmaz; isaretsiz
+//        bilinmeyen yol UZATIR (varsayilan: her istek etkinliktir)
 'use strict';
 
 const { test, beforeEach, after } = require('node:test');
@@ -264,4 +266,25 @@ test('OM10 bozuk / sinir disi ayar varsayilana duser', () => {
   assert.equal(p.rememberMs, 7 * 24 * SA);
   process.env.SESSION_IDLE_MINUTES = '720';
   assert.equal(policy.policy().idleMs, 720 * DK, 'ust sinir kabul edilmeli');
+});
+
+test('OM11 Taleplerim yoklamasi ve arka plan isaretli istek uzatmaz; isaretsiz istek uzatir', async () => {
+  const { cerez } = await giris();
+  const t0 = simdi;
+  const bitis = async (yol, opt) => Number((await iste(cerez, yol, opt)).headers.get('x-portal-session-expires'));
+  simdi = t0 + 10 * DK;
+  // Eski JS'i tasiyan sekmeler icin sunucu listesi: her sayfadaki panel yoklamasi.
+  assert.equal(await bitis('/api/ansible/ss/smart-tickets/mine'), t0 + 60 * DK, 'Taleplerim yoklamasi oturumu uzatti');
+  // Yeni istemci: girdi bayatken HER istegi isaretler — yol ve yontem fark etmez.
+  assert.equal(
+    await bitis('/api/bilinmeyen/yoklama', { headers: { 'x-portal-activity': 'background' } }),
+    t0 + 60 * DK,
+  );
+  assert.equal(
+    await bitis('/api/bilinmeyen/islem', { method: 'POST', headers: { 'X-Portal-Activity': 'Background' } }),
+    t0 + 60 * DK,
+    'isaretli POST uzatti',
+  );
+  // Isaretsiz, listede olmayan istek: etkinlik.
+  assert.equal(await bitis('/api/bilinmeyen/yoklama'), simdi + 60 * DK, 'varsayilan (her istek etkinlik) bozuldu');
 });

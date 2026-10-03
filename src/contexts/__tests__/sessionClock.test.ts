@@ -7,10 +7,13 @@
 //   SC5 cikis/giris diger sekmelere yayilir
 //   SC6 mutlak sinir once geliyorsa uyari "uzatilamaz" der
 //   SC7 sunucu-istemci saat sapmasi hesaba katilir
+//   SC8 bitis sebebi yerelde cikarilir (sunucu sebebi yalnizca ilk istege soyler)
+//   SC9 kanal sonradan baglanir/ayrilir: ayir-yeniden-bagla (StrictMode) sonrasi esitleme surer
 import { describe, it, expect, vi } from 'vitest';
 import {
   oturumSaatiOlustur,
   uyariHesapla,
+  bitisSebebi,
   UZATMA_ARALIGI_MS,
   type SaatKanali,
   type SaatMesaji,
@@ -164,5 +167,45 @@ describe('sessionClock', () => {
     const a = oturumSaatiOlustur({ istek: istek as unknown as typeof fetch, simdi: () => 0 });
     await a.tazele();
     expect(a.durum().idleExpiresAt).toBe(60 * DK);
+  });
+
+  it('SC8 bitis sebebi: bitis aninda/sonrasinda cikarilir, oncesinde cikarilmaz', () => {
+    const d = { bilinen: true, idleExpiresAt: 1_000_000, absoluteExpiresAt: 5_000_000, warnSeconds: 120, remember: false };
+    expect(bitisSebebi(d, 1_000_000)).toBe('idle');
+    expect(bitisSebebi(d, 1_001_000)).toBe('idle');
+    expect(bitisSebebi(d, 995_000)).toBe('idle'); // 5 sn pay: saat sapmasi
+    expect(bitisSebebi(d, 994_999)).toBeUndefined(); // bitisten once: iptal / yeniden baslatma
+    expect(bitisSebebi(d, 5_000_000)).toBe('absolute');
+    expect(bitisSebebi({ ...d, idleExpiresAt: 5_000_000 }, 5_000_000)).toBe('absolute');
+    expect(bitisSebebi({ ...d, bilinen: false }, 9_000_000)).toBeUndefined();
+  });
+
+  it('SC9 kanal ayrilip yeniden baglaninca (StrictMode) aboneler ve esitleme yerinde', () => {
+    const [k1, k2] = kanalCifti();
+    const a = oturumSaatiOlustur({ simdi: () => 0 });
+    const b = oturumSaatiOlustur({ kanal: k2, simdi: () => 0 });
+    const giris = vi.fn();
+    a.girisAbone(giris);
+    // Efekt: bagla -> sok -> yeniden bagla.
+    const ayir1 = a.baglan(k1);
+    ayir1();
+    const [k1bHam, k2b] = kanalCifti();
+    // `storage` yedegi gibi: kapat() dinleyiciyi KALDIRMAZ — ayirma dinleyiciyi kendisi birakmali.
+    const k1b = { ...k1bHam, kapat: () => {} };
+    const b2 = oturumSaatiOlustur({ kanal: k2b, simdi: () => 0 });
+    const ayir2 = a.baglan(k1b);
+    b2.girisYay('ayse');
+    expect(giris).toHaveBeenCalledWith('ayse');
+    a.basliklariUygula({ idleExpiresAt: 100, absoluteExpiresAt: 200 });
+    expect(b2.durum().idleExpiresAt).toBe(100);
+    // Eski kanalin ayiricisi yeni kanala DOKUNMAZ.
+    ayir1();
+    b2.girisYay('veli');
+    expect(giris).toHaveBeenLastCalledWith('veli');
+    // Ayrilan kanaldan mesaj gelmez, gonderilmez.
+    ayir2();
+    b2.girisYay('ali');
+    expect(giris).toHaveBeenCalledTimes(2);
+    expect(b.durum().bilinen).toBe(false);
   });
 });

@@ -211,8 +211,7 @@ function initAuth(app) {
         clearCache(username);
         removePresence(username);
       }
-      res.clearCookie(COOKIE_NAME, { path: "/" });
-      if (COOKIE_NAME !== oturumCerezi.ESKI_AD) res.clearCookie(oturumCerezi.ESKI_AD, { path: "/" });
+      oturumCerezi.cerezleriSil(res, COOKIE_NAME);
       res.json({ ok: true });
     });
   });

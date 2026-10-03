@@ -37,6 +37,9 @@ const SessionTimeoutModal: React.FC<SessionTimeoutModalProps> = ({
       subtitle={extendable ? 'Bir süredir işlem yapmadınız.' : 'Bu oturum en uzun açık kalma süresine ulaştı.'}
       icon={ExclamationTriangleIcon}
       size="md"
+      // Arka plana YANLISLIKLA tiklamak uyariyi kapatmasin: kapatmak sureyi uzatmaz ve
+      // kullanici farkinda olmadan 2 dk sonra oturumunu kaybederdi. X ve Esc bilincli.
+      dismissOnBackdrop={false}
       footer={
         <>
           <button type="button" onClick={onLogout} className="btn-secondary">

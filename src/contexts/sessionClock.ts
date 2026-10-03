@@ -104,7 +104,13 @@ export interface SaatSecenekleri {
 }
 
 export function oturumSaatiOlustur(sec: SaatSecenekleri = {}) {
-  const kanal = sec.kanal;
+  // Kanal SONRADAN baglanir/ayrilir (`baglan`). Saat nesnesi bilesen omru boyunca yasar
+  // ama kanal bir EFEKT kaynagidir: kurulumu ve sokumu simetrik olmali. Ilk surumde kanal
+  // olusturulurken verilip efekt temizliginde kapatiliyordu; React StrictMode (gelistirme)
+  // efekti bir kez sokup yeniden kurdugu icin kanal KALICI olarak kapaniyor, sekmeler
+  // arasi esitleme sessizce oluyordu (2026-10-03, gercek tarayici testinde bulundu).
+  let kanal: SaatKanali | undefined;
+  let kanalBirak: (() => void) | undefined;
   const istek = sec.istek ?? ((i: RequestInfo | URL, o?: RequestInit) => window.fetch(i, o));
   const simdi = sec.simdi ?? (() => Date.now());
 
@@ -247,14 +253,29 @@ export function oturumSaatiOlustur(sec: SaatSecenekleri = {}) {
     bildir();
   }
 
-  const kanalBirak = kanal?.dinle((m) => {
-    if (!m || typeof m !== 'object') return;
-    if (m.tur === 'saat') uygula(m.idleExpiresAt, m.absoluteExpiresAt, m);
-    else if (m.tur === 'cikis') for (const fn of cikisAboneleri) fn();
-    else if (m.tur === 'giris') for (const fn of girisAboneleri) fn(m.username);
-  });
+  /** Kanali baglar; donen fonksiyon YALNIZCA bu kanali ayirir (aboneler yerinde kalir). */
+  function baglan(yeni: SaatKanali): () => void {
+    kanalBirak?.();
+    kanal?.kapat();
+    kanal = yeni;
+    kanalBirak = yeni.dinle((m) => {
+      if (!m || typeof m !== 'object') return;
+      if (m.tur === 'saat') uygula(m.idleExpiresAt, m.absoluteExpiresAt, m);
+      else if (m.tur === 'cikis') for (const fn of cikisAboneleri) fn();
+      else if (m.tur === 'giris') for (const fn of girisAboneleri) fn(m.username);
+    });
+    return () => {
+      if (kanal !== yeni) return; // baska bir kanal baglanmis: ona dokunma
+      kanalBirak?.();
+      yeni.kapat();
+      kanal = undefined;
+      kanalBirak = undefined;
+    };
+  }
+  if (sec.kanal) baglan(sec.kanal);
 
   return {
+    baglan,
     durum,
     ozetUygula,
     basliklariUygula,
@@ -285,6 +306,8 @@ export function oturumSaatiOlustur(sec: SaatSecenekleri = {}) {
     kapat() {
       kanalBirak?.();
       kanal?.kapat();
+      kanal = undefined;
+      kanalBirak = undefined;
       aboneler.clear();
       cikisAboneleri.clear();
       girisAboneleri.clear();
@@ -305,4 +328,19 @@ export function uyariHesapla(d: SaatDurumu) {
     uyariAni: bitis - d.warnSeconds * 1000,
     uzatilabilir: d.idleExpiresAt < d.absoluteExpiresAt,
   };
+}
+
+/**
+ * Sunucu oturumun NEDEN bittigini yalnizca suresi dolan oturuma gelen ILK istekte soyler
+ * (o istek oturumu siler). Birden cok sekme acikken digerleri sebepsiz bir 401 alir ve
+ * genel "oturumunuz sona erdi" mesajini gosterirdi. Sekmenin kendi saati bitisi zaten
+ * bilir: 401 bilinen bitis aninda (ya da sonrasinda) geldiyse sebep yerelde cikarilir.
+ * Bitisten ONCE gelen sebepsiz 401 (iptal, sunucu yeniden baslatma) `undefined` kalir.
+ */
+export function bitisSebebi(d: SaatDurumu, now: number): 'idle' | 'absolute' | undefined {
+  if (!d.bilinen) return undefined;
+  const PAY_MS = 5000; // saat sapmasi + zamanlayici gecikmesi
+  if (now >= d.absoluteExpiresAt - PAY_MS) return 'absolute';
+  if (now >= d.idleExpiresAt - PAY_MS) return 'idle';
+  return undefined;
 }

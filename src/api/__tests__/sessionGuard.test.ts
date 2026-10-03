@@ -13,6 +13,10 @@ import {
   _sessionGuardSifirla,
   SESSION_HEADER,
   oturumBasligiAbone,
+  kullaniciEtkinligiBildir,
+  kullaniciEtkinligiSifirla,
+  ETKINLIK_PENCERESI_MS,
+  BASLIK_ETKINLIK,
 } from '../sessionGuard';
 import { safeJson } from '../http';
 
@@ -219,5 +223,70 @@ describe('sessionGuard', () => {
     );
     await window.fetch('/api/x');
     expect(haber).toHaveBeenLastCalledWith(undefined);
+  });
+
+  // ── Arka plan isareti (2026-10-03) ────────────────────────────────────────
+  // Sunucu varsayilan olarak her istegi etkinlik sayar. Listede olmayan tek bir
+  // yoklama acik sekmede oturumu sonsuza dek acik tutuyordu; karar artik burada.
+  const isaret = (cagri: unknown[]) => new Headers((cagri[1] as RequestInit | undefined)?.headers).get(BASLIK_ETKINLIK);
+
+  it('SG15 — girdi tazeyken istek AYNEN gecer; bayatken arka plan isaretlenir', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(1_000_000);
+      kullaniciEtkinligiBildir();
+      await window.fetch('/api/x', { headers: { 'content-type': 'application/json' } });
+      expect(ag.mock.calls[0][1]).toEqual({ headers: { 'content-type': 'application/json' } });
+      await window.fetch('/api/x');
+      expect(ag.mock.calls[1][1]).toBeUndefined();
+
+      // Sinirin tam ustunde hala taze; 1 ms sonra bayat.
+      vi.setSystemTime(1_000_000 + ETKINLIK_PENCERESI_MS);
+      await window.fetch('/api/x');
+      expect(isaret(ag.mock.calls[2])).toBeNull();
+      vi.setSystemTime(1_000_000 + ETKINLIK_PENCERESI_MS + 1);
+      await window.fetch('/api/yoklama', { method: 'GET', headers: { 'x-ozel': '1' } });
+      expect(isaret(ag.mock.calls[3])).toBe('background');
+      const h = new Headers((ag.mock.calls[3][1] as RequestInit).headers);
+      expect(h.get('x-ozel')).toBe('1');
+      expect((ag.mock.calls[3][1] as RequestInit).method).toBe('GET');
+
+      // Yeni girdi: yeniden isaretsiz.
+      kullaniciEtkinligiBildir();
+      await window.fetch('/api/x');
+      expect(ag.mock.calls[4][1]).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('SG16 — uyari acilinca (sifirla) otomatik istekler HEMEN arka plan; cagiranin acik isareti ezilmez', async () => {
+    kullaniciEtkinligiBildir();
+    kullaniciEtkinligiSifirla();
+    await window.fetch('/api/yoklama');
+    expect(isaret(ag.mock.calls[0])).toBe('background');
+    await window.fetch('/api/auth/session/extend', { method: 'POST', headers: { [BASLIK_ETKINLIK]: 'user' } });
+    expect(isaret(ag.mock.calls[1])).toBe('user');
+    // `/api` disi isteklere baslik EKLENMEZ (dis servise ozel baslik = CORS on-ucusu).
+    await window.fetch('/assets/x.js');
+    expect(ag.mock.calls[2][1]).toBeUndefined();
+    // Request nesnesiyle gelen basliklar korunur.
+    await window.fetch(new Request('http://localhost:3000/api/x', { headers: { 'x-ozel': '2' } }));
+    const h = new Headers((ag.mock.calls[3][1] as RequestInit).headers);
+    expect(h.get('x-ozel')).toBe('2');
+    expect(h.get(BASLIK_ETKINLIK)).toBe('background');
+  });
+
+  it('SG17 — kapi kapaliyken giris ekrani ayari (session-policy) AGA CIKAR', async () => {
+    oturumDurumunuBildir(true);
+    ag.mockResolvedValueOnce(yanit(401, true));
+    await window.fetch('/api/herhangi');
+    expect(oturumBittiMi()).toBe(true);
+    oturumDurumunuBildir(false); // kullanici katmandan "Cikis yap" dedi
+    const once = ag.mock.calls.length;
+    await window.fetch('/api/auth/session-policy');
+    expect(ag.mock.calls.length).toBe(once + 1);
+    await window.fetch('/api/baska');
+    expect(ag.mock.calls.length).toBe(once + 1);
   });
 });
