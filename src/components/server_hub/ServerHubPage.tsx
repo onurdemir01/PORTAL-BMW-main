@@ -853,6 +853,76 @@ function Kpi({
   );
 }
 
+// Kapsama tablosunun satiri. MODUL DUZEYINDE (2026-10-03): eskiden KapsamaPaneli'nin
+// render'i icinde tanimliydi; her render'da YENI bir bilesen turu olusuyor, React tum
+// satirlari sokup yeniden kuruyordu (react-hooks/static-components).
+function KapsamaSatiri({
+  ad,
+  env,
+  tar,
+  eksikHosts,
+  birim = 'sunucu',
+  envBilinmiyor = false,
+}: {
+  ad: string;
+  env: number;
+  tar: number;
+  eksikHosts?: string[];
+  birim?: string;
+  /** Envanterde bu ürünün sütunu YOK — sayı 0 değil, BİLİNMİYOR. */
+  envBilinmiyor?: boolean;
+}) {
+  // "SUTUN YOK" ILE "ENVANTERDE YOK" AYRI: ikisini 0 diye gostermek, envanterde hic
+  // kayit olmadigi izlenimi verir ve kapsama yuzdesi uydurma olur.
+  if (envBilinmiyor)
+    return (
+      <tr className="border-t" style={{ borderColor: 'var(--border-subtle)' }}>
+        <td className="px-2.5 py-1.5 font-semibold">{ad}</td>
+        <td
+          className="px-2.5 py-1.5 text-right"
+          colSpan={2}
+          style={{ color: SEV.warning.color }}
+          title="dbo.Inventory'de bu ürünün sürüm sütunu yok — envanter tarafı ölçülemiyor."
+        >
+          envanter sütunu yok
+        </td>
+        <td className="px-2.5 py-1.5 text-right" style={{ color: 'var(--text-muted)' }}>
+          —
+        </td>
+        <td className="px-2.5 py-1.5 text-right tabular-nums" style={{ color: 'var(--text-muted)' }}>
+          taramada {fmtNumber(tar)}
+        </td>
+      </tr>
+    );
+  const p = env > 0 ? Math.round((tar / env) * 100) : 0;
+  // RENK OLCUTU KAPSAMA: %100 yesil, %90+ sari, altinda kirmizi. Dusuk kapsama bir
+  // "bulgu yok" degil, "bakamadik" demektir.
+  const renk = env === 0 ? 'var(--status-neutral)' : p >= 100 ? SEV.ok.color : p >= 90 ? SEV.warning.color : SEV.danger.color;
+  return (
+    <tr className="border-t" style={{ borderColor: 'var(--border-subtle)' }}>
+      <td className="px-2.5 py-1.5 font-semibold">{ad}</td>
+      <td className="px-2.5 py-1.5 text-right tabular-nums">{fmtNumber(env)}</td>
+      <td className="px-2.5 py-1.5 text-right tabular-nums" style={{ color: renk, fontWeight: 600 }}>
+        {fmtNumber(tar)}
+      </td>
+      <td className="px-2.5 py-1.5 text-right tabular-nums" style={{ color: renk }}>
+        %{p}
+      </td>
+      <td
+        className="px-2.5 py-1.5 text-right tabular-nums"
+        style={{ color: env - tar > 0 ? SEV.danger.color : 'var(--text-muted)' }}
+        title={
+          eksikHosts && eksikHosts.length
+            ? `Erişilemeyen (ilk ${eksikHosts.length}): ${eksikHosts.join(', ')}`
+            : undefined
+        }
+      >
+        {env - tar > 0 ? `${fmtNumber(env - tar)} ${birim}` : '—'}
+      </td>
+    </tr>
+  );
+}
+
 /**
  * Envanter <-> tarama kapsamasi.
  *
@@ -862,73 +932,6 @@ function Kpi({
  */
 function KapsamaPaneli({ c }: { c: NonNullable<ShOverview['summary']>['scanCoverage'] }) {
   if (!c) return null;
-  const yuzde = (a: number, b: number) => (b > 0 ? Math.round((a / b) * 100) : 0);
-  const Satir = ({
-    ad,
-    env,
-    tar,
-    eksikHosts,
-    birim = 'sunucu',
-    envBilinmiyor = false,
-  }: {
-    ad: string;
-    env: number;
-    tar: number;
-    eksikHosts?: string[];
-    birim?: string;
-    /** Envanterde bu ürünün sütunu YOK — sayı 0 değil, BİLİNMİYOR. */
-    envBilinmiyor?: boolean;
-  }) => {
-    // "SUTUN YOK" ILE "ENVANTERDE YOK" AYRI: ikisini 0 diye gostermek, envanterde hic
-    // kayit olmadigi izlenimi verir ve kapsama yuzdesi uydurma olur.
-    if (envBilinmiyor)
-      return (
-        <tr className="border-t" style={{ borderColor: 'var(--border-subtle)' }}>
-          <td className="px-2.5 py-1.5 font-semibold">{ad}</td>
-          <td
-            className="px-2.5 py-1.5 text-right"
-            colSpan={2}
-            style={{ color: SEV.warning.color }}
-            title="dbo.Inventory'de bu ürünün sürüm sütunu yok — envanter tarafı ölçülemiyor."
-          >
-            envanter sütunu yok
-          </td>
-          <td className="px-2.5 py-1.5 text-right" style={{ color: 'var(--text-muted)' }}>
-            —
-          </td>
-          <td className="px-2.5 py-1.5 text-right tabular-nums" style={{ color: 'var(--text-muted)' }}>
-            taramada {tar.toLocaleString('tr-TR')}
-          </td>
-        </tr>
-      );
-    const p = yuzde(tar, env);
-    // RENK OLCUTU KAPSAMA: %100 yesil, %90+ sari, altinda kirmizi. Dusuk kapsama bir
-    // "bulgu yok" degil, "bakamadik" demektir.
-    const renk = env === 0 ? 'var(--status-neutral)' : p >= 100 ? SEV.ok.color : p >= 90 ? SEV.warning.color : SEV.danger.color;
-    return (
-      <tr className="border-t" style={{ borderColor: 'var(--border-subtle)' }}>
-        <td className="px-2.5 py-1.5 font-semibold">{ad}</td>
-        <td className="px-2.5 py-1.5 text-right tabular-nums">{env.toLocaleString('tr-TR')}</td>
-        <td className="px-2.5 py-1.5 text-right tabular-nums" style={{ color: renk, fontWeight: 600 }}>
-          {tar.toLocaleString('tr-TR')}
-        </td>
-        <td className="px-2.5 py-1.5 text-right tabular-nums" style={{ color: renk }}>
-          %{p}
-        </td>
-        <td
-          className="px-2.5 py-1.5 text-right tabular-nums"
-          style={{ color: env - tar > 0 ? SEV.danger.color : 'var(--text-muted)' }}
-          title={
-            eksikHosts && eksikHosts.length
-              ? `Erişilemeyen (ilk ${eksikHosts.length}): ${eksikHosts.join(', ')}`
-              : undefined
-          }
-        >
-          {env - tar > 0 ? `${(env - tar).toLocaleString('tr-TR')} ${birim}` : '—'}
-        </td>
-      </tr>
-    );
-  };
   return (
     <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--border-subtle)' }}>
       <div
@@ -951,12 +954,12 @@ function KapsamaPaneli({ c }: { c: NonNullable<ShOverview['summary']>['scanCover
           </tr>
         </thead>
         <tbody>
-          <Satir ad="Sunucu (tümü)" env={c.hosts.inventory} tar={c.hosts.scanned} />
-          <Satir ad="JBoss" env={c.products.JBOSS.inventory} tar={c.products.JBOSS.scanned} eksikHosts={c.products.JBOSS.missingHosts} envBilinmiyor={c.products.JBOSS.inventoryUnknown} />
-          <Satir ad="JVM" env={c.jvm.inventory} tar={c.jvm.scanned} birim="JVM" />
-          <Satir ad="Red Hat Apache" env={c.products.RHA.inventory} tar={c.products.RHA.scanned} eksikHosts={c.products.RHA.missingHosts} envBilinmiyor={c.products.RHA.inventoryUnknown} />
-          <Satir ad="IBM HTTP Server" env={c.products.IHS.inventory} tar={c.products.IHS.scanned} eksikHosts={c.products.IHS.missingHosts} envBilinmiyor={c.products.IHS.inventoryUnknown} />
-          <Satir ad="Nginx" env={c.products.NGINX.inventory} tar={c.products.NGINX.scanned} eksikHosts={c.products.NGINX.missingHosts} envBilinmiyor={c.products.NGINX.inventoryUnknown} />
+          <KapsamaSatiri ad="Sunucu (tümü)" env={c.hosts.inventory} tar={c.hosts.scanned} />
+          <KapsamaSatiri ad="JBoss" env={c.products.JBOSS.inventory} tar={c.products.JBOSS.scanned} eksikHosts={c.products.JBOSS.missingHosts} envBilinmiyor={c.products.JBOSS.inventoryUnknown} />
+          <KapsamaSatiri ad="JVM" env={c.jvm.inventory} tar={c.jvm.scanned} birim="JVM" />
+          <KapsamaSatiri ad="Red Hat Apache" env={c.products.RHA.inventory} tar={c.products.RHA.scanned} eksikHosts={c.products.RHA.missingHosts} envBilinmiyor={c.products.RHA.inventoryUnknown} />
+          <KapsamaSatiri ad="IBM HTTP Server" env={c.products.IHS.inventory} tar={c.products.IHS.scanned} eksikHosts={c.products.IHS.missingHosts} envBilinmiyor={c.products.IHS.inventoryUnknown} />
+          <KapsamaSatiri ad="Nginx" env={c.products.NGINX.inventory} tar={c.products.NGINX.scanned} eksikHosts={c.products.NGINX.missingHosts} envBilinmiyor={c.products.NGINX.inventoryUnknown} />
         </tbody>
       </table>
       <div className="px-3 py-1.5 text-[10px]" style={{ color: 'var(--text-muted)' }}>
