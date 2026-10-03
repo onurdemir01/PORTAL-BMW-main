@@ -33,8 +33,12 @@ export const SESSION_HEADER = 'X-Portal-Session';
 /**
  * Kapinin DISINDA kalan uclar. Giris denemesi engellenirse kullanici bir daha
  * hic giremezdi — kilit kendi anahtarini da kilitlemis olurdu.
+ *
+ * `session-policy` oturumsuz okunan giris ekrani ayaridir ("beni hatirla" kutusu
+ * gosterilsin mi). Kapi kapaliyken engellenirse, oturumu dusup cikis yapan kullanici
+ * giris ekraninda kutuyu hic goremezdi.
  */
-const MUAF = ['/api/auth/login', '/api/auth/logout'];
+const MUAF = ['/api/auth/login', '/api/auth/logout', '/api/auth/session-policy'];
 
 let _kurulu = false;
 let _gercekFetch: typeof fetch | null = null;
@@ -69,6 +73,51 @@ export type OturumBitisSebebi = 'idle' | 'absolute' | undefined;
 export const BASLIK_SEBEP = 'X-Portal-Session-Reason';
 export const BASLIK_BOSTA = 'X-Portal-Session-Expires';
 export const BASLIK_MUTLAK = 'X-Portal-Session-Absolute';
+
+// ── KULLANICI ETKINLIGI → ARKA PLAN ISARETI (2026-10-03) ────────────────────
+//
+// Sunucu varsayilan olarak HER istegi etkinlik sayar ve bosta kalma suresini
+// yeniden baslatir; yalnizca bildigi birkac yoklama yolunu saymaz. Ama portalda
+// ondan fazla otomatik yoklama var (or. her sayfadaki "Taleplerim" paneli 30-120
+// sn'de bir) ve listede olmayan TEK bir yoklama, acik unutulan sekmede oturumu
+// SONSUZA DEK acik tutuyordu: bosta kalma siniri fiilen hic calismiyordu.
+//
+// Yol listesini buyutmek ayni whack-a-mole olurdu (bu dosyanin basindaki ders).
+// Karar burada, dongulerin ALTINDA verilir: kullanicinin son GERCEK girdisinden
+// (fare, klavye, kaydirma — AuthContext bildirir) bu kadar sure gectiyse istek
+// `X-Portal-Activity: background` ile isaretlenir; sunucu onu etkinlik saymaz.
+// Kullanici bir sey yapip istek tetikliyorsa girdi tazedir, istek isaretlenmez.
+export const BASLIK_ETKINLIK = 'X-Portal-Activity';
+export const ETKINLIK_PENCERESI_MS = 30_000;
+
+/** Son gercek kullanici girdisi. Sayfanin acilmasi da bir kullanici eylemidir. */
+let _sonGirdi = Date.now();
+
+/** AuthContext gercek kullanici girdisinde (ve giriste) cagirir. */
+export function kullaniciEtkinligiBildir(): void {
+  _sonGirdi = Date.now();
+}
+
+/**
+ * "Oturum kapanmak uzere" uyarisi ekrana geldiginde cagrilir: o andan sonra
+ * otomatik istekler etkinlik SAYILMAZ — aksi halde bir yoklama uyariyi
+ * kullaniciya sormadan gecersiz kilardi.
+ */
+export function kullaniciEtkinligiSifirla(): void {
+  _sonGirdi = 0;
+}
+
+function arkaPlanMi(): boolean {
+  return Date.now() - _sonGirdi > ETKINLIK_PENCERESI_MS;
+}
+
+/** Arka plan isaretini ekler; cagiranin kendi basliklari ve acik isareti korunur. */
+function arkaPlanIsaretle(input: RequestInfo | URL, init?: RequestInit): RequestInit {
+  const kaynak = init?.headers ?? (typeof Request !== 'undefined' && input instanceof Request ? input.headers : undefined);
+  const h = new Headers(kaynak);
+  if (!h.has(BASLIK_ETKINLIK)) h.set(BASLIK_ETKINLIK, 'background');
+  return { ...init, headers: h };
+}
 
 const _aboneler = new Set<(sebep: OturumBitisSebebi) => void>();
 const _baslikAboneleri = new Set<(bitis: { idleExpiresAt: number; absoluteExpiresAt: number }) => void>();
@@ -193,7 +242,10 @@ export function sessionGuardKur(): void {
 
     const istekOturumNesli = _oturumNesli;
     const istekteOturumVardi = _oturumVar;
-    const res = await _gercekFetch!(input, init);
+    // Girdi tazeyse istek AYNEN gecer (ek baslik yok); bayatsa arka plan isaretlenir.
+    const res = arkaPlanMi()
+      ? await _gercekFetch!(input, arkaPlanIsaretle(input, init))
+      : await _gercekFetch!(input, init);
     basliklariYay(res);
     if (
       res.status === 401 &&
@@ -219,4 +271,5 @@ export function _sessionGuardSifirla(): void {
   _oturumNesli = 0;
   _aboneler.clear();
   _baslikAboneleri.clear();
+  _sonGirdi = Date.now();
 }

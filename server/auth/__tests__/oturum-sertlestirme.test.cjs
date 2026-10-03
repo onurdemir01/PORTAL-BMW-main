@@ -11,6 +11,7 @@
 //   OS4 koken kontrolu TUM /api route'larindan ONCE baglanir (service.cjs)
 //   OS5b sistem ayari PUT gecersiz degeri yazmaz (HTTP)
 //   OS6 initAuth cerez adini gercekten kullanir
+//   OS7 cerez SILME basligi Secure tasir (production): __Host- adi Secure'suz silinemez
 //   OS5 oturum ayarlari kaydetmeden once dogrulanir; sicak yuklenir ve ekranda gorunur
 'use strict';
 
@@ -283,4 +284,46 @@ test('OS5 oturum ayarlari dogrulanir; beyaz listede, sicak ve ekranda', () => {
   const sc = fs.readFileSync(path.join(ROOT, 'server/admin/system-config.cjs'), 'utf8');
   const put = sc.slice(sc.indexOf('app.put("/api/admin/system-config"'));
   assert.ok(put.indexOf('oturumAyariHatasi(key, strValue)') < put.indexOf('await setEnvOverride('), 'dogrulama kayittan once degil');
+});
+
+test('OS7 production`da silme cerezi Secure tasir; iki ad da silinir', async () => {
+  // `__Host-` onekli ad icin Secure'suz Set-Cookie tarayicida REDDEDILIR: cikista sunucu
+  // oturumu silerdi ama tarayici cerezi tutmaya devam ederdi.
+  const app = express();
+  app.post('/cikis', (req, res) => {
+    cerez.cerezleriSil(res, '__Host-portal.sid');
+    res.json({ ok: true });
+  });
+  const url = dinle(app);
+  await ortamA({ NODE_ENV: 'production' }, async () => {
+    const r = await fetch(`${url}/cikis`, { method: 'POST' });
+    const c = r.headers.getSetCookie();
+    const yeni = c.find((x) => x.startsWith('__Host-portal.sid=;'));
+    const eski = c.find((x) => x.startsWith('connect.sid=;'));
+    assert.ok(yeni && eski, `iki ad da silinmeli: ${c.join(' | ')}`);
+    for (const x of [yeni, eski]) {
+      assert.match(x, /; Secure/, `Secure yok: ${x}`);
+      assert.match(x, /Path=\//);
+      assert.match(x, /Expires=Thu, 01 Jan 1970/);
+      assert.doesNotMatch(x, /Domain=/i, '__Host- cerezi Domain tasiyamaz');
+    }
+  });
+  // Gelistirmede (HTTP) Secure KONMAZ: tarayici Secure cerezi HTTP'de hic kabul etmez.
+  await ortamA({ NODE_ENV: 'development' }, async () => {
+    const r = await fetch(`${url}/cikis`, { method: 'POST' });
+    assert.ok(r.headers.getSetCookie().every((x) => !/; Secure/.test(x)));
+  });
+  // Tasima ara katmani da ayni niteliklerle siler.
+  await ortamA({ NODE_ENV: 'production' }, async () => {
+    const a2 = express();
+    a2.use(cerez.eskiCereziTasi('__Host-portal.sid'));
+    a2.get('/x', (req, res) => res.json({ ok: true }));
+    const r = await fetch(`${dinle(a2)}/x`, { headers: { cookie: 'connect.sid=s%3Aabc.def' } });
+    const sil = r.headers.getSetCookie().find((x) => x.startsWith('connect.sid=;'));
+    assert.match(sil || '', /; Secure/);
+  });
+  // initAuth cikisi bu yardimciyi kullanir.
+  const idx = fs.readFileSync(path.join(ROOT, 'server/auth/index.cjs'), 'utf8');
+  assert.match(idx, /oturumCerezi\.cerezleriSil\(res, COOKIE_NAME\)/, 'logout cerezi ortak yardimciyla silmiyor');
+  assert.doesNotMatch(idx, /res\.clearCookie\(/, 'initAuth`ta niteliksiz clearCookie kaldi');
 });

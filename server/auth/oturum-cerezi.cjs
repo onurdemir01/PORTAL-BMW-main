@@ -40,6 +40,19 @@ function cerezOku(baslik, ad) {
   return null;
 }
 
+// SILME cerezi, yazilan cerezle AYNI niteliklerle gitmeli. `__Host-` onekli bir ad icin
+// `Secure` tasimayan Set-Cookie tarayicida REDDEDILIR: cikista sunucu oturumu siler ama
+// tarayici cerezi tutmaya devam ederdi (her istekte olu bir kimlik tasinir).
+function silmeSecenekleri() {
+  return { path: '/', httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production' };
+}
+
+/** Oturum cerez(ler)ini siler: gecerli ad + (farkliysa) eski ad. */
+function cerezleriSil(res, ad = cerezAdi()) {
+  res.clearCookie(ad, silmeSecenekleri());
+  if (ad !== ESKI_AD) res.clearCookie(ESKI_AD, silmeSecenekleri());
+}
+
 /** express-session'dan ONCE: eski adla gelen cerezi yeni ada tasir. */
 function eskiCereziTasi(ad) {
   return function eskiCereziTasiMw(req, res, next) {
@@ -50,12 +63,12 @@ function eskiCereziTasi(ad) {
     if (!eski) return next();
     // Yeni ad zaten varsa YENI kazanir; artakalan eski cerez yalnizca silinir.
     if (cerezOku(baslik, ad) !== null) {
-      res.clearCookie(ESKI_AD, { path: '/' });
+      res.clearCookie(ESKI_AD, silmeSecenekleri());
       return next();
     }
     req.headers.cookie = `${baslik}; ${ad}=${eski}`;
     // Eski cerez yanitla silinir; yeni cerezi express-session (rolling) yazar.
-    res.clearCookie(ESKI_AD, { path: '/' });
+    res.clearCookie(ESKI_AD, silmeSecenekleri());
     next();
   };
 }
@@ -66,4 +79,13 @@ function istektekiOturumCerezi(req) {
   return cerezOku(baslik, cerezAdi()) || cerezOku(baslik, ESKI_AD);
 }
 
-module.exports = { cerezAdi, eskiCereziTasi, istektekiOturumCerezi, cerezOku, ESKI_AD, URETIM_ADI };
+module.exports = {
+  cerezAdi,
+  eskiCereziTasi,
+  istektekiOturumCerezi,
+  cerezOku,
+  cerezleriSil,
+  silmeSecenekleri,
+  ESKI_AD,
+  URETIM_ADI,
+};

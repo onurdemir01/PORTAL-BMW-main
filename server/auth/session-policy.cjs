@@ -67,10 +67,18 @@ function bitisler(meta, p = policy()) {
 }
 
 // ARKA PLAN YOKLAMALARI: sureyi uzatmaz. Yalnizca GET; yol tam eslesir.
+//
+// BU LISTE BIR YEDEKTIR (2026-10-03), asil karar istemcidedir: `src/api/sessionGuard.ts`
+// kullanicinin son gercek girdisinden 30 sn gectiyse HER /api istegini
+// `X-Portal-Activity: background` ile isaretler. Liste yalnizca eski JS'i tasiyan
+// (yenilenmemis) sekmeler icin durur. Ilk surumde listede olmayan tek bir yoklama
+// ("Taleplerim" paneli, her sayfada) acik sekmede oturumu sonsuza dek acik tutuyordu:
+// bosta kalma siniri fiilen hic calismiyordu.
 const ARKA_PLAN_YOLLARI = new Set([
   '/api/users/online', // Dashboard cevrimici kullanicilar (25 sn)
   '/api/visibility/version', // gorunurluk surum yoklamasi (45 sn, her sayfada)
   '/api/ansible/awx/recent-jobs', // Dashboard kuyruk paneli (15 sn)
+  '/api/ansible/ss/smart-tickets/mine', // "Taleplerim" paneli — HER sayfada, 30-120 sn
   '/api/auth/session', // istemci oturum saati (kendi suresini uzatmamali)
 ]);
 

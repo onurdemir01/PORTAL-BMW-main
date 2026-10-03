@@ -3,12 +3,14 @@ import { User } from "@/types";
 import { pageVisibilityApi, visibilityApi } from "@/api/adminApi";
 import { fetchSessionWithRetry } from "./sessionRestore";
 import {
+  kullaniciEtkinligiBildir,
+  kullaniciEtkinligiSifirla,
   oturumBasligiAbone,
   oturumBittiAbone,
   oturumDurumunuBildir,
   type OturumBitisSebebi,
 } from "@/api/sessionGuard";
-import { oturumSaatiOlustur, tarayiciKanali, uyariHesapla, type OturumOzeti } from "./sessionClock";
+import { bitisSebebi, oturumSaatiOlustur, tarayiciKanali, uyariHesapla, type OturumOzeti } from "./sessionClock";
 import ReloginOverlay from "@/components/ReloginOverlay";
 
 interface AuthContextType {
@@ -85,6 +87,8 @@ function kullaniciCikar(d: any): User {
 
 // Kullanici etkinligi sayilan olaylar. Eskiden yalnizca mousemove/keydown/mousedown/
 // touchstart idi: kaydirarak okuyan ya da baska sekmeden donen kullanici "bosta" sayiliyordu.
+// `focus` YALNIZCA pencerenin kendisi icin sayilir (asagida): programatik odak — acilan /
+// kapanan pencere, autofocus — kullanici girdisi degildir.
 const ETKINLIK_OLAYLARI = ["pointerdown", "keydown", "wheel", "scroll", "touchstart", "mousemove", "focus"];
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -118,8 +122,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [user, oturumDustu]);
 
   // Tek oturum saati; sekmeler arasi kanal (sessionClock.ts).
-  const [saat] = useState(() => oturumSaatiOlustur({ kanal: tarayiciKanali() }));
-  useEffect(() => () => saat.kapat(), [saat]);
+  const [saat] = useState(() => oturumSaatiOlustur());
+  // Kanal bir efekt kaynagi: baglama ve ayirma AYNI efektte (StrictMode'un sok-yeniden-kur
+  // turunda kanal yeniden acilir; eskiden kalici kapaniyordu).
+  useEffect(() => saat.baglan(tarayiciKanali()), [saat]);
   // Her /api yanitindaki bitis basliklari saati tazeler (ek yoklama yok).
   useEffect(() => oturumBasligiAbone((b) => saat.basliklariUygula(b)), [saat]);
 
@@ -138,15 +144,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUyariBitis(null);
   }, [saat]);
 
+  // Uyarinin EKRANDA oldugu bitis ani (0 = ekranda degil). `uyar()` icinde SENKRON
+  // yazilir: uyari acilirken Modal odagi tasir ve o olay state guncellenmeden once gelir —
+  // state'e bakan surum uyariyi kendi kendine uzatiyordu (Faz B dersi). Deger bitis ANI
+  // oldugu icin saat ilerlediginde (baska sekme uzatti) kendiliginden gecersiz kalir;
+  // "takili kalan isaret" yuzunden etkinligin hic sayilmamasi mumkun degildir.
+  const uyariEkrandaBitis = useRef(0);
+
   const extendSession = useCallback(() => {
+    uyariEkrandaBitis.current = 0;
+    kullaniciEtkinligiBildir();
     setUyariBitis(null);
     void saat.uzat();
   }, [saat]);
 
-  // Uyariyi yalnizca BU bitis ani icin kapatir; sure uzamaz, bitis aninda yine sorulur.
+  // Uyariyi yalnizca BU bitis ani icin kapatir; KAPATMAK sureyi uzatmaz. Kullanici
+  // kapatip calismaya devam ederse sonraki GERCEK girdisi olagan kurallarla sayilir;
+  // kapatip masadan kalkarsa oturum bitis aninda kapanir.
   const kapatilanBitis = useRef(0);
   const dismissTimeoutModal = useCallback(() => {
     kapatilanBitis.current = uyariHesapla(saat.durum()).bitis;
+    uyariEkrandaBitis.current = 0;
     setUyariBitis(null);
   }, [saat]);
 
@@ -232,8 +250,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // durumu korunur. Sebep (bosta / mutlak) sunucunun basligindan gelir.
   useEffect(() => oturumBittiAbone((sebep) => {
     setUyariBitis(null);
-    setOturumDustu({ sebep });
-  }), []);
+    // Sunucu sebebi yalnizca ILK istege soyler; diger sekmeler kendi saatinden cikarir.
+    setOturumDustu({ sebep: sebep ?? bitisSebebi(saat.durum(), Date.now()) });
+  }), [saat]);
 
   // Diger sekmeden cikis: bu sekme de giris ekranina duser (sunucuya ayrica gitmez).
   useEffect(() => saat.cikisAbone(() => {
@@ -334,6 +353,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = async (username: string, password: string, remember = false): Promise<void> => {
     const data = await girisIstegi(username, password, remember);
+    // Kapi HEMEN acilir: oturumu dusup cikis yapan kullanicida kapi kapali kalmis olabilir;
+    // acilmazsa asagidaki gorunurluk istegi aga cikmaz ve harita 2,5 sn bos kalirdi.
+    oturumDurumunuBildir(true);
+    kullaniciEtkinligiBildir();
     if (Number(data.closedOthers) > 0) {
       setGirisNotu(
         `Eşzamanlı oturum sınırı nedeniyle en eski ${data.closedOthers} oturumunuz kapatıldı. ` +
@@ -360,6 +383,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return;
     }
     oturumDurumunuBildir(true);
+    kullaniciEtkinligiBildir();
     setUser(kullaniciCikar(data));
     saat.ozetUygula(data.session);
     setOturumDustu(null);
@@ -383,6 +407,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const kalanSn = () => Math.max(0, Math.round((bitis - Date.now()) / 1000));
     const uyar = () => {
       if (kapatilanBitis.current === bitis) return;
+      // Uyari ekrandayken karar kullanicinin: ne girdi ne otomatik istek sureyi uzatir.
+      uyariEkrandaBitis.current = bitis;
+      kullaniciEtkinligiSifirla();
       setCountdown(kalanSn());
       setUyariBitis(bitis);
       geriSayim = window.setInterval(() => setCountdown(kalanSn()), 1000);
@@ -396,21 +423,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, [user, oturumDustu, uyariBilgisi, saat]);
 
-  // Etkinlik: sunucuya kisitli bildirilir (sessionClock.etkinlik). UYARI PENCERESINDE
-  // bildirilmez — karar kullanicinin acik tiklamasi ("Surdur") olmali. Pencere saatten
-  // HESAPLANIR (ref/state degil): uyari acilirken Modal odagi tasir ve `focus` olayi
-  // state guncellenmeden once gelir; ref'e bakan surum uyariyi kendi kendine uzatiyordu.
+  // Etkinlik iki yere bildirilir: sessionGuard (isteklerin arka plan isareti) ve
+  // sessionClock (API cagrisi uretmeyen etkinlik icin kisitli `extend`). Uyari
+  // EKRANDAYKEN bildirilmez — karar kullanicinin acik tiklamasi ("Surdur") olmali.
   useEffect(() => {
     if (!user || oturumDustu) return;
-    const handle = () => {
-      const d = saat.durum();
-      if (d.bilinen && Date.now() >= uyariHesapla(d).uyariAni) return;
+    const etkin = () => {
+      const ekrandaki = uyariEkrandaBitis.current;
+      if (ekrandaki && ekrandaki === uyariHesapla(saat.durum()).bitis) return;
+      kullaniciEtkinligiBildir();
       saat.etkinlik();
+    };
+    const handle = (e: Event) => {
+      // Programatik odak (acilan/kapanan pencere, autofocus) kullanici girdisi degildir;
+      // yalnizca PENCERENIN odagi geri almasi (baska uygulamadan donus) sayilir.
+      if (e.type === "focus" && e.target !== window) return;
+      etkin();
     };
     const gorunurluk = () => {
       if (document.visibilityState !== "visible") return;
       // Sekmeye donus: once saati esitle (baska sekme uzatmis olabilir), sonra etkinlik.
-      void saat.tazele().then(handle);
+      void saat.tazele().then(etkin);
     };
     ETKINLIK_OLAYLARI.forEach((e) => window.addEventListener(e, handle, { passive: true, capture: true }));
     document.addEventListener("visibilitychange", gorunurluk);

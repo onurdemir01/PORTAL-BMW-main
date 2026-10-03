@@ -1,6 +1,6 @@
 # Oturum ve Giriş Yönetimi
 
-Portalın oturum modeli. 2026-10'da beş adımda (PR #166–#170) yeniden kuruldu. Kullanıcıların şikâyeti şuydu: "login aşamasında çokça atıyor, ne kadar bağlı kalabileceği ayarlanabilsin."
+Portalın oturum modeli. 2026-10'da beş adımda (PR #166–#170) yeniden kuruldu; etkinlik sayımı #173'te düzeltildi. Kullanıcıların şikâyeti şuydu: "login aşamasında çokça atıyor, ne kadar bağlı kalabileceği ayarlanabilsin."
 
 ## Model
 
@@ -11,7 +11,7 @@ Portalın oturum modeli. 2026-10'da beş adımda (PR #166–#170) yeniden kuruld
 
 | Kural | Varsayılan | Ayar | Not |
 |---|---|---|---|
-| Boşta kalma | 60 dk | `SESSION_IDLE_MINUTES` (5–720) | Her kullanıcı işlemi süreyi yeniden başlatır. Arka plan yoklamaları (pano, çevrimiçi listesi, görünürlük sürümü) başlatmaz. |
+| Boşta kalma | 60 dk | `SESSION_IDLE_MINUTES` (5–720) | Her kullanıcı işlemi süreyi yeniden başlatır. Otomatik yoklamalar başlatmaz (bkz. "Etkinlik nasıl sayılır"). |
 | Mutlak süre | 12 sa | `SESSION_ABSOLUTE_HOURS` (1–72) | Etkin kullanımda bile girişten bu kadar sonra yeniden giriş istenir. |
 | Beni hatırla | 7 gün | `SESSION_REMEMBER_DAYS` (0–30, 0 = kapalı) | Kalıcı çerez. Boşta kalma kuralı yine geçerlidir. |
 | Uyarı | 120 sn | `SESSION_WARN_SECONDS` | "Oturumu Sürdür" penceresi. |
@@ -21,13 +21,23 @@ Bütün ayarlar **Admin > Sistem Yapılandırması > Oturum ve Giriş** ekranın
 - Değişiklikler anında geçerli olur; yeniden başlatma gerekmez.
 - Sunucu, değeri kaydetmeden önce doğrular.
 
+## Etkinlik nasıl sayılır
+
+Boşta kalma sınırının işe yaraması için "kullanıcı gerçekten burada mı" sorusunun doğru cevaplanması gerekir. Portalda ondan fazla otomatik yoklama vardır (her sayfadaki "Taleplerim" paneli, pano, iş durumu…); bunlar etkinlik sayılırsa açık unutulan bir sekme oturumu mutlak süreye kadar açık tutar.
+
+- **Karar istemcidedir** (`src/api/sessionGuard.ts`). Kullanıcının son gerçek girdisinden (fare, klavye, tekerlek, kaydırma, dokunma, pencereye dönüş) **30 sn** geçtiyse giden her `/api` isteği `X-Portal-Activity: background` başlığıyla işaretlenir; sunucu bu istekleri etkinlik saymaz.
+- Girdi tazeyken giden istekler işaretlenmez ve etkinlik sayılır. Bu yüzden yeni bir yoklama eklemek için hiçbir liste güncellenmez.
+- API çağrısı üretmeyen etkinlik (okuma, kaydırma) `POST /api/auth/session/extend` ile bildirilir; en sık 5 dakikada bir.
+- Sunucudaki yol listesi (`ARKA_PLAN_YOLLARI`) yalnızca **yedektir**: eski JavaScript'i taşıyan, yenilenmemiş sekmeler içindir.
+- **Uyarı ekrandayken** ne girdi ne otomatik istek süreyi uzatır; karar kullanıcınındır ("Oturumu Sürdür"). Uyarı X ya da Esc ile kapatılırsa süre uzamaz; kullanıcı çalışmaya devam ederse sonraki gerçek girdisi olağan kurallarla sayılır, masadan kalkarsa oturum biter. Arka plana tıklamak uyarıyı kapatmaz.
+- Uzun süren bir işi (ör. log indirme) hiç dokunmadan izleyen kullanıcı da boşta sayılır: bitişten 2 dakika önce uyarı çıkar; oturum düşerse yerinde yeniden girişle iş ekranı korunur.
+
 ## Sekmeler ve istemci
 
 - **Sekmeler tek saati paylaşır** (`src/contexts/sessionClock.ts`; BroadcastChannel, yoksa `storage` olayı).
   - Bir sekmede yapılan uzatma, çıkış ya da giriş öteki sekmelere de yansır.
   - İstemci kendi başına **logout çağırmaz**. Süre dolunca sunucuya sorar; oturum gerçekten bittiyse sunucu imzalı 401 döner.
 - **Bitiş zamanları her yanıtta gelir:** `X-Portal-Session-Expires` (boşta kalma) ve `X-Portal-Session-Absolute` başlıkları.
-- **Etkinlik bildirimi:** okuma ve kaydırma gibi API çağrısı üretmeyen etkinlik, `POST /api/auth/session/extend` ile sunucuya bildirilir; bu çağrı en sık 5 dakikada bir yapılır.
 - **Oturum düşünce uygulama kapanmaz.** Ekranın üstünde yeniden giriş katmanı açılır ve açık form korunur.
   - Katman oturumun neden bittiğini gösterir; sebep `X-Portal-Session-Reason: idle|absolute` başlığından gelir.
   - Farklı bir kullanıcıyla giriş yapılırsa sayfa tamamen yenilenir.
@@ -71,6 +81,7 @@ Bütün ayarlar **Admin > Sistem Yapılandırması > Oturum ve Giriş** ekranın
 - **Çerez:** `httpOnly`, `SameSite=Lax`, üretimde `Secure`.
   - Üretimde çerezin adı `__Host-portal.sid`'dir. Bu önek tarayıcıya HTTPS, `Path=/` ve Domain'siz kullanımı zorunlu kılar; böylece kardeş alt alan adları çerezi ezemez.
   - Eski `connect.sid` çerezi ilk istekte sessizce taşınır, **kimse oturumdan atılmaz**.
+  - Çerez silinirken (çıkış, taşıma) yazılırken kullanılan niteliklerle silinir; `__Host-` adı `Secure` olmadan silinemez.
   - Geliştirme ortamında (HTTP) ad `connect.sid` olarak kalır.
 - **CSRF:** durum değiştiren `/api` isteklerinde `Origin` (o yoksa `Referer`) portalın kendi adresi olmalıdır; aksi halde 403 döner, kullanıcı atılmaz.
   - Portal birden çok adla açılıyorsa (kısa ad + tam ad) öteki adlar `PORTAL_ALLOWED_ORIGINS` ile eklenir.
