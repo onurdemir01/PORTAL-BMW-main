@@ -40,6 +40,19 @@
 //      tarama ust uste okunamazsa (token iptali/401, gateway yolu, ...) kesinti basina TEK
 //      Teams karti "OTOMATIK IPTAL CALISMIYOR" + denetim fail (phase 'scan'); duzelince kayit.
 //      Tarama hic bitmiyorsa (in-flight) watcher ayni yoldan haber verir.
+//   9) IPTAL TOKEN'I (kullanici, 2026-10-03: "servis kullanicisina yetki verme hakkim yok;
+//      kendi onurdemir3 token'imi admin panelinden vereyim, onunla iptal et"): AWX sunucusu
+//      basina Admin'in girdigi kisisel token (long-job-cancel-token.cjs; sifreli, yalniz
+//      yazilir). YALNIZ iptal cagrisi ve yetki on kontrolu bu token'i kullanir; tarama, durum
+//      okuma ve Portal'in diger tum AWX cagrilari servis kullanicisiyla DEGISMEDEN kalir.
+//      Token tanimli degilse eski davranis. 401 -> "IPTAL TOKEN'I GECERSIZ": Teams + denetim
+//      + durum, is IPTAL EDILEMEDI (kalici; yeni token kaydedilince yeniden denenir). 403 ->
+//      kalici red + "token sahibi <kullanici> bu template'te Admin degil". IZ: Teams karti
+//      ve denetim kaydi "iptal <kullanici> token'iyla yapildi" der.
+//      Token KAYDI okunamazsa (DB; bellekte son gecerli kayit yok) servis kullanicisina
+//      DUSULMEZ: iptal o turda DENENMEZ (gecici; MAX_ATTEMPTS), kart/durum "iptal token kaydi
+//      OKUNAMADI - iptal denenmedi" der; kayit okununca is yeniden denenir. Token kaydedildigi
+//      AWX ADRESINE baglidir: sunucunun adresi degisirse token yeni adrese GONDERILMEZ (kalici).
 //
 // GUVENLIK MODELI (degismedi):
 //   - Izin listesi BOS = hicbir sey iptal edilmez (varsayilan kapali). Esik en az 5 dk.
@@ -53,6 +66,7 @@
 'use strict';
 
 const os = require('os');
+const tokenStore = require('./long-job-cancel-token.cjs');
 
 const CONFIG_NAME = 'longjob-cancel';
 const CACHE_TTL_MS = 60 * 1000;
@@ -93,6 +107,12 @@ function makeRedactor(runner) {
     let x = String(s == null ? '' : s);
     try {
       if (runner && typeof runner.redactSecrets === 'function') x = runner.redactSecrets(x);
+    } catch {
+      /* genel kaliplar yine uygulanir */
+    }
+    try {
+      // Iptal token'lari runner'dan bagimsiz da maskelenir (sahte/eksik runner'da bile).
+      x = tokenStore.redact(x);
     } catch {
       /* genel kaliplar yine uygulanir */
     }
@@ -179,6 +199,7 @@ async function writeConfig(db, body) {
   // bir sonraki taramada YENIDEN denenir. Bekleyen dogrulamalara (_done) dokunulmaz.
   _failed.clear();
   _attempts.clear();
+  _storeUnreadableKeys.clear();
   return cfg;
 }
 
@@ -252,6 +273,8 @@ const _attemptLog = []; // son ATTEMPT_LOG_MAX deneme/alarm
 let _lastTick = null;
 let _lastDryRun = null;
 let _stuckAlertFor = null; // watcher in-flight alarmi verilen taramanin baslangic zamani
+let _tokenSigSeen = null; // Map<serverId, sifreli deger>: iptal token'i (baska ornekte) degisti mi
+const _storeUnreadableKeys = new Set(); // token KAYDI okunamadigi icin iptali DENENMEYEN isler
 
 const jobKey = (job) => `${job.serverId}:${normKind(job.kind)}:${job.jobId}`;
 
@@ -333,7 +356,20 @@ function jobFacts(job, elapsedMinutes, cfg) {
 const WORKFLOW_CHILDREN_NOTE =
   "AWX bir workflow'u iptal edince o an çalışan TÜM alt işlerini de keser (alt işlerin template'i izin listesinde olmasa bile).";
 
-function teamsCard(job, elapsedMinutes, cfg) {
+// IZ: iptalin HANGI AWX kimligiyle yapildigi (kart + denetim + durum ayni metni kullanir).
+const viaText = (owner) => `İptal ${owner || '?'} token'ıyla yapıldı`;
+const viaPhrase = (owner) => `iptal ${owner || '?'} token'ıyla yapıldı`;
+const SERVICE_VIA_TEXT = "İptal Portal'ın AWX servis kullanıcısıyla yapıldı";
+
+function viaFacts(info) {
+  if (!info || !info.via) return [];
+  if (info.via === 'cancel_token') {
+    return [{ title: 'İptal kimliği', value: `${viaText(info.tokenOwner)} (kişisel iptal token'ı — geçici çözüm)` }];
+  }
+  return [{ title: 'İptal kimliği', value: SERVICE_VIA_TEXT }];
+}
+
+function teamsCard(job, elapsedMinutes, cfg, info = {}) {
   const wf = normKind(job.kind) === 'workflow';
   return cardShell(
     'attention',
@@ -341,8 +377,13 @@ function teamsCard(job, elapsedMinutes, cfg) {
     `${job.serverName} · ${job.jobName} · ${kindLabel(job.kind)} #${job.jobId} — ${Math.floor(elapsedMinutes)} dakikadır ` +
       `${job.started ? 'çalışıyordu' : 'kuyruktaydı'} (eşik ${cfg.thresholdMinutes} dk). AWX iptal isteğini kabul etti; ` +
       'durduğu bir sonraki taramada doğrulanır (durmazsa ayrı alarm gelir).' +
+      (info.via === 'cancel_token' ? ` ${viaText(info.tokenOwner)}.` : '') +
       (wf ? ` ${WORKFLOW_CHILDREN_NOTE}` : ''),
-    [...jobFacts(job, elapsedMinutes, cfg), ...(wf ? [{ title: 'Alt işler', value: WORKFLOW_CHILDREN_NOTE }] : [])],
+    [
+      ...jobFacts(job, elapsedMinutes, cfg),
+      ...viaFacts(info),
+      ...(wf ? [{ title: 'Alt işler', value: WORKFLOW_CHILDREN_NOTE }] : []),
+    ],
     job.url,
   );
 }
@@ -359,6 +400,22 @@ const TOKEN_SCOPE_HINT =
  * template Admin rolu OLAMAZ -> token kapsami. Aksi halde iki olasi neden birlikte yazilir.
  */
 function forbiddenHint(info) {
+  if (info.via === 'cancel_token') {
+    const who = info.tokenOwner || info.portalUser || '?';
+    if (info.createdByPortal === true) {
+      return (
+        `Bu işi iptal token'ının sahibi ${who} başlatmış; AWX'te işi başlatan kullanıcı onu her zaman iptal edebilir — ` +
+        "yani sebep template Admin rolü DEĞİL: token 'write' kapsamlı değil. Admin ekranından 'write' kapsamlı bir token " +
+        `girin. Şimdilik işi AWX arayüzünden elle iptal edin. ${RETRY_HINT}`
+      );
+    }
+    return (
+      `Token sahibi ${who} bu template'te Admin değil (Execute rolü başkalarının başlattığı işi iptal etmeye YETMEZ) → ` +
+      `AWX'te ${who} kullanıcısına bu template'te Admin rolü verin ya da Admin rolü olan bir kullanıcının token'ını girin. ` +
+      "Token 'write' kapsamlı değilse AWX her iptal isteğini yine 403 ile reddeder. " +
+      `Şimdilik işi AWX arayüzünden elle iptal edin. ${RETRY_HINT}`
+    );
+  }
   if (info.createdByPortal === true) {
     return (
       `Bu işi Portal'ın kendi AWX kullanıcısı${info.portalUser ? ` (${info.portalUser})` : ''} başlatmış; AWX'te işi ` +
@@ -373,8 +430,33 @@ function forbiddenHint(info) {
   );
 }
 
+const TOKEN_INVALID_WHAT =
+  "İptal token'ı AWX'te iptal edilmiş ya da süresi dolmuş (AWX 401). Admin > Ansible Info > Uzun süren işleri iptal > " +
+  "İptal token'ı bölümünden yeni token girin (kaydedince iptal edilemeyen işler yeniden denenir) ya da token'ı silin " +
+  "(o zaman Portal servis kullanıcısı kullanılır). Şimdilik işi AWX arayüzünden elle iptal edin.";
+const TOKEN_STORE_UNREADABLE_WHAT =
+  "Portal iptal token kaydını (portal_config_blobs 'longjob-cancel-tokens') okuyamadı: bu sunucuda iptal token'ı " +
+  "tanımlı mı ÖLÇÜLEMEDİ, bu yüzden iptal DENENMEDİ (servis kullanıcısına düşülmedi). Portal'ın DB erişimini kontrol " +
+  'edin; kayıt okununca iş otomatik olarak yeniden denenir. Şimdilik işi AWX arayüzünden elle iptal edin.';
+const TOKEN_MISMATCH_WHAT =
+  "Bu AWX sunucusunun adresi iptal token'ı kaydedildikten sonra değişmiş (ya da kayıtta adres yok): kişisel token " +
+  "yeni adrese GÖNDERİLMEDİ ve iptal denenmedi. Admin ekranından token'ı bu sunucu için yeniden girin ya da silin " +
+  "(o zaman Portal servis kullanıcısı kullanılır). Şimdilik işi AWX arayüzünden elle iptal edin.";
+const TOKEN_UNDECRYPTABLE_WHAT =
+  "Kayıtlı iptal token'ı çözülemedi (ENV_OVERRIDES_ENCRYPTION_KEY eksik ya da değişmiş olabilir). Admin ekranından " +
+  "token'ı yeniden girin ya da silin. Şimdilik işi AWX arayüzünden elle iptal edin.";
+
 /** Durum satiri icin kisa neden. */
 function shortHint(info) {
+  if (info.tokenInvalid) return "İPTAL TOKEN'I GEÇERSİZ — Admin ekranından yeni token girin";
+  if (info.tokenStoreUnreadable) return 'iptal token kaydı OKUNAMADI — iptal denenmedi';
+  if (info.tokenServerMismatch) return "iptal token'ı bu AWX adresi için kaydedilmedi — token gönderilmedi, iptal denenmedi";
+  if (info.tokenUndecryptable) return "iptal token'ı çözülemedi — Admin ekranından yeniden girin";
+  if (info.httpStatus === 403 && info.jobState === 'active' && info.via === 'cancel_token') {
+    return info.createdByPortal === true
+      ? `olası neden: token 'write' kapsamlı değil (işi token sahibi ${info.tokenOwner || '?'} başlatmış)`
+      : `token sahibi ${info.tokenOwner || '?'} bu template'te Admin değil (ya da token 'write' kapsamlı değil)`;
+  }
   if (info.httpStatus === 403 && info.jobState === 'active') {
     return info.createdByPortal === true
       ? "olası neden: token'da 'write' kapsamı yok (iş Portal'ın kendi başlattığı iş; Admin rolü sebep DEĞİL)"
@@ -386,7 +468,11 @@ function shortHint(info) {
 
 function failureCard(job, elapsedMinutes, cfg, info = {}) {
   let what;
-  if (info.httpStatus === 403 && info.jobState === 'active') what = forbiddenHint(info);
+  if (info.tokenInvalid) what = TOKEN_INVALID_WHAT;
+  else if (info.tokenStoreUnreadable) what = TOKEN_STORE_UNREADABLE_WHAT;
+  else if (info.tokenServerMismatch) what = TOKEN_MISMATCH_WHAT;
+  else if (info.tokenUndecryptable) what = TOKEN_UNDECRYPTABLE_WHAT;
+  else if (info.httpStatus === 403 && info.jobState === 'active') what = forbiddenHint(info);
   else if (info.jobState === 'unknown') {
     what = "AWX arayüzünden işin durumunu kontrol edin; hâlâ çalışıyorsa elle iptal edin. " + RETRY_HINT;
   } else if (info.httpStatus === 405 || info.httpStatus === 409) {
@@ -396,10 +482,17 @@ function failureCard(job, elapsedMinutes, cfg, info = {}) {
   } else {
     what = 'İşi AWX arayüzünden elle iptal edin. Hata sürüyorsa AWX erişimini ve Portal kimlik bilgisini kontrol edin.';
   }
-  const title =
-    info.jobState === 'unknown'
-      ? '⛔ İPTAL EDİLEMEDİ — işin AWX’teki şu anki durumu ÖLÇÜLEMEDİ'
-      : '⛔ İPTAL EDİLEMEDİ — iş AWX’te ÇALIŞMAYA DEVAM EDİYOR';
+  const title = info.tokenInvalid
+    ? `⛔ İPTAL EDİLEMEDİ — İPTAL TOKEN'I GEÇERSİZ (${info.tokenOwner || '?'}, AWX 401)`
+    : info.tokenStoreUnreadable
+      ? '⛔ İPTAL EDİLEMEDİ — İPTAL TOKEN KAYDI OKUNAMADI (iptal denenmedi)'
+      : info.tokenServerMismatch
+        ? `⛔ İPTAL EDİLEMEDİ — İPTAL TOKEN'I BU AWX ADRESİ İÇİN KAYDEDİLMEDİ (${info.tokenOwner || '?'})`
+        : info.tokenUndecryptable
+      ? `⛔ İPTAL EDİLEMEDİ — İPTAL TOKEN'I ÇÖZÜLEMEDİ (${info.tokenOwner || '?'})`
+      : info.jobState === 'unknown'
+        ? '⛔ İPTAL EDİLEMEDİ — işin AWX’teki şu anki durumu ÖLÇÜLEMEDİ'
+        : '⛔ İPTAL EDİLEMEDİ — iş AWX’te ÇALIŞMAYA DEVAM EDİYOR';
   return cardShell(
     'attention',
     title,
@@ -409,6 +502,19 @@ function failureCard(job, elapsedMinutes, cfg, info = {}) {
     [
       ...jobFacts(job, elapsedMinutes, cfg),
       ...(info.awxStatus ? [{ title: 'AWX durumu (iptal anında)', value: info.awxStatus }] : []),
+      ...(info.tokenStoreUnreadable
+        ? [{ title: 'İptal kimliği', value: 'ÖLÇÜLEMEDİ — iptal token kaydı okunamadı; iptal denenmedi (servis kullanıcısına düşülmedi)' }]
+        : info.via === 'cancel_token'
+          ? [
+              {
+                title: 'İptal kimliği',
+                value:
+                  info.tokenUndecryptable || info.tokenServerMismatch
+                    ? `İptal ${info.tokenOwner || '?'} token'ıyla DENENMEDİ (token kullanılamıyor)`
+                    : `İptal ${info.tokenOwner || '?'} token'ıyla denendi (kişisel iptal token'ı)`,
+              },
+            ]
+          : []),
       { title: 'Sebep', value: info.reason || '—' },
       { title: 'Ne yapılmalı', value: what },
     ],
@@ -638,6 +744,19 @@ function scanHealthView() {
   }));
 }
 
+/** runner'daki sunucu satiri (url, apiBase): iptal token'inin adres baglamasi icin. */
+function serverInfo(runner, serverId) {
+  try {
+    if (runner && typeof runner.getServerById === 'function') return runner.getServerById(serverId) || null;
+    if (runner && typeof runner.getServers === 'function') {
+      return runner.getServers().find((x) => Number(x.id) === Number(serverId)) || null;
+    }
+  } catch {
+    /* adres okunamadi -> token KULLANILMAZ (long-job-cancel-token bindingProblem) */
+  }
+  return null;
+}
+
 async function _runCycle(scan, opts = {}) {
   const { db, runner, webhookUrl, audit } = opts;
   const dryRun = opts.dryRun === true;
@@ -663,6 +782,25 @@ async function _runCycle(scan, opts = {}) {
   const results = [];
   const tickLog = [];
   const verify = { asked: 0, measured: 0, unmeasured: 0 };
+  // Sunucu basina iptal kimligi (tur basina bir kez): iptal token'i tanimliysa o, degilse
+  // servis kullanicisi. Cozulemeyen / adresi degismis token ve OKUNAMAYAN kayit FIRLATIR
+  // (sessizce servis kullanicisina dusulmez).
+  const authBySrv = new Map();
+  const cancelAuthFor = async (serverId) => {
+    const k = Number(serverId);
+    if (!authBySrv.has(k)) {
+      authBySrv.set(
+        k,
+        tokenStore.getCancelAuth(db, k, { server: serverInfo(runner, k) }).then(
+          (a) => ({ a }),
+          (e) => ({ e }),
+        ),
+      );
+    }
+    const r = await authBySrv.get(k);
+    if (r.e) throw r.e;
+    return r.a;
+  };
   const doAudit = (result, detail) => {
     if (!audit || dryRun) return;
     try {
@@ -776,6 +914,35 @@ async function _runCycle(scan, opts = {}) {
     }
   }
 
+  // 1b) IPTAL TOKEN'I DEGISTI MI (coklu Portal ornegi): token baska bir ornekte kaydedilip/
+  // silinmis olabilir; o ornegin resetFailuresForServer'i BU ornegin belleginde calismaz.
+  // Kayit imzasi degisen sunucuda iptal edilemeyen isler yeniden denenir ("Kaydet -> yeniden
+  // denenir" sozu her ornekte tutulsun). Okunamazsa dokunulmaz.
+  // OKUNAMADI -> OKUNDU gecisi de degisimdir: kayit okunamadigi icin iptali DENENMEYEN isler
+  // (_storeUnreadableKeys; token'li ya da token'siz her sunucu) yeniden denenir. GERCEKTEN
+  // denenip kalici reddedilen isler (403/401) bu gecisle yeniden ACILMAZ (cift kart olmasin).
+  // _tokenSigSeen okunamayan turlarda sifirlanmaz: aradaki gercek degisim yine yakalanir.
+  if (!dryRun) {
+    let sigs = null;
+    try {
+      sigs = await tokenStore.signatures(db);
+    } catch {
+      sigs = null;
+    }
+    if (sigs) {
+      if (_tokenSigSeen) {
+        const ids = new Set([...sigs.keys(), ..._tokenSigSeen.keys()]);
+        for (const id of ids) if ((sigs.get(id) || null) !== (_tokenSigSeen.get(id) || null)) resetFailuresForServer(id);
+      }
+      for (const key of _storeUnreadableKeys) {
+        _failed.delete(key);
+        _attempts.delete(key);
+      }
+      _storeUnreadableKeys.clear();
+      _tokenSigSeen = new Map(sigs);
+    }
+  }
+
   // 2) KARARLAR
   const listedWorkflows = new Set(
     jobs
@@ -844,20 +1011,43 @@ async function _runCycle(scan, opts = {}) {
     }
     const wfNote = normKind(job.kind) === 'workflow' ? ' (AWX workflow’un çalışan alt işlerini de keser)' : '';
     if (dryRun) {
+      // Kuru calistirma token'i COZMEZ; gercek taramada hangi kimlikle (ya da hic) denenecegini soyler.
+      let authNote = '';
+      try {
+        const da = await tokenStore.describeCancelAuth(db, job.serverId, { server: serverInfo(runner, job.serverId) });
+        if (da.state === 'token') authNote = ` — iptal ${da.owner} token'ıyla yapılır`;
+        else if (da.state === 'mismatch') {
+          authNote = ` — AMA iptal token'ı (${da.owner || '?'}) bu AWX adresi için kaydedilmedi: gerçek taramada iptal DENENMEZ`;
+        } else if (da.state === 'unreadable') {
+          authNote = ' — AMA iptal token kaydı OKUNAMADI: gerçek taramada iptal DENENMEZ (ölçülemedi)';
+        }
+      } catch {
+        authNote = '';
+      }
       entries.push({
         ...entry,
         decision: 'would_cancel',
         reason:
           `Eşik aşıldı (${Math.floor(d.elapsedMinutes)} dk ≥ ${cfg.thresholdMinutes} dk${d.basis === 'created' ? ', kuyruk süresi' : ''}): ` +
-          `gerçek taramada İPTAL EDİLİR${wfNote} (kuru çalıştırma — hiçbir şey iptal edilmedi)`,
+          `gerçek taramada İPTAL EDİLİR${wfNote} (kuru çalıştırma — hiçbir şey iptal edilmedi)` +
+          authNote,
       });
       continue;
     }
 
     const n = _attempts.get(key) || 0;
     _attempts.set(key, n + 1);
+    let auth = null;
     try {
-      const r = await runner.cancelJobOnServer(job.serverId, job.jobId, { kind: normKind(job.kind) });
+      auth = await cancelAuthFor(job.serverId);
+      const viaToken = !!(auth && auth.via === 'cancel_token');
+      const r = await runner.cancelJobOnServer(
+        job.serverId,
+        job.jobId,
+        viaToken ? { kind: normKind(job.kind), authToken: auth.token, authOwner: auth.owner } : { kind: normKind(job.kind) },
+      );
+      const via = viaToken ? { via: 'cancel_token', tokenOwner: auth.owner } : { via: 'service' };
+      const viaNote = viaToken ? `; ${viaPhrase(auth.owner)}` : '';
       if (r && r.alreadyTerminal) {
         // Yine de dogrulanir: is sonraki taramalarda hala aktif gorunurse alarm (vekil 405'i).
         _done.set(key, { job: entry, requestedAt: iso(), seenTicks: 0, alarmed: false, alreadyTerminal: true });
@@ -875,7 +1065,8 @@ async function _runCycle(scan, opts = {}) {
       }
       _done.set(key, { job: entry, requestedAt: iso(), seenTicks: 0, alarmed: false, alreadyTerminal: false });
       console.warn(
-        `[LongJobCancel] ${job.serverName} ${kindLabel(job.kind)} #${job.jobId} (${job.jobName}) ${Math.floor(d.elapsedMinutes)} dk -> IPTAL ISTENDI (AWX kabul etti; sonraki taramada dogrulanacak)`,
+        `[LongJobCancel] ${job.serverName} ${kindLabel(job.kind)} #${job.jobId} (${job.jobName}) ${Math.floor(d.elapsedMinutes)} dk -> IPTAL ISTENDI (AWX kabul etti; sonraki taramada dogrulanacak)` +
+          (viaToken ? ` - iptal token'i sahibi ${auth.owner}` : ''),
       );
       doAudit('ok', {
         phase: 'cancel',
@@ -885,22 +1076,44 @@ async function _runCycle(scan, opts = {}) {
         elapsedMinutes: Math.floor(d.elapsedMinutes),
         basis: d.basis,
         thresholdMinutes: cfg.thresholdMinutes,
+        ...via,
+        credential: viaToken ? viaText(auth.owner) : SERVICE_VIA_TEXT,
         ...(normKind(job.kind) === 'workflow' ? { childJobsCanceledToo: true, note: WORKFLOW_CHILDREN_NOTE } : {}),
       });
-      const teams = await notifyTeams(webhookUrl, teamsCard(job, d.elapsedMinutes, cfg), red);
+      const teams = await notifyTeams(webhookUrl, teamsCard(job, d.elapsedMinutes, cfg, via), red);
       entries.push({
         ...entry,
         decision: 'cancel_requested',
-        reason: `İptal istendi (AWX kabul etti)${wfNote}; sonraki taramada doğrulanacak`,
+        reason: `İptal istendi (AWX kabul etti)${wfNote}${viaNote}; sonraki taramada doğrulanacak`,
       });
-      results.push({ job, ok: true, elapsedMinutes: d.elapsedMinutes });
-      pushLog({ ...logFields(job), outcome: 'requested', ok: true, message: `İptal istendi (AWX 202)${wfNote}`, teams }, tickLog);
+      results.push({ job, ok: true, elapsedMinutes: d.elapsedMinutes, ...via });
+      pushLog(
+        { ...logFields(job), outcome: 'requested', ok: true, message: `İptal istendi (AWX 202)${wfNote}${viaNote}`, teams, ...via },
+        tickLog,
+      );
     } catch (e) {
       // KALICI RED TEKRAR DENENMEZ (403 + is aktif: yetki bir sonraki turda belirmez; PR #108
       // `tooLarge` ile ayni sinif). Gecici hatalar en fazla MAX_ATTEMPTS kez denenir.
       // Her iki durumda da basarisizlik SESSIZ DEGIL: denetim 'fail' + durum kaydi; son
       // denemede (ya da kalici redde) Teams "IPTAL EDILEMEDI" karti.
-      const permanent = !!(e && e.permanent);
+      // IPTAL TOKEN'I: 401 -> "IPTAL TOKEN'I GECERSIZ" (kalici; kayit + durum isaretlenir);
+      // cozulemeyen / adresi degismis token da kalici. Yeni token kaydedilince (ya da silinince)
+      // yeniden denenir. Token KAYDI okunamadiysa iptal DENENMEDI: gecici (kayit okununca yeniden).
+      const viaToken = !!(auth && auth.via === 'cancel_token');
+      const tokenUndecryptable = !!(e && e.tokenUndecryptable);
+      const tokenServerMismatch = !!(e && e.tokenServerMismatch);
+      const tokenStoreUnreadable = !!(e && e.tokenStoreUnreadable);
+      const tokenInvalid = !!(e && e.cancelTokenInvalid) || (viaToken && e && e.status === 401);
+      const tokenOwner = viaToken ? auth.owner : tokenUndecryptable || tokenServerMismatch ? e.owner || null : null;
+      const via =
+        viaToken || tokenUndecryptable || tokenServerMismatch
+          ? { via: 'cancel_token', tokenOwner }
+          : tokenStoreUnreadable
+            ? { via: 'unknown', tokenOwner: null }
+            : { via: 'service' };
+      const permanent = !!(e && e.permanent) || tokenInvalid || tokenUndecryptable || tokenServerMismatch;
+      if (tokenStoreUnreadable) _storeUnreadableKeys.add(key);
+      else _storeUnreadableKeys.delete(key);
       const exhausted = permanent || n + 1 >= MAX_ATTEMPTS;
       const msg = red((e && e.message) || String(e));
       const httpStatus = (e && e.status) || null;
@@ -913,15 +1126,31 @@ async function _runCycle(scan, opts = {}) {
         awxStatus: (e && e.awxStatus) || null,
         portalUser: (e && e.portalUser) || null,
         createdByPortal: e && typeof e.createdByPortal === 'boolean' ? e.createdByPortal : null,
+        tokenInvalid,
+        tokenUndecryptable,
+        tokenServerMismatch,
+        tokenStoreUnreadable,
+        ...via,
       };
       const hint = shortHint(info);
+      if (tokenInvalid) {
+        await tokenStore.markInvalid(db, job.serverId, {
+          tokenEnc: auth && auth.entry ? auth.entry.tokenEnc : null,
+          httpStatus: 401,
+          message: msg,
+        });
+      }
       if (exhausted) {
         _attempts.set(key, MAX_ATTEMPTS); // bir daha denenmesin
         _failed.set(key, { job: entry, message: msg, permanent, httpStatus, jobState: info.jobState, hint, at: iso() });
       }
       console.error(
         `[LongJobCancel] ${job.serverName} ${kindLabel(job.kind)} #${job.jobId} IPTAL EDILEMEDI ` +
-          `(deneme ${n + 1}/${MAX_ATTEMPTS}${permanent ? ', KALICI' : ''}; is durumu: ${info.jobState || 'son taramada aktif'}):`,
+          `(deneme ${n + 1}/${MAX_ATTEMPTS}${permanent ? ', KALICI' : ''}; is durumu: ${info.jobState || 'son taramada aktif'}` +
+          `${via.via === 'cancel_token' ? `; iptal token'i sahibi ${tokenOwner || '?'}` : ''}` +
+          `${tokenInvalid ? '; IPTAL TOKENI GECERSIZ' : ''}${tokenUndecryptable ? '; IPTAL TOKENI COZULEMEDI' : ''}` +
+          `${tokenServerMismatch ? '; IPTAL TOKENI BU AWX ADRESI ICIN KAYDEDILMEDI' : ''}` +
+          `${tokenStoreUnreadable ? '; IPTAL TOKEN KAYDI OKUNAMADI, iptal denenmedi' : ''}):`,
         msg,
       );
       doAudit('fail', {
@@ -936,6 +1165,20 @@ async function _runCycle(scan, opts = {}) {
         attempt: n + 1,
         jobState: info.jobState,
         createdByPortal: info.createdByPortal,
+        ...via,
+        credential: tokenStoreUnreadable
+          ? 'İptal denenmedi: iptal token kaydı okunamadı (kimlik ölçülemedi)'
+          : tokenServerMismatch
+            ? `İptal denenmedi: ${tokenOwner || '?'} token'ı bu AWX adresi için kaydedilmedi`
+            : tokenUndecryptable
+              ? `İptal denenmedi: ${tokenOwner || '?'} token'ı çözülemedi`
+              : via.via === 'cancel_token'
+                ? `İptal ${tokenOwner || '?'} token'ıyla denendi`
+                : "İptal Portal'ın AWX servis kullanıcısıyla denendi",
+        ...(tokenInvalid ? { tokenInvalid: true } : {}),
+        ...(tokenUndecryptable ? { tokenUndecryptable: true } : {}),
+        ...(tokenServerMismatch ? { tokenServerMismatch: true } : {}),
+        ...(tokenStoreUnreadable ? { tokenStoreUnreadable: true } : {}),
         error: msg,
       });
       let teams = null;
@@ -950,9 +1193,19 @@ async function _runCycle(scan, opts = {}) {
           (hint ? ` — ${hint}` : '') +
           (exhausted ? ' — tekrar denenmiyor' : ` — tekrar denenecek (${n + 1}/${MAX_ATTEMPTS})`),
       });
-      results.push({ job, ok: false, error: msg, permanent });
+      results.push({ job, ok: false, error: msg, permanent, ...via });
       pushLog(
-        { ...logFields(job), outcome: 'failed', ok: false, message: msg, permanent, httpStatus, attempt: n + 1, teams },
+        {
+          ...logFields(job),
+          outcome: tokenInvalid ? 'token_invalid' : 'failed',
+          ok: false,
+          message: msg,
+          permanent,
+          httpStatus,
+          attempt: n + 1,
+          teams,
+          ...via,
+        },
         tickLog,
       );
     }
@@ -1083,6 +1336,17 @@ function getStatus() {
     else awaitingVerify++;
   }
   const scanHealth = scanHealthView();
+  // Iptal token'lari: yalniz "tanimli / sahip / son dogrulama / GECERSIZ mi" (DEGER YOK).
+  const tv = tokenStore.statusView();
+  const nameOf = (id) => {
+    const s = _lastTick && Array.isArray(_lastTick.servers) ? _lastTick.servers.find((x) => Number(x.serverId) === id) : null;
+    return (s && s.serverName) || `sunucu ${id}`;
+  };
+  const cancelTokens = {
+    measured: tv.measured,
+    readError: tv.readError,
+    tokens: tv.tokens.map((t) => ({ ...t, serverName: nameOf(t.serverId) })),
+  };
   return {
     instance: `${os.hostname()}:${process.pid}`,
     now: iso(),
@@ -1093,11 +1357,13 @@ function getStatus() {
     lastDryRun: _lastDryRun,
     attempts: _attemptLog.slice().reverse(),
     scanHealth,
+    cancelTokens,
     open: {
       awaitingVerify,
       stillRunning,
       failed: _failed.size,
       scanFailing: scanHealth.filter((h) => h.alerted).length,
+      tokenInvalid: cancelTokens.tokens.filter((t) => t.invalid).length,
     },
     limits: {
       maxAttempts: MAX_ATTEMPTS,
@@ -1122,59 +1388,134 @@ function withDeadline(p, ms, label) {
   return Promise.race([Promise.resolve(p), limit]).finally(() => clearTimeout(t));
 }
 
+const tokenNoAdminMessage = (owner) =>
+  `İptal token'ının sahibi ${owner || '?'} bu template'te Admin değil: Portal bu template'in BAŞKALARININ başlattığı ` +
+  `işlerini iptal EDEMEZ (AWX'te ${owner || 'token sahibi'} kullanıcısına bu template'te Admin rolü gerekir; Execute yetmez). ` +
+  `${owner || 'Token sahibi'} kullanıcısının kendi başlattığı işler iptal edilebilir.`;
+
 /**
  * @returns {Promise<Array<{serverId, templateId, kind, name, state: 'admin'|'no_admin'|'unknown',
- *   tokenScope: 'write'|'unknown', message}>>}
+ *   tokenScope: 'write'|'unknown', via: string, tokenOwner, message}>>}
+ *   (via: 'service' | 'cancel_token' | 'unknown' - 'unknown' = token kaydi okunamadi)
  * 'unknown' = OLCULEMEDI (AWX okunamadi ya da alan yok) — 'no_admin' ile KARISTIRILMAZ.
  * 'admin' YALNIZ template Admin rolunu soyler: token kapsami ayri (`tokenScope`) yazilir;
  * statik/OAuth2 token'da 'unknown' -> mesaj "token kapsami OLCULEMEDI" der, "iptal edebilir" DEMEZ.
+ *
+ * `cancelAuth(serverId)` (rotalar verir; tokenStore.getCancelAuth): sunucuda IPTAL TOKEN'I
+ * tanimliysa yetki o token'in SAHIBINE gore olculur (otomatik iptal o token'la yapilir).
+ * Verilmezse eski davranis (servis kullanicisi).
  */
-async function checkPermissions(templates, { runner, deadlineMs = PERMISSION_DEADLINE_MS } = {}) {
+async function checkPermissions(templates, { runner, deadlineMs = PERMISSION_DEADLINE_MS, cancelAuth = null } = {}) {
   const red = makeRedactor(runner);
   const list = (Array.isArray(templates) ? templates : []).slice(0, PERMISSION_MAX_TEMPLATES);
+  const authCache = new Map();
+  const authFor = (serverId) => {
+    const k = Number(serverId);
+    if (!authCache.has(k)) {
+      authCache.set(
+        k,
+        Promise.resolve()
+          .then(() => (typeof cancelAuth === 'function' ? cancelAuth(k) : { via: 'service' }))
+          .then(
+            (a) => ({ a }),
+            (e) => ({ e }),
+          ),
+      );
+    }
+    return authCache.get(k);
+  };
   return Promise.all(
     list.map(async (t) => {
       const base = { serverId: t.serverId, templateId: t.templateId, kind: normKind(t.kind), name: t.name || '' };
+      const ar = await authFor(t.serverId);
+      if (ar.e && ar.e.tokenStoreUnreadable) {
+        // Token KAYDI okunamadi: iptalin hangi kimlikle yapilacagi bile OLCULEMEDI (servis
+        // kullanicisina gore olculmez - "Admin YOK" ile karismasin).
+        return {
+          ...base,
+          state: 'unknown',
+          tokenScope: 'unknown',
+          via: 'unknown',
+          tokenOwner: null,
+          message:
+            "Ölçülemedi: iptal token kaydı OKUNAMADI — iptalin hangi AWX kimliğiyle yapılacağı bilinmiyor (yetki VAR ya da YOK denemez): " +
+            red((ar.e && ar.e.message) || String(ar.e)),
+        };
+      }
+      if (ar.e) {
+        // Token tanimli ama cozulemiyor / adresi degismis: yetki OLCULEMEDI (servis kullanicisina
+        // dusulmez, token yeni adrese gonderilmez).
+        return {
+          ...base,
+          state: 'unknown',
+          tokenScope: 'unknown',
+          via: 'cancel_token',
+          tokenOwner: ar.e.owner || null,
+          message: `Ölçülemedi (yetki VAR ya da YOK denemez): ${red((ar.e && ar.e.message) || String(ar.e))}`,
+        };
+      }
+      const auth = ar.a || { via: 'service' };
+      const viaToken = auth.via === 'cancel_token';
+      const viaInfo = viaToken ? { via: 'cancel_token', tokenOwner: auth.owner || null } : { via: 'service', tokenOwner: null };
       try {
         if (!runner || typeof runner.getTemplateCapabilitiesOnServer !== 'function') {
           throw new Error('yetki okuyucu yok');
         }
         const cap = await withDeadline(
-          runner.getTemplateCapabilitiesOnServer(t.serverId, t.templateId, base.kind),
+          viaToken
+            ? runner.getTemplateCapabilitiesOnServer(t.serverId, t.templateId, base.kind, { authToken: auth.token })
+            : runner.getTemplateCapabilitiesOnServer(t.serverId, t.templateId, base.kind),
           deadlineMs,
           'AWX',
         );
         const edit = cap && cap.capabilities ? cap.capabilities.edit : undefined;
         const name = base.name || (cap && cap.name) || '';
-        const tokenScope = cap && cap.tokenScope === 'write' ? 'write' : 'unknown';
+        const tokenScope = cap && cap.tokenScope === 'write' && !viaToken ? 'write' : 'unknown';
         if (edit === true) {
           return {
             ...base,
             name,
             state: 'admin',
             tokenScope,
-            message:
-              tokenScope === 'write'
+            ...viaInfo,
+            message: viaToken
+              ? `Template Admin rolü var (iptal token'ının sahibi ${auth.owner || '?'}). Token kapsamı ÖLÇÜLEMEDİ ` +
+                "(kişisel token): token 'read' kapsamlıysa iptal yine 403 alır."
+              : tokenScope === 'write'
                 ? "Template Admin rolü var; Portal token'ını kullanıcı/şifreyle kendisi alıyor (AWX varsayılanı 'write' " +
                   "kapsam). Portal bu template'in işlerini iptal edebilmeli; kesin sonuç ilk iptal denemesinde görülür."
                 : "Template Admin rolü var. Token kapsamı ÖLÇÜLEMEDİ (statik ya da OAuth2 token): token 'read' kapsamlıysa " +
                   'iptal yine 403 alır. Süperkullanıcı durumu da ölçülmedi.',
           };
         }
-        if (edit === false) return { ...base, name, state: 'no_admin', tokenScope, message: NO_ADMIN_MESSAGE };
+        if (edit === false) {
+          return {
+            ...base,
+            name,
+            state: 'no_admin',
+            tokenScope,
+            ...viaInfo,
+            message: viaToken ? tokenNoAdminMessage(auth.owner) : NO_ADMIN_MESSAGE,
+          };
+        }
         return {
           ...base,
           name,
           state: 'unknown',
           tokenScope,
+          ...viaInfo,
           message: 'Ölçülemedi: AWX yanıtında user_capabilities.edit alanı yok (yetki VAR ya da YOK denemez).',
         };
       } catch (e) {
+        const invalid = viaToken && e && e.status === 401;
         return {
           ...base,
           state: 'unknown',
           tokenScope: 'unknown',
-          message: `Ölçülemedi (yetki VAR ya da YOK denemez): ${red((e && e.message) || String(e))}`,
+          ...viaInfo,
+          message: invalid
+            ? `Ölçülemedi: İPTAL TOKEN'I GEÇERSİZ (AWX 401; token sahibi ${auth.owner || '?'}) — Admin ekranından yeni token girin.`
+            : `Ölçülemedi (yetki VAR ya da YOK denemez): ${red((e && e.message) || String(e))}`,
         };
       }
     }),
@@ -1186,18 +1527,20 @@ function permissionWarnings(perms) {
   const unk = (perms || []).filter((p) => p.state === 'unknown');
   const scopeUnk = (perms || []).filter((p) => p.state === 'admin' && p.tokenScope !== 'write');
   const out = [];
+  const label = (p) =>
+    (p.name || `#${p.templateId}`) + (p.via === 'cancel_token' ? ` (iptal token'ı sahibi ${p.tokenOwner || '?'})` : '');
   if (no.length) {
     out.push(
       `${no.length} template'te Portal BAŞKALARININ başlattığı işleri iptal EDEMEZ (AWX'te template Admin rolü yok): ` +
-        no.map((p) => p.name || `#${p.templateId}`).join(', '),
+        no.map(label).join(', '),
     );
   }
   if (unk.length) {
-    out.push(`${unk.length} template'te iptal yetkisi ölçülemedi: ` + unk.map((p) => p.name || `#${p.templateId}`).join(', '));
+    out.push(`${unk.length} template'te iptal yetkisi ölçülemedi: ` + unk.map(label).join(', '));
   }
   if (scopeUnk.length) {
     out.push(
-      `${scopeUnk.length} template'te Admin rolü var ama token kapsamı ölçülemedi (statik/OAuth2 token): "Admin ✓" ` +
+      `${scopeUnk.length} template'te Admin rolü var ama token kapsamı ölçülemedi (statik/OAuth2 ya da kişisel token): "Admin ✓" ` +
         "iptalin kesin çalışacağını GÖSTERMEZ; token 'read' kapsamlıysa iptal 403 alır.",
     );
   }
@@ -1251,6 +1594,10 @@ function registerRoutes(app, deps = {}) {
       return null;
     }
   };
+  // Yetki on kontrolu: sunucuda iptal token'i tanimliysa yetki onun SAHIBINE gore olculur.
+  // Token kaydedildigi AWX ADRESINE baglidir: sunucu satiri (url, apiBase) karsilastirma icin verilir.
+  const cancelAuthOf = (serverId) =>
+    tokenStore.getCancelAuth(getDb(), serverId, { server: serverInfo(safeRunner(), serverId) });
   let dryRunInFlight = null;
 
   app.get('/api/ansible/longjob-cancel', requireAuth, requireAdmin, async (_req, res) => {
@@ -1273,7 +1620,7 @@ function registerRoutes(app, deps = {}) {
     let permissions = [];
     let permissionsError = null;
     try {
-      permissions = await checkPermissions(cfg.templates, { runner: getRunner() });
+      permissions = await checkPermissions(cfg.templates, { runner: getRunner(), cancelAuth: cancelAuthOf });
     } catch (err) {
       permissionsError = genericRedact(err.message);
     }
@@ -1311,7 +1658,7 @@ function registerRoutes(app, deps = {}) {
       const cfg = await readConfig(getDb());
       const q = req.query && typeof req.query.t === 'string' ? req.query.t : '';
       const templates = q ? parseTemplateList(q, cfg) : cfg.templates;
-      const permissions = await checkPermissions(templates, { runner: getRunner() });
+      const permissions = await checkPermissions(templates, { runner: getRunner(), cancelAuth: cancelAuthOf });
       res.json({ ok: true, permissions, warnings: permissionWarnings(permissions) });
     } catch (err) {
       fail(res, err);
@@ -1339,6 +1686,149 @@ function registerRoutes(app, deps = {}) {
       fail(res, err);
     }
   });
+
+  // ── IPTAL TOKEN'I (AWX sunucusu basina; YALNIZ YAZILIR) ──────────────────────
+  // Deger HICBIR yanita, denetime, loga girmez: yanitlar yalniz tanimli/degil, sahip,
+  // kim/ne zaman ve son dogrulama sonucunu tasir. Kaydet/Sil/Dogrula denetime DEGERSIZ
+  // yazilir ('awx_long_job_cancel_token'). Govde anahtari `token`: genel mutasyon
+  // denetimi (auditMutations) onu zaten [REDACTED] yazar; deger URL'de TASINMAZ.
+  const reqUser = (req) => {
+    const u = (req && ((req.session && req.session.user) || req.user)) || {};
+    return String(u.username || 'admin').slice(0, 150);
+  };
+  const serverOf = (id) => {
+    const r = safeRunner();
+    try {
+      return r && typeof r.getServers === 'function' ? r.getServers().find((s) => Number(s.id) === Number(id)) || null : null;
+    } catch {
+      return null;
+    }
+  };
+  const parseSid = (req) => {
+    const n = Number(req.params && req.params.serverId);
+    return Number.isInteger(n) && n >= 0 ? n : null;
+  };
+  const tokenAudit = (req, result, detail) =>
+    safeAudit(req, 'awx_long_job_cancel_token', { result, detail: JSON.stringify(detail) });
+  const verifierFor = (sid) => (tok) => {
+    const r = getRunner();
+    if (!r || typeof r.whoAmIWithTokenOnServer !== 'function') throw new Error('token doğrulayıcı yok');
+    return withDeadline(r.whoAmIWithTokenOnServer(sid, tok), PERMISSION_DEADLINE_MS, 'AWX');
+  };
+  const errCode = (err) => (err && Number.isInteger(err.code) && err.code >= 400 && err.code < 600 ? err.code : 503);
+  const tokenView = async (srv) => {
+    const v = await tokenStore.publicView(getDb(), [{ id: srv.id, name: srv.name, url: srv.url, apiBase: srv.apiBase }]);
+    return v.servers.find((x) => x.serverId === Number(srv.id)) || null;
+  };
+
+  app.get('/api/ansible/longjob-cancel/tokens', requireAuth, requireAdmin, async (_req, res) => {
+    try {
+      const r = safeRunner();
+      // url yalniz adres karsilastirmasi icindir; yanita yalniz origin + API tabani girer.
+      const servers =
+        r && typeof r.getServers === 'function'
+          ? r.getServers().map((s) => ({ id: s.id, name: s.name, url: s.url, apiBase: s.apiBase }))
+          : [];
+      const view = await tokenStore.publicView(getDb(), servers);
+      res.json({ ok: true, ...view });
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  app.put('/api/ansible/longjob-cancel/tokens/:serverId', requireAuth, requireAdmin, async (req, res) => {
+    const sid = parseSid(req);
+    const srv = sid == null ? null : serverOf(sid);
+    if (!srv) return res.status(404).json({ ok: false, message: 'AWX sunucusu bulunamadı.' });
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const candidate = typeof body.token === 'string' ? body.token : null;
+    try {
+      const out = await tokenStore.saveToken(getDb(), {
+        serverId: sid,
+        server: srv,
+        token: candidate,
+        by: reqUser(req),
+        verify: verifierFor(sid),
+      });
+      resetFailuresForServer(sid);
+      tokenAudit(req, 'ok', {
+        op: 'set',
+        serverId: sid,
+        serverName: srv.name,
+        owner: out.owner,
+        ownerIsSuperuser: out.ownerIsSuperuser,
+        ...(out.replacedOwner ? { replacedOwner: out.replacedOwner } : {}),
+      });
+      res.json({ ok: true, owner: out.owner, ownerIsSuperuser: out.ownerIsSuperuser, token: await tokenView(srv) });
+    } catch (err) {
+      const message = makeRedactor(safeRunner())(
+        tokenStore.redact((err && err.message) || String(err), candidate ? [candidate.trim(), candidate] : []),
+      );
+      tokenAudit(req, 'fail', {
+        op: 'set',
+        serverId: sid,
+        serverName: srv.name,
+        reason: (err && err.reason) || null,
+        httpStatus: (err && err.httpStatus) || null,
+        error: message,
+      });
+      res.status(errCode(err)).json({ ok: false, reason: (err && err.reason) || null, message });
+    }
+  });
+
+  app.delete('/api/ansible/longjob-cancel/tokens/:serverId', requireAuth, requireAdmin, async (req, res) => {
+    const sid = parseSid(req);
+    if (sid == null) return res.status(400).json({ ok: false, message: 'Geçersiz sunucu.' });
+    const srv = serverOf(sid);
+    const serverName = srv ? srv.name : `sunucu ${sid}`;
+    try {
+      const out = await tokenStore.deleteToken(getDb(), sid);
+      resetFailuresForServer(sid);
+      tokenAudit(req, 'ok', { op: 'delete', serverId: sid, serverName, owner: out.owner, deleted: out.deleted });
+      res.json({ ok: true, deleted: out.deleted });
+    } catch (err) {
+      const message = makeRedactor(safeRunner())((err && err.message) || String(err));
+      tokenAudit(req, 'fail', { op: 'delete', serverId: sid, serverName, error: message });
+      res.status(errCode(err)).json({ ok: false, message });
+    }
+  });
+
+  app.post('/api/ansible/longjob-cancel/tokens/:serverId/verify', requireAuth, requireAdmin, async (req, res) => {
+    const sid = parseSid(req);
+    const srv = sid == null ? null : serverOf(sid);
+    if (!srv) return res.status(404).json({ ok: false, message: 'AWX sunucusu bulunamadı.' });
+    try {
+      const out = await tokenStore.verifyStored(getDb(), sid, { by: reqUser(req), verify: verifierFor(sid), server: srv });
+      const result = { ...out, message: out.message ? makeRedactor(safeRunner())(out.message) : null };
+      if (out.ok) resetFailuresForServer(sid);
+      tokenAudit(req, out.ok ? 'ok' : 'fail', {
+        op: 'verify',
+        serverId: sid,
+        serverName: srv.name,
+        owner: out.owner,
+        measured: out.measured,
+        httpStatus: out.httpStatus,
+        message: result.message,
+      });
+      res.json({ ok: true, result, token: await tokenView(srv) });
+    } catch (err) {
+      const message = makeRedactor(safeRunner())((err && err.message) || String(err));
+      tokenAudit(req, 'fail', { op: 'verify', serverId: sid, serverName: srv.name, error: message });
+      res.status(errCode(err)).json({ ok: false, message });
+    }
+  });
+}
+
+/**
+ * Iptal token'i kaydedildi/silindi/dogrulandi: o sunucuda IPTAL EDILEMEYEN isler bir sonraki
+ * taramada YENIDEN denenir (writeConfig'in tum sunucular icin yaptiginin sunucu basina hali).
+ * Bekleyen dogrulamalara (_done) dokunulmaz.
+ */
+function resetFailuresForServer(serverId) {
+  const prefix = `${Number(serverId)}:`;
+  for (const k of [..._failed.keys()]) if (k.startsWith(prefix)) _failed.delete(k);
+  for (const k of [..._attempts.keys()]) if (k.startsWith(prefix)) _attempts.delete(k);
+  for (const k of [..._storeUnreadableKeys]) if (k.startsWith(prefix)) _storeUnreadableKeys.delete(k);
 }
 
 function _reset() {
@@ -1356,11 +1846,15 @@ function _reset() {
   _lastTick = null;
   _lastDryRun = null;
   _stuckAlertFor = null;
+  _tokenSigSeen = null;
+  _storeUnreadableKeys.clear();
+  tokenStore._reset();
 }
 
 /** Test yardimcisi: onbellek suresini doldurur (bir sonraki readConfig DB'ye gider). */
 function _expireCache() {
   _cacheAt = 0;
+  tokenStore._expireCache();
 }
 
 module.exports = {
@@ -1382,6 +1876,7 @@ module.exports = {
   teamsCard,
   failureCard,
   notStoppedCard,
+  resetFailuresForServer,
   CONFIG_NAME,
   MAX_ATTEMPTS,
   VERIFY_TICKS,

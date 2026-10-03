@@ -340,6 +340,17 @@ function summarizeAwxErrorBody(json) {
   }
 }
 
+/**
+ * Hata metninden bu istegin token'ini ve bilinen tum AWX sirlarini (iptal token'i dahil)
+ * maskeler. Yalniz LOG/HATA metnine uygulanir; istegin kendisi ve basarili yanit DEGISMEZ.
+ */
+function maskRequestSecrets(text, token) {
+  let s = String(text == null ? '' : text);
+  const t = token == null ? '' : String(token);
+  if (t.length >= 6) s = s.split(t).join('***');
+  return redactAwxSecrets(s);
+}
+
 function awxRequestToServer(server, token, method, pathname, body = null) {
   // TEK NOKTA: cagiranlar yolu `/api/v2/...` yazmaya devam eder; sunucunun tabani
   // farkliysa (AAP 2.5) burada cevrilir.
@@ -411,10 +422,13 @@ function awxRequestToServer(server, token, method, pathname, body = null) {
         try {
           const json = JSON.parse(data);
           if (res.statusCode >= 400) {
-            const detail = summarizeAwxErrorBody(json);
+            // SIR YANSIMASI: AWX/vekil hata govdesi istegin Authorization basligini geri
+            // yansitabilir. Log satiri ve hata mesaji bu istegin token'i + bilinen tum AWX
+            // sirlari (iptal token'i dahil) maskelenmeden YAZILMAZ (maskRequestSecrets).
+            const detail = maskRequestSecrets(summarizeAwxErrorBody(json), token);
             console.error(
               `[AWX] ${method} ${parsed.pathname} -> HTTP ${res.statusCode}:`,
-              data.slice(0, 1000),
+              maskRequestSecrets(data, token).slice(0, 1000),
             );
             reject(
               Object.assign(
@@ -426,7 +440,9 @@ function awxRequestToServer(server, token, method, pathname, body = null) {
             );
           } else resolve(json);
         } catch {
-          reject(new Error(`AWX yanıtı JSON değil (${res.statusCode}): ${data.slice(0, 200)}`));
+          reject(
+            new Error(`AWX yanıtı JSON değil (${res.statusCode}): ${maskRequestSecrets(data, token).slice(0, 200)}`),
+          );
         }
       });
     });
@@ -1528,9 +1544,13 @@ async function getJobStateOnServer(serverId, jobId, kind = 'job') {
   return readJobState(server, token, kind === 'workflow' ? 'workflow' : 'job', id);
 }
 
-/** Portal'in bu sunucudaki AWX kullanici adi: kullanici/sifreyle ise o, statik token'da /api/v2/me/. */
-async function awxWhoAmI(server, token) {
-  if (!server.token && server.user) return String(server.user);
+/**
+ * Istegi yapan AWX kullanici adi: servis kullanicisi kullanici/sifreyle ise o, statik
+ * token'da /api/v2/me/. `viaToken` (iptal token'i): HER ZAMAN /api/v2/me/ - servis
+ * kullanicisinin adi token SAHIBI yerine yazilmasin.
+ */
+async function awxWhoAmI(server, token, { viaToken = false } = {}) {
+  if (!viaToken && !server.token && server.user) return String(server.user);
   try {
     const me = await awxRequestToServer(server, token, 'GET', '/api/v2/me/');
     const u = me && Array.isArray(me.results) ? me.results[0] : null;
@@ -1538,6 +1558,22 @@ async function awxWhoAmI(server, token) {
   } catch {
     return null;
   }
+}
+
+/**
+ * IPTAL TOKEN'I DOGRULAMASI (Admin kaydederken / "Dogrula"): verilen token'in SAHIBI.
+ * GET /api/v2/me/ (AAP esleme awxRequestToServer'da). Hata FIRLATIR - 401 -> status 401
+ * ("gecersiz"); ag/AWX hatasi -> cagiran "olculemedi" der. Token loglara/hata metnine
+ * maskRequestSecrets sayesinde GECMEZ. Servis kullanicisinin token onbellegine DOKUNMAZ.
+ * @returns {Promise<{ username: string, id: number|null, isSuperuser: boolean }>}
+ */
+async function whoAmIWithTokenOnServer(serverId, token) {
+  const server = getServerById(serverId);
+  if (!server) throw Object.assign(new Error('AWX sunucusu bulunamadı.'), { status: 404 });
+  const me = await awxRequestToServer(server, String(token || ''), 'GET', '/api/v2/me/');
+  const u = me && Array.isArray(me.results) ? me.results[0] : null;
+  if (!u || !u.username) throw new Error('AWX /api/v2/me/ yanıtında kullanıcı adı yok.');
+  return { username: String(u.username), id: u.id != null ? Number(u.id) : null, isSuperuser: u.is_superuser === true };
 }
 
 // AWX'te calisan bir job'i iptal eder (POST /api/v2/jobs/:id/cancel/). Is zaten terminal
@@ -1560,6 +1596,14 @@ async function awxWhoAmI(server, token) {
 //   - durum okunamadi + 403            -> gecici hata, "durum OLCULEMEDI" (calisiyor DENMEZ)
 //   - durum okunamadi + 405/409        -> eski davranis (alreadyTerminal) ama stateVerified:false;
 //                                         otomatik iptal bunu sonraki taramalarda yine dogrular.
+//
+// IPTAL TOKEN'I (2026-10-03, kullanici: servis kullanicisina yetki verilemiyor, gecici olarak
+// kendi kisisel token'i): `opts.authToken` (+ `opts.authOwner`) YALNIZ long-job-cancel
+// otomatik iptal yolundan gelir. Verilirse POST /cancel/ o token'la gider; isin durumu
+// (403/405/409 yorumu) servis kullanicisiyla okunur (tarama da onunla yapildi), servis
+// token'i alinamazsa iptal token'iyla. 401 -> KALICI "IPTAL TOKEN'I GECERSIZ"
+// (cancelTokenInvalid). 403 mesaji token SAHIBINI soyler. Iki/uc argumanli eski cagrilar
+// (ScaleX, LogX, Telnet) authToken GECMEZ: davranislari DEGISMEDI.
 async function cancelJobOnServer(serverId, jobId, opts = {}) {
   const server = getServerById(serverId);
   if (!server) throw Object.assign(new Error('AWX sunucusu bulunamadı.'), { status: 404 });
@@ -1569,18 +1613,39 @@ async function cancelJobOnServer(serverId, jobId, opts = {}) {
 
   const kind = opts && opts.kind === 'workflow' ? 'workflow' : 'job';
   const segment = awxJobSegment(kind);
-  const token = await getTokenForServer(server);
+  const viaToken = !!(opts && typeof opts.authToken === 'string' && opts.authToken);
+  const token = viaToken ? opts.authToken : await getTokenForServer(server);
+  const tokenOwner = viaToken && opts.authOwner ? String(opts.authOwner) : null;
   try {
     await awxRequestToServer(server, token, 'POST', `/api/v2/${segment}/${id}/cancel/`);
-    return { canceled: true };
+    return viaToken ? { canceled: true, via: 'cancel_token', tokenOwner } : { canceled: true };
   } catch (err) {
     const status = err && err.status;
+    if (viaToken && status === 401) {
+      throw Object.assign(
+        new Error(
+          `İş İPTAL EDİLEMEDİ: İPTAL TOKEN'I GEÇERSİZ (AWX 401${tokenOwner ? `; token sahibi ${tokenOwner}` : ''}) — ` +
+            "token AWX'te iptal edilmiş ya da süresi dolmuş olabilir. İş son taramada AWX'te aktifti; " +
+            'AWX arayüzünden iptal edin ve Admin ekranından yeni token girin.' +
+            (err && err.message ? ` [AWX yanıtı: ${String(err.message).slice(0, 300)}]` : ''),
+        ),
+        { status: 401, permanent: true, cancelTokenInvalid: true, via: 'cancel_token', tokenOwner, jobState: null },
+      );
+    }
     if (status !== 403 && status !== 405 && status !== 409) throw err;
     const awxMsg = err && err.message ? ` [AWX yanıtı: ${String(err.message).slice(0, 300)}]` : '';
+    let readToken = token;
+    if (viaToken) {
+      try {
+        readToken = await getTokenForServer(server);
+      } catch {
+        readToken = token;
+      }
+    }
     let state = null;
     let stateError = null;
     try {
-      state = await readJobState(server, token, kind, id);
+      state = await readJobState(server, readToken, kind, id);
     } catch (e) {
       stateError = (e && e.message) || String(e);
     }
@@ -1628,12 +1693,22 @@ async function cancelJobOnServer(serverId, jobId, opts = {}) {
           { status: 403, permanent: false, jobState: 'unknown' },
         );
       }
-      const portalUser = await awxWhoAmI(server, token);
+      const portalUser = viaToken
+        ? tokenOwner || (await awxWhoAmI(server, token, { viaToken: true }))
+        : await awxWhoAmI(server, token);
       const createdByPortal =
         portalUser && state.createdBy ? portalUser.toLowerCase() === state.createdBy.toLowerCase() : null;
+      const who = portalUser || 'bilinmiyor';
+      const head = !viaToken
+        ? 'İş İPTAL EDİLEMEDİ: portalın AWX kullanıcısında bu işi iptal yetkisi yok (AWX 403). '
+        : createdByPortal === true
+          ? `İş İPTAL EDİLEMEDİ (AWX 403): işi iptal token'ının sahibi ${who} başlatmış — sebep template Admin ` +
+            "rolü DEĞİL; token 'write' kapsamlı olmayabilir. "
+          : `İş İPTAL EDİLEMEDİ (AWX 403): token sahibi ${who} bu template'te Admin değil ` +
+            "(ya da token 'write' kapsamlı değil). ";
       throw Object.assign(
         new Error(
-          'İş İPTAL EDİLEMEDİ: portalın AWX kullanıcısında bu işi iptal yetkisi yok (AWX 403). ' +
+          head +
             `İş AWX üzerinde ÇALIŞMAYA DEVAM EDİYOR (AWX durumu: ${state.status}) — AWX arayüzünden iptal edin. ` +
             '(Kalıcı bir yetki eksiği; tekrar denemek sonucu değiştirmez.)' +
             awxMsg,
@@ -1647,6 +1722,7 @@ async function cancelJobOnServer(serverId, jobId, opts = {}) {
           createdBy: state.createdBy,
           portalUser,
           createdByPortal,
+          ...(viaToken ? { via: 'cancel_token', tokenOwner: portalUser } : {}),
         },
       );
     }
@@ -5412,20 +5488,32 @@ async function listCancelableTemplatesForServer(server) {
  * istemcisiyle alinan token'in kapsami OLCULEMEZ (AWX token degerini geri vermez):
  * 'unknown' doner — cagiran "olculemedi" der, "var" DEMEZ.
  */
-async function getTemplateCapabilitiesOnServer(serverId, templateId, kind = 'job') {
+//
+// IPTAL TOKEN'I: `opts.authToken` verilirse (yalniz long-job-cancel yetki on kontrolu)
+// user_capabilities token SAHIBINE gore okunur; kapsami olculemez -> tokenScope 'unknown',
+// tokenSource 'cancel_token'. Verilmezse eski davranis (servis kullanicisi).
+async function getTemplateCapabilitiesOnServer(serverId, templateId, kind = 'job', opts = {}) {
   const server = getServerById(serverId);
   if (!server) throw Object.assign(new Error('AWX sunucusu bulunamadı.'), { status: 404 });
   const id = Number(templateId);
   if (!Number.isInteger(id) || id <= 0) throw Object.assign(new Error('Geçersiz template ID.'), { status: 400 });
-  const token = await getTokenForServer(server);
+  const viaToken = !!(opts && typeof opts.authToken === 'string' && opts.authToken);
+  const token = viaToken ? opts.authToken : await getTokenForServer(server);
   const seg = kind === 'workflow' ? 'workflow_job_templates' : 'job_templates';
   const t = await awxRequestToServer(server, token, 'GET', `/api/v2/${seg}/${id}/`);
   const caps = t && t.summary_fields && t.summary_fields.user_capabilities;
-  const ownToken = !server.token && !!(server.user && server.password) && !(server.clientId && server.clientSecret);
+  const ownToken =
+    !viaToken && !server.token && !!(server.user && server.password) && !(server.clientId && server.clientSecret);
   return {
     name: (t && t.name) || '',
     tokenScope: ownToken ? 'write' : 'unknown',
-    tokenSource: server.token ? 'static' : server.clientId && server.clientSecret ? 'oauth2' : 'password',
+    tokenSource: viaToken
+      ? 'cancel_token'
+      : server.token
+        ? 'static'
+        : server.clientId && server.clientSecret
+          ? 'oauth2'
+          : 'password',
     capabilities:
       caps && typeof caps === 'object'
         ? {
@@ -5461,6 +5549,13 @@ function redactAwxSecrets(text) {
   add(_tokenCache.token);
   add(process.env.AWX_TOKEN);
   add(process.env.AWX_PASSWORD);
+  // Otomatik iptal icin Admin'in girdigi kisisel iptal token'lari (bellekteki cozulmus
+  // degerler + yakin zamanda silinen/degistirilenler): long-job-cancel-token.cjs.
+  try {
+    for (const v of require('./long-job-cancel-token.cjs').knownSecrets()) add(v);
+  } catch {
+    /* modul yuklenemezse diger sirlar ve genel kaliplar yine uygulanir */
+  }
   for (const v of secrets) s = s.split(v).join('***');
   return s.replace(/(Bearer\s+)[A-Za-z0-9._~+/=-]+/gi, '$1***');
 }
@@ -5492,6 +5587,8 @@ module.exports = {
   listLongJobCandidatesAcrossServers,
   listCancelableTemplatesForServer,
   getTemplateCapabilitiesOnServer,
+  // Iptal token'i dogrulamasi (long-job-cancel-token.cjs kaydi; GET /api/v2/me/):
+  whoAmIWithTokenOnServer,
   redactSecrets: redactAwxSecrets,
   // Saf yardimci — "kullaniciya log gozukmuyor" senaryosunun test edilebilmesi icin
   // disari acildi (bkz. server/ansible/__tests__/output-filter.test.cjs).

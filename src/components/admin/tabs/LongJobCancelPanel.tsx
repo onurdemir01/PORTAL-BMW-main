@@ -16,11 +16,15 @@
 //   - "Admin ✓" rozeti token kapsamını ölçmez: statik/OAuth2 token'da "token kapsamı ölçülemedi" yazar.
 //   - Seçili bir workflow iptal edilirse AWX alt işlerini de keser: metin "hiçbir zaman" demez, uyarı gösterir.
 //   - Tarama sağlığı: AWX taranamıyorsa kırmızı "OTOMATİK İPTAL ÇALIŞMIYOR" bandı.
+// İptal token'ı (2026-10-03, kullanıcı: servis kullanıcısına yetki verilemiyor): sunucu başına kişisel
+// token (LongJobCancelTokenSection; yalnız yazılır). Tanımlıysa yetki rozetleri token SAHİBİNE göre
+// ölçülür ve sahibi yazılır; token AWX'te geçersizleşirse Durum'da kırmızı "İPTAL TOKEN'I GEÇERSİZ" bandı.
 import React, { useCallback, useMemo, useState } from "react";
 import type { AwxTemplate } from "@/api/ansibleApi";
 import { safeJson } from "@/api/http";
 import { fmtDateTime } from "@/utils/datetime";
 import { useAsyncEffect } from "@/hooks/useAsyncEffect";
+import LongJobCancelTokenSection, { type CancelTokenRow } from "./LongJobCancelTokenSection";
 
 type Kind = "job" | "workflow";
 interface TplRef {
@@ -55,6 +59,9 @@ interface Perm {
   name: string;
   state: PermState;
   tokenScope?: "write" | "unknown";
+  // "unknown": iptal token kaydı okunamadı — iptalin hangi kimlikle yapılacağı ölçülemedi.
+  via?: "service" | "cancel_token" | "unknown";
+  tokenOwner?: string | null;
   message: string;
 }
 interface JobRow {
@@ -139,7 +146,8 @@ interface StatusResp {
   lastDryRun: TickSummary | null;
   attempts: Attempt[];
   scanHealth?: ScanHealth[];
-  open: { awaitingVerify: number; stillRunning: number; failed: number; scanFailing?: number };
+  cancelTokens?: { measured: boolean; readError: ConfigError | null; tokens: CancelTokenRow[] };
+  open: { awaitingVerify: number; stillRunning: number; failed: number; scanFailing?: number; tokenInvalid?: number };
   watcher: WatcherInfo | null;
   message?: string;
 }
@@ -168,6 +176,7 @@ const OUTCOME_LABEL: Record<string, string> = {
   finished: "kendiliğinden bitti (iptal doğrulanamadı)",
   already_terminal: "zaten bitmiş",
   failed: "İPTAL EDİLEMEDİ",
+  token_invalid: "İPTAL EDİLEMEDİ — İPTAL TOKEN'I GEÇERSİZ",
   still_running: "iptal istendi ama durmadı",
   scan_failed: "TARANAMIYOR — otomatik iptal çalışmıyor",
   scan_recovered: "yeniden taranabiliyor",
@@ -185,6 +194,18 @@ const normCfg = (c: Partial<Cfg> | null | undefined): Cfg => ({
   templates: (c?.templates || []).map((t) => ({ ...t, kind: t.kind === "workflow" ? "workflow" : "job" })),
 });
 
+function TokenOwnerChip({ perm }: { perm: Perm }) {
+  if (perm.via !== "cancel_token") return null;
+  return (
+    <span
+      className="ml-1 text-[10px] px-1.5 rounded border border-indigo-200 bg-indigo-50 text-indigo-700"
+      title="Yetki iptal token'ının sahibine göre ölçüldü; otomatik iptal bu token'la yapılır."
+    >
+      {perm.tokenOwner || "?"} token'ı
+    </span>
+  );
+}
+
 function PermBadge({ perm }: { perm: Perm | undefined }) {
   if (!perm) return <span className="ml-1 text-[10px] text-gray-400">yetki kontrol ediliyor…</span>;
   if (perm.state === "admin")
@@ -193,10 +214,11 @@ function PermBadge({ perm }: { perm: Perm | undefined }) {
         <span className="ml-1 text-[10px] px-1.5 rounded border border-emerald-200 bg-emerald-50 text-emerald-700" title={perm.message}>
           Admin ✓
         </span>
+        <TokenOwnerChip perm={perm} />
         {perm.tokenScope !== "write" && (
           <span
             className="ml-1 text-[10px] px-1.5 rounded border border-amber-300 bg-amber-50 text-amber-800"
-            title="Statik ya da OAuth2 token: kapsamı AWX'ten okunamıyor. Token 'read' kapsamlıysa iptal yine 403 alır."
+            title="Statik, OAuth2 ya da kişisel token: kapsamı AWX'ten okunamıyor. Token 'read' kapsamlıysa iptal yine 403 alır."
           >
             token kapsamı ölçülemedi
           </span>
@@ -205,9 +227,12 @@ function PermBadge({ perm }: { perm: Perm | undefined }) {
     );
   if (perm.state === "no_admin")
     return (
-      <span className="ml-1 text-[10px] px-1.5 rounded border border-red-300 bg-red-100 text-red-800 font-semibold" title={perm.message}>
-        Admin YOK — başkalarının işini iptal edemez
-      </span>
+      <>
+        <span className="ml-1 text-[10px] px-1.5 rounded border border-red-300 bg-red-100 text-red-800 font-semibold" title={perm.message}>
+          Admin YOK{perm.via === "cancel_token" ? ` (${perm.tokenOwner || "?"})` : ""} — başkalarının işini iptal edemez
+        </span>
+        <TokenOwnerChip perm={perm} />
+      </>
     );
   return (
     <span className="ml-1 text-[10px] px-1.5 rounded border border-amber-300 bg-amber-50 text-amber-800" title={perm.message}>
@@ -407,6 +432,13 @@ export default function LongJobCancelPanel({ summary }: { summary: Summary }) {
     }
   }, []);
 
+  // İptal token'ı kaydedildi/silindi/doğrulandı: yetki rozetleri token sahibine göre YENİDEN ölçülür
+  // (eski rozet yanlış kimliği gösterir) ve durum yenilenir.
+  const onTokenChanged = useCallback(() => {
+    setPerms({});
+    void loadStatus();
+  }, [loadStatus]);
+
   useAsyncEffect(
     async (alive) => {
       try {
@@ -534,6 +566,7 @@ export default function LongJobCancelPanel({ summary }: { summary: Summary }) {
   const watcher = status?.watcher;
   // Eşiğe ulaşmamış (henüz alarm gitmemiş) tarama hataları da gösterilir: sessiz kalmasın.
   const scanFailing = (status?.scanHealth || []).filter((h) => h.fails > 0);
+  const tokenInvalid = (status?.cancelTokens?.tokens || []).filter((t) => t.invalid);
 
   return (
     <section>
@@ -546,7 +579,8 @@ export default function LongJobCancelPanel({ summary }: { summary: Summary }) {
         template'i seçili olmasa bile). Uzun sürmesi normal işleri (envanter, kurulum, upgrade) seçmeyin. AWX'te başkasının
         başlattığı bir işi Portal'ın iptal edebilmesi için Portal'ın AWX kullanıcısının o template'te <b>Admin</b> rolü olmalı
         (Execute yetmez) ve Portal'ın token'ı <b>write</b> kapsamlı olmalı — rozetler Admin rolünü gösterir; statik token'da
-        kapsam ölçülemez.
+        kapsam ölçülemez. Servis kullanıcısına bu yetki verilemiyorsa aşağıdaki <b>İptal token'ı</b> bölümünden (geçici
+        olarak) yetkili bir kullanıcının token'ı girilebilir: iptal ve yetki ön kontrolü o token'la yapılır.
         {!teamsConfigured && (
           <span className="block mt-1 text-amber-700">
             Teams webhook (TEAMS_LONGJOB_WEBHOOK_URL) tanımlı değil: iptal yine yapılır ama bildirim gitmez — sonuçlar
@@ -594,6 +628,7 @@ export default function LongJobCancelPanel({ summary }: { summary: Summary }) {
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="template ara" className={`${inputCls} w-56`} />
         <span className="text-xs text-gray-500">{cfg.templates.length} template seçili</span>
         <button
+          data-testid="ljc-save"
           onClick={save}
           disabled={busy || !loaded}
           className="px-3 py-1.5 text-xs font-semibold rounded-lg text-white bg-[#1C69D4] disabled:opacity-50"
@@ -643,6 +678,8 @@ export default function LongJobCancelPanel({ summary }: { summary: Summary }) {
           })}
         </div>
       )}
+
+      <LongJobCancelTokenSection onChanged={onTokenChanged} />
 
       <div className="grid gap-3 md:grid-cols-2">
         {servers.map((s) => (
@@ -711,6 +748,15 @@ export default function LongJobCancelPanel({ summary }: { summary: Summary }) {
               .map((h) => `${h.serverName} ${KIND_TEXT[h.kind]} listesi ${h.fails} taramadır okunamıyor${h.lastError ? ` (${h.lastError})` : ""}`)
               .join("; ")}
             . Bu sürede izin listesindeki işler eşiği aşsa da kesilmez.
+          </div>
+        )}
+        {tokenInvalid.length > 0 && (
+          <div data-testid="ljc-token-invalid" className="text-xs mb-2 px-3 py-2 rounded-lg border border-red-300 bg-red-50 text-red-700 font-semibold">
+            İPTAL TOKEN'I GEÇERSİZ —{" "}
+            {tokenInvalid
+              .map((t) => `${t.serverName} (${t.owner || "?"})${t.invalidInfo?.message ? `: ${t.invalidInfo.message}` : ""}`)
+              .join("; ")}
+            . Bu sunucularda otomatik iptal işleri KESEMİYOR; yukarıdaki İptal token'ı bölümünden yeni token girin ya da silin.
           </div>
         )}
         {status && (status.open.stillRunning > 0 || status.open.failed > 0) && (

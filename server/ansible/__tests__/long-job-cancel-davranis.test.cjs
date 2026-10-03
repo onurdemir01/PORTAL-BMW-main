@@ -476,9 +476,11 @@ test('LJ5 tarama eksikken _done SILINMEZ (bilinmiyor != bitti); tarama geri geli
 test('LJ6 DB okunamazsa son gecerli yapilandirmayla devam eder; hic yoksa KAPALI + "okunamadi" (sessiz degil)', async (t) => {
   const errs = t.mock.method(console, 'error', () => {});
   t.mock.method(console, 'warn', () => {});
+  // Son gecerli durum GERCEK bir turla kurulur: tur hem yapilandirmayi hem iptal token
+  // kaydini okur (ikisi de son gecerli kayitla devam eder). Token kaydi bu surecte HIC
+  // okunamadiysa iptal denenmez ("olculemedi" != "token yok"): long-job-cancel-token TK18.
+  await cycle(dbOf(CFG())); // son gecerli (henuz is yok)
   isEkle({ id: 1200, tpl: 42, started: ago(120) });
-
-  await ljc.readConfig(dbOf(CFG())); // son gecerli
   ljc._expireCache();
   const s = await cycle(brokenDb);
   assert.deepEqual(posts().map((p) => p.path), ['/api/v2/jobs/1200/cancel/'], 'DB hatasinda otomatik iptal sessizce kapandi');
@@ -617,6 +619,8 @@ async function uygulama({ db, requireAdmin } = {}) {
     get: (p, ...h) => (kayit.push({ m: 'get', p, h }), app.get(p, ...h)),
     put: (p, ...h) => (kayit.push({ m: 'put', p, h }), app.put(p, ...h)),
     post: (p, ...h) => (kayit.push({ m: 'post', p, h }), app.post(p, ...h)),
+    // Iptal token'i silme ucu (DELETE /api/ansible/longjob-cancel/tokens/:serverId).
+    delete: (p, ...h) => (kayit.push({ m: 'delete', p, h }), app.delete(p, ...h)),
   };
   const requireAuth = (_q, _s, n) => n();
   const adm = requireAdmin || ((_q, _s, n) => n());

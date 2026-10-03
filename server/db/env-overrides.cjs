@@ -287,4 +287,12 @@ module.exports = {
   setEnvOverride,
   deleteEnvOverride,
   isFromDb,
+  // Ayni sifreleme mekanizmasi baska sir saklayicilarca da kullanilir (tek dogruluk
+  // kaynagi): server/ansible/long-job-cancel-token.cjs (AWX iptal token'i). O modul
+  // encryptSecretValue'nun dev/test duz-metin yedegine GUVENMEZ: anahtar yoksa kaydi
+  // kendisi reddeder (getEncryptionKey) ve ENC_PREFIX'siz degeri yazmaz.
+  ENC_PREFIX,
+  getEncryptionKey,
+  encryptSecretValue,
+  decryptSecretValue,
 };
