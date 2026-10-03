@@ -15,6 +15,7 @@ const { initPresenceRoutes, removePresence } = require("./presence-routes.cjs");
 const { initVisibilityRoutes } = require("./visibility-routes.cjs");
 const { initRolesRoutes } = require("./roles-routes.cjs");
 const sessionPolicy = require("./session-policy.cjs");
+const oturumCerezi = require("./oturum-cerezi.cjs");
 const { normalizeLoginInput, checkPassword } = require("./login-input.cjs");
 const loginThrottle = require("./login-throttle.cjs");
 const { initSessionsRoutes, esanliSiniriUygula } = require("./sessions-routes.cjs");
@@ -53,9 +54,13 @@ function initAuth(app) {
   // istekte process.env'den okur ve asagidaki yaptirim katmani uygular. Eskiden cerez
   // giristen 8 sa sonra kesin bitiyordu ve etkinlik sureyi uzatmiyordu ("sik atiyor").
   // `rolling`: cerez her yanitta yeniden yazilir (kalici/oturum cerezi karari orada).
+  // Cerez adi: uretimde `__Host-portal.sid` (Faz E); eski `connect.sid` sessizce tasinir.
+  const COOKIE_NAME = oturumCerezi.cerezAdi();
+  app.use(oturumCerezi.eskiCereziTasi(COOKIE_NAME));
   app.use(
     session({
       ...(sessionStore ? { store: sessionStore } : {}),
+      name: COOKIE_NAME,
       secret: SESSION_SECRET,
       resave: false,
       saveUninitialized: false,
@@ -206,7 +211,8 @@ function initAuth(app) {
         clearCache(username);
         removePresence(username);
       }
-      res.clearCookie("connect.sid");
+      res.clearCookie(COOKIE_NAME, { path: "/" });
+      if (COOKIE_NAME !== oturumCerezi.ESKI_AD) res.clearCookie(oturumCerezi.ESKI_AD, { path: "/" });
       res.json({ ok: true });
     });
   });
@@ -293,12 +299,12 @@ function initAuth(app) {
   // neden set edilmedigini (X-Forwarded-Proto eksikligi) ve MemoryStore proses-izolasyonunu
   // (cookie VAR ama hasSession=false) teshis eder.
   router.get("/session-debug", requireAdmin, (req, res) => {
-    const rawCookie = req.headers.cookie || "";
     res.json({
       ok: true,
       hasSession: !!req.session?.user,
       sessionUser: req.session?.user ? req.session.user.username : null,
-      connectSidPresent: /connect\.sid=/.test(rawCookie),
+      cookieName: COOKIE_NAME,
+      connectSidPresent: !!oturumCerezi.istektekiOturumCerezi(req),
       reqSecure: req.secure,                                   // trust proxy sonrasi
       xForwardedProto: req.headers["x-forwarded-proto"] || null,
       nodeEnv: process.env.NODE_ENV || null,
@@ -307,7 +313,7 @@ function initAuth(app) {
       sessionStore: sessionStore ? "mssql" : "memory",
       sessionPolicy: sessionPolicy.policy(),
       cookieSecureConfigured: process.env.NODE_ENV === "production",
-      hint: !req.session?.user && /connect\.sid=/.test(rawCookie)
+      hint: !req.session?.user && !!oturumCerezi.istektekiOturumCerezi(req)
         ? "Cookie var ama session yok → farklı proses/MemoryStore ya da store'da kayıt yok. SESSION_STORE=mssql önerilir."
         : (process.env.NODE_ENV === "production" && req.headers["x-forwarded-proto"] !== "https"
           ? "Prod'da X-Forwarded-Proto=https YOK → secure cookie set edilmez → login sonrası 401. Ters-proxy header'ı göndermeli."

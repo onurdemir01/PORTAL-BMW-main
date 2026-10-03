@@ -710,6 +710,129 @@ const ENV_VARS: EnvVarMeta[] = [
     usedIn: 'src/components/scalex/StoppedPanel.tsx',
     restartRequired: false,
   },
+  // ── Oturum ve giris (Faz E, 2026-10-02) — hepsi SICAK yuklenir; sunucu kaydetmeden
+  // once dogrular (server/auth/oturum-ayarlari.cjs). Model: docs/OTURUM-YONETIMI.md
+  {
+    key: 'SESSION_IDLE_MINUTES',
+    label: "Boşta Kalma Süresi (dk)",
+    group: 'Oturum ve Giriş',
+    description:
+      "İşlem yapılmayan oturum bu süre sonunda kapanır; her kullanıcı işlemi süreyi yeniden başlatır. Arka plan yoklamaları (pano, çevrimiçi listesi) saymaz. 5-720. Boş = 60.",
+    required: false,
+    example: "60",
+    usedIn: 'server/auth/session-policy.cjs',
+    restartRequired: false,
+  },
+  {
+    key: 'SESSION_ABSOLUTE_HOURS',
+    label: "En Uzun Oturum (sa)",
+    group: 'Oturum ve Giriş',
+    description:
+      "Etkin kullanılsa bile oturum girişten bu kadar sonra biter (yeniden giriş istenir; açık sayfa korunur). 1-72. Boş = 12.",
+    required: false,
+    example: "12",
+    usedIn: 'server/auth/session-policy.cjs',
+    restartRequired: false,
+  },
+  {
+    key: 'SESSION_REMEMBER_DAYS',
+    label: "Beni Hatırla (gün)",
+    group: 'Oturum ve Giriş',
+    description:
+      "\"Beni hatırla\" seçilen oturumun en uzun ömrü; boşta kalma kuralı yine geçerli. 0 = özellik KAPALI (giriş ekranında kutu görünmez). 0-30. Boş = 7.",
+    required: false,
+    example: "7",
+    usedIn: 'server/auth/session-policy.cjs',
+    restartRequired: false,
+  },
+  {
+    key: 'SESSION_WARN_SECONDS',
+    label: "Uyarı Süresi (sn)",
+    group: 'Oturum ve Giriş',
+    description:
+      "Oturum kapanmadan kaç saniye önce \"Oturumu Sürdür\" uyarısı çıksın. 30-900. Boş = 120.",
+    required: false,
+    example: "120",
+    usedIn: 'server/auth/session-policy.cjs',
+    restartRequired: false,
+  },
+  {
+    key: 'SESSION_MAX_CONCURRENT',
+    label: "Eşzamanlı Oturum Sınırı",
+    group: 'Oturum ve Giriş',
+    description:
+      "Bir kullanıcının aynı anda açık tutabileceği oturum sayısı. Aşılırsa yeni girişte son etkinliği en eski oturum kapanır ve kullanıcıya söylenir. 0 = sınırsız. 0-100. Boş = 0.",
+    required: false,
+    example: "0",
+    usedIn: 'server/auth/sessions-routes.cjs',
+    restartRequired: false,
+  },
+  {
+    key: 'LOGIN_USER_MAX_FAILS',
+    label: "Hatalı Deneme Eşiği",
+    group: 'Oturum ve Giriş',
+    description:
+      "Kullanıcı başına bu kadar hatalı şifreden sonra bekleme başlar (30 sn, 2 dk, 8 dk, en çok 15 dk); beklerken istek AD'ye hiç gitmez. AD'nin hesap kilit eşiğinin ALTINDA tutun. 3-20. Boş = 5.",
+    required: false,
+    example: "5",
+    usedIn: 'server/auth/login-throttle.cjs',
+    restartRequired: false,
+  },
+  {
+    key: 'LOGIN_IP_MAX_PER_MIN',
+    label: "IP Başına Giriş (dk)",
+    group: 'Oturum ve Giriş',
+    description:
+      "Bir IP'den dakikada en çok kaç giriş isteği. Kaba taban koruma; NAT arkasındaki kullanıcılar aynı IP'yi paylaşır, düşük tutmayın. 5-1000. Boş = 30.",
+    required: false,
+    example: "30",
+    usedIn: 'server/service.cjs',
+    restartRequired: false,
+  },
+  {
+    key: 'AUTH_ALLOWED_DOMAINS',
+    label: "İzinli Alan Adları (KURUM\\ad)",
+    group: 'Oturum ve Giriş',
+    description:
+      "Virgüllü NetBIOS alan adı listesi. Doluysa \"BASKA\\kullanici\" reddedilir. Boş = her önek kabul edilir (önek atılır).",
+    required: false,
+    example: "KURUM",
+    usedIn: 'server/auth/login-input.cjs',
+    restartRequired: false,
+  },
+  {
+    key: 'AUTH_ALLOWED_UPN_SUFFIXES',
+    label: "İzinli UPN Sonekleri (ad@...)",
+    group: 'Oturum ve Giriş',
+    description:
+      "Virgüllü liste. Doluysa yalnızca bu soneklerle \"ad@sonek\" girişi kabul edilir. Boş = hepsi.",
+    required: false,
+    example: "kurum.com.tr",
+    usedIn: 'server/auth/login-input.cjs',
+    restartRequired: false,
+  },
+  {
+    key: 'PORTAL_ALLOWED_ORIGINS',
+    label: "Ek İzinli Kökenler",
+    group: 'Oturum ve Giriş',
+    description:
+      "Durum değiştiren istekler yalnızca portalın kendi adresinden kabul edilir. Portal birden çok adla açılıyorsa (ör. kısa ad + tam ad) diğerlerini virgülle yazın.",
+    required: false,
+    example: "https://portal.kurum.com.tr",
+    usedIn: 'server/auth/origin-kontrolu.cjs',
+    restartRequired: false,
+  },
+  {
+    key: 'CSRF_ORIGIN_CHECK',
+    label: "Köken Kontrolü Modu",
+    group: 'Oturum ve Giriş',
+    description:
+      "enforce = yabancı kökenli istek 403; log = yalnızca uyarı yazılır (ilk devreye almada güvenli geçiş); off = kapalı. Boş = enforce.",
+    required: false,
+    example: "enforce",
+    usedIn: 'server/auth/origin-kontrolu.cjs',
+    restartRequired: false,
+  },
   // ── Uzun suredir beyaz listede olup EKRANDA OLMAYAN uc anahtar ────────────
   // Ucu de kullanimda (mssql-setup.cjs registry seed'i ve oco/config.cjs) ama
   // ENV_VARS'ta yoklardi. Bekcinin (S11) istisnasiz calisabilmesi icin eklendi:
