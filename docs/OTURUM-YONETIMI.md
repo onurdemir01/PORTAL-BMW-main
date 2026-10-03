@@ -1,6 +1,6 @@
 # Oturum ve Giriş Yönetimi
 
-Portalın oturum modeli. 2026-10'da beş adımda (PR #166–#170) yeniden kuruldu; etkinlik sayımı #173'te düzeltildi. Kullanıcıların şikâyeti şuydu: "login aşamasında çokça atıyor, ne kadar bağlı kalabileceği ayarlanabilsin."
+Portalın oturum modeli. 2026-10'da beş adımda (PR #166–#170) yeniden kuruldu; etkinlik sayımı #173'te, üretim modu bulguları #174'te düzeltildi. Kullanıcıların şikâyeti şuydu: "login aşamasında çokça atıyor, ne kadar bağlı kalabileceği ayarlanabilsin."
 
 ## Model
 
@@ -29,7 +29,7 @@ Boşta kalma sınırının işe yaraması için "kullanıcı gerçekten burada m
 - Girdi tazeyken giden istekler işaretlenmez ve etkinlik sayılır. Bu yüzden yeni bir yoklama eklemek için hiçbir liste güncellenmez.
 - API çağrısı üretmeyen etkinlik (okuma, kaydırma) `POST /api/auth/session/extend` ile bildirilir; en sık 5 dakikada bir.
 - Sunucudaki yol listesi (`ARKA_PLAN_YOLLARI`) yalnızca **yedektir**: eski JavaScript'i taşıyan, yenilenmemiş sekmeler içindir.
-- **Uyarı ekrandayken** ne girdi ne otomatik istek süreyi uzatır; karar kullanıcınındır ("Oturumu Sürdür"). Uyarı X ya da Esc ile kapatılırsa süre uzamaz; kullanıcı çalışmaya devam ederse sonraki gerçek girdisi olağan kurallarla sayılır, masadan kalkarsa oturum biter. Arka plana tıklamak uyarıyı kapatmaz.
+- **Uyarı ekrandayken** ne girdi ne otomatik istek süreyi uzatır; karar kullanıcınındır ("Oturumu Sürdür"). Pencere yalnızca uzatma sunucuda gerçekten başarılı olunca kapanır; istek ulaşamazsa açık kalır ve "Oturum uzatılamadı" der. Uyarı X ya da Esc ile kapatılırsa süre uzamaz; kullanıcı çalışmaya devam ederse sonraki gerçek girdisi olağan kurallarla sayılır, masadan kalkarsa oturum biter. Arka plana tıklamak uyarıyı kapatmaz.
 - Uzun süren bir işi (ör. log indirme) hiç dokunmadan izleyen kullanıcı da boşta sayılır: bitişten 2 dakika önce uyarı çıkar; oturum düşerse yerinde yeniden girişle iş ekranı korunur.
 
 ## Sekmeler ve istemci
@@ -38,6 +38,7 @@ Boşta kalma sınırının işe yaraması için "kullanıcı gerçekten burada m
   - Bir sekmede yapılan uzatma, çıkış ya da giriş öteki sekmelere de yansır.
   - İstemci kendi başına **logout çağırmaz**. Süre dolunca sunucuya sorar; oturum gerçekten bittiyse sunucu imzalı 401 döner.
 - **Bitiş zamanları her yanıtta gelir:** `X-Portal-Session-Expires` (boşta kalma) ve `X-Portal-Session-Absolute` başlıkları.
+- **Zaten girişli kullanıcı giriş formunu görmez.** Başka bir sekmede giriş yapıldığında ya da girişliyken `/login` açıldığında kullanıcı atıldığı sayfaya (yoksa panoya) yönlenir.
 - **Oturum düşünce uygulama kapanmaz.** Ekranın üstünde yeniden giriş katmanı açılır ve açık form korunur.
   - Katman oturumun neden bittiğini gösterir; sebep `X-Portal-Session-Reason: idle|absolute` başlığından gelir.
   - Farklı bir kullanıcıyla giriş yapılırsa sayfa tamamen yenilenir.
@@ -87,6 +88,16 @@ Boşta kalma sınırının işe yaraması için "kullanıcı gerçekten burada m
   - Portal birden çok adla açılıyorsa (kısa ad + tam ad) öteki adlar `PORTAL_ALLOWED_ORIGINS` ile eklenir.
   - İlk devreye almada güvenli geçiş için `CSRF_ORIGIN_CHECK=log` kullanılabilir. Bu modda istek engellenmez, yalnızca uyarı loglanır.
 - Girişte oturum kimliği yenilenir (`regenerate`).
+- **Yanıt güvenlik başlıkları** (`server/auth/guvenlik-basliklari.cjs`, her yanıtta):
+
+  | Başlık | Değer | Neden |
+  |---|---|---|
+  | `Content-Security-Policy` | `frame-ancestors 'self'` | Portal başka bir sayfanın içine gömülüp kullanıcıya tıklatılamaz (clickjacking). `X-Frame-Options: SAMEORIGIN` eski tarayıcılar içindir. |
+  | `X-Content-Type-Options` | `nosniff` | Yanlış etiketli yanıt betik ya da stil diye çalıştırılamaz. |
+  | `Referrer-Policy` | `strict-origin-when-cross-origin` | Portal adresindeki sorgu başka sitelere taşınmaz. |
+  | `Strict-Transport-Security` | **varsayılan kapalı** | HSTS makine adının tüm portlarını HTTPS'e zorlar; aynı adda düz HTTP çalışan bir servis varsa kırılır. Ad yalnızca HTTPS ise `PORTAL_HSTS_MAX_AGE` ile açılır. |
+
+  Başka bir kurumsal sayfa portalı bilerek iframe içinde gösteriyorsa adresi `PORTAL_FRAME_ANCESTORS` ayarına eklenir (`*` korumayı kapatır).
 
 ## Denetim
 
@@ -109,6 +120,14 @@ Boşta kalma sınırının işe yaraması için "kullanıcı gerçekten burada m
 - **`SESSION_SECRET` döndürülürse tüm oturumlar düşer.** Değişiklik bilerek ve duyurularak yapılmalıdır.
 - **`portal_sessions` tablosu:** `username`, `created_at` ve `last_seen_at` sütunları NULL'a izin verir, setup bunları ekler. Eklenemezlerse giriş yine çalışır, yalnızca oturum listesi boş görünür.
 - **Teşhis:** `GET /api/auth/session-debug` (yalnızca Admin). Store'u, çerez adını, oturum politikasını ve proxy başlıklarını döner.
+
+## Doğrulama notu
+
+Bu model birim testlerinin yanında gerçek tarayıcıda, hem geliştirme hem **üretim modunda** (üretim derlemesi, `__Host-` çerezi, HTTPS sonlandıran vekil taklidi) uçtan uca koşularak doğrulandı. Birim testlerinin göremeyip gerçek tarayıcının bulduğu hatalar ve dersleri:
+
+- Sahte sunucu gerçek yoklamaları ve gerçek etkinlik kuralını modellemiyorsa "boşta kalma" testleri yanlış yeşil kalır.
+- Sahte sunucunun saati istemciyle birebir aynıysa (fark 0), saat farkına duyarlı hatalar görünmez; testlerdeki sahte sunucu bu yüzden birkaç ms geriden gelir.
+- React StrictMode yalnızca geliştirmede efektleri söküp yeniden kurar; kaynaklar aynı efektte açılıp kapatılmalıdır.
 
 ## Sonraki adım (kapsam dışı)
 

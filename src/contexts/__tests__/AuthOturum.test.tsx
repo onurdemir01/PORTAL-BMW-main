@@ -20,6 +20,11 @@
 //   AO12 sebebi BASKA sekme "tuketmis" olsa da bu sekme nedenini kendi saatinden bilir
 //   AO13 React StrictMode'da (gelistirme) sekmeler arasi kanal OLMEZ: baska sekmedeki
 //        giris bu sekmenin katmanini kapatir
+//   AO14 baska sekme oturumu uzatinca bu sekmedeki uyari kendiliginden kapanir; sonraki
+//        girdi yeniden sayilir (isaret takili kalmaz)
+//   AO15 "Surdur" sunucuya ulasamazsa uyari ACIK kalir ve bunu soyler; yeniden denenince kapanir
+//   AO16 X ile kapatilan uyari, oturum bitisi degismeden gelen bir durum degisikliginde
+//        (or. uyari suresi ayari) yeniden ACILMAZ
 //
 // Sahte sunucu GERCEK sunucunun etkinlik kuralini uygular (session-policy.cjs etkinlikMi):
 // her istek etkinliktir; `X-Portal-Activity: background` ve bilinen yoklama yollari degildir.
@@ -31,6 +36,12 @@ import { sessionGuardKur, _sessionGuardSifirla, SESSION_HEADER } from '@/api/ses
 import SessionTimeoutModal from '@/components/SessionTimeoutModal';
 
 const DK = 60_000;
+// GERCEKCI SAAT FARKI: sunucu yaniti urettigi an, istemcinin onu aldigi andan ONCEDIR (ag
+// gecikmesi). Sahte sunucunun saati istemcininkiyle birebir ayniyken (fark 0) uretimde
+// cikan bir hata hic gorunmedi: iki ayri yerde hesaplanan "bitis ani" birkac ms farkli
+// cikiyor, "uyari ekrandayken girdi sayilmaz" kurali islemiyordu (2026-10-03).
+const SAPMA = -7;
+const sunucuSimdi = () => Date.now() + SAPMA;
 
 interface Sunucu {
   oturum: boolean;
@@ -90,7 +101,7 @@ async function sahteAg(input: RequestInfo | URL, init?: RequestInit): Promise<Re
   const method = init?.method || 'GET';
   const isaret = new Headers(init?.headers).get('x-portal-activity');
   cagrilar.push({ url, method, isaret });
-  const now = Date.now();
+  const now = sunucuSimdi();
   // Sunucu yaptirimi (Faz A): sure dolduysa oturum yok.
   if (sv.oturum && (now >= sv.idle || now >= sv.abs)) {
     sv.sebep = now >= sv.abs ? 'absolute' : 'idle';
@@ -152,6 +163,7 @@ function Uygulama() {
         isOpen={a.showTimeoutModal}
         countdown={a.countdown}
         extendable={a.timeoutExtendable}
+        extendFailed={a.extendFailed}
         onExtend={a.extendSession}
         onDismiss={a.dismissTimeoutModal}
         onLogout={a.logout}
@@ -349,7 +361,7 @@ describe('istemci oturum (Faz B)', () => {
       await window.fetch('/api/herhangi/yoklama');
     });
     expect(cagrilar[cagrilar.length - 1].isaret).toBeNull();
-    expect(sv.idle).toBe(Date.now() + 60 * DK);
+    expect(sv.idle).toBe(sunucuSimdi() + 60 * DK);
   });
 
   it('AO10 uyari ekrandayken yoklama uyariyi gecersiz kilmaz; kapatip calisan kullanicinin girdisi sayilir', async () => {
@@ -487,6 +499,104 @@ describe('istemci oturum (Faz B)', () => {
       }
       expect(screen.queryByTestId('relogin-overlay')).not.toBeInTheDocument();
       expect(screen.getByText('merhaba ayse')).toBeInTheDocument();
+    } finally {
+      bc?.close();
+    }
+  });
+
+  it('AO14 baska sekme uzatinca uyari kendiliginden kapanir ve girdi yeniden sayilir', async () => {
+    await baslat();
+    await ileri(58 * DK + 1000);
+    expect(screen.getByText('Oturumu Sürdür')).toBeInTheDocument();
+    // "Diger sekme" Surdur'e basti: sunucuda bitis ilerledi; bu sekme bunu bir sonraki
+    // yanitin basliklarindan (ya da kanaldan) ogrenir.
+    sv.idle = sunucuSimdi() + 60 * DK;
+    await act(async () => {
+      await window.fetch('/api/auth/session');
+    });
+    await ileri(10);
+    expect(screen.queryByText('Oturumu Sürdür')).not.toBeInTheDocument();
+    expect(sayi('/extend')).toBe(0);
+    // Uyari isareti takili kalmadi: 6 dk sonra gercek girdi olagan sekilde bildirilir.
+    await ileri(6 * DK);
+    fireEvent.pointerDown(window);
+    await ileri(10);
+    expect(sayi('/extend', 'POST')).toBe(1);
+  });
+
+  it('AO15 Surdur sunucuya ulasamazsa uyari acik kalir ve soyler; yeniden denenince kapanir', async () => {
+    await baslat();
+    await ileri(58 * DK + 1000);
+    sv.extendHata = true;
+    fireEvent.click(screen.getByText('Oturumu Sürdür'));
+    await ileri(10);
+    expect(sayi('/extend', 'POST')).toBe(1);
+    // Pencere KAPANMADI: kullanici "uzattim" sanip oturumunu kaybetmemeli.
+    expect(screen.getByText('Oturumu Sürdür')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('Oturum uzatılamadı');
+    // Uyari hala ekranda: girdi sureyi kendiliginden uzatmaz.
+    fireEvent.keyDown(window, { key: 'a' });
+    await ileri(10);
+    expect(sayi('/extend', 'POST')).toBe(1);
+
+    sv.extendHata = false;
+    fireEvent.click(screen.getByText('Oturumu Sürdür'));
+    await ileri(10);
+    expect(sayi('/extend', 'POST')).toBe(2);
+    expect(screen.queryByText('Oturumu Sürdür')).not.toBeInTheDocument();
+    await ileri(3 * DK);
+    expect(screen.queryByTestId('relogin-overlay')).not.toBeInTheDocument();
+  });
+
+  it('AO15b eski uzatma hatasi SONRAKI uyariya tasinmaz', async () => {
+    await baslat();
+    await ileri(58 * DK + 1000);
+    sv.extendHata = true;
+    fireEvent.click(screen.getByText('Oturumu Sürdür'));
+    await ileri(10);
+    expect(screen.getByRole('alert')).toHaveTextContent('Oturum uzatılamadı');
+    // Oturumu BASKA sekme uzatti: bu sekmedeki uyari kapanir (hata durumu geride kalir).
+    sv.extendHata = false;
+    sv.idle = sunucuSimdi() + 60 * DK;
+    await act(async () => {
+      await window.fetch('/api/auth/session');
+    });
+    await ileri(10);
+    expect(screen.queryByText('Oturumu Sürdür')).not.toBeInTheDocument();
+    // 58 dk sonra yeni uyari: bayat "uzatilamadi" mesaji GORUNMEMELI.
+    await ileri(58 * DK);
+    expect(screen.getByText('Oturumu Sürdür')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('AO16 kapatilan uyari, bitis degismeden gelen durum degisikliginde yeniden acilmaz', async () => {
+    await baslat();
+    await ileri(58 * DK + 1000);
+    fireEvent.click(screen.getByLabelText('Kapat'));
+    await ileri(10);
+    expect(screen.queryByText('Oturumu Sürdür')).not.toBeInTheDocument();
+    // Baska sekmeden ayni bitisle ama farkli uyari suresiyle saat mesaji (Admin ayari
+    // degistirdi): sunucu bitisi AYNI, yani ayni uyari — kullanici onu zaten kapatti.
+    // Uyari suresi UZADI (150 sn): yeni uyari ani gecmiste kalir, zamanlayici hemen atesler.
+    const mesaj = { tur: 'saat', idleExpiresAt: sv.idle, absoluteExpiresAt: sv.abs, warnSeconds: 150 };
+    let bc: BroadcastChannel | null = null;
+    if (typeof BroadcastChannel !== 'undefined') {
+      bc = new BroadcastChannel('portal-session');
+      bc.postMessage(mesaj);
+    } else {
+      window.dispatchEvent(
+        new StorageEvent('storage', { key: 'portal-session-msg', newValue: JSON.stringify(mesaj) }),
+      );
+    }
+    try {
+      for (let i = 0; i < 30; i++) {
+        await act(async () => {
+          await new Promise((r) => setImmediate(r));
+          await vi.advanceTimersByTimeAsync(5);
+        });
+      }
+      expect(screen.queryByText('Oturumu Sürdür')).not.toBeInTheDocument();
+      expect(sayi('/extend')).toBe(0);
     } finally {
       bc?.close();
     }

@@ -833,6 +833,28 @@ const ENV_VARS: EnvVarMeta[] = [
     usedIn: 'server/auth/origin-kontrolu.cjs',
     restartRequired: false,
   },
+  {
+    key: 'PORTAL_FRAME_ANCESTORS',
+    label: "Çerçeveye Gömme İzni",
+    group: 'Oturum ve Giriş',
+    description:
+      "Portalı iframe içinde gösterebilecek adresler. Boş = yalnızca portalın kendisi ('self'): başka bir sayfa portalı görünmez bir çerçeveye gömüp kullanıcıya tıklatamaz. Başka bir kurumsal sayfa portalı bilerek gömüyorsa adresini yazın (boşlukla ayırın): 'self' https://pano.kurum.com.tr — * = koruma kapalı.",
+    required: false,
+    example: "'self'",
+    usedIn: 'server/auth/guvenlik-basliklari.cjs',
+    restartRequired: false,
+  },
+  {
+    key: 'PORTAL_HSTS_MAX_AGE',
+    label: "HSTS Süresi (sn)",
+    group: 'Oturum ve Giriş',
+    description:
+      "Tarayıcıya \"bu adrese yalnızca HTTPS ile gel\" dedirtir. DİKKAT: aynı makine adında düz HTTP çalışan başka bir servis (başka port) varsa o da HTTPS'e zorlanır ve kırılır. Ad yalnızca HTTPS ise açın (ör. 31536000 = 1 yıl). Boş / 0 = kapalı.",
+    required: false,
+    example: "0",
+    usedIn: 'server/auth/guvenlik-basliklari.cjs',
+    restartRequired: false,
+  },
   // ── Uzun suredir beyaz listede olup EKRANDA OLMAYAN uc anahtar ────────────
   // Ucu de kullanimda (mssql-setup.cjs registry seed'i ve oco/config.cjs) ama
   // ENV_VARS'ta yoklardi. Bekcinin (S11) istisnasiz calisabilmesi icin eklendi:

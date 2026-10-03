@@ -6,6 +6,8 @@
 //   LP4 cift gonderim tek giris istegi
 //   LP5 Caps Lock uyarisi
 //   LP6 sunucu bekleme suresi verdiyse geri sayim ve dugme kapali
+//   LP7 zaten girisli kullanici formu gormez: atildigi sayfaya (yoksa panoya) gider
+//   LP8 baska sekmede giris yapilinca (oturum sonradan gelir) form kendiliginden kapanir
 import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
@@ -18,12 +20,12 @@ function Konum() {
   return <p data-testid="konum">{l.pathname + l.search + l.hash}</p>;
 }
 
-function kur({ rememberEnabled = true, login = vi.fn(async () => {}), from }: any = {}) {
+function kur({ rememberEnabled = true, login = vi.fn(async () => {}), from, isAuthenticated = false }: any = {}) {
   window.fetch = vi.fn(async () =>
     new Response(JSON.stringify({ ok: true, rememberEnabled, rememberDays: 7 }), { status: 200 }),
   ) as unknown as typeof fetch;
   render(
-    <AuthContext.Provider value={{ login } as any}>
+    <AuthContext.Provider value={{ login, isAuthenticated } as any}>
       <MemoryRouter initialEntries={[{ pathname: '/login', state: from ? { from } : undefined }]}>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
@@ -111,5 +113,38 @@ describe('LoginPage oturum', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('LP7 zaten girisli kullanici formu gormez', async () => {
+    kur({ isAuthenticated: true, from: { pathname: '/admin', search: '?tab=users', hash: '' } });
+    expect(await screen.findByTestId('konum')).toHaveTextContent('/admin?tab=users');
+    expect(screen.queryByLabelText('Şifre')).not.toBeInTheDocument();
+  });
+
+  it('LP7b girisli ama donus adresi yoksa panoya gider', async () => {
+    kur({ isAuthenticated: true });
+    expect(await screen.findByTestId('konum')).toHaveTextContent('/dashboard');
+  });
+
+  it('LP8 baska sekmede giris: oturum sonradan gelince form kapanir, donus adresi korunur', async () => {
+    window.fetch = vi.fn(async () =>
+      new Response(JSON.stringify({ ok: true, rememberEnabled: true, rememberDays: 7 }), { status: 200 }),
+    ) as unknown as typeof fetch;
+    const login = vi.fn(async () => {});
+    const Sarmal = ({ girisli }: { girisli: boolean }) => (
+      <AuthContext.Provider value={{ login, isAuthenticated: girisli } as any}>
+        <MemoryRouter initialEntries={[{ pathname: '/login', state: { from: { pathname: '/logx', search: '?x=1', hash: '' } } }]}>
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="*" element={<Konum />} />
+          </Routes>
+        </MemoryRouter>
+      </AuthContext.Provider>
+    );
+    const { rerender } = render(<Sarmal girisli={false} />);
+    expect(screen.getByLabelText('Şifre')).toBeInTheDocument();
+    rerender(<Sarmal girisli={true} />);
+    expect(await screen.findByTestId('konum')).toHaveTextContent('/logx?x=1');
+    expect(login).not.toHaveBeenCalled();
   });
 });

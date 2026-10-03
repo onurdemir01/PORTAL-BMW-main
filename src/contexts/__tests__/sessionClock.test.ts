@@ -9,6 +9,8 @@
 //   SC7 sunucu-istemci saat sapmasi hesaba katilir
 //   SC8 bitis sebebi yerelde cikarilir (sunucu sebebi yalnizca ilk istege soyler)
 //   SC9 kanal sonradan baglanir/ayrilir: ayir-yeniden-bagla (StrictMode) sonrasi esitleme surer
+//   SC10 surum yalnizca SUNUCU degerleri degisince artar; saat farki olcumu surumu degistirmez,
+//        ama istemci-saati degisince aboneye haber verilir; ms'lik oynama yok sayilir
 import { describe, it, expect, vi } from 'vitest';
 import {
   oturumSaatiOlustur,
@@ -147,7 +149,7 @@ describe('sessionClock', () => {
   });
 
   it('SC6 mutlak sinir once geliyorsa uzatilamaz', () => {
-    const base = { bilinen: true, warnSeconds: 120, remember: false };
+    const base = { surum: 1, bilinen: true, warnSeconds: 120, remember: false };
     expect(uyariHesapla({ ...base, idleExpiresAt: 1000_000, absoluteExpiresAt: 2000_000 })).toEqual({
       bitis: 1000_000,
       uyariAni: 1000_000 - 120_000,
@@ -170,7 +172,7 @@ describe('sessionClock', () => {
   });
 
   it('SC8 bitis sebebi: bitis aninda/sonrasinda cikarilir, oncesinde cikarilmaz', () => {
-    const d = { bilinen: true, idleExpiresAt: 1_000_000, absoluteExpiresAt: 5_000_000, warnSeconds: 120, remember: false };
+    const d = { surum: 1, bilinen: true, idleExpiresAt: 1_000_000, absoluteExpiresAt: 5_000_000, warnSeconds: 120, remember: false };
     expect(bitisSebebi(d, 1_000_000)).toBe('idle');
     expect(bitisSebebi(d, 1_001_000)).toBe('idle');
     expect(bitisSebebi(d, 995_000)).toBe('idle'); // 5 sn pay: saat sapmasi
@@ -207,5 +209,49 @@ describe('sessionClock', () => {
     b2.girisYay('ali');
     expect(giris).toHaveBeenCalledTimes(2);
     expect(b.durum().bilinen).toBe(false);
+  });
+
+  it('SC10 surum sunucu degerine baglidir; saat farki surumu oynatmaz ama aboneyi bilgilendirir', async () => {
+    let now = 1_000_000;
+    let serverNow = 1_000_000 - 7; // ag gecikmesi: sunucu yaniti 7 ms once uretti
+    const istek = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({ ok: true, serverNow, idleExpiresAt: 5_000_000, absoluteExpiresAt: 9_000_000 }),
+          { status: 200 },
+        ),
+    );
+    const a = oturumSaatiOlustur({ istek: istek as unknown as typeof fetch, simdi: () => now });
+    const gorulen: number[] = [];
+    a.abone((d) => gorulen.push(d.idleExpiresAt));
+
+    // Uretimdeki sira: once bir yanitin BASLIKLARI gelir (saat farki henuz olculmedi)...
+    a.basliklariUygula({ idleExpiresAt: 5_000_000, absoluteExpiresAt: 9_000_000 });
+    const s1 = a.durum().surum;
+    expect(gorulen).toEqual([5_000_000]);
+    // ...sonra /session ozeti ayni degerlerle ama ILK saat farki olcumuyle.
+    await a.tazele();
+    expect(a.durum().surum).toBe(s1); // sunucu degeri degismedi: ayni oturum bitisi
+    expect(a.durum().idleExpiresAt).toBe(5_000_007);
+    // Abone bayat kalmamali: istemci-saatindeki deger degisti.
+    expect(gorulen).toEqual([5_000_000, 5_000_007]);
+
+    // Sonraki olcumlerde ms'lik oynama (gecikme farki) saati kipirdatmaz.
+    now += 60_000;
+    serverNow = now - 23;
+    await a.tazele();
+    expect(a.durum().idleExpiresAt).toBe(5_000_007);
+    expect(gorulen).toHaveLength(2);
+    // Gercek saat degisimi (>1 sn) uygulanir.
+    serverNow = now + 5_000;
+    await a.tazele();
+    expect(a.durum().idleExpiresAt).toBe(5_000_000 - 5_000);
+    expect(a.durum().surum).toBe(s1);
+
+    // Sunucu bitisi ilerleyince surum artar.
+    a.basliklariUygula({ idleExpiresAt: 6_000_000, absoluteExpiresAt: 9_000_000 });
+    expect(a.durum().surum).toBe(s1 + 1);
+    a.basliklariUygula({ idleExpiresAt: 6_000_000, absoluteExpiresAt: 9_000_000 });
+    expect(a.durum().surum).toBe(s1 + 1);
   });
 });
