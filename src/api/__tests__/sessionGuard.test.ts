@@ -202,6 +202,31 @@ describe('sessionGuard', () => {
     expect(dinle).toHaveBeenCalledTimes(1);
   });
 
+  it('SG18 — eski oturumun gecikmis bitis basliklari yeni oturum saatine ILETILMEZ', async () => {
+    const dinle = vi.fn();
+    let eskiYanitiVer!: (response: Response) => void;
+    const eskiYanit = new Promise<Response>((resolve) => {
+      eskiYanitiVer = resolve;
+    });
+
+    oturumBasligiAbone(dinle);
+    oturumDurumunuBildir(true); // oturum A
+    ag.mockReturnValueOnce(eskiYanit);
+    const eskiIstek = window.fetch('/api/eski');
+
+    oturumDurumunuBildir(false); // A'dan cikis
+    oturumDurumunuBildir(true); // oturum B
+    eskiYanitiVer(
+      new Response('{}', {
+        status: 200,
+        headers: { 'X-Portal-Session-Expires': '1000', 'X-Portal-Session-Absolute': '2000' },
+      }),
+    );
+    await eskiIstek;
+
+    expect(dinle).not.toHaveBeenCalled();
+  });
+
   it('SG14 — kapanis sebebi (idle/absolute) aboneye iletilir; bilinmeyen deger iletilmez', async () => {
     const haber = vi.fn();
     oturumBittiAbone(haber);
