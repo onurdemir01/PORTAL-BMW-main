@@ -25,6 +25,7 @@ import {
   type MigrationTracking,
   type MigrationPathJob,
   type MigrationTrackState,
+  type NginxMigrationDeleteGuard,
 } from '@/api/nginxMigrationApi';
 import { ansibleApi, type AwxServer } from '@/api/ansibleApi';
 import { Modal } from '@/components/common/Modal';
@@ -45,6 +46,33 @@ import { downloadCsv as csvDownload } from '@/utils/csv';
 import { toast } from '@/hooks/useToast';
 
 const nf = (n: number) => new Intl.NumberFormat('tr-TR').format(n);
+
+// "Eski tanimi kaldir" yalniz ESKI filoya gider: istek new_fleet=false tasir ve sunucu,
+// AWX'in bunu kabul ettigini launch'tan once dogrular (server/nginx-migration/new-fleet-guard.cjs);
+// dogrulayamazsa isi BASLATMAZ. Onay penceresindeki vaat KOSULLUDUR: yalniz /delete-guard
+// gecerse gosterilir, gecmezse NEDENI yazilir. (Eski metin yeni sunucularin etkilenmeyecegini
+// KOSULSUZ vaat ediyordu ve YANLISTI: nginx_ops new_fleet'i gormezse silmeyi yeni filoya da goturur.)
+const NEW_FLEET_KEPT = 'Yalnız ESKİ sunuculardan kaldırır; yeni filo korunur.';
+const NEW_FLEET_BLOCKED = 'Yeni filo korunamıyor — silme BAŞLATILMAZ';
+// Silme guvenli ama survey'deki new_fleet sorusu (varsayilani false / zorunlu+varsayilansiz)
+// new_fleet gondermeyen DIGER nginx_ops islerini bozuyor: yonetici template'i duzeltmeli.
+const NEW_FLEET_SURVEY_WARNING = "nginx_ops survey'i diğer işleri etkiliyor";
+
+type DeleteGuardView =
+  | { state: 'loading' }
+  | { state: 'error'; message: string }
+  | { state: 'ok'; via: NginxMigrationDeleteGuard['via']; warning?: string }
+  | { state: 'blocked'; code: string; measured: boolean | undefined; message: string };
+
+/** /delete reddi (409) -> ekrandaki metin: koruma kodu varsa NEDENIYLE; olculemediyse bu da yazilir. */
+function deleteRefusalText(r: { code?: string; measured?: boolean; message?: string }): string {
+  // new_fleet_ignored mesaji sunucuda kurulur (iptal sonucu + tasima isi uyarisi icinde).
+  if (r.code === 'new_fleet_ignored') return r.message || 'AWX new_fleet değişkenini yok saydı.';
+  if (r.code) {
+    return `${NEW_FLEET_BLOCKED}. ${r.measured === false ? 'Durum ÖLÇÜLEMEDİ (yok demek değil). ' : ''}${r.message || ''}`;
+  }
+  return r.message || 'İş başlatılamadı.';
+}
 
 // YÜK GÖSTERGESİ (2026-09-27, kullanıcı isteği). Ölçüm ESKİ sunuculardan (GBRVPP07-10 ve
 // eşlenikleri) gelir: iş şu an oradan akıyor. Yeni sunuculara bakmak yanlış cevap verirdi —
@@ -175,6 +203,37 @@ export default function NginxProdMigration() {
     app: NginxMigrationApp;
     pathIdx: number;
   } | null>(null);
+  // Yeni filo korumasi on kontrolu: onay penceresi acilinca okunur (is BASLATMAZ). "Yeni filo
+  // korunur" vaadi yalniz bu gecerse gosterilir; asil karar /delete'te YENIDEN verilir.
+  const [delGuard, setDelGuard] = useState<DeleteGuardView | null>(null);
+  const [delGuardTick, setDelGuardTick] = useState(0);
+  const delGuardKey = pendingDelete
+    ? `${pendingDelete.group.id}|${pendingDelete.app.namespace}|${pendingDelete.app.application}`
+    : '';
+  useAsyncEffect(
+    async (alive) => {
+      if (!delGuardKey) {
+        setDelGuard(null);
+        return;
+      }
+      setDelGuard({ state: 'loading' });
+      try {
+        const r = await nginxMigrationApi.deleteGuard();
+        if (!alive()) return;
+        const g = r.guard;
+        if (r.ok && g) {
+          setDelGuard(
+            g.ok
+              ? { state: 'ok', via: g.via, warning: g.warning }
+              : { state: 'blocked', code: g.code || '', measured: g.measured, message: g.message || '' },
+          );
+        } else setDelGuard({ state: 'error', message: r.message || 'Koruma durumu okunamadı.' });
+      } catch (e: unknown) {
+        if (alive()) setDelGuard({ state: 'error', message: e instanceof Error ? e.message : String(e) });
+      }
+    },
+    [delGuardKey, delGuardTick],
+  );
   // Onay penceresi: hangi satir, hangi location (birden fazla olabilir)
   const [pending, setPending] = useState<{
     group: NginxMigrationGroup;
@@ -450,9 +509,9 @@ export default function NginxProdMigration() {
           );
         setResult({
           tone: 'ok',
-          text: `${pendingDelete.app.application} için kaldırma işi başlatıldı${r.job?.id ? ` (job ${r.job.id})` : ''}: ${path.service}-PROD.conf içindeki ${path.location} location'ı ve (başka tanım kullanmıyorsa) upstream'i. PROD kuralı: iş şimdi yalnızca doğrular ve 23:00 kesinti penceresine ZAMANLAR; gerçek silmeyi nginx_scheduled_ops yapar. Eski sunucular: ${(r.oldHosts || []).join(', ')}. ${r.job?.id ? 'Canlı log sağ alttaki iş penceresinde.' : "Teams'ten izleyin."}`,
+          text: `${pendingDelete.app.application} için kaldırma işi başlatıldı${r.job?.id ? ` (job ${r.job.id})` : ''}: ${path.service}-PROD.conf içindeki ${path.location} location'ı ve (başka tanım kullanmıyorsa) upstream'i. PROD kuralı: iş şimdi yalnızca doğrular ve 23:00 kesinti penceresine ZAMANLAR; gerçek silmeyi nginx_scheduled_ops yapar. Eski sunucular: ${(r.oldHosts || []).join(', ')}. ${NEW_FLEET_KEPT}${r.newFleetGuard?.postCheck === 'olculemedi' ? ' (Ön kontrol geçti; AWX launch yanıtı bunu ayrıca doğrulayamadı.)' : ''}${r.newFleetGuard?.warning ? ` ${r.newFleetGuard.warning}` : ''} ${r.job?.id ? 'Canlı log sağ alttaki iş penceresinde.' : "Teams'ten izleyin."}`,
         });
-      } else setResult({ tone: 'bad', text: r.message || 'İş başlatılamadı.' });
+      } else setResult({ tone: 'bad', text: deleteRefusalText(r) });
     } catch (e: unknown) {
       setResult({ tone: 'bad', text: e instanceof Error ? e.message : String(e) });
     } finally {
@@ -824,7 +883,8 @@ export default function NginxProdMigration() {
             </button>
             <button
               onClick={confirmDelete}
-              disabled={busy}
+              disabled={busy || delGuard?.state === 'blocked' || delGuard?.state === 'loading'}
+              title={delGuard?.state === 'blocked' ? NEW_FLEET_BLOCKED : undefined}
               className="px-3 py-1.5 text-xs font-semibold rounded-lg text-white disabled:opacity-50"
               style={{ background: 'var(--status-danger)' }}
             >
@@ -905,9 +965,46 @@ export default function NginxProdMigration() {
                   PROD kuralı (nginx_ops): iş şimdi yalnızca <b>doğrular</b> ve <b>23:00</b> kesinti
                   penceresine zamanlar; gerçek silmeyi <Code>nginx_scheduled_ops</Code> yapar —
                   location bloğu çıkarılır, upstream başka tanım kullanmıyorsa çıkarılır,{' '}
-                  <Code>nginx -t</Code> düşerse geri alınır, geçerse reload. Yeni sunuculara
-                  dokunulmaz. İptal için AWX'teki schedule silinir.
+                  <Code>nginx -t</Code> düşerse geri alınır, geçerse reload. İptal için AWX'teki
+                  schedule silinir.
                 </p>
+                {delGuard?.state === 'ok' && (
+                  <Note tone="info" title={NEW_FLEET_KEPT}>
+                    İş <Code>new_fleet=false</Code> ile gönderilir; AWX bu değişkeni{' '}
+                    {delGuard.via === 'survey' ? 'survey sorusundan' : 'Prompt on launch ile'} alıyor.
+                    Portal bunu işi başlatmadan önce yeniden doğrular; AWX değişkeni yine de yok
+                    sayarsa işi hemen iptal eder.
+                  </Note>
+                )}
+                {delGuard?.state === 'ok' && delGuard.warning && (
+                  <Note tone="warning" title={NEW_FLEET_SURVEY_WARNING}>
+                    {delGuard.warning}
+                  </Note>
+                )}
+                {delGuard?.state === 'blocked' && (
+                  <Note tone="danger" title={NEW_FLEET_BLOCKED}>
+                    {delGuard.measured === false && <b>Durum ÖLÇÜLEMEDİ (yok demek değil). </b>}
+                    {delGuard.message}{' '}
+                    <button
+                      type="button"
+                      className="underline"
+                      onClick={() => setDelGuardTick((n) => n + 1)}
+                    >
+                      Yeniden kontrol et
+                    </button>
+                  </Note>
+                )}
+                {delGuard?.state === 'error' && (
+                  <Note tone="warning" title="Yeni filo koruması kontrol edilemedi">
+                    {delGuard.message} Portal işi başlatmadan önce yeniden doğrular; doğrulayamazsa
+                    işi <b>başlatmaz</b>.
+                  </Note>
+                )}
+                {(!delGuard || delGuard.state === 'loading') && (
+                  <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                    Yeni filo koruması kontrol ediliyor…
+                  </p>
+                )}
               </div>
             );
           })()}
@@ -2335,7 +2432,7 @@ function GroupPanel({
                       title={
                         !canDelete
                           ? "Silme job'ı yapılandırılmamış (yönetici paneli: nginx_ops template)"
-                          : `Eski sunucudaki ${a.paths.map((p) => p.service + '-PROD.conf ' + p.location).join(' / ')} tanımını (ve kullanılmayan upstream'i) kaldır — 23:00'e zamanlanır`
+                          : `Eski sunucudaki ${a.paths.map((p) => p.service + '-PROD.conf ' + p.location).join(' / ')} tanımını (ve kullanılmayan upstream'i) kaldır — 23:00'e zamanlanır. ${NEW_FLEET_KEPT} Portal, AWX'in bunu kabul ettiğini doğrulayamazsa işi başlatmaz.`
                       }
                     >
                       <TrashIcon className="w-3.5 h-3.5" /> Eski tanımı kaldır

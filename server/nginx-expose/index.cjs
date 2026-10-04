@@ -202,10 +202,13 @@ function initNginxExpose(app) {
           source_host: sourceHost,
           target_host: cfg.targetHost,
           requester_name: user.displayName || user.username || '',
-          requester_email: user.email || '',
+          // Oturum nesnesi `mail` tasir (auth/index.cjs), `email` DEGIL - eskiden hep bos giderdi.
+          requester_email: user.mail || user.email || '',
         },
         '',
-        user.username || null,
+        // Kullanici NESNESI (2026-10-04): `user.username` DIZGISI gecince withRequesterVars
+        // mail/username/displayName bulamaz ve is 'bilinmiyor' + DEFAULT_REQUESTER'a atfedilirdi.
+        user,
       );
       res.json({ ok: true, job, targetHost: cfg.targetHost });
     } catch (err) {

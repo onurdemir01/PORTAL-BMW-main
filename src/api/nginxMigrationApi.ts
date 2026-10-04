@@ -41,6 +41,36 @@ export interface NginxMigrationDeleteResult {
   oldHosts?: string[];
   scheduled?: boolean;
   message?: string;
+  /** Yeni filo korumasi: 409'da ret sebebi (or. survey_missing_new_fleet, new_fleet_ignored). */
+  code?: string;
+  /** false = AWX ayari OLCULEMEDI (yok DEGIL); is yine de baslatilmadi. */
+  measured?: boolean;
+  /** new_fleet_ignored: Portal'in baslattigi is iptal edildi mi. */
+  canceled?: boolean;
+  /**
+   * new_fleet_ignored: iptal sonucu (canceled | terminal | unverified | cancel_failed | no_job_id |
+   * unknown). unverified = iptal reddedildi ve isin durumu OLCULEMEDI ("bitti" DEGIL).
+   */
+  cancelOutcome?: string;
+  /** warning: survey'deki new_fleet sorusu DIGER nginx_ops islerini bozuyor (silme yine guvenli). */
+  newFleetGuard?: { via: "prompt" | "survey"; postCheck: "dogrulandi" | "olculemedi"; warning?: string };
+}
+
+/**
+ * GET /delete-guard: onay penceresindeki yeni filo korumasi on kontrolu (is BASLATMAZ).
+ * ok=true -> via; ok=false -> code + message; measured=false ise AWX ayari OLCULEMEDI (yok DEGIL).
+ */
+export interface NginxMigrationDeleteGuard {
+  ok: boolean;
+  via?: "prompt" | "survey";
+  /**
+   * ok=true iken: survey'deki new_fleet sorusu (varsayilani false ya da zorunlu+varsayilansiz)
+   * new_fleet gondermeyen DIGER nginx_ops islerini bozuyor. Silmeyi bloklamaz; yonetici icin.
+   */
+  warning?: string;
+  code?: string;
+  measured?: boolean;
+  message?: string;
 }
 
 export const nginxMigrationApi = {
@@ -51,6 +81,11 @@ export const nginxMigrationApi = {
   // durumu takip tablosuna da isler - ekran "tanim olusturuldu / job hatali" gosterir.
   jobStatus: (jobId: number): Promise<NginxMigrationJobStatus> =>
     fetch(`${BASE}/job-status/${jobId}`).then(safeJson),
+
+  // Yeni filo korumasi (2026-10-04): onay penceresi "yeni filo korunur" vaadini yalniz bu
+  // kontrol gecerse gosterir. Asil karar /delete'te launch'tan once YENIDEN verilir.
+  deleteGuard: (): Promise<{ ok: boolean; guard?: NginxMigrationDeleteGuard; message?: string }> =>
+    fetch(`${BASE}/delete-guard`).then(safeJson),
 
   remove: (body: {
     group: string;

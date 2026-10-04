@@ -1400,7 +1400,62 @@ async function launchJobOnServer(
     `/api/v2/job_templates/${id}/launch/`,
     payload,
   );
-  return { jobId: data.id, status: data.status };
+  const out = { jobId: data.id, status: data.status };
+  // ignored_fields (2026-10-04, nginx-migration "Eski tanimi kaldir"): AWX'in bu launch'ta
+  // YOK SAYDIGI alanlar (or. Prompt on launch kapali + survey disi degisken). Yalniz AWX
+  // yanitta bu alani TASIDIYSA eklenir - yoksa anahtar hic konmaz (cagiran "olculemedi"
+  // der, "yok sayilan yok" DEMEZ). Mevcut cagiranlar { jobId, status } okur; degismedi.
+  if (data && typeof data === 'object' && Object.prototype.hasOwnProperty.call(data, 'ignored_fields')) {
+    out.ignoredFields = ignoredFieldNames(data.ignored_fields);
+  }
+  return out;
+}
+
+/**
+ * AWX launch yanitindaki ignored_fields -> yalniz ADLAR. DEGERLER DISARI VERILMEZ: yok
+ * sayilan bir degisken parola tasiyabilir ve launch sonucu bazi cagiranlarda (or.
+ * nginx-expose) istemciye aynen gider.
+ *   { extra_vars: { a: 1, b: 2 }, limit: 'x' } -> ['extra_vars.a', 'extra_vars.b', 'limit']
+ *   {} / null / ''                              -> []  (AWX: yok sayilan alan yok)
+ *   extra_vars dizgi (JSON/YAML)                -> ust seviye anahtarlar
+ *   ad cikarilamayan bicim                      -> 'extra_vars.?' / '?' (ad OLCULEMEDI;
+ *                                                  cagiran "yok sayilmadi" DEMEMELI)
+ * @returns {string[]}
+ */
+function ignoredFieldNames(raw) {
+  if (raw == null || raw === '') return [];
+  if (typeof raw === 'string') {
+    try {
+      return ignoredFieldNames(JSON.parse(raw));
+    } catch {
+      return ['?'];
+    }
+  }
+  if (typeof raw !== 'object' || Array.isArray(raw)) return ['?'];
+  const out = [];
+  for (const [field, value] of Object.entries(raw)) {
+    if (field !== 'extra_vars') {
+      out.push(field);
+      continue;
+    }
+    let ev = value;
+    if (typeof ev === 'string') {
+      try {
+        ev = JSON.parse(ev);
+      } catch {
+        const keys = [...ev.matchAll(/^["']?([A-Za-z_][A-Za-z0-9_]*)["']?[ \t]*:/gm)].map((m) => m[1]);
+        if (keys.length) for (const k of keys) out.push(`extra_vars.${k}`);
+        else if (ev.trim()) out.push('extra_vars.?');
+        continue;
+      }
+    }
+    if (ev && typeof ev === 'object' && !Array.isArray(ev)) {
+      for (const k of Object.keys(ev)) out.push(`extra_vars.${k}`);
+    } else if (ev != null && ev !== '') {
+      out.push('extra_vars.?');
+    }
+  }
+  return out;
 }
 
 async function getJobStatusOnServer(serverId, jobId) {
@@ -1430,6 +1485,9 @@ async function getJobStatusOnServer(serverId, jobId) {
     playbook: data.playbook,
     inventory: data.summary_fields?.inventory?.name || '',
     launchedBy: data.summary_fields?.launched_by?.name || '',
+    // Isin AWX job template'i (2026-10-04, nginx-migration job-status sahiplik kontrolu).
+    // Alan yoksa / sayi degilse undefined: cagiran "OLCULEMEDI" der, "baska template" DEMEZ.
+    templateId: Number.isInteger(data.job_template) && data.job_template > 0 ? data.job_template : undefined,
   };
 }
 
@@ -5525,6 +5583,54 @@ async function getTemplateCapabilitiesOnServer(serverId, templateId, kind = 'job
 }
 
 /**
+ * Template'in launch ayarlari - HAM (GET /api/v2/job_templates/<id>/; AAP esleme
+ * awxRequestToServer'da). listTemplatesForServer `|| false` ile "alan yok"u "kapali"ya
+ * cevirir; burada alan yoksa ya da boolean degilse undefined kalir, cagiran "OLCULEMEDI"
+ * der ("kapali" DEMEZ). Tek template okunur: AWX_READ_ONLY_TEMPLATE_IDS suzgeci (liste
+ * ekrani icin) burada YOKTUR - getTemplateCapabilitiesOnServer ile ayni. Hata FIRLATIR.
+ * Ilk kullanan: nginx-migration/new-fleet-guard.cjs (2026-10-04).
+ * @returns {Promise<{ id: number, name: string, askVariablesOnLaunch: (boolean|undefined), surveyEnabled: (boolean|undefined) }>}
+ */
+async function getTemplateLaunchSettingsOnServer(serverId, templateId) {
+  const server = getServerById(serverId);
+  if (!server) throw Object.assign(new Error('AWX sunucusu bulunamadı.'), { status: 404 });
+  const id = Number(templateId);
+  if (!Number.isInteger(id) || id <= 0) throw Object.assign(new Error('Geçersiz template ID.'), { status: 400 });
+  const token = await getTokenForServer(server);
+  const t = await awxRequestToServer(server, token, 'GET', `/api/v2/job_templates/${id}/`);
+  if (!t || typeof t !== 'object') throw new Error('AWX template yanıtı nesne değil.');
+  const flag = (v) => (typeof v === 'boolean' ? v : undefined);
+  return {
+    id,
+    name: typeof t.name === 'string' ? t.name : '',
+    askVariablesOnLaunch: flag(t.ask_variables_on_launch),
+    surveyEnabled: flag(t.survey_enabled),
+  };
+}
+
+/**
+ * Template'in survey tanimi (GET /api/v2/job_templates/<id>/survey_spec/). Ayni okuma
+ * launchJobOnServer icinde fillRequiredSurveyDefaults'ta da yapilir, ama o fonksiyon
+ * fail-open'dir (hatayi yutar). Bu okuyucu hatayi FIRLATIR: cagiran "survey okunamadi"
+ * (OLCULEMEDI) ile "survey bos"u ayirabilsin. AWX survey hic tanimlanmamissa {} doner ->
+ * spec []. spec alani varsa ama dizi degilse beklenmeyen bicimdir -> hata.
+ * Ilk kullanan: nginx-migration/new-fleet-guard.cjs (2026-10-04).
+ * @returns {Promise<{ spec: Array<object> }>}
+ */
+async function getSurveySpecOnServer(serverId, templateId) {
+  const server = getServerById(serverId);
+  if (!server) throw Object.assign(new Error('AWX sunucusu bulunamadı.'), { status: 404 });
+  const id = Number(templateId);
+  if (!Number.isInteger(id) || id <= 0) throw Object.assign(new Error('Geçersiz template ID.'), { status: 400 });
+  const token = await getTokenForServer(server);
+  const data = await awxRequestToServer(server, token, 'GET', `/api/v2/job_templates/${id}/survey_spec/`);
+  if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('AWX survey_spec yanıtı nesne değil.');
+  if (data.spec === undefined) return { spec: [] };
+  if (!Array.isArray(data.spec)) throw new Error('AWX survey_spec.spec alanı liste değil.');
+  return { spec: data.spec };
+}
+
+/**
  * SIR SIZINTISI ONLEME: durum/denetim/Teams'e giden her hata metni buradan gecer.
  * Bilinen AWX sirlari (statik token, sifre, client secret, onbellekteki token'lar)
  * ve `Bearer <deger>` kaliplari maskelenir.
@@ -5587,6 +5693,12 @@ module.exports = {
   listLongJobCandidatesAcrossServers,
   listCancelableTemplatesForServer,
   getTemplateCapabilitiesOnServer,
+  // Yeni filo korumasi (nginx-migration/new-fleet-guard.cjs, 2026-10-04): HAM template
+  // ayarlari + survey okuyucusu; ikisi de hatayi FIRLATIR (cagiran "olculemedi" der).
+  getTemplateLaunchSettingsOnServer,
+  getSurveySpecOnServer,
+  // Saf yardimci - launch yanitindaki ignored_fields -> yalniz adlar (birim testi icin).
+  _ignoredFieldNames: ignoredFieldNames,
   // Iptal token'i dogrulamasi (long-job-cancel-token.cjs kaydi; GET /api/v2/me/):
   whoAmIWithTokenOnServer,
   redactSecrets: redactAwxSecrets,

@@ -25,6 +25,30 @@
 'use strict';
 
 const express = require('express');
+const {
+  NEW_FLEET_OFF,
+  assessNewFleetGuard,
+  ignoredFieldsHasNewFleet,
+  ignoredMessage,
+  readNewFleetContract,
+} = require('./new-fleet-guard.cjs');
+
+// SAYFA KAPISI (2026-10-04): bu modulun TEK istemcisi Nginx Hub > SPA sekmesi > "Production
+// Tasimalari" (src/components/denetim/NginxProdMigration.tsx; NginxConsolePage
+// canSee('tab:nginx:spa')). Eskiden yalniz requireAuth vardi: sayfayi GOREMEYEN herhangi bir
+// oturum PROD silme/tanim isi baslatabiliyordu.
+//
+// OKUMA = YAZMA KAPISI: ekran ana verisini /api/denetim/nginx-migration'dan okur ve o uc
+// denetim.cjs'te ONCE 'Denetim' sayfa kapisindan (requireVisiblePrefix('Denetim'), muafiyetsiz),
+// SONRA NginxConsole + tab:nginx:spa'dan gecer. Burada yalniz Nginx anahtarlari olsaydi
+// "Nginx Hub Erisimi" panelinden yetki verilen kullanici ekrani YUKLEYEMEZ ama PROD silmeyi
+// API'den BASLATABILIRDI (dogrulayici probe'u: GET 403, POST /delete 200). Bu yuzden ayni uc
+// anahtar burada da istenir (fail-closed; hicbir kapi gevsetilmedi). Nginx yollarini
+// 'Denetim'den muaf tutmak (Nginx Hub panelinin tek basina yetmesi) KULLANICI KARARIDIR; o
+// karar verilirse iki tarafta BIRLIKTE degismeli - bekci: nginx-migration-yetki.test.cjs Y7.
+const DENETIM_PAGE_KEY = 'Denetim';
+const PAGE_KEY = 'NginxConsole';
+const TAB_KEY = 'tab:nginx:spa';
 
 const CONFIG_NAME = 'nginx-prod-migration';
 
@@ -111,6 +135,15 @@ function isDefinitionConfirmed(pathJob, newStatus) {
   return jobOk && String(newStatus || '') === 'defined';
 }
 
+/**
+ * Oturum kullanicisinin e-postasi. Oturum nesnesi `mail` tasir (auth/index.cjs login), `email`
+ * DEGIL: eskiden yalniz user.email okunuyordu ve uretimde survey 'email' (nginx_ops'un 23:00
+ * isine aktardigi requester_email) hep BOS gidiyordu. `email` eski cagiranlar icin yedek.
+ */
+function userMail(user) {
+  return String((user && (user.mail || user.email)) || '').trim();
+}
+
 /** Playbook'a giden extra_vars - saf, test edilebilir. */
 function buildExtraVars({ service, application, namespace, inputPath, user }) {
   return {
@@ -133,7 +166,7 @@ function buildExtraVars({ service, application, namespace, inputPath, user }) {
     app_type: 'spa',
     migration_mode: true,
     requester_name: (user && (user.displayName || user.username)) || '',
-    requester_email: (user && user.email) || '',
+    requester_email: userMail(user),
   };
 }
 
@@ -142,11 +175,16 @@ function buildDeleteExtraVars({ service, inputPath, user }) {
   return {
     action: 'delete',
     env: 'prod',
+    // YENI FILO KORUNUR (2026-10-03): nginx_ops.yml, new_fleet acikca 'false' degilse
+    // delete'i yeni PROD SPA filosuna da (nginx_prod_migration) HEMEN gotururdu - bu dugme
+    // yalniz ESKI sunucudan kaldirmak icindir. AWX'in bu degiskeni gercekten kabul ettigi
+    // launch'tan once/sonra dogrulanir: bkz. new-fleet-guard.cjs.
+    new_fleet: NEW_FLEET_OFF,
     service: String(service || '').trim().toUpperCase(),
     input_path: String(inputPath || '').trim(),
-    email: (user && user.email) || '',
+    email: userMail(user),
     requester_name: (user && (user.displayName || user.username)) || '',
-    requester_email: (user && user.email) || '',
+    requester_email: userMail(user),
   };
 }
 
@@ -220,10 +258,26 @@ function jobShape(launched, awxServerId) {
   return { id, status: (launched && launched.status) || 'pending', awxServerId };
 }
 
+/**
+ * job-status sahiplik kontrolu - saf. runner.getJobStatusOnServer'in templateId'si (AWX
+ * job_template) bu modulun yapilandirilmis template'lerinden biri mi?
+ * @returns {true | false | null} null = OLCULEMEDI (AWX yaniti job_template tasimiyor)
+ */
+function jobTemplateAllowed(statusInfo, cfg) {
+  const t = statusInfo ? statusInfo.templateId : undefined;
+  if (!Number.isInteger(t) || t <= 0) return null;
+  const allowed = [cfg && cfg.templateId, cfg && cfg.deleteTemplateId].filter((x) => Number.isInteger(x) && x > 0);
+  return allowed.includes(t);
+}
+
 const JOB_TERMINAL = new Set(['successful', 'failed', 'error', 'canceled']);
 const JOB_LIVE = new Set(['pending', 'waiting', 'running', 'new']);
 
-/** ansible_job_history kaydi (best-effort): Ansible sekmesindeki gecmis + job-status IDOR bekcisi. */
+/**
+ * ansible_job_history kaydi (best-effort): Ansible sekmesindeki gecmis. job-status'un sahiplik
+ * kontrolu BU TABLOYA BAKMAZ (INSERT duserse mesru izleme kirilirdi): AWX'teki job_template'e
+ * bakar - bkz. jobTemplateAllowed.
+ */
 async function recordJobHistory(awxServerId, templateId, templateName, job, extra, user) {
   if (job.id == null) return;
   try {
@@ -272,6 +326,19 @@ function initNginxMigration(app) {
   const router = express.Router();
   router.use(express.json({ limit: '64kb' }));
   router.use(requireAuth);
+  // GORUNURLUK KAPISI - TUM UCLAR (okuma dahil), diger Nginx Hub modulleriyle ayni desen
+  // (nginx-cis: NginxConsole + tab:nginx:cis; nginx-console: NginxConsole + yol->sekme) +
+  // ekranin veri ucuyla ayni 'Denetim' sayfa kapisi (yukarida PAGE_KEY notu).
+  // Okuma uclari da kapida, cunku: (a) hepsinin tek istemcisi bu sayfa; (b) GET /job-status
+  // AWX job stdout'u dondurur (ayrica yalniz bu modulun template'lerine kisitli - asagida);
+  // (c) GET /tracking AWX'e gider ve takip tablosuna YAZAR (syncJobStatusToTracking). Admin, gorunurluk motorunda
+  // muaftir (decide(): kill-switch disinda her ogeyi gorur; motor okunamazsa da gecer).
+  // try/catch YOK - BILEREK: motor yuklenemezse init firlatir, modul baglanmaz (uclar 404):
+  // PROD silme ucu icin kapisiz calismaktan iyidir (fail-closed).
+  const { requireVisiblePrefix, requireVisible } = require('../auth/visibility.cjs');
+  router.use(requireVisiblePrefix(DENETIM_PAGE_KEY));
+  router.use(requireVisiblePrefix(PAGE_KEY));
+  router.use(requireVisible(TAB_KEY));
 
   async function readConfig() {
     try {
@@ -290,6 +357,13 @@ function initNginxMigration(app) {
 
   // -- Job izleme (2026-09-18): "Tanim olustur"a basinca pencere acilir, AWX'e gitmeden
   // canli stdout gorunur. Terminal durum takip tablosuna da islenir (ekran yansimasi).
+  //
+  // SAHIPLIK (IDOR, 2026-10-04): jobId istemciden gelir. Eskiden dogrudan stdout istenirdi:
+  // sayfayi goren Admin olmayan bir kullanici, yapilandirilmis AWX'teki HERHANGI bir isin
+  // (LogX vault, Crypto Hub, OpsX/WAS ...) ciktisini okuyabiliyordu - platformun genel cikti
+  // ucu (/api/ansible/job/:id/output) ise yalniz Admin'e acik. Artik ONCE isin detayi okunur;
+  // job_template bu modulun template'lerinden (tanim / silme) biri DEGILSE stdout HIC
+  // istenmez (404). Template OLCULEMEZSE (alan yok) 503 - fail-closed, "baskasinin" denmez.
   router.get('/job-status/:jobId', async (req, res) => {
     const jobId = Number(req.params.jobId);
     if (!Number.isInteger(jobId) || jobId <= 0) return res.status(400).json({ ok: false, message: 'Geçersiz iş numarası.' });
@@ -297,10 +371,19 @@ function initNginxMigration(app) {
     if (!cfg.awxServerId) return res.status(409).json({ ok: false, message: 'Taşıma job\'ı yapılandırılmamış.' });
     try {
       const runner = require('../ansible/runner.cjs');
-      const [statusInfo, outputInfo] = await Promise.all([
-        runner.getJobStatusOnServer(cfg.awxServerId, jobId),
-        runner.getJobOutputOnServer(cfg.awxServerId, jobId),
-      ]);
+      const statusInfo = await runner.getJobStatusOnServer(cfg.awxServerId, jobId);
+      const own = jobTemplateAllowed(statusInfo, cfg);
+      if (own === null) {
+        console.warn(`[nginx-migration] job-status ${jobId}: AWX yaniti job_template tasimiyor, sahiplik OLCULEMEDI - cikti verilmedi`);
+        return res.status(503).json({
+          ok: false,
+          message: 'İşin template\'i AWX yanıtından ölçülemedi; bu işin Production Taşımaları işi olduğu doğrulanamadığı için çıktı gösterilmedi.',
+        });
+      }
+      if (own === false) {
+        return res.status(404).json({ ok: false, message: 'Bu iş Production Taşımaları işlerinden biri değil.' });
+      }
+      const outputInfo = await runner.getJobOutputOnServer(cfg.awxServerId, jobId);
       await syncJobStatusToTracking(db, jobId, statusInfo.status);
       res.json({ ok: true, status: statusInfo.status, output: outputInfo.output || '', finished: statusInfo.finished, failed: statusInfo.failed });
     } catch (err) {
@@ -372,7 +455,8 @@ function initNginxMigration(app) {
     }
   });
 
-  // Kayit: giris yapmis her kullanici (ekip takip eder); kim/ne zaman yazildi tutulur.
+  // Kayit: sayfayi (NginxConsole + tab:nginx:spa) goren her kullanici (ekip takip eder);
+  // kim/ne zaman yazildi tutulur. Kapi router basinda (2026-10-04).
   router.put('/tracking', async (req, res) => {
     let t;
     try {
@@ -634,7 +718,9 @@ function initNginxMigration(app) {
         inputPath: v.path.location,
         user,
       });
-      const launched = await launchJobOnServer(cfg.awxServerId, cfg.templateId, extra, '', user.username || null);
+      // 5. arguman kullanici NESNESI (withRequesterVars mail/username/displayName okur). Eskiden
+      // `user.username` DIZGISI geciyordu: AWX isi 'bilinmiyor' + DEFAULT_REQUESTER'a atfediliyordu.
+      const launched = await launchJobOnServer(cfg.awxServerId, cfg.templateId, extra, '', user);
       // launchJobOnServer { jobId, status } dondurur; onceki kod `job.id` okuyordu ve damga
       // HEP NULL kaliyordu (2026-09-18). Istemciye ayni sekil + awxServerId (izleme penceresi).
       const job = jobShape(launched, cfg.awxServerId);
@@ -700,6 +786,29 @@ function initNginxMigration(app) {
     }
   });
 
+  // -- Yeni filo korumasi: onay penceresi icin on kontrol (SALT OKUMA, is BASLATMAZ) --
+  // Ekran "Yalniz ESKI sunuculardan kaldirir; yeni filo korunur" vaadini YALNIZ bu kontrol
+  // gecerse gosterir; gecmezse nedenini (ve olculemediyse bunu) yazar. Bu yanit bayatlayabilir:
+  // /delete ayni kontrolu launch'tan once YENIDEN yapar ve asil karar oradadir.
+  router.get('/delete-guard', async (_req, res) => {
+    const cfg = await readConfig();
+    if (!cfg.awxServerId || !cfg.deleteTemplateId) {
+      return res.status(409).json({ ok: false, message: 'Silme job\'ı henüz yapılandırılmamış.' });
+    }
+    try {
+      const runner = require('../ansible/runner.cjs');
+      const g = assessNewFleetGuard(await readNewFleetContract(cfg.awxServerId, cfg.deleteTemplateId, { runner }));
+      res.json({
+        ok: true,
+        guard: g.ok
+          ? { ok: true, via: g.via, ...(g.warning ? { warning: g.warning } : {}) }
+          : { ok: false, code: g.code, measured: g.measured, message: g.message },
+      });
+    } catch (err) {
+      res.status(err.status || 503).json({ ok: false, message: err.message });
+    }
+  });
+
   // -- Eylem: eski sunucudaki location (+ upstream) tanimini kaldir (23:00'e zamanlanir) --
   router.post('/delete', async (req, res) => {
     const cfg = await readConfig();
@@ -720,18 +829,92 @@ function initNginxMigration(app) {
       const v = validateRequest(view.groups, req.body || {}, { ignoreStatus: true });
       if (!v.ok) return res.status(v.status).json({ ok: false, message: v.message });
 
-      const { launchJobOnServer } = require('../ansible/runner.cjs');
+      const runner = require('../ansible/runner.cjs');
+      const redact = (t) => (typeof runner.redactSecrets === 'function' ? runner.redactSecrets(t) : String(t));
       const user = getRequestUser(req) || {};
       const extra = buildDeleteExtraVars({ service: v.path.service, inputPath: v.path.location, user });
-      const launched = await launchJobOnServer(cfg.awxServerId, cfg.deleteTemplateId, extra, '', user.username || null);
+      const auditDelete = (result, more) => {
+        try {
+          require('../audit/index.cjs').auditPortal(req, 'nginx_prod_migration_delete', {
+            username: user.username, result,
+            detail: JSON.stringify({ ...extra, group: req.body?.group, namespace: v.app.namespace, application: v.app.application, ...more }),
+          });
+        } catch { /* audit yoksa yoksay */ }
+      };
+
+      // ON KONTROL (FAIL-CLOSED, launch'tan ONCE): AWX new_fleet'i gercekten alacak mi?
+      // Almayacaksa ya da OLCULEMEDIYSE is BASLATILMAZ - silme yeni filoya da giderdi.
+      const guard = assessNewFleetGuard(await readNewFleetContract(cfg.awxServerId, cfg.deleteTemplateId, { runner }));
+      if (!guard.ok) {
+        console.warn(`[nginx-migration] silme BASLATILMADI (yeni filo korumasi): ${guard.code}, olculdu=${guard.measured}`);
+        auditDelete('denied', { newFleetGuard: guard.code, measured: guard.measured });
+        return res.status(guard.status).json({ ok: false, code: guard.code, measured: guard.measured, message: guard.message });
+      }
+
+      // Kullanici NESNESI (dizgi degil): PROD silmesini kimin istedigi AWX'te ve Teams'te dogru gorunur.
+      const launched = await runner.launchJobOnServer(cfg.awxServerId, cfg.deleteTemplateId, extra, '', user);
       const job = jobShape(launched, cfg.awxServerId);
       await recordJobHistory(cfg.awxServerId, cfg.deleteTemplateId, 'Nginx PROD taşıması: eski tanımı kaldır', job, extra, user);
-      try {
-        require('../audit/index.cjs').auditPortal(req, 'nginx_prod_migration_delete', {
-          username: user.username, result: 'ok',
-          detail: JSON.stringify({ ...extra, jobId: job.id, group: req.body?.group, namespace: v.app.namespace, application: v.app.application }),
+
+      // SONRA KONTROL: runner, AWX launch yanitindaki ignored_fields'i ADLAR olarak verir.
+      // new_fleet yok sayildiysa Portal'in KENDI baslattigi is HEMEN iptal edilir. Yanit
+      // ignored_fields tasimiyorsa sonuc OLCULEMEDI'dir ("temiz" denmez); on kontrol zaten
+      // fail-closed gecti.
+      const ignored = ignoredFieldsHasNewFleet(launched ? launched.ignoredFields : undefined);
+      if (ignored === true) {
+        /** @type {import('./new-fleet-guard.cjs').CancelOutcome} */
+        let outcome = 'unknown';
+        let awxStatus = null;
+        let error = '';
+        /** @type {boolean | undefined} */
+        let stateVerified;
+        if (job.id == null) {
+          outcome = 'no_job_id';
+        } else {
+          try {
+            const c = await runner.cancelJobOnServer(cfg.awxServerId, job.id);
+            if (c && c.canceled) outcome = 'canceled';
+            else if (c && c.alreadyTerminal && c.stateVerified === true) {
+              outcome = 'terminal';
+              awxStatus = c.awxStatus || null;
+              stateVerified = true;
+            } else if (c && c.alreadyTerminal) {
+              // runner: iptal 405/409 + durum OKUNAMADI -> alreadyTerminal:true, stateVerified:false
+              // (alan hic yoksa da DOGRULANMAMIS sayilir).
+              // 405 tek basina "bitti" demek DEGIL (araya giren vekil POST'u reddedebilir): is
+              // hala calisiyor olabilir. "Zaten bitmis" DENMEZ; kullaniciya HEMEN iptal denir.
+              outcome = 'unverified';
+              stateVerified = false;
+              error = redact(c.stateError || 'iş durumu okunamadı');
+            }
+          } catch (e) {
+            outcome = 'cancel_failed';
+            error = redact((e && e.message) || String(e));
+          }
+        }
+        const canceled = outcome === 'canceled';
+        console.error(
+          `[nginx-migration] AWX new_fleet degiskenini YOK SAYDI (ignored_fields); job ${job.id}: ${outcome}; yeni filo tasima isi TETIKLENMIS OLABILIR`,
+        );
+        auditDelete('fail', { jobId: job.id, newFleetGuard: 'ignored_fields', ignoredFields: launched.ignoredFields, canceled, cancelOutcome: outcome, awxStatus, stateVerified, cancelError: error || undefined });
+        return res.status(409).json({
+          ok: false,
+          code: 'new_fleet_ignored',
+          canceled,
+          cancelOutcome: outcome,
+          job,
+          awxServerId: cfg.awxServerId,
+          message: ignoredMessage({ jobId: job.id, outcome, awxStatus, error }),
         });
-      } catch { /* audit yoksa yoksay */ }
+      }
+      const postCheck = ignored === false ? 'dogrulandi' : 'olculemedi';
+      if (postCheck === 'olculemedi') {
+        console.warn(`[nginx-migration] job ${job.id}: launch yaniti ignored_fields'i olculebilir tasimiyor, new_fleet sonra kontrolu OLCULEMEDI`);
+      }
+      if (guard.warning) {
+        console.warn(`[nginx-migration] job ${job.id}: new_fleet survey sorusu DIGER nginx_ops islerini etkiliyor (varsayilan/zorunluluk) - template duzeltilmeli`);
+      }
+      auditDelete('ok', { jobId: job.id, newFleetGuard: guard.via, postCheck, ignoredFields: launched ? launched.ignoredFields : undefined, surveyWarning: guard.warning || undefined });
       try {
         const gid = String(req.body?.group || '');
         const jobId = job.id;
@@ -756,7 +939,7 @@ function initNginxMigration(app) {
         console.warn('[nginx-migration] silme damgasi yazilamadi:', e.message);
       }
       const g = view.groups.find((x) => x.id === String(req.body?.group || ''));
-      res.json({ ok: true, job, awxServerId: cfg.awxServerId, extraVars: extra, oldHosts: g ? g.oldHosts : [], scheduled: true });
+      res.json({ ok: true, job, awxServerId: cfg.awxServerId, extraVars: extra, oldHosts: g ? g.oldHosts : [], scheduled: true, newFleetGuard: { via: guard.via, postCheck, ...(guard.warning ? { warning: guard.warning } : {}) } });
     } catch (err) {
       res.status(err.status || 503).json({ ok: false, message: err.message });
     }
@@ -766,4 +949,4 @@ function initNginxMigration(app) {
 }
 
 module.exports = {
-  initNginxMigration, isDefinitionConfirmed, buildExtraVars, buildDeleteExtraVars, validateRequest, normalizeTracking, rowToTracking, jobShape, syncJobStatusToTracking, JOB_TERMINAL, JOB_LIVE, TRACK_STATES, _CONFIG_NAME: CONFIG_NAME };
+  initNginxMigration, isDefinitionConfirmed, buildExtraVars, buildDeleteExtraVars, jobTemplateAllowed, userMail, validateRequest, normalizeTracking, rowToTracking, jobShape, syncJobStatusToTracking, JOB_TERMINAL, JOB_LIVE, TRACK_STATES, _CONFIG_NAME: CONFIG_NAME };

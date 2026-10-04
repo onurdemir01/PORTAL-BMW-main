@@ -261,6 +261,8 @@ test('silme extra_vars: nginx_ops sozlesmesi (action=delete, env=prod, service, 
   assert.deepEqual(v, {
     action: 'delete',
     env: 'prod',
+    // 2026-10-03: yeni filo KORUNUR - nginx_ops 'false' gormezse silmeyi yeni filoya da goturur.
+    new_fleet: 'false',
     service: 'GLOMO',
     input_path: '/base/',
     email: 'o@x',

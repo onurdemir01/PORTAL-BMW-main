@@ -219,17 +219,22 @@ test('RA7 HER launchJobOnServer cagrisi tetikleyeni geciriyor', () => {
         else if (src[k] === ')' && --depth === 0) break;
       }
       const args = src.slice(start, k);
-      // Ust duzey virgullerle bol.
+      // Ust duzey virgullerle bol (parcalar da tutulur: 5. argumanin KENDISI olculur).
       let d = 0;
       let count = 1;
+      const parts = [''];
       for (const ch of args) {
         if ('([{'.includes(ch)) d++;
         else if (')]}'.includes(ch)) d--;
-        else if (ch === ',' && d === 0) count++;
+        if (ch === ',' && d === 0) {
+          count++;
+          parts.push('');
+        } else parts[parts.length - 1] += ch;
       }
       sites.push({
         file: path2.relative(SERVER, f),
         count,
+        requester: (parts[4] || '').replace(/\s+/g, ' ').trim(),
         args: args.replace(/\s+/g, ' ').slice(0, 90),
       });
     }
@@ -247,6 +252,23 @@ test('RA7 HER launchJobOnServer cagrisi tetikleyeni geciriyor', () => {
     [],
     'requester (5. arguman) gecirilmeyen cagri(lar) var. Varsayilani `null` oldugu icin\n' +
       'bu isler kod deposundaki SABIT kisiye atfedilir ve yanlis kisiye bildirim gider.',
+  );
+
+  // ARGUMAN SAYISI YETMEZ (2026-10-04, nginx-migration /create + /delete, nginx-expose):
+  // `user.username || null` 5. arguman olarak geciyordu - sayi tutuyor ama withRequesterVars
+  // bir DIZGIDE mail/username/displayName bulamaz; PROD silmesi 'bilinmiyor' +
+  // DEFAULT_REQUESTER'a atfediliyordu. 5. arguman kullanici NESNESI olmali: dizgi sabiti,
+  // `.username` uye ifadesi ya da null/undefined REDDEDILIR.
+  const dizgi = sites.filter(
+    (s) =>
+      s.count >= 5 &&
+      (/^['"`]/.test(s.requester) || /\.username\b/.test(s.requester) || /^(null|undefined)$/.test(s.requester)),
+  );
+  assert.deepEqual(
+    dizgi.map((s) => `${s.file}: 5. arguman '${s.requester}'`),
+    [],
+    'requester kullanici NESNESI degil (dizgi / .username / null): withRequesterVars mail ve ad\n' +
+      'bulamaz, is DEFAULT_REQUESTER a atfedilir. getRequestUser(req) nesnesini gecirin.',
   );
 });
 
