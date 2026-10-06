@@ -30,6 +30,14 @@ export interface OpsxOcpOperationDef {
   key: OpsxOcpOperation;
   label: string;
   enabled: boolean;
+  /** GEÇİCİ KAPI (2026-10-06): Production cluster'da restart ve pod silme kapalı
+   *  (adminler muaf). Karar SUNUCUDA verilir — kural onyüze kopyalanmaz, yoksa iki
+   *  kopyadan biri zamanla kayar ve kapı sessizce açılır. Alan gelmezse (env/tenant
+   *  sorguya eklenmemişse ya da eski sunucu) işlem engelli DEĞİL sayılır; gerçek kapı
+   *  POST uçlarındadır. */
+  blocked?: boolean;
+  blockedMessage?: string;
+  blockedReason?: string;
 }
 
 // oc_input'a giden tek bir namespace/uygulama çifti.
@@ -424,8 +432,17 @@ export const opsxApi = {
     fetch(`${BASE}/ocp/apps?env=${encodeURIComponent(env)}&tenant=${encodeURIComponent(tenant)}&namespace=${encodeURIComponent(namespace)}`).then(safeJson),
 
   // Openshift bacağındaki işlem butonları (restart/threaddump/heapdump/tcpdump) — hangisi aktif sunucudan gelir.
-  getOcpOperations: (): Promise<{ ok: boolean; operations: OpsxOcpOperationDef[] }> =>
-    fetch(`${BASE}/ocp/operations`).then(safeJson),
+  // env/tenant verilirse sunucu her işleme `blocked` ekler (geçici production kapısı).
+  getOcpOperations: (
+    env?: string,
+    tenant?: string,
+  ): Promise<{ ok: boolean; operations: OpsxOcpOperationDef[] }> => {
+    const q = new URLSearchParams();
+    if (env) q.set('env', env);
+    if (tenant) q.set('tenant', tenant);
+    const qs = q.toString();
+    return fetch(`${BASE}/ocp/operations${qs ? `?${qs}` : ''}`).then(safeJson);
+  },
 
   // İşlemi tetikler. AWX job template'i tanımlı değilse sunucu 501 + açıklayıcı
   // mesaj döner (sessizce yanlış job tetiklenmez).

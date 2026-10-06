@@ -535,9 +535,32 @@ function initOpsX(app) {
     });
   });
 
-  // GET /api/opsx/ocp/operations — Openshift bacagindaki islem butonlari (sadece restart aktif).
+  // GET /api/opsx/ocp/operations[?env=&tenant=] — Openshift bacagindaki islem butonlari.
+  //
+  // GECICI KAPI (kullanici 2026-10-06): env/tenant verilirse her isleme `blocked` +
+  // `blockedMessage` eklenir; production'da restart ve pod silme kapali (admin muaf).
+  // KURAL ONYUZE KOPYALANMAZ: ayni regex'in iki yerde yasamasi, birinin zamanla kaymasi
+  // ve kapinin SESSIZCE acilmasi demekti. Karar tek yerde (ocp-prod-restart-gate.cjs)
+  // verilir, onyuz yalnizca sonucu gosterir. Gercek kapi yine POST uclarindadir -
+  // bu uc sadece kullaniciyi sihirbazin SONUNDA degil BASINDA uyarmak icin.
   app.get('/api/opsx/ocp/operations', requireAuth, (req, res) => {
-    res.json({ ok: true, operations: OCP_OPERATIONS });
+    const env = String(req.query.env || '').trim();
+    const tenant = String(req.query.tenant || '').trim();
+    // RESTART SAYILAN ISLEMLER: 'restart' (rollout) ve 'poddelete' - dugmenin kendi
+    // metni "podlarimi silmek (restart etmek) istiyorum" diyor. Dump'lar salt tanidir.
+    const RESTART_ISLEMLERI = new Set(['restart', 'poddelete']);
+    let engel = null;
+    if (env || tenant) {
+      engel = require('./ocp-prod-restart-gate.cjs').ocpProdRestartEngeli(req, { env, tenant });
+    }
+    res.json({
+      ok: true,
+      operations: OCP_OPERATIONS.map((o) =>
+        engel && RESTART_ISLEMLERI.has(o.key)
+          ? { ...o, blocked: true, blockedMessage: engel.message, blockedReason: engel.sebep }
+          : o,
+      ),
+    });
   });
 
   // GET /api/opsx/job-status/:serverId/:jobId — tetiklenen job'in CANLI durumu ve
@@ -819,6 +842,44 @@ function initOpsX(app) {
           ok: false,
           message: `Geçersiz cluster seçimi (${clusterNames.join(', ') || 'tanımlı cluster yok'}).`,
         });
+      }
+
+      // ── GEÇİCİ KAPI: PRODUCTION'DA RESTART YOK (kullanıcı, 2026-10-06) ──
+      // "Opsix OpenShift tarafında eğer Production Cluster'ı seçilirse uygulama restart
+      // yapılamasın, izin verilmesin. Ancak adminler her işi yapabilir."
+      //
+      // BURADA, hedef ÇÖZÜLDÜKTEN sonra: istemcinin gönderdiği env/tenant/cluster değil,
+      // resolveOpenshiftTargets'ın DB kataloğundan doğruladığı değerler ölçülür. Kapı
+      // istemciye bırakılmaz (onyüz butonu da kapatır ama karar burada verilir).
+      // Hedef cluster boşsa ("Tüm cluster'lar") grubun TAMAMI çalışır — o yüzden
+      // kataloğun o gruptaki cluster adlarının HEPSİ ölçüme girer.
+      // Kaldırmak için: bu blok + ocp-prod-restart-gate.cjs silinir.
+      {
+        const engel = require('./ocp-prod-restart-gate.cjs').ocpProdRestartEngeli(req, {
+          env: envKey,
+          tenant: tenantKey,
+          clusters: targetCluster ? [targetCluster] : clusterNames,
+        });
+        if (engel) {
+          // SESSİZ REDDETME YOK: denetim kaydı olmadan "neden çalışmadı" sorusu
+          // cevapsız kalır ve kapı bir arıza gibi görünür.
+          try {
+            require('../audit/index.cjs').auditPortal(req, 'opsx_ocp_restart_blocked', {
+              detail: JSON.stringify({
+                sebep: engel.sebep,
+                env: envKey,
+                tenant: tenantKey,
+                targetCluster: targetCluster || null,
+                pairs: cleanPairs.map((p) => p.joined),
+              }),
+            });
+          } catch {
+            /* denetim kaydi best-effort */
+          }
+          return res
+            .status(engel.status)
+            .json({ ok: false, blocked: 'ocp_prod_restart', reason: engel.sebep, message: engel.message });
+        }
       }
 
       // BILDIRIMI GONDEREN ADRES: harici application_rollout playbook'u son adimda
@@ -1899,6 +1960,42 @@ function initOpsX(app) {
       }
 
       const neededClusters = [...new Set(cleanPodTargets.map((t) => t.cluster))];
+
+      // ── GEÇİCİ KAPI: PRODUCTION'DA RESTART YOK (kullanıcı, 2026-10-06) ──
+      // POD SİLME DE BİR RESTART'TIR: düğmenin kendi metni "Çalışan podlarımı silmek
+      // (restart etmek) istiyorum" diyor ve OpenShift pod'u yeniden ayağa kaldırıyor.
+      // Yalnız /api/opsx/run kapatılsaydı kısıt, metninde "restart" yazan bir düğmeyle
+      // tek tıkta aşılabilirdi. Thread/heap dump kapsam DIŞI (salt tanı, uygulamayı
+      // etkilemez). Kaldırmak için: bu blok + ocp-prod-restart-gate.cjs silinir.
+      {
+        const engel = require('./ocp-prod-restart-gate.cjs').ocpProdRestartEngeli(req, {
+          env: envKey,
+          tenant: tenantKey,
+          clusters: neededClusters,
+        });
+        if (engel) {
+          try {
+            require('../audit/index.cjs').auditPortal(req, 'opsx_ocp_restart_blocked', {
+              detail: JSON.stringify({
+                islem: 'poddelete',
+                sebep: engel.sebep,
+                env: envKey,
+                tenant: tenantKey,
+                clusters: neededClusters,
+                pods: cleanPodTargets.length,
+              }),
+            });
+          } catch {
+            /* denetim kaydi best-effort */
+          }
+          return res.status(engel.status).json({
+            ok: false,
+            blocked: 'ocp_prod_restart',
+            reason: engel.sebep,
+            message: engel.message,
+          });
+        }
+      }
       let fanout;
       try {
         fanout = await resolveOcpClusterFanout(envKey, tenantKey, neededClusters);
