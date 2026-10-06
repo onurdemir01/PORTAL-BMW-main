@@ -132,7 +132,12 @@ type ShSummaryV3 = ShSummary & {
   ips: ShSummary['ips'] & { unverified?: number };
   /** unreadableFiles: assess HESAPLIYOR ama ekran okumuyordu - cogunluk kurulamadiginda kart
    *  "0 uyumlu / 0 farkli" diyor ve OZELLIK BOZUK gibi gorunuyordu (bkz. initUyumMetni). */
-  init: ShSummary['init'] & { unreadableFiles?: number };
+  init: ShSummary['init'] & {
+    unreadableFiles?: number;
+    /** olcutDosyasi / otherDiffFiles: uyum yalniz start.sh uzerinden olculur (2026-10-06). */
+    olcutDosyasi?: string | null;
+    otherDiffFiles?: number;
+  };
   /** syntaxUnknown: ayni korluk web tarafinda - nginx -t erisimden duserse sinif UNKNOWN olur,
    *  kart yalniz syntaxOk/syntaxFail bastigi icin "0 / N OK, 0 hatali" cikiyordu. */
   web: Record<
@@ -245,6 +250,13 @@ function initUyumMetni(init: ShSummaryV3['init']): { metin: string; tone: ShSeve
   if (init.missingFiles) parca.push(`${init.missingFiles} eksik`);
   if (init.refDiffFiles && init.refDiffFiles.length)
     parca.push(`${init.refDiffFiles.length} dosyada çoğunluk repo referansından farklı`);
+  // OLCUT DOSYASI (kullanici 2026-10-06): uyum yalniz start.sh uzerinden olculuyor. Bunu
+  // kartta YAZMAK zorunlu: aksi halde "N / M uyumlu" hangi dosyanin sayisi belli olmaz ve
+  // olcut disi dosyalardaki farklar "gorulmemis" sanilir. Alan gelmiyorsa (eski sunucu
+  // yaniti) satir basilmaz - eski davranis korunur, 0 uydurulmaz.
+  if (init.olcutDosyasi) parca.push(`ölçüt: ${init.olcutDosyasi}`);
+  if (sayiMi(init.otherDiffFiles) && init.otherDiffFiles > 0)
+    parca.push(`${init.otherDiffFiles} fark ölçüt dışı dosyada (sayıma katılmaz)`);
   return {
     metin: parca.join(' · '),
     tone: olculemedi ? 'warning' : init.diffFiles ? 'warning' : 'ok',
@@ -476,6 +488,7 @@ const KOD_ETIKET: Record<string, string> = {
   HOST_RESTART: 'JBoss host controller restart/reload bekliyor (restart-required / reload-required)',
   RESTART_REQUIRED: "JVM restart/reload bekliyor — runtime'da etkin olmayan yapılandırma değişikliği var",
   INIT_DIFF: 'init script filo çoğunluğundan farklı',
+  INIT_DIFF_OLCUT_DISI: 'init script farklı (ölçüt dışı dosya — uyum sayımına katılmaz)',
   INIT_HOST_SPECIFIC: 'sunucuya özel init dosyası çoğunluktan farklı — beklenen durum, uyumsuzluk sayılmaz',
   INV_MISMATCH: 'JVM envanteri (MWAppsInventory) ile tarama çelişiyor (çalışma durumu ya da auto-start)',
   STOPPED: 'JVM kapalı, auto-start kapalı; web katmanı eşlenemedi — trafiği bilinmiyor, retire önerilmez',

@@ -137,7 +137,12 @@ test('SH3: bulgu kodlari ve siddet: REBOOT_RISK danger, RETIRE_CANDIDATE warning
   assert.equal(codes.RETIRE_CANDIDATE.fix, null);
   assert.equal(codes.RETIRE_CANDIDATE.retireBlock, 'LEGACY');
   assert.equal(codes.RESTART_REQUIRED.severity, 'warning');
-  assert.equal(codes.INIT_DIFF.severity, 'warning');
+  // OLCUT YALNIZ start.sh (2026-10-06): fixture'daki fark functions.sh'ta, yani olcut
+  // disinda -> warning INIT_DIFF degil info INIT_DIFF_OLCUT_DISI. Olcut dosyasinin kendi
+  // farki hala warning; bunu SH9 olcer.
+  assert.equal(codes.INIT_DIFF, undefined);
+  assert.equal(codes.INIT_DIFF_OLCUT_DISI.severity, 'info');
+  assert.match(codes.INIT_DIFF_OLCUT_DISI.text, /functions\.sh/);
   assert.equal(app.status, 'danger');
 });
 
@@ -211,8 +216,14 @@ test('SH6: ozet sayilari', () => {
   assert.equal(r.summary.jvm.rebootRisk, 1);
   assert.equal(r.summary.jvm.retireCandidates, 1);
   assert.equal(r.summary.jvm.restartRequired, 1);
-  assert.equal(r.summary.init.compliant, 0);
-  assert.equal(r.summary.init.diffFiles, 1);
+  // OLCUT YALNIZ start.sh (kullanici 2026-10-06). Fixture'da DACRAAP01 start.sh OK ve
+  // functions.sh DIFF. ESKIDEN: tum dosyalar sayildigi icin compliant 0 / diffFiles 1 idi -
+  // tek bir yan dosya sunucuyu "uyumsuz" yapiyordu. ARTIK: start.sh OK oldugu icin sunucu
+  // uyumlu, functions.sh farki otherDiffFiles'ta GORUNUR ama sayimi bozmaz.
+  assert.equal(r.summary.init.compliant, 1);
+  assert.equal(r.summary.init.diffFiles, 0);
+  assert.equal(r.summary.init.otherDiffFiles, 1);
+  assert.equal(r.summary.init.olcutDosyasi, 'start.sh');
   assert.equal(r.summary.web.RHA.vhosts, 2);
   assert.equal(r.summary.ips.unused, 1);
   assert.equal(r.summary.scan.maxCpuHost, 'DACRAAP01');
@@ -310,11 +321,20 @@ test('SH9: init uyumu FILO COGUNLUGUNA gore (Denetim ile ayni): repo referansind
     'repo referansindan farkli ama cogunlukla ayni -> bulgu yok',
   );
   assert.equal(h1.init.find((i) => i.file === 'start.sh').status, 'OK');
-  const f = h3.findings.find((x) => x.code === 'INIT_DIFF');
+  // OLCUT YALNIZ start.sh (2026-10-06): H3'teki fark functions.sh'ta -> info, olcut disi.
+  // Metin yine COGUNLUGU tasir; bilgi kaybolmuyor, SINIFI degisiyor.
+  const f = h3.findings.find((x) => x.code === 'INIT_DIFF_OLCUT_DISI');
   assert.ok(f && /functions\.sh/.test(f.text) && /çoğunluk 2\/3/.test(f.text), f && f.text);
+  assert.ok(
+    !h3.findings.some((x) => x.code === 'INIT_DIFF'),
+    'olcut disi dosya warning INIT_DIFF uretmemeli',
+  );
   assert.ok(h3.findings.some((x) => x.code === 'INIT_MISSING'));
-  assert.equal(r.summary.init.compliant, 2, 'H1 ve H2 cogunlukla ayni');
-  assert.equal(r.summary.init.diffFiles, 1);
+  // Uc sunucunun da start.sh'i cogunlukla ayni (sha A) -> ucu de uyumlu. ESKIDEN H3
+  // functions.sh farki yuzunden uyumsuz sayiliyordu.
+  assert.equal(r.summary.init.compliant, 3, 'start.sh ucunde de cogunlukla ayni');
+  assert.equal(r.summary.init.diffFiles, 0, 'olcut dosyasinda fark yok');
+  assert.equal(r.summary.init.otherDiffFiles, 1, 'functions.sh farki gorunur kalir');
   assert.equal(r.summary.init.missingFiles, 1);
   assert.deepEqual(
     r.summary.init.refDiffFiles,

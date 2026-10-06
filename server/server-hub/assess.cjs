@@ -1131,6 +1131,21 @@ function assess(data, opts = {}) {
   // kullanicinin Denetim'den bakacagi konuyu Server Hub'da gorunmez kilardi.
   const SUNUCUYA_OZEL_INIT = new Set(['appdomain.service']);
 
+  // UYUM OLCUTU YALNIZ start.sh (kullanici, 2026-10-06): "appdomain.service'i karsilastirma
+  // disinda birakip ozellikle start.sh'i referans alip gosterebiliriz."
+  //
+  // initialize/ altinda 12 dosya var (functions.sh, startJboss.sh, startWAS.sh, startNginx.sh,
+  // ...). Hepsini tek bir "uyumlu mu" sayisina katmak iki sorun uretiyordu: (1) sunucu hangi
+  // urunu calistiriyorsa yalnizca onun start* betigi anlamli, otekilerin farkli olmasi normal;
+  // (2) tek bir yan dosyanin farki butun sunucuyu "uyumsuz" gosteriyordu. start.sh hepsini
+  // cagiran giris noktasi; filo standardini temsil eden dosya bu.
+  //
+  // DIGER DOSYALAR KAYBOLMAZ, SINIFI DEGISIR: farklari yine listelenir ama `info` olarak ve
+  // uyum metriklerine (compliant / diffFiles / unreadableFiles) GIRMEZ. Olcut dosyasi hic
+  // okunamadiysa o sunucu "uyumlu" SAYILMAZ; olculemedi ile uyumlu karismaz.
+  const OLCUT_INIT = new Set(['start.sh']);
+  const olcuteGirer = (i) => OLCUT_INIT.has(String(i.file || '').toLowerCase());
+
   // AUTO-START "BILINMIYOR" SEBEPLERI (kullanici, 2026-09-28): "1930 bilinmiyor durumunda
   // raporlamissin, nedir bunlar? neyi bilinmiyor olarak algiliyorsun". Uc apayri durum tek
   // kelimeye cikiyordu; hangisinin agir bastigi gorunmedigi icin sayinin ne anlama geldigi
@@ -1245,7 +1260,15 @@ function assess(data, opts = {}) {
         );
         continue;
       }
-      if (i.status === 'DIFF' && i.hostSpecific) {
+      if (i.status === 'DIFF' && !i.hostSpecific && !olcuteGirer(i)) {
+        // Olcut disi init dosyasi: fark GORUNUR kalir ama uyum sayimina girmez.
+        add(
+          'info',
+          'init',
+          'INIT_DIFF_OLCUT_DISI',
+          `${i.root}/${i.file} filo çoğunluğundan farklı (çoğunluk ${i.majorityCount}/${i.majorityTotal || '?'} sunucu, ${i.variantCount} sürüm) — uyum ölçütü start.sh olduğu için sayıma katılmaz`,
+        );
+      } else if (i.status === 'DIFF' && i.hostSpecific) {
         // Sunucuya ozel dosya: fark BEKLENEN durumdur, uyumsuzluk degil.
         add(
           'info',
@@ -1783,21 +1806,31 @@ function assess(data, opts = {}) {
     byEnv,
     hosts: { total: genel.length, ok: 0, info: 0, warning: 0, danger: 0 },
     init: {
-      hosts: genel.filter((h) => h.init.length).length,
-      // OKUNAMAYAN dosya uyumlu SAYILMAZ (sunucuya ozel olsa bile; olculemedi)
-      compliant: genel.filter(
-        (h) =>
-          h.init.length &&
-          h.init.every((i) => i.status !== 'UNREADABLE' && (i.status === 'OK' || i.hostSpecific)),
-      ).length,
+      // OLCUT: yalniz start.sh (kullanici 2026-10-06; bkz. OLCUT_INIT). `hosts` artik
+      // "init kaydi olan sunucu" degil "OLCUT DOSYASI okunabilen sunucu" demek; payda ile
+      // pay ayni kumeden gelmezse kart yine yaniltir.
+      hosts: genel.filter((h) => h.init.some(olcuteGirer)).length,
+      // OKUNAMAYAN dosya uyumlu SAYILMAZ (olculemedi != uyumlu)
+      compliant: genel.filter((h) => {
+        const o = h.init.filter(olcuteGirer);
+        return o.length > 0 && o.every((i) => i.status === 'OK');
+      }).length,
       unreadableFiles: genel.reduce(
-        (a, h) => a + h.init.filter((i) => i.status === 'UNREADABLE').length,
+        (a, h) => a + h.init.filter((i) => olcuteGirer(i) && i.status === 'UNREADABLE').length,
         0,
       ),
       diffFiles: genel.reduce(
-        (a, h) => a + h.init.filter((i) => i.status === 'DIFF' && !i.hostSpecific).length,
+        (a, h) => a + h.init.filter((i) => olcuteGirer(i) && i.status === 'DIFF').length,
         0,
       ),
+      // Olcut disi dosyalardaki farklar: GORUNUR ama uyum sayisini bozmaz.
+      otherDiffFiles: genel.reduce(
+        (a, h) =>
+          a +
+          h.init.filter((i) => i.status === 'DIFF' && !i.hostSpecific && !olcuteGirer(i)).length,
+        0,
+      ),
+      olcutDosyasi: 'start.sh',
       missingFiles: genel.reduce(
         (a, h) => a + h.init.filter((i) => i.status === 'MISSING').length,
         0,

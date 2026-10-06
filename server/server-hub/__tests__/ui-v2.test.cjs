@@ -756,6 +756,23 @@ test('D1-U10 init/web kartlari: okunamayan dosya ve olculemeyen sozdizimi AYRI, 
   assert.match(eski.metin, /0 dosya çoğunluktan farklı · 2 eksik/);
   assert.equal(eski.tone, 'ok');
   assert.equal(iu({ hosts: 10, compliant: 9, diffFiles: 1 }).tone, 'warning');
+  // (3b) OLCUT DOSYASI (kullanici 2026-10-06): uyum yalniz start.sh uzerinden olculuyor.
+  // Kart bunu YAZMALI, yoksa "N / M uyumlu" hangi dosyanin sayisi belirsiz kalir ve olcut
+  // disi farklar "gorulmemis" sanilir. Alan gelmiyorsa satir basilmaz (eski sunucu yaniti).
+  const olcut = iu({
+    hosts: 100,
+    compliant: 98,
+    diffFiles: 2,
+    olcutDosyasi: 'start.sh',
+    otherDiffFiles: 41,
+  });
+  assert.match(olcut.metin, /ölçüt: start\.sh/, olcut.metin);
+  assert.match(olcut.metin, /41 fark ölçüt dışı dosyada \(sayıma katılmaz\)/, olcut.metin);
+  assert.ok(!/ölçüt:/.test(eski.metin), 'alan yokken olcut satiri uydurulmus');
+  assert.ok(
+    !/ölçüt dışı/.test(iu({ hosts: 10, compliant: 10, diffFiles: 0, olcutDosyasi: 'start.sh' }).metin),
+    'olcut disi fark 0 iken satir basiliyor',
+  );
   // (4) web: olculemeyen sayisi ayri, yokken null (satir hic basilmaz)
   const wo = fonksiyon(P, 'webSyntaxOlculemedi');
   const wt = fonksiyon(P, 'webKartTonu');
