@@ -4220,6 +4220,40 @@ async function setupTables() {
       sql: `ALTER TABLE oco_scheduled_launches ADD smart_ticket_id INT NULL`,
     },
     {
+      // OCO PENCERESINE ZAMANLAMA (kullanici karari 2026-10-06): "OCO'daki tarih ve saate
+      // gore uygulama stop adimi baslar". PROD hedefte onay verildiginde is HEMEN kosmaz;
+      // OCO'nun kesinti penceresi acilinca retirement poller'i tetikler. `window_end`
+      // pencerenin SONU: o an gectiyse is BASLATILMAZ (OCO kaydi kacirilmistir).
+      table: 'retirement_targets',
+      col: 'scheduled_at',
+      sql: `ALTER TABLE retirement_targets ADD scheduled_at DATETIME2 NULL`,
+    },
+    {
+      table: 'retirement_targets',
+      col: 'window_end',
+      sql: `ALTER TABLE retirement_targets ADD window_end DATETIME2 NULL`,
+    },
+    {
+      // DELETE ADIMI: ayri is numarasi ve zamani. STOP'un alanlariyla karistirilmaz -
+      // "hangi is neyi yapti" sorusu kaydin kendisinden yanitlanabilsin.
+      table: 'retirement_targets',
+      col: 'delete_job_id',
+      sql: `ALTER TABLE retirement_targets ADD delete_job_id INT NULL`,
+    },
+    {
+      table: 'retirement_targets',
+      col: 'deleted_at',
+      sql: `ALTER TABLE retirement_targets ADD deleted_at DATETIME2 NULL`,
+    },
+    {
+      // WEB KATMANI STOP'TA KALKAR (kullanici karari 2026-10-06). Her web hedefi icin
+      // ayri bir apache_retire_vhost isi kosar; sonuclari burada JSON olarak durur
+      // (host, serverName, conf dosyasi, is no, sonuc).
+      table: 'retirement_targets',
+      col: 'web_result_json',
+      sql: `ALTER TABLE retirement_targets ADD web_result_json NVARCHAR(MAX) NULL`,
+    },
+    {
       // PLAN AYRINTISI (uretim bulgusu 2026-10-06): app_retirement_stop.yml `set_stats` ile
       // `steps` ve `renamed` listelerini de yayinliyordu ama Portal yalniz tek satirlik
       // RESULT'i sakliyordu. Kullanici plani GOZDEN GECIRMEK icin kosturuyor; "2 paket
