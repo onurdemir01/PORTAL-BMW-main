@@ -199,6 +199,83 @@ const SOURCES = {
     },
   },
 
+  // ── (namespace, uygulama) -> ROUTE ADRESI (kullanici, 2026-10-06) ────────────────────
+  //
+  // "Artik Nginx Reverse Proxy tanimlari yeni yapiya uygun yapilmali. Ancak halen eski
+  //  sunuculara deployment gidecek... Reverse Proxy Production isteklerini namespace'e
+  //  uygulama ismi alarak yaptirtmak istiyorum. Eski sunuculara da sanki input URL gelmis
+  //  gibi davranilmasi lazim: ilgili namespace'e uygulamaya tanimli root'u bulup ona gore
+  //  tanim yapilmasi gerekiyor."
+  //
+  // BU KAYNAK `input_url` ALANINA BAGLANIR. Isteyen namespace ve uygulamayi secer, URL'i
+  // ELLE YAZMAZ: liste envanterden gelir. Boylece
+  //   * eski GBRVP* akisi (prod_create.yaml) HIC DEGISMEZ - ona yine gercek bir input_url
+  //     gider, "sanki URL girilmis gibi" davranir,
+  //   * yeni filo akisinin ileri cozumlemesi (nginx_url_resolve.py) BIREBIR FQDN
+  //     eslesmesiyle ilk adimda tutar, "birden fazla aday" (rc 91) durumuna girmez,
+  //   * elle yazilmis yanlis URL sisteme HIC giremez: Self Servis launch aninda kaynagi
+  //     yeniden sorup degeri listeye karsi dogruluyor (assertValueInSource) - fail-closed.
+  //
+  // COKLU ROUTE: otomatik secim YAPILMAZ, hepsi listelenir ve isteyen secer (kullanici
+  // karari 2026-10-06). Termination tipi etikete yazilir, cunku uygulamanin AGINI o
+  // belirliyor (passthrough=internet, reencrypt=intranet) - yanlisini secmek proxy_pass'i
+  // yanlis uca yazar. ROUTE YOKSA: liste BOS doner ve is baslatilamaz; URL uydurulmaz.
+  'ocp-app-routes': {
+    label: 'OpenShift route adresleri (seçilen namespace + uygulama; input_url için)',
+    params: [
+      { name: 'env', label: 'Ortam alanı', required: true },
+      { name: 'namespace', label: 'Namespace alanı', required: true },
+      { name: 'application', label: 'Uygulama alanı', required: true },
+    ],
+    options: [{ name: 'tenant', label: 'Cluster grubu (tenant, ör. ark)', default: 'ark' }],
+    async load({ env, namespace, application, tenant }) {
+      const ns = String(namespace || '').trim();
+      const app = String(application || '').trim();
+      if (!ns || !app) return [];
+      const { query, sql } = require('../inventory/mssql.cjs');
+      const clusters = await clustersForEnv(env, tenant);
+      // CLUSTER KATALOGU BOSSA BOS DONER: ortamin cluster'lari bilinmeden TUM envanteri
+      // taramak, baska bir ortamin route'unu prod tanimina aday gostermek olurdu.
+      if (!clusters.length) return [];
+      const params = clusters.map((c, i) => ({
+        name: `c${i}`,
+        type: sql.NVarChar(200),
+        value: c,
+      }));
+      const ph = clusters.map((_, i) => `@c${i}`).join(', ');
+      const r = await query(
+        `SELECT DISTINCT cluster_name, namespace_name, route_name, route_address, termination_type
+           FROM dbo.BMW_Openshift_Route_Inventory WHERE cluster_name IN (${ph})`,
+        params,
+      );
+      const { routesForApp } = require('../audit/nginx-app-routes.cjs');
+      const { adaylar, suffixAdded, atfedilmeyen } = routesForApp(
+        r.recordset || [],
+        ns,
+        app,
+      );
+      // ATFEDILEMEYEN ROUTE: envanterde route -> service bagi YOK; adresi kurumsal kaliba
+      // uymayan ve adi uygulamadan farkli bir route hangi uygulamaya ait, OLCULEMEZ.
+      // Liste "bu uygulamanin TUM route'lari" degil "atfedebildiklerimiz"dir; fark
+      // SOYLENIR, yoksa tek satir gorunce "baska route yok" sanilir.
+      const uyari = atfedilmeyen
+        ? `  ·  bu namespace'te atfedilemeyen ${atfedilmeyen} route daha var`
+        : '';
+      return adaylar.map((a) => ({
+        value: a.url,
+        // ETIKET KANITI TASIR: eslesme adresten mi route adindan mi kuruldu, namespace'e
+        // '-prod' eklenerek mi tutturuldu. Gizlenirse zayif bir eslesme guclu gorunur.
+        label:
+          `${a.url}  ·  ${a.termination}` +
+          (a.clusters.length ? `  ·  ${a.clusters.join(', ')}` : '') +
+          (a.how === 'name' ? '  ·  route adından eşleşti' : '') +
+          (suffixAdded ? "  ·  namespace '-prod' ekiyle eşleşti" : '') +
+          uyari,
+        group: adaylar.length > 1 ? 'Birden fazla route — hangisi olduğunu seçin' : undefined,
+      }));
+    },
+  },
+
   // Nginx sunuculari (Denetim > Nginx Envanteri, dbo.nginx_inventory; nginx_metadata job'i).
   // Ortam opsiyonel daraltma; configuration_delivery gibi "su sunuculara dagit" isleri icin
   // COKLU SECIM alanina baglanir.
