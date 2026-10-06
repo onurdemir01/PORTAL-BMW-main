@@ -26,11 +26,11 @@ const OcpOperationStep: React.FC<{
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // env/tenant SORGUYA EKLENIR: sunucu boylece gecici production kapisini uygulayip
-  // her isleme `blocked` dondurur (bkz. server/opsx/ocp-prod-restart-gate.cjs). Kural
-  // BURADA TEKRARLANMAZ - ayni regex'in iki kopyasi olsa biri zamanla kayar ve kapi
-  // sessizce acilir. Bu ekran yalnizca sunucunun kararini gosterir; gercek kapi POST
-  // uclarindadir (istemciye guvenilmez).
+  // env/tenant SORGUYA EKLENIR: sunucu boylece production islemlere `needsApproval`
+  // dondurur (bkz. server/opsx/prod-approval.cjs). Kural BURADA TEKRARLANMAZ - ayni
+  // desenin iki kopyasi olsa biri zamanla kayar. Bu ekran yalnizca sunucunun kararini
+  // ONCEDEN gosterir ki kullanici "neden hemen baslamadi" diye sormasin; gercek kapi
+  // POST uclarindadir (istemciye guvenilmez).
   useEffect(() => {
     opsxApi
       .getOcpOperations(env, tenant)
@@ -53,9 +53,9 @@ const OcpOperationStep: React.FC<{
         </div>
       </div>
 
-      {/* GECICI KISIT, GORUNUR SEBEP: kapali bir dugmeyi sebepsiz gostermek "ozellik
-          bozuk" izlenimi verir. Mesaj SUNUCUDAN gelir, burada uretilmez. */}
-      {ops.some((o) => o.blocked) && (
+      {/* ONAY UYARISI ONCEDEN: is tiklamayla BASLAMAYACAK, talep acilacak. Bunu
+          soylememek "tikladim hicbir sey olmadi" demek olurdu. Mesaj SUNUCUDAN gelir. */}
+      {ops.some((o) => o.needsApproval) && (
         <div
           className="rounded-xl border px-3 py-2 text-xs"
           style={{
@@ -64,25 +64,25 @@ const OcpOperationStep: React.FC<{
             color: 'var(--text-secondary)',
           }}
         >
-          {ops.find((o) => o.blocked)?.blockedMessage}
+          {ops.find((o) => o.needsApproval)?.approvalMessage}
         </div>
       )}
 
       <div className="space-y-2">
         {ops.map((op) => {
           const Icon = ICONS[op.key] || ArrowPathIcon;
-          // "Kullanima acik degil" (enabled:false) ile "bu ortamda izin verilmiyor"
-          // (blocked) AYRI sebeplerdir ve ayri yazilir: ikisini "pasif" diye birlestirmek
-          // kullaniciyi "ozellik bozuk mu" sorusuyla birakirdi.
-          const disabled = busy || !op.enabled || op.blocked === true;
+          // "Kullanima acik degil" (enabled:false) islemi KAPATIR; "onay gerekli"
+          // (needsApproval) KAPATMAZ - is baslar, sadece once onaydan geceer. Ikisini
+          // ayni gostermek, kullaniciya yapamayacagini sanmasina yol acardi.
+          const disabled = busy || !op.enabled;
           return (
             <button
               key={op.key}
               onClick={() => onSelect(op.key)}
               disabled={disabled}
               title={
-                op.blocked
-                  ? op.blockedMessage || "Bu ortamda bu işleme izin verilmiyor."
+                op.needsApproval
+                  ? op.approvalMessage || 'Production işlemi: Smart onayından geçer.'
                   : !op.enabled
                     ? "Bu işlem henüz kullanıma açık değil."
                     : undefined
@@ -92,10 +92,10 @@ const OcpOperationStep: React.FC<{
               <Icon className="w-5 h-5 text-[var(--text-primary)] flex-shrink-0" />
               <div className="flex-1">
                 <span className="text-sm font-medium text-[var(--text-primary)]">{op.label}</span>
-                {op.blocked ? (
+                {op.needsApproval ? (
                   <p className="text-xs text-[var(--status-warning)] mt-0.5">
-                    Production cluster'da kapalı
-                    {op.blockedReason ? ` (${op.blockedReason})` : ''}
+                    Smart onayı gerekir
+                    {op.approvalReason ? ` (${op.approvalReason})` : ''}
                   </p>
                 ) : (
                   !op.enabled && (

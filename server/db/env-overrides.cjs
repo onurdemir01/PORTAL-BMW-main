@@ -136,6 +136,21 @@ const SYSTEM_CONFIG_KEYS = [
   'SMART_API_PASSWORD',
   'SMART_RFF_TOKEN',
   'SMART_DOMAIN',
+  // OpsX PRODUCTION onay akisi (kullanici 2026-10-06): "OpsX kismindaki Legacy veya
+  // Openshift fark etmez bunlarin Production akislarini Smart'a entegre etmek istiyorum.
+  // Yine Otomasyondaki gibi Smart talebi acilsin, onay akislarindan gectikten sonra
+  // Ansible tetiklensin." PLATFORM BASINA ayri flow key (kullanici karari): onaylayanlar
+  // platform ekiplerine gore farkli olabiliyor ve bir platformun akisi otekini etkilemiyor.
+  // Deger GIRILMEMISSE o platformun production islemi BASLATILMAZ (fail-closed, bkz.
+  // server/opsx/prod-approval.cjs) - onaysiz calistirmak, kapiyi hic koymamakla ayni olurdu.
+  'OPSX_SMART_FLOW_KEY_LEGACY',
+  'OPSX_SMART_FLOW_KEY_WAS',
+  'OPSX_SMART_FLOW_KEY_OPENSHIFT',
+  // Metadata alan eslemesi (opsional, Self Servis'teki smartApproval.metadataFields ile
+  // ayni bicim). Bos ise varsayilan alanlar gider.
+  'OPSX_SMART_METADATA_FIELDS',
+  // Servis bazinda RFF token override'i; bos ise global SMART_RFF_TOKEN kullanilir.
+  'OPSX_SMART_INTEGRATION_KEY',
   // OCO (ChangeManagement ServiceRepository) — Smart'tan AYRI sistem, kimlik dogrulamasi yok.
   'OCO_API_URL',
   'OCO_CHANGE_ORDER_PATH',

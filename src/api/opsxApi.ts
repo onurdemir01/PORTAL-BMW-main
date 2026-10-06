@@ -30,14 +30,16 @@ export interface OpsxOcpOperationDef {
   key: OpsxOcpOperation;
   label: string;
   enabled: boolean;
-  /** GEÇİCİ KAPI (2026-10-06): Production cluster'da restart ve pod silme kapalı
-   *  (adminler muaf). Karar SUNUCUDA verilir — kural onyüze kopyalanmaz, yoksa iki
-   *  kopyadan biri zamanla kayar ve kapı sessizce açılır. Alan gelmezse (env/tenant
-   *  sorguya eklenmemişse ya da eski sunucu) işlem engelli DEĞİL sayılır; gerçek kapı
-   *  POST uçlarındadır. */
-  blocked?: boolean;
-  blockedMessage?: string;
-  blockedReason?: string;
+  /** PRODUCTION ONAYI (2026-10-06): production cluster seçiliyse bu işlem Smart
+   *  onayından geçer — düğme KAPANMAZ, ama tıklandığında iş hemen başlamaz: talep
+   *  açılır ve onay akışı bitince Ansible tetiklenir. Karar SUNUCUDA verilir
+   *  (server/opsx/prod-approval.cjs); kural onyüze kopyalanmaz, yoksa iki kopyadan
+   *  biri zamanla kayar. Alan gelmezse (env/tenant sorguya eklenmemişse ya da eski
+   *  sunucu) işlem onaysız sanılmaz — gerçek kapı POST uçlarındadır ve orada
+   *  yine Smart talebi açılır. */
+  needsApproval?: boolean;
+  approvalMessage?: string;
+  approvalReason?: string;
 }
 
 // oc_input'a giden tek bir namespace/uygulama çifti.
@@ -59,6 +61,16 @@ export interface OpsxRunResult {
   // route'larındaki `res.status(err.status||500).json({ok:false, message: err.message})`).
   // ÇAĞIRAN BUNU KONTROL ETMELİ — safeJson() 4xx/5xx'te fetch reddetmez, sadece JSON'u döner.
   message?: string;
+  /** PRODUCTION ONAYI (2026-10-06): `ok:true` AMA İŞ BAŞLAMADI — Smart talebi açıldı,
+   *  onay akışı bitince Ansible tetiklenir. `jobId` null gelir. ÇAĞIRAN BUNU AYIRMALI:
+   *  "İşlem başlatıldı" demek yanlış olur, kullanıcı işin koştuğunu sanar. */
+  pendingApproval?: boolean;
+  ticketId?: number;
+  externalTicketId?: string;
+  /** Pod silmede: pod adları donduruldu, onay gecikirse bulunamayabilir (kullanıcı kararı). */
+  staleWarning?: string;
+  /** Üretim tespitini hangi alan tetikledi (ör. "ortam=prod"). */
+  reason?: string;
 }
 
 export interface OpsxJobStatus {

@@ -234,7 +234,18 @@ async function resolveLegacyTargets(application, hosts, hostMajors) {
     );
   }
 
-  return { requested, jbossVersion: deriveJbossVersion(appHosts, requested, hostMajors) };
+  // ORTAM ETIKETLERI (2026-10-06): production islemleri Smart onayindan geciyor ve
+  // Legacy'de "bu istek production mu" sorusu ancak SECILEN host'larin envanterdeki
+  // env degerinden cevaplanir. Yalniz /api/opsx/run kullanir; kesif/dump cagiranlari
+  // bu alani yok sayar.
+  const seciliEnvler = appHosts
+    .filter((h) => requested.includes(String(h.host || '').toUpperCase()))
+    .map((h) => h.env);
+  return {
+    requested,
+    seciliEnvler,
+    jbossVersion: deriveJbossVersion(appHosts, requested, hostMajors),
+  };
 }
 
 // Openshift namespace/uygulama ciftlerini cluster katalogu + erisim kisitlamalarina
@@ -537,27 +548,37 @@ function initOpsX(app) {
 
   // GET /api/opsx/ocp/operations[?env=&tenant=] — Openshift bacagindaki islem butonlari.
   //
-  // GECICI KAPI (kullanici 2026-10-06): env/tenant verilirse her isleme `blocked` +
-  // `blockedMessage` eklenir; production'da restart ve pod silme kapali (admin muaf).
-  // KURAL ONYUZE KOPYALANMAZ: ayni regex'in iki yerde yasamasi, birinin zamanla kaymasi
-  // ve kapinin SESSIZCE acilmasi demekti. Karar tek yerde (ocp-prod-restart-gate.cjs)
-  // verilir, onyuz yalnizca sonucu gosterir. Gercek kapi yine POST uclarindadir -
-  // bu uc sadece kullaniciyi sihirbazin SONUNDA degil BASINDA uyarmak icin.
+  // PRODUCTION ONAYI (kullanici 2026-10-06): env/tenant verilirse production islemlere
+  // `needsApproval` eklenir. Dugme KAPANMAZ - 2026-10-06 sabahindaki gecici blogun
+  // yerini Smart onayi aldi: istek reddedilmiyor, Smart talebi acilip onaydan sonra
+  // kosuyor. Onyuz bunu ONCEDEN soyler ki kullanici "neden hemen baslamadi" diye
+  // sormasin. Karar yine SUNUCUDA (prod-approval.cjs); kural onyuze kopyalanmaz.
   app.get('/api/opsx/ocp/operations', requireAuth, (req, res) => {
     const env = String(req.query.env || '').trim();
     const tenant = String(req.query.tenant || '').trim();
-    // RESTART SAYILAN ISLEMLER: 'restart' (rollout) ve 'poddelete' - dugmenin kendi
-    // metni "podlarimi silmek (restart etmek) istiyorum" diyor. Dump'lar salt tanidir.
-    const RESTART_ISLEMLERI = new Set(['restart', 'poddelete']);
-    let engel = null;
-    if (env || tenant) {
-      engel = require('./ocp-prod-restart-gate.cjs').ocpProdRestartEngeli(req, { env, tenant });
-    }
+    // ONAYA TABI ISLEMLER: 'restart' (rollout) ve 'poddelete' - dugmenin kendi metni
+    // "podlarimi silmek (restart etmek) istiyorum" diyor. Dump'lar salt tanidir.
+    const ONAY_ISLEMLERI = new Set(['restart', 'poddelete']);
+    const { uretimIstegi } = require('./prod-approval.cjs');
+    const { uretim, sebep } =
+      env || tenant
+        ? uretimIstegi([
+            { alan: 'ortam', deger: env },
+            { alan: 'cluster grubu', deger: tenant },
+          ])
+        : { uretim: false, sebep: null };
     res.json({
       ok: true,
       operations: OCP_OPERATIONS.map((o) =>
-        engel && RESTART_ISLEMLERI.has(o.key)
-          ? { ...o, blocked: true, blockedMessage: engel.message, blockedReason: engel.sebep }
+        uretim && ONAY_ISLEMLERI.has(o.key)
+          ? {
+              ...o,
+              needsApproval: true,
+              approvalReason: sebep,
+              approvalMessage:
+                'Production işlemi: Smart talebi açılır, onay akışı tamamlanınca ' +
+                'Ansible işi otomatik başlatılır.',
+            }
           : o,
       ),
     });
@@ -701,6 +722,16 @@ function initOpsX(app) {
 
     let extraVars;
     let limitValue = ''; // yalniz Legacy'de dolu — AWX'in --limit alani
+    // ONAY KAPISI IKI DAL ICIN ORTAK noktada cagrilir; OpenShift dalinin KATALOGDAN
+    // COZULMUS degerleri buraya tasinir (istemcinin gonderdigi env/tenant DEGIL).
+    let ocEnvForGate = '', ocTenantForGate = '', ocInputForGate = '';
+    // AD BILEREK 'ocCluster*' DEGIL: `openshift-no-limit.test.cjs` o oneki YASAKLIYOR
+    // (geri alinan AWX limit-kisitlama ozelliginin adlari; AWX o limiti sessizce
+    // yutuyordu). Bu dizi bir LIMIT degil, uretim tespiti icin olculecek cluster adlari.
+    let ocKapiHedefleri = [];
+    // Legacy dalinin COZULMUS hedefleri: onay kapisi iki dal icin ORTAK noktada
+    // cagrildigi icin dal icinde kalamazlar.
+    let requested = [], seciliEnvler = [];
     let logSummary;
 
     if (plat === 'legacy') {
@@ -709,9 +740,9 @@ function initOpsX(app) {
       }
       // ANTI-TOCTOU + jboss_version turetme: resolveLegacyTargets() (bkz. dosya basi) —
       // dump endpoint'iyle PAYLASILAN, tek yerde tanimli dogrulama.
-      let requested, jbossVersion;
+      let jbossVersion;
       try {
-        ({ requested, jbossVersion } = await resolveLegacyTargets(application, hosts, hostMajors));
+        ({ requested, seciliEnvler, jbossVersion } = await resolveLegacyTargets(application, hosts, hostMajors));
       } catch (err) {
         return res.status(err.status || 500).json({ ok: false, message: err.message });
       }
@@ -828,6 +859,12 @@ function initOpsX(app) {
         return res.status(err.status || 500).json({ ok: false, message: err.message });
       }
       const ocInput = cleanPairs.map((p) => p.joined).join(';');
+      // Onay kapisi IKI dal icin ORTAK noktada cagriliyor (asagida); OpenShift dalinin
+      // KATALOGDAN COZULMUS degerleri oraya buradan tasinir. Istemcinin gonderdigi
+      // env/tenant DEGIL: kapi dogrulanmis degerleri olcmeli.
+      ocEnvForGate = envKey;
+      ocTenantForGate = tenantKey;
+      ocInputForGate = ocInput;
 
       // TEK CLUSTER OPSIYONEL: AWX limit calismadigi icin belirli bir cluster'a kisitlamak
       // SADECE hosts:'un dogrudan o cluster adina sablonlanmasiyla mumkun (bkz. yukaridaki
@@ -837,49 +874,14 @@ function initOpsX(app) {
       // ANTI-TOCTOU: istemcinin gonderdigi ad (BOS DEGILSE), resolveOpenshiftTargets'in AZ
       // ONCE DB'den cozdugu gercek cluster listesine karsi dogrulanir.
       const targetCluster = String(cluster || '').trim();
+      // Hedef cluster BOSSA ("Tum cluster'lar") grubun TAMAMI kosar; o yuzden onay
+      // kapisina katalogun o gruptaki cluster adlarinin HEPSI gider.
+      ocKapiHedefleri = targetCluster ? [targetCluster] : clusterNames;
       if (targetCluster && !clusterNames.includes(targetCluster)) {
         return res.status(400).json({
           ok: false,
           message: `Geçersiz cluster seçimi (${clusterNames.join(', ') || 'tanımlı cluster yok'}).`,
         });
-      }
-
-      // ── GEÇİCİ KAPI: PRODUCTION'DA RESTART YOK (kullanıcı, 2026-10-06) ──
-      // "Opsix OpenShift tarafında eğer Production Cluster'ı seçilirse uygulama restart
-      // yapılamasın, izin verilmesin. Ancak adminler her işi yapabilir."
-      //
-      // BURADA, hedef ÇÖZÜLDÜKTEN sonra: istemcinin gönderdiği env/tenant/cluster değil,
-      // resolveOpenshiftTargets'ın DB kataloğundan doğruladığı değerler ölçülür. Kapı
-      // istemciye bırakılmaz (onyüz butonu da kapatır ama karar burada verilir).
-      // Hedef cluster boşsa ("Tüm cluster'lar") grubun TAMAMI çalışır — o yüzden
-      // kataloğun o gruptaki cluster adlarının HEPSİ ölçüme girer.
-      // Kaldırmak için: bu blok + ocp-prod-restart-gate.cjs silinir.
-      {
-        const engel = require('./ocp-prod-restart-gate.cjs').ocpProdRestartEngeli(req, {
-          env: envKey,
-          tenant: tenantKey,
-          clusters: targetCluster ? [targetCluster] : clusterNames,
-        });
-        if (engel) {
-          // SESSİZ REDDETME YOK: denetim kaydı olmadan "neden çalışmadı" sorusu
-          // cevapsız kalır ve kapı bir arıza gibi görünür.
-          try {
-            require('../audit/index.cjs').auditPortal(req, 'opsx_ocp_restart_blocked', {
-              detail: JSON.stringify({
-                sebep: engel.sebep,
-                env: envKey,
-                tenant: tenantKey,
-                targetCluster: targetCluster || null,
-                pairs: cleanPairs.map((p) => p.joined),
-              }),
-            });
-          } catch {
-            /* denetim kaydi best-effort */
-          }
-          return res
-            .status(engel.status)
-            .json({ ok: false, blocked: 'ocp_prod_restart', reason: engel.sebep, message: engel.message });
-        }
       }
 
       // BILDIRIMI GONDEREN ADRES: harici application_rollout playbook'u son adimda
@@ -928,6 +930,43 @@ function initOpsX(app) {
       };
       logSummary = `env=${envKey} oc_cluster=${tenantKey} target_cluster=${targetCluster || '(tümü)'} oc_input=${ocInput}`;
     }
+
+
+      // ── PRODUCTION ONAY KAPISI (kullanici 2026-10-06) ──────────────────────────
+      // "OpsX kismindaki Legacy veya Openshift fark etmez bunlarin Production
+      //  akislarini Smart'a entegre etmek istiyorum. Yine Otomasyondaki gibi Smart
+      //  talebi acilsin, onay akislarindan gectikten sonra Ansible tetiklensin."
+      //
+      // BURADA, her sey COZULDUKTEN sonra: bilet gercekten kosacak isi anlatsin ve
+      // onay sonrasi replay'in yeniden DB'ye gitmesi gerekmesin. Uretim degilse kapi
+      // seffaftir (test/qa akislari aynen devam eder).
+      {
+        const kapi = await require('./prod-approval.cjs').opsxProductionKapisi({
+          platform: plat === 'legacy' ? 'legacy' : 'openshift',
+          serverId,
+          templateId,
+          extraVars,
+          limitValue: limitValue,
+          etiketler: plat === 'legacy'
+            ? [
+                { alan: 'ortam', deger: seciliEnvler },
+                { alan: 'sunucu', deger: requested },
+              ]
+            : [
+                { alan: 'ortam', deger: ocEnvForGate },
+                { alan: 'cluster grubu', deger: ocTenantForGate },
+                { alan: 'cluster', deger: ocKapiHedefleri },
+              ],
+          req,
+          islemAdi: plat === 'legacy' ? `Legacy ${operation}` : 'Openshift rollout (restart)',
+          ozet: plat === 'legacy'
+            ? { uygulama: String(application || '').trim(), sunucular: requested.join(', '), islem: operation }
+            : { ortam: ocEnvForGate, cluster: ocTenantForGate, hedefler: ocInputForGate },
+        });
+        if (!kapi.proceed) {
+          return kapi.status ? res.status(kapi.status).json(kapi.body) : res.json(kapi.body);
+        }
+      }
 
     try {
       const runner = require('../ansible/runner.cjs');
@@ -1960,42 +1999,6 @@ function initOpsX(app) {
       }
 
       const neededClusters = [...new Set(cleanPodTargets.map((t) => t.cluster))];
-
-      // ── GEÇİCİ KAPI: PRODUCTION'DA RESTART YOK (kullanıcı, 2026-10-06) ──
-      // POD SİLME DE BİR RESTART'TIR: düğmenin kendi metni "Çalışan podlarımı silmek
-      // (restart etmek) istiyorum" diyor ve OpenShift pod'u yeniden ayağa kaldırıyor.
-      // Yalnız /api/opsx/run kapatılsaydı kısıt, metninde "restart" yazan bir düğmeyle
-      // tek tıkta aşılabilirdi. Thread/heap dump kapsam DIŞI (salt tanı, uygulamayı
-      // etkilemez). Kaldırmak için: bu blok + ocp-prod-restart-gate.cjs silinir.
-      {
-        const engel = require('./ocp-prod-restart-gate.cjs').ocpProdRestartEngeli(req, {
-          env: envKey,
-          tenant: tenantKey,
-          clusters: neededClusters,
-        });
-        if (engel) {
-          try {
-            require('../audit/index.cjs').auditPortal(req, 'opsx_ocp_restart_blocked', {
-              detail: JSON.stringify({
-                islem: 'poddelete',
-                sebep: engel.sebep,
-                env: envKey,
-                tenant: tenantKey,
-                clusters: neededClusters,
-                pods: cleanPodTargets.length,
-              }),
-            });
-          } catch {
-            /* denetim kaydi best-effort */
-          }
-          return res.status(engel.status).json({
-            ok: false,
-            blocked: 'ocp_prod_restart',
-            reason: engel.sebep,
-            message: engel.message,
-          });
-        }
-      }
       let fanout;
       try {
         fanout = await resolveOcpClusterFanout(envKey, tenantKey, neededClusters);
@@ -2010,6 +2013,47 @@ function initOpsX(app) {
         email: String(req.session?.user?.mail || '').trim(),
         requester: String(req.session?.user?.username || '').trim(),
       };
+
+      // ── PRODUCTION ONAY KAPISI (kullanici 2026-10-06) ──────────────────────────
+      // Pod silme DE bir restart'tir (dugme metni "podlarimi silmek (restart etmek)
+      // istiyorum"), bu yuzden ayni kapiya girer. Kullanici karari: pod listesi istek
+      // anindaki haliyle DONDURULUR; onay geldiginde bulunamayan pod'lar atlanir.
+      //
+      // BU KARARIN RISKI ACIKCA SOYLENDI ve kullanici bilerek sectı: onay gecikirse
+      // pod'lar yenilenmis olabilir ve is "basarili" gorunup HICBIR SEY yapmamis olur.
+      // O yuzden talep yanitinda bu durum YAZILI uyari olarak doner - sessiz bir
+      // "tamamlandi" en kotu sonuc olurdu.
+      {
+        const kapi = await require('./prod-approval.cjs').opsxProductionKapisi({
+          platform: 'openshift',
+          serverId,
+          templateId,
+          extraVars,
+          limitValue: '',
+          etiketler: [
+            { alan: 'ortam', deger: envKey },
+            { alan: 'cluster grubu', deger: tenantKey },
+            { alan: 'cluster', deger: neededClusters },
+          ],
+          req,
+          islemAdi: 'Openshift pod silme (restart)',
+          ozet: {
+            ortam: envKey,
+            cluster: tenantKey,
+            podSayisi: cleanPodTargets.length,
+            podlar: cleanPodTargets.map((t) => `${t.cluster}/${t.namespace}/${t.pod}`).join(', '),
+          },
+        });
+        if (!kapi.proceed) {
+          if (kapi.body && kapi.body.pendingApproval) {
+            kapi.body.staleWarning =
+              'Pod adları istek anındaki haliyle donduruldu. Onay gecikirse bu podlar ' +
+              'yenilenmiş olabilir; iş o podları bulamazsa atlar. Onay sonrası iş çıktısını ' +
+              'kontrol edin.';
+          }
+          return kapi.status ? res.status(kapi.status).json(kapi.body) : res.json(kapi.body);
+        }
+      }
 
       try {
         const runner = require('../ansible/runner.cjs');

@@ -4921,6 +4921,13 @@ function initAnsibleRunner(app) {
     for (const [key, label] of [
       ['scalex_run', 'ScaleX'],
       ['scalex_discovery', 'ScaleX'],
+      // OpsX production onay akisi (2026-10-06): OpsX de artik bu tabloya yaziyor.
+      // Etiket olmazsa OpsX talepleri Smart Talepleri ekraninda "Self Service" diye
+      // gorunur ve bir prod restart'in onayi, yanlis modulun listesinde aranir.
+      ['opsx_legacy_operation', 'OpsX (Legacy)'],
+      ['opsx_openshift_operation', 'OpsX (Openshift)'],
+      ['opsx_openshift_pod_delete', 'OpsX (Openshift pod silme)'],
+      ['opsx_was_operation', 'OpsX (WAS)'],
     ]) {
       try {
         const row = await playbookRegistry.getByKey(key);
@@ -5605,7 +5612,31 @@ async function getTemplateLaunchSettingsOnServer(serverId, templateId) {
     name: typeof t.name === 'string' ? t.name : '',
     askVariablesOnLaunch: flag(t.ask_variables_on_launch),
     surveyEnabled: flag(t.survey_enabled),
+    // ask_limit_on_launch (2026-10-06): OpsX production onay akisi icin SART.
+    // launchJobOnServer limit'i KOSULSUZ gonderir, ama onay sonrasi replay yolu
+    // (performSsLaunch -> buildAwxLaunchPayload) yalniz `detail.ask_limit_on_launch`
+    // dogruysa gonderir. Template limit'i kabul etmiyorsa onaylanmis bir Legacy restart
+    // SECILEN HOST YERINE tum envanterde kosardi - "toplu islem sakin olmasin" kuralinin
+    // tam ihlali. Bu bayrak olculur ve tutmazsa istek REDDEDILIR (fail-closed).
+    askLimitOnLaunch: flag(t.ask_limit_on_launch),
   };
+}
+
+/**
+ * Zorunlu survey alanlarini template varsayilanindan tamamlanmis extraVars dondurur.
+ *
+ * NEDEN DISARI ACILDI (2026-10-06): OpsX production islemleri artik Smart onayindan
+ * geciyor ve onay sonrasi is `performSsLaunch` ile oynatiliyor - o yol
+ * `fillRequiredSurveyDefaults` CAGIRMAZ (Self Servis survey alanlarini kendisi cozer).
+ * OpsX'in dogrudan yolu (`launchJobOnServer`) ise cagirir. Ayrim, onaylanmis bir isin
+ * zorunlu bir survey degiskeni (or. tbmwans_pwd) EKSIK baslamasi demekti. Bu yuzden
+ * OpsX, bileti acmadan ONCE extraVars'i burada tamamlar ve TAMAMLANMIS halini donduruyor.
+ */
+async function prefillSurveyDefaultsOnServer(serverId, templateId, extraVars = {}) {
+  const server = getServerById(serverId);
+  if (!server) throw Object.assign(new Error('AWX sunucusu bulunamadı.'), { status: 404 });
+  const token = await getTokenForServer(server);
+  return fillRequiredSurveyDefaults(server, token, Number(templateId), extraVars);
 }
 
 /**
@@ -5697,6 +5728,9 @@ module.exports = {
   // ayarlari + survey okuyucusu; ikisi de hatayi FIRLATIR (cagiran "olculemedi" der).
   getTemplateLaunchSettingsOnServer,
   getSurveySpecOnServer,
+  // OpsX production onay akisi (2026-10-06): bilet acilmadan ONCE zorunlu survey
+  // varsayilanlarini doldurur; onay sonrasi replay yolu bunu yapmaz.
+  prefillSurveyDefaultsOnServer,
   // Saf yardimci - launch yanitindaki ignored_fields -> yalniz adlar (birim testi icin).
   _ignoredFieldNames: ignoredFieldNames,
   // Iptal token'i dogrulamasi (long-job-cancel-token.cjs kaydi; GET /api/v2/me/):

@@ -8,7 +8,7 @@
 // Güvenlik buna dayanmaz: son POST /api/opsx/run çağrısında sunucu uygulama-host
 // eşleşmesini ve cluster'ı envanterden YENİDEN doğrular.
 import React, { useEffect, useState, useRef } from "react";
-import { ArrowLeftIcon, CheckCircleIcon, ExclamationTriangleIcon, ArrowPathIcon, ArrowDownTrayIcon } from "@heroicons/react/24/outline";
+import { ArrowLeftIcon, CheckCircleIcon, ExclamationTriangleIcon, ArrowPathIcon, ArrowDownTrayIcon, ClockIcon } from "@heroicons/react/24/outline";
 import {
   opsxApi,
   type OpsxPlatform, type OpsxOperation, type OpsxOcpOperation, type OpsxOcpPair,
@@ -700,15 +700,43 @@ const OpsXWizardPage: React.FC = () => {
 
         {step === "done" && result && (
           <div className="flex flex-col items-center gap-4 py-6 text-center">
-            <CheckCircleIcon className="w-10 h-10 text-green-600" />
-            <div>
-              <p className="text-sm font-medium text-[var(--text-primary)]">İşlem başlatıldı.</p>
-              {result.jobId != null && (
-                <p className="mt-1 text-xs text-[var(--text-muted)]">
-                  AWX Job: <span className="font-mono">#{result.jobId}</span>
-                </p>
-              )}
-            </div>
+            {/* ONAY BEKLEYEN TALEP "BASLATILDI" DEGILDIR (2026-10-06): production
+                islemleri Smart onayindan geciyor ve o anda AWX'te is YOK. Yesil
+                "Islem baslatildi" yazmak, kullanicinin isin kostugunu sanmasi
+                demekti - sonra da "neden hicbir sey olmadi" sorusu. */}
+            {/* `result` bir BIRLESIM: dump sonuclari onay kapisina HIC girmez (salt tani),
+                o yuzden alan varligiyla daraltiliyor. */}
+            {'pendingApproval' in result && result.pendingApproval ? (
+              <>
+                <ClockIcon className="w-10 h-10 text-amber-500" />
+                <div>
+                  <p className="text-sm font-medium text-[var(--text-primary)]">
+                    Onay bekleniyor — iş henüz başlamadı.
+                  </p>
+                  <p className="mt-1 text-xs text-[var(--text-secondary)]">{result.message}</p>
+                  {'externalTicketId' in result && result.externalTicketId && (
+                    <p className="mt-1 text-xs text-[var(--text-muted)]">
+                      Smart kayıt no: <span className="font-mono">{result.externalTicketId}</span>
+                    </p>
+                  )}
+                  {'staleWarning' in result && result.staleWarning && (
+                    <p className="mt-2 text-xs text-amber-600">{result.staleWarning}</p>
+                  )}
+                </div>
+              </>
+            ) : (
+              <>
+                <CheckCircleIcon className="w-10 h-10 text-green-600" />
+                <div>
+                  <p className="text-sm font-medium text-[var(--text-primary)]">İşlem başlatıldı.</p>
+                  {result.jobId != null && (
+                    <p className="mt-1 text-xs text-[var(--text-muted)]">
+                      AWX Job: <span className="font-mono">#{result.jobId}</span>
+                    </p>
+                  )}
+                </div>
+              </>
+            )}
 
             {/* Ham AWX log terminali dump akışlarında GÖSTERİLMEZ — aşağıdaki "Dump
                 Sonuçları" zaten sonucu (indirme butonu/hata) net gösteriyor, ham stdout
