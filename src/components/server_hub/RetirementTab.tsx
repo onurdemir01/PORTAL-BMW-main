@@ -173,10 +173,10 @@ function CreateModal({ defaultDays, onClose, onCreated }: { defaultDays: number;
   };
 
   return (
-    <Modal open onClose={onClose} title="Yeni retirement kaydı" subtitle="Smart silme kaydı (364244_Delete_6) geldikten sonra açılır; PROD için altyapı OCO'su gerekir." icon={TrashIcon} size="xl"
+    <Modal open onClose={onClose} title="Yeni retirement kaydı" subtitle="Smart silme kaydı (364244_Delete_6) geldikten sonra açılır; PROD için altyapı OCO'su gerekir." icon={TrashIcon} size="wide"
       footer={<div className="flex items-center gap-2 w-full"><span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>{selected.length} hedef seçili{needsOco ? ' · PROD var: OCO zorunlu' : ''}</span><span className="ml-auto" /><button onClick={onClose} className={SM_BTN} style={smBtn()}>İptal</button><button disabled={busy || !disc} onClick={create} className={SM_BTN} style={smBtn(true)}>Kaydı aç</button></div>}>
       <div className="space-y-3">
-        <div className="grid gap-3 md:grid-cols-2">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           <div className="relative">
             <label className="text-[11px] font-semibold" style={{ color: 'var(--text-muted)' }}>Uygulama (taban ad; -D/-T/-Q ortamları otomatik)</label>
             <input value={q} onChange={(e) => { setQ(e.target.value); setApp(''); setDisc(null); }} placeholder="CRM" className={INPUT} style={inputStyle} autoFocus />
@@ -193,7 +193,7 @@ function CreateModal({ defaultDays, onClose, onCreated }: { defaultDays: number;
           <div><label className="text-[11px] font-semibold" style={{ color: 'var(--text-muted)' }}>…ya da kesin silme tarihi (isteğe bağlı)</label><input type="date" value={f.plannedDeleteAt} onChange={(e) => setF({ ...f, plannedDeleteAt: e.target.value })} className={INPUT} style={inputStyle} /></div>
           <label className="flex items-center gap-2 text-xs" style={{ color: 'var(--text-secondary)' }}><input type="checkbox" checked={f.dnsReuse} onChange={(e) => setF({ ...f, dnsReuse: e.target.checked })} /> DNS kullanılmaya devam edecek (DNS silme kaydı açılmaz)</label>
           <label className="flex items-center gap-2 text-xs" style={{ color: 'var(--text-secondary)' }}><input type="checkbox" checked={f.lbReuse} onChange={(e) => setF({ ...f, lbReuse: e.target.checked })} /> LB kullanılmaya devam edecek (member güncelleme kaydı)</label>
-          <div className="md:col-span-2"><label className="text-[11px] font-semibold" style={{ color: 'var(--text-muted)' }}>Not</label><textarea value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} rows={2} className={INPUT} style={inputStyle} /></div>
+          <div className="md:col-span-2 xl:col-span-3"><label className="text-[11px] font-semibold" style={{ color: 'var(--text-muted)' }}>Not</label><textarea value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} rows={2} className={INPUT} style={inputStyle} /></div>
         </div>
 
         {discLoading && <div className="text-xs" style={{ color: 'var(--text-muted)' }}>Envanter taranıyor…</div>}
@@ -204,7 +204,9 @@ function CreateModal({ defaultDays, onClose, onCreated }: { defaultDays: number;
               <button onClick={() => setSel(new Set(disc.targets.map(key)))} className={SM_BTN} style={smBtn()}>tümü</button>
               <button onClick={() => setSel(new Set())} className={SM_BTN} style={smBtn()}>hiçbiri</button>
             </div>
-            <div className="overflow-auto rounded-lg border" style={{ borderColor: 'var(--border-subtle)', maxHeight: '18rem' }}>
+            {/* Pencere genisledi: tablo da yukseldi. 18rem'de 4-5 satir gorunuyordu ve
+                hedef secimi kaydirmayla yapiliyordu. */}
+            <div className="overflow-auto rounded-lg border" style={{ borderColor: 'var(--border-subtle)', maxHeight: '32rem' }}>
               <table className="w-full text-xs border-collapse">
                 <thead className="sticky top-0" style={{ background: 'var(--bg-elevated)' }}><tr>{['', 'Sunucu', 'Site', 'Ortam', 'Uygulama', 'JBoss', 'Envanter', 'Server Hub', 'Web sunucusu / vhost', 'Paket'].map((h, i) => <th key={h + i} className="px-2 py-1.5 text-left text-[11px] font-semibold" style={{ color: 'var(--text-muted)' }}>{h}</th>)}</tr></thead>
                 <tbody>
@@ -219,7 +221,7 @@ function CreateModal({ defaultDays, onClose, onCreated }: { defaultDays: number;
                       <td className="px-2 py-1 text-[10px]" style={{ color: 'var(--text-muted)' }}>{t.inventoryStatus || '—'}</td>
                       <td className="px-2 py-1 text-[10px]"><HubHucresi hub={t.hub} okunamadi={hubYok} /></td>
                       <td className="px-2 py-1 text-[10px]">{t.web.length ? t.web.map((w) => <div key={w.host + w.serverName} title={t.webHow}>{w.host} · {w.serverName}{w.product ? ` (${w.product})` : ''}</div>) : <span style={{ color: 'var(--status-warning)' }} title={t.webHow}>eşlenemedi</span>}</td>
-                      <td className="px-2 py-1 font-mono text-[10px]"><div className="truncate max-w-[14rem]" title={t.appPath}>{t.appPath || '—'}</div></td>
+                      <td className="px-2 py-1 font-mono text-[10px]"><div className="truncate max-w-[28rem]" title={t.appPath}>{t.appPath || '—'}</div></td>
                     </tr>
                   ))}
                 </tbody>
@@ -287,7 +289,7 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
   const addNote = async () => { if (!note.trim()) return; const r = await retirementApi.note(id, note.trim()); if (r.ok) { setRec(r.record); setNote(''); } };
 
   return (
-    <Modal open onClose={onClose} title={rec ? `Retirement #${rec.id} — ${rec.app}` : `Retirement #${id}`} subtitle={rec ? `Smart ${rec.smartNo}${rec.ocoNo ? ` · OCO ${rec.ocoNo}` : ''} · açan ${rec.requestedBy} · ${fmtDateTime(rec.createdAt)}` : undefined} icon={TrashIcon} size="xl"
+    <Modal open onClose={onClose} title={rec ? `Retirement #${rec.id} — ${rec.app}` : `Retirement #${id}`} subtitle={rec ? `Smart ${rec.smartNo}${rec.ocoNo ? ` · OCO ${rec.ocoNo}` : ''} · açan ${rec.requestedBy} · ${fmtDateTime(rec.createdAt)}` : undefined} icon={TrashIcon} size="wide"
       footer={<div className="flex items-center gap-2 w-full">{rec && rec.status !== 'cancelled' && rec.status !== 'deleted' && <button onClick={cancel} className={SM_BTN} style={{ ...smBtn(), color: 'var(--status-danger)', borderColor: 'var(--status-danger)' }}><XMarkIcon className="w-3.5 h-3.5" /> Kaydı iptal et</button>}<span className="ml-auto" /><button onClick={onClose} className={SM_BTN} style={smBtn()}>Kapat</button></div>}>
       {err && <div className="text-sm rounded-xl px-3 py-2 border" style={{ color: 'var(--status-danger)', background: 'var(--status-danger-bg)', borderColor: 'var(--status-danger)' }}>{err}</div>}
       {rec && (
@@ -316,7 +318,7 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
                       <td className="px-2.5 py-1.5">{t.gen ? `JBoss ${t.gen}` : '?'}</td>
                       <td className="px-2.5 py-1.5 text-[10px]">{t.web.length ? t.web.map((w) => <div key={w.host + w.serverName}>{w.host} · {w.serverName}</div>) : <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
                       <td className="px-2.5 py-1.5"><Pill label={st.label} color={st.color} /></td>
-                      <td className="px-2.5 py-1.5 text-[10px]" style={{ color: 'var(--text-secondary)' }}><div className="max-w-[20rem] truncate" title={t.resultText || t.planText || ''}>{t.resultText || t.planText || (t.lastJobId ? `iş #${t.lastJobId}` : '—')}</div></td>
+                      <td className="px-2.5 py-1.5 text-[10px]" style={{ color: 'var(--text-secondary)' }}><div className="max-w-[40rem] truncate" title={t.resultText || t.planText || ''}>{t.resultText || t.planText || (t.lastJobId ? `iş #${t.lastJobId}` : '—')}</div></td>
                       <td className="px-2.5 py-1.5">
                         {canAct && (
                           <div className="flex gap-1">
