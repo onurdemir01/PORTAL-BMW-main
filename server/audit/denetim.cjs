@@ -2139,7 +2139,7 @@ function initDenetim(app) {
           message:
             "dbo.BMW_Application_Usage tablosu henüz yok — application_usage job'ı bir kez koşmalı.",
           rows: [],
-          summary: { apps: 0, active: 0, idle: 0, unmeasured: 0, routeless: 0, spa: 0, routesWithoutUsage: 0 },
+          summary: { routes: 0, unmatched: 0, active: 0, idle: 0, unmeasured: 0, routeless: 0, spa: 0, apps: 0 },
           latestScan: null,
         });
       }

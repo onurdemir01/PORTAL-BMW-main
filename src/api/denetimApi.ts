@@ -788,11 +788,24 @@ export interface WebAppRow {
  * ver, sadece Dynatrace" dedi. Gun kirilimi (req7/req30/req90, perDay) ve 4xx/5xx
  * oranlari KALDIRILDI - Dynatrace o kirilimi vermiyor.
  */
-export type AppTrafficStatus = 'active' | 'idle' | 'unmeasured';
+export type AppTrafficStatus = 'active' | 'idle' | 'unmeasured' | 'unmatched';
 export interface AppTrafficRow {
+  /** 'route' = envanterdeki bir route; 'app' = disariya acik route'u OLMAYAN uygulama. */
+  kind: 'route' | 'app';
   namespace: string;
-  application: string;
+  /** Eslesen uygulama; `null` = ESLESMEDI (route var, Dynatrace karsiligi bulunamadi). */
+  application: string | null;
+  /** Eslesen TUM uygulamalar (`apigw` -> apigw-1/2/3-prod); hicbiri gizlenmez. */
+  apps: string[];
+  appCount: number;
+  /** Route satirinda envanterden, route'suz uygulama satirinda Dynatrace'ten. */
   cluster: string;
+  clusterSrc: 'route' | 'dynatrace' | null;
+  /** Route adi ve adresi; `kind: 'app'` satirlarinda `null`. */
+  route: string | null;
+  address: string | null;
+  /** true = ayni sayi uygulamanin oteki route satirlarinda da gorunuyor. */
+  reqShared: boolean;
   env: string | null;
   spa: boolean;
   /** Olcumun alindigi tarama gunu (YYYY-MM-DD) */
@@ -808,8 +821,6 @@ export interface AppTrafficRow {
   servicesMeasured: number;
   servicesSkipped: number;
   note: string;
-  /** Envanterde eslesen route'lar; BOS OLABILIR (servisten servise cagrilan backend'ler). */
-  routes: { route: string; address: string; exact: boolean }[];
   status: AppTrafficStatus;
 }
 export interface AppTrafficFilters {
@@ -837,15 +848,18 @@ export interface AppTrafficResult {
   /** true ise liste tavanda kesildi - ekran bunu SOYLEMEK ZORUNDA. */
   truncated: boolean;
   summary: {
-    apps: number;
+    /** Envanterdeki route sayisi (satir birimi). */
+    routes: number;
+    /** Hicbir Dynatrace uygulamasina baglanamayan route - GIZLENMEZ, satir olarak durur. */
+    unmatched: number;
     active: number;
     idle: number;
     unmeasured: number;
-    /** Route'u OLMAYAN uygulamalar — eski route bazli ekranin kor noktasi. */
+    /** Route'u OLMAYAN uygulamalar — route bazli listenin kor noktasi. */
     routeless: number;
     spa: number;
-    /** Envanterde olup hicbir uygulamaya baglanamayan route sayisi. */
-    routesWithoutUsage: number;
+    /** Olculen uygulama sayisi (satir degil). */
+    apps: number;
   };
   latestScan: string | null;
 }

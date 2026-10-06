@@ -1,8 +1,13 @@
-// server/audit/__tests__/app-traffic.test.cjs — AT1..AT12 (2026-09-30).
+// server/audit/__tests__/app-traffic.test.cjs — AT1..AT16.
 //
-// Denetim > Route Trafigi ekrani 2026-09-30'da UYGULAMA bazliya cevrildi. Kullanici:
+// Denetim > Uygulama Trafigi. Olcum kaynagi Dynatrace (kullanici 2026-09-30:
 // "Prometheus'tan cektigimiz metrikler calismiyor. Orayi bos ver. Biz sadece application
-// usage playbook'unu kullanalim ve Dynatrace metriklerine bakalim."
+// usage playbook'unu kullanalim ve Dynatrace metriklerine bakalim.").
+//
+// BIRIM ROUTE (kullanici 2026-10-06). 30 Eylul'de birim UYGULAMAYA cevrilmisti cunku 1.020
+// prod route'un yalniz 29'u eslesiyordu; eslesmeyi bozan sey sonradan bulundu (Dynatrace
+// ReplicaSet entity'leri, bkz. application_usage.py replicaset_ele). Kaynak duzelince dogru
+// birim geri alindi. Eslesmeyen route GIZLENMEZ, 'eslesmedi' durumuyla satir olarak durur.
 //
 // Bu bekciler, eski RT/RTU serisinden HALA GECERLI olan tuzaklari tasir:
 //   - "olculemedi" ile "istek yok" birbirine karismasin (emeklilik karari buna bakiyor)
@@ -58,15 +63,19 @@ test('AT1: uc durum ayri - olculup istek alan / olculup almayan / OLCULEMEYEN', 
   assert.equal(by.canli.reqShown, 500);
   assert.equal(by.sessiz.reqShown, 0);
   assert.equal(by.karanlik.reqShown, null);
+  // BIRIM ROUTE (2026-10-06): envanter bos oldugu icin uc satirin ucu de route'u
+  // olmayan UYGULAMA satiri (`kind: 'app'`) - kor nokta korunuyor.
   assert.deepEqual(r.summary, {
-    apps: 3,
+    routes: 0,
+    unmatched: 0,
     active: 1,
     idle: 1,
     unmeasured: 1,
     routeless: 3,
     spa: 0,
-    routesWithoutUsage: 0,
+    apps: 3,
   });
+  for (const x of r.rows) assert.equal(x.kind, 'app');
 });
 
 test('AT2: ayni uygulamanin iki taramasi TOPLANMAZ - EN YENI gecerli', () => {
@@ -109,17 +118,20 @@ test('AT4: ayni route birden fazla uygulamaya baglanabilir - toplama YAPILMAZ', 
     ],
     [INV('mw-prod', 'apigw', ADR)],
   );
-  assert.equal(r.rows.length, 3, 'uygulamalar tek satirda toplanmis');
-  for (const x of r.rows) {
-    assert.deepEqual(
-      x.routes.map((y) => y.route),
-      ['apigw'],
-      'route kolonu bos kaldi',
-    );
-    assert.equal(x.routes[0].exact, false, 'onek eslesmesi tam eslesme gibi isaretlenmis');
-  }
-  assert.equal(r.summary.routeless, 0);
-  assert.equal(r.summary.routesWithoutUsage, 0);
+  // BIRIM ROUTE (2026-10-06): `apigw` TEK satirdir ve uc uygulamaya baglanir. Istek
+  // TOPLANIR - farkli uygulamalar farkli servisler, ayni istek iki kez sayilmaz. Uc
+  // uygulamanin hepsi gorunur (`apps`); biri secilip otekiler GIZLENMEZ.
+  assert.equal(r.rows.length, 1, 'route birimi degil');
+  const [satir] = r.rows;
+  assert.equal(satir.kind, 'route');
+  assert.equal(satir.route, 'apigw');
+  assert.equal(satir.appCount, 3);
+  assert.deepEqual(satir.apps.sort(), ['apigw-1-prod', 'apigw-2-prod', 'apigw-3-prod']);
+  assert.equal(satir.reqShown, 9632261646 + 9630161449 + 9630896886);
+  assert.equal(satir.status, 'active');
+  assert.equal(r.summary.routes, 1);
+  assert.equal(r.summary.unmatched, 0);
+  assert.equal(r.summary.routeless, 0, 'uc uygulama da route ile eslesti');
 });
 
 test('AT5: route’u OLMAYAN uygulama listede KALIR (eski ekranin kor noktasi)', () => {
@@ -128,12 +140,19 @@ test('AT5: route’u OLMAYAN uygulama listede KALIR (eski ekranin kor noktasi)',
   const r = buildAppTraffic([K('ns-prod', 'ic-backend', 42)], [INV('ns-prod', 'baska-app', '')]);
   const satir = r.rows.find((x) => x.application === 'ic-backend');
   assert.ok(satir, 'route’u olmayan uygulama listeden dusmus');
-  assert.deepEqual(satir.routes, []);
+  assert.equal(satir.kind, 'app');
+  assert.equal(satir.route, null);
   assert.equal(satir.status, 'active');
   assert.equal(r.summary.routeless, 1);
-  // Envanterde olup hicbir uygulamaya baglanamayan route AYRICA sayilir: "hepsini gordum"
-  // yanilgisi olusmasin.
-  assert.equal(r.summary.routesWithoutUsage, 1);
+  // ESLESMEYEN ROUTE GIZLENMEZ, 'eslesmedi' durumuyla SATIR OLARAK durur (kullanici
+  // 2026-10-06). Gizlemek, envanterdeki route'un olculdugu izlenimini verirdi.
+  const bos = r.rows.find((x) => x.route === 'baska-app');
+  assert.ok(bos, 'eslesmeyen route satiri gizlenmis');
+  assert.equal(bos.kind, 'route');
+  assert.equal(bos.status, 'unmatched');
+  assert.equal(bos.application, null);
+  assert.equal(bos.reqShown, null, 'eslesmeyen route 0 istek gibi gosterilmis');
+  assert.equal(r.summary.unmatched, 1);
 });
 
 test('AT6: ortam ve SPA isareti satira gecer', () => {
@@ -189,11 +208,13 @@ test('AT8: eslesme UYGULAMA x ENVANTER buyuklugunde calismaz (uretim: ekran 10 d
   }
   const c0 = process.cpuUsage();
   // TAVAN KALDIRILIR: olculen sey ESLESME maliyeti, kirpma degil.
-  const r = buildAppTraffic(olcumler, envanter, { limit: UYG });
+  const r = buildAppTraffic(olcumler, envanter, { limit: UYG + ROUTE });
   const cpu = process.cpuUsage(c0);
   const sn = (cpu.user + cpu.system) / 1e6;
-  assert.equal(r.rows.length, UYG);
-  assert.equal(r.totalMatched, UYG);
+  // BIRIM ROUTE: satir sayisi = route + route'u olmayan uygulama. Bu veride route
+  // adlari (r0..) uygulama adlariyla (svc0-1-prod..) hic eslesmiyor, yani hepsi ayri satir.
+  assert.equal(r.rows.length, UYG + ROUTE);
+  assert.equal(r.totalMatched, UYG + ROUTE);
   // ESIK MUTASYONLA AYARLANDI: indeks kaldirilinca ayni veri 3,1 sn suruyor, saglam
   // halde 0,2 sn. 5 sn'lik ilk esik bu mutasyonu YAKALAMIYORDU - 2 sn hem saglam kosuya
   // on kat pay birakir hem regresyonu gorur.
@@ -336,32 +357,42 @@ test('AT15: uc suzgecleri sorgu dizesinden OKUR (yoksa govde 20 MB kalir)', () =
   }
 });
 
-// ── AT16: CLUSTER route envanterinden doldurulur ───────────────────────────────────
+// ── AT16: CLUSTER route envanterinden gelir ───────────────────────────────────────
 //
 // Uretim (2026-10-06, kullanici: "cluster kolonu bombos geliyor"). dbo.BMW_Application_Usage
 // cluster'i BOS yaziyor: Dynatrace CLOUD_APPLICATION entity'sinde `clusterName` gelmiyor.
-// Ayni bilgi dbo.BMW_Openshift_Route_Inventory.cluster_name icinde DOLU; uygulamanin
-// route'lari hangi cluster'daysa cluster odur.
-test('AT16: Dynatrace cluster bos ise route envanterinden gelir; dolu ise EZILMEZ', () => {
+// Ayni bilgi dbo.BMW_Openshift_Route_Inventory.cluster_name icinde DOLU. Birim ROUTE olunca
+// alan TANIM GEREGI dolu gelir; route'u olmayan uygulama satirinda Dynatrace degeri kalir.
+test('AT16: route satirinda cluster envanterden, route olmayan uygulamada Dynatrace degeri', () => {
   const kullanim = [
-    { scan_date: '2026-10-06', window_days: 7, cluster: '', namespace: 'ns1', app: 'odeme-v1', req_total: 5, measured: 1, services_total: 1, services_measured: 1, services_skipped: 0 },
-    { scan_date: '2026-10-06', window_days: 7, cluster: 'gbocpprod9', namespace: 'ns1', app: 'kart-v1', req_total: 5, measured: 1, services_total: 1, services_measured: 1, services_skipped: 0 },
-    { scan_date: '2026-10-06', window_days: 7, cluster: '', namespace: 'ns2', app: 'routesuz-v1', req_total: 5, measured: 1, services_total: 1, services_measured: 1, services_skipped: 0 },
+    K('ns1', 'odeme-v1', 5, { cluster: '' }),
+    K('ns1', 'kart-v1', 5, { cluster: 'gbocpprod9' }),
+    K('ns2', 'routesuz-v1', 5, { cluster: '' }),
   ];
   const envanter = [
     { cluster_name: 'gbocpprod1', namespace_name: 'ns1', route_name: 'odeme-v1', route_address: 'odeme.bmw.de' },
-    // ayni uygulama iki cluster'da olabilir: ikisi de yazilir, biri secilip oteki GIZLENMEZ
+    // ayni uygulama iki cluster'da: IKI AYRI route satiri, ikisi de kendi cluster'ini tasir
     { cluster_name: 'gbocpprod2', namespace_name: 'ns1', route_name: 'odeme-v1', route_address: 'odeme2.bmw.de' },
     { cluster_name: 'gbocpprod3', namespace_name: 'ns1', route_name: 'kart-v1', route_address: 'kart.bmw.de' },
   ];
-  const { rows } = buildAppTraffic(kullanim, envanter, { limit: 100 });
-  const g = (a) => rows.find((r) => r.application === a);
-  assert.equal(g('odeme-v1').cluster, 'gbocpprod1, gbocpprod2', 'route envanterinden dolmuyor');
-  assert.equal(g('odeme-v1').clusterSrc, 'route');
-  // Dynatrace degeri varsa EZILMEZ
-  assert.equal(g('kart-v1').cluster, 'gbocpprod9');
-  assert.equal(g('kart-v1').clusterSrc, 'dynatrace');
-  // Ikisi de yoksa alan BOS kalir - uydurulmus bir cluster adi yazmak daha kotudur
-  assert.equal(g('routesuz-v1').cluster, '');
-  assert.equal(g('routesuz-v1').clusterSrc, null);
+  const { rows, summary } = buildAppTraffic(kullanim, envanter, { limit: 100 });
+  const odeme = rows.filter((r) => r.route === 'odeme-v1');
+  assert.equal(odeme.length, 2, 'ayni route iki clusterda iki satir olmali');
+  assert.deepEqual(odeme.map((r) => r.cluster).sort(), ['gbocpprod1', 'gbocpprod2']);
+  for (const r of odeme) assert.equal(r.clusterSrc, 'route');
+  // Ayni uygulamanin birden cok route'u var: AYNI sayi her satirda gorunur, isaretlenir.
+  for (const r of odeme) assert.equal(r.reqShared, true);
+  // Route satirinda cluster ENVANTERDEN gelir (Dynatrace gbocpprod9 dese bile route
+  // gbocpprod3'tedir; satirin birimi route).
+  const kart = rows.find((r) => r.route === 'kart-v1');
+  assert.equal(kart.cluster, 'gbocpprod3');
+  assert.equal(kart.reqShared, false, 'tek routelu uygulama paylasilmis gibi isaretlendi');
+  // Route'u olmayan uygulama: Dynatrace degeri ne ise o; yoksa BOS kalir - uydurulmus bir
+  // cluster adi yazmak "bilinmiyor"dan kotudur.
+  const routesuz = rows.find((r) => r.application === 'routesuz-v1');
+  assert.equal(routesuz.kind, 'app');
+  assert.equal(routesuz.cluster, '');
+  assert.equal(routesuz.clusterSrc, null);
+  assert.equal(summary.routes, 3);
+  assert.equal(summary.routeless, 1);
 });

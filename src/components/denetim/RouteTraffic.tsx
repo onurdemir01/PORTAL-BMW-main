@@ -60,6 +60,15 @@ const STATUS: Record<
     icon: QuestionMarkCircleIcon,
     hint: 'ölçüm denendi ama düştü — "istek almıyor" ANLAMINA GELMEZ',
   },
+  // ESLESMEDI, OLCULMEDI DEGIL (kullanici 2026-10-06): envanterde route var ama hicbir
+  // Dynatrace uygulamasina baglanamadi. Satir GIZLENMEZ; "istek yok" ile ayni kovaya
+  // konmasi, hic olculmemis bir route'u emekli aday gosterirdi.
+  unmatched: {
+    label: 'eşleşmedi',
+    tone: 'neutral',
+    icon: QuestionMarkCircleIcon,
+    hint: 'route envanterde var ama Dynatrace karşılığı bulunamadı — ölçüm YAPILMADI, "istek yok" DEĞİL',
+  },
 };
 
 /**
@@ -185,8 +194,9 @@ export default function RouteTraffic() {
           x.services,
           x.servicesMeasured,
           x.servicesSkipped,
-          x.routes.map((y) => y.route).join(' '),
-          x.routes.map((y) => y.address).join(' '),
+          x.route || '',
+          x.address || '',
+          x.apps.join(' '),
           x.scanDate,
           x.note,
         ]),
@@ -227,20 +237,34 @@ export default function RouteTraffic() {
       {/* KOR NOKTA GORUNUR OLSUN: envanterdeki her route bir uygulamaya baglanamaz
           (route "apigw", uygulamalar "apigw-1-prod"...). Sayiyi yazmazsak "hepsini gordum"
           yanilgisi olusur. */}
-      {s.routesWithoutUsage > 0 && (
+      {(s.unmatched > 0 || s.routeless > 0) && (
         <Note tone="info">
-          Dynatrace <b>{nf(s.apps)}</b> uygulama ölçtü. Envanterdeki{' '}
-          <b>{nf(s.routesWithoutUsage)}</b> route hiçbir uygulamaya bağlanamadı — adı eşleşmeyenler
-          ya da Dynatrace&apos;in hiç görmediği route&apos;lar. Bu ekran <b>uygulama</b> bazlıdır:
-          route&apos;u olmayan backend&apos;ler de listede vardır ({nf(s.routeless)} satır).
+          Bu ekran <b>route</b> bazlıdır: her satır bir route&apos;tur.{' '}
+          {s.unmatched > 0 && (
+            <>
+              <b>{nf(s.unmatched)}</b> route hiçbir uygulamaya bağlanamadı (&quot;eşleşmedi&quot;) —
+              adı eşleşmeyenler ya da Dynatrace&apos;in hiç görmediği route&apos;lar. Bunlar{' '}
+              <b>gizlenmez</b>, çünkü eşleşmemek ölçülüp istek almamakla aynı şey değildir.{' '}
+            </>
+          )}
+          {s.routeless > 0 && (
+            <>
+              Ayrıca <b>{nf(s.routeless)}</b> uygulamanın dışarıya açık route&apos;u yok; onlar da
+              listede durur (servisten servise çağrılan backend&apos;ler).{' '}
+            </>
+          )}
+          <b>İstek</b> kolonu Dynatrace&apos;in <b>uygulama</b> ölçümüdür: bir uygulamanın birden
+          çok route&apos;u varsa aynı sayı her satırda görünür (satırda &quot;paylaşık&quot; yazar).
         </Note>
       )}
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
         <StatTile
-          label="uygulama"
-          value={nf(s.apps)}
-          hint={`Dynatrace ölçümü · son tarama ${data.latestScan ? fmtDate(data.latestScan) : '—'}`}
+          label="route"
+          value={nf(s.routes)}
+          hint={`envanterdeki route sayısı · ${nf(s.apps)} uygulama ölçüldü · son tarama ${
+            data.latestScan ? fmtDate(data.latestScan) : '—'
+          }`}
         />
         <StatTile
           label="aktif"
@@ -264,9 +288,15 @@ export default function RouteTraffic() {
           hint={STATUS.unmeasured.hint}
         />
         <StatTile
+          label="eşleşmedi"
+          value={nf(s.unmatched)}
+          tone={s.unmatched ? 'warning' : 'neutral'}
+          hint="envanterde route var ama hiçbir Dynatrace uygulamasına bağlanamadı — ölçülmedi demek, istek yok demek DEĞİL"
+        />
+        <StatTile
           label="route'u yok"
           value={nf(s.routeless)}
-          hint="dışarıya açık adresi olmayan uygulamalar — eski route bazlı ekranın göremediği küme"
+          hint="dışarıya açık adresi olmayan uygulamalar — route bazlı listenin göremediği küme"
         />
       </div>
 
@@ -377,9 +407,25 @@ export default function RouteTraffic() {
                     <span className="font-mono text-[11px]">{r.namespace}</span>
                   </Td>
                   <Td>
-                    <div className="font-medium truncate max-w-[18rem]" title={r.application}>
-                      {r.application}
-                    </div>
+                    {r.application ? (
+                      <div
+                        className="font-medium truncate max-w-[16rem]"
+                        title={r.apps.length > 1 ? r.apps.join(', ') : r.application}
+                      >
+                        {r.application}
+                        {r.appCount > 1 && (
+                          <span style={{ color: 'var(--text-muted)' }}> +{r.appCount - 1}</span>
+                        )}
+                      </div>
+                    ) : (
+                      <span
+                        className="text-[10px]"
+                        style={{ color: 'var(--text-muted)' }}
+                        title="Bu route hiçbir Dynatrace uygulamasına bağlanamadı. ÖLÇÜLMEDİ demektir; istek almadığı anlamına GELMEZ."
+                      >
+                        eşleşmedi
+                      </span>
+                    )}
                   </Td>
                   <Td>
                     <span className="uppercase text-[10px] font-semibold">{r.env || '—'}</span>
@@ -411,26 +457,20 @@ export default function RouteTraffic() {
                     </span>
                   </Td>
                   <Td>
-                    {r.routes.length === 0 ? (
+                    {r.kind === 'app' ? (
                       <span
                         className="text-[10px]"
                         style={{ color: 'var(--text-muted)' }}
-                        title="Envanterde bu uygulamaya bağlanan route yok — servisten servise çağrılan bir backend olabilir."
+                        title="Bu uygulamanın dışarıya açık route'u yok — servisten servise çağrılan bir backend olabilir."
                       >
-                        yok
+                        route yok
                       </span>
                     ) : (
                       <div
                         className="text-[10px] font-mono truncate max-w-[18rem]"
-                        title={r.routes.map((x) => x.address || x.route).join('\n')}
+                        title={[r.route, r.address].filter(Boolean).join('\n')}
                       >
-                        {r.routes[0].address || r.routes[0].route}
-                        {r.routes.length > 1 && (
-                          <span style={{ color: 'var(--text-muted)' }}>
-                            {' '}
-                            +{r.routes.length - 1}
-                          </span>
-                        )}
+                        {r.address || r.route}
                       </div>
                     )}
                   </Td>
