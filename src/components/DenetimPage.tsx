@@ -49,7 +49,6 @@ import { DirCell, HacLegend } from '@/components/denetim/HacCell';
 import NginxSpaSummary from '@/components/denetim/NginxSpaSummary';
 import AppEnvs from '@/components/denetim/AppEnvs';
 import WebApp from '@/components/denetim/WebApp';
-import RouteTraffic from '@/components/denetim/RouteTraffic';
 import { kismiEtiket, kismiAciklama } from '@/components/denetim/yukPencere';
 import { toast } from '@/hooks/useToast';
 import { TableEmptyRow } from '@/components/common/EmptyState';
@@ -168,14 +167,13 @@ type DenetimTab =
   | 'ocp'
   | 'init'
   | 'deploy'
-  | 'routetraffic'
   | 'envanter'
   | 'degisim'
   | 'appenvs'
   | 'webapp';
 // nginx sekmeleri (nginx, nginxapi, nginxenv, nginxaudit) 2026-09-22'de Nginx Hub'a tasindi.
 const DENETIM_TABS: DenetimTab[] = [
-  'ocp', 'init', 'deploy', 'routetraffic', 'envanter', 'degisim', 'appenvs', 'webapp',
+  'ocp', 'init', 'deploy', 'envanter', 'degisim', 'appenvs', 'webapp',
 ];
 
 export default function DenetimPage() {
@@ -263,7 +261,6 @@ export default function DenetimPage() {
               { id: 'ocp', label: 'OpenShift', icon: Squares2X2Icon },
               { id: 'init', label: 'Init Script', icon: DocumentDuplicateIcon },
               { id: 'deploy', label: 'Deployment Scripts', icon: DocumentDuplicateIcon },
-              { id: 'routetraffic', label: 'Uygulama Trafiği', icon: SignalIcon },
               { id: 'envanter', label: 'Envanter', icon: ChartBarSquareIcon },
               { id: 'degisim', label: 'Envanter Değişim', icon: ClockIcon },
               { id: 'appenvs', label: 'JBoss/WAS', icon: RectangleGroupIcon },
@@ -296,7 +293,6 @@ export default function DenetimPage() {
       {activeTab === 'ocp' && <OcpCoverage />}
       {activeTab === 'init' && <ScriptsAudit kind="init" />}
       {activeTab === 'deploy' && <ScriptsAudit kind="deploy" />}
-      {activeTab === 'routetraffic' && <RouteTraffic />}
       {activeTab === 'envanter' && <EnvanterMetrics />}
       {activeTab === 'degisim' && <EnvanterDegisim />}
       {activeTab === 'appenvs' && <AppEnvs />}

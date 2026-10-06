@@ -788,89 +788,6 @@ export interface WebAppRow {
  * ver, sadece Dynatrace" dedi. Gun kirilimi (req7/req30/req90, perDay) ve 4xx/5xx
  * oranlari KALDIRILDI - Dynatrace o kirilimi vermiyor.
  */
-export type AppTrafficStatus = 'active' | 'idle' | 'unmeasured';
-/** SPA ve kapsam UC DEGERLI: "ölçülemedi" ile "yok" asla aynı değil. */
-export type AppTrafficSpa = 'yes' | 'no' | 'unknown';
-export type AppTrafficCoverage = 'full' | 'partial' | 'none' | 'unknown';
-export interface AppTrafficRow {
-  namespace: string;
-  /** Uygulamanın KENDİ adı (`BMW_Spa_Discovery.workload`) — pod adı DEĞİL.
-   *  `null` = route bir iş yüküne eşleşemedi; satır "eşleşmedi" olarak durur. */
-  app: string | null;
-  /** Deployment | DeploymentConfig | Rollout */
-  kind: string | null;
-  env: string | null;
-  /** nginx sinyali ÖLÇÜLDÜ mü: 'unknown' = eşleşemedi, "SPA değil" DEMEK DEĞİL. */
-  spa: AppTrafficSpa;
-  /** `null` = ÖLÇÜLEMEDİ. "0 istek" DEMEK DEĞİL. */
-  req: number | null;
-  reqStatus: AppTrafficStatus;
-  reqNote: string | null;
-  /** İstek ölçümünün alındığı tarama günü — SPA keşfinden FARKLI olabilir. */
-  reqScanDate: string | null;
-  routes: { route: string; host: string | null }[];
-  clusters: string[];
-  /** Ortamın TARANABİLEN cluster'ları üzerinden; erişilemeyen cluster paydaya girmez. */
-  coverage: AppTrafficCoverage;
-  coveragePresent: number;
-  coverageTotal: number;
-  /** O ortamda HİÇ bakılamayan cluster sayısı — "Kısmi" damgası vermez, ayrı görünür. */
-  coverageUnmeasured: number;
-  matched: boolean;
-  note: string | null;
-}
-export interface AppTrafficFilters {
-  q?: string;
-  env?: string;
-  spa?: string;
-  status?: string;
-  coverage?: string;
-  limit?: number;
-}
-/** İKİ KAYNAĞIN TAZELİĞİ GÖRÜNÜR: SPA keşfi ve istek ölçümü AYRI job'lar, ayrı
- *  tarihleri olabilir. İki ayrı tarihli veriyi sessizce harmanlamak, kullanıcının
- *  "ortalık karıştı" dediği şeyin ta kendisiydi. */
-export interface AppTrafficFreshness {
-  spaScan: string | null;
-  usageScan: string | null;
-  usageTableMissing: boolean;
-  clusters: { total: number; ok: number; partial: number; unreachable: number };
-  clusterDetail: {
-    cluster: string;
-    durum: string;
-    routes: number | null;
-    unmatched: number | null;
-    reason: string;
-  }[];
-}
-export interface AppTrafficResult {
-  ok: boolean;
-  message?: string;
-  tableMissing: boolean;
-  freshness: AppTrafficFreshness | null;
-  /** SÜZGEÇTEN GEÇİP TAVANA KADAR KIRPILAN satırlar — tüm küme DEĞİL. */
-  rows: AppTrafficRow[];
-  /** Ortam süzgeci seçenekleri; TÜM kümeden gelir. */
-  envs: string[];
-  total: number;
-  filtered: number;
-  limit: number;
-  truncated: boolean;
-  summary: {
-    apps: number;
-    /** İş yüküne eşleşemeyen route — GİZLENMEZ, satır olarak durur. */
-    unmatched: number;
-    spa: number;
-    spaUnknown: number;
-    active: number;
-    idle: number;
-    unmeasured: number;
-    coverageFull: number;
-    coveragePartial: number;
-    routes: number;
-  };
-}
-
 export interface WebAppResult {
   ok: boolean;
   source: string;
@@ -1282,16 +1199,6 @@ export const denetimApi = {
   // SUZGECLER SUNUCUYA GIDER: tum kume 20,9 MB ve 70.059 satir (2026-09-30'da olculdu,
   // ekran donuyordu). Sorgu dizesi onbellek anahtarina girer, her suzgec bilesimi
   // kendi onbellegini alir.
-  routeTraffic: (f: AppTrafficFilters = {}, fresh = false): Promise<AppTrafficResult> => {
-    const p = new URLSearchParams();
-    for (const [k, v] of Object.entries(f)) {
-      const sv = String(v ?? '').trim();
-      if (sv && sv !== 'all') p.set(k, sv);
-    }
-    if (fresh) p.set('fresh', '1');
-    const qs = p.toString();
-    return fetch(`${BASE}/route-traffic${qs ? `?${qs}` : ''}`).then(safeJson);
-  },
   webApp: (source: string, q?: string, onlyUnmatched?: boolean): Promise<WebAppResult> =>
     fetch(
       `${BASE}/web-app?source=${encodeURIComponent(source)}` +

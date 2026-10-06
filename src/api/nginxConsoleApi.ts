@@ -313,6 +313,15 @@ export interface NgSpaApp {
   application: string;
   namespace: string;
   env: string | null;
+  /** CLUSTER KAPSAMI (2026-10-06): route ortamın kaç cluster'ında var.
+   *  'tam' = taranabilen hepsinde · 'kismi' = bazısında · 'yok' = hiçbirinde ·
+   *  'olculemedi' = ortam tek bir cluster ortamına çözülemedi ya da katalog okunamadı.
+   *  Payda YALNIZ taranabilen cluster'ları sayar — erişilemeyen cluster paydaya girmez,
+   *  çünkü orada var mı yok mu bilinmiyor; `kapsamBakilamayan` ile ayrıca görünür. */
+  kapsamDurum: 'tam' | 'kismi' | 'yok' | 'olculemedi';
+  kapsamVar: number;
+  kapsamToplam: number;
+  kapsamBakilamayan: number;
   /** evet: en az bir route'un ardında nginx var · hayir · bilinmiyor: hiçbir route eşleşmedi */
   spa: 'evet' | 'hayir' | 'bilinmiyor';
   signals: string[];

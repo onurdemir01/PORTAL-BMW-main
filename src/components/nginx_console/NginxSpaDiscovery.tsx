@@ -1464,10 +1464,29 @@ function AdresHucre({ a }: { a: NgSpaApp }) {
  */
 function ClusterHucre({ a }: { a: NgSpaApp }) {
   const eski = a.clusters.filter((c) => a.staleClusters.includes(c)).length;
+  // KAPSAM ORANI (kullanici, 2026-10-06): "4 prod cluster'in 4'unde de varsa 4/4 Tam,
+  // 3'unde varsa 3/4 Kismi". Payda ortamin katalogdaki TARANABILEN cluster'lari;
+  // ERISILEMEYEN cluster paydaya GIRMEZ (uretimde 12 cluster login'de dusuyor) - onun
+  // yuzunden "Kismi" demek uydurma bir eksiklik raporu olurdu. Ayrica yazilir.
+  const kapsam =
+    a.kapsamDurum === 'tam'
+      ? { metin: `${a.kapsamVar}/${a.kapsamToplam} Tam`, ton: 'iyi' as const }
+      : a.kapsamDurum === 'kismi'
+        ? { metin: `${a.kapsamVar}/${a.kapsamToplam} Kısmi`, ton: 'uyari' as const }
+        : a.kapsamDurum === 'yok'
+          ? { metin: `0/${a.kapsamToplam}`, ton: 'kotu' as const }
+          : null;
   const ipucu = [
     `Cluster'lar (${a.clusters.length}):`,
     ...a.clusters.map((c) => (a.staleClusters.includes(c) ? `${c} · önceki koşudan` : c)),
     eski ? '"Önceki koşudan": cluster son koşusunda taranamadı; veri önceki bir koşudan.' : '',
+    kapsam
+      ? `Kapsam: ortamın ${a.kapsamToplam} taranabilen cluster'ından ${a.kapsamVar}'inde var.`
+      : 'Kapsam oranı ÖLÇÜLEMEDİ: ortam tek bir cluster ortamına çözülemedi ya da katalog okunamadı.',
+    a.kapsamBakilamayan
+      ? `${a.kapsamBakilamayan} cluster'a hiç bakılamadı (login/DNS/yetki) — paydaya GİRMEZ, ` +
+        'orada var mı yok mu bilinmiyor.'
+      : '',
   ]
     .filter(Boolean)
     .join('\n');
@@ -1475,6 +1494,10 @@ function ClusterHucre({ a }: { a: NgSpaApp }) {
     <Hucre
       ipucu={ipucu}
       rozetler={[
+        kapsam && <Rozet ton={kapsam.ton}>{kapsam.metin}</Rozet>,
+        a.kapsamBakilamayan > 0 && (
+          <Rozet ton="bilgi">{a.kapsamBakilamayan} cluster ölçülemedi</Rozet>
+        ),
         eski > 0 && (
           <Rozet ton="uyari">
             {eski === a.clusters.length

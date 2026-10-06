@@ -581,7 +581,7 @@ async function spaKesfiHesapla() {
   const trfIn = inList('t', [...RP.all]);
   const yoksaNull = (p) => p.then((r) => r.recordset || []).catch(() => null);
 
-  const [disc, inv, usage, runs, cfg, dir, ups, trf] = await Promise.all([
+  const [disc, inv, usage, runs, cfg, dir, ups, trf, katalog] = await Promise.all([
     // CLUSTER BASINA EN YENI TARAMA. Eskiden tek bir MAX(scan_date) aliniyordu: bugun
     // login'i dusen bir cluster, dunku verisiyle birlikte ekrandan SILINIYORDU ve
     // "SPA'si yok" gibi gorunuyordu. Simdi her cluster kendi son verisini, TARIHIYLE
@@ -702,6 +702,13 @@ async function spaKesfiHesapla() {
           ),
         )
       : Promise.resolve(null),
+    // CLUSTER KATALOGU (2026-10-06): uygulama basina "4/4 Tam / 3/4 Kismi" oraninin
+    // PAYDASI. Elle cluster listesi YOK - ortamin cluster'lari katalogdan okunur.
+    // Okunamazsa null doner ve oran "olculemedi" olur; uydurma bir payda ile oran
+    // yazmak, var olmayan bir eksiklik raporlamak olurdu.
+    query(`SELECT env, tenant, cluster_name FROM dbo.ocp_cluster_index WHERE is_active = 1`)
+      .then((r) => r.recordset || [])
+      .catch(() => null),
   ]);
   // TABLO DURUMU: 'var' | 'yok' (OBJECT_ID NULL) | 'okunamadi' (sema ya da sorgu dustu).
   const durum = (varMi, rows) =>
@@ -720,7 +727,7 @@ async function spaKesfiHesapla() {
     trf,
   };
   const { buildSpaDiscovery } = require('./spa-discovery.cjs');
-  const sonuc = buildSpaDiscovery(disc, inv, usage, runs, rpKaynak);
+  const sonuc = buildSpaDiscovery(disc, inv, usage, runs, rpKaynak, katalog);
   // HESAP KIMLIGI: satir (ana uc) ile ayrinti paneli (/spa-discovery/rp) AYNI hesaptan mi?
   // Istemci ikisini karsilastirir; farkliysa panel bunu yazar (sessiz celiski yok;
   // NginxSpaDiscovery.tsx RpAyrinti, vitest bekcisi).

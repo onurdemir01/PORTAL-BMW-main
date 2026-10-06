@@ -162,8 +162,8 @@ const topla = (r) => {
     for (const d of m.values()) if (d.trafik && d.trafik.neden) GORULEN.trafikNeden.add(d.trafik.neden);
   return r;
 };
-const run = (disc, kaynak, { inv = [], use = [], runs = [] } = {}) =>
-  topla(buildSpaDiscovery(disc, inv, use, runs, kaynak));
+const run = (disc, kaynak, { inv = [], use = [], runs = [], katalog } = {}) =>
+  topla(buildSpaDiscovery(disc, inv, use, runs, kaynak, katalog));
 const by = (r) => Object.fromEntries(r.apps.map((a) => [a.application, a]));
 /** Ayni adli uygulamalar farkli namespace'lerde: 'ns/app' anahtari. */
 const byNs = (r) => Object.fromEntries(r.apps.map((a) => [`${a.namespace}/${a.application}`, a]));
@@ -1977,7 +1977,8 @@ test('SR22 uc nokta: okunamadi null olur, en yeni tarama DB de secilir, onbellek
       `${t}: en yeni tarama veritabaninda secilmiyor / host suzgeci yok`,
     );
   }
-  assert.ok(govde.includes('buildSpaDiscovery(disc, inv, usage, runs, rpKaynak)'));
+  // 2026-10-06: altinci arguman cluster katalogu (kapsam oraninin paydasi).
+  assert.ok(govde.includes('buildSpaDiscovery(disc, inv, usage, runs, rpKaynak, katalog)'));
   assert.match(
     src,
     /router\.get\(\s*'\/spa-discovery',\s*spaCache\.middleware,\s*spaKesfiUcu\s*\);/,
@@ -2173,4 +2174,93 @@ test('SR35 kod sozlugu: uretilen her kod listede, listedeki her kod uretiliyor v
     const t = tip(bas);
     for (const k of KODLAR[alan]) assert.ok(t.includes(`'${k}'`), `${bas} '${k}' kodunu icermiyor`);
   }
+});
+
+// ── KAPSAM ORANI (kullanici, 2026-10-06) ─────────────────────────────────────────────
+// "ARK'in prod/test/qa/dev cluster'lari zaten belli. Ilgili route hangi cluster'larda var
+//  ise Kismi veya Tam olarak gosterilmeli. Ornegin 4 prod cluster'in 4'unde de varsa
+//  4/4 Tam, 3'unde varsa 3/4 Kismi diye yazmali."
+//
+// EN PAHALI YANLIS: erisilemeyen cluster'i eksiklik saymak. Uretimde 12 cluster `login`
+// ile dusuyor; o cluster yuzunden "4/5 Kismi" demek UYDURMA bir eksiklik raporu olur -
+// uygulama orada olabilir de olmayabilir de, BILMIYORUZ.
+const KAT = (...ciftler) => ciftler.map(([c, e]) => ({ cluster_name: c, env: e, tenant: 'ark' }));
+const RUN = (...ciftler) => ciftler.map(([c, d]) => ({ cluster: c, durum: d }));
+const P4 = KAT(['p1', 'prod'], ['p2', 'prod'], ['p3', 'prod'], ['p4', 'prod']);
+const AC = (app, ns, cl) => A(app, ns, { cluster: cl });
+
+test('KP1 4/4 Tam ve 3/4 Kismi', () => {
+  const tam = by(
+    run(
+      ['p1', 'p2', 'p3', 'p4'].map((c) => AC('x-app-v0', 'x-prod', c)),
+      K(),
+      { katalog: P4, runs: RUN(['p1', 'ok'], ['p2', 'kismi'], ['p3', 'ok'], ['p4', 'kismi']) },
+    ),
+  )['x-app-v0'];
+  assert.equal(tam.kapsamDurum, 'tam');
+  assert.equal(tam.kapsamVar, 4);
+  assert.equal(tam.kapsamToplam, 4);
+
+  const kismi = by(
+    run(['p1', 'p2', 'p3'].map((c) => AC('x-app-v0', 'x-prod', c)), K(), {
+      katalog: P4,
+      runs: RUN(['p1', 'ok'], ['p2', 'ok'], ['p3', 'ok'], ['p4', 'ok']),
+    }),
+  )['x-app-v0'];
+  assert.equal(kismi.kapsamDurum, 'kismi');
+  assert.equal(kismi.kapsamVar, 3);
+  assert.equal(kismi.kapsamToplam, 4);
+});
+
+test('KP2 ERISILEMEYEN cluster PAYDAYA GIRMEZ (uydurma eksiklik raporu yok)', () => {
+  const r = by(
+    run(['p1', 'p2', 'p3'].map((c) => AC('x-app-v0', 'x-prod', c)), K(), {
+      katalog: P4,
+      runs: RUN(['p1', 'ok'], ['p2', 'ok'], ['p3', 'ok'], ['p4', 'login']),
+    }),
+  )['x-app-v0'];
+  assert.equal(r.kapsamToplam, 3, 'erisilemeyen cluster paydaya girmis');
+  assert.equal(r.kapsamDurum, 'tam', 'erisilemeyen cluster yuzunden Kismi denmis');
+  assert.equal(r.kapsamBakilamayan, 1, 'bakilamayan cluster sayisi gorunmuyor');
+});
+
+test('KP3 "kismi" TARANDI sayilir (route varligi guvenilir)', () => {
+  // `kismi` = route'lar okundu, bazi namespace'lerin SERVISLERI okunamadi. O cluster'i
+  // paydadan dusurmek, olculmus bir bilgiyi atmak olurdu.
+  const r = by(
+    run([AC('x-app-v0', 'x-prod', 'p1'), AC('x-app-v0', 'x-prod', 'p2')], K(), {
+      katalog: KAT(['p1', 'prod'], ['p2', 'prod']),
+      runs: RUN(['p1', 'ok'], ['p2', 'kismi']),
+    }),
+  )['x-app-v0'];
+  assert.equal(r.kapsamToplam, 2);
+  assert.equal(r.kapsamDurum, 'tam');
+});
+
+test('KP4 KATALOG OKUNAMAZSA oran IDDIA EDILMEZ', () => {
+  // Uydurma bir payda ile oran yazmak, var olmayan bir eksiklik raporlamak olurdu.
+  const r = by(run([AC('x-app-v0', 'x-prod', 'p1')], K(), { katalog: null, runs: RUN(['p1', 'ok']) }))[
+    'x-app-v0'
+  ];
+  assert.equal(r.kapsamDurum, 'olculemedi');
+  assert.equal(r.kapsamToplam, 0);
+  // Cluster katalogda YOKSA da oran iddia edilmez
+  const y = by(
+    run([AC('x-app-v0', 'x-prod', 'bilinmeyen')], K(), { katalog: P4, runs: RUN(['p1', 'ok']) }),
+  )['x-app-v0'];
+  assert.equal(y.kapsamDurum, 'olculemedi');
+});
+
+test('KP5 UYGULAMA IKI ORTAMDA: oran IDDIA EDILMEZ', () => {
+  // Ayni adli uygulama prod VE test'te olabilir. Birinin ortamini secip ona gore oran
+  // yazmak uydurma olurdu: "2/4 Kismi" dersek prod'da eksik sanilir, oysa satir iki
+  // ortamin toplamidir. Mutasyon M4 bu korlugu gosterdi (ortamlar.length === 1 -> >= 1).
+  const r = by(
+    run([AC('x-app-v0', 'x-prod', 'p1'), AC('x-app-v0', 'x-prod', 't1')], K(), {
+      katalog: KAT(['p1', 'prod'], ['p2', 'prod'], ['t1', 'test'], ['t2', 'test']),
+      runs: RUN(['p1', 'ok'], ['p2', 'ok'], ['t1', 'ok'], ['t2', 'ok']),
+    }),
+  )['x-app-v0'];
+  assert.equal(r.kapsamDurum, 'olculemedi', 'iki ortamli uygulamada oran iddia edilmis');
+  assert.equal(r.kapsamToplam, 0);
 });

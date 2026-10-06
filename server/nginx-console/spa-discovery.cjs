@@ -227,7 +227,44 @@ function kapsam(runs, veriGunu) {
  * @param {object[]} [runs]          dbo.BMW_Spa_Discovery_Run (cluster basina EN YENI satir)
  * @param {object} [rpKaynak]        spa-rp.cjs kaynaklari; verilmezse RP 'olculemedi' der
  */
-function buildSpaDiscovery(discovery, inventory, usage, runs, rpKaynak) {
+// ── UYGULAMA BASINA CLUSTER KAPSAMI (kullanici, 2026-10-06) ──────────────────────────
+// "ARK'in prod/test/qa/dev cluster'lari zaten belli. Ilgili route hangi cluster'larda var
+//  ise Kismi veya Tam olarak gosterilmeli. Ornegin eger 4 prod cluster'in 4'unde de varsa
+//  4/4 Tam, 3'unde varsa 3/4 Kismi diye yazmali."
+//
+// PAYDA KATALOGDAN (ocp_cluster_index), elle cluster listesi YOK. Ve payda yalniz
+// TARANABILEN cluster'lari sayar: uretimde 12 cluster `login` ile dusuyor (DNS cozulmuyor /
+// 401 / timeout). Erisilemeyen bir cluster yuzunden "4/5 Kismi" demek UYDURMA bir eksiklik
+// raporu olurdu - uygulama orada olabilir de olmayabilir de, BILMIYORUZ. Onlar paydaya
+// girmez, ayri sayilir.
+//
+// `kismi` durumu TARANDI sayilir: route'lar cluster kapsaminda okundu ve route VARLIGI
+// guvenilir; eksik olan servis -> is yuku eslemesidir (yetki). O cluster'i paydadan
+// dusurmek, olculmus bir bilgiyi atmak olurdu.
+function kapsamOrani(katalog, runs) {
+  if (!Array.isArray(katalog)) return null; // OKUNAMADI: oran iddia edilmez
+  const byCluster = new Map();
+  const byEnv = new Map();
+  for (const r of katalog) {
+    const c = L(r.cluster_name);
+    const env = T(r.env);
+    if (!c || !env) continue;
+    byCluster.set(c, env);
+    if (!byEnv.has(L(env))) byEnv.set(L(env), new Set());
+    byEnv.get(L(env)).add(c);
+  }
+  const olculen = new Set();
+  const bakilamayan = new Set();
+  for (const r of runs || []) {
+    const c = L(r.cluster);
+    if (!c) continue;
+    if (['ok', 'kismi'].includes(L(r.durum))) olculen.add(c);
+    else bakilamayan.add(c);
+  }
+  return { byCluster, byEnv, olculen, bakilamayan };
+}
+
+function buildSpaDiscovery(discovery, inventory, usage, runs, rpKaynak, katalog) {
   const envanterOkunamadi = !Array.isArray(inventory);
   const dynatraceOkunamadi = !Array.isArray(usage);
   // ENVANTER INDEKSI: (namespace, route) ve (namespace, adres) ayri ayri aranir - kesif
@@ -352,7 +389,7 @@ function buildSpaDiscovery(discovery, inventory, usage, runs, rpKaynak) {
       veriGunu.set(r.cluster, r.scanDate);
   }
   const coverage = kapsam(runs, veriGunu);
-  const apps = uygulamalar(rows, coverage, { dynatraceOkunamadi });
+  const apps = uygulamalar(rows, coverage, { dynatraceOkunamadi, oran: kapsamOrani(katalog, runs) });
   // RP KOLONLARI: indeks platform haric TUM route satirlarindan kurulur (yalniz SPA'lardan
   // degil) - proxy hedefi SPA olmayan bir route'a da gidebilir, dogru uygulamaya baglanmali.
   const rp = rpUygula({
@@ -482,6 +519,7 @@ function agKarari(term) {
  */
 function uygulamalar(rows, coverage, opt = {}) {
   const eski = new Map((coverage?.clusters || []).map((c) => [c.cluster, c]));
+  const oran = opt.oran || null;
   const m = new Map();
   for (const r of rows) {
     const k = `${L(r.namespace)}|${L(r.application)}`;
@@ -540,6 +578,23 @@ function uygulamalar(rows, coverage, opt = {}) {
     const spa =
       a.spaRoutes > 0 ? 'evet' : a.unmatchedRoutes === a.routeCount ? 'bilinmiyor' : 'hayir';
     const clusters = [...a.clusters].sort();
+    // CLUSTER KAPSAMI: payda ortamin katalogdaki TARANABILEN cluster'lari (bkz. kapsamOrani).
+    // Ortam tek bir cluster ortamina cozulemiyorsa oran iddia EDILMEZ.
+    let kapsamDurum = 'olculemedi';
+    let kapsamVar = 0;
+    let kapsamToplam = 0;
+    let kapsamBakilamayan = 0;
+    if (oran) {
+      const ortamlar = [...new Set(clusters.map((c) => oran.byCluster.get(L(c))).filter(Boolean))];
+      if (ortamlar.length === 1) {
+        const envC = [...(oran.byEnv.get(L(ortamlar[0])) || [])];
+        kapsamToplam = envC.filter((c) => oran.olculen.has(c)).length;
+        kapsamVar = clusters.filter((c) => envC.includes(L(c)) && oran.olculen.has(L(c))).length;
+        kapsamBakilamayan = envC.filter((c) => oran.bakilamayan.has(c)).length;
+        if (kapsamToplam > 0)
+          kapsamDurum = kapsamVar >= kapsamToplam ? 'tam' : kapsamVar > 0 ? 'kismi' : 'yok';
+      }
+    }
     const { ag, agSay } = agKarari(a.term);
     // ENVANTER CAPRAZ KONTROLU (ag'i EZMEZ): okunamadi > celisik > uyumlu > envanterde yok.
     // Envanterde bulunup termination_type kolonu gelmeyen route karsilastirilamaz.
@@ -569,6 +624,12 @@ function uygulamalar(rows, coverage, opt = {}) {
       application: a.application,
       namespace: a.namespace,
       env: a.env,
+      // "4/4 Tam" / "3/4 Kismi" / "olculemedi". Erisilemeyen cluster paydaya GIRMEZ,
+      // `kapsamBakilamayan` ile AYRICA gorunur.
+      kapsamDurum,
+      kapsamVar,
+      kapsamToplam,
+      kapsamBakilamayan,
       spa,
       // KANIT: nginx-start.sh (guclu) / image (zayif). Yalniz 'ad' eslesmesiyle bulunduysa
       // (servis okunamadi, ayni adli is yukune dusuldu) kanit zayiftir ve oyle gosterilir.

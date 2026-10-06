@@ -529,7 +529,15 @@ test('GS12 uc nokta CLUSTER BASINA en yeni taramayi okur; match_by yoksa da cali
   assert.match(src, /dbo\.BMW_Spa_Discovery_Run/);
   // 2026-10-01: besinci arguman RP kaynaklari (Nginx_Config_Audit/Intranet/Traffic/Upstreams);
   // durum tablosu (runs) yine dorduncu arguman olarak gecmeli.
-  assert.match(src, /buildSpaDiscovery\(disc, inv, usage, runs, rpKaynak\)/);
+  // 2026-10-06: ALTINCI arguman cluster katalogu (ocp_cluster_index) - uygulama basina
+  // "4/4 Tam / 3/4 Kismi" oraninin PAYDASI. Elle cluster listesi olmasin diye katalogdan
+  // okunur; gecilmezse oran "olculemedi" olur.
+  assert.match(src, /buildSpaDiscovery\(disc, inv, usage, runs, rpKaynak, katalog\)/);
+  assert.match(
+    src,
+    /FROM dbo\.ocp_cluster_index WHERE is_active = 1/,
+    'kapsam paydasi katalogdan okunmuyor - elle cluster listesi uydurma olur',
+  );
 });
 
 test('GS13 ekran bos gorunumun SEBEBINI soyler ve kapsami gosterir', () => {
