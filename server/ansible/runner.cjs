@@ -3208,10 +3208,21 @@ function initAnsibleRunner(app) {
             requester: username ? { username } : null,
           });
           if (ocoRecordId) {
+            // Kayit guncellenemezse is YINE zamanlandi (AWX schedule yukarida kuruldu) -
+            // bu yuzden hata launch'i DUSURMEZ. Ama sessiz de kalamaz: bu satir bozukken
+            // kayit PENDING_APPROVAL'da takili kalip ekranda "onay bekleniyor" gosteriyordu.
+            // `false` donusu "kayit artik PENDING_APPROVAL degil" demektir (iptal edilmis
+            // olabilir); istisna ise gercek bir DB hatasidir. Ikisi AYRI loglanir.
             try {
-              await require('../oco/store.cjs').markAwxScheduledAfterApproval(ocoRecordId, {
-                awxScheduleId: sched.scheduleId, runAt: plan.runAt,
-              });
+              const yazildi = await require('../oco/store.cjs').markAwxScheduledAfterApproval(
+                ocoRecordId, { awxScheduleId: sched.scheduleId, runAt: plan.runAt },
+              );
+              if (!yazildi) {
+                console.warn(
+                  `[OCO] #${ocoRecordId} AWX_SCHEDULED yazilamadi: kayit PENDING_APPROVAL ` +
+                  `degil (iptal edilmis olabilir). AWX schedule ${sched.scheduleId} KURULDU.`,
+                );
+              }
             } catch (e) { console.warn('[OCO] onay sonrasi zamanlama kaydi guncellenemedi:', e.message); }
           }
           console.log(`[Smart] ticket #${ticket.id} onaylandi -> is ${plan.text} kesinti penceresine zamanlandi (AWX schedule ${sched.scheduleId}).`);

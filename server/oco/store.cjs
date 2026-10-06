@@ -266,14 +266,29 @@ async function markPendingApproval(id, { smartTicketId, externalTicketId }) {
 
 // Smart bileti onaylanip AWX job'i gercekten tetiklendiginde cagrilir (bkz.
 // runner.cjs smart poller callback'i). PENDING_APPROVAL -> LAUNCHED.
-/** Smart onayi ALINDI ve is kesinti penceresine AWX'te zamanlandi (2026-09-22). */
+/** Smart onayi ALINDI ve is kesinti penceresine AWX'te zamanlandi (2026-09-22).
+ *
+ * TABLO ADI: `oco_scheduled_launches`. Bu fonksiyon 2026-10-06'ya kadar var olmayan bir
+ * `oco_scheduled_jobs` tablosuna yaziyordu; sorgu "Invalid object name" ile patliyor,
+ * cagiran taraf (runner.cjs smart poller) hatayi yalnizca `console.warn` ile yutuyordu.
+ * Sonuc: AWX zamanlamasi KURULUYOR ve is zamaninda kosuyor, ama kayit PENDING_APPROVAL'da
+ * kalici olarak takiliyordu - "Zamanlanmis Isler" ekrani onay gelmis ve is zamanlanmis
+ * olmasina ragmen "onay bekleniyor" gosteriyordu. O yolda kaydi guncelleyen BASKA bir
+ * mekanizma yok: smart/poller.cjs'in `outcome.scheduled` dali `syncOcoRecord` CAGIRMAZ.
+ *
+ * Donus `false` ise kayit PENDING_APPROVAL'da DEGILDI (arada iptal edilmis olabilir) -
+ * kardes fonksiyonlarla (markApprovedLaunched) ayni desen. Durum sarti olmadan kosulsuz
+ * yazmak, iptal edilmis bir kaydi AWX_SCHEDULED'a geri dondururdu.
+ */
 async function markAwxScheduledAfterApproval(id, { awxScheduleId, runAt }) {
-  await db.query(
-    `UPDATE oco_scheduled_jobs
+  const { rows } = await db.query(
+    `UPDATE oco_scheduled_launches
         SET status = 'AWX_SCHEDULED', awx_schedule_id = $2, run_at = $3, updated_at = GETUTCDATE()
-      WHERE id = $1`,
+      OUTPUT INSERTED.id
+      WHERE id = $1 AND status = 'PENDING_APPROVAL'`,
     [id, awxScheduleId || null, runAt instanceof Date ? runAt : new Date(runAt)],
   );
+  return rows.length > 0;
 }
 
 async function markApprovedLaunched(id, awxJobId) {

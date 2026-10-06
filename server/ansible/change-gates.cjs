@@ -394,7 +394,30 @@ async function evaluateOcoGate({
   audit.auditPortal(req, 'selfservice_oco_ok', {
     detail: JSON.stringify({ templateId, ocoNumber, window: `${w.windowStartText} - ${w.windowEndText}` }),
   });
-  return { outcome: 'proceed' };
+  // PENCERE ACIK OLSA DA SINIRI TASI (2026-10-06). `ocoWindowStartIso/EndIso` eskiden
+  // YALNIZCA 'before' dalinda pakete giriyordu. Oysa Smart biletinin sure sinirini
+  // belirleyen alan tam bu: smart/poller.cjs `ticket.pendingLaunch.ocoWindowEndIso`
+  // okuyor, bulamazsa genel varsayilana (SINIRSIZ) dusuyor.
+  //
+  // Somut sonucu: OCO penceresi 14:00-18:00, talep 16:00'da giriliyor (pencere ACIK, bu
+  // dal), onay gece 03:00'te geliyor -> is CALISIYOR. Pencere bes saat once kapanmisti.
+  // Pencere ICINDEYKEN girilen talepte sinir DAHA DA yakindir; sinirsiz olmasi en ters
+  // durum. `extraVars.oco_window_end` yukarida zaten doluyor ama poller `extraVars`a
+  // DEGIL `pendingLaunch`a bakiyor.
+  //
+  // IKISI BIRDEN yazilir (yalniz End degil): boylece onay aninda runner.cjs'in
+  // `nextRunAt` dali da calisir ve IKINCI bir kapi olusur - pencere acikken 'now' doner
+  // (davranis aynen bugunku gibi hemen tetikleme), kapandiysa 'none' doner ve bilet
+  // "yeni bir OCO kaydi ile tekrar deneyin" hatasiyla kapanir. Yalnizca End yazmak
+  // ayni korumayi tek bir zaman asimi hesabina baglamak olurdu.
+  return {
+    outcome: 'proceed',
+    pendingLaunchExtras: {
+      ocoNumber,
+      ocoWindowStartIso: w.windowStart instanceof Date ? w.windowStart.toISOString() : null,
+      ocoWindowEndIso: w.windowEnd instanceof Date ? w.windowEnd.toISOString() : null,
+    },
+  };
 }
 
 // ── BIRLESIK KAPI ─────────────────────────────────────────────────────────────
@@ -417,6 +440,9 @@ async function runChangeGates(ctx) {
     ownerGroups = null,
   } = ctx;
 
+  // OCO kapisindan Smart biletine tasinacak alanlar (pencere acikken dolar).
+  let smartPendingExtras = {};
+
   if (isOcoGateApplicable(overrides, extraVars, gateVars)) {
     const ocoDecision = await evaluateOcoGate({
       server, templateId, username, req,
@@ -425,6 +451,10 @@ async function runChangeGates(ctx) {
       preferPortalScheduler, ownerGroups, buildSmartMetadata,
     });
     if (ocoDecision.outcome !== 'proceed') return ocoDecision;
+    // Kapi 'proceed' derken de bilgi tasiyabilir: pencere ACIK dalinda kesinti penceresi
+    // Smart biletine gomulur, boylece onay pencere kapandiktan sonra gelirse is CALISMAZ
+    // (bkz. evaluateOcoGate'in 'inside' donusu).
+    if (ocoDecision.pendingLaunchExtras) smartPendingExtras = ocoDecision.pendingLaunchExtras;
   }
 
   if (!isSmartRequired(overrides.smartApproval, gateVars)) return { outcome: 'proceed' };
@@ -435,6 +465,7 @@ async function runChangeGates(ctx) {
       server, templateId, username,
       email: req?.session?.user?.mail || '',
       templateName, overrides, extraVars, detail, resolvedLaunchOptions, specFields,
+      pendingLaunchExtras: smartPendingExtras,
       buildSmartMetadata, auditAction: smartAuditAction, req,
     });
   } catch (smartErr) {
