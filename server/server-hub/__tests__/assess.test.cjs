@@ -1016,6 +1016,43 @@ test('SHX2 GERCEK sozdizimi hatasi (satir 13 dahil) yine SYNTAX_FAIL + duzeltme'
   });
 });
 
+// SHX4: tarayici scan_ver 2.2'den beri web ikilisini DUZ dzdo ile kosuyor ve run_as
+// alanina 'www' yerine 'dzdo' yaziyor (estate bicimi; Ansible G14 bekcisi). Bu kapi
+// "komut GERCEKTEN kostu mu" sorusudur: kosmadiysa (none) satiri yorumlamak oneriLMEZ.
+// run_as='www' eski tarayicilar icin kabul edilmeye devam eder.
+const webBulRunAs = (runAs) => {
+  const d = base();
+  d.web.push({
+    host: 'DACRWAP01',
+    product: 'IHS',
+    running: 1,
+    syntax: 'FAIL',
+    detail: 'AH00526: Syntax error on line 13 of /usr/IBMIHS/conf/httpd.conf: Invalid command Foo',
+    check_class: 'SYNTAX_ERROR',
+    // tarayici SYNTAX_ERROR'da SV=VERIFIED yazar (web_trust_fields)
+    syntax_verification: 'VERIFIED',
+    run_as: runAs,
+  });
+  return assess(d).hosts.find((h) => h.host === 'DACRWAP01').findings;
+};
+
+test("SHX4 run_as='dzdo' (scan_ver 2.2 estate bicimi) duzeltme onerisini ENGELLEMEZ", () => {
+  for (const runAs of ['dzdo', 'www']) {
+    const s = webBulRunAs(runAs).find((x) => x.code === 'SYNTAX_FAIL');
+    assert.ok(s, `SYNTAX_FAIL yok (run_as=${runAs})`);
+    assert.deepEqual(
+      s.fix,
+      { action: 'apache_comment_line', product: 'IHS', file: '/usr/IBMIHS/conf/httpd.conf', line: 13 },
+      `run_as=${runAs} icin duzeltme onerilmedi`,
+    );
+  }
+  // komut HIC kosmadiysa satiri yorumlamak onerilmez: hata metni olculmus bir
+  // sozdizimi hatasi degildir
+  const yok = webBulRunAs('none').find((x) => x.code === 'SYNTAX_FAIL');
+  assert.ok(yok, 'run_as=none icin SYNTAX_FAIL bulgusu yok');
+  assert.equal(yok.fix, null, "run_as='none' iken config eylemi onerildi");
+});
+
 test('SHX3 hazirlik raporu dogrulanamayan sozdizimini "belirsiz" sayar, engel ya da temiz DEGIL', () => {
   const { KOD_ANLAMI } = require('../reboot-readiness.cjs');
   assert.equal((KOD_ANLAMI.SYNTAX_UNVERIFIED || {}).tip, 'unknown');

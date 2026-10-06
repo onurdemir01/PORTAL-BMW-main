@@ -1606,7 +1606,8 @@ function assess(data, opts = {}) {
       }
       if (sinif === 'FAIL') {
         // apache_comment_line YALNIZ: NGINX degil, erisim deseni yok, detail kesilmemis
-        // (loader ' ~' eki), v3 satirinda komut www ile KOSMUS (run_as=www), dosya:satir
+        // (loader ' ~' eki), v3 satirinda komut GERCEKTEN KOSMUS (run_as=www eski tarayici,
+        // run_as=dzdo scan_ver>=2.2 estate bicimi; 'none' = kosmadi), dosya:satir
         // ayristi. Tazelik kapisi asagida tum bulgulara uygulanir.
         const m = ham.match(/line (\d+) of (\S+?):?(\s|$)/i);
         const eylemOk =
@@ -1614,7 +1615,7 @@ function assess(data, opts = {}) {
           w.product !== 'NGINX' &&
           !erisim &&
           !/~\s*$/.test(ham) &&
-          (w.checkClass == null || w.runAs === 'www');
+          (w.checkClass == null || w.runAs === 'www' || w.runAs === 'dzdo');
         add(
           'danger',
           'web',
@@ -1630,9 +1631,9 @@ function assess(data, opts = {}) {
             : null,
         );
       }
-      // OLCULEMEDI SESSIZ KALMAZ (2026-09-26): tarama www ile kosuyor; sertifika anahtari
-      // okunamadiginda nginx -t duser. Bunu "sozdizimi hatali" saymak yanlis alarm, hic
-      // gostermemek ise sunucuyu "sorunsuz" gibi gostermek olurdu.
+      // OLCULEMEDI SESSIZ KALMAZ (2026-09-26): web ikilisi dzdo ile kosar; dzdo kurali
+      // kacirildiginda ya da anahtar okunamadiginda nginx -t duser. Bunu "sozdizimi hatali"
+      // saymak yanlis alarm, hic gostermemek ise sunucuyu "sorunsuz" gibi gostermek olurdu.
       if (sinif === 'UNKNOWN') {
         add(
           'info',
