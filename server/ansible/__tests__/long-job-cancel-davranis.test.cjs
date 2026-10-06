@@ -46,6 +46,7 @@
 //   LJ27 workflow iptali alt isleri de keser: kart/denetim/durum bunu soyler
 //   LJ28 kullanici/sifreli AWX: kuru calistirma /cancel/'a SIFIR POST; token kapsami 'write'
 //   LJ29 tarama hic bitmiyorsa (in-flight) tek Teams karti + denetim fail
+//   LJ30 durum teyidi 50 kayit sinirinda adil ilerler; butce disindaki kayit ac kalmaz
 'use strict';
 
 const { test, before, after, beforeEach } = require('node:test');
@@ -1317,4 +1318,47 @@ test('LJ29 tarama hic bitmiyorsa (in-flight) tarama basina TEK Teams karti + den
   gate();
   await ilk;
   assert.equal(watcher.getWatcherInfo().skippedWhileInFlight, 0);
+});
+
+// ── LJ30 ─────────────────────────────────────────────────────────────────────
+test('LJ30 durum teyidi 50 kayit sinirinda adil ilerler; ilk grup okunamasa da disarida kalan kayit sonraki turda sorgulanir', async (t) => {
+  sus(t);
+  const db = dbOf(CFG());
+  const calls = [];
+  let terminalJobId = null;
+  const fairRunner = {
+    getServerById: (id) => ({ id, name: 'maestro-test', url: process.env.AWX_1_URL }),
+    cancelJobOnServer: async () => ({ canceled: true }),
+    getJobStateOnServer: async (_serverId, jobId) => {
+      calls.push(jobId);
+      if (jobId === terminalJobId) return { status: 'successful' };
+      throw new Error('durum gecici olarak okunamadi');
+    },
+    redactSecrets: (value) => String(value),
+  };
+  const jobs = Array.from({ length: 51 }, (_, index) => ({
+    serverId: 1,
+    serverName: 'maestro-test',
+    kind: 'job',
+    jobId: index + 1,
+    jobName: `job-${index + 1}`,
+    templateId: 42,
+    status: 'running',
+    started: ago(120),
+  }));
+  const complete = [
+    { serverId: 1, serverName: 'maestro-test', complete: { job: true }, kinds: { job: { ok: true } } },
+  ];
+
+  await ljc.runCycle({ jobs, servers: complete }, { db, runner: fairRunner });
+  const firstCheck = await ljc.runCycle({ jobs: [], servers: complete }, { db, runner: fairRunner });
+  assert.equal(calls.length, 50, 'ilk tur durum okuma butcesini asmadi');
+  assert.deepEqual(firstCheck.verify, { asked: 50, measured: 0, unmeasured: 50 });
+  const deferred = jobs.map((job) => job.jobId).find((jobId) => !calls.includes(jobId));
+  assert.ok(deferred, 'kurgu: 51 kayittan biri ilk tur butcesinin disinda kalmaliydi');
+  terminalJobId = deferred;
+
+  await ljc.runCycle({ jobs: [], servers: complete }, { db, runner: fairRunner });
+  assert.ok(calls.includes(deferred), 'ilk tur butcesi disindaki kayit onceki okumalar hata verdigi icin suresiz ac kaldi');
+  assert.equal(ljc.getStatus().open.awaitingVerify, 50, 'terminal oldugu dogrulanan ertelenmis kayit kapanmadi');
 });
