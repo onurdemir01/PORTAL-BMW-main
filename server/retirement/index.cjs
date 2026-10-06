@@ -39,6 +39,17 @@ function rowTarget(t) {
   return {
     id: t.id, recordId: t.record_id, host: t.host, site: t.site, env: t.env, appName: t.app_name, gen: t.jboss_gen, appPath: t.app_path,
     web, status: t.status, planText: t.plan_text, resultText: t.result_text, lastJobId: t.last_job_id, stoppedAt: t.stopped_at, updatedAt: t.updated_at,
+    // PLAN/SONUC AYRINTISI (uretim bulgusu 2026-10-06): playbook `set_stats` ile STEP ve
+    // RENAMED satirlarini da yayinliyor. Onceden YALNIZ tek satirlik RESULT saklaniyordu;
+    // kullanici plani gozden gecirirken "2 paket yeniden adlandirilacak" goruyordu, HANGI
+    // iki paket oldugunu DEGIL. Islem geri alinamaz, ayrinti gorunmek zorunda.
+    detail: (() => {
+      try {
+        return t.detail_json ? JSON.parse(t.detail_json) : null;
+      } catch {
+        return null;
+      }
+    })(),
   };
 }
 async function addEvent(recordId, username, kind, text) {
@@ -210,19 +221,28 @@ function initRetirement(app) {
         result = extractStatsKey(statusInfo.artifacts, 'app_retirement_stop_result') || null;
         const line = String(result?.line || '');
         const msg = line.split('\t').slice(2).join(' — ') || statusInfo.status;
+        // AYRINTI: STEP ve RENAMED satirlari. `line` yalniz OZET; plan onayinda hangi
+        // dosyalara dokunulacagi bu listelerde. Alanlar gelmezse null yazilir (eski
+        // playbook surumu) - uydurulmaz.
+        const detailJson = (() => {
+          const st = Array.isArray(result?.steps) ? result.steps : null;
+          const rn = Array.isArray(result?.renamed) ? result.renamed : null;
+          if (!st && !rn) return null;
+          return JSON.stringify({ steps: st || [], renamed: rn || [] }).slice(0, 60000);
+        })();
         const cur = await db().query(`SELECT status, last_job_id FROM retirement_targets WHERE id = $1`, [tid]);
         const row = cur.rows?.[0];
         if (row && Number(row.last_job_id) === jobId && (row.status === 'planning' || row.status === 'stopping')) {
           const planOnly = result ? !!result.plan_only : row.status === 'planning';
           if (planOnly) {
-            await db().query(`UPDATE retirement_targets SET status = $1, plan_text = $2, updated_at = GETUTCDATE() WHERE id = $3`, [statusInfo.status === 'successful' ? 'planned' : 'failed', msg.slice(0, 1000), tid]);
+            await db().query(`UPDATE retirement_targets SET status = $1, plan_text = $2, detail_json = $3, updated_at = GETUTCDATE() WHERE id = $4`, [statusInfo.status === 'successful' ? 'planned' : 'failed', msg.slice(0, 1000), detailJson, tid]);
           } else if (statusInfo.status === 'successful' && /\tOK\t/.test(line)) {
-            await db().query(`UPDATE retirement_targets SET status = 'stopped', result_text = $1, stopped_at = GETUTCDATE(), updated_at = GETUTCDATE() WHERE id = $2`, [msg.slice(0, 1000), tid]);
+            await db().query(`UPDATE retirement_targets SET status = 'stopped', result_text = $1, detail_json = $2, stopped_at = GETUTCDATE(), updated_at = GETUTCDATE() WHERE id = $3`, [msg.slice(0, 1000), detailJson, tid]);
             await db().query(`UPDATE retirement_records SET stop_at = COALESCE(stop_at, GETUTCDATE()), scc_notified_at = CASE WHEN $2 = 1 THEN COALESCE(scc_notified_at, GETUTCDATE()) ELSE scc_notified_at END, updated_at = GETUTCDATE() WHERE id = $1`, [id, SCC_MAIL_TO ? 1 : 0]);
             const left = await db().query(`SELECT COUNT(*) AS n FROM retirement_targets WHERE record_id = $1 AND status <> 'stopped' AND status <> 'skipped'`, [id]);
             if (Number(left.rows?.[0]?.n) === 0) await db().query(`UPDATE retirement_records SET status = 'stopped', updated_at = GETUTCDATE() WHERE id = $1`, [id]);
           } else {
-            await db().query(`UPDATE retirement_targets SET status = 'failed', result_text = $1, updated_at = GETUTCDATE() WHERE id = $2`, [msg.slice(0, 1000), tid]);
+            await db().query(`UPDATE retirement_targets SET status = 'failed', result_text = $1, detail_json = $2, updated_at = GETUTCDATE() WHERE id = $3`, [msg.slice(0, 1000), detailJson, tid]);
           }
           await addEvent(id, null, planOnly ? 'plan-result' : 'stop-result', `iş #${jobId}: ${msg}`);
         }

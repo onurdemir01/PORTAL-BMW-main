@@ -17,6 +17,11 @@ export type RtTargetStatus = 'pending' | 'planning' | 'planned' | 'stopping' | '
 export interface RtTarget {
   id: number; recordId: number; host: string; site: string; env: string; appName: string; gen: number | null; appPath: string | null;
   web: RtWeb[]; status: RtTargetStatus; planText: string | null; resultText: string | null; lastJobId: number | null; stoppedAt: string | null; updatedAt: string;
+  /** Playbook'un `set_stats` ile yayınladığı AYRINTI: STEP satırları ve yeniden
+   *  adlandırılan paketler. `planText` yalnız özet ("2 paket yeniden adlandırılacak");
+   *  HANGİ paketler olduğu burada. İşlem geri alınamaz, onay ekranı bunu göstermeli.
+   *  `null` = eski playbook sürümü ya da alan hiç gelmedi — uydurulmaz. */
+  detail: { steps: string[]; renamed: string[] } | null;
 }
 export interface RtRecord {
   id: number; app: string; smartNo: string; ocoNo: string | null; ownerEmail: string | null; requestedBy: string;

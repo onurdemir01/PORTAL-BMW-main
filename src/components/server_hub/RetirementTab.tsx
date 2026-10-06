@@ -352,6 +352,27 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
           <div className="w-full max-w-md rounded-2xl border p-5 space-y-3" style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-subtle)' }} onClick={(e) => e.stopPropagation()}>
             <div className="text-sm font-semibold">STOP — {ask.t.appName} @ {ask.t.host} ({ask.t.env}, {ask.t.site})</div>
             <div className="text-[12px] rounded-lg border px-3 py-2" style={{ borderColor: 'var(--status-info)', background: 'var(--status-info-bg)' }}><b>Plan:</b> {ask.t.planText}</div>
+            {/* PLAN AYRINTISI: ozet "2 paket yeniden adlandirilacak" diyor ama HANGI iki
+                paket oldugunu soylemiyordu. Islem geri alinamaz; onay vermeden once
+                dokunulacak dosyalar GORUNMELI. Alan gelmediyse (eski playbook) hic
+                cizilmez - bos bir kutu "ayrinti yok" diye okunurdu. */}
+            {ask.t.detail && ask.t.detail.steps.length > 0 && (
+              <div className="text-[11px] rounded-lg border px-3 py-2 space-y-1" style={{ borderColor: 'var(--border-subtle)' }}>
+                <div className="font-semibold" style={{ color: 'var(--text-muted)' }}>Playbook planı (adım adım)</div>
+                {ask.t.detail.steps.map((x, i) => {
+                  const p = x.split('	');
+                  const ad = p[1] || '';
+                  const dur = p[2] || '';
+                  const mesaj = p.slice(3).join(' ');
+                  return (
+                    <div key={i} className="flex gap-2">
+                      <span className="font-mono shrink-0" style={{ color: dur === 'FAIL' ? 'var(--status-danger)' : dur === 'SKIP' ? 'var(--text-muted)' : 'var(--status-info)' }}>{ad} · {dur}</span>
+                      <span className="break-all">{mesaj}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
             <p className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>auto-start kapatılır, JVM durdurulur, paket(ler) <code>.{rec?.smartNo}.old</code> yapılır. {ask.t.env === 'PROD' ? 'PROD: SCC bilgilendirme maili gider.' : ''} Geri almak için JVM elle başlatılır ve paket adı düzeltilir.</p>
             <StopHubUyari durum={hubDurum} />
             <div className="flex justify-end gap-2"><button onClick={() => setAsk(null)} className={SM_BTN} style={smBtn()}>İptal</button><button onClick={() => stop(ask.t, true)} className={SM_BTN} style={{ ...smBtn(true), background: 'var(--status-danger)', borderColor: 'var(--status-danger)' }}>Onayla ve durdur</button></div>

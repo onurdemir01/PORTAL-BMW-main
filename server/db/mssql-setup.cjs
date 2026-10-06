@@ -2363,6 +2363,16 @@ const ELEMENT_SEED = [
     default_visible: 0,
   },
   {
+    // RP Secimi (2026-10-05, kullanici: "hangi sunucuya deployment yapacagini bilmiyor, hangi
+    // sunucuda Nginx konfigurasyonlarinin yapilacagini bilmiyor"). Salt okunur sihirbaz.
+    element_key: 'tab:nginx:rvpsecim',
+    element_type: 'tab',
+    parent_key: 'NginxConsole',
+    label: 'RP Secimi',
+    sort_order: 29,
+    default_visible: 0,
+  },
+  {
     element_key: 'tab:nginx:spa',
     element_type: 'tab',
     parent_key: 'NginxConsole',
@@ -2418,6 +2428,7 @@ const NGINX_TAB_KEYS_SEED = [
   'envanter',
   'audit',
   'ratelimit',
+  'rvpsecim',
 ];
 
 async function seedPortalElements(pool) {
@@ -4207,6 +4218,16 @@ async function setupTables() {
       table: 'oco_scheduled_launches',
       col: 'smart_ticket_id',
       sql: `ALTER TABLE oco_scheduled_launches ADD smart_ticket_id INT NULL`,
+    },
+    {
+      // PLAN AYRINTISI (uretim bulgusu 2026-10-06): app_retirement_stop.yml `set_stats` ile
+      // `steps` ve `renamed` listelerini de yayinliyordu ama Portal yalniz tek satirlik
+      // RESULT'i sakliyordu. Kullanici plani GOZDEN GECIRMEK icin kosturuyor; "2 paket
+      // yeniden adlandirilacak" yeterli degil, HANGI iki paket oldugu gorunmeli - islem
+      // geri alinamaz. steps/renamed burada JSON olarak durur.
+      table: 'retirement_targets',
+      col: 'detail_json',
+      sql: `ALTER TABLE retirement_targets ADD detail_json NVARCHAR(MAX) NULL`,
     },
     {
       table: 'smart_tickets',
