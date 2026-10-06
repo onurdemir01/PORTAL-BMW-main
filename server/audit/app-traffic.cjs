@@ -1,349 +1,261 @@
-// server/audit/app-traffic.cjs — Denetim > Uygulama Trafigi: ROUTE bazli kullanim.
+// server/audit/app-traffic.cjs — Denetim ▸ Uygulama Trafiği. Birim: UYGULAMA.
 //
-// KULLANICI KARARI (2026-09-30): "Prometheus'tan cektigimiz metrikler calismiyor. Orayi
-// bos ver. Biz sadece application usage playbook'unu kullanalim ve Dynatrace metriklerine
-// bakalim. Hata oranlarini bos ver."
+// ── OMURGA DEGISTI (kullanici, 2026-10-06) ───────────────────────────────────────────
+// Istenen kolonlar, kullanicinin kendi sozleriyle:
+//   "Namespace - Uygulama - Ortam/SPA - Istek - Route - Cluster"
+//   "her bir uygulama icin tek satir olmali"
+//   "uygulamanin pod ismi degil direkt kendi ismi yazilmali"
+//   "ilgili route hangi cluster'larda var ise Kismi veya Tam olarak gosterilmeli...
+//    4 prod cluster'in 4'unde de varsa 4/4 Tam, 3'unde varsa 3/4 Kismi"
 //
-// BIRIM: ROUTE (kullanici, 2026-10-06). Istenen akis onun sozleriyle: "tum route'lari
-// cekiyoruz -> bu route'larin hangi uygulamaya ait oldugunu kesfediyoruz -> bu uygulamanin
-// hangi ortamda ve hangi cluster'larda oldugunu buluyoruz -> bu route'lara gelen trafigi
-// Dynatrace uzerinden sorguluyoruz -> metrik tespit edildiyse 'Istek' kolonuna isliyoruz"
-// + "route'a sahip uygulamanin SPA olup olmadigini da yaziyoruz".
+// ONCEKI HALI YANLIS TABLODAN BESLENIYORDU: omurga `BMW_Openshift_Route_Inventory` +
+// Dynatrace `displayName` idi. Uc sonucu vardi, kullanici ucunu de bildirdi:
+//   * "pod ismi gozukuyor"  -> uygulama adi Dynatrace displayName'den geliyordu ve
+//                              type("CLOUD_APPLICATION") POD'lari da donuyor
+//   * "route bos geliyor"   -> route<->uygulama eslemesi AD KALIBIYLA tahmin ediliyordu
+//   * "SPA mi belli degil"  -> SPA, ad kalibindan (`-app-v`) TAHMIN ediliyordu
 //
-// 30 EYLUL'DE BIRIM UYGULAMAYA CEVRILMISTI, GERI ALINDI. O zamanki gerekce: 1.020 prod
-// route'un yalniz 29'u bir Dynatrace uygulamasiyla eslesiyordu, yani route bazli ekranin
-// %97'si "eslesmedi" gorunecekti. ESLESMEYI BOZAN SEY SONRADAN BULUNDU: Dynatrace
-// type("CLOUD_APPLICATION") hem Deployment'i hem her ReplicaSet'i donduruyordu ve
-// `security-tcs-v3-79bd8fbbbd` gibi ReplicaSet adlari hicbir route adiyla eslesmiyordu
-// (bkz. application_usage.py replicaset_ele, 2026-10-06). Birimi degistirmek o kirliligin
-// SEMPTOMUNU orterdi; kaynak duzelince dogru birim geri alinabilir.
+// DOGRU OMURGA `dbo.BMW_Spa_Discovery` (job: openshift_spa_discovery). O job route'un
+// ardindaki is yukunu GERCEKTEN cozuyor (Service -> Deployment / DeploymentConfig / Argo
+// Rollout, yetki kapsami yedekleriyle) ve SPA'yi OLCUYOR: kabinde nginx sinyali
+// (`nginx-start.sh`) var mi. Tablo tam gereken alanlari tasiyor:
+//   cluster | namespace | route | host | termination | workload_kind | workload | is_spa
+// `workload` = uygulamanin KENDI adi (pod adi DEGIL). `is_spa` = TAHMIN DEGIL, olcum.
 //
-// ESLESMEYEN ROUTE GIZLENMEZ: "eslesmedi" ayri bir durumdur ve satir olarak durur. Kullanici
-// karari (2026-10-06): "eslesmeyenleri 'eslesmedi' olarak goster". Gizlemek, envanterdeki
-// route'un olculdugu izlenimini verirdi.
+// ISTEK kolonu `dbo.BMW_Application_Usage`'tan (job: application_usage; Dynatrace
+// builtin:service.requestCount.total, 7 gun). Iki job AYRI yerde kosar — SPA kesfi jump
+// server'larda `oc` ile, kullanim GBLABT02'de Dynatrace proxy'siyle — ve AWX workflow'uyla
+// zincirlenir (SPA Discovery -> Application Usage), BIRLESTIRILMEZLER. Bu yuzden iki ayri
+// `scan_date` olabilir; ekran bunu SAKLAMAZ, cagiran `freshness` ile yuzeye cikarir.
 //
-// ROUTE'SUZ UYGULAMALAR DA DURUR: servisten servise cagrilan bir backend router'dan hic
-// gecmez. Eski route bazli ekranin en buyuk kor noktasi buydu; `kind: 'app'` satirlariyla
-// korunuyor.
-//
-// DURUSTLUK SINIRI — ISTEK KOLONU: Dynatrace trafigi ROUTE bazinda olcmuyor; servis bazinda
-// olcup UYGULAMAYA topluyor. Bu yuzden satir route olsa da "Istek" o route'un degil, ona
-// bagli uygulamanin toplamidir. Bir uygulamanin birden cok route'u varsa AYNI sayi her
-// satirda gorunur (`reqShared: true` ile isaretlenir, ekran bunu yazar). Bunu gizlemek
-// "bu route'a su kadar istek geldi" diye okunurdu ki yanlis olur.
-//
-// KALDIRILAN: gun bazli gecmis (son 7/30/90 gun), gunluk ortalama ve 4xx/5xx oranlari.
-// Hepsi Prometheus/Thanos olcumunden geliyordu; Dynatrace bu kirilimi vermiyor ve
-// kullanici "hata oranlarini bos ver" dedi.
+// ── OLCULEMEDI != YOK (bu dosyanin en onemli kurali) ────────────────────────────────
+// Uc ayri yerde "bilmiyoruz" durumu var; ucu de "yok"tan AYRI tutulur:
+//   1. ISTEK: kullanim satiri yoksa ya da measured=0 ise -> 'unmeasured'. 0 yazmak
+//      "istek almiyor" demek olurdu; atil bir uygulamayla hic olculmemis bir uygulamayi
+//      ayni gostermek emeklilik kararini bozar.
+//   2. SPA: route bir is yukune eslesemediyse (workload bos) -> 'unknown'. "SPA degil"
+//      demek, nginx kosan bir uygulamayi gorunmez yapardi.
+//   3. CLUSTER KAPSAMI: o ortamin TARANAMAYAN cluster'lari paydaya girmez ve "Kismi"
+//      damgasina sebep OLMAZ; ayri sayilir. Bugun 12 cluster `login` ile dusuyor —
+//      erisilemeyen bir cluster yuzunden "4/5 Kismi" demek UYDURMA bir eksiklik raporu
+//      olurdu; uygulama orada olabilir de olmayabilir de, BILMIYORUZ.
 'use strict';
 
 const { envOfNamespace } = require('./ocp-platforms.cjs');
-const { isSpaApp } = require('./spa-pattern.cjs');
 
-const L = (s) =>
-  String(s == null ? '' : s)
+const L = (v) =>
+  String(v == null ? '' : v)
     .trim()
     .toLowerCase();
+const S = (v) => String(v == null ? '' : v).trim();
 
-/** "app-ns.apps.fw.garanti.com.tr" -> "app-ns" */
-const etiket = (adres) => L(adres).split('.')[0];
-
-/**
- * Olcum satirlarini (namespace, app) basina TEKILLESTIRIR: EN YENI tarama gecerlidir.
- *
- * GUNLER TOPLANMAZ: her satir zaten `window_days` gunluk bir pencereyi tasiyor; iki
- * taramayi toplamak ayni istekleri iki kez saymak olurdu.
- */
-function tekillestir(usageRows) {
-  const m = new Map();
-  for (const r of usageRows || []) {
-    const ns = L(r.namespace);
-    const app = L(r.app);
-    if (!ns || !app || !r.scan_date) continue;
-    const gun = new Date(r.scan_date).toISOString().slice(0, 10);
-    const k = ns + '|' + app;
-    const onceki = m.get(k);
-    if (onceki && onceki.scanDate >= gun) continue;
-    m.set(k, {
-      namespace: String(r.namespace).trim(),
-      application: String(r.app).trim(),
-      cluster: String(r.cluster || '').trim(),
-      scanDate: gun,
-      windowDays: Number(r.window_days) || 0,
-      req: Number(r.req_total) || 0,
-      // OLCULEMEDI ile ISTEK YOK AYRI: measured=0 ise sayi bir alt sinir bile degildir.
-      measured: r.measured === true || Number(r.measured) === 1,
-      services: Number(r.services_total) || 0,
-      servicesMeasured: Number(r.services_measured) || 0,
-      servicesSkipped: Number(r.services_skipped) || 0,
-      note: String(r.note || '').trim(),
-    });
+/** Cluster katalogu: cluster -> {env, tenant}; ve env -> o ortamin cluster kumesi. */
+function clusterHaritasi(clusterRows) {
+  const byCluster = new Map();
+  const byEnv = new Map();
+  for (const r of clusterRows || []) {
+    const c = L(r.cluster_name);
+    const env = S(r.env);
+    if (!c || !env) continue;
+    byCluster.set(c, { env, tenant: S(r.tenant) });
+    const k = L(env);
+    if (!byEnv.has(k)) byEnv.set(k, new Set());
+    byEnv.get(k).add(c);
   }
-  return m;
+  return { byCluster, byEnv };
 }
 
 /**
- * Route envanterini namespace basina indeksler.
+ * Hangi cluster GERCEKTEN tarandi?
  *
- * INDEKS BIR KEZ KURULUR: route basina tum olcum kumesini taramak, 15.000 x 70.000
- * buyuklugunde bir is olurdu (ayni hata 2026-09-29'da ekrani 10 dakika actirmamisti).
+ * `ok` ve `kismi` TARANDI sayilir: `kismi` demek "route'lar okundu ama bazi namespace'lerin
+ * servisleri okunamadi" — route VARLIGI guvenilir, eksik olan is yuku eslemesidir.
+ * `login` / `hata` ise cluster'a HIC bakilamadi; o cluster kapsam paydasina GIRMEZ.
  */
-function routeIndeksi(invRows) {
-  const byNs = new Map();
-  for (const r of invRows || []) {
-    const ns = L(r.namespace_name);
+function olculenClusterlar(runRows) {
+  const olculen = new Set();
+  const bakilamayan = new Set();
+  for (const r of runRows || []) {
+    const c = L(r.cluster);
+    if (!c) continue;
+    if (['ok', 'kismi'].includes(L(r.durum))) olculen.add(c);
+    else bakilamayan.add(c);
+  }
+  return { olculen, bakilamayan };
+}
+
+/**
+ * Uygulama basina TEK satir uretir.
+ *
+ * @param {{spa:object[], runs:object[], usage:object[], clusters:object[]}} veri
+ * @param {{q?:string, env?:string, spa?:string, status?:string, coverage?:string, limit?:any}} [opts]
+ */
+function buildAppTraffic(veri, opts = {}) {
+  const { spa = [], runs = [], usage = [], clusters = [] } = veri || {};
+  const { byCluster, byEnv } = clusterHaritasi(clusters);
+  const { olculen, bakilamayan } = olculenClusterlar(runs);
+
+  // ISTEK indeksi: (namespace, app) -> kullanim satiri. Cagiran uygulama basina EN YENI
+  // satiri getirir (SQL'de ROW_NUMBER), burada tekrar tarih karsilastirmasi yapilmaz.
+  const kullanim = new Map();
+  for (const u of usage) {
+    const k = L(u.namespace) + '\u0000' + L(u.app);
+    if (!kullanim.has(k)) kullanim.set(k, u);
+  }
+
+  // ── GRUPLAMA: (namespace, workload). workload BOSSA route bir is yukune eslesmemistir
+  // ve satir AYRI durur ("eşleşmedi"); gizlemek, Portal'in gormedigi bir route birakmak
+  // ve o route'un olculdugu izlenimini vermek olurdu.
+  const gruplar = new Map();
+  for (const r of spa) {
+    const ns = S(r.namespace);
     if (!ns) continue;
-    if (!byNs.has(ns)) byNs.set(ns, []);
-    byNs.get(ns).push({
-      route: String(r.route_name || '').trim(),
-      address: String(r.route_address || '').trim(),
-      cluster: String(r.cluster_name || '').trim(),
-      namespace: String(r.namespace_name || '').trim(),
-      // Eslesme icin: route adi ve adresin ilk etiketi.
-      adaylar: [L(r.route_name), etiket(r.route_address)].filter(Boolean),
-    });
-  }
-  return byNs;
-}
-
-/**
- * Uygulamaya ait route'lar (UYGULAMA -> ROUTE yonu; route'suz uygulama satiri icin).
- *
- * ESLESME IKI YONLU: route adi uygulamanin TAMAMI olabilir (`sube-portali-app-v1`) ya da
- * uygulama adinin ONEKI olabilir (`apigw` -> `apigw-1-prod`). Onek sinirinda TIRE aranir:
- * "apigw" ile "apigwhc" ayri uygulamalardir.
- */
-function routelariBul(app, nsRoutes) {
-  if (!nsRoutes || !nsRoutes.length) return [];
-  const a = L(app);
-  const bulunan = [];
-  for (const r of nsRoutes) {
-    const tam = r.adaylar.some((c) => c === a);
-    const onek = !tam && r.adaylar.some((c) => c && a.startsWith(c + '-'));
-    if (tam || onek)
-      bulunan.push({ route: r.route, address: r.address, exact: tam, cluster: r.cluster });
-  }
-  return bulunan;
-}
-
-/**
- * Bir route'a hangi uygulamalar ait (ROUTE -> UYGULAMA yonu; ekranin ana yonu).
- *
- * TAM ESLESME VARSA ONEKLER ELENIR: `apigw` route'u hem `apigw` hem `apigw-1-prod` ile
- * eslesebilir; tam eslesen varken onekleri de yazmak ayni route'u iki uygulamaya baglardi.
- * Tam eslesme yoksa TUM onekler kalir (`apigw` -> apigw-1/2/3-prod uctur ve ucu de gercek).
- */
-function uygulamalariBul(route, nsApps) {
-  if (!nsApps || !nsApps.length) return [];
-  const tamlar = [];
-  const onekler = [];
-  for (const u of nsApps) {
-    const a = L(u.application);
-    if (route.adaylar.some((c) => c === a)) tamlar.push(u);
-    else if (route.adaylar.some((c) => c && a.startsWith(c + '-'))) onekler.push(u);
-  }
-  return tamlar.length ? tamlar : onekler;
-}
-
-/**
- * Bir route satirinin olcum alanlari.
- *
- * BIRDEN COK UYGULAMA: istek TOPLANIR (farkli uygulamalar farkli servisler; ayni istek iki
- * kez sayilmaz). Durum TEMKINLI tarafta: uygulamalardan BIRI bile olculemediyse satir
- * `unmeasured` olur - "bir kismini olctum" ile "hepsini olctum" ayni sey degildir.
- */
-function routeOlcumu(uygular) {
-  if (!uygular.length) return { status: 'unmatched', reqShown: null, measured: false };
-  const hepsiOlculdu = uygular.every((u) => u.measured);
-  const toplam = uygular.reduce((a, u) => a + (u.measured ? u.req : 0), 0);
-  return {
-    status: !hepsiOlculdu ? 'unmeasured' : toplam > 0 ? 'active' : 'idle',
-    reqShown: hepsiOlculdu ? toplam : null,
-    measured: hepsiOlculdu,
-  };
-}
-
-/** Varsayilan satir tavani. Bkz. buildAppTraffic'teki OLCUM notu. */
-const LIMIT_DEFAULT = 1000;
-/** CSV icin acik istek uzerine cikilabilecek tavan. */
-const LIMIT_MAX = 100000;
-
-/**
- * Suzgecler SUNUCUDA uygulanir.
- *
- * NEDEN SUNUCUDA (2026-09-30, kullanici: "sayfa dondu ve hicbir sey yuklenmiyor"):
- * ekran once tum kumeyi indirip tarayicida suzuyordu. Olculdu: 70.059 satir =
- * 20,9 MB JSON ve 70.059 x 9 hucre DOM. Yanit 8 MB'lik onbellek tavanini da astigi
- * icin her acilis bastan hesaplaniyordu. Suzgeci sunucuya almak govdeyi birkac yuz
- * KB'ye indirir ve yaniti yeniden onbelleklenebilir kilar (anahtar sorgu dizesini
- * icerir, bkz. response-cache.cjs).
- *
- * `routes` suzgeci SATIR TURUNU secer: 'with' = route satirlari, 'without' = route'u
- * olmayan uygulama satirlari.
- */
-function suz(rows, { q = '', env = '', status = '', kind = '', routes = '' } = {}) {
-  const needle = L(q);
-  const e = L(env);
-  return rows.filter((r) => {
-    if (e && e !== 'all' && L(r.env || '') !== e) return false;
-    if (kind === 'spa' && !r.spa) return false;
-    if (kind === 'nonspa' && r.spa) return false;
-    if (status && status !== 'all' && r.status !== status) return false;
-    if (routes === 'with' && r.kind !== 'route') return false;
-    if (routes === 'without' && r.kind !== 'app') return false;
-    if (
-      needle &&
-      !(
-        L(r.namespace).includes(needle) ||
-        L(r.application || '').includes(needle) ||
-        L(r.route || '').includes(needle) ||
-        L(r.address || '').includes(needle) ||
-        (r.apps || []).some((x) => L(x).includes(needle))
-      )
-    )
-      return false;
-    return true;
-  });
-}
-
-/**
- * @param {object[]} usageRows dbo.BMW_Application_Usage satirlari
- * @param {object[]} invRows   dbo.BMW_Openshift_Route_Inventory satirlari
- * @param {object}   opt       suzgecler + `limit` (satir tavani)
- */
-function buildAppTraffic(usageRows, invRows, opt = {}) {
-  const olcumler = tekillestir(usageRows);
-  const nsIndeks = routeIndeksi(invRows);
-
-  // Namespace basina olcum listesi: route -> uygulama eslesmesi bunun uzerinde yapilir.
-  const nsApps = new Map();
-  let latestScan = null;
-  for (const u of olcumler.values()) {
-    if (!latestScan || u.scanDate > latestScan) latestScan = u.scanDate;
-    const k = L(u.namespace);
-    if (!nsApps.has(k)) nsApps.set(k, []);
-    nsApps.get(k).push(u);
+    const app = S(r.workload);
+    const cl = L(r.cluster);
+    const route = S(r.route);
+    const anahtar = app ? ns + '\u0000' + app : ns + '\u0000\u0001route:' + route;
+    let g = gruplar.get(anahtar);
+    if (!g) {
+      g = {
+        namespace: ns,
+        app: app || null,
+        kind: S(r.workload_kind) || null,
+        routes: new Map(),
+        clusters: new Set(),
+        isSpa: 0,
+        spaOlculdu: false,
+        notlar: new Set(),
+      };
+      gruplar.set(anahtar, g);
+    }
+    if (cl) g.clusters.add(cl);
+    if (route && !g.routes.has(route)) g.routes.set(route, S(r.host));
+    // SPA OLCUMU yalniz is yukune eslesmis satirdan gelir: eslesmemis satir "SPA degil"
+    // DEMEK DEGILDIR, olculememistir.
+    if (app) {
+      g.spaOlculdu = true;
+      if (Number(r.is_spa) === 1) g.isSpa = 1;
+    }
+    if (S(r.note)) g.notlar.add(S(r.note));
   }
 
   const rows = [];
-  const eslesenApp = new Set();
+  for (const g of gruplar.values()) {
+    // ORTAM: once cluster katalogu (olculmus gercek), tutmazsa namespace son-eki
+    // (envOfNamespace — ayni kural Denetim'in geri kalaninda da kullaniliyor).
+    const ortamlar = [
+      ...new Set([...g.clusters].map((c) => byCluster.get(c)?.env).filter(Boolean)),
+    ];
+    const env = ortamlar.length ? ortamlar.sort().join(', ') : envOfNamespace(g.namespace) || null;
 
-  // ── 1) ROUTE SATIRLARI ──────────────────────────────────────────────────────────
-  for (const [ns, routeler] of nsIndeks) {
-    for (const r of routeler) {
-      const uygular = uygulamalariBul(r, nsApps.get(ns) || []);
-      for (const u of uygular) eslesenApp.add(L(u.namespace) + '|' + L(u.application));
-      const olcum = routeOlcumu(uygular);
-      const ilk = uygular[0] || null;
-      rows.push({
-        kind: 'route',
-        // CLUSTER ROUTE ENVANTERINDEN (uretim, 2026-10-06: kullanici "cluster kolonu
-        // bombos geliyor"). Dynatrace CLOUD_APPLICATION entity'sinde `clusterName`
-        // gelmiyor, yani olcum satirindaki cluster BOS. Route envanterinde DOLU; birim
-        // route olunca bu alan tanim geregi dolu gelir.
-        cluster: r.cluster,
-        clusterSrc: r.cluster ? 'route' : null,
-        namespace: r.namespace,
-        route: r.route,
-        address: r.address,
-        // Birden cok uygulama eslesebilir (`apigw` -> apigw-1/2/3-prod). Ekran ilkini
-        // yazar, tamami `apps` icinde durur; hicbiri gizlenmez.
-        application: ilk ? ilk.application : null,
-        apps: uygular.map((u) => u.application),
-        appCount: uygular.length,
-        env: envOfNamespace(r.namespace),
-        // SPA isareti ESLESEN UYGULAMAYA gore (kullanici: "route'a sahip uygulamanin SPA
-        // olup olmadigini da yaziyoruz"). Eslesme yoksa route adindan tahmin EDILMEZ.
-        spa: ilk ? isSpaApp(ilk.application) : false,
-        ...olcum,
-        // Ayni uygulamanin birden cok route'u varsa AYNI sayi her satirda gorunur.
-        reqShared: !!ilk && routelariBul(ilk.application, nsIndeks.get(ns)).length > 1,
-        windowDays: ilk ? ilk.windowDays : 0,
-        scanDate: ilk ? ilk.scanDate : null,
-        services: uygular.reduce((a, u) => a + u.services, 0),
-        servicesMeasured: uygular.reduce((a, u) => a + u.servicesMeasured, 0),
-        servicesSkipped: uygular.reduce((a, u) => a + u.servicesSkipped, 0),
-        note: ilk ? ilk.note : '',
-      });
+    // ── CLUSTER KAPSAMI ────────────────────────────────────────────────────────
+    // Payda KATALOGDAN gelir (elle cluster listesi YOK) ve yalniz TARANABILEN
+    // cluster'lari sayar. Bakilamayan cluster ayri raporlanir (bkz. dosya basi).
+    const envKey = ortamlar.length === 1 ? L(ortamlar[0]) : null;
+    const envClusterlari = envKey ? [...(byEnv.get(envKey) || [])] : [];
+    const payda = envClusterlari.filter((c) => olculen.has(c)).length;
+    const pay = [...g.clusters].filter((c) => envClusterlari.includes(c) && olculen.has(c)).length;
+    const bakilamayanSayisi = envClusterlari.filter((c) => bakilamayan.has(c)).length;
+    let kapsam = 'unknown';
+    if (payda > 0) kapsam = pay >= payda ? 'full' : pay > 0 ? 'partial' : 'none';
+
+    // ── ISTEK ──────────────────────────────────────────────────────────────────
+    const u = g.app ? kullanim.get(L(g.namespace) + '\u0000' + L(g.app)) : null;
+    let reqStatus = 'unmeasured';
+    let req = null;
+    if (u) {
+      const olculdu = u.measured === true || Number(u.measured) === 1;
+      const n = Number(u.req_total) || 0;
+      if (olculdu) {
+        reqStatus = n > 0 ? 'active' : 'idle';
+        req = n;
+      }
     }
-  }
 
-  // ── 2) ROUTE'U OLMAYAN UYGULAMA SATIRLARI ───────────────────────────────────────
-  // Eski route bazli ekranin kor noktasi: router'dan hic gecmeyen backend'ler.
-  for (const u of olcumler.values()) {
-    if (eslesenApp.has(L(u.namespace) + '|' + L(u.application))) continue;
     rows.push({
-      kind: 'app',
-      cluster: u.cluster,
-      clusterSrc: u.cluster ? 'dynatrace' : null,
-      namespace: u.namespace,
-      route: null,
-      address: null,
-      application: u.application,
-      apps: [u.application],
-      appCount: 1,
-      env: envOfNamespace(u.namespace),
-      spa: isSpaApp(u.application),
-      status: !u.measured ? 'unmeasured' : u.req > 0 ? 'active' : 'idle',
-      reqShown: u.measured ? u.req : null,
-      measured: u.measured,
-      reqShared: false,
-      windowDays: u.windowDays,
-      scanDate: u.scanDate,
-      services: u.services,
-      servicesMeasured: u.servicesMeasured,
-      servicesSkipped: u.servicesSkipped,
-      note: u.note,
+      namespace: g.namespace,
+      app: g.app,
+      kind: g.kind,
+      env,
+      // UC DEGERLI: yes | no | unknown
+      spa: g.spaOlculdu ? (g.isSpa ? 'yes' : 'no') : 'unknown',
+      req,
+      reqStatus,
+      reqNote: u ? S(u.note) || null : null,
+      reqScanDate: u && u.scan_date ? new Date(u.scan_date).toISOString().slice(0, 10) : null,
+      routes: [...g.routes.entries()].map(([route, host]) => ({ route, host: host || null })),
+      clusters: [...g.clusters].sort(),
+      coverage: kapsam,
+      coveragePresent: pay,
+      coverageTotal: payda,
+      coverageUnmeasured: bakilamayanSayisi,
+      matched: !!g.app,
+      note: [...g.notlar][0] || null,
     });
   }
 
+  // SIRALAMA: once eslesmeyenler, sonra olculemeyen istek, sonra istege gore azalan.
+  // Kullanicinin "neyi duzeltmeliyim" sorusu ustte cevaplanir.
+  const sira = { unmeasured: 0, active: 1, idle: 2 };
   rows.sort(
     (a, b) =>
-      (b.reqShown || 0) - (a.reqShown || 0) ||
+      Number(a.matched) - Number(b.matched) ||
+      sira[a.reqStatus] - sira[b.reqStatus] ||
+      (b.req == null ? -1 : b.req) - (a.req == null ? -1 : a.req) ||
       String(a.namespace).localeCompare(String(b.namespace)) ||
-      String(a.route || a.application || '').localeCompare(String(b.route || b.application || '')),
+      String(a.app || '').localeCompare(String(b.app || '')),
   );
 
-  // SUZGEC SONRASI KIRPMA. Ozet ve ortam listesi HER ZAMAN TUM KUMEDEN hesaplanir:
-  // kirpilmis bir listeden sayi uretmek, on binlerce satirlik bir kumeyi 1.000 sanmaya
-  // yol acardi - bu ekranin isi tam olarak "kac route olculemiyor" sorusuna cevap vermek.
-  const limit = Math.min(Math.max(Number(opt.limit) || LIMIT_DEFAULT, 1), LIMIT_MAX);
-  const eslesen = suz(rows, opt);
-  const kirpilmis = eslesen.slice(0, limit);
-  const envs = [...new Set(rows.map((r) => r.env).filter(Boolean))].sort();
+  // OZET TUM KUMEDEN (suzgecten ONCE): suzulmus bir listenin ozeti "filoda durum bu"
+  // diye okunur ve yanlis olur.
+  const summary = {
+    apps: rows.filter((r) => r.matched).length,
+    unmatched: rows.filter((r) => !r.matched).length,
+    spa: rows.filter((r) => r.spa === 'yes').length,
+    spaUnknown: rows.filter((r) => r.spa === 'unknown').length,
+    active: rows.filter((r) => r.reqStatus === 'active').length,
+    idle: rows.filter((r) => r.reqStatus === 'idle').length,
+    unmeasured: rows.filter((r) => r.reqStatus === 'unmeasured').length,
+    coverageFull: rows.filter((r) => r.coverage === 'full').length,
+    coveragePartial: rows.filter((r) => r.coverage === 'partial').length,
+    routes: rows.reduce((a, r) => a + r.routes.length, 0),
+  };
 
-  const say = (f) => rows.filter(f).length;
+  // SUZGECLER SUNUCUDA (2026-09-30 olcumu: 70k satir = 20,9 MB JSON, ekran donuyordu).
+  const q = L(opts.q);
+  const envF = L(opts.env);
+  const spaF = L(opts.spa);
+  const durumF = L(opts.status);
+  const kapsamF = L(opts.coverage);
+  let out = rows;
+  if (q)
+    out = out.filter(
+      (r) =>
+        L(r.namespace).includes(q) ||
+        L(r.app).includes(q) ||
+        r.routes.some((x) => L(x.route).includes(q) || L(x.host).includes(q)),
+    );
+  if (envF) out = out.filter((r) => L(r.env) === envF);
+  if (spaF) out = out.filter((r) => r.spa === spaF);
+  if (durumF) out = out.filter((r) => r.reqStatus === durumF);
+  if (kapsamF) out = out.filter((r) => r.coverage === kapsamF);
+
+  const n = Number(opts.limit);
+  const limit = Number.isFinite(n) && n > 0 ? Math.min(n, 5000) : 1000;
+  // ORTAM SECENEKLERI TUM KUMEDEN: kirpilmis listeden uretmek, suzgecte eksik ortam
+  // gostermek olurdu (kullanici o ortamin hic uygulamasi yok sanar).
+  const envs = [...new Set(rows.map((r) => r.env).filter(Boolean))].sort();
   return {
-    latestScan,
-    rows: kirpilmis,
+    rows: out.slice(0, limit),
+    summary,
     envs,
     total: rows.length,
-    totalMatched: eslesen.length,
+    filtered: out.length,
     limit,
-    truncated: eslesen.length > kirpilmis.length,
-    summary: {
-      routes: say((r) => r.kind === 'route'),
-      // ESLESMEYEN ROUTE AYRI SAYILIR: "hepsini olctum" yanilgisi olusmasin.
-      unmatched: say((r) => r.kind === 'route' && r.status === 'unmatched'),
-      active: say((r) => r.status === 'active'),
-      idle: say((r) => r.status === 'idle'),
-      unmeasured: say((r) => r.status === 'unmeasured'),
-      // ROUTE'SUZ UYGULAMALAR: route bazli ekranin goremedigi kume.
-      routeless: say((r) => r.kind === 'app'),
-      spa: say((r) => r.spa),
-      apps: olcumler.size,
-    },
+    // TAVANDA KESILDIYSE EKRAN SOYLEMEK ZORUNDA: sessizce kirpmak, "filoda bu kadar var"
+    // diye okunur.
+    truncated: out.length > limit,
   };
 }
 
-module.exports = {
-  buildAppTraffic,
-  tekillestir,
-  routelariBul,
-  uygulamalariBul,
-  routeOlcumu,
-  routeIndeksi,
-  suz,
-  LIMIT_DEFAULT,
-  LIMIT_MAX,
-};
+module.exports = { buildAppTraffic, clusterHaritasi, olculenClusterlar };

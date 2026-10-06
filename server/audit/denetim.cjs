@@ -2112,77 +2112,127 @@ function initDenetim(app) {
     }
   });
 
-  // ── 3c) ROUTE TRAFIGI — UYGULAMA BAZLI (2026-09-30) ─────────────────────────────────
+  // ── 3c) UYGULAMA TRAFIGI — BIRIM: UYGULAMA, OMURGA: SPA KESFI (2026-10-06) ──────────
   //
-  // KULLANICI KARARI: "Prometheus'tan cektigimiz metrikler calismiyor. Orayi bos ver.
-  // Biz sadece application usage playbook'unu kullanalim ve Dynatrace metriklerine
-  // bakalim. Hata oranlarini bos ver."
+  // KULLANICI (2026-10-06): "ekrandaki veriler şöyle olmalı: Namespace - Uygulama -
+  // Ortam/SPA - İstek - Route - Cluster", "her bir uygulama için tek satır olmalı",
+  // "uygulamanın pod ismi değil direkt kendi ismi yazılmalı", "ilgili route hangi
+  // cluster'larda var ise Kısmi veya Tam olarak gösterilmeli".
   //
-  // ONCEDEN: dbo.BMW_Openshift_Route_Traffic (Thanos, route basina gunluk istek) ana
-  // kaynakti; Dynatrace olcumu yanina bir kolondu. O is aylardir kosmadigi icin ekrandaki
-  // 15.594 satirin TAMAMI "veri yok" gorunuyordu.
+  // OMURGA DEGISTI: onceden `BMW_Openshift_Route_Inventory` + Dynatrace displayName'den
+  // kuruluyordu; uygulama adi POD adi cikiyor, route bos kaliyor ve SPA ad kalibindan
+  // TAHMIN ediliyordu. Dogru kaynak `dbo.BMW_Spa_Discovery`: route -> Service ->
+  // Deployment/DeploymentConfig/Rollout zincirini COZMUS, `workload` uygulamanin kendi
+  // adi, `is_spa` kabinde nginx sinyali OLCULMUS degeri. Ayrinti: app-traffic.cjs basi.
   //
-  // SIMDI: tek kaynak dbo.BMW_Application_Usage ve birim UYGULAMA. Route'lar eslesen
-  // yerde kolon olarak durur. Gun bazli gecmis / 4xx-5xx oranlari KALDIRILDI - o kirilim
-  // yalnizca Thanos'ta vardi, Dynatrace vermiyor.
+  // DORT KAYNAK, IKI JOB: SPA kesfi (omurga + cluster kapsami) ve application_usage
+  // (istek). AWX workflow'u ikisini zincirler ama tarihleri AYRI olabilir; `freshness`
+  // ikisini de yuzeye cikarir - iki ayri tarihli veriyi sessizce harmanlamak, kullanicinin
+  // "ortalik karisti" dedigi seyin ta kendisiydi.
   router.get('/route-traffic', async (req, res) => {
     try {
       const { query } = require('../inventory/mssql.cjs');
       const { buildAppTraffic } = require('./app-traffic.cjs');
-      const ex = await query(`SELECT OBJECT_ID('dbo.BMW_Application_Usage') AS oid`);
-      if (!ex.recordset?.[0]?.oid) {
-        // "TABLO YOK" ile "HIC KULLANIM YOK" AYRI: bos liste dondurmek, tum uygulamalar
-        // istek almiyormus gibi okunurdu.
+      const ex = await query(`SELECT OBJECT_ID('dbo.BMW_Spa_Discovery') AS spa,
+                                     OBJECT_ID('dbo.BMW_Application_Usage') AS usage_t`);
+      const oid = ex.recordset?.[0] || {};
+      if (!oid.spa) {
+        // "TABLO YOK" ile "HIC UYGULAMA YOK" AYRI: bos liste dondurmek, filoda hic
+        // uygulama yokmus gibi okunurdu.
         return res.json({
           ok: true,
           tableMissing: true,
           message:
-            "dbo.BMW_Application_Usage tablosu henüz yok — application_usage job'ı bir kez koşmalı.",
+            "dbo.BMW_Spa_Discovery tablosu henüz yok — openshift_spa_discovery job'ı bir kez koşmalı.",
           rows: [],
-          summary: { routes: 0, unmatched: 0, active: 0, idle: 0, unmeasured: 0, routeless: 0, spa: 0, apps: 0 },
-          latestScan: null,
+          summary: {},
+          freshness: null,
         });
       }
-      const [usage, inventory] = await Promise.all([
-        // UYGULAMA BASINA YALNIZ EN YENI SATIR - SECIM VERITABANINDA YAPILIR.
-        // Tablo gunde ~70.000 satir yaziyor; 7 gunluk pencereyi ham cekmek ~490.000 satir
-        // demekti ve altisi zaten atiliyordu (2026-09-30'da olculdu, ekran bu yuzden gec
-        // aciliyordu). PENCERE 7 GUN KALIYOR: son kosuda dusen bir uygulama icin bir
-        // onceki olcum gecerlidir.
+      const [spa, runs, usage, clusters] = await Promise.all([
+        // SON TARAMA GUNU: gun bazli gecmis tutulmuyor, ekran "bugunku gercek" soruyor.
         query(
-          `SELECT scan_date, window_days, cluster, namespace, app, req_total,
-                  services_total, services_measured, services_skipped, measured, note
-             FROM (
-               SELECT scan_date, window_days, cluster, namespace, app, req_total,
-                      services_total, services_measured, services_skipped, measured, note,
-                      ROW_NUMBER() OVER (PARTITION BY namespace, app ORDER BY scan_date DESC) AS rn
-                 FROM dbo.BMW_Application_Usage
-                WHERE scan_date >= DATEADD(day, -7, CAST(GETDATE() AS DATE))
-             ) t
-            WHERE rn = 1`,
+          `SELECT cluster, namespace, route, host, termination, workload_kind, workload,
+                  is_spa, note, match_by, scan_date
+             FROM dbo.BMW_Spa_Discovery
+            WHERE scan_date = (SELECT MAX(scan_date) FROM dbo.BMW_Spa_Discovery)`,
         ),
-        // Route envanteri YALNIZ bir kolon icin: uygulamanin disariya acik adresi var mi.
-        // Erisilemezse ekran calismaya devam eder, route kolonu bos kalir.
         query(
-          `SELECT cluster_name, namespace_name, route_name, route_address FROM dbo.BMW_Openshift_Route_Inventory`,
+          `SELECT cluster, durum, routes, spa, eslesmeyen, sebep, scan_date
+             FROM dbo.BMW_Spa_Discovery_Run
+            WHERE scan_date = (SELECT MAX(scan_date) FROM dbo.BMW_Spa_Discovery_Run)`,
         ).catch(() => ({ recordset: [] })),
+        // UYGULAMA BASINA YALNIZ EN YENI SATIR — SECIM VERITABANINDA. Tablo gunde on
+        // binlerce satir yaziyor; 7 gunluk pencereyi ham cekmek olculmus bir yavaslikti
+        // (2026-09-30). PENCERE 7 GUN KALIR: son kosuda dusen bir uygulama icin bir
+        // onceki olcum gecerlidir.
+        oid.usage_t
+          ? query(
+              `SELECT scan_date, namespace, app, req_total, measured, note
+                 FROM (
+                   SELECT scan_date, namespace, app, req_total, measured, note,
+                          ROW_NUMBER() OVER (PARTITION BY namespace, app ORDER BY scan_date DESC) AS rn
+                     FROM dbo.BMW_Application_Usage
+                    WHERE scan_date >= DATEADD(day, -7, CAST(GETDATE() AS DATE))
+                 ) t
+                WHERE rn = 1`,
+            )
+          : Promise.resolve({ recordset: [] }),
+        // CLUSTER KAPSAMININ PAYDASI: elle cluster listesi YOK, katalog okunur.
+        query(`SELECT env, tenant, cluster_name FROM dbo.ocp_cluster_index WHERE is_active = 1`)
+          .catch(() => ({ recordset: [] })),
       ]);
-      // SUZGECLER SUNUCUDA (2026-09-30): kullanici "sayfa dondu ve hicbir sey
-      // yuklenmiyor" dedi. Olculdu: 70.059 uygulama = 20,9 MB JSON; yanit 8 MB'lik
-      // onbellek tavanini da asiyordu, yani her acilis bastan hesaplaniyordu ve
-      // tarayici 70.059 x 8 hucreyi cizmeye calisiyordu. Ozet TUM kumeden gelir.
+
+      const spaRows = spa.recordset || [];
+      const runRows = runs.recordset || [];
+      const usageRows = usage.recordset || [];
+      const gun = (v) => (v ? new Date(v).toISOString().slice(0, 10) : null);
+      // VERI TAZELIGI GORUNUR: iki kaynagin tarihi ve SPA kesfinin cluster durumlari.
+      // Kullanici "ortalik karisti" derken tam bunu goremedigini soyluyordu.
+      const freshness = {
+        spaScan: gun(spaRows[0]?.scan_date) || gun(runRows[0]?.scan_date),
+        usageScan: usageRows.reduce((en, r) => {
+          const g = gun(r.scan_date);
+          return !en || (g && g > en) ? g || en : en;
+        }, null),
+        usageTableMissing: !oid.usage_t,
+        clusters: {
+          total: runRows.length,
+          ok: runRows.filter((r) => String(r.durum || '').toLowerCase() === 'ok').length,
+          partial: runRows.filter((r) => String(r.durum || '').toLowerCase() === 'kismi').length,
+          unreachable: runRows.filter(
+            (r) => !['ok', 'kismi'].includes(String(r.durum || '').toLowerCase()),
+          ).length,
+        },
+        // Sebepleri AYNEN tasi: "yetki yok" ile "login dustu" ayri aksiyonlar.
+        clusterDetail: runRows
+          .filter((r) => String(r.durum || '').toLowerCase() !== 'ok')
+          .map((r) => ({
+            cluster: String(r.cluster || ''),
+            durum: String(r.durum || ''),
+            routes: r.routes == null ? null : Number(r.routes),
+            unmatched: r.eslesmeyen == null ? null : Number(r.eslesmeyen),
+            reason: String(r.sebep || '').slice(0, 300),
+          }))
+          .sort((a, b) => a.cluster.localeCompare(b.cluster)),
+      };
+
       const s = (v) => String(v || '').trim();
       res.json({
         ok: true,
         tableMissing: false,
-        ...buildAppTraffic(usage.recordset || [], inventory.recordset || [], {
-          q: s(req.query.q),
-          env: s(req.query.env),
-          status: s(req.query.status),
-          kind: s(req.query.kind),
-          routes: s(req.query.routes),
-          limit: req.query.limit,
-        }),
+        freshness,
+        ...buildAppTraffic(
+          { spa: spaRows, runs: runRows, usage: usageRows, clusters: clusters.recordset || [] },
+          {
+            q: s(req.query.q),
+            env: s(req.query.env),
+            spa: s(req.query.spa),
+            status: s(req.query.status),
+            coverage: s(req.query.coverage),
+            limit: req.query.limit,
+          },
+        ),
       });
     } catch (err) {
       res

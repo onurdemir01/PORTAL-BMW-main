@@ -1,17 +1,23 @@
-// src/components/denetim/RouteTraffic.tsx — "Denetim > Route Trafiği".
+// src/components/denetim/RouteTraffic.tsx — "Denetim ▸ Uygulama Trafiği".
 //
-// Kullanici: "SPA uygulamalari var ama kullaniliyor mu? atil mi, emekli mi olmus?"
+// Kullanıcının istediği tablo, kendi sözleriyle (2026-10-06):
+//   "ekrandaki veriler şöyle olmalı: Namespace - Uygulama - Ortam/SPA - İstek - Route - Cluster"
+//   "her bir uygulama için tek satır olmalı"
+//   "uygulamanın pod ismi değil direkt kendi ismi yazılmalı"
+//   "ilgili route hangi cluster'larda var ise Kısmi veya Tam olarak gösterilmeli...
+//    4 prod cluster'ın 4'ünde de varsa 4/4 Tam, 3'ünde varsa 3/4 Kısmi"
 //
-// 2026-09-30'DA BIRIM DEGISTI: ekran ROUTE bazliydi, artik UYGULAMA bazli.
-// Kullanici: "Prometheus'tan cektigimiz metrikler calismiyor. Orayi bos ver. Biz sadece
-// application usage playbook'unu kullanalim ve Dynatrace metriklerine bakalim. Hata
-// oranlarini bos ver."
+// ÖNCEKİ HALİ ÜÇ KEZ YANLIŞTI ve üçünün kökü aynıydı: ekran yanlış tablodan besleniyordu
+// (route envanteri + Dynatrace displayName). Uygulama adı POD adı çıkıyor, route boş
+// kalıyor, SPA ad kalıbından tahmin ediliyordu. Doğru omurga `dbo.BMW_Spa_Discovery`
+// (openshift_spa_discovery job'ı): route → Service → Deployment/DeploymentConfig/Rollout
+// zincirini ÇÖZMÜŞ ve SPA'yı kabinde nginx sinyaliyle ÖLÇMÜŞ. Sınıflama sunucuda
+// (server/audit/app-traffic.cjs); burası yalnızca gösterir ve süzer.
 //
-// Kaynak: application_usage job'i (Dynatrace servis istekleri) -> BMW_Application_Usage;
-// siniflama sunucuda (server/audit/app-traffic.cjs). Burasi yalnizca gosterir/suzer.
-//
-// KALDIRILAN KOLONLAR: 7/30/90 gun, gun/ort, 4xx, 5xx, son istek. Hepsi Thanos
-// kirilimiydi; Dynatrace vermiyor. Bos kolon gostermek yerine kaldirildi.
+// ÜÇ YERDE "ÖLÇÜLEMEDİ" AYRI GÖSTERİLİR — üçü de "yok" değildir:
+//   İstek  : ölçülemeyen uygulamayı "0 istek" göstermek, onu emekli adayı yapardı
+//   SPA    : eşleşemeyen route "SPA değil" değil, "bilinmiyor"
+//   Cluster: erişilemeyen cluster "Kısmi" damgası vermez; ayrıca sayılır
 import React, { useCallback, useEffect, useState } from 'react';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
 import {
@@ -21,6 +27,7 @@ import {
   SignalIcon,
   QuestionMarkCircleIcon,
   MoonIcon,
+  ExclamationTriangleIcon,
 } from '@heroicons/react/24/outline';
 import {
   denetimApi,
@@ -36,463 +43,403 @@ import { downloadCsv as csvDownload } from '@/utils/csv';
 
 const nf = (n: number) => fmtNumber(n);
 
-// UC DURUM, IKI DEGIL. "olculemedi" ile "istek yok" ayni sey degildir: olcemedigimiz bir
-// uygulamayi emekli aday saymak, bu ekranin verebilecegi en pahali yanlis karardir.
+// ÜÇ DURUM, İKİ DEĞİL. "ölçülemedi" ile "istek yok" aynı şey değildir: ölçemediğimiz bir
+// uygulamayı emekli adayı saymak, bu ekranın verebileceği en pahalı yanlış karardır.
 const STATUS: Record<
   AppTrafficStatus,
   { label: string; tone: Tone; icon: React.ComponentType<{ className?: string }>; hint: string }
 > = {
   active: {
-    label: 'aktif',
+    label: 'İstek alıyor',
     tone: 'success',
     icon: SignalIcon,
-    hint: 'ölçüm penceresinde istek aldı',
+    hint: 'Ölçüm penceresinde Dynatrace isteği görüldü.',
   },
   idle: {
-    label: 'istek yok',
+    label: 'İstek almıyor',
     tone: 'warning',
     icon: MoonIcon,
-    hint: 'ölçüldü ve pencerede hiç istek almadı — atıl/emekli adayı',
+    hint: 'Ölçüm YAPILDI ve sonuç sıfır — atıl aday.',
   },
   unmeasured: {
-    label: 'ölçülemedi',
-    tone: 'neutral',
+    label: 'Ölçülemedi',
+    tone: 'info',
     icon: QuestionMarkCircleIcon,
-    hint: 'ölçüm denendi ama düştü — "istek almıyor" ANLAMINA GELMEZ',
-  },
-  // ESLESMEDI, OLCULMEDI DEGIL (kullanici 2026-10-06): envanterde route var ama hicbir
-  // Dynatrace uygulamasina baglanamadi. Satir GIZLENMEZ; "istek yok" ile ayni kovaya
-  // konmasi, hic olculmemis bir route'u emekli aday gosterirdi.
-  unmatched: {
-    label: 'eşleşmedi',
-    tone: 'neutral',
-    icon: QuestionMarkCircleIcon,
-    hint: 'route envanterde var ama Dynatrace karşılığı bulunamadı — ölçüm YAPILMADI, "istek yok" DEĞİL',
+    hint:
+      'Uygulamanın istek ölçümü alınamadı (application_usage satırı yok ya da servisleri ' +
+      'ölçülemedi). "İstek almıyor" DEĞİL — atıl sanıp emekli etmeyin.',
   },
 };
 
-/**
- * Istek hucresi.
- *
- * Sayi YALNIZ olculduyse yazilir. Olculemeyen satira "0" yazmak, calisan bir uygulamayi
- * "kullanilmiyor" diye okutur.
- */
-function istek(r: AppTrafficRow) {
-  if (r.reqShown == null) {
-    return (
-      <span
-        style={{ color: 'var(--text-muted)' }}
-        title={`Ölçüm denendi ama düştü${r.note ? ': ' + r.note : ''}. "0 istek" anlamına GELMEZ.`}
-      >
-        ölçülemedi
-      </span>
-    );
-  }
-  return (
-    <span
-      style={{ color: r.reqShown ? 'var(--text-primary)' : 'var(--status-warning)' }}
-      title={`Dynatrace servis çağrıları · son ${r.windowDays} gün · ${r.servicesMeasured}/${r.services} servis ölçüldü${
-        r.servicesSkipped
-          ? ` (${r.servicesSkipped} tanesi yalnızca altyapı servisi çağırdığı için sayılmadı)`
-          : ''
-      } · ölçüm ${r.scanDate}`}
-    >
-      {nf(r.reqShown)}
-    </span>
-  );
+const SPA_ETIKET: Record<string, { label: string; tone: Tone; hint: string }> = {
+  yes: {
+    label: 'SPA',
+    tone: 'success',
+    hint: 'Kabinde nginx sinyali (nginx-start.sh) ÖLÇÜLDÜ — ad kalıbı tahmini değil.',
+  },
+  no: {
+    label: 'SPA değil',
+    tone: 'neutral',
+    hint: 'Kabin tarandı, nginx sinyali bulunamadı.',
+  },
+  unknown: {
+    label: 'SPA ölçülemedi',
+    tone: 'info',
+    hint:
+      'Route bir iş yüküne eşleşemedi (çoğunlukla servis okuma yetkisi yok), bu yüzden ' +
+      'kabine bakılamadı. "SPA değil" DEMEK DEĞİL.',
+  },
+};
+
+/** Cluster kapsamı: "4/4 Tam", "3/4 Kısmi". Payda yalnız TARANABİLEN cluster'lar. */
+function kapsamMetni(r: AppTrafficRow): { text: string; tone: Tone; hint: string } {
+  if (r.coverage === 'unknown' || r.coverageTotal === 0)
+    return {
+      text: 'ölçülemedi',
+      tone: 'info',
+      hint:
+        'Bu uygulamanın ortamı için katalogda taranabilen cluster yok — kapsam oranı ' +
+        'hesaplanamaz. Ortam çözülemediyse de böyle görünür.',
+    };
+  const oran = `${r.coveragePresent}/${r.coverageTotal}`;
+  const ek = r.coverageUnmeasured
+    ? ` · ${r.coverageUnmeasured} cluster ölçülemedi`
+    : '';
+  if (r.coverage === 'full')
+    return {
+      text: `${oran} Tam${ek}`,
+      tone: 'success',
+      hint:
+        'Route, ortamın taranabilen tüm cluster’larında var.' +
+        (r.coverageUnmeasured
+          ? ' Erişilemeyen cluster’lar paydaya GİRMEZ — orada var mı yok mu bilinmiyor.'
+          : ''),
+    };
+  if (r.coverage === 'partial')
+    return {
+      text: `${oran} Kısmi${ek}`,
+      tone: 'warning',
+      hint: 'Route ortamın bazı cluster’larında YOK — dağıtım eksik olabilir.',
+    };
+  return {
+    text: `0/${r.coverageTotal}`,
+    tone: 'danger',
+    hint: 'Route ortamın taranan hiçbir cluster’ında bulunamadı.',
+  };
 }
 
-export default function RouteTraffic() {
+const RouteTraffic: React.FC = () => {
   const [data, setData] = useState<AppTrafficResult | null>(null);
   const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState('');
+  const [err, setErr] = useState<string | null>(null);
   const [q, setQ] = useState('');
   const [env, setEnv] = useState('all');
-  const [kind, setKind] = useState<'all' | 'spa' | 'nonspa'>('all');
-  const [status, setStatus] = useState<'all' | AppTrafficStatus>('all');
-  const [routeFilter, setRouteFilter] = useState<'all' | 'with' | 'without'>('all');
+  const [spa, setSpa] = useState('all');
+  const [status, setStatus] = useState('all');
+  const [coverage, setCoverage] = useState('all');
 
-  // SUZGECLER SUNUCUDA UYGULANIR (2026-09-30). Kullanici: "sayfa dondu ve hicbir sey
-  // yuklenmiyor". Olculdu: 70.059 uygulama = 20,9 MB JSON ve 70.059 x 8 hucre DOM;
-  // yanit 8 MB'lik onbellek tavanini da astigi icin her acilis bastan hesaplaniyordu.
-  // Artik sunucu suzer ve tavana kadar kirpar; ozet TUM kumeden gelir.
   const load = useCallback(
     async (fresh = false) => {
       setLoading(true);
+      setErr(null);
       try {
-        const r = await denetimApi.routeTraffic({ q, env, kind, status, routes: routeFilter }, fresh);
-        if (r.ok) {
-          setData(r);
-          setErr('');
-        } else setErr(r.message || 'Veri alınamadı.');
-      } catch (e: unknown) {
+        const r = await denetimApi.routeTraffic({ q, env, spa, status, coverage }, fresh);
+        if (!r.ok) throw new Error(r.message || 'Veri alınamadı.');
+        setData(r);
+      } catch (e) {
         setErr(e instanceof Error ? e.message : String(e));
       } finally {
         setLoading(false);
       }
     },
-    [q, env, kind, status, routeFilter],
+    [q, env, spa, status, coverage],
   );
 
-  // SUZGEC DEGISIMI GECIKMELI: her tus vurusunda sunucuya gitmek, 70.000 satirlik
-  // kumeyi tekrar tekrar suzdururdu. Onbellek 60 sn oldugu icin ayni bilesim ikinci
-  // kez aninda doner.
   useEffect(() => {
-    const t = window.setTimeout(() => {
-      void load();
-    }, 300);
-    return () => window.clearTimeout(t);
+    const t = setTimeout(() => void load(), 250);
+    return () => clearTimeout(t);
   }, [load]);
 
-  const envs = data?.envs || [];
-  const rows = data?.rows || [];
+  const rows = data?.rows ?? [];
+  const s = data?.summary;
+  const f = data?.freshness ?? null;
 
-  // CSV TUM SUZGEC SONUCUNU indirir, ekrandaki kirpilmis listeyi DEGIL. Kirpilmis
-  // listeyi CSV'ye yazmak, elektronik tabloda "bu kadar uygulama var" diye okunurdu.
-  const [csvBusy, setCsvBusy] = useState(false);
-  const csvIndir = useCallback(async () => {
-    setCsvBusy(true);
-    try {
-      const r = await denetimApi.routeTraffic({
-        q,
-        env,
-        kind,
-        status,
-        routes: routeFilter,
-        limit: 100000,
-      });
-      csvDownload(
-        'uygulama_trafigi',
-        [
-          'namespace',
-          'uygulama',
-          'ortam',
-          'spa',
-          'cluster',
-          'durum',
-          'istek',
-          'pencere_gun',
-          'servis',
-          'servis_olculen',
-          'servis_atlanan',
-          'route',
-          'adres',
-          'olcum_tarihi',
-          'not',
-        ],
-        (r.rows || []).map((x) => [
-          x.namespace,
-          x.application,
-          x.env || '',
-          x.spa ? 'evet' : 'hayır',
-          x.cluster,
-          STATUS[x.status].label,
-          // OLCULEMEYEN SATIRA 0 YAZILMAZ: CSV'de de "ölçülemedi" ile "istek yok"
-          // ayri kalmali, yoksa elektronik tabloda toplanip yanlis okunur.
-          x.reqShown == null ? '' : x.reqShown,
-          x.windowDays,
-          x.services,
-          x.servicesMeasured,
-          x.servicesSkipped,
-          x.route || '',
-          x.address || '',
-          x.apps.join(' '),
-          x.scanDate,
-          x.note,
-        ]),
-      );
-    } catch {
-      /* indirme hatasi ekranin geri kalanini bozmaz */
-    } finally {
-      setCsvBusy(false);
-    }
-  }, [q, env, kind, status, routeFilter]);
+  function csv() {
+    csvDownload(
+      'uygulama-trafigi.csv',
+      ['Namespace', 'Uygulama', 'Tür', 'Ortam', 'SPA', 'İstek', 'Durum', 'Route', 'Cluster'],
+      rows.map((r) => [
+        r.namespace,
+        r.app ?? '(eşleşmedi)',
+        r.kind ?? '',
+        r.env ?? '',
+        SPA_ETIKET[r.spa]?.label ?? r.spa,
+        r.req == null ? 'ölçülemedi' : String(r.req),
+        STATUS[r.reqStatus].label,
+        r.routes.map((x) => x.route).join(' | '),
+        kapsamMetni(r).text,
+      ]),
+    );
+  }
 
   if (loading && !data) return <LoadingLogo />;
-  if (err)
-    return (
-      <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">
-        {err}
-      </div>
-    );
-  if (!data) return null;
-
-  const s = data.summary;
 
   return (
-    <div className="space-y-3">
-      {data.tableMissing && <Note tone="warning">{data.message}</Note>}
-
-      {/* KIRPMA SESSIZ OLMAZ: ekran 1.000 satir gosterip 70.059 uygulamalik bir kumeyi
-          "hepsi bu" gibi okutamaz. Kullanici suzgeci daraltarak ya da CSV ile tamamina
-          ulasir. */}
-      {data.truncated && (
-        <Note tone="info">
-          Süzgece <b>{nf(data.totalMatched)}</b> uygulama uyuyor; ekranda <b>ilk {nf(data.limit)}</b>{' '}
-          gösteriliyor (istek sayısına göre azalan). Tamamı için süzgeci daraltın ya da{' '}
-          <b>CSV</b> indirin — CSV süzgece uyan <b>tüm</b> satırları yazar.
-        </Note>
+    <div className="space-y-4">
+      {/* VERİ TAZELİĞİ EN ÜSTTE. Kullanıcı "ortalık karıştı, çok fazla job'ımız oldu"
+          dedi; iki kaynağın tarihini ve SPA keşfinin cluster durumunu GÖRMEDEN bu
+          tablonun hiçbir sayısı yorumlanamaz. Sessizce harmanlamak o karışıklığın
+          kendisiydi. */}
+      {f && (
+        <div
+          className="rounded-xl border px-3 py-2 text-[11px] space-y-1"
+          style={{
+            borderColor: f.clusters.unreachable ? 'var(--status-warning)' : 'var(--border-subtle)',
+            background: 'var(--bg-surface)',
+            color: 'var(--text-secondary)',
+          }}
+        >
+          <div>
+            <b>SPA keşfi</b> (openshift_spa_discovery):{' '}
+            {f.spaScan ? fmtDate(f.spaScan) : 'hiç koşmadı'} · {f.clusters.total} cluster ·{' '}
+            <b>{f.clusters.ok}</b> tam, {f.clusters.partial} kısmi
+            {f.clusters.unreachable > 0 && (
+              <span style={{ color: 'var(--status-warning)', fontWeight: 600 }}>
+                {' '}
+                · {f.clusters.unreachable} erişilemedi
+              </span>
+            )}
+          </div>
+          <div>
+            <b>İstek ölçümü</b> (application_usage):{' '}
+            {f.usageTableMissing
+              ? 'tablo yok — job bir kez koşmalı'
+              : f.usageScan
+                ? fmtDate(f.usageScan)
+                : 'veri yok'}
+          </div>
+          {f.spaScan && f.usageScan && f.spaScan !== f.usageScan && (
+            <div style={{ color: 'var(--status-warning)' }}>
+              İki kaynağın tarihi FARKLI. Satırlar iki ayrı günün verisini birleştiriyor;
+              AWX workflow&apos;u (SPA Discovery → Application Usage) ikisini aynı pencereye
+              getirir.
+            </div>
+          )}
+          {f.clusters.unreachable > 0 && (
+            <details>
+              <summary className="cursor-pointer" style={{ color: 'var(--status-warning)' }}>
+                Erişilemeyen / kısmi cluster&apos;lar ve sebepleri
+              </summary>
+              <ul className="mt-1 space-y-0.5 pl-4">
+                {f.clusterDetail.map((c) => (
+                  <li key={c.cluster}>
+                    <span className="font-mono">{c.cluster}</span> · {c.durum}
+                    {c.reason ? ` — ${c.reason}` : ''}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+        </div>
       )}
 
-      {/* KOR NOKTA GORUNUR OLSUN: envanterdeki her route bir uygulamaya baglanamaz
-          (route "apigw", uygulamalar "apigw-1-prod"...). Sayiyi yazmazsak "hepsini gordum"
-          yanilgisi olusur. */}
-      {(s.unmatched > 0 || s.routeless > 0) && (
-        <Note tone="info">
-          Bu ekran <b>route</b> bazlıdır: her satır bir route&apos;tur.{' '}
-          {s.unmatched > 0 && (
-            <>
-              <b>{nf(s.unmatched)}</b> route hiçbir uygulamaya bağlanamadı (&quot;eşleşmedi&quot;) —
-              adı eşleşmeyenler ya da Dynatrace&apos;in hiç görmediği route&apos;lar. Bunlar{' '}
-              <b>gizlenmez</b>, çünkü eşleşmemek ölçülüp istek almamakla aynı şey değildir.{' '}
-            </>
-          )}
-          {s.routeless > 0 && (
-            <>
-              Ayrıca <b>{nf(s.routeless)}</b> uygulamanın dışarıya açık route&apos;u yok; onlar da
-              listede durur (servisten servise çağrılan backend&apos;ler).{' '}
-            </>
-          )}
-          <b>İstek</b> kolonu Dynatrace&apos;in <b>uygulama</b> ölçümüdür: bir uygulamanın birden
-          çok route&apos;u varsa aynı sayı her satırda görünür (satırda &quot;paylaşık&quot; yazar).
-        </Note>
+      {data?.tableMissing && <Note tone="warning">{data.message}</Note>}
+
+      {s && (
+        <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
+          <StatTile label="Uygulama" value={nf(s.apps)} />
+          <StatTile label="Route" value={nf(s.routes)} />
+          <StatTile label="SPA" value={nf(s.spa)} hint={`${nf(s.spaUnknown)} ölçülemedi`} />
+          <StatTile label="İstek alıyor" value={nf(s.active)} tone="success" />
+          <StatTile label="İstek almıyor" value={nf(s.idle)} tone="warning" />
+          <StatTile
+            label="Ölçülemedi"
+            value={nf(s.unmeasured)}
+            tone="info"
+            hint="İstek ölçümü alınamayan uygulama — atıl DEĞİL"
+          />
+        </div>
       )}
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
-        <StatTile
-          label="route"
-          value={nf(s.routes)}
-          hint={`envanterdeki route sayısı · ${nf(s.apps)} uygulama ölçüldü · son tarama ${
-            data.latestScan ? fmtDate(data.latestScan) : '—'
-          }`}
-        />
-        <StatTile
-          label="aktif"
-          value={nf(s.active)}
-          tone="success"
-          icon={SignalIcon}
-          hint={STATUS.active.hint}
-        />
-        <StatTile
-          label="istek yok"
-          value={nf(s.idle)}
-          tone="warning"
-          icon={MoonIcon}
-          hint={STATUS.idle.hint}
-        />
-        <StatTile
-          label="ölçülemedi"
-          value={nf(s.unmeasured)}
-          tone={s.unmeasured ? 'warning' : 'neutral'}
-          icon={QuestionMarkCircleIcon}
-          hint={STATUS.unmeasured.hint}
-        />
-        <StatTile
-          label="eşleşmedi"
-          value={nf(s.unmatched)}
-          tone={s.unmatched ? 'warning' : 'neutral'}
-          hint="envanterde route var ama hiçbir Dynatrace uygulamasına bağlanamadı — ölçülmedi demek, istek yok demek DEĞİL"
-        />
-        <StatTile
-          label="route'u yok"
-          value={nf(s.routeless)}
-          hint="dışarıya açık adresi olmayan uygulamalar — route bazlı listenin göremediği küme"
-        />
-      </div>
+      {s && s.unmatched > 0 && (
+        <Note tone="info">
+          <b>{nf(s.unmatched)}</b> route bir iş yüküne eşleşemedi ve listede
+          &quot;eşleşmedi&quot; olarak <b>en üstte</b> duruyor — gizlenmiyor. Sebep çoğunlukla
+          servis okuma yetkisi: SPA keşfi o namespace&apos;lerin servislerini okuyamadığında
+          route&apos;un hangi uygulamaya ait olduğu çözülemiyor.
+        </Note>
+      )}
 
       <div className="flex flex-wrap items-center gap-2">
-        <div className="relative">
+        <div className="relative flex-1 min-w-[220px]">
           <MagnifyingGlassIcon className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="namespace, uygulama, route ya da adres"
-            className="pl-8 pr-2.5 py-1.5 text-xs border border-[var(--border)] rounded-lg w-72"
+            placeholder="namespace, uygulama ya da route ara..."
+            className="w-full pl-8 pr-3 py-1.5 text-sm rounded-lg border bg-[var(--bg-surface)]"
+            style={{ borderColor: 'var(--border-subtle)' }}
           />
         </div>
-        <Select sizeVariant="sm" value={env} onChange={(e) => setEnv(e.target.value)}>
-          <option value="all">tüm ortamlar</option>
-          {envs.map((e) => (
-            <option key={e} value={e}>
-              {e}
+        <Select value={env} onChange={(e) => setEnv(e.target.value)}>
+          <option value="all">Tüm ortamlar</option>
+          {(data?.envs ?? []).map((x) => (
+            <option key={x} value={x}>
+              {x}
             </option>
           ))}
         </Select>
-        <Select
-          sizeVariant="sm"
-          value={kind}
-          onChange={(e) => setKind(e.target.value as typeof kind)}
-        >
-          <option value="all">SPA + diğer</option>
-          <option value="spa">sadece SPA</option>
-          <option value="nonspa">SPA olmayan</option>
+        <Select value={spa} onChange={(e) => setSpa(e.target.value)}>
+          <option value="all">SPA: hepsi</option>
+          <option value="yes">SPA</option>
+          <option value="no">SPA değil</option>
+          <option value="unknown">SPA ölçülemedi</option>
         </Select>
-        <Select
-          sizeVariant="sm"
-          value={status}
-          onChange={(e) => setStatus(e.target.value as typeof status)}
-        >
-          <option value="all">tüm durumlar</option>
-          <option value="idle">istek yok (atıl aday)</option>
-          <option value="active">aktif</option>
-          <option value="unmeasured">ölçülemedi</option>
+        <Select value={status} onChange={(e) => setStatus(e.target.value)}>
+          <option value="all">İstek: hepsi</option>
+          <option value="active">İstek alıyor</option>
+          <option value="idle">İstek almıyor</option>
+          <option value="unmeasured">Ölçülemedi</option>
         </Select>
-        <Select
-          sizeVariant="sm"
-          value={routeFilter}
-          onChange={(e) => setRouteFilter(e.target.value as typeof routeFilter)}
-        >
-          <option value="all">route farkı yok</option>
-          <option value="with">route&apos;u olanlar</option>
-          <option value="without">route&apos;u olmayanlar</option>
+        <Select value={coverage} onChange={(e) => setCoverage(e.target.value)}>
+          <option value="all">Cluster: hepsi</option>
+          <option value="full">Tam</option>
+          <option value="partial">Kısmi</option>
+          <option value="none">Hiçbirinde</option>
+          <option value="unknown">Ölçülemedi</option>
         </Select>
-        <span className="text-xs text-[var(--text-muted)] tabular-nums">
-          {nf(rows.length)} / {nf(data.totalMatched)} uygulama
-          {data.totalMatched !== data.total && <> (toplam {nf(data.total)})</>}
-        </span>
-        <div className="ml-auto flex items-center gap-2">
-          <button
-            onClick={() => void csvIndir()}
-            disabled={csvBusy}
-            title="Süzgece uyan TÜM satırlar indirilir (ekrandaki kırpılmış liste değil)."
-            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs border border-[var(--border)] rounded-lg hover:bg-[var(--bg-elevated)] disabled:opacity-50"
-          >
-            <ArrowDownTrayIcon className="w-3.5 h-3.5" /> {csvBusy ? 'CSV…' : 'CSV'}
-          </button>
-          <button
-            onClick={() => load(true)}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs border border-[var(--border)] rounded-lg hover:bg-[var(--bg-elevated)]"
-          >
-            <ArrowPathIcon className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} /> Yenile
-          </button>
-        </div>
+        <button
+          onClick={() => void load(true)}
+          className="px-2.5 py-1.5 text-sm rounded-lg border inline-flex items-center gap-1.5"
+          style={{ borderColor: 'var(--border-subtle)' }}
+        >
+          <ArrowPathIcon className="w-4 h-4" /> Yenile
+        </button>
+        <button
+          onClick={csv}
+          disabled={!rows.length}
+          className="px-2.5 py-1.5 text-sm rounded-lg border inline-flex items-center gap-1.5 disabled:opacity-50"
+          style={{ borderColor: 'var(--border-subtle)' }}
+        >
+          <ArrowDownTrayIcon className="w-4 h-4" /> CSV
+        </button>
       </div>
 
-      <TableShell maxHeight="40rem">
-        <thead className="sticky top-0" style={{ background: 'var(--bg-elevated)' }}>
+      {err && <Note tone="danger">{err}</Note>}
+
+      {data?.truncated && (
+        <Note tone="info">
+          Liste {nf(data.limit)} satırda kesildi ({nf(data.filtered)} satır süzgece uyuyor).
+          Süzgeçleri daraltın.
+        </Note>
+      )}
+
+      <TableShell>
+        <thead>
           <tr>
             <Th>Namespace</Th>
             <Th>Uygulama</Th>
-            <Th>Ortam</Th>
-            <Th>Durum</Th>
+            <Th>Ortam / SPA</Th>
             <Th align="right">İstek</Th>
-            <Th align="right">Servis</Th>
             <Th>Route</Th>
             <Th>Cluster</Th>
           </tr>
         </thead>
         <tbody>
-          {rows.length === 0 ? (
-            // SUZGEC ARTIK SUNUCUDA: bos liste "veri yok" DEMEK DEGIL. Karar
-            // `data.total`a bakar (olculen tum uygulama sayisi); `rows` zaten
-            // suzulmus ve kirpilmis geldigi icin ona bakmak, suzgece uymayan her
-            // aramayi "job hic kosmamis" gibi okuturdu.
-            <TableEmptyRow
-              colSpan={8}
-              title={data.total ? 'Süzgeçle eşleşen uygulama yok.' : 'Henüz kullanım verisi yok.'}
-              description={
-                data.total ? undefined : 'application_usage job’ı bir kez koşunca burası dolar.'
-              }
-            />
-          ) : (
-            rows.map((r: AppTrafficRow) => {
-              const st = STATUS[r.status];
-              return (
-                <tr
-                  key={r.namespace + '|' + r.application}
-                  className="border-t"
-                  style={{ borderColor: 'var(--border-subtle)' }}
-                >
-                  <Td>
-                    <span className="font-mono text-[11px]">{r.namespace}</span>
-                  </Td>
-                  <Td>
-                    {r.application ? (
-                      <div
-                        className="font-medium truncate max-w-[16rem]"
-                        title={r.apps.length > 1 ? r.apps.join(', ') : r.application}
-                      >
-                        {r.application}
-                        {r.appCount > 1 && (
-                          <span style={{ color: 'var(--text-muted)' }}> +{r.appCount - 1}</span>
-                        )}
-                      </div>
-                    ) : (
-                      <span
-                        className="text-[10px]"
-                        style={{ color: 'var(--text-muted)' }}
-                        title="Bu route hiçbir Dynatrace uygulamasına bağlanamadı. ÖLÇÜLMEDİ demektir; istek almadığı anlamına GELMEZ."
-                      >
-                        eşleşmedi
-                      </span>
-                    )}
-                  </Td>
-                  <Td>
-                    <span className="uppercase text-[10px] font-semibold">{r.env || '—'}</span>
-                    {r.spa && (
-                      <span
-                        className="ml-1 text-[10px] px-1 rounded border"
-                        style={{ borderColor: 'var(--border-subtle)', color: 'var(--text-muted)' }}
-                      >
-                        SPA
-                      </span>
-                    )}
-                  </Td>
-                  <Td>
-                    <Pill tone={st.tone} icon={st.icon} title={st.hint}>
-                      {st.label}
-                    </Pill>
-                  </Td>
-                  <Td align="right" className="tabular-nums">
-                    {istek(r)}
-                  </Td>
-                  <Td align="right" className="tabular-nums">
+          {!rows.length && <TableEmptyRow colSpan={6} title="Süzgece uyan uygulama yok." />}
+          {rows.map((r) => {
+            const st = STATUS[r.reqStatus];
+            const Icon = st.icon;
+            const kap = kapsamMetni(r);
+            const sp = SPA_ETIKET[r.spa] ?? SPA_ETIKET.unknown;
+            return (
+              <tr key={`${r.namespace}/${r.app ?? r.routes[0]?.route ?? '?'}`}>
+                <Td className="font-mono">{r.namespace}</Td>
+                <Td className="font-mono">
+                  {r.app ?? (
                     <span
-                      title={`${r.servicesMeasured} servis ölçüldü, ${r.servicesSkipped} tanesi sayılmadı`}
+                      style={{ color: 'var(--status-warning)' }}
+                      title="Route bir iş yüküne eşleşemedi — SPA keşfi o namespace'in servislerini okuyamadı. Satır gizlenmiyor."
                     >
-                      {nf(r.servicesMeasured)}
-                      {r.servicesSkipped > 0 && (
-                        <span style={{ color: 'var(--text-muted)' }}> +{nf(r.servicesSkipped)}</span>
-                      )}
+                      <ExclamationTriangleIcon className="w-3.5 h-3.5 inline mr-1" />
+                      eşleşmedi
                     </span>
-                  </Td>
-                  <Td>
-                    {r.kind === 'app' ? (
-                      <span
-                        className="text-[10px]"
-                        style={{ color: 'var(--text-muted)' }}
-                        title="Bu uygulamanın dışarıya açık route'u yok — servisten servise çağrılan bir backend olabilir."
-                      >
-                        route yok
-                      </span>
+                  )}
+                  {r.kind && (
+                    <span className="ml-1.5 text-[10px]" style={{ color: 'var(--text-muted)' }}>
+                      {r.kind}
+                    </span>
+                  )}
+                </Td>
+                <Td>
+                  <span className="text-xs">{r.env ?? '—'}</span>
+                  <Pill tone={sp.tone} title={sp.hint}>
+                    {sp.label}
+                  </Pill>
+                </Td>
+                <Td align="right">
+                  {/* Ikon tipi yalniz className aliyor (ComponentType<{className}>);
+                      rengi SARMALAYICIDAN miras alir. */}
+                  <span
+                    className="inline-flex items-center gap-1 tabular-nums"
+                    title={st.hint + (r.reqNote ? ` — ${r.reqNote}` : '')}
+                    style={{
+                      color:
+                        st.tone === 'success'
+                          ? 'var(--status-ok)'
+                          : st.tone === 'warning'
+                            ? 'var(--status-warning)'
+                            : 'var(--text-secondary)',
+                    }}
+                  >
+                    <Icon className="w-3.5 h-3.5" />
+                    {r.req == null ? (
+                      <span style={{ color: 'var(--text-muted)' }}>ölçülemedi</span>
                     ) : (
-                      <div
-                        className="text-[10px] font-mono truncate max-w-[18rem]"
-                        title={[r.route, r.address].filter(Boolean).join('\n')}
-                      >
-                        {r.address || r.route}
-                      </div>
+                      nf(r.req)
                     )}
-                  </Td>
-                  <Td>
-                    <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
-                      {r.cluster || '—'}
-                    </span>
-                  </Td>
-                </tr>
-              );
-            })
-          )}
+                  </span>
+                </Td>
+                <Td className="font-mono">
+                  {r.routes.length === 0 && <span style={{ color: 'var(--text-muted)' }}>—</span>}
+                  {r.routes.map((x) => (
+                    <div key={x.route} title={x.host ?? undefined} className="truncate max-w-[280px]">
+                      {x.route}
+                    </div>
+                  ))}
+                </Td>
+                <Td>
+                  <Pill tone={kap.tone} title={kap.hint}>
+                    {kap.text}
+                  </Pill>
+                  {r.clusters.length > 0 && (
+                    <div
+                      className="text-[10px] mt-0.5 truncate max-w-[220px]"
+                      style={{ color: 'var(--text-muted)' }}
+                      title={r.clusters.join(', ')}
+                    >
+                      {r.clusters.join(', ')}
+                    </div>
+                  )}
+                </Td>
+              </tr>
+            );
+          })}
         </tbody>
       </TableShell>
 
-      <p className="text-[11px] max-w-4xl" style={{ color: 'var(--text-muted)' }}>
-        Sayılar Dynatrace&apos;in uygulama başına <b>servis isteği</b> ölçümünden gelir
-        (application_usage job&apos;ı, pencere {data.rows[0]?.windowDays || 7} gün) — OCP
-        router&apos;ından değil. Bu yüzden route&apos;u olmayan backend&apos;ler de görünür.
-        &quot;İstek yok&quot; ölçülmüş bir sıfırdır; &quot;ölçülemedi&quot; ise hüküm değildir —
-        emeklilik kararında ikisini karıştırmayın.
-      </p>
+      <Note>
+        <b>Veri kaynağı — iki job.</b> Omurga <code>openshift_spa_discovery</code>: route&apos;un
+        ardındaki iş yükünü (Deployment / DeploymentConfig / Argo Rollout) çözer ve SPA&apos;yı
+        kabinde nginx sinyaliyle <b>ölçer</b> — ad kalıbı tahmini kullanılmaz, uygulama adı pod
+        adı değil iş yükünün kendi adıdır. &quot;İstek&quot; kolonu{' '}
+        <code>application_usage</code>: Dynatrace <code>requestCount.total</code>, 7 günlük
+        pencere, uygulamanın servisleri üzerinden toplanır. Cluster kolonundaki payda, ortamın
+        katalogdaki <b>taranabilen</b> cluster sayısıdır; erişilemeyen cluster paydaya girmez ve
+        &quot;Kısmi&quot; damgası vermez — orada var mı yok mu bilinmiyor.
+      </Note>
     </div>
   );
-}
+};
+
+export default RouteTraffic;

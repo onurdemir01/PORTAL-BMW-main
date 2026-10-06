@@ -788,80 +788,87 @@ export interface WebAppRow {
  * ver, sadece Dynatrace" dedi. Gun kirilimi (req7/req30/req90, perDay) ve 4xx/5xx
  * oranlari KALDIRILDI - Dynatrace o kirilimi vermiyor.
  */
-export type AppTrafficStatus = 'active' | 'idle' | 'unmeasured' | 'unmatched';
+export type AppTrafficStatus = 'active' | 'idle' | 'unmeasured';
+/** SPA ve kapsam UC DEGERLI: "ölçülemedi" ile "yok" asla aynı değil. */
+export type AppTrafficSpa = 'yes' | 'no' | 'unknown';
+export type AppTrafficCoverage = 'full' | 'partial' | 'none' | 'unknown';
 export interface AppTrafficRow {
-  /** 'route' = envanterdeki bir route; 'app' = disariya acik route'u OLMAYAN uygulama. */
-  kind: 'route' | 'app';
   namespace: string;
-  /** Eslesen uygulama; `null` = ESLESMEDI (route var, Dynatrace karsiligi bulunamadi). */
-  application: string | null;
-  /** Eslesen TUM uygulamalar (`apigw` -> apigw-1/2/3-prod); hicbiri gizlenmez. */
-  apps: string[];
-  appCount: number;
-  /** Route satirinda envanterden, route'suz uygulama satirinda Dynatrace'ten. */
-  cluster: string;
-  clusterSrc: 'route' | 'dynatrace' | null;
-  /** Route adi ve adresi; `kind: 'app'` satirlarinda `null`. */
-  route: string | null;
-  address: string | null;
-  /** true = ayni sayi uygulamanin oteki route satirlarinda da gorunuyor. */
-  reqShared: boolean;
+  /** Uygulamanın KENDİ adı (`BMW_Spa_Discovery.workload`) — pod adı DEĞİL.
+   *  `null` = route bir iş yüküne eşleşemedi; satır "eşleşmedi" olarak durur. */
+  app: string | null;
+  /** Deployment | DeploymentConfig | Rollout */
+  kind: string | null;
   env: string | null;
-  spa: boolean;
-  /** Olcumun alindigi tarama gunu (YYYY-MM-DD) */
-  scanDate: string;
-  /** Olcum penceresi (gun) — istek sayisi BU pencereye aittir */
-  windowDays: number;
-  /** Ham deger; olculemediyse anlamsizdir — ekranda `reqShown` kullanilir. */
-  req: number;
-  /** `null` = OLCULEMEDI. "0 istek" DEMEK DEGIL. */
-  reqShown: number | null;
-  measured: boolean;
-  services: number;
-  servicesMeasured: number;
-  servicesSkipped: number;
-  note: string;
-  status: AppTrafficStatus;
+  /** nginx sinyali ÖLÇÜLDÜ mü: 'unknown' = eşleşemedi, "SPA değil" DEMEK DEĞİL. */
+  spa: AppTrafficSpa;
+  /** `null` = ÖLÇÜLEMEDİ. "0 istek" DEMEK DEĞİL. */
+  req: number | null;
+  reqStatus: AppTrafficStatus;
+  reqNote: string | null;
+  /** İstek ölçümünün alındığı tarama günü — SPA keşfinden FARKLI olabilir. */
+  reqScanDate: string | null;
+  routes: { route: string; host: string | null }[];
+  clusters: string[];
+  /** Ortamın TARANABİLEN cluster'ları üzerinden; erişilemeyen cluster paydaya girmez. */
+  coverage: AppTrafficCoverage;
+  coveragePresent: number;
+  coverageTotal: number;
+  /** O ortamda HİÇ bakılamayan cluster sayısı — "Kısmi" damgası vermez, ayrı görünür. */
+  coverageUnmeasured: number;
+  matched: boolean;
+  note: string | null;
 }
 export interface AppTrafficFilters {
   q?: string;
   env?: string;
+  spa?: string;
   status?: string;
-  kind?: string;
-  routes?: string;
+  coverage?: string;
   limit?: number;
+}
+/** İKİ KAYNAĞIN TAZELİĞİ GÖRÜNÜR: SPA keşfi ve istek ölçümü AYRI job'lar, ayrı
+ *  tarihleri olabilir. İki ayrı tarihli veriyi sessizce harmanlamak, kullanıcının
+ *  "ortalık karıştı" dediği şeyin ta kendisiydi. */
+export interface AppTrafficFreshness {
+  spaScan: string | null;
+  usageScan: string | null;
+  usageTableMissing: boolean;
+  clusters: { total: number; ok: number; partial: number; unreachable: number };
+  clusterDetail: {
+    cluster: string;
+    durum: string;
+    routes: number | null;
+    unmatched: number | null;
+    reason: string;
+  }[];
 }
 export interface AppTrafficResult {
   ok: boolean;
   message?: string;
   tableMissing: boolean;
-  /** SUZGECTEN GECIP TAVANA KADAR KIRPILAN satirlar - tum kume DEGIL. */
+  freshness: AppTrafficFreshness | null;
+  /** SÜZGEÇTEN GEÇİP TAVANA KADAR KIRPILAN satırlar — tüm küme DEĞİL. */
   rows: AppTrafficRow[];
-  /** Ortam suzgeci icin secenekler; TUM kumeden gelir, kirpilmis listeden degil. */
+  /** Ortam süzgeci seçenekleri; TÜM kümeden gelir. */
   envs: string[];
-  /** Olculen tum uygulama sayisi (suzgecsiz). */
   total: number;
-  /** Suzgece uyan satir sayisi (kirpmadan ONCE). */
-  totalMatched: number;
-  /** Uygulanan satir tavani. */
+  filtered: number;
   limit: number;
-  /** true ise liste tavanda kesildi - ekran bunu SOYLEMEK ZORUNDA. */
   truncated: boolean;
   summary: {
-    /** Envanterdeki route sayisi (satir birimi). */
-    routes: number;
-    /** Hicbir Dynatrace uygulamasina baglanamayan route - GIZLENMEZ, satir olarak durur. */
+    apps: number;
+    /** İş yüküne eşleşemeyen route — GİZLENMEZ, satır olarak durur. */
     unmatched: number;
+    spa: number;
+    spaUnknown: number;
     active: number;
     idle: number;
     unmeasured: number;
-    /** Route'u OLMAYAN uygulamalar — route bazli listenin kor noktasi. */
-    routeless: number;
-    spa: number;
-    /** Olculen uygulama sayisi (satir degil). */
-    apps: number;
+    coverageFull: number;
+    coveragePartial: number;
+    routes: number;
   };
-  latestScan: string | null;
 }
 
 export interface WebAppResult {
