@@ -15,6 +15,10 @@ const express = require('express');
 const { discover, searchApps } = require('./discover.cjs');
 
 const REGISTRY_KEY = 'app_retirement_stop';
+// DELETE AYRI TEMPLATE (2026-10-06): kendi playbook'u, kendi girdileri ve kendi
+// `set_stats` anahtari var. STOP'un template'ini kullanmak, plan_only gibi ortak bir
+// degisken yuzunden yanlis adimi tetiklemek demekti.
+const DELETE_REGISTRY_KEY = 'app_retirement_delete';
 const DEFAULT_DAYS = Number(process.env.RETIREMENT_DELETE_DAYS || 45);
 const SCC_MAIL_TO = (process.env.RETIREMENT_SCC_MAIL_TO || '').trim();
 const SCC_MAIL_CC = (process.env.RETIREMENT_SCC_MAIL_CC || '').trim();
@@ -66,14 +70,14 @@ async function loadRecord(id) {
 }
 
 // AWX (Server Hub ile ayni desen)
-async function launch(req, templateName, extraVars, detail) {
+async function launch(req, templateName, extraVars, detail, key = REGISTRY_KEY) {
   const reg = require('../ansible/playbook-registry.cjs');
-  const row = await reg.getByKey(REGISTRY_KEY).catch(() => null);
+  const row = await reg.getByKey(key).catch(() => null);
   const templateId = row && row.enabled !== false ? reg.getEffectiveTemplateId(row) : null;
   const serverId = row && row.awxServerId != null ? Number(row.awxServerId) : 0;
-  if (!templateId) throw Object.assign(new Error(`AWX job template'i tanımlı değil: Admin › Playbook Kayıtları › "${REGISTRY_KEY}" satırına Template ID girilmeli.`), { status: 501 });
+  if (!templateId) throw Object.assign(new Error(`AWX job template'i tanımlı değil: Admin › Playbook Kayıtları › "${key}" satırına Template ID girilmeli.`), { status: 501 });
   const runner = require('../ansible/runner.cjs');
-  await require('../ansible/template-preflight.cjs').assertTemplateAcceptsExtraVars(serverId, templateId, extraVars, { label: REGISTRY_KEY });
+  await require('../ansible/template-preflight.cjs').assertTemplateAcceptsExtraVars(serverId, templateId, extraVars, { label: key });
   const user = req.session?.user || {};
   const result = await runner.launchJobOnServer(serverId, templateId, extraVars, '', user);
   try {
@@ -191,6 +195,45 @@ function initRetirement(app) {
       if (!t.gen) return res.status(400).json({ ok: false, message: `${t.host}: JBoss nesli belirlenemedi (envanter jboss_version boş).` });
       if (t.env === 'PROD' && !rec.ocoNo) return res.status(400).json({ ok: false, message: 'PROD hedef için OCO numarası gerekli.' });
       if (t.status === 'stopped') return res.status(400).json({ ok: false, message: 'Bu hedef zaten durdurulmuş.' });
+      // ── OCO PENCERESINE ZAMANLAMA (kullanici karari 2026-10-06) ─────────────────
+      // "Production icin OCO talebi girisi zorunlu olacak, OCO'daki tarih ve saate gore
+      //  uygulama stop adimi baslar."
+      //
+      // YALNIZ GERCEK STOP'TA: plan (confirmed=false) hicbir seyi degistirmez, pencere
+      // beklemesi anlamsiz olurdu - kullanici plani GORMEK icin kosturuyor.
+      // YALNIZ PROD'DA: test/qa hedeflerinde OCO yok ve beklemek gereksiz.
+      if (confirmed && t.env === 'PROD' && rec.ocoNo) {
+        const ocoClient = require('../oco/client.cjs');
+        const ocoWindow = require('../oco/window.cjs');
+        let order;
+        try {
+          order = await ocoClient.getChangeOrder(rec.ocoNo);
+        } catch (e) {
+          return res.status(ocoClient.httpStatus(e)).json({ ok: false, ocoRequired: true, message: e.message });
+        }
+        const pi = ocoWindow.extractPlannedInterruption(order.payload);
+        if (!pi || !pi.startDate)
+          return res.status(400).json({ ok: false, message: `OCO ${rec.ocoNo} kaydinda planlanan kesinti tarihi yok — STOP baslatilmadi.` });
+        const w = ocoWindow.evaluateWindow({ startDate: pi.startDate, endDate: pi.endDate });
+        if (!w.ok) return res.status(400).json({ ok: false, message: w.message });
+        const plan = ocoWindow.nextRunAt({ windowStart: w.windowStart, windowEnd: w.windowEnd });
+        if (plan.mode === 'none') return res.status(400).json({ ok: false, message: plan.reason });
+        if (plan.mode === 'schedule') {
+          // IS BASLATILMAZ. Zamanlama kaydin kendisinde durur; retirement poller'i
+          // pencere acilinca tetikler (bkz. poller.cjs). AWX-native schedule YOK:
+          // kaydi Portal tutuyor, iptal ve gorunurluk burada.
+          await db().query(
+            `UPDATE retirement_targets SET status = 'stop_scheduled', scheduled_at = $1, window_end = $2, plan_text = $3, updated_at = GETUTCDATE() WHERE id = $4`,
+            [plan.runAt, w.windowEnd, `OCO ${rec.ocoNo} penceresine zamanlandi: ${plan.text}`.slice(0, 1000), tid],
+          );
+          await addEvent(id, req.session?.user?.username, 'schedule', `${t.appName} @ ${t.host}: ${plan.reason}`);
+          return res.json({ ok: true, scheduled: true, runAt: plan.runAt, runAtText: plan.text, windowEnd: w.windowEnd, message: plan.reason });
+        }
+        // plan.mode === 'now': pencere ACIK, asagidaki normal launch kosar. Pencere SONU
+        // yine yazilir ki poller yarim kalmis bir isi pencere disinda tekrar denemesin.
+        await db().query(`UPDATE retirement_targets SET window_end = $1 WHERE id = $2`, [w.windowEnd, tid]);
+      }
+
       const notifyScc = confirmed && t.env === 'PROD' && !rec.sccNotifiedAt;
       if (notifyScc && !SCC_MAIL_TO) console.warn('[Retirement] RETIREMENT_SCC_MAIL_TO tanimsiz; SCC maili gonderilemeyecek');
       const extraVars = {
@@ -251,8 +294,70 @@ function initRetirement(app) {
     } catch (err) { res.status(err.status || 500).json({ ok: false, message: err.message }); }
   });
 
+  // ── POLLER (kullanici karari 2026-10-06) ──────────────────────────────────────
+  // STOP: OCO kesinti penceresi acilinca. DELETE: silme tarihi gelince, ekstra onay YOK.
+  // Launcher ENJEKTE EDILIR; poller AWX'i tanimaz (dongusel require yok, testi aga cikmaz).
+  //
+  // `req` YOK: isi poller basliyor, oturum da yok. launch() `req.session?.user` okuyor ve
+  // undefined'a dayanikli; tetikleyen kimlik olay kaydinda (addEvent username=null ->
+  // "sistem") ve extraVars.requested_by'da yaziyor.
+  try {
+    require('./poller.cjs').startPoller(async (kind, t) => {
+      const ortak = {
+        target_host: t.host,
+        application: t.application,
+        jboss_gen: String(t.gen),
+        smart_no: t.smartNo,
+        app_path: t.appPath || '',
+        requested_by: 'Portal (zamanlanmis)',
+      };
+      if (kind === 'stop') {
+        // SCC MAILI ZAMANLANMIS KOSUDA DA GIDER: PROD'da ilk gercek stop'ta bildirim
+        // sarti, isi insanin mi poller'in mi baslattigina bagli degil.
+        const rec = await db().query(`SELECT scc_notified_at FROM retirement_records WHERE id = $1`, [t.recordId]);
+        const notify = t.env === 'PROD' && !rec.rows?.[0]?.scc_notified_at && !!SCC_MAIL_TO;
+        return launch(
+          null,
+          `Retirement: STOP ${t.application} @ ${t.host} (zamanlanmis)`,
+          { ...ortak, plan_only: false, notify_scc: notify, scc_mail_to: SCC_MAIL_TO, scc_mail_cc: SCC_MAIL_CC || undefined, oco_no: t.ocoNo || '' },
+          { op: 'stop', id: t.recordId, tid: t.targetId },
+        );
+      }
+      return launch(
+        null,
+        `Retirement: DELETE ${t.application} @ ${t.host}`,
+        { ...ortak, plan_only: false },
+        { op: 'delete', id: t.recordId, tid: t.targetId },
+        DELETE_REGISTRY_KEY,
+      );
+    },
+    // SONLANDIRICI: DELETE'i kimse izlemiyor, sonucu poller yazmak zorunda.
+    // OKUNAMADI != BASARISIZ: AWX'e ulasilamadiysa `terminal:false` doner ve hedef
+    // 'deleting'de KALIR; bir sonraki tick tekrar bakar. 'failed' yazmak, aslinda
+    // basarili olmus bir silmeyi basarisiz gostermek olurdu.
+    async (t) => {
+      const reg = require('../ansible/playbook-registry.cjs');
+      const row = await reg.getByKey(DELETE_REGISTRY_KEY).catch(() => null);
+      const serverId = row && row.awxServerId != null ? Number(row.awxServerId) : 0;
+      const runner = require('../ansible/runner.cjs');
+      const info = await runner.getJobStatusOnServer(serverId, Number(t.delete_job_id));
+      const TERMINAL = new Set(['successful', 'failed', 'error', 'canceled']);
+      if (!TERMINAL.has(info.status)) return { terminal: false };
+      const { extractStatsKey } = require('../opsx/index.cjs');
+      const r = extractStatsKey(info.artifacts, 'app_retirement_delete_result') || null;
+      const line = String(r?.line || '');
+      const msg = line.split('	').slice(2).join(' — ') || info.status;
+      // ARTIFACT OKUNAMADIYSA is 'successful' olsa bile OK SAYILMAZ: playbook sonucu
+      // `set_stats` ile bildiriyor; bildirim yoksa ne yapildigini BILMIYORUZ.
+      const ok = info.status === 'successful' && line.split('\t')[2] === 'OK';
+      return { terminal: true, ok, message: msg };
+    });
+  } catch (e) {
+    console.warn('[Retirement] poller baslatilamadi:', e.message);
+  }
+
   app.use('/api/retirement', router);
   console.log('[Retirement] mounted at /api/retirement');
 }
 
-module.exports = { initRetirement, REGISTRY_KEY, DEFAULT_DAYS };
+module.exports = { initRetirement, REGISTRY_KEY, DELETE_REGISTRY_KEY, DEFAULT_DAYS };
