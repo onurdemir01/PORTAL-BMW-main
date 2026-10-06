@@ -704,10 +704,23 @@ async function spaKesfiHesapla() {
       : Promise.resolve(null),
     // CLUSTER KATALOGU (2026-10-06): uygulama basina "4/4 Tam / 3/4 Kismi" oraninin
     // PAYDASI. Elle cluster listesi YOK - ortamin cluster'lari katalogdan okunur.
-    // Okunamazsa null doner ve oran "olculemedi" olur; uydurma bir payda ile oran
-    // yazmak, var olmayan bir eksiklik raporlamak olurdu.
-    query(`SELECT env, tenant, cluster_name FROM dbo.ocp_cluster_index WHERE is_active = 1`)
-      .then((r) => r.recordset || [])
+    //
+    // DIKKAT: `ocp_cluster_index` PORTAL'IN KENDI veritabanindadir (server/db/mssql-setup.cjs),
+    // bu dosyadaki `query` ise ENVANTER (TBMWANS) baglantisidir. Ilk yazimda katalog o
+    // sorguyla okunuyordu; "invalid object name" ile dusup .catch'e giriyor ve kapsam HER
+    // SATIRDA sessizce "olculemedi" cikiyordu. Kanitlanmis erisimci kullanilir
+    // (getClusterTree; LogX v2, OpsX ve Self Servis secenek kaynaklari da ayni yeri okur).
+    // Okunamazsa null doner ve oran "olculemedi" olur - uydurma bir payda ile oran yazmak,
+    // var olmayan bir eksiklik raporlamak olurdu.
+    require('../logx/v2/admin.cjs')
+      .getClusterTree()
+      .then((tree) => {
+        const out = [];
+        for (const [env, tenants] of Object.entries(tree || {}))
+          for (const [tenant, clusters] of Object.entries(tenants || {}))
+            for (const cluster_name of clusters || []) out.push({ env, tenant, cluster_name });
+        return out;
+      })
       .catch(() => null),
   ]);
   // TABLO DURUMU: 'var' | 'yok' (OBJECT_ID NULL) | 'okunamadi' (sema ya da sorgu dustu).

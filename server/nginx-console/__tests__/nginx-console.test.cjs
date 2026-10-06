@@ -533,10 +533,18 @@ test('GS12 uc nokta CLUSTER BASINA en yeni taramayi okur; match_by yoksa da cali
   // "4/4 Tam / 3/4 Kismi" oraninin PAYDASI. Elle cluster listesi olmasin diye katalogdan
   // okunur; gecilmezse oran "olculemedi" olur.
   assert.match(src, /buildSpaDiscovery\(disc, inv, usage, runs, rpKaynak, katalog\)/);
+  // KATALOG DOGRU VERITABANINDAN: `ocp_cluster_index` PORTAL'IN kendi DB'sinde, bu
+  // dosyadaki `query` ise ENVANTER (TBMWANS) baglantisi. Ilk yazimda katalog o sorguyla
+  // okunuyordu, "invalid object name" ile dusuyor ve kapsam HER SATIRDA sessizce
+  // "olculemedi" cikiyordu. Kanitlanmis erisimci (getClusterTree) kullanilmali.
   assert.match(
     src,
-    /FROM dbo\.ocp_cluster_index WHERE is_active = 1/,
+    /getClusterTree\(\)/,
     'kapsam paydasi katalogdan okunmuyor - elle cluster listesi uydurma olur',
+  );
+  assert.ok(
+    !/FROM dbo\.ocp_cluster_index/.test(src),
+    'katalog ENVANTER sorgusuyla okunuyor - o tablo Portal DB"sinde, sorgu sessizce duser',
   );
 });
 
