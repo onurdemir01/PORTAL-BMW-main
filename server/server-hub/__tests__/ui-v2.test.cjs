@@ -120,6 +120,10 @@ const P = yukle(PAGE_PATH, PAGE_RAW, [
   'olcumSebebi',
   'olculemeyenAciklama',
   'jvmSayimMetni',
+  'initUyumMetni',
+  'webSyntaxOlculemedi',
+  'webKartTonu',
+  'tarayiciKimligi',
   'autoStartOnayMetni',
   'ipKullanan',
   'logKanitMetni',
@@ -464,11 +468,19 @@ test("D1-U05 SH12 ve BA3 dizgileri korunur; RetirementTab olculemeyende 'bilinmi
   assert.ok(!PAGE_RAW.includes('Toplu: auto-start'));
   for (const d of [
     "onGoFindings({ area: 'init' })",
-    "onGoFindings({ area: 'web', code: 'SYNTAX_FAIL', product: p })",
+    "onGoFindings({ area: 'web', product: p })",
     'Ortam kırılımı',
     'onGoFindings({ envGroup: g })',
   ])
     assert.ok(PAGE.includes(d), `SH12 dizgisi kayip: ${d}`);
+  // SH12 "kart -> bulgu gecisi" der, filtrenin SYNTAX_FAIL olmasini DEMEZ. Eski dizgi
+  // `code: 'SYNTAX_FAIL'` tasiyordu: nginx -t her sunucuda erisimden dustugunde kart
+  // "0 OK / 0 hatali" diyor, tiklayinca da BOS liste geliyordu (bulgular SYNTAX_UNVERIFIED /
+  // SYNTAX_UNKNOWN kodlarinda). Kod filtresi geri gelirse bu korluk de geri gelir.
+  assert.ok(
+    !/area: 'web', code: 'SYNTAX_FAIL'/.test(PAGE),
+    "web karti yine tek koda filtreliyor: olculemeyen bulgular (SYNTAX_UNVERIFIED/UNKNOWN) tiklamayla ulasilamaz",
+  );
   const hd = fonksiyon(R, 'hubDurumu');
   const u = hd({ running: false, autoStart: 'true', scanDate: '2026-10-01', runningKnown: false });
   assert.match(u.metin, /bilinmiyor/);
@@ -718,6 +730,75 @@ test('D1-U09 ozet kartlari olculemeyen sayaclarini AYRI gosterir; bulgu metni ol
   // 'bayat kanit: <host> <tarih>' sunucunun yazdigi metindir; ekran onu degistirmeden basar.
   assert.ok(say(PAGE, '{f.text}') >= 2, 'bulgu metni oldugu gibi basilmiyor');
   assert.ok(!/f\.text\.replace\(/.test(PAGE), 'bulgu metni ekranda degistiriliyor');
+});
+
+// ── D1-U10 init / web kartlari: "olculemedi" ile "0 farkli / 0 hatali" ayri ───────────
+// Uretim bulgusu (kullanici, 2026-10-05): tarama `www` ile kostugu icin `was` kapsamindaki init
+// dosyalari okunamadi; cogunluk okunamayani hesaba KATMADIGI icin (dogru) hic kurulamadi ve kart
+// "0 / N sunucu cogunlukla ayni - 0 dosya cogunluktan farkli" dedi - yani ozellik BOZUK gibi
+// gorundu. Ayni sey nginx tarafinda: `nginx -t` erisimden dustu, kart "0 / N OK - 0 hatali".
+// Iki sayi da (unreadableFiles, syntaxUnknown) assess.cjs'te HESAPLANIYORDU, ekran OKUMUYORDU.
+test('D1-U10 init/web kartlari: okunamayan dosya ve olculemeyen sozdizimi AYRI, 0 uydurulmaz', () => {
+  const iu = fonksiyon(P, 'initUyumMetni');
+  // (1) her dosya okunamadi: cogunluk kurulamadi - metin BUNU soylemeli, basta
+  const hep = iu({ hosts: 1114, compliant: 0, diffFiles: 0, unreadableFiles: 13368 });
+  assert.match(hep.metin, /^13368 dosya OKUNAMADI/, hep.metin);
+  assert.match(hep.metin, /çoğunluk kurulamadı/);
+  assert.equal(hep.tone, 'warning', 'hicbir dosya okunamazken kart yesil (sorun yok) gorunuyor');
+  // (2) kismi: okunamayan da var, gercek fark da var
+  const kismi = iu({ hosts: 1114, compliant: 900, diffFiles: 7, unreadableFiles: 4 });
+  assert.match(kismi.metin, /4 dosya OKUNAMADI \(çoğunluk hesabına girmez\)/);
+  assert.match(kismi.metin, /7 dosya çoğunluktan farklı/);
+  assert.ok(!/çoğunluk kurulamadı/.test(kismi.metin), 'kismi olcumde cogunluk kurulamadi deniyor');
+  // (3) ESKI SUNUCU YANITI: alan yok -> satir eski haliyle, '0 okunamadi' UYDURULMAZ
+  const eski = iu({ hosts: 10, compliant: 10, diffFiles: 0, missingFiles: 2 });
+  assert.ok(!/OKUNAMADI/.test(eski.metin), `alan yokken okunamadi satiri basildi: ${eski.metin}`);
+  assert.match(eski.metin, /0 dosya çoğunluktan farklı · 2 eksik/);
+  assert.equal(eski.tone, 'ok');
+  assert.equal(iu({ hosts: 10, compliant: 9, diffFiles: 1 }).tone, 'warning');
+  // (4) web: olculemeyen sayisi ayri, yokken null (satir hic basilmaz)
+  const wo = fonksiyon(P, 'webSyntaxOlculemedi');
+  const wt = fonksiyon(P, 'webKartTonu');
+  assert.equal(wo({ hosts: 60, syntaxOk: 0, syntaxFail: 0, syntaxUnknown: 60 }), 60);
+  assert.equal(wo({ hosts: 60, syntaxOk: 60, syntaxFail: 0, syntaxUnknown: 0 }), null);
+  assert.equal(wo({ hosts: 60, syntaxOk: 60, syntaxFail: 0 }), null, 'alan yokken 0 uydurulmus');
+  assert.equal(
+    wt({ hosts: 60, syntaxOk: 0, syntaxFail: 0, syntaxUnknown: 60 }),
+    'warning',
+    'hicbir sunucuda sozdizimi olculemezken kart yesil',
+  );
+  assert.equal(wt({ hosts: 60, syntaxOk: 59, syntaxFail: 1, syntaxUnknown: 0 }), 'danger');
+  assert.equal(wt({ hosts: 60, syntaxOk: 60, syntaxFail: 0, syntaxUnknown: 0 }), 'ok');
+  assert.equal(wt({ hosts: 60, syntaxOk: 60, syntaxFail: 0 }), 'ok', 'eski yanit (alan yok)');
+  // (5) YERLESIM: kartlar yardimcilari GERCEKTEN kullaniyor
+  for (const d of ['initUyumMetni(s.init).metin', 'initUyumMetni(s.init).tone', 'webKartTonu(w)', 'webSyntaxOlculemedi(w)'])
+    assert.ok(PAGE.includes(d), `kart yardimciyi kullanmiyor: ${d}`);
+  assert.ok(
+    !/\{s\.init\.diffFiles\} dosya çoğunluktan farklı/.test(PAGE),
+    'init karti eski satiri (okunamayani yutan) basmaya donmus',
+  );
+  assert.ok(!/tone="ok"[\s\S]{0,120}onGoFindings\(\{ area: 'web'/.test(PAGE), 'web karti sabit yesil');
+});
+
+// ── D1-U11 "bu satirlari hangi tarayici / hangi kullanici uretti" ──────────────────────
+// scan_ver ve HOST.note (kosan: <k> (<run_as>), iki gecisde faz=was / faz=www) sunucu yanitinda
+// (index.cjs hostDetail) ZATEN vardi, ekranda hic gorunmuyordu: "AWX'teki tarayici benim
+// yazdigim surum mu, hangi kullaniciyla kostu" sorusu ancak AWX job logundan cevaplanabiliyordu.
+test('D1-U11 sunucu detayi tarayici surumunu ve kosan kullaniciyi yazar; alan yoksa UYDURMAZ', () => {
+  const tk = fonksiyon(P, 'tarayiciKimligi');
+  const iki = tk({ scanVer: '2.1', note: 'kosan: was (was); faz=was; inv=GB01; kosan: www (www); faz=www' });
+  assert.match(iki, /tarayıcı v2\.1/);
+  assert.match(iki, /koşan: was \(was\)/);
+  assert.match(iki, /geçiş: was\+www/, iki);
+  const tek = tk({ scanVer: '2.1', note: 'kosan: www (www); inv=GB01' });
+  assert.match(tek, /koşan: www \(www\)/);
+  assert.ok(!/geçiş/.test(tek), `tek gecisde faz yazilmis: ${tek}`);
+  // ESKI SUNUCU YANITI: alan yok -> hic parca basilmaz ('tarayici v' ya da 'kosan:' uydurulmaz)
+  assert.equal(tk({}), '');
+  assert.equal(tk({ scanVer: null, note: '' }), '');
+  assert.equal(tk({ scanVer: null, note: 'inv=GB01' }), '');
+  assert.match(tk({ scanVer: '2.1' }), /^ · tarayıcı v2\.1$/);
+  assert.ok(PAGE.includes('tarayiciKimligi(d)'), 'sunucu detayi basligi yardimciyi kullanmiyor');
 });
 
 // ── EK-2 bayat filo bandi ─────────────────────────────────────────────────────────────

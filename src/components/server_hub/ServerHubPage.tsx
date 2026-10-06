@@ -119,12 +119,26 @@ const AREA: Record<string, string> = {
 type ShHostRowV3 = ShHostRow & { jvmsUnmeasured?: number };
 type ShJvmV3 = ShJvm & { runningKnown?: boolean | null; runningSrc?: string | null };
 type ShWebV3 = ShHostDetail['web'][number] & { runningSrc?: string | null };
-type ShHostDetailV3 = Omit<ShHostDetail, 'jvms' | 'web'> & { jvms: ShJvmV3[]; web: ShWebV3[] };
+/** scanVer / note: index.cjs hostDetail BUNLARI ZATEN DONUYOR (bkz. tarayiciKimligi). */
+type ShHostDetailV3 = Omit<ShHostDetail, 'jvms' | 'web'> & {
+  jvms: ShJvmV3[];
+  web: ShWebV3[];
+  scanVer?: string | null;
+  note?: string | null;
+};
 type ShSummaryV3 = ShSummary & {
   jvm: ShSummary['jvm'] & { unmeasured?: number; retireBlockedByWebTier?: number };
   /** unverified: sozlesmede donuk DEGIL; gelirse ayri dilim, gelmezse etiket durumu soyler. */
   ips: ShSummary['ips'] & { unverified?: number };
-  web: Record<string, ShSummary['web'][string] & { notRunningUnmeasured?: number }>;
+  /** unreadableFiles: assess HESAPLIYOR ama ekran okumuyordu - cogunluk kurulamadiginda kart
+   *  "0 uyumlu / 0 farkli" diyor ve OZELLIK BOZUK gibi gorunuyordu (bkz. initUyumMetni). */
+  init: ShSummary['init'] & { unreadableFiles?: number };
+  /** syntaxUnknown: ayni korluk web tarafinda - nginx -t erisimden duserse sinif UNKNOWN olur,
+   *  kart yalniz syntaxOk/syntaxFail bastigi icin "0 / N OK, 0 hatali" cikiyordu. */
+  web: Record<
+    string,
+    ShSummary['web'][string] & { notRunningUnmeasured?: number; syntaxUnknown?: number }
+  >;
   byEnv?: Record<string, ShEnvBlock & { jvmUnmeasured?: number }>;
 };
 type ShOverviewV3 = Omit<ShOverview, 'hosts' | 'summary'> & {
@@ -203,6 +217,71 @@ function olculemeyenAciklama(tur: 'jvm' | 'web', sema: boolean): string {
   return tur === 'jvm'
     ? "Süreç listesi kısıtlı (hidepid) ve CLI durum vermedi: bu JVM'ler ne çalışan ne kapalı sayıldı."
     : "Süreç listesi kısıtlı (hidepid): bu sunucularda web sürecinin çalışıp çalışmadığı ölçülemedi — 'çalışmıyor' sayılmadı.";
+}
+
+/**
+ * Init uyum kartinin alt satiri ve tonu (kural 6, uretim bulgusu 2026-10-05).
+ *
+ * OKUNAMAYAN DOSYA "FARKLI DEGIL" DEMEK DEGILDIR. Cogunluk hesabi okunamayan dosyalari DISARIDA
+ * BIRAKIR (assess.cjs; dogru karar - yoksa okunamayan sunuculardaki ortak bos sha "filo
+ * cogunlugu" olur ve gercek dosyalar DIFF gorunurdu). Ama bunun sonucu su: TUM dosyalar
+ * okunamadiginda cogunluk HIC KURULAMAZ, `compliant` ve `diffFiles` ikisi de 0 kalir ve kart
+ * "0 / N sunucu cogunlukla ayni - 0 dosya cogunluktan farkli" diyerek OZELLIGIN KENDISI BOZUK
+ * gibi gorunur. Sunucu `unreadableFiles`i zaten sayiyordu (assess.cjs); ekran OKUMUYORDU.
+ *
+ * Okunamayan varken o sayi BASA alinir: kartin bas cumlesi "olcemedik" olmali, "uyumsuz" degil.
+ * Alan gelmiyorsa (eski sunucu yaniti) satir eski haliyle basilir; 0 UYDURULMAZ.
+ */
+function initUyumMetni(init: ShSummaryV3['init']): { metin: string; tone: ShSeverity } {
+  const okunamadi = sayiMi(init.unreadableFiles) ? init.unreadableFiles : null;
+  const olculemedi = okunamadi != null && okunamadi > 0;
+  const hicOlculemedi = olculemedi && !init.compliant && !init.diffFiles;
+  const parca: string[] = [];
+  if (olculemedi)
+    parca.push(
+      `${okunamadi} dosya OKUNAMADI${hicOlculemedi ? ' — çoğunluk kurulamadı, aşağıdaki sayılar ölçüm değil' : ' (çoğunluk hesabına girmez)'}`,
+    );
+  parca.push(`${init.diffFiles} dosya çoğunluktan farklı`);
+  if (init.missingFiles) parca.push(`${init.missingFiles} eksik`);
+  if (init.refDiffFiles && init.refDiffFiles.length)
+    parca.push(`${init.refDiffFiles.length} dosyada çoğunluk repo referansından farklı`);
+  return {
+    metin: parca.join(' · '),
+    tone: olculemedi ? 'warning' : init.diffFiles ? 'warning' : 'ok',
+  };
+}
+
+/**
+ * Web (RHA/IHS/Nginx) syntax kartinin "sozdizimi olculemedi" cumlesi ve kart tonu. Ayni korluk:
+ * `nginx -t` bir dosyaya erisemedigi icin dustugunde sinif UNKNOWN/UNVERIFIED olur, kart ise
+ * yalniz syntaxOk / syntaxFail bastigi icin "0 / N sunucu OK - 0 hatali" diyordu; yesil cerceve
+ * de "sorun yok" izlenimi veriyordu. `syntaxUnknown` assess.cjs'te HESAPLANIYOR, ekranda yoktu.
+ * Alan gelmiyorsa satir basilmaz (0 uydurulmaz), ton eski davranista kalir.
+ */
+function webSyntaxOlculemedi(w: ShSummaryV3['web'][string]): number | null {
+  return sayiMi(w.syntaxUnknown) && w.syntaxUnknown > 0 ? w.syntaxUnknown : null;
+}
+function webKartTonu(w: ShSummaryV3['web'][string]): ShSeverity {
+  if (w.syntaxFail) return 'danger';
+  return webSyntaxOlculemedi(w) != null ? 'warning' : 'ok';
+}
+
+/**
+ * Bu satirlari HANGI tarayici surumu, HANGI kullanici(lar) uretti (uretim bulgusu 2026-10-05).
+ *
+ * `scan_ver` ve HOST.note ("kosan: www (www)", iki gecisde "kosan: was (was); faz=was; ...")
+ * sunucu yanitinda ZATEN vardi (index.cjs hostDetail) ama ekranda hic gorunmuyordu: "AWX'teki
+ * tarayici benim yazdigim surum mu, hangi kullaniciyla kostu" sorusu ekrandan cevaplanamiyordu
+ * ve her seferinde AWX job logu aciliyordu. Alan yoksa parca hic basilmaz (uydurma yok).
+ */
+function tarayiciKimligi(d: { scanVer?: string | null; note?: string | null }): string {
+  const parca: string[] = [];
+  if (d.scanVer) parca.push(`tarayıcı v${d.scanVer}`);
+  const kosan = /kosan:\s*([^;]+)/.exec(String(d.note || ''));
+  if (kosan) parca.push(`koşan: ${kosan[1].trim()}`);
+  const faz = String(d.note || '').match(/faz=(\w+)/g);
+  if (faz && faz.length) parca.push(`geçiş: ${faz.map((f) => f.slice(4)).join('+')}`);
+  return parca.length ? ` · ${parca.join(' · ')}` : '';
 }
 
 /** Sunucu listesi JVM hucresi: "calisan/toplam" + olculemeyen varsa "? N". */
@@ -1599,7 +1678,7 @@ function HostsTab({
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <Kpi
               title="Init script uyumu"
-              tone={s.init.diffFiles ? 'warning' : 'ok'}
+              tone={initUyumMetni(s.init).tone}
               onClick={() => onGoFindings({ area: 'init' })}
             >
               <div className="text-2xl font-bold tabular-nums">
@@ -1614,13 +1693,9 @@ function HostsTab({
               <div
                 className="mt-1 text-[11px]"
                 style={{ color: 'var(--text-secondary)' }}
-                title="Ölçüt Denetim › Init Script ile aynı: dosya başına en kalabalık sha çoğunluktur. Repo referansından fark tek başına bulgu değildir."
+                title="Ölçüt Denetim › Init Script ile aynı: dosya başına en kalabalık sha çoğunluktur. Repo referansından fark tek başına bulgu değildir. OKUNAMAYAN dosya çoğunluk hesabına girmez — hepsi okunamadıysa çoğunluk hiç kurulamaz ve 'farklı' sayısı ölçüm değildir."
               >
-                {s.init.diffFiles} dosya çoğunluktan farklı
-                {s.init.missingFiles ? ` · ${s.init.missingFiles} eksik` : ''}
-                {s.init.refDiffFiles && s.init.refDiffFiles.length
-                  ? ` · ${s.init.refDiffFiles.length} dosyada çoğunluk repo referansından farklı`
-                  : ''}
+                {initUyumMetni(s.init).metin}
               </div>
             </Kpi>
             {(['RHA', 'IHS', 'NGINX'] as const).map((p) => {
@@ -1630,8 +1705,8 @@ function HostsTab({
                 <Kpi
                   key={p}
                   title={`${p === 'RHA' ? 'Red Hat Apache' : p === 'IHS' ? 'IBM HTTP Server' : 'Nginx'} syntax`}
-                  tone="ok"
-                  onClick={() => onGoFindings({ area: 'web', code: 'SYNTAX_FAIL', product: p })}
+                  tone={webKartTonu(w)}
+                  onClick={() => onGoFindings({ area: 'web', product: p })}
                 >
                   <div className="text-2xl font-bold tabular-nums">
                     {w.syntaxOk}{' '}
@@ -1650,6 +1725,14 @@ function HostsTab({
                     >
                       {w.syntaxFail} hatalı
                     </span>{' '}
+                    {webSyntaxOlculemedi(w) != null && (
+                      <span
+                        style={{ color: SEV.warning.color, fontWeight: 600 }}
+                        title="nginx/apachectl -t bir dosyaya erişemediği için düştü (yetki ya da eksik dosya): sözdizimi DOĞRULANAMADI. 'Hatalı' değil, 'OK' da değil — ölçülemedi. Bulgular: SYNTAX_UNVERIFIED / SYNTAX_UNKNOWN."
+                      >
+                        · {webSyntaxOlculemedi(w)} sözdizimi ölçülemedi{' '}
+                      </span>
+                    )}
                     · {w.notRunning} çalışmıyor
                     {sayiMi(w.notRunningUnmeasured) && (
                       <span
@@ -2224,7 +2307,7 @@ function HostModal({
       title={host}
       subtitle={
         d
-          ? `${d.products.join(' · ') || 'ürün yok'} · son tarama ${d.scanDate ? fmtDate(d.scanDate) : '—'}${d.cpuS != null ? ` · tarama ${d.cpuS.toFixed(1)} sn CPU` : ''}`
+          ? `${d.products.join(' · ') || 'ürün yok'} · son tarama ${d.scanDate ? fmtDate(d.scanDate) : '—'}${d.cpuS != null ? ` · tarama ${d.cpuS.toFixed(1)} sn CPU` : ''}${tarayiciKimligi(d)}`
           : undefined
       }
       icon={ServerStackIcon}

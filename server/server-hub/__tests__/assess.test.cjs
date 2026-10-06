@@ -624,7 +624,7 @@ test('SH12: ortam kirilimi (Production / Non-Production) ve kart -> bulgu gecisi
   );
   assert.ok(
     /onGoFindings\(\{ area: 'init' \}\)/.test(page) &&
-      /onGoFindings\(\{ area: 'web', code: 'SYNTAX_FAIL', product: p \}\)/.test(page),
+      /onGoFindings\(\{ area: 'web', product: p \}\)/.test(page),
     'kartlar bulgu detayina gitmeli',
   );
   assert.ok(
