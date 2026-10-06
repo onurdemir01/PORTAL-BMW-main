@@ -414,7 +414,52 @@ export const opsxWasApi = {
     fetch(`${WAS}/run/${awxServerId}/${jobId}/status`).then(safeJson),
 };
 
+// ── Smart onay yapilandirmasi (admin, OpsX sayfasinin kendi icinde) ─────────────────
+// `integrationKey` DEGERI sunucudan HIC DONMEZ (bir RFF token'idir); yalnizca tanimli mi
+// bayragi gelir. Kaydederken bos birakilirsa mevcut deger KORUNUR, silinmez.
+export type OpsxSmartPlatform = "legacy" | "was" | "openshift";
+
+export interface OpsxSmartPlatformConfig {
+  flowKey: string;
+  metadataFields: string;
+  integrationKeySet: boolean;
+}
+
+export interface OpsxSmartConfigResponse {
+  ok: boolean;
+  smart?: Record<OpsxSmartPlatform, OpsxSmartPlatformConfig>;
+  // Panel bos ama ortam degiskeni dolu olabilir: admin "bos" gorup calisan degeri
+  // ezmesin diye hangi platformun env'den geldigi ayrica bildirilir (deger DEGIL).
+  envFallback?: Record<OpsxSmartPlatform, { envName: string; flowKeySet: boolean }>;
+  metadataEnvSet?: boolean;
+  integrationEnvSet?: boolean;
+  message?: string;
+}
+
+export interface OpsxSmartConfigSave {
+  flowKey: string;
+  metadataFields: string;
+  /** Bos string = "degistirmedim". Silmek icin ayri bir eylem YOK (bilincli). */
+  integrationKey?: string;
+}
+
 export const opsxApi = {
+  // Smart onay yapilandirmasi — ADMIN. OpsX sayfasinin sag ustundeki pencere kullanir.
+  getSmartConfig: (): Promise<OpsxSmartConfigResponse> =>
+    fetch(`${BASE}/smart-config`).then(safeJson),
+
+  // `reddedilen`: desene uymadigi icin KAYDEDILMEYEN alanlar ("legacy.flowKey" gibi).
+  // Sessiz atlama olmaz — admin "kaydettim" sanip production'in reddedilmeye devam
+  // etmesi, en bastaki sorunun aynisi olurdu.
+  saveSmartConfig: (
+    smart: Partial<Record<OpsxSmartPlatform, OpsxSmartConfigSave>>,
+  ): Promise<OpsxSmartConfigResponse & { reddedilen?: string[] }> =>
+    fetch(`${BASE}/smart-config`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ smart }),
+    }).then(safeJson),
+
   // Uygulama arama — LogX legacy ile aynı kaynak; DB erişilemezse fallbackMode=true
   // ile son bilinen snapshot döner.
   searchApps: (search: string): Promise<{ ok: boolean; apps: string[]; fallbackMode: boolean }> =>

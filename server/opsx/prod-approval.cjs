@@ -87,6 +87,35 @@ const FLOW_KEY_ENV = Object.freeze({
   openshift: 'OPSX_SMART_FLOW_KEY_OPENSHIFT',
 });
 
+// ── YAPILANDIRMA NEREDEN OKUNUR (2026-10-06, kullanici) ──────────────────────────────
+// "Self service otomasyonundaki her bir job icin iclerine girdigimde Smart entegrasyonunu
+// ayarlayabiliyorum. OpsX icin de OpsX'in icine girdigimde, sadece adminlere gozuken sag
+// ustte bir yer olsun - admin panelinde olmasin."
+//
+// ONCELIK: OpsX panelinde girilen deger (portal_config_blobs 'opsx:params' -> smart.<plat>),
+// yoksa ortam degiskeni. Ikisi de bossa null (fail-closed, asagi bak).
+//
+// NEDEN GERI DUSUS KORUNUYOR: flow key'ler bir sure Admin > Sistem'e ortam degiskeni olarak
+// girildi. Panel geldi diye o degerleri gecersiz saymak, calisan bir onay akisini bir
+// deploy ile sessizce KAPATMAK olurdu (kapi fail-closed oldugu icin production islemler
+// "yapilandirilmamis" diye reddedilmeye baslardi).
+//
+// BAYAT DB SATIRI RISKI: bu depoda "DB satiri koddaki varsayilani sessizce ezdi" uc kez
+// yasandi. Burada o sinif GENISLEME uretemez: her iki kaynak da YALNIZ admin tarafindan
+// yazilabiliyor ve DEGER YOKSA islem REDDEDILIR. Yani bayat/bos bir satir kapiyi en kotu
+// halde DAHA SIKI yapar, hicbir durumda gevsetmez.
+async function smartYapilandirma(plat) {
+  try {
+    const cfg = await require('./config.cjs').getConfig();
+    return cfg.smart?.[plat] || null;
+  } catch (e) {
+    // DB okunamadiysa ortam degiskenlerine dusulur. Burada REDDETMEK de bir secenekti ama
+    // gereksiz katiydi: env degeri varsa onay akisi ZATEN kurulu demektir.
+    console.warn('[OpsX] Smart yapilandirmasi okunamadi, ortam degiskenine dusuluyor:', e.message);
+    return null;
+  }
+}
+
 /**
  * change-gates.openSmartTicket'in bekledigi `overrides.smartApproval` seklini uretir.
  *
@@ -95,31 +124,44 @@ const FLOW_KEY_ENV = Object.freeze({
  * Self Servis tarafinda da ayni: flow key yoksa `smart_flow_key_missing` ile durur.
  *
  * @param {'legacy'|'was'|'openshift'} platform
- * @returns {{flowKey:string, metadataFields:string, integrationKey:string}|null}
+ * @returns {Promise<{flowKey:string, metadataFields:string, integrationKey:string}|null>}
  */
-function smartApprovalFor(platform) {
-  const envAdi = FLOW_KEY_ENV[String(platform || '').toLowerCase()];
+async function smartApprovalFor(platform) {
+  const plat = String(platform || '').toLowerCase();
+  const envAdi = FLOW_KEY_ENV[plat];
   if (!envAdi) return null;
-  const flowKey = String(process.env[envAdi] || '').trim();
+
+  const blob = await smartYapilandirma(plat);
+
+  const flowKey =
+    String(blob?.flowKey || '').trim() || String(process.env[envAdi] || '').trim();
   if (!flowKey) return null;
+
   return {
     flowKey,
-    metadataFields: String(process.env.OPSX_SMART_METADATA_FIELDS || '').trim(),
-    integrationKey: String(process.env.OPSX_SMART_INTEGRATION_KEY || '').trim(),
+    metadataFields:
+      String(blob?.metadataFields || '').trim() ||
+      String(process.env.OPSX_SMART_METADATA_FIELDS || '').trim(),
+    integrationKey:
+      String(blob?.integrationKey || '').trim() ||
+      String(process.env.OPSX_SMART_INTEGRATION_KEY || '').trim(),
   };
 }
 
 /** Flow key eksikken dondurulecek hata govdesi - NE YAPILACAGINI soyler. */
 function flowKeyEksikYaniti(platform) {
-  const envAdi = FLOW_KEY_ENV[String(platform || '').toLowerCase()] || '(bilinmeyen platform)';
+  const plat = String(platform || '').toLowerCase();
+  const envAdi = FLOW_KEY_ENV[plat] || '(bilinmeyen platform)';
+  const platAd = { legacy: 'Legacy (JBoss)', was: 'WAS', openshift: 'OpenShift' }[plat] || platform;
   return {
     status: 503,
     body: {
       ok: false,
       blocked: 'opsx_prod_approval_unconfigured',
       message:
-        `Production işlemleri Smart onayından geçer, ancak bu platform için Smart Flow Key ` +
-        `tanımlanmamış (${envAdi}). Yönetici, Admin ▸ Sistem ekranından bu değeri girmeli. ` +
+        `Production işlemleri Smart onayından geçer, ancak ${platAd} platformu için Smart ` +
+        `Flow Key tanımlanmamış. Yönetici, OpsX ekranının sağ üstündeki "Smart Onayı" ` +
+        `penceresinden bu değeri girmeli (alternatif: ${envAdi} ortam değişkeni). ` +
         `Onay akışı kurulmadan production işlem başlatılmaz.`,
     },
   };
@@ -172,7 +214,7 @@ async function opsxProductionKapisi({
   const { uretim, sebep } = uretimIstegi(etiketler);
   if (!uretim) return { proceed: true };
 
-  const smartApproval = smartApprovalFor(platform);
+  const smartApproval = await smartApprovalFor(platform);
   if (!smartApproval) {
     const y = flowKeyEksikYaniti(platform);
     return { proceed: false, status: y.status, body: { ...y.body, reason: sebep } };

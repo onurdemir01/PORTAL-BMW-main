@@ -18,6 +18,39 @@
 
 const BLOB_NAME = 'opsx:params';
 
+// ── SMART ONAY YAPILANDIRMASI (2026-10-06, kullanici) ────────────────────────────────
+// "Self service otomasyonundaki her bir job icin ayri ayri iclerine girdigimde Smart
+// entegrasyonunu ayarlayabiliyorum. OpsX icin de OpsX'in icine girdigimde, sadece
+// adminlere gozuken sag ustte bir yer olsun - admin panelinde olmasin."
+//
+// NEDEN BURADA: OpsX'in zaten bir yapilandirma blob'u var (portal_config_blobs
+// 'opsx:params'). Yeni tablo/migration gerekmez ve ayni invalidate/cache yolu kullanilir.
+//
+// PLATFORM BASINA: flow key'ler zaten platform basina ayrilmisti (kullanici karari
+// 2026-10-06: "onaylayanlar platform ekiplerine gore farklilasabiliyor"). Metadata
+// eslemesi de ayni sekilde ayrilir; tek bir ortak esleme, uc farkli Smart flow'unun
+// ElementName setinin AYNI oldugunu varsaymak olurdu ve bu varsayim yanlis.
+//
+// ORTAM DEGISKENI GERI DUSUS: panel bos birakilan platform icin OPSX_SMART_FLOW_KEY_*
+// degeri gecerli kalir (bkz. server/opsx/prod-approval.cjs). Boylece Admin > Sistem'e
+// ONCEDEN girilmis degerler kaybolmaz. Ikisi de bossa istek REDDEDILIR - "yapilandirma
+// yok" durumu islemi onaysiz calistirmak icin gerekce DEGILDIR.
+//
+// GUVENLIK BORCU (bilincli, kapsam disi): `integrationKey` bir RFF token'idir ve bu
+// blob'da DUZ METIN durur - Self Service'in servis-bazi override'inda da ayni durum var.
+// Daha kotuye goturmemek icin OKUMA yolu degeri HIC DONDURMEZ (yalniz "tanimli mi"
+// bayragi); yazma yolu bos deger gelirse mevcut degeri KORUR. Vault'a tasinmasi ayri is.
+const SMART_PLATFORMS = Object.freeze(['legacy', 'was', 'openshift']);
+
+const SMART_DEFAULTS = Object.freeze({ flowKey: '', metadataFields: '', integrationKey: '' });
+
+// Flow key SAFE_KEY'e uymak ZORUNDA DEGIL: gercek Smart flow adlari tire/nokta
+// icerebiliyor (or. "rff-request-flow.v1"). Yine de serbest metin degil - uzunluk ve
+// satir sonu siniri var, cunku bu deger bir dis servise URL/gövde icinde gidiyor.
+const SMART_KEY_RE = /^[A-Za-z0-9._:-]{1,200}$/;
+
+const SMART_METADATA_MAX = 20000;
+
 // Kod icindeki mantiksal alan adlari -> playbook'un bekledigi extra_vars anahtarlari.
 // Legacy ve Openshift govdeleri YAPISAL OLARAK farkli oldugu icin alan setleri de farkli:
 //   Legacy    -> extra_vars: { application, operation };  sunucu listesi AWX'in `limit` alaninda
@@ -64,6 +97,11 @@ const DEFAULTS = Object.freeze({
     //   'perCluster' → her cluster ayri oge + kendi terminal_host'u + terminal_hosts[].
     clusterListStyle: 'joined',
   },
+  smart: {
+    legacy: { ...SMART_DEFAULTS },
+    was: { ...SMART_DEFAULTS },
+    openshift: { ...SMART_DEFAULTS },
+  },
 });
 
 // Hangi platformda hangi anahtar alanlari duzenlenebilir.
@@ -104,6 +142,68 @@ function normalizePlatform(platform, raw, fallback) {
   return out;
 }
 
+/**
+ * Tek platformun Smart ayarini normalize eder. GECERSIZ DEGER SESSIZCE KABUL EDILMEZ:
+ * desene uymayan bir flow key, Smart'a gidip 400 almak yerine BOS kalir ve kapi
+ * "yapilandirilmamis" diyerek istegi REDDEDER (fail-closed).
+ *
+ * `onceki`: diskteki mevcut ayar. `integrationKey` BOS gelirse ondan korunur - okuma yolu
+ * degeri hic dondurmedigi icin panel onu geri gonderemez; bos gelmesi "degistirmedim"
+ * demektir, "sil" demek DEGILDIR.
+ */
+function normalizeSmartPlatform(raw, onceki = SMART_DEFAULTS) {
+  const out = { ...SMART_DEFAULTS, ...onceki };
+
+  if (raw && typeof raw === 'object') {
+    if (typeof raw.flowKey === 'string') {
+      const v = raw.flowKey.trim();
+      // Bos ACIK bir silme istegidir (admin flow key'i kaldirmak isteyebilir); gecersiz
+      // bir desen ise YOK SAYILMAZ - cagirana bildirilecek sekilde bos birakilir.
+      out.flowKey = v === '' || SMART_KEY_RE.test(v) ? v : '';
+    }
+    if (typeof raw.metadataFields === 'string') {
+      out.metadataFields = raw.metadataFields.slice(0, SMART_METADATA_MAX);
+    }
+    if (typeof raw.integrationKey === 'string') {
+      const v = raw.integrationKey.trim();
+      if (v !== '') out.integrationKey = SMART_KEY_RE.test(v) ? v : out.integrationKey;
+    }
+  }
+  return out;
+}
+
+function normalizeSmart(raw, onceki) {
+  const out = {};
+  for (const p of SMART_PLATFORMS) {
+    out[p] = normalizeSmartPlatform(raw?.[p], onceki?.[p]);
+  }
+  return out;
+}
+
+/** Blob'un HAM halini okur (normalize etmeden). Kismi kayit icin gerekli. */
+async function readRawBlob() {
+  try {
+    const { rows } = await db().query(
+      `SELECT data FROM portal_config_blobs WHERE name = $1`, [BLOB_NAME]
+    );
+    if (rows.length) return JSON.parse(rows[0].data);
+  } catch { /* okunamadiysa bos */ }
+  return null;
+}
+
+async function writeBlob(obj) {
+  const json = JSON.stringify(obj);
+  const upd = await db().query(
+    `UPDATE portal_config_blobs SET data = $1, updated_at = GETUTCDATE() WHERE name = $2`,
+    [json, BLOB_NAME]
+  );
+  if (!upd.rowCount) {
+    await db().query(
+      `INSERT INTO portal_config_blobs (name, data) VALUES ($1, $2)`, [BLOB_NAME, json]
+    );
+  }
+}
+
 async function getConfig() {
   if (_cache) return _cache;
   let parsed = null;
@@ -117,27 +217,71 @@ async function getConfig() {
   _cache = {
     legacy: normalizePlatform('legacy', parsed?.legacy, DEFAULTS.legacy),
     openshift: normalizePlatform('openshift', parsed?.openshift, DEFAULTS.openshift),
+    smart: normalizeSmart(parsed?.smart, DEFAULTS.smart),
   };
   return _cache;
 }
 
+// AYNI BLOB'DA IKI AYRI SAHIP VAR: parametre adlari (bu fonksiyon) ve Smart onayi
+// (saveSmartConfig). Biri otekinin bolumunu EZMEMELI - bu yuzden her ikisi de HAM blob'u
+// okuyup yalnizca KENDI bolumunu degistirir. Kosulsuz yazmak, OpsX panelinden Smart
+// kaydeden bir admin'in parametre adlarini varsayilana dondurmesi demekti.
 async function saveConfig(input) {
+  const ham = await readRawBlob();
   const next = {
+    ...(ham && typeof ham === 'object' ? ham : {}),
     legacy: normalizePlatform('legacy', input?.legacy, DEFAULTS.legacy),
     openshift: normalizePlatform('openshift', input?.openshift, DEFAULTS.openshift),
   };
-  const json = JSON.stringify(next);
-  const upd = await db().query(
-    `UPDATE portal_config_blobs SET data = $1, updated_at = GETUTCDATE() WHERE name = $2`,
-    [json, BLOB_NAME]
-  );
-  if (!upd.rowCount) {
-    await db().query(
-      `INSERT INTO portal_config_blobs (name, data) VALUES ($1, $2)`, [BLOB_NAME, json]
-    );
+  await writeBlob(next);
+  invalidate();
+  return (await getConfig());
+}
+
+/**
+ * Yalnizca Smart bolumunu kaydeder (OpsX icindeki admin penceresi).
+ *
+ * Donus `{ config, reddedilen }`: desene uymayan flow/integration key'ler SESSIZCE
+ * atlanmaz, cagirana bildirilir. Sessiz atlama, admin'in "kaydettim" sanip production
+ * isleminin reddedilmeye devam etmesi demekti.
+ */
+async function saveSmartConfig(input) {
+  const ham = await readRawBlob();
+  const onceki = normalizeSmart(ham?.smart, DEFAULTS.smart);
+
+  const reddedilen = [];
+  for (const p of SMART_PLATFORMS) {
+    const fk = input?.[p]?.flowKey;
+    if (typeof fk === 'string' && fk.trim() !== '' && !SMART_KEY_RE.test(fk.trim())) {
+      reddedilen.push(`${p}.flowKey`);
+    }
+    const ik = input?.[p]?.integrationKey;
+    if (typeof ik === 'string' && ik.trim() !== '' && !SMART_KEY_RE.test(ik.trim())) {
+      reddedilen.push(`${p}.integrationKey`);
+    }
   }
-  _cache = next;
-  return next;
+
+  const next = {
+    ...(ham && typeof ham === 'object' ? ham : {}),
+    smart: normalizeSmart(input, onceki),
+  };
+  await writeBlob(next);
+  invalidate();
+  return { config: (await getConfig()).smart, reddedilen };
+}
+
+/** Istemciye GIDECEK sekil: `integrationKey` DEGERI YOK, yalnizca tanimli mi bayragi. */
+function smartPublic(smart) {
+  const out = {};
+  for (const p of SMART_PLATFORMS) {
+    const s = smart?.[p] || SMART_DEFAULTS;
+    out[p] = {
+      flowKey: s.flowKey || '',
+      metadataFields: s.metadataFields || '',
+      integrationKeySet: Boolean(s.integrationKey),
+    };
+  }
+  return out;
 }
 
 function invalidate() { _cache = null; }
@@ -163,5 +307,7 @@ function parseExtraVarLines(text) {
 
 module.exports = {
   getConfig, saveConfig, invalidate, parseExtraVarLines,
+  saveSmartConfig, smartPublic, normalizeSmart,
   DEFAULTS, KEY_FIELDS, CLUSTER_LIST_STYLES, BLOB_NAME,
+  SMART_PLATFORMS, SMART_DEFAULTS, SMART_KEY_RE, SMART_METADATA_MAX,
 };

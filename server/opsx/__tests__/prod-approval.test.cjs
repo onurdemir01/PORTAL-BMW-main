@@ -1,4 +1,4 @@
-// server/opsx/__tests__/prod-approval.test.cjs — PA1..PA12 (2026-10-06).
+// server/opsx/__tests__/prod-approval.test.cjs — PA1..PA16 (2026-10-06).
 //
 // OpsX PRODUCTION islemleri Smart onayindan gecer. Kullanici: "OpsX kismindaki Legacy
 // veya Openshift fark etmez bunlarin Production akislarini Smart'a entegre etmek
@@ -68,32 +68,133 @@ test('PA5 KATALOG/ENVANTER HATASI kapiyi acmaz: tum etiketler olculur', () => {
   assert.match(r.sebep, /sunucu=GBJBOSSPROD03/);
 });
 
-test('PA6 PLATFORM BASINA flow key (kullanici karari)', () => {
+// `smartApprovalFor` artik ONCE OpsX panelinin blob'una, sonra ortam degiskenine bakar
+// (2026-10-06). Testler DB'ye gitmesin diye config modulu require cache'ten degistirilir.
+function konfigIle(smart, fn) {
+  const cfgPath = require.resolve('../config.cjs');
+  const gaPath = require.resolve('../prod-approval.cjs');
+  const kayitliCfg = require.cache[cfgPath];
+  const kayitliGa = require.cache[gaPath];
+  const Module = require('node:module');
+  const mod = new Module(cfgPath, null);
+  mod.exports = { getConfig: async () => ({ smart }) };
+  mod.loaded = true;
+  require.cache[cfgPath] = mod;
+  delete require.cache[gaPath];
+  const geri = () => {
+    if (kayitliCfg) require.cache[cfgPath] = kayitliCfg; else delete require.cache[cfgPath];
+    if (kayitliGa) require.cache[gaPath] = kayitliGa; else delete require.cache[gaPath];
+  };
+  return Promise.resolve(fn(require(gaPath))).finally(geri);
+}
+
+test('PA6 PLATFORM BASINA flow key (kullanici karari)', async () => {
   assert.deepEqual(Object.keys(ga.FLOW_KEY_ENV).sort(), ['legacy', 'openshift', 'was']);
   const eski = { ...process.env };
   try {
-    delete process.env.OPSX_SMART_FLOW_KEY_LEGACY;
-    // FAIL-CLOSED: anahtar yoksa null -> cagiran REDDEDER
-    assert.equal(ga.smartApprovalFor('legacy'), null, 'anahtar yokken onay yapilandirmasi uretildi');
-    process.env.OPSX_SMART_FLOW_KEY_LEGACY = 'FLOW-LEGACY';
-    assert.equal(ga.smartApprovalFor('legacy').flowKey, 'FLOW-LEGACY');
-    // Platformlar BIRBIRINDEN BAGIMSIZ: legacy tanimliyken openshift hala kapali
-    delete process.env.OPSX_SMART_FLOW_KEY_OPENSHIFT;
-    assert.equal(ga.smartApprovalFor('openshift'), null);
-    assert.equal(ga.smartApprovalFor('bilinmeyen'), null);
+    await konfigIle({}, async (m) => {
+      delete process.env.OPSX_SMART_FLOW_KEY_LEGACY;
+      // FAIL-CLOSED: anahtar yoksa null -> cagiran REDDEDER
+      assert.equal(await m.smartApprovalFor('legacy'), null, 'anahtar yokken onay yapilandirmasi uretildi');
+      process.env.OPSX_SMART_FLOW_KEY_LEGACY = 'FLOW-LEGACY';
+      assert.equal((await m.smartApprovalFor('legacy')).flowKey, 'FLOW-LEGACY');
+      // Platformlar BIRBIRINDEN BAGIMSIZ: legacy tanimliyken openshift hala kapali
+      delete process.env.OPSX_SMART_FLOW_KEY_OPENSHIFT;
+      assert.equal(await m.smartApprovalFor('openshift'), null);
+      assert.equal(await m.smartApprovalFor('bilinmeyen'), null);
+    });
   } finally {
     process.env = eski;
   }
 });
 
-test('PA7 flow key eksik yaniti NE YAPILACAGINI soyler ve env adini verir', () => {
+test('PA7 flow key eksik yaniti NE YAPILACAGINI soyler ve yeni yeri gosterir', () => {
   const y = ga.flowKeyEksikYaniti('openshift');
   assert.equal(y.status, 503);
+  // Yapilandirma artik OpsX'in KENDI ekraninda (kullanici: "admin panelinde olmasin").
+  assert.match(y.body.message, /OpsX ekranının sağ üst/);
+  assert.match(y.body.message, /Smart Onayı/);
+  // Ortam degiskeni ALTERNATIF olarak hala yazili: onceden env'e girmis bir yonetici
+  // nereye bakacagini bilmeli.
   assert.match(y.body.message, /OPSX_SMART_FLOW_KEY_OPENSHIFT/);
-  assert.match(y.body.message, /Admin ▸ Sistem/);
+  // Platform ADI yazili olmali: uc flow var, hangisinin eksik oldugu belirsiz kalmasin.
+  assert.match(y.body.message, /OpenShift/);
   // Onay kurulmadan production isin onaysiz KOSMADIGI yazili olmali
   assert.match(y.body.message, /başlatılmaz/);
   assert.equal(y.body.blocked, 'opsx_prod_approval_unconfigured');
+});
+
+test('PA14 PANEL degeri ortam degiskenini EZER, panel bossa env GECERLI kalir', async () => {
+  // Geri dusus bilincli: flow key'ler bir sure Admin > Sistem'e env olarak girildi.
+  // Panel geldi diye onlari gecersiz saymak, calisan bir onay akisini bir deploy ile
+  // sessizce KAPATMAK olurdu (kapi fail-closed oldugu icin production reddedilmeye
+  // baslardi).
+  const eski = { ...process.env };
+  try {
+    process.env.OPSX_SMART_FLOW_KEY_LEGACY = 'ENV-LEGACY';
+    process.env.OPSX_SMART_FLOW_KEY_WAS = 'ENV-WAS';
+    await konfigIle({ legacy: { flowKey: 'PANEL-LEGACY', metadataFields: 'KONU: x' } }, async (m) => {
+      const l = await m.smartApprovalFor('legacy');
+      assert.equal(l.flowKey, 'PANEL-LEGACY', 'panel degeri env tarafindan eziliyor');
+      assert.equal(l.metadataFields, 'KONU: x');
+      // Panelde HIC girilmemis platform env'e duser
+      assert.equal((await m.smartApprovalFor('was')).flowKey, 'ENV-WAS');
+    });
+  } finally {
+    process.env = eski;
+  }
+});
+
+test('PA15 metadata eslemesi PLATFORM BASINA ayrisir (ortak env sizmaz)', async () => {
+  // Onceki hal: OPSX_SMART_METADATA_FIELDS tek bir degerdi ve uc platform icin ortakti.
+  // Bir platformun eslemesi girildiginde digerinin ONU DEVRALMAMASI gerekir; uc Smart
+  // flow'unun ElementName seti ayni degil.
+  const eski = { ...process.env };
+  try {
+    process.env.OPSX_SMART_FLOW_KEY_LEGACY = 'F-L';
+    process.env.OPSX_SMART_FLOW_KEY_OPENSHIFT = 'F-O';
+    process.env.OPSX_SMART_METADATA_FIELDS = 'ORTAK: env-degeri';
+    await konfigIle(
+      { legacy: { flowKey: '', metadataFields: 'SADECE_LEGACY: 1' }, openshift: { flowKey: '', metadataFields: '' } },
+      async (m) => {
+        assert.equal((await m.smartApprovalFor('legacy')).metadataFields, 'SADECE_LEGACY: 1');
+        // OpenShift'in kendi eslemesi YOK -> ortak env degeri (eski davranis) surer
+        assert.equal((await m.smartApprovalFor('openshift')).metadataFields, 'ORTAK: env-degeri');
+      },
+    );
+  } finally {
+    process.env = eski;
+  }
+});
+
+test('PA16 yapilandirma OKUNAMAZSA ortam degiskenine duser, SESSIZ KALMAZ', async () => {
+  // DB erisilemezse REDDETMEK de bir secenekti ama gereksiz katiydi: env degeri varsa
+  // onay akisi ZATEN kurulu demektir. Yine de uyari basilmali.
+  const cfgPath = require.resolve('../config.cjs');
+  const gaPath = require.resolve('../prod-approval.cjs');
+  const kayitliCfg = require.cache[cfgPath];
+  const kayitliGa = require.cache[gaPath];
+  const Module = require('node:module');
+  const mod = new Module(cfgPath, null);
+  mod.exports = { getConfig: async () => { throw new Error('DB yok'); } };
+  mod.loaded = true;
+  require.cache[cfgPath] = mod;
+  delete require.cache[gaPath];
+  const eskiWarn = console.warn;
+  const uyarilar = [];
+  console.warn = (...a) => uyarilar.push(a.join(' '));
+  const eski = { ...process.env };
+  try {
+    process.env.OPSX_SMART_FLOW_KEY_LEGACY = 'ENV-ONLY';
+    const m = require(gaPath);
+    assert.equal((await m.smartApprovalFor('legacy')).flowKey, 'ENV-ONLY');
+    assert.ok(uyarilar.some((u) => /okunamadi/i.test(u)), 'yapilandirma okunamadi uyarisi basilmadi');
+  } finally {
+    console.warn = eskiWarn;
+    process.env = eski;
+    if (kayitliCfg) require.cache[cfgPath] = kayitliCfg; else delete require.cache[cfgPath];
+    if (kayitliGa) require.cache[gaPath] = kayitliGa; else delete require.cache[gaPath];
+  }
 });
 
 test('PA8 LIMIT FAIL-CLOSED: template limit kabul etmiyorsa is BASLATILMAZ', async () => {

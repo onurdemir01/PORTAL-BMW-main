@@ -8,7 +8,7 @@
 // Güvenlik buna dayanmaz: son POST /api/opsx/run çağrısında sunucu uygulama-host
 // eşleşmesini ve cluster'ı envanterden YENİDEN doğrular.
 import React, { useEffect, useState, useRef } from "react";
-import { ArrowLeftIcon, CheckCircleIcon, ExclamationTriangleIcon, ArrowPathIcon, ArrowDownTrayIcon, ClockIcon } from "@heroicons/react/24/outline";
+import { ArrowLeftIcon, CheckCircleIcon, ExclamationTriangleIcon, ArrowPathIcon, ArrowDownTrayIcon, ClockIcon, Cog6ToothIcon } from "@heroicons/react/24/outline";
 import {
   opsxApi,
   type OpsxPlatform, type OpsxOperation, type OpsxOcpOperation, type OpsxOcpPair,
@@ -18,6 +18,8 @@ import {
   opsxWasApi, type WasTarget, type WasOperation, type WasRunResult, type WasRunStatus,
 } from "@/api/opsxApi";
 import { useJobTracker } from "@/contexts/JobTrackerContext";
+import { useAuth } from "@/contexts/AuthContext";
+import OpsXSmartConfigModal from "./OpsXSmartConfigModal";
 import AnsibleLogTerminal from "@/components/common/AnsibleLogTerminal";
 import PlatformStep from "./steps/PlatformStep";
 import AppSearchStep from "./steps/AppSearchStep";
@@ -85,6 +87,12 @@ const DUMP_OPERATIONS = new Set(["threaddump", "heapdump"]);
 const POD_SELECT_OPERATIONS = new Set(["threaddump", "heapdump", "poddelete"]);
 
 const OpsXWizardPage: React.FC = () => {
+  const { user } = useAuth();
+  // Yapilandirma dugmesi YALNIZCA adminlere gorunur. Bu KOZMETIK bir kapi:
+  // /api/opsx/smart-config uclari ayrica requireAdmin tasir (bkz. server/opsx/index.cjs),
+  // yani dugmeyi gizlemek tek basina bir guvenlik siniri degildir.
+  const admin = user?.role === "Admin";
+  const [smartConfigOpen, setSmartConfigOpen] = useState(false);
   const [step, setStep] = useState<Step>("platform");
   const [platform, setPlatform] = useState<OpsxPlatform | null>(null);
   const [app, setApp] = useState("");
@@ -543,7 +551,24 @@ const OpsXWizardPage: React.FC = () => {
           <h1 className="page-title">OpsX - Güvenli Uygulama Operasyonları</h1>
           {STEP_TITLES[step] && <p className="mt-1 text-sm font-medium text-[var(--text-muted)]">{STEP_TITLES[step]}</p>}
         </div>
+        {/* Kullanici (2026-10-06): "Self service otomasyonunda her job'in icine girdigimde
+            Smart entegrasyonunu ayarlayabiliyorum; OpsX icin de OpsX'in icinde, sag ustte,
+            yalnizca adminlere gozuken bir yer olsun - admin panelinde olmasin." */}
+        {admin && (
+          <button
+            onClick={() => setSmartConfigOpen(true)}
+            title="Smart Onayı Yapılandırması (yalnızca yöneticiler)"
+            className="mt-0.5 flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg border border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--text-primary)] transition-colors active:scale-[0.98] flex-shrink-0"
+          >
+            <Cog6ToothIcon className="w-3.5 h-3.5" />
+            Smart Onayı
+          </button>
+        )}
       </div>
+
+      {admin && (
+        <OpsXSmartConfigModal open={smartConfigOpen} onClose={() => setSmartConfigOpen(false)} />
+      )}
 
       {error && (
         <div className="flex items-start gap-2 bg-red-50 border border-red-100 rounded-xl p-3 text-sm text-red-700">

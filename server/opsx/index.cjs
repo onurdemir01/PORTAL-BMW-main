@@ -446,9 +446,15 @@ function initOpsX(app) {
   // fallback KAPALI (deny) — guvenli varsayilan.
   let requireAuth = (req, res, next) =>
     res.status(401).json({ ok: false, message: 'Auth modülü yok.' });
+  // Admin guard'i AYRI: Smart onay yapilandirmasi yalnizca adminlere aciktir ve auth
+  // modulu yuklenemezse bu da KAPALI kalir (403). Fallback'i requireAuth'a BAGLAMAK
+  // yanlis olurdu - o durumda her oturumlu kullanici yapilandirmayi degistirebilirdi.
+  let requireAdmin = (req, res, next) =>
+    res.status(403).json({ ok: false, message: 'Auth modülü yok.' });
   try {
     const authMod = require('../auth/index.cjs');
     if (typeof authMod.requireAuth === 'function') requireAuth = authMod.requireAuth;
+    if (typeof authMod.requireAdmin === 'function') requireAdmin = authMod.requireAdmin;
   } catch {
     /* auth modulu yoksa deny kalir */
   }
@@ -466,6 +472,77 @@ function initOpsX(app) {
   // WAS (WebSphere) restart/stop/start - AYRI dosya (server/opsx/was.cjs). Sayfa kapisindan
   // SONRA baglanir ki /api/opsx/was/* de requireVisiblePrefix('OpsX')'ten gecsin.
   require('./was.cjs').initOpsXWas(app, { requireAuth });
+
+  // ── SMART ONAY YAPILANDIRMASI (admin, 2026-10-06) ──────────────────────────────────
+  // Kullanici: "Self service otomasyonunda her job'in icine girdigimde Smart
+  // entegrasyonunu ayarlayabiliyorum; OpsX icin de OpsX'in icinde, sag ustte, yalnizca
+  // adminlere gozuken bir yer olsun - admin panelinde olmasin."
+  //
+  // "OpsX Yapilandirma" admin ekrani daha once kullanici onayiyla KALDIRILMISTI; bu uclar
+  // o ekrani geri getirmez, yalnizca Smart bolumunu OpsX sayfasinin kendi icine tasir.
+  //
+  // OCO BURADA YOK ve bu bir eksiklik degil: OpsX hicbir akista OCO numarasi TOPLAMIYOR,
+  // dolayisiyla kesinti penceresi dogrulanamaz. `opsxProductionKapisi` bu yuzden ortak
+  // `runChangeGates` yerine dogrudan `openSmartTicket` cagirir (bkz. o dosyanin notu).
+  // Ekranda da bu AYNEN yazilir - sessiz bir bosluk olarak kalmaz.
+  app.get('/api/opsx/smart-config', requireAuth, requireAdmin, async (_req, res) => {
+    try {
+      const cfg = require('./config.cjs');
+      const { FLOW_KEY_ENV } = require('./prod-approval.cjs');
+      const smart = (await cfg.getConfig()).smart;
+      // ENV GERI DUSUSU GORUNUR OLMALI: panel bos ama is yuruyorsa admin "bos" gorup
+      // doldurmaya calisir ve calisan degeri EZEBILIR. Hangi platformun degerinin
+      // ortam degiskeninden geldigi ayrica bildirilir (deger DEGIL, yalniz varligi).
+      const envFallback = {};
+      for (const p of cfg.SMART_PLATFORMS) {
+        envFallback[p] = {
+          envName: FLOW_KEY_ENV[p] || '',
+          flowKeySet: Boolean(String(process.env[FLOW_KEY_ENV[p]] || '').trim()),
+        };
+      }
+      res.json({
+        ok: true,
+        smart: cfg.smartPublic(smart),
+        envFallback,
+        metadataEnvSet: Boolean(String(process.env.OPSX_SMART_METADATA_FIELDS || '').trim()),
+        integrationEnvSet: Boolean(String(process.env.OPSX_SMART_INTEGRATION_KEY || '').trim()),
+      });
+    } catch (err) {
+      res.status(err.status || 500).json({ ok: false, message: err.message });
+    }
+  });
+
+  app.put(
+    '/api/opsx/smart-config',
+    requireAuth,
+    requireAdmin,
+    express.json({ limit: '128kb' }),
+    async (req, res) => {
+      try {
+        const cfg = require('./config.cjs');
+        const { config, reddedilen } = await cfg.saveSmartConfig(req.body?.smart || {});
+        require('../audit/index.cjs').auditPortal(req, 'opsx_smart_config_save', {
+          // DEGER YAZILMAZ (integrationKey bir token): yalnizca hangi platformun hangi
+          // alanlarinin DOLU oldugu. Denetim kaydi bir sir sizdirma yuzeyi olmamali.
+          detail: JSON.stringify(
+            Object.fromEntries(
+              cfg.SMART_PLATFORMS.map((p) => [
+                p,
+                {
+                  flowKeySet: Boolean(config[p]?.flowKey),
+                  metadataSet: Boolean(config[p]?.metadataFields),
+                  integrationKeySet: Boolean(config[p]?.integrationKey),
+                },
+              ]),
+            ),
+          ),
+        });
+        res.json({ ok: true, smart: cfg.smartPublic(config), reddedilen });
+      } catch (err) {
+        res.status(err.status || 500).json({ ok: false, message: err.message });
+      }
+    },
+  );
 
   // GET /api/opsx/apps?search= — LogX ile AYNI kaynak (uygulama envanteri + snapshot
   // fallback). Kod tekrarlamak yerine legacy modulunun searchApps'i kullanilir.
