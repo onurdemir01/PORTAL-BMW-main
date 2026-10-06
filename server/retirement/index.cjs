@@ -69,6 +69,27 @@ async function loadRecord(id) {
   return { ...rowRecord(r.rows[0]), targets: (t.rows || []).map(rowTarget), events: (e.rows || []).map((x) => ({ id: x.id, at: x.at, username: x.username, kind: x.kind, text: x.text })) };
 }
 
+// ── WEB KATMANI STOP'TA KALKAR (kullanici karari 2026-10-06) ─────────────────────────
+// "1. soruna cevabim direkt STOP'ta kalkacak." + "paylasimli vhost olmamali ama sen
+//  kaldirilacak vhost'u STOP esnasinda ekrana yansitsan biz oradan onaylasak olur mu?"
+//
+// LISTE ONAY ANINDA DONDURULUR (kullanici karari: "dondur, bulunamayani atla" - pod
+// silmede verdigi ayni karar). Gerekcesi: STOP artik OCO penceresine zamanlaniyor, yani
+// onay pencereden SAATLER once veriliyor. Onayladigin liste ile isin kostugu andaki
+// gercek ayrisabilir; o anda ekranda kimse yok. Donmus liste uygulanir, bulunamayan
+// vhost ATLANIR ve raporlanir - sessizce "tamamlandi" demek en kotu sonuc olurdu.
+function webDondur(web) {
+  return (Array.isArray(web) ? web : []).map((w) => ({
+    host: String(w.host || ''),
+    serverName: String(w.serverName || ''),
+    product: String(w.product || ''),
+    confFile: String(w.confFile || ''),
+    status: 'pending',
+    jobId: null,
+    message: null,
+  }));
+}
+
 // AWX (Server Hub ile ayni desen)
 async function launch(req, templateName, extraVars, detail, key = REGISTRY_KEY) {
   const reg = require('../ansible/playbook-registry.cjs');
@@ -226,12 +247,13 @@ function initRetirement(app) {
             `UPDATE retirement_targets SET status = 'stop_scheduled', scheduled_at = $1, window_end = $2, plan_text = $3, updated_at = GETUTCDATE() WHERE id = $4`,
             [plan.runAt, w.windowEnd, `OCO ${rec.ocoNo} penceresine zamanlandi: ${plan.text}`.slice(0, 1000), tid],
           );
-          await addEvent(id, req.session?.user?.username, 'schedule', `${t.appName} @ ${t.host}: ${plan.reason}`);
+          await db().query(`UPDATE retirement_targets SET web_result_json = $1 WHERE id = $2`, [JSON.stringify(webDondur(t.web)), tid]);
+          await addEvent(id, req.session?.user?.username, 'schedule', `${t.appName} @ ${t.host}: ${plan.reason} · ${t.web.length} vhost kaldirilacak`);
           return res.json({ ok: true, scheduled: true, runAt: plan.runAt, runAtText: plan.text, windowEnd: w.windowEnd, message: plan.reason });
         }
         // plan.mode === 'now': pencere ACIK, asagidaki normal launch kosar. Pencere SONU
         // yine yazilir ki poller yarim kalmis bir isi pencere disinda tekrar denemesin.
-        await db().query(`UPDATE retirement_targets SET window_end = $1 WHERE id = $2`, [w.windowEnd, tid]);
+        await db().query(`UPDATE retirement_targets SET window_end = $1, web_result_json = $2 WHERE id = $3`, [w.windowEnd, JSON.stringify(webDondur(t.web)), tid]);
       }
 
       const notifyScc = confirmed && t.env === 'PROD' && !rec.sccNotifiedAt;
@@ -241,6 +263,11 @@ function initRetirement(app) {
         plan_only: !confirmed, notify_scc: notifyScc && !!SCC_MAIL_TO, scc_mail_to: SCC_MAIL_TO, scc_mail_cc: SCC_MAIL_CC || undefined,
         oco_no: rec.ocoNo || '', requested_by: req.session?.user?.username || 'Portal',
       };
+      // TEST/QA HEDEFLERI OCO KAPISINA GIRMEZ: listeyi orada donduramadik, burada
+      // donduruyoruz. `COALESCE` DEGIL kosullu yazim: PROD dalinda zaten yazildi, onu
+      // ikinci kez ezmek "pending" durumlarini sifirlardi.
+      if (confirmed && t.env !== 'PROD')
+        await db().query(`UPDATE retirement_targets SET web_result_json = $1 WHERE id = $2 AND web_result_json IS NULL`, [JSON.stringify(webDondur(t.web)), tid]);
       const r = await launch(req, `Retirement: ${confirmed ? 'STOP' : 'plan'} ${t.appName} @ ${t.host}`, extraVars, { op: confirmed ? 'stop' : 'plan', id, tid });
       await db().query(`UPDATE retirement_targets SET status = $1, last_job_id = $2, updated_at = GETUTCDATE() WHERE id = $3`, [confirmed ? 'stopping' : 'planning', r.jobId, tid]);
       if (rec.status === 'open' && confirmed) await db().query(`UPDATE retirement_records SET status = 'stopping', updated_at = GETUTCDATE() WHERE id = $1`, [id]);
@@ -335,22 +362,53 @@ function initRetirement(app) {
     // OKUNAMADI != BASARISIZ: AWX'e ulasilamadiysa `terminal:false` doner ve hedef
     // 'deleting'de KALIR; bir sonraki tick tekrar bakar. 'failed' yazmak, aslinda
     // basarili olmus bir silmeyi basarisiz gostermek olurdu.
-    async (t) => {
+    async (kind, t) => {
       const reg = require('../ansible/playbook-registry.cjs');
-      const row = await reg.getByKey(DELETE_REGISTRY_KEY).catch(() => null);
+      const row = await reg.getByKey(kind === 'stop' ? REGISTRY_KEY : DELETE_REGISTRY_KEY).catch(() => null);
       const serverId = row && row.awxServerId != null ? Number(row.awxServerId) : 0;
       const runner = require('../ansible/runner.cjs');
       const info = await runner.getJobStatusOnServer(serverId, Number(t.delete_job_id));
       const TERMINAL = new Set(['successful', 'failed', 'error', 'canceled']);
       if (!TERMINAL.has(info.status)) return { terminal: false };
       const { extractStatsKey } = require('../opsx/index.cjs');
-      const r = extractStatsKey(info.artifacts, 'app_retirement_delete_result') || null;
+      const r = extractStatsKey(info.artifacts, kind === 'stop' ? 'app_retirement_stop_result' : 'app_retirement_delete_result') || null;
       const line = String(r?.line || '');
       const msg = line.split('	').slice(2).join(' — ') || info.status;
       // ARTIFACT OKUNAMADIYSA is 'successful' olsa bile OK SAYILMAZ: playbook sonucu
       // `set_stats` ile bildiriyor; bildirim yoksa ne yapildigini BILMIYORUZ.
       const ok = info.status === 'successful' && line.split('\t')[2] === 'OK';
       return { terminal: true, ok, message: msg };
+    },
+    // WEB KATMANI: var olan `server_hub_fix` / apache_retire_vhost CAGRILIR, yeniden
+    // YAZILMAZ. O eylem kanitli davraniyor: yedek alir, dosyada tek vhost varsa
+    // .retired/ altina tasir, cok vhost'luda yalniz o blogu yorumlar, apachectl -t
+    // gecmezse GERI ALIR, gecerse reload eder (server_hub/files/server_hub_fix.sh).
+    async (w) => {
+      const reg = require('../ansible/playbook-registry.cjs');
+      const row = await reg.getByKey('server_hub_fix').catch(() => null);
+      const templateId = row && row.enabled !== false ? reg.getEffectiveTemplateId(row) : null;
+      if (!templateId)
+        throw Object.assign(
+          new Error(
+            'AWX job template\'i tanımlı değil: Admin › Playbook Kayıtları › "server_hub_fix" ' +
+              'satırına Template ID girilmeli (vhost kaldırma onu kullanır).',
+          ),
+          { status: 501 },
+        );
+      const serverId = row.awxServerId != null ? Number(row.awxServerId) : 0;
+      const runner = require('../ansible/runner.cjs');
+      // plan_only=false: liste onay aninda dondurulmustu, onay zaten verildi.
+      const extraVars = {
+        target_host: w.webHost,
+        action: 'apache_retire_vhost',
+        product: w.product,
+        file: w.confFile,
+        server_name: w.serverName,
+        reload: true,
+        plan_only: false,
+      };
+      await require('../ansible/template-preflight.cjs').assertTemplateAcceptsExtraVars(serverId, templateId, extraVars, { label: 'server_hub_fix' });
+      return runner.launchJobOnServer(serverId, templateId, extraVars, '', {});
     });
   } catch (e) {
     console.warn('[Retirement] poller baslatilamadi:', e.message);

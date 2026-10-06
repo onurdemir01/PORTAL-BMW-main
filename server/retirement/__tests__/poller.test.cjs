@@ -200,3 +200,34 @@ test('RP10 DELETE sorgusu DURUM ve deleted_at suzgecini TASIR', () => {
   assert.match(sstop, /t\.status = 'stop_scheduled'/, 'STOP sorgusu zamanlanmis hedef suzgecini kaybetmis');
   assert.match(sstop, /r\.status <> 'cancelled'/, 'iptal edilmis kaydin STOP"u kosar');
 });
+
+test('RP11 STOP"u da POLLER sonuclandirir (gece kimse yoklamiyor)', async () => {
+  // ACIK BOSLUKTU: STOP artik OCO penceresine zamanlaniyor, yani is gece 02:00'de
+  // poller tarafindan baslatiliyor. Onyuzun job-status yoklamasi yalnizca ekranda
+  // bekleyen bir insan varken calisir. Bu sonlandirma olmadan hedef sonsuza dek
+  // 'stopping'de kalirdi VE silme hic tetiklenmezdi (deleteTick yalniz 'stopped'e bakar).
+  const yazilan = [];
+  sahteDb.query = async (sql, params) => {
+    const t = String(sql).replace(/\s+/g, ' ');
+    if (/^SELECT/i.test(t.trim())) {
+      if (/status = 'stopping' AND last_job_id IS NOT NULL/.test(t))
+        return { rows: [{ id: 7, record_id: 3, host: 'H', app_name: 'A', env: 'PROD', job_id: 11 }], rowCount: 1 };
+      if (/COUNT\(\*\) AS n/.test(t)) return { rows: [{ n: 0 }], rowCount: 1 };
+      return { rows: [], rowCount: 0 };
+    }
+    yazilan.push({ sql: t, params });
+    return { rows: [], rowCount: 1 };
+  };
+  const gorulen = [];
+  poller.startPoller(async () => ({ jobId: 1 }), async (kind) => { gorulen.push(kind); return { terminal: true, ok: true, message: 'durduruldu' }; });
+  const r = await poller._finalizeTick();
+  poller.stopPoller();
+  assert.ok(gorulen.includes('stop'), 'STOP sonlandirmasi hic cagrilmamis');
+  assert.equal(r.kapanan, 1);
+  assert.ok(yazilan.some((w) => /status = 'stopped'/.test(w.sql)), "hedef 'stopped' yazilmamis");
+  // stop_at ILK stop'ta yazilir: silme tarihi buradan sayilir
+  assert.ok(
+    yazilan.some((w) => /stop_at = COALESCE\(stop_at, GETUTCDATE\(\)\)/.test(w.sql)),
+    'stop_at yazilmamis - silme tarihi hic hesaplanamaz',
+  );
+});

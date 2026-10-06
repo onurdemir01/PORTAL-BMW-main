@@ -30,6 +30,7 @@ let _launch = null;
 // SONLANDIRMAK da zorunda - yoksa hedef sonsuza dek 'deleting'de asili kalir ve kimse
 // silmenin tutup tutmadigini gormez. (Ayni gerekce ScaleX uzlastiricisinda da yazili.)
 let _finalize = null;
+let _web = null;
 let _ticking = false;
 
 function cfg() {
@@ -170,51 +171,150 @@ async function deleteTick(now) {
   return { kosan };
 }
 
-/** Bitmis DELETE islerini sonuclandirir: 'deleted' ya da 'failed'. */
-async function finalizeTick() {
-  if (typeof _finalize !== 'function') return { kapanan: 0 };
+// Sonuclandirilacak adimlar. STOP ve DELETE AYRI alanlarda is numarasi tasiyor
+// (last_job_id / delete_job_id) ve ayri hedef durumlarina gidiyor.
+//
+// STOP'U DA POLLER SONUCLANDIRIR (2026-10-06): onyuzun job-status yoklamasi yalnizca
+// ekranda bekleyen bir insan varken calisir. STOP artik OCO penceresine zamanlaniyor,
+// yani is gece 02:00'de poller tarafindan baslatiliyor ve o anda kimse yok. Bu
+// sonlandirma olmadan hedef sonsuza dek 'stopping'de kalirdi - silme de hic
+// tetiklenmezdi (deleteTick yalniz 'stopped' hedefe bakar).
+const ADIMLAR = Object.freeze([
+  { durum: 'stopping', isAlani: 'last_job_id', kind: 'stop', basarili: 'stopped', zamanAlani: 'stopped_at' },
+  { durum: 'deleting', isAlani: 'delete_job_id', kind: 'delete', basarili: 'deleted', zamanAlani: 'deleted_at' },
+]);
+
+async function finalizeAdim(adim) {
   const { rows } = await db.query(
-    `SELECT id, record_id, host, app_name, delete_job_id
+    `SELECT id, record_id, host, app_name, env, ${adim.isAlani} AS job_id
        FROM retirement_targets
-      WHERE status = 'deleting' AND delete_job_id IS NOT NULL`,
+      WHERE status = '${adim.durum}' AND ${adim.isAlani} IS NOT NULL`,
   );
   let kapanan = 0;
   for (const t of rows || []) {
     let o;
     try {
-      o = await _finalize(t);
+      o = await _finalize(adim.kind, t);
     } catch (e) {
       // OKUNAMADI != BASARISIZ: AWX'e ulasilamadiysa hedef 'deleting'de KALIR ve bir
       // sonraki tick tekrar bakar. 'failed' yazmak, aslinda basarili olmus bir silmeyi
       // basarisiz gostermek olurdu.
-      console.warn(`[Retirement poller] is #${t.delete_job_id} durumu okunamadi:`, e.message);
+      console.warn(`[Retirement poller] is #${t.job_id} durumu okunamadi:`, e.message);
       continue;
     }
     if (!o || !o.terminal) continue;
     if (o.ok) {
       await db.query(
-        `UPDATE retirement_targets SET status = 'deleted', result_text = $1, deleted_at = GETUTCDATE(), updated_at = GETUTCDATE()
-          WHERE id = $2 AND status = 'deleting'`,
+        `UPDATE retirement_targets SET status = '${adim.basarili}', result_text = $1, ${adim.zamanAlani} = GETUTCDATE(), updated_at = GETUTCDATE()
+          WHERE id = $2 AND status = '${adim.durum}'`,
         [String(o.message || '').slice(0, 1000), t.id],
       );
-      await olay(t.record_id, 'delete-result', `${t.app_name} @ ${t.host}: ${o.message || 'silindi'}`);
-      // KAYIT KAPANISI: tum hedefler silindiyse kaydin kendisi 'deleted' olur.
-      const kalan = await db.query(
-        `SELECT COUNT(*) AS n FROM retirement_targets WHERE record_id = $1 AND status NOT IN ('deleted', 'skipped')`,
-        [t.record_id],
-      );
-      if (Number(kalan.rows?.[0]?.n) === 0)
-        await db.query(`UPDATE retirement_records SET status = 'deleted', updated_at = GETUTCDATE() WHERE id = $1`, [t.record_id]);
+      await olay(t.record_id, `${adim.kind}-result`, `${t.app_name} @ ${t.host}: ${o.message || adim.basarili}`);
+      if (adim.kind === 'stop') {
+        // STOP'ta kayit 'stopped' olur ve stop_at ILK stop'ta yazilir - silme tarihi
+        // buradan sayilir (bkz. schedule.etkinSilmeGunu).
+        await db.query(
+          `UPDATE retirement_records SET stop_at = COALESCE(stop_at, GETUTCDATE()), updated_at = GETUTCDATE() WHERE id = $1`,
+          [t.record_id],
+        );
+        const kalan = await db.query(
+          `SELECT COUNT(*) AS n FROM retirement_targets WHERE record_id = $1 AND status NOT IN ('stopped', 'deleting', 'deleted', 'skipped')`,
+          [t.record_id],
+        );
+        if (Number(kalan.rows?.[0]?.n) === 0)
+          await db.query(`UPDATE retirement_records SET status = 'stopped', updated_at = GETUTCDATE() WHERE id = $1 AND status = 'stopping'`, [t.record_id]);
+      } else {
+        const kalan = await db.query(
+          `SELECT COUNT(*) AS n FROM retirement_targets WHERE record_id = $1 AND status NOT IN ('deleted', 'skipped')`,
+          [t.record_id],
+        );
+        if (Number(kalan.rows?.[0]?.n) === 0)
+          await db.query(`UPDATE retirement_records SET status = 'deleted', updated_at = GETUTCDATE() WHERE id = $1`, [t.record_id]);
+      }
     } else {
       await db.query(
         `UPDATE retirement_targets SET status = 'failed', result_text = $1, updated_at = GETUTCDATE()
-          WHERE id = $2 AND status = 'deleting'`,
-        [String(o.message || 'silme basarisiz').slice(0, 1000), t.id],
+          WHERE id = $2 AND status = '${adim.durum}'`,
+        [String(o.message || `${adim.kind} basarisiz`).slice(0, 1000), t.id],
       );
-      await olay(t.record_id, 'delete-result', `${t.app_name} @ ${t.host}: BASARISIZ — ${o.message || ''}`);
+      await olay(t.record_id, `${adim.kind}-result`, `${t.app_name} @ ${t.host}: BASARISIZ — ${o.message || ''}`);
     }
     kapanan += 1;
   }
+  return kapanan;
+}
+
+// ── WEB KATMANI (kullanici karari 2026-10-06) ───────────────────────────────────────
+// "Direkt STOP'ta kalkacak" + "dondur, bulunamayani atla". Liste onay aninda dondurulur
+// (index.cjs webDondur); burada DONMUS liste uygulanir.
+//
+// STOP BASARILI OLDUKTAN SONRA: hedef 'stopped' olmadan vhost kaldirilmaz. Once vhost'u
+// kaldirip sonra STOP'un dusmesi, calisan bir uygulamayi erisilemez birakmak olurdu.
+//
+// URUN BASINA AYRI YOL (bugun Server Hub'da ogrenildi: nginx ve Apache ayni komutu
+// PAYLASMIYOR). apache_retire_vhost yalniz Apache/IHS icin; NGINX hedefleri 'manual'
+// isaretlenir ve SEBEBI yazilir - sessizce atlamak "kaldirildi" izlenimi verirdi.
+const APACHE_URUN = new Set(['RHA', 'IHS', 'APACHE', 'IBMIHS']);
+
+async function webTick() {
+  if (typeof _web !== 'function') return { kosan: 0, elle: 0 };
+  const { rows } = await db.query(
+    `SELECT id, record_id, host, app_name, web_result_json
+       FROM retirement_targets
+      WHERE status = 'stopped' AND web_result_json IS NOT NULL AND web_result_json LIKE '%"pending"%'`,
+  );
+  let kosan = 0;
+  let elle = 0;
+  for (const t of rows || []) {
+    let liste;
+    try {
+      liste = JSON.parse(t.web_result_json);
+    } catch {
+      continue;
+    }
+    if (!Array.isArray(liste)) continue;
+    let degisti = false;
+    for (const w of liste) {
+      if (w.status !== 'pending') continue;
+      if (!APACHE_URUN.has(String(w.product || '').toUpperCase())) {
+        w.status = 'manual';
+        w.message = `${w.product || 'bilinmeyen urun'}: otomatik kaldirma yok (apache_retire_vhost yalniz Apache/IHS). Nginx icin nginx_ops action=delete ile elle yapilmali.`;
+        degisti = true;
+        elle += 1;
+        continue;
+      }
+      if (!w.confFile || !w.serverName) {
+        w.status = 'manual';
+        w.message = 'conf dosyasi ya da ServerName kesifte cozulemedi; elle kaldirilmali.';
+        degisti = true;
+        elle += 1;
+        continue;
+      }
+      try {
+        const r = await _web({ webHost: w.host, product: w.product, confFile: w.confFile, serverName: w.serverName });
+        w.jobId = r?.jobId ?? null;
+        w.status = 'running';
+        w.message = `is #${w.jobId ?? '?'}`;
+        degisti = true;
+        kosan += 1;
+        await olay(t.record_id, 'web', `${t.app_name}: ${w.host} / ${w.serverName} vhost kaldirma isi #${w.jobId ?? '?'}`);
+      } catch (e) {
+        // 'pending' KALIR: bir sonraki tick tekrar dener. 'failed' yazmak, hic
+        // denenmemis bir kaldirmayi basarisiz gostermek olurdu.
+        await olay(t.record_id, 'error', `${t.app_name}: ${w.host} / ${w.serverName} vhost isi baslatilamadi — ${e.message}`);
+      }
+    }
+    if (degisti)
+      await db.query(`UPDATE retirement_targets SET web_result_json = $1, updated_at = GETUTCDATE() WHERE id = $2`, [JSON.stringify(liste).slice(0, 60000), t.id]);
+  }
+  return { kosan, elle };
+}
+
+/** Hem STOP hem DELETE islerini sonuclandirir. */
+async function finalizeTick() {
+  if (typeof _finalize !== 'function') return { kapanan: 0 };
+  let kapanan = 0;
+  for (const adim of ADIMLAR) kapanan += await finalizeAdim(adim);
   return { kapanan };
 }
 
@@ -223,16 +323,18 @@ async function tick(now = new Date()) {
   const s = await stopTick(now);
   const d = await deleteTick(now);
   const f = await finalizeTick();
-  if (s.kosan || s.gecen || d.kosan || f.kapanan)
+  const w = await webTick();
+  if (s.kosan || s.gecen || d.kosan || f.kapanan || w.kosan || w.elle)
     console.log(
-      `[Retirement poller] STOP kosan=${s.kosan} penceresi-gecen=${s.gecen} · DELETE kosan=${d.kosan} kapanan=${f.kapanan}`,
+      `[Retirement poller] STOP kosan=${s.kosan} penceresi-gecen=${s.gecen} · DELETE kosan=${d.kosan} · kapanan=${f.kapanan} · WEB kosan=${w.kosan} elle=${w.elle}`,
     );
-  return { stop: s, delete: d, finalize: f };
+  return { stop: s, delete: d, finalize: f, web: w };
 }
 
-function startPoller(launch, finalize) {
+function startPoller(launch, finalize, web) {
   _launch = launch;
   _finalize = finalize || null;
+  _web = web || null;
   if (_timer) return;
   const { intervalMs } = cfg();
   _timer = setInterval(() => {
@@ -253,6 +355,7 @@ function stopPoller() {
   _timer = null;
   _launch = null;
   _finalize = null;
+  _web = null;
 }
 
-module.exports = { startPoller, stopPoller, tick, _stopTick: stopTick, _deleteTick: deleteTick, _finalizeTick: finalizeTick };
+module.exports = { startPoller, stopPoller, tick, _stopTick: stopTick, _deleteTick: deleteTick, _finalizeTick: finalizeTick, _webTick: webTick };
