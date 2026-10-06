@@ -145,6 +145,27 @@ type ShSummaryV3 = ShSummary & {
     ShSummary['web'][string] & { notRunningUnmeasured?: number; syntaxUnknown?: number }
   >;
   byEnv?: Record<string, ShEnvBlock & { jvmUnmeasured?: number }>;
+  /** URUN BASINA KART (kullanici 2026-10-06): her urunun kendi init bari. `olcutHosts` payda,
+   *  `noOlcutHosts` ise olcut dosyasi (/vhosting agaci) HIC olmayan sunucular - onlar
+   *  "uyumsuz" DEGIL "olculemedi"dir ve paydaya girmez. Alan gelmezse ekran eski tek
+   *  "Init script uyumu" kartina duser (0 uydurulmaz). */
+  productInit?: Record<
+    string,
+    ShSummaryV3['init'] & { olcutHosts?: number; noOlcutHosts?: number }
+  >;
+  /** JBoss'un sozdizimi olcumu YOK; karsiligi "yapilandirma okunabildi mi" (jboss-cli). */
+  jbossCli?: {
+    hosts: number;
+    ok: number;
+    fail: number;
+    denied: number;
+    skip: number;
+    noRow: number;
+  };
+  /** Kartlar AYRIK KUME DEGIL: ayni sunucu birden fazla urun tasiyabilir (RHA+JBOSS8,
+   *  IHS+JBOSS7, hatta dordu birden). Bu sayi olmazsa kart toplamlari filo sayisini asar
+   *  ve ekran "sayilar sisik" gibi okunur. */
+  productOverlap?: { multi: number; combos: { combo: string; hosts: number }[] };
 };
 type ShOverviewV3 = Omit<ShOverview, 'hosts' | 'summary'> & {
   hosts: ShHostRowV3[];
@@ -276,6 +297,73 @@ function webSyntaxOlculemedi(w: ShSummaryV3['web'][string]): number | null {
 function webKartTonu(w: ShSummaryV3['web'][string]): ShSeverity {
   if (w.syntaxFail) return 'danger';
   return webSyntaxOlculemedi(w) != null ? 'warning' : 'ok';
+}
+
+/** Dashboard kart basliklari. JBOSS7/JBOSS8 TEK kart: ayni sunucuda ikisi birden olabiliyor
+ *  ve init agaci (/vhosting, /vhosting8) ortak. assess.cjs URUN_KARTLARI ile ayni sira. */
+const URUN_KARTLARI = ['NGINX', 'JBOSS', 'RHA', 'IHS'] as const;
+type UrunKarti = (typeof URUN_KARTLARI)[number];
+const URUN_ADI: Record<UrunKarti, string> = {
+  NGINX: 'Nginx',
+  JBOSS: 'JBoss',
+  RHA: 'Red Hat Apache',
+  IHS: 'IBM HTTP Server',
+};
+
+/**
+ * Bir urunun init barinin sayilari ve metni.
+ *
+ * OLCUT `/vhosting*` AGACINDADIR: `start.sh` yalnizca JBoss kurulumu olan sunucuda bulunur.
+ * Saf bir Nginx sunucusunda olcut dosyasi YOKTUR - o sunucu "uyumsuz" DEGIL, "olculemedi"dir.
+ * Bu yuzden payda `olcutHosts`tir, `hosts` DEGIL: aksi halde kart "1 / 120 uyumlu" diyip
+ * ozellik bozuk gibi gorunur (ayni tuzaga 2026-10-05'te dusuldu). Olcut dosyasi olmayan
+ * sunucu sayisi metinde AYRICA soylenir - sessizce paydadan dusurmek de yaniltici olurdu.
+ */
+function urunInitBari(pi: NonNullable<ShSummaryV3['productInit']>[string]): {
+  pay: number;
+  payda: number;
+  metin: string;
+  tone: ShSeverity;
+} {
+  const payda = sayiMi(pi.olcutHosts) ? pi.olcutHosts : pi.hosts;
+  const olcutsuz = sayiMi(pi.noOlcutHosts) ? pi.noOlcutHosts : null;
+  const okunamadi = sayiMi(pi.unreadableFiles) ? pi.unreadableFiles : null;
+  const parca: string[] = [];
+  if (okunamadi != null && okunamadi > 0)
+    parca.push(
+      `${okunamadi} dosya OKUNAMADI${!pi.compliant && !pi.diffFiles ? ' — çoğunluk kurulamadı' : ''}`,
+    );
+  parca.push(`${pi.diffFiles} farklı`);
+  if (olcutsuz != null && olcutsuz > 0)
+    parca.push(`${olcutsuz} sunucuda ölçüt dosyası yok (ölçülemedi)`);
+  if (sayiMi(pi.otherDiffFiles) && pi.otherDiffFiles > 0)
+    parca.push(`${pi.otherDiffFiles} fark ölçüt dışı dosyada`);
+  return {
+    pay: pi.compliant,
+    payda,
+    metin: parca.join(' · '),
+    tone:
+      okunamadi != null && okunamadi > 0 ? 'warning' : pi.diffFiles ? 'warning' : 'ok',
+  };
+}
+
+/** JBoss kartinin ust bari: sozdizimi DEGIL, "yapilandirma okunabildi mi" (jboss-cli).
+ *  Tarayici JBoss icin `nginx -t` karsiligi bir komut kosturmuyor; bunu "syntax" diye
+ *  etiketlemek uydurma olurdu. */
+function jbossCliMetni(j: NonNullable<ShSummaryV3['jbossCli']>): {
+  metin: string;
+  tone: ShSeverity;
+} {
+  const parca: string[] = [];
+  if (j.denied) parca.push(`${j.denied} yetki reddi`);
+  if (j.fail) parca.push(`${j.fail} erişilemedi`);
+  if (j.skip) parca.push(`${j.skip} hiç denenmedi`);
+  if (j.noRow) parca.push(`${j.noRow} sunucuda CLI satırı gelmedi`);
+  if (!parca.length) parca.push('tüm sunucularda okundu');
+  return {
+    metin: parca.join(' · '),
+    tone: j.denied || j.fail || j.noRow ? 'warning' : j.skip ? 'info' : 'ok',
+  };
 }
 
 /**
@@ -1688,94 +1776,185 @@ function HostsTab({
             </Kpi>
           </div>
 
+          {/* URUN BASINA KART (kullanici 2026-10-06): "o karti Nginx olarak isimlendir,
+              Syntax uyumu diye bir bar olsun, bir de Nginx iceren sunuculardaki init script
+              uyumunu ayri bir barda goreyim. Ayni islemi JBoss / Red Hat Apache / IBM Apache
+              icin de yap."
+
+              ORTAK SUNUCU (kullanicinin sordugu durum): RHA+JBOSS8, IHS+JBOSS7, hatta dordu
+              birden ayni sunucuda olabiliyor. Sunucu TASIDIGI HER URUNUN kartinda sayilir -
+              kartlar ayrik kume DEGILDIR. Alternatifi (sunucuyu tek bir "ana urune" atamak)
+              uydurma olurdu: ayni sunucudaki Nginx sorunu JBoss kartina yazilinca kaybolurdu.
+              Ortusme kart izgarasinin ALTINDA sayiyla soylenir ki toplamlar yanlis okunmasin.
+
+              `productInit` gelmiyorsa (eski sunucu yaniti) eski tek "Init script uyumu" karti
+              basilir - 0 uydurulmaz. */}
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            <Kpi
-              title="Init script uyumu"
-              tone={initUyumMetni(s.init).tone}
-              onClick={() => onGoFindings({ area: 'init' })}
-            >
-              <div className="text-2xl font-bold tabular-nums">
-                {s.init.compliant}{' '}
-                <span className="text-sm font-normal" style={{ color: 'var(--text-muted)' }}>
-                  / {s.init.hosts} sunucu filo çoğunluğuyla aynı
-                </span>
-              </div>
-              <div className="mt-2">
-                <Bar value={s.init.compliant} total={s.init.hosts} color={SEV.ok.color} />
-              </div>
-              <div
-                className="mt-1 text-[11px]"
-                style={{ color: 'var(--text-secondary)' }}
-                title="Ölçüt Denetim › Init Script ile aynı: dosya başına en kalabalık sha çoğunluktur. Repo referansından fark tek başına bulgu değildir. OKUNAMAYAN dosya çoğunluk hesabına girmez — hepsi okunamadıysa çoğunluk hiç kurulamaz ve 'farklı' sayısı ölçüm değildir."
+            {!s.productInit && (
+              <Kpi
+                title="Init script uyumu"
+                tone={initUyumMetni(s.init).tone}
+                onClick={() => onGoFindings({ area: 'init' })}
               >
-                {initUyumMetni(s.init).metin}
-              </div>
-            </Kpi>
-            {(['RHA', 'IHS', 'NGINX'] as const).map((p) => {
-              const w = s.web[p];
-              if (!w) return null;
+                <div className="text-2xl font-bold tabular-nums">
+                  {s.init.compliant}{' '}
+                  <span className="text-sm font-normal" style={{ color: 'var(--text-muted)' }}>
+                    / {s.init.hosts} sunucu filo çoğunluğuyla aynı
+                  </span>
+                </div>
+                <div className="mt-2">
+                  <Bar value={s.init.compliant} total={s.init.hosts} color={SEV.ok.color} />
+                </div>
+                <div
+                  className="mt-1 text-[11px]"
+                  style={{ color: 'var(--text-secondary)' }}
+                  title="Ölçüt Denetim › Init Script ile aynı: dosya başına en kalabalık sha çoğunluktur. OKUNAMAYAN dosya çoğunluk hesabına girmez — hepsi okunamadıysa çoğunluk hiç kurulamaz ve 'farklı' sayısı ölçüm değildir."
+                >
+                  {initUyumMetni(s.init).metin}
+                </div>
+              </Kpi>
+            )}
+            {URUN_KARTLARI.map((p) => {
+              const jb = p === 'JBOSS';
+              const w = jb ? null : s.web[p];
+              const jc = jb ? s.jbossCli : null;
+              const pi = s.productInit?.[p];
+              // Ne web satiri ne JBoss olcumu yoksa kart BASILMAZ: bos bir kart "bu urun
+              // yok" izlenimi verir, oysa tarama o urunu hic gormemis olabilir.
+              if (!w && !jc && !pi) return null;
+              const ustPay = jb ? (jc?.ok ?? 0) : (w?.syntaxOk ?? 0);
+              const ustPayda = jb ? (jc?.hosts ?? 0) : (w?.hosts ?? 0);
+              const ustTon: ShSeverity = jb
+                ? jc
+                  ? jbossCliMetni(jc).tone
+                  : 'ok'
+                : w
+                  ? webKartTonu(w)
+                  : 'ok';
+              const ib = pi ? urunInitBari(pi) : null;
+              const kartTonu: ShSeverity = ustTon !== 'ok' ? ustTon : (ib?.tone ?? 'ok');
+              const kapsama = jb ? s.coverage?.JBOSS : s.coverage?.[p];
               return (
                 <Kpi
                   key={p}
-                  title={`${p === 'RHA' ? 'Red Hat Apache' : p === 'IHS' ? 'IBM HTTP Server' : 'Nginx'} syntax`}
-                  tone={webKartTonu(w)}
-                  onClick={() => onGoFindings({ area: 'web', product: p })}
+                  title={URUN_ADI[p]}
+                  tone={kartTonu}
+                  onClick={() => onGoFindings(jb ? { area: 'jboss' } : { area: 'web', product: p })}
                 >
+                  <div
+                    className="text-[10px] font-semibold uppercase tracking-wide"
+                    style={{ color: 'var(--text-muted)' }}
+                    title={
+                      jb
+                        ? "JBoss'un sözdizimi ölçümü YOKTUR: tarayıcı nginx -t / apachectl -t karşılığı bir komut koşturmuyor. Karşılığı yapılandırmanın okunabilmesidir (jboss-cli). Bir sunucu ancak TÜM nesilleri (JBoss7 ve JBoss8) okunduğunda sayılır."
+                        : 'nginx -t / apachectl -t sonucu. Erişimden düşen komut OK da FAIL da değildir: ölçülemedi.'
+                    }
+                  >
+                    {jb ? 'Yapılandırma okundu (CLI)' : 'Sözdizimi uyumu'}
+                  </div>
                   <div className="text-2xl font-bold tabular-nums">
-                    {w.syntaxOk}{' '}
+                    {ustPay}{' '}
                     <span className="text-sm font-normal" style={{ color: 'var(--text-muted)' }}>
-                      / {w.hosts} sunucu OK
+                      / {ustPayda} sunucu
                     </span>
                   </div>
-                  <div className="mt-2">
-                    <Bar value={w.syntaxOk} total={w.hosts} color={SEV.ok.color} />
+                  <div className="mt-1">
+                    <Bar
+                      value={ustPay}
+                      total={ustPayda}
+                      color={ustTon === 'ok' ? SEV.ok.color : SEV[ustTon].color}
+                    />
                   </div>
                   <div className="mt-1 text-[11px]" style={{ color: 'var(--text-secondary)' }}>
-                    <span
-                      style={
-                        w.syntaxFail ? { color: SEV.danger.color, fontWeight: 600 } : undefined
-                      }
-                    >
-                      {w.syntaxFail} hatalı
-                    </span>{' '}
-                    {webSyntaxOlculemedi(w) != null && (
-                      <span
-                        style={{ color: SEV.warning.color, fontWeight: 600 }}
-                        title="nginx/apachectl -t bir dosyaya erişemediği için düştü (yetki ya da eksik dosya): sözdizimi DOĞRULANAMADI. 'Hatalı' değil, 'OK' da değil — ölçülemedi. Bulgular: SYNTAX_UNVERIFIED / SYNTAX_UNKNOWN."
-                      >
-                        · {webSyntaxOlculemedi(w)} sözdizimi ölçülemedi{' '}
-                      </span>
-                    )}
-                    · {w.notRunning} çalışmıyor
-                    {sayiMi(w.notRunningUnmeasured) && (
-                      <span
-                        style={w.notRunningUnmeasured ? { color: SEV.warning.color } : undefined}
-                        title={olculemeyenAciklama('web', sema)}
-                      >
-                        {' '}
-                        · {w.notRunningUnmeasured} durumu ölçülemedi
-                      </span>
-                    )}{' '}
-                    · {w.vhosts} vhost, {w.idleVhosts} yüksüz
+                    {jb && jc ? (
+                      jbossCliMetni(jc).metin
+                    ) : w ? (
+                      <>
+                        <span
+                          style={
+                            w.syntaxFail ? { color: SEV.danger.color, fontWeight: 600 } : undefined
+                          }
+                        >
+                          {w.syntaxFail} hatalı
+                        </span>{' '}
+                        {webSyntaxOlculemedi(w) != null && (
+                          <span
+                            style={{ color: SEV.warning.color, fontWeight: 600 }}
+                            title="nginx/apachectl -t bir dosyaya erişemediği için düştü (yetki ya da eksik dosya): sözdizimi DOĞRULANAMADI. 'Hatalı' değil, 'OK' da değil — ölçülemedi. Bulgular: SYNTAX_UNVERIFIED / SYNTAX_UNKNOWN."
+                          >
+                            · {webSyntaxOlculemedi(w)} sözdizimi ölçülemedi{' '}
+                          </span>
+                        )}
+                        · {w.notRunning} çalışmıyor
+                        {sayiMi(w.notRunningUnmeasured) && (
+                          <span
+                            style={w.notRunningUnmeasured ? { color: SEV.warning.color } : undefined}
+                            title={olculemeyenAciklama('web', sema)}
+                          >
+                            {' '}
+                            · {w.notRunningUnmeasured} durumu ölçülemedi
+                          </span>
+                        )}{' '}
+                        · {w.vhosts} vhost, {w.idleVhosts} yüksüz
+                      </>
+                    ) : null}
                   </div>
-                  {s.coverage?.[p] && (
+
+                  {ib && (
                     <div
-                      className="mt-1 text-[11px]"
+                      className="mt-3 pt-3"
+                      style={{ borderTop: '1px solid var(--border-subtle)' }}
+                    >
+                      <div
+                        className="text-[10px] font-semibold uppercase tracking-wide"
+                        style={{ color: 'var(--text-muted)' }}
+                        title={`Ölçüt ${pi?.olcutDosyasi || 'start.sh'}: dosya başına en kalabalık sha çoğunluktur. Ölçüt /vhosting ağacındadır, yani yalnızca JBoss kurulumu olan sunucuda bulunur — bu üründe ölçüt dosyası olmayan sunucu "uyumsuz" DEĞİL "ölçülemedi"dir ve paydaya girmez. OKUNAMAYAN dosya çoğunluk hesabına girmez.`}
+                      >
+                        Init script uyumu{' '}
+                        <span style={{ textTransform: 'none', fontWeight: 400 }}>
+                          ({URUN_ADI[p]} olan sunucularda)
+                        </span>
+                      </div>
+                      <div className="text-lg font-bold tabular-nums">
+                        {ib.pay}{' '}
+                        <span
+                          className="text-xs font-normal"
+                          style={{ color: 'var(--text-muted)' }}
+                        >
+                          / {ib.payda} sunucu çoğunlukla aynı
+                        </span>
+                      </div>
+                      <div className="mt-1">
+                        <Bar
+                          value={ib.pay}
+                          total={ib.payda}
+                          color={ib.tone === 'ok' ? SEV.ok.color : SEV[ib.tone].color}
+                        />
+                      </div>
+                      <div className="mt-1 text-[11px]" style={{ color: 'var(--text-secondary)' }}>
+                        {ib.metin}
+                      </div>
+                    </div>
+                  )}
+
+                  {kapsama && (
+                    <div
+                      className="mt-2 text-[11px]"
                       style={{
                         color:
-                          s.coverage[p].inventory > s.coverage[p].scanned
+                          kapsama.inventory > kapsama.scanned
                             ? 'var(--status-warning)'
                             : 'var(--text-muted)',
                       }}
                       title="Envanter (dbo.Inventory) bu ürünü kaç sunucuda gösteriyor, tarama kaçında görebildi. Fark, ürünün yok olduğu anlamına gelmez - tarama yetki ya da yol farkı yüzünden görememiş olabilir."
                     >
-                      Envanter: {nf(s.coverage[p].inventory)} sunucu · tarama{' '}
-                      {nf(s.coverage[p].scanned)} tanesinde gördü
-                      {s.coverage[p].inventory > s.coverage[p].scanned
-                        ? ` · ${nf(s.coverage[p].inventory - s.coverage[p].scanned)} eksik`
+                      Envanter: {nf(kapsama.inventory)} sunucu · tarama {nf(kapsama.scanned)}{' '}
+                      tanesinde gördü
+                      {kapsama.inventory > kapsama.scanned
+                        ? ` · ${nf(kapsama.inventory - kapsama.scanned)} eksik`
                         : ''}
-                      {s.coverage[p].scannedNotInInventory
-                        ? ` · envanterde olmayan ${nf(s.coverage[p].scannedNotInInventory)}`
+                      {kapsama.scannedNotInInventory
+                        ? ` · envanterde olmayan ${nf(kapsama.scannedNotInInventory)}`
                         : ''}
                     </div>
                   )}
@@ -1783,6 +1962,40 @@ function HostsTab({
               );
             })}
           </div>
+
+          {/* KARTLAR AYRIK KUME DEGIL. Bu satir olmazsa kart paydalarinin toplami filo
+              sayisini asar ve ekran "sayilar sisik" gibi okunur. */}
+          {!!s.productOverlap && s.productOverlap.multi > 0 && (
+            <div
+              className="rounded-lg border px-3 py-2 text-[11px]"
+              style={{
+                borderColor: 'var(--border-subtle)',
+                background: 'var(--bg-surface)',
+                color: 'var(--text-secondary)',
+              }}
+            >
+              <b>{nf(s.productOverlap.multi)}</b> sunucu birden fazla ürün taşıyor; o sunucular
+              taşıdıkları <b>her</b> ürünün kartında sayılır — kartlar ayrık küme değildir ve
+              paydaların toplamı filo sayısından büyüktür. Init script tek bir dosya kümesidir:
+              aynı sunucunun uyumu, taşıdığı her ürünün barına aynı şekilde yansır.
+              {s.productOverlap.combos.length > 0 && (
+                <>
+                  {' '}
+                  En sık birliktelikler:{' '}
+                  {s.productOverlap.combos
+                    .map(
+                      (c) =>
+                        `${c.combo
+                          .split('+')
+                          .map((x) => URUN_ADI[x as UrunKarti] || x)
+                          .join(' + ')} (${nf(c.hosts)})`,
+                    )
+                    .join(' · ')}
+                  .
+                </>
+              )}
+            </div>
+          )}
 
           {s.byEnv && Object.keys(s.byEnv).length > 0 && (
             <div

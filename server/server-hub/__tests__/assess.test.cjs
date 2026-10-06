@@ -642,9 +642,12 @@ test('SH12: ortam kirilimi (Production / Non-Production) ve kart -> bulgu gecisi
     path.join(__dirname, '..', '..', '..', 'src', 'components', 'server_hub', 'ServerHubPage.tsx'),
     'utf8',
   );
+  // Urun kartlari (2026-10-06) gecisi kosullu ifadeyle yapiyor; sozlesme FILTRE
+  // PARCASIDIR, cagrinin tam metni degil (yoksa bekci bicimlendirmeye takilir).
   assert.ok(
-    /onGoFindings\(\{ area: 'init' \}\)/.test(page) &&
-      /onGoFindings\(\{ area: 'web', product: p \}\)/.test(page),
+    page.includes("area: 'init'") &&
+      page.includes("area: 'web', product: p") &&
+      page.includes("area: 'jboss'"),
     'kartlar bulgu detayina gitmeli',
   );
   assert.ok(
@@ -1051,6 +1054,114 @@ test("SHX4 run_as='dzdo' (scan_ver 2.2 estate bicimi) duzeltme onerisini ENGELLE
   const yok = webBulRunAs('none').find((x) => x.code === 'SYNTAX_FAIL');
   assert.ok(yok, 'run_as=none icin SYNTAX_FAIL bulgusu yok');
   assert.equal(yok.fix, null, "run_as='none' iken config eylemi onerildi");
+});
+
+// ── PU: URUN BASINA KART (kullanici, 2026-10-06) ───────────────────────────────
+//
+// "Nginx iceren sunuculardaki init script uyumunu da ayri bir barda goreyim. Ayni islemi
+//  JBoss / Red Hat Apache / IBM Apache icin de yap. Sikinti: Red Hat Apache ile JBoss 8
+//  ayni sunucuda olabilir, IBM Apache ile JBoss 7 ayni sunucuda olabilir, hatta bu 4 urun
+//  de ayni sunucuda olabilir."
+//
+// Karar: sunucu TASIDIGI HER URUNUN kartinda sayilir. Kartlar ayrik kume DEGILDIR.
+const pu = () => {
+  const d = base();
+  d.hosts = [
+    // RHA + JBOSS8 ayni sunucuda; init olcutu UYUMLU
+    { host: 'H-RHA-JB8', scan_date: D, products: 'RHA JBOSS8', wall_s: 1, cpu_s: 1 },
+    // IHS + JBOSS7 ayni sunucuda; init olcutu FARKLI
+    { host: 'H-IHS-JB7', scan_date: D, products: 'IHS JBOSS7', wall_s: 1, cpu_s: 1 },
+    // DORT URUN BIRDEN
+    { host: 'H-DORT', scan_date: D, products: 'NGINX RHA IHS JBOSS7', wall_s: 1, cpu_s: 1 },
+    // SAF NGINX: /vhosting agaci yok -> olcut dosyasi YOK (uyumsuz DEGIL, olculemedi)
+    { host: 'H-NGX', scan_date: D, products: 'NGINX', wall_s: 1, cpu_s: 1 },
+  ];
+  d.init = [
+    { host: 'H-RHA-JB8', root: 'vhosting8', file: 'start.sh', status: 'OK' },
+    { host: 'H-IHS-JB7', root: 'vhosting', file: 'start.sh', status: 'DIFF' },
+    { host: 'H-DORT', root: 'vhosting', file: 'start.sh', status: 'OK' },
+    // olcut DISI dosya: uyum sayisini bozmaz
+    { host: 'H-DORT', root: 'vhosting', file: 'functions.sh', status: 'DIFF' },
+  ];
+  d.web = [
+    { host: 'H-RHA-JB8', product: 'RHA', running: 1, syntax: 'OK', detail: '' },
+    { host: 'H-IHS-JB7', product: 'IHS', running: 1, syntax: 'OK', detail: '' },
+    { host: 'H-DORT', product: 'NGINX', running: 1, syntax: 'OK', detail: '' },
+    { host: 'H-DORT', product: 'RHA', running: 1, syntax: 'FAIL', detail: 'Invalid command Foo' },
+    { host: 'H-DORT', product: 'IHS', running: 1, syntax: 'OK', detail: '' },
+    { host: 'H-NGX', product: 'NGINX', running: 1, syntax: 'OK', detail: '' },
+  ];
+  d.vhosts = [];
+  d.jvms = [];
+  d.jboss = [
+    { host: 'H-RHA-JB8', gen: 8, host_name: 'primary', host_state: 'running', cli: 'OK', note: '' },
+    { host: 'H-IHS-JB7', gen: 7, host_name: 'master', host_state: 'running', cli: 'DENIED', note: 'x' },
+    // ayni sunucuda IKI nesil: biri OK biri FAIL -> sunucu "okundu" SAYILMAZ
+    { host: 'H-DORT', gen: 7, host_name: 'master', host_state: 'running', cli: 'OK', note: '' },
+    { host: 'H-DORT', gen: 8, host_name: 'primary', host_state: 'running', cli: 'FAIL', note: 'y' },
+  ];
+  return assess(d).summary;
+};
+
+test('PU1 ortak sunucu TASIDIGI HER URUNUN init barinda sayilir (kartlar ayrik degil)', () => {
+  const pi = pu().productInit;
+  // RHA: H-RHA-JB8 + H-DORT
+  assert.equal(pi.RHA.hosts, 2);
+  assert.equal(pi.RHA.olcutHosts, 2);
+  assert.equal(pi.RHA.compliant, 2, 'RHA init uyumu yanlis');
+  // IHS: H-IHS-JB7 (DIFF) + H-DORT (OK)
+  assert.equal(pi.IHS.hosts, 2);
+  assert.equal(pi.IHS.compliant, 1);
+  assert.equal(pi.IHS.diffFiles, 1);
+  // JBOSS: JBOSS7 ve JBOSS8 TEK kart -> uc sunucu
+  assert.equal(pi.JBOSS.hosts, 3);
+  assert.equal(pi.JBOSS.compliant, 2);
+  // ayni sunucu (H-DORT) hem NGINX hem RHA hem IHS hem JBOSS barinda sayildi
+  assert.ok(
+    pi.NGINX.hosts + pi.RHA.hosts + pi.IHS.hosts + pi.JBOSS.hosts > 4,
+    'kartlar ayrik kume gibi hesaplanmis - ortak sunucu kaybolur',
+  );
+});
+
+test('PU2 olcut dosyasi OLMAYAN sunucu uyumsuz SAYILMAZ, paydaya da girmez', () => {
+  const pi = pu().productInit;
+  // NGINX: H-DORT (start.sh OK) + H-NGX (/vhosting yok -> kayit yok)
+  assert.equal(pi.NGINX.hosts, 2);
+  assert.equal(pi.NGINX.olcutHosts, 1, 'olcut dosyasi olmayan sunucu paydaya girmis');
+  assert.equal(pi.NGINX.noOlcutHosts, 1);
+  assert.equal(pi.NGINX.compliant, 1);
+  // pay ve payda AYNI kumeden: "1/1 uyumlu", "1/2" DEGIL
+  assert.ok(
+    pi.NGINX.compliant <= pi.NGINX.olcutHosts,
+    'pay paydadan buyuk - kart yaniltir',
+  );
+  assert.equal(pi.NGINX.olcutDosyasi, 'start.sh');
+});
+
+test('PU3 olcut DISI dosyadaki fark urun kartinin uyum sayisini bozmaz', () => {
+  const pi = pu().productInit;
+  // H-DORT'ta functions.sh DIFF ama start.sh OK
+  assert.equal(pi.NGINX.diffFiles, 0, 'olcut disi fark uyum sayisina girmis');
+  assert.equal(pi.NGINX.otherDiffFiles, 1, 'olcut disi fark gorunmez olmus');
+});
+
+test('PU4 ortusme SAYIYA dokulur (kart basliklari yanlis okunmasin)', () => {
+  const o = pu().productOverlap;
+  // H-RHA-JB8, H-IHS-JB7, H-DORT birden fazla urun tasiyor; H-NGX tek urun
+  assert.equal(o.multi, 3);
+  const dort = o.combos.find((c) => c.combo.split('+').length === 4);
+  assert.ok(dort, 'dort urunlu sunucu kombinasyonu raporlanmiyor');
+  assert.equal(dort.hosts, 1);
+});
+
+test('PU5 JBoss kartinda "yapilandirma okundu" TUM nesilleri gerektirir', () => {
+  const j = pu().jbossCli;
+  assert.equal(j.hosts, 3);
+  // H-RHA-JB8 tek nesil OK; H-DORT'ta JBoss7 OK ama JBoss8 FAIL -> sayilmaz
+  assert.equal(j.ok, 1, 'bir nesli okunamayan sunucu "okundu" sayilmis');
+  assert.equal(j.fail, 1);
+  assert.equal(j.denied, 1);
+  assert.equal(j.noRow, 0);
 });
 
 test('SHX3 hazirlik raporu dogrulanamayan sozdizimini "belirsiz" sayar, engel ya da temiz DEGIL', () => {

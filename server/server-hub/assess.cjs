@@ -1143,6 +1143,9 @@ function assess(data, opts = {}) {
   // DIGER DOSYALAR KAYBOLMAZ, SINIFI DEGISIR: farklari yine listelenir ama `info` olarak ve
   // uyum metriklerine (compliant / diffFiles / unreadableFiles) GIRMEZ. Olcut dosyasi hic
   // okunamadiysa o sunucu "uyumlu" SAYILMAZ; olculemedi ile uyumlu karismaz.
+  // Dashboard'da kart basina bir urun (kullanici 2026-10-06). JBOSS7/JBOSS8 TEK kart:
+  // ayni sunucuda ikisi birden olabiliyor ve init agaci (/vhosting, /vhosting8) ortak.
+  const URUN_KARTLARI = ['NGINX', 'JBOSS', 'RHA', 'IHS'];
   const OLCUT_INIT = new Set(['start.sh']);
   const olcuteGirer = (i) => OLCUT_INIT.has(String(i.file || '').toLowerCase());
 
@@ -1960,6 +1963,97 @@ function assess(data, opts = {}) {
       ),
     };
   }
+
+  // ── URUN BASINA KART: SOZDIZIMI + INIT AYNI KARTTA (kullanici, 2026-10-06) ──
+  //
+  // "Nginx, JBoss, Red Hat Apache ve IBM Apache diye ayriliyor... o karti Nginx olarak
+  //  isimlendir, Syntax uyumu diye bir bar olsun, bir de Nginx iceren sunuculardaki init
+  //  script uyumunu ayri bir barda goreyim. Ayni islemi JBoss / Red Hat Apache / IBM Apache
+  //  icin de yap."
+  //
+  // BIRDEN FAZLA URUN AYNI SUNUCUDA (kullanicinin sordugu durum): RHA+JBOSS8, IHS+JBOSS7,
+  // hatta dordu birden olabiliyor. Karar: bir sunucu TASIDIGI HER URUNUN kartinda sayilir -
+  // kartlar AYRIK KUMELER DEGILDIR ve toplamlari filo sayisini asar. Alternatifi (sunucuyu
+  // tek bir "ana urune" atamak) bir uydurmaydi: ayni sunucudaki Nginx sorunu JBoss kartina
+  // yazilinca kaybolurdu. Ortusme `productOverlap` ile SAYIYA dokulur ki kart basliklari
+  // yanlis okunmasin.
+  //
+  // INIT OLCUTU `/vhosting*` AGACINDADIR (check_init): `start.sh` yalnizca JBoss kurulumu
+  // olan sunucuda bulunur. Dolayisiyla saf bir Nginx sunucusunda olcut dosyasi YOKTUR ve o
+  // sunucu "uyumsuz" DEGIL, "olculemedi"dir. Bu yuzden `noOlcutHosts` ayri tasinir; ekran
+  // bunu barda degil metinde soyler. Payda (`olcutHosts`) ile pay (`compliant`) ayni
+  // kumeden gelir - aksi halde kart "0 / 120 uyumlu" diyip ozellik bozuk gibi gorunur
+  // (ayni tuzaga 2026-10-05'te dusuldu, bkz. initUyumMetni).
+  const initOlcumu = (hostlar) => {
+    const olcutlu = hostlar.filter((h) => h.init.some(olcuteGirer));
+    const say = (fn) => hostlar.reduce((a, h) => a + h.init.filter(fn).length, 0);
+    return {
+      hosts: hostlar.length,
+      olcutHosts: olcutlu.length,
+      noOlcutHosts: hostlar.length - olcutlu.length,
+      compliant: olcutlu.filter((h) =>
+        h.init.filter(olcuteGirer).every((i) => i.status === 'OK'),
+      ).length,
+      unreadableFiles: say((i) => olcuteGirer(i) && i.status === 'UNREADABLE'),
+      diffFiles: say((i) => olcuteGirer(i) && i.status === 'DIFF'),
+      otherDiffFiles: say((i) => i.status === 'DIFF' && !i.hostSpecific && !olcuteGirer(i)),
+      olcutDosyasi: 'start.sh',
+    };
+  };
+  /** Bu urunu TARAMADA tasidigi GORULEN sunucular. Web urunlerinde WEB satirinin kendisi
+   *  olcumdur; boylece kartin iki barinin paydasi ayni kumeden gelir. */
+  const urunHostlari = (p) =>
+    p === 'JBOSS'
+      ? genel.filter(
+          (h) => h.jboss.length > 0 || (h.products || []).some((x) => /^JBOSS/i.test(x)),
+        )
+      : genel.filter((h) => h.web.some((w) => w.product === p));
+
+  summary.productInit = {};
+  for (const p of URUN_KARTLARI) summary.productInit[p] = initOlcumu(urunHostlari(p));
+
+  // JBoss'un SOZDIZIMI OLCUMU YOKTUR: tarayici `nginx -t` / `apachectl -t` karsiligi bir
+  // komut kosturmuyor. Karsiligi "yapilandirma okunabildi mi" sorusudur (jboss-cli). Bunu
+  // "syntax" diye etiketlemek uydurma olurdu; ekran da ayri baslikla gosterir.
+  const jbHostlari = urunHostlari('JBOSS');
+  const jbAny = (h, d) => h.jboss.some((b) => b.cli === d);
+  summary.jbossCli = {
+    hosts: jbHostlari.length,
+    // OK yalniz TUM nesilleri okunabilen sunucu: JBoss7 okunup JBoss8 reddedilmisse
+    // o sunucu "yapilandirmasi okundu" DEGILDIR
+    ok: jbHostlari.filter((h) => h.jboss.length > 0 && h.jboss.every((b) => b.cli === 'OK'))
+      .length,
+    fail: jbHostlari.filter((h) => jbAny(h, 'FAIL')).length,
+    denied: jbHostlari.filter((h) => jbAny(h, 'DENIED')).length,
+    skip: jbHostlari.filter((h) => jbAny(h, 'SKIP')).length,
+    // CLI satiri HIC gelmemis JBoss sunucusu: olculemedi, "okundu" degil
+    noRow: jbHostlari.filter((h) => h.jboss.length === 0).length,
+  };
+
+  // Kartlarin AYRIK OLMADIGINI sayiya dok: "4 urun de ayni sunucuda olabilir" (kullanici).
+  const urunSeti = (h) => URUN_KARTLARI.filter((p) => urunHostlari(p).includes(h));
+  const birlikte = new Map();
+  let cokUrunlu = 0;
+  for (const h of genel) {
+    const set = URUN_KARTLARI.filter((p) =>
+      p === 'JBOSS'
+        ? h.jboss.length > 0 || (h.products || []).some((x) => /^JBOSS/i.test(x))
+        : h.web.some((w) => w.product === p),
+    );
+    if (set.length > 1) {
+      cokUrunlu += 1;
+      const k = set.join('+');
+      birlikte.set(k, (birlikte.get(k) || 0) + 1);
+    }
+  }
+  summary.productOverlap = {
+    multi: cokUrunlu,
+    combos: [...birlikte.entries()]
+      .map(([combo, hosts]) => ({ combo, hosts }))
+      .sort((a, b) => b.hosts - a.hosts)
+      .slice(0, 6),
+  };
+  void urunSeti;
   // ── KAPSAMA: ENVANTERDE KAC VAR, TARAMA KACINA ERISEBILDI (kullanici, 2026-10-01) ──
   //
   // "Envanterde kac JBoss oldugunu, ancak Server Hub'in kacina erisip veri cekebildigini;

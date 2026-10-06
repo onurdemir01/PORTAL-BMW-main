@@ -466,13 +466,68 @@ test('D1-U04/U09 tarama sonucu: yazilamayan sunucu sayisi + sebep, NOT_ATTEMPTED
 test("D1-U05 SH12 ve BA3 dizgileri korunur; RetirementTab olculemeyende 'bilinmiyor'", () => {
   assert.ok(!/Bulk/.test(PAGE_RAW), "ekranda 'Bulk' bileseni/tipi var (BA3, kural 3)");
   assert.ok(!PAGE_RAW.includes('Toplu: auto-start'));
+  // URUN KARTLARI (2026-10-06): kart basina bir urun, iki bar (sozdizimi + init). Gecis
+  // ifadesi artik kosullu ("{ area: 'jboss' } : { area: 'web', product: p }"), bu yuzden
+  // SOZLESME dizgileri cagrinin TAMAMI degil FILTRE PARCALARIDIR - aksi halde bekci
+  // bicimlendirmeye takilir, davranisa degil.
   for (const d of [
-    "onGoFindings({ area: 'init' })",
-    "onGoFindings({ area: 'web', product: p })",
+    "area: 'init'",
+    "area: 'web', product: p",
+    "area: 'jboss'",
     'Ortam kırılımı',
     'onGoFindings({ envGroup: g })',
   ])
     assert.ok(PAGE.includes(d), `SH12 dizgisi kayip: ${d}`);
+  // Her URUN_KARTLARI urununun kendi init bari OLMALI: kullanici bunu ayri bar olarak
+  // istedi (2026-10-06) ve paydasi `olcutHosts` olmali - `hosts` olursa olcut dosyasi
+  // olmayan sunucular "uyumsuz" gorunur.
+  assert.ok(/URUN_KARTLARI\s*=\s*\[['"]NGINX['"]/.test(PAGE_RAW), 'URUN_KARTLARI sabiti yok');
+  // Basliklari URUN_ADI HARITASINDAN olc: dosyada 'IBM HTTP Server' baska yerde de geciyor
+  // (kapsama satiri), serbest arama bu yuzden kor kaliyordu.
+  const _adBlok = (PAGE_RAW.match(/URUN_ADI[^=]*=\s*\{([^}]*)\}/) || [, ''])[1];
+  for (const [kod, ad] of [
+    ['NGINX', 'Nginx'],
+    ['JBOSS', 'JBoss'],
+    ['RHA', 'Red Hat Apache'],
+    ['IHS', 'IBM HTTP Server'],
+  ])
+    assert.ok(
+      new RegExp(`${kod}:\\s*'${ad}'`).test(_adBlok),
+      `URUN_ADI['${kod}'] okunur ad degil (beklenen '${ad}')`,
+    );
+  // Init bari GERCEKTEN cizilmeli: yardimci fonksiyonun TANIMI yetmez, CAGRILMASI ve
+  // barin onun sayilarini kullanmasi gerekir (mutasyon M5 bu korlugu gosterdi).
+  assert.ok(
+    PAGE.includes('pi ? urunInitBari(pi) : null'),
+    'urun basina init bari kurulmuyor (yardimci tanimli ama cagrilmiyor)',
+  );
+  assert.ok(
+    /<Bar value=\{ib\.pay\} total=\{ib\.payda\}/.test(PAGE),
+    'init bari ib.pay / ib.payda ile cizilmiyor',
+  );
+  // BICIMLENDIRICIDEN BAGIMSIZ: PAGE normalize edilmis (bosluklar teke); prettier
+  // ifadeyi cok satira bolse de bu iddia kirmiziya donmez.
+  assert.ok(
+    PAGE.includes('pi.olcutHosts : pi.hosts'),
+    'init barinin paydasi olcutHosts degil (olcut dosyasi olmayan sunucu uyumsuz gorunur)',
+  );
+  // JBoss "syntax" DIYE ETIKETLENMEZ: tarayici JBoss icin -t karsiligi komut kosturmuyor
+  assert.ok(
+    PAGE.includes('Yapılandırma okundu (CLI)'),
+    'JBoss kartinin ust bari "yapilandirma okundu" demiyor',
+  );
+  // Kartlar ayrik kume degil: ortusme SAYIYLA soylenmeli
+  assert.ok(PAGE.includes('productOverlap'), 'urun ortusmesi ekranda yok');
+  // IKI IDDIA BIRDEN: kartlar ayrik degil VE paydalarin toplami filo sayisini asar.
+  // Birini silip otekini birakmak sayilari yine yanlis okutur (mutasyon M3).
+  assert.ok(
+    /ayrık küme değildir/.test(PAGE),
+    'kartlarin ayrik olmadigi yazilmiyor',
+  );
+  assert.ok(
+    /paydaların toplamı filo sayısından büyüktür/.test(PAGE),
+    'paydalarin toplaminin filo sayisini astigi yazilmiyor (sayilar sisik okunur)',
+  );
   // SH12 "kart -> bulgu gecisi" der, filtrenin SYNTAX_FAIL olmasini DEMEZ. Eski dizgi
   // `code: 'SYNTAX_FAIL'` tasiyordu: nginx -t her sunucuda erisimden dustugunde kart
   // "0 OK / 0 hatali" diyor, tiklayinca da BOS liste geliyordu (bulgular SYNTAX_UNVERIFIED /
