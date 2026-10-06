@@ -104,7 +104,8 @@ function routelariBul(app, nsRoutes) {
   for (const r of nsRoutes) {
     const tam = r.adaylar.some((c) => c === a);
     const onek = !tam && r.adaylar.some((c) => c && a.startsWith(c + '-'));
-    if (tam || onek) bulunan.push({ route: r.route, address: r.address, exact: tam });
+    if (tam || onek)
+      bulunan.push({ route: r.route, address: r.address, exact: tam, cluster: r.cluster });
   }
   return bulunan;
 }
@@ -163,6 +164,14 @@ function buildAppTraffic(usageRows, invRows, opt = {}) {
     const routes = routelariBul(u.application, nsIndeks.get(L(u.namespace)));
     rows.push({
       ...u,
+      // CLUSTER ONCE ROUTE ENVANTERINDEN (uretim, 2026-10-06: kullanici "cluster kolonu
+      // bombos geliyor"). Dynatrace CLOUD_APPLICATION entity'sinde `clusterName`
+      // gelmiyor, yani `u.cluster` BOS. Ayni bilgi dbo.BMW_Openshift_Route_Inventory'de
+      // DOLU duruyor; uygulamanin route'lari hangi cluster'daysa cluster odur.
+      // Dynatrace degerini ezmiyoruz, YALNIZ bosken dolduruyoruz; ikisi de yoksa alan
+      // bos kalir - "bilinmiyor" ile yanlis bir cluster adi yazmak ayni sey degildir.
+      cluster: u.cluster || [...new Set(routes.map((r) => r.cluster).filter(Boolean))].join(', '),
+      clusterSrc: u.cluster ? 'dynatrace' : routes.some((r) => r.cluster) ? 'route' : null,
       env: envOfNamespace(u.namespace),
       spa: isSpaApp(u.application),
       routes,

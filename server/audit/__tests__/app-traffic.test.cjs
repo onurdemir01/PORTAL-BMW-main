@@ -335,3 +335,33 @@ test('AT15: uc suzgecleri sorgu dizesinden OKUR (yoksa govde 20 MB kalir)', () =
     );
   }
 });
+
+// ── AT16: CLUSTER route envanterinden doldurulur ───────────────────────────────────
+//
+// Uretim (2026-10-06, kullanici: "cluster kolonu bombos geliyor"). dbo.BMW_Application_Usage
+// cluster'i BOS yaziyor: Dynatrace CLOUD_APPLICATION entity'sinde `clusterName` gelmiyor.
+// Ayni bilgi dbo.BMW_Openshift_Route_Inventory.cluster_name icinde DOLU; uygulamanin
+// route'lari hangi cluster'daysa cluster odur.
+test('AT16: Dynatrace cluster bos ise route envanterinden gelir; dolu ise EZILMEZ', () => {
+  const kullanim = [
+    { scan_date: '2026-10-06', window_days: 7, cluster: '', namespace: 'ns1', app: 'odeme-v1', req_total: 5, measured: 1, services_total: 1, services_measured: 1, services_skipped: 0 },
+    { scan_date: '2026-10-06', window_days: 7, cluster: 'gbocpprod9', namespace: 'ns1', app: 'kart-v1', req_total: 5, measured: 1, services_total: 1, services_measured: 1, services_skipped: 0 },
+    { scan_date: '2026-10-06', window_days: 7, cluster: '', namespace: 'ns2', app: 'routesuz-v1', req_total: 5, measured: 1, services_total: 1, services_measured: 1, services_skipped: 0 },
+  ];
+  const envanter = [
+    { cluster_name: 'gbocpprod1', namespace_name: 'ns1', route_name: 'odeme-v1', route_address: 'odeme.bmw.de' },
+    // ayni uygulama iki cluster'da olabilir: ikisi de yazilir, biri secilip oteki GIZLENMEZ
+    { cluster_name: 'gbocpprod2', namespace_name: 'ns1', route_name: 'odeme-v1', route_address: 'odeme2.bmw.de' },
+    { cluster_name: 'gbocpprod3', namespace_name: 'ns1', route_name: 'kart-v1', route_address: 'kart.bmw.de' },
+  ];
+  const { rows } = buildAppTraffic(kullanim, envanter, { limit: 100 });
+  const g = (a) => rows.find((r) => r.application === a);
+  assert.equal(g('odeme-v1').cluster, 'gbocpprod1, gbocpprod2', 'route envanterinden dolmuyor');
+  assert.equal(g('odeme-v1').clusterSrc, 'route');
+  // Dynatrace degeri varsa EZILMEZ
+  assert.equal(g('kart-v1').cluster, 'gbocpprod9');
+  assert.equal(g('kart-v1').clusterSrc, 'dynatrace');
+  // Ikisi de yoksa alan BOS kalir - uydurulmus bir cluster adi yazmak daha kotudur
+  assert.equal(g('routesuz-v1').cluster, '');
+  assert.equal(g('routesuz-v1').clusterSrc, null);
+});
