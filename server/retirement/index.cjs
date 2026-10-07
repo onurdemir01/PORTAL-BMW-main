@@ -428,8 +428,17 @@ function initRetirement(app) {
         const w = ocoWindow.evaluateWindow({ startDate: pi.startDate, endDate: pi.endDate });
         if (!w.ok) return res.status(400).json({ ok: false, message: w.message });
         const plan = ocoWindow.nextRunAt({ windowStart: w.windowStart, windowEnd: w.windowEnd });
-        if (plan.mode === 'none') return res.status(400).json({ ok: false, message: plan.reason });
-        if (plan.mode === 'schedule') {
+        // ── ADMIN: OCO SAAT KISITI YOK (kullanici, 2026-10-08) ─────────────────────────
+        // "Application Retirement'ta Admin'lere OCO kontrolunun saat kisitlamasini kaldirir
+        // misin?" OCO NUMARASI ve KAYDIN GECERLILIGI (planlanan kesinti tarihi) yine
+        // zorunlu - izlenebilirlik korunur. Kalkan yalniz SAAT: pencere ileride ise
+        // zamanlanmaz, kapandiysa reddedilmez; is onayla HEMEN kosar ve pencere DISINDA
+        // basladiysa olaya ('oco_saatsiz') yazilir. Bozuk OCO kaydi (tarih okunamaz / aralik
+        // gecersiz -> w.ok false) Admin icin de REDDEDILIR. Router zaten yalniz Admin; kural
+        // Admin DISI icin korunur ki modul ileride acilirsa sessizce gevsemesin.
+        const adminSaatsiz = isAdmin(req);
+        if (!adminSaatsiz && plan.mode === 'none') return res.status(400).json({ ok: false, message: plan.reason });
+        if (!adminSaatsiz && plan.mode === 'schedule') {
           // IS BASLATILMAZ. Zamanlama kaydin kendisinde durur; retirement poller'i
           // pencere acilinca tetikler (bkz. poller.cjs). AWX-native schedule YOK:
           // kaydi Portal tutuyor, iptal ve gorunurluk burada.
@@ -441,9 +450,17 @@ function initRetirement(app) {
           await addEvent(id, req.session?.user?.username, 'schedule', `${t.appName} @ ${t.host}: ${plan.reason} · ${t.web.length} vhost kaldirilacak`);
           return res.json({ ok: true, scheduled: true, runAt: plan.runAt, runAtText: plan.text, windowEnd: w.windowEnd, message: plan.reason });
         }
-        // plan.mode === 'now': pencere ACIK, asagidaki normal launch kosar. Pencere SONU
-        // yine yazilir ki poller yarim kalmis bir isi pencere disinda tekrar denemesin.
+        // Buraya: pencere ACIK (herkes) ya da ADMIN (pencere ne olursa olsun). Normal launch
+        // asagida kosar. Gercek pencere sonu yazilir: poller window_end'i yalniz
+        // 'stop_scheduled' hedefte okur, burada iz ve ekran icin.
         await db().query(`UPDATE retirement_targets SET window_end = $1, web_result_json = $2 WHERE id = $3`, [w.windowEnd, JSON.stringify(webDondur(t.web)), tid]);
+        if (adminSaatsiz && plan.mode !== 'now') {
+          // Pencere DISI admin kosusu IZ BIRAKIR. "Baslatiliyor" - "kostu" DEGIL: launch asagida
+          // ve dusebilir; gercek is numarasi hemen ardindaki 'stop' olayinda.
+          await addEvent(id, req.session?.user?.username, 'oco_saatsiz',
+            `${t.appName} @ ${t.host}: ADMIN - OCO ${rec.ocoNo} saat kisiti uygulanmadi (pencere ${w.windowStartText} - ${w.windowEndText}, ` +
+              `${plan.mode === 'schedule' ? 'henuz ACILMAMIS' : 'KAPANMIS'}); STOP simdi baslatiliyor`);
+        }
       }
 
       const notifyScc = confirmed && t.env === 'PROD' && !rec.sccNotifiedAt;

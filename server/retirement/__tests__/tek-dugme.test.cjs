@@ -64,6 +64,24 @@ test('TD4 /delete-now onaysiz ve hazir hedefsiz CALISMAZ; onceki tarih olaya yaz
   assert.match(ep, /silme tarihi \$\{onceki \|\| 'belirsiz'\} -> bugun/, 'onceki tarih olaya yazilmiyor ("acan belirledi" kaybolur)');
 });
 
+test('TD9 ADMIN icin OCO SAAT kisiti yok; OCO numarasi ve kaydin gecerliligi YINE zorunlu', () => {
+  // Kullanici (2026-10-08): "Application Retirement'ta Admin'lere OCO kontrolunun saat
+  // kisitlamasini kaldirir misin?"
+  const ep = ucDilimi("router.post('/:id/targets/:tid/stop'", "router.post('/:id/targets/:tid/rollback'");
+  const oco = ep.slice(ep.indexOf("if (confirmed && t.env === 'PROD' && rec.ocoNo)"));
+  assert.match(ep, /if \(t\.env === 'PROD' && !rec\.ocoNo\)/, 'PROD hedefte OCO numarasi artik zorunlu degil');
+  const gecersiz = oco.indexOf('if (!w.ok) return res.status(400)');
+  const admin = oco.indexOf('const adminSaatsiz = isAdmin(req)');
+  assert.ok(gecersiz > 0 && admin > gecersiz, 'bozuk OCO kaydi admin icin de reddedilmeli (gecerlilik kontrolu admin dalindan ONCE)');
+  // Saat kurallari yalniz Admin DISI icin
+  assert.match(oco, /if \(!adminSaatsiz && plan\.mode === 'none'\)/, 'kapanmis pencere admin icin de reddediliyor ya da kural tumden kalkti');
+  assert.match(oco, /if \(!adminSaatsiz && plan\.mode === 'schedule'\)/, 'admin isi pencereye zamanlaniyor ya da kural tumden kalkti');
+  // Pencere disi admin kosusu iz birakir ve "kostu" degil "baslatiliyor" der (launch dusebilir)
+  assert.match(oco, /'oco_saatsiz'/, 'pencere disi admin kosusu olaya yazilmiyor');
+  assert.match(oco, /STOP simdi baslatiliyor/);
+  assert.ok(!/is simdi kostu/.test(oco), 'olay, baslamamis isi "kostu" diye yaziyor');
+});
+
 // ── Server Hub ikinci web kaynagi ───────────────────────────────────────────────────
 const INV = [
   { app: 'GBSVCVOICEORDER-D', host: 'GBJBOT07', jboss_version: '7' },
