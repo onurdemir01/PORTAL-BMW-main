@@ -86,9 +86,12 @@ describe('Admin sekmesine dogrudan baglanti', () => {
     await waitFor(() => expect(icerik()).toBe('system'));
   });
 
-  it('AD3 bilinmeyen sekme adi yok sayilir (ilk sekme / tercih)', async () => {
+  it('AD3 bilinmeyen sekme adi yok sayilir: yedek sekme acilir, kayitli tercih EZILMEZ', async () => {
+    m.getAll.mockResolvedValue({ admin_active_tab: 'system' });
     ac('/admin?tab=boyle-bir-sekme-yok');
-    expect(icerik()).toBe('users');
+    await waitFor(() => expect(icerik()).toBe('system'));
+    // Bozuk bir baglanti kullanicinin kayitli sekme tercihini degistirmemeli.
+    expect(m.set).not.toHaveBeenCalled();
   });
 
   it('AD4 sekme degisince adres guncellenir ve tercih yazilir', async () => {

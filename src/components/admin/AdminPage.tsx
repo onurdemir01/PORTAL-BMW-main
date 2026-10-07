@@ -218,8 +218,9 @@ const AdminPage: React.FC = () => {
             <div key={activeTab} style={{ animation: 'fadeIn 0.18s ease' }}>
               {/* SEKME BASINA HATA SINIRI (2026-10-07). Tek sinir sayfa duzeyindeydi: bir sekme
                   render sirasinda dusunce sekme MENUSU dahil butun Admin gidiyor, yonetici
-                  baska bir sekmeye gecemiyordu. `key` sekme degisince siniri sifirlar. */}
-              <PageErrorBoundary key={activeTab}>
+                  baska bir sekmeye gecemiyordu. Sinir, ustteki `key={activeTab}` sarmalayicisiyla
+                  birlikte yeniden kurulur: baska sekmeye gecince hata durumu SIFIRLANIR. */}
+              <PageErrorBoundary>
               {activeTab === 'audit' && <AuditLogTab />}
               {activeTab === 'smarttickets' && <SmartTicketsTab />}
               {activeTab === 'dbbackup' && <DbBackupTab />}
