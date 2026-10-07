@@ -6,7 +6,7 @@
 // stop + N gun (varsayilan 45). Silme ve IP/LB/DNS adimlari sonraki surum (kayitta alanlari var).
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { PlusIcon, ArrowPathIcon, XMarkIcon, StopCircleIcon, ClipboardDocumentCheckIcon, TrashIcon, ArrowUturnLeftIcon } from '@heroicons/react/24/outline';
-import { retirementApi, type RtRecordRow, type RtRecord, type RtDiscovery, type RtDiscoveredTarget, type RtTarget, type RtTargetStatus } from '@/api/retirementApi';
+import { retirementApi, type SccKaynak, type RtRecordRow, type RtRecord, type RtDiscovery, type RtDiscoveredTarget, type RtTarget, type RtTargetStatus } from '@/api/retirementApi';
 import { useJobTracker } from '@/contexts/JobTrackerContext';
 import { Modal } from '@/components/common/Modal';
 import { TableEmptyRow } from '@/components/common/EmptyState';
@@ -175,7 +175,23 @@ export default function RetirementTab() {
   const [err, setErr] = useState('');
   const [openId, setOpenId] = useState<number | null>(null);
   const [creating, setCreating] = useState(false);
-  const [cfg, setCfg] = useState<{ defaultDays: number; sccMailConfigured: boolean; sccMailTo: string | null } | null>(null);
+  const [cfg, setCfg] = useState<{ defaultDays: number; sccMailConfigured: boolean; sccMailTo: string | null; sccMailCc?: string | null; sccKaynak?: SccKaynak; sccGuncelleyen?: string | null; sccGuncellendi?: string | null; sccDbHatasi?: string | null } | null>(null);
+  // SCC ADRESI EKRANDAN (2026-10-08, kullanici: "bunu application retirement sayfasinda girmek
+  // istiyorum"). Eskiden yalniz Portal sunucusunun ortam degiskeniydi.
+  const [sccAc, setSccAc] = useState(false);
+  const [sccForm, setSccForm] = useState({ to: '', cc: '' });
+  const [sccKayit, setSccKayit] = useState(false);
+  const sccAcik = () => { setSccForm({ to: (cfg?.sccMailTo || '').split(',').join(', '), cc: (cfg?.sccMailCc || '').split(',').filter(Boolean).join(', ') }); setSccAc(true); };
+  const sccKaydet = async () => {
+    setSccKayit(true);
+    try {
+      const r = await retirementApi.sccKaydet(sccForm.to, sccForm.cc);
+      if (!r.ok) { toast.error(r.message || 'Kaydedilemedi.'); return; }
+      setCfg((c) => (c ? { ...c, sccMailConfigured: !!r.sccMailTo, sccMailTo: r.sccMailTo ?? null, sccMailCc: r.sccMailCc ?? null, sccKaynak: r.sccKaynak, sccGuncelleyen: r.sccGuncelleyen, sccGuncellendi: r.sccGuncellendi } : c));
+      setSccAc(false);
+      toast.success(r.sccKaynak === 'ekran' ? 'SCC adresi kaydedildi; bir sonraki PROD STOP’ta kullanılır.' : r.sccKaynak === 'env' ? 'Ekran değeri kaldırıldı; Portal ortam değişkenindeki adres kullanılacak.' : 'SCC adresi kaldırıldı; PROD STOP’ta mail gitmeyecek.');
+    } catch (e: unknown) { toast.error(e instanceof Error ? e.message : String(e)); } finally { setSccKayit(false); }
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -189,13 +205,38 @@ export default function RetirementTab() {
       <div className="flex items-center gap-2 flex-wrap">
         <p className="text-[12px] max-w-3xl" style={{ color: 'var(--text-muted)' }}>
           Smart silme kaydı gelince burada kayıt açılır; uygulamanın <b>tüm ortamlardaki ve iki sitedeki</b> sunucuları envanterden bulunur (sahibin yazmadığı Ankara dâhil), web sunucuları Denetim Web-App kuralıyla eşlenir. STOP adımı: auto-start kapat → durdur → paketi <code>.&lt;smart&gt;.old</code> yap. Silme, stop'tan sonra seçilen tarihte (varsayılan {cfg?.defaultDays ?? 45} gün) ayrı adımdır.
-          {cfg && !cfg.sccMailConfigured && <span style={{ color: 'var(--status-warning)' }}> · SCC bilgilendirme adresi (RETIREMENT_SCC_MAIL_TO) tanımlı değil — prod STOP'ta mail gitmez.</span>}
         </p>
+        {/* SCC ADRESI: ne oldugu, NEREDEN geldigi ve duzenleme tek satirda. */}
+        {cfg && (
+          <div className="text-[11px] flex items-center gap-1.5 flex-wrap" style={{ color: cfg.sccMailConfigured ? 'var(--text-muted)' : 'var(--status-warning)' }}>
+            <span>SCC bilgilendirme (PROD ilk STOP):</span>
+            {cfg.sccMailConfigured
+              ? <b className="font-mono" style={{ color: 'var(--text-secondary)' }}>{cfg.sccMailTo}{cfg.sccMailCc ? ` · cc ${cfg.sccMailCc}` : ''}</b>
+              : <b>tanımlı değil — prod STOP'ta mail gitmez</b>}
+            {cfg.sccKaynak === 'env' && <span>(Portal ortam değişkeninden)</span>}
+            {cfg.sccKaynak === 'ekran' && cfg.sccGuncelleyen && <span>({cfg.sccGuncelleyen}{cfg.sccGuncellendi ? `, ${fmtDateTime(cfg.sccGuncellendi)}` : ''})</span>}
+            {cfg.sccDbHatasi && <span style={{ color: 'var(--status-warning)' }}>(ayar okunamadı: {cfg.sccDbHatasi})</span>}
+            <button onClick={sccAcik} className="underline decoration-dotted" style={{ color: 'var(--accent)' }}>{cfg.sccMailConfigured ? 'düzenle' : 'adres gir'}</button>
+          </div>
+        )}
         <div className="ml-auto flex items-center gap-2">
           <button onClick={load} className={SM_BTN} style={smBtn()}><ArrowPathIcon className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} /> Yenile</button>
           <button onClick={() => setCreating(true)} className={SM_BTN} style={smBtn(true)}><PlusIcon className="w-3.5 h-3.5" /> Yeni retirement kaydı</button>
         </div>
       </div>
+      <Modal open={sccAc} onClose={() => setSccAc(false)} title="SCC bilgilendirme adresi" size="sm"
+        footer={<div className="flex justify-end gap-2"><button onClick={() => setSccAc(false)} className={SM_BTN} style={smBtn()}>Kapat</button><button disabled={sccKayit} onClick={sccKaydet} className={`${SM_BTN} disabled:opacity-50`} style={smBtn(true)}>{sccKayit ? 'Kaydediliyor…' : 'Kaydet'}</button></div>}>
+        <div className="space-y-2.5 text-[12px]" style={{ color: 'var(--text-secondary)' }}>
+          <p>PROD hedefte kaydın <b>ilk gerçek STOP</b>'unda bu adreslere bilgilendirme maili gider (AWX, smtpappv1). Birden çok adres için virgül kullanın.</p>
+          <label className="block">Kime *
+            <input value={sccForm.to} onChange={(e) => setSccForm((f) => ({ ...f, to: e.target.value }))} className={`${INPUT} mt-1 font-mono`} style={inputStyle} placeholder="ornek@garantibbva.com.tr" autoFocus />
+          </label>
+          <label className="block">Bilgi (CC) <span style={{ color: 'var(--text-muted)' }}>(opsiyonel)</span>
+            <input value={sccForm.cc} onChange={(e) => setSccForm((f) => ({ ...f, cc: e.target.value }))} className={`${INPUT} mt-1 font-mono`} style={inputStyle} />
+          </label>
+          <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>“Kime”yi boş bırakıp kaydederseniz ekran değeri kalkar; varsa Portal ortam değişkenindeki (RETIREMENT_SCC_MAIL_TO) adres kullanılır. Değişiklik yeniden başlatma gerektirmez.</p>
+        </div>
+      </Modal>
       {err && <div className="text-sm rounded-xl px-3 py-2 border" style={{ color: 'var(--status-danger)', background: 'var(--status-danger-bg)', borderColor: 'var(--status-danger)' }}>{err}</div>}
       <div className="overflow-auto rounded-xl border" style={{ borderColor: 'var(--border-subtle)' }}>
         <table className="w-full text-xs border-collapse">

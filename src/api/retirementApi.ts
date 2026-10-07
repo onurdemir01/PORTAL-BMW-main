@@ -73,6 +73,8 @@ export interface RtRecord {
 /** Kaydin ortam kirilimi: kayit TABAN adla tutulur, ortam hedeflerden gelir. */
 export interface RtRecordEnv { env: string; toplam: number; durdurulan: number; silinen: number; uygulamalar: string[] }
 export interface RtRecordRow extends Omit<RtRecord, 'targets' | 'events'> { targets: number; stopped: number; envs?: RtRecordEnv[] }
+/** SCC adresinin kaynagi: ekrandan girildi / Portal ortam degiskeni / hic yok. */
+export type SccKaynak = 'ekran' | 'env' | 'yok';
 export interface RtLaunch { ok: boolean; message?: string; jobId: number | null; status: string | null; awxServerId: number; planOnly?: boolean; sccWarning?: string | null;
   /** On kontrolde web sunucularinda baslatilan Server Hub taramasi (taze vhost trafigi). */
   trafikTarama?: { ok: boolean; jobId?: number | null; awxServerId?: number; hosts: string[]; message?: string } | null }
@@ -80,7 +82,8 @@ export interface RtLaunch { ok: boolean; message?: string; jobId: number | null;
 const json = (body: unknown) => ({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 
 export const retirementApi = {
-  config: (): Promise<{ ok: boolean; defaultDays: number; sccMailConfigured: boolean; sccMailTo: string | null; smartFlows: Record<string, string>; deleteHour?: number; pollSeconds?: number }> => fetch(`${BASE}/config`).then(safeJson),
+  config: (): Promise<{ ok: boolean; defaultDays: number; sccMailConfigured: boolean; sccMailTo: string | null; smartFlows: Record<string, string>; deleteHour?: number; pollSeconds?: number; sccMailCc?: string | null;
+    sccKaynak?: SccKaynak; sccGuncelleyen?: string | null; sccGuncellendi?: string | null; sccDbHatasi?: string | null }> => fetch(`${BASE}/config`).then(safeJson),
   apps: (q: string): Promise<{ ok: boolean; apps: string[] }> => fetch(`${BASE}/apps?q=${encodeURIComponent(q)}`).then(safeJson),
   discover: (app: string): Promise<RtDiscovery> => fetch(`${BASE}/discover?app=${encodeURIComponent(app)}`).then(safeJson),
   list: (): Promise<{ ok: boolean; records: RtRecordRow[]; message?: string }> => fetch(BASE).then(safeJson),
@@ -101,6 +104,9 @@ export const retirementApi = {
     ok: boolean; degisti?: boolean; from?: string; to?: string; jobId?: number;
     jobStatus?: string; jobMissing?: boolean; message?: string; record?: RtRecord;
   }> => fetch(`${BASE}/${id}/targets/${tid}/refresh-status`, json({})).then(safeJson),
+  /** SCC bilgilendirme adresi (virgulle). Kime BOS -> ekran degeri kalkar, ortam degiskenine dusulur. */
+  sccKaydet: (to: string, cc: string): Promise<{ ok: boolean; message?: string; sccMailTo?: string | null; sccMailCc?: string | null; sccKaynak?: SccKaynak; sccGuncelleyen?: string | null; sccGuncellendi?: string | null }> =>
+    fetch(`${BASE}/config/scc`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to, cc }) }).then(safeJson),
   /** ADMIN: beklemeyi atla. DELETE'i BASLATMAZ; silme tarihini bugune ceker, silmeyi her
    *  zamanki zamanlayici yakalar (bekleme yolu boylece sinanir). `confirmApp` = kayit
    *  uygulama adi, AYNEN. */

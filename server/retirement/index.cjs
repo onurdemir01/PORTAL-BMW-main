@@ -7,7 +7,7 @@
 // dns_reuse, lb_reuse).
 //
 // Kurallar: silme tarihi = planned_delete_at (kaydi acan verdi) ya da stop + delete_after_days (45).
-// PROD hedef: oco_no zorunlu; ilk gercek STOP'ta SCC maili (RETIREMENT_SCC_MAIL_TO env; bossa uyari).
+// PROD hedef: oco_no zorunlu; ilk gercek STOP'ta SCC maili (adres: Retirement sayfasi ya da RETIREMENT_SCC_MAIL_TO; bossa uyari).
 // STOP her zaman once PLAN (plan_only=true) kosar, kullanici onaylayinca uygulanir.
 'use strict';
 
@@ -30,8 +30,10 @@ const ROLLBACK_REGISTRY_KEY = 'app_retirement_rollback';
 // yeniler; onay penceresi kesif uzerinden taze vhost trafigini okur.
 const TRAFIK_REGISTRY_KEY = 'server_hub_scan';
 const DEFAULT_DAYS = Number(process.env.RETIREMENT_DELETE_DAYS || 45);
-const SCC_MAIL_TO = (process.env.RETIREMENT_SCC_MAIL_TO || '').trim();
-const SCC_MAIL_CC = (process.env.RETIREMENT_SCC_MAIL_CC || '').trim();
+// SCC ADRESI ARTIK SABIT DEGIL (2026-10-08): ekrandan girilebiliyor, her kullanimda taze
+// okunur (kaydedilen deger yeniden baslatmadan bir sonraki STOP'ta gecerli). Oncelik ve
+// kaynak: server/retirement/ayar.cjs. Ortam degiskeni yedek olarak kalir.
+const { sccAyar, sccKaydet } = require('./ayar.cjs');
 const isAdmin = (req) => req.session?.user?.role === 'Admin';
 const SAFE_ID = /^[A-Za-z0-9_-]{1,64}$/;
 
@@ -230,11 +232,23 @@ function initRetirement(app) {
   router.use((req, res, next) => (isAdmin(req) ? next() : res.status(403).json({ ok: false, message: 'Retirement yalnız Admin.' })));
   try { router.use(require('../auth/visibility.cjs').requireVisiblePrefix('ServerHub')); } catch { /* yoksay */ }
 
-  router.get('/config', (_req, res) => res.json({ ok: true, defaultDays: DEFAULT_DAYS, sccMailConfigured: !!SCC_MAIL_TO, sccMailTo: SCC_MAIL_TO || null,
+  router.get('/config', async (_req, res) => { const scc = await sccAyar(); res.json({ ok: true, defaultDays: DEFAULT_DAYS, sccMailConfigured: !!scc.to, sccMailTo: scc.to || null,
+    sccMailCc: scc.cc || null, sccKaynak: scc.kaynak, sccGuncelleyen: scc.guncelleyen, sccGuncellendi: scc.guncellendi, sccDbHatasi: scc.dbHatasi,
     // ZAMANLAYICI BILGISI (ekran bilgilendirmesi): silme saati (TR) ve kontrol araligi.
     deleteHour: _sched.silmeSaati(),
     pollSeconds: (() => { const n = Number(process.env.RETIREMENT_POLL_INTERVAL_SECONDS); return Number.isFinite(n) && n >= 30 ? n : 300; })(),
-    smartFlows: { delete: '364244_Delete_6', lbMemberUpdate: '642180_Update', lbDelete: '364378_Delete_6', lbIpDelete: '364308_Delete_6', dnsIntranetDelete: '2523535_Delete_6', dnsInternetDelete: '349792_Delete' } }));
+    smartFlows: { delete: '364244_Delete_6', lbMemberUpdate: '642180_Update', lbDelete: '364378_Delete_6', lbIpDelete: '364308_Delete_6', dnsIntranetDelete: '2523535_Delete_6', dnsInternetDelete: '349792_Delete' } }); });
+
+  // SCC bilgilendirme adresini ekrandan kaydet (router zaten yalniz Admin). Kime BOS ->
+  // ekran degeri kalkar, ortam degiskenine dusulur.
+  router.put('/config/scc', async (req, res) => {
+    try {
+      const r = await sccKaydet({ to: req.body?.to, cc: req.body?.cc }, req.session?.user?.username);
+      if (!r.ok) return res.status(400).json(r);
+      try { require('../audit/index.cjs').auditPortal(req, 'retirement_scc_ayar', { detail: JSON.stringify({ kaynak: r.ayar.kaynak, to: r.ayar.to, cc: r.ayar.cc }) }); } catch { /* best-effort */ }
+      res.json({ ok: true, sccMailTo: r.ayar.to || null, sccMailCc: r.ayar.cc || null, sccKaynak: r.ayar.kaynak, sccGuncelleyen: r.ayar.guncelleyen, sccGuncellendi: r.ayar.guncellendi });
+    } catch (err) { res.status(500).json({ ok: false, message: err.message }); }
+  });
 
   router.get('/apps', async (req, res) => {
     try { res.json({ ok: true, apps: await searchApps(String(req.query.q || '')) }); }
@@ -469,8 +483,11 @@ function initRetirement(app) {
         }
       }
 
+      const scc = await sccAyar();
+      const SCC_MAIL_TO = scc.to;
+      const SCC_MAIL_CC = scc.cc;
       const notifyScc = confirmed && t.env === 'PROD' && !rec.sccNotifiedAt;
-      if (notifyScc && !SCC_MAIL_TO) console.warn('[Retirement] RETIREMENT_SCC_MAIL_TO tanimsiz; SCC maili gonderilemeyecek');
+      if (notifyScc && !SCC_MAIL_TO) console.warn('[Retirement] SCC adresi tanimsiz (ekran ve RETIREMENT_SCC_MAIL_TO bos); SCC maili gonderilemeyecek');
       const extraVars = {
         target_host: t.host, application: t.appName, jboss_gen: String(t.gen), smart_no: rec.smartNo, app_path: t.appPath || '',
         plan_only: !confirmed, notify_scc: notifyScc && !!SCC_MAIL_TO, scc_mail_to: SCC_MAIL_TO, scc_mail_cc: SCC_MAIL_CC || undefined,
@@ -508,7 +525,7 @@ function initRetirement(app) {
           }
         }
       }
-      res.json({ ok: true, ...r, planOnly: !confirmed, trafikTarama, sccWarning: notifyScc && !SCC_MAIL_TO ? 'RETIREMENT_SCC_MAIL_TO tanımlı değil — SCC maili gönderilmedi.' : null });
+      res.json({ ok: true, ...r, planOnly: !confirmed, trafikTarama, sccWarning: notifyScc && !SCC_MAIL_TO ? 'SCC bilgilendirme adresi tanımlı değil (Retirement sayfası › SCC adresi) — SCC maili gönderilmedi.' : null });
     } catch (err) { res.status(err.status || 500).json({ ok: false, message: err.message }); }
   });
 
@@ -737,7 +754,7 @@ function initRetirement(app) {
             await db().query(`UPDATE retirement_targets SET status = $1, plan_text = $2, detail_json = $3, updated_at = GETUTCDATE() WHERE id = $4`, [statusInfo.status === 'successful' ? 'planned' : 'failed', msg.slice(0, 1000), detailJson, tid]);
           } else if (statusInfo.status === 'successful' && /\tOK\t/.test(line)) {
             await db().query(`UPDATE retirement_targets SET status = 'stopped', result_text = $1, detail_json = $2, stopped_at = GETUTCDATE(), updated_at = GETUTCDATE() WHERE id = $3`, [msg.slice(0, 1000), detailJson, tid]);
-            await db().query(`UPDATE retirement_records SET stop_at = COALESCE(stop_at, GETUTCDATE()), scc_notified_at = CASE WHEN $2 = 1 THEN COALESCE(scc_notified_at, GETUTCDATE()) ELSE scc_notified_at END, updated_at = GETUTCDATE() WHERE id = $1`, [id, SCC_MAIL_TO ? 1 : 0]);
+            await db().query(`UPDATE retirement_records SET stop_at = COALESCE(stop_at, GETUTCDATE()), scc_notified_at = CASE WHEN $2 = 1 THEN COALESCE(scc_notified_at, GETUTCDATE()) ELSE scc_notified_at END, updated_at = GETUTCDATE() WHERE id = $1`, [id, (await sccAyar()).to ? 1 : 0]);
             const left = await db().query(`SELECT COUNT(*) AS n FROM retirement_targets WHERE record_id = $1 AND status <> 'stopped' AND status <> 'skipped'`, [id]);
             if (Number(left.rows?.[0]?.n) === 0) await db().query(`UPDATE retirement_records SET status = 'stopped', updated_at = GETUTCDATE() WHERE id = $1`, [id]);
           } else {
@@ -771,11 +788,12 @@ function initRetirement(app) {
         // SCC MAILI ZAMANLANMIS KOSUDA DA GIDER: PROD'da ilk gercek stop'ta bildirim
         // sarti, isi insanin mi poller'in mi baslattigina bagli degil.
         const rec = await db().query(`SELECT scc_notified_at FROM retirement_records WHERE id = $1`, [t.recordId]);
-        const notify = t.env === 'PROD' && !rec.rows?.[0]?.scc_notified_at && !!SCC_MAIL_TO;
+        const scc = await sccAyar();
+        const notify = t.env === 'PROD' && !rec.rows?.[0]?.scc_notified_at && !!scc.to;
         return launch(
           null,
           `Retirement: STOP ${t.application} @ ${t.host} (zamanlanmis)`,
-          { ...ortak, plan_only: false, notify_scc: notify, scc_mail_to: SCC_MAIL_TO, scc_mail_cc: SCC_MAIL_CC || undefined, oco_no: t.ocoNo || '' },
+          { ...ortak, plan_only: false, notify_scc: notify, scc_mail_to: scc.to, scc_mail_cc: scc.cc || undefined, oco_no: t.ocoNo || '' },
           { op: 'stop', id: t.recordId, tid: t.targetId },
         );
       }
