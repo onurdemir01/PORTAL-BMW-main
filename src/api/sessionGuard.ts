@@ -246,12 +246,13 @@ export function sessionGuardKur(): void {
     const res = arkaPlanMi()
       ? await _gercekFetch!(input, arkaPlanIsaretle(input, init))
       : await _gercekFetch!(input, init);
-    basliklariYay(res);
+    const guncelOturumNesli = istekOturumNesli === _oturumNesli;
+    if (guncelOturumNesli) basliklariYay(res);
     if (
       res.status === 401 &&
       istekteOturumVardi &&
       _oturumVar &&
-      istekOturumNesli === _oturumNesli &&
+      guncelOturumNesli &&
       res.headers.get(SESSION_HEADER) === 'expired'
     ) {
       const ham = res.headers.get(BASLIK_SEBEP);
