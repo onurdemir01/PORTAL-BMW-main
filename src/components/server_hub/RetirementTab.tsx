@@ -11,6 +11,7 @@ import { useJobTracker } from '@/contexts/JobTrackerContext';
 import { Modal } from '@/components/common/Modal';
 import { TableEmptyRow } from '@/components/common/EmptyState';
 import { fmtDate, fmtDateTime } from '@/utils/datetime';
+import RetirementAkis from './RetirementAkis';
 import { toast } from '@/hooks/useToast';
 
 const SM_BTN = 'inline-flex items-center gap-1 h-7 px-2.5 text-[11px] font-medium leading-none rounded-lg border whitespace-nowrap disabled:opacity-40';
@@ -252,6 +253,8 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
   const [ask, setAsk] = useState<{ t: RtTarget } | null>(null);
   const [geriAl, setGeriAl] = useState<{ t: RtTarget } | null>(null);
   const [iptalSor, setIptalSor] = useState(false);
+  // AKIS PANELI: satira tiklaninca altinda asamalar acilir (tek satir acik).
+  const [akis, setAkis] = useState<number | null>(null);
   const [hubDurum, setHubDurum] = useState<StopHubDurumu>('denetleniyor');
   const hubIstek = useRef(0);
 
@@ -329,6 +332,23 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
   // Eskiden bu dugmenin ONAYI DA YOKTU: tek tikla iptal oluyor ve ekran uygulamanin
   // kapali kaldigini SOYLEMIYORDU. Simdi onay penceresi iki ayri eylem sunuyor;
   // "iptal = geri getir" varsayimi sessizce dogru ya da yanlis olmaktan cikti.
+  // GECIS DURUMUNDA TAKILMIS hedefi cozer: AWX isini OKUR, gercek sonucu yazar.
+  // Poller tabanli sonuclandirma uzun sure bozuktu (6177b4e) ve onyuz yoklamasi yalniz
+  // ekranda bekleyen biri varken kosuyor; hedef 'stopping'de kalinca EKRANDA HICBIR
+  // DUGME KALMIYORDU (kullanici bulgusu 2026-10-08: "dokunamiyorum").
+  const tazele = async (t: RtTarget) => {
+    setBusy(t.id);
+    try {
+      const r = await retirementApi.refreshStatus(id, t.id);
+      if (!r.ok) { toast.error(r.message || 'Durum tazelenemedi.'); return; }
+      if (r.degisti) {
+        toast.success(`${t.appName} @ ${t.host}: ${r.from} → ${r.to}`);
+        if (r.record) setRec(r.record); else await load();
+      } else {
+        toast.success(r.message || 'Durum değişmedi.');
+      }
+    } catch (e: unknown) { toast.error(e instanceof Error ? e.message : String(e)); } finally { setBusy(null); }
+  };
   const cancel = async (geriAlDa: boolean) => {
     setIptalSor(false);
     const durdurulmus = (rec?.targets || []).filter(
@@ -393,6 +413,19 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
                         {/* GERI AL: yalniz durdurulmus ve HENUZ SILINMEMIS hedeflerde.
                             'rollback_failed' tekrar denemeye acik - yarim kalmis bir geri
                             almayi kilitlemek uygulamayi erisilemez birakirdi. */}
+                        <div className="flex gap-1 mt-1">
+                          <button onClick={() => setAkis((x) => (x === t.id ? null : t.id))} className={SM_BTN} style={smBtn()} title="Akış: hangi adımda, hangi komut, ne kadar kaldı">
+                            {akis === t.id ? 'Akışı kapat' : 'Akış'}
+                          </button>
+                          {/* GECIS DURUMU: tek cikis yolu durumu TAZELEMEK. Bu durumlarda
+                              ne STOP ne geri alma dugmesi gorunur; tazelemeden sonra
+                              gercek duruma gore dugmeler acilir. */}
+                          {['planning', 'stopping', 'rolling_back', 'deleting'].includes(t.status) && (
+                            <button disabled={busy != null} onClick={() => tazele(t)} className={SM_BTN} style={{ ...smBtn(), color: 'var(--status-warning)', borderColor: 'var(--status-warning)' }} title="AWX işini oku ve gerçek sonucu yaz (okunamazsa hiçbir şey yazılmaz)">
+                              <ArrowPathIcon className="w-3.5 h-3.5" /> Durumu tazele
+                            </button>
+                          )}
+                        </div>
                         {(t.status === 'stopped' || t.status === 'rollback_failed') && !t.deletedAt && (
                           <div className="flex gap-1 mt-1">
                             <button disabled={busy != null} onClick={() => rollback(t, false)} className={SM_BTN} style={smBtn()} title="Geri alma planı: ne yapılacağını göster, hiçbir şey değişmez"><ClipboardDocumentCheckIcon className="w-3.5 h-3.5" /> Geri alma planı</button>
@@ -403,6 +436,21 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
                     </tr>
                   );
                 })}
+                {/* AKIS SATIRI: secili hedefin asamalari. React fragment yerine AYRI bir
+                    <tr> cunku tablo yapisi icinde kalmasi gerekiyor. */}
+                {akis != null && rec.targets.some((t) => t.id === akis) && (() => {
+                  const t = rec.targets.find((x) => x.id === akis) as RtTarget;
+                  return (
+                    <tr key={`akis-${t.id}`} className="border-t" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)' }}>
+                      <td colSpan={6} className="px-3 py-2.5">
+                        <div className="text-[11px] font-semibold mb-1.5" style={{ color: 'var(--text-secondary)' }}>
+                          {t.appName} @ {t.host} — akış
+                        </div>
+                        <RetirementAkis rec={rec} t={t} />
+                      </td>
+                    </tr>
+                  );
+                })()}
               </tbody>
             </table>
           </div>

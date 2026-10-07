@@ -21,10 +21,24 @@ export type RtTargetStatus =
   | 'pending' | 'planning' | 'planned' | 'stop_scheduled' | 'stopping' | 'stopped'
   | 'deleting' | 'deleted' | 'rolling_back' | 'active' | 'rollback_failed'
   | 'failed' | 'skipped';
+/** Uygulanan vhost sonucu. `status`: pending | ok | manual | failed | restoring |
+ *  restore_manual | restore_failed — sunucu serbest metin yaziyor, enum dayatilmaz. */
+export interface RtWeb2 {
+  host: string;
+  serverName: string;
+  product: string;
+  confFile: string;
+  status: string;
+  jobId: number | null;
+  message: string | null;
+}
 export interface RtTarget {
   id: number; recordId: number; host: string; site: string; env: string; appName: string; gen: number | null; appPath: string | null;
   web: RtWeb[]; status: RtTargetStatus; planText: string | null; resultText: string | null; lastJobId: number | null; stoppedAt: string | null; updatedAt: string;
   deletedAt: string | null; rolledBackAt: string | null; rollbackJobId: number | null;
+  scheduledAt: string | null; windowEnd: string | null;
+  /** STOP onayinda DONDURULMUS vhost listesi + her birinin akibeti (akis paneli). */
+  webSonuc: RtWeb2[] | null;
   /** Playbook'un `set_stats` ile yayınladığı AYRINTI: STEP satırları ve yeniden
    *  adlandırılan paketler. `planText` yalnız özet ("2 paket yeniden adlandırılacak");
    *  HANGİ paketler olduğu burada. İşlem geri alınamaz, onay ekranı bunu göstermeli.
@@ -58,6 +72,12 @@ export const retirementApi = {
   // cagrisi YOK ve olmasi da yanlis olurdu.
   rollback: (id: number, tid: number, confirmed: boolean): Promise<RtLaunch & { web?: { denendi: number; atlanan: number; hata: number; notlar: string[] } }> =>
     fetch(`${BASE}/${id}/targets/${tid}/rollback`, json({ confirmed })).then(safeJson),
+  /** Gecis durumunda takilmis hedefin AWX isini OKUR ve gercek sonucu yazar.
+   *  Okunamazsa hicbir sey yazmaz (okunamadi != basarisiz). */
+  refreshStatus: (id: number, tid: number): Promise<{
+    ok: boolean; degisti?: boolean; from?: string; to?: string; jobId?: number;
+    jobStatus?: string; jobMissing?: boolean; message?: string; record?: RtRecord;
+  }> => fetch(`${BASE}/${id}/targets/${tid}/refresh-status`, json({})).then(safeJson),
   jobStatus: (id: number, tid: number, awxServerId: number, jobId: number): Promise<{ ok: boolean; status: string; output: string; result?: unknown; message?: string }> =>
     fetch(`${BASE}/${id}/targets/${tid}/job-status/${awxServerId}/${jobId}`).then(safeJson),
 };

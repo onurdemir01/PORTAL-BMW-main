@@ -50,6 +50,14 @@ function rowTarget(t) {
     // `deletedAt`/`rolledBackAt` ONYUZ ICIN DEGIL SADECE: /rollback kapisi da bunu
     // okuyor. Donmuyordu ve `t.deletedAt` kontrolu OLU KODDU (hep undefined).
     deletedAt: t.deleted_at ?? null, rolledBackAt: t.rolled_back_at ?? null, rollbackJobId: t.rollback_job_id ?? null,
+    // OCO penceresine zamanlanmis STOP icin: akis paneli "ne zaman kosacak" diyebilsin.
+    scheduledAt: t.scheduled_at ?? null, windowEnd: t.window_end ?? null,
+    // UYGULANAN web sonucu (DONMUS liste + her vhost'un akibeti). `web` alani KESIF
+    // listesidir; ekranda "1 kaldirildi, 1 elle" demek icin uygulanan sonuc gerekiyor
+    // ve o bugune kadar onyuze HIC gitmiyordu (akis paneli, 2026-10-08).
+    webSonuc: (() => {
+      try { return t.web_result_json ? JSON.parse(t.web_result_json) : null; } catch { return null; }
+    })(),
     // PLAN/SONUC AYRINTISI (uretim bulgusu 2026-10-06): playbook `set_stats` ile STEP ve
     // RENAMED satirlarini da yayinliyor. Onceden YALNIZ tek satirlik RESULT saklaniyordu;
     // kullanici plani gozden gecirirken "2 paket yeniden adlandirilacak" goruyordu, HANGI
@@ -356,6 +364,96 @@ function initRetirement(app) {
       await addEvent(id, req.session?.user?.username, confirmed ? 'stop' : 'plan', `${t.appName} @ ${t.host} (${t.env}, ${t.site}) iş #${r.jobId}${notifyScc ? (SCC_MAIL_TO ? ' · SCC maili' : ' · SCC adresi tanımsız!') : ''}`);
       res.json({ ok: true, ...r, planOnly: !confirmed, sccWarning: notifyScc && !SCC_MAIL_TO ? 'RETIREMENT_SCC_MAIL_TO tanımlı değil — SCC maili gönderilmedi.' : null });
     } catch (err) { res.status(err.status || 500).json({ ok: false, message: err.message }); }
+  });
+
+  // ── DURUMU TAZELE (kullanici bulgusu 2026-10-08) ────────────────────────────────────
+  // "Benim iptal ettigim kayda su an dokunamiyorum. Uygulama disabled edildi ama kaldi
+  // bu sekilde."
+  //
+  // SEBEP: gecis durumlari ('stopping' / 'rolling_back' / 'deleting') bir ISIN SONUCU
+  // yazilana kadar surer. O sonucu poller yaziyor - ama poller tabanli sonuclandirma
+  // `t.delete_job_id` sabit yazimi yuzunden HIC CALISMIYORDU (6177b4e ile duzeldi) ve
+  // onyuzun job yoklamasi yalnizca ekranda bekleyen biri varken kosuyor. Sonuc: hedef
+  // 'stopping'de kaliyor, `canAct` da geri alma kosulu da tutmuyor -> EKRANDA HICBIR
+  // DUGME YOK, uygulama kapali.
+  //
+  // Bu uc DURUMU OLCER, tahmin etmez: AWX isini okur, terminal ise gercek sonucu yazar.
+  // OKUNAMADIYSA HICBIR SEY YAZMAZ ve bunu soyler - "okunamadi" ile "basarisiz" ayni sey
+  // degil; basarili olmus bir stop'u basarisiz yazmak uygulamayi erisilemez gosterirdi.
+  const TAZELE_ADIM = Object.freeze({
+    planning: { alan: 'last_job_id', kind: 'stop', ok: 'planned', hata: 'failed', zaman: null },
+    stopping: { alan: 'last_job_id', kind: 'stop', ok: 'stopped', hata: 'failed', zaman: 'stopped_at' },
+    rolling_back: { alan: 'rollback_job_id', kind: 'rollback', ok: 'active', hata: 'rollback_failed', zaman: 'rolled_back_at' },
+    deleting: { alan: 'delete_job_id', kind: 'delete', ok: 'deleted', hata: 'failed', zaman: 'deleted_at' },
+  });
+  const TAZELE_KEY = Object.freeze({ stop: REGISTRY_KEY, delete: DELETE_REGISTRY_KEY, rollback: ROLLBACK_REGISTRY_KEY });
+  const TAZELE_STATS = Object.freeze({
+    stop: 'app_retirement_stop_result',
+    delete: 'app_retirement_delete_result',
+    rollback: 'app_retirement_rollback_result',
+  });
+
+  router.post('/:id/targets/:tid/refresh-status', async (req, res) => {
+    const id = Number(req.params.id);
+    const tid = Number(req.params.tid);
+    try {
+      const rec = await loadRecord(id);
+      if (!rec) return res.status(400).json({ ok: false, message: 'Kayıt yok.' });
+      const t = rec.targets.find((x) => x.id === tid);
+      if (!t) return res.status(400).json({ ok: false, message: 'Hedef yok.' });
+      const adim = TAZELE_ADIM[t.status];
+      if (!adim)
+        return res.status(400).json({
+          ok: false,
+          message: `"${t.status}" bir geçiş durumu değil — tazelenecek bir iş yok.`,
+        });
+
+      const row = await db().query(`SELECT ${adim.alan} AS job_id FROM retirement_targets WHERE id = $1`, [tid]);
+      const jobId = Number(row.rows?.[0]?.job_id);
+      if (!Number.isInteger(jobId) || jobId <= 0)
+        return res.status(400).json({
+          ok: false,
+          message:
+            `Hedef "${t.status}" durumunda ama iş numarası yok (${adim.alan} boş) — iş hiç ` +
+            `başlatılamamış. Durum elle çözülmeli; "${adim.hata}" olarak işaretlemek için ` +
+            `yöneticiye başvurun.`,
+          jobMissing: true,
+        });
+
+      const reg = require('../ansible/playbook-registry.cjs');
+      const pr = await reg.getByKey(TAZELE_KEY[adim.kind]).catch(() => null);
+      const serverId = pr && pr.awxServerId != null ? Number(pr.awxServerId) : 0;
+      const runner = require('../ansible/runner.cjs');
+      let info;
+      try {
+        info = await runner.getJobStatusOnServer(serverId, jobId);
+      } catch (e) {
+        // OKUNAMADI: hedefe DOKUNULMAZ.
+        return res.status(502).json({ ok: false, message: `AWX işi okunamadı (#${jobId}): ${e.message}` });
+      }
+      const TERMINAL = new Set(['successful', 'failed', 'error', 'canceled']);
+      if (!TERMINAL.has(info.status))
+        return res.json({ ok: true, degisti: false, jobId, jobStatus: info.status, message: `İş hâlâ çalışıyor (${info.status}).` });
+
+      const { extractStatsKey } = require('../opsx/index.cjs');
+      const r = extractStatsKey(info.artifacts, TAZELE_STATS[adim.kind]) || null;
+      const line = String(r?.line || '');
+      const msg = line.split('	').slice(2).join(' — ') || info.status;
+      // ARTIFACT YOKSA 'successful' OLSA BILE OK SAYILMAZ: playbook sonucu set_stats ile
+      // bildiriyor; bildirim yoksa ne yapildigini BILMIYORUZ (poller ile ayni kural).
+      const basarili = info.status === 'successful' && line.split('	')[2] === 'OK';
+      const yeni = basarili ? adim.ok : adim.hata;
+      const zamanSql = basarili && adim.zaman ? `, ${adim.zaman} = GETUTCDATE()` : '';
+      await db().query(
+        `UPDATE retirement_targets SET status = $1, result_text = $2${zamanSql}, updated_at = GETUTCDATE()
+          WHERE id = $3 AND status = $4`,
+        [yeni, msg.slice(0, 1000), tid, t.status],
+      );
+      await addEvent(id, req.session?.user?.username, 'refresh', `${t.appName} @ ${t.host}: ${t.status} -> ${yeni} (iş #${jobId}, ${info.status})`);
+      res.json({ ok: true, degisti: true, from: t.status, to: yeni, jobId, jobStatus: info.status, message: msg, record: await loadRecord(id) });
+    } catch (err) {
+      res.status(err.status || 500).json({ ok: false, message: err.message });
+    }
   });
 
   // ── GERI AL (kullanici, 2026-10-07) ───────────────────────────────────────────────
