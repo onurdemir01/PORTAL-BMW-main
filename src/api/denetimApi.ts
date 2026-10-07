@@ -369,6 +369,16 @@ export interface RoutesOfIpResult {
   routeTableMissing: boolean;
   rows: RouteOfIp[];
 }
+/** Bir CLUSTER'daki route'lar (2026-10-08). `rows` sekli IP listesiyle AYNI. */
+export interface RoutesOfClusterResult {
+  ok: boolean;
+  message?: string;
+  cluster: string;
+  env: string;
+  kind: string;
+  routeTableMissing: boolean;
+  rows: RouteOfIp[];
+}
 export interface RouteStatsResult {
   ok: boolean;
   message?: string;
@@ -1184,6 +1194,17 @@ export const denetimApi = {
   }): Promise<RoutesOfIpResult> =>
     fetch(
       `${BASE}/route-stats/ip?ip=${encodeURIComponent(p.ip)}&env=${encodeURIComponent(p.env || '')}&kind=${p.kind || 'all'}&platform=${encodeURIComponent(p.platform || 'ark')}`,
+    ).then(safeJson),
+
+  /** Bir cluster'daki route'lar (Kapsam > cluster satirina tiklama). */
+  routesOfCluster: (p: {
+    cluster: string;
+    env?: string;
+    kind?: 'spa' | 'nonSpa' | 'all';
+    platform?: string;
+  }): Promise<RoutesOfClusterResult> =>
+    fetch(
+      `${BASE}/route-stats/cluster?cluster=${encodeURIComponent(p.cluster)}&env=${encodeURIComponent(p.env || '')}&kind=${p.kind || 'all'}&platform=${encodeURIComponent(p.platform || 'ark')}`,
     ).then(safeJson),
 
   ocpCoverage: (platform: string): Promise<OcpCoverageResult> =>

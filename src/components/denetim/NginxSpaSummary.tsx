@@ -148,20 +148,46 @@ function MissingAppsModal({ title, subtitle, rows, ownersReady, onClose }: {
   );
 }
 
-/** Bir IP'ye cozen route'lar: ortamla suzulu, SPA / SPA-disi / hepsi, arama, CSV. */
-function IpRoutesModal({ ip, env, onClose }: { ip: string; env: string; onClose: () => void }) {
+/** Route listesi penceresinin KAYNAGI: bir IP ya da bir CLUSTER.
+ *
+ *  Kullanici (2026-10-08): "cluster bazli route'larin SPA olup olmadigini gosterdik ya,
+ *  ustlerine tikladigimda SPA olmayan route'lari gormek istiyorum."
+ *
+ *  Ayri bir pencere YAZILMADI: tablo, arama, tur suzgeci ve CSV birebir ayni isi yapiyor.
+ *  Ikinci kopya, bu depoda tekrar tekrar yasanan sinifa girerdi (biri duzelir, oteki eski
+ *  kalir). Tek fark hangi ucun cagrildigi ve pencerenin ACILIS turu. */
+type RouteKaynak =
+  | { tur: 'ip'; ip: string; env: string }
+  | { tur: 'cluster'; cluster: string; env: string };
+
+/** Route listesi: ortamla suzulu, SPA / SPA-disi / hepsi, arama, CSV. */
+function RouteListModal({ kaynak, onClose }: { kaynak: RouteKaynak; onClose: () => void }) {
+  const env = kaynak.env;
   const [rows, setRows] = useState<RouteOfIp[] | null>(null);
   const [err, setErr] = useState('');
-  const [kind, setKind] = useState<'all' | 'spa' | 'nonSpa'>('all');
+  // ACILIS TURU KAYNAGA GORE: cluster satirina tiklayan kullanici "SPA olmayanlari gormek
+  // istiyorum" dedi, o yuzden orada dogrudan SPA-disi suzgeciyle acilir. IP yolunda eski
+  // davranis (hepsi) KORUNUR - oradaki soru "bu IP'ye kimler cozuyor".
+  const [kind, setKind] = useState<'all' | 'spa' | 'nonSpa'>(
+    kaynak.tur === 'cluster' ? 'nonSpa' : 'all',
+  );
   const [q, setQ] = useState('');
+  const anahtar = kaynak.tur === 'ip' ? kaynak.ip : kaynak.cluster;
   // `useAsyncEffect`: `setRows(null)` effect govdesinde SENKRON calismasin
   // (React 19 `set-state-in-effect`). Iptal bayragi hook'tan gelir.
   useAsyncEffect(async (alive) => {
     setRows(null);
-    await denetimApi.routesOfIp({ ip, env, kind: 'all' })
+    setErr('');
+    // kind: 'all' CEKILIR, suzgec istemcide: pencere icinde tur degistirmek yeni bir
+    // istek atmasin ve sayaclar (hepsi/SPA/SPA degil) dogru kalsin.
+    const istek =
+      kaynak.tur === 'ip'
+        ? denetimApi.routesOfIp({ ip: kaynak.ip, env, kind: 'all' })
+        : denetimApi.routesOfCluster({ cluster: kaynak.cluster, env, kind: 'all' });
+    await istek
       .then((r) => { if (!alive()) return; if (r.ok) setRows(r.rows); else setErr(r.message || 'Route listesi alınamadı.'); })
       .catch((e: unknown) => alive() && setErr(e instanceof Error ? e.message : String(e)));
-  }, [ip, env]);
+  }, [kaynak.tur, anahtar, env]);
   const list = useMemo(() => {
     const n = q.trim().toLowerCase();
     return (rows || []).filter((r) => (kind === 'all' || r.kind === kind) && (!n || r.namespace.includes(n) || r.address.toLowerCase().includes(n) || r.route.toLowerCase().includes(n)));
@@ -169,13 +195,20 @@ function IpRoutesModal({ ip, env, onClose }: { ip: string; env: string; onClose:
   const counts = useMemo(() => ({ all: rows?.length || 0, spa: rows?.filter((r) => r.kind === 'spa').length || 0, nonSpa: rows?.filter((r) => r.kind === 'nonSpa').length || 0 }), [rows]);
   const csv = () =>
     csvIndir(
-      `${env}_${ip}_route`,
-      ['ip', 'ortam', 'namespace', 'route', 'adres', 'tip', 'tur'],
-      list.map((r) => [ip, env, r.namespace, r.route, r.address, r.type, r.kind]),
+      `${env}_${anahtar}_route`,
+      [kaynak.tur === 'ip' ? 'ip' : 'cluster', 'ortam', 'namespace', 'route', 'adres', 'tip', 'tur'],
+      list.map((r) => [anahtar, env, r.namespace, r.route, r.address, r.type, r.kind]),
     );
   const KIND_LABEL = { all: 'hepsi', spa: 'SPA', nonSpa: 'SPA değil' } as const;
   return (
-    <Modal open onClose={onClose} title={`${ip} → route’lar`} subtitle={`${env} ortamında bu IP’ye çözen route’lar (route_inventory nslookup)`} icon={GlobeAltIcon} size="wide"
+    <Modal open onClose={onClose}
+      title={`${anahtar} → route’lar`}
+      subtitle={
+        kaynak.tur === 'ip'
+          ? `${env} ortamında bu IP’ye çözen route’lar (route_inventory nslookup)`
+          : `${env} ortamında bu cluster’daki route’lar — SPA olmayanlar açılışta seçili`
+      }
+      icon={GlobeAltIcon} size="wide"
       footer={
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>{rows ? `${fmtNumber(list.length)} route` : ''}</span>
@@ -380,7 +413,7 @@ function Big({ n, of, label }: { n: number; of?: number; label?: string }) {
  *  siniflandirilamayan route'lari yok sayip yuzdeyi sisirirdi - "olculemedi" ile
  *  "SPA degil" ayni sey degil. Siniflandirilamayan varsa satirda AYRICA yazilir.
  */
-function ClusterBreakdown({ rows }: { rows: RouteStatsCluster[] }) {
+function ClusterBreakdown({ rows, onPick }: { rows: RouteStatsCluster[]; onPick: (cluster: string) => void }) {
   const [open, setOpen] = useState(false);
   if (!rows || rows.length === 0) return null;
   // Tek cluster varsa kirilim ortam satirinin AYNISI olur; aciklamaya deger bir sey yok.
@@ -395,8 +428,24 @@ function ClusterBreakdown({ rows }: { rows: RouteStatsCluster[] }) {
         <tbody>
           {gosterilen.map((c) => (
             <tr key={c.cluster}>
+              {/* TIKLAMA: o cluster'in route listesi, SPA-disi suzgeciyle acilir.
+                  Adi bos kova ('(cluster adi yok)') TIKLANAMAZ: uc, cluster adini
+                  platform beyaz listesine karsi dogruluyor ve bos ad orada yok -
+                  tiklanabilir gostermek 400 ile biten bir dugme olurdu. */}
               <td className="pr-2 font-mono whitespace-nowrap align-middle" style={{ color: 'var(--text-secondary)' }} title={c.cluster}>
-                {c.cluster}
+                {c.cluster.startsWith('(') ? (
+                  <span>{c.cluster}</span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => onPick(c.cluster)}
+                    className="underline decoration-dotted hover:no-underline"
+                    style={{ color: 'var(--accent)' }}
+                    title={`${c.cluster}: SPA olmayan route'ları göster (${fmtNumber(c.nonSpa)})`}
+                  >
+                    {c.cluster}
+                  </button>
+                )}
               </td>
               <td className="pr-2 tabular-nums whitespace-nowrap align-middle" style={{ color: 'var(--text-primary)' }}>
                 {fmtNumber(c.spa)} <span style={{ color: 'var(--text-muted)' }}>/ {fmtNumber(c.routes)}</span>
@@ -410,6 +459,20 @@ function ClusterBreakdown({ rows }: { rows: RouteStatsCluster[] }) {
               </td>
               <td className="pl-1.5 tabular-nums whitespace-nowrap align-middle" style={{ color: 'var(--text-muted)' }}>
                 %{c.spaPct}
+                {c.nonSpa > 0 && !c.cluster.startsWith('(') ? (
+                  <>
+                    {' · '}
+                    <button
+                      type="button"
+                      onClick={() => onPick(c.cluster)}
+                      className="underline decoration-dotted hover:no-underline tabular-nums"
+                      style={{ color: 'var(--accent)' }}
+                      title={`${c.cluster}: SPA olmayan ${fmtNumber(c.nonSpa)} route'u listele`}
+                    >
+                      {fmtNumber(c.nonSpa)} SPA değil
+                    </button>
+                  </>
+                ) : null}
                 {c.unclassified ? (
                   <span style={{ color: 'var(--status-warning)' }} title={`${fmtNumber(c.unclassified)} route ne adresinden ne adından çözülemedi — SPA değil SAYILMADI, paydada duruyor`}>
                     {' '}·{fmtNumber(c.unclassified)}?
@@ -468,7 +531,8 @@ export default function NginxSpaSummary({ tier }: { tier: 'internet' | 'intranet
   const [loading, setLoading] = useState(true);
   // Tiklanan hucre -> eksik uygulamalar penceresi
   const [open, setOpen] = useState<{ title: string; subtitle: string; rows: MissingRow[] } | null>(null);
-  const [ipOpen, setIpOpen] = useState<{ ip: string; env: string } | null>(null);
+  // TEK pencere durumu: kaynak IP ya da cluster (bkz. RouteKaynak).
+  const [routeOpen, setRouteOpen] = useState<RouteKaynak | null>(null);
 
   // `useAsyncEffect`: is effect flush'indan SONRAKI mikro-goreve ertelenir, yani
   // `setLoading(true)` effect govdesinde SENKRON degildir (React 19'un
@@ -712,7 +776,7 @@ export default function NginxSpaSummary({ tier }: { tier: 'internet' | 'intranet
                           SPA olmayan route: {fmtNumber(r.nonSpa)}
                           {r.unclassified ? ` · sınıflandırılamayan: ${fmtNumber(r.unclassified)}` : ''}
                         </div>
-                        <ClusterBreakdown rows={r.clusterRows || []} />
+                        <ClusterBreakdown rows={r.clusterRows || []} onPick={(cluster) => setRouteOpen({ tur: 'cluster', cluster, env })} />
                         <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
                           {fmtNumber(r.namespaces)} namespace · TLS sonlandırma: {r.terminations.map((t) => (
                             // "yok" = route VAR ama TLS sonlandirma tipi bos; route'suz SPA ile karistirilmasin
@@ -729,7 +793,7 @@ export default function NginxSpaSummary({ tier }: { tier: 'internet' | 'intranet
                       <span style={{ color: 'var(--text-muted)' }} title="route envanteri yok ya da bu ortamda route bulunamadı">—</span>
                     )}
                   </td>
-                  <td className="px-3 py-2.5">{r ? <IpCell e={r} onPick={(ip) => setIpOpen({ ip, env })} /> : <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
+                  <td className="px-3 py-2.5">{r ? <IpCell e={r} onPick={(ip) => setRouteOpen({ tur: 'ip', ip, env })} /> : <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
                 </tr>
               );
             })}
@@ -739,7 +803,7 @@ export default function NginxSpaSummary({ tier }: { tier: 'internet' | 'intranet
           </tbody>
         </table>
       </div>
-      {ipOpen && <IpRoutesModal ip={ipOpen.ip} env={ipOpen.env} onClose={() => setIpOpen(null)} />}
+      {routeOpen && <RouteListModal kaynak={routeOpen} onClose={() => setRouteOpen(null)} />}
       {open && <MissingAppsModal title={open.title} subtitle={open.subtitle} rows={open.rows} ownersReady={cov.ownersReady !== false} onClose={() => setOpen(null)} />}
       <div className="px-4 py-2 border-t text-[11px] leading-relaxed" style={{ borderColor: 'var(--border-subtle)', color: 'var(--text-muted)' }}>
         <b>Tıklayın:</b> sayıya tıklayınca o ortamda henüz deploy olmamış uygulamalar ve sahipleri (ekip, e-posta), IP’ye tıklayınca o IP’ye çözen route’lar listelenir. <b>SPA</b> = OpenShift’te adında <code>-app-v</code>/<code>-app-emb-v</code> geçen uygulama; sayım uygulama × ortam. <b>İnternet</b> = route tipi passthrough; <b>deploy edilmiş</b> = internete açık sunucuda /hysdeploy + /usr/nginx/applications dizinleri (H+A), <b>servise tanımlı</b> = vhost’ta location/include (PROD’da eski GBRVP* sunucularının proxy_pass’i), <b>çalışıyor</b> = ikisi birden (kesişim; “deploy edilmiş − çalışıyor” = tanımsız olanlar, “servise tanımlı − çalışıyor” = paketi olmayanlar). <b>İntranet</b> = route tipi reencrypt, intranet nginx’lerinde üç dizin de yerindeyse “tam kurulu”. <b>Taralı</b> = o ortam için nginx kaydı yok, ölçülemedi.

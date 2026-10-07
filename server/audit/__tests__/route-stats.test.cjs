@@ -2,7 +2,9 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { buildRouteStats, routesOfIp } = require('../route-stats.cjs');
+const fs = require('node:fs');
+const path = require('node:path');
+const { buildRouteStats, routesOfIp, routesOfCluster } = require('../route-stats.cjs');
 
 const R = (ns, route, addr, ip, tt = 'passthrough', cluster = 'ark-prod-1') => ({
   namespace_name: ns, route_name: route, route_address: addr, resolved_ip: ip, termination_type: tt, cluster_name: cluster,
@@ -158,4 +160,103 @@ test('CB5 kirilim route sayisina gore AZALAN; tek cluster da satir uretir', () =
   // Tek cluster'li ortamda da veri URETILIR (ekran gostermemeyi kendi secer)
   const tek = buildRouteStats([CB({ c: 'TEK', ns: 'b-prod', addr: 'q-app-v-b-prod.apps.fw' })]);
   assert.equal(tek.envs[0].clusterRows.length, 1);
+});
+
+// ── CLUSTER ROUTE LISTESI (CR1..CR5, 2026-10-08) ─────────────────────────────────────
+// Kullanici: "Cluster bazli route'larin SPA olup olmadigini gosterdik ya, ustlerine
+// tikladigimda SPA olmayan route'lari gormek istiyorum."
+//
+// EN PAHALI UC YANLIS:
+//   1. SPA kalibini IKINCI KEZ yazmak -> kalip degisince biri guncellenir, oteki sessizce
+//      eski kalir. `routesOfCluster` ve `routesOfIp` AYNI govdeyi (routeListesi) kullanir.
+//   2. Ortam suzgecini atlamak -> ayni cluster'da hem -dev hem -prod namespace'i var;
+//      PROD satirina tiklayan kullaniciya dev route'lari gosterilirdi.
+//   3. Siniflandirilamayani "SPA degil" saymak -> ekranda yuzde paydasiyla TUTARSIZ olur
+//      (CB2 ile ayni disiplin): 'nonSpa' suzgeci yalnizca GERCEKTEN SPA olmayani verir.
+
+const CR = (c, ns, addr, rname) => ({
+  cluster_name: c, namespace_name: ns, route_name: rname === undefined ? 'r' : rname,
+  route_address: addr, resolved_ip: '10.0.0.1', termination_type: 'reencrypt',
+});
+
+test('CR1 cluster + ortam suzgeci; nonSpa yalniz SPA olmayani verir', () => {
+  const rows = [
+    CR('GBOCPPROD1', 'musteri-prod', 'crm-app-v-musteri-prod.apps.fw'),
+    CR('GBOCPPROD1', 'musteri-prod', 'api-musteri-prod.apps.fw'),
+    CR('GBOCPPROD2', 'musteri-prod', 'pay-app-v-musteri-prod.apps.fw'),
+    CR('GBOCPPROD1', 'musteri-dev', 'x-app-v-musteri-dev.apps.fw'),
+  ];
+  assert.deepEqual(
+    routesOfCluster(rows, 'GBOCPPROD1', 'PROD', 'nonSpa').map((r) => r.address),
+    ['api-musteri-prod.apps.fw'],
+  );
+  assert.equal(routesOfCluster(rows, 'GBOCPPROD1', 'PROD', 'all').length, 2, 'baska cluster sizdi');
+  // ORTAM SUZGECI: ayni cluster'in dev namespace'i PROD listesine GIRMEZ
+  assert.deepEqual(
+    routesOfCluster(rows, 'GBOCPPROD1', 'DEV', 'all').map((r) => r.namespace),
+    ['musteri-dev'],
+  );
+});
+
+test('CR2 cluster adi BUYUK/KUCUK harf duyarsiz eslesir', () => {
+  const rows = [CR('GBOCPPROD2', 'a-prod', 'x-app-v-a-prod.apps.fw')];
+  assert.equal(routesOfCluster(rows, 'gbocpprod2', 'PROD', 'all').length, 1);
+  assert.equal(routesOfCluster(rows, 'GBOCPPROD2', 'PROD', 'all').length, 1);
+  assert.equal(routesOfCluster(rows, 'BASKA', 'PROD', 'all').length, 0);
+});
+
+test('CR3 SINIFLANDIRILAMAYAN route nonSpa sayilmaz (CB2 ile ayni disiplin)', () => {
+  // Ne adresinden ne adindan cozulemeyen route'un SPA olup olmadigini BILMIYORUZ.
+  // 'nonSpa' suzgecine katmak, ekrandaki yuzde paydasiyla tutarsiz bir liste verirdi.
+  const rows = [
+    CR('GBOCPQA1', 'musteri-qa', 'crm-app-v-musteri-qa.apps.fw'),
+    CR('GBOCPQA1', 'musteri-qa', '', ''),
+  ];
+  assert.equal(routesOfCluster(rows, 'GBOCPQA1', 'QA', 'nonSpa').length, 0, 'olculemeyen SPA-disi sayildi');
+  assert.equal(routesOfCluster(rows, 'GBOCPQA1', 'QA', 'all').length, 2);
+  assert.deepEqual(
+    routesOfCluster(rows, 'GBOCPQA1', 'QA', 'all').map((r) => r.kind).sort(),
+    ['spa', 'unclassified'],
+  );
+});
+
+test('CR4 ortam VERILMEZSE suzgec uygulanmaz (tum ortamlar)', () => {
+  const rows = [
+    CR('ARK-A', 'a-dev', 'x-app-v-a-dev.apps.fw'),
+    CR('ARK-A', 'a-prod', 'y-app-v-a-prod.apps.fw'),
+  ];
+  assert.equal(routesOfCluster(rows, 'ARK-A', '', 'all').length, 2);
+});
+
+test('CR5 routesOfIp ile AYNI govde: SPA kalibi iki kez yazilmamis', () => {
+  // `routeListesi` paylasimi kaynak duzeyinde kilitlenir: ikinci bir siniflandirma
+  // kopyasi, SPA kalibi degisince iki ekranin farkli sayi gostermesi demekti.
+  const src = fs.readFileSync(path.join(__dirname, '..', 'route-stats.cjs'), 'utf8');
+  const govde = src.slice(src.indexOf('function routeListesi'));
+  assert.match(govde, /isSpaApp\(app\)/, 'siniflandirma ortak govdede degil');
+  // `isSpaApp(` YALNIZ IKI yerde CAGRILIR: buildRouteStats (sayim) ve routeListesi
+  // (liste). Ucuncu bir cagri, siniflandirmanin kopyalandigi anlamina gelir.
+  // (Satir 24'teki `isSpaApp` destructuring'dir, parantezsiz - sayima girmez.)
+  assert.equal((src.match(/isSpaApp\(/g) || []).length, 2, 'isSpaApp cagri sayisi 2 degil - siniflandirma kopyalanmis olabilir');
+  assert.ok(!/function routesOfCluster[\s\S]{0,400}isSpaApp\(/.test(src), 'routesOfCluster kendi siniflandirmasini yapiyor');
+});
+
+test('CR6 uc: cluster adi BEYAZ LISTEYE karsi dogrulanir, yetki kapisini paylasir', () => {
+  // Serbest metin kabul etmek, istemciye `cluster_name` uzerinden route envanterinin
+  // TAMAMINI sorgulatmak olurdu (platform suzgeci atlanir).
+  const den = fs.readFileSync(path.join(__dirname, '..', 'denetim.cjs'), 'utf8');
+  const blok = den.slice(den.indexOf("router.get('/route-stats/cluster'"), den.indexOf("// Bir IP'ye cozen route'lar"));
+  assert.ok(blok.length > 0, '/route-stats/cluster ucu yok');
+  assert.match(blok, /clusters\.find\(\(c\) =>/, 'cluster adi platform listesine karsi dogrulanmiyor');
+  assert.match(blok, /status\(400\)/, 'tanimsiz cluster 400 donmuyor');
+  // SORGU DOGRULANMIS adi kullanmali, istemciden geleni DEGIL
+  assert.match(blok, /value: esles/, 'sorgu istemciden gelen ham adi kullaniyor');
+  assert.ok(!/value: cluster\b/.test(blok), 'ham cluster adi sorguya giriyor');
+  // YETKI: yol deseni `route-stats` ile baslayan her sey 'spa' sekmesi kapisindan gecer
+  // Desen metni OLDUGU GIBI aranir: regex icinde regex kacisi yazmak hem okunmaz hem
+  // kirilgan (kacislar bir araci yutarsa bekci sessizce yanlis sey arar).
+  assert.ok(
+    den.includes('nginx-spa|nginx-spa-coverage|route-stats|nginx-migration'),
+    'route-stats yol deseni degismis - yeni uc yetki kapisi disinda kalabilir',
+  );
 });

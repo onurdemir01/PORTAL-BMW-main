@@ -665,6 +665,48 @@ function initDenetim(app) {
     }
   });
 
+  // Bir CLUSTER'daki route'lar (kullanici 2026-10-08: "cluster bazli route'larin SPA olup
+  // olmadigini gosterdik ya, ustlerine tikladigimda SPA olmayan route'lari gormek istiyorum").
+  //
+  // CLUSTER ADI BEYAZ LISTEYE KARSI DOGRULANIR: serbest metin kabul etmek, istemciye
+  // `cluster_name` uzerinden envanterin tamamini sorgulatmak olurdu. Platform listesinde
+  // olmayan ad 400 doner. (Adi BOS cluster yolu YOK: /route-stats de `cluster_name IN
+  // (...)` ile suzuyor, yani adi bos satir hic ulasmiyor - ekrandaki '(cluster adi yok)'
+  // kovasi yalnizca savunma amacli bir birim garantisi.)
+  router.get('/route-stats/cluster', async (req, res) => {
+    try {
+      const { query, sql } = require('../inventory/mssql.cjs');
+      const { routesOfCluster } = require('./route-stats.cjs');
+      const platform = PLATFORM_CLUSTERS[String(req.query.platform || 'ark')]
+        ? String(req.query.platform)
+        : 'ark';
+      const clusters = PLATFORM_CLUSTERS[platform];
+      const cluster = String(req.query.cluster || '').trim();
+      const esles = clusters.find((c) => String(c).toLowerCase() === cluster.toLowerCase());
+      if (!esles)
+        return res.status(400).json({ ok: false, message: 'cluster bu platformda tanimli degil' });
+      const r = await query(
+        `SELECT cluster_name, namespace_name, route_name, route_address, resolved_ip, termination_type
+           FROM dbo.BMW_Openshift_Route_Inventory
+          WHERE cluster_name = @cl`,
+        [{ name: 'cl', type: sql.NVarChar(200), value: esles }],
+      ).catch(() => ({ recordset: [], _missing: true }));
+      const kind = ['spa', 'nonSpa', 'all'].includes(String(req.query.kind))
+        ? String(req.query.kind)
+        : 'all';
+      res.json({
+        ok: true,
+        cluster: esles,
+        env: String(req.query.env || '').toUpperCase(),
+        kind,
+        routeTableMissing: !!r._missing,
+        rows: routesOfCluster(r.recordset || [], esles, req.query.env, kind),
+      });
+    } catch (err) {
+      res.status(500).json({ ok: false, message: err.message || 'Route listesi alinamadi.' });
+    }
+  });
+
   // Bir IP'ye cozen route'lar (ortam ozeti > SPA route -> IP tiklamasi)
   router.get('/route-stats/ip', async (req, res) => {
     try {

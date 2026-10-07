@@ -171,12 +171,36 @@ function buildRouteStats(routeRows) {
  */
 function routesOfIp(routeRows, ip, env, kind = 'all') {
   const want = String(ip || '').trim();
+  return routeListesi(routeRows, env, kind, (r) => String(r.resolved_ip || '').trim() === want);
+}
+
+/**
+ * Bir CLUSTER'daki route'lar (kullanici, 2026-10-08: "cluster bazli route'larin SPA olup
+ * olmadigini gosterdik ya, ustlerine tikladigimda SPA olmayan route'lari gormek istiyorum").
+ *
+ * `routesOfIp` ile AYNI govdeyi kullanir (`routeListesi`): SPA siniflandirmasi tek yerde
+ * kalsin. Ikinci bir kopya, bu depoda tekrar tekrar yasanan sinifa girerdi - SPA kalibi
+ * degisince biri guncellenir, oteki sessizce eski kalir (bkz. spa-pattern.cjs gerekcesi).
+ *
+ * @returns {{namespace:string, route:string, address:string, type:string, kind:'spa'|'nonSpa'|'unclassified', cluster:string}[]}
+ */
+function routesOfCluster(routeRows, cluster, env, kind = 'all') {
+  const want = L(cluster);
+  // ADI BOS GELEN CLUSTER da sorgulanabilir: ekrandaki '(cluster adi yok)' kovasina
+  // tiklanabiliyor ve o satirin icerigi gorunmez kalmamali.
+  return routeListesi(routeRows, env, kind, (r) =>
+    want === '' ? L(r.cluster_name) === '' : L(r.cluster_name) === want,
+  );
+}
+
+/** Ortak govde: ortam suzgeci + SPA siniflandirmasi + siralama. `sec` satir suzgeci. */
+function routeListesi(routeRows, env, kind, sec) {
   const E = String(env || '')
     .trim()
     .toUpperCase();
   const out = [];
   for (const r of routeRows || []) {
-    if (String(r.resolved_ip || '').trim() !== want) continue;
+    if (!sec(r)) continue;
     const ns = L(r.namespace_name);
     const e = envOfNamespace(ns);
     if (E && (!e || e.toUpperCase() !== E)) continue;
@@ -197,4 +221,4 @@ function routesOfIp(routeRows, ip, env, kind = 'all') {
   );
 }
 
-module.exports = { buildRouteStats, routesOfIp, appFromAddress, SPA_RE };
+module.exports = { buildRouteStats, routesOfIp, routesOfCluster, appFromAddress, SPA_RE };
