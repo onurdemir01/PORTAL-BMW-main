@@ -34,11 +34,7 @@ export interface NginxSpaEnvCell {
 
 /** 'unknown' durumunun gerekce kodlari (server/audit/nginx-migration.cjs spaTrafikDurumu). */
 export type SpaYukKismiNeden =
-  | 'pencere'
-  | 'pencere-bilinmiyor'
-  | 'sampled'
-  | 'okunamayan-sunucu'
-  | 'satirsiz-sunucu';
+  'pencere' | 'pencere-bilinmiyor' | 'sampled' | 'okunamayan-sunucu' | 'satirsiz-sunucu';
 
 /**
  * dbo.Nginx_Spa_Traffic olcumu - UC UC AYNI bicimi doner: Denetim > Nginx SPA, Nginx ARK SPA
@@ -326,22 +322,48 @@ export interface RouteStatsIp {
   count: number;
   samples: string[];
 }
+/** Route'un canli SPA sinifi. 'unmeasured' = kesif bu route'u OLCEMEDI; "SPA degil"
+ *  DEGIL. Ikisini birlestirmek, kesfin gormedigi her route'u SPA-disi saymak olurdu. */
+export type RouteSpaKind = 'spa' | 'nonSpa' | 'unmeasured';
 /** Ortam icindeki TEK cluster'in route kirilimi (kullanici, 2026-10-08). */
 export interface RouteStatsCluster {
   cluster: string;
   routes: number;
+  /** Kabininde nginx kosan route (canli sinyal, dbo.BMW_Spa_Discovery). */
   spa: number;
+  /** Olculdu, nginx sinyali YOK. */
   nonSpa: number;
-  unclassified: number;
-  /** spa / routes - PAYDA route TOPLAMI: siniflandirilamayanlar yok sayilmaz. */
+  /** Kesif bu route'u gormedi / cluster'a giremedi - "SPA degil" DEGIL. */
+  unmeasured: number;
+  /** nginx kosuyor ama ad standarda UYMUYOR - kullanicinin aradigi satir. */
+  nameMismatch: number;
+  /** Ad SPA diyor ama kabinde nginx YOK. */
+  nameFalsePositive: number;
+  /** spa / routes - PAYDA route TOPLAMI: olculemeyenler yok sayilmaz. */
   spaPct: number;
+  /** spa / (spa + nonSpa) - OLCULEN uzerinden. Hic olculmemisse `null`; %0 yazmak
+   *  "SPA yok" iddiasi olurdu. */
+  spaPctMeasured: number | null;
+  /** Kesfin bu cluster'da biraktigi satir sayisi. 0 = cluster hic taranmadi. */
+  discoveryRows: number;
+  discoveryScanDate: string | null;
+  /** Kesif satiri VAR ama hic eslesme yok -> iki job cluster/route adini farkli yaziyor.
+   *  Bu, "SPA yok" ile karistirilmamali. */
+  keyMismatch: boolean;
+  /** Olculemeyenlerin sebep dagilimi: kesif-okunamadi | cluster-taranmadi | route-kesifte-yok */
+  reasons: { reason: string; count: number }[];
 }
 export interface RouteStatsEnv {
   env: string;
   routes: number;
   spa: number;
   nonSpa: number;
-  unclassified: number;
+  unmeasured: number;
+  /** AD KALIBI ekseni (`-app-v`/`-app-emb-v`). KORUNUR cunku Production Tasimalari
+   *  ekraninin dogru olcutu bu; iki ekranin sayilari karsilastirilabilir kalsin. */
+  byName: { spa: number; nonSpa: number; unclassified: number };
+  nameMismatch: number;
+  nameFalsePositive: number;
   clusters: string[];
   /** Cluster basina kirilim; route sayisina gore azalan. Toplami `routes`a esittir
    *  (adi bos gelen cluster '(cluster adi yok)' kovasinda, atlanmaz). */
@@ -350,14 +372,26 @@ export interface RouteStatsEnv {
   terminations: { type: string; count: number }[];
   spaIps: RouteStatsIp[];
   nonSpaIps: RouteStatsIp[];
-  unresolvedIp: { spa: number; nonSpa: number };
+  unmeasuredIps: RouteStatsIp[];
+  unresolvedIp: { spa: number; nonSpa: number; unmeasured: number };
 }
 export interface RouteOfIp {
   namespace: string;
   route: string;
   address: string;
   type: string;
-  kind: 'spa' | 'nonSpa' | 'unclassified';
+  kind: RouteSpaKind;
+  /** Olculemedi ise NEDEN; olculduyse bos. */
+  reason: string;
+  /** Sinyal NEREDEN geldi: 'nginx-start.sh' (platform olcutu) | 'image' (imaj adinda
+   *  nginx, daha zayif) | '' (sinyal yok). */
+  signal: string;
+  /** Is yuku NASIL eslesti: 'selector' (servis secicisi okundu, kesin) | 'ad' (ayni adli
+   *  is yukune dusuldu, ZAYIF kanit) | '' (hic eslesmedi). */
+  matchBy: string;
+  workload: string;
+  /** Ad kalibi: true uyuyor, false uymuyor, null ad cozulemedi. */
+  nameSpa: boolean | null;
   cluster: string;
 }
 export interface RoutesOfIpResult {
@@ -367,6 +401,8 @@ export interface RoutesOfIpResult {
   env: string;
   kind: string;
   routeTableMissing: boolean;
+  spaTableMissing?: boolean;
+  spaSignalError?: string | null;
   rows: RouteOfIp[];
 }
 /** Bir CLUSTER'daki route'lar (2026-10-08). `rows` sekli IP listesiyle AYNI. */
@@ -377,6 +413,8 @@ export interface RoutesOfClusterResult {
   env: string;
   kind: string;
   routeTableMissing: boolean;
+  spaTableMissing?: boolean;
+  spaSignalError?: string | null;
   rows: RouteOfIp[];
 }
 export interface RouteStatsResult {
@@ -384,8 +422,25 @@ export interface RouteStatsResult {
   message?: string;
   platform: string;
   routeTableMissing: boolean;
+  /** dbo.BMW_Spa_Discovery YOK: openshift_spa_discovery job'i hic kosmamis. */
+  spaTableMissing?: boolean;
+  /** Sinyal sorgusu dustu; null = sorun yok. */
+  spaSignalError?: string | null;
+  /** false ise canli sinyal HIC gelmedi -> her route 'unmeasured'. Ekran bunu "SPA yok"
+   *  diye GOSTERMEMELI. */
+  spaSignalRead: boolean;
+  spaSignalRows: number;
   envs: RouteStatsEnv[];
-  totals: { routes: number; spa: number; nonSpa: number; unclassified: number; noEnv: number };
+  totals: {
+    routes: number;
+    spa: number;
+    nonSpa: number;
+    unmeasured: number;
+    nameMismatch: number;
+    nameFalsePositive: number;
+    byName: { spa: number; nonSpa: number; unclassified: number };
+    noEnv: number;
+  };
 }
 
 export interface SpaCoverageResult {
@@ -1189,7 +1244,7 @@ export const denetimApi = {
   routesOfIp: (p: {
     ip: string;
     env?: string;
-    kind?: 'spa' | 'nonSpa' | 'all';
+    kind?: RouteSpaKind | 'all';
     platform?: string;
   }): Promise<RoutesOfIpResult> =>
     fetch(
@@ -1200,7 +1255,7 @@ export const denetimApi = {
   routesOfCluster: (p: {
     cluster: string;
     env?: string;
-    kind?: 'spa' | 'nonSpa' | 'all';
+    kind?: RouteSpaKind | 'all';
     platform?: string;
   }): Promise<RoutesOfClusterResult> =>
     fetch(

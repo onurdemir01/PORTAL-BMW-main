@@ -640,6 +640,52 @@ function initDenetim(app) {
   // yoksa Nginx SPA ekranindaki sayilar Tasima ekranininkini tutmaz.
   const { isSpaApp, SPA_PATTERN_LABEL: SPA_LABEL } = require('./spa-pattern.cjs');
 
+  // ── CANLI SPA SINYALI (2026-10-08) ─────────────────────────────────────────────────
+  // Kullanici: "Kapsam'da SPA olan ama SPA standartina uymayan route'lari 'SPA degil'
+  // olarak goruyorum." Sebep: bu ekran canli sinyale HIC bakmiyordu, ada bakiyordu.
+  // Gerekce ve uc kova (spa / nonSpa / unmeasured): server/audit/route-stats.cjs basligi.
+  //
+  // CLUSTER BASINA EN YENI TARAMA, tek bir global MAX(scan_date) DEGIL: bugun login'i
+  // dusen bir cluster global maksimumla suzuldugunde dunku verisiyle birlikte SILINIR ve
+  // ekranda "SPA'si yok" gibi gorunur (ayni ders nginx-console/index.cjs'te olculdu).
+  //
+  // OKUNAMADI ile BOS AYNI SEY DEGIL: `rows: null` -> her route "olculemedi"; `rows: []`
+  // -> tarama okundu ama bu cluster listesinde satir yok. Ikisini tek bos listeye
+  // indirmek, hic olculmemis bir ortami "SPA yok" diye gostermek olurdu.
+  async function spaSinyali(clusters) {
+    const { query, sql } = require('../inventory/mssql.cjs');
+    const sema = await query(
+      `SELECT OBJECT_ID('dbo.BMW_Spa_Discovery') AS oid,
+              COL_LENGTH('dbo.BMW_Spa_Discovery', 'match_by') AS mb`,
+    )
+      .then((r) => r.recordset?.[0] || {})
+      .catch(() => null);
+    if (!sema) return { rows: null, tableMissing: false, error: 'sema sorgusu okunamadi' };
+    if (!sema.oid)
+      return {
+        rows: null,
+        tableMissing: true,
+        error: "dbo.BMW_Spa_Discovery yok - openshift_spa_discovery job'i bir kez kosmali",
+      };
+    // SEMA SONRADAN BUYUDU (2026-10-01): `match_by` ilk uretim kosusundan SONRA eklendi;
+    // yukleyicinin yeni surumu bir kez kosana kadar kolon olmayabilir.
+    const ph = clusters.map((_, i) => `@s${i}`).join(', ');
+    const r = await query(
+      `SELECT d.cluster, d.namespace, d.route, d.is_spa, d.signal, d.workload,
+              ${sema.mb ? 'd.match_by' : "CAST('' AS NVARCHAR(16)) AS match_by"},
+              CONVERT(varchar(10), d.scan_date, 23) AS scan_date
+         FROM dbo.BMW_Spa_Discovery d
+         JOIN (SELECT cluster, MAX(scan_date) AS sd
+                 FROM dbo.BMW_Spa_Discovery
+                GROUP BY cluster) m
+           ON m.cluster = d.cluster AND m.sd = d.scan_date
+        WHERE d.cluster IN (${ph})`,
+      clusters.map((c, i) => ({ name: `s${i}`, type: sql.NVarChar(200), value: c })),
+    ).catch((e) => ({ _err: e.message || 'sorgu dustu' }));
+    if (r._err) return { rows: null, tableMissing: false, error: r._err };
+    return { rows: r.recordset || [], tableMissing: false, error: null };
+  }
+
   // ── 1c) ROUTE ISTATISTIKLERI: ortam basina route / SPA / SPA-disi / IP ──────────────
   // Hesap route-stats.cjs'te (birim testli). Platform suzgeci kapsam ucuyla ayni.
   router.get('/route-stats', async (req, res) => {
@@ -656,8 +702,16 @@ function initDenetim(app) {
           WHERE cluster_name IN (${placeholders})`,
         clusters.map((c, i) => ({ name: `c${i}`, type: sql.NVarChar(200), value: c })),
       ).catch(() => ({ recordset: [], _missing: true }));
-      const out = buildRouteStats(r.recordset || []);
-      res.json({ ok: true, platform, routeTableMissing: !!r._missing, ...out });
+      const sig = await spaSinyali(clusters);
+      const out = buildRouteStats(r.recordset || [], sig.rows);
+      res.json({
+        ok: true,
+        platform,
+        routeTableMissing: !!r._missing,
+        spaTableMissing: sig.tableMissing,
+        spaSignalError: sig.error,
+        ...out,
+      });
     } catch (err) {
       res
         .status(500)
@@ -691,16 +745,20 @@ function initDenetim(app) {
           WHERE cluster_name = @cl`,
         [{ name: 'cl', type: sql.NVarChar(200), value: esles }],
       ).catch(() => ({ recordset: [], _missing: true }));
-      const kind = ['spa', 'nonSpa', 'all'].includes(String(req.query.kind))
+      const kind = ['spa', 'nonSpa', 'unmeasured', 'all'].includes(String(req.query.kind))
         ? String(req.query.kind)
         : 'all';
+      // SINYAL YALNIZ BU CLUSTER ICIN: tum platformu cekmek gereksiz is.
+      const sig = await spaSinyali([esles]);
       res.json({
         ok: true,
         cluster: esles,
         env: String(req.query.env || '').toUpperCase(),
         kind,
         routeTableMissing: !!r._missing,
-        rows: routesOfCluster(r.recordset || [], esles, req.query.env, kind),
+        spaTableMissing: sig.tableMissing,
+        spaSignalError: sig.error,
+        rows: routesOfCluster(r.recordset || [], esles, req.query.env, kind, sig.rows),
       });
     } catch (err) {
       res.status(500).json({ ok: false, message: err.message || 'Route listesi alinamadi.' });
@@ -729,16 +787,19 @@ function initDenetim(app) {
           { name: 'ip', type: sql.NVarChar(64), value: ip },
         ],
       ).catch(() => ({ recordset: [], _missing: true }));
-      const kind = ['spa', 'nonSpa', 'all'].includes(String(req.query.kind))
+      const kind = ['spa', 'nonSpa', 'unmeasured', 'all'].includes(String(req.query.kind))
         ? String(req.query.kind)
         : 'all';
+      const sig = await spaSinyali(clusters);
       res.json({
         ok: true,
         ip,
         env: String(req.query.env || '').toUpperCase(),
         kind,
         routeTableMissing: !!r._missing,
-        rows: routesOfIp(r.recordset || [], ip, req.query.env, kind),
+        spaTableMissing: sig.tableMissing,
+        spaSignalError: sig.error,
+        rows: routesOfIp(r.recordset || [], ip, req.query.env, kind, sig.rows),
       });
     } catch (err) {
       res.status(500).json({ ok: false, message: err.message || 'Route listesi alınamadı.' });
