@@ -25,6 +25,7 @@ import { CodeChip } from '@/components/common/CodeChip';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { fmtDate, fmtDateTime } from '@/utils/datetime';
+import { gunSinifi, gunVurgu, pencereKapandi, type GunSinifi } from '@/components/oco/takvimVurgu';
 
 export interface OcoRow {
   oco: number;
@@ -161,8 +162,11 @@ export default function OcoTakvimiPage() {
     [suzulmus, bugun],
   );
 
-  const satir = (r: OcoRow) => {
+  const satir = (r: OcoRow, sinif: GunSinifi = 'gelecek') => {
     const acikMi = acik === r.oco;
+    // BUGUNUN blogunda ama penceresi KAPANMIS OCO: "bugun yapilacak" demek yanlis olur.
+    // `null` (plannedEnd yok) "kapandi" SAYILMAZ - isaret basilmaz.
+    const kapandi = sinif === 'bugun' ? pencereKapandi(r.plannedEnd) === true : false;
     return (
       <div key={r.oco} className="border-t" style={{ borderColor: 'var(--border-subtle)' }}>
         {/* SATIR AÇICI ARTIK <button> DEĞİL, role="button" bir <div> (2026-09-29).
@@ -202,6 +206,11 @@ export default function OcoTakvimiPage() {
               {r.impactText && <Chip>{r.impactText}</Chip>}
               {r.pcabRequired && <Chip tone="var(--status-warning)">PCAB</Chip>}
               {r.processText && r.processText !== 'Normal' && <Chip>{r.processText}</Chip>}
+              {kapandi && (
+                <Chip tone="var(--status-danger)" title="Planlanan bitiş saati geçti — pencere kapandı">
+                  penceresi kapandı
+                </Chip>
+              )}
             </span>
           </span>
           {acikMi ? (
@@ -239,27 +248,54 @@ export default function OcoTakvimiPage() {
     );
   };
 
-  const gunBlogu = (g: { gun: string; rows: OcoRow[] }) => (
-    <section
-      key={g.gun || 'tarihsiz'}
-      className="rounded-xl border overflow-hidden"
-      style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}
-    >
-      <div
-        className="px-3 py-1.5 text-[11px] uppercase tracking-wide flex items-center gap-2"
+  const gunBlogu = (g: { gun: string; rows: OcoRow[] }) => {
+    const sinif = gunSinifi(g.gun, bugun);
+    const vurgu = gunVurgu(sinif);
+    return (
+      <section
+        key={g.gun || 'tarihsiz'}
+        className="rounded-xl border overflow-hidden"
         style={{
-          background: 'var(--bg-elevated)',
-          color: g.gun === bugun ? 'var(--accent)' : 'var(--text-muted)',
+          // SOL SERIT: vurgu rengi. Tum kenarligi boyamak gelecek gunlerle farki
+          // azaltiyordu; serit, listede goz gezdirirken ANINDA ayirt ediliyor.
+          borderColor: 'var(--border-subtle)',
+          borderLeftWidth: vurgu ? 3 : 1,
+          borderLeftColor: vurgu ? vurgu.renk : 'var(--border-subtle)',
+          background: 'var(--bg-surface)',
         }}
       >
-        <CalendarDaysIcon className="h-3.5 w-3.5" />
-        {g.gun ? fmtDate(g.gun) : 'Planlanan tarihi yok'}
-        {g.gun === bugun && <span className="font-semibold">· bugün</span>}
-        <span className="ml-auto tabular-nums">{g.rows.length}</span>
-      </div>
-      {g.rows.map(satir)}
-    </section>
-  );
+        <div
+          className="px-3 py-1.5 text-[11px] uppercase tracking-wide flex items-center gap-2"
+          style={{
+            // Baslik zemini de hafifce tonlanir (`color-mix`: tema degiskenini bozmadan
+            // %12 karistirir, sabit bir renk yazmak koyu/acik temadan birinde patlardi).
+            background: vurgu
+              ? `color-mix(in srgb, ${vurgu.renk} 12%, var(--bg-elevated))`
+              : 'var(--bg-elevated)',
+            color: vurgu ? vurgu.renk : 'var(--text-muted)',
+          }}
+        >
+          <CalendarDaysIcon className="h-3.5 w-3.5" />
+          {g.gun ? fmtDate(g.gun) : 'Planlanan tarihi yok'}
+          {vurgu && (
+            <span
+              className="font-semibold px-1.5 py-0.5 rounded-full border text-[10px]"
+              style={{ borderColor: vurgu.renk }}
+              title={
+                sinif === 'bugun'
+                  ? 'Bugün yapılacak çalışmalar'
+                  : 'Planlanan tarihi geçmiş — yapıldıysa OCO kapatılmalı'
+              }
+            >
+              {vurgu.etiket}
+            </span>
+          )}
+          <span className="ml-auto tabular-nums">{g.rows.length}</span>
+        </div>
+        {g.rows.map((r) => satir(r, sinif))}
+      </section>
+    );
+  };
 
   return (
     <div className="p-4 space-y-3">
