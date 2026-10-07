@@ -49,9 +49,8 @@ const KURALLAR: { test: RegExp; ozet: string }[] = [
     ozet: 'Sunucu sonuç bildirmedi (erişilemedi ya da iş yarıda kesildi).',
   },
   {
-    // Kelime sınırı ŞART: SSH'ın "Pseudo-terminal will not be allocated" uyarısı da "sudo"
-    // içerir ve bir yetki sorunu değildir.
-    test: /\b(dzdo|sudo)\b|privilege escalation|becoming an unprivileged user|Failed to set permissions on the temporary files/i,
+    // Kelime sınırı YOK: "... is not in the sudoers file" da bir yetki reddidir.
+    test: /dzdo|sudo|privilege escalation|becoming an unprivileged user|Failed to set permissions on the temporary files/i,
     ozet: 'Logları okuyan kullanıcıya geçilemedi (yetki).',
   },
   {

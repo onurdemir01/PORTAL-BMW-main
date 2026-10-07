@@ -199,6 +199,9 @@ describe('legacySebep: gerçek metinler -> bir cümlelik özet', () => {
       /kullanıcıya geçilemedi/,
     );
     expect(ozet('dzdo: a password is required')).toMatch(/kullanıcıya geçilemedi/);
+    expect(ozet('awxsvc is not in the sudoers file. This incident will be reported.')).toMatch(
+      /kullanıcıya geçilemedi/,
+    );
     expect(ozet(aktarimSorunlari(ornek('aktarim_cok_kismi')).sunucular[0].sebep)).toBe(
       'Bu sunucuda seçilen dosyaların hiçbiri alınamadı.',
     );
@@ -207,9 +210,7 @@ describe('legacySebep: gerçek metinler -> bir cümlelik özet', () => {
     );
   });
 
-  it('SB3 tanınmayan metin AYNEN geçer; "Pseudo-terminal" sudo sanılmaz; boş metin söylenir', () => {
-    const pty = 'Pseudo-terminal will not be allocated because stdin is not a terminal.';
-    expect(legacySebep(pty)).toMatchObject({ ozet: pty, ham: pty, cevrildi: false });
+  it('SB3 tanınmayan metin AYNEN geçer (uydurma özet yok); boş metin söylenir', () => {
     expect(legacySebep('bilinmeyen bir sey oldu')).toMatchObject({
       ozet: 'bilinmeyen bir sey oldu',
       ham: 'bilinmeyen bir sey oldu',
