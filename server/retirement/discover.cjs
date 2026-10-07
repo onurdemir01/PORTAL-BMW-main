@@ -44,10 +44,58 @@ function genOf(jbossVersion) {
  * @param {object[]} certRows  BMW_Certificates_Inventory
  * @param {object[]} jvmRows   Server_Hub_Jvms (son tarama; opsiyonel)
  */
-function buildTargets(base, invRows, certRows, jvmRows) {
+// ── VHOST TRAFIGI (kullanici, 2026-10-08) ────────────────────────────────────────────
+// "Retirement kaydi girilirken sunucunun Apache loglarinda hc istegi disinda istegin olup
+// olmadigi kontrol edilip kaydi acana gosterilebilir mi? 'Bak halen istek var, yine de
+// retire prosedurune devam etmek istiyor musun?' gibi soru sorulabilir."
+//
+// OLCUM ZATEN VAR, YENI ANSIBLE ISI GEREKMEZ: server_hub_scan.sh RHA/IHS access log
+// kuyrugunu `www` ile okuyor, vhost basina sayiyor ve `hc.html|hc.jsp` isteklerini AYRI
+// kovaya alip (hc_24h) asil sayimdan DISLIYOR. Sonuc dbo.Server_Hub_Vhosts'ta.
+//
+// DEGISMEZ (server_hub/README.md): `req_24h/req_7d/hc_24h >= 0` ANCAK VE ANCAK
+// `traffic_state ∈ {ACTIVE, NO_RECENT_TRAFFIC}`; diger her durumda -1. Bu yuzden:
+//   ACTIVE            -> trafik VAR (req_7d > 0)
+//   NO_RECENT_TRAFFIC -> trafik YOK, OLCULDU (kapsam >= 7 gun sarti saglanmis)
+//   digeri / satir yok -> OLCULEMEDI
+// "Olculemedi" ASLA "trafik yok" sayilmaz: retire karari buna dayaniyor ve yanlis tarafa
+// dusmek, hala istek alan bir uygulamayi durdurmak demek.
+//
+// `sampled = 1`: log kuyrugu kesilmis, sayilar ALT SINIR. "en az N istek" denir.
+const TRAFIK_OLCULDU = new Set(['ACTIVE', 'NO_RECENT_TRAFFIC']);
+
+function trafikSinifi(v) {
+  if (!v) return { durum: 'olculemedi', sebep: 'Server Hub taramasinda bu vhost icin kayit yok' };
+  const st = String(v.traffic_state || '').toUpperCase();
+  if (!TRAFIK_OLCULDU.has(st))
+    return { durum: 'olculemedi', sebep: String(v.traffic_reason || st || 'bilinmiyor') };
+  const r7 = Number(v.req_7d);
+  const r24 = Number(v.req_24h);
+  // -1 ile 0 AYRI: degismez geregi olculmus durumda >= 0 olmali; -1 gelirse veri
+  // tutarsizdir ve "yok" saymak yanlis olurdu.
+  if (!Number.isFinite(r7) || r7 < 0)
+    return { durum: 'olculemedi', sebep: `${st} ama sayi yok (${v.req_7d})` };
+  return {
+    durum: r7 > 0 ? 'var' : 'yok',
+    req24: Number.isFinite(r24) && r24 >= 0 ? r24 : null,
+    req7: r7,
+    hc24: Number.isFinite(Number(v.hc_24h)) && Number(v.hc_24h) >= 0 ? Number(v.hc_24h) : null,
+    sampled: Number(v.sampled) === 1,
+    sonIstek: v.last_req_epoch ? new Date(Number(v.last_req_epoch) * 1000).toISOString() : null,
+    tarama: v.scan_date ? new Date(v.scan_date).toISOString().slice(0, 10) : null,
+  };
+}
+
+function buildTargets(base, invRows, certRows, jvmRows, vhostRows) {
   const certByHost = buildCertIndex(certRows || []);
   const jvmKey = (h, j) => `${U(h)}|${U(j)}`;
   const jvms = new Map((jvmRows || []).map((r) => [jvmKey(r.host, r.jvm), r]));
+  // VHOST TRAFIGI: host + server_name ile anahtarlanir. `server_name` BUYUK/KUCUK HARF
+  // DUYARSIZ karsilastirilir (Apache sunucu adlarini kasa korumadan yaziyor); kasaya
+  // duyarli bir anahtar, olculmus trafigi "olculemedi" gosterirdi.
+  const vhostByKey = new Map(
+    (vhostRows || []).map((v) => [`${U(v.host)}|${String(v.server_name || '').trim().toLowerCase()}`, v]),
+  );
   const seen = new Set();
   const targets = [];
   for (const r of invRows || []) {
@@ -69,7 +117,10 @@ function buildTargets(base, invRows, certRows, jvmRows) {
     targets.push({
       host, site: siteOf(host), env, appName: app, gen,
       appPath: r.app_path || '', inventoryStatus: r.status || '', domain: r.domain || '', tier: web.tier,
-      web: web.web.map((w) => ({ host: w.host, serverName: w.serverName, product: w.product, port: w.port, confFile: w.confFile })),
+      web: web.web.map((w) => ({
+        host: w.host, serverName: w.serverName, product: w.product, port: w.port, confFile: w.confFile,
+        trafik: trafikSinifi(vhostByKey.get(`${U(w.host)}|${String(w.serverName || '').trim().toLowerCase()}`)),
+      })),
       webHow: web.how,
       hub: j ? {
         running: Number(j.running) === 1,
@@ -106,6 +157,7 @@ async function discover(base, db) {
   // dusuruyor, v3 UNMEASURED JVM "kapali" okunuyordu. Artik bu Server Hub'in OKUNAMAMASIDIR:
   // hubUnavailable=true ve hicbir hedefe hub verisi baglanmaz (ekran "okunamadi" der).
   let hubError = null;
+  let trafikError = null;
   const jvmCols = await query(
     `SELECT name FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Server_Hub_Jvms')`,
   )
@@ -119,7 +171,7 @@ async function discover(base, db) {
     .concat(jvmCols && jvmCols.includes('running_src') ? ['running_src'] : [])
     .map((c) => `t.${c}`)
     .join(', ');
-  const [inv, certs, jvms] = await Promise.all([
+  const [inv, certs, jvms, vhosts] = await Promise.all([
     query(`SELECT DISTINCT app, host, env, domain, jboss_version, app_path, status FROM dbo.MWAppsInventory WHERE app = @b OR app LIKE @b + '-_'`, p).then((r) => r.recordset || []),
     query(`SELECT host, ip, port, server_name, conf_file, product, env FROM dbo.BMW_Certificates_Inventory`).then((r) => r.recordset || []).catch(() => []),
     jvmCols == null
@@ -132,9 +184,34 @@ async function discover(base, db) {
           console.warn('[Retirement] Server_Hub_Jvms okunamadi:', hubError);
           return [];
         }),
+    // VHOST TRAFIGI (en yeni tarama). Kolonlar migration ile geldigi icin SELECT * DEGIL
+    // acik liste; okunamazsa BOS doner ve her vhost 'olculemedi' olur - "trafik yok"
+    // DEGIL. Tablo/kolon yoksa da ayni yere duser.
+    query(`SELECT v.host, v.server_name, v.product, v.req_24h, v.req_7d, v.hc_24h,
+                  v.traffic_state, v.traffic_reason, v.sampled, v.last_req_epoch, v.scan_date
+             FROM dbo.Server_Hub_Vhosts v
+             JOIN (SELECT host, MAX(scan_date) AS d FROM dbo.Server_Hub_Hosts GROUP BY host) m
+               ON m.host = v.host AND m.d = v.scan_date`).then((r) => r.recordset || []).catch((e) => {
+          trafikError = String((e && e.message) || e || 'okunamadi');
+          console.warn('[Retirement] Server_Hub_Vhosts okunamadi:', trafikError);
+          return [];
+        }),
   ]);
-  const out = buildTargets(base, inv, certs, jvms);
+  const out = buildTargets(base, inv, certs, jvms, vhosts);
   out.summary.hubUnavailable = hubError != null;
+  // TRAFIK OZETI: kayit acma ekraninin uyari sorusu bunu okuyor. Uc sayi AYRI tutulur -
+  // "olculemedi" ne "var" ne "yok" kovasina katilir.
+  const tumWeb = out.targets.flatMap((t) => t.web || []);
+  out.summary.trafik = {
+    vhost: tumWeb.length,
+    var: tumWeb.filter((w) => w.trafik?.durum === 'var').length,
+    yok: tumWeb.filter((w) => w.trafik?.durum === 'yok').length,
+    olculemedi: tumWeb.filter((w) => w.trafik?.durum === 'olculemedi').length,
+    // hc HARIC 7 gunluk toplam; sampled varsa ALT SINIR oldugu ayrica bildirilir.
+    req7Toplam: tumWeb.reduce((a, w) => a + (w.trafik?.durum === 'var' ? w.trafik.req7 : 0), 0),
+    altSinir: tumWeb.some((w) => w.trafik?.durum === 'var' && w.trafik.sampled),
+    okunamadi: trafikError,
+  };
   return out;
 }
 
@@ -149,4 +226,4 @@ async function searchApps(q) {
   return [...bases].sort();
 }
 
-module.exports = { buildTargets, discover, searchApps, siteOf, parseAppName, genOf };
+module.exports = { buildTargets, discover, searchApps, siteOf, parseAppName, genOf, trafikSinifi };

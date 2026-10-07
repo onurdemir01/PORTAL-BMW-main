@@ -3,7 +3,7 @@ import { safeJson } from './http';
 
 const BASE = '/api/retirement';
 
-export interface RtWeb { host: string; serverName: string; product: string; port: string; confFile: string }
+export interface RtWeb { host: string; serverName: string; product: string; port: string; confFile: string; trafik?: RtVhostTrafik }
 export interface RtDiscoveredTarget {
   host: string; site: 'Pendik' | 'Ankara'; env: 'PROD' | 'QA' | 'TEST' | 'DEV'; appName: string; gen: number | null;
   appPath: string; inventoryStatus: string; domain: string; tier: string; web: RtWeb[]; webHow: string;
@@ -12,7 +12,9 @@ export interface RtDiscoveredTarget {
 }
 // hubUnavailable (kural 6): Server_Hub_Jvms (ya da kolon listesi) okunamadi -> TUM hedeflerde hub null;
 // bu "tarama yok" DEGIL "olculemedi"dir. Alan yoksa (eski sunucu yaniti) okundu sayilir.
-export interface RtDiscovery { ok: boolean; message?: string; base: string; targets: RtDiscoveredTarget[]; summary: { total: number; bySite: { Pendik: number; Ankara: number }; byEnv: Record<string, number>; webMatched: number; prod: boolean; hubUnavailable?: boolean } }
+export interface RtDiscovery { ok: boolean; message?: string; base: string; targets: RtDiscoveredTarget[]; summary: { total: number; bySite: { Pendik: number; Ankara: number }; byEnv: Record<string, number>; webMatched: number; prod: boolean; hubUnavailable?: boolean;
+  /** Vhost trafik ozeti (hc HARIC). Uc kova AYRI: 'olculemedi' ne var ne yok. */
+  trafik?: { vhost: number; var: number; yok: number; olculemedi: number; req7Toplam: number; altSinir: boolean; okunamadi: string | null } } }
 // SUNUCUDAKI TUM DURUMLAR. 'stop_scheduled' (OCO penceresi), 'deleting'/'deleted' ve
 // geri alma durumlari ('rolling_back' | 'active' | 'rollback_failed') tipe GIRMEMISTI;
 // eksik birakmak, ekranda bu durumlarin hic ele alinmadigini derleyicinin ONAYLAMASI
@@ -23,6 +25,19 @@ export type RtTargetStatus =
   | 'failed' | 'skipped';
 /** Uygulanan vhost sonucu. `status`: pending | ok | manual | failed | restoring |
  *  restore_manual | restore_failed — sunucu serbest metin yaziyor, enum dayatilmaz. */
+/** Vhost trafigi (Apache/IHS access log, hc HARIC). `durum`:
+ *  var | yok | olculemedi. "olculemedi" ASLA "yok" sayilmaz. */
+export interface RtVhostTrafik {
+  durum: 'var' | 'yok' | 'olculemedi';
+  sebep?: string;
+  req24?: number | null;
+  req7?: number;
+  hc24?: number | null;
+  /** Log kuyrugu kesildi: sayilar ALT SINIR. */
+  sampled?: boolean;
+  sonIstek?: string | null;
+  tarama?: string | null;
+}
 export interface RtWeb2 {
   host: string;
   serverName: string;

@@ -43,6 +43,33 @@ const Pill = ({ label, color }: { label: string; color: string }) => <span class
 // SERVER HUB CALISMA DURUMU (sozlesme v3, D1-U05): discover.cjs hub.runningKnown tasir
 // (running_src !== 'UNMEASURED'). hidepid'li sunucuda gorunmeyen JVM "kapali" DEGIL "bilinmiyor"dur
 // - kural 6. Alan yoksa (eski sunucu yaniti) eski davranis. Alan retirementApi.ts'te (istege bagli).
+/** Vhost trafigi (Apache/IHS access log, hc HARIC).
+ *
+ *  UC DURUM UC AYRI GOSTERIM. "olculemedi" ASLA "trafik yok" gibi gosterilmez: retire
+ *  karari buna dayaniyor ve yanlis tarafa dusmek, hala istek alan bir uygulamayi
+ *  durdurmak demek. `sampled` ise sayi ALT SINIR ("en az N"). */
+function TrafikHucresi({ tr }: { tr?: import('@/api/retirementApi').RtVhostTrafik }) {
+  if (!tr) return <span style={{ color: 'var(--status-warning)' }} title="trafik bilgisi gelmedi">ölçülemedi</span>;
+  if (tr.durum === 'olculemedi')
+    return (
+      <span style={{ color: 'var(--status-warning)' }} title={`Server Hub: ${tr.sebep || 'sebep bilinmiyor'} — "trafik yok" DEĞİL`}>
+        ölçülemedi
+      </span>
+    );
+  if (tr.durum === 'yok')
+    return (
+      <span style={{ color: 'var(--status-success)' }} title={`7 günde hc hariç istek yok (tarama ${tr.tarama || '?'})`}>
+        istek yok (7g)
+      </span>
+    );
+  return (
+    <span style={{ color: 'var(--status-danger)', fontWeight: 600 }}
+      title={`hc hariç: 24s ${tr.req24 ?? '?'} · 7g ${tr.req7}${tr.hc24 != null ? ` · hc 24s ${tr.hc24}` : ''}${tr.sonIstek ? ` · son istek ${tr.sonIstek}` : ''}${tr.sampled ? ' · log kuyruğu kesildi, sayı ALT SINIR' : ''}`}>
+      {tr.sampled ? 'en az ' : ''}{tr.req7} istek (7g)
+    </span>
+  );
+}
+
 type HubV3 = NonNullable<RtDiscoveredTarget['hub']>;
 function hubDurumu(hub: HubV3): { metin: string; renk: string; aciklama: string } {
   if (hub.runningKnown === false)
@@ -169,10 +196,28 @@ function CreateModal({ defaultDays, onClose, onCreated }: { defaultDays: number;
   const selected = (disc?.targets || []).filter((t) => sel.has(key(t)));
   const needsOco = selected.some((t) => t.env === 'PROD');
   const hubYok = hubOkunamadi(disc);
+  // ── TRAFIK UYARISI (kullanici, 2026-10-08) ──────────────────────────────────────────
+  // "Retirement kaydi girilirken sunucunun Apache loglarinda hc istegi disinda istegin
+  // olup olmadigi kontrol edilip kaydi acana gosterilebilir mi? 'Bak halen istek var,
+  // yine de retire prosedurune devam etmek istiyor musun?' gibi soru sorulabilir."
+  //
+  // YALNIZ SECILI HEDEFLER sayilir: secmedigi bir sunucunun trafigi karari etkilemez.
+  // "olculemedi" AYRI tutulur - "trafik yok" sayilamaz ama "var" da denemez; ikisi icin
+  // AYRI metin gosterilir, tek bir uyariya karistirmak ikisini de anlamsizlastirirdi.
+  const trafikli = selected.flatMap((t) => (t.web || []).filter((w) => w.trafik?.durum === 'var').map((w) => ({ t, w })));
+  const trafikOlculemedi = selected.flatMap((t) => (t.web || []).filter((w) => !w.trafik || w.trafik.durum === 'olculemedi').map((w) => ({ t, w })));
+  const [trafikOnay, setTrafikOnay] = useState(false);
+
   const create = async () => {
     if (!app || !f.smartNo.trim()) { toast.error('Uygulama ve Smart kayıt numarası gerekli.'); return; }
     if (needsOco && !f.ocoNo.trim()) { toast.error('PROD hedef seçili: OCO numarası zorunlu.'); return; }
     if (!selected.length) { toast.error('En az bir hedef seçin.'); return; }
+    // ONAY KUTUSU ZORUNLU, kayit ACILMAZ. Uyariyi yalnizca gostermek, kaydi aciklamadan
+    // gecilebilir bir metne cevirirdi; kullanici "soru sorulabilir" dedi.
+    if (trafikli.length && !trafikOnay) {
+      toast.error('Seçili vhost’larda hâlâ istek var — devam etmek için onay kutusunu işaretleyin.');
+      return;
+    }
     setBusy(true);
     try {
       const r = await retirementApi.create({ app, smartNo: f.smartNo.trim(), ocoNo: f.ocoNo.trim() || undefined, ownerEmail: f.ownerEmail.trim() || undefined, deleteAfterDays: Number(f.deleteAfterDays) || defaultDays, plannedDeleteAt: f.plannedDeleteAt || null, dnsReuse: f.dnsReuse, lbReuse: f.lbReuse, notes: f.notes, targets: selected.map((t) => ({ host: t.host, appName: t.appName })) });
@@ -213,13 +258,45 @@ function CreateModal({ defaultDays, onClose, onCreated }: { defaultDays: number;
               <button onClick={() => setSel(new Set(disc.targets.map(key)))} className={SM_BTN} style={smBtn()}>tümü</button>
               <button onClick={() => setSel(new Set())} className={SM_BTN} style={smBtn()}>hiçbiri</button>
             </div>
+            {/* HALA ISTEK VAR MI? Apache/IHS access log'undan, hc HARIC (Server Hub
+                taramasi: dbo.Server_Hub_Vhosts). Olculemeyenler AYRI kutuda. */}
+            {trafikli.length > 0 && (
+              <div className="rounded-lg border px-3 py-2 text-[12px] space-y-1.5" style={{ borderColor: 'var(--status-danger)', color: 'var(--status-danger)' }}>
+                <div className="font-semibold">
+                  Dikkat: seçili {trafikli.length} vhost’ta hâlâ istek var (health-check hariç)
+                </div>
+                <div className="font-mono text-[11px]" style={{ color: 'var(--text-secondary)' }}>
+                  {trafikli.slice(0, 6).map(({ t, w }) => (
+                    <div key={`uy-${t.host}-${w.serverName}`}>
+                      {w.serverName} @ {w.host} — {w.trafik?.sampled ? 'en az ' : ''}{w.trafik?.req7} istek / 7 gün
+                      {w.trafik?.req24 != null ? ` · 24s ${w.trafik.req24}` : ''}
+                    </div>
+                  ))}
+                  {trafikli.length > 6 && <div>… +{trafikli.length - 6} vhost</div>}
+                </div>
+                <label className="flex items-start gap-2 cursor-pointer" style={{ color: 'var(--text-primary)' }}>
+                  <input type="checkbox" checked={trafikOnay} onChange={(e) => setTrafikOnay(e.target.checked)} className="mt-0.5" />
+                  <span className="text-[11px]">
+                    İstek olmasına rağmen retirement prosedürüne <b>devam etmek istiyorum</b>
+                  </span>
+                </label>
+              </div>
+            )}
+            {trafikOlculemedi.length > 0 && (
+              <div className="rounded-lg border px-3 py-2 text-[11px]" style={{ borderColor: 'var(--status-warning)', color: 'var(--status-warning)' }}>
+                {trafikOlculemedi.length} vhost’un trafiği <b>ölçülemedi</b> — bu “istek yok” DEMEK DEĞİL.
+                {disc.summary.trafik?.okunamadi
+                  ? ` Server Hub vhost tablosu okunamadı: ${disc.summary.trafik.okunamadi}`
+                  : ' Server Hub taramasında log okunamamış olabilir (izin, bütçe ya da log formatı); durdurmadan önce sunucuda doğrulayın.'}
+              </div>
+            )}
             {/* Pencere genisledi: tablo da yukseldi. 18rem'de 4-5 satir gorunuyordu ve
                 hedef secimi kaydirmayla yapiliyordu. */}
             <div className="overflow-auto rounded-lg border" style={{ borderColor: 'var(--border-subtle)', maxHeight: '32rem' }}>
               <table className="w-full text-xs border-collapse">
-                <thead className="sticky top-0" style={{ background: 'var(--bg-elevated)' }}><tr>{['', 'Sunucu', 'Site', 'Ortam', 'Uygulama', 'JBoss', 'Envanter', 'Server Hub', 'Web sunucusu / vhost', 'Paket'].map((h, i) => <th key={h + i} className="px-2 py-1.5 text-left text-[11px] font-semibold" style={{ color: 'var(--text-muted)' }}>{h}</th>)}</tr></thead>
+                <thead className="sticky top-0" style={{ background: 'var(--bg-elevated)' }}><tr>{['', 'Sunucu', 'Site', 'Ortam', 'Uygulama', 'JBoss', 'Envanter', 'Server Hub', 'Web sunucusu / vhost', 'Trafik (hc hariç)', 'Paket'].map((h, i) => <th key={h + i} className="px-2 py-1.5 text-left text-[11px] font-semibold" style={{ color: 'var(--text-muted)' }}>{h}</th>)}</tr></thead>
                 <tbody>
-                  {disc.targets.length === 0 ? <TableEmptyRow colSpan={10} title="Envanterde bu uygulama için sunucu yok." /> : disc.targets.map((t) => (
+                  {disc.targets.length === 0 ? <TableEmptyRow colSpan={11} title="Envanterde bu uygulama için sunucu yok." /> : disc.targets.map((t) => (
                     <tr key={key(t)} className="border-t" style={{ borderColor: 'var(--border-subtle)' }}>
                       <td className="px-2 py-1"><input type="checkbox" checked={sel.has(key(t))} onChange={(e) => { const s = new Set(sel); if (e.target.checked) s.add(key(t)); else s.delete(key(t)); setSel(s); }} /></td>
                       <td className="px-2 py-1 font-mono font-semibold">{t.host}</td>
@@ -230,6 +307,11 @@ function CreateModal({ defaultDays, onClose, onCreated }: { defaultDays: number;
                       <td className="px-2 py-1 text-[10px]" style={{ color: 'var(--text-muted)' }}>{t.inventoryStatus || '—'}</td>
                       <td className="px-2 py-1 text-[10px]"><HubHucresi hub={t.hub} okunamadi={hubYok} /></td>
                       <td className="px-2 py-1 text-[10px]">{t.web.length ? t.web.map((w) => <div key={w.host + w.serverName} title={t.webHow}>{w.host} · {w.serverName}{w.product ? ` (${w.product})` : ''}</div>) : <span style={{ color: 'var(--status-warning)' }} title={t.webHow}>eşlenemedi</span>}</td>
+                      <td className="px-2 py-1 text-[10px]">
+                        {t.web.length
+                          ? t.web.map((w) => <div key={`tr-${w.host}-${w.serverName}`}><TrafikHucresi tr={w.trafik} /></div>)
+                          : <span style={{ color: 'var(--text-muted)' }}>—</span>}
+                      </td>
                       <td className="px-2 py-1 font-mono text-[10px]"><div className="truncate max-w-[28rem]" title={t.appPath}>{t.appPath || '—'}</div></td>
                     </tr>
                   ))}
