@@ -151,3 +151,21 @@ test('TD8 liste ortam kirilimi TEK sorgu (kayit basina sorgu yok) ve PROD ayrisi
   assert.ok(!/for \(const [a-z]+ of r\.rows[\s\S]{0,200}await db\(\)\.query/.test(ep), 'kayit basina sorgu (N+1)');
   assert.match(ep, /envs: envsOf\(x\.id\)/, 'liste satirina ortam kirilimi eklenmiyor');
 });
+
+test('TD11 web adimini YENIDEN DENE: yalniz failed/skip, suren isa dokunmaz, yalniz durdurulmus hedef', () => {
+  const ep = ucDilimi("router.post('/:id/targets/:tid/web-retry'", "router.post('/:id/targets/:tid/refresh-status'");
+  assert.match(ep, /const YENIDEN = new Set\(\['failed', 'skip'\]\)/, 'yeniden denenecek durumlar degisti');
+  assert.ok(!/YENIDEN = new Set\([^)]*running/.test(ep), "suren ('running') is yeniden kuyruga alinabiliyor - ayni vhost icin iki is");
+  assert.match(ep, /if \(t\.status !== 'stopped'\)/, 'durdurulmamis hedefte web adimi yeniden denenebiliyor');
+  assert.match(ep, /w\.status = 'pending';/, 'girdi zamanlayicinin aldigi duruma donmuyor');
+  assert.match(ep, /w\.oncekiJobId = w\.jobId/, 'onceki is numarasi kayboluyor (iz yok)');
+});
+
+test('TD12 Akis paneli web adimini KANITSIZ "bitti" gostermez', () => {
+  const ak = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'src', 'components', 'server_hub', 'RetirementAkis.tsx'), 'utf8');
+  const blok = ak.slice(ak.indexOf('const webDurum: Durum ='), ak.indexOf('const webBilgi'));
+  assert.match(blok, /sayi\('running'\) > 0 \|\| sayi\('restoring'\) > 0 \? 'suruyor'/, "'running' is suruyor sayilmiyor");
+  assert.match(blok, /!BILINEN\.has\(w\.status\)\) \? 'bilinmiyor'/, "tanimadigi durum hala 'bitti'ye dusuyor");
+  const sira = ['running', 'failed', 'bilinmiyor', "'bitti'"].map((k) => blok.indexOf(k));
+  assert.ok(sira.every((x, i) => x > 0 && (i === 0 || x > sira[i - 1])), "'bitti' son secenek degil - kanitsiz basari");
+});

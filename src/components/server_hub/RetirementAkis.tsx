@@ -87,18 +87,25 @@ export function asamalar(rec: RtRecord, t: RtTarget, bugun = new Date()): Asama[
   // ── Web (vhost)
   const web = t.webSonuc || [];
   const sayi = (d: string) => web.filter((w) => w.status === d).length;
+  // "BITTI" YALNIZ KANITLA (2026-10-08 uretim bulgusu): eskiden bilinmeyen her durum en sonda
+  // 'bitti'ye dusuyordu; sonucu hic okunmayan 'running' isler "bitti" gorunuyordu. Artik
+  // 'bitti' yalniz her girdi 'ok'/'skip'/'restored' iken; tanimadigimiz durum 'bilinmiyor'.
+  const BILINEN = new Set(['pending', 'running', 'ok', 'skip', 'failed', 'manual', 'restoring', 'restored', 'restore_manual', 'restore_failed']);
   const webDurum: Durum =
     web.length === 0 ? (stopBitti ? 'atlandi' : 'bekliyor')
     : sayi('pending') > 0 ? 'bekliyor'
-    : sayi('restoring') > 0 ? 'suruyor'
+    : sayi('running') > 0 || sayi('restoring') > 0 ? 'suruyor'
     : web.some((w) => w.status === 'failed' || w.status === 'restore_failed') ? 'hata'
     : web.some((w) => w.status === 'manual' || w.status === 'restore_manual') ? 'elle'
+    : web.some((w) => !BILINEN.has(w.status)) ? 'bilinmiyor'
     : 'bitti';
   const webBilgi =
     web.length === 0
       ? 'kaldırılacak Apache/IHS vhost yok'
       : [
           sayi('ok') ? `${sayi('ok')} kaldırıldı` : '',
+          sayi('running') ? `${sayi('running')} iş sürüyor (sonuç henüz okunmadı)` : '',
+          sayi('skip') ? `${sayi('skip')} atlandı — yapılacak şey bulunmadı, “kaldırıldı” DEĞİL` : '',
           sayi('manual') ? `${sayi('manual')} ELLE (NGINX)` : '',
           sayi('pending') ? `${sayi('pending')} bekliyor` : '',
           sayi('restoring') ? `${sayi('restoring')} geri açılıyor` : '',

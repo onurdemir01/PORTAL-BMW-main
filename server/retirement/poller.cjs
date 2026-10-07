@@ -340,6 +340,46 @@ async function webTick() {
   return { kosan, elle };
 }
 
+// ── WEB (vhost) ISLERININ SONUCU (2026-10-08 uretim bulgusu) ────────────────────────
+// Kullanici: "web adimi calisti gozukuyor ama mod_jk.conf'a bakiyorum halen ilgili satirlar
+// aktif." webTick vhost kaldirma isini baslatip durumu 'running' yapiyordu ve SONRA HICBIR
+// KOD onu 'ok'/'failed'a cevirmiyordu; Akis paneli tanimadigi 'running'i "bitti" diye
+// gosteriyordu - sonucu bilinmeyen bir isi BASARILI saymak. Simdi her turda 'running'
+// girdilerin AWX isi okunur (STOP/DELETE ile AYNI sonuclandirici, kind='web'):
+//   RESULT ... OK   -> 'ok'
+//   RESULT ... SKIP -> 'skip'  (yapilacak bir sey bulunmadi; "kaldirildi" DEGIL)
+//   diger / sonuc yok -> 'failed'  (set_stats yoksa ne yapildigi bilinmiyor)
+// OKUNAMADI != BASARISIZ: AWX'e ulasilamazsa 'running' KALIR, sonraki tur tekrar bakar.
+async function webSonucTick() {
+  if (typeof _finalize !== 'function') return { kapanan: 0 };
+  const { rows } = await db.query(
+    `SELECT id, record_id, app_name, web_result_json FROM retirement_targets
+      WHERE web_result_json IS NOT NULL AND web_result_json LIKE '%"running"%'`,
+  );
+  let kapanan = 0;
+  for (const t of rows || []) {
+    let liste;
+    try { liste = JSON.parse(t.web_result_json); } catch { continue; }
+    if (!Array.isArray(liste)) continue;
+    let degisti = false;
+    for (const w of liste) {
+      if (w.status !== 'running' || !w.jobId) continue;
+      let s;
+      try { s = await _finalize('web', { job_id: w.jobId }); } catch { continue; }
+      if (!s || !s.terminal) continue;
+      w.status = s.ok ? 'ok' : s.skip ? 'skip' : 'failed';
+      w.message = `is #${w.jobId}: ${s.message || ''}`.slice(0, 500);
+      degisti = true;
+      kapanan += 1;
+      await olay(t.record_id, w.status === 'failed' ? 'error' : 'web',
+        `${t.app_name}: ${w.host} / ${w.serverName} vhost kaldirma ${w.status === 'ok' ? 'TAMAM' : w.status === 'skip' ? 'ATLANDI (yapilacak sey bulunmadi)' : 'BASARISIZ'} - ${w.message}`);
+    }
+    if (degisti)
+      await db.query(`UPDATE retirement_targets SET web_result_json = $1, updated_at = GETUTCDATE() WHERE id = $2`, [JSON.stringify(liste).slice(0, 60000), t.id]);
+  }
+  return { kapanan };
+}
+
 /** Hem STOP hem DELETE islerini sonuclandirir. */
 async function finalizeTick() {
   if (typeof _finalize !== 'function') return { kapanan: 0 };
@@ -354,11 +394,12 @@ async function tick(now = new Date()) {
   const d = await deleteTick(now);
   const f = await finalizeTick();
   const w = await webTick();
-  if (s.kosan || s.gecen || d.kosan || f.kapanan || w.kosan || w.elle)
+  const ws = await webSonucTick();
+  if (s.kosan || s.gecen || d.kosan || f.kapanan || w.kosan || w.elle || ws.kapanan)
     console.log(
-      `[Retirement poller] STOP kosan=${s.kosan} penceresi-gecen=${s.gecen} · DELETE kosan=${d.kosan} · kapanan=${f.kapanan} · WEB kosan=${w.kosan} elle=${w.elle}`,
+      `[Retirement poller] STOP kosan=${s.kosan} penceresi-gecen=${s.gecen} · DELETE kosan=${d.kosan} · kapanan=${f.kapanan} · WEB kosan=${w.kosan} elle=${w.elle} sonuclanan=${ws.kapanan}`,
     );
-  return { stop: s, delete: d, finalize: f, web: w };
+  return { stop: s, delete: d, finalize: f, web: w, webSonuc: ws };
 }
 
 function startPoller(launch, finalize, web) {
@@ -388,4 +429,4 @@ function stopPoller() {
   _web = null;
 }
 
-module.exports = { startPoller, stopPoller, tick, _stopTick: stopTick, _deleteTick: deleteTick, _finalizeTick: finalizeTick, _webTick: webTick };
+module.exports = { startPoller, stopPoller, tick, _stopTick: stopTick, _deleteTick: deleteTick, _finalizeTick: finalizeTick, _webTick: webTick, _webSonucTick: webSonucTick };

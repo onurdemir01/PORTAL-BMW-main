@@ -257,3 +257,51 @@ test('RP6b DELETE gun geldi ama 23:00 (TR) olmadan TETIKLENMEZ; admin "beklemeyi
   const kaynak = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'poller.cjs'), 'utf8');
   assert.match(kaynak, /r\.delete_after_days, r\.delete_now_at/, 'sorgu delete_now_at okumuyor');
 });
+
+// ── WEB ADIMI SONUCU (2026-10-08 uretim bulgusu) ──────────────────────────────────────
+// Kullanici: "web adimi calisti gozukuyor ama mod_jk.conf'a bakiyorum halen ilgili satirlar
+// aktif" + "web adimi duzgun calismadigi icin o adimin success gozukmemesi ... tekrar
+// tetikleyebilmek istiyorum". webTick isi baslatip 'running' yaziyor, SONUCU KIMSE OKUMUYORDU.
+const webSatir = (liste) => [{ id: 7, record_id: 3, app_name: 'CRM', web_result_json: JSON.stringify(liste) }];
+const vh = (o) => ({ host: 'GBJBOP12', serverName: 'crm.fw', product: 'IHS', confFile: '/c', status: 'running', jobId: 55, ...o });
+
+async function webSonucIle(liste, finalizeYaniti) {
+  const yazilan = dbKur([["web_result_json LIKE '%\"running\"%'", webSatir(liste)]]);
+  const cagri = [];
+  poller.startPoller(async () => ({ jobId: 1 }), async (kind, t) => { cagri.push({ kind, t }); return finalizeYaniti(t); }, null);
+  const r = await poller._webSonucTick();
+  poller.stopPoller();
+  const upd = yazilan.find((w) => /SET web_result_json/.test(w.sql));
+  return { r, cagri, liste: upd ? JSON.parse(upd.params[0]) : null, yazilan };
+}
+
+test('RW1 web isi BASARISIZ biterse girdi failed olur ("bitti" DEGIL), olay error yazilir', async () => {
+  const { r, cagri, liste, yazilan } = await webSonucIle([vh()], () => ({ terminal: true, ok: false, skip: false, message: 'apachectl -t gecmedi, geri alindi' }));
+  assert.equal(cagri[0].kind, 'web', 'sonuclandirici web turuyle cagrilmadi');
+  assert.equal(cagri[0].t.job_id, 55, 'is numarasi gecirilmedi');
+  assert.equal(r.kapanan, 1);
+  assert.equal(liste[0].status, 'failed');
+  assert.match(liste[0].message, /is #55: apachectl/);
+  assert.ok(yazilan.some((w) => /INSERT INTO retirement_events/.test(w.sql) && w.params[2] === 'error'), 'basarisizlik olaya error olarak yazilmadi');
+});
+
+test('RW2 OK -> ok; SKIP -> skip ("kaldirildi" DEGIL)', async () => {
+  let s = await webSonucIle([vh()], () => ({ terminal: true, ok: true, message: 'tamam' }));
+  assert.equal(s.liste[0].status, 'ok');
+  s = await webSonucIle([vh()], () => ({ terminal: true, ok: false, skip: true, message: 'vhost bulunamadi' }));
+  assert.equal(s.liste[0].status, 'skip');
+});
+
+test('RW3 is BITMEDIYSE ya da AWX OKUNAMADIYSA running KALIR (okunamadi != basarisiz)', async () => {
+  let s = await webSonucIle([vh()], () => ({ terminal: false }));
+  assert.equal(s.r.kapanan, 0);
+  assert.equal(s.liste, null, 'bitmemis is icin yazim yapildi');
+  s = await webSonucIle([vh()], () => { throw new Error('awx yok'); });
+  assert.equal(s.liste, null, 'okunamayan is basarisiz yazildi');
+});
+
+test('RW4 tur sirasi: webSonucTick tick() icinde cagrilir', () => {
+  const src = require('node:fs').readFileSync(path.join(__dirname, '..', 'poller.cjs'), 'utf8');
+  const tk = src.slice(src.indexOf('async function tick('), src.indexOf('function startPoller('));
+  assert.match(tk, /await webSonucTick\(\)/, 'web sonucu hic okunmuyor');
+});

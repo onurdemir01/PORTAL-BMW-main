@@ -100,6 +100,10 @@ export const retirementApi = {
     fetch(`${BASE}/${id}/targets/${tid}/rollback`, json({ confirmed })).then(safeJson),
   /** Gecis durumunda takilmis hedefin AWX isini OKUR ve gercek sonucu yazar.
    *  Okunamazsa hicbir sey yazmaz (okunamadi != basarisiz). */
+  /** Web (vhost) adimini yeniden dene: 'failed'/'skip' girdiler 'pending'e doner, zamanlayici
+   *  bir sonraki turda yeniden baslatir. Suren ('running') islere dokunulmaz. */
+  webRetry: (id: number, tid: number): Promise<{ ok: boolean; message?: string; adet?: number; record?: RtRecord }> =>
+    fetch(`${BASE}/${id}/targets/${tid}/web-retry`, json({})).then(safeJson),
   refreshStatus: (id: number, tid: number): Promise<{
     ok: boolean; degisti?: boolean; from?: string; to?: string; jobId?: number;
     jobStatus?: string; jobMissing?: boolean; message?: string; record?: RtRecord;

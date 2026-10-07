@@ -591,6 +591,16 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
     if (r.record) setRec(r.record);
     toast.success(`Silme tarihi bugüne çekildi. Zamanlayıcı en geç ~${Math.ceil((r.pollSaniye || 300) / 60)} dk içinde ${r.hedefSayisi} hedefi silecek — Olaylar ve hedef durumunu izleyin.`);
   };
+  // WEB ADIMINI YENIDEN DENE (2026-10-08): basarisiz/atlanmis vhost'lar kuyruga geri alinir.
+  const webYeniden = async (t: RtTarget) => {
+    setBusy(t.id);
+    try {
+      const r = await retirementApi.webRetry(id, t.id);
+      if (!r.ok) { toast.error(r.message || 'Yeniden denenemedi.'); return; }
+      if (r.record) setRec(r.record);
+      toast.success(`${r.adet} vhost yeniden kuyruğa alındı; zamanlayıcı birkaç dakika içinde işi başlatır.`);
+    } catch (e: unknown) { toast.error(e instanceof Error ? e.message : String(e)); } finally { setBusy(null); }
+  };
   const tazele = async (t: RtTarget) => {
     setBusy(t.id);
     try {
@@ -714,6 +724,13 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
                             </button>
                           )}
                         </div>
+                        {t.status === 'stopped' && (t.webSonuc || []).some((w) => w.status === 'failed' || w.status === 'skip') && (
+                          <div className="flex gap-1 mt-1">
+                            <button disabled={busy != null} onClick={() => webYeniden(t)} className={SM_BTN} style={{ ...smBtn(), color: 'var(--status-warning)', borderColor: 'var(--status-warning)' }} title="Başarısız ya da atlanmış vhost kaldırma işlerini yeniden kuyruğa alır; süren işlere dokunmaz">
+                              <ArrowPathIcon className="w-3.5 h-3.5" /> Web adımını yeniden dene
+                            </button>
+                          </div>
+                        )}
                         {(t.status === 'stopped' || t.status === 'rollback_failed') && !t.deletedAt && (
                           <div className="flex gap-1 mt-1">
                             <button disabled={busy != null} onClick={() => rollback(t, false)} className={SM_BTN} style={smBtn()} title="Geri alma planı: ne yapılacağını göster, hiçbir şey değişmez"><ClipboardDocumentCheckIcon className="w-3.5 h-3.5" /> Geri alma planı</button>

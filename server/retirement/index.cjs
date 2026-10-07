@@ -556,6 +556,47 @@ function initRetirement(app) {
     rollback: 'app_retirement_rollback_result',
   });
 
+  // ── WEB ADIMINI YENIDEN DENE (2026-10-08, kullanici: "web adimi duzgun calismadigi icin o
+  // adimin success gozukmemesi ve job'i bitirdikten sonra tekrar tetikleyebilmek istiyorum").
+  // Basarisiz ('failed') ve atlanmis ('skip') vhost girdileri 'pending'e doner; poller.webTick
+  // bir sonraki turda yeniden baslatir (ayni yol, ayni urun kurallari - NGINX yine 'manual').
+  // 'running' girdilere DOKUNULMAZ: sonucu henuz okunmamis is iki kez kosmasin. Yalniz
+  // 'stopped' hedefte: webTick zaten yalniz durdurulmus hedefin vhost'larini kaldirir.
+  router.post('/:id/targets/:tid/web-retry', async (req, res) => {
+    const id = Number(req.params.id); const tid = Number(req.params.tid);
+    try {
+      const rec = await loadRecord(id);
+      if (!rec) return res.status(400).json({ ok: false, message: 'Kayıt yok.' });
+      if (rec.status === 'cancelled') return res.status(400).json({ ok: false, message: 'Kayıt iptal edilmiş.' });
+      const t = rec.targets.find((x) => x.id === tid);
+      if (!t) return res.status(400).json({ ok: false, message: 'Hedef yok.' });
+      if (t.status !== 'stopped')
+        return res.status(409).json({ ok: false, message: `Web adımı yalnız durdurulmuş hedefte yeniden denenir (hedef: ${t.status}).` });
+      const { rows } = await db().query(`SELECT web_result_json FROM retirement_targets WHERE id = $1`, [tid]);
+      let liste;
+      try { liste = JSON.parse(rows?.[0]?.web_result_json || 'null'); } catch { liste = null; }
+      if (!Array.isArray(liste) || !liste.length)
+        return res.status(400).json({ ok: false, message: 'Bu hedefin web listesi yok (kayıt açılırken vhost bulunamamış).' });
+      const YENIDEN = new Set(['failed', 'skip']);
+      const secilen = liste.filter((w) => YENIDEN.has(w.status));
+      if (!secilen.length) {
+        const suren = liste.filter((w) => w.status === 'running').length;
+        return res.status(409).json({ ok: false, message: suren ? `${suren} vhost işi hâlâ sürüyor; sonuç okunmadan yeniden denenmez.` : 'Yeniden denenecek başarısız ya da atlanmış vhost yok.' });
+      }
+      for (const w of secilen) {
+        w.oncekiJobId = w.jobId ?? null;
+        w.oncekiMesaj = w.message ?? null;
+        w.status = 'pending';
+        w.jobId = null;
+        w.message = 'yeniden denenecek';
+      }
+      await db().query(`UPDATE retirement_targets SET web_result_json = $1, updated_at = GETUTCDATE() WHERE id = $2 AND status = 'stopped'`, [JSON.stringify(liste).slice(0, 60000), tid]);
+      await addEvent(id, req.session?.user?.username, 'web',
+        `${t.appName} @ ${t.host}: web adimi YENIDEN DENENECEK - ${secilen.map((w) => `${w.host} / ${w.serverName}`).join(', ')}`);
+      res.json({ ok: true, adet: secilen.length, record: await loadRecord(id) });
+    } catch (err) { res.status(500).json({ ok: false, message: err.message }); }
+  });
+
   router.post('/:id/targets/:tid/refresh-status', async (req, res) => {
     const id = Number(req.params.id);
     const tid = Number(req.params.tid);
@@ -811,7 +852,8 @@ function initRetirement(app) {
     // basarili olmus bir silmeyi basarisiz gostermek olurdu.
     async (kind, t) => {
       const reg = require('../ansible/playbook-registry.cjs');
-      const KEYS = { stop: REGISTRY_KEY, delete: DELETE_REGISTRY_KEY, rollback: ROLLBACK_REGISTRY_KEY };
+      // 'web': vhost kaldirma isi (server_hub_fix / apache_retire_vhost) - poller.webSonucTick.
+      const KEYS = { stop: REGISTRY_KEY, delete: DELETE_REGISTRY_KEY, rollback: ROLLBACK_REGISTRY_KEY, web: 'server_hub_fix' };
       const row = await reg.getByKey(KEYS[kind] || DELETE_REGISTRY_KEY).catch(() => null);
       const serverId = row && row.awxServerId != null ? Number(row.awxServerId) : 0;
       const runner = require('../ansible/runner.cjs');
@@ -827,6 +869,7 @@ function initRetirement(app) {
         stop: 'app_retirement_stop_result',
         delete: 'app_retirement_delete_result',
         rollback: 'app_retirement_rollback_result',
+        web: 'server_hub_fix_result',
       };
       const r = extractStatsKey(info.artifacts, STATS[kind] || STATS.delete) || null;
       const line = String(r?.line || '');
@@ -834,7 +877,9 @@ function initRetirement(app) {
       // ARTIFACT OKUNAMADIYSA is 'successful' olsa bile OK SAYILMAZ: playbook sonucu
       // `set_stats` ile bildiriyor; bildirim yoksa ne yapildigini BILMIYORUZ.
       const ok = info.status === 'successful' && line.split('\t')[2] === 'OK';
-      return { terminal: true, ok, message: msg };
+      // SKIP (yalniz web): eylem yapilacak bir sey bulmadi - basarili DEGIL, ayri gosterilir.
+      const skip = info.status === 'successful' && line.split('\t')[2] === 'SKIP';
+      return { terminal: true, ok, skip, message: msg };
     },
     // WEB KATMANI: var olan `server_hub_fix` / apache_retire_vhost CAGRILIR, yeniden
     // YAZILMAZ. O eylem kanitli davraniyor: yedek alir, dosyada tek vhost varsa
