@@ -133,6 +133,12 @@ export interface LegacyDiscoveryResult {
   hiddenFiles?: number;
   /** Gizlenen dosyaların ortam etiketleri ("PROD" gibi). */
   hiddenEnvs?: string[];
+  /**
+   * Keşif playbook'unun taradığı log dizini adı deseni (ör. `logs?[0-9]*` = log, logs,
+   * log1, logs2…). ALAN YOKSA tarama AWX'teki ESKİ playbook kopyasıyla yapılmıştır:
+   * yalnızca `log` ve `logs` dizinlerine bakılmış, numaralı dizinler taranmamıştır.
+   */
+  log_dir_regex?: string;
 }
 
 export interface DiscoveredCluster {
