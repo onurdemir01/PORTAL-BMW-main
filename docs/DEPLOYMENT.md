@@ -80,8 +80,8 @@ cp /tmp/PORTAL-BMW-main.zip deploy/
 unzip -o deploy/PORTAL-BMW-main.zip -d app/
 cd app/PORTAL-BMW-main
 cp .env.example .env.prod && vi .env.prod
-# SESSION_SECRET MUTLAKA doldurulmali (openssl rand -hex 32) — bos birakilirsa
-# run.sh baslatmayi REDDEDER (guvensiz varsayilan anahtar production'da kullanilmaz).
+# SESSION_SECRET zorunlu DEGIL: bos birakilabilir ya da her baslatmada degisebilir —
+# oturum ona bagli degildir, kimse atilmaz (bkz. docs/OTURUM-YONETIMI.md).
 ./deploy/run.sh prod start
 ./deploy/run.sh prod status
 ```

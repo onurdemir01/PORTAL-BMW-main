@@ -96,9 +96,14 @@ test('AK1 kendi oturumlarini listeler; sid yanitta yok', async () => {
   assert.equal(d.sessions[0].current, true, 'bu oturum basta degil');
   assert.equal(d.sessions[0].device, 'Chrome · Windows');
   assert.equal(d.sessions[1].device, 'Safari · macOS');
+  // Cerez bir BELIRTEC tasir (v2.<...>); sunucudaki oturum kimligi onun ozetidir. Ikisi
+  // de oturum listesi yanitinda GORUNMEMELI.
+  const { kimlik } = require('../oturum-belirteci.cjs');
   for (const c of [a.cerez, b.cerez]) {
-    const sid = decodeURIComponent(c.split('=')[1]).replace(/^s:/, '').split('.')[0];
-    assert.ok(!ham.includes(sid), 'oturum anahtari istemciye sizdi');
+    const belirtec = decodeURIComponent(c.split('=')[1]).replace(/^v2\./, '');
+    assert.match(belirtec, /^[A-Za-z0-9_-]{43}$/, 'cerez belirtec bicimde degil');
+    assert.ok(!ham.includes(belirtec), 'oturum belirteci istemciye sizdi');
+    assert.ok(!ham.includes(kimlik(belirtec)), 'sunucudaki oturum kimligi istemciye sizdi');
   }
   assert.ok(d.sessions.every((s) => /^[0-9a-f]{8}$/.test(s.id)));
 });

@@ -16,23 +16,22 @@ const { initVisibilityRoutes } = require("./visibility-routes.cjs");
 const { initRolesRoutes } = require("./roles-routes.cjs");
 const sessionPolicy = require("./session-policy.cjs");
 const oturumCerezi = require("./oturum-cerezi.cjs");
+const oturumBelirteci = require("./oturum-belirteci.cjs");
 const { normalizeLoginInput, checkPassword } = require("./login-input.cjs");
 const loginThrottle = require("./login-throttle.cjs");
 const { initSessionsRoutes, esanliSiniriUygula } = require("./sessions-routes.cjs");
 
-// Production'da bos SESSION_SECRET'i sessizce hardcoded degerle karsilamak guvenlik
-// acigi olurdu (herkesce bilinen bir imza anahtariyla session sahteciligi) — bu yuzden
-// production'da bossa acikca ve GURULTULU durur. Yerel gelistirmede (NODE_ENV != production)
-// sifir-kurulum deneyimi icin sabit fallback korunur.
-if (process.env.NODE_ENV === "production" && !process.env.SESSION_SECRET) {
-  console.error(
-    "[Auth] FATAL: NODE_ENV=production ama SESSION_SECRET bos. " +
-    "Guvensiz varsayilan anahtarla acilmaz. Cozum: `openssl rand -hex 32` ile " +
-    "uretip ilgili .env.<ortam> dosyasina SESSION_SECRET=... olarak yazin."
-  );
-  process.exit(1);
-}
-const SESSION_SECRET  = process.env.SESSION_SECRET || "bmw-portal-dev-secret-change-in-prod";
+// OTURUM SESSION_SECRET'E BAGLI DEGILDIR (2026-10-03, kullanici: "buna bagimli bir sey
+// olmamali" — uretimde rastgele uretiliyor, her seferinde degisebiliyor). Oturumun kimligi
+// cerezdeki rastgele belirtecin OZETIDIR (bkz. oturum-belirteci.cjs); imza yalnizca
+// express-session'in ic bicimi icin uretilir ve her istekte gecerli anahtarla yenilenir.
+// Bu yuzden anahtar degisse de, bos kalsa da oturumlar bulunur.
+//
+// Bossa SUREC BASINA RASTGELE uretilir — sabit / bilinen bir anahtar HICBIR ortamda
+// kullanilmaz (eskiden gelistirmede sabit bir dize vardi, uretimde bos ise surec
+// aciliyordu). Tanimliysa bu surumden ONCE acilmis eski bicimli cerezleri dogrulamaya
+// yarar; onlar en gec mutlak sure sonunda biter.
+const SESSION_SECRET = process.env.SESSION_SECRET || require("node:crypto").randomBytes(32).toString("hex");
 
 // ── Auth init ────────────────────────────────────────────────────────────────
 function initAuth(app) {
@@ -49,6 +48,15 @@ function initAuth(app) {
       console.warn("[Auth] MSSQL session store yuklenemedi — MemoryStore fallback:", err.message);
     }
   }
+  // Bellek store'unda oturumlar SUREC bellegindedir: her yeniden baslatma HERKESI atar.
+  // Uretimde bu sessiz kalmamali — "sik atiyor" sikayetinin en pahali kaynagi olurdu.
+  if (!sessionStore && process.env.NODE_ENV === "production") {
+    console.error(
+      "[Auth] UYARI: uretimde oturumlar BELLEKTE tutuluyor (SESSION_STORE=memory ya da MSSQL " +
+      "store yuklenemedi). Her yeniden baslatmada tum kullanicilar oturumdan duser. " +
+      "Cozum: SESSION_STORE satirini kaldirin (varsayilan MSSQL)."
+    );
+  }
 
   // Sureler (bosta kalma / mutlak / beni hatirla) burada DEGIL: session-policy.cjs her
   // istekte process.env'den okur ve asagidaki yaptirim katmani uygular. Eskiden cerez
@@ -57,10 +65,13 @@ function initAuth(app) {
   // Cerez adi: uretimde `__Host-portal.sid` (Faz E); eski `connect.sid` sessizce tasinir.
   const COOKIE_NAME = oturumCerezi.cerezAdi();
   app.use(oturumCerezi.eskiCereziTasi(COOKIE_NAME));
+  // Cerezdeki belirtec <-> sunucudaki ozet kimlik cevirisi (express-session'dan ONCE).
+  app.use(oturumBelirteci.belirtecKatmani({ ad: COOKIE_NAME, secret: SESSION_SECRET }));
   app.use(
     session({
       ...(sessionStore ? { store: sessionStore } : {}),
       name: COOKIE_NAME,
+      genid: oturumBelirteci.kimlikUret,
       secret: SESSION_SECRET,
       resave: false,
       saveUninitialized: false,
@@ -105,6 +116,20 @@ function initAuth(app) {
         code: "cok_deneme",
         retryAfter: kilit.retryAfter,
         error: `Çok fazla hatalı deneme. ${kilit.retryAfter} saniye sonra tekrar deneyin.`,
+      });
+    }
+
+    // AYNI hatali sifre az once denendiyse AD'ye YENIDEN GONDERILMEZ ve sayaca yazilmaz:
+    // AD'nin kilit esigini bilmeden hesaplari korumanin yolu, ona gereksiz hata
+    // gondermemek (bkz. login-throttle.cjs).
+    const tekrar = loginThrottle.ayniHataliSifre(girdi.username, password);
+    if (tekrar > 0) {
+      return res.status(401).json({
+        ok: false,
+        code: "kimlik_tekrar",
+        error:
+          "Kullanıcı adı veya şifre hatalı. Aynı şifreyi az önce denediniz; hesabınızın " +
+          "kilitlenmemesi için yeniden gönderilmedi. Şifrenizi kontrol edin.",
       });
     }
 
@@ -179,7 +204,7 @@ function initAuth(app) {
       // Yalnizca KIMLIK hatasi sayilir: sunucuya ulasilamamasi ya da kilitli hesap
       // kullanicinin deneme hakkini yememeli.
       let sayac = null;
-      if (code === "kimlik") sayac = loginThrottle.hataKaydet(girdi.username);
+      if (code === "kimlik") sayac = loginThrottle.hataKaydet(girdi.username, password);
       // Denetim kaydi: basarisiz giris denemesi (sebep kodu; sifre ASLA yazilmaz).
       try {
         require('../audit/index.cjs').auditPortal(req, 'login_failed', {

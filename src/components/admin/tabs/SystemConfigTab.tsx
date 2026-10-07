@@ -772,7 +772,7 @@ const ENV_VARS: EnvVarMeta[] = [
     label: "Hatalı Deneme Eşiği",
     group: 'Oturum ve Giriş',
     description:
-      "Kullanıcı başına bu kadar hatalı şifreden sonra bekleme başlar (30 sn, 2 dk, 8 dk, en çok 15 dk); beklerken istek AD'ye hiç gitmez. AD'nin hesap kilit eşiğinin ALTINDA tutun. 3-20. Boş = 5.",
+      "Kullanıcı başına bu kadar hatalı şifreden sonra bekleme başlar (30 sn, 2 dk, 8 dk, en çok 15 dk); beklerken istek AD'ye hiç gitmez. AD'nin kilit eşiğini bilmek gerekmez: aynı hatalı şifre 90 sn içinde AD'ye yeniden gönderilmez ve bu sayaca yazılmaz. Kilitlenmeler sürerse düşürün. 3-20. Boş = 5.",
     required: false,
     example: "5",
     usedIn: 'server/auth/login-throttle.cjs',

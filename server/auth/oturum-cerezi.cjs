@@ -79,8 +79,21 @@ function istektekiOturumCerezi(req) {
   return cerezOku(baslik, cerezAdi()) || cerezOku(baslik, ESKI_AD);
 }
 
+/**
+ * Hiz siniri icin oturum basina anahtar. Cerezin HAM degeri bellekte anahtar olarak
+ * tutulmaz (belirtec = oturumun kendisi): ozeti kullanilir. Eski yazim degerin ilk
+ * noktaya kadar olan kismini aliyordu; `v2.<belirtec>` biciminde bu HERKES icin "v2"
+ * olurdu — tum kullanicilar tek bir hiz siniri butcesini paylasirdi.
+ */
+function oturumHizAnahtari(req) {
+  const ham = istektekiOturumCerezi(req);
+  if (!ham) return null;
+  return `sid:${require('node:crypto').createHash('sha256').update(ham).digest('hex').slice(0, 32)}`;
+}
+
 module.exports = {
   cerezAdi,
+  oturumHizAnahtari,
   eskiCereziTasi,
   istektekiOturumCerezi,
   cerezOku,

@@ -71,22 +71,24 @@ test('OB3 — govdesiz 401 de imzalanir (avatar ucu)', () => {
 
 test('OB4 — server/auth icindeki HER oturum 401i oturumYokdan gecer', () => {
   const dosyalar = fs.readdirSync(path.join(KOK, 'server/auth')).filter((f) => f.endsWith('.cjs'));
+  // TEK istisna GIRIS ROTASI: giris denemesinin basarisizligi IMZASIZDIR (ortada bitmis
+  // oturum yok; imzalansa yanlis parola giris ekranindaki istemciye "oturumun bitti" derdi).
+  // Durumu hatanin turu belirler (401 kimlik / 403 hesap durumu / 503 dizin) ve ayni
+  // hatali sifrenin tekrari da orada 401 doner. Istisna DILIMLE sinirlidir: giris
+  // rotasinin DISINDAKI her 401 imzali olmali.
+  const giris = kodOnly(oku('server/auth/index.cjs'));
+  const d = dilim(giris, 'router.post("/login"', 'router.post("/logout"');
   const imzasiz = [];
   for (const f of dosyalar) {
-    const src = kodOnly(oku(path.join('server/auth', f)));
+    let src = kodOnly(oku(path.join('server/auth', f)));
+    if (f === 'index.cjs') src = src.replace(d, '');
     for (const satir of src.split('\n')) {
       if (!/\bres\.status\(401\)/.test(satir)) continue;
       if (/oturumYok\(res\)\.status\(401\)/.test(satir)) continue;
       imzasiz.push(`${f}: ${satir.trim()}`);
     }
   }
-  // TEK istisna GIRIS DENEMESININ basarisizligiydi. Faz C (2026-10-02): durumu artik
-  // hatanin turu belirler (401 kimlik / 403 hesap durumu / 503 dizin) — `res.status(status)`.
-  // Kural ayni: giris hatasi IMZASIZDIR (ortada bitmis oturum yok; imzalansa yanlis parola
-  // giris ekranindaki istemciye "oturumun bitti" derdi), baska imzasiz 401 yoktur.
   assert.deepStrictEqual(imzasiz, [], `beklenmeyen imzasiz 401:\n${imzasiz.join('\n')}`);
-  const giris = kodOnly(oku('server/auth/index.cjs'));
-  const d = giris.slice(giris.indexOf('router.post("/login"'), giris.indexOf('router.post("/logout"'));
   assert.match(d, /res\.status\(status\)\.json\(/, 'giris hatasi yaniti bulunamadi');
   assert.doesNotMatch(d, /oturumYok\(/, 'giris hatasi imzalanmis — yanlis parola "oturum bitti" sayilir');
 });

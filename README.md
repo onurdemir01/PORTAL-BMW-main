@@ -84,7 +84,7 @@ Aşağıdaki tablolar özet referanstır.
 |----------|----------|-------|
 | `PORT` | Backend port (sunucu ortamlari: `3000`, yerel dev: `5055`) | `3000` |
 | `NODE_ENV` | Ortam | `production` |
-| `SESSION_SECRET` | Session imza anahtarı (`openssl rand -hex 32`) | `a1b2c3...` |
+| `SESSION_SECRET` | İsteğe bağlı. Oturum bu anahtara bağlı değildir; boş kalabilir ya da değişebilir (bkz. `docs/OTURUM-YONETIMI.md`) | *(boş)* |
 | `LOGX_PROXY_PORT` | LogX iframe izolasyon portu (dev) | `5056` |
 | `LOGX_PROXY_PUBLIC_URL` | LogX izolasyon hostname'i (**prod/nginx'te zorunlu**) | `https://portal-logx.sirket.com.tr` |
 
