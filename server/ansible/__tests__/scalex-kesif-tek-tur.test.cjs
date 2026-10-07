@@ -419,7 +419,10 @@ for (const hosts of [1, 2]) {
     `M8 (${hosts} jump) bitti isareti gelmeyen cluster tasima hatasi sayilir`,
     { skip: !HAS_ANSIBLE },
     () => {
-      const r = ansibleKostur({ hosts, batch: 'echo kirik >&2; exit 5' });
+      // Sahte sarmalayici once stdin'i TUKETIR. Gorev runner metnini stdin'den yollar; onu
+      // okumadan cikan surec yuk altinda Ansible'in yazmasiyla yarisir ve sonuc `rc=5` yerine
+      // `rc=32: Error executing command.` (EPIPE) olur - tam suitte ara ara kizariyordu.
+      const r = ansibleKostur({ hosts, batch: 'cat >/dev/null; echo kirik >&2; exit 5' });
       assert.ok(!r.playFailed, r.out.slice(-2500));
       assert.deepEqual(sirali(r.failed), ['c1', 'c2']);
       for (const c of ['c1', 'c2']) {

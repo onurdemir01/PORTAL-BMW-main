@@ -36,7 +36,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-const { WINDOWS } = require('./fixtures/kabuk.cjs');
+const { pythonBul, shebangYorumlayici, adaylar } = require('./fixtures/python-bul.cjs');
 const { normalize } = require('../../util/guard-text.cjs');
 
 const DIR = path.join(__dirname, '..', 'bmw_portal', 'logx', 'legacy');
@@ -868,23 +868,9 @@ cikti['_lookup'] = LOOKUP_TERIMLERI
 sys.stdout.write(json.dumps(cikti, default=str))
 `;
 
-/** python3 + jinja2 + PyYAML bulan aday; yoksa null (cagiran KOR diye duser). */
-function pythonBul() {
-  const adaylar = [
-    ['python3', []],
-    ['python', []],
-  ];
-  if (WINDOWS) adaylar.push(['py', ['-3']]);
-  for (const [komut, on] of adaylar) {
-    const r = spawnSync(komut, [...on, '-c', 'import jinja2, yaml'], {
-      stdio: 'ignore',
-      env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1' },
-    });
-    if (r.status === 0) return { komut, on };
-  }
-  return null;
-}
-
+// python3 + jinja2 + PyYAML arayisi fixtures/python-bul.cjs icinde: PATH'teki python3 /
+// python'dan sonra ANSIBLE'IN KENDI yorumlayicisina da bakar (Homebrew / pipx kurulumunda
+// paketler oradadir).
 let onbellek = null;
 /** Tum senaryolari TEK python surecinde render eder (sonuc onbellekte). */
 function render() {
@@ -893,8 +879,12 @@ function render() {
   if (!py)
     throw new Error(
       'X09 KOR: python3 + jinja2 + PyYAML bulunamadi - LogX karar mantigi render edilemedi. ' +
-        'Bu bekci YESIL DONMEZ. Kurulum: python3 -m pip install --user jinja2 pyyaml (ansible-core ' +
-        'kuruluysa ikisi de zaten var).',
+        'Bu bekci YESIL DONMEZ. Denenen yorumlayicilar: ' +
+        adaylar()
+          .map(([k]) => k)
+          .join(', ') +
+        '. Cozum: Ansible kurun (paketler onunla gelir) ya da PORTAL_TEST_PYTHON ile jinja2 + ' +
+        'PyYAML tasiyan bir python gosterin.',
     );
   const r = spawnSync(py.komut, [...py.on, '-', KESIF, AKTARIM], {
     input: HARNESS,
@@ -1016,6 +1006,53 @@ test('X02 yapi: sorun etiketleri find gorev adlariyla AYNI (ad degisirse bekci d
     );
 });
 
+// ── X09b PYTHON BULUCU: Ansible kuruluysa bekciler KOR kalmaz ───────────────────────────────
+//
+// 2026-10-07: gelistirici makinesinde Ansible (Homebrew) kuruluydu ama bu dosyadaki 28 bekci
+// "python3 + jinja2 + PyYAML yok" diye kirmizi duruyordu: arama yalnizca PATH'teki duz
+// python3'e bakiyordu, paketler ise Ansible'in KENDI yorumlayicisindaydi.
+
+test('X09b shebang -> yorumlayici: dogrudan yol, env bicimi, bayraklar, bozuk satir', () => {
+  assert.equal(
+    shebangYorumlayici('#!/opt/homebrew/Cellar/ansible/14.0.0_1/libexec/bin/python'),
+    '/opt/homebrew/Cellar/ansible/14.0.0_1/libexec/bin/python',
+  );
+  assert.equal(shebangYorumlayici('#!/usr/bin/python3 -I'), '/usr/bin/python3');
+  assert.equal(shebangYorumlayici('#!/usr/bin/env python3'), 'python3');
+  assert.equal(shebangYorumlayici('#!/usr/bin/env -S python3 -u'), 'python3');
+  assert.equal(shebangYorumlayici('#! /usr/bin/python3.12  '), '/usr/bin/python3.12');
+  for (const kotu of ['', 'import sys', '#!', '#!   ', '# !/usr/bin/python3', null, undefined])
+    assert.equal(shebangYorumlayici(kotu), null, JSON.stringify(kotu));
+});
+
+test('X09b adaylar: acik secim once; PATH python`lari; sonra Ansible`in yorumlayicisi', () => {
+  const tmp = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'pybul-'));
+  try {
+    const sahte = path.join(tmp, 'ansible-playbook');
+    fs.writeFileSync(sahte, '#!/ozel/ansible/libexec/bin/python\nimport sys\n', { mode: 0o755 });
+    const a = adaylar({ PATH: tmp, PORTAL_TEST_PYTHON: '/secilen/python' }).map(([k]) => k);
+    assert.equal(a[0], '/secilen/python', 'acik secim ilk sirada degil');
+    assert.ok(
+      a.indexOf('python3') > 0 &&
+        a.indexOf('python3') < a.indexOf('/ozel/ansible/libexec/bin/python'),
+      `PATH python3, Ansible yorumlayicisindan once denenmeli: ${a}`,
+    );
+    assert.ok(
+      a.includes('/ozel/ansible/libexec/bin/python'),
+      `Ansible yorumlayicisi aday degil: ${a}`,
+    );
+    // Ansible yoksa aday eklenmez (uydurma yol denenmez).
+    const b = adaylar({ PATH: path.join(tmp, 'yok') }).map(([k]) => k);
+    assert.ok(!b.some((k) => k.includes('ansible')), String(b));
+    // Ayni yorumlayici iki kez denenmez.
+    fs.writeFileSync(sahte, '#!/usr/bin/env python3\n', { mode: 0o755 });
+    const c = adaylar({ PATH: tmp }).map(([k]) => k);
+    assert.equal(c.filter((k) => k === 'python3').length, 1, String(c));
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
 // ── X10 NUMARALI LOG DIZINLERI (2026-10-07) ────────────────────────────────────────────────
 //
 // Kullanici: "log|logs|log1|log2|logs1...|logs2... gibi durumlarda da log alabilmemiz cok
@@ -1030,7 +1067,11 @@ test('X02 yapi: sorun etiketleri find gorev adlariyla AYNI (ad degisirse bekci d
 function logDizinAdiEslesir(ad) {
   const y = render()._yapi;
   const f = y.kesif_log_dizin_find;
-  assert.equal(f.use_regex, true, 'find regex kipinde degil - desen glob sanilir, hicbir dizin eslesmez');
+  assert.equal(
+    f.use_regex,
+    true,
+    'find regex kipinde degil - desen glob sanilir, hicbir dizin eslesmez',
+  );
   return [].concat(f.patterns).some((p) => {
     const desen = String(p).replace(/\{\{\s*legacy_log_dir_regex\s*\}\}/g, y.kesif_log_dir_regex);
     assert.ok(!/\{\{/.test(desen), `desen cozulemedi: ${desen}`);
@@ -1044,8 +1085,25 @@ test('X10 log dizini adlari: log, logs ve NUMARALI olanlar taranir; benzer adlar
     assert.equal(logDizinAdiEslesir(ad), true, `"${ad}" dizini taranmiyor`);
   // Yapilandirma / yedek / baska dizinler LOG DIZINI SAYILMAZ: icerikleri log diye
   // listelenir ve indirilebilir olurdu (or. log4j yapilandirmasi).
-  for (const ad of ['log4j', 'logs_old', 'logs.bak', 'logsX', 'logs1a', 'log-1', 'log_1', 'mylogs', 'mylogs1',
-    'catalog', 'logfiles', 'Logs', 'LOG1', '1log', 'logs1 ', 'lo', 'config'])
+  for (const ad of [
+    'log4j',
+    'logs_old',
+    'logs.bak',
+    'logsX',
+    'logs1a',
+    'log-1',
+    'log_1',
+    'mylogs',
+    'mylogs1',
+    'catalog',
+    'logfiles',
+    'Logs',
+    'LOG1',
+    '1log',
+    'logs1 ',
+    'lo',
+    'config',
+  ])
     assert.equal(logDizinAdiEslesir(ad), false, `"${ad}" log dizini sayildi`);
   // Yalnizca EAR'in HEMEN altinda ve yalnizca DIZIN.
   const f = render()._yapi.kesif_log_dizin_find;
@@ -1075,7 +1133,10 @@ test('X10 artifact taranan dizin desenini YAYINLAR (portal eski AWX kopyasini bu
   assert.equal(senaryo('K12_numarali_dizinler').host_result.log_dir_regex, y.kesif_log_dir_regex);
   assert.equal(senaryo('K9_rescue').host_result.log_dir_regex, y.kesif_log_dir_regex);
   // Bir host hata verse de desen, bildiren hostlardan okunur.
-  assert.equal(tekYayin(senaryo('A8_dizin_deseni_yayinlanir'), 'A8').log_dir_regex, y.kesif_log_dir_regex);
+  assert.equal(
+    tekYayin(senaryo('A8_dizin_deseni_yayinlanir'), 'A8').log_dir_regex,
+    y.kesif_log_dir_regex,
+  );
   // Deseni tasimayan (eski bicimli) host sonucu toplayiciyi DUSURMEZ; alan bos kalir.
   const a9 = senaryo('A9_eski_host_sonucu_desen_yok');
   assert.equal(a9.kirmizi, null, a9.kirmizi);

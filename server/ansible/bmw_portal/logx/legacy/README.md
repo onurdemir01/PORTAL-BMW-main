@@ -296,7 +296,29 @@ fallback hiç devreye girmezdi. `.failed`'ı okunan görev `ignore_errors: true`
 
 Bekçiler: `server/ansible/__tests__/logx-legacy-run-as.test.cjs` (kullanıcı ayrımı, pipelining,
 kök listesi, `failed_when` tuzağı) ve `logx-legacy-olculemedi.test.cjs` (kural 6; karar mantığı
-python3 + jinja2 ile RENDER edilerek sınanır; jinja2 yoksa test açık hatayla düşer).
+python3 + jinja2 ile RENDER edilerek sınanır; jinja2 yoksa test açık hatayla düşer). Render
+için yorumlayıcı sırası: `PORTAL_TEST_PYTHON`, PATH'teki `python3`/`python`, sonra kurulu
+Ansible'ın KENDİ yorumlayıcısı (`ansible-playbook` betiğinin ilk satırı) — Ansible kuruluysa
+ayrıca paket kurmak gerekmez.
+
+`logx-legacy-gercek-kosum.test.cjs` iki playbook'u geçici bir dizin ağacında GERÇEK
+`ansible-playbook` ile koşturur (yerel bağlantı, become kapalı, kökler `legacy_log_roots` ile
+geçici dizine çevrilir). Render testi `find`'ın desen eşlemesini, atlanan yolları nasıl
+bildirdiğini ve `archive`'ın ZIP'e ne yazdığını TAKLİT eder; bu test onları gerçekten çalıştırır:
+
+- LG1: keşif `log`/`logs`/numaralı dizinleri bulur; `log4j`, `logs_old`, `logsX`, alt düzeydeki
+  `…/alt/logs2` ve başka uygulamanın klasörünü bulmaz; desen artifact'ta yayınlanır.
+- LG1b: uygulama hostta yok + köklerden biri hostta yok -> `ok` + 0 dosya (kök-yok istisnası
+  `find`'ın "is not a directory" metnine dayanır; metin sürümle değişirse bu test kızarır).
+- LG3: okunamayan log dizini -> `error`, yol adıyla; okunabilen dizinlerin dosyaları da
+  listelenmez; iş başarısız biter ama sonuç yine yayınlanır.
+- LG2: keşif -> aktarım (tek host): numaralı dizinlerden seçilen dosyalar ZIP'e girer;
+  `log1/server.log` ile `log2/server.log` aynı adla birbirini ezmez; geçici dizin temizlenir.
+- LG4: aktarım (iki host): host başına parça ZIP'ler tek arşivde birleşir; parça dizini ve
+  geçici dizinler temizlenir.
+
+Ansible yoksa atlanır (LG2 ve LG4 ayrıca `community.general.archive` ister; LG3 root ile
+koşulamaz).
 
 Metinle ve render ile ölçülemeyenler (kanaryada doğrulanır):
 
