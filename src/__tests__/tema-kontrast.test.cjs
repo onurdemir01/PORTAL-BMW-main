@@ -234,75 +234,67 @@ test('TK6 baglanti (<a>, <Link>) uzerinde `text-white` yok: `a { color }` kurali
   assert.deepEqual(ihlal, [], 'dugme gorunumlu baglanti icin `btn-primary` kullanin');
 });
 
-// Zemin satir-ici `style` ile aksan yapilmis, metin SABIT beyaz: CSS katmani bu ogeye ulasamaz
-// ve koyu temada metin 1.45:1 kalir. Asagidakiler bu turun KAPSAMI DISINDAKI agaclardir
-// (sahiplerine bildirildi); sayilar ARTAMAZ, listeye yeni dosya eklenemez.
-const AKSAN_BEYAZ_IZINLI = {
-  'components/denetim/NginxAudit.tsx': 1,
-  'components/denetim/NginxInternetExpose.tsx': 1,
-  'components/denetim/NginxProdMigration.tsx': 7,
-  'components/denetim/NginxSpaSummary.tsx': 1,
-  'components/nginx_console/RvpSecimTab.tsx': 1,
-};
-test('TK7 aksan zemini (satir-ici) ustunde sabit beyaz metin eklenmiyor', () => {
-  const say = {};
-  for (const [f, s] of DOSYALAR) {
+// ── KAPSAM ────────────────────────────────────────────────────────────────────────────────
+// Asagidaki iki bekci (TK7, TK8) kaynak dosyalarini tarar. Su agaclar baska ekiplerce,
+// dogrudan main uzerinde ve PARALEL gelistiriliyor; bu turda onlara dokunulmadi (bulgular
+// sahiplerine bildirildi). Bekci onlari kapsasaydi, o agaclara eklenen her yeni satir bu
+// testi main'de kizartirdi - sahibinin haberi olmadan. Kapsam ici dosyalarda kural KESINDIR.
+const KAPSAM_DISI =
+  /^components\/(nginx_console|server_hub|crypto_hub|opsx)\/|^components\/denetim\/Nginx|^components\/ArkSpaRaporuPage\.tsx$/;
+const KAPSAM_ICI = DOSYALAR.filter(([f]) => !KAPSAM_DISI.test(f));
+
+test('TK7 aksan zemini (satir-ici) ustunde sabit beyaz metin yok (koyu temada 1.45:1)', () => {
+  // Zemin satir-ici `style` ile aksan yapilmis, metin SABIT beyaz: CSS katmani bu ogeye
+  // ulasamaz. `text-[var(--text-on-accent)]` ya da `btn-primary` kullanilir.
+  const ihlal = [];
+  for (const [f, s] of KAPSAM_ICI) {
     for (const m of acilisEtiketleri(s)) {
       const t = m[0];
       if (!/background(Color)?: ?['"]var\(--accent\)['"]/.test(t)) continue;
-      if (/\btext-white\b/.test(t) || /color: ?['"](#fff|#ffffff|white)['"]/i.test(t))
-        say[f] = (say[f] || 0) + 1;
+      if (/\btext-white\b/.test(t) || /color: ?['"](#fff|#ffffff|white)['"]/i.test(t)) {
+        ihlal.push(`${f}:${satirNo(s, m.index)}`);
+      }
     }
+  }
+  assert.deepEqual(ihlal, []);
+});
+
+// `--status-warning` IKON ve DOLGU tonudur; METIN icin `--status-warning-text` kullanilir.
+// Kapsam ici dosyalarda bugun kalan kullanimlarin HEPSI ikondur. Sayilar artamaz; yeni bir
+// dosya ancak bu listeye bilerek eklenerek (yani "bu bir ikon" denerek) gecebilir.
+const UYARI_TONU_IKONLARI = {
+  'components/DashboardPage.tsx': 1,
+  'components/admin/tabs/ScaleXAdminTab.tsx': 1,
+  'components/logx_v2/LogXWizardPage.tsx': 3,
+  'components/logx_v2/shared/DownloadStep.tsx': 1,
+  'components/scalex/ScaleXPage.tsx': 1,
+  'components/telnet/TelnetWizardPage.tsx': 1,
+};
+test('TK8 `--status-warning` METIN rengi olarak kullanilmiyor (metin: --status-warning-text)', () => {
+  const RE = /text-\[var\(--status-warning\)\]|color: ?['"]var\(--status-warning\)['"]/g;
+  const say = {};
+  for (const [f, s] of KAPSAM_ICI) {
+    const n = (s.match(RE) || []).length;
+    if (n) say[f] = n;
   }
   for (const [f, n] of Object.entries(say)) {
     assert.ok(
-      n <= (AKSAN_BEYAZ_IZINLI[f] || 0),
-      `${f}: aksan zemini ustunde ${n} sabit beyaz metin (izinli ${AKSAN_BEYAZ_IZINLI[f] || 0}). ` +
-        '`text-[var(--text-on-accent)]` ya da `btn-primary` kullanin.',
+      n <= (UYARI_TONU_IKONLARI[f] || 0),
+      `${f}: --status-warning ${n} yerde renk olarak kullaniliyor (ikon olarak izinli: ` +
+        `${UYARI_TONU_IKONLARI[f] || 0}). Metin ise \`--status-warning-text\` kullanin.`,
     );
+  }
+  // Liste bayatlamasin: izin verilen dosyada kullanim kalmadiysa satir silinmeli.
+  for (const f of Object.keys(UYARI_TONU_IKONLARI)) {
+    assert.ok(say[f], `${f} artik --status-warning kullanmiyor; izin listesinden cikarin`);
   }
 });
 
-// `--status-warning` IKON ve DOLGU tonudur. METIN icin `--status-warning-text` kullanilir.
-// Asagidaki sayilar bugunku kullanimlardir: kapsam ici olanlar IKONDUR; kapsam disi agaclardaki
-// metin kullanimlari sahiplerine bildirildi. Sayilar ARTAMAZ, yeni dosya eklenemez.
-const UYARI_TONU_IZINLI = {
-  'components/ArkSpaRaporuPage.tsx': 3,
-  'components/DashboardPage.tsx': 1,
-  'components/admin/tabs/ScaleXAdminTab.tsx': 1,
-  'components/crypto_hub/ConfigMapsPanel.tsx': 2,
-  'components/crypto_hub/CryptoHubPage.tsx': 6,
-  'components/crypto_hub/OpsPanel.tsx': 1,
-  'components/crypto_hub/PlanModal.tsx': 4,
-  'components/crypto_hub/ResourcesModal.tsx': 5,
-  'components/crypto_hub/RolloutApply.tsx': 2,
-  'components/crypto_hub/ValuesCompare.tsx': 1,
-  'components/crypto_hub/ValuesEditor.tsx': 1,
-  'components/denetim/NginxProdMigration.tsx': 5,
-  'components/denetim/NginxSpaSummary.tsx': 8,
-  'components/logx_v2/LogXWizardPage.tsx': 3,
-  'components/logx_v2/shared/DownloadStep.tsx': 1,
-  'components/nginx_console/DriftTab.tsx': 1,
-  'components/nginx_console/NginxSpaDiscovery.tsx': 2,
-  'components/nginx_console/NimTabs.tsx': 4,
-  'components/nginx_console/RateLimitTab.tsx': 6,
-  'components/nginx_console/RvpSecimTab.tsx': 2,
-  'components/nginx_console/SourceNote.tsx': 1,
-  'components/opsx/steps/OcpOperationStep.tsx': 1,
-  'components/scalex/ScaleXPage.tsx': 1,
-  'components/server_hub/RetirementTab.tsx': 11,
-  'components/server_hub/ServerHubPage.tsx': 1,
-  'components/telnet/TelnetWizardPage.tsx': 1,
-};
-test('TK8 `--status-warning` yeni bir METIN rengi olarak eklenmiyor (metin: --status-warning-text)', () => {
-  const RE = /text-\[var\(--status-warning\)\]|color: ?['"]var\(--status-warning\)['"]/g;
-  for (const [f, s] of DOSYALAR) {
-    const n = (s.match(RE) || []).length;
-    if (!n) continue;
-    assert.ok(
-      n <= (UYARI_TONU_IZINLI[f] || 0),
-      `${f}: --status-warning ${n} yerde renk olarak kullaniliyor (izinli ${UYARI_TONU_IZINLI[f] || 0}). ` +
-        'Metin ise `--status-warning-text` kullanin; ikon ise izin listesini bilerek guncelleyin.',
-    );
-  }
+test('TK9 kapsam disi agaclar gercekten VAR (desen bayatlarsa bekci her seyi kapsam ici sanmasin)', () => {
+  const disarida = DOSYALAR.filter(([f]) => KAPSAM_DISI.test(f)).length;
+  assert.ok(disarida >= 10, `kapsam disi dosya sayisi beklenenden az: ${disarida}`);
+  assert.ok(
+    KAPSAM_ICI.length > 100,
+    `kapsam ici dosya sayisi beklenenden az: ${KAPSAM_ICI.length}`,
+  );
 });
