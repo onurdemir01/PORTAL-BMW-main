@@ -1,11 +1,12 @@
 // src/components/admin/tabs/UserManagementTab.tsx
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { roleApi } from "@/api/adminApi";
 import { useToast } from "@/hooks/useToast";
 import { PencilSquareIcon, TrashIcon, PlusIcon, ShieldCheckIcon, UserIcon } from "@heroicons/react/24/outline";
 import { Select } from "@/components/ui/Form";
 import { LoadingLogo } from '@/components/common/LoadingLogo';
 import OturumListesi from '@/components/oturum/OturumListesi';
+import LoadError from '@/components/common/LoadError';
 
 type RoleMap = Record<string, string>;
 
@@ -20,9 +21,28 @@ export default function UserManagementTab() {
   const [oturumKullanici, setOturumKullanici] = useState("");
   const [oturumArama, setOturumArama] = useState("");
 
+  // Liste OKUNAMADIYSA bu ekranda KALIR. Eskiden uc saniyelik bir bildirim cikiyor, altinda
+  // "Henuz manuel rol atamasi yok" yazisi duruyordu: okunamayan liste bos liste gibi gorunuyordu.
+  const [yuklemeHatasi, setYuklemeHatasi] = useState<string | null>(null);
+  const cek = useCallback(
+    () =>
+      roleApi
+        .list()
+        .then(setRoles)
+        .catch((e: unknown) =>
+          setYuklemeHatasi(e instanceof Error && e.message ? e.message : "İstek başarısız."),
+        )
+        .finally(() => setLoading(false)),
+    [],
+  );
   useEffect(() => {
-    roleApi.list().then(setRoles).catch(() => toast.error("Roller yüklenemedi.")).finally(() => setLoading(false));
-  }, []);
+    void cek();
+  }, [cek]);
+  const yukle = () => {
+    setLoading(true);
+    setYuklemeHatasi(null);
+    void cek();
+  };
 
   async function handleAdd() {
     const u = addUser.trim().toLowerCase();
@@ -75,8 +95,9 @@ export default function UserManagementTab() {
       {/* Add new override */}
       <div className="flex gap-2 items-end">
         <div className="flex-1">
-          <label className="block text-xs font-medium text-gray-600 mb-1">Kullanıcı adı (sAMAccountName)</label>
+          <label htmlFor="rol-kullanici" className="block text-xs font-medium text-gray-600 mb-1">Kullanıcı adı (sAMAccountName)</label>
           <input
+            id="rol-kullanici"
             type="text"
             value={addUser}
             onChange={(e) => setAddUser(e.target.value)}
@@ -88,6 +109,7 @@ export default function UserManagementTab() {
         <div>
           <label className="block text-xs font-medium text-gray-600 mb-1">Rol</label>
           <Select
+            aria-label="Atanacak rol"
             value={addRole}
             onChange={(e) => setAddRole(e.target.value as "Admin" | "User")}
           >
@@ -108,6 +130,13 @@ export default function UserManagementTab() {
       {/* Table */}
       {loading ? (
         <LoadingLogo compact />
+      ) : yuklemeHatasi ? (
+        <LoadError
+          title="Rol atamaları okunamadı"
+          message={yuklemeHatasi}
+          onRetry={yukle}
+          testId="roller-yukleme-hatasi"
+        />
       ) : entries.length === 0 ? (
         <div className="text-center py-8 text-gray-400">
           <UserIcon className="h-8 w-8 mx-auto mb-2 text-gray-200" />

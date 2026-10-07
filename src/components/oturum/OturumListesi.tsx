@@ -125,7 +125,7 @@ const OturumListesi: React.FC<Props> = ({ adminKullanici }) => {
                       {s.device}
                     </span>
                     {s.current && (
-                      <span className="ml-2 rounded px-1.5 py-0.5 text-[0.6875rem] font-semibold" style={{ background: 'var(--accent)', color: '#fff' }}>
+                      <span className="ml-2 rounded px-1.5 py-0.5 text-[0.6875rem] font-semibold" style={{ background: 'var(--accent)', color: 'var(--text-on-accent)' }}>
                         Bu oturum
                       </span>
                     )}

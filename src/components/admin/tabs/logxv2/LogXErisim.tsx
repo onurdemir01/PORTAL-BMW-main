@@ -713,6 +713,7 @@ const LogXErisim: React.FC = () => {
         <input
           className={`${inputCls} w-full`}
           placeholder="kaynaklarda ara"
+          aria-label="Kaynaklarda ara"
           value={suzgec}
           onChange={(e) => setSuzgec(e.target.value)}
         />

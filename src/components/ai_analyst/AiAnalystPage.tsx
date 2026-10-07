@@ -306,7 +306,7 @@ const AiAnalystPage: React.FC = () => {
         ]).map(({ id, label, icon: Icon }) => (
           <button key={id} onClick={() => setMode(id)}
             className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg transition-all ${
-              mode === id ? "bg-white text-[#3c3d99]" : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+              mode === id ? "bg-white text-[var(--accent)]" : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
             }`}
             style={mode === id ? { boxShadow: "var(--shadow-sm)" } : {}}>
             <Icon className="w-4 h-4" />
@@ -359,7 +359,7 @@ const AiAnalystPage: React.FC = () => {
           if (item.kind === "user") {
             return (
               <div key={i} className="flex justify-end">
-                <div className="max-w-[80%] rounded-2xl rounded-br-md px-4 py-2.5 text-sm text-white" style={{ background: "var(--accent)" }}>
+                <div className="max-w-[80%] rounded-2xl rounded-br-md px-4 py-2.5 text-sm text-[var(--text-on-accent)]" style={{ background: "var(--accent)" }}>
                   {item.text}
                 </div>
               </div>
@@ -403,6 +403,7 @@ const AiAnalystPage: React.FC = () => {
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && send()}
           placeholder={configured === false ? "AI anahtarı tanımlı değil" : "Örn: payment servisinde son 1 saatte ne oldu?"}
+          aria-label="AI Analist sorusu"
           disabled={running || configured === false}
           className="flex-1 rounded-xl border px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#5752d1]/30 bg-white disabled:opacity-60"
         />

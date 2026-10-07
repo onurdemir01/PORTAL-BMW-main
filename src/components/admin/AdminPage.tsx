@@ -13,7 +13,9 @@
 // 2026-09-07'de baglantisi kesilen "Test Senaryolari" / "Akis Testleri" dosyalari
 // silindi; gorunurluk ogeleri setup'ta temizlenir (removeRetiredAdminTabs).
 import React, { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import PageErrorBoundary from '@/components/common/PageErrorBoundary';
 import { prefsApi } from '../../api/prefsApi';
 import {
   ServerStackIcon,
@@ -89,23 +91,45 @@ const SECTIONS: { title: string; icon: React.ElementType; ids: TabId[] }[] = [
 
 const ADMIN_TAB_PREF = 'admin_active_tab';
 
+const sekmeMi = (v: string | null): v is TabId => !!v && DEFAULT_TAB_IDS.includes(v as TabId);
+
 const AdminPage: React.FC = () => {
   const { canSee } = useAuth();
-  const [activeTab, setActiveTabState] = useState<TabId>('users');
+  // DOGRUDAN BAGLANTI (2026-10-07): `/admin?tab=logx`. Sekme yalnizca istemci durumuydu;
+  // portaldaki onlarca "Admin > LogX Yonetimi" yonlendirmesi kopyalanip yapistirilabilir bir
+  // adrese karsilik gelmiyor, sayfa yenilenince de (tercih gelene kadar) ilk sekme aciliyordu.
+  // Oncelik: URL > kayitli tercih > ilk sekme.
+  //
+  // Sekme adresten TURETILIR (durumla esitlenmez): adres gecerli bir sekme soyluyorsa aktif
+  // sekme odur; tercih sonradan gelse de onu ezemez, tarayicinin geri/ileri dugmeleri de
+  // kendiliginden calisir. Durum yalnizca adreste sekme YOKKEN gecerli olan yedegi tutar.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const urlSekmesi = searchParams.get('tab');
+  const [tercihSekmesi, setTercihSekmesi] = useState<TabId>('users');
+  const activeTab: TabId = sekmeMi(urlSekmesi) ? urlSekmesi : tercihSekmesi;
 
-  // Aktif sekme sunucu tercihinden gelir (restart/tarayici degisiminde korunur).
+  // Yedek sekme sunucu tercihinden gelir (restart/tarayici degisiminde korunur).
   useEffect(() => {
     prefsApi
       .getAll()
       .then((prefs) => {
         const saved = prefs[ADMIN_TAB_PREF];
-        if (saved && DEFAULT_TAB_IDS.includes(saved as TabId)) setActiveTabState(saved as TabId);
+        if (saved && DEFAULT_TAB_IDS.includes(saved as TabId)) setTercihSekmesi(saved as TabId);
       })
       .catch(() => {});
   }, []);
 
   const setActiveTab = (id: TabId) => {
-    setActiveTabState(id);
+    setTercihSekmesi(id);
+    // `replace`: sekme gezintisi tarayici gecmisini doldurmasin.
+    setSearchParams(
+      (p) => {
+        const n = new URLSearchParams(p);
+        n.set('tab', id);
+        return n;
+      },
+      { replace: true },
+    );
     prefsApi.set({ [ADMIN_TAB_PREF]: id }).catch(() => {
       /* aktif sekme tercihi - sessiz hata kabul edilebilir */
     });
@@ -192,6 +216,10 @@ const AdminPage: React.FC = () => {
           )}
           <div className="p-5">
             <div key={activeTab} style={{ animation: 'fadeIn 0.18s ease' }}>
+              {/* SEKME BASINA HATA SINIRI (2026-10-07). Tek sinir sayfa duzeyindeydi: bir sekme
+                  render sirasinda dusunce sekme MENUSU dahil butun Admin gidiyor, yonetici
+                  baska bir sekmeye gecemiyordu. `key` sekme degisince siniri sifirlar. */}
+              <PageErrorBoundary key={activeTab}>
               {activeTab === 'audit' && <AuditLogTab />}
               {activeTab === 'smarttickets' && <SmartTicketsTab />}
               {activeTab === 'dbbackup' && <DbBackupTab />}
@@ -208,6 +236,7 @@ const AdminPage: React.FC = () => {
               {activeTab === 'inventoryvis' && <InventoryVisibilityTab />}
               {activeTab === 'logx' && <LogXAdminTab />}
               {activeTab === 'branding' && <BrandingTab />}
+              </PageErrorBoundary>
             </div>
           </div>
         </section>

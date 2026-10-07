@@ -1,15 +1,11 @@
-import { safeJson } from './http';
+import { safeJson, okJson } from './http';
 // src/api/ansibleApi.ts — AWX runner API client
 
 const BASE = '/api/ansible';
 
-async function json<T>(r: Response): Promise<T> {
-  if (!r.ok) {
-    const text = await r.text().catch(() => '');
-    throw new Error(text || `HTTP ${r.status}`);
-  }
-  return safeJson(r);
-}
+// Eskiden basarisiz yanitta govdenin HAM METNI firlatiliyordu; ekranda
+// `{"ok":false,"message":"..."}` gorunuyordu. okJson sunucunun mesajini cikarir.
+const json = <T>(r: Response): Promise<T> => okJson<T>(r);
 
 export interface AwxTemplate {
   id: number;
@@ -178,7 +174,7 @@ export const ansibleApi = {
   }> => fetch(`${BASE}/awx/health`).then(safeJson),
 
   servers: (): Promise<{ ok: boolean; servers: AwxServer[] }> =>
-    fetch(`${BASE}/servers`).then(safeJson),
+    fetch(`${BASE}/servers`).then(okJson),
 
   templates: (
     serverId: number,
@@ -206,7 +202,7 @@ export const ansibleApi = {
   // Dashboard "Kuyruktaki Ansible İşleri" karti — Maestro/Maestro2'de su an
   // kuyrukta/calisan job'lar (pending|waiting|running).
   recentJobs: (): Promise<{ ok: boolean; servers: RecentAwxJobsServer[] }> =>
-    fetch(`${BASE}/awx/recent-jobs`).then(safeJson),
+    fetch(`${BASE}/awx/recent-jobs`).then(okJson),
 
   addCluster: (
     data: Omit<OcpCluster, 'id'>,
@@ -267,7 +263,7 @@ export const ansibleApi = {
 
   // Self-Service Ansible
   ssItems: (): Promise<{ ok: boolean; items: AnsibleSsItem[] }> =>
-    fetch(`${BASE}/ss/items`).then(safeJson),
+    fetch(`${BASE}/ss/items`).then(okJson),
 
   saveSsItem: (
     item: Partial<AnsibleSsItem>,

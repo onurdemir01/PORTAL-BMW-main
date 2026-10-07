@@ -1,4 +1,4 @@
-import { safeJson } from "./http";
+import { okJson } from "./http";
 // src/api/prefsApi.ts — Kullanici tercihleri (portal_user_preferences) API istemcisi.
 // UI durumu (tema, envanter kolon secimi, aktif admin sekmesi...) sunucuda kullanici
 // basina saklanir — restart ve tarayici degisiminde korunur. localStorage yalnizca
@@ -7,9 +7,7 @@ import { safeJson } from "./http";
 export type PrefValue = string | null;
 
 async function json<T>(res: Response): Promise<T> {
-  const data = await safeJson(res);
-  if (!res.ok) throw new Error((data as { error?: string }).error || `HTTP ${res.status}`);
-  return data as T;
+  return okJson<T>(res);
 }
 
 let _cache: Record<string, string> | null = null;

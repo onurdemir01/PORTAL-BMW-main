@@ -11,7 +11,8 @@ interface AppContextType {
   dtHealth:         { ok?: boolean; configured: boolean; reachable?: boolean; mcpConnected?: boolean; environment?: string | null; message?: string } | null;
   dtHealthLoading:  boolean;
 
-  selfSrvCount:     number;
+  /** `null` = katalog OKUNAMADI (0 = okundu ve yayında servis yok). */
+  selfSrvCount:     number | null;
   selfSrvLoading:   boolean;
 }
 
@@ -32,14 +33,21 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   // Self Service KPI'si (Dashboard "Durum" karti) — Smart/Diğerleri katalogu kaldirildigi
   // icin artik Ansible sekmesindeki (AWX'ten kayitli) servis sayisini gosterir.
-  const [selfSrvCount, setSelfSrvCount] = useState(0);
+  const [selfSrvCount, setSelfSrvCount] = useState<number | null>(0);
   const [selfSrvLoading, setSelfL]      = useState(true);
 
   const loadNobetci = useCallback(() => {
     setNobetciL(true);
     nobetciApi.today()
       .then(setNobetci)
-      .catch(() => {})
+      // Eskiden hata yutuluyor, `nobetci` null kaliyor ve kart SONSUZA DEK iskelet
+      // gosteriyordu. Okunamadiysa bunu soyleyen bir sonuc yazilir.
+      .catch((e: unknown) =>
+        setNobetci({
+          ok: false,
+          message: e instanceof Error && e.message ? e.message : "Nöbet bilgisi alınamadı.",
+        } as NobetciResult),
+      )
       .finally(() => setNobetciL(false));
   }, []);
 
@@ -53,7 +61,9 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     ansibleApi.ssItems()
       .then((r) => setSelfSrvCount((r.items || []).length))
-      .catch(() => {})
+      // OKUNAMADI != "0 servis". Eskiden hata yutuluyor, sayi 0 kaliyor ve Dashboard
+      // "Yayinda servis yok" diyordu; oradaki "Katalog okunamadi" dali hic calisamiyordu.
+      .catch(() => setSelfSrvCount(null))
       .finally(() => setSelfL(false));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 

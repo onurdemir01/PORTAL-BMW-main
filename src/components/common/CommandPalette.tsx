@@ -99,6 +99,11 @@ export function CommandPalette() {
       onClick={() => setOpen(false)}
     >
       <div
+        // Yardimci teknolojiye bunun bir ILETISIM KUTUSU oldugu soylenir (eskiden rolsuz bir
+        // div idi: ekran okuyucu arkadaki sayfayi okumaya devam ediyordu).
+        role="dialog"
+        aria-modal="true"
+        aria-label="Sayfa ara"
         className="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-gray-100 flex flex-col max-h-[75dvh] animate-scale-in"
         onClick={(e) => e.stopPropagation()}
       >
@@ -112,6 +117,7 @@ export function CommandPalette() {
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={onKey}
             placeholder="Sayfa ara..."
+            aria-label="Sayfa ara"
             className="flex-1 text-sm text-gray-900 placeholder-gray-400 outline-none bg-transparent"
           />
           <kbd className="hidden sm:inline-flex items-center px-2 py-0.5 text-xs text-gray-400 border border-gray-200 rounded-md font-mono">

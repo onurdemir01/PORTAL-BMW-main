@@ -4,6 +4,7 @@ import { inventoryApi } from '@/api/inventoryApi';
 import { toast } from '@/hooks/useToast';
 import { nobetciApi } from '@/api/nobetciApi';
 import { dynatraceApi } from '@/api/dynatraceApi';
+import LoadError from '@/components/common/LoadError';
 
 // Backend whitelist'i ile hizalı (server/db/env-overrides.cjs SYSTEM_CONFIG_KEYS) —
 // SESSION_SECRET/şifreler kasıtlı olarak listede yok.
@@ -955,16 +956,25 @@ export default function SystemConfigTab() {
   const [configSaving, setConfigSaving] = useState(false);
   const [restartNeeded, setRestartNeeded] = useState(false);
 
+  // Degerler OKUNAMADIYSA her satir SONSUZA DEK "yukleniyor…" gosteriyordu: hata yutuluyor,
+  // `configValues` bos kaliyor ve "henuz gelmedi" ile "gelmeyecek" ayirt edilemiyordu.
+  const [configDurumu, setConfigDurumu] = useState<'yukleniyor' | 'tamam' | 'hata'>('yukleniyor');
+  const [configHatasi, setConfigHatasi] = useState<string | null>(null);
   async function loadSystemConfig() {
     try {
-      const r = await fetch('/api/admin/system-config').then((x) => x.json());
-      if (r.ok) {
-        const map: Record<string, ConfigValue> = {};
-        for (const v of r.values as ConfigValue[]) map[v.key] = v;
-        setConfigValues(map);
+      const res = await fetch('/api/admin/system-config');
+      const r = await res.json().catch(() => ({}));
+      if (!res.ok || !r.ok) {
+        throw new Error(r.message || r.error || `Sunucu hatası (HTTP ${res.status}).`);
       }
-    } catch {
-      /* backend erişilemezse env bölümü değersiz görünür */
+      const map: Record<string, ConfigValue> = {};
+      for (const v of (r.values || []) as ConfigValue[]) map[v.key] = v;
+      setConfigValues(map);
+      setConfigHatasi(null);
+      setConfigDurumu('tamam');
+    } catch (e: unknown) {
+      setConfigHatasi(e instanceof Error && e.message ? e.message : 'İstek başarısız.');
+      setConfigDurumu('hata');
     }
   }
 
@@ -1069,6 +1079,21 @@ export default function SystemConfigTab() {
           </div>
         )}
 
+        {configDurumu === 'hata' && (
+          <div className="mb-4">
+            <LoadError
+              compact
+              title="Ortam değişkenleri okunamadı"
+              message={configHatasi}
+              onRetry={() => {
+                setConfigDurumu('yukleniyor');
+                void loadSystemConfig();
+              }}
+              testId="sistem-ayar-hatasi"
+            />
+          </div>
+        )}
+
         <div className="space-y-4">
           {groups.map((group) => (
             <div key={group}>
@@ -1139,7 +1164,13 @@ export default function SystemConfigTab() {
                             {cv ? (
                               cv.value || <span className="italic text-gray-300">boş</span>
                             ) : (
-                              <span className="italic text-gray-300">yükleniyor…</span>
+                              <span className="italic text-gray-300">
+                                {configDurumu === 'yukleniyor'
+                                  ? 'yükleniyor…'
+                                  : configDurumu === 'hata'
+                                    ? 'okunamadı'
+                                    : 'sunucu bu anahtarı bildirmedi'}
+                              </span>
                             )}
                           </p>
                         )}

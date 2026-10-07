@@ -307,6 +307,7 @@ export default function OcoTakvimiPage() {
           value={sorgu}
           onChange={(e) => setSorgu(e.target.value)}
           placeholder="başlık, OCO no, durum ya da açıklamada ara"
+          aria-label="OCO takviminde ara"
           className="h-8 px-2.5 text-xs rounded-lg border min-w-[18rem]"
           style={{
             borderColor: 'var(--border)',
@@ -359,7 +360,7 @@ export default function OcoTakvimiPage() {
         <div
           className="text-[12px] rounded-lg px-3 py-2 border"
           style={{
-            color: 'var(--status-warning)',
+            color: 'var(--status-warning-text)',
             background: 'var(--status-warning-bg)',
             borderColor: 'var(--status-warning)',
           }}

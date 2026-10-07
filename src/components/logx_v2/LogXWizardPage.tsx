@@ -251,7 +251,8 @@ const LogXWizardPage: React.FC = () => {
   const refresh = useCallback(async (id: string) => {
     const r = await logxV2Api.getRequest(id);
     setRequest(r.request);
-    setJobs(r.jobs);
+    // `?? []`: is listesi eksik gelirse (eski sunucu, bozuk yanit) sayfa dusmesin.
+    setJobs(r.jobs ?? []);
     setDownload(r.download);
     setDownloadList(r.downloads ?? []);
     return r;

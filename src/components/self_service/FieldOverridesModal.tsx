@@ -1366,7 +1366,7 @@ export default function FieldOverridesModal({
                                   <button
                                     onClick={() => removeGroup(i, gi)}
                                     className="text-red-400 hover:text-red-600 flex-shrink-0"
-                                    title="Grubu kaldir"
+                                    title="Grubu kaldır"
                                   >
                                     <TrashIcon className="w-3.5 h-3.5" />
                                   </button>
@@ -1423,7 +1423,7 @@ export default function FieldOverridesModal({
                                     <button
                                       onClick={() => removeCondition(i, gi, ci)}
                                       className="text-red-400 hover:text-red-600 flex-shrink-0"
-                                      title="Kosulu kaldir"
+                                      title="Koşulu kaldır"
                                     >
                                       <TrashIcon className="w-3.5 h-3.5" />
                                     </button>

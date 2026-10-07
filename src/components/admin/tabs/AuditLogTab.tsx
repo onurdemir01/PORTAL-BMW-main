@@ -115,8 +115,13 @@ const AuditLogTab: React.FC = () => {
         qs.set("limit", String(params.limit));
         qs.set("offset", String(params.offset));
         const r = await fetch(`/api/portal-audit?${qs.toString()}`);
-        const d = await r.json();
-        if (!d.ok) throw new Error(d.error || `HTTP ${r.status}`);
+        // Sunucunun metni `message` ya da `error` alaninda gelir; eskiden yalniz `error`
+        // okunuyor, digerinde ekranda ciplak "HTTP 500" kaliyordu. JSON olmayan govde
+        // (gecit hatasi) ayristirma istisnasi yerine anlasilir bir metne dusmeli.
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok || !d.ok) {
+          throw new Error(d.message || d.error || `Sunucu hatası (HTTP ${r.status}).`);
+        }
         data = d.logs as AuditLog[];
       } else {
         data = await auditApi.list(params);
@@ -182,8 +187,11 @@ const AuditLogTab: React.FC = () => {
             ))}
           </div>
           <p className="text-sm text-gray-500">{logs.length} kayıt (Sayfa {page})</p>
-          {/* K-02: db_error legend */}
-          <span className="text-xs px-2 py-0.5 bg-red-50 text-red-600 rounded-full">● db_error kırmızı</span>
+          {/* K-02: db_error lejanti. Eski metin "● db_error kırmızı" idi: ic durum kodunu
+              ve bir renk adini yan yana basiyor, ne anlama geldigini soylemiyordu. */}
+          <span className="text-xs px-2 py-0.5 bg-red-50 text-red-600 rounded-full">
+            ● kırmızı satır: veritabanı hatası
+          </span>
         </div>
         <div className="flex gap-2">
           <button

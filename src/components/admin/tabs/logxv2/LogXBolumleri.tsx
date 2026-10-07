@@ -191,6 +191,7 @@ export const RequestsSection: React.FC = () => {
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
         <select
+          aria-label="Platforma göre süz"
           value={platform}
           onChange={(e) => setPlatform(e.target.value)}
           className="px-2 py-1.5 text-xs rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-primary)]"
@@ -200,6 +201,7 @@ export const RequestsSection: React.FC = () => {
           <option value="openshift">openshift</option>
         </select>
         <select
+          aria-label="Duruma göre süz"
           value={state}
           onChange={(e) => setState(e.target.value)}
           className="px-2 py-1.5 text-xs rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-primary)]"

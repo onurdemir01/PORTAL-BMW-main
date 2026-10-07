@@ -1,4 +1,4 @@
-import { safeJson } from "./http";
+import { safeJson, okJson } from "./http";
 // src/api/playbookRegistryApi.ts — AI'ın çağırabildiği salt-okunur tanılama
 // playbook'larının DB-destekli kaydı (Admin > Playbook Kayıtları).
 const BASE = "/api/ansible/playbooks";
@@ -37,8 +37,9 @@ export interface AvailablePlaybook {
 }
 
 export const playbookRegistryApi = {
+  // KATI: okunamayan liste "kayit yok" diye gosterilmesin (bkz. api/http.ts okJson).
   list: (): Promise<{ ok: boolean; playbooks?: PlaybookRegistryEntry[]; message?: string }> =>
-    fetch(BASE).then(safeJson),
+    fetch(BASE).then(okJson),
 
   // Admin gerekmez — LogX sayfasının dinamik buton listesi için (template ID sızdırılmaz).
   available: (): Promise<{ ok: boolean; playbooks?: AvailablePlaybook[]; message?: string }> =>

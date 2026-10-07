@@ -45,6 +45,7 @@ export default function Masthead({ onToggleNav }: Props) {
   // okur, yani onbellek o ana kadar dolmustur.
   const [csvAyirici, setCsvAyirici] = useState<CsvSeparator>(csvSeparator());
   const menuRef = useRef<HTMLDivElement>(null);
+  const menuDugmesiRef = useRef<HTMLButtonElement>(null);
 
   const displayName = user?.displayName || user?.username || "?";
   const initial = displayName[0]?.toUpperCase() ?? "?";
@@ -72,13 +73,27 @@ export default function Masthead({ onToggleNav }: Props) {
     return () => document.removeEventListener("mousedown", onDocClick);
   }, []);
 
+  // ESC menuyu kapatir ve odagi dugmeye geri verir (2026-10-07). Menu yalnizca DISARI
+  // tiklaninca kapaniyordu: klavyeyle acan kullanici kapatamiyor, acik menu komut paletinin
+  // ve sag kenardaki Taleplerim sekmesinin ustunde kaliyordu.
+  useEffect(() => {
+    if (!menuOpen) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== "Escape") return;
+      setMenuOpen(false);
+      menuDugmesiRef.current?.focus();
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [menuOpen]);
+
   // Ctrl+K komut paletini acan mevcut global kisayolu tetikler.
   const openSearch = () =>
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", ctrlKey: true, bubbles: true }));
 
   return (
     <header className="pf-masthead">
-      <button className="pf-masthead-btn" onClick={onToggleNav} aria-label="Navigasyonu ac/kapat">
+      <button className="pf-masthead-btn" onClick={onToggleNav} aria-label="Navigasyonu aç/kapat">
         <Bars3Icon className="h-5 w-5" />
       </button>
 
@@ -107,8 +122,8 @@ export default function Masthead({ onToggleNav }: Props) {
         <button
           className="pf-masthead-btn"
           onClick={toggleTheme}
-          aria-label={theme === "dark" ? "Acik temaya gec" : "Koyu temaya gec"}
-          title={theme === "dark" ? "Acik tema" : "Koyu tema"}
+          aria-label={theme === "dark" ? "Açık temaya geç" : "Koyu temaya geç"}
+          title={theme === "dark" ? "Açık tema" : "Koyu tema"}
         >
           {theme === "dark" ? <SunIcon className="h-5 w-5" /> : <MoonIcon className="h-5 w-5" />}
         </button>
@@ -116,10 +131,13 @@ export default function Masthead({ onToggleNav }: Props) {
         {/* Kullanici menusu — PF masthead dropdown */}
         <div className="relative" ref={menuRef}>
           <button
+            ref={menuDugmesiRef}
             onClick={() => setMenuOpen((v) => !v)}
             className="flex items-center gap-2 h-10 px-3 text-[0.875rem] transition-colors hover:bg-[var(--nav-hover-bg)]"
             style={{ color: "var(--nav-text)", borderRadius: "var(--radius-sm)" }}
             aria-expanded={menuOpen}
+            aria-haspopup="true"
+            aria-controls="kullanici-menusu"
           >
             {user?.photoUrl ? (
               <img src={user.photoUrl} alt="" className="h-6 w-6 rounded-full object-cover" />
@@ -137,7 +155,9 @@ export default function Masthead({ onToggleNav }: Props) {
 
           {menuOpen && (
             <div
-              className="absolute right-0 top-full min-w-[14rem] py-1 z-50"
+              id="kullanici-menusu"
+              aria-label="Kullanıcı menüsü"
+              className="absolute right-0 top-full min-w-[16rem] py-1 z-50"
               style={{ background: "var(--bg-surface)", boxShadow: "var(--shadow-lg)", border: "1px solid var(--border)" }}
             >
               <div className="px-4 py-2" style={{ borderBottom: "1px solid var(--border)" }}>
@@ -150,7 +170,7 @@ export default function Masthead({ onToggleNav }: Props) {
                 className="flex items-center gap-2 px-4 py-2 text-[0.875rem] no-underline hover:bg-[var(--bg-elevated)]"
                 style={{ color: "var(--text-primary)" }}
               >
-                <UserCircleIcon className="h-4 w-4" /> Nobet listesi
+                <UserCircleIcon className="h-4 w-4" /> Nöbet listesi
               </NavLink>
               {/* ── CSV AYIRICI ─────────────────────────────────────────────
                   Portalda ayirici ikiye bolunmustu (`denetim/` icinde bile 6
@@ -164,7 +184,7 @@ export default function Masthead({ onToggleNav }: Props) {
                   className="flex items-center justify-between gap-2 text-[0.75rem]"
                   style={{ color: "var(--text-muted)" }}
                 >
-                  CSV ayırıcı
+                  <span className="whitespace-nowrap">CSV ayırıcı</span>
                   <select
                     value={csvAyirici}
                     onChange={(e) => {

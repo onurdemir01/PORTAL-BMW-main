@@ -6,6 +6,7 @@ import { ansibleApi, type AwxServer, type AwxTemplate, type AwxTemplateDetail, t
 import { toast } from "@/hooks/useToast";
 import FieldOverridesModal from "@/components/self_service/FieldOverridesModal";
 import CodeChip from "@/components/common/CodeChip";
+import LoadError from "@/components/common/LoadError";
 import { fmtDateTime, fmtDateTimeSeconds } from "@/utils/datetime";
 
 // ── Simple YAML key:value parser (no external deps) ──────────────────────────
@@ -145,7 +146,7 @@ function JobOutputModal({ jobId, templateName, onClose }: JobOutputModalProps) {
 
           {/* Changed warning */}
           {changed && (
-            <div className="mx-6 mt-3 px-3 py-2 rounded-lg text-sm font-medium flex-shrink-0" style={{ background: "var(--status-warning-bg)", color: "var(--status-warning)" }}>
+            <div className="mx-6 mt-3 px-3 py-2 rounded-lg text-sm font-medium flex-shrink-0" style={{ background: "var(--status-warning-bg)", color: "var(--status-warning-text)" }}>
               ⚠ Playbook'ta değişiklik (changed) tespit edildi — üretim ortamında onaylayın.
             </div>
           )}
@@ -869,16 +870,34 @@ const AnsiblePage: React.FC = () => {
   const [activeJobId, setActiveJobId]       = useState<number | null>(null);
   const [activeJobName, setActiveJobName]   = useState<string>("");
 
+  // Sunucu listesi OKUNAMADIYSA bu ayri bir durumdur: eskiden hata yutuluyor, liste bos
+  // kaliyor ve ekran "Yapilandirilmis AWX sunucusu bulunamadi, .env dosyasina ekleyin"
+  // diyordu - kullaniciyi var olan bir yapilandirmayi "eksik" sanmaya yoneltiyordu.
+  const [serversError, setServersError] = useState<string | null>(null);
+  const sunuculariCek = useCallback(
+    () =>
+      ansibleApi.servers()
+        .then((r) => {
+          const list = r.servers ?? [];
+          setServers(list);
+          if (list.length > 0) setActiveServerId((onceki) => onceki ?? list[0].id);
+        })
+        .catch((e: unknown) => {
+          setServers([]);
+          setServersError(e instanceof Error && e.message ? e.message : "İstek başarısız.");
+        })
+        .finally(() => setLoadingServers(false)),
+    [],
+  );
   useEffect(() => {
-    ansibleApi.servers()
-      .then((r) => {
-        const list = r.servers ?? [];
-        setServers(list);
-        if (list.length > 0) setActiveServerId(list[0].id);
-      })
-      .catch(() => setServers([]))
-      .finally(() => setLoadingServers(false));
-  }, []);
+    void sunuculariCek();
+  }, [sunuculariCek]);
+  // "Tekrar dene": durumu sifirlar, ayni cekimi yeniden yapar.
+  const loadServers = () => {
+    setLoadingServers(true);
+    setServersError(null);
+    void sunuculariCek();
+  };
 
   const activeServer = servers.find((s) => s.id === activeServerId) ?? null;
 
@@ -905,6 +924,15 @@ const AnsiblePage: React.FC = () => {
       {loadingServers ? (
         <div className="flex gap-2">
           {[1, 2, 3].map((i) => <div key={i} className="h-9 w-28 skeleton rounded-xl" />)}
+        </div>
+      ) : serversError ? (
+        <div className="card">
+          <LoadError
+            title="AWX sunucu listesi okunamadı"
+            message={serversError}
+            onRetry={loadServers}
+            testId="ansible-sunucu-hatasi"
+          />
         </div>
       ) : servers.length === 0 ? (
         <div className="rounded-2xl border bg-white p-8 text-center text-sm text-slate-400">

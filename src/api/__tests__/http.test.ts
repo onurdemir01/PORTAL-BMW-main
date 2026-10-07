@@ -67,3 +67,61 @@ describe('safeJson ag gecidi davranisi', () => {
     expect(await safeJson(res)).toEqual({ ok: true, n: 1 });
   });
 });
+
+// ── okJson: KATI ayristirici (2026-10-07) ────────────────────────────────────────────────
+// `safeJson` basarisiz JSON yanitinda reddetmez. Liste uclarini kontrolsuz okuyan ekranlar
+// (`setApps(r.apps)`) bu yuzden 500/403'te cokuyor ya da "hata"yi "kayit yok" diye
+// gosteriyordu. `okJson` reddeder ve sunucunun mesajini tasir.
+import { okJson, type ApiError } from '@/api/http';
+
+const jsonYanit = (status: number, body: unknown) =>
+  new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+
+async function katiHata(res: Response): Promise<ApiError> {
+  try {
+    await okJson(res);
+  } catch (e) {
+    return e as ApiError;
+  }
+  throw new Error('okJson hata firlatmadi');
+}
+
+describe('okJson', () => {
+  it('OK1 basarili yanit govdeyi aynen verir', async () => {
+    expect(await okJson(jsonYanit(200, { ok: true, apps: ['A'] }))).toEqual({
+      ok: true,
+      apps: ['A'],
+    });
+  });
+
+  it.each([
+    [
+      500,
+      { ok: false, message: 'Envanter veritabanına ulaşılamadı.' },
+      'Envanter veritabanına ulaşılamadı.',
+    ],
+    [403, { ok: false, error: 'Bu işlem için yetkiniz yok.' }, 'Bu işlem için yetkiniz yok.'],
+    // `message` ile `error` birlikteyse kullaniciya yazilan (`message`) once gelir.
+    [400, { message: 'Geçersiz uygulama adı.', error: 'bad_request' }, 'Geçersiz uygulama adı.'],
+    [502, { ok: false }, 'Sunucu hatası (HTTP 502).'],
+    [500, { message: '   ' }, 'Sunucu hatası (HTTP 500).'],
+    [500, 'duz metin', 'Sunucu hatası (HTTP 500).'],
+  ])('OK2 %i: REDDEDER, mesaj sunucudan (ham govde degil)', async (status, body, beklenen) => {
+    const err = await katiHata(jsonYanit(status, body));
+    expect(err.message).toBe(beklenen);
+    expect(err.message).not.toContain('{');
+    expect(err.status).toBe(status);
+  });
+
+  it('OK3 hata kodu varsa hataya ilistirilir', async () => {
+    const err = await katiHata(jsonYanit(409, { message: 'Çakışma', code: 'conflict' }));
+    expect(err.code).toBe('conflict');
+    expect((await katiHata(jsonYanit(409, { message: 'x' }))).code).toBeUndefined();
+  });
+
+  it('OK4 JSON olmayan hata govdesi safeJson davranisini korur (HTML sizmaz, durum tasinir)', async () => {
+    const err = await katiHata(htmlResponse(503));
+    expect(err.message).not.toContain('<html');
+    expect(err.status).toBe(503);
+  });
+});

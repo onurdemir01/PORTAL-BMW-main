@@ -221,7 +221,7 @@ export default function LongJobCancelTokenSection({ onChanged }: { onChanged?: (
           {data.measured ? " — son geçerli kayıt gösteriliyor." : " — tanımlı olup olmadığı ÖLÇÜLEMEDİ."}
         </div>
       )}
-      {data && data.servers.length === 0 && <div className="text-[11px] text-gray-500">Tanımlı AWX sunucusu yok.</div>}
+      {data && (data.servers || []).length === 0 && <div className="text-[11px] text-gray-500">Tanımlı AWX sunucusu yok.</div>}
       <div className="space-y-2">
         {(data?.servers || []).map((row) => {
           const b = busy[row.serverId];

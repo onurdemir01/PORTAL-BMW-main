@@ -23,6 +23,7 @@
     "format": "prettier --write .",
     "test:ui": "vitest run",
     "lint:ascii": "node scripts/check-ascii.cjs",
+    "ui:tarama": "node scripts/ui-tarama/tarama.mjs",
     "fix:ascii": "node scripts/fix-ascii.cjs",
     "preflight": "node scripts/preflight.cjs",
     "prepare": "husky",

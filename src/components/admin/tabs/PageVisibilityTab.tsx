@@ -13,6 +13,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/useToast';
 import { Select } from '@/components/ui/Form';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
+import LoadError from '@/components/common/LoadError';
 import {
   CheckIcon,
   TrashIcon,
@@ -77,8 +78,12 @@ export default function PageVisibilityTab() {
   });
   const [showHelp, setShowHelp] = useState(false);
 
+  // Kurallar OKUNAMADIYSA bos bir tablo cizilmez: eskiden yalnizca kisa bir bildirim cikiyor,
+  // altinda satirsiz tablo ve "Kaydet" dugmesi duruyordu ("hic kural yok" gibi gorunuyordu).
+  const [yuklemeHatasi, setYuklemeHatasi] = useState<string | null>(null);
   async function load() {
     setLoading(true);
+    setYuklemeHatasi(null);
     try {
       const { elements, rules } = await elementsApi.list();
       setElements(elements);
@@ -88,7 +93,7 @@ export default function PageVisibilityTab() {
       setEdit(map);
       setDirty(new Set());
     } catch (e) {
-      toast.error((e as Error).message || 'Elementler yüklenemedi.');
+      setYuklemeHatasi((e as Error).message || 'İstek başarısız.');
     } finally {
       setLoading(false);
     }
@@ -210,6 +215,15 @@ export default function PageVisibilityTab() {
   }
 
   if (loading) return <LoadingLogo compact />;
+  if (yuklemeHatasi)
+    return (
+      <LoadError
+        title="Görünürlük kuralları okunamadı"
+        message={yuklemeHatasi}
+        onRetry={() => void load()}
+        testId="gorunurluk-yukleme-hatasi"
+      />
+    );
 
   const renderRow = (el: PortalElement, depth: number) => {
     const e = edit[el.key];

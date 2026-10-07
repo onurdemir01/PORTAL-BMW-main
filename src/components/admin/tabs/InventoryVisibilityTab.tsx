@@ -20,6 +20,7 @@ import { toast } from '@/hooks/useToast';
 import { Select } from '@/components/ui/Form';
 import HistoryScopePanel from './HistoryScopePanel';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
+import LoadError from '@/components/common/LoadError';
 
 export default function InventoryVisibilityTab() {
   const [tables, setTables] = useState<TableVisibilityRow[]>([]);
@@ -38,14 +39,23 @@ export default function InventoryVisibilityTab() {
   const [detailId, setDetailId] = useState<number | null>(null);
   const [detailTab, setDetailTab] = useState<'overrides' | 'columns'>('overrides');
 
+  // Liste OKUNAMADIYSA bos tablo ve isaretsiz "Tum tablolari goster" kutulari cizilmez:
+  // okunamayan durum "hicbir tablo acik degil" gibi gorunuyordu (`safeJson` 500'de reddetmez,
+  // `r.tables || []` bos liste uretiyordu).
+  const [yuklemeHatasi, setYuklemeHatasi] = useState<string | null>(null);
   async function reload() {
     setLoading(true);
+    setYuklemeHatasi(null);
     try {
       const r = await inventoryApi.tableVisibilityList();
+      if (r.ok === false) {
+        setYuklemeHatasi((r as { message?: string }).message || 'Sunucu hatası.');
+        return;
+      }
       setTables(r.tables || []);
       if (r.allTablesVisible) setAllTablesVisibleState(r.allTablesVisible);
-    } catch {
-      toast.error('Tablolar yüklenemedi.');
+    } catch (e: unknown) {
+      setYuklemeHatasi(e instanceof Error && e.message ? e.message : 'İstek başarısız.');
     } finally {
       setLoading(false);
     }
@@ -158,6 +168,18 @@ export default function InventoryVisibilityTab() {
   }
 
   if (loading) return <LoadingLogo compact />;
+  if (yuklemeHatasi)
+    return (
+      <div className="space-y-4">
+        <HistoryScopePanel />
+        <LoadError
+          title="Envanter tablo görünürlüğü okunamadı"
+          message={yuklemeHatasi}
+          onRetry={() => void reload()}
+          testId="envanter-gorunurluk-hatasi"
+        />
+      </div>
+    );
 
   return (
     <div className="space-y-4">
@@ -481,6 +503,7 @@ function UserOverridesSection({ tableVisibilityId }: { tableVisibilityId: number
           onChange={(e) => setUsername(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && add()}
           placeholder="kullanıcı adı"
+          aria-label="İstisna eklenecek kullanıcı adı"
           className="px-2 py-1.5 text-xs border border-gray-200 rounded-lg font-mono w-48"
         />
         <Select

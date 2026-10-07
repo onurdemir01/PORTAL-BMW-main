@@ -115,6 +115,8 @@ const StoppedPanel: React.FC<Props> = ({
   async function load(opts: { silent?: boolean } = {}) {
     if (!opts.silent) setLoading(true);
     setError(null);
+    // Hata metni NEYIN okunamadigini soyler: ScaleX acilisinda uc istek gider; ucu de
+    // dustugunde ekranda ayirt edilemeyen uc "Sunucu hatasi" kutusu duruyordu.
     try {
       const r = await scalexApi.stopped(env, tenant);
       if (!aliveRef.current) return;
@@ -123,9 +125,10 @@ const StoppedPanel: React.FC<Props> = ({
         setHiddenCount(r.hiddenCount || 0);
         setHiddenByOwnership(r.hiddenByOwnership || 0);
         setTruncated(r.truncated === true);
-      } else setError(r.message || 'Liste alınamadı.');
+      } else setError(`Durdurulmuş uygulama listesi okunamadı: ${r.message || 'sunucu hata döndü'}`);
     } catch (e) {
-      if (aliveRef.current) setError((e as Error).message);
+      if (aliveRef.current)
+        setError(`Durdurulmuş uygulama listesi okunamadı: ${(e as Error).message}`);
     } finally {
       if (aliveRef.current && !opts.silent) setLoading(false);
     }
@@ -482,7 +485,12 @@ const StoppedPanel: React.FC<Props> = ({
     return (
       <div className="flex items-start gap-2 bg-red-50 border border-red-100 rounded-xl p-3 text-sm text-red-700">
         <ExclamationTriangleIcon aria-hidden="true" className="w-4 h-4 flex-shrink-0 mt-0.5" />
-        <span>{error}</span>
+        <span className="flex-1">{error}</span>
+        {/* Hata bu paneli TUMUYLE degistirir (liste gizlenir). Cikis yolu yoktu: gecici bir
+            hatadan ya da dusen bir toplu islemden sonra tek care sayfayi yenilemekti. */}
+        <button type="button" onClick={() => void load()} className="btn-secondary flex-shrink-0 !py-1 !px-2.5 text-xs">
+          Tekrar dene
+        </button>
       </div>
     );
   }

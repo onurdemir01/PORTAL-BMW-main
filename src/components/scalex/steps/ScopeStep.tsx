@@ -7,6 +7,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ExclamationTriangleIcon, ServerStackIcon } from '@heroicons/react/24/outline';
 import { scalexApi, type ScaleXClusterTree } from '@/api/scalexApi';
 import { isProdEnv } from '@/utils/env';
+import LoadError from '@/components/common/LoadError';
 
 interface Props {
   busy: boolean;
@@ -29,6 +30,9 @@ const ScopeStep: React.FC<Props> = ({ busy, initial, onSubmit }) => {
   const [tenant, setTenant] = useState(initial?.tenant || '');
   const [selected, setSelected] = useState<string[]>(initial?.clusters || []);
 
+  // `deneme` artinca liste yeniden cekilir ("Tekrar dene"). Eskiden hata kutusunda cikis
+  // yoktu: gecici bir hatadan sonra tek yol sayfayi yenilemekti.
+  const [deneme, setDeneme] = useState(0);
   useEffect(() => {
     let alive = true;
     scalexApi
@@ -43,7 +47,12 @@ const ScopeStep: React.FC<Props> = ({ busy, initial, onSubmit }) => {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [deneme]);
+  const tekrarDene = () => {
+    setError(null);
+    setLoading(true);
+    setDeneme((n) => n + 1);
+  };
 
   const envs = useMemo(() => Object.keys(tree).sort(), [tree]);
   const tenants = useMemo(() => (env ? Object.keys(tree[env] || {}).sort() : []), [tree, env]);
@@ -66,11 +75,16 @@ const ScopeStep: React.FC<Props> = ({ busy, initial, onSubmit }) => {
       </div>
     );
   if (error) {
+    // NEYIN okunamadigi soylenir: ScaleX acilisinda uc ayri istek gider ve ucu de dustugunde
+    // ekranda birbirinden ayirt edilemeyen uc "Sunucu hatasi" kutusu duruyordu.
     return (
-      <div className="flex items-start gap-2 bg-red-50 border border-red-100 rounded-xl p-3 text-sm text-red-700">
-        <ExclamationTriangleIcon aria-hidden="true" className="w-4 h-4 flex-shrink-0 mt-0.5" />
-        <span>{error}</span>
-      </div>
+      <LoadError
+        compact
+        title="Cluster listesi okunamadı"
+        message={error}
+        onRetry={tekrarDene}
+        testId="scalex-cluster-hatasi"
+      />
     );
   }
 

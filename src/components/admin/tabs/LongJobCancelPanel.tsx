@@ -625,7 +625,7 @@ export default function LongJobCancelPanel({ summary }: { summary: Summary }) {
           />
           <span>Kuyrukta takılı işler de (pending/waiting, kuyruk süresine göre)</span>
         </label>
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="template ara" className={`${inputCls} w-56`} />
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="template ara" aria-label="Template ara" className={`${inputCls} w-56`} />
         <span className="text-xs text-gray-500">{cfg.templates.length} template seçili</span>
         <button
           data-testid="ljc-save"

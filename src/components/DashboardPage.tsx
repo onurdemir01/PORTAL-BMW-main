@@ -167,6 +167,19 @@ function StatusRow({
     <div
       className={`flex items-start gap-2 py-2 ${onClick ? 'cursor-pointer' : ''}`}
       onClick={onClick}
+      // Tiklanabilir satir klavyeyle de acilir (eskiden yalnizca fare ile calisiyordu).
+      {...(onClick
+        ? {
+            role: 'button',
+            tabIndex: 0,
+            onKeyDown: (e: React.KeyboardEvent) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onClick();
+              }
+            },
+          }
+        : {})}
       style={{ borderBottom: '1px solid var(--border)' }}
     >
       <Icon className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color }} />
@@ -378,6 +391,12 @@ const DashboardPage: React.FC = () => {
                 <div className="h-4 skeleton w-2/3" />
                 <div className="h-3 skeleton w-1/2" />
               </div>
+            ) : nobetci.ok && !nobetci.name ? (
+              // Servis yanit verdi ama bugun icin kayit yok: aciklamasiz bir "?" avatari
+              // yerine durum soylenir.
+              <p className="text-[0.875rem]" style={{ color: 'var(--text-muted)' }}>
+                Bugün için nöbetçi tanımlı değil.
+              </p>
             ) : nobetci.ok ? (
               <div className="flex items-center gap-3">
                 {nobetci.avatarUrl ? (
@@ -388,7 +407,7 @@ const DashboardPage: React.FC = () => {
                   />
                 ) : (
                   <div
-                    className="h-12 w-12 rounded-full flex items-center justify-center text-white"
+                    className="h-12 w-12 rounded-full flex items-center justify-center text-[var(--text-on-accent)]"
                     style={{
                       background: 'var(--accent)',
                       fontFamily: 'var(--font-display)',
@@ -535,7 +554,7 @@ const DashboardPage: React.FC = () => {
             </p>
           )}
           {awxJobServers.some((s) => !s.ok) && (
-            <p className="text-[0.8125rem] mb-2" style={{ color: 'var(--status-warning)' }}>
+            <p className="text-[0.8125rem] mb-2" style={{ color: 'var(--status-warning-text)' }}>
               {awxJobServers
                 .filter((s) => !s.ok)
                 .map((s) => `${s.serverName}: ${s.error || 'erişilemedi'}`)
@@ -544,7 +563,10 @@ const DashboardPage: React.FC = () => {
           )}
           {!awxJobsLoaded ? (
             <LoadingLogo compact />
-          ) : awxJobServers.every((s) => s.jobs.length === 0) ? (
+          ) : awxJobsFetchError && awxJobServers.length === 0 ? null : awxJobServers.every(
+              (s) => s.jobs.length === 0,
+            ) ? (
+            // Liste OKUNAMADIYSA "Kuyrukta is yok" denmez (yukaridaki hata satiri yeter).
             <p className="text-[0.875rem] py-4 text-center" style={{ color: 'var(--text-muted)' }}>
               Kuyrukta iş yok.
             </p>

@@ -53,3 +53,37 @@ export async function safeJson(res: Response): Promise<any> {
   }
   return body;
 }
+
+/** `okJson`'un firlattigi hata: sunucunun mesaji + HTTP durumu (+ varsa hata kodu). */
+export type ApiError = Error & { status: number; code?: string };
+
+/**
+ * KATI ayristirici: yanit basarisizsa (4xx/5xx) REDDEDER.
+ *
+ * NEDEN VAR (2026-10-07): `safeJson` basarisiz JSON yanitlarinda reddetmez, govdeyi
+ * (`{ ok: false, message }`) dondurur. Bunu bilerek kullanan cagrilar var (run/poll
+ * `ok` ve `_httpStatus`a bakiyor). Ama LISTE uclarinda cagiranlar alani kontrolsuz
+ * yaziyordu — `setApps(r.apps)`, `setHosts(r.hosts)`, `setTree(r.tree)` — ve sunucu 500
+ * ya da 403 donunce state `undefined` oluyor, sayfa "Cannot read properties of undefined"
+ * ile TUMUYLE dusuyordu (Telnet ve FileX; kullanici "yetkiniz yok" mesajini hic gormuyordu).
+ * Ayni kok "hata"yi "kayit yok" diye de gosteriyordu: `r.items ?? []` bos liste = "yok".
+ *
+ * Mesaj sirasi: `message`, sonra `error` (sunucu modulleri ikisini de kullaniyor), sonra
+ * durum kodu. Ham govde METNI kullaniciya basilmaz (Otomasyon sayfasi `{"ok":false,...}`
+ * gosteriyordu).
+ */
+export async function okJson<T = any>(res: Response): Promise<T> {
+  const body = await safeJson(res);
+  if (!res.ok) {
+    const b = body && typeof body === 'object' ? (body as Record<string, unknown>) : {};
+    const mesaj =
+      (typeof b.message === 'string' && b.message.trim()) ||
+      (typeof b.error === 'string' && b.error.trim()) ||
+      `Sunucu hatası (HTTP ${res.status}).`;
+    throw Object.assign(new Error(mesaj), {
+      status: res.status,
+      ...(typeof b.code === 'string' ? { code: b.code } : {}),
+    }) as ApiError;
+  }
+  return body as T;
+}
