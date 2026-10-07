@@ -14,6 +14,15 @@ const fs = require('node:fs');
 const path = require('node:path');
 const read = (p) => fs.readFileSync(path.join(__dirname, '..', '..', '..', p), 'utf8');
 
+// GORUNURLUK ELEMANLARI ile RENDER EDILEN SEKMELER AYRISTI (2026-10-08).
+//
+// 'spa' ve 'spadiscovery' tek sekmede birlesti (NginxSpaBirlesik). Ama `tab:nginx:spa`
+// GORUNURLUK ANAHTARI OLARAK YASIYOR: mevcut yetki satirlari ona bagli ve birlesik
+// sayfa onu "Kapsam & Tasima" ALT SEKMESI icin okuyor. Seed'den silmek, o yetkiye sahip
+// kullanicilarin erisimini sessizce kaldirirdi.
+//
+// Bu yuzden `TABS` (seed/yetki) ile `RENDER_TABS` (ekranda sekme olarak cizilen) AYRI.
+// Ikisini birlestirmek, 'spa' icin var olmayan bir render blogu aramak demekti.
 const TABS = [
   'dashboard',
   'instances',
@@ -28,6 +37,27 @@ const TABS = [
   'envanter',
   'audit',
 ];
+
+// Ekranda SEKME olarak cizilenler: 'spa' artik bir sekme DEGIL (birlesik sayfanin alt
+// bolumu). Render kapisi bu liste uzerinden olculur.
+const RENDER_TABS = TABS.filter((t) => t !== 'spa');
+
+// SEED ve EKRAN listeleri KAYNAKTAN TURETILIR (2026-10-08). Yukaridaki `TABS` elle
+// yazilmis bir KOPYAYDI ve 'spadiscovery' / 'ratelimit' / 'rvpsecim' ONDA HIC YOKTU -
+// yani bu bekci uc sekmenin yetki kapisini HIC denetlemiyordu ve kimse farketmedi.
+// Kopya yerine kaynak okunur; liste bir daha sessizce ayrisamaz.
+function seedKeys() {
+  const src = read('server/auth/visibility-routes.cjs');
+  const m = src.match(/const NGINX_TAB_KEYS = \[([\s\S]*?)\];/);
+  assert.ok(m, 'NGINX_TAB_KEYS okunamadi (ad degismis olabilir)');
+  return [...m[1].matchAll(/'([^']+)'/g)].map((x) => x[1]);
+}
+function uiTabs() {
+  const src = read('src/components/nginx_console/NginxConsolePage.tsx');
+  const m = src.match(/const TABS: readonly Tab\[\] = \[([\s\S]*?)\];/);
+  assert.ok(m, 'NginxConsolePage TABS okunamadi');
+  return [...m[1].matchAll(/'([^']+)'/g)].map((x) => x[1]);
+}
 
 test('NH-A1 seed: her sekme element olarak kayıtlı, parent NginxConsole, varsayılan KAPALI', () => {
   const src = read('server/db/mssql-setup.cjs');
@@ -129,17 +159,42 @@ test('NH-A4 istemci: sekmeler canSee ile süzülür, içerik de kapalı, boş du
     page.includes('HUB_TABS.filter((x) => canSee(`tab:nginx:${x.id}`))'),
     'üst sekme grubu süzülmüyor',
   );
+  // DENETIM GRUBU (2026-10-08 birlesmesinden sonra): 'spa' ve 'spadiscovery' tek sekmede
+  // birlesti ve giris IKI anahtardan BIRIYLE acilir. Suzgec artik tek satir degil, ama
+  // YETKIYE DAYANMA sarti aynen durur; asagida hem suzgecin hem icerigin iki anahtari da
+  // adiyla andigi olculur. Suzgeci tamamen kaldiran bir degisiklik buradan GECEMEZ.
   assert.ok(
-    page.includes('HUB_AUDIT_TABS.filter((x) => canSee(`tab:nginx:${x.id}`))'),
-    'denetim sekme grubu süzülmüyor',
+    /HUB_AUDIT_TABS\.filter\(\(x\) =>[\s\S]{0,260}canSee\(`tab:nginx:\$\{x\.id\}`\)/.test(page),
+    'denetim sekme grubu canSee ile süzülmüyor',
+  );
+  assert.ok(
+    /HUB_AUDIT_TABS\.filter\(\(x\) =>[\s\S]{0,260}canSee\('tab:nginx:spadiscovery'\)[\s\S]{0,80}canSee\('tab:nginx:spa'\)/.test(page),
+    'birleşik sekme iki görünürlük anahtarından birini okumuyor',
   );
   // İçerik de kapalı olmalı: görünmeyen sekmenin bileşeni render EDİLMEMELİ.
-  for (const t of TABS) {
+  for (const t of RENDER_TABS) {
+    if (t === 'spadiscovery') {
+      // Birlesik sayfa: iki anahtardan biri yeterli, ama HICBIRI yoksa render EDILMEZ.
+      assert.ok(
+        page.includes("{tab === 'spadiscovery' && (canSee('tab:nginx:spadiscovery') || canSee('tab:nginx:spa'))"),
+        'birleşik sayfa içeriği koşulsuz render ediliyor',
+      );
+      // Alt sekmeler de AYRI AYRI yetkiye bagli olmali: yalniz bir anahtara sahip
+      // kullaniciya otekinin icerigi acilmamali.
+      assert.ok(
+        /kesifGorunur=\{canSee\('tab:nginx:spadiscovery'\)\}/.test(page)
+          && /kapsamGorunur=\{canSee\('tab:nginx:spa'\)\}/.test(page),
+        'alt sekmeler ayrı görünürlük anahtarına bağlı değil',
+      );
+      continue;
+    }
     assert.ok(
       page.includes(`{tab === '${t}' && canSee('tab:nginx:${t}')`),
       `${t} içeriği koşulsuz render ediliyor`,
     );
   }
+  // ESKI BAGLANTI: ?tab=spa sessizce Dashboard'a DUSMEMELI.
+  assert.ok(/raw === 'spa'\) return 'spadiscovery'/.test(page), 'eski ?tab=spa bağlantısı yönlendirilmiyor');
   assert.ok(page.includes('Bu sayfada size açık bir bölüm yok'), 'boş durum mesajı yok');
   assert.ok(
     /if \(visibleIds\.length && !visibleIds\.includes\(tab\)\) setTab\(visibleIds\[0\]\)/.test(
@@ -163,4 +218,62 @@ test('NH-A4 istemci: sekmeler canSee ile süzülür, içerik de kapalı, boş du
   for (const s of ['CIS', 'SPA', 'API Envanteri', 'Envanter', 'Audit']) {
     assert.ok(tab.includes(s), `etiket eksik: ${s}`);
   }
+});
+
+// NH-A5: SEED ile EKRAN listesi ORTUSMELI ve her sekmenin yetki kapisi OLMALI.
+//
+// Bu test, elle yazilmis `TABS` kopyasinin uc sekmeyi denetlemedigi ortaya cikinca
+// yazildi (2026-10-08). Iki yonlu olculur, cunku iki yonun bedeli AYRI:
+//   * Ekranda olup seed'de olmayan sekme -> admin panelinden yetki VERILEMEZ; `canSee`
+//     bilinmeyen oge icin ne donerse o olur, yani kapi BELIRSIZ.
+//   * Seed'de olup ekranda olmayan anahtar -> ya olu yetki ya da (bizim durumumuzda)
+//     bilincli bir ALT SEKME anahtari. Bilincli olanlar burada ADIYLA yazilir.
+const SEKME_OLMAYAN_ANAHTARLAR = new Set([
+  // 'spa': 2026-10-08'de 'spadiscovery' ile birlesti. Sekme DEGIL ama yetki anahtari
+  // olarak YASIYOR - birlesik sayfanin "Kapsam & Tasima" alt sekmesini aciyor.
+  'spa',
+]);
+
+test('NH-A5 seed ile ekran sekme listesi ortusur; her sekmenin yetki kapisi var', () => {
+  const seed = seedKeys();
+  const ui = uiTabs();
+  const page = read('src/components/nginx_console/NginxConsolePage.tsx');
+
+  // ── BILINEN ACIK BULGU: 'ratelimit' (2026-10-08) ─────────────────────────────────
+  // Rate Limit sekmesi (2026-09-26) arayuzde `canSee('tab:nginx:ratelimit')` kapisi
+  // tasiyor ama NGINX_TAB_KEYS'e HIC eklenmemis. `canSee` bilinmeyen oge icin TRUE
+  // donuyor (AuthContext.tsx: `elementKey in visibilityMap ? ... : true`), yani sekme
+  // Nginx Hub'i gorebilen HERKESE acik ve admin onu KISITLAYAMIYOR - fail-open kapi.
+  //
+  // SEED'E EKLEMEK BIR DAVRANIS DEGISIKLIGIDIR: oge kayitli olunca varsayilan KAPALI
+  // olur ve su an Rate Limit'i goren admin-disi kullanicilar, bir admin acikca yetki
+  // verene kadar sekmeyi KAYBEDER. Baskalarinin erisimini kendi basima degistirmemek
+  // icin kullanici karari bekleniyor; karar verilince bu satir SILINIR.
+  const BEKLEYEN_KARAR = new Set(['ratelimit']);
+  const seedDisi = ui.filter((t) => !seed.includes(t) && !BEKLEYEN_KARAR.has(t));
+  assert.deepEqual(
+    seedDisi,
+    [],
+    `ekranda olup seed'de OLMAYAN sekme(ler): ${seedDisi.join(', ')} — admin panelinden yetki verilemez, kapi belirsiz`,
+  );
+
+  const ekranDisi = seed.filter((k) => !ui.includes(k) && !SEKME_OLMAYAN_ANAHTARLAR.has(k));
+  assert.deepEqual(
+    ekranDisi,
+    [],
+    `seed'de olup ekranda sekme OLMAYAN anahtar(lar): ${ekranDisi.join(', ')} — olu yetki mi, bilincli alt sekme mi? SEKME_OLMAYAN_ANAHTARLAR'a yazin`,
+  );
+
+  // Her EKRAN sekmesinin render kapisi yetkiye bagli olmali.
+  for (const t of ui) {
+    const tekAnahtar = page.includes(`{tab === '${t}' && canSee('tab:nginx:${t}')`);
+    const birlesik =
+      t === 'spadiscovery' &&
+      page.includes("{tab === 'spadiscovery' && (canSee('tab:nginx:spadiscovery') || canSee('tab:nginx:spa'))");
+    assert.ok(tekAnahtar || birlesik, `${t} icerigi yetki kapisi OLMADAN render ediliyor`);
+  }
+
+  // Birlesik sayfanin ALT SEKMELERI de ayri ayri yetkiye bagli olmali.
+  assert.match(page, /kesifGorunur=\{canSee\('tab:nginx:spadiscovery'\)\}/, 'Kesif alt sekmesi yetkisiz');
+  assert.match(page, /kapsamGorunur=\{canSee\('tab:nginx:spa'\)\}/, 'Kapsam alt sekmesi yetkisiz');
 });

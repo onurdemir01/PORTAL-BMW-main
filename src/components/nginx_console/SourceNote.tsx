@@ -7,7 +7,7 @@
 import React from 'react';
 import { InformationCircleIcon } from '@heroicons/react/24/outline';
 
-export type SourceKey = 'console' | 'audit' | 'cis' | 'spa' | 'api' | 'inventory';
+export type SourceKey = 'console' | 'audit' | 'cis' | 'spa' | 'api' | 'inventory' | 'rvpstatic';
 
 const SOURCES: Record<SourceKey, { job: string; what: string; refresh: string }> = {
   console: {
@@ -39,6 +39,15 @@ const SOURCES: Record<SourceKey, { job: string; what: string; refresh: string }>
     job: 'nginx_metadata',
     what: 'dbo.nginx_inventory (sunucu üst verisi; her koşuda sıfırdan yazılır)',
     refresh: 'AWX’te nginx_metadata job’ı (günlük).',
+  },
+  // RP Secimi (2026-10-05): bu sekme HICBIR ISTEN BESLENMEZ. Var olan bir job adi yazmak, elle
+  // guncellenen bir listeyi taze olcum gibi gosterirdi.
+  rvpstatic: {
+    job: '— yok (elle güncellenen liste)',
+    what: 'GT Agile BMW Nginx sunucu envanteri (Excel, 2026-10-05); kodda rvpSecim.ts',
+    refresh:
+      'Bu liste bir taramadan GELMEZ. Sunucu eklenince ya da çıkınca rvpSecim.ts güncellenmelidir — ' +
+      'listede göremediğiniz bir sunucu için GT Agile BMW ekibine danışın.',
   },
 };
 

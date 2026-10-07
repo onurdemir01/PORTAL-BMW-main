@@ -51,8 +51,20 @@ function buildRouteStats(routeRows) {
     ips: { spa: new Map(), nonSpa: new Map() },
     unresolvedIp: { spa: 0, nonSpa: 0 },
     clusters: new Set(),
+    // CLUSTER BASINA KIRILIM (kullanici, 2026-10-08): "GBOCP Prod 1'de bu kadar route
+    // var, bunlarin su kadari SPA route'u, yuzdesi de budur." Ortam toplami tek basina
+    // "hangi cluster'da eksik" sorusunu cevaplamiyordu; ARK'in prod'u dort cluster.
+    //
+    // `clusters` (isim kumesi) KORUNUR: ekranda ortam basina cluster SAYISI icin
+    // kullaniliyor ve tipini degistirmek onyuzu sessizce bozardi.
+    clusterStats: new Map(),
     namespaces: new Set(),
   });
+
+  // Cluster kovasi - ortam kovasiyla AYNI alanlar, IP/termination kirilimi YOK
+  // (ekranda cluster satiri yalnizca route/SPA/yuzde gosteriyor; IP dagilimi ortam
+  // duzeyinde anlamli, cluster duzeyinde gurultu).
+  const mkCluster = () => ({ routes: 0, spa: 0, nonSpa: 0, unclassified: 0 });
   let noEnv = 0;
 
   for (const r of routeRows || []) {
@@ -66,7 +78,14 @@ function buildRouteStats(routeRows) {
     if (!byEnv.has(E)) byEnv.set(E, mk());
     const b = byEnv.get(E);
     b.routes++;
-    b.clusters.add(String(r.cluster_name || '').trim());
+    const cn = String(r.cluster_name || '').trim();
+    b.clusters.add(cn);
+    // ADI BOS GELEN CLUSTER AYRI KOVADA. Sessizce atlamak, ortam toplami ile cluster
+    // satirlarinin toplaminin TUTMAMASINA yol acardi ve kimse sebebini goremezdi.
+    const ck = cn || '(cluster adi yok)';
+    if (!b.clusterStats.has(ck)) b.clusterStats.set(ck, mkCluster());
+    const cb = b.clusterStats.get(ck);
+    cb.routes++;
     b.namespaces.add(ns);
     const tt = L(r.termination_type) || 'yok';
     b.terminations.set(tt, (b.terminations.get(tt) || 0) + 1);
@@ -74,10 +93,12 @@ function buildRouteStats(routeRows) {
     const app = appFromAddress(r.route_address, ns) || L(r.route_name) || null;
     if (!app) {
       b.unclassified++;
+      cb.unclassified++;
       continue;
     }
     const kind = isSpaApp(app) ? 'spa' : 'nonSpa';
     b[kind]++;
+    cb[kind]++;
     const ip = String(r.resolved_ip || '').trim();
     if (!ip) {
       b.unresolvedIp[kind]++;
@@ -104,6 +125,19 @@ function buildRouteStats(routeRows) {
       nonSpa: b.nonSpa,
       unclassified: b.unclassified,
       clusters: [...b.clusters].filter(Boolean).sort(),
+      // SPA YUZDESI SINIFLANDIRILAMAYANI DA PAYDAYA KOYAR. `spa/(spa+nonSpa)` yazmak,
+      // adresinden de adindan da cozulemeyen route'lari yok sayip yuzdeyi SISIRIRDI -
+      // "olculemedi" ile "SPA degil" ayni sey degil. Payda route TOPLAMI.
+      clusterRows: [...b.clusterStats.entries()]
+        .map(([cluster, c]) => ({
+          cluster,
+          routes: c.routes,
+          spa: c.spa,
+          nonSpa: c.nonSpa,
+          unclassified: c.unclassified,
+          spaPct: c.routes ? Math.round((c.spa / c.routes) * 1000) / 10 : 0,
+        }))
+        .sort((x, y) => y.routes - x.routes || x.cluster.localeCompare(y.cluster)),
       namespaces: b.namespaces.size,
       terminations: [...b.terminations.entries()]
         .map(([type, count]) => ({ type, count }))

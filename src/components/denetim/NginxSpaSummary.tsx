@@ -15,6 +15,7 @@ import {
   type SpaCoverageRow,
   type RouteStatsResult,
   type RouteStatsEnv,
+  type RouteStatsCluster,
   type NginxMigrationResult,
 } from '@/api/denetimApi';
 import { fmtNumber } from '@/utils/datetime';
@@ -369,6 +370,70 @@ function Big({ n, of, label }: { n: number; of?: number; label?: string }) {
   );
 }
 
+/** Ortam icindeki CLUSTER BASINA route/SPA kirilimi (kullanici, 2026-10-08:
+ *  "GBOCP Prod 1'de bu kadar route var, bunlarin su kadari SPA route'u, yuzdesi de budur").
+ *
+ *  NEDEN GEREKLI: ortam toplami "hangi cluster'da eksik" sorusunu cevaplamiyor - ARK'in
+ *  prod'u dort cluster ve bir uygulama uclusunde olup birinde olmayabilir.
+ *
+ *  PAYDA ROUTE TOPLAMI: yuzde `spa/routes`, `spa/(spa+nonSpa)` DEGIL. Ikincisi
+ *  siniflandirilamayan route'lari yok sayip yuzdeyi sisirirdi - "olculemedi" ile
+ *  "SPA degil" ayni sey degil. Siniflandirilamayan varsa satirda AYRICA yazilir.
+ */
+function ClusterBreakdown({ rows }: { rows: RouteStatsCluster[] }) {
+  const [open, setOpen] = useState(false);
+  if (!rows || rows.length === 0) return null;
+  // Tek cluster varsa kirilim ortam satirinin AYNISI olur; aciklamaya deger bir sey yok.
+  if (rows.length === 1) return null;
+  const gosterilen = open ? rows : rows.slice(0, 3);
+  return (
+    <div className="mt-1 pt-1 border-t" style={{ borderColor: 'var(--border-subtle)' }}>
+      <div className="text-[10px] uppercase mb-0.5" style={{ color: 'var(--text-muted)' }}>
+        cluster bazında
+      </div>
+      <table className="w-full text-[11px]">
+        <tbody>
+          {gosterilen.map((c) => (
+            <tr key={c.cluster}>
+              <td className="pr-2 font-mono whitespace-nowrap align-middle" style={{ color: 'var(--text-secondary)' }} title={c.cluster}>
+                {c.cluster}
+              </td>
+              <td className="pr-2 tabular-nums whitespace-nowrap align-middle" style={{ color: 'var(--text-primary)' }}>
+                {fmtNumber(c.spa)} <span style={{ color: 'var(--text-muted)' }}>/ {fmtNumber(c.routes)}</span>
+              </td>
+              <td className="w-20 align-middle">
+                <Bar
+                  value={c.spa}
+                  total={c.routes}
+                  title={`${c.cluster}: ${fmtNumber(c.routes)} route, ${fmtNumber(c.spa)} SPA route (%${c.spaPct})${c.unclassified ? ` · ${fmtNumber(c.unclassified)} sınıflandırılamadı` : ''}`}
+                />
+              </td>
+              <td className="pl-1.5 tabular-nums whitespace-nowrap align-middle" style={{ color: 'var(--text-muted)' }}>
+                %{c.spaPct}
+                {c.unclassified ? (
+                  <span style={{ color: 'var(--status-warning)' }} title={`${fmtNumber(c.unclassified)} route ne adresinden ne adından çözülemedi — SPA değil SAYILMADI, paydada duruyor`}>
+                    {' '}·{fmtNumber(c.unclassified)}?
+                  </span>
+                ) : null}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {rows.length > 3 && (
+        <button
+          type="button"
+          onClick={() => setOpen(!open)}
+          className="text-[10px] underline decoration-dotted mt-0.5"
+          style={{ color: 'var(--accent)' }}
+        >
+          {open ? 'daha az' : `+${rows.length - 3} cluster`}
+        </button>
+      )}
+    </div>
+  );
+}
+
 function IpCell({ e, onPick }: { e: RouteStatsEnv; onPick: (ip: string) => void }) {
   const [open, setOpen] = useState(false);
   const ips = e.spaIps;
@@ -647,6 +712,7 @@ export default function NginxSpaSummary({ tier }: { tier: 'internet' | 'intranet
                           SPA olmayan route: {fmtNumber(r.nonSpa)}
                           {r.unclassified ? ` · sınıflandırılamayan: ${fmtNumber(r.unclassified)}` : ''}
                         </div>
+                        <ClusterBreakdown rows={r.clusterRows || []} />
                         <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
                           {fmtNumber(r.namespaces)} namespace · TLS sonlandırma: {r.terminations.map((t) => (
                             // "yok" = route VAR ama TLS sonlandirma tipi bos; route'suz SPA ile karistirilmasin

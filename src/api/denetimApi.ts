@@ -326,6 +326,16 @@ export interface RouteStatsIp {
   count: number;
   samples: string[];
 }
+/** Ortam icindeki TEK cluster'in route kirilimi (kullanici, 2026-10-08). */
+export interface RouteStatsCluster {
+  cluster: string;
+  routes: number;
+  spa: number;
+  nonSpa: number;
+  unclassified: number;
+  /** spa / routes - PAYDA route TOPLAMI: siniflandirilamayanlar yok sayilmaz. */
+  spaPct: number;
+}
 export interface RouteStatsEnv {
   env: string;
   routes: number;
@@ -333,6 +343,9 @@ export interface RouteStatsEnv {
   nonSpa: number;
   unclassified: number;
   clusters: string[];
+  /** Cluster basina kirilim; route sayisina gore azalan. Toplami `routes`a esittir
+   *  (adi bos gelen cluster '(cluster adi yok)' kovasinda, atlanmaz). */
+  clusterRows: RouteStatsCluster[];
   namespaces: number;
   terminations: { type: string; count: number }[];
   spaIps: RouteStatsIp[];

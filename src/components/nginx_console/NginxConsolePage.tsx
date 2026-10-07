@@ -12,7 +12,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   ArrowPathIcon, ChevronDownIcon, ChevronRightIcon, DocumentIcon, DocumentPlusIcon, FolderIcon, FolderOpenIcon,
-  MagnifyingGlassIcon, PaperAirplaneIcon, ShieldCheckIcon, ServerStackIcon, ArrowUturnLeftIcon, Squares2X2Icon, ClockIcon, ChartBarIcon, TrashIcon, ScaleIcon, FunnelIcon,
+  MagnifyingGlassIcon, PaperAirplaneIcon, ShieldCheckIcon, ServerStackIcon, ArrowUturnLeftIcon, Squares2X2Icon, ClockIcon, ChartBarIcon, TrashIcon, ScaleIcon, FunnelIcon, QuestionMarkCircleIcon,
 } from '@heroicons/react/24/outline';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { useAuth } from '@/contexts/AuthContext';
@@ -27,11 +27,12 @@ import { OrphansTab } from './OrphansTab';
 import { DriftTab } from './DriftTab';
 import { CisTab } from './CisTab';
 import { RateLimitTab } from './RateLimitTab';
+import { RvpSecimTab } from './RvpSecimTab';
 import { SourceNote, type SourceKey } from './SourceNote';
 // DENETIM'DEN TASINDI (kullanici, 2026-09-22): "Denetim'deki tum nginx sayfalarini Nginx Hub'a
 // gom." Bilesenler yerinde kaldi (denetim/), yalniz sekme burada. Denetim'de artik nginx sekmesi yok.
-import { NginxSpaAudit, NGINX_DENETIM_HELP } from '@/components/DenetimPage';
-import NginxSpaDiscovery from '@/components/nginx_console/NginxSpaDiscovery';
+import { NGINX_DENETIM_HELP } from '@/components/DenetimPage';
+import NginxSpaBirlesik from '@/components/nginx_console/NginxSpaBirlesik';
 import { NginxApiEnvanteri } from '@/components/denetim/NginxApiEnvanteri';
 import { NginxEnvanteri } from '@/components/denetim/NginxEnvanteri';
 import { NginxAudit } from '@/components/denetim/NginxAudit';
@@ -39,8 +40,8 @@ import HelpModal from '@/components/common/HelpModal';
 import { nginxConsoleApi, type NcHost, type NcTree, type NcTreeDir, type NcFile, type NcCertsResult, type NcAggCert, type NcCert, type NcChange } from '@/api/nginxConsoleApi';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
 
-type Tab = 'dashboard' | 'instances' | 'config' | 'certs' | 'changes' | 'orphans' | 'drift' | 'cis' | 'ratelimit' | 'spa' | 'spadiscovery' | 'api' | 'envanter' | 'audit';
-const TABS: readonly Tab[] = ['dashboard', 'instances', 'config', 'changes', 'certs', 'orphans', 'drift', 'cis', 'ratelimit', 'spa', 'spadiscovery', 'api', 'envanter', 'audit'];
+type Tab = 'dashboard' | 'instances' | 'config' | 'certs' | 'changes' | 'orphans' | 'drift' | 'cis' | 'ratelimit' | 'rvpsecim' | 'spadiscovery' | 'api' | 'envanter' | 'audit';
+const TABS: readonly Tab[] = ['dashboard', 'instances', 'config', 'changes', 'certs', 'orphans', 'drift', 'cis', 'ratelimit', 'rvpsecim', 'spadiscovery', 'api', 'envanter', 'audit'];
 // Panel basliklarindaki kucuk dugmeler: HEPSI ayni boyut/yazi (2026-09-19: btn-primary'nin buyuk
 // dolgusu "Sunucular" basligini eziyordu, iki dugmenin yazisi da farkli buyuklukteydi).
 const SM_BTN = 'inline-flex items-center gap-1 h-7 px-2.5 text-[11px] font-medium leading-none rounded-lg border whitespace-nowrap disabled:opacity-40';
@@ -61,10 +62,19 @@ const HUB_TABS = [
   { id: 'cis', label: 'CIS', icon: ShieldCheckIcon },
   // Rate Limit (2026-09-26, kullanici): tum sunucularin limitleri + CSV raporu
   { id: 'ratelimit', label: 'Rate Limit', icon: FunnelIcon },
+  // RP Secimi (2026-10-05, kullanici): "hangi sunucuya deployment yapacagini bilmiyor" -
+  // salt okunur sihirbaz, tanim YAPMAZ (karar tablosu rvpSecim.ts).
+  { id: 'rvpsecim', label: 'RP Seçimi', icon: QuestionMarkCircleIcon },
 ] as const;
+// SPA + GERCEK SPA KESFI BIRLESTI (kullanici, 2026-10-08: "ikisi kafa karistirmaya
+// basladi"). Ayri 'spa' sekmesi KALDIRILDI; iki sayfa artik tek girisin ALT SEKMELERI
+// (bkz. NginxSpaBirlesik). Production Tasimalari, Kapsam bolumunun kendi katman
+// anahtarinda duruyor - ucuncu bir kapi acilmadi.
+//
+// `tab:nginx:spa` GORUNURLUK ANAHTARI YASIYOR: yalniz ona yetkisi olan kullanici
+// erisimini kaybetmesin diye alt sekme bazinda okunuyor.
 const HUB_AUDIT_TABS = [
-  { id: 'spa', label: 'SPA' },
-  { id: 'spadiscovery', label: 'Gerçek SPA Keşfi' },
+  { id: 'spadiscovery', label: 'SPA Keşfi & Kapsam' },
   { id: 'api', label: 'API Envanteri' },
   { id: 'envanter', label: 'Envanter' },
   { id: 'audit', label: 'Audit' },
@@ -118,7 +128,16 @@ export default function NginxConsolePage() {
   // NIM benzeri Dashboard/Instances (2026-09-21) varsayilan acilis: once genel durum.
   // ?tab=audit: Nginx Audit sunucu sayfasindan (/denetim/nginx-audit/:host) geri donus.
   const [searchParams] = useSearchParams();
-  const initialTab = ((): Tab => { const v = searchParams.get('tab') as Tab | null; return v && TABS.includes(v) ? v : 'dashboard'; })();
+  // ESKI BAGLANTILAR KIRILMAZ: ?tab=spa artik birlesik sayfaya gider. Kaldirilmis bir
+  // sekmeye giden bir link kullaniciyi sessizce Dashboard'a atardi.
+  const initialTab = ((): Tab => {
+    const raw = searchParams.get('tab');
+    // ESKI BAGLANTI TAKMA ADI: ?tab=spa artik birlesik sayfaya gider. 'spa' Tab tipinde
+    // DEGIL - render edilen bir sekme olmadigi icin orada durmasi yaniltici olurdu.
+    if (raw === 'spa') return 'spadiscovery';
+    const v = raw as Tab | null;
+    return v && TABS.includes(v) ? v : 'dashboard';
+  })();
   const [tab, setTab] = useState<Tab>(initialTab);
   const [showHelp, setShowHelp] = useState(false);
   const [focusHost, setFocusHost] = useState<string | null>(null);
@@ -153,7 +172,12 @@ export default function NginxConsolePage() {
   // sekmeleri gorsun"). Varsayilan ACIK; Admin > Nginx Hub Erisimi bir kisiyi/grubu secilen
   // sekmelerle sinirlar. Sunucu tarafi da ayni kapiyi uygular (403), bu yalniz ekran tarafi.
   const hubTabs = HUB_TABS.filter((x) => canSee(`tab:nginx:${x.id}`));
-  const auditTabs = HUB_AUDIT_TABS.filter((x) => canSee(`tab:nginx:${x.id}`));
+  // 'spadiscovery' artik IKI sayfayi birden tasiyor: eski 'spa' yetkisi de girisi acar.
+  const auditTabs = HUB_AUDIT_TABS.filter((x) =>
+    x.id === 'spadiscovery'
+      ? canSee('tab:nginx:spadiscovery') || canSee('tab:nginx:spa')
+      : canSee(`tab:nginx:${x.id}`),
+  );
   const visibleIds = [...hubTabs, ...auditTabs].map((x) => x.id) as Tab[];
   // Acik sekme kapatildiysa ilk gorunur sekmeye gec (bos ekranda kalma).
   useEffect(() => {
@@ -164,7 +188,7 @@ export default function NginxConsolePage() {
   // her sekmenin basinda kaynak isi, verinin tarihi ve nasil tazelenecegi yazar.
   const SOURCE_OF: Record<Tab, SourceKey> = {
     dashboard: 'console', instances: 'console', config: 'console', changes: 'console', certs: 'console',
-    orphans: 'console', drift: 'console', audit: 'audit', cis: 'cis', ratelimit: 'api', spa: 'spa', spadiscovery: 'spa', api: 'api', envanter: 'inventory',
+    orphans: 'console', drift: 'console', audit: 'audit', cis: 'cis', ratelimit: 'api', rvpsecim: 'rvpstatic', spadiscovery: 'spa', api: 'api', envanter: 'inventory',
   };
   // Dokum tabanli sekmelerde "son tarama" = en yeni dokum/gorulme ani.
   const lastDump = useMemo(() => {
@@ -216,10 +240,15 @@ export default function NginxConsolePage() {
       {tab === 'certs' && canSee('tab:nginx:certs') && <CertsTab />}
       {tab === 'orphans' && canSee('tab:nginx:orphans') && <OrphansTab isAdmin={isAdmin} onOpen={(h) => go('config', h)} />}
       {tab === 'drift' && canSee('tab:nginx:drift') && <DriftTab onOpen={(h) => go('config', h)} />}
+      {tab === 'rvpsecim' && canSee('tab:nginx:rvpsecim') && <RvpSecimTab />}
       {tab === 'cis' && canSee('tab:nginx:cis') && <CisTab isAdmin={isAdmin} onOpenHost={(h) => go('config', h)} />}
       {tab === 'ratelimit' && canSee('tab:nginx:ratelimit') && <RateLimitTab />}
-      {tab === 'spa' && canSee('tab:nginx:spa') && <NginxSpaAudit />}
-      {tab === 'spadiscovery' && canSee('tab:nginx:spadiscovery') && <NginxSpaDiscovery />}
+      {tab === 'spadiscovery' && (canSee('tab:nginx:spadiscovery') || canSee('tab:nginx:spa')) && (
+        <NginxSpaBirlesik
+          kesifGorunur={canSee('tab:nginx:spadiscovery')}
+          kapsamGorunur={canSee('tab:nginx:spa')}
+        />
+      )}
       {tab === 'api' && canSee('tab:nginx:api') && <NginxApiEnvanteri />}
       {tab === 'envanter' && canSee('tab:nginx:envanter') && <NginxEnvanteri />}
       {tab === 'audit' && canSee('tab:nginx:audit') && <NginxAudit />}
