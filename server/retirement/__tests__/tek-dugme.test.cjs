@@ -173,18 +173,28 @@ test('TD12 Akis paneli web adimini KANITSIZ "bitti" gostermez', () => {
 test('TD13 on kontrol KAPATILACAK vhost blogunu gosterir: ayni eylem PLAN kipinde, gercek is YOK', () => {
   // Kullanici (2026-10-08): "tetiklemeden once disabled edilecek virtualhost blogunu gormek istiyorum."
   const ep = ucDilimi("router.post('/:id/targets/:tid/stop'", "router.post('/:id/targets/:tid/rollback'");
-  const blok = ep.slice(ep.indexOf('let vhostPlan = null;'), ep.indexOf('res.json({ ok: true, ...r, planOnly'));
-  assert.ok(blok.length > 100, 'vhost plan blogu yok');
-  assert.match(blok, /if \(!confirmed && \(t\.web \|\| \[\]\)\.length\)/, 'vhost plani onayli STOP\'ta da kosuyor');
+  assert.match(ep, /if \(!confirmed && \(t\.web \|\| \[\]\)\.length\) vhostPlan = await vhostPlanBaslat\(req, id, tid, t\.web\);/, 'vhost plani onayli STOP\'ta da kosuyor ya da on kontrolde yok');
+  // Plan isleri ORTAK yardimcida (on kontrol + yeniden deneme onizlemesi ayni kod)
+  const blok = IDX.slice(IDX.indexOf('async function vhostPlanBaslat('), IDX.indexOf('return out;', IDX.indexOf('async function vhostPlanBaslat(')));
+  assert.ok(blok.length > 100, 'vhostPlanBaslat yok');
   assert.match(blok, /action: 'apache_retire_vhost'/, 'plan web adimiyla AYNI eylemi kullanmiyor');
   assert.match(blok, /plan_only: true/, 'plan DEGIL gercek kapatma baslatiliyor');
-  assert.ok(!/plan_only: false/.test(blok), 'on kontrolde vhost GERCEKTEN kapatilabiliyor');
+  assert.ok(!/plan_only: false/.test(blok), 'onizlemede vhost GERCEKTEN kapatilabiliyor');
   assert.match(blok, /'server_hub_fix'\)/);
   // URUN KAPISI KENDISI kilitlenir: 'elle: true' metni conf-bilinmiyor dalinda da geciyor ve
   // urun kapisini kaldiran mutasyonu GORMUYORDU (V2, ilk tur).
-  assert.match(blok, /if \(!APACHE\.has\(String\(w\.product \|\| ''\)\.toUpperCase\(\)\)\) \{ vhostPlan\.push\(\{ \.\.\.kim, ok: false, elle: true/, 'NGINX icin is baslatiliyor (urun kapisi yok)');
-  assert.match(blok, /if \(!w\.confFile \|\| !w\.serverName\) \{ vhostPlan\.push\(\{ \.\.\.kim, ok: false, elle: true/, 'conf/ServerName bilinmeyen vhost icin is baslatiliyor');
-  assert.match(blok, /\} catch \(e\) \{\s*vhostPlan\.push\(\{ \.\.\.kim, ok: false/, 'plan hatasi on kontrolu dusuruyor');
+  assert.match(blok, /if \(!APACHE_URUN\.has\(String\(w\.product \|\| ''\)\.toUpperCase\(\)\)\) \{ out\.push\(\{ \.\.\.kim, ok: false, elle: true/, 'NGINX icin is baslatiliyor (urun kapisi yok)');
+  assert.match(blok, /if \(!w\.confFile \|\| !w\.serverName\) \{ out\.push\(\{ \.\.\.kim, ok: false, elle: true/, 'conf/ServerName bilinmeyen vhost icin is baslatiliyor');
+  assert.match(blok, /\} catch \(e\) \{\s*out\.push\(\{ \.\.\.kim, ok: false/, 'plan hatasi cagiran islemi dusuruyor');
   const js = ucDilimi("router.get('/:id/targets/:tid/job-status", "router.");
   assert.match(js, /extractStatsKey\(statusInfo\.artifacts, 'server_hub_fix_result'\)/, 'plan sonucu (blok) ekrana tasinmiyor');
+});
+
+test('TD14 yeniden deneme ONIZLEMESI: yalniz failed/skip vhost planlanir, HICBIR SEY degistirilmez', () => {
+  // Kullanici (2026-10-08): "yeniden denemeye de onizleme ekle"
+  const ep = ucDilimi("router.post('/:id/targets/:tid/web-retry/plan'", "router.post('/:id/targets/:tid/web-retry',");
+  assert.match(ep, /\.filter\(\(w\) => w\.status === 'failed' \|\| w\.status === 'skip'\)/, 'onizleme yeniden denenmeyecek vhost\'lari da planliyor');
+  assert.match(ep, /await vhostPlanBaslat\(req, id, tid, secilen\)/, 'onizleme ortak plan yardimcisini kullanmiyor');
+  assert.match(ep, /if \(t\.status !== 'stopped'\)/);
+  assert.ok(!/UPDATE retirement_targets/.test(ep), 'onizleme web listesini DEGISTIRIYOR - kapatma onaysiz kuyruga girebilir');
 });

@@ -6,7 +6,7 @@
 // stop + N gun (varsayilan 45). Silme ve IP/LB/DNS adimlari sonraki surum (kayitta alanlari var).
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { PlusIcon, ArrowPathIcon, XMarkIcon, StopCircleIcon, ClipboardDocumentCheckIcon, TrashIcon, ArrowUturnLeftIcon } from '@heroicons/react/24/outline';
-import { retirementApi, type SccKaynak, type RtRecordRow, type RtRecord, type RtDiscovery, type RtDiscoveredTarget, type RtTarget, type RtTargetStatus } from '@/api/retirementApi';
+import { retirementApi, type SccKaynak, type RtRecordRow, type RtRecord, type RtDiscovery, type RtDiscoveredTarget, type RtTarget, type RtTargetStatus, type RtLaunch } from '@/api/retirementApi';
 import { useJobTracker } from '@/contexts/JobTrackerContext';
 import { Modal } from '@/components/common/Modal';
 import { TableEmptyRow } from '@/components/common/EmptyState';
@@ -502,6 +502,7 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
   // kesifi okur ve tarama bitince YENIDEN okur. Ayrinti: retirementTrafik.ts.
   const [askDisc, setAskDisc] = useState<RtDiscovery | null>(null);
   const [vhostPlanlar, setVhostPlanlar] = useState<Record<number, VhostPlanDurumu[]>>({});
+  const [webSor, setWebSor] = useState<{ t: RtTarget } | null>(null);
   const [trafikIs, setTrafikIs] = useState<Record<number, { durum: TrafikIsDurumu; jobId?: number | null; mesaj?: string; bitti?: string }>>({});
   const [trafikOnay, setTrafikOnay] = useState(false);
   const [olcumuBekleme, setOlcumuBekleme] = useState(false);
@@ -543,6 +544,39 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rec]);
 
+  // VHOST PLAN ISLERI: STOP on kontrolu VE web yeniden deneme onizlemesi ayni izleyiciyi kullanir.
+  const vhostPlanIzle = (t: RtTarget, vp: RtLaunch['vhostPlan'] | undefined) => {
+    if (vp && vp.length) {
+      const ilk: VhostPlanDurumu[] = vp.map((v) => ({
+        host: v.host, serverName: v.serverName, confFile: v.confFile, jobId: v.jobId ?? null,
+        durum: v.ok ? 'suruyor' : v.elle ? 'elle' : 'hata',
+        mesaj: v.ok ? undefined : v.message,
+      }));
+      setVhostPlanlar((m) => ({ ...m, [t.id]: ilk }));
+      vp.forEach((v, i) => {
+        if (!v.ok || !v.jobId) return;
+        let bitti3 = false;
+        addJob({
+          title: `Retirement: vhost planı ${v.serverName} @ ${v.host}`,
+          fetchStatus: async () => {
+            const s = await retirementApi.jobStatus(id, t.id, v.awxServerId as number, v.jobId as number);
+            if (!s.ok) throw new Error(s.message || 'Durum okunamadı.');
+            if (TERMINAL.has(s.status) && !bitti3) {
+              bitti3 = true;
+              const sonuc = sonucAyristir(s.fixResult?.line);
+              const hazir = sonuc.durum === 'PLAN';
+              setVhostPlanlar((m) => {
+                const l = [...(m[t.id] || ilk)];
+                l[i] = { ...l[i], durum: hazir ? 'hazir' : 'hata', mesaj: sonuc.mesaj, satirlar: hazir ? blokAyristir(s.fixResult?.blok) : undefined };
+                return { ...m, [t.id]: l };
+              });
+            }
+            return { status: s.status, output: s.output || '', result: s.result };
+          },
+        });
+      });
+    }
+  };
   const stop = async (t: RtTarget, confirmed: boolean) => {
     setBusy(t.id); setAsk(null);
     try {
@@ -574,37 +608,7 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
         setTrafikIs((m) => ({ ...m, [t.id]: { durum: 'hata', mesaj: tt.message } }));
       }
       // KAPATILACAK VHOST BLOKLARI: vhost basina plan isi izlenir, bitince blok okunur.
-      const vp = !confirmed ? r.vhostPlan : null;
-      if (vp && vp.length) {
-        const ilk: VhostPlanDurumu[] = vp.map((v) => ({
-          host: v.host, serverName: v.serverName, confFile: v.confFile, jobId: v.jobId ?? null,
-          durum: v.ok ? 'suruyor' : v.elle ? 'elle' : 'hata',
-          mesaj: v.ok ? undefined : v.message,
-        }));
-        setVhostPlanlar((m) => ({ ...m, [t.id]: ilk }));
-        vp.forEach((v, i) => {
-          if (!v.ok || !v.jobId) return;
-          let bitti3 = false;
-          addJob({
-            title: `Retirement: vhost planı ${v.serverName} @ ${v.host}`,
-            fetchStatus: async () => {
-              const s = await retirementApi.jobStatus(id, t.id, v.awxServerId as number, v.jobId as number);
-              if (!s.ok) throw new Error(s.message || 'Durum okunamadı.');
-              if (TERMINAL.has(s.status) && !bitti3) {
-                bitti3 = true;
-                const sonuc = sonucAyristir(s.fixResult?.line);
-                const hazir = sonuc.durum === 'PLAN';
-                setVhostPlanlar((m) => {
-                  const l = [...(m[t.id] || ilk)];
-                  l[i] = { ...l[i], durum: hazir ? 'hazir' : 'hata', mesaj: sonuc.mesaj, satirlar: hazir ? blokAyristir(s.fixResult?.blok) : undefined };
-                  return { ...m, [t.id]: l };
-                });
-              }
-              return { status: s.status, output: s.output || '', result: s.result };
-            },
-          });
-        });
-      }
+      if (!confirmed) vhostPlanIzle(t, r.vhostPlan);
       let done = false;
       addJob({
         title: `Retirement: ${confirmed ? 'STOP' : 'ön kontrol'} ${t.appName} @ ${t.host}`,
@@ -667,8 +671,22 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
     if (r.record) setRec(r.record);
     toast.success(`Silme tarihi bugüne çekildi. Zamanlayıcı en geç ~${Math.ceil((r.pollSaniye || 300) / 60)} dk içinde ${r.hedefSayisi} hedefi silecek — Olaylar ve hedef durumunu izleyin.`);
   };
+  // WEB ADIMI YENIDEN DENEME ONIZLEMESI (2026-10-08, kullanici: "yeniden denemeye de onizleme ekle"):
+  // once yalniz failed/skip vhost'lar icin PLAN isleri; pencere KAPATILACAK blogu gosterir,
+  // kuyruga alma yalniz "Onayla ve yeniden dene" ile. Onizleme hicbir seyi degistirmez.
+  const webOnizle = async (t: RtTarget) => {
+    setBusy(t.id);
+    try {
+      const r = await retirementApi.webRetryPlan(id, t.id);
+      if (!r.ok) { toast.error(r.message || 'Önizleme başlatılamadı.'); return; }
+      setVhostPlanlar((m) => ({ ...m, [t.id]: [] }));
+      vhostPlanIzle(t, r.vhostPlan);
+      setWebSor({ t });
+    } catch (e: unknown) { toast.error(e instanceof Error ? e.message : String(e)); } finally { setBusy(null); }
+  };
   // WEB ADIMINI YENIDEN DENE (2026-10-08): basarisiz/atlanmis vhost'lar kuyruga geri alinir.
   const webYeniden = async (t: RtTarget) => {
+    setWebSor(null);
     setBusy(t.id);
     try {
       const r = await retirementApi.webRetry(id, t.id);
@@ -802,7 +820,7 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
                         </div>
                         {t.status === 'stopped' && (t.webSonuc || []).some((w) => w.status === 'failed' || w.status === 'skip') && (
                           <div className="flex gap-1 mt-1">
-                            <button disabled={busy != null} onClick={() => webYeniden(t)} className={SM_BTN} style={{ ...smBtn(), color: 'var(--status-warning)', borderColor: 'var(--status-warning)' }} title="Başarısız ya da atlanmış vhost kaldırma işlerini yeniden kuyruğa alır; süren işlere dokunmaz">
+                            <button disabled={busy != null} onClick={() => webOnizle(t)} className={SM_BTN} style={{ ...smBtn(), color: 'var(--status-warning)', borderColor: 'var(--status-warning)' }} title="Önce kapatılacak VirtualHost bloklarını gösterir; kuyruğa alma yalnız onayla. Süren işlere dokunmaz">
                               <ArrowPathIcon className="w-3.5 h-3.5" /> Web adımını yeniden dene
                             </button>
                           </div>
@@ -883,6 +901,24 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
           </div>
         </div>
       )}
+      {webSor && (() => {
+        const liste = vhostPlanlar[webSor.t.id] || [];
+        const suruyor = liste.some((v) => v.durum === 'suruyor');
+        return (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,.45)' }} onClick={() => setWebSor(null)}>
+            <div className="w-full max-w-2xl rounded-2xl border p-5 space-y-3 max-h-[90vh] overflow-auto" style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-subtle)' }} onClick={(e) => e.stopPropagation()}>
+              <div className="text-sm font-semibold">Web adımını yeniden dene — {webSor.t.appName} @ {webSor.t.host}</div>
+              <p className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>Yalnız <b>başarısız / atlanmış</b> vhost'lar yeniden denenir. Aşağıdaki bloklar web adımıyla <b>aynı betikten</b> (plan kipi) okundu; onaylarsanız zamanlayıcı bu blokları yorum satırına alır ve Apache'yi yeniden yükler.</p>
+              {liste.length === 0 ? <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>Yeniden denenecek vhost yok.</div> : <VhostBloklar liste={liste} />}
+              {suruyor && <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>Plan işleri bitince onay açılır.</div>}
+              <div className="flex justify-end gap-2">
+                <button onClick={() => setWebSor(null)} className={SM_BTN} style={smBtn()}>Kapat</button>
+                <button disabled={suruyor || liste.length === 0 || busy != null} onClick={() => webYeniden(webSor.t)} className={`${SM_BTN} disabled:opacity-50`} style={{ ...smBtn(true), background: 'var(--status-warning)', borderColor: 'var(--status-warning)' }}>Onayla ve yeniden dene</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
       {/* GERI ALMA ONAYI. Plan dugmesi ayri duruyor; bu pencere GERCEK islemi onaylatir
           ve NE OLACAGINI madde madde yazar - "geri aktif et" tek kelimeyle gecilecek
           kadar kucuk bir islem degil (JVM baslatilir, trafik geri doner). */}

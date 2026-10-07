@@ -227,6 +227,31 @@ async function launch(req, templateName, extraVars, detail, key = REGISTRY_KEY) 
   return { jobId: result?.jobId ?? null, status: result?.status ?? null, awxServerId: serverId };
 }
 
+// KAPATILACAK VHOST BLOKLARI - PLAN ISLERI (on kontrol + web adimini yeniden dene AYNI kod).
+// Web adimiyla AYNI eylem (server_hub_fix / apache_retire_vhost) plan_only=true kosar ve
+// kapatacagi blogu BLOK satirlariyla dondurur - ekranda gorulen blok, sonra gercekte
+// yorumlanan blogun ta kendisi. Apache/IHS disi (NGINX) ya da conf'u/ServerName'i bilinmeyen
+// vhost icin is BASLATILMAZ, sebebi listede yazar. Tek bir vhost'un plani baslatilamazsa
+// digerleri ve cagiran islem DUSMEZ.
+const APACHE_URUN = new Set(['RHA', 'IHS', 'APACHE', 'IBMIHS']);
+async function vhostPlanBaslat(req, id, tid, webs) {
+  const out = [];
+  for (const w of webs || []) {
+    const kim = { host: w.host, serverName: w.serverName, confFile: w.confFile || '' };
+    if (!APACHE_URUN.has(String(w.product || '').toUpperCase())) { out.push({ ...kim, ok: false, elle: true, message: `${w.product || 'bilinmeyen urun'}: otomatik kapatma yok (NGINX elle)` }); continue; }
+    if (!w.confFile || !w.serverName) { out.push({ ...kim, ok: false, elle: true, message: 'conf dosyasi ya da ServerName kesifte cozulemedi' }); continue; }
+    try {
+      const s = await launch(req, `Retirement: vhost plani ${w.serverName} @ ${w.host}`,
+        { target_host: w.host, action: 'apache_retire_vhost', product: w.product, file: w.confFile, server_name: w.serverName, reload: false, plan_only: true },
+        { op: 'vhost_plan', id, tid }, 'server_hub_fix');
+      out.push({ ...kim, ok: true, jobId: s.jobId, awxServerId: s.awxServerId });
+    } catch (e) {
+      out.push({ ...kim, ok: false, message: String(e.message || e) });
+    }
+  }
+  return out;
+}
+
 function initRetirement(app) {
   const { requireAuth } = require('../auth/index.cjs');
   const router = express.Router();
@@ -535,23 +560,7 @@ function initRetirement(app) {
       // Yalniz on kontrolde; Apache/IHS disi (NGINX) ya da conf'u/ServerName'i bilinmeyen
       // vhost icin is baslatilmaz, sebebi listede yazar. Baslatilamazsa on kontrol DUSMEZ.
       let vhostPlan = null;
-      if (!confirmed && (t.web || []).length) {
-        const APACHE = new Set(['RHA', 'IHS', 'APACHE', 'IBMIHS']);
-        vhostPlan = [];
-        for (const w of t.web) {
-          const kim = { host: w.host, serverName: w.serverName, confFile: w.confFile || '' };
-          if (!APACHE.has(String(w.product || '').toUpperCase())) { vhostPlan.push({ ...kim, ok: false, elle: true, message: `${w.product || 'bilinmeyen urun'}: otomatik kapatma yok (NGINX elle)` }); continue; }
-          if (!w.confFile || !w.serverName) { vhostPlan.push({ ...kim, ok: false, elle: true, message: 'conf dosyasi ya da ServerName kesifte cozulemedi' }); continue; }
-          try {
-            const s = await launch(req, `Retirement: vhost plani ${w.serverName} @ ${w.host}`,
-              { target_host: w.host, action: 'apache_retire_vhost', product: w.product, file: w.confFile, server_name: w.serverName, reload: false, plan_only: true },
-              { op: 'vhost_plan', id, tid }, 'server_hub_fix');
-            vhostPlan.push({ ...kim, ok: true, jobId: s.jobId, awxServerId: s.awxServerId });
-          } catch (e) {
-            vhostPlan.push({ ...kim, ok: false, message: String(e.message || e) });
-          }
-        }
-      }
+      if (!confirmed && (t.web || []).length) vhostPlan = await vhostPlanBaslat(req, id, tid, t.web);
       res.json({ ok: true, ...r, planOnly: !confirmed, trafikTarama, vhostPlan, sccWarning: notifyScc && !SCC_MAIL_TO ? 'SCC bilgilendirme adresi tanımlı değil (Retirement sayfası › SCC adresi) — SCC maili gönderilmedi.' : null });
     } catch (err) { res.status(err.status || 500).json({ ok: false, message: err.message }); }
   });
@@ -589,6 +598,29 @@ function initRetirement(app) {
   // bir sonraki turda yeniden baslatir (ayni yol, ayni urun kurallari - NGINX yine 'manual').
   // 'running' girdilere DOKUNULMAZ: sonucu henuz okunmamis is iki kez kosmasin. Yalniz
   // 'stopped' hedefte: webTick zaten yalniz durdurulmus hedefin vhost'larini kaldirir.
+  // YENIDEN DENEMEDEN ONCE ONIZLEME (2026-10-08, kullanici: "yeniden denemeye de onizleme
+  // ekle"). Yalniz yeniden denenecek (failed/skip) vhost'lar icin plan isleri baslatir; hicbir
+  // seyi DEGISTIRMEZ (girdiler failed/skip KALIR). Kapatma, ekran planlari gosterip kullanici
+  // onaylayinca asagidaki /web-retry ile kuyruga girer.
+  router.post('/:id/targets/:tid/web-retry/plan', async (req, res) => {
+    const id = Number(req.params.id); const tid = Number(req.params.tid);
+    try {
+      const rec = await loadRecord(id);
+      if (!rec) return res.status(400).json({ ok: false, message: 'Kayıt yok.' });
+      if (rec.status === 'cancelled') return res.status(400).json({ ok: false, message: 'Kayıt iptal edilmiş.' });
+      const t = rec.targets.find((x) => x.id === tid);
+      if (!t) return res.status(400).json({ ok: false, message: 'Hedef yok.' });
+      if (t.status !== 'stopped')
+        return res.status(409).json({ ok: false, message: `Web adımı yalnız durdurulmuş hedefte yeniden denenir (hedef: ${t.status}).` });
+      const secilen = (t.webSonuc || []).filter((w) => w.status === 'failed' || w.status === 'skip');
+      if (!secilen.length) return res.status(409).json({ ok: false, message: 'Yeniden denenecek başarısız ya da atlanmış vhost yok.' });
+      const vhostPlan = await vhostPlanBaslat(req, id, tid, secilen);
+      await addEvent(id, req.session?.user?.username, 'web',
+        `${t.appName} @ ${t.host}: web adimi yeniden deneme ONIZLEMESI - ${secilen.map((w) => `${w.host} / ${w.serverName}`).join(', ')}`);
+      res.json({ ok: true, vhostPlan });
+    } catch (err) { res.status(err.status || 500).json({ ok: false, message: err.message }); }
+  });
+
   router.post('/:id/targets/:tid/web-retry', async (req, res) => {
     const id = Number(req.params.id); const tid = Number(req.params.tid);
     try {

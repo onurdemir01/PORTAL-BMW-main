@@ -105,6 +105,10 @@ export const retirementApi = {
    *  Okunamazsa hicbir sey yazmaz (okunamadi != basarisiz). */
   /** Web (vhost) adimini yeniden dene: 'failed'/'skip' girdiler 'pending'e doner, zamanlayici
    *  bir sonraki turda yeniden baslatir. Suren ('running') islere dokunulmaz. */
+  /** Yeniden deneme ONIZLEMESI (2026-10-08): failed/skip vhost'lar icin plan isleri baslatilir,
+   *  HICBIR SEY degismez. Donus STOP on kontrolundeki vhostPlan ile ayni bicim. */
+  webRetryPlan: (id: number, tid: number): Promise<{ ok: boolean; message?: string; vhostPlan?: RtLaunch['vhostPlan'] }> =>
+    fetch(`${BASE}/${id}/targets/${tid}/web-retry/plan`, json({})).then(safeJson),
   webRetry: (id: number, tid: number): Promise<{ ok: boolean; message?: string; adet?: number; record?: RtRecord }> =>
     fetch(`${BASE}/${id}/targets/${tid}/web-retry`, json({})).then(safeJson),
   refreshStatus: (id: number, tid: number): Promise<{
