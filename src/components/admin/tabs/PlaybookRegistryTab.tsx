@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { PlusIcon, PencilSquareIcon, TrashIcon, CommandLineIcon } from "@heroicons/react/24/outline";
 import { playbookRegistryApi, type PlaybookRegistryEntry } from "@/api/playbookRegistryApi";
 import { ansibleApi, type AwxServer } from "@/api/ansibleApi";
@@ -126,6 +126,16 @@ export default function PlaybookRegistryTab() {
     }
   }
 
+  // DUZENLE'YE BASINCA FORMA KAYDIR (2026-10-08): form listenin USTUNDE aciliyor; asagidaki bir
+  // satirda "Duzenle"ye basan kullanici formu gormuyordu. editId degisince de kaydirir
+  // (form acikken baska satira gecis).
+  const formRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!showForm) return;
+    const reduce = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    formRef.current?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
+  }, [showForm, editId]);
+
   async function handleDelete(row: PlaybookRegistryEntry) {
     if (!window.confirm(`"${row.displayName}" kaydını silmek istediğinize emin misiniz?`)) return;
     const r = await playbookRegistryApi.remove(row.id);
@@ -151,6 +161,7 @@ export default function PlaybookRegistryTab() {
       </div>
 
       {showForm && (
+        <div ref={formRef} className="scroll-mt-4">
         <Card padding="md" className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -259,13 +270,16 @@ export default function PlaybookRegistryTab() {
               Salt-okunur (yalnızca tanılama, sistemi değiştirmez)
             </label>
           </div>
+          {/* ORTAK DUGME BILESENI (2026-10-08): elle yazilmis siyah "Kaydet" koyu temada
+              kapali gibi gorunuyordu (kullanici: "inaktifmis gibi duruyor ama tiklanabiliyor"). */}
           <div className="flex gap-2 justify-end">
-            <button onClick={() => setShowForm(false)} className="px-3 py-1.5 text-xs border border-gray-200 rounded-lg hover:bg-gray-50">İptal</button>
-            <button onClick={handleSave} disabled={saving} className="px-3 py-1.5 text-xs bg-black text-white rounded-lg hover:bg-gray-800 disabled:opacity-40">
+            <Button variant="secondary" size="sm" onClick={() => setShowForm(false)}>İptal</Button>
+            <Button variant="primary" size="sm" onClick={handleSave} loading={saving}>
               {saving ? "Kaydediliyor..." : "Kaydet"}
-            </button>
+            </Button>
           </div>
         </Card>
+        </div>
       )}
 
       {yuklemeHatasi ? (
