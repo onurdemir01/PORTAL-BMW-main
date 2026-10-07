@@ -5,7 +5,7 @@
 // daha ne kadar kaldığını vesaire görebilmek istiyorum."
 //
 // ── NE GOSTERIR ───────────────────────────────────────────────────────────────────────
-// Hedef basina ALTI asama: Plan → STOP → Web (vhost) → Bekleme → DELETE, ve gerekiyorsa
+// Hedef basina ALTI asama: On kontrol → STOP → Web (vhost) → Bekleme → DELETE, ve gerekiyorsa
 // Geri alma. Her asamada: durum, O ASAMANIN SUNUCUDA YAPTIGI IS (komut ozeti) ve varsa
 // zaman/sonuc. Silme icin KALAN GUN de burada.
 //
@@ -134,9 +134,9 @@ export function asamalar(rec: RtRecord, t: RtTarget, bugun = new Date()): Asama[
 
   const liste: Asama[] = [
     {
-      ad: '1 · Plan',
+      ad: '1 · Ön kontrol',
       durum: planDurum,
-      komut: 'app_retirement_stop.yml · plan_only=true — sunucuya DOKUNMAZ, ne yapılacağını listeler',
+      komut: 'app_retirement_stop.yml · plan_only=true — sunucuya DOKUNMAZ, ne yapılacağını listeler (“Retirement’ı başlat”)',
       bilgi: t.planText || undefined,
     },
     {

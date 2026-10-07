@@ -66,7 +66,9 @@ export interface RtRecord {
   dnsReuse: boolean; lbReuse: boolean; sccNotifiedAt: string | null; notes: string | null; createdAt: string; updatedAt: string; effectiveDeleteAt: string | null;
   targets: RtTarget[]; events: { id: number; at: string; username: string | null; kind: string; text: string | null }[];
 }
-export interface RtRecordRow extends Omit<RtRecord, 'targets' | 'events'> { targets: number; stopped: number }
+/** Kaydin ortam kirilimi: kayit TABAN adla tutulur, ortam hedeflerden gelir. */
+export interface RtRecordEnv { env: string; toplam: number; durdurulan: number; silinen: number; uygulamalar: string[] }
+export interface RtRecordRow extends Omit<RtRecord, 'targets' | 'events'> { targets: number; stopped: number; envs?: RtRecordEnv[] }
 export interface RtLaunch { ok: boolean; message?: string; jobId: number | null; status: string | null; awxServerId: number; planOnly?: boolean; sccWarning?: string | null }
 
 const json = (body: unknown) => ({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -93,6 +95,11 @@ export const retirementApi = {
     ok: boolean; degisti?: boolean; from?: string; to?: string; jobId?: number;
     jobStatus?: string; jobMissing?: boolean; message?: string; record?: RtRecord;
   }> => fetch(`${BASE}/${id}/targets/${tid}/refresh-status`, json({})).then(safeJson),
+  /** ADMIN: beklemeyi atla. DELETE'i BASLATMAZ; silme tarihini bugune ceker, silmeyi her
+   *  zamanki zamanlayici yakalar (bekleme yolu boylece sinanir). `confirmApp` = kayit
+   *  uygulama adi, AYNEN. */
+  deleteNow: (id: number, confirmApp: string): Promise<{ ok: boolean; message?: string; oncekiTarih?: string | null; hedefSayisi?: number; pollSaniye?: number; record?: RtRecord }> =>
+    fetch(`${BASE}/${id}/delete-now`, json({ confirmApp })).then(safeJson),
   jobStatus: (id: number, tid: number, awxServerId: number, jobId: number): Promise<{ ok: boolean; status: string; output: string; result?: unknown; message?: string }> =>
     fetch(`${BASE}/${id}/targets/${tid}/job-status/${awxServerId}/${jobId}`).then(safeJson),
 };

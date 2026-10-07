@@ -12,6 +12,7 @@ import { Modal } from '@/components/common/Modal';
 import { TableEmptyRow } from '@/components/common/EmptyState';
 import { fmtDate, fmtDateTime } from '@/utils/datetime';
 import RetirementAkis from './RetirementAkis';
+import { retirementAdimi } from './retirementAdim';
 import { toast } from '@/hooks/useToast';
 
 const SM_BTN = 'inline-flex items-center gap-1 h-7 px-2.5 text-[11px] font-medium leading-none rounded-lg border whitespace-nowrap disabled:opacity-40';
@@ -23,7 +24,7 @@ const INPUT = 'w-full px-2.5 py-1.5 text-xs border rounded-lg';
 const inputStyle: React.CSSProperties = { borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)' };
 
 const TSTATUS: Record<RtTargetStatus, { label: string; color: string }> = {
-  pending: { label: 'bekliyor', color: 'var(--status-neutral)' }, planning: { label: 'plan koşuyor', color: 'var(--status-info)' }, planned: { label: 'plan hazır', color: 'var(--status-info)' },
+  pending: { label: 'bekliyor', color: 'var(--status-neutral)' }, planning: { label: 'ön kontrol sürüyor', color: 'var(--status-info)' }, planned: { label: 'onay bekliyor', color: 'var(--status-info)' },
   stop_scheduled: { label: 'OCO penceresine zamanlandı', color: 'var(--status-info)' },
   stopping: { label: 'durduruluyor', color: 'var(--status-warning)' }, stopped: { label: 'DURDURULDU', color: 'var(--status-success)' },
   deleting: { label: 'siliniyor', color: 'var(--status-warning)' }, deleted: { label: 'SİLİNDİ', color: 'var(--status-neutral)' },
@@ -151,7 +152,22 @@ export default function RetirementTab() {
           <tbody>
             {rows.length === 0 ? <TableEmptyRow colSpan={9} title="Retirement kaydı yok." description="Smart silme kaydı gelince 'Yeni retirement kaydı' ile açın." /> : rows.map((r) => (
               <tr key={r.id} className="border-t cursor-pointer hover:bg-[var(--bg-elevated)]" style={{ borderColor: 'var(--border-subtle)' }} onClick={() => setOpenId(r.id)}>
-                <td className="px-3 py-1.5 font-semibold">{r.app}</td>
+                <td className="px-3 py-1.5">
+                  <div className="font-semibold">{r.app}</div>
+                  {/* ORTAM ROZETLERI (2026-10-08): kayit TABAN adla tutuluyor; hangi ortamin
+                      retire edildigi tiklamadan gorunsun. Ipucunda gercek uygulama adlari. */}
+                  {r.envs && r.envs.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-0.5">
+                      {r.envs.map((e) => (
+                        <span key={e.env} className="text-[10px] font-semibold px-1.5 py-px rounded border tabular-nums"
+                          style={{ color: e.env === 'PROD' ? 'var(--status-danger)' : 'var(--text-secondary)', borderColor: e.env === 'PROD' ? 'var(--status-danger)' : 'var(--border-subtle)' }}
+                          title={`${e.env}: ${e.uygulamalar.join(', ')} · ${e.durdurulan} durduruldu${e.silinen ? `, ${e.silinen} silindi` : ''} / ${e.toplam}`}>
+                          {e.env}{e.toplam > 1 ? ` ×${e.toplam}` : ''}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </td>
                 <td className="px-3 py-1.5 font-mono text-[11px]">{r.smartNo}</td>
                 <td className="px-3 py-1.5 font-mono text-[11px]">{r.ocoNo || '—'}</td>
                 <td className="px-3 py-1.5"><Pill {...(RSTATUS[r.status] || { label: r.status, color: 'var(--text-muted)' })} /></td>
@@ -335,6 +351,9 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
   const [ask, setAsk] = useState<{ t: RtTarget } | null>(null);
   const [geriAl, setGeriAl] = useState<{ t: RtTarget } | null>(null);
   const [iptalSor, setIptalSor] = useState(false);
+  // BEKLEMEYI ATLA (admin): silme tarihini bugune ceker; onay icin uygulama adi yazilir.
+  const [atlaSor, setAtlaSor] = useState(false);
+  const [atlaAd, setAtlaAd] = useState('');
   // AKIS PANELI: satira tiklaninca altinda asamalar acilir (tek satir acik).
   const [akis, setAkis] = useState<number | null>(null);
   const [hubDurum, setHubDurum] = useState<StopHubDurumu>('denetleniyor');
@@ -346,6 +365,12 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
   }, [id]);
   useEffect(() => { load(); }, [load]);
 
+  // TEK DUGMELI AKIS (2026-10-08): "Retirement'i baslat" on kontrolu baslatir; on kontrol
+  // BASARIYLA bitince onay penceresi KENDILIGINDEN acilir (2. adim). Yalniz bu oturumda
+  // baslatilan hedef icin: sayfayi yeniden acan birinin onune pencere firlamasin.
+  // Basarisizsa pencere ACILMAZ - geri alinamaz adim yalniz basarili on kontrolden sonra.
+  const onayBekleyen = useRef<number | null>(null);
+
   // STOP onayi acilinca Server Hub kesifle yeniden okunur; yalniz SON istegin yaniti yazilir.
   const stopSor = (t: RtTarget) => {
     if (!rec) return;
@@ -356,6 +381,17 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
       .then((d) => { if (hubIstek.current === no) setHubDurum(stopHubDurumu(d)); })
       .catch(() => { if (hubIstek.current === no) setHubDurum('okunamadi'); });
   };
+  useEffect(() => {
+    const tid = onayBekleyen.current;
+    if (!rec || tid == null) return;
+    const t = rec.targets.find((x) => x.id === tid);
+    if (!t || t.status === 'planning') return;
+    onayBekleyen.current = null;
+    if (t.status === 'planned') stopSor(t);
+    else toast.error(`${t.appName} @ ${t.host}: ön kontrol başarısız — ${t.resultText || t.planText || 'ayrıntı için Olaylar / iş çıktısı'}`);
+    // stopSor her render'da yeniden tanimlaniyor; tetik YALNIZ kayit degisimi.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rec]);
 
   const stop = async (t: RtTarget, confirmed: boolean) => {
     setBusy(t.id); setAsk(null);
@@ -363,10 +399,11 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
       const r = await retirementApi.stop(id, t.id, confirmed);
       if (!r.ok) { toast.error(r.message || 'İş başlatılamadı.'); return; }
       if (r.sccWarning) toast.error(r.sccWarning);
-      toast.success(`${confirmed ? 'STOP' : 'Plan'} işi başladı (#${r.jobId}).`);
+      toast.success(confirmed ? `STOP işi başladı (#${r.jobId}).` : `Ön kontrol başladı (#${r.jobId}) — bitince onay penceresi açılacak.`);
+      if (!confirmed) onayBekleyen.current = t.id;
       let done = false;
       addJob({
-        title: `Retirement: ${confirmed ? 'STOP' : 'plan'} ${t.appName} @ ${t.host}`,
+        title: `Retirement: ${confirmed ? 'STOP' : 'ön kontrol'} ${t.appName} @ ${t.host}`,
         fetchStatus: async () => {
           const s = await retirementApi.jobStatus(id, t.id, r.awxServerId, r.jobId as number);
           if (!s.ok) throw new Error(s.message || 'Durum okunamadı.');
@@ -418,6 +455,14 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
   // Poller tabanli sonuclandirma uzun sure bozuktu (6177b4e) ve onyuz yoklamasi yalniz
   // ekranda bekleyen biri varken kosuyor; hedef 'stopping'de kalinca EKRANDA HICBIR
   // DUGME KALMIYORDU (kullanici bulgusu 2026-10-08: "dokunamiyorum").
+  const beklemeyiAtla = async () => {
+    if (!rec) return;
+    const r = await retirementApi.deleteNow(id, atlaAd);
+    if (!r.ok) { toast.error(r.message || 'Silme tarihi çekilemedi.'); return; }
+    setAtlaSor(false); setAtlaAd('');
+    if (r.record) setRec(r.record);
+    toast.success(`Silme tarihi bugüne çekildi. Zamanlayıcı en geç ~${Math.ceil((r.pollSaniye || 300) / 60)} dk içinde ${r.hedefSayisi} hedefi silecek — Olaylar ve hedef durumunu izleyin.`);
+  };
   const tazele = async (t: RtTarget) => {
     setBusy(t.id);
     try {
@@ -463,18 +508,24 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
           <div className="grid gap-2 sm:grid-cols-4 text-[12px]">
             <div className="rounded-lg border px-3 py-2" style={{ borderColor: 'var(--border-subtle)' }}><div className="text-[10px] uppercase" style={{ color: 'var(--text-muted)' }}>Durum</div><Pill {...(RSTATUS[rec.status] || { label: rec.status, color: 'var(--text-muted)' })} /></div>
             <div className="rounded-lg border px-3 py-2" style={{ borderColor: 'var(--border-subtle)' }}><div className="text-[10px] uppercase" style={{ color: 'var(--text-muted)' }}>Stop</div>{rec.stopAt ? fmtDateTime(rec.stopAt) : '—'} <span style={{ color: 'var(--text-muted)' }}>({rec.targets.filter((t) => t.status === 'stopped').length}/{rec.targets.length})</span></div>
-            <div className="rounded-lg border px-3 py-2" style={{ borderColor: 'var(--border-subtle)' }}><div className="text-[10px] uppercase" style={{ color: 'var(--text-muted)' }}>Silme tarihi</div>{rec.effectiveDeleteAt ? fmtDate(rec.effectiveDeleteAt) : `stop + ${rec.deleteAfterDays} gün`}{rec.plannedDeleteAt ? <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}> (açan belirledi)</span> : null}</div>
+            <div className="rounded-lg border px-3 py-2" style={{ borderColor: 'var(--border-subtle)' }}><div className="text-[10px] uppercase" style={{ color: 'var(--text-muted)' }}>Silme tarihi</div>{rec.effectiveDeleteAt ? fmtDate(rec.effectiveDeleteAt) : `stop + ${rec.deleteAfterDays} gün`}{rec.plannedDeleteAt ? <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}> (açan belirledi)</span> : null}
+              {/* BEKLEMEYI ATLA: yalniz silinmeye HAZIR (durdurulmus, silinmemis) hedef varken.
+                  Router zaten yalniz Admin. DELETE'i baslatmaz; tarihi bugune ceker. */}
+              {rec.status !== 'cancelled' && rec.status !== 'deleted' && rec.targets.some((t) => t.status === 'stopped' && !t.deletedAt) && (
+                <div><button onClick={() => { setAtlaAd(''); setAtlaSor(true); }} className="text-[10px] underline decoration-dotted" style={{ color: 'var(--status-danger)' }} title="Admin: silme tarihini bugüne çek, zamanlayıcı silmeyi başlatsın (bekleme aşamasını sınamak için)">beklemeyi atla (admin)</button></div>
+              )}
+            </div>
             <div className="rounded-lg border px-3 py-2" style={{ borderColor: 'var(--border-subtle)' }}><div className="text-[10px] uppercase" style={{ color: 'var(--text-muted)' }}>SCC / DNS / LB</div>{rec.sccNotifiedAt ? 'SCC bilgilendirildi' : 'SCC bekliyor'} · DNS {rec.dnsReuse ? 'kalacak' : 'silinecek'} · LB {rec.lbReuse ? 'kalacak' : 'silinecek'}</div>
           </div>
           {rec.notes && <div className="text-[12px] rounded-lg border px-3 py-2" style={{ borderColor: 'var(--border-subtle)', color: 'var(--text-secondary)' }}>{rec.notes}</div>}
 
           <div className="overflow-auto rounded-lg border" style={{ borderColor: 'var(--border-subtle)' }}>
             <table className="w-full text-xs border-collapse">
-              <thead style={{ background: 'var(--bg-elevated)' }}><tr>{['Sunucu', 'Site', 'Ortam', 'Uygulama', 'JBoss', 'Web sunucusu', 'Durum', 'Plan / sonuç', ''].map((h, i) => <th key={h + i} className="px-2.5 py-1.5 text-left text-[11px] font-semibold" style={{ color: 'var(--text-muted)' }}>{h}</th>)}</tr></thead>
+              <thead style={{ background: 'var(--bg-elevated)' }}><tr>{['Sunucu', 'Site', 'Ortam', 'Uygulama', 'JBoss', 'Web sunucusu', 'Durum', 'Ön kontrol / sonuç', ''].map((h, i) => <th key={h + i} className="px-2.5 py-1.5 text-left text-[11px] font-semibold" style={{ color: 'var(--text-muted)' }}>{h}</th>)}</tr></thead>
               <tbody>
                 {rec.targets.map((t) => {
                   const st = TSTATUS[t.status] || { label: t.status, color: 'var(--text-muted)' };
-                  const canAct = rec.status !== 'cancelled' && t.status !== 'stopped' && t.status !== 'planning' && t.status !== 'stopping';
+                  const adim = retirementAdimi(t.status, rec.status === 'cancelled' || rec.status === 'deleted');
                   return (
                     <tr key={t.id} className="border-t" style={{ borderColor: 'var(--border-subtle)' }}>
                       <td className="px-2.5 py-1.5 font-mono font-semibold">{t.host}</td>
@@ -486,18 +537,32 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
                       <td className="px-2.5 py-1.5"><Pill label={st.label} color={st.color} /></td>
                       <td className="px-2.5 py-1.5 text-[10px]" style={{ color: 'var(--text-secondary)' }}><div className="max-w-[40rem] truncate" title={t.resultText || t.planText || ''}>{t.resultText || t.planText || (t.lastJobId ? `iş #${t.lastJobId}` : '—')}</div></td>
                       <td className="px-2.5 py-1.5">
-                        {canAct && (
-                          <div className="flex gap-1">
-                            <button disabled={busy != null} onClick={() => stop(t, false)} className={SM_BTN} style={smBtn()} title="Sunucuda plan koş: ne yapılacağını göster, hiçbir şey değişmez"><ClipboardDocumentCheckIcon className="w-3.5 h-3.5" /> Plan</button>
-                            {t.status === 'planned' && <button disabled={busy != null} onClick={() => stopSor(t)} className={SM_BTN} style={{ ...smBtn(true), background: 'var(--status-danger)', borderColor: 'var(--status-danger)' }}><StopCircleIcon className="w-3.5 h-3.5" /> STOP</button>}
+                        {/* TEK BIRINCIL EYLEM, durumdan turetilir (retirementAdim.ts). */}
+                        {adim.tur === 'baslat' && (
+                          <button disabled={busy != null} onClick={() => stop(t, false)} className={SM_BTN} style={smBtn(true)} title={adim.ipucu}>
+                            <ClipboardDocumentCheckIcon className="w-3.5 h-3.5" /> {adim.etiket}
+                          </button>
+                        )}
+                        {adim.tur === 'onayla' && (
+                          <div className="flex flex-col items-start gap-0.5">
+                            <button disabled={busy != null} onClick={() => stopSor(t)} className={SM_BTN} style={{ ...smBtn(true), background: 'var(--status-danger)', borderColor: 'var(--status-danger)' }} title={adim.ipucu}>
+                              <StopCircleIcon className="w-3.5 h-3.5" /> {adim.etiket}
+                            </button>
+                            <button disabled={busy != null} onClick={() => stop(t, false)} className="text-[10px] underline decoration-dotted" style={{ color: 'var(--text-muted)' }} title="Ön kontrolü yeniden koş (sunucu durumu değişmiş olabilir); hiçbir şey değişmez">
+                              ön kontrolü yenile
+                            </button>
                           </div>
+                        )}
+                        {adim.tur === 'suruyor' && (
+                          <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>ön kontrol sürüyor… bitince onay penceresi açılır</span>
                         )}
                         {/* GERI AL: yalniz durdurulmus ve HENUZ SILINMEMIS hedeflerde.
                             'rollback_failed' tekrar denemeye acik - yarim kalmis bir geri
                             almayi kilitlemek uygulamayi erisilemez birakirdi. */}
                         <div className="flex gap-1 mt-1">
-                          <button onClick={() => setAkis((x) => (x === t.id ? null : t.id))} className={SM_BTN} style={smBtn()} title="Akış: hangi adımda, hangi komut, ne kadar kaldı">
-                            {akis === t.id ? 'Akışı kapat' : 'Akış'}
+                          {/* AYRINTI bir eylem DEGIL, gorunum: dugme agirliginda degil baglanti olarak. */}
+                          <button onClick={() => setAkis((x) => (x === t.id ? null : t.id))} className="text-[10px] underline decoration-dotted" style={{ color: 'var(--accent)' }} title="Hangi adımda, hangi komut, ne kadar kaldı" aria-expanded={akis === t.id}>
+                            {akis === t.id ? 'Ayrıntı ▴' : 'Ayrıntı ▾'}
                           </button>
                           {/* GECIS DURUMU: tek cikis yolu durumu TAZELEMEK. Bu durumlarda
                               ne STOP ne geri alma dugmesi gorunur; tazelemeden sonra
@@ -536,7 +601,7 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
               </tbody>
             </table>
           </div>
-          <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>STOP düğmesi yalnız plan koşup başarıyla döndükten sonra açılır. PROD hedeflerde ilk STOP'ta SCC'ye bilgilendirme maili gider. Silme adımı (JVM/cluster + content repo + mod_jk/workers temizliği) ve IP/LB/DNS Smart kayıtları bir sonraki sürümde bu ekrana eklenecek.</p>
+          <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>“Retirement'ı başlat” önce sunucuda <b>ön kontrol</b> koşar (hiçbir şey değişmez); başarıyla dönerse dokunulacak dosyalarla birlikte onay penceresi açılır, durdurma ancak orada onaylanınca başlar. PROD hedeflerde ilk STOP'ta SCC'ye bilgilendirme maili gider. Silme adımı (JVM/cluster + content repo + mod_jk/workers temizliği) ve IP/LB/DNS Smart kayıtları bir sonraki sürümde bu ekrana eklenecek.</p>
 
           <div>
             <div className="text-[11px] font-semibold mb-1" style={{ color: 'var(--text-muted)' }}>Olaylar</div>
@@ -554,7 +619,7 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,.45)' }} onClick={() => setAsk(null)}>
           <div className="w-full max-w-md rounded-2xl border p-5 space-y-3" style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-subtle)' }} onClick={(e) => e.stopPropagation()}>
             <div className="text-sm font-semibold">STOP — {ask.t.appName} @ {ask.t.host} ({ask.t.env}, {ask.t.site})</div>
-            <div className="text-[12px] rounded-lg border px-3 py-2" style={{ borderColor: 'var(--status-info)', background: 'var(--status-info-bg)' }}><b>Plan:</b> {ask.t.planText}</div>
+            <div className="text-[12px] rounded-lg border px-3 py-2" style={{ borderColor: 'var(--status-info)', background: 'var(--status-info-bg)' }}><b>Ön kontrol sonucu:</b> {ask.t.planText}</div>
             {/* PLAN AYRINTISI: ozet "2 paket yeniden adlandirilacak" diyor ama HANGI iki
                 paket oldugunu soylemiyordu. Islem geri alinamaz; onay vermeden once
                 dokunulacak dosyalar GORUNMELI. Alan gelmediyse (eski playbook) hic
@@ -588,6 +653,36 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
       {/* IPTAL ONAYI (2026-10-08). Kullanici "iptal ettim ama geri donmedi" dedi; iptalin
           NE YAPTIGI ve NE YAPMADIGI burada yazili, ve geri getirme AYNI pencereden
           tetiklenebiliyor - sessiz bir varsayim kalmiyor. */}
+      {atlaSor && rec && (() => {
+        const hazir = rec.targets.filter((t) => t.status === 'stopped' && !t.deletedAt);
+        const prod = hazir.some((t) => t.env === 'PROD');
+        return (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,.45)' }} onClick={() => setAtlaSor(false)}>
+            <div className="w-full max-w-lg rounded-2xl border p-5 space-y-3" style={{ background: 'var(--bg-surface)', borderColor: 'var(--status-danger)' }} onClick={(e) => e.stopPropagation()}>
+              <div className="text-sm font-semibold">Beklemeyi atla — {rec.app}</div>
+              <div className="text-[12px] space-y-1.5" style={{ color: 'var(--text-secondary)' }}>
+                <p>Silme tarihi <b>bugüne</b> çekilir ({rec.effectiveDeleteAt ? fmtDate(rec.effectiveDeleteAt) : 'belirsiz'} → bugün). DELETE'i bu düğme başlatmaz: <b>her zamanki zamanlayıcı</b> bir sonraki turunda (en geç birkaç dakika) yakalar ve başlatır — bekleme aşaması böylece gerçekten sınanır.</p>
+                <p style={{ color: 'var(--status-danger)' }}><b>DELETE GERİ ALINAMAZ:</b> paketler silinir, server-config ve server-group kaldırılır. Bundan sonra “Geri aktif et” çalışmaz; dönüş yalnız yedekten.</p>
+              </div>
+              <div className="text-[11px] rounded-lg border px-3 py-2" style={{ borderColor: 'var(--border-subtle)' }}>
+                <div className="font-semibold mb-0.5">Silinecek {hazir.length} hedef</div>
+                {hazir.map((t) => <div key={t.id} className="font-mono">{t.appName} @ {t.host} <b style={{ color: t.env === 'PROD' ? 'var(--status-danger)' : undefined }}>{t.env}</b></div>)}
+              </div>
+              {prod && <div className="text-[12px] font-semibold" style={{ color: 'var(--status-danger)' }}>Listede PROD hedef var.</div>}
+              <label className="block text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                Onay için uygulama adını aynen yazın: <span className="font-mono">{rec.app}</span>
+                <input value={atlaAd} onChange={(e) => setAtlaAd(e.target.value)} className={`${INPUT} mt-1 font-mono`} style={inputStyle} autoFocus />
+              </label>
+              <div className="flex justify-end gap-2">
+                <button onClick={() => setAtlaSor(false)} className={SM_BTN} style={smBtn()}>Kapat</button>
+                <button disabled={atlaAd.trim() !== rec.app} onClick={beklemeyiAtla} className={SM_BTN} style={{ ...smBtn(true), background: 'var(--status-danger)', borderColor: 'var(--status-danger)', opacity: atlaAd.trim() !== rec.app ? 0.5 : 1 }}>
+                  Silme tarihini bugüne çek
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
       {iptalSor && rec && (() => {
         const durdurulmus = rec.targets.filter(
           (t) => (t.status === 'stopped' || t.status === 'rollback_failed') && !t.deletedAt,

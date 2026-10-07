@@ -227,7 +227,30 @@ function initRetirement(app) {
       const r = await db().query(`SELECT r.*, (SELECT COUNT(*) FROM retirement_targets t WHERE t.record_id = r.id) AS n_targets,
         (SELECT COUNT(*) FROM retirement_targets t WHERE t.record_id = r.id AND t.status = 'stopped') AS n_stopped
         FROM retirement_records r ORDER BY CASE r.status WHEN 'open' THEN 0 WHEN 'stopped' THEN 1 ELSE 2 END, r.created_at DESC`);
-      res.json({ ok: true, records: (r.rows || []).map((x) => ({ ...rowRecord(x), targets: Number(x.n_targets), stopped: Number(x.n_stopped) })) });
+      // ORTAM KIRILIMI (kullanici, 2026-10-08): "uygulama ismi -t, -d, -q gibi soneksiz
+      // listelendigi icin insanlar hangi ortamin silindigini tiklamadan anlayamayacak."
+      // Kayit TABAN adla tutuluyor (GBSVCVOICEORDER); ortam hedeflerden gelir. TEK sorgu,
+      // kayit basina sorgu (N+1) DEGIL.
+      const tr = await db().query(`SELECT record_id, env, app_name, host, status FROM retirement_targets`);
+      const SIRA = ['DEV', 'TEST', 'QA', 'EDU', 'PROD'];
+      const envBy = new Map();
+      for (const t of tr.rows || []) {
+        const k = Number(t.record_id);
+        if (!envBy.has(k)) envBy.set(k, new Map());
+        const m = envBy.get(k);
+        const e = String(t.env || '?').toUpperCase();
+        if (!m.has(e)) m.set(e, { env: e, toplam: 0, durdurulan: 0, silinen: 0, uygulamalar: new Set() });
+        const g = m.get(e);
+        g.toplam++;
+        if (t.status === 'stopped') g.durdurulan++;
+        if (t.status === 'deleted') g.silinen++;
+        g.uygulamalar.add(`${t.app_name} @ ${t.host}`);
+      }
+      const envsOf = (id) =>
+        [...(envBy.get(Number(id)) || new Map()).values()]
+          .map((g) => ({ ...g, uygulamalar: [...g.uygulamalar] }))
+          .sort((a, b) => (SIRA.indexOf(a.env) + 1 || 99) - (SIRA.indexOf(b.env) + 1 || 99));
+      res.json({ ok: true, records: (r.rows || []).map((x) => ({ ...rowRecord(x), targets: Number(x.n_targets), stopped: Number(x.n_stopped), envs: envsOf(x.id) })) });
     } catch (err) { res.status(500).json({ ok: false, message: err.message }); }
   });
 
@@ -285,6 +308,48 @@ function initRetirement(app) {
     } catch (err) { res.status(500).json({ ok: false, message: err.message }); }
   });
 
+  // ── BEKLEMEYI ATLA (admin, 2026-10-08) ─────────────────────────────────────────
+  // Kullanici: "ben admin olarak bu bekleme asamasinin duzgun calistigini anlayabilmek
+  // icin direkt tetikleme asamasina gecmek istiyorum."
+  //
+  // DELETE'I BURADAN BASLATMAZ. Yalnizca silme tarihini BUGUNE ceker; silmeyi her zamanki
+  // zamanlayici (poller.deleteTick) yakalar ve baslatir. Sinanmak istenen sey tam o yol:
+  // dogrudan launch, beklemenin kendisini (tarih hesabi, 'stopped' secimi, claim, is
+  // baslatma, sonuclandirma) ATLARDI ve "calisiyor" sonucu yaniltici olurdu.
+  //
+  // DELETE GERI ALINAMAZ: onay icin uygulama adi AYNEN yazilir (yanlis kayitta tek tikla
+  // silme tetiklenmesin). Onceki tarih olaya yazilir - "acan belirledi" tarihi kaybolmaz.
+  // Router zaten yalniz Admin (yukaridaki router.use).
+  router.post('/:id/delete-now', async (req, res) => {
+    const id = Number(req.params.id);
+    try {
+      const rec = await loadRecord(id);
+      if (!rec) return res.status(400).json({ ok: false, message: 'Kayıt yok.' });
+      if (rec.status === 'cancelled' || rec.status === 'deleted')
+        return res.status(400).json({ ok: false, message: `Kayıt ${rec.status === 'cancelled' ? 'iptal edilmiş' : 'zaten silinmiş'}.` });
+      const hazir = rec.targets.filter((t) => t.status === 'stopped' && !t.deletedAt);
+      if (!hazir.length)
+        return res.status(400).json({ ok: false, message: 'Silinmeye hazır (durdurulmuş, silinmemiş) hedef yok — zamanlayıcı yalnız durdurulmuş hedefleri siler.' });
+      if (String(req.body?.confirmApp ?? '').trim() !== rec.app)
+        return res.status(400).json({ ok: false, message: `Onay için uygulama adını aynen yazın: ${rec.app}` });
+      const onceki = rec.effectiveDeleteAt;
+      await db().query(
+        `UPDATE retirement_records SET planned_delete_at = GETUTCDATE(), updated_at = GETUTCDATE()
+          WHERE id = $1 AND status NOT IN ('cancelled', 'deleted')`,
+        [id],
+      );
+      const pollSn = (() => { const n = Number(process.env.RETIREMENT_POLL_INTERVAL_SECONDS); return Number.isFinite(n) && n >= 30 ? n : 300; })();
+      await addEvent(
+        id,
+        req.session?.user?.username,
+        'delete_now',
+        `ADMIN beklemeyi atladi: silme tarihi ${onceki || 'belirsiz'} -> bugun. Zamanlayici en gec ~${Math.ceil(pollSn / 60)} dk icinde ` +
+          `${hazir.length} durdurulmus hedefi silecek: ${hazir.map((t) => `${t.appName} @ ${t.host} (${t.env})`).join(', ')}`,
+      );
+      res.json({ ok: true, oncekiTarih: onceki, hedefSayisi: hazir.length, pollSaniye: pollSn, record: await loadRecord(id) });
+    } catch (err) { res.status(500).json({ ok: false, message: err.message }); }
+  });
+
   router.post('/:id/note', async (req, res) => {
     const id = Number(req.params.id);
     const text = String(req.body?.text || '').trim().slice(0, 1000);
@@ -306,6 +371,21 @@ function initRetirement(app) {
       if (!t.gen) return res.status(400).json({ ok: false, message: `${t.host}: JBoss nesli belirlenemedi (envanter jboss_version boş).` });
       if (t.env === 'PROD' && !rec.ocoNo) return res.status(400).json({ ok: false, message: 'PROD hedef için OCO numarası gerekli.' });
       if (t.status === 'stopped') return res.status(400).json({ ok: false, message: 'Bu hedef zaten durdurulmuş.' });
+      // ── TEK DUGMELI AKISIN SUNUCU KAPILARI (2026-10-08) ──────────────────────────
+      // (1) Gecis durumunda ikinci is YOK: suren bir ise ikinci on kontrol/STOP eklemek
+      //     sonucu hangi isin yazacagini belirsizlestirir.
+      // (2) ZAMANLANMIS hedefte on kontrol YOK: on kontrol hedefi 'planning'e cekiyor ve
+      //     poller yalniz 'stop_scheduled'a baktigi icin OCO'ya zamanlanmis STOP SESSIZCE
+      //     dusuyordu (eski "Plan" dugmesi bu durumda da gorunuyordu).
+      // (3) ONAYLI STOP YALNIZ ON KONTROLU BASARIYLA DONMUS hedefte. Bu kapi eskiden
+      //     YALNIZ ekrandaydi (STOP dugmesi 'planned'de gorunuyordu); dogrudan istek onu
+      //     atlayabiliyordu. Zamanlanmis STOP'lar bu uca gelmez, poller'dan kosar.
+      if (['planning', 'stopping', 'deleting', 'rolling_back'].includes(t.status))
+        return res.status(409).json({ ok: false, message: `Bu hedefte süren bir iş var (${t.status}); bitmesini bekleyin ya da "Durumu tazele".` });
+      if (!confirmed && t.status === 'stop_scheduled')
+        return res.status(409).json({ ok: false, message: "Bu hedefin STOP'u OCO penceresine zamanlanmış; ön kontrol zamanlamayı düşürürdü. Gerekirse önce kaydı iptal edin." });
+      if (confirmed && t.status !== 'planned')
+        return res.status(409).json({ ok: false, message: "Önce ön kontrol: \"Retirement'ı başlat\" sunucuda ne yapılacağını okur, başarıyla dönünce onay açılır." });
       // ── OCO PENCERESINE ZAMANLAMA (kullanici karari 2026-10-06) ─────────────────
       // "Production icin OCO talebi girisi zorunlu olacak, OCO'daki tarih ve saate gore
       //  uygulama stop adimi baslar."

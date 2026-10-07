@@ -219,12 +219,14 @@ test('GA12 IPTAL EDILMIS kayitta geri alma HALA mumkun', () => {
   // uygulamayi ayaga kaldiramaz hale gelir (ekranda dugme yok, ucta da ret).
   const ep = IDX_SRC.slice(IDX_SRC.indexOf("router.post('/:id/targets/:tid/rollback'"), IDX_SRC.indexOf('// Is durumu: bitince'));
   assert.ok(!/rec\.status === 'cancelled'/.test(ep), 'rollback ucu iptal edilmis kaydi reddediyor');
-  // Dugme `canAct` kapisinin DISINDA olmali (canAct iptalde kapaniyor).
-  const i = TAB_SRC.indexOf('const canAct =');
-  const j = TAB_SRC.indexOf('Geri aktif et');
-  assert.ok(i > 0 && j > 0, 'canAct ya da geri alma dugmesi bulunamadi');
-  assert.ok(
-    !/\{canAct && \([\s\S]{0,600}Geri aktif et/.test(TAB_SRC),
-    'geri alma dugmesi canAct kapisinin icinde - iptalden sonra kaybolur',
-  );
+  // Dugme birincil eylem kapisinin (retirementAdimi; kayit iptalde 'yok' doner) DISINDA
+  // olmali. 2026-10-08: eski `canAct` degiskeni tek dugmeli akisla retirementAdimi'ya
+  // donustu; kontrol ayni niyetle KOSUL METNINE bakar: geri alma blogunun kosulu
+  // yalniz hedef durumuna bagli, kaydin iptal durumuna ya da `adim`a DEGIL.
+  const m = TAB_SRC.match(/\{\(t\.status === 'stopped' \|\| t\.status === 'rollback_failed'\)([^\n]*)&& \(/);
+  assert.ok(m, 'geri alma blogunun kosulu bulunamadi');
+  assert.ok(!/cancelled|adim|rec\.status/.test(m[1]), `geri alma kosulu kayit/adim kapisina bagli: ${m[1]}`);
+  // Dugme BU blogun icinde olmali (ilk "Geri aktif et" gecisi yukaridaki bir yorumda).
+  const blok = TAB_SRC.slice(TAB_SRC.indexOf(m[0]), TAB_SRC.indexOf(m[0]) + 1500);
+  assert.match(blok, /Geri aktif et<\/button>/, 'kosulun altinda geri alma dugmesi yok - yanlis blok');
 });

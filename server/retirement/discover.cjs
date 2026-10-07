@@ -86,6 +86,58 @@ function trafikSinifi(v) {
   };
 }
 
+// ── IKINCI WEB KAYNAGI: SERVER HUB (2026-10-08) ─────────────────────────────────────
+// Kullanici: "GBSVCVOICEORDER uygulamasinin Apache konfigurasyonu olmasina ragmen bunu
+// kesfedememis gozukuyor." Kesif web vhost'larini YALNIZ dbo.BMW_Certificates_Inventory'den
+// aliyordu; sertifika envanterinde olmayan bir vhost (Server Hub'in ayni sunucuda IHS/RHA
+// yapilandirmasindan GERCEKTEN gordugu) hic bulunmuyordu. Sertifika envanteri eslemezse
+// Server Hub'in en yeni taramasina bakilir - ayni aday sunucular (harf donusumu, ayni host).
+//
+// ESLEME SIKI: server_name'in ya da bir alias'in ILK ETIKETI uygulama adina BIREBIR esit.
+// Sertifika yolundaki "iceriyor" / taban ad eslemesi burada YOK, cunku retirement bu
+// vhost'lari KAPATIYOR ve ayni sunucu cogu kez kardes ortamlari da barindiriyor (GBJBOT07:
+// gbsvcvoiceorder-d VE -t). '-d' retire edilirken '-t'nin vhost'unu yakalamak, calisan bir
+// ortami kapatmak olurdu.
+function hubWebFallback(app, appHost, certSonucu, hubVhostsByHost) {
+  const needle = String(app).toLowerCase();
+  const ilkEtiket = (s) => String(s || '').trim().toLowerCase().split('.')[0];
+  // Aday aplikasyon sunucusunun KENDISIYSE etiketi 'ayni host' (harf donusumu bir sey bulmadi).
+  const adaylar = [
+    { host: certSonucu.webHostCandidate, how: U(certSonucu.webHostCandidate) === U(appHost) ? 'aynı host' : 'harf-dönüşümü' },
+    { host: appHost, how: 'aynı host' },
+  ];
+  const goruldu = new Set();
+  for (const c of adaylar) {
+    const h = U(c.host);
+    if (!h || goruldu.has(h)) continue;
+    goruldu.add(h);
+    const list = hubVhostsByHost.get(h) || [];
+    const hits = list.filter((v) =>
+      [v.server_name, ...String(v.aliases || '').split(/[\s,]+/)].some((n) => n && ilkEtiket(n) === needle),
+    );
+    if (!hits.length) continue;
+    const tekil = new Map();
+    for (const v of hits) {
+      // PORT ANAHTARDA: ayni conf'ta :80 ve :443 iki ayri blok (sertifika yolu da port
+      // basina giris uretiyor). Portsuz anahtar :80 blogunu sessizce dusuruyordu.
+      const port = String(v.listen || '').split(/[\s,]+/)[0].split(':').pop() || '';
+      const k = `${U(v.host)}|${String(v.server_name || '').trim().toLowerCase()}|${port}|${v.conf_file || ''}`;
+      if (tekil.has(k)) continue;
+      tekil.set(k, {
+        host: U(v.host), serverName: String(v.server_name || '').trim(), product: String(v.product || ''),
+        port, confFile: String(v.conf_file || ''),
+      });
+    }
+    return {
+      ...certSonucu,
+      matched: true,
+      how: `Server Hub (${c.how}) + server_name ilk etiketi = uygulama adı · sertifika envanterinde yok`,
+      web: [...tekil.values()],
+    };
+  }
+  return certSonucu;
+}
+
 function buildTargets(base, invRows, certRows, jvmRows, vhostRows) {
   const certByHost = buildCertIndex(certRows || []);
   const jvmKey = (h, j) => `${U(h)}|${U(j)}`;
@@ -96,6 +148,12 @@ function buildTargets(base, invRows, certRows, jvmRows, vhostRows) {
   const vhostByKey = new Map(
     (vhostRows || []).map((v) => [`${U(v.host)}|${String(v.server_name || '').trim().toLowerCase()}`, v]),
   );
+  const hubVhostsByHost = new Map();
+  for (const v of vhostRows || []) {
+    const h = U(v.host);
+    if (!hubVhostsByHost.has(h)) hubVhostsByHost.set(h, []);
+    hubVhostsByHost.get(h).push(v);
+  }
   const seen = new Set();
   const targets = [];
   for (const r of invRows || []) {
@@ -108,7 +166,8 @@ function buildTargets(base, invRows, certRows, jvmRows, vhostRows) {
     if (seen.has(key)) continue;
     seen.add(key);
     const gen = genOf(r.jboss_version);
-    const web = matchWebForApp({ app, appHost: host, domain: r.domain || '' }, certByHost);
+    let web = matchWebForApp({ app, appHost: host, domain: r.domain || '' }, certByHost);
+    if (!web.matched) web = hubWebFallback(app, host, web, hubVhostsByHost);
     const j = jvms.get(jvmKey(host, app));
     // SOZLESME v3 (D1-C15, D1-C28): running=0 tek basina "kapali" DEGIL. running_src
     // UNMEASURED (hidepid / ps korlugu) ise calisma durumu BILINMIYOR; NULL (eski satir ya da
@@ -187,7 +246,7 @@ async function discover(base, db) {
     // VHOST TRAFIGI (en yeni tarama). Kolonlar migration ile geldigi icin SELECT * DEGIL
     // acik liste; okunamazsa BOS doner ve her vhost 'olculemedi' olur - "trafik yok"
     // DEGIL. Tablo/kolon yoksa da ayni yere duser.
-    query(`SELECT v.host, v.server_name, v.product, v.req_24h, v.req_7d, v.hc_24h,
+    query(`SELECT v.host, v.server_name, v.aliases, v.listen, v.conf_file, v.product, v.req_24h, v.req_7d, v.hc_24h,
                   v.traffic_state, v.traffic_reason, v.sampled, v.last_req_epoch, v.scan_date
              FROM dbo.Server_Hub_Vhosts v
              JOIN (SELECT host, MAX(scan_date) AS d FROM dbo.Server_Hub_Hosts GROUP BY host) m
