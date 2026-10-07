@@ -363,9 +363,15 @@ async function webSonucTick() {
     if (!Array.isArray(liste)) continue;
     let degisti = false;
     for (const w of liste) {
-      if (w.status !== 'running' || !w.jobId) continue;
+      if (w.status !== 'running') continue;
+      // IZ BIRAKMADAN BEKLEMEK YOK: is numarasi yoksa sonuc hic okunamaz; okuma hatasi da
+      // sessiz kalmamali - ekran "suruyor" derken sebebi logda olmali.
+      if (!w.jobId) { console.warn(`[Retirement poller] #${t.record_id} ${w.host} / ${w.serverName}: web isi 'running' ama is numarasi yok - sonuc okunamaz (elle kontrol)`); continue; }
       let s;
-      try { s = await _finalize('web', { job_id: w.jobId }); } catch { continue; }
+      try { s = await _finalize('web', { job_id: w.jobId }); } catch (e) {
+        console.warn(`[Retirement poller] #${t.record_id} ${w.host} / ${w.serverName}: web isi #${w.jobId} sonucu OKUNAMADI (sonraki tur tekrar): ${e.message}`);
+        continue;
+      }
       if (!s || !s.terminal) continue;
       w.status = s.ok ? 'ok' : s.skip ? 'skip' : 'failed';
       w.message = `is #${w.jobId}: ${s.message || ''}`.slice(0, 500);
