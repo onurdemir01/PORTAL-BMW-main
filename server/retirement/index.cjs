@@ -193,7 +193,17 @@ async function launch(req, templateName, extraVars, detail, key = REGISTRY_KEY) 
   const row = await reg.getByKey(key).catch(() => null);
   const templateId = row && row.enabled !== false ? reg.getEffectiveTemplateId(row) : null;
   const serverId = row && row.awxServerId != null ? Number(row.awxServerId) : 0;
-  if (!templateId) throw Object.assign(new Error(`AWX job template'i tanımlı değil: Admin › Playbook Kayıtları › "${key}" satırına Template ID girilmeli.`), { status: 501 });
+  // UC AYRI SEBEP, UC AYRI METIN (2026-10-08 kullanici bulgusu: "template id kayitli olmasina
+  // ragmen" tek tip mesaj aliyordu - sebep, satirin ANAHTARININ farkli olmasiydi). Hangi
+  // kosulun tutmadigi soylenmezse admin dogru alana Template ID girmis gibi gorunur.
+  if (!templateId) {
+    const neden = !row
+      ? `"${key}" anahtarlı satır YOK (Anahtar alanı tam olarak "${key}" olmalı; başka adla açılmış satır kullanılmaz)`
+      : row.enabled === false
+        ? `"${key}" satırı KAPALI (etkinleştirin)`
+        : `"${key}" satırında Template ID boş`;
+    throw Object.assign(new Error(`AWX job template'i tanımlı değil: Admin › Playbook Kayıtları › ${neden}.`), { status: 501 });
+  }
   const runner = require('../ansible/runner.cjs');
   await require('../ansible/template-preflight.cjs').assertTemplateAcceptsExtraVars(serverId, templateId, extraVars, { label: key });
   const user = req.session?.user || {};

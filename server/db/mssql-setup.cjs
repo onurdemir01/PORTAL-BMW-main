@@ -2948,6 +2948,30 @@ const PLAYBOOK_REGISTRY_SEED = [
     env_var_name: 'APP_RETIREMENT_STOP_TEMPLATE_ID',
   },
   {
+    // DELETE ve GERI AL (2026-10-08 kullanici bulgusu: "template id kayitli olmasina ragmen
+    // tanimli degil hatasi"). Bu iki adim eklendiginde (2026-10-06 / 10-07) TOHUM SATIRI
+    // EKLENMEMISTI; Portal anahtari `app_retirement_delete` / `app_retirement_rollback`
+    // olan satiri ariyor, admin ekrandan ELLE satir acinca anahtar farkli yazilabiliyordu.
+    key_name: 'app_retirement_delete',
+    display_name: 'Retirement — DELETE adimi',
+    category: 'system',
+    handler: 'app_retirement_delete',
+    description:
+      'bmw_automation_folder/app_retirement/app_retirement_delete.yml — durdurulmus uygulamanin *.<smart_no>.old paketlerini siler, deployment kaydini ve bossa server-group\'u kaldirir. GERI ALINAMAZ. Portal zamanlayicisi silme gunu 23:00 (TR) tetikler. Yalniz Admin.',
+    playbook_path: null,
+    env_var_name: 'APP_RETIREMENT_DELETE_TEMPLATE_ID',
+  },
+  {
+    key_name: 'app_retirement_rollback',
+    display_name: 'Retirement — GERI AL adimi',
+    category: 'system',
+    handler: 'app_retirement_rollback',
+    description:
+      'bmw_automation_folder/app_retirement/app_retirement_rollback.yml — STOP\'un tersi: *.<smart_no>.old paketleri geri adlandirir, auto-start=true, JVM\'i baslatir. Silinmis uygulamada calismaz. plan_only=true once plan. Yalniz Admin.',
+    playbook_path: null,
+    env_var_name: 'APP_RETIREMENT_ROLLBACK_TEMPLATE_ID',
+  },
+  {
     key_name: 'server_hub_fix',
     display_name: 'Server Hub — Duzelt',
     category: 'system',
