@@ -73,7 +73,9 @@ export interface RtRecord {
 /** Kaydin ortam kirilimi: kayit TABAN adla tutulur, ortam hedeflerden gelir. */
 export interface RtRecordEnv { env: string; toplam: number; durdurulan: number; silinen: number; uygulamalar: string[] }
 export interface RtRecordRow extends Omit<RtRecord, 'targets' | 'events'> { targets: number; stopped: number; envs?: RtRecordEnv[] }
-export interface RtLaunch { ok: boolean; message?: string; jobId: number | null; status: string | null; awxServerId: number; planOnly?: boolean; sccWarning?: string | null }
+export interface RtLaunch { ok: boolean; message?: string; jobId: number | null; status: string | null; awxServerId: number; planOnly?: boolean; sccWarning?: string | null;
+  /** On kontrolde web sunucularinda baslatilan Server Hub taramasi (taze vhost trafigi). */
+  trafikTarama?: { ok: boolean; jobId?: number | null; awxServerId?: number; hosts: string[]; message?: string } | null }
 
 const json = (body: unknown) => ({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 

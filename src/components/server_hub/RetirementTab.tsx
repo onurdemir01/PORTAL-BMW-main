@@ -13,6 +13,7 @@ import { TableEmptyRow } from '@/components/common/EmptyState';
 import { fmtDate, fmtDateTime } from '@/utils/datetime';
 import RetirementAkis from './RetirementAkis';
 import { retirementAdimi } from './retirementAdim';
+import { stopTrafikOzeti, stopOnayAcikMi, type TrafikIsDurumu } from './retirementTrafik';
 import { toast } from '@/hooks/useToast';
 
 const SM_BTN = 'inline-flex items-center gap-1 h-7 px-2.5 text-[11px] font-medium leading-none rounded-lg border whitespace-nowrap disabled:opacity-40';
@@ -110,6 +111,56 @@ function stopHubUyarisi(durum: StopHubDurumu): string | null {
   if (durum === 'denetleniyor') return 'Server Hub durumu denetleniyor…';
   return "Server Hub okunamadı — JVM'in çalışıp çalışmadığı ölçülemedi (kapalı ya da taranmamış SAYILMADI). Durdurmadan önce sunucuda doğrulayın.";
 }
+/** STOP onayinda vhost trafigi (2026-10-08). On kontrolle baslatilan Server Hub taramasi
+ *  SURERKEN "olculuyor", bitince TAZE sayi; istek varsa onay kutusu ZORUNLU (kapi:
+ *  stopOnayAcikMi). Olculemedi "yok" DEGIL ve STOP'u kilitlemez - uyari olarak durur. */
+function StopTrafik({ t, disc, is, onay, setOnay, bekleme, setBekleme }: {
+  t: RtTarget; disc: RtDiscovery | null;
+  is?: { durum: TrafikIsDurumu; jobId?: number | null; mesaj?: string; bitti?: string };
+  onay: boolean; setOnay: (v: boolean) => void; bekleme: boolean; setBekleme: (v: boolean) => void;
+}) {
+  const o = stopTrafikOzeti(t, disc);
+  if (!o.satirlar.length) return null;
+  const suruyor = is?.durum === 'suruyor';
+  return (
+    <div className="text-[11px] rounded-lg border px-3 py-2 space-y-1" style={{ borderColor: o.var ? 'var(--status-danger)' : 'var(--border-subtle)' }}>
+      <div className="font-semibold" style={{ color: 'var(--text-muted)' }}>
+        Web trafiği (hc hariç)
+        {suruyor ? ` — ölçülüyor… (Server Hub taraması #${is?.jobId ?? '?'})`
+          : is?.durum === 'bitti' ? ` — bu ön kontrolde ölçüldü${is.bitti ? ` (${fmtDateTime(is.bitti)})` : ''}`
+          : is?.durum === 'hata' ? ' — TAZELENEMEDİ, son tarama verisi' : ' — son Server Hub taraması'}
+      </div>
+      {is?.durum === 'hata' && is.mesaj && <div style={{ color: 'var(--status-warning)' }}>{is.mesaj}</div>}
+      {o.satirlar.map((s) => {
+        const tr = s.trafik;
+        return (
+          <div key={s.host + s.serverName} className="flex gap-2">
+            <span className="font-mono shrink-0">{s.serverName}</span>
+            <span style={{ color: tr?.durum === 'var' ? 'var(--status-danger)' : 'var(--text-muted)' }}>
+              {!tr || tr.durum === 'olculemedi' ? `ölçülemedi${tr?.sebep ? ` (${tr.sebep})` : ''} — “istek yok” DEĞİL`
+                : tr.durum === 'var' ? `${tr.sampled ? 'en az ' : ''}${tr.req7} istek / 7 gün${tr.req24 != null ? `, ${tr.req24} / 24 saat` : ''}`
+                : 'son 7 günde istek yok'}
+              {tr?.tarama ? ` · tarama ${tr.tarama}` : ''}
+            </span>
+          </div>
+        );
+      })}
+      {suruyor && (
+        <label className="flex items-center gap-1.5" style={{ color: 'var(--text-muted)' }}>
+          <input type="checkbox" checked={bekleme} onChange={(e) => setBekleme(e.target.checked)} />
+          Ölçümü bekleme, son tarama verisiyle devam et
+        </label>
+      )}
+      {o.var > 0 && (
+        <label className="flex items-center gap-1.5 font-semibold" style={{ color: 'var(--status-danger)' }}>
+          <input type="checkbox" checked={onay} onChange={(e) => setOnay(e.target.checked)} />
+          Halen istek alan {o.var} vhost var; yine de durdurmak istiyorum
+        </label>
+      )}
+    </div>
+  );
+}
+
 /** STOP onay penceresindeki uyari kutusu (ayri bilesen: ekrana cikip cikmadigi bekcide CAGRILARAK
  *  sinanir). Okunamadiysa role=alert; okunduysa hicbir sey basilmaz. Gizlenmez (hidden yok). */
 function StopHubUyari({ durum }: { durum: StopHubDurumu }) {
@@ -363,6 +414,14 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
   const [akis, setAkis] = useState<number | null>(null);
   const [hubDurum, setHubDurum] = useState<StopHubDurumu>('denetleniyor');
   const hubIstek = useRef(0);
+  // ON KONTROLDE TAZE TRAFIK (2026-10-08): hedef basina Server Hub tarama isi; onay penceresi
+  // kesifi okur ve tarama bitince YENIDEN okur. Ayrinti: retirementTrafik.ts.
+  const [askDisc, setAskDisc] = useState<RtDiscovery | null>(null);
+  const [trafikIs, setTrafikIs] = useState<Record<number, { durum: TrafikIsDurumu; jobId?: number | null; mesaj?: string; bitti?: string }>>({});
+  const [trafikOnay, setTrafikOnay] = useState(false);
+  const [olcumuBekleme, setOlcumuBekleme] = useState(false);
+  const askRef = useRef<{ t: RtTarget } | null>(null);
+  useEffect(() => { askRef.current = ask; }, [ask]);
 
   const load = useCallback(async () => {
     try { const r = await retirementApi.get(id); if (r.ok) { setRec(r.record); setErr(''); } else setErr(r.message || 'Kayıt alınamadı.'); }
@@ -380,10 +439,11 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
   const stopSor = (t: RtTarget) => {
     if (!rec) return;
     setAsk({ t });
+    setAskDisc(null); setTrafikOnay(false); setOlcumuBekleme(false);
     setHubDurum('denetleniyor');
     const no = ++hubIstek.current;
     retirementApi.discover(rec.app)
-      .then((d) => { if (hubIstek.current === no) setHubDurum(stopHubDurumu(d)); })
+      .then((d) => { if (hubIstek.current === no) { setHubDurum(stopHubDurumu(d)); setAskDisc(d); } })
       .catch(() => { if (hubIstek.current === no) setHubDurum('okunamadi'); });
   };
   useEffect(() => {
@@ -406,6 +466,28 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
       if (r.sccWarning) toast.error(r.sccWarning);
       toast.success(confirmed ? `STOP işi başladı (#${r.jobId}).` : `Ön kontrol başladı (#${r.jobId}) — bitince onay penceresi açılacak.`);
       if (!confirmed) onayBekleyen.current = t.id;
+      // WEB TRAFIGI TAZELEME ISI: baslatilamadiysa sebep pencereye tasinir (on kontrol DUSMEZ).
+      const tt = !confirmed ? r.trafikTarama : null;
+      if (tt && tt.ok && tt.jobId) {
+        setTrafikIs((m) => ({ ...m, [t.id]: { durum: 'suruyor', jobId: tt.jobId } }));
+        let bitti2 = false;
+        addJob({
+          title: `Retirement: trafik ölçümü ${t.appName} (${tt.hosts.join(', ')})`,
+          fetchStatus: async () => {
+            const s = await retirementApi.jobStatus(id, t.id, tt.awxServerId as number, tt.jobId as number);
+            if (!s.ok) throw new Error(s.message || 'Durum okunamadı.');
+            if (TERMINAL.has(s.status) && !bitti2) {
+              bitti2 = true;
+              setTrafikIs((m) => ({ ...m, [t.id]: { durum: s.status === 'successful' ? 'bitti' : 'hata', jobId: tt.jobId, mesaj: s.status === 'successful' ? undefined : `Server Hub taraması ${s.status}`, bitti: new Date().toISOString() } }));
+              // Pencere bu hedef icin aciksa kesif TAZE veriyle yeniden okunur.
+              if (askRef.current?.t.id === t.id && rec) retirementApi.discover(rec.app).then(setAskDisc).catch(() => {});
+            }
+            return { status: s.status, output: s.output || '', result: s.result };
+          },
+        });
+      } else if (tt && !tt.ok) {
+        setTrafikIs((m) => ({ ...m, [t.id]: { durum: 'hata', mesaj: tt.message } }));
+      }
       let done = false;
       addJob({
         title: `Retirement: ${confirmed ? 'STOP' : 'ön kontrol'} ${t.appName} @ ${t.host}`,
@@ -659,9 +741,10 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
                 })}
               </div>
             )}
-            <p className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>auto-start kapatılır, JVM durdurulur, paket(ler) <code>.{rec?.smartNo}.old</code> yapılır. {ask.t.env === 'PROD' ? 'PROD: SCC bilgilendirme maili gider.' : ''} Geri almak için JVM elle başlatılır ve paket adı düzeltilir.</p>
+            <p className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>auto-start kapatılır, JVM durdurulur, paket(ler) <code>.{rec?.smartNo}.old</code> yapılır. {ask.t.env === 'PROD' ? 'PROD: SCC bilgilendirme maili gider.' : ''} Geri almak gerekirse silme tarihinden önce “Geri aktif et” kullanılır.</p>
             <StopHubUyari durum={hubDurum} />
-            <div className="flex justify-end gap-2"><button onClick={() => setAsk(null)} className={SM_BTN} style={smBtn()}>İptal</button><button onClick={() => stop(ask.t, true)} className={SM_BTN} style={{ ...smBtn(true), background: 'var(--status-danger)', borderColor: 'var(--status-danger)' }}>Onayla ve durdur</button></div>
+            <StopTrafik t={ask.t} disc={askDisc} is={trafikIs[ask.t.id]} onay={trafikOnay} setOnay={setTrafikOnay} bekleme={olcumuBekleme} setBekleme={setOlcumuBekleme} />
+            <div className="flex justify-end gap-2"><button onClick={() => setAsk(null)} className={SM_BTN} style={smBtn()}>İptal</button><button disabled={!stopOnayAcikMi(stopTrafikOzeti(ask.t, askDisc), trafikIs[ask.t.id]?.durum, trafikOnay, olcumuBekleme)} onClick={() => stop(ask.t, true)} className={`${SM_BTN} disabled:opacity-50`} style={{ ...smBtn(true), background: 'var(--status-danger)', borderColor: 'var(--status-danger)' }}>Onayla ve durdur</button></div>
           </div>
         </div>
       )}

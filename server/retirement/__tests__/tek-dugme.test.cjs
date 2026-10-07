@@ -82,6 +82,25 @@ test('TD9 ADMIN icin OCO SAAT kisiti yok; OCO numarasi ve kaydin gecerliligi YIN
   assert.ok(!/is simdi kostu/.test(oco), 'olay, baslamamis isi "kostu" diye yaziyor');
 });
 
+test('TD10 on kontrol web sunucularinda Server Hub taramasi baslatir; DUSERSE on kontrol DUSMEZ', () => {
+  // Kullanici (2026-10-08): "uygulama stop edilmeden once plan asamasinda Apache loglarini
+  // okuyabilir miyiz?"
+  assert.match(IDX, /const TRAFIK_REGISTRY_KEY = 'server_hub_scan'/);
+  const ep = ucDilimi("router.post('/:id/targets/:tid/stop'", "router.post('/:id/targets/:tid/rollback'");
+  const blok = ep.slice(ep.indexOf('let trafikTarama = null;'), ep.indexOf('res.json({ ok: true, ...r, planOnly'));
+  assert.ok(blok.length > 100, 'trafik taramasi blogu yok');
+  assert.match(blok, /if \(!confirmed\) \{/, 'tarama onayli STOP\'ta da baslatiliyor (yalniz on kontrolde olmali)');
+  // Yalniz WEB sunuculari (t.web), JBoss hedefi degil
+  assert.match(blok, /\(t\.web \|\| \[\]\)\.map\(\(w\) => String\(w\.host/, 'tarama web sunucularini hedeflemiyor');
+  assert.match(blok, /\{ target_hosts: webHosts\.join\(','\) \}/);
+  assert.match(blok, /TRAFIK_REGISTRY_KEY\)/);
+  // Hata yutulmaz ama on kontrolu de dusurmez: try/catch + olay + yanitta sebep
+  assert.match(blok, /\} catch \(e\) \{\s*trafikTarama = \{ ok: false/, 'tarama hatasi on kontrolu dusuruyor ya da sessiz');
+  assert.match(ep, /res\.json\(\{ ok: true, \.\.\.r, planOnly: !confirmed, trafikTarama,/, 'sonuc ekrana tasinmiyor');
+  // Tarama isi hedefe yazilmaz: job-status yalniz hedefin KENDI isini sonuclandirir
+  assert.match(IDX, /Number\(row\.last_job_id\) === jobId/, 'job-status baska bir isi hedefe yazabilir');
+});
+
 // ── Server Hub ikinci web kaynagi ───────────────────────────────────────────────────
 const INV = [
   { app: 'GBSVCVOICEORDER-D', host: 'GBJBOT07', jboss_version: '7' },

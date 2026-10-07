@@ -23,6 +23,12 @@ const DELETE_REGISTRY_KEY = 'app_retirement_delete';
 // silinmeden sorun olursa geri donebilmek icin bir ozellik yapmaliyiz. Uygulamami geri
 // aktif et vs ve yaptigimiz degisiklikler geri alinmali."
 const ROLLBACK_REGISTRY_KEY = 'app_retirement_rollback';
+// ON KONTROLDE TAZE TRAFIK (2026-10-08, kullanici: "uygulama stop edilmeden once plan
+// asamasinda Apache loglarini okuyabilir miyiz?"). Yeni bir playbook YOK: Server Hub
+// taramasi `target_hosts` ile yalniz hedefin WEB sunucularinda kosar (Server Hub ekranindaki
+// "tek sunucuyu tara" ile ayni yol). Yukleyici yalniz o sunucularin BUGUNKU satirlarini
+// yeniler; onay penceresi kesif uzerinden taze vhost trafigini okur.
+const TRAFIK_REGISTRY_KEY = 'server_hub_scan';
 const DEFAULT_DAYS = Number(process.env.RETIREMENT_DELETE_DAYS || 45);
 const SCC_MAIL_TO = (process.env.RETIREMENT_SCC_MAIL_TO || '').trim();
 const SCC_MAIL_CC = (process.env.RETIREMENT_SCC_MAIL_CC || '').trim();
@@ -479,7 +485,30 @@ function initRetirement(app) {
       await db().query(`UPDATE retirement_targets SET status = $1, last_job_id = $2, updated_at = GETUTCDATE() WHERE id = $3`, [confirmed ? 'stopping' : 'planning', r.jobId, tid]);
       if (rec.status === 'open' && confirmed) await db().query(`UPDATE retirement_records SET status = 'stopping', updated_at = GETUTCDATE() WHERE id = $1`, [id]);
       await addEvent(id, req.session?.user?.username, confirmed ? 'stop' : 'plan', `${t.appName} @ ${t.host} (${t.env}, ${t.site}) iş #${r.jobId}${notifyScc ? (SCC_MAIL_TO ? ' · SCC maili' : ' · SCC adresi tanımsız!') : ''}`);
-      res.json({ ok: true, ...r, planOnly: !confirmed, sccWarning: notifyScc && !SCC_MAIL_TO ? 'RETIREMENT_SCC_MAIL_TO tanımlı değil — SCC maili gönderilmedi.' : null });
+      // ON KONTROLDE WEB TRAFIGI TAZELENIR (yalniz on kontrolde, onayli STOP'ta degil).
+      // Tarama baslatilamazsa ON KONTROL DUSMEZ: sebep (sablon yok, "Prompt on launch"
+      // kapali...) ekrana tasinir ve pencere eldeki - daha eski - Server Hub verisiyle acilir.
+      // Is numarasi STOP'unkinden FARKLI: job-status ucu hedefi yalniz kendi last_job_id'si
+      // icin gunceller, tarama isi hedefe hicbir sey yazmaz.
+      let trafikTarama = null;
+      if (!confirmed) {
+        const webHosts = [...new Set((t.web || []).map((w) => String(w.host || '').trim().toUpperCase()))]
+          .filter((h) => /^[A-Z0-9][A-Z0-9._-]{0,62}$/.test(h));
+        if (webHosts.length) {
+          try {
+            const s = await launch(req, `Retirement: trafik ölçümü ${t.appName} (${webHosts.join(', ')})`,
+              { target_hosts: webHosts.join(',') }, { op: 'trafik', id, tid, hosts: webHosts }, TRAFIK_REGISTRY_KEY);
+            trafikTarama = { ok: true, jobId: s.jobId, awxServerId: s.awxServerId, hosts: webHosts };
+            await addEvent(id, req.session?.user?.username, 'trafik',
+              `${t.appName}: web trafigi on kontrolde tazeleniyor - Server Hub taramasi #${s.jobId} (${webHosts.join(', ')})`);
+          } catch (e) {
+            trafikTarama = { ok: false, hosts: webHosts, message: String(e.message || e) };
+            await addEvent(id, req.session?.user?.username, 'trafik',
+              `${t.appName}: web trafigi TAZELENEMEDI (${webHosts.join(', ')}): ${String(e.message || e).slice(0, 300)}`);
+          }
+        }
+      }
+      res.json({ ok: true, ...r, planOnly: !confirmed, trafikTarama, sccWarning: notifyScc && !SCC_MAIL_TO ? 'RETIREMENT_SCC_MAIL_TO tanımlı değil — SCC maili gönderilmedi.' : null });
     } catch (err) { res.status(err.status || 500).json({ ok: false, message: err.message }); }
   });
 

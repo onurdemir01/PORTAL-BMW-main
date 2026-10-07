@@ -681,7 +681,14 @@ test('D1 RetirementTab STOP onayi: Server Hub okunamadiysa uyari EKRANA cikar; d
   assert.ok(sor.includes('setHubDurum(stopHubDurumu(d))'), 'kesif yaniti durum yardimcisindan gecmiyor');
   assert.ok(sor.includes(".catch(() => { if (hubIstek.current === no) setHubDurum('okunamadi'); })"), "kesif dusunce 'okunamadi' yazilmiyor");
   // Kural 7 deseni: uyari yalniz bilgi; onay dugmesi hub durumuna bagli KAPANMAZ
-  assert.ok(rm.includes("<button onClick={() => stop(ask.t, true)} className={SM_BTN}"), 'onay dugmesi degismis');
+  // 2026-10-08: dugme artik TRAFIK kapisina bagli (istek varsa onay kutusu; olcum surerken
+  // kilit - retirementTrafik.ts stopOnayAcikMi). Niyet AYNI kalir: Server Hub durumu dugmeyi
+  // KAPATMAZ. Kontrol dugmenin `disabled` ifadesine bakar: yalniz stopOnayAcikMi, hub YOK.
+  const dugme = rm.slice(rm.lastIndexOf('<button', rm.indexOf('onClick={() => stop(ask.t, true)}')), rm.indexOf('Onayla ve durdur</button>'));
+  assert.ok(dugme.includes('onClick={() => stop(ask.t, true)}'), 'onay dugmesi bulunamadi');
+  const dis = (dugme.match(/disabled=\{([^}]*\([^)]*\)[^}]*)\}/) || [])[1] || '';
+  assert.ok(!/hubDurum|stopHubUyarisi|okunamadi/.test(dugme), 'onay dugmesi hub durumuna bagli KAPANIYOR');
+  assert.ok(dis === '' || /^!stopOnayAcikMi\(/.test(dis), `onay dugmesinin kapisi beklenmedik: ${dis}`);
   assert.ok(!/disabled=\{[^}]*hubDurum/.test(rm), 'onay dugmesi hub durumuna gore kapatiliyor');
 });
 
