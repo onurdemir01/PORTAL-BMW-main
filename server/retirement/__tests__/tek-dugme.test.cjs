@@ -47,6 +47,9 @@ test('TD3 /delete-now DELETE BASLATMAZ; yalniz tarihi bugune ceker (bekleme yolu
   const ep = ucDilimi("router.post('/:id/delete-now'", "router.post('/:id/note'");
   assert.ok(!/launch\(|_launch\(|deleteTick\(/.test(ep), 'uc DELETE isini kendisi baslatiyor - zamanlayici yolu atlanir');
   assert.match(ep, /SET planned_delete_at = GETUTCDATE\(\)/, 'silme tarihi bugune cekilmiyor');
+  // 23:00 kurali (schedule.cjs madde 3) bu bayrakla atlanir; yazilmazsa admin gece
+  // 23:00'e kadar bekler ama ekran "ilk turda baslar" der.
+  assert.match(ep, /delete_now_at = GETUTCDATE\(\)/, "beklemeyi atla delete_now_at'i doldurmuyor - 23:00 beklenir");
   assert.match(ep, /status NOT IN \('cancelled', 'deleted'\)/, 'iptal edilmis kayitta da tarih cekilebiliyor');
 });
 

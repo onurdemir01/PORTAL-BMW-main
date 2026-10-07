@@ -4282,6 +4282,14 @@ async function setupTables() {
       sql: `ALTER TABLE retirement_targets ADD rolled_back_at DATETIME2 NULL`,
     },
     {
+      // ADMIN "BEKLEMEYI ATLA" (2026-10-08): silme 23:00 (TR) penceresinde kosar; admin
+      // bekleme yolunu SIMDI sinamak icin tarihi bugune ceker ve bu alani doldurur -
+      // zamanlayici o kayitta saati beklemez. Kim/ne zaman: retirement_events 'delete_now'.
+      table: 'retirement_records',
+      col: 'delete_now_at',
+      sql: `ALTER TABLE retirement_records ADD delete_now_at DATETIME2 NULL`,
+    },
+    {
       table: 'smart_tickets',
       col: 'cancel_note',
       sql: `ALTER TABLE smart_tickets ADD cancel_note NVARCHAR(1000) NULL`,

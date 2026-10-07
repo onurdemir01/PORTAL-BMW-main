@@ -40,6 +40,9 @@ function dbKur(okumalar) {
 }
 
 const N = new Date('2026-10-06T12:00:00Z');
+// 23:30 TR: silme penceresi (schedule.cjs madde 3). Silmenin TETIKLENDIGINI soyleyen testler
+// bunu kullanir; N (15:00 TR) 'gun geldi ama saat gelmedi' durumudur.
+const GECE = new Date('2026-10-06T20:30:00Z');
 const hedef = (o = {}) => ({
   id: 7, record_id: 3, host: 'GBJBOP01', app_name: 'CRM', jboss_gen: 7, app_path: '/hysdeploy/CRM.ear',
   env: 'PROD', smart_no: '123', oco_no: 'OCO-1', scheduled_at: '2026-10-06T10:00:00Z',
@@ -116,7 +119,7 @@ test('RP6 DELETE: tarih gelince tetiklenir, plan_only YOK (insan izlemiyor)', as
   }]]]);
   const cagri = [];
   poller.startPoller(async (kind, t) => { cagri.push({ kind, t }); return { jobId: 777 }; });
-  const r = await poller._deleteTick(N);
+  const r = await poller._deleteTick(GECE);
   poller.stopPoller();
   assert.equal(r.kosan, 1);
   assert.equal(cagri[0].kind, 'delete');
@@ -230,4 +233,27 @@ test('RP11 STOP"u da POLLER sonuclandirir (gece kimse yoklamiyor)', async () => 
     yazilan.some((w) => /stop_at = COALESCE\(stop_at, GETUTCDATE\(\)\)/.test(w.sql)),
     'stop_at yazilmamis - silme tarihi hic hesaplanamaz',
   );
+});
+
+test('RP6b DELETE gun geldi ama 23:00 (TR) olmadan TETIKLENMEZ; admin "beklemeyi atla" saati atlar', async () => {
+  const satir = (extra) => [{
+    id: 9, record_id: 4, host: 'H', app_name: 'A', jboss_gen: 8, app_path: '', env: 'TEST',
+    smart_no: '1', planned_delete_at: '2026-10-05', stop_at: '2026-09-01', delete_after_days: 45, ...extra,
+  }];
+  dbKur([["FROM retirement_targets t JOIN retirement_records r", satir({})]]);
+  let cagri = [];
+  poller.startPoller(async (k) => { cagri.push(k); return { jobId: 1 }; });
+  let r = await poller._deleteTick(N);
+  poller.stopPoller();
+  assert.equal(r.kosan, 0, 'gun ortasinda (15:00 TR) silme tetiklendi - 23:00 kurali yok');
+  assert.equal(cagri.length, 0);
+
+  dbKur([["FROM retirement_targets t JOIN retirement_records r", satir({ delete_now_at: '2026-10-06T11:00:00Z' })]]);
+  cagri = [];
+  poller.startPoller(async (k) => { cagri.push(k); return { jobId: 1 }; });
+  r = await poller._deleteTick(N);
+  poller.stopPoller();
+  assert.equal(r.kosan, 1, 'beklemeyi atla saati atlamadi');
+  const kaynak = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'poller.cjs'), 'utf8');
+  assert.match(kaynak, /r\.delete_after_days, r\.delete_now_at/, 'sorgu delete_now_at okumuyor');
 });

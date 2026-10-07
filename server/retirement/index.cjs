@@ -30,15 +30,22 @@ const isAdmin = (req) => req.session?.user?.role === 'Admin';
 const SAFE_ID = /^[A-Za-z0-9_-]{1,64}$/;
 
 function db() { return require('../db/index.cjs'); }
+const _sched = require('./schedule.cjs');
+const silmeBilgi = (r) =>
+  _sched.silmeAni({ plannedDeleteAt: r.planned_delete_at, stopAt: r.stop_at, deleteAfterDays: r.delete_after_days });
 function rowRecord(r) {
   return {
     id: r.id, app: r.app, smartNo: r.smart_no, ocoNo: r.oco_no, ownerEmail: r.owner_email, requestedBy: r.requested_by,
     status: r.status, deleteAfterDays: r.delete_after_days, plannedDeleteAt: r.planned_delete_at ? new Date(r.planned_delete_at).toISOString().slice(0, 10) : null,
     stopAt: r.stop_at, dnsReuse: !!r.dns_reuse, lbReuse: !!r.lb_reuse, sccNotifiedAt: r.scc_notified_at, notes: r.notes,
     createdAt: r.created_at, updatedAt: r.updated_at,
-    // etkin silme tarihi: verilmisse o, degilse stop + gun (stop yoksa null)
-    effectiveDeleteAt: r.planned_delete_at ? new Date(r.planned_delete_at).toISOString().slice(0, 10)
-      : r.stop_at ? new Date(new Date(r.stop_at).getTime() + Number(r.delete_after_days || DEFAULT_DAYS) * 86400000).toISOString().slice(0, 10) : null,
+    // ETKIN SILME TARIHI ZAMANLAYICIYLA AYNI KAYNAKTAN (schedule.cjs). Eskiden burada ayri
+    // bir hesap vardi: UTC gun ve eksik gun sayisinda 45'e dusme - ekran zamanlayicinin
+    // kosacagi gunden FARKLI bir gun gosterebiliyordu.
+    effectiveDeleteAt: silmeBilgi(r) ? silmeBilgi(r).gun : null,
+    // Silme ANI (TR silme saatinde) - ekran "21.11.2026 23:00" der.
+    deleteAt: silmeBilgi(r),
+    deleteNowAt: r.delete_now_at ?? null,
   };
 }
 function rowTarget(t) {
@@ -208,6 +215,9 @@ function initRetirement(app) {
   try { router.use(require('../auth/visibility.cjs').requireVisiblePrefix('ServerHub')); } catch { /* yoksay */ }
 
   router.get('/config', (_req, res) => res.json({ ok: true, defaultDays: DEFAULT_DAYS, sccMailConfigured: !!SCC_MAIL_TO, sccMailTo: SCC_MAIL_TO || null,
+    // ZAMANLAYICI BILGISI (ekran bilgilendirmesi): silme saati (TR) ve kontrol araligi.
+    deleteHour: _sched.silmeSaati(),
+    pollSeconds: (() => { const n = Number(process.env.RETIREMENT_POLL_INTERVAL_SECONDS); return Number.isFinite(n) && n >= 30 ? n : 300; })(),
     smartFlows: { delete: '364244_Delete_6', lbMemberUpdate: '642180_Update', lbDelete: '364378_Delete_6', lbIpDelete: '364308_Delete_6', dnsIntranetDelete: '2523535_Delete_6', dnsInternetDelete: '349792_Delete' } }));
 
   router.get('/apps', async (req, res) => {
@@ -334,7 +344,7 @@ function initRetirement(app) {
         return res.status(400).json({ ok: false, message: `Onay için uygulama adını aynen yazın: ${rec.app}` });
       const onceki = rec.effectiveDeleteAt;
       await db().query(
-        `UPDATE retirement_records SET planned_delete_at = GETUTCDATE(), updated_at = GETUTCDATE()
+        `UPDATE retirement_records SET planned_delete_at = GETUTCDATE(), delete_now_at = GETUTCDATE(), updated_at = GETUTCDATE()
           WHERE id = $1 AND status NOT IN ('cancelled', 'deleted')`,
         [id],
       );

@@ -173,7 +173,7 @@ export default function RetirementTab() {
                 <td className="px-3 py-1.5"><Pill {...(RSTATUS[r.status] || { label: r.status, color: 'var(--text-muted)' })} /></td>
                 <td className="px-3 py-1.5 tabular-nums">{r.targets}</td>
                 <td className="px-3 py-1.5 tabular-nums">{r.stopped}/{r.targets}{r.stopAt ? <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}> · {fmtDate(r.stopAt)}</span> : null}</td>
-                <td className="px-3 py-1.5">{r.effectiveDeleteAt ? fmtDate(r.effectiveDeleteAt) : <span style={{ color: 'var(--text-muted)' }}>stop + {r.deleteAfterDays} gün</span>}</td>
+                <td className="px-3 py-1.5">{r.effectiveDeleteAt ? <>{fmtDate(r.effectiveDeleteAt)} <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>{r.deleteAt?.saat || '23:00'}</span></> : <span style={{ color: 'var(--text-muted)' }}>stop + {r.deleteAfterDays} gün</span>}</td>
                 <td className="px-3 py-1.5">{r.requestedBy}</td>
                 <td className="px-3 py-1.5 text-[11px]" style={{ color: 'var(--text-muted)' }}>{fmtDate(r.createdAt)}</td>
               </tr>
@@ -354,6 +354,11 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
   // BEKLEMEYI ATLA (admin): silme tarihini bugune ceker; onay icin uygulama adi yazilir.
   const [atlaSor, setAtlaSor] = useState(false);
   const [atlaAd, setAtlaAd] = useState('');
+  // Zamanlayici araligi bilgilendirme metni icin (sunucu ayari; okunamazsa genel metin).
+  const [cfgSaat, setCfgSaat] = useState<{ poll: number | null }>({ poll: null });
+  useEffect(() => {
+    retirementApi.config().then((c) => { if (c.ok) setCfgSaat({ poll: c.pollSeconds ?? null }); }).catch(() => {});
+  }, []);
   // AKIS PANELI: satira tiklaninca altinda asamalar acilir (tek satir acik).
   const [akis, setAkis] = useState<number | null>(null);
   const [hubDurum, setHubDurum] = useState<StopHubDurumu>('denetleniyor');
@@ -508,7 +513,7 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
           <div className="grid gap-2 sm:grid-cols-4 text-[12px]">
             <div className="rounded-lg border px-3 py-2" style={{ borderColor: 'var(--border-subtle)' }}><div className="text-[10px] uppercase" style={{ color: 'var(--text-muted)' }}>Durum</div><Pill {...(RSTATUS[rec.status] || { label: rec.status, color: 'var(--text-muted)' })} /></div>
             <div className="rounded-lg border px-3 py-2" style={{ borderColor: 'var(--border-subtle)' }}><div className="text-[10px] uppercase" style={{ color: 'var(--text-muted)' }}>Stop</div>{rec.stopAt ? fmtDateTime(rec.stopAt) : '—'} <span style={{ color: 'var(--text-muted)' }}>({rec.targets.filter((t) => t.status === 'stopped').length}/{rec.targets.length})</span></div>
-            <div className="rounded-lg border px-3 py-2" style={{ borderColor: 'var(--border-subtle)' }}><div className="text-[10px] uppercase" style={{ color: 'var(--text-muted)' }}>Silme tarihi</div>{rec.effectiveDeleteAt ? fmtDate(rec.effectiveDeleteAt) : `stop + ${rec.deleteAfterDays} gün`}{rec.plannedDeleteAt ? <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}> (açan belirledi)</span> : null}
+            <div className="rounded-lg border px-3 py-2" style={{ borderColor: 'var(--border-subtle)' }}><div className="text-[10px] uppercase" style={{ color: 'var(--text-muted)' }}>Silme tarihi</div>{rec.effectiveDeleteAt ? `${fmtDate(rec.effectiveDeleteAt)} ${rec.deleteAt?.saat || '23:00'}` : `stop + ${rec.deleteAfterDays} gün, ${rec.deleteAt?.saat || '23:00'}`}{rec.plannedDeleteAt ? <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}> (açan belirledi)</span> : null}
               {/* BEKLEMEYI ATLA: yalniz silinmeye HAZIR (durdurulmus, silinmemis) hedef varken.
                   Router zaten yalniz Admin. DELETE'i baslatmaz; tarihi bugune ceker. */}
               {rec.status !== 'cancelled' && rec.status !== 'deleted' && rec.targets.some((t) => t.status === 'stopped' && !t.deletedAt) && (
@@ -517,6 +522,19 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
             </div>
             <div className="rounded-lg border px-3 py-2" style={{ borderColor: 'var(--border-subtle)' }}><div className="text-[10px] uppercase" style={{ color: 'var(--text-muted)' }}>SCC / DNS / LB</div>{rec.sccNotifiedAt ? 'SCC bilgilendirildi' : 'SCC bekliyor'} · DNS {rec.dnsReuse ? 'kalacak' : 'silinecek'} · LB {rec.lbReuse ? 'kalacak' : 'silinecek'}</div>
           </div>
+          {/* SILME NASIL TETIKLENIR (kullanici, 2026-10-08: "zamani geldigini nasil
+              anlayacaksin? ona uygun bir bilgilendirme yapabilir misin?"). Ayri bir Ansible
+              taramasi YOK: kayit Portal DB'de, Portal'in zamanlayicisi bakar. */}
+          {rec.status !== 'cancelled' && rec.status !== 'deleted' && (
+            <div className="text-[11px] rounded-lg px-3 py-2" style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}>
+              <b>Silme nasıl başlar:</b> kayıt Portal veritabanında tutulur; Portal’ın zamanlayıcısı
+              {cfgSaat.poll ? ` ${Math.round(cfgSaat.poll / 60)} dakikada bir` : ' birkaç dakikada bir'} bakar.
+              Durdurulmuş hedeflerin silme günü geldiğinde, o gün <b>{rec.deleteAt?.saat || '23:00'} (TR)</b>’den sonraki
+              ilk turda AWX’te silme işi başlatılır — ek onay istenmez. Portal o saatte kapalıysa iş <b>ertesi gece</b>
+              {' '}{rec.deleteAt?.saat || '23:00'}’e kalır, gündüze kaymaz.
+              {rec.deleteNowAt && <span style={{ color: 'var(--status-danger)' }}> Admin beklemeyi atladı ({fmtDateTime(rec.deleteNowAt)}): saat beklenmez, ilk turda başlar.</span>}
+            </div>
+          )}
           {rec.notes && <div className="text-[12px] rounded-lg border px-3 py-2" style={{ borderColor: 'var(--border-subtle)', color: 'var(--text-secondary)' }}>{rec.notes}</div>}
 
           <div className="overflow-auto rounded-lg border" style={{ borderColor: 'var(--border-subtle)' }}>
@@ -661,7 +679,7 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
             <div className="w-full max-w-lg rounded-2xl border p-5 space-y-3" style={{ background: 'var(--bg-surface)', borderColor: 'var(--status-danger)' }} onClick={(e) => e.stopPropagation()}>
               <div className="text-sm font-semibold">Beklemeyi atla — {rec.app}</div>
               <div className="text-[12px] space-y-1.5" style={{ color: 'var(--text-secondary)' }}>
-                <p>Silme tarihi <b>bugüne</b> çekilir ({rec.effectiveDeleteAt ? fmtDate(rec.effectiveDeleteAt) : 'belirsiz'} → bugün). DELETE'i bu düğme başlatmaz: <b>her zamanki zamanlayıcı</b> bir sonraki turunda (en geç birkaç dakika) yakalar ve başlatır — bekleme aşaması böylece gerçekten sınanır.</p>
+                <p>Silme tarihi <b>bugüne</b> çekilir ({rec.effectiveDeleteAt ? fmtDate(rec.effectiveDeleteAt) : 'belirsiz'} → bugün). DELETE'i bu düğme başlatmaz: <b>her zamanki zamanlayıcı</b> bir sonraki turunda (en geç birkaç dakika) yakalar ve başlatır — bekleme aşaması böylece gerçekten sınanır. Normalde beklenen <b>23:00 saati bu kayıt için atlanır</b>.</p>
                 <p style={{ color: 'var(--status-danger)' }}><b>DELETE GERİ ALINAMAZ:</b> paketler silinir, server-config ve server-group kaldırılır. Bundan sonra “Geri aktif et” çalışmaz; dönüş yalnız yedekten.</p>
               </div>
               <div className="text-[11px] rounded-lg border px-3 py-2" style={{ borderColor: 'var(--border-subtle)' }}>

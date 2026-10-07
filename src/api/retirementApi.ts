@@ -64,6 +64,10 @@ export interface RtRecord {
   id: number; app: string; smartNo: string; ocoNo: string | null; ownerEmail: string | null; requestedBy: string;
   status: 'open' | 'stopping' | 'stopped' | 'deleted' | 'cancelled'; deleteAfterDays: number; plannedDeleteAt: string | null; stopAt: string | null;
   dnsReuse: boolean; lbReuse: boolean; sccNotifiedAt: string | null; notes: string | null; createdAt: string; updatedAt: string; effectiveDeleteAt: string | null;
+  /** Silme ANI: gun + TR silme saati (23:00). Zamanlayiciyla AYNI kaynak (schedule.cjs). */
+  deleteAt?: { gun: string; saat: string; iso: string } | null;
+  /** Admin "beklemeyi atla": doluysa silme saati beklenmez, ilk turda baslar. */
+  deleteNowAt?: string | null;
   targets: RtTarget[]; events: { id: number; at: string; username: string | null; kind: string; text: string | null }[];
 }
 /** Kaydin ortam kirilimi: kayit TABAN adla tutulur, ortam hedeflerden gelir. */
@@ -74,7 +78,7 @@ export interface RtLaunch { ok: boolean; message?: string; jobId: number | null;
 const json = (body: unknown) => ({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 
 export const retirementApi = {
-  config: (): Promise<{ ok: boolean; defaultDays: number; sccMailConfigured: boolean; sccMailTo: string | null; smartFlows: Record<string, string> }> => fetch(`${BASE}/config`).then(safeJson),
+  config: (): Promise<{ ok: boolean; defaultDays: number; sccMailConfigured: boolean; sccMailTo: string | null; smartFlows: Record<string, string>; deleteHour?: number; pollSeconds?: number }> => fetch(`${BASE}/config`).then(safeJson),
   apps: (q: string): Promise<{ ok: boolean; apps: string[] }> => fetch(`${BASE}/apps?q=${encodeURIComponent(q)}`).then(safeJson),
   discover: (app: string): Promise<RtDiscovery> => fetch(`${BASE}/discover?app=${encodeURIComponent(app)}`).then(safeJson),
   list: (): Promise<{ ok: boolean; records: RtRecordRow[]; message?: string }> => fetch(BASE).then(safeJson),

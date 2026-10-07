@@ -117,14 +117,19 @@ export function asamalar(rec: RtRecord, t: RtTarget, bugun = new Date()): Asama[
     : kg === null ? 'bilinmiyor'
     : kg > 0 ? 'suruyor'
     : 'bitti';
+  // SILME SAATI (2026-10-08): DELETE gunun herhangi bir saatinde degil, 23:00 (TR)'den
+  // sonraki ilk turda baslar; kacirilan pencere ertesi geceye kalir. Admin "beklemeyi
+  // atla" saati atlar. Saat sunucudan gelir (deleteAt), burada tahmin edilmez.
+  const saat = rec.deleteAt?.saat || '23:00';
   const beklemeBilgi =
     geriAlindi ? 'geri alındı — silme devre dışı'
+    : rec.deleteNowAt && !silindi ? `admin beklemeyi atladı — ${saat} beklenmez, zamanlayıcının ilk turunda başlar`
     : rec.effectiveDeleteAt
       ? kg === null ? 'tarih okunamadı'
-        : kg > 0 ? `${kg} gün kaldı — silme ${fmtDate(rec.effectiveDeleteAt)}`
-        : kg === 0 ? `silme BUGÜN (${fmtDate(rec.effectiveDeleteAt)})`
-        : `silme tarihi ${Math.abs(kg)} gün önce geçti (${fmtDate(rec.effectiveDeleteAt)})`
-      : `tarih YOK — STOP yapılınca ${rec.deleteAfterDays} gün sonrası`;
+        : kg > 0 ? `${kg} gün kaldı — silme ${fmtDate(rec.effectiveDeleteAt)} ${saat}`
+        : kg === 0 ? `silme BUGÜN ${saat}'te (${fmtDate(rec.effectiveDeleteAt)})`
+        : `silme günü geçti (${fmtDate(rec.effectiveDeleteAt)}) — sıradaki ${saat} penceresinde`
+      : `tarih YOK — STOP yapılınca ${rec.deleteAfterDays} gün sonrası, ${saat}`;
 
   const delDurum: Durum =
     st === 'deleting' ? 'suruyor'
@@ -154,7 +159,7 @@ export function asamalar(rec: RtRecord, t: RtTarget, bugun = new Date()): Asama[
     {
       ad: '4 · Bekleme',
       durum: beklemeDurum,
-      komut: 'Portal poller’ı her turda silme gününü karşılaştırır; ekstra onay İSTENMEZ',
+      komut: 'Portal zamanlayıcısı birkaç dakikada bir bakar; silme günü 23:00’ten (TR) sonraki ilk turda DELETE başlar, Portal o saatte kapalıysa ertesi gece. Ekstra onay İSTENMEZ',
       bilgi: beklemeBilgi,
     },
     {

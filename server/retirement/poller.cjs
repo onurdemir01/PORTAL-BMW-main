@@ -120,7 +120,7 @@ async function stopTick(now) {
 async function deleteTick(now) {
   const { rows } = await db.query(
     `SELECT t.id, t.record_id, t.host, t.app_name, t.jboss_gen, t.app_path, t.env,
-            r.smart_no, r.planned_delete_at, r.stop_at, r.delete_after_days
+            r.smart_no, r.planned_delete_at, r.stop_at, r.delete_after_days, r.delete_now_at
        FROM retirement_targets t
        JOIN retirement_records r ON r.id = t.record_id
       WHERE t.status = 'stopped' AND t.deleted_at IS NULL AND r.status NOT IN ('cancelled', 'deleted')`,
@@ -131,6 +131,8 @@ async function deleteTick(now) {
       plannedDeleteAt: t.planned_delete_at,
       stopAt: t.stop_at,
       deleteAfterDays: t.delete_after_days,
+      // ADMIN "beklemeyi atla": 23:00 kuralini atlar (bkz. schedule.cjs madde 3).
+      deleteNowAt: t.delete_now_at,
     };
     if (!silmeZamaniGeldi(bilgi, now)) continue;
     const claim = await db.query(

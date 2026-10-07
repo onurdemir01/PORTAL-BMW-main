@@ -72,7 +72,8 @@ test('GA1 deleteTick GERI ALINMIS hedefi ALMAZ (sorgu seviyesinde)', async () =>
   const yazilan = dbKur([['FROM retirement_targets t JOIN retirement_records r', [silinebilir('stopped')]]]);
   const cagri = [];
   poller.startPoller(async (kind, t) => { cagri.push({ kind, t }); return { jobId: 42 }; });
-  const r = await poller._deleteTick(N);
+  // 23:30 TR: silme penceresi icinde (schedule.cjs madde 3)
+  const r = await poller._deleteTick(new Date('2026-11-20T20:30:00Z'));
   poller.stopPoller();
   assert.equal(r.kosan, 1, "'stopped' hedef tetiklenmedi - filtre tersine donmus olabilir");
   assert.equal(cagri[0].kind, 'delete');

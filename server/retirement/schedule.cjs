@@ -15,7 +15,31 @@
 //    AYRI BIR ZAMANLAMA TABLOSU YOK - veri zaten kayitta; `oco_scheduled_launches`a
 //    yazmak yanlis olurdu (o tablo `window_end` zorunlu tutuyor ve poller'i Self Service
 //    yoluna oynatiyor).
+//
+// 3. DELETE SAATI (kullanici karari 2026-10-08): "eskiden ... her gun sabah tablo kontrol
+//    ediliyordu, bugun silinecek uygulama varsa gece 11'de calisacak bir job tetikliyordu."
+//    -> 23:00 olsun. Gun ve saat TURKIYE SAATIYLE (UTC+3, yaz saati yok - 2016'dan beri sabit).
+//    Eskiden gun siniri UTC idi: silme fiilen 03:00 TR'de kosuyordu ve Portal kapali
+//    kaldiysa ilk acilista (gunduz de olabilir) tetikleniyordu.
+//    KURAL: silme gunu <= bugun (TR) VE saat >= 23:00 (TR). Pencere kacirilirsa (Portal
+//    23:00-24:00 arasi kapali) is BIR SONRAKI GECEYE kalir - gunduze KAYMAZ.
+//    ISTISNA: admin "beklemeyi atla" (`delete_now_at`) saati bilerek atlar; amaci bekleme
+//    yolunu SIMDI sinamak.
 'use strict';
+
+const _sayi = (v, d, min, max) => {
+  const n = Number(v);
+  return Number.isInteger(n) && n >= min && n <= max ? n : d;
+};
+/** Silme saati (TR, 0-23). RETIREMENT_DELETE_HOUR ile degisir; bozuk deger 23'e duser. */
+const silmeSaati = () => _sayi(process.env.RETIREMENT_DELETE_HOUR, 23, 0, 23);
+/** TR ofseti (dk). RETIREMENT_TZ_OFFSET_MINUTES; varsayilan 180 (UTC+3). */
+const trOfset = () => _sayi(process.env.RETIREMENT_TZ_OFFSET_MINUTES, 180, -720, 840);
+/** Verilen anin TURKIYE saatine gore gunu (YYYY-MM-DD) ve saati. */
+function yerel(t) {
+  const d = new Date(new Date(t).getTime() + trOfset() * 60000);
+  return { gun: d.toISOString().slice(0, 10), saat: d.getUTCHours() };
+}
 
 /** Kaydin ETKIN silme gunu (YYYY-MM-DD) ya da null. Saf: girdiden baska hicbir sey okumaz.
  *
@@ -38,14 +62,30 @@ function etkinSilmeGunu({ plannedDeleteAt, stopAt, deleteAfterDays }) {
     return null;
   const gun = Number(deleteAfterDays);
   if (!Number.isFinite(gun) || gun < 0) return null;
-  return new Date(new Date(stopAt).getTime() + gun * 86400000).toISOString().slice(0, 10);
+  // STOP'UN TURKIYE GUNU + gun sayisi (gece 00:30 TR'de yapilan bir stop UTC'de onceki
+  // gune dusuyordu ve silme bir gun erkene kayiyordu).
+  const g = yerel(stopAt).gun;
+  return new Date(Date.parse(`${g}T00:00:00Z`) + gun * 86400000).toISOString().slice(0, 10);
 }
 
-/** Silme zamani GELDI mi? Gun bazinda karsilastirilir (saat yok: is o gun icinde kosar). */
-function silmeZamaniGeldi({ plannedDeleteAt, stopAt, deleteAfterDays }, now = new Date()) {
+/** Silme zamani GELDI mi? Gun (TR) <= bugun (TR) VE saat >= silme saati (TR).
+ *  `deleteNowAt` (admin "beklemeyi atla") doluysa saat beklenmez. */
+function silmeZamaniGeldi({ plannedDeleteAt, stopAt, deleteAfterDays, deleteNowAt }, now = new Date()) {
   const g = etkinSilmeGunu({ plannedDeleteAt, stopAt, deleteAfterDays });
   if (!g) return false;
-  return g <= new Date(now).toISOString().slice(0, 10);
+  const y = yerel(now);
+  if (g > y.gun) return false;
+  if (deleteNowAt) return true;
+  return y.saat >= silmeSaati();
+}
+
+/** Ekran icin: silme ANI (silme gunu, TR silme saatinde) ISO olarak + metin. null = tarih yok. */
+function silmeAni(bilgi) {
+  const g = etkinSilmeGunu(bilgi);
+  if (!g) return null;
+  const s = silmeSaati();
+  const iso = new Date(Date.parse(`${g}T00:00:00Z`) + s * 3600000 - trOfset() * 60000).toISOString();
+  return { gun: g, saat: `${String(s).padStart(2, '0')}:00`, iso };
 }
 
 /**
@@ -74,4 +114,4 @@ function stopZamani({ scheduledAt, windowEnd }, now = new Date()) {
   return { durum: 'run', sebep: 'kesinti penceresi acik' };
 }
 
-module.exports = { etkinSilmeGunu, silmeZamaniGeldi, stopZamani };
+module.exports = { etkinSilmeGunu, silmeZamaniGeldi, silmeAni, silmeSaati, stopZamani, yerel };
