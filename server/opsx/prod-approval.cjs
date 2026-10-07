@@ -117,6 +117,22 @@ async function smartYapilandirma(plat) {
 }
 
 /**
+ * Bu platformda Smart onayi ETKIN mi? (kullanici karari 2026-10-07)
+ *
+ * VARSAYILAN ETKIN. Yapilandirma okunamazsa da ETKIN sayilir: DB'ye erisemedigimiz icin
+ * production'i onaysiz gecirmek, kapiyi hic koymamaktan kotudur. Kapatma yalnizca
+ * ACIK bir `enabled: false` kaydiyla olur.
+ *
+ * @returns {Promise<boolean>}
+ */
+async function smartOnayiEtkinMi(platform) {
+  const plat = String(platform || '').toLowerCase();
+  if (!FLOW_KEY_ENV[plat]) return true;
+  const blob = await smartYapilandirma(plat);
+  return blob?.enabled !== false;
+}
+
+/**
  * change-gates.openSmartTicket'in bekledigi `overrides.smartApproval` seklini uretir.
  *
  * FAIL-CLOSED: flow key girilmemisse `null` DONER ve cagiran istegi REDDEDER. "Onay
@@ -213,6 +229,24 @@ async function opsxProductionKapisi({
 }) {
   const { uretim, sebep } = uretimIstegi(etiketler);
   if (!uretim) return { proceed: true };
+
+  // ── KAPI KAPATILMIS MI (kullanici karari 2026-10-07) ───────────────────────────────
+  // "Production islemlerindeki Smart onayini kendimiz acip kapatabilmemiz lazim, self
+  // servis otomasyonlarda oyle ya burada da aynisini yapalim."
+  //
+  // KAPALIYKEN SESSIZ GECMEZ: production bir islem onaysiz kosuyorsa bunun DENETIMDE
+  // izi kalmali. Aksi halde "bu prod restart'i kim onayladi" sorusunun cevabi yok ve
+  // kapinin kapali oldugu DONEM bile geriye donuk gorunmez.
+  if (!(await smartOnayiEtkinMi(platform))) {
+    try {
+      require('../audit/index.cjs').auditPortal(req, 'opsx_prod_onaysiz_calisti', {
+        detail: JSON.stringify({ platform, islem: islemAdi, uretimSebebi: sebep, templateId }),
+      });
+    } catch (e) {
+      console.warn('[OpsX] onaysiz production denetim kaydi yazilamadi:', e.message);
+    }
+    return { proceed: true };
+  }
 
   const smartApproval = await smartApprovalFor(platform);
   if (!smartApproval) {
@@ -331,6 +365,7 @@ module.exports = {
   uretimEtiketi,
   uretimIstegi,
   smartApprovalFor,
+  smartOnayiEtkinMi,
   flowKeyEksikYaniti,
   opsxProductionKapisi,
   FLOW_KEY_ENV,

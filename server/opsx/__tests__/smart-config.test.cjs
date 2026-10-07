@@ -224,3 +224,178 @@ test('SC11 SMART_KEY_RE bos diziyi REDDEDER (SC4 bu varsayima dayaniyor)', async
     assert.equal(cfg.SMART_KEY_RE.test('rff-request-flow.v1:2_3'), true, 'gercek flow adi reddedildi');
   });
 });
+
+// ── ETKIN/KAPALI ANAHTARI (SC12..SC16, 2026-10-07) ───────────────────────────────────
+// Kullanici: "Production islemlerindeki Smart onayini kendimiz acip kapatabilmemiz lazim,
+// self servis otomasyonlarda oyle ya burada da aynisini yapalim."
+//
+// EN PAHALI UC YANLIS:
+//   1. VARSAYILANI KAPALI yapmak -> bir deploy, UC PLATFORMUN production onayini
+//      SESSIZCE kaldirir. Self Service'te opt-in dogru (orada kapi HIC yoktu); OpsX'te
+//      kapi ZATEN aktif.
+//   2. Kismi bir govdenin kapiyi kapatmasi -> `Boolean(raw.enabled)` yazmak, alan hic
+//      gonderilmediginde (undefined) onayi kapatirdi.
+//   3. Kapaliyken SESSIZ gecmek -> "bu prod restart'i kim onayladi" sorusunun cevabi
+//      kalmaz; kapinin kapali oldugu DONEM bile geriye donuk gorunmez.
+
+test('SC12 VARSAYILAN ETKIN: kayit yoksa da onay istenir', async () => {
+  await konfigIle(null, async (cfg) => {
+    assert.equal(cfg.DEFAULTS.smart.legacy.enabled, true, 'varsayilan KAPALI - deploy onayi kaldirirdi');
+    const { config } = await cfg.saveSmartConfig({ legacy: { flowKey: 'F-1', metadataFields: '' } });
+    assert.equal(config.legacy.enabled, true, 'enabled gonderilmeyince kapandi');
+    assert.equal(config.was.enabled, true);
+    assert.equal(config.openshift.enabled, true);
+  });
+});
+
+test('SC13 KISMI govde kapiyi KAPATAMAZ (yalniz gercek boolean)', async () => {
+  const baslangic = JSON.stringify({ smart: { legacy: { enabled: true, flowKey: 'F-1', metadataFields: '', integrationKey: '' } } });
+  await konfigIle(baslangic, async (cfg) => {
+    // Alan HIC yok -> degismez
+    let r = await cfg.saveSmartConfig({ legacy: { flowKey: 'F-2', metadataFields: '' } });
+    assert.equal(r.config.legacy.enabled, true, 'alan yokken kapandi');
+    // Dizge/sayi gibi truthy-falsy degerler YOK SAYILIR
+    for (const v of ['false', '', 0, null, 'off']) {
+      r = await cfg.saveSmartConfig({ legacy: { enabled: v, flowKey: 'F-2', metadataFields: '' } });
+      assert.equal(r.config.legacy.enabled, true, `boolean olmayan deger (${String(v)}) kapiyi kapatti`);
+    }
+    // ACIK false kapatir
+    r = await cfg.saveSmartConfig({ legacy: { enabled: false, flowKey: 'F-2', metadataFields: '' } });
+    assert.equal(r.config.legacy.enabled, false, 'acik false kapatmadi');
+  });
+});
+
+test('SC14 kapali/acik bilgisi istemciye DONER (ekran ucuncu durumu gosterebilsin)', async () => {
+  await konfigIle(null, async (cfg) => {
+    const pub = cfg.smartPublic({ legacy: { enabled: false, flowKey: 'F', integrationKey: 'T' } });
+    assert.equal(pub.legacy.enabled, false);
+    // Kayit hic yoksa ETKIN gorunur - ekran "tanimsiz"i "kapali" ile karistirmasin
+    assert.equal(pub.was.enabled, true);
+  });
+});
+
+test('SC15 YAPILANDIRMA OKUNAMAZSA kapi ETKIN sayilir (fail-closed)', async () => {
+  // DB'ye erisemedigimiz icin production'i onaysiz gecirmek, kapiyi hic koymamaktan kotu.
+  const cfgPath = require.resolve('../config.cjs');
+  const gaPath = require.resolve('../prod-approval.cjs');
+  const kayitliCfg = require.cache[cfgPath];
+  const kayitliGa = require.cache[gaPath];
+  const mod = new Module(cfgPath, null);
+  mod.exports = { getConfig: async () => { throw new Error('DB yok'); } };
+  mod.loaded = true;
+  require.cache[cfgPath] = mod;
+  delete require.cache[gaPath];
+  const eskiWarn = console.warn;
+  console.warn = () => {};
+  try {
+    const ga = require(gaPath);
+    assert.equal(await ga.smartOnayiEtkinMi('legacy'), true, 'DB okunamazken kapi KAPALI sayildi');
+    assert.equal(await ga.smartOnayiEtkinMi('openshift'), true);
+  } finally {
+    console.warn = eskiWarn;
+    if (kayitliCfg) require.cache[cfgPath] = kayitliCfg; else delete require.cache[cfgPath];
+    if (kayitliGa) require.cache[gaPath] = kayitliGa; else delete require.cache[gaPath];
+  }
+});
+
+test('SC16 ekran: UC durum ayri gosterilir, KAPALI uyarisi ve denetim izi yazili', () => {
+  // "yesil/sari" ikili gosterim, KAPALI durumu "tanimsiz" ile ayni gosterirdi - oysa biri
+  // production'i REDDEDER, oteki ONAYSIZ GECIRIR. Bu ikisi karistirilamaz.
+  assert.match(MODAL, /durum === 'acik'/, 'ucuncu durum yok');
+  assert.match(MODAL, /durum === 'kapali'/, 'kapali durumu ayirt edilmiyor');
+  assert.match(MODAL, /onaysız ve Smart'ta kayıtsız/, 'kapatmanin sonucu ekranda yazili degil');
+  assert.match(MODAL, /opsx_prod_onaysiz_calisti/, 'denetim izi ekranda yazili degil');
+  // Anahtar kapaliyken "REDDEDILIR" uyarisi GOSTERILMEMELI (yanlis olur: islem kosar)
+  assert.match(MODAL, /guncel\.enabled && \(\s*\n?\s*<p className="text-\[11px\] text-red-600/,
+    'Flow Key uyarisi kapi kapaliyken de gosteriliyor');
+
+  // Kapi kapaliyken SESSIZ gecmemeli: denetim kaydi kapiya GOMULU olmali.
+  const ga = fs.readFileSync(path.join(OPSX, 'prod-approval.cjs'), 'utf8');
+  const blok = ga.slice(ga.indexOf('if (!(await smartOnayiEtkinMi('), ga.indexOf('const smartApproval = await'));
+  assert.match(blok, /auditPortal\(req, 'opsx_prod_onaysiz_calisti'/, 'onaysiz calisma denetime yazilmiyor');
+  assert.match(blok, /return \{ proceed: true \}/, 'kapi kapaliyken islem gecmiyor');
+});
+
+test('SC17 kapi KAPALIYKEN denetim kaydi GERCEKTEN yazilir (davranissal)', async () => {
+  // SC16 cagrinin METNINI ariyordu; mutasyon testinde onune `void 0 &&` koyunca metin
+  // hala esleserek bekciyi gecti (T3 hayatta kaldi). Bir cagrinin VARLIGINI olcen bekci
+  // kordur - CALISTIGINI olcmek gerekir.
+  const cfgPath = require.resolve('../config.cjs');
+  const auditPath = require.resolve('../../audit/index.cjs');
+  const gaPath = require.resolve('../prod-approval.cjs');
+  const kayitli = {
+    cfg: require.cache[cfgPath], audit: require.cache[auditPath], ga: require.cache[gaPath],
+  };
+
+  const kayitlar = [];
+  const cfgMod = new Module(cfgPath, null);
+  cfgMod.exports = {
+    getConfig: async () => ({ smart: { legacy: { enabled: false, flowKey: '', metadataFields: '', integrationKey: '' } } }),
+  };
+  cfgMod.loaded = true;
+  require.cache[cfgPath] = cfgMod;
+
+  const auditMod = new Module(auditPath, null);
+  auditMod.exports = { auditPortal: (_req, action, o) => kayitlar.push([action, o]) };
+  auditMod.loaded = true;
+  require.cache[auditPath] = auditMod;
+  delete require.cache[gaPath];
+
+  try {
+    const ga = require(gaPath);
+    const k = await ga.opsxProductionKapisi({
+      platform: 'legacy',
+      serverId: 1,
+      templateId: 9,
+      extraVars: {},
+      limitValue: 'GBJBOSSPROD01',
+      // URETIM etiketi: kapi tetiklenmeli, aksi halde test hicbir sey olcmez
+      etiketler: [{ alan: 'ortam', deger: 'prod' }],
+      req: { session: { user: { username: 'onurd' } } },
+      islemAdi: 'OpsX Legacy restart',
+    });
+    assert.equal(k.proceed, true, 'kapi kapaliyken islem GECMEDI');
+    const iz = kayitlar.find(([a]) => a === 'opsx_prod_onaysiz_calisti');
+    assert.ok(iz, 'onaysiz production islem denetime HIC yazilmadi');
+    const d = JSON.parse(iz[1].detail);
+    assert.equal(d.platform, 'legacy');
+    assert.equal(d.islem, 'OpsX Legacy restart');
+    assert.match(d.uretimSebebi, /ortam=prod/, 'uretim sebebi kayda girmedi');
+  } finally {
+    for (const [k2, pth] of [['cfg', cfgPath], ['audit', auditPath], ['ga', gaPath]]) {
+      if (kayitli[k2]) require.cache[pth] = kayitli[k2]; else delete require.cache[pth];
+    }
+  }
+});
+
+test('SC18 kapi ETKINken onaysiz GECMEZ (SC17 ters yonu)', async () => {
+  // SC17 tek basina "kapi hep gecirir"i de gecerdi. Bu test enabled=true + flowKey yok
+  // halinde isin BASLATILMADIGINI kilitler.
+  const cfgPath = require.resolve('../config.cjs');
+  const gaPath = require.resolve('../prod-approval.cjs');
+  const kayitliCfg = require.cache[cfgPath];
+  const kayitliGa = require.cache[gaPath];
+  const mod = new Module(cfgPath, null);
+  mod.exports = {
+    getConfig: async () => ({ smart: { legacy: { enabled: true, flowKey: '', metadataFields: '', integrationKey: '' } } }),
+  };
+  mod.loaded = true;
+  require.cache[cfgPath] = mod;
+  delete require.cache[gaPath];
+  const eskiEnv = { ...process.env };
+  try {
+    delete process.env.OPSX_SMART_FLOW_KEY_LEGACY;
+    const ga = require(gaPath);
+    const k = await ga.opsxProductionKapisi({
+      platform: 'legacy', serverId: 1, templateId: 9, extraVars: {}, limitValue: '',
+      etiketler: [{ alan: 'ortam', deger: 'prod' }],
+      req: { session: { user: {} } }, islemAdi: 'OpsX Legacy restart',
+    });
+    assert.equal(k.proceed, false, 'etkin kapi onaysiz gecirdi');
+    assert.equal(k.body.blocked, 'opsx_prod_approval_unconfigured');
+  } finally {
+    process.env = eskiEnv;
+    if (kayitliCfg) require.cache[cfgPath] = kayitliCfg; else delete require.cache[cfgPath];
+    if (kayitliGa) require.cache[gaPath] = kayitliGa; else delete require.cache[gaPath];
+  }
+});

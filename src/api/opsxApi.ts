@@ -420,6 +420,8 @@ export const opsxWasApi = {
 export type OpsxSmartPlatform = "legacy" | "was" | "openshift";
 
 export interface OpsxSmartPlatformConfig {
+  /** Kapali ise bu platformda production islem ONAYSIZ kosar (denetime yazilir). */
+  enabled: boolean;
   flowKey: string;
   metadataFields: string;
   integrationKeySet: boolean;
@@ -437,6 +439,7 @@ export interface OpsxSmartConfigResponse {
 }
 
 export interface OpsxSmartConfigSave {
+  enabled: boolean;
   flowKey: string;
   metadataFields: string;
   /** Bos string = "degistirmedim". Silmek icin ayri bir eylem YOK (bilincli). */

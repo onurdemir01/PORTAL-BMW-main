@@ -47,7 +47,7 @@ const PLATFORMLAR: { key: OpsxSmartPlatform; label: string; aciklama: string }[]
   { key: 'openshift', label: 'OpenShift', aciklama: 'Uygulama restart / pod silme' },
 ];
 
-const BOS: OpsxSmartPlatformConfig = { flowKey: '', metadataFields: '', integrationKeySet: false };
+const BOS: OpsxSmartPlatformConfig = { enabled: true, flowKey: '', metadataFields: '', integrationKeySet: false };
 
 type Taslak = Record<OpsxSmartPlatform, OpsxSmartPlatformConfig & { integrationKey: string }>;
 
@@ -177,6 +177,7 @@ const OpsXSmartConfigModal: React.FC<Props> = ({ open, onClose }) => {
       const govde: Parameters<typeof opsxApi.saveSmartConfig>[0] = {};
       for (const { key } of PLATFORMLAR) {
         govde[key] = {
+          enabled: taslak[key].enabled,
           flowKey: taslak[key].flowKey.trim(),
           metadataFields: taslak[key].metadataFields,
           // Bos = "degistirmedim". Sunucu mevcut degeri korur.
@@ -255,7 +256,19 @@ const OpsXSmartConfigModal: React.FC<Props> = ({ open, onClose }) => {
         <div className="flex items-center gap-1.5 border-b border-[var(--border)]">
           {PLATFORMLAR.map((p) => {
             const t = taslak[p.key];
-            const dolu = Boolean(t.flowKey.trim()) || Boolean(meta?.envFallback?.[p.key]?.flowKeySet);
+            const anahtarVar =
+              Boolean(t.flowKey.trim()) || Boolean(meta?.envFallback?.[p.key]?.flowKeySet);
+            // UC DURUM, UC RENK. "yesil/sari" ikiliyi, kapi KAPALI durumunu "tanimsiz" ile
+            // ayni gostermek olurdu - oysa biri production'i reddeder, oteki ONAYSIZ gecirir.
+            const durum = !t.enabled ? 'kapali' : anahtarVar ? 'acik' : 'eksik';
+            const renk =
+              durum === 'acik' ? 'bg-green-500' : durum === 'kapali' ? 'bg-zinc-400' : 'bg-red-500';
+            const baslik =
+              durum === 'acik'
+                ? 'Smart onayı etkin, Flow Key tanımlı'
+                : durum === 'kapali'
+                  ? 'Smart onayı KAPALI — production işlem onaysız çalışır'
+                  : 'Smart onayı etkin ama Flow Key YOK — production işlem REDDEDİLİR';
             return (
               <button
                 key={p.key}
@@ -269,10 +282,8 @@ const OpsXSmartConfigModal: React.FC<Props> = ({ open, onClose }) => {
               >
                 {p.label}
                 <span
-                  className={`ml-2 inline-block w-1.5 h-1.5 rounded-full align-middle ${
-                    dolu ? 'bg-green-500' : 'bg-amber-500'
-                  }`}
-                  title={dolu ? 'Flow Key tanımlı' : 'Flow Key YOK — production işlem reddedilir'}
+                  className={`ml-2 inline-block w-1.5 h-1.5 rounded-full align-middle ${renk}`}
+                  title={baslik}
                 />
               </button>
             );
@@ -292,6 +303,37 @@ const OpsXSmartConfigModal: React.FC<Props> = ({ open, onClose }) => {
             <p className="text-[11px] text-[var(--text-muted)]">
               {PLATFORMLAR.find((p) => p.key === aktif)?.aciklama}
             </p>
+
+            {/* ── ETKIN ANAHTARI (kullanici, 2026-10-07) ────────────────────────────
+                "Production islemlerindeki Smart onayini kendimiz acip kapatabilmemiz
+                lazim, self servis otomasyonlarda oyle ya burada da aynisini yapalim."
+                Alanlar kapaliyken de GORUNUR kalir: admin once Flow Key'i hazirlayip
+                sonra acabilsin, acar acmaz reddedilmeye baslamasin. */}
+            <div className="rounded-xl border border-[var(--border)] p-3">
+              <label className="flex items-center justify-between gap-3 cursor-pointer">
+                <span className="text-xs font-semibold text-[var(--text-secondary)]">
+                  Bu platformda Smart onayı istensin
+                </span>
+                <input
+                  type="checkbox"
+                  checked={guncel.enabled}
+                  onChange={(e) => yaz({ enabled: e.target.checked })}
+                />
+              </label>
+              {guncel.enabled ? (
+                <p className="text-[11px] text-[var(--text-muted)] mt-1.5">
+                  Production olarak tespit edilen işlem doğrudan çalışmaz; Smart talebi açılır
+                  ve onaydan sonra Ansible tetiklenir.
+                </p>
+              ) : (
+                <p className="text-[11px] text-red-600 mt-1.5 leading-relaxed">
+                  <strong>KAPALI.</strong> Bu platformda production işlemler{' '}
+                  <strong>onaysız ve Smart'ta kayıtsız</strong> çalışır. Her çalıştırma denetime{' '}
+                  <code className="font-mono">opsx_prod_onaysiz_calisti</code> olarak yazılır —
+                  kapının kapalı olduğu dönem geriye dönük görünür kalsın diye.
+                </p>
+              )}
+            </div>
 
             {/* ── Flow Key ────────────────────────────────────────────────────────── */}
             <div>
@@ -325,9 +367,11 @@ const OpsXSmartConfigModal: React.FC<Props> = ({ open, onClose }) => {
                   kullanılmaya devam eder.
                 </p>
               )}
-              {!envUyarisi && !guncel.flowKey.trim() && (
-                <p className="text-[11px] text-amber-600 mt-1">
-                  Tanımsız — bu platformda <strong>production işlem başlatılamaz</strong>.
+              {/* Kapi KAPALIYSA bu uyari yanlis olurdu: anahtar olmasa da islem kosar. */}
+              {!envUyarisi && !guncel.flowKey.trim() && guncel.enabled && (
+                <p className="text-[11px] text-red-600 mt-1">
+                  Tanımsız — bu platformda <strong>production işlem REDDEDİLİR</strong>. Ya Flow
+                  Key girin ya da yukarıdaki anahtarı kapatın.
                 </p>
               )}
             </div>

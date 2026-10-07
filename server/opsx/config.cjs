@@ -42,7 +42,20 @@ const BLOB_NAME = 'opsx:params';
 // bayragi); yazma yolu bos deger gelirse mevcut degeri KORUR. Vault'a tasinmasi ayri is.
 const SMART_PLATFORMS = Object.freeze(['legacy', 'was', 'openshift']);
 
-const SMART_DEFAULTS = Object.freeze({ flowKey: '', metadataFields: '', integrationKey: '' });
+// `enabled` VARSAYILANI TRUE (2026-10-07, kullanici: "production islemlerindeki Smart
+// onayini kendimiz acip kapatabilmemiz lazim, self servis otomasyonlarda oyle ya").
+//
+// SELF SERVICE'TEN FARKLI VARSAYILAN, BILINCLI: orada `smartApproval.enabled` opt-in'dir
+// (varsayilan KAPALI) cunku o akislarda kapi HIC yoktu. OpsX'te kapi ZATEN AKTIF; burada
+// varsayilani false yapmak, bir deploy ile UC PLATFORMUN production onayini SESSIZCE
+// kaldirmak olurdu. Varsayilan bugunku davranisi aynen surdurur; kapatma ACIK bir
+// admin kararidir ve denetime yazilir.
+const SMART_DEFAULTS = Object.freeze({
+  enabled: true,
+  flowKey: '',
+  metadataFields: '',
+  integrationKey: '',
+});
 
 // Flow key SAFE_KEY'e uymak ZORUNDA DEGIL: gercek Smart flow adlari tire/nokta
 // icerebiliyor (or. "rff-request-flow.v1"). Yine de serbest metin degil - uzunluk ve
@@ -155,6 +168,10 @@ function normalizeSmartPlatform(raw, onceki = SMART_DEFAULTS) {
   const out = { ...SMART_DEFAULTS, ...onceki };
 
   if (raw && typeof raw === 'object') {
+    // YALNIZ GERCEK BOOLEAN kabul edilir. `Boolean(raw.enabled)` yazmak, alan HIC
+    // gonderilmediginde (undefined) onay kapisini KAPATIRDI - kismi bir govde
+    // production'i onaysiz birakamaz.
+    if (typeof raw.enabled === 'boolean') out.enabled = raw.enabled;
     if (typeof raw.flowKey === 'string') {
       const v = raw.flowKey.trim();
       // Bos ACIK bir silme istegidir (admin flow key'i kaldirmak isteyebilir); gecersiz
@@ -276,6 +293,7 @@ function smartPublic(smart) {
   for (const p of SMART_PLATFORMS) {
     const s = smart?.[p] || SMART_DEFAULTS;
     out[p] = {
+      enabled: s.enabled !== false,
       flowKey: s.flowKey || '',
       metadataFields: s.metadataFields || '',
       integrationKeySet: Boolean(s.integrationKey),
