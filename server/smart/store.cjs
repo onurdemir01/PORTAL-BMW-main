@@ -16,6 +16,8 @@ function rowToTicket(r) {
     smartStateName: r.smart_state_name,
     pendingLaunch: JSON.parse(r.pending_launch_json),
     awxJobId: r.awx_job_id,
+    // Onay sonrasi AWX'te kurulan schedule (OCO kaydi bilete esitlenirken tasinir).
+    awxScheduleId: r.awx_schedule_id ?? null,
     errorMessage: r.error_message,
     cancelNote: r.cancel_note ?? null,
     cancelledBy: r.cancelled_by ?? null,
@@ -161,4 +163,31 @@ async function markState(id, { status, smartStateName, awxJobId, errorMessage, r
   return rows.length > 0;
 }
 
-module.exports = { createTicket, getTicket, listPending, listByUsername, listAll, statusSummary, cancelTicket, claimForLaunch, markState };
+
+// OCO KAYDINA BAGLI BILETLER (2026-10-08 olayi). Talep aninda acilan bilet ("smart-first")
+// OCO zamanlama kaydinin ID'sini `pendingLaunch.ocoRecordId`de tasir. OCO zamanlayicisi bir
+// kaydi baslatmadan once buna bakar: bilet ZATEN varsa ikinci bilet acilmaz (bkz.
+// server/oco/poller.cjs). Ayri kolon yok - JSON icinde; aday satirlar LIKE ile daraltilir,
+// kesin esleme JS'te ayristirilmis degerle yapilir (12 ile 123 karismasin).
+// Donus: Map<ocoRecordId, EN YENI bilet>.
+async function findByOcoRecordIds(ids) {
+  const want = new Set((ids || []).map(Number).filter(Number.isInteger));
+  const out = new Map();
+  if (!want.size) return out;
+  const { rows } = await db.query(
+    `SELECT * FROM smart_tickets
+      WHERE pending_launch_json LIKE '%"ocoRecordId":%'
+        AND created_at >= DATEADD(day, -90, GETUTCDATE())
+      ORDER BY id DESC`,
+  );
+  for (const r of rows) {
+    let pl;
+    try { pl = JSON.parse(r.pending_launch_json); } catch { continue; }
+    const o = Number(pl && pl.ocoRecordId);
+    if (!want.has(o) || out.has(o)) continue;
+    out.set(o, rowToTicket(r));
+  }
+  return out;
+}
+
+module.exports = { createTicket, getTicket, listPending, listByUsername, listAll, statusSummary, cancelTicket, claimForLaunch, markState, findByOcoRecordIds };

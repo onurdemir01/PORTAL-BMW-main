@@ -22,6 +22,13 @@ const Module = require('node:module');
 
 function loadPollerWith({ records, claimWins = true }) {
   const storePath = require.resolve('../store.cjs');
+  // 2026-10-08: poller baslatmadan once bagli Smart biletine bakar (oco-cift-bilet.test.cjs);
+  // bu testlerde bilet YOK.
+  const smartPath = require.resolve('../../smart/store.cjs');
+  const savedSmart = require.cache[smartPath];
+  require.cache[smartPath] = new Module(smartPath, null);
+  require.cache[smartPath].exports = { findByOcoRecordIds: async () => new Map() };
+  require.cache[smartPath].loaded = true;
   const pollerPath = require.resolve('../poller.cjs');
   const savedStore = require.cache[storePath];
   const savedPoller = require.cache[pollerPath];
@@ -45,6 +52,7 @@ function loadPollerWith({ records, claimWins = true }) {
   const restore = () => {
     if (savedStore) require.cache[storePath] = savedStore; else delete require.cache[storePath];
     if (savedPoller) require.cache[pollerPath] = savedPoller; else delete require.cache[pollerPath];
+    if (savedSmart) require.cache[smartPath] = savedSmart; else delete require.cache[smartPath];
   };
   return { poller, calls, restore };
 }

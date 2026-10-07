@@ -352,7 +352,12 @@ async function evaluateOcoGate({
           req,
           pendingLaunchExtras: { ocoRecordId: rec.id, ...pendingLaunch },
         });
-        await ocoStore.markPendingApproval(rec.id, { smartTicketId: opened.ticketId, externalTicketId: opened.externalTicketId });
+        // YENI KAYIT 'SCHEDULED': `markPendingApproval` YALNIZ 'LAUNCHING' gunceller ve
+        // burada HICBIR SEY yazmiyordu (2026-10-08 uretim olayi: pencere saatinde ikinci
+        // Smart bileti). Dogru gecis + sonuc DENETLENIR. Yazilamazsa OCO zamanlayicisi yine
+        // korunur: baslatmadan once bagli bileti bulup benimser (oco/poller.cjs).
+        const yazildi = await ocoStore.markPendingApprovalAtRequest(rec.id, { smartTicketId: opened.ticketId, externalTicketId: opened.externalTicketId });
+        if (!yazildi) console.warn(`[OCO] #${rec.id} PENDING_APPROVAL yazilamadi (kayit SCHEDULED degil) - bilet ${opened.externalTicketId}; zamanlayici bileti benimseyecek.`);
         audit.auditPortal(req, 'selfservice_oco_smart_first', {
           detail: JSON.stringify({ templateId, ocoNumber, scheduleId: rec.id, runAt: w.windowStartText, externalTicketId: opened.externalTicketId }),
         });

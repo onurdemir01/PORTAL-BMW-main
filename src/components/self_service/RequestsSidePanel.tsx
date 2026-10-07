@@ -20,6 +20,8 @@ import { fmtDateTime as formatDate } from '@/utils/datetime';
 import { SkeletonList } from '@/components/common/Skeleton';
 import EmptyState from '@/components/common/EmptyState';
 import { NavLink } from 'react-router-dom';
+import { Modal } from '@/components/common/Modal';
+import { toast } from '@/hooks/useToast';
 
 interface TicketDetail {
   externalTicketId?: string | null;
@@ -73,6 +75,9 @@ export default function RequestsSidePanel() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
   const [cancellingId, setCancellingId] = useState<number | null>(null);
+  // IPTAL ONAYI uygulama icinde (kullanici, 2026-10-08: tarayicinin `prompt` kutusu
+  // istenmiyor). Gerekce opsiyonel.
+  const [iptalSor, setIptalSor] = useState<{ id: number; note: string } | null>(null);
   // Ilk yukleme bitmeden daraltma KARARI VERILMEZ: aksi halde panel her sayfa
   // acilisinda bir an serit olarak cizilip sonra genisler — tam da onlemeye
   // calistigimiz turden bir sicrama olurdu.
@@ -240,23 +245,17 @@ export default function RequestsSidePanel() {
     if (!next) load();
   };
 
-  const cancel = async (id: number) => {
-    // Gerekce opsiyonel: bos birakilirsa (ya da Iptal'e basilirsa prompt null doner)
-    // yine de iptal edilir - not zorunlu tutulmuyor, sadece imkan taniniyor.
-    const note = window.prompt(
-      'Bu talebi iptal etmek üzeresiniz. Onay gelse bile otomasyon artık tetiklenmeyecek.\n\n' +
-        'NOT: Smart tarafındaki kayıt açık kalır, onu Smart ekranından ayrıca kapatmanız gerekir.\n\n' +
-        'İptal gerekçesi (opsiyonel):',
-      '',
-    );
-    if (note === null) return; // kullanici vazgecti
+  const cancel = (id: number) => setIptalSor({ id, note: '' });
+  const iptalEt = async () => {
+    if (!iptalSor) return;
+    const { id, note } = iptalSor;
     setCancellingId(id);
     try {
       const r = await ansibleApi.cancelSmartTicket(id, note.trim());
-      if (r.ok) await load();
-      else window.alert(r.message || 'İptal edilemedi.');
+      if (r.ok) { setIptalSor(null); toast.success('Talep iptal edildi.'); await load(); }
+      else toast.error(r.message || 'İptal edilemedi.');
     } catch (e: unknown) {
-      window.alert(e instanceof Error ? e.message : String(e));
+      toast.error(e instanceof Error ? e.message : String(e));
     } finally {
       setCancellingId(null);
     }
@@ -552,6 +551,42 @@ export default function RequestsSidePanel() {
             document.body,
           )}
       </div>
+      <Modal
+        open={iptalSor != null}
+        onClose={() => setIptalSor(null)}
+        title="Talebi iptal et"
+        size="sm"
+        footer={
+          <div className="flex justify-end gap-2">
+            <button onClick={() => setIptalSor(null)} className="px-3 py-1.5 text-xs border border-[var(--border)] rounded-lg hover:bg-[var(--bg-elevated)]">Kapat</button>
+            <button
+              onClick={iptalEt}
+              disabled={iptalSor != null && cancellingId === iptalSor.id}
+              className="px-3 py-1.5 text-xs rounded-lg text-white disabled:opacity-50"
+              style={{ background: 'var(--status-danger)' }}
+            >
+              {iptalSor != null && cancellingId === iptalSor.id ? 'İptal ediliyor…' : 'Talebi iptal et'}
+            </button>
+          </div>
+        }
+      >
+        <div className="space-y-2.5 text-[13px]" style={{ color: 'var(--text-secondary)' }}>
+          <p>Onay gelse bile otomasyon artık <b>tetiklenmeyecek</b>.</p>
+          <p className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
+            Smart tarafındaki kayıt açık kalır; onu Smart ekranından ayrıca kapatmanız gerekir.
+          </p>
+          <label className="block text-[12px]">
+            İptal gerekçesi <span style={{ color: 'var(--text-muted)' }}>(opsiyonel)</span>
+            <textarea
+              value={iptalSor?.note ?? ''}
+              onChange={(e) => setIptalSor((x) => (x ? { ...x, note: e.target.value } : x))}
+              rows={2}
+              autoFocus
+              className="mt-1 w-full px-2.5 py-1.5 text-xs border border-[var(--border)] rounded-lg bg-[var(--bg-surface)]"
+            />
+          </label>
+        </div>
+      </Modal>
     </>
   );
 }

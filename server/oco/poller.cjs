@@ -47,7 +47,35 @@ async function _tickBody(now) {
     return;
   }
 
+  // ── BAGLI BILET VARSA BASLATMA (2026-10-08 uretim olayi) ─────────────────────────────
+  // Talep aninda Smart bileti acilmis ama kaydi 'PENDING_APPROVAL'a cekme yazimi
+  // tutmamis kayitlar 'SCHEDULED' kaliyordu. Pencere saatinde bu dongu onlari alip
+  // `_launch` ile prod kapisindan GECIRIYOR ve kapi IKINCI bir Smart bileti aciyordu
+  // (onaylansaydi is ikinci kez kosardi; ilki zaten AWX schedule ile calismisti).
+  // Simdi: 'SCHEDULED' kayda bagli bir bilet varsa kayit bilete ESITLENIR ve BASLATILMAZ.
+  // Her turda TUM 'SCHEDULED' kayitlara bakilir (yalniz saati gelenlere degil) ki bugun
+  // yanlis durumda bekleyen kayitlar ekranda da hemen duzelsin.
+  // BILET SORGUSU DUSERSE bu tur HICBIR SEY BASLATILMAZ: bakamadigimiz bir kaydi
+  // baslatmak ayni cift bileti dogurabilir. Pencere hala acik; sonraki tur dener.
+  let bagli;
+  try {
+    bagli = await require('../smart/store.cjs').findByOcoRecordIds(scheduled.map((r) => r.id));
+  } catch (e) {
+    console.warn('[OCO] bagli Smart biletleri okunamadi - bu tur hicbir kayit baslatilmadi:', e.message);
+    return;
+  }
+  const kalan = [];
   for (const rec of scheduled) {
+    const t = bagli.get(Number(rec.id));
+    if (!t) { kalan.push(rec); continue; }
+    const yeni = await store.adoptTicket(rec.id, t).catch((e) => {
+      console.warn(`[OCO] #${rec.id} bilete esitlenemedi:`, e.message);
+      return null;
+    });
+    console.log(`[OCO] #${rec.id} zaten Smart biletine bagli (#${t.externalTicketId}, ${t.status}) - ikinci bilet ACILMADI; kayit -> ${yeni || 'degismedi'}.`);
+  }
+
+  for (const rec of kalan) {
     const runAt = new Date(rec.runAt);
     const windowEnd = new Date(rec.windowEnd);
 

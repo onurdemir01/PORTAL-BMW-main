@@ -184,6 +184,8 @@ async function kapiIle({ phase }, fn) {
       create: async () => ({ id: 77 }),
       createAwxScheduled: async () => ({ id: 88 }),
       markPendingApproval: async () => true,
+      // smart-first yolu 2026-10-08'den beri BUNU cagirir (eskisi 'LAUNCHING' kosuluyla hic yazmiyordu).
+      markPendingApprovalAtRequest: async () => true,
     },
     smartClient: { createTicket: async () => ({ ticketId: 'WF-1' }) },
     smartStore: {

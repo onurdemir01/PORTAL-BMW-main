@@ -369,5 +369,57 @@ async function adminCancel(id, { cancelledBy, note }) {
   return rows[0] ? rowToRec(rows[0]) : null;
 }
 
+
+// ── TALEP ANINDA ACILAN BILET (smart-first) ─────────────────────────────────────────
+// 2026-10-08 URETIM OLAYI: smart-first yolu yeni olusturulan kaydi 'PENDING_APPROVAL'a
+// cekmek icin `markPendingApproval` cagiriyordu - o fonksiyon YALNIZ 'LAUNCHING'
+// satiri gunceller (poller'in claim ettigi kayit). Yeni kayit 'SCHEDULED' oldugu icin
+// HICBIR SEY yazilmadi, donus degerine de bakilmiyordu. Kayit 'SCHEDULED' kaldi: onayda
+// AWX schedule kuruldu (kayit yine guncellenemedi), pencere saatinde AWX isi CALISTIRDI
+// ve AYNI ANDA Portal'in OCO zamanlayicisi 'SCHEDULED' kaydi alip prod kapisindan
+// gecirdi -> IKINCI Smart bileti. Onaylansaydi is ikinci kez kosacakti.
+// Bu fonksiyon yalniz 'SCHEDULED' kaydi gunceller ve sonucu DONDURUR.
+async function markPendingApprovalAtRequest(id, { smartTicketId, externalTicketId }) {
+  const { rows } = await db.query(
+    `UPDATE oco_scheduled_launches
+        SET status = 'PENDING_APPROVAL', smart_ticket_id = $2,
+            error_message = $3, updated_at = GETUTCDATE()
+      OUTPUT INSERTED.id
+      WHERE id = $1 AND status = 'SCHEDULED'`,
+    [id, smartTicketId ?? null,
+     `Smart onay talebi talep aninda acildi (#${externalTicketId || '?'}). Onay gelince is kesinti penceresine zamanlanir.`]
+  );
+  return rows.length > 0;
+}
+
+// BAGLI BILETI BENIMSE: 'SCHEDULED' duran ama ZATEN bir Smart bileti olan kaydi biletin
+// durumuna esitler (OCO zamanlayicisi bunu baslatmadan once cagirir). Bilet -> kayit:
+//   PENDING / LAUNCHING  -> PENDING_APPROVAL   (onay bekleniyor)
+//   SCHEDULED            -> AWX_SCHEDULED      (onaylandi, AWX'te zamanli)
+//   LAUNCHED             -> LAUNCHED           (onaylandi, calisti)
+//   REJECTED / CANCELLED -> CANCELLED
+//   TIMEOUT / FAILED / ERROR -> FAILED
+// Yalniz 'SCHEDULED' satir guncellenir (yaris: kullanici arada iptal ettiyse ezilmez).
+const BILET_KAYIT = Object.freeze({
+  PENDING: 'PENDING_APPROVAL', LAUNCHING: 'PENDING_APPROVAL', SCHEDULED: 'AWX_SCHEDULED',
+  LAUNCHED: 'LAUNCHED', REJECTED: 'CANCELLED', CANCELLED: 'CANCELLED',
+  TIMEOUT: 'FAILED', FAILED: 'FAILED', ERROR: 'FAILED',
+});
+async function adoptTicket(id, ticket) {
+  const st = BILET_KAYIT[String(ticket?.status || '').toUpperCase()] || 'PENDING_APPROVAL';
+  const { rows } = await db.query(
+    `UPDATE oco_scheduled_launches
+        SET status = $2, smart_ticket_id = $3, awx_schedule_id = COALESCE($4, awx_schedule_id),
+            awx_job_id = COALESCE($5, awx_job_id), error_message = $6, updated_at = GETUTCDATE()
+      OUTPUT INSERTED.id
+      WHERE id = $1 AND status = 'SCHEDULED'`,
+    [id, st, ticket?.id ?? null, ticket?.awxScheduleId ?? null, ticket?.awxJobId ?? null,
+     `Bu kaydin Smart bileti talep aninda acilmisti (#${ticket?.externalTicketId || '?'}, ${ticket?.status || '?'}); ` +
+       'Portal zamanlayicisi ikinci bilet ACMADI, kayit bilete esitlendi.'],
+  );
+  return rows.length > 0 ? st : null;
+}
+
 module.exports = {
+  markPendingApprovalAtRequest, adoptTicket, BILET_KAYIT,
   markAwxScheduledAfterApproval, create, createAwxScheduled, get, listScheduled, listAll, listByUsername, listForUser, canManage, update, cancelBy, gruplarKesisiyor, claimForLaunch, markLaunched, markPendingApproval, markApprovedLaunched, markApprovalResolved, markFailed, markExpired, cancel, adminCancel };

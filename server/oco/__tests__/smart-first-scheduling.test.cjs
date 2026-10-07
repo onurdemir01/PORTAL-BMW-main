@@ -55,7 +55,12 @@ test('OS7 akis sozlesmesi: bilet TALEP ANINDA acilir, onay sonrasi AWX schedule 
   assert.ok(/if \(smartAlsoRequired\) \{[\s\S]{0,400}openSmartTicket\(/.test(gates), 'OCO before + Smart -> bilet hemen acilmali');
   assert.ok(/ocoWindowStartIso/.test(gates) && /ocoWindowEndIso/.test(gates), 'pencere bilete gomulmeli');
   assert.ok(/smartFirst: true/.test(gates), 'istemciye smartFirst bildirilmeli');
-  assert.ok(/markPendingApproval\(rec\.id/.test(gates), 'OCO kaydi onay bekliyor olarak isaretlenmeli');
+  // 2026-10-08 URETIM OLAYI: bu satir eskiden `markPendingApproval(rec.id` metnini ARIYORDU -
+  // yani HATALI cagriyi kilitliyordu. O fonksiyon yalniz 'LAUNCHING' kaydi gunceller; yeni kayit
+  // 'SCHEDULED' oldugu icin hicbir sey yazilmiyor, pencere saatinde IKINCI Smart bileti aciliyordu.
+  // Metin kontrolu davranisi gormedi; davranis kilidi: oco-cift-bilet.test.cjs.
+  assert.ok(/markPendingApprovalAtRequest\(rec\.id/.test(gates), 'OCO kaydi SCHEDULED -> PENDING_APPROVAL isaretlenmeli');
+  assert.ok(!/ocoStore\.markPendingApproval\(rec\.id/.test(gates), "smart-first yolu 'LAUNCHING' kosullu markPendingApproval'i cagiriyor - hicbir sey yazmaz");
 
   const runner = fs.readFileSync(path.join(__dirname, '..', '..', 'ansible', 'runner.cjs'), 'utf8');
   const cb = runner.slice(runner.indexOf('startPoller(async (ticket)'), runner.indexOf('launchOrRequestApproval'));
