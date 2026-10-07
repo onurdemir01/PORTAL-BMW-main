@@ -275,6 +275,7 @@ let _lastDryRun = null;
 let _stuckAlertFor = null; // watcher in-flight alarmi verilen taramanin baslangic zamani
 let _tokenSigSeen = null; // Map<serverId, sifreli deger>: iptal token'i (baska ornekte) degisti mi
 const _storeUnreadableKeys = new Set(); // token KAYDI okunamadigi icin iptali DENENMEYEN isler
+let _stateCheckCursor = null; // durum teyidinde 50 kayit sinirinin sonrasina adil ilerleme
 
 const jobKey = (job) => `${job.serverId}:${normKind(job.kind)}:${job.jobId}`;
 
@@ -659,10 +660,35 @@ function logFields(job) {
 }
 
 /** "Listede yok" teyidi: isin SU ANKI durumu. Okunamazsa Map'te YOK (= olculemedi). */
+function stateCheckBatch(keys) {
+  const ordered = [...new Set(keys)].sort();
+  if (!ordered.length) {
+    _stateCheckCursor = null;
+    return [];
+  }
+  let start = 0;
+  if (_stateCheckCursor != null) {
+    const exact = ordered.indexOf(_stateCheckCursor);
+    if (exact >= 0) start = (exact + 1) % ordered.length;
+    else {
+      const next = ordered.findIndex((key) => key > _stateCheckCursor);
+      start = next >= 0 ? next : 0;
+    }
+  }
+  const count = Math.min(STATE_CHECK_MAX, ordered.length);
+  const selected = Array.from(
+    { length: count },
+    (_, index) => ordered[(start + index) % ordered.length],
+  );
+  _stateCheckCursor = selected[selected.length - 1];
+  return selected;
+}
+
 async function readJobStates(runner, keys, red) {
   const out = new Map();
-  if (!runner || typeof runner.getJobStateOnServer !== 'function') return out;
-  for (const key of keys.slice(0, STATE_CHECK_MAX)) {
+  if (!runner || typeof runner.getJobStateOnServer !== 'function') return { states: out, asked: 0 };
+  const batch = stateCheckBatch(keys);
+  for (const key of batch) {
     const [sid, kind, jid] = key.split(':');
     try {
       const st = await runner.getJobStateOnServer(Number(sid), Number(jid), kind);
@@ -671,7 +697,7 @@ async function readJobStates(runner, keys, red) {
       console.error(`[LongJobCancel] ${key} durumu okunamadi (kayit korunuyor):`, red((e && e.message) || String(e)));
     }
   }
-  return out;
+  return { states: out, asked: batch.length };
 }
 
 /**
@@ -855,10 +881,11 @@ async function _runCycle(scan, opts = {}) {
       if (!byKey.has(key) && !_done.has(key) && completeForKey(key)) gone.push(key);
     }
     if (gone.length) {
-      const states = await readJobStates(runner, gone, red);
-      verify.asked = gone.length;
+      const check = await readJobStates(runner, gone, red);
+      const states = check.states;
+      verify.asked = check.asked;
       verify.measured = states.size;
-      verify.unmeasured = gone.length - states.size;
+      verify.unmeasured = check.asked - states.size;
       for (const key of gone) {
         const st = states.get(key);
         if (!st) continue; // olculemedi -> kayit korunur, sonraki tur yeniden bakar
@@ -1848,6 +1875,7 @@ function _reset() {
   _stuckAlertFor = null;
   _tokenSigSeen = null;
   _storeUnreadableKeys.clear();
+  _stateCheckCursor = null;
   tokenStore._reset();
 }
 
