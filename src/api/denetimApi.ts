@@ -34,7 +34,11 @@ export interface NginxSpaEnvCell {
 
 /** 'unknown' durumunun gerekce kodlari (server/audit/nginx-migration.cjs spaTrafikDurumu). */
 export type SpaYukKismiNeden =
-  'pencere' | 'pencere-bilinmiyor' | 'sampled' | 'okunamayan-sunucu' | 'satirsiz-sunucu';
+  | 'pencere'
+  | 'pencere-bilinmiyor'
+  | 'sampled'
+  | 'okunamayan-sunucu'
+  | 'satirsiz-sunucu';
 
 /**
  * dbo.Nginx_Spa_Traffic olcumu - UC UC AYNI bicimi doner: Denetim > Nginx SPA, Nginx ARK SPA
