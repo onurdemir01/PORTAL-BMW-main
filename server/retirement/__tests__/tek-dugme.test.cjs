@@ -169,3 +169,22 @@ test('TD12 Akis paneli web adimini KANITSIZ "bitti" gostermez', () => {
   const sira = ['running', 'failed', 'bilinmiyor', "'bitti'"].map((k) => blok.indexOf(k));
   assert.ok(sira.every((x, i) => x > 0 && (i === 0 || x > sira[i - 1])), "'bitti' son secenek degil - kanitsiz basari");
 });
+
+test('TD13 on kontrol KAPATILACAK vhost blogunu gosterir: ayni eylem PLAN kipinde, gercek is YOK', () => {
+  // Kullanici (2026-10-08): "tetiklemeden once disabled edilecek virtualhost blogunu gormek istiyorum."
+  const ep = ucDilimi("router.post('/:id/targets/:tid/stop'", "router.post('/:id/targets/:tid/rollback'");
+  const blok = ep.slice(ep.indexOf('let vhostPlan = null;'), ep.indexOf('res.json({ ok: true, ...r, planOnly'));
+  assert.ok(blok.length > 100, 'vhost plan blogu yok');
+  assert.match(blok, /if \(!confirmed && \(t\.web \|\| \[\]\)\.length\)/, 'vhost plani onayli STOP\'ta da kosuyor');
+  assert.match(blok, /action: 'apache_retire_vhost'/, 'plan web adimiyla AYNI eylemi kullanmiyor');
+  assert.match(blok, /plan_only: true/, 'plan DEGIL gercek kapatma baslatiliyor');
+  assert.ok(!/plan_only: false/.test(blok), 'on kontrolde vhost GERCEKTEN kapatilabiliyor');
+  assert.match(blok, /'server_hub_fix'\)/);
+  // URUN KAPISI KENDISI kilitlenir: 'elle: true' metni conf-bilinmiyor dalinda da geciyor ve
+  // urun kapisini kaldiran mutasyonu GORMUYORDU (V2, ilk tur).
+  assert.match(blok, /if \(!APACHE\.has\(String\(w\.product \|\| ''\)\.toUpperCase\(\)\)\) \{ vhostPlan\.push\(\{ \.\.\.kim, ok: false, elle: true/, 'NGINX icin is baslatiliyor (urun kapisi yok)');
+  assert.match(blok, /if \(!w\.confFile \|\| !w\.serverName\) \{ vhostPlan\.push\(\{ \.\.\.kim, ok: false, elle: true/, 'conf/ServerName bilinmeyen vhost icin is baslatiliyor');
+  assert.match(blok, /\} catch \(e\) \{\s*vhostPlan\.push\(\{ \.\.\.kim, ok: false/, 'plan hatasi on kontrolu dusuruyor');
+  const js = ucDilimi("router.get('/:id/targets/:tid/job-status", "router.");
+  assert.match(js, /extractStatsKey\(statusInfo\.artifacts, 'server_hub_fix_result'\)/, 'plan sonucu (blok) ekrana tasinmiyor');
+});

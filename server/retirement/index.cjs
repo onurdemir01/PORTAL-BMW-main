@@ -525,7 +525,31 @@ function initRetirement(app) {
           }
         }
       }
-      res.json({ ok: true, ...r, planOnly: !confirmed, trafikTarama, sccWarning: notifyScc && !SCC_MAIL_TO ? 'SCC bilgilendirme adresi tanımlı değil (Retirement sayfası › SCC adresi) — SCC maili gönderilmedi.' : null });
+      // KAPATILACAK VHOST BLOKLARI (2026-10-08, kullanici: "tetiklemeden once disabled edilecek
+      // virtualhost blogunu gormek istiyorum"). Web adimiyla AYNI eylem (server_hub_fix /
+      // apache_retire_vhost) plan_only=true kosar ve kapatacagi blogu BLOK satirlariyla
+      // dondurur - ekranda gorulen blok, sonra gercekte yorumlanan blogun ta kendisi.
+      // Yalniz on kontrolde; Apache/IHS disi (NGINX) ya da conf'u/ServerName'i bilinmeyen
+      // vhost icin is baslatilmaz, sebebi listede yazar. Baslatilamazsa on kontrol DUSMEZ.
+      let vhostPlan = null;
+      if (!confirmed && (t.web || []).length) {
+        const APACHE = new Set(['RHA', 'IHS', 'APACHE', 'IBMIHS']);
+        vhostPlan = [];
+        for (const w of t.web) {
+          const kim = { host: w.host, serverName: w.serverName, confFile: w.confFile || '' };
+          if (!APACHE.has(String(w.product || '').toUpperCase())) { vhostPlan.push({ ...kim, ok: false, elle: true, message: `${w.product || 'bilinmeyen urun'}: otomatik kapatma yok (NGINX elle)` }); continue; }
+          if (!w.confFile || !w.serverName) { vhostPlan.push({ ...kim, ok: false, elle: true, message: 'conf dosyasi ya da ServerName kesifte cozulemedi' }); continue; }
+          try {
+            const s = await launch(req, `Retirement: vhost plani ${w.serverName} @ ${w.host}`,
+              { target_host: w.host, action: 'apache_retire_vhost', product: w.product, file: w.confFile, server_name: w.serverName, reload: false, plan_only: true },
+              { op: 'vhost_plan', id, tid }, 'server_hub_fix');
+            vhostPlan.push({ ...kim, ok: true, jobId: s.jobId, awxServerId: s.awxServerId });
+          } catch (e) {
+            vhostPlan.push({ ...kim, ok: false, message: String(e.message || e) });
+          }
+        }
+      }
+      res.json({ ok: true, ...r, planOnly: !confirmed, trafikTarama, vhostPlan, sccWarning: notifyScc && !SCC_MAIL_TO ? 'SCC bilgilendirme adresi tanımlı değil (Retirement sayfası › SCC adresi) — SCC maili gönderilmedi.' : null });
     } catch (err) { res.status(err.status || 500).json({ ok: false, message: err.message }); }
   });
 
@@ -804,7 +828,13 @@ function initRetirement(app) {
           await addEvent(id, null, planOnly ? 'plan-result' : 'stop-result', `iş #${jobId}: ${msg}`);
         }
       }
-      res.json({ ok: true, status: statusInfo.status, output: outputInfo.output || '', result });
+      // Vhost plan isi icin (server_hub_fix): kapatilacak blok + RESULT satiri. Bu is hedefin
+      // last_job_id'si olmadigi icin yukaridaki sonuclandirma ona dokunmaz.
+      let fixResult = null;
+      if (TERMINAL.has(statusInfo.status)) {
+        fixResult = require('../opsx/index.cjs').extractStatsKey(statusInfo.artifacts, 'server_hub_fix_result') || null;
+      }
+      res.json({ ok: true, status: statusInfo.status, output: outputInfo.output || '', result, fixResult });
     } catch (err) { res.status(err.status || 500).json({ ok: false, message: err.message }); }
   });
 

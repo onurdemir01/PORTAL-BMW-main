@@ -14,6 +14,49 @@ import { fmtDate, fmtDateTime } from '@/utils/datetime';
 import RetirementAkis from './RetirementAkis';
 import { retirementAdimi } from './retirementAdim';
 import { stopTrafikOzeti, stopOnayAcikMi, type TrafikIsDurumu } from './retirementTrafik';
+import { blokAyristir, sonucAyristir, type BlokSatiri } from './retirementVhostPlan';
+
+/** On kontrolde vhost basina kapatma plani (ekran durumu). */
+interface VhostPlanDurumu {
+  host: string; serverName: string; confFile: string;
+  durum: 'suruyor' | 'hazir' | 'hata' | 'elle';
+  mesaj?: string; satirlar?: BlokSatiri[]; jobId?: number | null;
+}
+
+/** STOP onayinda KAPATILACAK VirtualHost bloklari (2026-10-08, kullanici: "tetiklemeden once
+ *  disabled edilecek virtualhost blogunu gormek istiyorum"). Bloklar web adimiyla AYNI
+ *  betikten (apache_retire_vhost plan) gelir. Plan basarisizsa (blok bulunamadi vb.) KIRMIZI:
+ *  web adimi da ayni sebeple dusecek - JBoss STOP'u engellemez ama gorunur. */
+function VhostBloklar({ liste }: { liste?: VhostPlanDurumu[] }) {
+  if (!liste || !liste.length) return null;
+  return (
+    <div className="text-[11px] rounded-lg border px-3 py-2 space-y-2" style={{ borderColor: liste.some((v) => v.durum === 'hata') ? 'var(--status-danger)' : 'var(--border-subtle)' }}>
+      <div className="font-semibold" style={{ color: 'var(--text-muted)' }}>Kapatılacak VirtualHost blokları (web adımı)</div>
+      {liste.map((v) => (
+        <div key={v.host + v.serverName + v.confFile} className="space-y-1">
+          <div>
+            <span className="font-mono font-semibold">{v.serverName}</span>
+            <span style={{ color: 'var(--text-muted)' }}> @ {v.host} · <span className="font-mono">{v.confFile || '?'}</span></span>
+          </div>
+          {v.durum === 'suruyor' && <div style={{ color: 'var(--text-muted)' }}>plan okunuyor… (server_hub_fix #{v.jobId ?? '?'})</div>}
+          {(v.durum === 'hata' || v.durum === 'elle') && <div style={{ color: v.durum === 'hata' ? 'var(--status-danger)' : 'var(--status-warning)' }}>{v.durum === 'elle' ? 'ELLE: ' : 'PLAN BAŞARISIZ — web adımı da düşecek: '}{v.mesaj}</div>}
+          {v.durum === 'hazir' && (
+            <>
+              {v.mesaj && <div style={{ color: 'var(--text-secondary)' }}>{v.mesaj}</div>}
+              {v.satirlar && v.satirlar.length > 0 ? (
+                <pre className="text-[10px] leading-snug overflow-auto max-h-56 rounded px-2 py-1.5" style={{ background: 'var(--bg-elevated)', color: 'var(--text-primary)' }}>
+                  {v.satirlar.map((s) => `${String(s.no || '').padStart(5)}  ${s.metin}`).join('\n')}
+                </pre>
+              ) : (
+                <div style={{ color: 'var(--status-warning)' }}>Plan blok satırı döndürmedi (eski server_hub_fix sürümü?) — kapatılacak blok gösterilemiyor.</div>
+              )}
+            </>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
 import { toast } from '@/hooks/useToast';
 
 const SM_BTN = 'inline-flex items-center gap-1 h-7 px-2.5 text-[11px] font-medium leading-none rounded-lg border whitespace-nowrap disabled:opacity-40';
@@ -458,6 +501,7 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
   // ON KONTROLDE TAZE TRAFIK (2026-10-08): hedef basina Server Hub tarama isi; onay penceresi
   // kesifi okur ve tarama bitince YENIDEN okur. Ayrinti: retirementTrafik.ts.
   const [askDisc, setAskDisc] = useState<RtDiscovery | null>(null);
+  const [vhostPlanlar, setVhostPlanlar] = useState<Record<number, VhostPlanDurumu[]>>({});
   const [trafikIs, setTrafikIs] = useState<Record<number, { durum: TrafikIsDurumu; jobId?: number | null; mesaj?: string; bitti?: string }>>({});
   const [trafikOnay, setTrafikOnay] = useState(false);
   const [olcumuBekleme, setOlcumuBekleme] = useState(false);
@@ -528,6 +572,38 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
         });
       } else if (tt && !tt.ok) {
         setTrafikIs((m) => ({ ...m, [t.id]: { durum: 'hata', mesaj: tt.message } }));
+      }
+      // KAPATILACAK VHOST BLOKLARI: vhost basina plan isi izlenir, bitince blok okunur.
+      const vp = !confirmed ? r.vhostPlan : null;
+      if (vp && vp.length) {
+        const ilk: VhostPlanDurumu[] = vp.map((v) => ({
+          host: v.host, serverName: v.serverName, confFile: v.confFile, jobId: v.jobId ?? null,
+          durum: v.ok ? 'suruyor' : v.elle ? 'elle' : 'hata',
+          mesaj: v.ok ? undefined : v.message,
+        }));
+        setVhostPlanlar((m) => ({ ...m, [t.id]: ilk }));
+        vp.forEach((v, i) => {
+          if (!v.ok || !v.jobId) return;
+          let bitti3 = false;
+          addJob({
+            title: `Retirement: vhost planı ${v.serverName} @ ${v.host}`,
+            fetchStatus: async () => {
+              const s = await retirementApi.jobStatus(id, t.id, v.awxServerId as number, v.jobId as number);
+              if (!s.ok) throw new Error(s.message || 'Durum okunamadı.');
+              if (TERMINAL.has(s.status) && !bitti3) {
+                bitti3 = true;
+                const sonuc = sonucAyristir(s.fixResult?.line);
+                const hazir = sonuc.durum === 'PLAN';
+                setVhostPlanlar((m) => {
+                  const l = [...(m[t.id] || ilk)];
+                  l[i] = { ...l[i], durum: hazir ? 'hazir' : 'hata', mesaj: sonuc.mesaj, satirlar: hazir ? blokAyristir(s.fixResult?.blok) : undefined };
+                  return { ...m, [t.id]: l };
+                });
+              }
+              return { status: s.status, output: s.output || '', result: s.result };
+            },
+          });
+        });
       }
       let done = false;
       addJob({
@@ -801,6 +877,7 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
             )}
             <p className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>auto-start kapatılır, JVM durdurulur, paket(ler) <code>.{rec?.smartNo}.old</code> yapılır. {ask.t.env === 'PROD' ? 'PROD: SCC bilgilendirme maili gider.' : ''} Geri almak gerekirse silme tarihinden önce “Geri aktif et” kullanılır.</p>
             <StopHubUyari durum={hubDurum} />
+            <VhostBloklar liste={vhostPlanlar[ask.t.id]} />
             <StopTrafik t={ask.t} disc={askDisc} is={trafikIs[ask.t.id]} onay={trafikOnay} setOnay={setTrafikOnay} bekleme={olcumuBekleme} setBekleme={setOlcumuBekleme} />
             <div className="flex justify-end gap-2"><button onClick={() => setAsk(null)} className={SM_BTN} style={smBtn()}>İptal</button><button disabled={!stopOnayAcikMi(stopTrafikOzeti(ask.t, askDisc), trafikIs[ask.t.id]?.durum, trafikOnay, olcumuBekleme)} onClick={() => stop(ask.t, true)} className={`${SM_BTN} disabled:opacity-50`} style={{ ...smBtn(true), background: 'var(--status-danger)', borderColor: 'var(--status-danger)' }}>Onayla ve durdur</button></div>
           </div>

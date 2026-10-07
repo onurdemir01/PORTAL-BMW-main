@@ -77,7 +77,10 @@ export interface RtRecordRow extends Omit<RtRecord, 'targets' | 'events'> { targ
 export type SccKaynak = 'ekran' | 'env' | 'yok';
 export interface RtLaunch { ok: boolean; message?: string; jobId: number | null; status: string | null; awxServerId: number; planOnly?: boolean; sccWarning?: string | null;
   /** On kontrolde web sunucularinda baslatilan Server Hub taramasi (taze vhost trafigi). */
-  trafikTarama?: { ok: boolean; jobId?: number | null; awxServerId?: number; hosts: string[]; message?: string } | null }
+  trafikTarama?: { ok: boolean; jobId?: number | null; awxServerId?: number; hosts: string[]; message?: string } | null;
+  /** On kontrolde vhost basina apache_retire_vhost PLANI (kapatilacak blok). `elle`: otomatik
+   *  kapatma yok (NGINX / conf bilinmiyor) - is baslatilmadi. */
+  vhostPlan?: { host: string; serverName: string; confFile: string; ok: boolean; elle?: boolean; jobId?: number | null; awxServerId?: number; message?: string }[] | null }
 
 const json = (body: unknown) => ({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 
@@ -116,6 +119,8 @@ export const retirementApi = {
    *  uygulama adi, AYNEN. */
   deleteNow: (id: number, confirmApp: string): Promise<{ ok: boolean; message?: string; oncekiTarih?: string | null; hedefSayisi?: number; pollSaniye?: number; record?: RtRecord }> =>
     fetch(`${BASE}/${id}/delete-now`, json({ confirmApp })).then(safeJson),
-  jobStatus: (id: number, tid: number, awxServerId: number, jobId: number): Promise<{ ok: boolean; status: string; output: string; result?: unknown; message?: string }> =>
+  jobStatus: (id: number, tid: number, awxServerId: number, jobId: number): Promise<{ ok: boolean; status: string; output: string; result?: unknown; message?: string;
+    /** server_hub_fix isleri (vhost plani): kapatilacak blok + RESULT satiri. */
+    fixResult?: { line?: string; blok?: string[] } | null }> =>
     fetch(`${BASE}/${id}/targets/${tid}/job-status/${awxServerId}/${jobId}`).then(safeJson),
 };
