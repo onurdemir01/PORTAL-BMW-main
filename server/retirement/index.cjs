@@ -176,6 +176,7 @@ async function webGeriAl(id, tid, username) {
       plan_only: false,
     };
     try {
+      await require('../ansible/template-preflight.cjs').assertRegistryPlaybook(serverId, templateId, 'server_hub_fix');
       await require('../ansible/template-preflight.cjs').assertTemplateAcceptsExtraVars(serverId, templateId, extraVars, { label: 'server_hub_fix' });
       const runner = require('../ansible/runner.cjs');
       const r = await runner.launchJobOnServer(serverId, templateId, extraVars, '', {});
@@ -213,6 +214,8 @@ async function launch(req, templateName, extraVars, detail, key = REGISTRY_KEY) 
     throw Object.assign(new Error(`AWX job template'i tanımlı değil: Admin › Playbook Kayıtları › ${neden}.`), { status: 501 });
   }
   const runner = require('../ansible/runner.cjs');
+  // YANLIS SABLON: Playbook Kayitlari'nda baska bir isin sablonu eslenmisse baslatilmaz (2026-10-08).
+  await require('../ansible/template-preflight.cjs').assertRegistryPlaybook(serverId, templateId, key);
   await require('../ansible/template-preflight.cjs').assertTemplateAcceptsExtraVars(serverId, templateId, extraVars, { label: key });
   const user = req.session?.user || {};
   const result = await runner.launchJobOnServer(serverId, templateId, extraVars, '', user);
@@ -939,6 +942,7 @@ function initRetirement(app) {
         reload: true,
         plan_only: false,
       };
+      await require('../ansible/template-preflight.cjs').assertRegistryPlaybook(serverId, templateId, 'server_hub_fix');
       await require('../ansible/template-preflight.cjs').assertTemplateAcceptsExtraVars(serverId, templateId, extraVars, { label: 'server_hub_fix' });
       return runner.launchJobOnServer(serverId, templateId, extraVars, '', {});
     });

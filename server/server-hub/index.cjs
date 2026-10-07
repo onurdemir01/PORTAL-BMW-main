@@ -429,6 +429,8 @@ async function launch(req, keyName, templateName, extraVars, detail) {
     );
   }
   const runner = require('../ansible/runner.cjs');
+  // YANLIS SABLON (2026-10-08 uretim olayi: server_hub_fix satirinda rollback sablonu vardi).
+  await require('../ansible/template-preflight.cjs').assertRegistryPlaybook(serverId, templateId, keyName);
   await require('../ansible/template-preflight.cjs').assertTemplateAcceptsExtraVars(
     serverId,
     templateId,

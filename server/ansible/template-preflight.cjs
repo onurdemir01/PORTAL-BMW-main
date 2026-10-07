@@ -67,4 +67,43 @@ async function assertTemplateAcceptsExtraVars(
   );
 }
 
-module.exports = { assertTemplateAcceptsExtraVars, findTemplate };
+// ── SABLON DOGRU PLAYBOOK'U MU KOSTURUYOR (2026-10-08 uretim olayi) ────────────────────
+// Retirement'in vhost kapatma isi (server_hub_fix) AWX'te "App Retirement - GERI AL"
+// playbook'unu kosturdu: Playbook Kayitlari'nda `server_hub_fix` satirina rollback
+// sablonunun ID'si girilmisti. Playbook girdi kontrolunde durdugu icin zarar olmadi; ama
+// yanlis eslenmis bir sablon, baska bir isin degiskenleriyle baska bir isi KOSTURUR.
+// Kayit anahtari -> beklenen playbook dosya ADI (dizin degil: depo yapisi AWX projesinde
+// farkli olabilir). Uyusmuyorsa is BASLATILMAZ, mesaj hangi sablonun neyi kosturdugunu soyler.
+// FAIL-OPEN (yukaridaki kontrolle ayni gerekce): metadata okunamazsa ya da sablonun playbook
+// alani bossa bloklanmaz.
+async function assertTemplatePlaybook(serverId, templateId, expectedPlaybook, { label = '' } = {}) {
+  const beklenen = String(expectedPlaybook || '').trim().toLowerCase();
+  if (!beklenen) return;
+  const tpl = await findTemplate(serverId, templateId);
+  if (!tpl || !tpl.playbook) return;
+  const gercek = String(tpl.playbook).split('/').pop().toLowerCase();
+  if (gercek === beklenen) return;
+  throw Object.assign(
+    new Error(
+      `Playbook Kayıtları › "${label || '?'}" satırındaki Template ID ${templateId} (${tpl.name || '?'}) ` +
+        `"${tpl.playbook}" koşturuyor; beklenen "${expectedPlaybook}". Yanlış şablon eşlenmiş — iş BAŞLATILMADI. ` +
+        `Doğru Template ID'yi girin.`,
+    ),
+    { status: 409, code: 'awx_template_playbook_mismatch' },
+  );
+}
+
+// Kayit anahtari -> beklenen playbook. Listede olmayan anahtar KONTROL EDILMEZ (fail-open).
+const BEKLENEN_PLAYBOOK = Object.freeze({
+  app_retirement_stop: 'app_retirement_stop.yml',
+  app_retirement_delete: 'app_retirement_delete.yml',
+  app_retirement_rollback: 'app_retirement_rollback.yml',
+  server_hub_scan: 'server_hub_scan.yml',
+  server_hub_fix: 'server_hub_fix.yml',
+});
+/** Playbook Kayitlari anahtarina gore sablonun playbook'unu dogrular. */
+function assertRegistryPlaybook(serverId, templateId, key) {
+  return assertTemplatePlaybook(serverId, templateId, BEKLENEN_PLAYBOOK[key], { label: key });
+}
+
+module.exports = { assertTemplateAcceptsExtraVars, assertTemplatePlaybook, assertRegistryPlaybook, BEKLENEN_PLAYBOOK, findTemplate };
