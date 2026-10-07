@@ -194,3 +194,37 @@ test('GA10 vhost geri acma YAPILMAYANI basari saymaz; ekran durumlari eksiksiz',
   assert.match(TAB_SRC, /Geri aktif et/, 'geri alma dugmesi yok');
   assert.match(TAB_SRC, /Zamanlanmış silme devre dışı kalır|Zamanlanmış silme devre dışı/, 'onay penceresi silmenin iptal oldugunu soylemiyor');
 });
+
+test('GA11 IPTAL geri alma DEGILDIR: sunucuya dokunmaz, ekran bunu SOYLER', () => {
+  // Kullanici (2026-10-08): "Kaydi iptal ettim de otomatik geri donecek mi? Sanki su an
+  // iptal ettim ama geri donmedi." Iptal YALNIZCA kaydi kapatir; uygulama durdurulmus
+  // kalir. Eskiden bu dugmenin ONAYI DA YOKTU ve ekran hicbir sey soylemiyordu.
+  const ep = IDX_SRC.slice(IDX_SRC.indexOf("router.post('/:id/cancel'"), IDX_SRC.indexOf("router.post('/:id/note'"));
+  assert.ok(ep.length > 0, 'cancel ucu bulunamadi');
+  // Iptal AWX'e is GONDERMEZ: `launch(` cagrisi olmamali.
+  assert.ok(!/launch\(/.test(ep), 'iptal ucu AWX isi tetikliyor - iptal sunucuya dokunmamali');
+  assert.match(ep, /status = 'cancelled'/, 'iptal kaydi kapatmiyor');
+
+  // Ekran NE YAPMADIGINI yazmali ve geri getirme yolunu sunmali.
+  assert.match(TAB_SRC, /Sunucuya dokunulmaz/, 'iptalin sunucuya dokunmadigi ekranda yazili degil');
+  assert.match(TAB_SRC, /DURDURULMUŞ/, 'durdurulmus kalan hedefler uyarisi yok');
+  assert.match(TAB_SRC, /uygulamayı geri aktif et|uygulamayi geri aktif et/, 'iptal penceresinden geri alma sunulmuyor');
+  // ONAYSIZ iptal OLMAMALI: dugme dogrudan cancel() cagirmamali.
+  assert.ok(!/onClick=\{cancel\}/.test(TAB_SRC), 'iptal dugmesi onaysiz calisiyor');
+  assert.match(TAB_SRC, /onClick=\{\(\) => setIptalSor\(true\)\}/, 'iptal onay penceresi acilmiyor');
+});
+
+test('GA12 IPTAL EDILMIS kayitta geri alma HALA mumkun', () => {
+  // Iptal, geri alma yolunu KAPATMAMALI: aksi halde kullanici iptal ettikten sonra
+  // uygulamayi ayaga kaldiramaz hale gelir (ekranda dugme yok, ucta da ret).
+  const ep = IDX_SRC.slice(IDX_SRC.indexOf("router.post('/:id/targets/:tid/rollback'"), IDX_SRC.indexOf('// Is durumu: bitince'));
+  assert.ok(!/rec\.status === 'cancelled'/.test(ep), 'rollback ucu iptal edilmis kaydi reddediyor');
+  // Dugme `canAct` kapisinin DISINDA olmali (canAct iptalde kapaniyor).
+  const i = TAB_SRC.indexOf('const canAct =');
+  const j = TAB_SRC.indexOf('Geri aktif et');
+  assert.ok(i > 0 && j > 0, 'canAct ya da geri alma dugmesi bulunamadi');
+  assert.ok(
+    !/\{canAct && \([\s\S]{0,600}Geri aktif et/.test(TAB_SRC),
+    'geri alma dugmesi canAct kapisinin icinde - iptalden sonra kaybolur',
+  );
+});

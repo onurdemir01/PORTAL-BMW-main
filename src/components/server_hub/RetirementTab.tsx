@@ -251,6 +251,7 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
   const [busy, setBusy] = useState<number | null>(null);
   const [ask, setAsk] = useState<{ t: RtTarget } | null>(null);
   const [geriAl, setGeriAl] = useState<{ t: RtTarget } | null>(null);
+  const [iptalSor, setIptalSor] = useState(false);
   const [hubDurum, setHubDurum] = useState<StopHubDurumu>('denetleniyor');
   const hubIstek = useRef(0);
 
@@ -319,15 +320,41 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
       await load();
     } catch (e: unknown) { toast.error(e instanceof Error ? e.message : String(e)); } finally { setBusy(null); }
   };
-  const cancel = async () => {
+  // ── IPTAL, GERI ALMA DEGILDIR (kullanici bulgusu 2026-10-08) ────────────────────
+  // "Kaydi iptal ettim de otomatik geri donecek mi? Sanki su an iptal ettim ama geri
+  // donmedi." Iptal YALNIZCA kaydi kapatir: zamanlanmis SILME bir daha tetiklenmez
+  // (deleteTick `r.status NOT IN ('cancelled','deleted')` suzuyor) ama SUNUCUYA
+  // DOKUNULMAZ - uygulama durdurulmus halde KALIR.
+  //
+  // Eskiden bu dugmenin ONAYI DA YOKTU: tek tikla iptal oluyor ve ekran uygulamanin
+  // kapali kaldigini SOYLEMIYORDU. Simdi onay penceresi iki ayri eylem sunuyor;
+  // "iptal = geri getir" varsayimi sessizce dogru ya da yanlis olmaktan cikti.
+  const cancel = async (geriAlDa: boolean) => {
+    setIptalSor(false);
+    const durdurulmus = (rec?.targets || []).filter(
+      (t) => (t.status === 'stopped' || t.status === 'rollback_failed') && !t.deletedAt,
+    );
     const r = await retirementApi.cancel(id, 'kullanıcı iptal etti');
-    if (r.ok) { toast.success('Kayıt iptal edildi.'); setRec(r.record); } else toast.error(r.message || 'İptal edilemedi.');
+    if (!r.ok) { toast.error(r.message || 'İptal edilemedi.'); return; }
+    setRec(r.record);
+    if (!geriAlDa) {
+      toast.success(
+        durdurulmus.length
+          ? `Kayıt iptal edildi. ${durdurulmus.length} uygulama DURDURULMUŞ halde kaldı — geri getirmek için "Geri aktif et".`
+          : 'Kayıt iptal edildi.',
+      );
+      return;
+    }
+    // HER HEDEF ICIN SIRAYLA: rollback() kendi hatasini kendi bildirir ve durumu
+    // 'rolling_back' yapar, yani silme kapisi zaten kapanir.
+    for (const t of durdurulmus) await rollback(t, true);
+    await load();
   };
   const addNote = async () => { if (!note.trim()) return; const r = await retirementApi.note(id, note.trim()); if (r.ok) { setRec(r.record); setNote(''); } };
 
   return (
     <Modal open onClose={onClose} title={rec ? `Retirement #${rec.id} — ${rec.app}` : `Retirement #${id}`} subtitle={rec ? `Smart ${rec.smartNo}${rec.ocoNo ? ` · OCO ${rec.ocoNo}` : ''} · açan ${rec.requestedBy} · ${fmtDateTime(rec.createdAt)}` : undefined} icon={TrashIcon} size="wide"
-      footer={<div className="flex items-center gap-2 w-full">{rec && rec.status !== 'cancelled' && rec.status !== 'deleted' && <button onClick={cancel} className={SM_BTN} style={{ ...smBtn(), color: 'var(--status-danger)', borderColor: 'var(--status-danger)' }}><XMarkIcon className="w-3.5 h-3.5" /> Kaydı iptal et</button>}<span className="ml-auto" /><button onClick={onClose} className={SM_BTN} style={smBtn()}>Kapat</button></div>}>
+      footer={<div className="flex items-center gap-2 w-full">{rec && rec.status !== 'cancelled' && rec.status !== 'deleted' && <button onClick={() => setIptalSor(true)} className={SM_BTN} style={{ ...smBtn(), color: 'var(--status-danger)', borderColor: 'var(--status-danger)' }}><XMarkIcon className="w-3.5 h-3.5" /> Kaydı iptal et</button>}<span className="ml-auto" /><button onClick={onClose} className={SM_BTN} style={smBtn()}>Kapat</button></div>}>
       {err && <div className="text-sm rounded-xl px-3 py-2 border" style={{ color: 'var(--status-danger)', background: 'var(--status-danger-bg)', borderColor: 'var(--status-danger)' }}>{err}</div>}
       {rec && (
         <div className="space-y-3">
@@ -428,6 +455,49 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
       {/* GERI ALMA ONAYI. Plan dugmesi ayri duruyor; bu pencere GERCEK islemi onaylatir
           ve NE OLACAGINI madde madde yazar - "geri aktif et" tek kelimeyle gecilecek
           kadar kucuk bir islem degil (JVM baslatilir, trafik geri doner). */}
+      {/* IPTAL ONAYI (2026-10-08). Kullanici "iptal ettim ama geri donmedi" dedi; iptalin
+          NE YAPTIGI ve NE YAPMADIGI burada yazili, ve geri getirme AYNI pencereden
+          tetiklenebiliyor - sessiz bir varsayim kalmiyor. */}
+      {iptalSor && rec && (() => {
+        const durdurulmus = rec.targets.filter(
+          (t) => (t.status === 'stopped' || t.status === 'rollback_failed') && !t.deletedAt,
+        );
+        return (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,.45)' }} onClick={() => setIptalSor(false)}>
+            <div className="rounded-xl border p-4 max-w-xl w-full space-y-3" style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border)' }} onClick={(e) => e.stopPropagation()}>
+              <div className="text-sm font-semibold">Retirement #{rec.id} — {rec.app} kaydı iptal edilecek</div>
+              <ul className="text-[12px] space-y-1 list-disc pl-4" style={{ color: 'var(--text-secondary)' }}>
+                <li>Zamanlanmış <b>silme</b> bir daha tetiklenmez</li>
+                <li>Bekleyen <b>STOP</b> zamanlaması düşer</li>
+                <li><b>Sunucuya dokunulmaz</b> — iptal, yapılmış değişiklikleri geri almaz</li>
+              </ul>
+              {durdurulmus.length > 0 ? (
+                <div className="text-[12px] rounded-lg px-3 py-2 border" style={{ color: 'var(--status-danger)', borderColor: 'var(--status-danger)' }}>
+                  <b>{durdurulmus.length} uygulama şu an DURDURULMUŞ</b> ve iptal onları ayağa kaldırmaz:
+                  <div className="font-mono text-[11px] mt-1" style={{ color: 'var(--text-secondary)' }}>
+                    {durdurulmus.map((t) => `${t.appName} @ ${t.host}`).join(' · ')}
+                  </div>
+                </div>
+              ) : (
+                <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                  Durdurulmuş hedef yok — geri alınacak bir şey de yok.
+                </div>
+              )}
+              <div className="flex justify-end gap-2 flex-wrap">
+                <button onClick={() => setIptalSor(false)} className={SM_BTN} style={smBtn()}>Vazgeç</button>
+                <button onClick={() => cancel(false)} className={SM_BTN} style={{ ...smBtn(), color: 'var(--status-danger)', borderColor: 'var(--status-danger)' }}>
+                  Yalnız kaydı iptal et
+                </button>
+                {durdurulmus.length > 0 && (
+                  <button onClick={() => cancel(true)} className={SM_BTN} style={{ ...smBtn(true), background: 'var(--status-ok, #15803d)', borderColor: 'var(--status-ok, #15803d)' }}>
+                    İptal et ve {durdurulmus.length} uygulamayı geri aktif et
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
       {geriAl && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,.45)' }} onClick={() => setGeriAl(null)}>
           <div className="rounded-xl border p-4 max-w-xl w-full space-y-3" style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border)' }} onClick={(e) => e.stopPropagation()}>
