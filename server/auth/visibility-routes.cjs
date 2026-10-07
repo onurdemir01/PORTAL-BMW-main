@@ -382,6 +382,12 @@ function initVisibilityRoutes(app, { requireAuth, requireAdmin }) {
     'orphans',
     'drift',
     'cis',
+    // Rate Limit (2026-09-26 eklendi, bu listeye 2026-10-08de girdi). Oge
+    // db/mssql-setup.cjs icinde default_visible=0 ile ZATEN seedliydi; ama bu liste onu
+    // tasimadigi icin asagidaki NGINX_TAB_KEYS.includes(t) suzgeci panelden gelen secimi
+    // ATIYORDU. Sonuc: sekme kapali doguyor ve KIMSEYE VERILEMIYORDU (tabs:all bile
+    // kapsamiyordu), yalnizca admin muafiyetiyle gorunuyordu.
+    'ratelimit',
     'spa',
     'api',
     'envanter',

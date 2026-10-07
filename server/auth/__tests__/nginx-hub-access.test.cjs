@@ -46,11 +46,23 @@ const RENDER_TABS = TABS.filter((t) => t !== 'spa');
 // yazilmis bir KOPYAYDI ve 'spadiscovery' / 'ratelimit' / 'rvpsecim' ONDA HIC YOKTU -
 // yani bu bekci uc sekmenin yetki kapisini HIC denetlemiyordu ve kimse farketmedi.
 // Kopya yerine kaynak okunur; liste bir daha sessizce ayrisamaz.
-function seedKeys() {
-  const src = read('server/auth/visibility-routes.cjs');
+/** NGINX_TAB_KEYS dizisinin govdesi — YORUM SATIRLARI ATILMIS halde.
+ *
+ *  Yorumlardaki Turkce kesme isaretleri (`cjs'de`, `seed'liydi`) `'...'` deseniyle
+ *  eslesip ayiklamayi KAYDIRIYORDU: 2026-10-08'de listeye bir aciklama eklendiginde
+ *  bekci anahtarlarin yarisini "yok" sandi. Yorum satirlari once silinir. */
+function anahtarBloku(src) {
   const m = src.match(/const NGINX_TAB_KEYS = \[([\s\S]*?)\];/);
   assert.ok(m, 'NGINX_TAB_KEYS okunamadi (ad degismis olabilir)');
-  return [...m[1].matchAll(/'([^']+)'/g)].map((x) => x[1]);
+  return m[1]
+    .split('\n')
+    .filter((l) => !l.trim().startsWith('//'))
+    .join('\n');
+}
+
+function seedKeys() {
+  const blk = anahtarBloku(read('server/auth/visibility-routes.cjs'));
+  return [...blk.matchAll(/'([^']+)'/g)].map((x) => x[1]);
 }
 function uiTabs() {
   const src = read('src/components/nginx_console/NginxConsolePage.tsx');
@@ -118,16 +130,31 @@ test('NH-A2 panel uçları: sayfaya + seçilen sekmelere allow yazılır (seçil
     /\(?key === 'NginxConsole' \|\| allow\)? \? \[\{ principalType: pt, principalId: pid, allow: true \}\] : \[\]/,
     'seçilmeyen sekmeye kural yazılmamalı (varsayılan kapalı)',
   );
+  // DILIM KAPANIS `];`E KADAR. Once SABIT 400 karakterdi; listeye bir yorum eklenince
+  // sonraki girdiler pencerenin DISINA tasiyor ve test "sekme listede yok" diye
+  // dusuyordu (2026-10-08). Bekci, kaynaktaki bicimlendirmeye degil YAPIYA bakmali.
+  const tabKeysBlk = anahtarBloku(routes);
   for (const t of TABS)
     assert.ok(
-      new RegExp(`'${t}'`).test(
-        routes.slice(
-          routes.indexOf('const NGINX_TAB_KEYS'),
-          routes.indexOf('const NGINX_TAB_KEYS') + 400,
-        ),
-      ),
+      new RegExp(`'${t}'`).test(tabKeysBlk),
       `NGINX_TAB_KEYS içinde ${t} yok`,
     );
+
+  // GELEN SEKME LISTESI BEYAZ LISTEYE SUZULMELI. Suzgec olmadan govdede gonderilen
+  // herhangi bir dizge element anahtari gibi islenir ve ona allow kurali yazilir -
+  // yani panel, kendi listesinde olmayan ogelere yetki verebilir hale gelir.
+  // (Mutasyon testinde bu suzgeci kaldirmak HICBIR bekciyi dusurmuyordu, 2026-10-08.)
+  assert.match(
+    routes,
+    /\.filter\(\(t\) =>\s*NGINX_TAB_KEYS\.includes\(t\),?\s*\)/,
+    'panel ucu gelen sekme listesini NGINX_TAB_KEYS ile süzmüyor',
+  );
+  // 'all' de AYNI listeye genisler: beyaz listeyi atlayan bir kisayol olmamali.
+  assert.match(
+    routes,
+    /tabs === 'all'\s*\?\s*NGINX_TAB_KEYS/,
+    "'all' seçimi NGINX_TAB_KEYS dışına genişliyor",
+  );
 });
 
 test('NH-A3 sunucu kapıları: uçlar sayfa + sekme kapısından geçer', () => {
@@ -239,18 +266,7 @@ test('NH-A5 seed ile ekran sekme listesi ortusur; her sekmenin yetki kapisi var'
   const ui = uiTabs();
   const page = read('src/components/nginx_console/NginxConsolePage.tsx');
 
-  // ── BILINEN ACIK BULGU: 'ratelimit' (2026-10-08) ─────────────────────────────────
-  // Rate Limit sekmesi (2026-09-26) arayuzde `canSee('tab:nginx:ratelimit')` kapisi
-  // tasiyor ama NGINX_TAB_KEYS'e HIC eklenmemis. `canSee` bilinmeyen oge icin TRUE
-  // donuyor (AuthContext.tsx: `elementKey in visibilityMap ? ... : true`), yani sekme
-  // Nginx Hub'i gorebilen HERKESE acik ve admin onu KISITLAYAMIYOR - fail-open kapi.
-  //
-  // SEED'E EKLEMEK BIR DAVRANIS DEGISIKLIGIDIR: oge kayitli olunca varsayilan KAPALI
-  // olur ve su an Rate Limit'i goren admin-disi kullanicilar, bir admin acikca yetki
-  // verene kadar sekmeyi KAYBEDER. Baskalarinin erisimini kendi basima degistirmemek
-  // icin kullanici karari bekleniyor; karar verilince bu satir SILINIR.
-  const BEKLEYEN_KARAR = new Set(['ratelimit']);
-  const seedDisi = ui.filter((t) => !seed.includes(t) && !BEKLEYEN_KARAR.has(t));
+  const seedDisi = ui.filter((t) => !seed.includes(t));
   assert.deepEqual(
     seedDisi,
     [],
