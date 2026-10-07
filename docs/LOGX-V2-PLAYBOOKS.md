@@ -40,6 +40,13 @@ altındaki `log`, `logs` ve numaralı log dizinleri (`log1`, `log2`, `logs1`, `l
 alan gelmiyorsa AWX'teki kopya eskidir ve portal bunu dosya seçim ekranında söyler.
 Ayrıntı: `server/ansible/bmw_portal/logx/legacy/README.md`.
 
+**Legacy'de "neden olmadı" ekranda:** playbook'ların sunucu ve dosya başına yayınladığı
+sebepler (`hosts[].error`, `per_file_status[].error`, üst düzey `error`) kullanıcıya gösterilir:
+keşif ya da aktarım tümüyle düştüğünde hata ekranında, aktarım kısmi bittiğinde (arşiv var ama
+bazı dosyalar ya da sunucular içinde yok) indirme ekranındaki "arşiv eksik" uyarısında. Bu
+alanların biçimi gerçek Ansible koşumuyla sabitlenir (LG5); ayrıntı aynı README'de, "Portalın
+okuduğu alanlar".
+
 **Çıktı sözleşmesi (hepsi için ortak):** Playbook'un SON adımı
 `ansible.builtin.set_stats` ile `logx_result` adında bir JSON yayınlar. Portal sonucu
 **bu JSON'dan** okur (ham stdout'u parse ETMEZ). Format her playbook dosyasının başındaki

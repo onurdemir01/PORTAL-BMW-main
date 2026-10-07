@@ -1,0 +1,171 @@
+{
+  "_aciklama": "GERCEK playbook ciktilari (gecici kok dizin silinmis, arsiv boyutu 1). ELLE DUZENLENMEZ. Yeniden uretmek icin: LOGX_ORNEK_YAZ=1 node --test server/ansible/__tests__/logx-legacy-gercek-kosum.test.cjs",
+  "aktarim_tek_kismi": {
+    "ne": "tek host: bir dosya arsive girdi, biri yerinde yok, biri okunamiyor",
+    "is_basarili": true,
+    "sonuc": {
+      "error": "",
+      "filename": "ornek.zip",
+      "is_fallback": false,
+      "overall_status": "partial",
+      "per_file_status": [
+        {
+          "error": "",
+          "host": "localhost",
+          "path": "/vhosting8/APPX-T.ear/log1/server.log",
+          "status": "ok"
+        },
+        {
+          "error": "Dosya bulunamadi",
+          "host": "localhost",
+          "path": "/vhosting8/APPX-T.ear/log9/yok.log",
+          "status": "error"
+        },
+        {
+          "error": "Dosya okunamiyor",
+          "host": "localhost",
+          "path": "/vhosting8/APPX-T.ear/log2/server.log",
+          "status": "error"
+        }
+      ],
+      "size_bytes": 1,
+      "staged_path": "/staging/ornek.zip"
+    }
+  },
+  "aktarim_tek_basarisiz": {
+    "ne": "tek host: secilen dosyalarin hicbiri yerinde degil",
+    "is_basarili": false,
+    "sonuc": {
+      "hosts": [
+        {
+          "error": "Arsivlenecek mevcut ve okunabilir bir dosya bulunamadi. Dosya basina sebep: ['Dosya bulunamadi']. Yollar: ['/vhosting8/APPX-T.ear/log9/yok.log']. Okuma was kullanicisiyla denendi.",
+          "files": [],
+          "host": "localhost",
+          "status": "error"
+        }
+      ],
+      "overall_status": "failed"
+    }
+  },
+  "aktarim_cok_kismi": {
+    "ne": "iki host: birinin dosyasi arsive girdi, otekinin dosyasi yerinde yok",
+    "is_basarili": true,
+    "sonuc": {
+      "error": "",
+      "filename": "ornek.zip",
+      "hosts": [
+        {
+          "error": "",
+          "host": "SUNUCU-A",
+          "part_filename": "sunucu-a.zip",
+          "per_file_status": [
+            {
+              "error": "",
+              "host": "sunucu-a",
+              "path": "/vhosting8/APPX-T.ear/log1/server.log",
+              "status": "ok"
+            }
+          ],
+          "size_bytes": 1,
+          "status": "ok"
+        },
+        {
+          "error": "Bu hostta arsivlenecek okunabilir dosya yok; dosya basina sebep: Dosya bulunamadi",
+          "host": "SUNUCU-B",
+          "part_filename": "sunucu-b.zip",
+          "per_file_status": [
+            {
+              "error": "Dosya bulunamadi",
+              "host": "sunucu-b",
+              "path": "/vhosting8/APPX-T.ear/log9/yok.log",
+              "status": "error"
+            }
+          ],
+          "size_bytes": 0,
+          "status": "error"
+        }
+      ],
+      "is_fallback": false,
+      "overall_status": "partial",
+      "size_bytes": 1,
+      "staged_path": "/staging/ornek.zip"
+    }
+  },
+  "aktarim_cok_basarisiz": {
+    "ne": "iki host: hicbirinden dosya alinamadi",
+    "is_basarili": true,
+    "sonuc": {
+      "error": "Birlesik arsiv olusturulamadi: hicbir kaynak hosttan parca ZIP gelmedi (host sebepleri hosts[].error alaninda)",
+      "filename": "ornek.zip",
+      "hosts": [
+        {
+          "error": "Bu hostta arsivlenecek okunabilir dosya yok; dosya basina sebep: Dosya bulunamadi",
+          "host": "SUNUCU-A",
+          "part_filename": "sunucu-a.zip",
+          "per_file_status": [
+            {
+              "error": "Dosya bulunamadi",
+              "host": "sunucu-a",
+              "path": "/vhosting8/APPX-T.ear/log9/yok.log",
+              "status": "error"
+            }
+          ],
+          "size_bytes": 0,
+          "status": "error"
+        },
+        {
+          "error": "Bu hostta arsivlenecek okunabilir dosya yok; dosya basina sebep: Dosya bulunamadi",
+          "host": "SUNUCU-B",
+          "part_filename": "sunucu-b.zip",
+          "per_file_status": [
+            {
+              "error": "Dosya bulunamadi",
+              "host": "sunucu-b",
+              "path": "/vhosting8/APPX-T.ear/log8/yok.log",
+              "status": "error"
+            }
+          ],
+          "size_bytes": 0,
+          "status": "error"
+        }
+      ],
+      "is_fallback": false,
+      "overall_status": "failed",
+      "size_bytes": 0,
+      "staged_path": ""
+    }
+  },
+  "kesif_envanterde_yok": {
+    "ne": "kesif: hedef sunucu adi AWX envanterinde yok (elle yanlis yazilan ad)",
+    "is_basarili": false,
+    "sonuc": {
+      "hosts": [
+        {
+          "error": "sonuc bildirmedi (AWX envanterinde eslesmedi)",
+          "files": [],
+          "host": "OLMAYAN-SUNUCU",
+          "status": "unreachable"
+        }
+      ],
+      "log_dir_regex": "",
+      "overall_status": "failed"
+    }
+  },
+  "kesif_okunamayan": {
+    "ne": "kesif: kok altinda okunamayan dizin",
+    "is_basarili": false,
+    "sonuc": {
+      "hosts": [
+        {
+          "error": "Önce app'a ait EAR klasörlerini bul (daraltılmış keşif): okunamayan 1 yol: /vhosting8/APPX-T.ear/log1 (ilk sebep: [Errno 13] Permission denied: '/vhosting8/APPX-T.ear/log1') (kosan: was) | Sadece ilgili log dizinlerinde dosyaları bul: okunamayan 1 yol: /vhosting8/APPX-T.ear/log1 (ilk sebep: [Errno 13] Permission denied: '/vhosting8/APPX-T.ear/log1') (kosan: was)",
+          "files": [],
+          "host": "LOCALHOST",
+          "log_dir_regex": "logs?[0-9]*",
+          "status": "error"
+        }
+      ],
+      "log_dir_regex": "logs?[0-9]*",
+      "overall_status": "failed"
+    }
+  }
+}

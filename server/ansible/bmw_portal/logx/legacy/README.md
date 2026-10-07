@@ -86,7 +86,12 @@ yazıldığını merak ediyorsanız önce buraya bakın.
   alanları); bir sonraki düzenleme yalnız bu üç anahtarı seçecek şekilde daraltabilir.
 - `overall_status`: hiçbir host `ok` değilse `failed`; hepsi `ok` ise `success`; aksi `partial`.
 - Portal `failed`'da isteği "Tüm sunucularda keşif başarısız oldu." ile kapatır; ekranda yalnız
-  `status == ok` hostların dosyaları gösterilir, diğerleri "Erişilemeyen sunucular" listesindedir.
+  `status == ok` hostların dosyaları gösterilir, diğerleri "Taranamayan sunucular" listesindedir.
+- **`hosts[].error` EKRANA ÇIKAR** (2026-10-07): `status != ok` olan her sunucu, sebebiyle
+  birlikte hem kısmi keşifte (dosya seçimi) hem de keşif tümüyle düştüğünde (hata ekranı)
+  listelenir. Metin kullanıcıya bir cümlelik özetle birlikte AYNEN gösterilir; yolu, asıl hatayı
+  ve denenen kullanıcıyı taşımaya devam etmelidir. Özet kuralları `src/utils/legacySebep.ts`
+  içindedir ve bu metinlerdeki sabit ifadelere dayanır (bkz. "Portalın okuduğu alanlar").
 
 ### Güvenlik
 
@@ -211,8 +216,38 @@ archive_name: fa52e9adfd9fc71572ea8c7b15b65ed4.zip
 
 `overall_status`, `staged_path`, `filename`, `size_bytes`, `is_fallback`, `error` ve tek-host'ta
 `per_file_status`, çoklu-host'ta `hosts[]` (`host`, `status`, `part_filename`, `size_bytes`,
-`per_file_status`, `error`). Portal yalnız `staged_path`/`filename`/`size_bytes`/`is_fallback`
-ile indirme jetonu üretir; `overall_status` denetim kaydına yazılır.
+`per_file_status`, `error`). Portal `staged_path`/`filename`/`size_bytes`/`is_fallback` ile
+indirme jetonu üretir; `overall_status` denetim kaydına yazılır.
+
+### Portalın okuduğu alanlar (2026-10-07)
+
+Eskiden portal yalnızca arşiv alanlarına bakıyordu: aktarım düştüğünde ekran "Transfer başarısız
+oldu." deyip susuyor, aktarım KISMİ bittiğinde ise (bazı dosyalar ya da sunucular arşivde yok)
+arşiv hiçbir uyarı olmadan "hazır" diye sunuluyordu. Artık şu alanlar ekrana çıkar:
+
+| Alan                                                                                | Nerede gösterilir                                                                        |
+| ----------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| üst düzey `error`                                                                   | hata ekranı (çoklu-host birleştirme hatası)                                              |
+| `hosts[].status`, `hosts[].error`                                                   | hata ekranı ve indirme ekranındaki "arşiv eksik" uyarısı: dosya alınamayan sunucular     |
+| `per_file_status[].status`, `.error`, `.path` (üst düzeyde ya da `hosts[]` altında) | "arşiv eksik" uyarısı: arşive girmeyen dosyalar ve seçilen / giren / alınamayan sayıları |
+
+Üç biçim de okunur: tek-host arşivli (üst düzey `per_file_status`), tek-host arşivsiz (yalnız
+`hosts[{host, status, error}]`, dosya sebepleri metnin içinde), çoklu-host (`hosts[]` altında
+`per_file_status`).
+
+**Bu alanların adı ya da biçimi değişirse ekran sessizce boş kalır.** Bunu iki test bağlar:
+`logx-legacy-gercek-kosum.test.cjs` LG5 her biçimi GERÇEK koşumla üretip
+`src/components/logx_v2/__tests__/fixtures/legacy-sonuc-ornekleri.json` ile karşılaştırır; ekran
+testleri (`LegacySebepler.test.tsx`) AYNI dosyayı girdi alır. Biçim bilerek değişecekse örnek
+`LOGX_ORNEK_YAZ=1 node --test server/ansible/__tests__/logx-legacy-gercek-kosum.test.cjs` ile
+yeniden üretilir ve ekranın yeni biçimi okuduğu doğrulanır.
+
+Özet kurallarının dayandığı sabit ifadeler (değiştirilirse `src/utils/legacySebep.ts` de
+güncellenir): `AWX envanterinde eslesmedi`, `sonuc bildirmedi`, `okunamayan N yol`,
+`Dosya bulunamadi`, `Dosya okunamiyor`, `Path normal dosya degil`,
+`Bu hostta arsivlenecek okunabilir dosya yok`,
+`Arsivlenecek mevcut ve okunabilir bir dosya bulunamadi`,
+`hicbir kaynak hosttan parca ZIP gelmedi`, `Parca dizini aranamadi`.
 
 ### Ortak hazırlık (her kaynak host)
 
@@ -317,8 +352,11 @@ bildirdiğini ve `archive`'ın ZIP'e ne yazdığını TAKLİT eder; bu test onla
 - LG4: aktarım (iki host): host başına parça ZIP'ler tek arşivde birleşir; parça dizini ve
   geçici dizinler temizlenir.
 
-Ansible yoksa atlanır (LG2 ve LG4 ayrıca `community.general.archive` ister; LG3 root ile
-koşulamaz).
+- LG5: portalın okuduğu sonuç biçimleri (kısmi ve başarısız aktarım, tümüyle başarısız keşif)
+  gerçek koşumla üretilir ve ekran testlerinin kullandığı örnek dosyasıyla karşılaştırılır.
+
+Ansible yoksa atlanır (LG2, LG4 ve LG5'in aktarım örnekleri ayrıca `community.general.archive`
+ister; LG3 ve okunamayan dosya/dizin örnekleri root ile koşulamaz).
 
 Metinle ve render ile ölçülemeyenler (kanaryada doğrulanır):
 

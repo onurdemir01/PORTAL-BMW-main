@@ -23,6 +23,8 @@ type Props = {
   onRestart: () => void;
   /** Legacy: sunucu secimine don (uygulama ve elle eklenen sunucular korunur). */
   onBackToHosts?: () => void;
+  /** Playbook'un yayinladigi sunucu / dosya sebepleri (varsa mesajin hemen altinda durur). */
+  children?: React.ReactNode;
 };
 
 const FailedStep: React.FC<Props> = ({
@@ -31,6 +33,7 @@ const FailedStep: React.FC<Props> = ({
   technicalDetail,
   onRestart,
   onBackToHosts,
+  children,
 }) => {
   const [showOutput, setShowOutput] = useState(false);
   const [output, setOutput] = useState("");
@@ -61,6 +64,17 @@ const FailedStep: React.FC<Props> = ({
     <div className="flex flex-col items-center gap-4 py-8 text-center">
       <ExclamationTriangleIcon className="w-10 h-10 text-red-500" />
       <p className="text-sm max-w-xl text-[var(--text-primary)]">{message}</p>
+
+      {/* SEBEPLER DUGMELERDEN ONCE: "neden olmadi" sorusunun cevabi ham Ansible ciktisinin
+          icinde aranmak zorunda kalmasin. Eskiden yalnizca genel mesaj gorunuyordu. */}
+      {children && (
+        <div
+          className="w-full max-w-2xl rounded-xl border border-[var(--border)] p-3"
+          data-testid="logx-hata-sebep-kutusu"
+        >
+          {children}
+        </div>
+      )}
 
       <div className="flex items-center gap-2">
         {/* Tek secenek "her seyi sil, bastan basla" degil: Legacy'de uygulama ve elle

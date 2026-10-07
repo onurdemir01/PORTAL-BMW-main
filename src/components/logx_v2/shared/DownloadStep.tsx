@@ -84,19 +84,37 @@ const DownloadButton: React.FC<{ item: DownloadInfo; compact?: boolean }> = ({ i
   );
 };
 
-const DownloadStep: React.FC<{ download: DownloadInfo; downloads?: DownloadInfo[]; onRestart: () => void }> = ({
-  download, downloads, onRestart,
-}) => {
+type Props = {
+  download: DownloadInfo;
+  downloads?: DownloadInfo[];
+  onRestart: () => void;
+  /**
+   * Arsiv uretildi ama ICINDE OLMAYAN sunucu ya da dosyalar var (Legacy kismi aktarim).
+   * Doluysa "hazir" basligi yesil onay yerine uyariyla gosterilir ve icerik dugmeden ONCE durur:
+   * kullanici eksik arsivi tam sanip indirmesin.
+   */
+  eksik?: React.ReactNode;
+};
+
+const DownloadStep: React.FC<Props> = ({ download, downloads, onRestart, eksik }) => {
   // Sunucu `downloads[]` göndermezse (eski backend) tekil kayda düşeriz.
   const items = downloads && downloads.length ? downloads : [download];
   const multi = items.length > 1;
 
   return (
     <div className="flex flex-col items-center justify-center py-10 gap-4 text-center">
-      <CheckCircleIcon className="w-12 h-12 text-emerald-500" />
+      {eksik ? (
+        <ExclamationTriangleIcon aria-hidden="true" className="w-12 h-12 text-[var(--status-warning)]" />
+      ) : (
+        <CheckCircleIcon className="w-12 h-12 text-emerald-500" />
+      )}
       <div>
         <p className="text-sm font-semibold text-[var(--text-primary)]">
-          {multi ? `Log arşivleriniz hazır (${items.length} adet)` : "Log dosyanız hazır"}
+          {multi
+            ? `Log arşivleriniz hazır (${items.length} adet)`
+            : eksik
+              ? "Log dosyanız hazır — ama EKSİK"
+              : "Log dosyanız hazır"}
         </p>
         {multi ? (
           <p className="text-xs text-[var(--text-muted)] mt-1">
@@ -114,6 +132,15 @@ const DownloadStep: React.FC<{ download: DownloadInfo; downloads?: DownloadInfo[
           </p>
         )}
       </div>
+
+      {eksik && (
+        <div
+          className="w-full max-w-2xl rounded-xl border border-[var(--status-warning)] p-3 text-left"
+          data-testid="logx-arsiv-eksik"
+        >
+          {eksik}
+        </div>
+      )}
 
       {/* Arşiv paylaşımlı staging yerine kaynak host'un YEREL yedek dizinine düştüyse
           portal onu göremeyebilir. Eskiden kullanıcı bunu ancak indirmeye basıp 404
