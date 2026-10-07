@@ -2158,6 +2158,21 @@ export default function NginxSpaDiscovery() {
   // tamami eslesmesizdi (servis yetkisi) ve ekran yalnizca "0 SPA" diyordu.
   const hepsiEslesmesiz = !!rs && rs.routes > 0 && rs.unmatched === rs.routes;
   const kovalar = Object.entries(rs?.unmatchedReasons || {}).sort((a, b) => b[1] - a[1]);
+  // ── ESLESME KANITI ORANI (kullanici bulgusu 2026-10-08) ─────────────────────────────
+  // Uygulama satirinda "zayif kanit" rozeti VARDI ama TOPLAM oran ekranda YOKTU; kullanici
+  // ancak SQL ile gorebildi: 26.426 satirin 25.072'si (%94,9) 'ad' eslesmesi, 'selector'
+  // yalnizca 48. Bu sayi butun SPA kararlarinin zeminini anlatiyor ve gorunmek zorunda.
+  //
+  // `selector` = servis selector'u okundu, route'un arkasindaki is yuku KESIN.
+  // `ad`       = servis OKUNAMADI, servisle ayni adi tasiyan is yukune dusuldu - ZAYIF.
+  // ''         = hic eslesmedi.
+  const bm = rs?.byMatch || {};
+  const bmSelector = bm.selector || 0;
+  const bmAd = bm.ad || 0;
+  const bmOlculen = bmSelector + bmAd;
+  // YUZDE YALNIZ ESLESENLER UZERINDEN: eslesmeyenleri paydaya koymak "kanit kalitesi"
+  // sorusunu "kapsam" sorusuyla karistirirdi; eslesmeyen sayisi ayrica gosteriliyor.
+  const bmAdYuzde = bmOlculen > 0 ? Math.round((bmAd / bmOlculen) * 1000) / 10 : null;
   // TARAMA EKSIGI: "adi kurala uymayan SPA yok" cumlesi ancak tam taramada nitelemesiz soylenir.
   const cv = data?.coverage;
   const eksikTarama = [
@@ -2195,6 +2210,32 @@ export default function NginxSpaDiscovery() {
           style={{ color: 'var(--status-warning)', borderColor: 'var(--status-warning)' }}
         >
           {data.message}
+        </div>
+      )}
+
+      {/* KANIT ZEMINI: 'ad' esleşmesi baskınsa bunu ozette SOYLE. Uygulama basina rozet
+          vardi ama toplam oran gorunmuyordu; "12.458 SPA" ile "12.458 SPA, cogu ad
+          benzerligine dayali" ayni guven duzeyinde okunuyordu. */}
+      {bmAdYuzde != null && bmAd > 0 && (
+        <div
+          className="text-[12px] rounded-lg px-3 py-2 border"
+          style={
+            bmAdYuzde >= 50
+              ? { color: 'var(--status-warning)', borderColor: 'var(--status-warning)' }
+              : { color: 'var(--text-secondary)', borderColor: 'var(--border-subtle)' }
+          }
+        >
+          <b>Eşleşme kanıtı:</b> {nf(bmSelector)} satır servis <b>selector</b>’ü ile (kesin),{' '}
+          {nf(bmAd)} satır yalnız <b>ad benzerliği</b> ile (zayıf — %{bmAdYuzde})
+          {bm[''] ? `, ${nf(bm[''])} satır hiç eşleşmedi` : ''}.
+          {bmAdYuzde >= 50 && (
+            <>
+              {' '}
+              Servis okunamadığı için route’lar servisle aynı adı taşıyan iş yüküne bağlandı;
+              ad ile iş yükü adı ayrıştığı yerde <b>yanlış iş yüküne</b> bakılmış olabilir.
+              Düzeltmesi kod değil <b>yetki</b>: <code>services</code> (get/list) okuma izni.
+            </>
+          )}
         </div>
       )}
 

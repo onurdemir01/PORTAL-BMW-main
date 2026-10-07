@@ -69,9 +69,15 @@ test('SEEN6 Nginx Hub UI: Online = son gorulme (seenAt), Denetim nginx sekmeleri
   assert.ok(/<Th>Son görülme<\/Th><Th>Son dokum<\/Th>/.test(nim), 'Instances: son gorulme ve son dokum ayri sutun');
   const hub = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'src', 'components', 'nginx_console', 'NginxConsolePage.tsx'), 'utf8');
   // Kapi (canSee) arada olabilir: sekmenin BIR BILESEN actigini dogrula, yazimini degil.
-  for (const id of ['spa', 'api', 'envanter', 'audit']) {
+  // 'spa' ARTIK AYRI SEKME DEGIL: 2026-10-08'de 'spadiscovery' ile birlesti ve
+  // "Kapsam & Tasima" alt bolumu oldu (NginxSpaBirlesik). Yetki anahtari
+  // `tab:nginx:spa` YASIYOR - alt sekmeyi o aciyor (bkz. nginx-hub-access NH-A5).
+  for (const id of ['spadiscovery', 'api', 'envanter', 'audit']) {
     assert.ok(new RegExp(`\\{tab === '${id}'[\\s\\S]{0,80}<`).test(hub), `Hub sekmesi yok: ${id}`);
   }
+  // Birlesik sayfa IKI bolumu de aciyor olmali: biri dusunce oteki sessizce kaybolmasin.
+  const bir = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'src', 'components', 'nginx_console', 'NginxSpaBirlesik.tsx'), 'utf8');
+  assert.ok(/<NginxSpaDiscovery \/>/.test(bir) && /<NginxSpaAudit \/>/.test(bir), 'birlesik sayfa iki bolumu de acmali');
   const den = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'src', 'components', 'DenetimPage.tsx'), 'utf8');
   assert.ok(!/id: 'nginx(api|env|audit)?'/.test(den), 'Denetim sekme cubugunda nginx kalmamali');
   assert.ok(/export function NginxSpaAudit\(\)/.test(den) && /export const NGINX_DENETIM_HELP/.test(den), 'NginxSpaAudit + yardim export');

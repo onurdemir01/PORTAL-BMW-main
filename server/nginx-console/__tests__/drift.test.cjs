@@ -89,8 +89,10 @@ test('DR5 her sekmede KAYNAK satiri: hangi AWX isi besliyor, veri ne zamanki, na
   }
   const page = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'src', 'components', 'nginx_console', 'NginxConsolePage.tsx'), 'utf8');
   assert.ok(/<SourceNote source=\{SOURCE_OF\[tab\]\}/.test(page), 'kaynak satiri her sekmede cizilmeli');
+  // 'spa' sekmesi 2026-10-08'de 'spadiscovery' ile BIRLESTI (NginxSpaBirlesik); kaynak
+  // esleme tablosunda artik 'spadiscovery' var ve o da 'spa' kaynagina bagli.
   const map = page.slice(page.indexOf('const SOURCE_OF'), page.indexOf('};', page.indexOf('const SOURCE_OF')));
-  for (const [tab, src] of [['dashboard', 'console'], ['certs', 'console'], ['drift', 'console'], ['audit', 'audit'], ['cis', 'cis'], ['spa', 'spa'], ['api', 'api'], ['envanter', 'inventory']]) {
+  for (const [tab, src] of [['dashboard', 'console'], ['certs', 'console'], ['drift', 'console'], ['audit', 'audit'], ['cis', 'cis'], ['spadiscovery', 'spa'], ['api', 'api'], ['envanter', 'inventory']]) {
     assert.ok(new RegExp(`${tab}: '${src}'`).test(map), `${tab} sekmesi ${src} kaynagina baglanmali`);
   }
   assert.ok(/lastDump/.test(page) && /seenAt \|\| h\.dumpedAt/.test(page), 'dokum tabanli sekmelerde son tarama = en yeni dokum/gorulme');
