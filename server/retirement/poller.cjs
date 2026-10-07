@@ -179,9 +179,19 @@ async function deleteTick(now) {
 // yani is gece 02:00'de poller tarafindan baslatiliyor ve o anda kimse yok. Bu
 // sonlandirma olmadan hedef sonsuza dek 'stopping'de kalirdi - silme de hic
 // tetiklenmezdi (deleteTick yalniz 'stopped' hedefe bakar).
+//
+// GERI ALMA (2026-10-07, kullanici): "uygulamami geri aktif et vs ve yaptigimiz
+// degisiklikler geri alinmali." Ucuncu adim.
+//
+// `basarisiz` ALANI ADIMA OZEL VE BU KRITIK: eskiden basarisizlik dali kosulsuz
+// 'failed' yaziyordu. Geri alma icin 'failed' YETERSIZ degil TEHLIKELI de olabilirdi -
+// 'stopped' yazilmasi gerektigi dusunulse, yarim kalmis bir geri alma SILINEBILIR
+// duruma geri donerdi (deleteTick yalniz 'stopped' hedefe bakar). 'rollback_failed'
+// hicbir tick tarafindan alinmaz; insan mudahalesi bekler.
 const ADIMLAR = Object.freeze([
-  { durum: 'stopping', isAlani: 'last_job_id', kind: 'stop', basarili: 'stopped', zamanAlani: 'stopped_at' },
-  { durum: 'deleting', isAlani: 'delete_job_id', kind: 'delete', basarili: 'deleted', zamanAlani: 'deleted_at' },
+  { durum: 'stopping', isAlani: 'last_job_id', kind: 'stop', basarili: 'stopped', basarisiz: 'failed', zamanAlani: 'stopped_at' },
+  { durum: 'deleting', isAlani: 'delete_job_id', kind: 'delete', basarili: 'deleted', basarisiz: 'failed', zamanAlani: 'deleted_at' },
+  { durum: 'rolling_back', isAlani: 'rollback_job_id', kind: 'rollback', basarili: 'active', basarisiz: 'rollback_failed', zamanAlani: 'rolled_back_at' },
 ]);
 
 async function finalizeAdim(adim) {
@@ -223,17 +233,35 @@ async function finalizeAdim(adim) {
         );
         if (Number(kalan.rows?.[0]?.n) === 0)
           await db.query(`UPDATE retirement_records SET status = 'stopped', updated_at = GETUTCDATE() WHERE id = $1 AND status = 'stopping'`, [t.record_id]);
-      } else {
+      } else if (adim.kind === 'delete') {
         const kalan = await db.query(
           `SELECT COUNT(*) AS n FROM retirement_targets WHERE record_id = $1 AND status NOT IN ('deleted', 'skipped')`,
           [t.record_id],
         );
         if (Number(kalan.rows?.[0]?.n) === 0)
           await db.query(`UPDATE retirement_records SET status = 'deleted', updated_at = GETUTCDATE() WHERE id = $1`, [t.record_id]);
+      } else if (adim.kind === 'rollback') {
+        // DALLANMA ACIK YAZILDI. Eskiden `else` dali DELETE varsayiyordu; ucuncu adim
+        // eklenince geri alma oraya duser ve basarili bir GERI ALMA kaydi 'deleted'
+        // yapabilirdi - hic silinmemis bir uygulama silinmis gorunurdu.
+        //
+        // Hicbir hedef artik 'stopped'/'deleting' degilse retirement YURURLUKTE DEGIL:
+        // kayit 'open'a doner ve istenirse yeniden stop edilebilir. 'deleted' ya da
+        // 'cancelled' kayitlara DOKUNULMAZ.
+        const kalan = await db.query(
+          `SELECT COUNT(*) AS n FROM retirement_targets WHERE record_id = $1 AND status IN ('stopped', 'stopping', 'stop_scheduled', 'deleting')`,
+          [t.record_id],
+        );
+        if (Number(kalan.rows?.[0]?.n) === 0)
+          await db.query(
+            `UPDATE retirement_records SET status = 'open', stop_at = NULL, updated_at = GETUTCDATE()
+              WHERE id = $1 AND status NOT IN ('deleted', 'cancelled')`,
+            [t.record_id],
+          );
       }
     } else {
       await db.query(
-        `UPDATE retirement_targets SET status = 'failed', result_text = $1, updated_at = GETUTCDATE()
+        `UPDATE retirement_targets SET status = '${adim.basarisiz}', result_text = $1, updated_at = GETUTCDATE()
           WHERE id = $2 AND status = '${adim.durum}'`,
         [String(o.message || `${adim.kind} basarisiz`).slice(0, 1000), t.id],
       );

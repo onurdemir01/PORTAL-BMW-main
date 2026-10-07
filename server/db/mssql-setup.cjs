@@ -4264,6 +4264,24 @@ async function setupTables() {
       sql: `ALTER TABLE retirement_targets ADD detail_json NVARCHAR(MAX) NULL`,
     },
     {
+      // GERI ALMA (2026-10-07, kullanici): "eger belli bir t sure sonra, uygulama daha
+      // silinmeden sorun olursa geri donebilmek icin bir ozellik yapmaliyiz. Uygulamami
+      // geri aktif et vs ve yaptigimiz degisiklikler geri alinmali."
+      //
+      // AYRI IS ALANI, `last_job_id` YENIDEN KULLANILMAZ: poller STOP'u `last_job_id`,
+      // DELETE'i `delete_job_id` uzerinden sonuclandiriyor. Geri almayi ayni alana
+      // yazmak, yarim kalmis bir STOP'un sonucunu geri alma isinin ciktisiyla okumak
+      // demekti (bkz. poller.cjs ADIMLAR).
+      table: 'retirement_targets',
+      col: 'rollback_job_id',
+      sql: `ALTER TABLE retirement_targets ADD rollback_job_id INT NULL`,
+    },
+    {
+      table: 'retirement_targets',
+      col: 'rolled_back_at',
+      sql: `ALTER TABLE retirement_targets ADD rolled_back_at DATETIME2 NULL`,
+    },
+    {
       table: 'smart_tickets',
       col: 'cancel_note',
       sql: `ALTER TABLE smart_tickets ADD cancel_note NVARCHAR(1000) NULL`,

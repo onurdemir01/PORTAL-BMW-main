@@ -13,10 +13,18 @@ export interface RtDiscoveredTarget {
 // hubUnavailable (kural 6): Server_Hub_Jvms (ya da kolon listesi) okunamadi -> TUM hedeflerde hub null;
 // bu "tarama yok" DEGIL "olculemedi"dir. Alan yoksa (eski sunucu yaniti) okundu sayilir.
 export interface RtDiscovery { ok: boolean; message?: string; base: string; targets: RtDiscoveredTarget[]; summary: { total: number; bySite: { Pendik: number; Ankara: number }; byEnv: Record<string, number>; webMatched: number; prod: boolean; hubUnavailable?: boolean } }
-export type RtTargetStatus = 'pending' | 'planning' | 'planned' | 'stopping' | 'stopped' | 'failed' | 'skipped';
+// SUNUCUDAKI TUM DURUMLAR. 'stop_scheduled' (OCO penceresi), 'deleting'/'deleted' ve
+// geri alma durumlari ('rolling_back' | 'active' | 'rollback_failed') tipe GIRMEMISTI;
+// eksik birakmak, ekranda bu durumlarin hic ele alinmadigini derleyicinin ONAYLAMASI
+// demekti (tsc "overlap yok" diye uyardi, bkz. 2026-10-07).
+export type RtTargetStatus =
+  | 'pending' | 'planning' | 'planned' | 'stop_scheduled' | 'stopping' | 'stopped'
+  | 'deleting' | 'deleted' | 'rolling_back' | 'active' | 'rollback_failed'
+  | 'failed' | 'skipped';
 export interface RtTarget {
   id: number; recordId: number; host: string; site: string; env: string; appName: string; gen: number | null; appPath: string | null;
   web: RtWeb[]; status: RtTargetStatus; planText: string | null; resultText: string | null; lastJobId: number | null; stoppedAt: string | null; updatedAt: string;
+  deletedAt: string | null; rolledBackAt: string | null; rollbackJobId: number | null;
   /** Playbook'un `set_stats` ile yayınladığı AYRINTI: STEP satırları ve yeniden
    *  adlandırılan paketler. `planText` yalnız özet ("2 paket yeniden adlandırılacak");
    *  HANGİ paketler olduğu burada. İşlem geri alınamaz, onay ekranı bunu göstermeli.
@@ -45,6 +53,11 @@ export const retirementApi = {
   cancel: (id: number, reason: string): Promise<{ ok: boolean; record: RtRecord; message?: string }> => fetch(`${BASE}/${id}/cancel`, json({ reason })).then(safeJson),
   note: (id: number, text: string): Promise<{ ok: boolean; record: RtRecord; message?: string }> => fetch(`${BASE}/${id}/note`, json({ text })).then(safeJson),
   stop: (id: number, tid: number, confirmed: boolean): Promise<RtLaunch> => fetch(`${BASE}/${id}/targets/${tid}/stop`, json({ confirmed })).then(safeJson),
+  // GERI AL (2026-10-07): STOP'un tersi. Hedef 'rolling_back' olur olmaz zamanlanmis
+  // SILME devre disi kalir (deleteTick yalniz 'stopped' hedefe bakar) - ayri bir iptal
+  // cagrisi YOK ve olmasi da yanlis olurdu.
+  rollback: (id: number, tid: number, confirmed: boolean): Promise<RtLaunch & { web?: { denendi: number; atlanan: number; hata: number; notlar: string[] } }> =>
+    fetch(`${BASE}/${id}/targets/${tid}/rollback`, json({ confirmed })).then(safeJson),
   jobStatus: (id: number, tid: number, awxServerId: number, jobId: number): Promise<{ ok: boolean; status: string; output: string; result?: unknown; message?: string }> =>
     fetch(`${BASE}/${id}/targets/${tid}/job-status/${awxServerId}/${jobId}`).then(safeJson),
 };

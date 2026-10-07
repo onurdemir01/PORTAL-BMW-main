@@ -19,6 +19,10 @@ const REGISTRY_KEY = 'app_retirement_stop';
 // `set_stats` anahtari var. STOP'un template'ini kullanmak, plan_only gibi ortak bir
 // degisken yuzunden yanlis adimi tetiklemek demekti.
 const DELETE_REGISTRY_KEY = 'app_retirement_delete';
+// GERI ALMA (2026-10-07, kullanici): "eger belli bir t sure sonra, uygulama daha
+// silinmeden sorun olursa geri donebilmek icin bir ozellik yapmaliyiz. Uygulamami geri
+// aktif et vs ve yaptigimiz degisiklikler geri alinmali."
+const ROLLBACK_REGISTRY_KEY = 'app_retirement_rollback';
 const DEFAULT_DAYS = Number(process.env.RETIREMENT_DELETE_DAYS || 45);
 const SCC_MAIL_TO = (process.env.RETIREMENT_SCC_MAIL_TO || '').trim();
 const SCC_MAIL_CC = (process.env.RETIREMENT_SCC_MAIL_CC || '').trim();
@@ -43,6 +47,9 @@ function rowTarget(t) {
   return {
     id: t.id, recordId: t.record_id, host: t.host, site: t.site, env: t.env, appName: t.app_name, gen: t.jboss_gen, appPath: t.app_path,
     web, status: t.status, planText: t.plan_text, resultText: t.result_text, lastJobId: t.last_job_id, stoppedAt: t.stopped_at, updatedAt: t.updated_at,
+    // `deletedAt`/`rolledBackAt` ONYUZ ICIN DEGIL SADECE: /rollback kapisi da bunu
+    // okuyor. Donmuyordu ve `t.deletedAt` kontrolu OLU KODDU (hep undefined).
+    deletedAt: t.deleted_at ?? null, rolledBackAt: t.rolled_back_at ?? null, rollbackJobId: t.rollback_job_id ?? null,
     // PLAN/SONUC AYRINTISI (uretim bulgusu 2026-10-06): playbook `set_stats` ile STEP ve
     // RENAMED satirlarini da yayinliyor. Onceden YALNIZ tek satirlik RESULT saklaniyordu;
     // kullanici plani gozden gecirirken "2 paket yeniden adlandirilacak" goruyordu, HANGI
@@ -88,6 +95,81 @@ function webDondur(web) {
     jobId: null,
     message: null,
   }));
+}
+
+// STOP'ta kaldirilan vhost'lari GERI ACAR (2026-10-07).
+//
+// `apache_restore_vhost`, `apache_retire_vhost`un tersidir ve AYNI disiplini tasir:
+// yedek alir, arsivden geri tasir ya da yorum onegini kaldirir, `apachectl -t` gecmezse
+// YAPTIGINI GERI ALIR. Yeniden yazilmaz, var olan eylem cagrilir.
+//
+// YALNIZ GERCEKTEN KALDIRILMIS OLANLAR. 'manual' (NGINX) ya da 'failed' girdilerde
+// ortada geri acilacak bir sey YOK; onlari "geri acildi" saymak, yapilmayan bir isi
+// basari gostermek olurdu. Sebebi girdide yazili kalir.
+const APACHE_URUN_GERI = new Set(['RHA', 'IHS', 'APACHE', 'IBMIHS']);
+
+async function webGeriAl(id, tid, username) {
+  const ozet = { denendi: 0, atlanan: 0, hata: 0, notlar: [] };
+  const { rows } = await db().query(`SELECT web_result_json FROM retirement_targets WHERE id = $1`, [tid]);
+  let liste;
+  try {
+    liste = JSON.parse(rows?.[0]?.web_result_json || 'null');
+  } catch {
+    liste = null;
+  }
+  if (!Array.isArray(liste) || liste.length === 0) return ozet;
+
+  const reg = require('../ansible/playbook-registry.cjs');
+  const row = await reg.getByKey('server_hub_fix').catch(() => null);
+  const templateId = row && row.enabled !== false ? reg.getEffectiveTemplateId(row) : null;
+  const serverId = row && row.awxServerId != null ? Number(row.awxServerId) : 0;
+
+  for (const w of liste) {
+    if (w.status !== 'ok') {
+      ozet.atlanan += 1;
+      ozet.notlar.push(`${w.serverName || '?'}: kaldirilmamisti (${w.status}) — geri açılacak bir şey yok`);
+      continue;
+    }
+    if (!APACHE_URUN_GERI.has(String(w.product || '').toUpperCase())) {
+      ozet.atlanan += 1;
+      ozet.notlar.push(`${w.serverName}: ${w.product} — otomatik geri açma yok`);
+      continue;
+    }
+    if (!templateId) {
+      // SESSIZ GECMEZ: template tanimsizsa vhost GERI ACILMADI ve bu girdide yazili
+      // kalir. Uygulama ayaga kalkar ama onune trafik gelmez; bunu bilmek sart.
+      w.status = 'restore_manual';
+      w.message = 'server_hub_fix Template ID tanımsız — vhost ELLE geri açılmalı.';
+      ozet.hata += 1;
+      continue;
+    }
+    const extraVars = {
+      target_host: w.host,
+      action: 'apache_restore_vhost',
+      product: w.product,
+      file: w.confFile,
+      server_name: w.serverName,
+      reload: true,
+      plan_only: false,
+    };
+    try {
+      await require('../ansible/template-preflight.cjs').assertTemplateAcceptsExtraVars(serverId, templateId, extraVars, { label: 'server_hub_fix' });
+      const runner = require('../ansible/runner.cjs');
+      const r = await runner.launchJobOnServer(serverId, templateId, extraVars, '', {});
+      w.status = 'restoring';
+      w.jobId = r?.jobId ?? null;
+      w.message = `apache_restore_vhost iş #${r?.jobId ?? '?'}`;
+      ozet.denendi += 1;
+    } catch (e) {
+      w.status = 'restore_failed';
+      w.message = `geri açma başlatılamadı: ${e.message}`;
+      ozet.hata += 1;
+    }
+  }
+  await db().query(`UPDATE retirement_targets SET web_result_json = $1 WHERE id = $2`, [JSON.stringify(liste), tid]);
+  if (ozet.denendi || ozet.hata)
+    await addEvent(id, username, 'rollback-web', `vhost geri açma: ${ozet.denendi} iş başlatıldı, ${ozet.atlanan} atlandı, ${ozet.hata} hata`);
+  return ozet;
 }
 
 // AWX (Server Hub ile ayni desen)
@@ -276,6 +358,109 @@ function initRetirement(app) {
     } catch (err) { res.status(err.status || 500).json({ ok: false, message: err.message }); }
   });
 
+  // ── GERI AL (kullanici, 2026-10-07) ───────────────────────────────────────────────
+  // "Eger belli bir t sure sonra, uygulama daha SILINMEDEN sorun olursa geri donebilmek
+  // icin bir ozellik yapmaliyiz. Uygulamami geri aktif et vs ve yaptigimiz degisiklikler
+  // geri alinmali."
+  //
+  // NE YAPAR: STOP'un BIREBIR TERSI (app_retirement_rollback.yml):
+  //   paketler .<SMART_NO>.old sonekinden kurtarilir -> auto-start=true -> start
+  // Ayrica STOP'ta kaldirilan Apache/IHS vhost'lari apache_restore_vhost ile geri acilir.
+  //
+  // ── SILMEYI OTOMATIK IPTAL EDER (en kritik davranis) ──────────────────────────────
+  // `deleteTick` YALNIZ `status='stopped'` hedeflere bakiyor. Hedef 'rolling_back' olur
+  // olmaz zamanlanmis silme DEVRE DISI kalir; ayri bir "iptal" cagrisina gerek YOK ve
+  // olmasi da yanlis olurdu (iki ayri yerden yurutulen bir kural, biri unutulunca geri
+  // aktif edilmis bir uygulamayi siler).
+  //
+  // SILINMIS KAYIT GERI ALINAMAZ: DELETE paketleri siler, server-config/server-group'u
+  // kaldirir. O noktadan sonrasi yedekten restore isidir; burada "geri aldim" demek
+  // yapilmayan bir isi basari saymak olurdu.
+  router.post('/:id/targets/:tid/rollback', async (req, res) => {
+    const id = Number(req.params.id);
+    const tid = Number(req.params.tid);
+    const confirmed = req.body?.confirmed === true;
+    try {
+      const rec = await loadRecord(id);
+      if (!rec) return res.status(400).json({ ok: false, message: 'Kayıt yok.' });
+      const t = rec.targets.find((x) => x.id === tid);
+      if (!t) return res.status(400).json({ ok: false, message: 'Hedef yok.' });
+      if (!t.gen)
+        return res.status(400).json({ ok: false, message: `${t.host}: JBoss nesli belirlenemedi.` });
+
+      // DURUM KAPISI. Geri alinabilir TEK durum "durdurulmus ama silinmemis"tir;
+      // 'rollback_failed' tekrar denemeye aciktir (yarim kalmis bir geri almayi
+      // kilitlemek, uygulamayi erisilemez halde birakmak olurdu).
+      const IZINLI = new Set(['stopped', 'rollback_failed']);
+      if (t.deletedAt || t.status === 'deleted')
+        return res.status(400).json({
+          ok: false,
+          message:
+            `${t.appName} @ ${t.host} SILINDI — geri alma artık mümkün değil. Paketler ve ` +
+            `server-config kaldırıldı; geri dönüş yedekten restore işidir (JBoss ekibi).`,
+        });
+      if (t.status === 'deleting')
+        return res.status(409).json({
+          ok: false,
+          message: `${t.appName} @ ${t.host} için silme işi ŞU AN çalışıyor — geri alma başlatılamaz.`,
+        });
+      if (t.status === 'rolling_back')
+        return res.status(409).json({ ok: false, message: 'Geri alma işi zaten çalışıyor.' });
+      if (!IZINLI.has(t.status))
+        return res.status(400).json({
+          ok: false,
+          message: `${t.appName} @ ${t.host} durumu "${t.status}" — geri alma yalnızca durdurulmuş (stopped) hedefler için yapılır.`,
+        });
+
+      const extraVars = {
+        target_host: t.host,
+        application: t.appName,
+        jboss_gen: String(t.gen),
+        smart_no: rec.smartNo,
+        plan_only: !confirmed,
+        requested_by: req.session?.user?.username || 'Portal',
+      };
+      const r = await launch(
+        req,
+        `Retirement: ${confirmed ? 'GERI AL' : 'geri alma planı'} ${t.appName} @ ${t.host}`,
+        extraVars,
+        { op: confirmed ? 'rollback' : 'rollback_plan', id, tid },
+        ROLLBACK_REGISTRY_KEY,
+      );
+
+      if (confirmed) {
+        // DURUMU HEMEN DEGISTIR. Is numarasini yazmadan once durumu 'rolling_back'
+        // yapmak, silme kapisini AYNI transaksiyonda kapatir; arada gececek bir
+        // deleteTick'in hedefi 'stopped' gorup silmeye baslamasi imkansiz olur.
+        await db().query(
+          `UPDATE retirement_targets SET status = 'rolling_back', rollback_job_id = $1, result_text = NULL, updated_at = GETUTCDATE() WHERE id = $2`,
+          [r.jobId, tid],
+        );
+        await addEvent(
+          id,
+          req.session?.user?.username,
+          'rollback',
+          `${t.appName} @ ${t.host} GERİ ALINIYOR (iş #${r.jobId}) — zamanlanmış silme devre dışı`,
+        );
+        // WEB KATMANI: STOP'ta kaldirilan vhost'lar geri acilir. `apache_restore_vhost`
+        // apache_retire_vhost'un tersidir ve ayni disiplini tasir (yedek, apachectl -t,
+        // gecmezse geri alma). NGINX hedefleri otomatik kaldirilmamisti ('manual'), geri
+        // acilacak bir sey de yok - sessizce "geri acildi" demeyiz.
+        const web = await webGeriAl(id, tid, req.session?.user?.username);
+        return res.json({ ok: true, ...r, planOnly: false, web });
+      }
+
+      await db().query(
+        `UPDATE retirement_targets SET rollback_job_id = $1, updated_at = GETUTCDATE() WHERE id = $2`,
+        [r.jobId, tid],
+      );
+      await addEvent(id, req.session?.user?.username, 'rollback_plan', `${t.appName} @ ${t.host} geri alma planı (iş #${r.jobId})`);
+      res.json({ ok: true, ...r, planOnly: true });
+    } catch (err) {
+      res.status(err.status || 500).json({ ok: false, message: err.message });
+    }
+  });
+
   // Is durumu: bitince hedef/kayit durumu guncellenir (set_stats app_retirement_stop_result)
   router.get('/:id/targets/:tid/job-status/:serverId/:jobId', async (req, res) => {
     const id = Number(req.params.id); const tid = Number(req.params.tid);
@@ -364,14 +549,24 @@ function initRetirement(app) {
     // basarili olmus bir silmeyi basarisiz gostermek olurdu.
     async (kind, t) => {
       const reg = require('../ansible/playbook-registry.cjs');
-      const row = await reg.getByKey(kind === 'stop' ? REGISTRY_KEY : DELETE_REGISTRY_KEY).catch(() => null);
+      const KEYS = { stop: REGISTRY_KEY, delete: DELETE_REGISTRY_KEY, rollback: ROLLBACK_REGISTRY_KEY };
+      const row = await reg.getByKey(KEYS[kind] || DELETE_REGISTRY_KEY).catch(() => null);
       const serverId = row && row.awxServerId != null ? Number(row.awxServerId) : 0;
       const runner = require('../ansible/runner.cjs');
-      const info = await runner.getJobStatusOnServer(serverId, Number(t.delete_job_id));
+      // IS NUMARASI ADIMIN KENDI ALANINDAN gelir: poller `job_id` olarak secip veriyor.
+      // `t.delete_job_id` SABIT YAZMAK, STOP ve GERI ALMA isleri icin HEP null okumak
+      // demekti (adim kendi alanini `job_id` takma adiyla donduruyor, bkz. finalizeAdim).
+      const jobId = Number(t.job_id ?? t.delete_job_id);
+      const info = await runner.getJobStatusOnServer(serverId, jobId);
       const TERMINAL = new Set(['successful', 'failed', 'error', 'canceled']);
       if (!TERMINAL.has(info.status)) return { terminal: false };
       const { extractStatsKey } = require('../opsx/index.cjs');
-      const r = extractStatsKey(info.artifacts, kind === 'stop' ? 'app_retirement_stop_result' : 'app_retirement_delete_result') || null;
+      const STATS = {
+        stop: 'app_retirement_stop_result',
+        delete: 'app_retirement_delete_result',
+        rollback: 'app_retirement_rollback_result',
+      };
+      const r = extractStatsKey(info.artifacts, STATS[kind] || STATS.delete) || null;
       const line = String(r?.line || '');
       const msg = line.split('	').slice(2).join(' — ') || info.status;
       // ARTIFACT OKUNAMADIYSA is 'successful' olsa bile OK SAYILMAZ: playbook sonucu
@@ -418,4 +613,4 @@ function initRetirement(app) {
   console.log('[Retirement] mounted at /api/retirement');
 }
 
-module.exports = { initRetirement, REGISTRY_KEY, DELETE_REGISTRY_KEY, DEFAULT_DAYS };
+module.exports = { initRetirement, REGISTRY_KEY, DELETE_REGISTRY_KEY, ROLLBACK_REGISTRY_KEY, DEFAULT_DAYS };

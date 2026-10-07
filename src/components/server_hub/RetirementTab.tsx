@@ -5,7 +5,7 @@
 // her hedef icin STOP once PLAN kosar, onaylaninca uygulanir. Silme tarihi: kaydi acan secer, bos ise
 // stop + N gun (varsayilan 45). Silme ve IP/LB/DNS adimlari sonraki surum (kayitta alanlari var).
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { PlusIcon, ArrowPathIcon, XMarkIcon, StopCircleIcon, ClipboardDocumentCheckIcon, TrashIcon } from '@heroicons/react/24/outline';
+import { PlusIcon, ArrowPathIcon, XMarkIcon, StopCircleIcon, ClipboardDocumentCheckIcon, TrashIcon, ArrowUturnLeftIcon } from '@heroicons/react/24/outline';
 import { retirementApi, type RtRecordRow, type RtRecord, type RtDiscovery, type RtDiscoveredTarget, type RtTarget, type RtTargetStatus } from '@/api/retirementApi';
 import { useJobTracker } from '@/contexts/JobTrackerContext';
 import { Modal } from '@/components/common/Modal';
@@ -23,7 +23,15 @@ const inputStyle: React.CSSProperties = { borderColor: 'var(--border)', backgrou
 
 const TSTATUS: Record<RtTargetStatus, { label: string; color: string }> = {
   pending: { label: 'bekliyor', color: 'var(--status-neutral)' }, planning: { label: 'plan koşuyor', color: 'var(--status-info)' }, planned: { label: 'plan hazır', color: 'var(--status-info)' },
-  stopping: { label: 'durduruluyor', color: 'var(--status-warning)' }, stopped: { label: 'DURDURULDU', color: 'var(--status-success)' }, failed: { label: 'başarısız', color: 'var(--status-danger)' }, skipped: { label: 'atlandı', color: 'var(--status-neutral)' },
+  stop_scheduled: { label: 'OCO penceresine zamanlandı', color: 'var(--status-info)' },
+  stopping: { label: 'durduruluyor', color: 'var(--status-warning)' }, stopped: { label: 'DURDURULDU', color: 'var(--status-success)' },
+  deleting: { label: 'siliniyor', color: 'var(--status-warning)' }, deleted: { label: 'SİLİNDİ', color: 'var(--status-neutral)' },
+  // GERI ALMA (2026-10-07). 'active' YESIL ve 'DURDURULDU'dan AYRI okunmali: ikisi de
+  // "basarili" ama biri uygulamanin kapali, oteki ACIK oldugu anlamina geliyor.
+  rolling_back: { label: 'geri alınıyor', color: 'var(--status-warning)' },
+  active: { label: 'GERİ AKTİF', color: 'var(--status-success)' },
+  rollback_failed: { label: 'geri alma BAŞARISIZ', color: 'var(--status-danger)' },
+  failed: { label: 'başarısız', color: 'var(--status-danger)' }, skipped: { label: 'atlandı', color: 'var(--status-neutral)' },
 };
 const RSTATUS: Record<string, { label: string; color: string }> = {
   open: { label: 'açık', color: 'var(--status-info)' }, stopping: { label: 'stop sürüyor', color: 'var(--status-warning)' }, stopped: { label: 'durduruldu — silme bekliyor', color: 'var(--status-success)' },
@@ -242,6 +250,7 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState<number | null>(null);
   const [ask, setAsk] = useState<{ t: RtTarget } | null>(null);
+  const [geriAl, setGeriAl] = useState<{ t: RtTarget } | null>(null);
   const [hubDurum, setHubDurum] = useState<StopHubDurumu>('denetleniyor');
   const hubIstek = useRef(0);
 
@@ -277,6 +286,34 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
           if (!s.ok) throw new Error(s.message || 'Durum okunamadı.');
           if (TERMINAL.has(s.status) && !done) { done = true; load(); }
           return { status: s.status, output: s.output || '', result: s.result };
+        },
+      });
+      await load();
+    } catch (e: unknown) { toast.error(e instanceof Error ? e.message : String(e)); } finally { setBusy(null); }
+  };
+  // ── GERI AL (kullanici, 2026-10-07) ─────────────────────────────────────────────
+  // "Uygulamami geri aktif et vs ve yaptigimiz degisiklikler geri alinmali."
+  // Hedef 'rolling_back' olur olmaz zamanlanmis SILME devre disi kalir.
+  const rollback = async (t: RtTarget, confirmed: boolean) => {
+    setBusy(t.id); setGeriAl(null);
+    try {
+      const r = await retirementApi.rollback(id, t.id, confirmed);
+      if (!r.ok) { toast.error(r.message || 'İş başlatılamadı.'); return; }
+      toast.success(`${confirmed ? 'Geri alma' : 'Geri alma planı'} işi başladı (#${r.jobId}).`);
+      // VHOST GERI ACMA SESSIZ KALMAZ: atlanan/hatali girdiler kullaniciya soylenir,
+      // yoksa uygulama ayaga kalkar ama onune trafik gelmez ve sebebi gorunmez.
+      if (confirmed && r.web) {
+        if (r.web.hata) toast.error(`${r.web.hata} vhost geri açılamadı — Olaylar listesine bakın.`);
+        else if (r.web.denendi) toast.success(`${r.web.denendi} vhost geri açma işi başlatıldı.`);
+      }
+      let done = false;
+      addJob({
+        title: `Retirement: ${confirmed ? 'GERİ AL' : 'geri alma planı'} ${t.appName} @ ${t.host}`,
+        fetchStatus: async () => {
+          const st = await retirementApi.jobStatus(id, t.id, r.awxServerId, r.jobId as number);
+          if (!st.ok) throw new Error(st.message || 'Durum okunamadı.');
+          if (TERMINAL.has(st.status) && !done) { done = true; load(); }
+          return { status: st.status, output: st.output || '', result: st.result };
         },
       });
       await load();
@@ -324,6 +361,15 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
                           <div className="flex gap-1">
                             <button disabled={busy != null} onClick={() => stop(t, false)} className={SM_BTN} style={smBtn()} title="Sunucuda plan koş: ne yapılacağını göster, hiçbir şey değişmez"><ClipboardDocumentCheckIcon className="w-3.5 h-3.5" /> Plan</button>
                             {t.status === 'planned' && <button disabled={busy != null} onClick={() => stopSor(t)} className={SM_BTN} style={{ ...smBtn(true), background: 'var(--status-danger)', borderColor: 'var(--status-danger)' }}><StopCircleIcon className="w-3.5 h-3.5" /> STOP</button>}
+                          </div>
+                        )}
+                        {/* GERI AL: yalniz durdurulmus ve HENUZ SILINMEMIS hedeflerde.
+                            'rollback_failed' tekrar denemeye acik - yarim kalmis bir geri
+                            almayi kilitlemek uygulamayi erisilemez birakirdi. */}
+                        {(t.status === 'stopped' || t.status === 'rollback_failed') && !t.deletedAt && (
+                          <div className="flex gap-1 mt-1">
+                            <button disabled={busy != null} onClick={() => rollback(t, false)} className={SM_BTN} style={smBtn()} title="Geri alma planı: ne yapılacağını göster, hiçbir şey değişmez"><ClipboardDocumentCheckIcon className="w-3.5 h-3.5" /> Geri alma planı</button>
+                            <button disabled={busy != null} onClick={() => setGeriAl({ t })} className={SM_BTN} style={{ ...smBtn(true), background: 'var(--status-ok, #15803d)', borderColor: 'var(--status-ok, #15803d)' }} title="Uygulamayı geri aktif et: paketler geri adlandırılır, auto-start açılır, JVM başlatılır, vhost'lar geri açılır"><ArrowUturnLeftIcon className="w-3.5 h-3.5" /> Geri aktif et</button>
                           </div>
                         )}
                       </td>
@@ -376,6 +422,30 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
             <p className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>auto-start kapatılır, JVM durdurulur, paket(ler) <code>.{rec?.smartNo}.old</code> yapılır. {ask.t.env === 'PROD' ? 'PROD: SCC bilgilendirme maili gider.' : ''} Geri almak için JVM elle başlatılır ve paket adı düzeltilir.</p>
             <StopHubUyari durum={hubDurum} />
             <div className="flex justify-end gap-2"><button onClick={() => setAsk(null)} className={SM_BTN} style={smBtn()}>İptal</button><button onClick={() => stop(ask.t, true)} className={SM_BTN} style={{ ...smBtn(true), background: 'var(--status-danger)', borderColor: 'var(--status-danger)' }}>Onayla ve durdur</button></div>
+          </div>
+        </div>
+      )}
+      {/* GERI ALMA ONAYI. Plan dugmesi ayri duruyor; bu pencere GERCEK islemi onaylatir
+          ve NE OLACAGINI madde madde yazar - "geri aktif et" tek kelimeyle gecilecek
+          kadar kucuk bir islem degil (JVM baslatilir, trafik geri doner). */}
+      {geriAl && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,.45)' }} onClick={() => setGeriAl(null)}>
+          <div className="rounded-xl border p-4 max-w-xl w-full space-y-3" style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border)' }} onClick={(e) => e.stopPropagation()}>
+            <div className="text-sm font-semibold">{geriAl.t.appName} @ {geriAl.t.host} geri aktif edilecek</div>
+            <ul className="text-[12px] space-y-1 list-disc pl-4" style={{ color: 'var(--text-secondary)' }}>
+              <li>Paketler <code>.{rec?.smartNo}.old</code> sonekinden kurtarılır (hedefte aynı adlı yeni bir paket varsa <b>üzerine yazılmaz, atlanır</b>)</li>
+              <li><code>auto-start=true</code> yapılır</li>
+              <li>JVM başlatılır ve RUNNING olması beklenir</li>
+              <li>STOP'ta kaldırılan Apache/IHS vhost'ları geri açılır (<code>apachectl -t</code> geçmezse geri alınır)</li>
+              <li><b>Zamanlanmış silme devre dışı kalır</b> — hedef artık "stopped" olmadığı için silme işi hiç tetiklenmez</li>
+            </ul>
+            <div className="text-[11px] rounded-lg px-3 py-2 border" style={{ color: 'var(--text-secondary)', borderColor: 'var(--border-subtle)' }}>
+              Uygulama <b>canlıya geri döner</b>. PROD hedefte trafik almaya başlar — bunun planlı olduğundan emin olun.
+            </div>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setGeriAl(null)} className={SM_BTN} style={smBtn()}>İptal</button>
+              <button onClick={() => rollback(geriAl.t, true)} className={SM_BTN} style={{ ...smBtn(true), background: 'var(--status-ok, #15803d)', borderColor: 'var(--status-ok, #15803d)' }}>Onayla ve geri aktif et</button>
+            </div>
           </div>
         </div>
       )}
