@@ -20,8 +20,10 @@
 //        log1/server.log ile log2/server.log AYNI ADLA birbirini ezmez
 //   LG4  aktarim (iki host): host basina parca ZIP'ler tek arsivde birlesir, gecici dizinler
 //        temizlenir
+//   LG5  portal ekraninin okudugu sonuc bicimleri (kismi / basarisiz) gercek kosumla uretilir ve
+//        ekran testlerinin girdisi olan ornek dosyasiyla karsilastirilir (dosyanin sonunda)
 //
-// KOSUL: PATH'te ansible-playbook (LG2/LG4 icin ayrica community.general.archive). Yoksa testler
+// KOSUL: PATH'te ansible-playbook (LG2/LG4/LG5 icin ayrica community.general.archive). Yoksa testler
 // ATLANIR (ayni sozlesme: scalex-sure-kirilimi O2a/O2b; CI'da Ansible'in kurulu olmasini
 // scalex-verify-timing VT0 zorlar). Windows'ta ansible calismaz.
 // Uretimden farklar bilerek: yerel baglanti, `ansible_become=false` (dzdo/was gecisi yok),
@@ -367,3 +369,161 @@ test(
     }
   },
 );
+
+// ── LG5: PORTAL EKRANININ OKUDUGU BICIMLER ────────────────────────────────────────────────
+// Basarisizlik ekrani ve "arsiv eksik" uyarisi playbook'un yayinladigi alanlari okur:
+// hosts[].status / error, per_file_status[].status / error, ust duzey error. O ekranin
+// testleri (src/components/logx_v2/__tests__/LegacySebepler.test.tsx) asagidaki ORNEK DOSYASINI
+// girdi olarak kullanir. Burada her ornek GERCEK playbook ciktisiyla karsilastirilir: playbook
+// bicimi degistirirse bu test kizarir; ekran testleri eski bicimle yesil KALAMAZ.
+//
+// Ornekleri yeniden uretmek icin:  LOGX_ORNEK_YAZ=1 node --test <bu dosya>
+const ORNEK_DOSYASI = path.join(
+  __dirname,
+  '..',
+  '..',
+  '..',
+  'src',
+  'components',
+  'logx_v2',
+  '__tests__',
+  'fixtures',
+  'legacy-sonuc-ornekleri.json',
+);
+const ORNEK_YAZ = process.env.LOGX_ORNEK_YAZ === '1';
+const ornekleriOku = () =>
+  fs.existsSync(ORNEK_DOSYASI) ? JSON.parse(fs.readFileSync(ORNEK_DOSYASI, 'utf8')) : {};
+
+/** Makineye ozgu degerleri sabitler: gecici kok -> '', arsiv boyutu -> 1, host sirasi -> ada gore. */
+function ornekle(kok, sonuc) {
+  const o = JSON.parse(JSON.stringify(sonuc).split(kok).join(''), (k, v) =>
+    k === 'size_bytes' && Number(v) > 0 ? 1 : v,
+  );
+  if (Array.isArray(o.hosts))
+    o.hosts.sort((a, b) => String(a.host).localeCompare(String(b.host), 'en'));
+  return o;
+}
+
+const aktarimVars = (kok, secili) => ({
+  selected_files: secili.map(([host, f]) => ({ host, path: path.join(kok, f) })),
+  staging_dir: path.join(kok, 'staging'),
+  fallback_dir: path.join(kok, 'fallback'),
+  archive_name: 'ornek.zip',
+  was_tmp_dir: path.join(kok, 'dump', '{{ inventory_hostname }}', 'logx-ornek'),
+});
+const IKI_HOST = 'sunucu-a,sunucu-b,';
+const YOK = `${EAR}/log9/yok.log`;
+const ROOT_ATLA = ROOT && 'root her dosyayi okur';
+
+const ORNEKLER = [
+  {
+    ad: 'aktarim_tek_kismi',
+    ne: 'tek host: bir dosya arsive girdi, biri yerinde yok, biri okunamiyor',
+    skip: ARSIV_YOK || ROOT_ATLA,
+    playbook: AKTARIM,
+    kur(kok) {
+      fs.chmodSync(path.join(kok, EAR, 'log2', 'server.log'), 0o000);
+      return aktarimVars(kok, [
+        ['localhost', `${EAR}/log1/server.log`],
+        ['localhost', YOK],
+        ['localhost', `${EAR}/log2/server.log`],
+      ]);
+    },
+  },
+  {
+    ad: 'aktarim_tek_basarisiz',
+    ne: 'tek host: secilen dosyalarin hicbiri yerinde degil',
+    skip: ARSIV_YOK,
+    playbook: AKTARIM,
+    kur: (kok) => aktarimVars(kok, [['localhost', YOK]]),
+  },
+  {
+    ad: 'aktarim_cok_kismi',
+    ne: 'iki host: birinin dosyasi arsive girdi, otekinin dosyasi yerinde yok',
+    skip: ARSIV_YOK,
+    playbook: AKTARIM,
+    envanter: IKI_HOST,
+    kur: (kok) =>
+      aktarimVars(kok, [
+        ['sunucu-a', `${EAR}/log1/server.log`],
+        ['sunucu-b', YOK],
+      ]),
+  },
+  {
+    ad: 'aktarim_cok_basarisiz',
+    ne: 'iki host: hicbirinden dosya alinamadi',
+    skip: ARSIV_YOK,
+    playbook: AKTARIM,
+    envanter: IKI_HOST,
+    kur: (kok) =>
+      aktarimVars(kok, [
+        ['sunucu-a', YOK],
+        ['sunucu-b', `${EAR}/log8/yok.log`],
+      ]),
+  },
+  {
+    ad: 'kesif_envanterde_yok',
+    ne: 'kesif: hedef sunucu adi AWX envanterinde yok (elle yanlis yazilan ad)',
+    skip: ANSIBLE_YOK,
+    playbook: KESIF,
+    kur: (kok) => ({
+      app_name: 'APPX',
+      target_hosts: 'OLMAYAN-SUNUCU',
+      legacy_log_roots: [path.join(kok, 'vhosting8')],
+    }),
+  },
+  {
+    ad: 'kesif_okunamayan',
+    ne: 'kesif: kok altinda okunamayan dizin',
+    skip: ANSIBLE_YOK || ROOT_ATLA,
+    playbook: KESIF,
+    kur(kok) {
+      fs.chmodSync(path.join(kok, EAR, 'log1'), 0o000);
+      return {
+        app_name: 'APPX',
+        target_hosts: 'localhost',
+        legacy_log_roots: [path.join(kok, 'vhosting8')],
+      };
+    },
+  },
+];
+
+for (const o of ORNEKLER) {
+  test(
+    `LG5 ekranin okudugu bicim GERCEK ciktiyla ayni: ${o.ad} (${o.ne})`,
+    { skip: o.skip },
+    () => {
+      const kok = agacKur();
+      try {
+        fs.mkdirSync(path.join(kok, 'staging'));
+        const { rc, sonuc } = kostur(o.playbook, o.kur(kok), kok, o.envanter);
+        const gercek = { is_basarili: rc === 0, sonuc: ornekle(kok, sonuc) };
+        if (ORNEK_YAZ) {
+          const hepsi = ornekleriOku();
+          hepsi._aciklama =
+            'GERCEK playbook ciktilari (gecici kok dizin silinmis, arsiv boyutu 1). ELLE DUZENLENMEZ. ' +
+            'Yeniden uretmek icin: LOGX_ORNEK_YAZ=1 node --test server/ansible/__tests__/logx-legacy-gercek-kosum.test.cjs';
+          hepsi[o.ad] = { ne: o.ne, ...gercek };
+          fs.writeFileSync(ORNEK_DOSYASI, `${JSON.stringify(hepsi, null, 2)}\n`);
+          return;
+        }
+        const ornek = ornekleriOku()[o.ad];
+        assert.ok(ornek, `${o.ad} ornek dosyasinda yok: ${ORNEK_DOSYASI}`);
+        assert.deepEqual(
+          gercek,
+          { is_basarili: ornek.is_basarili, sonuc: ornek.sonuc },
+          `${o.ad}: playbook ciktisi ornekten FARKLI. Bicim bilerek degistiyse ornegi yeniden uretin ` +
+            '(LOGX_ORNEK_YAZ=1) ve ekranin yeni bicimi okudugunu dogrulayin.',
+        );
+      } finally {
+        spawnSync('chmod', ['-R', 'u+rwx', kok]);
+        temizle(kok);
+      }
+    },
+  );
+}
+
+test('LG5b ornek dosyasinda sahipsiz ornek yok (her ornek gercek kosumla karsilastiriliyor)', () => {
+  const adlar = Object.keys(ornekleriOku()).filter((k) => !k.startsWith('_'));
+  assert.deepEqual(adlar.sort(), ORNEKLER.map((o) => o.ad).sort());
+});

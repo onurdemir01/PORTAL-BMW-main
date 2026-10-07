@@ -26,6 +26,8 @@ import SelectedTargetsBar from './steps/ocp/SelectedTargetsBar';
 import JobProgress from './shared/JobProgress';
 import DownloadStep from './shared/DownloadStep';
 import FailedStep from './shared/FailedStep';
+import LegacySorunlar from './shared/LegacySorunlar';
+import { aktarimSorunlari, kesifSorunlari, sorunVar, eksikOzeti } from './shared/legacySonuc';
 import ContextChips from '@/components/common/ContextChips';
 import LogXYonetimDugmesi from './shared/LogXYonetimDugmesi';
 import { isProdEnv } from '@/utils/env';
@@ -486,6 +488,27 @@ const LogXWizardPage: React.FC = () => {
   // adımına indiriyoruz — orası listeyi kendiliğinden geri getirir.
   // (Kural: render edemeyeceğimiz bir adımı asla seçme.)
   if (step === 'ocp_namespace_picker' && !namespaceList) step = 'ocp_namespace_resolving';
+
+  // LEGACY: playbook'un yayinladigi SUNUCU / DOSYA SEBEPLERI. Eskiden yalnizca kismi
+  // kesifte gorunuyordu; kesif ya da aktarim tumuyle dustugunde ekran "basarisiz oldu"
+  // deyip susuyor, aktarim KISMI bittiginde ise eksik arsiv "hazir" diye sunuluyordu.
+  // Kaynak SON ISIN artifact'idir (istek kaydindaki kesif sonucu DEGIL): aktarim
+  // dustugunde istekte hala onceki BASARILI kesif durur ve yanlis sebebi gosterirdi.
+  const legacyManualHosts =
+    ((request?.input as { manualHosts?: string[] } | null)?.manualHosts as string[]) || [];
+  const sonIs = lastJob(jobs);
+  const legacyHata =
+    request?.platform === 'legacy' && step === 'failed'
+      ? sonIs?.jobType === 'legacy_transfer'
+        ? { baslik: 'Dosya alınamayan sunucular', sorunlar: aktarimSorunlari(sonIs.artifacts) }
+        : sonIs?.jobType === 'legacy_discovery'
+          ? { baslik: 'Taranamayan sunucular', sorunlar: kesifSorunlari(sonIs.artifacts) }
+          : null
+      : null;
+  const legacyEksik =
+    request?.platform === 'legacy' && step === 'ready'
+      ? aktarimSorunlari(jobOfType(jobs, 'legacy_transfer')?.artifacts)
+      : null;
 
   // Sepet (biriken hedefler) SEÇİM adımlarının üstünde şerit olarak durur — ayrı bir
   // "Toplanacak Uygulamalar" adımı YOK. Kullanıcı ekle → namespace seç → ekle döngüsünü
@@ -956,7 +979,25 @@ const LogXWizardPage: React.FC = () => {
           })()}
 
         {step === 'ready' && download && (
-          <DownloadStep download={download} downloads={downloadList} onRestart={restart} />
+          <DownloadStep
+            download={download}
+            downloads={downloadList}
+            onRestart={restart}
+            eksik={
+              sorunVar(legacyEksik) ? (
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold text-[var(--text-primary)]">
+                    {eksikOzeti(legacyEksik)}
+                  </p>
+                  <LegacySorunlar
+                    sorunlar={legacyEksik}
+                    sunucuBasligi="Dosya alınamayan sunucular"
+                    manualHosts={legacyManualHosts}
+                  />
+                </div>
+              ) : undefined
+            }
+          />
         )}
 
         {step === 'expired' && (
@@ -998,7 +1039,16 @@ const LogXWizardPage: React.FC = () => {
                 ? () => void backToHosts()
                 : undefined
             }
-          />
+          >
+            {legacyHata && sorunVar(legacyHata.sorunlar) && (
+              <LegacySorunlar
+                sorunlar={legacyHata.sorunlar}
+                sunucuBasligi={legacyHata.baslik}
+                manualHosts={legacyManualHosts}
+                testId="logx-basarisizlik-sebepleri"
+              />
+            )}
+          </FailedStep>
         )}
       </div>
     </div>

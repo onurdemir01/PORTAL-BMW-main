@@ -53,6 +53,8 @@ import {
   toNumericSize,
 } from '@/components/logx_v2/shared/logFileMeta';
 import { fmtRelative, fmtDateTime } from '@/utils/datetime';
+import LegacySorunlar from '@/components/logx_v2/shared/LegacySorunlar';
+import { kesifSorunlari } from '@/components/logx_v2/shared/legacySonuc';
 
 interface Props {
   result: LegacyDiscoveryResult;
@@ -167,7 +169,7 @@ const FileSelectionStep: React.FC<Props> = ({
 
   const key = (host: string, path: string) => `${host}::${path}`;
 
-  const failedHosts = (result.hosts || []).filter((h) => h.status !== 'ok');
+  const taranamayan = useMemo(() => kesifSorunlari(result), [result]);
   const okHosts = useMemo(
     () => (result.hosts || []).filter((h) => h.status === 'ok'),
     [result.hosts],
@@ -415,27 +417,15 @@ const FileSelectionStep: React.FC<Props> = ({
       )}
       {/* TARANAMAYAN SUNUCULAR SEBEPLERIYLE. Eskiden yalnizca adlar listeleniyordu;
           `h.error` hic gosterilmiyordu. Elle eklenen (envanterde olmayan) bir sunucu
-          taranamadiysa en olasi sebep adin yanlis yazilmasidir — bu da soylenir. */}
-      {failedHosts.length > 0 && (
-        <div className="text-xs space-y-1" data-testid="logx-taranamayan">
-          <p className="text-[var(--text-muted)]">Taranamayan sunucular:</p>
-          <ul className="space-y-0.5">
-            {failedHosts.map((h) => {
-              const elle = manualHosts.map((x) => x.toUpperCase()).includes(h.host.toUpperCase());
-              return (
-                <li key={h.host} className="text-[var(--text-secondary)]">
-                  <span className="font-mono font-semibold">{h.host}</span>
-                  {elle && (
-                    <span className="ml-1 text-amber-700">(envanterde yok — adı doğru mu?)</span>
-                  )}
-                  {': '}
-                  <span className="text-[var(--text-muted)]">
-                    {h.error || 'sebep bildirilmedi'}
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
+          taranamadiysa en olasi sebep adin yanlis yazilmasidir — bu da soylenir.
+          Liste hata ve indirme ekranlariyla ORTAK bilesendir (ozet + ham sebep). */}
+      {taranamayan.sunucular.length > 0 && (
+        <LegacySorunlar
+          sorunlar={taranamayan}
+          sunucuBasligi="Taranamayan sunucular"
+          manualHosts={manualHosts}
+          testId="logx-taranamayan"
+        >
           {onBackToHosts && (
             <button
               type="button"
@@ -446,7 +436,7 @@ const FileSelectionStep: React.FC<Props> = ({
               Sunucu seçimine dön
             </button>
           )}
-        </div>
+        </LegacySorunlar>
       )}
 
       <div className="relative">
