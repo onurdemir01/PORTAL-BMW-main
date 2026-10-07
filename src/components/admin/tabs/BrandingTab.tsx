@@ -11,6 +11,7 @@ import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { ArrowUpTrayIcon, TrashIcon, PhotoIcon } from '@heroicons/react/24/outline';
 import { fmtDateTime } from '@/utils/datetime';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
+import LoadError from '@/components/common/LoadError';
 
 interface AssetInfo {
   mime: string;
@@ -242,13 +243,22 @@ const BrandingTab: React.FC = () => {
   const [state, setState] = useState<BrandingState>({ favicon: null, logo: null, limits: null });
   const [loading, setLoading] = useState(true);
 
+  // Mevcut gorseller OKUNAMADIYSA bu soylenir. Eskiden hata YAKALANMIYORDU (konsolda
+  // yakalanmamis istisna) ve ekran "Henuz yuklenmedi - varsayilan kullaniliyor" diyordu:
+  // yuklu bir logo "yok" gibi gorunuyordu.
+  const [yuklemeHatasi, setYuklemeHatasi] = useState<string | null>(null);
   const load = async () => {
     setLoading(true);
+    setYuklemeHatasi(null);
     try {
       const res = await fetch('/api/admin/branding');
-      const data = await res.json();
-      if (!data.ok) throw new Error(data.error || 'Yüklenemedi.');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) {
+        throw new Error(data.message || data.error || `Sunucu hatası (HTTP ${res.status}).`);
+      }
       setState({ favicon: data.favicon, logo: data.logo, limits: data.limits });
+    } catch (e: unknown) {
+      setYuklemeHatasi(e instanceof Error && e.message ? e.message : 'İstek başarısız.');
     } finally {
       setLoading(false);
     }
@@ -269,6 +279,15 @@ const BrandingTab: React.FC = () => {
   if (loading)
     return (
       <LoadingLogo compact />
+    );
+  if (yuklemeHatasi)
+    return (
+      <LoadError
+        title="Logo ayarları okunamadı"
+        message={yuklemeHatasi}
+        onRetry={() => void load()}
+        testId="logo-yukleme-hatasi"
+      />
     );
 
   return (

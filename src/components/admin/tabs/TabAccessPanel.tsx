@@ -291,7 +291,7 @@ export function TabAccessPanel({
           <button
             onClick={save}
             disabled={busy}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg text-white disabled:opacity-50"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg text-[var(--text-on-accent)] disabled:opacity-50"
             style={{ background: 'var(--accent)' }}
           >
             <PlusIcon className="w-3.5 h-3.5" /> {busy ? 'Kaydediliyor…' : 'Kaydet'}
@@ -352,7 +352,7 @@ export function TabAccessPanel({
                         tüm sekmeler
                       </span>
                     ) : g.tabs.length === 0 ? (
-                      <span className="text-[11px]" style={{ color: 'var(--status-warning)' }}>
+                      <span className="text-[11px]" style={{ color: 'var(--status-warning-text)' }}>
                         sayfa açık ama sekme seçilmemiş (hiçbir şey görmez)
                       </span>
                     ) : (

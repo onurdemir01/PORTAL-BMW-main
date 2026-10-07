@@ -37,6 +37,7 @@ import { useBackdropDismiss } from '@/components/common/backdropDismiss';
 import IpCheckSection from '@/components/self_service/IpCheckSection';
 import OpenshiftCheckSection from '@/components/self_service/OpenshiftCheckSection';
 import { SkeletonList } from '@/components/common/Skeleton';
+import LoadError from '@/components/common/LoadError';
 import { fmtDateTime } from '@/utils/datetime';
 import { isFieldActive as isFieldActiveShared } from '../../shared/surveyConditions.cjs';
 
@@ -1453,11 +1454,18 @@ function AnsibleSection({ isAdmin, selected = null, onItems, onSelect }: {
     return () => clearTimeout(timer);
   }, [resetNote]);
 
+  // Liste OKUNAMADIYSA bu "servis yok" DEGILDIR: eskiden hata yutuluyor ve ekran
+  // "Henuz Ansible servisi yok. Servis Ekle butonunu kullanin." diyordu.
+  const [listeHatasi, setListeHatasi] = useState<string | null>(null);
   const reload = useCallback(() => {
     setLoading(true);
+    setListeHatasi(null);
     ansibleApi
       .ssItems()
       .then((r) => setItems(r.items || []))
+      .catch((e: unknown) =>
+        setListeHatasi(e instanceof Error && e.message ? e.message : 'İstek başarısız.'),
+      )
       .finally(() => setLoading(false));
   }, []);
 
@@ -1679,7 +1687,16 @@ function AnsibleSection({ isAdmin, selected = null, onItems, onSelect }: {
         </div>
       )}
 
-      {visibleItems.length === 0 ? (
+      {listeHatasi ? (
+        <div className="rounded-2xl border" style={{ borderColor: 'var(--border-subtle)' }}>
+          <LoadError
+            title="Ansible servisleri okunamadı"
+            message={listeHatasi}
+            onRetry={reload}
+            testId="otomasyon-liste-hatasi"
+          />
+        </div>
+      ) : visibleItems.length === 0 ? (
         <div className="rounded-2xl border flex items-center justify-center h-40" style={{ borderColor: 'var(--border-subtle)' }}>
           <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
             {isAdmin

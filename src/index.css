@@ -133,6 +133,15 @@
   --status-danger-bg:    #fce3e3;
   --status-warning:      #dca614;   /* yellow-40 */
   --status-warning-bg:   #fff4cc;   /* yellow-10 */
+  /* METIN TONLARI (2026-10-07, gercek tarayicida olculdu). `--status-warning` IKON ve DOLGU
+     icindir: METIN olarak beyaz yuzeyde 2.21, kendi zemininde (#fff4cc) 2.01 kontrast verir;
+     AA esigi 4.5'tir. Yukaridaki "okunakli" notu olcume dayanmiyordu - acik temada butun sari
+     uyari metinleri (ornegin "Veritabani baglantisi yok") zor okunuyordu. Metin icin ayri
+     token: #795600 (`.pf-label--gold` zaten bunu kullaniyordu) -> yuzeyde 6.68, uyari
+     zemininde 6.06. `--status-danger-text` acik temada temel tonla aynidir; koyu temada
+     ayrisir. Bekci: src/__tests__/tema-kontrast.test.cjs. */
+  --status-warning-text: #795600;
+  --status-danger-text:  #b1380b;
   --status-success:      #3d7317;   /* green-60 */
   --status-success-bg:   #e9f7df;   /* green-10 */
   --status-info:         #5e40be;   /* purple-50 */
@@ -220,7 +229,9 @@
 
   --text-primary:   #ffffff;
   --text-secondary: #c7c7c7;   /* gray-30 */
-  --text-muted:     #8c8c8c;   /* gray-45 */
+  /* gray-45 (#8c8c8c) yuzeyde 4.33, yukselmis zeminde 3.49 veriyordu (AA 4.5). gray-40 ->
+     yuzeyde 5.77, yukselmis zeminde 4.65 (2026-10-07; bekci tema-kontrast.test.cjs). */
+  --text-muted:     #a3a3a3;   /* gray-40 */
 
   --border:        #4d4d4d;    /* gray-60 */
   --border-subtle: #383838;    /* gray-70 */
@@ -233,6 +244,10 @@
   --status-success:    #87bb62;   /* green-40 */
   --status-info:       #b6a6e9;   /* purple-30 */
   --status-neutral:    #8c8c8c;   /* gray-45 */
+  /* METIN TONLARI: hata rengi (#f0561d) METIN olarak yuzeyde 4.19, kendi zemininde 3.49
+     veriyordu. red-orange-30 -> 6.89 / 5.73. Uyari sarisi koyu zeminde zaten 9.6:1'dir. */
+  --status-danger-text:  #f89b78;   /* red-orange-30 */
+  --status-warning-text: #ffcc17;
 
   --status-danger-bg:  rgba(240, 86, 29, 0.16);
   --status-warning-bg: rgba(255, 204, 23, 0.16);
@@ -273,6 +288,9 @@ code, pre, kbd, samp { font-family: var(--font-mono); }
 
 a { color: var(--accent); text-decoration: none; }
 a:hover { color: var(--accent-dark); text-decoration: underline; }
+/* Dugme gorunumlu baglantilar (ornegin 403 sayfasindaki <Link className="btn-primary">)
+   baglanti alt cizgisini ALMAZ; renkleri sinifin kendi kurallarindan gelir. */
+a.btn-primary:hover, a.btn-secondary:hover, a.btn-danger:hover { text-decoration: none; }
 
 ::selection { background: var(--accent); color: var(--text-on-accent); }
 
@@ -448,7 +466,7 @@ a:hover { color: var(--accent-dark); text-decoration: underline; }
 }
 .pf-label--red    { background: var(--status-danger-bg);  border-color: var(--status-danger);  color: var(--status-danger); }
 .pf-label--orange { background: var(--status-warning-bg); border-color: #ec7a08;               color: #8f4700; }
-.pf-label--gold   { background: var(--status-warning-bg); border-color: var(--status-warning); color: #795600; }
+.pf-label--gold   { background: var(--status-warning-bg); border-color: var(--status-warning); color: var(--status-warning-text); }
 .pf-label--green  { background: var(--status-success-bg); border-color: var(--status-success); color: var(--status-success); }
 .pf-label--blue   { background: var(--status-info-bg);    border-color: var(--accent);         color: var(--accent-dark); }
 .pf-label--grey   { background: var(--status-neutral-bg); border-color: var(--border-strong);  color: var(--text-secondary); }
@@ -1041,13 +1059,13 @@ thead th {
    Eksik olan sey markup degil, ESLEMEYDI. Yeni bir tonun sessizce sizmasini
    `src/__tests__/inline-color-leaks.test.cjs` icindeki bekci engelliyor. */
 :root .text-red-300, :root .text-red-400, :root .text-red-800, :root .text-red-900,
-:root .text-rose-400, :root .text-rose-700, :root .text-rose-800 { color: var(--status-danger); }
+:root .text-rose-400, :root .text-rose-700, :root .text-rose-800 { color: var(--status-danger-text); }
 :root .bg-red-700, :root .bg-red-800 { background-color: var(--status-danger); }
 :root .border-red-400, :root .border-red-500 { border-color: var(--status-danger); }
 
 :root .text-amber-300, :root .text-amber-400, :root .text-amber-800, :root .text-amber-900,
 :root .text-yellow-700, :root .text-yellow-800, :root .text-orange-700,
-:root .text-orange-800 { color: var(--status-warning); }
+:root .text-orange-800 { color: var(--status-warning-text); }
 :root .bg-amber-300, :root .bg-amber-400, :root .bg-orange-100,
 :root .bg-orange-200 { background-color: var(--status-warning-bg); }
 :root .border-orange-200, :root .border-orange-300,
@@ -1066,7 +1084,7 @@ thead th {
 :root .border-blue-400, :root .border-blue-600,
 :root .border-indigo-400 { border-color: var(--accent); }
 
-:root .text-red-500, :root .text-red-600, :root .text-red-700, :root .text-rose-500, :root .text-rose-600 { color: var(--status-danger); }
+:root .text-red-500, :root .text-red-600, :root .text-red-700, :root .text-rose-500, :root .text-rose-600 { color: var(--status-danger-text); }
 /* bg-rose-400: Denetim > Nginx SPA > Intranet barinin "hic yok" seridi (2026-09-10).
    Uyum katmani rose ailesinden 50/200/500'u esliyordu; 400 tonu katmanin DISINDA
    kaliyor ve koyu temada ham Tailwind pembesi basiyordu. */
@@ -1075,7 +1093,7 @@ thead th {
 :root .border-red-200, :root .border-red-300 { border-color: var(--status-danger); }
 
 :root .text-amber-500, :root .text-amber-600, :root .text-amber-700,
-:root .text-yellow-500, :root .text-yellow-600, :root .text-orange-500, :root .text-orange-600 { color: var(--status-warning); }
+:root .text-yellow-500, :root .text-yellow-600, :root .text-orange-500, :root .text-orange-600 { color: var(--status-warning-text); }
 :root .bg-amber-500, :root .bg-yellow-500, :root .bg-orange-500 { background-color: var(--status-warning); }
 :root .bg-amber-50, :root .bg-amber-100, :root .bg-yellow-50, :root .bg-yellow-100, :root .bg-orange-50 { background-color: var(--status-warning-bg); }
 /* border-amber-500: PageVisibilityTab'daki secili durum rozeti (2026-09-27). Sinif
@@ -1123,8 +1141,8 @@ thead th {
 :root .border-gray-400, :root .border-slate-400 { border-color: var(--border-strong); }
 
 /* Koyu ton metinler — koyu temada zeminle AYNI tonda kaliyor, okunmuyorlardi */
-:root .text-red-800, :root .text-red-900, :root .text-rose-800 { color: var(--status-danger); }
-:root .text-amber-800, :root .text-amber-900, :root .text-yellow-800, :root .text-orange-800 { color: var(--status-warning); }
+:root .text-red-800, :root .text-red-900, :root .text-rose-800 { color: var(--status-danger-text); }
+:root .text-amber-800, :root .text-amber-900, :root .text-yellow-800, :root .text-orange-800 { color: var(--status-warning-text); }
 :root .text-green-800, :root .text-green-900, :root .text-emerald-800, :root .text-emerald-900 { color: var(--status-success); }
 :root .text-blue-800, :root .text-blue-900 { color: var(--accent); }
 :root .text-indigo-700, :root .text-indigo-800, :root .text-purple-700, :root .text-purple-800 { color: var(--status-info); }
@@ -1139,7 +1157,48 @@ thead th {
      her iki temada da "bir tik yukari" anlamini tasir. */
   background-color: var(--bg-elevated);
 }
-:root .bg-black { background-color: var(--masthead-bg); }
+/* `bg-black` ACIK TEMADA GORUNMEZ DUGME URETIYORDU (2026-10-07). Bu sinif `--masthead-bg`ye
+   esliydi; masthead PF6 gecisinde acik temada #f2f2f2 oldu ve `bg-black text-white` yazilmis
+   dokuz dugme (Smart Talepleri "Ara", LogX Yonetimi "Ekle", Playbook "Kaydet", Denetim Kaydi
+   "Uygula", Envanter SQL/Sutunlar...) beyaz-ustune-acik-gri kaldi: kontrast 1.12. Bu
+   dugmelerin hepsi "birincil eylem" anlaminda; aksana eslenir ve metin `--text-on-accent`
+   alir, yani iki temada da `.btn-primary` ile ayni kontrasti tasir. */
+:root .bg-black { background-color: var(--accent); }
+:root .border-black { border-color: var(--accent); }
+
+/* ── IKONLAR METIN TONUNU ALMAZ (2026-10-07) ──────────────────────────────────────────────
+   Yukarida `text-amber-*` ve `text-red-*` siniflari METIN tokenlarina eslendi (okunabilirlik).
+   Ayni siniflar ikonlarda da kullaniliyor; uyari ucgeni sari, hata ikonu kirmizi KALMALI
+   (PF6'da ikon ve metin tonlari ayridir). Sinif dogrudan <svg> uzerindeyse temel durum rengi
+   gecerlidir. Metnin icinde durup rengini miras alan ikon metinle ayni tonda kalir.
+   Siniflar TEK TEK sayilir: `[class*="text-red-"]` gibi bir secici `hover:text-red-600`
+   tasiyan gri bir cop ikonunu da surekli kirmiziya boyardi. */
+:root svg.text-amber-300, :root svg.text-amber-400, :root svg.text-amber-500,
+:root svg.text-amber-600, :root svg.text-amber-700, :root svg.text-amber-800,
+:root svg.text-amber-900, :root svg.text-yellow-500, :root svg.text-yellow-600,
+:root svg.text-yellow-700, :root svg.text-yellow-800, :root svg.text-orange-500,
+:root svg.text-orange-600, :root svg.text-orange-700, :root svg.text-orange-800 { color: var(--status-warning); }
+:root svg.text-red-300, :root svg.text-red-400, :root svg.text-red-500, :root svg.text-red-600,
+:root svg.text-red-700, :root svg.text-red-800, :root svg.text-red-900,
+:root svg.text-rose-400, :root svg.text-rose-500, :root svg.text-rose-600,
+:root svg.text-rose-700, :root svg.text-rose-800 { color: var(--status-danger); }
+
+/* ── DOLU DUGMELER: aksan zemini + SABIT beyaz metin (2026-10-07) ─────────────────────────
+   Koyu temada `--accent` ACIK mavidir (#b9dafc); ustune sabit `text-white` yazilmis her dugme
+   ve rozet beyaz-ustune-acik-mavi kaliyordu: kontrast 1.45 (ayni hata `.btn-primary`de
+   `--text-on-accent` ile duzeltilmisti, ama elle yazilmis siniflar disarida kalmisti).
+   Zemin sinifiyla `text-white` AYNI ogedeyse metin `--text-on-accent` olur. Zemini satir-ici
+   `style` ile verilenlere CSS ulasamaz; onlar markup'ta duzeltildi ve bekci
+   (tema-kontrast.test.cjs) yenisinin eklenmesini engeller. */
+:root .bg-black.text-white,
+:root .bg-blue-500.text-white, :root .bg-blue-600.text-white,
+:root .bg-indigo-500.text-white, :root .bg-indigo-600.text-white,
+:root .bg-\[var\(--accent\)\].text-white { color: var(--text-on-accent); }
+/* Hover: `hover:bg-gray-800` -> `--bg-elevated` eslemesi bu dugmelerde acik temada yine
+   beyaz-ustune-acik-gri uretiyordu. Dolu dugmenin hover'i aksanin koyu/acik tonudur. */
+:root .bg-black.hover\:bg-gray-800:hover, :root .bg-black.hover\:bg-gray-900:hover,
+:root .bg-blue-600.hover\:bg-blue-700:hover, :root .bg-blue-500.hover\:bg-blue-600:hover,
+:root .bg-indigo-600.hover\:bg-indigo-700:hover { background-color: var(--accent-dark); }
 :root .text-black { color: var(--text-primary); }
 :root .bg-gray-300, :root .bg-gray-400, :root .bg-slate-300 { background-color: var(--border-strong); }
 :root .text-gray-200, :root .text-gray-100 { color: var(--text-secondary); }

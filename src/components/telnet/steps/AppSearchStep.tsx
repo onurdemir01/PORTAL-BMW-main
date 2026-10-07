@@ -17,7 +17,7 @@ const AppSearchStep: React.FC<{ onSelect: (app: string) => void; busy?: boolean 
       setLoading(true);
       setError(null);
       telnetApi.searchApps(search)
-        .then((r) => { setApps(r.apps); setFallbackMode(r.fallbackMode); })
+        .then((r) => { setApps(r.apps ?? []); setFallbackMode(!!r.fallbackMode); })
         .catch((err) => setError(err instanceof Error ? err.message : String(err)))
         .finally(() => setLoading(false));
     }, 250);
@@ -39,6 +39,7 @@ const AppSearchStep: React.FC<{ onSelect: (app: string) => void; busy?: boolean 
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Uygulama adı ara..."
+          aria-label="Uygulama adı ara"
           className="w-full pl-9 pr-3 py-2.5 text-sm border border-[var(--border)] rounded-xl outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)] transition"
         />
       </div>
@@ -46,6 +47,8 @@ const AppSearchStep: React.FC<{ onSelect: (app: string) => void; busy?: boolean 
       <div className="max-h-72 overflow-y-auto border border-[var(--border)] rounded-xl divide-y divide-[var(--border)]">
         {loading ? (
           <p className="text-sm text-[var(--text-muted)] text-center py-6">Aranıyor...</p>
+        ) : error ? (
+          <p className="text-sm text-[var(--text-muted)] text-center py-6">Liste okunamadı.</p>
         ) : apps.length === 0 ? (
           <p className="text-sm text-[var(--text-muted)] text-center py-6">Sonuç yok.</p>
         ) : (

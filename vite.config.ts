@@ -1,5 +1,6 @@
 // vite.config.ts
 import path from "path";
+import { createRequire } from "module";
 import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
@@ -8,25 +9,23 @@ import tailwindcss from "@tailwindcss/vite";
 // Vite dev, kaynak agacindaki CommonJS dosyalarini donusturmez ("module is not defined" +
 // "does not provide an export named ...") — Self Servis sayfasi dev'de hic acilmiyordu
 // (2026-09-21). Uretim build'i rollup commonjs ile zaten calisiyor. Bu eklenti YALNIZ serve
-// modunda `module.exports = { a, b }` bicimindeki dosyayi ESM'e sarar: adlandirilmis
-// export'lar module.exports'taki anahtarlardan uretilir (yalniz bu basit bicim desteklenir).
+// modunda dosyayi ESM'e sarar. Disa aktarilan adlar metinden TAHMIN EDILMEZ, modul
+// gercekten yuklenip okunur (bkz. scripts/shared-cjs-shim.cjs — eski regex, bir yorumdaki
+// `module.exports = { a, b }` ornegini gercek disa aktarim sanip Crypto Hub'i dev'de dusuruyordu).
+const sharedCjs = createRequire(import.meta.url)("./scripts/shared-cjs-shim.cjs") as {
+  exportKeys: (dosya: string) => string[] | null;
+  wrapSharedCjs: (code: string, keys: string[]) => string;
+};
+
 function sharedCjsDevShim() {
   return {
     name: "shared-cjs-dev-shim",
     apply: "serve" as const,
     transform(code: string, id: string) {
       if (!/[\\/]shared[\\/][^\\/]+\.cjs(\?.*)?$/.test(id)) return null;
-      const m = /module\.exports\s*=\s*\{([\s\S]*?)\}\s*;?/.exec(code);
-      if (!m) return null;
-      const keys = m[1]
-        .split(",")
-        .map((k) => k.trim().split(":")[0].trim())
-        .filter((k) => /^[A-Za-z_$][\w$]*$/.test(k));
-      // Dosyanin kendi fonksiyon adlariyla CAKISMASIN: `export const a = ...` yerine `export { a }`
-      // (module.exports = { a, b } zaten ust kapsamdaki a ve b'yi gosterir).
-      const named = keys.length ? `export { ${keys.join(", ")} };` : "";
-      const wrapped = `const module = { exports: {} }; const exports = module.exports;\n${code}\n${named}\nexport default module.exports;\n`;
-      return { code: wrapped, map: null };
+      const keys = sharedCjs.exportKeys(id.replace(/\?.*$/, ""));
+      if (!keys) return null;
+      return { code: sharedCjs.wrapSharedCjs(code, keys), map: null };
     },
   };
 }

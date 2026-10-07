@@ -142,7 +142,14 @@ const RbacFindings: React.FC = () => {
             satırlık bir özet var — bu bir kullanıcı görevi değil, bir platform talebi.
           </p>
         </div>
-        <button type="button" onClick={() => void load()} className="btn-secondary text-xs">
+        <button
+          type="button"
+          onClick={() => void load()}
+          className="btn-secondary text-xs"
+          // Yalnizca ikon tasiyan dugme: ekran okuyucu icin adi olmali (taramada "adsiz dugme").
+          aria-label="RBAC bulgularını yenile"
+          title="Yenile"
+        >
           <ArrowPathIcon aria-hidden="true" className="w-3.5 h-3.5" />
         </button>
       </div>
@@ -938,13 +945,14 @@ function IsGecmisiPanel() {
       <div className="flex flex-wrap items-center gap-2">
         <input value={q} onChange={(e) => setQ(e.target.value)}
           placeholder="kullanıcı, cluster, namespace, OCO, iş no…"
+          aria-label="ScaleX işlem geçmişinde ara"
           className="w-64 px-2.5 py-1.5 text-xs rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-primary)]" />
-        <select value={islem} onChange={(e) => setIslem(e.target.value)}
+        <select aria-label="İşleme göre süz" value={islem} onChange={(e) => setIslem(e.target.value)}
           className="px-2 py-1.5 text-xs rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-primary)]">
           <option value="">tüm işlemler</option>
           {islemler.map((a) => <option key={a} value={a}>{a}</option>)}
         </select>
-        <select value={durum} onChange={(e) => setDurum(e.target.value)}
+        <select aria-label="Duruma göre süz" value={durum} onChange={(e) => setDurum(e.target.value)}
           className="px-2 py-1.5 text-xs rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-primary)]">
           <option value="">tüm durumlar</option>
           {durumlar.map((d) => <option key={d} value={d}>{d}</option>)}

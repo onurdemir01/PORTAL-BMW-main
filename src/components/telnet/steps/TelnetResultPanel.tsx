@@ -29,7 +29,7 @@ const STATE_META: Record<
   // yanlış yerde arayabilir.
   error: {
     label: 'TEST YAPILAMADI',
-    cls: 'text-[var(--status-warning)]',
+    cls: 'text-[var(--status-warning-text)]',
     Icon: ExclamationTriangleIcon,
   },
 };
@@ -45,7 +45,7 @@ const OVERALL_META: Record<
   },
   partial: {
     title: 'Kısmi — bazı hedeflerde açık',
-    cls: 'text-[var(--status-warning)]',
+    cls: 'text-[var(--status-warning-text)]',
     Icon: ExclamationTriangleIcon,
   },
   closed: {
@@ -55,7 +55,7 @@ const OVERALL_META: Record<
   },
   error: {
     title: 'Test tamamlanamadı',
-    cls: 'text-[var(--status-warning)]',
+    cls: 'text-[var(--status-warning-text)]',
     Icon: ExclamationTriangleIcon,
   },
 };

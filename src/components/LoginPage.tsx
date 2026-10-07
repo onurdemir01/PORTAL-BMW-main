@@ -19,6 +19,17 @@ const LoginPage: React.FC = () => {
   // gosterilmez. Eskiden kutu vardi ama HICBIR SEY yapmiyordu (sunucuya gitmiyordu).
   const [hatirlaGun, setHatirlaGun] = useState<number | null>(null);
   const gonderiliyor = useRef(false);
+  // BASARISIZ GIRISTEN SONRA ODAK SIFRE ALANINA DONER (2026-10-07). Gonderim sirasinda dugme
+  // devre disi kaldigi icin odak <body>'ye dusuyordu: klavyeyle calisan kullanici yeniden
+  // denemek icin alana fareyle tiklamak ya da Tab'la bastan gelmek zorundaydi. Sayac bir efekt
+  // tetikler; boylece odak, alanlar yeniden etkinlestikten SONRA verilir.
+  const sifreRef = useRef<HTMLInputElement>(null);
+  const [hataOdagi, setHataOdagi] = useState(0);
+  useEffect(() => {
+    if (!hataOdagi) return;
+    sifreRef.current?.focus();
+    sifreRef.current?.select();
+  }, [hataOdagi]);
   // Sunucu "bekle" dediyse (429 / esik asimi) dugme geri sayim boyunca kapali.
   const [bekleBitis, setBekleBitis] = useState(0);
   const [bekleSn, setBekleSn] = useState(0);
@@ -93,6 +104,7 @@ const LoginPage: React.FC = () => {
     } catch (err: any) {
       setError(err?.message || "Giriş başarısız. Lütfen tekrar deneyin.");
       if (err?.retryAfter > 0) setBekleBitis(Date.now() + err.retryAfter * 1000);
+      setHataOdagi((n) => n + 1);
     } finally {
       gonderiliyor.current = false;
       setIsLoading(false);
@@ -162,6 +174,7 @@ const LoginPage: React.FC = () => {
                 <label htmlFor="password" className="pf-label-text" style={{ color: "#151515" }}>Şifre</label>
                 <div className="relative">
                   <input
+                    ref={sifreRef}
                     id="password"
                     name="password"
                     type={showPassword ? "text" : "password"}

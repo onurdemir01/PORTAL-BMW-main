@@ -652,6 +652,7 @@ const EnvanterPage: React.FC = () => {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder={`${activeTable} içinde ara...`}
+            aria-label="Tabloda ara"
             className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#1C69D4] transition"
           />
         </div>
@@ -677,7 +678,7 @@ const EnvanterPage: React.FC = () => {
           <button
             onClick={() => setShowHistory(true)}
             className="flex items-center gap-1.5 px-3 py-2 text-sm border border-gray-200 rounded-xl transition-colors hover:bg-gray-50"
-            title="Bu tablonun gecmis bir tarihteki hali ve iki tarih arasindaki fark"
+            title="Bu tablonun geçmiş bir tarihteki hali ve iki tarih arasındaki fark"
           >
             <ClockIcon className="w-4 h-4" />
             Geçmiş

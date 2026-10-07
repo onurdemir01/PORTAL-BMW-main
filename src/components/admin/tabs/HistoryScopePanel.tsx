@@ -19,6 +19,7 @@ import { inventoryApi, type HistoryConfigRow } from '@/api/inventoryApi';
 import { toast } from '@/hooks/useToast';
 import { Select } from '@/components/ui/Form';
 import { TableEmptyRow } from '@/components/common/EmptyState';
+import LoadError from '@/components/common/LoadError';
 
 export default function HistoryScopePanel() {
   const [rows, setRows] = useState<HistoryConfigRow[]>([]);
@@ -31,18 +32,22 @@ export default function HistoryScopePanel() {
   const [newCols, setNewCols] = useState<string[]>([]);
   const [newKey, setNewKey] = useState<string[]>([]);
 
+  // Kapsam OKUNAMADIYSA bu ekranda KALIR. Eskiden kisa bir bildirim cikiyor, altinda
+  // "Kapsamda tablo yok." yazisi duruyordu: okunamayan kapsam bos kapsam gibi gorunuyordu.
+  const [yuklemeHatasi, setYuklemeHatasi] = useState<string | null>(null);
   const reload = useCallback(async () => {
     setLoading(true);
+    setYuklemeHatasi(null);
     try {
       const r = await inventoryApi.historyConfig();
       if (!r.ok) {
-        toast.error(r.message || 'Kapsam okunamadı.');
+        setYuklemeHatasi(r.message || 'Sunucu hatası.');
         return;
       }
       setRows(r.configured || []);
       setCandidates(r.candidates || []);
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : String(e));
+      setYuklemeHatasi(e instanceof Error && e.message ? e.message : 'İstek başarısız.');
     } finally {
       setLoading(false);
     }
@@ -107,6 +112,14 @@ export default function HistoryScopePanel() {
         <div className="flex items-center justify-center h-16">
           <div className="w-5 h-5 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
         </div>
+      ) : yuklemeHatasi ? (
+        <LoadError
+          compact
+          title="Geçmiş kapsamı okunamadı"
+          message={yuklemeHatasi}
+          onRetry={() => void reload()}
+          testId="gecmis-kapsami-hatasi"
+        />
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
@@ -180,6 +193,7 @@ export default function HistoryScopePanel() {
         <p className="text-[11px] font-semibold text-gray-600">Kapsama tablo ekle</p>
         <div className="flex flex-wrap items-end gap-2">
           <Select
+            aria-label="Kapsama eklenecek tablo"
             value={newTable}
             onChange={(e) => pickTable(e.target.value)}
             className="min-w-[16rem]"

@@ -7,6 +7,7 @@ import Card from "@/components/common/Card";
 import Badge from "@/components/common/Badge";
 import Button from "@/components/common/Button";
 import EmptyState from "@/components/common/EmptyState";
+import LoadError from "@/components/common/LoadError";
 import { Select } from "@/components/ui/Form";
 import { LoadingLogo } from '@/components/common/LoadingLogo';
 
@@ -45,11 +46,17 @@ export default function PlaybookRegistryTab() {
   const [form, setForm] = useState<FormState>({ ...EMPTY_FORM });
   const [saving, setSaving] = useState(false);
 
+  // Liste OKUNAMADIYSA "Henuz playbook kaydi yok" denmez: kayitlar durdugu halde ekran bos
+  // gorunuyor ve yeniden girilmeleri gerektigi sanilabiliyordu.
+  const [yuklemeHatasi, setYuklemeHatasi] = useState<string | null>(null);
   async function reload() {
     setLoading(true);
+    setYuklemeHatasi(null);
     try {
       const r = await playbookRegistryApi.list();
       setRows(r.playbooks || []);
+    } catch (e: unknown) {
+      setYuklemeHatasi(e instanceof Error && e.message ? e.message : "İstek başarısız.");
     } finally {
       setLoading(false);
     }
@@ -261,7 +268,14 @@ export default function PlaybookRegistryTab() {
         </Card>
       )}
 
-      {rows.length === 0 ? (
+      {yuklemeHatasi ? (
+        <LoadError
+          title="Playbook kayıtları okunamadı"
+          message={yuklemeHatasi}
+          onRetry={reload}
+          testId="playbook-yukleme-hatasi"
+        />
+      ) : rows.length === 0 ? (
         <EmptyState icon={<CommandLineIcon className="w-6 h-6" />} title="Henüz playbook kaydı yok." />
       ) : (
         <div className="space-y-2">

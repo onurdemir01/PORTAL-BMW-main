@@ -33,7 +33,7 @@ const OcpTargetStep: React.FC<{
 
   useEffect(() => {
     telnetApi.getClusters()
-      .then((r) => setTree(r.tree))
+      .then((r) => setTree(r.tree ?? {}))
       .catch((err) => setError(err instanceof Error ? err.message : String(err)))
       .finally(() => setLoading(false));
   }, []);

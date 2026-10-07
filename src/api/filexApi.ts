@@ -3,7 +3,7 @@
 // OpsX ile AYNI uygulama/sunucu kaynağını kullanır (backend bunları yeniden kullanır —
 // bkz. server/filex/index.cjs) ama FileX hiçbir İŞLEM yapmaz, yalnızca seçilen
 // uygulamanın .ear dizinini (logs hariç) salt-okunur listeler.
-import { safeJson } from "./http";
+import { safeJson, okJson } from "./http";
 
 const BASE = "/api/filex";
 
@@ -58,10 +58,12 @@ export interface FilexJobStatus {
 
 export const filexApi = {
   searchApps: (search: string): Promise<{ ok: boolean; apps: string[]; fallbackMode: boolean }> =>
-    fetch(`${BASE}/apps?search=${encodeURIComponent(search)}`).then(safeJson),
+    // LISTE uclari KATI ayristirilir (okJson): 500/403'te reddeder, adim sunucunun mesajini
+    // gosterir. Eskiden `setApps(undefined)` sayfayi dusuruyordu (bkz. api/http.ts).
+    fetch(`${BASE}/apps?search=${encodeURIComponent(search)}`).then(okJson),
 
   getHosts: (app: string): Promise<{ ok: boolean; hosts: FilexHost[] }> =>
-    fetch(`${BASE}/hosts?app=${encodeURIComponent(app)}`).then(safeJson),
+    fetch(`${BASE}/hosts?app=${encodeURIComponent(app)}`).then(okJson),
 
   run: (application: string, hosts: string[]): Promise<FilexRunResult> =>
     fetch(`${BASE}/run`, {

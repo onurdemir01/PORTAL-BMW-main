@@ -70,9 +70,9 @@ const OcoSchedulePanel: React.FC<Props> = ({ reloadKey = 0 }) => {
         setItems(r.items || []);
         setScope(r.scope || '');
         setError(null);
-      } else setError(r.message || 'Zamanlanmış işlemler okunamadı.');
+      } else setError(`Zamanlanmış işlemler okunamadı: ${r.message || 'sunucu hata döndü'}`);
     } catch (e) {
-      setError((e as Error).message);
+      setError(`Zamanlanmış işlemler okunamadı: ${(e as Error).message}`);
     } finally {
       setLoading(false);
     }
@@ -147,8 +147,14 @@ const OcoSchedulePanel: React.FC<Props> = ({ reloadKey = 0 }) => {
       </div>
 
       {error && (
-        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-2.5 text-xs text-red-700">
-          {error}
+        <div
+          role="alert"
+          className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-2.5 text-xs text-red-700"
+        >
+          <span className="flex-1">{error}</span>
+          <button type="button" onClick={() => void load()} className="btn-secondary flex-shrink-0 !py-0.5 !px-2 text-xs">
+            Tekrar dene
+          </button>
         </div>
       )}
 

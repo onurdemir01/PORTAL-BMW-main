@@ -242,6 +242,7 @@ export default function SmartTicketsTab() {
               onChange={(e) => setUsername(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && applyFilters()}
               placeholder="kullanıcı adı"
+              aria-label="Kullanıcı adına göre süz"
               className="px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg font-mono w-44"
             />
             <input
@@ -249,9 +250,10 @@ export default function SmartTicketsTab() {
               onChange={(e) => setQ(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && applyFilters()}
               placeholder="Smart kayıt no / servis / parametre"
+              aria-label="Smart kayıt no, servis ya da parametre ara"
               className="px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg w-64"
             />
-            <Select sizeVariant="sm" value={status} onChange={(e) => setStatus(e.target.value)}>
+            <Select sizeVariant="sm" aria-label="Duruma göre süz" value={status} onChange={(e) => setStatus(e.target.value)}>
               <option value="">Tüm durumlar</option>
               {Object.entries(STATUS_META).map(([k, m]) => (
                 <option key={k} value={k}>

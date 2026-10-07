@@ -1,5 +1,5 @@
 // src/api/adminApi.ts
-import { safeJson } from "./http";
+import { safeJson, okJson as katiJson } from "./http";
 
 const BASE_LOGX = "/api/logx";
 
@@ -11,10 +11,14 @@ function headers(role = "Admin"): Record<string, string> {
   };
 }
 
-async function json<T>(res: Response): Promise<T> {
-  const data = await safeJson(res);
-  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-  return data;
+// Sunucu modulleri hata metnini `message` ya da `error` alaninda yolluyor; eski hali yalniz
+// `error`a bakiyor, `message` gelen hatada ekranda "HTTP 500" kaliyordu (bkz. okJson).
+const json = <T>(res: Response): Promise<T> => katiJson<T>(res);
+
+// Hata govdesinden kullaniciya gosterilecek metin (`message` once, sonra `error`).
+function hataMetni(d: unknown, res: Response): string {
+  const g = (d && typeof d === "object" ? d : {}) as { error?: string; message?: string };
+  return g.message || g.error || `Sunucu hatası (HTTP ${res.status}).`;
 }
 
 // ── Page Visibility ───────────────────────────────────────────────────────────
@@ -41,7 +45,7 @@ export const pageVisibilityApi = {
     });
     if (!res.ok) {
       const d = await safeJson(res).catch(() => ({}));
-      throw new Error((d as { error?: string }).error || `HTTP ${res.status}`);
+      throw new Error(hataMetni(d, res));
     }
     _pvCache = null; // invalidate after update
   },
@@ -128,7 +132,7 @@ export interface ElementRule {
 async function okJson(res: Response) {
   const d = await safeJson(res).catch(() => ({}));
   if (!res.ok || (d as { ok?: boolean }).ok === false) {
-    throw new Error((d as { error?: string }).error || `HTTP ${res.status}`);
+    throw new Error(hataMetni(d, res));
   }
   return d;
 }
@@ -230,14 +234,15 @@ export interface RoleOverrideDetail {
 export const roleApi = {
   async list(): Promise<Record<string, string>> {
     const res = await fetch("/api/roles");
-    const d: { ok: boolean; roles: Record<string, string> } = await safeJson(res);
+    // KATI: okunamayan liste bos nesne donup "atama yok" diye gosterilmesin.
+    const d: { ok: boolean; roles: Record<string, string> } = await katiJson(res);
     return d.roles ?? {};
   },
 
   // actions.md #14 — kaynak/aciklama/olusturan/son-uygulanma dahil tam satirlar.
   async detail(): Promise<RoleOverrideDetail[]> {
     const res = await fetch("/api/roles/detail");
-    const d: { ok: boolean; roles: RoleOverrideDetail[] } = await safeJson(res);
+    const d: { ok: boolean; roles: RoleOverrideDetail[] } = await katiJson(res);
     return d.roles ?? [];
   },
 
@@ -250,7 +255,7 @@ export const roleApi = {
     });
     if (!res.ok) {
       const d = await safeJson(res).catch(() => ({}));
-      throw new Error((d as { error?: string }).error || `HTTP ${res.status}`);
+      throw new Error(hataMetni(d, res));
     }
     const d: { sessionsRevoked?: number } = await safeJson(res);
     return { sessionsRevoked: d.sessionsRevoked || 0 };
@@ -260,7 +265,7 @@ export const roleApi = {
     const res = await fetch(`/api/roles/${encodeURIComponent(username)}`, { method: "DELETE" });
     if (!res.ok) {
       const d = await safeJson(res).catch(() => ({}));
-      throw new Error((d as { error?: string }).error || `HTTP ${res.status}`);
+      throw new Error(hataMetni(d, res));
     }
     const d: { sessionsRevoked?: number } = await safeJson(res);
     return { sessionsRevoked: d.sessionsRevoked || 0 };

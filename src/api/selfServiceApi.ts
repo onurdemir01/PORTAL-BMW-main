@@ -1,15 +1,11 @@
 // src/api/selfServiceApi.ts
-import { safeJson } from "./http";
+import { okJson } from "./http";
 
 const BASE = "/api/selfservice";
 
-async function json<T>(r: Response): Promise<T> {
-  if (!r.ok) {
-    const text = await r.text().catch(() => "");
-    throw new Error(text || `HTTP ${r.status}`);
-  }
-  return safeJson(r);
-}
+// Eskiden basarisiz yanitta govdenin HAM METNI firlatiliyordu; Otomasyon sayfasi hata
+// olarak `{"ok":false,"message":"..."}` gosteriyordu. okJson sunucunun mesajini cikarir.
+const json = <T>(r: Response): Promise<T> => okJson<T>(r);
 
 export interface SelfServiceGroup {
   id: string; groupKey: "ansible"; label: string;

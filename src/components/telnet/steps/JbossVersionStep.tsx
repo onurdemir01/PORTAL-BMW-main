@@ -26,7 +26,7 @@ const JbossVersionStep: React.FC<{
     setLoading(true);
     setError(null);
     telnetApi.getHosts(app)
-      .then((r) => setHosts(r.hosts))
+      .then((r) => setHosts(r.hosts ?? []))
       .catch((err) => setError(err instanceof Error ? err.message : String(err)))
       .finally(() => setLoading(false));
   }, [app]);

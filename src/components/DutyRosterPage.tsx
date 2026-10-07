@@ -112,7 +112,7 @@ function Avatar({ name, avatarUrl, size = "md" }: { name?: string | null; avatar
     return <img src={avatarUrl} alt={name ?? ""} className={`${cls} rounded-full object-cover flex-shrink-0 ring-2 ring-white`} style={{ boxShadow: "var(--shadow-md)" }} />;
   }
   return (
-    <div className={`${cls} rounded-full flex items-center justify-center text-white font-bold flex-shrink-0`} style={{ background: "var(--accent)", boxShadow: "var(--shadow-md)" }}>
+    <div className={`${cls} rounded-full flex items-center justify-center text-[var(--text-on-accent)] font-bold flex-shrink-0`} style={{ background: "var(--accent)", boxShadow: "var(--shadow-md)" }}>
       {name?.[0]?.toUpperCase() ?? "?"}
     </div>
   );
@@ -393,8 +393,9 @@ export default function DutyRosterPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <label className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>Ay</label>
+            <label htmlFor="nobet-ay" className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>Ay</label>
             <input
+              id="nobet-ay"
               type="month"
               value={filterMonth}
               onChange={(e) => setFilterMonth(e.target.value)}

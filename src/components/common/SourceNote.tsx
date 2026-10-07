@@ -67,7 +67,7 @@ export function SourceNote({ source, scanDate, extra }: Props) {
           </>
         ) : scanDate === null ? (
           <>
-            {' '}· <span style={{ color: 'var(--status-warning)' }}>tarama kaydı yok</span>
+            {' '}· <span style={{ color: 'var(--status-warning-text)' }}>tarama kaydı yok</span>
           </>
         ) : null}
         <span> · Tazelemek için: {source.refresh}</span>
