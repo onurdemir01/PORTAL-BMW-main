@@ -138,6 +138,42 @@ describe('FileSelectionStep', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Sunucu seçimine dön' }));
     expect(geri).toHaveBeenCalled();
   });
+
+  // 2026-10-07: numarali log dizinleri (log1, logs2...) artik taranir. Keşif playbook'u AWX'e
+  // ELLE kopyalanir; kopyalanmazsa AWX eski surumu kosar ve numarali dizinler SESSIZCE
+  // taranmaz. Yeni playbook taradigi deseni artifact'a yazar; alan yoksa ekran soyler.
+  it('F2 eski playbook kopyasi: numarali dizinlerin TARANMADIGI soylenir', () => {
+    render(
+      <FileSelectionStep
+        result={{ overall_status: 'success', hosts: [{ host: 'OK1', status: 'ok', files: [] }] } as never}
+        onSubmit={() => {}}
+      />,
+    );
+    const t = screen.getByTestId('logx-eski-kesif').textContent || '';
+    expect(t).toMatch(/eski keşif playbook/);
+    expect(t).toMatch(/log1, logs2 gibi numaralı log dizinleri taranmadı/);
+    expect(t).toMatch(/logx_legacy_discovery\.yml/);
+    // Kapsam bilinmiyorken "su dizinlere bakildi" DENMEZ.
+    expect(screen.queryByTestId('logx-tarama-kapsami')).not.toBeInTheDocument();
+  });
+
+  it('F3 guncel playbook: uyari yok; bos sonucta NEREYE bakildigi soylenir', () => {
+    render(
+      <FileSelectionStep
+        result={
+          {
+            overall_status: 'success',
+            log_dir_regex: 'logs?[0-9]*',
+            hosts: [{ host: 'OK1', status: 'ok', files: [] }],
+          } as never
+        }
+        onSubmit={() => {}}
+      />,
+    );
+    expect(screen.queryByTestId('logx-eski-kesif')).not.toBeInTheDocument();
+    expect(screen.getByText('Taranan sunucularda dosya bulunamadı.')).toBeInTheDocument();
+    expect(screen.getByTestId('logx-tarama-kapsami').textContent).toMatch(/log, logs ve numaralı \(log1, logs2…\) dizinlere bakıldı/);
+  });
 });
 
 describe('AppNameStep: elle uygulama adı görünür ve kaldırılabilir', () => {

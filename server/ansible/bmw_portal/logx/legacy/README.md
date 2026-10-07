@@ -74,9 +74,11 @@ yazıldığını merak ediyorsanız önce buraya bakın.
           "size": 12345,
           "mtime": "2026-07-14T10:00:00Z"
         }
-      ]
+      ],
+      "log_dir_regex": "logs?[0-9]*"
     }
-  ]
+  ],
+  "log_dir_regex": "logs?[0-9]*"
 }
 ```
 
@@ -99,12 +101,34 @@ yazıldığını merak ediyorsanız önce buraya bakın.
 ### Akış
 
 1. EAR klasörleri: `legacy_log_roots` altında `<app_name>*.ear` dizinleri (daraltılmış keşif).
-2. Log dizinleri: bulunan EAR'ların hemen altındaki `log`/`logs` (stat döngüsü olmadan).
+2. Log dizinleri: bulunan EAR'ların hemen altındaki `log`, `logs` ve numaralı olanlar
+   (`log1`, `log2`, `logs1`, `logs2`, …) — bkz. "Log dizini adları" (stat döngüsü olmadan).
 3. Dosyalar: yalnız bu log dizinlerinde, özyinelemeli.
-4. Süzme: yol `/log/` ya da `/logs/` segmenti ve `app_name` içermeli.
+4. Süzme: yol bir log dizini segmenti (aynı desen) ve `app_name` içermeli.
 5. Ölçüm sorunları toplanır (aşağıda), `host_result` kurulur, host `logx_discovered` grubuna
    eklenir.
 6. Ayrı localhost play'i tüm hostların `host_result`'ını TEK artifact olarak yayınlar.
+
+### Log dizini adları (2026-10-07)
+
+Kullanıcı isteği: `…/log|logs/…` yanında `…/log1|log2|logs1|logs2…/…` gibi dizinlerden de log
+alınabilmeli. Eskiden yalnız `log` ve `logs` taranıyordu; numaralı dizinlerdeki dosyalar hiç
+listelenmiyor, ekran "dosya bulunamadı" diyordu.
+
+- **Tek kaynak:** play değişkeni `legacy_log_dir_regex` (varsayılan `logs?[0-9]*`). Hem dizin
+  bulan `find` görevi (`patterns: "^(…)$"`, `use_regex: true` — desen dizin ADINA uygulanır)
+  hem de son süzgeç (`/(…)/` yol segmenti) bu değişkenden türer. İkisi ayrışırsa `find`'ın
+  bulduğu dizinin dosyaları süzgeçte düşer ve yine "dosya yok" görünür.
+- **Eşleşen:** `log`, `logs`, `log1`, `log2`, `log10`, `logs1`, `logs2`, `logs25` …
+- **Bilerek eşleşmeyen:** `log4j`, `logs_old`, `logs.bak`, `logsX`, `log-1`, `mylogs`, `Logs`.
+  Desen yalnız rakam ekine izin verir: yapılandırma ya da yedek dizinlerinin içeriği "log" diye
+  listelenip indirilebilir olmasın. Başka bir ad kalıbı gerekirse yalnız bu değişken genişletilir.
+- Kapsam değişmedi: yalnız EAR klasörünün HEMEN altındaki dizinler (`recurse: false`), yalnız
+  dizinler, sembolik bağ izlenmez.
+- **Desen artifact'ta yayınlanır:** her `host_result` ve birleşik `logx_result` bir
+  `log_dir_regex` alanı taşır. Bu klasör AWX'e ELLE kopyalandığı için kopya eski kalabilir; o
+  zaman numaralı dizinler SESSİZCE taranmaz. Portal alanın yokluğundan bunu anlar ve dosya
+  seçim ekranında "eski keşif playbook'u — numaralı dizinler taranmadı" uyarısını gösterir.
 
 ### Ölçülemedi ile yok karışmaz (kural 6, sözleşme LX2)
 

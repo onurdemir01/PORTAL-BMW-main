@@ -393,6 +393,21 @@ const FileSelectionStep: React.FC<Props> = ({
           olduğu için gösterilmiyor. Erişim için LogX yöneticisine (Admin) başvurun.
         </div>
       )}
+      {/* ESKI PLAYBOOK KOPYASI: taranan dizin deseni artifact'ta YOKSA is AWX'teki eski
+          kopyayla kosmustur — numarali log dizinleri (log1, logs2...) HIC taranmamistir.
+          "Olculemedi" ile "yok" karismasin: liste eksik olabilir ve bunu ekran soyler. */}
+      {!result.log_dir_regex && (
+        <div
+          data-testid="logx-eski-kesif"
+          className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800"
+        >
+          Bu tarama AWX&apos;teki <strong>eski</strong> keşif playbook&apos;uyla yapıldı: yalnızca{' '}
+          <code>log</code> ve <code>logs</code> dizinlerine bakıldı; <code>log1</code>,{' '}
+          <code>logs2</code> gibi numaralı log dizinleri <strong>taranmadı</strong>. Aradığınız dosya
+          listede yoksa yöneticinize bildirin (güncel <code>logx_legacy_discovery.yml</code> AWX
+          projesine kopyalanmalı).
+        </div>
+      )}
       {result.overall_status === 'partial' && (
         <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 text-xs text-amber-800">
           Bazı sunuculara erişilemedi — aşağıda yalnızca başarıyla taranan sunucular gösteriliyor.
@@ -545,9 +560,18 @@ const FileSelectionStep: React.FC<Props> = ({
         style={{ height: LIST_HEIGHT }}
       >
         {rows.length === 0 ? (
-          <p className="text-sm text-[var(--text-muted)] text-center py-8">
-            {filtering ? 'Eşleşen dosya yok.' : 'Taranan sunucularda dosya bulunamadı.'}
-          </p>
+          <div className="text-center py-8 px-4">
+            <p className="text-sm text-[var(--text-muted)]">
+              {filtering ? 'Eşleşen dosya yok.' : 'Taranan sunucularda dosya bulunamadı.'}
+            </p>
+            {/* NEREYE bakildigi soylenir: "dosya yok" ancak kapsam biliniyorsa anlamlidir. */}
+            {!filtering && result.log_dir_regex && (
+              <p className="mt-1 text-xs text-[var(--text-muted)]" data-testid="logx-tarama-kapsami">
+                Uygulamanın EAR klasörünün hemen altındaki <code>log</code>, <code>logs</code> ve
+                numaralı (<code>log1</code>, <code>logs2</code>…) dizinlere bakıldı.
+              </p>
+            )}
+          </div>
         ) : (
           <div style={{ height: virtualizer.getTotalSize(), position: 'relative', width: '100%' }}>
             {virtualizer.getVirtualItems().map((v) => {

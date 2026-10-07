@@ -33,6 +33,13 @@ template** olarak tanımlanır. Portal bu template'leri sadece "başlat + durumu
 | `logx_ocp_discover_fetch.yml`      | Seçilen **her (cluster × namespace × uygulama) birimi** için pod loglarını çeker, zip'ler, staging'e bırakır                | `ocp_clusters`, `ocp_targets[]`, `archive_id`, `staging_dir`, `fallback_dir` (+ geriye uyum: `terminal_host`, `oc_namespace_input`, `app_name`) |
 | `logx_ocp_app_discovery.yml`       | **(yeni)** Verilen namespace'lerdeki uygulama/objeleri listeler — kullanıcı uygulama adını ezberden bilmek zorunda kalmasın | `terminal_host`, `ocp_clusters` (her öğede `namespaces`), `ocp_namespaces`                                                                      |
 
+**Legacy keşfi hangi dizinlere bakar:** uygulamanın EAR klasörünün (`<uygulama>*.ear`) hemen
+altındaki `log`, `logs` ve numaralı log dizinleri (`log1`, `log2`, `logs1`, `logs2`, …).
+`log4j`, `logs_old` gibi benzer adlar bilerek taranmaz. Desen playbook'taki
+`legacy_log_dir_regex` değişkenindedir ve sonuç artifact'ında (`log_dir_regex`) yayınlanır;
+alan gelmiyorsa AWX'teki kopya eskidir ve portal bunu dosya seçim ekranında söyler.
+Ayrıntı: `server/ansible/bmw_portal/logx/legacy/README.md`.
+
 **Çıktı sözleşmesi (hepsi için ortak):** Playbook'un SON adımı
 `ansible.builtin.set_stats` ile `logx_result` adında bir JSON yayınlar. Portal sonucu
 **bu JSON'dan** okur (ham stdout'u parse ETMEZ). Format her playbook dosyasının başındaki

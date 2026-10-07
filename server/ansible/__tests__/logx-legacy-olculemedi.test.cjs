@@ -720,7 +720,11 @@ def yapi():
     ilk_sf = ilk.get('ansible.builtin.set_fact') or {}
     kesif_blok = [t for t in kesif_host_oyunu()['tasks'] if 'block' in t][0]
     find_adlari = [t.get('name') for t in kesif_blok['block'] if 'ansible.builtin.find' in t]
+    log_dizin_find = [t for t in kesif_blok['block']
+                      if 'ansible.builtin.find' in t and t.get('register') == 'found_log_dirs'][0]
     return {
+        'kesif_log_dizin_find': log_dizin_find['ansible.builtin.find'],
+        'kesif_log_dir_regex': (kesif_host_oyunu().get('vars') or {}).get('legacy_log_dir_regex'),
         'vars_lookup': vars_lookup,
         'ilk_gorev_set_fact': 'ansible.builtin.set_fact' in ilk,
         'ilk_gorev_zip': ilk_sf.get('was_tmp_zip'),
@@ -766,6 +770,28 @@ SENARYOLAR = {
     'K11_dosya_find_dustu': lambda: kesif_host({
         'found_ear_dirs': EAR_OK, 'found_log_dirs': LOGDIR_OK,
         'found_files': {'failed': True, 'changed': False, 'msg': 'find dosya taramasi dustu'}}),
+    'K12_numarali_dizinler': lambda: kesif_host({
+        'found_ear_dirs': EAR_OK,
+        'found_log_dirs': dict(LOGDIR_OK, files=[
+            {'path': '/vhosting8/APPX-T.ear/logs'}, {'path': '/vhosting8/APPX-T.ear/log1'},
+            {'path': '/vhosting8/APPX-T.ear/logs2'}, {'path': '/vhosting8/APPX-T.ear/log10'}]),
+        'found_files': dict(DOSYA_OK, files=[
+            {'path': '/vhosting8/APPX-T.ear/logs/SystemOut.log', 'size': 1},
+            {'path': '/vhosting8/APPX-T.ear/log1/a.log', 'size': 1},
+            {'path': '/vhosting8/APPX-T.ear/logs2/alt/b.log', 'size': 1},
+            {'path': '/vhosting8/APPX-T.ear/log10/c.log', 'size': 1},
+            {'path': '/vhosting8/APPX-T.ear/log4j/log4j.xml', 'size': 1},
+            {'path': '/vhosting8/APPX-T.ear/logs_old/eski.log', 'size': 1},
+            {'path': '/vhosting8/APPX-T.ear/config/APPX.properties', 'size': 1},
+            {'path': '/vhosting8/APPX-T.ear/mylogs1/m.log', 'size': 1},
+            {'path': '/vhosting8/BASKA.ear/logs2/o.log', 'size': 1}])}),
+    'A8_dizin_deseni_yayinlanir': lambda: kesif_topla(
+        'GBJBOT21,GBJBOT22',
+        {'GBJBOT21': hr('GBJBOT21', 'error', error='x'),
+         'GBJBOT22': dict(hr('GBJBOT22'), log_dir_regex='logs?[0-9]*')},
+        ['GBJBOT21', 'GBJBOT22']),
+    'A9_eski_host_sonucu_desen_yok': lambda: kesif_topla(
+        'GBJBOT21', {'GBJBOT21': hr('GBJBOT21')}, ['GBJBOT21']),
     'A1_bir_host_bildirmedi': lambda: kesif_topla(
         'GBJBOT21,GBJBOT22,GBJBOT23',
         {'GBJBOT21': hr('GBJBOT21', files=[{'path': '/vhosting8/APPX-T.ear/logs/a.log'}]),
@@ -988,6 +1014,72 @@ test('X02 yapi: sorun etiketleri find gorev adlariyla AYNI (ad degisirse bekci d
       t.split(`gorev: "${ad}"`).length > 1,
       `find gorevi "${ad}" icin sorun etiketi yok - hata mesaji gorevi adlandiramaz`,
     );
+});
+
+// ── X10 NUMARALI LOG DIZINLERI (2026-10-07) ────────────────────────────────────────────────
+//
+// Kullanici: "log|logs|log1|log2|logs1...|logs2... gibi durumlarda da log alabilmemiz cok
+// onemli". Eskiden yalnizca EAR altindaki `log` ve `logs` taraniyordu; `logs2` gibi
+// numarali dizinlerdeki dosyalar HIC listelenmiyordu (ve ekran "dosya yok" diyordu).
+//
+// TEK KAYNAK: play degiskeni `legacy_log_dir_regex`. Hem find gorevi (dizin adi) hem
+// suzgec (yol segmenti) ONDAN turer; ikisi ayrisirsa find'in buldugu dizinin dosyalari
+// suzgecte dusup yine "dosya yok" gorunurdu.
+
+/** ansible.builtin.find (use_regex: true) esleme kurali: desen DIZIN ADINA re.match ile. */
+function logDizinAdiEslesir(ad) {
+  const y = render()._yapi;
+  const f = y.kesif_log_dizin_find;
+  assert.equal(f.use_regex, true, 'find regex kipinde degil - desen glob sanilir, hicbir dizin eslesmez');
+  return [].concat(f.patterns).some((p) => {
+    const desen = String(p).replace(/\{\{\s*legacy_log_dir_regex\s*\}\}/g, y.kesif_log_dir_regex);
+    assert.ok(!/\{\{/.test(desen), `desen cozulemedi: ${desen}`);
+    // Python re.match = BASTAN capali; sonu desenin kendi capasi belirler.
+    return new RegExp(`^(?:${desen})`).test(ad);
+  });
+}
+
+test('X10 log dizini adlari: log, logs ve NUMARALI olanlar taranir; benzer adlar TARANMAZ', () => {
+  for (const ad of ['log', 'logs', 'log1', 'log2', 'log10', 'logs1', 'logs2', 'logs25', 'log007'])
+    assert.equal(logDizinAdiEslesir(ad), true, `"${ad}" dizini taranmiyor`);
+  // Yapilandirma / yedek / baska dizinler LOG DIZINI SAYILMAZ: icerikleri log diye
+  // listelenir ve indirilebilir olurdu (or. log4j yapilandirmasi).
+  for (const ad of ['log4j', 'logs_old', 'logs.bak', 'logsX', 'logs1a', 'log-1', 'log_1', 'mylogs', 'mylogs1',
+    'catalog', 'logfiles', 'Logs', 'LOG1', '1log', 'logs1 ', 'lo', 'config'])
+    assert.equal(logDizinAdiEslesir(ad), false, `"${ad}" log dizini sayildi`);
+  // Yalnizca EAR'in HEMEN altinda ve yalnizca DIZIN.
+  const f = render()._yapi.kesif_log_dizin_find;
+  assert.equal(f.recurse, false);
+  assert.equal(f.file_type, 'directory');
+  assert.equal(f.follow, false, 'sembolik bag izleniyor - log dizini disina cikilabilir');
+});
+
+test('X10 suzgec: numarali dizinlerdeki dosyalar listelenir; log4j / logs_old / baska uygulama listelenmez', () => {
+  const r = senaryo('K12_numarali_dizinler').host_result;
+  assert.equal(r.status, 'ok', JSON.stringify(r));
+  assert.deepEqual(
+    r.files.map((f) => f.path),
+    [
+      '/vhosting8/APPX-T.ear/logs/SystemOut.log',
+      '/vhosting8/APPX-T.ear/log1/a.log',
+      '/vhosting8/APPX-T.ear/logs2/alt/b.log',
+      '/vhosting8/APPX-T.ear/log10/c.log',
+    ],
+  );
+});
+
+test('X10 artifact taranan dizin desenini YAYINLAR (portal eski AWX kopyasini bundan anlar)', () => {
+  const y = render()._yapi;
+  assert.equal(y.kesif_log_dir_regex, 'logs?[0-9]*');
+  // Host sonucu deseni tasir (rescue yolu dahil); toplayici onu tek alana cikarir.
+  assert.equal(senaryo('K12_numarali_dizinler').host_result.log_dir_regex, y.kesif_log_dir_regex);
+  assert.equal(senaryo('K9_rescue').host_result.log_dir_regex, y.kesif_log_dir_regex);
+  // Bir host hata verse de desen, bildiren hostlardan okunur.
+  assert.equal(tekYayin(senaryo('A8_dizin_deseni_yayinlanir'), 'A8').log_dir_regex, y.kesif_log_dir_regex);
+  // Deseni tasimayan (eski bicimli) host sonucu toplayiciyi DUSURMEZ; alan bos kalir.
+  const a9 = senaryo('A9_eski_host_sonucu_desen_yok');
+  assert.equal(a9.kirmizi, null, a9.kirmizi);
+  assert.equal(tekYayin(a9, 'A9').log_dir_regex, '');
 });
 
 // ── X03 KESIF: rescue host'u dusurmez; toplayici bildirmeyeni "unreachable" ekler ──────────

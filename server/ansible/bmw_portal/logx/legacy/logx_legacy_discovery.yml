@@ -13,6 +13,7 @@
     legacy_log_roots:
       - /vhosting
       - /vhosting8
+    legacy_log_dir_regex: "logs?[0-9]*"
 
   tasks:
     - block:
@@ -34,9 +35,8 @@
           recurse: false
           file_type: directory
           patterns:
-            - log
-            - logs
-          use_regex: false
+            - "^({{ legacy_log_dir_regex }})$"
+          use_regex: true
           follow: false
         register: found_log_dirs
         when: (found_ear_dirs.files | default([]) | length) > 0
@@ -85,7 +85,7 @@
           matched_files: >-
             {{
               found_files.files | default([])
-              | selectattr('path', 'search', '/(log|logs)/')
+              | selectattr('path', 'search', '/(' ~ legacy_log_dir_regex ~ ')/')
               | selectattr('path', 'search', app_name)
               | list
             }}
@@ -172,6 +172,7 @@
               }}
             error: "{{ kesif_sorunlari | default([]) | map(attribute='metin') | join(' | ') }}"
             files: "{{ (matched_files | default([])) if (kesif_sorunlari | default([]) | length) == 0 else [] }}"
+            log_dir_regex: "{{ legacy_log_dir_regex }}"
 
       - name: "Bu host'u sonuç grubuna ekle (aggregation için)"
         ansible.builtin.group_by:
@@ -191,6 +192,7 @@
               status: error
               error: "{{ host_blocked_reason }} (kosan: {{ logx_legacy_user | default('was') }})"
               files: []
+              log_dir_regex: "{{ legacy_log_dir_regex }}"
 
         - name: "Bu host'u sonuç grubuna ekle (rescue)"
           ansible.builtin.group_by:
@@ -276,6 +278,16 @@
                 )
               }}
             hosts: "{{ aggregated_hosts }}"
+            log_dir_regex: >-
+              {{
+                (
+                  bildiren_hostlar
+                  | selectattr('log_dir_regex', 'defined')
+                  | map(attribute='log_dir_regex')
+                  | first
+                )
+                | default('')
+              }}
         per_host: false
         aggregate: false
 
