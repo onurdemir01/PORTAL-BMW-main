@@ -305,3 +305,38 @@ test('RW4 tur sirasi: webSonucTick tick() icinde cagrilir', () => {
   const tk = src.slice(src.indexOf('async function tick('), src.indexOf('function startPoller('));
   assert.match(tk, /await webSonucTick\(\)/, 'web sonucu hic okunmuyor');
 });
+
+// ── AYNI VHOST IKI KEZ + HEMEN BASLAT (uretim 2026-10-08: job 3387660 + 3387662; "2-3 dakika bekliyorum") ──
+const webHedef = (liste) => ({ id: 9, record_id: 3, host: 'GBJBOP01', app_name: 'VO', web_result_json: JSON.stringify(liste) });
+const vhx = (o = {}) => ({ host: 'GBJBOAP11', serverName: 'vo.fw', product: 'IHS', confFile: 'mod-jk.conf', status: 'pending', jobId: null, message: null, ...o });
+
+test('RW5 ayni host/conf/ServerName listede iki kez ise TEK is baslar, liste tekillesir', async () => {
+  const yazilan = dbKur([['web_result_json LIKE', [webHedef([vhx(), vhx({ host: 'gbjboap11', serverName: 'VO.FW' }), vhx({ host: 'GBJBOAP12' })])]]]);
+  const isler = [];
+  poller.startPoller(async () => ({}), null, async (w) => { isler.push(w.webHost); return { jobId: 100 + isler.length, awxServerId: 4 }; });
+  const r = await poller._webTick();
+  poller.stopPoller();
+  assert.deepEqual(isler, ['GBJBOAP11', 'GBJBOAP12'], 'ayni vhost icin iki is baslatildi');
+  assert.equal(r.kosan, 2);
+  const upd = yazilan.find((y) => y.sql.startsWith('UPDATE retirement_targets SET web_result_json'));
+  const yeni = JSON.parse(upd.params[0]);
+  assert.equal(yeni.length, 2, 'tekrar eden girdi listeden cikmadi');
+  assert.equal(yeni[0].awxServerId, 4, 'awxServerId girdide yok - ekran isi izleyemez');
+});
+
+test('RW6 webSimdi zamanlayiciyi beklemeden baslatir; zamanlayici calisirken IKINCI kez baslatmaz', async () => {
+  dbKur([['web_result_json LIKE', [webHedef([vhx()])]]]);
+  let n = 0;
+  let birak;
+  const bekle = new Promise((r) => { birak = r; });
+  poller.startPoller(async () => ({}), null, async () => { n += 1; await bekle; return { jobId: 1 }; });
+  const ilk = poller.webSimdi();
+  // Zaman asimli: kilit yoksa ikinci cagri ilk isi bekleyip ASKIDA kalir; test acikca dusmeli.
+  const ikinci = await Promise.race([poller.webSimdi(), new Promise((r) => setTimeout(() => r({ askida: true }), 2000))]);
+  assert.equal(ikinci.kilitli, true, 'kilit yok: ayni anda iki webTick ayni vhost icin iki is baslatabilir');
+  birak();
+  const r1 = await ilk;
+  poller.stopPoller();
+  assert.equal(r1.kosan, 1);
+  assert.equal(n, 1);
+});

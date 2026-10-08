@@ -14,21 +14,57 @@ import { fmtDate, fmtDateTime } from '@/utils/datetime';
 import RetirementAkis from './RetirementAkis';
 import { retirementAdimi } from './retirementAdim';
 import { stopTrafikOzeti, stopOnayAcikMi, type TrafikIsDurumu } from './retirementTrafik';
-import { blokAyristir, bloklaraBol, jkAyristir, JK_ETIKET, kipAyristir, sonraMetni, sonucAyristir, YORUM_ONEKI, type BlokSatiri, type JkSatiri, type Kip } from './retirementVhostPlan';
+import { blokAyristir, bloklaraBol, jkAyristir, jkDegAyristir, JK_ETIKET, kipAyristir, sonraMetni, sonucAyristir, YORUM_ONEKI, type BlokSatiri, type JkDeg, type JkSatiri, type Kip } from './retirementVhostPlan';
 
 /** On kontrolde vhost basina kapatma plani (ekran durumu). */
 interface VhostPlanDurumu {
   host: string; serverName: string; confFile: string;
   durum: 'suruyor' | 'hazir' | 'hata' | 'elle';
-  mesaj?: string; satirlar?: BlokSatiri[]; jk?: JkSatiri[]; kip?: { kip: Kip; hedef?: string }; jobId?: number | null;
+  mesaj?: string; satirlar?: BlokSatiri[]; jk?: JkSatiri[]; jkdeg?: JkDeg[]; kip?: { kip: Kip; hedef?: string }; jobId?: number | null;
 }
 
 /** STOP onayinda KAPATILACAK VirtualHost bloklari (2026-10-08, kullanici: "tetiklemeden once
  *  disabled edilecek virtualhost blogunu gormek istiyorum"). Bloklar web adimiyla AYNI
  *  betikten (apache_retire_vhost plan) gelir. Plan basarisizsa (blok bulunamadi vb.) KIRMIZI:
  *  web adimi da ayni sebeple dusecek - JBoss STOP'u engellemez ama gorunur. */
-/** Bloga bagli mod_jk satirlari (SALT OKUNUR): web adimi bunlara DOKUNMAZ. Alan hic gelmediyse
+/** Bloga bagli mod_jk satirlari (tespit). Temizlik JkOnceSonra'da; PAYLASILAN varsa yapilmaz. Alan hic gelmediyse
  *  (eski server_hub_fix) acikca soylenir - bos liste "bagli satir yok" diye okunmasin. */
+/** mod_jk satirlari ONCE / SONRA (onayda vhost ile AYNI koşuda uygulanir). */
+function JkOnceSonra({ deg }: { deg?: JkDeg[] }) {
+  if (!deg || !deg.length) return null;
+  const dosyalar = [...new Set(deg.map((d) => d.dosya))];
+  const satir = (no: number, metin: string, renk?: string, zemin?: string) => (
+    <div className="flex font-mono text-[11px] leading-5" style={{ background: zemin }}>
+      <span className="shrink-0 w-14 pr-2 text-right select-none" style={{ color: 'var(--text-muted)' }}>{no || ''}</span>
+      <span className="whitespace-pre pr-3" style={{ color: renk || 'var(--text-primary)' }}>{metin}</span>
+    </div>
+  );
+  return (
+    <div className="space-y-2">
+      <div className="font-semibold" style={{ color: 'var(--text-muted)' }}>mod_jk satırları — onayda vhost ile birlikte değişir</div>
+      {dosyalar.map((f) => {
+        const l = deg.filter((d) => d.dosya === f);
+        return (
+          <div key={f} className="space-y-1">
+            <div className="font-mono" style={{ color: 'var(--text-secondary)' }}>{f}</div>
+            <div className="grid gap-2 md:grid-cols-2">
+              <div className="rounded-lg border overflow-auto max-h-[40vh]" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)' }}>
+                <div className="sticky top-0 px-2 py-1 text-[11px] font-semibold border-b" style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-subtle)' }}>ÖNCE</div>
+                {l.map((d, i) => <div key={i}>{d.once ? satir(d.no, d.once) : satir(0, '', undefined, undefined)}</div>)}
+              </div>
+              <div className="rounded-lg border overflow-auto max-h-[40vh]" style={{ borderColor: 'var(--status-warning)', background: 'var(--bg-elevated)' }}>
+                <div className="sticky top-0 px-2 py-1 text-[11px] font-semibold border-b" style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-subtle)' }}>SONRA</div>
+                {l.map((d, i) => <div key={i}>{d.sonra ? satir(d.once ? d.no : 0, d.sonra, 'var(--status-warning)', 'var(--status-warning-bg, transparent)') : satir(d.no, '(satır kalkar)', 'var(--text-muted)')}</div>)}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+      <div style={{ color: 'var(--text-muted)' }}><span className="font-mono">worker.list</span> yorumlanmaz: eski hali üstte yorum olarak kalır, aktif satırdan yalnız bu uygulamanın adı çıkar. “Geri aktif et” hepsini geri açar.</div>
+    </div>
+  );
+}
+
 function JkBaglantilari({ jk }: { jk?: JkSatiri[] }) {
   if (!jk || !jk.length) return <div style={{ color: 'var(--text-muted)' }}>mod_jk bağlantıları okunmadı (eski server_hub_fix sürümü).</div>;
   const notlar = jk.filter((j) => j.tur === 'NOT');
@@ -36,7 +72,7 @@ function JkBaglantilari({ jk }: { jk?: JkSatiri[] }) {
   const renk = (t: JkSatiri['tur']) => (t === 'GLOBAL' || t === 'OKUNAMADI' ? 'var(--status-warning)' : t === 'PAYLASILAN' ? 'var(--status-danger)' : 'var(--text-secondary)');
   return (
     <div className="space-y-1">
-      <div className="font-semibold" style={{ color: 'var(--text-muted)' }}>Bağlı mod_jk satırları — web adımı bunlara DOKUNMAZ</div>
+      <div className="font-semibold" style={{ color: 'var(--text-muted)' }}>Bağlı mod_jk satırları (tespit) — PAYLASILAN varsa mod_jk'ya dokunulmaz</div>
       {notlar.map((n, i) => <div key={`n${i}`} style={{ color: 'var(--text-muted)' }}>{n.metin}</div>)}
       {satirlar.length === 0 ? <div style={{ color: 'var(--text-muted)' }}>Blok dışında bu worker'lara bağlı satır bulunmadı.</div> : (
         <div className="overflow-auto max-h-56 rounded px-2 py-1.5 text-[10px] leading-snug" style={{ background: 'var(--bg-elevated)' }}>
@@ -112,6 +148,7 @@ function VhostBloklar({ liste }: { liste?: VhostPlanDurumu[] }) {
             <>
               {v.mesaj && <div style={{ color: 'var(--text-secondary)' }}>{v.mesaj}</div>}
               <OnceSonra v={v} />
+              <JkOnceSonra deg={v.jkdeg} />
               <JkBaglantilari jk={v.jk} />
             </>
           )}
@@ -630,7 +667,7 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
               const hazir = sonuc.durum === 'PLAN';
               setVhostPlanlar((m) => {
                 const l = [...(m[t.id] || ilk)];
-                l[i] = { ...l[i], durum: hazir ? 'hazir' : 'hata', mesaj: sonuc.mesaj, satirlar: hazir ? blokAyristir(s.fixResult?.blok) : undefined, jk: jkAyristir(s.fixResult?.jk), kip: kipAyristir(s.fixResult?.kip) };
+                l[i] = { ...l[i], durum: hazir ? 'hazir' : 'hata', mesaj: sonuc.mesaj, satirlar: hazir ? blokAyristir(s.fixResult?.blok) : undefined, jk: jkAyristir(s.fixResult?.jk), jkdeg: jkDegAyristir(s.fixResult?.jkdeg), kip: kipAyristir(s.fixResult?.kip) };
                 return { ...m, [t.id]: l };
               });
             }
@@ -755,7 +792,26 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
       const r = await retirementApi.webRetry(id, t.id);
       if (!r.ok) { toast.error(r.message || 'Yeniden denenemedi.'); return; }
       if (r.record) setRec(r.record);
-      toast.success(`${r.adet} vhost yeniden kuyruğa alındı; zamanlayıcı birkaç dakika içinde işi başlatır.`);
+      // ISIN BASLADIGI GORUNUR: onaydan sonra is hemen baslatilir; baslayanlar is panelinde izlenir.
+      // Baslamadiysa NEDEN ve ne kadar beklenecegi yazilir - sessiz bekleme yok.
+      const nt = r.record?.targets.find((x) => x.id === t.id);
+      const kosan = (nt?.webSonuc || []).filter((w) => w.status === 'running' && w.jobId);
+      for (const w of kosan) {
+        let bitti = false;
+        addJob({
+          title: `Retirement: web adımı ${w.serverName} @ ${w.host}`,
+          fetchStatus: async () => {
+            const s = await retirementApi.jobStatus(id, t.id, Number(w.awxServerId ?? 0), w.jobId as number);
+            if (!s.ok) throw new Error(s.message || 'Durum okunamadı.');
+            if (TERMINAL.has(s.status) && !bitti) { bitti = true; setTimeout(() => { load(); }, 1500); }
+            return { status: s.status, output: s.output || '', result: s.result };
+          },
+        });
+      }
+      const dk = Math.max(1, Math.ceil((r.pollSaniye || 300) / 60));
+      if (r.basladi) toast.success(`${r.basladi} vhost işi başladı (${kosan.map((w) => `#${w.jobId}`).join(', ') || 'iş no bekleniyor'}) — iş panelinden izleyebilirsiniz.`);
+      else if (r.kilitli) toast.success(`${r.adet} vhost kuyrukta: zamanlayıcı şu an çalışıyor, iş bu turda başlar (en geç ~${dk} dk).`);
+      else toast.error(`${r.adet} vhost kuyrukta ama iş HENÜZ BAŞLATILAMADI${r.baslatmaHatasi ? `: ${r.baslatmaHatasi}` : ''} — zamanlayıcı en geç ~${dk} dk içinde yeniden dener; Olaylar listesine bakın.`);
     } catch (e: unknown) { toast.error(e instanceof Error ? e.message : String(e)); } finally { setBusy(null); }
   };
   const tazele = async (t: RtTarget) => {

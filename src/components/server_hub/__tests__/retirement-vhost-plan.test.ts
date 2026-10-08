@@ -1,6 +1,6 @@
 // src/components/server_hub/__tests__/retirement-vhost-plan.test.ts — VP1..VP3 (2026-10-08).
 import { describe, expect, test } from 'vitest';
-import { blokAyristir, bloklaraBol, jkAyristir, kipAyristir, sonraMetni, sonucAyristir } from '../retirementVhostPlan';
+import { blokAyristir, bloklaraBol, jkAyristir, jkDegAyristir, kipAyristir, sonraMetni, sonucAyristir } from '../retirementVhostPlan';
 
 describe('kapatilacak vhost blogu', () => {
   test('VP1 BLOK satirlari satir no + metin; metindeki sekme korunur', () => {
@@ -44,5 +44,17 @@ describe('kapatilacak vhost blogu', () => {
     expect(sonraMetni('x', 'yok')).toBe('x');
     expect(sonraMetni('x', 'tasi')).toBeNull();
     expect(sonraMetni('x', 'bilinmiyor')).toBeNull();
+  });
+
+  test('VP6 mod_jk degisiklikleri: once/sonra, eklenen satir once BOS; bicimsiz satir atilir', () => {
+    expect(jkDegAyristir([
+      'JKDEG\t/c/workers.properties\t3\tworker.list=a,vo,b\t# [server-hub 1 jk-list] worker.list=a,vo,b',
+      'JKDEG\t/c/workers.properties\t3\t\tworker.list=a,b',
+      'cop',
+    ])).toEqual([
+      { dosya: '/c/workers.properties', no: 3, once: 'worker.list=a,vo,b', sonra: '# [server-hub 1 jk-list] worker.list=a,vo,b' },
+      { dosya: '/c/workers.properties', no: 3, once: '', sonra: 'worker.list=a,b' },
+    ]);
+    expect(jkDegAyristir(undefined)).toEqual([]);
   });
 });

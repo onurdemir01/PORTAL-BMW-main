@@ -45,6 +45,7 @@ export interface RtWeb2 {
   confFile: string;
   status: string;
   jobId: number | null;
+  awxServerId?: number | null;
   message: string | null;
 }
 export interface RtTarget {
@@ -109,7 +110,7 @@ export const retirementApi = {
    *  HICBIR SEY degismez. Donus STOP on kontrolundeki vhostPlan ile ayni bicim. */
   webRetryPlan: (id: number, tid: number): Promise<{ ok: boolean; message?: string; vhostPlan?: RtLaunch['vhostPlan'] }> =>
     fetch(`${BASE}/${id}/targets/${tid}/web-retry/plan`, json({})).then(safeJson),
-  webRetry: (id: number, tid: number): Promise<{ ok: boolean; message?: string; adet?: number; record?: RtRecord }> =>
+  webRetry: (id: number, tid: number): Promise<{ ok: boolean; message?: string; adet?: number; basladi?: number; kilitli?: boolean; baslatmaHatasi?: string | null; pollSaniye?: number; record?: RtRecord }> =>
     fetch(`${BASE}/${id}/targets/${tid}/web-retry`, json({})).then(safeJson),
   refreshStatus: (id: number, tid: number): Promise<{
     ok: boolean; degisti?: boolean; from?: string; to?: string; jobId?: number;
@@ -125,6 +126,6 @@ export const retirementApi = {
     fetch(`${BASE}/${id}/delete-now`, json({ confirmApp })).then(safeJson),
   jobStatus: (id: number, tid: number, awxServerId: number, jobId: number): Promise<{ ok: boolean; status: string; output: string; result?: unknown; message?: string;
     /** server_hub_fix isleri (vhost plani): kapatilacak blok + RESULT satiri. */
-    fixResult?: { line?: string; blok?: string[]; jk?: string[]; kip?: string } | null }> =>
+    fixResult?: { line?: string; blok?: string[]; jk?: string[]; kip?: string; jkdeg?: string[] } | null }> =>
     fetch(`${BASE}/${id}/targets/${tid}/job-status/${awxServerId}/${jobId}`).then(safeJson),
 };

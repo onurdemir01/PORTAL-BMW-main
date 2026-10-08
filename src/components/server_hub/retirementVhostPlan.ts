@@ -89,3 +89,16 @@ export function sonraMetni(metin: string, kip: Kip): string | null {
   if (kip === 'yok') return metin;
   return null;
 }
+
+// MOD_JK DEGISIKLIKLERI (2026-10-08, kullanici: "STOP adiminda direkt yine yorum satirina alalim").
+// Betik planda, gercekte yazacagi AYNI awk'tan `JKDEG\t<dosya>\t<no>\t<once>\t<sonra>` basar:
+// once bos = EKLENEN satir (worker.list'in yeni hali), sonra bos = KALKAN satir (geri almada).
+export interface JkDeg { dosya: string; no: number; once: string; sonra: string }
+export function jkDegAyristir(x: unknown): JkDeg[] {
+  if (!Array.isArray(x)) return [];
+  return x.flatMap((y) => {
+    const p = String(y ?? '').split('\t');
+    if (p[0] !== 'JKDEG' || p.length < 5) return [];
+    return [{ dosya: p[1] || '', no: Number(p[2]) || 0, once: p[3] || '', sonra: p.slice(4).join('\t') }];
+  });
+}

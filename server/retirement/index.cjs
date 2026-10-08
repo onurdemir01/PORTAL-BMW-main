@@ -10,6 +10,7 @@
 // PROD hedef: oco_no zorunlu; ilk gercek STOP'ta SCC maili (adres: Retirement sayfasi ya da RETIREMENT_SCC_MAIL_TO; bossa uyari).
 // STOP her zaman once PLAN (plan_only=true) kosar, kullanici onaylayinca uygulanir.
 'use strict';
+const { webTekille } = require('./web-liste.cjs');
 
 const express = require('express');
 const { discover, searchApps } = require('./discover.cjs');
@@ -109,7 +110,7 @@ async function loadRecord(id) {
 // gercek ayrisabilir; o anda ekranda kimse yok. Donmus liste uygulanir, bulunamayan
 // vhost ATLANIR ve raporlanir - sessizce "tamamlandi" demek en kotu sonuc olurdu.
 function webDondur(web) {
-  return (Array.isArray(web) ? web : []).map((w) => ({
+  return webTekille(Array.isArray(web) ? web : []).liste.map((w) => ({
     host: String(w.host || ''),
     serverName: String(w.serverName || ''),
     product: String(w.product || ''),
@@ -617,7 +618,7 @@ function initRetirement(app) {
       if (!t) return res.status(400).json({ ok: false, message: 'Hedef yok.' });
       if (t.status !== 'stopped')
         return res.status(409).json({ ok: false, message: `Web adımı yalnız durdurulmuş hedefte yeniden denenir (hedef: ${t.status}).` });
-      const secilen = (t.webSonuc || []).filter((w) => w.status === 'failed' || w.status === 'skip');
+      const secilen = webTekille(t.webSonuc || []).liste.filter((w) => w.status === 'failed' || w.status === 'skip');
       if (!secilen.length) return res.status(409).json({ ok: false, message: 'Yeniden denenecek başarısız ya da atlanmış vhost yok.' });
       const vhostPlan = await vhostPlanBaslat(req, id, tid, secilen);
       await addEvent(id, req.session?.user?.username, 'web',
@@ -641,6 +642,7 @@ function initRetirement(app) {
       try { liste = JSON.parse(rows?.[0]?.web_result_json || 'null'); } catch { liste = null; }
       if (!Array.isArray(liste) || !liste.length)
         return res.status(400).json({ ok: false, message: 'Bu hedefin web listesi yok (kayıt açılırken vhost bulunamamış).' });
+      liste = webTekille(liste).liste;
       const YENIDEN = new Set(['failed', 'skip']);
       const secilen = liste.filter((w) => YENIDEN.has(w.status));
       if (!secilen.length) {
@@ -657,7 +659,12 @@ function initRetirement(app) {
       await db().query(`UPDATE retirement_targets SET web_result_json = $1, updated_at = GETUTCDATE() WHERE id = $2 AND status = 'stopped'`, [JSON.stringify(liste).slice(0, 60000), tid]);
       await addEvent(id, req.session?.user?.username, 'web',
         `${t.appName} @ ${t.host}: web adimi YENIDEN DENENECEK - ${secilen.map((w) => `${w.host} / ${w.serverName}`).join(', ')}`);
-      res.json({ ok: true, adet: secilen.length, record: await loadRecord(id) });
+      // ZAMANLAYICIYI BEKLEMEDEN baslat; zamanlayici o an calisiyorsa is o turda baslar (kilitli).
+      const poller = require('./poller.cjs');
+      let simdi = { kosan: 0, kilitli: false };
+      try { simdi = await poller.webSimdi(); } catch (e) { simdi = { kosan: 0, hata: e.message }; }
+      res.json({ ok: true, adet: secilen.length, basladi: simdi.kosan || 0, kilitli: !!simdi.kilitli, baslatmaHatasi: simdi.hata || null,
+        pollSaniye: poller.pollSaniye(), record: await loadRecord(id) });
     } catch (err) { res.status(500).json({ ok: false, message: err.message }); }
   });
 
@@ -981,7 +988,9 @@ function initRetirement(app) {
       };
       await require('../ansible/template-preflight.cjs').assertRegistryPlaybook(serverId, templateId, 'server_hub_fix');
       await require('../ansible/template-preflight.cjs').assertTemplateAcceptsExtraVars(serverId, templateId, extraVars, { label: 'server_hub_fix' });
-      return runner.launchJobOnServer(serverId, templateId, extraVars, '', {});
+      const j = await runner.launchJobOnServer(serverId, templateId, extraVars, '', {});
+      // awxServerId: ekran isi kendi izleyebilsin (yeniden deneme onayindan sonra "basladi #is").
+      return { ...j, awxServerId: serverId };
     });
   } catch (e) {
     console.warn('[Retirement] poller baslatilamadi:', e.message);

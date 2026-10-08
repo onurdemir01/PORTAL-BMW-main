@@ -19,6 +19,7 @@
 // AWX-native bir schedule'i guncellemek AWX API'sinden silip yeniden kurmayi gerektirir
 // ve kayit ile AWX arasinda ayrisma riski dogurur (ayni gerekce ScaleX'te de yazili).
 'use strict';
+const { webTekille } = require('./web-liste.cjs');
 
 const db = require('../db/index.cjs');
 const { stopZamani, etkinSilmeGunu, silmeZamaniGeldi } = require('./schedule.cjs');
@@ -304,6 +305,13 @@ async function webTick() {
     }
     if (!Array.isArray(liste)) continue;
     let degisti = false;
+    // AYNI VHOST IKI KEZ listede ise IKI is baslatilmaz (bkz. web-liste.cjs).
+    const tek = webTekille(liste);
+    if (tek.atilan) {
+      liste = tek.liste;
+      degisti = true;
+      await olay(t.record_id, 'web', `${t.app_name}: web listesinde ${tek.atilan} tekrar eden vhost cikarildi (ayni host/conf/ServerName)`);
+    }
     for (const w of liste) {
       if (w.status !== 'pending') continue;
       if (!APACHE_URUN.has(String(w.product || '').toUpperCase())) {
@@ -323,6 +331,7 @@ async function webTick() {
       try {
         const r = await _web({ webHost: w.host, product: w.product, confFile: w.confFile, serverName: w.serverName });
         w.jobId = r?.jobId ?? null;
+        w.awxServerId = r?.awxServerId ?? null;
         w.status = 'running';
         w.message = `is #${w.jobId ?? '?'}`;
         degisti = true;
@@ -427,6 +436,21 @@ function startPoller(launch, finalize, web) {
   console.log(`[Retirement poller] basladi (${Math.round(intervalMs / 1000)} sn)`);
 }
 
+// WEB ISINI HEMEN BASLAT (kullanici 2026-10-08: "web adimini onayla dedikten sonra 2-3 dakika job'in
+// baslamasini bekliyorum"). Yeniden deneme onayi listeyi 'pending' yapip zamanlayicinin bir sonraki
+// turunu bekliyordu. Ayni webTick, AYNI kilitle (_ticking) cagrilir: zamanlayici o an calisiyorsa
+// ikinci kez baslatilmaz (ayni vhost icin iki is) - is o turda zaten baslar, cagiran bunu bilir.
+async function webSimdi() {
+  if (typeof _web !== 'function') return { kosan: 0, elle: 0, zamanlayiciYok: true };
+  if (_ticking) return { kosan: 0, elle: 0, kilitli: true };
+  _ticking = true;
+  try {
+    return await webTick();
+  } finally {
+    _ticking = false;
+  }
+}
+
 function stopPoller() {
   if (_timer) clearInterval(_timer);
   _timer = null;
@@ -435,4 +459,4 @@ function stopPoller() {
   _web = null;
 }
 
-module.exports = { startPoller, stopPoller, tick, _stopTick: stopTick, _deleteTick: deleteTick, _finalizeTick: finalizeTick, _webTick: webTick, _webSonucTick: webSonucTick };
+module.exports = { startPoller, stopPoller, tick, webSimdi, pollSaniye: () => Math.round(cfg().intervalMs / 1000), _stopTick: stopTick, _deleteTick: deleteTick, _finalizeTick: finalizeTick, _webTick: webTick, _webSonucTick: webSonucTick };
