@@ -84,3 +84,34 @@ test('J11c: 7/8 disindaki majorler (9, 6) yok sayilir', () => {
     'taninmayan major turetmeye karismamali'
   );
 });
+
+// ── J12-J14: KURULUM DIZINI (uretim 2026-10-08, GBJBOP18 / GBCCSECURETRACKER) ──────────────
+// Standart disi sunucu: /usr/jboss altina da JBoss 8 kurulmus. Envanter iki satir donduruyor,
+// IKISI DE 8.x; ayirt eden tek alan app_path. Playbook'lar dizine gore dallanir ("7" kolu =
+// /usr/jboss, "8" kolu = /usr/jboss8), kol da oradan okunmali.
+const { kurulumKolu } = require('../index.cjs');
+const GBJBOP18 = [
+  { host: 'GBJBOP18', jbossVersion: '8.0', appPath: '/vhosting/GBCCSECURETRACKER.ear', kurulum: '7' },
+  { host: 'GBJBOP18', jbossVersion: '8.1', appPath: '/vhosting8/GBCCSECURETRACKER.ear', kurulum: '8' },
+];
+
+test('J12: kol app_path dizininden; app_path yok/NF ise urun surumune dusulur', () => {
+  assert.equal(kurulumKolu('/vhosting/GBCCSECURETRACKER.ear', '8.0'), '7', '/usr/jboss altindaki JBoss 8 "8" koluna gidiyor');
+  assert.equal(kurulumKolu('/vhosting8/GBCCSECURETRACKER.ear', '8.1'), '8');
+  assert.equal(kurulumKolu('/VHOSTING8/X.ear', '7.3'), '8', 'kasa');
+  assert.equal(kurulumKolu('NF', '8.1.2'), '8');
+  assert.equal(kurulumKolu('', '7.3.10'), '7');
+  assert.equal(kurulumKolu('', 'NF'), '');
+});
+
+test('J13: standart disi sunucuda /usr/jboss kurulumu AYRI hedeflenir', () => {
+  assert.equal(deriveJbossVersion(GBJBOP18, ['GBJBOP18'], ['7']), 'jboss7', '/usr/jboss secildi, /usr/jboss8 kolu gitti');
+  assert.equal(deriveJbossVersion(GBJBOP18, ['GBJBOP18'], ['8']), 'jboss8');
+  assert.equal(deriveJbossVersion(GBJBOP18, ['GBJBOP18'], ['7', '8']), 'all');
+});
+
+test('J14: urun surumu 8 olsa da "7" kolu (/usr/jboss) bu sunucuda GECERLI bir iddia', () => {
+  assert.doesNotThrow(() => deriveJbossVersion(GBJBOP18, ['GBJBOP18'], ['7']));
+  const yalniz8 = [GBJBOP18[1]];
+  assert.throws(() => deriveJbossVersion(yalniz8, ['GBJBOP18'], ['7']), /bulunmayan JBoss/);
+});

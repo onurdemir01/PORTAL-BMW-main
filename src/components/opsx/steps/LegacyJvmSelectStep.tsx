@@ -7,6 +7,7 @@
 // bitene kadar beklenir, seçili host'larda application adına çalışan JVM'ler (PID + komut
 // satırı) HOST BAZINDA gruplu listelenir — namespace/pod'un aksine burada birden fazla
 // host aynı anda söz konusu olduğu için gruplama gerekli (pod keşfinde tek namespace vardı).
+import { kurulumDizini } from "@/utils/jboss";
 import React, { useEffect, useMemo, useState } from "react";
 import { ExclamationTriangleIcon, ArrowPathIcon } from "@heroicons/react/24/outline";
 import { opsxApi, type OpsxJvm, type OpsxPidSelection } from "@/api/opsxApi";
@@ -230,7 +231,7 @@ const LegacyJvmSelectStep: React.FC<{
                         known ? "bg-gray-50 text-gray-500 border-gray-200" : "bg-red-50 text-red-700 border-red-100"
                       }`}
                     >
-                      {known ? `JBoss ${j.jbossMajor}` : "Sürüm belirlenemedi"}
+                      {known ? kurulumDizini(j.jbossMajor) : "Sürüm belirlenemedi"}
                     </span>
                   </label>
                 );

@@ -105,6 +105,23 @@ async function resolveTarget(platform) {
 // calisirken bazilari durmus, bkz. java_app_ops/operations/tasks/main.yml) okunur — daha once
 // bir playbook tetikleyip polling yapan /api/opsx/status-check yaklasimi TERK EDILDI, cunku bu
 // deger zaten envanterde hazir.
+// KURULUM KOLU (2026-10-08, uretim: GBJBOP18 / GBCCSECURETRACKER). OpsX playbook'lari kurulumu
+// SURUME gore degil DIZINE gore secer: "7" kolu = /usr/jboss/AppServer (jboss-cli.sh, host=master),
+// "8" kolu = /usr/jboss8/AppServer (jboss-cli8.sh, host=primary, :9998). Standart disi bir sunucuda
+// /usr/jboss altina da JBoss 8 kurulmus: envanter iki satir donduruyor, IKISI DE 8.x (8.0 ve 8.1).
+// Kol urun surumunden turetildigi icin iki satir AYNI kimligi aliyordu (GBJBOP18|8) - birine
+// tiklamak ikisini seciyordu - ve /usr/jboss kurulumu hic ayri hedeflenemiyordu.
+// Envanter iki kurulumu app_path ile ayirir (mwapps toplayicisi): /usr/jboss kolu
+// /vhosting/<app>.ear, /usr/jboss8 kolu /vhosting8/<app>.ear yazar. Kol oradan okunur; app_path
+// yoksa/NF ise eski davranis (urun surumunun majoru).
+function kurulumKolu(appPath, jbossVersion) {
+  const p = String(appPath || '').trim().toLowerCase();
+  if (p.startsWith('/vhosting8/')) return '8';
+  if (p.startsWith('/vhosting/')) return '7';
+  const m = String(jbossVersion || '').match(/^(\d+)/)?.[1];
+  return m === '7' || m === '8' ? m : '';
+}
+
 async function hostsForApp(app) {
   const appName = String(app || '').trim();
   if (!appName) {
@@ -117,7 +134,7 @@ async function hostsForApp(app) {
   const req = pool.request();
   req.input('app', appName);
   const result = await req.query(
-    `SELECT DISTINCT UPPER(host) AS host, env, jboss_version, status FROM ${getAppsTable()} WHERE app = @app ORDER BY host`,
+    `SELECT DISTINCT UPPER(host) AS host, env, jboss_version, status, app_path FROM ${getAppsTable()} WHERE app = @app ORDER BY host`,
   );
   return result.recordset
     .filter((r) => r.host)
@@ -128,6 +145,8 @@ async function hostsForApp(app) {
       status: String(r.status || '')
         .trim()
         .toLowerCase(),
+      appPath: String(r.app_path || '').trim(),
+      kurulum: kurulumKolu(r.app_path, r.jboss_version),
     }));
 }
 
@@ -147,7 +166,9 @@ function deriveJbossVersion(appHosts, requestedHosts, claimedMajors) {
   // Bir host birden fazla majorde olabildigi icin Map degil, coklu kume.
   const majorsByHost = new Map();
   for (const h of appHosts) {
-    const major = String(h.jbossVersion || '').match(/^(\d+)/)?.[1];
+    // KOL = kurulum dizini (bkz. kurulumKolu). Satir hostsForApp'ten gelmediyse (testler, eski
+    // cagiranlar) app_path yoktur ve urun surumune dusulur - eski davranis.
+    const major = h.kurulum !== undefined ? h.kurulum : kurulumKolu(h.appPath, h.jbossVersion);
     if (major !== '7' && major !== '8') continue;
     const key = String(h.host || '').toUpperCase();
     if (!majorsByHost.has(key)) majorsByHost.set(key, new Set());
@@ -2293,6 +2314,7 @@ function initOpsX(app) {
 module.exports = {
   initOpsX,
   hostsForApp,
+  kurulumKolu,
   ALLOWED_OPERATIONS,
   namespacesForCluster,
   deriveJbossVersion,

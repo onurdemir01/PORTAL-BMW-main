@@ -8,6 +8,7 @@
 // job'ı (bmw_portal/java_app_check/java_app_check.yml) tetiklenir, iş bitene kadar
 // beklenir, seçili host'larda application adına uyan server-config'ler HOST BAZINDA
 // gruplu, GÜNCEL STARTED/STOPPED durumlarıyla listelenir.
+import { kurulumDizini } from "@/utils/jboss";
 import React, { useEffect, useMemo, useState } from "react";
 import { ExclamationTriangleIcon, ArrowPathIcon } from "@heroicons/react/24/outline";
 import { opsxApi, type OpsxServerConfig, type OpsxServerConfigSelection, type OpsxOperation } from "@/api/opsxApi";
@@ -269,7 +270,7 @@ const ServerConfigSelectStep: React.FC<{
                       </span>
                     )}
                     <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full border flex-shrink-0 bg-gray-50 text-gray-500 border-gray-200">
-                      JBoss {c.jbossMajor}
+                      {kurulumDizini(c.jbossMajor) || `JBoss ${c.jbossMajor}`}
                     </span>
                     <span
                       className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border flex-shrink-0 ${

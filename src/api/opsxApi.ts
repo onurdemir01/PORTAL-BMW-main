@@ -17,6 +17,11 @@ export interface OpsxHost {
   // "running" | "stopped" | "" — MWAppsInventory.status'tan dogrudan okunur (kucuk
   // harfe cevrilir). Canli bir Ansible sorgusu YOK; bu deger envanterde hazir.
   status: string;
+  /** Envanterdeki app_path (/vhosting/<app>.ear | /vhosting8/<app>.ear). */
+  appPath?: string;
+  /** Playbook KOLU = kurulum dizini: "7" /usr/jboss, "8" /usr/jboss8 (urun surumu DEGIL;
+   *  bkz. server/opsx/index.cjs kurulumKolu). Eski sunucu gondermezse surumden turetilir. */
+  kurulum?: string;
 }
 
 export interface OpsxOperationDef {

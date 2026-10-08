@@ -62,3 +62,23 @@ export function majorOfHost(h: { jbossVersion?: string | null }): string {
 export function toHostPairs(keys: Iterable<string>): { host: string; jbossMajor: string }[] {
   return [...keys].map(parseHostKey);
 }
+
+// ── KURULUM DIZINI (OpsX, 2026-10-08) ─────────────────────────────────────────────
+// OpsX playbook'lari kurulumu DIZINE gore secer ("7" kolu = /usr/jboss, "8" kolu = /usr/jboss8).
+// Standart disi bir sunucuda /usr/jboss altinda da JBoss 8 olabiliyor (GBJBOP18): iki satir da
+// 8.x oldugundan (host, majör) kimligi ikisini birlestiriyordu. OpsX satir kimligi icin KOLU
+// kullanir; sunucu gondermediyse urun surumunun majörune dusulur (eski davranis).
+export function kurulumOf(h: { kurulum?: string | null; jbossVersion?: string | null }): string {
+  const k = String(h.kurulum ?? '').trim();
+  return k === '7' || k === '8' ? k : majorOfHost(h);
+}
+/** Kolun dizini - ekranda kullaniciya gosterilen kimlik. */
+export function kurulumDizini(kol: string): string {
+  return kol === '8' ? '/usr/jboss8' : kol === '7' ? '/usr/jboss' : '';
+}
+/** Urun surumu ile kurulum dizini standarda uymuyorsa (JBoss 8, /usr/jboss altinda) true. */
+export function standartDisiKurulum(h: { kurulum?: string | null; jbossVersion?: string | null }): boolean {
+  const k = kurulumOf(h);
+  const m = majorOfHost(h);
+  return !!k && !!m && k !== m;
+}

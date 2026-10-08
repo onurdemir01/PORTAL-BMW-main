@@ -13,6 +13,12 @@
 // birini işaretleyince diğeri de işaretleniyordu ve ikisi görsel olarak aynıydı.
 // Kimlik artık `(host, majör)` çifti ve her satır JBoss rozetiyle geliyor.
 //
+// KİMLİK KURULUM DİZİNİDİR, ÜRÜN SÜRÜMÜ DEĞİL (2026-10-08, GBJBOP18): standart dışı bir
+// sunucuda /usr/jboss altına da JBoss 8 kurulmuş; iki satır da 8.x olduğu için (host, majör)
+// kimliği ikisini birleştiriyor, birine tıklamak ikisini seçiyordu. Satır anahtarı artık
+// (host, kurulum kolu): "7" = /usr/jboss, "8" = /usr/jboss8 (envanter app_path'inden).
+// Önceki adımın sürüm filtresi ÜRÜN sürümüyle çalışmaya devam eder.
+//
 // SEÇİLEN MAJÖRLER SUNUCUYA AYRICA GİDER: backend eskiden majörü envanterden
 // TÜRETİYORDU (`versionByHost` Map'i host adıyla anahtarlı) — çift kurulumlu bir
 // host'ta ikinci satır birincisini eziyor ve türetilen majör keyfi oluyordu. Artık
@@ -20,7 +26,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { ExclamationTriangleIcon } from "@heroicons/react/24/outline";
 import { opsxApi, type OpsxHost } from "@/api/opsxApi";
-import { hostKey, majorOfHost, normalizeJbossVersion, parseHostKey } from "@/utils/jboss";
+import { hostKey, kurulumDizini, kurulumOf, majorOfHost, normalizeJbossVersion, parseHostKey, standartDisiKurulum } from "@/utils/jboss";
 import JbossTag from "@/components/common/JbossTag";
 
 const HostSelectStep: React.FC<{
@@ -71,7 +77,7 @@ const HostSelectStep: React.FC<{
   }
 
   function toggleAllIn(envKey: string) {
-    const keys = grouped[envKey].map((h) => hostKey(h.host, majorOfHost(h)));
+    const keys = grouped[envKey].map((h) => hostKey(h.host, kurulumOf(h)));
     const allSelected = keys.every((k) => selected.has(k));
     setSelected((prev) => {
       const next = new Set(prev);
@@ -125,14 +131,16 @@ const HostSelectStep: React.FC<{
                 onClick={() => toggleAllIn(envKey)}
                 className="text-xs text-[var(--accent)] hover:underline"
               >
-                {grouped[envKey].every((h) => selected.has(hostKey(h.host, majorOfHost(h))))
+                {grouped[envKey].every((h) => selected.has(hostKey(h.host, kurulumOf(h))))
                   ? "Seçimi kaldır" : "Tümünü seç"}
               </button>
             </div>
             <div className="space-y-1 border border-[var(--border)] rounded-xl p-1.5">
               {grouped[envKey].map((h) => {
                 const major = majorOfHost(h);
-                const key = hostKey(h.host, major);
+                const kol = kurulumOf(h);
+                const key = hostKey(h.host, kol);
+                const disi = standartDisiKurulum(h);
                 return (
                   <label
                     key={key}
@@ -145,6 +153,16 @@ const HostSelectStep: React.FC<{
                       className="rounded"
                     />
                     <span className="text-sm text-[var(--text-primary)] font-mono flex-1">{h.host}</span>
+                    {kol && (
+                      <span className="text-[11px] font-mono text-[var(--text-secondary)]" title={h.appPath ? `Envanter app_path: ${h.appPath}` : undefined}>
+                        {kurulumDizini(kol)}
+                      </span>
+                    )}
+                    {disi && (
+                      <span className="pf-label pf-label--orange" title={`Standart dışı: JBoss ${major} ürünü ${kurulumDizini(kol)} dizinine kurulu. İşlem bu dizindeki kuruluma gider.`}>
+                        standart dışı
+                      </span>
+                    )}
                     <JbossTag major={major} version={normalizeJbossVersion(h.jbossVersion)} />
                   </label>
                 );
