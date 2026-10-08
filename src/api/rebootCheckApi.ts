@@ -12,6 +12,7 @@ export interface RcSunucuSonuc {
   once_var?: boolean;
   plan?: string[];
   islemler?: string[];
+  son_goruntu?: string[];
   son_fark?: string[];
   son_olculdu?: boolean;
   sonuc_yok?: boolean;

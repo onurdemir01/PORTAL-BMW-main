@@ -1,10 +1,10 @@
 // src/components/server_hub/RebootKontroluTab.tsx — Server Hub > Reboot Kontrolü (2026-10-08).
 //
 // Kullanıcı: "Çalışma öncesi ve sonrası çalıştıralım, sunucunun sorunsuz olduğundan emin olalım."
-// Akış: (1) reboot ÖNCESİ görüntü alınır ve Portal'da saklanır, (2) reboot yapılır, (3) reboot SONRASI
-// görüntü önceki ile karşılaştırılır; önce çalışıp şimdi kapalı olan (DOWN) başlatılır, önce olmayıp
-// şimdi çalışan (NEW) durdurulur — TEK JVM / TEK web sunucusu bazında. Son görüntüde fark kalmadıysa
-// sunucu "Sorunsuz". Ölçülemeyen sunucu sorunsuz SAYILMAZ.
+// Kural (kullanıcı, "mesele çok basit"): Nginx / Red Hat Apache / IBM Apache / CTG / JBoss 7 / JBoss 8 / WAS
+// reboot öncesi çalışıyorduysa sonra da çalışmalı (kapalıysa açılır). JBoss ve WAS JVM'lerinde önce çalışıp
+// kapanan açılır, önce yokken çalışan kapatılır — tek JVM. Python vb. izlenmez. Ekran ürün başına:
+// "çalışıyordu → çalışıyor ✓". Ölçülemeyen sunucu sorunsuz SAYILMAZ.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowPathIcon, CameraIcon, WrenchScrewdriverIcon, CheckCircleIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 import { rebootCheckApi, type RcKayit, type RcSunucuSonuc, type RcDegerlendirme } from '@/api/rebootCheckApi';
@@ -13,7 +13,7 @@ import { useJobTracker } from '@/contexts/JobTrackerContext';
 import { Modal } from '@/components/common/Modal';
 import { fmtDateTime } from '@/utils/datetime';
 import { toast } from '@/hooks/useToast';
-import { DURUM, bilgiAyristir, farkAyristir, goruntuAyristir, islemAyristir, sunucuListesi } from './rebootKontrolu';
+import { DURUM, bilgiAyristir, goruntuAyristir, islemAyristir, onceOzeti, rebootOldu, sunucuListesi, urunTablosu, type Durum, type IslemSatiri } from './rebootKontrolu';
 
 const TERMINAL = new Set(['successful', 'failed', 'error', 'canceled']);
 const TON: Record<string, { renk: string; zemin: string }> = {
@@ -37,55 +37,77 @@ function sunucuRozeti(d: RcDegerlendirme | undefined) {
   return <Rozet ton="warning">Ölçülemedi</Rozet>;
 }
 
-function SunucuSonra({ host, r, d }: { host: string; r: RcSunucuSonuc | undefined; d: RcDegerlendirme | undefined }) {
+const DURUM_RENK: Record<Durum, string> = { ok: 'var(--status-success)', sorun: 'var(--status-danger)', bilgi: 'var(--status-warning)' };
+const DURUM_ISARET: Record<Durum, string> = { ok: '✓', sorun: '✗', bilgi: 'i' };
+
+function IslemNotu({ x }: { x?: IslemSatiri }) {
+  if (!x) return null;
+  const renk = x.sonuc === 'OK' ? 'var(--status-success)' : x.sonuc === 'FAIL' ? 'var(--status-danger)' : 'var(--text-muted)';
+  const ne = x.islem === 'baslat' ? 'açma' : 'kapatma';
+  const sonuc = x.sonuc === 'OK' ? 'yapıldı' : x.sonuc === 'FAIL' ? 'BAŞARISIZ' : x.sonuc === 'SKIP' ? 'gerek kalmadı' : '?';
+  return (
+    <span className="text-[11px]" style={{ color: renk }} title={x.mesaj}>
+      {ne} {sonuc}{x.sonuc === 'FAIL' && x.mesaj ? ` — ${x.mesaj}` : ''}
+    </span>
+  );
+}
+
+function SunucuSonra({ host, once, r, d }: { host: string; once: string[] | undefined; r: RcSunucuSonuc | undefined; d: RcDegerlendirme | undefined }) {
   const [acik, setAcik] = useState(d?.durum !== 'sorunsuz');
-  const ilk = farkAyristir(r?.plan);
+  const og = goruntuAyristir(once);
+  const ig = goruntuAyristir(r?.goruntu);
+  const sg = r?.son_olculdu ? goruntuAyristir(r?.son_goruntu) : null;
   const islem = islemAyristir(r?.islemler);
-  const bilgi = bilgiAyristir(r?.plan);
-  const kalan = farkAyristir(r?.son_fark);
+  const tablo = urunTablosu(og, ig, sg, islem);
+  const hata = bilgiAyristir(r?.plan).filter((b) => b.tur === 'HATA');
+  const reboot = rebootOldu(og, ig);
   return (
     <div className="rounded-lg border" style={{ borderColor: 'var(--border-subtle)' }}>
       <button type="button" onClick={() => setAcik((x) => !x)} className="w-full flex items-center gap-3 px-3 py-2 text-left">
         <span className="font-mono text-sm font-semibold">{host}</span>
         {sunucuRozeti(d)}
+        {reboot === false && <Rozet ton="warning">reboot olmamış görünüyor</Rozet>}
         <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-          ilk fark {ilk.length} · işlem {islem.length}{d?.hatali ? ` (${d.hatali} başarısız)` : ''}{d?.sebep ? ` · ${d.sebep}` : ''}
+          {islem.filter((x) => x.sonuc !== 'SKIP').length} işlem{d?.hatali ? ` (${d.hatali} başarısız)` : ''}{d?.sebep ? ` · ${d.sebep}` : ''}
         </span>
         <span className="ml-auto text-xs" style={{ color: 'var(--text-muted)' }}>{acik ? '▴' : '▾'}</span>
       </button>
       {acik && (
-        <div className="px-3 pb-3 grid gap-3 md:grid-cols-2 text-[12px]">
-          <div>
-            <div className="font-semibold mb-1" style={{ color: 'var(--text-muted)' }}>Reboot sonrası ilk fark</div>
-            {ilk.length === 0 ? <div style={{ color: 'var(--text-muted)' }}>Fark yok.</div> : ilk.map((f, i) => (
-              <div key={i} className="font-mono text-[11px]">
-                <span style={{ color: f.tur === 'DOWN' ? 'var(--status-danger)' : 'var(--status-warning)' }}>{f.tur === 'DOWN' ? 'KAPALI' : 'YENİ'}</span> {f.tip} · {f.ad}
-              </div>
-            ))}
-          </div>
-          <div>
-            <div className="font-semibold mb-1" style={{ color: 'var(--text-muted)' }}>Yapılan işlemler</div>
-            {islem.length === 0 ? <div style={{ color: 'var(--text-muted)' }}>İşlem yapılmadı.</div> : islem.map((x, i) => (
-              <div key={i} className="font-mono text-[11px]" title={x.mesaj}>
-                <span style={{ color: x.sonuc === 'OK' ? 'var(--status-success)' : x.sonuc === 'FAIL' ? 'var(--status-danger)' : 'var(--text-muted)' }}>{x.sonuc}</span> {x.islem} {x.tip} · {x.ad}
-                <div className="pl-6 break-all" style={{ color: 'var(--text-muted)' }}>{x.mesaj}</div>
-              </div>
-            ))}
-            {bilgi.length > 0 && (
-              <div className="mt-2">
-                <div className="font-semibold mb-1" style={{ color: 'var(--text-muted)' }}>Elle bakılmalı</div>
-                {bilgi.map((b, i) => <div key={i} className="font-mono text-[11px]" style={{ color: 'var(--status-warning)' }}>{b.tur} {b.tip} · {b.ad} — {b.mesaj}</div>)}
-              </div>
-            )}
-          </div>
-          <div className="md:col-span-2">
-            <div className="font-semibold mb-1" style={{ color: 'var(--text-muted)' }}>Son kontrol (düzeltmeden sonra, önce ile)</div>
-            {!r?.son_olculdu ? <div style={{ color: 'var(--status-warning)' }}>Son görüntü alınamadı — sorunsuz sayılmadı.</div>
-              : kalan.length === 0 ? <div style={{ color: 'var(--status-success)' }}>Önceki durumla birebir aynı.</div>
-                : kalan.map((f, i) => (
-                  <div key={i} className="font-mono text-[11px]" style={{ color: 'var(--status-danger)' }}>{f.tur === 'DOWN' ? 'hâlâ KAPALI' : 'hâlâ YENİ'} {f.tip} · {f.ad}</div>
-                ))}
-          </div>
+        <div className="px-3 pb-3 space-y-2 text-[12px]">
+          {reboot !== null && (
+            <div style={{ color: reboot ? 'var(--text-muted)' : 'var(--status-warning)' }}>
+              {reboot ? 'Reboot doğrulandı (açılış kimliği değişmiş).' : 'Açılış kimliği reboot öncesiyle aynı — sunucu yeniden başlamamış olabilir.'}
+            </div>
+          )}
+          {hata.map((b, i) => <div key={i} style={{ color: 'var(--status-danger)' }}>{b.mesaj}</div>)}
+          {!r?.son_olculdu && <div style={{ color: 'var(--status-warning)' }}>Son durum ölçülemedi — sorunsuz sayılmadı.</div>}
+          {tablo.length === 0 ? <div style={{ color: 'var(--text-muted)' }}>Bu sunucuda izlenen ürün (Nginx, Apache, IHS, CTG, JBoss, WAS) yok.</div> : (
+            <ul className="divide-y" style={{ borderColor: 'var(--border-subtle)' }}>
+              {tablo.map((u) => (
+                <li key={u.urun} className="py-1.5">
+                  <div className="flex flex-wrap items-baseline gap-x-2">
+                    <span className="w-4 text-center font-semibold" style={{ color: DURUM_RENK[u.durum] }}>{DURUM_ISARET[u.durum]}</span>
+                    <span className="font-semibold w-36">{u.ad}</span>
+                    <span style={{ color: u.durum === 'ok' ? 'var(--text-secondary)' : DURUM_RENK[u.durum] }}>{u.metin}</span>
+                    <IslemNotu x={u.islem} />
+                  </div>
+                  {(u.jvmAyni > 0 || u.jvmDegisim.length > 0) && (
+                    <div className="pl-[10.5rem] mt-0.5 space-y-0.5">
+                      {u.jvmAyni > 0 && <div style={{ color: 'var(--text-muted)' }}>{u.jvmAyni} JVM önceki gibi çalışıyor</div>}
+                      {u.jvmDegisim.map((j) => (
+                        <div key={j.ad} className="flex flex-wrap items-baseline gap-x-2">
+                          <span className="w-4 text-center" style={{ color: DURUM_RENK[j.durum] }}>{DURUM_ISARET[j.durum]}</span>
+                          <span className="font-mono text-[11px]">{j.ad}</span>
+                          <span style={{ color: j.durum === 'ok' ? 'var(--text-secondary)' : DURUM_RENK[j.durum] }}>{j.metin}</span>
+                          <IslemNotu x={j.islem} />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
     </div>
@@ -117,18 +139,21 @@ function Ayrinti({ k, onSonra, busy }: { k: RcKayit; onSonra: () => void; busy: 
           {k.hosts.map((h) => {
             const r = onceS[h];
             const g = goruntuAyristir(r?.goruntu);
+            const oz = onceOzeti(g);
+            const alindi = !!r?.goruntu_ok && g.bicimTamam;
             return (
               <details key={h} className="rounded-lg border px-3 py-2" style={{ borderColor: 'var(--border-subtle)' }}>
                 <summary className="cursor-pointer flex items-center gap-2 text-sm">
                   <span className="font-mono font-semibold">{h}</span>
                   {k.durum === 'once_kosuyor' ? <Rozet ton="info">alınıyor…</Rozet>
-                    : r?.goruntu_ok && g.length ? <Rozet ton="ok">{g.length} süreç kaydedildi</Rozet>
-                      : <Rozet ton="danger">alınamadı</Rozet>}
+                    : alindi ? <Rozet ton="ok">{oz.length ? `${oz.length} ürün kaydedildi` : 'izlenen ürün yok'}</Rozet>
+                      : r?.goruntu_ok ? <Rozet ton="warning">eski biçim — yeniden alın</Rozet>
+                        : <Rozet ton="danger">alınamadı</Rozet>}
                 </summary>
-                {g.length > 0 ? (
-                  <div className="mt-1 max-h-48 overflow-auto font-mono text-[11px] space-y-0.5">
-                    {g.map((s, i) => <div key={i}>{s.tip} · {s.ad}{s.adet > 1 ? ` ×${s.adet}` : ''} <span style={{ color: 'var(--text-muted)' }}>({s.kullanicilar})</span></div>)}
-                  </div>
+                {alindi && oz.length > 0 ? (
+                  <ul className="mt-1 text-[12px] space-y-0.5">
+                    {oz.map((o) => <li key={o.urun}>{o.ad}{o.jvm !== null ? <span style={{ color: 'var(--text-muted)' }}> · {o.jvm} JVM</span> : null}</li>)}
+                  </ul>
                 ) : r?.goruntu_hata ? <div className="mt-1 text-[11px]" style={{ color: 'var(--status-danger)' }}>{r.goruntu_hata}</div> : null}
               </details>
             );
@@ -143,7 +168,7 @@ function Ayrinti({ k, onSonra, busy }: { k: RcKayit; onSonra: () => void; busy: 
         </div>
         {k.durum === 'sonra_kosuyor' ? <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Sürüyor — iş panelinden izleyebilirsiniz.</div>
           : sonraHosts.length === 0 ? <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Henüz çalıştırılmadı. Reboot'u yaptıktan sonra yukarıdaki düğmeyi kullanın.</div>
-            : <div className="space-y-1.5">{sonraHosts.map((h) => <SunucuSonra key={h} host={h} r={sonraS[h]} d={deg[h]} />)}</div>}
+            : <div className="space-y-1.5">{sonraHosts.map((h) => <SunucuSonra key={h} host={h} once={onceS[h]?.goruntu} r={sonraS[h]} d={deg[h]} />)}</div>}
       </section>
     </div>
   );
@@ -234,9 +259,9 @@ export default function RebootKontroluTab() {
       <div className="rounded-xl border p-4 space-y-3" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}>
         <div className="text-sm font-semibold">Yeni reboot kontrolü</div>
         <ol className="text-[12px] space-y-0.5 list-decimal pl-5" style={{ color: 'var(--text-secondary)' }}>
-          <li><b>Reboot öncesi</b> görüntüyü alın — sunucuda hangi JVM / web sunucusu / süreç çalışıyor, Portal'da saklanır.</li>
+          <li><b>Reboot öncesi</b> görüntüyü alın — Nginx, Red Hat Apache, IBM Apache, CTG, JBoss 7/8, WAS ve JVM'leri; Portal'da saklanır.</li>
           <li>Reboot'u (patch) yapın.</li>
-          <li><b>Reboot sonrası kontrol et ve düzelt</b> — önce çalışıp şimdi kapalı olan başlatılır, önce olmayıp şimdi çalışan durdurulur (tek JVM bazında), son görüntü öncekiyle karşılaştırılır.</li>
+          <li><b>Reboot sonrası kontrol et ve düzelt</b> — önce çalışan ürün kapalıysa açılır; JBoss/WAS'ta önce çalışan JVM açılır, önce olmayan JVM kapatılır.</li>
         </ol>
         <div className="grid gap-2 md:grid-cols-[1fr_16rem]">
           <textarea value={metin} onChange={(e) => setMetin(e.target.value)} rows={2} placeholder="Sunucular (virgül, boşluk ya da satır): GBJBOP18, GBJBOAP18 …"
@@ -298,10 +323,9 @@ export default function RebootKontroluTab() {
         <div className="space-y-2 text-[12px]" style={{ color: 'var(--text-secondary)' }}>
           <p>Sunucuların reboot'u <b>tamamlandıysa</b> devam edin. Her sunucuda:</p>
           <ul className="list-disc pl-5 space-y-0.5">
-            <li>Önce çalışıp şimdi <b>kapalı</b> olan JVM / web sunucusu <b>başlatılır</b> (kapalı domain estate başlatma betiğiyle).</li>
-            <li>Önce olmayıp şimdi <b>çalışan</b> JVM / web sunucusu <b>durdurulur</b>.</li>
-            <li>Her işlem tek JVM bazında (<span className="font-mono">/host/server-config</span>); sunucu grubu ya da domain durdurulmaz, süreç öldürülmez.</li>
-            <li>Komutu bilinmeyen teknolojiler (Tomcat, Node…) yalnız raporlanır.</li>
+            <li>Reboot öncesi çalışan <b>Nginx / Red Hat Apache / IBM Apache / CTG / JBoss / WAS</b> kapalıysa estate başlatma yoluyla <b>açılır</b>. Önce çalışmayan ürüne dokunulmaz.</li>
+            <li>JBoss ve WAS'ta önce çalışıp şimdi kapalı olan JVM <b>açılır</b>; önce çalışmayıp şimdi çalışan JVM <b>kapatılır</b>.</li>
+            <li>Her JVM tek tek işlenir; sunucu grubu ya da domain durdurulmaz, süreç öldürülmez.</li>
           </ul>
           <p>Yalnız "önce" görüntüsü alınmış sunucular işlenir.</p>
         </div>

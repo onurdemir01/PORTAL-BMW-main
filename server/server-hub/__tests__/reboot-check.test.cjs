@@ -26,12 +26,13 @@ test('RC1 sorunsuz yalniz: son goruntu olculdu VE fark yok', () => {
   for (const h of ['C', 'D', 'E', 'F']) assert.equal(d[h].durum, 'olculemedi', `${h} olculemedigi halde sorunsuz/sorunlu sayildi`);
 });
 
-test('RC2 "sonra" girdisi yalniz goruntusu ALINAN sunuculari tasir', () => {
+test('RC2 "sonra" girdisi yalniz goruntusu ALINAN ve yeni bicimde (BOOT satirli) sunuculari tasir', () => {
   const g = onceGirdisi({
-    A: { goruntu_ok: true, goruntu: ['JBOSS8_JVM|x|1|1|was|d'] },
-    B: { goruntu_ok: false, goruntu: ['JBOSS8_JVM|x|1|1|was|d'] },
+    A: { goruntu_ok: true, goruntu: ['BOOT|b||', 'URUN|JBOSS8||'] },
+    B: { goruntu_ok: false, goruntu: ['BOOT|b||'] },
     C: { goruntu_ok: true, goruntu: [] },
     D: { sonuc_yok: true },
+    E: { goruntu_ok: true, goruntu: ['JBOSS8_JVM|x|1|1|was|d'] },
   });
   assert.deepEqual(Object.keys(g), ['A']);
 });
@@ -91,7 +92,7 @@ test('RC3 reboot oncesi: target_hosts + rc_faz=once; kayit acilir', async () => 
 });
 
 test('RC4 reboot sonrasi ONAYSIZ baslamaz', async () => {
-  const d = sahteDb({ id: 7, status: 'once_hazir', hosts_json: '["A"]', once_json: JSON.stringify({ sunucular: { A: { goruntu_ok: true, goruntu: ['X|y|1|1|u|d'] } } }) });
+  const d = sahteDb({ id: 7, status: 'once_hazir', hosts_json: '["A"]', once_json: JSON.stringify({ sunucular: { A: { goruntu_ok: true, goruntu: ['BOOT|b||'] } } }) });
   try {
     const l = [];
     const r = await istek(routerKur(l), '/reboot-check/7/sonra', {});
@@ -101,13 +102,13 @@ test('RC4 reboot sonrasi ONAYSIZ baslamaz', async () => {
 });
 
 test('RC5 reboot sonrasi: "once" goruntusu Portal\'dan rc_once ile gider; goruntusu olmayan sunucu hedeflenmez', async () => {
-  const once = { sunucular: { A: { goruntu_ok: true, goruntu: ['JBOSS8_JVM|app|1|1|was|d'] }, B: { goruntu_ok: false, goruntu: [] } } };
+  const once = { sunucular: { A: { goruntu_ok: true, goruntu: ['BOOT|b||', 'JVM|JBOSS8|app|x'] }, B: { goruntu_ok: false, goruntu: [] } } };
   const d = sahteDb({ id: 7, status: 'once_hazir', hosts_json: '["A","B"]', once_json: JSON.stringify(once) });
   try {
     const l = [];
     const r = await istek(routerKur(l), '/reboot-check/7/sonra', { onay: true });
     assert.equal(r.status, 200);
-    assert.deepEqual(l[0].ev, { rc_faz: 'sonra', target_hosts: 'A', rc_once: { A: ['JBOSS8_JVM|app|1|1|was|d'] } });
+    assert.deepEqual(l[0].ev, { rc_faz: 'sonra', target_hosts: 'A', rc_once: { A: ['BOOT|b||', 'JVM|JBOSS8|app|x'] } });
     assert.deepEqual(r.body.disarida, ['B']);
     const durum = await istek(routerKur(l), '/reboot-check/7/sonra', { onay: true });
     assert.equal(durum.status, 200);
@@ -121,8 +122,9 @@ test('RC6 once job bitince sonuc kayda yazilir: goruntu alinan varsa once_hazir,
     return () => { if (eski) require.cache[p] = eski; else delete require.cache[p]; };
   };
   for (const [sunucular, beklenen] of [
-    [{ A: { goruntu_ok: true, goruntu: ['X|y|1|1|u|d'] } }, 'once_hazir'],
+    [{ A: { goruntu_ok: true, goruntu: ['BOOT|b||'] } }, 'once_hazir'],
     [{ A: { goruntu_ok: false, goruntu: [] } }, 'once_hata'],
+    [{ A: { goruntu_ok: true, goruntu: ['JBOSS8_JVM|x|1|1|was|d'] } }, 'once_hata'],
   ]) {
     const d = sahteDb({ id: 7, status: 'once_kosuyor', hosts_json: '["A"]', once_job_id: 55, once_server_id: 1 });
     const g1 = sahte('../../ansible/runner.cjs', { getJobStatusOnServer: async () => ({ status: 'successful', artifacts: {} }) });

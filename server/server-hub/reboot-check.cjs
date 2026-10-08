@@ -4,7 +4,8 @@
 // yoktu not aliyor. reboot sonrasi onceki durum ile karsilastiriyor; onceden varolan ancak acilmamis
 // process/jvm varsa aciyor, onceden olmayan ancak acilmis varsa kapatiyor ... Calisma oncesi ve
 // sonrasi calistiralim, sunucunun sorunsuz oldugundan emin olalim." Karar: ikisi de OTOMATIK, ama
-// TEK JVM / TEK web sunucusu bazinda (playbook: bmw_automation_folder/patch_remediation/reboot_check.yml).
+// TEK JVM bazinda (playbook: bmw_automation_folder/patch_remediation/reboot_check.yml). Sadelestirme
+// (2026-10-08): yalniz Nginx/RHA/IHS/CTG/JBoss7/JBoss8/WAS urunleri ve JBoss/WAS JVM'leri; python vb. yok.
 //
 // "ONCE" GORUNTUSU PORTAL'DA SAKLANIR: ilk tasarim onu sunucuda /tmp'ye (reboot'ta silinebilir) ve
 // AWX'in gecici is dizinine (job bitince silinir) yaziyordu. Burada once job'inin set_stats sonucu
@@ -56,11 +57,14 @@ function sonraDegerlendir(sunucular, hedefler) {
   return out;
 }
 
-/** "once" sonucundan "sonra" job'inin rc_once girdisi: yalniz goruntusu ALINAN sunucular. */
+/** Goruntu yeni bicimde ve alinmis mi: BOOT satiri olmayan (eski bicim / bos) goruntuyle duzeltme YAPILMAZ. */
+const goruntuTamam = (r) => !!(r && r.goruntu_ok && Array.isArray(r.goruntu) && r.goruntu.some((l) => String(l).startsWith('BOOT|')));
+
+/** "once" sonucundan "sonra" job'inin rc_once girdisi: yalniz goruntusu ALINAN (yeni bicim) sunucular. */
 function onceGirdisi(onceSunucular) {
   const rc = {};
   for (const [h, r] of Object.entries(onceSunucular || {})) {
-    if (r && r.goruntu_ok && Array.isArray(r.goruntu) && r.goruntu.length) rc[h] = r.goruntu;
+    if (goruntuTamam(r)) rc[h] = r.goruntu;
   }
   return rc;
 }
@@ -104,7 +108,7 @@ async function ilerlet(r) {
   const hedefler = jsonOku(r.hosts_json) || [];
   if (faz === 'once') {
     const sunucular = sonuc?.sunucular || {};
-    const alinan = hedefler.filter((h) => sunucular[h]?.goruntu_ok && (sunucular[h]?.goruntu || []).length);
+    const alinan = hedefler.filter((h) => goruntuTamam(sunucular[h]));
     const durum = alinan.length ? 'once_hazir' : 'once_hata';
     const ozet = { once: { alinan: alinan.length, toplam: hedefler.length, job: info.status } };
     await db().query(
@@ -206,7 +210,7 @@ function mount(router, { launch, HOST_RE }) {
       const rcOnce = onceGirdisi(once?.sunucular);
       const hedef = Object.keys(rcOnce);
       if (!hedef.length)
-        return res.status(409).json({ ok: false, message: 'Hiçbir sunucunun "önce" görüntüsü yok; reboot sonrası kontrol yapılamaz.' });
+        return res.status(409).json({ ok: false, message: 'Hiçbir sunucunun (yeni biçimde) "önce" görüntüsü yok; reboot sonrası kontrol yapılamaz. Reboot öncesi görüntüyü yeniden alın.' });
       const j = await launch(
         req,
         REGISTRY_KEY,

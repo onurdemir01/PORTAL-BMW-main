@@ -6,15 +6,17 @@ import { screen, fireEvent, waitFor } from '@testing-library/react';
 import { render } from '@/test/test-utils';
 
 const sonraMock = vi.fn(async () => ({ ok: true, jobId: 9, awxServerId: 1, hedef: ['GBJBOP18'], disarida: [] }));
+const O18 = ['BOOT|b1||', 'URUN|JBOSS8||', 'URUN|RHA||', 'JVM|JBOSS8|appA|x'];
+const O19 = ['BOOT|c1||', 'URUN|JBOSS8||', 'JVM|JBOSS8|appB|x'];
 const KAYIT = {
   id: 3, hosts: ['GBJBOP18', 'GBJBOAP18'], not: 'Ekim patch', durum: 'sorunlu', olusturan: 'onur', olusturuldu: '2026-10-08T10:00:00Z',
   once: { jobId: 1, serverId: 1, at: '2026-10-08T10:01:00Z', sonuc: { faz: 'once', sunucular: {
-    GBJBOP18: { goruntu_ok: true, goruntu: ['JBOSS8_JVM|appA|1|1|was|d', 'WEB_APACHE|REDHAT_APACHE_HTTPD|4|2|www|d'] },
-    GBJBOAP18: { goruntu_ok: true, goruntu: ['JBOSS8_JVM|appB|1|1|was|d'] },
+    GBJBOP18: { goruntu_ok: true, goruntu: O18 },
+    GBJBOAP18: { goruntu_ok: true, goruntu: O19 },
   } } },
   sonra: { jobId: 2, serverId: 1, at: '2026-10-08T11:00:00Z', sonuc: { faz: 'sonra', sunucular: {
-    GBJBOP18: { once_var: true, son_olculdu: true, son_fark: [], plan: ['FARK|DOWN|JBOSS8_JVM|appA|d', 'ISLEM|was|2|baslat|JBOSS8_JVM|appA|d'], islemler: ['SONUC|baslat|JBOSS8_JVM|appA|OK|/host=primary/server-config=appA:start -> STARTED'] },
-    GBJBOAP18: { once_var: true, son_olculdu: true, son_fark: ['FARK|DOWN|JBOSS8_JVM|appB|d'], plan: ['FARK|DOWN|JBOSS8_JVM|appB|d', 'BILGI|NEW|JBOSS8_CTRL|HOST_CONTROLLER|domain yeni acilmis'], islemler: ['SONUC|baslat|JBOSS8_JVM|appB|FAIL|domain calismiyor'] },
+    GBJBOP18: { once_var: true, son_olculdu: true, son_fark: [], goruntu: ['BOOT|b2||', 'URUN|JBOSS8||', 'URUN|RHA||'], son_goruntu: ['BOOT|b2||', 'URUN|JBOSS8||', 'URUN|RHA||', 'JVM|JBOSS8|appA|x'], islemler: ['SONUC|baslat|JBOSS8|appA|OK|/host=primary/server-config=appA:start -> STARTED'] },
+    GBJBOAP18: { once_var: true, son_olculdu: true, son_fark: ['FARK|DOWN|JVM|JBOSS8|appB|x'], goruntu: ['BOOT|c1||', 'URUN|JBOSS8||'], son_goruntu: ['BOOT|c1||', 'URUN|JBOSS8||'], islemler: ['SONUC|baslat|JBOSS8|appB|FAIL|start sonrasi durum=FAILED'] },
   } } },
   ozet: { once: { alinan: 2, toplam: 2, job: 'successful' }, sonra: { sorunsuz: 1, toplam: 2, job: 'successful', sunucu: {
     GBJBOP18: { durum: 'sorunsuz', kalan: 0, islem: 1, hatali: 0 },
@@ -38,15 +40,16 @@ vi.mock('@/contexts/JobTrackerContext', () => ({ useJobTracker: () => ({ addJob:
 import RebootKontroluTab from '../RebootKontroluTab';
 
 describe('Reboot Kontrolü sekmesi', () => {
-  it('RT1 kayıt açılır: önce görüntüsü, sorunsuz/fark kaldı rozetleri, işlem ve elle bakılacaklar görünür', async () => {
+  it('RT1 kayıt açılır: önce ürünleri, sorunsuz/fark kaldı rozetleri, JVM satırı ve reboot doğrulaması görünür', async () => {
     render(<RebootKontroluTab />);
     fireEvent.click(await screen.findByText('#3'));
-    expect(await screen.findByText('2 süreç kaydedildi')).toBeTruthy();
+    expect(await screen.findByText('2 ürün kaydedildi')).toBeTruthy();
     expect(screen.getByText('Sorunsuz')).toBeTruthy();
     expect(screen.getByText('1 fark kaldı')).toBeTruthy();
     expect(screen.getByText('1 / 2 sunucu sorunsuz')).toBeTruthy();
-    expect(screen.getByText(/domain yeni acilmis/)).toBeTruthy();
-    expect(screen.getByText(/hâlâ KAPALI JBOSS8_JVM · appB/)).toBeTruthy();
+    expect(screen.getByText('reboot olmamış görünüyor')).toBeTruthy();
+    expect(screen.getByText('çalışıyordu, hâlâ KAPALI')).toBeTruthy();
+    expect(screen.getByText(/açma BAŞARISIZ/)).toBeTruthy();
   });
 
   it('RT2 "sonra" yalnız onay penceresinden gider', async () => {
