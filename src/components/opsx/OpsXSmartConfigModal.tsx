@@ -47,6 +47,14 @@ const PLATFORMLAR: { key: OpsxSmartPlatform; label: string; aciklama: string }[]
   { key: 'openshift', label: 'OpenShift', aciklama: 'Uygulama restart / pod silme' },
 ];
 
+// ONIZLEME ICIN ORNEK {{opsx.*}} DEGERLERI (2026-10-08). Gercek talepte bunlari sunucu
+// (server/opsx/prod-approval.cjs) isin cozulmus haliyle doldurur; anahtarlar AYNI olmali.
+const OPSX_ORNEK: Record<OpsxSmartPlatform, Record<string, string>> = {
+  legacy: { islem: 'restart', platform: 'legacy', uretimSebebi: 'ortam: Production', talepEden: 'ornek.kullanici', uygulama: 'GBCCSECURETRACKER', sunucular: 'GBJBOP18, GBJBOAP18' },
+  was: { islem: 'WAS restart', platform: 'was', uretimSebebi: 'ortam: Production', talepEden: 'ornek.kullanici' },
+  openshift: { islem: 'Openshift rollout (restart)', platform: 'openshift', uretimSebebi: 'ortam: prod', talepEden: 'ornek.kullanici', ortam: 'prod', cluster: 'ark', hedefler: 'ns-a,app-1' },
+};
+
 const BOS: OpsxSmartPlatformConfig = { enabled: true, flowKey: '', metadataFields: '', integrationKeySet: false };
 
 type Taslak = Record<OpsxSmartPlatform, OpsxSmartPlatformConfig & { integrationKey: string }>;
@@ -161,6 +169,7 @@ const OpsXSmartConfigModal: React.FC<Props> = ({ open, onClose }) => {
         metadataFields: guncel.metadataFields,
         extraVars,
         templateName: `OpsX: ${PLATFORMLAR.find((p) => p.key === aktif)?.label}`,
+        opsx: OPSX_ORNEK[aktif],
       });
       if (!r.ok) throw new Error(r.message || 'Önizleme yapılamadı.');
       setOnizleme(r.metadata || {});
@@ -432,8 +441,14 @@ const OpsXSmartConfigModal: React.FC<Props> = ({ open, onClose }) => {
                 (yukarıdaki tablonun İLK sütunu). Değer <strong>nunjucks</strong> ile render
                 edilir: <code className="font-mono">{'{{username}}'}</code>,{' '}
                 <code className="font-mono">{'{{email}}'}</code>,{' '}
-                <code className="font-mono">{'{{templateName}}'}</code> ve{' '}
-                <code className="font-mono">{'{{extraVars.ALAN_ADI}}'}</code>.
+                <code className="font-mono">{'{{templateName}}'}</code>,{' '}
+                <code className="font-mono">{'{{extraVars.ALAN_ADI}}'}</code> ve işin çözülmüş özeti{' '}
+                <code className="font-mono">{'{{opsx.ALAN}}'}</code>: <code className="font-mono">islem</code>,{' '}
+                <code className="font-mono">platform</code>, <code className="font-mono">talepEden</code>,{' '}
+                <code className="font-mono">uretimSebebi</code>; Legacy'de ayrıca{' '}
+                <code className="font-mono">uygulama</code>, <code className="font-mono">sunucular</code>;{' '}
+                OpenShift'te <code className="font-mono">ortam</code>, <code className="font-mono">cluster</code>,{' '}
+                <code className="font-mono">hedefler</code>.
               </p>
               <p className="text-[11px] text-[var(--text-muted)] mb-1">
                 OpsX'in gönderdiği <code className="font-mono">extraVars</code> anahtarları

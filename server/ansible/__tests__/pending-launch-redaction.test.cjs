@@ -21,6 +21,8 @@ const path = require('node:path');
 
 const RUNNER = fs.readFileSync(path.join(__dirname, '..', 'runner.cjs'), 'utf8');
 const SMART = fs.readFileSync(path.join(__dirname, '..', '..', 'smart', 'client.cjs'), 'utf8');
+// Metadata isleyicisi 2026-10-08'de runner.cjs'ten ortak modüle tasindi (OpsX de kullaniyor).
+const META = fs.readFileSync(path.join(__dirname, '..', '..', 'smart', 'metadata.cjs'), 'utf8');
 
 test('A3: pendingLaunch.extraVars HAM donmuyor', () => {
   assert.ok(
@@ -42,10 +44,10 @@ test('A3: redaksiyona specFields de gecirilir (hangi alan gizli ondan bilinir)',
 });
 
 test('A4: metadata log’u degerleri degil doluluk/uzunlugu basar', () => {
-  assert.match(RUNNER, /const metadataShape = /);
-  assert.match(RUNNER, /`<dolu:\$\{String\(v\)\.length\}>`/);
+  assert.match(META, /const metadataShape = /);
+  assert.match(META, /`<dolu:\$\{String\(v\)\.length\}>`/);
   assert.ok(
-    !/console\.log\([^)]*JSON\.stringify\(metadata\)/.test(RUNNER),
+    !/console\.log\([^)]*JSON\.stringify\(metadata\)/.test(RUNNER + META),
     'ham metadata hala stdout’a basiliyor'
   );
 });

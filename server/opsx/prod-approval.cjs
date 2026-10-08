@@ -320,13 +320,22 @@ async function opsxProductionKapisi({
       detail: { ask_limit_on_launch: askLimit === true },
       resolvedLaunchOptions: limitValue ? { limit: limitValue } : {},
       specFields: [],
-      buildSmartMetadata: () => ({
-        islem: islemAdi,
-        platform,
-        uretimSebebi: sebep,
-        talepEden: user.username || '',
-        ...ozet,
-      }),
+      // SABLON VARSA O KULLANILIR (2026-10-08): eskiden bu fonksiyon sablonu YOK SAYIP sabit bir
+      // nesne donduruyordu; Smart flow'unun alan adlariyla (JOBTYPE, SERVERSET...) eslesmedigi icin
+      // bilet acilamazdi. Sablon Self Servis ile AYNI isleyiciden gecer; OpsX'e ozgu degerler
+      // {{opsx.islem}}, {{opsx.platform}}, {{opsx.uygulama}}, {{opsx.sunucular}} ... ile kullanilir.
+      // Sablon yoksa eski sabit nesne (geri uyumluluk).
+      buildSmartMetadata: (metadataFieldsRaw, ctx) => {
+        const opsxOzet = {
+          islem: islemAdi,
+          platform,
+          uretimSebebi: sebep,
+          talepEden: user.username || '',
+          ...ozet,
+        };
+        if (!String(metadataFieldsRaw || '').trim()) return opsxOzet;
+        return require('../smart/metadata.cjs').buildSmartMetadata(metadataFieldsRaw, { ...ctx, opsx: opsxOzet });
+      },
       auditAction: 'opsx_prod_smart_ticket_open',
       req,
     });

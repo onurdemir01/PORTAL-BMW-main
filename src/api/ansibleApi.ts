@@ -507,7 +507,7 @@ export const ansibleApi = {
   ): Promise<{ ok: boolean; fields?: Array<Record<string, unknown>>; message?: string }> =>
     fetch(`${BASE}/ss/smart-flow-metadata/${encodeURIComponent(flowKey)}`).then(safeJson),
   /** Metadata eslemesini ornek survey degerleriyle render eder (Smart'a ne gidecek) - admin. */
-  smartMetadataPreview: (body: { metadataFields: string; extraVars: Record<string, unknown>; templateName?: string }): Promise<{ ok: boolean; metadata?: Record<string, string>; message?: string }> =>
+  smartMetadataPreview: (body: { metadataFields: string; extraVars: Record<string, unknown>; templateName?: string; opsx?: Record<string, unknown> }): Promise<{ ok: boolean; metadata?: Record<string, string>; message?: string }> =>
     fetch(`${BASE}/ss/smart-metadata-preview`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(safeJson),
 
   // "Taleplerim" ekrani — kullanicinin ACTIGI TUM Smart taleplerinin (durum farketmeksizin)

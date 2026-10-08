@@ -11,10 +11,10 @@ const fs = require('node:fs');
 const path = require('node:path');
 const nunjucks = require('nunjucks');
 
-const SRC = fs.readFileSync(path.join(__dirname, '..', 'runner.cjs'), 'utf8');
-const parseSimpleYaml = new Function(
-  SRC.slice(SRC.indexOf('function parseSimpleYaml'), SRC.indexOf('// ── Config')) + '; return parseSimpleYaml;',
-)();
+// 2026-10-08: isleyici ortak modulde (server/smart/metadata.cjs) - kaynak metninden kesip
+// cikarmak yerine modul dogrudan yuklenir.
+const SRC = fs.readFileSync(path.join(__dirname, '..', '..', 'smart', 'metadata.cjs'), 'utf8');
+const { parseSimpleYaml } = require('../../smart/metadata.cjs');
 
 test('parseSimpleYaml: tek satir davranisi ayni; blok skaleri (| ve |-) girintiyi atip satirlari birlestirir', () => {
   const out = parseSimpleYaml('A: 1\nB: |\n  satir1\n    ic girinti\n\n  satir3\nC: "q"\n# yorum\nD: |-\n    x\n    y\nE: son\n');
