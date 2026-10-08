@@ -126,6 +126,10 @@ type ShHostDetailV3 = Omit<ShHostDetail, 'jvms' | 'web'> & {
   scanVer?: string | null;
   note?: string | null;
 };
+type TaramadanDusen = {
+  sayi: number;
+  sunucular: { host: string; scanDate: string | null; env: string | null; products: string[] }[];
+};
 type ShSummaryV3 = ShSummary & {
   jvm: ShSummary['jvm'] & { unmeasured?: number; retireBlockedByWebTier?: number };
   /** unverified: sozlesmede donuk DEGIL; gelirse ayri dilim, gelmezse etiket durumu soyler. */
@@ -161,7 +165,11 @@ type ShSummaryV3 = ShSummary & {
     denied: number;
     skip: number;
     noRow: number;
+    /** kalinti JBoss dizini olan sunucu (CLI paydasina girmez) */
+    kalinti?: number;
   };
+  /** Son tam taramada gorulmeyen sunucular (silinmis/envanterden cikmis) - sayilara girmez. */
+  taramadanDusen?: TaramadanDusen;
   /** Kartlar AYRIK KUME DEGIL: ayni sunucu birden fazla urun tasiyabilir (RHA+JBOSS8,
    *  IHS+JBOSS7, hatta dordu birden). Bu sayi olmazsa kart toplamlari filo sayisini asar
    *  ve ekran "sayilar sisik" gibi okunur. */
@@ -359,6 +367,7 @@ function jbossCliMetni(j: NonNullable<ShSummaryV3['jbossCli']>): {
   if (j.fail) parca.push(`${j.fail} erişilemedi`);
   if (j.skip) parca.push(`${j.skip} hiç denenmedi`);
   if (j.noRow) parca.push(`${j.noRow} sunucuda CLI satırı gelmedi`);
+  if (j.kalinti) parca.push(`${j.kalinti} sunucuda kalıntı JBoss dizini (sayılmadı)`);
   if (!parca.length) parca.push('tüm sunucularda okundu');
   return {
     metin: parca.join(' · '),
@@ -559,6 +568,7 @@ const KOD_ETIKET: Record<string, string> = {
   CLI_FAIL: 'JBoss CLI okunamadı',
   CLI_SKIP: 'JBoss CLI hiç çalıştırılamadı (kurulum/süreç)',
   CLI_DENIED: 'JBoss CLI yetki reddi (dzdo kuralı eksik)',
+  JBOSS_KALINTI: 'JBoss dizini var ama kullanılan kurulum yok (kalıntı) — JBoss CLI sayımına girmez',
   // Acilis hazirligi sebep kodlari (bulgu degil; reboot-readiness.cjs SEMA / BAYAT)
   SCHEMA_UNKNOWN: 'Server Hub şeması (sys.columns) okunamadı — tarayıcı şema sürümü bilinmiyor, eylemler kapalı',
   STALE_EVIDENCE: 'tarama bayat ya da son yükleme dışlandı — güncel durum bilinmiyor',
@@ -678,6 +688,37 @@ function bayatFiloMetni(sf: ShStaleFleet | undefined): string | null {
   return sayiMi(sf.ageDays)
     ? `Son başarılı yükleme ${sf.ageDays} gün önce — eylemler kapalı`
     : 'Son başarılı yükleme zamanı bilinmiyor — eylemler kapalı';
+}
+
+/**
+ * TARAMADAN DUSEN SUNUCULAR (2026-10-08, kullanici: "artik varolmayan silinmis sunucularin da
+ * bilgisi geliyor ... onlari ana sayidan dusmemiz lazim sayilar kafa karistirmasin"). Son tam
+ * taramada gorulmeyen sunucular kartlara, listeye ve bulgulara girmez; burada son gorulme
+ * tarihleriyle ayri listelenir - sessizce kaybolmazlar.
+ */
+function TaramadanDusenBandi({ td }: { td: TaramadanDusen | null | undefined }) {
+  const [acik, setAcik] = useState(false);
+  if (!td || !td.sayi) return null;
+  return (
+    <div
+      className="rounded-xl border px-4 py-2 text-[12px]"
+      style={{ borderColor: 'var(--border)', background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}
+    >
+      <button type="button" onClick={() => setAcik((x) => !x)} className="font-semibold hover:underline" style={{ color: 'var(--text-primary)' }}>
+        {td.sayi} sunucu son taramada yok — sayılara ve bulgulara katılmadı {acik ? '▴' : '▾'}
+      </button>
+      <span className="ml-2">(silinmiş ya da AWX envanterinden çıkmış olabilir; son görülme tarihi aşağıda)</span>
+      {acik && (
+        <div className="mt-2 max-h-56 overflow-auto font-mono text-[11px] grid gap-x-4 gap-y-0.5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(16rem, 1fr))' }}>
+          {td.sunucular.map((s) => (
+            <div key={s.host} title={(s.products || []).join(', ')}>
+              {s.host} <span style={{ color: 'var(--text-muted)' }}>· {s.scanDate ? fmtDate(s.scanDate) : '?'}{s.env ? ` · ${s.env}` : ''}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function BayatFiloBandi({ sf }: { sf: ShStaleFleet | undefined }) {
@@ -1563,6 +1604,7 @@ function HostsTab({
 
       {/* EK-2: son basarili yukleme bayatsa KIRMIZI bant - sunucu tum fix eylemlerini kapatir. */}
       <BayatFiloBandi sf={data.staleFleet} />
+      <TaramadanDusenBandi td={data.summary?.taramadanDusen} />
       {/* C3: sys.columns okunamadi - tarayici sema surumu bilinmiyor, tum eylemler kapali. */}
       <SemaBandi su={data.schemaUnknown} />
       {/* EK-1: v3 tarayici verisi varken Portal eski surume geri ALINMAZ - tek satir uyari. */}
@@ -3434,6 +3476,7 @@ export function FindingsTab({
   return (
     <div className="space-y-3">
       <BayatFiloBandi sf={data?.staleFleet} />
+      <TaramadanDusenBandi td={data?.taramadanDusen} />
       <SemaBandi su={data?.schemaUnknown} />
       <div className="flex flex-wrap items-center gap-2">
         <input

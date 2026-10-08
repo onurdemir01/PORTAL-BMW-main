@@ -288,6 +288,8 @@ export interface ShFindingsResult {
   findings: ShFindingRow[];
   staleFleet?: ShStaleFleet;
   schemaUnknown?: boolean;
+  /** Son tam taramada gorulmeyen sunucular - bulgulara girmez, ayri gosterilir (2026-10-08). */
+  taramadanDusen?: { sayi: number; sunucular: { host: string; scanDate: string | null; env: string | null; products: string[] }[] } | null;
 }
 export interface ShLaunch {
   ok: boolean;

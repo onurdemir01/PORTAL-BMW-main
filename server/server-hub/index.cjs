@@ -510,7 +510,8 @@ function initServerHub(app) {
         // geri ALINMAZ.
         rollback: rollbackBilgisi(a),
         summary: a.summary,
-        hosts: a.hosts.map(hostRow),
+        // Taramadan dusen sunucular listede yok; summary.taramadanDusen'de ayri.
+        hosts: a.hosts.filter((h) => !h.taramadanDustu).map(hostRow),
       });
     } catch (err) {
       res.status(500).json({ ok: false, message: err.message || 'Server Hub verisi alınamadı.' });
@@ -531,6 +532,7 @@ function initServerHub(app) {
         // EK-2 (C7): Bulgular sekmesinin kirmizi bandi bu alani okur; /overview ile AYNI.
         staleFleet: a.staleFleet || null,
         schemaUnknown: a.schemaUnknown === true,
+        taramadanDusen: a.summary?.taramadanDusen || null,
         findings: flattenFindings(a.hosts),
       });
     } catch (err) {

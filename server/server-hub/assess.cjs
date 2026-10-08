@@ -43,6 +43,16 @@ const SEV = { ok: 0, info: 1, warning: 2, danger: 3 };
  * kalir ve bayat kanit bugunun eylemini besler.
  */
 const FRESH_MAX_DAYS = 2;
+
+/** JBoss satiri KALINTI mi (2026-10-08). Tarayici notu iki durumu yazar: dizin var ama
+ *  jboss-cli ve host XML yok; ya da dogru kullanici (was) ust dizine giremiyor (izin). Ikisi de
+ *  'CLI calistirilamadi' degil 'kullanilan kurulum yok' demektir. */
+function jbKalinti(b) {
+  if (!b || b.cli !== 'SKIP') return false;
+  const n = String(b.note || '');
+  if (/^jboss-cli yok\b/.test(n) && /host XML (bulunamadi|okunamadi)/.test(n)) return true;
+  return /JBoss dizini GORULEMEDI/.test(n) && /giremiyor \(izin\)/.test(n);
+}
 const GUN_MS = 86400000;
 const nz = (x) => (x == null || x === '' ? null : x);
 const zamanMs = (x) => {
@@ -734,6 +744,12 @@ function assess(data, opts = {}) {
       (x) => x.issue === 'HOST_DUPLICATE_SAME_MACHINE' && x.scanDate === h.scanDate,
     );
     const g = gunNo(h.scanDate);
+    // TARAMADAN DUSEN (kullanici 2026-10-08: "artik varolmayan silinmis sunucularin da bilgisi
+    // geliyor ... onlari ana sayidan dusmemiz lazim"). Son tarama gununden 2+ gun eski satir: son
+    // tam taramada HIC gorulmedi (envanterden cikmis / silinmis). LOAD_EXCLUDED'dan farkli - o
+    // sunucu taraniyor ama yuklenemiyor. Ana sayilara (genel), sunucu listesine ve bulgulara
+    // GIRMEZ; summary.taramadanDusen'de son gorulme tarihiyle ayri listelenir.
+    h.taramadanDustu = g != null && latestGun != null && latestGun - g > 1;
     h.fresh =
       g != null &&
       latestGun != null &&
@@ -1307,7 +1323,12 @@ function assess(data, opts = {}) {
       // aranir (nitekim arandi).
       if (b.cli === 'DENIED')
         add('warning', 'jboss', 'CLI_DENIED', `JBoss ${b.gen} CLI yetki reddi: ${b.note}`.trim());
-      if (b.cli === 'SKIP' && b.note)
+      // KALINTI (2026-10-08): CLI'nin 'calistirilamamasi' bir CLI sorunu degil, KURULUM YOK.
+      // Dizin var ama jboss-cli ve host XML yok, ya da was dizine giremiyor (genelde eski
+      // /usr/jboss kalintisi olan JBoss 8 sunuculari). JBoss CLI kartinin paydasina girmez.
+      if (jbKalinti(b))
+        add('info', 'jboss', 'JBOSS_KALINTI', `JBoss ${b.gen} dizini var ama kullanılan bir kurulum görünmüyor: ${b.note}`.trim());
+      else if (b.cli === 'SKIP' && b.note)
         add('info', 'jboss', 'CLI_SKIP', `JBoss ${b.gen} CLI çalıştırılamadı: ${b.note}`.trim());
       if (b.hostState === 'restart-required' || b.hostState === 'reload-required')
         add('warning', 'jboss', 'HOST_RESTART', `JBoss ${b.gen} host controller ${b.hostState}`);
@@ -1757,7 +1778,7 @@ function assess(data, opts = {}) {
   // (kullanici, 2026-09-24). `hosts` yine HEPSINI tasir - ekran sinifa gore suzer, sunucu
   // ayrinti sayfasi ve "simdi tara" ozel sunucularda da calisir.
   const special = hosts.filter((h) => h.hostClass === 'ozel');
-  const genel = hosts.filter((h) => h.hostClass !== 'ozel');
+  const genel = hosts.filter((h) => h.hostClass !== 'ozel' && !h.taramadanDustu);
   const jvms = genel.flatMap((h) => h.jvms);
   const web = genel.flatMap((h) => h.web);
   const envGroups = ['Production', 'Non-Production', 'Bilinmiyor'];
@@ -2015,13 +2036,18 @@ function assess(data, opts = {}) {
   // JBoss'un SOZDIZIMI OLCUMU YOKTUR: tarayici `nginx -t` / `apachectl -t` karsiligi bir
   // komut kosturmuyor. Karsiligi "yapilandirma okunabildi mi" sorusudur (jboss-cli). Bunu
   // "syntax" diye etiketlemek uydurma olurdu; ekran da ayri baslikla gosterir.
-  const jbHostlari = urunHostlari('JBOSS');
-  const jbAny = (h, d) => h.jboss.some((b) => b.cli === d);
+  // KALINTI satirlari (jbKalinti) CLI kartina girmez; yalniz kalinti satiri olan ve calisan
+  // JVM'i olmayan sunucu JBoss sunucusu SAYILMAZ (ayri sayi: kalinti).
+  const jbEtkin = (h) => h.jboss.filter((b) => !jbKalinti(b));
+  const yalnizKalinti = (h) => h.jboss.length > 0 && jbEtkin(h).length === 0 && !(h.jvms || []).length;
+  const jbHostlari = urunHostlari('JBOSS').filter((h) => !yalnizKalinti(h));
+  const jbAny = (h, d) => jbEtkin(h).some((b) => b.cli === d);
   summary.jbossCli = {
     hosts: jbHostlari.length,
+    kalinti: urunHostlari('JBOSS').filter((h) => h.jboss.some(jbKalinti)).length,
     // OK yalniz TUM nesilleri okunabilen sunucu: JBoss7 okunup JBoss8 reddedilmisse
     // o sunucu "yapilandirmasi okundu" DEGILDIR
-    ok: jbHostlari.filter((h) => h.jboss.length > 0 && h.jboss.every((b) => b.cli === 'OK'))
+    ok: jbHostlari.filter((h) => jbEtkin(h).length > 0 && jbEtkin(h).every((b) => b.cli === 'OK'))
       .length,
     fail: jbHostlari.filter((h) => jbAny(h, 'FAIL')).length,
     denied: jbHostlari.filter((h) => jbAny(h, 'DENIED')).length,
@@ -2177,13 +2203,22 @@ function assess(data, opts = {}) {
   const ageDays = latestGun == null ? null : nowGun - latestGun;
   const staleFleet =
     ageDays != null && ageDays > FRESH_MAX_DAYS ? { lastLoad: latestScan, ageDays } : null;
+  const dusenler = hosts.filter((h) => h.taramadanDustu);
+  summary.taramadanDusen = {
+    sayi: dusenler.length,
+    sunucular: dusenler
+      .map((h) => ({ host: h.host, scanDate: h.scanDate || null, env: h.env || null, products: h.products || [] }))
+      .sort((a, b) => String(b.scanDate || '').localeCompare(String(a.scanDate || '')) || a.host.localeCompare(b.host))
+      .slice(0, 500),
+  };
   return { hosts, summary, latestScan, staleFleet, schemaUnknown: semaBilinmiyor };
 }
 
 /** Tum bulgular tek listede (Bulgular sekmesi / CSV): host + urunler + bulgu. */
 function flattenFindings(hosts) {
   const out = [];
-  for (const h of hosts)
+  // Taramadan dusen sunucularin (son tam taramada yok) bulgulari listeye/CSV'ye GIRMEZ.
+  for (const h of hosts.filter((x) => !x.taramadanDustu))
     for (const f of h.findings)
       out.push({
         host: h.host,
@@ -2214,6 +2249,7 @@ function flattenFindings(hosts) {
 }
 
 module.exports = {
+  jbKalinti,
   assess,
   parseTargets,
   hedefUserinfoSil,
