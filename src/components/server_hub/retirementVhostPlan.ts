@@ -102,3 +102,18 @@ export function jkDegAyristir(x: unknown): JkDeg[] {
     return [{ dosya: p[1] || '', no: Number(p[2]) || 0, once: p[3] || '', sonra: p.slice(4).join('\t') }];
   });
 }
+
+// RENK (2026-10-08, kullanici: "eklenecek satirlari yesil ile, comment'lenecek satirlari sari ile").
+// Tur, satirin KENDISINDEN cikarilir: onek "# [server-hub " eklenmisse yorumlanan, kalkmissa acilan
+// (geri almada); once bos = eklenen (worker.list'in worker'siz kopyasi), sonra bos = kalkan.
+export type DegisimTuru = 'eklenen' | 'yorumlanan' | 'acilan' | 'kalkan' | 'ayni';
+const ONEK = /^# \[server-hub /;
+export function degisimTuru(once: string, sonra: string): DegisimTuru {
+  if (!sonra) return 'kalkan';
+  if (!once) return 'eklenen';
+  const o = ONEK.test(once);
+  const z = ONEK.test(sonra);
+  if (z && !o) return 'yorumlanan';
+  if (o && !z) return 'acilan';
+  return once === sonra ? 'ayni' : 'yorumlanan';
+}

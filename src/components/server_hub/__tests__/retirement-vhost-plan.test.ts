@@ -1,6 +1,6 @@
 // src/components/server_hub/__tests__/retirement-vhost-plan.test.ts — VP1..VP3 (2026-10-08).
 import { describe, expect, test } from 'vitest';
-import { blokAyristir, bloklaraBol, jkAyristir, jkDegAyristir, kipAyristir, sonraMetni, sonucAyristir } from '../retirementVhostPlan';
+import { blokAyristir, bloklaraBol, degisimTuru, jkAyristir, jkDegAyristir, kipAyristir, sonraMetni, sonucAyristir } from '../retirementVhostPlan';
 
 describe('kapatilacak vhost blogu', () => {
   test('VP1 BLOK satirlari satir no + metin; metindeki sekme korunur', () => {
@@ -56,5 +56,13 @@ describe('kapatilacak vhost blogu', () => {
       { dosya: '/c/workers.properties', no: 3, once: '', sonra: 'worker.list=a,b' },
     ]);
     expect(jkDegAyristir(undefined)).toEqual([]);
+  });
+
+  test('VP7 renk turu: eklenen yesil, yorumlanan sari, geri almada acilan yesil, kalkan', () => {
+    expect(degisimTuru('', 'worker.list=a,b')).toBe('eklenen');
+    expect(degisimTuru('worker.list=a,vo,b', '# [server-hub 1 jk-list] worker.list=a,vo,b')).toBe('yorumlanan');
+    expect(degisimTuru('# [server-hub 1 jk] worker.vo.port=1', 'worker.vo.port=1')).toBe('acilan');
+    expect(degisimTuru('# [server-hub 1 jk-list] worker.list=a,vo', '')).toBe('kalkan');
+    expect(degisimTuru('x', 'x')).toBe('ayni');
   });
 });

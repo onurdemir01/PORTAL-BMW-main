@@ -14,7 +14,7 @@ import { fmtDate, fmtDateTime } from '@/utils/datetime';
 import RetirementAkis from './RetirementAkis';
 import { retirementAdimi } from './retirementAdim';
 import { stopTrafikOzeti, stopOnayAcikMi, type TrafikIsDurumu } from './retirementTrafik';
-import { blokAyristir, bloklaraBol, jkAyristir, jkDegAyristir, JK_ETIKET, kipAyristir, sonraMetni, sonucAyristir, YORUM_ONEKI, type BlokSatiri, type JkDeg, type JkSatiri, type Kip } from './retirementVhostPlan';
+import { blokAyristir, bloklaraBol, degisimTuru, jkAyristir, jkDegAyristir, JK_ETIKET, kipAyristir, sonraMetni, sonucAyristir, YORUM_ONEKI, type BlokSatiri, type DegisimTuru, type JkDeg, type JkSatiri, type Kip } from './retirementVhostPlan';
 
 /** On kontrolde vhost basina kapatma plani (ekran durumu). */
 interface VhostPlanDurumu {
@@ -29,6 +29,21 @@ interface VhostPlanDurumu {
  *  web adimi da ayni sebeple dusecek - JBoss STOP'u engellemez ama gorunur. */
 /** Bloga bagli mod_jk satirlari (tespit). Temizlik JkOnceSonra'da; PAYLASILAN varsa yapilmaz. Alan hic gelmediyse
  *  (eski server_hub_fix) acikca soylenir - bos liste "bagli satir yok" diye okunmasin. */
+// Renkler: SONRA sutununda yesil = eklenen / geri acilan satir, sari = yorum satirina alinan, kirmizi = kalkan.
+const DEG_RENK: Record<DegisimTuru, { renk?: string; zemin?: string; etiket: string }> = {
+  eklenen: { renk: 'var(--status-success)', zemin: 'var(--status-success-bg, transparent)', etiket: 'eklenecek' },
+  acilan: { renk: 'var(--status-success)', zemin: 'var(--status-success-bg, transparent)', etiket: 'geri açılacak' },
+  yorumlanan: { renk: 'var(--status-warning)', zemin: 'var(--status-warning-bg, transparent)', etiket: 'yorum satırına alınacak' },
+  kalkan: { renk: 'var(--status-danger)', etiket: 'kalkacak' },
+  ayni: { etiket: 'değişmiyor' },
+};
+function RenkAciklama() {
+  const kutu = (t: DegisimTuru) => (
+    <span className="inline-flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-sm border" style={{ background: DEG_RENK[t].zemin || 'transparent', borderColor: DEG_RENK[t].renk || 'var(--border)' }} />{DEG_RENK[t].etiket}</span>
+  );
+  return <div className="flex flex-wrap gap-3 text-[11px]" style={{ color: 'var(--text-secondary)' }}>{kutu('eklenen')}{kutu('yorumlanan')}{kutu('kalkan')}</div>;
+}
+
 /** mod_jk satirlari ONCE / SONRA (onayda vhost ile AYNI koşuda uygulanir). */
 function JkOnceSonra({ deg }: { deg?: JkDeg[] }) {
   if (!deg || !deg.length) return null;
@@ -54,7 +69,10 @@ function JkOnceSonra({ deg }: { deg?: JkDeg[] }) {
               </div>
               <div className="rounded-lg border overflow-auto max-h-[40vh]" style={{ borderColor: 'var(--status-warning)', background: 'var(--bg-elevated)' }}>
                 <div className="sticky top-0 px-2 py-1 text-[11px] font-semibold border-b" style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-subtle)' }}>SONRA</div>
-                {l.map((d, i) => <div key={i}>{d.sonra ? satir(d.once ? d.no : 0, d.sonra, 'var(--status-warning)', 'var(--status-warning-bg, transparent)') : satir(d.no, '(satır kalkar)', 'var(--text-muted)')}</div>)}
+                {l.map((d, i) => {
+                  const r = DEG_RENK[degisimTuru(d.once, d.sonra)];
+                  return <div key={i} title={r.etiket}>{d.sonra ? satir(d.once ? d.no : 0, d.sonra, r.renk, r.zemin) : satir(d.no, '(satır kalkar)', r.renk)}</div>;
+                })}
               </div>
             </div>
           </div>
@@ -120,7 +138,8 @@ function OnceSonra({ v }: { v: VhostPlanDurumu }) {
               {kip === 'bilinmiyor' && <div className="px-2 py-2 text-[11px]" style={{ color: 'var(--status-danger)' }}>Yapılacak işlem plan çıktısından okunamadı (eski server_hub_fix sürümü?) — sonraki hal gösterilemiyor.</div>}
               {(kip === 'yorumla' || kip === 'yok') && g.satirlar.map((s, i) => {
                 const m = sonraMetni(s.metin, kip) as string;
-                return <div key={i}>{satir(s.no, m, kip === 'yorumla' ? 'var(--status-warning)' : undefined, kip === 'yorumla' ? 'var(--status-warning-bg, transparent)' : undefined)}</div>;
+                const r = DEG_RENK[kip === 'yorumla' ? 'yorumlanan' : 'ayni'];
+                return <div key={i} title={r.etiket}>{satir(s.no, m, r.renk, r.zemin)}</div>;
               })}
             </div>
           </div>
@@ -135,7 +154,10 @@ function VhostBloklar({ liste }: { liste?: VhostPlanDurumu[] }) {
   if (!liste || !liste.length) return null;
   return (
     <div className="text-[12px] rounded-lg border px-3 py-2 space-y-3" style={{ borderColor: liste.some((v) => v.durum === 'hata') ? 'var(--status-danger)' : 'var(--border-subtle)' }}>
-      <div className="font-semibold" style={{ color: 'var(--text-muted)' }}>Kapatılacak VirtualHost blokları (web adımı)</div>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="font-semibold" style={{ color: 'var(--text-muted)' }}>Kapatılacak VirtualHost blokları (web adımı)</div>
+        <RenkAciklama />
+      </div>
       {liste.map((v) => (
         <div key={v.host + v.serverName + v.confFile} className="space-y-2">
           <div>
