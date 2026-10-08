@@ -962,28 +962,37 @@ function Donut({
   );
 }
 
+// SORUNSUZ PAY HEP YESIL (kullanici, 2026-10-08: "bar renkleri sorunsuz olanlar icin yesil
+// olsun"). Eskiden dolu kisim kartin GENEL tonuyla boyaniyordu: tek bir uyari, sorunsuz
+// sunuculari da turuncu gosteriyordu. Simdi `value` (sorunsuz) yesil; kalan pay kartin tonu
+// sorunluysa o tonun ACIK rengiyle (`restColor`) - sorun yine gorunur, ama "iyi" kisim iyi gorunur.
 function Bar({
   value,
   total,
   color = 'var(--accent)',
+  restColor,
   title,
 }: {
   value: number;
   total: number;
   color?: string;
+  restColor?: string;
   title?: string;
 }) {
   const pct = total > 0 ? Math.round((value / total) * 100) : 0;
   return (
     <div
-      className="h-2 rounded-full overflow-hidden"
+      className="h-2 rounded-full overflow-hidden flex"
       style={{ background: 'var(--bg-elevated)' }}
       title={title || `${value}/${total} (%${pct})`}
     >
       <div
-        className="h-full rounded-full"
+        className="h-full"
         style={{ width: `${pct}%`, background: color, transition: 'width .3s' }}
       />
+      {restColor && pct < 100 && (
+        <div className="h-full flex-1" style={{ background: restColor, transition: 'width .3s' }} />
+      )}
     </div>
   );
 }
@@ -1803,7 +1812,12 @@ function HostsTab({
                   </span>
                 </div>
                 <div className="mt-2">
-                  <Bar value={s.init.compliant} total={s.init.hosts} color={SEV.ok.color} />
+                  <Bar
+                    value={s.init.compliant}
+                    total={s.init.hosts}
+                    color={SEV.ok.color}
+                    restColor={initUyumMetni(s.init).tone === 'ok' ? undefined : SEV[initUyumMetni(s.init).tone].bg}
+                  />
                 </div>
                 <div
                   className="mt-1 text-[11px]"
@@ -1862,7 +1876,8 @@ function HostsTab({
                     <Bar
                       value={ustPay}
                       total={ustPayda}
-                      color={ustTon === 'ok' ? SEV.ok.color : SEV[ustTon].color}
+                      color={SEV.ok.color}
+                      restColor={ustTon === 'ok' ? undefined : SEV[ustTon].bg}
                     />
                   </div>
                   <div className="mt-1 text-[11px]" style={{ color: 'var(--text-secondary)' }}>
@@ -1928,7 +1943,8 @@ function HostsTab({
                         <Bar
                           value={ib.pay}
                           total={ib.payda}
-                          color={ib.tone === 'ok' ? SEV.ok.color : SEV[ib.tone].color}
+                          color={SEV.ok.color}
+                          restColor={ib.tone === 'ok' ? undefined : SEV[ib.tone].bg}
                         />
                       </div>
                       <div className="mt-1 text-[11px]" style={{ color: 'var(--text-secondary)' }}>
