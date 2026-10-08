@@ -54,3 +54,38 @@ export const JK_ETIKET: Record<JkTur, string> = {
   NOT: 'bilgi',
   BILINMIYOR: 'tanınmayan satır',
 };
+
+// ONCE / SONRA (2026-10-08, kullanici: "solda yorum satirina alinmadan once dosyalarin icinde tespit
+// edilen satirlar, sagda ise yorum satirina alindiktan sonra ... bu sekilde yapilacak islemi onaylamak
+// cok kolay olur"). "Sonra" METINDEN TAHMIN EDILMEZ: betik islemi `KIP\t<yorumla|tasi|yok>[\t<hedef>]`
+// ile acikca bildirir. Bilinmiyorsa sag sutun "bilinmiyor" der, uydurmaz.
+export type Kip = 'yorumla' | 'tasi' | 'yok' | 'bilinmiyor';
+export function kipAyristir(kip: unknown): { kip: Kip; hedef?: string } {
+  const p = String(kip ?? '').split('\t');
+  if (p[0] !== 'KIP') return { kip: 'bilinmiyor' };
+  if (p[1] === 'yorumla' || p[1] === 'yok') return { kip: p[1] };
+  if (p[1] === 'tasi') return { kip: 'tasi', hedef: p[2] || undefined };
+  return { kip: 'bilinmiyor' };
+}
+
+/** Ayni ServerName'li birden cok blok (ornegin :80 ve :443) ayri gruplar olur: satir numarasi ardisik
+ *  degilse yeni blok. Boylece iki blok "ayni sey iki kez yazilmis" gibi gorunmez. */
+export interface BlokGrubu { bas: number; son: number; satirlar: BlokSatiri[] }
+export function bloklaraBol(satirlar: BlokSatiri[]): BlokGrubu[] {
+  const out: BlokGrubu[] = [];
+  for (const s of satirlar) {
+    const g = out[out.length - 1];
+    if (g && s.no > 0 && g.son > 0 && s.no === g.son + 1) { g.satirlar.push(s); g.son = s.no; }
+    else if (g && (s.no === 0 || g.son === 0)) { g.satirlar.push(s); }
+    else out.push({ bas: s.no, son: s.no, satirlar: [s] });
+  }
+  return out;
+}
+
+/** Onaydan SONRA satirin dosyadaki hali; 'tasi'da satir dosyada kalmaz (null). */
+export const YORUM_ONEKI = '# [server-hub <zaman>] ';
+export function sonraMetni(metin: string, kip: Kip): string | null {
+  if (kip === 'yorumla') return YORUM_ONEKI + metin;
+  if (kip === 'yok') return metin;
+  return null;
+}

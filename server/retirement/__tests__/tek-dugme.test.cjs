@@ -181,6 +181,8 @@ test('TD13 on kontrol KAPATILACAK vhost blogunu gosterir: ayni eylem PLAN kipind
   assert.match(blok, /plan_only: true/, 'plan DEGIL gercek kapatma baslatiliyor');
   assert.ok(!/plan_only: false/.test(blok), 'onizlemede vhost GERCEKTEN kapatilabiliyor');
   assert.match(blok, /'server_hub_fix'\)/);
+  // Kullanici (2026-10-08): "satirlari 2 kere yazmis gibi" - ayni vhost iki kez planlanmaz.
+  assert.ok(blok.includes('if (gorulen.has(anahtar)) continue;'), 'ayni vhost iki kez planlaniyor');
   // URUN KAPISI KENDISI kilitlenir: 'elle: true' metni conf-bilinmiyor dalinda da geciyor ve
   // urun kapisini kaldiran mutasyonu GORMUYORDU (V2, ilk tur).
   assert.match(blok, /if \(!APACHE_URUN\.has\(String\(w\.product \|\| ''\)\.toUpperCase\(\)\)\) \{ out\.push\(\{ \.\.\.kim, ok: false, elle: true/, 'NGINX icin is baslatiliyor (urun kapisi yok)');

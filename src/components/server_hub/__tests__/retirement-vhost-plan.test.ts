@@ -1,6 +1,6 @@
 // src/components/server_hub/__tests__/retirement-vhost-plan.test.ts — VP1..VP3 (2026-10-08).
 import { describe, expect, test } from 'vitest';
-import { blokAyristir, jkAyristir, sonucAyristir } from '../retirementVhostPlan';
+import { blokAyristir, bloklaraBol, jkAyristir, kipAyristir, sonraMetni, sonucAyristir } from '../retirementVhostPlan';
 
 describe('kapatilacak vhost blogu', () => {
   test('VP1 BLOK satirlari satir no + metin; metindeki sekme korunur', () => {
@@ -30,5 +30,19 @@ describe('kapatilacak vhost blogu', () => {
     expect(jkAyristir(['JK\tUYDURMA\tx\t1\ty'])[0].tur).toBe('BILINMIYOR');
     expect(jkAyristir(['garip'])[0]).toEqual({ tur: 'BILINMIYOR', dosya: '', no: 0, metin: 'garip' });
     expect(jkAyristir(undefined)).toEqual([]);
+  });
+
+  test('VP5 once/sonra: islem KIP satirindan, iki blok ayri grup, tasima satiri dosyada birakmaz', () => {
+    expect(kipAyristir('KIP\tyorumla')).toEqual({ kip: 'yorumla' });
+    expect(kipAyristir('KIP\ttasi\t/a/.retired/x.conf.1')).toEqual({ kip: 'tasi', hedef: '/a/.retired/x.conf.1' });
+    expect(kipAyristir('KIP\tyok')).toEqual({ kip: 'yok' });
+    expect(kipAyristir(undefined).kip).toBe('bilinmiyor');
+    expect(kipAyristir('KIP\tuydurma').kip).toBe('bilinmiyor');
+    const g = bloklaraBol([{ no: 10, metin: 'a' }, { no: 11, metin: 'b' }, { no: 30, metin: 'c' }, { no: 31, metin: 'd' }]);
+    expect(g.map((x) => [x.bas, x.son, x.satirlar.length])).toEqual([[10, 11, 2], [30, 31, 2]]);
+    expect(sonraMetni('  ServerName x', 'yorumla')).toBe('# [server-hub <zaman>]   ServerName x');
+    expect(sonraMetni('x', 'yok')).toBe('x');
+    expect(sonraMetni('x', 'tasi')).toBeNull();
+    expect(sonraMetni('x', 'bilinmiyor')).toBeNull();
   });
 });

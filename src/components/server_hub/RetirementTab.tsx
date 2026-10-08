@@ -14,13 +14,13 @@ import { fmtDate, fmtDateTime } from '@/utils/datetime';
 import RetirementAkis from './RetirementAkis';
 import { retirementAdimi } from './retirementAdim';
 import { stopTrafikOzeti, stopOnayAcikMi, type TrafikIsDurumu } from './retirementTrafik';
-import { blokAyristir, jkAyristir, JK_ETIKET, sonucAyristir, type BlokSatiri, type JkSatiri } from './retirementVhostPlan';
+import { blokAyristir, bloklaraBol, jkAyristir, JK_ETIKET, kipAyristir, sonraMetni, sonucAyristir, YORUM_ONEKI, type BlokSatiri, type JkSatiri, type Kip } from './retirementVhostPlan';
 
 /** On kontrolde vhost basina kapatma plani (ekran durumu). */
 interface VhostPlanDurumu {
   host: string; serverName: string; confFile: string;
   durum: 'suruyor' | 'hazir' | 'hata' | 'elle';
-  mesaj?: string; satirlar?: BlokSatiri[]; jk?: JkSatiri[]; jobId?: number | null;
+  mesaj?: string; satirlar?: BlokSatiri[]; jk?: JkSatiri[]; kip?: { kip: Kip; hedef?: string }; jobId?: number | null;
 }
 
 /** STOP onayinda KAPATILACAK VirtualHost bloklari (2026-10-08, kullanici: "tetiklemeden once
@@ -53,13 +53,55 @@ function JkBaglantilari({ jk }: { jk?: JkSatiri[] }) {
   );
 }
 
+function OnceSonra({ v }: { v: VhostPlanDurumu }) {
+  const satirlar = v.satirlar || [];
+  const { kip, hedef } = v.kip || { kip: 'bilinmiyor' as Kip };
+  if (!satirlar.length) return <div style={{ color: 'var(--status-warning)' }}>Plan blok satırı döndürmedi (eski server_hub_fix sürümü?) — kapatılacak blok gösterilemiyor.</div>;
+  const gruplar = bloklaraBol(satirlar);
+  const sutun = 'rounded-lg border overflow-auto max-h-[55vh]';
+  const satir = (no: number, metin: string, renk?: string, zemin?: string) => (
+    <div className="flex font-mono text-[11px] leading-5" style={{ background: zemin }}>
+      <span className="shrink-0 w-14 pr-2 text-right select-none" style={{ color: 'var(--text-muted)' }}>{no || ''}</span>
+      <span className="whitespace-pre pr-3" style={{ color: renk || 'var(--text-primary)' }}>{metin}</span>
+    </div>
+  );
+  return (
+    <div className="space-y-3">
+      {gruplar.length > 1 && <div style={{ color: 'var(--text-secondary)' }}>Bu ServerName dosyada <b>{gruplar.length} ayrı blokta</b> geçiyor (ör. :80 ve :443); hepsi işlenir.</div>}
+      {gruplar.map((g, gi) => (
+        <div key={gi} className="space-y-1">
+          <div className="font-semibold" style={{ color: 'var(--text-muted)' }}>Blok {gi + 1}{g.bas ? ` · satır ${g.bas}–${g.son}` : ''}</div>
+          <div className="grid gap-2 md:grid-cols-2">
+            <div className={sutun} style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)' }}>
+              <div className="sticky top-0 px-2 py-1 text-[11px] font-semibold border-b" style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-subtle)' }}>ÖNCE — şu an dosyada</div>
+              {g.satirlar.map((s, i) => <div key={i}>{satir(s.no, s.metin)}</div>)}
+            </div>
+            <div className={sutun} style={{ borderColor: kip === 'bilinmiyor' ? 'var(--status-danger)' : 'var(--status-warning)', background: 'var(--bg-elevated)' }}>
+              <div className="sticky top-0 px-2 py-1 text-[11px] font-semibold border-b" style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-subtle)' }}>
+                SONRA — onaydan sonra {kip === 'yorumla' ? '(yorum satırına alınır)' : kip === 'yok' ? '(değişiklik yok)' : kip === 'tasi' ? '(dosya taşınır)' : ''}
+              </div>
+              {kip === 'tasi' && <div className="px-2 py-2 text-[11px]" style={{ color: 'var(--status-warning)' }}>Dosyada yalnız bu vhost var: dosyanın <b>tamamı</b> {hedef ? <span className="font-mono">{hedef}</span> : '.retired/'} altına taşınır, <span className="font-mono">{v.confFile}</span> artık okunmaz.</div>}
+              {kip === 'bilinmiyor' && <div className="px-2 py-2 text-[11px]" style={{ color: 'var(--status-danger)' }}>Yapılacak işlem plan çıktısından okunamadı (eski server_hub_fix sürümü?) — sonraki hal gösterilemiyor.</div>}
+              {(kip === 'yorumla' || kip === 'yok') && g.satirlar.map((s, i) => {
+                const m = sonraMetni(s.metin, kip) as string;
+                return <div key={i}>{satir(s.no, m, kip === 'yorumla' ? 'var(--status-warning)' : undefined, kip === 'yorumla' ? 'var(--status-warning-bg, transparent)' : undefined)}</div>;
+              })}
+            </div>
+          </div>
+        </div>
+      ))}
+      {kip === 'yorumla' && <div style={{ color: 'var(--text-muted)' }}><span className="font-mono">{YORUM_ONEKI}</span>öneki gerçek koşunun zaman damgasıyla yazılır; “Geri aktif et” bu öneki kaldırır.</div>}
+    </div>
+  );
+}
+
 function VhostBloklar({ liste }: { liste?: VhostPlanDurumu[] }) {
   if (!liste || !liste.length) return null;
   return (
-    <div className="text-[11px] rounded-lg border px-3 py-2 space-y-2" style={{ borderColor: liste.some((v) => v.durum === 'hata') ? 'var(--status-danger)' : 'var(--border-subtle)' }}>
+    <div className="text-[12px] rounded-lg border px-3 py-2 space-y-3" style={{ borderColor: liste.some((v) => v.durum === 'hata') ? 'var(--status-danger)' : 'var(--border-subtle)' }}>
       <div className="font-semibold" style={{ color: 'var(--text-muted)' }}>Kapatılacak VirtualHost blokları (web adımı)</div>
       {liste.map((v) => (
-        <div key={v.host + v.serverName + v.confFile} className="space-y-1">
+        <div key={v.host + v.serverName + v.confFile} className="space-y-2">
           <div>
             <span className="font-mono font-semibold">{v.serverName}</span>
             <span style={{ color: 'var(--text-muted)' }}> @ {v.host} · <span className="font-mono">{v.confFile || '?'}</span></span>
@@ -69,13 +111,7 @@ function VhostBloklar({ liste }: { liste?: VhostPlanDurumu[] }) {
           {v.durum === 'hazir' && (
             <>
               {v.mesaj && <div style={{ color: 'var(--text-secondary)' }}>{v.mesaj}</div>}
-              {v.satirlar && v.satirlar.length > 0 ? (
-                <pre className="text-[10px] leading-snug overflow-auto max-h-56 rounded px-2 py-1.5" style={{ background: 'var(--bg-elevated)', color: 'var(--text-primary)' }}>
-                  {v.satirlar.map((s) => `${String(s.no || '').padStart(5)}  ${s.metin}`).join('\n')}
-                </pre>
-              ) : (
-                <div style={{ color: 'var(--status-warning)' }}>Plan blok satırı döndürmedi (eski server_hub_fix sürümü?) — kapatılacak blok gösterilemiyor.</div>
-              )}
+              <OnceSonra v={v} />
               <JkBaglantilari jk={v.jk} />
             </>
           )}
@@ -594,7 +630,7 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
               const hazir = sonuc.durum === 'PLAN';
               setVhostPlanlar((m) => {
                 const l = [...(m[t.id] || ilk)];
-                l[i] = { ...l[i], durum: hazir ? 'hazir' : 'hata', mesaj: sonuc.mesaj, satirlar: hazir ? blokAyristir(s.fixResult?.blok) : undefined, jk: jkAyristir(s.fixResult?.jk) };
+                l[i] = { ...l[i], durum: hazir ? 'hazir' : 'hata', mesaj: sonuc.mesaj, satirlar: hazir ? blokAyristir(s.fixResult?.blok) : undefined, jk: jkAyristir(s.fixResult?.jk), kip: kipAyristir(s.fixResult?.kip) };
                 return { ...m, [t.id]: l };
               });
             }
@@ -896,7 +932,7 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
       )}
       {ask && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,.45)' }} onClick={() => setAsk(null)}>
-          <div className="w-full max-w-md rounded-2xl border p-5 space-y-3" style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-subtle)' }} onClick={(e) => e.stopPropagation()}>
+          <div className="w-[96vw] max-w-[1500px] rounded-2xl border p-5 space-y-3 max-h-[94vh] overflow-auto" style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-subtle)' }} onClick={(e) => e.stopPropagation()}>
             <div className="text-sm font-semibold">STOP — {ask.t.appName} @ {ask.t.host} ({ask.t.env}, {ask.t.site})</div>
             <div className="text-[12px] rounded-lg border px-3 py-2" style={{ borderColor: 'var(--status-info)', background: 'var(--status-info-bg)' }}><b>Ön kontrol sonucu:</b> {ask.t.planText}</div>
             {/* PLAN AYRINTISI: ozet "2 paket yeniden adlandirilacak" diyor ama HANGI iki
@@ -933,7 +969,7 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
         const suruyor = liste.some((v) => v.durum === 'suruyor');
         return (
           <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,.45)' }} onClick={() => setWebSor(null)}>
-            <div className="w-full max-w-2xl rounded-2xl border p-5 space-y-3 max-h-[90vh] overflow-auto" style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-subtle)' }} onClick={(e) => e.stopPropagation()}>
+            <div className="w-[96vw] max-w-[1500px] rounded-2xl border p-5 space-y-3 max-h-[94vh] overflow-auto" style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-subtle)' }} onClick={(e) => e.stopPropagation()}>
               <div className="text-sm font-semibold">Web adımını yeniden dene — {webSor.t.appName} @ {webSor.t.host}</div>
               <p className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>Yalnız <b>başarısız / atlanmış</b> vhost'lar yeniden denenir. Aşağıdaki bloklar web adımıyla <b>aynı betikten</b> (plan kipi) okundu; onaylarsanız zamanlayıcı bu blokları yorum satırına alır ve Apache'yi yeniden yükler.</p>
               {liste.length === 0 ? <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>Yeniden denenecek vhost yok.</div> : <VhostBloklar liste={liste} />}

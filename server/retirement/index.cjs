@@ -236,7 +236,12 @@ async function launch(req, templateName, extraVars, detail, key = REGISTRY_KEY) 
 const APACHE_URUN = new Set(['RHA', 'IHS', 'APACHE', 'IBMIHS']);
 async function vhostPlanBaslat(req, id, tid, webs) {
   const out = [];
+  // AYNI vhost listede iki kez varsa (kesif iki kaynaktan) iki plan isi = ekranda ayni blok iki kez.
+  const gorulen = new Set();
   for (const w of webs || []) {
+    const anahtar = `${String(w.host || '').toUpperCase()}|${String(w.confFile || '')}|${String(w.serverName || '').toLowerCase()}`;
+    if (gorulen.has(anahtar)) continue;
+    gorulen.add(anahtar);
     const kim = { host: w.host, serverName: w.serverName, confFile: w.confFile || '' };
     if (!APACHE_URUN.has(String(w.product || '').toUpperCase())) { out.push({ ...kim, ok: false, elle: true, message: `${w.product || 'bilinmeyen urun'}: otomatik kapatma yok (NGINX elle)` }); continue; }
     if (!w.confFile || !w.serverName) { out.push({ ...kim, ok: false, elle: true, message: 'conf dosyasi ya da ServerName kesifte cozulemedi' }); continue; }
