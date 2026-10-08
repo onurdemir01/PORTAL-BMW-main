@@ -26,3 +26,31 @@ export function sonucAyristir(line: unknown): { durum: PlanSonucu; mesaj: string
   const durum: PlanSonucu = d === 'PLAN' || d === 'OK' || d === 'SKIP' || d === 'FAIL' ? d : 'BILINMIYOR';
   return { durum, mesaj: p[0] === 'RESULT' ? p.slice(3).join(' ') : 'plan sonucu okunamadı' };
 }
+
+// MOD_JK BAGLANTILARI (2026-10-08, SALT OKUNUR). IHS'te vhost mod-jk.conf ya da httpd.conf'ta, worker'lar
+// conf/worker.properties'te. Blok kapatilinca blogun DISINDAKI JkMount'lar ve worker tanimlari aktif kalir;
+// web adimi onlara DOKUNMAZ - burada yalniz gorunur. Satir: `JK\t<tur>\t<dosya>\t<no>\t<metin>`.
+export type JkTur = 'GLOBAL' | 'PAYLASILAN' | 'WORKER' | 'LIST' | 'LB' | 'OKUNAMADI' | 'NOT' | 'BILINMIYOR';
+export interface JkSatiri { tur: JkTur; dosya: string; no: number; metin: string }
+const JK_TUR = new Set(['GLOBAL', 'PAYLASILAN', 'WORKER', 'LIST', 'LB', 'OKUNAMADI', 'NOT']);
+
+/** Bicimi bozuk satir ATLANMAZ: tur BILINMIYOR olarak metniyle tasinir. */
+export function jkAyristir(jk: unknown): JkSatiri[] {
+  if (!Array.isArray(jk)) return [];
+  return jk.map((x) => {
+    const p = String(x ?? '').split('\t');
+    if (p[0] !== 'JK' || !JK_TUR.has(p[1])) return { tur: 'BILINMIYOR' as JkTur, dosya: '', no: 0, metin: String(x ?? '') };
+    return { tur: p[1] as JkTur, dosya: p[2] === '-' ? '' : p[2] || '', no: Number(p[3]) || 0, metin: p.slice(4).join('\t') };
+  });
+}
+
+export const JK_ETIKET: Record<JkTur, string> = {
+  GLOBAL: 'blok dışı JkMount — blok kapanınca da AKTİF',
+  PAYLASILAN: 'başka vhost aynı worker\'ı kullanıyor — worker silinemez',
+  WORKER: 'worker tanımı',
+  LIST: 'worker.list',
+  LB: 'load balancer üyeliği',
+  OKUNAMADI: 'okunamadı — ölçülemedi, yok değil',
+  NOT: 'bilgi',
+  BILINMIYOR: 'tanınmayan satır',
+};

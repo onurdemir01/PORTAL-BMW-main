@@ -14,19 +14,45 @@ import { fmtDate, fmtDateTime } from '@/utils/datetime';
 import RetirementAkis from './RetirementAkis';
 import { retirementAdimi } from './retirementAdim';
 import { stopTrafikOzeti, stopOnayAcikMi, type TrafikIsDurumu } from './retirementTrafik';
-import { blokAyristir, sonucAyristir, type BlokSatiri } from './retirementVhostPlan';
+import { blokAyristir, jkAyristir, JK_ETIKET, sonucAyristir, type BlokSatiri, type JkSatiri } from './retirementVhostPlan';
 
 /** On kontrolde vhost basina kapatma plani (ekran durumu). */
 interface VhostPlanDurumu {
   host: string; serverName: string; confFile: string;
   durum: 'suruyor' | 'hazir' | 'hata' | 'elle';
-  mesaj?: string; satirlar?: BlokSatiri[]; jobId?: number | null;
+  mesaj?: string; satirlar?: BlokSatiri[]; jk?: JkSatiri[]; jobId?: number | null;
 }
 
 /** STOP onayinda KAPATILACAK VirtualHost bloklari (2026-10-08, kullanici: "tetiklemeden once
  *  disabled edilecek virtualhost blogunu gormek istiyorum"). Bloklar web adimiyla AYNI
  *  betikten (apache_retire_vhost plan) gelir. Plan basarisizsa (blok bulunamadi vb.) KIRMIZI:
  *  web adimi da ayni sebeple dusecek - JBoss STOP'u engellemez ama gorunur. */
+/** Bloga bagli mod_jk satirlari (SALT OKUNUR): web adimi bunlara DOKUNMAZ. Alan hic gelmediyse
+ *  (eski server_hub_fix) acikca soylenir - bos liste "bagli satir yok" diye okunmasin. */
+function JkBaglantilari({ jk }: { jk?: JkSatiri[] }) {
+  if (!jk || !jk.length) return <div style={{ color: 'var(--text-muted)' }}>mod_jk bağlantıları okunmadı (eski server_hub_fix sürümü).</div>;
+  const notlar = jk.filter((j) => j.tur === 'NOT');
+  const satirlar = jk.filter((j) => j.tur !== 'NOT');
+  const renk = (t: JkSatiri['tur']) => (t === 'GLOBAL' || t === 'OKUNAMADI' ? 'var(--status-warning)' : t === 'PAYLASILAN' ? 'var(--status-danger)' : 'var(--text-secondary)');
+  return (
+    <div className="space-y-1">
+      <div className="font-semibold" style={{ color: 'var(--text-muted)' }}>Bağlı mod_jk satırları — web adımı bunlara DOKUNMAZ</div>
+      {notlar.map((n, i) => <div key={`n${i}`} style={{ color: 'var(--text-muted)' }}>{n.metin}</div>)}
+      {satirlar.length === 0 ? <div style={{ color: 'var(--text-muted)' }}>Blok dışında bu worker'lara bağlı satır bulunmadı.</div> : (
+        <div className="overflow-auto max-h-56 rounded px-2 py-1.5 text-[10px] leading-snug" style={{ background: 'var(--bg-elevated)' }}>
+          {satirlar.map((j, i) => (
+            <div key={i} className="flex gap-2">
+              <span className="shrink-0 font-semibold" style={{ color: renk(j.tur) }} title={JK_ETIKET[j.tur]}>{j.tur}</span>
+              <span className="shrink-0 font-mono" style={{ color: 'var(--text-muted)' }}>{(j.dosya.split('/').pop() || '')}:{j.no || ''}</span>
+              <span className="font-mono break-all" style={{ color: 'var(--text-primary)' }}>{j.metin}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function VhostBloklar({ liste }: { liste?: VhostPlanDurumu[] }) {
   if (!liste || !liste.length) return null;
   return (
@@ -50,6 +76,7 @@ function VhostBloklar({ liste }: { liste?: VhostPlanDurumu[] }) {
               ) : (
                 <div style={{ color: 'var(--status-warning)' }}>Plan blok satırı döndürmedi (eski server_hub_fix sürümü?) — kapatılacak blok gösterilemiyor.</div>
               )}
+              <JkBaglantilari jk={v.jk} />
             </>
           )}
         </div>
@@ -567,7 +594,7 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
               const hazir = sonuc.durum === 'PLAN';
               setVhostPlanlar((m) => {
                 const l = [...(m[t.id] || ilk)];
-                l[i] = { ...l[i], durum: hazir ? 'hazir' : 'hata', mesaj: sonuc.mesaj, satirlar: hazir ? blokAyristir(s.fixResult?.blok) : undefined };
+                l[i] = { ...l[i], durum: hazir ? 'hazir' : 'hata', mesaj: sonuc.mesaj, satirlar: hazir ? blokAyristir(s.fixResult?.blok) : undefined, jk: jkAyristir(s.fixResult?.jk) };
                 return { ...m, [t.id]: l };
               });
             }

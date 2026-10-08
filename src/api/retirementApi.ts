@@ -125,6 +125,6 @@ export const retirementApi = {
     fetch(`${BASE}/${id}/delete-now`, json({ confirmApp })).then(safeJson),
   jobStatus: (id: number, tid: number, awxServerId: number, jobId: number): Promise<{ ok: boolean; status: string; output: string; result?: unknown; message?: string;
     /** server_hub_fix isleri (vhost plani): kapatilacak blok + RESULT satiri. */
-    fixResult?: { line?: string; blok?: string[] } | null }> =>
+    fixResult?: { line?: string; blok?: string[]; jk?: string[] } | null }> =>
     fetch(`${BASE}/${id}/targets/${tid}/job-status/${awxServerId}/${jobId}`).then(safeJson),
 };
