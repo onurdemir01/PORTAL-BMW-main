@@ -100,6 +100,7 @@ const BEKLENEN_PLAYBOOK = Object.freeze({
   app_retirement_rollback: 'app_retirement_rollback.yml',
   server_hub_scan: 'server_hub_scan.yml',
   server_hub_fix: 'server_hub_fix.yml',
+  reboot_check: 'reboot_check.yml',
 });
 /** Playbook Kayitlari anahtarina gore sablonun playbook'unu dogrular. */
 function assertRegistryPlaybook(serverId, templateId, key) {

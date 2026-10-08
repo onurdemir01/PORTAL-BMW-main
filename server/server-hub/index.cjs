@@ -764,6 +764,9 @@ function initServerHub(app) {
   // Geri getirmek isteyen once su soruyu cevaplasin: yanlis bir tarama sonucu kac
   // sunucuya yayilir?
 
+  // Reboot Kontrolu (2026-10-08): once/sonra goruntu + otomatik duzeltme (reboot-check.cjs).
+  require('./reboot-check.cjs').mount(router, { launch, HOST_RE });
+
   router.get('/job-status/:serverId/:jobId', async (req, res) => {
     const serverId = Number(req.params.serverId);
     const jobId = Number(req.params.jobId);

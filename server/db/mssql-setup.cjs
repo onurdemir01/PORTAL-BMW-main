@@ -916,6 +916,32 @@ const TABLES = [
       )`,
   },
   {
+    // Server Hub > Reboot Kontrolu (2026-10-08): reboot oncesi anlik goruntu (once_json) ve reboot
+    // sonrasi karsilastirma + duzeltme sonucu (sonra_json). "Once" goruntusu BURADA saklanir: ilk
+    // tasarim onu sunucuda /tmp'ye ve AWX'in gecici is dizinine yaziyordu (ikisi de kaybolur).
+    name: 'reboot_checks',
+    sql: `
+      CREATE TABLE reboot_checks (
+        id               INT IDENTITY(1,1) PRIMARY KEY,
+        hosts_json       NVARCHAR(MAX) NOT NULL,
+        notes            NVARCHAR(512) NULL,
+        status           NVARCHAR(24)  NOT NULL,
+        created_by       NVARCHAR(128) NOT NULL,
+        created_at       DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+        once_job_id      INT NULL,
+        once_server_id   INT NULL,
+        once_at          DATETIME2 NULL,
+        once_json        NVARCHAR(MAX) NULL,
+        sonra_job_id     INT NULL,
+        sonra_server_id  INT NULL,
+        sonra_at         DATETIME2 NULL,
+        sonra_hedef_json NVARCHAR(MAX) NULL,
+        sonra_json       NVARCHAR(MAX) NULL,
+        ozet_json        NVARCHAR(MAX) NULL,
+        updated_at       DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+      )`,
+  },
+  {
     // Uygulama Retirement (2026-09-21, kullanici talebi): ekibin elle surecinin (Smart silme kaydi ->
     // stop -> secilen tarihte silme -> IP/LB/DNS kayitlari) Portal'da takibi. Kayit = uygulama (tum
     // ortamlar/siteler); silme tarihi kaydi acan secer, bos ise stop + delete_after_days (45).
@@ -2970,6 +2996,16 @@ const PLAYBOOK_REGISTRY_SEED = [
       'bmw_automation_folder/app_retirement/app_retirement_rollback.yml — STOP\'un tersi: *.<smart_no>.old paketleri geri adlandirir, auto-start=true, JVM\'i baslatir. Silinmis uygulamada calismaz. plan_only=true once plan. Yalniz Admin.',
     playbook_path: null,
     env_var_name: 'APP_RETIREMENT_ROLLBACK_TEMPLATE_ID',
+  },
+  {
+    key_name: 'reboot_check',
+    display_name: 'Server Hub — Reboot Kontrolu',
+    category: 'system',
+    handler: 'reboot_check',
+    description:
+      'bmw_automation_folder/patch_remediation/reboot_check.yml — rc_faz=once: secilen sunucularin anlik goruntusu (Portal saklar); rc_faz=sonra: once ile fark, DOWN olani baslatir / NEW olani durdurur (TEK JVM: /host/server-config; domain/grup islemi yok), son goruntuyle dogrular. Variables prompt-on-launch acik olmali. Yalniz Admin.',
+    playbook_path: null,
+    env_var_name: 'REBOOT_CHECK_TEMPLATE_ID',
   },
   {
     key_name: 'server_hub_fix',

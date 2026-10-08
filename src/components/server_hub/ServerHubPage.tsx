@@ -41,6 +41,7 @@ import { TableEmptyRow } from '@/components/common/EmptyState';
 import { fmtNumber, fmtDate } from '@/utils/datetime';
 import { toast } from '@/hooks/useToast';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
+import RebootKontroluTab from './RebootKontroluTab';
 import RetirementTab from './RetirementTab';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
 
@@ -1395,7 +1396,7 @@ function SevPill({ s, n }: { s: ShSeverity; n?: number }) {
 // ── Sayfa ────────────────────────────────────────────────────────────────────────────
 export default function ServerHubPage() {
   // Sekmeler: Sunucular (tarama raporu) | Retirement (uygulama emeklilik akisi, 2026-09-21)
-  const [tab, setTab] = useState<'hosts' | 'findings' | 'readiness' | 'retirement'>('hosts');
+  const [tab, setTab] = useState<'hosts' | 'findings' | 'readiness' | 'reboot' | 'retirement'>('hosts');
   // Kartlardan bulgu detayina gecis (kullanici, 2026-09-22): kart -> Bulgular sekmesi + hazir suzgec
   const [findingsFilter, setFindingsFilter] = useState<{
     area?: string;
@@ -1435,6 +1436,7 @@ export default function ServerHubPage() {
               { id: 'hosts', label: 'Sunucular' },
               { id: 'findings', label: 'Bulgular' },
               { id: 'readiness', label: 'Açılış Hazırlığı' },
+              { id: 'reboot', label: 'Reboot Kontrolü' },
               { id: 'retirement', label: 'Retirement' },
             ] as const
           ).map((t) => (
@@ -1455,6 +1457,7 @@ export default function ServerHubPage() {
       {tab === 'hosts' && <HostsTab onGoFindings={goFindings} />}
       {tab === 'findings' && <FindingsTab initial={findingsFilter} />}
       {tab === 'readiness' && <ReadinessTab />}
+      {tab === 'reboot' && <RebootKontroluTab />}
       {tab === 'retirement' && <RetirementTab />}
     </div>
   );
