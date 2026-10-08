@@ -318,6 +318,30 @@ function initAuth(app) {
     }
   });
 
+  // ── ADMIN: KENDI tetiklemelerinde Smart onayini atla (2026-10-08) ────────────
+  // Kullanici: "Admin'ler istedigi zaman sadece kendi tetiklemelerinde Smart onayini
+  // kapatabilsin; deneme yapacagimiz zaman tekrar acip akisi test edebiliyor olalim."
+  // Karar ve kapsam: server/ansible/admin-smart-atla.cjs. Degisiklik denetime yazilir.
+  router.get("/smart-atla", requireAdmin, async (req, res) => {
+    const { adminSmartAtliyor } = require("../ansible/admin-smart-atla.cjs");
+    res.json({ ok: true, atla: await adminSmartAtliyor(req) });
+  });
+  router.put("/smart-atla", requireAdmin, async (req, res) => {
+    const { ANAHTAR, adminSmartAtliyor } = require("../ansible/admin-smart-atla.cjs");
+    const atla = req.body?.atla === true;
+    try {
+      await usersDb.setPref(req.session.user.username, ANAHTAR, atla ? "1" : null, { korunanaIzin: true });
+      try {
+        require("../audit/index.cjs").auditPortal(req, atla ? "smart_onayi_admin_kapatti" : "smart_onayi_admin_acti", {
+          detail: JSON.stringify({ kim: req.session.user.username }),
+        });
+      } catch { /* denetim best-effort */ }
+      res.json({ ok: true, atla: await adminSmartAtliyor(req) });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: `Kaydedilemedi: ${e.message}` });
+    }
+  });
+
   // ── Session diagnostics (401 kok neden teshisi — Faz 0) ─────────────────────
   // Kimlik sizdirmaz; yalnizca oturum/cookie/proxy durumunu doner. Prod'da secure-cookie'nin
   // neden set edilmedigini (X-Forwarded-Proto eksikligi) ve MemoryStore proses-izolasyonunu

@@ -3238,7 +3238,9 @@ function initAnsibleRunner(app) {
     // dusmek, tam da kapatilan aciktan (dogrulanmamis client verisiyle atlama) eski
     // kayitlarin gecmesine izin verirdi.
     const gates = require('./change-gates.cjs');
-    if (gates.isSmartRequired(overrides?.smartApproval, gateVars || {})) {
+    // `plan.adminSmartAtla`: plan, Smart onayini KENDI isteginde atlamis bir Admin'in
+    // tetiklemesinden zamanlandi (change-gates.runChangeGates) - pencere saatinde yeniden sorulmaz.
+    if (!plan.adminSmartAtla && gates.isSmartRequired(overrides?.smartApproval, gateVars || {})) {
       // `pendingLaunchExtras` YALNIZCA bu cagirma yerinde dolu: bu paket ileride yine
       // launchOrRequestApproval ile oynatilir, yani kapi YENIDEN calisir ve `gateVars`
       // olmadan bos nesneye duserdi. Diger iki cagirma yerinin paketi Smart poller'i
@@ -4366,7 +4368,11 @@ function initAnsibleRunner(app) {
         // senaryosunu OCO penceresine bagli kilmak aracin amacini bozardi. Smart onayi
         // ise aynen gecerli: gercek bir job tetiklenecegi icin iz birakmali.
         const gates = require('./change-gates.cjs');
-        if (gates.isSmartRequired(overrides.smartApproval, gateVars)) {
+        // Admin KENDI tetiklemesinde Smart onayini atlamis olabilir (admin-smart-atla.cjs; denetime yazilir).
+        const smartGerekli = gates.isSmartRequired(overrides.smartApproval, gateVars);
+        const adminAtladi = smartGerekli && (await require('./admin-smart-atla.cjs').adminSmartAtliyor(req));
+        if (adminAtladi) require('./admin-smart-atla.cjs').atlamayiDenetle(req, 'selfservice_test_scenario_run', { templateId, templateName });
+        if (smartGerekli && !adminAtladi) {
           let opened;
           try {
             opened = await gates.openSmartTicket({

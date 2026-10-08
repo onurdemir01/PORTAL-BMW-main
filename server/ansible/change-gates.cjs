@@ -215,6 +215,8 @@ async function evaluateOcoGate({
   preferPortalScheduler, ownerGroups,
   // Smart bileti artik BU kapida (kesinti saatinde degil, talep aninda) acilabiliyor.
   buildSmartMetadata: ctxBuildSmartMetadata,
+  // Admin KENDI isteginde Smart onayini atladi (runChangeGates karar verdi).
+  adminAtladi = false,
 }) {
   assertHooks({ createOcoAwxSchedule, friendlyAwxError }, ['createOcoAwxSchedule', 'friendlyAwxError']);
   const ocoClient = require('../oco/client.cjs');
@@ -276,6 +278,9 @@ async function evaluateOcoGate({
       return { outcome: 'respond', body: { ok: true, ocoDeferred: true, oco: ocoInfo } };
     }
     const pendingLaunch = { detail, extraVars, resolvedLaunchOptions, specFields, overrides, username, templateName };
+    // Admin Smart onayini atladiysa zamanlanan plan bunu tasir: pencere saatindeki oynatma
+    // (runner.launchOrRequestApproval) ikinci kez onay istemez.
+    if (adminAtladi) pendingLaunch.adminSmartAtla = true;
     // ONAY ONCE, ZAMANLAMA SONRA (2026-09-22, kullanici): eskiden Smart bileti kesinti
     // SAATINDE aciliyordu; personel 15:00'te talebi birakip 23:00'te tekrar gelip Smart'i
     // onaylamak zorunda kaliyordu. Artik Smart bileti HEMEN acilir; onay gelince is
@@ -294,7 +299,7 @@ async function evaluateOcoGate({
     //     baslatir. O durumda Portal'in kendi zamanlamasi kullanilir; poller kesinti
     //     saatinde launchOrRequestApproval'i cagirir ve Smart bileti ORADA acilir.
     //     Iki mekanizma da ayni tabloda, status ile ayrilir.
-    const smartAlsoRequired = isSmartRequired(overrides.smartApproval, gateVars);
+    const smartAlsoRequired = isSmartRequired(overrides.smartApproval, gateVars) && !adminAtladi;
     // `preferPortalScheduler`: cagiran AWX-native zamanlamayi ISTEMIYOR.
     if (!smartAlsoRequired && !preferPortalScheduler) {
       const schedName = `PORTAL_OCO_${ocoNumber}_${templateId}_${Date.now()}`;
@@ -388,7 +393,7 @@ async function evaluateOcoGate({
         ok: true, ocoScheduled: true, scheduleId: rec.id,
         // `viaSmart` ADI YANILTICIYDI: bu dal artik yalnizca "SMART da gerekiyor"
         // diye degil, cagiran PORTAL zamanlayicisini istedigi icin de secilebiliyor.
-        viaSmart: isSmartRequired(overrides.smartApproval, gateVars),
+        viaSmart: smartAlsoRequired,
         viaPortalScheduler: true,
         oco: ocoInfo,
       },
@@ -448,12 +453,19 @@ async function runChangeGates(ctx) {
   // OCO kapisindan Smart biletine tasinacak alanlar (pencere acikken dolar).
   let smartPendingExtras = {};
 
+  // ADMIN KENDI ISTEGINDE Smart onayini atlamis olabilir (admin-smart-atla.cjs). Yalniz Smart
+  // atlanir; OCO kapisi asagida AYNEN calisir. Karar BIR KEZ verilir ve OCO zamanlamasina da
+  // tasinir (zamanlanan is pencere saatinde ikinci kez onay istemesin).
+  const smartGerekli = isSmartRequired(overrides.smartApproval, gateVars);
+  const adminAtladi = smartGerekli && (await require('./admin-smart-atla.cjs').adminSmartAtliyor(req));
+  if (adminAtladi) require('./admin-smart-atla.cjs').atlamayiDenetle(req, smartAuditAction, { templateId, templateName });
+
   if (isOcoGateApplicable(overrides, extraVars, gateVars)) {
     const ocoDecision = await evaluateOcoGate({
       server, templateId, username, req,
       overrides, extraVars, gateVars, detail, resolvedLaunchOptions, specFields, templateName,
       ocoNumber, ocoAction, createOcoAwxSchedule, friendlyAwxError,
-      preferPortalScheduler, ownerGroups, buildSmartMetadata,
+      preferPortalScheduler, ownerGroups, buildSmartMetadata, adminAtladi,
     });
     if (ocoDecision.outcome !== 'proceed') return ocoDecision;
     // Kapi 'proceed' derken de bilgi tasiyabilir: pencere ACIK dalinda kesinti penceresi
@@ -462,7 +474,7 @@ async function runChangeGates(ctx) {
     if (ocoDecision.pendingLaunchExtras) smartPendingExtras = ocoDecision.pendingLaunchExtras;
   }
 
-  if (!isSmartRequired(overrides.smartApproval, gateVars)) return { outcome: 'proceed' };
+  if (!smartGerekli || adminAtladi) return { outcome: 'proceed' };
 
   let opened;
   try {

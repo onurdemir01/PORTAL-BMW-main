@@ -104,8 +104,12 @@ async function listUsers() {
 const PREF_KEY_MAX = 200;
 const PREF_VALUE_MAX = 64 * 1024; // tek tercih icin ust sinir (kotuye kullanim onlemi)
 
-function validPrefKey(key) {
+// KORUNAN ONEK (2026-10-08): 'guvenlik.' ile baslayan tercihler (or. admin Smart onayi atlama,
+// ansible/admin-smart-atla.cjs) GENEL /prefs ucundan YAZILAMAZ; yalniz kendi yetkili ucundan.
+const KORUNAN_ONEK = 'guvenlik.';
+function validPrefKey(key, { korunanaIzin = false } = {}) {
   const k = String(key || '').trim();
+  if (!korunanaIzin && k.toLowerCase().startsWith(KORUNAN_ONEK)) return null;
   return k && k.length <= PREF_KEY_MAX ? k : null;
 }
 
@@ -122,11 +126,11 @@ async function getPrefs(username) {
   return prefs;
 }
 
-async function setPref(username, key, value) {
+async function setPref(username, key, value, { korunanaIzin = false } = {}) {
   const uname = String(username || '')
     .trim()
     .toLowerCase();
-  const k = validPrefKey(key);
+  const k = validPrefKey(key, { korunanaIzin });
   if (!uname || !k) return false;
   const v = value == null ? null : String(value).slice(0, PREF_VALUE_MAX);
   if (v === null) {

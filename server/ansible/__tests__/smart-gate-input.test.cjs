@@ -129,9 +129,11 @@ test('bekci KOR DEGIL: gercek bir kapi cagrisi silinirse kirmizi olur', () => {
 
   // ss/test/run'daki guard'i sil (her admin "Gercekten Calistir" Smart onayini
   // atlayarak is tetikleyebilir hale gelirdi) — sayac esigin ALTINA dusmeli.
+  // 2026-10-08: ss/test/run karari `const smartGerekli = gates.isSmartRequired(...)` oldu
+  // (admin kendi tetiklemesinde Smart onayini atlayabiliyor - admin-smart-atla.cjs).
   const sabotaged = RUNNER.replace(
-    /if \(gates\.isSmartRequired\(overrides\.smartApproval, gateVars\)\)/,
-    'if (false)',
+    /const smartGerekli = gates\.isSmartRequired\(overrides\.smartApproval, gateVars\);/,
+    'const smartGerekli = false;',
   );
   assert.notEqual(sabotaged, RUNNER, 'sabotaj deseni tutmadi — bekci guncellenmeli');
   assert.ok(

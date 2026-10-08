@@ -237,6 +237,14 @@ async function opsxProductionKapisi({
   // KAPALIYKEN SESSIZ GECMEZ: production bir islem onaysiz kosuyorsa bunun DENETIMDE
   // izi kalmali. Aksi halde "bu prod restart'i kim onayladi" sorusunun cevabi yok ve
   // kapinin kapali oldugu DONEM bile geriye donuk gorunmez.
+  // ADMIN KENDI TETIKLEMESINDE Smart onayini atlamis olabilir (ansible/admin-smart-atla.cjs).
+  // Platform ayari DEGISMEZ; yalniz bu Admin'in bu istegi onaysiz kosar ve denetime yazilir.
+  const atla = require('../ansible/admin-smart-atla.cjs');
+  if (await atla.adminSmartAtliyor(req)) {
+    atla.atlamayiDenetle(req, 'opsx_production', { platform, islem: islemAdi, uretimSebebi: sebep, templateId });
+    return { proceed: true };
+  }
+
   if (!(await smartOnayiEtkinMi(platform))) {
     try {
       require('../audit/index.cjs').auditPortal(req, 'opsx_prod_onaysiz_calisti', {

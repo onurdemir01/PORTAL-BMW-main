@@ -19,6 +19,7 @@ import {
   ShieldCheckIcon,
   ChevronDownIcon,
   UserCircleIcon,
+  ExclamationTriangleIcon,
 } from "@heroicons/react/24/outline";
 import { AuthContext } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -27,6 +28,7 @@ import { CSV_SEPARATOR_PREF, csvSeparator, type CsvSeparator } from "@/utils/csv
 import { PortalLogo } from "@/components/common/PortalLogo";
 import { Modal } from "@/components/common/Modal";
 import OturumListesi from "@/components/oturum/OturumListesi";
+import { okJson } from "@/api/http";
 
 interface Props {
   onToggleNav: () => void;
@@ -46,6 +48,33 @@ export default function Masthead({ onToggleNav }: Props) {
   const [csvAyirici, setCsvAyirici] = useState<CsvSeparator>(csvSeparator());
   const menuRef = useRef<HTMLDivElement>(null);
   const menuDugmesiRef = useRef<HTMLButtonElement>(null);
+
+  // ADMIN: KENDI tetiklemelerinde Smart onayini atla (2026-10-08). Kullanici: "Admin'ler istedigi
+  // zaman sadece kendi tetiklemelerinde Smart onayini kapatabilsin; deneme yapacagimiz zaman
+  // tekrar acip akisi test edebiliyor olalim." Kapaliyken (atla=true) ustte SUREKLI uyari durur -
+  // unutulup production islerin onaysiz kosmasi gorunmez kalmasin. Kapsam: server/ansible/admin-smart-atla.cjs.
+  const adminMi = user?.role === "Admin";
+  const [smartAtla, setSmartAtla] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (!adminMi) return;
+    let alive = true;
+    fetch("/api/auth/smart-atla", { credentials: "include" })
+      .then((r) => okJson<{ ok: boolean; atla: boolean }>(r))
+      .then((d) => { if (alive) setSmartAtla(!!d.atla); })
+      .catch(() => { if (alive) setSmartAtla(null); });
+    return () => { alive = false; };
+  }, [adminMi]);
+  const smartAtlaDegistir = async (atla: boolean) => {
+    try {
+      const r = await fetch("/api/auth/smart-atla", {
+        method: "PUT", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ atla }),
+      });
+      const d = await okJson<{ ok: boolean; atla: boolean }>(r);
+      setSmartAtla(!!d.atla);
+    } catch {
+      /* kaydedilemedi: durum degismez, anahtar eski degerinde kalir */
+    }
+  };
 
   const displayName = user?.displayName || user?.username || "?";
   const initial = displayName[0]?.toUpperCase() ?? "?";
@@ -128,6 +157,17 @@ export default function Masthead({ onToggleNav }: Props) {
           {theme === "dark" ? <SunIcon className="h-5 w-5" /> : <MoonIcon className="h-5 w-5" />}
         </button>
 
+        {adminMi && smartAtla && (
+          <button
+            onClick={() => setMenuOpen(true)}
+            className="hidden sm:inline-flex items-center gap-1.5 h-7 px-2.5 mr-2 rounded-full text-[0.75rem] font-semibold"
+            style={{ color: "var(--status-warning)", background: "var(--status-warning-bg)", border: "1px solid var(--status-warning)" }}
+            title="Sizin tetiklediğiniz işlerde Smart onayı istenmiyor (diğer kullanıcılar etkilenmez). Kapatmak için kullanıcı menüsü."
+          >
+            <ExclamationTriangleIcon className="h-4 w-4" /> Smart onayı kapalı (yalnız siz)
+          </button>
+        )}
+
         {/* Kullanici menusu — PF masthead dropdown */}
         <div className="relative" ref={menuRef}>
           <button
@@ -206,6 +246,27 @@ export default function Masthead({ onToggleNav }: Props) {
                   </select>
                 </label>
               </div>
+              {adminMi && (
+                <div className="px-4 py-2" style={{ borderTop: "1px solid var(--border)" }}>
+                  <label className="flex items-start gap-2 text-[0.75rem] cursor-pointer" style={{ color: "var(--text-primary)" }}>
+                    <input
+                      type="checkbox"
+                      className="mt-0.5"
+                      checked={smartAtla === false}
+                      disabled={smartAtla === null}
+                      onChange={(e) => smartAtlaDegistir(!e.target.checked)}
+                    />
+                    <span>
+                      <span className="font-semibold">Smart onayı (tetiklemelerim)</span>
+                      <span className="block" style={{ color: smartAtla ? "var(--status-warning)" : "var(--text-muted)" }}>
+                        {smartAtla === null ? "durum okunamadı — onay istenir"
+                          : smartAtla ? "KAPALI — başlattığınız işler onaysız çalışır (denetime yazılır)"
+                            : "açık — işleriniz normal onay akışından geçer"}
+                      </span>
+                    </span>
+                  </label>
+                </div>
+              )}
               <button
                 onClick={() => { setMenuOpen(false); setOturumlarAcik(true); }}
                 className="flex w-full items-center gap-2 px-4 py-2 text-left text-[0.875rem] hover:bg-[var(--bg-elevated)]"
