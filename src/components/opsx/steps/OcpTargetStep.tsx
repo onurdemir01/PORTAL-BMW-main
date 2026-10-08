@@ -13,10 +13,16 @@
 // UYGULAMA: namespace seçilir seçilmez otomatik fetch edilir, SADECE dropdown'dan seçilir
 // (serbest yazım yok) — arama filtre olarak kullanılabilir ama liste dışı değer kabul edilmez.
 //
-// ÇOKLU İŞLEM: kullanıcı birden fazla namespace/uygulama çiftini "Ekle" ile listeye
-// biriktirebilir; tek POST'ta oc_input = "ns1,app1;ns2,app2" olarak sunucuya gider.
+// ÇOKLU İŞLEM: kullanıcı birden fazla namespace/uygulama çiftini listeye biriktirebilir;
+// tek POST'ta oc_input = "ns1,app1;ns2,app2" olarak sunucuya gider.
+//
+// SEÇİLEN UYGULAMA ANINDA LİSTEYE GİRER (2026-10-08, kullanıcı: "listeye ekle butonunu insanlar
+// fark etmiyor, sanki job çalışmıyormuş gibi bir durum oluşuyor"). Eskiden uygulama seçildikten
+// sonra ayrıca soluk bir "Listeye Ekle" düğmesine basmak gerekiyordu; basılmazsa "Devam Et"
+// sebebi yazılmadan kapalı kalıyordu. Artık uygulamaya tıklamak onu ekler; namespace açık kalır
+// (aynı namespace'ten başka uygulama da seçilebilir), eklenenler listeden düşer.
 import React, { useEffect, useState } from "react";
-import { PlusIcon, XMarkIcon } from "@heroicons/react/24/outline";
+import { XMarkIcon } from "@heroicons/react/24/outline";
 import { opsxApi, type OpsxOcpPair } from "@/api/opsxApi";
 import FilterableList from "@/components/common/FilterableList";
 import { LoadingLogo } from '@/components/common/LoadingLogo';
@@ -50,10 +56,8 @@ const OcpTargetStep: React.FC<{
 
   const [appOptions, setAppOptions] = useState<string[]>([]);
   const [appsLoading, setAppsLoading] = useState(false);
-  const [application, setApplication] = useState("");
-  // Uygulama listesi için AYNI "seç → kapan" deseni — namespace'in yanına ikinci bir
-  // uzun liste daha eklenmesin.
-  const [applicationLocked, setApplicationLocked] = useState(false);
+  // Son eklenen çift: kullanıcı tıklamasının bir şey yaptığını GÖRSÜN (kısa süre vurgulanır).
+  const [sonEklenen, setSonEklenen] = useState<string | null>(null);
 
   const [pairs, setPairs] = useState<OpsxOcpPair[]>([]);
 
@@ -75,7 +79,7 @@ const OcpTargetStep: React.FC<{
   // Ortam/cluster değişince namespace listesi yeniden çekilir; önceki secimler sıfırlanır.
   useEffect(() => {
     setNamespace(""); setSettledNamespace(""); setNamespaceLocked(false);
-    setNamespaceOptions([]); setApplication(""); setAppOptions([]); setApplicationLocked(false);
+    setNamespaceOptions([]); setAppOptions([]);
     if (!env || !tenant) return;
     opsxApi.getOcpNamespaces(env, tenant)
       .then((r) => setNamespaceOptions(r.namespaces || []))
@@ -91,7 +95,7 @@ const OcpTargetStep: React.FC<{
 
   // Namespace yerleşince uygulama dropdown'u otomatik dolar.
   useEffect(() => {
-    setApplication(""); setAppOptions([]); setApplicationLocked(false);
+    setAppOptions([]);
     if (!env || !tenant || !settledNamespace) return;
     setAppsLoading(true);
     opsxApi.getOcpApps(env, tenant, settledNamespace)
@@ -100,17 +104,23 @@ const OcpTargetStep: React.FC<{
       .finally(() => setAppsLoading(false));
   }, [env, tenant, settledNamespace]);
 
-  const canAddPair = namespace.trim() && application.trim();
-
-  function addPair() {
-    if (!canAddPair) return;
-    const ns = namespace.trim();
-    const app = application.trim();
-    if (pairs.some((p) => p.namespace === ns && p.application === app)) return;
-    setPairs((prev) => [...prev, { namespace: ns, application: app }]);
-    setNamespace(""); setSettledNamespace(""); setNamespaceLocked(false);
-    setApplication(""); setAppOptions([]); setApplicationLocked(false);
+  // Uygulama listesi `settledNamespace` için çekildi; çift de ONUNLA kurulur (yazım kipinde
+  // kutudaki metin henüz yerleşmemiş olabilir).
+  function addPair(app: string) {
+    const ns = settledNamespace.trim();
+    const a = app.trim();
+    if (!ns || !a) return;
+    if (pairs.some((p) => p.namespace === ns && p.application === a)) return;
+    setPairs((prev) => [...prev, { namespace: ns, application: a }]);
+    setSonEklenen(`${ns}-${a}`);
   }
+  useEffect(() => {
+    if (!sonEklenen) return;
+    const t = window.setTimeout(() => setSonEklenen(null), 2500);
+    return () => window.clearTimeout(t);
+  }, [sonEklenen]);
+  // Bu namespace'ten zaten eklenmiş uygulamalar listede tekrar görünmez.
+  const kalanApps = appOptions.filter((a) => !pairs.some((p) => p.namespace === settledNamespace && p.application === a));
 
   function removePair(i: number) {
     setPairs((prev) => prev.filter((_, idx) => idx !== i));
@@ -241,37 +251,22 @@ const OcpTargetStep: React.FC<{
                 <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
                   Bu namespace için envanterde uygulama bulunamadı.
                 </p>
-              ) : applicationLocked && application.trim() ? (
-                <div className="flex items-center justify-between gap-2 px-3 py-2 border border-[var(--border)] rounded-xl bg-[var(--bg-elevated)]">
-                  <span className="text-sm font-mono text-[var(--text-primary)] truncate" title={application}>{application}</span>
-                  <button
-                    onClick={() => setApplicationLocked(false)}
-                    className="text-xs text-[var(--accent)] hover:underline flex-shrink-0"
-                  >
-                    Değiştir
-                  </button>
-                </div>
+              ) : kalanApps.length === 0 ? (
+                <p className="text-xs text-[var(--text-muted)] px-1 py-2">Bu namespace'in bütün uygulamaları listeye eklendi.</p>
               ) : (
-                /* Eskiden ayrı bir arama kutusu + `<select size>` vardı: eşleşen metin
-                   vurgulanamıyor ve liste 3-6 satırla sınırlı kalıyordu. */
-                <FilterableList
-                  options={appOptions}
-                  value={application}
-                  onChange={(v) => { setApplication(v); setApplicationLocked(true); }}
-                  placeholder="Uygulama ara…"
-                />
+                <>
+                  <p className="mb-1 text-[11px] text-[var(--text-muted)]">Tıkladığınız uygulama hemen aşağıdaki listeye eklenir; birden fazla seçebilirsiniz.</p>
+                  <FilterableList
+                    options={kalanApps}
+                    value=""
+                    onChange={addPair}
+                    placeholder="Uygulama ara…"
+                  />
+                </>
               )}
             </div>
           )}
 
-          <button
-            onClick={addPair}
-            disabled={!canAddPair}
-            className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-dashed border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors disabled:opacity-40 disabled:pointer-events-none"
-          >
-            <PlusIcon className="w-3.5 h-3.5" />
-            Listeye Ekle
-          </button>
         </div>
       )}
 
@@ -282,7 +277,13 @@ const OcpTargetStep: React.FC<{
           </label>
           <div className="space-y-1">
             {pairs.map((p, i) => (
-              <div key={`${p.namespace}-${p.application}`} className="flex items-center justify-between gap-2 px-3 py-1.5 border border-[var(--border)] rounded-lg">
+              <div
+                key={`${p.namespace}-${p.application}`}
+                className="flex items-center justify-between gap-2 px-3 py-1.5 border rounded-lg transition-colors duration-700"
+                style={sonEklenen === `${p.namespace}-${p.application}`
+                  ? { borderColor: 'var(--status-success)', background: 'var(--status-success-bg, transparent)' }
+                  : { borderColor: 'var(--border)' }}
+              >
                 <span className="text-sm font-mono text-[var(--text-primary)]">{p.namespace} / {p.application}</span>
                 <button onClick={() => removePair(i)} disabled={busy} className="text-[var(--text-muted)] hover:text-red-600">
                   <XMarkIcon className="w-4 h-4" />
@@ -293,6 +294,9 @@ const OcpTargetStep: React.FC<{
         </div>
       )}
 
+      {env && tenant && pairs.length === 0 && (
+        <p className="text-[11px] text-[var(--text-muted)]">Devam etmek için en az bir namespace / uygulama seçin.</p>
+      )}
       <button
         onClick={() => onSubmit({ env, tenant, pairs })}
         disabled={!ready || busy}
