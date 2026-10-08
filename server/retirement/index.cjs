@@ -215,10 +215,13 @@ async function launch(req, templateName, extraVars, detail, key = REGISTRY_KEY) 
     throw Object.assign(new Error(`AWX job template'i tanımlı değil: Admin › Playbook Kayıtları › ${neden}.`), { status: 501 });
   }
   const runner = require('../ansible/runner.cjs');
+  // ZAMANLAYICI istek nesnesi VERMEZ (launch(null, ...)): DELETE ve zamanlanmis STOP. Eskiden oturum
+  // null istekten okunuyordu; zamanlayicinin baslattigi HER is "Cannot read properties of null
+  // (reading 'session')" ile dusuyordu (uretim 2026-10-08, GBSVCVOICEORDER @ GBJBOQ04 DELETE).
   // YANLIS SABLON: Playbook Kayitlari'nda baska bir isin sablonu eslenmisse baslatilmaz (2026-10-08).
   await require('../ansible/template-preflight.cjs').assertRegistryPlaybook(serverId, templateId, key);
   await require('../ansible/template-preflight.cjs').assertTemplateAcceptsExtraVars(serverId, templateId, extraVars, { label: key });
-  const user = req.session?.user || {};
+  const user = req?.session?.user || { username: 'Portal (zamanlanmis)' };
   const result = await runner.launchJobOnServer(serverId, templateId, extraVars, '', user);
   try {
     await db().query(`INSERT INTO ansible_job_history (username, awx_server_id, template_id, template_name, job_id, status, params) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
@@ -889,8 +892,8 @@ function initRetirement(app) {
   // STOP: OCO kesinti penceresi acilinca. DELETE: silme tarihi gelince, ekstra onay YOK.
   // Launcher ENJEKTE EDILIR; poller AWX'i tanimaz (dongusel require yok, testi aga cikmaz).
   //
-  // `req` YOK: isi poller basliyor, oturum da yok. launch() `req.session?.user` okuyor ve
-  // undefined'a dayanikli; tetikleyen kimlik olay kaydinda (addEvent username=null ->
+  // `req` YOK: isi poller basliyor, oturum da yok; launch(null, ...) cagrilir. launch() `req?.session`
+  // okur (null'a dayanikli - RQ1 bekcisi); tetikleyen kimlik olay kaydinda (addEvent username=null ->
   // "sistem") ve extraVars.requested_by'da yaziyor.
   try {
     require('./poller.cjs').startPoller(async (kind, t) => {
