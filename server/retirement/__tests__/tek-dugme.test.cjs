@@ -91,7 +91,7 @@ test('TD10 on kontrol web sunucularinda Server Hub taramasi baslatir; DUSERSE on
   assert.ok(blok.length > 100, 'trafik taramasi blogu yok');
   assert.match(blok, /if \(!confirmed\) \{/, 'tarama onayli STOP\'ta da baslatiliyor (yalniz on kontrolde olmali)');
   // Yalniz WEB sunuculari (t.web), JBoss hedefi degil
-  assert.match(blok, /\(t\.web \|\| \[\]\)\.map\(\(w\) => String\(w\.host/, 'tarama web sunucularini hedeflemiyor');
+  assert.match(blok, /\(h\.web \|\| \[\]\)\.map\(\(w\) => String\(w\.host/, 'tarama web sunucularini hedeflemiyor');
   assert.match(blok, /\{ target_hosts: webHosts\.join\(','\) \}/);
   assert.match(blok, /TRAFIK_REGISTRY_KEY\)/);
   // Hata yutulmaz ama on kontrolu de dusurmez: try/catch + olay + yanitta sebep
@@ -173,7 +173,7 @@ test('TD12 Akis paneli web adimini KANITSIZ "bitti" gostermez', () => {
 test('TD13 on kontrol KAPATILACAK vhost blogunu gosterir: ayni eylem PLAN kipinde, gercek is YOK', () => {
   // Kullanici (2026-10-08): "tetiklemeden once disabled edilecek virtualhost blogunu gormek istiyorum."
   const ep = ucDilimi("router.post('/:id/targets/:tid/stop'", "router.post('/:id/targets/:tid/rollback'");
-  assert.match(ep, /if \(!confirmed && \(t\.web \|\| \[\]\)\.length\) vhostPlan = await vhostPlanBaslat\(req, id, tid, t\.web\);/, 'vhost plani onayli STOP\'ta da kosuyor ya da on kontrolde yok');
+  assert.match(ep, /if \(!confirmed\) for \(const h of hedefler\) if \(\(h\.web \|\| \[\]\)\.length\) vhostPlanlar\[h\.id\] = await vhostPlanBaslat\(req, id, h\.id, h\.web\);/,'vhost plani onayli STOP\'ta da kosuyor ya da on kontrolde yok');
   // Plan isleri ORTAK yardimcida (on kontrol + yeniden deneme onizlemesi ayni kod)
   const blok = IDX.slice(IDX.indexOf('async function vhostPlanBaslat('), IDX.indexOf('return out;', IDX.indexOf('async function vhostPlanBaslat(')));
   assert.ok(blok.length > 100, 'vhostPlanBaslat yok');

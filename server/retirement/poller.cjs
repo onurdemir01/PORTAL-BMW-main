@@ -62,6 +62,7 @@ async function stopTick(now) {
   );
   let kosan = 0;
   let gecen = 0;
+  const gruplar = new Map();
   for (const t of rows || []) {
     const k = stopZamani({ scheduledAt: t.scheduled_at, windowEnd: t.window_end }, now);
     if (k.durum === 'wait') continue;
@@ -79,39 +80,52 @@ async function stopTick(now) {
       }
       continue;
     }
+    // TOPLU STOP (2026-10-08): ayni kayit + ayni zamanlama ani = kullanici onlari TEK iste
+    // secti; pencere acilinca da TEK is baslar (tek SCC maili). Asagida gruplanir.
+    const g = `${t.record_id}|${new Date(t.scheduled_at).getTime()}`;
+    if (!gruplar.has(g)) gruplar.set(g, []);
+    gruplar.get(g).push(t);
+  }
+  for (const grup of gruplar.values()) {
     // CLAIM: durumu ONCE degistir, sonra tetikle. Iki tick ust uste binerse ayni hedef
     // iki kez baslatilmasin (re-entrancy guard trafigi keser, claim DB tarafinda kesin).
-    const claim = await db.query(
-      `UPDATE retirement_targets SET status = 'stopping', updated_at = GETUTCDATE()
-        WHERE id = $1 AND status = 'stop_scheduled'`,
-      [t.id],
-    );
-    if (!claim.rowCount) continue;
+    const alinan = [];
+    for (const t of grup) {
+      const claim = await db.query(
+        `UPDATE retirement_targets SET status = 'stopping', updated_at = GETUTCDATE()
+          WHERE id = $1 AND status = 'stop_scheduled'`,
+        [t.id],
+      );
+      if (claim.rowCount) alinan.push(t);
+    }
+    if (!alinan.length) continue;
+    const t = alinan[0];
+    const hedef = (x) => ({ targetId: x.id, host: x.host, application: x.app_name, gen: x.jboss_gen, appPath: x.app_path });
+    const etiket = alinan.length > 1 ? `${t.app_name} @ ${alinan.map((x) => x.host).join(', ')}` : `${t.app_name} @ ${t.host}`;
     try {
       const r = await _launch('stop', {
         recordId: t.record_id,
-        targetId: t.id,
-        host: t.host,
-        application: t.app_name,
-        gen: t.jboss_gen,
-        appPath: t.app_path,
+        ...hedef(t),
         env: t.env,
         smartNo: t.smart_no,
         ocoNo: t.oco_no,
+        hedefler: alinan.length > 1 ? alinan.map(hedef) : undefined,
       });
-      await db.query(`UPDATE retirement_targets SET last_job_id = $1, updated_at = GETUTCDATE() WHERE id = $2`, [r?.jobId ?? null, t.id]);
+      for (const x of alinan)
+        await db.query(`UPDATE retirement_targets SET last_job_id = $1, updated_at = GETUTCDATE() WHERE id = $2`, [r?.jobId ?? null, x.id]);
       await db.query(`UPDATE retirement_records SET status = 'stopping', updated_at = GETUTCDATE() WHERE id = $1 AND status = 'open'`, [t.record_id]);
-      await olay(t.record_id, 'stop', `${t.app_name} @ ${t.host}: kesinti penceresi acildi, STOP isi #${r?.jobId ?? '?'}`);
-      kosan += 1;
+      await olay(t.record_id, 'stop', `${etiket}: kesinti penceresi acildi, STOP isi #${r?.jobId ?? '?'}${alinan.length > 1 ? ` (${alinan.length} hedef tek iste)` : ''}`);
+      kosan += alinan.length;
     } catch (e) {
       // CLAIM GERI ALINIR: launch dustuyse hedef 'stopping'de kalmamali, yoksa pencere
       // icinde bir daha denenmez.
-      await db.query(
-        `UPDATE retirement_targets SET status = 'stop_scheduled', result_text = $1, updated_at = GETUTCDATE()
-          WHERE id = $2 AND status = 'stopping' AND last_job_id IS NULL`,
-        [`STOP baslatilamadi: ${e.message}`.slice(0, 1000), t.id],
-      );
-      await olay(t.record_id, 'error', `${t.app_name} @ ${t.host}: STOP baslatilamadi — ${e.message}`);
+      for (const x of alinan)
+        await db.query(
+          `UPDATE retirement_targets SET status = 'stop_scheduled', result_text = $1, updated_at = GETUTCDATE()
+            WHERE id = $2 AND status = 'stopping' AND last_job_id IS NULL`,
+          [`STOP baslatilamadi: ${e.message}`.slice(0, 1000), x.id],
+        );
+      await olay(t.record_id, 'error', `${etiket}: STOP baslatilamadi — ${e.message}`);
     }
   }
   return { kosan, gecen };

@@ -671,9 +671,11 @@ test('D1 RetirementTab STOP onayi: Server Hub okunamadiysa uyari EKRANA cikar; d
 
   // BAGLANTI (RecordModal): STOP dugmesi kontrollu acar; yanit/hata durumu yazar
   const rm = govde(RT_RAW, 'RecordModal');
-  assert.ok(rm.includes('onClick={() => stopSor(t)}'), 'STOP dugmesi Server Hub denetimini atliyor');
+  assert.ok(rm.includes('onClick={() => stopSor([t])}'), 'STOP dugmesi Server Hub denetimini atliyor');
+  // TOPLU (2026-10-08): "Seçilenleri onayla ve durdur" da ayni denetimli pencereden gecer.
+  assert.ok(rm.includes('onClick={() => stopSor(secili)}'), 'toplu STOP Server Hub denetimini atliyor');
   assert.ok(!rm.includes('onClick={() => setAsk({ t })}'), 'STOP dugmesi onayi denetimsiz aciyor');
-  const i = rm.indexOf('const stopSor = (t: RtTarget) => {');
+  const i = rm.indexOf('const stopSor = (ts: RtTarget[]) => {');
   assert.ok(i >= 0, 'stopSor yok');
   // prettier zinciri satirlara boler ('retirementApi\n.discover'); normalize sonrasi ' .' -> '.'
   const sor = rm.slice(i, rm.indexOf('};', i)).replace(/ \.(?=\w)/g, '.');
@@ -684,11 +686,13 @@ test('D1 RetirementTab STOP onayi: Server Hub okunamadiysa uyari EKRANA cikar; d
   // 2026-10-08: dugme artik TRAFIK kapisina bagli (istek varsa onay kutusu; olcum surerken
   // kilit - retirementTrafik.ts stopOnayAcikMi). Niyet AYNI kalir: Server Hub durumu dugmeyi
   // KAPATMAZ. Kontrol dugmenin `disabled` ifadesine bakar: yalniz stopOnayAcikMi, hub YOK.
-  const dugme = rm.slice(rm.lastIndexOf('<button', rm.indexOf('onClick={() => stop(ask.t, true)}')), rm.indexOf('Onayla ve durdur</button>'));
-  assert.ok(dugme.includes('onClick={() => stop(ask.t, true)}'), 'onay dugmesi bulunamadi');
+  const oc = rm.indexOf('onClick={() => stopCalistir(ask.ts, true)}');
+  const dugme = rm.slice(rm.lastIndexOf('<button', oc), rm.indexOf('</button>', oc));
+  assert.ok(oc > 0 && dugme.includes('onClick={() => stopCalistir(ask.ts, true)}'), 'onay dugmesi bulunamadi');
   const dis = (dugme.match(/disabled=\{([^}]*\([^)]*\)[^}]*)\}/) || [])[1] || '';
   assert.ok(!/hubDurum|stopHubUyarisi|okunamadi/.test(dugme), 'onay dugmesi hub durumuna bagli KAPANIYOR');
-  assert.ok(dis === '' || /^!stopOnayAcikMi\(/.test(dis), `onay dugmesinin kapisi beklenmedik: ${dis}`);
+  // TOPLU (2026-10-08): kapi her hedefte ayni yardimci - !ask.ts.every((t) => stopOnayAcikMi(...)).
+  assert.ok(dis === '' || /^!stopOnayAcikMi\(/.test(dis) || /^!ask\.ts\.every\(\(t\) => stopOnayAcikMi\(/.test(dis), `onay dugmesinin kapisi beklenmedik: ${dis}`);
   assert.ok(!/disabled=\{[^}]*hubDurum/.test(rm), 'onay dugmesi hub durumuna gore kapatiliyor');
 });
 

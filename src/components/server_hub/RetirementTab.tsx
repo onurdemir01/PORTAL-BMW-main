@@ -605,7 +605,11 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
   const [err, setErr] = useState('');
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState<number | null>(null);
-  const [ask, setAsk] = useState<{ t: RtTarget } | null>(null);
+  // STOP ONAY PENCERESI: bir ya da (TOPLU) birden fazla hedef - hepsi TEK iste durdurulur.
+  const [ask, setAsk] = useState<{ ts: RtTarget[] } | null>(null);
+  // TOPLU SECIM (2026-10-08, kullanici: "2 ya da 4 sunucuyu ayni anda sectim; hepsi icin ayri
+  // ayri job tetiklemek istemiyorum, tek seferde calistiralim ve SCC'ye tek e-posta gitsin").
+  const [secim, setSecim] = useState<Set<number>>(new Set());
   const [geriAl, setGeriAl] = useState<{ t: RtTarget } | null>(null);
   const [iptalSor, setIptalSor] = useState(false);
   // BEKLEMEYI ATLA (admin): silme tarihini bugune ceker; onay icin uygulama adi yazilir.
@@ -628,7 +632,7 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
   const [trafikIs, setTrafikIs] = useState<Record<number, { durum: TrafikIsDurumu; jobId?: number | null; mesaj?: string; bitti?: string }>>({});
   const [trafikOnay, setTrafikOnay] = useState(false);
   const [olcumuBekleme, setOlcumuBekleme] = useState(false);
-  const askRef = useRef<{ t: RtTarget } | null>(null);
+  const askRef = useRef<{ ts: RtTarget[] } | null>(null);
   useEffect(() => { askRef.current = ask; }, [ask]);
 
   const load = useCallback(async () => {
@@ -641,12 +645,12 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
   // BASARIYLA bitince onay penceresi KENDILIGINDEN acilir (2. adim). Yalniz bu oturumda
   // baslatilan hedef icin: sayfayi yeniden acan birinin onune pencere firlamasin.
   // Basarisizsa pencere ACILMAZ - geri alinamaz adim yalniz basarili on kontrolden sonra.
-  const onayBekleyen = useRef<number | null>(null);
+  const onayBekleyen = useRef<number[] | null>(null);
 
   // STOP onayi acilinca Server Hub kesifle yeniden okunur; yalniz SON istegin yaniti yazilir.
-  const stopSor = (t: RtTarget) => {
-    if (!rec) return;
-    setAsk({ t });
+  const stopSor = (ts: RtTarget[]) => {
+    if (!rec || !ts.length) return;
+    setAsk({ ts });
     setAskDisc(null); setTrafikOnay(false); setOlcumuBekleme(false);
     setHubDurum('denetleniyor');
     const no = ++hubIstek.current;
@@ -655,13 +659,16 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
       .catch(() => { if (hubIstek.current === no) setHubDurum('okunamadi'); });
   };
   useEffect(() => {
-    const tid = onayBekleyen.current;
-    if (!rec || tid == null) return;
-    const t = rec.targets.find((x) => x.id === tid);
-    if (!t || t.status === 'planning') return;
+    const tids = onayBekleyen.current;
+    if (!rec || !tids) return;
+    const ts = tids.map((tid) => rec.targets.find((x) => x.id === tid)).filter((x): x is RtTarget => !!x);
+    if (!ts.length || ts.some((t) => t.status === 'planning')) return;
     onayBekleyen.current = null;
-    if (t.status === 'planned') stopSor(t);
-    else toast.error(`${t.appName} @ ${t.host}: ön kontrol başarısız — ${t.resultText || t.planText || 'ayrıntı için Olaylar / iş çıktısı'}`);
+    // TOPLU: biri dustuyse sebebi soylenir; basarili olanlar icin pencere yine acilir (onlar tek iste durdurulur).
+    for (const t of ts.filter((x) => x.status !== 'planned'))
+      toast.error(`${t.appName} @ ${t.host}: ön kontrol başarısız — ${t.resultText || t.planText || 'ayrıntı için Olaylar / iş çıktısı'}`);
+    const hazir = ts.filter((x) => x.status === 'planned');
+    if (hazir.length) stopSor(hazir);
     // stopSor her render'da yeniden tanimlaniyor; tetik YALNIZ kayit degisimi.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rec]);
@@ -699,51 +706,66 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
       });
     }
   };
-  const stop = async (t: RtTarget, confirmed: boolean) => {
-    setBusy(t.id); setAsk(null);
+  // STOP / ON KONTROL: bir ya da birden fazla hedef TEK iste. Toplu iste is BIR, ama her hedef
+  // kendi sonucuyla sonuclanir: is bitince her hedefin job-status'u ayri okunur.
+  const stopCalistir = async (ts: RtTarget[], confirmed: boolean) => {
+    if (!ts.length) return;
+    const coklu = ts.length > 1;
+    const etiket = coklu ? `${ts[0].appName} @ ${ts.map((x) => x.host).join(', ')}` : `${ts[0].appName} @ ${ts[0].host}`;
+    setBusy(ts[0].id); setAsk(null);
     try {
-      const r = await retirementApi.stop(id, t.id, confirmed);
+      const r = coklu ? await retirementApi.stopToplu(id, ts.map((x) => x.id), confirmed) : await retirementApi.stop(id, ts[0].id, confirmed);
       if (!r.ok) { toast.error(r.message || 'İş başlatılamadı.'); return; }
       if (r.sccWarning) toast.error(r.sccWarning);
-      toast.success(confirmed ? `STOP işi başladı (#${r.jobId}).` : `Ön kontrol başladı (#${r.jobId}) — bitince onay penceresi açılacak.`);
-      if (!confirmed) onayBekleyen.current = t.id;
+      if (r.scheduled) { toast.success(`STOP OCO penceresine zamanlandı${r.runAtText ? `: ${r.runAtText}` : ''}${coklu ? ` — ${ts.length} sunucu tek işte` : ''}.`); setSecim(new Set()); await load(); return; }
+      const kac = coklu ? ` — ${ts.length} sunucu tek işte${confirmed ? ', SCC’ye tek mail' : ''}` : '';
+      toast.success(confirmed ? `STOP işi başladı (#${r.jobId})${kac}.` : `Ön kontrol başladı (#${r.jobId})${kac} — bitince onay penceresi açılacak.`);
+      if (!confirmed) onayBekleyen.current = ts.map((x) => x.id);
+      setSecim(new Set());
       // WEB TRAFIGI TAZELEME ISI: baslatilamadiysa sebep pencereye tasinir (on kontrol DUSMEZ).
       const tt = !confirmed ? r.trafikTarama : null;
       if (tt && tt.ok && tt.jobId) {
-        setTrafikIs((m) => ({ ...m, [t.id]: { durum: 'suruyor', jobId: tt.jobId } }));
+        setTrafikIs((m) => ({ ...m, ...Object.fromEntries(ts.map((x) => [x.id, { durum: 'suruyor' as TrafikIsDurumu, jobId: tt.jobId }])) }));
         let bitti2 = false;
         addJob({
-          title: `Retirement: trafik ölçümü ${t.appName} (${tt.hosts.join(', ')})`,
+          title: `Retirement: trafik ölçümü ${ts[0].appName} (${tt.hosts.join(', ')})`,
           fetchStatus: async () => {
-            const s = await retirementApi.jobStatus(id, t.id, tt.awxServerId as number, tt.jobId as number);
+            const s = await retirementApi.jobStatus(id, ts[0].id, tt.awxServerId as number, tt.jobId as number);
             if (!s.ok) throw new Error(s.message || 'Durum okunamadı.');
             if (TERMINAL.has(s.status) && !bitti2) {
               bitti2 = true;
-              setTrafikIs((m) => ({ ...m, [t.id]: { durum: s.status === 'successful' ? 'bitti' : 'hata', jobId: tt.jobId, mesaj: s.status === 'successful' ? undefined : `Server Hub taraması ${s.status}`, bitti: new Date().toISOString() } }));
-              // Pencere bu hedef icin aciksa kesif TAZE veriyle yeniden okunur.
-              if (askRef.current?.t.id === t.id && rec) retirementApi.discover(rec.app).then(setAskDisc).catch(() => {});
+              const son = { durum: (s.status === 'successful' ? 'bitti' : 'hata') as TrafikIsDurumu, jobId: tt.jobId, mesaj: s.status === 'successful' ? undefined : `Server Hub taraması ${s.status}`, bitti: new Date().toISOString() };
+              setTrafikIs((m) => ({ ...m, ...Object.fromEntries(ts.map((x) => [x.id, son])) }));
+              // Pencere bu hedef(ler) icin aciksa kesif TAZE veriyle yeniden okunur.
+              if (askRef.current?.ts.some((a) => ts.some((x) => x.id === a.id)) && rec) retirementApi.discover(rec.app).then(setAskDisc).catch(() => {});
             }
             return { status: s.status, output: s.output || '', result: s.result };
           },
         });
       } else if (tt && !tt.ok) {
-        setTrafikIs((m) => ({ ...m, [t.id]: { durum: 'hata', mesaj: tt.message } }));
+        setTrafikIs((m) => ({ ...m, ...Object.fromEntries(ts.map((x) => [x.id, { durum: 'hata' as TrafikIsDurumu, mesaj: tt.message }])) }));
       }
       // KAPATILACAK VHOST BLOKLARI: vhost basina plan isi izlenir, bitince blok okunur.
-      if (!confirmed) vhostPlanIzle(t, r.vhostPlan);
+      if (!confirmed) for (const x of ts) vhostPlanIzle(x, coklu ? r.vhostPlanlar?.[x.id] ?? null : r.vhostPlan);
       let done = false;
       addJob({
-        title: `Retirement: ${confirmed ? 'STOP' : 'ön kontrol'} ${t.appName} @ ${t.host}`,
+        title: `Retirement: ${confirmed ? 'STOP' : 'ön kontrol'} ${etiket}`,
         fetchStatus: async () => {
-          const s = await retirementApi.jobStatus(id, t.id, r.awxServerId, r.jobId as number);
+          const s = await retirementApi.jobStatus(id, ts[0].id, r.awxServerId, r.jobId as number);
           if (!s.ok) throw new Error(s.message || 'Durum okunamadı.');
-          if (TERMINAL.has(s.status) && !done) { done = true; load(); }
+          if (TERMINAL.has(s.status) && !done) {
+            done = true;
+            // Diger hedefler de KENDI sonuclariyla sonuclanir (ayni is, sunucu basina sonuc).
+            await Promise.all(ts.slice(1).map((x) => retirementApi.jobStatus(id, x.id, r.awxServerId, r.jobId as number).catch(() => null)));
+            load();
+          }
           return { status: s.status, output: s.output || '', result: s.result };
         },
       });
       await load();
     } catch (e: unknown) { toast.error(e instanceof Error ? e.message : String(e)); } finally { setBusy(null); }
   };
+  const stop = (t: RtTarget, confirmed: boolean) => stopCalistir([t], confirmed);
   // ── GERI AL (kullanici, 2026-10-07) ─────────────────────────────────────────────
   // "Uygulamami geri aktif et vs ve yaptigimiz degisiklikler geri alinmali."
   // Hedef 'rolling_back' olur olmaz zamanlanmis SILME devre disi kalir.
@@ -905,15 +927,53 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
           )}
           {rec.notes && <div className="text-[12px] rounded-lg border px-3 py-2" style={{ borderColor: 'var(--border-subtle)', color: 'var(--text-secondary)' }}>{rec.notes}</div>}
 
+          {(() => {
+            // TOPLU ARAC CUBUGU: yalniz birden fazla uygun hedef varken. Secilenler TEK iste
+            // (sunucu ayni kapilari her hedefte uygular; farkli ortam / ayni sunucu reddedilir).
+            const kapali = rec.status === 'cancelled' || rec.status === 'deleted';
+            const uygun = rec.targets.filter((t) => ['baslat', 'onayla'].includes(retirementAdimi(t.status, kapali).tur));
+            if (uygun.length < 2) return null;
+            const secili = rec.targets.filter((t) => secim.has(t.id));
+            const ortamlar = new Set(secili.map((t) => t.env));
+            const karisik = ortamlar.size > 1;
+            const hepsiHazir = secili.length >= 2 && secili.every((t) => t.status === 'planned');
+            const baslatilir = secili.length >= 2 && !karisik && secili.every((t) => ['baslat', 'onayla'].includes(retirementAdimi(t.status, kapali).tur));
+            return (
+              <div className="flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2 text-[12px]" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)' }}>
+                <b>Birlikte çalıştır</b>
+                <span style={{ color: 'var(--text-muted)' }}>{secili.length ? `${secili.length} hedef seçili` : 'satırlardan hedef seçin'} — seçilenler tek işte; PROD’da SCC’ye tek mail</span>
+                {karisik && <span style={{ color: 'var(--status-warning)' }}>Farklı ortamlar birlikte çalıştırılamaz ({[...ortamlar].join(', ')})</span>}
+                <span className="ml-auto" />
+                {[...new Set(uygun.map((t) => t.env))].map((env) => (
+                  <button key={env} onClick={() => setSecim(new Set(uygun.filter((t) => t.env === env).map((t) => t.id)))} className="text-[11px] underline decoration-dotted" style={{ color: 'var(--accent)' }}>
+                    tüm {env} hedeflerini seç
+                  </button>
+                ))}
+                {secili.length > 0 && <button onClick={() => setSecim(new Set())} className="text-[11px] underline decoration-dotted" style={{ color: 'var(--text-muted)' }}>temizle</button>}
+                <button disabled={busy != null || !baslatilir} onClick={() => stopCalistir(secili, false)} className={`${SM_BTN} disabled:opacity-50`} style={smBtn(true)} title="Seçilen hedeflerde ön kontrol TEK işte — hiçbir şey değişmez; bitince ortak onay penceresi açılır">
+                  <ClipboardDocumentCheckIcon className="w-3.5 h-3.5" /> Seçilenlerde Retirement’ı başlat ({secili.length})
+                </button>
+                <button disabled={busy != null || !hepsiHazir || karisik} onClick={() => stopSor(secili)} className={`${SM_BTN} disabled:opacity-50`} style={{ ...smBtn(true), background: 'var(--status-danger)', borderColor: 'var(--status-danger)' }} title={hepsiHazir ? 'Ortak onay penceresi: hepsi tek işte durdurulur' : 'Önce seçilen hedeflerin hepsinde ön kontrol başarıyla bitmeli'}>
+                  <StopCircleIcon className="w-3.5 h-3.5" /> Seçilenleri onayla ve durdur
+                </button>
+              </div>
+            );
+          })()}
           <div className="overflow-auto rounded-lg border" style={{ borderColor: 'var(--border-subtle)' }}>
             <table className="w-full text-xs border-collapse">
-              <thead style={{ background: 'var(--bg-elevated)' }}><tr>{['Sunucu', 'Site', 'Ortam', 'Uygulama', 'JBoss', 'Web sunucusu', 'Durum', 'Ön kontrol / sonuç', ''].map((h, i) => <th key={h + i} className="px-2.5 py-1.5 text-left text-[11px] font-semibold" style={{ color: 'var(--text-muted)' }}>{h}</th>)}</tr></thead>
+              <thead style={{ background: 'var(--bg-elevated)' }}><tr>{['', 'Sunucu', 'Site', 'Ortam', 'Uygulama', 'JBoss', 'Web sunucusu', 'Durum', 'Ön kontrol / sonuç', ''].map((h, i) => <th key={h + i} className="px-2.5 py-1.5 text-left text-[11px] font-semibold" style={{ color: 'var(--text-muted)' }}>{h}</th>)}</tr></thead>
               <tbody>
                 {rec.targets.map((t) => {
                   const st = TSTATUS[t.status] || { label: t.status, color: 'var(--text-muted)' };
                   const adim = retirementAdimi(t.status, rec.status === 'cancelled' || rec.status === 'deleted');
                   return (
                     <tr key={t.id} className="border-t" style={{ borderColor: 'var(--border-subtle)' }}>
+                      <td className="pl-2.5 py-1.5">
+                        {(adim.tur === 'baslat' || adim.tur === 'onayla') && (
+                          <input type="checkbox" aria-label={`${t.host} birlikte çalıştırılacaklara ekle`} checked={secim.has(t.id)}
+                            onChange={(e) => setSecim((m) => { const n = new Set(m); if (e.target.checked) n.add(t.id); else n.delete(t.id); return n; })} />
+                        )}
+                      </td>
                       <td className="px-2.5 py-1.5 font-mono font-semibold">{t.host}</td>
                       <td className="px-2.5 py-1.5" style={t.site === 'Ankara' ? { color: 'var(--status-warning)', fontWeight: 600 } : undefined}>{t.site}</td>
                       <td className="px-2.5 py-1.5"><b>{t.env}</b></td>
@@ -931,7 +991,7 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
                         )}
                         {adim.tur === 'onayla' && (
                           <div className="flex flex-col items-start gap-0.5">
-                            <button disabled={busy != null} onClick={() => stopSor(t)} className={SM_BTN} style={{ ...smBtn(true), background: 'var(--status-danger)', borderColor: 'var(--status-danger)' }} title={adim.ipucu}>
+                            <button disabled={busy != null} onClick={() => stopSor([t])} className={SM_BTN} style={{ ...smBtn(true), background: 'var(--status-danger)', borderColor: 'var(--status-danger)' }} title={adim.ipucu}>
                               <StopCircleIcon className="w-3.5 h-3.5" /> {adim.etiket}
                             </button>
                             <button disabled={busy != null} onClick={() => stop(t, false)} className="text-[10px] underline decoration-dotted" style={{ color: 'var(--text-muted)' }} title="Ön kontrolü yeniden koş (sunucu durumu değişmiş olabilir); hiçbir şey değişmez">
@@ -982,7 +1042,7 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
                   const t = rec.targets.find((x) => x.id === akis) as RtTarget;
                   return (
                     <tr key={`akis-${t.id}`} className="border-t" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)' }}>
-                      <td colSpan={6} className="px-3 py-2.5">
+                      <td colSpan={7} className="px-3 py-2.5">
                         <div className="text-[11px] font-semibold mb-1.5" style={{ color: 'var(--text-secondary)' }}>
                           {t.appName} @ {t.host} — akış
                         </div>
@@ -1011,34 +1071,43 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
       {ask && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,.45)' }} onClick={() => setAsk(null)}>
           <div className="w-[96vw] max-w-[1500px] rounded-2xl border p-5 space-y-3 max-h-[94vh] overflow-auto" style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-subtle)' }} onClick={(e) => e.stopPropagation()}>
-            <div className="text-sm font-semibold">STOP — {ask.t.appName} @ {ask.t.host} ({ask.t.env}, {ask.t.site})</div>
-            <div className="text-[12px] rounded-lg border px-3 py-2" style={{ borderColor: 'var(--status-info)', background: 'var(--status-info-bg)' }}><b>Ön kontrol sonucu:</b> {ask.t.planText}</div>
-            {/* PLAN AYRINTISI: ozet "2 paket yeniden adlandirilacak" diyor ama HANGI iki
-                paket oldugunu soylemiyordu. Islem geri alinamaz; onay vermeden once
-                dokunulacak dosyalar GORUNMELI. Alan gelmediyse (eski playbook) hic
-                cizilmez - bos bir kutu "ayrinti yok" diye okunurdu. */}
-            {ask.t.detail && ask.t.detail.steps.length > 0 && (
-              <div className="text-[11px] rounded-lg border px-3 py-2 space-y-1" style={{ borderColor: 'var(--border-subtle)' }}>
-                <div className="font-semibold" style={{ color: 'var(--text-muted)' }}>Playbook planı (adım adım)</div>
-                {ask.t.detail.steps.map((x, i) => {
-                  const p = x.split('	');
-                  const ad = p[1] || '';
-                  const dur = p[2] || '';
-                  const mesaj = p.slice(3).join(' ');
-                  return (
-                    <div key={i} className="flex gap-2">
-                      <span className="font-mono shrink-0" style={{ color: dur === 'FAIL' ? 'var(--status-danger)' : dur === 'SKIP' ? 'var(--text-muted)' : 'var(--status-info)' }}>{ad} · {dur}</span>
-                      <span className="break-all">{mesaj}</span>
-                    </div>
-                  );
-                })}
+            <div className="text-sm font-semibold">
+              {ask.ts.length > 1
+                ? <>STOP — {ask.ts[0].appName} @ {ask.ts.length} sunucu ({ask.ts[0].env}) — tek işte</>
+                : <>STOP — {ask.ts[0].appName} @ {ask.ts[0].host} ({ask.ts[0].env}, {ask.ts[0].site})</>}
+            </div>
+            {ask.ts.map((t) => (
+              <div key={t.id} className={ask.ts.length > 1 ? 'rounded-xl border p-3 space-y-2' : 'space-y-3'} style={ask.ts.length > 1 ? { borderColor: 'var(--border-subtle)' } : undefined}>
+                {ask.ts.length > 1 && <div className="text-[12px] font-semibold font-mono">{t.host} <span className="font-sans font-normal" style={{ color: 'var(--text-muted)' }}>({t.site})</span></div>}
+                <div className="text-[12px] rounded-lg border px-3 py-2" style={{ borderColor: 'var(--status-info)', background: 'var(--status-info-bg)' }}><b>Ön kontrol sonucu:</b> {t.planText}</div>
+                {/* PLAN AYRINTISI: ozet "2 paket yeniden adlandirilacak" diyor ama HANGI iki
+                    paket oldugunu soylemiyordu. Islem geri alinamaz; onay vermeden once
+                    dokunulacak dosyalar GORUNMELI. Alan gelmediyse (eski playbook) hic
+                    cizilmez - bos bir kutu "ayrinti yok" diye okunurdu. */}
+                {t.detail && t.detail.steps.length > 0 && (
+                  <div className="text-[11px] rounded-lg border px-3 py-2 space-y-1" style={{ borderColor: 'var(--border-subtle)' }}>
+                    <div className="font-semibold" style={{ color: 'var(--text-muted)' }}>Playbook planı (adım adım)</div>
+                    {t.detail.steps.map((x, i) => {
+                      const p = x.split('\t');
+                      const ad = p[1] || '';
+                      const dur = p[2] || '';
+                      const mesaj = p.slice(3).join(' ');
+                      return (
+                        <div key={i} className="flex gap-2">
+                          <span className="font-mono shrink-0" style={{ color: dur === 'FAIL' ? 'var(--status-danger)' : dur === 'SKIP' ? 'var(--text-muted)' : 'var(--status-info)' }}>{ad} · {dur}</span>
+                          <span className="break-all">{mesaj}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                <VhostBloklar liste={vhostPlanlar[t.id]} />
+                <StopTrafik t={t} disc={askDisc} is={trafikIs[t.id]} onay={trafikOnay} setOnay={setTrafikOnay} bekleme={olcumuBekleme} setBekleme={setOlcumuBekleme} />
               </div>
-            )}
-            <p className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>auto-start kapatılır, JVM durdurulur, paket(ler) <code>.{rec?.smartNo}.old</code> yapılır. {ask.t.env === 'PROD' ? 'PROD: SCC bilgilendirme maili gider.' : ''} Geri almak gerekirse silme tarihinden önce “Geri aktif et” kullanılır.</p>
+            ))}
+            <p className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>auto-start kapatılır, JVM durdurulur, paket(ler) <code>.{rec?.smartNo}.old</code> yapılır. {ask.ts[0].env === 'PROD' ? (ask.ts.length > 1 ? `PROD: SCC’ye ${ask.ts.length} sunucuyu listeleyen TEK bilgilendirme maili gider.` : 'PROD: SCC bilgilendirme maili gider.') : ''} Geri almak gerekirse silme tarihinden önce “Geri aktif et” kullanılır.</p>
             <StopHubUyari durum={hubDurum} />
-            <VhostBloklar liste={vhostPlanlar[ask.t.id]} />
-            <StopTrafik t={ask.t} disc={askDisc} is={trafikIs[ask.t.id]} onay={trafikOnay} setOnay={setTrafikOnay} bekleme={olcumuBekleme} setBekleme={setOlcumuBekleme} />
-            <div className="flex justify-end gap-2"><button onClick={() => setAsk(null)} className={SM_BTN} style={smBtn()}>İptal</button><button disabled={!stopOnayAcikMi(stopTrafikOzeti(ask.t, askDisc), trafikIs[ask.t.id]?.durum, trafikOnay, olcumuBekleme)} onClick={() => stop(ask.t, true)} className={`${SM_BTN} disabled:opacity-50`} style={{ ...smBtn(true), background: 'var(--status-danger)', borderColor: 'var(--status-danger)' }}>Onayla ve durdur</button></div>
+            <div className="flex justify-end gap-2"><button onClick={() => setAsk(null)} className={SM_BTN} style={smBtn()}>İptal</button><button disabled={!ask.ts.every((t) => stopOnayAcikMi(stopTrafikOzeti(t, askDisc), trafikIs[t.id]?.durum, trafikOnay, olcumuBekleme))} onClick={() => stopCalistir(ask.ts, true)} className={`${SM_BTN} disabled:opacity-50`} style={{ ...smBtn(true), background: 'var(--status-danger)', borderColor: 'var(--status-danger)' }}>{ask.ts.length > 1 ? `Onayla ve ${ask.ts.length} sunucuyu durdur` : 'Onayla ve durdur'}</button></div>
           </div>
         </div>
       )}

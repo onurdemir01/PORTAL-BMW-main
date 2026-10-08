@@ -78,10 +78,17 @@ export interface RtRecordRow extends Omit<RtRecord, 'targets' | 'events'> { targ
 export type SccKaynak = 'ekran' | 'env' | 'yok';
 export interface RtLaunch { ok: boolean; message?: string; jobId: number | null; status: string | null; awxServerId: number; planOnly?: boolean; sccWarning?: string | null;
   /** On kontrolde web sunucularinda baslatilan Server Hub taramasi (taze vhost trafigi). */
-  trafikTarama?: { ok: boolean; jobId?: number | null; awxServerId?: number; hosts: string[]; message?: string } | null;
+  trafikTarama?: { ok: boolean; jobId?: number | null; awxServerId?: number; hosts: string[]; message?: string; tids?: number[] } | null;
+  /** TOPLU: hedef id -> vhost plani (tek hedefte vhostPlan ile ayni bicim). */
+  vhostPlanlar?: Record<number, RtVhostPlan[] | null>;
+  /** Isin kapsadigi hedefler (toplu iste hepsi ayni is no). */
+  tids?: number[];
+  /** PROD: OCO penceresine zamanlandi, is BASLATILMADI. */
+  scheduled?: boolean; runAtText?: string;
   /** On kontrolde vhost basina apache_retire_vhost PLANI (kapatilacak blok). `elle`: otomatik
    *  kapatma yok (NGINX / conf bilinmiyor) - is baslatilmadi. */
-  vhostPlan?: { host: string; serverName: string; confFile: string; ok: boolean; elle?: boolean; jobId?: number | null; awxServerId?: number; message?: string }[] | null }
+  vhostPlan?: RtVhostPlan[] | null }
+export interface RtVhostPlan { host: string; serverName: string; confFile: string; ok: boolean; elle?: boolean; jobId?: number | null; awxServerId?: number; message?: string }
 
 const json = (body: unknown) => ({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 
@@ -97,6 +104,8 @@ export const retirementApi = {
   cancel: (id: number, reason: string): Promise<{ ok: boolean; record: RtRecord; message?: string }> => fetch(`${BASE}/${id}/cancel`, json({ reason })).then(safeJson),
   note: (id: number, text: string): Promise<{ ok: boolean; record: RtRecord; message?: string }> => fetch(`${BASE}/${id}/note`, json({ text })).then(safeJson),
   stop: (id: number, tid: number, confirmed: boolean): Promise<RtLaunch> => fetch(`${BASE}/${id}/targets/${tid}/stop`, json({ confirmed })).then(safeJson),
+  /** TOPLU (2026-10-08): secilen hedefler TEK iste (on kontrol ya da onayli STOP); SCC'ye tek mail. */
+  stopToplu: (id: number, tids: number[], confirmed: boolean): Promise<RtLaunch> => fetch(`${BASE}/${id}/stop-toplu`, json({ tids, confirmed })).then(safeJson),
   // GERI AL (2026-10-07): STOP'un tersi. Hedef 'rolling_back' olur olmaz zamanlanmis
   // SILME devre disi kalir (deleteTick yalniz 'stopped' hedefe bakar) - ayri bir iptal
   // cagrisi YOK ve olmasi da yanlis olurdu.

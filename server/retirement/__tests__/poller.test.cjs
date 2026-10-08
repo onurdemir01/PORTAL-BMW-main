@@ -340,3 +340,20 @@ test('RW6 webSimdi zamanlayiciyi beklemeden baslatir; zamanlayici calisirken IKI
   assert.equal(r1.kosan, 1);
   assert.equal(n, 1);
 });
+
+test('RP12 TOPLU zamanlanmis STOP: ayni kayit + ayni an TEK is (tek SCC maili); baska kayit ayri is', async () => {
+  // Kullanici (2026-10-08): "hepsi icin ayri ayri job'i tetiklemek istemiyorum ... SCC'ye tek e-posta gitsin"
+  const yazilan = dbKur([["FROM retirement_targets t JOIN retirement_records r", [
+    hedef({ id: 7, host: 'GBJBOP01' }), hedef({ id: 8, host: 'GBJBOP02' }), hedef({ id: 9, record_id: 4, host: 'GBJBOP03' }),
+  ]]]);
+  const cagri = [];
+  poller.startPoller(async (kind, t) => { cagri.push({ kind, t }); return { jobId: 500 + cagri.length }; });
+  const r = await poller._stopTick(N);
+  poller.stopPoller();
+  assert.equal(r.kosan, 3);
+  assert.equal(cagri.length, 2, 'ayni kaydin hedefleri ayri islerde baslatildi');
+  assert.deepEqual(cagri[0].t.hedefler.map((h) => [h.targetId, h.host]), [[7, 'GBJBOP01'], [8, 'GBJBOP02']]);
+  assert.equal(cagri[1].t.hedefler, undefined, 'tek hedefli is coklu bicimde gitti');
+  const isNo = yazilan.filter((w) => /SET last_job_id/.test(w.sql)).map((w) => w.params);
+  assert.deepEqual(isNo, [[501, 7], [501, 8], [502, 9]], 'toplu isin numarasi her hedefe yazilmadi');
+});

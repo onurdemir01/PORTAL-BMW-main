@@ -35,6 +35,7 @@ const DEFAULT_DAYS = Number(process.env.RETIREMENT_DELETE_DAYS || 45);
 // okunur (kaydedilen deger yeniden baslatmadan bir sonraki STOP'ta gecerli). Oncelik ve
 // kaynak: server/retirement/ayar.cjs. Ortam degiskeni yedek olarak kalir.
 const { sccAyar, sccKaydet } = require('./ayar.cjs');
+const { stopSonucu, stopKarari } = require('./stop-sonuc.cjs');
 const isAdmin = (req) => req.session?.user?.role === 'Admin';
 const SAFE_ID = /^[A-Za-z0-9_-]{1,64}$/;
 
@@ -437,32 +438,64 @@ function initRetirement(app) {
 
   // STOP: plan (confirmed=false) -> onay (confirmed=true). PROD: OCO zorunlu, ilk gercek stop'ta SCC maili.
   router.post('/:id/targets/:tid/stop', async (req, res) => {
-    const id = Number(req.params.id); const tid = Number(req.params.tid);
-    const confirmed = req.body?.confirmed === true;
+    await stopBaslat(req, res, Number(req.params.id), [Number(req.params.tid)], req.body?.confirmed === true);
+  });
+
+  // ── TOPLU STOP (kullanici, 2026-10-08) ──────────────────────────────────────────────
+  // "Production'da 2 sunucu veya 4 sunucu ayni anda sectim; hepsi icin ayri ayri job'i
+  // tetiklemek istemiyorum. Tek seferde calistiralim ve SCC'ye tek e-posta gitsin."
+  // Secilen hedefler TEK AWX isinde kosar (on kontrol de, onayli STOP da); SCC maili o iste
+  // BIR KEZ gider ve tum hedefleri listeler. Kapilar tek hedefle AYNI ve HER hedefte uygulanir;
+  // biri tutmazsa HICBIR is baslamaz. Ayni ortam sarti: PROD hedefler OCO penceresine
+  // zamanlanir, test/qa hemen kosar - karisik secim tek iste iki farkli zamanlama demekti.
+  // Ayni sunucuda iki hedef tek iste olmaz (playbook hedefi sunucu adiyla tasir).
+  router.post('/:id/stop-toplu', async (req, res) => {
+    const tids = Array.isArray(req.body?.tids) ? req.body.tids.map(Number).filter(Number.isInteger) : [];
+    await stopBaslat(req, res, Number(req.params.id), tids, req.body?.confirmed === true);
+  });
+
+  async function stopBaslat(req, res, id, tidListesi, confirmed) {
     try {
       const rec = await loadRecord(id);
       if (!rec) return res.status(400).json({ ok: false, message: 'Kayıt yok.' });
       if (rec.status === 'cancelled') return res.status(400).json({ ok: false, message: 'Kayıt iptal edilmiş.' });
-      const t = rec.targets.find((x) => x.id === tid);
-      if (!t) return res.status(400).json({ ok: false, message: 'Hedef yok.' });
-      if (!t.gen) return res.status(400).json({ ok: false, message: `${t.host}: JBoss nesli belirlenemedi (envanter jboss_version boş).` });
-      if (t.env === 'PROD' && !rec.ocoNo) return res.status(400).json({ ok: false, message: 'PROD hedef için OCO numarası gerekli.' });
-      if (t.status === 'stopped') return res.status(400).json({ ok: false, message: 'Bu hedef zaten durdurulmuş.' });
-      // ── TEK DUGMELI AKISIN SUNUCU KAPILARI (2026-10-08) ──────────────────────────
-      // (1) Gecis durumunda ikinci is YOK: suren bir ise ikinci on kontrol/STOP eklemek
-      //     sonucu hangi isin yazacagini belirsizlestirir.
-      // (2) ZAMANLANMIS hedefte on kontrol YOK: on kontrol hedefi 'planning'e cekiyor ve
-      //     poller yalniz 'stop_scheduled'a baktigi icin OCO'ya zamanlanmis STOP SESSIZCE
-      //     dusuyordu (eski "Plan" dugmesi bu durumda da gorunuyordu).
-      // (3) ONAYLI STOP YALNIZ ON KONTROLU BASARIYLA DONMUS hedefte. Bu kapi eskiden
-      //     YALNIZ ekrandaydi (STOP dugmesi 'planned'de gorunuyordu); dogrudan istek onu
-      //     atlayabiliyordu. Zamanlanmis STOP'lar bu uca gelmez, poller'dan kosar.
-      if (['planning', 'stopping', 'deleting', 'rolling_back'].includes(t.status))
-        return res.status(409).json({ ok: false, message: `Bu hedefte süren bir iş var (${t.status}); bitmesini bekleyin ya da "Durumu tazele".` });
-      if (!confirmed && t.status === 'stop_scheduled')
-        return res.status(409).json({ ok: false, message: "Bu hedefin STOP'u OCO penceresine zamanlanmış; ön kontrol zamanlamayı düşürürdü. Gerekirse önce kaydı iptal edin." });
-      if (confirmed && t.status !== 'planned')
-        return res.status(409).json({ ok: false, message: "Önce ön kontrol: \"Retirement'ı başlat\" sunucuda ne yapılacağını okur, başarıyla dönünce onay açılır." });
+      const tids = [...new Set(tidListesi)];
+      if (!tids.length || tids.length > 20) return res.status(400).json({ ok: false, message: 'En az 1, en çok 20 hedef seçin.' });
+      const hedefler = [];
+      for (const tid of tids) {
+        const x = rec.targets.find((h) => h.id === tid);
+        if (!x) return res.status(400).json({ ok: false, message: `Hedef yok (#${tid}).` });
+        hedefler.push(x);
+      }
+      const coklu = hedefler.length > 1;
+      const on = (h) => (coklu ? `${h.appName} @ ${h.host}: ` : '');
+      if (new Set(hedefler.map((h) => h.env)).size > 1)
+        return res.status(400).json({ ok: false, message: 'Farklı ortamlardaki hedefler tek işte çalıştırılamaz — PROD ve test/qa hedeflerini ayrı seçin.' });
+      if (new Set(hedefler.map((h) => String(h.host).toUpperCase())).size !== hedefler.length)
+        return res.status(400).json({ ok: false, message: 'Aynı sunucudaki iki hedef tek işte çalıştırılamaz — ayrı başlatın.' });
+      for (const t of hedefler) {
+        if (!t.gen) return res.status(400).json({ ok: false, message: `${t.host}: JBoss nesli belirlenemedi (envanter jboss_version boş).` });
+        if (t.env === 'PROD' && !rec.ocoNo) return res.status(400).json({ ok: false, message: 'PROD hedef için OCO numarası gerekli.' });
+        if (t.status === 'stopped') return res.status(400).json({ ok: false, message: `${on(t)}Bu hedef zaten durdurulmuş.` });
+        // ── TEK DUGMELI AKISIN SUNUCU KAPILARI (2026-10-08) ──────────────────────────
+        // (1) Gecis durumunda ikinci is YOK: suren bir ise ikinci on kontrol/STOP eklemek
+        //     sonucu hangi isin yazacagini belirsizlestirir.
+        // (2) ZAMANLANMIS hedefte on kontrol YOK: on kontrol hedefi 'planning'e cekiyor ve
+        //     poller yalniz 'stop_scheduled'a baktigi icin OCO'ya zamanlanmis STOP SESSIZCE
+        //     dusuyordu (eski "Plan" dugmesi bu durumda da gorunuyordu).
+        // (3) ONAYLI STOP YALNIZ ON KONTROLU BASARIYLA DONMUS hedefte. Bu kapi eskiden
+        //     YALNIZ ekrandaydi (STOP dugmesi 'planned'de gorunuyordu); dogrudan istek onu
+        //     atlayabiliyordu. Zamanlanmis STOP'lar bu uca gelmez, poller'dan kosar.
+        if (['planning', 'stopping', 'deleting', 'rolling_back'].includes(t.status))
+          return res.status(409).json({ ok: false, message: `${on(t)}Bu hedefte süren bir iş var (${t.status}); bitmesini bekleyin ya da "Durumu tazele".` });
+        if (!confirmed && t.status === 'stop_scheduled')
+          return res.status(409).json({ ok: false, message: `${on(t)}Bu hedefin STOP'u OCO penceresine zamanlanmış; ön kontrol zamanlamayı düşürürdü. Gerekirse önce kaydı iptal edin.` });
+        if (confirmed && t.status !== 'planned')
+          return res.status(409).json({ ok: false, message: `${on(t)}Önce ön kontrol: "Retirement'ı başlat" sunucuda ne yapılacağını okur, başarıyla dönünce onay açılır.` });
+      }
+      // Ortam tum hedeflerde ayni (yukarida); OCO/SCC kararlari ilk hedefin ortamiyla verilir.
+      const t = hedefler[0];
+      const etiket = coklu ? `${t.appName} @ ${hedefler.map((h) => h.host).join(', ')}` : `${t.appName} @ ${t.host}`;
       // ── OCO PENCERESINE ZAMANLAMA (kullanici karari 2026-10-06) ─────────────────
       // "Production icin OCO talebi girisi zorunlu olacak, OCO'daki tarih ve saate gore
       //  uygulama stop adimi baslar."
@@ -498,24 +531,29 @@ function initRetirement(app) {
         if (!adminSaatsiz && plan.mode === 'schedule') {
           // IS BASLATILMAZ. Zamanlama kaydin kendisinde durur; retirement poller'i
           // pencere acilinca tetikler (bkz. poller.cjs). AWX-native schedule YOK:
-          // kaydi Portal tutuyor, iptal ve gorunurluk burada.
-          await db().query(
-            `UPDATE retirement_targets SET status = 'stop_scheduled', scheduled_at = $1, window_end = $2, plan_text = $3, updated_at = GETUTCDATE() WHERE id = $4`,
-            [plan.runAt, w.windowEnd, `OCO ${rec.ocoNo} penceresine zamanlandi: ${plan.text}`.slice(0, 1000), tid],
-          );
-          await db().query(`UPDATE retirement_targets SET web_result_json = $1 WHERE id = $2`, [JSON.stringify(webDondur(t.web)), tid]);
-          await addEvent(id, req.session?.user?.username, 'schedule', `${t.appName} @ ${t.host}: ${plan.reason} · ${t.web.length} vhost kaldirilacak`);
-          return res.json({ ok: true, scheduled: true, runAt: plan.runAt, runAtText: plan.text, windowEnd: w.windowEnd, message: plan.reason });
+          // kaydi Portal tutuyor, iptal ve gorunurluk burada. TOPLU secimde hedeflerin
+          // HEPSI AYNI ana zamanlanir; poller ayni kayit + ayni anda dolan hedefleri yine
+          // TEK iste baslatir (tek SCC maili).
+          for (const h of hedefler) {
+            await db().query(
+              `UPDATE retirement_targets SET status = 'stop_scheduled', scheduled_at = $1, window_end = $2, plan_text = $3, updated_at = GETUTCDATE() WHERE id = $4`,
+              [plan.runAt, w.windowEnd, `OCO ${rec.ocoNo} penceresine zamanlandi: ${plan.text}`.slice(0, 1000), h.id],
+            );
+            await db().query(`UPDATE retirement_targets SET web_result_json = $1 WHERE id = $2`, [JSON.stringify(webDondur(h.web)), h.id]);
+          }
+          await addEvent(id, req.session?.user?.username, 'schedule', `${etiket}: ${plan.reason} · ${hedefler.reduce((a, h) => a + h.web.length, 0)} vhost kaldirilacak${coklu ? ` · ${hedefler.length} hedef tek iste` : ''}`);
+          return res.json({ ok: true, scheduled: true, runAt: plan.runAt, runAtText: plan.text, windowEnd: w.windowEnd, message: plan.reason, tids });
         }
         // Buraya: pencere ACIK (herkes) ya da ADMIN (pencere ne olursa olsun). Normal launch
         // asagida kosar. Gercek pencere sonu yazilir: poller window_end'i yalniz
         // 'stop_scheduled' hedefte okur, burada iz ve ekran icin.
-        await db().query(`UPDATE retirement_targets SET window_end = $1, web_result_json = $2 WHERE id = $3`, [w.windowEnd, JSON.stringify(webDondur(t.web)), tid]);
+        for (const h of hedefler)
+          await db().query(`UPDATE retirement_targets SET window_end = $1, web_result_json = $2 WHERE id = $3`, [w.windowEnd, JSON.stringify(webDondur(h.web)), h.id]);
         if (adminSaatsiz && plan.mode !== 'now') {
           // Pencere DISI admin kosusu IZ BIRAKIR. "Baslatiliyor" - "kostu" DEGIL: launch asagida
           // ve dusebilir; gercek is numarasi hemen ardindaki 'stop' olayinda.
           await addEvent(id, req.session?.user?.username, 'oco_saatsiz',
-            `${t.appName} @ ${t.host}: ADMIN - OCO ${rec.ocoNo} saat kisiti uygulanmadi (pencere ${w.windowStartText} - ${w.windowEndText}, ` +
+            `${etiket}: ADMIN - OCO ${rec.ocoNo} saat kisiti uygulanmadi (pencere ${w.windowStartText} - ${w.windowEndText}, ` +
               `${plan.mode === 'schedule' ? 'henuz ACILMAMIS' : 'KAPANMIS'}); STOP simdi baslatiliyor`);
         }
       }
@@ -523,10 +561,15 @@ function initRetirement(app) {
       const scc = await sccAyar();
       const SCC_MAIL_TO = scc.to;
       const SCC_MAIL_CC = scc.cc;
+      // TEK MAIL: toplu iste mail playbook'un localhost play'inde BIR KEZ gider ve tum hedefleri listeler.
       const notifyScc = confirmed && t.env === 'PROD' && !rec.sccNotifiedAt;
       if (notifyScc && !SCC_MAIL_TO) console.warn('[Retirement] SCC adresi tanimsiz (ekran ve RETIREMENT_SCC_MAIL_TO bos); SCC maili gonderilemeyecek');
+      // Tek hedefte eski degiskenler (eski playbook surumu da calisir); cokluda rt_hedefler.
+      const hedefVars = coklu
+        ? { rt_hedefler: hedefler.map((h) => ({ host: h.host, application: h.appName, jboss_gen: String(h.gen), app_path: h.appPath || '' })) }
+        : { target_host: t.host, application: t.appName, jboss_gen: String(t.gen), app_path: t.appPath || '' };
       const extraVars = {
-        target_host: t.host, application: t.appName, jboss_gen: String(t.gen), smart_no: rec.smartNo, app_path: t.appPath || '',
+        ...hedefVars, smart_no: rec.smartNo,
         plan_only: !confirmed, notify_scc: notifyScc && !!SCC_MAIL_TO, scc_mail_to: SCC_MAIL_TO, scc_mail_cc: SCC_MAIL_CC || undefined,
         oco_no: rec.ocoNo || '', requested_by: req.session?.user?.username || 'Portal',
       };
@@ -534,29 +577,34 @@ function initRetirement(app) {
       // donduruyoruz. `COALESCE` DEGIL kosullu yazim: PROD dalinda zaten yazildi, onu
       // ikinci kez ezmek "pending" durumlarini sifirlardi.
       if (confirmed && t.env !== 'PROD')
-        await db().query(`UPDATE retirement_targets SET web_result_json = $1 WHERE id = $2 AND web_result_json IS NULL`, [JSON.stringify(webDondur(t.web)), tid]);
-      const r = await launch(req, `Retirement: ${confirmed ? 'STOP' : 'plan'} ${t.appName} @ ${t.host}`, extraVars, { op: confirmed ? 'stop' : 'plan', id, tid });
-      await db().query(`UPDATE retirement_targets SET status = $1, last_job_id = $2, updated_at = GETUTCDATE() WHERE id = $3`, [confirmed ? 'stopping' : 'planning', r.jobId, tid]);
+        for (const h of hedefler)
+          await db().query(`UPDATE retirement_targets SET web_result_json = $1 WHERE id = $2 AND web_result_json IS NULL`, [JSON.stringify(webDondur(h.web)), h.id]);
+      const r = await launch(req, `Retirement: ${confirmed ? 'STOP' : 'plan'} ${etiket}`, extraVars, { op: confirmed ? 'stop' : 'plan', id, tid: coklu ? tids : tids[0] });
+      // Toplu iste TUM hedefler ayni is numarasini tasir; job-status her hedefi kendi
+      // sonucuyla (sunucu adiyla) sonuclandirir.
+      for (const h of hedefler)
+        await db().query(`UPDATE retirement_targets SET status = $1, last_job_id = $2, updated_at = GETUTCDATE() WHERE id = $3`, [confirmed ? 'stopping' : 'planning', r.jobId, h.id]);
       if (rec.status === 'open' && confirmed) await db().query(`UPDATE retirement_records SET status = 'stopping', updated_at = GETUTCDATE() WHERE id = $1`, [id]);
-      await addEvent(id, req.session?.user?.username, confirmed ? 'stop' : 'plan', `${t.appName} @ ${t.host} (${t.env}, ${t.site}) iş #${r.jobId}${notifyScc ? (SCC_MAIL_TO ? ' · SCC maili' : ' · SCC adresi tanımsız!') : ''}`);
+      await addEvent(id, req.session?.user?.username, confirmed ? 'stop' : 'plan', `${etiket} (${t.env}${coklu ? '' : `, ${t.site}`}) iş #${r.jobId}${coklu ? ` · ${hedefler.length} hedef tek işte` : ''}${notifyScc ? (SCC_MAIL_TO ? ' · SCC maili' : ' · SCC adresi tanımsız!') : ''}`);
       // ON KONTROLDE WEB TRAFIGI TAZELENIR (yalniz on kontrolde, onayli STOP'ta degil).
       // Tarama baslatilamazsa ON KONTROL DUSMEZ: sebep (sablon yok, "Prompt on launch"
       // kapali...) ekrana tasinir ve pencere eldeki - daha eski - Server Hub verisiyle acilir.
       // Is numarasi STOP'unkinden FARKLI: job-status ucu hedefi yalniz kendi last_job_id'si
-      // icin gunceller, tarama isi hedefe hicbir sey yazmaz.
+      // icin gunceller, tarama isi hedefe hicbir sey yazmaz. Toplu iste TUM hedeflerin web
+      // sunuculari TEK taramada.
       let trafikTarama = null;
       if (!confirmed) {
-        const webHosts = [...new Set((t.web || []).map((w) => String(w.host || '').trim().toUpperCase()))]
+        const webHosts = [...new Set(hedefler.flatMap((h) => (h.web || []).map((w) => String(w.host || '').trim().toUpperCase())))]
           .filter((h) => /^[A-Z0-9][A-Z0-9._-]{0,62}$/.test(h));
         if (webHosts.length) {
           try {
             const s = await launch(req, `Retirement: trafik ölçümü ${t.appName} (${webHosts.join(', ')})`,
-              { target_hosts: webHosts.join(',') }, { op: 'trafik', id, tid, hosts: webHosts }, TRAFIK_REGISTRY_KEY);
-            trafikTarama = { ok: true, jobId: s.jobId, awxServerId: s.awxServerId, hosts: webHosts };
+              { target_hosts: webHosts.join(',') }, { op: 'trafik', id, tid: coklu ? tids : tids[0], hosts: webHosts }, TRAFIK_REGISTRY_KEY);
+            trafikTarama = { ok: true, jobId: s.jobId, awxServerId: s.awxServerId, hosts: webHosts, tids };
             await addEvent(id, req.session?.user?.username, 'trafik',
               `${t.appName}: web trafigi on kontrolde tazeleniyor - Server Hub taramasi #${s.jobId} (${webHosts.join(', ')})`);
           } catch (e) {
-            trafikTarama = { ok: false, hosts: webHosts, message: String(e.message || e) };
+            trafikTarama = { ok: false, hosts: webHosts, tids, message: String(e.message || e) };
             await addEvent(id, req.session?.user?.username, 'trafik',
               `${t.appName}: web trafigi TAZELENEMEDI (${webHosts.join(', ')}): ${String(e.message || e).slice(0, 300)}`);
           }
@@ -568,11 +616,12 @@ function initRetirement(app) {
       // dondurur - ekranda gorulen blok, sonra gercekte yorumlanan blogun ta kendisi.
       // Yalniz on kontrolde; Apache/IHS disi (NGINX) ya da conf'u/ServerName'i bilinmeyen
       // vhost icin is baslatilmaz, sebebi listede yazar. Baslatilamazsa on kontrol DUSMEZ.
-      let vhostPlan = null;
-      if (!confirmed && (t.web || []).length) vhostPlan = await vhostPlanBaslat(req, id, tid, t.web);
-      res.json({ ok: true, ...r, planOnly: !confirmed, trafikTarama, vhostPlan, sccWarning: notifyScc && !SCC_MAIL_TO ? 'SCC bilgilendirme adresi tanımlı değil (Retirement sayfası › SCC adresi) — SCC maili gönderilmedi.' : null });
+      const vhostPlanlar = {};
+      if (!confirmed) for (const h of hedefler) if ((h.web || []).length) vhostPlanlar[h.id] = await vhostPlanBaslat(req, id, h.id, h.web);
+      const vhostPlan = vhostPlanlar[t.id] || null;
+      res.json({ ok: true, ...r, planOnly: !confirmed, trafikTarama, vhostPlan, vhostPlanlar, tids, sccWarning: notifyScc && !SCC_MAIL_TO ? 'SCC bilgilendirme adresi tanımlı değil (Retirement sayfası › SCC adresi) — SCC maili gönderilmedi.' : null });
     } catch (err) { res.status(err.status || 500).json({ ok: false, message: err.message }); }
-  });
+  }
 
   // ── DURUMU TAZELE (kullanici bulgusu 2026-10-08) ────────────────────────────────────
   // "Benim iptal ettigim kayda su an dokunamiyorum. Uygulama disabled edildi ama kaldi
@@ -714,12 +763,20 @@ function initRetirement(app) {
         return res.json({ ok: true, degisti: false, jobId, jobStatus: info.status, message: `İş hâlâ çalışıyor (${info.status}).` });
 
       const { extractStatsKey } = require('../opsx/index.cjs');
-      const r = extractStatsKey(info.artifacts, TAZELE_STATS[adim.kind]) || null;
+      // STOP: hedefin KENDI sonucu (toplu iste sunucu adiyla); digerleri tek anahtar.
+      const ss = adim.kind === 'stop'
+        ? stopSonucu(info.artifacts, t.host, extractStatsKey)
+        : { sonuc: extractStatsKey(info.artifacts, TAZELE_STATS[adim.kind]) || null, coklu: false };
+      const r = ss.sonuc;
       const line = String(r?.line || '');
       const msg = line.split('	').slice(2).join(' — ') || info.status;
       // ARTIFACT YOKSA 'successful' OLSA BILE OK SAYILMAZ: playbook sonucu set_stats ile
       // bildiriyor; bildirim yoksa ne yapildigini BILMIYORUZ (poller ile ayni kural).
-      const basarili = info.status === 'successful' && line.split('	')[2] === 'OK';
+      // On kontrol (planning) PLAN satiriyla basarilidir; toplu iste is durumu degil hedefin satiri.
+      const k = stopKarari(info.status, ss);
+      const basarili = adim.kind === 'stop'
+        ? (t.status === 'planning' ? (ss.coklu ? k.plan : info.status === 'successful' && (k.kod === 'PLAN' || k.kod === 'OK')) : k.ok)
+        : info.status === 'successful' && line.split('	')[2] === 'OK';
       const yeni = basarili ? adim.ok : adim.hata;
       const zamanSql = basarili && adim.zaman ? `, ${adim.zaman} = GETUTCDATE()` : '';
       await db().query(
@@ -849,9 +906,13 @@ function initRetirement(app) {
       let result = null;
       if (TERMINAL.has(statusInfo.status)) {
         const { extractStatsKey } = require('../opsx/index.cjs');
-        result = extractStatsKey(statusInfo.artifacts, 'app_retirement_stop_result') || null;
-        const line = String(result?.line || '');
-        const msg = line.split('\t').slice(2).join(' — ') || statusInfo.status;
+        // HEDEFIN KENDI SONUCU: toplu iste ayni is birden fazla hedefi tasir (stop-sonuc.cjs).
+        const hedefSatir = await db().query(`SELECT host FROM retirement_targets WHERE id = $1`, [tid]);
+        const ss = stopSonucu(statusInfo.artifacts, hedefSatir.rows?.[0]?.host, extractStatsKey);
+        result = ss.sonuc;
+        const karar = stopKarari(statusInfo.status, ss);
+        const line = karar.line;
+        const msg = karar.mesaj;
         // AYRINTI: STEP ve RENAMED satirlari. `line` yalniz OZET; plan onayinda hangi
         // dosyalara dokunulacagi bu listelerde. Alanlar gelmezse null yazilir (eski
         // playbook surumu) - uydurulmaz.
@@ -866,8 +927,8 @@ function initRetirement(app) {
         if (row && Number(row.last_job_id) === jobId && (row.status === 'planning' || row.status === 'stopping')) {
           const planOnly = result ? !!result.plan_only : row.status === 'planning';
           if (planOnly) {
-            await db().query(`UPDATE retirement_targets SET status = $1, plan_text = $2, detail_json = $3, updated_at = GETUTCDATE() WHERE id = $4`, [statusInfo.status === 'successful' ? 'planned' : 'failed', msg.slice(0, 1000), detailJson, tid]);
-          } else if (statusInfo.status === 'successful' && /\tOK\t/.test(line)) {
+            await db().query(`UPDATE retirement_targets SET status = $1, plan_text = $2, detail_json = $3, updated_at = GETUTCDATE() WHERE id = $4`, [karar.plan ? 'planned' : 'failed', msg.slice(0, 1000), detailJson, tid]);
+          } else if (karar.ok && /\tOK\t/.test(line)) {
             await db().query(`UPDATE retirement_targets SET status = 'stopped', result_text = $1, detail_json = $2, stopped_at = GETUTCDATE(), updated_at = GETUTCDATE() WHERE id = $3`, [msg.slice(0, 1000), detailJson, tid]);
             await db().query(`UPDATE retirement_records SET stop_at = COALESCE(stop_at, GETUTCDATE()), scc_notified_at = CASE WHEN $2 = 1 THEN COALESCE(scc_notified_at, GETUTCDATE()) ELSE scc_notified_at END, updated_at = GETUTCDATE() WHERE id = $1`, [id, (await sccAyar()).to ? 1 : 0]);
             const left = await db().query(`SELECT COUNT(*) AS n FROM retirement_targets WHERE record_id = $1 AND status <> 'stopped' AND status <> 'skipped'`, [id]);
@@ -897,12 +958,13 @@ function initRetirement(app) {
   // "sistem") ve extraVars.requested_by'da yaziyor.
   try {
     require('./poller.cjs').startPoller(async (kind, t) => {
+      // TOPLU zamanlanmis STOP (poller ayni kayit + ayni anda dolan hedefleri gruplar): rt_hedefler.
+      const hedefVars = kind === 'stop' && Array.isArray(t.hedefler) && t.hedefler.length > 1
+        ? { rt_hedefler: t.hedefler.map((h) => ({ host: h.host, application: h.application, jboss_gen: String(h.gen), app_path: h.appPath || '' })) }
+        : { target_host: t.host, application: t.application, jboss_gen: String(t.gen), app_path: t.appPath || '' };
       const ortak = {
-        target_host: t.host,
-        application: t.application,
-        jboss_gen: String(t.gen),
+        ...hedefVars,
         smart_no: t.smartNo,
-        app_path: t.appPath || '',
         requested_by: 'Portal (zamanlanmis)',
       };
       if (kind === 'stop') {
@@ -913,7 +975,7 @@ function initRetirement(app) {
         const notify = t.env === 'PROD' && !rec.rows?.[0]?.scc_notified_at && !!scc.to;
         return launch(
           null,
-          `Retirement: STOP ${t.application} @ ${t.host} (zamanlanmis)`,
+          `Retirement: STOP ${t.application} @ ${(t.hedefler || [t]).map((h) => h.host).join(', ')} (zamanlanmis)`,
           { ...ortak, plan_only: false, notify_scc: notify, scc_mail_to: scc.to, scc_mail_cc: scc.cc || undefined, oco_no: t.ocoNo || '' },
           { op: 'stop', id: t.recordId, tid: t.targetId },
         );
@@ -951,12 +1013,16 @@ function initRetirement(app) {
         rollback: 'app_retirement_rollback_result',
         web: 'server_hub_fix_result',
       };
-      const r = extractStatsKey(info.artifacts, STATS[kind] || STATS.delete) || null;
+      // STOP: hedefin KENDI sonucu - zamanlanmis toplu STOP tek iste birden fazla hedef tasir.
+      const ss = kind === 'stop'
+        ? stopSonucu(info.artifacts, t.host, extractStatsKey)
+        : { sonuc: extractStatsKey(info.artifacts, STATS[kind] || STATS.delete) || null, coklu: false };
+      const r = ss.sonuc;
       const line = String(r?.line || '');
       const msg = line.split('	').slice(2).join(' — ') || info.status;
       // ARTIFACT OKUNAMADIYSA is 'successful' olsa bile OK SAYILMAZ: playbook sonucu
       // `set_stats` ile bildiriyor; bildirim yoksa ne yapildigini BILMIYORUZ.
-      const ok = info.status === 'successful' && line.split('\t')[2] === 'OK';
+      const ok = kind === 'stop' ? stopKarari(info.status, ss).ok : info.status === 'successful' && line.split('\t')[2] === 'OK';
       // SKIP (yalniz web): eylem yapilacak bir sey bulmadi - basarili DEGIL, ayri gosterilir.
       const skip = info.status === 'successful' && line.split('\t')[2] === 'SKIP';
       return { terminal: true, ok, skip, message: msg };
