@@ -145,6 +145,20 @@ function mount(router, { launch, HOST_RE }) {
     }
   });
 
+  // DURUM RAPORU (2026-10-09): ekip arkadasinin patch-aggregate-report.py tasarimi, Portal verisiyle
+  // (reboot-rapor.cjs). Yeni sekmede acilir; e-postaya yapistirilabilir (Outlook uyumlu tablo yerlesimi).
+  router.get('/reboot-check/:id/rapor', async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).type('text').send('Geçersiz kayıt.');
+    try {
+      const r = await kayit(id);
+      if (!r) return res.status(404).type('text').send('Kayıt yok.');
+      res.set('Cache-Control', 'no-store').type('html').send(require('./reboot-rapor.cjs').raporHtml(satir(r, true)));
+    } catch (err) {
+      res.status(500).type('text').send(err.message);
+    }
+  });
+
   router.get('/reboot-check/:id', async (req, res) => {
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ ok: false, message: 'Geçersiz kayıt.' });

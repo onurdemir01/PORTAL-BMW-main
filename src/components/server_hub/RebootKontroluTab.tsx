@@ -6,7 +6,7 @@
 // kapanan açılır, önce yokken çalışan kapatılır — tek JVM. Python vb. izlenmez. Ekran ürün başına:
 // "çalışıyordu → çalışıyor ✓". Ölçülemeyen sunucu sorunsuz SAYILMAZ.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowPathIcon, CameraIcon, WrenchScrewdriverIcon, CheckCircleIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
+import { ArrowPathIcon, CameraIcon, WrenchScrewdriverIcon, CheckCircleIcon, ExclamationTriangleIcon, DocumentTextIcon } from '@heroicons/react/24/outline';
 import { rebootCheckApi, type RcKayit, type RcSunucuSonuc, type RcDegerlendirme } from '@/api/rebootCheckApi';
 import { serverHubApi } from '@/api/serverHubApi';
 import { useJobTracker } from '@/contexts/JobTrackerContext';
@@ -126,7 +126,12 @@ function Ayrinti({ k, onSonra, busy }: { k: RcKayit; onSonra: () => void; busy: 
         <span className="text-sm font-semibold">Kayıt #{k.id}</span>
         <Rozet ton={DURUM[k.durum]?.ton || 'muted'}>{DURUM[k.durum]?.etiket || k.durum}</Rozet>
         <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>{k.olusturan} · {fmtDateTime(k.olusturuldu)}{k.not ? ` · ${k.not}` : ''}</span>
-        <button type="button" disabled={!sonraHazir || busy} onClick={onSonra} className={`${BTN} ml-auto`}
+        {/* DURUM RAPORU: ekip arkadasinin patch-aggregate-report.py tasarimi (server/server-hub/reboot-rapor.cjs). */}
+        <a href={`/api/server-hub/reboot-check/${k.id}/rapor`} target="_blank" rel="noopener noreferrer" className={`${BTN} ml-auto no-underline`}
+          style={{ borderColor: 'var(--border)', color: 'var(--text-primary)' }} title="Patch Reboot Durum Raporu — yeni sekmede açılır, e-postaya yapıştırılabilir">
+          <DocumentTextIcon className="w-4 h-4" /> Durum raporu
+        </a>
+        <button type="button" disabled={!sonraHazir || busy} onClick={onSonra} className={BTN}
           style={{ background: 'var(--accent)', borderColor: 'var(--accent)', color: 'var(--accent-fg, #fff)' }}
           title={sonraHazir ? 'Reboot yapıldıktan sonra çalıştırın' : 'Önce görüntüsü hazır değil'}>
           <WrenchScrewdriverIcon className="w-4 h-4" /> Reboot sonrası kontrol et ve düzelt
