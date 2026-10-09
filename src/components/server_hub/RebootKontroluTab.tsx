@@ -30,6 +30,52 @@ function Rozet({ ton, children }: { ton: string; children: React.ReactNode }) {
   return <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ color: t.renk, background: t.zemin }}>{children}</span>;
 }
 
+// CANLI GOSTERGE (2026-10-09, kullanici: "is calisiyorsa ekranda donen bir simge istiyorum; 'Suruyor'
+// kelimesi isin gercekten calisip calismadigini anlamaya yetmiyor"). Donen simge + AWX'in ANLIK durumu
+// (kuyrukta / calisiyor / okunamadi) + is numarasi + saniye saniye gecen sure.
+function Doner({ renk = 'var(--status-info)' }: { renk?: string }) {
+  return <span aria-hidden className="inline-block w-3.5 h-3.5 rounded-full border-2 animate-spin motion-reduce:animate-none" style={{ borderColor: renk, borderTopColor: 'transparent' }} />;
+}
+const AWX_DURUM: Record<string, string> = {
+  new: 'AWX\'te oluşturuldu', pending: 'AWX kuyruğunda bekliyor', waiting: 'başlamak üzere', running: 'AWX\'te çalışıyor', okunamadi: 'AWX okunamadı — yeniden deneniyor',
+};
+function gecen(bas: string | null | undefined, simdi: number): string {
+  if (!bas) return '';
+  const s = Math.max(0, Math.floor((simdi - new Date(bas).getTime()) / 1000));
+  return s < 60 ? `${s} sn` : `${Math.floor(s / 60)} dk ${String(s % 60).padStart(2, '0')} sn`;
+}
+function IsCanli({ k }: { k: RcKayit }) {
+  const [simdi, setSimdi] = useState(() => Date.now());
+  useEffect(() => {
+    const z = window.setInterval(() => setSimdi(Date.now()), 1000);
+    return () => window.clearInterval(z);
+  }, []);
+  const once = k.durum === 'once_kosuyor';
+  const jobId = once ? k.once.jobId : k.sonra.jobId;
+  const okunamadi = k.awxDurum === 'okunamadi';
+  return (
+    <div role="status" aria-live="polite" className="flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2 text-[12px]"
+      style={{ borderColor: okunamadi ? 'var(--status-warning)' : 'var(--status-info)', background: okunamadi ? 'var(--status-warning-bg)' : 'var(--status-info-bg)' }}>
+      <Doner renk={okunamadi ? 'var(--status-warning)' : 'var(--status-info)'} />
+      <b>{once ? 'Reboot öncesi görüntü alınıyor' : 'Reboot sonrası kontrol ve düzeltme çalışıyor'}</b>
+      <span>· {k.awxDurum ? AWX_DURUM[k.awxDurum] || `AWX: ${k.awxDurum}` : 'AWX durumu okunuyor…'}</span>
+      {jobId ? <span style={{ color: 'var(--text-muted)' }}>· iş #{jobId}</span> : null}
+      {k.fazBasladi && <span className="tabular-nums" style={{ color: 'var(--text-muted)' }}>· {gecen(k.fazBasladi, simdi)}</span>}
+      <span className="ml-auto text-[11px]" style={{ color: 'var(--text-muted)' }}>5 sn'de bir tazelenir</span>
+    </div>
+  );
+}
+
+/** Kayit durumu; kosan fazda donen simgeyle (liste ve ayrinti basligi). */
+function DurumRozeti({ durum }: { durum: string }) {
+  const d = DURUM[durum];
+  return (
+    <Rozet ton={d?.ton || 'muted'}>
+      <span className="inline-flex items-center gap-1">{/_kosuyor$/.test(durum) && <Doner />}{d?.etiket || durum}</span>
+    </Rozet>
+  );
+}
+
 function sunucuRozeti(d: RcDegerlendirme | undefined) {
   if (!d) return <Rozet ton="muted">—</Rozet>;
   if (d.durum === 'sorunsuz') return <Rozet ton="ok">Sorunsuz</Rozet>;
@@ -124,7 +170,7 @@ function Ayrinti({ k, onSonra, busy }: { k: RcKayit; onSonra: () => void; busy: 
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-sm font-semibold">Kayıt #{k.id}</span>
-        <Rozet ton={DURUM[k.durum]?.ton || 'muted'}>{DURUM[k.durum]?.etiket || k.durum}</Rozet>
+        <DurumRozeti durum={k.durum} />
         <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>{k.olusturan} · {fmtDateTime(k.olusturuldu)}{k.not ? ` · ${k.not}` : ''}</span>
         {/* DURUM RAPORU: ekip arkadasinin patch-aggregate-report.py tasarimi (server/server-hub/reboot-rapor.cjs). */}
         <a href={`/api/server-hub/reboot-check/${k.id}/rapor`} target="_blank" rel="noopener noreferrer" className={`${BTN} ml-auto no-underline`}
@@ -138,6 +184,8 @@ function Ayrinti({ k, onSonra, busy }: { k: RcKayit; onSonra: () => void; busy: 
         </button>
       </div>
 
+      {k.durum === 'once_kosuyor' && <IsCanli k={k} />}
+
       <section className="space-y-1.5">
         <div className="text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>1 · Reboot öncesi görüntü {k.once.at ? `(${fmtDateTime(k.once.at)})` : ''}</div>
         <div className="grid gap-1.5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(18rem, 1fr))' }}>
@@ -150,7 +198,7 @@ function Ayrinti({ k, onSonra, busy }: { k: RcKayit; onSonra: () => void; busy: 
               <details key={h} className="rounded-lg border px-3 py-2" style={{ borderColor: 'var(--border-subtle)' }}>
                 <summary className="cursor-pointer flex items-center gap-2 text-sm">
                   <span className="font-mono font-semibold">{h}</span>
-                  {k.durum === 'once_kosuyor' ? <Rozet ton="info">alınıyor…</Rozet>
+                  {k.durum === 'once_kosuyor' ? <Rozet ton="info"><span className="inline-flex items-center gap-1"><Doner /> alınıyor</span></Rozet>
                     : alindi ? <Rozet ton="ok">{oz.length ? `${oz.length} ürün kaydedildi` : 'izlenen ürün yok'}</Rozet>
                       : r?.goruntu_ok ? (
                         // BOOT satiri yok = gorutuyu ESKI playbook (patch-snapshot.sh) aldi. Yeni kayitta
@@ -177,7 +225,7 @@ function Ayrinti({ k, onSonra, busy }: { k: RcKayit; onSonra: () => void; busy: 
           2 · Reboot sonrası kontrol ve düzeltme {k.sonra.at ? `(${fmtDateTime(k.sonra.at)})` : ''}
           {k.ozet?.sonra && <span className="ml-2" style={{ color: k.ozet.sonra.sorunsuz === k.ozet.sonra.toplam ? 'var(--status-success)' : 'var(--status-danger)' }}>{k.ozet.sonra.sorunsuz} / {k.ozet.sonra.toplam} sunucu sorunsuz</span>}
         </div>
-        {k.durum === 'sonra_kosuyor' ? <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Sürüyor — iş panelinden izleyebilirsiniz.</div>
+        {k.durum === 'sonra_kosuyor' ? <IsCanli k={k} />
           : sonraHosts.length === 0 ? <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Henüz çalıştırılmadı. Reboot'u yaptıktan sonra yukarıdaki düğmeyi kullanın.</div>
             : <div className="space-y-1.5">{sonraHosts.map((h) => <SunucuSonra key={h} host={h} once={onceS[h]?.goruntu} r={sonraS[h]} d={deg[h]} />)}</div>}
       </section>
@@ -218,7 +266,7 @@ export default function RebootKontroluTab() {
   // Koşan kayıt açıksa 10 sn'de bir tazele (sunucu AWX sonucunu okuyup kayda yazar).
   useEffect(() => {
     if (!secili || !/_kosuyor$/.test(secili.durum)) return;
-    const t = window.setInterval(() => { ac(secili.id); yukle(); }, 10000);
+    const t = window.setInterval(() => { ac(secili.id); yukle(); }, 5000);
     return () => window.clearInterval(t);
   }, [secili, ac, yukle]);
 
@@ -307,7 +355,7 @@ export default function RebootKontroluTab() {
                     style={{ borderColor: 'var(--border-subtle)', background: secili?.id === k.id ? 'var(--bg-elevated)' : undefined }}>
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-semibold">#{k.id}</span>
-                      <Rozet ton={DURUM[k.durum]?.ton || 'muted'}>{DURUM[k.durum]?.etiket || k.durum}</Rozet>
+                      <DurumRozeti durum={k.durum} />
                     </div>
                     <div className="text-[11px] font-mono truncate" style={{ color: 'var(--text-secondary)' }}>{k.hosts.join(', ')}</div>
                     <div className="text-[10px]" style={{ color: 'var(--text-muted)' }}>{k.olusturan} · {fmtDateTime(k.olusturuldu)}</div>

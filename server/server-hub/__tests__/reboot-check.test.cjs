@@ -142,3 +142,32 @@ test('RC6 once job bitince sonuc kayda yazilir: goruntu alinan varsa once_hazir,
     } finally { g2(); g1(); d.geri(); }
   }
 });
+
+test('RC7 is SURERKEN AWX anlik durumu ve faz baslangici doner; okunamazsa "okunamadi" (bitti SAYILMAZ)', async () => {
+  // Kullanici (2026-10-09): "'Suruyor' kelimesi isin gercekten calisip calismadigini anlamaya yetmiyor"
+  const sahte = (yol, exp) => {
+    const p = require.resolve(yol); const eski = require.cache[p];
+    const m = new Module(p, null); m.loaded = true; m.exports = exp; require.cache[p] = m;
+    return () => { if (eski) require.cache[p] = eski; else delete require.cache[p]; };
+  };
+  for (const [runner, beklenen] of [
+    [{ getJobStatusOnServer: async () => ({ status: 'running' }) }, 'running'],
+    [{ getJobStatusOnServer: async () => { throw new Error('AWX yok'); } }, 'okunamadi'],
+  ]) {
+    const d = sahteDb({ id: 7, status: 'sonra_kosuyor', hosts_json: '["A"]', sonra_job_id: 55, sonra_server_id: 1, updated_at: '2026-10-09T08:00:00Z' });
+    const g1 = sahte('../../ansible/runner.cjs', runner);
+    try {
+      const r = express.Router();
+      delete require.cache[require.resolve('../reboot-check.cjs')];
+      require('../reboot-check.cjs').mount(r, { HOST_RE: /.*/, launch: async () => ({}) });
+      const app = express(); app.use('/x', r);
+      const srv = http.createServer(app); await new Promise((ok) => srv.listen(0, ok));
+      let body;
+      try { body = await (await fetch(`http://127.0.0.1:${srv.address().port}/x/reboot-check/7`)).json(); } finally { srv.close(); }
+      assert.equal(body.kayit.durum, 'sonra_kosuyor');
+      assert.equal(body.kayit.awxDurum, beklenen);
+      assert.equal(body.kayit.fazBasladi, '2026-10-09T08:00:00Z');
+      assert.ok(!d.yaz.some((y) => /^UPDATE reboot_checks SET status/.test(y.sql.trim())), 'surerken kayit sonuclandirildi');
+    } finally { g1(); d.geri(); }
+  }
+});

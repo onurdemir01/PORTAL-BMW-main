@@ -31,6 +31,10 @@ export interface RcKayit {
     once?: { alinan: number; toplam: number; job: string };
     sonra?: { sorunsuz: number; toplam: number; job: string; sunucu: Record<string, RcDegerlendirme> };
   } | null;
+  /** Kosan fazda AWX'in anlik is durumu (pending / waiting / running / okunamadi); yalniz ayrintida. */
+  awxDurum?: string | null;
+  /** Kosan fazin baslatildigi an (ISO). */
+  fazBasladi?: string | null;
 }
 export interface RcLaunch { ok: boolean; message?: string; id?: number | null; jobId?: number | null; awxServerId?: number; hedef?: string[]; disarida?: string[] }
 

@@ -80,6 +80,11 @@ function satir(r, ayrinti) {
     once: { jobId: r.once_job_id, serverId: r.once_server_id, at: r.once_at },
     sonra: { jobId: r.sonra_job_id, serverId: r.sonra_server_id, at: r.sonra_at },
     ozet: jsonOku(r.ozet_json),
+    // CANLI (2026-10-09, kullanici: "Suruyor kelimesi isin gercekten calisip calismadigini anlamaya
+    // yetmiyor"): kosan fazda AWX'in ANLIK is durumu (pending/waiting/running) ve fazin baslangici.
+    // Kosarken kayda baska yazim olmadigi icin updated_at = fazin baslatildigi an.
+    awxDurum: r.awx_durum || null,
+    fazBasladi: /_kosuyor$/.test(String(r.status || '')) ? r.updated_at : null,
   };
   if (ayrinti) {
     o.once.sonuc = jsonOku(r.once_json);
@@ -102,7 +107,7 @@ async function ilerlet(r) {
   if (!jobId) return r;
   const runner = require('../ansible/runner.cjs');
   const info = await runner.getJobStatusOnServer(Number(serverId) || 0, Number(jobId));
-  if (!TERMINAL.has(info.status)) return r;
+  if (!TERMINAL.has(info.status)) return { ...r, awx_durum: String(info.status || 'bilinmiyor') };
   const { extractStatsKey } = require('../opsx/index.cjs');
   const sonuc = extractStatsKey(info.artifacts, 'reboot_check_result') || null;
   const hedefler = jsonOku(r.hosts_json) || [];
@@ -170,6 +175,7 @@ function mount(router, { launch, HOST_RE }) {
       } catch (e) {
         // OKUNAMADI != BASARISIZ: AWX okunamazsa kayit degismez, bir sonraki okumada tekrar denenir.
         console.warn('[RebootCheck] is durumu okunamadi:', e.message);
+        r = { ...r, awx_durum: 'okunamadi' };
       }
       res.json({ ok: true, kayit: satir(r, true) });
     } catch (err) {
