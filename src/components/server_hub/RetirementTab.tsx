@@ -612,6 +612,8 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
   // TOPLU SECIM (2026-10-08, kullanici: "2 ya da 4 sunucuyu ayni anda sectim; hepsi icin ayri
   // ayri job tetiklemek istemiyorum, tek seferde calistiralim ve SCC'ye tek e-posta gitsin").
   const [secim, setSecim] = useState<Set<number>>(new Set());
+  // PROD STOP ZAMANI (2026-10-09): varsayilan OCO penceresine zamanla; "simdi" yalniz acik secimle.
+  const [stopZamani, setStopZamani] = useState<'oco' | 'simdi'>('oco');
   const [geriAl, setGeriAl] = useState<{ t: RtTarget } | null>(null);
   const [iptalSor, setIptalSor] = useState(false);
   // BEKLEMEYI ATLA (admin): silme tarihini bugune ceker; onay icin uygulama adi yazilir.
@@ -663,6 +665,7 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
   const stopSor = (ts: RtTarget[]) => {
     if (!rec || !ts.length) return;
     setAsk({ ts });
+    setStopZamani('oco');
     setAskDisc(null); setTrafikOnay(false); setOlcumuBekleme(false);
     setHubDurum('denetleniyor');
     const no = ++hubIstek.current;
@@ -720,13 +723,13 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
   };
   // STOP / ON KONTROL: bir ya da birden fazla hedef TEK iste. Toplu iste is BIR, ama her hedef
   // kendi sonucuyla sonuclanir: is bitince her hedefin job-status'u ayri okunur.
-  const stopCalistir = async (ts: RtTarget[], confirmed: boolean) => {
+  const stopCalistir = async (ts: RtTarget[], confirmed: boolean, simdiCalistir = false) => {
     if (!ts.length) return;
     const coklu = ts.length > 1;
     const etiket = coklu ? `${ts[0].appName} @ ${ts.map((x) => x.host).join(', ')}` : `${ts[0].appName} @ ${ts[0].host}`;
     setBusy(ts[0].id); setAsk(null);
     try {
-      const r = coklu ? await retirementApi.stopToplu(id, ts.map((x) => x.id), confirmed) : await retirementApi.stop(id, ts[0].id, confirmed);
+      const r = coklu ? await retirementApi.stopToplu(id, ts.map((x) => x.id), confirmed, simdiCalistir) : await retirementApi.stop(id, ts[0].id, confirmed, simdiCalistir);
       if (!r.ok) { toast.error(r.message || 'İş başlatılamadı.'); return; }
       if (r.sccWarning) toast.error(r.sccWarning);
       if (r.scheduled) { toast.success(`STOP OCO penceresine zamanlandı${r.runAtText ? `: ${r.runAtText}` : ''}${coklu ? ` — ${ts.length} sunucu tek işte` : ''}.`); setSecim(new Set()); await load(); return; }
@@ -1122,7 +1125,20 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
             ))}
             <p className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>auto-start kapatılır, JVM durdurulur, paket(ler) <code>.{rec?.smartNo}.old</code> yapılır. {ask.ts[0].env === 'PROD' ? (ask.ts.length > 1 ? `PROD: SCC’ye ${ask.ts.length} sunucuyu listeleyen TEK bilgilendirme maili gider.` : 'PROD: SCC bilgilendirme maili gider.') : ''} Geri almak gerekirse silme tarihinden önce “Geri aktif et” kullanılır.</p>
             <StopHubUyari durum={hubDurum} />
-            <div className="flex justify-end gap-2"><button onClick={() => setAsk(null)} className={SM_BTN} style={smBtn()}>İptal</button><button disabled={!ask.ts.every((t) => stopOnayAcikMi(stopTrafikOzeti(t, askDisc), trafikIs[t.id]?.durum, trafikOnay, olcumuBekleme))} onClick={() => stopCalistir(ask.ts, true)} className={`${SM_BTN} disabled:opacity-50`} style={{ ...smBtn(true), background: 'var(--status-danger)', borderColor: 'var(--status-danger)' }}>{ask.ts.length > 1 ? `Onayla ve ${ask.ts.length} sunucuyu durdur` : 'Onayla ve durdur'}</button></div>
+            {ask.ts[0].env === 'PROD' && rec?.ocoNo && (
+              <fieldset className="rounded-lg border px-3 py-2 text-[12px] space-y-1" style={{ borderColor: 'var(--border-subtle)' }}>
+                <legend className="px-1 text-[11px] font-semibold" style={{ color: 'var(--text-muted)' }}>STOP ne zaman çalışsın? (OCO {rec.ocoNo})</legend>
+                <label className="flex items-start gap-2 cursor-pointer">
+                  <input type="radio" name="stop-zamani" className="mt-0.5" checked={stopZamani === 'oco'} onChange={() => setStopZamani('oco')} />
+                  <span><b>OCO penceresine zamanla</b> <span style={{ color: 'var(--text-muted)' }}>(varsayılan) — pencere ileride ise STOP o an başlar; açıksa hemen. Kapanmışsa reddedilir.</span></span>
+                </label>
+                <label className="flex items-start gap-2 cursor-pointer">
+                  <input type="radio" name="stop-zamani" className="mt-0.5" checked={stopZamani === 'simdi'} onChange={() => setStopZamani('simdi')} />
+                  <span><b>Şimdi çalıştır</b> <span style={{ color: 'var(--text-muted)' }}>(Admin) — OCO saat kısıtı uygulanmaz, olaylara yazılır.</span></span>
+                </label>
+              </fieldset>
+            )}
+            <div className="flex justify-end gap-2"><button onClick={() => setAsk(null)} className={SM_BTN} style={smBtn()}>İptal</button><button disabled={!ask.ts.every((t) => stopOnayAcikMi(stopTrafikOzeti(t, askDisc), trafikIs[t.id]?.durum, trafikOnay, olcumuBekleme))} onClick={() => stopCalistir(ask.ts, true, ask.ts[0].env === 'PROD' && stopZamani === 'simdi')} className={`${SM_BTN} disabled:opacity-50`} style={{ ...smBtn(true), background: 'var(--status-danger)', borderColor: 'var(--status-danger)' }}>{ask.ts[0].env === 'PROD' && rec?.ocoNo && stopZamani === 'oco' ? (ask.ts.length > 1 ? `Onayla ve ${ask.ts.length} sunucuyu OCO penceresine zamanla` : 'Onayla ve OCO penceresine zamanla') : ask.ts.length > 1 ? `Onayla ve ${ask.ts.length} sunucuyu durdur` : 'Onayla ve durdur'}</button></div>
           </div>
         </div>
       )}

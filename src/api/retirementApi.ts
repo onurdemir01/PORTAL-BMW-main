@@ -125,9 +125,10 @@ export const retirementApi = {
   dnsIp: (id: number): Promise<RtDnsIp> => fetch(`${BASE}/${id}/dns-ip`).then(safeJson),
   dnsTur: (id: number, ad: string, tur: DnsTur | null): Promise<{ ok: boolean; message?: string }> =>
     fetch(`${BASE}/${id}/dns-tur`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ad, tur }) }).then(safeJson),
-  stop: (id: number, tid: number, confirmed: boolean): Promise<RtLaunch> => fetch(`${BASE}/${id}/targets/${tid}/stop`, json({ confirmed })).then(safeJson),
+  /** `simdiCalistir`: yalniz Admin; OCO penceresi ileride olsa da STOP'u HEMEN calistirir (varsayilan: pencereye zamanla). */
+  stop: (id: number, tid: number, confirmed: boolean, simdiCalistir = false): Promise<RtLaunch> => fetch(`${BASE}/${id}/targets/${tid}/stop`, json({ confirmed, simdiCalistir })).then(safeJson),
   /** TOPLU (2026-10-08): secilen hedefler TEK iste (on kontrol ya da onayli STOP); SCC'ye tek mail. */
-  stopToplu: (id: number, tids: number[], confirmed: boolean): Promise<RtLaunch> => fetch(`${BASE}/${id}/stop-toplu`, json({ tids, confirmed })).then(safeJson),
+  stopToplu: (id: number, tids: number[], confirmed: boolean, simdiCalistir = false): Promise<RtLaunch> => fetch(`${BASE}/${id}/stop-toplu`, json({ tids, confirmed, simdiCalistir })).then(safeJson),
   // GERI AL (2026-10-07): STOP'un tersi. Hedef 'rolling_back' olur olmaz zamanlanmis
   // SILME devre disi kalir (deleteTick yalniz 'stopped' hedefe bakar) - ayri bir iptal
   // cagrisi YOK ve olmasi da yanlis olurdu.

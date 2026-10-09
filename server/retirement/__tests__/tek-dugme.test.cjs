@@ -71,7 +71,9 @@ test('TD9 ADMIN icin OCO SAAT kisiti yok; OCO numarasi ve kaydin gecerliligi YIN
   const oco = ep.slice(ep.indexOf("if (confirmed && t.env === 'PROD' && rec.ocoNo)"));
   assert.match(ep, /if \(t\.env === 'PROD' && !rec\.ocoNo\)/, 'PROD hedefte OCO numarasi artik zorunlu degil');
   const gecersiz = oco.indexOf('if (!w.ok) return res.status(400)');
-  const admin = oco.indexOf('const adminSaatsiz = isAdmin(req)');
+  const admin = oco.indexOf('const adminSaatsiz = isAdmin(req) && req.body?.simdiCalistir === true');
+  // 2026-10-09: admin de VARSAYILAN olarak zamanlar; saat kisitini yalniz acik secimle asar.
+  assert.ok(admin > 0, 'admin saat kisitini ACIK secim olmadan asiyor (varsayilan zamanlama olmali)');
   assert.ok(gecersiz > 0 && admin > gecersiz, 'bozuk OCO kaydi admin icin de reddedilmeli (gecerlilik kontrolu admin dalindan ONCE)');
   // Saat kurallari yalniz Admin DISI icin
   assert.match(oco, /if \(!adminSaatsiz && plan\.mode === 'none'\)/, 'kapanmis pencere admin icin de reddediliyor ya da kural tumden kalkti');

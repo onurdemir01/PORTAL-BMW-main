@@ -686,9 +686,9 @@ test('D1 RetirementTab STOP onayi: Server Hub okunamadiysa uyari EKRANA cikar; d
   // 2026-10-08: dugme artik TRAFIK kapisina bagli (istek varsa onay kutusu; olcum surerken
   // kilit - retirementTrafik.ts stopOnayAcikMi). Niyet AYNI kalir: Server Hub durumu dugmeyi
   // KAPATMAZ. Kontrol dugmenin `disabled` ifadesine bakar: yalniz stopOnayAcikMi, hub YOK.
-  const oc = rm.indexOf('onClick={() => stopCalistir(ask.ts, true)}');
+  const oc = rm.indexOf('onClick={() => stopCalistir(ask.ts, true');
   const dugme = rm.slice(rm.lastIndexOf('<button', oc), rm.indexOf('</button>', oc));
-  assert.ok(oc > 0 && dugme.includes('onClick={() => stopCalistir(ask.ts, true)}'), 'onay dugmesi bulunamadi');
+  assert.ok(oc > 0 && dugme.includes('onClick={() => stopCalistir(ask.ts, true'), 'onay dugmesi bulunamadi');
   const dis = (dugme.match(/disabled=\{([^}]*\([^)]*\)[^}]*)\}/) || [])[1] || '';
   assert.ok(!/hubDurum|stopHubUyarisi|okunamadi/.test(dugme), 'onay dugmesi hub durumuna bagli KAPANIYOR');
   // TOPLU (2026-10-08): kapi her hedefte ayni yardimci - !ask.ts.every((t) => stopOnayAcikMi(...)).

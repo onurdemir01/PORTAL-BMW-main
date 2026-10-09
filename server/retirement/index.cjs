@@ -588,7 +588,11 @@ function initRetirement(app) {
         // basladiysa olaya ('oco_saatsiz') yazilir. Bozuk OCO kaydi (tarih okunamaz / aralik
         // gecersiz -> w.ok false) Admin icin de REDDEDILIR. Router zaten yalniz Admin; kural
         // Admin DISI icin korunur ki modul ileride acilirsa sessizce gevsemesin.
-        const adminSaatsiz = isAdmin(req);
+        // VARSAYILAN ZAMANLAMA (kullanici 2026-10-09): "evet ekle, varsayilan OCO penceresine zamanla
+        // olsun". Admin de varsayilan olarak pencereye ZAMANLAR; saat kisitini yalniz onay penceresinde
+        // "Simdi calistir"i ACIKCA secerek (simdiCalistir=true) asar. Eskiden admin onayi her zaman
+        // hemen kosuyordu: Cuma girilen Sali 18:00 OCO'lu kayit Cuma calisirdi.
+        const adminSaatsiz = isAdmin(req) && req.body?.simdiCalistir === true;
         if (!adminSaatsiz && plan.mode === 'none') return res.status(400).json({ ok: false, message: plan.reason });
         if (!adminSaatsiz && plan.mode === 'schedule') {
           // IS BASLATILMAZ. Zamanlama kaydin kendisinde durur; retirement poller'i
