@@ -147,7 +147,13 @@ function Ayrinti({ k, onSonra, busy }: { k: RcKayit; onSonra: () => void; busy: 
                   <span className="font-mono font-semibold">{h}</span>
                   {k.durum === 'once_kosuyor' ? <Rozet ton="info">alınıyor…</Rozet>
                     : alindi ? <Rozet ton="ok">{oz.length ? `${oz.length} ürün kaydedildi` : 'izlenen ürün yok'}</Rozet>
-                      : r?.goruntu_ok ? <Rozet ton="warning">eski biçim — yeniden alın</Rozet>
+                      : r?.goruntu_ok ? (
+                        // BOOT satiri yok = gorutuyu ESKI playbook (patch-snapshot.sh) aldi. Yeni kayitta
+                        // gorunuyorsa AWX projesindeki reboot_check.yml guncel degildir (2026-10-09, job 3391026).
+                        <span title="Görüntüyü eski playbook aldı (patch-snapshot.sh). AWX projesindeki reboot_check.yml ve scripts/reboot_goruntu.sh güncel değil — ZIP'i uygulayıp projeyi Sync edin, sonra yeniden alın.">
+                          <Rozet ton="warning">eski playbook — AWX güncel değil</Rozet>
+                        </span>
+                      )
                         : <Rozet ton="danger">alınamadı</Rozet>}
                 </summary>
                 {alindi && oz.length > 0 ? (
