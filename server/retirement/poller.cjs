@@ -301,12 +301,20 @@ async function finalizeAdim(adim) {
 // isaretlenir ve SEBEBI yazilir - sessizce atlamak "kaldirildi" izlenimi verirdi.
 const APACHE_URUN = new Set(['RHA', 'IHS', 'APACHE', 'IBMIHS']);
 
-async function webTick() {
+// STOP TETIKLENIR TETIKLENMEZ (kullanici 2026-10-09: "vhost adimi stop islemi tetiklenir
+// tetiklenmez baslasin"): eskiden yalniz 'stopped' hedef aliniyordu, yani vhost JBoss STOP'u
+// BITTIKTEN sonra, zamanlayicinin bir sonraki turunda (5 dk'ya kadar) kalkiyordu. Artik
+// 'stopping' hedef de alinir: STOP isi baslar baslamaz vhost isleri de baslar (paralel).
+// BEDEL: STOP basarisiz olursa vhost yine kalkmis olur (uygulama calisir ama onune trafik
+// gelmez) - ekran bunu ayrica gosterir ve geri alma yolu acik kalir.
+// `recordId`: yalniz o kaydin hedefleri (ekranin canli tazelemesi icin).
+async function webTick(recordId = null) {
   if (typeof _web !== 'function') return { kosan: 0, elle: 0 };
   const { rows } = await db.query(
     `SELECT id, record_id, host, app_name, web_result_json
        FROM retirement_targets
-      WHERE status = 'stopped' AND web_result_json IS NOT NULL AND web_result_json LIKE '%"pending"%'`,
+      WHERE status IN ('stopping', 'stopped') AND web_result_json IS NOT NULL AND web_result_json LIKE '%"pending"%'${recordId != null ? ' AND record_id = $1' : ''}`,
+    recordId != null ? [recordId] : [],
   );
   let kosan = 0;
   let elle = 0;
@@ -347,6 +355,7 @@ async function webTick() {
         w.jobId = r?.jobId ?? null;
         w.awxServerId = r?.awxServerId ?? null;
         w.status = 'running';
+        w.basladi = new Date().toISOString();
         w.message = `is #${w.jobId ?? '?'}`;
         degisti = true;
         kosan += 1;
@@ -373,11 +382,12 @@ async function webTick() {
 //   RESULT ... SKIP -> 'skip'  (yapilacak bir sey bulunmadi; "kaldirildi" DEGIL)
 //   diger / sonuc yok -> 'failed'  (set_stats yoksa ne yapildigi bilinmiyor)
 // OKUNAMADI != BASARISIZ: AWX'e ulasilamazsa 'running' KALIR, sonraki tur tekrar bakar.
-async function webSonucTick() {
+async function webSonucTick(recordId = null) {
   if (typeof _finalize !== 'function') return { kapanan: 0 };
   const { rows } = await db.query(
     `SELECT id, record_id, app_name, web_result_json FROM retirement_targets
-      WHERE web_result_json IS NOT NULL AND web_result_json LIKE '%"running"%'`,
+      WHERE web_result_json IS NOT NULL AND web_result_json LIKE '%"running"%'${recordId != null ? ' AND record_id = $1' : ''}`,
+    recordId != null ? [recordId] : [],
   );
   let kapanan = 0;
   for (const t of rows || []) {
@@ -397,6 +407,7 @@ async function webSonucTick() {
       }
       if (!s || !s.terminal) continue;
       w.status = s.ok ? 'ok' : s.skip ? 'skip' : 'failed';
+      w.bitti = new Date().toISOString();
       w.message = `is #${w.jobId}: ${s.message || ''}`.slice(0, 500);
       degisti = true;
       kapanan += 1;
@@ -465,6 +476,22 @@ async function webSimdi() {
   }
 }
 
+// CANLI TAZELEME (2026-10-09, kullanici: "isin halihazirda calisip calismadigini daha
+// interaktif gosterelim"): ekran acikken birkac saniyede bir YALNIZ o kaydin vhost islerini
+// baslatir (bekleyen varsa) ve sonuclarini okur. Zamanlayiciyla AYNI kilit: o calisiyorsa
+// bu tur atlanir (ayni vhost icin iki is / ayni listeye iki yazim olmasin).
+async function kayitCanli(recordId) {
+  if (_ticking) return { kilitli: true };
+  _ticking = true;
+  try {
+    const w = await webTick(recordId);
+    const ws = await webSonucTick(recordId);
+    return { kosan: w.kosan, kapanan: ws.kapanan };
+  } finally {
+    _ticking = false;
+  }
+}
+
 function stopPoller() {
   if (_timer) clearInterval(_timer);
   _timer = null;
@@ -473,4 +500,4 @@ function stopPoller() {
   _web = null;
 }
 
-module.exports = { startPoller, stopPoller, tick, webSimdi, pollSaniye: () => Math.round(cfg().intervalMs / 1000), _stopTick: stopTick, _deleteTick: deleteTick, _finalizeTick: finalizeTick, _webTick: webTick, _webSonucTick: webSonucTick };
+module.exports = { startPoller, stopPoller, tick, webSimdi, kayitCanli, pollSaniye: () => Math.round(cfg().intervalMs / 1000), _stopTick: stopTick, _deleteTick: deleteTick, _finalizeTick: finalizeTick, _webTick: webTick, _webSonucTick: webSonucTick };

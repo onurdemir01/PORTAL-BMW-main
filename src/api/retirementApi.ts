@@ -47,6 +47,9 @@ export interface RtWeb2 {
   jobId: number | null;
   awxServerId?: number | null;
   message: string | null;
+  /** Isin baslatildigi / sonucunun okundugu an (ISO). Eski kayitlarda yok. */
+  basladi?: string;
+  bitti?: string;
 }
 export interface RtTarget {
   id: number; recordId: number; host: string; site: string; env: string; appName: string; gen: number | null; appPath: string | null;
@@ -113,6 +116,8 @@ export const retirementApi = {
   discover: (app: string): Promise<RtDiscovery> => fetch(`${BASE}/discover?app=${encodeURIComponent(app)}`).then(safeJson),
   list: (): Promise<{ ok: boolean; records: RtRecordRow[]; message?: string }> => fetch(BASE).then(safeJson),
   get: (id: number): Promise<{ ok: boolean; record: RtRecord; message?: string }> => fetch(`${BASE}/${id}`).then(safeJson),
+  /** Canli durum: bu kaydin vhost islerini baslatir/sonuclandirir ve kaydi dondurur. */
+  canli: (id: number): Promise<{ ok: boolean; record: RtRecord; message?: string; canli?: { kilitli?: boolean; kosan?: number; kapanan?: number; hata?: string } }> => fetch(`${BASE}/${id}/canli`).then(safeJson),
   create: (p: { app: string; smartNo: string; ocoNo?: string; ownerEmail?: string; deleteAfterDays?: number; plannedDeleteAt?: string | null; dnsReuse?: boolean; lbReuse?: boolean; notes?: string; targets?: { host: string; appName: string }[] }): Promise<{ ok: boolean; id: number; record: RtRecord; message?: string }> =>
     fetch(BASE, json(p)).then(safeJson),
   cancel: (id: number, reason: string): Promise<{ ok: boolean; record: RtRecord; message?: string }> => fetch(`${BASE}/${id}/cancel`, json({ reason })).then(safeJson),

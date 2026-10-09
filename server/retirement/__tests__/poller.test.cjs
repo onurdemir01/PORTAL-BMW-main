@@ -357,3 +357,22 @@ test('RP12 TOPLU zamanlanmis STOP: ayni kayit + ayni an TEK is (tek SCC maili); 
   const isNo = yazilan.filter((w) => /SET last_job_id/.test(w.sql)).map((w) => w.params);
   assert.deepEqual(isNo, [[501, 7], [501, 8], [502, 9]], 'toplu isin numarasi her hedefe yazilmadi');
 });
+
+test('RW7 vhost adimi STOP TETIKLENINCE baslar ("stopping" hedef de alinir); canli tazeleme ayni kilidi kullanir', async () => {
+  // Kullanici (2026-10-09): "vhost adimi stop islemi tetiklenir tetiklenmez baslasin"
+  const yazilan = dbKur([['web_result_json LIKE', [webHedef([vhx()])]]]);
+  const sorgular = [];
+  const eski = sahteDb.query;
+  sahteDb.query = async (sql, p) => { sorgular.push(String(sql)); return eski(sql, p); };
+  poller.startPoller(async () => ({}), null, async () => ({ jobId: 77, awxServerId: 2 }));
+  const r = await poller._webTick();
+  poller.stopPoller();
+  sahteDb.query = eski;
+  assert.equal(r.kosan, 1);
+  assert.ok(sorgular.some((q) => /status IN \('stopping', 'stopped'\)/.test(q)), "vhost adimi yalniz 'stopped' hedefte basliyor - STOP bitene kadar bekler");
+  const yeni = JSON.parse(yazilan.find((y) => y.sql.startsWith('UPDATE retirement_targets SET web_result_json')).params[0]);
+  assert.ok(yeni[0].basladi, 'baslama zamani yazilmadi - ekran gecen sureyi gosteremez');
+  const kaynak = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'poller.cjs'), 'utf8');
+  const kc = kaynak.slice(kaynak.indexOf('async function kayitCanli('), kaynak.indexOf('function stopPoller('));
+  assert.match(kc, /if \(_ticking\) return \{ kilitli: true \};/, 'canli tazeleme zamanlayiciyla ayni anda calisabiliyor');
+});

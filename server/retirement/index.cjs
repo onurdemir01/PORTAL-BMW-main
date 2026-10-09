@@ -364,6 +364,21 @@ function initRetirement(app) {
     } catch (err) { res.status(500).json({ ok: false, message: err.message }); }
   });
 
+  // CANLI DURUM (2026-10-09): ekran is surerken birkac saniyede bir cagirir. Bu kaydin bekleyen
+  // vhost islerini baslatir ve suren islerin AWX sonucunu okur (poller.kayitCanli, zamanlayiciyla
+  // ayni kilit), sonra kaydi dondurur. STOP isinin kendisi job-status / zamanlayici ile sonuclanir.
+  router.get('/:id/canli', async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) return res.status(400).json({ ok: false, message: 'Geçersiz kayıt.' });
+    try {
+      let canli;
+      try { canli = await require('./poller.cjs').kayitCanli(id); } catch (e) { canli = { hata: String(e.message || e) }; }
+      const rec = await loadRecord(id);
+      if (!rec) return res.status(400).json({ ok: false, message: 'Kayıt yok.' });
+      res.json({ ok: true, record: rec, canli });
+    } catch (err) { res.status(500).json({ ok: false, message: err.message }); }
+  });
+
   router.get('/:id', async (req, res) => {
     const id = Number(req.params.id);
     if (!Number.isInteger(id)) return res.status(400).json({ ok: false, message: 'Geçersiz kayıt.' });
@@ -485,6 +500,21 @@ function initRetirement(app) {
     const tids = Array.isArray(req.body?.tids) ? req.body.tids.map(Number).filter(Number.isInteger) : [];
     await stopBaslat(req, res, Number(req.params.id), tids, req.body?.confirmed === true);
   });
+
+  async function webHemen() {
+    const poller = require('./poller.cjs');
+    try {
+      const r = await poller.webSimdi();
+      if (!r.kilitli) return r;
+      // Kilitliyse arka planda tekrar dene (en cok ~1 dk); yanit beklemez.
+      let n = 0;
+      const dene = () => poller.webSimdi().then((x) => { if (x.kilitli && ++n < 20) setTimeout(dene, 3000).unref?.(); }).catch(() => {});
+      setTimeout(dene, 3000).unref?.();
+      return r;
+    } catch (e) {
+      return { kosan: 0, hata: String(e.message || e) };
+    }
+  }
 
   async function stopBaslat(req, res, id, tidListesi, confirmed) {
     try {
@@ -617,6 +647,11 @@ function initRetirement(app) {
       for (const h of hedefler)
         await db().query(`UPDATE retirement_targets SET status = $1, last_job_id = $2, updated_at = GETUTCDATE() WHERE id = $3`, [confirmed ? 'stopping' : 'planning', r.jobId, h.id]);
       if (rec.status === 'open' && confirmed) await db().query(`UPDATE retirement_records SET status = 'stopping', updated_at = GETUTCDATE() WHERE id = $1`, [id]);
+      // VHOST ADIMI HEMEN (kullanici 2026-10-09: "stop islemi tetiklenir tetiklenmez baslasin"):
+      // zamanlayicinin turunu beklemeden webTick (hedef artik 'stopping'). Zamanlayici o an
+      // calisiyorsa (kilit) birkac saniye arayla yeniden denenir; o turda zaten baslamis olur.
+      let webBasladi = null;
+      if (confirmed && hedefler.some((h) => (h.web || []).length)) webBasladi = await webHemen();
       await addEvent(id, req.session?.user?.username, confirmed ? 'stop' : 'plan', `${etiket} (${t.env}${coklu ? '' : `, ${t.site}`}) iş #${r.jobId}${coklu ? ` · ${hedefler.length} hedef tek işte` : ''}${notifyScc ? (SCC_MAIL_TO ? ' · SCC maili' : ' · SCC adresi tanımsız!') : ''}`);
       // ON KONTROLDE WEB TRAFIGI TAZELENIR (yalniz on kontrolde, onayli STOP'ta degil).
       // Tarama baslatilamazsa ON KONTROL DUSMEZ: sebep (sablon yok, "Prompt on launch"
@@ -651,7 +686,7 @@ function initRetirement(app) {
       const vhostPlanlar = {};
       if (!confirmed) for (const h of hedefler) if ((h.web || []).length) vhostPlanlar[h.id] = await vhostPlanBaslat(req, id, h.id, h.web);
       const vhostPlan = vhostPlanlar[t.id] || null;
-      res.json({ ok: true, ...r, planOnly: !confirmed, trafikTarama, vhostPlan, vhostPlanlar, tids, sccWarning: notifyScc && !SCC_MAIL_TO ? 'SCC bilgilendirme adresi tanımlı değil (Retirement sayfası › SCC adresi) — SCC maili gönderilmedi.' : null });
+      res.json({ ok: true, ...r, planOnly: !confirmed, trafikTarama, vhostPlan, vhostPlanlar, tids, webBasladi, sccWarning: notifyScc && !SCC_MAIL_TO ? 'SCC bilgilendirme adresi tanımlı değil (Retirement sayfası › SCC adresi) — SCC maili gönderilmedi.' : null });
     } catch (err) { res.status(err.status || 500).json({ ok: false, message: err.message }); }
   }
 
@@ -871,7 +906,10 @@ function initRetirement(app) {
         });
       if (t.status === 'rolling_back')
         return res.status(409).json({ ok: false, message: 'Geri alma işi zaten çalışıyor.' });
-      if (!IZINLI.has(t.status))
+      // YARIM STOP (2026-10-09): vhost adimi artik STOP ile PARALEL basliyor. STOP dustu ama vhost
+      // kalktiysa uygulama calisir ama onune trafik gelmez - geri alma bu durumda da ACIK olmali.
+      const yarimStop = t.status === 'failed' && (t.webSonuc || []).some((w) => w.status === 'ok');
+      if (!IZINLI.has(t.status) && !yarimStop)
         return res.status(400).json({
           ok: false,
           message: `${t.appName} @ ${t.host} durumu "${t.status}" — geri alma yalnızca durdurulmuş (stopped) hedefler için yapılır.`,

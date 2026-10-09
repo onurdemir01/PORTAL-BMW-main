@@ -224,7 +224,8 @@ test('GA12 IPTAL EDILMIS kayitta geri alma HALA mumkun', () => {
   // olmali. 2026-10-08: eski `canAct` degiskeni tek dugmeli akisla retirementAdimi'ya
   // donustu; kontrol ayni niyetle KOSUL METNINE bakar: geri alma blogunun kosulu
   // yalniz hedef durumuna bagli, kaydin iptal durumuna ya da `adim`a DEGIL.
-  const m = TAB_SRC.match(/\{\(t\.status === 'stopped' \|\| t\.status === 'rollback_failed'\)([^\n]*)&& \(/);
+  // 2026-10-09: kosul "yarim STOP"u da kapsiyor (STOP dustu ama paralel vhost adimi kalkti).
+  const m = TAB_SRC.match(/\{\(t\.status === 'stopped' \|\| t\.status === 'rollback_failed' \|\| \(t\.status === 'failed' && [^\n]*?\)\)([^\n]*)&& \(/);
   assert.ok(m, 'geri alma blogunun kosulu bulunamadi');
   assert.ok(!/cancelled|adim|rec\.status/.test(m[1]), `geri alma kosulu kayit/adim kapisina bagli: ${m[1]}`);
   // Dugme BU blogun icinde olmali (ilk "Geri aktif et" gecisi yukaridaki bir yorumda).

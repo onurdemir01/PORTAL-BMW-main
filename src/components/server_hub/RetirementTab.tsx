@@ -13,6 +13,7 @@ import { TableEmptyRow } from '@/components/common/EmptyState';
 import { fmtDate, fmtDateTime } from '@/utils/datetime';
 import RetirementAkis from './RetirementAkis';
 import RetirementDnsIp from './RetirementDnsIp';
+import RetirementCanli, { hedefAktif } from './RetirementCanli';
 import { retirementAdimi } from './retirementAdim';
 import { stopTrafikOzeti, stopOnayAcikMi, type TrafikIsDurumu } from './retirementTrafik';
 import { blokAyristir, bloklaraBol, degisimTuru, jkAyristir, jkDegAyristir, JK_ETIKET, kipAyristir, sonraMetni, sonucAyristir, YORUM_ONEKI, type BlokSatiri, type DegisimTuru, type JkDeg, type JkSatiri, type Kip } from './retirementVhostPlan';
@@ -641,6 +642,16 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
     catch (e: unknown) { setErr(e instanceof Error ? e.message : String(e)); }
   }, [id]);
   useEffect(() => { load(); }, [load]);
+  // CANLI TAZELEME (2026-10-09): suren is ya da bekleyen/suren vhost isi varken 4 sn'de bir /canli
+  // (o uc bekleyen vhost islerini de baslatir ve sonuclarini okur). Is yokken istek atilmaz.
+  const canliGerek = !!rec && rec.targets.some(hedefAktif);
+  useEffect(() => {
+    if (!canliGerek) return;
+    const z = window.setInterval(() => {
+      retirementApi.canli(id).then((r) => { if (r.ok && r.record) setRec(r.record); }).catch(() => {});
+    }, 4000);
+    return () => window.clearInterval(z);
+  }, [canliGerek, id]);
 
   // TEK DUGMELI AKIS (2026-10-08): "Retirement'i baslat" on kontrolu baslatir; on kontrol
   // BASARIYLA bitince onay penceresi KENDILIGINDEN acilir (2. adim). Yalniz bu oturumda
@@ -928,6 +939,7 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
           )}
           {rec.notes && <div className="text-[12px] rounded-lg border px-3 py-2" style={{ borderColor: 'var(--border-subtle)', color: 'var(--text-secondary)' }}>{rec.notes}</div>}
 
+          <RetirementCanli targets={rec.targets} />
           {(() => {
             // TOPLU ARAC CUBUGU: yalniz birden fazla uygun hedef varken. Secilenler TEK iste
             // (sunucu ayni kapilari her hedefte uygular; farkli ortam / ayni sunucu reddedilir).
@@ -1027,7 +1039,8 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
                             </button>
                           </div>
                         )}
-                        {(t.status === 'stopped' || t.status === 'rollback_failed') && !t.deletedAt && (
+                        {/* YARIM STOP: STOP dustu ama vhost (paralel adim) kalktiysa da geri alinabilir. */}
+                        {(t.status === 'stopped' || t.status === 'rollback_failed' || (t.status === 'failed' && (t.webSonuc || []).some((w) => w.status === 'ok'))) && !t.deletedAt && (
                           <div className="flex gap-1 mt-1">
                             <button disabled={busy != null} onClick={() => rollback(t, false)} className={SM_BTN} style={smBtn()} title="Geri alma planı: ne yapılacağını göster, hiçbir şey değişmez"><ClipboardDocumentCheckIcon className="w-3.5 h-3.5" /> Geri alma planı</button>
                             <button disabled={busy != null} onClick={() => setGeriAl({ t })} className={SM_BTN} style={{ ...smBtn(true), background: 'var(--status-ok, #15803d)', borderColor: 'var(--status-ok, #15803d)' }} title="Uygulamayı geri aktif et: paketler geri adlandırılır, auto-start açılır, JVM başlatılır, vhost'lar geri açılır"><ArrowUturnLeftIcon className="w-3.5 h-3.5" /> Geri aktif et</button>
