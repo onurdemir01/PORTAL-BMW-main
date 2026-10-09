@@ -4350,6 +4350,13 @@ async function setupTables() {
       sql: `ALTER TABLE retirement_records ADD delete_now_at DATETIME2 NULL`,
     },
     {
+      // DNS SILME TURU (2026-10-09): ad basina 'intranet' (2523535_Delete_6) / 'internet'
+      // (349792_Delete). Portal TAHMIN ETMEZ, kullanici secer: {"ad": "intranet", ...}.
+      table: 'retirement_records',
+      col: 'dns_turleri_json',
+      sql: `ALTER TABLE retirement_records ADD dns_turleri_json NVARCHAR(MAX) NULL`,
+    },
+    {
       table: 'smart_tickets',
       col: 'cancel_note',
       sql: `ALTER TABLE smart_tickets ADD cancel_note NVARCHAR(1000) NULL`,

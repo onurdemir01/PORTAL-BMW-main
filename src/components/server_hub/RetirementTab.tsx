@@ -12,6 +12,7 @@ import { Modal } from '@/components/common/Modal';
 import { TableEmptyRow } from '@/components/common/EmptyState';
 import { fmtDate, fmtDateTime } from '@/utils/datetime';
 import RetirementAkis from './RetirementAkis';
+import RetirementDnsIp from './RetirementDnsIp';
 import { retirementAdimi } from './retirementAdim';
 import { stopTrafikOzeti, stopOnayAcikMi, type TrafikIsDurumu } from './retirementTrafik';
 import { blokAyristir, bloklaraBol, degisimTuru, jkAyristir, jkDegAyristir, JK_ETIKET, kipAyristir, sonraMetni, sonucAyristir, YORUM_ONEKI, type BlokSatiri, type DegisimTuru, type JkDeg, type JkSatiri, type Kip } from './retirementVhostPlan';
@@ -1054,7 +1055,8 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
               </tbody>
             </table>
           </div>
-          <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>“Retirement'ı başlat” önce sunucuda <b>ön kontrol</b> koşar (hiçbir şey değişmez); başarıyla dönerse dokunulacak dosyalarla birlikte onay penceresi açılır, durdurma ancak orada onaylanınca başlar. PROD hedeflerde ilk STOP'ta SCC'ye bilgilendirme maili gider. Silme adımı (JVM/cluster + content repo + mod_jk/workers temizliği) ve IP/LB/DNS Smart kayıtları bir sonraki sürümde bu ekrana eklenecek.</p>
+          <RetirementDnsIp id={rec.id} app={rec.app} />
+          <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>“Retirement'ı başlat” önce sunucuda <b>ön kontrol</b> koşar (hiçbir şey değişmez); başarıyla dönerse dokunulacak dosyalarla birlikte onay penceresi açılır, durdurma ancak orada onaylanınca başlar. PROD hedeflerde ilk STOP'ta SCC'ye bilgilendirme maili gider. Silinecek DNS'ler ve iade edilecek IP'ler “DNS silme / IP iadesi” bölümünde; o Smart kayıtları ekip tarafından açılır.</p>
 
           <div>
             <div className="text-[11px] font-semibold mb-1" style={{ color: 'var(--text-muted)' }}>Olaylar</div>

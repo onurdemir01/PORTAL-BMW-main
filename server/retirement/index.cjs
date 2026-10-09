@@ -332,6 +332,38 @@ function initRetirement(app) {
     } catch (err) { res.status(500).json({ ok: false, message: err.message }); }
   });
 
+  // ── DNS SILME / IP IADESI (2026-10-09) ────────────────────────────────────────────
+  // Kullanici: "hangi IP'nin iade edilecegi ve hangi DNS'in sildirilecegi guzelce gosterilsin".
+  // Hesap ve kurallar: dns-ip.cjs (vhost IP'sini baska vhost dinliyorsa iade EDILMEZ; DNS turu
+  // tahmin edilmez, kullanici secer). Portal Smart kaydi ACMAZ, yalniz gosterir.
+  const dnsTurleri = (r) => { try { return JSON.parse(r?.dns_turleri_json || '{}') || {}; } catch { return {}; } };
+  router.get('/:id/dns-ip', async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) return res.status(400).json({ ok: false, message: 'Geçersiz kayıt.' });
+    try {
+      const rec = await loadRecord(id);
+      if (!rec) return res.status(400).json({ ok: false, message: 'Kayıt yok.' });
+      const ham = await db().query(`SELECT dns_turleri_json FROM retirement_records WHERE id = $1`, [id]);
+      const ozet = await require('./dns-ip.cjs').dnsIpHesapla(rec, { turler: dnsTurleri(ham.rows?.[0]) });
+      res.json({ ok: true, dnsReuse: rec.dnsReuse, lbReuse: rec.lbReuse, ...ozet });
+    } catch (err) { res.status(500).json({ ok: false, message: err.message }); }
+  });
+  router.put('/:id/dns-tur', async (req, res) => {
+    const id = Number(req.params.id);
+    const ad = String(req.body?.ad || '').trim().toLowerCase();
+    const tur = req.body?.tur === 'intranet' || req.body?.tur === 'internet' ? req.body.tur : null;
+    if (!Number.isInteger(id) || !/^[a-z0-9.-]{1,253}$/.test(ad)) return res.status(400).json({ ok: false, message: 'Geçersiz DNS adı.' });
+    try {
+      const ham = await db().query(`SELECT dns_turleri_json FROM retirement_records WHERE id = $1`, [id]);
+      if (!ham.rows?.length) return res.status(400).json({ ok: false, message: 'Kayıt yok.' });
+      const turler = dnsTurleri(ham.rows[0]);
+      if (tur) turler[ad] = tur; else delete turler[ad];
+      await db().query(`UPDATE retirement_records SET dns_turleri_json = $1, updated_at = GETUTCDATE() WHERE id = $2`, [JSON.stringify(turler), id]);
+      await addEvent(id, req.session?.user?.username, 'dns', `${ad}: DNS türü ${tur || 'seçilmedi'}`);
+      res.json({ ok: true, turler });
+    } catch (err) { res.status(500).json({ ok: false, message: err.message }); }
+  });
+
   router.get('/:id', async (req, res) => {
     const id = Number(req.params.id);
     if (!Number.isInteger(id)) return res.status(400).json({ ok: false, message: 'Geçersiz kayıt.' });

@@ -92,6 +92,20 @@ export interface RtVhostPlan { host: string; serverName: string; confFile: strin
 
 const json = (body: unknown) => ({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 
+/** DNS silme / IP iadesi ozeti (server/retirement/dns-ip.cjs). */
+export type DnsTur = 'intranet' | 'internet';
+export interface RtDnsSatiri {
+  ad: string; vhostlar: { host: string; serverName: string }[];
+  /** DNS'in cozuldugu IPv4'ler (LB VIP); null = cozulemedi (cozumHata). */
+  vip: string[] | null; cozumHata: string | null;
+  /** Bu adi kullanan, bu kayda AIT OLMAYAN vhost'lar -> DNS silinmemeli. */
+  paylasilan: { host: string; serverName: string; confFile: string }[];
+  tur: DnsTur | null; smartAkisi: string | null; durum: 'silinecek' | 'silinmemeli' | 'kalacak';
+}
+export interface RtVipSatiri { ip: string; dnsler: string[]; durum: 'iade' | 'iade_edilmez' | 'kalacak'; sebep: string | null }
+export interface RtVhostIpSatiri { ip: string | null; host: string; vhostlar: string[]; durum: 'iade' | 'iade_edilmez' | 'olculemedi' | 'ozel_ip_yok'; digerleri: string[] }
+export interface RtDnsIp { ok: boolean; message?: string; dnsReuse?: boolean; lbReuse?: boolean; dns: RtDnsSatiri[]; vip: RtVipSatiri[]; vhostIp: RtVhostIpSatiri[]; hubHata?: string | null; taranmayan?: string[] }
+
 export const retirementApi = {
   config: (): Promise<{ ok: boolean; defaultDays: number; sccMailConfigured: boolean; sccMailTo: string | null; smartFlows: Record<string, string>; deleteHour?: number; pollSeconds?: number; sccMailCc?: string | null;
     sccKaynak?: SccKaynak; sccGuncelleyen?: string | null; sccGuncellendi?: string | null; sccDbHatasi?: string | null }> => fetch(`${BASE}/config`).then(safeJson),
@@ -103,6 +117,9 @@ export const retirementApi = {
     fetch(BASE, json(p)).then(safeJson),
   cancel: (id: number, reason: string): Promise<{ ok: boolean; record: RtRecord; message?: string }> => fetch(`${BASE}/${id}/cancel`, json({ reason })).then(safeJson),
   note: (id: number, text: string): Promise<{ ok: boolean; record: RtRecord; message?: string }> => fetch(`${BASE}/${id}/note`, json({ text })).then(safeJson),
+  dnsIp: (id: number): Promise<RtDnsIp> => fetch(`${BASE}/${id}/dns-ip`).then(safeJson),
+  dnsTur: (id: number, ad: string, tur: DnsTur | null): Promise<{ ok: boolean; message?: string }> =>
+    fetch(`${BASE}/${id}/dns-tur`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ad, tur }) }).then(safeJson),
   stop: (id: number, tid: number, confirmed: boolean): Promise<RtLaunch> => fetch(`${BASE}/${id}/targets/${tid}/stop`, json({ confirmed })).then(safeJson),
   /** TOPLU (2026-10-08): secilen hedefler TEK iste (on kontrol ya da onayli STOP); SCC'ye tek mail. */
   stopToplu: (id: number, tids: number[], confirmed: boolean): Promise<RtLaunch> => fetch(`${BASE}/${id}/stop-toplu`, json({ tids, confirmed })).then(safeJson),
