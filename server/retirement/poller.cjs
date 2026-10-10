@@ -102,8 +102,9 @@ async function stopTick(now) {
     const t = alinan[0];
     const hedef = (x) => ({ targetId: x.id, host: x.host, application: x.app_name, gen: x.jboss_gen, appPath: x.app_path });
     const etiket = alinan.length > 1 ? `${t.app_name} @ ${alinan.map((x) => x.host).join(', ')}` : `${t.app_name} @ ${t.host}`;
+    let r;
     try {
-      const r = await _launch('stop', {
+      r = await _launch('stop', {
         recordId: t.record_id,
         ...hedef(t),
         env: t.env,
@@ -111,14 +112,9 @@ async function stopTick(now) {
         ocoNo: t.oco_no,
         hedefler: alinan.length > 1 ? alinan.map(hedef) : undefined,
       });
-      for (const x of alinan)
-        await db.query(`UPDATE retirement_targets SET last_job_id = $1, updated_at = GETUTCDATE() WHERE id = $2`, [r?.jobId ?? null, x.id]);
-      await db.query(`UPDATE retirement_records SET status = 'stopping', updated_at = GETUTCDATE() WHERE id = $1 AND status = 'open'`, [t.record_id]);
-      await olay(t.record_id, 'stop', `${etiket}: kesinti penceresi acildi, STOP isi #${r?.jobId ?? '?'}${alinan.length > 1 ? ` (${alinan.length} hedef tek iste)` : ''}`);
-      kosan += alinan.length;
     } catch (e) {
-      // CLAIM GERI ALINIR: launch dustuyse hedef 'stopping'de kalmamali, yoksa pencere
-      // icinde bir daha denenmez.
+      // YALNIZCA LAUNCH DUSERSE CLAIM GERI ALINIR. AWX isi basladiktan sonra Portal
+      // yazimi duserse geri almak, ayni dis islemi sonraki tick'te ikinci kez baslatir.
       for (const x of alinan)
         await db.query(
           `UPDATE retirement_targets SET status = 'stop_scheduled', result_text = $1, updated_at = GETUTCDATE()
@@ -126,6 +122,24 @@ async function stopTick(now) {
           [`STOP baslatilamadi: ${e.message}`.slice(0, 1000), x.id],
         );
       await olay(t.record_id, 'error', `${etiket}: STOP baslatilamadi — ${e.message}`);
+      continue;
+    }
+    try {
+      for (const x of alinan)
+        await db.query(`UPDATE retirement_targets SET last_job_id = $1, updated_at = GETUTCDATE() WHERE id = $2`, [r?.jobId ?? null, x.id]);
+      await db.query(`UPDATE retirement_records SET status = 'stopping', updated_at = GETUTCDATE() WHERE id = $1 AND status = 'open'`, [t.record_id]);
+      await olay(t.record_id, 'stop', `${etiket}: kesinti penceresi acildi, STOP isi #${r?.jobId ?? '?'}${alinan.length > 1 ? ` (${alinan.length} hedef tek iste)` : ''}`);
+      kosan += alinan.length;
+    } catch (e) {
+      console.error(
+        `[Retirement poller] STOP isi #${r?.jobId ?? '?'} basladi ancak Portal kaydi tamamlanamadi; claim korunuyor:`,
+        e.message,
+      );
+      await olay(
+        t.record_id,
+        'error',
+        `${etiket}: STOP isi #${r?.jobId ?? '?'} basladi ancak Portal kaydi tamamlanamadi — ${e.message}`,
+      );
     }
   }
   return { kosan, gecen };
@@ -156,10 +170,11 @@ async function deleteTick(now) {
       [t.id],
     );
     if (!claim.rowCount) continue;
+    let r;
     try {
       // EKSTRA ONAY YOK ama PLAN DA YOK: kullanici karari "tarih geldiginde is yapilir".
       // plan_only=false dogrudan gider; plan asamasi insan onayi icindi, burada insan yok.
-      const r = await _launch('delete', {
+      r = await _launch('delete', {
         recordId: t.record_id,
         targetId: t.id,
         host: t.host,
@@ -169,6 +184,16 @@ async function deleteTick(now) {
         env: t.env,
         smartNo: t.smart_no,
       });
+    } catch (e) {
+      await db.query(
+        `UPDATE retirement_targets SET status = 'stopped', result_text = $1, updated_at = GETUTCDATE()
+          WHERE id = $2 AND status = 'deleting' AND delete_job_id IS NULL`,
+        [`DELETE baslatilamadi: ${e.message}`.slice(0, 1000), t.id],
+      );
+      await olay(t.record_id, 'error', `${t.app_name} @ ${t.host}: DELETE baslatilamadi — ${e.message}`);
+      continue;
+    }
+    try {
       await db.query(`UPDATE retirement_targets SET delete_job_id = $1, updated_at = GETUTCDATE() WHERE id = $2`, [r?.jobId ?? null, t.id]);
       await olay(
         t.record_id,
@@ -177,12 +202,15 @@ async function deleteTick(now) {
       );
       kosan += 1;
     } catch (e) {
-      await db.query(
-        `UPDATE retirement_targets SET status = 'stopped', result_text = $1, updated_at = GETUTCDATE()
-          WHERE id = $2 AND status = 'deleting' AND delete_job_id IS NULL`,
-        [`DELETE baslatilamadi: ${e.message}`.slice(0, 1000), t.id],
+      console.error(
+        `[Retirement poller] DELETE isi #${r?.jobId ?? '?'} basladi ancak Portal kaydi tamamlanamadi; claim korunuyor:`,
+        e.message,
       );
-      await olay(t.record_id, 'error', `${t.app_name} @ ${t.host}: DELETE baslatilamadi — ${e.message}`);
+      await olay(
+        t.record_id,
+        'error',
+        `${t.app_name} @ ${t.host}: DELETE isi #${r?.jobId ?? '?'} basladi ancak Portal kaydi tamamlanamadi — ${e.message}`,
+      );
     }
   }
   return { kosan };
