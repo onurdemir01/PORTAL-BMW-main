@@ -53,7 +53,7 @@ export interface RtWeb2 {
 }
 export interface RtTarget {
   id: number; recordId: number; host: string; site: string; env: string; appName: string; gen: number | null; appPath: string | null;
-  web: RtWeb[]; status: RtTargetStatus; planText: string | null; resultText: string | null; lastJobId: number | null; stoppedAt: string | null; updatedAt: string;
+  web: RtWeb[]; status: RtTargetStatus; planText: string | null; resultText: string | null; lastJobId: number | null; deleteJobId: number | null; stoppedAt: string | null; updatedAt: string;
   deletedAt: string | null; rolledBackAt: string | null; rollbackJobId: number | null;
   scheduledAt: string | null; windowEnd: string | null;
   /** STOP onayinda DONDURULMUS vhost listesi + her birinin akibeti (akis paneli). */
@@ -146,7 +146,7 @@ export const retirementApi = {
     fetch(`${BASE}/${id}/targets/${tid}/web-retry`, json({})).then(safeJson),
   refreshStatus: (id: number, tid: number): Promise<{
     ok: boolean; degisti?: boolean; from?: string; to?: string; jobId?: number;
-    jobStatus?: string; jobMissing?: boolean; message?: string; record?: RtRecord;
+    jobStatus?: string; jobMissing?: boolean; uncertainLaunch?: boolean; message?: string; record?: RtRecord;
   }> => fetch(`${BASE}/${id}/targets/${tid}/refresh-status`, json({})).then(safeJson),
   /** SCC bilgilendirme adresi (virgulle). Kime BOS -> ekran degeri kalkar, ortam degiskenine dusulur. */
   sccKaydet: (to: string, cc: string): Promise<{ ok: boolean; message?: string; sccMailTo?: string | null; sccMailCc?: string | null; sccKaynak?: SccKaynak; sccGuncelleyen?: string | null; sccGuncellendi?: string | null }> =>

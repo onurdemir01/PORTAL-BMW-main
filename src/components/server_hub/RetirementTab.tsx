@@ -982,6 +982,8 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
                 {rec.targets.map((t) => {
                   const st = TSTATUS[t.status] || { label: t.status, color: 'var(--text-muted)' };
                   const adim = retirementAdimi(t.status, rec.status === 'cancelled' || rec.status === 'deleted');
+                  const isId = t.status === 'deleting' ? t.deleteJobId : t.status === 'rolling_back' ? t.rollbackJobId : t.lastJobId;
+                  const isBelirsiz = ['planning', 'stopping', 'deleting', 'rolling_back'].includes(t.status) && !isId;
                   return (
                     <tr key={t.id} className="border-t" style={{ borderColor: 'var(--border-subtle)' }}>
                       <td className="pl-2.5 py-1.5">
@@ -997,7 +999,7 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
                       <td className="px-2.5 py-1.5">{t.gen ? `JBoss ${t.gen}` : '?'}</td>
                       <td className="px-2.5 py-1.5 text-[10px]">{t.web.length ? t.web.map((w) => <div key={w.host + w.serverName}>{w.host} · {w.serverName}</div>) : <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
                       <td className="px-2.5 py-1.5"><Pill label={st.label} color={st.color} /></td>
-                      <td className="px-2.5 py-1.5 text-[10px]" style={{ color: 'var(--text-secondary)' }}><div className="max-w-[40rem] truncate" title={t.resultText || t.planText || ''}>{t.resultText || t.planText || (t.lastJobId ? `iş #${t.lastJobId}` : '—')}</div></td>
+                      <td className="px-2.5 py-1.5 text-[10px]" style={{ color: isBelirsiz ? 'var(--status-warning)' : 'var(--text-secondary)' }}><div className="max-w-[40rem] truncate" title={t.resultText || t.planText || ''}>{t.resultText || t.planText || (isId ? `iş #${isId}` : isBelirsiz ? 'iş numarası yazılamadı — durum doğrulanamıyor' : '—')}</div></td>
                       <td className="px-2.5 py-1.5">
                         {/* TEK BIRINCIL EYLEM, durumdan turetilir (retirementAdim.ts). */}
                         {adim.tur === 'baslat' && (
