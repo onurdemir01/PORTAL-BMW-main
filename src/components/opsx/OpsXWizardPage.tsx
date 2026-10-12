@@ -20,6 +20,7 @@ import {
 import { useJobTracker } from "@/contexts/JobTrackerContext";
 import { useAuth } from "@/contexts/AuthContext";
 import OpsXSmartConfigModal from "./OpsXSmartConfigModal";
+import KapamaOnayiUyarisi from "@/components/self_service/KapamaOnayiUyarisi";
 import AnsibleLogTerminal from "@/components/common/AnsibleLogTerminal";
 import PlatformStep from "./steps/PlatformStep";
 import AppSearchStep from "./steps/AppSearchStep";
@@ -119,6 +120,11 @@ const OpsXWizardPage: React.FC = () => {
 
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<OpsxRunResult | OpsxDumpLaunchResult | null>(null);
+  // Smart talebi acildiysa sagdaki "Taleplerim" paneline haber ver (2026-10-12): panel Outlet disinda
+  // mount edilir ve kendiliginden yeni talebi ogrenemez.
+  useEffect(() => {
+    if (result && 'pendingApproval' in result && result.pendingApproval) window.dispatchEvent(new CustomEvent("portal:smart-ticket-created"));
+  }, [result]);
   const [trackedJobId, setTrackedJobId] = useState<string | null>(null);
   // Dump akışı restart/stop/start'tan FARKLI: iş bitince indirilecek bir dosya üretir.
   // dumpJob dolu olduğu sürece ayrı bir interval bu bilgiyi (server/opsx/index.cjs
@@ -748,6 +754,7 @@ const OpsXWizardPage: React.FC = () => {
                     <p className="mt-2 text-xs text-amber-600">{result.staleWarning}</p>
                   )}
                 </div>
+                <KapamaOnayiUyarisi smartNo={'externalTicketId' in result ? result.externalTicketId : null} />
               </>
             ) : (
               <>

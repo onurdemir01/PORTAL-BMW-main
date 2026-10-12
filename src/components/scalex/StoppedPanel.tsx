@@ -350,10 +350,12 @@ const StoppedPanel: React.FC<Props> = ({
 
       const parts: string[] = [];
       if (r.launched?.length) parts.push(`${r.launched.length} iş başlatıldı`);
-      if (r.pendingApproval?.length)
+      if (r.pendingApproval?.length) {
         parts.push(
-          `${r.pendingApproval.length} grup için SMART onayı bekleniyor (onay gelince otomatik başlar)`,
+          `${r.pendingApproval.length} grup için SMART talebi açıldı — “Kapama Onayı”nda TAMAMLA’ya basılınca başlar`,
         );
+        window.dispatchEvent(new CustomEvent('portal:smart-ticket-created'));
+      }
       if (r.blocked?.length)
         parts.push(
           `${r.blocked.length} grup başlatılamadı: ${r.blocked.map((b) => `${b.namespace}@${b.cluster} — ${b.message}`).join(' · ')}`,
