@@ -31,6 +31,20 @@ function parseAppName(app) {
   return { base: m[1], env: { D: 'DEV', T: 'TEST', Q: 'QA' }[m[2].toUpperCase()] };
 }
 
+// ORTAM: AD KURALI + ENVANTER (kullanici 2026-10-12: "paket isminden dolayi QA retirement'lari
+// production gibi algilaniyor"). Ad kurali (-D/-T/-Q) yalniz SON EK varsa ortami soyler; eksiz ad
+// eskiden KOSULSUZ PROD sayiliyordu - QA sunucusunda prod ile AYNI paket adiyla calisan uygulama
+// boylece PROD oldu (OCO zorunlu, SCC maili...). Eksiz adda MWAppsInventory.env sutunu kullanilir
+// (envanter job'i HOSTNAME'den turetir: *Q<n> -> QA, *T<n>/*D<n> -> Test, *O<n> -> ODM, *A<n> ->
+// Alpha, aksi halde Production). Son ek varsa o kazanir (sutun D ile T'yi ayirt edemez).
+// Sutun bos/taninmazsa PROD kalir: belirsizlikte guvenli taraf (OCO + SCC kapilari).
+const ENVANTER_ORTAM = { PRODUCTION: 'PROD', PROD: 'PROD', QA: 'QA', TEST: 'TEST', ALPHA: 'ALPHA', ODM: 'ODM', DEV: 'DEV' };
+function hedefOrtami(app, envanterEnv) {
+  const p = parseAppName(app);
+  if (/-[DdTtQq]$/.test(String(app || '').trim())) return p.env;
+  return ENVANTER_ORTAM[String(envanterEnv || '').trim().toUpperCase()] || 'PROD';
+}
+
 function genOf(jbossVersion) {
   const v = String(jbossVersion || '');
   if (/(^|[^0-9])8([^0-9]|$)/.test(v) || /jboss8|eap.?8/i.test(v)) return 8;
@@ -160,7 +174,8 @@ function buildTargets(base, invRows, certRows, jvmRows, vhostRows) {
     const app = String(r.app || '').trim();
     const host = U(r.host);
     if (!app || !host) continue;
-    const { base: b, env } = parseAppName(app);
+    const { base: b } = parseAppName(app);
+    const env = hedefOrtami(app, r.env);
     if (U(b) !== U(base)) continue;
     const key = `${host}|${app}`;
     if (seen.has(key)) continue;
@@ -190,12 +205,12 @@ function buildTargets(base, invRows, certRows, jvmRows, vhostRows) {
       } : null,
     });
   }
-  const order = { PROD: 0, QA: 1, TEST: 2, DEV: 3 };
+  const order = { PROD: 0, QA: 1, TEST: 2, DEV: 3, ALPHA: 4, ODM: 5 };
   targets.sort((a, b) => (order[a.env] ?? 9) - (order[b.env] ?? 9) || a.site.localeCompare(b.site) || a.host.localeCompare(b.host));
   const summary = {
     total: targets.length,
     bySite: { Pendik: targets.filter((t) => t.site === 'Pendik').length, Ankara: targets.filter((t) => t.site === 'Ankara').length },
-    byEnv: Object.fromEntries(['PROD', 'QA', 'TEST', 'DEV'].map((e) => [e, targets.filter((t) => t.env === e).length])),
+    byEnv: Object.fromEntries(['PROD', 'QA', 'TEST', 'DEV', 'ALPHA', 'ODM'].map((e) => [e, targets.filter((t) => t.env === e).length])),
     webMatched: targets.filter((t) => t.web.length).length,
     prod: targets.some((t) => t.env === 'PROD'),
   };
@@ -285,4 +300,4 @@ async function searchApps(q) {
   return [...bases].sort();
 }
 
-module.exports = { buildTargets, discover, searchApps, siteOf, parseAppName, genOf, trafikSinifi };
+module.exports = { buildTargets, discover, searchApps, siteOf, parseAppName, hedefOrtami, genOf, trafikSinifi };

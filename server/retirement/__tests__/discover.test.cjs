@@ -55,3 +55,22 @@ test('RD4: ayni host+app tekrar satirlari tek hedef', () => {
 test('RD5: taban adi farkli olan uygulama disarida', () => {
   assert.equal(buildTargets('CRM', [{ app: 'CRM2', host: 'H' }, { app: 'CRM-Q', host: 'H2' }], [], []).targets.length, 1);
 });
+
+test('RD9 eksiz paket adi QA sunucusundaysa QA (envanter env), PROD DEGIL; son ek varsa o kazanir; belirsizse PROD', () => {
+  // Kullanici (2026-10-12): "paket isminden dolayi QA retirement'lari production gibi algilaniyor"
+  const { hedefOrtami } = require('../discover.cjs');
+  assert.equal(hedefOrtami('GBPAYMENT', 'QA'), 'QA');
+  assert.equal(hedefOrtami('GBPAYMENT', 'Test'), 'TEST');
+  assert.equal(hedefOrtami('GBPAYMENT', 'Production'), 'PROD');
+  assert.equal(hedefOrtami('GBPAYMENT', ''), 'PROD', 'envanter bos iken guvenli taraf PROD olmali');
+  assert.equal(hedefOrtami('GBPAYMENT', 'Uydurma'), 'PROD');
+  assert.equal(hedefOrtami('GBPAYMENT-D', 'Test'), 'DEV', 'son ek envanterden once gelmeli (sutun D/T ayirt edemez)');
+  assert.equal(hedefOrtami('GBPAYMENT-Q', 'Production'), 'QA');
+  const out = buildTargets('GBPAYMENT', [
+    { app: 'GBPAYMENT', host: 'GBJBOQ16', env: 'QA', domain: 'x', jboss_version: '8.0', app_path: '', status: 'running' },
+    { app: 'GBPAYMENT', host: 'GBJBOP16', env: 'Production', domain: 'x', jboss_version: '8.0', app_path: '', status: 'running' },
+  ], [], [], []);
+  const by = Object.fromEntries(out.targets.map((t) => [t.host, t.env]));
+  assert.deepEqual(by, { GBJBOQ16: 'QA', GBJBOP16: 'PROD' });
+  assert.equal(out.summary.byEnv.QA, 1);
+});
