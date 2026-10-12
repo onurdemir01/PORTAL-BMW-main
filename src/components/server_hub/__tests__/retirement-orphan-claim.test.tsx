@@ -3,7 +3,7 @@ import { describe, expect, test } from 'vitest';
 import { screen } from '@testing-library/react';
 import { render } from '@/test/test-utils';
 import type { RtTarget } from '@/api/retirementApi';
-import RetirementCanli from '../RetirementCanli';
+import RetirementCanli, { hedefAktif, hedefTazelenmeli } from '../RetirementCanli';
 
 const hedef = (
   status: RtTarget['status'],
@@ -56,5 +56,13 @@ describe('Retirement orphan claim gorunurlugu', () => {
     render(<RetirementCanli targets={[hedef('stopping')]} />);
     expect(screen.getByRole('alert').textContent).toMatch(/otomatik yeniden başlatılmaz/i);
     expect(screen.queryByText(/JBoss STOP.*çalışıyor/)).toBeNull();
+  });
+
+
+  test('RO4 gecici ID boslugu spinner acmaz ama kayit yenilemesini durdurmaz', () => {
+    const ilk = hedef('stopping');
+    expect(hedefAktif(ilk)).toBe(false);
+    expect(hedefTazelenmeli(ilk)).toBe(true);
+    expect(hedefAktif(hedef('stopping', { lastJobId: 88 }))).toBe(true);
   });
 });

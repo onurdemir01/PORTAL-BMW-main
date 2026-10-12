@@ -13,7 +13,7 @@ import { TableEmptyRow } from '@/components/common/EmptyState';
 import { fmtDate, fmtDateTime } from '@/utils/datetime';
 import RetirementAkis from './RetirementAkis';
 import RetirementDnsIp from './RetirementDnsIp';
-import RetirementCanli, { hedefAktif } from './RetirementCanli';
+import RetirementCanli, { hedefTazelenmeli } from './RetirementCanli';
 import { retirementAdimi } from './retirementAdim';
 import { stopTrafikOzeti, stopOnayAcikMi, type TrafikIsDurumu } from './retirementTrafik';
 import { blokAyristir, bloklaraBol, degisimTuru, jkAyristir, jkDegAyristir, JK_ETIKET, kipAyristir, sonraMetni, sonucAyristir, YORUM_ONEKI, type BlokSatiri, type DegisimTuru, type JkDeg, type JkSatiri, type Kip } from './retirementVhostPlan';
@@ -646,7 +646,7 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
   useEffect(() => { load(); }, [load]);
   // CANLI TAZELEME (2026-10-09): suren is ya da bekleyen/suren vhost isi varken 4 sn'de bir /canli
   // (o uc bekleyen vhost islerini de baslatir ve sonuclarini okur). Is yokken istek atilmaz.
-  const canliGerek = !!rec && rec.targets.some(hedefAktif);
+  const canliGerek = !!rec && rec.targets.some(hedefTazelenmeli);
   useEffect(() => {
     if (!canliGerek) return;
     const z = window.setInterval(() => {

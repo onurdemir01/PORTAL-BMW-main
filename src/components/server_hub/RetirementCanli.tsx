@@ -25,6 +25,11 @@ export function hedefAktif(t: RtTarget): boolean {
   return (GECIS.has(t.status) && !gecisBelirsiz(t)) || (t.webSonuc || []).some((w) => w.status === 'pending' || w.status === 'running');
 }
 
+/** Spinner gercegiyle veri yenilemeyi ayir: claim sonrasi job ID yazimi kisa sure gecikebilir. */
+export function hedefTazelenmeli(t: RtTarget): boolean {
+  return GECIS.has(t.status) || (t.webSonuc || []).some((w) => w.status === 'pending' || w.status === 'running');
+}
+
 function sure(bas?: string | null, bit?: string | null, simdi = Date.now()): string {
   if (!bas) return '';
   const ms = Math.max(0, (bit ? new Date(bit).getTime() : simdi) - new Date(bas).getTime());
