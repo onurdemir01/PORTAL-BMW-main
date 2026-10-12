@@ -625,6 +625,8 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
   // BEKLEMEYI ATLA (admin): silme tarihini bugune ceker; onay icin uygulama adi yazilir.
   // HEDEF BASINA (2026-10-12): hangi sunucunun beklemesi atlanacak.
   const [atlaSor, setAtlaSor] = useState<RtTarget | null>(null);
+  // TOPLU (kayit duzeyi) beklemeyi atla da KALIR (kullanici 2026-10-12: "toplu da kalsin, sunucu bazli da").
+  const [atlaTopluSor, setAtlaTopluSor] = useState(false);
   const [atlaAd, setAtlaAd] = useState('');
   // Zamanlayici araligi bilgilendirme metni icin (sunucu ayari; okunamazsa genel metin).
   const [cfgSaat, setCfgSaat] = useState<{ poll: number | null }>({ poll: null });
@@ -829,6 +831,14 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
   // Poller tabanli sonuclandirma uzun sure bozuktu (6177b4e) ve onyuz yoklamasi yalniz
   // ekranda bekleyen biri varken kosuyor; hedef 'stopping'de kalinca EKRANDA HICBIR
   // DUGME KALMIYORDU (kullanici bulgusu 2026-10-08: "dokunamiyorum").
+  const beklemeyiTopluAtla = async () => {
+    if (!rec) return;
+    const r = await retirementApi.deleteNow(id, atlaAd);
+    if (!r.ok) { toast.error(r.message || 'Silme tarihi çekilemedi.'); return; }
+    setAtlaTopluSor(false); setAtlaAd('');
+    if (r.record) setRec(r.record);
+    toast.success(`Silme tarihi bugüne çekildi. Zamanlayıcı en geç ~${Math.ceil((r.pollSaniye || 300) / 60)} dk içinde ${r.hedefSayisi} hedefi silecek — Olaylar ve hedef durumunu izleyin.`);
+  };
   const beklemeyiAtla = async () => {
     if (!rec || !atlaSor) return;
     const t = atlaSor;
@@ -927,7 +937,10 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
             <div className="rounded-lg border px-3 py-2" style={{ borderColor: 'var(--border-subtle)' }}><div className="text-[10px] uppercase" style={{ color: 'var(--text-muted)' }}>Durum</div><Pill {...(RSTATUS[rec.status] || { label: rec.status, color: 'var(--text-muted)' })} /></div>
             <div className="rounded-lg border px-3 py-2" style={{ borderColor: 'var(--border-subtle)' }}><div className="text-[10px] uppercase" style={{ color: 'var(--text-muted)' }}>Stop</div>{rec.stopAt ? fmtDateTime(rec.stopAt) : '—'} <span style={{ color: 'var(--text-muted)' }}>({rec.targets.filter((t) => t.status === 'stopped').length}/{rec.targets.length})</span></div>
             <div className="rounded-lg border px-3 py-2" style={{ borderColor: 'var(--border-subtle)' }}><div className="text-[10px] uppercase" style={{ color: 'var(--text-muted)' }}>Silme tarihi</div>{rec.effectiveDeleteAt ? `${fmtDate(rec.effectiveDeleteAt)} ${rec.deleteAt?.saat || '23:00'}` : `stop + ${rec.deleteAfterDays} gün, ${rec.deleteAt?.saat || '23:00'}`}{rec.plannedDeleteAt ? <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}> (açan belirledi)</span> : null}
-              {/* BEKLEMEYI ATLA artik HEDEF BASINA (2026-10-12): her durdurulmus hedefin satirinda. */}
+              {/* BEKLEMEYI ATLA: TOPLU (tum durdurulmus hedefler) burada; SUNUCU BAZLI her hedefin satirinda. */}
+              {rec.status !== 'cancelled' && rec.status !== 'deleted' && rec.targets.some((t) => t.status === 'stopped' && !t.deletedAt) && (
+                <div><button onClick={() => { setAtlaAd(''); setAtlaTopluSor(true); }} className="text-[10px] underline decoration-dotted" style={{ color: 'var(--status-danger)' }} title="Admin: kaydın silme tarihini bugüne çek — TÜM durdurulmuş hedefler ilk zamanlayıcı turunda silinir">beklemeyi atla — tümü (admin)</button></div>
+              )}
             </div>
             <div className="rounded-lg border px-3 py-2" style={{ borderColor: 'var(--border-subtle)' }}><div className="text-[10px] uppercase" style={{ color: 'var(--text-muted)' }}>SCC / DNS / LB</div>{rec.sccNotifiedAt ? 'SCC bilgilendirildi' : 'SCC bekliyor'} · DNS {rec.dnsReuse ? 'kalacak' : 'silinecek'} · LB {rec.lbReuse ? 'kalacak' : 'silinecek'}</div>
           </div>
@@ -1178,6 +1191,36 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
       {/* IPTAL ONAYI (2026-10-08). Kullanici "iptal ettim ama geri donmedi" dedi; iptalin
           NE YAPTIGI ve NE YAPMADIGI burada yazili, ve geri getirme AYNI pencereden
           tetiklenebiliyor - sessiz bir varsayim kalmiyor. */}
+      {atlaTopluSor && rec && (() => {
+        const hazir = rec.targets.filter((t) => t.status === 'stopped' && !t.deletedAt);
+        const prod = hazir.some((t) => t.env === 'PROD');
+        return (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,.45)' }} onClick={() => setAtlaTopluSor(false)}>
+            <div className="w-full max-w-lg rounded-2xl border p-5 space-y-3" style={{ background: 'var(--bg-surface)', borderColor: 'var(--status-danger)' }} onClick={(e) => e.stopPropagation()}>
+              <div className="text-sm font-semibold">Beklemeyi atla (TÜM hedefler) — {rec.app}</div>
+              <div className="text-[12px] space-y-1.5" style={{ color: 'var(--text-secondary)' }}>
+                <p>Kaydın silme tarihi <b>bugüne</b> çekilir ({rec.effectiveDeleteAt ? fmtDate(rec.effectiveDeleteAt) : 'belirsiz'} → bugün) ve 23:00 saati beklenmez: aşağıdaki <b>tüm</b> durdurulmuş hedefler zamanlayıcının ilk turunda (en geç birkaç dakika) silinir. Yalnız bir sunucu için satırdaki “beklemeyi atla”yı kullanın.</p>
+                <p style={{ color: 'var(--status-danger)' }}><b>DELETE GERİ ALINAMAZ:</b> paketler silinir, server-config ve (boş kalırsa) server-group kaldırılır. Bundan sonra “Geri aktif et” çalışmaz; dönüş yalnız yedekten.</p>
+              </div>
+              <div className="text-[11px] rounded-lg border px-3 py-2" style={{ borderColor: 'var(--border-subtle)' }}>
+                <div className="font-semibold mb-0.5">Silinecek {hazir.length} hedef</div>
+                {hazir.map((t) => <div key={t.id} className="font-mono">{t.appName} @ {t.host} <b style={{ color: t.env === 'PROD' ? 'var(--status-danger)' : undefined }}>{t.env}</b></div>)}
+              </div>
+              {prod && <div className="text-[12px] font-semibold" style={{ color: 'var(--status-danger)' }}>Listede PROD hedef var.</div>}
+              <label className="block text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                Onay için uygulama adını aynen yazın: <span className="font-mono">{rec.app}</span>
+                <input value={atlaAd} onChange={(e) => setAtlaAd(e.target.value)} className={`${INPUT} mt-1 font-mono`} style={inputStyle} autoFocus />
+              </label>
+              <div className="flex justify-end gap-2">
+                <button onClick={() => setAtlaTopluSor(false)} className={SM_BTN} style={smBtn()}>Kapat</button>
+                <button disabled={atlaAd.trim() !== rec.app} onClick={beklemeyiTopluAtla} className={SM_BTN} style={{ ...smBtn(true), background: 'var(--status-danger)', borderColor: 'var(--status-danger)', opacity: atlaAd.trim() !== rec.app ? 0.5 : 1 }}>
+                  Tüm hedeflerin beklemesini atla
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
       {atlaSor && rec && (() => {
         const t = atlaSor;
         return (
