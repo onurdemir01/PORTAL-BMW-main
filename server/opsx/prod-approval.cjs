@@ -312,6 +312,18 @@ async function opsxProductionKapisi({
     console.warn('[OpsX] survey varsayilanlari doldurulamadi:', e.message);
   }
 
+  // SABLON BAGLAMI (2026-10-09, kullanici: "job type degiskeni jobdan gelmeli"; hata: JOBTYPE
+  // {{extraVars.job_type}} bos). Talep isten ONCE acildigi icin elde yalniz gonderilen degerler +
+  // ZORUNLU survey varsayilanlari vardi. Sablon artik AWX template'inde TANIMLI her degeri de gorur
+  // (Variables kutusu + zorunlu olmayan survey varsayilanlari). Yalniz metadata icin; AWX'e giden
+  // extra_vars DEGISMEZ. Okunamazsa eski davranis (uyari loglanir).
+  let sablonVarsayilan = {};
+  try {
+    sablonVarsayilan = await runner.getTemplateVariableDefaultsOnServer(serverId, templateId);
+  } catch (e) {
+    console.warn('[OpsX] template degiskenleri okunamadi (Smart sablonu yalniz gonderilen degerleri gorur):', e.message);
+  }
+
   const user = req?.session?.user || {};
   const gates = require('../ansible/change-gates.cjs');
   let opened;
@@ -342,7 +354,11 @@ async function opsxProductionKapisi({
           ...ozet,
         };
         if (!String(metadataFieldsRaw || '').trim()) return opsxOzet;
-        return require('../smart/metadata.cjs').buildSmartMetadata(metadataFieldsRaw, { ...ctx, opsx: opsxOzet });
+        return require('../smart/metadata.cjs').buildSmartMetadata(metadataFieldsRaw, {
+          ...ctx,
+          extraVars: { ...sablonVarsayilan, ...(ctx?.extraVars || {}) },
+          opsx: opsxOzet,
+        });
       },
       auditAction: 'opsx_prod_smart_ticket_open',
       req,
