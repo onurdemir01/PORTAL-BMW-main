@@ -40,6 +40,8 @@ describe('Retirement orphan claim gorunurlugu', () => {
     render(<RetirementCanli targets={[hedef('deleting')]} />);
     expect(screen.getByRole('alert').textContent).toMatch(/başlangıç sonucu doğrulanamıyor/i);
     expect(screen.queryByText(/Silme.*çalışıyor/)).toBeNull();
+    expect(screen.queryByText(/AWX işi başlatılıyor/i)).toBeNull();
+    expect(screen.queryByRole('list', { name: /Silme adımları/i })).toBeNull();
   });
 
   test('RO2 DELETE job ID varsa is numarasi gosterilir; AWX durumu uydurulmaz', () => {
