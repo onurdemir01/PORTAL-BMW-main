@@ -240,7 +240,7 @@ const WasJvmDiscovery: React.FC<Props & { onRefresh: () => void }> = ({ app, hos
           </span>
         </div>
       ) : (
-        <div className="space-y-1.5 max-h-80 overflow-y-auto" role="radiogroup" aria-label="WAS JVM seçimi">
+        <div className="space-y-1.5 max-h-[70vh] overflow-y-auto" role="radiogroup" aria-label="WAS JVM seçimi">
           {targets.map((t) => {
             const k = wasTargetKey(t);
             const env = envOf.get(t.host) || "";
@@ -261,10 +261,10 @@ const WasJvmDiscovery: React.FC<Props & { onRefresh: () => void }> = ({ app, hos
                     disabled={busy || !t.selectable}
                   />
                   <span className="flex-1 min-w-0">
-                    <span className="block text-sm font-mono text-[var(--text-primary)] truncate">
+                    <span className="block text-sm font-mono text-[var(--text-primary)] break-all whitespace-normal">
                       {t.host} · {t.server}
                     </span>
-                    <span className="block text-[10px] text-[var(--text-muted)] truncate">
+                    <span className="block text-[10px] text-[var(--text-muted)] break-all whitespace-normal">
                       {t.profile} · {t.node}
                       {t.cluster ? ` · ${wasClusterLabel(t.cluster)}` : ""}
                       {t.peers.total > 0 ? ` · diğer örnekler: ${t.peers.running}/${t.peers.total} çalışıyor` : ""}

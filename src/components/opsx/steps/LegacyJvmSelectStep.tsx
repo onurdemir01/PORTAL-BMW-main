@@ -204,7 +204,7 @@ const LegacyJvmSelectStep: React.FC<{
         </div>
       )}
 
-      <div className="space-y-3 max-h-80 overflow-y-auto">
+      <div className="space-y-3 max-h-[70vh] overflow-y-auto">
         {Object.keys(grouped).sort().map((host) => (
           <div key={host}>
             <label className="text-xs font-medium text-[var(--text-secondary)]">{host}</label>
@@ -225,7 +225,7 @@ const LegacyJvmSelectStep: React.FC<{
                       className="rounded"
                     />
                     <span className="text-xs text-[var(--text-muted)] font-mono flex-shrink-0">PID {j.pid}</span>
-                    <span className="flex-1 text-sm text-[var(--text-primary)] font-mono truncate" title={j.cmd}>{j.cmd}</span>
+                    <span className="flex-1 text-sm text-[var(--text-primary)] font-mono break-all whitespace-normal" title={j.cmd}>{j.cmd}</span>
                     <span
                       className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border flex-shrink-0 ${
                         known ? "bg-gray-50 text-gray-500 border-gray-200" : "bg-red-50 text-red-700 border-red-100"

@@ -3,10 +3,14 @@ import { safeJson } from './http';
 
 const BASE = '/api/retirement';
 
-export interface RtWeb { host: string; serverName: string; product: string; port: string; confFile: string; trafik?: RtVhostTrafik }
+export interface RtWeb { host: string; serverName: string; product: string; port: string; confFile: string; trafik?: RtVhostTrafik;
+  /** Nasil bulundu (2026-10-12): 'ad' = ServerName eslesmesi, 'ajp' = vhost'un mod_jk/proxy hedefi JVM portu, 'ad+ajp' = ikisi. */
+  kaynak?: 'ad' | 'ajp' | 'ad+ajp'; ajpHedef?: string }
 export interface RtDiscoveredTarget {
   host: string; site: 'Pendik' | 'Ankara'; env: 'PROD' | 'QA' | 'TEST' | 'DEV'; appName: string; gen: number | null;
   appPath: string; inventoryStatus: string; domain: string; tier: string; web: RtWeb[]; webHow: string;
+  /** Web vhost'u bulunamadiysa uyari metni (denenen web sunuculari ile); bulunduysa null. */
+  webUyari?: string | null;
   // runningKnown (sozlesme v3) = running_src !== 'UNMEASURED'; alan yoksa (eski sunucu) bilinen sayilir.
   hub: { running: boolean; autoStart: string; scanDate: string | null; runningSrc?: string | null; runningKnown?: boolean | null } | null;
 }
@@ -55,6 +59,8 @@ export interface RtTarget {
   id: number; recordId: number; host: string; site: string; env: string; appName: string; gen: number | null; appPath: string | null;
   web: RtWeb[]; status: RtTargetStatus; planText: string | null; resultText: string | null; lastJobId: number | null; deleteJobId: number | null; stoppedAt: string | null; updatedAt: string;
   deletedAt: string | null; rolledBackAt: string | null; rollbackJobId: number | null;
+  /** Hedef basina "beklemeyi atla" (admin): doluysa ilk zamanlayici turunda silinir. */
+  deleteNowAt?: string | null;
   scheduledAt: string | null; windowEnd: string | null;
   /** STOP onayinda DONDURULMUS vhost listesi + her birinin akibeti (akis paneli). */
   webSonuc: RtWeb2[] | null;
@@ -75,6 +81,10 @@ export interface RtRecord {
   targets: RtTarget[]; events: { id: number; at: string; username: string | null; kind: string; text: string | null }[];
 }
 /** Kaydin ortam kirilimi: kayit TABAN adla tutulur, ortam hedeflerden gelir. */
+/** Zamanlayici durumu (kuyruk gorunumu): son/sonraki tur ani, tur araligi. */
+export interface RtZamanlayici { calisiyor: boolean; aralikSn: number; sonTurAt: string | null; sonrakiTurAt: string | null; turSuruyor: boolean }
+/** Suren JBoss isinin son okunan AWX durumu (hedef id -> is). `status` yoksa henuz okunmadi. */
+export type RtIsler = Record<number, { jobId: number; status?: string; at?: string }>;
 export interface RtRecordEnv { env: string; toplam: number; durdurulan: number; silinen: number; uygulamalar: string[] }
 export interface RtRecordRow extends Omit<RtRecord, 'targets' | 'events'> { targets: number; stopped: number; envs?: RtRecordEnv[] }
 /** SCC adresinin kaynagi: ekrandan girildi / Portal ortam degiskeni / hic yok. */
@@ -115,9 +125,9 @@ export const retirementApi = {
   apps: (q: string): Promise<{ ok: boolean; apps: string[] }> => fetch(`${BASE}/apps?q=${encodeURIComponent(q)}`).then(safeJson),
   discover: (app: string): Promise<RtDiscovery> => fetch(`${BASE}/discover?app=${encodeURIComponent(app)}`).then(safeJson),
   list: (): Promise<{ ok: boolean; records: RtRecordRow[]; message?: string }> => fetch(BASE).then(safeJson),
-  get: (id: number): Promise<{ ok: boolean; record: RtRecord; message?: string }> => fetch(`${BASE}/${id}`).then(safeJson),
+  get: (id: number): Promise<{ ok: boolean; record: RtRecord; message?: string; zamanlayici?: RtZamanlayici; isler?: RtIsler }> => fetch(`${BASE}/${id}`).then(safeJson),
   /** Canli durum: bu kaydin vhost islerini baslatir/sonuclandirir ve kaydi dondurur. */
-  canli: (id: number): Promise<{ ok: boolean; record: RtRecord; message?: string; canli?: { kilitli?: boolean; kosan?: number; kapanan?: number; hata?: string } }> => fetch(`${BASE}/${id}/canli`).then(safeJson),
+  canli: (id: number): Promise<{ ok: boolean; record: RtRecord; message?: string; canli?: { kilitli?: boolean; kosan?: number; kapanan?: number; hata?: string }; zamanlayici?: RtZamanlayici; isler?: RtIsler }> => fetch(`${BASE}/${id}/canli`).then(safeJson),
   create: (p: { app: string; smartNo: string; ocoNo?: string; ownerEmail?: string; deleteAfterDays?: number; plannedDeleteAt?: string | null; dnsReuse?: boolean; lbReuse?: boolean; notes?: string; targets?: { host: string; appName: string }[] }): Promise<{ ok: boolean; id: number; record: RtRecord; message?: string }> =>
     fetch(BASE, json(p)).then(safeJson),
   cancel: (id: number, reason: string): Promise<{ ok: boolean; record: RtRecord; message?: string }> => fetch(`${BASE}/${id}/cancel`, json({ reason })).then(safeJson),
@@ -154,6 +164,9 @@ export const retirementApi = {
   /** ADMIN: beklemeyi atla. DELETE'i BASLATMAZ; silme tarihini bugune ceker, silmeyi her
    *  zamanki zamanlayici yakalar (bekleme yolu boylece sinanir). `confirmApp` = kayit
    *  uygulama adi, AYNEN. */
+  /** HEDEF BASINA beklemeyi atla (admin): yalniz bu hedef ilk zamanlayici turunda silinir. */
+  deleteNowTarget: (id: number, tid: number, confirmApp: string): Promise<{ ok: boolean; message?: string; pollSaniye?: number; record?: RtRecord }> =>
+    fetch(`${BASE}/${id}/targets/${tid}/delete-now`, json({ confirmApp })).then(safeJson),
   deleteNow: (id: number, confirmApp: string): Promise<{ ok: boolean; message?: string; oncekiTarih?: string | null; hedefSayisi?: number; pollSaniye?: number; record?: RtRecord }> =>
     fetch(`${BASE}/${id}/delete-now`, json({ confirmApp })).then(safeJson),
   jobStatus: (id: number, tid: number, awxServerId: number, jobId: number): Promise<{ ok: boolean; status: string; output: string; result?: unknown; message?: string;

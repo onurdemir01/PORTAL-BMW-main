@@ -61,6 +61,10 @@ const SMART_DEFAULTS = Object.freeze({
 // icerebiliyor (or. "rff-request-flow.v1"). Yine de serbest metin degil - uzunluk ve
 // satir sonu siniri var, cunku bu deger bir dis servise URL/gövde icinde gidiyor.
 const SMART_KEY_RE = /^[A-Za-z0-9._:-]{1,200}$/;
+// ENTEGRASYON ANAHTARI (RFF token) AYRI DESEN (kullanici 2026-10-12: "= karakteri de gecerli
+// olmali"): token'lar base64 olabiliyor ('=' dolgusu, '+', '/'). Deger HTTP basligina
+// ('rff-request-token') gider; bosluk ve satir sonu yine YASAK (baslik enjeksiyonu olmasin).
+const SMART_TOKEN_RE = /^[A-Za-z0-9._:~+/=-]{1,512}$/;
 
 const SMART_METADATA_MAX = 20000;
 
@@ -183,7 +187,7 @@ function normalizeSmartPlatform(raw, onceki = SMART_DEFAULTS) {
     }
     if (typeof raw.integrationKey === 'string') {
       const v = raw.integrationKey.trim();
-      if (v !== '') out.integrationKey = SMART_KEY_RE.test(v) ? v : out.integrationKey;
+      if (v !== '') out.integrationKey = SMART_TOKEN_RE.test(v) ? v : out.integrationKey;
     }
   }
   return out;
@@ -273,7 +277,7 @@ async function saveSmartConfig(input) {
       reddedilen.push(`${p}.flowKey`);
     }
     const ik = input?.[p]?.integrationKey;
-    if (typeof ik === 'string' && ik.trim() !== '' && !SMART_KEY_RE.test(ik.trim())) {
+    if (typeof ik === 'string' && ik.trim() !== '' && !SMART_TOKEN_RE.test(ik.trim())) {
       reddedilen.push(`${p}.integrationKey`);
     }
   }
@@ -327,5 +331,5 @@ module.exports = {
   getConfig, saveConfig, invalidate, parseExtraVarLines,
   saveSmartConfig, smartPublic, normalizeSmart,
   DEFAULTS, KEY_FIELDS, CLUSTER_LIST_STYLES, BLOB_NAME,
-  SMART_PLATFORMS, SMART_DEFAULTS, SMART_KEY_RE, SMART_METADATA_MAX,
+  SMART_PLATFORMS, SMART_DEFAULTS, SMART_KEY_RE, SMART_TOKEN_RE, SMART_METADATA_MAX,
 };

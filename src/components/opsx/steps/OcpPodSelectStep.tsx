@@ -217,7 +217,7 @@ const OcpPodSelectStep: React.FC<{
         className="w-full px-3 py-2 text-sm border border-[var(--border)] rounded-xl outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)] transition"
       />
 
-      <div className="space-y-3 max-h-72 overflow-y-auto">
+      <div className="space-y-3 max-h-[70vh] overflow-y-auto">
         {Object.keys(grouped).length === 0 ? (
           <p className="text-xs text-[var(--text-muted)] px-2 py-3 text-center">Aramayla eşleşen pod yok.</p>
         ) : Object.keys(grouped).sort().map((label) => (
@@ -236,7 +236,7 @@ const OcpPodSelectStep: React.FC<{
                     disabled={busy}
                     className="rounded"
                   />
-                  <span className="flex-1 text-sm text-[var(--text-primary)] font-mono truncate" title={p.name}>{p.name}</span>
+                  <span className="flex-1 text-sm text-[var(--text-primary)] font-mono break-all whitespace-normal" title={p.name}>{p.name}</span>
                   <span className="text-[10px] text-[var(--text-muted)] font-mono">{p.ready}</span>
                   <span
                     className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${

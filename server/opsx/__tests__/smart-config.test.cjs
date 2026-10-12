@@ -399,3 +399,12 @@ test('SC18 kapi ETKINken onaysiz GECMEZ (SC17 ters yonu)', async () => {
     if (kayitliGa) require.cache[gaPath] = kayitliGa; else delete require.cache[gaPath];
   }
 });
+
+test('SC12 entegrasyon anahtari base64 olabilir (= + / gecerli); bosluk ve satir sonu YASAK', async () => {
+  // Kullanici (2026-10-12): "= karakteri de gecerli olmali"
+  const cfg = require('../config.cjs');
+  for (const ok of ['QUJDREVGRw==', 'a+b/c=', 'rff-token.v1:abc_DEF~']) assert.equal(cfg.SMART_TOKEN_RE.test(ok), true, `gecerli token reddedildi: ${ok}`);
+  for (const kotu of ['abc def', 'abc\nX-Header: y', 'abc\r', '', 'a'.repeat(513)]) assert.equal(cfg.SMART_TOKEN_RE.test(kotu), false, `gecersiz token kabul edildi: ${JSON.stringify(kotu)}`);
+  // Flow key deseni GEVSEMEDI
+  assert.equal(cfg.SMART_KEY_RE.test('abc='), false, 'flow key deseni de gevsedi');
+});

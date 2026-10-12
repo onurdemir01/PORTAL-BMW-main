@@ -7,7 +7,7 @@ import RetirementCanli, { hedefAktif, hedefTazelenmeli } from '../RetirementCanl
 
 const hedef = (
   status: RtTarget['status'],
-  jobs: Partial<Pick<RtTarget, 'lastJobId' | 'deleteJobId' | 'rollbackJobId'>> = {},
+  overrides: Partial<RtTarget> = {},
 ): RtTarget => ({
   id: 7,
   recordId: 3,
@@ -32,7 +32,7 @@ const hedef = (
   windowEnd: null,
   webSonuc: null,
   detail: null,
-  ...jobs,
+  ...overrides,
 });
 
 describe('Retirement orphan claim gorunurlugu', () => {
@@ -42,13 +42,14 @@ describe('Retirement orphan claim gorunurlugu', () => {
     expect(screen.queryByText(/Silme.*çalışıyor/)).toBeNull();
   });
 
-  test('RO2 DELETE job ID varsa gercek is numarasiyla calisiyor gosterilir', () => {
+  test('RO2 DELETE job ID varsa is numarasi gosterilir; AWX durumu uydurulmaz', () => {
     render(<RetirementCanli targets={[hedef('deleting', { deleteJobId: 77 })]} />);
     expect(
       screen.getByText(
-        (_, el) => el?.tagName === 'SPAN' && /Silme.*çalışıyor.*iş #77/.test(el.textContent || ''),
+        (_, el) => el?.tagName === 'SPAN' && /Silme.*iş #77.*AWX durumu okunuyor/.test(el.textContent || ''),
       ),
     ).toBeTruthy();
+    expect(screen.queryByText(/Silme.*çalışıyor/)).toBeNull();
     expect(screen.queryByRole('alert')).toBeNull();
   });
 
@@ -64,5 +65,7 @@ describe('Retirement orphan claim gorunurlugu', () => {
     expect(hedefAktif(ilk)).toBe(false);
     expect(hedefTazelenmeli(ilk)).toBe(true);
     expect(hedefAktif(hedef('stopping', { lastJobId: 88 }))).toBe(true);
+    expect(hedefTazelenmeli(hedef('stopped', { deleteNowAt: '2026-10-12T12:00:00Z' }))).toBe(true);
+    expect(hedefTazelenmeli(hedef('stopped'), '2026-10-12T12:00:00Z')).toBe(true);
   });
 });

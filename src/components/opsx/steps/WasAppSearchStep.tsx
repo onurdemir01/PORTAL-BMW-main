@@ -124,7 +124,7 @@ const WasHostPicker: React.FC<{
         </div>
       )}
 
-      <div className="max-h-72 overflow-y-auto border border-[var(--border)] rounded-xl divide-y divide-[var(--border)]">
+      <div className="max-h-[70vh] overflow-y-auto border border-[var(--border)] rounded-xl divide-y divide-[var(--border)]">
         {hosts.map((h) => (
           <div
             key={h.host}
@@ -141,7 +141,7 @@ const WasHostPicker: React.FC<{
                 className="rounded"
               />
             )}
-            <span className="flex-1 text-sm font-mono text-[var(--text-primary)] truncate" title={h.host}>
+            <span className="flex-1 text-sm font-mono text-[var(--text-primary)] break-all whitespace-normal" title={h.host}>
               {h.host}
             </span>
             <WasEnvBadge env={h.env} />
@@ -224,7 +224,7 @@ const WasAppSearchStep: React.FC<{ busy?: boolean; onSubmit: (v: WasAppSelection
       {truncated && (
         <p className="text-xs text-amber-700">Liste kırpıldı — aradığınız uygulamayı görmüyorsanız aramayı daraltın.</p>
       )}
-      <div className="max-h-72 overflow-y-auto border border-[var(--border)] rounded-xl divide-y divide-[var(--border)]">
+      <div className="max-h-[70vh] overflow-y-auto border border-[var(--border)] rounded-xl divide-y divide-[var(--border)]">
         {loading ? (
           <p className="text-sm text-[var(--text-muted)] text-center py-6">Aranıyor...</p>
         ) : apps.length === 0 ? (

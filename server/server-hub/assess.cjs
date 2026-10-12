@@ -28,7 +28,7 @@
 //   Olculemedi != yok: -1 / UNREADABLE / UNVERIFIED trafik "0 istek" SAYILMAZ.
 'use strict';
 
-const { webHostOf, matchWebForApp } = require('../audit/web-app.cjs');
+const { webHostAdaylari, matchWebForApp } = require('../audit/web-app.cjs');
 const { siteOf } = require('../retirement/discover.cjs');
 const { maskText, maskJvmArgs, maskJvmArgDiff } = require('./mask.cjs');
 
@@ -892,8 +892,8 @@ function assess(data, opts = {}) {
       // incelenmiyordu (NONE guvenli sunucu kanitsiz "7 gundur istek yok" uretebilirdi).
       const gate = new Set([U(h.host)]);
       for (const m of j.vhosts) gate.add(U(shortHost(m.host)));
-      const wh = webHostOf(h.host);
-      if (wh) gate.add(U(shortHost(wh)));
+      // TUM 3-tier adaylari (A->W ve son harf P, 2026-10-12): kapi kumesi genisledikce daha temkinli.
+      for (const wh of webHostAdaylari(h.host)) gate.add(U(shortHost(wh)));
       if (j.webMatch && j.webMatch.webHost) gate.add(U(shortHost(j.webMatch.webHost)));
       j.gateHosts = [...gate];
       j.trustBad = j.gateHosts.some((n) => {

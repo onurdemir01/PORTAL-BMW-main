@@ -202,3 +202,15 @@ test('TD14 yeniden deneme ONIZLEMESI: yalniz failed/skip vhost planlanir, HICBIR
   assert.match(ep, /if \(t\.status !== 'stopped'\)/);
   assert.ok(!/UPDATE retirement_targets/.test(ep), 'onizleme web listesini DEGISTIRIYOR - kapatma onaysiz kuyruga girebilir');
 });
+
+test('TD15 HEDEF BASINA /delete-now: DELETE baslatmaz, yalniz o hedefi isaretler; onay + durdurulmus kontrolu yazimdan ONCE', () => {
+  const ep = ucDilimi("router.post('/:id/targets/:tid/delete-now'", "router.post('/:id/note'");
+  assert.ok(!/launch\(|_launch\(|deleteTick\(/.test(ep), 'uc DELETE isini kendisi baslatiyor');
+  const yazim = ep.indexOf('UPDATE retirement_targets SET delete_now_at = GETUTCDATE()');
+  assert.ok(yazim > 0, 'hedef isaretlenmiyor');
+  assert.ok(!/UPDATE retirement_records/.test(ep), 'kayit duzeyinde tarih cekiliyor - TUM hedefler silinir');
+  const ad = ep.indexOf("String(req.body?.confirmApp ?? '').trim() !== t.appName");
+  const hazir = ep.indexOf("t.status !== 'stopped' || t.deletedAt");
+  assert.ok(ad > 0 && hazir > 0 && ad < yazim && hazir < yazim, 'onay/durum kontrolu yazimdan sonra ya da yok');
+  assert.match(ep, /WHERE id = \$1 AND record_id = \$2 AND status = 'stopped' AND deleted_at IS NULL/);
+});
