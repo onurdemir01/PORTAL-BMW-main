@@ -55,6 +55,8 @@ export interface RtTarget {
   id: number; recordId: number; host: string; site: string; env: string; appName: string; gen: number | null; appPath: string | null;
   web: RtWeb[]; status: RtTargetStatus; planText: string | null; resultText: string | null; lastJobId: number | null; stoppedAt: string | null; updatedAt: string;
   deletedAt: string | null; rolledBackAt: string | null; rollbackJobId: number | null;
+  /** Hedef basina "beklemeyi atla" (admin): doluysa ilk zamanlayici turunda silinir. */
+  deleteNowAt?: string | null;
   scheduledAt: string | null; windowEnd: string | null;
   /** STOP onayinda DONDURULMUS vhost listesi + her birinin akibeti (akis paneli). */
   webSonuc: RtWeb2[] | null;
@@ -154,6 +156,9 @@ export const retirementApi = {
   /** ADMIN: beklemeyi atla. DELETE'i BASLATMAZ; silme tarihini bugune ceker, silmeyi her
    *  zamanki zamanlayici yakalar (bekleme yolu boylece sinanir). `confirmApp` = kayit
    *  uygulama adi, AYNEN. */
+  /** HEDEF BASINA beklemeyi atla (admin): yalniz bu hedef ilk zamanlayici turunda silinir. */
+  deleteNowTarget: (id: number, tid: number, confirmApp: string): Promise<{ ok: boolean; message?: string; pollSaniye?: number; record?: RtRecord }> =>
+    fetch(`${BASE}/${id}/targets/${tid}/delete-now`, json({ confirmApp })).then(safeJson),
   deleteNow: (id: number, confirmApp: string): Promise<{ ok: boolean; message?: string; oncekiTarih?: string | null; hedefSayisi?: number; pollSaniye?: number; record?: RtRecord }> =>
     fetch(`${BASE}/${id}/delete-now`, json({ confirmApp })).then(safeJson),
   jobStatus: (id: number, tid: number, awxServerId: number, jobId: number): Promise<{ ok: boolean; status: string; output: string; result?: unknown; message?: string;

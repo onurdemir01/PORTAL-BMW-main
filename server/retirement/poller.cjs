@@ -135,7 +135,8 @@ async function stopTick(now) {
 async function deleteTick(now) {
   const { rows } = await db.query(
     `SELECT t.id, t.record_id, t.host, t.app_name, t.jboss_gen, t.app_path, t.env,
-            r.smart_no, r.planned_delete_at, r.stop_at, r.delete_after_days, r.delete_now_at
+            r.smart_no, r.planned_delete_at, r.stop_at, r.delete_after_days, r.delete_now_at,
+            t.delete_now_at AS hedef_delete_now_at
        FROM retirement_targets t
        JOIN retirement_records r ON r.id = t.record_id
       WHERE t.status = 'stopped' AND t.deleted_at IS NULL AND r.status NOT IN ('cancelled', 'deleted')`,
@@ -149,7 +150,8 @@ async function deleteTick(now) {
       // ADMIN "beklemeyi atla": 23:00 kuralini atlar (bkz. schedule.cjs madde 3).
       deleteNowAt: t.delete_now_at,
     };
-    if (!silmeZamaniGeldi(bilgi, now)) continue;
+    // HEDEF BASINA "beklemeyi atla" (2026-10-12): yalniz bu hedef icin tarih ve 23:00 beklenmez.
+    if (!t.hedef_delete_now_at && !silmeZamaniGeldi(bilgi, now)) continue;
     const claim = await db.query(
       `UPDATE retirement_targets SET status = 'deleting', updated_at = GETUTCDATE()
         WHERE id = $1 AND status = 'stopped'`,

@@ -376,3 +376,21 @@ test('RW7 vhost adimi STOP TETIKLENINCE baslar ("stopping" hedef de alinir); can
   const kc = kaynak.slice(kaynak.indexOf('async function kayitCanli('), kaynak.indexOf('function stopPoller('));
   assert.match(kc, /if \(_ticking\) return \{ kilitli: true \};/, 'canli tazeleme zamanlayiciyla ayni anda calisabiliyor');
 });
+
+test('RP13 HEDEF BASINA beklemeyi atla: yalniz isaretli hedef tarih/23:00 beklemeden silinir, digeri bekler', async () => {
+  // Kullanici (2026-10-12): "toplu sekilde atlamak yerine tek tek hangi sunucuda yapacaksam onu atlamak istiyorum"
+  const satir = (o) => ({ id: 1, record_id: 4, host: 'H', app_name: 'A', jboss_gen: 8, app_path: '', env: 'TEST',
+    smart_no: '1', planned_delete_at: '2026-12-31', stop_at: '2026-10-01', delete_after_days: 45, ...o });
+  dbKur([["FROM retirement_targets t JOIN retirement_records r", [
+    satir({ id: 21, host: 'GBJBOT01', hedef_delete_now_at: '2026-10-06T11:00:00Z' }),
+    satir({ id: 22, host: 'GBJBOT02' }),
+  ]]]);
+  const cagri = [];
+  poller.startPoller(async (k, t) => { cagri.push(t.host); return { jobId: 1 }; });
+  const r = await poller._deleteTick(N);
+  poller.stopPoller();
+  assert.equal(r.kosan, 1);
+  assert.deepEqual(cagri, ['GBJBOT01'], 'isaretlenmemis hedef de silindi (toplu atlama)');
+  const kaynak = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'poller.cjs'), 'utf8');
+  assert.match(kaynak, /t\.delete_now_at AS hedef_delete_now_at/);
+});

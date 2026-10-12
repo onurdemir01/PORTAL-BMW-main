@@ -4352,6 +4352,14 @@ async function setupTables() {
     {
       // DNS SILME TURU (2026-10-09): ad basina 'intranet' (2523535_Delete_6) / 'internet'
       // (349792_Delete). Portal TAHMIN ETMEZ, kullanici secer: {"ad": "intranet", ...}.
+      table: 'retirement_targets',
+      col: 'delete_now_at',
+      sql: `ALTER TABLE retirement_targets ADD delete_now_at DATETIME2 NULL`,
+    },
+    {
+      // HEDEF BASINA "BEKLEMEYI ATLA" (2026-10-12, kullanici: "toplu sekilde atlamak yerine tek tek
+      // hangi sunucuda yapacaksam onu atlamak istiyorum"). Dolu ise zamanlayici bu hedefi tarih ve
+      // 23:00 kurali beklemeden siler; kaydin diger hedefleri kendi tarihlerini bekler.
       table: 'retirement_records',
       col: 'dns_turleri_json',
       sql: `ALTER TABLE retirement_records ADD dns_turleri_json NVARCHAR(MAX) NULL`,
