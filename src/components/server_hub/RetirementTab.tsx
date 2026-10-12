@@ -545,7 +545,7 @@ function CreateModal({ defaultDays, onClose, onCreated }: { defaultDays: number;
                 <div className="font-bold">{disc.targets.filter((t) => !t.web.length).length} hedefte web vhost’u BULUNAMADI</div>
                 <div className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>
                   Retirement bu hedeflerin vhost’unu <b>kapatmaz</b> ve trafiğini kontrol edemez. 3-tier uygulamalarda web sunucusu
-                  ad kuralıyla aranır (5. harf A→W ya da AB→WP; ör. GOJBAB03 → GOJBWP03); aday sunucu Server Hub taramasında
+                  ad kuralıyla aranır (5. harf A→W, ayrıca son harf P; Pendik 6 harf: GOJBAB03 → GOJBWP03, Ankara 7 harf: DACRAAB01 → DACRWAP01); aday sunucu Server Hub taramasında
                   ya da sertifika envanterinde yoksa bulunamaz. Devam etmeden önce web sunucusunu elle doğrulayın.
                 </div>
                 {disc.targets.filter((t) => !t.web.length).map((t) => <div key={key(t)} className="text-[12px] font-mono">{t.host} · {t.appName}: <span className="font-sans">{t.webUyari}</span></div>)}

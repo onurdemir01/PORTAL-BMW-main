@@ -47,10 +47,13 @@ function webHostOf(host) {
 
 /**
  * 3-tier web sunucusu ADAYLARI (2026-10-12, kullanici: "3-tier sunucularin web sunucularini
- * bulamiyorsun; GOJBAB03'un web hostu GOJBWP03"). Tek kural (5. harf A->W) GOJBAB03'ten var
- * olmayan GOJBWB03'u uretiyordu ve web katmani sessizce "eslenemedi" kaliyordu. Adaylar:
- *   1) 5. harf A->W                   GBCJAP01 -> GBCJWP01, DACRAAP01 -> DACRWAP01
- *   2) 5.-6. harf -> "WP"             GOJBAB03 -> GOJBWP03
+ * bulamiyorsun; GOJBAB03'un web hostu GOJBWP03" ve "Pendik icin kural 5. harf, toplam 6 harf;
+ * Ankara icin 5. harf, toplam 7 harf"). Ad = <harfler><rakamlar>; Pendik 6 harf, Ankara 7 harf
+ * (fazladan site harfi A). Tek kural (5. harf A->W) GOJBAB03'ten var olmayan GOJBWB03'u
+ * uretiyordu ve web katmani sessizce "eslenemedi" kaliyordu. Adaylar:
+ *   1) 5. harf A->W                          GBCJAP01 -> GBCJWP01, DACRAAP01 -> DACRWAP01
+ *   2) 5. harf A->W + SON harf (ortam) -> P  GOJBAB03 -> GOJBWP03 (Pendik, 6 harf)
+ *                                            DACRAAB01 -> DACRWAP01 (Ankara, 7 harf)
  * Aday TAHMIN olarak kullanilmaz: yalniz envanterde/taramada VHOST'U OLAN aday secilir ve
  * vhost'un server_name'i uygulamayla eslesmek zorunda. Hicbiri yoksa satir "eslenemedi" kalir.
  */
@@ -58,10 +61,13 @@ function webHostAdaylari(host) {
   const h = String(host || '').trim();
   const out = [];
   const a = webHostOf(h);
-  if (a) out.push(a);
-  if (h.length >= 6 && h[4].toUpperCase() === 'A') {
-    const b = h.slice(0, 4) + (h[4] === 'a' ? 'wp' : 'WP') + h.slice(6);
-    if (!out.some((x) => x.toUpperCase() === b.toUpperCase())) out.push(b);
+  if (!a) return out;
+  out.push(a);
+  const m = /^([A-Za-z]+)(\d+)$/.exec(a);
+  if (m && (m[1].length === 6 || m[1].length === 7)) {
+    const son = m[1].slice(-1);
+    const b = m[1].slice(0, -1) + (son === son.toLowerCase() ? 'p' : 'P') + m[2];
+    if (b.toUpperCase() !== a.toUpperCase()) out.push(b);
   }
   return out;
 }

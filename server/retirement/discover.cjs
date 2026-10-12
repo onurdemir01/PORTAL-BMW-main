@@ -116,7 +116,7 @@ function hubWebFallback(app, appHost, certSonucu, hubVhostsByHost) {
   const needle = String(app).toLowerCase();
   const ilkEtiket = (s) => String(s || '').trim().toLowerCase().split('.')[0];
   // Aday aplikasyon sunucusunun KENDISIYSE etiketi 'ayni host' (harf donusumu bir sey bulmadi).
-  // TUM 3-tier adaylari (webHostAdaylari: A->W ve AB->WP) - sertifika envanterinde vhost'u olmayan
+  // TUM 3-tier adaylari (webHostAdaylari: A->W ve son harf P; Pendik 6, Ankara 7 harf) - sertifika envanterinde vhost'u olmayan
   // aday Server Hub taramasinda olabilir (2026-10-12: GOJBAB03 -> GOJBWP03).
   const adaylar = [
     { host: certSonucu.webHostCandidate, how: U(certSonucu.webHostCandidate) === U(appHost) ? 'aynı host' : 'harf-dönüşümü' },

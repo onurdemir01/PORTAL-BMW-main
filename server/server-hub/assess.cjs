@@ -892,7 +892,7 @@ function assess(data, opts = {}) {
       // incelenmiyordu (NONE guvenli sunucu kanitsiz "7 gundur istek yok" uretebilirdi).
       const gate = new Set([U(h.host)]);
       for (const m of j.vhosts) gate.add(U(shortHost(m.host)));
-      // TUM 3-tier adaylari (A->W ve AB->WP, 2026-10-12): kapi kumesi genisledikce daha temkinli.
+      // TUM 3-tier adaylari (A->W ve son harf P, 2026-10-12): kapi kumesi genisledikce daha temkinli.
       for (const wh of webHostAdaylari(h.host)) gate.add(U(shortHost(wh)));
       if (j.webMatch && j.webMatch.webHost) gate.add(U(shortHost(j.webMatch.webHost)));
       j.gateHosts = [...gate];

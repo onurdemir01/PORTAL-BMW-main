@@ -131,3 +131,12 @@ test('T3W3 web bulunamazsa SESSIZ KALINMAZ: 3-tier uyarisi denenen adaylarla', (
   assert.match(t.webUyari, /GOJBWP03 \(taramada yok\)/);
   assert.equal(r.summary.webBulunamadi, 1);
 });
+
+test('T3W4 aday kurali: Pendik 6 harf, Ankara 7 harf; 5. harf A->W, son harf -> P', () => {
+  const { webHostAdaylari } = require('../../audit/web-app.cjs');
+  assert.deepEqual(webHostAdaylari('GOJBAB03'), ['GOJBWB03', 'GOJBWP03']);
+  assert.deepEqual(webHostAdaylari('GBCJAP01'), ['GBCJWP01']);
+  assert.deepEqual(webHostAdaylari('DACRAAP01'), ['DACRWAP01']);
+  assert.deepEqual(webHostAdaylari('DACRAAB01'), ['DACRWAB01', 'DACRWAP01']);
+  assert.deepEqual(webHostAdaylari('GBNGXP40'), []);
+});
