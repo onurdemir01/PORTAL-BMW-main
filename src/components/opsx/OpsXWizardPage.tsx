@@ -20,6 +20,7 @@ import {
 import { useJobTracker } from "@/contexts/JobTrackerContext";
 import { useAuth } from "@/contexts/AuthContext";
 import OpsXSmartConfigModal from "./OpsXSmartConfigModal";
+import KapamaOnayiUyarisi from "@/components/self_service/KapamaOnayiUyarisi";
 import AnsibleLogTerminal from "@/components/common/AnsibleLogTerminal";
 import PlatformStep from "./steps/PlatformStep";
 import AppSearchStep from "./steps/AppSearchStep";
@@ -119,6 +120,11 @@ const OpsXWizardPage: React.FC = () => {
 
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<OpsxRunResult | OpsxDumpLaunchResult | null>(null);
+  // Smart talebi acildiysa sagdaki "Taleplerim" paneline haber ver (2026-10-12): panel Outlet disinda
+  // mount edilir ve kendiliginden yeni talebi ogrenemez.
+  useEffect(() => {
+    if (result && 'pendingApproval' in result && result.pendingApproval) window.dispatchEvent(new CustomEvent("portal:smart-ticket-created"));
+  }, [result]);
   const [trackedJobId, setTrackedJobId] = useState<string | null>(null);
   // Dump akışı restart/stop/start'tan FARKLI: iş bitince indirilecek bir dosya üretir.
   // dumpJob dolu olduğu sürece ayrı bir interval bu bilgiyi (server/opsx/index.cjs
@@ -534,7 +540,7 @@ const OpsXWizardPage: React.FC = () => {
   );
 
   return (
-    <div className="max-w-2xl mx-auto space-y-5">
+    <div className="max-w-[min(90rem,95vw)] mx-auto space-y-5">
       <div className="flex items-start gap-3">
         {canGoBack && (
           <button
@@ -748,6 +754,7 @@ const OpsXWizardPage: React.FC = () => {
                     <p className="mt-2 text-xs text-amber-600">{result.staleWarning}</p>
                   )}
                 </div>
+                <KapamaOnayiUyarisi smartNo={'externalTicketId' in result ? result.externalTicketId : null} />
               </>
             ) : (
               <>
@@ -792,7 +799,7 @@ const OpsXWizardPage: React.FC = () => {
                 {podDeleteStatus?.results && podDeleteStatus.results.length > 0 ? (
                   podDeleteStatus.results.map((r, i) => (
                     <div key={i} className="flex items-center justify-between gap-2 px-3 py-2 border border-[var(--border)] rounded-lg bg-[var(--bg-base)]">
-                      <span className="text-sm font-mono text-[var(--text-primary)] truncate" title={`${r.cluster} / ${r.namespace}`}>
+                      <span className="text-sm font-mono text-[var(--text-primary)] break-all whitespace-normal" title={`${r.cluster} / ${r.namespace}`}>
                         {r.pod} <span className="text-xs text-[var(--text-muted)]">· {r.namespace} · {r.cluster}</span>
                       </span>
                       {r.ok ? (
@@ -825,7 +832,7 @@ const OpsXWizardPage: React.FC = () => {
                       {/* Etiket kaynağa göre değişir: Legacy host (+PID) bazlı; Openshift'te
                           arşiv kaydı cluster+namespace(ler)+pod LİSTESİ, başarısız kayıtlar
                           tek cluster/pod taşır. */}
-                      <span className="text-sm font-mono text-[var(--text-primary)] truncate">
+                      <span className="text-sm font-mono text-[var(--text-primary)] break-all whitespace-normal">
                         {r.host
                           ? `${r.host}${r.pid ? ` · PID ${r.pid}` : ""}`
                           : (r.pods?.length

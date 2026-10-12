@@ -122,7 +122,7 @@ const HostSelectStep: React.FC<{
         </p>
       </div>
 
-      <div className="space-y-3 max-h-80 overflow-y-auto">
+      <div className="space-y-3 max-h-[70vh] overflow-y-auto">
         {Object.keys(grouped).sort().map((envKey) => (
           <div key={envKey}>
             <div className="flex items-center justify-between mb-1">

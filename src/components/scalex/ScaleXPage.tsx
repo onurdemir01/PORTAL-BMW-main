@@ -430,8 +430,9 @@ const ScaleXPage: React.FC = () => {
       }
       if (r.pendingApproval) {
         setNotice(
-          `SMART kaydı açıldı (${r.externalTicketId}). Onay geldiğinde iş otomatik başlayacak.`,
+          `SMART kaydı açıldı (${r.externalTicketId}). Talep “Kapama Onayı” adımına düştüğünde Smart’ta TAMAMLA’ya basın — basılmadan iş başlamaz.`,
         );
+        window.dispatchEvent(new CustomEvent('portal:smart-ticket-created'));
         setStep('done');
         return;
       }

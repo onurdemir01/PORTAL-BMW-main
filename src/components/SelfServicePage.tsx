@@ -38,6 +38,7 @@ import IpCheckSection from '@/components/self_service/IpCheckSection';
 import OpenshiftCheckSection from '@/components/self_service/OpenshiftCheckSection';
 import { SkeletonList } from '@/components/common/Skeleton';
 import LoadError from '@/components/common/LoadError';
+import KapamaOnayiUyarisi from '@/components/self_service/KapamaOnayiUyarisi';
 import { fmtDateTime } from '@/utils/datetime';
 import { isFieldActive as isFieldActiveShared } from '../../shared/surveyConditions.cjs';
 
@@ -1017,16 +1018,15 @@ function SurveyModal({ item, onClose, inline = false }: SurveyModalProps) {
                       <span className="font-mono">{pendingTicket.externalTicketId}</span>
                     </p>
                   )}
-                  <p className="text-xs text-[var(--text-muted)]">
-                    Lütfen ilgili Smart kaydını takip edin — <strong>Kapama Onayı</strong> adımında{' '}
-                    <strong>Tamamla</strong>'ya basmadan otomasyon tetiklenmeyecektir.{' '}
+                  <KapamaOnayiUyarisi />
+                  <p className="text-sm text-[var(--text-secondary)]">
                     {ocoState?.done?.kind === 'smart-first' ? (
                       <>
                         Onay verildiğinde iş <strong>hemen değil</strong>, {ocoState.done.runAtText}{' '}
                         kesinti penceresinde çalışacak.
                       </>
                     ) : (
-                      <>Onaylanınca iş otomatik başlar, bu pencereyi kapatabilirsiniz.</>
+                      <>Tamamla’ya basıldığında iş otomatik başlar; bu pencereyi kapatabilirsiniz, talebi sağdaki “Taleplerim”den izleyin.</>
                     )}
                   </p>
                   <div className="text-left text-xs bg-amber-50 border border-amber-100 rounded-xl px-3 py-2 mx-auto max-w-sm text-amber-800">

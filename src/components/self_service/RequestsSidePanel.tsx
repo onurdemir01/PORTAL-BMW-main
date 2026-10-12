@@ -22,6 +22,7 @@ import EmptyState from '@/components/common/EmptyState';
 import { NavLink } from 'react-router-dom';
 import { Modal } from '@/components/common/Modal';
 import { toast } from '@/hooks/useToast';
+import KapamaOnayiUyarisi, { kapamaOnayinda } from './KapamaOnayiUyarisi';
 
 interface TicketDetail {
   externalTicketId?: string | null;
@@ -214,15 +215,27 @@ export default function RequestsSidePanel() {
   //   2) BOSTA YAVAS YOKLAMA: baska bir sekmede/cihazda acilan talep icin emniyet
   //      agi. Bekleyen talep varken 30 sn (durum degisimi hizli gorunsun), hicbir
   //      talep yokken 120 sn (yalnizca "yeni talep var mi" sorusu).
+  //
+  // IKINCI DERS (2026-10-12, kullanici: "acilan Smart talepleri sagdaki pencereye otomatik gelsin,
+  // sayfayi yenileyene kadar guncelleme goremedim"): "talep VAR ama hicbiri beklemede degilse
+  // yoklama" kosulu ayni tuzagin ikinci yuzuydu - eski (sonuclanmis) talebi olan HERKESTE yoklama
+  // hic baslamiyordu; OpsX/ScaleX'ten acilan talep olay da yayinlamiyordu. Artik yoklama HER ZAMAN
+  // (bekleyen varken 15 sn, yokken 60 sn; sekme gizliyken istek atilmaz) ve sekmeye donuldugunde
+  // hemen tazelenir. Kullanici paneli acikca daraltmis olsa da (rozet sayisi icin) yoklanir.
   useEffect(() => {
-    if (userPref === true) return; // kullanici ACIKCA kapatti
     const hasPending = tickets.some((t) => t.status === 'PENDING');
-    // Talep VAR ama hicbiri beklemede degilse yoklamaya gerek yok: sonuclanmis
-    // talepler kendiliginden degismez.
-    if (!hasPending && tickets.length > 0) return;
-    const timer = setInterval(load, hasPending ? 30_000 : 120_000);
+    const timer = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      load();
+    }, hasPending ? 15_000 : 60_000);
     return () => clearInterval(timer);
-  }, [userPref, tickets, load]);
+  }, [tickets, load]);
+  useEffect(() => {
+    const gorundu = () => { if (document.visibilityState === 'visible') load(); };
+    document.addEventListener('visibilitychange', gorundu);
+    window.addEventListener('focus', gorundu);
+    return () => { document.removeEventListener('visibilitychange', gorundu); window.removeEventListener('focus', gorundu); };
+  }, [load]);
 
   // Ayni sekmede acilan talebi ANINDA yakala (yukaridaki 1. kanal).
   useEffect(() => {
@@ -332,11 +345,13 @@ export default function RequestsSidePanel() {
                 calistirabilecegini anlamiyor." Bekleyen talep varken ne olacagi ACIKCA
                 yaziliyor - artik sure siniri da yok, talep onaylanana kadar bekliyor. */}
             {!loading && !err && pendingCount > 0 && (
-              <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-900">
-                <b>{pendingCount} talebiniz Smart onayı bekliyor.</b> Bu sayfayı kapatabilirsiniz —
-                onay tamamlandığında (Smart’ta birden fazla onaycı varsa <b>hepsi</b> onayladığında)
-                iş kendiliğinden başlar. Süre sınırı yok; OCO kaydından açılan talepler en geç
-                <b> kesinti penceresinin sonuna</b> kadar onaylanabilir.
+              <div className="mb-3 space-y-2">
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] text-amber-900">
+                  <b>{pendingCount} talebiniz Smart’ta bekliyor.</b> Onaylar tamamlanınca talep
+                  <b> “Kapama Onayı”</b> adımına düşer; orada <b>TAMAMLA</b>’ya basılmadan iş
+                  <b> başlamaz</b>. Süre sınırı yok; OCO kaydından açılan talepler en geç
+                  <b> kesinti penceresinin sonuna</b> kadar tamamlanabilir.
+                </div>
               </div>
             )}
 
@@ -395,6 +410,9 @@ export default function RequestsSidePanel() {
                           {t.smartStateName ? ` · ${t.smartStateName}` : ''}
                           {t.jobId ? ` · Job #${t.jobId}` : ''}
                         </div>
+                        {t.status === 'PENDING' && kapamaOnayinda(t.smartStateName) && (
+                          <div className="mt-2"><KapamaOnayiUyarisi smartNo={t.externalTicketId} kompakt /></div>
+                        )}
                         {t.status === 'ERROR' && t.errorMessage && (
                           <div className="text-[11px] mt-1 text-red-600">{t.errorMessage}</div>
                         )}

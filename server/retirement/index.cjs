@@ -67,6 +67,9 @@ function rowTarget(t) {
     // `deletedAt`/`rolledBackAt` ONYUZ ICIN DEGIL SADECE: /rollback kapisi da bunu
     // okuyor. Donmuyordu ve `t.deletedAt` kontrolu OLU KODDU (hep undefined).
     deletedAt: t.deleted_at ?? null, rolledBackAt: t.rolled_back_at ?? null, rollbackJobId: t.rollback_job_id ?? null,
+    deleteJobId: t.delete_job_id ?? null,
+    // Hedef basina "beklemeyi atla" (admin): doluysa bu hedef ilk zamanlayici turunda silinir.
+    deleteNowAt: t.delete_now_at ?? null,
     // OCO penceresine zamanlanmis STOP icin: akis paneli "ne zaman kosacak" diyebilsin.
     scheduledAt: t.scheduled_at ?? null, windowEnd: t.window_end ?? null,
     // UYGULANAN web sonucu (DONMUS liste + her vhost'un akibeti). `web` alani KESIF
@@ -367,6 +370,18 @@ function initRetirement(app) {
   // CANLI DURUM (2026-10-09): ekran is surerken birkac saniyede bir cagirir. Bu kaydin bekleyen
   // vhost islerini baslatir ve suren islerin AWX sonucunu okur (poller.kayitCanli, zamanlayiciyla
   // ayni kilit), sonra kaydi dondurur. STOP isinin kendisi job-status / zamanlayici ile sonuclanir.
+  // KUYRUK BILGISI (2026-10-12): zamanlayicinin sonraki tur ani + suren JBoss islerinin son okunan
+  // AWX durumu (hedef id -> {jobId, status, at}). Ekran "sirada · ~2 dk" / "AWX'te calisiyor" der.
+  function kuyrukBilgisi(rec) {
+    const p = require('./poller.cjs');
+    const isler = {};
+    for (const t of rec.targets || []) {
+      const jobId = t.status === 'deleting' ? t.deleteJobId : t.status === 'rolling_back' ? t.rollbackJobId : t.status === 'stopping' ? t.lastJobId : null;
+      if (jobId) isler[t.id] = { jobId, ...(p.awxDurumu(jobId) || {}) };
+    }
+    return { zamanlayici: p.zamanlayici(), isler };
+  }
+
   router.get('/:id/canli', async (req, res) => {
     const id = Number(req.params.id);
     if (!Number.isInteger(id)) return res.status(400).json({ ok: false, message: 'Geçersiz kayıt.' });
@@ -375,7 +390,7 @@ function initRetirement(app) {
       try { canli = await require('./poller.cjs').kayitCanli(id); } catch (e) { canli = { hata: String(e.message || e) }; }
       const rec = await loadRecord(id);
       if (!rec) return res.status(400).json({ ok: false, message: 'Kayıt yok.' });
-      res.json({ ok: true, record: rec, canli });
+      res.json({ ok: true, record: rec, canli, ...kuyrukBilgisi(rec) });
     } catch (err) { res.status(500).json({ ok: false, message: err.message }); }
   });
 
@@ -385,7 +400,7 @@ function initRetirement(app) {
     try {
       const rec = await loadRecord(id);
       if (!rec) return res.status(400).json({ ok: false, message: 'Kayıt yok.' });
-      res.json({ ok: true, record: rec });
+      res.json({ ok: true, record: rec, ...kuyrukBilgisi(rec) });
     } catch (err) { res.status(500).json({ ok: false, message: err.message }); }
   });
 
@@ -472,6 +487,38 @@ function initRetirement(app) {
           `${hazir.length} durdurulmus hedefi silecek: ${hazir.map((t) => `${t.appName} @ ${t.host} (${t.env})`).join(', ')}`,
       );
       res.json({ ok: true, oncekiTarih: onceki, hedefSayisi: hazir.length, pollSaniye: pollSn, record: await loadRecord(id) });
+    } catch (err) { res.status(500).json({ ok: false, message: err.message }); }
+  });
+
+  // ── HEDEF BASINA BEKLEMEYI ATLA (admin, 2026-10-12) ─────────────────────────────
+  // Kullanici: "beklemeyi atla adiminda toplu sekilde atlamak yerine tek tek hangi sunucuda
+  // yapacaksam onu atlamak istiyorum." Kayit duzeyindeki uc TUM durdurulmus hedefleri birlikte
+  // silmeye goturuyordu. Bu uc YALNIZ secilen hedefin delete_now_at'ini doldurur; zamanlayici o
+  // hedefi tarih ve 23:00 kurali beklemeden siler, kaydin diger hedefleri kendi tarihini bekler.
+  // Kayit duzeyindeki ile ayni ilkeler: DELETE'i BURADAN BASLATMAZ (bekleme yolu sinanir), onay
+  // icin uygulama adi AYNEN yazilir, yalniz durdurulmus ve silinmemis hedef.
+  router.post('/:id/targets/:tid/delete-now', async (req, res) => {
+    const id = Number(req.params.id); const tid = Number(req.params.tid);
+    try {
+      const rec = await loadRecord(id);
+      if (!rec) return res.status(400).json({ ok: false, message: 'Kayıt yok.' });
+      if (rec.status === 'cancelled' || rec.status === 'deleted')
+        return res.status(400).json({ ok: false, message: `Kayıt ${rec.status === 'cancelled' ? 'iptal edilmiş' : 'zaten silinmiş'}.` });
+      const t = rec.targets.find((x) => x.id === tid);
+      if (!t) return res.status(400).json({ ok: false, message: 'Hedef yok.' });
+      if (t.status !== 'stopped' || t.deletedAt)
+        return res.status(400).json({ ok: false, message: `${t.appName} @ ${t.host} silinmeye hazır değil (durum: ${t.status}) — zamanlayıcı yalnız durdurulmuş hedefleri siler.` });
+      if (String(req.body?.confirmApp ?? '').trim() !== t.appName)
+        return res.status(400).json({ ok: false, message: `Onay için uygulama adını aynen yazın: ${t.appName}` });
+      await db().query(
+        `UPDATE retirement_targets SET delete_now_at = GETUTCDATE(), updated_at = GETUTCDATE()
+          WHERE id = $1 AND record_id = $2 AND status = 'stopped' AND deleted_at IS NULL`,
+        [tid, id],
+      );
+      const pollSn = (() => { const n = Number(process.env.RETIREMENT_POLL_INTERVAL_SECONDS); return Number.isFinite(n) && n >= 30 ? n : 300; })();
+      await addEvent(id, req.session?.user?.username, 'delete_now',
+        `ADMIN beklemeyi atladi (YALNIZ bu hedef): ${t.appName} @ ${t.host} (${t.env}) - kayit silme tarihi ${rec.effectiveDeleteAt || 'belirsiz'} bu hedef icin beklenmeyecek; zamanlayici en gec ~${Math.ceil(pollSn / 60)} dk icinde silecek`);
+      res.json({ ok: true, pollSaniye: pollSn, record: await loadRecord(id) });
     } catch (err) { res.status(500).json({ ok: false, message: err.message }); }
   });
 
@@ -1079,7 +1126,7 @@ function initRetirement(app) {
       const jobId = Number(t.job_id ?? t.delete_job_id);
       const info = await runner.getJobStatusOnServer(serverId, jobId);
       const TERMINAL = new Set(['successful', 'failed', 'error', 'canceled']);
-      if (!TERMINAL.has(info.status)) return { terminal: false };
+      if (!TERMINAL.has(info.status)) return { terminal: false, awxStatus: info.status };
       const { extractStatsKey } = require('../opsx/index.cjs');
       const STATS = {
         stop: 'app_retirement_stop_result',

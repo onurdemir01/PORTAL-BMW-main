@@ -43,7 +43,7 @@ const AppSearchStep: React.FC<{ onSelect: (app: string) => void; busy?: boolean 
         />
       </div>
       {error && <p className="text-sm text-red-600">{error}</p>}
-      <div className="max-h-72 overflow-y-auto border border-[var(--border)] rounded-xl divide-y divide-[var(--border)]">
+      <div className="max-h-[70vh] overflow-y-auto border border-[var(--border)] rounded-xl divide-y divide-[var(--border)]">
         {loading ? (
           <p className="text-sm text-[var(--text-muted)] text-center py-6">Aranıyor...</p>
         ) : apps.length === 0 ? (

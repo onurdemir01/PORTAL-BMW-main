@@ -121,7 +121,7 @@ const JbossVersionStep: React.FC<{
               {/* Envanterdeki GERÇEK sürümler — seçim majör bazında yapılsa da kullanıcı
                   hangi yamaların kapsandığını görebilmeli. */}
               {actual.length > 0 && (
-                <span className="block mt-0.5 text-[11px] text-[var(--text-muted)] font-mono truncate" title={actual.join(", ")}>
+                <span className="block mt-0.5 text-[11px] text-[var(--text-muted)] font-mono break-all whitespace-normal" title={actual.join(", ")}>
                   {actual.join(", ")}
                 </span>
               )}

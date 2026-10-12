@@ -87,19 +87,14 @@ test('G5: bos panel yeni talebi GERCEKTEN ogrenebiliyor', () => {
   // yoklamayi zaten hic baslatmiyordu — panel bir daha acilamiyordu. Test kalibi
   // dogruluyordu, DAVRANISI degil.
   const src = stripComments(read('components/self_service/RequestsSidePanel.tsx'));
-  assert.match(
-    src,
-    /if \(userPref === true\) return;/,
-    'yoklama yalnizca KULLANICI acikca kapattiginda durmali',
-  );
+  // IKINCI DERS (2026-10-12): "talep VAR ama hicbiri beklemede degilse yoklama" kosulu eski
+  // (sonuclanmis) talebi olan HERKESTE yoklamayi durduruyordu; yeni Smart talebi panele sayfa
+  // yenilenmeden gelmiyordu. Yoklama HER ZAMAN calisir, hicbir erken cikis olmaz.
   assert.ok(!/if \(collapsed\) return;/.test(src), 'kendini kilitleyen guard duruyor');
-
-  // 1) Bos panel (tickets.length === 0) yoklamadan DISLANMAMALI.
-  assert.match(
-    src,
-    /if \(!hasPending && tickets\.length > 0\) return;/,
-    'bos panel yoklamadan disaniyor — yeni talebi asla ogrenemez',
-  );
+  assert.ok(!/tickets\.length > 0\) return;/.test(src), 'eski talebi olan kullanicida yoklama duruyor');
+  assert.ok(!/if \(userPref === true\) return;/.test(src), 'daraltilmis panel (rozet) yoklanmiyor');
+  assert.match(src, /setInterval\(\(\) => \{[^}]*load\(\);/, 'periyodik yoklama yok');
+  assert.match(src, /addEventListener\(["']visibilitychange["']/, 'sekmeye donunce tazeleme yok');
   // 2) Ayni sekmede acilan talep icin ANLIK kanal olmali (panel Outlet DISINDA
   //    mount edildigi icin gezinmede yenilenmiyor).
   // TIRNAK BAGIMSIZ (bkz. bekci-korlugu-desenleri #2b).

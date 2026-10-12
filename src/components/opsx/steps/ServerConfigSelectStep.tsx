@@ -233,7 +233,7 @@ const ServerConfigSelectStep: React.FC<{
         </div>
       )}
 
-      <div className="space-y-3 max-h-80 overflow-y-auto">
+      <div className="space-y-3 max-h-[70vh] overflow-y-auto">
         {Object.keys(grouped).sort().map((host) => {
           const multiple = grouped[host].length > 1;
           return (
@@ -263,7 +263,7 @@ const ServerConfigSelectStep: React.FC<{
                       disabled={busy || !eligible}
                       className="rounded"
                     />
-                    <span className="flex-1 text-sm text-[var(--text-primary)] font-mono truncate" title={c.serverConfig}>{c.serverConfig}</span>
+                    <span className="flex-1 text-sm text-[var(--text-primary)] font-mono break-all whitespace-normal" title={c.serverConfig}>{c.serverConfig}</span>
                     {!eligible && (
                       <span className="text-[10px] text-[var(--text-muted)] flex-shrink-0">
                         {operation === "stop" ? "zaten durmuş" : "zaten çalışıyor"}

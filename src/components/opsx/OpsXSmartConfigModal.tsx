@@ -199,7 +199,7 @@ const OpsXSmartConfigModal: React.FC<Props> = ({ open, onClose }) => {
         // SESSIZ ATLAMA YOK: gecersiz desenli bir anahtar kaydedilmedi ve admin bunu
         // BILMELI, yoksa "kaydettim" sanip production'in reddedilmeye devam ettigini
         // gorur - en bastaki sorunun aynisi.
-        toast.error(`Kaydedilmeyen alan(lar): ${r.reddedilen.join(', ')} — izin verilen karakterler: harf, rakam, . _ : -`);
+        toast.error(`Kaydedilmeyen alan(lar): ${r.reddedilen.join(', ')} — izin verilen karakterler: Flow Key için harf, rakam, . _ : - ; entegrasyon anahtarı için ayrıca = + / ~ (boşluk olmaz)`);
       } else {
         toast.success('Smart onay yapılandırması kaydedildi.');
       }

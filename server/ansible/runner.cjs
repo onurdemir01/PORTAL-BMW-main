@@ -5524,6 +5524,38 @@ async function getTemplateLaunchSettingsOnServer(serverId, templateId) {
 }
 
 /**
+ * AWX job template'inde TANIMLI degiskenler (2026-10-09, kullanici: "job type degiskeni
+ * jobdan gelmeli"): template'in Variables kutusu (extra_vars, JSON ya da `ad: deger` YAML)
+ * + survey'deki TUM varsayilanlar (zorunlu olsun olmasin; parola alanlari HARIC).
+ * Yalniz SABLON BAGLAMI icindir (Smart metadata {{extraVars.X}}): AWX'e gonderilen
+ * extra_vars'a KARISTIRILMAZ - AWX bu degerleri zaten kendisi uygular.
+ * Okunamazsa hata FIRLATIR (cagiran sessizce bos baglamla devam etmeyi secer).
+ * @returns {Promise<Record<string, unknown>>}
+ */
+async function getTemplateVariableDefaultsOnServer(serverId, templateId) {
+  const server = getServerById(serverId);
+  if (!server) throw Object.assign(new Error('AWX sunucusu bulunamadı.'), { status: 404 });
+  const id = Number(templateId);
+  if (!Number.isInteger(id) || id <= 0) throw Object.assign(new Error('Geçersiz template ID.'), { status: 400 });
+  const token = await getTokenForServer(server);
+  const t = await awxRequestToServer(server, token, 'GET', `/api/v2/job_templates/${id}/`);
+  const out = {};
+  const ham = String((t && t.extra_vars) || '').trim();
+  if (ham) {
+    let obj = null;
+    try { obj = JSON.parse(ham); } catch { obj = require('../smart/metadata.cjs').parseSimpleYaml(ham); }
+    if (obj && typeof obj === 'object' && !Array.isArray(obj)) Object.assign(out, obj);
+  }
+  const spec = await awxRequestToServer(server, token, 'GET', `/api/v2/job_templates/${id}/survey_spec/`).catch(() => null);
+  for (const f of (spec && Array.isArray(spec.spec) ? spec.spec : [])) {
+    if (!f || !f.variable || f.type === 'password') continue;
+    if (f.default === undefined || f.default === null || f.default === '') continue;
+    out[f.variable] = f.default;
+  }
+  return out;
+}
+
+/**
  * Zorunlu survey alanlarini template varsayilanindan tamamlanmis extraVars dondurur.
  *
  * NEDEN DISARI ACILDI (2026-10-06): OpsX production islemleri artik Smart onayindan
@@ -5632,6 +5664,8 @@ module.exports = {
   // OpsX production onay akisi (2026-10-06): bilet acilmadan ONCE zorunlu survey
   // varsayilanlarini doldurur; onay sonrasi replay yolu bunu yapmaz.
   prefillSurveyDefaultsOnServer,
+  // Smart metadata sablon baglami: template Variables + TUM survey varsayilanlari (2026-10-09).
+  getTemplateVariableDefaultsOnServer,
   // Saf yardimci - launch yanitindaki ignored_fields -> yalniz adlar (birim testi icin).
   _ignoredFieldNames: ignoredFieldNames,
   // Iptal token'i dogrulamasi (long-job-cancel-token.cjs kaydi; GET /api/v2/me/):
