@@ -44,7 +44,7 @@ const WasResultPanel: React.FC<{
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-sm font-medium text-[var(--text-primary)] truncate">
+          <p className="text-sm font-medium text-[var(--text-primary)] break-all whitespace-normal">
             {WAS_OP_NOUNS[operation]}: <span className="font-mono">{target.server}</span> @{" "}
             <span className="font-mono">{target.host}</span>
           </p>

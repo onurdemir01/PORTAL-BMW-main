@@ -534,7 +534,7 @@ const OpsXWizardPage: React.FC = () => {
   );
 
   return (
-    <div className="max-w-2xl mx-auto space-y-5">
+    <div className="max-w-[min(90rem,95vw)] mx-auto space-y-5">
       <div className="flex items-start gap-3">
         {canGoBack && (
           <button
@@ -792,7 +792,7 @@ const OpsXWizardPage: React.FC = () => {
                 {podDeleteStatus?.results && podDeleteStatus.results.length > 0 ? (
                   podDeleteStatus.results.map((r, i) => (
                     <div key={i} className="flex items-center justify-between gap-2 px-3 py-2 border border-[var(--border)] rounded-lg bg-[var(--bg-base)]">
-                      <span className="text-sm font-mono text-[var(--text-primary)] truncate" title={`${r.cluster} / ${r.namespace}`}>
+                      <span className="text-sm font-mono text-[var(--text-primary)] break-all whitespace-normal" title={`${r.cluster} / ${r.namespace}`}>
                         {r.pod} <span className="text-xs text-[var(--text-muted)]">· {r.namespace} · {r.cluster}</span>
                       </span>
                       {r.ok ? (
@@ -825,7 +825,7 @@ const OpsXWizardPage: React.FC = () => {
                       {/* Etiket kaynağa göre değişir: Legacy host (+PID) bazlı; Openshift'te
                           arşiv kaydı cluster+namespace(ler)+pod LİSTESİ, başarısız kayıtlar
                           tek cluster/pod taşır. */}
-                      <span className="text-sm font-mono text-[var(--text-primary)] truncate">
+                      <span className="text-sm font-mono text-[var(--text-primary)] break-all whitespace-normal">
                         {r.host
                           ? `${r.host}${r.pid ? ` · PID ${r.pid}` : ""}`
                           : (r.pods?.length
