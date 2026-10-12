@@ -11,7 +11,7 @@
 // Site: sunucu adinda tier harfinden sonra fazladan 'A' = Ankara (siteOf, asagida).
 'use strict';
 
-const { buildCertIndex, matchWebForApp } = require('../audit/web-app.cjs');
+const { buildCertIndex, matchWebForApp, webHostAdaylari } = require('../audit/web-app.cjs');
 
 const U = (s) => String(s || '').trim().toUpperCase();
 
@@ -116,8 +116,11 @@ function hubWebFallback(app, appHost, certSonucu, hubVhostsByHost) {
   const needle = String(app).toLowerCase();
   const ilkEtiket = (s) => String(s || '').trim().toLowerCase().split('.')[0];
   // Aday aplikasyon sunucusunun KENDISIYSE etiketi 'ayni host' (harf donusumu bir sey bulmadi).
+  // TUM 3-tier adaylari (webHostAdaylari: A->W ve AB->WP) - sertifika envanterinde vhost'u olmayan
+  // aday Server Hub taramasinda olabilir (2026-10-12: GOJBAB03 -> GOJBWP03).
   const adaylar = [
     { host: certSonucu.webHostCandidate, how: U(certSonucu.webHostCandidate) === U(appHost) ? 'aynı host' : 'harf-dönüşümü' },
+    ...(certSonucu.tier === '2-tier' ? [] : webHostAdaylari(appHost)).map((h) => ({ host: h, how: 'harf-dönüşümü' })),
     { host: appHost, how: 'aynı host' },
   ];
   const goruldu = new Set();
@@ -205,6 +208,13 @@ function ajpWeb(appHost, jvm, vhostRows, ipMap) {
   return out;
 }
 
+function webUyariMetni(web, host, hubVhostsByHost) {
+  const uc = web.tier === '3-tier' || (web.tier !== '2-tier' && (web.webHostAdaylari || []).length > 0);
+  const aday = (web.webHostAdaylari || []).map((h) => `${U(h)}${hubVhostsByHost.has(U(h)) ? '' : ' (taramada yok)'}`);
+  const denenen = [...aday, `${U(host)} (aynı host)`].join(', ');
+  return `${uc ? '3-tier: ' : ''}web vhost'u BULUNAMADI — denenen: ${denenen}. Retirement bu vhost'u KAPATMAZ ve trafiğini kontrol edemez; web sunucusunu elle doğrulayın.`;
+}
+
 function buildTargets(base, invRows, certRows, jvmRows, vhostRows, ipRows = []) {
   const ipMap = ipSahipleri(ipRows);
   const certByHost = buildCertIndex(certRows || []);
@@ -266,6 +276,10 @@ function buildTargets(base, invRows, certRows, jvmRows, vhostRows, ipRows = []) 
         trafik: trafikSinifi(vhostByKey.get(`${U(w.host)}|${String(w.serverName || '').trim().toLowerCase()}`)),
       })),
       webHow: web.how,
+      // WEB BULUNAMADI UYARISI (2026-10-12, kullanici: "3-tier bir uygulamayi retire etmek
+      // istedigimizde web vhost icin herhangi bir uyari vermedi"). Bos web listesi "web yok"
+      // DEMEK DEGIL: retirement o vhost'u KAPATMAZ ve trafik kontrolu de yapamaz.
+      webUyari: web.web.length ? null : webUyariMetni(web, host, hubVhostsByHost),
       hub: j ? {
         running: Number(j.running) === 1,
         runningSrc,
@@ -282,6 +296,7 @@ function buildTargets(base, invRows, certRows, jvmRows, vhostRows, ipRows = []) 
     bySite: { Pendik: targets.filter((t) => t.site === 'Pendik').length, Ankara: targets.filter((t) => t.site === 'Ankara').length },
     byEnv: Object.fromEntries(['PROD', 'QA', 'TEST', 'DEV', 'ALPHA', 'ODM'].map((e) => [e, targets.filter((t) => t.env === e).length])),
     webMatched: targets.filter((t) => t.web.length).length,
+    webBulunamadi: targets.filter((t) => !t.web.length).length,
     prod: targets.some((t) => t.env === 'PROD'),
   };
   return { base, targets, summary };

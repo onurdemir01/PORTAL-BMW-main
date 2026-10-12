@@ -45,6 +45,27 @@ function webHostOf(host) {
   return h.slice(0, 4) + (h[4] === 'a' ? 'w' : 'W') + h.slice(5);
 }
 
+/**
+ * 3-tier web sunucusu ADAYLARI (2026-10-12, kullanici: "3-tier sunucularin web sunucularini
+ * bulamiyorsun; GOJBAB03'un web hostu GOJBWP03"). Tek kural (5. harf A->W) GOJBAB03'ten var
+ * olmayan GOJBWB03'u uretiyordu ve web katmani sessizce "eslenemedi" kaliyordu. Adaylar:
+ *   1) 5. harf A->W                   GBCJAP01 -> GBCJWP01, DACRAAP01 -> DACRWAP01
+ *   2) 5.-6. harf -> "WP"             GOJBAB03 -> GOJBWP03
+ * Aday TAHMIN olarak kullanilmaz: yalniz envanterde/taramada VHOST'U OLAN aday secilir ve
+ * vhost'un server_name'i uygulamayla eslesmek zorunda. Hicbiri yoksa satir "eslenemedi" kalir.
+ */
+function webHostAdaylari(host) {
+  const h = String(host || '').trim();
+  const out = [];
+  const a = webHostOf(h);
+  if (a) out.push(a);
+  if (h.length >= 6 && h[4].toUpperCase() === 'A') {
+    const b = h.slice(0, 4) + (h[4] === 'a' ? 'wp' : 'WP') + h.slice(6);
+    if (!out.some((x) => x.toUpperCase() === b.toUpperCase())) out.push(b);
+  }
+  return out;
+}
+
 function tierOf(domain, host) {
   const d = String(domain || '');
   if (TIER3_DOMAIN.test(d)) return '3-tier';
@@ -82,13 +103,11 @@ function matchWebForApp({ app, appHost, domain }, certByHost) {
   const tier = tierOf(domain, appHost);
   const needleFull = String(app).toLowerCase();
   const needleBase = needleFull.replace(ENV_SUFFIX, '');
-  const w = webHostOf(appHost);
+  const adaylar = webHostAdaylari(appHost).map((h) => ({ host: h, how: 'harf-dönüşümü' }));
   const candidates =
-    tier === '3-tier'
-      ? [{ host: w, how: 'harf-dönüşümü' }, { host: appHost, how: 'aynı host' }]
-      : tier === '2-tier'
-        ? [{ host: appHost, how: 'aynı host' }]
-        : [{ host: w, how: 'harf-dönüşümü' }, { host: appHost, how: 'aynı host' }];
+    tier === '2-tier'
+      ? [{ host: appHost, how: 'aynı host' }]
+      : [...adaylar, { host: appHost, how: 'aynı host' }];
   let matched = null;
   let hostOnly = null;
   for (const cand of candidates) {
@@ -110,6 +129,7 @@ function matchWebForApp({ app, appHost, domain }, certByHost) {
     tier, how, matched: !!matched,
     web: matched ? matched.entries : [],
     webHostCandidate: hostOnly ? hostOnly.host : webHostOf(appHost) || appHost,
+    webHostAdaylari: tier === '2-tier' ? [] : webHostAdaylari(appHost),
     vhostCountOnHost: hostOnly ? hostOnly.count : 0,
   };
 }
@@ -203,4 +223,4 @@ function registerWebApp(router) {
   });
 }
 
-module.exports = { registerWebApp, webHostOf, tierOf, buildCertIndex, matchWebForApp };
+module.exports = { registerWebApp, webHostOf, webHostAdaylari, tierOf, buildCertIndex, matchWebForApp };

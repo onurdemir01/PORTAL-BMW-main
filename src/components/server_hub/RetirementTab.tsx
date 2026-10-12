@@ -539,6 +539,18 @@ function CreateModal({ defaultDays, onClose, onCreated }: { defaultDays: number;
               <button onClick={() => setSel(new Set(disc.targets.map(key)))} className={SM_BTN} style={smBtn()}>tümü</button>
               <button onClick={() => setSel(new Set())} className={SM_BTN} style={smBtn()}>hiçbiri</button>
             </div>
+            {/* WEB BULUNAMADI (2026-10-12): 3-tier uygulamada web katmani sessizce atlaniyordu. */}
+            {disc.targets.some((t) => !t.web.length) && (
+              <div role="alert" className="rounded-lg border-2 px-3 py-2 text-[13px] space-y-1" style={{ borderColor: 'var(--status-danger)', color: 'var(--status-danger)' }}>
+                <div className="font-bold">{disc.targets.filter((t) => !t.web.length).length} hedefte web vhost’u BULUNAMADI</div>
+                <div className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>
+                  Retirement bu hedeflerin vhost’unu <b>kapatmaz</b> ve trafiğini kontrol edemez. 3-tier uygulamalarda web sunucusu
+                  ad kuralıyla aranır (5. harf A→W ya da AB→WP; ör. GOJBAB03 → GOJBWP03); aday sunucu Server Hub taramasında
+                  ya da sertifika envanterinde yoksa bulunamaz. Devam etmeden önce web sunucusunu elle doğrulayın.
+                </div>
+                {disc.targets.filter((t) => !t.web.length).map((t) => <div key={key(t)} className="text-[12px] font-mono">{t.host} · {t.appName}: <span className="font-sans">{t.webUyari}</span></div>)}
+              </div>
+            )}
             {/* HALA ISTEK VAR MI? Apache/IHS access log'undan, hc HARIC (Server Hub
                 taramasi: dbo.Server_Hub_Vhosts). Olculemeyenler AYRI kutuda. */}
             {trafikli.length > 0 && (
@@ -587,7 +599,7 @@ function CreateModal({ defaultDays, onClose, onCreated }: { defaultDays: number;
                       <td className="px-2 py-1">{t.gen ? `JBoss ${t.gen}` : <span style={{ color: 'var(--status-danger)' }}>?</span>}</td>
                       <td className="px-2 py-1 text-[10px]" style={{ color: 'var(--text-muted)' }}>{t.inventoryStatus || '—'}</td>
                       <td className="px-2 py-1 text-[10px]"><HubHucresi hub={t.hub} okunamadi={hubYok} /></td>
-                      <td className="px-2 py-1 text-[10px]">{t.web.length ? t.web.map((w) => <div key={w.host + w.serverName} title={t.webHow}>{w.host} · {w.serverName}{w.product ? ` (${w.product})` : ''}<WebKaynak w={w} /></div>) : <span style={{ color: 'var(--status-warning)' }} title={t.webHow}>eşlenemedi</span>}</td>
+                      <td className="px-2 py-1 text-[10px]">{t.web.length ? t.web.map((w) => <div key={w.host + w.serverName} title={t.webHow}>{w.host} · {w.serverName}{w.product ? ` (${w.product})` : ''}<WebKaynak w={w} /></div>) : <div role="alert" className="max-w-[22rem] font-semibold" style={{ color: 'var(--status-danger)' }} title={t.webHow}>⚠ {t.webUyari || 'web vhost’u bulunamadı — elle doğrulayın'}</div>}</td>
                       <td className="px-2 py-1 text-[10px]">
                         {t.web.length
                           ? t.web.map((w) => <div key={`tr-${w.host}-${w.serverName}`}><TrafikHucresi tr={w.trafik} /></div>)
@@ -1014,7 +1026,7 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
                       <td className="px-2.5 py-1.5"><b>{t.env}</b></td>
                       <td className="px-2.5 py-1.5">{t.appName}</td>
                       <td className="px-2.5 py-1.5">{t.gen ? `JBoss ${t.gen}` : '?'}</td>
-                      <td className="px-2.5 py-1.5 text-[10px]">{t.web.length ? t.web.map((w) => <div key={w.host + w.serverName}>{w.host} · {w.serverName}<WebKaynak w={w} /></div>) : <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
+                      <td className="px-2.5 py-1.5 text-[10px]">{t.web.length ? t.web.map((w) => <div key={w.host + w.serverName}>{w.host} · {w.serverName}<WebKaynak w={w} /></div>) : <span className="font-semibold" style={{ color: 'var(--status-danger)' }} title="Keşifte web vhost’u bulunamadı: retirement vhost kapatmaz, web sunucusunu elle doğrulayın">⚠ web bulunamadı — elle doğrulayın</span>}</td>
                       <td className="px-2.5 py-1.5"><Pill label={st.label} color={st.color} /></td>
                       <td className="px-2.5 py-1.5 text-[10px]" style={{ color: 'var(--text-secondary)' }}><div className="max-w-[40rem] truncate" title={t.resultText || t.planText || ''}>{t.resultText || t.planText || (t.lastJobId ? `iş #${t.lastJobId}` : '—')}</div></td>
                       <td className="px-2.5 py-1.5">

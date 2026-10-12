@@ -102,3 +102,32 @@ test('RD11 JVM portu bilinmiyorsa (cfg_ports ve ports bos) AJP eslesmesi YAPILMA
   const t = buildTargets('ONUR', inv, [], [{ host: 'GBJBOP10', jvm: 'ONUR', running: 0, ports: '', cfg_ports: null }], vh, []).targets[0];
   assert.deepEqual(t.web.map((w) => [w.serverName, w.kaynak]), [['onur.fw.garanti.com.tr', 'ad']]);
 });
+
+// 3-TIER WEB ADAYI AB->WP (2026-10-12, kullanici: "GOJBAB03'un web hostu GOJBWP03"). Eski tek kural
+// (5. harf A->W) var olmayan GOJBWB03'u uretiyordu; web katmani sessizce "eslenemedi" kaliyordu.
+test('T3W1 GOJBAB03 -> web GOJBWP03 (Server Hub vhost) bulunur', () => {
+  const inv = [{ app: 'GFYSVC-D', host: 'GOJBAB03', env: 'DEV', domain: 'gtdmz.com.tr', jboss_version: '7' }];
+  const vh = [{ host: 'GOJBWP03', server_name: 'gfysvc-d.gtdmz.com.tr', aliases: '', listen: '*:443', conf_file: '/x/a.conf', product: 'IHS' }];
+  const t = buildTargets('GFYSVC', inv, [], [], vh).targets[0];
+  assert.equal(t.web.length, 1, t.webHow);
+  assert.equal(t.web[0].host, 'GOJBWP03');
+  assert.equal(t.webUyari, null);
+});
+
+test('T3W2 sertifika envanterinde GOJBWP03 de bulunur', () => {
+  const inv = [{ app: 'GFYSVC-D', host: 'GOJBAB03', env: 'DEV', domain: 'gtdmz.com.tr', jboss_version: '7' }];
+  const certs = [{ host: 'GOJBWP03', server_name: 'gfysvc-d.gtdmz.com.tr', port: '443', conf_file: '/x/a.conf', product: 'IHS' }];
+  const t = buildTargets('GFYSVC', inv, certs, [], []).targets[0];
+  assert.equal(t.web[0]?.host, 'GOJBWP03', t.webHow);
+});
+
+test('T3W3 web bulunamazsa SESSIZ KALINMAZ: 3-tier uyarisi denenen adaylarla', () => {
+  const inv = [{ app: 'GFYSVC-D', host: 'GOJBAB03', env: 'DEV', domain: 'gtdmz.com.tr', jboss_version: '7' }];
+  const r = buildTargets('GFYSVC', inv, [], [], []);
+  const t = r.targets[0];
+  assert.equal(t.web.length, 0);
+  assert.match(t.webUyari, /^3-tier: web vhost'u BULUNAMADI/);
+  assert.match(t.webUyari, /GOJBWB03/);
+  assert.match(t.webUyari, /GOJBWP03 \(taramada yok\)/);
+  assert.equal(r.summary.webBulunamadi, 1);
+});

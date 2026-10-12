@@ -9,6 +9,8 @@ export interface RtWeb { host: string; serverName: string; product: string; port
 export interface RtDiscoveredTarget {
   host: string; site: 'Pendik' | 'Ankara'; env: 'PROD' | 'QA' | 'TEST' | 'DEV'; appName: string; gen: number | null;
   appPath: string; inventoryStatus: string; domain: string; tier: string; web: RtWeb[]; webHow: string;
+  /** Web vhost'u bulunamadiysa uyari metni (denenen web sunuculari ile); bulunduysa null. */
+  webUyari?: string | null;
   // runningKnown (sozlesme v3) = running_src !== 'UNMEASURED'; alan yoksa (eski sunucu) bilinen sayilir.
   hub: { running: boolean; autoStart: string; scanDate: string | null; runningSrc?: string | null; runningKnown?: boolean | null } | null;
 }
