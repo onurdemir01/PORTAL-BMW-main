@@ -394,3 +394,43 @@ test('RP13 HEDEF BASINA beklemeyi atla: yalniz isaretli hedef tarih/23:00 beklem
   const kaynak = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'poller.cjs'), 'utf8');
   assert.match(kaynak, /t\.delete_now_at AS hedef_delete_now_at/);
 });
+
+// KUYRUK GORUNUMU (2026-10-12): ekran "sirada · ~N dk" ve "AWX'te calisiyor" diyebilsin.
+test('RQ1 zamanlayici: kapaliyken calisiyor=false ve sonraki tur YOK; acikken sonraki tur araligi kadar ileride', () => {
+  poller.stopPoller();
+  let z = poller.zamanlayici();
+  assert.equal(z.calisiyor, false);
+  assert.equal(z.sonrakiTurAt, null);
+  const once = Date.now();
+  poller.startPoller(async () => ({ jobId: 1 }));
+  z = poller.zamanlayici();
+  poller.stopPoller();
+  assert.equal(z.calisiyor, true);
+  const fark = new Date(z.sonrakiTurAt).getTime() - once;
+  assert.ok(fark >= z.aralikSn * 1000 - 50 && fark <= z.aralikSn * 1000 + 2000, `fark=${fark}`);
+});
+
+test('RQ2 suren isin AWX durumu saklanir (yalniz o kayit), is bitince silinir', async () => {
+  const sorgular = [];
+  sahteDb.query = async (sql, params) => {
+    const t = String(sql).replace(/\s+/g, ' ');
+    if (/^SELECT/i.test(t.trim())) {
+      sorgular.push({ t, params });
+      if (t.includes("status = 'deleting'")) return { rows: [{ id: 7, record_id: 3, host: 'H', app_name: 'A', env: 'QA', job_id: 555 }], rowCount: 1 };
+      return { rows: [], rowCount: 0 };
+    }
+    return { rows: [], rowCount: 1 };
+  };
+  let cevap = { terminal: false, awxStatus: 'pending' };
+  poller.startPoller(async () => ({ jobId: 1 }), async () => cevap);
+  await poller.kayitCanli(3);
+  assert.equal(poller.awxDurumu(555)?.status, 'pending');
+  assert.ok(sorgular.some((q) => q.t.includes("status = 'deleting'") && q.t.includes('record_id = $1') && q.params?.[0] === 3), 'kayit filtresi yok');
+  cevap = { terminal: false, awxStatus: 'running' };
+  await poller.kayitCanli(3);
+  assert.equal(poller.awxDurumu(555)?.status, 'running');
+  cevap = { terminal: true, ok: true, message: 'silindi' };
+  await poller.kayitCanli(3);
+  poller.stopPoller();
+  assert.equal(poller.awxDurumu(555), null);
+});

@@ -6,7 +6,7 @@
 // stop + N gun (varsayilan 45). Silme ve IP/LB/DNS adimlari sonraki surum (kayitta alanlari var).
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { PlusIcon, ArrowPathIcon, XMarkIcon, StopCircleIcon, ClipboardDocumentCheckIcon, TrashIcon, ArrowUturnLeftIcon } from '@heroicons/react/24/outline';
-import { retirementApi, type SccKaynak, type RtRecordRow, type RtRecord, type RtDiscovery, type RtDiscoveredTarget, type RtTarget, type RtTargetStatus, type RtLaunch, type RtWeb } from '@/api/retirementApi';
+import { retirementApi, type SccKaynak, type RtRecordRow, type RtRecord, type RtDiscovery, type RtDiscoveredTarget, type RtTarget, type RtTargetStatus, type RtLaunch, type RtWeb, type RtZamanlayici, type RtIsler } from '@/api/retirementApi';
 import { useJobTracker } from '@/contexts/JobTrackerContext';
 import { Modal } from '@/components/common/Modal';
 import { TableEmptyRow } from '@/components/common/EmptyState';
@@ -648,18 +648,20 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
   const askRef = useRef<{ ts: RtTarget[] } | null>(null);
   useEffect(() => { askRef.current = ask; }, [ask]);
 
+  // KUYRUK GORUNUMU (2026-10-12): zamanlayicinin sonraki turu + suren islerin AWX durumu.
+  const [kuyruk, setKuyruk] = useState<{ zamanlayici?: RtZamanlayici; isler?: RtIsler }>({});
   const load = useCallback(async () => {
-    try { const r = await retirementApi.get(id); if (r.ok) { setRec(r.record); setErr(''); } else setErr(r.message || 'Kayıt alınamadı.'); }
+    try { const r = await retirementApi.get(id); if (r.ok) { setRec(r.record); setKuyruk({ zamanlayici: r.zamanlayici, isler: r.isler }); setErr(''); } else setErr(r.message || 'Kayıt alınamadı.'); }
     catch (e: unknown) { setErr(e instanceof Error ? e.message : String(e)); }
   }, [id]);
   useEffect(() => { load(); }, [load]);
   // CANLI TAZELEME (2026-10-09): suren is ya da bekleyen/suren vhost isi varken 4 sn'de bir /canli
   // (o uc bekleyen vhost islerini de baslatir ve sonuclarini okur). Is yokken istek atilmaz.
-  const canliGerek = !!rec && rec.targets.some(hedefAktif);
+  const canliGerek = !!rec && rec.targets.some((t) => hedefAktif(t, rec.deleteNowAt));
   useEffect(() => {
     if (!canliGerek) return;
     const z = window.setInterval(() => {
-      retirementApi.canli(id).then((r) => { if (r.ok && r.record) setRec(r.record); }).catch(() => {});
+      retirementApi.canli(id).then((r) => { if (r.ok && r.record) { setRec(r.record); setKuyruk({ zamanlayici: r.zamanlayici, isler: r.isler }); } }).catch(() => {});
     }, 4000);
     return () => window.clearInterval(z);
   }, [canliGerek, id]);
@@ -959,7 +961,7 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
           )}
           {rec.notes && <div className="text-[12px] rounded-lg border px-3 py-2" style={{ borderColor: 'var(--border-subtle)', color: 'var(--text-secondary)' }}>{rec.notes}</div>}
 
-          <RetirementCanli targets={rec.targets} />
+          <RetirementCanli targets={rec.targets} kayitAtladi={rec.deleteNowAt} zamanlayici={kuyruk.zamanlayici} isler={kuyruk.isler} />
           {(() => {
             // TOPLU ARAC CUBUGU: yalniz birden fazla uygun hedef varken. Secilenler TEK iste
             // (sunucu ayni kapilari her hedefte uygular; farkli ortam / ayni sunucu reddedilir).
@@ -1064,7 +1066,7 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
                         {t.status === 'stopped' && !t.deletedAt && rec.status !== 'cancelled' && rec.status !== 'deleted' && (
                           <div className="mt-1 text-[10px]">
                             {t.deleteNowAt
-                              ? <span style={{ color: 'var(--status-danger)' }} title={fmtDateTime(t.deleteNowAt)}>bekleme atlandı — ilk turda silinecek</span>
+                              ? <span className="inline-flex items-center gap-1 font-semibold" style={{ color: 'var(--status-warning)' }} title={`Bekleme ${fmtDateTime(t.deleteNowAt)} tarihinde atlandı`}><span aria-hidden className="w-1.5 h-1.5 rounded-full animate-pulse motion-reduce:animate-none" style={{ background: 'var(--status-warning)' }} />silme sırada — yukarıdaki panelde geri sayım</span>
                               : <button onClick={() => { setAtlaAd(''); setAtlaSor(t); }} className="underline decoration-dotted" style={{ color: 'var(--status-danger)' }} title="Admin: YALNIZ bu sunucunun silme beklemesini atla; zamanlayıcı ilk turda siler, diğer hedefler kendi tarihini bekler">beklemeyi atla (admin)</button>}
                           </div>
                         )}

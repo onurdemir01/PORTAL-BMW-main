@@ -33,6 +33,28 @@ let _launch = null;
 let _finalize = null;
 let _web = null;
 let _ticking = false;
+// KUYRUK GORUNUMU (2026-10-12, kullanici: "isin queue'da bekledigini, ortalama ne kadar surede
+// tetiklenecegini, gercekten calismaya basladiysa buna dair bir ibare gormek istiyorum"):
+// zamanlayicinin son/sonraki tur ani ve suren islerin SON OKUNAN AWX durumu (bellekte; Portal
+// yeniden baslarsa bos baslar ve ilk okumada dolar). Okunmamis != calismiyor: ekran "okunuyor" der.
+let _sonTur = null;
+let _baslangic = null;
+const _awxDurum = new Map();
+function zamanlayici() {
+  const aralikSn = Math.round(cfg().intervalMs / 1000);
+  const temel = _sonTur || _baslangic;
+  return {
+    calisiyor: !!_timer,
+    aralikSn,
+    sonTurAt: _sonTur ? new Date(_sonTur).toISOString() : null,
+    sonrakiTurAt: _timer && temel ? new Date(temel + aralikSn * 1000).toISOString() : null,
+    turSuruyor: _ticking,
+  };
+}
+function awxDurumu(jobId) {
+  const d = _awxDurum.get(Number(jobId));
+  return d ? { status: d.status, at: new Date(d.at).toISOString() } : null;
+}
 
 function cfg() {
   const n = Number(process.env.RETIREMENT_POLL_INTERVAL_SECONDS);
@@ -213,11 +235,12 @@ const ADIMLAR = Object.freeze([
   { durum: 'rolling_back', isAlani: 'rollback_job_id', kind: 'rollback', basarili: 'active', basarisiz: 'rollback_failed', zamanAlani: 'rolled_back_at' },
 ]);
 
-async function finalizeAdim(adim) {
+async function finalizeAdim(adim, recordId = null) {
   const { rows } = await db.query(
     `SELECT id, record_id, host, app_name, env, ${adim.isAlani} AS job_id
        FROM retirement_targets
-      WHERE status = '${adim.durum}' AND ${adim.isAlani} IS NOT NULL`,
+      WHERE status = '${adim.durum}' AND ${adim.isAlani} IS NOT NULL${recordId != null ? ' AND record_id = $1' : ''}`,
+    recordId != null ? [recordId] : [],
   );
   let kapanan = 0;
   for (const t of rows || []) {
@@ -231,7 +254,9 @@ async function finalizeAdim(adim) {
       console.warn(`[Retirement poller] is #${t.job_id} durumu okunamadi:`, e.message);
       continue;
     }
+    if (o && o.awxStatus) _awxDurum.set(Number(t.job_id), { status: String(o.awxStatus), at: Date.now() });
     if (!o || !o.terminal) continue;
+    _awxDurum.delete(Number(t.job_id));
     if (o.ok) {
       await db.query(
         `UPDATE retirement_targets SET status = '${adim.basarili}', result_text = $1, ${adim.zamanAlani} = GETUTCDATE(), updated_at = GETUTCDATE()
@@ -423,15 +448,16 @@ async function webSonucTick(recordId = null) {
 }
 
 /** Hem STOP hem DELETE islerini sonuclandirir. */
-async function finalizeTick() {
+async function finalizeTick(recordId = null) {
   if (typeof _finalize !== 'function') return { kapanan: 0 };
   let kapanan = 0;
-  for (const adim of ADIMLAR) kapanan += await finalizeAdim(adim);
+  for (const adim of ADIMLAR) kapanan += await finalizeAdim(adim, recordId);
   return { kapanan };
 }
 
 async function tick(now = new Date()) {
   if (typeof _launch !== 'function') return { skipped: 'launcher yok' };
+  _sonTur = now.getTime();
   const s = await stopTick(now);
   const d = await deleteTick(now);
   const f = await finalizeTick();
@@ -450,6 +476,7 @@ function startPoller(launch, finalize, web) {
   _web = web || null;
   if (_timer) return;
   const { intervalMs } = cfg();
+  _baslangic = Date.now();
   _timer = setInterval(() => {
     if (_ticking) return;
     _ticking = true;
@@ -488,7 +515,11 @@ async function kayitCanli(recordId) {
   try {
     const w = await webTick(recordId);
     const ws = await webSonucTick(recordId);
-    return { kosan: w.kosan, kapanan: ws.kapanan };
+    // SUREN JBoss ISLERININ (STOP/silme/geri alma) AWX durumu da okunur: "sirada mi, AWX'te mi
+    // calisiyor" ekranda gorunsun ve biten is 5 dk'lik turu beklemeden sonuclansin. Ayni
+    // finalizeAdim - okunamazsa hedefe hicbir sey yazilmaz.
+    const f = await finalizeTick(recordId).catch(() => ({ kapanan: 0 }));
+    return { kosan: w.kosan, kapanan: ws.kapanan + f.kapanan };
   } finally {
     _ticking = false;
   }
@@ -497,9 +528,10 @@ async function kayitCanli(recordId) {
 function stopPoller() {
   if (_timer) clearInterval(_timer);
   _timer = null;
+  _baslangic = null;
   _launch = null;
   _finalize = null;
   _web = null;
 }
 
-module.exports = { startPoller, stopPoller, tick, webSimdi, kayitCanli, pollSaniye: () => Math.round(cfg().intervalMs / 1000), _stopTick: stopTick, _deleteTick: deleteTick, _finalizeTick: finalizeTick, _webTick: webTick, _webSonucTick: webSonucTick };
+module.exports = { startPoller, stopPoller, tick, webSimdi, kayitCanli, zamanlayici, awxDurumu, pollSaniye: () => Math.round(cfg().intervalMs / 1000), _stopTick: stopTick, _deleteTick: deleteTick, _finalizeTick: finalizeTick, _webTick: webTick, _webSonucTick: webSonucTick };

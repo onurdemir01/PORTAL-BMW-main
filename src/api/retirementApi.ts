@@ -59,6 +59,8 @@ export interface RtTarget {
   deletedAt: string | null; rolledBackAt: string | null; rollbackJobId: number | null;
   /** Hedef basina "beklemeyi atla" (admin): doluysa ilk zamanlayici turunda silinir. */
   deleteNowAt?: string | null;
+  /** Silme isinin AWX numarasi (zamanlayici baslatinca dolar). */
+  deleteJobId?: number | null;
   scheduledAt: string | null; windowEnd: string | null;
   /** STOP onayinda DONDURULMUS vhost listesi + her birinin akibeti (akis paneli). */
   webSonuc: RtWeb2[] | null;
@@ -79,6 +81,10 @@ export interface RtRecord {
   targets: RtTarget[]; events: { id: number; at: string; username: string | null; kind: string; text: string | null }[];
 }
 /** Kaydin ortam kirilimi: kayit TABAN adla tutulur, ortam hedeflerden gelir. */
+/** Zamanlayici durumu (kuyruk gorunumu): son/sonraki tur ani, tur araligi. */
+export interface RtZamanlayici { calisiyor: boolean; aralikSn: number; sonTurAt: string | null; sonrakiTurAt: string | null; turSuruyor: boolean }
+/** Suren JBoss isinin son okunan AWX durumu (hedef id -> is). `status` yoksa henuz okunmadi. */
+export type RtIsler = Record<number, { jobId: number; status?: string; at?: string }>;
 export interface RtRecordEnv { env: string; toplam: number; durdurulan: number; silinen: number; uygulamalar: string[] }
 export interface RtRecordRow extends Omit<RtRecord, 'targets' | 'events'> { targets: number; stopped: number; envs?: RtRecordEnv[] }
 /** SCC adresinin kaynagi: ekrandan girildi / Portal ortam degiskeni / hic yok. */
@@ -119,9 +125,9 @@ export const retirementApi = {
   apps: (q: string): Promise<{ ok: boolean; apps: string[] }> => fetch(`${BASE}/apps?q=${encodeURIComponent(q)}`).then(safeJson),
   discover: (app: string): Promise<RtDiscovery> => fetch(`${BASE}/discover?app=${encodeURIComponent(app)}`).then(safeJson),
   list: (): Promise<{ ok: boolean; records: RtRecordRow[]; message?: string }> => fetch(BASE).then(safeJson),
-  get: (id: number): Promise<{ ok: boolean; record: RtRecord; message?: string }> => fetch(`${BASE}/${id}`).then(safeJson),
+  get: (id: number): Promise<{ ok: boolean; record: RtRecord; message?: string; zamanlayici?: RtZamanlayici; isler?: RtIsler }> => fetch(`${BASE}/${id}`).then(safeJson),
   /** Canli durum: bu kaydin vhost islerini baslatir/sonuclandirir ve kaydi dondurur. */
-  canli: (id: number): Promise<{ ok: boolean; record: RtRecord; message?: string; canli?: { kilitli?: boolean; kosan?: number; kapanan?: number; hata?: string } }> => fetch(`${BASE}/${id}/canli`).then(safeJson),
+  canli: (id: number): Promise<{ ok: boolean; record: RtRecord; message?: string; canli?: { kilitli?: boolean; kosan?: number; kapanan?: number; hata?: string }; zamanlayici?: RtZamanlayici; isler?: RtIsler }> => fetch(`${BASE}/${id}/canli`).then(safeJson),
   create: (p: { app: string; smartNo: string; ocoNo?: string; ownerEmail?: string; deleteAfterDays?: number; plannedDeleteAt?: string | null; dnsReuse?: boolean; lbReuse?: boolean; notes?: string; targets?: { host: string; appName: string }[] }): Promise<{ ok: boolean; id: number; record: RtRecord; message?: string }> =>
     fetch(BASE, json(p)).then(safeJson),
   cancel: (id: number, reason: string): Promise<{ ok: boolean; record: RtRecord; message?: string }> => fetch(`${BASE}/${id}/cancel`, json({ reason })).then(safeJson),
