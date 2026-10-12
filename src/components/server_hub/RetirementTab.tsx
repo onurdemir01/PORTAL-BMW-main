@@ -6,7 +6,7 @@
 // stop + N gun (varsayilan 45). Silme ve IP/LB/DNS adimlari sonraki surum (kayitta alanlari var).
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { PlusIcon, ArrowPathIcon, XMarkIcon, StopCircleIcon, ClipboardDocumentCheckIcon, TrashIcon, ArrowUturnLeftIcon } from '@heroicons/react/24/outline';
-import { retirementApi, type SccKaynak, type RtRecordRow, type RtRecord, type RtDiscovery, type RtDiscoveredTarget, type RtTarget, type RtTargetStatus, type RtLaunch } from '@/api/retirementApi';
+import { retirementApi, type SccKaynak, type RtRecordRow, type RtRecord, type RtDiscovery, type RtDiscoveredTarget, type RtTarget, type RtTargetStatus, type RtLaunch, type RtWeb } from '@/api/retirementApi';
 import { useJobTracker } from '@/contexts/JobTrackerContext';
 import { Modal } from '@/components/common/Modal';
 import { TableEmptyRow } from '@/components/common/EmptyState';
@@ -14,6 +14,12 @@ import { fmtDate, fmtDateTime } from '@/utils/datetime';
 import RetirementAkis from './RetirementAkis';
 import RetirementDnsIp from './RetirementDnsIp';
 import RetirementCanli, { hedefAktif } from './RetirementCanli';
+
+/** Vhost'un nasil bulundugu (2026-10-12): AJP/proxy hedefiyle bulunanlar etiketlenir. */
+function WebKaynak({ w }: { w: RtWeb }) {
+  if (w.kaynak !== 'ajp' && w.kaynak !== 'ad+ajp') return null;
+  return <span className="ml-1 px-1 rounded border text-[9px] font-semibold" style={{ color: 'var(--status-info)', borderColor: 'var(--status-info)' }} title={`mod_jk/proxy hedefi ${w.ajpHedef || ''} bu JVM'in portu${w.kaynak === 'ajp' ? ' — ad eşleşmesiyle BULUNAMAZDI' : ''}`}>AJP</span>;
+}
 import { retirementAdimi } from './retirementAdim';
 import { stopTrafikOzeti, stopOnayAcikMi, type TrafikIsDurumu } from './retirementTrafik';
 import { blokAyristir, bloklaraBol, degisimTuru, jkAyristir, jkDegAyristir, JK_ETIKET, kipAyristir, sonraMetni, sonucAyristir, YORUM_ONEKI, type BlokSatiri, type DegisimTuru, type JkDeg, type JkSatiri, type Kip } from './retirementVhostPlan';
@@ -581,7 +587,7 @@ function CreateModal({ defaultDays, onClose, onCreated }: { defaultDays: number;
                       <td className="px-2 py-1">{t.gen ? `JBoss ${t.gen}` : <span style={{ color: 'var(--status-danger)' }}>?</span>}</td>
                       <td className="px-2 py-1 text-[10px]" style={{ color: 'var(--text-muted)' }}>{t.inventoryStatus || '—'}</td>
                       <td className="px-2 py-1 text-[10px]"><HubHucresi hub={t.hub} okunamadi={hubYok} /></td>
-                      <td className="px-2 py-1 text-[10px]">{t.web.length ? t.web.map((w) => <div key={w.host + w.serverName} title={t.webHow}>{w.host} · {w.serverName}{w.product ? ` (${w.product})` : ''}</div>) : <span style={{ color: 'var(--status-warning)' }} title={t.webHow}>eşlenemedi</span>}</td>
+                      <td className="px-2 py-1 text-[10px]">{t.web.length ? t.web.map((w) => <div key={w.host + w.serverName} title={t.webHow}>{w.host} · {w.serverName}{w.product ? ` (${w.product})` : ''}<WebKaynak w={w} /></div>) : <span style={{ color: 'var(--status-warning)' }} title={t.webHow}>eşlenemedi</span>}</td>
                       <td className="px-2 py-1 text-[10px]">
                         {t.web.length
                           ? t.web.map((w) => <div key={`tr-${w.host}-${w.serverName}`}><TrafikHucresi tr={w.trafik} /></div>)
@@ -993,7 +999,7 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
                       <td className="px-2.5 py-1.5"><b>{t.env}</b></td>
                       <td className="px-2.5 py-1.5">{t.appName}</td>
                       <td className="px-2.5 py-1.5">{t.gen ? `JBoss ${t.gen}` : '?'}</td>
-                      <td className="px-2.5 py-1.5 text-[10px]">{t.web.length ? t.web.map((w) => <div key={w.host + w.serverName}>{w.host} · {w.serverName}</div>) : <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
+                      <td className="px-2.5 py-1.5 text-[10px]">{t.web.length ? t.web.map((w) => <div key={w.host + w.serverName}>{w.host} · {w.serverName}<WebKaynak w={w} /></div>) : <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
                       <td className="px-2.5 py-1.5"><Pill label={st.label} color={st.color} /></td>
                       <td className="px-2.5 py-1.5 text-[10px]" style={{ color: 'var(--text-secondary)' }}><div className="max-w-[40rem] truncate" title={t.resultText || t.planText || ''}>{t.resultText || t.planText || (t.lastJobId ? `iş #${t.lastJobId}` : '—')}</div></td>
                       <td className="px-2.5 py-1.5">
