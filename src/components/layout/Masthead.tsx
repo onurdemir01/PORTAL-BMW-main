@@ -161,7 +161,7 @@ export default function Masthead({ onToggleNav }: Props) {
           <button
             onClick={() => setMenuOpen(true)}
             className="hidden sm:inline-flex items-center gap-1.5 h-7 px-2.5 mr-2 rounded-full text-[0.75rem] font-semibold"
-            style={{ color: "var(--status-warning)", background: "var(--status-warning-bg)", border: "1px solid var(--status-warning)" }}
+            style={{ color: "var(--status-warning-text)", background: "var(--status-warning-bg)", border: "1px solid var(--status-warning)" }}
             title="Sizin tetiklediğiniz işlerde Smart onayı istenmiyor (diğer kullanıcılar etkilenmez). Kapatmak için kullanıcı menüsü."
           >
             <ExclamationTriangleIcon className="h-4 w-4" /> Smart onayı kapalı (yalnız siz)
@@ -258,7 +258,7 @@ export default function Masthead({ onToggleNav }: Props) {
                     />
                     <span>
                       <span className="font-semibold">Smart onayı (tetiklemelerim)</span>
-                      <span className="block" style={{ color: smartAtla ? "var(--status-warning)" : "var(--text-muted)" }}>
+                      <span className="block" style={{ color: smartAtla ? "var(--status-warning-text)" : "var(--text-muted)" }}>
                         {smartAtla === null ? "durum okunamadı — onay istenir"
                           : smartAtla ? "KAPALI — başlattığınız işler onaysız çalışır (denetime yazılır)"
                             : "açık — işleriniz normal onay akışından geçer"}

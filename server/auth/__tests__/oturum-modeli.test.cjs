@@ -37,7 +37,14 @@ const { initAuth, requireAuth } = require('../index.cjs');
 
 const DK = 60 * 1000;
 const SA = 60 * DK;
-let simdi = Date.UTC(2026, 9, 2, 8, 0, 0);
+// SAHTE SAATIN TABANI GERCEK "SIMDI"DIR (2026-10-13). Sahte saat yalnizca oturum POLITIKASINI
+// yonetir; express-session cerezin / kaydin suresini GERCEK saatle karsilastirir. Taban eskiden
+// sabit bir tarihti (2026-10-02 08:00): 7 gunluk beni-hatirla cerezi gercek takvimde
+// 2026-10-09'da doldu, MemoryStore oturumu "suresi gecmis" sayip atti ve OM5 kendi kendine
+// kizardi (uretim kodunda hicbir degisiklik yokken). Taban tam saniyeye yuvarlanir: cerezin
+// Expires alani saniye duyarlidir ve asagida birebir karsilastirilir.
+const TABAN = Math.floor(Date.now() / 1000) * 1000;
+let simdi = TABAN;
 policy._saatAyarla(() => simdi);
 
 const app = express();
@@ -53,7 +60,7 @@ after(() => server.close());
 const ENV = ['SESSION_IDLE_MINUTES', 'SESSION_ABSOLUTE_HOURS', 'SESSION_REMEMBER_DAYS', 'SESSION_WARN_SECONDS'];
 beforeEach(() => {
   for (const k of ENV) delete process.env[k];
-  simdi = Date.UTC(2026, 9, 2, 8, 0, 0);
+  simdi = TABAN;
 });
 
 async function giris(body = {}) {
@@ -72,6 +79,14 @@ async function giris(body = {}) {
 function iste(cerez, yol = '/api/test/ping', opt = {}) {
   return fetch(`${base}${yol}`, { ...opt, headers: { cookie: cerez, ...(opt.headers || {}) } });
 }
+
+test('OM0 sahte saat GERCEK saatin gerisinde baslamaz (sabit tarih = saat bombasi)', () => {
+  // Taban gecmiste sabit bir tarih olursa testler o tarihten "en uzun cerez omru" kadar sonra
+  // kendi kendine kizarir (2026-10-09'da OM5'te oldu). Bu test o gunu beklemeden soyler.
+  const geride = Date.now() - TABAN;
+  assert.ok(geride >= 0 && geride < 5 * DK, `sahte saatin tabani gercek saatten ${geride} ms uzakta`);
+  assert.equal(TABAN % 1000, 0, 'taban tam saniye degil - Expires karsilastirmalari kayar');
+});
 
 test('OM1 bosta kalma: sinirdan 1 sn once gecer, sinirda imzali 401 + sebep idle', async () => {
   const { cerez } = await giris();
@@ -93,11 +108,11 @@ test('OM2 mutlak sure: surekli etkin olsa da 12 sa sinirinda 401 + sebep absolut
   const { cerez } = await giris();
   // Her 30 dk bir kullanici istegi: bosta kalma hic dolmaz.
   for (let t = 30 * DK; t < 12 * SA; t += 30 * DK) {
-    simdi = Date.UTC(2026, 9, 2, 8, 0, 0) + t;
+    simdi = TABAN + t;
     const r = await iste(cerez);
     assert.equal(r.status, 200, `etkin kullanici ${t / DK}. dakikada atildi`);
   }
-  simdi = Date.UTC(2026, 9, 2, 8, 0, 0) + 12 * SA - 1000;
+  simdi = TABAN + 12 * SA - 1000;
   assert.equal((await iste(cerez)).status, 200, 'mutlak sinirdan 1 sn once atildi');
   simdi += 1000;
   const r = await iste(cerez);
