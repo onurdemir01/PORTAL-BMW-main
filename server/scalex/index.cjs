@@ -296,7 +296,7 @@ async function resolveGatePolicy(
   const sa = gateCfg.svcConfig.smartApproval || {};
   let skipRule = null;
   if (sa.enabled && executionMode === 'apply') {
-    const es = require('../ansible/smart-gate.cjs').matchSkip(
+    const es = launch.gates.matchSmartSkip(
       sa,
       launch.buildGateVars({ env: environment, tenant, action, executionMode, clusters, namespace }),
     );
@@ -2522,7 +2522,7 @@ function initScaleX(app) {
       // Admin'in KENDI tetiklemelerinde SMART atlaniyor mu (kisisel tercih) — kartta ayri
       // satir; yukaridaki `policy` siradan kullanicinin gorecegi karardir.
       const kendiAtlamasi = await require('../ansible/admin-smart-atla.cjs').adminSmartAtliyor(req);
-      const istisna = require('../ansible/smart-gate.cjs').parseSkipRules(smartApproval.skipWhen);
+      const istisna = launch.gates.parseSmartSkipRules(smartApproval.skipWhen);
       const ornek = scalexSmartBaglami({
         user: currentUser(req),
         env: 'prod',

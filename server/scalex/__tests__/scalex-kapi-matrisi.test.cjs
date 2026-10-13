@@ -21,9 +21,10 @@
 // tablosu. Uygulama degisir de tablo ile ayrisirsa hangi hucrenin ayristigi adiyla yazilir.
 'use strict';
 
-// Simulator yuklenirken TUM `SCALEX_*` ortam degiskenlerini siler (testler birbirinin
-// ayarini gormesin). Ornek yazma bayragi bu yuzden ONDAN ONCE okunur.
-const ORNEK_YAZ = process.env.SCALEX_ORNEK_YAZ === '1';
+// Ornek yazma bayragi. Adi BILEREK `SCALEX_` ile baslamiyor: o onek urun ayarlarina ayrili —
+// simulator yuklenirken hepsini siler ve devreye alma on kontrolu (preflight PF6) her
+// birini `.env.example`da arar. Bir test bayragi orada yer almamali.
+const ORNEK_YAZ = process.env.KAPI_ORNEK_YAZ === '1';
 
 const sim = require('./fixtures/scalex-sim.cjs');
 const test = require('node:test');
@@ -343,6 +344,19 @@ test('KM2 uretim olayi: prod + gecerli OCO + SMART tanimsiz -> 409, OCO sorulmaz
   assert.equal(iz.length, 1);
   assert.equal(iz[0].result, 'fail');
   assert.equal(iz[0].detail.outcome, 'blocked');
+
+  // ENGEL HER SEYDEN ONCE: gerekcesiz bir geri alma "gerekce yazin" diye OYALANMAZ (yazsa da
+  // baslamayacak) ve kilit almaz.
+  sim.sifirla();
+  sim.durdurulmusEkle();
+  const geri = await sim.calistir({ action: 'restore' });
+  assert.equal(geri.status, 409, `engelli istek once baska bir sey istedi: ${geri.metin}`);
+  assert.equal(geri.json.code, 'smart_not_configured');
+  assert.equal(
+    [...sim.kayit.ayna.values()][0].phase,
+    'scaled_down',
+    'engelli istek geri alma kilidi aldi',
+  );
 
   // Cikis yolu 1: on kontrol (dry_run) her zaman calisir.
   sim.sifirla();
@@ -685,6 +699,17 @@ test('KM10 baslatma basina AWX cagrisi: eski yol liste+anket+baslatma, yeni yol 
   );
   assert.ok(eski > 1, 'karsilastirma anlamsiz');
 
+  // BELLEK ISTEYENE: ayni sablonu bellek ISTEMEDEN baslatan baska bir modul anket
+  // tanimini yine AWX'ten okur (davranisi degismedi).
+  const isinmis = sim.ayar.sablonlar.scalex_run.awxTemplateId;
+  const onceDiger = say();
+  await sim.runner.launchJobOnServer(1, isinmis, ev, '', sim.KULLANICILAR.ayse);
+  assert.deepEqual(
+    yollar().slice(onceDiger),
+    ['GET /api/vN/job_templates/N/survey_spec/', 'POST /api/vN/job_templates/N/launch/'],
+    'anket bellegi, istemeyen cagiranda da kullanildi',
+  );
+
   // SURE (cagri basina 120 ms'lik bir AWX ile): sicak baslatma tek turun suresine yakin.
   sim.ayar.awx.gecikmeMs = 120;
   const t0 = Date.now();
@@ -847,13 +872,14 @@ test('KM14 zamanlanan is: pencere saatinde baslayinca portal isi tanir, sonucu a
     scheduledClosed: 0,
   });
 
-  // Zamanlayici isi baslatti (oco/poller): portal bunu bir sonraki turda ogrenir.
+  // Zamanlayici isi baslatti (oco/poller): portal bunu uzlastiricinin BIR SONRAKI TURUNDA
+  // ogrenir. `tick()` cagrilir (yardimci fonksiyon degil): devralma turun PARCASI olmali —
+  // fonksiyon yazilip tura baglanmasaydi onu kimse cagirmazdi.
   const jobId = sim.awxIsiAc();
   sim.zamanlananiBaslat(z.json.scheduleId, jobId);
-  assert.deepEqual(await sim.reconciler.adoptScheduledLaunches(cfg), {
-    scheduledAdopted: 1,
-    scheduledClosed: 0,
-  });
+  const tur = await sim.reconciler.tick();
+  assert.equal(tur.scheduledAdopted, 1, `tur zamanlanan isi devralmadi: ${JSON.stringify(tur)}`);
+  assert.equal(tur.finalized, 0, 'kosan is sonuclandirildi');
   assert.deepEqual(
     sim.kayit.islemler.map((x) => [x.status, x.request_key, x.awx_job_id]),
     [
@@ -876,13 +902,9 @@ test('KM14 zamanlanan is: pencere saatinde baslayinca portal isi tanir, sonucu a
       { cluster: 'c2', app: 'api', kind: 'Deployment', status: 'OK', verified: true },
     ],
   });
-  const durum = await sim.runner.getJobStatusOnServer(1, jobId);
-  await sim.scalex.finalizeOperation({
-    serverId: 1,
-    jobId,
-    status: durum,
-    parsed: require('../result.cjs').extractScaleXResult(durum.artifacts),
-  });
+  // Kimse durum ekranina bakmasa da (sekme kapandi) bir sonraki tur sonucu isler.
+  const tur2 = await sim.reconciler.tick();
+  assert.equal(tur2.finalized, 1, JSON.stringify(tur2));
   assert.equal(sim.islemler('FINISHED').length, 2);
   assert.deepEqual(
     [...sim.kayit.ayna.values()].map((a) => `${a.clusterName}/${a.appName}`).sort(),
@@ -1159,7 +1181,7 @@ test('KM18 SMART kurali anahtari: yalniz Admin, yalniz iki deger, ANINDA gecerli
 // Asagidaki her kurgu simulatorden GERCEK `/preview` ve `/run` govdesini alir; degisken
 // alanlar (is/bilet/kayit numarasi, tarih) sabitlenir ve sonuc depodaki ornek dosyasiyla
 // KARSILASTIRILIR. Sunucu yaniti degisirse bu test kirmizi olur ve ornek bilerek
-// yeniden uretilir:   SCALEX_ORNEK_YAZ=1 node --test <bu dosya>
+// yeniden uretilir:   KAPI_ORNEK_YAZ=1 node --test <bu dosya>
 const fs = require('node:fs');
 const path = require('node:path');
 const ORNEK_DOSYASI = path.join(
@@ -1352,7 +1374,7 @@ test('KM19 ekran testlerinin ornek yanitlari GERCEK sunucu yanitlariyla ayni', a
     t.diagnostic(`ornekler yeniden yazildi: ${Object.keys(kurgular).length} kurgu`);
     return;
   }
-  assert.ok(fs.existsSync(ORNEK_DOSYASI), 'ornek dosyasi yok: SCALEX_ORNEK_YAZ=1 ile uretin');
+  assert.ok(fs.existsSync(ORNEK_DOSYASI), 'ornek dosyasi yok: KAPI_ORNEK_YAZ=1 ile uretin');
   const depodaki = JSON.parse(fs.readFileSync(ORNEK_DOSYASI, 'utf8'));
   assert.deepEqual(
     Object.keys(depodaki.kurgular).sort(),
@@ -1372,4 +1394,79 @@ test('KM19 ekran testlerinin ornek yanitlari GERCEK sunucu yanitlariyla ayni', a
   assert.equal(bitenIs.yoklama.outputFinal, false);
   assert.equal(bitenIs.tamCikti.outputFinal, true);
   assert.equal(bitenIs.yoklama.result.overallStatus, 'OK');
+});
+
+test('KM20 SMART onayi geldikten sonra: is devralinir, sonucu aynaya yazilir; reddedilen bilet satiri kapatir', async (t) => {
+  sim.konsoluSustur(t);
+  sim.ayar.ozellestirme = { smartApproval: { ...sim.SMART_HAZIR } };
+  const r = await sim.calistir({ ocoNumber: OCO_NO });
+  assert.equal(r.json.pendingApproval, true, r.metin);
+  // Onay beklerken tur hicbir seye dokunmaz.
+  let tur = await sim.reconciler.tick();
+  assert.deepEqual([tur.adopted, tur.cancelled, tur.finalized], [0, 0, 0]);
+  assert.equal(sim.islemler('PENDING_APPROVAL').length, 1);
+
+  // Onay geldi, onay zamanlayicisi isi baslatti; is hemen bitti.
+  const jobId = sim.awxIsiAc();
+  sim.biletiOnayla(r.json.ticketId, jobId);
+  sim.isiBitir(jobId, {
+    targets: [{ cluster: 'c1', app: 'api', kind: 'Deployment', status: 'OK', verified: true }],
+  });
+  tur = await sim.reconciler.tick();
+  // AYNI turda devralinir ve sonuclandirilir.
+  assert.deepEqual([tur.adopted, tur.finalized], [1, 1], JSON.stringify(tur));
+  assert.deepEqual(
+    sim.kayit.islemler.map((x) => [x.status, x.request_key, x.approval_state]),
+    [['FINISHED', `1:${jobId}`, 'APPROVED']],
+  );
+  assert.equal(sim.kayit.ayna.size, 1, 'onayli durdurma aynaya dusmedi — Geri Al kisayolu cikmaz');
+  assert.equal(sim.denetimde('scalex_approval_adopted')[0].username, 'ayse');
+
+  // Reddedilen bilet: satir kapanir, is hic baslamaz.
+  sim.sifirla();
+  sim.ayar.ozellestirme = { smartApproval: { ...sim.SMART_HAZIR } };
+  const r2 = await sim.calistir({ ocoNumber: OCO_NO });
+  sim.biletiReddet(r2.json.ticketId);
+  tur = await sim.reconciler.tick();
+  assert.equal(tur.cancelled, 1);
+  assert.deepEqual(
+    sim.kayit.islemler.map((x) => [x.status, x.approval_state]),
+    [['CANCELLED', 'REJECTED']],
+  );
+  assert.equal(sim.baslatmalar().length, 0);
+  assert.deepEqual(sim.kayit.taninmayanSql, []);
+});
+
+test('KM21 onay beklerken tutulan geri alma kilidi: bilet cozulene kadar durur, reddedilince birakilir', async (t) => {
+  sim.konsoluSustur(t);
+  sim.ayar.ozellestirme = { smartApproval: { ...sim.SMART_HAZIR } };
+  sim.durdurulmusEkle();
+  const r = await sim.calistir({ action: 'restore', reason: 'INC-3' });
+  assert.equal(r.json.pendingApproval, true, r.metin);
+  const satir = () => [...sim.kayit.ayna.values()][0];
+  assert.equal(
+    satir().phase,
+    'restoring',
+    'onay beklerken kilit tutulmuyor — ikinci bir geri alma baslatilabilir',
+  );
+  // Ayni hedef icin ikinci istek: cakisma.
+  assert.equal(
+    (await sim.calistir({ action: 'restore', reason: 'INC-3' })).json.code,
+    'restore_in_progress',
+  );
+  // Tur: bilet hala bekliyor -> kilit YETIM DEGIL, birakilmaz.
+  let tur = await sim.reconciler.tick();
+  assert.equal(tur.releasedLocks, 0, 'onay bekleyen isin kilidi yetim sayildi');
+  assert.equal(satir().phase, 'restoring');
+  // Bilet reddedildi: satir kapanir; kilit bir sonraki turda birakilir.
+  sim.biletiReddet(r.json.ticketId);
+  tur = await sim.reconciler.tick();
+  assert.equal(tur.cancelled, 1);
+  tur = await sim.reconciler.tick();
+  assert.equal(
+    satir().phase,
+    'scaled_down',
+    'reddedilen onayin kilidi asili kaldi: kullanici bir daha geri alamaz',
+  );
+  assert.deepEqual(sim.kayit.taninmayanSql, []);
 });

@@ -453,7 +453,9 @@ test('UI: geri almada bilinmeyen hedef "?" ile gecistirilmez', () => {
 test('UI: sinir asimi ONIZLEMEDE soylenir ve Calistir pasiflesir', () => {
   const PREVIEW = codeOnly(read('src/components/scalex/steps/PreviewStep.tsx'));
   assert.match(PREVIEW, /r\.exceedsMaxTargets/);
-  assert.match(PREVIEW, /disabled=\{busy \|\| blocked/);
+  // `bayat`: onizleme baska bir secime aitken de kapali (2026-10-13).
+  assert.match(PREVIEW, /disabled=\{busy \|\| bayat \|\| blocked/);
+  assert.match(PREVIEW, /const blocked = r\.exceedsMaxTargets \|\| !!engel;/, 'sinir asimi dugmeyi kapatmiyor');
 });
 
 test('UI: buton neden pasif oldugunu SOYLER, OCO numarasi bosken calistirilamaz', () => {
@@ -607,7 +609,8 @@ test('UI: dogrulama hatasindan ISLEM adimina donulebilir', () => {
   // yapmakti. Portal girdiyi zaten dogruladigi icin buraya dusen hatalar playbook
   // kaynaklidir — kullanici ayni girdiyi tekrar girip ayni hatayi alirdi.
   const PAGE = codeOnly(read('src/components/scalex/ScaleXPage.tsx'));
-  assert.match(norm(PAGE), /runResult\?\.stage === "validation"/);
+  // `sonuc`: gosterilen sonuc (izleyiciden ya da tam cikti isteginden; bkz. ScaleXPage).
+  assert.match(norm(PAGE), /sonuc\?\.stage === "validation"/);
   assert.match(PAGE, /İşlem adımına dön/);
 });
 

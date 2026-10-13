@@ -219,6 +219,79 @@ const AYAR_SORGULARI = [
   ],
 ];
 
+// Uzlastirici turunun (reconciler.tick) okumalari ve onay devralmasi.
+const UZLASTIRICI_SORGULARI = [
+  [
+    /^SELECT TOP 50 smart_ticket_id, MIN\(created_at\) AS created_at FROM scalex_operations WHERE status = 'PENDING_APPROVAL' AND smart_ticket_id IS NOT NULL GROUP BY smart_ticket_id ORDER BY MIN\(created_at\) ASC$/,
+    () => {
+      const g = new Map();
+      for (const r of sim.kayit.islemler) {
+        if (r.status !== 'PENDING_APPROVAL' || r.smart_ticket_id == null) continue;
+        if (!g.has(r.smart_ticket_id)) g.set(r.smart_ticket_id, r.created_at);
+      }
+      return {
+        rows: [...g].map(([smart_ticket_id, created_at]) => ({ smart_ticket_id, created_at })),
+      };
+    },
+  ],
+  [
+    /^UPDATE scalex_operations SET status = 'RUNNING', awx_job_id = \$2, awx_server_id = COALESCE\(awx_server_id, \$3\), request_key = CONCAT\(CAST\(COALESCE\(awx_server_id, \$3\) AS NVARCHAR\(20\)\), ':', CAST\(\$2 AS NVARCHAR\(20\)\)\), approval_state = 'APPROVED', approved_at = GETUTCDATE\(\), updated_at = GETUTCDATE\(\) WHERE smart_ticket_id = \$1 AND status = 'PENDING_APPROVAL'$/,
+    (p) =>
+      guncelle(
+        (r) => Number(r.smart_ticket_id) === Number(p[0]) && r.status === 'PENDING_APPROVAL',
+        (r) => {
+          const sunucu = r.awx_server_id ?? p[2];
+          Object.assign(r, {
+            status: 'RUNNING',
+            awx_job_id: p[1],
+            awx_server_id: sunucu,
+            request_key: `${sunucu}:${p[1]}`,
+            approval_state: 'APPROVED',
+          });
+        },
+      ),
+  ],
+  [
+    /^UPDATE scalex_operations SET status = \$2, approval_state = \$3, error_message = \$4, updated_at = GETUTCDATE\(\) WHERE smart_ticket_id = \$1 AND status = 'PENDING_APPROVAL'$/,
+    (p) =>
+      guncelle(
+        (r) => Number(r.smart_ticket_id) === Number(p[0]) && r.status === 'PENDING_APPROVAL',
+        (r) => Object.assign(r, { status: p[1], approval_state: p[2], error_message: p[3] }),
+      ),
+  ],
+  [
+    /^SELECT TOP 50 awx_server_id, awx_job_id, MIN\(created_at\) AS created_at FROM scalex_operations WHERE status = 'RUNNING' AND awx_server_id IS NOT NULL AND awx_job_id IS NOT NULL GROUP BY awx_server_id, awx_job_id ORDER BY MIN\(created_at\) ASC$/,
+    () => {
+      const g = new Map();
+      for (const r of sim.kayit.islemler) {
+        if (r.status !== 'RUNNING' || r.awx_server_id == null || r.awx_job_id == null) continue;
+        const k = `${r.awx_server_id}:${r.awx_job_id}`;
+        if (!g.has(k))
+          g.set(k, {
+            awx_server_id: r.awx_server_id,
+            awx_job_id: r.awx_job_id,
+            created_at: r.created_at,
+          });
+      }
+      return { rows: [...g.values()] };
+    },
+  ],
+  [
+    /^SELECT env, tenant, cluster_name, namespace, app_names_json FROM scalex_operations WHERE action = 'restore' AND status IN \('RUNNING', 'PENDING_APPROVAL'\)$/,
+    () => ({
+      rows: sim.kayit.islemler
+        .filter((r) => r.action === 'restore' && ['RUNNING', 'PENDING_APPROVAL'].includes(r.status))
+        .map((r) => ({
+          env: r.env,
+          tenant: r.tenant,
+          cluster_name: r.cluster_name,
+          namespace: r.namespace,
+          app_names_json: r.app_names_json,
+        })),
+    }),
+  ],
+];
+
 const SORGULAR = [
   [
     /^INSERT INTO scalex_operations \(request_key, username, env, tenant, cluster_name, namespace, action, execution_mode, target_replicas, app_names_json, awx_server_id, awx_job_id, status, oco_number, reason, smart_ticket_id, approval_state, username_groups\) VALUES/,
@@ -380,7 +453,7 @@ function guncelle(secici, uygula) {
 sahte('db/index.cjs', {
   query: async (sql, params = []) => {
     const metin = duz(sql);
-    for (const [desen, isle] of [...SORGULAR, ...AYAR_SORGULARI]) {
+    for (const [desen, isle] of [...SORGULAR, ...AYAR_SORGULARI, ...UZLASTIRICI_SORGULARI]) {
       if (desen.test(metin)) return isle(params);
     }
     if (SIKI_TABLO.test(metin)) {
@@ -498,7 +571,9 @@ sahte('scalex/state.cjs', {
   },
   unlockRestore: async (t) => {
     const r = sim.kayit.ayna.get(aynaAnahtari(t));
-    if (r) r.phase = 'scaled_down';
+    if (!r || r.phase !== 'restoring') return false;
+    r.phase = 'scaled_down';
+    return true;
   },
   listLockedRestores: async () =>
     [...sim.kayit.ayna.values()].filter((r) => r.phase === 'restoring'),
@@ -677,6 +752,17 @@ sim.zamanlananiBaslat = (kayitId, jobId) => {
   return r;
 };
 sim.ocoKaydi = ocoKaydi;
+/** SMART onayi geldi ve onay zamanlayicisi isi baslatti (smart/poller'in yaptigi). */
+sim.biletiOnayla = (biletId, jobId) => {
+  const b = sim.kayit.biletler.find((x) => x.id === Number(biletId));
+  Object.assign(b, { status: 'LAUNCHED', awxJobId: jobId });
+  return b;
+};
+sim.biletiReddet = (biletId) => {
+  const b = sim.kayit.biletler.find((x) => x.id === Number(biletId));
+  Object.assign(b, { status: 'REJECTED', errorMessage: 'Smart talebi reddedildi.' });
+  return b;
+};
 
 // ── SMART SERVISI + BILET DEPOSU ─────────────────────────────────────────────
 sahte('smart/client.cjs', {
