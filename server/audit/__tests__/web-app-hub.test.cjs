@@ -90,31 +90,40 @@ test('WH3 Server Hub okunamazsa sertifika eslemesi calisir ve sebep doner (olcul
 // ── DNS -> LB VIP (2026-10-13): site bazli cozum ─────────────────────────────────────
 const { dnsCozumle } = require('../web-app.cjs');
 
-test('WH4 her site KENDI DNS sunucusuyla cozulur (Ankara VIP Pendik ile karismaz); onbellek ikinci istegi cozucuya gondermez', async () => {
+test('WH4 bolge + site: gtdmz/fw icin kullanicinin verdigi DNS sunuculari; Ankara VIP Pendik ile karismaz; onbellek', async () => {
+  const { DNS_BOLGELER, dnsBolgesi } = require('../web-app.cjs');
+  assert.deepEqual(DNS_BOLGELER.gtdmz, { Pendik: ['10.230.238.22'], Ankara: ['10.236.238.22'] });
+  assert.deepEqual(DNS_BOLGELER.fw, { Pendik: ['10.230.238.1'], Ankara: ['10.236.238.1'] });
+  assert.equal(dnsBolgesi('gtdmz.com.tr'), 'gtdmz');
+  assert.equal(dnsBolgesi('fw.garanti.com.tr'), 'fw');
+  assert.equal(dnsBolgesi('garantibbva.com.tr'), null);
   const cagri = [];
-  const cozucu = async (ad, sunucular) => {
-    cagri.push(`${ad}@${sunucular.join(',')}`);
-    return { ips: [sunucular[0] === '10.0.0.53' ? '10.10.10.10' : '20.20.20.20'] };
-  };
-  const sunucular = { Pendik: ['10.0.0.53'], Ankara: ['20.0.0.53'] };
-  const r = await dnsCozumle(['App.FW.Garanti.com.tr'], { sunucular, cozucu });
-  assert.deepEqual(r.siteler, ['Pendik', 'Ankara']);
-  assert.deepEqual(r.sonuc['app.fw.garanti.com.tr'].Pendik.ips, ['10.10.10.10']);
-  assert.deepEqual(r.sonuc['app.fw.garanti.com.tr'].Ankara.ips, ['20.20.20.20']);
-  assert.equal(cagri.length, 2);
-  await dnsCozumle(['app.fw.garanti.com.tr'], { sunucular, cozucu });
-  assert.equal(cagri.length, 2, 'onbellek calismiyor');
+  const cozucu = async (ad, sunucular) => { cagri.push(`${ad}@${sunucular.join(',')}`); return { ips: [`VIP-${sunucular[0]}`] }; };
+  const r = await dnsCozumle([{ ad: 'App.GTDMZ.com.tr', bolge: 'gtdmz' }, { ad: 'x.fw.garanti.com.tr', bolge: 'fw' }], { cozucu });
+  assert.deepEqual(r.sonuc['gtdmz|app.gtdmz.com.tr'].Pendik.ips, ['VIP-10.230.238.22']);
+  assert.deepEqual(r.sonuc['gtdmz|app.gtdmz.com.tr'].Ankara.ips, ['VIP-10.236.238.22']);
+  assert.equal(r.sonuc['gtdmz|app.gtdmz.com.tr'].Ankara.dnsSunucusu, '10.236.238.22');
+  assert.deepEqual(r.sonuc['fw|x.fw.garanti.com.tr'].Pendik.ips, ['VIP-10.230.238.1']);
+  assert.deepEqual(r.sonuc['fw|x.fw.garanti.com.tr'].Ankara.ips, ['VIP-10.236.238.1']);
+  assert.equal(cagri.length, 4);
+  await dnsCozumle([{ ad: 'app.gtdmz.com.tr', bolge: 'gtdmz' }], { cozucu });
+  assert.equal(cagri.length, 4, 'onbellek calismiyor');
 });
 
-test('WH5 site DNS yoksa Portal cozucusu (varsayilan); joker ad ve IP cozulmeye gonderilmez', async () => {
+test('WH5 bolge bilinmiyorsa Portal cozucusu (varsayilan); site DNS ulasilamazsa diger siteye DUSULMEZ; joker/IP cozulmez', async () => {
   const cagri = [];
-  const cozucu = async (ad, s) => { cagri.push([ad, s]); return { ips: ['1.2.3.4'] }; };
-  const r = await dnsCozumle(['x.example.com', '*.example.com', '10.1.2.3'], { sunucular: { Pendik: [], Ankara: [] }, cozucu });
-  assert.deepEqual(r.siteler, []);
-  assert.deepEqual(r.sonuc['x.example.com'].varsayilan.ips, ['1.2.3.4']);
-  assert.match(r.sonuc['*.example.com'].varsayilan.hata, /joker/);
-  assert.deepEqual(r.sonuc['10.1.2.3'].varsayilan.ips, ['10.1.2.3']);
-  assert.deepEqual(cagri, [['x.example.com', null]]);
+  const cozucu = async (ad, s) => {
+    cagri.push([ad, s]);
+    if (s && s[0] === '10.236.238.1') return { hata: 'zaman aşımı' };
+    return { ips: ['1.2.3.4'] };
+  };
+  const r = await dnsCozumle([{ ad: 'y.example.com', bolge: null }, { ad: '*.example.com', bolge: null }, { ad: '10.1.2.3', bolge: null }, { ad: 'z.fw.garanti.com.tr', bolge: 'fw' }], { cozucu });
+  assert.deepEqual(r.sonuc['-|y.example.com'].varsayilan.ips, ['1.2.3.4']);
+  assert.match(r.sonuc['-|*.example.com'].varsayilan.hata, /joker/);
+  assert.deepEqual(r.sonuc['-|10.1.2.3'].varsayilan.ips, ['10.1.2.3']);
+  assert.equal(r.sonuc['fw|z.fw.garanti.com.tr'].Ankara.hata, 'zaman aşımı', 'Ankara hatasi Pendik cevabiyla ortulmemeli');
+  assert.deepEqual(r.sonuc['fw|z.fw.garanti.com.tr'].Pendik.ips, ['1.2.3.4']);
+  assert.ok(cagri.some(([a, s]) => a === 'y.example.com' && s === null), 'bolgesiz ad Portal cozucusuna gitmedi');
 });
 
 test('WH6 web girdileri sitesini tasir (Ankara 7 harf, Pendik 6 harf)', async () => {
@@ -128,4 +137,5 @@ test('WH6 web girdileri sitesini tasir (Ankara 7 harf, Pendik 6 harf)', async ()
   const j = await getir();
   const site = Object.fromEntries(j.rows.flatMap((r) => r.web.map((w) => [w.host, w.site])));
   assert.deepEqual(site, { GBCRWP01: 'Pendik', GBCRWAP01: 'Ankara' });
+  assert.ok(j.rows.every((r) => r.dnsBolge === 'gtdmz'), 'satir DNS bolgesini tasimiyor');
 });

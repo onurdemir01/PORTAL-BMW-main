@@ -8,7 +8,7 @@ import { LoadingLogo } from '@/components/common/LoadingLogo';
 import {
   ArrowPathIcon, ArrowDownTrayIcon, MagnifyingGlassIcon,
 } from "@heroicons/react/24/outline";
-import { denetimApi, type WebAppResult, type WebAppVhost, type WebAppDnsCevap } from "@/api/denetimApi";
+import { denetimApi, type WebAppResult, type WebAppRow, type WebAppVhost, type WebAppDnsCevap } from "@/api/denetimApi";
 import { Select } from "@/components/ui/Form";
 import { fmtNumber } from "@/utils/datetime";
 import { TableEmptyRow } from "@/components/common/EmptyState";
@@ -16,17 +16,17 @@ import { downloadCsv as csvDownload } from '@/utils/csv';
 
 const nf = (n: number) => fmtNumber(n);
 
-// DNS -> LB VIP (2026-10-13). Sunucu her siteyi (Pendik/Ankara) kendi DNS sunucusuyla cozer; uye
-// KENDI sitesinin cevabiyla gosterilir (Ankara VIP'i Pendik'ten farklidir). Site DNS'i tanimli
-// degilse Portal cozucusu ('varsayilan') kullanilir.
-type DnsDurum = { siteler: string[]; sonuc: Record<string, Record<string, WebAppDnsCevap>> };
-function dnsOf(dns: DnsDurum | null, w: WebAppVhost): { cevap?: WebAppDnsCevap; kaynak: string; siteBelirsiz: boolean } {
+// DNS -> LB VIP (2026-10-13). Sunucu satirin bolgesinin (gtdmz / fw.garanti) ve uyenin sitesinin
+// (Pendik / Ankara) DNS sunucusuyla cozer; uye KENDI sitesinin cevabiyla gosterilir (Ankara VIP'i
+// Pendik'ten farklidir). Bolge bilinmiyorsa Portal cozucusu ('varsayilan') kullanilir.
+type DnsDurum = { sonuc: Record<string, Record<string, WebAppDnsCevap>> };
+const dnsAnahtar = (r: WebAppRow, w: WebAppVhost) => `${r.dnsBolge || "-"}|${(w.serverName || "").trim().toLowerCase()}`;
+function dnsOf(dns: DnsDurum | null, r: WebAppRow, w: WebAppVhost): { cevap?: WebAppDnsCevap; kaynak: string; siteBelirsiz: boolean } {
   if (!dns) return { kaynak: "", siteBelirsiz: false };
-  const ad = (w.serverName || "").trim().toLowerCase();
-  const kayit = dns.sonuc[ad] || {};
-  if (dns.siteler.length) {
-    const site = w.site && dns.siteler.includes(w.site) ? w.site : "";
-    return site ? { cevap: kayit[site], kaynak: `${site} DNS`, siteBelirsiz: false } : { kaynak: "", siteBelirsiz: true };
+  const kayit = dns.sonuc[dnsAnahtar(r, w)] || {};
+  if (r.dnsBolge) {
+    const site = w.site === "Ankara" || w.site === "Pendik" ? w.site : "";
+    return site ? { cevap: kayit[site], kaynak: `${site} DNS (${kayit[site]?.dnsSunucusu || r.dnsBolge})`, siteBelirsiz: false } : { kaynak: "", siteBelirsiz: true };
   }
   return { cevap: kayit.varsayilan, kaynak: "Portal çözücüsü", siteBelirsiz: w.site === "Ankara" };
 }
@@ -46,18 +46,22 @@ export default function WebApp() {
   // Tablo geldikten SONRA DNS adlari 400'luk parcalar halinde cozulur (tabloyu bekletmez).
   useEffect(() => {
     if (!data?.rows?.length) { setDns(null); return; }
-    const adlar = [...new Set(data.rows.flatMap((r) => r.web.map((w) => (w.serverName || "").trim().toLowerCase())).filter(Boolean))];
+    const tekil = new Map<string, { ad: string; bolge: string | null }>();
+    for (const r of data.rows) for (const w of r.web) {
+      const ad = (w.serverName || "").trim().toLowerCase();
+      if (ad) tekil.set(dnsAnahtar(r, w), { ad, bolge: r.dnsBolge || null });
+    }
+    const adlar = [...tekil.values()];
     if (!adlar.length) { setDns(null); return; }
     let iptal = false;
     setDnsYukleniyor(true);
     (async () => {
-      const birlesik: DnsDurum = { siteler: [], sonuc: {} };
+      const birlesik: DnsDurum = { sonuc: {} };
       for (let i = 0; i < adlar.length && !iptal; i += 400) {
         const c = await denetimApi.webAppDns(adlar.slice(i, i + 400)).catch(() => null);
         if (!c || !c.ok) continue;
-        birlesik.siteler = c.siteler || [];
         Object.assign(birlesik.sonuc, c.sonuc || {});
-        if (!iptal) setDns({ siteler: birlesik.siteler, sonuc: { ...birlesik.sonuc } });
+        if (!iptal) setDns({ sonuc: { ...birlesik.sonuc } });
       }
       if (!iptal) setDnsYukleniyor(false);
     })();
@@ -68,7 +72,7 @@ export default function WebApp() {
   const havuz = useMemo(() => {
     const m = new Map<string, Set<string>>();
     for (const r of data?.rows || []) for (const w of r.web) {
-      const { cevap } = dnsOf(dns, w);
+      const { cevap } = dnsOf(dns, r, w);
       for (const ip of cevap?.ips || []) {
         if (ip === w.ip) continue;
         if (!m.has(ip)) m.set(ip, new Set());
@@ -131,7 +135,7 @@ export default function WebApp() {
               ["uygulama", "uygulama_sunucusu", "ortam", "domain", "tier", "web_sunucusu", "site", "ip", "port", "server_name", "dns_vip", "dns_kaynak", "conf_file", "urun", "eslesme"],
               data.rows.flatMap((r) => (r.web.length
                 ? r.web.map((w) => {
-                    const d = dnsOf(dns, w);
+                    const d = dnsOf(dns, r, w);
                     return [r.app, r.appHost, r.env, r.domain, r.tier, w.host, w.site || "", w.ip, w.port, w.serverName, d.cevap?.ips?.join(" ") || d.cevap?.hata || "", d.kaynak, w.confFile, w.product, r.how];
                   })
                 : [[r.app, r.appHost, r.env, r.domain, r.tier, r.webHostCandidate, "", "", "", "", "", "", "", "", r.how]])))}
@@ -190,10 +194,9 @@ export default function WebApp() {
 
       {dns && (
         <p className="text-[11px] text-[var(--text-muted)]">
-          <b>DNS → LB VIP:</b>{" "}
-          {dns.siteler.length
-            ? <>her web sunucusu kendi sitesinin DNS sunucusuyla çözüldü ({dns.siteler.join(", ")}). Aynı VIP’e düşen sunucular o VIP’in havuz (pool) üyeleridir.</>
-            : <>Portal sunucusunun çözücüsüyle çözüldü — site bazlı DNS tanımlı değil. Ankara VIP’i Pendik’ten farklı olduğundan Ankara satırları uyarılı; doğru değer için Portal’a <code className="px-1 rounded bg-[var(--bg-elevated)]">WEBAPP_DNS_PENDIK</code> / <code className="px-1 rounded bg-[var(--bg-elevated)]">WEBAPP_DNS_ANKARA</code> tanımlanmalı.</>}
+          <b>DNS → LB VIP:</b> her web sunucusu kendi sitesinin DNS sunucusuyla çözülür —{" "}
+          gtdmz: Pendik <code>10.230.238.22</code> / Ankara <code>10.236.238.22</code>, fw.garanti: Pendik <code>10.230.238.1</code> / Ankara <code>10.236.238.1</code>.
+          Aynı VIP’e düşen sunucular o VIP’in havuz (pool) üyeleridir. Domain’i bu ikisi dışında olan satırlar Portal sunucusunun çözücüsüyle çözülür.
         </p>
       )}
       <div className="overflow-x-auto rounded-xl border border-[var(--border-subtle)]">
@@ -261,9 +264,9 @@ export default function WebApp() {
                   {r.web.length ? (
                     <div className="flex flex-col gap-0.5">
                       {r.web.map((w, i) => {
-                        const d = dnsOf(dns, w);
+                        const d = dnsOf(dns, r, w);
                         if (d.siteBelirsiz && !d.cevap)
-                          return <span key={i} className="text-[var(--text-muted)]" title="Bu web sunucusunun sitesi için DNS sunucusu tanımlı değil">site DNS'i yok</span>;
+                          return <span key={i} className="text-[var(--text-muted)]" title="Web sunucusunun sitesi adından çıkarılamadı (Pendik/Ankara)">site belirsiz</span>;
                         if (!d.cevap) return <span key={i} className="text-[var(--text-muted)]">{dnsYukleniyor ? "çözülüyor…" : "—"}</span>;
                         if (d.cevap.hata) return <span key={i} className="text-[var(--text-muted)]" title={`${d.kaynak}: ${d.cevap.hata}`}>{d.cevap.hata}</span>;
                         return (
@@ -284,7 +287,7 @@ export default function WebApp() {
                                 </span>
                               );
                             })}
-                            {d.siteBelirsiz && <span className="text-[9px] text-amber-700" title="Ankara DNS sunucusu tanımlı değil: gösterilen cevap Portal sunucusunun çözücüsünden. Ankara VIP'i farklı olabilir.">⚠ Ankara VIP'i farklı olabilir</span>}
+                            {d.siteBelirsiz && <span className="text-[9px] text-amber-700" title="Uygulamanın domain'i gtdmz / fw.garanti değil: gösterilen cevap Portal sunucusunun çözücüsünden. Ankara VIP'i farklı olabilir.">⚠ Ankara VIP'i farklı olabilir</span>}
                           </span>
                         );
                       })}

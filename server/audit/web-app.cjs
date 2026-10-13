@@ -158,19 +158,30 @@ function matchWebForApp({ app, appHost, domain }, certByHost) {
 // tum member IP'ler bu VIP'in altinda bir pool olusturur" + "Ankara sunucularinin VIP'i Pendik'ten farkli
 // olacagi icin Ankara sunucularinin cozdugu DNS'in farkli olmasini beklerim").
 //
-// SITE BAZLI COZUM: ayni ad bulundugu siteye gore FARKLI VIP'e cozulur. Portal'in kendi cozucusu tek
-// bir sitenin cevabini gorur; Ankara uyesinin yanina Pendik VIP'i yazmak YANLIS olurdu. Bu yuzden her
-// sitenin DNS sunuculari ayri tanimlanir (WEBAPP_DNS_PENDIK / WEBAPP_DNS_ANKARA, virgulle) ve her uye
-// KENDI sitesinin cevabiyla gosterilir. Tanimli degilse Portal cozucusu kullanilir ve ekran bunu soyler.
+// BOLGE + SITE BAZLI COZUM: ayni ad bulundugu siteye gore FARKLI VIP'e cozulur ve hangi DNS sunucusuna
+// sorulacagi domain bolgesine baglidir (kullanici 2026-10-13):
+//   gtdmz.com.tr       Pendik 10.230.238.22   Ankara 10.236.238.22
+//   fw.garanti.com.tr  Pendik 10.230.238.1    Ankara 10.236.238.1
+// Bolge satirin (uygulamanin) domain'inden; site web sunucusunun adindan (Ankara 7 harf). Her uye KENDI
+// sitesinin DNS'iyle gosterilir. Bir site DNS'ine ulasilamazsa diger site denenmez (yanlis VIP olurdu),
+// hata yazilir. Bolgesi bilinmeyen satir Portal cozucusuyla cozulur ve ekran bunu soyler.
 // Sonuclar 10 dk onbellekte; ayni anda en fazla 20 sorgu, ad basina 3 sn.
 const DNS_TTL_MS = 10 * 60 * 1000;
 const DNS_SURE_MS = 3000;
 const DNS_ESZAMANLI = 20;
 const _dnsOnbellek = new Map();
 
-function siteDnsSunuculari(env = process.env) {
-  const oku = (v) => String(v || '').split(/[\s,;]+/).map((x) => x.trim()).filter((x) => /^[0-9a-fA-F:.]+$/.test(x));
-  return { Pendik: oku(env.WEBAPP_DNS_PENDIK), Ankara: oku(env.WEBAPP_DNS_ANKARA) };
+const DNS_BOLGELER = Object.freeze({
+  gtdmz: { Pendik: ['10.230.238.22'], Ankara: ['10.236.238.22'] },
+  fw: { Pendik: ['10.230.238.1'], Ankara: ['10.236.238.1'] },
+});
+
+/** Domain -> DNS bolgesi ('gtdmz' | 'fw' | null). */
+function dnsBolgesi(domain) {
+  const d = String(domain || '').toLowerCase();
+  if (/gtdmz/.test(d)) return 'gtdmz';
+  if (/fw\.garanti/.test(d)) return 'fw';
+  return null;
 }
 
 async function tekCozum(ad, sunucular) {
@@ -192,44 +203,51 @@ async function tekCozum(ad, sunucular) {
   }
 }
 
-/** Adlari (varsa site bazli) cozer. Donus: ad -> { varsayilan | Pendik | Ankara : {ips}|{hata} }. */
-async function dnsCozumle(adlar, { sunucular = siteDnsSunuculari(), cozucu = tekCozum, simdi = Date.now } = {}) {
-  const siteler = Object.entries(sunucular).filter(([, v]) => v.length).map(([k]) => k);
-  const anahtarlar = siteler.length ? siteler : ['varsayilan'];
+/**
+ * istekler: [{ad, bolge}] -> sonuc[`${bolge || '-'}|${ad}`] = { Pendik, Ankara } (bolge biliniyorsa)
+ * ya da { varsayilan } (bolge yoksa Portal cozucusu).
+ */
+async function dnsCozumle(istekler, { bolgeler = DNS_BOLGELER, cozucu = tekCozum, simdi = Date.now } = {}) {
   const isler = [];
   const sonuc = {};
-  for (const ad0 of adlar) {
-    const ad = String(ad0 || '').trim().toLowerCase();
-    if (!ad || sonuc[ad]) continue;
-    sonuc[ad] = {};
-    for (const k of anahtarlar) {
-      if (ad.startsWith('*')) { sonuc[ad][k] = { hata: 'joker ad - çözülmez' }; continue; }
-      if (/^[0-9.]+$/.test(ad)) { sonuc[ad][k] = { ips: [ad] }; continue; }
-      const ok = `${k}|${ad}`;
+  for (const x of istekler || []) {
+    const ad = String((x && x.ad) || '').trim().toLowerCase();
+    const bolge = x && x.bolge && bolgeler[x.bolge] ? x.bolge : null;
+    const anahtar = `${bolge || '-'}|${ad}`;
+    if (!ad || sonuc[anahtar]) continue;
+    sonuc[anahtar] = {};
+    const kollar = bolge ? Object.keys(bolgeler[bolge]) : ['varsayilan'];
+    for (const k of kollar) {
+      if (ad.startsWith('*')) { sonuc[anahtar][k] = { hata: 'joker ad - çözülmez' }; continue; }
+      if (/^[0-9.]+$/.test(ad)) { sonuc[anahtar][k] = { ips: [ad] }; continue; }
+      const sunucular = bolge ? bolgeler[bolge][k] : null;
+      const ok = `${sunucular ? sunucular.join(',') : 'varsayilan'}|${ad}`;
       const c = _dnsOnbellek.get(ok);
-      if (c && simdi() - c.at < DNS_TTL_MS) { sonuc[ad][k] = c.v; continue; }
-      isler.push({ ad, k, ok });
+      if (c && simdi() - c.at < DNS_TTL_MS) { sonuc[anahtar][k] = c.v; continue; }
+      isler.push({ ad, anahtar, k, ok, sunucular });
     }
   }
   let i = 0;
   await Promise.all(Array.from({ length: Math.min(DNS_ESZAMANLI, isler.length) }, async () => {
     while (i < isler.length) {
       const is = isler[i++];
-      const v = await cozucu(is.ad, is.k === 'varsayilan' ? null : sunucular[is.k]);
+      const v = await cozucu(is.ad, is.sunucular);
       _dnsOnbellek.set(is.ok, { at: simdi(), v });
-      sonuc[is.ad][is.k] = v;
+      sonuc[is.anahtar][is.k] = { ...v, ...(is.sunucular ? { dnsSunucusu: is.sunucular.join(', ') } : {}) };
     }
   }));
-  return { siteler, sonuc };
+  return { sonuc };
 }
 
 function registerWebApp(router) {
   // DNS -> VIP: tablo yuklendikten SONRA ayri istekle (tabloyu bekletmesin). En fazla 400 ad.
   router.post('/web-app/dns', async (req, res) => {
-    const adlar = Array.isArray(req.body?.adlar) ? req.body.adlar.slice(0, 400).map(String) : [];
+    const istekler = Array.isArray(req.body?.istekler)
+      ? req.body.istekler.slice(0, 400).map((x) => ({ ad: String(x?.ad || ''), bolge: x?.bolge ? String(x.bolge) : null }))
+      : [];
     try {
-      const { siteler, sonuc } = await dnsCozumle(adlar);
-      res.json({ ok: true, siteler, sonuc });
+      const { sonuc } = await dnsCozumle(istekler);
+      res.json({ ok: true, sonuc });
     } catch (err) {
       res.status(500).json({ ok: false, message: err.message });
     }
@@ -295,6 +313,8 @@ function registerWebApp(router) {
           appHost,
           env: String(a.env || '').trim(),
           domain,
+          // DNS -> VIP cozumunde hangi bolgenin DNS sunuculari (gtdmz / fw); null = bilinmiyor.
+          dnsBolge: dnsBolgesi(domain),
           tier,
           how,
           matched,
@@ -334,4 +354,4 @@ function registerWebApp(router) {
   });
 }
 
-module.exports = { registerWebApp, dnsCozumle, siteDnsSunuculari, adVaryantlari, webHostOf, webHostAdaylari, tierOf, buildCertIndex, matchWebForApp };
+module.exports = { registerWebApp, dnsCozumle, dnsBolgesi, DNS_BOLGELER, adVaryantlari, webHostOf, webHostAdaylari, tierOf, buildCertIndex, matchWebForApp };

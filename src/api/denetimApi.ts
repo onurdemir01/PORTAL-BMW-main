@@ -851,12 +851,12 @@ export interface WebAppVhost {
   site?: 'Pendik' | 'Ankara' | string;
 }
 
-/** DNS -> LB VIP cozumu. `siteler` bos ise Portal'in kendi cozucusu ('varsayilan') kullanildi. */
-export type WebAppDnsCevap = { ips?: string[]; hata?: string };
+/** DNS -> LB VIP cozumu. Anahtar `${bolge || '-'}|${ad}`; kollar 'Pendik'/'Ankara' (bolge biliniyorsa)
+ *  ya da 'varsayilan' (Portal cozucusu). */
+export type WebAppDnsCevap = { ips?: string[]; hata?: string; dnsSunucusu?: string };
 export interface WebAppDnsResult {
   ok: boolean;
   message?: string;
-  siteler?: string[];
   sonuc?: Record<string, Record<string, WebAppDnsCevap>>;
 }
 
@@ -869,6 +869,8 @@ export interface WebAppRow {
   tier: string;
   /** Eslesmenin NASIL kuruldugu; guvenilirlik buna bagli. */
   how: string;
+  /** DNS -> VIP icin bolge ('gtdmz' | 'fw'); null = bilinmiyor (Portal cozucusu). */
+  dnsBolge?: string | null;
   matched: boolean;
   web: WebAppVhost[];
   /** Eslesme kurulamadiysa kurala gore BEKLENEN web sunucusu. */
@@ -1318,8 +1320,8 @@ export const denetimApi = {
         (onlyUnmatched ? '&onlyUnmatched=1' : ''),
     ).then(safeJson),
 
-  webAppDns: (adlar: string[]): Promise<WebAppDnsResult> =>
-    fetch(`${BASE}/web-app/dns`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ adlar }) }).then(safeJson),
+  webAppDns: (istekler: { ad: string; bolge: string | null }[]): Promise<WebAppDnsResult> =>
+    fetch(`${BASE}/web-app/dns`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ istekler }) }).then(safeJson),
 
   appEnvs: (source: string): Promise<AppEnvsResult> =>
     fetch(`${BASE}/app-envs?source=${encodeURIComponent(source)}`).then(safeJson),
