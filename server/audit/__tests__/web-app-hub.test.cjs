@@ -86,3 +86,46 @@ test('WH3 Server Hub okunamazsa sertifika eslemesi calisir ve sebep doner (olcul
   assert.equal(j.rows[0].web[0].host, 'GBCRWP01');
   assert.match(String(j.hubHata), /vhost/);
 });
+
+// ── DNS -> LB VIP (2026-10-13): site bazli cozum ─────────────────────────────────────
+const { dnsCozumle } = require('../web-app.cjs');
+
+test('WH4 her site KENDI DNS sunucusuyla cozulur (Ankara VIP Pendik ile karismaz); onbellek ikinci istegi cozucuya gondermez', async () => {
+  const cagri = [];
+  const cozucu = async (ad, sunucular) => {
+    cagri.push(`${ad}@${sunucular.join(',')}`);
+    return { ips: [sunucular[0] === '10.0.0.53' ? '10.10.10.10' : '20.20.20.20'] };
+  };
+  const sunucular = { Pendik: ['10.0.0.53'], Ankara: ['20.0.0.53'] };
+  const r = await dnsCozumle(['App.FW.Garanti.com.tr'], { sunucular, cozucu });
+  assert.deepEqual(r.siteler, ['Pendik', 'Ankara']);
+  assert.deepEqual(r.sonuc['app.fw.garanti.com.tr'].Pendik.ips, ['10.10.10.10']);
+  assert.deepEqual(r.sonuc['app.fw.garanti.com.tr'].Ankara.ips, ['20.20.20.20']);
+  assert.equal(cagri.length, 2);
+  await dnsCozumle(['app.fw.garanti.com.tr'], { sunucular, cozucu });
+  assert.equal(cagri.length, 2, 'onbellek calismiyor');
+});
+
+test('WH5 site DNS yoksa Portal cozucusu (varsayilan); joker ad ve IP cozulmeye gonderilmez', async () => {
+  const cagri = [];
+  const cozucu = async (ad, s) => { cagri.push([ad, s]); return { ips: ['1.2.3.4'] }; };
+  const r = await dnsCozumle(['x.example.com', '*.example.com', '10.1.2.3'], { sunucular: { Pendik: [], Ankara: [] }, cozucu });
+  assert.deepEqual(r.siteler, []);
+  assert.deepEqual(r.sonuc['x.example.com'].varsayilan.ips, ['1.2.3.4']);
+  assert.match(r.sonuc['*.example.com'].varsayilan.hata, /joker/);
+  assert.deepEqual(r.sonuc['10.1.2.3'].varsayilan.ips, ['10.1.2.3']);
+  assert.deepEqual(cagri, [['x.example.com', null]]);
+});
+
+test('WH6 web girdileri sitesini tasir (Ankara 7 harf, Pendik 6 harf)', async () => {
+  veri = {
+    apps: [{ app: 'crm', host: 'GBCRAP01', env: 'PROD', domain: 'gtdmz.com.tr' }, { app: 'crm', host: 'GBCRAAP01', env: 'PROD', domain: 'gtdmz.com.tr' }],
+    certs: [
+      { host: 'GBCRWP01', ip: '10.0.0.1', port: '443', server_name: 'crm.gtdmz.com.tr', conf_file: '/c', product: 'IHS', env: 'PROD' },
+      { host: 'GBCRWAP01', ip: '20.0.0.1', port: '443', server_name: 'crm.gtdmz.com.tr', conf_file: '/c', product: 'IHS', env: 'PROD' },
+    ],
+  };
+  const j = await getir();
+  const site = Object.fromEntries(j.rows.flatMap((r) => r.web.map((w) => [w.host, w.site])));
+  assert.deepEqual(site, { GBCRWP01: 'Pendik', GBCRWAP01: 'Ankara' });
+});

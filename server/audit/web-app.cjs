@@ -154,7 +154,87 @@ function matchWebForApp({ app, appHost, domain }, certByHost) {
   };
 }
 
+// ── DNS -> LB VIP (2026-10-13, kullanici: "DNS'in cozdugu IP aslinda load balancer'daki virtual IP;
+// tum member IP'ler bu VIP'in altinda bir pool olusturur" + "Ankara sunucularinin VIP'i Pendik'ten farkli
+// olacagi icin Ankara sunucularinin cozdugu DNS'in farkli olmasini beklerim").
+//
+// SITE BAZLI COZUM: ayni ad bulundugu siteye gore FARKLI VIP'e cozulur. Portal'in kendi cozucusu tek
+// bir sitenin cevabini gorur; Ankara uyesinin yanina Pendik VIP'i yazmak YANLIS olurdu. Bu yuzden her
+// sitenin DNS sunuculari ayri tanimlanir (WEBAPP_DNS_PENDIK / WEBAPP_DNS_ANKARA, virgulle) ve her uye
+// KENDI sitesinin cevabiyla gosterilir. Tanimli degilse Portal cozucusu kullanilir ve ekran bunu soyler.
+// Sonuclar 10 dk onbellekte; ayni anda en fazla 20 sorgu, ad basina 3 sn.
+const DNS_TTL_MS = 10 * 60 * 1000;
+const DNS_SURE_MS = 3000;
+const DNS_ESZAMANLI = 20;
+const _dnsOnbellek = new Map();
+
+function siteDnsSunuculari(env = process.env) {
+  const oku = (v) => String(v || '').split(/[\s,;]+/).map((x) => x.trim()).filter((x) => /^[0-9a-fA-F:.]+$/.test(x));
+  return { Pendik: oku(env.WEBAPP_DNS_PENDIK), Ankara: oku(env.WEBAPP_DNS_ANKARA) };
+}
+
+async function tekCozum(ad, sunucular) {
+  const dns = require('node:dns').promises;
+  const zaman = new Promise((_, red) => setTimeout(() => red(Object.assign(new Error('zaman asimi'), { code: 'ZAMAN_ASIMI' })), DNS_SURE_MS));
+  try {
+    let ips;
+    if (sunucular && sunucular.length) {
+      const r = new dns.Resolver({ timeout: DNS_SURE_MS, tries: 1 });
+      r.setServers(sunucular);
+      ips = await Promise.race([r.resolve4(ad), zaman]);
+    } else {
+      ips = (await Promise.race([dns.lookup(ad, { all: true, family: 4 }), zaman])).map((x) => x.address);
+    }
+    return { ips: [...new Set(ips)].sort((a, b) => a.localeCompare(b, undefined, { numeric: true })) };
+  } catch (e) {
+    const c = e && e.code;
+    return { hata: c === 'ENOTFOUND' || c === 'ENODATA' ? 'DNS kaydı yok' : c === 'ZAMAN_ASIMI' || c === 'ETIMEOUT' ? 'zaman aşımı' : String(c || (e && e.message) || e) };
+  }
+}
+
+/** Adlari (varsa site bazli) cozer. Donus: ad -> { varsayilan | Pendik | Ankara : {ips}|{hata} }. */
+async function dnsCozumle(adlar, { sunucular = siteDnsSunuculari(), cozucu = tekCozum, simdi = Date.now } = {}) {
+  const siteler = Object.entries(sunucular).filter(([, v]) => v.length).map(([k]) => k);
+  const anahtarlar = siteler.length ? siteler : ['varsayilan'];
+  const isler = [];
+  const sonuc = {};
+  for (const ad0 of adlar) {
+    const ad = String(ad0 || '').trim().toLowerCase();
+    if (!ad || sonuc[ad]) continue;
+    sonuc[ad] = {};
+    for (const k of anahtarlar) {
+      if (ad.startsWith('*')) { sonuc[ad][k] = { hata: 'joker ad - çözülmez' }; continue; }
+      if (/^[0-9.]+$/.test(ad)) { sonuc[ad][k] = { ips: [ad] }; continue; }
+      const ok = `${k}|${ad}`;
+      const c = _dnsOnbellek.get(ok);
+      if (c && simdi() - c.at < DNS_TTL_MS) { sonuc[ad][k] = c.v; continue; }
+      isler.push({ ad, k, ok });
+    }
+  }
+  let i = 0;
+  await Promise.all(Array.from({ length: Math.min(DNS_ESZAMANLI, isler.length) }, async () => {
+    while (i < isler.length) {
+      const is = isler[i++];
+      const v = await cozucu(is.ad, is.k === 'varsayilan' ? null : sunucular[is.k]);
+      _dnsOnbellek.set(is.ok, { at: simdi(), v });
+      sonuc[is.ad][is.k] = v;
+    }
+  }));
+  return { siteler, sonuc };
+}
+
 function registerWebApp(router) {
+  // DNS -> VIP: tablo yuklendikten SONRA ayri istekle (tabloyu bekletmesin). En fazla 400 ad.
+  router.post('/web-app/dns', async (req, res) => {
+    const adlar = Array.isArray(req.body?.adlar) ? req.body.adlar.slice(0, 400).map(String) : [];
+    try {
+      const { siteler, sonuc } = await dnsCozumle(adlar);
+      res.json({ ok: true, siteler, sonuc });
+    } catch (err) {
+      res.status(500).json({ ok: false, message: err.message });
+    }
+  });
+
   router.get('/web-app', async (req, res) => {
     try {
       const { query } = require('../inventory/mssql.cjs');
@@ -180,7 +260,7 @@ function registerWebApp(router) {
       const certByHost = buildCertIndex(certRes.recordset || []);
       // SERVER HUB + AJP (2026-10-13): retirement kesfiyle AYNI zenginlestirme (discover.cjs).
       // Server Hub okunamazsa yalniz sertifika eslemesi kalir; ekran bunu hubHata ile soyler.
-      const { webZenginlestir, hubBaglamiYukle } = require('../retirement/discover.cjs');
+      const { webZenginlestir, hubBaglamiYukle, siteOf } = require('../retirement/discover.cjs');
       const hub = await hubBaglamiYukle(query).catch((e) => ({ vhostRows: [], hubVhostsByHost: new Map(), ipMap: new Map(), jvmOf: () => null, hata: [e.message] }));
       // Ozet kovasi: AJP parantezindeki sayilar kovayi parcalamasin.
       const howKova = (h) => String(h).replace(/AJP\/proxy hedefi = JVM portu \([^)]*\)/, 'AJP/proxy hedefi = JVM portu');
@@ -219,7 +299,7 @@ function registerWebApp(router) {
           how,
           matched,
           // Bir uygulama birden fazla vhost'ta servis ediliyor olabilir; hepsi dondurulur.
-          web: (m.web || []).map((w) => ({ ip: '', port: '', confFile: '', product: '', ...w, kaynak: w.kaynak || 'ad' })),
+          web: (m.web || []).map((w) => ({ ip: '', port: '', confFile: '', product: '', ...w, kaynak: w.kaynak || 'ad', site: siteOf(w.host) })),
           webHostCandidate: m.webHostCandidate,
           vhostCountOnHost: m.vhostCountOnHost,
         });
@@ -254,4 +334,4 @@ function registerWebApp(router) {
   });
 }
 
-module.exports = { registerWebApp, adVaryantlari, webHostOf, webHostAdaylari, tierOf, buildCertIndex, matchWebForApp };
+module.exports = { registerWebApp, dnsCozumle, siteDnsSunuculari, adVaryantlari, webHostOf, webHostAdaylari, tierOf, buildCertIndex, matchWebForApp };

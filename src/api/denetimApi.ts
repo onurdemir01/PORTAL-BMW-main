@@ -847,6 +847,17 @@ export interface WebAppVhost {
   kaynak?: 'ad' | 'ajp' | 'ad+ajp' | string;
   /** AJP/proxy eslesmesinde vhost'un hedefi (host:port). */
   ajpHedef?: string;
+  /** Web sunucusunun sitesi (ad kuralindan): DNS -> VIP bu sitenin cozucusuyla okunur. */
+  site?: 'Pendik' | 'Ankara' | string;
+}
+
+/** DNS -> LB VIP cozumu. `siteler` bos ise Portal'in kendi cozucusu ('varsayilan') kullanildi. */
+export type WebAppDnsCevap = { ips?: string[]; hata?: string };
+export interface WebAppDnsResult {
+  ok: boolean;
+  message?: string;
+  siteler?: string[];
+  sonuc?: Record<string, Record<string, WebAppDnsCevap>>;
 }
 
 export interface WebAppRow {
@@ -1306,6 +1317,9 @@ export const denetimApi = {
         (q ? `&q=${encodeURIComponent(q)}` : '') +
         (onlyUnmatched ? '&onlyUnmatched=1' : ''),
     ).then(safeJson),
+
+  webAppDns: (adlar: string[]): Promise<WebAppDnsResult> =>
+    fetch(`${BASE}/web-app/dns`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ adlar }) }).then(safeJson),
 
   appEnvs: (source: string): Promise<AppEnvsResult> =>
     fetch(`${BASE}/app-envs?source=${encodeURIComponent(source)}`).then(safeJson),
