@@ -847,6 +847,8 @@ export interface WebAppVhost {
   kaynak?: 'ad' | 'ajp' | 'ad+ajp' | string;
   /** AJP/proxy eslesmesinde vhost'un hedefi (host:port). */
   ajpHedef?: string;
+  /** mod_cluster: vhost'un balancer adi (= uygulama adi). */
+  mcBalancer?: string;
   /** Web sunucusunun sitesi (ad kuralindan): DNS -> VIP bu sitenin cozucusuyla okunur. */
   site?: 'Pendik' | 'Ankara' | string;
 }

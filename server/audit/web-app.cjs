@@ -297,7 +297,10 @@ function registerWebApp(router) {
 
         const domain = String(a.domain || '').trim();
         const m = webZenginlestir(app, appHost, matchWebForApp({ app, appHost, domain }, certByHost),
-          { hubVhostsByHost: hub.hubVhostsByHost, vhostRows: hub.vhostRows, ipMap: hub.ipMap, jvm: hub.jvmOf(appHost, app, src.genKolon ? genOf(a[src.genKolon]) : null) });
+          { hubVhostsByHost: hub.hubVhostsByHost, vhostRows: hub.vhostRows, ipMap: hub.ipMap,
+            jvm: hub.jvmOf(appHost, app, src.genKolon ? genOf(a[src.genKolon]) : null),
+            // mod_cluster yalniz JBoss (8) icin; WAS kaynaginda balancer adi eslesmesi yapilmaz.
+            gen: src.genKolon ? genOf(a[src.genKolon]) : null, modCluster: key === 'mw' })
         const { tier, how, matched } = m;
         if (matched) eslesen++;
 

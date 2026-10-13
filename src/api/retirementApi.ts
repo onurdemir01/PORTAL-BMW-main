@@ -5,7 +5,9 @@ const BASE = '/api/retirement';
 
 export interface RtWeb { host: string; serverName: string; product: string; port: string; confFile: string; trafik?: RtVhostTrafik;
   /** Nasil bulundu (2026-10-12): 'ad' = ServerName eslesmesi, 'ajp' = vhost'un mod_jk/proxy hedefi JVM portu, 'ad+ajp' = ikisi. */
-  kaynak?: 'ad' | 'ajp' | 'ad+ajp'; ajpHedef?: string }
+  kaynak?: 'ad' | 'ajp' | 'ad+ajp' | 'mc' | 'ad+mc' | 'ajp+mc' | 'ad+ajp+mc' | string; ajpHedef?: string;
+  /** mod_cluster: vhost'un balancer adi (= uygulama adi). Uye JVM dogrulanmaz. */
+  mcBalancer?: string }
 export interface RtDiscoveredTarget {
   host: string; site: 'Pendik' | 'Ankara'; env: 'PROD' | 'QA' | 'TEST' | 'DEV'; appName: string; gen: number | null;
   appPath: string; inventoryStatus: string; domain: string; tier: string; web: RtWeb[]; webHow: string;

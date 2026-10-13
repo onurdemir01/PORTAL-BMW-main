@@ -112,3 +112,26 @@ test('WK7 ayni sunucuda ayni adli JBoss 7 ve 8 JVMi: AJP eslesmesi HEDEFIN surum
   assert.equal(yedi.hub.running, true, 'JBoss 7 hedefinin calisma durumu JBoss 8 JVMinden okundu');
   assert.equal(sekiz.hub.running, false);
 });
+
+// ── MOD_CLUSTER (2026-10-13): Red Hat Apache + JBoss 8, balancer adi = uygulama adi ──────────────
+test('WK8 mod_cluster: balancer://<app> vhostu JBoss 8 hedefine baglanir; JBoss 7 hedefine, baska siteye ve baska ortama BAGLANMAZ', () => {
+  const vh = [
+    { host: 'GOJBWP05', server_name: 'intservices.garantibbvakirala.com.tr', aliases: '', listen: '*:443', conf_file: '/rha/GFYINTERNETSERVICES.conf', product: 'RHA', proxy_targets: '~DYNAMIC,gfyinternetservices' },
+    { host: 'GOJBWAP05', server_name: 'intservices-ank.garantibbvakirala.com.tr', aliases: '', listen: '*:443', conf_file: '/rha/a.conf', product: 'RHA', proxy_targets: '~DYNAMIC,gfyinternetservices' },
+    { host: 'GOJBWT05', server_name: 'intservices-t.garantibbvakirala.com.tr', aliases: '', listen: '*:443', conf_file: '/rha/t.conf', product: 'RHA', proxy_targets: '~DYNAMIC,gfyinternetservices' },
+    { host: 'GOJBWP05', server_name: 'baska.garantibbvakirala.com.tr', aliases: '', listen: '*:443', conf_file: '/rha/b.conf', product: 'RHA', proxy_targets: '~DYNAMIC,gfyinternetservicesx' },
+  ];
+  const inv = (v) => [{ app: 'GFYINTERNETSERVICES', host: 'GOJBAP10', env: 'PROD', domain: 'gtdmz.com.tr', jboss_version: v }];
+  const sekiz = buildTargets('GFYINTERNETSERVICES', inv('8'), [], [], vh).targets[0];
+  assert.deepEqual(sekiz.web.map((w) => `${w.host}/${w.serverName}`), ['GOJBWP05/intservices.garantibbvakirala.com.tr'], sekiz.webHow);
+  assert.equal(sekiz.web[0].kaynak, 'mc');
+  assert.equal(sekiz.web[0].mcBalancer, 'gfyinternetservices');
+  const yedi = buildTargets('GFYINTERNETSERVICES', inv('7'), [], [], vh).targets[0];
+  assert.equal(yedi.web.length, 0, 'JBoss 7 hedefine mod_cluster (JBoss 8) vhostu baglandi');
+});
+
+test('WK9 mod_cluster 2-tier: Apache ve JBoss 8 ayni sunucuda (gbjbop35) - alt cizgili ad da tutar', () => {
+  const vh = [{ host: 'GBJBOP35', server_name: 'compass.fw.garanti.com.tr', aliases: '', listen: '*:80', conf_file: '/usr/apache/conf.d/GBSVCCOMPASS.conf', product: 'RHA', proxy_targets: 'gbsvccompass' }];
+  const t = buildTargets('GB_SVC_COMPASS', [{ app: 'GB_SVC_COMPASS', host: 'GBJBOP35', env: 'PROD', domain: 'fw.garanti.com.tr', jboss_version: '8' }], [], [], vh).targets[0];
+  assert.equal(t.web[0]?.serverName, 'compass.fw.garanti.com.tr', t.webHow);
+});

@@ -250,6 +250,11 @@ export default function WebApp() {
                         <span key={i} title={[w.confFile ? `conf: ${w.confFile}` : "", w.ajpHedef ? `AJP/proxy hedefi: ${w.ajpHedef}` : ""].filter(Boolean).join(" · ") || undefined}>
                           {w.serverName}
                           {w.product && <span className="ml-1 text-[10px] text-[var(--text-muted)]">{w.product}</span>}
+                          {String(w.kaynak || "").includes("mc") && (
+                            <span className="ml-1 text-[9px] px-1 rounded border border-sky-200 bg-sky-50 text-sky-700" title={`Red Hat Apache mod_cluster: balancer://${w.mcBalancer || ""} = uygulama adı (JBoss 8). Aynı site + ortamdaki web sunucusu; o anki üye JVM doğrulanmadı.`}>
+                              mod_cluster
+                            </span>
+                          )}
                           {(w.kaynak === "ajp" || w.kaynak === "ad+ajp") && (
                             <span className="ml-1 text-[9px] px-1 rounded border border-sky-200 bg-sky-50 text-sky-700" title={w.kaynak === "ajp" ? "Yalnız AJP/proxy hedefiyle bulundu: vhost bu uygulamanın JVM portuna gidiyor (ad tutmasa da)" : "Ad eşleşmesi AJP/proxy hedefiyle de doğrulandı"}>
                               {w.kaynak === "ajp" ? "AJP" : "ad+AJP"}

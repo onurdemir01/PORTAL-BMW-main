@@ -18,8 +18,16 @@ import { BOS_FILTRE, kayitFiltrele, type KayitFiltre } from './retirementFiltre'
 
 /** Vhost'un nasil bulundugu (2026-10-12): AJP/proxy hedefiyle bulunanlar etiketlenir. */
 function WebKaynak({ w }: { w: RtWeb }) {
-  if (w.kaynak !== 'ajp' && w.kaynak !== 'ad+ajp') return null;
-  return <span className="ml-1 px-1 rounded border text-[9px] font-semibold" style={{ color: 'var(--status-info)', borderColor: 'var(--status-info)' }} title={`mod_jk/proxy hedefi ${w.ajpHedef || ''} bu JVM'in portu${w.kaynak === 'ajp' ? ' — ad eşleşmesiyle BULUNAMAZDI' : ''}`}>AJP</span>;
+  const k = String(w.kaynak || '');
+  const ajp = k.includes('ajp');
+  const mc = k.includes('mc');
+  if (!ajp && !mc) return null;
+  return (
+    <>
+      {ajp && <span className="ml-1 px-1 rounded border text-[9px] font-semibold" style={{ color: 'var(--status-info)', borderColor: 'var(--status-info)' }} title={`mod_jk/proxy hedefi ${w.ajpHedef || ''} bu JVM'in portu${k === 'ajp' ? ' — ad eşleşmesiyle BULUNAMAZDI' : ''}`}>AJP</span>}
+      {mc && <span className="ml-1 px-1 rounded border text-[9px] font-semibold" style={{ color: 'var(--status-info)', borderColor: 'var(--status-info)' }} title={`Red Hat Apache mod_cluster: vhost balancer://${w.mcBalancer || ''} = uygulama adı (JBoss 8 kendini bu adla duyurur). Aynı site + ortamdaki web sunucusu; o anki üye JVM doğrulanmadı.`}>mod_cluster</span>}
+    </>
+  );
 }
 import { retirementAdimi } from './retirementAdim';
 import { stopTrafikOzeti, stopOnayAcikMi, type TrafikIsDurumu } from './retirementTrafik';

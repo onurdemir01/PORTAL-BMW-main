@@ -248,20 +248,64 @@ function webUyariMetni(web, host, hubVhostsByHost) {
  * Retirement kesfi ve Denetim > Web-App AYNI fonksiyonu kullanir - iki ekran ayni cevabi verir.
  * @param {object} ctx { hubVhostsByHost: Map, vhostRows: object[], ipMap: Map, jvm: object|null }
  */
+// ── DORDUNCU WEB KAYNAGI: MOD_CLUSTER BALANCER ADI (2026-10-13) ─────────────────────────
+// Kullanici: "IBM Apache'ler her zaman mod_jk + AJP ile JBoss 7'ye, Red Hat Apache'ler her zaman
+// mod_cluster + AJP ile JBoss 8'e baglanir. Red Hat Apache'lerde yalniz mod_cluster'a uygun balancer
+// ismi yazar; JBoss 8'ler kendini kendi Apache'sine advertise eder." Uretim konfigurasyonunda (gbjbop35)
+// kalip tutarli: `<APP>.conf` icinde `ProxyPass / balancer://<app kucuk harf>/` - BALANCER ADI =
+// UYGULAMA ADI. Uyeler dinamik oldugu icin port eslesmesi YOK; esleme su uc sartla:
+//   1) balancer adi uygulama adiyla BIREBIR (alt cizgi varyantlari dahil, ortam eki dahil)
+//   2) hedef JBoss 8 (ya da surumu bilinmiyor) - JBoss 7 mod_cluster kullanmaz; JBoss 7 retirement'i
+//      JBoss 8'in vhost'unu ALMAZ
+//   3) web sunucusu uygulama sunucusunun KENDISI ya da AYNI site + AYNI ortam harfinde
+//      (advertise ayni ag/ortam icinde; Ankara Pendik'i, test prod'u almaz)
+// Hangi JVM'in o an uye oldugu dogrulanmaz; ekran bunu "mod_cluster" etiketiyle ayri gosterir.
+const envHarfi = (h) => { const m = /([A-Z])\d+$/.exec(U(h)); return m ? m[1] : ''; };
+function mcWeb(app, appHost, gen, vhostRows) {
+  if (Number(gen) === 7) return [];
+  const adlar = new Set(adVaryantlari(app));
+  const site = siteOf(appHost);
+  const env = envHarfi(appHost);
+  const out = [];
+  for (const v of vhostRows || []) {
+    const vh = U(v.host);
+    if (!(vh === U(appHost) || (siteOf(vh) === site && envHarfi(vh) === env))) continue;
+    const bal = String(v.proxy_targets || '').split(',').map((x) => x.trim().toLowerCase())
+      .filter((x) => x && !x.startsWith('~') && !x.includes(':'));
+    const hit = bal.find((b) => adlar.has(b));
+    if (!hit) continue;
+    out.push({
+      host: vh, serverName: String(v.server_name || '').trim(), product: String(v.product || ''),
+      port: String(v.listen || '').split(/[\s,]+/)[0].split(':').pop() || '', confFile: String(v.conf_file || ''),
+      kaynak: 'mc', mcBalancer: hit,
+    });
+  }
+  return out;
+}
+
 function webZenginlestir(app, host, web, ctx) {
   let w = web;
   if (!w.matched) w = hubWebFallback(app, host, w, ctx.hubVhostsByHost || new Map());
-  const ajp = ajpWeb(host, ctx.jvm || null, ctx.vhostRows || [], ctx.ipMap || new Map());
-  if (!ajp.length) return w;
   const anahtar = (x) => `${U(x.host)}|${String(x.serverName || '').toLowerCase()}|${x.port || ''}|${x.confFile || ''}`;
-  const mevcut = new Map((w.web || []).map((x) => [anahtar(x), { ...x }]));
-  let yeni = 0;
-  for (const a of ajp) {
-    const k = anahtar(a);
-    if (mevcut.has(k)) { mevcut.get(k).kaynak = 'ad+ajp'; mevcut.get(k).ajpHedef = a.ajpHedef; } else { mevcut.set(k, a); yeni += 1; }
-  }
-  return { ...w, matched: true, web: [...mevcut.values()],
-    how: `${w.matched ? `${w.how} + ` : ''}AJP/proxy hedefi = JVM portu (${ajp.length} vhost${yeni ? `, ${yeni} yalniz AJP ile bulundu` : ''})` };
+  const ekle = (wx, liste, tur, ozet, kisa) => {
+    if (!liste.length) return wx;
+    const mevcut = new Map((wx.web || []).map((x) => [anahtar(x), { ...x }]));
+    let yeni = 0;
+    for (const a of liste) {
+      const k = anahtar(a);
+      if (mevcut.has(k)) {
+        const m = mevcut.get(k);
+        m.kaynak = m.kaynak && m.kaynak !== 'ad' ? `${m.kaynak}+${tur}` : `ad+${tur}`;
+        if (a.ajpHedef) m.ajpHedef = a.ajpHedef;
+        if (a.mcBalancer) m.mcBalancer = a.mcBalancer;
+      } else { mevcut.set(k, a); yeni += 1; }
+    }
+    return { ...wx, matched: true, web: [...mevcut.values()],
+      how: `${wx.matched ? `${wx.how} + ` : ''}${ozet} (${liste.length} vhost${yeni ? `, ${yeni} yalniz ${kisa} ile bulundu` : ''})` };
+  };
+  w = ekle(w, ajpWeb(host, ctx.jvm || null, ctx.vhostRows || [], ctx.ipMap || new Map()), 'ajp', 'AJP/proxy hedefi = JVM portu', 'AJP');
+  if (ctx.modCluster !== false) w = ekle(w, mcWeb(app, host, ctx.gen ?? null, ctx.vhostRows || []), 'mc', 'mod_cluster balancer adı = uygulama adı', 'mod_cluster');
+  return w;
 }
 
 /** Server Hub baglami (en yeni tarama): vhost'lar, JVM portlari, IP sahipleri. Okunamayan kaynak bos kalir. */
@@ -322,7 +366,7 @@ function buildTargets(base, invRows, certRows, jvmRows, vhostRows, ipRows = []) 
     const j = jvmSec(jvms, host, app, gen);
     // Sertifika eslesmesi + Server Hub + AJP/proxy (ortak: Denetim > Web-App de kullanir).
     const web = webZenginlestir(app, host, matchWebForApp({ app, appHost: host, domain: r.domain || '' }, certByHost),
-      { hubVhostsByHost, vhostRows, ipMap, jvm: j });
+      { hubVhostsByHost, vhostRows, ipMap, jvm: j, gen });
     // SOZLESME v3 (D1-C15, D1-C28): running=0 tek basina "kapali" DEGIL. running_src
     // UNMEASURED (hidepid / ps korlugu) ise calisma durumu BILINMIYOR; NULL (eski satir ya da
     // kolon henuz yok) bilinen sayilir.
@@ -332,7 +376,7 @@ function buildTargets(base, invRows, certRows, jvmRows, vhostRows, ipRows = []) 
       appPath: r.app_path || '', inventoryStatus: r.status || '', domain: r.domain || '', tier: web.tier,
       web: web.web.map((w) => ({
         host: w.host, serverName: w.serverName, product: w.product, port: w.port, confFile: w.confFile,
-        kaynak: w.kaynak || 'ad', ...(w.ajpHedef ? { ajpHedef: w.ajpHedef } : {}),
+        kaynak: w.kaynak || 'ad', ...(w.ajpHedef ? { ajpHedef: w.ajpHedef } : {}), ...(w.mcBalancer ? { mcBalancer: w.mcBalancer } : {}),
         trafik: trafikSinifi(vhostByKey.get(`${U(w.host)}|${String(w.serverName || '').trim().toLowerCase()}`)),
       })),
       webHow: web.how,
@@ -450,4 +494,4 @@ async function searchApps(q) {
   return [...bases].sort();
 }
 
-module.exports = { buildTargets, discover, searchApps, siteOf, parseAppName, hedefOrtami, genOf, jvmIndeksi, jvmSec, trafikSinifi, ajpWeb, hedefSunucusu, webZenginlestir, hubBaglamiYukle };
+module.exports = { buildTargets, discover, searchApps, siteOf, parseAppName, hedefOrtami, genOf, jvmIndeksi, jvmSec, trafikSinifi, ajpWeb, mcWeb, hedefSunucusu, webZenginlestir, hubBaglamiYukle };
