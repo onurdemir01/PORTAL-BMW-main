@@ -1821,7 +1821,7 @@ const ELEMENT_SEED = [
   {
     element_key: 'navgroup:arkspa',
     element_type: 'nav_group',
-    label: 'Nginx ARK SPA Raporu',
+    label: 'Nginx ARK SPA',
     sort_order: 4,
   },
   // SPA Tasima Plani (2026-09-26): EKIPLERE acik, Nginx Hub'in DISINDA duran planlama ekrani
@@ -1947,9 +1947,20 @@ const ELEMENT_SEED = [
     element_key: 'ArkSpaRaporu',
     element_type: 'page',
     parent_key: 'navgroup:arkspa',
-    label: 'Nginx ARK SPA Raporu',
-    route: '/ark-spa-raporu',
+    label: 'SPA Raporu',
+    route: '/ark-spa/spa-raporu',
     sort_order: 1,
+    roles: ['Admin', 'User'],
+  },
+  {
+    // GLOMO GECIS PLANI (kullanici, 2026-10-13): Nginx ARK SPA altinda ayri sayfa. Ekiplere acik
+    // (calismaya katilacak kisiyi ekip girer); set/OCO/gecti alanlari sunucuda yalniz Admin.
+    element_key: 'ArkGlomoGecis',
+    element_type: 'page',
+    parent_key: 'navgroup:arkspa',
+    label: 'Glomo Geçiş Planı',
+    route: '/ark-spa/glomo-gecis-plani',
+    sort_order: 2,
     roles: ['Admin', 'User'],
   },
   {
@@ -2644,6 +2655,23 @@ async function seedPortalElements(pool) {
       );
   } catch (err) {
     console.warn('[DB] Nginx Hub nav grubu guncellenemedi:', err.message);
+  }
+
+  // 2026-10-13: Nginx ARK SPA iki sayfaya bolundu. Seed yalniz EKSIK kaydi ekledigi icin mevcut
+  // kurulumda eski etiket/adres kalirdi. Yalniz hala ESKI varsayilan olan alanlar guncellenir -
+  // admin elle bir ad verdiyse ona dokunulmaz. Adres her durumda yeni (eski adres yonlendirilir).
+  try {
+    await pool.request().query(
+      `UPDATE portal_elements SET label = N'SPA Raporu' WHERE element_key = 'ArkSpaRaporu' AND label = N'Nginx ARK SPA Raporu'`,
+    );
+    await pool.request().query(
+      `UPDATE portal_elements SET route = '/ark-spa/spa-raporu' WHERE element_key = 'ArkSpaRaporu' AND route = '/ark-spa-raporu'`,
+    );
+    await pool.request().query(
+      `UPDATE portal_elements SET label = N'Nginx ARK SPA' WHERE element_key = 'navgroup:arkspa' AND label = N'Nginx ARK SPA Raporu'`,
+    );
+  } catch (err) {
+    console.warn('[DB] Nginx ARK SPA etiket/adres guncellenemedi:', err.message);
   }
 
   // 2026-08-25: sayfa adi "Denetim" -> "Middleware Ic Denetim". ELEMENT_SEED yalnizca

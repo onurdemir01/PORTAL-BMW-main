@@ -45,7 +45,10 @@ export const PAGES: PageElement[] = [
   { id: 'AI Analist', label: 'AI Analist', route: '/ai-analyst' },
   { id: 'Nöbet', label: 'Nöbet', route: '/duty-roster' },
   { id: 'OcoTakvimi', label: 'OCO Takvimi', route: '/oco-takvimi' },
-  { id: 'ArkSpaRaporu', label: 'Nginx ARK SPA Raporu', route: '/ark-spa-raporu' },
+  // Nginx ARK SPA (2026-10-13): iki sayfa. element_key 'ArkSpaRaporu' DEGISMEDI (mevcut gorunurluk
+  // kurallari ve /api/spa-report kapisi ona bagli); yalniz etiket + adres.
+  { id: 'ArkSpaRaporu', label: 'SPA Raporu', route: '/ark-spa/spa-raporu' },
+  { id: 'ArkGlomoGecis', label: 'Glomo Geçiş Planı', route: '/ark-spa/glomo-gecis-plani' },
   // "Linkler" sayfasi: 2026-09-19 menu/route kaldirildi, 2026-10-02 sayfa bileseni ve
   // Dashboard'daki favori bolumu de silindi (Dashboard /api/links'e 403 aliyordu).
   // /api/links ve portal_links tablosu YERINDE (veri kaybolmadi); geri acmak icin sayfa
@@ -72,7 +75,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
   // Crypto Hub (2026-09-25): Metaco + Wyden, kendi girisi
   { id: 'cryptohub', label: 'Crypto Hub', itemIds: ['CryptoHub'] },
   // Nginx ARK SPA Raporu (2026-09-28): tum servisler icin tek liste, kendi bolumu
-  { id: 'arkspa', label: 'Nginx ARK SPA Raporu', itemIds: ['ArkSpaRaporu'] },
+  { id: 'arkspa', label: 'Nginx ARK SPA', itemIds: ['ArkSpaRaporu', 'ArkGlomoGecis'] },
   { id: 'performance', label: 'Performance', itemIds: ['Performance'] },
   { id: 'operasyon', label: 'Nöbetçiler', itemIds: ['Nöbet', 'OcoTakvimi'] },
   // 2026-07-28: "LogX" ust-seviye grubu KALDIRILDI; LogX artik bu grubun alt ogesi.

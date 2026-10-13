@@ -191,6 +191,21 @@ const BEYAN = new Set(['yes', 'no', 'unknown']);
 
 function initSpaReport(app) {
   const { requireAuth } = require('../auth/index.cjs');
+  // GLOMO GECIS PLANI AYRI SAYFA (2026-10-13): /gecis uclari kendi gorunurluk anahtariyla
+  // ('ArkGlomoGecis') ve rapor router'indan ONCE baglanir - rapor kapisi ('ArkSpaRaporu')
+  // yalniz plani goren kullaniciyi disarida birakmasin. Plan canli raporu sunucu icinde okur.
+  const gecisRouter = express.Router();
+  gecisRouter.use(express.json({ limit: '256kb' }));
+  gecisRouter.use('/gecis', requireAuth);
+  try {
+    const { requireVisible } = require('../auth/visibility.cjs');
+    gecisRouter.use('/gecis', requireVisible('ArkGlomoGecis'));
+  } catch {
+    /* gorunurluk motoru yoksa yoksay */
+  }
+  require('./gecis.cjs').mountGecis(gecisRouter, { loadReport });
+  app.use('/api/spa-report', gecisRouter);
+
   const router = express.Router();
   router.use(express.json({ limit: '256kb' }));
   router.use(requireAuth);
@@ -287,9 +302,6 @@ function initSpaReport(app) {
       res.status(500).json({ ok: false, message: err.message });
     }
   });
-
-  // GLOMO GECIS PLANI (2026-10-13): /gecis uclari ayni router'da (ayni gorunurluk kapisi).
-  require('./gecis.cjs').mountGecis(router, { loadReport });
 
   app.use('/api/spa-report', router);
   console.log('[ARK SPA] module mounted at /api/spa-report');

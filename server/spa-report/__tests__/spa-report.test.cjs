@@ -140,8 +140,14 @@ test('AR8: sayfa UC YERDE de kayitli (menu sessizce dusmesin)', () => {
   const oku = (p) => fs.readFileSync(path.join(KOK, p), 'utf8').replace(/"/g, "'");
   assert.match(oku('server/db/mssql-setup.cjs'), /element_key: 'ArkSpaRaporu'/, 'DB seed');
   assert.match(oku('src/config/elements.ts'), /id: 'ArkSpaRaporu'/, 'elements.ts PAGES');
-  assert.match(oku('src/config/elements.ts'), /itemIds: \['ArkSpaRaporu'\]/, 'NAV_GROUPS');
-  assert.match(oku('src/App.tsx'), /path='\/ark-spa-raporu'/, 'App.tsx route');
+  assert.match(oku('src/config/elements.ts'), /itemIds: \['ArkSpaRaporu', 'ArkGlomoGecis'\]/, 'NAV_GROUPS');
+  assert.match(oku('src/App.tsx'), /path='\/ark-spa\/spa-raporu'/, 'App.tsx route');
+  // Glomo Gecis Plani ayri sayfa (2026-10-13): seed + elements + route + sunucu kapisi.
+  assert.match(oku('server/db/mssql-setup.cjs'), /element_key: 'ArkGlomoGecis'/, 'Glomo DB seed');
+  assert.match(oku('src/config/elements.ts'), /id: 'ArkGlomoGecis'.*route: '\/ark-spa\/glomo-gecis-plani'/, 'Glomo elements.ts');
+  assert.match(oku('src/App.tsx'), /path='\/ark-spa\/glomo-gecis-plani'/, 'Glomo route');
+  assert.match(oku('src/App.tsx'), /path='\/ark-spa-raporu' element=\{<Navigate to='\/ark-spa\/spa-raporu'/, 'eski adres yonlendirilmiyor');
+  assert.match(oku('server/spa-report/index.cjs'), /requireVisible\('ArkGlomoGecis'\)/, 'Glomo sunucu kapisi');
   assert.match(oku('server/index.cjs'), /spa-report/, 'sunucu modulu baglanmamis');
 });
 

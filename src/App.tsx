@@ -14,6 +14,7 @@ const DenetimPage = lazyWithRetry(() => import('@/components/DenetimPage'));
 // OCO Takvimi (2026-09-28): ekibin degisiklik kayitlari, kronolojik. Kendi route'u var.
 const OcoTakvimiPage = lazyWithRetry(() => import('@/components/OcoTakvimiPage'));
 const ArkSpaRaporuPage = lazyWithRetry(() => import('@/components/ArkSpaRaporuPage'));
+const GlomoGecisPlaniPage = lazyWithRetry(() => import('@/components/GlomoGecisPlaniPage'));
 // Nginx Audit > tek sunucu sayfasi: kendi URL'i var, Denetim gorunurlugune tabi.
 const NginxAuditHostPage = lazyWithRetry(() => import('@/components/denetim/NginxAuditHostPage'));
 const EnvanterPage = lazyWithRetry(() => import('@/components/EnvanterPage'));
@@ -85,8 +86,14 @@ export default function App() {
             <Route element={<PageVisibilityRoute pageId="OcoTakvimi" />}>
               <Route path="/oco-takvimi" element={<OcoTakvimiPage />} />
             </Route>
+            {/* Nginx ARK SPA (2026-10-13): eski tek sayfa adresi yeni rapor adresine yonlenir. */}
+            <Route path="/ark-spa-raporu" element={<Navigate to="/ark-spa/spa-raporu" replace />} />
+            <Route path="/ark-spa" element={<Navigate to="/ark-spa/spa-raporu" replace />} />
             <Route element={<PageVisibilityRoute pageId="ArkSpaRaporu" />}>
-              <Route path="/ark-spa-raporu" element={<ArkSpaRaporuPage />} />
+              <Route path="/ark-spa/spa-raporu" element={<ArkSpaRaporuPage />} />
+            </Route>
+            <Route element={<PageVisibilityRoute pageId="ArkGlomoGecis" />}>
+              <Route path="/ark-spa/glomo-gecis-plani" element={<GlomoGecisPlaniPage />} />
             </Route>
             <Route element={<PageVisibilityRoute pageId="Performance" />}>
               <Route path="/performance" element={<DynatracePage />} />
