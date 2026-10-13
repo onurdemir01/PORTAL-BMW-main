@@ -56,9 +56,27 @@ const hata = (mesaj, status, ek = {}) => Object.assign(new Error(mesaj), { statu
 
 const KULLANICILAR = {
   // Oturum nesnesi GERCEK sekliyle: `mail` (auth/index.cjs `email` YAZMAZ).
-  ayse: { username: 'ayse', mail: 'ayse@ornek.test', displayName: 'Ayse Ornek', role: 'User', groups: ['ekip-a'] },
-  bora: { username: 'bora', mail: 'bora@ornek.test', displayName: 'Bora Ornek', role: 'User', groups: ['ekip-b'] },
-  yonetici: { username: 'yonetici', mail: 'yonetici@ornek.test', displayName: 'Yonetici', role: 'Admin', groups: ['yoneticiler'] },
+  ayse: {
+    username: 'ayse',
+    mail: 'ayse@ornek.test',
+    displayName: 'Ayse Ornek',
+    role: 'User',
+    groups: ['ekip-a'],
+  },
+  bora: {
+    username: 'bora',
+    mail: 'bora@ornek.test',
+    displayName: 'Bora Ornek',
+    role: 'User',
+    groups: ['ekip-b'],
+  },
+  yonetici: {
+    username: 'yonetici',
+    mail: 'yonetici@ornek.test',
+    displayName: 'Yonetici',
+    role: 'Admin',
+    groups: ['yoneticiler'],
+  },
 };
 
 // SMART'in "kullanima hazir" hali: dort parcanin dordu de dolu.
@@ -95,8 +113,18 @@ function varsayilanAyar() {
     //   icinde | once | gecti | yok | tarihsiz | servis_hatasi
     oco: 'icinde',
     sablonlar: {
-      scalex_run: { keyName: 'scalex_run', enabled: true, awxTemplateId: 4711, awxServerId: SUNUCU_ID },
-      scalex_discovery: { keyName: 'scalex_discovery', enabled: true, awxTemplateId: 4712, awxServerId: SUNUCU_ID },
+      scalex_run: {
+        keyName: 'scalex_run',
+        enabled: true,
+        awxTemplateId: 4711,
+        awxServerId: SUNUCU_ID,
+      },
+      scalex_discovery: {
+        keyName: 'scalex_discovery',
+        enabled: true,
+        awxTemplateId: 4712,
+        awxServerId: SUNUCU_ID,
+      },
     },
     katalog: {
       clusters: ['c1', 'c2'],
@@ -123,6 +151,7 @@ function varsayilanAyar() {
 function bosKayit() {
   return {
     denetim: [],
+    ayarYazimlari: [],
     islemler: [],
     isGecmisi: [],
     ayna: new Map(),
@@ -166,22 +195,79 @@ sim.adminAtlasin = (kim = 'yonetici') => {
 
 // ── SAHTE DB ─────────────────────────────────────────────────────────────────
 const duz = (sql) => String(sql).replace(/\s+/g, ' ').trim();
-const SIKI_TABLO = /\b(scalex_operations|scalex_state_mirror|ansible_job_history)\b/;
+const SIKI_TABLO =
+  /\b(scalex_operations|scalex_state_mirror|ansible_job_history|portal_env_overrides)\b/;
 const simdi = () => new Date();
+
+// portal_env_overrides: admin ekranindan yazilan dinamik ayarlar (SMART kipi anahtari).
+const AYAR_SORGULARI = [
+  [
+    /^UPDATE portal_env_overrides SET env_value = \$1, updated_by = \$2, updated_at = GETUTCDATE\(\) WHERE env_key = \$3$/,
+    (p) => {
+      const satir = sim.kayit.ayarYazimlari.find((a) => a.key === p[2]);
+      if (!satir) return { rows: [], rowCount: 0 };
+      Object.assign(satir, { value: p[0], by: p[1] });
+      return { rows: [], rowCount: 1 };
+    },
+  ],
+  [
+    /^INSERT INTO portal_env_overrides \(env_key, env_value, updated_by\) VALUES \(\$1, \$2, \$3\)$/,
+    (p) => {
+      sim.kayit.ayarYazimlari.push({ key: p[0], value: p[1], by: p[2] });
+      return { rows: [], rowCount: 1 };
+    },
+  ],
+];
 
 const SORGULAR = [
   [
     /^INSERT INTO scalex_operations \(request_key, username, env, tenant, cluster_name, namespace, action, execution_mode, target_replicas, app_names_json, awx_server_id, awx_job_id, status, oco_number, reason, smart_ticket_id, approval_state, username_groups\) VALUES/,
     (p) => {
-      const [request_key, username, env, tenant, cluster_name, namespace, action, execution_mode,
-        target_replicas, app_names_json, awx_server_id, awx_job_id, status, oco_number, reason,
-        smart_ticket_id, approval_state, username_groups] = p;
+      const [
+        request_key,
+        username,
+        env,
+        tenant,
+        cluster_name,
+        namespace,
+        action,
+        execution_mode,
+        target_replicas,
+        app_names_json,
+        awx_server_id,
+        awx_job_id,
+        status,
+        oco_number,
+        reason,
+        smart_ticket_id,
+        approval_state,
+        username_groups,
+      ] = p;
       sim.kayit.islemler.push({
-        id: yeniId(), request_key, username, env, tenant, cluster_name, namespace, action,
-        execution_mode, target_replicas, app_names_json, awx_server_id, awx_job_id, status,
-        oco_number, reason, smart_ticket_id, approval_state, username_groups,
-        overall_status: null, result_json: null, error_message: null,
-        created_at: simdi(), updated_at: simdi(),
+        id: yeniId(),
+        request_key,
+        username,
+        env,
+        tenant,
+        cluster_name,
+        namespace,
+        action,
+        execution_mode,
+        target_replicas,
+        app_names_json,
+        awx_server_id,
+        awx_job_id,
+        status,
+        oco_number,
+        reason,
+        smart_ticket_id,
+        approval_state,
+        username_groups,
+        overall_status: null,
+        result_json: null,
+        error_message: null,
+        created_at: simdi(),
+        updated_at: simdi(),
       });
       return { rows: [], rowCount: 1 };
     },
@@ -189,7 +275,14 @@ const SORGULAR = [
   [
     /^INSERT INTO ansible_job_history \(username, awx_server_id, template_id, template_name, job_id, status, started_at, params\) VALUES/,
     (p) => {
-      sim.kayit.isGecmisi.push({ username: p[0], awx_server_id: p[1], template_id: p[2], template_name: p[3], job_id: p[4], status: p[5] });
+      sim.kayit.isGecmisi.push({
+        username: p[0],
+        awx_server_id: p[1],
+        template_id: p[2],
+        template_name: p[3],
+        job_id: p[4],
+        status: p[5],
+      });
       return { rows: [], rowCount: 1 };
     },
   ],
@@ -197,7 +290,9 @@ const SORGULAR = [
     /^SELECT TOP 1 username FROM ansible_job_history WHERE job_id = \$1 AND awx_server_id = \$2$/,
     (p) => ({
       rows: sim.kayit.isGecmisi
-        .filter((r) => Number(r.job_id) === Number(p[0]) && Number(r.awx_server_id) === Number(p[1]))
+        .filter(
+          (r) => Number(r.job_id) === Number(p[0]) && Number(r.awx_server_id) === Number(p[1]),
+        )
         .slice(0, 1)
         .map((r) => ({ username: r.username })),
     }),
@@ -206,16 +301,22 @@ const SORGULAR = [
     /^SELECT \* FROM scalex_operations WHERE awx_server_id = \$1 AND awx_job_id = \$2$/,
     (p) => ({
       rows: sim.kayit.islemler
-        .filter((r) => Number(r.awx_server_id) === Number(p[0]) && Number(r.awx_job_id) === Number(p[1]))
+        .filter(
+          (r) => Number(r.awx_server_id) === Number(p[0]) && Number(r.awx_job_id) === Number(p[1]),
+        )
         .map((r) => ({ ...r })),
     }),
   ],
   [
     /^UPDATE scalex_operations SET status = 'FINISHED', overall_status = \$3, result_json = \$4, updated_at = GETUTCDATE\(\) WHERE awx_server_id = \$1 AND awx_job_id = \$2 AND status = 'RUNNING'$/,
-    (p) => guncelle(
-      (r) => Number(r.awx_server_id) === Number(p[0]) && Number(r.awx_job_id) === Number(p[1]) && r.status === 'RUNNING',
-      (r) => Object.assign(r, { status: 'FINISHED', overall_status: p[2], result_json: p[3] }),
-    ),
+    (p) =>
+      guncelle(
+        (r) =>
+          Number(r.awx_server_id) === Number(p[0]) &&
+          Number(r.awx_job_id) === Number(p[1]) &&
+          r.status === 'RUNNING',
+        (r) => Object.assign(r, { status: 'FINISHED', overall_status: p[2], result_json: p[3] }),
+      ),
   ],
   [
     /^SELECT TOP 50 request_key, MIN\(created_at\) AS created_at FROM scalex_operations WHERE status = 'SCHEDULED' AND request_key LIKE 'oco:%' GROUP BY request_key ORDER BY MIN\(created_at\) ASC$/,
@@ -226,32 +327,42 @@ const SORGULAR = [
         const eski = gruplar.get(r.request_key);
         if (!eski || r.created_at < eski) gruplar.set(r.request_key, r.created_at);
       }
-      return { rows: [...gruplar].map(([request_key, created_at]) => ({ request_key, created_at })) };
+      return {
+        rows: [...gruplar].map(([request_key, created_at]) => ({ request_key, created_at })),
+      };
     },
   ],
   [
     /^UPDATE scalex_operations SET status = \$2, error_message = \$3, updated_at = GETUTCDATE\(\) WHERE request_key = \$1 AND status = 'SCHEDULED'$/,
-    (p) => guncelle(
-      (r) => r.request_key === p[0] && r.status === 'SCHEDULED',
-      (r) => Object.assign(r, { status: p[1], error_message: p[2] }),
-    ),
+    (p) =>
+      guncelle(
+        (r) => r.request_key === p[0] && r.status === 'SCHEDULED',
+        (r) => Object.assign(r, { status: p[1], error_message: p[2] }),
+      ),
   ],
   [
     /^UPDATE scalex_operations SET status = 'CANCELLED', error_message = \$2, updated_at = GETUTCDATE\(\) WHERE request_key = \$1 AND status = 'SCHEDULED'$/,
-    (p) => guncelle(
-      (r) => r.request_key === p[0] && r.status === 'SCHEDULED',
-      (r) => Object.assign(r, { status: 'CANCELLED', error_message: p[1] }),
-    ),
+    (p) =>
+      guncelle(
+        (r) => r.request_key === p[0] && r.status === 'SCHEDULED',
+        (r) => Object.assign(r, { status: 'CANCELLED', error_message: p[1] }),
+      ),
   ],
   [
     /^UPDATE scalex_operations SET status = 'RUNNING', awx_job_id = \$2, awx_server_id = COALESCE\(awx_server_id, \$3\), request_key = CONCAT\(CAST\(COALESCE\(awx_server_id, \$3\) AS NVARCHAR\(20\)\), ':', CAST\(\$2 AS NVARCHAR\(20\)\)\), updated_at = GETUTCDATE\(\) WHERE request_key = \$1 AND status = 'SCHEDULED'$/,
-    (p) => guncelle(
-      (r) => r.request_key === p[0] && r.status === 'SCHEDULED',
-      (r) => {
-        const sunucu = r.awx_server_id ?? p[2];
-        Object.assign(r, { status: 'RUNNING', awx_job_id: p[1], awx_server_id: sunucu, request_key: `${sunucu}:${p[1]}` });
-      },
-    ),
+    (p) =>
+      guncelle(
+        (r) => r.request_key === p[0] && r.status === 'SCHEDULED',
+        (r) => {
+          const sunucu = r.awx_server_id ?? p[2];
+          Object.assign(r, {
+            status: 'RUNNING',
+            awx_job_id: p[1],
+            awx_server_id: sunucu,
+            request_key: `${sunucu}:${p[1]}`,
+          });
+        },
+      ),
   ],
 ];
 
@@ -269,7 +380,7 @@ function guncelle(secici, uygula) {
 sahte('db/index.cjs', {
   query: async (sql, params = []) => {
     const metin = duz(sql);
-    for (const [desen, isle] of SORGULAR) {
+    for (const [desen, isle] of [...SORGULAR, ...AYAR_SORGULARI]) {
       if (desen.test(metin)) return isle(params);
     }
     if (SIKI_TABLO.test(metin)) {
@@ -284,9 +395,13 @@ sahte('db/index.cjs', {
 // ── OTURUM, GORUNURLUK, DENETIM ──────────────────────────────────────────────
 sahte('auth/index.cjs', {
   requireAuth: (req, res, next) =>
-    req.session && req.session.user ? next() : res.status(401).json({ ok: false, message: 'Oturum yok' }),
+    req.session && req.session.user
+      ? next()
+      : res.status(401).json({ ok: false, message: 'Oturum yok' }),
   requireAdmin: (req, res, next) =>
-    req.session?.user?.role === 'Admin' ? next() : res.status(403).json({ ok: false, message: 'Admin' }),
+    req.session?.user?.role === 'Admin'
+      ? next()
+      : res.status(403).json({ ok: false, message: 'Admin' }),
   getRequestUser: (req) => (req.session && req.session.user) || null,
 });
 // Gorunurluk motoru bu duzenegin konusu degil (kendi testleri var): gecirgen.
@@ -333,7 +448,12 @@ sahte('ansible/ss-customizations.cjs', {
 // ── LOGX CLUSTER VERISI, KATALOG, AYNA ───────────────────────────────────────
 sahte('logx/v2/admin.cjs', {
   resolveClusterMeta: async (_env, _tenant, clusters) =>
-    Object.fromEntries(clusters.map((c) => [c, { api_url: `https://api.${c}.ornek.test:6443`, vault_credential_key: `vault_${c}` }])),
+    Object.fromEntries(
+      clusters.map((c) => [
+        c,
+        { api_url: `https://api.${c}.ornek.test:6443`, vault_credential_key: `vault_${c}` },
+      ]),
+    ),
   resolveTerminalHosts: async (_env, _tenant, clusters) => ({
     hosts: Object.fromEntries(clusters.map((c) => [c, `jump-${c}`])),
     missing: [],
@@ -348,10 +468,12 @@ sahte('logx/v2/ocp-cache.cjs', { putApps: async () => {} });
 const katalogdaYok = (ne, deger) => hata(`${ne} katalogda yok ya da yetkiniz yok: ${deger}`, 403);
 sahte('scalex/catalog.cjs', {
   assertClustersExist: async ({ clusters }) => {
-    for (const c of clusters) if (!sim.ayar.katalog.clusters.includes(c)) throw katalogdaYok('Cluster', c);
+    for (const c of clusters)
+      if (!sim.ayar.katalog.clusters.includes(c)) throw katalogdaYok('Cluster', c);
   },
   assertNamespaceAllowed: async ({ namespace }) => {
-    if (!sim.ayar.katalog.namespaces.includes(namespace)) throw katalogdaYok('Namespace', namespace);
+    if (!sim.ayar.katalog.namespaces.includes(namespace))
+      throw katalogdaYok('Namespace', namespace);
   },
   assertAppsAllowed: async ({ apps }) => {
     for (const a of apps) if (!sim.ayar.katalog.apps.includes(a)) throw katalogdaYok('Uygulama', a);
@@ -378,7 +500,8 @@ sahte('scalex/state.cjs', {
     const r = sim.kayit.ayna.get(aynaAnahtari(t));
     if (r) r.phase = 'scaled_down';
   },
-  listLockedRestores: async () => [...sim.kayit.ayna.values()].filter((r) => r.phase === 'restoring'),
+  listLockedRestores: async () =>
+    [...sim.kayit.ayna.values()].filter((r) => r.phase === 'restoring'),
   listMirrorAll: async () => [...sim.kayit.ayna.values()],
   listMirror: async ({ env, tenant }) =>
     [...sim.kayit.ayna.values()].filter((r) => r.env === env && r.tenant === tenant),
@@ -397,9 +520,21 @@ sahte('scalex/state.cjs', {
   classifyDrift: () => 'in_sync',
 });
 /** Aynaya "portaldan durdurulmus" bir uygulama koyar (geri alma kurgulari icin). */
-sim.durdurulmusEkle = ({ env = 'prod', tenant = 't1', clusterName = 'c1', namespace = 'odeme', appName = 'api', workloadKind = 'Deployment' } = {}) => {
+sim.durdurulmusEkle = ({
+  env = 'prod',
+  tenant = 't1',
+  clusterName = 'c1',
+  namespace = 'odeme',
+  appName = 'api',
+  workloadKind = 'Deployment',
+} = {}) => {
   const t = { env, tenant, clusterName, namespace, appName, workloadKind };
-  sim.kayit.ayna.set(aynaAnahtari(t), { ...t, phase: 'scaled_down', driftStatus: 'in_sync', stoppedBy: 'ayse' });
+  sim.kayit.ayna.set(aynaAnahtari(t), {
+    ...t,
+    phase: 'scaled_down',
+    driftStatus: 'in_sync',
+    stoppedBy: 'ayse',
+  });
   return t;
 };
 
@@ -412,7 +547,10 @@ function ocoYaniti(numara) {
   const d = sim.ayar.oco;
   if (d === 'servis_hatasi') throw hata('OCO servisine ulaşılamadı (test).', 502);
   if (d === 'yok') {
-    throw hata(`OCO ${numara} bulunamadı. Numarayı kontrol edin — kayıt OCO sisteminde açılmış olmalı.`, 404);
+    throw hata(
+      `OCO ${numara} bulunamadı. Numarayı kontrol edin — kayıt OCO sisteminde açılmış olmalı.`,
+      404,
+    );
   }
   const t = Date.now();
   const aralik = {
@@ -451,16 +589,38 @@ sahte('oco/client.cjs', {
 const kesisiyor = (a, b) => Array.isArray(a) && Array.isArray(b) && a.some((g) => b.includes(g));
 const ocoKaydi = (id) => sim.kayit.ocoKayitlari.find((r) => r.id === Number(id)) || null;
 sahte('oco/store.cjs', {
-  create: async ({ username, awxServerId, awxTemplateId, ocoNumber, ocoSubject, runAt, windowEnd, pendingLaunch, ownerGroups }) => {
+  create: async ({
+    username,
+    awxServerId,
+    awxTemplateId,
+    ocoNumber,
+    ocoSubject,
+    runAt,
+    windowEnd,
+    pendingLaunch,
+    ownerGroups,
+  }) => {
     const rec = {
-      id: yeniId(), username, awxServerId, awxTemplateId, ocoNumber, ocoSubject: ocoSubject || null,
-      runAt, windowEnd, status: 'SCHEDULED',
+      id: yeniId(),
+      username,
+      awxServerId,
+      awxTemplateId,
+      ocoNumber,
+      ocoSubject: ocoSubject || null,
+      runAt,
+      windowEnd,
+      status: 'SCHEDULED',
       // Gercek depo JSON'a cevirip geri okur: nesne KOPYADIR, cagiranin sonradan
       // degistirdigi alan kayda sizmaz.
       pendingLaunch: JSON.parse(JSON.stringify(pendingLaunch)),
-      awxJobId: null, awxScheduleId: null, smartTicketId: null,
+      awxJobId: null,
+      awxScheduleId: null,
+      smartTicketId: null,
       ownerGroups: Array.isArray(ownerGroups) ? ownerGroups.slice() : null,
-      cancelledBy: null, cancelNote: null, errorMessage: null, createdAt: simdi(),
+      cancelledBy: null,
+      cancelNote: null,
+      errorMessage: null,
+      createdAt: simdi(),
     };
     sim.kayit.ocoKayitlari.push(rec);
     return rec;
@@ -471,9 +631,14 @@ sahte('oco/store.cjs', {
     throw new Error('[scalex-sim] ScaleX AWX-native zamanlama ACMAMALI');
   },
   get: async (id) => ocoKaydi(id),
-  listAll: async () => ({ items: sim.kayit.ocoKayitlari.slice(), total: sim.kayit.ocoKayitlari.length }),
+  listAll: async () => ({
+    items: sim.kayit.ocoKayitlari.slice(),
+    total: sim.kayit.ocoKayitlari.length,
+  }),
   listForUser: async ({ username, groups }) => ({
-    items: sim.kayit.ocoKayitlari.filter((r) => r.username === username || kesisiyor(r.ownerGroups, groups)),
+    items: sim.kayit.ocoKayitlari.filter(
+      (r) => r.username === username || kesisiyor(r.ownerGroups, groups),
+    ),
     truncated: false,
   }),
   canManage: (rec, { username, groups, role }) =>
@@ -481,13 +646,21 @@ sahte('oco/store.cjs', {
   update: async (id, { ocoNumber, runAt, windowEnd }) => {
     const r = ocoKaydi(id);
     if (!r || r.status !== 'SCHEDULED') return null;
-    Object.assign(r, { ocoNumber: ocoNumber ?? r.ocoNumber, runAt: runAt ?? r.runAt, windowEnd: windowEnd ?? r.windowEnd });
+    Object.assign(r, {
+      ocoNumber: ocoNumber ?? r.ocoNumber,
+      runAt: runAt ?? r.runAt,
+      windowEnd: windowEnd ?? r.windowEnd,
+    });
     return r;
   },
   cancelBy: async (id, { cancelledBy, note }) => {
     const r = ocoKaydi(id);
     if (!r || !['SCHEDULED', 'AWX_SCHEDULED', 'PENDING_APPROVAL'].includes(r.status)) return null;
-    Object.assign(r, { status: 'CANCELLED', cancelledBy: cancelledBy || null, cancelNote: note || null });
+    Object.assign(r, {
+      status: 'CANCELLED',
+      cancelledBy: cancelledBy || null,
+      cancelNote: note || null,
+    });
     return r;
   },
   markPendingApprovalAtRequest: async (id, { smartTicketId }) => {
@@ -513,17 +686,40 @@ sahte('smart/client.cjs', {
   // 2026-10-13'te bulunan ve biletin hic acilamamasina yol acan hata tam buydu.
   createTicket: async ({ flowKey, username, metadata, integrationKey }) => {
     if (sim.ayar.smartHatasi) throw sim.ayar.smartHatasi;
-    const metadatas = Object.entries(metadata || {}).map(([key, value]) => ({ key, value: String(value) }));
+    const metadatas = Object.entries(metadata || {}).map(([key, value]) => ({
+      key,
+      value: String(value),
+    }));
     const ticketId = `SMT-${yeniId()}`;
-    sim.kayit.smartTalepleri.push({ ticketId, flowKey, logonName: username, integrationKey, metadatas });
+    sim.kayit.smartTalepleri.push({
+      ticketId,
+      flowKey,
+      logonName: username,
+      integrationKey,
+      metadatas,
+    });
     return { ticketId };
   },
 });
 sahte('smart/store.cjs', {
-  createTicket: async ({ externalTicketId, username, awxServerId, awxTemplateId, flowKey, pendingLaunch }) => {
+  createTicket: async ({
+    externalTicketId,
+    username,
+    awxServerId,
+    awxTemplateId,
+    flowKey,
+    pendingLaunch,
+  }) => {
     const b = {
-      id: yeniId(), externalTicketId, username, awxServerId, awxTemplateId, flowKey, status: 'PENDING',
-      pendingLaunch: JSON.parse(JSON.stringify(pendingLaunch)), awxJobId: null,
+      id: yeniId(),
+      externalTicketId,
+      username,
+      awxServerId,
+      awxTemplateId,
+      flowKey,
+      status: 'PENDING',
+      pendingLaunch: JSON.parse(JSON.stringify(pendingLaunch)),
+      awxJobId: null,
     };
     sim.kayit.biletler.push(b);
     return b;
@@ -539,26 +735,47 @@ function awxIstegi(req, res, govde) {
   const a = sim.ayar.awx;
   const u = new URL(req.url, 'http://x');
   const p = u.pathname;
-  sim.kayit.awxIstekleri.push({ method: req.method, yol: p, sorgu: u.search, auth: req.headers.authorization || null });
+  sim.kayit.awxIstekleri.push({
+    method: req.method,
+    yol: p,
+    sorgu: u.search,
+    auth: req.headers.authorization || null,
+  });
   const gonder = (kod, nesne, ekGecikme = 0) =>
     setTimeout(() => {
-      res.writeHead(kod, { 'Content-Type': typeof nesne === 'string' ? 'text/plain' : 'application/json' });
+      res.writeHead(kod, {
+        'Content-Type': typeof nesne === 'string' ? 'text/plain' : 'application/json',
+      });
       res.end(nesne === undefined ? '' : typeof nesne === 'string' ? nesne : JSON.stringify(nesne));
     }, a.gecikmeMs + ekGecikme);
 
   if (req.method === 'GET' && p === '/api/v2/job_templates/') {
     const sayfa = Number(u.searchParams.get('page') || 1);
     const sonraki = sayfa < a.listeSayfasi ? `/api/v2/job_templates/?page=${sayfa + 1}` : null;
-    const results = sayfa === a.listeSayfasi
-      ? Object.values(sim.ayar.sablonlar).map((s) => ({
-        id: s.awxTemplateId, name: `ScaleX ${s.keyName}`, ask_variables_on_launch: a.promptAcik, survey_enabled: a.anketAcik,
-      }))
-      : Array.from({ length: 3 }, (_, i) => ({ id: sayfa * 100 + i, name: `baska-${sayfa}-${i}`, ask_variables_on_launch: true }));
+    const results =
+      sayfa === a.listeSayfasi
+        ? Object.values(sim.ayar.sablonlar).map((s) => ({
+            id: s.awxTemplateId,
+            name: `ScaleX ${s.keyName}`,
+            ask_variables_on_launch: a.promptAcik,
+            survey_enabled: a.anketAcik,
+          }))
+        : Array.from({ length: 3 }, (_, i) => ({
+            id: sayfa * 100 + i,
+            name: `baska-${sayfa}-${i}`,
+            ask_variables_on_launch: true,
+          }));
     return gonder(200, { count: a.listeSayfasi * 3, next: sonraki, previous: null, results });
   }
   let m = /^\/api\/v2\/job_templates\/(\d+)\/$/.exec(p);
   if (req.method === 'GET' && m) {
-    return gonder(200, { id: Number(m[1]), name: 'ScaleX', ask_variables_on_launch: a.promptAcik, survey_enabled: a.anketAcik, extra_vars: '' });
+    return gonder(200, {
+      id: Number(m[1]),
+      name: 'ScaleX',
+      ask_variables_on_launch: a.promptAcik,
+      survey_enabled: a.anketAcik,
+      extra_vars: '',
+    });
   }
   m = /^\/api\/v2\/job_templates\/(\d+)\/survey_spec\/$/.exec(p);
   if (req.method === 'GET' && m) {
@@ -576,18 +793,37 @@ function awxIstegi(req, res, govde) {
     }
     const id = ++sonIs;
     sim.kayit.isler.set(id, {
-      id, tplId: Number(m[1]), ev, status: 'pending', failed: false, finished: null, artifacts: {},
-      stdout: 'PLAY [ScaleX] ***\n', yutulan: Object.keys(yutulan),
+      id,
+      tplId: Number(m[1]),
+      ev,
+      status: 'pending',
+      failed: false,
+      finished: null,
+      artifacts: {},
+      stdout: 'PLAY [ScaleX] ***\n',
+      yutulan: Object.keys(yutulan),
     });
-    return gonder(201, { job: id, id, status: 'pending', ignored_fields: Object.keys(yutulan).length ? { extra_vars: yutulan } : {} });
+    return gonder(201, {
+      job: id,
+      id,
+      status: 'pending',
+      ignored_fields: Object.keys(yutulan).length ? { extra_vars: yutulan } : {},
+    });
   }
   m = /^\/api\/v2\/jobs\/(\d+)\/$/.exec(p);
   if (req.method === 'GET' && m) {
     const is = sim.kayit.isler.get(Number(m[1]));
     if (!is) return gonder(404, { detail: 'Not found.' });
     return gonder(200, {
-      id: is.id, status: is.status, failed: is.failed, finished: is.finished, created: '2026-10-14T08:00:00Z',
-      started: '2026-10-14T08:00:02Z', elapsed: 12.5, artifacts: is.artifacts, job_template: is.tplId,
+      id: is.id,
+      status: is.status,
+      failed: is.failed,
+      finished: is.finished,
+      created: '2026-10-14T08:00:00Z',
+      started: '2026-10-14T08:00:02Z',
+      elapsed: 12.5,
+      artifacts: is.artifacts,
+      job_template: is.tplId,
       summary_fields: { launched_by: { name: 'portal_svc' } },
     });
   }
@@ -600,7 +836,13 @@ function awxIstegi(req, res, govde) {
     // artimli yolu her seferinde tam cekime dusururdu).
     const tam = !u.searchParams.has('start_line');
     if (tam) return gonder(200, is.stdout, a.ciktiGecikmeMs);
-    return gonder(200, is.stdout.split('\n').slice(Number(u.searchParams.get('start_line')) || 0).join('\n'));
+    return gonder(
+      200,
+      is.stdout
+        .split('\n')
+        .slice(Number(u.searchParams.get('start_line')) || 0)
+        .join('\n'),
+    );
   }
   m = /^\/api\/v2\/jobs\/(\d+)\/cancel\/$/.exec(p);
   if (req.method === 'POST' && m) {
@@ -612,7 +854,16 @@ function awxIstegi(req, res, govde) {
 }
 
 /** Bir isi AWX'te "bitmis" yapar; `targets` verilirse `scalex_result` artifact'i uretilir. */
-sim.isiBitir = (jobId, { action = 'stop', mode = 'apply', namespace = 'odeme', targets = [], status = 'successful' } = {}) => {
+sim.isiBitir = (
+  jobId,
+  {
+    action = 'stop',
+    mode = 'apply',
+    namespace = 'odeme',
+    targets = [],
+    status = 'successful',
+  } = {},
+) => {
   const is = sim.kayit.isler.get(Number(jobId));
   if (!is) throw new Error(`[scalex-sim] is yok: ${jobId}`);
   const ok = targets.filter((t) => t.status === 'OK').length;
@@ -624,7 +875,12 @@ sim.isiBitir = (jobId, { action = 'stop', mode = 'apply', namespace = 'odeme', t
     artifacts: {
       scalex_result: {
         overall_status: ok === targets.length ? 'OK' : 'FAIL',
-        stage: 'execution', mode, action, namespace, catalog_source: 'portal', package_version: '24',
+        stage: 'execution',
+        mode,
+        action,
+        namespace,
+        catalog_source: 'portal',
+        package_version: '24',
         counts: { planned: targets.length, ok, fail: targets.length - ok },
         targets,
       },
@@ -635,7 +891,18 @@ sim.isiBitir = (jobId, { action = 'stop', mode = 'apply', namespace = 'odeme', t
 /** AWX'te dogrudan (zamanlayicinin yapacagi gibi) bir is acar. */
 sim.awxIsiAc = (ek = {}) => {
   const id = ++sonIs;
-  sim.kayit.isler.set(id, { id, tplId: sim.ayar.sablonlar.scalex_run.awxTemplateId, ev: {}, status: 'running', failed: false, finished: null, artifacts: {}, stdout: 'PLAY [ScaleX] ***\n', yutulan: [], ...ek });
+  sim.kayit.isler.set(id, {
+    id,
+    tplId: sim.ayar.sablonlar.scalex_run.awxTemplateId,
+    ev: {},
+    status: 'running',
+    failed: false,
+    finished: null,
+    artifacts: {},
+    stdout: 'PLAY [ScaleX] ***\n',
+    yutulan: [],
+    ...ek,
+  });
   return id;
 };
 
@@ -680,20 +947,25 @@ sim.durdur = async () => {
 sim.istek = (method, urlYolu, govde) =>
   new Promise((resolve, reject) => {
     const veri = govde === undefined ? '' : JSON.stringify(govde);
-    const headers = veri ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(veri) } : {};
-    const req = http.request({ host: '127.0.0.1', port: sim.portal.port, path: urlYolu, method, headers }, (res) => {
-      let b = '';
-      res.on('data', (c) => (b += c));
-      res.on('end', () => {
-        let json = null;
-        try {
-          json = JSON.parse(b || 'null');
-        } catch {
-          json = null;
-        }
-        resolve({ status: res.statusCode, metin: b, json });
-      });
-    });
+    const headers = veri
+      ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(veri) }
+      : {};
+    const req = http.request(
+      { host: '127.0.0.1', port: sim.portal.port, path: urlYolu, method, headers },
+      (res) => {
+        let b = '';
+        res.on('data', (c) => (b += c));
+        res.on('end', () => {
+          let json = null;
+          try {
+            json = JSON.parse(b || 'null');
+          } catch {
+            json = null;
+          }
+          resolve({ status: res.statusCode, metin: b, json });
+        });
+      },
+    );
     req.on('error', reject);
     req.end(veri);
   });
@@ -713,8 +985,10 @@ sim.govde = (ek = {}) => ({
 sim.onizle = (ek) => sim.istek('POST', '/api/scalex/preview', sim.govde(ek));
 sim.calistir = (ek) => sim.istek('POST', '/api/scalex/run', sim.govde(ek));
 
-sim.baslatmalar = () => sim.kayit.awxIstekleri.filter((r) => r.method === 'POST' && /\/launch\/$/.test(r.yol));
-sim.iptaller = () => sim.kayit.awxIstekleri.filter((r) => r.method === 'POST' && /\/cancel\/$/.test(r.yol));
+sim.baslatmalar = () =>
+  sim.kayit.awxIstekleri.filter((r) => r.method === 'POST' && /\/launch\/$/.test(r.yol));
+sim.iptaller = () =>
+  sim.kayit.awxIstekleri.filter((r) => r.method === 'POST' && /\/cancel\/$/.test(r.yol));
 sim.tamCiktiOkumalari = () =>
   sim.kayit.awxIstekleri.filter((r) => /\/stdout\/$/.test(r.yol) && !/start_line=/.test(r.sorgu));
 sim.denetimde = (action) => sim.kayit.denetim.filter((d) => d.action === action);
@@ -722,7 +996,8 @@ sim.islemler = (durum) => sim.kayit.islemler.filter((r) => !durum || r.status ==
 
 sim.konsoluSustur = (t) => {
   const cikti = { warn: [], error: [], log: [] };
-  for (const n of ['warn', 'error', 'log']) t.mock.method(console, n, (...a) => cikti[n].push(a.join(' ')));
+  for (const n of ['warn', 'error', 'log'])
+    t.mock.method(console, n, (...a) => cikti[n].push(a.join(' ')));
   return cikti;
 };
 

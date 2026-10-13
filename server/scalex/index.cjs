@@ -2591,6 +2591,45 @@ function initScaleX(app) {
     }),
   );
 
+  // ── SMART KURALI ANAHTARI (yalniz Admin) ─────────────────────────────────
+  //
+  // Ayar genel Admin > Sistem ucundan da yazilabilir; bu uc ONU DEGISTIRMEZ, durum
+  // kartindaki tek tiklik anahtarin ucudur. Farki IZ: genel uc `system_config_update`
+  // yazar (anahtar + deger); burada ONCEKI ve YENI kip ayri bir eylemle
+  // (`scalex_smart_mode_changed`) kaydedilir — "prod'da SMART onayini kim, ne zaman
+  // kapatti" sorusu ScaleX denetim suzgecinden tek satirda cevaplanir.
+  //
+  // Deger `process.env`e ANINDA yazilir (env-overrides.setEnvOverride) ve
+  // `config.smartMode()` her cagrida oradan okur: restart gerekmez.
+  router.put(
+    '/admin/smart-mode',
+    eylemRoute(async (req, res) => {
+      const u = currentUser(req);
+      if (u.role !== 'Admin') {
+        return res.status(403).json({ ok: false, message: 'Bu ayar yalnizca yoneticilere acik.' });
+      }
+      const mode = String(req.body?.mode ?? '')
+        .trim()
+        .toLowerCase();
+      // BOS DEGER KABUL EDILMEZ: genel uc bosu "varsayilana don" sayar; bu uc bir SECIM
+      // kaydeder ve secimin ne oldugu iz kaydinda acik yazmali.
+      if (!config.SMART_MODES.includes(mode)) {
+        return res.status(400).json({
+          ok: false,
+          message: `SMART kuralı yalnızca "required" ya da "oco_only" olabilir.`,
+        });
+      }
+      const onceki = config.smartMode().value;
+      await require('../db/env-overrides.cjs').setEnvOverride(config.SMART_MODE_KEY, mode, u.username);
+      auditPortal(req, 'scalex_smart_mode_changed', {
+        // Kapatmak bir guvenlik karari: denetim listesinde uyari olarak gorunur.
+        result: mode === 'oco_only' ? 'warn' : 'ok',
+        detail: JSON.stringify({ onceki, yeni: mode }),
+      });
+      res.json({ ok: true, smartMode: config.smartMode().value, onceki });
+    }),
+  );
+
   // ── CLUSTER YETENEK ENVANTERI — "Denetim gibi ekran" ────────────────────
   //
   // Cluster basina: son tarama zamani, bulunan olceklenebilir tip sayisi,

@@ -1,0 +1,1283 @@
+{
+  "kurgular": {
+    "engel_smart_tanimsiz": {
+      "onizleme": {
+        "ok": true,
+        "blastRadius": {
+          "clusterCount": 1,
+          "appCount": 1,
+          "targets": 1,
+          "isProd": true,
+          "action": "stop",
+          "multiCluster": false,
+          "requiresWrittenConfirm": false,
+          "requiresSecondPerson": false,
+          "exceedsMaxTargets": false
+        },
+        "gatePolicy": {
+          "oco": "require",
+          "smart": "require",
+          "smartStatus": "not_configured",
+          "smartMissing": [
+            "SMART onayı ScaleX şablonu için açık değil",
+            "Flow Key",
+            "alan eşlemesi (metadata)"
+          ],
+          "smartGateDisabled": false,
+          "ocoGateDisabled": false,
+          "schedulable": false,
+          "blocked": {
+            "code": "smart_not_configured",
+            "message": "Bu ortamda değişiklik SMART onayı gerektiriyor ama ScaleX için SMART onayı kullanıma hazır değil (eksik: SMART onayı ScaleX şablonu için açık değil; Flow Key; alan eşlemesi (metadata)). Değişiklik uygulanmadı. Yöneticiniz Admin > ScaleX Yönetimi > Onay kapıları ekranından SMART onayını tanımlayabilir ya da SMART kuralını kapatabilir. \"Önce kontrol et\" modu kullanılabilir — hiçbir değişiklik yapmaz."
+          },
+          "reason": null
+        },
+        "configError": null,
+        "hpaPinAllowed": false,
+        "targets": {
+          "env": "prod",
+          "tenant": "t1",
+          "namespace": "odeme",
+          "clusters": [
+            "c1"
+          ],
+          "apps": [
+            "api"
+          ]
+        }
+      },
+      "calistirma": {
+        "status": 409,
+        "govde": {
+          "ok": false,
+          "code": "smart_not_configured",
+          "gates": {
+            "oco": "not_checked",
+            "smart": "not_configured"
+          },
+          "missing": [
+            "SMART onayı ScaleX şablonu için açık değil",
+            "Flow Key",
+            "alan eşlemesi (metadata)"
+          ],
+          "message": "Bu ortamda değişiklik SMART onayı gerektiriyor ama ScaleX için SMART onayı kullanıma hazır değil (eksik: SMART onayı ScaleX şablonu için açık değil; Flow Key; alan eşlemesi (metadata)). Değişiklik uygulanmadı. Yöneticiniz Admin > ScaleX Yönetimi > Onay kapıları ekranından SMART onayını tanımlayabilir ya da SMART kuralını kapatabilir. \"Önce kontrol et\" modu kullanılabilir — hiçbir değişiklik yapmaz."
+        }
+      }
+    },
+    "oco_numarasi_gerekli": {
+      "onizleme": {
+        "ok": true,
+        "blastRadius": {
+          "clusterCount": 1,
+          "appCount": 1,
+          "targets": 1,
+          "isProd": true,
+          "action": "stop",
+          "multiCluster": false,
+          "requiresWrittenConfirm": false,
+          "requiresSecondPerson": false,
+          "exceedsMaxTargets": false
+        },
+        "gatePolicy": {
+          "oco": "require",
+          "smart": "skip",
+          "smartStatus": "disabled_by_admin",
+          "smartGateDisabled": true,
+          "ocoGateDisabled": false,
+          "schedulable": true,
+          "blocked": null,
+          "reason": null
+        },
+        "configError": null,
+        "hpaPinAllowed": false,
+        "targets": {
+          "env": "prod",
+          "tenant": "t1",
+          "namespace": "odeme",
+          "clusters": [
+            "c1"
+          ],
+          "apps": [
+            "api"
+          ]
+        }
+      },
+      "calistirma": {
+        "status": 400,
+        "govde": {
+          "ok": false,
+          "ocoRequired": true,
+          "message": "Bu PRODUCTION talebi için OCO numarası gerekli."
+        }
+      }
+    },
+    "oco_bulunamadi": {
+      "onizleme": {
+        "ok": true,
+        "blastRadius": {
+          "clusterCount": 1,
+          "appCount": 1,
+          "targets": 1,
+          "isProd": true,
+          "action": "stop",
+          "multiCluster": false,
+          "requiresWrittenConfirm": false,
+          "requiresSecondPerson": false,
+          "exceedsMaxTargets": false
+        },
+        "gatePolicy": {
+          "oco": "require",
+          "smart": "skip",
+          "smartStatus": "disabled_by_admin",
+          "smartGateDisabled": true,
+          "ocoGateDisabled": false,
+          "schedulable": true,
+          "blocked": null,
+          "reason": null
+        },
+        "configError": null,
+        "hpaPinAllowed": false,
+        "targets": {
+          "env": "prod",
+          "tenant": "t1",
+          "namespace": "odeme",
+          "clusters": [
+            "c1"
+          ],
+          "apps": [
+            "api"
+          ]
+        }
+      },
+      "calistirma": {
+        "status": 400,
+        "govde": {
+          "ok": false,
+          "ocoRequired": true,
+          "message": "OCO 1234567 bulunamadı. Numarayı kontrol edin — kayıt OCO sisteminde açılmış olmalı."
+        }
+      }
+    },
+    "oco_penceresi_gecti": {
+      "onizleme": {
+        "ok": true,
+        "blastRadius": {
+          "clusterCount": 1,
+          "appCount": 1,
+          "targets": 1,
+          "isProd": true,
+          "action": "stop",
+          "multiCluster": false,
+          "requiresWrittenConfirm": false,
+          "requiresSecondPerson": false,
+          "exceedsMaxTargets": false
+        },
+        "gatePolicy": {
+          "oco": "require",
+          "smart": "skip",
+          "smartStatus": "disabled_by_admin",
+          "smartGateDisabled": true,
+          "ocoGateDisabled": false,
+          "schedulable": true,
+          "blocked": null,
+          "reason": null
+        },
+        "configError": null,
+        "hpaPinAllowed": false,
+        "targets": {
+          "env": "prod",
+          "tenant": "t1",
+          "namespace": "odeme",
+          "clusters": [
+            "c1"
+          ],
+          "apps": [
+            "api"
+          ]
+        }
+      },
+      "calistirma": {
+        "status": 400,
+        "govde": {
+          "ok": false,
+          "ocoExpired": true,
+          "oco": {
+            "ocoNumber": "1234567",
+            "subject": "Planli calisma 1234567",
+            "startText": "14.10.2026 22:00:00",
+            "endText": "14.10.2026 22:00:00",
+            "windowStartText": "14.10.2026 22:00:00",
+            "windowEndText": "14.10.2026 22:00:00",
+            "equal": false,
+            "phase": "expired"
+          },
+          "message": "OCO kaydınızı kaçırdınız. Lütfen yeni bir OCO veya Problem kaydı açarak tekrar işlem deneyiniz."
+        }
+      }
+    },
+    "ertelendi_zamanlanabilir": {
+      "onizleme": {
+        "ok": true,
+        "blastRadius": {
+          "clusterCount": 1,
+          "appCount": 1,
+          "targets": 1,
+          "isProd": true,
+          "action": "stop",
+          "multiCluster": false,
+          "requiresWrittenConfirm": false,
+          "requiresSecondPerson": false,
+          "exceedsMaxTargets": false
+        },
+        "gatePolicy": {
+          "oco": "require",
+          "smart": "skip",
+          "smartStatus": "disabled_by_admin",
+          "smartGateDisabled": true,
+          "ocoGateDisabled": false,
+          "schedulable": true,
+          "blocked": null,
+          "reason": null
+        },
+        "configError": null,
+        "hpaPinAllowed": false,
+        "targets": {
+          "env": "prod",
+          "tenant": "t1",
+          "namespace": "odeme",
+          "clusters": [
+            "c1"
+          ],
+          "apps": [
+            "api"
+          ]
+        }
+      },
+      "calistirma": {
+        "status": 200,
+        "govde": {
+          "ok": true,
+          "ocoDeferred": true,
+          "oco": {
+            "ocoNumber": "1234567",
+            "subject": "Planli calisma 1234567",
+            "startText": "14.10.2026 22:00:00",
+            "endText": "14.10.2026 22:00:00",
+            "windowStartText": "14.10.2026 22:00:00",
+            "windowEndText": "14.10.2026 22:00:00",
+            "equal": false,
+            "phase": "before"
+          },
+          "schedulable": true
+        }
+      }
+    },
+    "ertelendi_zamanlanamaz": {
+      "onizleme": {
+        "ok": true,
+        "blastRadius": {
+          "clusterCount": 1,
+          "appCount": 1,
+          "targets": 1,
+          "isProd": true,
+          "action": "stop",
+          "multiCluster": false,
+          "requiresWrittenConfirm": false,
+          "requiresSecondPerson": false,
+          "exceedsMaxTargets": false
+        },
+        "gatePolicy": {
+          "oco": "require",
+          "smart": "require",
+          "smartStatus": "ready",
+          "smartGateDisabled": false,
+          "ocoGateDisabled": false,
+          "schedulable": false,
+          "blocked": null,
+          "reason": null
+        },
+        "configError": null,
+        "hpaPinAllowed": false,
+        "targets": {
+          "env": "prod",
+          "tenant": "t1",
+          "namespace": "odeme",
+          "clusters": [
+            "c1"
+          ],
+          "apps": [
+            "api"
+          ]
+        }
+      },
+      "calistirma": {
+        "status": 200,
+        "govde": {
+          "ok": true,
+          "ocoDeferred": true,
+          "oco": {
+            "ocoNumber": "1234567",
+            "subject": "Planli calisma 1234567",
+            "startText": "14.10.2026 22:00:00",
+            "endText": "14.10.2026 22:00:00",
+            "windowStartText": "14.10.2026 22:00:00",
+            "windowEndText": "14.10.2026 22:00:00",
+            "equal": false,
+            "phase": "before"
+          },
+          "schedulable": false
+        }
+      }
+    },
+    "zamanlandi": {
+      "onizleme": {
+        "ok": true,
+        "blastRadius": {
+          "clusterCount": 1,
+          "appCount": 1,
+          "targets": 1,
+          "isProd": true,
+          "action": "stop",
+          "multiCluster": false,
+          "requiresWrittenConfirm": false,
+          "requiresSecondPerson": false,
+          "exceedsMaxTargets": false
+        },
+        "gatePolicy": {
+          "oco": "require",
+          "smart": "skip",
+          "smartStatus": "disabled_by_admin",
+          "smartGateDisabled": true,
+          "ocoGateDisabled": false,
+          "schedulable": true,
+          "blocked": null,
+          "reason": null
+        },
+        "configError": null,
+        "hpaPinAllowed": false,
+        "targets": {
+          "env": "prod",
+          "tenant": "t1",
+          "namespace": "odeme",
+          "clusters": [
+            "c1"
+          ],
+          "apps": [
+            "api"
+          ]
+        }
+      },
+      "calistirma": {
+        "status": 200,
+        "govde": {
+          "ok": true,
+          "ocoScheduled": true,
+          "scheduleId": 1,
+          "viaSmart": false,
+          "viaPortalScheduler": true,
+          "oco": {
+            "ocoNumber": "1234567",
+            "subject": "Planli calisma 1234567",
+            "startText": "14.10.2026 22:00:00",
+            "endText": "14.10.2026 22:00:00",
+            "windowStartText": "14.10.2026 22:00:00",
+            "windowEndText": "14.10.2026 22:00:00",
+            "equal": false,
+            "phase": "before"
+          }
+        }
+      }
+    },
+    "onay_bekliyor": {
+      "onizleme": {
+        "ok": true,
+        "blastRadius": {
+          "clusterCount": 1,
+          "appCount": 1,
+          "targets": 1,
+          "isProd": true,
+          "action": "stop",
+          "multiCluster": false,
+          "requiresWrittenConfirm": false,
+          "requiresSecondPerson": false,
+          "exceedsMaxTargets": false
+        },
+        "gatePolicy": {
+          "oco": "require",
+          "smart": "require",
+          "smartStatus": "ready",
+          "smartGateDisabled": false,
+          "ocoGateDisabled": false,
+          "schedulable": false,
+          "blocked": null,
+          "reason": null
+        },
+        "configError": null,
+        "hpaPinAllowed": false,
+        "targets": {
+          "env": "prod",
+          "tenant": "t1",
+          "namespace": "odeme",
+          "clusters": [
+            "c1"
+          ],
+          "apps": [
+            "api"
+          ]
+        }
+      },
+      "calistirma": {
+        "status": 200,
+        "govde": {
+          "ok": true,
+          "pendingApproval": true,
+          "ticketId": 1,
+          "externalTicketId": "SMT-1"
+        }
+      }
+    },
+    "basladi_smart_kapali": {
+      "onizleme": {
+        "ok": true,
+        "blastRadius": {
+          "clusterCount": 1,
+          "appCount": 1,
+          "targets": 1,
+          "isProd": true,
+          "action": "stop",
+          "multiCluster": false,
+          "requiresWrittenConfirm": false,
+          "requiresSecondPerson": false,
+          "exceedsMaxTargets": false
+        },
+        "gatePolicy": {
+          "oco": "require",
+          "smart": "skip",
+          "smartStatus": "disabled_by_admin",
+          "smartGateDisabled": true,
+          "ocoGateDisabled": false,
+          "schedulable": true,
+          "blocked": null,
+          "reason": null
+        },
+        "configError": null,
+        "hpaPinAllowed": false,
+        "targets": {
+          "env": "prod",
+          "tenant": "t1",
+          "namespace": "odeme",
+          "clusters": [
+            "c1"
+          ],
+          "apps": [
+            "api"
+          ]
+        }
+      },
+      "calistirma": {
+        "status": 200,
+        "govde": {
+          "ok": true,
+          "serverId": 1,
+          "templateId": 4711,
+          "jobId": 9001,
+          "status": "pending",
+          "blastRadius": {
+            "clusterCount": 1,
+            "appCount": 1,
+            "targets": 1,
+            "isProd": true,
+            "action": "stop",
+            "multiCluster": false,
+            "requiresWrittenConfirm": false,
+            "requiresSecondPerson": false,
+            "exceedsMaxTargets": false
+          }
+        }
+      }
+    },
+    "basladi_admin_atladi": {
+      "onizleme": {
+        "ok": true,
+        "blastRadius": {
+          "clusterCount": 1,
+          "appCount": 1,
+          "targets": 1,
+          "isProd": true,
+          "action": "stop",
+          "multiCluster": false,
+          "requiresWrittenConfirm": false,
+          "requiresSecondPerson": false,
+          "exceedsMaxTargets": false
+        },
+        "gatePolicy": {
+          "oco": "require",
+          "smart": "skip",
+          "smartStatus": "admin_skip",
+          "smartGateDisabled": false,
+          "ocoGateDisabled": false,
+          "schedulable": true,
+          "blocked": null,
+          "reason": null
+        },
+        "configError": null,
+        "hpaPinAllowed": false,
+        "targets": {
+          "env": "prod",
+          "tenant": "t1",
+          "namespace": "odeme",
+          "clusters": [
+            "c1"
+          ],
+          "apps": [
+            "api"
+          ]
+        }
+      },
+      "calistirma": {
+        "status": 200,
+        "govde": {
+          "ok": true,
+          "serverId": 1,
+          "templateId": 4711,
+          "jobId": 9001,
+          "status": "pending",
+          "blastRadius": {
+            "clusterCount": 1,
+            "appCount": 1,
+            "targets": 1,
+            "isProd": true,
+            "action": "stop",
+            "multiCluster": false,
+            "requiresWrittenConfirm": false,
+            "requiresSecondPerson": false,
+            "exceedsMaxTargets": false
+          }
+        }
+      }
+    },
+    "basladi_istisna_kurali": {
+      "onizleme": {
+        "ok": true,
+        "blastRadius": {
+          "clusterCount": 1,
+          "appCount": 1,
+          "targets": 1,
+          "isProd": true,
+          "action": "restore",
+          "multiCluster": false,
+          "requiresWrittenConfirm": false,
+          "requiresSecondPerson": false,
+          "exceedsMaxTargets": false
+        },
+        "gatePolicy": {
+          "oco": "warn",
+          "smart": "skip",
+          "smartStatus": "skipped_by_rule",
+          "smartSkipRule": {
+            "field": "action",
+            "value": "restore"
+          },
+          "smartGateDisabled": false,
+          "ocoGateDisabled": false,
+          "schedulable": false,
+          "blocked": null,
+          "reason": "geri alma bir onarim islemidir"
+        },
+        "configError": null,
+        "hpaPinAllowed": false,
+        "targets": {
+          "env": "prod",
+          "tenant": "t1",
+          "namespace": "odeme",
+          "clusters": [
+            "c1"
+          ],
+          "apps": [
+            "api"
+          ]
+        }
+      },
+      "calistirma": {
+        "status": 200,
+        "govde": {
+          "ok": true,
+          "serverId": 1,
+          "templateId": 4711,
+          "jobId": 9001,
+          "status": "pending",
+          "blastRadius": {
+            "clusterCount": 1,
+            "appCount": 1,
+            "targets": 1,
+            "isProd": true,
+            "action": "restore",
+            "multiCluster": false,
+            "requiresWrittenConfirm": false,
+            "requiresSecondPerson": false,
+            "exceedsMaxTargets": false
+          }
+        }
+      }
+    },
+    "basladi_on_kontrol": {
+      "onizleme": {
+        "ok": true,
+        "blastRadius": {
+          "clusterCount": 1,
+          "appCount": 1,
+          "targets": 1,
+          "isProd": true,
+          "action": "stop",
+          "multiCluster": false,
+          "requiresWrittenConfirm": false,
+          "requiresSecondPerson": false,
+          "exceedsMaxTargets": false
+        },
+        "gatePolicy": {
+          "oco": "skip",
+          "smart": "skip",
+          "smartStatus": "not_applicable",
+          "schedulable": false,
+          "blocked": null,
+          "reason": "dry_run hicbir sey degistirmez"
+        },
+        "configError": null,
+        "hpaPinAllowed": false,
+        "targets": {
+          "env": "prod",
+          "tenant": "t1",
+          "namespace": "odeme",
+          "clusters": [
+            "c1"
+          ],
+          "apps": [
+            "api"
+          ]
+        }
+      },
+      "calistirma": {
+        "status": 200,
+        "govde": {
+          "ok": true,
+          "serverId": 1,
+          "templateId": 4711,
+          "jobId": 9001,
+          "status": "pending",
+          "blastRadius": {
+            "clusterCount": 1,
+            "appCount": 1,
+            "targets": 1,
+            "isProd": true,
+            "action": "stop",
+            "multiCluster": false,
+            "requiresWrittenConfirm": false,
+            "requiresSecondPerson": false,
+            "exceedsMaxTargets": false
+          }
+        }
+      }
+    },
+    "basladi_test_ortami": {
+      "onizleme": {
+        "ok": true,
+        "blastRadius": {
+          "clusterCount": 1,
+          "appCount": 1,
+          "targets": 1,
+          "isProd": false,
+          "action": "stop",
+          "multiCluster": false,
+          "requiresWrittenConfirm": false,
+          "requiresSecondPerson": false,
+          "exceedsMaxTargets": false
+        },
+        "gatePolicy": {
+          "oco": "skip",
+          "smart": "skip",
+          "smartStatus": "not_applicable",
+          "ocoGateDisabled": false,
+          "schedulable": false,
+          "blocked": null,
+          "reason": "prod disi ortam — onay kapilari yalnizca production icin"
+        },
+        "configError": null,
+        "hpaPinAllowed": false,
+        "targets": {
+          "env": "test",
+          "tenant": "t1",
+          "namespace": "odeme",
+          "clusters": [
+            "c1"
+          ],
+          "apps": [
+            "api"
+          ]
+        }
+      },
+      "calistirma": {
+        "status": 200,
+        "govde": {
+          "ok": true,
+          "serverId": 1,
+          "templateId": 4711,
+          "jobId": 9001,
+          "status": "pending",
+          "blastRadius": {
+            "clusterCount": 1,
+            "appCount": 1,
+            "targets": 1,
+            "isProd": false,
+            "action": "stop",
+            "multiCluster": false,
+            "requiresWrittenConfirm": false,
+            "requiresSecondPerson": false,
+            "exceedsMaxTargets": false
+          }
+        }
+      }
+    },
+    "gerekce_gerekli": {
+      "onizleme": {
+        "ok": true,
+        "blastRadius": {
+          "clusterCount": 1,
+          "appCount": 1,
+          "targets": 1,
+          "isProd": true,
+          "action": "restore",
+          "multiCluster": false,
+          "requiresWrittenConfirm": false,
+          "requiresSecondPerson": false,
+          "exceedsMaxTargets": false
+        },
+        "gatePolicy": {
+          "oco": "warn",
+          "smart": "skip",
+          "smartStatus": "disabled_by_admin",
+          "smartGateDisabled": true,
+          "ocoGateDisabled": false,
+          "schedulable": false,
+          "blocked": null,
+          "reason": "geri alma bir onarim islemidir"
+        },
+        "configError": null,
+        "hpaPinAllowed": false,
+        "targets": {
+          "env": "prod",
+          "tenant": "t1",
+          "namespace": "odeme",
+          "clusters": [
+            "c1"
+          ],
+          "apps": [
+            "api"
+          ]
+        }
+      },
+      "calistirma": {
+        "status": 400,
+        "govde": {
+          "ok": false,
+          "reasonRequired": true,
+          "message": "Geri alma işlemi için gerekçe zorunlu (örn. olay/kayıt numarası)."
+        }
+      }
+    },
+    "sablon_tanimsiz": {
+      "onizleme": {
+        "ok": true,
+        "blastRadius": {
+          "clusterCount": 1,
+          "appCount": 1,
+          "targets": 1,
+          "isProd": true,
+          "action": "stop",
+          "multiCluster": false,
+          "requiresWrittenConfirm": false,
+          "requiresSecondPerson": false,
+          "exceedsMaxTargets": false
+        },
+        "gatePolicy": {
+          "oco": "require",
+          "smart": "require",
+          "smartStatus": "not_configured",
+          "smartMissing": [
+            "SMART onayı ScaleX şablonu için açık değil",
+            "Flow Key",
+            "alan eşlemesi (metadata)"
+          ],
+          "smartGateDisabled": false,
+          "ocoGateDisabled": false,
+          "schedulable": false,
+          "blocked": {
+            "code": "smart_not_configured",
+            "message": "Bu ortamda değişiklik SMART onayı gerektiriyor ama ScaleX için SMART onayı kullanıma hazır değil (eksik: SMART onayı ScaleX şablonu için açık değil; Flow Key; alan eşlemesi (metadata)). Değişiklik uygulanmadı. Yöneticiniz Admin > ScaleX Yönetimi > Onay kapıları ekranından SMART onayını tanımlayabilir ya da SMART kuralını kapatabilir. \"Önce kontrol et\" modu kullanılabilir — hiçbir değişiklik yapmaz."
+          },
+          "reason": null
+        },
+        "configError": {
+          "code": "scalex_not_configured",
+          "message": "\"scalex_run\" için AWX Template ID girilmemiş — Admin > Playbook Kayıtları."
+        },
+        "hpaPinAllowed": false,
+        "targets": {
+          "env": "prod",
+          "tenant": "t1",
+          "namespace": "odeme",
+          "clusters": [
+            "c1"
+          ],
+          "apps": [
+            "api"
+          ]
+        }
+      },
+      "calistirma": {
+        "status": 409,
+        "govde": {
+          "ok": false,
+          "message": "\"scalex_run\" için AWX Template ID girilmemiş — Admin > Playbook Kayıtları.",
+          "code": "scalex_not_configured",
+          "upstreamStatus": 501
+        }
+      }
+    },
+    "awx_yanit_vermiyor": {
+      "onizleme": {
+        "ok": true,
+        "blastRadius": {
+          "clusterCount": 1,
+          "appCount": 1,
+          "targets": 1,
+          "isProd": true,
+          "action": "stop",
+          "multiCluster": false,
+          "requiresWrittenConfirm": false,
+          "requiresSecondPerson": false,
+          "exceedsMaxTargets": false
+        },
+        "gatePolicy": {
+          "oco": "require",
+          "smart": "skip",
+          "smartStatus": "disabled_by_admin",
+          "smartGateDisabled": true,
+          "ocoGateDisabled": false,
+          "schedulable": true,
+          "blocked": null,
+          "reason": null
+        },
+        "configError": null,
+        "hpaPinAllowed": false,
+        "targets": {
+          "env": "prod",
+          "tenant": "t1",
+          "namespace": "odeme",
+          "clusters": [
+            "c1"
+          ],
+          "apps": [
+            "api"
+          ]
+        }
+      },
+      "calistirma": {
+        "status": 424,
+        "govde": {
+          "ok": false,
+          "message": "AWX HTTP 503: AWX yanit vermiyor (test)",
+          "code": "awx_unreachable",
+          "upstreamStatus": 503
+        }
+      }
+    },
+    "smart_talebi_acilamadi": {
+      "onizleme": {
+        "ok": true,
+        "blastRadius": {
+          "clusterCount": 1,
+          "appCount": 1,
+          "targets": 1,
+          "isProd": true,
+          "action": "stop",
+          "multiCluster": false,
+          "requiresWrittenConfirm": false,
+          "requiresSecondPerson": false,
+          "exceedsMaxTargets": false
+        },
+        "gatePolicy": {
+          "oco": "require",
+          "smart": "require",
+          "smartStatus": "ready",
+          "smartGateDisabled": false,
+          "ocoGateDisabled": false,
+          "schedulable": false,
+          "blocked": null,
+          "reason": null
+        },
+        "configError": null,
+        "hpaPinAllowed": false,
+        "targets": {
+          "env": "prod",
+          "tenant": "t1",
+          "namespace": "odeme",
+          "clusters": [
+            "c1"
+          ],
+          "apps": [
+            "api"
+          ]
+        }
+      },
+      "calistirma": {
+        "status": 409,
+        "govde": {
+          "ok": false,
+          "message": "Smart talebi açılamadı: Smart 400 Invalid Request",
+          "upstreamStatus": 502
+        }
+      }
+    },
+    "oco_kapisi_kapali": {
+      "onizleme": {
+        "ok": true,
+        "blastRadius": {
+          "clusterCount": 1,
+          "appCount": 1,
+          "targets": 1,
+          "isProd": true,
+          "action": "stop",
+          "multiCluster": false,
+          "requiresWrittenConfirm": false,
+          "requiresSecondPerson": false,
+          "exceedsMaxTargets": false
+        },
+        "gatePolicy": {
+          "oco": "skip",
+          "smart": "skip",
+          "smartStatus": "disabled_by_admin",
+          "smartGateDisabled": true,
+          "ocoGateDisabled": true,
+          "schedulable": false,
+          "blocked": null,
+          "reason": "OCO kapisi admin tarafindan KAPATILMIS"
+        },
+        "configError": null,
+        "hpaPinAllowed": false,
+        "targets": {
+          "env": "prod",
+          "tenant": "t1",
+          "namespace": "odeme",
+          "clusters": [
+            "c1"
+          ],
+          "apps": [
+            "api"
+          ]
+        }
+      },
+      "calistirma": {
+        "status": 200,
+        "govde": {
+          "ok": true,
+          "serverId": 1,
+          "templateId": 4711,
+          "jobId": 9001,
+          "status": "pending",
+          "blastRadius": {
+            "clusterCount": 1,
+            "appCount": 1,
+            "targets": 1,
+            "isProd": true,
+            "action": "stop",
+            "multiCluster": false,
+            "requiresWrittenConfirm": false,
+            "requiresSecondPerson": false,
+            "exceedsMaxTargets": false
+          }
+        }
+      }
+    }
+  },
+  "bitenIs": {
+    "yoklama": {
+      "ok": true,
+      "status": "successful",
+      "finished": true,
+      "failed": false,
+      "output": "PLAY [ScaleX] ***\nTASK [sonuc] ok\nPLAY RECAP ***\n",
+      "outputFinal": false,
+      "result": {
+        "overallStatus": "OK",
+        "stage": "execution",
+        "mode": "apply",
+        "action": "stop",
+        "namespace": "odeme",
+        "platform": "",
+        "environment": "",
+        "catalogSource": "portal",
+        "packageVersion": "24",
+        "expectedPackageVersion": "24",
+        "clusterMode": "",
+        "clusters": [],
+        "apps": [],
+        "targetReplicas": null,
+        "strictBlocked": false,
+        "counts": {
+          "planned": 1,
+          "ok": 1,
+          "warn": 0,
+          "fail": 0,
+          "precheckFail": 0,
+          "verifyOk": 0,
+          "verifyFail": 0,
+          "blocked": 0,
+          "hpaSeen": 0
+        },
+        "targets": [
+          {
+            "cluster": "c1",
+            "app": "api",
+            "kind": "Deployment",
+            "status": "OK",
+            "detail": "replicas 3 -> 0",
+            "verified": true
+          }
+        ],
+        "targetsTruncated": false,
+        "targetsTotal": 0,
+        "rows": [],
+        "rowsTruncated": false,
+        "rowsTotal": 0,
+        "validationError": null,
+        "failedTask": null,
+        "jobId": ""
+      },
+      "catalogWarning": null
+    },
+    "tamCikti": {
+      "ok": true,
+      "status": "successful",
+      "finished": true,
+      "failed": false,
+      "output": "PLAY [ScaleX] ***\nTASK [sonuc] ok\nPLAY RECAP ***\n",
+      "outputFinal": true,
+      "result": {
+        "overallStatus": "OK",
+        "stage": "execution",
+        "mode": "apply",
+        "action": "stop",
+        "namespace": "odeme",
+        "platform": "",
+        "environment": "",
+        "catalogSource": "portal",
+        "packageVersion": "24",
+        "expectedPackageVersion": "24",
+        "clusterMode": "",
+        "clusters": [],
+        "apps": [],
+        "targetReplicas": null,
+        "strictBlocked": false,
+        "counts": {
+          "planned": 1,
+          "ok": 1,
+          "warn": 0,
+          "fail": 0,
+          "precheckFail": 0,
+          "verifyOk": 0,
+          "verifyFail": 0,
+          "blocked": 0,
+          "hpaSeen": 0
+        },
+        "targets": [
+          {
+            "cluster": "c1",
+            "app": "api",
+            "kind": "Deployment",
+            "status": "OK",
+            "detail": "replicas 3 -> 0",
+            "verified": true
+          }
+        ],
+        "targetsTruncated": false,
+        "targetsTotal": 0,
+        "rows": [],
+        "rowsTruncated": false,
+        "rowsTotal": 0,
+        "validationError": null,
+        "failedTask": null,
+        "jobId": ""
+      },
+      "catalogWarning": null
+    }
+  },
+  "kart": {
+    "tanimsiz": {
+      "ok": true,
+      "smartMode": "required",
+      "smartModeSource": "default",
+      "smartModeProblem": null,
+      "policy": {
+        "oco": "require",
+        "smart": "require",
+        "smartStatus": "not_configured",
+        "smartMissing": [
+          "SMART onayı ScaleX şablonu için açık değil",
+          "Flow Key",
+          "alan eşlemesi (metadata)"
+        ],
+        "smartGateDisabled": false,
+        "ocoGateDisabled": false,
+        "schedulable": false,
+        "blocked": {
+          "code": "smart_not_configured",
+          "message": "Bu ortamda değişiklik SMART onayı gerektiriyor ama ScaleX için SMART onayı kullanıma hazır değil (eksik: SMART onayı ScaleX şablonu için açık değil; Flow Key; alan eşlemesi (metadata)). Değişiklik uygulanmadı. Yöneticiniz Admin > ScaleX Yönetimi > Onay kapıları ekranından SMART onayını tanımlayabilir ya da SMART kuralını kapatabilir. \"Önce kontrol et\" modu kullanılabilir — hiçbir değişiklik yapmaz."
+        },
+        "reason": null
+      },
+      "template": {
+        "serverId": 1,
+        "templateId": 4711
+      },
+      "configError": null,
+      "smart": {
+        "enabled": false,
+        "flowKey": null,
+        "hasMetadata": false,
+        "missing": [
+          "SMART onayı ScaleX şablonu için açık değil",
+          "Flow Key",
+          "alan eşlemesi (metadata)"
+        ],
+        "onizleme": null,
+        "onizlemeHatasi": null,
+        "skipRules": [],
+        "skipRulesInvalid": []
+      },
+      "adminSkipSelf": false,
+      "ornekBaglam": {
+        "talepEden": "yonetici",
+        "ortam": "prod",
+        "tenant": "ornek-tenant",
+        "clusterlar": "ornek-cluster-1, ornek-cluster-2",
+        "namespace": "ornek-namespace",
+        "uygulamalar": "ornek-api, ornek-worker",
+        "islem": "Durdur",
+        "hedefSayisi": "4",
+        "hedefReplica": "",
+        "gerekce": "ornek gerekce",
+        "oco": "1234567",
+        "ozet": "ScaleX Durdur: ornek-namespace (prod / ornek-tenant) — ornek-api, ornek-worker @ ornek-cluster-1, ornek-cluster-2"
+      }
+    },
+    "hazir": {
+      "ok": true,
+      "smartMode": "required",
+      "smartModeSource": "default",
+      "smartModeProblem": null,
+      "policy": {
+        "oco": "require",
+        "smart": "require",
+        "smartStatus": "ready",
+        "smartGateDisabled": false,
+        "ocoGateDisabled": false,
+        "schedulable": false,
+        "blocked": null,
+        "reason": null
+      },
+      "template": {
+        "serverId": 1,
+        "templateId": 4711
+      },
+      "configError": null,
+      "smart": {
+        "enabled": true,
+        "flowKey": "SCALEX_AKIS",
+        "hasMetadata": true,
+        "missing": [],
+        "onizleme": {
+          "Talep": "ScaleX Durdur: ornek-namespace (prod / ornek-tenant) — ornek-api, ornek-worker @ ornek-cluster-1, ornek-cluster-2",
+          "TalepEden": "yonetici",
+          "Ortam": "prod"
+        },
+        "onizlemeHatasi": null,
+        "skipRules": [
+          {
+            "field": "action",
+            "values": [
+              "restore"
+            ]
+          }
+        ],
+        "skipRulesInvalid": [
+          "bozuk satir"
+        ]
+      },
+      "adminSkipSelf": false,
+      "ornekBaglam": {
+        "talepEden": "yonetici",
+        "ortam": "prod",
+        "tenant": "ornek-tenant",
+        "clusterlar": "ornek-cluster-1, ornek-cluster-2",
+        "namespace": "ornek-namespace",
+        "uygulamalar": "ornek-api, ornek-worker",
+        "islem": "Durdur",
+        "hedefSayisi": "4",
+        "hedefReplica": "",
+        "gerekce": "ornek gerekce",
+        "oco": "1234567",
+        "ozet": "ScaleX Durdur: ornek-namespace (prod / ornek-tenant) — ornek-api, ornek-worker @ ornek-cluster-1, ornek-cluster-2"
+      }
+    },
+    "kapali": {
+      "ok": true,
+      "smartMode": "oco_only",
+      "smartModeSource": "admin",
+      "smartModeProblem": null,
+      "policy": {
+        "oco": "require",
+        "smart": "skip",
+        "smartStatus": "disabled_by_admin",
+        "smartGateDisabled": true,
+        "ocoGateDisabled": false,
+        "schedulable": true,
+        "blocked": null,
+        "reason": null
+      },
+      "template": {
+        "serverId": 1,
+        "templateId": 4711
+      },
+      "configError": null,
+      "smart": {
+        "enabled": false,
+        "flowKey": null,
+        "hasMetadata": false,
+        "missing": [
+          "SMART onayı ScaleX şablonu için açık değil",
+          "Flow Key",
+          "alan eşlemesi (metadata)"
+        ],
+        "onizleme": null,
+        "onizlemeHatasi": null,
+        "skipRules": [],
+        "skipRulesInvalid": []
+      },
+      "adminSkipSelf": false,
+      "ornekBaglam": {
+        "talepEden": "yonetici",
+        "ortam": "prod",
+        "tenant": "ornek-tenant",
+        "clusterlar": "ornek-cluster-1, ornek-cluster-2",
+        "namespace": "ornek-namespace",
+        "uygulamalar": "ornek-api, ornek-worker",
+        "islem": "Durdur",
+        "hedefSayisi": "4",
+        "hedefReplica": "",
+        "gerekce": "ornek gerekce",
+        "oco": "1234567",
+        "ozet": "ScaleX Durdur: ornek-namespace (prod / ornek-tenant) — ornek-api, ornek-worker @ ornek-cluster-1, ornek-cluster-2"
+      }
+    }
+  }
+}
