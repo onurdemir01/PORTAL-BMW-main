@@ -13,7 +13,7 @@ import { TableEmptyRow } from '@/components/common/EmptyState';
 import { fmtDate, fmtDateTime } from '@/utils/datetime';
 import RetirementAkis from './RetirementAkis';
 import RetirementDnsIp from './RetirementDnsIp';
-import RetirementCanli, { hedefAktif } from './RetirementCanli';
+import RetirementCanli, { hedefTazelenmeli } from './RetirementCanli';
 
 /** Vhost'un nasil bulundugu (2026-10-12): AJP/proxy hedefiyle bulunanlar etiketlenir. */
 function WebKaynak({ w }: { w: RtWeb }) {
@@ -669,7 +669,7 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
   useEffect(() => { load(); }, [load]);
   // CANLI TAZELEME (2026-10-09): suren is ya da bekleyen/suren vhost isi varken 4 sn'de bir /canli
   // (o uc bekleyen vhost islerini de baslatir ve sonuclarini okur). Is yokken istek atilmaz.
-  const canliGerek = !!rec && rec.targets.some((t) => hedefAktif(t, rec.deleteNowAt));
+  const canliGerek = !!rec && rec.targets.some((t) => hedefTazelenmeli(t, rec.deleteNowAt));
   useEffect(() => {
     if (!canliGerek) return;
     const z = window.setInterval(() => {
@@ -1013,6 +1013,8 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
                 {rec.targets.map((t) => {
                   const st = TSTATUS[t.status] || { label: t.status, color: 'var(--text-muted)' };
                   const adim = retirementAdimi(t.status, rec.status === 'cancelled' || rec.status === 'deleted');
+                  const isId = t.status === 'deleting' ? t.deleteJobId : t.status === 'rolling_back' ? t.rollbackJobId : t.lastJobId;
+                  const isBelirsiz = ['planning', 'stopping', 'deleting', 'rolling_back'].includes(t.status) && !isId;
                   return (
                     <tr key={t.id} className="border-t" style={{ borderColor: 'var(--border-subtle)' }}>
                       <td className="pl-2.5 py-1.5">
@@ -1028,7 +1030,7 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
                       <td className="px-2.5 py-1.5">{t.gen ? `JBoss ${t.gen}` : '?'}</td>
                       <td className="px-2.5 py-1.5 text-[10px]">{t.web.length ? t.web.map((w) => <div key={w.host + w.serverName}>{w.host} · {w.serverName}<WebKaynak w={w} /></div>) : <span className="font-semibold" style={{ color: 'var(--status-danger)' }} title="Keşifte web vhost’u bulunamadı: retirement vhost kapatmaz, web sunucusunu elle doğrulayın">⚠ web bulunamadı — elle doğrulayın</span>}</td>
                       <td className="px-2.5 py-1.5"><Pill label={st.label} color={st.color} /></td>
-                      <td className="px-2.5 py-1.5 text-[10px]" style={{ color: 'var(--text-secondary)' }}><div className="max-w-[40rem] truncate" title={t.resultText || t.planText || ''}>{t.resultText || t.planText || (t.lastJobId ? `iş #${t.lastJobId}` : '—')}</div></td>
+                      <td className="px-2.5 py-1.5 text-[10px]" style={{ color: isBelirsiz ? 'var(--status-warning)' : 'var(--text-secondary)' }}><div className="max-w-[40rem] truncate" title={t.resultText || t.planText || ''}>{t.resultText || t.planText || (isId ? `iş #${isId}` : isBelirsiz ? 'iş numarası yazılamadı — durum doğrulanamıyor' : '—')}</div></td>
                       <td className="px-2.5 py-1.5">
                         {/* TEK BIRINCIL EYLEM, durumdan turetilir (retirementAdim.ts). */}
                         {adim.tur === 'baslat' && (

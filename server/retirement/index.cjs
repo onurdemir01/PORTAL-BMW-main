@@ -63,11 +63,11 @@ function rowTarget(t) {
   try { web = t.web_json ? JSON.parse(t.web_json) : []; } catch { web = []; }
   return {
     id: t.id, recordId: t.record_id, host: t.host, site: t.site, env: t.env, appName: t.app_name, gen: t.jboss_gen, appPath: t.app_path,
-    web, status: t.status, planText: t.plan_text, resultText: t.result_text, lastJobId: t.last_job_id, stoppedAt: t.stopped_at, updatedAt: t.updated_at,
+    web, status: t.status, planText: t.plan_text, resultText: t.result_text, lastJobId: t.last_job_id,
+    deleteJobId: t.delete_job_id ?? null, stoppedAt: t.stopped_at, updatedAt: t.updated_at,
     // `deletedAt`/`rolledBackAt` ONYUZ ICIN DEGIL SADECE: /rollback kapisi da bunu
     // okuyor. Donmuyordu ve `t.deletedAt` kontrolu OLU KODDU (hep undefined).
     deletedAt: t.deleted_at ?? null, rolledBackAt: t.rolled_back_at ?? null, rollbackJobId: t.rollback_job_id ?? null,
-    deleteJobId: t.delete_job_id ?? null,
     // Hedef basina "beklemeyi atla" (admin): doluysa bu hedef ilk zamanlayici turunda silinir.
     deleteNowAt: t.delete_now_at ?? null,
     // OCO penceresine zamanlanmis STOP icin: akis paneli "ne zaman kosacak" diyebilsin.
@@ -859,10 +859,11 @@ function initRetirement(app) {
         return res.status(400).json({
           ok: false,
           message:
-            `Hedef "${t.status}" durumunda ama iş numarası yok (${adim.alan} boş) — iş hiç ` +
-            `başlatılamamış. Durum elle çözülmeli; "${adim.hata}" olarak işaretlemek için ` +
-            `yöneticiye başvurun.`,
+            `Hedef "${t.status}" durumunda ama iş numarası yok (${adim.alan} boş) — işin AWX'te ` +
+            `başlayıp başlamadığı doğrulanamıyor ve otomatik tekrar başlatılmaz. AWX iş geçmişini ` +
+            `hedef, template ve zamanla eşleştirip Portal yöneticisiyle uzlaştırın.`,
           jobMissing: true,
+          uncertainLaunch: true,
         });
 
       const reg = require('../ansible/playbook-registry.cjs');
