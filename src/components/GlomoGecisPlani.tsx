@@ -42,14 +42,18 @@ const epostalar = (apps: GecisUygulama[]) => [...new Set(apps.flatMap((a) => a.e
 function EkipHucre({ a }: { a: GecisUygulama }) {
   const ep = a.ekipEposta || [];
   return (
-    <div className="space-y-0.5">
-      <div className="text-[11px]">{a.ekip.length ? a.ekip.join(', ') : <span style={{ color: 'var(--text-muted)' }}>—</span>}</div>
+    // SABIT GENISLIK + KISALTMA (2026-10-13, kullanici ekran goruntusu: "sol menu acikken satirlar
+    // kayiyor"): bosluksuz uzun e-posta hucreye sigmayip Location kutusunun ustune tasiyordu.
+    // Hucre sabit genislikte; adres tek satirda kisaltilir (tam hali ipucunda), kopyala dugmesi
+    // her zaman gorunur.
+    <div className="w-[15rem] space-y-0.5">
+      <div className="text-[11px] break-words">{a.ekip.length ? a.ekip.join(', ') : <span style={{ color: 'var(--text-muted)' }}>—</span>}</div>
       {ep.map((e) => (
-        <div key={e} className="flex items-center gap-1 text-[11px]">
-          <a href={`mailto:${e}`} className="inline-flex items-center gap-1 underline decoration-dotted" style={{ color: 'var(--accent)' }} title={`${e} adresine e-posta yaz`}>
-            <EnvelopeIcon className="w-3.5 h-3.5 flex-shrink-0" aria-hidden="true" />{e}
+        <div key={e} className="flex items-center gap-1 text-[11px] min-w-0">
+          <a href={`mailto:${e}`} className="flex items-center gap-1 min-w-0 underline decoration-dotted" style={{ color: 'var(--accent)' }} title={`${e} adresine e-posta yaz`}>
+            <EnvelopeIcon className="w-3.5 h-3.5 flex-shrink-0" aria-hidden="true" /><span className="truncate" title={e}>{e}</span>
           </a>
-          <button onClick={() => kopyala([e], 'adres')} className="p-0.5 rounded" style={{ color: 'var(--text-muted)' }} aria-label={`${e} adresini kopyala`} title="Kopyala">
+          <button onClick={() => kopyala([e], 'adres')} className="p-0.5 rounded flex-shrink-0" style={{ color: 'var(--text-muted)' }} aria-label={`${e} adresini kopyala`} title="Kopyala">
             <ClipboardDocumentIcon className="w-3.5 h-3.5" />
           </button>
         </div>
@@ -133,8 +137,8 @@ function Satir({ a, admin, onKullanim, onAdmin }: {
         {a.kaynak === 'portal' && <span className="inline-block mt-0.5 text-[10px] px-1.5 rounded-full" style={{ background: 'var(--status-info-bg)', color: 'var(--status-info)' }} title="Canlı Glomo envanterinde var ama takvim Excel'inde yoktu">Excel’de yoktu → eklendi</span>}
         {a.taramadaYok && <span className="inline-block mt-0.5 ml-1 text-[10px] px-1.5 rounded-full" style={{ background: 'var(--status-warning-bg)', color: 'var(--status-warning-text, var(--text-primary))' }} title="Son nginx taramasında Glomo altında görülmedi">canlı envanterde yok</span>}
       </td>
-      <td className="px-2 py-1.5 max-w-[16rem]"><EkipHucre a={a} /></td>
-      <td className="px-2 py-1.5 max-w-[22rem]">
+      <td className="px-2 py-1.5"><EkipHucre a={a} /></td>
+      <td className="px-2 py-1.5 min-w-[13rem] max-w-[22rem]">
         <div className="flex flex-col gap-1">
           {a.locations.length ? a.locations.map((l) => (
             <code key={l} className="block px-2 py-1 rounded-md border font-mono text-[12.5px] font-semibold leading-snug break-all" style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border)', color: 'var(--text-primary)' }}>{l}</code>
@@ -180,7 +184,8 @@ function Tablo({ apps, admin, onKullanim, onAdmin }: {
 }) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-left">
+      {/* Dar ekranda (sol menu acik) kolonlar birbirine binmesin: tablo yatay kayar. */}
+      <table className="w-full min-w-[74rem] text-left">
         <thead className="text-[11px] uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>
           <tr>
             <th className="px-2 py-1.5">Uygulama</th><th className="px-2 py-1.5">Ekip / e-posta</th><th className="px-2 py-1.5" style={{ color: 'var(--text-primary)' }}>Location</th><th className="px-2 py-1.5">Yük</th>
@@ -318,7 +323,7 @@ export default function GlomoGecisPlani() {
         </div>
         {gecen.length ? (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-[12px]">
+            <table className="w-full min-w-[52rem] text-left text-[12px]">
               <thead className="text-[11px] uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>
                 <tr><th className="px-2 py-1.5">Uygulama</th><th className="px-2 py-1.5">Ekip</th><th className="px-2 py-1.5">Set</th><th className="px-2 py-1.5">Geçiş tarihi</th><th className="px-2 py-1.5"><UserGroupIcon className="inline w-3.5 h-3.5" /> Katılan</th>{admin && <th className="px-2 py-1.5">Admin</th>}</tr>
               </thead>
@@ -326,7 +331,7 @@ export default function GlomoGecisPlani() {
                 {gecen.map((a) => (
                   <tr key={anahtar(a)} className="border-t" style={{ borderColor: 'var(--border-subtle)' }}>
                     <td className="px-2 py-1.5"><div className="font-semibold">{a.application}</div><div className="font-mono text-[10px]" style={{ color: 'var(--text-muted)' }}>{a.namespace}</div></td>
-                    <td className="px-2 py-1.5 max-w-[16rem]"><EkipHucre a={a} /></td>
+                    <td className="px-2 py-1.5"><EkipHucre a={a} /></td>
                     <td className="px-2 py-1.5 tabular-nums">Set {a.setNo}</td>
                     <td className="px-2 py-1.5 tabular-nums">{a.gecisTarihi ? zamanMetni(a.gecisTarihi) : <span style={{ color: 'var(--text-muted)' }}>tarih girilmedi</span>}</td>
                     <td className="px-2 py-1.5 text-[11px]">{a.katilimci || '—'}</td>
