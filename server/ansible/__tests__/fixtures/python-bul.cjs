@@ -31,6 +31,27 @@ function shebangYorumlayici(ilkSatir) {
   return p[0] || null;
 }
 
+/**
+ * Betigin BASINDAN yorumlayici: `#!` satiri, ya da pip / uv'nin UZUN YOL sarmalayicisi.
+ *
+ * `#!` satiri 127 karakteri gecemez. Sanal ortam derin bir dizindeyse (CI calisma alani,
+ * gecici dizin) pip ve uv betigi su bicimde yazar:
+ *     #!/bin/sh
+ *     '''exec' '/cok/uzun/yol/bin/python' "$0" "$@"
+ *     ' '''
+ * Yalniz ilk satira bakan arama burada `/bin/sh` bulur ve Python kodunu kabuga verir
+ * (2026-10-13: boyle kurulmus bir Ansible'da ZIP okuyan testler "syntax error" ile dustu).
+ */
+function betikYorumlayici(bas) {
+  const satirlar = String(bas || '').split('\n');
+  const y = shebangYorumlayici(satirlar[0]);
+  if (y && /(^|\/)(ba|da|z)?sh$/.test(y)) {
+    const m = /^'''exec' '([^']+)' "\$0" "\$@"\s*$/.exec(satirlar[1] || '');
+    if (m) return m[1];
+  }
+  return y;
+}
+
 /** PATH'te calistirilabilir dosya (which). */
 function pathteBul(ad, PATH = process.env.PATH) {
   for (const d of String(PATH || '').split(path.delimiter)) {
@@ -45,7 +66,7 @@ function pathteBul(ad, PATH = process.env.PATH) {
   return null;
 }
 
-/** Ansible kuruluysa onun yorumlayicisi (ansible-playbook betiginin `#!` satiri). */
+/** Ansible kuruluysa onun yorumlayicisi (ansible-playbook betiginin basindan). */
 function ansiblePythonu(PATH = process.env.PATH) {
   for (const ad of ['ansible-playbook', 'ansible']) {
     const p = pathteBul(ad, PATH);
@@ -53,9 +74,9 @@ function ansiblePythonu(PATH = process.env.PATH) {
     try {
       const fd = fs.openSync(p, 'r');
       try {
-        const buf = Buffer.alloc(512);
-        const n = fs.readSync(fd, buf, 0, 512, 0);
-        const y = shebangYorumlayici(buf.toString('utf8', 0, n).split('\n', 1)[0]);
+        const buf = Buffer.alloc(1024);
+        const n = fs.readSync(fd, buf, 0, 1024, 0);
+        const y = betikYorumlayici(buf.toString('utf8', 0, n));
         if (y) return y;
       } finally {
         fs.closeSync(fd);
@@ -90,4 +111,11 @@ function pythonBul(env = process.env) {
   return null;
 }
 
-module.exports = { pythonBul, adaylar, ansiblePythonu, pathteBul, shebangYorumlayici };
+module.exports = {
+  pythonBul,
+  adaylar,
+  ansiblePythonu,
+  pathteBul,
+  shebangYorumlayici,
+  betikYorumlayici,
+};

@@ -193,22 +193,126 @@ test('was’a gecen gorevi olan her kaynak play pipelining kullanir', () => {
     }
 });
 
-test('was’in gecici ZIP’i /tmp’de DEGIL, ise ozel dizinde ve her durumda temizlenir', () => {
-  // /tmp bu hostlarda dump'lar icin kucuk (opsx_legacy_dump 2026-08-12) ve tahmin edilebilir
-  // sabit bir /tmp yolu hem cakisir hem de iptal/hata durumunda arkasinda 0644 log kopyasi
-  // birakir. Emsal: opsx_legacy_dump -> /vhosting(8)/dumpdir.
+// ── GECICI ALAN (2026-10-13) ───────────────────────────────────────────────────────────────
+//
+// Okuma kullanicisinin ZIP'i yazdigi ara dizin eskiden TEK ve sabitti: /vhosting(8)/dumpdir.
+// Sahada bir sunucuda o dizin DOSYAYA donustu; log alinamadi ve sebep ekrana cikmadi.
+// Artik sirali bir aday listesi var (`logx_legacy_tmp_bases`); karar mantigi
+// logx-legacy-olculemedi X11'de render edilerek, gercek davranis logx-legacy-gercek-kosum
+// LG6-LG12'de sinanir. Buradakiler YAPI kurallari: kim acar, hangi kiple, kim siler.
+
+/** Kaynak sunucuda kosan play'lerin butun gorevleri. */
+const kaynakGorevleri = () =>
+  playler(metin('logx_legacy_transfer.yml'))
+    .filter((p) => !yerel(p))
+    .flatMap((p) => gorevler(p.metin));
+
+test('gecici alan: ise ozel dizin SECILEN adaydan turer; sabit dizinler yalniz aday listesinde', () => {
   const t = metin('logx_legacy_transfer.yml');
-  const m = t.match(/^ {4}was_tmp_dir: >-\n([\s\S]*?)\n {4}was_tmp_archive:/m);
+  const m = t.match(/^ {4}was_tmp_dir: (.*)$/m);
   assert.ok(m, 'was_tmp_dir tanimi bulunamadi');
-  assert.ok(!/\/tmp\b/.test(m[1]), 'was_tmp_dir /tmp altinda');
-  assert.match(m[1], /dumpdir/, 'was_tmp_dir log dosya sisteminde (dumpdir) degil');
+  assert.match(m[1], /was_tmp_aday/, 'was_tmp_dir secilen adaydan turemiyor');
   assert.match(m[1], /archive_name/, 'was_tmp_dir ise ozel degil (archive_name icermiyor)');
+  // Teslim dizini paylasimli: ayni iste iki sunucu ayni dizini kullanirsa birinin temizligi
+  // otekinin ZIP'ini siler.
+  assert.match(m[1], /inventory_hostname/, 'was_tmp_dir sunucuya ozel degil');
+  const liste = t.match(/^ {4}logx_legacy_tmp_bases:\n((?: {6,}\S.*\n)+)/m);
+  assert.ok(liste, 'logx_legacy_tmp_bases listesi bulunamadi');
+  assert.ok(liste[1].split('\n').filter((l) => /^\s+- dir:/.test(l)).length >= 2, 'tek aday var');
+  // Listenin DISINDA sabit bir gecici dizin gecmez: eski bagimlilik baska bir gorevde geri gelmesin.
+  const disinda = t.replace(liste[0], '');
+  for (const sabit of [/dumpdir/, /logx-tmp/, /\/tmp\b/, /\/vhosting/])
+    assert.ok(!sabit.test(disinda), `aday listesi disinda sabit dizin: ${sabit}`);
+  // /tmp kucuktur: YALNIZ bos alan butcesiyle aday olabilir.
+  assert.match(liste[1], /- dir: \/tmp\n {8}yuzde: \d+\n/, '/tmp butcesiz aday');
+});
+
+test('gecici dizin: okuma kullanicisi 0711, baglanan kullanici 0733; baska kip ve baska acan yok', () => {
+  const t = metin('logx_legacy_transfer.yml');
+  const acan = kaynakGorevleri().filter(
+    (g) => /path: "\{\{ was_tmp_dir \}\}"/.test(g) && /state: directory/.test(g),
+  );
+  // Iki deneme x iki olasi sahip.
+  assert.equal(acan.length, 4, `gecici dizin acan gorev sayisi ${acan.length}`);
+  for (const g of acan) {
+    const ad = g.trim().split('\n')[0];
+    const kip = (g.match(/^\s+mode: "(\d+)"$/m) || [])[1];
+    if (yukseltir(g)) {
+      assert.ok(wasIle(g), `${ad}: yukseltiyor ama okuma kullanicisina degil`);
+      // 0711: baglanan kullanici icinden gecip ZIP'i kopyalar, kimse listeleyemez.
+      assert.equal(kip, '0711', ad);
+      assert.match(
+        g,
+        /olusturan \| default\(''\)\) == 'was'/,
+        `${ad}: kosulu sahibine bagli degil`,
+      );
+    } else {
+      // 0733: okuma kullanicisi icine yazar ama listeleyemez. YALNIZ okuma kullanicisinin
+      // teslim dizinine yazamadigi durumda acilir.
+      assert.equal(kip, '0733', ad);
+      assert.match(g, /olusturan \| default\(''\)\) == 'baglanan'/, `${ad}: 0733 kosulsuz`);
+    }
+    // Karar `.failed` alanina bakar: failed_when: false onu HEP false yazardi.
+    assert.match(g, /^\s+ignore_errors: true$/m, `${ad}: hata yolu kapali`);
+  }
+  assert.equal((t.match(/0733/g) || []).length, 2, '0733 beklenmeyen bir yerde');
+});
+
+test('gecici dizin HER durumda SAHIBIYLE temizlenir (always: iki gorev)', () => {
+  const t = metin('logx_legacy_transfer.yml');
   const always = t.split(/^ {6}always:$/m)[1];
   assert.ok(always, 'arsivleme blogunda always: yok - hata/iptalde gecici ZIP kalir');
-  const temiz = always.split(/^- name:/m)[0];
-  assert.match(temiz, /path: "\{\{ was_tmp_dir \}\}"/, 'always gecici dizini silmiyor');
-  assert.match(temiz, /state: absent/, 'always gecici dizini silmiyor');
-  assert.ok(wasIle(temiz), 'gecici dizin was ile silinmiyor (sahibi was)');
+  const temizlik = always
+    .split(/^- name:/m)[0]
+    .split(/^(?=\s+- name:)/m)
+    .filter((g) => /path: "\{\{ was_tmp_dir \}\}"/.test(g));
+  assert.equal(temizlik.length, 2, `always temizlik gorevi ${temizlik.length}`);
+  for (const g of temizlik) {
+    assert.match(g, /state: absent/, 'always gecici dizini silmiyor');
+    assert.match(g, /^\s+failed_when: false$/m, 'temizlik hatasi isi dusurur');
+  }
+  const [was, baglanan] = [temizlik.find(wasIle), temizlik.find((g) => !yukseltir(g))];
+  assert.ok(was, 'okuma kullanicisinin actigi dizin onunla silinmiyor (sahibi o)');
+  assert.match(was, /olusturan \| default\(''\)\) == 'was'/);
+  assert.ok(baglanan, 'baglanan kullanicinin actigi dizin icin temizlik yok');
+  assert.match(baglanan, /olusturan \| default\(''\)\) == 'baglanan'/);
+});
+
+test('gecici alan on kontrolu YAN ETKISIZ: yalniz stat ve argv`li df; kabuk yok', () => {
+  const t = metin('logx_legacy_transfer.yml');
+  for (const yasak of ['ansible.builtin.shell', 'ansible.builtin.raw', 'ansible.builtin.script'])
+    assert.ok(!t.includes(yasak), `transfer playbook'unda ${yasak}`);
+  const tum = kaynakGorevleri();
+  const komut = tum.filter((g) => /ansible\.builtin\.command:/.test(g));
+  assert.equal(komut.length, 1, 'tek komut gorevi beklenir (bos alan olcumu)');
+  // argv: aday yolu bir kabuk dizesine YERLESMEZ.
+  assert.match(
+    komut[0],
+    /argv:\n\s+- df\n\s+- "-Pk"\n\s+- "\{\{ logx_legacy_tmp_bases\[item\]\.dir \}\}"\n/,
+  );
+  assert.ok(!yukseltir(komut[0]), 'df icin kullanici gecisi gereksiz');
+  const olcen = tum.filter((g) => /register: tmp_aday_\w+$/m.test(g));
+  assert.equal(olcen.length, 4, `olcum gorevi ${olcen.length}`);
+  for (const g of olcen) {
+    const ad = g.trim().split('\n')[0];
+    assert.match(g, /ansible\.builtin\.(stat|command):/, `${ad}: olcum stat/df degil`);
+    assert.match(g, /^\s+changed_when: false$/m, ad);
+    // Olculemeyen aday isi DUSURMEZ; "uygun degil" diye degerlendirilir.
+    assert.match(g, /^\s+failed_when: false$/m, ad);
+  }
+});
+
+test('gecici ZIP`i okuyan kopyalar arsiv HAZIR degilken kosmaz', () => {
+  // Eskiden kosul `was_archive_result`e bakiyordu; dizin acilamayinca arsiv gorevi ATLANIYOR,
+  // "atlandi" ile "dustu" ayni yere dusup sebep kayboluyordu. Tek olgu: was_arsiv_hazir.
+  const kopyalar = kaynakGorevleri().filter((g) => /src: "\{\{ was_tmp_archive \}\}"/.test(g));
+  assert.equal(kopyalar.length, 3, `gecici ZIP'i kopyalayan gorev sayisi ${kopyalar.length}`);
+  for (const g of kopyalar)
+    assert.match(
+      g,
+      /^\s+- was_arsiv_hazir \| bool$/m,
+      `${g.trim().split('\n')[0]}: arsiv yokken kopyalamaya calisir`,
+    );
 });
 
 test('was’a gecis/modul hatasi "Dosya bulunamadi" diye GORUNMEZ', () => {

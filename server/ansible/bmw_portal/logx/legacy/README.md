@@ -209,6 +209,8 @@ archive_name: fa52e9adfd9fc71572ea8c7b15b65ed4.zip
 
 - Portal `archive_name`'i 128 bit rastgele üretir; her `(host, path)` çifti keşif sonucuyla
   birebir eşleşmek zorundadır (anti-TOCTOU, Portal tarafında).
+- İsteğe bağlı: `logx_legacy_tmp_bases` — geçici alan aday listesi (bkz. "Geçici alan"). Portal
+  göndermez; varsayılan playbook'tadır. Gerekirse AWX iş şablonunun extra_vars'ından verilir.
 - Dosyalar AWX/controller'a fetch EDİLMEZ; her host kendi diskindeki logları kendisi ZIP'ler.
 - `community.general` koleksiyonu gerekir (`community.general.archive`).
 
@@ -218,6 +220,11 @@ archive_name: fa52e9adfd9fc71572ea8c7b15b65ed4.zip
 `per_file_status`, çoklu-host'ta `hosts[]` (`host`, `status`, `part_filename`, `size_bytes`,
 `per_file_status`, `error`). Portal `staged_path`/`filename`/`size_bytes`/`is_fallback` ile
 indirme jetonu üretir; `overall_status` denetim kaydına yazılır.
+
+Geçici alan alanları (2026-10-13; tek-host'ta üst düzeyde, çoklu-host'ta `hosts[]` altında):
+`tmp_dir` (ZIP'in yazıldığı aday dizin; arşiv üretilemediyse boş) ve `tmp_adaylar`
+(`[{dir, uygun, olusturan, sebep}]` — her adayın ölçüm sonucu). Portal bunları okumaz; AWX
+işinin artifact'ında teşhis içindir. Rescue ile biten tek-host sonucunda bu alanlar yoktur.
 
 ### Portalın okuduğu alanlar (2026-10-07)
 
@@ -247,7 +254,8 @@ güncellenir): `AWX envanterinde eslesmedi`, `sonuc bildirmedi`, `okunamayan N y
 `Dosya bulunamadi`, `Dosya okunamiyor`, `Path normal dosya degil`,
 `Bu hostta arsivlenecek okunabilir dosya yok`,
 `Arsivlenecek mevcut ve okunabilir bir dosya bulunamadi`,
-`hicbir kaynak hosttan parca ZIP gelmedi`, `Parca dizini aranamadi`.
+`hicbir kaynak hosttan parca ZIP gelmedi`, `Parca dizini aranamadi`, `Gecici alan bulunamadi`,
+`ziplenemedi`.
 
 ### Ortak hazırlık (her kaynak host)
 
@@ -256,18 +264,105 @@ güncellenir): `AWX envanterinde eslesmedi`, `sonuc bildirmedi`, `okunamayan N y
    - `stat` sonucu hiç yoksa (dzdo reddi, modül hatası, erişilemez): `Dosya was ile denetlenemedi: <msg> <module_stderr>`,
    - `stat` başarılı ve `exists=false`: `Dosya bulunamadi` (YALNIZ bu durumda),
    - normal dosya değil: `Path normal dosya degil`; okunamıyor: `Dosya okunamiyor`.
-3. Geçici dizin `/vhosting(8)/dumpdir/logx-<arşiv kökü>` (0711) `was` ile oluşturulur, loglar
-   `was` ile oraya ZIP'lenir (0644, bağlanan kullanıcı kopyalayabilsin). Dizin, ilk geçerli dosya
-   `/vhosting8/` altındaysa `/vhosting8/dumpdir`, değilse `/vhosting/dumpdir` altındadır.
-   `/tmp` KULLANILMAZ: bu hostlarda küçük (opsx_legacy_dump 2026-08-12) ve sabit bir `/tmp` yolu
-   hem çakışır hem de hata/iptal durumunda arkasında 0644 log kopyası bırakır.
-4. `always`: geçici dizin her durumda `was` ile silinir.
+3. Geçici alan seçilir (bkz. "Geçici alan"): aday dizinler ölçülür, ilk uygun adayın altında
+   işe özel dizin `logx-<arşiv kökü>-<sunucu adı>` açılır ve loglar `was` ile oraya ZIP'lenir
+   (0644, bağlanan kullanıcı kopyalayabilsin). Yazarken düşerse sıradaki uygun aday bir kez
+   denenir.
+4. `always`: işe özel dizin her durumda SAHİBİYLE silinir (`was` açtıysa `was`, bağlanan
+   kullanıcı açtıysa o). Aday dizinin kendisine dokunulmaz.
+
+### Geçici alan (2026-10-13)
+
+Loglar `was` ile okunur, teslim dizinine bağlanan kullanıcı yazar; arada `was`'ın yazıp
+bağlanan kullanıcının okuyabildiği bir ara dizin gerekir. Eskiden bu dizin TEK ve sabitti:
+`/vhosting(8)/dumpdir`. Sahada bir sunucuda `/vhosting8/dumpdir` **dosyaya dönüştü**; o sunucudan
+log alınamadı ve ekran yalnızca "ZIP arsivi olusturulamadi" dedi. İki ayrı kusur vardı:
+
+- **Tek dizine bağımlılık:** o dizin bozulunca başka yer denenmiyordu.
+- **Sebep kayboluyordu:** dizin açılamayınca arşiv görevi ATLANIYOR, hata metni ise yalnızca
+  arşiv görevinin sonucuna bakıyordu. Playbook asıl hatayı (`[Errno 20] Not a directory`)
+  biliyor ama yayınlamıyordu; seçilen dosyaların hepsi "ok" görünüyordu.
+
+**Aday listesi** — play değişkeni `logx_legacy_tmp_bases`, sırayla (kullanıcı kararı):
+
+| Sıra | Dizin                         | Kayıt           | Ne zaman uygun                                                                  |
+| ---- | ----------------------------- | --------------- | ------------------------------------------------------------------------------- |
+| 1    | `staging_dir` (teslim dizini) | `tur: teslim`   | dizin var; `was` yazabiliyor ya da (0733 yolu) bağlanan kullanıcı yazabiliyor   |
+| 2    | `/tmp`                        | `yuzde: 80`     | dizin yazılabilir VE seçilen dosyaların toplamı boş alanın %80'ini aşmıyor      |
+| 3    | `/vhosting/dumpdir`           |                 | dizin var ve `was` yazabiliyor                                                  |
+| 4    | `/vhosting8/dumpdir`          |                 | dizin var ve `was` yazabiliyor                                                  |
+| 5    | `/vhosting/logx-tmp`          | `olustur: true` | varsa kullanılır; yoksa ve üst dizine `was` yazabiliyorsa açılır (0711, kalıcı) |
+| 6    | `/vhosting8/logx-tmp`         | `olustur: true` | aynı                                                                            |
+
+- Admin ekranı YOKTUR (karar). Liste tek değişkendedir ve dışarıdan verilebilir: her kayıt
+  `{dir, tur?, yuzde?, olustur?}`, `dir` mutlak yol (ilk play doğrular). Sabit dizin adları
+  playbook'ta YALNIZ bu listede geçer (bekçi).
+- Teslim dizini ilk adaydır çünkü ZIP zaten oraya kopyalanacaktır ve yeri vardır. Bedeli: ZIP
+  paylaşımlı diske iki kez yazılır (geçici + nihai); nihai kopyadan sonra geçici dizin silinir.
+- İşe özel dizin `<aday>/logx-<arşiv kökü>-<sunucu adı>`. Sunucu adı şarttır: teslim dizini
+  paylaşımlıdır, aynı işte iki sunucu aynı dizini kullansaydı birinin temizliği ötekinin ZIP'ini
+  silerdi.
+
+**Ön kontrol (yan etkisiz; yalnız `stat` ve `df`).** Dosyaların `stat`'ından sonra, arşivlenecek
+dosyası olan her sunucuda:
+
+1. Her aday `was` ile `stat` edilir (var mı, dizin mi, yazılabilir mi).
+2. `olustur` adayı yoksa üst dizini `was` ile `stat` edilir.
+3. Teslim adayına `was` yazamıyorsa bağlanan kullanıcıyla `stat` edilir.
+4. `yuzde` taşıyan adayın boş alanı `df -Pk <dizin>` ile ölçülür (`command` + `argv`: yol bir
+   kabuk dizesine yerleşmez; çıktının son satırının 4. kolonu, KB).
+5. Her aday için karar verilir ve `tmp_adaylar`'a yazılır. Uygun olmayanın `sebep`'i:
+
+| `sebep`                                                             | Anlamı                                                                    |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| `dizin degil (dosya)` / `dizin degil`                               | yol var ama dizin değil (sahadaki olay)                                   |
+| `yok` / `teslim dizini yok`                                         | dizin yok ve açılacak aday değil                                          |
+| `yok; ust dizin de yok` / `yok; ust dizine was yazamiyor`           | `olustur` adayı açılamaz (playbook dizin ağacı uydurmaz)                  |
+| `yok; ust dizin denetlenemedi`                                      | üst dizinin `stat`'ı hata verdi                                           |
+| `was yazamiyor`                                                     | dizin var, okuma kullanıcısı yazamıyor                                    |
+| `ne was ne de baglanan kullanici yazabiliyor`                       | teslim dizinine kimse yazamıyor ya da `was` içine giremiyor               |
+| `yer yetersiz: gerekli X MB, izinli Y MB (bos alan Z MB, sinir %N)` | bütçe aşıldı                                                              |
+| `bos alan olculemedi`                                               | `df` düştü ya da çıktısı okunamadı — ölçülemeyen aday uygun SAYILMAZ      |
+| `was ile denetlenemedi: <mesaj>`                                    | `stat` hata verdi (ör. `was` dizine erişemiyor) — ölçülemedi, uygun değil |
+
+**`/tmp` bütçesi.** Gereken = geçerli dosyaların `stat` boyutlarının toplamı (SIKIŞTIRILMAMIŞ);
+izinli = boş alan × yüzde / 100. Sıkıştırılmamış boyut bilerek seçildi (temkinli taraf): ZIP
+sığacak olsa bile büyük bir seçim `/tmp`'yi atlar ve sıradaki adaya geçer. `/tmp` bu sunucularda
+küçüktür (opsx_legacy_dump 2026-08-12); bütçesiz aday yapılmaz (bekçi). Aynı sunucuda aynı anda
+iki iş ikisi de "boş" görebilir; sıkıştırma payı bunu pratikte karşılar, kilit yoktur.
+
+**0733 yolu.** `was` teslim dizinine yazamıyorsa işe özel dizini BAĞLANAN kullanıcı 0733 ile
+açar: `was` içine yazabilir ama listeleyemez, sahibi bağlanan kullanıcıdır ve iş bitince o
+siler. Bunun için `was`'ın teslim dizinine GİREBİLMESİ (x) gerekir; giremiyorsa aday uygun
+değildir. `was`'ın açtığı dizin 0711'dir (bağlanan kullanıcı içinden geçip ZIP'i kopyalar, kimse
+listeleyemez). `tmp_adaylar[].olusturan` hangi yolun seçildiğini söyler (`was` / `baglanan`).
+
+**Deneme.** İlk uygun adayda dizin açılır ve ZIP yazılır. Düşerse (dizin açılamadı ya da ZIP
+yazılamadı) o denemenin dizini hemen temizlenir ve sıradaki uygun aday BİR KEZ denenir
+(karar). Üçüncü aday denenmez. Aşağı akıştaki kopyalama görevleri tek olguya bakar:
+`was_arsiv_hazir`.
+
+**Hata metni** (tek-host'ta üst düzey `error`, çoklu-host'ta `hosts[].error`):
+
+- uygun aday yok: `Gecici alan bulunamadi. Adaylar: <dizin>: <sebep> | <dizin>: <sebep> …`
+- yazılamadı: `Loglar was kullanicisiyla ziplenemedi. 1. deneme (<dizin>): <modülün mesajı> | 2. deneme (<dizin>): <mesaj>`
+- `ZIP arsivi olusturulamadi` / `Per-host ZIP olusturulamadi` yalnızca başka sebep yoksa son
+  çare olarak kalır.
+
+Arşiv üretilemese de tek-host işinde AWX işi "successful" biter: sonuç yayınlanmıştır ve
+başarısızlığı sonuç söyler (`overall_status: failed`, `staged_path` boş); portal isteği
+başarısız kapatır ve sebebi gösterir.
+
+**Bilinen sınırlar.** İptal edilen işte geçici ZIP kalabilir (`always` iptalde koşmaz): `/tmp`'de
+sistem temizliği siler, diğer adaylarda kalır. `fallback_dir` (teslim dizini kullanılamazsa nihai
+arşivin yazıldığı yer) bu listenin parçası DEĞİLDİR ve bütçesizdir. OpsX heap dump playbook'u
+(`opsx_legacy_dump`) hâlâ yalnız `dumpdir`'e yazar; aynı bozulma onu da durdurur.
 
 ### Geçici ZIP adı (sözleşme LX7)
 
-- Eskiden ZIP adı `<arşiv kökü>.zip` idi, yani dizin adından türetilebiliyordu. `dumpdir`
-  listelenebiliyorsa (heap dump dizinleri sıklıkla geniş izinli; ÖLÇÜLMEDİ) yerel bir kullanıcı
-  yolu kurup kopya penceresinde ZIP'i okuyabilirdi.
+- Eskiden ZIP adı `<arşiv kökü>.zip` idi, yani dizin adından türetilebiliyordu. Aday dizin
+  listelenebiliyorsa (`/tmp` herkese açıktır; heap dump dizinleri sıklıkla geniş izinli) yerel
+  bir kullanıcı yolu kurup kopya penceresinde ZIP'i okuyabilirdi.
 - Artık bloğun İLK `set_fact` görevinde BİR KEZ:
   `was_tmp_zip: "{{ lookup('ansible.builtin.password', '/dev/null chars=ascii_lowercase,digits length=24') }}.zip"`.
   `/dev/null` yolu password lookup'ın özel durumudur: her çağrıda yeni rastgele değer üretir ve
@@ -275,8 +370,9 @@ güncellenir): `AWX envanterinde eslesmedi`, `sonuc bildirmedi`, `okunamayan N y
   aynı şekilde ayrıştırır; anahtar kelime biçimi eski sürümlerde yok sayılırdı).
 - `vars:` altında lookup YOK: play vars TEMBEL değerlendirilir, her başvuruda yeni ad üretilir ve
   archive, copy ve always FARKLI yollar görürdü. `was_tmp_archive = was_tmp_dir/was_tmp_zip`
-  play vars'ta kalır (tembel; `was_tmp_dir` geçerli dosyalar belli olduktan sonra çözülmeli).
-- Dizin 0711: listelenemez, ad tahmin edilemez.
+  play vars'ta kalır (tembel; `was_tmp_dir` aday seçildikten sonra çözülmeli, ikinci denemede
+  yeni adayı görmeli).
+- Dizin 0711 (ya da 0733): listelenemez, ad tahmin edilemez.
 
 ### Tek-host yolu (eskisiyle birebir aynı)
 
@@ -352,8 +448,28 @@ bildirdiğini ve `archive`'ın ZIP'e ne yazdığını TAKLİT eder; bu test onla
 - LG4: aktarım (iki host): host başına parça ZIP'ler tek arşivde birleşir; parça dizini ve
   geçici dizinler temizlenir.
 
-- LG5: portalın okuduğu sonuç biçimleri (kısmi ve başarısız aktarım, tümüyle başarısız keşif)
-  gerçek koşumla üretilir ve ekran testlerinin kullandığı örnek dosyasıyla karşılaştırılır.
+- LG5: portalın okuduğu sonuç biçimleri (kısmi ve başarısız aktarım, tümüyle başarısız keşif,
+  geçici alan bulunamadı, iki deneme de düştü) gerçek koşumla üretilir ve ekran testlerinin
+  kullandığı örnek dosyasıyla karşılaştırılır.
+- LG6: geçici alan adayı DOSYA olmuş (sahadaki olay) -> iş düşmez, sıradaki adayla tamamlanır;
+  bozuk yola dokunulmaz.
+- LG7: teslim dizini ilk adaysa o kullanılır; iş bitince teslimde yalnız nihai ZIP kalır.
+- LG8: bütçe gerçek `df -Pk` çıktısıyla: `yuzde: 0` adayı elenir, `yuzde: 100` adayı kullanılır
+  (çıktı bu işletim sisteminde okunamasaydı sebep `bos alan olculemedi` olurdu).
+- LG9: olmayan `logx-tmp` adayı 0711 ile açılır, işe özel dizin temizlenir, ikinci iş var olanı
+  kullanır; üst dizini de olmayan aday açılmaz.
+- LG10: hiçbir aday uygun değil -> `failed`; her adayın sebebi yazılır, genel metin yok.
+- LG11: ön kontrolü geçen adaya yazılamazsa sıradaki bir kez denenir; ikisi de düşerse iki
+  sebep birden yazılır, üçüncü aday denenmez.
+- LG12: dışarıdan verilen aday listesinde göreli ya da kök (`/`) yol -> ilk play reddeder,
+  hiçbir sunucuya dokunulmaz.
+- LG4 ayrıca iki sunucunun AYNI (paylaşımlı) adayı kullandığı durumu ölçer; LG6'da kullanılan
+  aday bir sembolik bağdır (`stat` bağı izler).
+
+Render tarafında X11 (`logx-legacy-olculemedi.test.cjs`) aday kararını enjekte edilmiş `stat` /
+`df` sonuçlarıyla tablo halinde sınar: bütçe tam sınırda ve bir bayt fazlasında, boş alan
+ölçülemedi, aday denetlenemedi, 0733 yolu (hangi görev hangi kullanıcıyla, hangi kiple koştu),
+iki deneme, dışarıdan verilen liste, çoklu-host.
 
 Ansible yoksa atlanır (LG2, LG4 ve LG5'in aktarım örnekleri ayrıca `community.general.archive`
 ister; LG3 ve okunamayan dosya/dizin örnekleri root ile koşulamaz).
@@ -361,7 +477,13 @@ ister; LG3 ve okunamayan dosya/dizin örnekleri root ile koşulamaz).
 Metinle ve render ile ölçülemeyenler (kanaryada doğrulanır):
 
 - AWX envanteri `ansible_pipelining=false` ile pipelining'i ezebilir.
-- dzdo'nun `was` become izni ve `dumpdir` modu/sahipliği.
+- dzdo'nun `was` become izni ve aday dizinlerin gerçek modu/sahipliği.
+- **0733 yolu iki kullanıcıyla:** yerel testler tek kullanıcıyla koşar; "`was` yazamıyor ama
+  bağlanan kullanıcı yazabiliyor" durumu gerçek dosya sisteminde ÖLÇÜLEMEZ (karar mantığı ve
+  görev bağlantıları X11'de render ile ölçülür). `was`'ın paylaşımlı diskteki (NFS) 0733 dizine
+  gerçekten yazabildiği ve bağlanan kullanıcının o ZIP'i silebildiği kanaryada görülmelidir.
+- `df -Pk` çıktısının hedef sunuculardaki biçimi (POSIX biçimi beklenir; okunamazsa `/tmp`
+  adayı `bos alan olculemedi` ile elenir, iş sıradaki adayla sürer).
 - Gerçek Ansible yürütme semantiği: `run_once` ile `set_fact`'in tüm hostlara yayılması,
   `ignore_unreachable` sonrası hostun bağlantısız görevlere devam etmesi, toplayıcının hiç
   koşmadığı durum. Render betiği bunları Ansible belgelerindeki davranışa göre taklit eder.
@@ -371,3 +493,14 @@ Kanarya: bir JBoss hostunda Legacy keşif + tek-host transfer + iki-host transfe
 reddedilen bir hostta keşif `error`, transfer `error/unreachable` görünmeli ("Failed to set
 permissions" ve "dosya yok" görünmemeli); kökünde `was`'ın okuyamadığı dizin olan bir hostta
 keşfin `error` mesajı yolu adlandırmalı.
+
+Geçici alan kanaryası (2026-10-13): tek-host transferin AWX artifact'ında `tmp_dir` ve
+`tmp_adaylar`'a bakın.
+
+1. `tmp_dir` teslim dizini mi? `tmp_adaylar[0].olusturan` `was` ise `was` teslime yazabiliyor;
+   `baglanan` ise 0733 yolu koştu — iş bittikten sonra teslim dizininde `logx-…` dizini
+   KALMAMALI (kaldıysa bağlanan kullanıcı `was`'ın dosyasını silememiştir).
+2. `/tmp` adayı `uygun` mu, yoksa `bos alan olculemedi` mi? İkincisi `df` çıktısının beklenen
+   biçimde olmadığını gösterir.
+3. `dumpdir`'i bozuk olan sunucuda iş BAŞARILI bitmeli ve `tmp_adaylar` o dizin için
+   `dizin degil (dosya)` demeli.

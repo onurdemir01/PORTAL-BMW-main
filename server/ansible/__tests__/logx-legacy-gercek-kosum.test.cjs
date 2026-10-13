@@ -23,11 +23,28 @@
 //   LG5  portal ekraninin okudugu sonuc bicimleri (kismi / basarisiz) gercek kosumla uretilir ve
 //        ekran testlerinin girdisi olan ornek dosyasiyla karsilastirilir (dosyanin sonunda)
 //
+// GECICI ALAN (2026-10-13; saha: bir sunucuda /vhosting8/dumpdir DOSYAYA donusmus, log
+// alinamamis). Okuma kullanicisinin ZIP'i yazdigi ara dizin artik sirali bir aday listesinden
+// secilir. Render testi (X11) stat ve df sonuclarini TAKLIT eder; buradakiler gercek dosya
+// sisteminde kosar:
+//   LG6  ilk aday DOSYA (sahadaki olay) -> is DUSMEZ, siradaki adayla tamamlanir; bozuk yola
+//        dokunulmaz
+//   LG7  teslim dizini ilk adaysa o kullanilir; is bitince teslimde YALNIZ nihai ZIP kalir
+//   LG8  bos alan butcesi: gercek `df -Pk` ciktisi okunur; butceyi asan aday elenir
+//   LG9  olmayan `logx-tmp` adayi acilir (0711), ise ozel dizin temizlenir, ust dizin kalir
+//   LG10 hicbir aday uygun degil -> failed; her adayin sebebi yazilir, genel metin YOK
+//   LG11 on kontrolu gecen adayda dizin acilamazsa siradaki BIR KEZ denenir; ikisi de duserse
+//        iki sebep birden yazilir
+//   LG12 disaridan verilen aday listesinde goreli / kok yol -> hicbir sunucuya dokunmadan durur
+//   (iki sunucunun AYNI adayi paylasmasi: LG4)
+//
 // KOSUL: PATH'te ansible-playbook (LG2/LG4/LG5 icin ayrica community.general.archive). Yoksa testler
 // ATLANIR (ayni sozlesme: scalex-sure-kirilimi O2a/O2b; CI'da Ansible'in kurulu olmasini
 // scalex-verify-timing VT0 zorlar). Windows'ta ansible calismaz.
 // Uretimden farklar bilerek: yerel baglanti, `ansible_become=false` (dzdo/was gecisi yok),
-// kokler gecici dizine cevrilir (`legacy_log_roots`), aktarimda `was_tmp_dir` gecici dizinde.
+// kokler gecici dizine cevrilir (`legacy_log_roots`), aktarimda aday listesi
+// (`logx_legacy_tmp_bases`) gecici dizine cevrilir. Tek kullaniciyla kosuldugu icin "okuma
+// kullanicisi yazamiyor ama baglanan yazabiliyor" (0733) yolu burada OLCULEMEZ -> X11 + kanarya.
 'use strict';
 
 const { test } = require('node:test');
@@ -90,13 +107,23 @@ function agacKur() {
   return kok;
 }
 
-/** Gercek ansible-playbook; sonuc: set_stats ile yayinlanan logx_result. */
-function kostur(playbook, vars, tmp, envanter = 'localhost,') {
+/**
+ * Gercek ansible-playbook; sonuc: set_stats ile yayinlanan logx_result.
+ * `sonucsuz`: playbook'un sonuc YAYINLAMADAN dusmesi beklenen kosular (girdi dogrulamasi).
+ * `ayrintili`: gorev sonuclari da yazilir (-v); `cikti`da modullerin dondurdugu yollar okunur.
+ */
+function kostur(
+  playbook,
+  vars,
+  tmp,
+  envanter = 'localhost,',
+  { sonucsuz = false, ayrintili = false } = {},
+) {
   const vf = path.join(tmp, `vars-${path.basename(playbook)}.json`);
   fs.writeFileSync(vf, JSON.stringify({ ansible_become: false, ...vars }));
   const r = spawnSync(
     'ansible-playbook',
-    ['-i', envanter, '-c', 'local', playbook, '-e', `@${vf}`],
+    ['-i', envanter, '-c', 'local', playbook, '-e', `@${vf}`, ...(ayrintili ? ['-v'] : [])],
     {
       encoding: 'utf8',
       timeout: 180000,
@@ -116,6 +143,7 @@ function kostur(playbook, vars, tmp, envanter = 'localhost,') {
   );
   const cikti = `${r.stdout || ''}\n${r.stderr || ''}`;
   const satir = (r.stdout || '').split('\n').find((l) => l.includes('RUN: {'));
+  if (sonucsuz && !satir) return { rc: r.status, sonuc: null, cikti };
   assert.ok(satir, `logx_result yayinlanmadi (rc=${r.status}):\n${cikti.slice(-3000)}`);
   const stats = JSON.parse(satir.slice(satir.indexOf('RUN: ') + 5));
   return { rc: r.status, sonuc: stats.logx_result, cikti };
@@ -275,9 +303,9 @@ test(
       assert.equal(beklenen.length, 6);
 
       const staging = path.join(kok, 'staging');
-      const dump = path.join(kok, 'dump', 'logx-lg2');
+      const dump = path.join(kok, 'dump');
       fs.mkdirSync(staging);
-      fs.mkdirSync(path.join(kok, 'dump'));
+      fs.mkdirSync(dump);
       const { rc, sonuc, cikti } = kostur(
         AKTARIM,
         {
@@ -285,7 +313,7 @@ test(
           staging_dir: staging,
           fallback_dir: path.join(kok, 'fallback'),
           archive_name: 'lg2-numarali.zip',
-          was_tmp_dir: dump,
+          logx_legacy_tmp_bases: [{ dir: dump }],
         },
         kok,
       );
@@ -306,8 +334,10 @@ test(
         assert.ok(ad, `${son} arsivde yok: ${Object.keys(arsiv)}`);
         assert.equal(arsiv[ad], icerik(f), `${son} baska bir dosyanin icerigini tasiyor`);
       }
-      // Okuma kullanicisinin gecici dizini geride kalmaz (uretimde dumpdir dolmasin).
-      assert.ok(!fs.existsSync(dump), 'gecici dizin temizlenmedi');
+      // Okuma kullanicisinin ise ozel dizini geride kalmaz (aday dizin dolmasin); adayin
+      // kendisi yerinde durur.
+      assert.equal(sonuc.tmp_dir, dump);
+      assert.deepEqual(fs.readdirSync(dump), [], 'gecici dizin temizlenmedi');
     } finally {
       temizle(kok);
     }
@@ -334,14 +364,23 @@ test(
           staging_dir: staging,
           fallback_dir: path.join(kok, 'fallback'),
           archive_name: 'lg4-iki-host.zip',
-          // Iki "host" da bu makine: gecici dizinler cakismasin diye host adiyla ayrilir
-          // (uretimde her hostun kendi dosya sistemi vardir).
-          was_tmp_dir: path.join(kok, 'dump', '{{ inventory_hostname }}', 'logx-lg4'),
+          // Iki "host" da bu makine ve AYNI adayi kullaniyor: teslim dizini uretimde boyle
+          // paylasimlidir.
+          logx_legacy_tmp_bases: [{ dir: staging, tur: 'teslim' }],
         },
         kok,
         'sunucu-a,sunucu-b,',
+        { ayrintili: true },
       );
       assert.equal(rc, 0, cikti.slice(-2500));
+      // Her sunucu KENDI dizinini acar (modulun dondurdugu yoldan okunur). Ayni dizini
+      // paylassalardi ilk biten sunucunun temizligi otekinin ZIP'ini silebilirdi; bu bir
+      // YARISTIR ve her kosuda tetiklenmez - sonuca bakarak degil, yola bakarak olculur.
+      for (const h of ['sunucu-a', 'sunucu-b'])
+        assert.ok(
+          cikti.includes(`"path": "${path.join(staging, `logx-lg4-iki-host-${h}`)}"`),
+          `${h}: ise ozel dizin sunucu adini tasimiyor`,
+        );
       assert.equal(sonuc.overall_status, 'success', JSON.stringify(sonuc).slice(0, 800));
       assert.deepEqual(sonuc.hosts.map((h) => `${h.host}:${h.status}`).sort(), [
         'SUNUCU-A:ok',
@@ -357,13 +396,300 @@ test(
       assert.ok(Object.values(a).includes(icerik(`${EAR}/logs10/e.log`)));
       // Ayni adli dosya (server.log) iki hosttan da geldi; her parca KENDI hostununkini tasir.
       assert.deepEqual(Object.values(arsiv['sunucu-b.zip']), [icerik(`${EAR}/log2/server.log`)]);
-      // Parca dizini ve okuma kullanicisinin gecici dizinleri geride kalmaz.
+      // Parca dizini ve iki sunucunun ise ozel gecici dizinleri geride kalmaz: paylasimli
+      // teslim dizininde YALNIZ nihai arsiv durur.
       assert.deepEqual(fs.readdirSync(staging), ['lg4-iki-host.zip']);
-      for (const h of ['sunucu-a', 'sunucu-b'])
-        assert.ok(
-          !fs.existsSync(path.join(kok, 'dump', h, 'logx-lg4')),
-          `${h}: gecici dizin kaldi`,
+      for (const h of sonuc.hosts) assert.equal(h.tmp_dir, staging, h.host);
+    } finally {
+      temizle(kok);
+    }
+  },
+);
+
+// ── LG6-LG11: GECICI ALAN GERCEK DOSYA SISTEMINDE ─────────────────────────────────────────
+
+/** Aday tablosu: {goreli yol: 'uygun/<olusturan>' | '<sebep>'}. */
+const adayTablosu = (kok, sonuc) =>
+  Object.fromEntries(
+    sonuc.tmp_adaylar.map((a) => [
+      goreli(kok, a.dir),
+      a.uygun ? `uygun/${a.olusturan}` : a.sebep.split(kok).join(''),
+    ]),
+  );
+const kip = (p) => (fs.statSync(p).mode & 0o777).toString(8);
+
+/** Tek dosyalik aktarim; aday listesi ve arsiv adi senaryodan. */
+function alanKostur(kok, adaylar, arsiv) {
+  fs.mkdirSync(path.join(kok, 'staging'), { recursive: true });
+  return kostur(
+    AKTARIM,
+    {
+      selected_files: [{ host: 'localhost', path: path.join(kok, EAR, 'log1', 'server.log') }],
+      staging_dir: path.join(kok, 'staging'),
+      fallback_dir: path.join(kok, 'fallback'),
+      archive_name: `${arsiv}.zip`,
+      logx_legacy_tmp_bases: adaylar,
+    },
+    kok,
+  );
+}
+const arsivTamam = (kok, arsiv) =>
+  assert.deepEqual(Object.values(zipOku(path.join(kok, 'staging', `${arsiv}.zip`))), [
+    icerik(`${EAR}/log1/server.log`),
+  ]);
+
+test(
+  'LG6 SAHADAKI OLAY: gecici alan adayi DOSYA olmus -> is dusmez, siradaki adayla tamamlanir',
+  { skip: ARSIV_YOK },
+  () => {
+    const kok = agacKur();
+    try {
+      const bozuk = path.join(kok, 'dumpdir');
+      fs.writeFileSync(bozuk, 'dizin olmasi gerekirdi\n');
+      // Kullanilan aday SEMBOLIK BAG: dumpdir'in baska bir diske baglandigi sunucularda da
+      // "dizin degil" denmemeli (stat bagi izler).
+      fs.mkdirSync(path.join(kok, 'gercek-yedek'));
+      fs.symlinkSync(path.join(kok, 'gercek-yedek'), path.join(kok, 'yedek'));
+      const { rc, sonuc, cikti } = alanKostur(
+        kok,
+        [{ dir: bozuk }, { dir: path.join(kok, 'hic-yok') }, { dir: path.join(kok, 'yedek') }],
+        'lg6',
+      );
+      assert.equal(rc, 0, cikti.slice(-2500));
+      assert.equal(sonuc.overall_status, 'success', JSON.stringify(sonuc).slice(0, 800));
+      assert.equal(sonuc.error, '');
+      assert.deepEqual(adayTablosu(kok, sonuc), {
+        dumpdir: 'dizin degil (dosya)',
+        'hic-yok': 'yok',
+        yedek: 'uygun/was',
+      });
+      assert.equal(sonuc.tmp_dir, path.join(kok, 'yedek'));
+      arsivTamam(kok, 'lg6');
+      // Bozuk yola DOKUNULMAZ (silmek / dizine cevirmek sunucu sahibinin isi) ve kullanilan
+      // adayda iz kalmaz.
+      assert.equal(fs.readFileSync(bozuk, 'utf8'), 'dizin olmasi gerekirdi\n');
+      assert.deepEqual(fs.readdirSync(path.join(kok, 'gercek-yedek')), []);
+      assert.ok(fs.lstatSync(path.join(kok, 'yedek')).isSymbolicLink(), 'bag silindi');
+    } finally {
+      temizle(kok);
+    }
+  },
+);
+
+test(
+  'LG7 teslim dizini ILK adaydir; is bitince teslimde yalniz nihai ZIP kalir',
+  { skip: ARSIV_YOK },
+  () => {
+    const kok = agacKur();
+    try {
+      const staging = path.join(kok, 'staging');
+      const yedek = path.join(kok, 'yedek');
+      fs.mkdirSync(yedek);
+      const { rc, sonuc, cikti } = alanKostur(
+        kok,
+        [{ dir: staging, tur: 'teslim' }, { dir: yedek }],
+        'lg7',
+      );
+      assert.equal(rc, 0, cikti.slice(-2500));
+      assert.equal(sonuc.overall_status, 'success');
+      assert.equal(sonuc.tmp_dir, staging, 'teslim dizini uygunken baska aday kullanildi');
+      assert.equal(sonuc.is_fallback, false);
+      arsivTamam(kok, 'lg7');
+      assert.deepEqual(fs.readdirSync(staging), ['lg7.zip'], 'teslimde gecici dizin kaldi');
+      assert.deepEqual(fs.readdirSync(yedek), [], 'kullanilmayan adaya dokunuldu');
+    } finally {
+      temizle(kok);
+    }
+  },
+);
+
+test(
+  'LG8 bos alan butcesi GERCEK df ciktisiyla: butceyi asan aday elenir, sigan kullanilir',
+  { skip: ARSIV_YOK },
+  () => {
+    const kok = agacKur();
+    try {
+      for (const d of ['dar', 'genis']) fs.mkdirSync(path.join(kok, d));
+      const { rc, sonuc, cikti } = alanKostur(
+        kok,
+        [
+          { dir: path.join(kok, 'dar'), yuzde: 0 },
+          { dir: path.join(kok, 'genis'), yuzde: 100 },
+        ],
+        'lg8',
+      );
+      assert.equal(rc, 0, cikti.slice(-2500));
+      const t = adayTablosu(kok, sonuc);
+      // %0: izinli alan sifir -> her is butceyi asar (kuralin kendisi, diskin doluluguna bagli degil).
+      assert.match(
+        t.dar,
+        /^yer yetersiz: gerekli [\d.]+ MB, izinli 0\.0 MB \(bos alan [\d.]+ MB, sinir %0\)$/,
+      );
+      // %100: ayni dizinde df ciktisi OKUNABILDI ve birkac baytlik is sigdi. Cikti bu isletim
+      // sisteminde ayristirilamasaydi sebep "bos alan olculemedi" olurdu.
+      assert.equal(t.genis, 'uygun/was', `df ciktisi okunamadi mi? ${t.genis}`);
+      assert.equal(sonuc.tmp_dir, path.join(kok, 'genis'));
+      assert.equal(sonuc.overall_status, 'success');
+      assert.deepEqual(fs.readdirSync(path.join(kok, 'dar')), [], 'elenen adaya yazildi');
+    } finally {
+      temizle(kok);
+    }
+  },
+);
+
+test(
+  'LG9 olmayan logx-tmp adayi ACILIR (0711); ise ozel dizin temizlenir, sonraki is onu kullanir',
+  { skip: ARSIV_YOK },
+  () => {
+    const kok = agacKur();
+    try {
+      const vh = path.join(kok, 'vh');
+      fs.mkdirSync(vh);
+      const adaylar = [
+        { dir: path.join(kok, 'dumpdir-yok') },
+        // Ust dizini de olmayan aday ACILMAZ: playbook dizin agaci uydurmaz.
+        { dir: path.join(kok, 'yok', 'logx-tmp'), olustur: true },
+        { dir: path.join(vh, 'logx-tmp'), olustur: true },
+      ];
+      const ilk = alanKostur(kok, adaylar, 'lg9a');
+      assert.equal(ilk.rc, 0, ilk.cikti.slice(-2500));
+      assert.deepEqual(adayTablosu(kok, ilk.sonuc), {
+        'dumpdir-yok': 'yok',
+        'yok/logx-tmp': 'yok; ust dizin de yok',
+        'vh/logx-tmp': 'uygun/was',
+      });
+      assert.equal(ilk.sonuc.overall_status, 'success');
+      arsivTamam(kok, 'lg9a');
+      const acilan = path.join(vh, 'logx-tmp');
+      // 0711: baglanan kullanici icinden gecer, kimse listeleyemez (icindeki dizin adlari
+      // arsiv adini tasir).
+      assert.equal(kip(acilan), '711');
+      assert.deepEqual(fs.readdirSync(acilan), [], 'ise ozel dizin temizlenmedi');
+      assert.ok(!fs.existsSync(path.join(kok, 'yok')), 'ust dizini olmayan aday acildi');
+      // Ikinci is: dizin artik VAR -> oldugu gibi kullanilir, kipi degismez.
+      const ikinci = alanKostur(kok, adaylar, 'lg9b');
+      assert.equal(ikinci.sonuc.overall_status, 'success');
+      assert.equal(ikinci.sonuc.tmp_dir, acilan);
+      assert.equal(kip(acilan), '711');
+      arsivTamam(kok, 'lg9b');
+    } finally {
+      temizle(kok);
+    }
+  },
+);
+
+test(
+  'LG10 hicbir aday uygun degil -> failed; HER adayin sebebi yazilir, "ZIP olusturulamadi" DEGIL',
+  { skip: ARSIV_YOK },
+  () => {
+    const kok = agacKur();
+    try {
+      fs.writeFileSync(path.join(kok, 'dumpdir'), 'dizin olmasi gerekirdi\n');
+      const { sonuc } = alanKostur(
+        kok,
+        [{ dir: path.join(kok, 'dumpdir') }, { dir: path.join(kok, 'hic-yok') }],
+        'lg10',
+      );
+      assert.equal(sonuc.overall_status, 'failed');
+      assert.equal(
+        sonuc.error,
+        `Gecici alan bulunamadi. Adaylar: ${path.join(kok, 'dumpdir')}: dizin degil (dosya) | ` +
+          `${path.join(kok, 'hic-yok')}: yok`,
+      );
+      assert.ok(!/ZIP arsivi olusturulamadi/.test(sonuc.error));
+      assert.equal(sonuc.staged_path, '');
+      assert.equal(sonuc.tmp_dir, '');
+      // Dosyanin kendisinde sorun yok; sebep sunucu duzeyinde.
+      assert.deepEqual(
+        sonuc.per_file_status.map((f) => f.status),
+        ['ok'],
+      );
+      assert.deepEqual(fs.readdirSync(path.join(kok, 'staging')), []);
+      assert.ok(!fs.existsSync(path.join(kok, 'fallback')), 'arsiv yokken yedek dizin acildi');
+    } finally {
+      temizle(kok);
+    }
+  },
+);
+
+test(
+  'LG11 on kontrolu gecen adaya YAZILAMAZSA siradaki bir kez denenir; ikisi de duserse iki sebep',
+  { skip: ARSIV_YOK },
+  () => {
+    // Ise ozel dizinin yerinde bir dosya: aday dizin yazilabilir gorunur (on kontrol gecer)
+    // ama dizin acilamaz. Uretimdeki karsiligi: kota, salt-okunur baglama, araya giren dolu disk.
+    const engelle = (kok, aday, arsiv) =>
+      fs.writeFileSync(path.join(kok, aday, `logx-${arsiv}-localhost`), 'engel\n');
+    const kok = agacKur();
+    try {
+      for (const d of ['a', 'b', 'c']) fs.mkdirSync(path.join(kok, d));
+      const adaylar = ['a', 'b', 'c'].map((d) => ({ dir: path.join(kok, d) }));
+
+      engelle(kok, 'a', 'lg11a');
+      const bir = alanKostur(kok, adaylar, 'lg11a');
+      assert.equal(bir.rc, 0, bir.cikti.slice(-2500));
+      assert.equal(bir.sonuc.overall_status, 'success', JSON.stringify(bir.sonuc).slice(0, 800));
+      assert.equal(bir.sonuc.tmp_dir, path.join(kok, 'b'), 'ikinci deneme siradaki adayda degil');
+      assert.equal(bir.sonuc.error, '');
+      arsivTamam(kok, 'lg11a');
+      for (const d of ['a', 'b', 'c'])
+        assert.deepEqual(fs.readdirSync(path.join(kok, d)), [], `${d}: iz kaldi`);
+
+      engelle(kok, 'a', 'lg11b');
+      engelle(kok, 'b', 'lg11b');
+      const iki = alanKostur(kok, adaylar, 'lg11b');
+      assert.equal(iki.sonuc.overall_status, 'failed');
+      assert.match(
+        iki.sonuc.error,
+        /^Loglar was kullanicisiyla ziplenemedi\. 1\. deneme \(\S+\/a\): \S.* \| 2\. deneme \(\S+\/b\): \S/,
+      );
+      assert.ok(!/ZIP arsivi olusturulamadi/.test(iki.sonuc.error));
+      // Karar "bir kez": ucuncu uygun aday vardi ama denenmedi.
+      assert.equal(adayTablosu(kok, iki.sonuc).c, 'uygun/was');
+      assert.ok(!fs.existsSync(path.join(kok, 'staging', 'lg11b.zip')));
+      assert.deepEqual(fs.readdirSync(path.join(kok, 'c')), []);
+    } finally {
+      temizle(kok);
+    }
+  },
+);
+
+test(
+  'LG12 disaridan verilen aday listesi DOGRULANIR: goreli ya da kok yol -> hicbir sey yapilmadan durur',
+  { skip: ARSIV_YOK },
+  () => {
+    // Liste AWX is sablonundan verilebilir. Ise ozel dizin `<aday>/logx-...` olarak kurulur ve
+    // is sonunda SILINIR: goreli bir yol uzak kullanicinin calisma dizinine, "/" ise dosya
+    // sisteminin kokune yazmak demektir. Ikisi de ilk play'de reddedilir.
+    const kok = agacKur();
+    try {
+      fs.mkdirSync(path.join(kok, 'staging'));
+      for (const kotu of [{ dir: 'goreli/dizin' }, { dir: '/' }, { yol: '/tmp' }, 'duz-metin']) {
+        const { rc, sonuc, cikti } = kostur(
+          AKTARIM,
+          {
+            selected_files: [
+              { host: 'localhost', path: path.join(kok, EAR, 'log1', 'server.log') },
+            ],
+            staging_dir: path.join(kok, 'staging'),
+            fallback_dir: path.join(kok, 'fallback'),
+            archive_name: 'lg12.zip',
+            logx_legacy_tmp_bases: [{ dir: path.join(kok, 'staging') }, kotu],
+          },
+          kok,
+          'localhost,',
+          { sonucsuz: true },
         );
+        const ad = JSON.stringify(kotu);
+        assert.notEqual(rc, 0, `${ad}: gecersiz aday kabul edildi`);
+        assert.equal(sonuc, null, `${ad}: gecersiz listeyle is yurudu`);
+        assert.match(cikti, /Gecersiz logx_legacy_tmp_bases kaydi/, ad);
+        assert.deepEqual(
+          fs.readdirSync(path.join(kok, 'staging')),
+          [],
+          `${ad}: dosya sistemine dokunuldu`,
+        );
+      }
     } finally {
       temizle(kok);
     }
@@ -394,10 +720,14 @@ const ORNEK_YAZ = process.env.LOGX_ORNEK_YAZ === '1';
 const ornekleriOku = () =>
   fs.existsSync(ORNEK_DOSYASI) ? JSON.parse(fs.readFileSync(ORNEK_DOSYASI, 'utf8')) : {};
 
-/** Makineye ozgu degerleri sabitler: gecici kok -> '', arsiv boyutu -> 1, host sirasi -> ada gore. */
+/**
+ * Makineye ozgu degerleri sabitler: gecici kok -> '', arsiv boyutu -> 1 / 0, host sirasi -> ada gore.
+ * Boyut SAYIYA cevrilir: ansible-core 2.19 oncesi (yerel tipsiz Jinja) ayni alani metin ("0")
+ * olarak yayinlar; ornek dosyasi Ansible surumune gore degismesin.
+ */
 function ornekle(kok, sonuc) {
   const o = JSON.parse(JSON.stringify(sonuc).split(kok).join(''), (k, v) =>
-    k === 'size_bytes' && Number(v) > 0 ? 1 : v,
+    k === 'size_bytes' ? (Number(v) > 0 ? 1 : 0) : v,
   );
   if (Array.isArray(o.hosts))
     o.hosts.sort((a, b) => String(a.host).localeCompare(String(b.host), 'en'));
@@ -409,7 +739,7 @@ const aktarimVars = (kok, secili) => ({
   staging_dir: path.join(kok, 'staging'),
   fallback_dir: path.join(kok, 'fallback'),
   archive_name: 'ornek.zip',
-  was_tmp_dir: path.join(kok, 'dump', '{{ inventory_hostname }}', 'logx-ornek'),
+  logx_legacy_tmp_bases: [{ dir: path.join(kok, 'dump') }],
 });
 const IKI_HOST = 'sunucu-a,sunucu-b,';
 const YOK = `${EAR}/log9/yok.log`;
@@ -462,6 +792,58 @@ const ORNEKLER = [
       ]),
   },
   {
+    ad: 'aktarim_tek_gecici_alan_yok',
+    ne: 'tek host: dosyalar yerinde ama sunucuda kullanilabilir gecici alan yok (biri dosya olmus, biri yok)',
+    skip: ARSIV_YOK,
+    playbook: AKTARIM,
+    kur(kok) {
+      fs.writeFileSync(path.join(kok, 'dumpdir'), 'dizin olmasi gerekirdi\n');
+      return {
+        ...aktarimVars(kok, [['localhost', `${EAR}/log1/server.log`]]),
+        logx_legacy_tmp_bases: [
+          { dir: path.join(kok, 'dumpdir') },
+          { dir: path.join(kok, 'olmayan-dizin') },
+        ],
+      };
+    },
+  },
+  {
+    ad: 'aktarim_tek_ziplenemedi',
+    ne: 'tek host: iki aday da on kontrolu gecti ama ikisine de yazilamadi (iki deneme)',
+    skip: ARSIV_YOK,
+    playbook: AKTARIM,
+    kur(kok) {
+      // Ise ozel dizinin yerinde bir DOSYA var: on kontrol (aday dizin yazilabilir) gecer,
+      // dizin acma duser. Uretimdeki karsiligi: kota, salt-okunur baglama, dolu disk.
+      for (const d of ['dump', 'dump2']) {
+        fs.mkdirSync(path.join(kok, d), { recursive: true });
+        fs.writeFileSync(path.join(kok, d, 'logx-ornek-localhost'), 'engel\n');
+      }
+      return {
+        ...aktarimVars(kok, [['localhost', `${EAR}/log1/server.log`]]),
+        logx_legacy_tmp_bases: [{ dir: path.join(kok, 'dump') }, { dir: path.join(kok, 'dump2') }],
+      };
+    },
+  },
+  {
+    ad: 'aktarim_cok_gecici_alan_yok',
+    ne: 'iki host: birinin dosyasi arsive girdi, otekinde gecici alan yok',
+    skip: ARSIV_YOK,
+    playbook: AKTARIM,
+    envanter: IKI_HOST,
+    kur(kok) {
+      // Aday yolu sunucu adini tasir; yalniz sunucu-a'ninki var.
+      fs.mkdirSync(path.join(kok, 'alan-sunucu-a'));
+      return {
+        ...aktarimVars(kok, [
+          ['sunucu-a', `${EAR}/log1/server.log`],
+          ['sunucu-b', `${EAR}/log2/server.log`],
+        ]),
+        logx_legacy_tmp_bases: [{ dir: path.join(kok, 'alan-{{ inventory_hostname }}') }],
+      };
+    },
+  },
+  {
     ad: 'kesif_envanterde_yok',
     ne: 'kesif: hedef sunucu adi AWX envanterinde yok (elle yanlis yazilan ad)',
     skip: ANSIBLE_YOK,
@@ -496,6 +878,7 @@ for (const o of ORNEKLER) {
       const kok = agacKur();
       try {
         fs.mkdirSync(path.join(kok, 'staging'));
+        fs.mkdirSync(path.join(kok, 'dump'));
         const { rc, sonuc } = kostur(o.playbook, o.kur(kok), kok, o.envanter);
         const gercek = { is_basarili: rc === 0, sonuc: ornekle(kok, sonuc) };
         if (ORNEK_YAZ) {
