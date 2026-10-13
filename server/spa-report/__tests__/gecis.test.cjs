@@ -62,7 +62,11 @@ async function sunucu() {
   app.use(express.json());
   app.use((req, _res, next) => { req.session = { user: { username: 'ali', role: rol } }; next(); });
   const router = express.Router();
-  gecis.mountGecis(router, { loadReport: async () => rapor });
+  gecis.mountGecis(router, {
+    loadReport: async () => rapor,
+    // Namespace sahibi tablosu: e-posta buradan gelir.
+    sahipYukle: async () => ({ ready: true, byNs: new Map([[ilk.namespace.toLowerCase(), { group: 'GT-Ekip', email: 'gt-ekip@banka.com', status: 'OK' }]]) }),
+  });
   app.use('/api/spa-report', router);
   const s = app.listen(0);
   await new Promise((r) => s.once('listening', r));
@@ -132,5 +136,19 @@ test('GG3 set / gecti / gecis tarihi yalniz Admin', async () => {
     assert.deepEqual(j.sets.find((x) => x.no === 6), { no: 6, calismaAt: '2026-10-15T23:00', ocoNo: 'OCO-1' });
     assert.equal(j.apps.find((a) => a.application === ilk.application).gecisTarihi, '2026-09-30', 'toplu islem elle girilen tarihi ezdi');
     assert.ok(j.apps.filter((a) => a.setNo === 1).every((a) => a.gecti));
+  } finally { s.close(); }
+});
+
+test('GG4 ekip e-postasi namespace sahibi tablosundan gelir; canli raporda olmayan uygulamada da', async () => {
+  rol = 'User';
+  const { s, base } = await sunucu();
+  try {
+    const { j } = await istek(base, '/gecis');
+    assert.equal(j.epostaVar, true);
+    const x = j.apps.find((a) => a.application === ilk.application);
+    assert.deepEqual(x.ekipEposta, ['gt-ekip@banka.com']);
+    assert.deepEqual(x.ekip, ['GT-Ekip']);
+    const yok = j.apps.find((a) => a.namespace === ilk.namespace && a.application !== ilk.application && a.taramadaYok);
+    if (yok) assert.deepEqual(yok.ekipEposta, ['gt-ekip@banka.com'], 'canli raporda olmayan uygulama e-postayi alamadi');
   } finally { s.close(); }
 });

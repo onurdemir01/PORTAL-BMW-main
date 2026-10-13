@@ -55,6 +55,18 @@ describe('GlomoGecisPlani', () => {
     await waitFor(() => expect(mockApp).toHaveBeenLastCalledWith(expect.objectContaining({ katilimci: 'Ayşe Yılmaz' })));
   });
 
+  it('ekip e-postasi mailto ile gorunur; set basliginda toplu kopyalama dugmesi var', async () => {
+    const p = plan(false);
+    p.apps![0].ekipEposta = ['gt-ekip@banka.com'];
+    mockGecis.mockResolvedValue(p);
+    render(<GlomoGecisPlani />);
+    const link = await screen.findByRole('link', { name: /gt-ekip@banka.com/ });
+    expect(link.getAttribute('href')).toBe('mailto:gt-ekip@banka.com');
+    expect(screen.getByRole('button', { name: /Ekip e-postaları \(1\)/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Görünen ekiplerin e-postaları \(1\)/ })).toBeInTheDocument();
+    expect(screen.getByText('/alti-app/').tagName).toBe('CODE');
+  });
+
   it('Admin set zamani / OCO / gecti alanlarini gorur', async () => {
     mockGecis.mockResolvedValue(plan(true));
     render(<GlomoGecisPlani />);

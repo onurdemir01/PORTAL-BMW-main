@@ -74,6 +74,8 @@ export interface GecisUygulama {
   /** 'YYYY-MM-DD' ya da null. */
   gecisTarihi: string | null;
   ekip: string[];
+  /** Ekip e-postalari (namespace sahibi tablosundan; yoksa bos). */
+  ekipEposta?: string[];
   locations: string[];
   yuk: { state: 'active' | 'idle' | 'unknown'; req7: number } | null;
   /** Canlı Glomo envanterinde görülmüyor (rapor okunduysa). */
@@ -84,6 +86,8 @@ export interface GecisPlani {
   message?: string;
   raporVar?: boolean;
   raporTarihi?: string | null;
+  /** Namespace sahibi (e-posta) tablosu okunabildi mi. */
+  epostaVar?: boolean;
   sets?: GecisSet[];
   apps?: GecisUygulama[];
   admin?: boolean;

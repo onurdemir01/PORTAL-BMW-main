@@ -85,11 +85,26 @@ function yukOzeti(trafik) {
   return { state: 'unknown', req7: 0 };
 }
 
-async function planYukle(loadReport) {
+// EKIP E-POSTASI (2026-10-13, kullanici: "ekiplerin e-postasina ulasmak istiyorum"): namespace sahibi
+// tablosu (dbo.Openshift_Namespace_Owners, CMDB -> Smart) grup adiyla birlikte e-postayi da tutuyor.
+// Okunamazsa e-posta bos kalir ve ekip adi canli rapordan gelir.
+async function sahipleriYukle() {
+  try {
+    const { query } = require('../inventory/mssql.cjs');
+    const { loadNamespaceOwners } = require('../audit/ns-owners.cjs');
+    return await loadNamespaceOwners(query);
+  } catch {
+    return { ready: false, byNs: new Map() };
+  }
+}
+
+async function planYukle(loadReport, sahipYukle = sahipleriYukle) {
   await seedle();
   let rapor = null;
   try { rapor = await loadReport(false); } catch { rapor = null; }
   const canli = glomoCanli(rapor);
+  const sahipler = await sahipYukle().catch(() => ({ ready: false, byNs: new Map() }));
+  const { ownersFor } = require('../audit/ns-owners.cjs');
   const raporVar = !!rapor && rapor.ok !== false && !rapor.notScanned;
 
   // EKSIKLER: canli raporda Glomo olup planda olmayan uygulama Set 7'ye (kaynak 'portal').
@@ -123,7 +138,11 @@ async function planYukle(loadReport) {
       katilimci: r.katilimci || '',
       gecti: r.gecti === true || Number(r.gecti) === 1,
       gecisTarihi: r.gecis_tarihi ? T(r.gecis_tarihi) : null,
-      ekip: c ? [...c.ekip] : [],
+      ekip: (() => {
+        const o = ownersFor(sahipler.byNs, [r.namespace]);
+        return [...new Set([...(c ? [...c.ekip] : []), ...o.groups])];
+      })(),
+      ekipEposta: ownersFor(sahipler.byNs, [r.namespace]).emails,
       locations: c && c.locations.length ? c.locations : (s ? s.locations : []),
       yuk: c ? yukOzeti(c.trafik) : null,
       // Rapor okunduysa ve uygulama orada yoksa: canli Glomo envanterinde gorulmuyor.
@@ -134,15 +153,16 @@ async function planYukle(loadReport) {
     ok: true,
     raporVar,
     raporTarihi: rapor?.scanDate || null,
+    epostaVar: sahipler.ready !== false,
     sets: (setler.rows || []).map((r) => ({ no: Number(r.no), calismaAt: r.calisma_at ? T(r.calisma_at) : null, ocoNo: r.oco_no ? T(r.oco_no) : '' })),
     apps,
   };
 }
 
-function mountGecis(router, { loadReport }) {
+function mountGecis(router, { loadReport, sahipYukle }) {
   router.get('/gecis', async (req, res) => {
     try {
-      res.json({ ...(await planYukle(loadReport)), admin: isAdmin(req) });
+      res.json({ ...(await planYukle(loadReport, sahipYukle)), admin: isAdmin(req) });
     } catch (err) {
       res.status(500).json({ ok: false, message: err.message });
     }

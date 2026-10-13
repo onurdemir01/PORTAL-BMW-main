@@ -6,7 +6,7 @@
 // zamani, OCO numarasi, uygulamanin gecti isareti ve gecis tarihi Admin'in elle girdigi alanlar.
 // Gecen uygulamalar listenin en altinda durur. Sunucu: server/spa-report/gecis.cjs.
 import { useCallback, useMemo, useState } from 'react';
-import { ArrowPathIcon, CheckCircleIcon, ChevronDownIcon, UserGroupIcon } from '@heroicons/react/24/outline';
+import { ArrowPathIcon, CheckCircleIcon, ChevronDownIcon, ClipboardDocumentIcon, EnvelopeIcon, UserGroupIcon } from '@heroicons/react/24/outline';
 import { arkSpaApi, type GecisPlani, type GecisSet, type GecisUygulama } from '@/api/arkSpaApi';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { toast } from '@/hooks/useToast';
@@ -23,6 +23,39 @@ function zamanMetni(v: string | null): string {
   const m = v ? /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?/.exec(v) : null;
   if (!m) return '';
   return `${m[3]}.${m[2]}.${m[1]}${m[4] ? ` ${m[4]}:${m[5]}` : ''}`;
+}
+
+/** E-postalari panoya kopyalar (Outlook alicisi icin ';' ile). Pano yoksa metin secilebilir kalir. */
+async function kopyala(liste: string[], ne: string) {
+  const metin = liste.join('; ');
+  try {
+    await navigator.clipboard.writeText(metin);
+    toast.success(`${liste.length} ${ne} kopyalandı`);
+  } catch {
+    window.prompt('Kopyalayın:', metin);
+  }
+}
+
+/** Uygulama listesinin benzersiz ekip e-postalari. */
+const epostalar = (apps: GecisUygulama[]) => [...new Set(apps.flatMap((a) => a.ekipEposta || []))].sort();
+
+function EkipHucre({ a }: { a: GecisUygulama }) {
+  const ep = a.ekipEposta || [];
+  return (
+    <div className="space-y-0.5">
+      <div className="text-[11px]">{a.ekip.length ? a.ekip.join(', ') : <span style={{ color: 'var(--text-muted)' }}>—</span>}</div>
+      {ep.map((e) => (
+        <div key={e} className="flex items-center gap-1 text-[11px]">
+          <a href={`mailto:${e}`} className="inline-flex items-center gap-1 underline decoration-dotted" style={{ color: 'var(--accent)' }} title={`${e} adresine e-posta yaz`}>
+            <EnvelopeIcon className="w-3.5 h-3.5 flex-shrink-0" aria-hidden="true" />{e}
+          </a>
+          <button onClick={() => kopyala([e], 'adres')} className="p-0.5 rounded" style={{ color: 'var(--text-muted)' }} aria-label={`${e} adresini kopyala`} title="Kopyala">
+            <ClipboardDocumentIcon className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function YukEtiket({ y }: { y: GecisUygulama['yuk'] }) {
@@ -65,6 +98,16 @@ function SetBaslik({ s, apps, admin, onKaydet, onTopluGecti }: {
       <div className="text-[12px] tabular-nums" style={{ color: 'var(--text-secondary)' }}>
         {apps.length} uygulama · {kullanimda} kullanımda · {kisi}/{kullanimda} katılımcı girildi{bekleyen ? <> · <b style={{ color: 'var(--status-warning-text)' }}>{bekleyen} yanıt bekliyor</b></> : null}
       </div>
+      {epostalar(apps).length > 0 && (
+        <div className="flex items-center gap-1.5 text-[12px]">
+          <button onClick={() => kopyala(epostalar(apps), 'ekip e-postası')} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border" style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }} title={`Bu setteki ${epostalar(apps).length} ekibin e-postasını kopyala (Outlook alıcı satırına yapıştırılabilir)`}>
+            <ClipboardDocumentIcon className="w-4 h-4" /> Ekip e-postaları ({epostalar(apps).length})
+          </button>
+          <a href={`mailto:?bcc=${encodeURIComponent(epostalar(apps).join(';'))}&subject=${encodeURIComponent(`Glomo geçişi — Set ${s.no}${s.calismaAt ? ` (${zamanMetni(s.calismaAt)})` : ''}`)}`} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border" style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }} title="E-posta istemcisinde bu set için yeni ileti aç (ekipler gizli alıcıda)">
+            <EnvelopeIcon className="w-4 h-4" /> E-posta yaz
+          </a>
+        </div>
+      )}
       {admin && apps.length > 0 && (
         <div className="flex items-center gap-1.5 text-[12px] ml-auto">
           <input type="date" value={tarih} onChange={(e) => setTarih(e.target.value)} className={INPUT} style={inputStyle} aria-label="Toplu geçiş tarihi" />
@@ -90,8 +133,14 @@ function Satir({ a, admin, onKullanim, onAdmin }: {
         {a.kaynak === 'portal' && <span className="inline-block mt-0.5 text-[10px] px-1.5 rounded-full" style={{ background: 'var(--status-info-bg)', color: 'var(--status-info)' }} title="Canlı Glomo envanterinde var ama takvim Excel'inde yoktu">Excel’de yoktu → eklendi</span>}
         {a.taramadaYok && <span className="inline-block mt-0.5 ml-1 text-[10px] px-1.5 rounded-full" style={{ background: 'var(--status-warning-bg)', color: 'var(--status-warning-text, var(--text-primary))' }} title="Son nginx taramasında Glomo altında görülmedi">canlı envanterde yok</span>}
       </td>
-      <td className="px-2 py-1.5 text-[11px]">{a.ekip.length ? a.ekip.join(', ') : <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
-      <td className="px-2 py-1.5 font-mono text-[10px] max-w-[18rem]">{a.locations.map((l) => <div key={l} className="truncate" title={l}>{l}</div>)}</td>
+      <td className="px-2 py-1.5 max-w-[16rem]"><EkipHucre a={a} /></td>
+      <td className="px-2 py-1.5 max-w-[22rem]">
+        <div className="flex flex-col gap-1">
+          {a.locations.length ? a.locations.map((l) => (
+            <code key={l} className="block px-2 py-1 rounded-md border font-mono text-[12.5px] font-semibold leading-snug break-all" style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border)', color: 'var(--text-primary)' }}>{l}</code>
+          )) : <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>—</span>}
+        </div>
+      </td>
       <td className="px-2 py-1.5 text-[11px] whitespace-nowrap"><YukEtiket y={a.yuk} /></td>
       <td className="px-2 py-1.5">
         <div className="inline-flex rounded-md border overflow-hidden text-[12px]" style={{ borderColor: 'var(--border)' }} role="group" aria-label="Uygulama kullanımda mı?">
@@ -134,7 +183,7 @@ function Tablo({ apps, admin, onKullanim, onAdmin }: {
       <table className="w-full text-left">
         <thead className="text-[11px] uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>
           <tr>
-            <th className="px-2 py-1.5">Uygulama</th><th className="px-2 py-1.5">Ekip</th><th className="px-2 py-1.5">Location</th><th className="px-2 py-1.5">Yük</th>
+            <th className="px-2 py-1.5">Uygulama</th><th className="px-2 py-1.5">Ekip / e-posta</th><th className="px-2 py-1.5" style={{ color: 'var(--text-primary)' }}>Location</th><th className="px-2 py-1.5">Yük</th>
             <th className="px-2 py-1.5">Kullanımda mı?</th><th className="px-2 py-1.5">Çalışmaya katılacak kişi</th>
             {admin && <th className="px-2 py-1.5">Set / geçiş (Admin)</th>}
           </tr>
@@ -227,7 +276,13 @@ export default function GlomoGecisPlani() {
           {ekipler.map((e) => <option key={e} value={e}>{e}</option>)}
         </select>
         <label className="flex items-center gap-1.5 text-[12px]"><input type="checkbox" checked={yalnizBekleyen} onChange={(e) => setYalnizBekleyen(e.target.checked)} /> yalnız yanıt bekleyenler</label>
+        {epostalar(suzulmus.filter((a) => !a.gecti)).length > 0 && (
+          <button onClick={() => kopyala(epostalar(suzulmus.filter((a) => !a.gecti)), 'ekip e-postası')} className="inline-flex items-center gap-1 px-2.5 py-1 text-[12px] rounded-md border ml-auto" style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }} title="Listede görünen (geçmemiş) uygulamaların ekip e-postalarını kopyala — süzgeçler uygulanır">
+            <ClipboardDocumentIcon className="w-4 h-4" /> Görünen ekiplerin e-postaları ({epostalar(suzulmus.filter((a) => !a.gecti)).length})
+          </button>
+        )}
       </div>
+      {data?.ok && data.epostaVar === false && <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Ekip e-postaları okunamadı (namespace sahibi tablosu); yalnız ekip adları gösteriliyor.</div>}
 
       {KALAN_SETLER.map((no) => {
         const liste = bekleyen.filter((a) => a.setNo === no);
@@ -271,7 +326,7 @@ export default function GlomoGecisPlani() {
                 {gecen.map((a) => (
                   <tr key={anahtar(a)} className="border-t" style={{ borderColor: 'var(--border-subtle)' }}>
                     <td className="px-2 py-1.5"><div className="font-semibold">{a.application}</div><div className="font-mono text-[10px]" style={{ color: 'var(--text-muted)' }}>{a.namespace}</div></td>
-                    <td className="px-2 py-1.5 text-[11px]">{a.ekip.join(', ') || '—'}</td>
+                    <td className="px-2 py-1.5 max-w-[16rem]"><EkipHucre a={a} /></td>
                     <td className="px-2 py-1.5 tabular-nums">Set {a.setNo}</td>
                     <td className="px-2 py-1.5 tabular-nums">{a.gecisTarihi ? zamanMetni(a.gecisTarihi) : <span style={{ color: 'var(--text-muted)' }}>tarih girilmedi</span>}</td>
                     <td className="px-2 py-1.5 text-[11px]">{a.katilimci || '—'}</td>
