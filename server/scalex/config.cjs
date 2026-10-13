@@ -46,6 +46,54 @@ const TUNABLES = Object.freeze({
   SCALEX_MAX_AUDIT_GROUPS: { fallback: 12, hardMin: 1, hardMax: 200 },
 });
 
+// ── PROD SMART KIPI (2026-10-13) ────────────────────────────────────────────
+//
+// URETIM OLAYI: kullanicilar DOGRU OCO numarasi girip hata aldi. OCO geciyordu; ScaleX
+// icin SMART onay ayari hic tanimlanmamisti ve kod bu durumda bilerek reddediyordu.
+// "SMART gerekli mi" sorusunun cevabi bugune kadar ORTUK idi: ayar satiri yoksa red.
+// Kullanici karari: cevap ACIK bir admin anahtari olsun.
+//
+//   required  (VARSAYILAN) prod'da `apply` SMART onayi ister; ayar eksikse is BASLAMAZ
+//   oco_only               prod'da `apply` yalniz OCO kapisindan gecer; SMART acilmaz
+//
+// VARSAYILAN `required`: bos / taninmayan deger kapiyi INDIRMEZ. Kipi `oco_only` yapmak
+// bir guvenlik karari; yazim hatasi onu sessizce acmamali.
+const SMART_MODE_KEY = 'SCALEX_PROD_SMART_MODE';
+const SMART_MODES = Object.freeze(['required', 'oco_only']);
+
+/** Guncel kip. HER CAGRIDA `process.env` okunur (dinamik); onbellek YOK. */
+function smartMode() {
+  const raw = String(process.env[SMART_MODE_KEY] ?? '')
+    .trim()
+    .toLowerCase();
+  if (!raw) return { value: 'required', source: 'default', problem: null };
+  if (!SMART_MODES.includes(raw)) {
+    return {
+      value: 'required',
+      source: 'default',
+      problem:
+        `${SMART_MODE_KEY}: "${raw.slice(0, 40)}" tanınmıyor (required / oco_only) — ` +
+        'SMART gerekli sayılıyor.',
+    };
+  }
+  return { value: raw, source: 'admin', problem: null };
+}
+
+/**
+ * Admin > Sistem kaydetmeden ONCE sorar: bu anahtar icin deger gecerli mi?
+ * Gecersiz deger okuyan tarafta sessizce varsayilana duserdi ve admin "kaydettim
+ * ama etki etmedi" durumuna duserdi (emsal: auth/oturum-ayarlari.cjs).
+ * @returns {string|null} hata metni ya da null
+ */
+function ayarHatasi(key, value) {
+  if (key !== SMART_MODE_KEY) return null;
+  const v = String(value ?? '')
+    .trim()
+    .toLowerCase();
+  if (!v || SMART_MODES.includes(v)) return null;
+  return `${SMART_MODE_KEY} yalnızca "required" ya da "oco_only" olabilir (boş = required).`;
+}
+
 /** Tek anahtari okur; gecersizse `null` + sebep. Fabrika degerine DUSURMEZ. */
 function readOne(key) {
   const spec = TUNABLES[key];
@@ -152,7 +200,10 @@ function tunable(key) {
 /** Ekranin ihtiyaci olan sekil — `GET /api/scalex/config` bunu doner. */
 function publicConfig() {
   const { values, sources, problems } = readTunables();
+  const kip = smartMode();
   return {
+    // PROD SMART KIPI: ekran "SMART gerekli mi" sorusunu sunucudan ogrenir.
+    prodSmartMode: kip.value,
     verificationTimeout: {
       default: values.SCALEX_VERIFY_TIMEOUT_DEFAULT,
       min: values.SCALEX_VERIFY_TIMEOUT_MIN,
@@ -162,9 +213,18 @@ function publicConfig() {
     maxTargets: values.SCALEX_MAX_TARGETS,
     prodConfirmThreshold: values.SCALEX_PROD_CONFIRM_THRESHOLD,
     maxAuditGroups: values.SCALEX_MAX_AUDIT_GROUPS,
-    sources,
-    problems,
+    sources: { ...sources, [SMART_MODE_KEY]: kip.source },
+    problems: kip.problem ? [...problems, kip.problem] : problems,
   };
 }
 
-module.exports = { TUNABLES, readTunables, tunable, publicConfig };
+module.exports = {
+  TUNABLES,
+  SMART_MODE_KEY,
+  SMART_MODES,
+  readTunables,
+  tunable,
+  smartMode,
+  ayarHatasi,
+  publicConfig,
+};

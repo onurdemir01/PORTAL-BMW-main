@@ -1298,6 +1298,15 @@ function withRequesterVars(extraVars, user) {
   };
 }
 
+// ANKET TANIMI BELLEGI — ISTEGE BAGLI (2026-10-13). Her baslatma, isi baslatmadan once
+// anket tanimini soruyor (bir AWX turu). Cagiran `bellek: true` derse tanim kisa sure
+// hatirlanir; VARSAYILAN KAPALI, yani bugunku her cagiranin davranisi BIREBIR ayni.
+// Bayat tanimin bedeli sinirli: yeni eklenmis zorunlu bir alan en gec bu sure sonra
+// doldurulur; o arada AWX eksik alani acik bir 400 ile soyler (sessiz degil).
+const ANKET_BELLEK_TTL_MS = 2 * 60 * 1000;
+const ANKET_BELLEK_MAX = 200;
+const _anketBellegi = new Map();
+
 /**
  * Survey'i ZORUNLU olan ama bu launch'ta gonderilmeyen alanlari template'in KENDI survey
  * varsayilanlariyla tamamlar (2026-09-22 uretim olayi: Portal'daki "Skoru tazele" dugmesi
@@ -1314,10 +1323,22 @@ function withRequesterVars(extraVars, user) {
  *     (mesaj zaten hangi alanin eksik oldugunu soyluyor).
  * Survey okunamazsa (404 / yetki / AWX erisilemez) hicbir sey yapilmaz: fail-open.
  */
-async function fillRequiredSurveyDefaults(server, token, templateId, extraVars) {
+async function fillRequiredSurveyDefaults(server, token, templateId, extraVars, { bellek = false } = {}) {
   try {
-    const spec = await awxRequestToServer(server, token, 'GET', `/api/v2/job_templates/${templateId}/survey_spec/`);
-    const fields = (spec && spec.spec) || [];
+    // Bellek YALNIZ `bellek: true` iken okunur/yazilir (yukaridaki not). Okuma bu
+    // fonksiyonun ICINDE kalir: survey-required-defaults testi govdeyi tek basina calistirir.
+    const kayit = bellek ? _anketBellegi.get(`${server.id}:${templateId}`) : null;
+    let fields;
+    if (kayit && kayit.bitis > Date.now()) {
+      fields = kayit.fields;
+    } else {
+      const spec = await awxRequestToServer(server, token, 'GET', `/api/v2/job_templates/${templateId}/survey_spec/`);
+      fields = (spec && spec.spec) || [];
+      if (bellek) {
+        if (_anketBellegi.size >= ANKET_BELLEK_MAX) _anketBellegi.delete(_anketBellegi.keys().next().value);
+        _anketBellegi.set(`${server.id}:${templateId}`, { fields, bitis: Date.now() + ANKET_BELLEK_TTL_MS });
+      }
+    }
     if (!fields.length) return extraVars;
     const out = { ...extraVars };
     const filled = [];
@@ -1344,6 +1365,8 @@ async function launchJobOnServer(
   extraVars = {},
   limit = '',
   requester = null,
+  // `anketBellegi`: anket tanimi kisa sure hatirlansin (bkz. fillRequiredSurveyDefaults). Varsayilan kapali.
+  { anketBellegi = false } = {},
 ) {
   const server = getServerById(serverId);
   if (!server) throw Object.assign(new Error('AWX sunucusu bulunamadı.'), { status: 404 });
@@ -1354,7 +1377,7 @@ async function launchJobOnServer(
 
   const token = await getTokenForServer(server);
   // Zorunlu survey alanlari (or. tbmwans_pwd) payload'da yoksa template varsayilanindan tamamla.
-  const withDefaults = await fillRequiredSurveyDefaults(server, token, id, extraVars);
+  const withDefaults = await fillRequiredSurveyDefaults(server, token, id, extraVars, { bellek: anketBellegi });
   const finalExtraVars = withRequesterVars(withDefaults, requester);
   const payload = { extra_vars: JSON.stringify(finalExtraVars) };
   if (limit) payload.limit = limit;
@@ -4138,6 +4161,8 @@ function initAnsibleRunner(app) {
         templateId: 0,
         extraVars,
         opsx: req.body?.opsx && typeof req.body.opsx === 'object' ? req.body.opsx : undefined,
+        // ScaleX (2026-10-13): {{scalex.*}} degiskenleri ornek degerlerle onizlenir.
+        scalex: req.body?.scalex && typeof req.body.scalex === 'object' ? req.body.scalex : undefined,
       });
       res.json({ ok: true, metadata });
     } catch (err) {

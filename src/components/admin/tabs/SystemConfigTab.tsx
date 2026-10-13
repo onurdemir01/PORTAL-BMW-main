@@ -711,6 +711,20 @@ const ENV_VARS: EnvVarMeta[] = [
     usedIn: 'src/components/scalex/StoppedPanel.tsx',
     restartRequired: false,
   },
+  // SMART KURALI ANAHTARI (2026-10-13). Asil yeri Admin > ScaleX Yonetimi > Onay kapilari
+  // (durum karti: tanimli mi, eksik ne); burada da gorunur ki ayar listesi eksiksiz olsun.
+  // Sunucu kaydetmeden once dogrular: `required` / `oco_only` disindaki deger 400 doner.
+  {
+    key: 'SCALEX_PROD_SMART_MODE',
+    label: 'Prod SMART Kuralı',
+    group: 'ScaleX',
+    description:
+      "Production değişikliklerinde SMART onayı. 'required' = gerekli (varsayılan; SMART tanımlı değilse değişiklik BAŞLAMAZ). 'oco_only' = SMART istenmez, yalnız OCO penceresi denetlenir; bu kipte başlayan her prod işlemi denetime ayrıca yazılır. Boş ya da tanınmayan değer = required.",
+    required: false,
+    example: 'required',
+    usedIn: 'server/scalex/config.cjs',
+    restartRequired: false,
+  },
   // ── Oturum ve giris (Faz E, 2026-10-02) — hepsi SICAK yuklenir; sunucu kaydetmeden
   // once dogrular (server/auth/oturum-ayarlari.cjs). Model: docs/OTURUM-YONETIMI.md
   {

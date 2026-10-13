@@ -17,6 +17,7 @@ const templatePreflight = require('../ansible/template-preflight.cjs');
 const { auditPortal } = require('../audit/index.cjs');
 
 const catalog = require('./catalog.cjs');
+const config = require('./config.cjs');
 const launch = require('./launch.cjs');
 const state = require('./state.cjs');
 const rbacFindings = require('./rbac-findings.cjs');
@@ -61,6 +62,18 @@ function rememberDiscoveryScope(serverId, jobId, scope) {
     DISCOVERY_SCOPE_CACHE.delete(DISCOVERY_SCOPE_CACHE.keys().next().value);
   }
   DISCOVERY_SCOPE_CACHE.set(`${serverId}:${jobId}`, scope);
+}
+
+// KESIF DEFTER ISLERI IS BASINA BIR KEZ (bkz. `/discover/:s/:j/status`). Boyut
+// JOB_OWNER_CACHE ile ayni gerekceyle sinirli: sinirsiz bir kume bellek sizintisidir.
+const DEFTER_YAPILDI = new Set();
+const DEFTER_MAX = 2000;
+function defterBirKez(serverId, jobId) {
+  const k = `${serverId}:${jobId}`;
+  if (DEFTER_YAPILDI.has(k)) return false;
+  if (DEFTER_YAPILDI.size >= DEFTER_MAX) DEFTER_YAPILDI.delete(DEFTER_YAPILDI.values().next().value);
+  DEFTER_YAPILDI.add(k);
+  return true;
 }
 
 // FAIL-CLOSED: sahiplik dogrulanamiyorsa erisim REDDEDILIR (503). Fail-open olsaydi bir
@@ -200,16 +213,6 @@ async function insertOperationRows({
 //
 // SET KAPALI: `proceed` disindaki her deger cagiranda tuketilmek ZORUNDA; taninmayan
 // bir deger FAIL-CLOSED ele alinir (bkz. change-gates.cjs sozlesmesi).
-// ── OCO AYARINI TEK YERDEN OKU ──────────────────────────────────────────────
-//
-// `gatePolicyFor` artik admin ayarini da hesaba katiyor. Ayari her cagri
-// yerinde AYRI AYRI okumak, uc ucun zamanla AYRISMASINA acik kapi birakirdi —
-// bu dosyada tam bu sinifta bir ariza yasandi: `/preview` ile `/run` farkli
-// politika uretiyordu ve ekran numara istiyor, sunucu numarayi kullanmiyordu.
-//
-// DB okunamazsa `{}` doner (ss-customizations fail-safe) ve `gatePolicyFor`
-// varsayilana duser: OCO ACIK, yalnizca prod. Yani bir DB tokezlemesi kapiyi
-// ACIK BIRAKIR, kapatmaz.
 // ── HEDEF BAZLI SECIM ───────────────────────────────────────────────────────
 //
 // Secim bugune kadar AD BAZLIYDI ve hedefler `uygulama × cluster` CARPIMI
@@ -238,21 +241,135 @@ function normalizeTargets(raw, { clusters, apps }) {
   return out.length ? out : null;
 }
 
-async function readOcoConfig() {
+// ── KAPI AYARINI TEK YERDEN OKU (2026-10-13) ───────────────────────────────
+//
+// SMART ve OCO ayarlari AYNI satirda durur (`ansible_ss_customizations`, ScaleX'in
+// kendi sablonu). Eskiden `/preview` yalnizca OCO kismini okuyordu; SMART'in hazir
+// olup olmadigini YALNIZCA `/run` biliyordu. Sonuc uretimde yasandi: ekran "SMART
+// kaydi acilacak" deyip OCO numarasi istedi, sunucu numara girildikten SONRA reddetti.
+//
+// OKUNAMAZSA `svcConfig: {}` doner: OCO varsayilana duser (ACIK, yalniz prod) ve SMART
+// "hazir degil" sayilir — bilgi yoklugu hicbir kapiyi INDIRMEZ. Hata saklanir; isi
+// gercekten baslatacak cagiran (`runScaleXGates`) onu oldugu gibi firlatir.
+async function readGateConfig() {
   try {
     const { templateId, serverId } = await resolveByKey(RUN_KEY);
     const cfg = await require('../ansible/ss-customizations.cjs').readCustom(serverId, templateId);
-    return cfg.ocoCheck || {};
+    return { serverId, templateId, svcConfig: cfg || {}, hata: null };
   } catch (e) {
-    console.warn('[ScaleX] OCO ayari okunamadi, varsayilan (prod acik) kullaniliyor:', e.message);
-    return {};
+    console.warn('[ScaleX] kapi ayari okunamadi, varsayilan (prod: OCO acik, SMART gerekli) kullaniliyor:', e.message);
+    return { serverId: null, templateId: null, svcConfig: {}, hata: e };
   }
+}
+
+// ── KAPI POLITIKASI — HER UC BURADAN (2026-10-13) ───────────────────────────
+//
+// `launch.gatePolicyFor` SAF bir fonksiyon; girdilerini toplamak (ayar satiri, SMART
+// kipi, SMART baglantisi, admin'in kisisel tercihi) bu fonksiyonun isi. `/preview`,
+// `/run`, `/restore-all` ve OCO tani ucu YALNIZCA bunu cagirir: girdileri her ucta ayri
+// toplamak, bu dosyada iki kez yasanan "ekran bir sey soyler, sunucu baska bir sey
+// yapar" ayrismasinin kaynagiydi.
+async function resolveGatePolicy(
+  req,
+  // `herkesIcin`: admin'in KISISEL atlama tercihi hesaba katilmaz. Yalniz durum karti
+  // kullanir — orada sorulan "siradan bir kullanici ne gorur", "ben ne gorurum" degil.
+  { action, executionMode, environment, tenant = '', clusters = [], namespace = '', herkesIcin = false },
+) {
+  const gateCfg = await readGateConfig();
+  let smartClientReady = false;
+  try {
+    smartClientReady = require('../smart/client.cjs').isConfigured() === true;
+  } catch {
+    smartClientReady = false;
+  }
+  const missing = launch.smartEksikleri(gateCfg.svcConfig.smartApproval, { smartClientReady });
+  const mode = config.smartMode().value;
+  // KISISEL TERCIH yalnizca sonucu DEGISTIREBILECEGI durumda okunur (bir DB okumasi):
+  // kip `required` ve calistirma `apply`. Okunamazsa `false` doner (admin-smart-atla
+  // FAIL-CLOSED) — atlama olmaz, onay istenir.
+  const adminSkip =
+    !herkesIcin && executionMode === 'apply' && mode === 'required'
+      ? await require('../ansible/admin-smart-atla.cjs').adminSmartAtliyor(req)
+      : false;
+  // ISTISNA KURALI: ortak kapinin kullandigi AYNI fonksiyon, AYNI kapi degiskenleri
+  // (`launch.buildGateVars`). Iki ayri eslestirme, ekranla sunucuyu yine ayirirdi.
+  const sa = gateCfg.svcConfig.smartApproval || {};
+  let skipRule = null;
+  if (sa.enabled && executionMode === 'apply') {
+    const es = require('../ansible/smart-gate.cjs').matchSkip(
+      sa,
+      launch.buildGateVars({ env: environment, tenant, action, executionMode, clusters, namespace }),
+    );
+    if (es.skip) skipRule = { field: es.field, value: es.value };
+  }
+  const policy = launch.gatePolicyFor({
+    action,
+    executionMode,
+    environment,
+    ocoConfig: gateCfg.svcConfig.ocoCheck || {},
+    smart: { mode, configured: missing.length === 0, missing, adminSkip, skipRule },
+  });
+  return { policy, gateCfg };
+}
+
+// ORTAK KAPININ 5xx'i KULLANICIYA ULASMAZ. Kurumsal ters-proxy 5xx govdelerini SPA
+// sayfasiyla degistiriyor (bkz. template-preflight.cjs, 2026-08-10 HAR'i): sunucu
+// "Smart talebi acilamadi: ..." derken ekran "Portal yeniden baslatiliyor, tekrar
+// deneyin" yaziyor ve kullanici ayni istegi tekrar tekrar gonderiyor (2026-10-13: bes
+// kez). Bilincli bir RET 4xx'tir; asil kod govdede `upstreamStatus` olarak durur.
+function istemciyeUlasan(status, body) {
+  const n = Number(status) || 500;
+  if (n < 500) return { status: n, body };
+  return { status: 409, body: { ...(body || {}), upstreamStatus: n } };
+}
+
+// ── SMART GEREKLI AMA HAZIR DEGIL: RET + IZ, TEK GOVDE ──────────────────────
+//
+// SIRA (2026-10-13). Bu ret 2026-09-20'de OCO kapisindan SONRAYA alinmisti: o gun OCO
+// koduna hic ulasilamadigi kanitlanmisti ve "kullanici once gercek OCO hatasini gorsun"
+// istenmisti. Uretimde tersi yasandi: kullanici OCO'yu DUZELTIP gecti, sonra bu duvara
+// carpti — ve OCO ne olursa olsun is zaten baslayamazdi. Ustelik sonraya almak bir ACIK
+// birakti: pencere henuz acilmamissa ortak kapi "zamanla" secimini kabul edip kayit
+// aciyor ve bu rede HIC ULASILMIYORDU; zamanlanan is pencere saatinde SMART'siz calisirdi.
+//
+// Artik engel `/preview`da BASTAN soyleniyor (ekran OCO numarasi istemez) ve burada ayni
+// kararla, AYNI METINLE reddediliyor. OCO kapisinin erisilebilirligi SMART devrede
+// degilken/hazirken olculur (bkz. scalex-kapi-matrisi.test.cjs).
+//
+// IKI CAGIRAN, TEK GOVDE: `/run` kilit almadan ve AWX sozlugunu kurmadan ONCE doner;
+// `runScaleXGates` (toplu geri alma dahil) ortak kapidan once ayni fonksiyonu cagirir.
+//
+// AYAR OKUNAMADIYSA asil sebep odur ("Template ID girilmemis" gibi); "SMART hazir degil"
+// demek kullaniciyi yanlis ekrana gonderirdi. Hata oldugu gibi yukari cikar.
+function engelKarari(req, policy, gateCfg, iz) {
+  if (gateCfg && gateCfg.hata) throw gateCfg.hata;
+  auditPortal(req, 'scalex_gate_decision', {
+    result: 'fail',
+    detail: JSON.stringify({
+      ...iz,
+      outcome: 'blocked',
+      code: policy.blocked.code,
+      missing: policy.smartMissing || [],
+    }),
+  });
+  return {
+    outcome: 'error',
+    status: 409,
+    body: {
+      ok: false,
+      code: policy.blocked.code,
+      gates: { oco: 'not_checked', smart: 'not_configured' },
+      missing: policy.smartMissing || [],
+      message: policy.blocked.message,
+    },
+  };
 }
 
 async function runScaleXGates({
   req,
   user,
   policy,
+  gateCfg,
   env,
   tenant,
   clusters,
@@ -266,7 +383,74 @@ async function runScaleXGates({
   ocoNumber,
   ocoAction,
 }) {
-  if (policy.smart !== 'require' && policy.oco !== 'require') return { outcome: 'proceed' };
+  const izDetayi = () =>
+    JSON.stringify({ env, tenant, clusters, namespace, apps, action, executionMode });
+  // SMART'SIZ GECEN PROD UYGULAMASI SESSIZ KALMAZ. Iki ayri yol, iki ayri iz:
+  //   * admin anahtari kapali   -> `scalex_smart_gate_disabled`
+  //   * admin'in kisisel tercihi -> `smart_onayi_admin_atladi` (Self Service ile AYNI eylem;
+  //     ortak kapi bu izi yalniz SMART ayari tanimliyken yaziyor, burada ayar olmasa da yazilir)
+  // Is GERCEKTEN ilerlerken yazilir (baslatma ya da zamanlama); OCO numarasi eksik diye
+  // donen bir el sikisma turu iz birakmaz.
+  const smartsizIz = () => {
+    if (policy.smartStatus === 'disabled_by_admin') {
+      auditPortal(req, 'scalex_smart_gate_disabled', { result: 'warn', detail: izDetayi() });
+    } else if (policy.smartStatus === 'admin_skip') {
+      require('../ansible/admin-smart-atla.cjs').atlamayiDenetle(req, 'scalex', {
+        env,
+        tenant,
+        clusters,
+        namespace,
+        action,
+      });
+    } else if (policy.smartStatus === 'skipped_by_rule') {
+      auditPortal(req, 'scalex_smart_skipped_by_rule', {
+        result: 'warn',
+        detail: JSON.stringify({
+          env, tenant, clusters, namespace, apps, action, executionMode,
+          rule: policy.smartSkipRule || null,
+        }),
+      });
+    }
+  };
+
+  // OCO KAPISI ADMIN TARAFINDAN KAPATILMIS HALDE gecen prod isi de SESSIZ KALMAZ: ayri bir
+  // eylem olarak denetime yazilir. SMART iziyle AYNI anlarda: is baslarken ya da onay
+  // bileti acilirken (onay gelince is OCO sorulmadan calisacak). Reddedilen istek yazmaz.
+  //
+  // 2026-10-14: bu iz eskiden fonksiyonun ORTASINDA yaziliyordu ve iki kapi da kapaliyken
+  // (admin anahtari + OCO kapali) asagidaki erken donus ona HIC ULASMIYORDU — prod'da
+  // hicbir kapidan gecmeyen is yalniz SMART izini birakiyordu.
+  const ocoKapaliIz = () => {
+    if (policy.ocoGateDisabled) {
+      auditPortal(req, 'scalex_oco_gate_disabled', { result: 'warn', detail: izDetayi() });
+    }
+  };
+
+  if (policy.smart !== 'require' && policy.oco !== 'require') {
+    ocoKapaliIz();
+    smartsizIz();
+    return { outcome: 'proceed' };
+  }
+
+  // SMART gerekli ama hazir degil: EN BASTA, hicbir dis cagri yapmadan (bkz. engelKarari).
+  if (policy.blocked) {
+    return engelKarari(req, policy, gateCfg, { env, tenant, clusters, namespace, apps, action, executionMode });
+  }
+
+  // Buradan sonrasi GERCEK sablon kimligi ister (SMART bileti ve zamanlama kaydi ona
+  // baglanir). Okunamadiysa is BASLATILMAZ — hata oldugu gibi yukari cikar.
+  if (!gateCfg || gateCfg.serverId == null || gateCfg.templateId == null) {
+    throw (
+      (gateCfg && gateCfg.hata) ||
+      Object.assign(new Error('ScaleX kapı ayarı okunamadı; iş güvenlik gereği başlatılmadı.'), {
+        status: 409,
+        code: 'scalex_not_configured',
+      })
+    );
+  }
+  const runServerId = gateCfg.serverId;
+  const runTemplateId = gateCfg.templateId;
+  const svcConfig = gateCfg.svcConfig || {};
 
   const gateVars = launch.buildGateVars({
     env,
@@ -276,58 +460,16 @@ async function runScaleXGates({
     clusters,
     namespace,
   });
-  // SMART/OCO AYARLARI URETIMDEKI YAPIDAN GELIR. Self Service'teki nginx isleri
-  // gibi, ayarlar `ansible_ss_customizations` tablosunda ScaleX'in KENDI
-  // (awxServerId, templateId) satirinda durur ve admin bunlari `FieldOverridesModal`
-  // ekranindan — nginx isi icin kullandigi ekranin AYNISINDAN — yonetir.
-  // Env degiskeni ya da client'tan gelen deger KULLANILMAZ: birincisi ikinci bir
-  // ayar yuzeyi olurdu, ikincisi kullanicinin kendi kapisini yapilandirmasi demekti.
-  const { templateId: runTemplateId, serverId: runServerId } = await resolveByKey(RUN_KEY);
-  const svcConfig = await require('../ansible/ss-customizations.cjs').readCustom(
-    runServerId,
-    runTemplateId,
-  );
-  // FAIL-CLOSED: SMART "gerekli" iken AYAR YOKSA is BASLATILMAZ.
-  //
-  // `smart-gate.isSmartRequired` bos ayarda `false` doner (`!smartApproval.enabled`).
-  // Bu, Self Service icin dogru varsayilan — orada SMART opsiyonel bir eklenti. Ama
-  // ScaleX'te `policy.smart === 'require'` demek "bu islem onaysiz yapilmamali"
-  // demek; ayar satiri yoksa sessizce onaysiz gecmek, kapiyi HIC KOYMAMAKLA ayni
-  // sey olurdu. Ustelik ekran kullaniciya "SMART kaydi acilacak" YAZIYOR — sessiz
-  // gecis, kullaniciya YALAN soylenmesi anlamina gelirdi.
-  //
-  // ── SIRA DEGISTI (2026-09-20): SMART 503'u OCO KAPISINDAN SONRA ─────────────
-  //
-  // Bu kontrol daha once BURADA, `runChangeGates` cagrisindan 30 satir ONCE
-  // donuyordu. OCO kapisi ise `runChangeGates` ICINDE. Sonuc: uretimde
-  // `ansible_ss_customizations`ta ScaleX satiri hic olmadigi icin HER prod
-  // `apply` istegi 503 ile oluyordu ve **OCO koduna hic ulasilmiyordu**.
-  //
-  // KANIT (prod.app.log, 13,5 gun):
-  //   `grep -icE "scalex.*oco|oco.*scalex"` -> 0        (iki dosyada da SIFIR)
-  //   `smart_not_configured` -> 11, sonuncusu 2026-09-20T08:20:11
-  // Yani ScaleX'te OCO "bozuk" degildi — ERISILEMEZDI.
-  //
-  // Artik kapilar BAGIMSIZ: OCO once kosar ve kendi kararini soyler; SMART
-  // ayari eksikse is YINE BASLATILMAZ (fail-closed korunur) ama kullanici
-  // once GERCEK OCO hatasini gorur, yaniltici bir SMART mesajini degil.
-  const smartYapilandirilmamis = policy.smart === 'require' && !svcConfig.smartApproval?.enabled;
 
   // ── OCO KAPISI AYARI ────────────────────────────────────────────────────────
   //
-  // `enabled` ARTIK ADMIN AYARINDAN okunuyor. Onceden burada sabit `true` vardi
-  // (`policy.oco === 'require'`), yani `FieldOverridesModal`daki "OCO Kontrolu"
-  // anahtari ScaleX icin HICBIR SEY YAPMIYORDU — admin acip kapatiyor, davranis
-  // degismiyordu.
-  //
-  // VARSAYILAN ACIK (`!== false`): ayar satiri YOKSA bugunku davranis aynen
-  // surer. Varsayilani kapali yapmak, uretimdeki gibi satirin hic olmadigi bir
-  // kurulumda kapiyi SESSIZCE indirmek olurdu.
+  // `enabled` ADMIN AYARINDAN okunur. VARSAYILAN ACIK (`!== false`): ayar satiri YOKSA
+  // kapi SESSIZCE inmez.
   const ocoCfg = svcConfig.ocoCheck || {};
   const ocoAdminEnabled = ocoCfg.enabled !== false;
   const ocoEnvironments = Array.isArray(ocoCfg.environments) ? ocoCfg.environments : null;
   const overrides = {
-    // `restore` icin OCO UYARIR ama ENGELLEMEZ → kapiyi hic acmiyoruz; gerekce
+    // `restore` icin OCO UYARIR ama ENGELLEMEZ -> kapiyi hic acmiyoruz; gerekce
     // zaten cagiranda zorunlu kilindi ve kayda + SMART'a gidiyor.
     ocoCheck: {
       enabled: ocoAdminEnabled && policy.oco === 'require',
@@ -335,19 +477,13 @@ async function runScaleXGates({
       // kurali gecerli kalir (bkz. change-gates.isOcoGateApplicable).
       ...(ocoEnvironments ? { environments: ocoEnvironments } : {}),
     },
-    smartApproval: svcConfig.smartApproval || {},
+    // SMART AYARI YALNIZCA SMART DEVREDEYKEN ortak kapiya gider. Kip `oco_only` ya da
+    // admin'in kisisel tercihi varken dolu bir ayar gecmek, ortak kapinin bilet acmasi
+    // demek olurdu; ayrica bu nesne ZAMANLANAN plana da yazilir ve pencere saatinde
+    // onay kapisini ORADAN okurlar.
+    smartApproval: policy.smart === 'require' ? svcConfig.smartApproval || {} : {},
   };
 
-  // KAPI KAPALIYSA SESSIZ KALMAZ. Kullanicinin karari "kapatilabilsin ama
-  // GORUNUR olsun" idi: prod bir `apply`, OCO kapisi admin tarafindan kapatilmis
-  // halde kosuyorsa bu denetime AYRI bir eylem olarak yazilir. Sessiz bir kapali
-  // kapi, kapiyi hic koymamakla ayni seydir.
-  if (policy.oco === 'require' && !ocoAdminEnabled) {
-    auditPortal(req, 'scalex_oco_gate_disabled', {
-      result: 'warn',
-      detail: JSON.stringify({ env, tenant, clusters, namespace, apps, action, executionMode }),
-    });
-  }
   const radius = launch.computeBlastRadius({
     clusters,
     apps,
@@ -355,13 +491,24 @@ async function runScaleXGates({
     action,
     executionMode,
   });
+  const scalexOzet = scalexSmartBaglami({
+    user,
+    env,
+    tenant,
+    clusters,
+    namespace,
+    apps,
+    action,
+    targetReplicas,
+    radius,
+    reason,
+    ocoNumber,
+  });
   const decision = await launch.gates.runChangeGates({
     // GERCEK sunucu/template kimligi — 0 DEGIL. SMART onayi geldiginde bilet
     // `runner.cjs` tarafindan oynatiliyor ve orada `getServerById(ticket.awxServerId)`
     // cagriliyor; 0 yazilsaydi onaylanmis bir prod islemi "AWX sunucusu bulunamadi"
-    // ile SESSIZCE olur, kullanici onayladigi isin hic calismadigini yalnizca hata
-    // logundan ogrenebilirdi. Template kimligi de gercek olmali, yoksa oynatma
-    // YANLIS sablonu tetiklerdi.
+    // ile SESSIZCE olurdu.
     server: { id: runServerId },
     templateId: runTemplateId,
     username: user.username,
@@ -374,53 +521,33 @@ async function runScaleXGates({
     specFields: [],
     templateName: 'ScaleX',
     ocoNumber,
-    // OCO PENCERESI HENUZ ACILMADIYSA: artik KULLANICIYA SORULUYOR (2026-09-20).
-    //
-    // Onceden burada `ocoAction: 'later'` SABITI vardi ve `createOcoAwxSchedule`
-    // bilerek hata firliyordu; yani pencere kapaliyken istek 200 OK donup
-    // SESSIZCE hicbir sey yapmiyordu. Kullanici acisindan: "OCO numarasini
-    // girdim, hicbir sey olmadi."
-    //
-    // Simdi ekran "zamanlayayim mi?" diye soruyor ve secim buraya geliyor.
-    // ZAMANLAMA PORTALDA TUTULUYOR (`preferPortalScheduler`), AWX-native degil:
-    // istenen sey "her noktada iptal VE GUNCELLEME" ve bunu AWX-native bir
-    // schedule'da yapmak AWX API'sinden silip yeniden kurmayi gerektirirdi —
-    // kayit ile AWX arasinda ayrisma riski. Portal kaydinda ise poller kesinti
-    // saatinde `launchOrRequestApproval`i cagiriyor ve SMART kapisi ORADA
-    // devreye giriyor; yani zamanlama onay kapisini ATLAMIYOR.
-    ocoAction: ocoAction === 'schedule' ? 'schedule' : 'later',
+    // PENCERE HENUZ ACILMADIYSA kullaniciya sorulur; "zamanla" secimi YALNIZCA
+    // `policy.schedulable` iken ortak kapiya gider (bkz. launch.gatePolicyFor). Istemci
+    // alani elle gonderse de sunucu kendi kararini uygular.
+    ocoAction: policy.schedulable && ocoAction === 'schedule' ? 'schedule' : 'later',
+    // ZAMANLAMA PORTALDA TUTULUR (AWX-native degil): kayit portalda iptal edilir ve
+    // guncellenir; poller kesinti saatinde isi baslatir.
     preferPortalScheduler: true,
     // Gorunurluk: kullanici KENDI ve GRUBUNUN kayitlarini gorur/iptal eder.
     ownerGroups: Array.isArray(user.groups) ? user.groups : null,
     createOcoAwxSchedule: async () => {
       // `preferPortalScheduler: true` oldugu icin ortak kapi buraya HIC gelmez.
       // Yine de firlatiyoruz: sessizce AWX-native zamanlamaya dusmek, kaydin
-      // portal tarafindan guncellenememesi demek olurdu.
+      // portal tarafindan iptal edilememesi demek olurdu.
       throw Object.assign(
         new Error('ScaleX zamanlamasi portal tarafinda tutulur — AWX schedule kullanilmaz.'),
         { status: 500 },
       );
     },
     friendlyAwxError: (e) => ({ status: e.status || 502, message: e.message }),
-    buildSmartMetadata: () =>
-      buildScaleXSmartMetadata({
-        user,
-        env,
-        tenant,
-        clusters,
-        namespace,
-        apps,
-        action,
-        radius,
-        reason,
-        ocoNumber,
-      }),
+    // ALAN ESLEMESI ADMIN'IN SABLONUNDAN (2026-10-13). Eskiden bu kanca sablonu YOK
+    // SAYIP sabit bir DIZI donduruyordu; Smart istemcisi nesne bekledigi icin anahtarlar
+    // "0, 1, 2..." oluyordu ve bilet hic acilamazdi.
+    buildSmartMetadata: (metadataFieldsRaw, ctx) =>
+      buildScaleXSmartMetadata(metadataFieldsRaw, ctx, scalexOzet),
   });
 
-  // IZ: kapinin her karari — is baslamamis olsa bile — denetime yazilir. Kapida
-  // duran calistirmalar uzun sure ScaleX adina HICBIR audit satiri birakmiyordu;
-  // yalnizca `selfservice_*` kayitlari kaliyordu ve hangi ScaleX istegine ait
-  // olduklari kayitlardan okunamiyordu.
+  // IZ: kapinin her karari — is baslamamis olsa bile — denetime yazilir.
   if (decision?.outcome !== 'proceed') {
     auditPortal(req, 'scalex_gate_decision', {
       detail: JSON.stringify({
@@ -436,21 +563,23 @@ async function runScaleXGates({
         ocoRequired: decision?.body?.ocoRequired ?? false,
         ocoDeferred: decision?.body?.ocoDeferred ?? false,
         ocoExpired: decision?.body?.ocoExpired ?? false,
+        ocoScheduled: decision?.body?.ocoScheduled ?? false,
         pendingApproval: decision?.body?.pendingApproval ?? false,
         ticketId: decision?.body?.ticketId ?? null,
       }),
     });
   }
 
-  if (decision?.outcome === 'error')
-    return { outcome: 'error', status: decision.status, body: decision.body };
+  if (decision?.outcome === 'error') {
+    return { outcome: 'error', ...istemciyeUlasan(decision.status, decision.body) };
+  }
   if (decision?.outcome === 'respond') {
-    // SMART bileti ACILDI: is AWX'te henuz YOK, ama portal kaydi SIMDI yazilmali.
-    // Yazilmazsa onay geldiginde is calisir ve portal bunu hic ogrenemez —
-    // ayna guncellenmez, geri alma yolu kapanir (bkz. insertOperationRows).
-    if (decision.body?.pendingApproval && decision.body?.ticketId) {
-      await insertOperationRows({
-        requestKey: `smart:${decision.body.ticketId}`,
+    const body = decision.body || {};
+    // PORTAL KAYDI SIMDI YAZILMALI — is AWX'te henuz YOK. Yazilmazsa is sonradan
+    // (onayla ya da pencere saatinde) calisir ve portal bunu hic ogrenemez: ayna
+    // guncellenmez, uygulama "Su an durdurulmus"a dusmez, geri alma kisayolu cikmaz.
+    const bekleyenKayit = (ek) =>
+      insertOperationRows({
         username: user.username,
         usernameGroups: user.groups,
         env,
@@ -463,54 +592,69 @@ async function runScaleXGates({
         apps,
         serverId: runServerId,
         jobId: null,
-        status: 'PENDING_APPROVAL',
         ocoNumber,
         reason,
-        smartTicketId: Number(decision.body.ticketId),
+        ...ek,
       });
+    if (body.pendingApproval && body.ticketId) {
+      await bekleyenKayit({
+        requestKey: `smart:${body.ticketId}`,
+        status: 'PENDING_APPROVAL',
+        smartTicketId: Number(body.ticketId),
+      });
+      ocoKapaliIz();
+    } else if (body.ocoScheduled && body.scheduleId != null) {
+      // ZAMANLANDI (2026-10-13). Bu dal uzun sure HICBIR kayit yazmiyordu: pencere
+      // saatinde OCO zamanlayicisi isi `performSsLaunch` ile baslatiyor ve o yol
+      // ScaleX'i BILMIYOR. Uzlastirici `oco:<kayit>` anahtarindan kaydi izler
+      // (bkz. reconciler.adoptScheduledLaunches).
+      await bekleyenKayit({ requestKey: `oco:${body.scheduleId}`, status: 'SCHEDULED' });
+      smartsizIz();
     }
-    return { outcome: 'respond', body: decision.body };
+    // Ekran "zamanlayayim mi" diye YALNIZCA zamanlanabilir bir istekte sorar.
+    return {
+      outcome: 'respond',
+      body: body.ocoDeferred ? { ...body, schedulable: policy.schedulable === true } : body,
+    };
   }
   if (decision?.outcome !== 'proceed') {
     console.error('[ScaleX] taninmayan kapi karari — is BASLATILMADI:', JSON.stringify(decision));
     return {
       outcome: 'error',
-      status: 500,
+      status: 409,
       body: {
         ok: false,
+        upstreamStatus: 500,
         message:
           'Değişiklik kapısı beklenmeyen bir sonuç döndürdü; iş güvenlik gereği başlatılmadı.',
       },
     };
   }
 
-  // ── SMART FAIL-CLOSED — ARTIK OCO KAPISINDAN SONRA ──────────────────────────
-  //
-  // `isSmartRequired` bos ayarda `false` doner (Self Service icin dogru varsayilan;
-  // orada SMART opsiyonel bir eklenti). Ama ScaleX'te `policy.smart === 'require'`
-  // demek "bu islem onaysiz yapilmamali" demek; ayar satiri yoksa sessizce gecmek
-  // kapiyi HIC KOYMAMAKLA ayni sey olurdu. Ustelik ekran kullaniciya "SMART kaydi
-  // acilacak" YAZIYOR — sessiz gecis, kullaniciya YALAN soylenmesi olurdu.
-  //
-  // Buraya TASINDI (once `runChangeGates`ten ONCE donuyordu): boylece OCO kapisi
-  // her halukarda kosar ve kullanici once GERCEK OCO hatasini gorur. Yanit,
-  // hangi kapinin ne dedigini AYRI AYRI tasir.
-  if (smartYapilandirilmamis) {
+  // SON EMNIYET: politika "SMART gerekli" dedi ama ortak kapi bilet ACMADAN gecti.
+  // Bugun buna yol acan bir dal yok (istisna kurali ve admin tercihi politikada
+  // cozuluyor); yarin ortak kapiya eklenecek bir atlama yolu ScaleX'i SESSIZCE
+  // onaysiz birakmasin diye is burada durur.
+  if (policy.smart === 'require') {
+    console.error('[ScaleX] SMART gerekli dendi ama ortak kapi bilet acmadan gecti — is BASLATILMADI');
+    auditPortal(req, 'scalex_gate_decision', {
+      result: 'fail',
+      detail: JSON.stringify({ env, tenant, clusters, namespace, apps, action, executionMode, outcome: 'inconsistent' }),
+    });
     return {
       outcome: 'error',
-      status: 503,
+      status: 409,
       body: {
         ok: false,
-        code: 'smart_not_configured',
-        gates: { oco: 'passed', smart: 'not_configured' },
+        code: 'gate_inconsistent',
         message:
-          'ScaleX için SMART onay yapılandırması yapılmamış; değişiklik uygulanmadı. ' +
-          'Admin > ScaleX Yönetimi > Onay kapıları ekranından ScaleX şablonu için ' +
-          'SMART onayını (flowKey ve metadata alanları) tanımlayın. ' +
-          'Bu arada "Önce kontrol et" modu kullanılabilir — hiçbir değişiklik yapmaz.',
+          'SMART onayı gerekiyor ancak onay kaydı açılmadı; iş güvenlik gereği başlatılmadı. Yöneticinize bildirin.',
       },
     };
   }
+
+  ocoKapaliIz();
+  smartsizIz();
   return { outcome: 'proceed' };
 }
 
@@ -577,6 +721,37 @@ function asyncRoute(fn) {
     });
 }
 
+// ── BILINCLI RET KULLANICIYA ULASSIN (2026-10-13) ───────────────────────────
+//
+// `asyncRoute` hatanin `status`unu aynen doner. ScaleX'in BILEREK firlattigi bazi
+// hatalar 5xx tasiyor: "Template ID girilmemis" (501), AWX'e ulasilamadi (502/503/504).
+// Kurumsal ters-proxy 5xx govdelerini degistirdigi icin (bkz. `istemciyeUlasan`) bu
+// mesajlar ekrana HIC ulasmiyor; kullanici "portal yeniden baslatiliyor" okuyup ayni
+// istegi tekrarliyor.
+//
+// YALNIZCA KULLANICININ BASLATTIGI ISTEKLERDE (POST) kullanilir. Yoklama (GET status)
+// uclari `asyncRoute`ta KALIR: yoklayicilar gecici hatayi FIRLATILAN hatadan sayiyor
+// (`safeJson` JSON olmayan 5xx'te firlatir); 4xx JSON donmek, sinirli yeniden denemeyi
+// sinirsiz bir "bitmedi" dongusune cevirirdi.
+//
+//   501            -> 409  yapilandirma eksik (kullanici tekrar deneyerek cozemez)
+//   502 / 503 / 504 -> 424  bagimli sistem (AWX) yanit vermedi
+//   500 ve digerleri -> AYNEN (beklenmeyen hata; genel mesaj dogrudur)
+function eylemRoute(fn) {
+  return (req, res) =>
+    fn(req, res).catch((err) => {
+      const asil = err.status || 500;
+      const status = asil === 501 ? 409 : [502, 503, 504].includes(asil) ? 424 : asil;
+      if (asil >= 500) console.error('[ScaleX]', err);
+      res.status(status).json({
+        ok: false,
+        message: err.message,
+        code: err.code || (asil === 501 ? 'scalex_not_configured' : status === 424 ? 'awx_unreachable' : undefined),
+        ...(status !== asil ? { upstreamStatus: asil } : {}),
+      });
+    });
+}
+
 // Ortak girdi cozumleme + anti-TOCTOU dogrulama. HER calistirmada bastan kosar;
 // client'in gonderdigi hicbir sey "daha once dogrulanmisti" diye atlanmaz.
 async function resolveScope(req, { requireApps = true } = {}) {
@@ -628,21 +803,74 @@ async function resolveScope(req, { requireApps = true } = {}) {
   return { user, env, tenant, namespace, namespaces, clusters, apps };
 }
 
+// ── ON KONTROL BELLEGI (2026-10-13) ─────────────────────────────────────────
+//
+// OLCUM (prod.app.log, 13 baslatma): `POST /discover` ortalama 2 694 ms — AWX isi
+// kuyruga GIRMEDEN once. Sebep: her baslatma once AWX'teki TUM sablon listesini sayfa
+// sayfa cekiyordu (`template-preflight.findTemplate` -> `listTemplatesForServer`),
+// sonra anket tanimini soruyor, sonra isi baslatiyordu.
+//
+// Artik TEK sablon okunur ve "degisken kabul ediyor" karari kisa sure hatirlanir.
+//   * YALNIZCA OLUMLU karar hatirlanir. "Kapali" hatirlanmaz: admin kutuyu isaretledigi
+//     anda kullanicinin sonraki denemesi gecmeli.
+//   * Okunamayan ayar hatirlanmaz ve BLOKLAMAZ (eski kontrolle ayni: fail-open).
+//   * EMNIYET AGI: bellek bayatken admin "Prompt on launch"i kapatirsa AWX degiskenleri
+//     sessizce yutar. Baslatma yaniti bunu `ignored_fields` ile SOYLER; o durumda is
+//     iptal edilir, bellek silinir ve ayni 409 doner (asagida).
+const ONKONTROL_TTL_MS = 5 * 60 * 1000;
+const ONKONTROL_BELLEK = new Map();
+const onkontrolAnahtari = (serverId, templateId) => `${Number(serverId)}:${Number(templateId)}`;
+
+async function assertSablonDegiskenKabulEdiyor(serverId, templateId, extraVars, { label }) {
+  if (!extraVars || typeof extraVars !== 'object' || Object.keys(extraVars).length === 0) return;
+  const k = onkontrolAnahtari(serverId, templateId);
+  if ((ONKONTROL_BELLEK.get(k) || 0) > Date.now()) return;
+  let ayar;
+  try {
+    ayar = await runner.getTemplateLaunchSettingsOnServer(serverId, templateId);
+  } catch {
+    return; // ayar okunamadi -> fail-open, HATIRLANMAZ
+  }
+  if (ayar.askVariablesOnLaunch === false) {
+    throw templatePreflight.promptKapaliHatasi({
+      templateId,
+      templateName: ayar.name,
+      label,
+      degiskenSayisi: Object.keys(extraVars).length,
+    });
+  }
+  if (ayar.askVariablesOnLaunch === true) ONKONTROL_BELLEK.set(k, Date.now() + ONKONTROL_TTL_MS);
+}
+
 async function launchOnAwx({ keyName, extraVars, req, label }) {
   const { templateId, serverId } = await resolveByKey(keyName);
   // "Prompt on launch > Variables" kapaliysa AWX gonderdigimiz her seyi SESSIZCE yutar,
   // HTTP 201 doner ve playbook survey varsayilanlariyla calisir. Bu tuzak bu kurumda
   // uretimde yasandi; is BASLATILMADAN once kesiliyor.
-  await templatePreflight.assertTemplateAcceptsExtraVars(serverId, templateId, extraVars, {
-    label,
-  });
+  await assertSablonDegiskenKabulEdiyor(serverId, templateId, extraVars, { label });
   const job = await runner.launchJobOnServer(
     serverId,
     templateId,
     extraVars,
     '',
     req.session?.user,
+    // Anket tanimi kisa sure hatirlansin (her baslatmada bir AWX cagrisi daha).
+    { anketBellegi: true },
   );
+  // EMNIYET AGI: AWX degiskenleri YOK SAYDIYSA is yanlis girdiyle kosuyor demektir.
+  const yutulan = (job.ignoredFields || []).filter((ad) => String(ad).startsWith('extra_vars'));
+  if (yutulan.length) {
+    ONKONTROL_BELLEK.delete(onkontrolAnahtari(serverId, templateId));
+    await runner
+      .cancelJobOnServer(serverId, job.jobId)
+      .catch((e) => console.warn(`[ScaleX] yutulan degiskenli is #${job.jobId} iptal edilemedi:`, e.message));
+    throw templatePreflight.promptKapaliHatasi({
+      templateId,
+      templateName: '',
+      label,
+      degiskenSayisi: yutulan.length,
+    });
+  }
   rememberJobOwner(serverId, job.jobId, currentUser(req).username);
   try {
     await db.query(
@@ -804,7 +1032,7 @@ function initScaleX(app) {
   // ── Kesif (salt okunur) ───────────────────────────────────────────────────
   router.post(
     '/discover',
-    asyncRoute(async (req, res) => {
+    eylemRoute(async (req, res) => {
       const mode = ['workloads', 'state', 'health', 'capabilities'].includes(req.body?.mode)
         ? req.body.mode
         : 'workloads';
@@ -849,52 +1077,73 @@ function initScaleX(app) {
       // Yeni playbook sozluk geldiginde YALNIZCA onu okur; birlesik listeye
       // DUSMEZ. Dusseydi, sozlukte olmayan cluster baskasinin listesiyle
       // sinirlanirdi — kismi onbellegin asil tehlikesi tam olarak buydu.
-      let extraKinds = '';
-      let clusterKinds = {};
-      if (mode !== 'capabilities') {
-        try {
-          const bulunan = await clusterCaps.kindsForScope({
-            env,
-            tenant,
-            clusterNames: clusters,
-          });
-          if (bulunan && bulunan.length) extraKinds = bulunan.join(',');
-        } catch (e) {
-          // BEST-EFFORT: onbellek okunamadiysa kesif YINE calisir, yalnizca
-          // hizlanmaz. Ters yon (okunamayinca kesfi dusurmek) kabul edilemez.
-          console.warn('[ScaleX] yetenek onbellegi okunamadi, tam tarama:', e.message);
-        }
-        try {
-          // AYRI OKUMA, AYRI KURAL: `kindsForScope` kapsamin TAMAMI icin
-          // guvenilir kayit ister ve tek cluster eksikse hepsini soguk yola
-          // dusurur. Harita her cluster'i KENDI kaydiyla degerlendirir; eksik
-          // olan yalnizca kendisi soguk yolu kosar.
-          clusterKinds = await clusterCaps.kindsPerCluster({
-            env,
-            tenant,
-            clusterNames: clusters,
-          });
-        } catch (e) {
-          console.warn('[ScaleX] cluster basina yetenek haritasi okunamadi:', e.message);
-        }
-      }
+      // ── BAGIMSIZ OKUMALAR AYNI ANDA (2026-10-13) ─────────────────────────────
+      //
+      // Bes okuma (iki yetenek onbellegi, jump server, cluster ayrintisi, canli
+      // yoklama listesi) birbirinden BAGIMSIZ ama sirayla bekleniyordu; her biri bir
+      // DB turu. Kurallar AYNEN duruyor: yetenek ve yoklama okumalari BEST-EFFORT
+      // (dusen okuma kesfi DUSURMEZ, yalnizca hizlandirmaz), jump server ve cluster
+      // ayrintisi ZORUNLU (dusen okuma istegi dusurur).
+      const admin = require('../logx/v2/admin.cjs');
+      const [bulunan, clusterKinds, terminal, meta, liveProbe] = await Promise.all([
+        // `kindsForScope` kapsamin TAMAMI icin guvenilir kayit ister.
+        mode === 'capabilities'
+          ? null
+          : clusterCaps.kindsForScope({ env, tenant, clusterNames: clusters }).catch((e) => {
+              console.warn('[ScaleX] yetenek onbellegi okunamadi, tam tarama:', e.message);
+              return null;
+            }),
+        // AYRI OKUMA, AYRI KURAL: harita her cluster'i KENDI kaydiyla degerlendirir;
+        // eksik olan yalnizca kendisi soguk yolu kosar.
+        mode === 'capabilities'
+          ? {}
+          : clusterCaps.kindsPerCluster({ env, tenant, clusterNames: clusters }).catch((e) => {
+              console.warn('[ScaleX] cluster basina yetenek haritasi okunamadi:', e.message);
+              return {};
+            }),
+        admin.resolveTerminalHosts(env, tenant, clusters),
+        admin.resolveClusterMeta(env, tenant, clusters),
+        // CANLI YOKLAMA LISTESI — yalnizca `state` kesfinde. LISTEYI SUNUCU DOLDURUR,
+        // ISTEMCI DEGIL: karar icin gereken TAM liste aynadadir. `target_app_names`DEN
+        // AYRI: o degisken ConfigMap listelemesini de suzuyor; bu listeyle suzseydik
+        // cluster'da durdurulmus ama portalda kaydi OLMAYAN uygulamalar gorunmez olurdu.
+        mode !== 'state'
+          ? []
+          : state
+              .listMirror({ env, tenant })
+              .then((rows) => [
+                ...new Set(
+                  rows
+                    .filter((r) => clusters.includes(r.clusterName) && r.namespace === namespace)
+                    .map((r) => r.appName),
+                ),
+              ])
+              .catch((e) => {
+                // BEST-EFFORT: uretilemezse kesif YINE KOSAR, yalnizca "ayakta mi"
+                // sorusu cevapsiz kalir.
+                console.warn('[ScaleX] canli yoklama listesi uretilemedi:', e.message);
+                return [];
+              }),
+      ]);
+      // IKI BICIM BIRDEN GONDERILIR:
+      //   `scalex_cluster_kinds` -> CLUSTER BASINA sozluk (yeni, asil yol)
+      //   `scalex_extra_kinds`   -> tek birlesik liste (ESKI paketler icin)
+      // "Onbellek yok"u "CRD yok" saymak, olceklenebilir operator nesnelerini SESSIZCE
+      // listeden dusurmek olurdu; guvenilir kayit YOKSA bos gecilir ve betik tam tarar.
+      const extraKinds = bulunan && bulunan.length ? bulunan.join(',') : '';
 
       const extraVars = {
         scalex_clusters_override: launch.buildScaleXClusterCatalog({
           env,
           tenant,
           clusters,
-          hosts: (await require('../logx/v2/admin.cjs').resolveTerminalHosts(env, tenant, clusters))
-            .hosts,
-          meta: await require('../logx/v2/admin.cjs').resolveClusterMeta(env, tenant, clusters),
+          hosts: terminal.hosts,
+          meta,
         }),
         target_platform: tenant,
         target_environment: env,
         target_namespace: namespace,
-        // EK NAMESPACE'LER — yalnizca BIRDEN FAZLA varsa gonderilir. Tek
-        // elemanli bir liste gondermek, eski paketlerde hicbir sey degistirmezdi
-        // ama yeni paketin "cok namespace" yoluna girmesine yol acardi; kazanci
-        // olmayan bir yol degisikligi.
+        // EK NAMESPACE'LER — yalnizca BIRDEN FAZLA varsa gonderilir.
         ...(ekNamespaceVar ? { scalex_target_namespaces: namespaces } : {}),
         scalex_target_clusters: clusters,
         discovery_mode: mode,
@@ -910,37 +1159,7 @@ function initScaleX(app) {
               ),
             }
           : {}),
-        // CANLI YOKLAMA LISTESI — yalnizca `state` kesfinde. Portal, bu kapsamdaki
-        // ayna satirlarinin uygulama adlarini gonderir; betik her biri icin bir
-        // `LIVE` satiri (istenen/mevcut/hazir replica) basar. `refreshDrift` bunu
-        // kullanarak "ConfigMap yok ama uygulama AYAKTA" satirlarini kapatir.
-        //
-        // LISTEYI SUNUCU DOLDURUR, ISTEMCI DEGIL: karar icin gereken TAM liste
-        // aynadadir ve istemciye sormak, sekmesini kapatan her kullanicida yoklamanin
-        // sessizce eksik kalmasi demekti (`refreshDrift`in kendi gerekcesiyle AYNI).
-        //
-        // `target_app_names`DEN AYRI: o degisken ConfigMap listelemesini de suzuyor;
-        // bu listeyle suzseydik cluster'da durdurulmus ama portalda kaydi OLMAYAN
-        // uygulamalar (`unknown_to_portal`) gorunmez olurdu.
-        ...(await (async () => {
-          if (mode !== 'state') return {};
-          try {
-            const rows = await state.listMirror({ env, tenant });
-            const wanted = [
-              ...new Set(
-                rows
-                  .filter((r) => clusters.includes(r.clusterName) && r.namespace === namespace)
-                  .map((r) => r.appName),
-              ),
-            ];
-            return wanted.length ? { scalex_live_probe_apps: wanted.join(',') } : {};
-          } catch (e) {
-            // Yoklama listesi BEST-EFFORT: uretilemezse kesif YINE KOSAR, yalnizca
-            // "ayakta mi" sorusu cevapsiz kalir ve sapma eski davranisla isaretlenir.
-            console.warn('[ScaleX] canli yoklama listesi uretilemedi:', e.message);
-            return {};
-          }
-        })()),
+        ...(liveProbe.length ? { scalex_live_probe_apps: liveProbe.join(',') } : {}),
       };
       const job = await launchOnAwx({
         keyName: DISCOVERY_KEY,
@@ -1029,7 +1248,7 @@ function initScaleX(app) {
   // portal ona YAZMIYOR (bkz. docs/OCP-NAMESPACE-KATALOGU-KARARI.md).
   router.post(
     '/namespaces/discover',
-    asyncRoute(async (req, res) => {
+    eylemRoute(async (req, res) => {
       const b = req.body || {};
       const env = String(b.env || '').trim();
       const tenant = String(b.tenant || '').trim();
@@ -1169,80 +1388,18 @@ function initScaleX(app) {
       const status = await runner.getJobStatusOnServer(serverId, jobId);
       const parsed = result.extractDiscoveryResult(status.artifacts);
 
-      // KESIF SONUCU DENETIME. Baslatma ani zaten yaziliyordu (`scalex_discovery`) ama
-      // NE KESFEDILDIGI hicbir yere yazilmiyordu: is bittikten sonra AWX retention'i
-      // dolunca sonuc tamamen kayboluyordu. Ozet yeterli — ham satirlar denetim
-      // kaydinin 2000 karakterlik `detail` sinirini zaten asardi.
-      if (status.finished) {
-        auditPortal(req, 'scalex_discovery_result', {
-          result: parsed && parsed.overallStatus === 'error' ? 'fail' : 'ok',
-          detail: JSON.stringify({
-            serverId,
-            jobId,
-            mode: parsed ? parsed.mode : null,
-            overallStatus: parsed ? parsed.overallStatus : null,
-            namespace: parsed ? parsed.namespace : null,
-            namespaces: parsed ? parsed.namespaces : [],
-            clusters: parsed ? parsed.clusters : [],
-            failedClusters: parsed ? parsed.failedClusters : [],
-            counts: parsed ? parsed.counts : null,
-            workloads: parsed && parsed.workloads ? parsed.workloads.length : undefined,
-            states: parsed && parsed.states ? parsed.states.length : undefined,
-          }),
-        });
-      }
-
-      // OKUNAMAYAN TIPLER BIRIKTIRILIR. Kesif bunlari zaten raporluyordu ama rapor
-      // yalnizca O ANKI kullanicinin ekraninda kaliyordu: ayni talep platform ekibine
-      // tekrar tekrar aciliyor, hangi namespace'te neyin eksik oldugu hicbir yerde
-      // toplu durmuyordu. `refreshDrift` ile AYNI gerekce: istemciye ikinci bir cagri
-      // yaptirmak, sekmesini kapatan her kullanicida kaydin sessizce dusmesi demekti.
-      if (status.finished && parsed && parsed.mode === 'workloads') {
-        try {
-          // SATIR BASINA NAMESPACE: tablo `UNIQUE(env,tenant,cluster,namespace,kind)`.
-          // Tek bir `parsed.namespace` gecmek, cok namespace'li bir iste B
-          // namespace'inin eksiklerini A'nin satirina yazmak olurdu.
-          await rbacFindings.record({
-            env: parsed.environment,
-            tenant: parsed.platform,
-            namespace: parsed.namespace,
-            kindReports: (parsed.kindReports || []).map((k) => ({
-              ...k,
-              namespace: k.namespace || parsed.namespace,
-            })),
-          });
-        } catch (e) {
-          // Birikim BEST-EFFORT: yazilamadiysa kesif sonucu GIZLENMEZ. Bu bir denetim
-          // kaydi degil, bir kolaylik; DB tokezlemesi calisan bir kesfi dusurmemeli.
-          console.warn('[ScaleX] RBAC bulgulari kaydedilemedi:', e.message);
-        }
-      }
-
-      // SURE OLCUMU KAYDEDILIR — HER MODDA.
+      // ── YANIT ONCE, DEFTER ISLERI SONRA (2026-10-13) ───────────────────────
       //
-      // `workloads` ile sinirlandirilmadi: `capabilities` taramasi kesfin en
-      // pahali iki kalemini ONCEDEN hesaplayan mod ve onun maliyeti de tam
-      // olarak olculmesi gereken sey. `state`/`health` de ayni AWX + login
-      // sabit maliyetini odyor; yalnizca birini olcmek, tabanin yarisini
-      // gormemek olurdu.
-      if (status.finished && parsed && (parsed.timing || []).length) {
-        try {
-          await discoveryTiming.record({
-            env: parsed.environment,
-            tenant: parsed.platform,
-            namespace: parsed.namespace,
-            timing: parsed.timing,
-            awxJobId: jobId,
-            // Is duzeyi kirilim: AWX zamanlari + playbook paylari.
-            job: { created: status.created, started: status.started, finished: status.finished },
-            playbookTiming: parsed.playbookTiming,
-          });
-        } catch (e) {
-          // BEST-EFFORT: olcum yazilamadiysa kesif sonucu GIZLENMEZ.
-          console.warn('[ScaleX] kesif suresi kaydedilemedi:', e.message);
-        }
-      }
-
+      // Is bittiginde bu uc alti ayri kayit yaziyordu (denetim, RBAC bulgulari, sure
+      // olcumu, sapma, yetenek envanteri, uygulama katalogu) ve YANITI hepsi bitene
+      // kadar bekletiyordu: kullanici, sonucu zaten elde olan bir kesfin ekranini
+      // birkac DB turu daha bekliyordu (prod.app.log: `GET /discover` ort. 1,7 sn).
+      // Ustelik uc her yoklamada yeniden kostugu icin ayni kayitlar tekrar yaziliyor,
+      // denetime ayni sonuc birden cok kez dusuyordu.
+      //
+      // TEK ISTISNA sapma tazelemesi (`state` kipi): "Su an durdurulmus" paneli
+      // `finished`i gorur gormez listeyi yeniden okuyor; tazeleme yanittan SONRA
+      // bitseydi panel bir onceki taramanin isaretlerini gosterirdi. O yuzden beklenir.
       // SAPMA TAZELEME BURADA. `state` kesfi bittiginde portal aynasini cluster gercegiyle
       // karsilastirip `drift_status`u guncelliyoruz.
       //
@@ -1289,88 +1446,166 @@ function initScaleX(app) {
         }
       }
 
-      // YETENEK ENVANTERINI YAZ — `capabilities` modunda.
-      //
-      // Her cluster AYRI satira yazilir: tek bir birlesik liste yazmak, bir
-      // cluster'da OLMAYAN bir CRD'yi orada VARMIS gibi gostermek olurdu.
-      //
-      // OKUNAMAMIS tarama da yazilir ama `resourcesReadable: false` ile — o
-      // satir ekranda gorunur (admin "burada yetki eksik" der) ama kesfi
-      // HIZLANDIRMAK icin KULLANILMAZ.
-      // MODA DEGIL SATIRA BAKILIR: paket v18-20'nin `workloads` kesfi de soguk
-      // yolda yetenek satirlari basiyordu (v21 basmaz; onbellegi arka plan isi
-      // doldurur). AWX'te eski paket kosarken o satirlar yok sayilmasin.
-      if (status.finished && parsed && (parsed.capabilities || []).length) {
-        try {
-          await capsRefresh.kaydetYetenekler(parsed, {
-            save: (rec) => clusterCaps.save(rec),
-            scannedBy: currentUser(req).username,
-            awxJobId: jobId,
+      // Defter isleri IS BASINA BIR KEZ ve yanittan SONRA. Hicbiri kesfin sonucunu
+      // degistirmez; hepsi best-effort (her biri kendi hatasini yutar ve loglar).
+      const defterIsleri = async () => {
+        // KESIF SONUCU DENETIME. Baslatma ani zaten yaziliyordu (`scalex_discovery`) ama
+        // NE KESFEDILDIGI hicbir yere yazilmiyordu: is bittikten sonra AWX retention'i
+        // dolunca sonuc tamamen kayboluyordu. Ozet yeterli — ham satirlar denetim
+        // kaydinin 2000 karakterlik `detail` sinirini zaten asardi.
+        if (status.finished) {
+          auditPortal(req, 'scalex_discovery_result', {
+            result: parsed && parsed.overallStatus === 'error' ? 'fail' : 'ok',
+            detail: JSON.stringify({
+              serverId,
+              jobId,
+              mode: parsed ? parsed.mode : null,
+              overallStatus: parsed ? parsed.overallStatus : null,
+              namespace: parsed ? parsed.namespace : null,
+              namespaces: parsed ? parsed.namespaces : [],
+              clusters: parsed ? parsed.clusters : [],
+              failedClusters: parsed ? parsed.failedClusters : [],
+              counts: parsed ? parsed.counts : null,
+              workloads: parsed && parsed.workloads ? parsed.workloads.length : undefined,
+              states: parsed && parsed.states ? parsed.states.length : undefined,
+            }),
           });
-        } catch (e) {
-          // BEST-EFFORT: yazilamadiysa tarama sonucu GIZLENMEZ; yalnizca bir
-          // sonraki kesif hizlanmaz.
-          console.warn('[ScaleX] yetenek envanteri yazilamadi:', e.message);
         }
-      }
 
-      // KATALOGU BESLE — YALNIZCA TAM NAMESPACE TARAMASINDA.
-      //
-      // Kullanicinin istegi: "her kesfi db ye yaz bir kere, db de olani oradan oku".
-      // Yazilan sey YALNIZCA KIMLIK: ad + tip. Replica/image/HPA gibi CANLI alanlar
-      // BILEREK `null` gecilir — bayat bir replica sayisi yanlis isleme, bayat bir
-      // `restorable` bayragi `STATE;FAIL` ile dusen bir ise yol acar (R2 bekcisinin
-      // gerekcesi). Katalog "bu namespace'te ne var" sorusunu cevaplar, "su anda ne
-      // durumda" sorusunu DEGIL.
-      //
-      // DARALTILMIS KESIF YAZILMAZ: `putApps` gorulmeyen uygulamalari is_deleted=1
-      // yapar; 1 uygulamalik bir kesfi yazmak kalan 49'u silerdi.
-      const kapsam = DISCOVERY_SCOPE_CACHE.get(`${serverId}:${jobId}`);
-      if (status.finished && parsed && parsed.mode === 'workloads' && kapsam && kapsam.full) {
-        try {
-          // ── ANAHTAR (CLUSTER, NAMESPACE) ─────────────────────────────────
-          //
-          // Bir is artik birden fazla namespace tarayabiliyor. Gruplamayi
-          // yalnizca cluster'a gore yapip tek bir `parsed.namespace` yazmak, B
-          // namespace'inin is yuklerini A altina yazmak demekti — ve `putApps`
-          // gorulmeyen uygulamalari `is_deleted=1` yaptigi icin B'nin katalogu
-          // KOMPLE SILINIRDI. Bu depoda en pahali hata sinifi olan "sessiz
-          // eksik"in en yikici bicimi.
-          const basarisiz = new Set(parsed.failedClusters || []);
-          const taranan = (parsed.namespaces || []).filter(Boolean);
-          const perScope = new Map();
-          const anahtar = (c, ns) => `${c}\u0000${ns}`;
-          for (const c of parsed.clusters || []) {
-            if (basarisiz.has(c)) continue;
-            // TARANMIS her namespace icin bir girdi — is yuku BULUNMASA DA.
-            // Bos birakmak, "tarandi ve hicbir sey yok" halini yazamamak olurdu
-            // ve o namespace'in bayat katalogu sonsuza dek kalirdi.
-            for (const ns of taranan) perScope.set(anahtar(c, ns), []);
-          }
-          for (const w of parsed.workloads || []) {
-            const arr = perScope.get(anahtar(w.cluster, w.namespace || parsed.namespace));
-            // Taranamayan bir cluster'in ya da taranmamis bir namespace'in satiri
-            // olmamali; olduysa da yazmayiz.
-            if (arr) arr.push({ name: w.name, kind: w.kind, replicas: null, image: null });
-          }
-          const entries = [...perScope.entries()].map(([k, objects]) => {
-            const [clusterName, namespace] = k.split('\u0000');
-            return { clusterName, namespace, status: 'ok', objects };
-          });
-          if (entries.length) {
-            await ocpCache.putApps({
+        // OKUNAMAYAN TIPLER BIRIKTIRILIR. Kesif bunlari zaten raporluyordu ama rapor
+        // yalnizca O ANKI kullanicinin ekraninda kaliyordu: ayni talep platform ekibine
+        // tekrar tekrar aciliyor, hangi namespace'te neyin eksik oldugu hicbir yerde
+        // toplu durmuyordu. `refreshDrift` ile AYNI gerekce: istemciye ikinci bir cagri
+        // yaptirmak, sekmesini kapatan her kullanicida kaydin sessizce dusmesi demekti.
+        if (status.finished && parsed && parsed.mode === 'workloads') {
+          try {
+            // SATIR BASINA NAMESPACE: tablo `UNIQUE(env,tenant,cluster,namespace,kind)`.
+            // Tek bir `parsed.namespace` gecmek, cok namespace'li bir iste B
+            // namespace'inin eksiklerini A'nin satirina yazmak olurdu.
+            await rbacFindings.record({
               env: parsed.environment,
               tenant: parsed.platform,
-              entries,
-              source: 'discovery',
+              namespace: parsed.namespace,
+              kindReports: (parsed.kindReports || []).map((k) => ({
+                ...k,
+                namespace: k.namespace || parsed.namespace,
+              })),
             });
+          } catch (e) {
+            // Birikim BEST-EFFORT: yazilamadiysa kesif sonucu GIZLENMEZ. Bu bir denetim
+            // kaydi degil, bir kolaylik; DB tokezlemesi calisan bir kesfi dusurmemeli.
+            console.warn('[ScaleX] RBAC bulgulari kaydedilemedi:', e.message);
           }
-        } catch (e) {
-          // BEST-EFFORT: katalog yazilamadiysa kesif sonucu GIZLENMEZ. Kullanici
-          // listeyi yine gorur, yalnizca bir sonraki acilis hizlanmaz.
-          console.warn('[ScaleX] uygulama katalogu guncellenemedi:', e.message);
         }
-      }
+
+        // SURE OLCUMU KAYDEDILIR — HER MODDA.
+        //
+        // `workloads` ile sinirlandirilmadi: `capabilities` taramasi kesfin en
+        // pahali iki kalemini ONCEDEN hesaplayan mod ve onun maliyeti de tam
+        // olarak olculmesi gereken sey. `state`/`health` de ayni AWX + login
+        // sabit maliyetini odyor; yalnizca birini olcmek, tabanin yarisini
+        // gormemek olurdu.
+        if (status.finished && parsed && (parsed.timing || []).length) {
+          try {
+            await discoveryTiming.record({
+              env: parsed.environment,
+              tenant: parsed.platform,
+              namespace: parsed.namespace,
+              timing: parsed.timing,
+              awxJobId: jobId,
+              // Is duzeyi kirilim: AWX zamanlari + playbook paylari.
+              job: { created: status.created, started: status.started, finished: status.finished },
+              playbookTiming: parsed.playbookTiming,
+            });
+          } catch (e) {
+            // BEST-EFFORT: olcum yazilamadiysa kesif sonucu GIZLENMEZ.
+            console.warn('[ScaleX] kesif suresi kaydedilemedi:', e.message);
+          }
+        }
+
+        // YETENEK ENVANTERINI YAZ — `capabilities` modunda.
+        //
+        // Her cluster AYRI satira yazilir: tek bir birlesik liste yazmak, bir
+        // cluster'da OLMAYAN bir CRD'yi orada VARMIS gibi gostermek olurdu.
+        //
+        // OKUNAMAMIS tarama da yazilir ama `resourcesReadable: false` ile — o
+        // satir ekranda gorunur (admin "burada yetki eksik" der) ama kesfi
+        // HIZLANDIRMAK icin KULLANILMAZ.
+        // MODA DEGIL SATIRA BAKILIR: paket v18-20'nin `workloads` kesfi de soguk
+        // yolda yetenek satirlari basiyordu (v21 basmaz; onbellegi arka plan isi
+        // doldurur). AWX'te eski paket kosarken o satirlar yok sayilmasin.
+        if (status.finished && parsed && (parsed.capabilities || []).length) {
+          try {
+            await capsRefresh.kaydetYetenekler(parsed, {
+              save: (rec) => clusterCaps.save(rec),
+              scannedBy: currentUser(req).username,
+              awxJobId: jobId,
+            });
+          } catch (e) {
+            // BEST-EFFORT: yazilamadiysa tarama sonucu GIZLENMEZ; yalnizca bir
+            // sonraki kesif hizlanmaz.
+            console.warn('[ScaleX] yetenek envanteri yazilamadi:', e.message);
+          }
+        }
+
+        // KATALOGU BESLE — YALNIZCA TAM NAMESPACE TARAMASINDA.
+        //
+        // Kullanicinin istegi: "her kesfi db ye yaz bir kere, db de olani oradan oku".
+        // Yazilan sey YALNIZCA KIMLIK: ad + tip. Replica/image/HPA gibi CANLI alanlar
+        // BILEREK `null` gecilir — bayat bir replica sayisi yanlis isleme, bayat bir
+        // `restorable` bayragi `STATE;FAIL` ile dusen bir ise yol acar (R2 bekcisinin
+        // gerekcesi). Katalog "bu namespace'te ne var" sorusunu cevaplar, "su anda ne
+        // durumda" sorusunu DEGIL.
+        //
+        // DARALTILMIS KESIF YAZILMAZ: `putApps` gorulmeyen uygulamalari is_deleted=1
+        // yapar; 1 uygulamalik bir kesfi yazmak kalan 49'u silerdi.
+        const kapsam = DISCOVERY_SCOPE_CACHE.get(`${serverId}:${jobId}`);
+        if (status.finished && parsed && parsed.mode === 'workloads' && kapsam && kapsam.full) {
+          try {
+            // ── ANAHTAR (CLUSTER, NAMESPACE) ─────────────────────────────────
+            //
+            // Bir is artik birden fazla namespace tarayabiliyor. Gruplamayi
+            // yalnizca cluster'a gore yapip tek bir `parsed.namespace` yazmak, B
+            // namespace'inin is yuklerini A altina yazmak demekti — ve `putApps`
+            // gorulmeyen uygulamalari `is_deleted=1` yaptigi icin B'nin katalogu
+            // KOMPLE SILINIRDI. Bu depoda en pahali hata sinifi olan "sessiz
+            // eksik"in en yikici bicimi.
+            const basarisiz = new Set(parsed.failedClusters || []);
+            const taranan = (parsed.namespaces || []).filter(Boolean);
+            const perScope = new Map();
+            const anahtar = (c, ns) => `${c}\u0000${ns}`;
+            for (const c of parsed.clusters || []) {
+              if (basarisiz.has(c)) continue;
+              // TARANMIS her namespace icin bir girdi — is yuku BULUNMASA DA.
+              // Bos birakmak, "tarandi ve hicbir sey yok" halini yazamamak olurdu
+              // ve o namespace'in bayat katalogu sonsuza dek kalirdi.
+              for (const ns of taranan) perScope.set(anahtar(c, ns), []);
+            }
+            for (const w of parsed.workloads || []) {
+              const arr = perScope.get(anahtar(w.cluster, w.namespace || parsed.namespace));
+              // Taranamayan bir cluster'in ya da taranmamis bir namespace'in satiri
+              // olmamali; olduysa da yazmayiz.
+              if (arr) arr.push({ name: w.name, kind: w.kind, replicas: null, image: null });
+            }
+            const entries = [...perScope.entries()].map(([k, objects]) => {
+              const [clusterName, namespace] = k.split('\u0000');
+              return { clusterName, namespace, status: 'ok', objects };
+            });
+            if (entries.length) {
+              await ocpCache.putApps({
+                env: parsed.environment,
+                tenant: parsed.platform,
+                entries,
+                source: 'discovery',
+              });
+            }
+          } catch (e) {
+            // BEST-EFFORT: katalog yazilamadiysa kesif sonucu GIZLENMEZ. Kullanici
+            // listeyi yine gorur, yalnizca bir sonraki acilis hizlanmaz.
+            console.warn('[ScaleX] uygulama katalogu guncellenemedi:', e.message);
+          }
+        }
+      };
 
       res.json({
         ok: true,
@@ -1379,6 +1614,11 @@ function initScaleX(app) {
         failed: !!status.failed,
         result: parsed,
       });
+      if (status.finished && defterBirKez(serverId, jobId)) {
+        defterIsleri().catch((e) =>
+          console.warn('[ScaleX] kesif defter isleri tamamlanamadi:', e.message),
+        );
+      }
     }),
   );
 
@@ -1386,7 +1626,7 @@ function initScaleX(app) {
   // Asil karar `/run`da YENIDEN verilir; bu uc yalnizca ekrani besler.
   router.post(
     '/preview',
-    asyncRoute(async (req, res) => {
+    eylemRoute(async (req, res) => {
       const { env, tenant, namespace, clusters, apps } = await resolveScope(req);
       const action = String(req.body?.action || 'stop');
       const executionMode = String(req.body?.executionMode || 'dry_run');
@@ -1417,16 +1657,26 @@ function initScaleX(app) {
         executionMode,
         selectedTargets,
       });
-      const policy = launch.gatePolicyFor({
+      const { policy, gateCfg } = await resolveGatePolicy(req, {
         action,
         executionMode,
         environment: env,
-        ocoConfig: await readOcoConfig(),
+        tenant,
+        clusters,
+        namespace,
       });
       res.json({
         ok: true,
         blastRadius: radius,
         gatePolicy: policy,
+        // ScaleX sablonu cozulemediyse HICBIR is baslayamaz (on kontrol dahil). Ekran bunu
+        // "Calistir"dan once soyler; `/run` ayni metinle reddeder.
+        configError: gateCfg.hata
+          ? {
+              code: gateCfg.hata.status === 501 ? 'scalex_not_configured' : 'config_unreadable',
+              message: gateCfg.hata.message,
+            }
+          : null,
         hpaPinAllowed: launch.isHpaPinAllowed({
           action,
           targetReplicas,
@@ -1440,7 +1690,7 @@ function initScaleX(app) {
   // ── Calistirma ────────────────────────────────────────────────────────────
   router.post(
     '/run',
-    asyncRoute(async (req, res) => {
+    eylemRoute(async (req, res) => {
       const { user, env, tenant, namespace, clusters, apps } = await resolveScope(req);
       const action = String(req.body?.action || '');
       const executionMode = String(req.body?.executionMode || '');
@@ -1522,12 +1772,22 @@ function initScaleX(app) {
         });
       }
 
-      const policy = launch.gatePolicyFor({
+      const { policy, gateCfg } = await resolveGatePolicy(req, {
         action,
         executionMode,
         environment: env,
-        ocoConfig: await readOcoConfig(),
+        tenant,
+        clusters,
+        namespace,
       });
+      // SMART GEREKLI AMA HAZIR DEGIL: geri alma kilidi ve AWX sozlugu kurulmadan ONCE
+      // don — engelli bir istek kilit alip birakmasin, AWX/DB'ye gitmesin.
+      if (policy.blocked) {
+        const ret = engelKarari(req, policy, gateCfg, {
+          env, tenant, clusters, namespace, apps, action, executionMode,
+        });
+        return res.status(ret.status).json(ret.body);
+      }
       // Geri alma OCO penceresi disinda da calisabilir ama GEREKCESIZ calisamaz —
       // iz kalmali ve gerekce hem portal kaydina hem SMART metadata'sina gitmeli.
       if (policy.oco === 'warn' && !reason) {
@@ -1596,6 +1856,7 @@ function initScaleX(app) {
           req,
           user,
           policy,
+          gateCfg,
           env,
           tenant,
           clusters,
@@ -1686,17 +1947,33 @@ function initScaleX(app) {
       const jobId = Number(req.params.jobId);
       const denied = await denyIfNotOwner(req, serverId, jobId);
       if (denied) return res.status(denied.status).json({ ok: false, message: denied.message });
-      // BURADA CIKTI CANLI GOSTERILIYOR (`AnsibleLogTerminal`), bu yuzden kesif
-      // yolundaki "bitmeden indirme" cozumu UYGULANAMAZ — terminal bos kalirdi.
-      // Onun yerine `runner.cjs`'in `ss/job-status` ucunda kanitlanmis desen:
-      // is KOSARKEN artimli cekim (yalnizca yeni satirlar), is BITINCE tam cekim.
+      // CIKTI CANLI GOSTERILIYOR (`AnsibleLogTerminal`), bu yuzden kesif yolundaki
+      // "hic indirme" cozumu burada UYGULANAMAZ — terminal bos kalirdi.
       //
-      // Bitmis iste tam cekim SART: kullanicinin gordugu son metin ve arsiv
-      // hicbir zaman artimlardan TUREMEZ. Onbellek satiri da orada birakilir.
-      const status = await runner.getJobStatusOnServer(serverId, jobId);
-      const output = await runner
-        .getJobOutputOnServer(serverId, jobId, { artimli: !status.finished })
-        .catch(() => ({ output: '' }));
+      // ── SONUC CIKTIYI BEKLEMEZ (2026-10-13) ────────────────────────────────
+      //
+      // Yapilandirilmis sonuc `set_stats` artifact'indan gelir ve durum cagrisiyla
+      // HAZIRDIR. Eskiden bitmis iste once ciktinin TAMAMI indiriliyordu ve yanit o
+      // bitene kadar bekliyordu; ustelik ekran `finished`i gorunce ayni ucu BIR DAHA
+      // cagiriyordu (ikinci tam indirme). Kullanici, AWX'te bitmis bir isin sonucunu
+      // iki indirme sonra goruyordu.
+      //
+      //   * varsayilan : durum + ARTIMLI cikti AYNI ANDA istenir (iki AWX turu yerine
+      //                  birinin suresi). Bitmis iste de artimli doner; `outputFinal: false`
+      //                  ekrana "son metin ayrica gelecek" der.
+      //   * ?cikti=tam : ekran is bitince BIR KEZ ister; tam cekim. Kullanicinin gordugu
+      //                  son metin hicbir zaman artimlardan TUREMEZ.
+      const tamCikti = String(req.query?.cikti || '') === 'tam';
+      const bosCikti = () => ({ output: '' });
+      const [status, artimli] = await Promise.all([
+        runner.getJobStatusOnServer(serverId, jobId),
+        tamCikti
+          ? null
+          : runner.getJobOutputOnServer(serverId, jobId, { artimli: true }).catch(bosCikti),
+      ]);
+      const output = tamCikti
+        ? await runner.getJobOutputOnServer(serverId, jobId).catch(bosCikti)
+        : artimli;
       const parsed = result.extractScaleXResult(status.artifacts);
       if (status.finished) await finalizeOperation({ serverId, jobId, status, parsed });
       res.json({
@@ -1705,6 +1982,8 @@ function initScaleX(app) {
         finished: !!status.finished,
         failed: !!status.failed,
         output: output.output || '',
+        // `false`: bu metin artimli cekimden; is bittiyse ekran tam metni `?cikti=tam` ile ister.
+        outputFinal: tamCikti,
         result: parsed,
         // Portal katalogu gonderdigi halde playbook DOSYAYA dustuyse AWX template'inde
         // "Prompt on launch > Variables" kapali demektir — kullanici bunu bilmeli.
@@ -1718,7 +1997,7 @@ function initScaleX(app) {
 
   router.post(
     '/cancel/:serverId/:jobId',
-    asyncRoute(async (req, res) => {
+    eylemRoute(async (req, res) => {
       const serverId = Number(req.params.serverId);
       const jobId = Number(req.params.jobId);
       const denied = await denyIfNotOwner(req, serverId, jobId);
@@ -1799,7 +2078,7 @@ function initScaleX(app) {
 
   router.post(
     '/adopt',
-    asyncRoute(async (req, res) => {
+    eylemRoute(async (req, res) => {
       const user = currentUser(req);
       const { env, tenant, namespace, clusters } = await resolveScope(req, { requireApps: false });
       const appName = String(req.body?.appName || '').trim();
@@ -1849,7 +2128,7 @@ function initScaleX(app) {
   // devralir ve gerekce hem portal kaydina hem SMART metadata'sina gider.
   router.post(
     '/restore-all',
-    asyncRoute(async (req, res) => {
+    eylemRoute(async (req, res) => {
       const user = currentUser(req);
       const env = String(req.body?.env || '').trim();
       const tenant = String(req.body?.tenant || '').trim();
@@ -1890,17 +2169,21 @@ function initScaleX(app) {
       // ama kod dogrudan `launchOnAwx` cagiriyordu. Yani prod'da tekil geri alma SMART
       // kaydi acarken TOPLU geri alma hicbir onay olmadan calisiyordu — kapiyi bir
       // dugmeyle atlamak mumkundu.
-      const policy = launch.gatePolicyFor({
-        action: 'restore',
-        executionMode: 'apply',
-        environment: env,
-        ocoConfig: await readOcoConfig(),
-      });
-
       const launched = [];
       const pendingApproval = [];
       const blocked = [];
       for (const g of groups.values()) {
+        // GRUP BASINA: SMART istisna kurali namespace'e bakabilir; tek bir politika
+        // butun gruplara uygulansaydi ekranin soyledigi ile kapinin yaptigi ayrisirdi.
+        // Ayar satiri kisa omurlu bellekten gelir (ss-customizations), ek maliyet kucuk.
+        const { policy, gateCfg } = await resolveGatePolicy(req, {
+          action: 'restore',
+          executionMode: 'apply',
+          environment: env,
+          tenant,
+          clusters: [g.cluster],
+          namespace: g.namespace,
+        });
         // TOPLU GERI ALMA: HPA pin UYGULANMAZ (her uygulama icin ayri pin ayari
         // tekil geri almada mumkun ama toplu islemde guvenli degil — HPA minReplicas
         // uygulama bazli degisir ve toplu sabitleme yanlis uygulamayi etkileyebilir).
@@ -1953,6 +2236,7 @@ function initScaleX(app) {
           req,
           user,
           policy,
+          gateCfg,
           env,
           tenant,
           clusters: [g.cluster],
@@ -2081,7 +2365,7 @@ function initScaleX(app) {
   // Sahip, GRUP UYESI ve Admin iptal edebilir; iptal EDEN her zaman kaydedilir.
   router.post(
     '/oco-schedules/:id/cancel',
-    asyncRoute(async (req, res) => {
+    eylemRoute(async (req, res) => {
       const u = currentUser(req);
       const ocoStore = require('../oco/store.cjs');
       const rec = await ocoStore.get(Number(req.params.id));
@@ -2096,6 +2380,27 @@ function initScaleX(app) {
         });
         return res.status(403).json({ ok: false, message: 'Bu kayit sizin ya da grubunuzun degil.' });
       }
+      // ── YALNIZCA `SCHEDULED` KAYIT BURADAN IPTAL EDILIR (2026-10-13) ─────────
+      //
+      // `cancelBy` yalnizca PORTAL KAYDINI degistirir. Kayit `AWX_SCHEDULED` ise is
+      // AWX'in KENDI zamanlayicisinda bekliyordur; `PENDING_APPROVAL` ise acik bir SMART
+      // bileti vardir. Ikisinde de portal kaydini "iptal" yapmak isi DURDURMAZ: AWX
+      // zamanlamasi yine tetikler, bilet sonradan onaylanirsa is yine baslar — ekran
+      // "iptal edildi" derken prod'da durdurma calisir.
+      //
+      // ScaleX bu iki duruma artik kayit SOKMUYOR (SMART devredeyken zamanlama kapali,
+      // bkz. launch.gatePolicyFor). Eski yoldan kalmis bir kayit varsa yaniltici bir
+      // "iptal edildi" yerine RED ve dogru adres: Admin iptali AWX zamanlamasini da siler.
+      if (['AWX_SCHEDULED', 'PENDING_APPROVAL'].includes(rec.status)) {
+        return res.status(409).json({
+          ok: false,
+          code: 'schedule_needs_admin_cancel',
+          message:
+            `Bu kayıt "${rec.status}" durumunda: iş AWX zamanlayıcısında ya da SMART onayında ` +
+            'bekliyor ve buradan iptal edilirse yine çalışabilir. Bir yöneticiden ' +
+            'Admin > Zamanlanmış İşler ekranından iptal etmesini isteyin.',
+        });
+      }
       const iptal = await ocoStore.cancelBy(rec.id, {
         cancelledBy: u.username,
         note: String(req.body?.note || '').slice(0, 1000),
@@ -2108,6 +2413,17 @@ function initScaleX(app) {
           message: `Kayit iptal edilemedi — durumu "${rec.status}". Tetiklenmis ya da zaten kapanmis olabilir.`,
         });
       }
+      // ISLEM SATIRLARI DA KAPANIR: zamanlama aninda `oco:<kayit>` anahtariyla yazilmisti.
+      // Uzlastirici bunu bir sonraki turda zaten yapar; burada ANINDA yapiyoruz ki is
+      // gecmisi iptalden hemen sonra "zamanlandi" demesin. Yazilamazsa iptal YINE gecerli.
+      await db
+        .query(
+          `UPDATE scalex_operations
+              SET status = 'CANCELLED', error_message = $2, updated_at = GETUTCDATE()
+            WHERE request_key = $1 AND status = 'SCHEDULED'`,
+          [`oco:${rec.id}`, `Zamanlama iptal edildi (${u.username}).`],
+        )
+        .catch((e) => console.warn('[ScaleX] iptal edilen zamanlamanin islem satiri kapatilamadi:', e.message));
       auditPortal(req, 'scalex_oco_schedule_cancelled', {
         detail: JSON.stringify({ id: rec.id, owner: rec.username, oco: rec.ocoNumber }),
       });
@@ -2120,7 +2436,7 @@ function initScaleX(app) {
   // ezmek olurdu (store.update kosullu UPDATE ile bunu zorluyor).
   router.post(
     '/oco-schedules/:id/update',
-    asyncRoute(async (req, res) => {
+    eylemRoute(async (req, res) => {
       const u = currentUser(req);
       const ocoStore = require('../oco/store.cjs');
       const rec = await ocoStore.get(Number(req.params.id));
@@ -2177,6 +2493,101 @@ function initScaleX(app) {
         detail: JSON.stringify({ id: rec.id, oncekiOco: rec.ocoNumber, yeniOco: guncel.ocoNumber }),
       });
       res.json({ ok: true, record: guncel });
+    }),
+  );
+
+  // ── ADMIN: ONAY KAPILARININ DURUMU (2026-10-13) ───────────────────────────
+  //
+  // "ScaleX prod'da neden calismiyor" sorusunun cevabi hicbir ekranda YOKTU: admin
+  // sayfasi kurali anlatiyordu ("SMART yapilandirilmadan prod'da apply calismaz") ama
+  // SU ANKI durumu gostermiyordu. Bu uc kullanicinin `/preview`da aldigi KARARIN
+  // AYNISINI (ayni cozucu) admin'e verir: kip, SMART hazir mi, eksik ne, OCO acik mi.
+  //
+  // SALT OKUNUR; SMART bileti acmaz. `onizleme` sablonu ORNEK degerlerle render eder:
+  // admin, Smart'a hangi alanlarin gidecegini gercek bir talep acmadan gorur. Kip
+  // DEGISIKLIGI bu uctan yapilmaz: Admin > Sistem'in ucu (denetimli) kullanilir.
+  router.get(
+    '/admin/gate-status',
+    asyncRoute(async (req, res) => {
+      if (currentUser(req).role !== 'Admin') {
+        return res.status(403).json({ ok: false, message: 'Bu ekran yalnizca yoneticilere acik.' });
+      }
+      const { policy, gateCfg } = await resolveGatePolicy(req, {
+        action: 'stop',
+        executionMode: 'apply',
+        environment: 'prod',
+        herkesIcin: true,
+      });
+      const smartApproval = gateCfg.svcConfig.smartApproval || {};
+      // Admin'in KENDI tetiklemelerinde SMART atlaniyor mu (kisisel tercih) — kartta ayri
+      // satir; yukaridaki `policy` siradan kullanicinin gorecegi karardir.
+      const kendiAtlamasi = await require('../ansible/admin-smart-atla.cjs').adminSmartAtliyor(req);
+      const istisna = require('../ansible/smart-gate.cjs').parseSkipRules(smartApproval.skipWhen);
+      const ornek = scalexSmartBaglami({
+        user: currentUser(req),
+        env: 'prod',
+        tenant: 'ornek-tenant',
+        clusters: ['ornek-cluster-1', 'ornek-cluster-2'],
+        namespace: 'ornek-namespace',
+        apps: ['ornek-api', 'ornek-worker'],
+        action: 'stop',
+        radius: { targets: 4 },
+        reason: 'ornek gerekce',
+        ocoNumber: '1234567',
+      });
+      let onizleme = null;
+      let onizlemeHatasi = null;
+      if (String(smartApproval.metadataFields || '').trim()) {
+        try {
+          onizleme = buildScaleXSmartMetadata(
+            smartApproval.metadataFields,
+            {
+              username: currentUser(req).username,
+              email: currentUser(req).mail || '',
+              templateName: 'ScaleX',
+              templateId: gateCfg.templateId,
+              extraVars: {},
+            },
+            ornek,
+          );
+        } catch (e) {
+          onizlemeHatasi = e.message;
+        }
+      }
+      const kip = config.smartMode();
+      res.json({
+        ok: true,
+        smartMode: kip.value,
+        smartModeSource: kip.source,
+        smartModeProblem: kip.problem,
+        // Kullanicinin bugun prod'da `Durdur + Uygula` icin alacagi karar.
+        policy,
+        template: { serverId: gateCfg.serverId, templateId: gateCfg.templateId },
+        configError: gateCfg.hata ? gateCfg.hata.message : null,
+        smart: {
+          enabled: smartApproval.enabled === true,
+          flowKey: String(smartApproval.flowKey || '').trim() || null,
+          hasMetadata: !!String(smartApproval.metadataFields || '').trim(),
+          missing: launch.smartEksikleri(smartApproval, {
+            smartClientReady: (() => {
+              try {
+                return require('../smart/client.cjs').isConfigured() === true;
+              } catch {
+                return false;
+              }
+            })(),
+          }),
+          onizleme,
+          onizlemeHatasi,
+          // "Su durumda onay isteme" satirlari: ScaleX'te de gecerli, ekranda gorunur.
+          // Eslesen alanlar: env, ortam, tenant, action, execution_mode, cluster_count, namespace.
+          skipRules: istisna.rules,
+          skipRulesInvalid: istisna.invalid,
+        },
+        adminSkipSelf: kendiAtlamasi === true,
+        // Sablonda kullanilabilecek degiskenler ve ornek degerleri (ekran yardim metni).
+        ornekBaglam: ornek,
+      });
     }),
   );
 
@@ -2257,11 +2668,10 @@ function initScaleX(app) {
       // Kapi simulasyonu: sorgulanan kapsam admin'den gelir, varsayilan prod.
       const env = String(req.query?.env || 'prod').trim();
       const action = String(req.query?.action || 'stop').trim();
-      const policy = launch.gatePolicyFor({
+      const { policy } = await resolveGatePolicy(req, {
         action,
         executionMode: 'apply',
         environment: env,
-        ocoConfig: await readOcoConfig(),
       });
       const simulation = diagnoseMod.simulateGate({
         diagnosis,
@@ -2376,9 +2786,26 @@ function initScaleX(app) {
   console.log('[ScaleX] ScaleX API hazir (/api/scalex) + uzlastirici acik');
 }
 
-// SMART metadata'si. `reason` ve patlama yaricapi BILEREK iceride: onay veren kisi
-// "kac hedefe dokunuluyor" ve "neden" sorularinin cevabini gormeli.
-function buildScaleXSmartMetadata({
+// ── SMART METADATA (2026-10-13) ─────────────────────────────────────────────
+//
+// IKI HATA BIRDEN VARDI ve ikisi de ayni sonucu uretiyordu: ScaleX icin SMART bileti
+// HIC ACILAMAZDI.
+//   1. Bu fonksiyon `[{ key, value }, ...]` DIZISI donduruyordu. Smart istemcisi
+//      (`smart/client.cjs createTicket`) NESNE bekler ve `Object.entries` ile acar;
+//      dizide anahtarlar "0", "1", "2"... olur, degerler "[object Object]".
+//   2. Admin'in ekrandan tanimladigi alan eslemesi (`metadataFields`) hic okunmuyordu.
+//      Smart, flow'un gercek alan adlariyla (ElementName) eslesmeyen bir govdeyi
+//      "400 Invalid Request" ile reddeder — OpsX'te yasanan arizanin aynisi
+//      (bkz. server/smart/metadata.cjs basligi).
+// Uretimde SMART hic tanimlanmadigi icin bu yol bir kez bile kosmadi; hata gorunmedi.
+//
+// Sablon VARSA Self Service ve OpsX ile AYNI isleyiciden gecer; ScaleX'e ozgu degerler
+// `{{scalex.ortam}}`, `{{scalex.namespace}}`, `{{scalex.uygulamalar}}` ... ile kullanilir.
+// Sablon YOKSA ayni degerler duz bir NESNE olarak gider (kapi bu durumda zaten "hazir
+// degil" der; bu dal yalnizca dogrudan cagiranlar icin).
+const ISLEM_ADI = Object.freeze({ stop: 'Durdur', restore: 'Geri Al', scale: 'Ölçekle' });
+
+function scalexSmartBaglami({
   user,
   env,
   tenant,
@@ -2386,22 +2813,36 @@ function buildScaleXSmartMetadata({
   namespace,
   apps,
   action,
+  targetReplicas,
   radius,
   reason,
   ocoNumber,
 }) {
-  return [
-    { key: 'requestedBy', value: user.username },
-    { key: 'environment', value: env },
-    { key: 'platform', value: tenant },
-    { key: 'cluster', value: clusters.join(', ') },
-    { key: 'namespace', value: namespace },
-    { key: 'application', value: apps.join(', ') },
-    { key: 'action', value: action },
-    { key: 'blastRadius', value: String(radius.targets) },
-    { key: 'reason', value: reason || '-' },
-    { key: 'ocoNumber', value: String(ocoNumber || '-') },
-  ];
+  const islem = ISLEM_ADI[action] || String(action || '');
+  const clusterlar = (clusters || []).join(', ');
+  const uygulamalar = (apps || []).join(', ');
+  return {
+    talepEden: String(user?.username || ''),
+    ortam: String(env || ''),
+    tenant: String(tenant || ''),
+    clusterlar,
+    namespace: String(namespace || ''),
+    uygulamalar,
+    islem,
+    hedefSayisi: String(radius?.targets ?? ''),
+    hedefReplica: action === 'scale' ? String(targetReplicas ?? '') : '',
+    gerekce: reason || '-',
+    oco: String(ocoNumber || '-'),
+    ozet: `ScaleX ${islem}: ${namespace} (${env} / ${tenant}) — ${uygulamalar} @ ${clusterlar}`,
+  };
+}
+
+function buildScaleXSmartMetadata(metadataFieldsRaw, ctx, scalex) {
+  if (!String(metadataFieldsRaw || '').trim()) return { ...scalex };
+  return require('../smart/metadata.cjs').buildSmartMetadata(metadataFieldsRaw, {
+    ...(ctx || {}),
+    scalex,
+  });
 }
 
 // Is bitince kaydi ve AYNAYI guncelle.
@@ -2624,5 +3065,8 @@ module.exports = {
   denyIfNotOwner,
   resolveByKey,
   buildScaleXSmartMetadata,
+  scalexSmartBaglami,
+  resolveGatePolicy,
+  runScaleXGates,
   finalizeOperation,
 };

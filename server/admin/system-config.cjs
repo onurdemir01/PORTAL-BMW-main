@@ -60,6 +60,10 @@ function initSystemConfig(app) {
     // sessizce varsayilana duserdi, admin "kaydettim ama etki etmedi" durumuna duserdi.
     const oturumHatasi = oturumAyariHatasi(key, strValue);
     if (oturumHatasi) return res.status(400).json({ ok: false, error: oturumHatasi });
+    // ScaleX prod SMART kipi (2026-10-13): yazim hatasi kapiyi ACAMAZ (okuyan taraf
+    // taninmayan degeri `required` sayar) ama admin "kaydettim, etki etmedi" de dememeli.
+    const scalexHatasi = require('../scalex/config.cjs').ayarHatasi(key, strValue);
+    if (scalexHatasi) return res.status(400).json({ ok: false, error: scalexHatasi });
     try {
       await setEnvOverride(key, strValue, req.session.user.username);
       // Denetim kaydi — deger secret olabilir, yalnizca anahtar adi yazilir.
