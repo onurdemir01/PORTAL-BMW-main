@@ -129,6 +129,9 @@ export const retirementApi = {
   list: (): Promise<{ ok: boolean; records: RtRecordRow[]; message?: string }> => fetch(BASE).then(safeJson),
   get: (id: number): Promise<{ ok: boolean; record: RtRecord; message?: string; zamanlayici?: RtZamanlayici; isler?: RtIsler }> => fetch(`${BASE}/${id}`).then(safeJson),
   /** Canli durum: bu kaydin vhost islerini baslatir/sonuclandirir ve kaydi dondurur. */
+  /** Henuz dokunulmamis hedefi kayittan cikarir ('skipped'). */
+  cikar: (id: number, tid: number, neden: string): Promise<{ ok: boolean; message?: string; record?: RtRecord }> =>
+    fetch(`${BASE}/${id}/targets/${tid}/cikar`, json({ neden })).then(safeJson),
   /** Web kesfini bugunku kurallarla yeniden kosturur. uygula=false: yalniz onizleme. */
   webKesif: (id: number, uygula: boolean): Promise<{ ok: boolean; message?: string; uygulandi?: boolean; eklenenToplam?: number; record?: RtRecord;
     hedefler?: { tid: number; host: string; appName: string; env: string; status: string; eski: number; eklenen: RtWeb[]; webHow: string; webUyari: string | null; islem: string }[] }> =>

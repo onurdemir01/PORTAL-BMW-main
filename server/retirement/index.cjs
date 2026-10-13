@@ -904,6 +904,35 @@ function initRetirement(app) {
     } catch (err) { res.status(500).json({ ok: false, message: err.message }); }
   });
 
+  // ── HEDEFI KAYITTAN CIKAR (2026-10-13, kullanici: yalniz JBoss 7 istenirken JBoss 8 de kayda girdi).
+  // Yalniz HENUZ DOKUNULMAMIS hedef: is calismadi ya da zamanlanmis STOP bekliyor. Durdurulmus hedef
+  // cikarilamaz (uygulama kapali kalirdi) - onun yolu "Geri aktif et". Hedef silinmez: 'skipped' olur,
+  // zamanlama ve dondurulmus web listesi temizlenir, sebep olaya ve sonuc metnine yazilir.
+  const CIKARILABILIR = new Set(['pending', 'planned', 'failed', 'stop_scheduled', 'active']);
+  router.post('/:id/targets/:tid/cikar', async (req, res) => {
+    const id = Number(req.params.id); const tid = Number(req.params.tid);
+    const neden = String(req.body?.neden || '').trim().slice(0, 300);
+    try {
+      const rec = await loadRecord(id);
+      if (!rec) return res.status(400).json({ ok: false, message: 'Kayıt yok.' });
+      const t = rec.targets.find((x) => x.id === tid);
+      if (!t) return res.status(400).json({ ok: false, message: 'Hedef yok.' });
+      if (!CIKARILABILIR.has(t.status))
+        return res.status(409).json({ ok: false, message: `Hedef bu durumda kayıttan çıkarılamaz (${t.status}). Durdurulmuş hedef için "Geri aktif et" kullanın.` });
+      if (t.status === 'failed' && (t.webSonuc || []).some((w) => w.status === 'ok'))
+        return res.status(409).json({ ok: false, message: 'Bu hedefin vhost’u kaldırılmış (yarım STOP): önce "Geri aktif et" ile geri açın.' });
+      const metin = `Kayıttan çıkarıldı${neden ? `: ${neden}` : ''}`;
+      const r = await db().query(
+        `UPDATE retirement_targets SET status = 'skipped', scheduled_at = NULL, window_end = NULL, web_result_json = NULL, result_text = $1, updated_at = GETUTCDATE()
+          WHERE id = $2 AND record_id = $3 AND status = $4`,
+        [metin.slice(0, 1000), tid, id, t.status],
+      );
+      if (!r.rowCount) return res.status(409).json({ ok: false, message: 'Hedefin durumu bu arada değişti; ekranı tazeleyip yeniden deneyin.' });
+      await addEvent(id, req.session?.user?.username, 'note', `${t.appName} @ ${t.host} (JBoss ${t.gen ?? '?'}, ${t.env}) kayittan cikarildi (${t.status} idi)${neden ? ` - ${neden}` : ''}`);
+      res.json({ ok: true, record: await loadRecord(id) });
+    } catch (err) { res.status(500).json({ ok: false, message: err.message }); }
+  });
+
   router.post('/:id/targets/:tid/refresh-status', async (req, res) => {
     const id = Number(req.params.id);
     const tid = Number(req.params.tid);

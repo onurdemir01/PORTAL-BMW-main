@@ -518,11 +518,24 @@ function CreateModal({ defaultDays, onClose, onCreated }: { defaultDays: number;
   }, [q]);
   const pick = async (a: string) => {
     setApp(a); setQ(a); setApps([]); setDisc(null); setDiscLoading(true);
-    try { const d = await retirementApi.discover(a); if (d.ok) { setDisc(d); setSel(new Set(d.targets.map((t) => `${t.host}|${t.appName}`))); } else toast.error(d.message || 'Keşif başarısız.'); }
+    // JBOSS SURUMU KARISIKSA HICBIRI ON SECILI DEGIL (2026-10-13, kullanici: "yalniz JBoss 7'yi
+    // retirement'a dahil etmek isterken JBoss 8'i de istemim disi surece soktu"). Ayni uygulama goc
+    // doneminde iki surumde birden calisiyor; hangisinin retire edildigini kullanici ACIKCA secer.
+    try {
+      const d = await retirementApi.discover(a);
+      if (d.ok) {
+        setDisc(d);
+        const surumler = new Set(d.targets.map((t) => t.gen ?? 0));
+        setSel(surumler.size > 1 ? new Set() : new Set(d.targets.map((t) => `${t.host}|${t.appName}`)));
+      } else toast.error(d.message || 'Keşif başarısız.');
+    }
     catch (e: unknown) { toast.error(e instanceof Error ? e.message : String(e)); } finally { setDiscLoading(false); }
   };
   const key = (t: { host: string; appName: string }) => `${t.host}|${t.appName}`;
   const selected = (disc?.targets || []).filter((t) => sel.has(key(t)));
+  const surumler = [...new Set((disc?.targets || []).map((t) => t.gen ?? 0))].sort();
+  const surumEtiket = (g: number) => (g ? `JBoss ${g}` : 'sürümü bilinmeyen');
+  const seciliSurumler = [...new Set(selected.map((t) => t.gen ?? 0))];
   const needsOco = selected.some((t) => t.env === 'PROD');
   const hubYok = hubOkunamadi(disc);
   // ── TRAFIK UYARISI (kullanici, 2026-10-08) ──────────────────────────────────────────
@@ -540,7 +553,7 @@ function CreateModal({ defaultDays, onClose, onCreated }: { defaultDays: number;
   const create = async () => {
     if (!app || !f.smartNo.trim()) { toast.error('Uygulama ve Smart kayıt numarası gerekli.'); return; }
     if (needsOco && !f.ocoNo.trim()) { toast.error('PROD hedef seçili: OCO numarası zorunlu.'); return; }
-    if (!selected.length) { toast.error('En az bir hedef seçin.'); return; }
+    if (!selected.length) { toast.error(surumler.length > 1 ? 'Uygulama birden fazla JBoss sürümünde: hangi sürümün retire edileceğini seçin.' : 'En az bir hedef seçin.'); return; }
     // ONAY KUTUSU ZORUNLU, kayit ACILMAZ. Uyariyi yalnizca gostermek, kaydi aciklamadan
     // gecilebilir bir metne cevirirdi; kullanici "soru sorulabilir" dedi.
     if (trafikli.length && !trafikOnay) {
@@ -557,7 +570,7 @@ function CreateModal({ defaultDays, onClose, onCreated }: { defaultDays: number;
 
   return (
     <Modal open onClose={onClose} title="Yeni retirement kaydı" subtitle="Smart silme kaydı (364244_Delete_6) geldikten sonra açılır; PROD için altyapı OCO'su gerekir." icon={TrashIcon} size="wide"
-      footer={<div className="flex items-center gap-2 w-full"><span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>{selected.length} hedef seçili{needsOco ? ' · PROD var: OCO zorunlu' : ''}</span><span className="ml-auto" /><button onClick={onClose} className={SM_BTN} style={smBtn()}>İptal</button><button disabled={busy || !disc} onClick={create} className={SM_BTN} style={smBtn(true)}>Kaydı aç</button></div>}>
+      footer={<div className="flex items-center gap-2 w-full"><span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>{selected.length} hedef seçili{seciliSurumler.length ? ` · ${seciliSurumler.map(surumEtiket).join(' + ')}` : ''}{needsOco ? ' · PROD var: OCO zorunlu' : ''}</span><span className="ml-auto" /><button onClick={onClose} className={SM_BTN} style={smBtn()}>İptal</button><button disabled={busy || !disc} onClick={create} className={SM_BTN} style={smBtn(true)}>Kaydı aç</button></div>}>
       <div className="space-y-3">
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           <div className="relative">
@@ -586,7 +599,30 @@ function CreateModal({ defaultDays, onClose, onCreated }: { defaultDays: number;
               <b>{disc.summary.total}</b> hedef · Pendik {disc.summary.bySite.Pendik} · <b style={disc.summary.bySite.Ankara ? { color: 'var(--status-warning)' } : undefined}>Ankara {disc.summary.bySite.Ankara}</b> · {Object.entries(disc.summary.byEnv).filter(([, n]) => n).map(([e, n]) => `${e} ${n}`).join(' · ')} · web eşlenen {disc.summary.webMatched}
               <button onClick={() => setSel(new Set(disc.targets.map(key)))} className={SM_BTN} style={smBtn()}>tümü</button>
               <button onClick={() => setSel(new Set())} className={SM_BTN} style={smBtn()}>hiçbiri</button>
+              {surumler.length > 1 && surumler.map((g) => (
+                <button key={g} onClick={() => setSel(new Set(disc.targets.filter((t) => (t.gen ?? 0) === g).map(key)))} className={SM_BTN} style={smBtn()}>yalnız {surumEtiket(g)}</button>
+              ))}
             </div>
+            {surumler.length > 1 && (
+              <div role="alert" className="rounded-lg border-2 px-3 py-2 text-[13px] space-y-1.5" style={{ borderColor: 'var(--status-warning)' }}>
+                <div className="font-bold">
+                  Bu uygulama birden fazla JBoss sürümünde çalışıyor:{' '}
+                  {surumler.map((g) => `${surumEtiket(g)} (${disc.targets.filter((t) => (t.gen ?? 0) === g).length} sunucu)`).join(' · ')}
+                </div>
+                <div className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>
+                  Hangisinin retire edileceğini seçin — hiçbir hedef ön seçili değil. Göç döneminde eski sürüm kapatılırken yenisi çalışmaya devam ediyor olabilir.
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {surumler.map((g) => (
+                    <button key={g} onClick={() => setSel(new Set(disc.targets.filter((t) => (t.gen ?? 0) === g).map(key)))} className={SM_BTN} style={smBtn(seciliSurumler.length === 1 && seciliSurumler[0] === g)}>
+                      Yalnız {surumEtiket(g)}
+                    </button>
+                  ))}
+                  <button onClick={() => setSel(new Set(disc.targets.map(key)))} className={SM_BTN} style={smBtn(seciliSurumler.length === surumler.length)}>Hepsi</button>
+                </div>
+                {seciliSurumler.length > 1 && <div className="text-[12px] font-semibold" style={{ color: 'var(--status-danger)' }}>Seçimde birden fazla sürüm var: {seciliSurumler.map(surumEtiket).join(' + ')}.</div>}
+              </div>
+            )}
             {/* WEB BULUNAMADI (2026-10-12): 3-tier uygulamada web katmani sessizce atlaniyordu. */}
             {disc.targets.some((t) => !t.web.length) && (
               <div role="alert" className="rounded-lg border-2 px-3 py-2 text-[13px] space-y-1" style={{ borderColor: 'var(--status-danger)', color: 'var(--status-danger)' }}>
@@ -690,6 +726,18 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
   // WEB KESFINI YENILE (2026-10-13): kayit acilirken dondurulan web listesi bugunku kesifle tamamlanir.
   type WebKesifSonuc = Awaited<ReturnType<typeof retirementApi.webKesif>>;
   const [webKesif, setWebKesif] = useState<WebKesifSonuc | null>(null);
+  // HEDEFI KAYITTAN CIKAR (2026-10-13): istem disi kayda giren (ornegin JBoss 8) ve henuz dokunulmamis hedef.
+  const [cikarSor, setCikarSor] = useState<RtTarget | null>(null);
+  const [cikarNeden, setCikarNeden] = useState('');
+  const cikarilabilir = (t: RtTarget) => ['pending', 'planned', 'failed', 'stop_scheduled', 'active'].includes(t.status) && !(t.status === 'failed' && (t.webSonuc || []).some((w) => w.status === 'ok'));
+  const hedefCikar = async () => {
+    if (!cikarSor) return;
+    const r = await retirementApi.cikar(id, cikarSor.id, cikarNeden.trim());
+    if (!r.ok) { toast.error(r.message || 'Hedef çıkarılamadı.'); return; }
+    if (r.record) setRec(r.record);
+    toast.success(`${cikarSor.host} kayıttan çıkarıldı.`);
+    setCikarSor(null); setCikarNeden('');
+  };
   const [webKesifBusy, setWebKesifBusy] = useState(false);
   const webKesifCalistir = async (uygula: boolean) => {
     setWebKesifBusy(true);
@@ -1150,6 +1198,11 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
                             </button>
                           </div>
                         )}
+                        {rec.status !== 'cancelled' && cikarilabilir(t) && (
+                          <div className="mt-1 text-[10px]">
+                            <button onClick={() => { setCikarNeden(''); setCikarSor(t); }} className="underline decoration-dotted" style={{ color: 'var(--text-secondary)' }} title="Bu hedefi retirement'tan çıkar (ör. istem dışı kayda giren JBoss 8 sunucusu). Hedef 'atlandı' olur; zamanlanmış STOP iptal edilir.">kayıttan çıkar</button>
+                          </div>
+                        )}
                         {/* YARIM STOP: STOP dustu ama vhost (paralel adim) kalktiysa da geri alinabilir. */}
                         {/* BEKLEMEYI ATLA (admin, HEDEF BASINA - 2026-10-12): yalniz bu sunucu ilk zamanlayici turunda silinir. */}
                         {t.status === 'stopped' && !t.deletedAt && rec.status !== 'cancelled' && rec.status !== 'deleted' && (
@@ -1282,6 +1335,25 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
       {/* IPTAL ONAYI (2026-10-08). Kullanici "iptal ettim ama geri donmedi" dedi; iptalin
           NE YAPTIGI ve NE YAPMADIGI burada yazili, ve geri getirme AYNI pencereden
           tetiklenebiliyor - sessiz bir varsayim kalmiyor. */}
+      {cikarSor && rec && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,.45)' }} onClick={() => setCikarSor(null)}>
+          <div className="w-full max-w-md rounded-2xl border p-5 space-y-3" style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }} onClick={(e) => e.stopPropagation()}>
+            <div className="text-sm font-semibold">Hedefi kayıttan çıkar</div>
+            <div className="text-[12px] font-mono">{cikarSor.appName} @ {cikarSor.host} · {cikarSor.gen ? `JBoss ${cikarSor.gen}` : 'JBoss ?'} · {cikarSor.env}</div>
+            <p className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>
+              Bu sunucuya hiçbir işlem yapılmaz: hedef “atlandı” olur{cikarSor.status === 'stop_scheduled' ? ', zamanlanmış STOP iptal edilir' : ''}. Kayıttaki diğer hedefler etkilenmez. İşlem olay geçmişine yazılır.
+            </p>
+            <label className="block text-[11px]" style={{ color: 'var(--text-muted)' }}>
+              Sebep (isteğe bağlı)
+              <input value={cikarNeden} onChange={(e) => setCikarNeden(e.target.value)} placeholder="ör. yalnız JBoss 7 retire ediliyor" className={`${INPUT} mt-1`} style={inputStyle} autoFocus />
+            </label>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setCikarSor(null)} className={SM_BTN} style={smBtn()}>Kapat</button>
+              <button onClick={hedefCikar} className={SM_BTN} style={smBtn(true)}>Kayıttan çıkar</button>
+            </div>
+          </div>
+        </div>
+      )}
       {webKesif && rec && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,.45)' }} onClick={() => setWebKesif(null)}>
           <div className="w-full max-w-3xl max-h-[85vh] overflow-auto rounded-2xl border p-5 space-y-3" style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }} onClick={(e) => e.stopPropagation()}>
