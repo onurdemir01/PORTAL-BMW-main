@@ -160,11 +160,20 @@ describe('önizleme kapı durumunu sunucunun kararıyla gösterir', () => {
   });
 
   it('ScaleX şablonu tanımsız: ön kontrol dahil hiçbir iş başlatılamaz ve neden yazılır', async () => {
-    onizlemeCiz('sablon_tanimsiz', { executionMode: 'dry_run' });
-    expect(await screen.findByTestId('scalex-engel')).toHaveTextContent(
-      K.sablon_tanimsiz.onizleme.configError!.message,
-    );
+    // Ön kontrol yanıtı: politika hiçbir kapı istemiyor (OCO yok, SMART yok, yazılı onay yok).
+    // Düğmeyi kapatan TEK şey engelin kendisi — başka bir eksik alan onu kapalı tutamaz.
+    // (Mutasyon turunda "engelliyken Çalıştır açık" değişikliğini ilk yazımda yalnız bir
+    // kaynak bekçisi yakaladı: eski kurguda düğme zaten OCO numarası boş diye kapalıydı.)
+    const kurgu = K.sablon_tanimsiz_on_kontrol.onizleme;
+    expect([
+      kurgu.gatePolicy.oco,
+      kurgu.gatePolicy.smart,
+      kurgu.blastRadius.requiresWrittenConfirm,
+    ]).toEqual(['skip', 'skip', false]);
+    onizlemeCiz('sablon_tanimsiz_on_kontrol', { executionMode: 'dry_run' });
+    expect(await screen.findByTestId('scalex-engel')).toHaveTextContent(kurgu.configError!.message);
     expect(screen.getByRole('button', { name: 'Kontrolü başlat' })).toBeDisabled();
+    expect(screen.getByRole('status')).toHaveTextContent('Bu işlem şu an başlatılamaz');
   });
 
   it.each([

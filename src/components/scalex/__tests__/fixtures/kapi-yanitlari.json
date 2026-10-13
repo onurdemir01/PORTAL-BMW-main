@@ -843,6 +843,55 @@
         }
       }
     },
+    "sablon_tanimsiz_on_kontrol": {
+      "onizleme": {
+        "ok": true,
+        "blastRadius": {
+          "clusterCount": 1,
+          "appCount": 1,
+          "targets": 1,
+          "isProd": true,
+          "action": "stop",
+          "multiCluster": false,
+          "requiresWrittenConfirm": false,
+          "requiresSecondPerson": false,
+          "exceedsMaxTargets": false
+        },
+        "gatePolicy": {
+          "oco": "skip",
+          "smart": "skip",
+          "smartStatus": "not_applicable",
+          "schedulable": false,
+          "blocked": null,
+          "reason": "dry_run hicbir sey degistirmez"
+        },
+        "configError": {
+          "code": "scalex_not_configured",
+          "message": "\"scalex_run\" için AWX Template ID girilmemiş — Admin > Playbook Kayıtları."
+        },
+        "hpaPinAllowed": false,
+        "targets": {
+          "env": "prod",
+          "tenant": "t1",
+          "namespace": "odeme",
+          "clusters": [
+            "c1"
+          ],
+          "apps": [
+            "api"
+          ]
+        }
+      },
+      "calistirma": {
+        "status": 409,
+        "govde": {
+          "ok": false,
+          "message": "\"scalex_run\" için AWX Template ID girilmemiş — Admin > Playbook Kayıtları.",
+          "code": "scalex_not_configured",
+          "upstreamStatus": 501
+        }
+      }
+    },
     "awx_yanit_vermiyor": {
       "onizleme": {
         "ok": true,

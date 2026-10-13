@@ -1284,6 +1284,14 @@ const KURGULAR = {
     },
     govde: { ocoNumber: OCO_NO },
   },
+  // Ayni durumun ON KONTROL hali: politika hicbir kapi istemez (OCO yok, SMART yok) ama is
+  // yine baslayamaz. Ekran testinde "Calistir" dugmesini kapatan TEK sey engelin kendisidir.
+  sablon_tanimsiz_on_kontrol: {
+    hazirla: () => {
+      sim.ayar.sablonlar.scalex_run = { keyName: 'scalex_run', enabled: true, awxTemplateId: null };
+    },
+    govde: { executionMode: 'dry_run' },
+  },
   awx_yanit_vermiyor: {
     hazirla: () => {
       sim.smartKipi('oco_only');
