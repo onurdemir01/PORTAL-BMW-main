@@ -434,3 +434,47 @@ test('RQ2 suren isin AWX durumu saklanir (yalniz o kayit), is bitince silinir', 
   poller.stopPoller();
   assert.equal(poller.awxDurumu(555), null);
 });
+
+async function launchSonrasiDbHatasiTekrarBaslatmaz({ kind, baslangicDurumu, claimDurumu, jobAlani, tick, now, satir }) {
+  let durum = baslangicDurumu;
+  let launchSayisi = 0;
+  sahteDb.query = async (sql) => {
+    const t = String(sql).replace(/\s+/g, ' ');
+    if (/^SELECT/i.test(t.trim())) {
+      const beklenen = kind === 'stop' ? "t.status = 'stop_scheduled'" : "t.status = 'stopped'";
+      const rows = t.includes(beklenen) && durum === baslangicDurumu ? [satir] : [];
+      return { rows, rowCount: rows.length };
+    }
+    if (t.includes(`SET status = '${claimDurumu}'`) && t.includes(`status = '${baslangicDurumu}'`)) {
+      durum = claimDurumu;
+      return { rows: [], rowCount: 1 };
+    }
+    if (t.includes(`SET ${jobAlani} =`)) throw new Error('job kimligi DB yazimi dustu');
+    if (t.includes(`SET status = '${baslangicDurumu}'`) && t.includes(`status = '${claimDurumu}'`)) {
+      durum = baslangicDurumu;
+      return { rows: [], rowCount: 1 };
+    }
+    return { rows: [], rowCount: 1 };
+  };
+  poller.startPoller(async () => { launchSayisi += 1; return { jobId: 444 }; });
+  await tick(now);
+  await tick(now);
+  poller.stopPoller();
+  assert.equal(launchSayisi, 1, `basarili ${kind.toUpperCase()} launch'i DB hatasindan sonra ikinci kez baslatildi`);
+  assert.equal(durum, claimDurumu, `basarili launch sonrasi claim '${baslangicDurumu}' durumuna geri alindi`);
+}
+
+test('RP14 STOP launch basariliysa job ID yazimi dusse de claim korunur', async () => {
+  await launchSonrasiDbHatasiTekrarBaslatmaz({
+    kind: 'stop', baslangicDurumu: 'stop_scheduled', claimDurumu: 'stopping', jobAlani: 'last_job_id',
+    tick: poller._stopTick, now: N, satir: hedef(),
+  });
+});
+
+test('RP15 DELETE launch basariliysa job ID yazimi dusse de claim korunur', async () => {
+  await launchSonrasiDbHatasiTekrarBaslatmaz({
+    kind: 'delete', baslangicDurumu: 'stopped', claimDurumu: 'deleting', jobAlani: 'delete_job_id',
+    tick: poller._deleteTick, now: GECE,
+    satir: hedef({ planned_delete_at: '2026-10-05', stop_at: '2026-09-01', delete_after_days: 45 }),
+  });
+});
