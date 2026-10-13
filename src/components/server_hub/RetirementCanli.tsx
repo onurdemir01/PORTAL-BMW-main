@@ -10,6 +10,16 @@ import type { RtIsler, RtTarget, RtWeb2, RtZamanlayici } from '@/api/retirementA
 export const GECIS = new Set(['planning', 'stopping', 'deleting', 'rolling_back']);
 const IS_ADI: Record<string, string> = { planning: 'Ön kontrol', stopping: 'JBoss STOP', deleting: 'Silme', rolling_back: 'Geri alma' };
 
+export function gecisJobId(t: RtTarget): number | null {
+  if (t.status === 'deleting') return t.deleteJobId;
+  if (t.status === 'rolling_back') return t.rollbackJobId;
+  return t.status === 'planning' || t.status === 'stopping' ? t.lastJobId : null;
+}
+
+export function gecisBelirsiz(t: RtTarget): boolean {
+  return GECIS.has(t.status) && !gecisJobId(t);
+}
+
 /** SILME SIRADA (2026-10-12): beklemesi atlanmis (hedef basina ya da kayit duzeyinde) ve henuz
  *  zamanlayicinin almadigi durdurulmus hedef. Zamanlayici aldiginda 'deleting' olur. */
 export function silmeSirada(t: RtTarget, kayitAtladi?: string | null): boolean {
@@ -18,6 +28,11 @@ export function silmeSirada(t: RtTarget, kayitAtladi?: string | null): boolean {
 
 /** Bu hedefte izlenecek bir sey var mi (gecis durumu, sirada bekleyen silme ya da bekleyen/suren vhost isi)? */
 export function hedefAktif(t: RtTarget, kayitAtladi?: string | null): boolean {
+  return (GECIS.has(t.status) && !gecisBelirsiz(t)) || silmeSirada(t, kayitAtladi) || (t.webSonuc || []).some((w) => w.status === 'pending' || w.status === 'running');
+}
+
+/** Spinner gercegiyle veri yenilemeyi ayir: claim sonrasi job ID yazimi kisa sure gecikebilir. */
+export function hedefTazelenmeli(t: RtTarget, kayitAtladi?: string | null): boolean {
   return GECIS.has(t.status) || silmeSirada(t, kayitAtladi) || (t.webSonuc || []).some((w) => w.status === 'pending' || w.status === 'running');
 }
 
@@ -105,7 +120,7 @@ function WebCip({ w, simdi }: { w: RtWeb2; simdi: number }) {
 }
 
 export default function RetirementCanli({ targets, kayitAtladi, zamanlayici, isler }: { targets: RtTarget[]; kayitAtladi?: string | null; zamanlayici?: RtZamanlayici; isler?: RtIsler }) {
-  const izlenen = targets.filter((t) => hedefAktif(t, kayitAtladi) || (t.status === 'failed' && (t.webSonuc || []).some((w) => w.status === 'ok')));
+  const izlenen = targets.filter((t) => hedefAktif(t, kayitAtladi) || gecisBelirsiz(t) || (t.status === 'failed' && (t.webSonuc || []).some((w) => w.status === 'ok')));
   const [simdi, setSimdi] = useState(() => Date.now());
   const aktif = izlenen.some((t) => hedefAktif(t, kayitAtladi));
   useEffect(() => {
@@ -114,18 +129,21 @@ export default function RetirementCanli({ targets, kayitAtladi, zamanlayici, isl
     return () => window.clearInterval(z);
   }, [aktif]);
   if (!izlenen.length) return null;
+  const belirsizVar = izlenen.some(gecisBelirsiz);
   return (
     <div className="rounded-lg border p-3 space-y-2" style={{ borderColor: 'var(--status-info)', background: 'var(--status-info-bg)' }} aria-live="polite">
       <div className="flex items-center gap-2 text-[12px] font-semibold">
-        {aktif && <Doner />} {aktif ? 'Çalışan ve sıradaki işler' : 'İşler bitti'}
-        <span className="font-normal text-[11px]" style={{ color: 'var(--text-muted)' }}>— birkaç saniyede bir kendiliğinden tazelenir</span>
+        {aktif && <Doner />} {aktif ? (belirsizVar ? 'Çalışan, sıradaki ve doğrulanamayan işler' : 'Çalışan ve sıradaki işler') : belirsizVar ? 'Doğrulanamayan işler' : 'İşler bitti'}
+        <span className="font-normal text-[11px]" style={{ color: 'var(--text-muted)' }}>— birkaç saniyede bir kendiliğinden tazelenir{belirsizVar ? '; belirsiz işler operatör uzlaştırması gerektirir' : ''}</span>
       </div>
       {izlenen.map((t) => {
         const web = t.webSonuc || [];
         const gecis = GECIS.has(t.status);
+        const belirsiz = gecisBelirsiz(t);
         const sirada = silmeSirada(t, kayitAtladi);
         const yarim = t.status === 'failed' && web.some((w) => w.status === 'ok');
         const is = isler?.[t.id];
+        const jobId = gecisJobId(t);
         const awx = awxEtiket(is?.status);
         const gs = geriSayim(zamanlayici, simdi);
         return (
@@ -137,16 +155,21 @@ export default function RetirementCanli({ targets, kayitAtladi, zamanlayici, isl
                 <span className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 font-semibold" style={{ color: 'var(--status-warning)', background: 'var(--status-warning-bg)' }}>
                   <KumSaati /> SİLME SIRADA
                 </span>
-              ) : gecis ? (
+              ) : gecis && !belirsiz ? (
                 <span className="inline-flex items-center gap-1.5" style={{ color: 'var(--status-info)' }}>
-                  {awx.calisiyor || !is ? <Doner /> : <KumSaati />} <b>{IS_ADI[t.status]}</b>
-                  {is ? <> · iş #{is.jobId} · <b>{awx.etiket}</b></> : t.status === 'deleting' ? ' · AWX işi başlatılıyor…' : ' çalışıyor'}
+                  {awx.calisiyor ? <Doner /> : <KumSaati />} <b>{IS_ADI[t.status]}</b>
+                  <> · iş #{is?.jobId ?? jobId} · <b>{awx.etiket}</b></>
                   {' '}· {sure(t.updatedAt, null, simdi)}
                 </span>
               ) : (
                 <span style={{ color: t.status === 'failed' ? 'var(--status-danger)' : 'var(--status-success)' }}>JBoss: {t.status === 'stopped' ? 'durduruldu' : t.status === 'failed' ? 'BAŞARISIZ' : t.status}</span>
               )}
             </div>
+            {belirsiz && (
+              <div role="alert" className="text-[11px] font-semibold" style={{ color: 'var(--status-warning)' }}>
+                {IS_ADI[t.status]} claim’i var fakat iş numarası yazılamadı; AWX başlangıç sonucu doğrulanamıyor. Aynı dış işlem otomatik yeniden başlatılmaz; operatör AWX geçmişiyle uzlaştırmalıdır.
+              </div>
+            )}
             {sirada && (
               <div className="space-y-1">
                 <Adimlar adimlar={[
@@ -166,10 +189,10 @@ export default function RetirementCanli({ targets, kayitAtladi, zamanlayici, isl
                 )}
               </div>
             )}
-            {t.status === 'deleting' && (
+            {t.status === 'deleting' && !belirsiz && (
               <Adimlar adimlar={[
                 { ad: 'Sırada', durum: 'tamam' },
-                { ad: 'AWX’e gönderildi', durum: is ? 'tamam' : 'simdi', alt: is ? `iş #${is.jobId}` : 'başlatılıyor' },
+                { ad: 'AWX’e gönderildi', durum: 'tamam', alt: `iş #${is?.jobId ?? jobId}` },
                 { ad: 'Çalışıyor', durum: awx.calisiyor ? 'simdi' : 'bekliyor', alt: is && !awx.calisiyor ? awx.etiket : undefined },
                 { ad: 'Silindi', durum: 'bekliyor' },
               ]} />
