@@ -218,8 +218,8 @@ export default function WebApp() {
             {data.rows.length === 0 && (
               <TableEmptyRow colSpan={7} />
             )}
-            {data.rows.map((r) => (
-              <tr key={`${r.app}|${r.appHost}`} className="hover:bg-[var(--bg-elevated)]/60 align-top">
+            {data.rows.map((r, ri) => (
+              <tr key={`${r.app}|${r.appHost}|${ri}`} className="hover:bg-[var(--bg-elevated)]/60 align-top">
                 <td className="px-3 py-2 font-mono text-xs text-[var(--text-primary)] whitespace-nowrap">
                   {r.app}
                   <span className="ml-1.5 text-[10px] px-1 py-0.5 rounded border bg-[var(--bg-elevated)] text-[var(--text-muted)] border-[var(--border)]">{r.tier}</span>

@@ -24,7 +24,8 @@
 'use strict';
 
 const SOURCES = {
-  mw: { table: 'dbo.MWAppsInventory', label: 'JBoss uygulamaları' },
+  // genKolon: ayni ad + sunucuda JBoss 7 ve 8 JVM'i olabilir; AJP eslesmesi dogru surumun portuyla yapilir.
+  mw: { table: 'dbo.MWAppsInventory', label: 'JBoss uygulamaları', genKolon: 'jboss_version' },
   was: { table: 'dbo.WASAppsInventory', label: 'WAS uygulamaları' },
 };
 
@@ -265,7 +266,7 @@ function registerWebApp(router) {
       const CAP = 1000;
 
       const [appRes, certRes] = await Promise.all([
-        query(`SELECT DISTINCT app, host, env, domain FROM ${src.table}
+        query(`SELECT DISTINCT app, host, env, domain${src.genKolon ? `, ${src.genKolon}` : ''} FROM ${src.table}
                 WHERE app IS NOT NULL AND app <> ''`),
         query(`SELECT host, ip, port, server_name, conf_file, product, env
                  FROM dbo.BMW_Certificates_Inventory`).catch(() => ({
@@ -278,7 +279,7 @@ function registerWebApp(router) {
       const certByHost = buildCertIndex(certRes.recordset || []);
       // SERVER HUB + AJP (2026-10-13): retirement kesfiyle AYNI zenginlestirme (discover.cjs).
       // Server Hub okunamazsa yalniz sertifika eslemesi kalir; ekran bunu hubHata ile soyler.
-      const { webZenginlestir, hubBaglamiYukle, siteOf } = require('../retirement/discover.cjs');
+      const { webZenginlestir, hubBaglamiYukle, siteOf, genOf } = require('../retirement/discover.cjs');
       const hub = await hubBaglamiYukle(query).catch((e) => ({ vhostRows: [], hubVhostsByHost: new Map(), ipMap: new Map(), jvmOf: () => null, hata: [e.message] }));
       // Ozet kovasi: AJP parantezindeki sayilar kovayi parcalamasin.
       const howKova = (h) => String(h).replace(/AJP\/proxy hedefi = JVM portu \([^)]*\)/, 'AJP/proxy hedefi = JVM portu');
@@ -296,7 +297,7 @@ function registerWebApp(router) {
 
         const domain = String(a.domain || '').trim();
         const m = webZenginlestir(app, appHost, matchWebForApp({ app, appHost, domain }, certByHost),
-          { hubVhostsByHost: hub.hubVhostsByHost, vhostRows: hub.vhostRows, ipMap: hub.ipMap, jvm: hub.jvmOf(appHost, app) });
+          { hubVhostsByHost: hub.hubVhostsByHost, vhostRows: hub.vhostRows, ipMap: hub.ipMap, jvm: hub.jvmOf(appHost, app, src.genKolon ? genOf(a[src.genKolon]) : null) });
         const { tier, how, matched } = m;
         if (matched) eslesen++;
 

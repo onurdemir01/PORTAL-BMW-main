@@ -94,3 +94,21 @@ test('WK6 ad standardi DISI web sunucusu (GOJBAP07 <- GOJBWP03): vhost konfigund
   assert.deepEqual(t.web.map((w) => `${w.host}/${w.serverName}`).sort(), ['GOJBWP03/odemeportal.gtdmz.com.tr', 'GOJBWP04/odeme-ip.gtdmz.com.tr'], t.webHow);
   assert.ok(t.web.every((w) => w.kaynak === 'ajp'));
 });
+
+test('WK7 ayni sunucuda ayni adli JBoss 7 ve 8 JVMi: AJP eslesmesi HEDEFIN surumunun portuyla (GOJBAP10 GFYINTERNETBRANCH)', () => {
+  const jvm = [
+    { host: 'GOJBAP10', jvm: 'GFYINTERNETBRANCH', gen: 7, running: 1, auto_start: 'true', scan_date: '2026-10-13', ports: '', cfg_ports: '8009,8080' },
+    { host: 'GOJBAP10', jvm: 'GFYINTERNETBRANCH', gen: 8, running: 0, auto_start: 'false', scan_date: '2026-10-13', ports: '', cfg_ports: '8108,8182' },
+  ];
+  const ips = [{ host: 'GOJBAP10', ip: '192.168.114.76' }];
+  const vh = [
+    { host: 'GOJBWP05', server_name: 'isube.garantibbvakirala.com.tr', aliases: '', listen: '*:443', conf_file: '/ihs.conf', product: 'IHS', proxy_targets: '192.168.114.76:8009' },
+    { host: 'GOJBWP06', server_name: 'isube8.garantibbvakirala.com.tr', aliases: '', listen: '*:443', conf_file: '/rha.conf', product: 'RHA', proxy_targets: '192.168.114.76:8108' },
+  ];
+  const yedi = buildTargets('GFYINTERNETBRANCH', [{ app: 'GFYINTERNETBRANCH', host: 'GOJBAP10', env: 'PROD', domain: 'gtdmz.com.tr', jboss_version: '7' }], [], jvm, vh, ips).targets[0];
+  const sekiz = buildTargets('GFYINTERNETBRANCH', [{ app: 'GFYINTERNETBRANCH', host: 'GOJBAP10', env: 'PROD', domain: 'gtdmz.com.tr', jboss_version: '8' }], [], jvm, vh, ips).targets[0];
+  assert.deepEqual(yedi.web.map((w) => w.serverName), ['isube.garantibbvakirala.com.tr'], 'JBoss 7 hedefine JBoss 8 vhostu baglandi');
+  assert.deepEqual(sekiz.web.map((w) => w.serverName), ['isube8.garantibbvakirala.com.tr'], 'JBoss 8 hedefine JBoss 7 vhostu baglandi');
+  assert.equal(yedi.hub.running, true, 'JBoss 7 hedefinin calisma durumu JBoss 8 JVMinden okundu');
+  assert.equal(sekiz.hub.running, false);
+});

@@ -45,6 +45,30 @@ function hedefOrtami(app, envanterEnv) {
   return ENVANTER_ORTAM[String(envanterEnv || '').trim().toUpperCase()] || 'PROD';
 }
 
+/**
+ * JVM SECIMI SURUMLE (2026-10-13, GOJBAP10: ayni adli iki GFYINTERNETBRANCH JVM'i - JBoss 7 ve 8, portlari
+ * farkli). Eskiden `sunucu|ad` anahtari ikinciyi birinciye YAZIYORDU: AJP eslesmesi ve "calisiyor/kapali"
+ * bilgisi yanlis surumden okunabiliyordu. Kural: surum biliniyorsa AYNI surumun JVM'i; yoksa ya da
+ * eslesen surum yoksa ve ayni adla TEK JVM varsa (surum bilgisi tasimayan eski satir) o; birden fazlaysa
+ * TAHMIN YOK (null).
+ */
+function jvmIndeksi(rows) {
+  const m = new Map();
+  for (const r of rows || []) {
+    const k = `${String(r.host || '').trim().toUpperCase()}|${String(r.jvm || '').trim().toUpperCase()}`;
+    if (!m.has(k)) m.set(k, []);
+    m.get(k).push(r);
+  }
+  return m;
+}
+function jvmSec(idx, host, app, gen) {
+  const l = idx.get(`${String(host || '').trim().toUpperCase()}|${String(app || '').trim().toUpperCase()}`) || [];
+  if (!l.length) return null;
+  const surumlu = l.filter((r) => r.gen != null && r.gen !== '');
+  if (gen != null && surumlu.length) return surumlu.find((r) => Number(r.gen) === Number(gen)) || null;
+  return l.length === 1 ? l[0] : null;
+}
+
 function genOf(jbossVersion) {
   const v = String(jbossVersion || '');
   if (/(^|[^0-9])8([^0-9]|$)/.test(v) || /jboss8|eap.?8/i.test(v)) return 8;
@@ -246,7 +270,7 @@ async function hubBaglamiYukle(query) {
   const jvmCols = await query(`SELECT name FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Server_Hub_Jvms')`)
     .then((r) => (r.recordset || []).map((c) => String(c.name).toLowerCase()))
     .catch(() => []);
-  const jvmSel = ['host', 'jvm', 'ports'].concat(jvmCols.includes('cfg_ports') ? ['cfg_ports'] : []).map((c) => `t.${c}`).join(', ');
+  const jvmSel = ['host', 'jvm', 'ports'].concat(jvmCols.includes('gen') ? ['gen'] : []).concat(jvmCols.includes('cfg_ports') ? ['cfg_ports'] : []).map((c) => `t.${c}`).join(', ');
   const hata = [];
   const [vhostRows, jvmRows, ipRows] = await Promise.all([
     query(`SELECT t.host, t.server_name, t.aliases, t.listen, t.conf_file, t.product, t.proxy_targets FROM dbo.Server_Hub_Vhosts t ${enYeni}`)
@@ -262,15 +286,14 @@ async function hubBaglamiYukle(query) {
     if (!hubVhostsByHost.has(h)) hubVhostsByHost.set(h, []);
     hubVhostsByHost.get(h).push(v);
   }
-  const jvms = new Map(jvmRows.map((r) => [`${U(r.host)}|${U(r.jvm)}`, r]));
-  return { vhostRows, hubVhostsByHost, ipMap: ipSahipleri(ipRows), jvmOf: (host, app) => jvms.get(`${U(host)}|${U(app)}`) || null, hata };
+  const jvms = jvmIndeksi(jvmRows);
+  return { vhostRows, hubVhostsByHost, ipMap: ipSahipleri(ipRows), jvmOf: (host, app, gen = null) => jvmSec(jvms, host, app, gen), hata };
 }
 
 function buildTargets(base, invRows, certRows, jvmRows, vhostRows, ipRows = []) {
   const ipMap = ipSahipleri(ipRows);
   const certByHost = buildCertIndex(certRows || []);
-  const jvmKey = (h, j) => `${U(h)}|${U(j)}`;
-  const jvms = new Map((jvmRows || []).map((r) => [jvmKey(r.host, r.jvm), r]));
+  const jvms = jvmIndeksi(jvmRows);
   // VHOST TRAFIGI: host + server_name ile anahtarlanir. `server_name` BUYUK/KUCUK HARF
   // DUYARSIZ karsilastirilir (Apache sunucu adlarini kasa korumadan yaziyor); kasaya
   // duyarli bir anahtar, olculmus trafigi "olculemedi" gosterirdi.
@@ -296,7 +319,7 @@ function buildTargets(base, invRows, certRows, jvmRows, vhostRows, ipRows = []) 
     if (seen.has(key)) continue;
     seen.add(key);
     const gen = genOf(r.jboss_version);
-    const j = jvms.get(jvmKey(host, app));
+    const j = jvmSec(jvms, host, app, gen);
     // Sertifika eslesmesi + Server Hub + AJP/proxy (ortak: Denetim > Web-App de kullanir).
     const web = webZenginlestir(app, host, matchWebForApp({ app, appHost: host, domain: r.domain || '' }, certByHost),
       { hubVhostsByHost, vhostRows, ipMap, jvm: j });
@@ -363,7 +386,7 @@ async function discover(base, db) {
       console.warn('[Retirement] Server_Hub_Jvms kolonlari okunamadi:', hubError);
       return null;
     });
-  const jvmSel = ['host', 'jvm', 'running', 'auto_start', 'scan_date', 'ports']
+  const jvmSel = ['host', 'jvm', 'gen', 'running', 'auto_start', 'scan_date', 'ports']
     .concat(jvmCols && jvmCols.includes('running_src') ? ['running_src'] : [])
     .concat(jvmCols && jvmCols.includes('cfg_ports') ? ['cfg_ports'] : [])
     .map((c) => `t.${c}`)
@@ -427,4 +450,4 @@ async function searchApps(q) {
   return [...bases].sort();
 }
 
-module.exports = { buildTargets, discover, searchApps, siteOf, parseAppName, hedefOrtami, genOf, trafikSinifi, ajpWeb, hedefSunucusu, webZenginlestir, hubBaglamiYukle };
+module.exports = { buildTargets, discover, searchApps, siteOf, parseAppName, hedefOrtami, genOf, jvmIndeksi, jvmSec, trafikSinifi, ajpWeb, hedefSunucusu, webZenginlestir, hubBaglamiYukle };
