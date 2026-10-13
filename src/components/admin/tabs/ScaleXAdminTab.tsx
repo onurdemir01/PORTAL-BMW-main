@@ -571,8 +571,8 @@ const ScaleXAdminTab: React.FC = () => {
               </p>
               <p>
                 <span className="font-mono">dry_run</span> hiçbir kapıdan geçmez;{' '}
-                <strong>Geri Al</strong> prod'da OCO'yu uyarı olarak geçer (gerekçe zorunlu) ama
-                SMART kaydı açar.
+                <strong>Geri Al</strong> prod'da OCO'yu uyarı olarak geçer (gerekçe zorunlu). SMART
+                için aşağıdaki kural geçerlidir.
               </p>
             </div>
             {/* DURUM KARTI: kural anahtari, SMART tanimli mi, eksik ne, kullanici bugun ne gorur.
