@@ -215,6 +215,56 @@ function webUyariMetni(web, host, hubVhostsByHost) {
   return `${uc ? '3-tier: ' : ''}web vhost'u BULUNAMADI — denenen: ${denenen}. Retirement bu vhost'u KAPATMAZ ve trafiğini kontrol edemez; web sunucusunu elle doğrulayın.`;
 }
 
+/**
+ * ORTAK WEB ZENGINLESTIRME (2026-10-13, kullanici: "Denetim > Web-App sekmesinde de ayni gelistirmeyi
+ * yapabilir miyiz?"). Sertifika envanteri eslesmesinin (matchWebForApp) uzerine iki kaynak:
+ *   1) Server Hub vhost taramasi (sertifika envanterinde olmayan vhost'lar; ad ilk etiketi birebir)
+ *   2) AJP/proxy hedefi = uygulamanin JVM portu (ad tutmasa da)
+ * Retirement kesfi ve Denetim > Web-App AYNI fonksiyonu kullanir - iki ekran ayni cevabi verir.
+ * @param {object} ctx { hubVhostsByHost: Map, vhostRows: object[], ipMap: Map, jvm: object|null }
+ */
+function webZenginlestir(app, host, web, ctx) {
+  let w = web;
+  if (!w.matched) w = hubWebFallback(app, host, w, ctx.hubVhostsByHost || new Map());
+  const ajp = ajpWeb(host, ctx.jvm || null, ctx.vhostRows || [], ctx.ipMap || new Map());
+  if (!ajp.length) return w;
+  const anahtar = (x) => `${U(x.host)}|${String(x.serverName || '').toLowerCase()}|${x.port || ''}|${x.confFile || ''}`;
+  const mevcut = new Map((w.web || []).map((x) => [anahtar(x), { ...x }]));
+  let yeni = 0;
+  for (const a of ajp) {
+    const k = anahtar(a);
+    if (mevcut.has(k)) { mevcut.get(k).kaynak = 'ad+ajp'; mevcut.get(k).ajpHedef = a.ajpHedef; } else { mevcut.set(k, a); yeni += 1; }
+  }
+  return { ...w, matched: true, web: [...mevcut.values()],
+    how: `${w.matched ? `${w.how} + ` : ''}AJP/proxy hedefi = JVM portu (${ajp.length} vhost${yeni ? `, ${yeni} yalniz AJP ile bulundu` : ''})` };
+}
+
+/** Server Hub baglami (en yeni tarama): vhost'lar, JVM portlari, IP sahipleri. Okunamayan kaynak bos kalir. */
+async function hubBaglamiYukle(query) {
+  const enYeni = `JOIN (SELECT host, MAX(scan_date) AS d FROM dbo.Server_Hub_Hosts GROUP BY host) m ON m.host = t.host AND m.d = t.scan_date`;
+  const jvmCols = await query(`SELECT name FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Server_Hub_Jvms')`)
+    .then((r) => (r.recordset || []).map((c) => String(c.name).toLowerCase()))
+    .catch(() => []);
+  const jvmSel = ['host', 'jvm', 'ports'].concat(jvmCols.includes('cfg_ports') ? ['cfg_ports'] : []).map((c) => `t.${c}`).join(', ');
+  const hata = [];
+  const [vhostRows, jvmRows, ipRows] = await Promise.all([
+    query(`SELECT t.host, t.server_name, t.aliases, t.listen, t.conf_file, t.product, t.proxy_targets FROM dbo.Server_Hub_Vhosts t ${enYeni}`)
+      .then((r) => r.recordset || []).catch((e) => { hata.push(`vhost: ${e.message}`); return []; }),
+    jvmCols.length
+      ? query(`SELECT ${jvmSel} FROM dbo.Server_Hub_Jvms t ${enYeni}`).then((r) => r.recordset || []).catch((e) => { hata.push(`jvm: ${e.message}`); return []; })
+      : Promise.resolve([]),
+    query(`SELECT t.host, t.ip FROM dbo.Server_Hub_Ips t ${enYeni}`).then((r) => r.recordset || []).catch(() => []),
+  ]);
+  const hubVhostsByHost = new Map();
+  for (const v of vhostRows) {
+    const h = U(v.host);
+    if (!hubVhostsByHost.has(h)) hubVhostsByHost.set(h, []);
+    hubVhostsByHost.get(h).push(v);
+  }
+  const jvms = new Map(jvmRows.map((r) => [`${U(r.host)}|${U(r.jvm)}`, r]));
+  return { vhostRows, hubVhostsByHost, ipMap: ipSahipleri(ipRows), jvmOf: (host, app) => jvms.get(`${U(host)}|${U(app)}`) || null, hata };
+}
+
 function buildTargets(base, invRows, certRows, jvmRows, vhostRows, ipRows = []) {
   const ipMap = ipSahipleri(ipRows);
   const certByHost = buildCertIndex(certRows || []);
@@ -245,24 +295,10 @@ function buildTargets(base, invRows, certRows, jvmRows, vhostRows, ipRows = []) 
     if (seen.has(key)) continue;
     seen.add(key);
     const gen = genOf(r.jboss_version);
-    let web = matchWebForApp({ app, appHost: host, domain: r.domain || '' }, certByHost);
-    if (!web.matched) web = hubWebFallback(app, host, web, hubVhostsByHost);
     const j = jvms.get(jvmKey(host, app));
-    // AJP/proxy eslesmesi ad eslesmesine EKLENIR (tekil: host|server_name|port|conf).
-    {
-      const ajp = ajpWeb(host, j, vhostRows, ipMap);
-      if (ajp.length) {
-        const anahtar = (w) => `${U(w.host)}|${String(w.serverName || '').toLowerCase()}|${w.port || ''}|${w.confFile || ''}`;
-        const mevcut = new Map((web.web || []).map((w) => [anahtar(w), w]));
-        let yeni = 0;
-        for (const a of ajp) {
-          const k = anahtar(a);
-          if (mevcut.has(k)) { mevcut.get(k).kaynak = 'ad+ajp'; mevcut.get(k).ajpHedef = a.ajpHedef; } else { mevcut.set(k, a); yeni += 1; }
-        }
-        web = { ...web, matched: true, web: [...mevcut.values()],
-          how: `${web.matched ? `${web.how} + ` : ''}AJP/proxy hedefi = JVM portu (${ajp.length} vhost${yeni ? `, ${yeni} yalniz AJP ile bulundu` : ''})` };
-      }
-    }
+    // Sertifika eslesmesi + Server Hub + AJP/proxy (ortak: Denetim > Web-App de kullanir).
+    const web = webZenginlestir(app, host, matchWebForApp({ app, appHost: host, domain: r.domain || '' }, certByHost),
+      { hubVhostsByHost, vhostRows, ipMap, jvm: j });
     // SOZLESME v3 (D1-C15, D1-C28): running=0 tek basina "kapali" DEGIL. running_src
     // UNMEASURED (hidepid / ps korlugu) ise calisma durumu BILINMIYOR; NULL (eski satir ya da
     // kolon henuz yok) bilinen sayilir.
@@ -390,4 +426,4 @@ async function searchApps(q) {
   return [...bases].sort();
 }
 
-module.exports = { buildTargets, discover, searchApps, siteOf, parseAppName, hedefOrtami, genOf, trafikSinifi, ajpWeb, hedefSunucusu };
+module.exports = { buildTargets, discover, searchApps, siteOf, parseAppName, hedefOrtami, genOf, trafikSinifi, ajpWeb, hedefSunucusu, webZenginlestir, hubBaglamiYukle };

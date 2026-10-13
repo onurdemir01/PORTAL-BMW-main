@@ -46,9 +46,11 @@ export default function WebApp() {
   if (err) return <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">{err}</div>;
   if (!data) return null;
 
-  const matchedCount = data.matchSummary
-    .filter((m) => m.how.includes("server_name ("))
+  // Sunucu tum kaynaklari (sertifika + Server Hub + AJP) sayar; eski sunucuda ozetten turet.
+  const matchedCount = data.matchedTotal ?? data.matchSummary
+    .filter((m) => m.how !== "eşleşmedi" && m.how !== "web sunucusu var, server_name tutmadı")
     .reduce((a, m) => a + m.count, 0);
+  const eslesmisKova = (h: string) => h !== "eşleşmedi" && h !== "web sunucusu var, server_name tutmadı";
 
   return (
     <div className="space-y-3">
@@ -107,7 +109,7 @@ export default function WebApp() {
         <div className="flex flex-wrap gap-2">
           {data.matchSummary.map((m) => (
             <span key={m.how} className={`text-[11px] px-2 py-1 rounded-lg border ${
-              m.how.includes("server_name (") ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+              eslesmisKova(m.how) ? "bg-emerald-50 text-emerald-700 border-emerald-200"
                 : m.how === "eşleşmedi" ? "bg-red-50 text-red-700 border-red-200"
                 : "bg-amber-50 text-amber-700 border-amber-200"
             }`}>
@@ -119,11 +121,15 @@ export default function WebApp() {
           3-tier sunucularda web sunucusu, uygulama sunucusunun adındaki <b>5. karakter</b>{" "}
           <code className="px-1 rounded bg-[var(--bg-surface)]">A</code> →{" "}
           <code className="px-1 rounded bg-[var(--bg-surface)]">W</code> çevrilerek bulunur
-          (DACR<b>A</b>AP01 → DACR<b>W</b>AP01). 2-tier’de web sunucusu uygulamanın kendi
+          (DACR<b>A</b>AP01 → DACR<b>W</b>AP01); ayrıca son harf <b>P</b> yapılmış aday da denenir
+          (Pendik 6 harf: GOJBAB03 → GOJB<b>W</b>P03, Ankara 7 harf). 2-tier’de web sunucusu uygulamanın kendi
           sunucusudur. Doğru vhost’u bulmak için uygulama adı küçük harfle{" "}
           <code className="px-1 rounded bg-[var(--bg-surface)]">server_name</code> içinde aranır — önce tam
-          ad, tutmazsa ortam son eki atılmış taban ad. Hangi biçimin tuttuğu satırda yazar.
+          ad, tutmazsa ortam son eki atılmış taban ad. Sertifika envanterinde yoksa <b>Server Hub</b> vhost
+          taraması denenir. Ad hiç tutmasa da vhost’un mod_jk/proxy hedefi uygulamanın JVM portuna gidiyorsa
+          eşleşir (<b>AJP</b> etiketi). Retirement keşfiyle aynı kurallar; hangi yolun tuttuğu satırda yazar.
         </p>
+        {data.hubHata && <p className="text-[11px] mt-1 text-amber-700">Server Hub okunamadı ({data.hubHata}) — yalnız sertifika envanteri eşleşmesi gösteriliyor.</p>}
       </div>
 
       <div className="overflow-x-auto rounded-xl border border-[var(--border-subtle)]">
@@ -171,9 +177,14 @@ export default function WebApp() {
                   {r.web.length ? (
                     <div className="flex flex-col gap-0.5">
                       {r.web.map((w, i) => (
-                        <span key={i} title={w.confFile ? `conf: ${w.confFile}` : undefined}>
+                        <span key={i} title={[w.confFile ? `conf: ${w.confFile}` : "", w.ajpHedef ? `AJP/proxy hedefi: ${w.ajpHedef}` : ""].filter(Boolean).join(" · ") || undefined}>
                           {w.serverName}
                           {w.product && <span className="ml-1 text-[10px] text-[var(--text-muted)]">{w.product}</span>}
+                          {(w.kaynak === "ajp" || w.kaynak === "ad+ajp") && (
+                            <span className="ml-1 text-[9px] px-1 rounded border border-sky-200 bg-sky-50 text-sky-700" title={w.kaynak === "ajp" ? "Yalnız AJP/proxy hedefiyle bulundu: vhost bu uygulamanın JVM portuna gidiyor (ad tutmasa da)" : "Ad eşleşmesi AJP/proxy hedefiyle de doğrulandı"}>
+                              {w.kaynak === "ajp" ? "AJP" : "ad+AJP"}
+                            </span>
+                          )}
                         </span>
                       ))}
                     </div>

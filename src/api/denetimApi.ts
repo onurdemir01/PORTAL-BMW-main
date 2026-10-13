@@ -843,6 +843,10 @@ export interface WebAppVhost {
   serverName: string;
   confFile: string;
   product: string;
+  /** Nereden bulundu: 'ad' (sertifika/Server Hub ad eslesmesi), 'ajp' (yalniz AJP/proxy hedefi), 'ad+ajp'. */
+  kaynak?: 'ad' | 'ajp' | 'ad+ajp' | string;
+  /** AJP/proxy eslesmesinde vhost'un hedefi (host:port). */
+  ajpHedef?: string;
 }
 
 export interface WebAppRow {
@@ -876,7 +880,11 @@ export interface WebAppResult {
   label: string;
   sources: { key: string; label: string }[];
   certMissing: boolean;
+  /** Server Hub taramasi okunamadiysa sebep (yalniz sertifika eslemesi gosterilir). */
+  hubHata?: string | null;
   total: number;
+  /** Web sunucusu bulunan uygulama sayisi (tum kaynaklar). */
+  matchedTotal?: number;
   shown: number;
   capped: boolean;
   matchSummary: { how: string; count: number }[];

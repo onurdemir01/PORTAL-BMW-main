@@ -164,11 +164,18 @@ function registerWebApp(router) {
       const certMissing = !!certRes._missing;
 
       const certByHost = buildCertIndex(certRes.recordset || []);
+      // SERVER HUB + AJP (2026-10-13): retirement kesfiyle AYNI zenginlestirme (discover.cjs).
+      // Server Hub okunamazsa yalniz sertifika eslemesi kalir; ekran bunu hubHata ile soyler.
+      const { webZenginlestir, hubBaglamiYukle } = require('../retirement/discover.cjs');
+      const hub = await hubBaglamiYukle(query).catch((e) => ({ vhostRows: [], hubVhostsByHost: new Map(), ipMap: new Map(), jvmOf: () => null, hata: [e.message] }));
+      // Ozet kovasi: AJP parantezindeki sayilar kovayi parcalamasin.
+      const howKova = (h) => String(h).replace(/AJP\/proxy hedefi = JVM portu \([^)]*\)/, 'AJP/proxy hedefi = JVM portu');
 
       const howCount = {};
       const tierCount = {};
       const rows = [];
       let total = 0;
+      let eslesen = 0;
 
       for (const a of appRes.recordset || []) {
         const app = String(a.app || '').trim();
@@ -176,10 +183,12 @@ function registerWebApp(router) {
         if (!app) continue;
 
         const domain = String(a.domain || '').trim();
-        const m = matchWebForApp({ app, appHost, domain }, certByHost);
+        const m = webZenginlestir(app, appHost, matchWebForApp({ app, appHost, domain }, certByHost),
+          { hubVhostsByHost: hub.hubVhostsByHost, vhostRows: hub.vhostRows, ipMap: hub.ipMap, jvm: hub.jvmOf(appHost, app) });
         const { tier, how, matched } = m;
+        if (matched) eslesen++;
 
-        howCount[how] = (howCount[how] || 0) + 1;
+        howCount[howKova(how)] = (howCount[howKova(how)] || 0) + 1;
         tierCount[tier] = (tierCount[tier] || 0) + 1;
         total++;
 
@@ -196,7 +205,7 @@ function registerWebApp(router) {
           how,
           matched,
           // Bir uygulama birden fazla vhost'ta servis ediliyor olabilir; hepsi dondurulur.
-          web: m.web,
+          web: (m.web || []).map((w) => ({ ip: '', port: '', confFile: '', product: '', ...w, kaynak: w.kaynak || 'ad' })),
           webHostCandidate: m.webHostCandidate,
           vhostCountOnHost: m.vhostCountOnHost,
         });
@@ -212,7 +221,9 @@ function registerWebApp(router) {
         label: src.label,
         sources: Object.entries(SOURCES).map(([k, v]) => ({ key: k, label: v.label })),
         certMissing,
+        hubHata: hub.hata && hub.hata.length ? hub.hata.join('; ') : null,
         total,
+        matchedTotal: eslesen,
         shown: rows.length,
         capped: rows.length >= CAP,
         matchSummary: Object.entries(howCount)
