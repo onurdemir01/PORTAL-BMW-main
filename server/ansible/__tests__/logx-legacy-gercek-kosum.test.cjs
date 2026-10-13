@@ -35,6 +35,7 @@
 //   LG10 hicbir aday uygun degil -> failed; her adayin sebebi yazilir, genel metin YOK
 //   LG11 on kontrolu gecen adayda dizin acilamazsa siradaki BIR KEZ denenir; ikisi de duserse
 //        iki sebep birden yazilir
+//   LG12 disaridan verilen aday listesinde goreli / kok yol -> hicbir sunucuya dokunmadan durur
 //   (iki sunucunun AYNI adayi paylasmasi: LG4)
 //
 // KOSUL: PATH'te ansible-playbook (LG2/LG4/LG5 icin ayrica community.general.archive). Yoksa testler
@@ -106,13 +107,23 @@ function agacKur() {
   return kok;
 }
 
-/** Gercek ansible-playbook; sonuc: set_stats ile yayinlanan logx_result. */
-function kostur(playbook, vars, tmp, envanter = 'localhost,') {
+/**
+ * Gercek ansible-playbook; sonuc: set_stats ile yayinlanan logx_result.
+ * `sonucsuz`: playbook'un sonuc YAYINLAMADAN dusmesi beklenen kosular (girdi dogrulamasi).
+ * `ayrintili`: gorev sonuclari da yazilir (-v); `cikti`da modullerin dondurdugu yollar okunur.
+ */
+function kostur(
+  playbook,
+  vars,
+  tmp,
+  envanter = 'localhost,',
+  { sonucsuz = false, ayrintili = false } = {},
+) {
   const vf = path.join(tmp, `vars-${path.basename(playbook)}.json`);
   fs.writeFileSync(vf, JSON.stringify({ ansible_become: false, ...vars }));
   const r = spawnSync(
     'ansible-playbook',
-    ['-i', envanter, '-c', 'local', playbook, '-e', `@${vf}`],
+    ['-i', envanter, '-c', 'local', playbook, '-e', `@${vf}`, ...(ayrintili ? ['-v'] : [])],
     {
       encoding: 'utf8',
       timeout: 180000,
@@ -132,6 +143,7 @@ function kostur(playbook, vars, tmp, envanter = 'localhost,') {
   );
   const cikti = `${r.stdout || ''}\n${r.stderr || ''}`;
   const satir = (r.stdout || '').split('\n').find((l) => l.includes('RUN: {'));
+  if (sonucsuz && !satir) return { rc: r.status, sonuc: null, cikti };
   assert.ok(satir, `logx_result yayinlanmadi (rc=${r.status}):\n${cikti.slice(-3000)}`);
   const stats = JSON.parse(satir.slice(satir.indexOf('RUN: ') + 5));
   return { rc: r.status, sonuc: stats.logx_result, cikti };
@@ -353,14 +365,22 @@ test(
           fallback_dir: path.join(kok, 'fallback'),
           archive_name: 'lg4-iki-host.zip',
           // Iki "host" da bu makine ve AYNI adayi kullaniyor: teslim dizini uretimde boyle
-          // paylasimlidir. Ise ozel dizin sunucu adini tasidigi icin cakismazlar; tasimasaydi
-          // biri otekinin ZIP'ini ezer ya da temizlerken silerdi.
+          // paylasimlidir.
           logx_legacy_tmp_bases: [{ dir: staging, tur: 'teslim' }],
         },
         kok,
         'sunucu-a,sunucu-b,',
+        { ayrintili: true },
       );
       assert.equal(rc, 0, cikti.slice(-2500));
+      // Her sunucu KENDI dizinini acar (modulun dondurdugu yoldan okunur). Ayni dizini
+      // paylassalardi ilk biten sunucunun temizligi otekinin ZIP'ini silebilirdi; bu bir
+      // YARISTIR ve her kosuda tetiklenmez - sonuca bakarak degil, yola bakarak olculur.
+      for (const h of ['sunucu-a', 'sunucu-b'])
+        assert.ok(
+          cikti.includes(`"path": "${path.join(staging, `logx-lg4-iki-host-${h}`)}"`),
+          `${h}: ise ozel dizin sunucu adini tasimiyor`,
+        );
       assert.equal(sonuc.overall_status, 'success', JSON.stringify(sonuc).slice(0, 800));
       assert.deepEqual(sonuc.hosts.map((h) => `${h.host}:${h.status}`).sort(), [
         'SUNUCU-A:ok',
@@ -426,7 +446,10 @@ test(
     try {
       const bozuk = path.join(kok, 'dumpdir');
       fs.writeFileSync(bozuk, 'dizin olmasi gerekirdi\n');
-      fs.mkdirSync(path.join(kok, 'yedek'));
+      // Kullanilan aday SEMBOLIK BAG: dumpdir'in baska bir diske baglandigi sunucularda da
+      // "dizin degil" denmemeli (stat bagi izler).
+      fs.mkdirSync(path.join(kok, 'gercek-yedek'));
+      fs.symlinkSync(path.join(kok, 'gercek-yedek'), path.join(kok, 'yedek'));
       const { rc, sonuc, cikti } = alanKostur(
         kok,
         [{ dir: bozuk }, { dir: path.join(kok, 'hic-yok') }, { dir: path.join(kok, 'yedek') }],
@@ -445,7 +468,8 @@ test(
       // Bozuk yola DOKUNULMAZ (silmek / dizine cevirmek sunucu sahibinin isi) ve kullanilan
       // adayda iz kalmaz.
       assert.equal(fs.readFileSync(bozuk, 'utf8'), 'dizin olmasi gerekirdi\n');
-      assert.deepEqual(fs.readdirSync(path.join(kok, 'yedek')), []);
+      assert.deepEqual(fs.readdirSync(path.join(kok, 'gercek-yedek')), []);
+      assert.ok(fs.lstatSync(path.join(kok, 'yedek')).isSymbolicLink(), 'bag silindi');
     } finally {
       temizle(kok);
     }
@@ -630,6 +654,48 @@ test(
   },
 );
 
+test(
+  'LG12 disaridan verilen aday listesi DOGRULANIR: goreli ya da kok yol -> hicbir sey yapilmadan durur',
+  { skip: ARSIV_YOK },
+  () => {
+    // Liste AWX is sablonundan verilebilir. Ise ozel dizin `<aday>/logx-...` olarak kurulur ve
+    // is sonunda SILINIR: goreli bir yol uzak kullanicinin calisma dizinine, "/" ise dosya
+    // sisteminin kokune yazmak demektir. Ikisi de ilk play'de reddedilir.
+    const kok = agacKur();
+    try {
+      fs.mkdirSync(path.join(kok, 'staging'));
+      for (const kotu of [{ dir: 'goreli/dizin' }, { dir: '/' }, { yol: '/tmp' }, 'duz-metin']) {
+        const { rc, sonuc, cikti } = kostur(
+          AKTARIM,
+          {
+            selected_files: [
+              { host: 'localhost', path: path.join(kok, EAR, 'log1', 'server.log') },
+            ],
+            staging_dir: path.join(kok, 'staging'),
+            fallback_dir: path.join(kok, 'fallback'),
+            archive_name: 'lg12.zip',
+            logx_legacy_tmp_bases: [{ dir: path.join(kok, 'staging') }, kotu],
+          },
+          kok,
+          'localhost,',
+          { sonucsuz: true },
+        );
+        const ad = JSON.stringify(kotu);
+        assert.notEqual(rc, 0, `${ad}: gecersiz aday kabul edildi`);
+        assert.equal(sonuc, null, `${ad}: gecersiz listeyle is yurudu`);
+        assert.match(cikti, /Gecersiz logx_legacy_tmp_bases kaydi/, ad);
+        assert.deepEqual(
+          fs.readdirSync(path.join(kok, 'staging')),
+          [],
+          `${ad}: dosya sistemine dokunuldu`,
+        );
+      }
+    } finally {
+      temizle(kok);
+    }
+  },
+);
+
 // ── LG5: PORTAL EKRANININ OKUDUGU BICIMLER ────────────────────────────────────────────────
 // Basarisizlik ekrani ve "arsiv eksik" uyarisi playbook'un yayinladigi alanlari okur:
 // hosts[].status / error, per_file_status[].status / error, ust duzey error. O ekranin
@@ -654,10 +720,14 @@ const ORNEK_YAZ = process.env.LOGX_ORNEK_YAZ === '1';
 const ornekleriOku = () =>
   fs.existsSync(ORNEK_DOSYASI) ? JSON.parse(fs.readFileSync(ORNEK_DOSYASI, 'utf8')) : {};
 
-/** Makineye ozgu degerleri sabitler: gecici kok -> '', arsiv boyutu -> 1, host sirasi -> ada gore. */
+/**
+ * Makineye ozgu degerleri sabitler: gecici kok -> '', arsiv boyutu -> 1 / 0, host sirasi -> ada gore.
+ * Boyut SAYIYA cevrilir: ansible-core 2.19 oncesi (yerel tipsiz Jinja) ayni alani metin ("0")
+ * olarak yayinlar; ornek dosyasi Ansible surumune gore degismesin.
+ */
 function ornekle(kok, sonuc) {
   const o = JSON.parse(JSON.stringify(sonuc).split(kok).join(''), (k, v) =>
-    k === 'size_bytes' && Number(v) > 0 ? 1 : v,
+    k === 'size_bytes' ? (Number(v) > 0 ? 1 : 0) : v,
   );
   if (Array.isArray(o.hosts))
     o.hosts.sort((a, b) => String(a.host).localeCompare(String(b.host), 'en'));

@@ -42,7 +42,12 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-const { pythonBul, shebangYorumlayici, adaylar } = require('./fixtures/python-bul.cjs');
+const {
+  pythonBul,
+  shebangYorumlayici,
+  betikYorumlayici,
+  adaylar,
+} = require('./fixtures/python-bul.cjs');
 const { normalize } = require('../../util/guard-text.cjs');
 
 const DIR = path.join(__dirname, '..', 'bmw_portal', 'logx', 'legacy');
@@ -1001,8 +1006,17 @@ SENARYOLAR = {
         was={STAGING: st(var=False)}, bos={'/tmp': DF_DUSTU}),
     'G4d_df_ciktisi_bozuk': lambda: tek_aday(
         was={STAGING: st(var=False)}, bos={'/tmp': df('-')}),
+    'G4e_df_hata_koduyla_bitti': lambda: tek_aday(
+        was={STAGING: st(var=False)}, bos={'/tmp': df(4 * MB, rc=1)}),
     'G5_dumpdir_dosya_olmus': lambda: tek_aday(was=HEPSI_KOTU),
     'G6_hicbir_aday_uygun_degil': lambda: tek_aday(was=HEPSI_KOTU, ust={'/vhosting8': st(yazar=False)}),
+    'G16_baglanan_dizininde_arsiv_dustu': lambda: tek_aday(
+        was={STAGING: st(yazar=False)},
+        enj={'was_archive_result': DUSTU('[Errno 122] Disk quota exceeded')}),
+    'G14_yazilir_ama_girilemez': lambda: tek_aday(
+        was={STAGING: st(var=False), '/tmp': st(gecer=False)}),
+    'G15_logx_tmp_zaten_var': lambda: tek_aday(
+        was=dict(HEPSI_KOTU, **{'/vhosting8/logx-tmp': st()})),
     'G7_ilk_deneme_dustu': lambda: aktarim_kos(TEK, tek_enjekte(
         was_tmp_dir_result=DUSTU('[Errno 28] No space left on device'))),
     'G7b_ilk_arsiv_dustu': lambda: aktarim_kos(TEK, tek_enjekte(
@@ -1010,6 +1024,9 @@ SENARYOLAR = {
     'G8_iki_deneme_dustu': lambda: aktarim_kos(TEK, tek_enjekte(
         was_tmp_dir_result=DUSTU('[Errno 30] Read-only file system'),
         was_archive_result_2=DUSTU('[Errno 28] No space left on device'))),
+    'G8b_ikinci_dizin_acilamadi': lambda: aktarim_kos(TEK, tek_enjekte(
+        was_archive_result=DUSTU('[Errno 28] No space left on device'),
+        was_tmp_dir_result_2=DUSTU('[Errno 13] Permission denied'))),
     'G9_tek_uygun_aday_dustu': lambda: tek_aday(
         was=dict(HEPSI_KOTU, **{'/tmp': st()}),
         ust={'/vhosting8': st(yazar=False)},
@@ -1240,6 +1257,32 @@ test('X09b shebang -> yorumlayici: dogrudan yol, env bicimi, bayraklar, bozuk sa
   assert.equal(shebangYorumlayici('#! /usr/bin/python3.12  '), '/usr/bin/python3.12');
   for (const kotu of ['', 'import sys', '#!', '#!   ', '# !/usr/bin/python3', null, undefined])
     assert.equal(shebangYorumlayici(kotu), null, JSON.stringify(kotu));
+});
+
+test('X09b uzun yol sarmalayicisi (pip / uv): yorumlayici /bin/sh DEGIL, exec satirindaki python', () => {
+  // `#!` satiri 127 karakteri gecemez; sanal ortam derin bir dizindeyse betik `#!/bin/sh` ile
+  // baslar ve asil yorumlayici ikinci satirdadir. Yalniz ilk satira bakmak Python kodunu
+  // kabuga verdirir.
+  const uzun = '/cok/uzun/bir/calisma/alani/sanal-ortam/bin/python';
+  const sarmali = ['#!/bin/sh', `'''exec' '${uzun}' "$0" "$@"`, "' '''", 'import sys'].join('\n');
+  assert.equal(betikYorumlayici(sarmali), uzun);
+  // Siradan betikler degismez.
+  assert.equal(betikYorumlayici('#!/usr/bin/python3\nimport sys\n'), '/usr/bin/python3');
+  assert.equal(betikYorumlayici('#!/usr/bin/env python3\n'), 'python3');
+  // Gercek bir kabuk betigi: ikinci satir exec kalibi degilse kabuk AYNEN doner (uydurma yok).
+  assert.equal(betikYorumlayici('#!/bin/sh\necho merhaba\n'), '/bin/sh');
+  assert.equal(betikYorumlayici('#!/bin/sh'), '/bin/sh');
+  assert.equal(betikYorumlayici(''), null);
+  // Ansible boyle kuruluysa aday listesine KABUK degil o python girer.
+  const tmp = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'pybul-'));
+  try {
+    fs.writeFileSync(path.join(tmp, 'ansible-playbook'), sarmali, { mode: 0o755 });
+    const a = adaylar({ PATH: tmp }).map(([k]) => k);
+    assert.ok(a.includes(uzun), `sarmalayicidaki python aday degil: ${a}`);
+    assert.ok(!a.includes('/bin/sh'), `kabuk python adayi sanildi: ${a}`);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
 });
 
 test('X09b adaylar: acik secim once; PATH python`lari; sonra Ansible`in yorumlayicisi', () => {
@@ -1676,7 +1719,12 @@ test('X11 /tmp butcesi: secilen dosyalar bos alanin %80`ini asarsa /tmp KULLANIL
 });
 
 test('X11 bos alan OLCULEMEDIYSE aday uygun SAYILMAZ (olculemedi != uygun)', () => {
-  for (const ad of ['G4c_bos_alan_olculemedi', 'G4d_df_ciktisi_bozuk']) {
+  // df hata koduyla bittiyse yazdigi satira GUVENILMEZ (rakam okunabilse bile).
+  for (const ad of [
+    'G4c_bos_alan_olculemedi',
+    'G4d_df_ciktisi_bozuk',
+    'G4e_df_hata_koduyla_bitti',
+  ]) {
     const s = senaryo(ad);
     assert.equal(adayTablosu(s)['/tmp'], 'bos alan olculemedi', ad);
     assert.equal(tekYayin(s, ad).tmp_dir, '/vhosting8/dumpdir', ad);
@@ -1701,6 +1749,27 @@ test('X11 SAHADAKI OLAY: dumpdir dosya olmus -> is DUSMEZ, siradaki aday; sebep 
   assert.deepEqual(
     kosan(s, HAZIRLA_WAS).map((a) => [a.arg.path, a.arg.mode]),
     [[`/vhosting8/logx-tmp/${IS_DIZINI}`, '0711']],
+  );
+  // 0733 yolu YALNIZ teslim adayinda: okuma kullanicisinin yazamadigi /tmp icin baglanan
+  // kullaniciya bakilmaz (herkese acik bir dizinde 0733 dizin acilmaz).
+  assert.deepEqual(kosan(s, 'Teslim adayini baglanan kullaniciyla denetle'), []);
+  assert.deepEqual(kosan(s, HAZIRLA_BAGLANAN), []);
+});
+
+test('X11 yazilabilir ama GIRILEMEYEN dizin uygun degildir (icinde dizin acilamaz)', () => {
+  const s = senaryo('G14_yazilir_ama_girilemez');
+  assert.equal(adayTablosu(s)['/tmp'], 'was yazamiyor');
+  assert.equal(tekYayin(s, 'G14').tmp_dir, '/vhosting8/dumpdir');
+});
+
+test('X11 logx-tmp zaten VARSA oldugu gibi kullanilir; ust dizini olculmez', () => {
+  const s = senaryo('G15_logx_tmp_zaten_var');
+  assert.equal(adayTablosu(s)['/vhosting8/logx-tmp'], 'uygun/was');
+  assert.equal(tekYayin(s, 'G15').tmp_dir, '/vhosting8/logx-tmp');
+  // Ust dizin yalniz EKSIK olan olusturulabilir aday icin olculur (/vhosting/logx-tmp).
+  assert.deepEqual(
+    kosan(s, 'Olusturulabilir gecici alan adaylarinin ust dizinini denetle').map((a) => a.arg.path),
+    ['/vhosting'],
   );
 });
 
@@ -1809,6 +1878,18 @@ test('X11 iki deneme de duserse: failed + IKI sebep; ucuncu aday DENENMEZ', () =
   );
 });
 
+test('X11 ikinci denemede dizin acilamazsa arsiv gorevi KOSMAZ; sebep dizin hatasidir', () => {
+  const s = senaryo('G8b_ikinci_dizin_acilamadi');
+  const r = tekYayin(s, 'G8b');
+  assert.equal(r.overall_status, 'failed');
+  assert.equal(
+    r.error,
+    `Loglar was kullanicisiyla ziplenemedi. 1. deneme (${TESLIM}): [Errno 28] No space left on device` +
+      ' | 2. deneme (/tmp): [Errno 13] Permission denied',
+  );
+  assert.deepEqual(kosan(s, `${ARSIV_GOREVI} (2. deneme)`), [], 'olmayan dizine arsiv yazildi');
+});
+
 test('X11 tek uygun aday duserse: tek deneme yazilir, uydurma ikinci deneme YOK', () => {
   const s = senaryo('G9_tek_uygun_aday_dustu');
   const r = tekYayin(s, 'G9');
@@ -1861,6 +1942,39 @@ test('X11 ikinci deneme baglanan kullanicinin actigi dizinde de calisir', () => 
     [`${TESLIM}/${IS_DIZINI}`],
   );
   assert.deepEqual(kosan(s, TEMIZLE_WAS), []);
+});
+
+test('X11 baglanan kullanicinin actigi dizinde arsiv duserse: ONUNLA temizlenir, siradaki aday', () => {
+  // Okuma kullanicisi 0733 dizine yazarken dustu (kota). Dizinin sahibi baglanan kullanici:
+  // okuma kullanicisi onu silemez. Basarisiz denemenin temizligi de SAHIBIYLE yapilir.
+  const s = senaryo('G16_baglanan_dizininde_arsiv_dustu');
+  const r = tekYayin(s, 'G16');
+  assert.equal(r.overall_status, 'success', JSON.stringify(r).slice(0, 500));
+  assert.equal(r.tmp_dir, '/tmp');
+  assert.deepEqual(
+    kosan(s, 'Basarisiz ilk denemenin gecici dizinini baglanan kullaniciyla temizle').map((a) => [
+      a.arg.path,
+      a.arg.state,
+      a.become,
+    ]),
+    [[`${TESLIM}/${IS_DIZINI}`, 'absent', false]],
+  );
+  assert.deepEqual(
+    kosan(s, 'Basarisiz ilk denemenin gecici dizinini okuma kullanicisiyla temizle'),
+    [],
+    'sahibi olmadigi dizini okuma kullanicisi silmeye calisti',
+  );
+  // Ikinci deneme /tmp'de: orada dizini okuma kullanicisi acar ve siler.
+  assert.deepEqual(
+    kosan(s, `${HAZIRLA_WAS} (2. deneme)`).map((a) => [a.arg.path, a.arg.mode]),
+    [[`/tmp/${IS_DIZINI}`, '0711']],
+  );
+  assert.deepEqual(kosan(s, `${HAZIRLA_BAGLANAN} (2. deneme)`), []);
+  assert.deepEqual(
+    kosan(s, TEMIZLE_WAS).map((a) => a.arg.path),
+    [`/tmp/${IS_DIZINI}`],
+  );
+  assert.deepEqual(kosan(s, TEMIZLE_BAGLANAN), []);
 });
 
 test('X11 cok-host: her sunucu KENDI dizinini kullanir; alanlar hosts[] altinda yayinlanir', () => {

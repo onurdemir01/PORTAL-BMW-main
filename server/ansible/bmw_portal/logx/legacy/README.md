@@ -461,7 +461,10 @@ bildirdiğini ve `archive`'ın ZIP'e ne yazdığını TAKLİT eder; bu test onla
 - LG10: hiçbir aday uygun değil -> `failed`; her adayın sebebi yazılır, genel metin yok.
 - LG11: ön kontrolü geçen adaya yazılamazsa sıradaki bir kez denenir; ikisi de düşerse iki
   sebep birden yazılır, üçüncü aday denenmez.
-- LG4 ayrıca iki sunucunun AYNI (paylaşımlı) adayı kullandığı durumu ölçer.
+- LG12: dışarıdan verilen aday listesinde göreli ya da kök (`/`) yol -> ilk play reddeder,
+  hiçbir sunucuya dokunulmaz.
+- LG4 ayrıca iki sunucunun AYNI (paylaşımlı) adayı kullandığı durumu ölçer; LG6'da kullanılan
+  aday bir sembolik bağdır (`stat` bağı izler).
 
 Render tarafında X11 (`logx-legacy-olculemedi.test.cjs`) aday kararını enjekte edilmiş `stat` /
 `df` sonuçlarıyla tablo halinde sınar: bütçe tam sınırda ve bir bayt fazlasında, boş alan
