@@ -54,6 +54,41 @@ export interface ArkRapor {
   cached?: boolean;
 }
 
+/** Glomo Geçiş Planı (2026-10-13): set = çalışma (Excel'deki Çalışma-N). */
+export interface GecisSet {
+  no: number;
+  /** 'YYYY-MM-DDTHH:mm' (TR saati, girildiği gibi) ya da null. */
+  calismaAt: string | null;
+  ocoNo: string;
+}
+export interface GecisUygulama {
+  namespace: string;
+  application: string;
+  setNo: number;
+  /** 'excel' = takvimden; 'portal' = canlı Glomo envanterinde olup Excel'de olmayan (Set 7'ye eklendi). */
+  kaynak: 'excel' | 'portal' | string;
+  kullanimda: 'yes' | 'no' | null;
+  /** Çalışmaya katılacak kişi(ler). Tabloyu dolduranın adı TUTULMAZ. */
+  katilimci: string;
+  gecti: boolean;
+  /** 'YYYY-MM-DD' ya da null. */
+  gecisTarihi: string | null;
+  ekip: string[];
+  locations: string[];
+  yuk: { state: 'active' | 'idle' | 'unknown'; req7: number } | null;
+  /** Canlı Glomo envanterinde görülmüyor (rapor okunduysa). */
+  taramadaYok: boolean;
+}
+export interface GecisPlani {
+  ok: boolean;
+  message?: string;
+  raporVar?: boolean;
+  raporTarihi?: string | null;
+  sets?: GecisSet[];
+  apps?: GecisUygulama[];
+  admin?: boolean;
+}
+
 const BASE = '/api/spa-report';
 const safeJson = (r: Response) =>
   r.json().catch(() => ({ ok: false, message: 'Yanıt okunamadı.' }));
@@ -80,4 +115,13 @@ export const arkSpaApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(p),
     }).then(safeJson),
+  gecis: (): Promise<GecisPlani> => fetch(`${BASE}/gecis`).then(safeJson),
+  gecisApp: (p: { namespace: string; application: string; kullanimda: 'yes' | 'no' | null; katilimci: string }): Promise<{ ok: boolean; message?: string }> =>
+    fetch(`${BASE}/gecis/app`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(p) }).then(safeJson),
+  gecisAppAdmin: (p: { namespace: string; application: string; setNo?: number; gecti?: boolean; gecisTarihi?: string | null }): Promise<{ ok: boolean; message?: string }> =>
+    fetch(`${BASE}/gecis/app-admin`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(p) }).then(safeJson),
+  gecisSet: (p: { no: number; calismaAt: string | null; ocoNo: string }): Promise<{ ok: boolean; message?: string }> =>
+    fetch(`${BASE}/gecis/set`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(p) }).then(safeJson),
+  gecisSetGecti: (no: number, tarih: string | null): Promise<{ ok: boolean; message?: string; guncellenen?: number }> =>
+    fetch(`${BASE}/gecis/set/${no}/gecti`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tarih }) }).then(safeJson),
 };

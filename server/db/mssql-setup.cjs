@@ -1651,6 +1651,39 @@ const TABLES = [
       )`,
   },
   {
+    // Glomo Gecis Plani (2026-10-13, server/spa-report/gecis.cjs): setin calisma ani (TR saati,
+    // girildigi gibi metin) ve OCO numarasi. Setler 1-7 ilk okumada olusur.
+    name: 'spa_gecis_set',
+    sql: `
+      CREATE TABLE spa_gecis_set (
+        no          INT           NOT NULL PRIMARY KEY,
+        calisma_at  NVARCHAR(16)  NULL,
+        oco_no      NVARCHAR(64)  NULL,
+        updated_at  DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+      )`,
+  },
+  {
+    // Glomo Gecis Plani: uygulama basina tek satir. app_key = SHA-256(namespace + NUL + application)
+    // (900 bayt indeks siniri, bkz. nginx_spa_location_in_use). Kim yazdi TUTULMAZ (kullanici
+    // istegi: "tabloyu dolduran kisinin ismi gorunmesin"); katilimci = calismaya katilacak kisi.
+    name: 'spa_gecis_app',
+    sql: `
+      CREATE TABLE spa_gecis_app (
+        id            INT IDENTITY(1,1) PRIMARY KEY,
+        app_key       CHAR(64)      NOT NULL,
+        namespace     NVARCHAR(200) NOT NULL,
+        application   NVARCHAR(200) NOT NULL,
+        set_no        INT           NOT NULL,
+        kaynak        NVARCHAR(16)  NOT NULL DEFAULT 'excel',
+        kullanimda    NVARCHAR(8)   NULL,
+        katilimci     NVARCHAR(400) NULL,
+        gecti         BIT           NOT NULL DEFAULT 0,
+        gecis_tarihi  NVARCHAR(10)  NULL,
+        updated_at    DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+        UNIQUE(app_key)
+      )`,
+  },
+  {
     // Crypto Hub CPU/bellek uygulama kilidi (2026-10-02) - compare-and-set, ScaleX
     // tryLockRestore deseni (bkz. server/crypto-hub/resources.cjs kilitAl). Anahtar
     // `<kiraci>|<release>` basina TEK satir; satir SILINMEZ, kilit `held = 0` UPDATE'iyle

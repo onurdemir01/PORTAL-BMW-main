@@ -25,6 +25,7 @@ import { arkSpaApi, type ArkRapor, type ArkSatir, type ArkYuk } from '@/api/arkS
 import { kismiEtiket, kismiAciklama } from '@/components/denetim/yukPencere';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { downloadCsv } from '@/utils/csv';
+import GlomoGecisPlani from '@/components/GlomoGecisPlani';
 import { fmtDate, EMPTY_MARK } from '@/utils/datetime';
 
 /** Beyan tarihi: yalnizca gun. Saat/dakika bu ekranda karar degistirmiyor. Ortak
@@ -102,7 +103,15 @@ function YukHucre({ t }: { t: ArkYuk | null }) {
 /** Satır kimliği: aynı uygulamanın birden çok location'ı var, anahtar location'ı DA içerir. */
 const satirAnahtari = (r: ArkSatir) => `${r.namespace}/${r.application}\u0000${r.location}`;
 
+const SEKME_KEY = 'ark-spa-sekme';
+function sekmeOku(): 'rapor' | 'glomo' {
+  try { return window.localStorage.getItem(SEKME_KEY) === 'glomo' ? 'glomo' : 'rapor'; } catch { return 'rapor'; }
+}
+
 export default function ArkSpaRaporuPage() {
+  // SEKMELER (2026-10-13): rapor + Glomo Gecis Plani (set bazli tasima takvimi, katilimci girisi).
+  const [sekme, setSekmeHam] = useState<'rapor' | 'glomo'>(sekmeOku);
+  const setSekme = (v: 'rapor' | 'glomo') => { setSekmeHam(v); try { window.localStorage.setItem(SEKME_KEY, v); } catch { /* yoksay */ } };
   const [data, setData] = useState<ArkRapor | null>(null);
   const [yukleniyor, setYukleniyor] = useState(true);
   const [servis, setServis] = useState('all');
@@ -284,6 +293,24 @@ export default function ArkSpaRaporuPage() {
     return [...t].sort();
   }, [data]);
 
+  const sekmeler = (
+    <div role="tablist" aria-label="Görünüm" className="flex gap-1 border-b" style={{ borderColor: 'var(--border)' }}>
+      {([['rapor', 'SPA raporu'], ['glomo', 'Glomo geçiş planı']] as const).map(([k, ad]) => (
+        <button key={k} role="tab" aria-selected={sekme === k} onClick={() => setSekme(k)} className="px-3 py-1.5 text-[13px] -mb-px border-b-2" style={sekme === k ? { borderColor: 'var(--accent)', color: 'var(--accent)', fontWeight: 600 } : { borderColor: 'transparent', color: 'var(--text-secondary)' }}>
+          {ad}
+        </button>
+      ))}
+    </div>
+  );
+  if (sekme === 'glomo')
+    return (
+      <div className="p-4 space-y-3">
+        <h1 className="text-lg font-semibold">Nginx ARK SPA Raporu</h1>
+        {sekmeler}
+        <GlomoGecisPlani />
+      </div>
+    );
+
   return (
     <div className="p-4 space-y-3">
       <div className="flex items-start gap-2 flex-wrap">
@@ -304,6 +331,7 @@ export default function ArkSpaRaporuPage() {
           <ArrowPathIcon className={`w-3.5 h-3.5 ${yukleniyor ? 'animate-spin' : ''}`} /> Yenile
         </button>
       </div>
+      {sekmeler}
 
       {data && !data.ok && (
         <div

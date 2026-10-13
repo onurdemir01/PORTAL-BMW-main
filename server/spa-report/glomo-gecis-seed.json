@@ -1,0 +1,1690 @@
+[
+{
+"namespace": "insurance-policy-mngmt-ch-prod",
+"application": "insurance-plcy-mobile-app-v0",
+"set": 1,
+"locations": [
+"/insurance/policy-mobile-app/"
+]
+},
+{
+"namespace": "insurance-policy-mngmt-prod",
+"application": "insurance-policy-app-v1",
+"set": 1,
+"locations": [
+"/insurance/home-insurance",
+"^"
+]
+},
+{
+"namespace": "insurance-policy-mngmt-ch-prod",
+"application": "insurance-oto-mobile-app-v0",
+"set": 1,
+"locations": [
+"/insurance/oto-mobile-app/"
+]
+},
+{
+"namespace": "insurance-policy-mngmt-ch-prod",
+"application": "home-insurance-mobile-app-v0",
+"set": 1,
+"locations": [
+"/insurance/home-insurance-mobile-app/"
+]
+},
+{
+"namespace": "insurance-policy-mngmt-ch-prod",
+"application": "insurance-tss-mobile-app-v0",
+"set": 1,
+"locations": [
+"/insurance/tss-mobile-app/"
+]
+},
+{
+"namespace": "insurance-policy-mngmt-ch-prod",
+"application": "individual-ins-mobile-app-v0",
+"set": 1,
+"locations": [
+"/insurance/individual-mobile-app/"
+]
+},
+{
+"namespace": "insurance-policy-mngmt-ch-prod",
+"application": "digital-insurance-app-v0",
+"set": 1,
+"locations": [
+"/insurance/device-insurance/",
+"/insurance/health-insurance/",
+"/insurance/sme-insurance/"
+]
+},
+{
+"namespace": "insurance-policy-mngmt-ch-prod",
+"application": "insurance-sme-mobile-app-v0",
+"set": 1,
+"locations": [
+"/insurance/sme-mobile-app/"
+]
+},
+{
+"namespace": "insurance-policy-mngmt-ch-prod",
+"application": "corp-dgtl-insurance-app-v0",
+"set": 1,
+"locations": [
+"/applications/corporate-insurance/"
+]
+},
+{
+"namespace": "digital-accnt-trx-mng-ch-prod",
+"application": "digital-accnt-trx-mng-app-v0",
+"set": 2,
+"locations": [
+"/e-time-deposit-account-opening/"
+]
+},
+{
+"namespace": "benefit-hub-management-ch-prod",
+"application": "benefit-hub-mngmnt-app-v0",
+"set": 2,
+"locations": [
+"/benefit-hub/"
+]
+},
+{
+"namespace": "family-banking-mngmnt-ch-prod",
+"application": "family-banking-mng-app-v0",
+"set": 2,
+"locations": [
+"/family-hub/"
+]
+},
+{
+"namespace": "benefit-hub-management-ch-prod",
+"application": "benefit-hub-cfa-app-v0",
+"set": 2,
+"locations": [
+"/benefit-hub/v0/"
+]
+},
+{
+"namespace": "digital-cross-sell-mng-ch-prod",
+"application": "digital-cross-sell-app-v0",
+"set": 2,
+"locations": [
+"/digital-cross-sell/"
+]
+},
+{
+"namespace": "digital-cust-contact-mng-ch-prod",
+"application": "digital-cust-contact-app-v0",
+"set": 2,
+"locations": [
+"/digital-contacts/"
+]
+},
+{
+"namespace": "cust-limit-mgmt-ch-prod",
+"application": "cust-limit-oprtn-app-v0",
+"set": 2,
+"locations": [
+"/cust-limit-oprtn/v0/"
+]
+},
+{
+"namespace": "digital-payments-ch-prod",
+"application": "payment-request-mgmt-app-v0",
+"set": 2,
+"locations": [
+"/payment-request-app/v0/"
+]
+},
+{
+"namespace": "digi-money-transfers-ch-prod",
+"application": "foreign-transfer-app-v0",
+"set": 2,
+"locations": [
+"/foreign-transfer-app/v0/"
+]
+},
+{
+"namespace": "digital-payments-ch-prod",
+"application": "digi-products-app-v0",
+"set": 2,
+"locations": [
+"/digi-products/v0/"
+]
+},
+{
+"namespace": "digital-payments-ch-prod",
+"application": "digi-crypto-app-v0",
+"set": 2,
+"locations": [
+"/digi-crypto/v0/"
+]
+},
+{
+"namespace": "digital-payments-ch-prod",
+"application": "payment-campaign-app-v0",
+"set": 2,
+"locations": [
+"/payment-campaign-app/v0/"
+]
+},
+{
+"namespace": "life-events-management-ch-prod",
+"application": "life-events-vehicle-app-v0",
+"set": 3,
+"locations": [
+"/life-events/vehicle/"
+]
+},
+{
+"namespace": "digital-cash-flow-mngmt-ch-prod",
+"application": "digital-cash-flow-app-v0",
+"set": 3,
+"locations": [
+"/cash-flow/dashboard/"
+]
+},
+{
+"namespace": "digital-sust-mngmt-ch-prod",
+"application": "digital-sust-mngmt-app-emb-v0",
+"set": 3,
+"locations": [
+"/mde/sustainability/dashboard/"
+]
+},
+{
+"namespace": "advisory-data-management-prod",
+"application": "advisory-data-mgmt-app-v0",
+"set": 3,
+"locations": [
+"/sustainability/ekolojik/"
+]
+},
+{
+"namespace": "advisory-data-management-ch-prod",
+"application": "credit-coaching-app-v0",
+"set": 3,
+"locations": [
+"/advisory/credit-coaching/"
+]
+},
+{
+"namespace": "life-events-management-ch-prod",
+"application": "digital-subs-mngmt-app-v0",
+"set": 3,
+"locations": [
+"/life-events/subscriptions/"
+]
+},
+{
+"namespace": "life-events-management-ch-prod",
+"application": "life-events-travel-app-v0",
+"set": 3,
+"locations": [
+"/life-events/travel/"
+]
+},
+{
+"namespace": "life-events-management-ch-prod",
+"application": "life-events-home-app-v0",
+"set": 3,
+"locations": [
+"/life-events/home/"
+]
+},
+{
+"namespace": "digital-spend-earn-mngmt-ch-prod",
+"application": "spending-earning-app-v0",
+"set": 3,
+"locations": [
+"/spending/dashboard/"
+]
+},
+{
+"namespace": "digital-sust-mngmt-ch-prod",
+"application": "digital-sust-mngmt-app-v0",
+"set": 3,
+"locations": [
+"/sustainability/dashboard/"
+]
+},
+{
+"namespace": "life-events-management-prod",
+"application": "life-events-mgmt-app-v0",
+"set": 3,
+"locations": [
+"/life-events/dashboard/"
+]
+},
+{
+"namespace": "digital-spend-earn-mngmt-ch-prod",
+"application": "budget-management-app-v0",
+"set": 3,
+"locations": [
+"/budget-management-app/"
+]
+},
+{
+"namespace": "open-banking-service-mng-ch-prod",
+"application": "ob-service-app-v0",
+"set": 4,
+"locations": [
+"/open-banking-service/"
+]
+},
+{
+"namespace": "consent-management-ch-prod",
+"application": "consent-public-app-v0",
+"set": 4,
+"locations": [
+"/consent-management/psd2/"
+]
+},
+{
+"namespace": "domestic-transfer-ch-prod",
+"application": "transfer-public-app-v0",
+"set": 4,
+"locations": [
+"/domestic-transfer/"
+]
+},
+{
+"namespace": "open-banking-service-mng-ch-prod",
+"application": "corp-pymnt-enroll-app-v0",
+"set": 4,
+"locations": [
+"/corp-pymnt-enroll/"
+]
+},
+{
+"namespace": "openapi-enrollment-mng-ch-prod",
+"application": "openapi-enrolment-app-v0",
+"set": 4,
+"locations": [
+"/openapi-enrollment/"
+]
+},
+{
+"namespace": "consumer-loan-application-ch-prod",
+"application": "consumer-loan-cf-app-v0",
+"set": 4,
+"locations": [
+"/consumer-loan-application/digital-consumer-loan/v0/"
+]
+},
+{
+"namespace": "consumer-loan-application-ch-prod",
+"application": "overdraft-appl-cf-app-v0",
+"set": 4,
+"locations": [
+"/consumer-loan-application/digital-overdraft-application/v0/"
+]
+},
+{
+"namespace": "consumer-loan-application-ch-prod",
+"application": "digital-fast-limit-app-v0",
+"set": 4,
+"locations": [
+"/consumer-loan-application/digital-fast-limit-app/"
+]
+},
+{
+"namespace": "consumer-loan-application-ch-prod",
+"application": "mortgage-loan-react-app-v0",
+"set": 4,
+"locations": [
+"/consumer-loan-application/digital-mortgage-loan/"
+]
+},
+{
+"namespace": "consumer-loan-application-ch-prod",
+"application": "vehicle-loan-cfa-app-v0",
+"set": 4,
+"locations": [
+"/consumer-loan-application/digital-vehicle-loan/"
+]
+},
+{
+"namespace": "ges-pension-revenue-ch-prod",
+"application": "pension-revenue-app-v1",
+"set": 4,
+"locations": [
+"/ges-pension-revenue/digital-pension-revenue-app/"
+]
+},
+{
+"namespace": "ges-pension-contract-ch-prod",
+"application": "pension-invest-app-v1",
+"set": 4,
+"locations": [
+"/pensionInvest-v1/"
+]
+},
+{
+"namespace": "ges-pension-contract-ch-prod",
+"application": "customer-pension-cont-app-v0",
+"set": 4,
+"locations": [
+"/CustomerPensionContractAppApplication/"
+]
+},
+{
+"namespace": "ges-pension-contract-ch-prod",
+"application": "ge-customer-pension-app-v0",
+"set": 4,
+"locations": [
+"/GeCustomerPensionContAppApplication/"
+]
+},
+{
+"namespace": "ges-pension-contract-ch-prod",
+"application": "digital-pension-app-v0",
+"set": 4,
+"locations": [
+"/pension/digital-pension-contract-app/"
+]
+},
+{
+"namespace": "ges-pension-contract-ch-prod",
+"application": "pension-invest-app-v0",
+"set": 4,
+"locations": [
+"/pensionInvest/"
+]
+},
+{
+"namespace": "ges-pension-contract-ch-prod",
+"application": "digital-pension-cont-app-v0",
+"set": 4,
+"locations": [
+"/ges-pension-contract/digital-pension-cont-app/"
+]
+},
+{
+"namespace": "ges-pension-contract-ch-prod",
+"application": "pension-invest-app-emb-v1",
+"set": 4,
+"locations": [
+"/mde/pensionInvest-v1/"
+]
+},
+{
+"namespace": "ges-pension-fund-ch-prod",
+"application": "fund-coach-app-v1",
+"set": 4,
+"locations": [
+"/ges-pension-fund/fund-coach-app/v1/"
+]
+},
+{
+"namespace": "ges-pension-digital-ch-prod",
+"application": "digi-main-container-app-v1",
+"set": 4,
+"locations": [
+"/ges-pension-digital/digital-main-container-app/v1/"
+]
+},
+{
+"namespace": "ges-pension-digital-ch-prod",
+"application": "digi-main-container-app-v0",
+"set": 4,
+"locations": [
+"/container-base-r/"
+]
+},
+{
+"namespace": "ges-pension-digital-ch-prod",
+"application": "digi-main-container-app-v2",
+"set": 4,
+"locations": [
+"/ges-pension-digital/digital-main-container-app/v2/"
+]
+},
+{
+"namespace": "ges-pension-fund-ch-prod",
+"application": "fund-coach-app-v0",
+"set": 4,
+"locations": [
+"/pension-fund-coach-app/"
+]
+},
+{
+"namespace": "ges-pension-fund-ch-prod",
+"application": "fund-coach-app-v2",
+"set": 4,
+"locations": [
+"/ges-pension-fund/fund-coach-app/v2/"
+]
+},
+{
+"namespace": "digital-onboarding-ch-prod",
+"application": "digital-onboarding-app-v0",
+"set": 4,
+"locations": [
+"/digital-onboarding-app/v0/"
+]
+},
+{
+"namespace": "virtual-assistant-mgmt-ch-prod",
+"application": "virtual-assistant-app-v0",
+"set": 4,
+"locations": [
+"/virtual-assistant-app/"
+]
+},
+{
+"namespace": "multichannel-wallet-ch-prod",
+"application": "mcmt-cfa-app-v0",
+"set": 4,
+"locations": [
+"/tami-mcmt-app/v0/"
+]
+},
+{
+"namespace": "digital-documents-ch-prod",
+"application": "digital-my-docs-app-v0",
+"set": 4,
+"locations": [
+"/MyDocuments/"
+]
+},
+{
+"namespace": "advanced-signature-mgmt-ch-prod",
+"application": "react-ads-web-approve-app-v0",
+"set": 5,
+"locations": [
+"/approveapp/advanced-signature-mgmt/"
+]
+},
+{
+"namespace": "advanced-signature-mgmt-ch-prod",
+"application": "ads-web-approve-app-v0",
+"set": 5,
+"locations": [
+"/approval/advanced-signature-mgmt/",
+"/approve/advanced-signature-mgmt/",
+"/approves/advanced-signature-mgmt/"
+]
+},
+{
+"namespace": "retail-card-app-mngmt-ch-prod",
+"application": "retail-card-app-mngmt-app-v0",
+"set": 5,
+"locations": [
+"/cardapplicationtracking/checkup/"
+]
+},
+{
+"namespace": "debit-card-appl-mgmt-ch-prod",
+"application": "debit-card-appl-cfa-app-v0",
+"set": 5,
+"locations": [
+"/debit-card-appl-mgmt/"
+]
+},
+{
+"namespace": "card-cross-functions-ch-prod",
+"application": "card-cross-func-cfa-app-v0",
+"set": 5,
+"locations": [
+"/card-cross-functions/"
+]
+},
+{
+"namespace": "import-mngmnt-ch-prod",
+"application": "import-mngmnt-hub-app-v0",
+"set": 5,
+"locations": [
+"/accountsproducts/foreign-trade/import-management-hub/v0/"
+]
+},
+{
+"namespace": "export-mngmnt-ch-prod",
+"application": "export-mngmnt-hub-app-v0",
+"set": 5,
+"locations": [
+"/accountsproducts/foreign-trade/export-management-commitment-tracking/"
+]
+},
+{
+"namespace": "private-school-management-ch-prod",
+"application": "cfa-private-school-app-v0",
+"set": 5,
+"locations": [
+"/private-school-management/private-school/"
+]
+},
+{
+"namespace": "garantipay-management-ch-prod",
+"application": "garantipay-app-v0",
+"set": 5,
+"locations": [
+"/garantipay/"
+]
+},
+{
+"namespace": "gfy-vehicle-sale-ch-prod",
+"application": "vhc-sale-customer-app-v0",
+"set": 5,
+"locations": [
+"/vhc-sale-customer/buyer/"
+]
+},
+{
+"namespace": "gfy-rental-engine-prod",
+"application": "gfy-rental-engine-app-v0",
+"set": 5,
+"locations": [
+"/rental-engine-app/"
+]
+},
+{
+"namespace": "gfc-factoring-application-ch-prod",
+"application": "dgtl-factoring-app-v0",
+"set": 5,
+"locations": [
+"/digital-factoring/"
+]
+},
+{
+"namespace": "gfc-mobile-application-ch-prod",
+"application": "gfc-mobile-appl-app-v0",
+"set": 5,
+"locations": [
+"/factoring-mobile-app/"
+]
+},
+{
+"namespace": "gfy-marketplace-prod",
+"application": "gfy-marketplace-app-v0",
+"set": 5,
+"locations": [
+"/gfy-market-place/"
+]
+},
+{
+"namespace": "gfy-offer-management-ch-prod",
+"application": "digital-offer-mngmt-app-v2",
+"set": 5,
+"locations": [
+"/fleet/offer-management/v2/"
+]
+},
+{
+"namespace": "cost-and-pricing-mngmnt-ch-prod",
+"application": "cost-and-pricing-cfa-app-v0",
+"set": 5,
+"locations": [
+"/accountsproducts/foreign-trade/cost-and-pricing-cfa-app/v0/"
+]
+},
+{
+"namespace": "collateral-management-ch-prod",
+"application": "collateral-digital-app-v0",
+"set": 5,
+"locations": [
+"/collateral-digital-app/v0/"
+]
+},
+{
+"namespace": "collateral-management-ch-prod",
+"application": "general-crdt-agrmnt-app-v0",
+"set": 5,
+"locations": [
+"/collateral-management/general-crdt-agrmnt/"
+]
+},
+{
+"namespace": "cgf-online-ch-prod",
+"application": "cfa-cgf-online-app-v0",
+"set": 5,
+"locations": [
+"/cfa-cgf-online-app/v0/"
+]
+},
+{
+"namespace": "lien-management-ch-prod",
+"application": "lien-digital-app-v0",
+"set": 5,
+"locations": [
+"/lien-digital-app/v0/"
+]
+},
+{
+"namespace": "expertise-management-ch-prod",
+"application": "cfa-expertise-list-app-v0",
+"set": 5,
+"locations": [
+"/expertise-list/v0/"
+]
+},
+{
+"namespace": "expertise-management-ch-prod",
+"application": "cfa-expertise-req-app-v0",
+"set": 5,
+"locations": [
+"/expertise-request/v0/"
+]
+},
+{
+"namespace": "letter-of-guarantee-ch-prod",
+"application": "letter-guar-mobile-app-v0",
+"set": 5,
+"locations": [
+"/non-cash-loans/letter-of-guarantee/"
+]
+},
+{
+"namespace": "letter-of-guarantee-ch-prod",
+"application": "cfa-letter-req-list-app-v0",
+"set": 5,
+"locations": [
+"/guarantee-letter-list/v0/"
+]
+},
+{
+"namespace": "letter-of-guarantee-ch-prod",
+"application": "cfa-letter-due-ext-app-v0",
+"set": 5,
+"locations": [
+"/guarantee-letter-due-ext-apply/v0/"
+]
+},
+{
+"namespace": "ges-life-insurance-policy-ch-prod",
+"application": "ges-life-insurance-app-v0",
+"set": 5,
+"locations": [
+"/ges-life-insurance-policy/ges-life-insurance-app/"
+]
+},
+{
+"namespace": "ges-life-insurance-policy-ch-prod",
+"application": "certificate-insrn-cfa-app-v0",
+"set": 5,
+"locations": [
+"/life-insurance/certificate-insurance/"
+]
+},
+{
+"namespace": "ges-health-insurance-mng-ch-prod",
+"application": "mobile-health-insrnc-app-v0",
+"set": 5,
+"locations": [
+"/health-insurance/health-insurance-policy/"
+]
+},
+{
+"namespace": "merchant-onboarding-ch-prod",
+"application": "mrchnt-onboarding-cfa-app-v0",
+"set": 5,
+"locations": [
+"/merchant-onboarding/"
+]
+},
+{
+"namespace": "merchant-management-ch-prod",
+"application": "merchant-mgmt-dgtl-app-v0",
+"set": 5,
+"locations": [
+"/merchant-mgmt/"
+]
+},
+{
+"namespace": "merch-financial-mgmt-ch-prod",
+"application": "merch-fin-mgmt-dgtl-app-v0",
+"set": 5,
+"locations": [
+"/merch-fin-mgmt/"
+]
+},
+{
+"namespace": "merchant-pricing-ch-prod",
+"application": "merchant-pricing-dgtl-app-v0",
+"set": 5,
+"locations": [
+"/merch-pricing/"
+]
+},
+{
+"namespace": "merch-limit-risk-mon-ch-prod",
+"application": "merch-lmt-rsk-dgtl-app-v0",
+"set": 5,
+"locations": [
+"/merchant-limit-risk/"
+]
+},
+{
+"namespace": "merchant-management-ch-prod",
+"application": "merchant-management-app-v0",
+"set": 5,
+"locations": [
+"/merchant-management/"
+]
+},
+{
+"namespace": "merchant-pricing-ch-prod",
+"application": "merchant-pricing-cust-app-v0",
+"set": 5,
+"locations": [
+"/merchant-pricing/"
+]
+},
+{
+"namespace": "merchant-reporting-mngmnt-prod",
+"application": "merchant-report-mob-app-v0",
+"set": 5,
+"locations": [
+"/merchant-reporting/merchant-report-mobile/"
+]
+},
+{
+"namespace": "pos-switch-management-ch-prod",
+"application": "pos-sw-mgmt-cfa-app-v0",
+"set": 5,
+"locations": [
+"/enrollment-sw-mgmt/"
+]
+},
+{
+"namespace": "payment-sys-loyalty-mgmt-ch-prod",
+"application": "ps-loyalty-mgmt-cfa-app-v0",
+"set": 5,
+"locations": [
+"/acquiring/payment-sys-loyalty-mgmt/"
+]
+},
+{
+"namespace": "agenda-book-management-ch-prod",
+"application": "agenda-book-mobile-app-v0",
+"set": 5,
+"locations": [
+"/digital-agenda/"
+]
+},
+{
+"namespace": "reference-applications-channel-prod",
+"application": "react-cfa-crud-app-v0",
+"set": 5,
+"locations": [
+"/ort-reference/cfa-react/"
+]
+},
+{
+"namespace": "card-emboss-security-ch-prod",
+"application": "card-emboss-security-app-v0",
+"set": 5,
+"locations": [
+"/reset-pinless-app/"
+]
+},
+{
+"namespace": "card-retention-management-ch-prod",
+"application": "card-rtn-closure-cfa-app-v0",
+"set": 5,
+"locations": [
+"/card-retention-management/card-closure/"
+]
+},
+{
+"namespace": "consumer-loan-cooperation-ch-prod",
+"application": "vehicle-loan-mobile-app-v0",
+"set": 5,
+"locations": [
+"/consumer-loan-cooperation/vehicle-loan/"
+]
+},
+{
+"namespace": "cust-fin-data-analysis-ch-prod",
+"application": "fnncl-data-transfer-app-v0",
+"set": 5,
+"locations": [
+"/cust-fin-data-analysis/financial-data-transfer/"
+]
+},
+{
+"namespace": "consumer-loan-utilization-ch-prod",
+"application": "overdraft-info-cf-app-v0",
+"set": 5,
+"locations": [
+"/consumer-loan-utilization/digital-overdraft-info/v0/"
+]
+},
+{
+"namespace": "overdraft-account-mngmnt-ch-prod",
+"application": "overdraft-installment-app-v0",
+"set": 5,
+"locations": [
+"/overdraft-installment-app/digital-overdraft-installment/v0/"
+]
+},
+{
+"namespace": "consumer-loan-utilization-ch-prod",
+"application": "overdraft-util-cf-app-v0",
+"set": 5,
+"locations": [
+"/consumer-loan-utilization/overdraft-utilization/v0/"
+]
+},
+{
+"namespace": "consumer-loan-utilization-ch-prod",
+"application": "overdraft-canc-cf-app-v0",
+"set": 5,
+"locations": [
+"/consumer-loan-utilization/overdraft-limit-cancelation/v0/"
+]
+},
+{
+"namespace": "consumer-loan-utilization-ch-prod",
+"application": "consumer-loan-utlz-cf-app-v0",
+"set": 5,
+"locations": [
+"/consumer-loan-utilization/digital-utilization-loan/"
+]
+},
+{
+"namespace": "gls-offer-ch-prod",
+"application": "digital-offer-app-v0",
+"set": 5,
+"locations": [
+"/gls-offer/offer-channel/"
+]
+},
+{
+"namespace": "gls-purchase-management-ch-prod",
+"application": "digital-cntrct-trckng-app-v0",
+"set": 5,
+"locations": [
+"/gls-purchase-mngmnt/contract-tracking/"
+]
+},
+{
+"namespace": "cash-mng-data-operations-ch-prod",
+"application": "salary-load-react-app-v0",
+"set": 5,
+"locations": [
+"/cash-mng-data-operations/salary-load-react-app/"
+]
+},
+{
+"namespace": "cash-management-salary-ch-prod",
+"application": "salary-retention-app-v0",
+"set": 5,
+"locations": [
+"/cash-management-salary/salary-retention/"
+]
+},
+{
+"namespace": "condition-benefit-mngmnt-ch-prod",
+"application": "condition-benefit-cfa-app-v0",
+"set": 5,
+"locations": [
+"/condition-benefit/"
+]
+},
+{
+"namespace": "conversation-management-ch-prod",
+"application": "cnvrstn-customer-app-v0",
+"set": 5,
+"locations": [
+"/conversation-management/my-conversations/"
+]
+},
+{
+"namespace": "complaint-management-ch-prod",
+"application": "complaint-mngmt-cust-app-v0",
+"set": 5,
+"locations": [
+"/complaintmng/complaint-mngmt-cust-app/"
+]
+},
+{
+"namespace": "approve-restriction-mgmt-ch-prod",
+"application": "customer-restrictions-app-v1",
+"set": 5,
+"locations": [
+"/customer-restriction/v1/"
+]
+},
+{
+"namespace": "cust-fin-data-mgmt-ch-prod",
+"application": "customer-income-cfa-app-v0",
+"set": 5,
+"locations": [
+"/customer-income/"
+]
+},
+{
+"namespace": "customer-management-ch-prod",
+"application": "nncmmrcl-cst-cfa-app-v0",
+"set": 5,
+"locations": [
+"/noncommercial-customer/"
+]
+},
+{
+"namespace": "cust-frgn-tax-management-ch-prod",
+"application": "cust-frgn-tax-cust-app-v0",
+"set": 5,
+"locations": [
+"/foreigntax/customer-frgn-tax-management/"
+]
+},
+{
+"namespace": "cust-comm-inf-mngmt-ch-prod",
+"application": "cust-phone-cfa-app-v0",
+"set": 5,
+"locations": [
+"/CustPhoneCfaAppApplication/"
+]
+},
+{
+"namespace": "cust-data-share-cnsnt-mng-ch-prod",
+"application": "cust-data-share-cnsnt-app-v0",
+"set": 5,
+"locations": [
+"/cust-data-share-consent/"
+]
+},
+{
+"namespace": "business-loan-utilization-ch-prod",
+"application": "loan-disbrsmnt-hub-app-v0",
+"set": 5,
+"locations": [
+"/applications/loan-disbursement-hub/v0/"
+]
+},
+{
+"namespace": "business-loan-utilization-ch-prod",
+"application": "loan-disbrsmnt-mob-app-v0",
+"set": 5,
+"locations": [
+"/loan-utilization/loan-disbrsmnt/"
+]
+},
+{
+"namespace": "business-loan-utilization-ch-prod",
+"application": "installment-comm-loan-app-v1",
+"set": 5,
+"locations": [
+"/applications/loan-disbursement-installment-commercial-loan/v1/"
+]
+},
+{
+"namespace": "business-loan-utilization-ch-prod",
+"application": "export-loan-app-v0",
+"set": 5,
+"locations": [
+"/applications/loan-disbursement-export-loan/v0/"
+]
+},
+{
+"namespace": "business-loan-utilization-ch-prod",
+"application": "vehicle-comm-loan-app-v0",
+"set": 5,
+"locations": [
+"/applications/loan-disbursement-vehicle-commercial-loan/v0/"
+]
+},
+{
+"namespace": "business-loan-utilization-ch-prod",
+"application": "installment-comm-loan-app-v0",
+"set": 5,
+"locations": [
+"/applications/loan-disbursement-installment-commercial-loan/v0/"
+]
+},
+{
+"namespace": "business-loan-utilization-ch-prod",
+"application": "spot-commercial-loan-app-v0",
+"set": 5,
+"locations": [
+"/applications/spot-commercial-loan/v0/"
+]
+},
+{
+"namespace": "business-loan-utilization-ch-prod",
+"application": "spot-commercial-loan-app-v1",
+"set": 5,
+"locations": [
+"/applications/spot-commercial-loan/v1/"
+]
+},
+{
+"namespace": "business-loan-utilization-ch-prod",
+"application": "vehicle-finance-hub-app-v0",
+"set": 5,
+"locations": [
+"/applications/vehicle-finance-hub-app/v0/"
+]
+},
+{
+"namespace": "cm-payment-gtd-transfer-ch-prod",
+"application": "pymnt-gtd-trnsfr-cfa-app-v0",
+"set": 5,
+"locations": [
+"/payment-gtd-transfer/"
+]
+},
+{
+"namespace": "cash-management-financing-ch-prod",
+"application": "cm-direct-debit-app-v0",
+"set": 5,
+"locations": [
+"/direct-debit/"
+]
+},
+{
+"namespace": "direct-debit-management-ch-prod",
+"application": "direct-debit-cfa-app-v0",
+"set": 5,
+"locations": [
+"/direct-debit-management/direct-debit-cfa-app/v0/"
+]
+},
+{
+"namespace": "tax-payment-management-ch-prod",
+"application": "tax-payment-cfa-app-v0",
+"set": 5,
+"locations": [
+"/tax-payment-management/tax-payment-cfa-app/v0/"
+]
+},
+{
+"namespace": "transportation-card-mng-ch-prod",
+"application": "transportation-card-app-v0",
+"set": 5,
+"locations": [
+"/transportation-card-app/"
+]
+},
+{
+"namespace": "real-estate-secure-sale-ch-prod",
+"application": "real-estate-app-v0",
+"set": 5,
+"locations": [
+"/real-estate-secure-sale/real-estate-app/"
+]
+},
+{
+"namespace": "donation-management-ch-prod",
+"application": "donation-app-v0",
+"set": 5,
+"locations": [
+"/donation-management/donation-app/"
+]
+},
+{
+"namespace": "second-hand-vehicle-ch-prod",
+"application": "secure-sale-api-app-v0",
+"set": 5,
+"locations": [
+"/second-hand-vehicle/secure-sale-api-app/"
+]
+},
+{
+"namespace": "tax-payment-management-ch-prod",
+"application": "tax-dashboard-app-v0",
+"set": 5,
+"locations": [
+"/tax-payment-management/tax-dashboard-app/"
+]
+},
+{
+"namespace": "card-dispute-mngmnt-ch-prod",
+"application": "card-disp-mng-cust-app-v0",
+"set": 5,
+"locations": [
+"/card-dispute-mng-cust-app/"
+]
+},
+{
+"namespace": "card-dispute-mngmnt-ch-prod",
+"application": "card-dispute-mng-app-v0",
+"set": 5,
+"locations": [
+"/card-dispute-mng-app/"
+]
+},
+{
+"namespace": "tp-network-payments-ch-prod",
+"application": "tpnp-cust-app-v0",
+"set": 5,
+"locations": [
+"/tpnp-cust-app/"
+]
+},
+{
+"namespace": "commercial-card-appl-mgmt-ch-prod",
+"application": "commercial-card-appl-app-v0",
+"set": 5,
+"locations": [
+"/issuing/commercial-card-app/"
+]
+},
+{
+"namespace": "corporate-card-appl-mgmt-ch-prod",
+"application": "corporate-card-appl-app-v0",
+"set": 5,
+"locations": [
+"/corporate-card-mgmt/corporate-card-application/"
+]
+},
+{
+"namespace": "digital-loan-management-ch-prod",
+"application": "digital-loan-mngmnt-app-v0",
+"set": 5,
+"locations": [
+"/dgtl-loan-mngmnt/credit-info/"
+]
+},
+{
+"namespace": "special-price-txns-ch-prod",
+"application": "special-price-txns-app-v0",
+"set": 5,
+"locations": [
+"/special-price-txns/special-price-txns/"
+]
+},
+{
+"namespace": "fx-metals-portfolio-mgmt-ch-prod",
+"application": "fx-metals-prtfolio-app-v1",
+"set": 6,
+"locations": [
+"/fxmetals-v1/"
+]
+},
+{
+"namespace": "sustainability-prod",
+"application": "sustainability-mobile-app-v0",
+"set": 6,
+"locations": [
+"/sustainability/sustainability-mobile/"
+]
+},
+{
+"namespace": "fx-metals-portfolio-mgmt-ch-prod",
+"application": "fx-metals-prtfolio-app-v0",
+"set": 6,
+"locations": [
+"/fxmetals/"
+]
+},
+{
+"namespace": "fx-metals-portfolio-mgmt-ch-prod",
+"application": "fx-metals-prtfolio-app-emb-v1",
+"set": 6,
+"locations": [
+"/mde/fxmetals-v1/"
+]
+},
+{
+"namespace": "virtual-accnt-management-ch-prod",
+"application": "virtual-accnt-app-v0",
+"set": 6,
+"locations": [
+"/virtual-accnt/"
+]
+},
+{
+"namespace": "cust-product-enrollment-ch-prod",
+"application": "prod-enrollment-app-v0",
+"set": 6,
+"locations": [
+"/cust-product-enrollment/"
+]
+},
+{
+"namespace": "cash-management-transfers-ch-prod",
+"application": "firm-onboarding-app-v0",
+"set": 6,
+"locations": [
+"/firm-onboarding/"
+]
+},
+{
+"namespace": "cust-product-enrollment-ch-prod",
+"application": "prod-enroll-app-v0",
+"set": 6,
+"locations": [
+"/prod-enroll-app/"
+]
+},
+{
+"namespace": "virtual-accnt-management-ch-prod",
+"application": "virtual-accnt-enroll-app-v0",
+"set": 6,
+"locations": [
+"/virtual-accnt-enroll/"
+]
+},
+{
+"namespace": "fis-portfolio-mnmt-ch-prod",
+"application": "fis-portfolio-cfa-app-v0",
+"set": 6,
+"locations": [
+"/digital-fis-v1/"
+]
+},
+{
+"namespace": "non-performing-loan-mngmt-ch-prod",
+"application": "non-performing-loan-app-v0",
+"set": 6,
+"locations": [
+"/non-performing-loan-app/v0/"
+]
+},
+{
+"namespace": "non-performing-loan-mngmt-ch-prod",
+"application": "npl-collection-app-v0",
+"set": 6,
+"locations": [
+"/npl-collection-app/v0/"
+]
+},
+{
+"namespace": "rental-boxes-management-ch-prod",
+"application": "rental-boxes-mng-app-v0",
+"set": 6,
+"locations": [
+"/rental-boxes/v0/"
+]
+},
+{
+"namespace": "cash-vault-mngt-ch-prod",
+"application": "money-reservation-app-v0",
+"set": 6,
+"locations": [
+"/money-reservation/"
+]
+},
+{
+"namespace": "ewr-management-ch-prod",
+"application": "ewr-management-app-v0",
+"set": 6,
+"locations": [
+"/investment/ewr-management-app/v0/"
+]
+},
+{
+"namespace": "comm-cross-selling-mn-ch-prod",
+"application": "digi-market-react-app-v0",
+"set": 6,
+"locations": [
+"/applications/digi-market-react-hub/v0/"
+]
+},
+{
+"namespace": "cheque-book-mgmt-ch-prod",
+"application": "cheque-book-mgmt-app-v0",
+"set": 6,
+"locations": [
+"/cheque-book-mgmt/cheque-book-mgmt-app/"
+]
+},
+{
+"namespace": "customer-authorization-ch-prod",
+"application": "cust-auth-manager-cfa-app-v0",
+"set": 6,
+"locations": [
+"/customer-authorization/cust-auth-manager-cfa-app/v0/"
+]
+},
+{
+"namespace": "comm-cross-selling-mn-ch-prod",
+"application": "digi-market-app-v1",
+"set": 6,
+"locations": [
+"/comm-cross-selling-mn/digi-market-app/"
+]
+},
+{
+"namespace": "investor-fin-asset-mntrng-ch-prod",
+"application": "investor-dashboard-app-v1",
+"set": 6,
+"locations": [
+"/investordashboard-v1/"
+]
+},
+{
+"namespace": "equity-management-ch-prod",
+"application": "equity-management-app-v1",
+"set": 6,
+"locations": [
+"/equity/v1/"
+]
+},
+{
+"namespace": "derivatives-management-ch-prod",
+"application": "derivatives-managemnt-app-v1",
+"set": 6,
+"locations": [
+"/derivatives-v1/"
+]
+},
+{
+"namespace": "equity-management-ch-prod",
+"application": "equity-ipo-mngmnt-app-v0",
+"set": 6,
+"locations": [
+"/investment/equityipoapp/v0/"
+]
+},
+{
+"namespace": "equity-management-ch-prod",
+"application": "equity-operation-app-v0",
+"set": 6,
+"locations": [
+"/equity-operation-app/"
+]
+},
+{
+"namespace": "gyb-int-capital-mrkt-mngmt-ch-prod",
+"application": "customer-cash-trx-app-v0",
+"set": 6,
+"locations": [
+"/investment/cashtrxapp/v0/"
+]
+},
+{
+"namespace": "derivatives-management-ch-prod",
+"application": "derivatives-managemnt-app-v0",
+"set": 6,
+"locations": [
+"/derivatives/"
+]
+},
+{
+"namespace": "equity-management-ch-prod",
+"application": "equity-management-app-v0",
+"set": 6,
+"locations": [
+"/equity/"
+]
+},
+{
+"namespace": "investor-fin-asset-mntrng-ch-prod",
+"application": "investor-dashboard-app-v0",
+"set": 6,
+"locations": [
+"/investordashboard/"
+]
+},
+{
+"namespace": "derivatives-management-ch-prod",
+"application": "derivatives-managemnt-app-emb-v1",
+"set": 6,
+"locations": [
+"/mde/derivatives-v1/"
+]
+},
+{
+"namespace": "derivatives-management-ch-prod",
+"application": "derivatives-operation-app-v0",
+"set": 6,
+"locations": [
+"/derivatives-operation/"
+]
+},
+{
+"namespace": "equity-management-ch-prod",
+"application": "equity-management-app-emb-v1",
+"set": 6,
+"locations": [
+"/mde/equity/v1/"
+]
+},
+{
+"namespace": "investor-fin-asset-mntrng-ch-prod",
+"application": "investor-dashboard-app-emb-v1",
+"set": 6,
+"locations": [
+"/mde/investordashboard-v1/"
+]
+},
+{
+"namespace": "fund-management-ch-prod",
+"application": "fund-management-react-app-v1",
+"set": 6,
+"locations": [
+"/digital-fund-v1/"
+]
+},
+{
+"namespace": "investor-survey-mngmt-ch-prod",
+"application": "investor-survey-cfa-app-v0",
+"set": 6,
+"locations": [
+"/investment/investorsurveycfaapp/v0/"
+]
+},
+{
+"namespace": "fund-management-ch-prod",
+"application": "fund-management-react-app-v0",
+"set": 6,
+"locations": [
+"/digital-fund/"
+]
+},
+{
+"namespace": "fund-management-ch-prod",
+"application": "fund-management-react-app-emb-v1",
+"set": 6,
+"locations": [
+"/mde/digital-fund-v1/"
+]
+},
+{
+"namespace": "cross-border-tr-ch-prod",
+"application": "follow-up-cfa-app-v0",
+"set": 6,
+"locations": [
+"/follow-up-transfer/v0/"
+]
+},
+{
+"namespace": "cross-border-tr-ac-visa-ch-prod",
+"application": "visa-acnt-trnsfr-cfa-app-v0",
+"set": 6,
+"locations": [
+"/visa-acnt-transfer/v0/"
+]
+},
+{
+"namespace": "cross-border-tr-ac-mc-ch-prod",
+"application": "mc-acnt-trnsfr-cfa-app-v0",
+"set": 6,
+"locations": [
+"/mc-acnt-transfer/v0/"
+]
+},
+{
+"namespace": "follow-up-prod",
+"application": "follow-up-app-v0",
+"set": 7,
+"locations": [
+"/follow-up-app/v0/"
+]
+},
+{
+"namespace": "follow-up-mngmt-ch-prod",
+"application": "follow-up-digital-app-v0",
+"set": 7,
+"locations": [
+"/follow-up/"
+]
+},
+{
+"namespace": "customer-promotion-mngmnt-ch-prod",
+"application": "customer-promotion-app-v0",
+"set": 7,
+"locations": [
+"/customer-promotion/"
+]
+},
+{
+"namespace": "digital-feedback-mgmt-ch-prod",
+"application": "digital-feedback-app-v0",
+"set": 7,
+"locations": [
+"/digital-feedback/"
+]
+},
+{
+"namespace": "digital-banking-ch-prod",
+"application": "glomo-app-v0",
+"set": 7,
+"locations": [
+"/",
+"/accounts/elma-account-openning/",
+"= /config",
+"= /ruxitagentjs_ICA7NVfqrux_10319250807130352.js"
+]
+},
+{
+"namespace": "digital-banking-cards-ch-prod",
+"application": "digital-card-process-app-v0",
+"set": 7,
+"locations": [
+"/digitalcardprocess/"
+]
+},
+{
+"namespace": "digital-investments-ch-prod",
+"application": "digital-invstmnt-cont-app-v1",
+"set": 7,
+"locations": [
+"/investmentContainer-v1/"
+]
+},
+{
+"namespace": "digital-banking-cards-ch-prod",
+"application": "digital-card-cont-app-emb-v0",
+"set": 7,
+"locations": [
+"/mde/cardContainer/"
+]
+},
+{
+"namespace": "digital-banking-cards-ch-prod",
+"application": "digital-card-cont-app-v0",
+"set": 7,
+"locations": [
+"/cardContainer/"
+]
+},
+{
+"namespace": "digital-investments-ch-prod",
+"application": "digital-invstmnt-cont-app-v0",
+"set": 7,
+"locations": [
+"/investmentContainer/"
+]
+},
+{
+"namespace": "digital-banking-cards-ch-prod",
+"application": "digital-banking-cards-app-v0",
+"set": 7,
+"locations": [
+"/digitalbankingcards/"
+]
+},
+{
+"namespace": "digital-banking-cards-ch-prod",
+"application": "digital-card-process-app-emb-v0",
+"set": 7,
+"locations": [
+"/mde/digitalcardprocess/"
+]
+},
+{
+"namespace": "digital-investments-ch-prod",
+"application": "digital-invstmnt-cont-app-emb-v1",
+"set": 7,
+"locations": [
+"/mde/investmentContainer-v1/"
+]
+},
+{
+"namespace": "etrader-app-ch-prod",
+"application": "itrader-cfa-bridge-app-v0",
+"set": 7,
+"locations": [
+"/itrader-cfa-bridge-app/"
+]
+},
+{
+"namespace": "etrader-app-ch-prod",
+"application": "etrader-ark-common-app-v0",
+"set": 7,
+"locations": [
+"/investment/etrader-ark-common-app/"
+]
+},
+{
+"namespace": "card-token-management-ch-prod",
+"application": "ctm-masterpass-cfa-app-v0",
+"set": 7,
+"locations": [
+"/masterpass/"
+]
+},
+{
+"namespace": "ps-api-orch-management-ch-prod",
+"application": "sign-up-cfa-app-v0",
+"set": 7,
+"locations": [
+"/sign-up/"
+]
+},
+{
+"namespace": "open-other-bank-cards-ch-prod",
+"application": "open-other-bank-cards-app-v0",
+"set": 7,
+"locations": [
+"/not-on-us-cards/"
+]
+},
+{
+"namespace": "ps-api-orch-management-ch-prod",
+"application": "smart-switch-cfa-app-v0",
+"set": 7,
+"locations": [
+"/smart-switch/"
+]
+},
+{
+"namespace": "card-token-management-prod",
+"application": "ctm-masterpass-app-v0",
+"set": 7,
+"locations": [
+"/masterpass-app/"
+]
+},
+{
+"namespace": "ps-api-orch-management-ch-prod",
+"application": "ps-api-orch-cfa-app-v0",
+"set": 7,
+"locations": [
+"/ps-api-orch-cfa/"
+]
+},
+{
+"namespace": "business-loan-credit-dmnd-ch-prod",
+"application": "credit-demand-digital-app-v0",
+"set": 7,
+"locations": [
+"/credit/limit-application/"
+]
+},
+{
+"namespace": "business-loan-credit-dmnd-ch-prod",
+"application": "cfa-demand-digital-app-v0",
+"set": 7,
+"locations": [
+"/credit-digital/limit-application/"
+]
+}
+]

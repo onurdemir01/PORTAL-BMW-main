@@ -288,6 +288,9 @@ function initSpaReport(app) {
     }
   });
 
+  // GLOMO GECIS PLANI (2026-10-13): /gecis uclari ayni router'da (ayni gorunurluk kapisi).
+  require('./gecis.cjs').mountGecis(router, { loadReport });
+
   app.use('/api/spa-report', router);
   console.log('[ARK SPA] module mounted at /api/spa-report');
 }
