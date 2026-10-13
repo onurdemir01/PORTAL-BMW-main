@@ -129,6 +129,10 @@ export const retirementApi = {
   list: (): Promise<{ ok: boolean; records: RtRecordRow[]; message?: string }> => fetch(BASE).then(safeJson),
   get: (id: number): Promise<{ ok: boolean; record: RtRecord; message?: string; zamanlayici?: RtZamanlayici; isler?: RtIsler }> => fetch(`${BASE}/${id}`).then(safeJson),
   /** Canli durum: bu kaydin vhost islerini baslatir/sonuclandirir ve kaydi dondurur. */
+  /** Web kesfini bugunku kurallarla yeniden kosturur. uygula=false: yalniz onizleme. */
+  webKesif: (id: number, uygula: boolean): Promise<{ ok: boolean; message?: string; uygulandi?: boolean; eklenenToplam?: number; record?: RtRecord;
+    hedefler?: { tid: number; host: string; appName: string; env: string; status: string; eski: number; eklenen: RtWeb[]; webHow: string; webUyari: string | null; islem: string }[] }> =>
+    fetch(`${BASE}/${id}/web-kesif`, json({ uygula })).then(safeJson),
   canli: (id: number): Promise<{ ok: boolean; record: RtRecord; message?: string; canli?: { kilitli?: boolean; kosan?: number; kapanan?: number; hata?: string }; zamanlayici?: RtZamanlayici; isler?: RtIsler }> => fetch(`${BASE}/${id}/canli`).then(safeJson),
   create: (p: { app: string; smartNo: string; ocoNo?: string; ownerEmail?: string; deleteAfterDays?: number; plannedDeleteAt?: string | null; dnsReuse?: boolean; lbReuse?: boolean; notes?: string; targets?: { host: string; appName: string }[] }): Promise<{ ok: boolean; id: number; record: RtRecord; message?: string }> =>
     fetch(BASE, json(p)).then(safeJson),

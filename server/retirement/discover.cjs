@@ -11,7 +11,7 @@
 // Site: sunucu adinda tier harfinden sonra fazladan 'A' = Ankara (siteOf, asagida).
 'use strict';
 
-const { buildCertIndex, matchWebForApp, webHostAdaylari } = require('../audit/web-app.cjs');
+const { buildCertIndex, matchWebForApp, webHostAdaylari, adVaryantlari } = require('../audit/web-app.cjs');
 
 const U = (s) => String(s || '').trim().toUpperCase();
 
@@ -113,7 +113,8 @@ function trafikSinifi(v) {
 // gbsvcvoiceorder-d VE -t). '-d' retire edilirken '-t'nin vhost'unu yakalamak, calisan bir
 // ortami kapatmak olurdu.
 function hubWebFallback(app, appHost, certSonucu, hubVhostsByHost) {
-  const needle = String(app).toLowerCase();
+  // Alt cizgili ad: '-' ve bitisik bicimler de (alan adinda '_' olamaz). Esleme yine BIREBIR ilk etiket.
+  const needles = new Set(adVaryantlari(app));
   const ilkEtiket = (s) => String(s || '').trim().toLowerCase().split('.')[0];
   // Aday aplikasyon sunucusunun KENDISIYSE etiketi 'ayni host' (harf donusumu bir sey bulmadi).
   // TUM 3-tier adaylari (webHostAdaylari: A->W ve son harf P; Pendik 6, Ankara 7 harf) - sertifika envanterinde vhost'u olmayan
@@ -130,7 +131,7 @@ function hubWebFallback(app, appHost, certSonucu, hubVhostsByHost) {
     goruldu.add(h);
     const list = hubVhostsByHost.get(h) || [];
     const hits = list.filter((v) =>
-      [v.server_name, ...String(v.aliases || '').split(/[\s,]+/)].some((n) => n && ilkEtiket(n) === needle),
+      [v.server_name, ...String(v.aliases || '').split(/[\s,]+/)].some((n) => n && needles.has(ilkEtiket(n))),
     );
     if (!hits.length) continue;
     const tekil = new Map();

@@ -838,6 +838,72 @@ function initRetirement(app) {
     } catch (err) { res.status(500).json({ ok: false, message: err.message }); }
   });
 
+  // ── WEB KESFINI YENILE (2026-10-13, kullanici: GFY_INTERNET_SERVICES kaydinda tum hedefler "web
+  // bulunamadi"). Web listesi kayit ACILIRKEN dondurulur; sonradan duzelen kesif (3-tier aday,
+  // Server Hub, AJP, alt cizgi) eski kayda ULASMAZ - PROD hedefi OCO penceresinde vhost'u kapatmadan
+  // durur. Bu uc kesfi BUGUNKU kurallarla yeniden kosturur:
+  //   uygula=false : yalniz ONIZLEME (hicbir sey degismez)
+  //   uygula=true  : hedefin durumuna gore
+  //     henuz durmamis / zamanlanmis -> liste guncellenir; STOP yeni vhost'lari da kapatir
+  //     durdurulmus                  -> yeni vhost'lar 'atlandi' olarak eklenir; kapatma mevcut
+  //                                     "Web adimini yeniden dene" (onizlemeli) ile yapilir
+  //     calisan is / silinmis        -> DOKUNULMAZ (yalniz raporlanir)
+  // Var olan girdiler korunur; yalniz EKLENIR (kesif bir vhost'u artik gormuyorsa silinmez).
+  router.post('/:id/web-kesif', async (req, res) => {
+    const id = Number(req.params.id);
+    const uygula = req.body?.uygula === true;
+    try {
+      const rec = await loadRecord(id);
+      if (!rec) return res.status(400).json({ ok: false, message: 'Kayıt yok.' });
+      if (rec.status === 'cancelled') return res.status(400).json({ ok: false, message: 'Kayıt iptal edilmiş.' });
+      const disc = await discover(rec.app);
+      const { webAnahtar } = require('./web-liste.cjs');
+      const DUZENLENIR = new Set(['pending', 'planned', 'stop_scheduled', 'active', 'failed', 'rollback_failed']);
+      const sonuc = [];
+      for (const t of rec.targets) {
+        const d = (disc.targets || []).find((x) => String(x.host).toUpperCase() === String(t.host).toUpperCase() && String(x.appName).toUpperCase() === String(t.appName).toUpperCase());
+        const yeniWeb = d ? d.web : [];
+        const eskiK = new Set((t.web || []).map(webAnahtar));
+        const eklenen = yeniWeb.filter((w) => !eskiK.has(webAnahtar(w)));
+        const satir = { tid: t.id, host: t.host, appName: t.appName, env: t.env, status: t.status, eski: (t.web || []).length, eklenen, webHow: d ? d.webHow : 'kesifte hedef yok', webUyari: d ? d.webUyari || null : null, islem: 'yok' };
+        if (!eklenen.length) { satir.islem = 'degisiklik yok'; sonuc.push(satir); continue; }
+        if (t.deletedAt || t.status === 'deleted') { satir.islem = 'silinmiş hedef - vhost elle kapatılmalı'; sonuc.push(satir); continue; }
+        if (['stopping', 'deleting', 'rolling_back', 'planning'].includes(t.status)) { satir.islem = 'iş sürüyor - bitince yeniden deneyin'; sonuc.push(satir); continue; }
+        const birlesik = [...(t.web || []), ...eklenen];
+        if (t.status === 'stopped') {
+          satir.islem = 'eklenecek (durdurulmuş: "Web adımını yeniden dene" ile kapatılır)';
+          if (uygula) {
+            const mevcut = Array.isArray(t.webSonuc) ? t.webSonuc : [];
+            const ek = eklenen.map((w) => ({ host: String(w.host || ''), serverName: String(w.serverName || ''), product: String(w.product || ''), confFile: String(w.confFile || ''),
+              status: 'skip', jobId: null, message: 'kayıt açıldıktan sonra keşfedildi - kapatmak için "Web adımını yeniden dene"' }));
+            await db().query(`UPDATE retirement_targets SET web_json = $1, web_result_json = $2, updated_at = GETUTCDATE() WHERE id = $3 AND status = 'stopped'`,
+              [JSON.stringify(birlesik), JSON.stringify(webTekille([...mevcut, ...ek]).liste).slice(0, 60000), t.id]);
+          }
+        } else if (DUZENLENIR.has(t.status)) {
+          satir.islem = t.status === 'stop_scheduled' ? 'eklenecek (zamanlanmış STOP bunları da kapatır)' : 'eklenecek (STOP bunları da kapatır)';
+          if (uygula) {
+            await db().query(`UPDATE retirement_targets SET web_json = $1, updated_at = GETUTCDATE() WHERE id = $2 AND status = $3`, [JSON.stringify(birlesik), t.id, t.status]);
+            // Zamanlanmis STOP'ta liste zamanlama aninda donduruldu (hepsi 'pending', is kosmadi):
+            // yeni girdiler de 'pending' eklenir ki STOP onlari da kapatsin.
+            if (t.status === 'stop_scheduled') {
+              const mevcut = Array.isArray(t.webSonuc) ? t.webSonuc : [];
+              await db().query(`UPDATE retirement_targets SET web_result_json = $1 WHERE id = $2 AND status = 'stop_scheduled'`,
+                [JSON.stringify(webTekille([...mevcut, ...webDondur(eklenen)]).liste).slice(0, 60000), t.id]);
+            }
+          }
+        } else {
+          satir.islem = `durum ${t.status} - dokunulmadı`;
+        }
+        sonuc.push(satir);
+      }
+      const eklenenToplam = sonuc.filter((s) => s.eklenen.length && s.islem.startsWith('eklenecek')).reduce((a, s) => a + s.eklenen.length, 0);
+      if (uygula)
+        await addEvent(id, req.session?.user?.username, 'web',
+          `Web kesfi yenilendi: ${eklenenToplam} vhost eklendi${eklenenToplam ? ' - ' + sonuc.filter((s) => s.eklenen.length).map((s) => `${s.host}: ${s.eklenen.map((w) => `${w.host}/${w.serverName}`).join(', ')}`).join(' · ') : ''}`.slice(0, 1000));
+      res.json({ ok: true, uygulandi: uygula, eklenenToplam, hedefler: sonuc, record: uygula ? await loadRecord(id) : undefined });
+    } catch (err) { res.status(500).json({ ok: false, message: err.message }); }
+  });
+
   router.post('/:id/targets/:tid/refresh-status', async (req, res) => {
     const id = Number(req.params.id);
     const tid = Number(req.params.tid);

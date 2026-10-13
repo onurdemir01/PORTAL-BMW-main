@@ -101,6 +101,17 @@ function buildCertIndex(certRows) {
 }
 
 /**
+ * AD VARYANTLARI (2026-10-13, GFY_INTERNET_SERVICES retirement'i: web bulunamadi). Alan adinda
+ * ALT CIZGI OLAMAZ; envanter adi `gfy_internet_services` ise vhost `gfy-internet-services` ya da
+ * `gfyinternetservices` olur. Alt cizgili adda bu iki bicim de denenir (once kendisi).
+ */
+function adVaryantlari(ad) {
+  const a = String(ad || '').toLowerCase();
+  if (!a.includes('_')) return [a];
+  return [...new Set([a, a.replace(/_/g, '-'), a.replace(/_/g, '')])];
+}
+
+/**
  * Tek uygulama satiri icin web sunucusu eslesmesi (Denetim > Web-App kurali; retirement akisi da
  * AYNI fonksiyonu kullanir — kullanici 2026-09-21: "web sunucu kesfi icin web-app relations").
  * @returns {{ tier, how, matched, web: object[], webHostCandidate, vhostCountOnHost }}
@@ -121,8 +132,11 @@ function matchWebForApp({ app, appHost, domain }, certByHost) {
     const list = certByHost.get(cand.host.toUpperCase());
     if (!list || !list.length) continue;
     if (!hostOnly) hostOnly = { how: cand.how, host: cand.host, count: list.length };
-    for (const [form, needle] of [['tam ad', needleFull], ['taban ad', needleBase]]) {
-      if (form === 'taban ad' && needle === needleFull) continue;
+    const denenecek = [
+      ...adVaryantlari(needleFull).map((n, i) => [i ? `tam ad, ${n}` : 'tam ad', n]),
+      ...(needleBase === needleFull ? [] : adVaryantlari(needleBase).map((n, i) => [i ? `taban ad, ${n}` : 'taban ad', n])),
+    ];
+    for (const [form, needle] of denenecek) {
       const hits = list.filter((e) => e.serverName.toLowerCase().includes(needle));
       if (hits.length) { matched = { how: cand.how, nameForm: form, entries: hits }; break; }
     }
@@ -240,4 +254,4 @@ function registerWebApp(router) {
   });
 }
 
-module.exports = { registerWebApp, webHostOf, webHostAdaylari, tierOf, buildCertIndex, matchWebForApp };
+module.exports = { registerWebApp, adVaryantlari, webHostOf, webHostAdaylari, tierOf, buildCertIndex, matchWebForApp };

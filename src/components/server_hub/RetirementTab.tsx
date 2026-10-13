@@ -639,6 +639,23 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
   const [atlaSor, setAtlaSor] = useState<RtTarget | null>(null);
   // TOPLU (kayit duzeyi) beklemeyi atla da KALIR (kullanici 2026-10-12: "toplu da kalsin, sunucu bazli da").
   const [atlaTopluSor, setAtlaTopluSor] = useState(false);
+  // WEB KESFINI YENILE (2026-10-13): kayit acilirken dondurulan web listesi bugunku kesifle tamamlanir.
+  type WebKesifSonuc = Awaited<ReturnType<typeof retirementApi.webKesif>>;
+  const [webKesif, setWebKesif] = useState<WebKesifSonuc | null>(null);
+  const [webKesifBusy, setWebKesifBusy] = useState(false);
+  const webKesifCalistir = async (uygula: boolean) => {
+    setWebKesifBusy(true);
+    try {
+      const r = await retirementApi.webKesif(id, uygula);
+      if (!r.ok) { toast.error(r.message || 'Web keşfi yenilenemedi.'); return; }
+      if (uygula) {
+        if (r.record) setRec(r.record);
+        setWebKesif(null);
+        toast.success(r.eklenenToplam ? `${r.eklenenToplam} vhost kayda eklendi.` : 'Eklenecek yeni vhost yoktu.');
+      } else setWebKesif(r);
+    } catch (e: unknown) { toast.error(e instanceof Error ? e.message : String(e)); }
+    finally { setWebKesifBusy(false); }
+  };
   const [atlaAd, setAtlaAd] = useState('');
   // Zamanlayici araligi bilgilendirme metni icin (sunucu ayari; okunamazsa genel metin).
   const [cfgSaat, setCfgSaat] = useState<{ poll: number | null }>({ poll: null });
@@ -1006,6 +1023,18 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
               </div>
             );
           })()}
+          {rec.status !== 'cancelled' && (
+            <div className="flex flex-wrap items-center gap-2 text-[12px]">
+              {rec.targets.some((t) => !t.web.length && !t.deletedAt) && (
+                <span className="font-semibold" style={{ color: 'var(--status-danger)' }}>
+                  ⚠ {rec.targets.filter((t) => !t.web.length && !t.deletedAt).length} hedefte web vhost’u yok — liste kayıt açılırken donduruldu.
+                </span>
+              )}
+              <button disabled={webKesifBusy} onClick={() => webKesifCalistir(false)} className={SM_BTN} style={smBtn()} title="Web keşfini BUGÜNKÜ kurallarla (3-tier adayları, Server Hub, AJP, alt çizgili adlar) yeniden kosturur ve önce neyin ekleneceğini gösterir; onay vermeden hiçbir şey değişmez">
+                <ArrowPathIcon className={`w-3.5 h-3.5 ${webKesifBusy ? 'animate-spin motion-reduce:animate-none' : ''}`} /> Web keşfini yenile
+              </button>
+            </div>
+          )}
           <div className="overflow-auto rounded-lg border" style={{ borderColor: 'var(--border-subtle)' }}>
             <table className="w-full text-xs border-collapse">
               <thead style={{ background: 'var(--bg-elevated)' }}><tr>{['', 'Sunucu', 'Site', 'Ortam', 'Uygulama', 'JBoss', 'Web sunucusu', 'Durum', 'Ön kontrol / sonuç', ''].map((h, i) => <th key={h + i} className="px-2.5 py-1.5 text-left text-[11px] font-semibold" style={{ color: 'var(--text-muted)' }}>{h}</th>)}</tr></thead>
@@ -1205,6 +1234,40 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
       {/* IPTAL ONAYI (2026-10-08). Kullanici "iptal ettim ama geri donmedi" dedi; iptalin
           NE YAPTIGI ve NE YAPMADIGI burada yazili, ve geri getirme AYNI pencereden
           tetiklenebiliyor - sessiz bir varsayim kalmiyor. */}
+      {webKesif && rec && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,.45)' }} onClick={() => setWebKesif(null)}>
+          <div className="w-full max-w-3xl max-h-[85vh] overflow-auto rounded-2xl border p-5 space-y-3" style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }} onClick={(e) => e.stopPropagation()}>
+            <div className="text-sm font-semibold">Web keşfi (önizleme) — {rec.app}</div>
+            <p className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>
+              Keşif bugünkü kurallarla yeniden yapıldı. <b>Henüz durmamış / zamanlanmış</b> hedeflerde eklenen vhost’ları STOP kapatır.
+              <b> Durdurulmuş</b> hedeflerde vhost’lar “atlandı” olarak eklenir; kapatmak için satırdaki “Web adımını yeniden dene” (önizlemeli) kullanılır.
+              Var olan girdiler silinmez.
+            </p>
+            <div className="space-y-2">
+              {(webKesif.hedefler || []).map((h) => (
+                <div key={h.tid} className="rounded-lg border px-3 py-2 text-[12px] space-y-1" style={{ borderColor: h.eklenen.length ? 'var(--status-info)' : 'var(--border-subtle)' }}>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-mono font-semibold">{h.host}</span>
+                    <span style={{ color: 'var(--text-muted)' }}>{h.appName} · {h.env} · {h.status}</span>
+                    <span className="ml-auto font-semibold" style={{ color: h.eklenen.length ? 'var(--status-info)' : 'var(--text-muted)' }}>{h.islem}</span>
+                  </div>
+                  {h.eklenen.map((w) => (
+                    <div key={`${w.host}|${w.serverName}|${w.confFile}`} className="font-mono text-[11px]">+ {w.host} · {w.serverName}{w.product ? ` (${w.product})` : ''}<WebKaynak w={w} /></div>
+                  ))}
+                  {!h.eklenen.length && h.webUyari && <div className="text-[11px]" style={{ color: 'var(--status-danger)' }}>{h.webUyari}</div>}
+                  <div className="text-[10px]" style={{ color: 'var(--text-muted)' }}>{h.webHow}</div>
+                </div>
+              ))}
+            </div>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setWebKesif(null)} className={SM_BTN} style={smBtn()}>Kapat</button>
+              <button disabled={webKesifBusy || !(webKesif.hedefler || []).some((h) => h.eklenen.length && h.islem.startsWith('eklenecek'))} onClick={() => webKesifCalistir(true)} className={`${SM_BTN} disabled:opacity-50`} style={smBtn(true)}>
+                Eklenenleri kayda yaz
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {atlaTopluSor && rec && (() => {
         const hazir = rec.targets.filter((t) => t.status === 'stopped' && !t.deletedAt);
         const prod = hazir.some((t) => t.env === 'PROD');
