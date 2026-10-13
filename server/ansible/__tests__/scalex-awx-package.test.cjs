@@ -207,9 +207,32 @@ test("S6 kesif survey'i portalin `/discover` anahtarlariyla uyumlu", () => {
     // yani elle calistirma tek namespace tarar, BOZULMAZ.
     'scalex_target_namespaces',
   ]);
+  // YALNIZ PORTALIN DOLDURDUGU SKALERLER. Ankete konmaz: deger kullanicidan degil portalin
+  // kendi kaydindan gelir ve "Prompt on launch > Variables" ile gider (portal bu ayar
+  // kapaliyken isi ZATEN baslatmiyor). Muafiyet KANITA bagli: playbook degiskeni
+  // `default('')` ile okumali — elle calistirmada (degisken yok) is bozulmamali.
+  //
+  // `scalex_live_probe_apps` bu listeye 2026-10-14'te girdi. Anahtar yeni DEGIL; eskiden
+  // bir ic fonksiyonun icinde uretiliyordu ve bu bekci onu HIC GORMUYORDU (sozluk
+  // metninde gecmiyordu). `/discover` okumalari paralellesince sozluge tasindi.
+  const YALNIZ_PORTAL = new Set(['scalex_live_probe_apps']);
+  const kesifGorevleri = ['10_discover.yml', '10_discover_batch.yml', '10_discover_parallel.yml'].map((f) =>
+    read(path.join(APP, 'tasks', 'discovery', f)),
+  );
+  for (const k of YALNIZ_PORTAL) {
+    assert.ok(block.includes(`${k}:`), `${k} artik gonderilmiyor — muafiyet listesinde olu satir`);
+    for (const [n, metin] of kesifGorevleri.entries()) {
+      assert.match(
+        metin,
+        new RegExp(`\\{\\{ ${k} \\| default\\(''\\) \\}\\}`),
+        `${k}: kesif gorevi #${n} degiskeni varsayilansiz okuyor — elle calistirma duser`,
+      );
+    }
+  }
   for (const k of [...block.matchAll(/([a-z_]+):/g)].map((m) => m[1])) {
     if (
       YAPISAL.has(k) ||
+      YALNIZ_PORTAL.has(k) ||
       k === 'hosts' ||
       k === 'meta' ||
       k === 'env' ||

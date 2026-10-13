@@ -275,3 +275,65 @@ test('DA10 fail carpani 1 ise kullanici UYARILIYOR', () => {
   process.env.SCALEX_VERIFY_FAIL_MULTIPLIER = '1';
   assert.match(config.publicConfig().problems.join(' '), /çarpan/i, 'carpan=1 sessizce kabul edildi');
 });
+
+// ── PROD SMART KIPI (2026-10-13) ────────────────────────────────────────────
+//
+// Anahtar bir GUVENLIK karari tasir: `oco_only` prod'da SMART onayini kaldirir. Bu
+// yuzden iki yon ayri olculur: (1) degisiklik restart'siz gecerli olur, (2) bos ya da
+// yanlis yazilmis deger kapiyi ACMAZ. Kapinin kendisi: scalex-kapi-matrisi.test.cjs.
+const SMART_KEY = config.SMART_MODE_KEY;
+
+test('DA11 SMART kipi HER cagrida okunur; bos/taninmayan deger `required` kalir ve SOYLENIR', () => {
+  const onceki = process.env[SMART_KEY];
+  try {
+    delete process.env[SMART_KEY];
+    assert.deepEqual(config.smartMode(), { value: 'required', source: 'default', problem: null });
+    assert.equal(config.publicConfig().prodSmartMode, 'required');
+
+    process.env[SMART_KEY] = 'oco_only';
+    assert.deepEqual(config.smartMode(), { value: 'oco_only', source: 'admin', problem: null }, 'degisiklik restart istiyor');
+    assert.equal(config.publicConfig().prodSmartMode, 'oco_only');
+    assert.equal(config.publicConfig().sources[SMART_KEY], 'admin');
+
+    process.env[SMART_KEY] = 'required';
+    assert.equal(config.smartMode().value, 'required', 'geri alma restart istiyor');
+
+    for (const yanlis of ['oco-only', 'kapali', 'false', '0', 'none', 'oco_only;x']) {
+      process.env[SMART_KEY] = yanlis;
+      const k = config.smartMode();
+      assert.equal(k.value, 'required', `"${yanlis}" SMART kapisini indirdi`);
+      assert.match(k.problem, /tanınmıyor/, `"${yanlis}" sessizce yok sayildi`);
+      assert.ok(config.publicConfig().problems.some((p) => p.includes(SMART_KEY)), 'sorun ekrana tasinmiyor');
+    }
+  } finally {
+    if (onceki === undefined) delete process.env[SMART_KEY];
+    else process.env[SMART_KEY] = onceki;
+  }
+});
+
+test('DA12 SMART kipi KAYDEDILMEDEN once dogrulanir (yanlis deger 400, baska anahtara karisilmaz)', () => {
+  for (const gecerli of ['', 'required', 'oco_only', ' OCO_ONLY ']) {
+    assert.equal(config.ayarHatasi(SMART_KEY, gecerli), null, `"${gecerli}" reddedildi`);
+  }
+  for (const yanlis of ['oco-only', 'kapali', 'true', 'required,oco_only']) {
+    assert.match(config.ayarHatasi(SMART_KEY, yanlis), /required.*oco_only/, `"${yanlis}" kabul edildi`);
+  }
+  assert.equal(config.ayarHatasi('SCALEX_MAX_TARGETS', 'sacma'), null, 'baska anahtarin dogrulamasina karisiyor');
+
+  const eo = require('../../db/env-overrides.cjs');
+  assert.ok(eo.SYSTEM_CONFIG_KEYS.includes(SMART_KEY), 'anahtar admin ekranindan yazilamiyor');
+  assert.ok(eo.HOT_RELOADABLE_KEYS.includes(SMART_KEY), 'anahtar sicak yuklenmiyor — kaydedince etki etmez');
+
+  // Admin ucu dogrulamayi KAYITTAN ONCE cagirir (kayittan sonra cagirmak, yanlis degeri
+  // DB'ye yazip 400 donmek olurdu).
+  const uc = fs
+    .readFileSync(path.join(ROOT, 'server/admin/system-config.cjs'), 'utf8')
+    .split('\n')
+    .filter((l) => !/^\s*\/\//.test(l))
+    .join('\n');
+  const dogrula = uc.indexOf("require('../scalex/config.cjs').ayarHatasi(key, strValue)");
+  const kaydet = uc.indexOf('await setEnvOverride(key, strValue');
+  assert.ok(dogrula > 0, 'admin ucu ScaleX ayarini dogrulamiyor');
+  assert.ok(kaydet > dogrula, 'dogrulama kayittan SONRA');
+  assert.match(uc.slice(dogrula, kaydet), /if \(scalexHatasi\) return res\.status\(400\)/, 'hata 400 ile donmuyor');
+});

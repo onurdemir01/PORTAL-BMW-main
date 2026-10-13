@@ -75,7 +75,13 @@ test('HT5 istemci listesi kapsami GENISLETEMEZ (sunucu normalizasyonu)', () => {
   const kod = IX.split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
   const i = kod.indexOf('function normalizeTargets');
   assert.ok(i > 0, 'normalize edici yok');
-  const govde = kod.slice(i, kod.indexOf('async function readOcoConfig'));
+  // SON ISARET BULUNMALI: `indexOf` -1 donerse `slice(i, -1)` dosyanin KALANINI verir ve
+  // asagidaki desenler alakasiz bir yerde eslesir (isaret 2026-10-13'te yeniden
+  // adlandirildi ve bekci bunu fark etmeden yesil kaldi).
+  const son = kod.indexOf('async function readGateConfig');
+  assert.ok(son > i, 'dilim sonu bulunamadi — bekci dosyanin kalanina bakardi');
+  const govde = kod.slice(i, son);
+  assert.ok(govde.length < 1500, `dilim beklenenden buyuk: ${govde.length}`);
   assert.match(govde, /clusterSet\.has\(cluster\)/, 'cluster kapsam disi olabiliyor');
   assert.match(govde, /appSet\.has\(name\)/, 'uygulama kapsam disi olabiliyor');
   // Olu dal yasak — kapinin metinde durup hic kosmamasi bu depoda tekrar eden bicim.

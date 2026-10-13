@@ -179,11 +179,21 @@ test('CC9 `capabilities` modu onbellegi URETIR, TUKETMEZ', () => {
   assert.match(govde, /resources_readable=/, 'okunabilirlik bildirilmiyor');
   // Portal da onu gecirmemeli.
   // Portal da onu TUKETMEMELI: `capabilities` modunda onbellek HIC okunmaz.
+  // IKI okuma da (birlesik liste + cluster basina harita) `capabilities` modunda
+  // ATLANIR. Okumalar 2026-10-13'te `Promise.all` icine alindi; kosul artik her okumanin
+  // KENDI ucluusunde. Biri kosulsuz kalirsa o yol bayat listeyi kendine dogrulatir.
   assert.match(
     IX,
-    /if \(mode !== 'capabilities'\) \{[\s\S]{0,400}?kindsForScope/,
+    /mode === 'capabilities'\s*\?\s*null\s*:\s*clusterCaps\s*\.?\s*kindsForScope\(/,
     'portal `capabilities` modunda da onbellek okuyor — bayat liste kendini dogrular',
   );
+  assert.match(
+    IX,
+    /mode === 'capabilities'\s*\?\s*\{\}\s*:\s*clusterCaps\s*\.?\s*kindsPerCluster\(/,
+    'portal `capabilities` modunda cluster basina haritayi okuyor',
+  );
+  assert.equal((IX.match(/clusterCaps\s*\.\s*kindsForScope\(/g) || []).length, 1, 'kosulsuz ikinci bir okuma eklenmis');
+  assert.equal((IX.match(/clusterCaps\s*\.\s*kindsPerCluster\(/g) || []).length, 1, 'kosulsuz ikinci bir okuma eklenmis');
 });
 
 test('CC10 `capabilities` NAMESPACE istemiyor (cluster duzeyi)', () => {

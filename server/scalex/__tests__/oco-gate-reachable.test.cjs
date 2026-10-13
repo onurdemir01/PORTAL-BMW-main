@@ -14,55 +14,93 @@
 //
 // Bu dosya sirayi ve ayar okumayi kilitler. Testler KAYNAK METNI degil KARAR
 // NOKTASINI olcer; "degisken var mi" demek bu depoda defalarca kor bekci uretti.
+//
+// 2026-10-14: OLCUM ARTIK DAVRANISTAN. Bu dosyanin ilk hali "SMART reddi OCO'dan SONRA
+// mi" diye KAYNAK SIRASINA bakiyordu ve politika fonksiyonunu kaynaktan dilimleyip
+// calistiriyordu. Sira bilerek degisti (SMART hazir degilse OCO HIC sorulmaz: is zaten
+// baslayamaz) ve dilim, yeni bir yardimci fonksiyon eklenince kirildi. "OCO koduna
+// ulasilabiliyor mu" sorusunun dogru olcusu sira degil, OCO servisinin GERCEKTEN
+// soruldugudur: istek gercek yonlendiriciden gecer (bkz. fixtures/scalex-sim.cjs).
 'use strict';
 
+const sim = require('./fixtures/scalex-sim.cjs');
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 
 const IX = fs.readFileSync(path.join(__dirname, '..', 'index.cjs'), 'utf8');
-const LAUNCH = path.join(__dirname, '..', 'launch.cjs');
+const g = sim.launch.gatePolicyFor;
 
-test('OG1 SMART 503`u OCO kapisindan SONRA doner (erisilemezlik kapandi)', () => {
-  const govde = IX.slice(IX.indexOf('async function runScaleXGates'), IX.indexOf('// ── GERI ALMA KILIDI'));
-  const kapi = govde.indexOf('runChangeGates(');
-  const smart503 = govde.indexOf("code: 'smart_not_configured'");
-  assert.ok(kapi > 0, 'runChangeGates cagrisi bulunamadi');
-  assert.ok(smart503 > 0, 'SMART 503 bulunamadi');
-  assert.ok(
-    smart503 > kapi,
-    'SMART 503 hala OCO kapisindan ONCE — OCO koduna ulasilamaz (uretimdeki ariza)',
-  );
+test.before(() => sim.baslat());
+test.after(() => sim.durdur());
+test.beforeEach(() => sim.sifirla());
+
+test('OG1 OCO kapisi ERISILEBILIR: SMART devrede degilken de hazirken de OCO servisi SORULUR', async (t) => {
+  sim.konsoluSustur(t);
+  // Uretimdeki ariza: HER prod `apply` OCO'ya varmadan oluyordu (13,5 gunde 0 sorgu).
+  // SMART kapali (admin anahtari):
+  sim.smartKipi('oco_only');
+  let r = await sim.calistir({ ocoNumber: '1234567' });
+  assert.equal(r.status, 200, r.metin);
+  assert.equal(sim.kayit.ocoSorgulari.length, 1, 'SMART kapaliyken OCO sorulmadi');
+  // SMART hazir:
+  sim.sifirla();
+  sim.ayar.ozellestirme = { smartApproval: { ...sim.SMART_HAZIR } };
+  r = await sim.calistir({ ocoNumber: '1234567' });
+  assert.equal(r.json.pendingApproval, true, r.metin);
+  assert.equal(sim.kayit.ocoSorgulari.length, 1, 'SMART hazirken OCO sorulmadi');
+  // OCO hatasi SMART biletinden ONCE gelir: penceresi gecmis bir kayit icin bilet acilmaz.
+  sim.sifirla();
+  sim.ayar.ozellestirme = { smartApproval: { ...sim.SMART_HAZIR } };
+  sim.ayar.oco = 'gecti';
+  r = await sim.calistir({ ocoNumber: '1234567' });
+  assert.equal(r.json.ocoExpired, true, r.metin);
+  assert.equal(sim.kayit.smartTalepleri.length, 0, 'penceresi gecmis OCO icin SMART bileti acildi');
+  // BILEREK DEGISEN SIRA: SMART gerekli + hazir degil -> OCO HIC sorulmaz.
+  sim.sifirla();
+  r = await sim.calistir({ ocoNumber: '1234567' });
+  assert.equal(r.json.code, 'smart_not_configured');
+  assert.equal(sim.kayit.ocoSorgulari.length, 0);
 });
 
-test('OG2 `ocoCheck` ADMIN AYARINDAN okunuyor, sabit DEGIL', () => {
-  const govde = IX.slice(IX.indexOf('async function runScaleXGates'), IX.indexOf('// ── GERI ALMA KILIDI'));
-  // Eski hali: `ocoCheck: { enabled: policy.oco === 'require' }` — admin ekranindaki
-  // anahtar ScaleX icin HICBIR SEY yapmiyordu.
-  assert.match(govde, /svcConfig\.ocoCheck/, 'admin ayari OKUNMUYOR');
-  assert.match(govde, /ocoCfg\.enabled !== false/, 'varsayilan ACIK degil — ayar satiri yoksa kapi SESSIZCE inerdi');
+test('OG2 `ocoCheck` ADMIN AYARINDAN okunuyor, sabit DEGIL; ayar satiri YOKSA kapi ACIK', async (t) => {
+  sim.konsoluSustur(t);
+  sim.smartKipi('oco_only');
+  // Satir yok (uretimdeki durum) -> numara istenir.
+  let r = await sim.calistir();
+  assert.equal(r.json.ocoRequired, true, 'ayar satiri yokken kapi SESSIZCE indi');
+  assert.equal(sim.baslatmalar().length, 0);
+  // Admin kapatti -> numarasiz baslar.
+  sim.sifirla();
+  sim.smartKipi('oco_only');
+  sim.ayar.ozellestirme = { ocoCheck: { enabled: false } };
+  r = await sim.calistir();
+  assert.equal(r.status, 200, 'admin ekranindaki anahtar ScaleX icin hicbir sey yapmiyor');
+  assert.equal(sim.kayit.ocoSorgulari.length, 0);
 });
 
-test('OG3 kapali kapi DENETIME yaziliyor (sessiz kapanma yok)', () => {
-  const govde = IX.slice(IX.indexOf('async function runScaleXGates'), IX.indexOf('// ── GERI ALMA KILIDI'));
-  assert.match(govde, /scalex_oco_gate_disabled/, 'kapali kapi denetime yazilmiyor');
-  // Kosul: YALNIZCA prod'da ve YALNIZCA admin kapattiginda.
-  assert.match(govde, /policy\.oco === 'require' && !ocoAdminEnabled/, 'kosul yanlis — her durumda ya da hic yazilir');
+test('OG3 kapali kapi DENETIME yaziliyor (sessiz kapanma yok) — yalniz prod`da, yalniz admin kapattiginda', async (t) => {
+  sim.konsoluSustur(t);
+  sim.smartKipi('oco_only');
+  sim.ayar.ozellestirme = { ocoCheck: { enabled: false } };
+  await sim.calistir();
+  assert.equal(sim.denetimde('scalex_oco_gate_disabled').length, 1, 'kapali kapidan gecen prod isi iz birakmadi');
+  // Prod disi: kapinin istenmemesi normal, iz gurultu olurdu.
+  sim.sifirla();
+  sim.ayar.ozellestirme = { ocoCheck: { enabled: false } };
+  await sim.calistir({ env: 'test' });
+  assert.equal(sim.denetimde('scalex_oco_gate_disabled').length, 0);
+  // Kapi ACIKKEN: iz yok.
+  sim.sifirla();
+  sim.smartKipi('oco_only');
+  await sim.calistir({ ocoNumber: '1234567' });
+  assert.equal(sim.denetimde('scalex_oco_gate_disabled').length, 0, 'acik kapi "kapali" diye izlendi');
 });
 
 // ── gatePolicyFor: EKRAN ile SUNUCU AYRISMAMALI ────────────────────────────
-function policyFn() {
-  const src = fs.readFileSync(LAUNCH, 'utf8');
-  const i = src.indexOf('function gatePolicyFor');
-  const j = src.indexOf('function buildGateVars');
-  const k = src.indexOf('function isProdEnv');
-  const kSon = src.indexOf('\n}', k) + 2;
-  return new Function(`${src.slice(k, kSon)}\n${src.slice(i, j)}\nreturn gatePolicyFor;`)();
-}
-
+// GERCEK fonksiyon cagrilir (kaynak dilimi degil).
 test('OG4 ayar yokken bugunku davranis AYNEN surer (prod`da require)', () => {
-  const g = policyFn();
   assert.equal(g({ action: 'stop', executionMode: 'apply', environment: 'prod' }).oco, 'require');
   assert.equal(g({ action: 'stop', executionMode: 'apply', environment: 'test' }).oco, 'skip');
   // Ortam BILINMIYORSA prod sayilir — bu kural korunmali.
@@ -71,7 +109,6 @@ test('OG4 ayar yokken bugunku davranis AYNEN surer (prod`da require)', () => {
 });
 
 test('OG5 admin kapatirsa prod`da da sorulmaz AMA `ocoGateDisabled` ile GORUNUR', () => {
-  const g = policyFn();
   const p = g({ action: 'stop', executionMode: 'apply', environment: 'prod', ocoConfig: { enabled: false } });
   assert.equal(p.oco, 'skip', 'admin kapattigi halde hala isteniyor');
   assert.equal(p.ocoGateDisabled, true, 'kapali kapi GORUNMUYOR — sessiz kapanma');
@@ -80,7 +117,6 @@ test('OG5 admin kapatirsa prod`da da sorulmaz AMA `ocoGateDisabled` ile GORUNUR'
 });
 
 test('OG6 ortam listesi verilirse O liste gecerli (prod disi ortamda da istenebilir)', () => {
-  const g = policyFn();
   const cfg = { enabled: true, environments: ['prod', 'test'] };
   assert.equal(g({ action: 'stop', executionMode: 'apply', environment: 'test', ocoConfig: cfg }).oco, 'require');
   assert.equal(g({ action: 'stop', executionMode: 'apply', environment: 'dev', ocoConfig: cfg }).oco, 'skip');
@@ -89,10 +125,9 @@ test('OG6 ortam listesi verilirse O liste gecerli (prod disi ortamda da istenebi
 });
 
 test('OG7 BOS liste "hicbir ortam" demektir, liste YOKLUGUNDAN farklidir', () => {
-  const g = policyFn();
   // Liste yok -> prod'da istenir
   assert.equal(g({ action: 'stop', executionMode: 'apply', environment: 'prod', ocoConfig: { enabled: true } }).oco, 'require');
-  // Bos liste -> hicbir yerde istenmez, AMA prod'da GORUNUR olur
+  // Bos liste -> hicbir yerde istenmez
   const bos = g({ action: 'stop', executionMode: 'apply', environment: 'prod', ocoConfig: { enabled: true, environments: [] } });
   assert.equal(bos.oco, 'skip', 'bos liste "her prod" gibi ele alinmis');
 });
@@ -120,30 +155,40 @@ test('OG8 ortak kapi (`change-gates`) ayni listeyi TANIYOR — ekran/sunucu ayri
   );
 });
 
-test('OG9 gatePolicyFor cagiran HER uc ayni OCO ayarini okuyor (politika ayrismaz)', () => {
-  // Bu dosyada tam bu sinifta bir ariza yasandi: `/preview` ile `/run` farkli
-  // politika uretiyor, ekran numara istiyor, sunucu numarayi kullanmiyordu.
-  //
-  // SAYIYA DEGIL KURALA BAGLI: "tam 3 cagri" demek, mesru bir dorduncu ucu
-  // (OCO Tani) yanlis alarmla karsilamak olurdu. Kilitlenmesi gereken sey
-  // HER cagrinin ayari okumasi.
-  const cagrilar = IX.match(/gatePolicyFor\(\{[^}]*\}\)/g) || [];
-  assert.ok(cagrilar.length >= 3, `gatePolicyFor cagrisi kaybolmus: ${cagrilar.length}`);
-  for (const c of cagrilar) {
-    assert.match(
-      c,
-      /ocoConfig:\s*await readOcoConfig\(\)/,
-      `OCO ayarini OKUMAYAN gatePolicyFor cagrisi — politika AYRISIR: ${c.slice(0, 120)}`,
-    );
-  }
-  assert.match(IX, /async function readOcoConfig/, 'ortak okuyucu yok — her uc kendi okursa AYRISIR');
+test('OG9 kapi politikasi TEK yerde cozuluyor; ekran ve sunucu ayni ayari goruyor', async (t) => {
+  sim.konsoluSustur(t);
+  // Bu dosyada tam bu sinifta bir ariza yasandi: `/preview` ile `/run` farkli politika
+  // uretiyor, ekran numara istiyor, sunucu numarayi kullanmiyordu.
+  // DAVRANIS: admin `test`i listeye ekler -> onizleme ister, calistirma da ister.
+  sim.ayar.ozellestirme = { ocoCheck: { enabled: true, environments: ['test'] } };
+  assert.equal((await sim.onizle({ env: 'test' })).json.gatePolicy.oco, 'require');
+  assert.equal((await sim.calistir({ env: 'test' })).json.ocoRequired, true, 'onizleme ister, calistirma sormaz');
+  // ...ve prod listede YOK -> ikisi de istemez (SMART ayri kapi; yalniz OCO olculuyor).
+  sim.smartKipi('oco_only');
+  assert.equal((await sim.onizle()).json.gatePolicy.oco, 'skip');
+  assert.equal((await sim.calistir()).status, 200);
+  assert.equal(sim.kayit.ocoSorgulari.length, 0);
+
+  // YAPI: `gatePolicyFor` yalniz ortak cozucuden cagrilir. Bir uc onu DOGRUDAN cagirirsa
+  // ayari kendi okumak zorunda kalir ve uclar yine ayrisir.
+  const kod = IX.split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+  assert.equal((kod.match(/gatePolicyFor\(/g) || []).length, 1, '`gatePolicyFor` birden fazla yerden cagriliyor');
+  const cozucu = kod.slice(kod.indexOf('async function resolveGatePolicy'), kod.indexOf('function istemciyeUlasan'));
+  assert.match(cozucu, /gatePolicyFor\(/, 'tek cagri ortak cozucude degil');
+  assert.ok((kod.match(/await resolveGatePolicy\(req, \{/g) || []).length >= 4, 'uclar ortak cozucuyu kullanmiyor');
 });
 
-test('OG10 DB okunamazsa kapi ACIK kalir (fail-safe yonu dogru)', () => {
-  const govde = IX.slice(IX.indexOf('async function readOcoConfig'), IX.indexOf('async function runScaleXGates'));
-  assert.match(govde, /return \{\}/, 'hata halinde bos ayar donmuyor');
-  // Bos ayar -> `enabled !== false` -> ACIK. Ters yon (DB tokezlemesi kapiyi
-  // KAPATSA) bir kesinti aracinda kabul edilemezdi.
-  const g = policyFn();
+test('OG10 ayar okunamazsa kapi ACIK kalir (fail-safe yonu dogru)', async (t) => {
+  sim.konsoluSustur(t);
+  // `ss-customizations.readCustom` DB okunamayinca BOS NESNE doner (firlatmaz). Bos ayar
+  // -> `enabled !== false` -> OCO ACIK; SMART "hazir degil". Ters yon (DB tokezlemesi
+  // kapiyi KAPATSA) bir kesinti aracinda kabul edilemezdi.
+  sim.ayar.ozellestirme = null;
+  const p = (await sim.onizle()).json.gatePolicy;
+  assert.equal(p.oco, 'require');
+  assert.equal(p.smart, 'require');
   assert.equal(g({ action: 'stop', executionMode: 'apply', environment: 'prod', ocoConfig: {} }).oco, 'require');
+  const r = await sim.calistir({ ocoNumber: '1234567' });
+  assert.equal(sim.baslatmalar().length, 0, 'ayar yokken prod isi BASLADI');
+  assert.equal(r.status, 409);
 });
