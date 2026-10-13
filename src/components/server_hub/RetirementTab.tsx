@@ -4,7 +4,7 @@
 // sunuculari (tum ortamlar, Pendik + Ankara) envanterden kesfedilir, web sunuculari Web-App kuraliyla;
 // her hedef icin STOP once PLAN kosar, onaylaninca uygulanir. Silme tarihi: kaydi acan secer, bos ise
 // stop + N gun (varsayilan 45). Silme ve IP/LB/DNS adimlari sonraki surum (kayitta alanlari var).
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PlusIcon, ArrowPathIcon, XMarkIcon, StopCircleIcon, ClipboardDocumentCheckIcon, TrashIcon, ArrowUturnLeftIcon } from '@heroicons/react/24/outline';
 import { retirementApi, type SccKaynak, type RtRecordRow, type RtRecord, type RtDiscovery, type RtDiscoveredTarget, type RtTarget, type RtTargetStatus, type RtLaunch, type RtWeb, type RtZamanlayici, type RtIsler } from '@/api/retirementApi';
 import { useJobTracker } from '@/contexts/JobTrackerContext';
@@ -14,6 +14,7 @@ import { fmtDate, fmtDateTime } from '@/utils/datetime';
 import RetirementAkis from './RetirementAkis';
 import RetirementDnsIp from './RetirementDnsIp';
 import RetirementCanli, { hedefAktif } from './RetirementCanli';
+import { BOS_FILTRE, kayitFiltrele, type KayitFiltre } from './retirementFiltre';
 
 /** Vhost'un nasil bulundugu (2026-10-12): AJP/proxy hedefiyle bulunanlar etiketlenir. */
 function WebKaynak({ w }: { w: RtWeb }) {
@@ -366,6 +367,18 @@ export default function RetirementTab() {
     } catch (e: unknown) { toast.error(e instanceof Error ? e.message : String(e)); } finally { setSccKayit(false); }
   };
 
+  const [filtre, setFiltre] = useState<KayitFiltre>(BOS_FILTRE);
+  const filtreAktif = Object.values(filtre).some((v) => v.trim());
+  const gorunen = useMemo(() => kayitFiltrele(rows, filtre), [rows, filtre]);
+  const secenek = useMemo(() => ({
+    durum: [...new Set(rows.map((r) => r.status))],
+    ortam: [...new Set(rows.flatMap((r) => (r.envs || []).map((e) => e.env)))],
+    acan: [...new Set(rows.map((r) => r.requestedBy).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'tr')),
+  }), [rows]);
+  const fAyarla = (k: keyof KayitFiltre) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setFiltre((f) => ({ ...f, [k]: e.target.value }));
+  const fInput = 'w-full px-1.5 py-1 text-[11px] font-normal border rounded-md';
+  const fStil = { borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)' };
+
   const load = useCallback(async () => {
     setLoading(true);
     try { const r = await retirementApi.list(); if (r.ok) { setRows(r.records); setErr(''); } else setErr(r.message || 'Liste alınamadı.'); }
@@ -413,9 +426,44 @@ export default function RetirementTab() {
       {err && <div className="text-sm rounded-xl px-3 py-2 border" style={{ color: 'var(--status-danger)', background: 'var(--status-danger-bg)', borderColor: 'var(--status-danger)' }}>{err}</div>}
       <div className="overflow-auto rounded-xl border" style={{ borderColor: 'var(--border-subtle)' }}>
         <table className="w-full text-xs border-collapse">
-          <thead style={{ background: 'var(--bg-elevated)' }}><tr>{['Uygulama', 'Smart', 'OCO', 'Durum', 'Hedefler', 'Stop', 'Silme tarihi', 'Açan', 'Açılış'].map((h) => <th key={h} className="px-3 py-2 text-left text-[11px] font-semibold" style={{ color: 'var(--text-muted)' }}>{h}</th>)}</tr></thead>
+          <thead style={{ background: 'var(--bg-elevated)' }}>
+            <tr>{['Uygulama', 'Smart', 'OCO', 'Durum', 'Hedefler', 'Stop', 'Silme tarihi', 'Açan', 'Açılış'].map((h) => <th key={h} className="px-3 py-2 text-left text-[11px] font-semibold" style={{ color: 'var(--text-muted)' }}>{h}</th>)}</tr>
+            {/* FILTRE SATIRI: her kolonun altinda kendi filtresi. */}
+            <tr className="border-t" style={{ borderColor: 'var(--border-subtle)' }}>
+              <th className="px-3 pb-2 pt-0.5 min-w-[11rem]">
+                <input value={filtre.app} onChange={fAyarla('app')} placeholder="uygulama ara" className={fInput} style={fStil} aria-label="Uygulama adına göre süz" />
+                <select value={filtre.ortam} onChange={fAyarla('ortam')} className={`${fInput} mt-1`} style={fStil} aria-label="Ortama göre süz">
+                  <option value="">ortam: hepsi</option>
+                  {secenek.ortam.map((o) => <option key={o} value={o}>{o}</option>)}
+                </select>
+              </th>
+              <th className="px-3 pb-2 pt-0.5"><input value={filtre.smart} onChange={fAyarla('smart')} placeholder="Smart no" className={`${fInput} font-mono`} style={fStil} aria-label="Smart numarasına göre süz" /></th>
+              <th className="px-3 pb-2 pt-0.5"><input value={filtre.oco} onChange={fAyarla('oco')} placeholder="OCO no" className={`${fInput} font-mono`} style={fStil} aria-label="OCO numarasına göre süz" /></th>
+              <th className="px-3 pb-2 pt-0.5">
+                <select value={filtre.durum} onChange={fAyarla('durum')} className={fInput} style={fStil} aria-label="Duruma göre süz">
+                  <option value="">hepsi</option>
+                  {secenek.durum.map((d) => <option key={d} value={d}>{RSTATUS[d]?.label || d}</option>)}
+                </select>
+              </th>
+              <th colSpan={3} className="px-3 pb-2 pt-0.5 text-left text-[11px] font-normal" style={{ color: 'var(--text-muted)' }}>
+                {filtreAktif && (
+                  <span className="inline-flex items-center gap-2">
+                    <span className="tabular-nums"><b style={{ color: 'var(--text-primary)' }}>{gorunen.length}</b> / {rows.length} kayıt</span>
+                    <button onClick={() => setFiltre(BOS_FILTRE)} className="underline decoration-dotted" style={{ color: 'var(--accent)' }}>filtreleri temizle</button>
+                  </span>
+                )}
+              </th>
+              <th className="px-3 pb-2 pt-0.5 min-w-[9rem]">
+                <input value={filtre.acan} onChange={fAyarla('acan')} placeholder="açan kişi" list="rt-acan-liste" className={fInput} style={fStil} aria-label="Açan kişiye göre süz" />
+                <datalist id="rt-acan-liste">{secenek.acan.map((a) => <option key={a} value={a} />)}</datalist>
+              </th>
+              <th className="px-3 pb-2 pt-0.5" />
+            </tr>
+          </thead>
           <tbody>
-            {rows.length === 0 ? <TableEmptyRow colSpan={9} title="Retirement kaydı yok." description="Smart silme kaydı gelince 'Yeni retirement kaydı' ile açın." /> : rows.map((r) => (
+            {rows.length === 0 ? <TableEmptyRow colSpan={9} title="Retirement kaydı yok." description="Smart silme kaydı gelince 'Yeni retirement kaydı' ile açın." />
+              : gorunen.length === 0 ? <TableEmptyRow colSpan={9} title="Filtrelere uyan kayıt yok." description="Filtreleri gevşetin ya da temizleyin." />
+              : gorunen.map((r) => (
               <tr key={r.id} className="border-t cursor-pointer hover:bg-[var(--bg-elevated)]" style={{ borderColor: 'var(--border-subtle)' }} onClick={() => setOpenId(r.id)}>
                 <td className="px-3 py-1.5">
                   <div className="font-semibold">{r.app}</div>
