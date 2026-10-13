@@ -15,6 +15,11 @@
 //   LX3  Playbook icinde '#' satiri YOK (kural 4); aciklamalar dizin README.md'sinde.
 //   LX7  Gecici ZIP adi dizin adindan turetilebiliyordu; artik set_fact ile BIR KEZ uretilen
 //        rastgele ad.
+//   X11  Gecici alan (2026-10-13): okuma kullanicisinin ZIP'i yazdigi ara dizin TEK ve sabitti
+//        (/vhosting(8)/dumpdir). Bir sunucuda o dizin DOSYAYA donusunce log alinamadi ve ekran
+//        yalnizca "ZIP arsivi olusturulamadi" dedi. Artik sirali bir aday listesi var; her aday
+//        olculur, kullanilamayanin SEBEBI yayinlanir, yazarken dusen adaydan sonra siradaki
+//        BIR KEZ denenir.
 //
 // NASIL OLCULUR (X09): karar mantigi METINLE DEGIL, Jinja ile RENDER EDILEREK sinanir.
 // Asagidaki Python betigi playbook'u yaml.safe_load ile okur, gorevleri Ansible sirasiyla
@@ -26,8 +31,9 @@
 // kullanildiginda patlayan bir Undefined kullanilir.
 //
 // KORLUK (bilerek): gercek Ansible kosmaz (Windows'ta ansible-playbook calismaz). run_once
-// fact yayilimi, ignore_unreachable sonrasi devam, dzdo/was gecisi ve dumpdir modu
-// burada OLCULMEZ -> kanarya (sozlesme Y3). python3 + jinja2 + PyYAML yoksa testler
+// fact yayilimi, ignore_unreachable sonrasi devam, dzdo/was gecisi ve aday dizinlerin gercek
+// modu/sahipligi (stat ve df sonuclari senaryodan gelir) burada OLCULMEZ -> gercek kosum
+// testi + kanarya (sozlesme Y3). python3 + jinja2 + PyYAML yoksa testler
 // "KOR" diye ACIK HATAYLA duser, YESIL DONMEZ.
 'use strict';
 
@@ -53,6 +59,7 @@ const KESIF_EAR_GOREVI = "Önce app'a ait EAR klasörlerini bul (daraltılmış 
 const HARNESS = String.raw`
 import io
 import json
+import posixpath
 import random
 import re
 import string
@@ -207,6 +214,7 @@ ENV.filters.update({
     'dict2items': f_dict2items,
     'flatten': f_flatten,
     'extract': f_extract,
+    'dirname': posixpath.dirname,
 })
 ENV.tests.update({
     'failed': t_failed,
@@ -233,9 +241,21 @@ def sablon_mu(s):
     return isinstance(s, str) and ('{{' in s or '{%' in s)
 
 
+SABLONLAR = {}
+
+
+def sablon(s):
+    """Derlenmis sablon onbellegi: ayni ifade her gorevde yeniden derlenmez."""
+    t = SABLONLAR.get(s)
+    if t is None:
+        t = ENV.from_string(s)
+        SABLONLAR[s] = t
+    return t
+
+
 def isle(v, ctx):
     if sablon_mu(v):
-        return ENV.from_string(v).render(ctx)
+        return sablon(v).render(ctx)
     if isinstance(v, dict):
         return dict((k, isle(d, ctx)) for k, d in v.items())
     if isinstance(v, list):
@@ -246,7 +266,7 @@ def isle(v, ctx):
 def kosul(c, ctx):
     if isinstance(c, bool):
         return c
-    r = ENV.from_string('{% if ' + str(c) + ' %}1{% else %}0{% endif %}').render(ctx)
+    r = sablon('{% if ' + str(c) + ' %}1{% else %}0{% endif %}').render(ctx)
     return r in (1, '1')
 
 
@@ -255,17 +275,33 @@ def kosullar(w, ctx):
     return all(kosul(c, ctx) for c in ws)
 
 
-def _tembel(ham, taban):
-    """Ansible play/gorev vars'i TEMBEL degerlendirir: her basvuruda o anki olgularla."""
+def _tembel(ham, taban, ust=None):
+    """Ansible play/gorev vars'i TEMBEL degerlendirir: her basvuruda o anki olgularla.
+
+    Bir degisken baska bir degiskene, o da bir digerine dayanabilir (Ansible'da derinlik
+    siniri yok). Her tur bir onceki turun degerlerini gorur; degerler degismeyince durulur.
+
+    ONCELIK: 'ust' (set_fact / register / extra_vars) bu degiskenlerin USTUNDEDIR. Bir play
+    degiskeni disaridan ezilmisse, ona dayanan obur play degiskenleri EZILMIS degeri gorur
+    (eskiden play degiskeni kendi varsayilanini goruyordu: disaridan verilen liste ile ondan
+    turetilen sira birbirini tutmuyordu).
+    """
     out = {}
-    for _ in range(4):
+    for _ in range(12):
+        onceki = dict(out)
         c = dict(taban)
         c.update(out)
+        c.update(ust or {})
         for k, v in (ham or {}).items():
             try:
                 out[k] = isle(v, c)
             except Exception:
                 pass
+        try:
+            if out == onceki:
+                break
+        except Exception:
+            pass
     return out
 
 
@@ -315,14 +351,14 @@ class Host(object):
         ust.update(self.ekstra)
         if ek:
             ust.update(ek)
-        c = dict(taban)
-        c.update(ust)
-        pv = _tembel(self.oyun_vars, c)
+        pv = _tembel(self.oyun_vars, taban, ust)
         c = dict(taban)
         c.update(pv)
         c.update(ust)
         if gorev_vars:
-            tv = _tembel(gorev_vars, c)
+            alt = dict(taban)
+            alt.update(pv)
+            tv = _tembel(gorev_vars, alt, ust)
             c = dict(taban)
             c.update(pv)
             c.update(tv)
@@ -386,6 +422,62 @@ def yerel_kos(t, m, h, ctx, ad):
     h.kayit.append([ad, 'ok'])
 
 
+def oge_anahtari(arg):
+    """Dongulu uzak gorevde enjekte sonucun anahtari: stat yolu ya da komutun son argumani."""
+    if isinstance(arg, dict):
+        if 'path' in arg:
+            return arg['path']
+        if isinstance(arg.get('argv'), list) and arg['argv']:
+            return arg['argv'][-1]
+    return None
+
+
+def dongu_kos(t, m, h, ad, tv):
+    """Dongulu uzak gorev: Ansible gibi when OGE BASINA degerlendirilir, atlanan oge de
+    results listesinde yer tutar (sira bozulmaz). Sonuc senaryodan YOLA GORE enjekte edilir:
+    enjekte[register] = {'_yola_gore': {yol: sonuc}, '_varsayilan': sonuc}."""
+    ogeler = isle(t['loop'], h.ctx(gorev_vars=tv))
+    tanimsiz_ara(ogeler, ad + ' loop')
+    enj = (h.enjekte.get(t.get('register')) if t.get('register') else None) or {}
+    yola_gore = enj.get('_yola_gore', {})
+    varsayilan = enj.get('_varsayilan', {'changed': False})
+    sonuclar = []
+    for oge in ogeler:
+        c = h.ctx({'item': oge}, tv)
+        if 'when' in t and not kosullar(t['when'], c):
+            sonuclar.append({'changed': False, 'skipped': True, 'item': oge,
+                             'skip_reason': 'Conditional result was False'})
+            continue
+        arg = isle(t[m], c)
+        tanimsiz_ara(arg, ad + ' arguman')
+        h.arguman.append({'gorev': ad, 'modul': m, 'arg': arg, 'item': oge,
+                          'become': bool(t.get('become'))})
+        r = dict(yola_gore.get(oge_anahtari(arg), varsayilan))
+        r['item'] = oge
+        if t.get('failed_when') is False:
+            r['failed'] = False
+        sonuclar.append(r)
+    sonuc = {'changed': False, 'results': sonuclar}
+    if sonuclar and all(r.get('skipped') for r in sonuclar):
+        sonuc['skipped'] = True
+    if any(r.get('unreachable') for r in sonuclar):
+        sonuc['unreachable'] = True
+    if t.get('register'):
+        h.olgular[t['register']] = sonuc
+    if sonuc.get('unreachable'):
+        h.kayit.append([ad, 'UNREACHABLE'])
+        if not h.ignore_unreachable:
+            raise HostErisilemez(ad)
+        return
+    h.kayit.append([ad, 'skipped' if sonuc.get('skipped') else 'ran'])
+
+
+def tum_sonuc_enjekte(t, h):
+    """Eski bicim: dongulu gorevin TUM kaydi (results dahil) senaryoda hazir verilmis."""
+    e = h.enjekte.get(t.get('register')) if t.get('register') else None
+    return isinstance(e, dict) and 'results' in e
+
+
 def gorev_kos(t, h):
     ad = t.get('name', '')
     m = modul(t)
@@ -409,13 +501,17 @@ def gorev_kos(t, h):
             return
         yerel_kos(t, m, h, c, ad)
         return
+    if 'loop' in t and not tum_sonuc_enjekte(t, h):
+        dongu_kos(t, m, h, ad, tv)
+        return
     c = h.ctx(gorev_vars=tv)
     if 'when' in t and not kosullar(t['when'], c):
         atla(t, h, ad)
         return
     if 'loop' not in t:
         try:
-            h.arguman.append({'gorev': ad, 'modul': m, 'arg': isle(t[m], c)})
+            h.arguman.append({'gorev': ad, 'modul': m, 'arg': isle(t[m], c),
+                              'become': bool(t.get('become'))})
         except Exception as e:
             h.arguman.append({'gorev': ad, 'modul': m, 'arg': {'_hata': str(e)}})
     sonuc = h.enjekte.get(t.get('register')) if t.get('register') else None
@@ -539,13 +635,17 @@ def aktarim_host_oyunu_indeksi():
     raise ValueError('transferin kaynak host play i bulunamadi')
 
 
-def stat_sonucu(yollar, durum):
+MB = 1048576
+
+
+def stat_sonucu(yollar, durum, boyut=MB):
     sonuclar = []
     for host, yol in yollar:
         oge = {'host': host, 'path': yol}
         if durum == 'ok':
             sonuclar.append({'item': oge, 'changed': False, 'failed': False,
-                             'stat': {'exists': True, 'isreg': True, 'readable': True}})
+                             'stat': {'exists': True, 'isreg': True, 'readable': True,
+                                      'size': boyut}})
         elif durum == 'yok':
             sonuclar.append({'item': oge, 'changed': False, 'failed': False,
                              'stat': {'exists': False}})
@@ -563,10 +663,11 @@ def stat_sonucu(yollar, durum):
 
 
 def aktarim_kos(secili, host_enjekte, hata_gorev=None, toplayici_enjekte=None,
-                toplayici_kosmaz=False, kosmayan_hostlar=()):
+                toplayici_kosmaz=False, kosmayan_hostlar=(), ek_vars=None):
     i_host = aktarim_host_oyunu_indeksi()
     ekstra = {'selected_files': secili, 'staging_dir': STAGING, 'fallback_dir': FALLBACK,
               'archive_name': ARSIV}
+    ekstra.update(ek_vars or {})
     kaynaklar = []
     for s in secili:
         if s['host'] not in kaynaklar:
@@ -654,6 +755,10 @@ def aktarim_kos(secili, host_enjekte, hata_gorev=None, toplayici_enjekte=None,
             'host_logx_result': hostlar[ad].olgular.get('host_logx_result'),
             'host_blocked_reason': hostlar[ad].olgular.get('host_blocked_reason'),
             'was_tmp_zip': hostlar[ad].olgular.get('was_tmp_zip'),
+            'tmp_adaylar': hostlar[ad].olgular.get('tmp_adaylar'),
+            'tmp_denemeler': hostlar[ad].olgular.get('tmp_denemeler'),
+            'tmp_sorun': hostlar[ad].olgular.get('tmp_sorun'),
+            'tmp_kullanilan': hostlar[ad].olgular.get('tmp_kullanilan'),
             'arguman': hostlar[ad].arguman,
             'kayit': hostlar[ad].kayit,
         }) for ad in hostlar),
@@ -666,8 +771,52 @@ COK = [{'host': 'GBJBOT21', 'path': '/vhosting8/APPX-T.ear/logs/SystemOut.log'},
        {'host': 'GBJBOT22', 'path': '/vhosting8/APPX-T.ear/logs/SystemOut.log'}]
 
 
-def tek_enjekte(**kw):
-    e = {
+def st(var=True, dizin=True, yazar=True, gecer=True):
+    """stat modulunun bir aday dizin icin dondurdugu (okuma kullanicisinin gozunden)."""
+    if not var:
+        return {'changed': False, 'stat': {'exists': False}}
+    return {'changed': False, 'stat': {'exists': True, 'isdir': dizin, 'isreg': not dizin,
+                                       'readable': True, 'writeable': yazar,
+                                       'executable': gecer}}
+
+
+def df(bos_kb, rc=0):
+    """df -Pk ciktisi: baslik + tek satir; 4. kolon bos alan (KB)."""
+    return {'changed': False, 'rc': rc,
+            'stdout_lines': ['Filesystem 1024-blocks Used Available Capacity Mounted on',
+                             '/dev/mapper/vg-tmp 8388608 1024 %s 1%% /tmp' % bos_kb]}
+
+
+DF_DUSTU = {'changed': False, 'rc': 1, 'stdout_lines': [], 'msg': 'non-zero return code'}
+STAT_REDDI = {'changed': False, 'failed': True, 'msg': 'Permission denied'}
+
+
+def aday_enjekte(was=None, ust=None, baglanan=None, bos=None):
+    """Varsayilan aday listesinin olcumleri. Varsayilan tablo bir JBoss8 hostu: teslim dizini
+    var ve okuma kullanicisi yazabiliyor, /tmp var, /vhosting yok, /vhosting8/dumpdir var."""
+    w = {STAGING: st(), '/tmp': st(), '/vhosting/dumpdir': st(var=False),
+         '/vhosting8/dumpdir': st(), '/vhosting/logx-tmp': st(var=False),
+         '/vhosting8/logx-tmp': st(var=False)}
+    w.update(was or {})
+    u = {'/vhosting': st(var=False), '/vhosting8': st()}
+    u.update(ust or {})
+    b = {STAGING: st()}
+    b.update(baglanan or {})
+    d = {'/tmp': df(4 * MB)}
+    d.update(bos or {})
+    return {'tmp_aday_was': {'_yola_gore': w}, 'tmp_aday_ust': {'_yola_gore': u},
+            'tmp_aday_baglanan': {'_yola_gore': b}, 'tmp_aday_df': {'_yola_gore': d}}
+
+
+HEPSI_KOTU = {STAGING: st(var=False), '/tmp': st(yazar=False),
+              '/vhosting/dumpdir': st(var=False), '/vhosting8/dumpdir': st(dizin=False),
+              '/vhosting/logx-tmp': st(var=False), '/vhosting8/logx-tmp': st(var=False)}
+DUSTU = lambda msg: {'failed': True, 'changed': False, 'msg': msg}
+
+
+def tek_enjekte(aday=None, **kw):
+    e = dict(aday or aday_enjekte())
+    e.update({
         'source_file_stats': stat_sonucu(TEK_Y, 'ok'),
         'staging_dir_stat': {'changed': False, 'stat': {'exists': True, 'isdir': True}},
         'was_tmp_dir_result': {'changed': True},
@@ -676,21 +825,29 @@ def tek_enjekte(**kw):
         'fallback_dir_result': {'changed': True},
         'fallback_archive_result': {'changed': True},
         'final_archive_stat': {'changed': False, 'stat': {'exists': True, 'size': 4321}},
-    }
+    })
     e.update(kw)
     return {'ESJBOT02': e}
 
 
-def cok_host_enjekte(host, durum='ok'):
+def tek_aday(ek_vars=None, enj=None, **olcum):
+    """Tek-host aktarim; yalniz aday olcumleri (ve istenirse baska kayitlar) degisir."""
+    return aktarim_kos(TEK, tek_enjekte(aday=aday_enjekte(**olcum), **(enj or {})),
+                       ek_vars=ek_vars)
+
+
+def cok_host_enjekte(host, durum='ok', aday=None):
     yol = [(host, '/vhosting8/APPX-T.ear/logs/SystemOut.log')]
-    return {
+    e = dict(aday or aday_enjekte())
+    e.update({
         'source_file_stats': stat_sonucu(yol, durum),
         'was_tmp_dir_result': {'changed': True},
         'was_archive_result': {'changed': True},
         'parts_dir_result': {'changed': True},
         'host_part_result': {'changed': True},
         'host_part_stat': {'changed': False, 'stat': {'exists': True, 'size': 100}},
-    }
+    })
+    return e
 
 
 TOPLAYICI_OK = {
@@ -729,6 +886,8 @@ def yapi():
         'ilk_gorev_set_fact': 'ansible.builtin.set_fact' in ilk,
         'ilk_gorev_zip': ilk_sf.get('was_tmp_zip'),
         'was_tmp_archive_var': (host_oyun.get('vars') or {}).get('was_tmp_archive'),
+        'was_tmp_dir_var': (host_oyun.get('vars') or {}).get('was_tmp_dir'),
+        'tmp_bases_var': (host_oyun.get('vars') or {}).get('logx_legacy_tmp_bases'),
         'kesif_find_adlari': find_adlari,
     }
 
@@ -820,14 +979,72 @@ SENARYOLAR = {
         staging_archive_result={'failed': True, 'changed': False,
                                 'msg': 'Destination /sw/BMW_PORTAL/logs/legacy not writable'})),
     'S3_staging_yok': lambda: aktarim_kos(TEK, tek_enjekte(
+        aday=aday_enjekte(was={STAGING: st(var=False)}),
         staging_dir_stat={'changed': False, 'stat': {'exists': False}})),
     'S4_was_ziplenemedi': lambda: aktarim_kos(TEK, tek_enjekte(
-        was_archive_result={'failed': True, 'changed': False,
-                            'msg': 'Permission denied: /vhosting8/ESOUTBOUNDWS-T.ear/logs/SystemOut.log'})),
+        was_archive_result=DUSTU('Permission denied: /vhosting8/ESOUTBOUNDWS-T.ear/logs/SystemOut.log'),
+        was_archive_result_2=DUSTU('Permission denied: /vhosting8/ESOUTBOUNDWS-T.ear/logs/SystemOut.log'))),
     'S5_was_gecisi_erisilemez': lambda: aktarim_kos(TEK, tek_enjekte(
         source_file_stats=stat_sonucu(TEK_Y, 'erisilemez'))),
     'S6_dosya_gercekten_yok': lambda: aktarim_kos(TEK, tek_enjekte(
         source_file_stats=stat_sonucu(TEK_Y, 'yok'))),
+    'G2_teslime_okuyan_yazamaz': lambda: tek_aday(was={STAGING: st(yazar=False)}),
+    'G3_teslime_kimse_yazamaz': lambda: tek_aday(
+        was={STAGING: st(yazar=False)}, baglanan={STAGING: st(yazar=False)}),
+    'G3b_teslime_okuyan_giremez': lambda: tek_aday(was={STAGING: st(yazar=False, gecer=False)}),
+    'G4_butce_tam_sinirda': lambda: tek_aday(
+        was={STAGING: st(var=False)}, bos={'/tmp': df(1280)}),
+    'G4b_butce_bir_bayt_fazla': lambda: tek_aday(
+        was={STAGING: st(var=False)}, bos={'/tmp': df(1280)},
+        enj={'source_file_stats': stat_sonucu(TEK_Y, 'ok', MB + 1)}),
+    'G4c_bos_alan_olculemedi': lambda: tek_aday(
+        was={STAGING: st(var=False)}, bos={'/tmp': DF_DUSTU}),
+    'G4d_df_ciktisi_bozuk': lambda: tek_aday(
+        was={STAGING: st(var=False)}, bos={'/tmp': df('-')}),
+    'G5_dumpdir_dosya_olmus': lambda: tek_aday(was=HEPSI_KOTU),
+    'G6_hicbir_aday_uygun_degil': lambda: tek_aday(was=HEPSI_KOTU, ust={'/vhosting8': st(yazar=False)}),
+    'G7_ilk_deneme_dustu': lambda: aktarim_kos(TEK, tek_enjekte(
+        was_tmp_dir_result=DUSTU('[Errno 28] No space left on device'))),
+    'G7b_ilk_arsiv_dustu': lambda: aktarim_kos(TEK, tek_enjekte(
+        was_archive_result=DUSTU('[Errno 28] No space left on device'))),
+    'G8_iki_deneme_dustu': lambda: aktarim_kos(TEK, tek_enjekte(
+        was_tmp_dir_result=DUSTU('[Errno 30] Read-only file system'),
+        was_archive_result_2=DUSTU('[Errno 28] No space left on device'))),
+    'G9_tek_uygun_aday_dustu': lambda: tek_aday(
+        was=dict(HEPSI_KOTU, **{'/tmp': st()}),
+        ust={'/vhosting8': st(yazar=False)},
+        enj={'was_archive_result': DUSTU('[Errno 28] No space left on device')}),
+    'G10_aday_denetlenemedi': lambda: tek_aday(was={STAGING: STAT_REDDI}),
+    'G11_kullanici_degisken': lambda: tek_aday(
+        ek_vars={'logx_legacy_user': 'jbossx'},
+        was=HEPSI_KOTU, ust={'/vhosting8': st(yazar=False)}),
+    'G12_liste_disaridan': lambda: aktarim_kos(
+        TEK,
+        tek_enjekte(aday={
+            'tmp_aday_was': {'_yola_gore': {'/ozel/a': st(dizin=False), '/ozel/b': st()}},
+            'tmp_aday_df': {'_yola_gore': {'/ozel/b': df(4 * MB)}}}),
+        ek_vars={'logx_legacy_tmp_bases': [{'dir': '/ozel/a'}, {'dir': '/ozel/b', 'yuzde': 50}]}),
+    'G13_teslim_baglanan_ikinci_deneme': lambda: aktarim_kos(
+        TEK,
+        tek_enjekte(
+            aday={'tmp_aday_was': {'_yola_gore': {'/ozel/a': st(), STAGING: st(yazar=False)}},
+                  'tmp_aday_baglanan': {'_yola_gore': {STAGING: st()}}},
+            was_archive_result=DUSTU('[Errno 28] No space left on device')),
+        ek_vars={'logx_legacy_tmp_bases': [{'dir': '/ozel/a'},
+                                           {'dir': STAGING, 'tur': 'teslim'}]}),
+    'GC1_cok_host': lambda: aktarim_kos(
+        COK, {'GBJBOT21': cok_host_enjekte('GBJBOT21'), 'GBJBOT22': cok_host_enjekte('GBJBOT22')},
+        toplayici_enjekte=TOPLAYICI_OK),
+    'GC2_bir_hostta_alan_yok': lambda: aktarim_kos(
+        COK, {'GBJBOT21': cok_host_enjekte('GBJBOT21'),
+              'GBJBOT22': cok_host_enjekte(
+                  'GBJBOT22',
+                  aday=aday_enjekte(was=HEPSI_KOTU, ust={'/vhosting8': st(yazar=False)}))},
+        toplayici_enjekte=TOPLAYICI_OK),
+    'GC3_dosyasi_olmayan_host': lambda: aktarim_kos(
+        COK, {'GBJBOT21': cok_host_enjekte('GBJBOT21'),
+              'GBJBOT22': cok_host_enjekte('GBJBOT22', 'yok')},
+        toplayici_enjekte=TOPLAYICI_OK),
     'C1_iki_host_ok': lambda: aktarim_kos(
         COK, {'GBJBOT21': cok_host_enjekte('GBJBOT21'), 'GBJBOT22': cok_host_enjekte('GBJBOT22')},
         toplayici_enjekte=TOPLAYICI_OK),
@@ -1304,7 +1521,10 @@ test('X09 tek-host: staging / staging yazilamaz / staging yok / okunamaz / erisi
   }
   const s4 = S('S4_was_ziplenemedi');
   assert.equal(s4.overall_status, 'failed');
-  assert.match(s4.error, /was kullanicisiyla ziplenemedi: Permission denied/);
+  assert.match(
+    s4.error,
+    /^Loglar was kullanicisiyla ziplenemedi\. 1\. deneme \(\S+\): Permission denied: \S+ \| 2\. deneme \(\S+\): Permission denied/,
+  );
   const s5 = senaryo('S5_was_gecisi_erisilemez');
   const r5 = tekYayin(s5, 'S5');
   assert.equal(r5.overall_status, 'failed');
@@ -1313,6 +1533,378 @@ test('X09 tek-host: staging / staging yazilamaz / staging yok / okunamaz / erisi
   assert.ok(s5.kirmizi, 'tek-host basarisizken is yesil');
   const r6 = tekYayin(senaryo('S6_dosya_gercekten_yok'), 'S6');
   assert.match(r6.hosts[0].error, /Dosya bulunamadi/);
+});
+
+// ── X11 GECICI ALAN: tek bir dizine bagli degil; kullanilamayanin SEBEBI yayinlanir ────────
+//
+// SAHA (2026-10-13): bir sunucuda /vhosting8/dumpdir DOSYAYA donusmus. Okuma kullanicisi
+// ZIP'i oraya yazamadi; arsiv gorevi ATLANDI, hata metni ise yalnizca arsiv gorevine
+// bakiyordu -> ekranda "ZIP arsivi olusturulamadi", secilen dosyalarin hepsi "ok".
+// Kullanici: "bu bizi etkilememeli". Karar (anket): once teslim dizini, sonra /tmp (bos
+// alanin %80'i), sonra dumpdir'ler, en son logx-tmp (yoksa acilir); Admin ekrani yok.
+
+const TESLIM = '/sw/BMW_PORTAL/logs/legacy';
+const IS_DIZINI = 'logx-fa52e9adfd9fc71572ea8c7b15b65ed4-ESJBOT02';
+const HAZIRLA_WAS = 'Okuma kullanicisinin gecici dizinini hazirla';
+const HAZIRLA_BAGLANAN = 'Ise ozel gecici dizini baglanan kullaniciyla hazirla';
+const ARSIV_GOREVI = "Loglari okuma kullanicisiyla gecici ZIP'e yaz";
+const TEMIZLE_WAS = 'Okuma kullanicisinin ise ozel gecici dizinini temizle';
+const TEMIZLE_BAGLANAN = 'Baglanan kullanicinin actigi ise ozel gecici dizini temizle';
+
+/** Host olgularindaki aday tablosu: {dir: 'uygun/<olusturan>' | '<sebep>'}. */
+const adayTablosu = (s, host = 'ESJBOT02') =>
+  Object.fromEntries(
+    s.hostlar[host].tmp_adaylar.map((a) => [a.dir, a.uygun ? `uygun/${a.olusturan}` : a.sebep]),
+  );
+/** O adla GERCEKTEN kosmus gorevlerin argumanlari (atlanan gorev kayda girmez). */
+const kosan = (s, gorev, host = 'ESJBOT02') =>
+  s.hostlar[host].arguman.filter((a) => a.gorev === gorev);
+/** Dosya sistemine DOKUNAN gorevler (dizin acma, arsiv, kopya, silme). */
+const dokunan = (s, host = 'ESJBOT02') =>
+  s.hostlar[host].arguman.filter((a) =>
+    ['ansible.builtin.file', 'ansible.builtin.copy', 'community.general.archive'].includes(a.modul),
+  );
+
+test('X11 yapi: varsayilan aday listesi ve SIRASI kullanicinin kararidir', () => {
+  const y = render()._yapi;
+  assert.ok(!y.hata, y.hata);
+  assert.deepEqual(y.tmp_bases_var, [
+    { dir: '{{ staging_dir }}', tur: 'teslim' },
+    { dir: '/tmp', yuzde: 80 },
+    { dir: '/vhosting/dumpdir' },
+    { dir: '/vhosting8/dumpdir' },
+    { dir: '/vhosting/logx-tmp', olustur: true },
+    { dir: '/vhosting8/logx-tmp', olustur: true },
+  ]);
+  // Ise ozel dizin secilen adaydan turer ve arsiv adi + sunucu adi tasir.
+  assert.match(String(y.was_tmp_dir_var), /was_tmp_aday/);
+  assert.match(String(y.was_tmp_dir_var), /archive_name/);
+  assert.match(String(y.was_tmp_dir_var), /inventory_hostname/);
+});
+
+test('X11 varsayilan: teslim dizini ILK adaydir; her aday olculur ve tablo yayinlanir', () => {
+  const s = senaryo('S1_staging');
+  assert.deepEqual(adayTablosu(s), {
+    [TESLIM]: 'uygun/was',
+    '/tmp': 'uygun/was',
+    '/vhosting/dumpdir': 'yok',
+    '/vhosting8/dumpdir': 'uygun/was',
+    '/vhosting/logx-tmp': 'yok; ust dizin de yok',
+    '/vhosting8/logx-tmp': 'uygun/was',
+  });
+  const r = tekYayin(s, 'S1');
+  assert.equal(r.tmp_dir, TESLIM);
+  assert.deepEqual(r.tmp_adaylar, s.hostlar.ESJBOT02.tmp_adaylar, 'aday tablosu yayinlanmiyor');
+  assert.deepEqual(Object.keys(r.tmp_adaylar[0]).sort(), ['dir', 'olusturan', 'sebep', 'uygun']);
+  // Tek dizin acilir: okuma kullanicisiyla, 0711, secilen adayin altinda.
+  const dizinler = dokunan(s).filter((a) => a.arg.state === 'directory');
+  assert.deepEqual(
+    dizinler.map((a) => [a.gorev, a.arg.path, a.arg.mode, a.become]),
+    [[HAZIRLA_WAS, `${TESLIM}/${IS_DIZINI}`, '0711', true]],
+  );
+  // Olcum YAN ETKISIZ ve dar: bos alan yalniz butceli adayda (/tmp), ust dizin yalniz
+  // olusturulabilir VE eksik adaylarda, baglanan kullanicinin stat'i yalniz okuma kullanicisi
+  // teslime yazamadiginda.
+  const yollar = (gorev) => kosan(s, gorev).map((a) => a.arg.path || a.arg.argv.join(' '));
+  assert.deepEqual(yollar('Butceli gecici alan adaylarinin bos alanini olc'), ['df -Pk /tmp']);
+  assert.deepEqual(yollar('Olusturulabilir gecici alan adaylarinin ust dizinini denetle'), [
+    '/vhosting',
+    '/vhosting8',
+  ]);
+  assert.deepEqual(yollar('Teslim adayini baglanan kullaniciyla denetle'), []);
+  assert.equal(kosan(s, 'Gecici alan adaylarini okuma kullanicisiyla denetle').length, 6);
+});
+
+test('X11 okuma kullanicisi teslime yazamiyorsa dizini BAGLANAN kullanici acar (0733)', () => {
+  const s = senaryo('G2_teslime_okuyan_yazamaz');
+  assert.equal(adayTablosu(s)[TESLIM], 'uygun/baglanan');
+  const yol = `${TESLIM}/${IS_DIZINI}`;
+  // 0733: okuma kullanicisi icine yazar ama listeleyemez; baglanan kullanici sahibidir.
+  assert.deepEqual(
+    kosan(s, HAZIRLA_BAGLANAN).map((a) => [a.arg.path, a.arg.mode, a.become]),
+    [[yol, '0733', false]],
+  );
+  assert.deepEqual(
+    kosan(s, HAZIRLA_WAS),
+    [],
+    'okuma kullanicisi yazamadigi yerde dizin acmaya calisti',
+  );
+  const arsiv = kosan(s, ARSIV_GOREVI);
+  assert.equal(arsiv.length, 1);
+  assert.equal(arsiv[0].become, true, 'loglar okuma kullanicisiyla okunmuyor');
+  assert.ok(arsiv[0].arg.dest.startsWith(`${yol}/`), arsiv[0].arg.dest);
+  // Temizlik sahibiyle: baglanan kullanici. Okuma kullanicisinin temizligi kosmaz.
+  assert.deepEqual(
+    kosan(s, TEMIZLE_BAGLANAN).map((a) => [a.arg.path, a.arg.state, a.become]),
+    [[yol, 'absent', false]],
+  );
+  assert.deepEqual(kosan(s, TEMIZLE_WAS), []);
+  assert.deepEqual(
+    kosan(s, 'Teslim adayini baglanan kullaniciyla denetle').map((a) => a.arg.path),
+    [TESLIM],
+  );
+  const r = tekYayin(s, 'G2');
+  assert.equal(r.overall_status, 'success');
+  assert.equal(r.tmp_dir, TESLIM);
+});
+
+test('X11 teslime kimse yazamiyorsa ya da okuma kullanicisi GIREMIYORSA siradaki aday', () => {
+  for (const ad of ['G3_teslime_kimse_yazamaz', 'G3b_teslime_okuyan_giremez']) {
+    const s = senaryo(ad);
+    assert.equal(adayTablosu(s)[TESLIM], 'ne was ne de baglanan kullanici yazabiliyor', ad);
+    const r = tekYayin(s, ad);
+    assert.equal(r.tmp_dir, '/tmp', ad);
+    assert.equal(r.overall_status, 'success', ad);
+    assert.deepEqual(kosan(s, HAZIRLA_BAGLANAN), [], `${ad}: 0733 dizin acildi`);
+  }
+});
+
+test('X11 /tmp butcesi: secilen dosyalar bos alanin %80`ini asarsa /tmp KULLANILMAZ', () => {
+  // 1280 KB bos -> izinli 1280*1024*80/100 = 1 048 576 bayt. Tam sinirda kabul, bir bayt
+  // fazlasinda ret (karsilastirma yonu ya da yuzde carpimi bozulursa biri duser).
+  const tam = senaryo('G4_butce_tam_sinirda');
+  assert.equal(adayTablosu(tam)['/tmp'], 'uygun/was');
+  assert.equal(tekYayin(tam, 'G4').tmp_dir, '/tmp');
+  const fazla = senaryo('G4b_butce_bir_bayt_fazla');
+  assert.match(
+    adayTablosu(fazla)['/tmp'],
+    /^yer yetersiz: gerekli 1\.0 MB, izinli 1\.0 MB \(bos alan 1\.[23] MB, sinir %80\)$/,
+  );
+  const r = tekYayin(fazla, 'G4b');
+  assert.equal(r.tmp_dir, '/vhosting8/dumpdir', 'butceyi asan is yine /tmp`ye yazildi');
+  assert.equal(r.overall_status, 'success');
+});
+
+test('X11 bos alan OLCULEMEDIYSE aday uygun SAYILMAZ (olculemedi != uygun)', () => {
+  for (const ad of ['G4c_bos_alan_olculemedi', 'G4d_df_ciktisi_bozuk']) {
+    const s = senaryo(ad);
+    assert.equal(adayTablosu(s)['/tmp'], 'bos alan olculemedi', ad);
+    assert.equal(tekYayin(s, ad).tmp_dir, '/vhosting8/dumpdir', ad);
+  }
+});
+
+test('X11 SAHADAKI OLAY: dumpdir dosya olmus -> is DUSMEZ, siradaki aday; sebep tabloda', () => {
+  const s = senaryo('G5_dumpdir_dosya_olmus');
+  assert.deepEqual(adayTablosu(s), {
+    [TESLIM]: 'teslim dizini yok',
+    '/tmp': 'was yazamiyor',
+    '/vhosting/dumpdir': 'yok',
+    '/vhosting8/dumpdir': 'dizin degil (dosya)',
+    '/vhosting/logx-tmp': 'yok; ust dizin de yok',
+    '/vhosting8/logx-tmp': 'uygun/was',
+  });
+  const r = tekYayin(s, 'G5');
+  assert.equal(r.overall_status, 'success', JSON.stringify(r).slice(0, 600));
+  assert.equal(r.tmp_dir, '/vhosting8/logx-tmp');
+  assert.equal(r.error, '');
+  // logx-tmp yoktu: ise ozel dizinle birlikte acilir (ust dizin de ayni kipte, 0711).
+  assert.deepEqual(
+    kosan(s, HAZIRLA_WAS).map((a) => [a.arg.path, a.arg.mode]),
+    [[`/vhosting8/logx-tmp/${IS_DIZINI}`, '0711']],
+  );
+});
+
+test('X11 hicbir aday uygun degilse: failed + HER adayin sebebi; "ZIP olusturulamadi" DEGIL', () => {
+  const s = senaryo('G6_hicbir_aday_uygun_degil');
+  const r = tekYayin(s, 'G6');
+  assert.equal(r.overall_status, 'failed');
+  assert.equal(
+    r.error,
+    'Gecici alan bulunamadi. Adaylar: ' +
+      [
+        `${TESLIM}: teslim dizini yok`,
+        '/tmp: was yazamiyor',
+        '/vhosting/dumpdir: yok',
+        '/vhosting8/dumpdir: dizin degil (dosya)',
+        '/vhosting/logx-tmp: yok; ust dizin de yok',
+        '/vhosting8/logx-tmp: yok; ust dizine was yazamiyor',
+      ].join(' | '),
+  );
+  assert.equal(r.tmp_dir, '');
+  assert.equal(r.staged_path, '');
+  // Dosyalarin kendisinde sorun yok: sebep dosya basina degil, sunucu duzeyinde.
+  assert.ok(r.per_file_status.every((f) => f.status === 'ok'));
+  // Uygun aday yokken dosya sistemine DOKUNULMAZ (dizin acma, arsiv, kopya, silme yok).
+  assert.deepEqual(dokunan(s), [], JSON.stringify(dokunan(s)));
+});
+
+test('X11 yazarken dusen adaydan sonra siradaki BIR KEZ denenir; ilkinin dizini temizlenir', () => {
+  for (const ad of ['G7_ilk_deneme_dustu', 'G7b_ilk_arsiv_dustu']) {
+    const s = senaryo(ad);
+    const r = tekYayin(s, ad);
+    assert.equal(r.overall_status, 'success', `${ad}: ${JSON.stringify(r).slice(0, 500)}`);
+    assert.equal(r.tmp_dir, '/tmp', ad);
+    assert.equal(r.error, '', ad);
+    assert.deepEqual(
+      s.hostlar.ESJBOT02.tmp_denemeler.map((d) => [d.dir, d.ok]),
+      [
+        [TESLIM, false],
+        ['/tmp', true],
+      ],
+      ad,
+    );
+    assert.match(s.hostlar.ESJBOT02.tmp_denemeler[0].hata, /No space left on device/, ad);
+    // Basarisiz denemenin dizini HEMEN temizlenir (yarim ZIP teslim dizininde kalmasin).
+    assert.deepEqual(
+      kosan(s, 'Basarisiz ilk denemenin gecici dizinini okuma kullanicisiyla temizle').map((a) => [
+        a.arg.path,
+        a.arg.state,
+        a.become,
+      ]),
+      [[`${TESLIM}/${IS_DIZINI}`, 'absent', true]],
+      ad,
+    );
+    // Ikinci deneme siradaki adayda; kopya ve son temizlik ONUN yolunu gorur.
+    const ikinci = kosan(s, `${ARSIV_GOREVI} (2. deneme)`);
+    assert.equal(ikinci.length, 1, ad);
+    assert.ok(ikinci[0].arg.dest.startsWith(`/tmp/${IS_DIZINI}/`), ikinci[0].arg.dest);
+    const kopyalar = dokunan(s).filter((a) => a.modul === 'ansible.builtin.copy');
+    assert.ok(kopyalar.length > 0, `${ad}: kopya gorevi kosmadi`);
+    for (const k of kopyalar) assert.equal(k.arg.src, ikinci[0].arg.dest, `${ad}: ${k.gorev}`);
+    assert.deepEqual(
+      kosan(s, TEMIZLE_WAS).map((a) => a.arg.path),
+      [`/tmp/${IS_DIZINI}`],
+      ad,
+    );
+  }
+  // Dizin acilamadiysa o denemede arsiv gorevi KOSMAZ (olmayan dizine yazmaya calismaz).
+  assert.deepEqual(kosan(senaryo('G7_ilk_deneme_dustu'), ARSIV_GOREVI), []);
+});
+
+test('X11 iki deneme de duserse: failed + IKI sebep; ucuncu aday DENENMEZ', () => {
+  const s = senaryo('G8_iki_deneme_dustu');
+  const r = tekYayin(s, 'G8');
+  assert.equal(r.overall_status, 'failed');
+  assert.equal(
+    r.error,
+    `Loglar was kullanicisiyla ziplenemedi. 1. deneme (${TESLIM}): [Errno 30] Read-only file system` +
+      ' | 2. deneme (/tmp): [Errno 28] No space left on device',
+  );
+  assert.equal(r.tmp_dir, '');
+  // Ucuncu uygun aday (/vhosting8/dumpdir) vardi; karar "bir kez" oldugu icin dokunulmaz.
+  assert.equal(adayTablosu(s)['/vhosting8/dumpdir'], 'uygun/was');
+  // (Arsiv gorevinde `path` KAYNAK loglardir; yazilan yer `dest`.)
+  const yazilan = (a) =>
+    String(a.modul === 'community.general.archive' ? a.arg.dest : a.arg.path || a.arg.dest);
+  assert.ok(
+    dokunan(s).some((a) => yazilan(a).startsWith('/tmp/')),
+    'ikinci aday denenmedi',
+  );
+  assert.deepEqual(
+    dokunan(s)
+      .map(yazilan)
+      .filter((y) => y.startsWith('/vhosting8/dumpdir')),
+    [],
+    'ucuncu aday denendi',
+  );
+  assert.deepEqual(
+    dokunan(s).filter((a) => a.modul === 'ansible.builtin.copy'),
+    [],
+    'arsiv yokken kopya denendi',
+  );
+  // Son denemenin dizini de geride kalmaz.
+  assert.deepEqual(
+    kosan(s, TEMIZLE_WAS).map((a) => a.arg.path),
+    [`/tmp/${IS_DIZINI}`],
+  );
+});
+
+test('X11 tek uygun aday duserse: tek deneme yazilir, uydurma ikinci deneme YOK', () => {
+  const s = senaryo('G9_tek_uygun_aday_dustu');
+  const r = tekYayin(s, 'G9');
+  assert.equal(r.overall_status, 'failed');
+  assert.equal(
+    r.error,
+    'Loglar was kullanicisiyla ziplenemedi. 1. deneme (/tmp): [Errno 28] No space left on device',
+  );
+  assert.deepEqual(kosan(s, `${ARSIV_GOREVI} (2. deneme)`), []);
+});
+
+test('X11 aday DENETLENEMEDIYSE (stat reddi) uygun sayilmaz; sebep modulun mesajini tasir', () => {
+  const s = senaryo('G10_aday_denetlenemedi');
+  assert.equal(adayTablosu(s)[TESLIM], 'was ile denetlenemedi: Permission denied');
+  assert.equal(tekYayin(s, 'G10').tmp_dir, '/tmp');
+});
+
+test('X11 sebeplerdeki kullanici logx_legacy_user degiskeninden gelir', () => {
+  const s = senaryo('G11_kullanici_degisken');
+  const t = adayTablosu(s);
+  assert.equal(t['/tmp'], 'jbossx yazamiyor');
+  assert.equal(t['/vhosting8/logx-tmp'], 'yok; ust dizine jbossx yazamiyor');
+  assert.ok(!JSON.stringify(t).includes('was'), JSON.stringify(t));
+});
+
+test('X11 aday listesi DISARIDAN verilebilir (Admin ekrani yok; AWX extra_vars yeter)', () => {
+  const s = senaryo('G12_liste_disaridan');
+  assert.deepEqual(adayTablosu(s), { '/ozel/a': 'dizin degil (dosya)', '/ozel/b': 'uygun/was' });
+  assert.equal(tekYayin(s, 'G12').tmp_dir, '/ozel/b');
+  assert.deepEqual(
+    kosan(s, 'Butceli gecici alan adaylarinin bos alanini olc').map((a) => a.arg.argv),
+    [['df', '-Pk', '/ozel/b']],
+  );
+});
+
+test('X11 ikinci deneme baglanan kullanicinin actigi dizinde de calisir', () => {
+  // Liste sirasi degistirilirse teslim adayi ikinci siraya dusebilir: 0733 yolu ikinci
+  // denemede de AYNI kurallarla isler ve kendi temizligini alir.
+  const s = senaryo('G13_teslim_baglanan_ikinci_deneme');
+  const r = tekYayin(s, 'G13');
+  assert.equal(r.overall_status, 'success', JSON.stringify(r).slice(0, 500));
+  assert.equal(r.tmp_dir, TESLIM);
+  assert.deepEqual(
+    kosan(s, `${HAZIRLA_BAGLANAN} (2. deneme)`).map((a) => [a.arg.path, a.arg.mode, a.become]),
+    [[`${TESLIM}/${IS_DIZINI}`, '0733', false]],
+  );
+  assert.deepEqual(kosan(s, `${HAZIRLA_WAS} (2. deneme)`), []);
+  assert.deepEqual(
+    kosan(s, TEMIZLE_BAGLANAN).map((a) => a.arg.path),
+    [`${TESLIM}/${IS_DIZINI}`],
+  );
+  assert.deepEqual(kosan(s, TEMIZLE_WAS), []);
+});
+
+test('X11 cok-host: her sunucu KENDI dizinini kullanir; alanlar hosts[] altinda yayinlanir', () => {
+  const s = senaryo('GC1_cok_host');
+  const r = tekYayin(s, 'GC1');
+  assert.equal(r.overall_status, 'success');
+  const hedefler = ['GBJBOT21', 'GBJBOT22'].map((h) => kosan(s, ARSIV_GOREVI, h)[0].arg.dest);
+  assert.ok(
+    hedefler[0].startsWith(`${TESLIM}/logx-fa52e9adfd9fc71572ea8c7b15b65ed4-GBJBOT21/`),
+    hedefler[0],
+  );
+  assert.ok(
+    hedefler[1].startsWith(`${TESLIM}/logx-fa52e9adfd9fc71572ea8c7b15b65ed4-GBJBOT22/`),
+    hedefler[1],
+  );
+  for (const h of r.hosts) {
+    assert.equal(h.tmp_dir, TESLIM, h.host);
+    assert.equal(h.tmp_adaylar.length, 6, h.host);
+  }
+});
+
+test('X11 cok-host: bir sunucuda gecici alan yoksa O sunucu error + sebep; is kismi', () => {
+  const r = tekYayin(senaryo('GC2_bir_hostta_alan_yok'), 'GC2');
+  const h = r.hosts.find((x) => x.host === 'GBJBOT22');
+  assert.equal(h.status, 'error');
+  assert.match(h.error, /^Gecici alan bulunamadi\. Adaylar: .*dizin degil \(dosya\)/);
+  assert.ok(!/Per-host ZIP olusturulamadi/.test(h.error), h.error);
+  assert.equal(h.tmp_dir, '');
+  assert.equal(r.hosts.find((x) => x.host === 'GBJBOT21').status, 'ok');
+  assert.equal(r.overall_status, 'partial');
+});
+
+test('X11 cok-host: dosyasi olmayan sunucuda aday OLCULMEZ; sebep gecici alan DEGIL, dosya', () => {
+  const s = senaryo('GC3_dosyasi_olmayan_host');
+  const r = tekYayin(s, 'GC3');
+  const h = r.hosts.find((x) => x.host === 'GBJBOT22');
+  assert.match(h.error, /Dosya bulunamadi/);
+  assert.ok(!/Gecici alan/.test(h.error), h.error);
+  assert.deepEqual(h.tmp_adaylar, []);
+  assert.deepEqual(
+    s.hostlar.GBJBOT22.arguman.filter((a) => /aday|gecici|Butceli/i.test(a.gorev)),
+    [],
+    'arsivlenecek dosya yokken adaylar olculdu ya da dizin acildi',
+  );
 });
 
 // ── X08 gecici ZIP adi: set_fact ile BIR KEZ uretilen rastgele ad ─────────────────────────
@@ -1338,10 +1930,12 @@ test('X08 render: ad 24 karakter [a-z0-9]; archive, copy ve always AYNI yolu gor
   const arsiv = h.arguman.find((a) => a.modul === 'community.general.archive');
   assert.ok(arsiv, 'gecici ZIP i yazan archive gorevi kosmadi');
   const hedef = arsiv.arg.dest;
+  // Ise ozel dizin arsiv adini VE sunucu adini tasir: teslim dizini paylasimli, ayni iste iki
+  // sunucu ayni dizini kullansaydi birinin temizligi otekinin ZIP'ini silerdi.
   assert.equal(
     hedef,
-    `/vhosting8/dumpdir/logx-fa52e9adfd9fc71572ea8c7b15b65ed4/${h.was_tmp_zip}`,
-    'ZIP yolu dizinden turetilebiliyor ya da yanlis dumpdir',
+    `/sw/BMW_PORTAL/logs/legacy/logx-fa52e9adfd9fc71572ea8c7b15b65ed4-ESJBOT02/${h.was_tmp_zip}`,
+    'ZIP yolu dizinden turetilebiliyor ya da gecici alan yanlis adayda',
   );
   const kopyalar = h.arguman.filter((a) => a.modul === 'ansible.builtin.copy');
   assert.ok(kopyalar.length > 0, 'kopya gorevi kosmadi');

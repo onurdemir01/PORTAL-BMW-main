@@ -29,7 +29,16 @@
         }
       ],
       "size_bytes": 1,
-      "staged_path": "/staging/ornek.zip"
+      "staged_path": "/staging/ornek.zip",
+      "tmp_adaylar": [
+        {
+          "dir": "/dump",
+          "olusturan": "was",
+          "sebep": "",
+          "uygun": true
+        }
+      ],
+      "tmp_dir": "/dump"
     }
   },
   "aktarim_tek_basarisiz": {
@@ -67,7 +76,16 @@
             }
           ],
           "size_bytes": 1,
-          "status": "ok"
+          "status": "ok",
+          "tmp_adaylar": [
+            {
+              "dir": "/dump",
+              "olusturan": "was",
+              "sebep": "",
+              "uygun": true
+            }
+          ],
+          "tmp_dir": "/dump"
         },
         {
           "error": "Bu hostta arsivlenecek okunabilir dosya yok; dosya basina sebep: Dosya bulunamadi",
@@ -82,7 +100,9 @@
             }
           ],
           "size_bytes": 0,
-          "status": "error"
+          "status": "error",
+          "tmp_adaylar": [],
+          "tmp_dir": ""
         }
       ],
       "is_fallback": false,
@@ -111,7 +131,9 @@
             }
           ],
           "size_bytes": 0,
-          "status": "error"
+          "status": "error",
+          "tmp_adaylar": [],
+          "tmp_dir": ""
         },
         {
           "error": "Bu hostta arsivlenecek okunabilir dosya yok; dosya basina sebep: Dosya bulunamadi",
@@ -126,7 +148,9 @@
             }
           ],
           "size_bytes": 0,
-          "status": "error"
+          "status": "error",
+          "tmp_adaylar": [],
+          "tmp_dir": ""
         }
       ],
       "is_fallback": false,
@@ -166,6 +190,138 @@
       ],
       "log_dir_regex": "logs?[0-9]*",
       "overall_status": "failed"
+    }
+  },
+  "aktarim_tek_gecici_alan_yok": {
+    "ne": "tek host: dosyalar yerinde ama sunucuda kullanilabilir gecici alan yok (biri dosya olmus, biri yok)",
+    "is_basarili": true,
+    "sonuc": {
+      "error": "Gecici alan bulunamadi. Adaylar: /dumpdir: dizin degil (dosya) | /olmayan-dizin: yok",
+      "filename": "ornek.zip",
+      "is_fallback": true,
+      "overall_status": "failed",
+      "per_file_status": [
+        {
+          "error": "",
+          "host": "localhost",
+          "path": "/vhosting8/APPX-T.ear/log1/server.log",
+          "status": "ok"
+        }
+      ],
+      "size_bytes": 0,
+      "staged_path": "",
+      "tmp_adaylar": [
+        {
+          "dir": "/dumpdir",
+          "olusturan": "",
+          "sebep": "dizin degil (dosya)",
+          "uygun": false
+        },
+        {
+          "dir": "/olmayan-dizin",
+          "olusturan": "",
+          "sebep": "yok",
+          "uygun": false
+        }
+      ],
+      "tmp_dir": ""
+    }
+  },
+  "aktarim_tek_ziplenemedi": {
+    "ne": "tek host: iki aday da on kontrolu gecti ama ikisine de yazilamadi (iki deneme)",
+    "is_basarili": true,
+    "sonuc": {
+      "error": "Loglar was kullanicisiyla ziplenemedi. 1. deneme (/dump): /dump/logx-ornek-localhost already exists as a file | 2. deneme (/dump2): /dump2/logx-ornek-localhost already exists as a file",
+      "filename": "ornek.zip",
+      "is_fallback": true,
+      "overall_status": "failed",
+      "per_file_status": [
+        {
+          "error": "",
+          "host": "localhost",
+          "path": "/vhosting8/APPX-T.ear/log1/server.log",
+          "status": "ok"
+        }
+      ],
+      "size_bytes": 0,
+      "staged_path": "",
+      "tmp_adaylar": [
+        {
+          "dir": "/dump",
+          "olusturan": "was",
+          "sebep": "",
+          "uygun": true
+        },
+        {
+          "dir": "/dump2",
+          "olusturan": "was",
+          "sebep": "",
+          "uygun": true
+        }
+      ],
+      "tmp_dir": ""
+    }
+  },
+  "aktarim_cok_gecici_alan_yok": {
+    "ne": "iki host: birinin dosyasi arsive girdi, otekinde gecici alan yok",
+    "is_basarili": true,
+    "sonuc": {
+      "error": "",
+      "filename": "ornek.zip",
+      "hosts": [
+        {
+          "error": "",
+          "host": "SUNUCU-A",
+          "part_filename": "sunucu-a.zip",
+          "per_file_status": [
+            {
+              "error": "",
+              "host": "sunucu-a",
+              "path": "/vhosting8/APPX-T.ear/log1/server.log",
+              "status": "ok"
+            }
+          ],
+          "size_bytes": 1,
+          "status": "ok",
+          "tmp_adaylar": [
+            {
+              "dir": "/alan-sunucu-a",
+              "olusturan": "was",
+              "sebep": "",
+              "uygun": true
+            }
+          ],
+          "tmp_dir": "/alan-sunucu-a"
+        },
+        {
+          "error": "Gecici alan bulunamadi. Adaylar: /alan-sunucu-b: yok",
+          "host": "SUNUCU-B",
+          "part_filename": "sunucu-b.zip",
+          "per_file_status": [
+            {
+              "error": "",
+              "host": "sunucu-b",
+              "path": "/vhosting8/APPX-T.ear/log2/server.log",
+              "status": "ok"
+            }
+          ],
+          "size_bytes": 0,
+          "status": "error",
+          "tmp_adaylar": [
+            {
+              "dir": "/alan-sunucu-b",
+              "olusturan": "",
+              "sebep": "yok",
+              "uygun": false
+            }
+          ],
+          "tmp_dir": ""
+        }
+      ],
+      "is_fallback": false,
+      "overall_status": "partial",
+      "size_bytes": 1,
+      "staged_path": "/staging/ornek.zip"
     }
   }
 }

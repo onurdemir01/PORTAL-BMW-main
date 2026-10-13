@@ -40,6 +40,17 @@ altındaki `log`, `logs` ve numaralı log dizinleri (`log1`, `log2`, `logs1`, `l
 alan gelmiyorsa AWX'teki kopya eskidir ve portal bunu dosya seçim ekranında söyler.
 Ayrıntı: `server/ansible/bmw_portal/logx/legacy/README.md`.
 
+**Legacy aktarımın geçici alanı (2026-10-13):** loglar `was` ile okunur, teslim dizinine bağlanan
+kullanıcı yazar; arada bir ara dizin gerekir. Bu dizin eskiden tek ve sabitti
+(`/vhosting(8)/dumpdir`); bir sunucuda dosyaya dönüşünce o sunucudan log alınamadı. Artık
+playbook sıralı bir aday listesini ölçer: teslim dizini → `/tmp` (seçilen dosyalar boş alanın
+%80'ini aşmıyorsa) → `/vhosting/dumpdir` → `/vhosting8/dumpdir` → `/vhosting/logx-tmp` →
+`/vhosting8/logx-tmp` (son ikisi yoksa açılır). İlk uygun aday kullanılır, yazarken düşerse
+sıradaki bir kez denenir; hiçbiri uygun değilse hata her adayın sebebini sayar. Liste
+playbook'taki `logx_legacy_tmp_bases` değişkenindedir (Admin ekranı yok; gerekirse AWX iş
+şablonunun extra_vars'ından verilir). Portal tarafında yeni ortam değişkeni ya da ayar YOKTUR.
+Ayrıntı ve kanarya adımları aynı README'de, "Geçici alan" başlığında.
+
 **Legacy'de "neden olmadı" ekranda:** playbook'ların sunucu ve dosya başına yayınladığı
 sebepler (`hosts[].error`, `per_file_status[].error`, üst düzey `error`) kullanıcıya gösterilir:
 keşif ya da aktarım tümüyle düştüğünde hata ekranında, aktarım kısmi bittiğinde (arşiv var ama

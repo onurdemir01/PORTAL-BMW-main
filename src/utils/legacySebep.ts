@@ -66,6 +66,19 @@ const KURALLAR: { test: RegExp; ozet: string }[] = [
     ozet: 'Arşiv parçaları birleştirilemedi — teslim dizinine erişilemedi.',
   },
   {
+    // Okuma kullanıcısının ZIP'i yazacağı ara dizin: playbook sıralı bir aday listesini
+    // ölçer ve her adayın neden kullanılamadığını ham metinde sayar ("dizin degil (dosya)",
+    // "yok", "yer yetersiz" …). "Permission denied" içerse de bu bir DOSYA sorunu değildir;
+    // bu yüzden dosya kurallarından ÖNCE gelir.
+    test: /Gecici alan bulunamadi/i,
+    ozet: 'Sunucuda logların arşivleneceği geçici alan bulunamadı (denenen dizinler ve sebepleri aşağıda).',
+  },
+  {
+    // Aday bulundu ama yazılamadı (en çok iki deneme; her birinin asıl hatası ham metinde).
+    test: /ziplenemedi/i,
+    ozet: 'Loglar sunucuda arşivlenemedi (denemelerin sebebi aşağıda).',
+  },
+  {
     // Sunucu düzeyindeki sarmalayıcı mesajlar (dosya başına sebepler ham metnin içinde).
     test: /Bu hostta arsivlenecek okunabilir dosya yok|Arsivlenecek mevcut ve okunabilir bir dosya bulunamadi/i,
     ozet: 'Bu sunucuda seçilen dosyaların hiçbiri alınamadı.',

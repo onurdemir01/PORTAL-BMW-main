@@ -53,6 +53,17 @@
       loop_control:
         label: "{{ item.host | default('?') }}:{{ item.path | default('?') }}"
 
+    - name: "Gecici alan aday listesi disaridan verildiyse dogrula"
+      ansible.builtin.assert:
+        that:
+          - item is mapping
+          - item.dir is defined
+          - item.dir is match('^/[^/]')
+        fail_msg: "Gecersiz logx_legacy_tmp_bases kaydi (dir mutlak yol olmali): {{ item }}"
+      loop: "{{ logx_legacy_tmp_bases | default([]) }}"
+      loop_control:
+        label: "{{ item.dir | default('?') }}"
+
 
 - name: "LogX v2 - Legacy loglari kaynak hosttan arsivle (tek-host: dogrudan / coklu-host: per-host parca)"
   hosts: "{{ selected_files | map(attribute='host') | unique | list }}"
@@ -70,13 +81,19 @@
     fallback_archive_path: "{{ fallback_dir }}/{{ archive_name }}"
     host_part_path: "{{ staging_dir }}/{{ archive_name | regex_replace('[.]zip$', '') }}__parts/{{ inventory_hostname }}.zip"
     ansible_pipelining: true
-    was_tmp_dir: >-
-      {{
-        ('/vhosting8/dumpdir'
-         if ((valid_source_paths | default([]) | first | default('')) is match('^/vhosting8/'))
-         else '/vhosting/dumpdir')
-        ~ '/logx-' ~ (archive_name | regex_replace('[.]zip$', ''))
-      }}
+    logx_legacy_tmp_bases:
+      - dir: "{{ staging_dir }}"
+        tur: teslim
+      - dir: /tmp
+        yuzde: 80
+      - dir: /vhosting/dumpdir
+      - dir: /vhosting8/dumpdir
+      - dir: /vhosting/logx-tmp
+        olustur: true
+      - dir: /vhosting8/logx-tmp
+        olustur: true
+    tmp_aday_sirasi: "{{ range(0, logx_legacy_tmp_bases | length) | list }}"
+    was_tmp_dir: "{{ (was_tmp_aday | default({})).dir | default('') }}/logx-{{ archive_name | regex_replace('[.]zip$', '') }}-{{ inventory_hostname }}"
     was_tmp_archive: "{{ was_tmp_dir }}/{{ was_tmp_zip }}"
 
   tasks:
@@ -196,6 +213,256 @@
         failed_when: false
         when: single_host | bool
 
+      - name: "Gecici alan adaylarini okuma kullanicisiyla denetle"
+        become: true
+        become_user: "{{ logx_legacy_user | default('was') }}"
+        become_method: dzdo
+        ansible.builtin.stat:
+          path: "{{ logx_legacy_tmp_bases[item].dir }}"
+          follow: true
+          get_checksum: false
+          get_mime: false
+          get_attributes: false
+        loop: "{{ tmp_aday_sirasi }}"
+        loop_control:
+          label: "{{ logx_legacy_tmp_bases[item].dir }}"
+        register: tmp_aday_was
+        when: valid_source_paths | length > 0
+        changed_when: false
+        failed_when: false
+
+      - name: "Olusturulabilir gecici alan adaylarinin ust dizinini denetle"
+        become: true
+        become_user: "{{ logx_legacy_user | default('was') }}"
+        become_method: dzdo
+        ansible.builtin.stat:
+          path: "{{ logx_legacy_tmp_bases[item].dir | dirname }}"
+          follow: true
+          get_checksum: false
+          get_mime: false
+          get_attributes: false
+        loop: "{{ tmp_aday_sirasi }}"
+        loop_control:
+          label: "{{ logx_legacy_tmp_bases[item].dir }}"
+        register: tmp_aday_ust
+        when:
+          - valid_source_paths | length > 0
+          - logx_legacy_tmp_bases[item].olustur | default(false) | bool
+          - tmp_aday_was.results[item].stat is defined
+          - not (tmp_aday_was.results[item].stat.exists | default(false))
+        changed_when: false
+        failed_when: false
+
+      - name: "Teslim adayini baglanan kullaniciyla denetle"
+        ansible.builtin.stat:
+          path: "{{ logx_legacy_tmp_bases[item].dir }}"
+          follow: true
+          get_checksum: false
+          get_mime: false
+          get_attributes: false
+        loop: "{{ tmp_aday_sirasi }}"
+        loop_control:
+          label: "{{ logx_legacy_tmp_bases[item].dir }}"
+        register: tmp_aday_baglanan
+        when:
+          - valid_source_paths | length > 0
+          - (logx_legacy_tmp_bases[item].tur | default('')) == 'teslim'
+          - tmp_aday_was.results[item].stat is defined
+          - tmp_aday_was.results[item].stat.isdir | default(false)
+          - not (tmp_aday_was.results[item].stat.writeable | default(false))
+        changed_when: false
+        failed_when: false
+
+      - name: "Butceli gecici alan adaylarinin bos alanini olc"
+        ansible.builtin.command:
+          argv:
+            - df
+            - "-Pk"
+            - "{{ logx_legacy_tmp_bases[item].dir }}"
+        environment:
+          LC_ALL: C
+        loop: "{{ tmp_aday_sirasi }}"
+        loop_control:
+          label: "{{ logx_legacy_tmp_bases[item].dir }}"
+        register: tmp_aday_df
+        when:
+          - valid_source_paths | length > 0
+          - logx_legacy_tmp_bases[item].yuzde is defined
+          - tmp_aday_was.results[item].stat.isdir | default(false)
+        changed_when: false
+        failed_when: false
+
+      - name: "Gecici alan adaylarini degerlendir"
+        vars:
+          a_kullanici: "{{ logx_legacy_user | default('was') }}"
+          a_dir: "{{ logx_legacy_tmp_bases[item].dir }}"
+          a_teslim: "{{ (logx_legacy_tmp_bases[item].tur | default('')) == 'teslim' }}"
+          a_olustur: "{{ logx_legacy_tmp_bases[item].olustur | default(false) | bool }}"
+          a_olculdu: "{{ tmp_aday_was.results[item].stat is defined }}"
+          a_var: "{{ tmp_aday_was.results[item].stat.exists | default(false) | bool }}"
+          a_dizin: "{{ tmp_aday_was.results[item].stat.isdir | default(false) | bool }}"
+          a_was_yazar: >-
+            {{
+              (tmp_aday_was.results[item].stat.writeable | default(false) | bool)
+              and (tmp_aday_was.results[item].stat.executable | default(false) | bool)
+            }}
+          a_baglanan_yazar: >-
+            {{
+              (tmp_aday_was.results[item].stat.executable | default(false) | bool)
+              and (tmp_aday_baglanan.results[item].stat.writeable | default(false) | bool)
+              and (tmp_aday_baglanan.results[item].stat.executable | default(false) | bool)
+            }}
+          a_ust_yazar: >-
+            {{
+              (tmp_aday_ust.results[item].stat.isdir | default(false) | bool)
+              and (tmp_aday_ust.results[item].stat.writeable | default(false) | bool)
+              and (tmp_aday_ust.results[item].stat.executable | default(false) | bool)
+            }}
+          a_gereken: >-
+            {{
+              source_file_stats.results | default([])
+              | selectattr('stat', 'defined')
+              | selectattr('item.path', 'in', valid_source_paths)
+              | map(attribute='stat.size')
+              | map('int')
+              | sum
+            }}
+          a_df_kolon: >-
+            {{
+              ((tmp_aday_df.results[item].stdout_lines | default([])) | last).split()
+              if (((tmp_aday_df.results[item].stdout_lines | default([])) | length) > 1)
+              else []
+            }}
+          a_olusturan: >-
+            {{
+              'was'
+              if (
+                (a_var | bool and a_dizin | bool and a_was_yazar | bool)
+                or (not (a_var | bool) and a_olustur | bool and a_ust_yazar | bool)
+              )
+              else (
+                'baglanan'
+                if (a_teslim | bool and a_var | bool and a_dizin | bool and a_baglanan_yazar | bool)
+                else ''
+              )
+            }}
+          a_bos_kb: "{{ a_df_kolon[3] if ((a_df_kolon | length) > 5) else '' }}"
+          a_bos_olculdu: >-
+            {{
+              ((tmp_aday_df.results[item].rc | default(1) | int) == 0)
+              and ((a_bos_kb | string) is match('^[0-9]+$'))
+            }}
+          a_izinli: "{{ ((a_bos_kb | int) * 1024 * (logx_legacy_tmp_bases[item].yuzde | default(100) | int)) // 100 }}"
+          a_yer_sebep: >-
+            {{
+              ''
+              if (logx_legacy_tmp_bases[item].yuzde is not defined)
+              else (
+                'bos alan olculemedi'
+                if not (a_bos_olculdu | bool)
+                else (
+                  (
+                    'yer yetersiz: gerekli ' ~ (((a_gereken | int) / 1048576) | round(1))
+                    ~ ' MB, izinli ' ~ (((a_izinli | int) / 1048576) | round(1))
+                    ~ ' MB (bos alan ' ~ (((a_bos_kb | int) / 1024) | round(1))
+                    ~ ' MB, sinir %' ~ (logx_legacy_tmp_bases[item].yuzde | int) ~ ')'
+                  )
+                  if ((a_gereken | int) > (a_izinli | int))
+                  else ''
+                )
+              )
+            }}
+          a_sebep: >-
+            {{
+              (
+                a_kullanici ~ ' ile denetlenemedi: '
+                ~ (
+                    (tmp_aday_was.results[item].msg | default(''))
+                    ~ ' ' ~ (tmp_aday_was.results[item].module_stderr | default(''))
+                  ) | trim
+              )
+              if not (a_olculdu | bool)
+              else (
+                (
+                  ('dizin degil (dosya)' if (tmp_aday_was.results[item].stat.isreg | default(false) | bool) else 'dizin degil')
+                  if not (a_dizin | bool)
+                  else (
+                    a_yer_sebep
+                    if ((a_olusturan | length) > 0)
+                    else (
+                      ('ne ' ~ a_kullanici ~ ' ne de baglanan kullanici yazabiliyor')
+                      if (a_teslim | bool)
+                      else (a_kullanici ~ ' yazamiyor')
+                    )
+                  )
+                )
+                if (a_var | bool)
+                else (
+                  ('teslim dizini yok' if (a_teslim | bool) else 'yok')
+                  if not (a_olustur | bool)
+                  else (
+                    a_yer_sebep
+                    if (a_ust_yazar | bool)
+                    else (
+                      'yok; ust dizin denetlenemedi'
+                      if (tmp_aday_ust.results[item].stat is not defined)
+                      else (
+                        'yok; ust dizin de yok'
+                        if not (tmp_aday_ust.results[item].stat.exists | default(false) | bool)
+                        else ('yok; ust dizine ' ~ a_kullanici ~ ' yazamiyor')
+                      )
+                    )
+                  )
+                )
+              )
+            }}
+        ansible.builtin.set_fact:
+          tmp_adaylar: >-
+            {{
+              (tmp_adaylar | default([]))
+              + [{
+                  'dir': a_dir,
+                  'uygun': ((a_sebep | length) == 0),
+                  'olusturan': (a_olusturan if ((a_sebep | length) == 0) else ''),
+                  'sebep': a_sebep,
+                }]
+            }}
+          tmp_aday_metinleri: >-
+            {{
+              (tmp_aday_metinleri | default([]))
+              + [a_dir ~ ': ' ~ (a_sebep if ((a_sebep | length) > 0) else 'uygun')]
+            }}
+        loop: "{{ tmp_aday_sirasi }}"
+        loop_control:
+          label: "{{ logx_legacy_tmp_bases[item].dir }}"
+        when: valid_source_paths | length > 0
+        changed_when: false
+
+      - name: "Uygun gecici alan adaylarini sirala ve ilkini sec"
+        ansible.builtin.set_fact:
+          tmp_uygunlar: "{{ tmp_adaylar | default([]) | selectattr('uygun') | list }}"
+          was_tmp_aday: >-
+            {{
+              (tmp_adaylar | default([]) | selectattr('uygun') | list | first)
+              if ((tmp_adaylar | default([]) | selectattr('uygun') | list | length) > 0)
+              else {}
+            }}
+          tmp_denemeler: []
+          was_arsiv_hazir: false
+          tmp_ikinci_deneme: false
+        changed_when: false
+
+      - name: "Ise ozel gecici dizini baglanan kullaniciyla hazirla"
+        ansible.builtin.file:
+          path: "{{ was_tmp_dir }}"
+          state: directory
+          mode: "0733"
+        register: tmp_baglanan_dizin_result
+        when:
+          - valid_source_paths | length > 0
+          - (was_tmp_aday.olusturan | default('')) == 'baglanan'
+        ignore_errors: true
+
       - name: "Okuma kullanicisinin gecici dizinini hazirla"
         become: true
         become_user: "{{ logx_legacy_user | default('was') }}"
@@ -205,7 +472,9 @@
           state: directory
           mode: "0711"
         register: was_tmp_dir_result
-        when: valid_source_paths | length > 0
+        when:
+          - valid_source_paths | length > 0
+          - (was_tmp_aday.olusturan | default('')) == 'was'
         ignore_errors: true
 
       - name: "Loglari okuma kullanicisiyla gecici ZIP'e yaz"
@@ -221,8 +490,201 @@
         register: was_archive_result
         when:
           - valid_source_paths | length > 0
+          - was_tmp_aday.dir is defined
           - not (was_tmp_dir_result.failed | default(false))
+          - not (tmp_baglanan_dizin_result.failed | default(false))
         ignore_errors: true
+
+      - name: "Ilk denemenin sonucunu kaydet"
+        vars:
+          d_ok: >-
+            {{
+              was_archive_result is defined
+              and was_archive_result is not skipped
+              and not (was_archive_result.failed | default(false))
+              and not (was_archive_result.unreachable | default(false))
+            }}
+          d_hata: >-
+            {{
+              (tmp_baglanan_dizin_result.msg | default('gecici dizin acilamadi'))
+              if (
+                (tmp_baglanan_dizin_result.failed | default(false))
+                or (tmp_baglanan_dizin_result.unreachable | default(false))
+              )
+              else (
+                (was_tmp_dir_result.msg | default('gecici dizin acilamadi'))
+                if (
+                  (was_tmp_dir_result.failed | default(false))
+                  or (was_tmp_dir_result.unreachable | default(false))
+                )
+                else (was_archive_result.msg | default('arsiv yazilamadi'))
+              )
+            }}
+        ansible.builtin.set_fact:
+          was_arsiv_hazir: "{{ d_ok | bool }}"
+          tmp_denemeler: >-
+            {{
+              tmp_denemeler
+              + [{
+                  'dir': was_tmp_aday.dir,
+                  'ok': (d_ok | bool),
+                  'hata': ('' if (d_ok | bool) else d_hata),
+                  'metin': (
+                    '1. deneme (' ~ was_tmp_aday.dir ~ '): '
+                    ~ ('tamam' if (d_ok | bool) else d_hata)
+                  ),
+                }]
+            }}
+        when:
+          - valid_source_paths | length > 0
+          - was_tmp_aday.dir is defined
+        changed_when: false
+
+      - name: "Basarisiz ilk denemenin gecici dizinini okuma kullanicisiyla temizle"
+        become: true
+        become_user: "{{ logx_legacy_user | default('was') }}"
+        become_method: dzdo
+        ansible.builtin.file:
+          path: "{{ was_tmp_dir }}"
+          state: absent
+        when:
+          - not (was_arsiv_hazir | bool)
+          - (was_tmp_aday.olusturan | default('')) == 'was'
+        failed_when: false
+        changed_when: false
+
+      - name: "Basarisiz ilk denemenin gecici dizinini baglanan kullaniciyla temizle"
+        ansible.builtin.file:
+          path: "{{ was_tmp_dir }}"
+          state: absent
+        when:
+          - not (was_arsiv_hazir | bool)
+          - (was_tmp_aday.olusturan | default('')) == 'baglanan'
+        failed_when: false
+        changed_when: false
+
+      - name: "Ilk deneme basarisizsa siradaki uygun adayi sec"
+        ansible.builtin.set_fact:
+          was_tmp_aday: "{{ tmp_uygunlar[1] }}"
+          tmp_ikinci_deneme: true
+        when:
+          - valid_source_paths | length > 0
+          - not (was_arsiv_hazir | bool)
+          - tmp_uygunlar | length > 1
+        changed_when: false
+
+      - name: "Ise ozel gecici dizini baglanan kullaniciyla hazirla (2. deneme)"
+        ansible.builtin.file:
+          path: "{{ was_tmp_dir }}"
+          state: directory
+          mode: "0733"
+        register: tmp_baglanan_dizin_result_2
+        when:
+          - tmp_ikinci_deneme | bool
+          - valid_source_paths | length > 0
+          - (was_tmp_aday.olusturan | default('')) == 'baglanan'
+        ignore_errors: true
+
+      - name: "Okuma kullanicisinin gecici dizinini hazirla (2. deneme)"
+        become: true
+        become_user: "{{ logx_legacy_user | default('was') }}"
+        become_method: dzdo
+        ansible.builtin.file:
+          path: "{{ was_tmp_dir }}"
+          state: directory
+          mode: "0711"
+        register: was_tmp_dir_result_2
+        when:
+          - tmp_ikinci_deneme | bool
+          - valid_source_paths | length > 0
+          - (was_tmp_aday.olusturan | default('')) == 'was'
+        ignore_errors: true
+
+      - name: "Loglari okuma kullanicisiyla gecici ZIP'e yaz (2. deneme)"
+        become: true
+        become_user: "{{ logx_legacy_user | default('was') }}"
+        become_method: dzdo
+        community.general.archive:
+          path: "{{ valid_source_paths }}"
+          dest: "{{ was_tmp_archive }}"
+          format: zip
+          mode: "0644"
+          force_archive: true
+        register: was_archive_result_2
+        when:
+          - tmp_ikinci_deneme | bool
+          - valid_source_paths | length > 0
+          - was_tmp_aday.dir is defined
+          - not (was_tmp_dir_result_2.failed | default(false))
+          - not (tmp_baglanan_dizin_result_2.failed | default(false))
+        ignore_errors: true
+
+      - name: "Ikinci denemenin sonucunu kaydet"
+        vars:
+          d_ok: >-
+            {{
+              was_archive_result_2 is defined
+              and was_archive_result_2 is not skipped
+              and not (was_archive_result_2.failed | default(false))
+              and not (was_archive_result_2.unreachable | default(false))
+            }}
+          d_hata: >-
+            {{
+              (tmp_baglanan_dizin_result_2.msg | default('gecici dizin acilamadi'))
+              if (
+                (tmp_baglanan_dizin_result_2.failed | default(false))
+                or (tmp_baglanan_dizin_result_2.unreachable | default(false))
+              )
+              else (
+                (was_tmp_dir_result_2.msg | default('gecici dizin acilamadi'))
+                if (
+                  (was_tmp_dir_result_2.failed | default(false))
+                  or (was_tmp_dir_result_2.unreachable | default(false))
+                )
+                else (was_archive_result_2.msg | default('arsiv yazilamadi'))
+              )
+            }}
+        ansible.builtin.set_fact:
+          was_arsiv_hazir: "{{ d_ok | bool }}"
+          tmp_denemeler: >-
+            {{
+              tmp_denemeler
+              + [{
+                  'dir': was_tmp_aday.dir,
+                  'ok': (d_ok | bool),
+                  'hata': ('' if (d_ok | bool) else d_hata),
+                  'metin': (
+                    '2. deneme (' ~ was_tmp_aday.dir ~ '): '
+                    ~ ('tamam' if (d_ok | bool) else d_hata)
+                  ),
+                }]
+            }}
+        when:
+          - tmp_ikinci_deneme | bool
+          - valid_source_paths | length > 0
+          - was_tmp_aday.dir is defined
+        changed_when: false
+
+      - name: "Gecici alan sonucunu ozetle"
+        ansible.builtin.set_fact:
+          tmp_kullanilan: "{{ was_tmp_aday.dir if (was_arsiv_hazir | bool) else '' }}"
+          tmp_sorun: >-
+            {{
+              ''
+              if (was_arsiv_hazir | bool or (valid_source_paths | length) == 0)
+              else (
+                (
+                  'Gecici alan bulunamadi. Adaylar: '
+                  ~ (tmp_aday_metinleri | default([]) | join(' | '))
+                )
+                if ((tmp_uygunlar | length) == 0)
+                else (
+                  'Loglar ' ~ (logx_legacy_user | default('was')) ~ ' kullanicisiyla ziplenemedi. '
+                  ~ (tmp_denemeler | map(attribute='metin') | join(' | '))
+                )
+              )
+            }}
+        changed_when: false
 
       - name: "ZIP arsivini staging dizinine kopyala (tek-host)"
         ansible.builtin.copy:
@@ -233,8 +695,7 @@
         register: staging_archive_result
         when:
           - single_host | bool
-          - was_archive_result is not skipped
-          - not (was_archive_result.failed | default(false))
+          - was_arsiv_hazir | bool
           - staging_dir_stat.stat.exists | default(false)
           - staging_dir_stat.stat.isdir | default(false)
         ignore_errors: true
@@ -247,8 +708,7 @@
         register: fallback_dir_result
         when:
           - single_host | bool
-          - was_archive_result is not skipped
-          - not (was_archive_result.failed | default(false))
+          - was_arsiv_hazir | bool
           - staging_archive_result is skipped or staging_archive_result.failed | default(false)
         ignore_errors: true
 
@@ -261,8 +721,7 @@
         register: fallback_archive_result
         when:
           - single_host | bool
-          - was_archive_result is not skipped
-          - not (was_archive_result.failed | default(false))
+          - was_arsiv_hazir | bool
           - staging_archive_result is skipped or staging_archive_result.failed | default(false)
           - not (fallback_dir_result.failed | default(false))
         ignore_errors: true
@@ -334,16 +793,15 @@
             size_bytes: "{{ final_archive_stat.stat.size | default(0) | int }}"
             is_fallback: "{{ not archive_written_to_staging }}"
             per_file_status: "{{ per_file_status }}"
+            tmp_dir: "{{ tmp_kullanilan }}"
+            tmp_adaylar: "{{ tmp_adaylar | default([]) }}"
             error: >-
               {{
                 ''
                 if (archive_written_to_staging or archive_written_to_fallback)
                 else (
-                  (
-                    'Loglar ' ~ (logx_legacy_user | default('was'))
-                    ~ ' kullanicisiyla ziplenemedi: ' ~ (was_archive_result.msg | default('?'))
-                  )
-                  if (was_archive_result.failed | default(false))
+                  tmp_sorun
+                  if ((tmp_sorun | length) > 0)
                   else (
                     fallback_archive_result.msg
                     | default(
@@ -376,8 +834,7 @@
         when:
           - not (single_host | bool)
           - valid_source_paths | length > 0
-          - was_archive_result is not skipped
-          - not (was_archive_result.failed | default(false))
+          - was_arsiv_hazir | bool
           - not (parts_dir_result.failed | default(false))
         ignore_errors: true
 
@@ -429,6 +886,8 @@
             part_filename: "{{ inventory_hostname }}.zip"
             size_bytes: "{{ host_part_stat.stat.size | default(0) | int if (host_part_stat is defined and host_part_stat.stat is defined) else 0 }}"
             per_file_status: "{{ per_file_status }}"
+            tmp_dir: "{{ tmp_kullanilan }}"
+            tmp_adaylar: "{{ tmp_adaylar | default([]) }}"
             error: >-
               {{
                 ''
@@ -444,11 +903,8 @@
                   )
                   if (valid_source_paths | length == 0)
                   else (
-                    (
-                      'Loglar ' ~ (logx_legacy_user | default('was'))
-                      ~ ' kullanicisiyla ziplenemedi: ' ~ (was_archive_result.msg | default('?'))
-                    )
-                    if (was_archive_result.failed | default(false))
+                    tmp_sorun
+                    if ((tmp_sorun | length) > 0)
                     else (host_part_result.msg | default('Per-host ZIP olusturulamadi'))
                   )
                 )
@@ -471,6 +927,8 @@
               part_filename: ''
               size_bytes: 0
               per_file_status: "{{ per_file_status | default([]) }}"
+              tmp_dir: ''
+              tmp_adaylar: "{{ tmp_adaylar | default([]) }}"
           when: not (single_host | bool)
       always:
         - name: "Okuma kullanicisinin ise ozel gecici dizinini temizle"
@@ -480,7 +938,15 @@
           ansible.builtin.file:
             path: "{{ was_tmp_dir }}"
             state: absent
-          when: was_tmp_dir_result is defined and was_tmp_dir_result is not skipped
+          when: ((was_tmp_aday | default({})).olusturan | default('')) == 'was'
+          failed_when: false
+          changed_when: false
+
+        - name: "Baglanan kullanicinin actigi ise ozel gecici dizini temizle"
+          ansible.builtin.file:
+            path: "{{ was_tmp_dir }}"
+            state: absent
+          when: ((was_tmp_aday | default({})).olusturan | default('')) == 'baglanan'
           failed_when: false
           changed_when: false
 

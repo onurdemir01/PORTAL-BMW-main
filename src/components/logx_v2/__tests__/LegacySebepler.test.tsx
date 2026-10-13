@@ -144,6 +144,36 @@ describe('legacySonuc: gerçek playbook çıktılarından özet', () => {
     expect(s.sunucular[0].sebep).toMatch(/okunamayan 1 yol: \/vhosting8\/APPX-T\.ear\/log1/);
   });
 
+  it('LS8 geçici alan sorunu: tek sunucuda GENEL sebep, çok sunucuda SUNUCU satırı', () => {
+    // 2026-10-13 saha olayı: dumpdir dosyaya dönüşmüş, ekran yalnızca "ZIP arsivi
+    // olusturulamadi" demişti. Sebep artık yayınlanıyor; ekranın onu GÖSTERDİĞİ ölçülür.
+    const yok = aktarimSorunlari(ornek('aktarim_tek_gecici_alan_yok'));
+    expect(yok.genel).toBe(
+      'Gecici alan bulunamadi. Adaylar: /dumpdir: dizin degil (dosya) | /olmayan-dizin: yok',
+    );
+    // Dosyaların kendisinde sorun yok: sebep dosya satırlarına DAĞITILMAZ.
+    expect(yok.sunucular).toEqual([]);
+    expect(yok.dosyalar).toEqual([]);
+    expect(sorunVar(yok)).toBe(true);
+
+    const yazilamadi = aktarimSorunlari(ornek('aktarim_tek_ziplenemedi'));
+    expect(yazilamadi.genel).toMatch(
+      /ziplenemedi\. 1\. deneme \(\/dump\): .+ \| 2\. deneme \(\/dump2\): /,
+    );
+
+    const cok = aktarimSorunlari(ornek('aktarim_cok_gecici_alan_yok'));
+    expect(cok.genel).toBe('');
+    expect(cok.sunucular).toEqual([
+      {
+        host: 'SUNUCU-B',
+        durum: 'error',
+        sebep: 'Gecici alan bulunamadi. Adaylar: /alan-sunucu-b: yok',
+        dosyaSayisi: 1,
+      },
+    ]);
+    expect([cok.istenen, cok.alinan]).toEqual([2, 1]);
+  });
+
   it('LS7 sorunsuz ya da bozuk sonuç: sorun UYDURULMAZ', () => {
     const tam = {
       overall_status: 'success',
@@ -174,7 +204,7 @@ describe('legacySebep: gerçek metinler -> bir cümlelik özet', () => {
         .filter(Boolean)
         .forEach((x) => sebepler.add(x));
     }
-    expect(sebepler.size).toBeGreaterThanOrEqual(6);
+    expect(sebepler.size).toBeGreaterThanOrEqual(9);
     for (const ham of sebepler) {
       const s = legacySebep(ham);
       expect(s.cevrildi, `cevrilmedi: ${ham}`).toBe(true);
@@ -208,6 +238,40 @@ describe('legacySebep: gerçek metinler -> bir cümlelik özet', () => {
     expect(ozet(aktarimSorunlari(ornek('aktarim_cok_basarisiz')).genel)).toBe(
       'Hiçbir sunucudan arşivlenecek dosya alınamadı.',
     );
+  });
+
+  it('SB5 geçici alan ve arşivleme sebepleri: dosya / yetki özetine DÜŞMEZ', () => {
+    const ALAN = /geçici alan bulunamadı/;
+    const ARSIV = /^Loglar sunucuda arşivlenemedi/;
+    expect(ozet(aktarimSorunlari(ornek('aktarim_tek_gecici_alan_yok')).genel)).toMatch(ALAN);
+    expect(ozet(aktarimSorunlari(ornek('aktarim_cok_gecici_alan_yok')).sunucular[0].sebep)).toMatch(
+      ALAN,
+    );
+    expect(ozet(aktarimSorunlari(ornek('aktarim_tek_ziplenemedi')).genel)).toMatch(ARSIV);
+    // "Permission denied" taşısalar da bunlar "Dosya okunamıyor (yetki)" DEĞİLDİR: seçilen
+    // dosya okunabiliyor, yazılacak yer yok.
+    expect(
+      ozet(
+        'Gecici alan bulunamadi. Adaylar: /sw/x: was ile denetlenemedi: Permission denied | /tmp: yok',
+      ),
+    ).toMatch(ALAN);
+    expect(
+      ozet(
+        "Loglar was kullanicisiyla ziplenemedi. 1. deneme (/tmp): [Errno 13] Permission denied: '/tmp/logx-a-H1'",
+      ),
+    ).toMatch(ARSIV);
+    // Asıl sorun bağlantıysa o söylenir (sıra: bağlantı her şeyden önce).
+    expect(
+      ozet(
+        'Gecici alan bulunamadi. Adaylar: /sw/x: was ile denetlenemedi: Failed to connect to the host via ssh: timed out',
+      ),
+    ).toBe('Sunucuya bağlanılamadı.');
+    // Ham metin adayları ve asıl hatayı taşır: özetin altında gösterilir.
+    for (const ad of ['aktarim_tek_gecici_alan_yok', 'aktarim_tek_ziplenemedi'])
+      expect(legacySebep(aktarimSorunlari(ornek(ad)).genel), ad).toMatchObject({
+        cevrildi: true,
+        hamEkBilgi: true,
+      });
   });
 
   it('SB3 tanınmayan metin AYNEN geçer (uydurma özet yok); boş metin söylenir', () => {
@@ -403,6 +467,25 @@ describe('Sihirbaz: sebepler doğru ekrana, doğru kaynaktan', () => {
     expect(t).not.toMatch(/Taranamayan sunucular/);
     expect(t).toMatch(/Bu sunucuda seçilen dosyaların hiçbiri alınamadı\./);
     expect(t).toMatch(/\/vhosting8\/APPX-T\.ear\/log9\/yok\.log/);
+  });
+
+  it('LW6 geçici alan yok: hata ekranı HANGİ dizinin NEDEN kullanılamadığını söyler', async () => {
+    ac({
+      request: istek({ discoveryResult: SAGLAM_KESIF, errorMessage: 'Transfer başarısız oldu.' }),
+      jobs: [
+        is(1, 'legacy_discovery', SAGLAM_KESIF, 'successful'),
+        // AWX işi "successful" biter: playbook sonucu yayınlar, başarısızlığı sonuç söyler.
+        is(2, 'legacy_transfer', ornek('aktarim_tek_gecici_alan_yok'), 'successful'),
+      ],
+    });
+    const t = (await screen.findByTestId('logx-basarisizlik-sebepleri')).textContent || '';
+    expect(t).toMatch(/geçici alan bulunamadı/);
+    expect(screen.getByTestId('logx-ham-sebep').textContent).toBe(
+      'Gecici alan bulunamadi. Adaylar: /dumpdir: dizin degil (dosya) | /olmayan-dizin: yok',
+    );
+    // Seçilen dosyalar sorunlu DEĞİL: "dosya alınamadı" satırı uydurulmaz.
+    expect(t).not.toMatch(/Dosya alınamayan sunucular/);
+    expect(t).not.toMatch(/Arşive girmeyen dosyalar/);
   });
 
   it('LW3 aktarım KISMİ: indirme ekranı eksikleri sayıyla ve dosya dosya söyler', async () => {
