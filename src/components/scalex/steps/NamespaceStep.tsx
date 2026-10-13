@@ -34,12 +34,18 @@ const NamespaceStep: React.FC<Props> = ({ env, tenant, clusters, busy, initial, 
   const [scanning, setScanning] = useState(false);
   const [scanNote, setScanNote] = useState<string | null>(null);
   const aliveRef = useRef(true);
-  useEffect(
-    () => () => {
+  // `true` YAZIMI SART (2026-10-14). Gelistirme kipinde React.StrictMode efektleri
+  // bagla -> sok -> bagla diye IKI kez kosturur; temizlik `false` yazip birakinca ref
+  // ikinci baglamada `false` KALIYOR ve bilesen "sokulmus" sanilip hicbir yaniti
+  // islemiyordu — `npm run dev`de sihirbaz bu adimda sonsuza dek "yukleniyor" gosteriyordu
+  // (uretim derlemesinde cift kosma yok; gercek tarayici taramasi yakaladi). `StoppedPanel`
+  // ayni deseni zaten dogru kuruyor.
+  useEffect(() => {
+    aliveRef.current = true;
+    return () => {
       aliveRef.current = false;
-    },
-    [],
-  );
+    };
+  }, []);
 
   const loadList = useCallback(async () => {
     setLoading(true);

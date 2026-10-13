@@ -13,11 +13,13 @@
 // GİRDİLER UYDURMA DEĞİL: `fixtures/kapi-yanitlari.json` sunucunun gerçek `/preview`,
 // `/run`, durum ve durum-kartı yanıtlarıdır; sunucu simülatöründen üretilir ve sunucu
 // yanıtı değişirse sunucu testi (scalex-kapi-matrisi KM19) kırmızı olur.
+import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { screen, act, fireEvent, waitFor, within } from '@testing-library/react';
 import { render } from '@/test/test-utils';
+import { render as yalinCiz } from '@testing-library/react';
 import type { ScaleXPreview, ScaleXStoppedItem, ScaleXGateStatus } from '@/api/scalexApi';
 
 type Kurgu = {
@@ -38,6 +40,8 @@ const K = ORNEK.kurgular;
 
 const api = vi.hoisted(() => ({
   clusters: vi.fn(),
+  namespaces: vi.fn(),
+  apps: vi.fn(),
   config: vi.fn(),
   stopped: vi.fn(),
   ocoSchedules: vi.fn(),
@@ -65,6 +69,8 @@ import PreviewStep from '@/components/scalex/steps/PreviewStep';
 import OperationStep from '@/components/scalex/steps/OperationStep';
 import IslemOnayStep from '@/components/scalex/steps/IslemOnayStep';
 import ScaleXKapiDurumu from '@/components/admin/tabs/ScaleXKapiDurumu';
+import NamespaceStep from '@/components/scalex/steps/NamespaceStep';
+import WorkloadStep from '@/components/scalex/steps/WorkloadStep';
 
 const DURDURULMUS: ScaleXStoppedItem = {
   id: 7,
@@ -700,5 +706,80 @@ describe('admin durum kartı', () => {
     expect(await screen.findByText('Onay kapılarının durumu okunamadı')).toBeInTheDocument();
     expect(screen.queryByText(/— eksik/)).not.toBeInTheDocument();
     expect(screen.queryByText(/BAŞLAMIYOR/)).not.toBeInTheDocument();
+  });
+});
+
+// ══ F. GELİŞTİRME KİPİ (React.StrictMode) ═══════════════════════════════════
+//
+// Gerçek tarayıcı taraması (scripts/ui-tarama/scalex-akis.mjs) buldu: `npm run dev`de
+// sihirbaz Namespace adımında sonsuza dek "yükleniyor" gösteriyordu. StrictMode efektleri
+// bağla → sök → bağla diye iki kez koşturur; adımlar "söküldüm" işaretini temizlikte
+// `false` yapıp ikinci bağlamada geri AÇMIYORDU ve gelen yanıtı hiç işlemiyordu. jsdom
+// testleri StrictMode'suz koştuğu için bunu görmüyordu; bu testler bilerek onunla sarar.
+//
+// YALIN `render` ŞART: ortak test sarmalayıcısıyla (`@/test/test-utils`) çift bağlama
+// OLUŞMUYOR ve bu testlerin ilk hâli düzeltme geri alındığında da yeşil kalıyordu (kör
+// bekçi). Çift bağlamanın gerçekten yaşandığı ayrıca ölçülür: liste İKİ kez istenir.
+describe('geliştirme kipinde (StrictMode) adımlar yanıtı işler', () => {
+  it('Namespace adımı listeyi gösterir', async () => {
+    api.namespaces.mockResolvedValue({
+      ok: true,
+      items: ['odeme', 'kredi'],
+      counts: {},
+      sources: {},
+      clusters: {},
+      cached: true,
+      fetchedAt: '2026-10-14T08:00:00Z',
+      stale: false,
+      source: 'inventory',
+      hiddenCount: 0,
+      unreadable: [],
+    });
+    yalinCiz(
+      <React.StrictMode>
+        <NamespaceStep
+          env="prod"
+          tenant="t1"
+          clusters={['c1']}
+          busy={false}
+          initial=""
+          onSubmit={vi.fn()}
+        />
+      </React.StrictMode>,
+    );
+    expect(await screen.findByText('odeme')).toBeInTheDocument();
+    expect(screen.queryByText(/Namespace listesi yükleniyor/)).not.toBeInTheDocument();
+    // Kurgu gerçekten çift bağlamayı üretti mi? (Üretmediyse bu test hiçbir şey ölçmez.)
+    expect(api.namespaces).toHaveBeenCalledTimes(2);
+  });
+
+  it('Uygulamalar adımı kataloğu gösterir', async () => {
+    api.apps.mockResolvedValue({
+      ok: true,
+      items: [{ name: 'api', kind: 'Deployment' }],
+      clusters: {},
+      sources: {},
+      cached: true,
+      fetchedAt: '2026-10-14T08:00:00Z',
+      stale: false,
+      scannedAt: '2026-10-14T08:00:00Z',
+    });
+    yalinCiz(
+      <React.StrictMode>
+        <WorkloadStep
+          scope={{ env: 'prod', tenant: 't1', namespace: 'odeme', clusters: ['c1'] }}
+          busy={false}
+          initial={[]}
+          initialWorkloads={[]}
+          initialFetchedAt={null}
+          autoScanMemo={new Map()}
+          onBack={vi.fn()}
+          onSubmit={vi.fn()}
+        />
+      </React.StrictMode>,
+    );
+    expect(await screen.findByText('api')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Kontrol et' })).toBeInTheDocument();
+    expect(api.apps).toHaveBeenCalledTimes(2);
   });
 });

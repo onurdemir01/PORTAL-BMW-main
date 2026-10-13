@@ -231,7 +231,30 @@ const OperationStep: React.FC<Props> = ({
             amber cerceve. Ayrica NE YAPILACAGINI da soyluyor: eskiden yalnizca
             "seçilemiyor" yaziyordu ve kullanici geri gidip elle desecmesi gerektigini
             kendi bulmak zorundaydi. */}
-        {restoreBlocked && (
+        {/* GOMULU KIPTE TEK SATIR (2026-10-14). Bu aciklama her DURDURMA isleminde amber bir
+            kutu olarak cikiyordu: durdurulacak bir uygulamanin kayitli durumu dogal olarak
+            yoktur, yani kutu neredeyse her ziyarette goruluyor ve asil secimi asagi itiyordu.
+            Bilgi kaybolmadi — kartin altinda tek satir, ayrintisi bir tik uzakta. */}
+        {restoreBlocked && gomulu && (
+          <details className="mt-2 text-xs text-[var(--text-secondary)]">
+            <summary className="cursor-pointer select-none">
+              <strong>Geri Al</strong> şu an seçilemiyor — neden?
+            </summary>
+            <p className="mt-1 rounded-lg border border-amber-200 bg-amber-50 p-2 text-amber-900">
+              <span>
+                <strong>Geri Al</strong> seçilemiyor: <strong>{notRestorable.join(", ")}</strong> için
+                portalda kayıtlı durum yok
+                {blockingClusters.length > 0 && <> (<span className="font-mono">{blockingClusters.join(", ")}</span>)</>}.
+                {partiallyRestorable.length > 0 && (
+                  <> <strong>{partiallyRestorable.join(", ")}</strong> bazı cluster'larda geri
+                  alınabilir, hepsinde değil — bu yüzden işlem tümü için kapalı.</>
+                )}
+                {" "}Geri almak için bir önceki adıma dönüp bu uygulamaları seçimden çıkarın.
+              </span>
+            </p>
+          </details>
+        )}
+        {restoreBlocked && !gomulu && (
           <div className="mt-2 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
             <ExclamationTriangleIcon aria-hidden="true" className="w-4 h-4 flex-shrink-0 mt-0.5" />
             <span>
@@ -341,6 +364,9 @@ const OperationStep: React.FC<Props> = ({
         </div>
       </div>
 
+      {/* Dugme ve icerik TEK sarmalayicida: kapaliyken icerik sifir yukseklikte kalir ama
+          ust kapsayicinin `space-y` boslugu bos bir satir daha acardi. */}
+      <div>
       {gomulu && (
         <button
           type="button"
@@ -360,7 +386,11 @@ const OperationStep: React.FC<Props> = ({
         </button>
       )}
       <Collapse open={gelismisGorunur}>
-        <div id="scalex-gelismis" className="space-y-6" {...(gelismisGorunur ? {} : { inert: true })}>
+        <div
+          id="scalex-gelismis"
+          className={`space-y-6 ${gomulu ? "pt-4" : ""}`}
+          {...(gelismisGorunur ? {} : { inert: true })}
+        >
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label htmlFor="scalex-timeout" className="block text-xs font-medium text-[var(--text-muted)] mb-1.5">
@@ -413,6 +443,7 @@ const OperationStep: React.FC<Props> = ({
           )}
         </div>
       </Collapse>
+      </div>
 
       {!gomulu && (
         <div className="flex justify-end border-t border-[var(--border)] pt-4">

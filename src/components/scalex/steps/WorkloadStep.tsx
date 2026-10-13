@@ -299,12 +299,18 @@ const WorkloadStep: React.FC<Props> = ({
   // gercekten yasaniyor: kullanici adimlar arasinda gidip geldikce eski dongulerin
   // hepsi arka planda kosmaya devam ederdi.
   const aliveRef = useRef(true);
-  useEffect(
-    () => () => {
+  // `true` YAZIMI SART (2026-10-14). Gelistirme kipinde React.StrictMode efektleri
+  // bagla -> sok -> bagla diye IKI kez kosturur; temizlik `false` yazip birakinca ref
+  // ikinci baglamada `false` KALIYOR ve bilesen "sokulmus" sanilip hicbir yaniti
+  // islemiyordu — `npm run dev`de sihirbaz bu adimda sonsuza dek "yukleniyor" gosteriyordu
+  // (uretim derlemesinde cift kosma yok; gercek tarayici taramasi yakaladi). `StoppedPanel`
+  // ayni deseni zaten dogru kuruyor.
+  useEffect(() => {
+    aliveRef.current = true;
+    return () => {
       aliveRef.current = false;
-    },
-    [],
-  );
+    };
+  }, []);
 
   // KESIF ASILIRSA KULLANICI CIKMAZDA KALMASIN. `poll()` bir `for(;;)` dongusu ve
   // `MAX_POLL_ERRORS` yalnizca HTTP hatalarini sayiyor — AWX isi `pending`/`running`da
