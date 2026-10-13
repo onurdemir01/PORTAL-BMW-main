@@ -34,6 +34,7 @@ import { SCALEX_CAPS, SCALEX_TIMING } from '@/config/dataSources';
 import { jobBreakdowns } from '@/utils/scalexTiming';
 import { fmtDateTime } from '@/utils/datetime';
 import FieldOverridesModal from '@/components/self_service/FieldOverridesModal';
+import ScaleXKapiDurumu from './ScaleXKapiDurumu';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
 
 const RUN_KEY = 'scalex_run';
@@ -434,6 +435,10 @@ const ScaleXAdminTab: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showGates, setShowGates] = useState(false);
+  // Durum karti ayar penceresi kapaninca yeniden okunur; ayni yanit, SMART sablonunda
+  // kullanilabilecek `scalex.*` degiskenlerini de (ornek degerleriyle) tasir.
+  const [kapiJetonu, setKapiJetonu] = useState(0);
+  const [smartOrnegi, setSmartOrnegi] = useState<Record<string, string | number>>({});
 
   async function load() {
     setLoading(true);
@@ -569,11 +574,11 @@ const ScaleXAdminTab: React.FC = () => {
                 <strong>Geri Al</strong> prod'da OCO'yu uyarı olarak geçer (gerekçe zorunlu) ama
                 SMART kaydı açar.
               </p>
-              <p className="text-amber-800">
-                SMART yapılandırılmadan prod'da <span className="font-mono">apply</span> çalışmaz —
-                sunucu <span className="font-mono">503 smart_not_configured</span> ile reddeder.
-              </p>
             </div>
+            {/* DURUM KARTI: kural anahtari, SMART tanimli mi, eksik ne, kullanici bugun ne gorur.
+                Eskiden burada yalnizca "SMART yapilandirilmadan prod'da apply calismaz" yaziyordu;
+                ayarin EKSIK oldugunu soyleyen hicbir sey yoktu. */}
+            <ScaleXKapiDurumu reloadKey={kapiJetonu} onOrnekBaglam={setSmartOrnegi} />
             {runTemplateId ? (
               <button type="button" className="btn-secondary" onClick={() => setShowGates(true)}>
                 SMART / OCO ayarlarını düzenle
@@ -607,7 +612,13 @@ const ScaleXAdminTab: React.FC = () => {
             awxTemplateId: runTemplateId,
             title: 'ScaleX — Replica İşlemi',
           }}
-          onClose={() => setShowGates(false)}
+          smartBaglami={
+            Object.keys(smartOrnegi).length ? { ad: 'scalex', degerler: smartOrnegi } : undefined
+          }
+          onClose={() => {
+            setShowGates(false);
+            setKapiJetonu((n) => n + 1);
+          }}
         />
       )}
     </div>

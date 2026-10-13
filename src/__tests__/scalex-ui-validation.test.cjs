@@ -974,9 +974,11 @@ test('L6 bos sonuc SUZGECTEN mi aramadan mi geldigini soyluyor', () => {
 test('Y4 BAKILAMAYAN tip kullaniciya OZET, yoneticiye TAM LISTE', () => {
   const code = codeOnly(WORKLOAD);
   // Hesaplanmasi yetmez; RENDER edilmesi gerekir (ayni kor nokta).
+  // 2026-10-13: ozet artik katlanir "Bilgi" kutusunda (baslikta uyari sayisiyla); kosul
+  // dogrudan `askable` uzerinde. Gorunurlugu WorkloadStep.test.tsx olcer.
   assert.match(
     code,
-    /\{unreadableKinds\.length > 0 &&/,
+    /\{askable\.length > 0 && \(/,
     'bakilamayan tipler hesaplaniyor ama EKRANA hic basilmiyor',
   );
   // KULLANICI EKRANINDA `api_absent` SAYILMAZ. O tip cluster'da kurulu degil;
@@ -990,8 +992,13 @@ test('Y4 BAKILAMAYAN tip kullaniciya OZET, yoneticiye TAM LISTE', () => {
   );
   assert.match(
     code,
-    /if \(askable\.length === 0\) return null;/,
-    'yalnizca api_absent varken bile kullaniciya uyari gosteriliyor',
+    /const bilgiUyarisi = \(askable\.length > 0 \? 1 : 0\)/,
+    'baslik sayaci `askable` yerine tum bakilamayan tipleri sayiyor — yalnizca api_absent varken de uyari gosterir',
+  );
+  assert.doesNotMatch(
+    code,
+    /\{unreadableKinds\.length > 0 &&/,
+    'ozet `askable` yerine tum bakilamayan tiplere baglanmis',
   );
   // TAM KAYNAK ADI kullanici ekraninda da korunur: kullanici ayrintiyi acarsa
   // platform ekibine goturecegi metni dogru gormeli.

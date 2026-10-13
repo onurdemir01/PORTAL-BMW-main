@@ -302,13 +302,72 @@ export interface ScaleXGatePolicy {
    * olsun" idi — sessiz bir kapalı kapı, kapıyı hiç koymamakla aynı şeydir.
    */
   ocoGateDisabled?: boolean;
+  /**
+   * SMART kapısının BU istek için durumu (2026-10-13). `smart` alanı yalnızca
+   * "istenecek mi" der; ekranın doğruyu söylemesi için NEDEN de gerekir:
+   *   ready             SMART kaydı açılacak, onay beklenecek
+   *   not_configured    gerekli ama ScaleX için tanımlı değil → iş BAŞLAMAZ (`blocked`)
+   *   disabled_by_admin admin anahtarı "yalnız OCO"
+   *   admin_skip        yöneticinin kendi tetiklemelerinde SMART atlama tercihi
+   *   skipped_by_rule   SMART ayarındaki istisna kuralı bu isteği kapsıyor
+   *   not_applicable    prod değil ya da değişiklik yapmayan çalışma
+   * Eski sunucu bu alanı göndermez; ekran o durumda `smart` alanına düşer.
+   */
+  smartStatus?:
+    | 'ready'
+    | 'not_configured'
+    | 'disabled_by_admin'
+    | 'admin_skip'
+    | 'skipped_by_rule'
+    | 'not_applicable'
+    | 'unknown';
+  /** `not_configured` iken eksik parçalar (flow key, alan eşlemesi…). */
+  smartMissing?: string[];
+  /** `skipped_by_rule` iken eşleşen kural. */
+  smartSkipRule?: { field: string; value: string };
+  smartGateDisabled?: boolean;
+  /** OCO penceresi henüz açılmamışsa "pencere açılınca başlat" sunulabilir mi. */
+  schedulable?: boolean;
+  /** Dolu ise iş BAŞLATILAMAZ; `/run` aynı kod ve aynı metinle reddeder. */
+  blocked?: { code: string; message: string } | null;
   reason: string | null;
+}
+
+/** `GET /admin/gate-status` — Admin > ScaleX Yönetimi > Onay kapıları durum kartı. */
+export interface ScaleXGateStatus {
+  ok: boolean;
+  message?: string;
+  smartMode: 'required' | 'oco_only';
+  /** `admin` = ekrandan/ortamdan verilmiş; `default` = hiç girilmemiş ya da tanınmayan değer. */
+  smartModeSource: 'admin' | 'default';
+  smartModeProblem: string | null;
+  /** Sıradan bir kullanıcının prod'da `Durdur + Uygula` için alacağı karar. */
+  policy: ScaleXGatePolicy;
+  template: { serverId: number | null; templateId: number | null };
+  configError: string | null;
+  smart: {
+    enabled: boolean;
+    flowKey: string | null;
+    hasMetadata: boolean;
+    missing: string[];
+    /** Alan eşlemesinin örnek değerlerle render edilmiş hâli (SMART'a gidecek anahtar → değer). */
+    onizleme: Record<string, string> | null;
+    onizlemeHatasi: string | null;
+    skipRules: { field: string; values: string[] }[];
+    skipRulesInvalid: string[];
+  };
+  /** Bu yöneticinin KENDİ tetiklemelerinde SMART atlanıyor mu (kişisel tercih). */
+  adminSkipSelf: boolean;
+  /** Şablonda kullanılabilecek `scalex.*` değişkenleri ve örnek değerleri. */
+  ornekBaglam: Record<string, string | number>;
 }
 
 export interface ScaleXPreview {
   ok: boolean;
   blastRadius: ScaleXBlastRadius;
   gatePolicy: ScaleXGatePolicy;
+  /** ScaleX şablonu çözülemedi: hiçbir iş (ön kontrol dahil) başlayamaz. */
+  configError?: { code: string; message: string } | null;
   /** HPA sabitleme bu işlem için sunulabilir mi (stop'ta asla). */
   hpaPinAllowed: boolean;
   targets: { env: string; tenant: string; namespace: string; clusters: string[]; apps: string[] };
@@ -560,6 +619,16 @@ export const scalexApi = {
         pendingApproval?: boolean;
         ticketId?: number;
         externalTicketId?: string;
+        /** `ocoScheduled` iken zamanlama kaydının numarası. */
+        scheduleId?: number;
+        /** `ocoDeferred` iken: bu istek zamanlanabilir mi (SMART devredeyken hayır). */
+        schedulable?: boolean;
+        /** Bilinçli ret kodu: `smart_not_configured`, `scalex_not_configured`, `awx_unreachable`… */
+        code?: string;
+        /** `smart_not_configured` iken eksik parçalar. */
+        missing?: string[];
+        /** Ret 4xx ile döndü ama asıl kaynak 5xx idi (ters-proxy 5xx gövdesini değiştiriyor). */
+        upstreamStatus?: number;
         oco?: {
           ocoNumber: string;
           subject: string;
@@ -571,13 +640,21 @@ export const scalexApi = {
     >('/run', body);
   },
 
-  async runStatus(serverId: number, jobId: number) {
-    return safeJson(await fetch(`${BASE}/run/${serverId}/${jobId}/status`)) as Promise<{
+  /**
+   * İşin durumu. Varsayılan çağrı çıktıyı ARTIMLI getirir ve sonucu bekletmez;
+   * `tamCikti: true` çıktının TAMAMINI ister — ekran bunu iş bitince BİR KEZ çağırır
+   * (kullanıcının gördüğü son metin artımlardan türemez).
+   */
+  async runStatus(serverId: number, jobId: number, secenek: { tamCikti?: boolean } = {}) {
+    const ek = secenek.tamCikti ? '?cikti=tam' : '';
+    return safeJson(await fetch(`${BASE}/run/${serverId}/${jobId}/status${ek}`)) as Promise<{
       ok: boolean;
       status: string;
       finished: boolean;
       failed: boolean;
       output: string;
+      /** `true`: `output` çıktının son ve tam hâli. */
+      outputFinal?: boolean;
       result: ScaleXRunResult | null;
       catalogWarning: string | null;
       message?: string;
@@ -701,6 +778,28 @@ export const scalexApi = {
         stale: boolean;
       }[];
     }>;
+  },
+
+  /**
+   * ONAY KAPILARI DURUM KARTI (yalnız Admin). "SMART gerekli mi, tanımlı mı, eksik ne,
+   * sıradan bir kullanıcı bugün prod'da ne görür" — hepsi tek yanıtta. `policy` admin'in
+   * KİŞİSEL atlama tercihini hesaba katmaz (o ayrı alan: `adminSkipSelf`).
+   */
+  async gateStatus() {
+    return safeJson(await fetch(`${BASE}/admin/gate-status`)) as Promise<ScaleXGateStatus>;
+  },
+
+  /**
+   * SMART kuralı anahtarı (yalnız Admin). Değişiklik hemen geçerlidir (restart yok) ve
+   * önceki/yeni değerle denetime yazılır (`scalex_smart_mode_changed`).
+   */
+  async setSmartMode(mode: 'required' | 'oco_only') {
+    const r = await fetch(`${BASE}/admin/smart-mode`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode }),
+    });
+    return safeJson(r) as Promise<{ ok: boolean; smartMode?: string; message?: string }>;
   },
 
   /**

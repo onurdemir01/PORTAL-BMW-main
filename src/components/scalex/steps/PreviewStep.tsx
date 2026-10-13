@@ -5,7 +5,7 @@
 // bir söz değil, bir tahmindir ve öyle davranılır.
 import React, { useEffect, useState } from "react";
 import {
-  ExclamationTriangleIcon, CheckCircleIcon, ClockIcon, ShieldCheckIcon, ArrowUturnLeftIcon,
+  ExclamationTriangleIcon, CheckCircleIcon, ClockIcon, ShieldCheckIcon, ArrowUturnLeftIcon, NoSymbolIcon,
 } from "@heroicons/react/24/outline";
 import {
   scalexApi, type ScaleXAction, type ScaleXMode, type ScaleXPreview, type ScaleXScope, type ScaleXWorkload,
@@ -34,17 +34,54 @@ interface Props {
   /** Keşif verisinin alındığı an; `null` ise satırlar aynadan türetilmiştir. */
   fetchedAt: number | null;
   busy: boolean;
+  /** Artınca önizleme YENİDEN istenir (ör. çalıştırma reddedildi: kapı durumu değişmiş olabilir). */
+  reloadKey?: number;
   onConfirm: (v: { writtenConfirm?: string; reason?: string; ocoNumber?: string }) => void;
 }
 
 const ACTION_LABEL: Record<ScaleXAction, string> = { stop: "DURDUR", restore: "GERİ AL", scale: "ÖLÇEKLE" };
 
+type SmartDurumu = NonNullable<ScaleXPreview["gatePolicy"]["smartStatus"]>;
+
+/**
+ * SMART kapısının durumu. Eski bir sunucu `smartStatus` göndermez; o durumda `smart`
+ * alanından türetilir (bugünkü iki cümle aynen çıkar).
+ */
+export function smartDurumu(g: ScaleXPreview["gatePolicy"]): SmartDurumu {
+  if (g.smartStatus && g.smartStatus !== "unknown") return g.smartStatus;
+  return g.smart === "require" ? "ready" : "not_applicable";
+}
+
+// KAPI SATIRI GERÇEĞİ SÖYLER (2026-10-13). Eskiden yalnızca iki cümle vardı: "SMART kaydı
+// açılacak" / "açılmayacak". Üretimde ilki yazarken SMART hiç tanımlı değildi; kullanıcı
+// OCO numarasını girdikten SONRA reddedildi.
+const SMART_METNI: Record<SmartDurumu, string> = {
+  ready: "SMART kaydı açılacak ve onay beklenecek.",
+  not_configured: "SMART onayı gerekli ama ScaleX için tanımlı değil — değişiklik başlatılamaz.",
+  disabled_by_admin: "SMART onayı bu ortamda KAPALI (yönetici ayarı) — SMART kaydı açılmayacak.",
+  admin_skip: "Yönetici tercihiniz gereği SMART onayı atlanacak — SMART kaydı açılmayacak.",
+  skipped_by_rule: "Bu işlem için SMART istisna kuralı tanımlı — SMART kaydı açılmayacak.",
+  not_applicable: "SMART kaydı açılmayacak.",
+  unknown: "SMART kaydı açılacak ve onay beklenecek.",
+};
+const SMART_ROZETI: Record<SmartDurumu, { metin: string; sinif: string }> = {
+  ready: { metin: "SMART: onay beklenecek", sinif: "pf-label--blue" },
+  not_configured: { metin: "SMART: tanımlı değil", sinif: "pf-label--red" },
+  disabled_by_admin: { metin: "SMART: kapalı", sinif: "pf-label--orange" },
+  admin_skip: { metin: "SMART: atlanıyor", sinif: "pf-label--orange" },
+  skipped_by_rule: { metin: "SMART: istisna kuralı", sinif: "pf-label--orange" },
+  not_applicable: { metin: "SMART: yok", sinif: "pf-label--grey" },
+  unknown: { metin: "SMART: onay beklenecek", sinif: "pf-label--blue" },
+};
+
 const PreviewStep: React.FC<Props> = ({
   scope, selectedTargets, action, executionMode, targetReplicas, verificationTimeout, workloads, hpaPin,
-  allowPartial, mailCc, fetchedAt, busy, onConfirm,
+  allowPartial, mailCc, fetchedAt, busy, reloadKey = 0, onConfirm,
 }) => {
-  const [preview, setPreview] = useState<ScaleXPreview | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  // ÖNİZLEME HANGİ SEÇİME AİT? Seçim değişince yeni önizleme gelene kadar ekranda ESKİSİ
+  // durur; onu "güncel" sayıp "Çalıştır"ı açık bırakmak, kullanıcıya başka bir seçimin
+  // kapılarını göstererek onay aldırmak olurdu. Bu yüzden yanıt, istendiği anahtarla saklanır.
+  const [yanit, setYanit] = useState<{ anahtar: string; preview: ScaleXPreview | null; hata: string | null } | null>(null);
   const [written, setWritten] = useState("");
   const [reason, setReason] = useState("");
   const [ocoNumber, setOcoNumber] = useState("");
@@ -52,6 +89,11 @@ const PreviewStep: React.FC<Props> = ({
   // HEDEF ANAHTARI: bağımlılık dizisinde nesne dizisi kullanılamaz (her render'da
   // yeni referans → sonsuz istek). Düz bir dizgeye indirgenir.
   const hedefAnahtari = (selectedTargets || []).map((t) => `${t.cluster}\u0000${t.name}`).sort().join("|");
+
+  const istekAnahtari = [
+    scope.env, scope.tenant, scope.namespace, scope.clusters.join(","), scope.apps?.join(","), hedefAnahtari,
+    action, executionMode, targetReplicas ?? "", verificationTimeout, reloadKey,
+  ].join("\u0001");
 
   useEffect(() => {
     let alive = true;
@@ -69,22 +111,38 @@ const PreviewStep: React.FC<Props> = ({
         // çalıştırmayla ayrışıyordu.
         targets: selectedTargets,
       })
-      .then((r) => { if (!alive) return; if (r.ok) setPreview(r); else setError(r.message || "Önizleme alınamadı."); })
-      .catch((e) => alive && setError((e as Error).message));
+      .then((r) => {
+        if (!alive) return;
+        setYanit(r.ok
+          ? { anahtar: istekAnahtari, preview: r, hata: null }
+          : { anahtar: istekAnahtari, preview: null, hata: r.message || "Önizleme alınamadı." });
+      })
+      .catch((e) => alive && setYanit({ anahtar: istekAnahtari, preview: null, hata: (e as Error).message }));
     return () => { alive = false; };
-  }, [scope.clusters.join(","), scope.apps?.join(","), hedefAnahtari, action, executionMode, targetReplicas, verificationTimeout]);
+    // `istekAnahtari` isteğin TÜM girdilerini taşır (kapsam, hedefler, işlem, kip, tazeleme).
+  }, [istekAnahtari]);
 
-  if (error) {
+  const guncel = yanit?.anahtar === istekAnahtari;
+  // Hata yalnızca GÜNCEL isteğe aitse gösterilir: önceki seçimin hatası yeni seçimin
+  // ekranında asılı kalmamalı (eskiden bir kez hata alınca adım kalıcı olarak hata gösteriyordu).
+  if (guncel && yanit?.hata) {
     return (
-      <div className="flex items-start gap-2 bg-red-50 border border-red-100 rounded-xl p-3 text-sm text-red-700">
-        <ExclamationTriangleIcon aria-hidden="true" className="w-4 h-4 flex-shrink-0 mt-0.5" /><span>{error}</span>
+      <div role="alert" className="flex items-start gap-2 bg-red-50 border border-red-100 rounded-xl p-3 text-sm text-red-700">
+        <ExclamationTriangleIcon aria-hidden="true" className="w-4 h-4 flex-shrink-0 mt-0.5" /><span>{yanit.hata}</span>
       </div>
     );
   }
+  const preview = yanit?.preview ?? null;
   if (!preview) return <div className="py-8 text-center text-sm text-[var(--text-muted)]">Önizleme hesaplanıyor…</div>;
+  // Yeni seçimin önizlemesi yolda: eskisi SOLUK durur, onay düğmesi kapalıdır.
+  const bayat = !guncel;
 
   const r = preview.blastRadius;
   const g = preview.gatePolicy;
+  const smart = smartDurumu(g);
+  // İŞ BAŞLATILAMAZ: sunucu aynı kararı `/run`da aynı metinle verir. Ekran bunu OCO
+  // numarası İSTEMEDEN söyler — numarayı girip reddedilmek üretimde yaşanan olaydı.
+  const engel = preview.configError?.message || (executionMode === "apply" ? g.blocked?.message : "") || "";
   // LISTE DE HARIC TUTULANLARI GOSTERMEMELI. Eskiden yalnizca `apps` ADINA
   // bakiliyordu, yani kullanicinin cikardigi cluster'daki satir listede kaliyordu.
   const haricKumesi = new Set((selectedTargets || []).map((t) => `${t.cluster}\u0000${t.name}`));
@@ -111,10 +169,13 @@ const PreviewStep: React.FC<Props> = ({
   // OCO "gerekli" iken numara BOSKEN buton aktifti: kullanici basiyor, sunucu 400
   // donuyor, ekran onizlemeye geri donuyordu — garantili bos bir gidis-donus.
   const ocoOk = g.oco !== "require" || ocoNumber.trim().length > 0;
-  const blocked = r.exceedsMaxTargets;
+  const blocked = r.exceedsMaxTargets || !!engel;
   // BUTON NEDEN PASIF? Sessizce olu bir buton, namespace'i bir harf yanlis yazan
   // kullaniciyi hicbir geri bildirim olmadan birakiyordu.
-  const blockReason = blocked
+  const blockReason = engel
+    ? "Bu işlem şu an başlatılamaz — nedeni yukarıda."
+    : bayat ? "Önizleme güncelleniyor…"
+    : r.exceedsMaxTargets
     ? "Hedef sayısı sınırın üzerinde — kapsamı daraltın."
     : !writtenOk
       ? (written.trim() ? "Yazdığınız namespace adı eşleşmiyor." : "Onaylamak için namespace adını yazın.")
@@ -123,7 +184,7 @@ const PreviewStep: React.FC<Props> = ({
       : "";
 
   return (
-    <div className="space-y-4">
+    <div className={`space-y-4 transition-opacity ${bayat ? "opacity-60" : ""}`} aria-busy={bayat}>
       <div className={`rounded-xl border p-4 ${heavy ? "border-red-200 bg-red-50" : "border-[var(--border)] bg-[var(--bg-inset)]"}`}>
         <div className="flex items-baseline justify-between gap-3 flex-wrap">
           <p className="text-sm font-semibold text-[var(--text-primary)]">
@@ -252,17 +313,51 @@ const PreviewStep: React.FC<Props> = ({
         </p>
       )}
 
+      {/* İŞ BAŞLATILAMAZ — kapı satırlarından ÖNCE ve OCO alanı ÇİZİLMEDEN. */}
+      {engel && (
+        <div role="alert" data-testid="scalex-engel"
+          className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+          <NoSymbolIcon aria-hidden="true" className="w-5 h-5 flex-shrink-0 mt-0.5" />
+          <div className="min-w-0 space-y-1">
+            <p className="font-semibold">Bu işlem şu an başlatılamaz</p>
+            <p className="text-xs">{engel}</p>
+            {g.smartMissing && g.smartMissing.length > 0 && !preview.configError && (
+              <ul className="list-disc pl-4 text-xs">
+                {g.smartMissing.map((m) => <li key={m}>{m}</li>)}
+              </ul>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* KAPI DURUMU. Kullanıcı ne isteneceğini ÖNCEDEN bilsin — ortada sürpriz olmasın. */}
       <div className="rounded-xl border border-[var(--border)] p-3 space-y-1.5 text-xs">
+        {executionMode === "apply" && (
+          <p className="flex flex-wrap items-center gap-1.5" data-testid="scalex-kapi-rozetleri">
+            <span className={`pf-label ${g.oco === "require" ? "pf-label--blue" : g.ocoGateDisabled ? "pf-label--red" : "pf-label--grey"}`}>
+              {g.oco === "require" ? "OCO: numara istenecek" : g.oco === "warn" ? "OCO: gerekçe yeterli" : g.ocoGateDisabled ? "OCO: kapalı" : "OCO: yok"}
+            </span>
+            <span className={`pf-label ${SMART_ROZETI[smart].sinif}`}>{SMART_ROZETI[smart].metin}</span>
+          </p>
+        )}
         <p className="flex items-center gap-1.5 text-[var(--text-secondary)]">
           <ShieldCheckIcon aria-hidden="true" className="w-4 h-4 flex-shrink-0" />
           {g.oco === "require" && "OCO penceresi kontrol edilecek — numara istenecek."}
           {g.oco === "warn" && "Geri alma bir onarım işlemidir: OCO penceresi dışında da çalışır, ama gerekçe zorunlu."}
-          {g.oco === "skip" && "OCO kontrolü yok — bu çalıştırma hiçbir şeyi değiştirmiyor."}
+          {g.oco === "skip" && (executionMode === "apply"
+            ? "OCO kontrolü yok."
+            : "OCO kontrolü yok — bu çalıştırma hiçbir şeyi değiştirmiyor.")}
         </p>
-        <p className="flex items-center gap-1.5 text-[var(--text-secondary)]">
-          <CheckCircleIcon aria-hidden="true" className="w-4 h-4 flex-shrink-0" />
-          {g.smart === "require" ? "SMART kaydı açılacak ve onay beklenecek." : "SMART kaydı açılmayacak."}
+        <p className={`flex items-start gap-1.5 ${smart === "not_configured" ? "text-red-800" : smart === "disabled_by_admin" || smart === "admin_skip" || smart === "skipped_by_rule" ? "text-amber-800" : "text-[var(--text-secondary)]"}`}>
+          <CheckCircleIcon aria-hidden="true" className="w-4 h-4 flex-shrink-0 mt-px" />
+          <span>
+            {SMART_METNI[smart]}
+            {smart === "skipped_by_rule" && g.smartSkipRule && (
+              <> (<span className="font-mono">{g.smartSkipRule.field}: {g.smartSkipRule.value}</span>)</>
+            )}
+            {(smart === "disabled_by_admin" || smart === "admin_skip" || smart === "skipped_by_rule") &&
+              " İşlem denetime ayrıca yazılır."}
+          </span>
         </p>
         {/* METIN GERCEGI SOYLER. Eskiden "ikinci kişi onayı gerekiyor" yaziyordu ama
             sunucuda `requiresSecondPerson` HIC OKUNMUYOR — kullaniciya var olmayan bir
@@ -272,7 +367,9 @@ const PreviewStep: React.FC<Props> = ({
         {r.requiresSecondPerson && (
           <p className="flex items-center gap-1.5 text-[var(--text-secondary)]">
             <ClockIcon aria-hidden="true" className="w-4 h-4 flex-shrink-0" />
-            Prod ortamında birden fazla cluster etkileniyor — onay SMART kaydı üzerinden alınacak.
+            {smart === "ready"
+              ? "Prod ortamında birden fazla cluster etkileniyor — onay SMART kaydı üzerinden alınacak."
+              : "Prod ortamında birden fazla cluster etkileniyor."}
           </p>
         )}
         {picked.some((w) => w.gitops) && (
@@ -312,7 +409,7 @@ const PreviewStep: React.FC<Props> = ({
         </div>
       )}
 
-      {g.oco === "require" && executionMode === "apply" && (
+      {g.oco === "require" && executionMode === "apply" && !engel && (
         <div>
           <label htmlFor="scalex-oco" className="block text-xs font-medium text-[var(--text-muted)] mb-1.5">OCO numarası</label>
           <input id="scalex-oco" type="text" value={ocoNumber} disabled={busy} inputMode="numeric"
@@ -322,7 +419,7 @@ const PreviewStep: React.FC<Props> = ({
         </div>
       )}
 
-      {g.oco === "warn" && (
+      {g.oco === "warn" && !engel && (
         <div>
           <label htmlFor="scalex-reason" className="block text-xs font-medium text-[var(--text-muted)] mb-1.5">
             Gerekçe (zorunlu)
@@ -332,11 +429,13 @@ const PreviewStep: React.FC<Props> = ({
             className="w-full px-3 py-2 text-sm rounded-lg border border-[var(--border)] bg-[var(--bg-surface)]
                        text-[var(--text-primary)] placeholder-[var(--text-muted)]
                        focus:outline-none focus:ring-2 focus:ring-[var(--accent)]" />
-          <p className="mt-1 text-xs text-[var(--text-muted)]">Gerekçe hem portal kaydına hem SMART talebine yazılır.</p>
+          <p className="mt-1 text-xs text-[var(--text-muted)]">
+            {smart === "ready" ? "Gerekçe hem portal kaydına hem SMART talebine yazılır." : "Gerekçe portal kaydına ve denetime yazılır."}
+          </p>
         </div>
       )}
 
-      {r.requiresWrittenConfirm && (
+      {r.requiresWrittenConfirm && !engel && (
         <div className="rounded-xl border border-red-200 bg-red-50 p-3">
           <label htmlFor="scalex-written" className="block text-xs font-medium text-red-900 mb-1.5">
             Bu işlem {r.targets} hedefi etkiliyor ve ortam prod. Onaylamak için namespace adını yaz:
@@ -356,7 +455,7 @@ const PreviewStep: React.FC<Props> = ({
         {blockReason && (
           <span className="text-xs text-[var(--text-secondary)]" role="status">{blockReason}</span>
         )}
-        <button type="button" className="btn-primary" disabled={busy || blocked || !writtenOk || !reasonOk || !ocoOk}
+        <button type="button" className="btn-primary" disabled={busy || bayat || blocked || !writtenOk || !reasonOk || !ocoOk}
           onClick={() => onConfirm({
             ...(r.requiresWrittenConfirm ? { writtenConfirm: written.trim() } : {}),
             ...(reason.trim() ? { reason: reason.trim() } : {}),
