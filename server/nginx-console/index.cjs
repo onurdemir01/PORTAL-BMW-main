@@ -875,8 +875,37 @@ function isAdmin(req) {
   return req.session?.user?.role === 'Admin';
 }
 
-/** Admin olmayan kullanicinin gecebildigi SALT OKUNUR uclar (bkz. initNginxConsole'daki not). */
-const ADMIN_DISI_OKUMA = [/^\/spa-discovery(\/rp)?\/?$/];
+/**
+ * Admin olmayan kullanicinin gecebildigi SALT OKUNUR uclar (kullanici karari 2026-10-14: panelden
+ * acilan sekmeler salt okunur calissin). Her biri (/hosts haric) asagidaki SEKME_YOLLARI'ndan bir
+ * sekmeye baglidir: kullanici yalniz kendisine acilan sekmenin ucunu okuyabilir. /hosts sayfa
+ * duzeyindedir (Dashboard, Instances, Config ayni listeyi okur). Kapsam disi: /job-status (yalniz
+ * Admin'in baslattigi isleri izler) ve yazan her uc.
+ */
+const ADMIN_DISI_OKUMA = [
+  /^\/hosts\/?$/,
+  /^\/(tree|file)\/[^/]+\/?$/,
+  /^\/compare\/?$/,
+  /^\/certs\/?$/,
+  /^\/drift\/?$/,
+  /^\/orphans\/?$/,
+  /^\/ratelimit(\.csv)?\/?$/,
+  /^\/(changes|history\/[^/]+|blob\/[^/]+)\/?$/,
+  /^\/spa-discovery(\/rp)?\/?$/,
+];
+
+// SEKME BAZLI kapi (2026-09-23): yol -> Nginx Hub sekmesi (tab:nginx:<id>). compare (dosyanin
+// sunucular arasi farki) ve blob (gecmis surumun icerigi) 2026-10-14'te eklendi: salt okunur
+// acilinca sekmesiz kalsalardi sayfa erisimi olan herkes okuyabilirdi.
+const SEKME_YOLLARI = [
+  [/^\/(tree|file|push|preview|compare)(\/|$)/, 'config'],
+  [/^\/certs(\/|$)/, 'certs'],
+  [/^\/(changes|history|diff|blob)(\/|$)/, 'changes'],
+  [/^\/orphans(\/|$)/, 'orphans'],
+  [/^\/drift(\/|$)/, 'drift'],
+  [/^\/ratelimit(\/|\.|$)/, 'ratelimit'],
+  [/^\/spa-discovery(\/|$)/, 'spadiscovery'],
+];
 
 /**
  * Nginx Hub router kapisi: Admin her yere; Admin olmayan yalniz ADMIN_DISI_OKUMA'daki GET'lere ve
@@ -884,12 +913,8 @@ const ADMIN_DISI_OKUMA = [/^\/spa-discovery(\/rp)?\/?$/];
  * @param {() => boolean} gorunurlukHazir
  */
 function adminKapisi(gorunurlukHazir) {
-  return (req, res, next) => {
-    if (isAdmin(req)) return next();
-    if (gorunurlukHazir() && req.method === 'GET' && ADMIN_DISI_OKUMA.some((re) => re.test(req.path)))
-      return next();
-    return res.status(403).json({ ok: false, message: 'Nginx Hub yalnız Admin.' });
-  };
+  const { adminOkumaKapisi } = require('../auth/admin-okuma-kapisi.cjs');
+  return adminOkumaKapisi({ okuma: ADMIN_DISI_OKUMA, mesaj: 'Nginx Hub yalnız Admin.', hazir: gorunurlukHazir });
 }
 
 // ── HTTP ────────────────────────────────────────────────────────────────────────────────
@@ -918,18 +943,9 @@ function initNginxConsole(app) {
     router.use(requireVisiblePrefix('NginxConsole'));
     // SEKME BAZLI kapi (2026-09-23): sayfa acik olsa da yalniz izin verilen sekmenin uclari.
     // /hosts BILEREK sayfa kapisinda kalir: dashboard, instances, config ve digerleri ayni
-    // listeyi okur; onu bir sekmeye baglamak diger sekmeleri de kirardi.
-    const TAB_OF_PATH = [
-      [/^\/(tree|file|push|preview)(\/|$)/, 'config'],
-      [/^\/certs(\/|$)/, 'certs'],
-      [/^\/(changes|history|diff)(\/|$)/, 'changes'],
-      [/^\/orphans(\/|$)/, 'orphans'],
-      [/^\/drift(\/|$)/, 'drift'],
-      [/^\/ratelimit(\/|\.|$)/, 'ratelimit'],
-      [/^\/spa-discovery(\/|$)/, 'spadiscovery'],
-    ];
+    // listeyi okur; onu bir sekmeye baglamak diger sekmeleri de kirardi. Esleme: SEKME_YOLLARI.
     router.use((req, res, next) => {
-      const hit = TAB_OF_PATH.find(([re]) => re.test(req.path));
+      const hit = SEKME_YOLLARI.find(([re]) => re.test(req.path));
       if (!hit) return next();
       return requireVisible('tab:nginx:' + hit[1])(req, res, next);
     });
@@ -1617,6 +1633,8 @@ function minDays(parsed) {
 module.exports = {
   initNginxConsole,
   _adminKapisi: adminKapisi,
+  _ADMIN_DISI_OKUMA: ADMIN_DISI_OKUMA,
+  _SEKME_YOLLARI: SEKME_YOLLARI,
   REGISTRY_KEYS,
   ALLOWED_PATH_RE,
   HOST_RE,

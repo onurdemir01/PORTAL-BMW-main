@@ -164,8 +164,13 @@ test('NH-A3 sunucu kapıları: uçlar sayfa + sekme kapısından geçer', () => 
   for (const t of ['config', 'certs', 'changes', 'orphans', 'drift']) {
     assert.ok(new RegExp(`'${t}'\\]`).test(con), `yol eşlemesinde ${t} yok`);
   }
-  // /hosts BİLEREK sayfa kapısında: dashboard/instances/config aynı listeyi okur.
-  assert.ok(!/\^\\\/hosts/.test(con), '/hosts bir sekmeye bağlanmış — diğer sekmeler kırılır');
+  // /hosts BİLEREK sayfa kapısında: dashboard/instances/config aynı listeyi okur. 2026-10-14'ten
+  // beri ADMIN_DISI_OKUMA'da da /hosts deseni var (salt okunur erişim); ölçüt metin değil EŞLEME.
+  const { _SEKME_YOLLARI } = require('../../nginx-console/index.cjs');
+  assert.ok(
+    !_SEKME_YOLLARI.some(([re]) => re.test('/hosts')),
+    '/hosts bir sekmeye bağlanmış — diğer sekmeler kırılır',
+  );
 
   const cis = read('server/nginx-cis/index.cjs');
   assert.ok(cis.includes("requireVisible('tab:nginx:cis')"), 'CIS uçları sekme kapısında değil');

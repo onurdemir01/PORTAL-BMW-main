@@ -180,8 +180,10 @@ test('NH6 kayitlar: PLAYBOOKS, registry seed, sayfa elementi (Admin), nav, route
   // sekme kapisindan gecerek; davranisi admin-kapisi.test.cjs kosturarak dogrular)
   const nc = read('server/nginx-console/index.cjs');
   assert.match(nc, /router\.use\(adminKapisi\(\(\) => gorunurlukKapisi\)\);/);
-  assert.match(nc, /if \(isAdmin\(req\)\) return next\(\);/);
-  assert.match(nc, /res\.status\(403\)\.json\(\{ ok: false, message: 'Nginx Hub yalnız Admin\.' \}\)/);
+  assert.match(nc, /adminOkumaKapisi\(\{ okuma: ADMIN_DISI_OKUMA, mesaj: 'Nginx Hub yalnız Admin\.'/);
+  const kapi = read('server/auth/admin-okuma-kapisi.cjs');
+  assert.match(kapi, /if \(isAdmin\(req\)\) return next\(\);/);
+  assert.match(kapi, /res\.status\(403\)\.json\(\{ ok: false, message: mesaj \}\)/);
 });
 
 test('NH7 push betigi sozlesmesi: beyaz liste, kilit, yedek, nginx -t geri alma, reload, RESULT satiri', () => {

@@ -318,7 +318,8 @@ export function DashboardTab({ hosts, onGo }: { hosts: NcHost[]; onGo: (tab: 'in
 }
 
 // ── Instances ───────────────────────────────────────────────────────────────────────
-export function InstancesTab({ hosts, loading, onRefreshHosts, onOpen, onReload }: { hosts: NcHost[]; loading: boolean; onRefreshHosts: (hosts: string[]) => void; onOpen: (host: string) => void; onReload: () => void }) {
+// onRefreshHosts YOKSA (Admin olmayan, salt okunur erisim - 2026-10-14) dokum yenileme dugmeleri cizilmez.
+export function InstancesTab({ hosts, loading, onRefreshHosts, onOpen, onReload }: { hosts: NcHost[]; loading: boolean; onRefreshHosts?: (hosts: string[]) => void; onOpen: (host: string) => void; onReload: () => void }) {
   const [q, setQ] = useState('');
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [page, setPage] = useState(1);
@@ -367,7 +368,7 @@ export function InstancesTab({ hosts, loading, onRefreshHosts, onOpen, onReload 
         <span className="ml-auto" />
         <button onClick={onReload} className={btn} style={btnStyle}><ArrowPathIcon className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} /> Refresh</button>
         <button onClick={csv} className={btn} style={btnStyle}><ArrowDownTrayIcon className="w-3.5 h-3.5" /> Export</button>
-        <button disabled={checked.size === 0} onClick={() => { onRefreshHosts([...checked]); setChecked(new Set()); }} className={`${btn} disabled:opacity-40`} style={{ background: 'var(--nginx-green)', borderColor: 'var(--nginx-green)', color: 'var(--accent-fg, #fff)' }} title="Seçili sunucuların dokumunu Ansible ile yenile"><ArrowPathIcon className="w-3.5 h-3.5" /> Seçilileri yenile{checked.size ? ` (${checked.size})` : ''}</button>
+        {onRefreshHosts && <button disabled={checked.size === 0} onClick={() => { onRefreshHosts([...checked]); setChecked(new Set()); }} className={`${btn} disabled:opacity-40`} style={{ background: 'var(--nginx-green)', borderColor: 'var(--nginx-green)', color: 'var(--accent-fg, #fff)' }} title="Seçili sunucuların dokumunu Ansible ile yenile"><ArrowPathIcon className="w-3.5 h-3.5" /> Seçilileri yenile{checked.size ? ` (${checked.size})` : ''}</button>}
       </div>
       <div className="overflow-auto rounded-lg border" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}>
         <table className="w-full text-[13px] border-collapse">
@@ -393,7 +394,7 @@ export function InstancesTab({ hosts, loading, onRefreshHosts, onOpen, onReload 
                     {menu === h.host && (
                       <div className="absolute right-3 top-9 z-10 w-44 rounded-md border shadow-md text-left text-[12px]" style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}>
                         <button onClick={() => { setMenu(null); onOpen(h.host); }} className="w-full text-left px-3 py-2 hover:bg-[var(--bg-elevated)]">Konfigürasyonu aç</button>
-                        <button onClick={() => { setMenu(null); onRefreshHosts([h.host]); }} className="w-full text-left px-3 py-2 hover:bg-[var(--bg-elevated)]">Dokumu yenile</button>
+                        {onRefreshHosts && <button onClick={() => { setMenu(null); onRefreshHosts([h.host]); }} className="w-full text-left px-3 py-2 hover:bg-[var(--bg-elevated)]">Dokumu yenile</button>}
                       </div>
                     )}
                   </td>

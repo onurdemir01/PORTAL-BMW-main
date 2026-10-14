@@ -76,17 +76,31 @@ async function resolveByKey(keyName) {
 }
 
 const isAdmin = (req) => req.session?.user?.role === 'Admin';
+const { adminOkumaKapisi } = require('../auth/admin-okuma-kapisi.cjs');
+/** Admin olmayana acik salt okunur uclar: skor ozeti ve sunucu ayrintisi. */
+const CIS_ADMIN_DISI_OKUMA = [/^\/overview\/?$/, /^\/host\/[^/]+\/?$/];
 
 function initNginxCis(app) {
   const { requireAuth } = require('../auth/index.cjs');
   const router = express.Router();
   router.use(express.json({ limit: '256kb' }));
   router.use(requireAuth);
-  router.use((req, res, next) => (isAdmin(req) ? next() : res.status(403).json({ ok: false, message: 'CIS denetimi yalnız Admin.' })));
+  // SALT OKUNUR ERISIM (kullanici karari, 2026-10-14): Nginx Hub Erisimi'nden CIS sekmesi acilan
+  // Admin olmayan kullanici skor ve sunucu ayrintisini OKUR; istisna/kabul edilen deger yazma ve
+  // yeniden tarama Admin'de kalir (bkz. server/auth/admin-okuma-kapisi.cjs).
+  let gorunurlukKapisi = false;
+  router.use(
+    adminOkumaKapisi({
+      okuma: CIS_ADMIN_DISI_OKUMA,
+      mesaj: 'CIS denetimi yalnız Admin.',
+      hazir: () => gorunurlukKapisi,
+    }),
+  );
   try {
     const { requireVisiblePrefix, requireVisible } = require('../auth/visibility.cjs');
     router.use(requireVisiblePrefix('NginxConsole'));
     router.use(requireVisible('tab:nginx:cis'));
+    gorunurlukKapisi = true;
   } catch { /* motor yoksa yoksay */ }
 
   router.get('/overview', async (req, res) => {
@@ -230,4 +244,4 @@ function initNginxCis(app) {
   app.use('/api/nginx-cis', router);
 }
 
-module.exports = { initNginxCis, REGISTRY_KEY, getAssessment };
+module.exports = { initNginxCis, REGISTRY_KEY, getAssessment, _CIS_ADMIN_DISI_OKUMA: CIS_ADMIN_DISI_OKUMA };

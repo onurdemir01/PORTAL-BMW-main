@@ -234,7 +234,7 @@ export default function NginxConsolePage() {
         <SourceNote source={SOURCE_OF[tab]} scanDate={SOURCE_OF[tab] === 'console' ? lastDump : undefined} />
       )}
       {tab === 'dashboard' && canSee('tab:nginx:dashboard') && <DashboardTab hosts={hosts} onGo={(t, h) => go(t, h)} />}
-      {tab === 'instances' && canSee('tab:nginx:instances') && <InstancesTab hosts={hosts} loading={hostsLoading} onRefreshHosts={refreshHosts} onOpen={(h) => go('config', h)} onReload={loadHosts} />}
+      {tab === 'instances' && canSee('tab:nginx:instances') && <InstancesTab hosts={hosts} loading={hostsLoading} onRefreshHosts={isAdmin ? refreshHosts : undefined} onOpen={(h) => go('config', h)} onReload={loadHosts} />}
       {tab === 'config' && canSee('tab:nginx:config') && <ConfigTab isAdmin={isAdmin} initialHost={focusHost} />}
       {tab === 'changes' && canSee('tab:nginx:changes') && <ChangesTab />}
       {tab === 'certs' && canSee('tab:nginx:certs') && <CertsTab />}
@@ -404,13 +404,14 @@ function ConfigTab({ isAdmin, initialHost = null }: { isAdmin: boolean; initialH
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="sunucu / servis / ortam" className="w-full pl-8 pr-2 py-1.5 text-xs border rounded-lg" style={{ borderColor: 'var(--border)' }} />
           </div>
           {/* Dokum araclari: baslik satirinda DEGIL, arama kutusunun altinda kendi satirinda */}
-          <div className="flex items-center gap-1.5 flex-wrap">
+          {/* Dokum yenileme AWX isi baslatir: yalniz Admin (salt okunur erisimde gizli). */}
+          {isAdmin && <div className="flex items-center gap-1.5 flex-wrap">
             <button disabled={busy || checked.size === 0} onClick={() => refresh([...checked])} className={SM_BTN} style={smBtn(true)} title="Seçili sunucuların dokumunu Ansible ile yenile (sunucu başına saniyeler)">
               <ArrowPathIcon className="w-3.5 h-3.5" />Seçilileri yenile{checked.size ? ` (${checked.size})` : ''}
             </button>
             <button disabled={busy} onClick={() => refresh([], true)} className={SM_BTN} style={smBtn()} title="Tüm nginx filosu envanterden keşfedilir (nginx_audit ile aynı betik) — 30-40 dk">Tüm filo</button>
             {checked.size > 0 && <button onClick={() => setChecked(new Set())} className={SM_BTN} style={smBtn()} title="seçimi temizle">Temizle</button>}
-          </div>
+          </div>}
           {hostsErr && <div className="text-[11px] text-amber-700">{hostsErr}</div>}
           <div className="max-h-[70vh] overflow-y-auto space-y-1">
             {groups.map(([svc, list]) => {
