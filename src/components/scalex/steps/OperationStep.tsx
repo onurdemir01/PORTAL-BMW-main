@@ -111,7 +111,12 @@ const OperationStep: React.FC<Props> = ({
   // Önceden seçili DEĞİL — kullanıcı bilinçli olarak seçsin (bkz. dosya başı, kural 2).
   const [mode, setMode] = useState<ScaleXMode | null>(previous?.executionMode ?? null);
   const [replicas, setReplicas] = useState(previous?.targetReplicas ?? "");
-  const [timeout, setTimeoutValue] = useState(previous?.verificationTimeout ?? tDefault);
+  // VARSAYILAN ADMIN AYARINI IZLER (2026-10-14). Eskiden ilk render'daki deger donduruluyordu:
+  // sinirlar (`/config`) adim acildiktan SONRA gelirse alan fabrika degerinde (300) kalir,
+  // is admin'in varsayilaniyla degil o degerle calisirdi. Kullanici alana yazana kadar
+  // deger HER render'da guncel varsayilandan turetilir; yazdigi an onun degeri kalir.
+  const [timeoutGirilen, setTimeoutValue] = useState<string | null>(previous?.verificationTimeout ?? null);
+  const timeout = timeoutGirilen ?? tDefault;
   const [allowPartial, setAllowPartial] = useState(previous?.allowPartial ?? true);
   // Sunucu ayni araligi bagimsiz dogrular; bu yalnizca erken geri bildirim ve
   // "Devam" dugmesini kapatmak icin.

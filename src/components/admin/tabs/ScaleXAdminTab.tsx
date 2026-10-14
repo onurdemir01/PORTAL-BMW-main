@@ -857,7 +857,7 @@ function uygulamalariCoz(json: string | null): string[] {
  *
  * Sunucuda SIFIR degisiklik: yalnizca ekran.
  */
-function IsGecmisiPanel() {
+export function IsGecmisiPanel() {
   const [rows, setRows] = useState<ScaleXHistoryRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -865,6 +865,8 @@ function IsGecmisiPanel() {
   const [durum, setDurum] = useState('');
   const [islem, setIslem] = useState('');
   const [acik, setAcik] = useState<number | null>(null);
+  // UNKNOWN eşiği sunucudan (uzlaştırıcı ayarı); eski sunucu göndermezse sayı yazılmaz.
+  const [unknownSaat, setUnknownSaat] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -872,6 +874,7 @@ function IsGecmisiPanel() {
       const r = await scalexApi.history();
       if (r.ok) {
         setRows(r.items || []);
+        setUnknownSaat(typeof r.unknownAfterHours === 'number' ? r.unknownAfterHours : null);
         setErr(null);
       } else setErr(r.message || 'İş geçmişi okunamadı.');
     } catch (e) {
@@ -931,8 +934,9 @@ function IsGecmisiPanel() {
           <p className="text-sm font-semibold text-[var(--text-primary)]">İş geçmişi</p>
           <p className="mt-0.5 text-xs text-[var(--text-muted)]">
             Son 200 ScaleX işlemi. Admin tümünü, diğer kullanıcılar yalnızca kendi
-            işlerini görür. <strong>UNKNOWN</strong> = uzlaştırıcı 24 saat boyunca işin
-            durumunu okuyamadı — “başarısız” demek <em>değil</em>.
+            işlerini görür. <strong>UNKNOWN</strong> = uzlaştırıcı işin durumunu okuyamadı
+            {unknownSaat !== null ? ` (${unknownSaat} saat beklendi` : ' (beklendi'} ya da AWX
+            yanıtı okunamayacak kadar büyük) — “başarısız” demek <em>değil</em>.
           </p>
         </div>
         <div className="flex items-center gap-3 flex-shrink-0">

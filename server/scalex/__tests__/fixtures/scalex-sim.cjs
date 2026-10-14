@@ -388,6 +388,18 @@ const SORGULAR = [
     }),
   ],
   [
+    // Is gecmisi (`/history`): Admin hepsini, kullanici yalniz kendininkini; yeni once.
+    /^SELECT TOP 200 id, request_key, username, env, tenant, cluster_name, namespace, action, execution_mode, target_replicas, app_names_json, awx_server_id, awx_job_id, status, overall_status, smart_ticket_id, oco_number, approval_state, approved_by, approved_at, reason, created_at, updated_at FROM scalex_operations (WHERE username = \$1 )?ORDER BY created_at DESC$/,
+    (p) => ({
+      rows: sim.kayit.islemler
+        .filter((r) => !p.length || r.username === p[0])
+        .slice()
+        .reverse()
+        .slice(0, 200)
+        .map((r) => ({ ...r })),
+    }),
+  ],
+  [
     /^SELECT \* FROM scalex_operations WHERE awx_server_id = \$1 AND awx_job_id = \$2$/,
     (p) => ({
       rows: sim.kayit.islemler

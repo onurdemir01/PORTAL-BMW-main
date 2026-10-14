@@ -24,6 +24,7 @@ vi.mock('@/contexts/JobTrackerContext', () => ({ useJobTracker: () => ({ addJob:
 import ScopeStep from '@/components/scalex/steps/ScopeStep';
 import StoppedPanel from '@/components/scalex/StoppedPanel';
 import ScaleXKapiDurumu from '@/components/admin/tabs/ScaleXKapiDurumu';
+import { IsGecmisiPanel } from '@/components/admin/tabs/ScaleXAdminTab';
 
 type OzetAdi =
   | 'gerekli_tanimsiz'
@@ -61,6 +62,8 @@ beforeEach(() => {
       if (u.includes('/api/scalex/clusters'))
         return json(200, { ok: true, tree: { prod: { t1: ['c1'] }, test: { t1: ['c1'] } } });
       if (u.includes('/api/scalex/admin/gate-status')) return kartYaniti();
+      if (u.includes('/api/scalex/history'))
+        return json(200, { ok: true, items: [], unknownAfterHours: 6 });
       if (u.includes('/api/scalex/gate-summary')) {
         ozetIstekleri.push(u);
         return ozetYaniti();
@@ -263,5 +266,13 @@ describe('Admin kartı: OCO kapsamı ayardan', () => {
       /OCO kapısı kapalı/,
     );
     kartYaniti = () => json(200, ORNEK.kart.kapali);
+  });
+});
+
+describe('İş geçmişi: UNKNOWN eşiği sunucu ayarından', () => {
+  it('KK12 "24 saat" sabit değil; sunucunun söylediği süre yazılır', async () => {
+    render(<IsGecmisiPanel />);
+    expect(await screen.findByText(/6 saat beklendi/)).toBeTruthy();
+    expect(screen.queryByText(/24 saat/)).toBeNull();
   });
 });

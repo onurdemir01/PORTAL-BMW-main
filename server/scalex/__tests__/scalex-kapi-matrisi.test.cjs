@@ -1869,3 +1869,21 @@ test('KM26 kapi ozeti (kapsam adimi) = onizleme karari; admin ayari degisince AN
     'ozet bir dis sisteme gitti (AWX / OCO / SMART)',
   );
 });
+
+test('KM27 is gecmisi UNKNOWN esigini AYARDAN soyler (ekran "24 saat" diye sabit yazmaz)', async (t) => {
+  sim.konsoluSustur(t);
+  sim.sifirla();
+  const eski = process.env.SCALEX_RECONCILE_STALE_HOURS;
+  try {
+    delete process.env.SCALEX_RECONCILE_STALE_HOURS;
+    const varsayilan = await sim.istek('GET', '/api/scalex/history');
+    assert.equal(varsayilan.status, 200, varsayilan.metin);
+    assert.ok(Array.isArray(varsayilan.json.items));
+    assert.equal(varsayilan.json.unknownAfterHours, 24);
+    process.env.SCALEX_RECONCILE_STALE_HOURS = '6';
+    assert.equal((await sim.istek('GET', '/api/scalex/history')).json.unknownAfterHours, 6, 'ayar ANINDA yansimadi');
+  } finally {
+    if (eski === undefined) delete process.env.SCALEX_RECONCILE_STALE_HOURS;
+    else process.env.SCALEX_RECONCILE_STALE_HOURS = eski;
+  }
+});

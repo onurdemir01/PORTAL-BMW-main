@@ -20,6 +20,7 @@ import { resolve } from 'node:path';
 import { screen, act, fireEvent, waitFor, within } from '@testing-library/react';
 import { render } from '@/test/test-utils';
 import { render as yalinCiz } from '@testing-library/react';
+import { SCALEX_FALLBACK_LIMITS } from '@/hooks/useScaleXLimits';
 import type { ScaleXPreview, ScaleXStoppedItem, ScaleXGateStatus } from '@/api/scalexApi';
 
 type Kurgu = {
@@ -621,6 +622,39 @@ describe('işlem seçimi ile önizleme tek adımda', () => {
     );
     fireEvent.change(screen.getByLabelText('Hedef replica sayısı'), { target: { value: '0' } });
     await waitFor(() => expect(onChange).toHaveBeenLastCalledWith(null));
+  });
+
+  it('bekleme süresi ADMIN varsayılanını izler: sınırlar adım açıldıktan sonra gelse de (2026-10-14)', async () => {
+    // Eskiden ilk render'daki değer donuyordu: `/config` geç gelirse iş fabrika değeri (300)
+    // ile çalışırdı, admin'in varsayılanıyla değil.
+    const onChange = vi.fn();
+    const fabrika = { ...SCALEX_FALLBACK_LIMITS };
+    const admin = { ...SCALEX_FALLBACK_LIMITS, timeoutDefault: '600', timeoutMax: 3600 };
+    const { rerender } = render(<OperationStep {...ortak} limits={fabrika} onChange={onChange} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Durdur/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Uygula/ }));
+    await waitFor(() =>
+      expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ verificationTimeout: '300' })),
+    );
+    rerender(<OperationStep {...ortak} limits={admin} onChange={onChange} />);
+    await waitFor(() =>
+      expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ verificationTimeout: '600' })),
+    );
+  });
+
+  it('kullanıcının yazdığı bekleme süresi admin varsayılanı değişse de KORUNUR', async () => {
+    const onChange = vi.fn();
+    const { rerender } = render(<OperationStep {...ortak} limits={SCALEX_FALLBACK_LIMITS} onChange={onChange} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Durdur/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Uygula/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Gelişmiş/ }));
+    fireEvent.change(screen.getByLabelText(/Sonucu ne kadar bekleyelim/), { target: { value: '120' } });
+    rerender(
+      <OperationStep {...ortak} limits={{ ...SCALEX_FALLBACK_LIMITS, timeoutDefault: '600' }} onChange={onChange} />,
+    );
+    await waitFor(() =>
+      expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ verificationTimeout: '120' })),
+    );
   });
 
   it('nadir ayarlar "Gelişmiş" altında: kapalı başlar, değiştirilen ayar kapalıyken de söylenir', async () => {
