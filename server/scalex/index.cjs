@@ -2410,21 +2410,27 @@ function initScaleX(app) {
     asyncRoute(async (req, res) => {
       const u = currentUser(req);
       const ocoStore = require('../oco/store.cjs');
-      const tavan = Math.min(Number(req.query?.limit) || 100, 500);
-      // Ortak tabloda ScaleX disi kayitlar da var: suzgecten ONCE genis pencere okunur.
-      const { items, truncated } = await ocoStore.listForUser({
-        username: u.username,
-        groups: u.groups,
-        limit: 500,
-      });
+      // Ortak tabloda ScaleX disi kayitlar da var: suzgecten ONCE daha genis bir pencere
+      // okunur. SINIRLI: her satir ham degisken paketini tasir ve bu uc her ScaleX sayfa
+      // acilisinda cagrilir (eskisi 101 satir okuyordu).
+      const PENCERE = 200;
+      const tavan = Math.min(Number(req.query?.limit) || 100, PENCERE);
       // ADMIN HEPSINI GORUR. Ayri bir sorgu degil, ayni listenin suzgecsiz hali:
       // iki ayri sorgu zamanla AYRISIRDI.
       // `listAll` `{ items, total }` DONER (2026-10-14 duzeltmesi): eskiden nesnenin
       // TAMAMI `items` diye gidiyordu. Admin'in paneli "zamanlanmis islem yok" diyordu
       // (hicbir kaydi gormedi); sayac eklenince ScaleX ekrani `items.map` ile coktu.
-      const gorunur = u.role === 'Admin'
-        ? (await ocoStore.listAll({ limit: 500 })).items
-        : items;
+      let gorunur;
+      let truncated = false;
+      if (u.role === 'Admin') {
+        gorunur = (await ocoStore.listAll({ limit: PENCERE })).items;
+      } else {
+        ({ items: gorunur, truncated } = await ocoStore.listForUser({
+          username: u.username,
+          groups: u.groups,
+          limit: PENCERE,
+        }));
+      }
       const scalex = gorunur.filter(scalexKaydiMi);
       res.json({
         ok: true,
