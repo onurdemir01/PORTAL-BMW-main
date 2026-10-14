@@ -272,23 +272,28 @@ export interface ScaleXOcoSchedule {
   status: string;
   awxJobId: number | null;
   /**
-   * Zamanlanmış çalıştırmanın TAM paketi. `detail` bir JSON **metnidir** ve
-   * ScaleX için `{ env, tenant, clusters, namespace, apps, action, executionMode }`
-   * taşır (`server/scalex/index.cjs`).
+   * NE ZAMANLANDI — sunucu kaydın AWX'e gidecek değişkenlerinden çıkarır. İptal kararını
+   * verecek kişi neyi iptal ettiğini görmeli.
    *
-   * Sunucu bunu baştan beri döndürüyordu ama tipte yoktu ve panel okumuyordu:
-   * kullanıcı "OCO 12345 zamanlandı" görüyor, **neyin** zamanlandığını
-   * göremiyordu — iptal kararı verecek kişi neyi iptal ettiğini bilmiyordu.
+   * 2026-10-14: sunucu eskiden kaydın TAMAMINI (`pendingLaunch`, ham değişkenler —
+   * Self Service anketlerinin parola alanları dahil) gönderiyordu; artık yalnızca bu özet.
    */
-  pendingLaunch?: { detail?: string } & Record<string, unknown>;
+  kapsam?: {
+    env: string | null;
+    tenant: string | null;
+    clusters: string[];
+    namespace: string | null;
+    apps: string[];
+    action: string | null;
+    executionMode: string | null;
+    targetReplicas: number | null;
+  };
   /** `null` = eski kayıt, grup bilgisi hiç yazılmamış (boş diziden FARKLI). */
   ownerGroups: string[] | null;
   cancelledBy: string | null;
   cancelNote: string | null;
   errorMessage: string | null;
-  createdAt: string;
-  updatedAt: string;
-  resolvedAt: string | null;
+  createdAt: string | null;
 }
 
 export interface ScaleXGatePolicy {

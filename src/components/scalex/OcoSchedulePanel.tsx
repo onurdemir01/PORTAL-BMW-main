@@ -19,23 +19,21 @@ import { fmtDateTime } from '@/utils/datetime';
 const ACIK = new Set(['SCHEDULED', 'AWX_SCHEDULED', 'PENDING_APPROVAL']);
 
 /**
- * Zamanlanmış işin KAPSAMI. `pendingLaunch.detail` bir JSON metni; bozuksa ya da
- * eski bir kayıtsa `null` döner ve ekran bunu sessizce atlar — bir ayrıntının
- * okunamaması panelin tamamını düşürmemeli.
+ * Zamanlanmış işin KAPSAMI — sunucu kaydın değişkenlerinden çıkarıp `kapsam` olarak
+ * gönderir. Yoksa (eski sunucu) satır sessizce atlanır: bir ayrıntının okunamaması
+ * panelin tamamını düşürmemeli.
+ *
+ * 2026-10-14: eskiden `pendingLaunch.detail` okunuyordu; ScaleX orada boş nesne tutar,
+ * yani bu satır hiç görünmedi. Sunucu artık ham paketi göndermiyor.
  */
-function kapsamCoz(it: ScaleXOcoSchedule): {
-  env?: string; tenant?: string; clusters?: string[];
-  namespace?: string; apps?: string[]; action?: string; executionMode?: string;
-} | null {
-  const ham = it.pendingLaunch?.detail;
-  if (!ham) return null;
-  try {
-    const v = JSON.parse(ham);
-    return v && typeof v === 'object' ? v : null;
-  } catch {
-    return null;
-  }
+function kapsamCoz(it: ScaleXOcoSchedule) {
+  const k = it.kapsam;
+  if (!k || typeof k !== 'object') return null;
+  const dizi = (v: unknown) => (Array.isArray(v) ? v.map(String) : []);
+  return { ...k, clusters: dizi(k.clusters), apps: dizi(k.apps) };
 }
+
+const ISLEM_ADI: Record<string, string> = { stop: 'Durdur', scale: 'Ölçekle', restore: 'Geri Al' };
 
 const DURUM_ETIKET: Record<string, string> = {
   SCHEDULED: 'Zamanlandı',
@@ -230,8 +228,11 @@ const OcoSchedulePanel: React.FC<Props> = ({ reloadKey = 0, gomulu = false, onSa
                 const cl = (k.clusters || []).join(', ');
                 const uy = k.apps || [];
                 return (
-                  <p className="text-xs text-[var(--text-secondary)]">
-                    <span className="font-semibold">{k.action || 'işlem'}</span>
+                  <p className="text-xs text-[var(--text-secondary)]" data-testid="scalex-zamanlama-kapsam">
+                    <span className="font-semibold">
+                      {(k.action && ISLEM_ADI[k.action]) || k.action || 'işlem'}
+                    </span>
+                    {k.action === 'scale' && k.targetReplicas != null && ` → ${k.targetReplicas} replica`}
                     {k.executionMode === 'dry_run' && ' (prova)'}
                     {' · '}
                     <span className="font-mono">{cl || '—'}</span>

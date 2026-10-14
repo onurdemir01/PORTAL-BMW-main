@@ -875,8 +875,12 @@ test('KM14 zamanlanan is: pencere saatinde baslayinca portal isi tanir, sonucu a
   // Zamanlayici isi baslatti (oco/poller): portal bunu uzlastiricinin BIR SONRAKI TURUNDA
   // ogrenir. `tick()` cagrilir (yardimci fonksiyon degil): devralma turun PARCASI olmali —
   // fonksiyon yazilip tura baglanmasaydi onu kimse cagirmazdi.
-  const jobId = sim.awxIsiAc();
-  sim.zamanlananiBaslat(z.json.scheduleId, jobId);
+  // Pencere saati: GERCEK OCO zamanlayicisi isi GERCEK ortak yoldan AWX'e gonderir.
+  await sim.penceredeTur(z.json.scheduleId);
+  const zk = sim.ocoKaydi(z.json.scheduleId);
+  assert.equal(zk.status, 'LAUNCHED', `pencere saatinde is baslamadi: ${zk.errorMessage}`);
+  assert.equal(sim.baslatmalar().length, 1);
+  const jobId = zk.awxJobId;
   const tur = await sim.reconciler.tick();
   assert.equal(tur.scheduledAdopted, 1, `tur zamanlanan isi devralmadi: ${JSON.stringify(tur)}`);
   assert.equal(tur.finalized, 0, 'kosan is sonuclandirildi');
@@ -1414,8 +1418,17 @@ test('KM20 SMART onayi geldikten sonra: is devralinir, sonucu aynaya yazilir; re
   assert.deepEqual([tur.adopted, tur.cancelled, tur.finalized], [0, 0, 0]);
   assert.equal(sim.islemler('PENDING_APPROVAL').length, 1);
 
-  // Onay geldi, onay zamanlayicisi isi baslatti; is hemen bitti.
-  const jobId = sim.awxIsiAc();
+  // Onay geldi: onay dongusunun GERCEK baslatma fonksiyonu (runner) isi AWX'e gonderir;
+  // bileti "LAUNCHED" yapmak donguye ait defter isidir ve taklit edilir. Is hemen bitti.
+  const bilet = sim.kayit.biletler.find((b) => b.id === Number(r.json.ticketId));
+  const baslayan = await sim.onayBaslaticisi(bilet);
+  assert.ok(baslayan && baslayan.jobId, `onaydan sonra is baslamadi: ${JSON.stringify(baslayan)}`);
+  assert.equal(sim.baslatmalar().length, 1);
+  const onayliIs = sim.kayit.isler.get(Number(baslayan.jobId));
+  assert.deepEqual(onayliIs.yutulan, []);
+  assert.equal(onayliIs.ev.execution_mode, 'apply');
+  assert.equal(onayliIs.ev.requester_username, 'ayse', 'onayli is onaylayana/sisteme atfedildi');
+  const jobId = baslayan.jobId;
   sim.biletiOnayla(r.json.ticketId, jobId);
   sim.isiBitir(jobId, {
     targets: [{ cluster: 'c1', app: 'api', kind: 'Deployment', status: 'OK', verified: true }],
@@ -1497,9 +1510,152 @@ test('KM22 zamanlanmis islemler listesi: her rolde DIZI; Admin herkesinkini, kul
     assert.ok(Array.isArray(r.json.items), `${kim}: items dizi degil: ${r.metin.slice(0, 200)}`);
     return r.json;
   };
+  // ORTAK TABLO: ayni kullanicinin bir Self Service zamanlamasi da var; ham paketinde
+  // anketin parola alani duruyor.
+  const PAROLA = 'Gizli-Parola-7731';
+  sim.kayit.ocoKayitlari.push({
+    id: 99001,
+    username: 'ayse',
+    awxServerId: 1,
+    awxTemplateId: 31,
+    ocoNumber: OCO_NO,
+    ocoSubject: 'nginx',
+    runAt: new Date(Date.now() + 3600 * 1000),
+    windowEnd: new Date(Date.now() + 7200 * 1000),
+    status: 'SCHEDULED',
+    pendingLaunch: {
+      templateName: 'Nginx Reverse Proxy Operations',
+      detail: { id: 31, name: 'Nginx Reverse Proxy Operations' },
+      extraVars: { action: 'reload', tbmwans_pwd: PAROLA },
+    },
+    ownerGroups: ['ekip-a'],
+    cancelledBy: null,
+    errorMessage: null,
+    createdAt: new Date(),
+  });
+
   const admin = await liste('yonetici');
   assert.equal(admin.scope, 'all');
-  assert.deepEqual(admin.items.map((x) => x.id), [z.json.scheduleId], 'Admin baskasinin kaydini gormedi');
-  assert.deepEqual((await liste('ayse')).items.map((x) => x.id), [z.json.scheduleId]);
+  assert.deepEqual(admin.items.map((x) => x.id), [z.json.scheduleId], 'Admin baskasinin kaydini gormedi / ScaleX disi kayit listelendi');
+  const ayse = await liste('ayse');
+  assert.deepEqual(ayse.items.map((x) => x.id), [z.json.scheduleId], 'ScaleX panelinde Self Service kaydi');
   assert.deepEqual((await liste('bora')).items, [], 'baska ekibin kaydi gorundu');
+
+  // HAM PAKET GITMEZ: ne `pendingLaunch` ne degiskenler (parola dahil).
+  for (const kim of ['yonetici', 'ayse']) {
+    sim.ayar.kullanici = sim.KULLANICILAR[kim];
+    const ham = (await sim.istek('GET', '/api/scalex/oco-schedules')).metin;
+    assert.ok(!ham.includes('pendingLaunch'), `${kim}: ham paket yanita sizdi`);
+    assert.ok(!ham.includes(PAROLA), `${kim}: parola yanita sizdi`);
+    assert.ok(!ham.includes('extraVars'), `${kim}: degiskenler yanita sizdi`);
+  }
+  // "Ne zamanlandi": kapsam sunucuda degiskenlerden cikarilir.
+  assert.deepEqual(ayse.items[0].kapsam, {
+    env: 'prod',
+    tenant: 't1',
+    clusters: ['c1'],
+    namespace: 'odeme',
+    apps: ['api'],
+    action: 'stop',
+    executionMode: 'apply',
+    targetReplicas: null,
+  });
+
+  // Baska modulun kaydi ScaleX'ten iptal edilemez / guncellenemez (varligi da soylenmez).
+  sim.ayar.kullanici = sim.KULLANICILAR.ayse;
+  const ssIptal = await sim.istek('POST', '/api/scalex/oco-schedules/99001/cancel', {});
+  assert.equal(ssIptal.status, 404, ssIptal.metin);
+  const ssGuncel = await sim.istek('POST', '/api/scalex/oco-schedules/99001/update', { ocoNumber: '7654321' });
+  assert.equal(ssGuncel.status, 404, ssGuncel.metin);
+  assert.equal(sim.ocoKaydi(99001).status, 'SCHEDULED');
+  // ScaleX kaydinin iptal yaniti da ham paketi tasimaz.
+  const iptal = await sim.istek('POST', `/api/scalex/oco-schedules/${z.json.scheduleId}/cancel`, {});
+  assert.equal(iptal.status, 200, iptal.metin);
+  assert.ok(!iptal.metin.includes('pendingLaunch'), 'iptal yaniti ham paketi tasiyor');
+  assert.equal(iptal.json.record.kapsam.namespace, 'odeme');
+});
+
+// ── PENCERE SAATINDEKI BASLATMA (2026-10-14) ─────────────────────────────────
+// Prod'da SMART kurali "yalniz OCO"ya alininca "pencere acilinca otomatik baslat" ilk kez
+// acildi. O saatte isi ScaleX DEGIL ortak OCO zamanlayicisi baslatir; bu yol prod'da
+// ScaleX icin hic kosmamisti ve duzenek onu TAKLIT ediyordu.
+test('KM23 zamanlanan is pencere saatinde ANLIK isle AYNI degiskenlerle baslar; prompt kapaliysa zamanlanmaz; AWX dusse kayit asili kalmaz', async (t) => {
+  sim.konsoluSustur(t);
+  sim.smartKipi('oco_only');
+  const pencereDisi = (ev) => {
+    const kopya = { ...ev };
+    delete kopya.oco_window_start;
+    delete kopya.oco_window_end;
+    return kopya;
+  };
+
+  // 1) Anlik baslatma (pencere icinde): AWX'e giden degiskenler.
+  sim.ayar.oco = 'icinde';
+  const a = await sim.calistir({ ocoNumber: OCO_NO });
+  assert.equal(a.status, 200, a.metin);
+  const anlik = sim.kayit.isler.get(Number(a.json.jobId)).ev;
+
+  // 2) Ayni istek zamanlanir; pencere saatinde gercek zamanlayici baslatir.
+  sim.ayar.oco = 'once';
+  const z = await sim.calistir({ ocoNumber: OCO_NO, ocoAction: 'schedule' });
+  assert.equal(z.json.ocoScheduled, true, z.metin);
+  const once = sim.baslatmalar().length;
+  await sim.penceredeTur(z.json.scheduleId);
+  const kayit = sim.ocoKaydi(z.json.scheduleId);
+  assert.equal(kayit.status, 'LAUNCHED', kayit.errorMessage || '');
+  assert.equal(sim.baslatmalar().length, once + 1, 'pencere saatinde AWX baslatmasi gitmedi');
+  const zIs = sim.kayit.isler.get(Number(kayit.awxJobId));
+  assert.equal(zIs.tplId, sim.ayar.sablonlar.scalex_run.awxTemplateId);
+  assert.deepEqual(zIs.yutulan, [], 'AWX zamanlanan isin degiskenlerini yok saydi');
+  assert.deepEqual(
+    pencereDisi(zIs.ev),
+    pencereDisi(anlik),
+    'zamanlanan is anlik isten FARKLI degiskenlerle basladi',
+  );
+  assert.equal(zIs.ev.execution_mode, 'apply');
+  assert.equal(zIs.ev.oco_number, OCO_NO);
+  assert.equal(zIs.ev.requester_username, 'ayse', 'is zamanlayana atfedilmedi');
+  assert.equal(zIs.ev.requester_is_fallback, false);
+  assert.deepEqual(sim.kayit.smartTalepleri, [], '"yalniz OCO" iken pencere saatinde SMART bileti acildi');
+  assert.ok(
+    sim.kayit.isGecmisi.some((r) => r.kaynak === 'ortak' && Number(r.job_id) === Number(kayit.awxJobId)),
+    'pencere saatinde baslayan is gecmise yazilmadi',
+  );
+  assert.equal((await sim.reconciler.tick()).scheduledAdopted, 1);
+
+  // 3) "Prompt on launch" KAPALI: zamanlama HIC acilmaz (anlik baslatmanin reddiyle ayni
+  // kod), OCO sorulmaz, satir yazilmaz.
+  sim.sifirla();
+  sim.smartKipi('oco_only');
+  sim.ayar.oco = 'once';
+  sim.soguk();
+  sim.ayar.awx.promptAcik = false;
+  const p = await sim.calistir({ ocoNumber: OCO_NO, ocoAction: 'schedule' });
+  assert.equal(p.status, 409, p.metin);
+  assert.equal(p.json.code, 'awx_prompt_on_launch_disabled');
+  assert.deepEqual(sim.kayit.ocoKayitlari, [], 'prompt kapaliyken zamanlama acildi');
+  assert.deepEqual(sim.kayit.islemler, []);
+  assert.deepEqual(sim.kayit.ocoSorgulari, [], 'reddedilecek istek icin OCO soruldu');
+  // Kullanici yalniz "sonra" derse (zamanlama istemedi) on kontrol gerekmez: pencere disi.
+  const sonra = await sim.calistir({ ocoNumber: OCO_NO });
+  assert.equal(sonra.json.ocoDeferred, true, sonra.metin);
+  assert.equal(sim.baslatmalar().length, 0);
+
+  // 4) Pencere saatinde AWX yanit vermiyor: kayit FAILED, islem satirlari kapanir.
+  sim.sifirla();
+  sim.smartKipi('oco_only');
+  sim.ayar.oco = 'once';
+  const f = await sim.calistir({ ocoNumber: OCO_NO, ocoAction: 'schedule' });
+  assert.equal(f.json.ocoScheduled, true, f.metin);
+  sim.ayar.awx.baslatmaDurumu = 503;
+  await sim.penceredeTur(f.json.scheduleId);
+  assert.equal(sim.ocoKaydi(f.json.scheduleId).status, 'FAILED');
+  // Tekrar denenmez (ayni isi iki kez baslatma riski): ikinci tur bir sey yapmaz.
+  sim.ayar.awx.baslatmaDurumu = 0;
+  await sim.penceredeTur(f.json.scheduleId);
+  assert.equal(sim.baslatmalar().length, 1, 'basarisiz zamanlama yeniden denendi');
+  const kapat = await sim.reconciler.tick();
+  assert.equal(kapat.scheduledClosed, 1, JSON.stringify(kapat));
+  assert.deepEqual(sim.islemler('SCHEDULED'), [], 'basarisiz zamanlamanin satiri asili kaldi');
+  assert.deepEqual(sim.kayit.taninmayanSql, []);
 });

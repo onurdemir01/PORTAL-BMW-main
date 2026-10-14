@@ -100,16 +100,22 @@ test('AE6 OCO zamanlama paneli NE zamanlandigini gosterir', () => {
   const ham = oku('src/components/scalex/OcoSchedulePanel.tsx');
   const k = kodOnly(ham);
   assert.match(k, /kapsamCoz/, 'zamanlanan isin kapsami hic cozulmuyor');
-  assert.match(k, /pendingLaunch\?\.detail/, 'kapsam kaynagi okunmuyor');
+  // 2026-10-14: kaynak sunucunun urettigi `kapsam`. Eskiden `pendingLaunch.detail`
+  // okunuyordu; ScaleX orada bos nesne tuttugu icin satir HIC gorunmedi ve sunucu ham
+  // paketi (anket parolalari dahil) ekrana gonderiyordu. Davranis olcumu:
+  // ScaleXKapilar.test.tsx ("NE oldugu gorunur") + scalex-kapi-matrisi KM22.
+  assert.match(k, /it\.kapsam/, 'kapsam kaynagi okunmuyor');
+  assert.doesNotMatch(k, /pendingLaunch/, 'ekran ham paketi okuyor; sunucu onu artik gondermiyor');
   // BOS LISTEDE SESSIZ KALMAMALI.
   assert.doesNotMatch(
     k,
     /if \(!items\.length && !error\) return null;/,
     'bos listede panel hic cizilmiyor — "zamanlanmis isim var miydi" cevapsiz kalir',
   );
-  // Bozuk JSON panelin tamamini dusurmemeli.
-  const d = dilim(k, 'function kapsamCoz', 'const DURUM_ETIKET');
-  assert.match(d, /catch/, 'bozuk detail panelin tamamini dusurur');
+  // Bicimsiz kapsam panelin tamamini dusurmemeli.
+  const d = dilim(k, 'function kapsamCoz', 'const ISLEM_ADI');
+  assert.match(d, /typeof k !== 'object'/, 'bicimsiz kapsam panelin tamamini dusurur');
+  assert.match(d, /Array\.isArray/, 'dizi olmayan cluster/uygulama listesi panelin tamamini dusurur');
 });
 
 test('AE7 SUNUCUYA DOKUNULMADI', () => {

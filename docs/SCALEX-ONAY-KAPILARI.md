@@ -57,6 +57,13 @@ dolu, alan eşlemesi (metadata) dolu, SMART bağlantı ayarları (Admin > Sistem
 - SMART **devrede değilse** ekran "pencere açılınca otomatik başlat" seçeneğini sunar. Kayıt
   portalda tutulur, "Zamanlanmış işlemler" panelinden iptal edilebilir ya da OCO numarası
   değiştirilebilir. İş başlayınca uzlaştırıcı onu tanır; sonucu normal bir iş gibi kaydedilir.
+- Pencere saatinde işi ScaleX değil, ortak OCO zamanlayıcısı başlatır ve AWX'e anlık
+  başlatmayla **aynı** değişkenleri gönderir. O yol AWX şablonunun "Prompt on launch"
+  ayarına bakmadığı için bu ayar **zamanlama anında** denetlenir. Ayar kapalıysa kayıt
+  açılmaz ve istek anlık başlatmadaki hatanın aynısıyla (409
+  `awx_prompt_on_launch_disabled`) reddedilir.
+- Pencere saatinde AWX yanıt vermezse iş **yeniden denenmez**; aynı iş iki kez başlamasın
+  diye kayıt "Başarısız" olur ve işlem satırları kapanır.
 - SMART **devredeyse** zamanlama sunulmaz; pencere açıldığında işlem yeniden başlatılır.
   Sebep "Bilinen sınırlar"da.
 
@@ -150,6 +157,8 @@ kopyalama gerekmez.
   talep kanaryadır.
 - **Zamanlanan işte kapı kararı zamanlama anında donar.** Kayıt açıldıktan sonra anahtar
   değişse de iş zamanlandığı kararla çalışır. Kayıt görünür ve iptal edilebilir.
+- **"Prompt on launch" yalnız zamanlama anında denetlenir.** Kayıt açıldıktan sonra AWX'te
+  bu ayar kapatılırsa, pencere saatindeki başlatma bunu görmez.
 - **OCO denetimi bir takvim denetimidir**: kaydın var olduğuna ve planlanan pencereye bakar;
   onay durumunu ya da hedef sistemleri okumaz (Admin > ScaleX Yönetimi > OCO Tanı bunu gösterir).
 
@@ -157,7 +166,9 @@ kopyalama gerekmez.
 
 - `server/scalex/__tests__/scalex-kapi-matrisi.test.cjs` — istek gerçek yönlendiriciden geçer
   (`fixtures/scalex-sim.cjs`: gerçek ortak kapı ve gerçek `runner`, sahte AWX / OCO / SMART).
-  928 hücrelik karar matrisi ve bu belgedeki her kural için ayrı test.
+  928 hücrelik karar matrisi ve bu belgedeki her kural için ayrı test. Pencere saatindeki ve
+  SMART onayı sonrasındaki başlatmalar da gerçek yoldan koşar: gerçek OCO zamanlayıcısı ve
+  runner'ın gerçek başlatma fonksiyonu sahte AWX'e gider.
 - `src/components/scalex/__tests__/ScaleXKapilar.test.tsx` — ekran, sunucunun gerçek
   yanıtlarıyla (`fixtures/kapi-yanitlari.json`) denenir.
 - `scripts/ui-tarama/scalex-akis.mjs` — sihirbaz gerçek tarayıcıda, veriyle dolu gezilir.
