@@ -219,6 +219,22 @@ function rolOf(host, RP) {
   return '';
 }
 
+/**
+ * TANIMIN REVERSE PROXY SERVISI (kullanici, 2026-10-14: "hangi reverse proxy'ye tanimli oldugunu da
+ * soylesek iyi olur - sunucu yazmaya gerek yok, Glomo mu Webforms mu gibi"). Kaynak tanimin kendi
+ * satiri: Nginx_Config_Audit.service (servis vhost'u, <SERVICE>-<ENV>.conf). Yeni PROD dizin
+ * kurulumunun (Nginx_Intranet_Audit) servis kolonu YOK: o zaman sunucunun tasima grubu soylenir -
+ * Glomo grubu yalniz Glomo'dur ('GLOMO'); diger grup birden cok servisi tasir, tek ad UYDURULMAZ.
+ * @returns {{ servis: string, servisKaynak?: 'grup' }}
+ */
+function servisOf(service, host, RP) {
+  const s = U(service);
+  if (s) return { servis: s };
+  const g = (RP.groups || []).find((x) => x.oldHosts.includes(U(host)) || x.newHosts.includes(U(host)));
+  if (!g) return { servis: '' };
+  return { servis: g.id === 'glomo' ? 'GLOMO' : g.label, servisKaynak: 'grup' };
+}
+
 /** RP host'unun ortami: liste uzerinden (envOfHost yalniz yedek). */
 function rpEnvOf(host, RP) {
   const h = U(host);
@@ -574,6 +590,7 @@ function rpUygula({ rows, apps, inventory, kaynak }) {
       vhost: T(r.vhost),
       location: T(r.location_path),
       status: U(r.status) || 'OK',
+      ...servisOf(r.service, host, RP),
     };
     let bag;
     let d;
@@ -672,6 +689,7 @@ function rpUygula({ rows, apps, inventory, kaynak }) {
       vhost: (trafik && trafik.vhost) || '',
       location: `${ns}/${app}`,
       status: bit(r.app_deployed) ? 'OK' : 'MISSING_APP',
+      ...servisOf('', host, RP),
       yol: 'dizin',
       esles,
       conf,
@@ -811,6 +829,11 @@ function rpUygula({ rows, apps, inventory, kaynak }) {
     // istegiyle "istek var 900" gorunuyordu (dogrulama bulgusu, 2026-10-02).
     a.rp = 'tanimli';
     a.rpYol = [...new Set(kendi.map((d) => d.yol))].sort();
+    // RP SERVISI: yalniz kendi ortaminin tanimlarindan (K3). Ad config'ten gelmediyse (yeni PROD
+    // dizin) sunucu grubundan; ekran bunu "sunucu grubundan" diye ayirir.
+    const servisler = [...new Set(kendi.map((d) => d.servis).filter(Boolean))].sort();
+    if (servisler.length) a.rpServis = servisler;
+    if (kendi.some((d) => d.servisKaynak === 'grup' && d.servis !== 'GLOMO')) a.rpServisGrup = true;
     // rpHost: pay ve payda KENDI ortaminin hostlari (baska ortamin hostu paya girmez).
     const bulunan = new Set(kendi.map((d) => d.host));
     const beklenen = beklenenHostlar(ENV, bulunan);

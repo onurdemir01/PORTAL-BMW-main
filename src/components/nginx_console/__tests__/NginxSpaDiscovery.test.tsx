@@ -1436,3 +1436,69 @@ describe('NginxSpaDiscovery — ikinci satır ve kolon içerikleri (2026-10-03)'
     ]);
   });
 });
+
+// ── 2026-10-14: RP servisi, katlanır keşif özeti, JSON olmayan yanıt ──────────────────────
+describe('NginxSpaDiscovery — RP servisi, özet kutusu, HTML yanıt (2026-10-14)', () => {
+  it('Tanım hücresi "tanımlı" yanında RP servisini yazar (GLOMO / WEBFORMS); grup adı ipucunda açıklanır', async () => {
+    sahte.govde = () =>
+      govdeElle([
+        elle({ application: 'glo-ui', rp: 'tanimli', rpYol: ['include'], rpHost: '2/2', rpServis: ['GLOMO'] }),
+        elle({
+          application: 'web-ui',
+          rp: 'tanimli',
+          rpYol: ['dizin'],
+          rpHost: '1/2',
+          rpServis: ['Openbanking / Saklama / Webforms vb.'],
+          rpServisGrup: true,
+        }),
+        elle({ application: 'yok-ui', rp: 'tanimsiz' }),
+      ]);
+    const { container } = render(<NginxSpaDiscovery />);
+    await waitFor(() => expect(satirlar(container).length).toBe(3));
+    const glo = hucre(satirOf(container, 'glo-ui'), 'rp');
+    expect(glo.querySelector('[data-testid="rp-servis"]')?.textContent).toBe('GLOMO');
+    expect(ipucu(glo)).toContain('Reverse proxy: GLOMO');
+    const web = hucre(satirOf(container, 'web-ui'), 'rp');
+    expect(ipucu(web)).toContain('servis adı okunamıyor');
+    expect(hucre(satirOf(container, 'yok-ui'), 'rp').querySelector('[data-testid="rp-servis"]')).toBeNull();
+  });
+
+  it('keşif özeti açılıp kapanır; kapalıyken tek satır özet; tercih bu tarayıcıda hatırlanır', async () => {
+    const { container, unmount } = render(<NginxSpaDiscovery />);
+    const ozet = await waitFor(() => {
+      const el = container.querySelector('[data-testid="spa-ozet"]') as HTMLElement | null;
+      if (!el) throw new Error('özet yok');
+      return el;
+    });
+    const dugme = ozet.querySelector('button[aria-expanded]') as HTMLButtonElement;
+    expect(dugme.getAttribute('aria-expanded')).toBe('true');
+    expect(ozet.textContent).toContain('tanesi gerçekten SPA');
+    fireEvent.click(dugme);
+    expect(dugme.getAttribute('aria-expanded')).toBe('false');
+    expect(ozet.textContent).not.toContain('tanesi gerçekten SPA');
+    expect(ozet.textContent).toMatch(/uygulama tarandı · \S+ SPA/);
+    expect(localStorage.getItem('nginx-hub:spa-kesfi:ozet-acik')).toBe('0');
+    unmount();
+    const ikinci = render(<NginxSpaDiscovery />);
+    await waitFor(() => expect(ikinci.container.querySelector('[data-testid="spa-ozet"]')).not.toBeNull());
+    const oz2 = ikinci.container.querySelector('[data-testid="spa-ozet"]') as HTMLElement;
+    expect(oz2.querySelector('button[aria-expanded]')?.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('yanıt JSON değilse (ara geçidin HTML sayfası) HTTP durumuyla anlaşılır hata; "Unexpected token" yok', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: false,
+        status: 403,
+        headers: { get: () => 'text/html' },
+        json: async () => JSON.parse('<!doctype html>'),
+        text: async () => '<!doctype html><html><body>Forbidden</body></html>',
+      })),
+    );
+    const { container } = render(<NginxSpaDiscovery />);
+    await waitFor(() => expect(container.textContent).toContain('SPA keşfi okunamadı'));
+    expect(container.textContent).toContain('HTTP 403');
+    expect(container.textContent).not.toContain('Unexpected token');
+  });
+});

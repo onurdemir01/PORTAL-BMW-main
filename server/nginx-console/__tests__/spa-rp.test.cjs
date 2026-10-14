@@ -2264,3 +2264,40 @@ test('KP5 UYGULAMA IKI ORTAMDA: oran IDDIA EDILMEZ', () => {
   assert.equal(r.kapsamDurum, 'olculemedi', 'iki ortamli uygulamada oran iddia edilmis');
   assert.equal(r.kapsamToplam, 0);
 });
+
+// ── RP SERVISI (2026-10-14, kullanici: "hangi reverse proxy'ye tanimli oldugunu da soylesek iyi olur;
+// sunucu yazmaya gerek yok, Glomo mu Webforms mu gibi") ─────────────────────────────────────────
+test('SR-RS1 RP servisi tanimin config satirindan; yalniz kendi ortaminin tanimlarindan', () => {
+  const b = by(run(T_DISC, K({ cfg: T_TANIM })));
+  assert.deepEqual(b['kart-ui'].rpServis, ['KART']);
+  assert.equal(b['kart-ui'].rpServisGrup, undefined);
+  assert.equal(b['bos-ui'].rpServis, undefined, 'tanimsiz uygulamada servis yazilmaz');
+  // ORTAM DISI (K3): PROD RP'nin test adresine proxy'si servis listesine GIRMEZ.
+  const disi = PRX('GBRVPP07', 'kart-ui-kart-test.apps-t.fw.garanti.com.tr', { service: 'GLOMO' });
+  const b2 = by(run(T_DISC, K({ cfg: [...T_TANIM, disi] })));
+  assert.ok((b2['kart-ui'].rpSorun || []).includes('ORTAM_DISI'), 'fixture ortam disi tanim uretmedi');
+  assert.deepEqual(b2['kart-ui'].rpServis, ['KART']);
+});
+
+test('SR-RS2 yeni PROD dizin tanimi: Glomo grubunda GLOMO, diger grupta grup adi + isaret (tek ad uydurulmaz)', () => {
+  const glomoYeni = MIGRATION_GROUPS.find((g) => g.id === 'glomo').newHosts[0];
+  const digerEski = MIGRATION_GROUPS.find((g) => g.id === 'other').oldHosts[0];
+  const digerYeni = MIGRATION_GROUPS.find((g) => g.id === 'other').newHosts[0];
+  const digerEtiket = MIGRATION_GROUPS.find((g) => g.id === 'other').label;
+  const disc = [A('glo-ui', 'odeme-prod'), A('web-ui', 'odeme-prod')];
+  const cfg = [PRX(digerEski, 'web-ui-odeme-prod.apps.fw.garanti.com.tr', { service: 'WEBFORMS', vhost: 'WEBFORMS-PROD' })];
+  const dir = [DIZIN(glomoYeni, 'odeme-prod', 'glo-ui'), DIZIN(digerYeni, 'odeme-prod', 'web-ui')];
+  const r = run(disc, K({ cfg, dir }));
+  const b = by(r);
+  assert.deepEqual(b['glo-ui'].rpServis, ['GLOMO']);
+  assert.equal(b['glo-ui'].rpServisGrup, undefined, 'Glomo grubu tek servistir, isaret gerekmez');
+  assert.deepEqual(b['web-ui'].rpServis, [digerEtiket, 'WEBFORMS'].sort());
+  assert.equal(b['web-ui'].rpServisGrup, true);
+  const t = rpTanimlari(r.rpDetay, 'odeme-prod', 'web-ui');
+  const dz = t.find((d) => d.yol === 'dizin');
+  assert.equal(dz.servis, digerEtiket);
+  assert.equal(dz.servisKaynak, 'grup');
+  const px = t.find((d) => d.yol === 'proxy');
+  assert.equal(px.servis, 'WEBFORMS');
+  assert.equal(px.servisKaynak, undefined);
+});

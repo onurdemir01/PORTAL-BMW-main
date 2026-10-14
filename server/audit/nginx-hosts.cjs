@@ -129,7 +129,8 @@ const INTERNET_RP_NONPROD = Object.freeze({
 let _rpHosts = null;
 /**
  * @returns {{ byEnv: Record<string, string[]>, prodOld: Set<string>, prodNew: Set<string>,
- *             nonProd: Set<string>, all: Set<string>, groups: {oldHosts:string[], newHosts:string[]}[] }}
+ *             nonProd: Set<string>, all: Set<string>,
+ *             groups: {id:string, label:string, oldHosts:string[], newHosts:string[]}[] }}
  */
 function internetRpHosts() {
   if (_rpHosts) return _rpHosts;
@@ -148,6 +149,8 @@ function internetRpHosts() {
     nonProd: new Set(nonProd),
     all: new Set([...nonProd, ...prodOld, ...prodNew]),
     groups: MIGRATION_GROUPS.map((g) => ({
+      id: g.id,
+      label: g.label,
       oldHosts: g.oldHosts.map(U),
       newHosts: g.newHosts.map(U),
     })),

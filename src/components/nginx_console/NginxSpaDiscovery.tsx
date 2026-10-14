@@ -804,6 +804,11 @@ const RP_NEDEN_KISA: Record<string, string> = {
   'hedef-cozulemedi': 'hedef çözülemedi',
   belirsiz: 'birden çok namespace',
 };
+/** RP servisi metni (ipucu / ayrıntı): grup adı tek servis değilse söylenir. */
+const rpServisMetni = (a: NgSpaApp) =>
+  (a.rpServis || []).join(', ') +
+  (a.rpServisGrup ? ' (yeni PROD dizin kurulumu: servis adı okunamıyor, sunucu grubu yazıldı)' : '');
+
 /** Eşleşme yolunun kısa adı (tanımlı hücrenin 2. satırı; tam metin ESLES_ADI ipucunda). */
 const ESLES_KISA: Record<string, string> = {
   'ek-prod': "'-prod' eki",
@@ -851,6 +856,7 @@ function RpHucre({ a, k }: { a: NgSpaApp; k?: NgSpaRpKapsam | null }) {
       <Hucre
         ipucu={[
           `Internet RP'de tanımlı · ${a.rpHost || '?'} sunucu (bulunan/beklenen, ${String(a.env || '').toUpperCase()} RP'leri)`,
+          a.rpServis?.length ? `Reverse proxy: ${rpServisMetni(a)}` : '',
           a.rpEsles ? `Eşleşme: ${ESLES_ADI[a.rpEsles] || a.rpEsles}` : 'Eşleşme: kesin',
           a.rpSorun?.length ? `Sorun: ${a.rpSorun.join(', ')}` : '',
           ortamDisi ? `Ortam dışı: ${ortamDisiMetni(a)} (uyarı)` : '',
@@ -861,6 +867,11 @@ function RpHucre({ a, k }: { a: NgSpaApp; k?: NgSpaRpKapsam | null }) {
         rozetler={rozetler}
       >
         <Rozet ton="iyi">{e.t}</Rozet>
+        {a.rpServis?.length ? (
+          <span className="ml-1 font-semibold" data-testid="rp-servis" style={{ color: 'var(--text-primary)' }}>
+            {a.rpServis.join(', ')}
+          </span>
+        ) : null}
         {(a.rpYol || []).map((y) => (
           <span key={y} className="ml-1" style={{ color: SOLUK }} title={YOL_ADI[y]?.ipucu}>
             {YOL_ADI[y]?.t || y}
@@ -1128,6 +1139,7 @@ function RpAyrinti({
       </div>
       <div style={{ color: 'var(--text-secondary)' }}>
         <b>Reverse proxy</b>: {RP_ETIKET[a.rp]?.t || a.rp}
+        {a.rp === 'tanimli' && a.rpServis?.length ? ` (${rpServisMetni(a)})` : ''}
         {a.rpNeden ? ` — ${rpNedenMetni(a, k)}` : ''}
         {a.rp === 'tanimli' && a.rpEsles ? ` — ${ESLES_ADI[a.rpEsles] || a.rpEsles}` : ''}
         {a.rpSorun?.includes('ORTAM_DISI') ? ` — uyarı: ${ortamDisiMetni(a)}` : ''} ·{' '}
@@ -1171,6 +1183,7 @@ function RpAyrinti({
                 <tr style={{ color: MUTED }}>
                   {[
                     'Sunucu',
+                    'Servis',
                     'Vhost',
                     'Location / dizin',
                     'Yol',
@@ -1201,6 +1214,17 @@ function RpAyrinti({
                       {disiMi(t) && (
                         <span className="ml-1 text-[10px]" style={{ color: WARN }}>
                           ortam dışı
+                        </span>
+                      )}
+                    </td>
+                    <td
+                      className="pr-2 whitespace-nowrap"
+                      title={t.servisKaynak === 'grup' ? 'Servis adı tanımda yok; sunucu grubundan' : undefined}
+                    >
+                      {t.servis || '—'}
+                      {t.servisKaynak === 'grup' && (
+                        <span className="ml-1 text-[10px]" style={{ color: MUTED }}>
+                          (grup)
                         </span>
                       )}
                     </td>
@@ -1741,6 +1765,25 @@ function gorunumYaz(g: Gorunum) {
   }
 }
 
+// OZET KUTUSU KATLANIR (kullanici, 2026-10-14: "en basta hangi uygulamalar tarandi, kac tanesi
+// gercekten SPA diye gozuken alani pencere gibi acip kapatabilmek istiyorum"). Tercih yalniz bu
+// tarayicida (gorunum tercihiyle ayni kural); okunamazsa acik baslar.
+const OZET_ANAHTARI = 'nginx-hub:spa-kesfi:ozet-acik';
+function ozetAcikOku(): boolean {
+  try {
+    return window.localStorage.getItem(OZET_ANAHTARI) !== '0';
+  } catch {
+    return true;
+  }
+}
+function ozetAcikYaz(v: boolean) {
+  try {
+    window.localStorage.setItem(OZET_ANAHTARI, v ? '1' : '0');
+  } catch {
+    // Yazilamazsa tercih yalniz bu sayfa acikken gecerli kalir.
+  }
+}
+
 type SpaSecim = 'tumu' | NgSpaApp['spa'];
 type KalipSecim = 'tumu' | NgSpaApp['pattern'];
 type IstekSecim = 'tumu' | NgSpaApp['istek'];
@@ -1994,6 +2037,12 @@ export default function NginxSpaDiscovery() {
     setGorunum(g);
     gorunumYaz(g);
   };
+  const [ozetAcik, setOzetAcik] = useState<boolean>(ozetAcikOku);
+  const ozetDegis = () => {
+    const v = !ozetAcik;
+    setOzetAcik(v);
+    ozetAcikYaz(v);
+  };
   // SABIT referans: memo'lu satirlar yalniz kolon menusu degisince yeniden cizilir.
   const gorunur = useMemo(
     () => KOLONLAR.map((kol) => kol.id).filter((id) => !gorunum.gizli.includes(id)),
@@ -2009,8 +2058,9 @@ export default function NginxSpaDiscovery() {
     setHata('');
     try {
       const d = await nginxConsoleApi.spaDiscovery(fresh);
+      // requireVisible 'error', nginx-console router'i 'message' yazar: ikisi de okunur.
       if (d && d.ok === false) {
-        setHata(d.message || 'SPA keşfi okunamadı.');
+        setHata(d.message || (d as { error?: string }).error || 'SPA keşfi okunamadı.');
         setData(null);
       } else {
         setData(d);
@@ -2099,6 +2149,7 @@ export default function NginxSpaDiscovery() {
         'ag',
         'ag_envanter',
         'reverse_proxy',
+        'rp_servis',
         'rp_yol',
         'rp_host',
         'rp_neden',
@@ -2127,6 +2178,7 @@ export default function NginxSpaDiscovery() {
         a.ag,
         a.agEnvanter,
         a.rp,
+        (a.rpServis || []).join(' + '),
         (a.rpYol || []).join(' '),
         a.rpHost || '',
         a.rpNeden || '',
@@ -2254,7 +2306,33 @@ export default function NginxSpaDiscovery() {
         <div
           className="rounded-xl border p-3 space-y-1"
           style={{ borderColor: 'var(--border-subtle)' }}
+          data-testid="spa-ozet"
         >
+          <button
+            type="button"
+            onClick={ozetDegis}
+            aria-expanded={ozetAcik}
+            className="w-full flex items-center gap-1.5 text-left text-xs font-semibold"
+            style={{ color: 'var(--text-secondary)' }}
+          >
+            {ozetAcik ? (
+              <ChevronDownIcon className="w-3.5 h-3.5 flex-shrink-0" />
+            ) : (
+              <ChevronRightIcon className="w-3.5 h-3.5 flex-shrink-0" />
+            )}
+            Keşif özeti
+            {!ozetAcik && (
+              <span className="font-normal" style={{ color: 'var(--text-muted)' }}>
+                · {nf(s.apps)} uygulama tarandı · {nf(s.spa)} SPA
+                {s.patternMiss > 0 ? ` · ${nf(s.patternMiss)} adı kurala uymuyor` : ''}
+              </span>
+            )}
+            <span className="ml-auto font-normal text-[11px]" style={{ color: 'var(--text-muted)' }}>
+              {ozetAcik ? 'gizle' : 'göster'}
+            </span>
+          </button>
+          {ozetAcik && (
+          <>
           <div className="text-sm">
             <b>{nf(s.apps)}</b> uygulama tarandı; <b>{nf(s.spa)}</b> tanesi gerçekten SPA (kabinde
             nginx çalışıyor).{' '}
@@ -2299,6 +2377,8 @@ export default function NginxSpaDiscovery() {
           )}
           {data?.coverage && <Kapsam k={data.coverage} />}
           {data?.rpKapsam && <RpKapsamBand k={data.rpKapsam} />}
+          </>
+          )}
         </div>
       )}
 
