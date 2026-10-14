@@ -109,19 +109,22 @@ test('DR gibi az uygulamali cluster GIZLENMEZ - gorunur kalir', () => {
 test('RK1 resmi listeli ortamda n = resmi liste (0 uygulamali cluster dahil); liste disi cluster "beklenmeyen"; listesiz ortam veriden', () => {
   const { envClustersResmi } = require('../ocp-clusters.cjs');
   const { ENV_CLUSTERS } = require('../ocp-platforms.cjs');
-  assert.deepEqual(ENV_CLUSTERS.ark.dev, ['gbocptest1', 'gbocptest2']);
+  // Kullanici duzeltmesi: gbocptest4 dev + test (qa DEGIL; Ansible ark_qa grubunda olsa da).
+  assert.deepEqual(ENV_CLUSTERS.ark.dev, ['gbocptest1', 'gbocptest2', 'gbocptest4']);
+  assert.deepEqual(ENV_CLUSTERS.ark.test, ['gbocptest1', 'gbocptest2', 'gbocptest4']);
   assert.deepEqual(ENV_CLUSTERS.ark.qa, ['gbocpqa1', 'gbocpqa2', 'gbocpankqa2']);
   assert.equal(ENV_CLUSTERS.ark.prod.length, 5);
   const apps = [
-    { envs: { dev: [{ cluster: 'gbocptest1' }, { cluster: 'gbocptest4' }], edu: [{ cluster: 'gbocpedu1' }] } },
-    { envs: { dev: [{ cluster: 'gbocptest1' }] } },
+    { envs: { qa: [{ cluster: 'gbocpqa1' }, { cluster: 'gbocptest4' }], edu: [{ cluster: 'gbocpedu1' }] } },
+    { envs: { qa: [{ cluster: 'gbocpqa1' }] } },
   ];
-  const { kumeler, kaynak } = envClustersResmi(apps, ['dev', 'edu'], ENV_CLUSTERS.ark);
-  assert.deepEqual(kumeler.dev, [
-    { cluster: 'gbocptest1', apps: 2 },
-    { cluster: 'gbocptest2', apps: 0 },
+  const { kumeler, kaynak } = envClustersResmi(apps, ['qa', 'edu'], ENV_CLUSTERS.ark);
+  assert.deepEqual(kumeler.qa, [
+    { cluster: 'gbocpqa1', apps: 2 },
+    { cluster: 'gbocpqa2', apps: 0 },
+    { cluster: 'gbocpankqa2', apps: 0 },
     { cluster: 'gbocptest4', apps: 1, beklenmeyen: true },
   ]);
-  assert.deepEqual(kaynak, { dev: 'resmi', edu: 'veri' });
+  assert.deepEqual(kaynak, { qa: 'resmi', edu: 'veri' });
   assert.deepEqual(kumeler.edu, [{ cluster: 'gbocpedu1', apps: 1 }]);
 });

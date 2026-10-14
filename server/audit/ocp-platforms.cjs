@@ -42,12 +42,12 @@ const PLATFORM_CLUSTERS = {
 // ── RESMI ORTAM -> CLUSTER KUMESI (kullanici, 2026-10-14) ─────────────────────────────
 // Ortam YINE namespace son ekinden gelir (yukaridaki kural degismedi). Bu tablo "bir uygulama o
 // ortamin KAC cluster'inda olmali" sorusunun cevabidir: hucredeki k/n'deki n artik veriden degil
-// buradan gelir. Ansible envanterindeki gruplardan FARKLI (ark_dev ve ark_qa'da gbocptest4 var);
+// buradan gelir. Ansible envanterindeki gruplardan FARKLI (ark_qa'da gbocptest4 var; kullanici: test4 yalniz dev + test);
 // kullanicinin verdigi liste esastir. Bir ortamin namespace'i bu listenin DISINDAKI bir cluster'da
 // gorulurse "beklenmeyen cluster" olarak ayrica gosterilir (sayiya katilmaz).
 const ENV_CLUSTERS = {
   ark: {
-    dev: ['gbocptest1', 'gbocptest2'],
+    dev: ['gbocptest1', 'gbocptest2', 'gbocptest4'],
     test: ['gbocptest1', 'gbocptest2', 'gbocptest4'],
     qa: ['gbocpqa1', 'gbocpqa2', 'gbocpankqa2'],
     prod: ['gbocpprod1', 'gbocpprod2', 'gbocpprod4', 'gbocpankprod2', 'gbocpdrcprod1'],
