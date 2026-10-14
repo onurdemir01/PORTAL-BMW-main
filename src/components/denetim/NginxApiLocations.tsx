@@ -7,6 +7,7 @@
 //   · sunucu farkı — AYNI ortamdaki sunucular farklı limit taşıyor → genelde hata
 //   · ortam farkı  — ortamlar arası limit farkı → kasıtlı olabilir (test 50, prod 300)
 import React, { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react';
+import { GuncellemeRozeti } from '@/components/common/GuncellemeRozeti';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
 import { ArrowDownTrayIcon, ArrowPathIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
 import {
@@ -165,7 +166,12 @@ export function NginxApiLocations() {
 
       <Panel
         title="API bazlı dağılım"
-        description={`${nf(Math.min(rows.length, limit))} / ${nf(rows.length)} yol gösteriliyor · tarama ${data.scannedAt ? fmtDateTime(data.scannedAt) : data.scanDate}`}
+        description={
+          <>
+            {nf(Math.min(rows.length, limit))} / {nf(rows.length)} yol gösteriliyor ·{' '}
+            <GuncellemeRozeti etiket="tarama" tarih={data.scannedAt ? fmtDateTime(data.scannedAt) : data.scanDate} />
+          </>
+        }
         actions={
           <div className="flex items-center gap-2">
             <select

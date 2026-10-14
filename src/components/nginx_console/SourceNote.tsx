@@ -5,6 +5,7 @@
 // yan yana duruyor (dokum / denetim tablolari / CIS tablolari). Her sekmenin basina hangi AWX
 // isinin besledigi, verinin ne zamanki hali oldugu ve tazelemek icin ne yapilmasi gerektigi yazilir.
 import React from 'react';
+import { GuncellemeRozeti } from '@/components/common/GuncellemeRozeti';
 import { InformationCircleIcon } from '@heroicons/react/24/outline';
 
 export type SourceKey = 'console' | 'audit' | 'cis' | 'spa' | 'api' | 'inventory' | 'rvpstatic';
@@ -67,7 +68,7 @@ export function SourceNote({ source, scanDate, extra }: { source: SourceKey; sca
       <InformationCircleIcon className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
       <div>
         <b style={{ color: 'var(--text-secondary)' }}>Kaynak:</b> <span className="font-mono">{s.job}</span> — {s.what}
-        {scanDate ? <> · <b style={{ color: 'var(--text-secondary)' }}>son tarama {scanDate}</b></> : scanDate === null ? <> · <span style={{ color: 'var(--status-warning)' }}>tarama kaydı yok</span></> : null}
+        {scanDate ? <> · <GuncellemeRozeti etiket="son tarama" tarih={scanDate} /></> : scanDate === null ? <> · <span style={{ color: 'var(--status-warning)' }}>tarama kaydı yok</span></> : null}
         <span> · Tazelemek için: {s.refresh}</span>
         {extra ? <> · {extra}</> : null}
       </div>

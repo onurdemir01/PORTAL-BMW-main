@@ -12,6 +12,7 @@
 //
 // Ortam bilgisi TABLODA YOKTUR; sunucu adından türetilir (server/audit/nginx-hosts.cjs).
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { GuncellemeRozeti } from '@/components/common/GuncellemeRozeti';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
 import {
   ArrowDownTrayIcon,
@@ -192,9 +193,10 @@ export function NginxApiEnvanteri() {
 
       <div className="flex flex-wrap items-center gap-2">
         {viewTabs}
-        <span className="text-xs text-[var(--text-muted)]">
-          tarama <span className="tabular-nums">{data.scannedAt ? fmtDateTime(data.scannedAt) : data.scanDate}</span>
-        </span>
+        <GuncellemeRozeti
+          etiket="tarama"
+          tarih={data.scannedAt ? fmtDateTime(data.scannedAt) : data.scanDate}
+        />
         <button
           onClick={() => load()}
           className="ml-auto flex items-center gap-1.5 px-2.5 py-1.5 text-xs border border-[var(--border)] rounded-lg hover:bg-[var(--bg-elevated)]"

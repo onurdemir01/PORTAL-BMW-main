@@ -38,6 +38,7 @@
 // adresin alan adı ve uygulama adının "-app-v" eki görünür kalır (baş kısım kısalır); artan
 // genişliği Adresler alır; yapışkan başlık klavye odağını örtmez (scroll-padding); ikincil
 // metin --text-secondary (AA); "Reverse proxy" başlığı kendi <colgroup>'unda.
+import { GuncellemeRozeti } from '@/components/common/GuncellemeRozeti';
 import {
   Fragment,
   memo,
@@ -2281,7 +2282,7 @@ export default function NginxSpaDiscovery() {
               <> · {nf(s.spaNotInInventory)} SPA route envanterinde tam kayıtlı değil</>
             )}
             {s.unknown > 0 && <> · {nf(s.unknown)} uygulamada SPA olup olmadığı ölçülemedi</>}
-            {data?.scanDate ? ` · keşif ${data.scanDate}` : ''}
+            {data?.scanDate && <> · <GuncellemeRozeti etiket="keşif" tarih={data.scanDate} /></>}
           </div>
           {s.spa > 0 && s.spaAg && (
             <div className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>

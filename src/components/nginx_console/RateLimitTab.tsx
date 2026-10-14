@@ -16,6 +16,7 @@
 // tanımlı ama uygulanmıyor). Sonuncusu sessiz ve tehlikelidir: zone bellekte durur ama
 // hiçbir isteği sınırlamaz — bu yüzden ayrı bir durum.
 import React, { useMemo, useState } from 'react';
+import { GuncellemeRozeti } from '@/components/common/GuncellemeRozeti';
 import {
   ArrowDownTrayIcon, ArrowPathIcon, MagnifyingGlassIcon, ShieldExclamationIcon,
   InformationCircleIcon, ChevronRightIcon, ChevronDownIcon, CheckCircleIcon,
@@ -369,7 +370,7 @@ export function RateLimitTab() {
         Kaynak: <code>dbo.Nginx_Audit_Settings</code> — <b>nginx_audit</b> job'ı her sunucuda <code>nginx -T</code> koşar,
         yani burada gördüğünüz <b>çalışan</b> konfigürasyondur, diskteki dosya değil.
         <b> Eksik</b> = zone hiç yok <i>ya da</i> tanımlı ama <code>limit_req</code>/<code>limit_conn</code> ile uygulanmıyor.
-        Tarama: {data?.scanDate || '—'}
+        <GuncellemeRozeti etiket="tarama" tarih={data?.scanDate || '—'} />
       </p>
     </div>
   );
