@@ -317,10 +317,15 @@ function maskRequestSecrets(text, token) {
   return redactAwxSecrets(s);
 }
 
-function awxRequestToServer(server, token, method, pathname, body = null) {
+function awxRequestToServer(server, token, method, pathname, body = null, opts = null) {
   // TEK NOKTA: cagiranlar yolu `/api/v2/...` yazmaya devam eder; sunucunun tabani
   // farkliysa (AAP 2.5) burada cevrilir.
   const parsed = new URL(mapApiPath(server, pathname), server.url);
+  // TAVAN VARSAYILAN OLARAK AYNI. `opts.maxBytes` yalniz TEK bir okumayi bilerek
+  // genisletmek icindir (FileX: bitmis isin sonucu, tek seferde ve sirayla okunur).
+  // Uzlastirici gibi toplu okuyanlar bunu GECMEZ; OOM kapisi onlar icin degismez.
+  const jsonTavan =
+    opts && Number.isFinite(opts.maxBytes) && opts.maxBytes > 0 ? opts.maxBytes : AWX_JSON_MAX_BYTES;
   const lib = parsed.protocol === 'https:' ? https : http;
   const bodyStr = body ? JSON.stringify(body) : null;
 
@@ -361,14 +366,14 @@ function awxRequestToServer(server, token, method, pathname, body = null) {
       res.on('data', (c) => {
         if (jsonKirpildi) return;
         bayt += c.length;
-        if (bayt > AWX_JSON_MAX_BYTES) {
+        if (bayt > jsonTavan) {
           jsonKirpildi = true;
           // HEMEN REDDET, `end`i BEKLEME: `req.destroy()` sonrasi `end` GELMEZ ve
           // promise sonsuza dek asili kalirdi (PR #106'da tam bu tuzaga dustum).
           reject(
             Object.assign(
               new Error(
-                `AWX yanıtı çok büyük (> ${Math.round(AWX_JSON_MAX_BYTES / (1024 * 1024))} MB): ` +
+                `AWX yanıtı çok büyük (> ${Math.round(jsonTavan / (1024 * 1024))} MB): ` +
                   `${pathname}. İşin çıktısı AWX arayüzünden incelenmeli.`,
               ),
               { status: 502, tooLarge: true },
@@ -1447,7 +1452,9 @@ function ignoredFieldNames(raw) {
   return out;
 }
 
-async function getJobStatusOnServer(serverId, jobId) {
+// `opts.maxBytes`: yalniz tek bir okumanin bayt tavanini genisletir (bkz.
+// awxRequestToServer). Iki argumanli cagrilarin davranisi DEGISMEDI.
+async function getJobStatusOnServer(serverId, jobId, opts = null) {
   const server = getServerById(serverId);
   if (!server) throw Object.assign(new Error('AWX sunucusu bulunamadı.'), { status: 404 });
 
@@ -1455,7 +1462,14 @@ async function getJobStatusOnServer(serverId, jobId) {
   if (isNaN(id) || id <= 0) throw Object.assign(new Error('Geçersiz job ID.'), { status: 400 });
 
   const token = await getTokenForServer(server);
-  const data = await awxRequestToServer(server, token, 'GET', `/api/v2/jobs/${id}/`);
+  const data = await awxRequestToServer(
+    server,
+    token,
+    'GET',
+    `/api/v2/jobs/${id}/`,
+    null,
+    opts && opts.maxBytes ? { maxBytes: opts.maxBytes } : null,
+  );
 
   return {
     jobId: data.id,

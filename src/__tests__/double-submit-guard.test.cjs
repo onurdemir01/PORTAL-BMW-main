@@ -80,9 +80,24 @@ test('H2: FileX poll’u bayat yaniti ATIYOR (unmount + yeniden baslatma)', () =
 
 test('H2: interval her cikis yolunda temizleniyor', () => {
   const src = read('components/filex/FileXWizardPage.tsx');
+  // CIKISLAR TEK YARDIMCIDA (2026-10-14, `kapat`). Yoklama dort yerden cikiyor (sunucu
+  // hatasi, is basarisiz, sonuc, istisna); her biri ayri ayri temizlik yaziyordu ve sayim
+  // bekcisi "en az 4 clearInterval" diyordu. Artik interval UC yerde temizlenir —
+  // unmount, yeniden baslatma, `kapat` — ve olcut, yoklamanin HER cikisinin `kapat`tan
+  // gecmesi.
   const clears = (src.match(/clearInterval\(pollRef\.current\)/g) || []).length;
-  assert.ok(
-    clears >= 4,
-    `clearInterval cagrisi az (${clears}) — bir cikis yolu sizdiriyor olabilir`,
+  assert.ok(clears >= 3, `clearInterval cagrisi az (${clears}) — bir cikis yolu sizdiriyor olabilir`);
+  const kapatGovde = src.slice(src.indexOf('const kapat = ('), src.indexOf('pollRef.current = setInterval('));
+  assert.match(kapatGovde, /clearInterval\(pollRef\.current\)/, '`kapat` interval`i temizlemiyor');
+  const yoklama = src.slice(
+    src.indexOf('pollRef.current = setInterval('),
+    src.indexOf('}, POLL_INTERVAL_MS);'),
   );
+  assert.ok(yoklama.length > 200, 'yoklama govdesi bulunamadi');
+  const cikislar = (yoklama.match(/\bkapat\(/g) || []).length;
+  assert.ok(cikislar >= 4, `yoklamanin ${cikislar} cikisi \`kapat\`tan geciyor (en az 4 bekleniyor)`);
+  // `kapat`tan gecmeden ekran degistiren cikis yok: tek dogrudan adim, `kapat(null)`dan
+  // hemen sonra gelen sonuc ekrani.
+  assert.deepEqual(yoklama.match(/setStep\('\w+'\)/g) || [], ["setStep('result')"]);
+  assert.match(yoklama, /kapat\(null\);\s*setResult\(s\.result\);\s*setStep\('result'\);/);
 });

@@ -214,7 +214,20 @@ test('SS10 `data += c` yazan HER AWX okuyucusunda bayt kapisi var', () => {
     // Ayni `res.on('data')` geri cagrisinda, birikimden ONCE bir tavan
     // karsilastirmasi olmali.
     const once = satirlar.slice(Math.max(0, i - 25), i).join('\n');
-    if (!/>\s*[A-Z_]*MAX_BYTES/.test(once)) kapisiz.push(i + 1);
+    // `jsonTavan`: awxRequestToServer'in cagiran basina tavani (2026-10-14, FileX buyuk
+    // sonuc). Yalniz asagidaki SS11 onun varsayilaninin AWX_JSON_MAX_BYTES oldugunu
+    // kanitladigi icin kabul edilir.
+    if (!/>\s*([A-Z_]*MAX_BYTES|jsonTavan)\b/.test(once)) kapisiz.push(i + 1);
   });
   assert.deepEqual(kapisiz, [], `bayt kapisi OLMAYAN tamponlama satirlari: ${kapisiz.join(', ')}`);
+});
+
+test('SS11 cagiran basina JSON tavani VARSAYILANDA genel kapiya duser', () => {
+  // Tavani genisletmek BILINCLI ve tek okumalik olmali (FileX). Varsayilan genel kapi
+  // degilse uzlastirici gibi toplu okuyanlar sessizce sinirsizlasir.
+  const kod = RUNNER_SRC.replace(/^\s*\/\/.*$/gm, '');
+  const tanim = /const jsonTavan =([\s\S]*?);/.exec(kod);
+  assert.ok(tanim, 'jsonTavan tanimi bulunamadi');
+  assert.match(tanim[1].replace(/\s+/g, ' '), /: AWX_JSON_MAX_BYTES$/, `varsayilan genel kapi degil: ${tanim[1].trim()}`);
+  assert.match(tanim[1], /opts\.maxBytes > 0/, 'gecersiz/sifir tavan reddedilmiyor');
 });
