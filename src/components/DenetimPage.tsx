@@ -8,7 +8,7 @@
 //   Envanter Audit              -> Inventory/MWApps/WASApps dagilimlari
 //   Jboss/WAS Applications Audit-> ad kuralindan ortam matrisi + sapmalar
 //   Web-App Relations           -> uygulamayi servis eden web sunucusu/vhost
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
@@ -945,6 +945,18 @@ function OcpCoverage() {
   // degil GOZLEMDIR - bazi uygulamalarin bazi cluster'larda (or. DR) olmamasi mesru
   // olabilir; amac gorunur kilmak.
   const [onlyPartial, setOnlyPartial] = useState(false);
+  // ORTAM SUTUNU SUZGECI (kullanici, 2026-10-14: "production'da 5/5 olmayanlari nasil hizlica
+  // gorebilirim? ... cluster sayilari arasindaki farkin ne oldugunu nasil anlayabilirim?").
+  // Deger: '' | 'tam' | 'kismi' | 'var' | 'yok' | 'yok:<cluster>' (ortamda var, o cluster'da yok)
+  // | 'var:<cluster>' (o cluster'da var). Cluster cipine tiklamak 'yok:<cluster>' kurar.
+  const [envFiltre, setEnvFiltre] = useState<Record<string, string>>({});
+  const tabloRef = useRef<HTMLDivElement | null>(null);
+  // Sutun suzgeci secilince "Sadece eksigi olanlar" KAPANIR: o kutu tum ortamlarda bulunan
+  // uygulamalari gizler; "prod 5/5 degil" sorusunun cevabinin cogu tam o uygulamalardir.
+  const envFiltreKur = (env: string, v: string) => {
+    setEnvFiltre((m) => ({ ...m, [env]: v }));
+    if (v) setOnlyMissing(false);
+  };
 
   const load = useCallback(async (p: string) => {
     setLoading(true);
@@ -995,16 +1007,44 @@ function OcpCoverage() {
     [data, coverageOf],
   );
 
+  /** Bir satir, bir ortam sutununun suzgecine uyuyor mu. */
+  const envFiltreUyar = useCallback(
+    (row: OcpCoverageRow, env: string, f: string) => {
+      if (!f) return true;
+      const ortamda = (row.envs[env] ?? []).length > 0;
+      const { k, n, on } = coverageOf(row, env);
+      const hepsi = new Set((row.envs[env] ?? []).map((h) => h.cluster));
+      if (f === 'tam') return k > 0 && n > 0 && k === n;
+      if (f === 'kismi') return k > 0 && n > 0 && k < n;
+      if (f === 'var') return ortamda;
+      if (f === 'yok') return !ortamda;
+      if (f.startsWith('yok:')) return ortamda && !on.has(f.slice(4)) && !hepsi.has(f.slice(4));
+      if (f.startsWith('var:')) return hepsi.has(f.slice(4));
+      return true;
+    },
+    [coverageOf],
+  );
+
   const rows = useMemo(() => {
     if (!data) return [];
     const needle = q.trim().toLowerCase();
+    const aktif = Object.entries(envFiltre).filter(([, v]) => v);
     return data.rows.filter((r) => {
       if (onlyMissing && r.missingCount === 0) return false;
       if (onlyPartial && !isPartial(r)) return false;
       if (needle && !r.application.toLowerCase().includes(needle)) return false;
+      for (const [e, f] of aktif) if (!envFiltreUyar(r, e, f)) return false;
       return true;
     });
-  }, [data, q, onlyMissing, onlyPartial, isPartial]);
+  }, [data, q, onlyMissing, onlyPartial, isPartial, envFiltre, envFiltreUyar]);
+
+  /** Ortamda en az bir namespace'i olan uygulama sayisi (filtreden bagimsiz, TUM satirlar). */
+  const ortamdaSayi = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const e of data?.envs ?? []) m[e] = (data?.rows ?? []).filter((r) => (r.envs[e] ?? []).length > 0).length;
+    return m;
+  }, [data]);
+  const filtreVar = Object.values(envFiltre).some(Boolean);
 
   const partialCount = useMemo(
     () => (data ? data.rows.filter(isPartial).length : 0),
@@ -1023,7 +1063,14 @@ function OcpCoverage() {
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        <Select sizeVariant="sm" value={platform} onChange={(e) => setPlatform(e.target.value)}>
+        <Select
+          sizeVariant="sm"
+          value={platform}
+          onChange={(e) => {
+            setEnvFiltre({});
+            setPlatform(e.target.value);
+          }}
+        >
           {(data?.platforms || ['ark']).map((p) => (
             <option key={p} value={p}>
               {p}
@@ -1058,6 +1105,14 @@ function OcpCoverage() {
         <span className="text-xs text-[var(--text-muted)] tabular-nums">
           {rows.length} uygulama
         </span>
+        {filtreVar && (
+          <button
+            onClick={() => setEnvFiltre({})}
+            className="px-2 py-1 text-xs border border-[var(--border)] rounded-lg hover:bg-[var(--bg-elevated)]"
+          >
+            Sütun süzgeçlerini temizle
+          </button>
+        )}
         <div className="ml-auto flex items-center gap-2">
           <button
             onClick={() =>
@@ -1118,7 +1173,10 @@ function OcpCoverage() {
               </h3>
               <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
                 <span className="font-mono">{platform}</span> cluster’ında bir uygulamanın o ortamda
-                en az bir namespace’i varsa sayılır. Ekrandaki filtrelerden etkilenmez.
+                en az bir namespace’i varsa sayılır. <b>Yüzde</b> = o ortamda bulunan uygulama ÷
+                platformda herhangi bir ortamda görülen <b>tüm</b> uygulamalar
+                ({fmtNumber(data.rows.length)}); yani “uygulamaların yüzde kaçı bu ortamda da var”.
+                Ekrandaki filtrelerden etkilenmez.
               </p>
             </div>
             <span className="text-[11px] text-[var(--text-muted)] tabular-nums">
@@ -1147,7 +1205,10 @@ function OcpCoverage() {
                   <span className="w-28 shrink-0 text-right text-[11px] tabular-nums text-[var(--text-muted)]">
                     {fmtNumber(nsCount)} namespace
                   </span>
-                  <span className="w-14 shrink-0 text-right text-xs tabular-nums font-semibold text-[var(--text-secondary)]">
+                  <span
+                    className="w-14 shrink-0 text-right text-xs tabular-nums font-semibold text-[var(--text-secondary)]"
+                    title={`${fmtNumber(apps.length)} / ${fmtNumber(data.rows.length)} uygulama`}
+                  >
                     %{pct.toFixed(0)}
                   </span>
                 </div>
@@ -1171,7 +1232,9 @@ function OcpCoverage() {
             {Object.values(data.envClusterKaynagi || {}).includes('resmi')
               ? <> “resmi” işaretli ortamlarda n, ortamın <b>resmi cluster listesinden</b> gelir; uygulaması 0 olan cluster da sayılır. Listede olmayan bir cluster’da o ortamın namespace’i görülürse <b>beklenmeyen</b> olarak ayrıca gösterilir ve sayıya katılmaz. Hiç kaydı gelmeyen resmi cluster <b>veri yok</b> olarak gösterilir ve n’ye katılmaz — ölçülemedi, yok demek değil.</>
               : <> o ortamda gerçekten namespace barındıran cluster sayısıdır.</>}{' '}
-            Parantez içindeki sayı o cluster'daki uygulama sayısıdır — az uygulamalı bir cluster (örn. DR) için "eksik" görünmesi çoğu zaman normaldir.
+            Parantez içindeki sayı o cluster'daki uygulama sayısıdır — az uygulamalı bir cluster (örn. DR) için "eksik" görünmesi çoğu zaman normaldir.{' '}
+            <b>−N</b>: o ortamda bulunan ama bu cluster'da olmayan uygulama sayısı (ortamdaki toplam − cluster'daki).
+            Çipe tıklayınca aşağıdaki tablo bu uygulamalara süzülür.
           </p>
           <div className="space-y-1.5">
             {envs.map((e) => {
@@ -1185,10 +1248,24 @@ function OcpCoverage() {
                   {data.envClusterKaynagi?.[e] === 'resmi' && (
                     <span className="text-[9px] px-1 rounded border border-sky-200 bg-sky-50 text-sky-700" title="n bu ortamın resmi cluster listesinden geliyor">resmi</span>
                   )}
-                  {list.map((c) => (
-                    <span
+                  {list.map((c) => {
+                    // FARK: ortamda olup bu cluster'da OLMAYAN uygulama sayisi. Beklenmeyen cluster
+                    // icin fark anlamsiz (orada olmasi beklenmiyor); tiklayinca oradakiler suzulur.
+                    const fark = c.veriYok || c.beklenmeyen ? 0 : (ortamdaSayi[e] ?? 0) - c.apps;
+                    const hedef = c.veriYok ? '' : c.beklenmeyen ? `var:${c.cluster}` : fark > 0 ? `yok:${c.cluster}` : '';
+                    const secili = !!hedef && envFiltre[e] === hedef;
+                    return (
+                    <button
+                      type="button"
                       key={c.cluster}
-                      className={`text-[11px] px-2 py-0.5 rounded-lg border font-mono ${c.beklenmeyen ? 'bg-amber-50 text-amber-800 border-amber-300' : ''} ${c.veriYok ? 'border-dashed' : ''}`}
+                      disabled={!hedef}
+                      aria-pressed={secili}
+                      onClick={() => {
+                        envFiltreKur(e, secili ? '' : hedef);
+                        if (!secili) setOnlyPartial(false);
+                        if (!secili) tabloRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+                      }}
+                      className={`text-[11px] px-2 py-0.5 rounded-lg border font-mono ${hedef ? 'cursor-pointer hover:underline' : 'cursor-default'} ${secili ? 'ring-2 ring-[var(--accent)]' : ''} ${c.beklenmeyen ? 'bg-amber-50 text-amber-800 border-amber-300' : ''} ${c.veriYok ? 'border-dashed' : ''}`}
                       style={c.beklenmeyen ? undefined : {
                         borderColor: c.veriYok ? 'var(--border)' : 'var(--border-subtle)',
                         background: 'var(--bg-elevated)',
@@ -1204,10 +1281,16 @@ function OcpCoverage() {
                     >
                       {c.cluster}
                       {!c.veriYok && <span className="ml-1 tabular-nums text-[var(--text-muted)]">({c.apps})</span>}
+                      {fark > 0 && (
+                        <span className="ml-1 tabular-nums font-sans font-semibold" style={{ color: 'var(--status-warning)' }}>
+                          −{fmtNumber(fark)}
+                        </span>
+                      )}
                       {c.beklenmeyen && <span className="ml-1 text-[9px] font-sans font-semibold">beklenmeyen</span>}
                       {c.veriYok && <span className="ml-1 text-[9px] font-sans font-semibold">veri yok</span>}
-                    </span>
-                  ))}
+                    </button>
+                    );
+                  })}
                 </div>
               );
             })}
@@ -1233,7 +1316,7 @@ function OcpCoverage() {
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-xl border border-[var(--border-subtle)]">
+      <div ref={tabloRef} className="overflow-x-auto rounded-xl border border-[var(--border-subtle)] scroll-mt-4">
         <table className="w-full text-sm pf-table-sticky">
           <thead>
             <tr className="bg-[var(--bg-elevated)] border-b border-[var(--border-subtle)] text-left">
@@ -1246,6 +1329,39 @@ function OcpCoverage() {
                   {e}
                 </th>
               ))}
+            </tr>
+            <tr className="bg-[var(--bg-elevated)] border-b border-[var(--border-subtle)] text-left">
+              <th className="px-3 pb-2 text-[10px] font-normal text-[var(--text-muted)]">süzgeç</th>
+              {envs.map((e) => {
+                const kumeler = (data?.envClusters?.[e] ?? []).filter((c) => !c.veriYok);
+                return (
+                  <th key={e} className="px-3 pb-2">
+                    <select
+                      value={envFiltre[e] ?? ''}
+                      onChange={(ev) => envFiltreKur(e, ev.target.value)}
+                      aria-label={`${e} sütununa göre süz`}
+                      className="w-full max-w-[11rem] px-1.5 py-1 text-[11px] font-normal border border-[var(--border)] rounded-md bg-[var(--bg-surface)] text-[var(--text-primary)]"
+                    >
+                      <option value="">Hepsi</option>
+                      <option value="tam">Tam (n/n)</option>
+                      <option value="kismi">Kısmi (tam değil)</option>
+                      <option value="var">Bu ortamda var</option>
+                      <option value="yok">Bu ortamda YOK</option>
+                      {kumeler.map((c) =>
+                        c.beklenmeyen ? (
+                          <option key={c.cluster} value={`var:${c.cluster}`}>
+                            {c.cluster}’de var (beklenmeyen)
+                          </option>
+                        ) : (
+                          <option key={c.cluster} value={`yok:${c.cluster}`}>
+                            {c.cluster}’de yok
+                          </option>
+                        ),
+                      )}
+                    </select>
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody className="divide-y divide-[var(--border-subtle)]">
