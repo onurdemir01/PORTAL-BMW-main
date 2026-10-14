@@ -422,6 +422,7 @@ export const ansibleApi = {
     status: string;
     smartStateName?: string;
     jobId?: number | null;
+    awxServerId?: number | null;
     errorMessage?: string | null;
     externalTicketId?: string | null;
     message?: string;

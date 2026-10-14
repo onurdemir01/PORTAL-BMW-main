@@ -21,6 +21,7 @@ import { useJobTracker } from "@/contexts/JobTrackerContext";
 import { useAuth } from "@/contexts/AuthContext";
 import OpsXSmartConfigModal from "./OpsXSmartConfigModal";
 import KapamaOnayiUyarisi from "@/components/self_service/KapamaOnayiUyarisi";
+import { useOnaySonrasiTakip } from "./useOnaySonrasiTakip";
 import AnsibleLogTerminal from "@/components/common/AnsibleLogTerminal";
 import PlatformStep from "./steps/PlatformStep";
 import AppSearchStep from "./steps/AppSearchStep";
@@ -189,6 +190,7 @@ const OpsXWizardPage: React.FC = () => {
     setOcOperationPending(null);
     setError(null);
     setResult(null);
+    talepSonuSifirla();
     setTrackedJobId(null);
     setDumpJob(null);
     setDumpStatus(null);
@@ -200,6 +202,24 @@ const OpsXWizardPage: React.FC = () => {
     setWasDiscovery(null);
     setWasRun(null);
   }
+
+  // ONAY SONRASI ANA PENCERE (2026-10-14, kullanici: "Smart kaydini onayladigim halde ... ana
+  // pencerede halen Smart talebi bekleniyormus gibi gozukuyor"). Sagdaki "Taleplerim" paneli talebin
+  // durumunu soruyordu; bu ekran talep acildigi anki gorunumde kaliyordu. Self Servis'teki desen:
+  // talep beklerken durum aralikla sorulur; LAUNCHED olunca ekran "Islem baslatildi"ya doner ve
+  // is takibine (pod silmede pod sonuclari) gecilir; reddedilen / iptal / hatali talep soylenir.
+  const bekleyenTalep =
+    result && "pendingApproval" in result && result.pendingApproval && "ticketId" in result && result.ticketId
+      ? result.ticketId
+      : null;
+  const { talepSonu, sifirla: talepSonuSifirla } = useOnaySonrasiTakip(bekleyenTalep, ({ jobId, awxServerId }) => {
+    setResult((onceki) =>
+      onceki ? ({ ...onceki, pendingApproval: false, jobId, awxServerId, status: "pending" } as typeof onceki) : onceki,
+    );
+    if (podDeleteMode) setPodDeleteJob({ awxServerId, jobId });
+    const id = addJob({ title: `OpsX #${jobId}`, fetchStatus: () => opsxApi.jobStatus(awxServerId, jobId) });
+    setTrackedJobId(id);
+  });
 
   function trackJob(r: OpsxRunResult | OpsxDumpLaunchResult) {
     if (r.jobId == null) return;
@@ -737,7 +757,30 @@ const OpsXWizardPage: React.FC = () => {
                 demekti - sonra da "neden hicbir sey olmadi" sorusu. */}
             {/* `result` bir BIRLESIM: dump sonuclari onay kapisina HIC girmez (salt tani),
                 o yuzden alan varligiyla daraltiliyor. */}
-            {'pendingApproval' in result && result.pendingApproval ? (
+            {'pendingApproval' in result && result.pendingApproval && talepSonu ? (
+              <>
+                <ExclamationTriangleIcon className="w-10 h-10 text-red-500" />
+                <div data-testid="opsx-talep-sonu">
+                  <p className="text-sm font-medium text-[var(--text-primary)]">
+                    {talepSonu.status === "REJECTED"
+                      ? "Smart talebi reddedildi — iş başlatılmadı."
+                      : talepSonu.status === "CANCELLED" || talepSonu.status === "CANCELED"
+                        ? "Smart talebi iptal edildi — iş başlatılmadı."
+                        : talepSonu.status === "TIMEOUT"
+                          ? "Smart talebi zaman aşımına uğradı — iş başlatılmadı."
+                          : "Onay sonrası iş başlatılamadı."}
+                  </p>
+                  {talepSonu.errorMessage && (
+                    <p className="mt-1 text-xs text-red-600">{talepSonu.errorMessage}</p>
+                  )}
+                  {'externalTicketId' in result && result.externalTicketId && (
+                    <p className="mt-1 text-xs text-[var(--text-muted)]">
+                      Smart kayıt no: <span className="font-mono">{result.externalTicketId}</span>
+                    </p>
+                  )}
+                </div>
+              </>
+            ) : 'pendingApproval' in result && result.pendingApproval ? (
               <>
                 <ClockIcon className="w-10 h-10 text-amber-500" />
                 <div>

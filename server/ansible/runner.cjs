@@ -4797,6 +4797,8 @@ function initAnsibleRunner(app) {
         status: ticket.status,
         smartStateName: ticket.smartStateName,
         jobId: ticket.awxJobId,
+        // Onay sonrasi is takibi icin (OpsX ana penceresi, 2026-10-14): is HANGI AWX sunucusunda.
+        awxServerId: ticket.awxServerId ?? null,
         errorMessage: ticket.errorMessage,
         externalTicketId: ticket.externalTicketId,
       });
