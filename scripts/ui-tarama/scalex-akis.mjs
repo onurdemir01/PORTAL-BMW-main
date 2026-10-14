@@ -77,7 +77,10 @@ const ORTAK = {
   },
   '/api/scalex/run/': ORNEK.bitenIs.tamCikti,
 };
+// Kapsam adimindaki kural ucu (2026-10-14): kurguyla ayni ayarin GERCEK sunucu yaniti.
+const KURGU_OZETI = { engel_smart_tanimsiz: 'gerekli_tanimsiz', onay_bekliyor: 'gerekli_hazir', basladi_smart_kapali: 'yalniz_oco' };
 const kurguYanitlari = (ad) => ({
+  '/api/scalex/gate-summary': ORNEK.ozet[KURGU_OZETI[ad]],
   '/api/scalex/preview': ORNEK.kurgular[ad].onizleme,
   '/api/scalex/run': { __status: ORNEK.kurgular[ad].calistirma.status, body: ORNEK.kurgular[ad].calistirma.govde },
 });
@@ -153,6 +156,21 @@ async function akis(kurgu, beklenen, tema) {
     await tikla('text=prod');
     await tikla('text=t1');
     await tikla('text=c1');
+    await sleep(700); // kural ucu (kisa gecikmeyle okunur)
+    await olc('1-kapsam-kural');
+    // UYARI ADMIN AYARINI SOYLER: "yalniz OCO"da SMART vaadi yok; "ikinci kisi" HIC yok.
+    const kural = await t.eval(`(document.querySelector('[data-testid="scalex-kapsam-kurali"]')||{}).innerText||''`);
+    const BEKLENEN_KURAL = {
+      engel_smart_tanimsiz: /SMART onayı/,
+      onay_bekliyor: /SMART kaydı açılacak/,
+      basladi_smart_kapali: /yalnız OCO/,
+    };
+    if (!ESKI) {
+      if (!BEKLENEN_KURAL[kurgu].test(kural)) hatalar.push(`${etiket}: kapsam uyarisi beklenen kurali soylemiyor: "${kural}"`);
+      if (/ikinci kişi/i.test(kural)) hatalar.push(`${etiket}: kapsam uyarisi "ikinci kisi" vaat ediyor`);
+      if (kurgu === 'basladi_smart_kapali' && /SMART kaydı açılacak/.test(kural))
+        hatalar.push(`${etiket}: yalniz OCO iken "SMART kaydi acilacak" yaziyor`);
+    }
     await tikla('text=Devam');
     await olc('2-namespace');
     await tikla('text=odeme');

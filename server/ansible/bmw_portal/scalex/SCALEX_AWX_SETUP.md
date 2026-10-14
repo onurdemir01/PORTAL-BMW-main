@@ -596,25 +596,31 @@ SMART metadata alanları tahmin edilmemelidir.
 
 # 18. Onay Politikası
 
-ScaleX çalışma politikasının genel davranışı:
+Kural **portal Admin ekranından** yönetilir ve tüm ScaleX ekranları (kapsam adımı,
+önizleme, "Şu an durdurulmuş" paneli) sunucunun aynı kararını gösterir:
+Admin > Otomasyon > ScaleX Yönetimi > Onay kapıları.
 
-| İşlem                    | OCO           | SMART   |
-| ------------------------ | ------------- | ------- |
-| `dry_run` — tüm ortamlar | Yok           | Yok     |
-| Prod dışı `apply`        | Yok           | Yok     |
-| Prod `restore` + `apply` | Uyarı/gerekçe | Gerekli |
-| Prod `stop` + `apply`    | Gerekli       | Gerekli |
-| Prod `scale` + `apply`   | Gerekli       | Gerekli |
+| İşlem                       | OCO                                        | SMART                                     |
+| --------------------------- | ------------------------------------------ | ----------------------------------------- |
+| `dry_run` — tüm ortamlar    | Yok                                        | Yok                                       |
+| Prod dışı `apply`           | Yok (admin OCO ortam listesine eklemediyse) | Yok                                       |
+| Prod `restore` + `apply`    | Uyarı/gerekçe                              | Admin anahtarına göre                     |
+| Prod `stop`/`scale` + `apply` | Gerekli                                  | Admin anahtarına göre                     |
+
+Admin anahtarı "Prod'da SMART onayı": **Gerekli** (varsayılan) ya da **Gerekli değil — yalnız
+OCO**. Ayrıca SMART ayarındaki istisna kuralları ve yöneticinin kendi tetiklemelerinde SMART
+atlama tercihi geçerlidir. OCO kapısı admin tarafından kapatılabilir; kapalıysa ekranlarda
+görünür ve her çalıştırma denetime yazılır.
 
 Ortam belirlenemiyorsa güvenli tarafta kalmak amacıyla prod politikası uygulanır.
 
-SMART yapılandırılmadan prod `apply` talebi:
+SMART "Gerekli" iken ScaleX için tanımlı değilse prod `apply` talebi
 
 ```text
-503 smart_not_configured
+409 smart_not_configured
 ```
 
-ile reddedilebilir.
+ile reddedilir (ekran bunu OCO sormadan, kapsam adımında söyler).
 
 `dry_run` işlemleri bundan etkilenmez.
 

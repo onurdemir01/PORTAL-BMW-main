@@ -1379,7 +1379,45 @@ test('KM19 ekran testlerinin ornek yanitlari GERCEK sunucu yanitlariyla ayni', a
     hazirla();
     kart[ad] = sabitle((await sim.istek('GET', '/api/scalex/admin/gate-status')).json);
   }
-  const uretilen = { kurgular, bitenIs, kart };
+  // KAPI OZETI (2026-10-14): kapsam adimi ve toplu geri alma kutusu bunu okur.
+  const ozet = {};
+  for (const [ad, hazirla] of [
+    ['gerekli_tanimsiz', () => {}],
+    ['gerekli_hazir', () => (sim.ayar.ozellestirme = SMART())],
+    ['yalniz_oco', () => sim.smartKipi('oco_only')],
+    [
+      'yonetici_atlar',
+      () => {
+        sim.ayar.ozellestirme = SMART();
+        sim.ayar.kullanici = sim.KULLANICILAR.yonetici;
+        sim.adminAtlasin('yonetici');
+      },
+    ],
+    [
+      'istisna_namespace',
+      () => (sim.ayar.ozellestirme = { smartApproval: { ...sim.SMART_HAZIR, skipWhen: 'namespace: odeme' } }),
+    ],
+    [
+      'oco_kapali_yalniz_oco',
+      () => {
+        sim.smartKipi('oco_only');
+        sim.ayar.ozellestirme = { ocoCheck: { enabled: false } };
+      },
+    ],
+  ]) {
+    sim.sifirla();
+    hazirla();
+    ozet[ad] = sabitle((await sim.istek('GET', '/api/scalex/gate-summary?env=prod&tenant=t1&clusters=c1')).json);
+  }
+  sim.sifirla();
+  sim.ayar.ozellestirme = { ocoCheck: { enabled: true, environments: ['prod', 'test'] } };
+  ozet.prod_disi_oco_listesinde = sabitle(
+    (await sim.istek('GET', '/api/scalex/gate-summary?env=test&tenant=t1&clusters=c1')).json,
+  );
+  sim.sifirla();
+  ozet.prod_disi = sabitle((await sim.istek('GET', '/api/scalex/gate-summary?env=test&tenant=t1&clusters=c1')).json);
+
+  const uretilen = { kurgular, bitenIs, kart, ozet };
   if (ORNEK_YAZ) {
     fs.mkdirSync(path.dirname(ORNEK_DOSYASI), { recursive: true });
     fs.writeFileSync(ORNEK_DOSYASI, `${JSON.stringify(uretilen, null, 2)}\n`);
@@ -1402,6 +1440,7 @@ test('KM19 ekran testlerinin ornek yanitlari GERCEK sunucu yanitlariyla ayni', a
   }
   assert.deepEqual(depodaki.bitenIs, bitenIs, 'biten isin durum yaniti ornekten ayrildi');
   assert.deepEqual(depodaki.kart, kart, 'admin durum karti yaniti ornekten ayrildi');
+  assert.deepEqual(depodaki.ozet, ozet, 'kapi ozeti yaniti ornekten ayrildi');
   // Ornekler yalniz BEKLENEN bicimleri tasimali: biten isin sonucu dolu, tam cikti isaretli.
   assert.equal(bitenIs.yoklama.outputFinal, false);
   assert.equal(bitenIs.tamCikti.outputFinal, true);
@@ -1748,4 +1787,85 @@ test('KM25 ertelenen baslatmada AWX degisken yutarsa is IPTAL edilir; bayraksiz 
   assert.equal(sim.ocoKaydi(99101).status, 'LAUNCHED', 'bayraksiz plan davranisi DEGISTI');
   assert.equal(sim.iptaller().length, 0);
   assert.deepEqual(sim.denetimde('ansible_launch_ignored_vars_cancelled'), []);
+});
+
+test('KM26 kapi ozeti (kapsam adimi) = onizleme karari; admin ayari degisince ANINDA degisir', async (t) => {
+  // Kullanici (2026-10-14): "admin ekraninda yalniz OCO dedim ama prod secince yine SMART
+  // acilacak yaziyor". Ilk adimdaki uyari sabitti. Olcut: ozet, ayni secimle `/preview`in
+  // karariyla BIREBIR ayni ve admin anahtarini/ayarlarini ANINDA izliyor.
+  sim.konsoluSustur(t);
+  const ozetAl = async (env) => {
+    const r = await sim.istek('GET', `/api/scalex/gate-summary?env=${env}&tenant=t1&clusters=c1`);
+    assert.equal(r.status, 200, r.metin);
+    return r.json;
+  };
+  let hucre = 0;
+  for (const kip of ['varsayilan', 'oco_only'])
+    for (const smart of ['yok', 'hazir', 'akissiz'])
+      for (const kim of ['ayse', 'yonetici-atlar'])
+        for (const env of ['prod', 'test']) {
+          const s = { env, action: 'stop', mode: 'apply', kip, smart, kim, oco: 'numarasiz', eylem: '-' };
+          kur(s);
+          const oz = await ozetAl(env);
+          for (const action of ['stop', 'scale', 'restore']) {
+            const govde = kur({ ...s, action });
+            const on = await sim.onizle(govde);
+            assert.equal(on.status, 200, on.metin);
+            const beklenenPolitika = on.json.gatePolicy;
+            const ozetteki = action === 'restore' ? oz.restore : oz.change;
+            assert.deepEqual(ozetteki, beklenenPolitika, `${etiket({ ...s, action })}: ozet onizlemeden ayrisiyor`);
+            hucre++;
+          }
+          // Beklenen SMART durumu karar tablosuyla da tutarli (prod + apply).
+          const b = beklenen(s);
+          assert.equal(oz.change.smartStatus, SMART_DURUMU[b.smart], `${etiket(s)}: smartStatus`);
+        }
+  assert.equal(hucre, 72);
+
+  // ADMIN ANAHTARI ANINDA: ayni oturumda gerekli -> yalniz OCO -> gerekli.
+  sim.sifirla();
+  sim.ayar.ozellestirme = { smartApproval: { ...sim.SMART_HAZIR } };
+  assert.equal((await ozetAl('prod')).change.smartStatus, 'ready');
+  sim.smartKipi('oco_only');
+  const ocoKipinde = await ozetAl('prod');
+  assert.equal(ocoKipinde.change.smartStatus, 'disabled_by_admin', 'yalniz OCO ozete yansimadi');
+  assert.equal(ocoKipinde.change.oco, 'require');
+  sim.smartKipi('required');
+  assert.equal((await ozetAl('prod')).change.smartStatus, 'ready');
+
+  // OCO ORTAM LISTESI: prod disi bir ortam listeye eklenince orada da OCO istenir.
+  sim.sifirla();
+  assert.equal((await ozetAl('test')).change.oco, 'skip');
+  sim.ayar.ozellestirme = { ocoCheck: { enabled: true, environments: ['prod', 'test'] } };
+  assert.equal((await ozetAl('test')).change.oco, 'require', 'OCO ortam listesi ozete yansimadi');
+  // Admin karti ayni listeyi gosterir (kural kutusu artik "prod disi OCO istemez" demiyor).
+  sim.ayar.kullanici = sim.KULLANICILAR.yonetici;
+  const kartListeli = (await sim.istek('GET', '/api/scalex/admin/gate-status')).json;
+  assert.deepEqual(kartListeli.oco, { enabled: true, environments: ['prod', 'test'] });
+  sim.ayar.ozellestirme = { ocoCheck: { enabled: false } };
+  assert.deepEqual((await sim.istek('GET', '/api/scalex/admin/gate-status')).json.oco, { enabled: false, environments: null });
+  sim.ayar.kullanici = sim.KULLANICILAR.ayse;
+
+  // SECIME BAGLI KURAL: namespace/islem kurali varsa ekran "kesin karar onizlemede" der;
+  // tenant kurali secimden ONCE de dogru hesaplanir (bayrak yok).
+  sim.sifirla();
+  sim.ayar.ozellestirme = { smartApproval: { ...sim.SMART_HAZIR, skipWhen: 'namespace: odeme' } };
+  assert.equal((await ozetAl('prod')).secimeBagliKural, true);
+  sim.ayar.ozellestirme = { smartApproval: { ...sim.SMART_HAZIR, skipWhen: 'tenant: t1' } };
+  const tenantKurali = await ozetAl('prod');
+  assert.equal(tenantKurali.secimeBagliKural, false);
+  assert.equal(tenantKurali.change.smartStatus, 'skipped_by_rule');
+
+  // GIRDI: env zorunlu; AWX'e / OCO servisine / SMART'a gidilmez.
+  const bos = await sim.istek('GET', '/api/scalex/gate-summary');
+  assert.equal(bos.status, 400);
+  sim.sifirla();
+  sim.ayar.ozellestirme = { smartApproval: { ...sim.SMART_HAZIR } };
+  const once = [sim.kayit.awxIstekleri.length, sim.kayit.ocoSorgulari.length, sim.kayit.smartTalepleri.length];
+  await ozetAl('prod');
+  assert.deepEqual(
+    [sim.kayit.awxIstekleri.length, sim.kayit.ocoSorgulari.length, sim.kayit.smartTalepleri.length],
+    once,
+    'ozet bir dis sisteme gitti (AWX / OCO / SMART)',
+  );
 });

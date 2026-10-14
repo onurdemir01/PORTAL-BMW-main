@@ -1204,6 +1204,10 @@
         "skipRulesInvalid": []
       },
       "adminSkipSelf": false,
+      "oco": {
+        "enabled": true,
+        "environments": null
+      },
       "ornekBaglam": {
         "talepEden": "yonetici",
         "ortam": "prod",
@@ -1263,6 +1267,10 @@
         ]
       },
       "adminSkipSelf": false,
+      "oco": {
+        "enabled": true,
+        "environments": null
+      },
       "ornekBaglam": {
         "talepEden": "yonetici",
         "ortam": "prod",
@@ -1313,6 +1321,10 @@
         "skipRulesInvalid": []
       },
       "adminSkipSelf": false,
+      "oco": {
+        "enabled": true,
+        "environments": null
+      },
       "ornekBaglam": {
         "talepEden": "yonetici",
         "ortam": "prod",
@@ -1327,6 +1339,228 @@
         "oco": "1234567",
         "ozet": "ScaleX Durdur: ornek-namespace (prod / ornek-tenant) — ornek-api, ornek-worker @ ornek-cluster-1, ornek-cluster-2"
       }
+    }
+  },
+  "ozet": {
+    "gerekli_tanimsiz": {
+      "ok": true,
+      "env": "prod",
+      "change": {
+        "oco": "require",
+        "smart": "require",
+        "smartStatus": "not_configured",
+        "smartMissing": [
+          "SMART onayı ScaleX şablonu için açık değil",
+          "Flow Key",
+          "alan eşlemesi (metadata)"
+        ],
+        "smartGateDisabled": false,
+        "ocoGateDisabled": false,
+        "schedulable": false,
+        "blocked": {
+          "code": "smart_not_configured",
+          "message": "Bu ortamda değişiklik SMART onayı gerektiriyor ama ScaleX için SMART onayı kullanıma hazır değil (eksik: SMART onayı ScaleX şablonu için açık değil; Flow Key; alan eşlemesi (metadata)). Değişiklik uygulanmadı. Yöneticiniz Admin > ScaleX Yönetimi > Onay kapıları ekranından SMART onayını tanımlayabilir ya da SMART kuralını kapatabilir. \"Önce kontrol et\" modu kullanılabilir — hiçbir değişiklik yapmaz."
+        },
+        "reason": null
+      },
+      "restore": {
+        "oco": "warn",
+        "smart": "require",
+        "smartStatus": "not_configured",
+        "smartMissing": [
+          "SMART onayı ScaleX şablonu için açık değil",
+          "Flow Key",
+          "alan eşlemesi (metadata)"
+        ],
+        "smartGateDisabled": false,
+        "ocoGateDisabled": false,
+        "schedulable": false,
+        "blocked": {
+          "code": "smart_not_configured",
+          "message": "Bu ortamda değişiklik SMART onayı gerektiriyor ama ScaleX için SMART onayı kullanıma hazır değil (eksik: SMART onayı ScaleX şablonu için açık değil; Flow Key; alan eşlemesi (metadata)). Değişiklik uygulanmadı. Yöneticiniz Admin > ScaleX Yönetimi > Onay kapıları ekranından SMART onayını tanımlayabilir ya da SMART kuralını kapatabilir. \"Önce kontrol et\" modu kullanılabilir — hiçbir değişiklik yapmaz."
+        },
+        "reason": "geri alma bir onarim islemidir"
+      },
+      "secimeBagliKural": false,
+      "configError": null
+    },
+    "gerekli_hazir": {
+      "ok": true,
+      "env": "prod",
+      "change": {
+        "oco": "require",
+        "smart": "require",
+        "smartStatus": "ready",
+        "smartGateDisabled": false,
+        "ocoGateDisabled": false,
+        "schedulable": false,
+        "blocked": null,
+        "reason": null
+      },
+      "restore": {
+        "oco": "warn",
+        "smart": "require",
+        "smartStatus": "ready",
+        "smartGateDisabled": false,
+        "ocoGateDisabled": false,
+        "schedulable": false,
+        "blocked": null,
+        "reason": "geri alma bir onarim islemidir"
+      },
+      "secimeBagliKural": false,
+      "configError": null
+    },
+    "yalniz_oco": {
+      "ok": true,
+      "env": "prod",
+      "change": {
+        "oco": "require",
+        "smart": "skip",
+        "smartStatus": "disabled_by_admin",
+        "smartGateDisabled": true,
+        "ocoGateDisabled": false,
+        "schedulable": true,
+        "blocked": null,
+        "reason": null
+      },
+      "restore": {
+        "oco": "warn",
+        "smart": "skip",
+        "smartStatus": "disabled_by_admin",
+        "smartGateDisabled": true,
+        "ocoGateDisabled": false,
+        "schedulable": false,
+        "blocked": null,
+        "reason": "geri alma bir onarim islemidir"
+      },
+      "secimeBagliKural": false,
+      "configError": null
+    },
+    "yonetici_atlar": {
+      "ok": true,
+      "env": "prod",
+      "change": {
+        "oco": "require",
+        "smart": "skip",
+        "smartStatus": "admin_skip",
+        "smartGateDisabled": false,
+        "ocoGateDisabled": false,
+        "schedulable": true,
+        "blocked": null,
+        "reason": null
+      },
+      "restore": {
+        "oco": "warn",
+        "smart": "skip",
+        "smartStatus": "admin_skip",
+        "smartGateDisabled": false,
+        "ocoGateDisabled": false,
+        "schedulable": false,
+        "blocked": null,
+        "reason": "geri alma bir onarim islemidir"
+      },
+      "secimeBagliKural": false,
+      "configError": null
+    },
+    "istisna_namespace": {
+      "ok": true,
+      "env": "prod",
+      "change": {
+        "oco": "require",
+        "smart": "require",
+        "smartStatus": "ready",
+        "smartGateDisabled": false,
+        "ocoGateDisabled": false,
+        "schedulable": false,
+        "blocked": null,
+        "reason": null
+      },
+      "restore": {
+        "oco": "warn",
+        "smart": "require",
+        "smartStatus": "ready",
+        "smartGateDisabled": false,
+        "ocoGateDisabled": false,
+        "schedulable": false,
+        "blocked": null,
+        "reason": "geri alma bir onarim islemidir"
+      },
+      "secimeBagliKural": true,
+      "configError": null
+    },
+    "oco_kapali_yalniz_oco": {
+      "ok": true,
+      "env": "prod",
+      "change": {
+        "oco": "skip",
+        "smart": "skip",
+        "smartStatus": "disabled_by_admin",
+        "smartGateDisabled": true,
+        "ocoGateDisabled": true,
+        "schedulable": false,
+        "blocked": null,
+        "reason": "OCO kapisi admin tarafindan KAPATILMIS"
+      },
+      "restore": {
+        "oco": "skip",
+        "smart": "skip",
+        "smartStatus": "disabled_by_admin",
+        "smartGateDisabled": true,
+        "ocoGateDisabled": true,
+        "schedulable": false,
+        "blocked": null,
+        "reason": "geri alma bir onarim islemidir"
+      },
+      "secimeBagliKural": false,
+      "configError": null
+    },
+    "prod_disi_oco_listesinde": {
+      "ok": true,
+      "env": "test",
+      "change": {
+        "oco": "require",
+        "smart": "skip",
+        "smartStatus": "not_applicable",
+        "ocoGateDisabled": false,
+        "schedulable": true,
+        "blocked": null,
+        "reason": "prod disi ortam — OCO admin ayariyla bu ortamda da isteniyor"
+      },
+      "restore": {
+        "oco": "warn",
+        "smart": "skip",
+        "smartStatus": "not_applicable",
+        "ocoGateDisabled": false,
+        "schedulable": false,
+        "blocked": null,
+        "reason": "prod disi ortam — OCO admin ayariyla bu ortamda da isteniyor"
+      },
+      "secimeBagliKural": false,
+      "configError": null
+    },
+    "prod_disi": {
+      "ok": true,
+      "env": "test",
+      "change": {
+        "oco": "skip",
+        "smart": "skip",
+        "smartStatus": "not_applicable",
+        "ocoGateDisabled": false,
+        "schedulable": false,
+        "blocked": null,
+        "reason": "prod disi ortam — onay kapilari yalnizca production icin"
+      },
+      "restore": {
+        "oco": "skip",
+        "smart": "skip",
+        "smartStatus": "not_applicable",
+        "ocoGateDisabled": false,
+        "schedulable": false,
+        "blocked": null,
+        "reason": "prod disi ortam — onay kapilari yalnizca production icin"
+      },
+      "secimeBagliKural": false,
+      "configError": null
     }
   }
 }
