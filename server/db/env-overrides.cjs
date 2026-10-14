@@ -181,6 +181,8 @@ const SYSTEM_CONFIG_KEYS = [
   'SCALEX_MAX_TARGETS',
   'SCALEX_PROD_CONFIRM_THRESHOLD',
   'SCALEX_MAX_AUDIT_GROUPS',
+  // PROD SMART KIPI (2026-10-13): required | oco_only. Okuyan: scalex/config.cjs smartMode().
+  'SCALEX_PROD_SMART_MODE',
   // ── Oturum ve giris (Faz E) — SICAK YUKLENIR ─────────────────────────────
   // Okuyan kod her istekte process.env'den okur; dogrulama server/auth/oturum-ayarlari.cjs.
   'SESSION_IDLE_MINUTES',
@@ -211,6 +213,7 @@ const HOT_RELOADABLE_KEYS = [
   'SCALEX_MAX_TARGETS',
   'SCALEX_PROD_CONFIRM_THRESHOLD',
   'SCALEX_MAX_AUDIT_GROUPS',
+  'SCALEX_PROD_SMART_MODE',
   // Oturum ve giris (Faz E): hepsi her istekte okunur.
   'SESSION_IDLE_MINUTES',
   'SESSION_ABSOLUTE_HOURS',

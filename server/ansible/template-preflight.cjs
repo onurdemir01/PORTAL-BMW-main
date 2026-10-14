@@ -54,13 +54,25 @@ async function assertTemplateAcceptsExtraVars(
   if (!tpl) return; // metadata yok → fail-open
   if (tpl.ask_variables !== false) return; // acik ya da bilinmiyor → sorun yok
 
+  throw promptKapaliHatasi({
+    templateId,
+    templateName: tpl.name,
+    label,
+    degiskenSayisi: Object.keys(extraVars).length,
+  });
+}
+
+// HATANIN KENDISI AYRI (2026-10-13): ScaleX ayni kontrolu TEK sablonu okuyarak yapiyor
+// (her baslatmada tum sablon listesini cekmemek icin) ve AYNI metni, AYNI kodu donmeli.
+// Metin iki yerde yazilsaydi biri duzeltilince digeri sessizce eskirdi.
+function promptKapaliHatasi({ templateId, templateName = '', label = '', degiskenSayisi = 0 }) {
   const who = label ? `"${label}" (template ${templateId})` : `template ${templateId}`;
-  throw Object.assign(
+  return Object.assign(
     new Error(
       `AWX ${who} üzerinde "Prompt on launch" (Variables) kapalı. ` +
-        `Bu durumda AWX, portalın gönderdiği ${Object.keys(extraVars).length} değişkeni ` +
+        `Bu durumda AWX, portalın gönderdiği ${degiskenSayisi} değişkeni ` +
         `sessizce yok sayar ve playbook boş girdiyle çalışıp hata verir. ` +
-        `AWX > Job Templates > ${tpl.name || templateId} > Variables bölümündeki ` +
+        `AWX > Job Templates > ${templateName || templateId} > Variables bölümündeki ` +
         `"Prompt on launch" kutusunu işaretleyip kaydedin.`,
     ),
     { status: 409, code: 'awx_prompt_on_launch_disabled' },
@@ -107,4 +119,4 @@ function assertRegistryPlaybook(serverId, templateId, key) {
   return assertTemplatePlaybook(serverId, templateId, BEKLENEN_PLAYBOOK[key], { label: key });
 }
 
-module.exports = { assertTemplateAcceptsExtraVars, assertTemplatePlaybook, assertRegistryPlaybook, BEKLENEN_PLAYBOOK, findTemplate };
+module.exports = { assertTemplateAcceptsExtraVars, assertTemplatePlaybook, assertRegistryPlaybook, BEKLENEN_PLAYBOOK, findTemplate, promptKapaliHatasi };

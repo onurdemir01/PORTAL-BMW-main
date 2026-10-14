@@ -10,10 +10,13 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual';
 import {
   ArrowPathIcon,
+  ChevronDownIcon,
   ExclamationTriangleIcon,
+  FunnelIcon,
   MagnifyingGlassIcon,
   BoltSlashIcon,
 } from '@heroicons/react/24/outline';
+import Collapse from '@/components/common/Collapse';
 import {
   scalexApi,
   type ScaleXWorkload,
@@ -265,6 +268,12 @@ const WorkloadStep: React.FC<Props> = ({
   const [failedClusters, setFailedClusters] = useState<string[]>([]);
   const [problems, setProblems] = useState<{ cluster: string; detail: string }[]>([]);
   const [pdbWarning, setPdbWarning] = useState<string | null>(null);
+  // SADELESTIRME (2026-10-13). Listenin ustunde dort ayri not kutusu ve bir suzgec
+  // satiri vardi; hepsi her ziyarette aciktir ve uygulama listesini asagi itiyordu.
+  // Bilgilendirme notlari tek bir katlanir kutuda, suzgecler "Süz" dugmesinin arkasinda.
+  // ENGELLEYEN uyarilar (cluster taranamadi, liste eksik) bu kutuya GIRMEZ.
+  const [bilgiAcik, setBilgiAcik] = useState(false);
+  const [suzgecAcik, setSuzgecAcik] = useState(false);
   // KESFIN BAKTIGI HER TIP icin sonuc: kac tane bulundu, ya da NEDEN bakilamadi.
   const [kindReports, setKindReports] = useState<ScaleXKindReport[]>([]);
   // AWX'te kosan paket surumu vs. portalin bekledigi surum.
@@ -290,12 +299,18 @@ const WorkloadStep: React.FC<Props> = ({
   // gercekten yasaniyor: kullanici adimlar arasinda gidip geldikce eski dongulerin
   // hepsi arka planda kosmaya devam ederdi.
   const aliveRef = useRef(true);
-  useEffect(
-    () => () => {
+  // `true` YAZIMI SART (2026-10-14). Gelistirme kipinde React.StrictMode efektleri
+  // bagla -> sok -> bagla diye IKI kez kosturur; temizlik `false` yazip birakinca ref
+  // ikinci baglamada `false` KALIYOR ve bilesen "sokulmus" sanilip hicbir yaniti
+  // islemiyordu — `npm run dev`de sihirbaz bu adimda sonsuza dek "yukleniyor" gosteriyordu
+  // (uretim derlemesinde cift kosma yok; gercek tarayici taramasi yakaladi). `StoppedPanel`
+  // ayni deseni zaten dogru kuruyor.
+  useEffect(() => {
+    aliveRef.current = true;
+    return () => {
       aliveRef.current = false;
-    },
-    [],
-  );
+    };
+  }, []);
 
   // KESIF ASILIRSA KULLANICI CIKMAZDA KALMASIN. `poll()` bir `for(;;)` dongusu ve
   // `MAX_POLL_ERRORS` yalnizca HTTP hatalarini sayiyor — AWX isi `pending`/`running`da
@@ -1133,13 +1148,20 @@ const WorkloadStep: React.FC<Props> = ({
     );
   }
 
+  // "Bilgi" kutusunun icerigi. `api_absent` KULLANICIYA SAYILMAZ: o tip cluster'da kurulu
+  // degil, yapilacak bir sey yok.
+  const askable = unreadableKinds.filter((k) => k.reason === 'no_permission');
+  const paketUyusmuyor = !!pkg && pkg.running !== pkg.expected;
+  const bilgiUyarisi = (askable.length > 0 ? 1 : 0) + (paketUyusmuyor ? 1 : 0);
+  const bilgiOzeti = ['veri kaynağı', askable.length > 0 ? 'eksik yetkiler' : '', paketUyusmuyor ? 'paket sürümü' : '']
+    .filter(Boolean)
+    .join(' · ');
+  // Suzgec satiri: kullanici acana kadar kapali. ETKIN bir suzgec ya da gruplama varsa
+  // GIZLENEMEZ — gorunmeyen bir suzgec, "uygulamam listede yok" sinifi bir ariza uretirdi.
+  const suzgecGorunur = suzgecAcik || filters.size > 0 || groupMode !== 'none';
+
   return (
     <div className="space-y-4">
-      {/* Kaynak bugune kadar YALNIZCA KOD YORUMUNDA yaziliydi (bkz. loadCatalog):
-          kullanici listenin envanterden mi canli taramadan mi geldigini ve
-          replika/HPA alanlarinin neden bos oldugunu ekrandan ogrenemiyordu. */}
-      <SourceNote source={SCALEX_APPS} />
-
       {allClustersFailed && (
         <div
           role="alert"
@@ -1164,105 +1186,137 @@ const WorkloadStep: React.FC<Props> = ({
         </div>
       )}
 
-      {/* ── BAKILAMAYAN TIPLER ────────────────────────────────────────────────
-          Bir tip okunamadiginda eskiden HICBIR iz kalmiyordu: ekran "StatefulSet
-          yok" ile "StatefulSet'e bakamadim"i ayirt edemiyordu ve uretimde
-          hangisinin yasandigini kimse soyleyemiyordu. Iki neden kullanici icin
-          tamamen farkli: biri platformdan ISTENEBILIR, digeri hakkinda yapacak
-          bir sey olmayan bir olgu. */}
-      {/* ── OKUNAMAYAN TIPLER: TEK SATIR OZET ────────────────────────────────
-          ONCE BURADA BIR DUVAR VARDI: 12 tipin her biri icin iki-uc satirlik RBAC
-          metni, her kullaniciya, her keside. Kullanicinin o an yapabilecegi bir sey
-          yoktu (yetkiyi platform ekibi verir) ama metin uygulama listesini ekranin
-          disina itiyordu.
-          Uyari KAYBOLMADI — yeri degisti: tam liste artik Admin > ScaleX Yonetimi
-          altinda BIRIKIYOR, cunku bu bir kullanici gorevi degil bir platform talebi.
-
-          `api_absent` KULLANICIYA HIC SAYILMAZ: o tip cluster'da kurulu degil,
-          yapilacak bir sey yok. Sayaca katmak, cozulemeyecek bir eksik varmis
-          izlenimi verirdi. */}
-      {unreadableKinds.length > 0 &&
-        (() => {
-          const askable = unreadableKinds.filter((k) => k.reason === 'no_permission');
-          if (askable.length === 0) return null;
-          return (
-            <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
-              <ExclamationTriangleIcon
-                aria-hidden="true"
-                className="w-4 h-4 flex-shrink-0 mt-0.5"
-              />
-              <div className="min-w-0">
-                <span>
-                  <strong>{askable.length} nesne tipi</strong> okunamadı — bu tipler listede YOK,
-                  ama gerçekten olmadıkları anlamına gelmiyor. Kayıt yöneticiye iletildi.
-                </span>
-                <details className="mt-1">
-                  <summary className="cursor-pointer select-none underline">Hangi tipler?</summary>
-                  <span className="mt-1.5 block space-y-0.5">
-                    {askable.map((k) => (
-                      <span key={k.kind} className="block">
-                        <span className="font-mono">{k.display}</span>
-                        {' — '}
-                        <span className="font-mono">
-                          {/* TAM KAYNAK ADI: RBAC kurallari tam adla yazilir. `sts` demek,
-                              kullanicinin platform ekibine yanlis metin goturmesi demek.
-                              Surum bildirmeyen eski paket `resource` gondermez -> kisa ada duser. */}
-                          {k.verb || 'list'} {k.resource || k.kind}
-                        </span>{' '}
-                        yetkisi yok.
-                      </span>
-                    ))}
-                  </span>
-                </details>
-              </div>
-            </div>
-          );
-        })()}
-
-      {/* ── PAKET SURUMU ─────────────────────────────────────────────────────
-          Paket AWX'e ELLE kopyalaniyor. Ekran bunu bugune kadar TAHMIN ediyordu
-          ("guncel surum kopyalanmamis olabilir"); artik kosan surumu biliyor. */}
-      {pkg && pkg.running !== pkg.expected && (
-        <div
-          role="alert"
-          className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900"
+      {/* ── BILGI: kaynak, okunamayan tipler, paket surumu — TEK katlanir kutu ──
+          Uyari VARSA baslikta sayisiyla soylenir; icerik kapaliyken `inert`tir. */}
+      <div className="rounded-xl border border-[var(--border)]">
+        <button
+          type="button"
+          onClick={() => setBilgiAcik((v) => !v)}
+          aria-expanded={bilgiAcik}
+          aria-controls="scalex-uygulama-bilgi"
+          className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs"
         >
-          <ExclamationTriangleIcon aria-hidden="true" className="w-4 h-4 flex-shrink-0 mt-0.5" />
-          <div className="flex-1 space-y-1.5">
-            <span>
-              AWX'te{' '}
-              <strong>
-                {pkg.running === '0'
-                  ? 'sürüm bildirmeyen eski bir paket'
-                  : `${pkg.running} numaralı paket`}
-              </strong>{' '}
-              koşuyor, portal <strong>{pkg.expected}</strong> bekliyor. Sonuçlar eksik ya da eski
-              biçimde olabilir —<span className="font-mono"> scalex_app/</span> klasörünün güncel
-              hâli AWX projesine yeniden kopyalanmalı.
+          <ChevronDownIcon
+            aria-hidden="true"
+            className={`w-3.5 h-3.5 flex-shrink-0 text-[var(--text-muted)] transition-transform ${bilgiAcik ? 'rotate-180' : ''}`}
+          />
+          <span className="font-medium text-[var(--text-secondary)]">Bilgi</span>
+          {bilgiUyarisi > 0 && (
+            <span className="pf-label pf-label--gold" data-testid="scalex-bilgi-uyari">
+              {bilgiUyarisi} uyarı
             </span>
-            <div className="flex items-center gap-2 flex-wrap">
-              <code className="font-mono text-[11px] bg-amber-100 rounded px-1.5 py-0.5 select-all">
-                running:&nbsp;{pkg.running} → expected:&nbsp;{pkg.expected}
-              </code>
-              <button
-                type="button"
-                data-testid="pkg-copy-btn"
-                className="inline-flex items-center gap-1 rounded-md border border-amber-300 bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-900 hover:bg-amber-200 transition-colors"
-                onClick={() => {
-                  navigator.clipboard
-                    .writeText('cp -r server/ansible/bmw_portal/ <AWX_PROJECT_DIR>/')
-                    .then(() => {
-                      setPkgCopied(true);
-                      setTimeout(() => setPkgCopied(false), 2000);
-                    });
-                }}
+          )}
+          <span className="min-w-0 truncate text-[var(--text-muted)]" title={bilgiOzeti}>
+            {bilgiOzeti}
+          </span>
+        </button>
+        <Collapse open={bilgiAcik}>
+          <div
+            id="scalex-uygulama-bilgi"
+            className="space-y-3 px-3 pb-3"
+            {...(bilgiAcik ? {} : { inert: true })}
+          >
+            {/* Kaynak bugune kadar YALNIZCA KOD YORUMUNDA yaziliydi (bkz. loadCatalog):
+                kullanici listenin envanterden mi canli taramadan mi geldigini ve
+                replika/HPA alanlarinin neden bos oldugunu ekrandan ogrenemiyordu. */}
+            <SourceNote source={SCALEX_APPS} />
+            {/* ── BAKILAMAYAN TIPLER ────────────────────────────────────────────────
+                Bir tip okunamadiginda eskiden HICBIR iz kalmiyordu: ekran "StatefulSet
+                yok" ile "StatefulSet'e bakamadim"i ayirt edemiyordu ve uretimde
+                hangisinin yasandigini kimse soyleyemiyordu. Iki neden kullanici icin
+                tamamen farkli: biri platformdan ISTENEBILIR, digeri hakkinda yapacak
+                bir sey olmayan bir olgu. */}
+            {/* ── OKUNAMAYAN TIPLER: TEK SATIR OZET ────────────────────────────────
+                ONCE BURADA BIR DUVAR VARDI: 12 tipin her biri icin iki-uc satirlik RBAC
+                metni, her kullaniciya, her keside. Kullanicinin o an yapabilecegi bir sey
+                yoktu (yetkiyi platform ekibi verir) ama metin uygulama listesini ekranin
+                disina itiyordu.
+                Uyari KAYBOLMADI — yeri degisti: tam liste artik Admin > ScaleX Yonetimi
+                altinda BIRIKIYOR, cunku bu bir kullanici gorevi degil bir platform talebi.
+
+                `api_absent` KULLANICIYA HIC SAYILMAZ: o tip cluster'da kurulu degil,
+                yapilacak bir sey yok. Sayaca katmak, cozulemeyecek bir eksik varmis
+                izlenimi verirdi. */}
+            {askable.length > 0 && (
+                  <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                    <ExclamationTriangleIcon
+                      aria-hidden="true"
+                      className="w-4 h-4 flex-shrink-0 mt-0.5"
+                    />
+                    <div className="min-w-0">
+                      <span>
+                        <strong>{askable.length} nesne tipi</strong> okunamadı — bu tipler listede YOK,
+                        ama gerçekten olmadıkları anlamına gelmiyor. Kayıt yöneticiye iletildi.
+                      </span>
+                      <details className="mt-1">
+                        <summary className="cursor-pointer select-none underline">Hangi tipler?</summary>
+                        <span className="mt-1.5 block space-y-0.5">
+                          {askable.map((k) => (
+                            <span key={k.kind} className="block">
+                              <span className="font-mono">{k.display}</span>
+                              {' — '}
+                              <span className="font-mono">
+                                {/* TAM KAYNAK ADI: RBAC kurallari tam adla yazilir. `sts` demek,
+                                    kullanicinin platform ekibine yanlis metin goturmesi demek.
+                                    Surum bildirmeyen eski paket `resource` gondermez -> kisa ada duser. */}
+                                {k.verb || 'list'} {k.resource || k.kind}
+                              </span>{' '}
+                              yetkisi yok.
+                            </span>
+                          ))}
+                        </span>
+                      </details>
+                    </div>
+                  </div>
+            )}
+
+            {/* ── PAKET SURUMU ─────────────────────────────────────────────────────
+                Paket AWX'e ELLE kopyalaniyor. Ekran bunu bugune kadar TAHMIN ediyordu
+                ("guncel surum kopyalanmamis olabilir"); artik kosan surumu biliyor. */}
+            {paketUyusmuyor && pkg && (
+              <div
+                role="alert"
+                className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900"
               >
-                {pkgCopied ? 'Kopyalandı' : 'Komutu kopyala'}
-              </button>
-            </div>
+                <ExclamationTriangleIcon aria-hidden="true" className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                <div className="flex-1 space-y-1.5">
+                  <span>
+                    AWX'te{' '}
+                    <strong>
+                      {pkg.running === '0'
+                        ? 'sürüm bildirmeyen eski bir paket'
+                        : `${pkg.running} numaralı paket`}
+                    </strong>{' '}
+                    koşuyor, portal <strong>{pkg.expected}</strong> bekliyor. Sonuçlar eksik ya da eski
+                    biçimde olabilir —<span className="font-mono"> scalex_app/</span> klasörünün güncel
+                    hâli AWX projesine yeniden kopyalanmalı.
+                  </span>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <code className="font-mono text-[11px] bg-amber-100 rounded px-1.5 py-0.5 select-all">
+                      running:&nbsp;{pkg.running} → expected:&nbsp;{pkg.expected}
+                    </code>
+                    <button
+                      type="button"
+                      data-testid="pkg-copy-btn"
+                      className="inline-flex items-center gap-1 rounded-md border border-amber-300 bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-900 hover:bg-amber-200 transition-colors"
+                      onClick={() => {
+                        navigator.clipboard
+                          .writeText('cp -r server/ansible/bmw_portal/ <AWX_PROJECT_DIR>/')
+                          .then(() => {
+                            setPkgCopied(true);
+                            setTimeout(() => setPkgCopied(false), 2000);
+                          });
+                      }}
+                    >
+                      {pkgCopied ? 'Kopyalandı' : 'Komutu kopyala'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
-        </div>
-      )}
+        </Collapse>
+      </div>
 
       {pdbWarning && (
         <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
@@ -1291,6 +1345,21 @@ const WorkloadStep: React.FC<Props> = ({
         </div>
         <button
           type="button"
+          onClick={() => setSuzgecAcik((v) => !v)}
+          disabled={busy}
+          aria-expanded={suzgecGorunur}
+          aria-controls="scalex-suzgecler"
+          className={`inline-flex items-center gap-1.5 px-2.5 py-2 text-xs rounded-lg border transition-colors ${
+            filters.size > 0 || groupMode !== 'none'
+              ? 'border-[var(--accent)] text-[var(--accent)]'
+              : 'border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+          }`}
+        >
+          <FunnelIcon aria-hidden="true" className="w-4 h-4" />
+          {filters.size > 0 ? `Süz (${filters.size})` : 'Süz'}
+        </button>
+        <button
+          type="button"
           onClick={() => startDiscovery(selected)}
           disabled={busy}
           title="Listeyi yeniden tara"
@@ -1305,7 +1374,8 @@ const WorkloadStep: React.FC<Props> = ({
           ad bazinda tekillestirme bunu yariya indirdi ama 150 uygulamali bir namespace
           hala tek tek taranamaz. Arama bir ADI bulmak icin iyi, bir DURUMU bulmak icin
           degil — "hangileri zaten 0?" sorusunun cevabi yoktu. */}
-      <div className="flex flex-wrap items-center gap-2">
+      {suzgecGorunur && (
+      <div id="scalex-suzgecler" className="flex flex-wrap items-center gap-2">
         {WORKLOAD_FILTERS.map((f) => {
           const active = filters.has(f.key);
           const count = filterCounts[f.key] ?? 0;
@@ -1362,6 +1432,7 @@ const WorkloadStep: React.FC<Props> = ({
           </select>
         </label>
       </div>
+      )}
 
       {/* TOPLU SECIM. Kullanici "ark test'te sunlari kapat" derken tek tek 40 kutu
           isaretlemek zorunda kalmamali. Islem GORUNEN (suzulmus) satirlara uygulanir —

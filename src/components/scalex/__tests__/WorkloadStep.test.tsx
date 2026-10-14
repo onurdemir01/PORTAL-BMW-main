@@ -389,6 +389,14 @@ describe('WorkloadStep - discovery', () => {
     expect(screen.getByText('calisan-app')).toBeInTheDocument();
     expect(screen.getByText('sifir-app')).toBeInTheDocument();
 
+    // SUZGECLER "Süz" DUGMESININ ARKASINDA (2026-10-13): acilana kadar satir cizilmez.
+    expect(screen.queryByRole('button', { name: /replica 0 \(1\)/ })).not.toBeInTheDocument();
+    const suz = screen.getByRole('button', { name: 'Süz' });
+    expect(suz).toHaveAttribute('aria-expanded', 'false');
+    await act(async () => {
+      fireEvent.click(suz);
+    });
+
     // Cip sayaci: yalnizca BIR uygulama replica 0.
     const chip = screen.getByRole('button', { name: /replica 0 \(1\)/ });
     await act(async () => {
@@ -398,6 +406,15 @@ describe('WorkloadStep - discovery', () => {
     expect(chip).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByText('sifir-app')).toBeInTheDocument();
     expect(screen.queryByText('calisan-app')).not.toBeInTheDocument();
+
+    // ETKIN SUZGEC GIZLENEMEZ: dugme sayiyi gosterir ve satir kapatilmak istense de
+    // acik kalir — gorunmeyen bir suzgec "uygulamam listede yok" arizasi uretirdi.
+    const suzEtkin = screen.getByRole('button', { name: 'Süz (1)' });
+    await act(async () => {
+      fireEvent.click(suzEtkin);
+    });
+    expect(screen.getByRole('button', { name: /replica 0 \(1\)/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Süz (1)' })).toHaveAttribute('aria-expanded', 'true');
   });
 
   it('select-all only picks visible rows, never hidden or unscalable ones', async () => {
@@ -440,6 +457,9 @@ describe('WorkloadStep - discovery', () => {
     // VARSAYILAN KAPALI: grup basligi yok, bugunku duz liste.
     expect(screen.queryByText('Replica 0 (1)')).not.toBeInTheDocument();
 
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Süz' }));
+    });
     await act(async () => {
       fireEvent.change(screen.getByLabelText('Listeyi grupla'), { target: { value: 'status' } });
     });
@@ -506,6 +526,20 @@ describe('WorkloadStep - discovery', () => {
     );
 
     await renderAndPoll(<WorkloadStep {...defaultProps} />);
+
+    // BILGI KUTUSU KAPALI BASLAR ama uyariyi SAYISIYLA soyler (2026-10-13): uyari
+    // listenin ustunde yer kaplamaz, sessizce de kaybolmaz.
+    const bilgi = screen.getByRole('button', { name: /Bilgi/ });
+    expect(bilgi).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByTestId('scalex-bilgi-uyari')).toHaveTextContent('1 uyarı');
+    expect(bilgi).toHaveTextContent('paket sürümü');
+    // Kapaliyken icerik `inert`: klavye odagi gorunmeyen dugmeye dusmez.
+    expect(document.getElementById('scalex-uygulama-bilgi')).toHaveAttribute('inert');
+    await act(async () => {
+      fireEvent.click(bilgi);
+    });
+    expect(bilgi).toHaveAttribute('aria-expanded', 'true');
+    expect(document.getElementById('scalex-uygulama-bilgi')).not.toHaveAttribute('inert');
 
     // The banner text mentions the running and expected versions
     expect(screen.getByText(/2 numaralı paket/)).toBeInTheDocument();

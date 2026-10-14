@@ -332,9 +332,17 @@ const LAUNCH_OPTION_LABELS: Record<LaunchOptionKey, string> = {
 export default function FieldOverridesModal({
   item,
   onClose,
+  smartBaglami,
 }: {
   item: FieldOverridesModalItem;
   onClose: () => void;
+  /**
+   * Bir modülün SMART alan eşlemesine eklediği değişkenler, ÖRNEK değerleriyle
+   * (ScaleX: `{{scalex.ozet}}` vb. — bkz. server/smart/metadata.cjs). Verilirse yardım
+   * metninde listelenir ve "Önizle" bu bağlamla render edilir; verilmezse ekran aynen
+   * bugünkü gibidir.
+   */
+  smartBaglami?: { ad: 'scalex'; degerler: Record<string, unknown> };
 }) {
   const [fields, setFields] = useState<LocalFieldState[]>([]);
   const [choiceSources, setChoiceSources] = useState<ChoiceSourceInfo[]>([]);
@@ -399,7 +407,12 @@ export default function FieldOverridesModal({
         const k = line.slice(0, i).trim(); const v = line.slice(i + 1).trim();
         if (k) extraVars[k] = v.includes(',') && /path/i.test(k) ? v.split(',').map((x) => x.trim()) : v;
       }
-      const r = await ansibleApi.smartMetadataPreview({ metadataFields: smartApproval.metadataFields, extraVars, templateName: item.title });
+      const r = await ansibleApi.smartMetadataPreview({
+        metadataFields: smartApproval.metadataFields,
+        extraVars,
+        templateName: item.title,
+        ...(smartBaglami ? { [smartBaglami.ad]: smartBaglami.degerler } : {}),
+      });
       if (r.ok && r.metadata) setPreviewOut(r.metadata); else setPreviewErr(r.message || 'Önizleme alınamadı.');
     } catch (e: unknown) { setPreviewErr(e instanceof Error ? e.message : String(e)); }
     finally { setPreviewBusy(false); }
@@ -1893,6 +1906,24 @@ export default function FieldOverridesModal({
                   <code className="font-mono">ALAN_ADI</code> survey'deki değişken adıyla birebir
                   aynı olmalı) kullanılabilir.
                 </p>
+                {smartBaglami && (
+                  <div className="mb-1 rounded-lg border border-[var(--border)] bg-[var(--bg-inset)] p-2 text-[11px] text-[var(--text-secondary)]">
+                    <p className="mb-1">
+                      <strong>Bu modüle özel değişkenler</strong> — işlemin ne olduğunu taşır.
+                      Örnek değerler aşağıda; "Önizle" bunlarla render eder.
+                    </p>
+                    <ul className="grid gap-x-4 gap-y-0.5 sm:grid-cols-2">
+                      {Object.entries(smartBaglami.degerler).map(([k, v]) => (
+                        <li key={k} className="flex min-w-0 items-baseline gap-1.5">
+                          <code className="font-mono flex-shrink-0">{`{{${smartBaglami.ad}.${k}}}`}</code>
+                          <span className="truncate text-[var(--text-muted)]" title={String(v)}>
+                            {String(v)}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
                 <p className="text-[11px] text-[var(--text-muted)] mb-1">
                   <strong>Koşul gerekiyorsa</strong> (örn. ortam Production ise farklı bir
                   metin/zorunlu alan) tek satırda{' '}

@@ -123,19 +123,34 @@ test('T4 kesif durum ucu AWX stdout`unu HIC indirmiyor (sonuc artifact`tan)', ()
 // `runner.cjs`in `ss/job-status` ucunda kanitlanmis desen: kosarken ARTIMLI,
 // bitince TAM cekim (arsiv ve kullanicinin gordugu son metin artimlardan
 // TUREMEZ).
-test('T5 islem yoklamasi kosarken ARTIMLI, bitince TAM cekiyor', () => {
+//
+// 2026-10-13: "bitince TAM" artik AYRI BIR ISTEK (`?cikti=tam`). Eskiden bitmis isin
+// yaniti tam indirmeyi BEKLIYORDU ve ekran ayni ucu ikinci kez cagiriyordu; sonuc iki
+// indirme sonra gorunuyordu. Degismez AYNI: kullanicinin gordugu son metin artimlardan
+// turemez. DAVRANIS olcumu: scalex-kapi-matrisi KM13 (sahte AWX'te tam cekim sayilir).
+test('T5 islem yoklamasi ARTIMLI ceker; TAM cekim yalniz ?cikti=tam ile', () => {
   const g = rota('/run/:serverId/:jobId/status');
+  assert.match(g, /const tamCikti = String\(req\.query\?\.cikti \|\| ''\) === 'tam'/, 'tam cekim istegi okunmuyor');
   assert.match(
     g,
-    /getJobOutputOnServer\([\s\S]{0,120}artimli:\s*!status\.finished/,
+    /tamCikti\s*\?\s*null\s*:\s*runner\.getJobOutputOnServer\([\s\S]{0,80}artimli:\s*true/,
     'islem yoklamasi hala her turda TAM stdout indiriyor',
   );
-  // Terminal bos kalmamali: cikti KOSULSUZ cekiliyor olmali (yalnizca BICIMI
-  // degisiyor). `status.finished ?` deseni buraya sizarsa canli log olurdu.
+  assert.match(
+    g,
+    /tamCikti\s*\?\s*await runner\.getJobOutputOnServer\(serverId, jobId\)/,
+    '`?cikti=tam` artimli cekiyor — son metin artimlardan turer',
+  );
+  // Terminal bos kalmamali: cikti isin durumuna gore KOSULLU cekilmez (yalnizca BICIMI
+  // degisir). `status.finished ?` deseni buraya sizarsa canli log olurdu.
   assert.ok(
     !/status\.finished\s*\?[\s\S]{0,200}getJobOutputOnServer/.test(g),
     'islem yolunda cikti kosullu cekiliyor — canli terminal bosalir',
   );
+  assert.match(g, /outputFinal: tamCikti/, 'ekran metnin son hal olup olmadigini bilemiyor');
+  // Ekran is bitince tam metni BIR KEZ ister.
+  const sayfa = oku('src/components/scalex/ScaleXPage.tsx');
+  assert.match(sayfa, /runStatus\([^)]*\{\s*tamCikti:\s*true\s*\}/, 'ekran bitmis isin tam metnini istemiyor');
 });
 
 // ══ T6: OLCUM KAYDEDILIYOR ve HER MODDA ═════════════════════════════════════

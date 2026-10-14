@@ -42,21 +42,25 @@ tek yerde: uzlaştırıcı da aynı `finalizeOperation`'ı çağırır.
 
 Kapı politikası `launch.gatePolicyFor` ile belirlenir:
 
-| Durum                       | OCO                                      | SMART   |
-| --------------------------- | ---------------------------------------- | ------- |
-| `dry_run` (Önce kontrol et) | yok                                      | yok     |
-| `restore` + apply           | uyarır, engellemez (gerekçe **zorunlu**) | gerekli |
-| `stop` / `scale` + apply    | gerekli                                  | gerekli |
+| Durum (production)          | OCO                                      | SMART                |
+| --------------------------- | ---------------------------------------- | -------------------- |
+| `dry_run` (Önce kontrol et) | yok                                      | yok                  |
+| `restore` + apply           | uyarır, engellemez (gerekçe **zorunlu**) | SMART kuralına göre  |
+| `stop` / `scale` + apply    | gerekli                                  | SMART kuralına göre  |
+
+Prod dışında kapı yoktur. SMART kuralı, admin anahtarı, istisna kuralları, hata kodları ve
+canlıya alma adımları: **[SCALEX-ONAY-KAPILARI.md](SCALEX-ONAY-KAPILARI.md)**.
 
 Kapılar **ortak modülden** gelir (`server/ansible/change-gates.cjs`) — Self Service'teki
 nginx işleriyle aynı yol. Ayarlar `ansible_ss_customizations` tablosunda ScaleX'in kendi
 `(awx_server_id, template_id)` satırında durur ve **Admin > ScaleX Yönetimi > Onay kapıları**
 ile yönetilir.
 
-> **SMART yapılandırılmadan prod'da `apply` çalışmaz.** Sunucu `smart_not_configured` ile
-> reddeder. Bu bilinçli bir fail-closed karardır: ayar satırı yokken `isSmartRequired`
-> `false` döner ve işlem **onaysız** geçerdi — üstelik ekran kullanıcıya "SMART kaydı
-> açılacak" yazarken.
+> **SMART gerekli ama tanımlı değilse prod'da `apply` çalışmaz.** Sunucu `409
+> smart_not_configured` ile reddeder ve önizleme aynı engeli OCO numarası istemeden gösterir.
+> Bu bilinçli bir fail-closed karardır: ayar satırı yokken `isSmartRequired` `false` döner ve
+> işlem **onaysız** geçerdi. SMART'ı istemek ya da istememek açık bir admin anahtarıdır
+> (varsayılan: gerekli).
 
 ### Prod tespiti
 
@@ -97,9 +101,10 @@ Ayrıntılı adımlar (AWX template alanları, survey'in API ile yüklenmesi, s�
 2. **Portal**: Admin > Playbook Kayıtları'nda `scalex_run` / `scalex_discovery`
    satırlarına AWX şablon ve sunucu kimliğini girin (ya da `.env`'deki
    `SCALEX_TEMPLATE_ID` / `SCALEX_DISCOVERY_TEMPLATE_ID` / `SCALEX_AWX_SERVER_ID`).
-3. **SMART/OCO**: Admin > ScaleX Yönetimi > Onay kapıları ile ScaleX şablonu için
-   `flowKey`, `metadataFields` ve `ocoCheck` tanımlayın. Prod `apply` için SMART
-   yapılandırması **zorunludur** (fail-closed).
+3. **SMART/OCO**: Admin > ScaleX Yönetimi > Onay kapıları. Kart, kullanıcıların bugün ne
+   gördüğünü ve SMART tanımının hangi parçasının eksik olduğunu yazar. Ya SMART'ı tanımlayın
+   (`flowKey`, `metadataFields`) ya da SMART kuralı anahtarını "yalnız OCO"ya alın; ikisi de
+   yapılmazsa prod `apply` başlamaz. Ayrıntı: [SCALEX-ONAY-KAPILARI.md](SCALEX-ONAY-KAPILARI.md).
 4. **Görünürlük**: sunucu açılışında element bazında otomatik seed edilir. Yeniden
    başlatmadan yapmak için `deploy/sql/2026-08-30-scalex-gorunurluk.sql`.
 

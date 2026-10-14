@@ -52,6 +52,23 @@ npm run ui:tarama -- --kati              # çökme / taşma / kontrast / ham JSO
 Gerekenler: Node 22+, Chrome ya da Chromium (`CHROME_BIN` ile yolu verilebilir). Portlar
 `UI_TARAMA_VITE_PORT` (5199) ve `UI_TARAMA_CDP_PORT` (9333) ile değiştirilebilir.
 
+## Veriyle dolu akış: ScaleX
+
+```
+node scripts/ui-tarama/scalex-akis.mjs [--cikti <dizin>]
+```
+
+Genel tarama sihirbazların **içine** giremez (liste boş olduğu için ikinci adıma geçilemez).
+Bu betik ScaleX'e gerçekçi yanıtlar verir ve bir kullanıcının yolunu yürür: kapsam → namespace →
+uygulamalar → işlem ve onay → çalıştır; üç onay kapısı kurgusu, iki tema. Kapı yanıtları
+sunucu simülatöründen üretilen `src/components/scalex/__tests__/fixtures/kapi-yanitlari.json`
+dosyasından gelir. Her adımda kart yüksekliği, o adıma kadarki tık sayısı ve genel taramanın
+ölçtükleri raporlanır; beklenen ekran çıkmazsa çıkış kodu 1'dir.
+
+Vite geliştirme kipinde (`React.StrictMode`) koştuğu için jsdom testlerinin görmediği bir
+sınıfı yakalar: 2026-10-14'te iki adımın geliştirme kipinde "yükleniyor"da takıldığını bu
+betik buldu.
+
 ## Sınırları
 
 - Yanıtlar sahtedir: sayfaların **veriyle dolu** hâli görülmez. Bir ekranı veriyle görmek için

@@ -581,9 +581,89 @@ function isHpaPinAllowed({ action, targetReplicas, restoreTargets }) {
 // `test` eklediginde `/preview` "skip" der, numara alani hic cikmaz, sonra
 // `/run` `ocoRequired` ile reddeder. Yukaridaki yorumun anlattigi arizanin
 // birebir aynisi, ters yonden.
-function gatePolicyFor({ action, executionMode, environment, ocoConfig }) {
+// ── SMART HAZIR MI ───────────────────────────────────────────────────────────
+//
+// "Ayar satiri var" ile "SMART talebi GERCEKTEN acilabilir" ayni sey degil. Uretimde
+// (2026-10-13) satir hic yoktu; ama satir olsaydi da is yuruyemezdi: ScaleX admin'in
+// alan eslemesini hic kullanmiyor, sabit adlar gonderiyordu ve Smart o adlari
+// reddediyor (ayni ariza OpsX'te yasandi, bkz. server/smart/metadata.cjs basligi).
+// Bu yuzden "hazir" DORT parcanin HEPSI demek; eksik olan ADIYLA soylenir.
+function smartEksikleri(smartApproval, { smartClientReady = true } = {}) {
+  const sa = smartApproval || {};
+  const eksik = [];
+  if (!sa.enabled) eksik.push('SMART onayı ScaleX şablonu için açık değil');
+  if (!String(sa.flowKey || '').trim()) eksik.push('Flow Key');
+  if (!String(sa.metadataFields || '').trim()) eksik.push('alan eşlemesi (metadata)');
+  if (!smartClientReady) eksik.push('SMART bağlantı ayarları (Admin > Sistem)');
+  return eksik;
+}
+
+// TEK METIN, IKI YERDE: `/preview` engeli BASTAN soyler, `/run` ayni metinle reddeder.
+// Iki ayri metin zamanla ayrisirdi ve kullanici ekranda bir sey, hatada baska bir sey okurdu.
+function smartEngelMesaji(eksik) {
+  const liste = (eksik || []).filter(Boolean);
+  return (
+    'Bu ortamda değişiklik SMART onayı gerektiriyor ama ScaleX için SMART onayı ' +
+    'kullanıma hazır değil' +
+    (liste.length ? ` (eksik: ${liste.join('; ')})` : '') +
+    '. Değişiklik uygulanmadı. Yöneticiniz Admin > ScaleX Yönetimi > Onay kapıları ' +
+    'ekranından SMART onayını tanımlayabilir ya da SMART kuralını kapatabilir. ' +
+    '"Önce kontrol et" modu kullanılabilir — hiçbir değişiklik yapmaz.'
+  );
+}
+
+// SMART KARARI — yalnizca prod `apply` icin sorulur.
+//
+// `smart` GIRDISI YOKSA (eski cagiran / saf birim testi) bugunku cikti aynen surer:
+// `smart: 'require'`, durum `unknown`. Bilgi yoklugu kapiyi INDIRMEZ.
+//
+// ONCELIK: admin anahtari (`oco_only`) > admin'in kisisel atlama tercihi > admin'in
+// istisna kurali > ayar durumu. Kip `oco_only` iken kisisel tercih sorulmaz: zaten
+// herkes icin kapali.
+//
+// ISTISNA KURALI (`skipRule`, 2026-10-14). SMART ayarindaki "su durumda onay isteme"
+// satirlari (bkz. server/ansible/smart-gate.cjs) ortak kapida HEP gecerliydi; ScaleX
+// politikasi onlari BILMIYORDU. Kural eslesince ortak kapi bilet acmadan geciyor, ekran
+// ise "SMART kaydi acilacak" diyordu — iz de kalmiyordu. Artik karar burada verilir,
+// ekranda gorunur ve denetime yazilir. Kural yalnizca SMART ACIKKEN (`enabled`) sorulur;
+// cagiran, sunucunun kendi urettigi kapi degiskenleriyle eslestirir (istemci alani yok).
+function smartKarari(smart) {
+  if (!smart || typeof smart !== 'object')
+    return { smart: 'require', status: 'unknown', missing: [], blocked: null, skipRule: null };
+  if (smart.mode === 'oco_only')
+    return { smart: 'skip', status: 'disabled_by_admin', missing: [], blocked: null, skipRule: null };
+  if (smart.adminSkip === true)
+    return { smart: 'skip', status: 'admin_skip', missing: [], blocked: null, skipRule: null };
+  if (smart.skipRule && smart.skipRule.field)
+    return {
+      smart: 'skip',
+      status: 'skipped_by_rule',
+      missing: [],
+      blocked: null,
+      skipRule: { field: String(smart.skipRule.field), value: String(smart.skipRule.value ?? '') },
+    };
+  if (smart.configured === true)
+    return { smart: 'require', status: 'ready', missing: [], blocked: null, skipRule: null };
+  const missing = Array.isArray(smart.missing) ? smart.missing : [];
+  return {
+    smart: 'require',
+    status: 'not_configured',
+    missing,
+    blocked: { code: 'smart_not_configured', message: smartEngelMesaji(missing) },
+    skipRule: null,
+  };
+}
+
+function gatePolicyFor({ action, executionMode, environment, ocoConfig, smart }) {
   if (executionMode !== 'apply')
-    return { oco: 'skip', smart: 'skip', reason: 'dry_run hicbir sey degistirmez' };
+    return {
+      oco: 'skip',
+      smart: 'skip',
+      smartStatus: 'not_applicable',
+      schedulable: false,
+      blocked: null,
+      reason: 'dry_run hicbir sey degistirmez',
+    };
 
   const envKnown = typeof environment === 'string' && environment.trim() !== '';
   const prod = !envKnown || isProdEnv(environment); // ORTAM BILINMIYORSA PROD SAYILIR
@@ -603,27 +683,50 @@ function gatePolicyFor({ action, executionMode, environment, ocoConfig }) {
 
   // SMART ortam kurali DEGISMEDI: yalnizca production.
   if (!prod) {
+    const oco = ocoUygulanir ? (action === 'restore' ? 'warn' : 'require') : 'skip';
     return {
-      oco: ocoUygulanir ? (action === 'restore' ? 'warn' : 'require') : 'skip',
+      oco,
       smart: 'skip',
+      smartStatus: 'not_applicable',
       ocoGateDisabled: false,
+      // Prod disinda SMART yok: OCO isteniyorsa (admin ortam listesi) zamanlanabilir.
+      schedulable: oco === 'require',
+      blocked: null,
       reason: ocoUygulanir
         ? 'prod disi ortam — OCO admin ayariyla bu ortamda da isteniyor'
         : 'prod disi ortam — onay kapilari yalnizca production icin',
     };
   }
-  if (action === 'restore')
-    return {
-      oco: ocoUygulanir ? 'warn' : 'skip',
-      smart: 'require',
-      ocoGateDisabled,
-      reason: 'geri alma bir onarim islemidir',
-    };
+
+  const s = smartKarari(smart);
+  const oco =
+    action === 'restore' ? (ocoUygulanir ? 'warn' : 'skip') : ocoUygulanir ? 'require' : 'skip';
   return {
-    oco: ocoUygulanir ? 'require' : 'skip',
-    smart: 'require',
+    oco,
+    smart: s.smart,
+    smartStatus: s.status,
+    ...(s.missing.length ? { smartMissing: s.missing } : {}),
+    ...(s.skipRule ? { smartSkipRule: s.skipRule } : {}),
+    // KAPALI KAPI GORUNUR (OCO ile ayni kural): `smart: 'skip'` tek basina "prod degil"
+    // ile "prod ama admin kapatti"yi ayirmaz.
+    smartGateDisabled: s.status === 'disabled_by_admin',
     ocoGateDisabled,
-    reason: ocoGateDisabled ? 'OCO kapisi admin tarafindan KAPATILMIS' : null,
+    // ZAMANLAMA YALNIZCA SMART DEVREDE DEGILKEN (2026-10-13).
+    //
+    // SMART varken onay sonrasi is AWX'in KENDI zamanlayicisina devrediliyor
+    // (runner.cjs smart poller: createOcoAwxSchedule). Portal o isin numarasini
+    // OGRENEMIYOR (ayna yazilmaz, "Su an durdurulmus" bos kalir) ve ScaleX'ten iptal
+    // AWX'teki zamanlamayi SILMIYOR — "iptal ettim" denen bir prod durdurmasi yine
+    // calisir. Bu yol ScaleX'te hic calismadi (SMART hic tanimlanmadi); kanitlanana
+    // kadar KAPALI. SMART'li islem pencere acildiginda baslatilir.
+    schedulable: oco === 'require' && s.smart === 'skip',
+    blocked: s.blocked,
+    reason:
+      action === 'restore'
+        ? 'geri alma bir onarim islemidir'
+        : ocoGateDisabled
+          ? 'OCO kapisi admin tarafindan KAPATILMIS'
+          : null,
   };
 }
 
@@ -656,6 +759,8 @@ module.exports = {
   isProdEnv,
   computeBlastRadius,
   isHpaPinAllowed,
+  smartEksikleri,
+  smartEngelMesaji,
   buildScaleXClusterCatalog,
   assertValidTargets,
   assertValidDiscoveryTargets,

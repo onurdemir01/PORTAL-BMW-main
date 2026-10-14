@@ -188,7 +188,7 @@ test('LP6 `scalex_live_probe_apps` playbook`tan betige gecuriliyor', () => {
     'playbook degiskeni betige gecirmiyor — yoklama HIC kosmaz',
   );
   const index = fs.readFileSync(path.join(ROOT, 'server/scalex/index.cjs'), 'utf8');
-  assert.match(index, /scalex_live_probe_apps: wanted\.join\(','\)/, 'portal listeyi gondermiyor');
+  assert.match(index, /scalex_live_probe_apps: liveProbe\.join\(','\)/, 'portal listeyi gondermiyor');
 });
 
 // LP7 — ZINCIRIN SON HALKASI. Mutasyon turunda `liveStates`i `refreshDrift`e HIC

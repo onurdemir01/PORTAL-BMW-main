@@ -100,8 +100,36 @@ test('S1: ocoCheck kapaliysa hicbir kaynak kapiyi acamaz', () => {
 test('S2a: SMART "gerekli" iken ayar YOKSA is baslatilmaz (fail-closed)', () => {
   // `smart-gate.isSmartRequired` bos ayarda false doner — Self Service icin dogru, ama
   // ScaleX'te "onaysiz gecti" demek. Route bunu ayrica kontrol etmek ZORUNDA.
-  assert.match(INDEX, /policy\.smart === 'require' && !svcConfig\.smartApproval\?\.enabled/);
-  assert.match(INDEX, /smart_not_configured/);
+  //
+  // 2026-10-13: karar artik POLITIKADA (`launch.gatePolicyFor` -> `blocked`) ve route
+  // onu ortak kapidan ONCE tuketir. "Hazir" = acik + flow key + alan eslemesi + SMART
+  // baglantisi; biri eksikse is baslamaz. Davranis olcumu: scalex-kapi-matrisi KM1 (2).
+  for (const [ad, smartApproval, baglanti] of [
+    ['satir yok', undefined, true],
+    ['kapali', { enabled: false, flowKey: 'A', metadataFields: 'K: v' }, true],
+    ['flow key yok', { enabled: true, metadataFields: 'K: v' }, true],
+    ['alan eslemesi yok', { enabled: true, flowKey: 'A' }, true],
+    ['SMART baglantisi yok', { enabled: true, flowKey: 'A', metadataFields: 'K: v' }, false],
+  ]) {
+    const missing = launch.smartEksikleri(smartApproval, { smartClientReady: baglanti });
+    assert.ok(missing.length > 0, `${ad}: SMART "hazir" sayildi`);
+    const p = launch.gatePolicyFor({
+      action: 'stop',
+      executionMode: 'apply',
+      environment: 'prod',
+      smart: { mode: 'required', configured: missing.length === 0, missing, adminSkip: false },
+    });
+    assert.equal(p.blocked && p.blocked.code, 'smart_not_configured', ad);
+    assert.equal(p.schedulable, false, `${ad}: engelli istek zamanlanabilir gorunuyor`);
+  }
+  assert.deepEqual(
+    launch.smartEksikleri({ enabled: true, flowKey: 'A', metadataFields: 'K: v' }, { smartClientReady: true }),
+    [],
+  );
+  // Route `blocked`i ortak kapidan ONCE tuketir (OCO sorgusu ve zamanlama kaydi ondan sonra).
+  const govde = INDEX.slice(INDEX.indexOf('async function runScaleXGates'), INDEX.indexOf('async function acquireRestoreLocks'));
+  const engel = govde.indexOf('if (policy.blocked)');
+  assert.ok(engel > 0 && engel < govde.indexOf('runChangeGates('), 'engel ortak kapidan SONRA tuketiliyor');
 });
 
 test("S2a: bos ayarin smart-gate'te GERCEKTEN onay gerektirmedigi (fail-closed sartinin sebebi)", () => {
@@ -425,7 +453,9 @@ test('UI: geri almada bilinmeyen hedef "?" ile gecistirilmez', () => {
 test('UI: sinir asimi ONIZLEMEDE soylenir ve Calistir pasiflesir', () => {
   const PREVIEW = codeOnly(read('src/components/scalex/steps/PreviewStep.tsx'));
   assert.match(PREVIEW, /r\.exceedsMaxTargets/);
-  assert.match(PREVIEW, /disabled=\{busy \|\| blocked/);
+  // `bayat`: onizleme baska bir secime aitken de kapali (2026-10-13).
+  assert.match(PREVIEW, /disabled=\{busy \|\| bayat \|\| blocked/);
+  assert.match(PREVIEW, /const blocked = r\.exceedsMaxTargets \|\| !!engel;/, 'sinir asimi dugmeyi kapatmiyor');
 });
 
 test('UI: buton neden pasif oldugunu SOYLER, OCO numarasi bosken calistirilamaz', () => {
@@ -579,7 +609,8 @@ test('UI: dogrulama hatasindan ISLEM adimina donulebilir', () => {
   // yapmakti. Portal girdiyi zaten dogruladigi icin buraya dusen hatalar playbook
   // kaynaklidir — kullanici ayni girdiyi tekrar girip ayni hatayi alirdi.
   const PAGE = codeOnly(read('src/components/scalex/ScaleXPage.tsx'));
-  assert.match(norm(PAGE), /runResult\?\.stage === "validation"/);
+  // `sonuc`: gosterilen sonuc (izleyiciden ya da tam cikti isteginden; bkz. ScaleXPage).
+  assert.match(norm(PAGE), /sonuc\?\.stage === "validation"/);
   assert.match(PAGE, /İşlem adımına dön/);
 });
 

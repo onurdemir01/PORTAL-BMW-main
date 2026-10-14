@@ -182,6 +182,114 @@ async function resolveApproval(ticketId, status, approvalState, message) {
   );
 }
 
+// ── ZAMANLANMIS ISLER (2026-10-13) ──────────────────────────────────────────
+//
+// "Pencere acilinca otomatik baslat" secilen bir ScaleX istegi icin AWX'te henuz is
+// YOKTUR; kesinti saatinde OCO zamanlayicisi isi `runner.performSsLaunch` ile baslatir.
+// O yol — SMART onayinda oldugu gibi — ScaleX'i BILMEZ: yalnizca `ansible_job_history`ye
+// ve `oco_scheduled_launches`e yazar. Bu satirlar yazilmadigi icin zamanlanmis bir prod
+// durdurmasi calisiyor ama portal bunu hic ogrenmiyordu: ayna guncellenmiyor, uygulama
+// "Su an durdurulmus"a dusmuyor, geri alma kisayolu cikmiyordu.
+//
+// `/run` zamanlama aninda `status='SCHEDULED'`, `request_key='oco:<kayit id>'` satirlarini
+// yazar; burada OCO kaydinin durumuna gore ilerletilir:
+//   LAUNCHED + is no   -> RUNNING (asagidaki sonuclandirma turu aynayi yazar)
+//   CANCELLED          -> CANCELLED
+//   EXPIRED / FAILED   -> FAILED (sebebiyle)
+//   kayit yok          -> yeterince eskiyse CANCELLED (sonsuza dek asili kalmasin)
+//   SCHEDULED/LAUNCHING ve digerleri -> hala bekliyor, dokunma
+//
+// IDEMPOTENT: her UPDATE `WHERE request_key = $1 AND status = 'SCHEDULED'` ile yazar.
+const OCO_ANAHTARI = /^oco:(\d+)$/;
+
+async function scheduledOperations(limit) {
+  const { rows } = await db.query(
+    `SELECT TOP 50 request_key, MIN(created_at) AS created_at
+       FROM scalex_operations
+      WHERE status = 'SCHEDULED' AND request_key LIKE 'oco:%'
+      GROUP BY request_key
+      ORDER BY MIN(created_at) ASC`
+  );
+  return rows.slice(0, Math.min(limit, HARD_TOP));
+}
+
+async function closeScheduled(requestKey, status, message) {
+  await db.query(
+    `UPDATE scalex_operations
+        SET status = $2, error_message = $3, updated_at = GETUTCDATE()
+      WHERE request_key = $1 AND status = 'SCHEDULED'`,
+    [requestKey, status, String(message).slice(0, 500)]
+  );
+}
+
+async function adoptScheduledLaunches(cfg) {
+  const bekleyen = await scheduledOperations(cfg.batchSize);
+  if (!bekleyen.length) return { scheduledAdopted: 0, scheduledClosed: 0 };
+
+  const ocoStore = require('../oco/store.cjs');
+  let scheduledAdopted = 0, scheduledClosed = 0;
+
+  for (const b of bekleyen) {
+    const requestKey = String(b.request_key || '');
+    const m = OCO_ANAHTARI.exec(requestKey);
+    if (!m) continue;
+    const kayitId = Number(m[1]);
+    let rec = null;
+    try {
+      rec = await ocoStore.get(kayitId);
+    } catch (e) {
+      console.warn(`[ScaleX] uzlastirici: zamanlama kaydi #${kayitId} okunamadi:`, e.message);
+      continue;
+    }
+
+    if (!rec) {
+      const ageHours = b.created_at ? (Date.now() - new Date(b.created_at).getTime()) / 3600000 : 0;
+      if (ageHours >= cfg.staleHours) {
+        await closeScheduled(requestKey, 'CANCELLED', 'Zamanlama kaydi bulunamadi; is tetiklenmedi sayildi.');
+        scheduledClosed++;
+      }
+      continue;
+    }
+
+    if (rec.status === 'LAUNCHED' && rec.awxJobId) {
+      await db.query(
+        `UPDATE scalex_operations
+            SET status = 'RUNNING', awx_job_id = $2, awx_server_id = COALESCE(awx_server_id, $3),
+                request_key = CONCAT(CAST(COALESCE(awx_server_id, $3) AS NVARCHAR(20)), ':', CAST($2 AS NVARCHAR(20))),
+                updated_at = GETUTCDATE()
+          WHERE request_key = $1 AND status = 'SCHEDULED'`,
+        [requestKey, Number(rec.awxJobId), Number(rec.awxServerId)]
+      );
+      // IZ: zamanlanmis bir prod islemi TAM BURADA baslamis sayilir — kullanicinin
+      // "zamanla"ya bastigi andan saatler sonra.
+      auditPortal(null, 'scalex_schedule_adopted', {
+        username: rec.username || 'system:scalex-reconciler',
+        detail: JSON.stringify({ scheduleId: kayitId, awxServerId: rec.awxServerId, awxJobId: rec.awxJobId, oco: rec.ocoNumber }),
+      });
+      scheduledAdopted++;
+      continue;
+    }
+
+    if (rec.status === 'CANCELLED') {
+      await closeScheduled(requestKey, 'CANCELLED',
+        `Zamanlama iptal edildi${rec.cancelledBy ? ` (${rec.cancelledBy})` : ''}.`);
+      scheduledClosed++;
+    } else if (rec.status === 'EXPIRED' || rec.status === 'FAILED') {
+      await closeScheduled(requestKey, 'FAILED',
+        rec.errorMessage || (rec.status === 'EXPIRED'
+          ? 'OCO penceresi kapandi; is tetiklenmedi.'
+          : 'Zamanlanan is tetiklenemedi.'));
+      auditPortal(null, 'scalex_schedule_closed', {
+        username: rec.username || 'system:scalex-reconciler', result: 'fail',
+        detail: JSON.stringify({ scheduleId: kayitId, status: rec.status }),
+      });
+      scheduledClosed++;
+    }
+    // SCHEDULED / LAUNCHING / digerleri -> hala bekliyor.
+  }
+  return { scheduledAdopted, scheduledClosed };
+}
+
 // ── YETIM GERI ALMA KILITLERI ───────────────────────────────────────────────
 //
 // Geri alma baslatilirken ayna satiri `restoring` fazina cekilir (bkz.
@@ -251,6 +359,18 @@ async function tick() {
     console.log(`[ScaleX] uzlastirici: ${approval.adopted} onayli is devralindi, ${approval.cancelled} onay kaydi kapatildi.`);
   }
 
+  // Zamanlanmis isler: RUNNING'e cekilen kayit ayni tick'te sonuclandirilabilir.
+  // Bu tur PATLASA BILE asagidakiler calismali.
+  let scheduled = { scheduledAdopted: 0, scheduledClosed: 0 };
+  try {
+    scheduled = await adoptScheduledLaunches(cfg);
+  } catch (e) {
+    console.warn('[ScaleX] uzlastirici: zamanlama turu basarisiz:', e.message);
+  }
+  if (scheduled.scheduledAdopted || scheduled.scheduledClosed) {
+    console.log(`[ScaleX] uzlastirici: ${scheduled.scheduledAdopted} zamanlanmis is devralindi, ${scheduled.scheduledClosed} zamanlama kaydi kapatildi.`);
+  }
+
   // Yetim kilitler: bu tur PATLASA BILE asagidaki sonuclandirma calismali.
   let locks = { releasedLocks: 0 };
   try {
@@ -260,7 +380,7 @@ async function tick() {
   }
 
   const jobs = await pendingJobs(cfg.batchSize);
-  if (!jobs.length) return { checked: 0, finalized: 0, stale: 0, ...approval, ...locks };
+  if (!jobs.length) return { checked: 0, finalized: 0, stale: 0, ...approval, ...scheduled, ...locks };
 
   // Gec require: modul yuklenme sirasi dongusune girmemek icin (index.cjs bu dosyayi
   // cagiriyor, bu dosya da index.cjs'in `finalizeOperation`ini kullaniyor).
@@ -299,7 +419,7 @@ async function tick() {
   if (finalized || stale) {
     console.log(`[ScaleX] uzlastirici: ${finalized} is sonuclandirildi, ${stale} is "bilinmiyor" isaretlendi.`);
   }
-  return { checked: jobs.length, finalized, stale, ...approval, ...locks };
+  return { checked: jobs.length, finalized, stale, ...approval, ...scheduled, ...locks };
 }
 
 let _timer = null;
@@ -319,4 +439,4 @@ function startReconciler() {
 // engellemiyor ve depoda cagrilacagi bir kapanis yolu da yok. Cagrilmayan bir
 // "temizlik" fonksiyonu birakmak, ileride birinin onun gercekten kullanildigini
 // sanmasina yol acardi (J1 bekcisi bu spekulatif olu kodu zaten reddediyor).
-module.exports = { tick, startReconciler, getConfig, pendingJobs, pendingApprovalTickets, adoptApprovedTickets, releaseOrphanRestoreLocks, HARD_TOP };
+module.exports = { tick, startReconciler, getConfig, pendingJobs, pendingApprovalTickets, adoptApprovedTickets, adoptScheduledLaunches, releaseOrphanRestoreLocks, HARD_TOP };

@@ -636,10 +636,12 @@ test('D4 bilinmeyen islem TAM kapiya duser (guvenli taraf)', () => {
 });
 test('D5 kapi karari FAIL-CLOSED tuketiliyor', () => {
   const code = codeOnly(INDEX);
-  // 1) Ortak kapi govdesi taninmayan karari 500'e cevirir.
+  // 1) Ortak kapi govdesi taninmayan karari RETTE cevirir. 2026-10-13: durum 409, asil
+  //    kod govdede (`upstreamStatus: 500`) — ters-proxy 5xx govdesini degistirdigi icin
+  //    500 ile donen mesaj kullaniciya hic ulasmiyordu.
   assert.match(
     code,
-    /decision\?\.outcome !== 'proceed'[\s\S]{0,400}status: 500/,
+    /decision\?\.outcome !== 'proceed'[\s\S]{0,400}outcome: 'error',\s*status: 409,[\s\S]{0,120}upstreamStatus: 500/,
     'taninmayan kapi karari akisa birakiliyorsa is sessizce calisir',
   );
   // 2) HER cagiran `error` ve `respond` dallarini tuketmek ZORUNDA. Kapi artik
@@ -1654,12 +1656,20 @@ test('L5 kapi politikasini soran HER uc ortami GERCEKTEN geciriyor', () => {
   // kurali DOGRU uyguluyordu. Sayiyi kilitlemek, mesru her eklemeyi yanlis
   // alarmla karsilamak demek; kilitlenmesi gereken sey HER cagrinin ortami
   // gecirmesi.
+  //
+  // 2026-10-13: uclar artik `gatePolicyFor`u DOGRUDAN cagirmiyor; hepsi ortak cozucuden
+  // (`resolveGatePolicy`) gecer. Kural ayni, bir kat yukarida: HER cozucu cagrisi ortami
+  // gecirir ve cozucu onu politikaya AKTARIR. Davranis: scalex-kapi-matrisi KM1 (prod
+  // disi hucreler) ve KM16.
   const code = codeOnly(INDEX);
-  const calls = code.match(/gatePolicyFor\(\{[^}]*\}\)/g) || [];
-  assert.ok(calls.length >= 3, `gatePolicyFor cagrisi kaybolmus: ${calls.length}`);
+  const calls = code.match(/resolveGatePolicy\(req, \{[^}]*\}\)/g) || [];
+  assert.ok(calls.length >= 4, `resolveGatePolicy cagrisi kaybolmus: ${calls.length}`);
   for (const c of calls) {
-    assert.match(c, /environment:\s*env/, `ortam gecirilmeyen gatePolicyFor cagrisi: ${c}`);
+    assert.match(c, /environment:\s*(env|'prod')/, `ortam gecirilmeyen politika cagrisi: ${c}`);
   }
+  const cozucu = code.slice(code.indexOf('async function resolveGatePolicy'), code.indexOf('function istemciyeUlasan'));
+  assert.match(cozucu, /gatePolicyFor\(\{[^}]*\benvironment,/, 'cozucu ortami politikaya aktarmiyor');
+  assert.equal((code.match(/gatePolicyFor\(/g) || []).length, 1, 'bir uc politikayi cozucuyu atlayarak uretiyor');
 });
 
 // ── M. PLAYBOOK KAYDI COZUMLEME (2026-09-01) ────────────────────────────────
@@ -1803,10 +1813,12 @@ test('N1 `/restore-all` ortak kapi govdesinden geciyor', () => {
   const body = code.slice(start, nextRouteIndex(code, start + 20));
   assert.ok(body.length > 0, '/restore-all ucu bulunamadi');
   assert.match(body, /await runScaleXGates\(/, 'toplu geri alma kapiyi HIC cagirmiyor');
+  // Politika ortak cozucuden ve GRUP BASINA (SMART istisna kurali namespace'e bakabilir).
+  // Davranis: scalex-kapi-matrisi KM16.
   assert.match(
     body,
-    /gatePolicyFor\(\{[^}]*action: 'restore'/,
-    'toplu geri alma kendi politikasini uretmiyor',
+    /for \(const g of groups\.values\(\)\) \{[\s\S]{0,700}resolveGatePolicy\(req, \{[^}]*action: 'restore'[^}]*namespace: g\.namespace/,
+    'toplu geri alma kendi politikasini grup basina uretmiyor',
   );
 });
 
@@ -1820,15 +1832,16 @@ test('N2 kapi govdesi TEK — ikinci bir kopya yazilmamis', () => {
 
 test('N3 onay bekleyen is icin `scalex_operations` satiri YAZILIYOR', () => {
   const code = codeOnly(INDEX);
+  // Davranis: scalex-kapi-matrisi KM1 (4) ve KM4 (iki cluster -> ayni bilete bagli iki satir).
   assert.match(
     code,
-    /pendingApproval && decision\.body\?\.ticketId[\s\S]{0,500}status: 'PENDING_APPROVAL'/,
+    /body\.pendingApproval && body\.ticketId[\s\S]{0,500}status: 'PENDING_APPROVAL'/,
     'SMART bileti acildiginda kayit yazilmiyor — onay gelince is calisir ama portal ogrenemez, ' +
       'ayna guncellenmez ve GERI ALMA YOLU KAPANIR',
   );
   assert.match(
     code,
-    /smartTicketId: Number\(decision\.body\.ticketId\)/,
+    /smartTicketId: Number\(body\.ticketId\)/,
     'kayit bilete baglanmamis — uzlastirici onay sonucunu satira yazamaz',
   );
 });

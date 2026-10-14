@@ -78,7 +78,7 @@ test('CA3 uygulama adi kurali HER modda AYNI kalir', () => {
 
 test('CA4 `/discover` `mode`u dogrulayiciya GECIRIYOR', () => {
   const kod = kodOnly(oku('server/scalex/index.cjs'));
-  const d = dilim(kod, "router.post(\n    '/discover'", 'let extraKinds');
+  const d = dilim(kod, "router.post(\n    '/discover'", 'const extraKinds');
   assert.match(
     d,
     /assertValidDiscoveryTargets\(\{[^}]*\bmode\b/,

@@ -51,9 +51,16 @@ const DURUM_ETIKET: Record<string, string> = {
 interface Props {
   /** Artırıldığında liste yeniden okunur (yeni kayıt, iptal, güncelleme). */
   reloadKey?: number;
+  /**
+   * Katlanır bir panelin İÇİNDE çiziliyor: kendi başlığını ve çerçevesini çizmez
+   * (başlık ve sayaç dıştaki panelde).
+   */
+  gomulu?: boolean;
+  /** Hâlâ bekleyen (açık) kayıt sayısı; okunamadıysa `null`. */
+  onSayim?: (bekleyen: number | null) => void;
 }
 
-const OcoSchedulePanel: React.FC<Props> = ({ reloadKey = 0 }) => {
+const OcoSchedulePanel: React.FC<Props> = ({ reloadKey = 0, gomulu = false, onSayim }) => {
   const [items, setItems] = useState<ScaleXOcoSchedule[]>([]);
   const [scope, setScope] = useState<string>('');
   const [loading, setLoading] = useState(true);
@@ -70,12 +77,21 @@ const OcoSchedulePanel: React.FC<Props> = ({ reloadKey = 0 }) => {
         setItems(r.items || []);
         setScope(r.scope || '');
         setError(null);
-      } else setError(`Zamanlanmış işlemler okunamadı: ${r.message || 'sunucu hata döndü'}`);
+        onSayim?.((r.items || []).filter((it) => ACIK.has(it.status)).length);
+      } else {
+        setError(`Zamanlanmış işlemler okunamadı: ${r.message || 'sunucu hata döndü'}`);
+        // "Okunamadı" SIFIR değildir: sayaç "0" yazarsa kullanıcı bekleyen kaydı yok sanar.
+        onSayim?.(null);
+      }
     } catch (e) {
       setError(`Zamanlanmış işlemler okunamadı: ${(e as Error).message}`);
+      onSayim?.(null);
     } finally {
       setLoading(false);
     }
+    // `onSayim` bilerek bağımlılık DEĞİL: çağıran her render'da yeni bir fonksiyon verirse
+    // liste sonsuz döngüyle yeniden okunurdu.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // `useAsyncEffect`: deponun bu is icin yazilmis hook'u. Yuklemeyi effect
@@ -137,10 +153,14 @@ const OcoSchedulePanel: React.FC<Props> = ({ reloadKey = 0 }) => {
   }
 
   return (
-    <section className="rounded-xl border border-[var(--border)] p-4 space-y-3">
+    <section className={gomulu ? 'space-y-3' : 'rounded-xl border border-[var(--border)] p-4 space-y-3'}>
       <div className="flex items-center gap-2">
-        <ClockIcon aria-hidden="true" className="w-4 h-4 text-[var(--text-secondary)]" />
-        <p className="text-sm font-semibold text-[var(--text-primary)]">Zamanlanmış işlemler</p>
+        {!gomulu && (
+          <>
+            <ClockIcon aria-hidden="true" className="w-4 h-4 text-[var(--text-secondary)]" />
+            <p className="text-sm font-semibold text-[var(--text-primary)]">Zamanlanmış işlemler</p>
+          </>
+        )}
         <span className="text-xs text-[var(--text-muted)]">
           {scope === 'all' ? 'tüm kullanıcılar' : 'siz ve grubunuz'}
         </span>

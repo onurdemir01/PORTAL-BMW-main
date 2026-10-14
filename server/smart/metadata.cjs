@@ -70,7 +70,7 @@ const smartMetaEnv = new nunjucks.Environment(null, {
 
 function buildSmartMetadata(
   metadataFieldsRaw,
-  { username, email, templateName, templateId, extraVars, opsx },
+  { username, email, templateName, templateId, extraVars, opsx, scalex },
 ) {
   if (!metadataFieldsRaw) {
     return { application: templateName || String(templateId), requestedBy: username };
@@ -83,6 +83,10 @@ function buildSmartMetadata(
     // OpsX (2026-10-08): islem/platform/uygulama/sunucular gibi isin COZULMUS ozeti. Yalniz OpsX
     // verir; Self Servis'te tanimsizdir ({{opsx.x}} orada render hatasi verir - bilerek).
     ...(opsx && typeof opsx === 'object' ? { opsx } : {}),
+    // ScaleX (2026-10-13): ayni ariza burada da vardi - ScaleX admin'in sablonunu hic
+    // kullanmiyor, sabit adlar gonderiyordu. {{scalex.ortam}}, {{scalex.namespace}},
+    // {{scalex.uygulamalar}}, {{scalex.islem}} ... yalniz ScaleX verir.
+    ...(scalex && typeof scalex === 'object' ? { scalex } : {}),
   };
   const parsed = parseSimpleYaml(metadataFieldsRaw);
   const metadata = {};

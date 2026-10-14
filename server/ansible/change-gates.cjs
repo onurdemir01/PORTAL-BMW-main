@@ -59,6 +59,20 @@ function isSmartRequired(smartApproval, gateVars) {
   return require('./smart-gate.cjs').isSmartRequired(smartApproval, gateVars || {});
 }
 
+// ISTISNA KURALLARINI OKUMAK ISTEYEN CAGIRAN ICIN (2026-10-14, ScaleX). Kapi KARARI yine
+// yalnizca burada verilir; bu iki fonksiyon kararin NEDENINI disari verir:
+//   * `matchSmartSkip`      bu talep bir istisna kuralina takiliyor mu, hangisine
+//                           (ekran "SMART istenmeyecek, su kural yuzunden" diyebilsin ve
+//                           atlama denetime yazilabilsin)
+//   * `parseSmartSkipRules` kurallarin kendisi + okunamayan satirlar (admin durum karti)
+// `smart-gate.cjs` baska hicbir yerden dogrudan cagrilmaz (bkz. smart-gate-input.test.cjs).
+function matchSmartSkip(smartApproval, gateVars) {
+  return require('./smart-gate.cjs').matchSkip(smartApproval, gateVars || {});
+}
+function parseSmartSkipRules(raw) {
+  return require('./smart-gate.cjs').parseSkipRules(raw);
+}
+
 // Smart bileti acar ve `pendingLaunch` paketini DB'ye yazar.
 //
 // UC CAGIRMA YERININ FARKLARI ACIK PARAMETRE OLARAK TASINDI — bunlar "temizlenecek
@@ -503,6 +517,8 @@ async function runChangeGates(ctx) {
 module.exports = {
   OUTCOMES,
   isSmartRequired,
+  matchSmartSkip,
+  parseSmartSkipRules,
   isOcoGateApplicable,
   normalizeOcoEnvironments,
   evaluateOcoGate,

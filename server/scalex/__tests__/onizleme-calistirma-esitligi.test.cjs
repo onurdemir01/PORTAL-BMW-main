@@ -102,11 +102,19 @@ test('PV5 `targets` istemci TIPINDE var (sessiz eksik tekrar etmesin)', () => {
 });
 
 test('PV6 hedefler ONIZLEME bilesenine PROP olarak geciriliyor', () => {
-  const kod = kodOnly(oku('src/components/scalex/ScaleXPage.tsx'));
-  const i = kod.indexOf('<PreviewStep');
-  assert.ok(i > 0, 'PreviewStep render edilmiyor');
-  const d = kod.slice(i, kod.indexOf('/>', i));
-  assert.match(d, /selectedTargets=\{selectedTargets\}/, 'hedefler onizlemeye gecirilmiyor');
+  // 2026-10-13: onizleme artik "Islem ve onay" adiminin ICINDE (steps/IslemOnayStep).
+  // Hedefler IKI halkadan gecer; biri koparsa onizleme carpimi, calistirma gercek sayiyi
+  // kullanir ve ikisi ayrisir. Davranis: ScaleXKapilar.test.tsx (IslemOnayStep).
+  for (const [dosya, etiket] of [
+    ['src/components/scalex/ScaleXPage.tsx', '<IslemOnayStep'],
+    ['src/components/scalex/steps/IslemOnayStep.tsx', '<PreviewStep'],
+  ]) {
+    const kod = kodOnly(oku(dosya));
+    const i = kod.indexOf(etiket);
+    assert.ok(i > 0, `${dosya}: ${etiket} render edilmiyor`);
+    const d = kod.slice(i, kod.indexOf('/>', i));
+    assert.match(d, /selectedTargets=\{selectedTargets\}/, `${dosya}: hedefler onizlemeye gecirilmiyor`);
+  }
 });
 
 test('PV7 onizleme LISTESI de haric tutulani gostermiyor', () => {

@@ -136,12 +136,16 @@ test('bekleyen is YOKSA AWX hic sorgulanmaz', async () => {
           const out = await reconciler.tick();
           // Onay turu de bos: `adopted`/`cancelled` tick sozlesmesinin parcasi
           // (bkz. reconciler.adoptApprovedTickets).
+          // Zamanlama turu de bos: `scheduledAdopted`/`scheduledClosed` (2026-10-13,
+          // bkz. reconciler.adoptScheduledLaunches; davranisi scalex-kapi-matrisi KM14/KM15).
           assert.deepEqual(out, {
             checked: 0,
             finalized: 0,
             stale: 0,
             adopted: 0,
             cancelled: 0,
+            scheduledAdopted: 0,
+            scheduledClosed: 0,
             releasedLocks: 0,
           });
         },

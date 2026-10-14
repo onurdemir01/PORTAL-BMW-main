@@ -9,21 +9,32 @@
 // 2. YÖNLENDİRME YOK. "Önce kontrol et" ile "Uygula" EŞİT ağırlıkta iki seçenektir:
 //    "Önerilen" rozeti yok, biri önceden seçili gelmiyor, renk/boyut farkı yok. Ekran
 //    ne olacağını ANLATIR, kullanıcı adına karar VERMEZ.
-import React, { useMemo, useState } from "react";
-import { ExclamationTriangleIcon } from "@heroicons/react/24/outline";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { ChevronDownIcon, ExclamationTriangleIcon } from "@heroicons/react/24/outline";
 import type { ScaleXAction, ScaleXMode, ScaleXWorkload } from "@/api/scalexApi";
 import type { ScaleXLimits } from "@/hooks/useScaleXLimits";
+import Collapse from "@/components/common/Collapse";
+
+/** Bu adımda verilen kararların tamamı. */
+export interface ScaleXIslemSecimi {
+  action: ScaleXAction; executionMode: ScaleXMode;
+  targetReplicas?: string; verificationTimeout: string;
+  allowPartial: boolean; mailCc: string; hpaPin: boolean;
+}
 
 interface Props {
   apps: string[];
   workloads: ScaleXWorkload[];
   clusterCount: number;
   busy: boolean;
-  onSubmit: (v: {
-    action: ScaleXAction; executionMode: ScaleXMode;
-    targetReplicas?: string; verificationTimeout: string;
-    allowPartial: boolean; mailCc: string; hpaPin: boolean;
-  }) => void;
+  /** Ayrı adım olarak kullanılırken "Önizle" düğmesinin hedefi. */
+  onSubmit?: (v: ScaleXIslemSecimi) => void;
+  /**
+   * GÖMÜLÜ KİP (2026-10-13, "İşlem ve onay" tek adım). Verilirse "Önizle" düğmesi
+   * çizilmez: seçim her değiştiğinde bildirilir — eksik/geçersizken `null`. Nadir
+   * ayarlar (bekleme süresi, rapor CC, kısmi devam) "Gelişmiş" altında toplanır.
+   */
+  onChange?: (v: ScaleXIslemSecimi | null) => void;
   /**
    * Kullanicinin DAHA ONCE bu adimda verdigi kararlar. Ilk gelisinde `undefined`
    * olmalidir — dolu gelirse ekran on-secili gorunur ve notr sunum bozulurdu.
@@ -84,8 +95,9 @@ export function humanSeconds(raw: string): string {
 }
 
 const OperationStep: React.FC<Props> = ({
-  apps, workloads, clusterCount, busy, onSubmit, previous, limits,
+  apps, workloads, clusterCount, busy, onSubmit, onChange, previous, limits,
 }) => {
+  const gomulu = !!onChange;
   // SINIRLAR SUNUCUDAN; gelmediyse fabrika degerleri (eski davranis).
   const tMin = limits?.timeoutMin ?? TIMEOUT_MIN;
   const tMax = limits?.timeoutMax ?? TIMEOUT_MAX;
@@ -160,6 +172,36 @@ const OperationStep: React.FC<Props> = ({
   const canSubmit =
     !!action && !!mode && replicasValid && !timeoutBad && !(action === "restore" && restoreBlocked);
 
+  const secim: ScaleXIslemSecimi | null = canSubmit
+    ? {
+        action: action!, executionMode: mode!,
+        ...(action === "scale" ? { targetReplicas: replicas } : {}),
+        verificationTimeout: timeout, allowPartial, mailCc: mailCc.trim(),
+        hpaPin: pinOffered && hpaPin,
+      }
+    : null;
+  // GÖMÜLÜ KİPTE seçim üst bileşene bildirilir. Bağımlılık nesnenin KENDİSİ değil düz
+  // metnidir: nesne her render'da yeni referanstır ve bildirim sonsuz döngüye girerdi.
+  const secimAnahtari = JSON.stringify(secim);
+  const bildir = useRef(onChange);
+  useEffect(() => {
+    bildir.current = onChange;
+  });
+  useEffect(() => {
+    bildir.current?.(JSON.parse(secimAnahtari) as ScaleXIslemSecimi | null);
+  }, [secimAnahtari]);
+
+  // "Gelişmiş" kullanıcı açana kadar kapalı; içinde GEÇERSİZ bir değer varsa hata
+  // gizli kalmasın diye kendiliğinden açık çizilir.
+  const [gelismisAcik, setGelismisAcik] = useState(false);
+  const gelismisGorunur = !gomulu || gelismisAcik || timeoutBad;
+  // Varsayılandan farklı bırakılan ayarlar kapalıyken de söylenir (sessiz ayar olmasın).
+  const gelismisOzeti = [
+    timeout !== tDefault ? `bekleme ${humanSeconds(timeout) || timeout}` : "",
+    mailCc.trim() ? "rapor CC" : "",
+    clusterCount > 1 && !allowPartial ? "hepsi ya da hiçbiri" : "",
+  ].filter(Boolean).join(" · ");
+
   return (
     <div className="space-y-6">
       <div>
@@ -189,7 +231,30 @@ const OperationStep: React.FC<Props> = ({
             amber cerceve. Ayrica NE YAPILACAGINI da soyluyor: eskiden yalnizca
             "seçilemiyor" yaziyordu ve kullanici geri gidip elle desecmesi gerektigini
             kendi bulmak zorundaydi. */}
-        {restoreBlocked && (
+        {/* GOMULU KIPTE TEK SATIR (2026-10-14). Bu aciklama her DURDURMA isleminde amber bir
+            kutu olarak cikiyordu: durdurulacak bir uygulamanin kayitli durumu dogal olarak
+            yoktur, yani kutu neredeyse her ziyarette goruluyor ve asil secimi asagi itiyordu.
+            Bilgi kaybolmadi — kartin altinda tek satir, ayrintisi bir tik uzakta. */}
+        {restoreBlocked && gomulu && (
+          <details className="mt-2 text-xs text-[var(--text-secondary)]">
+            <summary className="cursor-pointer select-none">
+              <strong>Geri Al</strong> şu an seçilemiyor — neden?
+            </summary>
+            <p className="mt-1 rounded-lg border border-amber-200 bg-amber-50 p-2 text-amber-900">
+              <span>
+                <strong>Geri Al</strong> seçilemiyor: <strong>{notRestorable.join(", ")}</strong> için
+                portalda kayıtlı durum yok
+                {blockingClusters.length > 0 && <> (<span className="font-mono">{blockingClusters.join(", ")}</span>)</>}.
+                {partiallyRestorable.length > 0 && (
+                  <> <strong>{partiallyRestorable.join(", ")}</strong> bazı cluster'larda geri
+                  alınabilir, hepsinde değil — bu yüzden işlem tümü için kapalı.</>
+                )}
+                {" "}Geri almak için bir önceki adıma dönüp bu uygulamaları seçimden çıkarın.
+              </span>
+            </p>
+          </details>
+        )}
+        {restoreBlocked && !gomulu && (
           <div className="mt-2 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
             <ExclamationTriangleIcon aria-hidden="true" className="w-4 h-4 flex-shrink-0 mt-0.5" />
             <span>
@@ -299,68 +364,95 @@ const OperationStep: React.FC<Props> = ({
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div>
-          <label htmlFor="scalex-timeout" className="block text-xs font-medium text-[var(--text-muted)] mb-1.5">
-            Sonucu ne kadar bekleyelim? (saniye)
-          </label>
-          <input id="scalex-timeout" type="number" inputMode="numeric"
-            min={tMin} max={tMax} step={30}
-            value={timeout} disabled={busy}
-            onChange={(e) => setTimeoutValue(e.target.value)}
-            aria-describedby="scalex-timeout-help"
-            className="w-full px-3 py-2 text-sm rounded-lg border border-[var(--border)] bg-[var(--bg-surface)]
-                       text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]" />
-          {timeoutBad ? (
-            <p className="mt-1 text-xs text-red-600">
-              {tMin}–{tMax} arası bir saniye değeri girin.
-            </p>
-          ) : (
-            <p id="scalex-timeout-help" className="mt-1 text-xs text-[var(--text-muted)]">
-              {humanSeconds(timeout)} · <strong>Açarken</strong> bu süre dolunca uyarı yazılır ve iş
-              başarılı biter. <strong>Kapatırken</strong> uyarı yazılır ama 0 olana kadar beklenir;{" "}
-              {humanSeconds(String(Number(timeout) * 2 || 0))} geçilirse başarısız sayılır.
-            </p>
+      {/* Dugme ve icerik TEK sarmalayicida: kapaliyken icerik sifir yukseklikte kalir ama
+          ust kapsayicinin `space-y` boslugu bos bir satir daha acardi. */}
+      <div>
+      {gomulu && (
+        <button
+          type="button"
+          onClick={() => setGelismisAcik((v) => !v)}
+          aria-expanded={gelismisGorunur}
+          aria-controls="scalex-gelismis"
+          className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+        >
+          <ChevronDownIcon
+            aria-hidden="true"
+            className={`w-3.5 h-3.5 transition-transform ${gelismisGorunur ? "rotate-180" : ""}`}
+          />
+          Gelişmiş
+          {!gelismisGorunur && gelismisOzeti && (
+            <span className="font-normal text-[var(--text-muted)]">— {gelismisOzeti}</span>
+          )}
+        </button>
+      )}
+      <Collapse open={gelismisGorunur}>
+        <div
+          id="scalex-gelismis"
+          className={`space-y-6 ${gomulu ? "pt-4" : ""}`}
+          {...(gelismisGorunur ? {} : { inert: true })}
+        >
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label htmlFor="scalex-timeout" className="block text-xs font-medium text-[var(--text-muted)] mb-1.5">
+                Sonucu ne kadar bekleyelim? (saniye)
+              </label>
+              <input id="scalex-timeout" type="number" inputMode="numeric"
+                min={tMin} max={tMax} step={30}
+                value={timeout} disabled={busy}
+                onChange={(e) => setTimeoutValue(e.target.value)}
+                aria-describedby="scalex-timeout-help"
+                className="w-full px-3 py-2 text-sm rounded-lg border border-[var(--border)] bg-[var(--bg-surface)]
+                           text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]" />
+              {timeoutBad ? (
+                <p className="mt-1 text-xs text-red-600">
+                  {tMin}–{tMax} arası bir saniye değeri girin.
+                </p>
+              ) : (
+                <p id="scalex-timeout-help" className="mt-1 text-xs text-[var(--text-muted)]">
+                  {humanSeconds(timeout)} · <strong>Açarken</strong> bu süre dolunca uyarı yazılır ve iş
+                  başarılı biter. <strong>Kapatırken</strong> uyarı yazılır ama 0 olana kadar beklenir;{" "}
+                  {humanSeconds(String(Number(timeout) * 2 || 0))} geçilirse başarısız sayılır.
+                </p>
+              )}
+            </div>
+            <div>
+              <label htmlFor="scalex-cc" className="block text-xs font-medium text-[var(--text-muted)] mb-1.5">
+                Rapor CC (isteğe bağlı)
+              </label>
+              <input id="scalex-cc" type="text" value={mailCc} disabled={busy} placeholder="ekip@garantibbva.com.tr"
+                onChange={(e) => setMailCc(e.target.value)}
+                className="w-full px-3 py-2 text-sm rounded-lg border border-[var(--border)] bg-[var(--bg-surface)]
+                           text-[var(--text-primary)] placeholder-[var(--text-muted)]
+                           focus:outline-none focus:ring-2 focus:ring-[var(--accent)]" />
+              <p className="mt-1 text-xs text-[var(--text-muted)]">Rapor her durumda sana gönderilir.</p>
+            </div>
+          </div>
+
+          {clusterCount > 1 && (
+            <label className="flex items-start gap-2.5 text-sm cursor-pointer">
+              <input type="checkbox" className="mt-1" checked={allowPartial} disabled={busy}
+                onChange={(e) => setAllowPartial(e.target.checked)} />
+              <span>
+                <span className="text-[var(--text-primary)]">Bir hedef başarısız olursa diğerlerine devam et</span>
+                <span className="block text-xs text-[var(--text-muted)] mt-0.5">
+                  Kapatırsan “hepsi ya da hiçbiri” çalışır: tek bir ön kontrol hatası tüm işlemi iptal eder
+                  ve cluster'da hiçbir değişiklik olmaz.
+                </span>
+              </span>
+            </label>
           )}
         </div>
-        <div>
-          <label htmlFor="scalex-cc" className="block text-xs font-medium text-[var(--text-muted)] mb-1.5">
-            Rapor CC (isteğe bağlı)
-          </label>
-          <input id="scalex-cc" type="text" value={mailCc} disabled={busy} placeholder="ekip@garantibbva.com.tr"
-            onChange={(e) => setMailCc(e.target.value)}
-            className="w-full px-3 py-2 text-sm rounded-lg border border-[var(--border)] bg-[var(--bg-surface)]
-                       text-[var(--text-primary)] placeholder-[var(--text-muted)]
-                       focus:outline-none focus:ring-2 focus:ring-[var(--accent)]" />
-          <p className="mt-1 text-xs text-[var(--text-muted)]">Rapor her durumda sana gönderilir.</p>
+      </Collapse>
+      </div>
+
+      {!gomulu && (
+        <div className="flex justify-end border-t border-[var(--border)] pt-4">
+          <button type="button" className="btn-primary" disabled={busy || !secim}
+            onClick={() => secim && onSubmit?.(secim)}>
+            Önizle
+          </button>
         </div>
-      </div>
-
-      {clusterCount > 1 && (
-        <label className="flex items-start gap-2.5 text-sm cursor-pointer">
-          <input type="checkbox" className="mt-1" checked={allowPartial} disabled={busy}
-            onChange={(e) => setAllowPartial(e.target.checked)} />
-          <span>
-            <span className="text-[var(--text-primary)]">Bir hedef başarısız olursa diğerlerine devam et</span>
-            <span className="block text-xs text-[var(--text-muted)] mt-0.5">
-              Kapatırsan “hepsi ya da hiçbiri” çalışır: tek bir ön kontrol hatası tüm işlemi iptal eder
-              ve cluster'da hiçbir değişiklik olmaz.
-            </span>
-          </span>
-        </label>
       )}
-
-      <div className="flex justify-end border-t border-[var(--border)] pt-4">
-        <button type="button" className="btn-primary" disabled={busy || !canSubmit}
-          onClick={() => onSubmit({
-            action: action!, executionMode: mode!,
-            ...(action === "scale" ? { targetReplicas: replicas } : {}),
-            verificationTimeout: timeout, allowPartial, mailCc: mailCc.trim(),
-            hpaPin: pinOffered && hpaPin,
-          })}>
-          Önizle
-        </button>
-      </div>
     </div>
   );
 };

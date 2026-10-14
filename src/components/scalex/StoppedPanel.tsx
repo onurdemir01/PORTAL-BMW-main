@@ -16,6 +16,7 @@ import {
 import { scalexApi, type ScaleXStoppedItem } from '@/api/scalexApi';
 import { useJobTracker } from '@/contexts/JobTrackerContext';
 import { fmtRelative } from '@/utils/datetime';
+import { yoklamaBekle, yoklamaSayisi } from '@/utils/scalexYoklama';
 
 interface Props {
   /** Bos birakilirsa kullanicinin gorebildigi TUM kapsamlar listelenir. */
@@ -29,6 +30,10 @@ interface Props {
    * `SCALEX_MAX_AUDIT_GROUPS`). Verilmezse asagidaki fabrika degeri kullanilir.
    */
   maxAuditGroups?: number;
+  /** Katlanir bir panelin ICINDE: baslik ve sayac distaki panelde, burada yinelenmez. */
+  gomulu?: boolean;
+  /** Listedeki kayit sayisi; okunamadiysa `null` ("okunamadi" sifir DEGILDIR). */
+  onSayim?: (n: number | null) => void;
 }
 
 // Bu esigi asan bir durdurma "unutulmus" olabilir. Sert bir kural degil, bir hatirlatma:
@@ -84,6 +89,8 @@ const StoppedPanel: React.FC<Props> = ({
   onRestore,
   reloadKey = 0,
   maxAuditGroups = MAX_AUDIT_GROUPS,
+  gomulu = false,
+  onSayim,
 }) => {
   const [items, setItems] = useState<ScaleXStoppedItem[]>([]);
   // Yetki nedeniyle gizlenen ve sinir nedeniyle kirpilan kayit sayilari. Bunlari
@@ -125,10 +132,16 @@ const StoppedPanel: React.FC<Props> = ({
         setHiddenCount(r.hiddenCount || 0);
         setHiddenByOwnership(r.hiddenByOwnership || 0);
         setTruncated(r.truncated === true);
-      } else setError(`Durdurulmuş uygulama listesi okunamadı: ${r.message || 'sunucu hata döndü'}`);
+        onSayim?.((r.items || []).length);
+      } else {
+        setError(`Durdurulmuş uygulama listesi okunamadı: ${r.message || 'sunucu hata döndü'}`);
+        onSayim?.(null);
+      }
     } catch (e) {
-      if (aliveRef.current)
+      if (aliveRef.current) {
         setError(`Durdurulmuş uygulama listesi okunamadı: ${(e as Error).message}`);
+        onSayim?.(null);
+      }
     } finally {
       if (aliveRef.current && !opts.silent) setLoading(false);
     }
@@ -274,9 +287,13 @@ const StoppedPanel: React.FC<Props> = ({
         }
         scanned++;
         let pollErrors = 0;
-        for (let i = 0; i < 20; i++) {
-          await new Promise((r) => setTimeout(r, 3000));
-          // Panel sokulduyse dongu SUSMALI — yoksa her 3 saniyede bir bosa istek.
+        // RITIM ORTAK (bkz. utils/scalexYoklama): ilk 12 sn saniyede bir, sonra 3 sn'de
+        // bir. Sabit 3 sn, biten bir taramanin sonucunu 3 sn'ye kadar gec gosteriyordu.
+        // Toplam butce AYNI (60 sn).
+        const basladi = Date.now();
+        for (let i = 0; i < yoklamaSayisi(60_000); i++) {
+          await yoklamaBekle(basladi);
+          // Panel sokulduyse dongu SUSMALI — yoksa her turda bosa istek.
           if (!aliveRef.current) return;
           try {
             const st = await scalexApi.discoverStatus(launched.serverId, launched.jobId);
@@ -517,8 +534,12 @@ const StoppedPanel: React.FC<Props> = ({
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-2">
         <p className="text-sm font-semibold text-[var(--text-primary)]">
-          Şu an durdurulmuş{' '}
-          <span className="text-xs font-normal text-[var(--text-muted)]">({items.length})</span>
+          {!gomulu && (
+            <>
+              Şu an durdurulmuş{' '}
+              <span className="text-xs font-normal text-[var(--text-muted)]">({items.length})</span>
+            </>
+          )}
           {hiddenCount > 0 && (
             <span className="ml-2 text-xs font-normal text-[var(--text-muted)]">
               · {hiddenCount} kayıt yetki kısıtı nedeniyle görünmüyor

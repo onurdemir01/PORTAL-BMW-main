@@ -11,6 +11,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ArrowLeftIcon,
+  CheckIcon,
   ClockIcon,
   ExclamationTriangleIcon,
   StopCircleIcon,
@@ -31,23 +32,28 @@ import { isProdEnv } from '@/utils/env';
 import ScopeStep from './steps/ScopeStep';
 import NamespaceStep from './steps/NamespaceStep';
 import WorkloadStep from './steps/WorkloadStep';
-import OperationStep, { TIMEOUT_DEFAULT } from './steps/OperationStep';
+import { TIMEOUT_DEFAULT, type ScaleXIslemSecimi } from './steps/OperationStep';
 import { useScaleXLimits } from '@/hooks/useScaleXLimits';
-import PreviewStep from './steps/PreviewStep';
+import IslemOnayStep, { type ScaleXOnayEki } from './steps/IslemOnayStep';
 import ScaleXResultPanel from './steps/ScaleXResultPanel';
 import StoppedPanel from './StoppedPanel';
 import OcoSchedulePanel from './OcoSchedulePanel';
+import KatlanirPanel, { usePanelAcik } from './KatlanirPanel';
+import { yoklamaBekle, yoklamaSayisi } from '@/utils/scalexYoklama';
 
-type Step = 'scope' | 'namespace' | 'workloads' | 'operation' | 'preview' | 'done';
+// ADIMLAR (2026-10-13): "İşlem" ile "Önizleme" TEK adım oldu (`operation`, bkz.
+// steps/IslemOnayStep). Kullanıcı seçimini yaparken ne olacağını ve hangi onayların
+// isteneceğini aynı ekranda görür; altı adım beşe indi.
+type Step = 'scope' | 'namespace' | 'workloads' | 'operation' | 'done';
 
 const STEP_TITLES: Record<Step, string> = {
   scope: 'Kapsam',
   namespace: 'Namespace',
   workloads: 'Uygulamalar',
-  operation: 'İşlem',
-  preview: 'Önizleme',
+  operation: 'İşlem ve onay',
   done: 'Sonuç',
 };
+const STEP_ORDER: Step[] = ['scope', 'namespace', 'workloads', 'operation', 'done'];
 
 function backTargetFor(s: Step): Step | null {
   switch (s) {
@@ -57,12 +63,14 @@ function backTargetFor(s: Step): Step | null {
       return 'namespace';
     case 'operation':
       return 'workloads';
-    case 'preview':
-      return 'operation';
     default:
       return null; // `scope` ilk adım, `done`dan geri dönülmez (yeni işlem başlatılır)
   }
 }
+
+// Bilinçli retler: ekran işlem adımına döner ve ÖNİZLEMEYİ tazeler (kapının durumu
+// önizlemeden sonra değişmiş demektir; kullanıcı güncel engeli orada okur).
+const KAPI_RET_KODLARI = new Set(['smart_not_configured', 'scalex_not_configured', 'gate_inconsistent']);
 
 function fmtElapsed(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1000));
@@ -92,8 +100,21 @@ const ScaleXPage: React.FC = () => {
     // ILK DENEMENIN ARGUMANLARI. Zamanlama "ayni istegin" tekrari olmali:
     // gerekce ve yazili onay gibi alanlari yeniden toplamak ya da BOS gondermek,
     // kullanicinin onayladigindan FARKLI bir islemi zamanlamak olurdu.
-    extra: { writtenConfirm?: string; reason?: string; ocoNumber?: string };
+    extra: ScaleXOnayEki;
+    // ZAMANLANABILIR MI — SUNUCU SOYLER. SMART onayi devredeyken zamanlama yok (onay
+    // sonrasi is AWX'in kendi zamanlayicisina devrediliyor ve portal onu izleyemiyor).
+    // Ekran bu durumda "zamanla" dugmesini HIC gostermez; gosterip sunucunun yine
+    // "ertelendi" donmesi, kullaniciyi ayni ekranda dondururdu.
+    schedulable: boolean;
   } | null>(null);
+  // Reddedilen bir calistirmadan sonra onizleme yeniden istenir (kapi durumu degismis olabilir).
+  const [previewReload, setPreviewReload] = useState(0);
+  // ALT PANELLER katlanir + sayacli (kullanici karari). Sayilar panellerin kendi
+  // yuklemesinden gelir; `null` = henuz bilinmiyor / okunamadi.
+  const [zamanlananAcik, zamanlananYaz, zamanlananAc] = usePanelAcik('zamanlanan');
+  const [durdurulmusAcik, durdurulmusYaz] = usePanelAcik('durdurulmus');
+  const [zamanlananSayisi, setZamanlananSayisi] = useState<number | null>(null);
+  const [durdurulmusSayisi, setDurdurulmusSayisi] = useState<number | null>(null);
   // Liste tazeleme tetikleyicisi: yeni bir kayit olustugunda ya da iptal/
   // guncelleme yapildiginda artar.
   const [scheduleReload, setScheduleReload] = useState(0);
@@ -157,6 +178,9 @@ const ScaleXPage: React.FC = () => {
   const [job, setJob] = useState<{ serverId: number; jobId: number } | null>(null);
   const [runResult, setRunResult] = useState<ScaleXRunResult | null>(null);
   const [catalogWarning, setCatalogWarning] = useState<string | null>(null);
+  // Isin TAM ciktisi (is bitince bir kez istenir). Kullanicinin gordugu son metin
+  // yoklamalarin artimli parcalarindan turemez.
+  const [sonCikti, setSonCikti] = useState<string | null>(null);
   const [trackedJobId, setTrackedJobId] = useState<string | null>(null);
   // İŞLEM SONRASI SAĞLIK (C4). `main.yml` yalnızca `spec.replicas` eşitliğine bakar —
   // "replica geldi ama pod CrashLoopBackOff" durumunu BAŞARILI sayar. Bu boşluğu
@@ -182,6 +206,11 @@ const ScaleXPage: React.FC = () => {
   // ekran yalan söyler.
   const startedAt = trackedJob?.startedAt;
   const finished = !!trackedJob?.done;
+  // SONUC IZLEYICIDEN (2026-10-13). Yapilandirilmis sonuc isin son yoklamasiyla ZATEN
+  // geliyor ve izleyicide duruyor. Eskiden sayfa `finished`i gorunce ayni ucu BIR DAHA
+  // cagiriyordu ve sonuc o ikinci istek (ciktinin tamami) bitene kadar gorunmuyordu.
+  const sonuc: ScaleXRunResult | null =
+    runResult ?? (finished ? ((trackedJob?.result as ScaleXRunResult | null | undefined) ?? null) : null);
   useEffect(() => {
     if (!startedAt) return;
     setElapsed(Date.now() - startedAt);
@@ -193,9 +222,9 @@ const ScaleXPage: React.FC = () => {
   // Sağlık kontrolü: iş bitince, yalnızca gerçek bir değişiklik yapıldıysa ve
   // uygulama ayağa kalkması bekleniyorsa.
   useEffect(() => {
-    if (!finished || !runResult || healthStartedRef.current) return;
-    if (runResult.mode !== 'apply' || runResult.action === 'stop') return;
-    if (runResult.overallStatus === 'FAIL') return; // zaten başarısız, sağlık sormanın anlamı yok
+    if (!finished || !sonuc || healthStartedRef.current) return;
+    if (sonuc.mode !== 'apply' || sonuc.action === 'stop') return;
+    if (sonuc.overallStatus === 'FAIL') return; // zaten başarısız, sağlık sormanın anlamı yok
     healthStartedRef.current = true;
     let alive = true;
     (async () => {
@@ -205,8 +234,11 @@ const ScaleXPage: React.FC = () => {
           'health',
         );
         if (!launched.ok) return;
-        for (let i = 0; i < 20; i++) {
-          await new Promise((r) => setTimeout(r, 3000));
+        // RITIM ORTAK (utils/scalexYoklama): ilk 12 sn saniyede bir, sonra 3 sn'de bir.
+        // Toplam butce ayni (60 sn); biten kontrolun sonucu 3 sn'ye kadar gec gelmez.
+        const basladi = Date.now();
+        for (let i = 0; i < yoklamaSayisi(60_000); i++) {
+          await yoklamaBekle(basladi);
           if (!alive) return;
           const st = await scalexApi.discoverStatus(launched.serverId, launched.jobId);
           const httpStatus = (st as any)?._httpStatus;
@@ -224,7 +256,7 @@ const ScaleXPage: React.FC = () => {
     return () => {
       alive = false;
     };
-  }, [finished, runResult, env, tenant, namespace, clusters, apps]);
+  }, [finished, sonuc, env, tenant, namespace, clusters, apps]);
 
   // Is bitince paneli tazele. YOKLAMA HATASINDA ARTIRMA: `JobTrackerContext` yoklama
   // patladiginda da `done: true` yapiyor ve o durumda `finalizeOperation` HIC kosmamis
@@ -236,19 +268,22 @@ const ScaleXPage: React.FC = () => {
     setStoppedReloadKey((k) => k + 1);
   }, [finished, pollFailed]);
 
-  // İş bitince yapılandırılmış sonucu bir kez çek.
+  // İş bitince çıktının TAMAMINI bir kez çek. Sonuç bu isteği BEKLEMEZ (yukarıda
+  // izleyiciden okunuyor); bu istek son metni, katalog uyarısını getirir ve izleyicinin
+  // yoklaması düşmüşse sonucu da tamamlar.
   useEffect(() => {
     if (!job || !finished) return;
     let alive = true;
     scalexApi
-      .runStatus(job.serverId, job.jobId)
+      .runStatus(job.serverId, job.jobId, { tamCikti: true })
       .then((s) => {
         if (!alive) return;
-        setRunResult(s.result);
+        if (s.result) setRunResult(s.result);
         setCatalogWarning(s.catalogWarning);
+        if (s.output) setSonCikti(s.output);
       })
       .catch(() => {
-        /* ham log yine görünür */
+        /* izleyicideki metin ve sonuç yine görünür */
       });
     return () => {
       alive = false;
@@ -273,6 +308,7 @@ const ScaleXPage: React.FC = () => {
     setJob(null);
     setRunResult(null);
     setCatalogWarning(null);
+    setSonCikti(null);
     setTrackedJobId(null);
     setCancelling(false);
     setElapsed(0);
@@ -318,13 +354,39 @@ const ScaleXPage: React.FC = () => {
     }
   }
 
-  function run(extra: {
-    writtenConfirm?: string;
-    reason?: string;
-    ocoNumber?: string;
-    /** 'schedule' = pencere acilinca otomatik baslat. */
-    ocoAction?: 'schedule' | 'later';
-  }) {
+  // SECIMI SAYFA DURUMUNA YAZ. Geri/ileri gezinmede adim bu degerlerle acilir ve
+  // zamanlama onayi ("pencere acilinca baslat") AYNI istegi tekrar gonderir.
+  function secimiYaz(v: ScaleXIslemSecimi) {
+    setAction(v.action);
+    setExecutionMode(v.executionMode);
+    setTargetReplicas(v.targetReplicas);
+    setVerificationTimeout(v.verificationTimeout);
+    setAllowPartial(v.allowPartial);
+    setMailCc(v.mailCc);
+    setHpaPin(v.hpaPin);
+    setOperationTouched(true);
+  }
+
+  // `secim` VERILIRSE o calistirilir: onay ekrani, kullanicinin GORDUGU onizlemenin
+  // secimini gecirir. Sayfa durumundan okumak, son tus vurusuyla degismis ama onizlemesi
+  // henuz gelmemis bir secimi calistirabilirdi. Verilmezse (zamanlama onayi) sayfa
+  // durumundaki — yani ilk denemenin — secimi kullanilir.
+  function run(
+    extra: ScaleXOnayEki & {
+      /** 'schedule' = pencere acilinca otomatik baslat. */
+      ocoAction?: 'schedule' | 'later';
+    },
+    secim?: ScaleXIslemSecimi,
+  ) {
+    const s: ScaleXIslemSecimi = secim ?? {
+      action,
+      executionMode,
+      targetReplicas,
+      verificationTimeout,
+      allowPartial,
+      mailCc,
+      hpaPin,
+    };
     return guarded(async () => {
       const r = await scalexApi.run({
         env,
@@ -332,19 +394,19 @@ const ScaleXPage: React.FC = () => {
         namespace,
         clusters,
         apps,
-        action,
-        executionMode,
-        targetReplicas,
-        verificationTimeout,
-        allowPartial,
-        mailCc,
-        hpaPin,
+        action: s.action,
+        executionMode: s.executionMode,
+        targetReplicas: s.targetReplicas,
+        verificationTimeout: s.verificationTimeout,
+        allowPartial: s.allowPartial,
+        mailCc: s.mailCc,
+        hpaPin: s.hpaPin,
         // GERI ALMA HEDEFLERI: sunucu bu sayilari kendisi bilmiyor (deger cluster'daki
         // durum kaydinda) ve HPA sabitlemesine izin verip vermeyecegine bunlara bakarak
         // karar veriyor. Liste yalnizca KISITLAYICI yonde is gorur: hedeflerden biri 0
         // ya da bilinmiyorsa sabitleme reddedilir — cunku `minReplicas: 0` ya API
         // tarafindan reddedilir ya da uygulamayi 0'da kilitler.
-        ...(action === 'restore'
+        ...(s.action === 'restore'
           ? {
               restoreTargets: workloads
                 .filter((w) => apps.includes(w.name))
@@ -367,8 +429,8 @@ const ScaleXPage: React.FC = () => {
       if (!r.ok) {
         // KAPI YANITLARI HATA DEGIL, bir EL SIKISMA adimidir. Yalnizca `setError`
         // yapip birakmak kullaniciyi cikmaza sokardi: "OCO numarasi gerekli" yazar ama
-        // numara girecegi alan onizleme ekraninda kalir ve kullanici oraya nasil
-        // donecegini bilemez. Bu yuzden kapi yanitlarinda ONIZLEMEYE geri donuyoruz —
+        // numara girecegi alan islem ekraninda kalir ve kullanici oraya nasil
+        // donecegini bilemez. Bu yuzden kapi yanitlarinda ISLEM ADIMINA geri donuyoruz —
         // gerekli alanlar (OCO numarasi, gerekce, yazili onay) orada zaten var.
         const handshake =
           r.ocoRequired ||
@@ -376,8 +438,12 @@ const ScaleXPage: React.FC = () => {
           r.ocoExpired ||
           r.writtenConfirmRequired ||
           r.reasonRequired;
-        if (handshake) {
-          setStep('preview');
+        // BILINCLI RET (SMART tanimli degil, ScaleX sablonu yok...): onizleme tazelenir,
+        // engel kutusu guncel haliyle orada gorunur.
+        const kapiReddi = !!r.code && KAPI_RET_KODLARI.has(r.code);
+        if (handshake || kapiReddi) {
+          setPreviewReload((n) => n + 1);
+          setStep('operation');
           setError(
             r.ocoExpired
               ? `${r.message || 'OCO penceresi kapandı.'} Yeni bir OCO kaydı girin ya da pencere açıldığında tekrar deneyin.`
@@ -394,28 +460,39 @@ const ScaleXPage: React.FC = () => {
         // ARTIK SESSIZ ERTELEME YOK (2026-09-20). Eskiden burada yalnizca bir
         // metin vardi: "pencere acildiginda tekrar deneyin". Kullanici numarayi
         // girip "Calistir"a basiyor, 200 OK donuyor, hicbir sey olmuyordu.
-        // Simdi zamanlama teklif ediliyor ve secim sunucuya gidiyor.
+        // Simdi zamanlama teklif ediliyor (sunucu zamanlanabilir diyorsa) ve secim
+        // sunucuya gidiyor.
         setPendingSchedule({
           windowStartText: r.oco?.windowStartText || null,
           ocoNumber: r.oco?.ocoNumber || null,
           extra,
+          schedulable: r.schedulable === true,
         });
         setStep('done');
         return;
       }
-      // SAVUNMA: ortak kapi zamanlama yaptiysa ortada AWX job'i YOKTUR. Bu dal
-      // ScaleX'te olusmamali (zamanlama kapali) ama olusursa asagidaki `setJob`
-      // `serverId: undefined` yazar ve ekran sonsuza dek "calisiyor" spinner'i
-      // gosterirdi — sessiz bir kilitlenme yerine net bir mesaj.
-      // ZAMANLANDI: artik BEKLENEN bir sonuc (eskiden ScaleX zamanlama yapamadigi
-      // icin bu dal bir "savunma" idi).
+      // ZAMANLANDI: is AWX'te henuz YOK; kayit "Zamanlanmis islemler" panelinde.
       if (r.ocoScheduled) {
         setPendingSchedule(null);
         setNotice(
           `İşlem zamanlandı — OCO penceresi açıldığında otomatik başlayacak. ` +
-            `Kaydı "Zamanlanmış işlemler" listesinden her an iptal edebilir ya da güncelleyebilirsiniz.`,
+            `Kaydı aşağıdaki "Zamanlanmış işlemler" listesinden her an iptal edebilir ya da güncelleyebilirsiniz.`,
         );
         setScheduleReload((n) => n + 1);
+        // Yeni kayit gorunsun: panel kapaliysa acilir (tercih olarak SAKLANMAZ).
+        zamanlananAc(true);
+        setStep('done');
+        return;
+      }
+      // SMART ONAYI BEKLENIYOR — is numarasi kontrolunden ONCE (2026-10-13).
+      // Onay bekleyen iste AWX isi henuz YOKTUR; bu dal asagidaki "is numarasi donmedi"
+      // savunmasinin ARKASINDA kaldigi icin ekran SMART kaydi acildigi halde "Islem
+      // baslatilmadi — tekrar deneyin" yaziyor, kullanici ikinci bir kayit aciyordu.
+      if (r.pendingApproval) {
+        setNotice(
+          `SMART kaydı açıldı (${r.externalTicketId}). Talep “Kapama Onayı” adımına düştüğünde Smart’ta TAMAMLA’ya basın — basılmadan iş başlamaz. Bu ekranda beklemeniz gerekmez.`,
+        );
+        window.dispatchEvent(new CustomEvent('portal:smart-ticket-created'));
         setStep('done');
         return;
       }
@@ -428,20 +505,12 @@ const ScaleXPage: React.FC = () => {
         setStep('done');
         return;
       }
-      if (r.pendingApproval) {
-        setNotice(
-          `SMART kaydı açıldı (${r.externalTicketId}). Talep “Kapama Onayı” adımına düştüğünde Smart’ta TAMAMLA’ya basın — basılmadan iş başlamaz.`,
-        );
-        window.dispatchEvent(new CustomEvent('portal:smart-ticket-created'));
-        setStep('done');
-        return;
-      }
       setJob({ serverId: r.serverId, jobId: r.jobId });
       const id = addJob({
-        title: `ScaleX ${action} — ${namespace}`,
+        title: `ScaleX ${s.action} — ${namespace}`,
         fetchStatus: async () => {
-          const s = await scalexApi.runStatus(r.serverId, r.jobId);
-          return { status: s.status, output: s.output, result: s.result };
+          const st = await scalexApi.runStatus(r.serverId, r.jobId);
+          return { status: st.status, output: st.output, result: st.result };
         },
       });
       setTrackedJobId(id);
@@ -509,7 +578,7 @@ const ScaleXPage: React.FC = () => {
     // Geri donuste BOS FORM cikmasin: kullanici "Geri Al"a basarak bu kararlari
     // vermis sayilir, geri tusu onlari gostermeli.
     setOperationTouched(true);
-    setStep('preview');
+    setStep('operation');
   }
 
   // SONUC EKRANINDAN HIZLI GERI ALMA. `restoreFromPanel`in cok-hedefli kardesi:
@@ -548,7 +617,7 @@ const ScaleXPage: React.FC = () => {
     setExecutionMode('apply');
     setHpaPin(false);
     setOperationTouched(true);
-    setStep('preview');
+    setStep('operation');
   }
 
   // Turetilmis deger — hook DEGIL (U4: hook'lar erken `return`lerin ustunde kalmali).
@@ -573,7 +642,47 @@ const ScaleXPage: React.FC = () => {
         )}
         <div className="min-w-0">
           <h1 className="page-title">ScaleX</h1>
-          <p className="text-sm font-medium text-[var(--text-muted)]">{STEP_TITLES[step]}</p>
+          {/* ADIM SERIDI. Eskiden yalnizca bulunulan adimin adi yaziyordu: kullanici
+              kac adim kaldigini ve nereye donebilecegini goremiyordu. GECILMIS adimlar
+              tiklanir (geri donus); ilerideki adimlar tiklanmaz — ileri gitmek o adimin
+              kendi dogrulamasindan gecmeyi gerektirir. Sonuc ekranindan geri donulmez
+              (yeni islem baslatilir), o yuzden orada serit yalnizca bilgi verir. */}
+          <nav aria-label="Adımlar" className="mt-0.5">
+            <ol className="flex flex-wrap items-center gap-x-1 gap-y-0.5 text-xs">
+              {STEP_ORDER.map((ad, i) => {
+                const sira = STEP_ORDER.indexOf(step);
+                const gecildi = i < sira;
+                const simdiki = i === sira;
+                const donulebilir = gecildi && step !== 'done' && !busy;
+                return (
+                  <li key={ad} className="flex items-center gap-1">
+                    {i > 0 && <span aria-hidden="true" className="text-[var(--text-muted)]">›</span>}
+                    {donulebilir ? (
+                      <button
+                        type="button"
+                        onClick={() => setStep(ad)}
+                        className="inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-[var(--accent)] hover:underline"
+                      >
+                        <CheckIcon aria-hidden="true" className="w-3 h-3" />
+                        {STEP_TITLES[ad]}
+                      </button>
+                    ) : (
+                      <span
+                        aria-current={simdiki ? 'step' : undefined}
+                        className={`px-1 py-0.5 ${
+                          simdiki
+                            ? 'font-semibold text-[var(--text-primary)]'
+                            : 'text-[var(--text-muted)]'
+                        }`}
+                      >
+                        {STEP_TITLES[ad]}
+                      </span>
+                    )}
+                  </li>
+                );
+              })}
+            </ol>
+          </nav>
           {/* KUNYE HER ADIMDA. Bu sihirbazin sonu bir PROD kesintisi olabilir ve
               "hangi ortamdayim" sorusu kullanicinin KAZARA ogrenmemesi gereken bir
               bilgidir. `ScopeStep` prod'u zaten vurguluyordu ama YALNIZCA kendi
@@ -692,13 +801,17 @@ const ScaleXPage: React.FC = () => {
           />
         )}
 
+        {/* ISLEM VE ONAY — TEK ADIM. Secim tamamlandigi anda onizleme ayni ekranda gelir. */}
         {step === 'operation' && (
-          <OperationStep
-            apps={apps}
+          <IslemOnayStep
+            scope={scope}
+            selectedTargets={selectedTargets}
             workloads={workloads}
             clusterCount={clusters.length}
             busy={busy}
             limits={limits}
+            fetchedAt={workloadsFetchedAt}
+            previewReloadKey={previewReload}
             previous={
               operationTouched
                 ? {
@@ -712,37 +825,11 @@ const ScaleXPage: React.FC = () => {
                   }
                 : undefined
             }
-            onSubmit={(v) => {
-              setAction(v.action);
-              setExecutionMode(v.executionMode);
-              setTargetReplicas(v.targetReplicas);
-              setVerificationTimeout(v.verificationTimeout);
-              setAllowPartial(v.allowPartial);
-              setMailCc(v.mailCc);
-              setHpaPin(v.hpaPin);
-              setOperationTouched(true);
-              setStep('preview');
+            onSecim={secimiYaz}
+            onConfirm={(secim, ek) => {
+              secimiYaz(secim);
+              return run(ek, secim);
             }}
-          />
-        )}
-
-        {step === 'preview' && (
-          <PreviewStep
-            scope={scope}
-            /* HEDEFLER ONIZLEMEYE DE GITMELI: yoksa onizleme carpimi,
-               calistirma gercek sayiyi kullanir ve ikisi AYRISIR. */
-            selectedTargets={selectedTargets}
-            action={action}
-            executionMode={executionMode}
-            targetReplicas={targetReplicas}
-            verificationTimeout={verificationTimeout}
-            workloads={workloads}
-            hpaPin={hpaPin}
-            allowPartial={allowPartial}
-            mailCc={mailCc}
-            fetchedAt={workloadsFetchedAt}
-            busy={busy}
-            onConfirm={run}
           />
         )}
 
@@ -763,36 +850,45 @@ const ScaleXPage: React.FC = () => {
                       ` Pencere ${pendingSchedule.windowStartText} tarihinde açılıyor.`}
                   </span>
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    className="btn-primary"
-                    disabled={busy}
-                    onClick={() =>
-                      run({ ...pendingSchedule.extra, ocoAction: 'schedule' })
-                    }
-                  >
-                    Pencere açılınca otomatik başlat
-                  </button>
-                  <button
-                    type="button"
-                    className="btn-secondary"
-                    disabled={busy}
-                    onClick={() => {
-                      setPendingSchedule(null);
-                      setNotice(
-                        'İşlem zamanlanmadı. Pencere açıldığında tekrar deneyebilirsiniz.',
-                      );
-                    }}
-                  >
-                    Zamanlama, o saatte kendim gelirim
-                  </button>
-                </div>
-                <p className="text-xs text-amber-800">
-                  Zamanlarsanız kayıt <strong>her an</strong> iptal edilebilir ya da OCO
-                  numarası değiştirilebilir. Onay kapısı atlanmaz — SMART gerekiyorsa kayıt
-                  o saatte açılır.
-                </p>
+                {pendingSchedule.schedulable ? (
+                  <>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        className="btn-primary"
+                        disabled={busy}
+                        onClick={() => run({ ...pendingSchedule.extra, ocoAction: 'schedule' })}
+                      >
+                        Pencere açılınca otomatik başlat
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        disabled={busy}
+                        onClick={() => {
+                          setPendingSchedule(null);
+                          setNotice(
+                            'İşlem zamanlanmadı. Pencere açıldığında tekrar deneyebilirsiniz.',
+                          );
+                        }}
+                      >
+                        Zamanlama, o saatte kendim gelirim
+                      </button>
+                    </div>
+                    <p className="text-xs text-amber-800">
+                      Zamanlarsanız kayıt <strong>her an</strong> iptal edilebilir ya da OCO
+                      numarası değiştirilebilir.
+                    </p>
+                  </>
+                ) : (
+                  /* SMART DEVREDEYKEN ZAMANLAMA YOK. Eskiden burada her durumda "otomatik
+                     baslat" dugmesi ve "SMART gerekiyorsa kayit o saatte acilir" metni
+                     vardi; sunucu ise SMART gerektiren bir istegi zamanlamiyor. */
+                  <p className="text-xs text-amber-800" data-testid="scalex-zamanlanamaz">
+                    Bu işlem SMART onayı gerektirdiği için önceden zamanlanamıyor. Pencere
+                    açıldığında bu ekrandan yeniden başlatın; SMART kaydı o zaman açılır.
+                  </p>
+                )}
               </div>
             )}
 
@@ -803,13 +899,13 @@ const ScaleXPage: React.FC = () => {
               </div>
             )}
 
-            {runResult ? (
+            {sonuc ? (
               <ScaleXResultPanel
-                result={runResult}
+                result={sonuc}
                 catalogWarning={catalogWarning}
                 onUndo={restoreFromResult}
               />
-            ) : !notice ? (
+            ) : !notice && !pendingSchedule ? (
               <div className="flex items-center gap-2.5">
                 {finished ? (
                   <ExclamationTriangleIcon
@@ -892,7 +988,7 @@ const ScaleXPage: React.FC = () => {
 
             {trackedJob && (
               <AnsibleLogTerminal
-                output={trackedJob.output}
+                output={sonCikti ?? trackedJob.output}
                 status={trackedJob.status || 'pending'}
                 title={trackedJob.title}
               />
@@ -906,7 +1002,7 @@ const ScaleXPage: React.FC = () => {
                   girdiyi tekrar girip ayni hatayi alma ihtimali yuksek. Kapsam ve
                   uygulama secimi duruyorken islem adimina donmek, yeni bir kesif isi
                   baslatmadan denemeyi mumkun kiliyor. */}
-              {runResult?.stage === 'validation' && workloads.length > 0 && (
+              {sonuc?.stage === 'validation' && workloads.length > 0 && (
                 <button
                   type="button"
                   className="btn-secondary"
@@ -942,19 +1038,38 @@ const ScaleXPage: React.FC = () => {
           panel yalnizca sonuc ekraninda dursaydi, kaydini iptal etmek isteyen
           birinin once sihirbazi bastan doldurmasi gerekirdi. Kayit yoksa panel
           kendini hic cizmez. */}
-      <div className="card p-5">
-        <OcoSchedulePanel reloadKey={scheduleReload} />
-      </div>
+      {/* KATLANIR + SAYACLI (2026-10-13). Iki liste de HER ADIMDA erisilebilir kalir;
+          varsayilan kapali, baslikta sayac. Icerik kapaliyken de monte: sayac panelin
+          kendi yuklemesinden gelir. */}
+      <KatlanirPanel
+        id="zamanlanan"
+        baslik="Zamanlanmış işlemler"
+        sayi={zamanlananSayisi}
+        sayiEtiketi="bekliyor"
+        vurgulu
+        acik={zamanlananAcik}
+        onDegistir={zamanlananYaz}
+      >
+        <OcoSchedulePanel gomulu reloadKey={scheduleReload} onSayim={setZamanlananSayisi} />
+      </KatlanirPanel>
 
-      <div className="card p-5">
+      <KatlanirPanel
+        id="durdurulmus"
+        baslik="Şu an durdurulmuş"
+        sayi={durdurulmusSayisi}
+        acik={durdurulmusAcik}
+        onDegistir={durdurulmusYaz}
+      >
         <StoppedPanel
+          gomulu
           env={env}
           tenant={tenant}
           maxAuditGroups={limits.maxAuditGroups}
           onRestore={restoreFromPanel}
           reloadKey={stoppedReloadKey}
+          onSayim={setDurdurulmusSayisi}
         />
-      </div>
+      </KatlanirPanel>
     </div>
   );
 };
