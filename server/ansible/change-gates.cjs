@@ -231,6 +231,8 @@ async function evaluateOcoGate({
   buildSmartMetadata: ctxBuildSmartMetadata,
   // Admin KENDI isteginde Smart onayini atladi (runChangeGates karar verdi).
   adminAtladi = false,
+  // Ertelenen baslatmada AWX degisken yutarsa is iptal edilsin (bkz. runChangeGates).
+  yutmaKorumasi = false,
 }) {
   assertHooks({ createOcoAwxSchedule, friendlyAwxError }, ['createOcoAwxSchedule', 'friendlyAwxError']);
   const ocoClient = require('../oco/client.cjs');
@@ -295,6 +297,7 @@ async function evaluateOcoGate({
     // Admin Smart onayini atladiysa zamanlanan plan bunu tasir: pencere saatindeki oynatma
     // (runner.launchOrRequestApproval) ikinci kez onay istemez.
     if (adminAtladi) pendingLaunch.adminSmartAtla = true;
+    if (yutmaKorumasi) pendingLaunch.yutmaKorumasi = true;
     // ONAY ONCE, ZAMANLAMA SONRA (2026-09-22, kullanici): eskiden Smart bileti kesinti
     // SAATINDE aciliyordu; personel 15:00'te talebi birakip 23:00'te tekrar gelip Smart'i
     // onaylamak zorunda kaliyordu. Artik Smart bileti HEMEN acilir; onay gelince is
@@ -462,6 +465,14 @@ async function runChangeGates(ctx) {
     preferPortalScheduler = false,
     // Kaydi acanin AD gruplari — gorunurluk icin saklanir.
     ownerGroups = null,
+    // YUTMA KORUMASI (2026-10-14, ISTEGE BAGLI, varsayilan kapali). Ertelenen bir baslatma
+    // (OCO penceresi ya da Smart onayi sonrasi) `runner.performSsLaunch` ile yapilir ve o
+    // an AWX sablonunun "Prompt on launch > Variables" ayarina bakan kimse yoktur. Ayar
+    // arada kapatildiysa AWX ankette olmayan degiskenleri SESSIZCE yutar ve is eksik
+    // girdiyle calisir. Bayrak pakete yazilir; baslatma aninda AWX'in yanitindaki
+    // `ignored_fields` doluysa is IPTAL edilir ve hata yukari cikar. ScaleX acar;
+    // Self Service'in davranisi degismez (ankete dayali sablonlarda yutma beklenen olabilir).
+    yutmaKorumasi = false,
   } = ctx;
 
   // OCO kapisindan Smart biletine tasinacak alanlar (pencere acikken dolar).
@@ -479,7 +490,7 @@ async function runChangeGates(ctx) {
       server, templateId, username, req,
       overrides, extraVars, gateVars, detail, resolvedLaunchOptions, specFields, templateName,
       ocoNumber, ocoAction, createOcoAwxSchedule, friendlyAwxError,
-      preferPortalScheduler, ownerGroups, buildSmartMetadata, adminAtladi,
+      preferPortalScheduler, ownerGroups, buildSmartMetadata, adminAtladi, yutmaKorumasi,
     });
     if (ocoDecision.outcome !== 'proceed') return ocoDecision;
     // Kapi 'proceed' derken de bilgi tasiyabilir: pencere ACIK dalinda kesinti penceresi
@@ -496,7 +507,7 @@ async function runChangeGates(ctx) {
       server, templateId, username,
       email: req?.session?.user?.mail || '',
       templateName, overrides, extraVars, detail, resolvedLaunchOptions, specFields,
-      pendingLaunchExtras: smartPendingExtras,
+      pendingLaunchExtras: yutmaKorumasi ? { ...smartPendingExtras, yutmaKorumasi: true } : smartPendingExtras,
       buildSmartMetadata, auditAction: smartAuditAction, req,
     });
   } catch (smartErr) {

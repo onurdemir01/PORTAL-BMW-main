@@ -160,10 +160,13 @@ kopyalama gerekmez.
   talep kanaryadır.
 - **Zamanlanan işte kapı kararı zamanlama anında donar.** Kayıt açıldıktan sonra anahtar
   değişse de iş zamanlandığı kararla çalışır. Kayıt görünür ve iptal edilebilir.
-- **"Prompt on launch" yalnız istek anında denetlenir** (zamanlama ya da SMART kaydı
-  açılırken). Kayıt açıldıktan sonra AWX'te bu ayar kapatılırsa, pencere saatindeki ya da
-  onay sonrasındaki başlatma bunu görmez. Kapatmak için ortak başlatma yolunun değişmesi
-  gerekir; o yol Self Service'in de yolu.
+- **"Prompt on launch" istekten sonra kapatılırsa iş başlar ama hemen iptal edilir.** Ayar
+  istek anında (zamanlama ya da SMART kaydı açılırken) denetlenir. Pencere saatine ya da
+  onaya kadar ayar kapatılırsa, AWX işi kabul eder ama değişkenleri yok sayar. Ortak başlatma
+  yolu yalnız ScaleX'in açtığı korumayla (`yutmaKorumasi`) bunu anında görür: işi iptal
+  eder, kaydı "Başarısız" yapar ve denetime `ansible_launch_ignored_vars_cancelled`
+  yazar. AWX iptal isteğine yanıt vermezse mesaj işin iptal edilemediğini ve AWX ekranından
+  durdurulması gerektiğini söyler. Self Service'in davranışı değişmedi.
 - **OCO denetimi bir takvim denetimidir**: kaydın var olduğuna ve planlanan pencereye bakar;
   onay durumunu ya da hedef sistemleri okumaz (Admin > ScaleX Yönetimi > OCO Tanı bunu gösterir).
 

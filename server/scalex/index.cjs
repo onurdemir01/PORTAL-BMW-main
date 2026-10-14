@@ -545,6 +545,10 @@ async function runScaleXGates({
     // ZAMANLAMA PORTALDA TUTULUR (AWX-native degil): kayit portalda iptal edilir ve
     // guncellenir; poller kesinti saatinde isi baslatir.
     preferPortalScheduler: true,
+    // ERTELENEN BASLATMADA YUTMA = IPTAL: istek aninda "Prompt on launch" denetlendi
+    // (yukarida), ama pencere saatine / onaya kadar ayar kapatilirsa AWX hedef cluster
+    // listesini ve katalogu yutardi. Ortak baslatma bunu artik is basladigi anda gorur.
+    yutmaKorumasi: true,
     // Gorunurluk: kullanici KENDI ve GRUBUNUN kayitlarini gorur/iptal eder.
     ownerGroups: Array.isArray(user.groups) ? user.groups : null,
     createOcoAwxSchedule: async () => {
