@@ -73,11 +73,18 @@ const OcoSchedulePanel: React.FC<Props> = ({ reloadKey = 0, gomulu = false, onSa
     setLoading(true);
     try {
       const r = await scalexApi.ocoSchedules();
-      if (r.ok) {
-        setItems(r.items || []);
+      // DIZI DEGILSE "OKUNAMADI" (2026-10-14 uretim olayi): sunucu Admin'e listeyi
+      // `{ items, total }` nesnesi olarak gonderiyordu; `items.map` ScaleX ekraninin
+      // TAMAMINI dusurdu. Beklenmeyen bicim bos liste de sayilmaz — "yok" yalan olurdu.
+      if (r.ok && Array.isArray(r.items)) {
+        setItems(r.items);
         setScope(r.scope || '');
         setError(null);
-        onSayim?.((r.items || []).filter((it) => ACIK.has(it.status)).length);
+        onSayim?.(r.items.filter((it) => ACIK.has(it.status)).length);
+      } else if (r.ok) {
+        setItems([]);
+        setError('Zamanlanmış işlemler okunamadı: sunucu beklenmeyen biçimde yanıt verdi.');
+        onSayim?.(null);
       } else {
         setError(`Zamanlanmış işlemler okunamadı: ${r.message || 'sunucu hata döndü'}`);
         // "Okunamadı" SIFIR değildir: sayaç "0" yazarsa kullanıcı bekleyen kaydı yok sanar.

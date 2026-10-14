@@ -2354,8 +2354,11 @@ function initScaleX(app) {
       });
       // ADMIN HEPSINI GORUR. Ayri bir sorgu degil, ayni listenin suzgecsiz hali:
       // iki ayri sorgu zamanla AYRISIRDI.
+      // `listAll` `{ items, total }` DONER (2026-10-14 duzeltmesi): eskiden nesnenin
+      // TAMAMI `items` diye gidiyordu. Admin'in paneli "zamanlanmis islem yok" diyordu
+      // (hicbir kaydi gormedi); sayac eklenince ScaleX ekrani `items.map` ile coktu.
       const gorunur = u.role === 'Admin'
-        ? (await ocoStore.listAll({ limit: Number(req.query?.limit) || 100 }))
+        ? (await ocoStore.listAll({ limit: Number(req.query?.limit) || 100 })).items
         : items;
       res.json({ ok: true, items: gorunur, truncated, scope: u.role === 'Admin' ? 'all' : 'mine+groups' });
     }),

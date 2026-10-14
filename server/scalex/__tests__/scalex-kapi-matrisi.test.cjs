@@ -1478,3 +1478,28 @@ test('KM21 onay beklerken tutulan geri alma kilidi: bilet cozulene kadar durur, 
   );
   assert.deepEqual(sim.kayit.taninmayanSql, []);
 });
+
+// 2026-10-14 URETIM OLAYI: uc Admin'e listeyi `{ items, total }` NESNESI olarak veriyordu
+// (`ocoStore.listAll`in donusu). Admin hicbir zamanlanmis kaydi goremedi; sayac eklenince
+// ScaleX ekrani "l.map is not a function" ile coktu. Sahte depo GERCEK depoyla ayni
+// bicimi doner, yani bu test ucun kendisini olcer.
+test('KM22 zamanlanmis islemler listesi: her rolde DIZI; Admin herkesinkini, kullanici kendi grubununkini gorur', async (t) => {
+  sim.konsoluSustur(t);
+  sim.smartKipi('oco_only');
+  sim.ayar.oco = 'once';
+  const z = await sim.calistir({ ocoNumber: OCO_NO, ocoAction: 'schedule' });
+  assert.equal(z.json.ocoScheduled, true, z.metin);
+
+  const liste = async (kim) => {
+    sim.ayar.kullanici = sim.KULLANICILAR[kim];
+    const r = await sim.istek('GET', '/api/scalex/oco-schedules');
+    assert.equal(r.status, 200, r.metin);
+    assert.ok(Array.isArray(r.json.items), `${kim}: items dizi degil: ${r.metin.slice(0, 200)}`);
+    return r.json;
+  };
+  const admin = await liste('yonetici');
+  assert.equal(admin.scope, 'all');
+  assert.deepEqual(admin.items.map((x) => x.id), [z.json.scheduleId], 'Admin baskasinin kaydini gormedi');
+  assert.deepEqual((await liste('ayse')).items.map((x) => x.id), [z.json.scheduleId]);
+  assert.deepEqual((await liste('bora')).items, [], 'baska ekibin kaydi gorundu');
+});
