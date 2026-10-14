@@ -176,11 +176,12 @@ test('NH6 kayitlar: PLAYBOOKS, registry seed, sayfa elementi (Admin), nav, route
   );
   assert.match(read('src/App.tsx'), /PageVisibilityRoute pageId="NginxConsole"/);
   assert.match(read('server/index.cjs'), /nginx-console\/index\.cjs'\)\.initNginxConsole\(app\)/);
-  // sunucu tarafi Admin kapisi
-  assert.match(
-    read('server/nginx-console/index.cjs'),
-    /isAdmin\(req\) \? next\(\) : res\.status\(403\)/,
-  );
+  // sunucu tarafi Admin kapisi (2026-10-14: Admin disi yalniz salt okunur SPA kesfi uclari, sayfa +
+  // sekme kapisindan gecerek; davranisi admin-kapisi.test.cjs kosturarak dogrular)
+  const nc = read('server/nginx-console/index.cjs');
+  assert.match(nc, /router\.use\(adminKapisi\(\(\) => gorunurlukKapisi\)\);/);
+  assert.match(nc, /if \(isAdmin\(req\)\) return next\(\);/);
+  assert.match(nc, /res\.status\(403\)\.json\(\{ ok: false, message: 'Nginx Hub yalnız Admin\.' \}\)/);
 });
 
 test('NH7 push betigi sozlesmesi: beyaz liste, kilit, yedek, nginx -t geri alma, reload, RESULT satiri', () => {

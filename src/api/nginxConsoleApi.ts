@@ -363,6 +363,10 @@ export interface NgSpaApp {
   rpYol?: ('proxy' | 'include' | 'dizin')[];
   /** 'bulunan/beklenen' RP host sayısı (kendi ortamının sunucuları). */
   rpHost?: string;
+  /** Tanımın bulunduğu reverse proxy servisi/servisleri (GLOMO, WEBFORMS …; yalnız kendi ortamı). */
+  rpServis?: string[];
+  /** rpServis'te sunucu grubundan gelen ve birden çok servisi kapsayan bir ad var (yeni PROD dizin). */
+  rpServisGrup?: boolean;
   /**
    * En zayıf eşleşme yolu (yoksa kesin). `paylasimli`: hedef adresi farklı route'lar paylaşıyor;
    * `belirsiz`: ad birden çok uygulamaya çözülüyor — ikisinde de tanımın trafiği bu uygulamaya
@@ -513,6 +517,9 @@ export interface NgSpaRpTanim {
   location: string;
   status: string;
   yol: 'proxy' | 'include' | 'dizin';
+  /** Reverse proxy servisi (config'teki servis vhost'u; yoksa sunucu grubu). */
+  servis?: string;
+  servisKaynak?: 'grup';
   esles: string;
   hedef?: string;
   hedefKaynak?: string;
@@ -676,8 +683,10 @@ export const nginxConsoleApi = {
   // Sunucu 60 sn onbellekler; "Yenile" fresh=1 ile onbellegi atlar. Govdede yazilmayan
   // varsayilanlar BURADA geri doldurulur (spaYanitDoldur).
   spaDiscovery: (fresh = false): Promise<NgSpaDiscovery> =>
+    // safeJson: yanit JSON degilse (ara gecidin HTML hata sayfasi) HTTP durumuyla anlasilir bir
+    // hata; eskiden r.json() "Unexpected token '<'" diye dusuyordu (2026-10-14 uretim).
     fetch(`${BASE}/spa-discovery${fresh ? '?fresh=1' : ''}`)
-      .then((r) => r.json())
+      .then(safeJson)
       .then(spaYanitDoldur),
   /** Bir uygulamanın RP tanımları ve tanım başına trafik (satıra tıklayınca açılan panel). */
   spaRp: (ns: string, app: string, fresh = false): Promise<NgSpaRpDetay> =>

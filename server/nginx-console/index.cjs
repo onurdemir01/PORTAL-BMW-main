@@ -875,6 +875,23 @@ function isAdmin(req) {
   return req.session?.user?.role === 'Admin';
 }
 
+/** Admin olmayan kullanicinin gecebildigi SALT OKUNUR uclar (bkz. initNginxConsole'daki not). */
+const ADMIN_DISI_OKUMA = [/^\/spa-discovery(\/rp)?\/?$/];
+
+/**
+ * Nginx Hub router kapisi: Admin her yere; Admin olmayan yalniz ADMIN_DISI_OKUMA'daki GET'lere ve
+ * yalniz gorunurluk (sayfa + sekme) kapisi kuruluysa - kurulamadiysa kapi ACIK KALMAZ.
+ * @param {() => boolean} gorunurlukHazir
+ */
+function adminKapisi(gorunurlukHazir) {
+  return (req, res, next) => {
+    if (isAdmin(req)) return next();
+    if (gorunurlukHazir() && req.method === 'GET' && ADMIN_DISI_OKUMA.some((re) => re.test(req.path)))
+      return next();
+    return res.status(403).json({ ok: false, message: 'Nginx Hub yalnız Admin.' });
+  };
+}
+
 // ── HTTP ────────────────────────────────────────────────────────────────────────────────
 function initNginxConsole(app) {
   const { requireAuth } = require('../auth/index.cjs');
@@ -885,9 +902,17 @@ function initNginxConsole(app) {
   router.use(requireAuth);
   // YALNIZ Admin (kullanici, 2026-09-19): sayfa elementi de Admin'e seed'lenir; burada
   // sunucu tarafinda da kapali ki gorunurluk kurali degistirilse bile uclar acilmasin.
-  router.use((req, res, next) =>
-    isAdmin(req) ? next() : res.status(403).json({ ok: false, message: 'Nginx Hub yalnız Admin.' }),
-  );
+  //
+  // YETKI VERILEN KULLANICI ISTISNASI (2026-10-14, uretim): Admin > "Nginx Hub Erisimi"nden yalniz
+  // "SPA Kesfi & Kapsam" acilan Admin olmayan kullanici "SPA kesfi okunamadi: Unexpected token '<'"
+  // aldi. Bu kapi 2026-09-19'dan kalma; 2026-09-23'te sekme bazli erisim paneli geldi ama kapi
+  // gevsetilmedi - panel izin veriyor, sunucu 403 donuyordu (denetim uclari /api/denetim/nginx-*
+  // zaten sayfa + sekme kapisiyla aciliyordu, bu router acilmamisti). Admin disi kullanici YALNIZ
+  // asagidaki SALT OKUNUR uclara gecer ve ardindaki sayfa + sekme kapisindan (requireVisible) yine
+  // gecmek zorundadir; gorunurluk motoru yuklenemediyse GECEMEZ (kapi acik kalmaz). Dokum tabanli
+  // sekmeler (konfigurasyon dosya icerikleri, push, refresh, orphans temizligi ...) Admin'de kalir.
+  let gorunurlukKapisi = false;
+  router.use(adminKapisi(() => gorunurlukKapisi));
   try {
     const { requireVisiblePrefix, requireVisible } = require('../auth/visibility.cjs');
     router.use(requireVisiblePrefix('NginxConsole'));
@@ -908,6 +933,7 @@ function initNginxConsole(app) {
       if (!hit) return next();
       return requireVisible('tab:nginx:' + hit[1])(req, res, next);
     });
+    gorunurlukKapisi = true;
   } catch {
     /* motor yoksa yoksay */
   }
@@ -1590,6 +1616,7 @@ function minDays(parsed) {
 
 module.exports = {
   initNginxConsole,
+  _adminKapisi: adminKapisi,
   REGISTRY_KEYS,
   ALLOWED_PATH_RE,
   HOST_RE,
