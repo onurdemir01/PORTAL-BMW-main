@@ -678,6 +678,10 @@ export interface NginxAuditResult {
 
 export interface OcpCoverageRow {
   application: string;
+  /** Route ekraninda satir kimligi (namespace tabani + route adi); uygulama ekraninda yok. */
+  key?: string;
+  /** Route ekraninda namespace tabani (ortam eki atilmis). */
+  alt?: string;
   envs: Record<string, { cluster: string; namespace: string }[]>;
   present: string[];
   missing: string[];
@@ -697,7 +701,7 @@ export interface OcpCoverageResult {
   /** Ortam basina GERCEKTE kullanilan cluster'lar + her birindeki uygulama sayisi.
    *  Sabit bir liste DEGIL, veriden cikarilir: platformun cluster listesi ortam ayrimi
    *  tasimaz (bkz. server/audit/ocp-platforms.cjs). */
-  envClusters: Record<string, { cluster: string; apps: number; beklenmeyen?: boolean }[]>;
+  envClusters: Record<string, { cluster: string; apps: number; beklenmeyen?: boolean; veriYok?: boolean }[]>;
   /** Ortamin cluster listesi nereden: 'resmi' (Portal'da tanimli ortam->cluster tablosu, n buradan)
    *  ya da 'veri' (o ortamda namespace barindiran cluster'lar). */
   envClusterKaynagi?: Record<string, 'resmi' | 'veri'>;
@@ -1294,6 +1298,9 @@ export const denetimApi = {
 
   ocpCoverage: (platform: string): Promise<OcpCoverageResult> =>
     fetch(`${BASE}/ocp-coverage?platform=${encodeURIComponent(platform)}`).then(safeJson),
+  // OpenShift Route (2026-10-14): ayni yanit sekli, kaynak dbo.BMW_Openshift_Route_Inventory.
+  ocpRouteCoverage: (platform: string): Promise<OcpCoverageResult> =>
+    fetch(`${BASE}/ocp-route-coverage?platform=${encodeURIComponent(platform)}`).then(safeJson),
 
   initScripts: (root: string): Promise<InitScriptsResult> =>
     fetch(`${BASE}/init-scripts?root=${encodeURIComponent(root)}`).then(safeJson),

@@ -48,9 +48,11 @@ function envClustersFromApps(apps, envs) {
  * cluster'larin HEPSI (uygulamasi 0 olsa da - "o cluster'da hic yok" da bilgidir) + o ortamin
  * namespace'inin goruldugu ama listede OLMAYAN cluster'lar `beklenmeyen: true` ile. Resmi listesi
  * olmayan ortam (or. edu) veriden cikarilan listeyle kalir.
- * @returns {{ kumeler: Record<string, {cluster, apps, beklenmeyen?: boolean}[]>, kaynak: Record<string, 'resmi'|'veri'> }}
+ * @param {Set<string>} [gorulen] sorguda en az bir satiri olan cluster'lar (kucuk harf); verilirse
+ *   hic satiri olmayan resmi cluster `veriYok: true` olur (olculemedi != yok).
+ * @returns {{ kumeler: Record<string, {cluster, apps, beklenmeyen?: boolean, veriYok?: boolean}[]>, kaynak: Record<string, 'resmi'|'veri'> }}
  */
-function envClustersResmi(apps, envs, resmi) {
+function envClustersResmi(apps, envs, resmi, gorulen) {
   const veri = envClustersFromApps(apps, envs);
   const kumeler = {};
   const kaynak = {};
@@ -60,7 +62,13 @@ function envClustersResmi(apps, envs, resmi) {
     const sayi = new Map((veri[e] || []).map((x) => [x.cluster.toLowerCase(), x.apps]));
     const resmiSet = new Set(liste.map((c) => c.toLowerCase()));
     kumeler[e] = [
-      ...liste.map((c) => ({ cluster: c, apps: sayi.get(c.toLowerCase()) || 0 })),
+      // `gorulen`: sorgu sonucunda HERHANGI bir satiri olan cluster'lar. Resmi cluster orada yoksa
+      // olcum yok demektir (giris basarisiz) - "veriYok"; ekran onu n'ye katmaz.
+      ...liste.map((c) => ({
+        cluster: c,
+        apps: sayi.get(c.toLowerCase()) || 0,
+        ...(gorulen && !gorulen.has(c.toLowerCase()) ? { veriYok: true } : {}),
+      })),
       ...(veri[e] || []).filter((x) => !resmiSet.has(x.cluster.toLowerCase())).map((x) => ({ ...x, beklenmeyen: true })),
     ];
     kaynak[e] = 'resmi';

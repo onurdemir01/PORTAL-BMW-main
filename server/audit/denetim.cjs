@@ -6,6 +6,8 @@
 //      tablosu + uygulamanin OpenShift envanterinde olup olmadigi.
 //   2) GET /api/denetim/ocp-coverage -> dbo.Openshift_Inventory. Bir uygulamanin bir
 //      platformun HANGI ortamlarinda VAR / EKSIK oldugu.
+//      GET /api/denetim/ocp-route-coverage -> dbo.BMW_Openshift_Route_Inventory, ayni soru
+//      route icin (2026-10-14; ortak kurucu ocp-kapsam.cjs).
 //   3) GET /api/denetim/init-scripts -> dbo.InitScriptsInventory[8] (check_initialize
 //      job'i doldurur). Init script'lerinin sunucular arasi sha512 sapmasi: hangi
 //      script kac AYRI surumle dagitilmis, hangi host'lar cogunluktan ayrilmis.
@@ -95,6 +97,7 @@ function initDenetim(app) {
     ];
     const TAB_OF_PATH = [
       [/^\/ocp-coverage(\/|$)/, 'ocp'],
+      [/^\/ocp-route-coverage(\/|$)/, 'ocproute'],
       [/^\/init-scripts(\/|$)/, 'init'],
       [/^\/deploy-scripts(\/|$)/, 'deploy'],
       [/^\/route-traffic(\/|$)/, 'routetraffic'],
@@ -1644,7 +1647,10 @@ function initDenetim(app) {
   // "Bir uygulama hangi ortamlarda eksik" sorusu. Platform CLUSTER'dan, ortam NAMESPACE
   // SON EKINDEN gelir (nedeni: ocp-platforms.cjs basligindaki "kritik tasarim karari"
   // notu - ark_dev ile ark_test AYNI cluster'lardir, cluster ortam bilgisi TASIMAZ).
-  router.get('/ocp-coverage', async (req, res) => {
+  // ORTAK UC GOVDESI (2026-10-14): OpenShift (uygulama) ve OpenShift Route ekranlari ayni platform
+  // dogrulamasi, ayni cluster suzgeci ve ayni kapsam kurucusuyla (ocp-kapsam.cjs) yanit verir.
+  // Gruplama / resmi kume / desen ozeti gerekceleri: ocp-kapsam.cjs ve ocp-clusters.cjs.
+  async function ocpKapsamYanit(req, res, { sorgu, kayit, hata }) {
     try {
       const { query, sql } = require('../inventory/mssql.cjs');
       const platform = String(req.query.platform || 'ark').trim();
@@ -1655,91 +1661,46 @@ function initDenetim(app) {
           message: `Bilinmeyen platform: ${platform}. Geçerli: ${Object.keys(PLATFORM_CLUSTERS).join(', ')}`,
         });
       }
-
       const inputs = clusters.map((c, i) => ({ name: `c${i}`, type: sql.NVarChar(100), value: c }));
       const placeholders = clusters.map((_, i) => `@c${i}`).join(', ');
-      const result = await query(
-        `SELECT DISTINCT cluster, namespace, application
-           FROM dbo.Openshift_Inventory
-          WHERE cluster IN (${placeholders})`,
-        inputs,
-      );
-
-      // application -> { env -> [{cluster, namespace}] }
-      const apps = new Map();
-      let skippedNoEnv = 0;
-      for (const r of result.recordset || []) {
-        const env = envOfNamespace(r.namespace);
-        if (!env) {
-          skippedNoEnv++;
-          continue;
-        } // altyapi/operator namespace'i - uygulama degil
-        if (!apps.has(r.application))
-          apps.set(r.application, { application: r.application, envs: {} });
-        const e = apps.get(r.application).envs;
-        if (!e[env]) e[env] = [];
-        e[env].push({ cluster: r.cluster, namespace: r.namespace });
-      }
-
-      const rows = [...apps.values()]
-        .map((a) => {
-          const present = ENVS.filter((e) => a.envs[e]?.length);
-          const missing = ENVS.filter((e) => !a.envs[e]?.length);
-          return { ...a, present, missing, missingCount: missing.length };
-        })
-        .sort((a, b) => a.application.localeCompare(b.application));
-
-      // ORTAM BASINA GERCEKTE KULLANILAN CLUSTER KUMESI (2026-09-10, kullanici bulgusu).
-      //
-      // Sorun: bir uygulama production'in 5 cluster'indan yalnizca 1'inde olsa da hucre
-      // "VAR" gorunuyordu - 5'inde olanla ayirt EDILEMIYORDU. Cluster bilgisi yalnizca
-      // fare ipucunda duruyordu.
-      //
-      // Kume TAHMIN EDILMEZ, VERIDEN CIKARILIR: platformun cluster listesi ortam ayrimi
-      // TASIMAZ (bkz. ocp-platforms.cjs - ayni cluster hem dev hem test namespace'i
-      // barindirabiliyor). Bu yuzden "prod cluster'lari" diye sabit bir liste yazmak
-      // yanlis olurdu; bunun yerine o ortamda GERCEKTEN namespace barindiran cluster'lar
-      // sayilir.
-      //
-      // Her cluster icin uygulama sayisi da dondurulur: bu, "n" sayisinin ne demek
-      // oldugunu aciklar ve DR gibi az uygulamali cluster'lari gorunur kilar. Kismi
-      // kapsam BIR HUKUM DEGIL, bir GOZLEMDIR - bazi uygulamalarin (or. DR'de) olmamasi
-      // mesrudur, bu yuzden "eksik" damgasi vurulmaz.
-      // RESMI KUME (2026-10-14): platformun resmi ortam->cluster listesi varsa n ondan gelir.
-      const { envClustersResmi } = require('./ocp-clusters.cjs');
-      const { kumeler: envClusterList, kaynak: envClusterKaynagi } = envClustersResmi(apps.values(), ENVS, ENV_CLUSTERS[platform]);
-
-      // Ozet: hangi "eksik ortam" deseni kac uygulamada goruluyor (en sik 10).
-      const patternCount = new Map();
-      for (const r of rows) {
-        if (!r.missing.length) continue;
-        const k = r.missing.join(',');
-        patternCount.set(k, (patternCount.get(k) || 0) + 1);
-      }
-      const patterns = [...patternCount.entries()]
-        .map(([k, n]) => ({ missing: k.split(','), count: n }))
-        .sort((a, b) => b.count - a.count)
-        .slice(0, 10);
-
+      const result = await query(sorgu(placeholders), inputs);
+      const { kapsamKur } = require('./ocp-kapsam.cjs');
       res.json({
         ok: true,
         platform,
         platforms: Object.keys(PLATFORM_CLUSTERS),
         clusters,
         envs: ENVS,
-        totalApplications: rows.length,
-        completeCount: rows.filter((r) => !r.missing.length).length,
-        skippedNoEnv,
-        patterns,
-        envClusters: envClusterList,
-        envClusterKaynagi,
-        rows,
+        ...kapsamKur((result.recordset || []).map(kayit), ENV_CLUSTERS[platform]),
       });
     } catch (err) {
-      res
-        .status(500)
-        .json({ ok: false, message: err.message || 'OpenShift kapsam verisi alınamadı.' });
+      res.status(500).json({ ok: false, message: err.message || hata });
     }
+  }
+
+  router.get('/ocp-coverage', (req, res) =>
+    ocpKapsamYanit(req, res, {
+      sorgu: (ph) => `SELECT DISTINCT cluster, namespace, application
+           FROM dbo.Openshift_Inventory
+          WHERE cluster IN (${ph})`,
+      kayit: (r) => ({ cluster: r.cluster, namespace: r.namespace, application: r.application }),
+      hata: 'OpenShift kapsam verisi alınamadı.',
+    }),
+  );
+
+  // OPENSHIFT ROUTE KAPSAMI (2026-10-14, kullanici: "bunun aynisini Route envanteri icinde yapabilir
+  // miyiz? yine Denetim sekmesine koyar misin?"). Kaynak dbo.BMW_Openshift_Route_Inventory
+  // (route_inventory job'i, her kosuda TRUNCATE + yeniden yukleme). Satir = namespace tabani + route
+  // adi (ocp-kapsam.routeKaydi); ortam yine namespace son ekinden, n yine resmi kumeden.
+  router.get('/ocp-route-coverage', (req, res) => {
+    const { routeKaydi } = require('./ocp-kapsam.cjs');
+    return ocpKapsamYanit(req, res, {
+      sorgu: (ph) => `SELECT DISTINCT cluster_name, namespace_name, route_name
+           FROM dbo.BMW_Openshift_Route_Inventory
+          WHERE cluster_name IN (${ph})`,
+      kayit: routeKaydi,
+      hata: 'OpenShift route kapsam verisi alınamadı.',
+    });
   });
 
   // ── 3) INIT SCRIPT SAPMASI ──────────────────────────────────────────────────────────

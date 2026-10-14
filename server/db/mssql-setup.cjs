@@ -2295,6 +2295,15 @@ const ELEMENT_SEED = [
     default_visible: 0,
   },
   {
+    // OpenShift Route (2026-10-14): OpenShift sekmesinin aynisi, kaynak route envanteri
+    element_key: 'tab:denetim:ocproute',
+    element_type: 'tab',
+    parent_key: 'Denetim',
+    label: 'OpenShift Route',
+    sort_order: 5,
+    default_visible: 0,
+  },
+  {
     element_key: 'tab:denetim:init',
     element_type: 'tab',
     parent_key: 'Denetim',

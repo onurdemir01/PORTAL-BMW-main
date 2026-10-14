@@ -156,6 +156,7 @@ test('seed: Denetim yalniz Admin; sekme elementleri varsayilan kapali; tek sefer
     );
   for (const t of [
     'ocp',
+    'ocproute',
     'init',
     'deploy',
     'routetraffic',
@@ -238,7 +239,7 @@ test('sunucu: /api/denetim yol -> sekme kapisi; panel uclari', () => {
   const den = read('server/audit/denetim.cjs');
   assert.ok(den.includes("requireVisiblePrefix('Denetim')"), 'sayfa kapisi');
   assert.ok(den.includes("requireVisible('tab:denetim:' + hit[1])"), 'sekme kapisi yok');
-  for (const t of ['ocp', 'init', 'deploy', 'routetraffic', 'envanter', 'appenvs', 'webapp']) {
+  for (const t of ['ocp', 'ocproute', 'init', 'deploy', 'routetraffic', 'envanter', 'appenvs', 'webapp']) {
     assert.ok(new RegExp(`'${t}'\\]`).test(den), `yol eslemesinde ${t} yok`);
   }
   // nginx denetim uclari Nginx Hub SAYFA kapisindan gecer (2026-09-22) ve 2026-09-23'ten beri

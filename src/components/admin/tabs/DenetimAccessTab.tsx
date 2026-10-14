@@ -13,7 +13,7 @@ import { denetimAccessApi } from '@/api/adminApi';
 import { TabAccessPanel } from './TabAccessPanel';
 
 const TAB_LABELS: Record<string, string> = {
-  ocp: 'OpenShift', init: 'Init Script', deploy: 'Deployment Scripts', routetraffic: 'Route Trafiği', envanter: 'Envanter', degisim: 'Envanter Değişim', appenvs: 'JBoss/WAS', webapp: 'Web-App',
+  ocp: 'OpenShift', ocproute: 'OpenShift Route', init: 'Init Script', deploy: 'Deployment Scripts', routetraffic: 'Route Trafiği', envanter: 'Envanter', degisim: 'Envanter Değişim', appenvs: 'JBoss/WAS', webapp: 'Web-App',
 };
 
 export default function DenetimAccessTab() {

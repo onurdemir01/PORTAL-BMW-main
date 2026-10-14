@@ -28,6 +28,7 @@ import {
   LinkIcon,
   ClockIcon,
   SignalIcon,
+  GlobeAltIcon,
 } from '@heroicons/react/24/outline';
 import {
   denetimApi,
@@ -122,6 +123,11 @@ const HELP: HelpSection[] = [
     title: 'Openshift Audit',
     body: "Bir uygulamanın bir platformun hangi ortamlarında var, hangilerinde eksik olduğunu gösterir. Ortam bilgisi cluster'dan DEĞİL, namespace son ekinden (-dev/-test/-qa/-prod) gelir — çünkü ark_dev ile ark_test aynı cluster'ları paylaşır, cluster tek başına ortam bilgisi taşımaz. Hücredeki k/n, uygulamanın o ortamın kaç cluster'ında bulunduğunu söyler: yeşil hepsinde, SARI ise bir kısmında (kısmi kapsam), kırmızı hiçbirinde. Önceden hücre yalnızca VAR/YOK gösteriyordu ve 5 cluster'ın 1'inde olan uygulama 5'inde olanla ayırt edilemiyordu. ARK'ta n, ortamın resmi cluster listesinden gelir (dev: test1+test2+test4 · test: test1+test2+test4 · qa: qa1+qa2+ankqa2 · prod: prod1+prod2+prod4+ankprod2+drcprod1); bir ortamın namespace'i listede olmayan bir cluster'da görülürse 'beklenmeyen' olarak ayrıca işaretlenir. Diğer platformlarda n veriden çıkarılır — o ortamda gerçekten namespace barındıran cluster'lar sayılır. 'Ortam başına cluster'lar' paneli hangileri olduğunu ve her birindeki uygulama sayısını gösterir. KISMİ KAPSAM BİR HÜKÜM DEĞİL GÖZLEMDİR: bazı uygulamaların bazı cluster'larda (örneğin DR) bulunmaması meşru olabilir, o yüzden 'eksik' damgası vurulmaz — yalnızca görünür kılınır. Üstteki 'Sadece kısmi kapsam' filtresiyle bunları ayıklayabilirsiniz.",
   },
+  {
+    icon: GlobeAltIcon,
+    title: 'Openshift Route Audit',
+    body: "OpenShift sekmesinin aynısı, kaynak olarak route envanteri (dbo.BMW_Openshift_Route_Inventory, route_inventory job'ı; tablo her koşuda baştan yazılır). Satır = namespace tabanı (ortam eki atılmış) + route adı: aynı uygulamanın aynı route'u dev/test/qa/prod namespace'lerinde aynı satırda buluşur. Yalnız route adıyla gruplamak 'api', 'web' gibi genel adları yüzlerce namespace'ten tek satıra toplayıp her yerde VAR gibi gösterirdi. Ortam yine namespace son ekinden gelir; k/n'deki n yine ortamın resmi cluster listesinden (dev: test1+test2+test4 · test: test1+test2+test4 · qa: qa1+qa2+ankqa2 · prod: prod1+prod2+prod4+ankprod2+drcprod1). Listede olmayan cluster'daki kayıt 'beklenmeyen' olarak ayrıca işaretlenir. Hiç kaydı gelmeyen resmi cluster (job o cluster'a giriş yapamadıysa) 'veri yok' diye gösterilir ve n'ye katılmaz — ölçülemedi, yok demek değildir.",
+  },
 ];
 
 const STATUS_META: Record<string, { label: string; cls: string }> = {
@@ -165,6 +171,7 @@ function envGapOf(r: NginxSpaRow): EnvGap {
 
 type DenetimTab =
   | 'ocp'
+  | 'ocproute'
   | 'init'
   | 'deploy'
   | 'envanter'
@@ -173,7 +180,7 @@ type DenetimTab =
   | 'webapp';
 // nginx sekmeleri (nginx, nginxapi, nginxenv, nginxaudit) 2026-09-22'de Nginx Hub'a tasindi.
 const DENETIM_TABS: DenetimTab[] = [
-  'ocp', 'init', 'deploy', 'envanter', 'degisim', 'appenvs', 'webapp',
+  'ocp', 'ocproute', 'init', 'deploy', 'envanter', 'degisim', 'appenvs', 'webapp',
 ];
 
 export default function DenetimPage() {
@@ -259,6 +266,7 @@ export default function DenetimPage() {
           {(
             [
               { id: 'ocp', label: 'OpenShift', icon: Squares2X2Icon },
+              { id: 'ocproute', label: 'OpenShift Route', icon: GlobeAltIcon },
               { id: 'init', label: 'Init Script', icon: DocumentDuplicateIcon },
               { id: 'deploy', label: 'Deployment Scripts', icon: DocumentDuplicateIcon },
               { id: 'envanter', label: 'Envanter', icon: ChartBarSquareIcon },
@@ -291,6 +299,7 @@ export default function DenetimPage() {
       </header>
 
       {activeTab === 'ocp' && <OcpCoverage />}
+      {activeTab === 'ocproute' && <OcpCoverage kaynak="route" />}
       {activeTab === 'init' && <ScriptsAudit kind="init" />}
       {activeTab === 'deploy' && <ScriptsAudit kind="deploy" />}
       {activeTab === 'envanter' && <EnvanterMetrics />}
@@ -924,7 +933,33 @@ function EnvCell({ cell }: { cell?: NginxSpaEnvCell }) {
 }
 
 // ── 2) OPENSHIFT KAPSAM ───────────────────────────────────────────────────────────────
-function OcpCoverage() {
+// OpenShift Route (2026-10-14, kullanici: "bunun aynisini Route envanteri icinde yapabilir miyiz?"):
+// AYNI ekran, kaynak route envanteri. Sunucu ayni yanit seklini doner (server/audit/ocp-kapsam.cjs);
+// burada yalniz veri ucu ve birim metinleri degisir.
+const OCP_KAPSAM_META = {
+  uygulama: {
+    api: (p: string) => denetimApi.ocpCoverage(p),
+    birim: 'uygulama',
+    birimIn: 'uygulamanın',
+    kolon: 'Uygulama',
+    ara: 'uygulama ara',
+    csv: 'ocp_kapsam',
+    kaynakNotu: "Kaynak: dbo.Openshift_Inventory (openshift_inventory job'ı). Satır = uygulama.",
+  },
+  route: {
+    api: (p: string) => denetimApi.ocpRouteCoverage(p),
+    birim: 'route',
+    birimIn: "route'un",
+    kolon: 'Route',
+    ara: 'route ya da namespace ara',
+    csv: 'ocp_route_kapsam',
+    kaynakNotu:
+      "Kaynak: dbo.BMW_Openshift_Route_Inventory (route_inventory job'ı; her koşuda baştan yazılır). Satır = namespace tabanı (ortam eki atılmış) + route adı.",
+  },
+} as const;
+
+function OcpCoverage({ kaynak = 'uygulama' }: { kaynak?: keyof typeof OCP_KAPSAM_META }) {
+  const M = OCP_KAPSAM_META[kaynak];
   const [platform, setPlatform] = useState('ark');
   const [data, setData] = useState<OcpCoverageResult | null>(null);
   const [loading, setLoading] = useState(true);
@@ -939,7 +974,7 @@ function OcpCoverage() {
   const load = useCallback(async (p: string) => {
     setLoading(true);
     try {
-      const r = await denetimApi.ocpCoverage(p);
+      const r = await M.api(p);
       if (r.ok) {
         setData(r);
         setErr('');
@@ -949,7 +984,7 @@ function OcpCoverage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [M]);
 
   useAsyncEffect(async () => {
     await load(platform);
@@ -962,12 +997,16 @@ function OcpCoverage() {
       // RESMI KUME (2026-10-14): n = ortamin resmi cluster sayisi; k = bunlardan kacinda var.
       // Listede olmayan bir cluster'da bulunmasi ayrica "beklenmeyen" olarak doner (k'ya katilmaz).
       const liste = data?.envClusters?.[env] ?? [];
-      const all = liste.filter((c) => !c.beklenmeyen).map((c) => c.cluster);
+      // VERI YOK: hic kaydi gelmeyen resmi cluster olculemedi demektir (job o cluster'a giremedi);
+      // n'ye katilmaz, yoksa her satir o cluster yuzunden "kismi" gorunurdu.
+      const all = liste.filter((c) => !c.beklenmeyen && !c.veriYok).map((c) => c.cluster);
+      const veriYok = liste.filter((c) => c.veriYok).map((c) => c.cluster);
       const allSet = new Set(all);
+      const resmiSet = new Set([...all, ...veriYok]);
       const hepsi = new Set((row.envs[env] ?? []).map((h) => h.cluster));
       const on = new Set([...hepsi].filter((c) => allSet.has(c)));
-      const beklenmeyen = [...hepsi].filter((c) => !allSet.has(c));
-      return { k: on.size, n: all.length, on, all, beklenmeyen };
+      const beklenmeyen = [...hepsi].filter((c) => !resmiSet.has(c));
+      return { k: on.size, n: all.length, on, all, beklenmeyen, veriYok };
     },
     [data],
   );
@@ -987,7 +1026,7 @@ function OcpCoverage() {
     return data.rows.filter((r) => {
       if (onlyMissing && r.missingCount === 0) return false;
       if (onlyPartial && !isPartial(r)) return false;
-      if (needle && !r.application.toLowerCase().includes(needle)) return false;
+      if (needle && !`${r.application} ${r.alt ?? ''}`.toLowerCase().includes(needle)) return false;
       return true;
     });
   }, [data, q, onlyMissing, onlyPartial, isPartial]);
@@ -1021,7 +1060,7 @@ function OcpCoverage() {
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="uygulama ara"
+            placeholder={M.ara}
             className="pl-8 pr-2.5 py-1.5 text-xs border border-[var(--border)] rounded-lg w-56"
           />
         </div>
@@ -1042,16 +1081,19 @@ function OcpCoverage() {
           Sadece kısmi kapsam
         </label>
         <span className="text-xs text-[var(--text-muted)] tabular-nums">
-          {rows.length} uygulama
+          {rows.length} {M.birim}
         </span>
         <div className="ml-auto flex items-center gap-2">
           <button
             onClick={() =>
               csvDownload(
-                `ocp_kapsam_${platform}`,
-                ['application', ...envs, 'eksik'],
+                `${M.csv}_${platform}`,
+                kaynak === 'route'
+                  ? ['route', 'namespace', ...envs, 'eksik']
+                  : ['application', ...envs, 'eksik'],
                 rows.map((r) => [
                   r.application,
+                  ...(kaynak === 'route' ? [r.alt ?? ''] : []),
                   ...envs.map((e) => {
                     const { k, n } = coverageOf(r, e);
                     return k ? `${k}/${n}` : 'YOK';
@@ -1073,9 +1115,11 @@ function OcpCoverage() {
         </div>
       </div>
 
+      <p className="text-[11px] text-[var(--text-muted)]">{M.kaynakNotu}</p>
+
       {data && (
         <div className="grid gap-3 md:grid-cols-4">
-          <Stat n={data.totalApplications} l="toplam uygulama" />
+          <Stat n={data.totalApplications} l={`toplam ${M.birim}`} />
           <Stat n={data.completeCount} l="tüm ortamlarda var" tone="ok" />
           <Stat
             n={data.totalApplications - data.completeCount}
@@ -1100,15 +1144,15 @@ function OcpCoverage() {
           <div className="flex items-baseline justify-between gap-3 flex-wrap mb-2">
             <div>
               <h3 className="text-sm font-semibold text-[var(--text-primary)]">
-                Ortama göre uygulama sayısı
+                Ortama göre {M.birim} sayısı
               </h3>
               <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
-                <span className="font-mono">{platform}</span> cluster’ında bir uygulamanın o ortamda
+                <span className="font-mono">{platform}</span> cluster’ında bir {M.birimIn} o ortamda
                 en az bir namespace’i varsa sayılır. Ekrandaki filtrelerden etkilenmez.
               </p>
             </div>
             <span className="text-[11px] text-[var(--text-muted)] tabular-nums">
-              toplam {fmtNumber(data.rows.length)} uygulama
+              toplam {fmtNumber(data.rows.length)} {M.birim}
             </span>
           </div>
           <div className="space-y-1.5">
@@ -1128,7 +1172,7 @@ function OcpCoverage() {
                     />
                   </span>
                   <span className="w-32 shrink-0 text-right text-xs tabular-nums text-[var(--text-secondary)]">
-                    {fmtNumber(apps.length)} uygulama
+                    {fmtNumber(apps.length)} {M.birim}
                   </span>
                   <span className="w-28 shrink-0 text-right text-[11px] tabular-nums text-[var(--text-muted)]">
                     {fmtNumber(nsCount)} namespace
@@ -1155,9 +1199,9 @@ function OcpCoverage() {
           <p className="text-[11px] text-[var(--text-muted)] mt-0.5 mb-2">
             Tablodaki <span className="font-mono">k/n</span> ifadesindeki <b>n</b> budur.
             {Object.values(data.envClusterKaynagi || {}).includes('resmi')
-              ? <> “resmi” işaretli ortamlarda n, ortamın <b>resmi cluster listesinden</b> gelir; uygulaması 0 olan cluster da sayılır. Listede olmayan bir cluster’da o ortamın namespace’i görülürse <b>beklenmeyen</b> olarak ayrıca gösterilir ve sayıya katılmaz.</>
+              ? <> “resmi” işaretli ortamlarda n, ortamın <b>resmi cluster listesinden</b> gelir; {M.birim} sayısı 0 olan cluster da sayılır. Listede olmayan bir cluster’da o ortamın namespace’i görülürse <b>beklenmeyen</b> olarak ayrıca gösterilir ve sayıya katılmaz. Hiç kaydı gelmeyen resmi cluster <b>veri yok</b> olarak gösterilir ve n’ye katılmaz — ölçülemedi, yok demek değil.</>
               : <> o ortamda gerçekten namespace barındıran cluster sayısıdır.</>}{' '}
-            Parantez içindeki sayı o cluster'daki uygulama sayısıdır — az uygulamalı bir cluster (örn. DR) için "eksik" görünmesi çoğu zaman normaldir.
+            Parantez içindeki sayı o cluster'daki {M.birim} sayısıdır — az uygulamalı bir cluster (örn. DR) için "eksik" görünmesi çoğu zaman normaldir.
           </p>
           <div className="space-y-1.5">
             {envs.map((e) => {
@@ -1174,17 +1218,24 @@ function OcpCoverage() {
                   {list.map((c) => (
                     <span
                       key={c.cluster}
-                      className={`text-[11px] px-2 py-0.5 rounded-lg border font-mono ${c.beklenmeyen ? 'bg-amber-50 text-amber-800 border-amber-300' : ''}`}
+                      className={`text-[11px] px-2 py-0.5 rounded-lg border font-mono ${c.beklenmeyen ? 'bg-amber-50 text-amber-800 border-amber-300' : ''} ${c.veriYok ? 'border-dashed' : ''}`}
                       style={c.beklenmeyen ? undefined : {
-                        borderColor: 'var(--border-subtle)',
+                        borderColor: c.veriYok ? 'var(--border)' : 'var(--border-subtle)',
                         background: 'var(--bg-elevated)',
                         color: c.apps ? 'var(--text-secondary)' : 'var(--text-muted)',
                       }}
-                      title={c.beklenmeyen ? `Beklenmeyen: ${e} ortamının resmi listesinde yok ama ${c.apps} uygulamanın ${e} namespace'i burada` : `${c.apps} uygulama`}
+                      title={
+                        c.beklenmeyen
+                          ? `Beklenmeyen: ${e} ortamının resmi listesinde yok ama ${c.apps} ${M.birim} için ${e} namespace'i burada`
+                          : c.veriYok
+                            ? `Veri yok: bu cluster'dan hiç kayıt gelmedi (job giriş yapamamış olabilir). Ölçülemedi — n'ye katılmadı.`
+                            : `${c.apps} ${M.birim}`
+                      }
                     >
                       {c.cluster}
-                      <span className="ml-1 tabular-nums text-[var(--text-muted)]">({c.apps})</span>
+                      {!c.veriYok && <span className="ml-1 tabular-nums text-[var(--text-muted)]">({c.apps})</span>}
                       {c.beklenmeyen && <span className="ml-1 text-[9px] font-sans font-semibold">beklenmeyen</span>}
+                      {c.veriYok && <span className="ml-1 text-[9px] font-sans font-semibold">veri yok</span>}
                     </span>
                   ))}
                 </div>
@@ -1205,7 +1256,7 @@ function OcpCoverage() {
                 key={p.missing.join(',')}
                 className="text-[11px] px-2 py-1 rounded-lg bg-[var(--bg-surface)] border border-[var(--border)]"
               >
-                eksik: <b className="font-mono">{p.missing.join(', ')}</b> · {p.count} uygulama
+                eksik: <b className="font-mono">{p.missing.join(', ')}</b> · {p.count} {M.birim}
               </span>
             ))}
           </div>
@@ -1216,7 +1267,7 @@ function OcpCoverage() {
         <table className="w-full text-sm pf-table-sticky">
           <thead>
             <tr className="bg-[var(--bg-elevated)] border-b border-[var(--border-subtle)] text-left">
-              <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">Uygulama</th>
+              <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">{M.kolon}</th>
               {envs.map((e) => (
                 <th
                   key={e}
@@ -1230,16 +1281,17 @@ function OcpCoverage() {
           <tbody className="divide-y divide-[var(--border-subtle)]">
             {rows.length === 0 && <TableEmptyRow colSpan={envs.length + 1} />}
             {rows.slice(0, 500).map((r) => (
-              <tr key={r.application} className="hover:bg-[var(--bg-elevated)]/60">
+              <tr key={r.key ?? r.application} className="hover:bg-[var(--bg-elevated)]/60">
                 <td className="px-3 py-2 font-mono text-xs text-[var(--text-primary)]">
                   {r.application}
+                  {r.alt && <div className="text-[10px] text-[var(--text-muted)]">{r.alt}</div>}
                 </td>
                 {envs.map((e) => {
                   const hit = r.envs[e];
                   // Onceden hucre yalnizca VAR/YOK gosteriyordu: 5 cluster'in 1'inde
                   // olan uygulama, 5'inde olanla AYNI gorunuyordu (2026-09-10 bulgusu).
                   // Artik kac cluster'da oldugu yazili; kismi kapsam sari.
-                  const { k, n, on, all, beklenmeyen } = coverageOf(r, e);
+                  const { k, n, on, all, beklenmeyen, veriYok } = coverageOf(r, e);
                   const partial = k > 0 && n > 0 && k < n;
                   const cls = !k
                     ? 'bg-red-50 text-red-600 border-red-200'
@@ -1252,11 +1304,12 @@ function OcpCoverage() {
                       <span
                         className={`text-[11px] px-2 py-0.5 rounded-lg border tabular-nums ${cls}`}
                         title={
-                          k
+                          (k
                             ? `VAR: ${[...on].sort().join(', ')}` +
                               (eksik.length ? `\nYOK: ${eksik.sort().join(', ')}` : '') +
                               `\n\n${hit?.map((h) => `${h.cluster} / ${h.namespace}`).join('\n')}`
-                            : `Bu ortamda hiç yok (${n} cluster tarandı)`
+                            : `Bu ortamda hiç yok (${n} cluster tarandı)`) +
+                          (veriYok.length ? `\n\nVeri yok (ölçülemedi, n'ye katılmadı): ${veriYok.join(', ')}` : '')
                         }
                       >
                         {k ? `${k}/${n}` : 'YOK'}

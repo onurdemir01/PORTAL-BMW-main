@@ -258,6 +258,7 @@ function initVisibilityRoutes(app, { requireAuth, requireAdmin }) {
   // nginx sekmeleri 2026-09-22'de Nginx Hub'a tasindi (Admin); burada yok.
   const DENETIM_TAB_KEYS = [
     'ocp',
+    'ocproute',
     'init',
     'deploy',
     'routetraffic',
