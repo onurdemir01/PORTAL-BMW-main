@@ -518,6 +518,32 @@ describe('alt paneller katlanır ve sayaçlıdır', () => {
     expect(screen.getByTestId('scalex-panel-sayac-zamanlanan')).toHaveTextContent('…');
     expect(screen.getByTestId('scalex-panel-sayac-durdurulmus')).not.toHaveTextContent('0');
   });
+
+  // 2026-10-14 ÜRETİM OLAYI: sunucu Admin'e listeyi `{ items, total }` NESNESİ olarak
+  // gönderiyordu; panel `items.map` ile çöktü ve ScaleX ekranının TAMAMI düştü
+  // ("l.map is not a function"). Beklenmeyen biçim "okunamadı"dır, çökme ya da "yok" değil.
+  it('liste dizi değilse sayfa çökmez; panel "okunamadı" der, sayaç sıfır yazmaz', async () => {
+    api.ocoSchedules.mockResolvedValue({
+      ok: true,
+      scope: 'all',
+      items: {
+        items: [{ id: 1, status: 'SCHEDULED', ocoNumber: '111', username: 'ayse', runAt: '2026-10-14T20:00:00Z' }],
+        total: 1,
+      },
+    });
+    render(<ScaleXPage />);
+    await waitFor(() => expect(api.ocoSchedules).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(screen.getByTestId('scalex-panel-sayac-zamanlanan')).toHaveTextContent('…'),
+    );
+    expect(screen.getByTestId('scalex-panel-sayac-zamanlanan')).not.toHaveTextContent('0');
+    fireEvent.click(screen.getByRole('button', { name: /Zamanlanmış işlemler/ }));
+    expect(
+      await screen.findByText(/Zamanlanmış işlemler okunamadı: sunucu beklenmeyen biçimde/),
+    ).toBeInTheDocument();
+    // Sihirbaz ayakta: ilk adım hâlâ çizili.
+    expect(screen.getByRole('button', { name: /Zamanlanmış işlemler/ })).toBeInTheDocument();
+  });
 });
 
 // ══ D. İŞLEM ADIMI: GÖMÜLÜ KİP ══════════════════════════════════════════════
