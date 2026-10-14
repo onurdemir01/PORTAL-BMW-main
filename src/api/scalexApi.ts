@@ -260,6 +260,10 @@ export interface ScaleXBlastRadius {
   requiresWrittenConfirm: boolean;
   requiresSecondPerson: boolean;
   exceedsMaxTargets: boolean;
+  /** Prod'da bu sayının ÜSTÜ yazılı onay ister (Admin > Sistem). Eski sunucu göndermez. */
+  writtenConfirmThreshold?: number;
+  /** Tek işlemde izin verilen azami hedef (Admin > Sistem). Eski sunucu göndermez. */
+  maxTargets?: number;
 }
 
 export interface ScaleXOcoSchedule {
@@ -392,6 +396,11 @@ export interface ScaleXPreview {
   ok: boolean;
   blastRadius: ScaleXBlastRadius;
   gatePolicy: ScaleXGatePolicy;
+  /**
+   * Sonuç kontrolü eşikleri — çalıştırmanın AWX'e gönderdiği `verify_*` değerleriyle aynı
+   * hesap. `failSeconds` yalnız hedef 0 iken (kapatma) uygulanır. Eski sunucu göndermez.
+   */
+  verification?: { warnSeconds: number; failSeconds: number };
   /** ScaleX şablonu çözülemedi: hiçbir iş (ön kontrol dahil) başlayamaz. */
   configError?: { code: string; message: string } | null;
   /** HPA sabitleme bu işlem için sunulabilir mi (stop'ta asla). */

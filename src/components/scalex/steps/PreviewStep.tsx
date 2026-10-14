@@ -161,6 +161,10 @@ const PreviewStep: React.FC<Props> = ({
   // Cluster adi YALNIZCA birden fazla cluster varken gosterilir: tek cluster'da her
   // satira ayni adi yazmak gurultu olurdu.
   const multiCluster = new Set(picked.map((w) => w.cluster)).size > 1;
+  // KAPATMA = hedef 0. Sonuc kontrolunun fail esigi yalniz burada uygulanir
+  // (scalex_runner.sh verify_replicas); acmada sure dolunca uyari yazilir, is basarili biter.
+  const kapatma = action === "stop" || (action === "scale" && /^0+$/.test(String(targetReplicas ?? "").trim()));
+  const v = preview.verification;
   // Geri almada hedefi BILINMEYEN satir varsa listenin altinda bir kez aciklanir.
   const anyUnknownTarget = action === "restore" && picked.some((w) => w.previousReplicas == null);
 
@@ -283,7 +287,11 @@ const PreviewStep: React.FC<Props> = ({
             {allowPartial ? "geçen hedefler uygulanır" : "hiçbir şey uygulanmaz"}
           </strong>
         </span>
-        <span>Sonuç kontrolü: <strong className="text-[var(--text-secondary)]">{verificationTimeout} sn{humanSeconds(verificationTimeout) ? ` (${humanSeconds(verificationTimeout)})` : ''}</strong></span>
+        <span>
+          Sonuç kontrolü: <strong className="text-[var(--text-secondary)]">{verificationTimeout} sn{humanSeconds(verificationTimeout) ? ` (${humanSeconds(verificationTimeout)})` : ''}</strong>
+          {/* SURE SUNUCUDAN: AWX'e giden `verify_fail_seconds` ile ayni hesap (admin carpani). */}
+          {kapatma && v && <> · <span data-testid="scalex-fail-esigi">{humanSeconds(String(v.failSeconds))} içinde 0 olmazsa başarısız sayılır</span></>}
+        </span>
         {mailCc && <span className="truncate max-w-[20rem]" title={mailCc}>Rapor CC: {mailCc}</span>}
         {/* VERI TAZELIGI: kesif `Uygulamalar` adiminda donuyor ve onizleme yeniden
             kesif YAPMIYOR. Damgayi gostermemek, dakikalar once alinmis bir replica
@@ -308,7 +316,8 @@ const PreviewStep: React.FC<Props> = ({
           ancak o zaman ham bir hata aliyordu. */}
       {r.exceedsMaxTargets && (
         <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
-          Bu seçim {r.targets} hedef üretiyor ve tek işlemde izin verilen sınırın üzerinde.
+          Bu seçim {r.targets} hedef üretiyor ve tek işlemde izin verilen sınırın
+          {typeof r.maxTargets === "number" ? ` (${r.maxTargets} hedef)` : ""} üzerinde.
           Çalıştırma reddedilecek — kapsamı daraltın (daha az cluster ya da daha az uygulama).
         </p>
       )}
@@ -438,7 +447,9 @@ const PreviewStep: React.FC<Props> = ({
       {r.requiresWrittenConfirm && !engel && (
         <div className="rounded-xl border border-red-200 bg-red-50 p-3">
           <label htmlFor="scalex-written" className="block text-xs font-medium text-red-900 mb-1.5">
-            Bu işlem {r.targets} hedefi etkiliyor ve ortam prod. Onaylamak için namespace adını yaz:
+            Bu işlem {r.targets} hedefi etkiliyor ve ortam prod
+            {typeof r.writtenConfirmThreshold === "number" ? ` (prod'da ${r.writtenConfirmThreshold} hedefin üstü yazılı onay ister)` : ""}.
+            Onaylamak için namespace adını yaz:
             {" "}<span className="font-mono">{scope.namespace}</span>
           </label>
           <input id="scalex-written" type="text" value={written} disabled={busy} autoComplete="off"

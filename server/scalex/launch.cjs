@@ -57,6 +57,21 @@ const maxTargets = () => config.tunable('SCALEX_MAX_TARGETS');
 // kullanicinin onune koyar.
 const prodWrittenConfirmThreshold = () => config.tunable('SCALEX_PROD_CONFIRM_THRESHOLD');
 
+/**
+ * Sonuc kontrolunun iki esigi. Calistirma (`verify_*` degiskenleri) ve onizleme
+ * (ekranin "su sure gecilirse basarisiz sayilir" cumlesi) AYNI hesabi kullanir.
+ * Ekran carpani kendisi `x 2` diye tutuyordu; admin carpani degistirince is
+ * baska bir surede basarisiz sayiliyor, ekran eski sureyi yaziyordu.
+ * Uyari esigi butcenin kendisi; fail esigi yalniz KAPATMADA uygulanir.
+ */
+function verifyThresholds(verifySeconds) {
+  const warnSeconds = Number(verifySeconds);
+  return {
+    warnSeconds,
+    failSeconds: warnSeconds * config.tunable('SCALEX_VERIFY_FAIL_MULTIPLIER'),
+  };
+}
+
 const NS_RE = /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/;
 const APP_RE = /^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$/;
 
@@ -90,6 +105,9 @@ function computeBlastRadius({
   const prod = isProdEnv(environment);
   // `dry_run` hicbir sey degistirmez; yazili onay istemek anlamsiz surtunme olurdu.
   const mutating = executionMode === 'apply';
+  // Esik ve tavan BIR KEZ okunur: bayraklar ve ekrana giden sayilar ayni andan gelir.
+  const esik = prodWrittenConfirmThreshold();
+  const tavan = maxTargets();
   return {
     clusterCount,
     appCount,
@@ -97,11 +115,14 @@ function computeBlastRadius({
     isProd: prod,
     action,
     multiCluster: clusterCount > 1,
-    requiresWrittenConfirm: mutating && prod && targets > prodWrittenConfirmThreshold(),
+    requiresWrittenConfirm: mutating && prod && targets > esik,
     // Prod + cok cluster = ikinci kisi onayi (kullanici karari). Playbook tarafindaki
     // `bulk_change_confirmation` bunun makine karsiligi.
     requiresSecondPerson: mutating && prod && clusterCount > 1,
-    exceedsMaxTargets: targets > maxTargets(),
+    exceedsMaxTargets: targets > tavan,
+    // Ekran sinirlari kendi sabitinden degil buradan yazar (Admin > Sistem ayari).
+    writtenConfirmThreshold: esik,
+    maxTargets: tavan,
   };
 }
 
@@ -421,6 +442,7 @@ async function buildRunExtraVars({
 
   const verifySeconds =
     normalizeVerificationTimeout(verificationTimeout) ?? verifyTimeoutDefault();
+  const esikler = verifyThresholds(verifySeconds);
   return {
     // Katalog portal DB'sinden; playbook `scalex_clusters_override` yoksa kendi
     // dosyasina duser (AWX'ten elle calistirma bozulmaz).
@@ -477,10 +499,11 @@ async function buildRunExtraVars({
     verification_timeout: Number(verifySeconds),
     // ACMA/KAPATMA ASIMETRISI. Uyari esigi butcenin KENDISI; kapatmanin fail esigi
     // iki kati. Betik bu ikisini ayri okur (bkz. scalex_runner.sh verify_replicas).
-    verify_warn_seconds: Number(verifySeconds),
+    verify_warn_seconds: Number(esikler.warnSeconds),
     // KAPATMADA FAIL ESIGI. Carpan da admin ayari (kullanici karari: 5 dk uyar,
-    // 10 dk fail). Acmada FAIL YOK; betik uyarip basarili biter.
-    verify_fail_seconds: Number(verifySeconds) * config.tunable('SCALEX_VERIFY_FAIL_MULTIPLIER'),
+    // 10 dk fail). Acmada FAIL YOK; betik uyarip basarili biter. Onizleme ayni
+    // `verifyThresholds` sonucunu ekrana yazar.
+    verify_fail_seconds: Number(esikler.failSeconds),
     allow_partial_execution: allowPartial ? 'true' : 'false',
     // ONAY KUTULARI SUNUCUDA URETILIR, client'tan GELMEZ. Kullanici ekranda
     // "anladim" derse portal bunu uretir; client'in dogrudan `change_confirmation: true`
@@ -756,6 +779,7 @@ module.exports = {
   normalizeVerificationTimeout,
   maxTargets,
   prodWrittenConfirmThreshold,
+  verifyThresholds,
   isProdEnv,
   computeBlastRadius,
   isHpaPinAllowed,
