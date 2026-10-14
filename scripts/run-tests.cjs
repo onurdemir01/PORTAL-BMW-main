@@ -60,6 +60,7 @@ const TEST_DIRS = [
   // kosmadan kalmasin" bekcisi (test-glob-coverage) icin gerekli.
   'src/api/__tests__',
   'src/components/scalex/__tests__',
+  'src/components/filex/__tests__',
   'src/components/logx_v2/__tests__',
   'src/components/__tests__',
   'src/contexts/__tests__',

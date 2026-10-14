@@ -59,6 +59,113 @@ function extractFilexResult(rawArtifacts) {
   return null;
 }
 
+// ── BUYUK SONUC (2026-10-14) ────────────────────────────────────────────────
+//
+// URETIM (13 Ekim): 9 FileX isinin 3'u hic sonuc gostermedi. Hepsi TEK sunucuydu; o
+// sunucunun dosya listesi (her dosya icin meta + sha512) `artifacts`a sigmadi ve
+// `/api/v2/jobs/<id>/` yaniti genel 4 MB bayt kapisina takildi. Uc 502 donuyordu;
+// kurumsal vekil 5xx govdesini degistirdigi icin ekran "Portal yeniden baslatiliyor,
+// tekrar deneyin" dedi ve kullanici isi iki kez daha baslatti. Sonuc HICBIR denemede
+// gorunemezdi: ayni sunucu, ayni liste.
+//
+// 4 MB kapisi bir OOM onlemi (uzlastirici acilista cok sayida isi ayni anda okuyordu)
+// ve genel olarak KALIR. Burada yalniz su durumda genisletilir: normal okuma tavana
+// takildiysa ayni is BIR KEZ daha, daha genis tavanla okunur. Bellek sinirli kalsin
+// diye:
+//   - surec genelinde AYNI ANDA TEK genis okuma (sira),
+//   - ayni isin ust uste gelen yoklamalari AYNI okumayi bekler (tek ucus),
+//   - bitmis isin cevabi kisa sure saklanir (ucusta kalan yoklama yeniden indirmesin),
+//   - genis tavan da asildiysa is "cok buyuk" diye hatirlanir; her yoklama 32 MB
+//     indirmeye kalkmaz.
+const FILEX_SONUC_MAX_BYTES = 32 * 1024 * 1024;
+const SONUC_SAKLA_MS = 60 * 1000;
+// Saklanan cevaplar BUYUK (on binlerce dosya): en fazla iki tane, sure dolunca silinir.
+const SONUC_TAVAN = 2;
+// Yalniz anahtar (ve kisa hata) tutan kumeler.
+const HATIRLA_TAVAN = 50;
+const _buyuk = {
+  sira: Promise.resolve(),
+  ucusta: new Map(),
+  sonuc: new Map(),
+  buyukIsler: new Set(),
+  cokBuyuk: new Map(),
+};
+
+function sinirliEkle(kume, anahtar, deger, tavan = HATIRLA_TAVAN) {
+  while (kume.size >= tavan) kume.delete(kume.keys().next().value);
+  if (kume instanceof Map) kume.set(anahtar, deger);
+  else kume.add(anahtar);
+}
+
+function sonucuSakla(anahtar, cevap) {
+  sinirliEkle(_buyuk.sonuc, anahtar, { at: Date.now(), cevap }, SONUC_TAVAN);
+  const t = setTimeout(() => {
+    const kayit = _buyuk.sonuc.get(anahtar);
+    if (kayit && Date.now() - kayit.at >= SONUC_SAKLA_MS) _buyuk.sonuc.delete(anahtar);
+  }, SONUC_SAKLA_MS);
+  if (typeof t.unref === 'function') t.unref();
+}
+
+// Zincir yalniz SIRAYI tasir, SONUCU degil: `undefined`a cevrilmezse son genis okumanin
+// nesnesi (on binlerce dosya) bir sonraki okumaya dek bellekte kalirdi.
+function sirayla(is) {
+  const p = _buyuk.sira.then(is);
+  _buyuk.sira = p.then(
+    () => undefined,
+    () => undefined,
+  );
+  return p;
+}
+
+function durumCevabi(statusInfo) {
+  const finished = statusInfo.finished;
+  const result = finished ? extractFilexResult(statusInfo.artifacts) : null;
+  return {
+    ok: true,
+    status: statusInfo.status,
+    finished,
+    failed: statusInfo.failed || (finished && !result),
+    result,
+  };
+}
+
+// Bir isin durum cevabini uretir. Kalici "cok buyuk" durumunda `tooLarge` isaretli bir
+// hata firlatir; cagiran onu 4xx'e cevirir.
+async function isDurumu(runner, serverId, jobId) {
+  const anahtar = `${serverId}:${jobId}`;
+  const saklanan = _buyuk.sonuc.get(anahtar);
+  if (saklanan && Date.now() - saklanan.at < SONUC_SAKLA_MS) return saklanan.cevap;
+  if (saklanan) _buyuk.sonuc.delete(anahtar);
+  const bilinenHata = _buyuk.cokBuyuk.get(anahtar);
+  if (bilinenHata) throw bilinenHata;
+
+  if (!_buyuk.buyukIsler.has(anahtar)) {
+    try {
+      return durumCevabi(await runner.getJobStatusOnServer(serverId, jobId));
+    } catch (e) {
+      if (!e || !e.tooLarge) throw e;
+      sinirliEkle(_buyuk.buyukIsler, anahtar);
+    }
+  }
+
+  let ucus = _buyuk.ucusta.get(anahtar);
+  if (!ucus) {
+    ucus = sirayla(() => runner.getJobStatusOnServer(serverId, jobId, { maxBytes: FILEX_SONUC_MAX_BYTES }))
+      .then((statusInfo) => {
+        const cevap = durumCevabi(statusInfo);
+        if (cevap.finished) sonucuSakla(anahtar, cevap);
+        return cevap;
+      })
+      .catch((e) => {
+        if (e && e.tooLarge) sinirliEkle(_buyuk.cokBuyuk, anahtar, e);
+        throw e;
+      })
+      .finally(() => _buyuk.ucusta.delete(anahtar));
+    _buyuk.ucusta.set(anahtar, ucus);
+  }
+  return ucus;
+}
+
 function initFileX(app) {
   const express = require('express');
 
@@ -259,17 +366,21 @@ function initFileX(app) {
 
     try {
       const runner = require('../ansible/runner.cjs');
-      const statusInfo = await runner.getJobStatusOnServer(serverId, jobId);
-      const finished = statusInfo.finished;
-      const result = finished ? extractFilexResult(statusInfo.artifacts) : null;
-      res.json({
-        ok: true,
-        status: statusInfo.status,
-        finished,
-        failed: statusInfo.failed || (finished && !result),
-        result,
-      });
+      res.json(await isDurumu(runner, serverId, jobId));
     } catch (err) {
+      if (err && err.tooLarge) {
+        // KALICI ve KULLANICIYA OKUNUR: 422 vekilden degismeden gecer (5xx gecmez) ve
+        // ekran yoklamayi durdurup bu metni gosterir. "Tekrar deneyin" DENMEZ: ayni
+        // sunucunun listesi bir sonraki denemede kuculmez.
+        return res.status(422).json({
+          ok: false,
+          code: 'filex_result_too_large',
+          message:
+            `İş bitti (AWX iş #${jobId}) ama dosya listesi portalın gösterebileceği boyutu ` +
+            `(${Math.round(FILEX_SONUC_MAX_BYTES / (1024 * 1024))} MB) aşıyor. Listeyi AWX ` +
+            'arayüzünde bu işin çıktısından inceleyin; işi yeniden başlatmak sonucu değiştirmez.',
+        });
+      }
       res.status(err.status || 500).json({ ok: false, message: err.message });
     }
   });

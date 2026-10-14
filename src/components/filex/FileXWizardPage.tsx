@@ -25,6 +25,10 @@ const STEP_TITLES: Record<Step, string> = {
 };
 
 const POLL_INTERVAL_MS = 2500;
+// GEÇİCİ HATAYA TOLERANS (2026-10-14). Portal yeniden başlatılırken (≈30 sn) yoklama 5xx
+// alır; ilk hatada durmak kullanıcıya işi YENİDEN başlattırıyordu (iş AWX'te sürüyor
+// olsa da). Art arda bu kadar geçici hatadan sonra durulur.
+const GECICI_HATA_TAVANI = 12;
 
 const FileXWizardPage: React.FC = () => {
   const [step, setStep] = useState<Step>('app');
@@ -128,39 +132,63 @@ const FileXWizardPage: React.FC = () => {
       setStartedAt(Date.now());
       setElapsedSec(0);
       const myRun = ++runIdRef.current;
+      // Yoklamalar üst üste binebilir (setInterval yanıtı beklemez): akış bir kez
+      // kapandıktan sonra geç dönen yanıt ekranı yeniden değiştirmesin.
+      let kapandi = false;
+      let geciciHata = 0;
+      const kapat = (hata: string | null) => {
+        kapandi = true;
+        if (pollRef.current) {
+          clearInterval(pollRef.current);
+          pollRef.current = null;
+        }
+        busyRef.current = false;
+        setBusy(false);
+        if (hata !== null) {
+          setError(hata);
+          setStep('hosts');
+        }
+      };
       pollRef.current = setInterval(async () => {
         try {
           const s = await filexApi.jobStatus(r.awxServerId, r.jobId as number);
           // Yanıt ağdan dönene kadar kullanıcı sayfadan ayrılmış ya da yeni bir sorgu
           // başlatmış olabilir — o durumda bu yanıt ARTIK geçersizdir.
           if (myRun !== runIdRef.current) return;
+          if (kapandi) return;
+          // SUNUCU HATASI DA BİR YANIT (2026-10-14). safeJson 4xx/5xx JSON'unu REDDETMEZ,
+          // gövdeyi döndürür. Eskiden `s.finished` boş olduğu için yoklama SONSUZA DEK
+          // sessizce dönüyordu: "bu iş size ait değil" ya da "sonuç çok büyük" hiç
+          // görünmüyordu. 4xx kalıcıdır (dur, mesajı göster); 5xx geçici sayılır.
+          if (s.ok === false) {
+            const mesaj = s.message || `Sunucu hatası (HTTP ${s._httpStatus ?? '?'}).`;
+            if ((s._httpStatus ?? 0) >= 500 && ++geciciHata < GECICI_HATA_TAVANI) return;
+            kapat(mesaj);
+            return;
+          }
+          geciciHata = 0;
           // Durum ARTIK ekrana yaziliyor — cekip atmak, elimizdeki tek gercek
           // ilerleme bilgisini cope atmakti.
           if (s.status) setAwxStatus(s.status);
           if (!s.finished) return;
-          if (pollRef.current) {
-            clearInterval(pollRef.current);
-            pollRef.current = null;
-          }
-          busyRef.current = false;
-          setBusy(false);
           if (s.failed || !s.result) {
-            setError('İşlem tamamlanamadı — sonuç okunamadı. Lütfen sistem yöneticinize başvurun.');
-            setStep('hosts');
+            kapat('İşlem tamamlanamadı — sonuç okunamadı. Lütfen sistem yöneticinize başvurun.');
             return;
           }
+          kapat(null);
           setResult(s.result);
           setStep('result');
         } catch (err: unknown) {
           if (myRun !== runIdRef.current) return;
-          if (pollRef.current) {
-            clearInterval(pollRef.current);
-            pollRef.current = null;
-          }
-          busyRef.current = false;
-          setBusy(false);
-          setError(err instanceof Error ? err.message : String(err));
-          setStep('hosts');
+          if (kapandi) return;
+          // Ağ geçidi (502/503/504, gövde HTML) ya da ağ hatası: portal yeniden
+          // başlatılıyor olabilir, iş AWX'te sürüyor. Birkaç tur daha denenir.
+          const durum = (err as { status?: number })?.status;
+          const gecici = (err as { gatewayUnavailable?: boolean })?.gatewayUnavailable === true
+            || durum === undefined
+            || durum >= 500;
+          if (gecici && ++geciciHata < GECICI_HATA_TAVANI) return;
+          kapat(err instanceof Error ? err.message : String(err));
         }
       }, POLL_INTERVAL_MS);
     } catch (err: unknown) {

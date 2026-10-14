@@ -54,6 +54,10 @@ export interface FilexJobStatus {
   failed: boolean;
   result: FilexResult | null;
   message?: string;
+  // ok:false yanıtlarında: safeJson'un eklediği HTTP durumu + sunucunun hata kodu
+  // (örn. `filex_result_too_large`). Yoklama kalıcı/geçici ayrımını bunlarla yapar.
+  code?: string;
+  _httpStatus?: number;
 }
 
 export const filexApi = {
