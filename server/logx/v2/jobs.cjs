@@ -114,27 +114,27 @@ function summarizeArtifactKeys(rawArtifacts) {
   };
 }
 
-async function findTemplateOnServer(serverId, templateId) {
-  const targetServerId = Number(serverId);
-  const targetTemplateId = Number(templateId);
-  const server = (runner.getServers?.() || []).find((s) => Number(s.id) === targetServerId);
-  if (!server) return null;
+// BASLATMA ONCESI TEK OKUMA (2026-10-14). Eskiden playbook eslesmesi ve "Prompt on
+// launch" kontrolu AYRI AYRI tum template listesini (sayfa sayfa) cekiyordu: her LogX
+// baslatmasi iki tam liste + baslatma demekti, uretimde kesif/aktarim istegi ortalama
+// 4,6 sn surdu. Artik tek template bir kez okunur, iki kontrol ayni ozetle yapilir.
+// Okunamazsa `null`: iki kontrol de bugunku gibi BLOKLAMAZ (fail-open); AWX 404'u
+// baslatmanin kendisinde yakalanir ve sunucu arama yolu calisir.
+async function readTemplateSummary(serverId, templateId) {
   try {
-    const templates = await runner.listTemplatesForServer(server);
-    return templates.find((t) => Number(t.id) === targetTemplateId) || null;
+    return await runner.getTemplateSummaryOnServer(serverId, templateId);
   } catch {
     return null;
   }
 }
 
-async function assertTemplateMatchesRegistry(serverId, templateId, expectedPlaybookPath) {
+function assertTemplateMatchesRegistry(tpl, serverId, templateId, expectedPlaybookPath) {
   const expectedFile = path
     .basename(String(expectedPlaybookPath || ''))
     .trim()
     .toLowerCase();
   if (!expectedFile) return;
 
-  const tpl = await findTemplateOnServer(serverId, templateId);
   if (!tpl) return; // Template metadata alinamazsa launch'i bloklamayalim.
 
   const actualFile = path
@@ -152,6 +152,21 @@ async function assertTemplateMatchesRegistry(serverId, templateId, expectedPlayb
       { status: 409 },
     );
   }
+}
+
+// AWX, "Prompt on launch" kapali template'lerde extra_vars'i SESSIZCE yok sayar — is
+// baslar ama playbook bos girdiyle calisir (2026-08-09'da app-discovery boyle dustu).
+// Hata metni ve kodu ortak (template-preflight.promptKapaliHatasi): ScaleX ve eski yol
+// ile AYNI. Yalniz bayrak ACIKCA false ise reddedilir; okunamadi/bilinmiyor gecer.
+function assertTemplateAcceptsExtraVars(tpl, templateId, extraVars, label) {
+  if (!extraVars || typeof extraVars !== 'object' || Object.keys(extraVars).length === 0) return;
+  if (!tpl || tpl.askVariablesOnLaunch !== false) return;
+  throw require('../../ansible/template-preflight.cjs').promptKapaliHatasi({
+    templateId,
+    templateName: tpl.name,
+    label,
+    degiskenSayisi: Object.keys(extraVars).length,
+  });
 }
 
 // Ayni (istek, tip) icin iki launch arasinda beklenecek EN AZ sure. Kesif isleri
@@ -252,15 +267,9 @@ async function launchJob(requestId, jobType, extraVars, limit = '') {
 
   let launch;
   try {
-    await assertTemplateMatchesRegistry(awxServerId, templateId, registryRow.playbookPath);
-    // AWX, "Prompt on launch" kapali template'lerde extra_vars'i SESSIZCE yok sayar —
-    // is baslar ama playbook bos girdiyle calisir (2026-08-09'da app-discovery boyle dustu).
-    await require('../../ansible/template-preflight.cjs').assertTemplateAcceptsExtraVars(
-      awxServerId,
-      templateId,
-      extraVars,
-      { label: keyName },
-    );
+    const tpl = await readTemplateSummary(awxServerId, templateId);
+    assertTemplateMatchesRegistry(tpl, awxServerId, templateId, registryRow.playbookPath);
+    assertTemplateAcceptsExtraVars(tpl, templateId, extraVars, keyName);
     launch = await runner.launchJobOnServer(awxServerId, templateId, extraVars, limit, requester);
   } catch (err) {
     if (!isAwx404Error(err)) throw err;
@@ -276,13 +285,9 @@ async function launchJob(requestId, jobType, extraVars, limit = '') {
         `[LogXv2] Template ${templateId} AWX ${configuredServerId} uzerinde bulunamadi, AWX ${alternative} ile yeniden deneniyor.`,
       );
       awxServerId = alternative;
-      await assertTemplateMatchesRegistry(awxServerId, templateId, registryRow.playbookPath);
-      await require('../../ansible/template-preflight.cjs').assertTemplateAcceptsExtraVars(
-        awxServerId,
-        templateId,
-        extraVars,
-        { label: keyName },
-      );
+      const tpl = await readTemplateSummary(awxServerId, templateId);
+      assertTemplateMatchesRegistry(tpl, awxServerId, templateId, registryRow.playbookPath);
+      assertTemplateAcceptsExtraVars(tpl, templateId, extraVars, keyName);
       launch = await runner.launchJobOnServer(awxServerId, templateId, extraVars, limit, requester);
       // Otomatik-iyilestirme: dogru sunucuyu kalici yaz → sonraki launch'lar ~7sn telafi
       // taramasini atlar. Best-effort; yazamazsa job yine de basladi, sadece hiz kaybi olur.

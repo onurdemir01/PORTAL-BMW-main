@@ -5602,6 +5602,31 @@ async function getTemplateLaunchSettingsOnServer(serverId, templateId) {
 }
 
 /**
+ * Template ozeti: ad, playbook, "Prompt on launch > Variables" (2026-10-14, LogX).
+ * TEK template okunur (GET /api/v2/job_templates/<id>/). LogX her baslatmada playbook
+ * eslesmesi ve Prompt on launch icin TUM template listesini (sayfa sayfa) IKI KEZ
+ * cekiyordu; uretimde kesif/aktarim istegi ortalama 4,6 sn surdu. Bayrak HAM: alan yoksa
+ * undefined ("kapali" DEGIL). AWX_READ_ONLY_TEMPLATE_IDS suzgeci (liste ekrani icin)
+ * burada YOKTUR. Hata FIRLATIR; cagiran fail-open karar verir.
+ * @returns {Promise<{ id: number, name: string, playbook: string, askVariablesOnLaunch: (boolean|undefined) }>}
+ */
+async function getTemplateSummaryOnServer(serverId, templateId) {
+  const server = getServerById(serverId);
+  if (!server) throw Object.assign(new Error('AWX sunucusu bulunamadı.'), { status: 404 });
+  const id = Number(templateId);
+  if (!Number.isInteger(id) || id <= 0) throw Object.assign(new Error('Geçersiz template ID.'), { status: 400 });
+  const token = await getTokenForServer(server);
+  const t = await awxRequestToServer(server, token, 'GET', `/api/v2/job_templates/${id}/`);
+  if (!t || typeof t !== 'object') throw new Error('AWX template yanıtı nesne değil.');
+  return {
+    id,
+    name: typeof t.name === 'string' ? t.name : '',
+    playbook: typeof t.playbook === 'string' ? t.playbook : '',
+    askVariablesOnLaunch: typeof t.ask_variables_on_launch === 'boolean' ? t.ask_variables_on_launch : undefined,
+  };
+}
+
+/**
  * AWX job template'inde TANIMLI degiskenler (2026-10-09, kullanici: "job type degiskeni
  * jobdan gelmeli"): template'in Variables kutusu (extra_vars, JSON ya da `ad: deger` YAML)
  * + survey'deki TUM varsayilanlar (zorunlu olsun olmasin; parola alanlari HARIC).
@@ -5738,6 +5763,7 @@ module.exports = {
   // Yeni filo korumasi (nginx-migration/new-fleet-guard.cjs, 2026-10-04): HAM template
   // ayarlari + survey okuyucusu; ikisi de hatayi FIRLATIR (cagiran "olculemedi" der).
   getTemplateLaunchSettingsOnServer,
+  getTemplateSummaryOnServer,
   getSurveySpecOnServer,
   // OpsX production onay akisi (2026-10-06): bilet acilmadan ONCE zorunlu survey
   // varsayilanlarini doldurur; onay sonrasi replay yolu bunu yapmaz.
