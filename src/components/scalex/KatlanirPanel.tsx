@@ -37,6 +37,48 @@ export function usePanelAcik(id: string): [boolean, (v: boolean) => void, (v: bo
   return [acik, yaz, setAcik];
 }
 
+/**
+ * PANELİN KENDİ HATA SINIRI (2026-10-14 üretim olayı). Zamanlanmış işlemler paneli
+ * beklenmeyen bir sunucu yanıtıyla render sırasında patladı ve ScaleX sayfasının
+ * TAMAMINI düşürdü — sihirbaz da gitti. Alt paneller yardımcıdır: biri çizilemezse
+ * yalnız o panel hata söyler, sihirbaz ayakta kalır.
+ */
+class PanelHataSiniri extends React.Component<
+  { baslik: string; children: React.ReactNode },
+  { hata: Error | null }
+> {
+  state: { hata: Error | null } = { hata: null };
+
+  static getDerivedStateFromError(hata: Error) {
+    return { hata };
+  }
+
+  componentDidCatch(hata: Error, info: React.ErrorInfo) {
+    console.error(`[ScaleX] "${this.props.baslik}" paneli çizilemedi:`, hata, info.componentStack);
+  }
+
+  render() {
+    if (!this.state.hata) return this.props.children;
+    return (
+      <div
+        role="alert"
+        className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-2.5 text-xs text-red-700"
+      >
+        <span className="flex-1">
+          Bu panel çizilemedi: {this.state.hata.message || String(this.state.hata)}
+        </span>
+        <button
+          type="button"
+          onClick={() => this.setState({ hata: null })}
+          className="btn-secondary flex-shrink-0 !py-0.5 !px-2 text-xs"
+        >
+          Tekrar dene
+        </button>
+      </div>
+    );
+  }
+}
+
 interface Props {
   id: string;
   baslik: string;
@@ -83,7 +125,7 @@ const KatlanirPanel: React.FC<Props> = ({
     </button>
     <Collapse open={acik}>
       <div id={`scalex-panel-${id}`} className="px-5 pb-5" {...(acik ? {} : { inert: true })}>
-        {children}
+        <PanelHataSiniri baslik={baslik}>{children}</PanelHataSiniri>
       </div>
     </Collapse>
   </div>

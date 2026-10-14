@@ -491,6 +491,20 @@ async function runScaleXGates({
     action,
     executionMode,
   });
+  // ── ZAMANLANACAKSA "PROMPT ON LAUNCH" SIMDI DENETLENIR (2026-10-14) ─────────
+  // Pencere saatinde isi ScaleX DEGIL ortak OCO zamanlayicisi baslatir
+  // (`runner.performSsLaunch`); o yol bu on kontrolu YAPMAZ ve AWX'in yok saydigi
+  // degiskenlere bakmaz. Ayar kapaliyken zamanlanan is ankette OLMAYAN alanlari
+  // (`scalex_target_clusters`, `scalex_clusters_override`) KAYBEDEREK calisirdi; anlik
+  // baslatma ayni durumda isi hic baslatmiyor. Karar zamanlama aninda verilir; kayit
+  // acildiktan sonra ayarin degismesi "Bilinen sinirlar"da.
+  const zamanlanacak = policy.schedulable === true && ocoAction === 'schedule';
+  if (zamanlanacak) {
+    await assertSablonDegiskenKabulEdiyor(runServerId, runTemplateId, extraVars, {
+      label: `ScaleX ${action} (${executionMode}) - ${namespace} @ ${clusters.join(',')}`,
+    });
+  }
+
   const scalexOzet = scalexSmartBaglami({
     user,
     env,
@@ -2342,15 +2356,66 @@ function initScaleX(app) {
   // Grup bilgisi kayit acilirken yaziliyor (`owner_groups`); `null` (eski kayit)
   // grup uzerinden gorunur SAYILMAZ — "bilmiyoruz"u "senin grubun" saymak
   // baskasinin kesinti kaydini gostermek olurdu.
+  //
+  // YALNIZ SCALEX KAYITLARI, YALNIZ SECILMIS ALANLAR (2026-10-14). Zamanlama tablosu
+  // ORTAKTIR: Self Service kayitlari da orada durur. Bu uc kaydin TAMAMINI donduruyordu,
+  // `pendingLaunch.extraVars` dahil: pencere saatinde AWX'e gidecek ham degiskenler.
+  // Self Service anketlerinin parola alanlari da burada; yedek bu kolonu bu yuzden
+  // maskeliyor. Admin herkesin, kullanici ekibinin Self Service zamanlamalarini bu
+  // degiskenlerle tarayicida aliyordu; ScaleX paneli baska modullerin kayitlarini
+  // gosterip iptal ettirebiliyordu. Self Service'in kendi uclari alanlari zaten tek
+  // tek seciyor (runner.cjs `/api/ansible/ss/oco/scheduled/*`).
+  // Ekranin "ne zamanlandi" satiri icin kapsam ham degiskenlerden SUNUCUDA cikarilir.
+  // Eskiden ekran `pendingLaunch.detail`i okuyordu; ScaleX orada bos nesne tutar, yani o
+  // satir hic gorunmedi.
+  const scalexKaydiMi = (rec) => !!rec && rec.pendingLaunch?.templateName === 'ScaleX';
+  const listeyeCevir = (v) =>
+    (Array.isArray(v) ? v : String(v ?? '').split(','))
+      .map((x) => String(x).trim())
+      .filter(Boolean);
+  const zamanlamaGorunumu = (rec) => {
+    const ev = (rec.pendingLaunch && rec.pendingLaunch.extraVars) || {};
+    return {
+      id: rec.id,
+      username: rec.username,
+      ocoNumber: rec.ocoNumber,
+      ocoSubject: rec.ocoSubject ?? null,
+      runAt: rec.runAt,
+      windowEnd: rec.windowEnd,
+      status: rec.status,
+      awxJobId: rec.awxJobId ?? null,
+      errorMessage: rec.errorMessage ?? null,
+      cancelledBy: rec.cancelledBy ?? null,
+      cancelNote: rec.cancelNote ?? null,
+      ownerGroups: rec.ownerGroups ?? null,
+      createdAt: rec.createdAt ?? null,
+      kapsam: {
+        env: ev.target_environment || null,
+        tenant: ev.target_platform || null,
+        clusters: listeyeCevir(ev.scalex_target_clusters),
+        namespace: ev.target_namespace || null,
+        apps: listeyeCevir(ev.target_app_names),
+        action: ev.operation_action || null,
+        executionMode: ev.execution_mode || null,
+        targetReplicas: ev.target_replicas ?? null,
+      },
+    };
+  };
+  // Baska modulun kaydi bu uclardan YOK sayilir (403 degil 404: varligini da soylemez).
+  const scalexDisi = (res) =>
+    res.status(404).json({ ok: false, message: 'Kayit bulunamadi.' });
+
   router.get(
     '/oco-schedules',
     asyncRoute(async (req, res) => {
       const u = currentUser(req);
       const ocoStore = require('../oco/store.cjs');
+      const tavan = Math.min(Number(req.query?.limit) || 100, 500);
+      // Ortak tabloda ScaleX disi kayitlar da var: suzgecten ONCE genis pencere okunur.
       const { items, truncated } = await ocoStore.listForUser({
         username: u.username,
         groups: u.groups,
-        limit: Number(req.query?.limit) || 100,
+        limit: 500,
       });
       // ADMIN HEPSINI GORUR. Ayri bir sorgu degil, ayni listenin suzgecsiz hali:
       // iki ayri sorgu zamanla AYRISIRDI.
@@ -2358,9 +2423,15 @@ function initScaleX(app) {
       // TAMAMI `items` diye gidiyordu. Admin'in paneli "zamanlanmis islem yok" diyordu
       // (hicbir kaydi gormedi); sayac eklenince ScaleX ekrani `items.map` ile coktu.
       const gorunur = u.role === 'Admin'
-        ? (await ocoStore.listAll({ limit: Number(req.query?.limit) || 100 })).items
+        ? (await ocoStore.listAll({ limit: 500 })).items
         : items;
-      res.json({ ok: true, items: gorunur, truncated, scope: u.role === 'Admin' ? 'all' : 'mine+groups' });
+      const scalex = gorunur.filter(scalexKaydiMi);
+      res.json({
+        ok: true,
+        items: scalex.slice(0, tavan).map(zamanlamaGorunumu),
+        truncated: truncated === true || scalex.length > tavan,
+        scope: u.role === 'Admin' ? 'all' : 'mine+groups',
+      });
     }),
   );
 
@@ -2373,6 +2444,7 @@ function initScaleX(app) {
       const ocoStore = require('../oco/store.cjs');
       const rec = await ocoStore.get(Number(req.params.id));
       if (!rec) return res.status(404).json({ ok: false, message: 'Kayit bulunamadi.' });
+      if (!scalexKaydiMi(rec)) return scalexDisi(res);
       if (!ocoStore.canManage(rec, u)) {
         // BASKASININ KAYDINA ERISIM DENEMESI DENETIME — `denyIfNotOwner`
         // ile ayni gerekce: 403 donup iz birakmamak, bir kesinti aracinda
@@ -2430,7 +2502,7 @@ function initScaleX(app) {
       auditPortal(req, 'scalex_oco_schedule_cancelled', {
         detail: JSON.stringify({ id: rec.id, owner: rec.username, oco: rec.ocoNumber }),
       });
-      res.json({ ok: true, record: iptal });
+      res.json({ ok: true, record: zamanlamaGorunumu(iptal) });
     }),
   );
 
@@ -2444,6 +2516,7 @@ function initScaleX(app) {
       const ocoStore = require('../oco/store.cjs');
       const rec = await ocoStore.get(Number(req.params.id));
       if (!rec) return res.status(404).json({ ok: false, message: 'Kayit bulunamadi.' });
+      if (!scalexKaydiMi(rec)) return scalexDisi(res);
       if (!ocoStore.canManage(rec, u)) {
         auditPortal(req, 'scalex_oco_schedule_forbidden', {
           result: 'fail',
@@ -2495,7 +2568,7 @@ function initScaleX(app) {
       auditPortal(req, 'scalex_oco_schedule_updated', {
         detail: JSON.stringify({ id: rec.id, oncekiOco: rec.ocoNumber, yeniOco: guncel.ocoNumber }),
       });
-      res.json({ ok: true, record: guncel });
+      res.json({ ok: true, record: zamanlamaGorunumu(guncel) });
     }),
   );
 

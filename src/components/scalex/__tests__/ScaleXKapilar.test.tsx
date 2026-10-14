@@ -544,6 +544,53 @@ describe('alt paneller katlanır ve sayaçlıdır', () => {
     // Sihirbaz ayakta: ilk adım hâlâ çizili.
     expect(screen.getByRole('button', { name: /Zamanlanmış işlemler/ })).toBeInTheDocument();
   });
+
+  it('zamanlanan kaydın NE olduğu görünür: işlem adı, cluster, namespace, uygulamalar', async () => {
+    api.ocoSchedules.mockResolvedValue({
+      ok: true,
+      scope: 'mine+groups',
+      items: [
+        {
+          id: 7,
+          status: 'SCHEDULED',
+          ocoNumber: '1234567',
+          username: 'ayse',
+          runAt: '2026-10-14T20:00:00Z',
+          // Sunucunun ürettiği biçim (server/scalex/index.cjs `zamanlamaGorunumu`).
+          kapsam: {
+            env: 'prod',
+            tenant: 't1',
+            clusters: ['c1', 'c2'],
+            namespace: 'odeme',
+            apps: ['api', 'worker'],
+            action: 'scale',
+            executionMode: 'apply',
+            targetReplicas: 3,
+          },
+        },
+      ],
+    });
+    render(<ScaleXPage />);
+    fireEvent.click(await screen.findByRole('button', { name: /Zamanlanmış işlemler/ }));
+    const satir = await screen.findByTestId('scalex-zamanlama-kapsam');
+    expect(satir).toHaveTextContent('Ölçekle → 3 replica');
+    expect(satir).toHaveTextContent('c1, c2 / odeme · 2 uygulama · t1/prod');
+    expect(satir).toHaveTextContent('api, worker');
+  });
+
+  it('bir panel çizilirken patlarsa yalnız o panel hata der; sihirbaz ve öbür panel ayakta', async () => {
+    // Dizi ama öğesi `null`: render sırasında `it.status` patlar (biçim denetimini geçen
+    // ama bozuk bir kayıt). Sınır olmasaydı sayfanın tamamı düşerdi.
+    api.ocoSchedules.mockResolvedValue({ ok: true, scope: 'all', items: [null] });
+    const hatalar = vi.spyOn(console, 'error').mockImplementation(() => {});
+    render(<ScaleXPage />);
+    fireEvent.click(await screen.findByRole('button', { name: /Zamanlanmış işlemler/ }));
+    expect(await screen.findByText(/Bu panel çizilemedi/)).toBeInTheDocument();
+    expect(screen.getByRole('navigation', { name: 'Adımlar' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Şu an durdurulmuş/ })).toBeInTheDocument();
+    expect(hatalar.mock.calls.some((c) => String(c[0]).includes('paneli çizilemedi'))).toBe(true);
+    hatalar.mockRestore();
+  });
 });
 
 // ══ D. İŞLEM ADIMI: GÖMÜLÜ KİP ══════════════════════════════════════════════

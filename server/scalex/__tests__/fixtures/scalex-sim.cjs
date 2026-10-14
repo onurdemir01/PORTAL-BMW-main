@@ -360,6 +360,23 @@ const SORGULAR = [
     },
   ],
   [
+    // Ortak baslatma (`runner.performSsLaunch`): OCO zamanlayicisi pencere saatinde isi
+    // BU yoldan baslatir, ScaleX'in kendi yolundan degil.
+    /^INSERT INTO ansible_job_history \(username, awx_server_id, template_id, template_name, job_id, status, params\) VALUES/,
+    (p) => {
+      sim.kayit.isGecmisi.push({
+        username: p[0],
+        awx_server_id: p[1],
+        template_id: p[2],
+        template_name: p[3],
+        job_id: p[4],
+        status: p[5],
+        kaynak: 'ortak',
+      });
+      return { rows: [], rowCount: 1 };
+    },
+  ],
+  [
     /^SELECT TOP 1 username FROM ansible_job_history WHERE job_id = \$1 AND awx_server_id = \$2$/,
     (p) => ({
       rows: sim.kayit.isGecmisi
@@ -486,6 +503,11 @@ sahte('auth/users.cjs', {
   getPrefs: async (kim) => {
     if (sim.ayar.tercihHatasi) throw sim.ayar.tercihHatasi;
     return sim.ayar.tercihler[kim] || {};
+  },
+  // Pencere saatinde oturum YOKTUR: ortak baslatma tetikleyeni kayittaki addan cozer.
+  getUserIdentity: async (kim) => {
+    const k = Object.values(KULLANICILAR).find((u) => u.username === kim);
+    return k ? { username: k.username, displayName: k.displayName, mail: k.mail } : null;
   },
 });
 sahte('audit/index.cjs', {
@@ -744,13 +766,47 @@ sahte('oco/store.cjs', {
     Object.assign(r, { status: 'PENDING_APPROVAL', smartTicketId });
     return true;
   },
+  // ── GERCEK ZAMANLAYICININ (oco/poller) KULLANDIKLARI ──
+  // Gecisler gercek depodaki gibi KOSULLU: yanlis durumdaki kayit degismez, cagiran gorur.
+  listScheduled: async () => sim.kayit.ocoKayitlari.filter((r) => r.status === 'SCHEDULED'),
+  claimForLaunch: async (id) => {
+    const r = ocoKaydi(id);
+    if (!r || r.status !== 'SCHEDULED') return null;
+    r.status = 'LAUNCHING';
+    return r;
+  },
+  markLaunched: async (id, awxJobId) => {
+    const r = ocoKaydi(id);
+    if (!r || r.status !== 'LAUNCHING') return false;
+    Object.assign(r, { status: 'LAUNCHED', awxJobId });
+    return true;
+  },
+  markPendingApproval: async (id, { smartTicketId }) => {
+    const r = ocoKaydi(id);
+    if (!r || r.status !== 'LAUNCHING') return false;
+    Object.assign(r, { status: 'PENDING_APPROVAL', smartTicketId });
+    return true;
+  },
+  markFailed: async (id, message) => {
+    const r = ocoKaydi(id);
+    if (!r || !['SCHEDULED', 'LAUNCHING', 'PENDING_APPROVAL'].includes(r.status)) return false;
+    Object.assign(r, { status: 'FAILED', errorMessage: String(message || '') });
+    return true;
+  },
+  markExpired: async (id) => {
+    const r = ocoKaydi(id);
+    if (r && r.status === 'SCHEDULED') {
+      Object.assign(r, { status: 'EXPIRED', errorMessage: 'OCO kesinti penceresi tetikleme yapilmadan kapandi.' });
+    }
+  },
 });
-/** Zamanlayicinin (oco/poller) pencere saatinde yaptigini taklit eder. */
-sim.zamanlananiBaslat = (kayitId, jobId) => {
-  const r = ocoKaydi(kayitId);
-  Object.assign(r, { status: 'LAUNCHED', awxJobId: jobId });
-  return r;
-};
+/**
+ * GERCEK OCO zamanlayicisinin bir turu, `simdi` anindaymis gibi (varsayilan: kaydin pencere
+ * saatinden bir dakika sonra). Isi AWX'e gercek ortak yol gonderir.
+ */
+sim.zamanlayiciTuru = (simdiAn) => require(yol('oco/poller.cjs')).tick(simdiAn);
+sim.penceredeTur = (kayitId) =>
+  sim.zamanlayiciTuru(new Date(new Date(ocoKaydi(kayitId).runAt).getTime() + 60 * 1000));
 sim.ocoKaydi = ocoKaydi;
 /** SMART onayi geldi ve onay zamanlayicisi isi baslatti (smart/poller'in yaptigi). */
 sim.biletiOnayla = (biletId, jobId) => {
@@ -812,6 +868,16 @@ sahte('smart/store.cjs', {
   },
   getTicket: async (id) => sim.kayit.biletler.find((b) => b.id === Number(id)) || null,
   listPending: async () => sim.kayit.biletler.filter((b) => b.status === 'PENDING'),
+  // OCO zamanlayicisi: kayda bagli bilet varsa isi BASLATMAZ (ikinci bilet olmasin).
+  findByOcoRecordIds: async (ids) => {
+    const istenen = new Set((ids || []).map(Number));
+    const out = new Map();
+    for (const b of sim.kayit.biletler) {
+      const o = Number(b.pendingLaunch && b.pendingLaunch.ocoRecordId);
+      if (istenen.has(o) && !out.has(o)) out.set(o, b);
+    }
+    return out;
+  },
 });
 
 // ── SAHTE AWX ────────────────────────────────────────────────────────────────
@@ -974,25 +1040,17 @@ sim.isiBitir = (
   });
   return is;
 };
-/** AWX'te dogrudan (zamanlayicinin yapacagi gibi) bir is acar. */
-sim.awxIsiAc = (ek = {}) => {
-  const id = ++sonIs;
-  sim.kayit.isler.set(id, {
-    id,
-    tplId: sim.ayar.sablonlar.scalex_run.awxTemplateId,
-    ev: {},
-    status: 'running',
-    failed: false,
-    finished: null,
-    artifacts: {},
-    stdout: 'PLAY [ScaleX] ***\n',
-    yutulan: [],
-    ...ek,
-  });
-  return id;
-};
-
 // ── PORTAL ───────────────────────────────────────────────────────────────────
+// Runner'in arka plan donguleri duzenekte KOSMAZ. OCO zamanlayicisi GERCEK modul; yalniz
+// zamanlayicisi durdurulur ve tur elle cagrilir (`sim.zamanlayiciTuru`). SMART onay
+// dongusunun baslatma fonksiyonu yakalanir (`sim.onayBaslaticisi`).
+sahte('smart/poller.cjs', {
+  startPoller: (fn) => {
+    sim.onayBaslaticisi = fn;
+  },
+  stopPoller: () => {},
+});
+sahte('ansible/long-job-watcher.cjs', { startWatcher: () => {} });
 sim.runner = require(yol('ansible/runner.cjs'));
 sim.onkontrol = require(yol('ansible/template-preflight.cjs'));
 sim.reconciler = require(yol('scalex/reconciler.cjs'));
@@ -1020,6 +1078,13 @@ sim.baslat = async () => {
     next();
   });
   sim.scalex.initScaleX(app);
+  // PENCERE SAATINDEKI BASLATMA GERCEK YOLDAN (2026-10-14): zamanlanan ScaleX isini ScaleX
+  // degil, ortak OCO zamanlayicisi -> `runner.launchOrRequestApproval` -> `performSsLaunch`
+  // baslatir. Eskiden duzenek bunu kaydi elle "LAUNCHED" yaparak TAKLIT ediyordu; yani
+  // AWX'e o anda ne gittigi hic olculmuyordu. Runner'in kurulumu zamanlayiciya kendi
+  // baslatma fonksiyonunu verir; ayri bir uygulamaya kurulur (ScaleX uclarina karismaz).
+  sim.runner.initAnsibleRunner(express());
+  require(yol('oco/poller.cjs')).stopPoller();
   sim.portal.srv = http.createServer(app);
   await new Promise((r) => sim.portal.srv.listen(0, '127.0.0.1', r));
   sim.portal.port = sim.portal.srv.address().port;
