@@ -50,7 +50,10 @@ dolu, alan eşlemesi (metadata) dolu, SMART bağlantı ayarları (Admin > Sistem
 1. SMART gerekli ama hazır değilse istek **hemen** reddedilir. OCO servisi sorulmaz, hiçbir
    kayıt açılmaz. Önizleme aynı engeli aynı metinle baştan gösterir; ekran OCO numarası istemez.
 2. OCO: numara → kayıt bulundu mu → planlanan kesinti tarihi var mı → pencere açık mı.
-3. SMART kaydı açılır (gerekiyorsa). İş, onay verilince başlar.
+3. SMART kaydı açılır (gerekiyorsa). İş, onay verilince başlar. Onaydan sonra işi ortak
+   başlatma yolu başlatır ve bu yol AWX şablonunun "Prompt on launch" ayarına bakmaz. Bu
+   yüzden ayar **kayıt açılmadan önce** denetlenir. Kapalıysa istek 409
+   `awx_prompt_on_launch_disabled` ile reddedilir; SMART kaydı açılmaz, OCO sorulmaz.
 
 ### OCO penceresi henüz açılmadıysa
 
@@ -157,8 +160,10 @@ kopyalama gerekmez.
   talep kanaryadır.
 - **Zamanlanan işte kapı kararı zamanlama anında donar.** Kayıt açıldıktan sonra anahtar
   değişse de iş zamanlandığı kararla çalışır. Kayıt görünür ve iptal edilebilir.
-- **"Prompt on launch" yalnız zamanlama anında denetlenir.** Kayıt açıldıktan sonra AWX'te
-  bu ayar kapatılırsa, pencere saatindeki başlatma bunu görmez.
+- **"Prompt on launch" yalnız istek anında denetlenir** (zamanlama ya da SMART kaydı
+  açılırken). Kayıt açıldıktan sonra AWX'te bu ayar kapatılırsa, pencere saatindeki ya da
+  onay sonrasındaki başlatma bunu görmez. Kapatmak için ortak başlatma yolunun değişmesi
+  gerekir; o yol Self Service'in de yolu.
 - **OCO denetimi bir takvim denetimidir**: kaydın var olduğuna ve planlanan pencereye bakar;
   onay durumunu ya da hedef sistemleri okumaz (Admin > ScaleX Yönetimi > OCO Tanı bunu gösterir).
 

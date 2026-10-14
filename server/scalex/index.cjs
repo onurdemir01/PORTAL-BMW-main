@@ -491,15 +491,18 @@ async function runScaleXGates({
     action,
     executionMode,
   });
-  // ── ZAMANLANACAKSA "PROMPT ON LAUNCH" SIMDI DENETLENIR (2026-10-14) ─────────
+  // ── IS ERTELENECEKSE "PROMPT ON LAUNCH" SIMDI DENETLENIR (2026-10-14) ───────
   // Pencere saatinde isi ScaleX DEGIL ortak OCO zamanlayicisi baslatir
   // (`runner.performSsLaunch`); o yol bu on kontrolu YAPMAZ ve AWX'in yok saydigi
   // degiskenlere bakmaz. Ayar kapaliyken zamanlanan is ankette OLMAYAN alanlari
   // (`scalex_target_clusters`, `scalex_clusters_override`) KAYBEDEREK calisirdi; anlik
   // baslatma ayni durumda isi hic baslatmiyor. Karar zamanlama aninda verilir; kayit
   // acildiktan sonra ayarin degismesi "Bilinen sinirlar"da.
+  // SMART DEVREDEYKEN DE AYNI: istek bilet acilarak bekletilir ve onaydan sonra isi yine
+  // ortak yol baslatir, yani on kontrol HICBIR ANDA kosmazdi. Bilet acilmadan once
+  // denetlenir: ayar kapaliyken onay toplamak da bosuna olurdu.
   const zamanlanacak = policy.schedulable === true && ocoAction === 'schedule';
-  if (zamanlanacak) {
+  if (zamanlanacak || policy.smart === 'require') {
     await assertSablonDegiskenKabulEdiyor(runServerId, runTemplateId, extraVars, {
       label: `ScaleX ${action} (${executionMode}) - ${namespace} @ ${clusters.join(',')}`,
     });
