@@ -68,7 +68,12 @@ const ORTAK = {
   },
   '/api/scalex/oco-schedules': {
     ok: true, scope: 'own',
-    items: [{ id: 5, status: 'SCHEDULED', ocoNumber: '7654321', ocoSubject: 'Planli calisma', username: 'tarama', runAt: simdi, pendingLaunch: { detail: null } }],
+    // Sunucunun 2026-10-14'ten beri gonderdigi bicim: ham paket (`pendingLaunch`) YOK,
+    // kapsam sunucuda uretilir (server/scalex/index.cjs `zamanlamaGorunumu`).
+    items: [{
+      id: 5, status: 'SCHEDULED', ocoNumber: '7654321', ocoSubject: 'Planli calisma', username: 'tarama', runAt: simdi,
+      kapsam: { env: 'prod', tenant: 't1', clusters: ['c1'], namespace: 'odeme', apps: ['api'], action: 'stop', executionMode: 'apply', targetReplicas: null },
+    }],
   },
   '/api/scalex/run/': ORNEK.bitenIs.tamCikti,
 };
@@ -184,6 +189,20 @@ async function akis(kurgu, beklenen, tema) {
       if (!son.includes(beklenen)) hatalar.push(`${etiket}: sonuc ekraninda "${beklenen}" yok`);
       if (/İşlem başlatılmadı/.test(son)) hatalar.push(`${etiket}: "Islem baslatilmadi" yaziyor`);
     }
+    // ALT PANELLER (2026-10-14): Admin'de zamanlama paneli sayfanin TAMAMINI dusurmustu.
+    // Ikisi de acilir; zamanlanan kaydin NE oldugu yazmali, hicbiri "cizilemedi" dememeli.
+    // Sonda yeniden kapatilir: acik/kapali tercihi profilde kalir, sonraki kurgularin
+    // sayfa yuksekligi olcumleri degismesin.
+    await tikla('text=Zamanlanmış işlemler');
+    await tikla('text=Şu an durdurulmuş');
+    await sleep(700);
+    await olc('7-paneller');
+    const panel = await t.eval('document.body.innerText');
+    if (!/Durdur · c1 \/ odeme · 1 uygulama/.test(panel)) hatalar.push(`${etiket}: zamanlanan kaydin kapsami yazmiyor`);
+    if (/Bu panel çizilemedi/.test(panel)) hatalar.push(`${etiket}: bir alt panel cizilemedi`);
+    if (!/rapor/.test(panel)) hatalar.push(`${etiket}: durdurulmus uygulama listede yok`);
+    await tikla('text=Zamanlanmış işlemler');
+    await tikla('text=Şu an durdurulmuş');
   } catch (e) {
     hatalar.push(`${etiket}: ${e.message}`);
     await t.shot(path.join(CIKTI, `${etiket}-HATA.png`)).catch(() => {});
