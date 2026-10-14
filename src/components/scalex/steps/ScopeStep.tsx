@@ -5,9 +5,10 @@
 // kullanıcı bir sonraki adıma geçmeden kapsamı görüyor.
 import React, { useEffect, useMemo, useState } from 'react';
 import { ExclamationTriangleIcon, ServerStackIcon } from '@heroicons/react/24/outline';
-import { scalexApi, type ScaleXClusterTree } from '@/api/scalexApi';
+import { scalexApi, type ScaleXClusterTree, type ScaleXGateSummary } from '@/api/scalexApi';
 import { isProdEnv } from '@/utils/env';
 import LoadError from '@/components/common/LoadError';
+import { degisiklikKurali } from '../kapiMetni';
 
 interface Props {
   busy: boolean;
@@ -67,6 +68,31 @@ const ScopeStep: React.FC<Props> = ({ busy, initial, onSubmit }) => {
   // TANIM ORTAK MODÜLDEN: aynı soru artık her adımdaki künyede de soruluyor. İkinci
   // bir kopya, birinin değişip diğerinin sessizce eskimesi demekti.
   const isProd = isProdEnv(env);
+
+  // ONAY KURALI SUNUCUDAN (2026-10-14). Uyarı eskiden SABİTTİ ("OCO kontrol edilecek,
+  // SMART kaydı açılacak, ikinci kişi onayı istenir"): admin "yalnız OCO" dese de aynı
+  // cümle yazıyordu ve "ikinci kişi onayı" sunucuda hiç yoktu. Artık `/preview` ile AYNI
+  // çözücünün kararı okunur; seçim değiştikçe (istisna kuralı tenant / cluster sayısına
+  // bakabilir) kısa bir gecikmeyle tazelenir, geç dönen eski yanıt atılır.
+  const [kural, setKural] = useState<{ env: string; ozet: ScaleXGateSummary | null } | null>(null);
+  useEffect(() => {
+    if (!env) return undefined;
+    let alive = true;
+    const t = setTimeout(() => {
+      Promise.resolve()
+        .then(() => scalexApi.gateSummary(env, tenant, selected))
+        .then((ozet) => alive && setKural({ env, ozet }))
+        .catch(() => alive && setKural({ env, ozet: null }));
+    }, 250);
+    return () => {
+      alive = false;
+      clearTimeout(t);
+    };
+  }, [env, tenant, selected]);
+  const kuralBu = kural && kural.env === env ? kural : null;
+  const kuralMetni = kuralBu?.ozet
+    ? degisiklikKurali(kuralBu.ozet.change, { secimeBagli: kuralBu.ozet.secimeBagliKural })
+    : null;
 
   if (loading)
     return (
@@ -190,13 +216,33 @@ const ScopeStep: React.FC<Props> = ({ busy, initial, onSubmit }) => {
         </div>
       )}
 
-      {isProd && selected.length > 0 && (
-        <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+      {selected.length > 0 && kuralMetni && (
+        <div
+          data-testid="scalex-kapsam-kurali"
+          role={kuralMetni.ton === 'engel' ? 'alert' : undefined}
+          className={`flex items-start gap-2 rounded-xl border p-3 text-xs ${
+            kuralMetni.ton === 'engel'
+              ? 'border-red-200 bg-red-50 text-red-800'
+              : 'border-amber-200 bg-amber-50 text-amber-900'
+          }`}
+        >
           <ExclamationTriangleIcon aria-hidden="true" className="w-4 h-4 flex-shrink-0 mt-0.5" />
           <span>
-            <strong>Prod ortamı.</strong> Gerçek bir değişiklik uygularsan OCO penceresi kontrol
-            edilecek ve SMART kaydı açılacak. Birden fazla cluster seçtiysen ikinci kişi onayı da
-            istenir.
+            <strong>{isProd ? 'Prod ortamı.' : `${env} ortamı.`}</strong> Gerçek bir değişiklik
+            uygularsan: {kuralMetni.satirlar.join(' ')}
+          </span>
+        </div>
+      )}
+      {/* KURAL OKUNAMADIYSA VAAT YOK: yalnız prod vurgusu ve nerede görüleceği. */}
+      {selected.length > 0 && isProd && kuralBu && !kuralBu.ozet && (
+        <div
+          data-testid="scalex-kapsam-kurali"
+          className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900"
+        >
+          <ExclamationTriangleIcon aria-hidden="true" className="w-4 h-4 flex-shrink-0 mt-0.5" />
+          <span>
+            <strong>Prod ortamı.</strong> Onay kuralları şu an okunamadı; geçerli kural
+            önizleme adımında gösterilir.
           </span>
         </div>
       )}

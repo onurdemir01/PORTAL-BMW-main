@@ -161,6 +161,22 @@ const ScaleXKapiDurumu: React.FC<Props> = ({ reloadKey = 0, onOrnekBaglam }) => 
         </span>
       </div>
 
+      {/* OCO KAPSAMI AYARDAN (2026-10-14). Kural kutusu "prod dışı OCO istemez" diye sabit
+          yazıyordu; admin OCO ortam listesine prod dışı bir ortam eklerse sunucu orada da
+          OCO ister. Eski sunucu `oco` göndermez: satır görünmez. */}
+      {durum.oco && (
+        <p className="text-xs text-[var(--text-secondary)]" data-testid="scalex-oco-kapsami">
+          <strong>OCO istenen ortamlar:</strong>{' '}
+          {!durum.oco.enabled
+            ? 'hiçbiri — OCO kapısı kapalı.'
+            : durum.oco.environments === null
+              ? 'yalnız production (ortam listesi tanımlı değil).'
+              : durum.oco.environments.length
+                ? `${durum.oco.environments.join(', ')} (OCO ayarındaki ortam listesi).`
+                : 'hiçbiri — OCO ortam listesi boş.'}
+        </p>
+      )}
+
       {/* SMART KURALI ANAHTARI */}
       <div>
         <p className="text-xs font-medium text-[var(--text-muted)] mb-1.5">Prod'da SMART onayı</p>

@@ -562,17 +562,17 @@ const ScaleXAdminTab: React.FC = () => {
             </p>
             <div className="rounded-lg bg-[var(--bg-inset)] p-3 text-xs text-[var(--text-secondary)] space-y-1">
               <p>
-                <strong>Yalnızca production.</strong> Prod dışı{' '}
-                <span className="font-mono">apply</span> işlemleri OCO numarası istemez ve SMART
-                kaydı açmaz. Değişiklik izi her ortamda tutulur.
+                <strong>SMART yalnızca production'da</strong> sorulur. OCO'nun hangi ortamlarda
+                istendiği aşağıda, OCO ayarından okunur. Değişiklik izi her ortamda tutulur.
               </p>
               <p>
                 <strong>Ortam bilinmiyorsa prod sayılır</strong> — bilgi yokluğu kapıyı açar.
               </p>
               <p>
                 <span className="font-mono">dry_run</span> hiçbir kapıdan geçmez;{' '}
-                <strong>Geri Al</strong> prod'da OCO'yu uyarı olarak geçer (gerekçe zorunlu). SMART
-                için aşağıdaki kural geçerlidir.
+                <strong>Geri Al</strong> OCO istenen ortamda OCO'yu uyarı olarak geçer (gerekçe
+                zorunlu). SMART için aşağıdaki kural geçerlidir; kullanıcı ekranları bu kartla aynı
+                kararı gösterir.
               </p>
             </div>
             {/* DURUM KARTI: kural anahtari, SMART tanimli mi, eksik ne, kullanici bugun ne gorur.

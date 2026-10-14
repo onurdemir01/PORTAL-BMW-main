@@ -17,6 +17,7 @@ import { scalexApi, type ScaleXStoppedItem } from '@/api/scalexApi';
 import { useJobTracker } from '@/contexts/JobTrackerContext';
 import { fmtRelative } from '@/utils/datetime';
 import { yoklamaBekle, yoklamaSayisi } from '@/utils/scalexYoklama';
+import { geriAlmaKurali, type KapiKurali } from './kapiMetni';
 
 interface Props {
   /** Bos birakilirsa kullanicinin gorebildigi TUM kapsamlar listelenir. */
@@ -111,6 +112,21 @@ const StoppedPanel: React.FC<Props> = ({
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkReason, setBulkReason] = useState('');
   const [showBulk, setShowBulk] = useState(false);
+  // TOPLU GERI ALMANIN KURALI SUNUCUDAN (2026-10-14). Kutu "SMART kaydina da yazilir"
+  // diye SABIT yaziyordu; admin "yalniz OCO" dediginde SMART kaydi hic acilmiyor.
+  // `null`: henuz okunmadi ya da okunamadi — o zaman vaat edilmez.
+  const [geriAlmaKural, setGeriAlmaKural] = useState<KapiKurali | null>(null);
+  useEffect(() => {
+    if (!showBulk || !env || !tenant) return undefined;
+    let alive = true;
+    Promise.resolve()
+      .then(() => scalexApi.gateSummary(env, tenant))
+      .then((o) => alive && setGeriAlmaKural(geriAlmaKurali(o.restore)))
+      .catch(() => alive && setGeriAlmaKural(null));
+    return () => {
+      alive = false;
+    };
+  }, [showBulk, env, tenant]);
   const busyRef = useRef(false);
   const aliveRef = useRef(true);
   const { addJob } = useJobTracker();
@@ -637,9 +653,22 @@ const StoppedPanel: React.FC<Props> = ({
             <strong>
               {items.filter((i) => i.driftStatus === 'in_sync' && i.phase !== 'restoring').length}
             </strong>{' '}
-            kayıt geri alınacak. Geri alma bir <strong>onarım</strong> işlemidir: OCO penceresi
-            dışında da çalışır, ama gerekçe zorunludur ve SMART kaydına da yazılır.
+            kayıt geri alınacak.
+            {geriAlmaKural?.ton !== 'engel' && (
+              <>
+                {' '}
+                Geri alma bir <strong>onarım</strong> işlemidir:{' '}
+                <span data-testid="scalex-geri-alma-kurali">
+                  {geriAlmaKural ? geriAlmaKural.satirlar.join(' ') : 'gerekçe zorunludur.'}
+                </span>
+              </>
+            )}
           </p>
+          {geriAlmaKural?.ton === 'engel' && (
+            <p role="alert" data-testid="scalex-geri-alma-kurali" className="text-xs text-red-800">
+              {geriAlmaKural.satirlar.join(' ')}
+            </p>
+          )}
           {/* SUZGEC TOPLU ISLEMI DARALTMAZ — VE BU SOYLENMELI.
               Sunucu ucu (`/restore-all`) env/tenant kapsaminda calisir, ekrandaki
               suzgeci BILMEZ. Kullanici listeyi 3 kayda daraltip "hepsini geri al"
@@ -682,7 +711,7 @@ const StoppedPanel: React.FC<Props> = ({
             <button
               type="button"
               className="btn-primary"
-              disabled={bulkBusy || !bulkReason.trim()}
+              disabled={bulkBusy || !bulkReason.trim() || geriAlmaKural?.ton === 'engel'}
               onClick={runRestoreAll}
             >
               {bulkBusy ? 'Başlatılıyor…' : 'Tümünü geri al'}

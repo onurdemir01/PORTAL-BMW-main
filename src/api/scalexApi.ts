@@ -3,7 +3,7 @@
 // Sunucu karşılığı: server/scalex/index.cjs. Sözleşme bilinçli olarak DAR: ekran
 // playbook'un survey alan adlarını (`execution_mode`, `allow_partial_execution`,
 // `bulk_change_confirmation` …) HİÇ görmez — onları sunucu üretir.
-import { safeJson } from './http';
+import { safeJson, okJson } from './http';
 
 const BASE = '/api/scalex';
 
@@ -363,8 +363,29 @@ export interface ScaleXGateStatus {
   };
   /** Bu yöneticinin KENDİ tetiklemelerinde SMART atlanıyor mu (kişisel tercih). */
   adminSkipSelf: boolean;
+  /**
+   * OCO kapısının GERÇEK kapsamı (2026-10-14). `environments: null` = liste yok, yalnız
+   * prod. Eski sunucu bu alanı göndermez.
+   */
+  oco?: { enabled: boolean; environments: string[] | null };
   /** Şablonda kullanılabilecek `scalex.*` değişkenleri ve örnek değerleri. */
   ornekBaglam: Record<string, string | number>;
+}
+
+/**
+ * Seçim sürerken (namespace/işlem henüz yok) ekranın söylediği kapı kuralı (2026-10-14).
+ * `/preview` ile AYNI sunucu çözücüsü: değişiklik (`stop + apply`) ve geri alma
+ * (`restore + apply`) için. Kesin karar yine önizlemededir.
+ */
+export interface ScaleXGateSummary {
+  ok: boolean;
+  message?: string;
+  env: string;
+  change: ScaleXGatePolicy;
+  restore: ScaleXGatePolicy;
+  /** Namespace'e ya da işleme bağlı bir SMART istisna kuralı var: karar seçime göre değişebilir. */
+  secimeBagliKural: boolean;
+  configError: string | null;
 }
 
 export interface ScaleXPreview {
@@ -476,6 +497,12 @@ async function post<T>(path: string, body: unknown): Promise<T> {
 }
 
 export const scalexApi = {
+  /** Ortam (+ tenant / cluster'lar) için kapı kuralı — admin ayarına göre, sunucudan. */
+  async gateSummary(env: string, tenant = '', clusters: string[] = []): Promise<ScaleXGateSummary> {
+    const q = new URLSearchParams({ env, tenant, clusters: clusters.join(',') });
+    return okJson(await fetch(`${BASE}/gate-summary?${q}`));
+  },
+
   async clusters(): Promise<{ ok: boolean; tree: ScaleXClusterTree; message?: string }> {
     return safeJson(await fetch(`${BASE}/clusters`));
   },

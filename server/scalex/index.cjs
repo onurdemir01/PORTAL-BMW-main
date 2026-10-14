@@ -982,6 +982,52 @@ function initScaleX(app) {
     }),
   );
 
+  // ── KAPI OZETI: SECIM SURERKEN EKRANIN SOYLEDIGI KURAL (2026-10-14) ───────
+  //
+  // Kullanici: "admin ekraninda yalniz OCO dedim ama prod secince yine 'SMART acilacak,
+  // ikinci kisi onayi istenir' yaziyor; her sey admin ekraniyla dinamik olmali."
+  // Ilk adimdaki uyari SABIT bir cumleydi: admin anahtarini (yalniz OCO), SMART'in tanimli
+  // olup olmadigini, OCO ortam listesini ve istisna kurallarini hic okumuyordu. "Ikinci
+  // kisi onayi" ise sunucuda HIC uygulanmayan bir vaatti.
+  //
+  // Bu uc `/preview` ile AYNI cozucuyu (`resolveGatePolicy`) cagirir; ekranin ilk adimi ve
+  // "Su an durdurulmus" paneli metnini buradan uretir. Namespace ve islem henuz secilmemis
+  // olabilir: degisiklik icin `stop + apply`, geri alma icin `restore + apply` sorulur.
+  // Kesin karar yine `/preview`dadir (namespace'e bagli istisna kurali orada eslesir).
+  // GIZLI BILGI YOK: donen nesne `/preview`in `gatePolicy`si ile ayni bicimde.
+  router.get(
+    '/gate-summary',
+    asyncRoute(async (req, res) => {
+      const env = String(req.query.env || '').trim().slice(0, 64);
+      if (!env) return res.status(400).json({ ok: false, message: 'env zorunlu.' });
+      const tenant = String(req.query.tenant || '').trim().slice(0, 128);
+      const clusters = String(req.query.clusters || '')
+        .split(',')
+        .map((c) => c.trim())
+        .filter(Boolean)
+        .slice(0, 100);
+      const [degisiklik, geriAlma] = await Promise.all([
+        resolveGatePolicy(req, { action: 'stop', executionMode: 'apply', environment: env, tenant, clusters, namespace: '' }),
+        resolveGatePolicy(req, { action: 'restore', executionMode: 'apply', environment: env, tenant, clusters, namespace: '' }),
+      ]);
+      const sa = degisiklik.gateCfg.svcConfig.smartApproval || {};
+      res.json({
+        ok: true,
+        env,
+        change: degisiklik.policy,
+        restore: geriAlma.policy,
+        // Namespace'e ya da isleme bagli bir istisna kurali varsa bu ozet o secimden
+        // ONCE hesaplandi: ekran "kesin karar onizlemede" der.
+        secimeBagliKural:
+          sa.enabled === true &&
+          launch.gates
+            .parseSmartSkipRules(sa.skipWhen)
+            .rules.some((r) => ['namespace', 'action'].includes(String(r.field || '').toLowerCase())),
+        configError: degisiklik.gateCfg.hata ? degisiklik.gateCfg.hata.message : null,
+      });
+    }),
+  );
+
   // ── Katalog ───────────────────────────────────────────────────────────────
   router.get(
     '/clusters',
@@ -2674,6 +2720,18 @@ function initScaleX(app) {
           skipRulesInvalid: istisna.invalid,
         },
         adminSkipSelf: kendiAtlamasi === true,
+        // OCO KAPSAMI GERCEK AYARDAN (2026-10-14). Kural kutusu "prod disi OCO istemez"
+        // diye SABIT yaziyordu; admin listeye prod disi bir ortam eklerse sunucu orada da
+        // OCO istiyor (launch.gatePolicyFor). `environments: null` = liste yok, yalniz prod.
+        oco: (() => {
+          const oc = gateCfg.svcConfig.ocoCheck || {};
+          return {
+            enabled: oc.enabled !== false,
+            environments: Array.isArray(oc.environments)
+              ? oc.environments.map((e) => String(e || '').trim()).filter(Boolean)
+              : null,
+          };
+        })(),
         // Sablonda kullanilabilecek degiskenler ve ornek degerleri (ekran yardim metni).
         ornekBaglam: ornek,
       });

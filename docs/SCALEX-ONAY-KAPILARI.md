@@ -84,6 +84,24 @@ göreceğini** tek cümleyle söyler ve SMART tanımının hangi parçasının e
 Aynı ayar `SCALEX_PROD_SMART_MODE` (`required` | `oco_only`) olarak Admin > Sistem'de ve
 `.env`'de de durur. Boş ya da tanınmayan değer `required` sayılır: yazım hatası kapıyı açmaz.
 
+### Ekranlar aynı kararı gösterir
+
+Kullanıcıya kuralı söyleyen her yer sunucunun **aynı çözücüsünden** (`resolveGatePolicy`)
+okur; sabit cümle yoktur:
+
+| Yer | Uç | Ne zaman |
+| --- | --- | --- |
+| Kapsam adımı (ortam / tenant / cluster seçilince) | `GET /api/scalex/gate-summary` | seçim değişince |
+| "Şu an durdurulmuş" › Tümünü geri al | `GET /api/scalex/gate-summary` (`restore`) | kutu açılınca |
+| İşlem ve onay adımı | `POST /api/scalex/preview` | seçim tamamlanınca (kesin karar) |
+| Admin kartı | `GET /api/scalex/admin/gate-status` | kart açılınca / ayar kaydedilince |
+
+Anahtar, SMART tanımı, OCO ortam listesi, istisna kuralları ve yöneticinin kendi "SMART atla"
+tercihi değiştiğinde ekranlar yeniden başlatma olmadan yeni kuralı gösterir. Kapsam adımında
+namespace ve işlem henüz seçilmemiştir: bunlara bağlı bir istisna kuralı varsa ekran "kesin
+karar önizlemede" der. Eskiden kapsam adımı her durumda "SMART kaydı açılacak, birden fazla
+cluster seçtiysen ikinci kişi onayı istenir" yazıyordu; ikinci kişi onayı sunucuda hiç yoktu.
+
 ## SMART'ı tanımlamak
 
 Aynı karttaki **SMART / OCO ayarlarını düzenle** düğmesi ayar penceresini açar.
@@ -179,4 +197,8 @@ kopyalama gerekmez.
   runner'ın gerçek başlatma fonksiyonu sahte AWX'e gider.
 - `src/components/scalex/__tests__/ScaleXKapilar.test.tsx` — ekran, sunucunun gerçek
   yanıtlarıyla (`fixtures/kapi-yanitlari.json`) denenir.
+- KM26 — kapsam adımının okuduğu özet, aynı ayarlarla `/preview`in kararıyla birebir aynı
+  (72 hücre); anahtar ve OCO ortam listesi değişince anında değişir; dış sisteme gidilmez.
+- `src/components/scalex/__tests__/KapiKurali.test.tsx` — kapsam uyarısı ve toplu geri alma
+  kutusu her ayarda doğru cümleyi söyler (girdi: sunucunun gerçek özet yanıtları).
 - `scripts/ui-tarama/scalex-akis.mjs` — sihirbaz gerçek tarayıcıda, veriyle dolu gezilir.
