@@ -806,6 +806,33 @@ async function resolveScope(req, { requireApps = true } = {}) {
     ),
   ];
 
+  // ── GIRDI SINIRLARI, DB'YE VE AWX'E GITMEDEN (2026-10-14) ───────────────────
+  //
+  // Asagidaki yetki dongusu her namespace ve uygulama icin cluster basina bir portal
+  // DB sorgusu atar. `namespaces` SINIRSIZDI (yalniz ekran 60'ta duruyordu) ve ek
+  // namespace'lerin bicimi yalniz playbook'ta denetleniyordu: 2 MB'lik bir govde
+  // binlerce sirali sorgu ve sonunda girdi dogrulamasinda dusen bir AWX isi demekti.
+  // Tavan admin ayari (ekran ayni degeri /config'ten okur). Uygulama listesi icin
+  // sert sinir: hedef tavaninin admin'in de asamadigi ust siniri (hedef >= uygulama).
+  const nsTavani = config.tunable('SCALEX_MAX_AUDIT_NAMESPACES');
+  if (namespaces.length > nsTavani) {
+    throw Object.assign(
+      new Error(
+        `Tek keşifte en fazla ${nsTavani} namespace taranabilir (yönetici ayarı); ` +
+          `${namespaces.length} gönderildi. Kapsamı daraltın.`,
+      ),
+      { status: 400, code: 'scalex_too_many_namespaces' },
+    );
+  }
+  for (const ns of namespaces) launch.assertValidDiscoveryTargets({ namespace: ns });
+  const uygulamaSiniri = config.TUNABLES.SCALEX_MAX_TARGETS.hardMax;
+  if (apps.length > uygulamaSiniri) {
+    throw Object.assign(
+      new Error(`Tek istekte en fazla ${uygulamaSiniri} uygulama gönderilebilir; ${apps.length} gönderildi.`),
+      { status: 400 },
+    );
+  }
+
   if (!env || !tenant) throw Object.assign(new Error('env ve tenant zorunlu.'), { status: 400 });
   if (!clusters.length)
     throw Object.assign(new Error('En az bir cluster seçilmeli.'), { status: 400 });

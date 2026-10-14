@@ -31,6 +31,11 @@ interface Props {
    * `SCALEX_MAX_AUDIT_GROUPS`). Verilmezse asagidaki fabrika degeri kullanilir.
    */
   maxAuditGroups?: number;
+  /**
+   * Taramadaki toplam namespace tavani — SUNUCUDAN (Admin > Sistem,
+   * `SCALEX_MAX_AUDIT_NAMESPACES`); sunucu da tek istekte ayni tavani uygular.
+   */
+  maxAuditNamespaces?: number;
   /** Katlanir bir panelin ICINDE: baslik ve sayac distaki panelde, burada yinelenmez. */
   gomulu?: boolean;
   /** Listedeki kayit sayisi; okunamadiysa `null` ("okunamadi" sifir DEGILDIR). */
@@ -64,6 +69,9 @@ const MAX_AUDIT_GROUPS = 12;
 //
 // Bu yuzden IKINCI bir tavan: toplam namespace sayisi. Ayni ilke — SESSIZCE
 // KIRPILMAZ, tarama hic BASLAMAZ ve kullanicidan kapsami daraltmasi istenir.
+//
+// FABRIKA DEGERI. Gercek tavan admin ekranindan gelir (`maxAuditNamespaces` prop'u,
+// `SCALEX_MAX_AUDIT_NAMESPACES`); sunucu da ayni tavani tek istekte uygular.
 const MAX_AUDIT_NAMESPACES = 60;
 
 function daysSince(iso: string | null): number | null {
@@ -90,6 +98,7 @@ const StoppedPanel: React.FC<Props> = ({
   onRestore,
   reloadKey = 0,
   maxAuditGroups = MAX_AUDIT_GROUPS,
+  maxAuditNamespaces = MAX_AUDIT_NAMESPACES,
   gomulu = false,
   onSayim,
 }) => {
@@ -259,10 +268,10 @@ const StoppedPanel: React.FC<Props> = ({
     // IKINCI TAVAN: namespace sayisi. Is sayisi tavani, namespace'ler tek iste
     // gonderilmeye baslayinca gevsedi (bkz. MAX_AUDIT_NAMESPACES notu).
     const toplamNs = [...groups.values()].reduce((a, g) => a + g.namespaces.length, 0);
-    if (toplamNs > MAX_AUDIT_NAMESPACES) {
+    if (toplamNs > maxAuditNamespaces) {
       setAuditNote(null);
       setError(
-        `Bu listede ${toplamNs} namespace var (sınır ${MAX_AUDIT_NAMESPACES}). ` +
+        `Bu listede ${toplamNs} namespace var (sınır ${maxAuditNamespaces}). ` +
           'Tarama başlatılmadı — üstten ortam/platform seçip listeyi daraltın.',
       );
       return;

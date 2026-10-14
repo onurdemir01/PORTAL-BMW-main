@@ -112,6 +112,12 @@ Admin › Sistem'deki ScaleX sayıları da aynı kurala uyar; ekran kendi sayıs
 | "Prod'da N hedefin üstü yazılı onay ister" | `/preview` `blastRadius.writtenConfirmThreshold` (`SCALEX_PROD_CONFIRM_THRESHOLD`) |
 | Bekleme süresi varsayılanı ve aralığı | `/config` `verificationTimeout` |
 | İş geçmişi "UNKNOWN … saat beklendi" | `/history` `unknownAfterHours` (`SCALEX_RECONCILE_STALE_HOURS`) |
+| "Durumu tazele" kapsam ve namespace sınırı | `/config` `maxAuditGroups`, `maxAuditNamespaces` (`SCALEX_MAX_AUDIT_GROUPS`, `SCALEX_MAX_AUDIT_NAMESPACES`) |
+
+Namespace sınırını sunucu da uygular: `/discover` (ve ScaleX'in kapsam alan her ucu) sınırı
+aşan ya da biçimi geçersiz bir namespace listesini, yetki sorgusu yapmadan ve AWX işi
+başlatmadan `400` ile reddeder. Uygulama listesinin de sert bir üst sınırı vardır (hedef
+tavanının admin'in de aşamadığı değeri, 2000).
 
 ## SMART'ı tanımlamak
 

@@ -711,6 +711,17 @@ const ENV_VARS: EnvVarMeta[] = [
     usedIn: 'src/components/scalex/StoppedPanel.tsx',
     restartRequired: false,
   },
+  {
+    key: 'SCALEX_MAX_AUDIT_NAMESPACES',
+    label: 'Keşif Namespace Tavanı',
+    group: 'ScaleX',
+    description:
+      "Tek keşif işinde taranabilecek en fazla namespace. 'Durumu tazele' toplamda bunu aşarsa tarama HİÇ başlamaz; sunucu da aşan isteği AWX'e göndermeden reddeder. Boş = 60.",
+    required: false,
+    example: '60',
+    usedIn: 'server/scalex/index.cjs',
+    restartRequired: false,
+  },
   // SMART KURALI ANAHTARI (2026-10-13). Asil yeri Admin > ScaleX Yonetimi > Onay kapilari
   // (durum karti: tanimli mi, eksik ne); burada da gorunur ki ayar listesi eksiksiz olsun.
   // Sunucu kaydetmeden once dogrular: `required` / `oco_only` disindaki deger 400 doner.

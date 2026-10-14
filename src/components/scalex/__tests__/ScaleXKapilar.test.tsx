@@ -515,6 +515,30 @@ describe('sayfa sunucunun her yanıt biçimini doğru ekrana çevirir', () => {
 
 // ══ C. ALT PANELLER: KATLANIR, SAYAÇLI ══════════════════════════════════════
 describe('alt paneller katlanır ve sayaçlıdır', () => {
+  it('"Durumu tazele" namespace tavanı sunucunun /config değeridir (Admin > Sistem), sabit 60 değil', async () => {
+    api.config.mockResolvedValue({
+      ok: true,
+      prodSmartMode: 'required',
+      verificationTimeout: { default: 300, min: 30, max: 3600, failMultiplier: 2 },
+      maxTargets: 200,
+      prodConfirmThreshold: 5,
+      maxAuditGroups: 12,
+      maxAuditNamespaces: 2,
+      problems: [],
+    });
+    api.stopped.mockResolvedValue({
+      ok: true,
+      hiddenCount: 0,
+      items: ['ns-a', 'ns-b', 'ns-c'].map((ns, i) => ({ ...DURDURULMUS, id: 100 + i, namespace: ns, appName: `app-${i}` })),
+    });
+    render(<ScaleXPage />);
+    await waitFor(() => expect(api.config).toHaveBeenCalled());
+    fireEvent.click(await screen.findByRole('button', { name: /Şu an durdurulmuş/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /Durumu tazele/ }));
+    expect(await screen.findByText(/Bu listede 3 namespace var \(sınır 2\)/)).toBeInTheDocument();
+    expect(api.discover).not.toHaveBeenCalled();
+  });
+
   it('varsayılan kapalı; sayaç panelin yüklemesinden gelir; açma tercihi saklanır', async () => {
     api.ocoSchedules.mockResolvedValue({
       ok: true,

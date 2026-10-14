@@ -22,6 +22,7 @@ export interface ScaleXLimits {
   maxTargets: number;
   prodConfirmThreshold: number;
   maxAuditGroups: number;
+  maxAuditNamespaces: number;
   /** Sunucudan okunamadi — fabrika degerleri gosteriliyor. */
   stale: boolean;
   /** Admin tutarsiz bir ayar yazmis; sunucu fabrika degerine dusmus. */
@@ -39,6 +40,7 @@ export const SCALEX_FALLBACK_LIMITS: ScaleXLimits = {
   maxTargets: 200,
   prodConfirmThreshold: 5,
   maxAuditGroups: 12,
+  maxAuditNamespaces: 60,
   stale: false,
   problems: [],
 };
@@ -62,6 +64,8 @@ export function useScaleXLimits(): ScaleXLimits {
         maxTargets: r.maxTargets,
         prodConfirmThreshold: r.prodConfirmThreshold,
         maxAuditGroups: r.maxAuditGroups,
+        // Eski sunucu gondermez: fabrika degeri (sunucu o surumde tavan uygulamiyordu).
+        maxAuditNamespaces: r.maxAuditNamespaces ?? SCALEX_FALLBACK_LIMITS.maxAuditNamespaces,
         stale: false,
         problems: r.problems || [],
       });
