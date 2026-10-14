@@ -2957,7 +2957,10 @@ function initScaleX(app) {
              FROM scalex_operations WHERE username = $1 ORDER BY created_at DESC`,
         isAdmin ? [] : [user.username],
       );
-      res.json({ ok: true, items: rows });
+      // UNKNOWN ESIGI AYARDAN (2026-10-14): ekran "24 saat" diye SABIT yaziyordu; uzlastirici
+      // `SCALEX_RECONCILE_STALE_HOURS`i okuyor. Ekran sayiyi buradan alir.
+      const staleHours = Number(require('./reconciler.cjs').getConfig().staleHours);
+      res.json({ ok: true, items: rows, unknownAfterHours: Number.isFinite(staleHours) ? staleHours : null });
     }),
   );
 

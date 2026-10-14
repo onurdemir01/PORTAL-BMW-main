@@ -977,6 +977,8 @@ export const scalexApi = {
     return safeJson(await fetch(`${BASE}/history`)) as Promise<{
       ok: boolean;
       items: ScaleXHistoryRow[];
+      /** Uzlaştırıcının bir işi kaç saat sonra UNKNOWN saydığı (sunucu ayarı). */
+      unknownAfterHours?: number | null;
       message?: string;
     }>;
   },
