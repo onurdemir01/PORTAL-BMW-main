@@ -1282,7 +1282,7 @@ function OcpCoverage() {
                       {c.cluster}
                       {!c.veriYok && <span className="ml-1 tabular-nums text-[var(--text-muted)]">({c.apps})</span>}
                       {fark > 0 && (
-                        <span className="ml-1 tabular-nums font-sans font-semibold" style={{ color: 'var(--status-warning)' }}>
+                        <span className="ml-1 tabular-nums font-sans font-semibold" style={{ color: 'var(--status-warning-text)' }}>
                           −{fmtNumber(fark)}
                         </span>
                       )}
