@@ -1683,3 +1683,69 @@ test('KM24 SMART devredeyken "Prompt on launch" kapaliysa bilet ACILMAZ; aciksa 
   assert.equal(sim.kayit.smartTalepleri.length, 1);
   assert.equal(sim.baslatmalar().length, 0);
 });
+
+// ISTEKTEN SONRA AYAR KAPATILIRSA (2026-10-14): istek aninda denetim gecti (KM23/KM24), ama
+// pencere saatine ya da onaya kadar biri AWX'te "Prompt on launch"u kapatti. Ortak baslatma
+// yolu bunu artik is basladigi anda gorur ve isi IPTAL eder — YALNIZ bayrak tasiyan plan
+// icin (ScaleX). Bayraksiz plan (Self Service) AYNEN baslar.
+test('KM25 ertelenen baslatmada AWX degisken yutarsa is IPTAL edilir; bayraksiz plan (Self Service) degismez', async (t) => {
+  sim.konsoluSustur(t);
+
+  // 1) Zamanlanan is: plan bayragi tasir; pencere saatinde AWX yutar -> iptal, kayit kapanir.
+  sim.smartKipi('oco_only');
+  sim.ayar.oco = 'once';
+  const z = await sim.calistir({ ocoNumber: OCO_NO, ocoAction: 'schedule' });
+  assert.equal(z.json.ocoScheduled, true, z.metin);
+  assert.equal(sim.ocoKaydi(z.json.scheduleId).pendingLaunch.yutmaKorumasi, true);
+  sim.ayar.awx.promptAcik = false;
+  await sim.penceredeTur(z.json.scheduleId);
+  const k = sim.ocoKaydi(z.json.scheduleId);
+  assert.equal(k.status, 'FAILED', 'yutulan degiskenle baslayan is BASARILI sayildi');
+  assert.match(k.errorMessage, /Prompt on launch/);
+  assert.equal(sim.baslatmalar().length, 1);
+  assert.equal(sim.iptaller().length, 1, 'yanlis girdiyle kosan is IPTAL EDILMEDI');
+  assert.equal(sim.denetimde('ansible_launch_ignored_vars_cancelled').length, 1);
+  const tur = await sim.reconciler.tick();
+  assert.equal(tur.scheduledClosed, 1, JSON.stringify(tur));
+  assert.deepEqual(sim.islemler('RUNNING'), []);
+  assert.deepEqual(sim.islemler('SCHEDULED'), []);
+
+  // 2) SMART onayi sonrasi: bilet bayragi tasir; onay geldiginde AWX yutar -> iptal.
+  sim.sifirla();
+  sim.ayar.ozellestirme = { smartApproval: { ...sim.SMART_HAZIR } };
+  const r = await sim.calistir({ ocoNumber: OCO_NO });
+  assert.equal(r.json.pendingApproval, true, r.metin);
+  const bilet = sim.kayit.biletler.find((b) => b.id === Number(r.json.ticketId));
+  assert.equal(bilet.pendingLaunch.yutmaKorumasi, true);
+  sim.ayar.awx.promptAcik = false;
+  await assert.rejects(() => sim.onayBaslaticisi(bilet), (e) => e.code === 'awx_prompt_on_launch_disabled');
+  assert.equal(sim.iptaller().length, 1);
+
+  // 3) Bayraksiz plan (Self Service kaydi): ayni durumda is AYNEN baslar, iptal yok.
+  sim.sifirla();
+  sim.ayar.awx.promptAcik = false;
+  const simdi = Date.now();
+  sim.kayit.ocoKayitlari.push({
+    id: 99101,
+    username: 'ayse',
+    awxServerId: 1,
+    awxTemplateId: 31,
+    ocoNumber: OCO_NO,
+    runAt: new Date(simdi - 60 * 1000),
+    windowEnd: new Date(simdi + 3600 * 1000),
+    status: 'SCHEDULED',
+    pendingLaunch: {
+      detail: {},
+      extraVars: { ozel_alan: 'x' },
+      resolvedLaunchOptions: {},
+      specFields: [],
+      overrides: {},
+      username: 'ayse',
+      templateName: 'Self Service Ornek',
+    },
+  });
+  await sim.penceredeTur(99101);
+  assert.equal(sim.ocoKaydi(99101).status, 'LAUNCHED', 'bayraksiz plan davranisi DEGISTI');
+  assert.equal(sim.iptaller().length, 0);
+  assert.deepEqual(sim.denetimde('ansible_launch_ignored_vars_cancelled'), []);
+});

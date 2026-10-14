@@ -3026,6 +3026,9 @@ function initAnsibleRunner(app) {
       username,
       templateName,
       req,
+      // Istege bagli (change-gates.runChangeGates `yutmaKorumasi`): AWX degisken yutarsa
+      // is IPTAL edilir ve hata firlatilir. Varsayilan kapali: Self Service AYNEN.
+      yutmaKorumasi = false,
     },
   ) {
     const token = await getTokenForServer(server);
@@ -3058,6 +3061,38 @@ function initAnsibleRunner(app) {
       payload,
     );
     const jobId = data.id;
+
+    // YUTMA KORUMASI (2026-10-14). Bu cagri ertelenmis bir baslatmadir (OCO penceresi ya da
+    // Smart onayi): istek aninda "Prompt on launch" denetlenmis olabilir ama ayar arada
+    // kapatildiysa AWX ankette olmayan degiskenleri SESSIZCE yutar, HTTP 201 doner ve is eksik
+    // girdiyle calisir. Yanit yutulan alanlari SOYLER: is iptal edilir, hata yukari cikar
+    // (OCO zamanlayicisi kaydi FAILED, Smart dongusu bileti ERROR yazar).
+    if (yutmaKorumasi) {
+      const yutulan = ignoredFieldNames(data && data.ignored_fields).filter((ad) =>
+        String(ad).startsWith('extra_vars'),
+      );
+      if (yutulan.length) {
+        let iptalEdildi = true;
+        try {
+          await awxRequestToServer(server, token, 'POST', `/api/v2/jobs/${Number(jobId)}/cancel/`);
+        } catch (e) {
+          iptalEdildi = false;
+          console.warn(`[Ansible] yutulan degiskenli is #${jobId} iptal edilemedi:`, e.message);
+        }
+        require('../audit/index.cjs').auditPortal(req || null, 'ansible_launch_ignored_vars_cancelled', {
+          username,
+          result: 'fail',
+          detail: JSON.stringify({ awxServerId: server.id, templateId, jobId, yutulan, iptalEdildi }),
+        });
+        throw Object.assign(
+          new Error(
+            `AWX şablonunda "Prompt on launch > Variables" kapalı: ${yutulan.length} değişken yok sayıldı; ` +
+              `iş #${jobId} ${iptalEdildi ? 'iptal edildi' : 'İPTAL EDİLEMEDİ — AWX ekranından durdurun'}.`,
+          ),
+          { status: 409, code: 'awx_prompt_on_launch_disabled' },
+        );
+      }
+    }
 
     const paramsForHistory = redactExtraVarsForHistory(extraVars, specFields, overrides);
     const db = require('../db/index.cjs');
@@ -3180,6 +3215,7 @@ function initAnsibleRunner(app) {
         ocoWindowEndIso,
         ocoRecordId,
         ocoNumber,
+        yutmaKorumasi,
       } = ticket.pendingLaunch;
 
       // ONAY SONRASI OCO PENCERESI (2026-09-22, kullanici): Smart bileti artik talep aninda
@@ -3229,6 +3265,7 @@ function initAnsibleRunner(app) {
         username,
         templateName,
         req: null,
+        yutmaKorumasi: yutmaKorumasi === true,
       });
     });
   } catch (e) {
@@ -3283,6 +3320,7 @@ function initAnsibleRunner(app) {
         pendingLaunchExtras: {
           gateVars,
           ...(opts.ocoRecordId ? { ocoRecordId: opts.ocoRecordId } : {}),
+          ...(plan.yutmaKorumasi === true ? { yutmaKorumasi: true } : {}),
         },
       });
       return {
@@ -3300,6 +3338,7 @@ function initAnsibleRunner(app) {
       username,
       templateName,
       req: null,
+      yutmaKorumasi: plan.yutmaKorumasi === true,
     });
   }
 
