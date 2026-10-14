@@ -1659,3 +1659,27 @@ test('KM23 zamanlanan is pencere saatinde ANLIK isle AYNI degiskenlerle baslar; 
   assert.deepEqual(sim.islemler('SCHEDULED'), [], 'basarisiz zamanlamanin satiri asili kaldi');
   assert.deepEqual(sim.kayit.taninmayanSql, []);
 });
+
+// SMART DEVREDEYKEN de is ertelenir: bilet acilir, onaydan sonra isi ortak yol baslatir ve
+// "Prompt on launch" on kontrolu hicbir anda kosmazdi (KM23'teki zamanlama acigiyla ayni sinif).
+test('KM24 SMART devredeyken "Prompt on launch" kapaliysa bilet ACILMAZ; aciksa onay beklenir', async (t) => {
+  sim.konsoluSustur(t);
+  sim.ayar.ozellestirme = { smartApproval: { ...sim.SMART_HAZIR } };
+  sim.soguk();
+  sim.ayar.awx.promptAcik = false;
+  const r = await sim.calistir({ ocoNumber: OCO_NO });
+  assert.equal(r.status, 409, r.metin);
+  assert.equal(r.json.code, 'awx_prompt_on_launch_disabled');
+  assert.deepEqual(sim.kayit.smartTalepleri, [], 'ayar kapaliyken SMART talebi acildi');
+  assert.deepEqual(sim.kayit.biletler, []);
+  assert.deepEqual(sim.kayit.ocoSorgulari, [], 'reddedilecek istek icin OCO soruldu');
+  assert.deepEqual(sim.kayit.islemler, []);
+  assert.equal(sim.baslatmalar().length, 0);
+
+  // Ayar acilinca ayni istek onaya gider ("kapali" karari hatirlanmaz).
+  sim.ayar.awx.promptAcik = true;
+  const r2 = await sim.calistir({ ocoNumber: OCO_NO });
+  assert.equal(r2.json.pendingApproval, true, r2.metin);
+  assert.equal(sim.kayit.smartTalepleri.length, 1);
+  assert.equal(sim.baslatmalar().length, 0);
+});
