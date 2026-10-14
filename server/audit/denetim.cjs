@@ -1650,7 +1650,7 @@ function initDenetim(app) {
   // ORTAK UC GOVDESI (2026-10-14): OpenShift (uygulama) ve OpenShift Route ekranlari ayni platform
   // dogrulamasi, ayni cluster suzgeci ve ayni kapsam kurucusuyla (ocp-kapsam.cjs) yanit verir.
   // Gruplama / resmi kume / desen ozeti gerekceleri: ocp-kapsam.cjs ve ocp-clusters.cjs.
-  async function ocpKapsamYanit(req, res, { sorgu, kayit, hata }) {
+  async function ocpKapsamYanit(req, res, { sorgu, kayit, hata, envs = ENVS }) {
     try {
       const { query, sql } = require('../inventory/mssql.cjs');
       const platform = String(req.query.platform || 'ark').trim();
@@ -1670,8 +1670,8 @@ function initDenetim(app) {
         platform,
         platforms: Object.keys(PLATFORM_CLUSTERS),
         clusters,
-        envs: ENVS,
-        ...kapsamKur((result.recordset || []).map(kayit), ENV_CLUSTERS[platform]),
+        envs,
+        ...kapsamKur((result.recordset || []).map(kayit), ENV_CLUSTERS[platform], { envs }),
       });
     } catch (err) {
       res.status(500).json({ ok: false, message: err.message || hata });
@@ -1692,6 +1692,10 @@ function initDenetim(app) {
   // miyiz? yine Denetim sekmesine koyar misin?"). Kaynak dbo.BMW_Openshift_Route_Inventory
   // (route_inventory job'i, her kosuda TRUNCATE + yeniden yukleme). Satir = namespace tabani + route
   // adi (ocp-kapsam.routeKaydi); ortam yine namespace son ekinden, n yine resmi kumeden.
+  // YALNIZ PRODUCTION (2026-10-14, kullanici: "dev'de olan bir route'un test'te veya prod'da olmasini
+  // beklemeyiz ... onemli olan production"): ortamlar arasi karsilastirma bu ekranda anlamsiz; satir
+  // yalniz -prod namespace'lerinden, soru "prod cluster'larinin hangisinde var". Diger ortamlarin
+  // kayitlari yine okunur: bir cluster'in OLCULDUGUNU (veriYok degil) onlar gosterir.
   router.get('/ocp-route-coverage', (req, res) => {
     const { routeKaydi } = require('./ocp-kapsam.cjs');
     return ocpKapsamYanit(req, res, {
@@ -1699,6 +1703,7 @@ function initDenetim(app) {
            FROM dbo.BMW_Openshift_Route_Inventory
           WHERE cluster_name IN (${ph})`,
       kayit: routeKaydi,
+      envs: ['prod'],
       hata: 'OpenShift route kapsam verisi alınamadı.',
     });
   });

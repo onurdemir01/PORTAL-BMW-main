@@ -21,8 +21,10 @@ const { envClustersResmi } = require('./ocp-clusters.cjs');
 /**
  * @param {Iterable<{cluster: string, namespace: string, application: string, key?: string, alt?: string}>} kayitlar
  * @param {Record<string, string[]>|undefined} resmi platformun resmi ortam -> cluster listesi (yoksa veriden)
+ * @param {{ envs?: string[] }} [secenek] yalniz bu ortamlar (Route ekrani: ['prod']). Disarida kalan
+ *   ortamin kaydi satir uretmez ama o cluster'in OLCULDUGUNU gosterir (veriYok hesabina girer).
  */
-function kapsamKur(kayitlar, resmi) {
+function kapsamKur(kayitlar, resmi, { envs = ENVS } = {}) {
   const apps = new Map();
   const gorulen = new Set();
   let skippedNoEnv = 0;
@@ -33,6 +35,7 @@ function kapsamKur(kayitlar, resmi) {
       skippedNoEnv++;
       continue;
     }
+    if (!envs.includes(env)) continue;
     const key = r.key || r.application;
     if (!apps.has(key)) {
       apps.set(key, {
@@ -49,15 +52,15 @@ function kapsamKur(kayitlar, resmi) {
 
   const rows = [...apps.values()]
     .map((a) => {
-      const present = ENVS.filter((e) => a.envs[e]?.length);
-      const missing = ENVS.filter((e) => !a.envs[e]?.length);
+      const present = envs.filter((e) => a.envs[e]?.length);
+      const missing = envs.filter((e) => !a.envs[e]?.length);
       return { ...a, present, missing, missingCount: missing.length };
     })
     .sort((a, b) => a.application.localeCompare(b.application) || String(a.alt || '').localeCompare(String(b.alt || '')));
 
   // Kismi kapsam BIR HUKUM DEGIL GOZLEMDIR (bkz. ocp-clusters.cjs): cluster basina sayi verilir,
   // "eksik" damgasi vurulmaz.
-  const { kumeler: envClusters, kaynak: envClusterKaynagi } = envClustersResmi(apps.values(), ENVS, resmi, gorulen);
+  const { kumeler: envClusters, kaynak: envClusterKaynagi } = envClustersResmi(apps.values(), envs, resmi, gorulen);
 
   // Ozet: hangi "eksik ortam" deseni kac satirda goruluyor (en sik 10).
   const patternCount = new Map();

@@ -10,7 +10,8 @@
 //   OK3 resmi cluster'dan HIC kayit gelmediyse veriYok (olculemedi != yok); kaydi olan ama o ortamda
 //       satiri olmayan cluster veriYok DEGIL (apps 0)
 //   OK4 uygulama ekraninin yanit sekli degismedi (key/alt alanlari eklenmez)
-//   OK5 sunucu uclari ve sekme kapisi bagli
+//   OK5 sunucu uclari ve sekme kapisi bagli; route ucu YALNIZ production
+//   OK6 envs=['prod']: diger ortam kaydi satir uretmez ama cluster'i OLCULMUS sayar (veriYok degil)
 'use strict';
 
 const test = require('node:test');
@@ -83,7 +84,29 @@ test('OK5 sunucu ucu route envanterinden okur ve OpenShift Route sekme kapisina 
   assert.match(den, /FROM dbo\.BMW_Openshift_Route_Inventory\s+WHERE cluster_name IN/);
   assert.match(den, /\[\/\^\\\/ocp-route-coverage\(\\\/\|\$\)\/, 'ocproute'\]/);
   const page = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'src', 'components', 'DenetimPage.tsx'), 'utf8');
-  assert.ok(page.includes(`{activeTab === 'ocproute' && <OcpCoverage kaynak="route" />}`));
+  assert.ok(page.includes(`{activeTab === 'ocproute' && <OcpRouteProd />}`));
+  assert.match(den, /kayit: routeKaydi,\s+envs: \['prod'\],/, 'route ucu yalniz production olmali');
   // veri yok cluster'i n'ye katilmaz (yoksa her satir o cluster yuzunden "kismi" gorunur)
   assert.match(page, /liste\.filter\(\(c\) => !c\.beklenmeyen && !c\.veriYok\)/);
+});
+
+test("OK6 yalniz prod: dev kaydi satir uretmez ama cluster'i olculmus sayar", () => {
+  const k = kapsamKur(
+    [
+      R('gbocpprod1', 'a-prod', 'x'),
+      R('gbocpprod2', 'a-dev', 'x'),
+      R('gbocpprod2', 'b-dev', 'y'),
+    ].map(routeKaydi),
+    ENV_CLUSTERS.ark,
+    { envs: ['prod'] },
+  );
+  assert.deepEqual(k.rows.map((r) => r.key), ['a/x']);
+  assert.deepEqual(k.rows[0].present, ['prod']);
+  assert.deepEqual(k.rows[0].missing, []);
+  assert.deepEqual(Object.keys(k.envClusters), ['prod']);
+  const prod = Object.fromEntries(k.envClusters.prod.map((c) => [c.cluster, c]));
+  assert.equal(prod.gbocpprod2.apps, 0);
+  assert.ok(!prod.gbocpprod2.veriYok, 'dev kaydi olan cluster olculmus');
+  assert.equal(prod.gbocpprod4.veriYok, true);
+  assert.equal(k.completeCount, 1);
 });
