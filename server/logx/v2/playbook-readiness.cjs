@@ -22,27 +22,44 @@ const LOGX_KEYS = [
 
 // Ayrintili satirlar (admin gorunumu). AWX okunamazsa alanlar `null` kalir —
 // "bilinmiyor" ile "kapali" AYRI gosterilir, fail-open kurali burada da gecerlidir.
+//
+// HIZ (2026-10-14): sihirbaz OCP uygulama kesfinden ONCE bu ucu bekliyor. Eskiden bes
+// kayit SIRAYLA ve her biri icin TUM template listesi (sayfa sayfa) okunuyordu: uretimde
+// 9,3-9,7 sn. Artik kayitlar PARALEL ve her biri TEK template okumasi.
+//
+// "Bulunamadi" (foundOnAwx: false) yalniz AWX 404 dediginde; baska bir okuma hatasi
+// (yetki, ag) "bilinmiyor"dur (null) — eski liste yolu ikisini ayirt edemiyordu.
 async function getRows(keys = LOGX_KEYS) {
   const playbookRegistry = require('../../ansible/playbook-registry.cjs');
-  const preflight = require('../../ansible/template-preflight.cjs');
-  const rows = [];
-  for (const keyName of keys) {
-    const row = await playbookRegistry.getByKey(keyName).catch(() => null);
-    const templateId = row ? playbookRegistry.getEffectiveTemplateId(row) : null;
-    const serverId = row?.awxServerId || Number(process.env.AWX_LOGX_SERVER_ID) || 1;
-    const tpl = templateId ? await preflight.findTemplate(serverId, templateId) : null;
-    rows.push({
-      keyName,
-      displayName: row?.displayName || keyName,
-      enabled: row ? row.enabled !== false : false,
-      templateId: templateId || null,
-      awxServerId: serverId,
-      foundOnAwx: templateId ? Boolean(tpl) : null,
-      templateName: tpl?.name || null,
-      promptOnLaunch: tpl ? tpl.ask_variables !== false : null,
-    });
-  }
-  return rows;
+  const runner = require('../../ansible/runner.cjs');
+  return Promise.all(
+    keys.map(async (keyName) => {
+      const row = await playbookRegistry.getByKey(keyName).catch(() => null);
+      const templateId = row ? playbookRegistry.getEffectiveTemplateId(row) : null;
+      const serverId = row?.awxServerId || Number(process.env.AWX_LOGX_SERVER_ID) || 1;
+      let tpl = null;
+      let foundOnAwx = null;
+      if (templateId) {
+        try {
+          tpl = await runner.getTemplateSummaryOnServer(serverId, templateId);
+          foundOnAwx = true;
+        } catch (e) {
+          foundOnAwx = e && e.status === 404 ? false : null;
+        }
+      }
+      return {
+        keyName,
+        displayName: row?.displayName || keyName,
+        enabled: row ? row.enabled !== false : false,
+        templateId: templateId || null,
+        awxServerId: serverId,
+        foundOnAwx,
+        templateName: tpl?.name || null,
+        // Bayrak ACIKCA false ise "kapali"; alan yok/okunamadi -> null (bilinmiyor).
+        promptOnLaunch: tpl && typeof tpl.askVariablesOnLaunch === 'boolean' ? tpl.askVariablesOnLaunch : null,
+      };
+    }),
+  );
 }
 
 // Sihirbazin gordugu sadelestirilmis bicim. `ready === false` YALNIZCA kesin bir engel
