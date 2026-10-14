@@ -104,3 +104,24 @@ test('DR gibi az uygulamali cluster GIZLENMEZ - gorunur kalir', () => {
   assert.equal(dr.apps, 1);
   assert.equal(out.prod.length, 3, 'n = 3, yani cogu uygulama 2/3 gorunecek');
 });
+
+// ── RESMI KUME (2026-10-14, kullanici ARK listesini verdi) ─────────────────────────────
+test('RK1 resmi listeli ortamda n = resmi liste (0 uygulamali cluster dahil); liste disi cluster "beklenmeyen"; listesiz ortam veriden', () => {
+  const { envClustersResmi } = require('../ocp-clusters.cjs');
+  const { ENV_CLUSTERS } = require('../ocp-platforms.cjs');
+  assert.deepEqual(ENV_CLUSTERS.ark.dev, ['gbocptest1', 'gbocptest2']);
+  assert.deepEqual(ENV_CLUSTERS.ark.qa, ['gbocpqa1', 'gbocpqa2', 'gbocpankqa2']);
+  assert.equal(ENV_CLUSTERS.ark.prod.length, 5);
+  const apps = [
+    { envs: { dev: [{ cluster: 'gbocptest1' }, { cluster: 'gbocptest4' }], edu: [{ cluster: 'gbocpedu1' }] } },
+    { envs: { dev: [{ cluster: 'gbocptest1' }] } },
+  ];
+  const { kumeler, kaynak } = envClustersResmi(apps, ['dev', 'edu'], ENV_CLUSTERS.ark);
+  assert.deepEqual(kumeler.dev, [
+    { cluster: 'gbocptest1', apps: 2 },
+    { cluster: 'gbocptest2', apps: 0 },
+    { cluster: 'gbocptest4', apps: 1, beklenmeyen: true },
+  ]);
+  assert.deepEqual(kaynak, { dev: 'resmi', edu: 'veri' });
+  assert.deepEqual(kumeler.edu, [{ cluster: 'gbocpedu1', apps: 1 }]);
+});

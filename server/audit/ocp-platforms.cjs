@@ -39,6 +39,21 @@ const PLATFORM_CLUSTERS = {
   cicd: ['gbocpcicd2', 'gbocpcicd3'],
 };
 
+// ── RESMI ORTAM -> CLUSTER KUMESI (kullanici, 2026-10-14) ─────────────────────────────
+// Ortam YINE namespace son ekinden gelir (yukaridaki kural degismedi). Bu tablo "bir uygulama o
+// ortamin KAC cluster'inda olmali" sorusunun cevabidir: hucredeki k/n'deki n artik veriden degil
+// buradan gelir. Ansible envanterindeki gruplardan FARKLI (ark_dev ve ark_qa'da gbocptest4 var);
+// kullanicinin verdigi liste esastir. Bir ortamin namespace'i bu listenin DISINDAKI bir cluster'da
+// gorulurse "beklenmeyen cluster" olarak ayrica gosterilir (sayiya katilmaz).
+const ENV_CLUSTERS = {
+  ark: {
+    dev: ['gbocptest1', 'gbocptest2'],
+    test: ['gbocptest1', 'gbocptest2', 'gbocptest4'],
+    qa: ['gbocpqa1', 'gbocpqa2', 'gbocpankqa2'],
+    prod: ['gbocpprod1', 'gbocpprod2', 'gbocpprod4', 'gbocpankprod2', 'gbocpdrcprod1'],
+  },
+};
+
 // cluster -> platform (ters indeks)
 const CLUSTER_TO_PLATFORM = new Map();
 for (const [platform, clusters] of Object.entries(PLATFORM_CLUSTERS)) {
@@ -62,4 +77,4 @@ function platformOfCluster(cluster) {
   return CLUSTER_TO_PLATFORM.get(String(cluster || '').toLowerCase()) || null;
 }
 
-module.exports = { PLATFORM_CLUSTERS, ENVS, envOfNamespace, platformOfCluster };
+module.exports = { PLATFORM_CLUSTERS, ENV_CLUSTERS, ENVS, envOfNamespace, platformOfCluster };

@@ -120,7 +120,7 @@ const HELP: HelpSection[] = [
   {
     icon: Squares2X2Icon,
     title: 'Openshift Audit',
-    body: "Bir uygulamanın bir platformun hangi ortamlarında var, hangilerinde eksik olduğunu gösterir. Ortam bilgisi cluster'dan DEĞİL, namespace son ekinden (-dev/-test/-qa/-prod) gelir — çünkü ark_dev ile ark_test aynı cluster'ları paylaşır, cluster tek başına ortam bilgisi taşımaz. Hücredeki k/n, uygulamanın o ortamın kaç cluster'ında bulunduğunu söyler: yeşil hepsinde, SARI ise bir kısmında (kısmi kapsam), kırmızı hiçbirinde. Önceden hücre yalnızca VAR/YOK gösteriyordu ve 5 cluster'ın 1'inde olan uygulama 5'inde olanla ayırt edilemiyordu. n sayısı sabit bir liste değildir, veriden çıkarılır — o ortamda gerçekten namespace barındıran cluster'lar sayılır; 'Ortam başına cluster'lar' paneli hangileri olduğunu ve her birindeki uygulama sayısını gösterir. KISMİ KAPSAM BİR HÜKÜM DEĞİL GÖZLEMDİR: bazı uygulamaların bazı cluster'larda (örneğin DR) bulunmaması meşru olabilir, o yüzden 'eksik' damgası vurulmaz — yalnızca görünür kılınır. Üstteki 'Sadece kısmi kapsam' filtresiyle bunları ayıklayabilirsiniz.",
+    body: "Bir uygulamanın bir platformun hangi ortamlarında var, hangilerinde eksik olduğunu gösterir. Ortam bilgisi cluster'dan DEĞİL, namespace son ekinden (-dev/-test/-qa/-prod) gelir — çünkü ark_dev ile ark_test aynı cluster'ları paylaşır, cluster tek başına ortam bilgisi taşımaz. Hücredeki k/n, uygulamanın o ortamın kaç cluster'ında bulunduğunu söyler: yeşil hepsinde, SARI ise bir kısmında (kısmi kapsam), kırmızı hiçbirinde. Önceden hücre yalnızca VAR/YOK gösteriyordu ve 5 cluster'ın 1'inde olan uygulama 5'inde olanla ayırt edilemiyordu. ARK'ta n, ortamın resmi cluster listesinden gelir (dev: test1+test2 · test: test1+test2+test4 · qa: qa1+qa2+ankqa2 · prod: prod1+prod2+prod4+ankprod2+drcprod1); bir ortamın namespace'i listede olmayan bir cluster'da görülürse 'beklenmeyen' olarak ayrıca işaretlenir. Diğer platformlarda n veriden çıkarılır — o ortamda gerçekten namespace barındıran cluster'lar sayılır. 'Ortam başına cluster'lar' paneli hangileri olduğunu ve her birindeki uygulama sayısını gösterir. KISMİ KAPSAM BİR HÜKÜM DEĞİL GÖZLEMDİR: bazı uygulamaların bazı cluster'larda (örneğin DR) bulunmaması meşru olabilir, o yüzden 'eksik' damgası vurulmaz — yalnızca görünür kılınır. Üstteki 'Sadece kısmi kapsam' filtresiyle bunları ayıklayabilirsiniz.",
   },
 ];
 
@@ -959,9 +959,15 @@ function OcpCoverage() {
   /** Bir uygulamanin bir ortamdaki cluster kapsami: kacinda var / o ortamda kac cluster. */
   const coverageOf = useCallback(
     (row: OcpCoverageRow, env: string) => {
-      const all = data?.envClusters?.[env] ?? [];
-      const on = new Set((row.envs[env] ?? []).map((h) => h.cluster));
-      return { k: on.size, n: all.length, on, all: all.map((c) => c.cluster) };
+      // RESMI KUME (2026-10-14): n = ortamin resmi cluster sayisi; k = bunlardan kacinda var.
+      // Listede olmayan bir cluster'da bulunmasi ayrica "beklenmeyen" olarak doner (k'ya katilmaz).
+      const liste = data?.envClusters?.[env] ?? [];
+      const all = liste.filter((c) => !c.beklenmeyen).map((c) => c.cluster);
+      const allSet = new Set(all);
+      const hepsi = new Set((row.envs[env] ?? []).map((h) => h.cluster));
+      const on = new Set([...hepsi].filter((c) => allSet.has(c)));
+      const beklenmeyen = [...hepsi].filter((c) => !allSet.has(c));
+      return { k: on.size, n: all.length, on, all, beklenmeyen };
     },
     [data],
   );
@@ -1147,10 +1153,11 @@ function OcpCoverage() {
             Ortam başına cluster'lar
           </div>
           <p className="text-[11px] text-[var(--text-muted)] mt-0.5 mb-2">
-            Tablodaki <span className="font-mono">k/n</span> ifadesindeki <b>n</b> budur: o ortamda
-            gerçekten namespace barındıran cluster sayısı. Parantez içindeki sayı o cluster'daki
-            uygulama sayısıdır — az uygulamalı bir cluster (örn. DR) için "eksik" görünmesi çoğu
-            zaman normaldir.
+            Tablodaki <span className="font-mono">k/n</span> ifadesindeki <b>n</b> budur.
+            {Object.values(data.envClusterKaynagi || {}).includes('resmi')
+              ? <> “resmi” işaretli ortamlarda n, ortamın <b>resmi cluster listesinden</b> gelir; uygulaması 0 olan cluster da sayılır. Listede olmayan bir cluster’da o ortamın namespace’i görülürse <b>beklenmeyen</b> olarak ayrıca gösterilir ve sayıya katılmaz.</>
+              : <> o ortamda gerçekten namespace barındıran cluster sayısıdır.</>}{' '}
+            Parantez içindeki sayı o cluster'daki uygulama sayısıdır — az uygulamalı bir cluster (örn. DR) için "eksik" görünmesi çoğu zaman normaldir.
           </p>
           <div className="space-y-1.5">
             {envs.map((e) => {
@@ -1161,19 +1168,23 @@ function OcpCoverage() {
                   <span className="w-12 shrink-0 text-xs font-semibold uppercase text-[var(--text-secondary)]">
                     {e}
                   </span>
+                  {data.envClusterKaynagi?.[e] === 'resmi' && (
+                    <span className="text-[9px] px-1 rounded border border-sky-200 bg-sky-50 text-sky-700" title="n bu ortamın resmi cluster listesinden geliyor">resmi</span>
+                  )}
                   {list.map((c) => (
                     <span
                       key={c.cluster}
-                      className="text-[11px] px-2 py-0.5 rounded-lg border font-mono"
-                      style={{
+                      className={`text-[11px] px-2 py-0.5 rounded-lg border font-mono ${c.beklenmeyen ? 'bg-amber-50 text-amber-800 border-amber-300' : ''}`}
+                      style={c.beklenmeyen ? undefined : {
                         borderColor: 'var(--border-subtle)',
                         background: 'var(--bg-elevated)',
-                        color: 'var(--text-secondary)',
+                        color: c.apps ? 'var(--text-secondary)' : 'var(--text-muted)',
                       }}
-                      title={`${c.apps} uygulama`}
+                      title={c.beklenmeyen ? `Beklenmeyen: ${e} ortamının resmi listesinde yok ama ${c.apps} uygulamanın ${e} namespace'i burada` : `${c.apps} uygulama`}
                     >
                       {c.cluster}
                       <span className="ml-1 tabular-nums text-[var(--text-muted)]">({c.apps})</span>
+                      {c.beklenmeyen && <span className="ml-1 text-[9px] font-sans font-semibold">beklenmeyen</span>}
                     </span>
                   ))}
                 </div>
@@ -1228,7 +1239,7 @@ function OcpCoverage() {
                   // Onceden hucre yalnizca VAR/YOK gosteriyordu: 5 cluster'in 1'inde
                   // olan uygulama, 5'inde olanla AYNI gorunuyordu (2026-09-10 bulgusu).
                   // Artik kac cluster'da oldugu yazili; kismi kapsam sari.
-                  const { k, n, on, all } = coverageOf(r, e);
+                  const { k, n, on, all, beklenmeyen } = coverageOf(r, e);
                   const partial = k > 0 && n > 0 && k < n;
                   const cls = !k
                     ? 'bg-red-50 text-red-600 border-red-200'
@@ -1250,6 +1261,11 @@ function OcpCoverage() {
                       >
                         {k ? `${k}/${n}` : 'YOK'}
                       </span>
+                      {beklenmeyen.length > 0 && (
+                        <span className="ml-1 text-[10px] px-1 rounded border bg-amber-50 text-amber-800 border-amber-300" title={`${e} ortamının resmi cluster listesinde olmayan cluster'da da var: ${beklenmeyen.join(', ')}`}>
+                          +{beklenmeyen.length} beklenmeyen
+                        </span>
+                      )}
                     </td>
                   );
                 })}

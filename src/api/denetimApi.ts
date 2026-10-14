@@ -697,7 +697,10 @@ export interface OcpCoverageResult {
   /** Ortam basina GERCEKTE kullanilan cluster'lar + her birindeki uygulama sayisi.
    *  Sabit bir liste DEGIL, veriden cikarilir: platformun cluster listesi ortam ayrimi
    *  tasimaz (bkz. server/audit/ocp-platforms.cjs). */
-  envClusters: Record<string, { cluster: string; apps: number }[]>;
+  envClusters: Record<string, { cluster: string; apps: number; beklenmeyen?: boolean }[]>;
+  /** Ortamin cluster listesi nereden: 'resmi' (Portal'da tanimli ortam->cluster tablosu, n buradan)
+   *  ya da 'veri' (o ortamda namespace barindiran cluster'lar). */
+  envClusterKaynagi?: Record<string, 'resmi' | 'veri'>;
   rows: OcpCoverageRow[];
   message?: string;
 }

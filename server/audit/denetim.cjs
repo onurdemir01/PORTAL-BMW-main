@@ -14,7 +14,7 @@
 'use strict';
 
 const express = require('express');
-const { PLATFORM_CLUSTERS, ENVS, envOfNamespace } = require('./ocp-platforms.cjs');
+const { PLATFORM_CLUSTERS, ENV_CLUSTERS, ENVS, envOfNamespace } = require('./ocp-platforms.cjs');
 const { tierOfHost, envOfHost } = require('./nginx-hosts.cjs');
 const { indexIntranetRows, coverageForEnv } = require('./nginx-intranet.cjs');
 const { summarizeAudit, readLatestAuditDate } = require('./nginx-audit.cjs');
@@ -1705,8 +1705,9 @@ function initDenetim(app) {
       // oldugunu aciklar ve DR gibi az uygulamali cluster'lari gorunur kilar. Kismi
       // kapsam BIR HUKUM DEGIL, bir GOZLEMDIR - bazi uygulamalarin (or. DR'de) olmamasi
       // mesrudur, bu yuzden "eksik" damgasi vurulmaz.
-      const { envClustersFromApps } = require('./ocp-clusters.cjs');
-      const envClusterList = envClustersFromApps(apps.values(), ENVS);
+      // RESMI KUME (2026-10-14): platformun resmi ortam->cluster listesi varsa n ondan gelir.
+      const { envClustersResmi } = require('./ocp-clusters.cjs');
+      const { kumeler: envClusterList, kaynak: envClusterKaynagi } = envClustersResmi(apps.values(), ENVS, ENV_CLUSTERS[platform]);
 
       // Ozet: hangi "eksik ortam" deseni kac uygulamada goruluyor (en sik 10).
       const patternCount = new Map();
@@ -1731,6 +1732,7 @@ function initDenetim(app) {
         skippedNoEnv,
         patterns,
         envClusters: envClusterList,
+        envClusterKaynagi,
         rows,
       });
     } catch (err) {

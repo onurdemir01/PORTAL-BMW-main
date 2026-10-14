@@ -43,4 +43,29 @@ function envClustersFromApps(apps, envs) {
   return out;
 }
 
-module.exports = { envClustersFromApps };
+/**
+ * RESMI KUME UYGULANMIS ortam -> cluster listesi (2026-10-14). Resmi listesi olan ortamda: resmi
+ * cluster'larin HEPSI (uygulamasi 0 olsa da - "o cluster'da hic yok" da bilgidir) + o ortamin
+ * namespace'inin goruldugu ama listede OLMAYAN cluster'lar `beklenmeyen: true` ile. Resmi listesi
+ * olmayan ortam (or. edu) veriden cikarilan listeyle kalir.
+ * @returns {{ kumeler: Record<string, {cluster, apps, beklenmeyen?: boolean}[]>, kaynak: Record<string, 'resmi'|'veri'> }}
+ */
+function envClustersResmi(apps, envs, resmi) {
+  const veri = envClustersFromApps(apps, envs);
+  const kumeler = {};
+  const kaynak = {};
+  for (const e of envs) {
+    const liste = resmi && resmi[e];
+    if (!liste || !liste.length) { kumeler[e] = veri[e]; kaynak[e] = 'veri'; continue; }
+    const sayi = new Map((veri[e] || []).map((x) => [x.cluster.toLowerCase(), x.apps]));
+    const resmiSet = new Set(liste.map((c) => c.toLowerCase()));
+    kumeler[e] = [
+      ...liste.map((c) => ({ cluster: c, apps: sayi.get(c.toLowerCase()) || 0 })),
+      ...(veri[e] || []).filter((x) => !resmiSet.has(x.cluster.toLowerCase())).map((x) => ({ ...x, beklenmeyen: true })),
+    ];
+    kaynak[e] = 'resmi';
+  }
+  return { kumeler, kaynak };
+}
+
+module.exports = { envClustersFromApps, envClustersResmi };
