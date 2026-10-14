@@ -7,7 +7,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, fireEvent, waitFor } from '@testing-library/react';
 import { render } from '@/test/test-utils';
 
-vi.mock('@/api/opsxApi', () => ({
+// Sabitler (OCP_TUM_PODLAR, ocpCiftEtiketi) GERCEK modulden; yalniz ag cagrilari sahte.
+vi.mock('@/api/opsxApi', async (orijinal) => ({
+  ...((await orijinal()) as object),
   opsxApi: {
     getClusters: vi.fn(async () => ({ tree: { PROD: { ark: ['gbocpprod1'] } } })),
     getOcpNamespaces: vi.fn(async () => ({ namespaces: ['ns-a'] })),

@@ -272,7 +272,20 @@ async function resolveLegacyTargets(application, hosts, hostMajors) {
 // Openshift namespace/uygulama ciftlerini cluster katalogu + erisim kisitlamalarina
 // karsi dogrular. Hem POST /api/opsx/run (restart) hem POST /api/opsx/dump/openshift
 // tarafindan kullanilir.
-async function resolveOpenshiftTargets(env, tenant, pairs, user) {
+// NAMESPACE GENELI SECIM (2026-10-14, kullanici: "OpenShift cluster'larinda bazen batch pod'lari
+// olusuyor ve insanlar bunlari silmek istiyor; biz yalniz envanterdeki uygulamayi secip pod'larini
+// getiriyoruz"). Envanter (openshift_inventory) yalniz deployment / rollout / deploymentconfig
+// tutar; CronJob/Job pod'larinin envanterde "uygulamasi" yoktur ve yalniz batch calistiran bir
+// namespace'te hicbir cift kurulamiyordu. `application: TUM_PODLAR` = "bu namespace'in TUM
+// pod'lari": YALNIZ pod duzeyindeki islemler (pod kesfi, pod silme, thread/heap dump) kabul eder -
+// orada hedef zaten kullanicinin LISTEDEN SECTIGI pod'lardir, uygulama adi islevsel degildir.
+// Restart (rollout) ve uygulama duzeyindeki her is REDDEDER: `oc rollout restart` '*' ile
+// calistirilamaz. Erisim kisitlamasi (namespace bazli) aynen uygulanir; yeni bir yetki ACILMAZ -
+// pod listesi zaten namespace'in tum pod'larini getiriyordu (arama kutusu uygulama adiyla
+// doldugu icin batch pod'lari gizli kaliyordu).
+const TUM_PODLAR = '*';
+
+async function resolveOpenshiftTargets(env, tenant, pairs, user, { tumPodlarIzinli = false } = {}) {
   const envKey = String(env || '').trim();
   const tenantKey = String(tenant || '').trim();
   if (!envKey || !tenantKey) {
@@ -304,6 +317,15 @@ async function resolveOpenshiftTargets(env, tenant, pairs, user) {
       throw Object.assign(new Error('Her satırda namespace ve uygulama adı dolu olmalı.'), {
         status: 400,
       });
+    }
+    if (appN === TUM_PODLAR && !tumPodlarIzinli) {
+      throw Object.assign(
+        new Error(
+          `"${ns}" için "tüm pod'lar" seçimi yalnız pod işlemlerinde (pod silme, thread/heap dump) ` +
+            `kullanılabilir; restart için listeden bir uygulama seçin.`,
+        ),
+        { status: 400 },
+      );
     }
     if (ns.includes(',') || ns.includes(';') || appN.includes(',') || appN.includes(';')) {
       throw Object.assign(new Error('Namespace/uygulama adı "," veya ";" içeremez.'), {
@@ -1688,6 +1710,7 @@ function initOpsX(app) {
           tenant,
           pairs,
           user,
+          { tumPodlarIzinli: true },
         ));
         // Bir tenant'a BIRDEN FAZLA gercek cluster bagli olabilir — hepsine paralel
         // baglanip pod'un HANGI cluster'da oldugunu gostermek icin (bkz. resolveOcpClusterFanout
@@ -1878,6 +1901,7 @@ function initOpsX(app) {
           tenant,
           pairs,
           user,
+          { tumPodlarIzinli: true },
         ));
       } catch (err) {
         return res.status(err.status || 500).json({ ok: false, message: err.message });
@@ -2059,7 +2083,7 @@ function initOpsX(app) {
       let envKey, tenantKey, cleanPairs, clusterNames;
       try {
         const user = req.session?.user || {};
-        ({ envKey, tenantKey, cleanPairs, clusterNames } = await resolveOpenshiftTargets(env, tenant, pairs, user));
+        ({ envKey, tenantKey, cleanPairs, clusterNames } = await resolveOpenshiftTargets(env, tenant, pairs, user, { tumPodlarIzinli: true }));
       } catch (err) {
         return res.status(err.status || 500).json({ ok: false, message: err.message });
       }
@@ -2312,6 +2336,8 @@ function initOpsX(app) {
 }
 
 module.exports = {
+  _resolveOpenshiftTargets: resolveOpenshiftTargets,
+  TUM_PODLAR,
   initOpsX,
   hostsForApp,
   kurulumKolu,

@@ -50,8 +50,17 @@ export interface OpsxOcpOperationDef {
 // oc_input'a giden tek bir namespace/uygulama çifti.
 export interface OpsxOcpPair {
   namespace: string;
+  /** OCP_TUM_PODLAR ('*'): namespace'in TUM pod'lari (batch / job dahil) - yalniz pod islemleri. */
   application: string;
 }
+
+/** Namespace geneli secim (2026-10-14): envanterde "uygulamasi" olmayan batch / job pod'lari icin. */
+export const OCP_TUM_PODLAR = '*';
+/** "Tum pod'lar" seciminde yapilabilen (pod duzeyindeki) islemler. */
+export const OCP_POD_ISLEMLERI: ReadonlySet<string> = new Set(['threaddump', 'heapdump', 'poddelete']);
+/** Ekranda cift etiketi: '*' yerine anlasilir metin. */
+export const ocpCiftEtiketi = (p: OpsxOcpPair) =>
+  p.application === OCP_TUM_PODLAR ? `${p.namespace} / tüm pod'lar (batch / job dahil)` : `${p.namespace} / ${p.application}`;
 
 export interface OpsxRunResult {
   ok: boolean;

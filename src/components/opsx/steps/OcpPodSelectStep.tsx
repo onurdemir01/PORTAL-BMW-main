@@ -17,9 +17,19 @@
 // beklemesiz; sınırlar backend ve playbook ile AYNI: 1-100 adet, 0-3600 sn).
 import React, { useEffect, useMemo, useState } from "react";
 import { ExclamationTriangleIcon, ArrowPathIcon } from "@heroicons/react/24/outline";
-import { opsxApi, type OpsxPod, type OpsxDumpType, type OpsxOcpPair } from "@/api/opsxApi";
+import { OCP_TUM_PODLAR, opsxApi, type OpsxPod, type OpsxDumpType, type OpsxOcpPair } from "@/api/opsxApi";
 
 const TERMINAL = new Set(["successful", "failed", "error", "canceled"]);
+
+// BATCH / JOB POD'U TAHMINI (2026-10-14): `oc get pods` ciktisi sahibi (owner kind) tasimaz; batch
+// pod'u ADINDAN ve DURUMUNDAN tahmin edilir. CronJob pod'u: <cronjob>-<zamanlama sayisi (7+ hane)>-
+// <5 karakter>; bitmis is pod'u: Completed / Error / OOMKilled ... Tahmin oldugu ekranda yazar.
+const BATCH_AD_RE = /-\d{7,}-[a-z0-9]{5}$/i;
+const BATCH_DURUM = new Set(["Completed", "Succeeded", "Error", "Failed", "OOMKilled", "DeadlineExceeded"]);
+export function batchPodMu(p: Pick<OpsxPod, "name" | "status">): boolean {
+  return BATCH_AD_RE.test(p.name) || BATCH_DURUM.has(p.status);
+}
+type PodSuzgec = "hepsi" | "batch" | "calisan";
 
 function podKey(cluster: string, namespace: string, name: string): string {
   return `${cluster}::${namespace}::${name}`;
@@ -49,7 +59,10 @@ const OcpPodSelectStep: React.FC<{
   // pod'ları gösterilir, bu sadece bir UYARI olarak eklenir (r.pods VE r.message BİRLİKTE gelebilir).
   const [warning, setWarning] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [search, setSearch] = useState(pairs[0]?.application || "");
+  // "Tüm pod'lar" seçiliyse arama BOŞ başlar: uygulama adıyla dolu arama batch pod'larını gizliyordu.
+  const tumPodlar = pairs.some((p) => p.application === OCP_TUM_PODLAR);
+  const [search, setSearch] = useState(tumPodlar ? "" : pairs[0]?.application || "");
+  const [suzgec, setSuzgec] = useState<PodSuzgec>("hepsi");
   const [nonce, setNonce] = useState(0);
 
   const [threadDumpCount, setThreadDumpCount] = useState(1);
@@ -116,9 +129,16 @@ const OcpPodSelectStep: React.FC<{
 
   const filteredPods = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return pods;
-    return pods.filter((p) => p.name.toLowerCase().includes(q));
-  }, [pods, search]);
+    return pods.filter((p) => {
+      if (q && !p.name.toLowerCase().includes(q)) return false;
+      if (suzgec === "batch" && !batchPodMu(p)) return false;
+      if (suzgec === "calisan" && p.status !== "Running") return false;
+      return true;
+    });
+  }, [pods, search, suzgec]);
+  const batchSayisi = useMemo(() => pods.filter(batchPodMu).length, [pods]);
+  const gizli = pods.length - filteredPods.length;
+  const seciliBatch = pods.some((p) => batchPodMu(p) && selected.has(podKey(p.cluster, p.namespace, p.name)));
 
   const grouped = useMemo(() => {
     const g: Record<string, OpsxPod[]> = {};
@@ -214,8 +234,40 @@ const OcpPodSelectStep: React.FC<{
         value={search}
         onChange={(e) => setSearch(e.target.value)}
         placeholder="Pod adında ara…"
+        aria-label="Pod adında ara"
         className="w-full px-3 py-2 text-sm border border-[var(--border)] rounded-xl outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)] transition"
       />
+
+      <div className="flex flex-wrap items-center gap-1.5 text-xs">
+        {(
+          [
+            ["hepsi", `Tümü (${pods.length})`],
+            ["batch", `Batch / job (${batchSayisi})`],
+            ["calisan", "Çalışanlar (Running)"],
+          ] as const
+        ).map(([id, etiket]) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => setSuzgec(id)}
+            aria-pressed={suzgec === id}
+            className={`px-2.5 py-1 rounded-lg border ${suzgec === id ? "border-[var(--accent)] text-[var(--accent)] font-semibold" : "border-[var(--border)] text-[var(--text-secondary)]"}`}
+            title={id === "batch" ? "Adından (CronJob: ...-<sayı>-<5 karakter>) ya da durumundan (Completed / Error ...) tahmin edilir" : undefined}
+          >
+            {etiket}
+          </button>
+        ))}
+        {gizli > 0 && (
+          <span className="text-[var(--text-muted)]" data-testid="gizli-pod">
+            · {gizli} pod gizli (arama / süzgeç)
+            {search.trim() && (
+              <button type="button" onClick={() => setSearch("")} className="ml-1 text-[var(--accent)] hover:underline">
+                aramayı temizle
+              </button>
+            )}
+          </span>
+        )}
+      </div>
 
       <div className="space-y-3 max-h-[70vh] overflow-y-auto">
         {Object.keys(grouped).length === 0 ? (
@@ -237,6 +289,11 @@ const OcpPodSelectStep: React.FC<{
                     className="rounded"
                   />
                   <span className="flex-1 text-sm text-[var(--text-primary)] font-mono break-all whitespace-normal" title={p.name}>{p.name}</span>
+                  {batchPodMu(p) && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full border border-[var(--border)] text-[var(--text-muted)]" title="Batch / job pod'u (adından ya da durumundan tahmin)">
+                      batch
+                    </span>
+                  )}
                   <span className="text-[10px] text-[var(--text-muted)] font-mono">{p.ready}</span>
                   <span
                     className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
@@ -263,6 +320,13 @@ const OcpPodSelectStep: React.FC<{
             uygulama kısa süreli kesinti yaşayabilir. Deployment/rollout'a dokunulmaz. Yeni pod'un adını
             Dynatrace'ten, loglarını Kibana'dan takip edebilirsiniz. Sonuç e-posta ile de gelir.
           </p>
+          {seciliBatch && (
+            <p className="text-xs text-amber-900" data-testid="batch-uyari">
+              <b>Batch / job pod'u seçtiniz:</b> bu pod'lar silindiğinde genelde <b>yeniden oluşturulmaz</b>
+              {" "}— tamamlanmış ya da hatalı iş pod'u yalnız temizlenir. Çalışmakta olan bir Job pod'u silinirse
+              Job kendi yeniden deneme ayarına (backoffLimit) göre yeni bir pod açabilir.
+            </p>
+          )}
           <label className="flex items-center gap-2 text-xs text-amber-900 cursor-pointer">
             <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} disabled={busy} />
             Yaptığım işlemin sonuçlarını kabul ediyorum.

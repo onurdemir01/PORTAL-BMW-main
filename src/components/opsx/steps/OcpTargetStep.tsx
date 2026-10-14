@@ -23,7 +23,7 @@
 // (aynı namespace'ten başka uygulama da seçilebilir), eklenenler listeden düşer.
 import React, { useEffect, useState } from "react";
 import { XMarkIcon } from "@heroicons/react/24/outline";
-import { opsxApi, type OpsxOcpPair } from "@/api/opsxApi";
+import { OCP_TUM_PODLAR, ocpCiftEtiketi, opsxApi, type OpsxOcpPair } from "@/api/opsxApi";
 import FilterableList from "@/components/common/FilterableList";
 import { LoadingLogo } from '@/components/common/LoadingLogo';
 
@@ -245,11 +245,24 @@ const OcpTargetStep: React.FC<{
           {settledNamespace && (
             <div>
               <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5">Uygulama Adı</label>
+              {/* BATCH / JOB POD'LARI (2026-10-14): envanter yalnız deployment / rollout / dc tutar;
+                  CronJob / Job pod'larının "uygulaması" yoktur. Namespace'in TÜM pod'ları ayrı bir
+                  seçim olarak eklenir - yalnız pod işlemleri (pod silme, thread/heap dump) için. */}
+              <button
+                type="button"
+                onClick={() => addPair(OCP_TUM_PODLAR)}
+                disabled={busy || pairs.some((p) => p.namespace === settledNamespace && p.application === OCP_TUM_PODLAR)}
+                className="mb-2 w-full text-left px-3 py-2 text-xs border border-dashed border-[var(--border)] rounded-xl hover:border-[var(--accent)] disabled:opacity-50"
+                title="Envanterde olmayan batch / job pod'ları için: namespace'teki bütün pod'lar listelenir, siz seçersiniz. Yalnız pod silme ve thread/heap dump."
+              >
+                + Bu namespace'in <b>tüm pod'ları</b> (batch / job dahil) — yalnız pod silme ve dump için
+              </button>
               {appsLoading ? (
                 <div className="text-xs text-[var(--text-muted)] py-2">Uygulamalar yükleniyor…</div>
               ) : appOptions.length === 0 ? (
                 <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
-                  Bu namespace için envanterde uygulama bulunamadı.
+                  Bu namespace için envanterde uygulama bulunamadı (yalnız batch / job çalışıyor olabilir) —
+                  pod silme ya da dump için yukarıdan “tüm pod'ları” ekleyebilirsiniz.
                 </p>
               ) : kalanApps.length === 0 ? (
                 <p className="text-xs text-[var(--text-muted)] px-1 py-2">Bu namespace'in bütün uygulamaları listeye eklendi.</p>
@@ -284,7 +297,7 @@ const OcpTargetStep: React.FC<{
                   ? { borderColor: 'var(--status-success)', background: 'var(--status-success-bg, transparent)' }
                   : { borderColor: 'var(--border)' }}
               >
-                <span className="text-sm font-mono text-[var(--text-primary)]">{p.namespace} / {p.application}</span>
+                <span className="text-sm font-mono text-[var(--text-primary)]">{ocpCiftEtiketi(p)}</span>
                 <button onClick={() => removePair(i)} disabled={busy} className="text-[var(--text-muted)] hover:text-red-600">
                   <XMarkIcon className="w-4 h-4" />
                 </button>

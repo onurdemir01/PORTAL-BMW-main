@@ -4,7 +4,7 @@
 // placeholder'lar; playbook desteği eklendiğinde sunucu tarafında enabled:true yapılır.
 import React, { useEffect, useState } from "react";
 import { ArrowPathIcon, DocumentMagnifyingGlassIcon, CircleStackIcon, SignalIcon, TrashIcon } from "@heroicons/react/24/outline";
-import { opsxApi, type OpsxOcpOperation, type OpsxOcpOperationDef, type OpsxOcpPair } from "@/api/opsxApi";
+import { OCP_POD_ISLEMLERI, OCP_TUM_PODLAR, ocpCiftEtiketi, opsxApi, type OpsxOcpOperation, type OpsxOcpOperationDef, type OpsxOcpPair } from "@/api/opsxApi";
 import { LoadingLogo } from '@/components/common/LoadingLogo';
 
 const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -39,6 +39,10 @@ const OcpOperationStep: React.FC<{
       .finally(() => setLoading(false));
   }, [env, tenant]);
 
+  // "Tüm pod'lar" (batch / job) seçiliyse yalnız pod düzeyindeki işlemler: restart bir uygulamanın
+  // rollout'udur, '*' ile çalıştırılamaz (sunucu da reddeder).
+  const tumPodlar = pairs.some((p) => p.application === OCP_TUM_PODLAR);
+
   if (loading) return <LoadingLogo compact />;
   if (error) return <div className="bg-red-50 border border-red-100 rounded-xl p-4 text-sm text-red-700">{error}</div>;
 
@@ -49,7 +53,7 @@ const OcpOperationStep: React.FC<{
         <div className="mt-1 text-xs text-[var(--text-muted)]">
           Cluster: <span className="font-mono text-[var(--text-primary)]">{tenant} / {env}</span>
           {" · "}
-          {pairs.length} işlem: <span className="font-mono">{pairs.map((p) => `${p.namespace}/${p.application}`).join(", ")}</span>
+          {pairs.length} işlem: <span className="font-mono">{pairs.map(ocpCiftEtiketi).join(", ")}</span>
         </div>
       </div>
 
@@ -74,14 +78,17 @@ const OcpOperationStep: React.FC<{
           // "Kullanima acik degil" (enabled:false) islemi KAPATIR; "onay gerekli"
           // (needsApproval) KAPATMAZ - is baslar, sadece once onaydan geceer. Ikisini
           // ayni gostermek, kullaniciya yapamayacagini sanmasina yol acardi.
-          const disabled = busy || !op.enabled;
+          const yalnizUygulama = tumPodlar && !OCP_POD_ISLEMLERI.has(op.key);
+          const disabled = busy || !op.enabled || yalnizUygulama;
           return (
             <button
               key={op.key}
               onClick={() => onSelect(op.key)}
               disabled={disabled}
               title={
-                op.needsApproval
+                yalnizUygulama
+                  ? "“Tüm pod'lar” seçiminde yalnız pod silme ve thread/heap dump yapılabilir; restart için uygulama seçin."
+                  : op.needsApproval
                   ? op.approvalMessage || 'Production işlemi: Smart onayından geçer.'
                   : !op.enabled
                     ? "Bu işlem henüz kullanıma açık değil."
@@ -92,7 +99,9 @@ const OcpOperationStep: React.FC<{
               <Icon className="w-5 h-5 text-[var(--text-primary)] flex-shrink-0" />
               <div className="flex-1">
                 <span className="text-sm font-medium text-[var(--text-primary)]">{op.label}</span>
-                {op.needsApproval ? (
+                {yalnizUygulama ? (
+                  <p className="text-xs text-[var(--text-muted)] mt-0.5">“Tüm pod'lar” seçiminde kullanılamaz — uygulama seçin</p>
+                ) : op.needsApproval ? (
                   <p className="text-xs text-[var(--status-warning)] mt-0.5">
                     Smart onayı gerekir
                     {op.approvalReason ? ` (${op.approvalReason})` : ''}
