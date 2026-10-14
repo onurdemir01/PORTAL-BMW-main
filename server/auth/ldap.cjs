@@ -358,6 +358,13 @@ async function findLdapUserByEmail(email) {
  * DONEN KULLANICI ADI NORMALIZEDIR: secimden gelen ad dogrudan yetki kaydina yaziliyor;
  * elle yazmak (ve yaziminda hata/harf farki) bu sayede ortadan kalkiyor.
  */
+// ARAMA ONBELLEGI (2026-10-14): yetki ekraninda ayni onek tus tus yeniden aranir ("osm", "osma",
+// geri silip "osm" ...). 60 sn yeter: dizin degisikligi bu sureden hizli beklenmez; kisi listesi
+// yetki kaydi DEGIL, yalniz secim kolayligi.
+const ARAMA_ONBELLEK_MS = 60 * 1000;
+const ARAMA_ONBELLEK_TAVAN = 200;
+const _aramaOnbellek = new Map();
+
 async function searchLdapUsers(query, limit = 25) {
   const q = String(query || '').trim();
   if (q.length < 3 || !isConfigured()) return [];
@@ -367,29 +374,55 @@ async function searchLdapUsers(query, limit = 25) {
   const bindPass = process.env.LDAP_BIND_PASSWORD || '';
   const tavan = Math.min(Math.max(Number(limit) || 25, 1), 50);
   const e = escapeFilter(q);
+  const anahtar = `${q.toLowerCase()}|${tavan}`;
+  const onbellekte = _aramaOnbellek.get(anahtar);
+  if (onbellekte && Date.now() - onbellekte.at < ARAMA_ONBELLEK_MS) return onbellekte.users;
+
+  // HIZ (kullanici, 2026-10-14: "sorgu biraz gec calisiyor"): eski filtre `displayName=*q*`
+  // (ICEREN) idi - AD bu aramada dizini kullanamaz, base DN altindaki TUM hesaplari tarar.
+  // Artik once ANR (Ambiguous Name Resolution): ad, soyad, gorunen ad, kullanici adi uzerinde
+  // dizinli ONEK aramasi; "onur dem" gibi iki parcali yazimi da ad + soyad olarak eslestirir.
+  // `objectCategory=person` bilgisayar hesaplarini (onlar da objectClass=user) eler.
+  // ANR sonuc vermezse ya da desteklenmezse eski ICEREN aramasina dusulur: hicbir eski sonuc
+  // kaybolmaz, yalniz nadir durumda yavas yol kosar.
+  const PASIF_DEGIL = '(!(userAccountControl:1.2.840.113556.1.4.803:=2))';
+  const hizli =
+    `(&(objectCategory=person)(objectClass=user)${PASIF_DEGIL}` +
+    `(|(anr=${e})(sAMAccountName=${e}*)(mail=${e}*)))`;
+  const genis =
+    `(&(objectClass=user)${PASIF_DEGIL}` +
+    `(|(sAMAccountName=${e}*)(displayName=*${e}*)(mail=${e}*)))`;
 
   const client = createClient();
   try {
     await client.bind(bindDn, bindPass);
-    const { searchEntries } = await client.search(baseDn, {
-      // Kullanici adi, gorunen ad ve e-postada ONEK/ICEREN aramasi. `objectClass=user` +
-      // devre disi hesaplari eleyen filtre: kapali hesaba yetki vermek anlamsiz.
-      filter:
-        `(&(objectClass=user)(!(userAccountControl:1.2.840.113556.1.4.803:=2))` +
-        `(|(sAMAccountName=${e}*)(displayName=*${e}*)(mail=${e}*)))`,
-      scope: 'sub',
-      attributes: [
-        'sAMAccountName',
-        'displayName',
-        'cn',
-        'mail',
-        'userPrincipalName',
-        'department',
-        'title',
-      ],
-      sizeLimit: tavan,
-    });
-    return (searchEntries || [])
+    const ara = async (filter) =>
+      (
+        await client.search(baseDn, {
+          // Kullanici adi, gorunen ad ve e-postada ONEK/ICEREN aramasi + devre disi hesaplari
+          // eleyen filtre: kapali hesaba yetki vermek anlamsiz.
+          filter,
+          scope: 'sub',
+          attributes: [
+            'sAMAccountName',
+            'displayName',
+            'cn',
+            'mail',
+            'userPrincipalName',
+            'department',
+            'title',
+          ],
+          sizeLimit: tavan,
+        })
+      ).searchEntries || [];
+    let searchEntries = [];
+    try {
+      searchEntries = await ara(hizli);
+    } catch (err) {
+      console.warn('[LDAP] ANR aramasi dustu, genis aramaya geciliyor:', err.message);
+    }
+    if (!searchEntries.length) searchEntries = await ara(genis);
+    const users = (searchEntries || [])
       .map((u) => ({
         username: normalizeUsername(u.sAMAccountName),
         displayName: String(u.displayName || u.cn || ''),
@@ -399,6 +432,10 @@ async function searchLdapUsers(query, limit = 25) {
       }))
       .filter((u) => u.username)
       .slice(0, tavan);
+    // Yalniz BASARILI arama onbellege girer (hata onbelleklenmez; bir sonraki tus yeniden dener).
+    if (_aramaOnbellek.size >= ARAMA_ONBELLEK_TAVAN) _aramaOnbellek.delete(_aramaOnbellek.keys().next().value);
+    _aramaOnbellek.set(anahtar, { at: Date.now(), users });
+    return users;
   } catch (err) {
     // SESSIZ BOS LISTE YOK: arama duserse cagiran bunu bilmeli, yoksa ekran "boyle bir
     // kullanici yok" der ve kullanici olmayan bir sorunu arar.

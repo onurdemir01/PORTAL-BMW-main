@@ -112,3 +112,65 @@ describe('LdapUserPicker · field="mail" (Crypto Hub)', () => {
     expect(await screen.findByText(/dizinde e-posta yok/i)).toBeTruthy();
   });
 });
+
+// ── 2026-10-14 (kullanici: "yazdigim kullanici adinin gercekten secildigini anlayamiyorum ...
+// sorgu biraz gec calisiyor") ────────────────────────────────────────────────────────────────
+const bekle = (ms: number) =>
+  act(async () => {
+    await new Promise((r) => setTimeout(r, ms));
+  });
+
+describe('LdapUserPicker · secim gorunur, arama durumu, sira korumasi', () => {
+  it('listeden secilen kisi kutunun altinda adi ve e-postasiyla yazar; yeniden yazinca kalkar', async () => {
+    kur();
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'osman' } });
+    await bekle(400);
+    fireEvent.click(await screen.findByText('Osman Koz'));
+    const kart = await screen.findByTestId('ldap-secili');
+    expect(kart.textContent).toContain('Seçildi');
+    expect(kart.textContent).toContain('Osman Koz');
+    expect(kart.textContent).toContain('osmankoz@garantibbva.com.tr');
+    expect(screen.queryByTestId('ldap-elle')).toBeNull();
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'osmankozz' } });
+    expect(screen.queryByTestId('ldap-secili')).toBeNull();
+  });
+
+  it('listeden secilmeden yazilan deger "dizinde dogrulanmadi" diye soylenir', async () => {
+    kur(vi.fn(), []);
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'yokkisi' } });
+    await bekle(400);
+    expect(await screen.findByTestId('ldap-elle')).toBeTruthy();
+    expect(screen.queryByTestId('ldap-secili')).toBeNull();
+  });
+
+  it('arama surerken "Dizinde araniyor" gorunur', async () => {
+    let coz: (v: { users: LdapUser[] }) => void = () => {};
+    const search = vi.fn(() => new Promise<{ users: LdapUser[] }>((r) => (coz = r)));
+    render(<LdapUserPicker value="" onChange={() => {}} search={search} />);
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'osman' } });
+    await bekle(400);
+    expect(screen.getByTestId('ldap-ariyor').textContent).toContain('aranıyor');
+    await act(async () => coz({ users: [KULLANICI] }));
+    expect(screen.queryByTestId('ldap-ariyor')).toBeNull();
+    expect(screen.getByText('Osman Koz')).toBeTruthy();
+  });
+
+  it('gec gelen ESKI yanit yeni sonucun ustune yazmaz', async () => {
+    const cozum: Record<string, (v: { users: LdapUser[] }) => void> = {};
+    const search = vi.fn((q: string) => new Promise<{ users: LdapUser[] }>((r) => (cozum[q] = r)));
+    function Sarmal() {
+      const [v, setV] = useState('');
+      return <LdapUserPicker value={v} onChange={setV} search={search} />;
+    }
+    render(<Sarmal />);
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'osm' } });
+    await bekle(400);
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'ayse' } });
+    await bekle(400);
+    const AYSE: LdapUser = { ...KULLANICI, username: 'aysekaya', displayName: 'Ayşe Kaya' };
+    await act(async () => cozum.ayse({ users: [AYSE] }));
+    await act(async () => cozum.osm({ users: [KULLANICI] }));
+    expect(screen.getByText('Ayşe Kaya')).toBeTruthy();
+    expect(screen.queryByText('Osman Koz')).toBeNull();
+  });
+});

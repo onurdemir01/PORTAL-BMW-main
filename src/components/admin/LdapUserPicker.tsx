@@ -16,7 +16,12 @@
 // — yoksa dizin erişimi olmayan bir ortamda yetki verilemez hale gelirdi. Ama elle yazılan
 // değer de kaydedilirken küçük harfe çevrilir (sunucu tarafında da ayrıca çevriliyor).
 import React, { useEffect, useRef, useState } from 'react';
-import { MagnifyingGlassIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
+import {
+  MagnifyingGlassIcon,
+  ExclamationTriangleIcon,
+  CheckCircleIcon,
+  ArrowPathIcon,
+} from '@heroicons/react/24/outline';
 
 export interface LdapUser {
   username: string;
@@ -64,6 +69,15 @@ export function LdapUserPicker({
   const [acik, setAcik] = useState(false);
   const [hata, setHata] = useState('');
   const [ariyor, setAriyor] = useState(false);
+  // SECIM GORUNUR (kullanici, 2026-10-14: "yazdigim kullanici adinin gercekten secildigini
+  // anlayamiyorum"): kutuda yalniz kullanici adi kaliyordu; listeden secilmis mi elle mi
+  // yazilmis ayirt edilmiyordu. Secilen kisi kutunun altinda adi + e-postasiyla yazar;
+  // listeden secilmeden yazilan deger ayrica "dizinde dogrulanmadi" diye soylenir.
+  const [secili, setSecili] = useState<LdapUser | null>(null);
+  const [elle, setElle] = useState(false);
+  // SIRA KORUMASI: yavas LDAP'ta "osm" yaniti "osman"dan SONRA gelirse eski liste yenisinin
+  // ustune yaziliyordu. Yalniz EN SON istegin yaniti islenir.
+  const istekNo = useRef(0);
   const zaman = useRef<number | null>(null);
   const kutu = useRef<HTMLDivElement | null>(null);
 
@@ -88,21 +102,31 @@ export function LdapUserPicker({
     // Elle yazım da küçük harfe çevrilir: kural kaydına giden değer tek biçim olsun.
     onChange(v.trim().toLowerCase());
     setHata('');
+    setSecili(null);
+    setElle(true);
     if (zaman.current) window.clearTimeout(zaman.current);
+    istekNo.current += 1;
     if (v.trim().length < 3) {
       setSonuc([]);
       setAcik(false);
+      setAriyor(false);
       return;
     }
     zaman.current = window.setTimeout(async () => {
+      const no = ++istekNo.current;
       setAriyor(true);
+      setAcik(true);
       try {
         const r = await search(v.trim());
+        if (no !== istekNo.current) return;
         setSonuc(r.users);
         setHata(r.error || '');
-        setAcik(true);
+      } catch (e: unknown) {
+        if (no !== istekNo.current) return;
+        setSonuc([]);
+        setHata(e instanceof Error ? e.message : 'LDAP araması yapılamadı.');
       } finally {
-        setAriyor(false);
+        if (no === istekNo.current) setAriyor(false);
       }
     }, 300);
   };
@@ -118,9 +142,19 @@ export function LdapUserPicker({
       return;
     }
     onChange(deger);
+    setSecili(u);
+    setElle(false);
     setAcik(false);
     setSonuc([]);
   };
+  // Secim YALNIZ kutudaki deger hala o kisininse gecerlidir (deger disaridan degisirse - kayit
+  // sonrasi temizleme, mevcut kurali duzenleme - eski secim gosterilmez).
+  const seciliDeger = secili
+    ? field === 'mail'
+      ? String(secili.mail || '').trim().toLowerCase()
+      : secili.username
+    : '';
+  const seciliGecerli = secili && value && value === seciliDeger ? secili : null;
 
   return (
     <div ref={kutu} className="relative">
@@ -141,13 +175,22 @@ export function LdapUserPicker({
         />
       </div>
 
-      {acik && (hata || sonuc.length > 0 || !ariyor) && (
+      {acik && (
         <div
           className="absolute z-20 mt-1 w-full max-h-72 overflow-auto rounded-lg border shadow-lg"
           style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)' }}
         >
           {/* ARAMA DUSTUYSE "SONUC YOK" DEMEYIZ: kullanici olmayan bir sorunu arar. */}
-          {hata ? (
+          {ariyor ? (
+            <div
+              className="px-3 py-2 text-[11px] flex items-center gap-1.5"
+              style={{ color: 'var(--text-muted)' }}
+              data-testid="ldap-ariyor"
+            >
+              <ArrowPathIcon className="h-3.5 w-3.5 animate-spin" />
+              Dizinde aranıyor…
+            </div>
+          ) : hata ? (
             <div
               className="px-3 py-2 text-[11px] flex items-start gap-1.5"
               style={{ color: 'var(--status-danger)' }}
@@ -186,6 +229,38 @@ export function LdapUserPicker({
           )}
         </div>
       )}
+
+      {seciliGecerli ? (
+        <div
+          className="mt-1 flex items-start gap-1.5 rounded-md border px-2 py-1 text-[11px]"
+          style={{
+            borderColor: 'var(--status-success)',
+            background: 'var(--status-success-bg)',
+            color: 'var(--text-secondary)',
+          }}
+          data-testid="ldap-secili"
+        >
+          <CheckCircleIcon className="h-3.5 w-3.5 shrink-0 mt-0.5" style={{ color: 'var(--status-success)' }} />
+          <span>
+            Seçildi:{' '}
+            <b style={{ color: 'var(--text-primary)' }}>
+              {seciliGecerli.displayName || seciliGecerli.username}
+            </b>{' '}
+            <span className="font-mono">{seciliGecerli.username}</span>
+            {seciliGecerli.mail ? ` · ${seciliGecerli.mail}` : ''}
+            {seciliGecerli.department ? ` · ${seciliGecerli.department}` : ''}
+          </span>
+        </div>
+      ) : (
+        elle &&
+        value &&
+        !ariyor && (
+          <div className="mt-1 text-[11px]" style={{ color: 'var(--text-muted)' }} data-testid="ldap-elle">
+            Listeden seçilmedi — yazılan değer olduğu gibi kaydedilir (dizinde doğrulanmadı).
+          </div>
+        )
+      )}
+
     </div>
   );
 }
