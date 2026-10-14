@@ -1732,10 +1732,17 @@ function initScaleX(app) {
         clusters,
         namespace,
       });
+      // SONUC KONTROLU ESIKLERI `/run`in AWX'e gonderdigi `verify_*` degerleriyle AYNI
+      // hesaptan. Fail esigi yalniz hedef 0 iken (kapatma) uygulanir; ekran bunu soyler.
+      const verification = launch.verifyThresholds(
+        launch.normalizeVerificationTimeout(req.body?.verificationTimeout) ??
+          launch.verifyTimeoutDefault(),
+      );
       res.json({
         ok: true,
         blastRadius: radius,
         gatePolicy: policy,
+        verification,
         // ScaleX sablonu cozulemediyse HICBIR is baslayamaz (on kontrol dahil). Ekran bunu
         // "Calistir"dan once soyler; `/run` ayni metinle reddeder.
         configError: gateCfg.hata

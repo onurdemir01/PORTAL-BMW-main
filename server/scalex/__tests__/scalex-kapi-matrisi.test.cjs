@@ -1887,3 +1887,50 @@ test('KM27 is gecmisi UNKNOWN esigini AYARDAN soyler (ekran "24 saat" diye sabit
     else process.env.SCALEX_RECONCILE_STALE_HOURS = eski;
   }
 });
+
+// ── KM28 SONUC KONTROLU ESIGI, HEDEF TAVANI, YAZILI ONAY ESIGI AYARDAN ──────────
+// Islem adimi kapatmada "su sure gecilirse basarisiz sayilir" cumlesini `x 2` diye
+// KENDISI hesapliyordu; admin `SCALEX_VERIFY_FAIL_MULTIPLIER`i degistirince AWX'e giden
+// `verify_fail_seconds` baska, ekran baska bir sure soyluyordu. Hedef tavani ve yazili
+// onay esigi ise ekrana hic gelmiyordu ("sinirin uzerinde" deniyor, sinir yazmiyordu).
+// Olcut: onizlemenin sayilari = calistirmanin AWX'e gonderdigi degerler; ayar degisince
+// AYNI istekte degisir.
+test('KM28 onizleme sonuc kontrolu esigini, hedef tavanini ve yazili onay esigini AYARDAN verir; calistirma ayni esigi AWX e gonderir', async (t) => {
+  sim.konsoluSustur(t);
+  sim.sifirla();
+  const ANAHTARLAR = ['SCALEX_VERIFY_FAIL_MULTIPLIER', 'SCALEX_MAX_TARGETS', 'SCALEX_PROD_CONFIRM_THRESHOLD'];
+  const eski = Object.fromEntries(ANAHTARLAR.map((k) => [k, process.env[k]]));
+  try {
+    for (const k of ANAHTARLAR) delete process.env[k];
+    const fabrika = await sim.onizle({ verificationTimeout: '300' });
+    assert.equal(fabrika.status, 200, fabrika.metin);
+    assert.deepEqual(fabrika.json.verification, { warnSeconds: 300, failSeconds: 600 });
+    assert.equal(fabrika.json.blastRadius.maxTargets, 200);
+    assert.equal(fabrika.json.blastRadius.writtenConfirmThreshold, 5);
+    // Butce verilmezse sunucu varsayilani: esik onun uzerinden.
+    assert.deepEqual((await sim.onizle()).json.verification, { warnSeconds: 300, failSeconds: 600 });
+
+    process.env.SCALEX_VERIFY_FAIL_MULTIPLIER = '3';
+    process.env.SCALEX_MAX_TARGETS = '40';
+    process.env.SCALEX_PROD_CONFIRM_THRESHOLD = '7';
+    const on = await sim.onizle({ verificationTimeout: '240' });
+    assert.equal(on.status, 200, on.metin);
+    assert.deepEqual(on.json.verification, { warnSeconds: 240, failSeconds: 720 }, 'carpan ANINDA yansimadi');
+    assert.equal(on.json.blastRadius.maxTargets, 40, 'hedef tavani ayardan gelmiyor');
+    assert.equal(on.json.blastRadius.writtenConfirmThreshold, 7, 'yazili onay esigi ayardan gelmiyor');
+
+    // Calistirma AYNI esigi AWX'e gonderir.
+    sim.smartKipi('oco_only');
+    sim.ayar.oco = 'icinde';
+    const c = await sim.calistir({ verificationTimeout: '240', ocoNumber: OCO_NO });
+    assert.equal(c.status, 200, c.metin);
+    const ev = sim.kayit.isler.get(Number(c.json.jobId)).ev;
+    assert.equal(Number(ev.verify_warn_seconds), on.json.verification.warnSeconds);
+    assert.equal(Number(ev.verify_fail_seconds), on.json.verification.failSeconds, 'onizleme ile calistirma ayrisiyor');
+  } finally {
+    for (const k of ANAHTARLAR) {
+      if (eski[k] === undefined) delete process.env[k];
+      else process.env[k] = eski[k];
+    }
+  }
+});

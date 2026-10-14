@@ -102,6 +102,17 @@ namespace ve işlem henüz seçilmemiştir: bunlara bağlı bir istisna kuralı 
 karar önizlemede" der. Eskiden kapsam adımı her durumda "SMART kaydı açılacak, birden fazla
 cluster seçtiysen ikinci kişi onayı istenir" yazıyordu; ikinci kişi onayı sunucuda hiç yoktu.
 
+Admin › Sistem'deki ScaleX sayıları da aynı kurala uyar; ekran kendi sayısını tutmaz:
+
+| Ekrandaki sayı | Kaynağı |
+| --- | --- |
+| Kapatmada "şu süre içinde 0 olmazsa başarısız sayılır" (önizleme) | `/preview` `verification.failSeconds`: AWX'e giden `verify_fail_seconds` ile aynı hesap (`SCALEX_VERIFY_FAIL_MULTIPLIER`) |
+| Aynı cümle, İşlem adımı › Gelişmiş | `/config` `verificationTimeout.failMultiplier`; ayar okunamazsa süre yazılmaz |
+| "Tek işlemde izin verilen sınır (N hedef)" | `/preview` `blastRadius.maxTargets` (`SCALEX_MAX_TARGETS`) |
+| "Prod'da N hedefin üstü yazılı onay ister" | `/preview` `blastRadius.writtenConfirmThreshold` (`SCALEX_PROD_CONFIRM_THRESHOLD`) |
+| Bekleme süresi varsayılanı ve aralığı | `/config` `verificationTimeout` |
+| İş geçmişi "UNKNOWN … saat beklendi" | `/history` `unknownAfterHours` (`SCALEX_RECONCILE_STALE_HOURS`) |
+
 ## SMART'ı tanımlamak
 
 Aynı karttaki **SMART / OCO ayarlarını düzenle** düğmesi ayar penceresini açar.

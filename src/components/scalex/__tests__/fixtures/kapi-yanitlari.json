@@ -12,7 +12,9 @@
           "multiCluster": false,
           "requiresWrittenConfirm": false,
           "requiresSecondPerson": false,
-          "exceedsMaxTargets": false
+          "exceedsMaxTargets": false,
+          "writtenConfirmThreshold": 5,
+          "maxTargets": 200
         },
         "gatePolicy": {
           "oco": "require",
@@ -31,6 +33,10 @@
             "message": "Bu ortamda değişiklik SMART onayı gerektiriyor ama ScaleX için SMART onayı kullanıma hazır değil (eksik: SMART onayı ScaleX şablonu için açık değil; Flow Key; alan eşlemesi (metadata)). Değişiklik uygulanmadı. Yöneticiniz Admin > ScaleX Yönetimi > Onay kapıları ekranından SMART onayını tanımlayabilir ya da SMART kuralını kapatabilir. \"Önce kontrol et\" modu kullanılabilir — hiçbir değişiklik yapmaz."
           },
           "reason": null
+        },
+        "verification": {
+          "warnSeconds": 300,
+          "failSeconds": 600
         },
         "configError": null,
         "hpaPinAllowed": false,
@@ -76,7 +82,9 @@
           "multiCluster": false,
           "requiresWrittenConfirm": false,
           "requiresSecondPerson": false,
-          "exceedsMaxTargets": false
+          "exceedsMaxTargets": false,
+          "writtenConfirmThreshold": 5,
+          "maxTargets": 200
         },
         "gatePolicy": {
           "oco": "require",
@@ -87,6 +95,10 @@
           "schedulable": true,
           "blocked": null,
           "reason": null
+        },
+        "verification": {
+          "warnSeconds": 300,
+          "failSeconds": 600
         },
         "configError": null,
         "hpaPinAllowed": false,
@@ -123,7 +135,9 @@
           "multiCluster": false,
           "requiresWrittenConfirm": false,
           "requiresSecondPerson": false,
-          "exceedsMaxTargets": false
+          "exceedsMaxTargets": false,
+          "writtenConfirmThreshold": 5,
+          "maxTargets": 200
         },
         "gatePolicy": {
           "oco": "require",
@@ -134,6 +148,10 @@
           "schedulable": true,
           "blocked": null,
           "reason": null
+        },
+        "verification": {
+          "warnSeconds": 300,
+          "failSeconds": 600
         },
         "configError": null,
         "hpaPinAllowed": false,
@@ -170,7 +188,9 @@
           "multiCluster": false,
           "requiresWrittenConfirm": false,
           "requiresSecondPerson": false,
-          "exceedsMaxTargets": false
+          "exceedsMaxTargets": false,
+          "writtenConfirmThreshold": 5,
+          "maxTargets": 200
         },
         "gatePolicy": {
           "oco": "require",
@@ -181,6 +201,10 @@
           "schedulable": true,
           "blocked": null,
           "reason": null
+        },
+        "verification": {
+          "warnSeconds": 300,
+          "failSeconds": 600
         },
         "configError": null,
         "hpaPinAllowed": false,
@@ -227,7 +251,9 @@
           "multiCluster": false,
           "requiresWrittenConfirm": false,
           "requiresSecondPerson": false,
-          "exceedsMaxTargets": false
+          "exceedsMaxTargets": false,
+          "writtenConfirmThreshold": 5,
+          "maxTargets": 200
         },
         "gatePolicy": {
           "oco": "require",
@@ -238,6 +264,10 @@
           "schedulable": true,
           "blocked": null,
           "reason": null
+        },
+        "verification": {
+          "warnSeconds": 300,
+          "failSeconds": 600
         },
         "configError": null,
         "hpaPinAllowed": false,
@@ -284,7 +314,9 @@
           "multiCluster": false,
           "requiresWrittenConfirm": false,
           "requiresSecondPerson": false,
-          "exceedsMaxTargets": false
+          "exceedsMaxTargets": false,
+          "writtenConfirmThreshold": 5,
+          "maxTargets": 200
         },
         "gatePolicy": {
           "oco": "require",
@@ -295,6 +327,10 @@
           "schedulable": false,
           "blocked": null,
           "reason": null
+        },
+        "verification": {
+          "warnSeconds": 300,
+          "failSeconds": 600
         },
         "configError": null,
         "hpaPinAllowed": false,
@@ -341,7 +377,9 @@
           "multiCluster": false,
           "requiresWrittenConfirm": false,
           "requiresSecondPerson": false,
-          "exceedsMaxTargets": false
+          "exceedsMaxTargets": false,
+          "writtenConfirmThreshold": 5,
+          "maxTargets": 200
         },
         "gatePolicy": {
           "oco": "require",
@@ -352,6 +390,10 @@
           "schedulable": true,
           "blocked": null,
           "reason": null
+        },
+        "verification": {
+          "warnSeconds": 300,
+          "failSeconds": 600
         },
         "configError": null,
         "hpaPinAllowed": false,
@@ -400,7 +442,9 @@
           "multiCluster": false,
           "requiresWrittenConfirm": false,
           "requiresSecondPerson": false,
-          "exceedsMaxTargets": false
+          "exceedsMaxTargets": false,
+          "writtenConfirmThreshold": 5,
+          "maxTargets": 200
         },
         "gatePolicy": {
           "oco": "require",
@@ -411,6 +455,10 @@
           "schedulable": false,
           "blocked": null,
           "reason": null
+        },
+        "verification": {
+          "warnSeconds": 300,
+          "failSeconds": 600
         },
         "configError": null,
         "hpaPinAllowed": false,
@@ -448,7 +496,9 @@
           "multiCluster": false,
           "requiresWrittenConfirm": false,
           "requiresSecondPerson": false,
-          "exceedsMaxTargets": false
+          "exceedsMaxTargets": false,
+          "writtenConfirmThreshold": 5,
+          "maxTargets": 200
         },
         "gatePolicy": {
           "oco": "require",
@@ -459,6 +509,10 @@
           "schedulable": true,
           "blocked": null,
           "reason": null
+        },
+        "verification": {
+          "warnSeconds": 300,
+          "failSeconds": 600
         },
         "configError": null,
         "hpaPinAllowed": false,
@@ -491,7 +545,9 @@
             "multiCluster": false,
             "requiresWrittenConfirm": false,
             "requiresSecondPerson": false,
-            "exceedsMaxTargets": false
+            "exceedsMaxTargets": false,
+            "writtenConfirmThreshold": 5,
+            "maxTargets": 200
           }
         }
       }
@@ -508,7 +564,9 @@
           "multiCluster": false,
           "requiresWrittenConfirm": false,
           "requiresSecondPerson": false,
-          "exceedsMaxTargets": false
+          "exceedsMaxTargets": false,
+          "writtenConfirmThreshold": 5,
+          "maxTargets": 200
         },
         "gatePolicy": {
           "oco": "require",
@@ -519,6 +577,10 @@
           "schedulable": true,
           "blocked": null,
           "reason": null
+        },
+        "verification": {
+          "warnSeconds": 300,
+          "failSeconds": 600
         },
         "configError": null,
         "hpaPinAllowed": false,
@@ -551,7 +613,9 @@
             "multiCluster": false,
             "requiresWrittenConfirm": false,
             "requiresSecondPerson": false,
-            "exceedsMaxTargets": false
+            "exceedsMaxTargets": false,
+            "writtenConfirmThreshold": 5,
+            "maxTargets": 200
           }
         }
       }
@@ -568,7 +632,9 @@
           "multiCluster": false,
           "requiresWrittenConfirm": false,
           "requiresSecondPerson": false,
-          "exceedsMaxTargets": false
+          "exceedsMaxTargets": false,
+          "writtenConfirmThreshold": 5,
+          "maxTargets": 200
         },
         "gatePolicy": {
           "oco": "warn",
@@ -583,6 +649,10 @@
           "schedulable": false,
           "blocked": null,
           "reason": "geri alma bir onarim islemidir"
+        },
+        "verification": {
+          "warnSeconds": 300,
+          "failSeconds": 600
         },
         "configError": null,
         "hpaPinAllowed": false,
@@ -615,7 +685,9 @@
             "multiCluster": false,
             "requiresWrittenConfirm": false,
             "requiresSecondPerson": false,
-            "exceedsMaxTargets": false
+            "exceedsMaxTargets": false,
+            "writtenConfirmThreshold": 5,
+            "maxTargets": 200
           }
         }
       }
@@ -632,7 +704,9 @@
           "multiCluster": false,
           "requiresWrittenConfirm": false,
           "requiresSecondPerson": false,
-          "exceedsMaxTargets": false
+          "exceedsMaxTargets": false,
+          "writtenConfirmThreshold": 5,
+          "maxTargets": 200
         },
         "gatePolicy": {
           "oco": "skip",
@@ -641,6 +715,10 @@
           "schedulable": false,
           "blocked": null,
           "reason": "dry_run hicbir sey degistirmez"
+        },
+        "verification": {
+          "warnSeconds": 300,
+          "failSeconds": 600
         },
         "configError": null,
         "hpaPinAllowed": false,
@@ -673,7 +751,9 @@
             "multiCluster": false,
             "requiresWrittenConfirm": false,
             "requiresSecondPerson": false,
-            "exceedsMaxTargets": false
+            "exceedsMaxTargets": false,
+            "writtenConfirmThreshold": 5,
+            "maxTargets": 200
           }
         }
       }
@@ -690,7 +770,9 @@
           "multiCluster": false,
           "requiresWrittenConfirm": false,
           "requiresSecondPerson": false,
-          "exceedsMaxTargets": false
+          "exceedsMaxTargets": false,
+          "writtenConfirmThreshold": 5,
+          "maxTargets": 200
         },
         "gatePolicy": {
           "oco": "skip",
@@ -700,6 +782,10 @@
           "schedulable": false,
           "blocked": null,
           "reason": "prod disi ortam — onay kapilari yalnizca production icin"
+        },
+        "verification": {
+          "warnSeconds": 300,
+          "failSeconds": 600
         },
         "configError": null,
         "hpaPinAllowed": false,
@@ -732,7 +818,9 @@
             "multiCluster": false,
             "requiresWrittenConfirm": false,
             "requiresSecondPerson": false,
-            "exceedsMaxTargets": false
+            "exceedsMaxTargets": false,
+            "writtenConfirmThreshold": 5,
+            "maxTargets": 200
           }
         }
       }
@@ -749,7 +837,9 @@
           "multiCluster": false,
           "requiresWrittenConfirm": false,
           "requiresSecondPerson": false,
-          "exceedsMaxTargets": false
+          "exceedsMaxTargets": false,
+          "writtenConfirmThreshold": 5,
+          "maxTargets": 200
         },
         "gatePolicy": {
           "oco": "warn",
@@ -760,6 +850,10 @@
           "schedulable": false,
           "blocked": null,
           "reason": "geri alma bir onarim islemidir"
+        },
+        "verification": {
+          "warnSeconds": 300,
+          "failSeconds": 600
         },
         "configError": null,
         "hpaPinAllowed": false,
@@ -796,7 +890,9 @@
           "multiCluster": false,
           "requiresWrittenConfirm": false,
           "requiresSecondPerson": false,
-          "exceedsMaxTargets": false
+          "exceedsMaxTargets": false,
+          "writtenConfirmThreshold": 5,
+          "maxTargets": 200
         },
         "gatePolicy": {
           "oco": "require",
@@ -815,6 +911,10 @@
             "message": "Bu ortamda değişiklik SMART onayı gerektiriyor ama ScaleX için SMART onayı kullanıma hazır değil (eksik: SMART onayı ScaleX şablonu için açık değil; Flow Key; alan eşlemesi (metadata)). Değişiklik uygulanmadı. Yöneticiniz Admin > ScaleX Yönetimi > Onay kapıları ekranından SMART onayını tanımlayabilir ya da SMART kuralını kapatabilir. \"Önce kontrol et\" modu kullanılabilir — hiçbir değişiklik yapmaz."
           },
           "reason": null
+        },
+        "verification": {
+          "warnSeconds": 300,
+          "failSeconds": 600
         },
         "configError": {
           "code": "scalex_not_configured",
@@ -855,7 +955,9 @@
           "multiCluster": false,
           "requiresWrittenConfirm": false,
           "requiresSecondPerson": false,
-          "exceedsMaxTargets": false
+          "exceedsMaxTargets": false,
+          "writtenConfirmThreshold": 5,
+          "maxTargets": 200
         },
         "gatePolicy": {
           "oco": "skip",
@@ -864,6 +966,10 @@
           "schedulable": false,
           "blocked": null,
           "reason": "dry_run hicbir sey degistirmez"
+        },
+        "verification": {
+          "warnSeconds": 300,
+          "failSeconds": 600
         },
         "configError": {
           "code": "scalex_not_configured",
@@ -904,7 +1010,9 @@
           "multiCluster": false,
           "requiresWrittenConfirm": false,
           "requiresSecondPerson": false,
-          "exceedsMaxTargets": false
+          "exceedsMaxTargets": false,
+          "writtenConfirmThreshold": 5,
+          "maxTargets": 200
         },
         "gatePolicy": {
           "oco": "require",
@@ -915,6 +1023,10 @@
           "schedulable": true,
           "blocked": null,
           "reason": null
+        },
+        "verification": {
+          "warnSeconds": 300,
+          "failSeconds": 600
         },
         "configError": null,
         "hpaPinAllowed": false,
@@ -952,7 +1064,9 @@
           "multiCluster": false,
           "requiresWrittenConfirm": false,
           "requiresSecondPerson": false,
-          "exceedsMaxTargets": false
+          "exceedsMaxTargets": false,
+          "writtenConfirmThreshold": 5,
+          "maxTargets": 200
         },
         "gatePolicy": {
           "oco": "require",
@@ -963,6 +1077,10 @@
           "schedulable": false,
           "blocked": null,
           "reason": null
+        },
+        "verification": {
+          "warnSeconds": 300,
+          "failSeconds": 600
         },
         "configError": null,
         "hpaPinAllowed": false,
@@ -999,7 +1117,9 @@
           "multiCluster": false,
           "requiresWrittenConfirm": false,
           "requiresSecondPerson": false,
-          "exceedsMaxTargets": false
+          "exceedsMaxTargets": false,
+          "writtenConfirmThreshold": 5,
+          "maxTargets": 200
         },
         "gatePolicy": {
           "oco": "skip",
@@ -1010,6 +1130,10 @@
           "schedulable": false,
           "blocked": null,
           "reason": "OCO kapisi admin tarafindan KAPATILMIS"
+        },
+        "verification": {
+          "warnSeconds": 300,
+          "failSeconds": 600
         },
         "configError": null,
         "hpaPinAllowed": false,
@@ -1042,7 +1166,9 @@
             "multiCluster": false,
             "requiresWrittenConfirm": false,
             "requiresSecondPerson": false,
-            "exceedsMaxTargets": false
+            "exceedsMaxTargets": false,
+            "writtenConfirmThreshold": 5,
+            "maxTargets": 200
           }
         }
       }

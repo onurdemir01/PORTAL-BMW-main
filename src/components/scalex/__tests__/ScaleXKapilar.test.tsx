@@ -295,6 +295,63 @@ describe('önizleme kapı durumunu sunucunun kararıyla gösterir', () => {
     expect(await screen.findByRole('button', { name: 'Kontrolü başlat' })).toBeEnabled();
     expect(screen.queryByText('ağ hatası')).not.toBeInTheDocument();
   });
+
+  // SAYILAR SUNUCUDAN (2026-10-14). Kapatmada "şu süre geçilirse başarısız" ekranda `× 2`
+  // diye hesaplanıyordu; admin çarpanı değiştirince AWX'e giden eşik başka, ekran başka
+  // bir süre söylüyordu. Hedef tavanı ve yazılı onay eşiği ise ekrana hiç gelmiyordu.
+  const ayarli = (kurgu: string, ek: { b?: Partial<ScaleXPreview['blastRadius']>; v?: ScaleXPreview['verification'] }) => {
+    const o = K[kurgu].onizleme;
+    K.__ayarli = {
+      ...K[kurgu],
+      onizleme: { ...o, blastRadius: { ...o.blastRadius, ...ek.b }, ...(ek.v ? { verification: ek.v } : {}) },
+    };
+    return '__ayarli';
+  };
+
+  it('kapatmada başarısız sayılma süresi sunucunun eşiğidir (admin çarpanı), ekranın `× 2` hesabı değil', async () => {
+    // Gerçek yanıt (fabrika çarpanı 2): 300 sn → 10 dk.
+    const { unmount } = onizlemeCiz('basladi_smart_kapali');
+    expect(await screen.findByTestId('scalex-fail-esigi')).toHaveTextContent('10 dk içinde 0 olmazsa başarısız sayılır');
+    unmount();
+    // Admin çarpanı 3: sunucu 900 sn diyor; ekran 10 dk DEMEZ.
+    onizlemeCiz(ayarli('basladi_smart_kapali', { v: { warnSeconds: 300, failSeconds: 900 } }));
+    const esik = await screen.findByTestId('scalex-fail-esigi');
+    expect(esik).toHaveTextContent('15 dk içinde 0 olmazsa başarısız sayılır');
+    expect(esik).not.toHaveTextContent('10 dk');
+  });
+
+  it('başarısız sayılma süresi yalnız kapatmada (hedef 0) söylenir; eski sunucu eşik göndermezse süre uydurulmaz', async () => {
+    const { unmount } = onizlemeCiz('basladi_smart_kapali', { action: 'restore' });
+    expect(await screen.findByRole('button', { name: 'Çalıştır' })).toBeInTheDocument();
+    expect(screen.queryByTestId('scalex-fail-esigi')).not.toBeInTheDocument();
+    unmount();
+    const ikinci = onizlemeCiz('basladi_smart_kapali', { action: 'scale', targetReplicas: '3' });
+    expect(await screen.findByRole('button', { name: 'Çalıştır' })).toBeInTheDocument();
+    expect(screen.queryByTestId('scalex-fail-esigi')).not.toBeInTheDocument();
+    ikinci.unmount();
+    const sifir = onizlemeCiz('basladi_smart_kapali', { action: 'scale', targetReplicas: '0' });
+    expect(await screen.findByTestId('scalex-fail-esigi')).toHaveTextContent('10 dk');
+    sifir.unmount();
+    const { verification: _yok, ...eski } = K.basladi_smart_kapali.onizleme;
+    K.__eski = { ...K.basladi_smart_kapali, onizleme: eski as ScaleXPreview };
+    onizlemeCiz('__eski');
+    expect(await screen.findByRole('button', { name: 'Çalıştır' })).toBeInTheDocument();
+    expect(screen.queryByTestId('scalex-fail-esigi')).not.toBeInTheDocument();
+  });
+
+  it('hedef tavanı aşılınca sınırın kendisi yazılır (Admin > Sistem değeri)', async () => {
+    onizlemeCiz(ayarli('basladi_smart_kapali', { b: { targets: 60, exceedsMaxTargets: true, maxTargets: 40 } }));
+    const uyari = await screen.findByText(/tek işlemde izin verilen sınırın/);
+    expect(uyari).toHaveTextContent('Bu seçim 60 hedef üretiyor ve tek işlemde izin verilen sınırın (40 hedef) üzerinde.');
+    expect(screen.getByRole('button', { name: 'Çalıştır' })).toBeDisabled();
+  });
+
+  it('yazılı onay istenirken eşik yazılır (Admin > Sistem değeri)', async () => {
+    onizlemeCiz(ayarli('basladi_smart_kapali', { b: { targets: 8, requiresWrittenConfirm: true, writtenConfirmThreshold: 7 } }));
+    await screen.findByLabelText(/Onaylamak için namespace adını yaz:/);
+    const etiket = document.querySelector('label[for="scalex-written"]');
+    expect(etiket).toHaveTextContent("Bu işlem 8 hedefi etkiliyor ve ortam prod (prod'da 7 hedefin üstü yazılı onay ister).");
+  });
 });
 
 // ══ B. SAYFA: SUNUCUNUN HER YANITINDA DOĞRU EKRAN ═══════════════════════════
@@ -655,6 +712,27 @@ describe('işlem seçimi ile önizleme tek adımda', () => {
     await waitFor(() =>
       expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ verificationTimeout: '120' })),
     );
+  });
+
+  // KAPATMA EŞİĞİ ADMIN ÇARPANINDAN (2026-10-14). Eskiden `× 2` sabitti.
+  const yardim = () => document.getElementById('scalex-timeout-help')?.textContent ?? '';
+  it('kapatmada başarısız sayılma süresi admin çarpanıyla hesaplanır', () => {
+    const { rerender } = render(<OperationStep {...ortak} limits={SCALEX_FALLBACK_LIMITS} onChange={vi.fn()} />);
+    expect(yardim()).toContain('10 dk geçilirse başarısız sayılır');
+    rerender(<OperationStep {...ortak} limits={{ ...SCALEX_FALLBACK_LIMITS, failMultiplier: 3 }} onChange={vi.fn()} />);
+    expect(yardim()).toContain('15 dk geçilirse başarısız sayılır');
+    expect(yardim()).not.toContain('10 dk');
+  });
+
+  it('çarpan 1 ise "uyar ama bekle" denmez; ayar okunamadıysa süre vaat edilmez', () => {
+    const { rerender } = render(
+      <OperationStep {...ortak} limits={{ ...SCALEX_FALLBACK_LIMITS, failMultiplier: 1 }} onChange={vi.fn()} />,
+    );
+    expect(yardim()).toContain('Kapatırken bu süre içinde 0 olmazsa başarısız sayılır.');
+    expect(yardim()).not.toContain('0 olana kadar beklenir');
+    rerender(<OperationStep {...ortak} limits={{ ...SCALEX_FALLBACK_LIMITS, stale: true }} onChange={vi.fn()} />);
+    expect(yardim()).toContain('şu an okunamadı');
+    expect(yardim()).not.toMatch(/dk geçilirse/);
   });
 
   it('nadir ayarlar "Gelişmiş" altında: kapalı başlar, değiştirilen ayar kapalıyken de söylenir', async () => {

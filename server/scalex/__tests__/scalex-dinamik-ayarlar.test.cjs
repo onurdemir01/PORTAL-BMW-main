@@ -337,3 +337,26 @@ test('DA12 SMART kipi KAYDEDILMEDEN once dogrulanir (yanlis deger 400, baska ana
   assert.ok(kaydet > dogrula, 'dogrulama kayittan SONRA');
   assert.match(uc.slice(dogrula, kaydet), /if \(scalexHatasi\) return res\.status\(400\)/, 'hata 400 ile donmuyor');
 });
+
+// DA13 — EKRANA GIDEN SAYI = KARARI VEREN SAYI. Patlama yaricapi tavan ve esigi
+// ekrana tasir; bayraklar BASKA bir okumadan hesaplansaydi ekran "sinir 3" deyip
+// 4 hedefi kabul edebilirdi. Sinirin iki yaninda olculur.
+test('DA13 patlama yaricapi tavan ve esigi bayraklarla AYNI degerden tasir; sonuc kontrolu esigi carpandan', () => {
+  process.env.SCALEX_MAX_TARGETS = '4';
+  process.env.SCALEX_PROD_CONFIRM_THRESHOLD = '2';
+  const yaricap = (clusters, apps) =>
+    launch.computeBlastRadius({ clusters, apps, environment: 'prod', action: 'stop', executionMode: 'apply' });
+  const sinirda = yaricap(['c1', 'c2'], ['a', 'b']);
+  assert.deepEqual(
+    [sinirda.targets, sinirda.maxTargets, sinirda.exceedsMaxTargets, sinirda.writtenConfirmThreshold, sinirda.requiresWrittenConfirm],
+    [4, 4, false, 2, true],
+  );
+  const ustunde = yaricap(['c1', 'c2', 'c3'], ['a', 'b']);
+  assert.deepEqual([ustunde.targets, ustunde.maxTargets, ustunde.exceedsMaxTargets], [6, 4, true]);
+  const esikte = yaricap(['c1', 'c2'], ['a']);
+  assert.deepEqual([esikte.targets, esikte.requiresWrittenConfirm], [2, false]);
+
+  assert.deepEqual(launch.verifyThresholds(300), { warnSeconds: 300, failSeconds: 600 });
+  process.env.SCALEX_VERIFY_FAIL_MULTIPLIER = '5';
+  assert.deepEqual(launch.verifyThresholds(120), { warnSeconds: 120, failSeconds: 600 }, 'carpan dinamik degil');
+});

@@ -94,6 +94,21 @@ export function humanSeconds(raw: string): string {
   return s ? `${m} dk ${s} sn` : `${m} dk`;
 }
 
+/**
+ * Kapatmada "kaç dakikada başarısız sayılır" cümlesi. Çarpan Admin > Sistem ayarıdır
+ * (`SCALEX_VERIFY_FAIL_MULTIPLIER`); ekran eskiden `× 2` diye kendisi hesaplıyordu ve admin
+ * çarpanı değiştirince iş başka bir sürede başarısız sayılırken ekran eski süreyi yazıyordu.
+ * Ayar okunamadıysa süre vaat edilmez.
+ */
+export function kapatmaMetni(timeout: string, limits?: ScaleXLimits): string {
+  if (!limits || limits.stale) {
+    return "uyarı yazılır ama 0 olana kadar beklenir; başarısız sayılma süresi yönetici ayarından gelir (şu an okunamadı).";
+  }
+  if (limits.failMultiplier <= 1) return "bu süre içinde 0 olmazsa başarısız sayılır.";
+  const sure = humanSeconds(String(Number(timeout) * limits.failMultiplier));
+  return `uyarı yazılır ama 0 olana kadar beklenir; ${sure} geçilirse başarısız sayılır.`;
+}
+
 const OperationStep: React.FC<Props> = ({
   apps, workloads, clusterCount, busy, onSubmit, onChange, previous, limits,
 }) => {
@@ -415,8 +430,7 @@ const OperationStep: React.FC<Props> = ({
               ) : (
                 <p id="scalex-timeout-help" className="mt-1 text-xs text-[var(--text-muted)]">
                   {humanSeconds(timeout)} · <strong>Açarken</strong> bu süre dolunca uyarı yazılır ve iş
-                  başarılı biter. <strong>Kapatırken</strong> uyarı yazılır ama 0 olana kadar beklenir;{" "}
-                  {humanSeconds(String(Number(timeout) * 2 || 0))} geçilirse başarısız sayılır.
+                  başarılı biter. <strong>Kapatırken</strong> {kapatmaMetni(timeout, limits)}
                 </p>
               )}
             </div>
