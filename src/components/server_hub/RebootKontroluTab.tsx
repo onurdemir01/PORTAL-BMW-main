@@ -357,7 +357,7 @@ export default function RebootKontroluTab() {
                       <span className="text-xs font-semibold">#{k.id}</span>
                       <DurumRozeti durum={k.durum} />
                     </div>
-                    <div className="text-[11px] font-mono truncate" style={{ color: 'var(--text-secondary)' }}>{k.hosts.join(', ')}</div>
+                    <div className="text-[11px] font-mono truncate" style={{ color: 'var(--text-secondary)' }} title={k.hosts.join(', ')}>{k.hosts.join(', ')}</div>
                     <div className="text-[10px]" style={{ color: 'var(--text-muted)' }}>{k.olusturan} · {fmtDateTime(k.olusturuldu)}</div>
                   </button>
                 </li>
@@ -375,7 +375,7 @@ export default function RebootKontroluTab() {
       <Modal open={onay} onClose={() => setOnay(false)} title="Reboot sonrası kontrol et ve düzelt" size="md"
         footer={(
           <div className="flex justify-end gap-2">
-            <button type="button" onClick={() => setOnay(false)} className={BTN} style={inputStil}>Vazgeç</button>
+            <button type="button" onClick={() => setOnay(false)} className={BTN} style={inputStil}>İptal</button>
             <button type="button" onClick={sonraBaslat} disabled={busy} className={BTN} style={{ background: 'var(--status-danger)', borderColor: 'var(--status-danger)', color: '#fff' }}>Onayla ve başlat</button>
           </div>
         )}>
