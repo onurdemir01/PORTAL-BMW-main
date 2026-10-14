@@ -110,9 +110,19 @@ function summarizeNginxInventory(recordset) {
       svcMap.get(s).envs.add(r.env);
     }
   }
+  // hostnames (2026-10-14, kullanici: "servise tikladigimda hangi sunucuda ve hangi versiyonda
+  // oldugunu gormek istiyorum"): uyelik KURALI burada (splitServices) kalir; ekran sunucu
+  // ayrintisini (nginx surumu, OS, IP) `hosts` satirlarindan bu adlarla bulur.
   const byService = [...svcMap.values()]
-    .map((s) => ({ service: s.service, hosts: s.hosts.size, envs: [...s.envs].sort() }))
+    .map((s) => ({ service: s.service, hosts: s.hosts.size, envs: [...s.envs].sort(), hostnames: [...s.hosts].sort() }))
     .sort((a, b) => b.hosts - a.hosts || a.service.localeCompare(b.service));
+  // LISTESI TOPLANMAYAN SUNUCULAR: nginx_metadata betigi 5'ten fazla service'i olan sunucuda
+  // listeyi yazmaz, `services=too_many` yazar. Bu sunucularda herhangi bir service OLABILIR;
+  // bir service'in sunucu listesi bunlari ICERMEZ - ekran bunu ayrica soyler (olculemedi != yok).
+  const servicesUnlisted = rows
+    .filter((r) => splitServices(r.services).includes('too_many'))
+    .map((r) => r.hostname)
+    .sort();
 
   return {
     totals: {
@@ -121,6 +131,7 @@ function summarizeNginxInventory(recordset) {
       // tablodaki env ile ad kalibinin celistigi sunucu sayisi (betik duzeltmesi yayilana kadar)
       envCorrected,
       services: svcMap.size,
+      servicesUnlisted,
       nginxVersions: new Set(rows.map((r) => norm(r.nginx_version))).size,
       osVersions: new Set(rows.map((r) => norm(r.os))).size,
       cpuTotal: rows.reduce((a, r) => a + (parseInt(r.cpu, 10) || 0), 0),

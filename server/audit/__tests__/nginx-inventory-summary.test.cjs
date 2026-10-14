@@ -144,3 +144,19 @@ test('ortam: ad kalibi tablo degerini duzeltir, celisenler sayilir, kalip disi t
   const prod = out.byEnv.find((e) => e.env === 'production');
   assert.equal(prod.hosts, 3);
 });
+
+// SERVICE AYRINTISI (2026-10-14): ekran service satirina tiklayinca sunuculari ve nginx surumlerini
+// gosterir; uyelik kurali burada (hostnames), "too_many" yazan sunucular ayrica soylenir.
+test('service sunuculari (hostnames) ve listesi toplanmayan sunucular (too_many)', () => {
+  const s = summarizeNginxInventory([
+    host({ hostname: 'GBNGXP01', services: 'glomo,cso', nginx_version: '1.24.0' }),
+    host({ hostname: 'GBNGXP02', services: 'glomo', nginx_version: '1.20.1' }),
+    host({ hostname: 'GBNGXP03', services: 'too_many' }),
+    host({ hostname: 'GBNGXP04', services: 'unknown' }),
+  ]);
+  const glomo = s.byService.find((x) => x.service === 'glomo');
+  assert.deepEqual(glomo.hostnames, ['GBNGXP01', 'GBNGXP02']);
+  assert.equal(glomo.hosts, glomo.hostnames.length);
+  assert.deepEqual(s.byService.find((x) => x.service === 'cso').hostnames, ['GBNGXP01']);
+  assert.deepEqual(s.totals.servicesUnlisted, ['GBNGXP03']);
+});

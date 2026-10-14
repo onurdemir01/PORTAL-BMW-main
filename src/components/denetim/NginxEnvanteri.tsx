@@ -7,6 +7,7 @@
 // "şu anki hâl". Bu yüzden burada tarih seçici yok; tazelik göstergesi olarak en yeni
 // `source_last_update` gösteriliyor.
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { GuncellemeRozeti } from '@/components/common/GuncellemeRozeti';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
 import {
   ArrowDownTrayIcon,
@@ -16,8 +17,14 @@ import {
   CpuChipIcon,
   CircleStackIcon,
   Squares2X2Icon,
+  ChevronRightIcon,
 } from '@heroicons/react/24/outline';
-import { denetimApi, type NginxInventoryResult, type NginxInvDist } from '@/api/denetimApi';
+import {
+  denetimApi,
+  type NginxInventoryResult,
+  type NginxInvDist,
+  type NginxInvHost,
+} from '@/api/denetimApi';
 import { Panel, StatTile, Pill, TableShell, Th, Td, Note } from './ui';
 import { downloadCsv as csvDownload } from '@/utils/csv';
 
@@ -88,6 +95,84 @@ function DistBars({
   );
 }
 
+// SERVICE AYRINTISI (2026-10-14, kullanici: "servislere geldigimde ... uzerine tikladigimda ilgili
+// servisin hangi sunucuda ve hangi versiyonda oldugunu gormek istiyorum"). Envanterde service basina
+// surum YOK (service adi .conf dosya adindan cikar); surum = o sunucudaki NGINX surumu. Ozet: hangi
+// surum kac sunucuda - birden fazlaysa ayrica soylenir.
+function ServiceSunuculari({
+  service,
+  hosts,
+  unlisted,
+}: {
+  service: string;
+  hosts: NginxInvHost[];
+  unlisted: string[];
+}) {
+  const surumler = new Map<string, number>();
+  for (const h of hosts) {
+    const v = h.nginx_version || '(bilinmiyor)';
+    surumler.set(v, (surumler.get(v) || 0) + 1);
+  }
+  const sirali = [...surumler.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  const digerUnlisted = service === 'too_many' ? [] : unlisted;
+  return (
+    <div className="space-y-2 py-1">
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="text-[11px] font-semibold" style={{ color: 'var(--text-secondary)' }}>
+          nginx sürümü:
+        </span>
+        {sirali.map(([v, c]) => (
+          <Pill key={v} tone={sirali.length > 1 ? 'warning' : 'info'}>
+            {v} · {nf(c)} sunucu
+          </Pill>
+        ))}
+        {sirali.length > 1 && (
+          <span className="text-[11px]" style={{ color: 'var(--status-warning)' }}>
+            Bu service&apos;in sunucularında {sirali.length} farklı nginx sürümü var.
+          </span>
+        )}
+      </div>
+      <table className="w-full text-[11px] border-collapse">
+        <thead>
+          <tr style={{ color: 'var(--text-muted)' }}>
+            <th className="text-left font-semibold px-2 py-1">Sunucu</th>
+            <th className="text-left font-semibold px-2 py-1">Ortam</th>
+            <th className="text-left font-semibold px-2 py-1">Lokasyon</th>
+            <th className="text-left font-semibold px-2 py-1">nginx sürümü</th>
+            <th className="text-left font-semibold px-2 py-1">OS</th>
+            <th className="text-left font-semibold px-2 py-1">IP</th>
+            <th className="text-left font-semibold px-2 py-1">Sunucudaki service&apos;ler</th>
+          </tr>
+        </thead>
+        <tbody>
+          {hosts.map((h) => (
+            <tr key={h.hostname} style={{ borderTop: '1px solid var(--border-subtle)' }}>
+              <td className="px-2 py-1 font-mono whitespace-nowrap" title={h.fqdn || h.hostname}>
+                {h.hostname}
+              </td>
+              <td className="px-2 py-1 whitespace-nowrap">{h.env}</td>
+              <td className="px-2 py-1 whitespace-nowrap">{h.location || '—'}</td>
+              <td className="px-2 py-1 font-mono whitespace-nowrap">{h.nginx_version || '—'}</td>
+              <td className="px-2 py-1 whitespace-nowrap" title={h.kernel || ''}>
+                {h.os || '—'}
+              </td>
+              <td className="px-2 py-1 font-mono whitespace-nowrap">{h.ip || '—'}</td>
+              <td className="px-2 py-1">{h.services || '—'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {digerUnlisted.length > 0 && (
+        <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+          Not: {nf(digerUnlisted.length)} sunucunun service listesi toplanmadı (5&apos;ten fazla
+          service — &quot;too_many&quot;); bu service o sunucularda da olabilir, bu listede
+          görünmez: <span className="font-mono">{digerUnlisted.join(', ')}</span>
+        </p>
+      )}
+    </div>
+  );
+}
+
 type View = 'ortam' | 'versiyon' | 'service' | 'kaynak' | 'sunucular';
 
 export function NginxEnvanteri() {
@@ -96,6 +181,14 @@ export function NginxEnvanteri() {
   const [err, setErr] = useState('');
   const [view, setView] = useState<View>('ortam');
   const [q, setQ] = useState('');
+  const [acikService, setAcikService] = useState<Set<string>>(() => new Set());
+  const serviceAc = (s: string) =>
+    setAcikService((m) => {
+      const y = new Set(m);
+      if (y.has(s)) y.delete(s);
+      else y.add(s);
+      return y;
+    });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -156,6 +249,11 @@ export function NginxEnvanteri() {
         .includes(needle),
     );
   }, [data, q]);
+
+  const hostByName = useMemo(
+    () => new Map((data?.hosts ?? []).map((h) => [h.hostname, h])),
+    [data],
+  );
 
   if (loading && !data)
     return <LoadingLogo />;
@@ -232,10 +330,7 @@ export function NginxEnvanteri() {
       <div className="flex flex-wrap items-center gap-2">
         {viewTabs}
         {data.lastUpdate && (
-          <span className="text-xs text-[var(--text-muted)]">
-            son güncelleme{' '}
-            <span className="tabular-nums">{data.lastUpdate.slice(0, 19).replace('T', ' ')}</span>
-          </span>
+          <GuncellemeRozeti tarih={data.lastUpdate.slice(0, 19).replace('T', ' ')} />
         )}
         <button
           onClick={load}
@@ -301,14 +396,26 @@ export function NginxEnvanteri() {
       {view === 'service' && (
         <Panel
           title="Service'ler"
-          description="Bir service birden çok sunucuda bulunabilir; sayı o service'i barındıran sunucu sayısıdır."
+          description="Bir service birden çok sunucuda bulunabilir; sayı o service'i barındıran sunucu sayısıdır. Satıra tıklayınca hangi sunucularda ve hangi nginx sürümüyle durduğu açılır."
           actions={
             <button
               onClick={() =>
                 csvDownload(
                   'nginx_envanter_service',
-                  ['service', 'sunucu', 'ortamlar'],
-                  data.byService.map((s) => [s.service, s.hosts, s.envs.join(' ')]),
+                  ['service', 'sunucu', 'ortamlar', 'sunucular', 'nginx_surumleri'],
+                  data.byService.map((s) => [
+                    s.service,
+                    s.hosts,
+                    s.envs.join(' '),
+                    (s.hostnames ?? []).join(' '),
+                    [
+                      ...new Set(
+                        (s.hostnames ?? []).map(
+                          (h) => hostByName.get(h)?.nginx_version || '(bilinmiyor)',
+                        ),
+                      ),
+                    ].join(' '),
+                  ]),
                 )
               }
               className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs border border-[var(--border)] rounded-lg hover:bg-[var(--bg-elevated)]"
@@ -327,23 +434,64 @@ export function NginxEnvanteri() {
               </tr>
             </thead>
             <tbody>
-              {data.byService.map((s) => (
-                <tr key={s.service}>
-                  <Td className="font-mono">{s.service}</Td>
-                  <Td align="right" className="tabular-nums">
-                    {nf(s.hosts)}
-                  </Td>
-                  <Td>
-                    <span className="flex flex-wrap gap-1">
-                      {s.envs.map((e) => (
-                        <Pill key={e} tone="info">
-                          {e}
-                        </Pill>
-                      ))}
-                    </span>
-                  </Td>
-                </tr>
-              ))}
+              {data.byService.map((s) => {
+                const acik = acikService.has(s.service);
+                return (
+                  <React.Fragment key={s.service}>
+                    <tr
+                      onClick={() => serviceAc(s.service)}
+                      className="cursor-pointer hover:bg-[var(--bg-elevated)]"
+                    >
+                      <Td className="font-mono">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            serviceAc(s.service);
+                          }}
+                          aria-expanded={acik}
+                          aria-label={`${s.service} sunucularını ${acik ? 'gizle' : 'göster'}`}
+                          className="inline-flex items-center gap-1"
+                        >
+                          <ChevronRightIcon
+                            className={`w-3.5 h-3.5 transition-transform ${acik ? 'rotate-90' : ''}`}
+                          />
+                          {s.service}
+                        </button>
+                      </Td>
+                      <Td align="right" className="tabular-nums">
+                        {nf(s.hosts)}
+                      </Td>
+                      <Td>
+                        <span className="flex flex-wrap gap-1">
+                          {s.envs.map((e) => (
+                            <Pill key={e} tone="info">
+                              {e}
+                            </Pill>
+                          ))}
+                        </span>
+                      </Td>
+                    </tr>
+                    {acik && (
+                      <tr>
+                        <td
+                          colSpan={3}
+                          className="px-4 pb-3"
+                          style={{ background: 'var(--bg-elevated)' }}
+                        >
+                          <ServiceSunuculari
+                            service={s.service}
+                            hosts={(s.hostnames ?? [])
+                              .map((h) => hostByName.get(h))
+                              .filter((h): h is NginxInvHost => !!h)}
+                            unlisted={t.servicesUnlisted ?? []}
+                          />
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })}
             </tbody>
           </TableShell>
         </Panel>

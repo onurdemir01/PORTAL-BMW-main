@@ -1165,6 +1165,8 @@ export interface NginxInventoryResult {
     /** tablodaki env ile sunucu adi kalibinin celistigi sunucu (betik duzeltmesi yayilana kadar) */
     envCorrected?: number;
     services: number;
+    /** services=too_many yazan sunucular (5'ten fazla service; liste toplanmadi). */
+    servicesUnlisted?: string[];
     nginxVersions: number;
     osVersions: number;
     cpuTotal: number;
@@ -1173,7 +1175,8 @@ export interface NginxInventoryResult {
     diskWebLog: NginxInvSize;
   };
   byEnv: { env: string; hosts: number; locations: { location: string; hosts: number }[] }[];
-  byService: { service: string; hosts: number; envs: string[] }[];
+  /** hostnames: o service'i barindiran sunucular (ayrinti `hosts` satirlarinda). */
+  byService: { service: string; hosts: number; envs: string[]; hostnames?: string[] }[];
   versions: {
     nginx: NginxInvDist[];
     os: NginxInvDist[];
