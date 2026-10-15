@@ -13,6 +13,7 @@ import { useJobTracker } from '@/contexts/JobTrackerContext';
 import { Modal } from '@/components/common/Modal';
 import { fmtDateTime } from '@/utils/datetime';
 import { toast } from '@/hooks/useToast';
+import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { DURUM, bilgiAyristir, goruntuAyristir, islemAyristir, onceOzeti, rebootOldu, sunucuListesi, urunTablosu, type Durum, type IslemSatiri } from './rebootKontrolu';
 
 const TERMINAL = new Set(['successful', 'failed', 'error', 'canceled']);
@@ -259,7 +260,7 @@ export default function RebootKontroluTab() {
       else if (!r.ok) toast.error(r.message || 'Kayıt alınamadı.');
     } catch (e: unknown) { toast.error(e instanceof Error ? e.message : String(e)); }
   }, []);
-  useEffect(() => { yukle(); }, [yukle]);
+  useAsyncEffect(async (alive) => { if (alive()) await yukle(); }, [yukle]);
   useEffect(() => {
     serverHubApi.overview().then((o) => { if (o.ok) setBilinen(new Set((o.hosts || []).map((h: { host: string }) => h.host))); }).catch(() => {});
   }, []);

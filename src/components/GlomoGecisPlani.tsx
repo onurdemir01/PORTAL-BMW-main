@@ -241,7 +241,7 @@ export default function GlomoGecisPlani() {
     await yukle();
   };
 
-  const apps = data?.apps || [];
+  const apps = useMemo(() => data?.apps || [], [data]);
   const ekipler = useMemo(() => [...new Set(apps.flatMap((a) => a.ekip))].sort(), [apps]);
   const suzulmus = useMemo(() => {
     const q = ara.trim().toLowerCase();

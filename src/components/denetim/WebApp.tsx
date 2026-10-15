@@ -13,6 +13,7 @@ import { Select } from "@/components/ui/Form";
 import { fmtNumber } from "@/utils/datetime";
 import { TableEmptyRow } from "@/components/common/EmptyState";
 import { downloadCsv as csvDownload } from '@/utils/csv';
+import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 
 const nf = (n: number) => fmtNumber(n);
 
@@ -44,7 +45,9 @@ export default function WebApp() {
   const [dnsYukleniyor, setDnsYukleniyor] = useState(false);
 
   // Tablo geldikten SONRA DNS adlari 400'luk parcalar halinde cozulur (tabloyu bekletmez).
-  useEffect(() => {
+  // useAsyncEffect: ilk setState effect govdesinde senkron olmaz; `alive()` veri degisince
+  // ya da bilesen sokulunce false doner (eski tablonun DNS sonucu yenisine yazilmaz).
+  useAsyncEffect(async (alive) => {
     if (!data?.rows?.length) { setDns(null); return; }
     const tekil = new Map<string, { ad: string; bolge: string | null }>();
     for (const r of data.rows) for (const w of r.web) {
@@ -53,19 +56,15 @@ export default function WebApp() {
     }
     const adlar = [...tekil.values()];
     if (!adlar.length) { setDns(null); return; }
-    let iptal = false;
     setDnsYukleniyor(true);
-    (async () => {
-      const birlesik: DnsDurum = { sonuc: {} };
-      for (let i = 0; i < adlar.length && !iptal; i += 400) {
-        const c = await denetimApi.webAppDns(adlar.slice(i, i + 400)).catch(() => null);
-        if (!c || !c.ok) continue;
-        Object.assign(birlesik.sonuc, c.sonuc || {});
-        if (!iptal) setDns({ sonuc: { ...birlesik.sonuc } });
-      }
-      if (!iptal) setDnsYukleniyor(false);
-    })();
-    return () => { iptal = true; };
+    const birlesik: DnsDurum = { sonuc: {} };
+    for (let i = 0; i < adlar.length && alive(); i += 400) {
+      const c = await denetimApi.webAppDns(adlar.slice(i, i + 400)).catch(() => null);
+      if (!c || !c.ok) continue;
+      Object.assign(birlesik.sonuc, c.sonuc || {});
+      if (alive()) setDns({ sonuc: { ...birlesik.sonuc } });
+    }
+    if (alive()) setDnsYukleniyor(false);
   }, [data]);
 
   // POOL: ayni VIP'e (uyenin KENDI sitesinin cevabiyla) cozulen tum web sunuculari.
