@@ -240,4 +240,33 @@ describe('StoppedPanel sapma taramasi', () => {
     });
     expect(mockDiscover).not.toHaveBeenCalled();
   });
+
+  // ── SA8: NAMESPACE TAVANI ADMIN AYARINDAN (2026-10-14) ────────────────────
+  //
+  // Tavan ekranda sabit 60'ti; sunucu hic uygulamiyordu. Artik Admin > Sistem
+  // `SCALEX_MAX_AUDIT_NAMESPACES`; sayfa /config'ten okuyup prop olarak verir ve sunucu
+  // ayni tavani tek istekte uygular. Ekran admin'in sayisini soyler, 60'i degil.
+  it('SA8 namespace tavani prop (admin ayari) ile gelir; metin o sayiyi soyler', async () => {
+    const uc = Array.from({ length: 3 }, (_, i) =>
+      makeItem({ id: i + 1, namespace: `ns-${i}`, appName: `app-${i}` }),
+    );
+    mockStopped.mockResolvedValue(listOf(uc));
+    mockDiscover.mockResolvedValue({ ok: true, serverId: 1, jobId: 42, status: 'pending' });
+
+    const { unmount } = render(<StoppedPanel env="" tenant="" maxAuditNamespaces={2} />);
+    await screen.findByText(/app-0/);
+    await clickRefresh();
+    await waitFor(() => {
+      expect(screen.getByText(/Bu listede 3 namespace var \(sınır 2\)/)).toBeTruthy();
+    });
+    expect(mockDiscover).not.toHaveBeenCalled();
+    unmount();
+
+    // Tavan 3 iken ayni liste taranir (tek is).
+    render(<StoppedPanel env="" tenant="" maxAuditNamespaces={3} />);
+    await screen.findByText(/app-0/);
+    await clickRefresh();
+    await waitFor(() => expect(mockDiscover).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText(/sınır 60/)).toBeNull();
+  });
 });

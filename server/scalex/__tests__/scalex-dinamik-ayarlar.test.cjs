@@ -155,6 +155,7 @@ test('DA7 ekran fallback degerleri sunucu fabrika degerleriyle AYNI', () => {
     ['maxTargets: 200', 'SCALEX_MAX_TARGETS'],
     ['prodConfirmThreshold: 5', 'SCALEX_PROD_CONFIRM_THRESHOLD'],
     ['maxAuditGroups: 12', 'SCALEX_MAX_AUDIT_GROUPS'],
+    ['maxAuditNamespaces: 60', 'SCALEX_MAX_AUDIT_NAMESPACES'],
   ];
   for (const [uiText, key] of pairs) {
     assert.ok(ui.includes(uiText), `ekran fallback'i "${uiText}" degil`);
@@ -164,6 +165,7 @@ test('DA7 ekran fallback degerleri sunucu fabrika degerleriyle AYNI', () => {
   // StoppedPanel'in kendi fabrika degeri de ayni olmali.
   const panel = fs.readFileSync(path.join(ROOT, 'src/components/scalex/StoppedPanel.tsx'), 'utf8');
   assert.match(panel, /const MAX_AUDIT_GROUPS = 12;/, 'panel fabrika tavani ayrismis');
+  assert.match(panel, /const MAX_AUDIT_NAMESPACES = 60;/, 'panel namespace fabrika tavani ayrismis');
 });
 
 // DA8 — UCUN KARARI. DA6 yalnizca LISTENIN var oldugunu kontrol ediyordu; mutasyon

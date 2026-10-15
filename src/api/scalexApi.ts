@@ -904,6 +904,8 @@ export const scalexApi = {
       maxTargets: number;
       prodConfirmThreshold: number;
       maxAuditGroups: number;
+      /** Tek keşif işinde namespace tavanı (sunucu da uygular). Eski sunucu göndermez. */
+      maxAuditNamespaces?: number;
       problems: string[];
       message?: string;
     }>;

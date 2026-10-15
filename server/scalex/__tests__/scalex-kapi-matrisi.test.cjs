@@ -1934,3 +1934,69 @@ test('KM28 onizleme sonuc kontrolu esigini, hedef tavanini ve yazili onay esigin
     }
   }
 });
+
+// ── KM29 KESIF GIRDI SINIRLARI SUNUCUDA ─────────────────────────────────────────
+// `namespaces` sinirsizdi (yalniz ekran 60'ta duruyordu) ve ek namespace'lerin bicimi
+// yalniz playbook'ta denetleniyordu: her biri cluster basina bir yetki sorgusu, sonunda
+// girdi dogrulamasinda dusen bir AWX isi. Olcut: asan / bicimsiz istek 400 alir, HICBIR
+// yetki sorgusu ve AWX cagrisi yapilmaz; tavan admin ayaridir ve /config ayni degeri verir.
+test('KM29 kesif namespace tavani ve bicimi sunucuda: asan istek DB ye ve AWX e gitmeden 400', async (t) => {
+  sim.konsoluSustur(t);
+  sim.sifirla();
+  const eski = process.env.SCALEX_MAX_AUDIT_NAMESPACES;
+  const kesif = (namespaces, ek = {}) =>
+    sim.istek('POST', '/api/scalex/discover', {
+      env: 'prod',
+      tenant: 't1',
+      namespace: namespaces[0],
+      namespaces,
+      clusters: ['c1', 'c2'],
+      mode: 'state',
+      ...ek,
+    });
+  const dokunulmadi = (neden) => {
+    assert.deepEqual(sim.kayit.yetkiSorgulari, [], `${neden}: yetki sorgusu yapildi`);
+    assert.deepEqual(sim.kayit.awxIstekleri, [], `${neden}: AWX'e gidildi`);
+  };
+  try {
+    delete process.env.SCALEX_MAX_AUDIT_NAMESPACES;
+    assert.equal((await sim.istek('GET', '/api/scalex/config')).json.maxAuditNamespaces, 60);
+
+    const cok = Array.from({ length: 61 }, (_, i) => `ns-${i}`);
+    const r1 = await kesif(cok);
+    assert.equal(r1.status, 400, r1.metin);
+    assert.equal(r1.json.code, 'scalex_too_many_namespaces');
+    assert.match(r1.json.message, /en fazla 60 namespace/);
+    dokunulmadi('fabrika tavani');
+
+    // Admin ayari ANINDA.
+    process.env.SCALEX_MAX_AUDIT_NAMESPACES = '2';
+    assert.equal((await sim.istek('GET', '/api/scalex/config')).json.maxAuditNamespaces, 2);
+    const r2 = await kesif(['odeme', 'kredi', 'ns-x']);
+    assert.equal(r2.status, 400, r2.metin);
+    assert.match(r2.json.message, /en fazla 2 namespace/);
+    dokunulmadi('admin tavani');
+
+    // Bicimsiz EK namespace (ilki gecerli): eskiden AWX isi baslayip playbook'ta duserdi.
+    const r3 = await kesif(['odeme', 'Kotu_Ad']);
+    assert.equal(r3.status, 400, r3.metin);
+    assert.match(r3.json.message, /Geçersiz namespace: Kotu_Ad/);
+    dokunulmadi('bicimsiz ek namespace');
+
+    // Uygulama listesi icin sert sinir (hedef tavaninin ust siniri).
+    const sinir = require('../config.cjs').TUNABLES.SCALEX_MAX_TARGETS.hardMax;
+    const r4 = await sim.onizle({ apps: Array.from({ length: sinir + 1 }, (_, i) => `app-${i}`) });
+    assert.equal(r4.status, 400, r4.metin);
+    assert.match(r4.json.message, new RegExp(`en fazla ${sinir} uygulama`));
+    dokunulmadi('uygulama siniri');
+
+    // Tavanin icinde: gecer, her namespace cluster basina denetlenir, is baslar.
+    const r5 = await kesif(['odeme', 'kredi']);
+    assert.equal(r5.status, 200, r5.metin);
+    assert.deepEqual(sim.kayit.yetkiSorgulari, ['ns:odeme', 'ns:kredi']);
+    assert.equal(sim.baslatmalar().length, 1, 'kesif isi baslamadi');
+  } finally {
+    if (eski === undefined) delete process.env.SCALEX_MAX_AUDIT_NAMESPACES;
+    else process.env.SCALEX_MAX_AUDIT_NAMESPACES = eski;
+  }
+});

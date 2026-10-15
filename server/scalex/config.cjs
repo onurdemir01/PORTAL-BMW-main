@@ -44,6 +44,10 @@ const TUNABLES = Object.freeze({
   SCALEX_PROD_CONFIRM_THRESHOLD: { fallback: 5, hardMin: 1, hardMax: 1000 },
   // Sapma taramasinda es zamanli AWX isi tavani (StoppedPanel).
   SCALEX_MAX_AUDIT_GROUPS: { fallback: 12, hardMin: 1, hardMax: 200 },
+  // Tek kesif isinde taranabilecek namespace tavani. Eskiden yalniz ekranda (StoppedPanel)
+  // sabit 60'ti; sunucu `namespaces` listesini sinirsiz kabul ediyor ve her biri icin
+  // cluster basina bir yetki sorgusu atiyordu. Artik sunucu uygular, ekran buradan okur.
+  SCALEX_MAX_AUDIT_NAMESPACES: { fallback: 60, hardMin: 1, hardMax: 500 },
 });
 
 // ── PROD SMART KIPI (2026-10-13) ────────────────────────────────────────────
@@ -213,6 +217,7 @@ function publicConfig() {
     maxTargets: values.SCALEX_MAX_TARGETS,
     prodConfirmThreshold: values.SCALEX_PROD_CONFIRM_THRESHOLD,
     maxAuditGroups: values.SCALEX_MAX_AUDIT_GROUPS,
+    maxAuditNamespaces: values.SCALEX_MAX_AUDIT_NAMESPACES,
     sources: { ...sources, [SMART_MODE_KEY]: kip.source },
     problems: kip.problem ? [...problems, kip.problem] : problems,
   };

@@ -1065,6 +1065,7 @@ const ScaleXPage: React.FC = () => {
           env={env}
           tenant={tenant}
           maxAuditGroups={limits.maxAuditGroups}
+          maxAuditNamespaces={limits.maxAuditNamespaces}
           onRestore={restoreFromPanel}
           reloadKey={stoppedReloadKey}
           onSayim={setDurdurulmusSayisi}

@@ -163,6 +163,8 @@ function bosKayit() {
     ocoKayitlari: [],
     smartTalepleri: [],
     biletler: [],
+    // Yetki denetimleri (gercekte her biri cluster basina bir portal DB sorgusu).
+    yetkiSorgulari: [],
   };
 }
 let sonId = 0;
@@ -579,10 +581,12 @@ sahte('scalex/catalog.cjs', {
       if (!sim.ayar.katalog.clusters.includes(c)) throw katalogdaYok('Cluster', c);
   },
   assertNamespaceAllowed: async ({ namespace }) => {
+    sim.kayit.yetkiSorgulari.push(`ns:${namespace}`);
     if (!sim.ayar.katalog.namespaces.includes(namespace))
       throw katalogdaYok('Namespace', namespace);
   },
   assertAppsAllowed: async ({ apps }) => {
+    sim.kayit.yetkiSorgulari.push(`apps:${apps.length}`);
     for (const a of apps) if (!sim.ayar.katalog.apps.includes(a)) throw katalogdaYok('Uygulama', a);
   },
   filterStoppedForUser: async (rows) => rows,
