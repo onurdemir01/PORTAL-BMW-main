@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { selfServiceApi, type SelfServiceGroup } from '@/api/selfServiceApi';
-import { ansibleApi, type OcoWindowInfo } from '@/api/ansibleApi';
+import { ansibleApi, type OcoWindowInfo, type SmartTicketStatusYaniti } from '@/api/ansibleApi';
 import { nobetciApi, type NobetciResult } from '@/api/nobetciApi';
 import type { AnsibleSsItem, SurveyField, JobHistoryRecord, LaunchOptions, SurveyGates } from '@/api/ansibleApi';
 import FieldOverridesModal from '@/components/self_service/FieldOverridesModal';
@@ -39,6 +39,7 @@ import OpenshiftCheckSection from '@/components/self_service/OpenshiftCheckSecti
 import { SkeletonList } from '@/components/common/Skeleton';
 import LoadError from '@/components/common/LoadError';
 import KapamaOnayiUyarisi from '@/components/self_service/KapamaOnayiUyarisi';
+import SmartTalepSayaci from '@/components/common/SmartTalepSayaci';
 import { fmtDateTime } from '@/utils/datetime';
 import { isFieldActive as isFieldActiveShared } from '../../shared/surveyConditions.cjs';
 
@@ -126,6 +127,15 @@ function SurveyModal({ item, onClose, inline = false }: SurveyModalProps) {
     status: string;
     errorMessage?: string | null;
     externalTicketId?: string | null;
+  } | null>(null);
+  // ZAMAN ASIMI SAYACI (2026-10-15): bekleyen talebin son durum yaniti (createdAt / deadline /
+  // serverNow). NEDEN talep id'siyle: yeni talep acilinca ilk yanit gelene kadar ONCEKI talebin
+  // son tarihi gorunmesin. alindiMs (2026-10-15 denetim): yanitin istemciye ulastigi an - sayac saat
+  // kaymasini kurulus anindan degil bundan olcer.
+  const [talepDurumu, setTalepDurumu] = useState<{
+    id: number;
+    yanit: SmartTicketStatusYaniti;
+    alindiMs: number;
   } | null>(null);
   // Kapama Onayı'ndan (Smart'ta talep tamamlandıktan) sonra otomasyon tetiklenir ama Teams
   // bildirimi gecikebilir/gitmeyebilir — kullanıcı "kimseye ulaşamıyorum" durumunda kalmasın
@@ -293,6 +303,7 @@ function SurveyModal({ item, onClose, inline = false }: SurveyModalProps) {
       try {
         const r = await ansibleApi.smartTicketStatus(pendingTicket.id);
         if (!r.ok) return;
+        setTalepDurumu({ id: pendingTicket.id, yanit: r, alindiMs: Date.now() });
         if (r.status === 'LAUNCHED' && r.jobId) {
           clearInterval(timer);
           setPendingTicket(null);
@@ -1017,6 +1028,14 @@ function SurveyModal({ item, onClose, inline = false }: SurveyModalProps) {
                       Smart Kayıt No:{' '}
                       <span className="font-mono">{pendingTicket.externalTicketId}</span>
                     </p>
+                  )}
+                  {talepDurumu?.id === pendingTicket.id && (
+                    <SmartTalepSayaci
+                      talep={talepDurumu.yanit}
+                      serverNow={talepDurumu.yanit.serverNow}
+                      alindiMs={talepDurumu.alindiMs}
+                      className="mx-auto max-w-sm text-left"
+                    />
                   )}
                   <KapamaOnayiUyarisi />
                   <p className="text-sm text-[var(--text-secondary)]">

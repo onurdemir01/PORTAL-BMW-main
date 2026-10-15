@@ -69,6 +69,8 @@ const TEST_DIRS = [
   'src/components/opsx/__tests__',
   'src/components/server_hub/__tests__',
   'src/components/admin/__tests__',
+  'src/components/common/__tests__',
+  'src/components/self_service/__tests__',
   'src/components/denetim/__tests__',
   'src/components/nginx_console/__tests__',
   'src/hooks/__tests__',

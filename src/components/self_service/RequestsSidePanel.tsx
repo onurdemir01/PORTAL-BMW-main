@@ -23,6 +23,7 @@ import { NavLink } from 'react-router-dom';
 import { Modal } from '@/components/common/Modal';
 import { toast } from '@/hooks/useToast';
 import KapamaOnayiUyarisi, { kapamaOnayinda } from './KapamaOnayiUyarisi';
+import SmartTalepSayaci from '@/components/common/SmartTalepSayaci';
 
 interface TicketDetail {
   externalTicketId?: string | null;
@@ -73,6 +74,11 @@ export default function RequestsSidePanel() {
     }
   });
   const [tickets, setTickets] = useState<SmartTicketSummary[]>([]);
+  // Listenin geldigi yanitin sunucu saati - zaman asimi sayaci saat kaymasini bununla duzeltir.
+  // NEDEN alindiMs (2026-10-15 denetim): panel daraltilip acilinca kartlar yenileme yaniti
+  // gelmeden saklanmis yanitla kurulur; kayma yanitin GELDIGI andan olculmezse kalan sure
+  // yanitin yasi kadar fazla gorunur.
+  const [sunucuSaati, setSunucuSaati] = useState<{ serverNow: string | null; alindiMs: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
   const [cancellingId, setCancellingId] = useState<number | null>(null);
@@ -181,6 +187,7 @@ export default function RequestsSidePanel() {
       const r = await ansibleApi.smartTicketsMine();
       if (r.ok) {
         setTickets(r.tickets || []);
+        setSunucuSaati({ serverNow: r.serverNow ?? null, alindiMs: Date.now() });
         setErr('');
       } else setErr(r.message || 'Talepler alınamadı.');
     } catch (e: unknown) {
@@ -275,6 +282,8 @@ export default function RequestsSidePanel() {
   };
 
   const pendingCount = tickets.filter((t) => t.status === 'PENDING').length;
+  // Genel zaman asimi (SMART_TICKET_TIMEOUT_MINUTES) acikken "Süre sınırı yok" cumlesi yanlis olur.
+  const genelSureVar = tickets.some((t) => t.status === 'PENDING' && t.deadlineKaynak === 'genel');
 
   if (collapsed) {
     return (
@@ -349,8 +358,15 @@ export default function RequestsSidePanel() {
                 <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] text-amber-900">
                   <b>{pendingCount} talebiniz Smart’ta bekliyor.</b> Onaylar tamamlanınca talep
                   <b> “Kapama Onayı”</b> adımına düşer; orada <b>TAMAMLA</b>’ya basılmadan iş
-                  <b> başlamaz</b>. Süre sınırı yok; OCO kaydından açılan talepler en geç
-                  <b> kesinti penceresinin sonuna</b> kadar tamamlanabilir.
+                  <b> başlamaz</b>.{' '}
+                  {genelSureVar ? (
+                    <>Süre sınırı var: kalan süre her talebin kartında görünür; dolarsa iş başlamaz.</>
+                  ) : (
+                    <>
+                      Süre sınırı yok; OCO kaydından açılan talepler en geç
+                      <b> kesinti penceresinin sonuna</b> kadar tamamlanabilir.
+                    </>
+                  )}
                 </div>
               </div>
             )}
@@ -422,6 +438,13 @@ export default function RequestsSidePanel() {
                           >
                             {meta.label}
                           </span>
+                          {/* ZAMAN ASIMI SAYACI (2026-10-15): yalniz onay bekleyen talepte. */}
+                          <SmartTalepSayaci
+                            talep={t}
+                            serverNow={sunucuSaati?.serverNow}
+                            alindiMs={sunucuSaati?.alindiMs}
+                            kompakt
+                          />
                         </div>
                       </button>
 

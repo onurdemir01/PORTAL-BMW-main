@@ -20,6 +20,7 @@ import OcoSchedulesPanel from './OcoSchedulesPanel';
 import { TableEmptyRow } from '@/components/common/EmptyState';
 import { fmtDateTime as fmt } from '@/utils/datetime';
 import { downloadCsv as csvIndir } from '@/utils/csv';
+import SmartTalepSayaci from '@/components/common/SmartTalepSayaci';
 
 const STATUS_META: Record<string, { label: string; className: string }> = {
   PENDING: { label: 'Onay Bekliyor', className: 'bg-amber-50 text-amber-700 border-amber-200' },
@@ -64,6 +65,11 @@ export default function SmartTicketsTab() {
   // calismadi" sorusunun cevabi; yan yana durmalari aramayi kolaylastiriyor.
   const [panel, setPanel] = useState<'smart' | 'oco'>('smart');
   const [rows, setRows] = useState<AdminSmartTicket[]>([]);
+  // Listenin geldigi yanitin sunucu saati - zaman asimi sayaci saat kaymasini bununla duzeltir.
+  // NEDEN alindiMs (2026-10-15 denetim): OCO paneline gidip donunce tablo saklanmis yanitla
+  // yeniden kurulur (liste yeniden cekilmez); kayma yanitin GELDIGI andan olculmezse kalan sure
+  // yanitin yasi kadar fazla gorunur.
+  const [sunucuSaati, setSunucuSaati] = useState<{ serverNow: string | null; alindiMs: number } | null>(null);
   const [summary, setSummary] = useState<Record<string, number>>({});
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
@@ -92,6 +98,7 @@ export default function SmartTicketsTab() {
         });
         if (r.ok) {
           setRows(r.tickets || []);
+          setSunucuSaati({ serverNow: r.serverNow ?? null, alindiMs: Date.now() });
           setTotal(r.total || 0);
           setSummary(r.summary || {});
           setErr('');
@@ -373,7 +380,18 @@ export default function SmartTicketsTab() {
                           {fmt(t.resolvedAt)}
                         </td>
                         <td className="px-3 py-2 text-xs text-gray-600 whitespace-nowrap tabular-nums">
-                          {duration(t.createdAt, t.resolvedAt)}
+                          {/* ZAMAN ASIMI SAYACI (2026-10-15): onay bekleyen talepte sonuclanma
+                              suresi yok; yerine zaman asimina kalan (ya da sinirsizsa gecen) sure. */}
+                          {t.status === 'PENDING' ? (
+                            <SmartTalepSayaci
+                              talep={t}
+                              serverNow={sunucuSaati?.serverNow}
+                              alindiMs={sunucuSaati?.alindiMs}
+                              kompakt
+                            />
+                          ) : (
+                            duration(t.createdAt, t.resolvedAt)
+                          )}
                         </td>
                         <td className="px-3 py-2 text-xs font-mono text-gray-700">
                           {t.jobId ? `#${t.jobId}` : '—'}

@@ -415,18 +415,8 @@ export const ansibleApi = {
   // Smart onayı bekleyen bir talebin durumu. status: PENDING | LAUNCHED | REJECTED |
   // TIMEOUT | ERROR — LAUNCHED olunca jobId dolar ve çağıran normal ssJobStatus
   // takibine geçebilir.
-  smartTicketStatus: (
-    ticketId: number,
-  ): Promise<{
-    ok: boolean;
-    status: string;
-    smartStateName?: string;
-    jobId?: number | null;
-    awxServerId?: number | null;
-    errorMessage?: string | null;
-    externalTicketId?: string | null;
-    message?: string;
-  }> => fetch(`${BASE}/ss/smart-ticket/${ticketId}/status`).then(safeJson),
+  smartTicketStatus: (ticketId: number): Promise<SmartTicketStatusYaniti> =>
+    fetch(`${BASE}/ss/smart-ticket/${ticketId}/status`).then(safeJson),
 
   // "Taleplerim" ekraninda bir talebe tiklandiginda: hangi otomasyonun hangi extraVars ile
   // tetiklendigi ve hangi Smart kaydinin acildigi (bkz. server/ansible/runner.cjs GET
@@ -513,8 +503,13 @@ export const ansibleApi = {
 
   // "Taleplerim" ekrani — kullanicinin ACTIGI TUM Smart taleplerinin (durum farketmeksizin)
   // kalici gecmisi. smartTicketStatus()'tan farkli olarak tek bir ticketId degil, TUMU doner.
-  smartTicketsMine: (): Promise<{ ok: boolean; tickets: SmartTicketSummary[]; message?: string }> =>
-    fetch(`${BASE}/ss/smart-tickets/mine`).then(safeJson),
+  // serverNow: yanitin uretildigi sunucu saati (zaman asimi sayaci saat kaymasini duzeltir).
+  smartTicketsMine: (): Promise<{
+    ok: boolean;
+    tickets: SmartTicketSummary[];
+    serverNow?: string;
+    message?: string;
+  }> => fetch(`${BASE}/ss/smart-tickets/mine`).then(safeJson),
 
   // Admin > Smart Talepleri — TUM kullanicilarin talepleri (sayfalanmis + filtreli).
   // smartTicketsMine()'dan farki: kullanici filtresi yok, admin yetkisi gerektirir.
@@ -533,6 +528,7 @@ export const ansibleApi = {
     offset: number;
     summary: Record<string, number>;
     tickets: AdminSmartTicket[];
+    serverNow?: string;
     message?: string;
   }> => {
     const qs = new URLSearchParams();
@@ -633,6 +629,33 @@ export interface AdminSmartTicket {
   cancelledBy?: string | null;
   createdAt: string;
   resolvedAt?: string | null;
+  /** Zaman asimi son tarihi (ISO); bkz. SmartDeadlineKaynak. */
+  deadline?: string | null;
+  deadlineKaynak?: SmartDeadlineKaynak;
+}
+
+// ZAMAN ASIMI SAYACI (2026-10-15): sunucu bekleyen talebin son tarihini poller ile AYNI
+// kuraldan hesaplar (server/smart/deadline.cjs). deadline: talep bu andan SONRA TIMEOUT olur;
+// null = sure siniri yok. 'oco' = OCO kesinti penceresinin sonu, 'genel' =
+// SMART_TICKET_TIMEOUT_MINUTES. Yalniz PENDING/LAUNCHING iken dolu; LAUNCHING'de poller sureyi
+// UYGULAMAZ (onay gelmistir) - ekranlar sayaci yalniz PENDING'de gosterir.
+export type SmartDeadlineKaynak = 'oco' | 'genel' | null;
+
+export interface SmartTicketStatusYaniti {
+  ok: boolean;
+  status: string;
+  smartStateName?: string;
+  jobId?: number | null;
+  awxServerId?: number | null;
+  errorMessage?: string | null;
+  externalTicketId?: string | null;
+  /** Talebin acildigi an (ISO). */
+  createdAt?: string;
+  deadline?: string | null;
+  deadlineKaynak?: SmartDeadlineKaynak;
+  /** Yanitin uretildigi sunucu saati (ISO) - istemci saat kaymasi icin. */
+  serverNow?: string;
+  message?: string;
 }
 
 export interface SmartTicketSummary {
@@ -647,6 +670,9 @@ export interface SmartTicketSummary {
   externalTicketId?: string | null;
   cancelNote?: string | null;
   cancelledBy?: string | null;
+  /** Zaman asimi son tarihi (ISO); bkz. SmartDeadlineKaynak. */
+  deadline?: string | null;
+  deadlineKaynak?: SmartDeadlineKaynak;
 }
 
 export interface FieldOverride {

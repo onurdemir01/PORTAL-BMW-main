@@ -3331,10 +3331,19 @@ function initAnsibleRunner(app) {
         resolvedLaunchOptions,
         specFields,
         buildSmartMetadata,
+        // KESINTI PENCERESI BILETE TASINIR (2026-10-15): OCO zamanlayicisinin yedek yolu
+        // (talep aninda bilet acilamamis kayit) bileti BURADA acar. Pencere alanlari
+        // aktarilmazsa bilet sinirsiz bekler ve onay anindaki nextRunAt kapisi (runner smart
+        // poller geri cagrisi, iki alan da doluysa calisir) atlanir - pencere kapandiktan
+        // gunler sonra gelen onay isi OCO disinda prod'da kosturur. Bkz.
+        // server/smart/__tests__/oco-yedek-yol-son-tarih.test.cjs.
         pendingLaunchExtras: {
           gateVars,
           ...(opts.ocoRecordId ? { ocoRecordId: opts.ocoRecordId } : {}),
           ...(plan.yutmaKorumasi === true ? { yutmaKorumasi: true } : {}),
+          ...(plan.ocoWindowStartIso ? { ocoWindowStartIso: plan.ocoWindowStartIso } : {}),
+          ...(plan.ocoWindowEndIso ? { ocoWindowEndIso: plan.ocoWindowEndIso } : {}),
+          ...(plan.ocoNumber ? { ocoNumber: plan.ocoNumber } : {}),
         },
       });
       return {
@@ -3362,7 +3371,8 @@ function initAnsibleRunner(app) {
     require('../oco/poller.cjs').startPoller(async (rec) => {
       const server = getServerById(rec.awxServerId);
       if (!server) throw new Error(`AWX sunucusu bulunamadı: ${rec.awxServerId}`);
-      return launchOrRequestApproval(server, rec.awxTemplateId, rec.pendingLaunch, {
+      // Pencere ve OCO numarasi KAYDIN kolonlarindan (ScaleX guncellemesi pakete dokunmaz).
+      return launchOrRequestApproval(server, rec.awxTemplateId, require('../oco/kayit-plani.cjs').ocoKaydiPlani(rec), {
         ocoRecordId: rec.id,
       });
     });
@@ -4792,6 +4802,10 @@ function initAnsibleRunner(app) {
       ) {
         return res.status(403).json({ ok: false, message: 'Bu talep size ait değil.' });
       }
+      // ZAMAN ASIMI SAYACI (2026-10-15): son tarih poller ile AYNI kuraldan (deadline.cjs)
+      // hesaplanir; serverNow istemcinin saat kaymasini duzeltmesi icin.
+      const { talepSonTarihiAlanlari } = require('../smart/deadline.cjs');
+      const sonTarih = talepSonTarihiAlanlari(ticket, require('../smart/config.cjs').getConfig());
       res.json({
         ok: true,
         status: ticket.status,
@@ -4801,6 +4815,10 @@ function initAnsibleRunner(app) {
         awxServerId: ticket.awxServerId ?? null,
         errorMessage: ticket.errorMessage,
         externalTicketId: ticket.externalTicketId,
+        createdAt: ticket.createdAt,
+        deadline: sonTarih.deadline,
+        deadlineKaynak: sonTarih.deadlineKaynak,
+        serverNow: new Date().toISOString(),
       });
     } catch (err) {
       res.status(500).json({ ok: false, message: err.message });
@@ -4864,8 +4882,12 @@ function initAnsibleRunner(app) {
       const smartStore = require('../smart/store.cjs');
       const username = req.session?.user?.username || '';
       const tickets = await smartStore.listByUsername(username);
+      // Zaman asimi sayaci (2026-10-15): bkz. /smart-ticket/:id/status.
+      const { talepSonTarihiAlanlari } = require('../smart/deadline.cjs');
+      const smartCfg = require('../smart/config.cjs').getConfig();
       res.json({
         ok: true,
+        serverNow: new Date().toISOString(),
         tickets: tickets.map((t) => ({
           id: t.id,
           status: t.status,
@@ -4878,6 +4900,7 @@ function initAnsibleRunner(app) {
           createdAt: t.createdAt,
           resolvedAt: t.resolvedAt,
           externalTicketId: t.externalTicketId,
+          ...talepSonTarihiAlanlari(t, smartCfg),
         })),
       });
     } catch (err) {
@@ -4945,6 +4968,9 @@ function initAnsibleRunner(app) {
         smartStore.statusSummary(),
         resolveModuleTagger(),
       ]);
+      // Zaman asimi sayaci (2026-10-15): bkz. /smart-ticket/:id/status.
+      const { talepSonTarihiAlanlari } = require('../smart/deadline.cjs');
+      const smartCfg = require('../smart/config.cjs').getConfig();
 
       res.json({
         ok: true,
@@ -4952,6 +4978,7 @@ function initAnsibleRunner(app) {
         limit,
         offset,
         summary,
+        serverNow: new Date().toISOString(),
         tickets: tickets.map((t) => ({
           id: t.id,
           externalTicketId: t.externalTicketId,
@@ -4977,6 +5004,7 @@ function initAnsibleRunner(app) {
           cancelledBy: t.cancelledBy,
           createdAt: t.createdAt,
           resolvedAt: t.resolvedAt,
+          ...talepSonTarihiAlanlari(t, smartCfg),
         })),
       });
     } catch (err) {

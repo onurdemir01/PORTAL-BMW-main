@@ -5,8 +5,14 @@
 // talep acildigi anki gorunumde kaliyordu. Self Servis'teki desen (SelfServicePage pendingTicket):
 // talep beklerken durum aralikla sorulur; LAUNCHED olunca `onBasladi` cagrilir (is takibine gecilir),
 // reddedilen / iptal / zaman asimi / hata `talepSonu` olarak doner. Gecici ag hatasi takibi DURDURMAZ.
+//
+// sonDurum (2026-10-15, zaman asimi sayaci): son basarili durum yaniti (createdAt, deadline,
+// serverNow dahil). NEDEN ticketId ile saklanir: "Yeni Islem" sonrasi acilan ikinci talepte ilk
+// yanit gelene kadar ONCEKI talebin son tarihi sayacta gorunmesin.
+// sonDurumAlindiMs (2026-10-15 denetim): o yanitin istemciye ULASTIGI yerel an; sayac saat kaymasini
+// sunucu saati ile bu an arasindan olcer (kurulus anindan degil - bayat yanitla kurulursa sasardi).
 import { useEffect, useRef, useState } from "react";
-import { ansibleApi } from "@/api/ansibleApi";
+import { ansibleApi, type SmartTicketStatusYaniti } from "@/api/ansibleApi";
 
 const BEKLEYEN = ["PENDING", "LAUNCHING"];
 
@@ -19,8 +25,14 @@ export function useOnaySonrasiTakip(
   ticketId: number | null | undefined,
   onBasladi: (is: { jobId: number; awxServerId: number }) => void,
   { ilkMs = 3000, aralikMs = 5000 }: { ilkMs?: number; aralikMs?: number } = {},
-): { talepSonu: TalepSonu | null; sifirla: () => void } {
+): {
+  talepSonu: TalepSonu | null;
+  sifirla: () => void;
+  sonDurum: SmartTicketStatusYaniti | null;
+  sonDurumAlindiMs: number | null;
+} {
   const [talepSonu, setTalepSonu] = useState<TalepSonu | null>(null);
+  const [son, setSon] = useState<{ ticketId: number; yanit: SmartTicketStatusYaniti; alindiMs: number } | null>(null);
   // Geri cagrinin EN GUNCEL hali (effect her render'da yeniden kurulmasin).
   const basladiRef = useRef(onBasladi);
   useEffect(() => {
@@ -35,6 +47,7 @@ export function useOnaySonrasiTakip(
       try {
         const r = await ansibleApi.smartTicketStatus(ticketId as number);
         if (cancelled) return;
+        if (r.ok) setSon({ ticketId: ticketId as number, yanit: r, alindiMs: Date.now() });
         if (r.ok && r.status === "LAUNCHED" && r.jobId) {
           basladiRef.current({ jobId: r.jobId, awxServerId: Number(r.awxServerId ?? 0) });
           return;
@@ -55,5 +68,14 @@ export function useOnaySonrasiTakip(
     };
   }, [ticketId, talepSonu, ilkMs, aralikMs]);
 
-  return { talepSonu, sifirla: () => setTalepSonu(null) };
+  const gecerli = son && ticketId && son.ticketId === ticketId ? son : null;
+  return {
+    talepSonu,
+    sifirla: () => {
+      setTalepSonu(null);
+      setSon(null);
+    },
+    sonDurum: gecerli ? gecerli.yanit : null,
+    sonDurumAlindiMs: gecerli ? gecerli.alindiMs : null,
+  };
 }

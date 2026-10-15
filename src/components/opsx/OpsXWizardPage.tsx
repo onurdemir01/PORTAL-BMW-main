@@ -22,6 +22,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import OpsXSmartConfigModal from "./OpsXSmartConfigModal";
 import KapamaOnayiUyarisi from "@/components/self_service/KapamaOnayiUyarisi";
 import { useOnaySonrasiTakip } from "./useOnaySonrasiTakip";
+import SmartTalepSayaci from "@/components/common/SmartTalepSayaci";
 import AnsibleLogTerminal from "@/components/common/AnsibleLogTerminal";
 import PlatformStep from "./steps/PlatformStep";
 import AppSearchStep from "./steps/AppSearchStep";
@@ -212,7 +213,12 @@ const OpsXWizardPage: React.FC = () => {
     result && "pendingApproval" in result && result.pendingApproval && "ticketId" in result && result.ticketId
       ? result.ticketId
       : null;
-  const { talepSonu, sifirla: talepSonuSifirla } = useOnaySonrasiTakip(bekleyenTalep, ({ jobId, awxServerId }) => {
+  const {
+    talepSonu,
+    sifirla: talepSonuSifirla,
+    sonDurum: talepDurumu,
+    sonDurumAlindiMs: talepDurumuAlindiMs,
+  } = useOnaySonrasiTakip(bekleyenTalep, ({ jobId, awxServerId }) => {
     setResult((onceki) =>
       onceki ? ({ ...onceki, pendingApproval: false, jobId, awxServerId, status: "pending" } as typeof onceki) : onceki,
     );
@@ -797,6 +803,15 @@ const OpsXWizardPage: React.FC = () => {
                     <p className="mt-2 text-xs text-amber-600">{result.staleWarning}</p>
                   )}
                 </div>
+                {/* ZAMAN ASIMI SAYACI (2026-10-15): talep durumu yoklamasinin son yaniti
+                    (createdAt / deadline / serverNow + yanitin alindigi an). Ilk yanit gelene kadar
+                    cizilmez. */}
+                <SmartTalepSayaci
+                  talep={talepDurumu}
+                  serverNow={talepDurumu?.serverNow}
+                  alindiMs={talepDurumuAlindiMs}
+                  className="w-full max-w-sm text-left"
+                />
                 <KapamaOnayiUyarisi smartNo={'externalTicketId' in result ? result.externalTicketId : null} />
               </>
             ) : (

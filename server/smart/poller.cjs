@@ -13,12 +13,14 @@
 // kadar bekler. IKI istisna:
 //   * OCO'dan dogan (production) talep: sinir kesinti penceresinin SONU - o saatten sonra is
 //     zaten calismamali.
-//   * SMART_TICKET_TIMEOUT_MINUTES ortam degiskeni verilmisse o sure.
+//   * SMART_TICKET_TIMEOUT_MINUTES ortam degiskeni verilmisse o sure (2026-10-15: yalniz
+//     OCO penceresi OLMAYAN talepte; pencereli talepte pencere sonu esastir, bkz. deadline.cjs).
 'use strict';
 
 const store = require('./store.cjs');
 const client = require('./client.cjs');
 const { getConfig, isConfigured } = require('./config.cjs');
+const { talepSonTarihi } = require('./deadline.cjs');
 
 let _timer = null;
 let _onApproved = null; // (ticket) => Promise<{ jobId }> — runner.cjs'in gercek AWX launch fonksiyonu
@@ -88,24 +90,25 @@ async function _tickBody() {
     // bir daha hic islenmez - otomasyon ASLA tetiklenmez.
     // SURE SINIRI: varsayilan SINIRSIZ (null). OCO'dan dogan talepte sinir, kesinti
     // penceresinin SONUDUR: o saatten sonra is zaten calismamali, talebi acik tutmak
-    // kullaniciya yanlis umut verir. Ortam degiskeni verilmisse ikisinin BUYUGU alinir -
-    // pencere sonuna kadar onaylayabilmek, kisa bir genel sinir yuzunden kaybolmasin.
+    // kullaniciya yanlis umut verir. Gecerli pencere varsa genel sinir (ortam degiskeni)
+    // ne olursa olsun pencere sonu esas alinir (2026-10-15; ayrinti deadline.cjs).
+    // NEDEN (2026-10-15): kural deadline.cjs'e TEK KAYNAK olarak tasindi - ekrandaki
+    // "Zaman asimina kalan" sayaci ayni fonksiyondan beslenir, iki hesap ayrisamaz.
     const ageMinutes = (Date.now() - new Date(ticket.createdAt).getTime()) / 60000;
-    let timeoutMinutes = cfg.ticketTimeoutMinutes; // null = sinirsiz
+    const { timeoutMinutes, deadlineKaynak } = talepSonTarihi(ticket, cfg); // null = sinirsiz
     const winEndIso = ticket?.pendingLaunch?.ocoWindowEndIso;
-    if (winEndIso) {
-      const until = new Date(winEndIso).getTime();
-      const allowed = (until - new Date(ticket.createdAt).getTime()) / 60000;
-      if (Number.isFinite(allowed)) {
-        timeoutMinutes = timeoutMinutes == null ? allowed : Math.max(timeoutMinutes, allowed);
-      }
-    }
+    // NEDEN mesaj kaynaga gore (2026-10-15): eskiden `winEndIso` doluysa "pencere kapandi"
+    // deniyordu - sinir genel sinirdan gelse bile. Okunamayan pencere tarihinde ise
+    // `new Date(winEndIso).toISOString()` RangeError firlatip tick'i bu talepte kopariyordu;
+    // sonraki talepler (onaylananlar dahil) her turda islenmeden kaliyordu. 'oco' kaynagi
+    // yalniz pencere tarihi OKUNABILDIYSE gelir.
+    const pencereKapandi = deadlineKaynak === 'oco';
     if (timeoutMinutes != null && ageMinutes > timeoutMinutes) {
       await store
         .markState(ticket.id, {
           status: 'TIMEOUT',
           smartStateName: ticket.smartStateName,
-          errorMessage: winEndIso
+          errorMessage: pencereKapandi
             ? `Kesinti penceresi (${new Date(winEndIso).toISOString()}) kapandi, Smart onayi gelmedi - is tetiklenmedi.`
             : `${Math.round(timeoutMinutes)} dakika icinde Smart onayi alinmadi - talep iptal edildi, otomasyon tetiklenmedi.`,
           resolved: true,
@@ -114,7 +117,7 @@ async function _tickBody() {
         .catch((e) => console.warn('[Smart] TIMEOUT yazilamadi:', e.message));
       await syncOcoRecord(ticket, {
         status: 'FAILED',
-        message: winEndIso
+        message: pencereKapandi
           ? 'Kesinti penceresi kapandi, Smart onayi gelmedi — is tetiklenmedi.'
           : `Smart onayi ${Math.round(timeoutMinutes)} dakikada gelmedi — is tetiklenmedi.`,
       });

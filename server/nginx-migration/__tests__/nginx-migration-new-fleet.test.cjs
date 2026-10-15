@@ -522,11 +522,19 @@ test('G1 GET /delete-guard: on kontrol sonucunu doner, is BASLATMAZ', async (t) 
 test('R1 runner.getTemplateLaunchSettingsOnServer: HAM bayraklar; alan yoksa undefined (false DEGIL)', async () => {
   awx.tpl = { ask_variables_on_launch: false, survey_enabled: true, spec: [], omit: [] };
   let s = await runner.getTemplateLaunchSettingsOnServer(1, h.DELETE_TPL);
-  assert.deepEqual(s, { id: h.DELETE_TPL, name: 'Nginx Reverse Proxy Operations', askVariablesOnLaunch: false, surveyEnabled: true });
+  // askLimitOnLaunch (OpsX prod Smart onayi, e4ead0b): sahte AWX alani vermiyor -> undefined.
+  assert.deepEqual(s, {
+    id: h.DELETE_TPL,
+    name: 'Nginx Reverse Proxy Operations',
+    askVariablesOnLaunch: false,
+    surveyEnabled: true,
+    askLimitOnLaunch: undefined,
+  });
   awx.tpl.omit = ['ask_variables_on_launch', 'survey_enabled'];
   s = await runner.getTemplateLaunchSettingsOnServer(1, h.DELETE_TPL);
   assert.equal(s.askVariablesOnLaunch, undefined);
   assert.equal(s.surveyEnabled, undefined);
+  assert.equal(s.askLimitOnLaunch, undefined);
   awx.tplStatus = 403;
   await assert.rejects(runner.getTemplateLaunchSettingsOnServer(1, h.DELETE_TPL), (e) => /** @type {any} */ (e).status === 403);
 });
