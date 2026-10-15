@@ -22,6 +22,9 @@ interface Props {
   error?: boolean;
   /** Çoklu seçim: onay kutuları; değer satır sonu ile birleştirilir (sunucu listeye çevirir). */
   multiple?: boolean;
+  /** Formda ŞU AN görünen alanlar (ad -> etiket). Verilirse eksik parametre mesajı değişken adı
+   *  yerine alanın etiketini söyler ve görünmeyen bir alana yapılmış bağlamayı açıkça gösterir. */
+  alanlar?: Record<string, string>;
 }
 
 export const MULTI_SEP = '\n';
@@ -44,7 +47,7 @@ export function paramsFor(source: ChoicesSource, values: Record<string, string>)
   return out;
 }
 
-export default function DynamicChoiceSelect({ id, source, values, value, onChange, onBlur, error, multiple = false }: Props) {
+export default function DynamicChoiceSelect({ id, source, values, value, onChange, onBlur, error, multiple = false, alanlar }: Props) {
   const params = paramsFor(source, values);
   const paramsKey = JSON.stringify(params);
   const optional = new Set(source.optional || []);
@@ -102,9 +105,24 @@ export default function DynamicChoiceSelect({ id, source, values, value, onChang
     return [...m.entries()];
   }, [choices, filter]);
 
-  const missingNames = Object.entries(source.params || {})
+  // YANLIŞ BAĞLAMA (2026-10-15, kullanıcı: "namespace seçimi sonrası uygulamalar listelenmiyor"):
+  // parametre formda GÖRÜNMEYEN bir alana bağlıydı (new_namespace yerine namespace). Kullanıcı
+  // "Önce namespace seçin…" görüyor ama o alan formda yok - yapacak hiçbir şeyi kalmıyordu.
+  const eksikAlanlar = Object.entries(source.params || {})
     .filter(([p]) => !params[p] && !optional.has(p))
     .map(([, fieldName]) => fieldName);
+  const gorunmeyenBaglar = alanlar ? eksikAlanlar.filter((a) => !(a in alanlar)) : [];
+  const missingNames = eksikAlanlar.map((a) => (alanlar?.[a] ? `“${alanlar[a]}”` : a));
+  const eksikMesaji = gorunmeyenBaglar.length
+    ? 'Liste yapılandırması hatalı — yöneticiye bildirin'
+    : `Önce ${missingNames.join(', ')} seçin…`;
+  const baglamaUyarisi = gorunmeyenBaglar.length ? (
+    <p className="text-xs text-red-600" role="alert" data-testid="secim-baglama-hatasi">
+      Bu liste formda görünmeyen {gorunmeyenBaglar.map((a) => `“${a}”`).join(', ')} alanına bağlı, bu yüzden
+      seçenek gelmiyor. Yönetici: Alan Ayarları&apos;nda bu alanın seçenek kaynağı parametresini formdaki
+      doğru alana bağlayın.
+    </p>
+  ) : null;
 
   if (multiple) {
     const picked = new Set(splitMulti(value));
@@ -119,7 +137,7 @@ export default function DynamicChoiceSelect({ id, source, values, value, onChang
       <div className={`space-y-1.5 rounded-lg border p-2 ${error ? 'border-red-400' : 'border-[var(--border)]'}`} id={id} onBlur={onBlur}>
         <div className="flex items-center justify-between gap-2 text-[11px] text-[var(--text-muted)]">
           <span>
-            {missingParam ? `Önce ${missingNames.join(', ')} seçin…` : loading ? 'Yükleniyor…' : `${picked.size} / ${choices.length} seçili`}
+            {missingParam ? eksikMesaji : loading ? 'Yükleniyor…' : `${picked.size} / ${choices.length} seçili`}
           </span>
           {choices.length > 0 && (
             <span className="flex gap-2">
@@ -151,6 +169,7 @@ export default function DynamicChoiceSelect({ id, source, values, value, onChang
             <div className="text-[11px] text-[var(--text-muted)]">Envanterde kayıt yok.</div>
           )}
         </div>
+        {baglamaUyarisi}
         {err && <p className="text-xs text-red-600">{err}</p>}
       </div>
     );
@@ -189,7 +208,7 @@ export default function DynamicChoiceSelect({ id, source, values, value, onChang
           disabled={missingParam || loading}
           placeholder={
             missingParam
-              ? `Önce ${missingNames.join(', ')} seçin…`
+              ? eksikMesaji
               : loading
                 ? 'Yükleniyor…'
                 : choices.length === 0
@@ -245,6 +264,7 @@ export default function DynamicChoiceSelect({ id, source, values, value, onChang
           ))}
         </div>
       )}
+      {baglamaUyarisi}
       {err && <p className="text-xs text-red-600">{err}</p>}
       {!err && !missingParam && !loading && choices.length === 0 && (
         <p className="text-xs text-[var(--text-muted)]">

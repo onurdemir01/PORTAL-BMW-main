@@ -848,6 +848,7 @@ function SurveyModal({ item, onClose, inline = false }: SurveyModalProps) {
                             onBlur={onBlur}
                             error={!!err}
                             multiple={f.type === 'multiselect'}
+                            alanlar={Object.fromEntries(visibleFields.map((v) => [v.name, v.label || v.name]))}
                           />
                         ) : f.type === 'multiselect' ? (
                           // COKLU SECIM = onay kutulari (2026-09-16: "overwrite edilecek dosyalari
