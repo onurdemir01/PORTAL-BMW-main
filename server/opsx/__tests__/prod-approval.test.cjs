@@ -375,3 +375,59 @@ test('PA12 KAPI COZUMDEN SONRA cagrilir ve KATALOGDAN COZULMUS degerleri olcer',
     'gecici blok hala bagli - Smart onayi onun yerini aldi, ikisi birden OpenShift prod"u kapatir',
   );
 });
+
+test('PA17 ONAY SURESI 15 DK: bilet kurali tasir (Legacy + Openshift), kullaniciya soylenir', async () => {
+  // Kullanici (2026-10-15): "OpsX'deki Legacy ve Openshift fark etmez prod islemleri icin 15
+  // dakika zaman asimi kurali". Kural bilete yazilmazsa talep sinirsiz bekler (varsayilan) ve
+  // saatler sonra gelen onay prod'a dokunur.
+  assert.equal(ga.ONAY_ZAMAN_ASIMI_DK, 15);
+  const gates = require('../../ansible/change-gates.cjs');
+  const runner = require('../../ansible/runner.cjs');
+  const eskiAc = gates.openSmartTicket;
+  const eskiAyar = runner.getTemplateLaunchSettingsOnServer;
+  const eskiPre = runner.prefillSurveyDefaultsOnServer;
+  const eskiEnv = { ...process.env };
+  try {
+    process.env.OPSX_SMART_FLOW_KEY_LEGACY = 'FLOW-LEGACY';
+    process.env.OPSX_SMART_FLOW_KEY_OPENSHIFT = 'FLOW-OCP';
+    // Genel sinir daha uzun verilmis olsa da kural degismez.
+    process.env.SMART_TICKET_TIMEOUT_MINUTES = '240';
+    runner.getTemplateLaunchSettingsOnServer = async () => ({ askLimitOnLaunch: true });
+    runner.prefillSurveyDefaultsOnServer = async (_s, _t, ev) => ev;
+    for (const platform of ['legacy', 'openshift']) {
+      let gecen = null;
+      gates.openSmartTicket = async (arg) => {
+        gecen = arg;
+        return { ticketId: 8, externalTicketId: 'SMART-8' };
+      };
+      const k = await ga.opsxProductionKapisi({
+        platform,
+        serverId: 3,
+        templateId: 11,
+        extraVars: {},
+        limitValue: platform === 'legacy' ? 'HOST1,GBLABT02' : '',
+        etiketler: [{ alan: 'ortam', deger: 'prod' }],
+        req: { session: { user: { username: 'u', mail: 'u@x' } } },
+        islemAdi: `${platform} islem`,
+      });
+      assert.ok(gecen, `${platform}: Smart bileti acilmadi`);
+      assert.equal(gecen.pendingLaunchExtras?.onayZamanAsimiDk, 15, `${platform}: bilet 15 dk kuralini tasimiyor`);
+      const { talepSonTarihi } = require('../../smart/deadline.cjs');
+      const r = talepSonTarihi(
+        { createdAt: '2026-10-15T08:00:00.000Z', pendingLaunch: { ...gecen.pendingLaunchExtras } },
+        { ticketTimeoutMinutes: 240 },
+      );
+      assert.equal(r.deadlineKaynak, 'islem');
+      assert.equal(r.deadline.toISOString(), '2026-10-15T08:15:00.000Z');
+      assert.match(k.body.message, /15 dakika içinde/, `${platform}: kullaniciya sure soylenmiyor`);
+    }
+  } finally {
+    gates.openSmartTicket = eskiAc;
+    runner.getTemplateLaunchSettingsOnServer = eskiAyar;
+    runner.prefillSurveyDefaultsOnServer = eskiPre;
+    process.env = eskiEnv;
+  }
+  // Islem secim ekranindaki uyari da sureyi soyler (sabitten; elle yazilmis "15" degil).
+  const ops = IDX.slice(IDX.indexOf("app.get('/api/opsx/ocp/operations'"));
+  assert.match(ops.slice(0, 2000), /onay \$\{ONAY_ZAMAN_ASIMI_DK\} dakika içinde/);
+});

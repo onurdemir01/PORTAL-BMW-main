@@ -5,6 +5,7 @@
 // yurusun sonuna dogru kosmaya baslasin."
 //   TS1 PENDING talepte kompakt sayac var (kalan sure SUNUCU saatine gore); LAUNCHED ve LAUNCHING
 //       talepte yok; genel sure siniri varken ust bilgi "Süre sınırı yok" DEMEZ
+//   TS4 OpsX production (deadlineKaynak 'islem') talebi varken de "Süre sınırı yok" DENMEZ
 //   TS2 son tarihi olmayan bekleyen talep: sayac gecen sureyi gosterir, ust bilgi "Süre sınırı yok"
 //   TS3 (2026-10-15 denetim) daralt / genislet: kartlar yenileme yaniti gelmeden saklanmis yanitla
 //       kurulur; kalan sure yine gercek kalan, taze yanit gelince de kaymaz
@@ -72,11 +73,26 @@ describe('Taleplerim zaman asimi sayaci', () => {
     const sayac = within(bekleyen).getByRole('timer');
     expect(sayac).toHaveClass('sbs--kompakt');
     expect(within(sayac).getByTestId('sbs-metin').textContent).toBe('Kalan 09:41');
-    expect(sayac).toHaveAttribute('data-evre', 'kos'); // 10 dk'nin altinda kosar
+    expect(sayac).toHaveAttribute('data-evre', 'yuru'); // 30 dk'lik surede kalan 09:41 > %25 (7:30)
     expect(screen.getAllByRole('timer')).toHaveLength(1);
     expect(within(kart('Log temizle')).queryByRole('timer')).toBeNull();
     expect(within(kart('Disk temizle')).queryByRole('timer')).toBeNull();
 
+    expect(screen.getByText(/Süre sınırı var/)).toBeTruthy();
+    expect(screen.queryByText(/Süre sınırı yok/)).toBeNull();
+  });
+
+  it('TS4 OpsX production talebi (islem kurali, 15 dk): ust bilgi "Süre sınırı yok" DEMEZ', async () => {
+    api.smartTicketsMine.mockResolvedValue({
+      ok: true,
+      serverNow: SUNUCU,
+      tickets: [
+        talep({ id: 6, status: 'PENDING', templateName: 'OpsX: restart', deadline: '2026-10-15T08:30:00.000Z', deadlineKaynak: 'islem' }),
+      ],
+    });
+    render(<RequestsSidePanel />);
+    await screen.findByText('OpsX: restart');
+    expect(within(kart('OpsX: restart')).getByRole('timer')).toHaveAttribute('data-kip', 'geri');
     expect(screen.getByText(/Süre sınırı var/)).toBeTruthy();
     expect(screen.queryByText(/Süre sınırı yok/)).toBeNull();
   });

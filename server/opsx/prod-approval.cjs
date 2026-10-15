@@ -81,6 +81,15 @@ function uretimIstegi(etiketler) {
 // ── PLATFORM BASINA FLOW KEY (kullanici karari 2026-10-06) ───────────────────────────
 // Onaylayanlar platform ekiplerine gore farklilasabiliyor ve bir platformun akisi otekini
 // etkilemiyor. Degerler Admin > Sistem'den girilir (portal_env_overrides allowlist'i).
+// ── ONAY SURESI: 15 DAKIKA ──────────────────────────────────────────────────────────
+// Kullanici (2026-10-15): "OpsX'deki Legacy ve Openshift fark etmez prod islemleri icin 15
+// dakika zaman asimi kurali". Restart / pod silme gibi islemler ANLIK ihtiyactir; saatler
+// sonra gelen onayla prod'a dokunmak istenmez. Sure bilete `pendingLaunch.onayZamanAsimiDk`
+// olarak yazilir; poller (TIMEOUT) ve ekrandaki sayac AYNI kuraldan okur
+// (server/smart/deadline.cjs 'islem' kaynagi). Ortam degiskeniyle uzatilamaz: genel sinir
+// (SMART_TICKET_TIMEOUT_MINUTES) bu kuralin YERINE gecmez.
+const ONAY_ZAMAN_ASIMI_DK = 15;
+
 const FLOW_KEY_ENV = Object.freeze({
   legacy: 'OPSX_SMART_FLOW_KEY_LEGACY',
   was: 'OPSX_SMART_FLOW_KEY_WAS',
@@ -362,6 +371,7 @@ async function opsxProductionKapisi({
       },
       auditAction: 'opsx_prod_smart_ticket_open',
       req,
+      pendingLaunchExtras: { onayZamanAsimiDk: ONAY_ZAMAN_ASIMI_DK },
     });
   } catch (smartErr) {
     const kod = smartErr.code === 'smart_ticket_store_failed' ? 500 : smartErr.status || 502;
@@ -388,8 +398,8 @@ async function opsxProductionKapisi({
       reason: sebep,
       message:
         `Production işlemi için Smart talebi açıldı (kayıt no: ${opened.externalTicketId}). ` +
-        `Onay akışı tamamlanınca Ansible işi otomatik başlatılır — bu ekranda beklemeniz ` +
-        `gerekmez. Talep durumunu Smart üzerinden takip edebilirsiniz.`,
+        `Onay ${ONAY_ZAMAN_ASIMI_DK} dakika içinde gelirse Ansible işi otomatik başlatılır; ` +
+        `gelmezse talep zaman aşımına düşer ve iş başlatılmaz. Bu ekranda beklemeniz gerekmez.`,
     },
   };
 }
@@ -402,4 +412,5 @@ module.exports = {
   flowKeyEksikYaniti,
   opsxProductionKapisi,
   FLOW_KEY_ENV,
+  ONAY_ZAMAN_ASIMI_DK,
 };

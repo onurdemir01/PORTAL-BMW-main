@@ -282,8 +282,11 @@ export default function RequestsSidePanel() {
   };
 
   const pendingCount = tickets.filter((t) => t.status === 'PENDING').length;
-  // Genel zaman asimi (SMART_TICKET_TIMEOUT_MINUTES) acikken "Süre sınırı yok" cumlesi yanlis olur.
-  const genelSureVar = tickets.some((t) => t.status === 'PENDING' && t.deadlineKaynak === 'genel');
+  // Genel zaman asimi (SMART_TICKET_TIMEOUT_MINUTES) ya da islem kurali (OpsX production 15 dk,
+  // 2026-10-15) olan bekleyen talep varken "Süre sınırı yok" cumlesi yanlis olur.
+  const genelSureVar = tickets.some(
+    (t) => t.status === 'PENDING' && (t.deadlineKaynak === 'genel' || t.deadlineKaynak === 'islem'),
+  );
 
   if (collapsed) {
     return (

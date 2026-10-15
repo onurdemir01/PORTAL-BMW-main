@@ -4,9 +4,13 @@
 // insan veya cita figuru sayacin basinda yurusun sonuna dogru kosmaya baslasin."
 //
 // Iki kip:
-//   * geri     : sunucu bir son tarih verdi (OCO penceresinin sonu ya da genel sinir). Geri sayar;
-//                cita parkurda gecen sure oraninda ilerler, sona yaklasinca (kalan < %25 ya da
-//                < 10 dk) kosmaya baslar, sure dolunca bitis cizgisinde durur.
+//   * geri     : sunucu bir son tarih verdi (OCO penceresinin sonu, islem kurali - or. OpsX
+//                production 15 dk - ya da genel sinir). Geri sayar; cita parkurda gecen sure
+//                oraninda ilerler, son ceyrekte (kalan < %25) kosmaya baslar, sure dolunca bitis
+//                cizgisinde durur.
+//                NEDEN yalniz %25 (2026-10-15): eskiden "ya da kalan < 10 dk" kurali da vardi;
+//                OpsX'in 15 dk'lik onay suresinde cita 5. dakikada kosmaya basliyor, surenin
+//                ucte ikisini kosarak geciriyordu. Istenen "sonuna dogru kossun"du.
 //   * sinirsiz : varsayilan sistemde zaman asimi YOK (deadline null). Gecen sureyi gosterir; cita
 //                parkurun basinda sakin sakin gidip gelir - bir hedefe kostugu izlenimi VERMEZ.
 //
@@ -53,10 +57,8 @@ export interface SayacDurumu {
 }
 
 const DAKIKA_MS = 60_000;
-/** Kalan sure toplamin bu oraninin altina dusunce cita kosar. */
+/** Kalan sure toplamin bu oraninin altina dusunce cita kosar (tek kural). */
 export const KOS_ORANI = 0.25;
-/** Kalan sure bunun altindaysa (toplam ne olursa olsun) cita kosar. */
-export const KOS_ESIGI_MS = 10 * DAKIKA_MS;
 
 export function sayacDurumu(
   simdiMs: number,
@@ -72,7 +74,7 @@ export function sayacDurumu(
   const oran = toplamMs > 0 ? Math.min(1, Math.max(0, (simdiMs - createdAtMs) / toplamMs)) : 1;
   let evre: SayacEvre;
   if (kalanMs <= 0) evre = 'bitti';
-  else if (kalanMs < toplamMs * KOS_ORANI || kalanMs < KOS_ESIGI_MS) evre = 'kos';
+  else if (kalanMs < toplamMs * KOS_ORANI) evre = 'kos';
   else evre = 'yuru';
   return { kip: 'geri', kalanMs, gecenMs, oran, evre };
 }

@@ -103,6 +103,10 @@ async function _tickBody() {
     // sonraki talepler (onaylananlar dahil) her turda islenmeden kaliyordu. 'oco' kaynagi
     // yalniz pencere tarihi OKUNABILDIYSE gelir.
     const pencereKapandi = deadlineKaynak === 'oco';
+    // ISLEM KURALI (2026-10-15, OpsX production 15 dk): Smart'taki kayit API ile kapatilamiyor
+    // (yazma uclari yok). Kullaniciya acikca soylenir: Smart'ta sonradan onaylansa da is
+    // BASLAMAZ (talep artik PENDING degil, poller bir daha bakmaz) - yeniden talep acmali.
+    const islemKurali = deadlineKaynak === 'islem';
     if (timeoutMinutes != null && ageMinutes > timeoutMinutes) {
       await store
         .markState(ticket.id, {
@@ -110,7 +114,9 @@ async function _tickBody() {
           smartStateName: ticket.smartStateName,
           errorMessage: pencereKapandi
             ? `Kesinti penceresi (${new Date(winEndIso).toISOString()}) kapandi, Smart onayi gelmedi - is tetiklenmedi.`
-            : `${Math.round(timeoutMinutes)} dakika icinde Smart onayi alinmadi - talep iptal edildi, otomasyon tetiklenmedi.`,
+            : islemKurali
+              ? `Production islemleri icin onay suresi ${Math.round(timeoutMinutes)} dakikadir; bu surede Smart onayi gelmedi - is tetiklenmedi. Smart'taki kayit acik kalabilir, sonradan onaylansa da is BASLAMAZ; islemi yeniden baslatip yeni talep acin.`
+              : `${Math.round(timeoutMinutes)} dakika icinde Smart onayi alinmadi - talep iptal edildi, otomasyon tetiklenmedi.`,
           resolved: true,
           expected: 'PENDING', // arada iptal edildiyse CANCELLED korunur
         })

@@ -18,6 +18,12 @@
 //         Ekrandaki sayac olu bir talep icin "kalan sure" gosteriyordu. Artik pencere sonu.
 //   * Okunamayan pencere tarihi YOK SAYILIR (poller'daki Number.isFinite kontrolu) - talep
 //     genel sinira (ya da sinirsiza) duser.
+//   * ISLEMIN KENDI KURALI ('islem', 2026-10-15, kullanici: "OpsX'deki Legacy ve Openshift fark
+//     etmez prod islemleri icin 15 dakika zaman asimi kurali"): talebi acan modul
+//     `pendingLaunch.onayZamanAsimiDk` koyarsa sinir createdAt + o kadar dakikadir. Genel sinirin
+//     YERINE gecer (genel daha uzun ya da sinirsiz olsa bile - kural zaten "en gec bu kadar"
+//     demektir). OCO penceresiyle birlikteyse ERKEN olan gecerlidir: pencere kapandiktan sonra is
+//     zaten calismaz, kural dolduktan sonra da calismamali. Gecersiz/0/negatif deger YOK SAYILIR.
 'use strict';
 
 // Son tarih yalnizca bu durumlarda anlamli: talep hala onay bekliyor ya da onay gelmis,
@@ -26,9 +32,9 @@
 const SURELI_DURUMLAR = new Set(['PENDING', 'LAUNCHING']);
 
 /**
- * @param {{ createdAt: string|Date, pendingLaunch?: { ocoWindowEndIso?: string|null } }} ticket
+ * @param {{ createdAt: string|Date, pendingLaunch?: { ocoWindowEndIso?: string|null, onayZamanAsimiDk?: number|null } }} ticket
  * @param {{ ticketTimeoutMinutes?: number|null }} cfg  getConfig() ciktisi
- * @returns {{ deadline: Date|null, deadlineKaynak: 'oco'|'genel'|null, timeoutMinutes: number|null }}
+ * @returns {{ deadline: Date|null, deadlineKaynak: 'oco'|'genel'|'islem'|null, timeoutMinutes: number|null }}
  *   timeoutMinutes: poller'in `yas > timeoutMinutes` karsilastirmasinda kullandigi deger
  *   (davranis birebir korunur). deadline: talebin bu andan SONRA TIMEOUT olacagi an.
  */
@@ -47,6 +53,17 @@ function talepSonTarihi(ticket, cfg) {
       timeoutMinutes = allowed;
       deadlineKaynak = 'oco';
       pencereSonuMs = until;
+    }
+  }
+
+  const islemDk = Number(ticket?.pendingLaunch?.onayZamanAsimiDk);
+  if (Number.isFinite(islemDk) && islemDk > 0) {
+    const islemSonMs = createdMs + islemDk * 60000;
+    // NaN createdMs: karsilastirma false; asagidaki kontrol zaten "sinir yok" doner.
+    if (deadlineKaynak !== 'oco' || islemSonMs < pencereSonuMs) {
+      timeoutMinutes = islemDk;
+      deadlineKaynak = 'islem';
+      pencereSonuMs = null;
     }
   }
 

@@ -66,9 +66,11 @@ bir token mı kullanılacak, global token mı?
 
 ### S4. Onay süresi
 
-Portal varsayılanı **15 dakika**; süre dolarsa talep `TIMEOUT` olur ve otomasyon **hiç
-çalışmaz** (yarım kalmış bir işlem oluşmaz). Bir kesinti işlemi için 15 dakika uygun mu,
-yoksa daha uzun mu olmalı?
+Güncel durum (2026-10-15): Portal varsayılanı **süre sınırı yok**; OCO'dan doğan talepte
+sınır kesinti penceresinin sonu, `SMART_TICKET_TIMEOUT_MINUTES` verilirse OCO'suz talepte o
+kadar dakika. OpsX production işlemleri (Legacy + OpenShift) için sabit **15 dakika**.
+Süre dolarsa talep `TIMEOUT` olur ve otomasyon **hiç çalışmaz** (yarım kalmış bir işlem
+oluşmaz). Ayrıntı: `server/smart/deadline.cjs`. Bir kesinti işlemi için hangi süre uygun?
 
 ### S5. İptal
 

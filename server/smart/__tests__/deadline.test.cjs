@@ -5,6 +5,7 @@
 // "5 dk kaldi" gorurken talep iptal olur (ya da tersi). Bu dosya uc seyi olcer:
 //   DL1-DL8  saf kural (talepSonTarihi / talepSonTarihiAlanlari)
 //   DL9      TEK KAYNAK: poller'in TIMEOUT karari son tarihle BIREBIR ayni ani kullaniyor
+//   DL13-14  islem kurali (pendingLaunch.onayZamanAsimiDk, OpsX production 15 dk): kural + poller
 //   DL10-12  HTTP uclari (runner.cjs'teki GERCEK govde, sahte store ile kosturulur)
 // DB / gercek Smart API gerektirmez.
 'use strict';
@@ -260,6 +261,55 @@ test('DL9c TIMEOUT mesaji son tarihin KAYNAGINI soyler; okunamayan pencere tick 
     assert.match(String(mesaj(2)), /30 dakika icinde Smart onayi alinmadi/, 'bozuk pencereden SONRAKI talep islenmedi');
     assert.match(String(mesaj(3)), /Kesinti penceresi/);
     assert.ok(String(mesaj(3)).includes(pencereSonu), 'mesaj pencere sonunu soylemiyor');
+  });
+});
+
+test('DL13 ISLEM KURALI (OpsX production 15 dk): genel sinirin yerine gecer; OCO ile ERKEN olan', () => {
+  const islem = (pl, cfg = {}) => talepSonTarihi(talep({ pendingLaunch: pl }), cfg);
+  // Sinirsiz sistemde de, genel sinir daha uzunken de 15 dk.
+  for (const cfg of [{ ticketTimeoutMinutes: null }, { ticketTimeoutMinutes: 240 }, { ticketTimeoutMinutes: 5 }]) {
+    const r = islem({ onayZamanAsimiDk: 15 }, cfg);
+    assert.equal(r.deadlineKaynak, 'islem', `genel=${cfg.ticketTimeoutMinutes}`);
+    assert.equal(r.timeoutMinutes, 15);
+    assert.equal(r.deadline.toISOString(), iso(T0 + 15 * DK));
+  }
+  // OCO penceresi daha erken kapaniyorsa pencere; daha gec kapaniyorsa islem kurali.
+  const erken = islem({ onayZamanAsimiDk: 15, ocoWindowEndIso: iso(T0 + 5 * DK) });
+  assert.equal(erken.deadlineKaynak, 'oco');
+  assert.equal(erken.deadline.toISOString(), iso(T0 + 5 * DK));
+  const gec = islem({ onayZamanAsimiDk: 15, ocoWindowEndIso: iso(T0 + 120 * DK) });
+  assert.equal(gec.deadlineKaynak, 'islem');
+  assert.equal(gec.deadline.toISOString(), iso(T0 + 15 * DK));
+  // Gecersiz deger YOK SAYILIR (eski davranis: genel ya da sinirsiz).
+  for (const v of [0, -3, 'x', null, undefined, Infinity]) {
+    assert.equal(islem({ onayZamanAsimiDk: v }, { ticketTimeoutMinutes: 30 }).deadlineKaynak, 'genel', `deger=${String(v)}`);
+    assert.equal(islem({ onayZamanAsimiDk: v }, {}).deadline, null, `deger=${String(v)}`);
+  }
+  // Okunamayan createdAt: tarih uydurulmaz.
+  assert.equal(talepSonTarihi(talep({ createdAt: 'bozuk', pendingLaunch: { onayZamanAsimiDk: 15 } }), {}).deadline, null);
+  // Yanit alanlari ayni kaynagi soyler.
+  assert.deepEqual(talepSonTarihiAlanlari(talep({ pendingLaunch: { onayZamanAsimiDk: 15 } }), {}), {
+    deadline: iso(T0 + 15 * DK),
+    deadlineKaynak: 'islem',
+  });
+});
+
+test('DL14 ISLEM KURALI poller da: 15 dk dolan talep TIMEOUT (yeni talep acin mesaji), dolmayan acik kalir', async (t) => {
+  t.mock.method(console, 'log', () => {});
+  // Genel sinir sinirsiz (varsayilan): kural tek basina calismali.
+  await withEnv({ ...SMART_ENV, SMART_TICKET_TIMEOUT_MINUTES: undefined }, async () => {
+    const simdi = Date.now();
+    const pl = { onayZamanAsimiDk: 15 };
+    const dolmus = talep({ id: 1, createdAt: iso(simdi - 15 * DK - 20000), externalTicketId: '1', pendingLaunch: pl });
+    const dolmamis = talep({ id: 2, createdAt: iso(simdi - 15 * DK + 20000), externalTicketId: '2', pendingLaunch: pl });
+    const marks = await pollerYazimlari([dolmus, dolmamis]);
+    const zaman = marks.filter((m) => m.status === 'TIMEOUT');
+    assert.deepEqual(zaman.map((m) => m.id), [1], '15 dk kurali poller da uygulanmiyor');
+    const mesaj = String(zaman[0].errorMessage);
+    assert.match(mesaj, /onay suresi 15 dakikadir/);
+    // Smart'taki kayit API ile kapatilamiyor: kullaniciya sonradan onayin isi BASLATMAYACAGI soylenir.
+    assert.match(mesaj, /sonradan onaylansa da is BASLAMAZ/);
+    assert.ok(!/Kesinti penceresi/.test(mesaj));
   });
 });
 

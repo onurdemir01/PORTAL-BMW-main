@@ -246,8 +246,8 @@ const OpsXSmartConfigModal: React.FC<Props> = ({ open, onClose }) => {
           <p>
             OpsX'te <strong>production</strong> olarak tespit edilen bir işlem doğrudan
             çalışmaz: önce burada tanımlı Flow Key ile Smart talebi açılır, onay akışı
-            tamamlanınca Ansible işi <strong>otomatik</strong> tetiklenir. Reddedilirse iş
-            hiç başlamaz.
+            tamamlanınca Ansible işi <strong>otomatik</strong> tetiklenir. Reddedilirse ya da
+            onay <strong>15 dakika</strong> içinde gelmezse (zaman aşımı) iş hiç başlamaz.
           </p>
           <p>
             <strong>Flow Key boşsa production işlem reddedilir.</strong> "Yapılandırma yok"

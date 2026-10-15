@@ -2,7 +2,7 @@
 //
 // Kullanici (2026-10-15): "Smart onayinda beklerken bir zaman asimi sayaci olsun ... cita figuru
 // sayacin basinda yurusun sonuna dogru kosmaya baslasin."
-//   SB1  sayacDurumu: yuru / kos (%25 ve 10 dk kurali) / bitti / sinirsizda bekle, oran
+//   SB1  sayacDurumu: yuru / kos (yalniz %25 kurali; OpsX 15 dk'da son 3:45) / bitti / sinirsizda bekle, oran
 //   SB2  bicimleyiciler: "2 sa 14 dk", "09:41", gecen sure, ekran okuyucu ozeti
 //   SB3  geri sayim ekrani: buyuk metin, "Zaman aşımına kalan", son tarih, role=timer
 //   SB4  sinirsiz kip: gecen sure + aciklama, hedef bayragi YOK, cita devriyede
@@ -24,7 +24,7 @@ import Varsayilan, {
   sureMetni,
   gecenMetni,
   ozetMetni,
-  KOS_ESIGI_MS,
+  KOS_ORANI,
 } from '../SmartBeklemeSayaci';
 
 const SN = 1000;
@@ -51,13 +51,16 @@ describe('SB1 sayacDurumu', () => {
     expect(sayacDurumu(T0 + 3 * SA + SN, T0, D).evre).toBe('kos');
   });
 
-  it('10 dk kurali: %25 esiginden once de 10 dk altinda kos', () => {
-    const D30 = T0 + 30 * DK; // %25 = 7.5 dk
-    expect(KOS_ESIGI_MS).toBe(10 * DK);
-    expect(sayacDurumu(T0 + 20 * DK, T0, D30).evre).toBe('yuru'); // kalan tam 10:00
-    const d = sayacDurumu(T0 + 20 * DK + SN, T0, D30); // kalan 09:59 (> 7.5 dk)
+  it('kisa sure (OpsX production 15 dk): cita yalniz son ceyrekte (3:45) kosar', () => {
+    // 2026-10-15: eski "ya da kalan < 10 dk" kurali 15 dk'lik onayda citayi 5. dakikada
+    // kosturuyordu (surenin ucte ikisi). Tek kural %25.
+    expect(KOS_ORANI).toBe(0.25);
+    const D15 = T0 + 15 * DK;
+    expect(sayacDurumu(T0 + 5 * DK + SN, T0, D15).evre).toBe('yuru'); // kalan 09:59
+    expect(sayacDurumu(T0 + 11 * DK + 15 * SN, T0, D15).evre).toBe('yuru'); // kalan tam 03:45
+    const d = sayacDurumu(T0 + 11 * DK + 16 * SN, T0, D15); // kalan 03:44
     expect(d.evre).toBe('kos');
-    expect(d.kalanMs).toBe(10 * DK - SN);
+    expect(d.kalanMs).toBe(3 * DK + 44 * SN);
   });
 
   it('bitti: son tarihte ve sonrasinda; 1 ms once degil', () => {
@@ -317,7 +320,8 @@ describe('SmartBeklemeSayaci bileseni', () => {
       vi.advanceTimersByTime(SN);
     });
     expect(deger).toHaveTextContent('09:40'); // tik de kaymayi kullanir
-    expect(screen.getByRole('timer')).toHaveAttribute('data-evre', 'kos');
+    // 30 dk'lik surede %25 = 7:30; kalan 09:40 hala yuruyus (kaymasiz saatte de ayni).
+    expect(screen.getByRole('timer')).toHaveAttribute('data-evre', 'yuru');
   });
 
   it('SB7 yanit gelmeden kurulan sayac: serverNow gec gelince kayma yine uygulanir', () => {

@@ -637,9 +637,9 @@ export interface AdminSmartTicket {
 // ZAMAN ASIMI SAYACI (2026-10-15): sunucu bekleyen talebin son tarihini poller ile AYNI
 // kuraldan hesaplar (server/smart/deadline.cjs). deadline: talep bu andan SONRA TIMEOUT olur;
 // null = sure siniri yok. 'oco' = OCO kesinti penceresinin sonu, 'genel' =
-// SMART_TICKET_TIMEOUT_MINUTES. Yalniz PENDING/LAUNCHING iken dolu; LAUNCHING'de poller sureyi
+// SMART_TICKET_TIMEOUT_MINUTES, 'islem' = talebi acan islemin kendi kurali (OpsX production 15 dk). Yalniz PENDING/LAUNCHING iken dolu; LAUNCHING'de poller sureyi
 // UYGULAMAZ (onay gelmistir) - ekranlar sayaci yalniz PENDING'de gosterir.
-export type SmartDeadlineKaynak = 'oco' | 'genel' | null;
+export type SmartDeadlineKaynak = 'oco' | 'genel' | 'islem' | null;
 
 export interface SmartTicketStatusYaniti {
   ok: boolean;

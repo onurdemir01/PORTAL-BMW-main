@@ -679,7 +679,7 @@ function initOpsX(app) {
     // ONAYA TABI ISLEMLER: 'restart' (rollout) ve 'poddelete' - dugmenin kendi metni
     // "podlarimi silmek (restart etmek) istiyorum" diyor. Dump'lar salt tanidir.
     const ONAY_ISLEMLERI = new Set(['restart', 'poddelete']);
-    const { uretimIstegi } = require('./prod-approval.cjs');
+    const { uretimIstegi, ONAY_ZAMAN_ASIMI_DK } = require('./prod-approval.cjs');
     const { uretim, sebep } =
       env || tenant
         ? uretimIstegi([
@@ -696,8 +696,8 @@ function initOpsX(app) {
               needsApproval: true,
               approvalReason: sebep,
               approvalMessage:
-                'Production işlemi: Smart talebi açılır, onay akışı tamamlanınca ' +
-                'Ansible işi otomatik başlatılır.',
+                `Production işlemi: Smart talebi açılır; onay ${ONAY_ZAMAN_ASIMI_DK} dakika içinde ` +
+                'gelirse Ansible işi otomatik başlatılır, gelmezse talep zaman aşımına düşer.',
             }
           : o,
       ),
