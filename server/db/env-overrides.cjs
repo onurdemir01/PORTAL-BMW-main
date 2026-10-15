@@ -89,10 +89,13 @@ function decryptSecretValue(stored) {
 // Bu, kod incelemesinin "hepsini cikar" onerisinden BILINCLI bir sapmadir.
 //
 // GUVENLIK NOTU (2. tur kurumsal AI kod incelemesi, review.md #7): SECRET_PATTERN'e
-// uyan anahtarlar (…_KEY, …_SECRET, …_TOKEN, …_PASSWORD — su an ANTHROPIC_API_KEY ve
-// OPENAI_API_KEY) artik DB'de duz metin DEGIL, AES-256-GCM ile sifreli saklanir
+// uyan anahtarlar (…_KEY, …_SECRET, …_TOKEN, …_PASSWORD, …_WEBHOOK_URL — 2026-10-15
+// itibariyla MSSQL_RO_PASSWORD, AWX_PASSWORD, ANTHROPIC_API_KEY, OPENAI_API_KEY,
+// SMART_API_PASSWORD, SMART_RFF_TOKEN, OPSX_SMART_INTEGRATION_KEY ve imza (sig=) tasiyan
+// TEAMS_LONGJOB_WEBHOOK_URL) artik DB'de duz metin DEGIL, AES-256-GCM ile sifreli saklanir
 // (bkz. encryptSecretValue/decryptSecretValue, ENV_OVERRIDES_ENCRYPTION_KEY). Diger
-// (gizli olmayan) anahtarlar duz metin kalir.
+// (gizli olmayan) anahtarlar duz metin kalir. Desen degismeden ONCE duz yazilmis satir
+// (ENC_PREFIX'siz) loadEnvOverrides'ta aynen uygulanir; yeniden kaydedilince sifrelenir.
 const SYSTEM_CONFIG_KEYS = [
   'PORT',
   'MSSQL_SERVER',

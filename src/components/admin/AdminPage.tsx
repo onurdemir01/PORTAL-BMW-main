@@ -200,7 +200,7 @@ const AdminPage: React.FC = () => {
         </nav>
 
         {/* Sag: icerik */}
-        <section className="card overflow-hidden min-w-0">
+        <section className="card overflow-clip min-w-0">
           {current && (
             <header className="flex items-center gap-3 px-5 py-4 border-b" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)' }}>
               {CurrentIcon && (

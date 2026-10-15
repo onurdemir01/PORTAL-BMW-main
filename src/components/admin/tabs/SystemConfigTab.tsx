@@ -1,1225 +1,433 @@
-import React, { useState, useEffect } from 'react';
-import { XCircleIcon, TrashIcon, ArrowPathIcon, PencilIcon } from '@heroicons/react/24/outline';
-import { inventoryApi } from '@/api/inventoryApi';
-import { toast } from '@/hooks/useToast';
-import { nobetciApi } from '@/api/nobetciApi';
-import { dynatraceApi } from '@/api/dynatraceApi';
+// src/components/admin/tabs/SystemConfigTab.tsx — Admin > Sistem (yalniz kompozisyon).
+//
+// Yerlesim: giris metni, durum kutulari (ayni zamanda suzgec), restart bandi, onbellekler,
+// yapiskan arama cubugu ve 4 bolum altinda 17 katlanir grup karti. Satirda okuma, satirda
+// duzenleme; riskli degisiklik onay penceresinden gecer. Veri ve durum `sistem/useSistemAyarlari`,
+// kurallar `sistem/ayarKurallari`, meta veri `sistem/ortamDegiskenleri`.
+//
+// YOL VE VARSAYILAN DISA AKTARIM DEGISMEZ: AdminPage, AdminDayaniklilik mock'u ve HY4 bu
+// dosyayi bu adla ice aktarir.
+//
+// HY4 (src/components/__tests__/HataYokDegil.test.tsx) KILITLEDIKLERI — bozmayin:
+//   (a) Butun satirlar her zaman monte: sanal liste yok; kapali grup `inert` ama DOM'da.
+//   (b) Deger `<input value>` degil metin; '3000' kendi span'inda.
+//   (c) Ayrintilar kosullu cizilir: ornek deger kapaliyken DOM'da yok.
+//   (d) Hata aninda "yükleniyor…" metni yok; kutular "—".
+//   (e) LoadError kutusundaki ILK dugme "Tekrar dene".
+//   (f) Basarida hicbir oge tam olarak "okunamadı" yazmaz.
+//
+// KOK KAP `relative` (SD1): AppLayout'ta `main` konumlandirilmamis; sr-only/absolute ogeler
+// aksi halde main'in DISINA yerlesir ve overflow-hidden kok kabi kaydirir (bos ekran).
+// KAYDIRMA yalniz en yakin kaydirma kabinda (sistem/kaydir.ts); scrollIntoView YOK (SD2).
+//
+// HOOK'LAR EN USTTE, ERKEN RETURN YOK (hook-order bekcisi).
+import React, { useRef, useState } from 'react';
+import { MagnifyingGlassIcon } from '@heroicons/react/24/outline';
 import LoadError from '@/components/common/LoadError';
+import EmptyState from '@/components/common/EmptyState';
+import { toast } from '@/hooks/useToast';
+import { ENV_VARS, type EnvVarMeta } from './sistem/ortamDegiskenleri';
+import { BOLUMLER, GRUPLAR, type Grup } from './sistem/gruplar';
+import {
+  eslesir,
+  onayGerekce,
+  ozet,
+  suzgectenGecer,
+  uygulanma,
+  type Suzgec,
+} from './sistem/ayarKurallari';
+import { useSistemAyarlari } from './sistem/useSistemAyarlari';
+import OzetSeridi from './sistem/OzetSeridi';
+import YenidenBaslatmaBandi from './sistem/YenidenBaslatmaBandi';
+import OnbellekPaneli from './sistem/OnbellekPaneli';
+import AyarAracCubugu from './sistem/AyarAracCubugu';
+import AyarGrubu from './sistem/AyarGrubu';
+import AyarSatiri from './sistem/AyarSatiri';
+import KritikDegisiklikOnayi, { type OnayIstegi } from './sistem/KritikDegisiklikOnayi';
+import { ogeyeKaydir } from './sistem/kaydir';
 
-// Backend whitelist'i ile hizalı (server/db/env-overrides.cjs SYSTEM_CONFIG_KEYS) —
-// SESSION_SECRET/şifreler kasıtlı olarak listede yok.
-// actions.md #10 (Bolum I) — her anahtar icin aciklama/zorunluluk/ornek/kullanim-yeri/
-// restart-gerekliligi: kullanici-dostu meta veri, DB'ye GITMEZ (yalniz frontend'de sabit).
-interface EnvVarMeta {
-  key: string;
-  label: string;
-  group: string;
-  description: string;
-  required: boolean;
-  example: string;
-  usedIn: string;
-  restartRequired: boolean;
-}
-const ENV_VARS: EnvVarMeta[] = [
-  {
-    key: 'PORT',
-    label: 'Port',
-    group: 'Sunucu',
-    description: 'Node sunucusunun dinlediği TCP portu.',
-    required: false,
-    example: '3000',
-    usedIn: 'server/index.cjs',
-    restartRequired: true,
-  },
-  {
-    key: 'NODE_ENV',
-    label: 'Ortam',
-    group: 'Sunucu',
-    description: 'production/development — statik dosya servisi ve log seviyesini belirler.',
-    required: true,
-    example: 'production',
-    usedIn: 'Genel',
-    restartRequired: true,
-  },
-  {
-    key: 'MSSQL_SERVER',
-    label: 'MSSQL Server',
-    group: 'Veritabanı',
-    description: "Portal DB'sinin barındığı MSSQL sunucu adresi.",
-    required: true,
-    example: '10.151.162.147',
-    usedIn: 'server/db/index.cjs',
-    restartRequired: true,
-  },
-  {
-    key: 'MSSQL_DATABASE',
-    label: 'MSSQL Database',
-    group: 'Veritabanı',
-    description: 'Portal veritabanı adı (TBMWANS).',
-    required: true,
-    example: 'TBMWANS',
-    usedIn: 'server/db/index.cjs',
-    restartRequired: true,
-  },
-  {
-    key: 'MSSQL_RO_USER',
-    label: 'Envanter Salt-Okunur Kullanıcı',
-    group: 'Veritabanı',
-    description:
-      'Custom SQL (Envanter) için ayrı, GRANT SELECT-only DB kullanıcısı — tanımlı değilse paylaşılan (yazma-yetkili) havuza düşülür.',
-    required: false,
-    example: 'portal_ro',
-    usedIn: 'server/inventory/mssql-readonly.cjs',
-    restartRequired: false,
-  },
-  {
-    key: 'MSSQL_RO_PASSWORD',
-    label: 'Envanter Salt-Okunur Şifre',
-    group: 'Veritabanı',
-    description: "MSSQL_RO_USER ile birlikte kullanılır — DB'de şifreli saklanır.",
-    required: false,
-    example: '••••••••',
-    usedIn: 'server/inventory/mssql-readonly.cjs',
-    restartRequired: false,
-  },
-  {
-    key: 'LDAP_URL',
-    label: 'LDAP URL',
-    group: 'Auth',
-    description: 'Kurumsal Active Directory/LDAP bağlantı adresi.',
-    required: true,
-    example: 'ldaps://dc.garanti.com.tr',
-    usedIn: 'server/auth/ldap.cjs',
-    restartRequired: true,
-  },
-  {
-    key: 'LDAP_BASE_DN',
-    label: 'LDAP Base DN',
-    group: 'Auth',
-    description: "Kullanıcı arama için LDAP taban DN'i.",
-    required: true,
-    example: 'DC=garanti,DC=com,DC=tr',
-    usedIn: 'server/auth/ldap.cjs',
-    restartRequired: true,
-  },
-  {
-    key: 'AWX_URL',
-    label: 'AWX URL',
-    group: 'Ansible',
-    description: 'Varsayılan (legacy tek-sunucu) AWX/Tower adresi.',
-    required: false,
-    example: 'https://awx.garanti.com.tr',
-    usedIn: 'server/ansible/runner.cjs',
-    restartRequired: false,
-  },
-  {
-    key: 'AWX_USER',
-    label: 'AWX Kullanıcı Adı',
-    group: 'Ansible',
-    description: 'AWX_TOKEN tanımlı değilse, token almak için kullanılan servis hesabı.',
-    required: false,
-    example: 'svc-portal-awx',
-    usedIn: 'server/ansible/runner.cjs (getToken)',
-    restartRequired: false,
-  },
-  {
-    key: 'AWX_PASSWORD',
-    label: 'AWX Şifresi',
-    group: 'Ansible',
-    description: "AWX_USER ile birlikte kullanılır — DB'de AES-256-GCM ile şifreli saklanır.",
-    required: false,
-    example: '••••••••',
-    usedIn: 'server/ansible/runner.cjs (getToken)',
-    restartRequired: false,
-  },
-  {
-    key: 'AWX_READ_ONLY_TEMPLATE_IDS',
-    label: "Salt-Okunur Template ID'leri",
-    group: 'Ansible',
-    description:
-      "Virgülle ayrılmış AWX template ID listesi — boşsa TÜM template'ler izinli sayılır.",
-    required: false,
-    example: '12,47,83',
-    usedIn: 'server/ansible/runner.cjs (listTemplates)',
-    restartRequired: false,
-  },
-  {
-    key: 'AWX_LOG_FETCH_TEMPLATE_ID',
-    label: 'Log Fetch Template ID',
-    group: 'Ansible',
-    description: "AI Analist'in uzak log dosyası çekmek için kullandığı AWX template ID'si.",
-    required: false,
-    example: '51',
-    usedIn: 'server/ai-analyst/portal-tools.cjs',
-    restartRequired: false,
-  },
-  {
-    key: 'TEAMS_LONGJOB_WEBHOOK_URL',
-    label: 'Uzun İş Bildirimi Webhook URL',
-    group: 'Ansible',
-    description:
-      "Boş bırakılırsa özellik tamamen kapalı. Belirli bir süreden uzun çalışan (durumu 'running') AWX job'ları için bu Teams/Power Automate webhook'una bildirim gönderilir.",
-    required: false,
-    example: 'https://...powerplatform.com/.../invoke?...',
-    usedIn: 'server/ansible/long-job-watcher.cjs',
-    restartRequired: false,
-  },
-  {
-    key: 'TEAMS_LONGJOB_THRESHOLD_MINUTES',
-    label: 'Uzun İş Eşiği (dk)',
-    group: 'Ansible',
-    description:
-      'Bir job bu süreyi (dakika) aşınca bildirim gönderilir. Aynı job için tekrar tekrar bildirim gitmez.',
-    required: false,
-    example: '30',
-    usedIn: 'server/ansible/long-job-watcher.cjs',
-    restartRequired: false,
-  },
-  {
-    key: 'TEAMS_LONGJOB_POLL_INTERVAL_SECONDS',
-    label: 'Uzun İş Tarama Sıklığı (sn)',
-    group: 'Ansible',
-    description: "Çalışan job'ların ne sıklıkla kontrol edileceği.",
-    required: false,
-    example: '300',
-    usedIn: 'server/ansible/long-job-watcher.cjs',
-    restartRequired: true,
-  },
-  {
-    key: 'NOBETCI_API_URL',
-    label: 'Nöbet API URL',
-    group: 'Nöbet',
-    description: 'Harici nöbetçi/duty sisteminin (gbnys) API adresi.',
-    required: false,
-    example: 'https://gbnys.example.com/api',
-    usedIn: 'server/nobetci/index.cjs',
-    restartRequired: false,
-  },
-  {
-    key: 'NOBETCI_TEAM_NAME',
-    label: 'Nöbet Takım Adı',
-    group: 'Nöbet',
-    description: 'Görüntülenen takım adı (yalnızca UI etiketi).',
-    required: false,
-    example: 'BMW Portal Operasyon',
-    usedIn: 'server/nobetci/index.cjs',
-    restartRequired: false,
-  },
-  {
-    key: 'NOBETCI_TEAM_ID',
-    label: 'Nöbet Takım ID',
-    group: 'Nöbet',
-    description: 'Harici sistemdeki takım kimliği — sorgu filtresi.',
-    required: false,
-    example: '42',
-    usedIn: 'server/nobetci/index.cjs',
-    restartRequired: false,
-  },
-  {
-    key: 'NOBETCI_TEAM_TYPE',
-    label: 'Nöbet Takım Tipi',
-    group: 'Nöbet',
-    description: 'Harici sistemin beklediği takım tipi parametresi.',
-    required: false,
-    example: 'operasyon',
-    usedIn: 'server/nobetci/index.cjs',
-    restartRequired: false,
-  },
-  {
-    key: 'NOBETCI_API_HOST',
-    label: 'Nöbet API Host (alternatif)',
-    group: 'Nöbet',
-    description: 'NOBETCI_API_URL yerine yalnızca host bileşeni gerekiyorsa kullanılır.',
-    required: false,
-    example: 'gbnys.example.com',
-    usedIn: 'server/nobetci/index.cjs',
-    restartRequired: false,
-  },
-  {
-    key: 'DT_MANAGED_MCP_URL',
-    label: 'Dynatrace MCP URL',
-    group: 'Monitoring',
-    description: 'Dynatrace Managed MCP sunucu adresi.',
-    required: false,
-    example: 'https://dt.garanti.com.tr/mcp',
-    usedIn: 'server/dynatrace/index.cjs',
-    restartRequired: false,
-  },
-  {
-    key: 'INSTANA_MCP_URL',
-    label: 'Instana MCP URL',
-    group: 'Monitoring',
-    description: 'Instana MCP sunucu adresi.',
-    required: false,
-    example: 'https://instana.garanti.com.tr/mcp',
-    usedIn: 'server/instana/index.cjs',
-    restartRequired: false,
-  },
-  {
-    key: 'CORP_CA_CERT_PATH',
-    label: 'Kurumsal CA Zinciri Yolu',
-    group: 'TLS / Sertifika',
-    description:
-      'Public köklere ek olarak yüklenecek kurumsal CA zinciri (fetch-ca.sh + build-ca-bundle.cjs çıktısı) — MCP/Splunk/AI/Smart gibi dış bağlantılarda "self signed certificate" hatasını çözer. Her istekte diskten YENİDEN okunur (restart gerekmez).',
-    required: false,
-    example: 'server/certs/combined-ca-chain.pem',
-    usedIn: 'server/ai/ca.cjs (buildCombinedCa)',
-    restartRequired: false,
-  },
-  {
-    key: 'AI_PROVIDER',
-    label: 'AI Sağlayıcı',
-    group: 'AI',
-    description: "anthropic veya openai — AI Analist'in kullanacağı sağlayıcı.",
-    required: false,
-    example: 'anthropic',
-    usedIn: 'server/ai/provider.cjs',
-    restartRequired: false,
-  },
-  {
-    key: 'ANTHROPIC_MODEL',
-    label: 'Anthropic Model',
-    group: 'AI',
-    description: 'AI_PROVIDER=anthropic iken kullanılacak model adı.',
-    required: false,
-    example: 'claude-sonnet-5',
-    usedIn: 'server/ai/provider.cjs',
-    restartRequired: false,
-  },
-  {
-    key: 'OPENAI_MODEL',
-    label: 'OpenAI Model',
-    group: 'AI',
-    description: 'AI_PROVIDER=openai iken kullanılacak model adı.',
-    required: false,
-    example: 'gpt-4o',
-    usedIn: 'server/ai/provider.cjs',
-    restartRequired: false,
-  },
-  {
-    key: 'ANTHROPIC_API_KEY',
-    label: 'Anthropic API Key',
-    group: 'AI',
-    description: "Anthropic API kimlik anahtarı — DB'de şifreli saklanır.",
-    required: false,
-    example: '••••••••',
-    usedIn: 'server/ai/provider.cjs',
-    restartRequired: false,
-  },
-  {
-    key: 'OPENAI_API_KEY',
-    label: 'OpenAI API Key',
-    group: 'AI',
-    description: "OpenAI API kimlik anahtarı — DB'de şifreli saklanır.",
-    required: false,
-    example: '••••••••',
-    usedIn: 'server/ai/provider.cjs',
-    restartRequired: false,
-  },
-  {
-    key: 'LOGX_V2_STAGING_LEGACY_DIR',
-    label: 'LogX v2 Legacy Staging Dizini',
-    group: 'LogX v2',
-    description: 'Legacy EAR indirmelerinin geçici olarak konduğu dizin.',
-    required: false,
-    example: '/data/logx/staging/legacy',
-    usedIn: 'server/logx/v2/legacy.cjs',
-    restartRequired: false,
-  },
-  {
-    key: 'LOGX_V2_STAGING_OCP_DIR',
-    label: 'LogX v2 OCP Staging Dizini',
-    group: 'LogX v2',
-    description: 'OCP namespace indirmelerinin geçici olarak konduğu dizin.',
-    required: false,
-    example: '/data/logx/staging/ocp',
-    usedIn: 'server/logx/v2/ocp.cjs',
-    restartRequired: false,
-  },
-  {
-    key: 'LOGX_STAGING_FALLBACK_DIR',
-    label: 'LogX v2 Fallback Dizini',
-    group: 'LogX v2',
-    description: 'Ana staging dizinine erişilemediğinde kullanılan yerel yedek dizin.',
-    required: false,
-    example: '/tmp/logx-fallback',
-    usedIn: 'server/logx/v2/downloads.cjs',
-    restartRequired: false,
-  },
-  {
-    key: 'LOGX_APPS_TABLE',
-    label: 'Uygulama Envanteri Tablosu',
-    group: 'Veritabanı',
-    description:
-      'Kurumsal uygulama envanteri tablosu — app, host ve env sütunlarını içermeli. LogX Legacy uygulama arama, OpsX ve AI Analist host araçları bu tabloyu okur. Boş bırakılırsa MWAppsInventory kullanılır.',
-    required: false,
-    example: 'MWAppsInventory',
-    usedIn: 'server/config/apps-table.cjs',
-    restartRequired: false,
-  },
-  {
-    key: 'OPSX_AWX_SERVER_ID',
-    label: 'OpsX AWX Sunucusu (yedek)',
-    group: 'OpsX',
-    description:
-      "Playbook Kayıtları'nda satır bazında AWX sunucusu belirtilmemişse kullanılan yedek değer (ansible_awx_servers.server_no). Öncelik her zaman Playbook Kayıtları'ndaki değerdedir.",
-    required: false,
-    example: '0',
-    usedIn: 'server/opsx/index.cjs',
-    restartRequired: false,
-  },
-  {
-    key: 'OPSX_LEGACY_DUMP_TEMPLATE_ID',
-    label: 'Legacy Dump Template ID (yedek)',
-    group: 'OpsX',
-    description:
-      'Playbook Kayıtları\'nda "OpsX — Legacy Thread/Heap Dump" satırının Template ID\'si boşsa kullanılan yedek değer.',
-    required: false,
-    example: '',
-    usedIn: 'server/opsx/index.cjs',
-    restartRequired: false,
-  },
-  {
-    key: 'OPSX_OPENSHIFT_DUMP_TEMPLATE_ID',
-    label: 'Openshift Dump Template ID (yedek)',
-    group: 'OpsX',
-    description:
-      'Playbook Kayıtları\'nda "OpsX — Openshift Thread/Heap Dump" satırının Template ID\'si boşsa kullanılan yedek değer.',
-    required: false,
-    example: '',
-    usedIn: 'server/opsx/index.cjs',
-    restartRequired: false,
-  },
-  {
-    key: 'OPSX_OPENSHIFT_PODS_TEMPLATE_ID',
-    label: 'Openshift Pod Keşfi Template ID (yedek)',
-    group: 'OpsX',
-    description:
-      "Playbook Kayıtları'nda \"OpsX — Openshift Pod Keşfi\" satırının Template ID'si boşsa kullanılan yedek değer. Dump sihirbazı kullanıcıya pod seçtirmek için bu job'ı anlık tetikler.",
-    required: false,
-    example: '',
-    usedIn: 'server/opsx/index.cjs',
-    restartRequired: false,
-  },
-  {
-    key: 'OPSX_LEGACY_JVM_DISCOVER_TEMPLATE_ID',
-    label: 'Legacy JVM Keşfi Template ID (yedek)',
-    group: 'OpsX',
-    description:
-      "Playbook Kayıtları'nda \"OpsX — Legacy JVM Keşfi\" satırının Template ID'si boşsa kullanılan yedek değer. Dump sihirbazı kullanıcıya hangi JVM'den dump alınacağını seçtirmek için bu job'ı anlık tetikler.",
-    required: false,
-    example: '',
-    usedIn: 'server/opsx/index.cjs',
-    restartRequired: false,
-  },
-  {
-    key: 'OPSX_DUMP_STAGING_DIR',
-    label: 'Dump Staging Dizini',
-    group: 'OpsX',
-    description:
-      "Thread/heap dump dosyalarının bırakıldığı, portalın okuyabildiği paylaşılan dizin — hem Legacy (hedef JBoss host'larında) hem Openshift (opsx_get_dump.yaml'ın çalıştığı host'ta, oc rsync sonrası) mount'lu olmalı.",
-    required: false,
-    example: '/sw/BMW_PORTAL/opsx/dumps',
-    usedIn: 'server/opsx/downloads.cjs',
-    restartRequired: false,
-  },
-  {
-    key: 'OCO_API_URL',
-    label: 'OCO Servis URL',
-    group: 'OCO',
-    description:
-      "ChangeManagement ServiceRepository taban adresi. Self Service'te \"OCO Kontrolü\" açık bir servis PRODUCTION talebi aldığında (extra_vars'ta env|ortam = prod|production) OCO'nun planlanan kesinti penceresi buradan sorgulanır. Boş bırakılırsa varsayılan kullanılır.",
-    required: false,
-    example: 'https://servicerepository',
-    usedIn: 'server/oco/client.cjs',
-    restartRequired: false,
-  },
-  {
-    key: 'OCO_CHANGE_ORDER_PATH',
-    label: "OCO Sorgu Path'i",
-    group: 'OCO',
-    description:
-      'getChangeOrderByWfInstanceId uç yolu. Varsayılan değer zaten doğru, genelde değiştirmenize gerek yok.',
-    required: false,
-    example:
-      '/ChangeManagement/ChangeManagementServiceRepository.svc/Change/getChangeOrderByWfInstanceId/',
-    usedIn: 'server/oco/client.cjs',
-    restartRequired: false,
-  },
-  {
-    key: 'OCO_PROXY_URL',
-    label: 'OCO Proxy (opsiyonel)',
-    group: 'OCO',
-    description:
-      "Yalnızca OCO trafiği için proxy — global HTTPS_PROXY'den bağımsızdır. Boşsa doğrudan bağlanılır.",
-    required: false,
-    example: 'http://proxy.fw.garanti.com.tr:8080',
-    usedIn: 'server/oco/client.cjs',
-    restartRequired: false,
-  },
-  {
-    key: 'OCO_POLL_INTERVAL_SECONDS',
-    label: 'Zamanlanmış Tetikleme Kontrol Aralığı (sn)',
-    group: 'OCO',
-    description:
-      'OCO kesinti saatine zamanlanmış Self Service işlerinin ne sıklıkta kontrol edileceği. Varsayılan 30 saniye — tetikleme hassasiyeti bu değer kadardır.',
-    required: false,
-    example: '30',
-    usedIn: 'server/oco/poller.cjs',
-    restartRequired: true,
-  },
-  {
-    key: 'SMART_API_URL',
-    label: 'Smart API URL',
-    group: 'Smart',
-    description:
-      'Kurum içi talep yönetim sistemi (Smart/RFF) taban adresi — ortama göre değişir (SOS02-KL-001-EN): Test gbcalt01.fw.garanti.com.tr:8443, QA gbcadq01.fw.garanti.com.tr:8443, Prod gbca.fw.garanti.com.tr:8443.',
-    required: false,
-    example: 'https://gbca.fw.garanti.com.tr:8443',
-    usedIn: 'server/smart/client.cjs',
-    restartRequired: false,
-  },
-  {
-    key: 'SMART_API_USERNAME',
-    label: 'Smart Kullanıcı Adı',
-    group: 'Smart',
-    description:
-      "Smart API'ye Basic Auth ile bağlanan, L7_SMART_REQUEST LDAP grubuna üye servis hesabı.",
-    required: false,
-    example: 'svc-portal-smart',
-    usedIn: 'server/smart/client.cjs',
-    restartRequired: false,
-  },
-  {
-    key: 'SMART_API_PASSWORD',
-    label: 'Smart Şifresi',
-    group: 'Smart',
-    description:
-      "SMART_API_USERNAME ile birlikte kullanılır — DB'de AES-256-GCM ile şifreli saklanır.",
-    required: false,
-    example: '••••••••',
-    usedIn: 'server/smart/client.cjs',
-    restartRequired: false,
-  },
-  {
-    key: 'SMART_RFF_TOKEN',
-    label: 'Integration Key (RFF-Request-Token)',
-    group: 'Smart',
-    description:
-      'Designer > "Integration Information" ile alınan anahtar — DB\'de şifreli saklanır. Gönderilmezse Smart hata döner.',
-    required: false,
-    example: '••••••••',
-    usedIn: 'server/smart/client.cjs',
-    restartRequired: false,
-  },
-  {
-    key: 'SMART_DOMAIN',
-    label: 'Domain',
-    group: 'Smart',
-    description:
-      'Talep açan kullanıcının login domain bilgisi — SOS02-KL-001-EN örneklerinde sabit "GARANTI".',
-    required: false,
-    example: 'GARANTI',
-    usedIn: 'server/smart/client.cjs',
-    restartRequired: false,
-  },
-  {
-    key: 'SMART_PROXY_URL',
-    label: 'Proxy URL (opsiyonel, sadece Smart)',
-    group: 'Smart',
-    description:
-      "Yalnızca Smart trafiğini bu proxy üzerinden gönderir — sistem geneli HTTPS_PROXY'den bilerek bağımsızdır (o, MCP/Splunk/AI gibi diğer tüm entegrasyonları da etkiler). Boşsa doğrudan bağlanılır.",
-    required: false,
-    example: 'http://proxy.sirket.com.tr:8080',
-    usedIn: 'server/smart/client.cjs',
-    restartRequired: false,
-  },
-  {
-    key: 'SMART_CREATE_TICKET_PATH',
-    label: "Talep Açma Path'i",
-    group: 'Smart',
-    description:
-      'DOĞRULANDI (SOS02-KL-001-EN) — değiştirmeyin, sadece dokümanla path değişirse güncelleyin.',
-    required: false,
-    example: '/smart/internal/requestfulfilment/createoperationalrequest/v1',
-    usedIn: 'server/smart/client.cjs',
-    restartRequired: false,
-  },
-  {
-    key: 'SMART_GET_METADATA_PATH',
-    label: "Metadata Sorgulama Path'i",
-    group: 'Smart',
-    description:
-      'DOĞRULANDI (SOS02-KL-001-EN) — bir Flow Key\'in beklediği metadata alanlarını sorgular. Self Service > Alanları Yönet > Smart Onayı bölümündeki "Alanları Getir" butonu bunu kullanır.',
-    required: false,
-    example: '/smart/internal/getmetadataoperationalrequestbyflowname/v1',
-    usedIn: 'server/smart/client.cjs',
-    restartRequired: false,
-  },
-  {
-    key: 'SMART_CHECK_TICKET_PATH',
-    label: "Durum Sorgulama Path'i",
-    group: 'Smart',
-    description:
-      "DOĞRULANDI — resmi uç (kullanıcı tarafından 2026-08-14'te doğrulandı). SMART_API_URL üzerinde, talep açma ile AYNI kimlik doğrulama: POST {wfInstanceId}, cevap {result:{resultCode,statusCode,statusName}}. statusCode 1000=Tamamlandı (otomasyon o zaman tetiklenir), 2000=İptal Edildi. Varsayılan değer zaten doğru, genelde değiştirmenize gerek yok.",
-    required: false,
-    example: '/smart/internal/requestfulfilment/loadwfinstancestatus/v1',
-    usedIn: 'server/smart/client.cjs',
-    restartRequired: false,
-  },
-  {
-    key: 'SMART_POLL_INTERVAL_SECONDS',
-    label: 'Kontrol Sıklığı (sn)',
-    group: 'Smart',
-    description: 'Bekleyen Smart taleplerinin ne sıklıkla kontrol edileceği.',
-    required: false,
-    example: '30',
-    usedIn: 'server/smart/poller.cjs',
-    restartRequired: true,
-  },
-  {
-    key: 'SMART_TICKET_TIMEOUT_MINUTES',
-    label: 'Zaman Aşımı (dakika)',
-    group: 'Smart',
-    description:
-      'Bu süre içinde onaylanmayan talepler TIMEOUT olarak işaretlenip iptal edilir; otomasyon asla tetiklenmez. Boş bırakılırsa 15 dakika.',
-    required: false,
-    example: '15',
-    usedIn: 'server/smart/poller.cjs',
-    restartRequired: false,
-  },
-  {
-    key: 'DB_FULL_BACKUP_DIR',
-    label: 'Yedek Klasörü',
-    group: 'Veritabanı',
-    description:
-      "TBMWANS'taki HER tablonun ayrı CSV'ye yedeklendiği klasör — Portal sunucusunun bu yola doğrudan yazma erişimi olduğu için Ansible/AWX gerekmez.",
-    required: false,
-    example: '/sw/WAS_IMAGES/Ansible/Middleware_Inventory/backup/daily_full',
-    usedIn: 'server/db/full-backup.cjs',
-    restartRequired: false,
-  },
-  {
-    key: 'DB_FULL_BACKUP_RETENTION_DAYS',
-    label: 'Yedek Saklama Süresi (gün)',
-    group: 'Veritabanı',
-    description: 'Bu süreden eski yedek dosyaları her çalışmada otomatik silinir.',
-    required: false,
-    example: '14',
-    usedIn: 'server/db/full-backup.cjs',
-    restartRequired: false,
-  },
-  {
-    key: 'DB_FULL_BACKUP_HOUR',
-    label: 'Yedekleme Saati (0-23)',
-    group: 'Veritabanı',
-    description: 'Günlük yedeklemenin sunucu yerel saatiyle hangi saatte tetikleneceği.',
-    required: false,
-    example: '2',
-    usedIn: 'server/db/full-backup.cjs',
-    restartRequired: true,
-  },
-  {
-    key: 'DB_FULL_BACKUP_CHECK_INTERVAL_MINUTES',
-    label: 'Kontrol Sıklığı (dk)',
-    group: 'Veritabanı',
-    description: 'Zamanlayıcının hedef saate ulaşılıp ulaşılmadığını ne sıklıkla kontrol edeceği.',
-    required: false,
-    example: '15',
-    usedIn: 'server/db/full-backup.cjs',
-    restartRequired: true,
-  },
-  // ── ScaleX — SICAK YUKLENIR (restart GEREKMEZ) ────────────────────────────
-  // Bu yedi anahtar `SYSTEM_CONFIG_KEYS`te vardi ve sunucu ucu kabul ediyordu, ama
-  // ENV_VARS'ta OLMADIGI icin EKRANDA HIC GORUNMUYORDU: "admin ekranindan
-  // verilebilir" vaadi yalnizca API duzeyinde gerceklesmisti (2026-09-18 denetimi).
-  // `restartRequired: false` — `server/scalex/config.cjs` bunlari HER ISTEKTE
-  // `process.env`den yeniden okur; sunucu da yanitinda `hotReloadable: true` doner.
-  {
-    key: 'SCALEX_VERIFY_TIMEOUT_DEFAULT',
-    label: 'Doğrulama Bütçesi (sn)',
-    group: 'ScaleX',
-    description:
-      'Sonuç kontrol süresi. AÇARKEN bu süre dolunca uyarı yazılır ve iş BAŞARILI biter; KAPATIRKEN uyarılır ama 0 olana kadar beklenir. Boş = 300 (5 dk).',
-    required: false,
-    example: '300',
-    usedIn: 'server/scalex/config.cjs',
-    restartRequired: false,
-  },
-  {
-    key: 'SCALEX_VERIFY_TIMEOUT_MIN',
-    label: 'Bütçe Alt Sınırı (sn)',
-    group: 'ScaleX',
-    description:
-      'Kullanıcının girebileceği en küçük süre. min ≤ varsayılan ≤ max olmazsa ÜÇÜ BİRDEN fabrika değerine döner. Boş = 30.',
-    required: false,
-    example: '30',
-    usedIn: 'server/scalex/config.cjs',
-    restartRequired: false,
-  },
-  {
-    key: 'SCALEX_VERIFY_TIMEOUT_MAX',
-    label: 'Bütçe Üst Sınırı (sn)',
-    group: 'ScaleX',
-    description: 'Kullanıcının girebileceği en büyük süre. Boş = 3600 (1 saat).',
-    required: false,
-    example: '3600',
-    usedIn: 'server/scalex/config.cjs',
-    restartRequired: false,
-  },
-  {
-    key: 'SCALEX_VERIFY_FAIL_MULTIPLIER',
-    label: 'Hata Eşiği Çarpanı',
-    group: 'ScaleX',
-    description:
-      "KAPATMADA hata eşiği = uyarı eşiği × bu çarpan. Açmada hata eşiği YOKTUR. 1 yazılırsa uyarı ve hata aynı saniyeye düşer ve 'uyar ama bekle' davranışı kalkar. Boş = 2.",
-    required: false,
-    example: '2',
-    usedIn: 'server/scalex/config.cjs',
-    restartRequired: false,
-  },
-  {
-    key: 'SCALEX_MAX_TARGETS',
-    label: 'Azami Hedef (cluster × uygulama)',
-    group: 'ScaleX',
-    description:
-      'Tek istekte izin verilen azami hedef sayısı. Prod yazılı onay eşiğinden KÜÇÜK yapılırsa o kapı hiç ateşlenemez; sunucu eşiği otomatik aşağı çeker ve sebebini bildirir. Boş = 200.',
-    required: false,
-    example: '200',
-    usedIn: 'server/scalex/launch.cjs',
-    restartRequired: false,
-  },
-  {
-    key: 'SCALEX_PROD_CONFIRM_THRESHOLD',
-    label: 'Prod Yazılı Onay Eşiği',
-    group: 'ScaleX',
-    description:
-      'Prod ortamında bu eşiğin üstündeki çalıştırma, kullanıcıdan namespace adını ELLE yazmasını ister. İşi engellemez. Boş = 5.',
-    required: false,
-    example: '5',
-    usedIn: 'server/scalex/launch.cjs',
-    restartRequired: false,
-  },
-  {
-    key: 'SCALEX_MAX_AUDIT_GROUPS',
-    label: 'Sapma Taraması Kapsam Tavanı',
-    group: 'ScaleX',
-    description:
-      "'Durumu tazele' her kapsam için ayrı bir AWX işi başlatır. Tavan aşılırsa tarama HİÇ başlamaz ve kullanıcıdan kapsamı daraltması istenir. Boş = 12.",
-    required: false,
-    example: '12',
-    usedIn: 'src/components/scalex/StoppedPanel.tsx',
-    restartRequired: false,
-  },
-  {
-    key: 'SCALEX_MAX_AUDIT_NAMESPACES',
-    label: 'Keşif Namespace Tavanı',
-    group: 'ScaleX',
-    description:
-      "Tek keşif işinde taranabilecek en fazla namespace. 'Durumu tazele' toplamda bunu aşarsa tarama HİÇ başlamaz; sunucu da aşan isteği AWX'e göndermeden reddeder. Boş = 60.",
-    required: false,
-    example: '60',
-    usedIn: 'server/scalex/index.cjs',
-    restartRequired: false,
-  },
-  // SMART KURALI ANAHTARI (2026-10-13). Asil yeri Admin > ScaleX Yonetimi > Onay kapilari
-  // (durum karti: tanimli mi, eksik ne); burada da gorunur ki ayar listesi eksiksiz olsun.
-  // Sunucu kaydetmeden once dogrular: `required` / `oco_only` disindaki deger 400 doner.
-  {
-    key: 'SCALEX_PROD_SMART_MODE',
-    label: 'Prod SMART Kuralı',
-    group: 'ScaleX',
-    description:
-      "Production değişikliklerinde SMART onayı. 'required' = gerekli (varsayılan; SMART tanımlı değilse değişiklik BAŞLAMAZ). 'oco_only' = SMART istenmez, yalnız OCO penceresi denetlenir; bu kipte başlayan her prod işlemi denetime ayrıca yazılır. Boş ya da tanınmayan değer = required.",
-    required: false,
-    example: 'required',
-    usedIn: 'server/scalex/config.cjs',
-    restartRequired: false,
-  },
-  // ── Oturum ve giris (Faz E, 2026-10-02) — hepsi SICAK yuklenir; sunucu kaydetmeden
-  // once dogrular (server/auth/oturum-ayarlari.cjs). Model: docs/OTURUM-YONETIMI.md
-  {
-    key: 'SESSION_IDLE_MINUTES',
-    label: "Boşta Kalma Süresi (dk)",
-    group: 'Oturum ve Giriş',
-    description:
-      "İşlem yapılmayan oturum bu süre sonunda kapanır; her kullanıcı işlemi süreyi yeniden başlatır. Arka plan yoklamaları (pano, çevrimiçi listesi) saymaz. 5-720. Boş = 60.",
-    required: false,
-    example: "60",
-    usedIn: 'server/auth/session-policy.cjs',
-    restartRequired: false,
-  },
-  {
-    key: 'SESSION_ABSOLUTE_HOURS',
-    label: "En Uzun Oturum (sa)",
-    group: 'Oturum ve Giriş',
-    description:
-      "Etkin kullanılsa bile oturum girişten bu kadar sonra biter (yeniden giriş istenir; açık sayfa korunur). 1-72. Boş = 12.",
-    required: false,
-    example: "12",
-    usedIn: 'server/auth/session-policy.cjs',
-    restartRequired: false,
-  },
-  {
-    key: 'SESSION_REMEMBER_DAYS',
-    label: "Beni Hatırla (gün)",
-    group: 'Oturum ve Giriş',
-    description:
-      "\"Beni hatırla\" seçilen oturumun en uzun ömrü; boşta kalma kuralı yine geçerli. 0 = özellik KAPALI (giriş ekranında kutu görünmez). 0-30. Boş = 7.",
-    required: false,
-    example: "7",
-    usedIn: 'server/auth/session-policy.cjs',
-    restartRequired: false,
-  },
-  {
-    key: 'SESSION_WARN_SECONDS',
-    label: "Uyarı Süresi (sn)",
-    group: 'Oturum ve Giriş',
-    description:
-      "Oturum kapanmadan kaç saniye önce \"Oturumu Sürdür\" uyarısı çıksın. 30-900. Boş = 120.",
-    required: false,
-    example: "120",
-    usedIn: 'server/auth/session-policy.cjs',
-    restartRequired: false,
-  },
-  {
-    key: 'SESSION_MAX_CONCURRENT',
-    label: "Eşzamanlı Oturum Sınırı",
-    group: 'Oturum ve Giriş',
-    description:
-      "Bir kullanıcının aynı anda açık tutabileceği oturum sayısı. Aşılırsa yeni girişte son etkinliği en eski oturum kapanır ve kullanıcıya söylenir. 0 = sınırsız. 0-100. Boş = 0.",
-    required: false,
-    example: "0",
-    usedIn: 'server/auth/sessions-routes.cjs',
-    restartRequired: false,
-  },
-  {
-    key: 'LOGIN_USER_MAX_FAILS',
-    label: "Hatalı Deneme Eşiği",
-    group: 'Oturum ve Giriş',
-    description:
-      "Kullanıcı başına bu kadar hatalı şifreden sonra bekleme başlar (30 sn, 2 dk, 8 dk, en çok 15 dk); beklerken istek AD'ye hiç gitmez. AD'nin kilit eşiğini bilmek gerekmez: aynı hatalı şifre 90 sn içinde AD'ye yeniden gönderilmez ve bu sayaca yazılmaz. Kilitlenmeler sürerse düşürün. 3-20. Boş = 5.",
-    required: false,
-    example: "5",
-    usedIn: 'server/auth/login-throttle.cjs',
-    restartRequired: false,
-  },
-  {
-    key: 'LOGIN_IP_MAX_PER_MIN',
-    label: "IP Başına Giriş (dk)",
-    group: 'Oturum ve Giriş',
-    description:
-      "Bir IP'den dakikada en çok kaç giriş isteği. Kaba taban koruma; NAT arkasındaki kullanıcılar aynı IP'yi paylaşır, düşük tutmayın. 5-1000. Boş = 30.",
-    required: false,
-    example: "30",
-    usedIn: 'server/service.cjs',
-    restartRequired: false,
-  },
-  {
-    key: 'AUTH_ALLOWED_DOMAINS',
-    label: "İzinli Alan Adları (KURUM\\ad)",
-    group: 'Oturum ve Giriş',
-    description:
-      "Virgüllü NetBIOS alan adı listesi. Doluysa \"BASKA\\kullanici\" reddedilir. Boş = her önek kabul edilir (önek atılır).",
-    required: false,
-    example: "KURUM",
-    usedIn: 'server/auth/login-input.cjs',
-    restartRequired: false,
-  },
-  {
-    key: 'AUTH_ALLOWED_UPN_SUFFIXES',
-    label: "İzinli UPN Sonekleri (ad@...)",
-    group: 'Oturum ve Giriş',
-    description:
-      "Virgüllü liste. Doluysa yalnızca bu soneklerle \"ad@sonek\" girişi kabul edilir. Boş = hepsi.",
-    required: false,
-    example: "kurum.com.tr",
-    usedIn: 'server/auth/login-input.cjs',
-    restartRequired: false,
-  },
-  {
-    key: 'PORTAL_ALLOWED_ORIGINS',
-    label: "Ek İzinli Kökenler",
-    group: 'Oturum ve Giriş',
-    description:
-      "Durum değiştiren istekler yalnızca portalın kendi adresinden kabul edilir. Portal birden çok adla açılıyorsa (ör. kısa ad + tam ad) diğerlerini virgülle yazın.",
-    required: false,
-    example: "https://portal.kurum.com.tr",
-    usedIn: 'server/auth/origin-kontrolu.cjs',
-    restartRequired: false,
-  },
-  {
-    key: 'CSRF_ORIGIN_CHECK',
-    label: "Köken Kontrolü Modu",
-    group: 'Oturum ve Giriş',
-    description:
-      "enforce = yabancı kökenli istek 403; log = yalnızca uyarı yazılır (ilk devreye almada güvenli geçiş); off = kapalı. Boş = enforce.",
-    required: false,
-    example: "enforce",
-    usedIn: 'server/auth/origin-kontrolu.cjs',
-    restartRequired: false,
-  },
-  {
-    key: 'PORTAL_FRAME_ANCESTORS',
-    label: "Çerçeveye Gömme İzni",
-    group: 'Oturum ve Giriş',
-    description:
-      "Portalı iframe içinde gösterebilecek adresler. Boş = yalnızca portalın kendisi ('self'): başka bir sayfa portalı görünmez bir çerçeveye gömüp kullanıcıya tıklatamaz. Başka bir kurumsal sayfa portalı bilerek gömüyorsa adresini yazın (boşlukla ayırın): 'self' https://pano.kurum.com.tr — * = koruma kapalı.",
-    required: false,
-    example: "'self'",
-    usedIn: 'server/auth/guvenlik-basliklari.cjs',
-    restartRequired: false,
-  },
-  {
-    key: 'PORTAL_HSTS_MAX_AGE',
-    label: "HSTS Süresi (sn)",
-    group: 'Oturum ve Giriş',
-    description:
-      "Tarayıcıya \"bu adrese yalnızca HTTPS ile gel\" dedirtir. DİKKAT: aynı makine adında düz HTTP çalışan başka bir servis (başka port) varsa o da HTTPS'e zorlanır ve kırılır. Ad yalnızca HTTPS ise açın (ör. 31536000 = 1 yıl). Boş / 0 = kapalı.",
-    required: false,
-    example: "0",
-    usedIn: 'server/auth/guvenlik-basliklari.cjs',
-    restartRequired: false,
-  },
-  // ── Uzun suredir beyaz listede olup EKRANDA OLMAYAN uc anahtar ────────────
-  // Ucu de kullanimda (mssql-setup.cjs registry seed'i ve oco/config.cjs) ama
-  // ENV_VARS'ta yoklardi. Bekcinin (S11) istisnasiz calisabilmesi icin eklendi:
-  // "beyaz listede varsa ekranda da olmali" kurali istisna tasirsa, istisna listesi
-  // zamanla gercek eksikleri gizler.
-  {
-    key: 'OPSX_LEGACY_TEMPLATE_ID',
-    label: 'OpsX Legacy Template ID',
-    group: 'OpsX',
-    description:
-      "JBoss/WAS geleneksel sunucu operasyonu (restart/stop/start) AWX template ID'si. Yalnızca playbook kayıt tablosunun ilk tohumlanmasında kullanılır; sonrasında Admin > Playbook Kayıtları ekranı geçerlidir.",
-    required: false,
-    example: '42',
-    usedIn: 'server/db/mssql-setup.cjs (registry seed)',
-    restartRequired: true,
-  },
-  {
-    key: 'OPSX_OPENSHIFT_TEMPLATE_ID',
-    label: 'OpsX OpenShift Template ID',
-    group: 'OpsX',
-    description:
-      "Container uygulamalarında restart/stop/start AWX template ID'si. Yalnızca ilk tohumlamada kullanılır.",
-    required: false,
-    example: '43',
-    usedIn: 'server/db/mssql-setup.cjs (registry seed)',
-    restartRequired: true,
-  },
-  {
-    key: 'OCO_TIMEOUT_MS',
-    label: 'OCO İstek Zaman Aşımı (ms)',
-    group: 'OCO',
-    description:
-      'Değişiklik kaydı (ChangeManagement) servisine yapılan HTTP isteğinin zaman aşımı. Geçersiz ya da boş bırakılırsa 15000 kullanılır.',
-    required: false,
-    example: '15000',
-    usedIn: 'server/oco/config.cjs',
-    restartRequired: true,
-  },
-  {
-    key: 'OCO_SEARCH_GROUP_ID',
-    label: 'OCO Takvimi Grup Kimliği',
-    group: 'OCO',
-    description:
-      'OCO Takvimi ekranının hangi ekibin değişiklik kayıtlarını listeleyeceği (arama ucundaki openningGroupId). Boş bırakılırsa 6203 kullanılır.',
-    required: false,
-    example: '6203',
-    usedIn: 'server/oco/search.cjs',
-    restartRequired: false,
-  },
-];
+const tercihAnahtari = (id: string) => `admin.sistem.grup.${id}`;
 
-// `hotReloadable` SUNUCUDAN gelir (server/admin/system-config.cjs). Ekranin kendi
-// `restartRequired` alani ikinci bir dogruluk kaynagiydi: `server/scalex/config.cjs`
-// gibi env'i HER ISTEKTE okuyan moduller icin sunucu "restart gerekmez" derken
-// ekran "gerekir" yaziyordu. Sunucu bilir, ekran ona uyar.
-interface ConfigValue {
-  key: string;
-  value: string;
-  defined: boolean;
-  masked: boolean;
-  hotReloadable?: boolean;
+/** Grup acik/kapali tercihi. Varsayilan KAPALI. Depolama kapaliysa yalniz bu ziyaret. */
+function tercihleriOku(): Record<string, boolean> {
+  const t: Record<string, boolean> = {};
+  for (const g of GRUPLAR) {
+    try {
+      t[g.id] = window.localStorage.getItem(tercihAnahtari(g.id)) === '1';
+    } catch {
+      t[g.id] = false;
+    }
+  }
+  return t;
 }
 
-const CACHE_ACTIONS = [
-  {
-    key: 'nobetci',
-    label: 'Nöbet Önbelleği',
-    desc: 'nobetci/today 5dk cache',
-    serverEndpoint: '/api/admin/cache/nobetci',
-  },
-  {
-    key: 'awx-tokens',
-    label: 'AWX Token',
-    desc: "Tüm sunucu token'ları",
-    serverEndpoint: '/api/admin/cache/awx-tokens',
-  },
-  {
-    key: 'inventory',
-    label: 'Envanter (Client)',
-    desc: 'Client-side tablo/sütun cache',
-    serverEndpoint: null,
-  },
-  {
-    key: 'dt-health',
-    label: 'DT Health (Client)',
-    desc: 'Dynatrace health cache',
-    serverEndpoint: null,
-  },
-];
+function tercihYaz(id: string, acik: boolean) {
+  try {
+    window.localStorage.setItem(tercihAnahtari(id), acik ? '1' : '0');
+  } catch {
+    /* depolama yoksa tercih bu ziyaretle sinirli kalir */
+  }
+}
+
+function hareketAzalt(): boolean {
+  try {
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  } catch {
+    return false;
+  }
+}
+
+const META = new Map(ENV_VARS.map((m) => [m.key, m]));
+const META_GRUBU = new Map<string, Grup>();
+for (const m of ENV_VARS) {
+  const g = GRUPLAR.find((x) => x.ad === m.group);
+  if (g) META_GRUBU.set(m.key, g);
+}
 
 export default function SystemConfigTab() {
-  const [cacheClearing, setCacheClearing] = useState<string | null>(null);
+  const s = useSistemAyarlari();
+  const [arama, setArama] = useState('');
+  const [suzgec, setSuzgec] = useState<Suzgec>('tumu');
+  const [tercih, setTercih] = useState<Record<string, boolean>>(tercihleriOku);
+  // Gecici acilis (Gruba git, restart bandi): tercihe YAZILMAZ.
+  const [gecici, setGecici] = useState<ReadonlySet<string>>(new Set());
+  // Kullanicinin ELLE kapattigi gruplar: otomatik acilisi (eksik, taslak, arama) bastirir.
+  const [kapatilan, setKapatilan] = useState<ReadonlySet<string>>(new Set());
+  const [odaklanacak, setOdaklanacak] = useState<string | null>(null);
+  const [onay, setOnay] = useState<OnayIstegi | null>(null);
+  const duzenleDugmeleri = useRef(new Map<string, HTMLButtonElement>());
+  const grupBasliklari = useRef(new Map<string, HTMLButtonElement>());
+  const aracCubugu = useRef<HTMLDivElement>(null);
+  // Duzenleyici kapaninca odak bu anahtarin "Duzenle" dugmesine doner (dugme yeniden monte
+  // olurken ref geri cagrisi odaklar — effect'e gerek yok).
+  const odakBekleyen = useRef<string | null>(null);
 
-  // System config (env) state
-  const [configValues, setConfigValues] = useState<Record<string, ConfigValue>>({});
-  const [editingKey, setEditingKey] = useState<string | null>(null);
-  const [editValue, setEditValue] = useState('');
-  const [configSaving, setConfigSaving] = useState(false);
-  const [restartNeeded, setRestartNeeded] = useState(false);
+  const durum = s.durum;
+  const hazir = durum === 'tamam';
+  const suzmeVar = arama.trim() !== '' || suzgec !== 'tumu';
+  const ozetSayilari = ozet(ENV_VARS, s.degerler, s.restartBekleyen);
 
-  // Degerler OKUNAMADIYSA her satir SONSUZA DEK "yukleniyor…" gosteriyordu: hata yutuluyor,
-  // `configValues` bos kaliyor ve "henuz gelmedi" ile "gelmeyecek" ayirt edilemiyordu.
-  const [configDurumu, setConfigDurumu] = useState<'yukleniyor' | 'tamam' | 'hata'>('yukleniyor');
-  const [configHatasi, setConfigHatasi] = useState<string | null>(null);
-  async function loadSystemConfig() {
-    try {
-      const res = await fetch('/api/admin/system-config');
-      const r = await res.json().catch(() => ({}));
-      if (!res.ok || !r.ok) {
-        throw new Error(r.message || r.error || `Sunucu hatası (HTTP ${res.status}).`);
-      }
-      const map: Record<string, ConfigValue> = {};
-      for (const v of (r.values || []) as ConfigValue[]) map[v.key] = v;
-      setConfigValues(map);
-      setConfigHatasi(null);
-      setConfigDurumu('tamam');
-    } catch (e: unknown) {
-      setConfigHatasi(e instanceof Error && e.message ? e.message : 'İstek başarısız.');
-      setConfigDurumu('hata');
+  const gorunurMu = (m: EnvVarMeta, g: Grup) =>
+    eslesir(m, s.degerler[m.key], g.ad, arama) &&
+    suzgectenGecer(suzgec, m, s.degerler[m.key], s.kirliMi(m.key), s.restartBekleyen.has(m.key));
+
+  const grupVerisi = GRUPLAR.map((g) => {
+    const metalar = ENV_VARS.filter((m) => m.group === g.ad);
+    const gorunen = suzmeVar ? metalar.filter((m) => gorunurMu(m, g)) : metalar;
+    const bildirilen = metalar.filter((m) => m.saltOkunur !== 'ortam');
+    const tanimli = bildirilen.filter((m) => s.degerler[m.key]?.defined).length;
+    const eksik = hazir
+      ? metalar.filter((m) => m.required && s.degerler[m.key] && !s.degerler[m.key].defined).length
+      : 0;
+    const kirli = metalar.filter((m) => s.kirliMi(m.key)).length;
+    const uygulanmalar = new Set(
+      metalar.map((m) => uygulanma(s.degerler[m.key])).filter((u): u is 'canli' | 'restart' => u !== null),
+    );
+    const grupUygulanma =
+      uygulanmalar.size === 0 ? null : uygulanmalar.size > 1 ? 'karisik' : [...uygulanmalar][0];
+    const ilgiIstiyor =
+      eksik > 0 ||
+      kirli > 0 ||
+      metalar.some((m) => s.alanHatasi[m.key] || s.bayat[m.key] !== undefined) ||
+      (suzmeVar && gorunen.length > 0);
+    const acik = kapatilan.has(g.id) ? false : !!tercih[g.id] || gecici.has(g.id) || ilgiIstiyor;
+    return {
+      grup: g,
+      gorunen,
+      acik,
+      ozet: { tanimli, toplam: bildirilen.length, eksik, kirli },
+      uygulanma: grupUygulanma as 'canli' | 'restart' | 'karisik' | null,
+    };
+  });
+  const gorunenGruplar = grupVerisi.filter((v) => v.gorunen.length > 0);
+  const gorunenSayi = gorunenGruplar.reduce((n, v) => n + v.gorunen.length, 0);
+  const tumuAcik = gorunenGruplar.length > 0 && gorunenGruplar.every((v) => v.acik);
+
+  function aramaDegisti(v: string) {
+    setArama(v);
+    setKapatilan(new Set());
+  }
+
+  function suzgecDegisti(v: Suzgec) {
+    setSuzgec(v);
+    setKapatilan(new Set());
+  }
+
+  function acKapat(id: string, simdiAcik: boolean) {
+    tercihYaz(id, !simdiAcik);
+    setTercih((t) => ({ ...t, [id]: !simdiAcik }));
+    setKapatilan((k) => {
+      const n = new Set(k);
+      if (simdiAcik) n.add(id);
+      else n.delete(id);
+      return n;
+    });
+    if (simdiAcik) {
+      setGecici((gc) => {
+        const n = new Set(gc);
+        n.delete(id);
+        return n;
+      });
     }
   }
 
-  useEffect(() => {
-    loadSystemConfig();
-  }, []);
+  function tumunuAcKapat() {
+    const ac = !tumuAcik;
+    const t: Record<string, boolean> = {};
+    for (const g of GRUPLAR) {
+      t[g.id] = ac;
+      tercihYaz(g.id, ac);
+    }
+    setTercih(t);
+    setGecici(new Set());
+    setKapatilan(ac ? new Set() : new Set(GRUPLAR.map((g) => g.id)));
+  }
 
-  async function saveConfigValue(key: string) {
-    setConfigSaving(true);
-    try {
-      const r = await fetch('/api/admin/system-config', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ key, value: editValue }),
-      }).then((x) => x.json());
-      if (!r.ok) throw new Error(r.error || 'Kaydedilemedi');
-      toast.success(`${key} güncellendi.`);
-      // SUNUCU KARAR VERIR. Onceden KOSULSUZ `true` yaziliyordu: sicak yuklenen bir
-      // ayari degistiren admin de "yeniden baslatin" uyarisi goruyor ve bosuna
-      // kesinti planliyordu. `restartRequired` PUT yanitindan geliyor ve anahtara
-      // gore hesaplaniyor (HOT_RELOADABLE_KEYS).
-      if (r.restartRequired !== false) setRestartNeeded(true);
-      setEditingKey(null);
-      loadSystemConfig();
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : String(e));
-    } finally {
-      setConfigSaving(false);
+  /** Grubu gecici acar, gerekirse suzmeyi kaldirir; `sonra` yerlesim oturunca calisir. */
+  function grubuGoster(id: string, gorunur: boolean, sonra: () => void) {
+    if (!gorunur) {
+      setArama('');
+      setSuzgec('tumu');
+    }
+    setGecici((gc) => new Set(gc).add(id));
+    setKapatilan((k) => {
+      const n = new Set(k);
+      n.delete(id);
+      return n;
+    });
+    window.requestAnimationFrame(() => window.requestAnimationFrame(sonra));
+  }
+
+  function grubaGit(id: string) {
+    const gorunur = gorunenGruplar.some((v) => v.grup.id === id);
+    grubuGoster(id, gorunur, () => {
+      const el = grupBasliklari.current.get(id);
+      if (!el) return;
+      ogeyeKaydir(el, aracCubugu.current, hareketAzalt());
+      el.focus({ preventScroll: true });
+    });
+  }
+
+  function ayaraGit(key: string) {
+    const g = META_GRUBU.get(key);
+    if (!g) return;
+    const satirGorunur = gorunenGruplar.some((v) => v.gorunen.some((m) => m.key === key));
+    grubuGoster(g.id, satirGorunur, () => {
+      const satir = document.getElementById(`ayar-${key}`);
+      if (satir) ogeyeKaydir(satir, aracCubugu.current, hareketAzalt());
+      duzenleDugmeleri.current.get(key)?.focus({ preventScroll: true });
+    });
+  }
+
+  function duzenle(key: string) {
+    s.duzenlemeyiAc(key);
+    setOdaklanacak(key);
+  }
+
+  function iptal(key: string) {
+    odakBekleyen.current = key;
+    s.duzenlemeyiKapat(key);
+    setOdaklanacak(null);
+  }
+
+  /**
+   * Sunucu kaydi reddetti; hata satirin altinda (role=alert) ama satir gorunmeyebilir
+   * (denetim 2026-10-15). Kayit surerken grup elle kapatildiysa grup yeniden acilir — hata
+   * elle kapatmayi ezer; gecici acilis, Iptal'den sonra grup kullanicinin altindan kapanmasin
+   * (odak "Duzenle"ye inert bir grupta donemezdi). Arama/suzgec satiri listeden dusurduyse
+   * satir DOM'da yok: hata bildirim balonuyla da soylenir.
+   */
+  function kayitHatasiniGoster(key: string, hata: string) {
+    const g = META_GRUBU.get(key);
+    if (g) {
+      setKapatilan((k) => {
+        if (!k.has(g.id)) return k;
+        const n = new Set(k);
+        n.delete(g.id);
+        return n;
+      });
+      setGecici((gc) => (gc.has(g.id) ? gc : new Set(gc).add(g.id)));
+    }
+    if (!document.getElementById(`ayar-${key}`)) {
+      toast.error(`${META.get(key)?.label ?? key} kaydedilemedi: ${hata}`);
     }
   }
 
-  async function clearCache(key: string, endpoint: string | null) {
-    setCacheClearing(key);
-    try {
-      if (key === 'inventory') {
-        inventoryApi.invalidateCache?.();
-        toast.success('Envanter önbelleği temizlendi.');
-      } else if (key === 'dt-health') {
-        dynatraceApi.invalidateCache?.();
-        toast.success('DT health önbelleği temizlendi.');
-      } else if (key === 'nobetci') {
-        nobetciApi.invalidate();
-        if (endpoint) {
-          await fetch(endpoint, { method: 'POST' });
-        }
-        toast.success('Nöbet önbelleği temizlendi.');
-      } else if (endpoint) {
-        const r = await fetch(endpoint, { method: 'POST' });
-        const d = (await r.json()) as { ok: boolean };
-        if (d.ok) toast.success(`${key} önbelleği temizlendi.`);
-        else toast.error('Önbellek temizlenemedi.');
-      }
-    } catch {
-      toast.error('Önbellek temizlenirken hata oluştu.');
-    } finally {
-      setCacheClearing(null);
+  async function kaydet(key: string, deger: string) {
+    odakBekleyen.current = key;
+    const sonuc = await s.kaydet(key, deger);
+    if (sonuc.ok) {
+      setOdaklanacak(null);
+      return true;
     }
+    odakBekleyen.current = null;
+    if (sonuc.hata) kayitHatasiniGoster(key, sonuc.hata);
+    return false;
   }
 
-  // Group env vars
-  const groups = Array.from(new Set(ENV_VARS.map((v) => v.group)));
+  function gonder(m: EnvVarMeta, ham: string) {
+    const cv = s.degerler[m.key];
+    if (!cv) return;
+    // Yalniz bosluk = BOS (SA17): sunucu '   ' yazip ayari "Tanimli" gosterirdi; onay penceresi
+    // "Silinecek" / "bos" derken sunucuya baska bir sey gitmesin.
+    const deger = ham.trim() === '' ? '' : ham;
+    const g = onayGerekce(m, cv, deger);
+    if (g) setOnay({ meta: m, cv, yeni: deger, ...g });
+    else void kaydet(m.key, deger);
+  }
+
+  async function onayla() {
+    if (!onay) return;
+    await kaydet(onay.meta.key, onay.yeni);
+    setOnay(null);
+  }
 
   return (
-    <div className="space-y-8">
-      {/* K-08: Cache Clear Buttons */}
-      <section>
-        <h3 className="text-sm font-semibold text-gray-700 mb-1">Önbellek Yönetimi</h3>
-        <p className="text-xs text-gray-400 mb-4">
-          Servis önbelleklerini manuel temizle — bir sonraki istek gerçek veriden yeniden yükler.
-        </p>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {CACHE_ACTIONS.map((ca) => (
-            <button
-              key={ca.key}
-              onClick={() => clearCache(ca.key, ca.serverEndpoint)}
-              disabled={cacheClearing === ca.key}
-              className="flex flex-col items-center gap-1.5 px-3 py-3 text-center border border-gray-200 rounded-xl hover:border-[#1A56DB] hover:bg-blue-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <ArrowPathIcon
-                className={`w-4 h-4 text-[#1A56DB] ${cacheClearing === ca.key ? 'animate-spin' : ''}`}
-              />
-              <span className="text-xs font-semibold text-gray-700">{ca.label}</span>
-              <span className="text-[10px] text-gray-400">{ca.desc}</span>
-            </button>
-          ))}
-        </div>
+    <div className="@container/sistem relative space-y-6">
+      <p className="max-w-3xl text-xs leading-relaxed text-[var(--text-secondary)]">
+        Değerler Portal veritabanına kaydedilir ve çalışan sunucuya hemen aktarılır. “Canlı uygulanır”
+        etiketli gruplar kaydedildiği anda, diğerleri sunucu yeniden başlatılınca geçerli olur. Gizli
+        değerler bu ekranda hiçbir zaman tam gösterilmez.
+      </p>
+
+      <section aria-labelledby="sistem-durum">
+        <h3 id="sistem-durum" className="sr-only">
+          Durum
+        </h3>
+        <OzetSeridi durum={durum} ozet={ozetSayilari} aktif={suzgec} onSec={suzgecDegisti} />
       </section>
 
-      {/* Environment Variables — mevcut değer + inline düzenleme */}
-      <section>
-        <h3 className="text-sm font-semibold text-gray-700 mb-1">Ortam Değişkenleri</h3>
-        <p className="text-xs text-gray-400 mb-3">
-          Mevcut değerler gösterilir; kalem ikonuyla düzenlenebilir (.env.local'a yazılır). Hassas
-          değerler (API key vb.) maskelenir — düzenlerken yeni değer girilir, eski değer
-          gösterilmez.
-        </p>
+      <YenidenBaslatmaBandi
+        liste={s.restartBekleyen}
+        onAyaraGit={ayaraGit}
+        onTemizle={s.restartListesiniTemizle}
+      />
 
-        {restartNeeded && (
-          <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-            ⚠ Değişikliklerin tam etkili olması için sunucu yeniden başlatılmalı — modüllerin çoğu
-            env'i açılışta okur.
-          </div>
-        )}
+      <OnbellekPaneli />
 
-        {configDurumu === 'hata' && (
-          <div className="mb-4">
+      <section aria-labelledby="sistem-ayarlar" className="space-y-4">
+        <h3 id="sistem-ayarlar" className="sr-only">
+          Ayarlar
+        </h3>
+        <AyarAracCubugu
+          arama={arama}
+          onArama={aramaDegisti}
+          suzgec={suzgec}
+          onSuzgecKaldir={() => suzgecDegisti('tumu')}
+          bolumler={BOLUMLER}
+          gruplar={GRUPLAR}
+          onGrubaGit={grubaGit}
+          kirliSayisi={s.kirliSayisi}
+          onTaslaklariGoster={() => suzgecDegisti('taslak')}
+          gorunenSayi={gorunenSayi}
+          suzmeVar={suzmeVar}
+          tumuAcik={tumuAcik}
+          onTumunuAcKapat={tumunuAcKapat}
+          kokRef={aracCubugu}
+        />
+
+        <div id="sistem-ayar-listesi" aria-busy={durum === 'yukleniyor'} className="space-y-6">
+          {durum === 'hata' && (
             <LoadError
               compact
               title="Ortam değişkenleri okunamadı"
-              message={configHatasi}
-              onRetry={() => {
-                setConfigDurumu('yukleniyor');
-                void loadSystemConfig();
-              }}
+              message={s.hata}
+              onRetry={s.tekrarDene}
               testId="sistem-ayar-hatasi"
             />
-          </div>
-        )}
+          )}
 
-        <div className="space-y-4">
-          {groups.map((group) => (
-            <div key={group}>
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                {group}
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {ENV_VARS.filter((v) => v.group === group).map((v) => {
-                  const cv = configValues[v.key];
-                  const isEditing = editingKey === v.key;
-                  return (
-                    <div
-                      key={v.key}
-                      className="flex items-center justify-between gap-2 px-3 py-2 bg-gray-50 rounded-xl border border-transparent hover:border-gray-200 transition-colors"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <p className="text-xs font-medium text-gray-700">{v.label}</p>
-                          <span
-                            className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${cv?.defined ? 'bg-green-500' : 'bg-gray-300'}`}
-                            title={cv?.defined ? 'Tanımlı' : 'Boş'}
-                          />
-                          {v.required && (
-                            <span className="text-[9px] px-1 rounded bg-amber-50 text-amber-600 font-medium">
-                              zorunlu
-                            </span>
-                          )}
-                          <span
-                            className="text-gray-300 hover:text-gray-500 cursor-help text-xs leading-none flex-shrink-0"
-                            title={`${v.description}\n\nÖrnek: ${v.example}\nKullanıldığı yer: ${v.usedIn}\nDeğişiklik sonrası restart gerekir: ${(configValues[v.key]?.hotReloadable ?? !v.restartRequired) ? 'Hayır (canlı uygulanır)' : 'Evet'}`}
-                          >
-                            ⓘ
-                          </span>
-                        </div>
-                        <p className="text-[10px] font-mono text-gray-400">{v.key}</p>
-                        {isEditing ? (
-                          <div className="flex items-center gap-1.5 mt-1.5">
-                            <input
-                              autoFocus
-                              value={editValue}
-                              onChange={(e) => setEditValue(e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') saveConfigValue(v.key);
-                                if (e.key === 'Escape') setEditingKey(null);
-                              }}
-                              placeholder={cv?.masked ? 'Yeni değer girin...' : ''}
-                              className="flex-1 min-w-0 px-2 py-1 text-xs font-mono border border-blue-200 rounded-lg outline-none focus:border-[#1A56DB] bg-white"
-                            />
-                            <button
-                              onClick={() => saveConfigValue(v.key)}
-                              disabled={configSaving}
-                              className="px-2 py-1 text-[10px] font-semibold bg-[#1A56DB] text-white rounded-lg disabled:opacity-50"
-                            >
-                              Kaydet
-                            </button>
-                            <button
-                              onClick={() => setEditingKey(null)}
-                              className="px-1.5 py-1 text-[10px] text-gray-400 hover:text-gray-600"
-                            >
-                              İptal
-                            </button>
-                          </div>
-                        ) : (
-                          <p
-                            className="text-xs font-mono text-gray-600 mt-0.5 truncate"
-                            title={cv?.masked ? undefined : cv?.value}
-                          >
-                            {cv ? (
-                              cv.value || <span className="italic text-gray-300">boş</span>
-                            ) : (
-                              <span className="italic text-gray-300">
-                                {configDurumu === 'yukleniyor'
-                                  ? 'yükleniyor…'
-                                  : configDurumu === 'hata'
-                                    ? 'okunamadı'
-                                    : 'sunucu bu anahtarı bildirmedi'}
-                              </span>
-                            )}
-                          </p>
-                        )}
-                      </div>
-                      {!isEditing && (
-                        <button
-                          onClick={() => {
-                            setEditingKey(v.key);
-                            setEditValue(cv?.masked ? '' : cv?.value || '');
-                          }}
-                          title="Düzenle"
-                          className="p-1.5 text-gray-300 hover:text-[#1A56DB] rounded-lg transition-colors flex-shrink-0"
-                        >
-                          <PencilIcon className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
+          {suzmeVar && gorunenSayi === 0 && (
+            <EmptyState
+              icon={<MagnifyingGlassIcon aria-hidden="true" className="w-9 h-9" />}
+              title="Eşleşen ayar yok"
+              description="Aramayı ya da süzgeci değiştirin. Gizli değerlerin içeriğinde arama yapılmaz."
+              action={
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => {
+                    aramaDegisti('');
+                    suzgecDegisti('tumu');
+                  }}
+                >
+                  Aramayı ve süzgeci temizle
+                </button>
+              }
+            />
+          )}
+
+          {BOLUMLER.map((b) => {
+            const gruplar = gorunenGruplar.filter((v) => v.grup.bolum === b.id);
+            if (gruplar.length === 0) return null;
+            return (
+              <section key={b.id} aria-labelledby={`sistem-bolum-${b.id}`} className="space-y-3">
+                <h3
+                  id={`sistem-bolum-${b.id}`}
+                  className="text-[11px] !font-semibold uppercase !tracking-wider !text-[var(--text-muted)]"
+                >
+                  {b.ad}
+                </h3>
+                {gruplar.map((v) => (
+                  <AyarGrubu
+                    key={v.grup.id}
+                    grup={v.grup}
+                    acik={v.acik}
+                    onAcKapat={() => acKapat(v.grup.id, v.acik)}
+                    ozet={v.ozet}
+                    uygulanma={v.uygulanma}
+                    baslikRef={(el) => {
+                      if (el) grupBasliklari.current.set(v.grup.id, el);
+                      else grupBasliklari.current.delete(v.grup.id);
+                    }}
+                  >
+                    {v.gorunen.map((m) => (
+                      <AyarSatiri
+                        key={m.key}
+                        meta={m}
+                        grup={v.grup}
+                        cv={s.degerler[m.key]}
+                        durum={durum}
+                        taslak={s.taslaklar[m.key]}
+                        kirli={s.kirliMi(m.key)}
+                        bayatDeger={s.bayat[m.key]}
+                        kaydediliyor={s.kaydediliyor.has(m.key)}
+                        hata={s.alanHatasi[m.key]}
+                        yeniKaydedildi={!!s.yeniKaydedilen[m.key]}
+                        restartBekliyor={s.restartBekleyen.has(m.key)}
+                        odakla={odaklanacak === m.key}
+                        duzenleRef={(el) => {
+                          if (!el) {
+                            duzenleDugmeleri.current.delete(m.key);
+                            return;
+                          }
+                          duzenleDugmeleri.current.set(m.key, el);
+                          if (odakBekleyen.current === m.key) {
+                            odakBekleyen.current = null;
+                            el.focus();
+                          }
+                        }}
+                        onDuzenle={() => duzenle(m.key)}
+                        onTaslak={(val) => s.taslakYaz(m.key, val)}
+                        onIptal={() => iptal(m.key)}
+                        onGonder={(val) => gonder(m, val)}
+                        onSil={() => gonder(m, '')}
+                      />
+                    ))}
+                  </AyarGrubu>
+                ))}
+              </section>
+            );
+          })}
         </div>
       </section>
+
+      <KritikDegisiklikOnayi
+        istek={onay}
+        kaydediliyor={!!onay && s.kaydediliyor.has(onay.meta.key)}
+        onIptal={() => setOnay(null)}
+        onOnayla={() => void onayla()}
+      />
     </div>
   );
 }

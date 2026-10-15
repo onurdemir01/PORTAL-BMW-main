@@ -1,0 +1,958 @@
+// src/components/admin/tabs/sistem/ortamDegiskenleri.ts — Admin > Sistem ayar meta verisi.
+//
+// Sunucu beyaz listesiyle hizali (server/db/env-overrides.cjs SYSTEM_CONFIG_KEYS);
+// SESSION_SECRET ve benzeri kasitli olarak listede yok. Yalniz on yuzde sabit; DB'ye GITMEZ.
+// Stil yok, yalniz veri: tasarim bekcileri `.ts` dosyalarini taramaz.
+//
+// BICIM KISITLARI (bekciler bu dosyayi METIN olarak okur):
+//   * S11  (server/admin/__tests__/system-config-ekran.test.cjs): her girdi `{` ile acilir ve
+//          ILK alan `key:` olur; beyaz listedeki her anahtar burada bulunmali.
+//   * S11b ayni dosya: beyaz listede olmayan anahtar `saltOkunur: 'ortam'` tasir; 'opsx' yalniz
+//          OPSX_SMART_* anahtarlarinda.
+//   * S12  girdiler DUZ nesnedir: aciklama dahil hicbir yerde suslu parantez yok, ic ice nesne
+//          yok (`secenekler` dizidir). `restartRequired` alani KALDIRILDI: tek kaynak sunucunun
+//          `hotReloadable` alanidir (meta 47 anahtarda sunucuyla celisiyordu).
+//   * S16  `secenekler` sunucu dogrulayicisindan gecmeli (CSRF_ORIGIN_CHECK, SCALEX_PROD_SMART_MODE).
+//   * OS5  (server/auth/__tests__/oturum-sertlestirme.test.cjs): `key: 'X',` sonra TEK satir
+//          `label`, hemen ardindan `group: 'Oturum ve Giriş'`. Bicimlendirici label'i iki satira
+//          bolerse bekci kirmiziya doner.
+
+export interface EnvVarMeta {
+  /** ILK alan (S11 deseni `{ key:`). */
+  key: string;
+  /** TEK satir, hemen ardindan `group` (OS5). */
+  label: string;
+  /** gruplar.ts'teki GRUPLAR[].ad ile birebir. 'Oturum ve Giriş' DEGISMEZ (OS5). */
+  group: string;
+  description: string;
+  required: boolean;
+  example: string;
+  usedIn: string;
+  /** Yalniz `inputMode="numeric"` icin; dogrulama sunucuda. */
+  tur?: 'sayi';
+  /** Secim turu anahtarlar. DIZI; nesne ya da ic ice suslu parantez YASAK (S12). */
+  secenekler?: string[];
+  /** Degisiklik onay penceresinden gecer (KARAR-2). */
+  kritik?: boolean;
+  /** 'ortam': beyaz listede degil, yalniz sunucu ortam degiskeni. 'opsx': OpsX'te yonetilir (KARAR-1). */
+  saltOkunur?: 'ortam' | 'opsx';
+}
+
+export const ENV_VARS: EnvVarMeta[] = [
+  {
+    key: 'PORT',
+    label: 'Port',
+    group: 'Sunucu',
+    description: 'Node sunucusunun dinlediği TCP portu.',
+    required: false,
+    example: '3000',
+    usedIn: 'server/index.cjs',
+    tur: 'sayi',
+    kritik: true,
+  },
+  {
+    key: 'NODE_ENV',
+    label: 'Ortam',
+    group: 'Sunucu',
+    description:
+      'Güvenlik gereği bu ekrandan değiştirilemez ve değeri bildirilmez; sunucu ortam dosyasından okunur.',
+    required: true,
+    example: 'production',
+    usedIn: 'Genel',
+    saltOkunur: 'ortam',
+  },
+  {
+    key: 'MSSQL_SERVER',
+    label: 'MSSQL Server',
+    group: 'Veritabanı',
+    description: "Portal DB'sinin barındığı MSSQL sunucu adresi.",
+    required: true,
+    example: '10.151.162.147',
+    usedIn: 'server/db/index.cjs',
+    kritik: true,
+  },
+  {
+    key: 'MSSQL_DATABASE',
+    label: 'MSSQL Database',
+    group: 'Veritabanı',
+    description: 'Portal veritabanı adı (TBMWANS).',
+    required: true,
+    example: 'TBMWANS',
+    usedIn: 'server/db/index.cjs',
+    kritik: true,
+  },
+  {
+    key: 'MSSQL_RO_USER',
+    label: 'Envanter Salt-Okunur Kullanıcı',
+    group: 'Veritabanı',
+    description:
+      'Custom SQL (Envanter) için ayrı, GRANT SELECT-only DB kullanıcısı — tanımlı değilse paylaşılan (yazma-yetkili) havuza düşülür.',
+    required: false,
+    example: 'portal_ro',
+    usedIn: 'server/inventory/mssql-readonly.cjs',
+    kritik: true,
+  },
+  {
+    key: 'MSSQL_RO_PASSWORD',
+    label: 'Envanter Salt-Okunur Şifre',
+    group: 'Veritabanı',
+    description: "MSSQL_RO_USER ile birlikte kullanılır — production ortamında Portal veritabanında şifreli saklanır.",
+    required: false,
+    example: '••••••••',
+    usedIn: 'server/inventory/mssql-readonly.cjs',
+    kritik: true,
+  },
+  {
+    key: 'LDAP_URL',
+    label: 'LDAP URL',
+    group: 'Dizin (LDAP)',
+    description: 'Kurumsal Active Directory/LDAP bağlantı adresi.',
+    required: true,
+    example: 'ldaps://dc.garanti.com.tr',
+    usedIn: 'server/auth/ldap.cjs',
+    kritik: true,
+  },
+  {
+    key: 'LDAP_BASE_DN',
+    label: 'LDAP Base DN',
+    group: 'Dizin (LDAP)',
+    description: "Kullanıcı arama için LDAP taban DN'i.",
+    required: true,
+    example: 'DC=garanti,DC=com,DC=tr',
+    usedIn: 'server/auth/ldap.cjs',
+    kritik: true,
+  },
+  {
+    key: 'AWX_URL',
+    label: 'AWX URL',
+    group: 'Ansible (AWX)',
+    description: 'Varsayılan (legacy tek-sunucu) AWX/Tower adresi.',
+    required: false,
+    example: 'https://awx.garanti.com.tr',
+    usedIn: 'server/ansible/runner.cjs',
+  },
+  {
+    key: 'AWX_USER',
+    label: 'AWX Kullanıcı Adı',
+    group: 'Ansible (AWX)',
+    description: 'AWX_TOKEN tanımlı değilse, token almak için kullanılan servis hesabı.',
+    required: false,
+    example: 'svc-portal-awx',
+    usedIn: 'server/ansible/runner.cjs (getToken)',
+  },
+  {
+    key: 'AWX_PASSWORD',
+    label: 'AWX Şifresi',
+    group: 'Ansible (AWX)',
+    description: "AWX_USER ile birlikte kullanılır — production ortamında Portal veritabanında şifreli saklanır.",
+    required: false,
+    example: '••••••••',
+    usedIn: 'server/ansible/runner.cjs (getToken)',
+  },
+  {
+    key: 'AWX_READ_ONLY_TEMPLATE_IDS',
+    label: "Salt-Okunur Template ID'leri",
+    group: 'Ansible (AWX)',
+    description:
+      "Virgülle ayrılmış AWX template ID listesi — boşsa TÜM template'ler izinli sayılır.",
+    required: false,
+    example: '12,47,83',
+    usedIn: 'server/ansible/runner.cjs (listTemplates)',
+  },
+  {
+    key: 'AWX_LOG_FETCH_TEMPLATE_ID',
+    label: 'Log Fetch Template ID',
+    group: 'Ansible (AWX)',
+    description: "AI Analist'in uzak log dosyası çekmek için kullandığı AWX template ID'si.",
+    required: false,
+    example: '51',
+    usedIn: 'server/ai-analyst/portal-tools.cjs',
+    tur: 'sayi',
+  },
+  {
+    key: 'TEAMS_LONGJOB_WEBHOOK_URL',
+    label: 'Uzun İş Bildirimi Webhook URL',
+    group: 'Uzun iş bildirimi (Teams)',
+    description:
+      "Boş bırakılırsa özellik tamamen kapalı. Belirli bir süreden uzun çalışan (durumu 'running') AWX job'ları için bu Teams/Power Automate webhook'una bildirim gönderilir. Gizli değer: adres imza (sig=) taşır, bilen herkes kanala kart gönderebilir. Bu yüzden ekranda maskelenir, Portal veritabanına şifreli yazılır ve denetim kaydına değeri yazılmaz.",
+    required: false,
+    example: 'https://...powerplatform.com/.../invoke?...',
+    usedIn: 'server/ansible/long-job-watcher.cjs',
+  },
+  {
+    key: 'TEAMS_LONGJOB_THRESHOLD_MINUTES',
+    label: 'Uzun İş Eşiği (dk)',
+    group: 'Uzun iş bildirimi (Teams)',
+    description:
+      'Bir job bu süreyi (dakika) aşınca bildirim gönderilir. Aynı job için tekrar tekrar bildirim gitmez.',
+    required: false,
+    example: '30',
+    usedIn: 'server/ansible/long-job-watcher.cjs',
+    tur: 'sayi',
+  },
+  {
+    key: 'TEAMS_LONGJOB_POLL_INTERVAL_SECONDS',
+    label: 'Uzun İş Tarama Sıklığı (sn)',
+    group: 'Uzun iş bildirimi (Teams)',
+    description: "Çalışan job'ların ne sıklıkla kontrol edileceği.",
+    required: false,
+    example: '300',
+    usedIn: 'server/ansible/long-job-watcher.cjs',
+    tur: 'sayi',
+  },
+  {
+    key: 'NOBETCI_API_URL',
+    label: 'Nöbet API URL',
+    group: 'Nöbet',
+    description: 'Harici nöbetçi/duty sisteminin (gbnys) API adresi.',
+    required: false,
+    example: 'https://gbnys.example.com/api',
+    usedIn: 'server/nobetci/index.cjs',
+  },
+  {
+    key: 'NOBETCI_TEAM_NAME',
+    label: 'Nöbet Takım Adı',
+    group: 'Nöbet',
+    description: 'Görüntülenen takım adı (yalnızca UI etiketi).',
+    required: false,
+    example: 'BMW Portal Operasyon',
+    usedIn: 'server/nobetci/index.cjs',
+  },
+  {
+    key: 'NOBETCI_TEAM_ID',
+    label: 'Nöbet Takım ID',
+    group: 'Nöbet',
+    description: 'Harici sistemdeki takım kimliği — sorgu filtresi.',
+    required: false,
+    example: '42',
+    usedIn: 'server/nobetci/index.cjs',
+  },
+  {
+    key: 'NOBETCI_TEAM_TYPE',
+    label: 'Nöbet Takım Tipi',
+    group: 'Nöbet',
+    description: 'Harici sistemin beklediği takım tipi parametresi.',
+    required: false,
+    example: 'operasyon',
+    usedIn: 'server/nobetci/index.cjs',
+  },
+  {
+    key: 'NOBETCI_API_HOST',
+    label: 'Nöbet API Host (alternatif)',
+    group: 'Nöbet',
+    description: 'NOBETCI_API_URL yerine yalnızca host bileşeni gerekiyorsa kullanılır.',
+    required: false,
+    example: 'gbnys.example.com',
+    usedIn: 'server/nobetci/index.cjs',
+  },
+  {
+    key: 'DT_MANAGED_MCP_URL',
+    label: 'Dynatrace MCP URL',
+    group: 'İzleme',
+    description: 'Dynatrace Managed MCP sunucu adresi.',
+    required: false,
+    example: 'https://dt.garanti.com.tr/mcp',
+    usedIn: 'server/dynatrace/index.cjs',
+  },
+  {
+    key: 'INSTANA_MCP_URL',
+    label: 'Instana MCP URL',
+    group: 'İzleme',
+    description: 'Instana MCP sunucu adresi.',
+    required: false,
+    example: 'https://instana.garanti.com.tr/mcp',
+    usedIn: 'server/instana/index.cjs',
+  },
+  {
+    key: 'CORP_CA_CERT_PATH',
+    label: 'Kurumsal CA Zinciri Yolu',
+    group: 'TLS / Sertifika',
+    description:
+      'Public köklere ek olarak yüklenecek kurumsal CA zinciri (fetch-ca.sh + build-ca-bundle.cjs çıktısı) — MCP/Splunk/AI/Smart gibi dış bağlantılarda "self signed certificate" hatasını çözer. Her istekte diskten YENİDEN okunur (restart gerekmez).',
+    required: false,
+    example: 'server/certs/combined-ca-chain.pem',
+    usedIn: 'server/ai/ca.cjs (buildCombinedCa)',
+  },
+  {
+    key: 'AI_PROVIDER',
+    label: 'AI Sağlayıcı',
+    group: 'Yapay zekâ',
+    description: "anthropic veya openai — AI Analist'in kullanacağı sağlayıcı.",
+    required: false,
+    example: 'anthropic',
+    usedIn: 'server/ai/provider.cjs',
+    secenekler: ['anthropic', 'openai'],
+  },
+  {
+    key: 'ANTHROPIC_MODEL',
+    label: 'Anthropic Model',
+    group: 'Yapay zekâ',
+    description: 'AI_PROVIDER=anthropic iken kullanılacak model adı.',
+    required: false,
+    example: 'claude-sonnet-5',
+    usedIn: 'server/ai/provider.cjs',
+  },
+  {
+    key: 'OPENAI_MODEL',
+    label: 'OpenAI Model',
+    group: 'Yapay zekâ',
+    description: 'AI_PROVIDER=openai iken kullanılacak model adı.',
+    required: false,
+    example: 'gpt-4o',
+    usedIn: 'server/ai/provider.cjs',
+  },
+  {
+    key: 'ANTHROPIC_API_KEY',
+    label: 'Anthropic API Key',
+    group: 'Yapay zekâ',
+    description: "Anthropic API kimlik anahtarı — production ortamında Portal veritabanında şifreli saklanır.",
+    required: false,
+    example: '••••••••',
+    usedIn: 'server/ai/provider.cjs',
+  },
+  {
+    key: 'OPENAI_API_KEY',
+    label: 'OpenAI API Key',
+    group: 'Yapay zekâ',
+    description: "OpenAI API kimlik anahtarı — production ortamında Portal veritabanında şifreli saklanır.",
+    required: false,
+    example: '••••••••',
+    usedIn: 'server/ai/provider.cjs',
+  },
+  {
+    key: 'LOGX_V2_STAGING_LEGACY_DIR',
+    label: 'LogX v2 Legacy Staging Dizini',
+    group: 'LogX',
+    description: 'Legacy EAR indirmelerinin geçici olarak konduğu dizin.',
+    required: false,
+    example: '/data/logx/staging/legacy',
+    usedIn: 'server/logx/v2/legacy.cjs',
+  },
+  {
+    key: 'LOGX_V2_STAGING_OCP_DIR',
+    label: 'LogX v2 OCP Staging Dizini',
+    group: 'LogX',
+    description: 'OCP namespace indirmelerinin geçici olarak konduğu dizin.',
+    required: false,
+    example: '/data/logx/staging/ocp',
+    usedIn: 'server/logx/v2/ocp.cjs',
+  },
+  {
+    key: 'LOGX_STAGING_FALLBACK_DIR',
+    label: 'LogX v2 Fallback Dizini',
+    group: 'LogX',
+    description: 'Ana staging dizinine erişilemediğinde kullanılan yerel yedek dizin.',
+    required: false,
+    example: '/tmp/logx-fallback',
+    usedIn: 'server/logx/v2/downloads.cjs',
+  },
+  {
+    key: 'LOGX_APPS_TABLE',
+    label: 'Uygulama Envanteri Tablosu',
+    group: 'LogX',
+    description:
+      'Kurumsal uygulama envanteri tablosu — app, host ve env sütunlarını içermeli. LogX Legacy uygulama arama, OpsX ve AI Analist host araçları bu tabloyu okur. Boş bırakılırsa MWAppsInventory kullanılır.',
+    required: false,
+    example: 'MWAppsInventory',
+    usedIn: 'server/config/apps-table.cjs',
+  },
+  {
+    key: 'OPSX_AWX_SERVER_ID',
+    label: 'OpsX AWX Sunucusu (yedek)',
+    group: 'OpsX',
+    description:
+      "Playbook Kayıtları'nda satır bazında AWX sunucusu belirtilmemişse kullanılan yedek değer (ansible_awx_servers.server_no). Öncelik her zaman Playbook Kayıtları'ndaki değerdedir.",
+    required: false,
+    example: '0',
+    usedIn: 'server/opsx/index.cjs',
+    tur: 'sayi',
+  },
+  {
+    key: 'OPSX_LEGACY_DUMP_TEMPLATE_ID',
+    label: 'Legacy Dump Template ID (yedek)',
+    group: 'OpsX',
+    description:
+      'Playbook Kayıtları\'nda "OpsX — Legacy Thread/Heap Dump" satırının Template ID\'si boşsa kullanılan yedek değer.',
+    required: false,
+    example: '',
+    usedIn: 'server/opsx/index.cjs',
+    tur: 'sayi',
+  },
+  {
+    key: 'OPSX_OPENSHIFT_DUMP_TEMPLATE_ID',
+    label: 'Openshift Dump Template ID (yedek)',
+    group: 'OpsX',
+    description:
+      'Playbook Kayıtları\'nda "OpsX — Openshift Thread/Heap Dump" satırının Template ID\'si boşsa kullanılan yedek değer.',
+    required: false,
+    example: '',
+    usedIn: 'server/opsx/index.cjs',
+    tur: 'sayi',
+  },
+  {
+    key: 'OPSX_OPENSHIFT_PODS_TEMPLATE_ID',
+    label: 'Openshift Pod Keşfi Template ID (yedek)',
+    group: 'OpsX',
+    description:
+      "Playbook Kayıtları'nda \"OpsX — Openshift Pod Keşfi\" satırının Template ID'si boşsa kullanılan yedek değer. Dump sihirbazı kullanıcıya pod seçtirmek için bu job'ı anlık tetikler.",
+    required: false,
+    example: '',
+    usedIn: 'server/opsx/index.cjs',
+    tur: 'sayi',
+  },
+  {
+    key: 'OPSX_LEGACY_JVM_DISCOVER_TEMPLATE_ID',
+    label: 'Legacy JVM Keşfi Template ID (yedek)',
+    group: 'OpsX',
+    description:
+      "Playbook Kayıtları'nda \"OpsX — Legacy JVM Keşfi\" satırının Template ID'si boşsa kullanılan yedek değer. Dump sihirbazı kullanıcıya hangi JVM'den dump alınacağını seçtirmek için bu job'ı anlık tetikler.",
+    required: false,
+    example: '',
+    usedIn: 'server/opsx/index.cjs',
+    tur: 'sayi',
+  },
+  {
+    key: 'OPSX_DUMP_STAGING_DIR',
+    label: 'Dump Staging Dizini',
+    group: 'OpsX',
+    description:
+      "Thread/heap dump dosyalarının bırakıldığı, portalın okuyabildiği paylaşılan dizin — hem Legacy (hedef JBoss host'larında) hem Openshift (opsx_get_dump.yaml'ın çalıştığı host'ta, oc rsync sonrası) mount'lu olmalı.",
+    required: false,
+    example: '/sw/BMW_PORTAL/opsx/dumps',
+    usedIn: 'server/opsx/downloads.cjs',
+  },
+  {
+    key: 'OCO_API_URL',
+    label: 'OCO Servis URL',
+    group: 'OCO',
+    description:
+      "ChangeManagement ServiceRepository taban adresi. Self Service'te \"OCO Kontrolü\" açık bir servis PRODUCTION talebi aldığında (extra_vars'ta env|ortam = prod|production) OCO'nun planlanan kesinti penceresi buradan sorgulanır. Boş bırakılırsa varsayılan kullanılır.",
+    required: false,
+    example: 'https://servicerepository',
+    usedIn: 'server/oco/client.cjs',
+  },
+  {
+    key: 'OCO_CHANGE_ORDER_PATH',
+    label: "OCO Sorgu Path'i",
+    group: 'OCO',
+    description:
+      'getChangeOrderByWfInstanceId uç yolu. Varsayılan değer zaten doğru, genelde değiştirmenize gerek yok.',
+    required: false,
+    example:
+      '/ChangeManagement/ChangeManagementServiceRepository.svc/Change/getChangeOrderByWfInstanceId/',
+    usedIn: 'server/oco/client.cjs',
+  },
+  {
+    key: 'OCO_PROXY_URL',
+    label: 'OCO Proxy (opsiyonel)',
+    group: 'OCO',
+    description:
+      "Yalnızca OCO trafiği için proxy — global HTTPS_PROXY'den bağımsızdır. Boşsa doğrudan bağlanılır.",
+    required: false,
+    example: 'http://proxy.fw.garanti.com.tr:8080',
+    usedIn: 'server/oco/client.cjs',
+  },
+  {
+    key: 'OCO_POLL_INTERVAL_SECONDS',
+    label: 'Zamanlanmış Tetikleme Kontrol Aralığı (sn)',
+    group: 'OCO',
+    description:
+      'OCO kesinti saatine zamanlanmış Self Service işlerinin ne sıklıkta kontrol edileceği. Varsayılan 30 saniye — tetikleme hassasiyeti bu değer kadardır.',
+    required: false,
+    example: '30',
+    usedIn: 'server/oco/poller.cjs',
+    tur: 'sayi',
+  },
+  {
+    key: 'SMART_API_URL',
+    label: 'Smart API URL',
+    group: 'Smart',
+    description:
+      'Kurum içi talep yönetim sistemi (Smart/RFF) taban adresi — ortama göre değişir (SOS02-KL-001-EN): Test gbcalt01.fw.garanti.com.tr:8443, QA gbcadq01.fw.garanti.com.tr:8443, Prod gbca.fw.garanti.com.tr:8443.',
+    required: false,
+    example: 'https://gbca.fw.garanti.com.tr:8443',
+    usedIn: 'server/smart/client.cjs',
+  },
+  {
+    key: 'SMART_API_USERNAME',
+    label: 'Smart Kullanıcı Adı',
+    group: 'Smart',
+    description:
+      "Smart API'ye Basic Auth ile bağlanan, L7_SMART_REQUEST LDAP grubuna üye servis hesabı.",
+    required: false,
+    example: 'svc-portal-smart',
+    usedIn: 'server/smart/client.cjs',
+  },
+  {
+    key: 'SMART_API_PASSWORD',
+    label: 'Smart Şifresi',
+    group: 'Smart',
+    description:
+      "SMART_API_USERNAME ile birlikte kullanılır — production ortamında Portal veritabanında şifreli saklanır.",
+    required: false,
+    example: '••••••••',
+    usedIn: 'server/smart/client.cjs',
+  },
+  {
+    key: 'SMART_RFF_TOKEN',
+    label: 'Integration Key (RFF-Request-Token)',
+    group: 'Smart',
+    description:
+      'Designer > "Integration Information" ile alınan anahtar — production ortamında Portal veritabanında şifreli saklanır. Gönderilmezse Smart hata döner.',
+    required: false,
+    example: '••••••••',
+    usedIn: 'server/smart/client.cjs',
+  },
+  {
+    key: 'SMART_DOMAIN',
+    label: 'Domain',
+    group: 'Smart',
+    description:
+      'Talep açan kullanıcının login domain bilgisi — SOS02-KL-001-EN örneklerinde sabit "GARANTI".',
+    required: false,
+    example: 'GARANTI',
+    usedIn: 'server/smart/client.cjs',
+  },
+  {
+    key: 'SMART_PROXY_URL',
+    label: 'Proxy URL (opsiyonel, sadece Smart)',
+    group: 'Smart',
+    description:
+      "Yalnızca Smart trafiğini bu proxy üzerinden gönderir — sistem geneli HTTPS_PROXY'den bilerek bağımsızdır (o, MCP/Splunk/AI gibi diğer tüm entegrasyonları da etkiler). Boşsa doğrudan bağlanılır.",
+    required: false,
+    example: 'http://proxy.sirket.com.tr:8080',
+    usedIn: 'server/smart/client.cjs',
+  },
+  {
+    key: 'SMART_CREATE_TICKET_PATH',
+    label: "Talep Açma Path'i",
+    group: 'Smart',
+    description:
+      'DOĞRULANDI (SOS02-KL-001-EN) — değiştirmeyin, sadece dokümanla path değişirse güncelleyin.',
+    required: false,
+    example: '/smart/internal/requestfulfilment/createoperationalrequest/v1',
+    usedIn: 'server/smart/client.cjs',
+  },
+  {
+    key: 'SMART_GET_METADATA_PATH',
+    label: "Metadata Sorgulama Path'i",
+    group: 'Smart',
+    description:
+      'DOĞRULANDI (SOS02-KL-001-EN) — bir Flow Key\'in beklediği metadata alanlarını sorgular. Self Service > Alanları Yönet > Smart Onayı bölümündeki "Alanları Getir" butonu bunu kullanır.',
+    required: false,
+    example: '/smart/internal/getmetadataoperationalrequestbyflowname/v1',
+    usedIn: 'server/smart/client.cjs',
+  },
+  {
+    key: 'SMART_CHECK_TICKET_PATH',
+    label: "Durum Sorgulama Path'i",
+    group: 'Smart',
+    description:
+      "DOĞRULANDI — resmi uç (kullanıcı tarafından 2026-08-14'te doğrulandı). SMART_API_URL üzerinde, talep açma ile AYNI kimlik doğrulama: POST gövdesinde wfInstanceId gider; yanıtta result.resultCode, result.statusCode ve result.statusName döner. statusCode 1000=Tamamlandı (otomasyon o zaman tetiklenir), 2000=İptal Edildi. Varsayılan değer zaten doğru, genelde değiştirmenize gerek yok.",
+    required: false,
+    example: '/smart/internal/requestfulfilment/loadwfinstancestatus/v1',
+    usedIn: 'server/smart/client.cjs',
+  },
+  {
+    key: 'SMART_POLL_INTERVAL_SECONDS',
+    label: 'Kontrol Sıklığı (sn)',
+    group: 'Smart',
+    description: 'Bekleyen Smart taleplerinin ne sıklıkla kontrol edileceği.',
+    required: false,
+    example: '30',
+    usedIn: 'server/smart/poller.cjs',
+    tur: 'sayi',
+  },
+  {
+    key: 'SMART_TICKET_TIMEOUT_MINUTES',
+    label: 'Zaman Aşımı (dakika)',
+    group: 'Smart',
+    description:
+      "Bu ekrandan değiştirilemez; yalnız sunucunun ortam değişkeniyle verilir. Boşsa süre sınırı yoktur: talep onaylanana, reddedilene ya da iptal edilene kadar bekler. Verilirse OCO'suz talepler o kadar dakika sonra zaman aşımına düşer. OCO'dan doğan talepte sınır kesinti penceresinin sonudur; bu değer pencereyi uzatmaz, kısaltmaz. OpsX production işlemleri (Legacy ve OpenShift) bu değerden bağımsız olarak her zaman 15 dakikadır.",
+    required: false,
+    example: '60',
+    usedIn: 'server/smart/deadline.cjs',
+    saltOkunur: 'ortam',
+    tur: 'sayi',
+  },
+  {
+    key: 'DB_FULL_BACKUP_DIR',
+    label: 'Yedek Klasörü',
+    group: 'Veritabanı yedekleme',
+    description:
+      "TBMWANS'taki HER tablonun ayrı CSV'ye yedeklendiği klasör — Portal sunucusunun bu yola doğrudan yazma erişimi olduğu için Ansible/AWX gerekmez.",
+    required: false,
+    example: '/sw/WAS_IMAGES/Ansible/Middleware_Inventory/backup/daily_full',
+    usedIn: 'server/db/full-backup.cjs',
+  },
+  {
+    key: 'DB_FULL_BACKUP_RETENTION_DAYS',
+    label: 'Yedek Saklama Süresi (gün)',
+    group: 'Veritabanı yedekleme',
+    description: 'Bu süreden eski yedek dosyaları her çalışmada otomatik silinir.',
+    required: false,
+    example: '14',
+    usedIn: 'server/db/full-backup.cjs',
+    tur: 'sayi',
+  },
+  {
+    key: 'DB_FULL_BACKUP_HOUR',
+    label: 'Yedekleme Saati (0-23)',
+    group: 'Veritabanı yedekleme',
+    description: 'Günlük yedeklemenin sunucu yerel saatiyle hangi saatte tetikleneceği.',
+    required: false,
+    example: '2',
+    usedIn: 'server/db/full-backup.cjs',
+    tur: 'sayi',
+  },
+  {
+    key: 'DB_FULL_BACKUP_CHECK_INTERVAL_MINUTES',
+    label: 'Kontrol Sıklığı (dk)',
+    group: 'Veritabanı yedekleme',
+    description: 'Zamanlayıcının hedef saate ulaşılıp ulaşılmadığını ne sıklıkla kontrol edeceği.',
+    required: false,
+    example: '15',
+    usedIn: 'server/db/full-backup.cjs',
+    tur: 'sayi',
+  },
+  {
+    key: 'SCALEX_VERIFY_TIMEOUT_DEFAULT',
+    label: 'Doğrulama Bütçesi (sn)',
+    group: 'ScaleX',
+    description:
+      'Sonuç kontrol süresi. AÇARKEN bu süre dolunca uyarı yazılır ve iş BAŞARILI biter; KAPATIRKEN uyarılır ama 0 olana kadar beklenir. Boş = 300 (5 dk).',
+    required: false,
+    example: '300',
+    usedIn: 'server/scalex/config.cjs',
+    tur: 'sayi',
+  },
+  {
+    key: 'SCALEX_VERIFY_TIMEOUT_MIN',
+    label: 'Bütçe Alt Sınırı (sn)',
+    group: 'ScaleX',
+    description:
+      'Kullanıcının girebileceği en küçük süre. min ≤ varsayılan ≤ max olmazsa ÜÇÜ BİRDEN fabrika değerine döner. Boş = 30.',
+    required: false,
+    example: '30',
+    usedIn: 'server/scalex/config.cjs',
+    tur: 'sayi',
+  },
+  {
+    key: 'SCALEX_VERIFY_TIMEOUT_MAX',
+    label: 'Bütçe Üst Sınırı (sn)',
+    group: 'ScaleX',
+    description: 'Kullanıcının girebileceği en büyük süre. Boş = 3600 (1 saat).',
+    required: false,
+    example: '3600',
+    usedIn: 'server/scalex/config.cjs',
+    tur: 'sayi',
+  },
+  {
+    key: 'SCALEX_VERIFY_FAIL_MULTIPLIER',
+    label: 'Hata Eşiği Çarpanı',
+    group: 'ScaleX',
+    description:
+      "KAPATMADA hata eşiği = uyarı eşiği × bu çarpan. Açmada hata eşiği YOKTUR. 1 yazılırsa uyarı ve hata aynı saniyeye düşer ve 'uyar ama bekle' davranışı kalkar. Boş = 2.",
+    required: false,
+    example: '2',
+    usedIn: 'server/scalex/config.cjs',
+  },
+  {
+    key: 'SCALEX_MAX_TARGETS',
+    label: 'Azami Hedef (cluster × uygulama)',
+    group: 'ScaleX',
+    description:
+      'Tek istekte izin verilen azami hedef sayısı. Prod yazılı onay eşiğinden KÜÇÜK yapılırsa o kapı hiç ateşlenemez; sunucu eşiği otomatik aşağı çeker ve sebebini bildirir. Boş = 200.',
+    required: false,
+    example: '200',
+    usedIn: 'server/scalex/launch.cjs',
+    tur: 'sayi',
+  },
+  {
+    key: 'SCALEX_PROD_CONFIRM_THRESHOLD',
+    label: 'Prod Yazılı Onay Eşiği',
+    group: 'ScaleX',
+    description:
+      'Prod ortamında bu eşiğin üstündeki çalıştırma, kullanıcıdan namespace adını ELLE yazmasını ister. İşi engellemez. Boş = 5.',
+    required: false,
+    example: '5',
+    usedIn: 'server/scalex/launch.cjs',
+    tur: 'sayi',
+  },
+  {
+    key: 'SCALEX_MAX_AUDIT_GROUPS',
+    label: 'Sapma Taraması Kapsam Tavanı',
+    group: 'ScaleX',
+    description:
+      "'Durumu tazele' her kapsam için ayrı bir AWX işi başlatır. Tavan aşılırsa tarama HİÇ başlamaz ve kullanıcıdan kapsamı daraltması istenir. Boş = 12.",
+    required: false,
+    example: '12',
+    usedIn: 'src/components/scalex/StoppedPanel.tsx',
+    tur: 'sayi',
+  },
+  {
+    key: 'SCALEX_MAX_AUDIT_NAMESPACES',
+    label: 'Keşif Namespace Tavanı',
+    group: 'ScaleX',
+    description:
+      "Tek keşif işinde taranabilecek en fazla namespace. 'Durumu tazele' toplamda bunu aşarsa tarama HİÇ başlamaz; sunucu da aşan isteği AWX'e göndermeden reddeder. Boş = 60.",
+    required: false,
+    example: '60',
+    usedIn: 'server/scalex/index.cjs',
+    tur: 'sayi',
+  },
+  {
+    key: 'SCALEX_PROD_SMART_MODE',
+    label: 'Prod SMART Kuralı',
+    group: 'ScaleX',
+    description:
+      "Production değişikliklerinde SMART onayı. 'required' = gerekli (varsayılan; SMART tanımlı değilse değişiklik BAŞLAMAZ). 'oco_only' = SMART istenmez, yalnız OCO penceresi denetlenir; bu kipte başlayan her prod işlemi denetime ayrıca yazılır. Boş ya da tanınmayan değer = required.",
+    required: false,
+    example: 'required',
+    usedIn: 'server/scalex/config.cjs',
+    secenekler: ['required', 'oco_only'],
+  },
+  {
+    key: 'SESSION_IDLE_MINUTES',
+    label: "Boşta Kalma Süresi (dk)",
+    group: 'Oturum ve Giriş',
+    description:
+      "İşlem yapılmayan oturum bu süre sonunda kapanır; her kullanıcı işlemi süreyi yeniden başlatır. Arka plan yoklamaları (pano, çevrimiçi listesi) saymaz. 5-720. Boş = 60.",
+    required: false,
+    example: "60",
+    usedIn: 'server/auth/session-policy.cjs',
+    tur: 'sayi',
+  },
+  {
+    key: 'SESSION_ABSOLUTE_HOURS',
+    label: "En Uzun Oturum (sa)",
+    group: 'Oturum ve Giriş',
+    description:
+      "Etkin kullanılsa bile oturum girişten bu kadar sonra biter (yeniden giriş istenir; açık sayfa korunur). 1-72. Boş = 12.",
+    required: false,
+    example: "12",
+    usedIn: 'server/auth/session-policy.cjs',
+    tur: 'sayi',
+  },
+  {
+    key: 'SESSION_REMEMBER_DAYS',
+    label: "Beni Hatırla (gün)",
+    group: 'Oturum ve Giriş',
+    description:
+      "\"Beni hatırla\" seçilen oturumun en uzun ömrü; boşta kalma kuralı yine geçerli. 0 = özellik KAPALI (giriş ekranında kutu görünmez). 0-30. Boş = 7.",
+    required: false,
+    example: "7",
+    usedIn: 'server/auth/session-policy.cjs',
+    tur: 'sayi',
+  },
+  {
+    key: 'SESSION_WARN_SECONDS',
+    label: "Uyarı Süresi (sn)",
+    group: 'Oturum ve Giriş',
+    description:
+      "Oturum kapanmadan kaç saniye önce \"Oturumu Sürdür\" uyarısı çıksın. 30-900. Boş = 120.",
+    required: false,
+    example: "120",
+    usedIn: 'server/auth/session-policy.cjs',
+    tur: 'sayi',
+  },
+  {
+    key: 'SESSION_MAX_CONCURRENT',
+    label: "Eşzamanlı Oturum Sınırı",
+    group: 'Oturum ve Giriş',
+    description:
+      "Bir kullanıcının aynı anda açık tutabileceği oturum sayısı. Aşılırsa yeni girişte son etkinliği en eski oturum kapanır ve kullanıcıya söylenir. 0 = sınırsız. 0-100. Boş = 0.",
+    required: false,
+    example: "0",
+    usedIn: 'server/auth/sessions-routes.cjs',
+    tur: 'sayi',
+  },
+  {
+    key: 'LOGIN_USER_MAX_FAILS',
+    label: "Hatalı Deneme Eşiği",
+    group: 'Oturum ve Giriş',
+    description:
+      "Kullanıcı başına bu kadar hatalı şifreden sonra bekleme başlar (30 sn, 2 dk, 8 dk, en çok 15 dk); beklerken istek AD'ye hiç gitmez. AD'nin kilit eşiğini bilmek gerekmez: aynı hatalı şifre 90 sn içinde AD'ye yeniden gönderilmez ve bu sayaca yazılmaz. Kilitlenmeler sürerse düşürün. 3-20. Boş = 5.",
+    required: false,
+    example: "5",
+    usedIn: 'server/auth/login-throttle.cjs',
+    tur: 'sayi',
+  },
+  {
+    key: 'LOGIN_IP_MAX_PER_MIN',
+    label: "IP Başına Giriş (dk)",
+    group: 'Oturum ve Giriş',
+    description:
+      "Bir IP'den dakikada en çok kaç giriş isteği. Kaba taban koruma; NAT arkasındaki kullanıcılar aynı IP'yi paylaşır, düşük tutmayın. 5-1000. Boş = 30.",
+    required: false,
+    example: "30",
+    usedIn: 'server/service.cjs',
+    tur: 'sayi',
+  },
+  {
+    key: 'AUTH_ALLOWED_DOMAINS',
+    label: "İzinli Alan Adları (KURUM\\ad)",
+    group: 'Oturum ve Giriş',
+    description:
+      "Virgüllü NetBIOS alan adı listesi. Doluysa \"BASKA\\kullanici\" reddedilir. Boş = her önek kabul edilir (önek atılır).",
+    required: false,
+    example: "KURUM",
+    usedIn: 'server/auth/login-input.cjs',
+    kritik: true,
+  },
+  {
+    key: 'AUTH_ALLOWED_UPN_SUFFIXES',
+    label: "İzinli UPN Sonekleri (ad@...)",
+    group: 'Oturum ve Giriş',
+    description:
+      "Virgüllü liste. Doluysa yalnızca bu soneklerle \"ad@sonek\" girişi kabul edilir. Boş = hepsi.",
+    required: false,
+    example: "kurum.com.tr",
+    usedIn: 'server/auth/login-input.cjs',
+    kritik: true,
+  },
+  {
+    key: 'PORTAL_ALLOWED_ORIGINS',
+    label: "Ek İzinli Kökenler",
+    group: 'Oturum ve Giriş',
+    description:
+      "Durum değiştiren istekler yalnızca portalın kendi adresinden kabul edilir. Portal birden çok adla açılıyorsa (ör. kısa ad + tam ad) diğerlerini virgülle yazın.",
+    required: false,
+    example: "https://portal.kurum.com.tr",
+    usedIn: 'server/auth/origin-kontrolu.cjs',
+    kritik: true,
+  },
+  {
+    key: 'CSRF_ORIGIN_CHECK',
+    label: "Köken Kontrolü Modu",
+    group: 'Oturum ve Giriş',
+    description:
+      "enforce = yabancı kökenli istek 403; log = yalnızca uyarı yazılır (ilk devreye almada güvenli geçiş); off = kapalı. Boş = enforce.",
+    required: false,
+    example: "enforce",
+    usedIn: 'server/auth/origin-kontrolu.cjs',
+    secenekler: ['enforce', 'log', 'off'],
+    kritik: true,
+  },
+  {
+    key: 'PORTAL_FRAME_ANCESTORS',
+    label: "Çerçeveye Gömme İzni",
+    group: 'Oturum ve Giriş',
+    description:
+      "Portalı iframe içinde gösterebilecek adresler. Boş = yalnızca portalın kendisi ('self'): başka bir sayfa portalı görünmez bir çerçeveye gömüp kullanıcıya tıklatamaz. Başka bir kurumsal sayfa portalı bilerek gömüyorsa adresini yazın (boşlukla ayırın): 'self' https://pano.kurum.com.tr — * = koruma kapalı.",
+    required: false,
+    example: "'self'",
+    usedIn: 'server/auth/guvenlik-basliklari.cjs',
+    kritik: true,
+  },
+  {
+    key: 'PORTAL_HSTS_MAX_AGE',
+    label: "HSTS Süresi (sn)",
+    group: 'Oturum ve Giriş',
+    description:
+      "Tarayıcıya \"bu adrese yalnızca HTTPS ile gel\" dedirtir. DİKKAT: aynı makine adında düz HTTP çalışan başka bir servis (başka port) varsa o da HTTPS'e zorlanır ve kırılır. Ad yalnızca HTTPS ise açın (ör. 31536000 = 1 yıl). Boş / 0 = kapalı.",
+    required: false,
+    example: "0",
+    usedIn: 'server/auth/guvenlik-basliklari.cjs',
+    tur: 'sayi',
+    kritik: true,
+  },
+  {
+    key: 'OPSX_LEGACY_TEMPLATE_ID',
+    label: 'OpsX Legacy Template ID',
+    group: 'OpsX',
+    description:
+      "JBoss/WAS geleneksel sunucu operasyonu (restart/stop/start) AWX template ID'si. Yalnızca playbook kayıt tablosunun ilk tohumlanmasında kullanılır; sonrasında Admin > Playbook Kayıtları ekranı geçerlidir.",
+    required: false,
+    example: '42',
+    usedIn: 'server/db/mssql-setup.cjs (registry seed)',
+    tur: 'sayi',
+  },
+  {
+    key: 'OPSX_OPENSHIFT_TEMPLATE_ID',
+    label: 'OpsX OpenShift Template ID',
+    group: 'OpsX',
+    description:
+      "Container uygulamalarında restart/stop/start AWX template ID'si. Yalnızca ilk tohumlamada kullanılır.",
+    required: false,
+    example: '43',
+    usedIn: 'server/db/mssql-setup.cjs (registry seed)',
+    tur: 'sayi',
+  },
+  {
+    key: 'OCO_TIMEOUT_MS',
+    label: 'OCO İstek Zaman Aşımı (ms)',
+    group: 'OCO',
+    description:
+      'Değişiklik kaydı (ChangeManagement) servisine yapılan HTTP isteğinin zaman aşımı. Geçersiz ya da boş bırakılırsa 15000 kullanılır.',
+    required: false,
+    example: '15000',
+    usedIn: 'server/oco/config.cjs',
+    tur: 'sayi',
+  },
+  {
+    key: 'OCO_SEARCH_GROUP_ID',
+    label: 'OCO Takvimi Grup Kimliği',
+    group: 'OCO',
+    description:
+      'OCO Takvimi ekranının hangi ekibin değişiklik kayıtlarını listeleyeceği (arama ucundaki openningGroupId). Boş bırakılırsa 6203 kullanılır.',
+    required: false,
+    example: '6203',
+    usedIn: 'server/oco/search.cjs',
+  },
+  {
+    key: 'OPSX_SMART_FLOW_KEY_LEGACY',
+    label: 'Legacy (JBoss) Flow Key (yedek)',
+    group: 'OpsX · Smart onayı yedekleri',
+    description:
+      "Asıl değer OpsX sayfasında sağ üstteki Smart Onayı penceresinden girilir. Bu değer yalnız o pencerede Legacy boş bırakılırsa kullanılır. Smart onayı açıkken ikisi de boşsa Legacy production işlemi başlatılmaz; Smart onayı OpsX'te kapatılmışsa ya da admin onayı atladıysa flow key aranmaz.",
+    required: false,
+    example: '',
+    usedIn: 'server/opsx/prod-approval.cjs',
+    saltOkunur: 'opsx',
+  },
+  {
+    key: 'OPSX_SMART_FLOW_KEY_WAS',
+    label: 'WAS Flow Key (yedek)',
+    group: 'OpsX · Smart onayı yedekleri',
+    description:
+      "WAS production işlemleri bugün Smart onayından geçmez; bu değer şu an kullanılmıyor. OpsX sayfasındaki Smart Onayı penceresinin WAS alanının yedeğidir.",
+    required: false,
+    example: '',
+    usedIn: 'server/opsx/prod-approval.cjs',
+    saltOkunur: 'opsx',
+  },
+  {
+    key: 'OPSX_SMART_FLOW_KEY_OPENSHIFT',
+    label: 'OpenShift Flow Key (yedek)',
+    group: 'OpsX · Smart onayı yedekleri',
+    description:
+      "Asıl değer OpsX sayfasında sağ üstteki Smart Onayı penceresinden girilir. Bu değer yalnız o pencerede OpenShift boş bırakılırsa kullanılır. Smart onayı açıkken ikisi de boşsa OpenShift production işlemi başlatılmaz; Smart onayı OpsX'te kapatılmışsa ya da admin onayı atladıysa flow key aranmaz.",
+    required: false,
+    example: '',
+    usedIn: 'server/opsx/prod-approval.cjs',
+    saltOkunur: 'opsx',
+  },
+  {
+    key: 'OPSX_SMART_METADATA_FIELDS',
+    label: 'Metadata Alan Eşlemesi (yedek)',
+    group: 'OpsX · Smart onayı yedekleri',
+    description:
+      "Asıl değer OpsX sayfasında sağ üstteki Smart Onayı penceresinden girilir. Bu değer yalnız o pencerede ilgili platformun eşlemesi boşsa kullanılır; o da boşsa varsayılan alanlar gönderilir. Biçim Self Service'teki Smart onayı alan eşlemesiyle aynıdır.",
+    required: false,
+    example: '',
+    usedIn: 'server/opsx/prod-approval.cjs',
+    saltOkunur: 'opsx',
+  },
+  {
+    key: 'OPSX_SMART_INTEGRATION_KEY',
+    label: 'Integration Key (yedek)',
+    group: 'OpsX · Smart onayı yedekleri',
+    description:
+      "Asıl değer OpsX sayfasında sağ üstteki Smart Onayı penceresinden girilir. Bu değer yalnız o pencerede ilgili platformun anahtarı boşsa kullanılır; o da boşsa genel Smart Integration Key (SMART_RFF_TOKEN) kullanılır.",
+    required: false,
+    example: '••••••••',
+    usedIn: 'server/opsx/prod-approval.cjs',
+    saltOkunur: 'opsx',
+  },
+];

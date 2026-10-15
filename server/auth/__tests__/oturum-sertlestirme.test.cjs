@@ -277,7 +277,7 @@ test('OS5 oturum ayarlari dogrulanir; beyaz listede, sicak ve ekranda', () => {
   assert.equal(oturumAyariHatasi('BASKA_ANAHTAR', 'x'), null);
 
   const { SYSTEM_CONFIG_KEYS, HOT_RELOADABLE_KEYS } = require('../../db/env-overrides.cjs');
-  const ekran = fs.readFileSync(path.join(ROOT, 'src/components/admin/tabs/SystemConfigTab.tsx'), 'utf8');
+  const ekran = fs.readFileSync(path.join(ROOT, 'src/components/admin/tabs/sistem/ortamDegiskenleri.ts'), 'utf8');
   for (const k of OTURUM_AYAR_ANAHTARLARI) {
     assert.ok(SYSTEM_CONFIG_KEYS.includes(k), `${k} beyaz listede yok`);
     assert.ok(HOT_RELOADABLE_KEYS.includes(k), `${k} sicak degil — ekran bosuna restart der`);
