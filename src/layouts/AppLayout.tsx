@@ -98,23 +98,48 @@ export default function AppLayout() {
         <Masthead onToggleNav={() => setNavOpen((v) => !v)} />
 
         <div className="flex flex-1 min-h-0 relative">
-          {navOpen && (
-            <>
-              {isMobile && (
-                <div
-                  className="fixed inset-0 z-30"
-                  style={{ background: "rgba(3,3,3,0.5)", top: "var(--masthead-h)" }}
-                  onClick={() => setNavOpen(false)}
-                />
-              )}
-              <div
-                className={isMobile ? "fixed left-0 z-40 h-full" : "relative"}
-                style={isMobile ? { top: "var(--masthead-h)", bottom: 0, height: "auto" } : undefined}
-              >
-                <PageNav onNavigate={() => { if (isMobile) setNavOpen(false); }} />
-              </div>
-            </>
+          {/* MENU ACILIP KAPANIRKEN HAFIF ANIMASYON (2026-10-15, kullanici: "sol menunun
+              kapanmasi icin cok hafif bir animasyon"). Eskiden menu `navOpen && ...` ile
+              KALDIRILIYORDU: kapanirken animasyon olamazdi. Artik hep yerinde; masaustunde
+              genislik + saydamlik, mobilde yandan kayma ~220 ms. Kapaliyken `inert`: klavye
+              odagi ve ekran okuyucu gizli menuye girmez. Hareket azaltma tercihi index.css'teki
+              genel kuralla (prefers-reduced-motion) gecisi aninda yapar. */}
+          {isMobile && (
+            <div
+              className="fixed inset-0 z-30"
+              style={{
+                background: "rgba(3,3,3,0.5)",
+                top: "var(--masthead-h)",
+                opacity: navOpen ? 1 : 0,
+                pointerEvents: navOpen ? "auto" : "none",
+                transition: "opacity 220ms ease-out",
+              }}
+              onClick={() => setNavOpen(false)}
+              aria-hidden="true"
+            />
           )}
+          <div
+            className={isMobile ? "fixed left-0 z-40 h-full" : "relative flex-shrink-0 overflow-hidden"}
+            style={
+              isMobile
+                ? {
+                    top: "var(--masthead-h)",
+                    bottom: 0,
+                    height: "auto",
+                    transform: navOpen ? "translateX(0)" : "translateX(-100%)",
+                    transition: "transform 220ms cubic-bezier(0.2, 0.7, 0.3, 1)",
+                  }
+                : {
+                    width: navOpen ? "var(--nav-w)" : 0,
+                    opacity: navOpen ? 1 : 0,
+                    transition: "width 220ms cubic-bezier(0.2, 0.7, 0.3, 1), opacity 180ms ease-out",
+                  }
+            }
+            inert={!navOpen}
+            data-nav-acik={navOpen ? "evet" : "hayir"}
+          >
+            <PageNav onNavigate={() => { if (isMobile) setNavOpen(false); }} />
+          </div>
 
           {/* `id` skip-link'in hedefi; `tabIndex={-1}` olmadan bazi tarayicilar
               atlamadan sonra odagi GERCEKTEN buraya tasimaz ve bir sonraki Tab yine
