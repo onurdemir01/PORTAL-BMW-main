@@ -14,6 +14,7 @@ import { fmtNumber } from "@/utils/datetime";
 import { TableEmptyRow } from "@/components/common/EmptyState";
 import { downloadCsv as csvDownload } from '@/utils/csv';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
+import { grupla } from './webAppGrup';
 
 const nf = (n: number) => fmtNumber(n);
 
@@ -21,13 +22,18 @@ const nf = (n: number) => fmtNumber(n);
 // (Pendik / Ankara) DNS sunucusuyla cozer; uye KENDI sitesinin cevabiyla gosterilir (Ankara VIP'i
 // Pendik'ten farklidir). Bolge bilinmiyorsa Portal cozucusu ('varsayilan') kullanilir.
 type DnsDurum = { sonuc: Record<string, Record<string, WebAppDnsCevap>> };
-const dnsAnahtar = (r: WebAppRow, w: WebAppVhost) => `${r.dnsBolge || "-"}|${(w.serverName || "").trim().toLowerCase()}`;
+// BOLGE VHOST BASINA (2026-10-16): sunucu server_name'in kendi alanindan bolge verir (x.gtdmz.com.tr ->
+// gtdmz); domain'i bos uygulamada Ankara uyesi artik Ankara DNS'ine sorulur. Eski sunucu vermezse satirin
+// (uygulama domain'i) bolgesi.
+const bolgeOf = (r: WebAppRow, w: WebAppVhost) => (w.dnsBolge !== undefined ? w.dnsBolge : r.dnsBolge) || null;
+const dnsAnahtar = (r: WebAppRow, w: WebAppVhost) => `${bolgeOf(r, w) || "-"}|${(w.serverName || "").trim().toLowerCase()}`;
 function dnsOf(dns: DnsDurum | null, r: WebAppRow, w: WebAppVhost): { cevap?: WebAppDnsCevap; kaynak: string; siteBelirsiz: boolean } {
   if (!dns) return { kaynak: "", siteBelirsiz: false };
   const kayit = dns.sonuc[dnsAnahtar(r, w)] || {};
-  if (r.dnsBolge) {
+  const bolge = bolgeOf(r, w);
+  if (bolge) {
     const site = w.site === "Ankara" || w.site === "Pendik" ? w.site : "";
-    return site ? { cevap: kayit[site], kaynak: `${site} DNS (${kayit[site]?.dnsSunucusu || r.dnsBolge})`, siteBelirsiz: false } : { kaynak: "", siteBelirsiz: true };
+    return site ? { cevap: kayit[site], kaynak: `${site} DNS (${kayit[site]?.dnsSunucusu || bolge})`, siteBelirsiz: false } : { kaynak: "", siteBelirsiz: true };
   }
   return { cevap: kayit.varsayilan, kaynak: "Portal çözücüsü", siteBelirsiz: w.site === "Ankara" };
 }
@@ -52,7 +58,7 @@ export default function WebApp() {
     const tekil = new Map<string, { ad: string; bolge: string | null }>();
     for (const r of data.rows) for (const w of r.web) {
       const ad = (w.serverName || "").trim().toLowerCase();
-      if (ad) tekil.set(dnsAnahtar(r, w), { ad, bolge: r.dnsBolge || null });
+      if (ad) tekil.set(dnsAnahtar(r, w), { ad, bolge: bolgeOf(r, w) });
     }
     const adlar = [...tekil.values()];
     if (!adlar.length) { setDns(null); return; }
@@ -80,6 +86,9 @@ export default function WebApp() {
     }
     return m;
   }, [data, dns]);
+
+  // Uygulama (+ ortam) basina TEK satir; web sunuculari tekil (bkz. webAppGrup.ts).
+  const gruplar = useMemo(() => grupla(data?.rows || []), [data]);
 
   const load = useCallback(async (s: string, needle: string, unmatched: boolean) => {
     setLoading(true);
@@ -126,18 +135,18 @@ export default function WebApp() {
           Sadece eşleşmeyenler
         </label>
         <span className="text-xs text-[var(--text-muted)] tabular-nums">
-          {nf(data.shown)} / {nf(data.total)} satır
+          {nf(gruplar.length)} uygulama · {nf(data.shown)} / {nf(data.total)} uygulama sunucusu
         </span>
         <div className="ml-auto flex items-center gap-2">
           <button
             onClick={() => csvDownload("web_app_" + source,
-              ["uygulama", "uygulama_sunucusu", "ortam", "domain", "tier", "web_sunucusu", "site", "ip", "port", "server_name", "dns_vip", "dns_kaynak", "conf_file", "urun", "eslesme"],
+              ["uygulama", "uygulama_sunucusu", "ortam", "domain", "tier", "tier_kaynak", "web_sunucusu", "site", "ip", "port", "server_name", "dns_vip", "dns_kaynak", "conf_file", "urun", "eslesme", "nasil"],
               data.rows.flatMap((r) => (r.web.length
                 ? r.web.map((w) => {
                     const d = dnsOf(dns, r, w);
-                    return [r.app, r.appHost, r.env, r.domain, r.tier, w.host, w.site || "", w.ip, w.port, w.serverName, d.cevap?.ips?.join(" ") || d.cevap?.hata || "", d.kaynak, w.confFile, w.product, r.how];
+                    return [r.app, r.appHost, r.env, r.domain, r.tier, r.tierKaynak || "", w.host, w.site || "", w.ip, w.port, w.serverName, d.cevap?.ips?.join(" ") || d.cevap?.hata || "", d.kaynak, w.confFile, w.product, r.how, (r.nasil || []).join(" | ")];
                   })
-                : [[r.app, r.appHost, r.env, r.domain, r.tier, r.webHostCandidate, "", "", "", "", "", "", "", "", r.how]])))}
+                : [[r.app, r.appHost, r.env, r.domain, r.tier, r.tierKaynak || "", r.webHostCandidate, "", "", "", "", "", "", "", "", r.how, (r.nasil || []).join(" | ")]])))}
             className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs border border-[var(--border)] rounded-lg hover:bg-[var(--bg-elevated)]"
           >
             <ArrowDownTrayIcon className="w-3.5 h-3.5" /> CSV
@@ -157,14 +166,14 @@ export default function WebApp() {
       )}
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat n={data.total} l="uygulama satırı" />
+        <Stat n={data.total} l="uygulama sunucusu" />
         <Stat n={matchedCount} l="web sunucusu bulundu" tone="ok" />
         <Stat n={data.total - matchedCount} l="eşleşmedi" tone={data.total - matchedCount ? "warn" : undefined} />
         <Stat n={data.tierSummary.find((t) => t.tier === "3-tier")?.count ?? 0} l="3-tier uygulama" />
       </div>
 
       <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-elevated)]/60 px-4 py-3">
-        <div className="text-xs font-semibold text-[var(--text-secondary)] mb-1.5">Eşleşme nasıl kuruldu?</div>
+        <div className="text-xs font-semibold text-[var(--text-secondary)] mb-1.5">Eşleşme yolları (uygulama sunucusu sayısı) — her uygulamanın kendi açıklaması satırında</div>
         <div className="flex flex-wrap gap-2">
           {data.matchSummary.map((m) => (
             <span key={m.how} className={`text-[11px] px-2 py-1 rounded-lg border ${
@@ -176,7 +185,10 @@ export default function WebApp() {
             </span>
           ))}
         </div>
-        <p className="text-[11px] text-[var(--text-muted)] mt-2 max-w-4xl">
+        <details className="mt-2">
+        <summary className="text-[11px] text-[var(--text-secondary)] cursor-pointer">Eşleştirme kuralları</summary>
+        <p className="text-[11px] text-[var(--text-muted)] mt-1 max-w-4xl">
+          Topoloji envanterdeki domain’den okunur; domain yoksa eşleşme kanıtından (web sunucusu ayrı host → 3-tier, aynı host → 2-tier).{" "}
           3-tier sunucularda web sunucusu, uygulama sunucusunun adındaki <b>5. karakter</b>{" "}
           <code className="px-1 rounded bg-[var(--bg-surface)]">A</code> →{" "}
           <code className="px-1 rounded bg-[var(--bg-surface)]">W</code> çevrilerek bulunur
@@ -188,6 +200,7 @@ export default function WebApp() {
           taraması denenir. Ad hiç tutmasa da vhost’un mod_jk/proxy hedefi uygulamanın JVM portuna gidiyorsa
           eşleşir (<b>AJP</b> etiketi). Retirement keşfiyle aynı kurallar; hangi yolun tuttuğu satırda yazar.
         </p>
+        </details>
         {data.hubHata && <p className="text-[11px] mt-1 text-amber-700">Server Hub okunamadı ({data.hubHata}) — yalnız sertifika envanteri eşleşmesi gösteriliyor.</p>}
       </div>
 
@@ -203,49 +216,75 @@ export default function WebApp() {
           <thead>
             <tr className="bg-[var(--bg-elevated)] border-b border-[var(--border-subtle)] text-left">
               <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">Uygulama</th>
-              <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">Uyg. sunucusu</th>
+              <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">Uyg. sunucuları</th>
               <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">Web sunucusu</th>
               <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">IP : Port</th>
               <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">server_name</th>
               <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]" title="DNS adının çözüldüğü IP: load balancer virtual IP'si. Her web sunucusu KENDİ sitesinin DNS cevabıyla gösterilir.">
                 DNS → LB VIP {dnsYukleniyor && <ArrowPathIcon className="inline w-3 h-3 animate-spin motion-reduce:animate-none" aria-label="çözülüyor" />}
               </th>
-              <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">Eşleşme</th>
+              <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">Eşleşme nasıl kuruldu</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[var(--border-subtle)]">
-            {data.rows.length === 0 && (
+            {gruplar.length === 0 && (
               <TableEmptyRow colSpan={7} />
             )}
-            {data.rows.map((r, ri) => (
-              <tr key={`${r.app}|${r.appHost}|${ri}`} className="hover:bg-[var(--bg-elevated)]/60 align-top">
+            {gruplar.map((g) => (
+              <tr key={g.anahtar} className="hover:bg-[var(--bg-elevated)]/60 align-top" data-testid="webapp-satir">
                 <td className="px-3 py-2 font-mono text-xs text-[var(--text-primary)] whitespace-nowrap">
-                  {r.app}
-                  <span className="ml-1.5 text-[10px] px-1 py-0.5 rounded border bg-[var(--bg-elevated)] text-[var(--text-muted)] border-[var(--border)]">{r.tier}</span>
+                  {g.app}
+                  {g.tiers.map((t) => {
+                    const kaynak = g.satirlar.find((r) => r.tier === t)?.tierKaynak;
+                    return (
+                      <span key={t} className="ml-1.5 text-[10px] px-1 py-0.5 rounded border bg-[var(--bg-elevated)] text-[var(--text-muted)] border-[var(--border)]"
+                        title={kaynak === "domain" ? "Envanterdeki domain'den" : kaynak ? `Envanterde domain yok — ${kaynak} kanıtından` : "Envanterde domain yok ve web sunucusu bulunamadı"}>
+                        {t}
+                      </span>
+                    );
+                  })}
+                  {g.env && <div className="text-[10px] text-[var(--text-muted)] mt-0.5">{g.env}</div>}
                 </td>
-                <td className="px-3 py-2 font-mono text-xs text-[var(--text-secondary)] whitespace-nowrap">{r.appHost}</td>
+                <td className="px-3 py-2 font-mono text-xs text-[var(--text-secondary)] whitespace-nowrap">
+                  <div className="flex flex-col gap-0.5">
+                    {g.satirlar.map((r) => (
+                      <span key={r.appHost} className="inline-flex items-center gap-1">
+                        {r.appHost}
+                        {!r.matched && <span className="text-[9px] px-1 rounded border border-red-200 bg-red-50 text-red-700" title={r.how}>web yok</span>}
+                      </span>
+                    ))}
+                  </div>
+                </td>
                 <td className="px-3 py-2 font-mono text-xs whitespace-nowrap">
-                  {r.web.length ? (
+                  {g.web.length ? (
                     <div className="flex flex-col gap-0.5">
-                      {r.web.map((w, i) => <span key={i} className="text-[var(--text-primary)]">{w.host}</span>)}
+                      {g.web.map((w, i) => (
+                        <span key={i} className="text-[var(--text-primary)]" title={g.satirlar.length > 1 ? `Bulan uygulama sunucuları: ${w.uygulamaSunuculari.join(", ")}` : undefined}>
+                          {w.host}
+                        </span>
+                      ))}
                     </div>
                   ) : (
-                    <span className="text-[var(--text-muted)]" title="Kurala göre beklenen sunucu; doğrulanamadı">
-                      {r.webHostCandidate} <span className="opacity-70">(aday)</span>
-                    </span>
+                    <div className="flex flex-col gap-0.5">
+                      {[...new Set(g.satirlar.map((r) => r.webHostCandidate).filter(Boolean))].map((h) => (
+                        <span key={h} className="text-[var(--text-muted)]" title="Kurala göre beklenen sunucu; doğrulanamadı">
+                          {h} <span className="opacity-70">(aday)</span>
+                        </span>
+                      ))}
+                    </div>
                   )}
                 </td>
                 <td className="px-3 py-2 font-mono text-xs text-[var(--text-secondary)] whitespace-nowrap tabular-nums">
-                  {r.web.length ? (
+                  {g.web.length ? (
                     <div className="flex flex-col gap-0.5">
-                      {r.web.map((w, i) => <span key={i}>{w.ip}{w.port ? `:${w.port}` : ""}</span>)}
+                      {g.web.map((w, i) => <span key={i}>{w.ip}{w.port ? `:${w.port}` : ""}</span>)}
                     </div>
                   ) : <span className="text-[var(--text-muted)]">—</span>}
                 </td>
                 <td className="px-3 py-2 font-mono text-[11px] text-[var(--text-secondary)]">
-                  {r.web.length ? (
+                  {g.web.length ? (
                     <div className="flex flex-col gap-0.5">
-                      {r.web.map((w, i) => (
+                      {g.web.map((w, i) => (
                         <span key={i} title={[w.confFile ? `conf: ${w.confFile}` : "", w.ajpHedef ? `AJP/proxy hedefi: ${w.ajpHedef}` : ""].filter(Boolean).join(" · ") || undefined}>
                           {w.serverName}
                           {w.product && <span className="ml-1 text-[10px] text-[var(--text-muted)]">{w.product}</span>}
@@ -265,10 +304,10 @@ export default function WebApp() {
                   ) : <span className="text-[var(--text-muted)]">—</span>}
                 </td>
                 <td className="px-3 py-2 font-mono text-[11px] whitespace-nowrap">
-                  {r.web.length ? (
+                  {g.web.length ? (
                     <div className="flex flex-col gap-0.5">
-                      {r.web.map((w, i) => {
-                        const d = dnsOf(dns, r, w);
+                      {g.web.map((w, i) => {
+                        const d = dnsOf(dns, w.satir, w);
                         if (d.siteBelirsiz && !d.cevap)
                           return <span key={i} className="text-[var(--text-muted)]" title="Web sunucusunun sitesi adından çıkarılamadı (Pendik/Ankara)">site belirsiz</span>;
                         if (!d.cevap) return <span key={i} className="text-[var(--text-muted)]">{dnsYukleniyor ? "çözülüyor…" : "—"}</span>;
@@ -291,21 +330,33 @@ export default function WebApp() {
                                 </span>
                               );
                             })}
-                            {d.siteBelirsiz && <span className="text-[9px] text-amber-700" title="Uygulamanın domain'i gtdmz / fw.garanti değil: gösterilen cevap Portal sunucusunun çözücüsünden. Ankara VIP'i farklı olabilir.">⚠ Ankara VIP'i farklı olabilir</span>}
+                            {d.siteBelirsiz && <span className="text-[9px] text-amber-700" title="server_name'in alanı gtdmz / fw.garanti değil: gösterilen cevap Portal sunucusunun çözücüsünden. Ankara VIP'i farklı olabilir.">⚠ Ankara VIP'i farklı olabilir</span>}
                           </span>
                         );
                       })}
                     </div>
                   ) : <span className="text-[var(--text-muted)]">—</span>}
                 </td>
-                <td className="px-3 py-2">
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded border whitespace-nowrap ${
-                    r.matched ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                      : r.how === "eşleşmedi" ? "bg-red-50 text-red-700 border-red-200"
-                      : "bg-amber-50 text-amber-700 border-amber-200"
-                  }`}>
-                    {r.how}
-                  </span>
+                <td className="px-3 py-2 text-[11px] min-w-[22rem] max-w-[40rem]">
+                  <div className="flex flex-col gap-1.5">
+                    {g.satirlar.map((r) => (
+                      <div key={r.appHost} data-testid="webapp-nasil">
+                        <div className="flex items-center gap-1.5">
+                          <b className="font-mono text-[var(--text-primary)]">{r.appHost}</b>
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded border whitespace-nowrap ${
+                            r.matched ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                              : r.how === "eşleşmedi" ? "bg-red-50 text-red-700 border-red-200"
+                              : "bg-amber-50 text-amber-700 border-amber-200"
+                          }`}>
+                            {r.matched ? "eşleşti" : r.how}
+                          </span>
+                        </div>
+                        <ul className="mt-0.5 space-y-0.5 text-[var(--text-secondary)] whitespace-normal">
+                          {(r.nasil && r.nasil.length ? r.nasil : [r.how]).map((s, i) => <li key={i}>{s}</li>)}
+                        </ul>
+                      </div>
+                    ))}
+                  </div>
                 </td>
               </tr>
             ))}

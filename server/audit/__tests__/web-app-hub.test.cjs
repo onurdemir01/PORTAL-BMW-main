@@ -139,3 +139,63 @@ test('WH6 web girdileri sitesini tasir (Ankara 7 harf, Pendik 6 harf)', async ()
   assert.deepEqual(site, { GBCRWP01: 'Pendik', GBCRWAP01: 'Ankara' });
   assert.ok(j.rows.every((r) => r.dnsBolge === 'gtdmz'), 'satir DNS bolgesini tasimiyor');
 });
+
+// ── 2026-10-16: topoloji kanittan, DNS bolgesi vhost basina, satir basina aciklama ─────────────────
+const cert = (host, sn) => ({ host, ip: '10.0.0.9', port: '443', server_name: sn, conf_file: '/c', product: 'IHS', env: 'PROD' });
+
+test('WH7 domain BOS: topoloji eslesme kanitindan (ayri host 3-tier, ayni host 2-tier, aday hostta vhost 3-tier, kanit yok bilinmiyor)', async () => {
+  veri = {
+    apps: [
+      { app: 'crm', host: 'GBCRAP01', env: 'PROD', domain: '' },
+      { app: 'ikili', host: 'GBIKAP01', env: 'PROD', domain: null },
+      { app: 'adsiz', host: 'GBADAP01', env: 'PROD', domain: '' },
+      { app: 'yok', host: 'GBYKAP01', env: 'PROD', domain: '' },
+    ],
+    certs: [cert('GBCRWP01', 'crm.gtdmz.com.tr'), cert('GBIKAP01', 'ikili.fw.garanti.com.tr'), cert('GBADWP01', 'baska.gtdmz.com.tr')],
+  };
+  const j = await getir();
+  const by = Object.fromEntries(j.rows.map((r) => [r.app, r]));
+  assert.deepEqual([by.crm.tier, by.crm.tierKaynak], ['3-tier', 'eşleşme']);
+  assert.deepEqual([by.ikili.tier, by.ikili.tierKaynak], ['2-tier', 'eşleşme']);
+  assert.deepEqual([by.adsiz.tier, by.adsiz.tierKaynak], ['3-tier', 'aday web sunucusu']);
+  assert.deepEqual([by.yok.tier, by.yok.tierKaynak], ['bilinmiyor', '']);
+  const tier = Object.fromEntries(j.tierSummary.map((t) => [t.tier, t.count]));
+  assert.deepEqual(tier, { '3-tier': 2, '2-tier': 1, bilinmiyor: 1 });
+});
+
+test('WH8 DNS bolgesi vhost basina: server_name alani kazanir, yoksa uygulama domain i', async () => {
+  veri = {
+    apps: [
+      { app: 'crm', host: 'GBCRAP01', env: 'PROD', domain: '' },
+      { app: 'ters', host: 'GBTRAP01', env: 'PROD', domain: 'fw.garanti.com.tr' },
+      { app: 'dis', host: 'GBDSAP01', env: 'PROD', domain: 'gtdmz.com.tr' },
+    ],
+    certs: [cert('GBCRWP01', 'crm.gtdmz.com.tr'), cert('GBTRAP01', 'ters.gtdmz.com.tr'), cert('GBDSWP01', 'dis.example.com')],
+  };
+  const j = await getir();
+  const b = Object.fromEntries(j.rows.map((r) => [r.app, r.web.map((w) => w.dnsBolge)]));
+  assert.deepEqual(b.crm, ['gtdmz'], 'domain bos ama server_name gtdmz: bolge null kaliyordu (Ankara Ankara DNS ine sorulmuyordu)');
+  assert.deepEqual(b.ters, ['gtdmz'], 'adin kendi alani uygulama domain inden once gelmeli');
+  assert.deepEqual(b.dis, ['gtdmz'], 'alansiz ad uygulama domain ine dusmeli');
+  assert.equal(j.rows.find((r) => r.app === 'crm').dnsBolge, null, 'satir bolgesi (eski alan) domain den kalir');
+});
+
+test('WH9 satir basina aciklama: Ankara 7 harf kurali, sertifika + mod_cluster kaynagi, topoloji nedeni; eslesmeyende sebep', async () => {
+  veri = {
+    apps: [
+      { app: 'crm', host: 'DACRAAB01', env: 'PROD', domain: 'gtdmz.com.tr' },
+      { app: 'yalniz', host: 'GBYLAP01', env: 'PROD', domain: '' },
+    ],
+    certs: [cert('DACRWAP01', 'crm.gtdmz.com.tr'), cert('GBYLWP01', 'baska.gtdmz.com.tr'), cert('GBYLWP01', 'diger.gtdmz.com.tr')],
+    vhosts: [{ host: 'DACRWAB02', server_name: 'x.gtdmz.com.tr', aliases: '', listen: '*:443', conf_file: '/m.conf', product: 'RH Apache', proxy_targets: 'crm' }],
+  };
+  const j = await getir();
+  const crm = j.rows.find((r) => r.app === 'crm');
+  assert.ok(Array.isArray(crm.nasil) && crm.nasil.length >= 3, JSON.stringify(crm.nasil));
+  assert.equal(crm.nasil[0], 'Topoloji 3-tier: envanterdeki domain gtdmz.com.tr');
+  assert.ok(crm.nasil.some((s) => s.startsWith('DACRAAB01 → DACRWAP01: 5. harf A→W + son harf P (7 harf = Ankara)') && s.includes('server_name\'de "crm" geçiyor (tam ad; sertifika envanteri)')), JSON.stringify(crm.nasil));
+  assert.ok(crm.nasil.some((s) => s.startsWith('DACRWAB02: ad kuralı dışında') && s.includes('mod_cluster balancer adı = uygulama adı (balancer://crm)')), JSON.stringify(crm.nasil));
+  const yal = j.rows.find((r) => r.app === 'yalniz');
+  assert.equal(yal.matched, false);
+  assert.ok(yal.nasil.some((s) => s.includes('GBYLAP01 → GBYLWP01: 5. harf A→W') && s.includes('2 vhost var ama hiçbirinin server_name\'i "yalniz" içermiyor')), JSON.stringify(yal.nasil));
+});

@@ -858,6 +858,8 @@ export interface WebAppVhost {
   mcBalancer?: string;
   /** Web sunucusunun sitesi (ad kuralindan): DNS -> VIP bu sitenin cozucusuyla okunur. */
   site?: 'Pendik' | 'Ankara' | string;
+  /** DNS bolgesi (2026-10-16): server_name'in kendi alanindan ('gtdmz' | 'fw'), yoksa uygulama domain'inden; null = Portal cozucusu. */
+  dnsBolge?: string | null;
 }
 
 /** DNS -> LB VIP cozumu. Anahtar `${bolge || '-'}|${ad}`; kollar 'Pendik'/'Ankara' (bolge biliniyorsa)
@@ -874,10 +876,14 @@ export interface WebAppRow {
   appHost: string;
   env: string;
   domain: string;
-  /** "3-tier" | "2-tier" | "bilinmiyor" - domain'den turer. */
+  /** "3-tier" | "2-tier" | "bilinmiyor" - domain'den; domain yoksa eslesme kanitindan (2026-10-16). */
   tier: string;
+  /** Topoloji neye dayaniyor: 'domain' | 'eşleşme' | 'aday web sunucusu' | '' (bilinmiyor). */
+  tierKaynak?: string;
   /** Eslesmenin NASIL kuruldugu; guvenilirlik buna bagli. */
   how: string;
+  /** Bu uygulama sunucusu icin adim adim aciklama (topoloji, ad kurali, vhost kaynagi, eslesmeme sebebi). */
+  nasil?: string[];
   /** DNS -> VIP icin bolge ('gtdmz' | 'fw'); null = bilinmiyor (Portal cozucusu). */
   dnsBolge?: string | null;
   matched: boolean;

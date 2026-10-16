@@ -155,6 +155,91 @@ function matchWebForApp({ app, appHost, domain }, certByHost) {
   };
 }
 
+const U = (s) => String(s || '').trim().toUpperCase();
+
+/**
+ * TOPOLOJI (2026-10-16, kullanici: "3-tier sunucularin topolojisi 'bilinmiyor' olarak yazilmis").
+ * tierOf yalniz envanterdeki domain'e bakar; domain bos satirlar 'bilinmiyor' kaliyordu - web
+ * sunucusu harf donusumuyle AYRI bir hostta bulunmus olsa bile. Domain yoksa topoloji ESLESME
+ * KANITINDAN okunur: web sunucusu uygulama sunucusundan ayri bir host -> 3-tier, ayni host ->
+ * 2-tier; eslesme yok ama ad kuraliyla uretilen ayri aday hostta vhost var -> 3-tier. Hic kanit
+ * yoksa ad kurali TAHMIN olarak kullanilmaz: 'bilinmiyor' kalir (yanlis tier = yanlis web sunucusu).
+ * @returns {{ tier: string, kaynak: string }} kaynak: domain / esleme kaniti / aday web sunucusu / bos
+ */
+function topolojiOf(domain, appHost, m) {
+  const t = tierOf(domain, appHost);
+  if (t !== 'bilinmiyor') return { tier: t, kaynak: 'domain' };
+  const web = (m && m.web) || [];
+  if (web.length) return { tier: web.some((w) => U(w.host) !== U(appHost)) ? '3-tier' : '2-tier', kaynak: 'eşleşme' };
+  if (m && m.vhostCountOnHost > 0 && m.webHostCandidate && U(m.webHostCandidate) !== U(appHost)) {
+    return { tier: '3-tier', kaynak: 'aday web sunucusu' };
+  }
+  return { tier: 'bilinmiyor', kaynak: '' };
+}
+
+/** Web sunucusu adinin uygulama sunucusundan hangi ad kuraliyla geldigi (yoksa null). */
+function adKurali(appHost, webHost) {
+  if (U(webHost) === U(appHost)) return 'web katmanı uygulamanın kendi sunucusunda';
+  const ad = webHostAdaylari(appHost).map(U);
+  if (ad[0] && ad[0] === U(webHost)) return `${U(appHost)} → ${U(webHost)}: 5. harf A→W`;
+  if (ad[1] && ad[1] === U(webHost)) {
+    const harf = ((/^([A-Z]+)\d+$/.exec(U(webHost)) || [])[1] || '').length;
+    return `${U(appHost)} → ${U(webHost)}: 5. harf A→W + son harf P (${harf} harf = ${harf === 7 ? 'Ankara' : 'Pendik'})`;
+  }
+  return null;
+}
+
+/**
+ * ESLESME NASIL KURULDU — SATIR BASINA (2026-10-16, kullanici: "'Eslesme nasil kuruldu' yazimini her
+ * bir uygulama icin kendi satirina yazar misin?"). Genel kural metni yerine bu uygulama sunucusunun
+ * GERCEK yolu: topoloji neden, her web sunucusu hangi ad kuraliyla, vhost hangi kaynaktan (sertifika
+ * envanteri / Server Hub / AJP hedefi / mod_cluster) ve eslesmediyse neden.
+ * @returns {string[]}
+ */
+function nasilAciklama({ app, appHost, domain, m, topoloji }) {
+  const satir = [];
+  const t = topoloji || topolojiOf(domain, appHost, m);
+  satir.push(
+    t.kaynak === 'domain'
+      ? `Topoloji ${t.tier}: envanterdeki domain ${domain}`
+      : t.kaynak === 'eşleşme'
+        ? `Topoloji ${t.tier}: envanterde domain yok; ${t.tier === '3-tier' ? 'web sunucusu ayrı bir host' : 'web sunucusu uygulamanın kendi sunucusu'}`
+        : t.kaynak === 'aday web sunucusu'
+          ? `Topoloji 3-tier: envanterde domain yok; ad kuralının ürettiği web sunucusu ${U(m.webHostCandidate)} envanterde var`
+          : 'Topoloji bilinmiyor: envanterde domain yok, web sunucusu da bulunamadı',
+  );
+  const how = String((m && m.how) || '');
+  const hub = /^Server Hub/.test(how);
+  const form = (/server_name \(([^)]*)\)/.exec(how) || [])[1];
+  const web = (m && m.web) || [];
+  const hostlar = [...new Set(web.map((w) => U(w.host)))];
+  for (const h of hostlar) {
+    const kaynaklar = new Set();
+    for (const w of web.filter((x) => U(x.host) === h)) {
+      const k = String(w.kaynak || 'ad');
+      if (k === 'ad' || k.startsWith('ad+')) {
+        kaynaklar.add(hub
+          ? `server_name ilk etiketi = "${app}" (Server Hub taraması; sertifika envanterinde yok)`
+          : `server_name'de "${app}" geçiyor (${form || 'ad'}; sertifika envanteri)`);
+      }
+      if (k.includes('ajp')) kaynaklar.add(`AJP/proxy hedefi bu uygulamanın JVM portu${w.ajpHedef ? ` (${w.ajpHedef})` : ''}`);
+      if (k.includes('mc')) kaynaklar.add(`mod_cluster balancer adı = uygulama adı${w.mcBalancer ? ` (balancer://${w.mcBalancer})` : ''}; aynı site ve ortamdaki web sunucusu`);
+    }
+    const kural = adKurali(appHost, h);
+    satir.push(`${kural || `${h}: ad kuralı dışında`} — ${[...kaynaklar].join(' · ')}`);
+  }
+  if (!web.length) {
+    const adaylar = webHostAdaylari(appHost);
+    if (m && m.vhostCountOnHost > 0) {
+      const kural = adKurali(appHost, m.webHostCandidate);
+      satir.push(`${kural || U(m.webHostCandidate)} — orada ${m.vhostCountOnHost} vhost var ama hiçbirinin server_name'i "${app}" içermiyor; AJP / mod_cluster hedefi de yok`);
+    } else {
+      satir.push(`Web sunucusu bulunamadı: ${adaylar.length ? `aday ${adaylar.map(U).join(', ')} ve ` : ''}${U(appHost)} için sertifika envanterinde de Server Hub taramasında da vhost yok`);
+    }
+  }
+  return satir;
+}
+
 // ── DNS -> LB VIP (2026-10-13, kullanici: "DNS'in cozdugu IP aslinda load balancer'daki virtual IP;
 // tum member IP'ler bu VIP'in altinda bir pool olusturur" + "Ankara sunucularinin VIP'i Pendik'ten farkli
 // olacagi icin Ankara sunucularinin cozdugu DNS'in farkli olmasini beklerim").
@@ -301,7 +386,9 @@ function registerWebApp(router) {
             jvm: hub.jvmOf(appHost, app, src.genKolon ? genOf(a[src.genKolon]) : null),
             // mod_cluster yalniz JBoss (8) icin; WAS kaynaginda balancer adi eslesmesi yapilmaz.
             gen: src.genKolon ? genOf(a[src.genKolon]) : null, modCluster: key === 'mw' })
-        const { tier, how, matched } = m;
+        const { how, matched } = m;
+        const topoloji = topolojiOf(domain, appHost, m);
+        const tier = topoloji.tier;
         if (matched) eslesen++;
 
         howCount[howKova(how)] = (howCount[howKova(how)] || 0) + 1;
@@ -320,10 +407,20 @@ function registerWebApp(router) {
           // DNS -> VIP cozumunde hangi bolgenin DNS sunuculari (gtdmz / fw); null = bilinmiyor.
           dnsBolge: dnsBolgesi(domain),
           tier,
+          tierKaynak: topoloji.kaynak,
           how,
+          nasil: nasilAciklama({ app, appHost, domain, m, topoloji }),
           matched,
           // Bir uygulama birden fazla vhost'ta servis ediliyor olabilir; hepsi dondurulur.
-          web: (m.web || []).map((w) => ({ ip: '', port: '', confFile: '', product: '', ...w, kaynak: w.kaynak || 'ad', site: siteOf(w.host) })),
+          // DNS BOLGESI VHOST BASINA (2026-10-16, kullanici: "Ankara IP'lerinin hicbiri cozulememis"):
+          // hangi DNS sunucusuna sorulacagi COZULEN ADIN kendi alanina baglidir (x.gtdmz.com.tr ->
+          // gtdmz). Eskiden yalniz envanterdeki uygulama domain'ine bakiliyordu; domain bos satirlarda
+          // bolge null kaliyor, Ankara uyesi Ankara DNS'ine HIC sorulmayip Portal cozucusunun (Pendik)
+          // cevabiyla "Ankara VIP'i farkli olabilir" diye gosteriliyordu.
+          web: (m.web || []).map((w) => ({
+            ip: '', port: '', confFile: '', product: '', ...w, kaynak: w.kaynak || 'ad', site: siteOf(w.host),
+            dnsBolge: dnsBolgesi(w.serverName) || dnsBolgesi(domain),
+          })),
           webHostCandidate: m.webHostCandidate,
           vhostCountOnHost: m.vhostCountOnHost,
         });
@@ -358,4 +455,4 @@ function registerWebApp(router) {
   });
 }
 
-module.exports = { registerWebApp, dnsCozumle, dnsBolgesi, DNS_BOLGELER, adVaryantlari, webHostOf, webHostAdaylari, tierOf, buildCertIndex, matchWebForApp };
+module.exports = { registerWebApp, dnsCozumle, dnsBolgesi, DNS_BOLGELER, adVaryantlari, webHostOf, webHostAdaylari, tierOf, topolojiOf, nasilAciklama, buildCertIndex, matchWebForApp };
