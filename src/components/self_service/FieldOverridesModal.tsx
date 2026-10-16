@@ -333,6 +333,7 @@ export default function FieldOverridesModal({
   item,
   onClose,
   smartBaglami,
+  ocoAyarYoksaAcik = false,
 }: {
   item: FieldOverridesModalItem;
   onClose: () => void;
@@ -343,6 +344,14 @@ export default function FieldOverridesModal({
    * bugünkü gibidir.
    */
   smartBaglami?: { ad: 'scalex'; degerler: Record<string, unknown> };
+  /**
+   * Kayıtta `ocoCheck` YOKSA OCO kutusu işaretli başlar. ScaleX sunucusu bu durumda kapıyı
+   * AÇIK sayar (server/scalex/launch.cjs `cfg.enabled !== false`); pencere boş kutuyla açılıp
+   * Kaydet'te `enabled: false` yazınca, SMART'ı tanımlamak için pencereyi açan admin prod OCO
+   * kapısını farkında olmadan kapatıyordu (2026-10-16). Self Service'te ayar yoksa OCO kapalı
+   * (runner `!!ocoCheck?.enabled`): orada verilmez.
+   */
+  ocoAyarYoksaAcik?: boolean;
 }) {
   const [fields, setFields] = useState<LocalFieldState[]>([]);
   const [choiceSources, setChoiceSources] = useState<ChoiceSourceInfo[]>([]);
@@ -505,7 +514,9 @@ export default function FieldOverridesModal({
             usernameKey: inj?.usernameKey || 'username',
           });
           setOcoCheck({
-            enabled: !!customRes.customization?.ocoCheck?.enabled,
+            enabled: ocoAyarYoksaAcik
+              ? customRes.customization?.ocoCheck?.enabled !== false
+              : !!customRes.customization?.ocoCheck?.enabled,
             environments: Array.isArray(customRes.customization?.ocoCheck?.environments)
               ? customRes.customization.ocoCheck.environments
               : null,
@@ -527,7 +538,7 @@ export default function FieldOverridesModal({
       })
       .catch((e) => setErr(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoading(false));
-  }, [item, reloadTick]);
+  }, [item, reloadTick, ocoAyarYoksaAcik]);
 
   async function loadHistory() {
     try {

@@ -615,6 +615,9 @@ const ScaleXAdminTab: React.FC = () => {
           smartBaglami={
             Object.keys(smartOrnegi).length ? { ad: 'scalex', degerler: smartOrnegi } : undefined
           }
+          // ScaleX sunucusu OCO ayari YOKSA kapiyi ACIK sayar; pencere de oyle baslamali,
+          // yoksa SMART'i tanimlayip kaydeden admin OCO kapisini farkinda olmadan kapatir.
+          ocoAyarYoksaAcik
           onClose={() => {
             setShowGates(false);
             setKapiJetonu((n) => n + 1);
