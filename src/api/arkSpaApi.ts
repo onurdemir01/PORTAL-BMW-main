@@ -73,6 +73,8 @@ export interface GecisUygulama {
   gecti: boolean;
   /** 'YYYY-MM-DD' ya da null. */
   gecisTarihi: string | null;
+  /** "Kontrol Ettim" anı (ISO, UTC) ya da null. Kimin bastığı TUTULMAZ. */
+  kontrolAt: string | null;
   ekip: string[];
   /** Ekip e-postalari (namespace sahibi tablosundan; yoksa bos). */
   ekipEposta?: string[];
@@ -91,6 +93,10 @@ export interface GecisPlani {
   sets?: GecisSet[];
   apps?: GecisUygulama[];
   admin?: boolean;
+  /** Set 7 talep listesinde olup planda bulunamayanlar (2026-10-16; ekranda yalnız Admin'e). */
+  talepEslesmeyen?: { namespace: string; application: string }[];
+  /** Tek seferlik Set 7 taşımasının durumu; `hata` yalnız Admin yanıtında. */
+  goc?: { ad: string; uygulandi: boolean; hata?: string | null };
 }
 
 const BASE = '/api/spa-report';
@@ -122,10 +128,8 @@ export const arkSpaApi = {
   gecis: (): Promise<GecisPlani> => fetch(`${BASE}/gecis`).then(safeJson),
   gecisApp: (p: { namespace: string; application: string; kullanimda: 'yes' | 'no' | null; katilimci: string }): Promise<{ ok: boolean; message?: string }> =>
     fetch(`${BASE}/gecis/app`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(p) }).then(safeJson),
-  gecisAppAdmin: (p: { namespace: string; application: string; setNo?: number; gecti?: boolean; gecisTarihi?: string | null }): Promise<{ ok: boolean; message?: string }> =>
-    fetch(`${BASE}/gecis/app-admin`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(p) }).then(safeJson),
+  gecisKontrol: (p: { namespace: string; application: string; kontrol: boolean }): Promise<{ ok: boolean; message?: string; kontrolAt?: string | null }> =>
+    fetch(`${BASE}/gecis/app-kontrol`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(p) }).then(safeJson),
   gecisSet: (p: { no: number; calismaAt: string | null; ocoNo: string }): Promise<{ ok: boolean; message?: string }> =>
     fetch(`${BASE}/gecis/set`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(p) }).then(safeJson),
-  gecisSetGecti: (no: number, tarih: string | null): Promise<{ ok: boolean; message?: string; guncellenen?: number }> =>
-    fetch(`${BASE}/gecis/set/${no}/gecti`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tarih }) }).then(safeJson),
 };

@@ -1679,8 +1679,20 @@ const TABLES = [
         katilimci     NVARCHAR(400) NULL,
         gecti         BIT           NOT NULL DEFAULT 0,
         gecis_tarihi  NVARCHAR(10)  NULL,
+        kontrol_at    DATETIME2     NULL,
         updated_at    DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
         UNIQUE(app_key)
+      )`,
+  },
+  {
+    // Glomo Gecis Plani tek seferlik gocleri (2026-10-16): ad = uygulanan gocun adi (ornegin
+    // 'set7-talep-2026-10-16', glomo-gecis-set7-talep.json). Satir varsa goc bir daha calismaz;
+    // Admin'in sonradan yaptigi set degisikligi geri cekilmez.
+    name: 'spa_gecis_goc',
+    sql: `
+      CREATE TABLE spa_gecis_goc (
+        ad            NVARCHAR(64)  NOT NULL PRIMARY KEY,
+        uygulandi_at  DATETIME2 NOT NULL DEFAULT GETUTCDATE()
       )`,
   },
   {
@@ -4451,6 +4463,13 @@ async function setupTables() {
       table: 'opsx_was_locks',
       col: 'last_op_finished_at',
       sql: `ALTER TABLE opsx_was_locks ADD last_op_finished_at NVARCHAR(40) NULL`,
+    },
+    {
+      // Glomo Gecis Plani "Kontrol Ettim" ani (2026-10-16, server/spa-report/gecis.cjs). Kimin
+      // bastigi TUTULMAZ (sayfa kurali: tabloyu dolduranin adi gorunmez); NULL = kontrol edilmedi.
+      table: 'spa_gecis_app',
+      col: 'kontrol_at',
+      sql: `ALTER TABLE spa_gecis_app ADD kontrol_at DATETIME2 NULL`,
     },
   ];
 

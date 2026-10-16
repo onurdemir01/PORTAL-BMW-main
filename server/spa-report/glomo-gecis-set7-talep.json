@@ -1,0 +1,219 @@
+{
+ "ad": "set7-talep-2026-10-16",
+ "hedefSet": 7,
+ "aciklama": "Kullanici 2026-10-16: Set 6 tamamlandi; bazi uygulama sahipleri uygulamalarini Set 7'ye aldirdi. Liste kullanicinin gonderdigi tablodan (Location / Namespace / Application / Ekip) yalniz namespace + application olarak alindi.",
+ "uygulamalar": [
+  {
+   "namespace": "follow-up-prod",
+   "application": "follow-up-app-v0"
+  },
+  {
+   "namespace": "follow-up-mngmt-ch-prod",
+   "application": "follow-up-digital-app-v0"
+  },
+  {
+   "namespace": "customer-promotion-mngmnt-ch-prod",
+   "application": "customer-promotion-app-v0"
+  },
+  {
+   "namespace": "digital-feedback-mgmt-ch-prod",
+   "application": "digital-feedback-app-v0"
+  },
+  {
+   "namespace": "digital-banking-ch-prod",
+   "application": "glomo-app-v0"
+  },
+  {
+   "namespace": "digital-banking-cards-ch-prod",
+   "application": "digital-card-process-app-v0"
+  },
+  {
+   "namespace": "digital-investments-ch-prod",
+   "application": "digital-invstmnt-cont-app-v1"
+  },
+  {
+   "namespace": "digital-banking-cards-ch-prod",
+   "application": "digital-card-cont-app-emb-v0"
+  },
+  {
+   "namespace": "digital-banking-cards-ch-prod",
+   "application": "digital-card-cont-app-v0"
+  },
+  {
+   "namespace": "digital-investments-ch-prod",
+   "application": "digital-invstmnt-cont-app-v0"
+  },
+  {
+   "namespace": "digital-banking-cards-ch-prod",
+   "application": "digital-banking-cards-app-v0"
+  },
+  {
+   "namespace": "digital-banking-cards-ch-prod",
+   "application": "digital-card-process-app-emb-v0"
+  },
+  {
+   "namespace": "digital-investments-ch-prod",
+   "application": "digital-invstmnt-cont-app-emb-v1"
+  },
+  {
+   "namespace": "etrader-app-ch-prod",
+   "application": "itrader-cfa-bridge-app-v0"
+  },
+  {
+   "namespace": "etrader-app-ch-prod",
+   "application": "etrader-ark-common-app-v0"
+  },
+  {
+   "namespace": "card-token-management-ch-prod",
+   "application": "ctm-masterpass-cfa-app-v0"
+  },
+  {
+   "namespace": "ps-api-orch-management-ch-prod",
+   "application": "sign-up-cfa-app-v0"
+  },
+  {
+   "namespace": "open-other-bank-cards-ch-prod",
+   "application": "open-other-bank-cards-app-v0"
+  },
+  {
+   "namespace": "ps-api-orch-management-ch-prod",
+   "application": "smart-switch-cfa-app-v0"
+  },
+  {
+   "namespace": "card-token-management-prod",
+   "application": "ctm-masterpass-app-v0"
+  },
+  {
+   "namespace": "ps-api-orch-management-ch-prod",
+   "application": "ps-api-orch-cfa-app-v0"
+  },
+  {
+   "namespace": "business-loan-credit-dmnd-ch-prod",
+   "application": "credit-demand-digital-app-v0"
+  },
+  {
+   "namespace": "business-loan-credit-dmnd-ch-prod",
+   "application": "cfa-demand-digital-app-v0"
+  },
+  {
+   "namespace": "advisory-data-management-ch-prod",
+   "application": "credit-checkup-app-v0"
+  },
+  {
+   "namespace": "consumer-loan-application-ch-prod",
+   "application": "digital-fast-limit-cf-v0"
+  },
+  {
+   "namespace": "ges-pension-revenue-ch-prod",
+   "application": "digital-pension-reve-app-v0"
+  },
+  {
+   "namespace": "ps-api-orch-management-ch-prod",
+   "application": "disney-bonus-cfa-v0"
+  },
+  {
+   "namespace": "loan-restructuring-prod",
+   "application": "dlyd-prdct-rstrctring-v0"
+  },
+  {
+   "namespace": "document-processing-prod",
+   "application": "doc-acceptance-frontend-v0"
+  },
+  {
+   "namespace": "investor-dps-management-ch-prod",
+   "application": "investor-dps-mngmnt-v0"
+  },
+  {
+   "namespace": "front-architecture-prod",
+   "application": "non-core-assets-v0"
+  },
+  {
+   "namespace": "card-portfolio-management-ch-prod",
+   "application": "pcm-quote-cfa-app-v0"
+  },
+  {
+   "namespace": "fund-management-ch-prod",
+   "application": "smart-saving-app-v0"
+  },
+  {
+   "namespace": "consent-management-ch-prod",
+   "application": "consent-public-app-v0"
+  },
+  {
+   "namespace": "digital-documents-ch-prod",
+   "application": "digital-my-docs-app-v0"
+  },
+  {
+   "namespace": "investor-fin-asset-mntrng-ch-prod",
+   "application": "investor-dashboard-app-v1"
+  },
+  {
+   "namespace": "equity-management-ch-prod",
+   "application": "equity-management-app-v1"
+  },
+  {
+   "namespace": "derivatives-management-ch-prod",
+   "application": "derivatives-managemnt-app-v1"
+  },
+  {
+   "namespace": "equity-management-ch-prod",
+   "application": "equity-ipo-mngmnt-app-v0"
+  },
+  {
+   "namespace": "equity-management-ch-prod",
+   "application": "equity-operation-app-v0"
+  },
+  {
+   "namespace": "gyb-int-capital-mrkt-mngmt-ch-prod",
+   "application": "customer-cash-trx-app-v0"
+  },
+  {
+   "namespace": "derivatives-management-ch-prod",
+   "application": "derivatives-managemnt-app-v0"
+  },
+  {
+   "namespace": "equity-management-ch-prod",
+   "application": "equity-management-app-v0"
+  },
+  {
+   "namespace": "investor-fin-asset-mntrng-ch-prod",
+   "application": "investor-dashboard-app-v0"
+  },
+  {
+   "namespace": "derivatives-management-ch-prod",
+   "application": "derivatives-managemnt-app-emb-v1"
+  },
+  {
+   "namespace": "derivatives-management-ch-prod",
+   "application": "derivatives-operation-app-v0"
+  },
+  {
+   "namespace": "equity-management-ch-prod",
+   "application": "equity-management-app-emb-v1"
+  },
+  {
+   "namespace": "investor-fin-asset-mntrng-ch-prod",
+   "application": "investor-dashboard-app-emb-v1"
+  },
+  {
+   "namespace": "fund-management-ch-prod",
+   "application": "fund-management-react-app-v1"
+  },
+  {
+   "namespace": "investor-survey-mngmt-ch-prod",
+   "application": "investor-survey-cfa-app-v0"
+  },
+  {
+   "namespace": "fund-management-ch-prod",
+   "application": "fund-management-react-app-v0"
+  },
+  {
+   "namespace": "fund-management-ch-prod",
+   "application": "fund-management-react-app-emb-v1"
+  },
+  {
+   "namespace": "ewr-management-ch-prod",
+   "application": "ewr-management-app-v0"
+  }
+ ]
+}
