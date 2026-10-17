@@ -20,6 +20,11 @@ export function gecisBelirsiz(t: RtTarget): boolean {
   return GECIS.has(t.status) && !gecisJobId(t);
 }
 
+/** Kanitli job-ID uzlastirmasi yalniz poller'in gercek STOP/DELETE claim'leri icindir. */
+export function orphanUzlastirilabilir(t: RtTarget): boolean {
+  return t.status === 'stopping' || t.status === 'deleting';
+}
+
 /** SILME SIRADA (2026-10-12): beklemesi atlanmis (hedef basina ya da kayit duzeyinde) ve henuz
  *  zamanlayicinin almadigi durdurulmus hedef. Zamanlayici aldiginda 'deleting' olur. */
 export function silmeSirada(t: RtTarget, kayitAtladi?: string | null): boolean {
