@@ -167,6 +167,10 @@ export const retirementApi = {
     ok: boolean; degisti?: boolean; from?: string; to?: string; jobId?: number;
     jobStatus?: string; jobMissing?: boolean; uncertainLaunch?: boolean; message?: string; record?: RtRecord;
   }> => fetch(`${BASE}/${id}/targets/${tid}/refresh-status`, json({})).then(safeJson),
+  /** Job ID yazimi dusmus claim'e kanitli mevcut AWX isini baglar; yeni is baslatmaz. */
+  reconcileJob: (id: number, tid: number, jobId: number): Promise<{
+    ok: boolean; jobId?: number; jobStatus?: string; message?: string; record?: RtRecord;
+  }> => fetch(`${BASE}/${id}/targets/${tid}/reconcile-job`, json({ jobId })).then(safeJson),
   /** SCC bilgilendirme adresi (virgulle). Kime BOS -> ekran degeri kalkar, ortam degiskenine dusulur. */
   sccKaydet: (to: string, cc: string): Promise<{ ok: boolean; message?: string; sccMailTo?: string | null; sccMailCc?: string | null; sccKaynak?: SccKaynak; sccGuncelleyen?: string | null; sccGuncellendi?: string | null }> =>
     fetch(`${BASE}/config/scc`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to, cc }) }).then(safeJson),

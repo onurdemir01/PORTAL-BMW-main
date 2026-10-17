@@ -3,12 +3,13 @@ import { describe, expect, test } from 'vitest';
 import { screen } from '@testing-library/react';
 import { render } from '@/test/test-utils';
 import type { RtTarget } from '@/api/retirementApi';
-import RetirementCanli, { hedefAktif, hedefTazelenmeli } from '../RetirementCanli';
+import RetirementCanli, {
+  hedefAktif,
+  hedefTazelenmeli,
+  orphanUzlastirilabilir,
+} from '../RetirementCanli';
 
-const hedef = (
-  status: RtTarget['status'],
-  overrides: Partial<RtTarget> = {},
-): RtTarget => ({
+const hedef = (status: RtTarget['status'], overrides: Partial<RtTarget> = {}): RtTarget => ({
   id: 7,
   recordId: 3,
   host: 'GBJBOP01',
@@ -48,7 +49,8 @@ describe('Retirement orphan claim gorunurlugu', () => {
     render(<RetirementCanli targets={[hedef('deleting', { deleteJobId: 77 })]} />);
     expect(
       screen.getByText(
-        (_, el) => el?.tagName === 'SPAN' && /Silme.*iş #77.*AWX durumu okunuyor/.test(el.textContent || ''),
+        (_, el) =>
+          el?.tagName === 'SPAN' && /Silme.*iş #77.*AWX durumu okunuyor/.test(el.textContent || ''),
       ),
     ).toBeTruthy();
     expect(screen.queryByText(/Silme.*çalışıyor/)).toBeNull();
@@ -61,7 +63,6 @@ describe('Retirement orphan claim gorunurlugu', () => {
     expect(screen.queryByText(/JBoss STOP.*çalışıyor/)).toBeNull();
   });
 
-
   test('RO4 gecici ID boslugu spinner acmaz ama kayit yenilemesini durdurmaz', () => {
     const ilk = hedef('stopping');
     expect(hedefAktif(ilk)).toBe(false);
@@ -69,5 +70,12 @@ describe('Retirement orphan claim gorunurlugu', () => {
     expect(hedefAktif(hedef('stopping', { lastJobId: 88 }))).toBe(true);
     expect(hedefTazelenmeli(hedef('stopped', { deleteNowAt: '2026-10-12T12:00:00Z' }))).toBe(true);
     expect(hedefTazelenmeli(hedef('stopped'), '2026-10-12T12:00:00Z')).toBe(true);
+  });
+
+  test('RO5 uzlastirma yalniz gercek STOP/DELETE orphan claim icin sunulur', () => {
+    expect(orphanUzlastirilabilir(hedef('stopping'))).toBe(true);
+    expect(orphanUzlastirilabilir(hedef('deleting'))).toBe(true);
+    expect(orphanUzlastirilabilir(hedef('planning'))).toBe(false);
+    expect(orphanUzlastirilabilir(hedef('rolling_back'))).toBe(false);
   });
 });
