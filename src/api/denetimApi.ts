@@ -155,9 +155,28 @@ export interface NginxMigrationOther {
   locations: string[];
   locationCount: number;
 }
+/** Eski sunuculardaki TEK location (ad kalibindan BAGIMSIZ, 2026-10-18): SPA, ad kalibina uymayan,
+ *  cozulemeyen ve eski sunucuda zaten include olan location'larin hepsi; yeni sunucudaki durumuyla. */
+export type NginxMigrationLocSinif = 'spa' | 'spa-disi' | 'cozulemedi' | 'include';
+export interface NginxMigrationLocation {
+  service: string;
+  location: string;
+  oldHosts: string[];
+  /** proxy hedefi (upstream server / proxy_ssl_name / yazilan ad) ya da include adi */
+  targets: string[];
+  written: string[];
+  siniflar: NginxMigrationLocSinif[];
+  /** "ns/app" (envanterden ya da include'dan) */
+  apps: string[];
+  newHosts: string[];
+  newStatus: 'defined' | 'partial' | 'none' | 'not-scanned';
+  traffic: SpaYukOlcumu | null;
+}
 export interface NginxMigrationGroup {
   id: string;
   label: string;
+  /** eski sunuculardaki TUM location'lar; eksikler basta (none, partial, not-scanned, defined) */
+  locations?: NginxMigrationLocation[];
   oldHosts: string[];
   newHosts: string[];
   newHostsScanned: string[];

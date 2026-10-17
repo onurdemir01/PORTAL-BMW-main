@@ -568,6 +568,7 @@ function buildMigration({
   dirRows,
   newLocRows,
   trafficRows,
+  oldIncludeRows = [],
   groups = MIGRATION_GROUPS,
 }) {
   const { routeByAddress, routeByLabel, ocpByLabel } = buildResolverMaps(routeRows, ocpRows);
@@ -618,6 +619,28 @@ function buildMigration({
     const apps = new Map(); // "ns/app" -> satir
     const nonSpa = new Map(); // hedef host -> satir
     const unresolved = new Map(); // hedef host -> satir
+    // TUM LOCATION'LAR (2026-10-18, kullanici: "SPA kurali arama, direkt ne kadar location var ve
+    // hangileri yoksa hepsini goster; isim standardina uymayip tasimadiklarimiz cok buyuk problem
+    // oluyor"). Uygulama listesi SPA ad kalibina gore kuruluyor; kalibina uymayan hedefler "SPA-disi"
+    // listesinde "eksik" SAYILMIYORDU - ad standardina uymayan ama tasinmasi gereken location'lar
+    // gozden kaciyordu. Burada eski sunuculardaki HER location (SPA / SPA-disi / cozulemeyen / eski
+    // sunucuda zaten include) TEK listede, yeni sunuculardaki tanim durumuyla.
+    const tumLoc = new Map(); // "SERVICE|location" -> satir
+    const tumEkle = (svc, loc, host, vhost, bilgi) => {
+      const service = String(svc || '').toUpperCase() || '(bilinmiyor)';
+      const k = service + '|' + String(loc || '');
+      if (!tumLoc.has(k)) {
+        tumLoc.set(k, { service, location: String(loc || ''), oldHosts: new Set(), targets: new Set(),
+          written: new Set(), siniflar: new Set(), apps: new Set(), defs: [] });
+      }
+      const t = tumLoc.get(k);
+      t.oldHosts.add(host);
+      if (bilgi.target) t.targets.add(bilgi.target);
+      if (bilgi.written) t.written.add(bilgi.written);
+      t.siniflar.add(bilgi.sinif);
+      if (bilgi.namespace && bilgi.application) t.apps.add(bilgi.namespace + '/' + bilgi.application);
+      t.defs.push({ host, vhost });
+    };
 
     for (const r of proxyRows || []) {
       const host = H(r.host);
@@ -670,6 +693,11 @@ function buildMigration({
         // Yuk olcumu icin tanimin (host, vhost) ciftleri: o sunucunun logu okunamadiysa
         // (LOADERR host|vhost) ya da o gun satiri yoksa "istek yok" DENMEZ.
         row.paths.get(pk).defs.push({ host, vhost: r.vhost });
+        tumEkle(svc, loc, host, r.vhost, {
+          target, written,
+          sinif: map === apps ? 'spa' : map === unresolved ? 'cozulemedi' : 'spa-disi',
+          namespace: extra.namespace, application: extra.application,
+        });
       };
 
       if (res.namespace && res.application) {
@@ -702,6 +730,16 @@ function buildMigration({
         // SPA kalibina uymayan ve cozulemeyen: API/arka uc olabilir - SPA-disi listede
         push(nonSpa, target, { namespace: null, application: null, how: res.how });
       }
+    }
+    // Eski sunucuda zaten include (application-confs) deseninde duran location'lar: proxy
+    // satiri uretmezler ama vhost'un parcasidirlar; yeni sunucuda da tanimli olmalari gerekir.
+    for (const r of oldIncludeRows || []) {
+      const host = H(r.host);
+      if (!oldSet.has(host)) continue;
+      tumEkle(r.service || r.vhost, r.location, host, r.vhost, {
+        target: String(r.include_name || ''), written: '', sinif: 'include',
+        namespace: r.namespace ? L(r.namespace) : null, application: r.application ? L(r.application) : null,
+      });
     }
 
     const newHosts = g.newHosts.map(H);
@@ -783,13 +821,12 @@ function buildMigration({
     // olsa da BIR kez). SPA-disi ve cozulemeyen hedefler de dahil - vhost'un tamami.
     // Location ilerlemesi (2026-09-17): her location yeni sunucularda tanimli mi
     // (defined/partial/none/notScanned) - kullanici tasimayi location uzerinden izler.
+    // Sayim tum-location listesinden (tumLoc): liste ile sayilar ayni kaynaktan, birbirini tutar.
     const serviceLocations = (() => {
       const m = new Map();
-      for (const r of proxyRows || []) {
-        if (!oldSet.has(H(r.host))) continue;
-        const svc = String(r.service || r.vhost || '').toUpperCase() || '(bilinmiyor)';
-        if (!m.has(svc)) m.set(svc, new Set());
-        m.get(svc).add(String(r.location || ''));
+      for (const t of tumLoc.values()) {
+        if (!m.has(t.service)) m.set(t.service, new Set());
+        m.get(t.service).add(t.location);
       }
       return [...m.entries()]
         .map(([service, set]) => {
@@ -811,9 +848,27 @@ function buildMigration({
       locationTotals.notScanned += sl.notScanned;
     }
 
+    const durumSirasi = { none: 0, partial: 1, 'not-scanned': 2, defined: 3 };
+    const locations = [...tumLoc.values()]
+      .map((t) => ({
+        service: t.service,
+        location: t.location,
+        oldHosts: [...t.oldHosts].sort(),
+        targets: [...t.targets].sort(),
+        written: [...t.written].sort(),
+        // 'spa' | 'spa-disi' (ad kalibina uymuyor) | 'cozulemedi' | 'include' (eski sunucuda zaten include)
+        siniflar: [...t.siniflar].sort(),
+        apps: [...t.apps].sort(),
+        ...newLocStatus(t.service, t.location),
+        traffic: spaTrafikDurumu(trafIdx, t.service + '|' + t.location, t.defs),
+      }))
+      .sort((a, b) => durumSirasi[a.newStatus] - durumSirasi[b.newStatus]
+        || a.service.localeCompare(b.service) || a.location.localeCompare(b.location));
+
     out.push({
       id: g.id,
       label: g.label,
+      locations,
       oldHosts: g.oldHosts.map(H),
       newHosts,
       newHostsScanned: newHosts.filter((h) => scannedHosts.has(h)),
@@ -894,7 +949,7 @@ async function loadMigration({ query, sql, hasProxyColumns }) {
       .catch(() => null),
   ]);
 
-  const [proxy, ups, routes, ocp, dirs, newLocs, traffic] = await Promise.all([
+  const [proxy, ups, routes, ocp, dirs, newLocs, traffic, oldIncludes] = await Promise.all([
     proxyDate
       ? query(
           `SELECT host, vhost, service, location_path AS location, upstream_name, target_url
@@ -948,6 +1003,19 @@ async function loadMigration({ query, sql, hasProxyColumns }) {
           .then((r) => r.recordset || [])
           .catch(() => [])
       : Promise.resolve([]),
+    // ESKI sunucularda zaten include (application-confs) deseninde duran location'lar - tum
+    // location listesi icin (2026-10-18). Okunamazsa liste yalniz proxy satirlariyla kalir.
+    proxyDate
+      ? query(
+          `SELECT host, vhost, service, location_path AS location, include_name, application, namespace
+             FROM dbo.Nginx_Config_Audit
+            WHERE scan_date = (SELECT MAX(scan_date) FROM dbo.Nginx_Config_Audit)
+              AND (kind IS NULL OR kind = 'spa') AND host IN (${oldIn.sqlText})`,
+          oldIn.params,
+        )
+          .then((r) => r.recordset || [])
+          .catch(() => [])
+      : Promise.resolve([]),
   ]);
 
   const groups = buildMigration({
@@ -958,6 +1026,7 @@ async function loadMigration({ query, sql, hasProxyColumns }) {
     dirRows: dirs,
     newLocRows: newLocs,
     trafficRows: traffic,
+    oldIncludeRows: oldIncludes,
   });
   const owners = await loadNamespaceOwners(query);
   for (const g of groups) {

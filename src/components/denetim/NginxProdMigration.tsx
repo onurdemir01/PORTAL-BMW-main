@@ -41,6 +41,7 @@ import {
 import { Panel, StatTile, Pill, Code, Note } from './ui';
 import { OwnerCell, ownerText } from './OwnerCell';
 import { DirCell, HacLegend } from './HacCell';
+import { TumLocationlar } from './TumLocationlar';
 import { kismiEtiket, kismiAciklama, yolYukOzeti } from './yukPencere';
 import { downloadCsv as csvDownload } from '@/utils/csv';
 import { toast } from '@/hooks/useToast';
@@ -1982,8 +1983,8 @@ function LocationProgress({ g }: { g: NginxMigrationGroup }) {
         </table>
       )}
       <div className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
-        Sayım vhost başına farklı location; SPA olmayan (API) ve çözülemeyen hedefler de dâhil —
-        vhost'un tamamı. “Tanımlı” = yeni sunucunun <Code>{'<SERVIS>'}-PROD.conf</Code> dosyasında
+        Sayım vhost başına farklı location; ad kalıbına uymayan, çözülemeyen ve eski sunucuda include
+        olan location'lar da dâhil — vhost'un tamamı (liste aşağıda: “Tüm location'lar”). “Tanımlı” = yeni sunucunun <Code>{'<SERVIS>'}-PROD.conf</Code> dosyasında
         aynı location var (include ya da proxy). Uygulama satırlarındaki H/A/C ise dosyaların hazır
         olup olmadığını gösterir.
       </div>
@@ -2152,6 +2153,7 @@ function GroupPanel({
     >
       <div className="p-3 space-y-3">
         <LocationProgress g={g} />
+        <TumLocationlar g={g} />
         <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
           <StatTile
             label="uygulama"
@@ -2637,7 +2639,7 @@ ${st.total ? `${st.done}/${st.total} location tanımlı` : ''}`}
             // uygulamalar da bulunabilir (ad kalıbına uymayanlar) — liste "kesinlikle API"
             // demez, "ad kalıbına uymuyor" der. Ayrımı container'da nginx process'i arayan
             // tarama yapacak (bkz. server/audit/spa-pattern.cjs).
-            hint="Ad kalıbı (-app-v / -app-emb-v) tutmayan hedefler: yeni sunucuda dizin beklenmez, proxy tanımıyla taşınır. Ad kalıbına uymayan gerçek SPA'lar da burada olabilir."
+            hint="Ad kalıbı (-app-v / -app-emb-v) tutmayan hedefler: yeni sunucuda dizin beklenmez, proxy tanımıyla taşınır. Ad kalıbına uymayan gerçek SPA'lar da burada olabilir. Yeni sunucularda olmayanlar yukarıdaki “Tüm location'lar” listesinde."
             rows={g.nonSpa}
             tone="neutral"
           />

@@ -484,7 +484,7 @@ test("D1-U05 SH12 ve BA3 dizgileri korunur; RetirementTab olculemeyende 'bilinmi
   assert.ok(/URUN_KARTLARI\s*=\s*\[['"]NGINX['"]/.test(PAGE_RAW), 'URUN_KARTLARI sabiti yok');
   // Basliklari URUN_ADI HARITASINDAN olc: dosyada 'IBM HTTP Server' baska yerde de geciyor
   // (kapsama satiri), serbest arama bu yuzden kor kaliyordu.
-  const _adBlok = (PAGE_RAW.match(/URUN_ADI[^=]*=\s*\{([^}]*)\}/) || [, ''])[1];
+  const _adBlok = (PAGE_RAW.match(/URUN_ADI[^=]*=\s*\{([^}]*)\}/) || [null, ''])[1];
   for (const [kod, ad] of [
     ['NGINX', 'Nginx'],
     ['JBOSS', 'JBoss'],
