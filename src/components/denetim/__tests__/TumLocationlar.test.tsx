@@ -10,6 +10,11 @@
 //   TLU4 "hepsi" süzgeci tanımlıyı da gösterir; sınıf süzgeci ve arama daraltır
 //   TLU5 CSV satırları görünen satırlardan, eksik sunucular dahil
 //   TLU6 taranmamış location'da eksik sunucu UYDURULMAZ
+// İkinci kaynak nginx -T (kullanıcı, aynı gün: "/consent-mng/, /domestic-trf/ tanımları var ama
+// ekrana yansımıyor"):
+//   TLU7 yalnız nginx -T'nin gördüğü location "config taramasında yok" rozetiyle; kaynak süzgeci
+//   TLU8 yalnız yeni sunucularda olan location: varsayılan görünümde ve sayımda YOK, kendi
+//        süzgecinde var; eski sunucu / yük "—"
 import { describe, it, expect } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import {
@@ -27,6 +32,9 @@ const L = (o: Partial<NginxMigrationLocation> & { location: string }): NginxMigr
   written: [],
   siniflar: ['spa'],
   apps: [],
+  kaynaklar: ['config'],
+  davranislar: [],
+  eskide: true,
   newHosts: [],
   newStatus: 'none',
   traffic: null,
@@ -77,9 +85,10 @@ describe("Tüm location'lar", () => {
 
   it('TLU2 sayım: toplam, eksik, ad kalıbı yüzünden uygulama tablosunda olmayan', () => {
     render(<TumLocationlar g={grup()} />);
-    const ozet = screen.getByText(/Eski sunucularda/).textContent || '';
+    const ozet = screen.getByTestId('tum-loc-ozet').textContent || '';
     expect(ozet).toMatch(/Eski sunucularda 4 location; 3 tanesi yeni sunucularda yok ya da eksik/);
-    expect(ozet).toMatch(/\(2 tanesi SPA ad kalıbına uymadığı için uygulama tablosunda görünmüyor\)/);
+    expect(ozet).toMatch(/\(2 tanesi uygulama tablosunda hiç görünmüyor\)/);
+    expect(ozet).not.toMatch(/nginx -T/);
   });
 
   it('TLU3 kısmen tanımlıda eksik yeni sunucu adı yazar', () => {
@@ -127,5 +136,59 @@ describe("Tüm location'lar", () => {
     fireEvent.change(screen.getByLabelText('Yeni sunucudaki duruma göre süz'), { target: { value: 'not-scanned' } });
     expect(satirlar()[0].textContent).toMatch(/TARANMADI/);
     expect(satirlar()[0].textContent).not.toMatch(/eksik:/);
+  });
+
+  it('TLU7 yalnız nginx -T: rozet, sayım ve kaynak süzgeci', () => {
+    const consent = L({
+      location: '/consent-mng/',
+      siniflar: ['spa-disi'],
+      kaynaklar: ['nginx-T'],
+      davranislar: ['proxy'],
+      targets: ['consent-mng-api-glomo-prod.apps.x'],
+      written: ['consent-ups'],
+    });
+    const statik = L({ location: '= /robots.txt', siniflar: ['statik'], kaynaklar: ['nginx-T'], davranislar: ['static'] });
+    // SPA ama config taramasi gormedi: uygulama tablosu config'ten kuruldugu icin orada da YOK
+    const gizli = L({ location: '/gizli-spa/', siniflar: ['spa'], kaynaklar: ['nginx-T'], davranislar: ['proxy'] });
+    render(<TumLocationlar g={grup([...LOCS, consent, statik, gizli])} kaynakTarihleri={{ config: '2026-10-17', nginxT: '2026-10-18' }} />);
+    const satir = satirlar().find((r) => (r.textContent || '').includes('/consent-mng/'));
+    expect(satir?.textContent).toMatch(/config taramasında yok/);
+    expect(satir?.textContent).toMatch(/yazım: consent-ups/);
+    const yarim = satirlar().find((r) => (r.textContent || '').includes('/yarim/'));
+    expect(yarim?.textContent).not.toMatch(/config taramasında yok/);
+    const ozet = screen.getByTestId('tum-loc-ozet').textContent || '';
+    expect(ozet).toMatch(/Eski sunucularda 7 location; 6 tanesi/);
+    expect(ozet).toMatch(/\(5 tanesi uygulama tablosunda hiç görünmüyor\)/);
+    expect(ozet).toMatch(/3 location yalnız nginx -T taramasında görünüyor/);
+    fireEvent.change(screen.getByLabelText('Kaynağa göre süz'), { target: { value: 'yalniz-nginx-T' } });
+    expect(satirlar().map((r) => r.textContent)).toEqual([
+      expect.stringContaining('/consent-mng/'),
+      expect.stringContaining('= /robots.txt'),
+      expect.stringContaining('/gizli-spa/'),
+    ]);
+    expect(screen.getByText(/nginx -T taraması \(2026-10-18\)/)).toBeTruthy();
+    const csv = tumLocCsvSatirlari(grup(), [consent]);
+    expect(csv[0][TUM_LOC_CSV_BASLIK.indexOf('kaynak')]).toBe('nginx-T');
+  });
+
+  it('TLU8 yalnız yeni sunucularda olan location', () => {
+    const yeni = L({ location: '/yeni-eklenen/', eskide: false, oldHosts: [], kaynaklar: [], siniflar: [], newStatus: 'partial', newHosts: ['GBNGXP40'] });
+    render(<TumLocationlar g={grup([...LOCS, yeni])} />);
+    expect(satirlar().some((r) => (r.textContent || '').includes('/yeni-eklenen/'))).toBe(false);
+    expect(screen.getByTestId('tum-loc-ozet').textContent).toMatch(/Eski sunucularda 4 location; 3 tanesi/);
+    fireEvent.change(screen.getByLabelText('Yeni sunucudaki duruma göre süz'), { target: { value: 'partial' } });
+    expect(satirlar().map((r) => r.textContent)).toEqual([expect.stringContaining('/yarim/')]);
+    fireEvent.change(screen.getByLabelText('Yeni sunucudaki duruma göre süz'), { target: { value: 'yalniz-yeni' } });
+    const [r] = satirlar();
+    expect(satirlar()).toHaveLength(1);
+    expect(r.textContent).toMatch(/\/yeni-eklenen\//);
+    expect(r.textContent).toMatch(/yalnız yeni sunucularda/);
+    expect(r.textContent).not.toMatch(/ölçüm yok/);
+    expect(screen.queryByText(/nginx -T taraması okunamadı/)).toBeNull();
+  });
+
+  it('TLU9 nginx -T taraması yoksa ekran söyler', () => {
+    render(<TumLocationlar g={grup()} kaynakTarihleri={{ config: '2026-10-17', nginxT: null }} />);
+    expect(screen.getByText(/nginx -T taraması okunamadı/)).toBeTruthy();
   });
 });

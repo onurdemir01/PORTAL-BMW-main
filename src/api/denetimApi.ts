@@ -157,7 +157,16 @@ export interface NginxMigrationOther {
 }
 /** Eski sunuculardaki TEK location (ad kalibindan BAGIMSIZ, 2026-10-18): SPA, ad kalibina uymayan,
  *  cozulemeyen ve eski sunucuda zaten include olan location'larin hepsi; yeni sunucudaki durumuyla. */
-export type NginxMigrationLocSinif = 'spa' | 'spa-disi' | 'cozulemedi' | 'include';
+export type NginxMigrationLocSinif =
+  | 'spa'
+  | 'spa-disi'
+  | 'cozulemedi'
+  | 'include'
+  // yalniz nginx -T'nin gordugu davranislar (proxy_pass / include olmayan location'lar)
+  | 'statik'
+  | 'yonlendirme'
+  | 'erisim-engeli'
+  | 'diger';
 export interface NginxMigrationLocation {
   service: string;
   location: string;
@@ -168,6 +177,13 @@ export interface NginxMigrationLocation {
   siniflar: NginxMigrationLocSinif[];
   /** "ns/app" (envanterden ya da include'dan) */
   apps: string[];
+  /** 'config' = Nginx_Config_Audit, 'nginx-T' = Nginx_Audit_Locations. Yalniz 'nginx-T' ise config
+   *  taramasi bu location'i GORMEDI (ic ice blok, baska dosyadan include, statik/return). */
+  kaynaklar: ('config' | 'nginx-T')[];
+  /** nginx -T davranisi: proxy | static | return | rewrite | deny | other */
+  davranislar: string[];
+  /** false = yalniz YENI sunucularda var (eski sunucularda o vhost'ta yok); sayimlara girmez */
+  eskide: boolean;
   newHosts: string[];
   newStatus: 'defined' | 'partial' | 'none' | 'not-scanned';
   traffic: SpaYukOlcumu | null;
@@ -220,6 +236,9 @@ export interface NginxMigrationResult {
   dirsReady: boolean;
   proxyScanDate: string | null;
   dirScanDate: string | null;
+  /** nginx -T (nginx_audit) son tarama gunu - "Tum location'lar" listesinin ikinci kaynagi */
+  auditScanDate?: string | null;
+  auditReady?: boolean;
   groups: NginxMigrationGroup[];
 }
 

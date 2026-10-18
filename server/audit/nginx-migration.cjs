@@ -9,7 +9,9 @@
 //   dbo.Nginx_Config_Audit  kind='proxy'  -> eski sunucu: vhost, location, upstream,
 //                                            target_url (= proxy_ssl_name, route adresi)
 //   dbo.Nginx_Audit_Upstreams             -> target_url bossa upstream'in server host'u
-//   dbo.BMW_Openshift_Route_Inventory     -> route adresi -> namespace (KESIN eslesme)
+//   dbo.Nginx_Audit_Locations (+Servers)  -> nginx -T: "Tum location'lar" listesinde config
+//                                            taramasinin goremedigi tanimlar (2026-10-18)
+//   dbo.BMW_Openshift_Route_Inventory    -> route adresi -> namespace (KESIN eslesme)
 //   dbo.Openshift_Inventory               -> (namespace, application) ciftleri (yedek cozum)
 //   dbo.Nginx_Intranet_Audit              -> yeni sunucu: hys/app/conf dizin bayraklari
 //                                            (tablo adi tarihsel; dizin taramasi HER
@@ -560,6 +562,30 @@ function spaTrafikBirlesik(list, tanimSunucu) {
   return o;
 }
 
+// nginx -T (nginx_audit) location satirinin VHOST'u. Config taramasi yalniz <conf.d>/*.conf ana
+// vhost dosyalarini okur ve servisi dosya adindan cikarir (<SERVIS>-<ORTAM>.conf); burada AYNI
+// kural: location'in dosyasi conf.d'de bir vhost ise o, degilse (baska bir dosyadan include
+// edilen parca) server blogunun dosyasi. Ikisi de degilse (nginx.conf'taki altyapi server'lari,
+// application-confs/ icerikleri) null - bunlar uygulama location'i degildir, listeye girmez.
+const VHOST_DOSYASI = /\/conf\.d\/([^/]+)\.conf$/i;
+function auditVhost(locConf, srvConf) {
+  for (const f of [locConf, srvConf]) {
+    const m = VHOST_DOSYASI.exec(String(f || '').trim());
+    if (m) return m[1];
+  }
+  return null;
+}
+/** nginx_config_scan.sh ile ayni: "GLOMO-PROD" -> "GLOMO"; kalibi tutmazsa dosya adinin kendisi. */
+function servisOfVhost(vhost) {
+  const m = /^(.*)-([A-Za-z0-9]*)$/.exec(String(vhost || ''));
+  return m && m[1] ? m[1] : String(vhost || '');
+}
+/** Location yazimi tek bicim: iki tarayici bosluklari farkli birakabilir ("=  /x" / "= /x"). */
+const locNorm = (x) => String(x || '').replace(/\s+/g, ' ').trim();
+// nginx -T davranisi (Nginx_Audit_Locations.behaviour) -> "Tum location'lar" sinifi. proxy
+// satirlari hedefe gore ayrica siniflanir (spa / spa-disi / cozulemedi).
+const DAVRANIS_SINIFI = { static: 'statik', return: 'yonlendirme', rewrite: 'yonlendirme', deny: 'erisim-engeli' };
+
 function buildMigration({
   proxyRows,
   upstreamRows,
@@ -569,21 +595,37 @@ function buildMigration({
   newLocRows,
   trafficRows,
   oldIncludeRows = [],
+  auditLocRows = [],
   groups = MIGRATION_GROUPS,
 }) {
   const { routeByAddress, routeByLabel, ocpByLabel } = buildResolverMaps(routeRows, ocpRows);
   // yeni sunuculardaki location tanimlari: "SERVICE|location" -> Set(host)
   const newLoc = new Map();
   const newLocHosts = new Set();
-  const locKey = (svc, loc) => String(svc || '').toUpperCase() + '|' + String(loc || '');
+  const locKey = (svc, loc) => String(svc || '').toUpperCase() + '|' + locNorm(loc);
+  const newLocEkle = (host, svc, loc) => {
+    newLocHosts.add(host);
+    const k = locKey(svc, loc);
+    if (!newLoc.has(k)) newLoc.set(k, new Set());
+    newLoc.get(k).add(host);
+  };
   for (const r of newLocRows || []) {
     const host = H(r.host);
     if (!host) continue;
-    newLocHosts.add(host);
-    const k = locKey(r.service || r.vhost, r.location);
-    if (!newLoc.has(k)) newLoc.set(k, new Set());
-    newLoc.get(k).add(host);
+    newLocEkle(host, r.service || r.vhost, r.location);
   }
+  // nginx -T satirlari (eski + yeni sunucular). Yeni sunucuda config taramasinin kacirdigi bir
+  // tanim (ic ice blok, baska dosyadan include) "yok" SAYILMASIN diye yeni tarafa da eklenir.
+  const auditLoc = [];
+  for (const r of auditLocRows || []) {
+    const host = H(r.host);
+    const vhost = auditVhost(r.conf_file, r.srv_conf);
+    if (!host || !vhost || !locNorm(r.location)) continue;
+    auditLoc.push({ host, vhost, service: servisOfVhost(vhost), location: locNorm(r.location),
+      behaviour: L(r.behaviour), target: String(r.proxy_target || '').trim() });
+  }
+  const groupNew = new Set(groups.flatMap((g) => g.newHosts.map(H)));
+  for (const a of auditLoc) if (groupNew.has(a.host)) newLocEkle(a.host, a.service, a.location);
   // (host, upstream adi) -> server host (target_url bos kaldiysa)
   const upsServer = new Map();
   for (const r of upstreamRows || []) {
@@ -625,21 +667,36 @@ function buildMigration({
     // listesinde "eksik" SAYILMIYORDU - ad standardina uymayan ama tasinmasi gereken location'lar
     // gozden kaciyordu. Burada eski sunuculardaki HER location (SPA / SPA-disi / cozulemeyen / eski
     // sunucuda zaten include) TEK listede, yeni sunuculardaki tanim durumuyla.
+    // IKI KAYNAK (2026-10-18, kullanici: "/consent-mng/, /domestic-trf/ tanimlari var ama ekrana
+    // yansimiyor"): config taramasi (Nginx_Config_Audit) yalniz proxy_pass / include tasiyan ve
+    // satir kalibina uyan location'lari kaydeder; nginx -T (Nginx_Audit_Locations) yigin tabanli
+    // ayristirir ve statik / return dahil HER location'i gorur. Config kaydi olan location'da
+    // sinifi config belirler; yalniz nginx -T'de olan location `kaynaklar` = ['nginx-T'] ile
+    // isaretlenir - ekran "config taramasinda gorunmuyor" der (neden onceden yoktu, gorunsun).
     const tumLoc = new Map(); // "SERVICE|location" -> satir
     const tumEkle = (svc, loc, host, vhost, bilgi) => {
       const service = String(svc || '').toUpperCase() || '(bilinmiyor)';
-      const k = service + '|' + String(loc || '');
-      if (!tumLoc.has(k)) {
-        tumLoc.set(k, { service, location: String(loc || ''), oldHosts: new Set(), targets: new Set(),
-          written: new Set(), siniflar: new Set(), apps: new Set(), defs: [] });
+      const location = locNorm(loc);
+      const k = service + '|' + location;
+      const kaynak = bilgi.kaynak || 'config';
+      const yeni = !tumLoc.has(k);
+      if (yeni) {
+        tumLoc.set(k, { service, location, oldHosts: new Set(), targets: new Set(),
+          written: new Set(), siniflar: new Set(), apps: new Set(), defs: [],
+          kaynaklar: new Set(), davranislar: new Set() });
       }
       const t = tumLoc.get(k);
       t.oldHosts.add(host);
+      t.kaynaklar.add(kaynak);
+      if (bilgi.davranis) t.davranislar.add(bilgi.davranis);
+      t.defs.push({ host, vhost });
+      // nginx -T, config'in zaten tanidigi location'a sinif EKLEMEZ (include location'i nginx -T'de
+      // 'other' gorunur; iki sinif yan yana gurultu olurdu) - yalniz sunucu/kaynak ekler.
+      if (kaynak === 'nginx-T' && !yeni && t.kaynaklar.has('config')) return;
       if (bilgi.target) t.targets.add(bilgi.target);
       if (bilgi.written) t.written.add(bilgi.written);
       t.siniflar.add(bilgi.sinif);
       if (bilgi.namespace && bilgi.application) t.apps.add(bilgi.namespace + '/' + bilgi.application);
-      t.defs.push({ host, vhost });
     };
 
     for (const r of proxyRows || []) {
@@ -740,6 +797,30 @@ function buildMigration({
         target: String(r.include_name || ''), written: '', sinif: 'include',
         namespace: r.namespace ? L(r.namespace) : null, application: r.application ? L(r.application) : null,
       });
+    }
+    // nginx -T: config taramasinin goremedigi tanimlar (ic ice if/limit_except blogu, tek satirlik
+    // blok, baska dosyadan include edilen location, statik / return). proxy hedefi config
+    // satirlariyla AYNI sirayla cozulur (upstream server satiri > yazilan ad).
+    for (const a of auditLoc) {
+      if (!oldSet.has(a.host)) continue;
+      const bilgi = { kaynak: 'nginx-T', davranis: a.behaviour || 'other' };
+      if (a.behaviour === 'proxy' && a.target) {
+        const written = hostOf(a.target);
+        const target = upsServer.get(a.host + '|' + written) || written;
+        const res = resolveTarget(target, routeByAddress, ocpByLabel, routeByLabel);
+        const ad = !(res.namespace && res.application) && isSpaLabel(target) ? deriveFromName(target) : null;
+        Object.assign(bilgi, {
+          target, written,
+          sinif: res.namespace && res.application
+            ? (isSpaApp(res.application) ? 'spa' : 'spa-disi')
+            : isSpaLabel(target) ? 'cozulemedi' : 'spa-disi',
+          namespace: res.namespace || (ad && ad.namespace) || null,
+          application: res.application || (ad && ad.application) || null,
+        });
+      } else {
+        bilgi.sinif = DAVRANIS_SINIFI[a.behaviour] || 'diger';
+      }
+      tumEkle(a.service, a.location, a.host, a.vhost, bilgi);
     }
 
     const newHosts = g.newHosts.map(H);
@@ -856,14 +937,36 @@ function buildMigration({
         oldHosts: [...t.oldHosts].sort(),
         targets: [...t.targets].sort(),
         written: [...t.written].sort(),
-        // 'spa' | 'spa-disi' (ad kalibina uymuyor) | 'cozulemedi' | 'include' (eski sunucuda zaten include)
+        // 'spa' | 'spa-disi' (ad kalibina uymuyor) | 'cozulemedi' | 'include' (eski sunucuda zaten
+        // include) | nginx -T'den: 'statik' | 'yonlendirme' | 'erisim-engeli' | 'diger'
         siniflar: [...t.siniflar].sort(),
         apps: [...t.apps].sort(),
+        // 'config' (Nginx_Config_Audit) / 'nginx-T' (Nginx_Audit_Locations)
+        kaynaklar: [...t.kaynaklar].sort(),
+        davranislar: [...t.davranislar].sort(),
+        eskide: true,
         ...newLocStatus(t.service, t.location),
         traffic: spaTrafikDurumu(trafIdx, t.service + '|' + t.location, t.defs),
       }))
       .sort((a, b) => durumSirasi[a.newStatus] - durumSirasi[b.newStatus]
         || a.service.localeCompare(b.service) || a.location.localeCompare(b.location));
+    // YALNIZ YENI SUNUCULARDA olan location'lar (eski sunucularda o vhost'ta yok): tasima acigi
+    // DEGIL, sayimlara girmez; ama "tanim var, ekranda yok" sorusunun cevabi olabilir (yeni
+    // sunucuya dogrudan eklenmis ya da eskide farkli yazilmis). Yalniz eski sunucularda da bulunan
+    // vhost'lar icin - grubun yeni sunucularindaki altyapi location'lari listeyi doldurmasin.
+    const eskiServisler = new Set([...tumLoc.keys()].map((k) => k.slice(0, k.indexOf('|'))));
+    const yalnizYeni = [];
+    for (const [k, hs] of newLoc) {
+      if (tumLoc.has(k) || !newHosts.some((h) => hs.has(h))) continue;
+      const service = k.slice(0, k.indexOf('|'));
+      if (!eskiServisler.has(service)) continue;
+      const location = k.slice(k.indexOf('|') + 1);
+      yalnizYeni.push({ service, location, oldHosts: [], targets: [], written: [], siniflar: [],
+        apps: [], kaynaklar: [], davranislar: [], eskide: false,
+        ...newLocStatus(service, location), traffic: null });
+    }
+    yalnizYeni.sort((a, b) => a.service.localeCompare(b.service) || a.location.localeCompare(b.location));
+    locations.push(...yalnizYeni);
 
     out.push({
       id: g.id,
@@ -934,7 +1037,7 @@ async function loadMigration({ query, sql, hasProxyColumns }) {
     };
   }
 
-  const [proxyDate, dirDate, trfSema] = await Promise.all([
+  const [proxyDate, dirDate, trfSema, auditDate] = await Promise.all([
     query(`SELECT CONVERT(varchar(10), MAX(scan_date), 23) AS d FROM dbo.Nginx_Config_Audit`)
       .then((r) => r.recordset?.[0]?.d || null)
       .catch(() => null),
@@ -947,9 +1050,14 @@ async function loadMigration({ query, sql, hasProxyColumns }) {
     query(SPA_TRAFIK_SEMA_SQL)
       .then((r) => r.recordset?.[0] || {})
       .catch(() => null),
+    // nginx -T (nginx_audit) AYRI bir istir, kendi son tarama gunuyle okunur. Tablo yoksa liste
+    // yalniz config taramasiyla kalir (ekran bunu soyler).
+    query(`SELECT CONVERT(varchar(10), MAX(scan_date), 23) AS d FROM dbo.Nginx_Audit_Locations`)
+      .then((r) => r.recordset?.[0]?.d || null)
+      .catch(() => null),
   ]);
 
-  const [proxy, ups, routes, ocp, dirs, newLocs, traffic, oldIncludes] = await Promise.all([
+  const [proxy, ups, routes, ocp, dirs, newLocs, traffic, oldIncludes, auditLocs] = await Promise.all([
     proxyDate
       ? query(
           `SELECT host, vhost, service, location_path AS location, upstream_name, target_url
@@ -1016,6 +1124,21 @@ async function loadMigration({ query, sql, hasProxyColumns }) {
           .then((r) => r.recordset || [])
           .catch(() => [])
       : Promise.resolve([]),
+    // nginx -T location'lari (eski + yeni sunucular) ve server blogunun dosyasi (location baska
+    // bir dosyadan include edildiyse vhost server blogundan bulunur).
+    auditDate
+      ? query(
+          `SELECT l.host, l.conf_file, l.location, l.behaviour, l.proxy_target, s.conf_file AS srv_conf
+             FROM dbo.Nginx_Audit_Locations l
+             LEFT JOIN dbo.Nginx_Audit_Servers s
+               ON s.scan_date = l.scan_date AND s.host = l.host AND s.seq = l.srv_seq
+            WHERE l.scan_date = (SELECT MAX(scan_date) FROM dbo.Nginx_Audit_Locations)
+              AND l.host IN (${oldIn.sqlText}, ${newIn.sqlText})`,
+          [...oldIn.params, ...newIn.params],
+        )
+          .then((r) => r.recordset || [])
+          .catch(() => [])
+      : Promise.resolve([]),
   ]);
 
   const groups = buildMigration({
@@ -1027,6 +1150,7 @@ async function loadMigration({ query, sql, hasProxyColumns }) {
     newLocRows: newLocs,
     trafficRows: traffic,
     oldIncludeRows: oldIncludes,
+    auditLocRows: auditLocs,
   });
   const owners = await loadNamespaceOwners(query);
   for (const g of groups) {
@@ -1041,6 +1165,9 @@ async function loadMigration({ query, sql, hasProxyColumns }) {
     dirsReady: !!dirDate,
     proxyScanDate: proxyDate,
     dirScanDate: dirDate,
+    // nginx -T (Tum location'lar listesinin ikinci kaynagi); null = tablo yok / okunamadi
+    auditScanDate: auditDate,
+    auditReady: auditLocs.length > 0,
     groups,
   };
 }

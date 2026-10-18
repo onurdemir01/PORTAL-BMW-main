@@ -773,6 +773,7 @@ export default function NginxProdMigration() {
             q={q}
             sortBy={sortBy}
             ownersReady={data.ownersReady !== false}
+            kaynakTarihleri={{ config: data.proxyScanDate, nginxT: data.auditScanDate ?? null }}
             canCreate={configured}
             onCreate={(app) => setPending({ group: g, app, pathIdx: 0 })}
             pathJobs={pathJobs}
@@ -1983,10 +1984,12 @@ function LocationProgress({ g }: { g: NginxMigrationGroup }) {
         </table>
       )}
       <div className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
-        Sayım vhost başına farklı location; ad kalıbına uymayan, çözülemeyen ve eski sunucuda include
-        olan location'lar da dâhil — vhost'un tamamı (liste aşağıda: “Tüm location'lar”). “Tanımlı” = yeni sunucunun <Code>{'<SERVIS>'}-PROD.conf</Code> dosyasında
-        aynı location var (include ya da proxy). Uygulama satırlarındaki H/A/C ise dosyaların hazır
-        olup olmadığını gösterir.
+        Sayım vhost başına farklı location; ad kalıbına uymayan, çözülemeyen, eski sunucuda include
+        olan ve yalnız nginx -T taramasının gördüğü location'lar da dâhil — vhost'un tamamı (liste
+        aşağıda: “Tüm location'lar”). “Tanımlı” = yeni sunucunun{' '}
+        <Code>{'<SERVIS>'}-PROD.conf</Code> vhost'unda aynı location var (config ya da nginx -T
+        taramasına göre). Uygulama satırlarındaki H/A/C ise dosyaların hazır olup olmadığını
+        gösterir.
       </div>
     </div>
   );
@@ -2015,8 +2018,10 @@ function GroupPanel({
   onTrack,
   canDelete,
   onDelete,
+  kaynakTarihleri,
 }: {
   g: NginxMigrationGroup;
+  kaynakTarihleri?: { config: string | null; nginxT: string | null };
   onlyProblem: boolean;
   q: string;
   sortBy: 'status' | 'team' | 'app' | 'plan' | 'load';
@@ -2153,7 +2158,7 @@ function GroupPanel({
     >
       <div className="p-3 space-y-3">
         <LocationProgress g={g} />
-        <TumLocationlar g={g} />
+        <TumLocationlar g={g} kaynakTarihleri={kaynakTarihleri} />
         <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
           <StatTile
             label="uygulama"
