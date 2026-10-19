@@ -146,7 +146,7 @@ test('SH3: bulgu kodlari ve siddet: REBOOT_RISK danger, RETIRE_CANDIDATE warning
   assert.equal(app.status, 'danger');
 });
 
-test('SH4: web sunucusu: bosta IP warning, JVM\'e esli vhost "idle" sayilmaz, esli olmayan idle vhost info + retire eylemi', () => {
+test('SH4: web sunucusu: bosta IP BILGI (uyari degil, 2026-10-19), JVM\'e esli vhost "idle" sayilmaz, esli olmayan idle vhost info + retire eylemi', () => {
   const d = base();
   d.vhosts.push({
     host: 'DACRWAP01',
@@ -167,13 +167,16 @@ test('SH4: web sunucusu: bosta IP warning, JVM\'e esli vhost "idle" sayilmaz, es
   const web = r.hosts.find((h) => h.host === 'DACRWAP01');
   const codes = web.findings.map((f) => f.code);
   assert.ok(codes.includes('IP_UNUSED'));
+  // Kullanici (2026-10-19): "bosta IP olan sunucu bunlari warning olarak gosterme lutfen".
+  assert.equal(web.findings.find((f) => f.code === 'IP_UNUSED').severity, 'info');
   const idle = web.findings.filter((f) => f.code === 'VHOST_IDLE');
   assert.equal(idle.length, 1, "oldapp vhost JVM'e esli, idle bulgusu vermez; lonely verir");
   // SOZLESME v3 D1-C12: eski satirda (traffic_state NULL) bulgu KALIR, apache_retire_vhost
   // ONERILMEZ (NO_RECENT_TRAFFIC + OK + FULL kaniti yok). v2 satiriyla eylem
   // v2-guvenlik.test.cjs D1-C12'de sinanir.
   assert.equal(idle[0].fix, null);
-  assert.equal(web.status, 'warning');
+  // Bosta IP sunucuyu 'warning'e cekmez: kalan bulgular bilgi seviyesinde.
+  assert.equal(web.status, 'info');
 });
 
 test('SH5: apache sozdizimi hatasi -> danger + satir yorumlama eylemi (dosya:satir ayristirilir); nginx icin eylem yok', () => {

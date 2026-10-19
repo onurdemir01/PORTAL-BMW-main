@@ -1787,7 +1787,8 @@ function HostsTab({
             </Kpi>
             <Kpi
               title="Boşta IP"
-              tone={s.ips.unused ? 'warning' : 'ok'}
+              // Bilgi, uyarı değil (kullanıcı, 2026-10-19): boşta IP sunucuyu sorunlu göstermez.
+              tone={s.ips.unused ? 'info' : 'ok'}
               onClick={() => onGoFindings({ area: 'ip' })}
             >
               <Donut
@@ -1804,7 +1805,7 @@ function HostsTab({
                           title: 'kullanımda',
                         },
                         { value: s.ips.unverified, color: SEV.info.color, title: 'doğrulanamadı' },
-                        { value: s.ips.unused, color: SEV.warning.color, title: 'boşta' },
+                        { value: s.ips.unused, color: SEV.info.color, title: 'boşta' },
                       ]
                     : [
                         {
@@ -1812,7 +1813,7 @@ function HostsTab({
                           color: SEV.ok.color,
                           title: 'boşta değil (doğrulanamayan dahil)',
                         },
-                        { value: s.ips.unused, color: SEV.warning.color, title: 'boşta' },
+                        { value: s.ips.unused, color: SEV.info.color, title: 'boşta' },
                       ]
                 }
               />
@@ -2393,7 +2394,7 @@ function HostsTab({
                   <td className="px-3 py-1.5 text-right tabular-nums">{h.vhosts || '—'}</td>
                   <td
                     className="px-3 py-1.5 text-right tabular-nums"
-                    style={h.unusedIps ? { color: SEV.warning.color, fontWeight: 600 } : undefined}
+                    style={h.unusedIps ? { color: SEV.info.color } : undefined}
                   >
                     {h.unusedIps || '—'}
                   </td>
