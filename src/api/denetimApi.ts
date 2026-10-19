@@ -38,7 +38,11 @@ export type SpaYukKismiNeden =
   | 'pencere-bilinmiyor'
   | 'sampled'
   | 'okunamayan-sunucu'
-  | 'satirsiz-sunucu';
+  | 'satirsiz-sunucu'
+  // Intranet SPA (host kipi, 2026-10-19): sunucunun ortak logunda hicbir uygulamaya yazilamayan
+  // istek var (0 bir ALT SINIR) / ayni conf.d adina iki uygulama dusuyor (istek ayrilamaz).
+  | 'eslesmeyen-host'
+  | 'belirsiz-vhost';
 
 /**
  * dbo.Nginx_Spa_Traffic olcumu - UC UC AYNI bicimi doner: Denetim > Nginx SPA, Nginx ARK SPA

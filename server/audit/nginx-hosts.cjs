@@ -158,12 +158,18 @@ function internetRpHosts() {
   return _rpHosts;
 }
 
+/** Intranet SPA sunuculari (Nginx ARK SPA > Intranet SPA, 2026-10-19), sirali kopya. */
+function intranetHosts() {
+  return [...INTRANET_HOSTS].sort();
+}
+
 module.exports = {
   envOfHost,
   envFromInventory,
   siteOfHost,
   tierOfHost,
   internetRpHosts,
+  intranetHosts,
   orderEnvs,
   ENV_ORDER,
   UNKNOWN_ENV,

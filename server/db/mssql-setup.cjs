@@ -1976,6 +1976,17 @@ const ELEMENT_SEED = [
     roles: ['Admin', 'User'],
   },
   {
+    // INTRANET SPA (kullanici, 2026-10-19): intranet SPA'lar yuk aliyor mu + ekip kullanim beyani.
+    // Ekiplere acik (beyani ekip girer; SPA Raporu ile ayni uygulama beyani).
+    element_key: 'ArkIntranetSpa',
+    element_type: 'page',
+    parent_key: 'navgroup:arkspa',
+    label: 'Intranet SPA',
+    route: '/ark-spa/intranet-spa',
+    sort_order: 3,
+    roles: ['Admin', 'User'],
+  },
+  {
     // OCO TAKVIMI (kullanici, 2026-09-28): "ekibime ait production operational change
     // order'lari ... solda bir sekme olustur ve kronolojik listele". SALT OKUNUR bir
     // liste; OCO acmaz/kapatmaz. Ekip disina kapali degil - roller Admin+User, cunku

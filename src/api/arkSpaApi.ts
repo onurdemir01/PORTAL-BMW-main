@@ -99,6 +99,93 @@ export interface GecisPlani {
   goc?: { ad: string; uygulandi: boolean; hata?: string | null };
 }
 
+/** Intranet SPA (2026-10-19): bir intranet sunucusundaki kurulum + o sunucunun ölçümü. */
+export interface IntranetSunucu {
+  host: string;
+  /** 'Pendik' | 'Ankara' | '' */
+  site: string;
+  /** /hysdeploy/<ns>/<app>/ */
+  hys: boolean;
+  /** /usr/nginx/applications/<ns>/<app>/ */
+  app: boolean;
+  /** application-confs/<app>-<ns>.conf — yoksa nginx bu uygulamayı bu sunucuda SUNMAZ. */
+  conf: boolean;
+  /** OK | MISSING_CONF | MISSING_APP | MISSING_HYS | ONLY_HYS | ONLY_APP | ONLY_CONF */
+  status: string;
+  confName: string;
+  /** Host kipi ölçümü (SPA Keşfi ile aynı kural). null = o gün host kipi ölçümü hiç yok / conf yok. */
+  trafik: {
+    durum: 'var' | 'sifir' | 'sifir-kismi' | 'olculemedi';
+    neden?: string;
+    hata?: string;
+    req7?: number;
+    req24?: number;
+    son?: string | null;
+    pencereSa?: number | null;
+    kismi?: string[];
+    atanmamis?: number;
+  } | null;
+}
+export type IntranetDegerlendirme =
+  | 'kapatma-adayi'
+  | 'teyit-bekliyor'
+  | 'celiski'
+  | 'ocp-yok'
+  | 'sunulmuyor'
+  | 'kurulum-eksik';
+export interface IntranetSatir {
+  env: string;
+  namespace: string;
+  application: string;
+  ekip: string[];
+  ekipEposta: string[];
+  sunucular: IntranetSunucu[];
+  /** Aynı ortamın taranan intranet sunucularından bu uygulamanın HİÇ olmadığı sunucular. */
+  eksikSunucular: string[];
+  beklenen: number;
+  tamSunucu: number;
+  /** conf'u olan (nginx'in sunduğu) sunucu sayısı */
+  sunulan: number;
+  kurulum: 'tam' | 'kismi';
+  /** OpenShift envanterinde var mı (null = bilinmiyor). */
+  ocpVar: boolean | null;
+  /** ÖLÇÜM (mirror'lar toplanır). null = ölçüm yok — "yük almıyor" DEĞİL. */
+  yuk: ArkYuk | null;
+  /** EKİBİN BEYANI — SPA Raporu ve SPA Taşımaları ile AYNI uygulama beyanı. */
+  inUse: 'yes' | 'no' | 'unknown' | null;
+  inUseBy: string | null;
+  inUseAt: string | null;
+  note: string;
+  degerlendirme: IntranetDegerlendirme[];
+}
+export interface IntranetOrtam {
+  env: string;
+  sunucular: string[];
+  taranan: string[];
+  uygulama: number;
+  active: number;
+  idle: number;
+  unknown: number;
+  olcumYok: number;
+  beyanli: number;
+  kapatmaAdayi: number;
+  celiski: number;
+}
+export interface IntranetRapor {
+  ok: boolean;
+  message?: string;
+  notScanned?: boolean;
+  ownersReady?: boolean;
+  rows?: IntranetSatir[];
+  envs?: IntranetOrtam[];
+  dizinTarihi?: string | null;
+  trafikTarihi?: string | null;
+  trafikTablo?: 'var' | 'yok' | 'okunamadi';
+  hostKipi?: boolean;
+  taranmayan?: string[];
+  cached?: boolean;
+}
+
 const BASE = '/api/spa-report';
 const safeJson = (r: Response) =>
   r.json().catch(() => ({ ok: false, message: 'Yanıt okunamadı.' }));
@@ -121,6 +208,19 @@ export const arkSpaApi = {
     scope?: 'location' | 'application';
   }> =>
     fetch(`${BASE}/declare`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(p),
+    }).then(safeJson),
+  intranet: (fresh = false): Promise<IntranetRapor> =>
+    fetch(`${BASE}/intranet${fresh ? '?fresh=1' : ''}`).then(safeJson),
+  intranetBeyan: (p: {
+    namespace: string;
+    application: string;
+    inUse: string | null;
+    note: string;
+  }): Promise<{ ok: boolean; message?: string; inUseBy?: string | null; inUseAt?: string | null }> =>
+    fetch(`${BASE}/intranet/declare`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(p),
