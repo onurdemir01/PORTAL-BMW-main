@@ -569,7 +569,9 @@ function spaTrafikBirlesik(list, tanimSunucu) {
 // application-confs/ icerikleri) null - bunlar uygulama location'i degildir, listeye girmez.
 const VHOST_DOSYASI = /\/conf\.d\/([^/]+)\.conf$/i;
 function auditVhost(locConf, srvConf) {
-  for (const f of [locConf, srvConf]) {
+  // Location baska bir root-level conf.d parcasindan include edildiyse iki dosya da vhost gibi
+  // gorunebilir. Server blogunun dosyasi gercek servis baglamidir; yoksa location dosyasina dus.
+  for (const f of [srvConf, locConf]) {
     const m = VHOST_DOSYASI.exec(String(f || '').trim());
     if (m) return m[1];
   }
@@ -1018,24 +1020,9 @@ async function loadMigration({ query, sql, hasProxyColumns }) {
   const oldIn = inList('o', oldHosts);
   const newIn = inList('n', newHosts);
 
-  // kind/target_url kolonlari DDL ile geldi; yoksa proxy satirlari hic yazilmamistir.
-  if (hasProxyColumns && !(await hasProxyColumns())) {
-    return {
-      ok: true,
-      ownersReady: false,
-      proxyReady: false,
-      dirsReady: false,
-      proxyScanDate: null,
-      dirScanDate: null,
-      groups: buildMigration({
-        proxyRows: [],
-        upstreamRows: [],
-        routeRows: [],
-        ocpRows: [],
-        dirRows: [],
-      }),
-    };
-  }
+  // kind/target_url kolonlari DDL ile geldi. Yoksa config-proxy kaynagi kullanilamaz; ancak
+  // nginx-T ve dizin kaynaklari bagimsizdir, onlarin tamamini erken donusle gizleme.
+  const proxyColumnsReady = !hasProxyColumns || (await hasProxyColumns());
 
   const [proxyDate, dirDate, trfSema, auditDate] = await Promise.all([
     query(`SELECT CONVERT(varchar(10), MAX(scan_date), 23) AS d FROM dbo.Nginx_Config_Audit`)
@@ -1057,8 +1044,8 @@ async function loadMigration({ query, sql, hasProxyColumns }) {
       .catch(() => null),
   ]);
 
-  const [proxy, ups, routes, ocp, dirs, newLocs, traffic, oldIncludes, auditLocs] = await Promise.all([
-    proxyDate
+  const [proxy, ups, routes, ocp, dirs, newLocs, traffic, oldIncludes, auditLocResult] = await Promise.all([
+    proxyDate && proxyColumnsReady
       ? query(
           `SELECT host, vhost, service, location_path AS location, upstream_name, target_url
              FROM dbo.Nginx_Config_Audit
@@ -1113,7 +1100,7 @@ async function loadMigration({ query, sql, hasProxyColumns }) {
       : Promise.resolve([]),
     // ESKI sunucularda zaten include (application-confs) deseninde duran location'lar - tum
     // location listesi icin (2026-10-18). Okunamazsa liste yalniz proxy satirlariyla kalir.
-    proxyDate
+    proxyDate && proxyColumnsReady
       ? query(
           `SELECT host, vhost, service, location_path AS location, include_name, application, namespace
              FROM dbo.Nginx_Config_Audit
@@ -1136,10 +1123,12 @@ async function loadMigration({ query, sql, hasProxyColumns }) {
               AND l.host IN (${oldIn.sqlText}, ${newIn.sqlText})`,
           [...oldIn.params, ...newIn.params],
         )
-          .then((r) => r.recordset || [])
-          .catch(() => [])
-      : Promise.resolve([]),
+          .then((r) => ({ ready: true, rows: r.recordset || [] }))
+          .catch(() => ({ ready: false, rows: [] }))
+      : Promise.resolve({ ready: false, rows: [] }),
   ]);
+
+  const auditLocs = auditLocResult.rows;
 
   const groups = buildMigration({
     proxyRows: proxy,
@@ -1159,15 +1148,17 @@ async function loadMigration({ query, sql, hasProxyColumns }) {
   return {
     ok: true,
     ownersReady: owners.ready,
-    proxyReady: !!proxyDate,
+    proxyReady: !!proxyDate && proxyColumnsReady,
     // Host kipi / kova satirlari "olcum var" SAYILMAZ (bu ekranin tanimlari location yolu).
     trafficReady: spaTrafikIndeksi(traffic, () => '').satir > 0,
     dirsReady: !!dirDate,
     proxyScanDate: proxyDate,
     dirScanDate: dirDate,
-    // nginx -T (Tum location'lar listesinin ikinci kaynagi); null = tablo yok / okunamadi
+    // nginx -T tarih sorgusu ayri kanittir; detail sorgusunun basarisi auditReady'dedir.
     auditScanDate: auditDate,
-    auditReady: auditLocs.length > 0,
+    // Bos ama basarili sorgu ile timeout/yetki/sema hatasi ayni sey degildir. UI ikinci durumda
+    // nginx -T'ye ozgu location'larin eksik olabilecegini acikca gostermelidir.
+    auditReady: auditLocResult.ready,
     groups,
   };
 }

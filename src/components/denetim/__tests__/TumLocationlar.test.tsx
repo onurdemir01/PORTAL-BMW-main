@@ -191,4 +191,15 @@ describe("Tüm location'lar", () => {
     render(<TumLocationlar g={grup()} kaynakTarihleri={{ config: '2026-10-17', nginxT: null }} />);
     expect(screen.getByText(/nginx -T taraması okunamadı/)).toBeTruthy();
   });
+
+  it('TLU10 nginx -T tarihi olsa da detail sorgusu başarısızsa ekran uyarır', () => {
+    render(
+      <TumLocationlar
+        g={grup()}
+        kaynakTarihleri={{ config: '2026-10-17', nginxT: '2026-10-18' }}
+        nginxTHazir={false}
+      />,
+    );
+    expect(screen.getByText(/nginx -T taraması okunamadı/)).toBeTruthy();
+  });
 });
