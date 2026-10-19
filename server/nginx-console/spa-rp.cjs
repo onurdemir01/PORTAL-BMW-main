@@ -409,30 +409,6 @@ function dizinTrafigi(host, adaylar, trfTablo, idx) {
   return { durum: 'olculemedi', neden: !hs ? 'host' : !hs.hk ? 'host-kipi-yok' : 'satir-yok' };
 }
 
-/**
- * DIZIN TANIMININ HOST KIPI ADAYLARI (vhost adlari) - SPA Kesfi ve Nginx ARK SPA > Intranet SPA
- * (2026-10-19) AYNI kuralla.
- *   vhost = conf.d dosya adi = '<application>-<namespace>' (dizin satirinin KENDI ns'i; ek-prod
- *   eslesmesi uygulamaya baglar, dosya adini degistirmez).
- *   belirsiz: ayni conf.d adina BASKA bir dizin satiri da dusuyor - trafik bu uygulamaya AYRILAMAZ.
- *   conf_name YEDEGI yalniz '<app>-<ns>-N' (nginx_ops'un -N eki) ve o ad baska bir dizin
- *   satirinin '<app>-<ns>'i DEGILSE. Analyzer conf_name'i cekirdek eslesmesiyle (servis oneki
- *   atilarak) yazar: 'ui/odeme-prod' satirina 'kart-ui-odeme-prod.conf' dusebilir - kosulsuz
- *   yedek, kendi vhost satiri olmayan uygulamaya BASKA uygulamanin istegini 'kesin var' diye
- *   yaziyordu (dogrulama bulgusu, 2026-10-02).
- * @param dizinSahip Map "HOST|VHAD" -> Set("ns|app") (conf_exists dizin satirlarindan)
- */
-function dizinAdaylari(host, ns, app, confName, dizinSahip) {
-  const vhAd = U(`${L(app)}-${L(ns)}`);
-  const belirsiz = (dizinSahip.get(`${U(host)}|${vhAd}`) || new Set()).size > 1;
-  const confAd = U(T(confName).replace(/\.conf$/i, ''));
-  const confYedek =
-    confAd.startsWith(`${vhAd}-`) &&
-    /^\d+$/.test(confAd.slice(vhAd.length + 1)) &&
-    !dizinSahip.has(`${U(host)}|${confAd}`);
-  return { adaylar: confYedek ? [vhAd, confAd] : [vhAd], belirsiz };
-}
-
 const OLCULDU = new Set(['var', 'sifir', 'sifir-kismi']);
 
 /**
@@ -687,9 +663,23 @@ function rpUygula({ rows, apps, inventory, kaynak }) {
       cozulmedi(host);
       continue;
     }
+    // RP ISTEGI (host kipi): vhost = conf.d dosya adi = '<application>-<namespace>' (dizin
+    // satirinin KENDI ns'i; ek-prod eslesmesi uygulamaya baglar, dosya adini degistirmez).
+    const vhAd = U(`${app}-${ns}`);
+    // Ayni conf.d adina BASKA bir dizin satiri da dusuyor: trafik bu uygulamaya AYRILAMAZ.
+    if ((dizinSahip.get(`${host}|${vhAd}`) || new Set()).size > 1) esles = 'belirsiz';
+    // conf_name YEDEGI yalniz '<app>-<ns>-N' (nginx_ops'un -N eki) ve o ad baska bir dizin
+    // satirinin '<app>-<ns>'i DEGILSE. Analyzer conf_name'i cekirdek eslesmesiyle (servis
+    // oneki atilarak) yazar: 'ui/odeme-prod' satirina 'kart-ui-odeme-prod.conf' dusebilir -
+    // kosulsuz yedek, kendi vhost satiri olmayan uygulamaya BASKA uygulamanin istegini
+    // 'kesin var' diye yaziyordu (dogrulama bulgusu, 2026-10-02).
     const conf = T(r.conf_name);
-    const { adaylar, belirsiz } = dizinAdaylari(host, ns, app, conf, dizinSahip);
-    if (belirsiz) esles = 'belirsiz';
+    const confAd = U(conf.replace(/\.conf$/i, ''));
+    const confYedek =
+      confAd.startsWith(`${vhAd}-`) &&
+      /^\d+$/.test(confAd.slice(vhAd.length + 1)) &&
+      !dizinSahip.has(`${host}|${confAd}`);
+    const adaylar = confYedek ? [vhAd, confAd] : [vhAd];
     const trafik = dizinTrafigi(host, adaylar, tablolar.trf, tIdx);
     bagla(keys, {
       host,
@@ -983,10 +973,6 @@ function rpTanimlari(detay, ns, app) {
 module.exports = {
   rpUygula,
   rpTanimlari,
-  // Intranet SPA raporu (server/spa-report/intranet.cjs) host kipi olcumunu AYNI kuralla okur.
-  trafikIndeksi,
-  dizinTrafigi,
-  dizinAdaylari,
   normLoc,
   pencereSaat,
   PENCERE_TAM_SA,

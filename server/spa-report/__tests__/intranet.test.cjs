@@ -1,20 +1,20 @@
 // server/spa-report/__tests__/intranet.test.cjs - Nginx ARK SPA > Intranet SPA (2026-10-19).
 //
 // Kullanici: intranet SPA'lar yuk aliyor mu, kullaniliyor mu raporu + ekiplerden kullanim beyani.
-//   IS1 mirror sunucularin istegi TOPLANIR; son istek en yenisi; conf'u olmayan sunucu yuke katilmaz
-//   IS2 'yuk almiyor' YALNIZ sunulan her sunucu tam pencerede kesin 0 iken; okunamayan log, satirsiz
-//       sunucu, kisa pencere, sahipsiz istek (kova) -> 'unknown' + nedeni
-//   IS3 ayni conf.d adina iki uygulama -> istek ayrilamaz (belirsiz-vhost), baskasina yazilmaz
-//   IS4 conf_name -N yedegi (nginx_ops eki) yalniz kendi vhost satiri yoksa
-//   IS5 olcum tablosu yok / okunamadi / host kipi hic yok -> 'olcum yok' (null), "yuk almiyor" DEGIL
-//   IS6 kurulum: ortamin TARANAN sunucularina gore eksik sunucu; taranmayan sunucu eksik SAYILMAZ;
-//       ortamlar ayri satir (GBNGXT50 TEST / GBNGXT51 EDU)
-//   IS7 beyan: uygulama seviyesi, harf duyarsiz; location beyani karismaz; gecersiz deger yok sayilir
-//   IS8 degerlendirme kodlari olcumu ve beyani YAN YANA okur
-//   IS9 ortam ozeti
-//   IS10 uclar: GET rapor; PUT beyan (kim yazdi kaydedilir), 400'ler, onbellek silinir
-//   IS11 uygulama beyani yazimi SPA Raporu ile AYNI fonksiyon (UPDATE varsa, yoksa INSERT 'ark')
-//   IS12 sayfa kaydi: DB seed + elements + menu + route + sunucu kapisi
+// Duzeltme (ayni gun): "Dynatrace metriklerinden cikarmamiz gerekiyordu" - liste OpenShift'teki
+// intranet SPA'lar (Gercek SPA Kesfi), yuk mevcut Dynatrace kullanim verisi (BMW_Application_Usage).
+//   IS1 liste: yalniz SPA (spa='evet') ve ag intranet / karisik; internet, diger, bilinmiyor, SPA
+//       olmayan ve SPA'ligi bilinmeyen GIRMEZ
+//   IS2 Dynatrace bes durum AYNEN tasinir; sayi yalniz olculduyse; pencere / servis / not ipucuna
+//   IS3 GERCEK hesap: buildSpaDiscovery ciktisi uzerinden - cluster'lar toplanir, servisi olmayan
+//       'servis-yok', olculemeyen cluster varken 0 'yok' DEGIL, Dynatrace tablosu dustuyse olculemedi
+//   IS4 beyan: uygulama seviyesi, harf duyarsiz; location beyani karismaz; gecersiz deger yok sayilir
+//   IS5 degerlendirme olcumu ve beyani yan yana okur
+//   IS6 ortam ozeti + siralama (PROD sonda degil, ENV sirasi) + sorunlu cluster listesi
+//   IS7 yukleyici: kesif tablosu yoksa notScanned; ekip sahipleri; onbellek; dynatraceOkunamadi
+//   IS8 uclar: GET rapor; PUT beyan (kim OTURUMDAN), 400'ler, onbellek silinir
+//   IS9 uygulama beyani SPA Raporu ile AYNI fonksiyon (UPDATE varsa, yoksa INSERT ark)
+//   IS10 sayfa kaydi: DB seed + elements + menu + route + sunucu kapisi; kesif hesabi paylasilir
 'use strict';
 
 const { test } = require('node:test');
@@ -24,7 +24,7 @@ const path = require('node:path');
 const Module = require('node:module');
 const express = require('express');
 
-// index.cjs db/index.cjs'i yukler: sahte DB (yalniz IS11'in bekledigi sorgular).
+// index.cjs db/index.cjs'i yukler: sahte DB (yalniz IS9'un bekledigi sorgular).
 const DB_YOL = path.join(__dirname, '..', '..', 'db', 'index.cjs');
 const dbSorgular = [];
 let takipVar = false;
@@ -43,172 +43,155 @@ require.cache[Module._resolveFilename(DB_YOL, module)] = {
   },
 };
 
-const { buildIntranetRapor, mountIntranet, onbellekSil } = require('../intranet.cjs');
+const { buildIntranetRapor, loadIntranet, mountIntranet, onbellekSil } = require('../intranet.cjs');
+const { buildSpaDiscovery } = require('../../nginx-console/spa-discovery.cjs');
 
-const PROD = ['GBNGXAP50', 'GBNGXAP51', 'GBNGXP50', 'GBNGXP51', 'GBNGXP52', 'GBNGXP53'];
-const D = (host, ns, app, o = {}) => ({
-  host, namespace: ns, application: app, hys_deployed: 1, app_deployed: 1, conf_exists: 1,
-  conf_name: `${app}-${ns}`, in_ocp_inventory: 1, status: 'OK', scan_date: '2026-10-18', ...o,
+// Gercek SPA Kesfi uygulama satiri (spa-discovery uygulamalar() bicimi).
+const A = (application, o = {}) => ({
+  application, namespace: 'kart-prod', env: 'prod', spa: 'evet', ag: 'intranet', istek: 'var', reqShown: 120,
+  usage: { scanDate: '2026-10-18', windowDays: 35, services: 2 }, hosts: [`${application}-kart-prod.apps.fw.garanti.com.tr`],
+  clusters: ['gbocpp1', 'gbocpp2'], staleClusters: [], kapsamDurum: 'tam', kapsamVar: 2, kapsamToplam: 2,
+  weakEvidence: false, pattern: 'uyuyor', ...o,
 });
-// Host kipi trafik satiri: vhost = <app>-<ns>, location '@server_name'. first_seen 8 gun once (tam pencere).
-const H = (host, vhost, req7, o = {}) => ({
-  host, vhost, location: `@${vhost}.apps.fw.garanti.com.tr`, req_24h: Math.min(req7, 5), req_7d: req7, hc_24h: 100,
-  sampled: 0, last_seen: '2026-10-17 10:00:00', error: null, first_seen: '20261010000000', scan_date: '2026-10-18', ...o,
-});
-const kur = (p) => buildIntranetRapor({ trafikTablo: 'var', ownersByNs: new Map(), beyanlar: new Map(), hosts: PROD, ...p });
+const kur = (apps, o = {}) => buildIntranetRapor({ apps, ownersByNs: new Map(), beyanlar: new Map(), ...o });
 const satir = (out, app) => out.rows.find((r) => r.application === app);
 
-test('IS1 mirror istekleri toplanir; son istek en yenisi; conf yoksa yuke katilmaz', () => {
-  const out = kur({
-    dirRows: [D('GBNGXP50', 'kart-prod', 'ekran-app-v1'), D('GBNGXP51', 'kart-prod', 'ekran-app-v1'),
-      D('GBNGXP52', 'kart-prod', 'ekran-app-v1', { conf_exists: 0, status: 'MISSING_CONF' })],
-    trafficRows: [H('GBNGXP50', 'ekran-app-v1-kart-prod', 7), H('GBNGXP51', 'ekran-app-v1-kart-prod', 5, { last_seen: '2026-10-17 23:59:00' })],
-  });
-  const r = satir(out, 'ekran-app-v1');
-  assert.equal(r.yuk.state, 'active');
-  assert.equal(r.yuk.req7, 12);
-  assert.equal(r.yuk.hosts, 2, 'conf olmayan sunucu olculen sayilmamali');
-  assert.equal(r.yuk.lastSeen, '2026-10-17 23:59:00');
-  assert.equal(r.sunulan, 2);
-});
-
-test('IS2 yuk almiyor yalniz her sunucu tam pencerede kesin 0 iken', () => {
-  const ns = 'kart-prod';
-  const durum = (rows, trafik) => satir(kur({ dirRows: rows, trafficRows: trafik }), 'a-app-v1').yuk;
-  const iki = [D('GBNGXP50', ns, 'a-app-v1'), D('GBNGXP51', ns, 'a-app-v1')];
-  const vh = 'a-app-v1-kart-prod';
-  assert.equal(durum(iki, [H('GBNGXP50', vh, 0), H('GBNGXP51', vh, 0)]).state, 'idle');
-  // conf'u olmayan (sunmayan) ucuncu sunucu 'idle'i bozmaz: olcum beklenmez
-  const ucConfsuz = [...iki, D('GBNGXP52', ns, 'a-app-v1', { conf_exists: 0, status: 'MISSING_CONF' })];
-  assert.equal(durum(ucConfsuz, [H('GBNGXP50', vh, 0), H('GBNGXP51', vh, 0)]).state, 'idle', 'conf yok sunucu olculemedi sayildi');
-  // okunamayan log
-  let y = durum(iki, [H('GBNGXP50', vh, 0), { host: 'GBNGXP51', vhost: vh, location: '@x', error: 'log dosyasi yok', scan_date: '2026-10-18' }]);
-  assert.equal(y.state, 'unknown');
-  assert.deepEqual(y.kismi, ['okunamayan-sunucu']);
-  assert.equal(y.unknownHosts, 1);
-  // satirsiz sunucu (o vhost icin satir yok, sunucunun baska host kipi satiri var)
-  y = durum(iki, [H('GBNGXP50', vh, 0), H('GBNGXP51', 'baska-app-v1-kart-prod', 3)]);
-  assert.deepEqual([y.state, y.kismi, y.missingHosts], ['unknown', ['satirsiz-sunucu'], 1]);
-  // kisa pencere (gunluk rotasyon)
-  y = durum(iki, [H('GBNGXP50', vh, 0, { first_seen: '20261016000000' }), H('GBNGXP51', vh, 0)]);
-  assert.deepEqual([y.state, y.kismi, y.pencereSaat], ['unknown', ['pencere'], 48]);
-  // sahipsiz istek (kova): 0 alt sinir
-  y = durum(iki, [H('GBNGXP50', vh, 0), H('GBNGXP51', vh, 0),
-    { host: 'GBNGXP51', vhost: '_', location: '@_', req_7d: 9, scan_date: '2026-10-18' }]);
-  assert.deepEqual([y.state, y.kismi], ['unknown', ['eslesmeyen-host']]);
-  // biri yuk aliyorsa digerinin olculememesi 'active'i bozmaz
-  y = durum(iki, [H('GBNGXP50', vh, 4), { host: 'GBNGXP51', vhost: vh, location: '@x', error: 'okunamadi', scan_date: '2026-10-18' }]);
-  assert.equal(y.state, 'active');
-  assert.equal(y.kismi, undefined);
-});
-
-test('IS3 ayni conf.d adina iki uygulama: istek ayrilamaz', () => {
-  // 'ui' / 'odeme-prod' ile 'ui-odeme' / 'prod' ayni dosya adina duser: ui-odeme-prod
-  const out = kur({
-    dirRows: [D('GBNGXP50', 'odeme-prod', 'ui'), D('GBNGXP50', 'prod', 'ui-odeme')],
-    trafficRows: [H('GBNGXP50', 'ui-odeme-prod', 50)],
-  });
-  for (const r of out.rows) {
-    assert.equal(r.yuk.state, 'unknown', `${r.namespace}/${r.application} baskasinin istegini aldi`);
-    assert.deepEqual(r.yuk.kismi, ['belirsiz-vhost']);
-  }
-});
-
-test('IS4 conf_name -N yedegi yalniz kendi vhost satiri yoksa', () => {
-  const out = kur({
-    dirRows: [D('GBNGXP50', 'kart-prod', 'b-app-v1', { conf_name: 'b-app-v1-kart-prod-2' })],
-    trafficRows: [H('GBNGXP50', 'b-app-v1-kart-prod-2', 6)],
-  });
-  assert.equal(satir(out, 'b-app-v1').yuk.req7, 6);
-  const out2 = kur({
-    dirRows: [D('GBNGXP50', 'kart-prod', 'b-app-v1', { conf_name: 'kart-b-app-v1-kart-prod' })],
-    trafficRows: [H('GBNGXP50', 'kart-b-app-v1-kart-prod', 6)],
-  });
-  assert.notEqual(satir(out2, 'b-app-v1').yuk.state, 'active', 'cekirdek eslesmeli conf adi baska uygulamanin istegini getirdi');
-});
-
-test('IS5 olcum tablosu yok / okunamadi / host kipi yok -> olcum yok', () => {
-  const rows = [D('GBNGXP50', 'kart-prod', 'c-app-v1')];
-  for (const trafikTablo of ['yok', 'okunamadi']) {
-    const out = kur({ dirRows: rows, trafficRows: null, trafikTablo });
-    assert.equal(satir(out, 'c-app-v1').yuk, null, trafikTablo);
-  }
-  // tablo var ama yalniz location kipi satirlari (host kipi hic uretilmemis)
-  const out = kur({ dirRows: rows, trafficRows: [{ host: 'GBNGXP50', vhost: 'GLOMO-PROD', location: '/x/', req_7d: 3, scan_date: '2026-10-18' }] });
-  assert.equal(satir(out, 'c-app-v1').yuk, null);
-  assert.equal(out.hostKipi, false);
-});
-
-test('IS6 kurulum ortamin taranan sunucularina gore; ortamlar ayri satir', () => {
-  const out = buildIntranetRapor({
-    trafikTablo: 'var', trafficRows: [], ownersByNs: new Map(), beyanlar: new Map(),
-    hosts: ['GBNGXP50', 'GBNGXP51', 'GBNGXP52', 'GBNGXT50', 'GBNGXT51'],
-    dirRows: [
-      D('GBNGXP50', 'kart-prod', 'd-app-v1'),
-      D('GBNGXP51', 'kart-prod', 'd-app-v1', { app_deployed: 0, status: 'MISSING_APP' }),
-      D('GBNGXP51', 'kart-prod', 'tam-app-v1'),
-      D('GBNGXP50', 'kart-prod', 'tam-app-v1'),
-      D('GBNGXT50', 'kart-test', 'd-app-v1'),
-      D('GBNGXT51', 'kart-test', 'd-app-v1'),
-    ],
-  });
-  const d = out.rows.find((r) => r.env === 'PROD' && r.application === 'd-app-v1');
-  assert.deepEqual([d.beklenen, d.tamSunucu, d.kurulum, d.eksikSunucular], [2, 1, 'kismi', []],
-    'GBNGXP52 taranmadi: eksik sayilmamali');
-  assert.deepEqual(out.taranmayan, ['GBNGXP52']);
-  assert.equal(out.rows.find((r) => r.application === 'tam-app-v1').kurulum, 'tam');
-  assert.deepEqual(out.rows.filter((r) => r.application === 'd-app-v1').map((r) => r.env).sort(), ['EDU', 'PROD', 'TEST']);
-  // PROD'da biri eksik: P50 taranmis, uygulama yalniz P51'de
-  const out2 = kur({ dirRows: [D('GBNGXP50', 'kart-prod', 'x-app-v1'), D('GBNGXP51', 'kart-prod', 'y-app-v1')], trafficRows: [] });
-  assert.deepEqual(satir(out2, 'x-app-v1').eksikSunucular, ['GBNGXP51']);
-});
-
-test('IS7 beyan uygulama seviyesinden, harf duyarsiz; location beyani karismaz', () => {
-  const beyanlar = new Map([
-    ['Kart-Prod/E-App-v1', { inUse: 'no', inUseBy: 'ayse', inUseAt: '2026-10-18T09:00:00Z', note: 'kapatilabilir' }],
-    ['kart-prod/f-app-v1\u0000/f/', { inUse: 'yes', inUseBy: 'x', note: '' }],
-    ['kart-prod/g-app-v1', { inUse: 'belki', inUseBy: 'y', note: '' }],
+test('IS1 yalniz SPA ve intranet / karisik ag', () => {
+  const out = kur([
+    A('i1'), A('k1', { ag: 'karisik' }), A('net1', { ag: 'internet' }), A('d1', { ag: 'diger' }),
+    A('b1', { ag: 'bilinmiyor' }), A('h1', { spa: 'hayir' }), A('u1', { spa: 'bilinmiyor' }),
   ]);
-  const out = kur({ dirRows: ['e', 'f', 'g'].map((a) => D('GBNGXP50', 'kart-prod', `${a}-app-v1`)), trafficRows: [], beyanlar });
-  const e = satir(out, 'e-app-v1');
+  assert.deepEqual(out.rows.map((r) => r.application).sort(), ['i1', 'k1']);
+  assert.ok(satir(out, 'k1').degerlendirme.includes('internet-route-da-var'));
+  assert.ok(!satir(out, 'i1').degerlendirme.includes('internet-route-da-var'));
+});
+
+test('IS2 Dynatrace bes durum aynen; sayi yalniz olculduyse', () => {
+  const out = kur([
+    A('var1'), A('yok1', { istek: 'yok', reqShown: 0 }), A('sy1', { istek: 'servis-yok', reqShown: 0, usage: { scanDate: '2026-10-18', windowDays: 35, services: 0 } }),
+    A('olc1', { istek: 'olculemedi', reqShown: null, usage: { scanDate: '2026-10-18', windowDays: 35, services: 3, note: 'servis okunamadi', olcum: '1/2' } }),
+    A('none1', { istek: 'olcum-yok', reqShown: null, usage: null }),
+  ]);
+  assert.deepEqual(out.rows.map((r) => [r.application, r.istek, r.req]).sort(), [
+    ['none1', 'olcum-yok', null], ['olc1', 'olculemedi', null], ['sy1', 'servis-yok', 0], ['var1', 'var', 120], ['yok1', 'yok', 0],
+  ]);
+  assert.deepEqual(satir(out, 'olc1').dynatrace, { scanDate: '2026-10-18', windowDays: 35, services: 3, note: 'servis okunamadi', olcum: '1/2' });
+  assert.equal(satir(out, 'none1').dynatrace, null);
+  assert.equal(out.dynatraceTarihi, '2026-10-18');
+  assert.deepEqual(satir(out, 'var1').adresler, ['var1-kart-prod.apps.fw.garanti.com.tr']);
+  assert.equal(satir(out, 'var1').env, 'PROD');
+});
+
+// Gercek kesif hesabi: route satiri (BMW_Spa_Discovery) + Dynatrace satiri (BMW_Application_Usage).
+const D = (cluster, ns, workload, termination, o = {}) => ({
+  cluster, namespace: ns, route: workload, host: `${workload}-${ns}.apps.fw.garanti.com.tr`, termination,
+  workload_kind: 'Deployment', workload, is_spa: 1, signal: 'nginx-start.sh', image: '', note: '', match_by: 'selector',
+  scan_date: '2026-10-18', ...o,
+});
+const Uu = (cluster, ns, app, req, o = {}) => ({
+  cluster, namespace: ns, app, scan_date: '2026-10-18', window_days: 35, req_total: req, services_total: 1, measured: 1, note: '', ...o,
+});
+const RUNS = [{ cluster: 'gbocpp1', durum: 'ok', routes: 5, scan_date: '2026-10-18' }, { cluster: 'gbocpp2', durum: 'ok', routes: 5, scan_date: '2026-10-18' }];
+
+test('IS3 gercek kesif hesabi uzerinden: cluster toplami, servis-yok, olculemeyen cluster, tablo dustu', () => {
+  const disc = [
+    D('gbocpp1', 'kart-prod', 'aktif-ui', 'reencrypt'), D('gbocpp2', 'kart-prod', 'aktif-ui', 'reencrypt'),
+    D('gbocpp1', 'kart-prod', 'sessiz-ui', 'reencrypt'), D('gbocpp2', 'kart-prod', 'sessiz-ui', 'reencrypt'),
+    D('gbocpp1', 'kart-prod', 'yarim-ui', 'reencrypt'), D('gbocpp2', 'kart-prod', 'yarim-ui', 'reencrypt'),
+    D('gbocpp1', 'kart-prod', 'servissiz-ui', 'reencrypt'),
+    D('gbocpp1', 'kart-prod', 'dis-ui', 'passthrough'),
+    D('gbocpp1', 'kart-prod', 'api', 'reencrypt', { is_spa: 0, signal: '' }),
+  ];
+  const usage = [
+    Uu('gbocpp1', 'kart-prod', 'aktif-ui', 7), Uu('gbocpp2', 'kart-prod', 'aktif-ui', 5),
+    Uu('gbocpp1', 'kart-prod', 'sessiz-ui', 0), Uu('gbocpp2', 'kart-prod', 'sessiz-ui', 0),
+    Uu('gbocpp1', 'kart-prod', 'yarim-ui', 0), Uu('gbocpp2', 'kart-prod', 'yarim-ui', 0, { measured: 0, note: 'servis okunamadi: 403' }),
+    Uu('gbocpp1', 'kart-prod', 'servissiz-ui', 0, { services_total: 0 }),
+  ];
+  const kes = buildSpaDiscovery(disc, [], usage, RUNS, { tablolar: {} }, null);
+  const out = kur(kes.apps, { coverage: kes.coverage });
+  assert.deepEqual(out.rows.map((r) => r.application).sort(), ['aktif-ui', 'servissiz-ui', 'sessiz-ui', 'yarim-ui'],
+    'internet (passthrough) ve SPA olmayan girmemeli');
+  assert.deepEqual([satir(out, 'aktif-ui').istek, satir(out, 'aktif-ui').req], ['var', 12], 'cluster istekleri toplanmali');
+  assert.equal(satir(out, 'sessiz-ui').istek, 'yok');
+  assert.equal(satir(out, 'yarim-ui').istek, 'olculemedi', 'bir cluster olculemezken 0 "yok" sayildi');
+  assert.equal(satir(out, 'yarim-ui').req, null);
+  assert.equal(satir(out, 'servissiz-ui').istek, 'servis-yok');
+  // Dynatrace tablosu okunamadi (usage null): HER satir olculemedi
+  const dus = kur(buildSpaDiscovery(disc, [], null, RUNS, { tablolar: {} }, null).apps);
+  assert.ok(dus.rows.every((r) => r.istek === 'olculemedi'));
+});
+
+test('IS4 beyan uygulama seviyesinden, harf duyarsiz; location beyani karismaz', () => {
+  const beyanlar = new Map([
+    ['Kart-Prod/E-UI', { inUse: 'no', inUseBy: 'ayse', inUseAt: '2026-10-18T09:00:00Z', note: 'kapatilabilir' }],
+    ['kart-prod/f-ui\u0000/f/', { inUse: 'yes', inUseBy: 'x', note: '' }],
+    ['kart-prod/g-ui', { inUse: 'belki', inUseBy: 'y', note: '' }],
+  ]);
+  const out = kur([A('e-ui'), A('f-ui'), A('g-ui')], { beyanlar });
+  const e = satir(out, 'e-ui');
   assert.deepEqual([e.inUse, e.inUseBy, e.note, e.inUseAt], ['no', 'ayse', 'kapatilabilir', '2026-10-18T09:00:00.000Z']);
-  assert.equal(satir(out, 'f-app-v1').inUse, null, 'location beyani uygulama satirina yazildi');
-  assert.equal(satir(out, 'g-app-v1').inUse, null, 'gecersiz beyan gosterildi');
+  assert.equal(satir(out, 'f-ui').inUse, null, 'location beyani uygulama satirina yazildi');
+  assert.equal(satir(out, 'g-ui').inUse, null, 'gecersiz beyan gosterildi');
 });
 
-test('IS8 degerlendirme olcumu ve beyani yan yana okur', () => {
-  const vh = (a) => `${a}-kart-prod`;
-  const out = kur({
-    dirRows: [
-      D('GBNGXP50', 'kart-prod', 'kapat-app-v1'), D('GBNGXP50', 'kart-prod', 'teyit-app-v1'),
-      D('GBNGXP50', 'kart-prod', 'cel-app-v1', { in_ocp_inventory: 0 }),
-      D('GBNGXP50', 'kart-prod', 'sun-app-v1', { conf_exists: 0, status: 'MISSING_CONF' }),
+test('IS5 degerlendirme olcumu ve beyani yan yana okur', () => {
+  const out = kur(
+    [
+      A('kapat', { istek: 'yok', reqShown: 0 }), A('teyit', { istek: 'yok', reqShown: 0 }), A('cel'),
+      A('sy', { istek: 'servis-yok', reqShown: 0 }), A('zayif', { weakEvidence: true, staleClusters: ['gbocpp2'] }),
+      A('kullaniyor', { istek: 'yok', reqShown: 0 }),
     ],
-    trafficRows: [H('GBNGXP50', vh('kapat-app-v1'), 0), H('GBNGXP50', vh('teyit-app-v1'), 0), H('GBNGXP50', vh('cel-app-v1'), 30)],
-    beyanlar: new Map([['kart-prod/kapat-app-v1', { inUse: 'no' }], ['kart-prod/cel-app-v1', { inUse: 'no' }]]),
-  });
-  assert.deepEqual(satir(out, 'kapat-app-v1').degerlendirme, ['kapatma-adayi']);
-  assert.deepEqual(satir(out, 'teyit-app-v1').degerlendirme, ['teyit-bekliyor']);
-  assert.deepEqual(satir(out, 'cel-app-v1').degerlendirme, ['celiski', 'ocp-yok']);
-  assert.deepEqual(satir(out, 'sun-app-v1').degerlendirme, ['sunulmuyor']);
-  // OpenShift: sunuculardan BIRI "var" diyorsa var (tarama sunucu basina; biri gec guncellenmis olabilir)
-  const ocp = kur({ dirRows: [D('GBNGXP50', 'kart-prod', 'o-app-v1', { in_ocp_inventory: 0 }), D('GBNGXP51', 'kart-prod', 'o-app-v1')], trafficRows: [] });
-  assert.equal(satir(ocp, 'o-app-v1').ocpVar, true);
-  assert.ok(!satir(ocp, 'o-app-v1').degerlendirme.includes('ocp-yok'));
-  assert.equal(satir(out, 'sun-app-v1').yuk, null);
+    { beyanlar: new Map([['kart-prod/kapat', { inUse: 'no' }], ['kart-prod/cel', { inUse: 'no' }], ['kart-prod/sy', { inUse: 'no' }], ['kart-prod/kullaniyor', { inUse: 'yes' }]]) },
+  );
+  assert.deepEqual(satir(out, 'kapat').degerlendirme, ['kapatma-adayi']);
+  assert.deepEqual(satir(out, 'teyit').degerlendirme, ['teyit-bekliyor']);
+  assert.deepEqual(satir(out, 'cel').degerlendirme, ['celiski']);
+  assert.deepEqual(satir(out, 'sy').degerlendirme, [], '"servis yok" kapatma adayi YAPILMAMALI (sayilamadi)');
+  assert.deepEqual(satir(out, 'zayif').degerlendirme, ['zayif-kanit', 'eski-veri']);
+  // istek yok ama ekip "kullaniyor" dedi (ayda bir kullanilan ekran): teyit BEKLENMEZ, aday da degil
+  assert.deepEqual(satir(out, 'kullaniyor').degerlendirme, []);
 });
 
-test('IS9 ortam ozeti', () => {
-  const out = kur({
-    dirRows: [D('GBNGXP50', 'kart-prod', 'a1'), D('GBNGXP50', 'kart-prod', 'a2'), D('GBNGXP50', 'kart-prod', 'a3')],
-    trafficRows: [H('GBNGXP50', 'a1-kart-prod', 2), H('GBNGXP50', 'a2-kart-prod', 0)],
-    beyanlar: new Map([['kart-prod/a2', { inUse: 'no' }]]),
-  });
-  const p = out.envs.find((e) => e.env === 'PROD');
-  assert.deepEqual(
-    [p.uygulama, p.active, p.idle, p.unknown, p.olcumYok, p.beyanli, p.kapatmaAdayi, p.celiski],
-    [3, 1, 1, 1, 0, 1, 1, 0],
+test('IS6 ortam ozeti, siralama, sorunlu cluster', () => {
+  const out = kur(
+    [
+      A('p1'), A('p2', { istek: 'yok', reqShown: 0 }), A('p3', { istek: 'servis-yok', reqShown: 0 }), A('p4', { istek: 'yok', reqShown: 0 }),
+      A('t1', { namespace: 'kart-test', env: 'test' }), A('x1', { namespace: 'kart', env: null }),
+    ],
+    {
+      beyanlar: new Map([['kart-prod/p2', { inUse: 'no' }]]),
+      coverage: { clusters: [
+        { cluster: 'gbocpp1', status: 'ok', bucket: 'guncel', stale: false, reason: '' },
+        { cluster: 'gbocpp2', status: 'login', bucket: 'taranamadi', stale: true, reason: 'login basarisiz' },
+        { cluster: 'gbocpt1', status: 'ok', bucket: 'onceki', stale: true, reason: '' },
+      ] },
+    },
   );
+  assert.deepEqual(out.rows.map((r) => r.env), ['TEST', 'PROD', 'PROD', 'PROD', 'PROD', 'BILINMIYOR']);
+  const p = out.envs.find((e) => e.env === 'PROD');
+  assert.deepEqual([p.uygulama, p.var, p.yok, p.servisYok, p.olculemedi, p.olcumYok, p.beyanli, p.kapatmaAdayi, p.celiski], [4, 1, 2, 1, 0, 0, 1, 1, 0]);
+  assert.deepEqual(out.sorunluCluster.map((c) => c.cluster), ['gbocpp2', 'gbocpt1']);
+});
+
+test('IS7 yukleyici: tablo yok, sahipler, onbellek, Dynatrace okunamadi', async () => {
+  onbellekSil();
+  require('../../audit/ns-owners.cjs')._resetCache();
+  const mssql = { query: async (q) => {
+    if (String(q).includes('Openshift_Namespace_Owners')) return { recordset: [{ namespace: 'kart-prod', owner_group_name: 'GT-Kart', owner_email: 'kart@banka.com', lookup_status: 'OK' }] };
+    throw new Error('beklenmeyen sorgu');
+  } };
+  let cagri = 0;
+  const yok = await loadIntranet(true, { mssql, loadBeyanlar: async () => new Map(), spaKesfi: async () => ({ tableMissing: true, message: 'dbo.BMW_Spa_Discovery tablosu henüz yok' }) });
+  assert.deepEqual([yok.ok, yok.notScanned, yok.rows.length], [true, true, 0]);
+  assert.match(yok.message, /BMW_Spa_Discovery/);
+  const deps = { mssql, loadBeyanlar: async () => new Map(), spaKesfi: async () => { cagri += 1; return { scanDate: '2026-10-18', apps: [A('z-ui')], coverage: { clusters: [] }, rpKapsam: { dynatraceOkunamadi: true } }; } };
+  const r = await loadIntranet(false, deps);
+  assert.deepEqual([r.kesifTarihi, r.dynatraceOkunamadi, r.rows[0].ekip, r.rows[0].ekipEposta], ['2026-10-18', true, ['GT-Kart'], ['kart@banka.com']]);
+  await loadIntranet(false, deps);
+  assert.equal(cagri, 1, 'onbellek kullanilmadi');
+  await loadIntranet(true, deps);
+  assert.equal(cagri, 2, 'fresh onbellegi asmadi');
 });
 
 async function sunucu(deps) {
@@ -223,27 +206,13 @@ async function sunucu(deps) {
   return { s, base: `http://127.0.0.1:${s.address().port}/api/spa-report` };
 }
 
-test('IS10 uclar: rapor, beyan yazimi (kim kaydedilir), 400, onbellek silinir', async (t) => {
+test('IS8 uclar: rapor, beyan yazimi (kim oturumdan), 400, onbellek silinir', async (t) => {
   onbellekSil();
   let beyan = new Map();
   const yazilan = [];
-  const sorgular = [];
-  const sql = new Proxy({}, { get: () => () => 'tip' });
-  const mssql = {
-    sql,
-    query: async (text, params) => {
-      const q = String(text);
-      sorgular.push({ q, params });
-      if (q.includes('OBJECT_ID')) return { recordset: [{ trf: 1, fs: 8 }] };
-      if (q.includes('FROM dbo.Nginx_Intranet_Audit')) return { recordset: [D('GBNGXP50', 'kart-prod', 'z-app-v1')] };
-      if (q.includes('FROM dbo.Nginx_Spa_Traffic')) return { recordset: [H('GBNGXP50', 'z-app-v1-kart-prod', 0)] };
-      if (q.includes('Openshift_Namespace_Owners')) return { recordset: [{ namespace: 'kart-prod', owner_group_name: 'GT-Kart', owner_email: 'kart@banka.com', lookup_status: 'OK' }] };
-      throw new Error('beklenmeyen sorgu ' + q.slice(0, 80));
-    },
-  };
-  require('../../audit/ns-owners.cjs')._resetCache();
   const { s, base } = await sunucu({
-    mssql,
+    mssql: { query: async () => ({ recordset: [] }) },
+    spaKesfi: async () => ({ scanDate: '2026-10-18', apps: [A('z-ui', { istek: 'yok', reqShown: 0 })], coverage: { clusters: [] }, rpKapsam: {} }),
     loadBeyanlar: async () => beyan,
     uygulamaBeyaniYaz: async (b) => {
       yazilan.push(b);
@@ -252,24 +221,21 @@ test('IS10 uclar: rapor, beyan yazimi (kim kaydedilir), 400, onbellek silinir', 
   });
   t.after(() => s.close());
   let r = await fetch(`${base}/intranet`).then((x) => x.json());
-  assert.equal(r.ok, true);
-  assert.deepEqual(r.rows.map((x) => [x.application, x.yuk.state, x.ekip[0], x.inUse]), [['z-app-v1', 'idle', 'GT-Kart', null]]);
-  const dizinSorgu = sorgular.find((x) => x.q.includes('Nginx_Intranet_Audit'));
-  assert.ok(dizinSorgu.params.some((p) => p.value === 'GBNGXAP51') && dizinSorgu.params.some((p) => p.value === 'GBNGXD50'), 'intranet sunuculari sorguda yok');
+  assert.deepEqual(r.rows.map((x) => [x.application, x.istek, x.inUse]), [['z-ui', 'yok', null]]);
   const put = (body) => fetch(`${base}/intranet/declare`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   assert.equal((await put({ namespace: 'kart-prod' })).status, 400);
-  assert.equal((await put({ namespace: 'kart-prod', application: 'z-app-v1', inUse: 'belki' })).status, 400);
+  assert.equal((await put({ namespace: 'kart-prod', application: 'z-ui', inUse: 'belki' })).status, 400);
   // BEYAN EDEN OTURUMDAN: govdeye yazilan ad kullanilmaz.
-  const w = await put({ namespace: 'kart-prod', application: 'z-app-v1', inUse: 'no', note: 'kimse kullanmiyor', by: 'sahte', inUseBy: 'sahte' }).then((x) => x.json());
+  const w = await put({ namespace: 'kart-prod', application: 'z-ui', inUse: 'no', note: 'kimse kullanmiyor', by: 'sahte', inUseBy: 'sahte' }).then((x) => x.json());
   assert.equal(w.ok, true);
   assert.equal(w.inUseBy, 'ayse');
-  assert.deepEqual(yazilan, [{ namespace: 'kart-prod', application: 'z-app-v1', inUse: 'no', note: 'kimse kullanmiyor', by: 'ayse' }]);
+  assert.deepEqual(yazilan, [{ namespace: 'kart-prod', application: 'z-ui', inUse: 'no', note: 'kimse kullanmiyor', by: 'ayse' }]);
   r = await fetch(`${base}/intranet`).then((x) => x.json());
   assert.equal(r.rows[0].inUse, 'no', 'beyan sonrasi onbellek silinmedi');
   assert.deepEqual(r.rows[0].degerlendirme, ['kapatma-adayi']);
 });
 
-test('IS11 uygulama beyani SPA Raporu ile ayni fonksiyon: varsa UPDATE, yoksa INSERT ark', async () => {
+test('IS9 uygulama beyani SPA Raporu ile ayni fonksiyon: varsa UPDATE, yoksa INSERT ark', async () => {
   const { uygulamaBeyaniYaz } = require('../index.cjs');
   dbSorgular.length = 0;
   takipVar = true;
@@ -278,14 +244,13 @@ test('IS11 uygulama beyani SPA Raporu ile ayni fonksiyon: varsa UPDATE, yoksa IN
   dbSorgular.length = 0;
   takipVar = false;
   await uygulamaBeyaniYaz({ namespace: 'kart-prod', application: 'z', inUse: 'no', note: '', by: 'ayse' });
-  assert.ok(dbSorgular.some((q) => q.t.startsWith("INSERT INTO nginx_migration_tracking") && q.t.includes("VALUES ('ark'")));
-  // SPA Raporu'nun location'siz beyani da bu fonksiyondan gecer (tek yazim yolu)
+  assert.ok(dbSorgular.some((q) => q.t.startsWith('INSERT INTO nginx_migration_tracking') && q.t.includes("VALUES ('ark'")));
   const src = fs.readFileSync(path.join(__dirname, '..', 'index.cjs'), 'utf8');
   assert.equal((src.match(/INSERT INTO nginx_migration_tracking/g) || []).length, 1, 'ikinci bir uygulama beyani yazim yolu var');
   assert.match(src, /await uygulamaBeyaniYaz\(\{ namespace: ns, application: app2, inUse, note, by \}\);\s*intranetOnbellekSil\(\);/);
 });
 
-test('IS12 sayfa kaydi: seed + elements + menu + route + sunucu kapisi', () => {
+test('IS10 sayfa kaydi + kesif hesabi paylasilir', () => {
   const KOK = path.join(__dirname, '..', '..', '..');
   const oku = (p) => fs.readFileSync(path.join(KOK, p), 'utf8').replace(/"/g, "'");
   assert.match(oku('server/db/mssql-setup.cjs'), /element_key: 'ArkIntranetSpa',\s*element_type: 'page',\s*parent_key: 'navgroup:arkspa',\s*label: 'Intranet SPA',\s*route: '\/ark-spa\/intranet-spa'/);
@@ -297,4 +262,7 @@ test('IS12 sayfa kaydi: seed + elements + menu + route + sunucu kapisi', () => {
   assert.match(idx, /intranetRouter\.use\('\/intranet', requireAuth\)/);
   assert.ok(idx.indexOf("app.use('/api/spa-report', intranetRouter)") < idx.indexOf("app.use('/api/spa-report', router)"),
     'intranet router rapor kapisindan SONRA baglandi (ArkSpaRaporu gormeyen kullanici giremez)');
+  // Gercek SPA Kesfi ile AYNI hesap: nginx-console paylasilan hesabi disa acar, intranet onu cagirir.
+  assert.equal(require('../../nginx-console/index.cjs').spaKesfiPaylas.name, 'spaHesapPaylas');
+  assert.match(oku('server/spa-report/intranet.cjs'), /require\('\.\.\/nginx-console\/index\.cjs'\)\.spaKesfiPaylas/);
 });

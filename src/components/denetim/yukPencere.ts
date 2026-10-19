@@ -41,7 +41,6 @@ export function kismiEtiket(t: YukOlcumu): string | null {
     return `${pencereIstekYok(t.pencereSaat)} (7 gün ölçülemedi)`;
   if (k.includes('pencere-bilinmiyor')) return 'istek yok (ölçülen süre bilinmiyor)';
   if (k.includes('sampled')) return 'istek yok (7 günün tamamı okunamadı)';
-  if (k.includes('eslesmeyen-host')) return 'istek yok (sunucuda sahipsiz istek var)';
   const eksik = (t.unknownHosts || 0) + (t.missingHosts || 0);
   if (eksik) return `istek yok (${eksik} sunucu ölçülemedi)`;
   return 'kısmi ölçüm';
@@ -89,10 +88,6 @@ export function kismiAciklama(t: YukOlcumu): string {
     c.push('Log dosyasının tamamı okunamadı (okuma bütçesi bitti ya da eski bir log dosyası açılamadı); okunan bölüm 7 günü kapsamıyor.');
   if (k.includes('okunamayan-sunucu'))
     c.push(`${t.unknownHosts || 'Bir'} sunucuda access log okunamadı; oraya gelen istek bilinmiyor.`);
-  if (k.includes('eslesmeyen-host'))
-    c.push('Sunucunun ortak access log’unda hiçbir uygulamaya yazılamayan istek var (Host başlığı eşleşmeyen, IP ile gelen ya da Host’suz). nginx bunları varsayılan sunucuya verir; bu uygulamaya gelmiş olabilir, sayı bu yüzden alt sınırdır.');
-  if (k.includes('belirsiz-vhost'))
-    c.push('Aynı conf.d dosya adına iki uygulama düşüyor; istekler bu uygulamaya ayrılamıyor.');
   if (k.includes('satirsiz-sunucu'))
     c.push(`${t.missingHosts || 'Bir'} sunucuda bu tanımın o günkü ölçüm satırı yok (tarama zaman aşımı ya da trafik adımı kapalı).`);
   if (!c.length) c.push('Ölçüm 7 günün tamamını ve tanımın her sunucusunu kapsamıyor.');

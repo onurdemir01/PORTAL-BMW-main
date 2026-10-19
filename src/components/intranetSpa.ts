@@ -1,7 +1,7 @@
 // src/components/intranetSpa.ts — Nginx ARK SPA > Intranet SPA: saf yardımcılar (süzgeç, etiket, CSV).
 // Sayfa: IntranetSpaPage.tsx. Hesap sunucuda (server/spa-report/intranet.cjs); burada gösterim.
-import type { IntranetDegerlendirme, IntranetSatir, IntranetSunucu } from '@/api/arkSpaApi';
-import { kismiEtiket, pencereIstekYok } from '@/components/denetim/yukPencere';
+// Yük DYNATRACE'ten (BMW_Application_Usage): beş durum, hiçbiri diğerine indirgenmez.
+import type { IntranetDegerlendirme, IntranetIstek, IntranetSatir } from '@/api/arkSpaApi';
 import type { Tone } from '@/components/denetim/ui';
 
 export const BEYAN_ETIKET: Record<string, string> = {
@@ -10,103 +10,93 @@ export const BEYAN_ETIKET: Record<string, string> = {
   unknown: 'bilmiyor',
 };
 
+export const ISTEK: Record<IntranetIstek, { label: string; hint: string }> = {
+  var: { label: 'istek alıyor', hint: 'Dynatrace: uygulamanın servisleri istek almış.' },
+  yok: {
+    label: 'istek almıyor',
+    hint: 'Dynatrace: uygulamanın her cluster’daki servisleri ölçüldü, istek yok.',
+  },
+  'servis-yok': {
+    label: 'Dynatrace servisi yok',
+    hint: 'Uygulamanın Dynatrace’te servisi oluşmamış: istek sayılamıyor — “istek almıyor” DEMEK DEĞİL.',
+  },
+  olculemedi: {
+    label: 'ölçülemedi',
+    hint: 'Dynatrace servisi var ama ölçülemedi (ya da kullanım verisi okunamadı) — “istek almıyor” demek değil.',
+  },
+  'olcum-yok': {
+    label: 'ölçüm yok',
+    hint: 'Uygulama son 7 günün Dynatrace kullanım verisinde yok (Dynatrace’te uygulama olarak görünmüyor olabilir) — “istek almıyor” demek değil.',
+  },
+};
+
 export const DEGERLENDIRME: Record<IntranetDegerlendirme, { label: string; tone: Tone; hint: string }> = {
   'kapatma-adayi': {
     label: 'kapatma adayı',
     tone: 'danger',
-    hint: 'Ölçümde 7 günün tamamında ve her sunucuda istek yok, ekip de “kullanmıyor” dedi.',
+    hint: 'Dynatrace’te istek yok (her cluster ölçüldü) ve ekip “kullanmıyor” dedi.',
   },
   'teyit-bekliyor': {
-    label: 'yük yok — ekip teyidi bekleniyor',
+    label: 'istek yok — ekip teyidi bekleniyor',
     tone: 'warning',
-    hint: 'Ölçümde istek yok; ekip henüz beyan girmedi.',
+    hint: 'Dynatrace’te istek yok; ekip henüz beyan girmedi.',
   },
   celiski: {
     label: 'çelişki',
     tone: 'warning',
-    hint: 'Ölçümde istek var ama ekip “kullanmıyor” dedi. Kim kullanıyor, bakılmalı.',
+    hint: 'Dynatrace’te istek var ama ekip “kullanmıyor” dedi. Kim kullanıyor, bakılmalı.',
   },
-  'ocp-yok': {
-    label: 'OpenShift envanterinde yok',
+  'internet-route-da-var': {
+    label: 'internet route’u da var',
     tone: 'neutral',
-    hint: 'Uygulama OpenShift envanterinde bulunamadı — kaldırılmış olabilir.',
+    hint: 'Uygulamanın intranet (reencrypt) route’unun yanında internete açık (passthrough) route’u da var.',
   },
-  sunulmuyor: {
-    label: 'nginx sunmuyor',
+  'zayif-kanit': {
+    label: 'SPA kanıtı zayıf',
     tone: 'neutral',
-    hint: 'Hiçbir sunucuda application-confs dosyası yok: dizin duruyor ama nginx bu uygulamayı sunmuyor.',
+    hint: 'Pod’da nginx yalnız ad eşleşmesiyle bulundu (servis okunamadı); SPA Keşfi’nde ayrıntı.',
   },
-  'kurulum-eksik': {
-    label: 'kurulum eksik',
+  'eski-veri': {
+    label: 'eski veri',
     tone: 'neutral',
-    hint: 'Ortamın taranan sunucularının bazısında uygulama yok ya da yarım kurulmuş.',
+    hint: 'Bazı cluster’ların son keşif koşusu başarısız; satır önceki koşudan.',
   },
 };
 
-const DURUM_ETIKET: Record<string, string> = {
-  OK: 'tam',
-  MISSING_CONF: 'conf yok — sunulmuyor',
-  MISSING_APP: 'uygulama dosyaları yok',
-  MISSING_HYS: 'paket dizini yok',
-  ONLY_HYS: 'yarım kurulum (yalnız paket)',
-  ONLY_APP: 'yarım kurulum (yalnız dosyalar)',
-  ONLY_CONF: 'yarım kurulum (yalnız conf)',
-};
-export const durumEtiketi = (s: string) => DURUM_ETIKET[s] || s || 'bilinmiyor';
+export const nf = (n: number) => new Intl.NumberFormat('tr-TR').format(n);
 
-/** Sunucu başına ölçümün kısa metni. "Ölçülemedi" sebebiyle yazılır; hiçbiri "0 istek" DEĞİL. */
-export function sunucuYukMetni(s: IntranetSunucu): string {
-  const t = s.trafik;
-  if (!s.conf) return '—';
-  if (!t) return 'ölçüm yok';
-  if (t.durum === 'var') return `7g ${t.req7 ?? 0} · 24s ${t.req24 ?? 0}`;
-  if (t.durum === 'sifir') return 'istek yok (7 gün)';
-  if (t.durum === 'sifir-kismi') {
-    const k = t.kismi || [];
-    if (k.includes('pencere') && t.pencereSa != null) return `${pencereIstekYok(t.pencereSa)} (7 gün ölçülemedi)`;
-    if (k.includes('pencere')) return 'istek yok (ölçülen süre bilinmiyor)';
-    if (k.includes('eslesmeyen-host')) return 'istek yok (sunucuda sahipsiz istek var)';
-    return 'istek yok (kısmi ölçüm)';
-  }
-  switch (t.neden) {
-    case 'log':
-      return `log okunamadı${t.hata ? `: ${t.hata}` : ''}`;
-    case 'satir-yok':
-      return 'bu uygulama için ölçüm satırı yok';
-    case 'host':
-      return 'sunucu ölçülmedi';
-    case 'host-kipi-yok':
-      return 'sunucuda uygulama bazlı ölçüm yok';
-    case 'belirsiz':
-      return 'conf adı iki uygulamaya düşüyor — ayrılamıyor';
-    default:
-      return 'ölçüm tablosu okunamadı';
-  }
+/** Yük hücresinin kısa metni (ekran + CSV aynı). */
+export function istekMetni(r: IntranetSatir): string {
+  if (r.istek === 'var') return `istek alıyor · ${nf(r.req ?? 0)}`;
+  return ISTEK[r.istek]?.label || r.istek;
 }
 
-export type YukSuzgec = 'all' | 'active' | 'idle' | 'unknown' | 'none';
+/** Yük ipucu: Dynatrace penceresi, servis sayısı, ölçüm günü, kısmi ölçüm ve not. */
+export function istekIpucu(r: IntranetSatir): string {
+  const d = r.dynatrace;
+  const p: string[] = [ISTEK[r.istek]?.hint || ''];
+  if (d) {
+    if (r.req != null && d.windowDays) p.push(`Son ${d.windowDays} günde ${nf(r.req)} istek.`);
+    if (d.services != null) p.push(`${d.services} Dynatrace servisi.`);
+    if (d.olcum) p.push(`Ölçülen cluster: ${d.olcum}.`);
+    if (d.scanDate) p.push(`Ölçüm günü ${d.scanDate}.`);
+    if (d.note) p.push(`Not: ${d.note}`);
+  }
+  return p.filter(Boolean).join(' ');
+}
+
+export type IstekSuzgec = 'all' | IntranetIstek;
 export type BeyanSuzgec = 'all' | 'bekleyen' | 'verilmis' | 'yes' | 'no' | 'unknown';
 export type DegSuzgec = 'all' | IntranetDegerlendirme;
 
-export const yukDurumu = (r: IntranetSatir): Exclude<YukSuzgec, 'all'> => (r.yuk ? r.yuk.state : 'none');
-
-/** Yük hücresinin kısa metni (ekran + CSV aynı). */
-export function yukMetni(r: IntranetSatir): string {
-  const t = r.yuk;
-  if (!t) return 'ölçüm yok';
-  if (t.state === 'active') return `yük alıyor · 7g ${t.req7 ?? 0}`;
-  if (t.state === 'idle') return 'yük almıyor';
-  return kismiEtiket(t) || 'ölçülemedi';
-}
-
 export function suzIntranet(
   rows: readonly IntranetSatir[],
-  f: { env: string; yuk: YukSuzgec; beyan: BeyanSuzgec; deg: DegSuzgec; ekip: string; q: string },
+  f: { env: string; istek: IstekSuzgec; beyan: BeyanSuzgec; deg: DegSuzgec; ekip: string; q: string },
 ): IntranetSatir[] {
   const ara = f.q.trim().toLowerCase();
   return rows.filter((r) => {
     if (f.env !== 'all' && r.env !== f.env) return false;
-    if (f.yuk !== 'all' && yukDurumu(r) !== f.yuk) return false;
+    if (f.istek !== 'all' && r.istek !== f.istek) return false;
     if (f.beyan === 'bekleyen' && r.inUse) return false;
     if (f.beyan === 'verilmis' && !r.inUse) return false;
     if ((f.beyan === 'yes' || f.beyan === 'no' || f.beyan === 'unknown') && r.inUse !== f.beyan) return false;
@@ -117,7 +107,7 @@ export function suzIntranet(
       } else if (!r.ekip.includes(f.ekip)) return false;
     }
     if (!ara) return true;
-    return [r.application, r.namespace, r.note, ...r.ekip, ...r.sunucular.map((s) => s.host)]
+    return [r.application, r.namespace, r.note, ...r.ekip, ...r.adresler, ...r.clusters]
       .join(' ')
       .toLowerCase()
       .includes(ara);
@@ -128,26 +118,21 @@ export const INTRANET_CSV_BASLIK = [
   'ortam',
   'namespace',
   'uygulama',
+  'ag',
+  'route_adresleri',
+  'clusterlar',
   'ekip',
   'ekip_eposta',
   'ekip_beyani',
   'beyan_eden',
   'beyan_tarihi',
   'aciklama',
-  'yuk_durumu',
-  'istek_7g',
-  'istek_24s',
-  'son_istek',
-  'olculen_sunucu',
-  'olculemeyen_sunucu',
-  'olculen_saat',
-  'sunulan_sunucu',
-  'tam_sunucu',
-  'beklenen_sunucu',
-  'eksik_sunucular',
-  'openshift',
+  'dynatrace_durumu',
+  'dynatrace_istek',
+  'dynatrace_gun',
+  'dynatrace_servis',
+  'dynatrace_olcum_gunu',
   'degerlendirme',
-  'sunucular',
 ] as const;
 
 export function intranetCsvSatirlari(rows: readonly IntranetSatir[], tarih: (v: string) => string): string[][] {
@@ -155,26 +140,21 @@ export function intranetCsvSatirlari(rows: readonly IntranetSatir[], tarih: (v: 
     r.env,
     r.namespace,
     r.application,
+    r.ag,
+    r.adresler.join(' '),
+    r.clusters.join(' '),
     r.ekip.join(' '),
     r.ekipEposta.join(' '),
     r.inUse ? BEYAN_ETIKET[r.inUse] || r.inUse : '',
     r.inUseBy || '',
     r.inUseAt ? tarih(r.inUseAt) : '',
     r.note || '',
-    yukMetni(r),
+    ISTEK[r.istek]?.label || r.istek,
     // SAYI YALNIZ ÖLÇÜLDÜYSE: ölçülemeyen satıra 0 yazmak tabloda "hiç istek yok" diye toplanırdı.
-    r.yuk && r.yuk.req7 != null ? String(r.yuk.req7) : '',
-    r.yuk && r.yuk.req24 != null ? String(r.yuk.req24) : '',
-    r.yuk?.lastSeen || '',
-    r.yuk ? String(r.yuk.hosts) : '',
-    r.yuk ? String((r.yuk.unknownHosts || 0) + (r.yuk.missingHosts || 0)) : '',
-    r.yuk && r.yuk.pencereSaat != null ? String(r.yuk.pencereSaat) : '',
-    String(r.sunulan),
-    String(r.tamSunucu),
-    String(r.beklenen),
-    r.eksikSunucular.join(' '),
-    r.ocpVar == null ? '' : r.ocpVar ? 'var' : 'yok',
+    r.req != null ? String(r.req) : '',
+    r.dynatrace?.windowDays != null ? String(r.dynatrace.windowDays) : '',
+    r.dynatrace?.services != null ? String(r.dynatrace.services) : '',
+    r.dynatrace?.scanDate || '',
     r.degerlendirme.map((d) => DEGERLENDIRME[d]?.label || d).join(' + '),
-    r.sunucular.map((s) => `${s.host}:${s.status || '?'}`).join(' '),
   ]);
 }

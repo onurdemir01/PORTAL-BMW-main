@@ -99,58 +99,45 @@ export interface GecisPlani {
   goc?: { ad: string; uygulandi: boolean; hata?: string | null };
 }
 
-/** Intranet SPA (2026-10-19): bir intranet sunucusundaki kurulum + o sunucunun ölçümü. */
-export interface IntranetSunucu {
-  host: string;
-  /** 'Pendik' | 'Ankara' | '' */
-  site: string;
-  /** /hysdeploy/<ns>/<app>/ */
-  hys: boolean;
-  /** /usr/nginx/applications/<ns>/<app>/ */
-  app: boolean;
-  /** application-confs/<app>-<ns>.conf — yoksa nginx bu uygulamayı bu sunucuda SUNMAZ. */
-  conf: boolean;
-  /** OK | MISSING_CONF | MISSING_APP | MISSING_HYS | ONLY_HYS | ONLY_APP | ONLY_CONF */
-  status: string;
-  confName: string;
-  /** Host kipi ölçümü (SPA Keşfi ile aynı kural). null = o gün host kipi ölçümü hiç yok / conf yok. */
-  trafik: {
-    durum: 'var' | 'sifir' | 'sifir-kismi' | 'olculemedi';
-    neden?: string;
-    hata?: string;
-    req7?: number;
-    req24?: number;
-    son?: string | null;
-    pencereSa?: number | null;
-    kismi?: string[];
-    atanmamis?: number;
-  } | null;
-}
+/** Intranet SPA (2026-10-19): Gerçek SPA Keşfi'nin intranet SPA'sı + Dynatrace kullanımı + ekip beyanı.
+ *  Dynatrace (BMW_Application_Usage, application_usage işi) beş durum, hiçbiri diğerine indirgenmez:
+ *  var | yok (her cluster ölçüldü, 0) | servis-yok (sayılamaz) | olculemedi | olcum-yok. */
+export type IntranetIstek = 'var' | 'yok' | 'servis-yok' | 'olculemedi' | 'olcum-yok';
 export type IntranetDegerlendirme =
   | 'kapatma-adayi'
   | 'teyit-bekliyor'
   | 'celiski'
-  | 'ocp-yok'
-  | 'sunulmuyor'
-  | 'kurulum-eksik';
+  | 'internet-route-da-var'
+  | 'zayif-kanit'
+  | 'eski-veri';
 export interface IntranetSatir {
   env: string;
   namespace: string;
   application: string;
+  /** 'intranet' (reencrypt route) | 'karisik' (intranet + internet route) */
+  ag: 'intranet' | 'karisik';
+  /** route adresleri */
+  adresler: string[];
+  clusters: string[];
+  /** son koşusu başarısız / eski veriden gelen cluster'lar */
+  eskiCluster: string[];
+  kapsam: { durum: 'tam' | 'kismi' | 'yok' | 'olculemedi'; var: number; toplam: number };
+  zayifKanit: boolean;
+  adKalibi: boolean;
+  /** ÖLÇÜM (Dynatrace). */
+  istek: IntranetIstek;
+  /** İstek sayısı — yalnız ölçüldüyse (null = ölçülemedi / ölçüm yok). */
+  req: number | null;
+  dynatrace: {
+    scanDate: string | null;
+    windowDays: number | null;
+    services: number | null;
+    note: string;
+    /** yalnız bazı cluster'lar ölçüldüyse 'ölçülen/toplam' */
+    olcum: string;
+  } | null;
   ekip: string[];
   ekipEposta: string[];
-  sunucular: IntranetSunucu[];
-  /** Aynı ortamın taranan intranet sunucularından bu uygulamanın HİÇ olmadığı sunucular. */
-  eksikSunucular: string[];
-  beklenen: number;
-  tamSunucu: number;
-  /** conf'u olan (nginx'in sunduğu) sunucu sayısı */
-  sunulan: number;
-  kurulum: 'tam' | 'kismi';
-  /** OpenShift envanterinde var mı (null = bilinmiyor). */
-  ocpVar: boolean | null;
-  /** ÖLÇÜM (mirror'lar toplanır). null = ölçüm yok — "yük almıyor" DEĞİL. */
-  yuk: ArkYuk | null;
   /** EKİBİN BEYANI — SPA Raporu ve SPA Taşımaları ile AYNI uygulama beyanı. */
   inUse: 'yes' | 'no' | 'unknown' | null;
   inUseBy: string | null;
@@ -160,12 +147,11 @@ export interface IntranetSatir {
 }
 export interface IntranetOrtam {
   env: string;
-  sunucular: string[];
-  taranan: string[];
   uygulama: number;
-  active: number;
-  idle: number;
-  unknown: number;
+  var: number;
+  yok: number;
+  servisYok: number;
+  olculemedi: number;
   olcumYok: number;
   beyanli: number;
   kapatmaAdayi: number;
@@ -176,13 +162,13 @@ export interface IntranetRapor {
   message?: string;
   notScanned?: boolean;
   ownersReady?: boolean;
+  kesifTarihi?: string | null;
+  dynatraceTarihi?: string | null;
+  dynatraceOkunamadi?: boolean;
   rows?: IntranetSatir[];
   envs?: IntranetOrtam[];
-  dizinTarihi?: string | null;
-  trafikTarihi?: string | null;
-  trafikTablo?: 'var' | 'yok' | 'okunamadi';
-  hostKipi?: boolean;
-  taranmayan?: string[];
+  sorunluCluster?: { cluster: string; durum: string; sebep: string }[];
+  hesaplandi?: string | null;
   cached?: boolean;
 }
 

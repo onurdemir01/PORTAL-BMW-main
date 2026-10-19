@@ -2,10 +2,11 @@
 //
 // Kullanıcı (2026-10-19): "Şimdi Intranet SPA'lere başlıyorum, bunlar yük alıyor mu almıyor mu
 // kullanılıyor mu vb rapor görebilmek istiyorum. Ve yine insanlardan kullanım durumu hakkında bilgi
-// girişi almak istiyorum."
+// girişi almak istiyorum." Aynı gün: "Dynatrace metriklerinden çıkarmamız gerekiyordu." Kararlar
+// (kullanıcı): liste OpenShift'teki intranet SPA'lar (Gerçek SPA Keşfi), yük mevcut Dynatrace
+// kullanım verisi (BMW_Application_Usage).
 //
-// SATIR = (ortam, namespace, uygulama); intranet nginx sunucularının dizin taramasından. İKİ SÜTUN,
-// İKİ AYRI ŞEY (SPA Raporu ile aynı): "Yük durumu" access log'dan ÖLÇÜLÜR, "Ekip beyanı" ekibin
+// İKİ SÜTUN, İKİ AYRI ŞEY (SPA Raporu ile aynı): "Dynatrace" ÖLÇÜLÜR, "Ekip beyanı" ekibin
 // dediğidir. Çelişki BİLGİDİR, biri diğerini ezmez. Beyan SPA Raporu / SPA Taşımaları ile AYNI
 // uygulama alanına yazılır: hangi ekrandan girilirse girilsin tek cevap.
 import { Fragment, useCallback, useMemo, useState } from 'react';
@@ -16,7 +17,6 @@ import {
   ChevronRightIcon,
 } from '@heroicons/react/24/outline';
 import { arkSpaApi, type IntranetRapor, type IntranetSatir } from '@/api/arkSpaApi';
-import { kismiAciklama } from '@/components/denetim/yukPencere';
 import { Pill } from '@/components/denetim/ui';
 import { GuncellemeRozeti } from '@/components/common/GuncellemeRozeti';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
@@ -27,14 +27,14 @@ import {
   BEYAN_ETIKET,
   DEGERLENDIRME,
   INTRANET_CSV_BASLIK,
-  durumEtiketi,
+  ISTEK,
   intranetCsvSatirlari,
+  istekIpucu,
+  istekMetni,
   suzIntranet,
-  sunucuYukMetni,
-  yukMetni,
   type BeyanSuzgec,
   type DegSuzgec,
-  type YukSuzgec,
+  type IstekSuzgec,
 } from '@/components/intranetSpa';
 
 const tarihMetni = (v: string) => {
@@ -48,93 +48,86 @@ const BEYAN_RENK: Record<string, string> = {
   no: 'var(--status-danger-text)',
   unknown: 'var(--status-warning-text)',
 };
+const ISTEK_RENK: Record<string, string> = {
+  var: 'var(--status-success)',
+  yok: 'var(--text-secondary)',
+  'servis-yok': 'var(--status-warning-text)',
+  olculemedi: 'var(--status-warning-text)',
+  'olcum-yok': 'var(--text-muted)',
+};
 
-/** Yük hücresi. ÜÇ DURUM: ölçülemedi ile "yük yok" AYNI ŞEY DEĞİL. */
-function YukHucre({ r }: { r: IntranetSatir }) {
-  const t = r.yuk;
-  if (!t)
-    return (
-      <span
-        style={{ color: 'var(--text-muted)' }}
-        title="Bu uygulama için ölçüm yok (uygulama bazlı log ölçümü üretilmemiş ya da hiçbir sunucuda conf yok) — “yük almıyor” DEMEK DEĞİL."
-      >
-        ölçüm yok
-      </span>
-    );
-  if (t.state === 'active')
-    return (
-      <span
-        style={{ color: 'var(--status-success)', fontWeight: 600 }}
-        title={`7 günde ${t.req7} istek, 24 saatte ${t.req24 ?? 0} (sağlık kontrolü hariç; ${t.hosts} sunucu toplamı)${t.lastSeen ? ` · son istek ${t.lastSeen}` : ''}`}
-      >
-        yük alıyor · {t.req7}
-      </span>
-    );
-  if (t.state === 'idle')
-    return (
-      <span
-        style={{ color: 'var(--text-secondary)' }}
-        title="Access log okundu; 7 günün tamamına ve uygulamayı sunan her sunucuya bakıldı, sağlık kontrolü dışında istek yok."
-      >
-        yük almıyor
-      </span>
-    );
+/** Dynatrace hücresi. Beş durum ayrı: "servis yok", "ölçülemedi", "ölçüm yok" hiçbiri "istek almıyor" DEĞİL. */
+function IstekHucre({ r }: { r: IntranetSatir }) {
   return (
     <span
-      style={{ color: 'var(--status-warning-text)' }}
-      title={
-        t.hosts === 0
-          ? 'Hiçbir sunucuda ölçülemedi (ayrıntı için satırı açın) — “yük almıyor” demek değil.'
-          : kismiAciklama(t)
-      }
+      style={{ color: ISTEK_RENK[r.istek], fontWeight: r.istek === 'var' ? 600 : undefined }}
+      title={istekIpucu(r)}
     >
-      {yukMetni(r)}
+      {istekMetni(r)}
+      {r.istek === 'var' && r.dynatrace?.windowDays ? (
+        <span className="font-normal text-[10px]" style={{ color: 'var(--text-muted)' }}>
+          {' '}
+          / {r.dynatrace.windowDays} gün
+        </span>
+      ) : null}
     </span>
   );
 }
 
-function SunucuAyrinti({ r }: { r: IntranetSatir }) {
+function Ayrinti({ r }: { r: IntranetSatir }) {
+  const d = r.dynatrace;
   return (
-    <div className="overflow-x-auto">
-      <table className="text-[11px] w-full">
-        <thead>
-          <tr style={{ color: 'var(--text-muted)' }}>
-            <th className="text-left px-2 py-1 font-semibold">Sunucu</th>
-            <th className="text-left px-2 py-1 font-semibold">Lokasyon</th>
-            <th className="text-left px-2 py-1 font-semibold">Kurulum</th>
-            <th className="text-left px-2 py-1 font-semibold">Paket / Dosyalar / Conf</th>
-            <th className="text-left px-2 py-1 font-semibold">Yük (bu sunucu)</th>
-            <th className="text-left px-2 py-1 font-semibold">Son istek</th>
-          </tr>
-        </thead>
-        <tbody>
-          {r.sunucular.map((s) => (
-            <tr key={s.host} className="border-t" style={{ borderColor: 'var(--border-subtle)' }}>
-              <td className="px-2 py-1 font-mono">{s.host}</td>
-              <td className="px-2 py-1">{s.site || '—'}</td>
-              <td
-                className="px-2 py-1"
-                style={{ color: s.status === 'OK' ? 'var(--status-success)' : 'var(--status-warning-text)' }}
-              >
-                {durumEtiketi(s.status)}
-              </td>
-              <td className="px-2 py-1 font-mono" title="/hysdeploy · /usr/nginx/applications · application-confs">
-                {[s.hys, s.app, s.conf].map((v) => (v ? '✓' : '✗')).join(' ')}
-              </td>
-              <td className="px-2 py-1">{sunucuYukMetni(s)}</td>
-              <td className="px-2 py-1 font-mono">{s.trafik?.son || '—'}</td>
-            </tr>
-          ))}
-          {r.eksikSunucular.map((h) => (
-            <tr key={h} className="border-t" style={{ borderColor: 'var(--border-subtle)' }}>
-              <td className="px-2 py-1 font-mono">{h}</td>
-              <td className="px-2 py-1" colSpan={5} style={{ color: 'var(--status-warning-text)' }}>
-                bu sunucuda uygulama yok (ortamın diğer sunucularında var)
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div className="grid gap-2 sm:grid-cols-2 text-[11px]" style={{ color: 'var(--text-secondary)' }}>
+      <div className="space-y-0.5">
+        <div className="font-semibold" style={{ color: 'var(--text-muted)' }}>
+          Route adresleri
+        </div>
+        {r.adresler.length ? (
+          r.adresler.map((a) => (
+            <div key={a} className="font-mono break-all">
+              {a}
+            </div>
+          ))
+        ) : (
+          <div>—</div>
+        )}
+        <div className="font-semibold pt-1" style={{ color: 'var(--text-muted)' }}>
+          Cluster’lar
+        </div>
+        <div className="font-mono">
+          {r.clusters.join(', ') || '—'}
+          {r.kapsam.toplam > 0 && (
+            <span className="font-sans" style={{ color: 'var(--text-muted)' }}>
+              {' '}
+              · ortamın {r.kapsam.toplam} cluster’ının {r.kapsam.var}’inde
+            </span>
+          )}
+        </div>
+        {r.eskiCluster.length > 0 && (
+          <div style={{ color: 'var(--status-warning-text)' }}>
+            eski veri (son keşif koşusu başarısız): {r.eskiCluster.join(', ')}
+          </div>
+        )}
+      </div>
+      <div className="space-y-0.5">
+        <div className="font-semibold" style={{ color: 'var(--text-muted)' }}>
+          Dynatrace
+        </div>
+        <div>{ISTEK[r.istek]?.hint}</div>
+        {d && (
+          <>
+            {r.req != null && d.windowDays != null && (
+              <div>
+                Son {d.windowDays} günde <b className="tabular-nums">{r.req}</b> istek
+              </div>
+            )}
+            {d.services != null && <div>{d.services} servis</div>}
+            {d.olcum && <div>ölçülen cluster: {d.olcum}</div>}
+            {d.scanDate && <div>ölçüm günü {d.scanDate}</div>}
+            {d.note && <div className="break-all">not: {d.note}</div>}
+          </>
+        )}
+      </div>
     </div>
   );
 }
@@ -143,7 +136,7 @@ export default function IntranetSpaPage() {
   const [data, setData] = useState<IntranetRapor | null>(null);
   const [yukleniyor, setYukleniyor] = useState(true);
   const [env, setEnv] = useState<string | null>(null);
-  const [yuk, setYuk] = useState<YukSuzgec>('all');
+  const [istek, setIstek] = useState<IstekSuzgec>('all');
   const [beyan, setBeyan] = useState<BeyanSuzgec>('all');
   const [deg, setDeg] = useState<DegSuzgec>('all');
   const [ekip, setEkip] = useState('all');
@@ -170,18 +163,19 @@ export default function IntranetSpaPage() {
   const secilenEnv = env ?? (envs.some((e) => e.env === 'PROD') ? 'PROD' : envs[0]?.env || 'all');
   const rows = useMemo(() => data?.rows || [], [data]);
   const satirlar = useMemo(
-    () => suzIntranet(rows, { env: secilenEnv, yuk, beyan, deg, ekip, q }),
-    [rows, secilenEnv, yuk, beyan, deg, ekip, q],
+    () => suzIntranet(rows, { env: secilenEnv, istek, beyan, deg, ekip, q }),
+    [rows, secilenEnv, istek, beyan, deg, ekip, q],
   );
   const ozet = useMemo(() => {
     const rs = rows.filter((r) => secilenEnv === 'all' || r.env === secilenEnv);
     const say = (f: (r: IntranetSatir) => boolean) => rs.filter(f).length;
     return {
       uygulama: rs.length,
-      active: say((r) => r.yuk?.state === 'active'),
-      idle: say((r) => r.yuk?.state === 'idle'),
-      unknown: say((r) => r.yuk?.state === 'unknown'),
-      none: say((r) => !r.yuk),
+      var: say((r) => r.istek === 'var'),
+      yok: say((r) => r.istek === 'yok'),
+      servisYok: say((r) => r.istek === 'servis-yok'),
+      olculemedi: say((r) => r.istek === 'olculemedi'),
+      olcumYok: say((r) => r.istek === 'olcum-yok'),
       bekleyen: say((r) => !r.inUse),
       aday: say((r) => r.degerlendirme.includes('kapatma-adayi')),
       celiski: say((r) => r.degerlendirme.includes('celiski')),
@@ -202,8 +196,7 @@ export default function IntranetSpaPage() {
         toast.error(c.message || 'Beyan kaydedilemedi.');
         return;
       }
-      // AYNI UYGULAMA BAŞKA ORTAM SATIRINDA DA DURUYORSA (aynı ns/app iki ortamın sunucusunda) o da
-      // aynı beyanı gösterir: beyan uygulama seviyesindedir.
+      // Beyan UYGULAMA seviyesindedir: aynı namespace/uygulama başka bir satırda da duruyorsa o da güncellenir.
       setData((d) =>
         d
           ? {
@@ -233,14 +226,7 @@ export default function IntranetSpaPage() {
     downloadCsv('nginx_ark_intranet_spa', INTRANET_CSV_BASLIK, intranetCsvSatirlari(satirlar, tarihMetni));
   }, [satirlar]);
 
-  const kutu = (
-    etiket: string,
-    sayi: number,
-    aktif: boolean,
-    tikla: () => void,
-    renk?: string,
-    ipucu?: string,
-  ) => (
+  const kutu = (etiket: string, sayi: number, aktif: boolean, tikla: () => void, renk?: string, ipucu?: string) => (
     <button
       type="button"
       onClick={tikla}
@@ -260,7 +246,7 @@ export default function IntranetSpaPage() {
       </div>
     </button>
   );
-  const yukKutu = (v: YukSuzgec) => () => setYuk((x) => (x === v ? 'all' : v));
+  const istekKutu = (v: IstekSuzgec) => () => setIstek((x) => (x === v ? 'all' : v));
   const degKutu = (v: DegSuzgec) => () => setDeg((x) => (x === v ? 'all' : v));
 
   return (
@@ -269,17 +255,15 @@ export default function IntranetSpaPage() {
         <div className="min-w-0 flex-1">
           <h1 className="text-lg font-semibold">Intranet SPA</h1>
           <p className="text-[12px] max-w-3xl" style={{ color: 'var(--text-secondary)' }}>
-            Intranet nginx sunucularına kurulu SPA uygulamaları. <b>Yük durumu</b> sunucuların access
-            log’undan ölçülür; <b>Ekip beyanı</b> sizin ifadenizdir. İkisi çelişebilir — ayda bir
-            kullanılan bir ekran ölçümde “yük almıyor” görünür ama siz kullanıyor olabilirsiniz. Beyan,
-            SPA Raporu ile aynı uygulama kaydına yazılır.
+            OpenShift’teki intranet SPA uygulamaları (Gerçek SPA Keşfi: pod’unda nginx olan ve route’u
+            intranet olanlar). <b>Dynatrace</b> sütunu uygulamanın Dynatrace servislerinin istek
+            sayısıdır; <b>Ekip beyanı</b> sizin ifadenizdir. İkisi çelişebilir. Beyan, SPA Raporu ile
+            aynı uygulama kaydına yazılır.
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          {data?.dizinTarihi && (
-            <GuncellemeRozeti etiket="dizin taraması" tarih={data.dizinTarihi} />
-          )}
-          {data?.trafikTarihi && <GuncellemeRozeti etiket="yük ölçümü" tarih={data.trafikTarihi} />}
+          {data?.kesifTarihi && <GuncellemeRozeti etiket="SPA keşfi" tarih={data.kesifTarihi} />}
+          {data?.dynatraceTarihi && <GuncellemeRozeti etiket="Dynatrace" tarih={data.dynatraceTarihi} />}
           <button
             type="button"
             onClick={() => yukle(true)}
@@ -306,26 +290,23 @@ export default function IntranetSpaPage() {
           className="text-[12px] rounded-lg px-3 py-2 border"
           style={{ color: 'var(--status-warning-text)', borderColor: 'var(--status-warning)' }}
         >
-          Intranet sunucularının dizin taraması henüz yok (nginx_config_audit job’ı koşmalı). Bu “SPA
-          yok” demek değildir.
+          {data.message || 'Gerçek SPA Keşfi henüz yok'} — bu “intranet SPA yok” demek değildir.
         </div>
       )}
-      {data?.ok && !data.notScanned && (data.trafikTablo !== 'var' || data.hostKipi === false) && (
+      {data?.ok && data.dynatraceOkunamadi && (
         <div
           className="text-[12px] rounded-lg px-3 py-2 border"
           style={{ color: 'var(--status-warning-text)', borderColor: 'var(--status-warning)' }}
         >
-          {data.trafikTablo === 'yok'
-            ? 'Yük ölçümü tablosu (Nginx_Spa_Traffic) yok: yük sütunu “ölçüm yok” gösterir.'
-            : data.trafikTablo === 'okunamadi'
-              ? 'Yük ölçümü okunamadı: yük sütunu “ölçüm yok” gösterir — bu “yük almıyor” demek değildir.'
-              : 'Son yük ölçümünde uygulama bazlı (host kipi) satır yok: SPA yük ölçümü işi intranet sunucularında koşmalı.'}
+          Dynatrace kullanım verisi (BMW_Application_Usage) okunamadı: bütün satırlar “ölçülemedi”
+          gösterir — bu “istek almıyor” demek değildir.
         </div>
       )}
-      {!!data?.taranmayan?.length && !data.notScanned && (
+      {!!data?.sorunluCluster?.length && (
         <div className="text-[11px]" style={{ color: 'var(--status-warning-text)' }}>
-          Son dizin taramasında satırı olmayan intranet sunucuları: {data.taranmayan.join(', ')} — bu
-          sunuculardaki uygulamalar listede yok.
+          Keşfi eksik ya da eski olan cluster’lar:{' '}
+          {data.sorunluCluster.map((c) => `${c.cluster} (${c.durum}${c.sebep ? `: ${c.sebep}` : ''})`).join(', ')} —
+          bu cluster’lardaki intranet SPA’lar listede eksik ya da eski olabilir.
         </div>
       )}
 
@@ -356,14 +337,15 @@ export default function IntranetSpaPage() {
       {data?.ok && !data.notScanned && (
         <div className="flex flex-wrap gap-2" data-testid="intranet-ozet">
           {kutu('uygulama', ozet.uygulama, false, () => {
-            setYuk('all');
+            setIstek('all');
             setDeg('all');
             setBeyan('all');
           }, undefined, 'Süzgeçleri temizler')}
-          {kutu('yük alıyor', ozet.active, yuk === 'active', yukKutu('active'), 'var(--status-success)')}
-          {kutu('yük almıyor', ozet.idle, yuk === 'idle', yukKutu('idle'), undefined, '7 günün tamamı ve her sunucu ölçüldü, istek yok')}
-          {kutu('ölçülemedi', ozet.unknown, yuk === 'unknown', yukKutu('unknown'), 'var(--status-warning-text)')}
-          {kutu('ölçüm yok', ozet.none, yuk === 'none', yukKutu('none'))}
+          {kutu('istek alıyor', ozet.var, istek === 'var', istekKutu('var'), 'var(--status-success)', ISTEK.var.hint)}
+          {kutu('istek almıyor', ozet.yok, istek === 'yok', istekKutu('yok'), undefined, ISTEK.yok.hint)}
+          {kutu('servis yok', ozet.servisYok, istek === 'servis-yok', istekKutu('servis-yok'), 'var(--status-warning-text)', ISTEK['servis-yok'].hint)}
+          {kutu('ölçülemedi', ozet.olculemedi, istek === 'olculemedi', istekKutu('olculemedi'), 'var(--status-warning-text)', ISTEK.olculemedi.hint)}
+          {kutu('ölçüm yok', ozet.olcumYok, istek === 'olcum-yok', istekKutu('olcum-yok'), undefined, ISTEK['olcum-yok'].hint)}
           {kutu('beyan bekleyen', ozet.bekleyen, beyan === 'bekleyen', () => setBeyan((x) => (x === 'bekleyen' ? 'all' : 'bekleyen')))}
           {kutu('kapatma adayı', ozet.aday, deg === 'kapatma-adayi', degKutu('kapatma-adayi'), 'var(--status-danger-text)', DEGERLENDIRME['kapatma-adayi'].hint)}
           {kutu('çelişki', ozet.celiski, deg === 'celiski', degKutu('celiski'), 'var(--status-warning-text)', DEGERLENDIRME.celiski.hint)}
@@ -372,17 +354,18 @@ export default function IntranetSpaPage() {
 
       <div className="flex flex-wrap items-center gap-2">
         <select
-          aria-label="Yük durumuna göre süz"
-          value={yuk}
-          onChange={(e) => setYuk(e.target.value as YukSuzgec)}
+          aria-label="Dynatrace durumuna göre süz"
+          value={istek}
+          onChange={(e) => setIstek(e.target.value as IstekSuzgec)}
           className={SELECT}
           style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)' }}
         >
-          <option value="all">yük: hepsi</option>
-          <option value="active">yük alıyor</option>
-          <option value="idle">yük almıyor</option>
-          <option value="unknown">ölçülemedi (7 gün ölçülemeyen “istek yok” dahil)</option>
-          <option value="none">ölçüm yok</option>
+          <option value="all">Dynatrace: hepsi</option>
+          {(Object.keys(ISTEK) as (keyof typeof ISTEK)[]).map((k) => (
+            <option key={k} value={k}>
+              {ISTEK[k].label}
+            </option>
+          ))}
         </select>
         <select
           aria-label="Beyana göre süz"
@@ -432,8 +415,8 @@ export default function IntranetSpaPage() {
           aria-label="Uygulama ara"
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="uygulama, namespace, ekip ya da sunucu ara"
-          className="px-2.5 py-1.5 text-xs border rounded-lg w-64 max-w-full"
+          placeholder="uygulama, namespace, route, cluster ya da ekip ara"
+          className="px-2.5 py-1.5 text-xs border rounded-lg w-72 max-w-full"
           style={{ borderColor: 'var(--border)' }}
         />
         <button
@@ -458,8 +441,8 @@ export default function IntranetSpaPage() {
               <th className="text-left px-2 py-1.5">Ekip Beyanı</th>
               <th className="text-left px-2 py-1.5">Uygulama</th>
               <th className="text-left px-2 py-1.5">Ekip</th>
-              <th className="text-left px-2 py-1.5">Yük Durumu</th>
-              <th className="text-left px-2 py-1.5">Sunucular</th>
+              <th className="text-left px-2 py-1.5">Dynatrace</th>
+              <th className="text-left px-2 py-1.5">Route / cluster</th>
               <th className="text-left px-2 py-1.5">Değerlendirme</th>
               <th className="text-left px-2 py-1.5">Açıklama</th>
               <th className="text-left px-2 py-1.5">Beyan Eden</th>
@@ -513,9 +496,9 @@ export default function IntranetSpaPage() {
                       )}
                     </td>
                     <td className="px-2 py-1">
-                      <YukHucre r={r} />
+                      <IstekHucre r={r} />
                     </td>
-                    <td className="px-2 py-1 whitespace-nowrap">
+                    <td className="px-2 py-1">
                       <button
                         type="button"
                         aria-expanded={ac}
@@ -527,14 +510,17 @@ export default function IntranetSpaPage() {
                             return n;
                           })
                         }
-                        className="inline-flex items-center gap-1 text-[11px] underline-offset-2 hover:underline"
-                        title="Sunucu başına kurulum ve yük"
+                        className="inline-flex items-start gap-1 text-[11px] text-left underline-offset-2 hover:underline"
+                        title="Route adresleri, cluster’lar ve Dynatrace ayrıntısı"
                       >
-                        {ac ? <ChevronDownIcon className="w-3 h-3" /> : <ChevronRightIcon className="w-3 h-3" />}
-                        <span className="tabular-nums">
-                          {r.tamSunucu}/{r.beklenen}
-                        </span>{' '}
-                        tam kurulu
+                        {ac ? <ChevronDownIcon className="w-3 h-3 mt-0.5" /> : <ChevronRightIcon className="w-3 h-3 mt-0.5" />}
+                        <span>
+                          <span className="font-mono break-all">{r.adresler[0] || r.application}</span>
+                          {r.adresler.length > 1 && <span> +{r.adresler.length - 1}</span>}
+                          <span className="block" style={{ color: 'var(--text-muted)' }}>
+                            {r.clusters.length} cluster
+                          </span>
+                        </span>
                       </button>
                     </td>
                     <td className="px-2 py-1">
@@ -578,7 +564,7 @@ export default function IntranetSpaPage() {
                   {ac && (
                     <tr style={{ background: 'var(--bg-elevated)' }}>
                       <td colSpan={8} className="px-3 py-2">
-                        <SunucuAyrinti r={r} />
+                        <Ayrinti r={r} />
                       </td>
                     </tr>
                   )}
@@ -600,19 +586,19 @@ export default function IntranetSpaPage() {
         <summary className="cursor-pointer select-none">Bu rapor neyi gösteriyor?</summary>
         <div className="mt-1 space-y-1 max-w-3xl">
           <p>
-            Kaynak: intranet nginx sunucularının dizin taraması (/hysdeploy, /usr/nginx/applications,
-            application-confs). Satır, ortam + namespace + uygulama başınadır; aynı uygulamanın mirror
-            sunucuları tek satırda toplanır, “Sunucular” sütunundan açılır.
+            Liste Nginx Hub › Gerçek SPA Keşfi ile aynı hesaptan gelir: route’unun ardındaki pod’da
+            nginx bulunan (SPA) ve route’u intranet (reencrypt) olan uygulamalar. Hem intranet hem
+            internet route’u olanlar “internet route’u da var” etiketiyle listededir.
           </p>
           <p>
-            Yük, uygulamayı sunan (conf’u olan) her sunucunun ortak access log’unda Host başlığına göre
-            sayılır ve sunucular toplanır. “Yük almıyor” yalnızca 7 günün tamamı ve her sunucu
-            ölçülmüşken yazılır; “son 3 günde istek yok (7 gün ölçülemedi)” ya da “sunucuda sahipsiz
-            istek var” satırları <b>yük almıyor değildir</b>.
+            Dynatrace sütunu her gece koşan kullanım işinin (application_usage) uygulamanın Dynatrace
+            servislerinde saydığı istektir; cluster’lar toplanır. “İstek almıyor” yalnızca her cluster
+            ölçülmüşken yazılır. “Dynatrace servisi yok”, “ölçülemedi” ve “ölçüm yok” <b>istek almıyor
+            değildir</b>: Dynatrace bu uygulamayı sayamamıştır.
           </p>
           <p>
-            Değerlendirme ölçümle beyanı yan yana okur: “kapatma adayı” = yük yok ve ekip “kullanmıyor”
-            dedi; “çelişki” = yük var ama ekip “kullanmıyor” dedi.
+            Değerlendirme ölçümle beyanı yan yana okur: “kapatma adayı” = istek yok ve ekip
+            “kullanmıyor” dedi; “çelişki” = istek var ama ekip “kullanmıyor” dedi.
           </p>
         </div>
       </details>

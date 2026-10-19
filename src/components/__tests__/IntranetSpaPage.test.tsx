@@ -1,13 +1,15 @@
 // src/components/__tests__/IntranetSpaPage.test.tsx — Nginx ARK SPA > Intranet SPA (2026-10-19).
 //
-// Kullanıcı: intranet SPA'lar yük alıyor mu / kullanılıyor mu raporu + ekiplerden kullanım beyanı.
+// Kullanıcı: intranet SPA'lar kullanılıyor mu raporu + ekiplerden kullanım beyanı. Düzeltme (aynı
+// gün): yük Dynatrace'ten (BMW_Application_Usage), liste OpenShift'teki intranet SPA'lar.
 //   IU1 varsayılan ortam PROD; ortam düğmesiyle diğer ortamlar; özet kutuları seçili ortamdan
-//   IU2 ölçüm üç durum: yük alıyor / yük almıyor / ölçülemedi (kısa pencere) / ölçüm yok AYRI
-//   IU3 beyan: seçim uygulama + namespace ile gider, satır (ve aynı uygulamanın diğer ortam satırı)
-//       güncellenir, beyan eden yazılır; hata toast'a çıkar
-//   IU4 özet kutusu süzgeç gibi çalışır (kapatma adayı), ikinci tıklama kaldırır
-//   IU5 sunucu ayrıntısı: sunucu başına kurulum + yük nedeni, ortamın eksik sunucusu
-//   IU6 ölçüm tablosu okunamadıysa bant söyler; CSV ölçülemeyene 0 yazmaz
+//   IU2 Dynatrace beş durum ayrı: istek alıyor (sayı + pencere) / almıyor / servis yok / ölçülemedi /
+//       ölçüm yok — son üçü "istek almıyor" YAZMAZ
+//   IU3 beyan uygulama + namespace ile gider, aynı uygulamanın diğer satırı da güncellenir, beyan
+//       eden yazılır; hata toast'a çıkar
+//   IU4 özet kutuları süzgeç gibi çalışır (kapatma adayı, beyan bekleyen), ikinci tıklama kaldırır
+//   IU5 satır ayrıntısı: route adresleri, cluster'lar, Dynatrace penceresi / servis / not
+//   IU6 Dynatrace okunamadı ve sorunlu cluster bantları; CSV ölçülemeyene sayı yazmaz
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { render } from '@/test/test-utils';
@@ -20,34 +22,28 @@ const mockRapor = vi.hoisted(() => vi.fn());
 const mockBeyan = vi.hoisted(() => vi.fn());
 vi.mock('@/api/arkSpaApi', () => ({ arkSpaApi: { intranet: mockRapor, intranetBeyan: mockBeyan } }));
 
-const S = (host: string, o: Partial<IntranetSatir['sunucular'][number]> = {}) => ({
-  host, site: 'Pendik', hys: true, app: true, conf: true, status: 'OK', confName: '', trafik: null, ...o,
-});
+const DT = { scanDate: '2026-10-18', windowDays: 35, services: 2, note: '', olcum: '' };
 const R = (application: string, o: Partial<IntranetSatir> = {}): IntranetSatir => ({
-  env: 'PROD', namespace: 'kart-prod', application, ekip: ['GT-Kart'], ekipEposta: ['kart@banka.com'],
-  sunucular: [S('GBNGXP50'), S('GBNGXP51')], eksikSunucular: [], beklenen: 2, tamSunucu: 2, sunulan: 2,
-  kurulum: 'tam', ocpVar: true, yuk: null, inUse: null, inUseBy: null, inUseAt: null, note: '', degerlendirme: [], ...o,
-});
-const yuk = (state: 'active' | 'idle' | 'unknown', o = {}) => ({
-  state, req7: state === 'active' ? 42 : 0, req24: 3, hc24: 10, lastSeen: '2026-10-18 09:00:00', firstSeen: null,
-  pencereSaat: 200, sampled: false, hosts: 2, unknownHosts: 0, missingHosts: 0, ...o,
+  env: 'PROD', namespace: 'kart-prod', application, ag: 'intranet',
+  adresler: [`${application}-kart-prod.apps.fw.garanti.com.tr`], clusters: ['gbocpp1', 'gbocpp2'], eskiCluster: [],
+  kapsam: { durum: 'tam', var: 2, toplam: 2 }, zayifKanit: false, adKalibi: true,
+  istek: 'var', req: 1234, dynatrace: DT, ekip: ['GT-Kart'], ekipEposta: ['kart@banka.com'],
+  inUse: null, inUseBy: null, inUseAt: null, note: '', degerlendirme: [], ...o,
 });
 function rapor(o: Partial<IntranetRapor> = {}): IntranetRapor {
   return {
-    ok: true, trafikTablo: 'var', hostKipi: true, dizinTarihi: '2026-10-18', trafikTarihi: '2026-10-18', taranmayan: [],
+    ok: true, kesifTarihi: '2026-10-18', dynatraceTarihi: '2026-10-18', dynatraceOkunamadi: false, sorunluCluster: [],
     rows: [
-      R('aktif-app-v1', { yuk: yuk('active') }),
-      R('atil-app-v1', { yuk: yuk('idle'), inUse: 'no', inUseBy: 'ayse', degerlendirme: ['kapatma-adayi'] }),
-      R('kisa-app-v1', { yuk: yuk('unknown', { pencereSaat: 72, kismi: ['pencere'] }),
-        sunucular: [S('GBNGXP50', { trafik: { durum: 'sifir-kismi', req7: 0, pencereSa: 72, kismi: ['pencere'] } }),
-          S('GBNGXP51', { trafik: { durum: 'olculemedi', neden: 'log', hata: 'log dosyasi yok: /web_log/x.log' } })],
-        eksikSunucular: ['GBNGXP52'], tamSunucu: 2, beklenen: 3, kurulum: 'kismi', degerlendirme: ['kurulum-eksik'] }),
-      R('olcumsuz-app-v1'),
-      R('aktif-app-v1', { env: 'TEST', namespace: 'kart-prod', yuk: yuk('active') }),
+      R('aktif-ui'),
+      R('atil-ui', { istek: 'yok', req: 0, inUse: 'no', inUseBy: 'ayse', degerlendirme: ['kapatma-adayi'] }),
+      R('servissiz-ui', { istek: 'servis-yok', req: 0, dynatrace: { ...DT, services: 0 } }),
+      R('yarim-ui', { istek: 'olculemedi', req: null, dynatrace: { ...DT, services: 3, note: 'servis okunamadi: 403', olcum: '1/2' } }),
+      R('olcumsuz-ui', { istek: 'olcum-yok', req: null, dynatrace: null }),
+      R('aktif-ui', { env: 'TEST', namespace: 'kart-prod', istek: 'var', req: 9 }),
     ],
     envs: [
-      { env: 'TEST', sunucular: ['GBNGXT50'], taranan: ['GBNGXT50'], uygulama: 1, active: 1, idle: 0, unknown: 0, olcumYok: 0, beyanli: 0, kapatmaAdayi: 0, celiski: 0 },
-      { env: 'PROD', sunucular: ['GBNGXP50'], taranan: ['GBNGXP50'], uygulama: 4, active: 1, idle: 1, unknown: 1, olcumYok: 1, beyanli: 1, kapatmaAdayi: 1, celiski: 0 },
+      { env: 'TEST', uygulama: 1, var: 1, yok: 0, servisYok: 0, olculemedi: 0, olcumYok: 0, beyanli: 0, kapatmaAdayi: 0, celiski: 0 },
+      { env: 'PROD', uygulama: 5, var: 1, yok: 1, servisYok: 1, olculemedi: 1, olcumYok: 1, beyanli: 1, kapatmaAdayi: 1, celiski: 0 },
     ],
     ...o,
   };
@@ -64,89 +60,103 @@ describe('Intranet SPA', () => {
   it('IU1 varsayılan ortam PROD; ortam düğmesi; özet seçili ortamdan', async () => {
     mockRapor.mockResolvedValue(rapor());
     render(<IntranetSpaPage />);
-    await screen.findByText('atil-app-v1');
-    expect(govdeSatirlari()).toHaveLength(4);
+    await screen.findByText('atil-ui');
+    expect(govdeSatirlari()).toHaveLength(5);
     const ozet = screen.getByTestId('intranet-ozet');
-    expect(within(ozet).getByRole('button', { name: /uygulama\s*4/ })).toBeTruthy();
+    expect(within(ozet).getByRole('button', { name: /uygulama\s*5/ })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /TEST/ }));
     expect(govdeSatirlari()).toHaveLength(1);
     expect(within(ozet).getByRole('button', { name: /uygulama\s*1/ })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /tüm ortamlar/ }));
-    expect(govdeSatirlari()).toHaveLength(5);
+    expect(govdeSatirlari()).toHaveLength(6);
   });
 
-  it('IU2 ölçüm üç durum ayrı', async () => {
+  it('IU2 Dynatrace beş durum ayrı', async () => {
     mockRapor.mockResolvedValue(rapor());
     render(<IntranetSpaPage />);
-    await screen.findByText('atil-app-v1');
-    expect(satirMetni('aktif-app-v1')).toMatch(/yük alıyor · 42/);
-    expect(satirMetni('atil-app-v1')).toMatch(/yük almıyor/);
-    expect(satirMetni('kisa-app-v1')).toMatch(/son 3 günde istek yok \(7 gün ölçülemedi\)/);
-    expect(satirMetni('kisa-app-v1')).not.toMatch(/yük almıyor/);
-    expect(satirMetni('olcumsuz-app-v1')).toMatch(/ölçüm yok/);
+    await screen.findByText('atil-ui');
+    expect(satirMetni('aktif-ui')).toMatch(/istek alıyor · 1\.234\s*\/ 35 gün/);
+    expect(satirMetni('atil-ui')).toMatch(/istek almıyor/);
+    for (const [app, metin] of [['servissiz-ui', /Dynatrace servisi yok/], ['yarim-ui', /ölçülemedi/], ['olcumsuz-ui', /ölçüm yok/]] as const) {
+      expect(satirMetni(app)).toMatch(metin);
+      expect(satirMetni(app)).not.toMatch(/istek almıyor/);
+    }
+    // ipucu Dynatrace'in notunu, kısmi ölçümü ve pencereyi söyler
+    const yarim = govdeSatirlari().find((r) => r.textContent?.includes('yarim-ui'))!;
+    const ipucu = within(yarim).getByText('ölçülemedi').getAttribute('title') || '';
+    expect(ipucu).toMatch(/Not: servis okunamadi: 403/);
+    expect(ipucu).toMatch(/Ölçülen cluster: 1\/2/);
+    const aktif = govdeSatirlari().find((r) => r.textContent?.includes('aktif-ui'))!;
+    expect(within(aktif).getByText(/istek alıyor/).getAttribute('title')).toMatch(/Son 35 günde 1\.234 istek/);
   });
 
-  it('IU3 beyan uygulama seviyesinde yazılır; aynı uygulamanın diğer ortam satırı da güncellenir; hata toast', async () => {
+  it('IU3 beyan uygulama seviyesinde yazılır; aynı uygulamanın diğer satırı da güncellenir; hata toast', async () => {
     mockRapor.mockResolvedValue(rapor());
     mockBeyan.mockResolvedValue({ ok: true, inUseBy: 'veli', inUseAt: '2026-10-19T08:00:00.000Z' });
     render(<IntranetSpaPage />);
-    await screen.findByText('atil-app-v1');
-    fireEvent.change(screen.getByLabelText('aktif-app-v1 ekip beyanı'), { target: { value: 'yes' } });
-    await waitFor(() => expect(mockBeyan).toHaveBeenCalledWith({ namespace: 'kart-prod', application: 'aktif-app-v1', inUse: 'yes', note: '' }));
-    await waitFor(() => expect(satirMetni('aktif-app-v1')).toMatch(/veli/));
+    await screen.findByText('atil-ui');
+    fireEvent.change(screen.getByLabelText('aktif-ui ekip beyanı'), { target: { value: 'yes' } });
+    await waitFor(() => expect(mockBeyan).toHaveBeenCalledWith({ namespace: 'kart-prod', application: 'aktif-ui', inUse: 'yes', note: '' }));
+    await waitFor(() => expect(satirMetni('aktif-ui')).toMatch(/veli/));
     fireEvent.click(screen.getByRole('button', { name: /tüm ortamlar/ }));
-    const ikiSatir = govdeSatirlari().filter((r) => r.textContent?.includes('aktif-app-v1'));
+    const ikiSatir = govdeSatirlari().filter((r) => r.textContent?.includes('aktif-ui'));
     expect(ikiSatir).toHaveLength(2);
     for (const r of ikiSatir) expect(r.textContent).toMatch(/veli/);
     const hata = vi.spyOn(toast, 'error');
     mockBeyan.mockResolvedValue({ ok: false, message: 'Geçersiz beyan.' });
-    fireEvent.change(screen.getAllByLabelText('olcumsuz-app-v1 ekip beyanı')[0], { target: { value: 'no' } });
+    fireEvent.change(screen.getByLabelText('olcumsuz-ui ekip beyanı'), { target: { value: 'no' } });
     await waitFor(() => expect(hata).toHaveBeenCalledWith('Geçersiz beyan.'));
-    expect(satirMetni('olcumsuz-app-v1')).not.toMatch(/veli/);
+    expect(satirMetni('olcumsuz-ui')).not.toMatch(/veli/);
     hata.mockRestore();
   });
 
-  it('IU4 özet kutusu süzgeç gibi çalışır', async () => {
+  it('IU4 özet kutuları süzgeç gibi çalışır', async () => {
     mockRapor.mockResolvedValue(rapor());
     render(<IntranetSpaPage />);
-    await screen.findByText('atil-app-v1');
-    const kutu = within(screen.getByTestId('intranet-ozet')).getByRole('button', { name: /kapatma adayı/ });
+    await screen.findByText('atil-ui');
+    const ozet = screen.getByTestId('intranet-ozet');
+    const kutu = within(ozet).getByRole('button', { name: /kapatma adayı/ });
     fireEvent.click(kutu);
     expect(kutu.getAttribute('aria-pressed')).toBe('true');
-    expect(govdeSatirlari().map((r) => r.textContent)).toEqual([expect.stringContaining('atil-app-v1')]);
+    expect(govdeSatirlari().map((r) => r.textContent)).toEqual([expect.stringContaining('atil-ui')]);
     fireEvent.click(kutu);
-    expect(govdeSatirlari()).toHaveLength(4);
-    // beyan bekleyen: yalniz beyani OLMAYAN satirlar
-    fireEvent.click(within(screen.getByTestId('intranet-ozet')).getByRole('button', { name: /beyan bekleyen/ }));
+    expect(govdeSatirlari()).toHaveLength(5);
+    fireEvent.click(within(ozet).getByRole('button', { name: /servis yok/ }));
+    expect(govdeSatirlari().map((r) => r.textContent)).toEqual([expect.stringContaining('servissiz-ui')]);
+    fireEvent.click(within(ozet).getByRole('button', { name: /servis yok/ }));
+    fireEvent.click(within(ozet).getByRole('button', { name: /beyan bekleyen/ }));
     const kalan = govdeSatirlari().map((r) => r.textContent || '');
-    expect(kalan).toHaveLength(3);
-    expect(kalan.some((t) => t.includes('atil-app-v1'))).toBe(false);
+    expect(kalan).toHaveLength(4);
+    expect(kalan.some((t) => t.includes('atil-ui'))).toBe(false);
   });
 
-  it('IU5 sunucu ayrıntısı: kurulum, yük nedeni, eksik sunucu', async () => {
+  it('IU5 satır ayrıntısı: route, cluster, Dynatrace ayrıntısı', async () => {
     mockRapor.mockResolvedValue(rapor());
     render(<IntranetSpaPage />);
-    await screen.findByText('atil-app-v1');
-    const satir = govdeSatirlari().find((r) => r.textContent?.includes('kisa-app-v1'))!;
-    const dugme = within(satir).getByRole('button', { name: /2\/3\s*tam kurulu/ });
+    await screen.findByText('atil-ui');
+    const satir = govdeSatirlari().find((r) => r.textContent?.includes('yarim-ui'))!;
+    const dugme = within(satir).getByRole('button', { name: /yarim-ui-kart-prod\.apps\.fw\.garanti\.com\.tr/ });
     fireEvent.click(dugme);
     expect(dugme.getAttribute('aria-expanded')).toBe('true');
     const metin = document.body.textContent || '';
-    expect(metin).toMatch(/log okunamadı: log dosyasi yok/);
-    expect(metin).toMatch(/GBNGXP52\s*bu sunucuda uygulama yok/);
+    expect(metin).toMatch(/gbocpp1, gbocpp2/);
+    expect(metin).toMatch(/ölçülen cluster: 1\/2/);
+    expect(metin).toMatch(/not: servis okunamadi: 403/);
+    expect(metin).toMatch(/3 servis/);
   });
 
-  it('IU6 ölçüm okunamadı bandı; CSV ölçülemeyene sayı yazmaz', async () => {
-    mockRapor.mockResolvedValue(rapor({ trafikTablo: 'okunamadi' }));
+  it('IU6 Dynatrace okunamadı ve sorunlu cluster bantları; CSV ölçülemeyene sayı yazmaz', async () => {
+    mockRapor.mockResolvedValue(rapor({ dynatraceOkunamadi: true, sorunluCluster: [{ cluster: 'gbocpp2', durum: 'login', sebep: 'login basarisiz' }] }));
     render(<IntranetSpaPage />);
-    await screen.findByText('atil-app-v1');
-    expect(screen.getByText(/Yük ölçümü okunamadı/)).toBeTruthy();
+    await screen.findByText('atil-ui');
+    expect(screen.getByText(/Dynatrace kullanım verisi \(BMW_Application_Usage\) okunamadı/)).toBeTruthy();
+    expect(screen.getByText(/gbocpp2 \(login: login basarisiz\)/)).toBeTruthy();
     const rows = intranetCsvSatirlari(rapor().rows!, (v) => v);
     const i = (k: (typeof INTRANET_CSV_BASLIK)[number]) => INTRANET_CSV_BASLIK.indexOf(k);
-    const olcumsuz = rows.find((r) => r[i('uygulama')] === 'olcumsuz-app-v1')!;
-    expect([olcumsuz[i('yuk_durumu')], olcumsuz[i('istek_7g')]]).toEqual(['ölçüm yok', '']);
-    const kisa = rows.find((r) => r[i('uygulama')] === 'kisa-app-v1')!;
-    expect(kisa[i('eksik_sunucular')]).toBe('GBNGXP52');
+    const yarim = rows.find((r) => r[i('uygulama')] === 'yarim-ui')!;
+    expect([yarim[i('dynatrace_durumu')], yarim[i('dynatrace_istek')]]).toEqual(['ölçülemedi', '']);
+    const aktif = rows.find((r) => r[i('uygulama')] === 'aktif-ui')!;
+    expect([aktif[i('dynatrace_istek')], aktif[i('dynatrace_gun')]]).toEqual(['1234', '35']);
     expect(rows[0]).toHaveLength(INTRANET_CSV_BASLIK.length);
   });
 });
