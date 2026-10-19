@@ -21,7 +21,22 @@
 //
 // EKIP BEYANI SPA Raporu ve SPA Tasimalari ile AYNI uygulama kaydina yazilir (index.cjs
 // uygulamaBeyaniYaz): ayni uygulama icin TEK cevap. OLCUM ve BEYAN AYRI; celiski BILGIDIR.
+//
+// INTRANET SUNUCU KURULUMU (kullanici, ayni gun: "Intranet SPA sunucularina deployment tamamlanmis
+// tamamlanmamis mi bu bilgiyi de gormek istiyorum"): dbo.Nginx_Intranet_Audit (nginx_config_audit
+// dizin taramasi) - uygulamanin KENDI ortaminin intranet nginx sunucularinda (nginx-hosts
+// INTRANET_HOSTS, envOfHost) /hysdeploy/<ns>/<app>, /usr/nginx/applications/<ns>/<app> ve
+// application-confs/<app>-<ns>.conf var mi. Eslesme SPA Kesfi ile ayni: (ns, app) aynen; tutmazsa
+// dizin satirinin '-prod' ekli ns'i ('ek-prod'). Durum:
+//   tamam       ortamin TARANAN her intranet sunucusunda status OK (uc parca da var)
+//   kismi       bazi sunucularda var / bazi parcalar eksik
+//   yok         ortamin taranan sunucularinin HICBIRINDE izi yok
+//   olculemedi  dizin tablosu okunamadi ya da ortamin intranet sunuculari o gun taranmadi
+//   sunucu-yok  uygulamanin ortaminin intranet sunucusu yok (ortam bilinmiyor)
+// Taranmayan sunucu "eksik" SAYILMAZ: ayrica listelenir.
 'use strict';
+
+const { intranetHosts, envOfHost, siteOfHost } = require('../audit/nginx-hosts.cjs');
 
 const TTL_MS = 60 * 1000;
 let _cache = { at: 0, value: null };
@@ -53,6 +68,78 @@ function degerlendir(r) {
   return d;
 }
 
+const bit = (v) => v === true || v === 1 || v === '1';
+
+/** Dizin satirlari -> "ns|app" (ve '-prod' ekli ns) -> satirlar; taranan sunucular. Sayimlar
+ *  yalniz uygulamanin ortaminin intranet sunuculariyla kesisir (kurulumHesapla). */
+function dizinIndeksi(dirRows) {
+  const kesin = new Map();
+  const ekProd = new Map();
+  const taranan = new Set();
+  let tarih = '';
+  const ekle = (m, k, r) => {
+    if (!m.has(k)) m.set(k, []);
+    m.get(k).push(r);
+  };
+  for (const r of dirRows || []) {
+    const host = U(r.host);
+    taranan.add(host);
+    const g = T(r.scan_date).slice(0, 10);
+    if (g > tarih) tarih = g;
+    const ns = L(r.namespace);
+    const app = L(r.application);
+    if (!ns || !app) continue;
+    ekle(kesin, `${ns}|${app}`, r);
+    if (!ns.endsWith('-prod')) ekle(ekProd, `${ns}-prod|${app}`, r);
+  }
+  return { kesin, ekProd, taranan, tarih };
+}
+
+/**
+ * Uygulamanin KENDI ortaminin intranet sunucularindaki kurulum (bkz. dosya basi KURULUM).
+ * @returns {{durum, tam, beklenen, sunucular, eksik, taranmayan, eslesme}}
+ */
+// Dizin okunamadiysa indeks bostur (buildIntranetRapor): hicbir sunucu taranmis sayilmaz ->
+// 'olculemedi' ve beklenen sunucularin hepsi 'taranmayan'.
+function kurulumHesapla(env, ns, app, idx, hosts) {
+  const beklenenHost = hosts.filter((h) => envOfHost(h) === env);
+  const bos = { tam: 0, beklenen: 0, sunucular: [], eksik: [], taranmayan: [], eslesme: '' };
+  if (!beklenenHost.length) return { ...bos, durum: 'sunucu-yok' };
+  const k = `${L(ns)}|${L(app)}`;
+  let satirlar = (idx.kesin.get(k) || []).filter((r) => beklenenHost.includes(U(r.host)));
+  let eslesme = satirlar.length ? 'kesin' : '';
+  if (!satirlar.length) {
+    satirlar = (idx.ekProd.get(k) || []).filter((r) => beklenenHost.includes(U(r.host)));
+    if (satirlar.length) eslesme = 'ek-prod';
+  }
+  const taranan = beklenenHost.filter((h) => idx.taranan.has(h));
+  const taranmayan = beklenenHost.filter((h) => !idx.taranan.has(h));
+  const byHost = new Map(satirlar.map((r) => [U(r.host), r]));
+  const sunucular = taranan.map((h) => {
+    const r = byHost.get(h);
+    return r
+      ? { host: h, site: siteOfHost(h) || '', hys: bit(r.hys_deployed), app: bit(r.app_deployed), conf: bit(r.conf_exists), status: T(r.status) }
+      : { host: h, site: siteOfHost(h) || '', hys: false, app: false, conf: false, status: 'YOK' };
+  });
+  const tam = sunucular.filter((s) => s.status === 'OK').length;
+  const durum = !taranan.length
+    ? 'olculemedi'
+    : tam === taranan.length
+      ? 'tamam'
+      : satirlar.length
+        ? 'kismi'
+        : 'yok';
+  return {
+    durum,
+    tam,
+    beklenen: taranan.length,
+    sunucular,
+    eksik: sunucular.filter((s) => s.status !== 'OK').map((s) => s.host),
+    taranmayan,
+    eslesme,
+  };
+}
+
 /**
  * SAF RAPOR KURUCU (veritabani yok).
  * @param {object}   p
@@ -60,8 +147,13 @@ function degerlendir(r) {
  * @param {Map}      p.ownersByNs  ns-owners indexOwners ciktisi
  * @param {Map}      p.beyanlar    index.cjs loadBeyanlar ciktisi ("ns/app" anahtarlari)
  * @param {object}   [p.coverage]  kesif kapsami (cluster durumlari)
+ * @param {object[]|null} [p.dirRows] Nginx_Intranet_Audit son gun (intranet sunuculari)
+ * @param {'var'|'okunamadi'} [p.dizinDurum]
+ * @param {string[]} [p.hosts]     intranet sunuculari (varsayilan nginx-hosts listesi)
  */
-function buildIntranetRapor({ apps, ownersByNs, beyanlar, coverage }) {
+function buildIntranetRapor({ apps, ownersByNs, beyanlar, coverage, dirRows, dizinDurum = 'var', hosts }) {
+  const sunucuListesi = (hosts || intranetHosts()).map(U);
+  const dIdx = dizinIndeksi(dizinDurum === 'var' ? dirRows : []);
   const { ownersFor } = require('../audit/ns-owners.cjs');
   // UYGULAMA BEYANI (location'siz anahtar); harf duyarsiz, en yeni kazanir (Map sirasi).
   const beyan = new Map();
@@ -106,6 +198,7 @@ function buildIntranetRapor({ apps, ownersByNs, beyanlar, coverage }) {
         inUseAt: b ? iso(b.inUseAt) : null,
         note: (b && b.note) || '',
       };
+      r.kurulum = kurulumHesapla(r.env, ns, app, dIdx, sunucuListesi);
       r.degerlendirme = degerlendir(r);
       return r;
     });
@@ -132,6 +225,9 @@ function buildIntranetRapor({ apps, ownersByNs, beyanlar, coverage }) {
       beyanli: say((r) => !!r.inUse),
       kapatmaAdayi: say((r) => r.degerlendirme.includes('kapatma-adayi')),
       celiski: say((r) => r.degerlendirme.includes('celiski')),
+      kurulumTamam: say((r) => r.kurulum.durum === 'tamam'),
+      kurulumKismi: say((r) => r.kurulum.durum === 'kismi'),
+      kurulumYok: say((r) => r.kurulum.durum === 'yok'),
     };
   });
   // Dynatrace verisinin gunu: satirlardaki en yeni olcum.
@@ -144,7 +240,16 @@ function buildIntranetRapor({ apps, ownersByNs, beyanlar, coverage }) {
   const sorunluCluster = ((coverage && coverage.clusters) || [])
     .filter((c) => c.stale || c.bucket === 'taranamadi')
     .map((c) => ({ cluster: c.cluster, durum: c.status, sebep: c.reason || '' }));
-  return { rows, envs, dynatraceTarihi: dynatraceTarihi || null, sorunluCluster };
+  return {
+    rows,
+    envs,
+    dynatraceTarihi: dynatraceTarihi || null,
+    sorunluCluster,
+    dizinDurum,
+    dizinTarihi: dIdx.tarih || null,
+    // Son dizin taramasinda satiri olmayan intranet sunuculari: oradaki kurulum OLCULEMEDI.
+    taranmayanSunucu: dizinDurum === 'var' ? sunucuListesi.filter((h) => !dIdx.taranan.has(h)) : sunucuListesi,
+  };
 }
 
 /** Gercek SPA Kesfi hesabi + ekip sahipleri (TBMWANS) + beyanlar (Portal DB). */
@@ -160,6 +265,20 @@ async function loadIntranet(fresh, deps) {
   const { loadNamespaceOwners } = require('../audit/ns-owners.cjs');
   const owners = await loadNamespaceOwners(query).catch(() => ({ ready: false, byNs: new Map() }));
   const beyanlar = await deps.loadBeyanlar();
+  // INTRANET SUNUCU KURULUMU: dizin taramasinin son gunu, yalniz intranet sunuculari. Okunamazsa
+  // kurulum sutunu 'olculemedi' (bos liste "kurulu degil" diye OKUNMAZ).
+  const { sql } = deps.mssql || require('../inventory/mssql.cjs');
+  const hosts = intranetHosts();
+  const dirRows = await query(
+    `SELECT host, namespace, application, hys_deployed, app_deployed, conf_exists, status,
+            CONVERT(varchar(10), scan_date, 23) AS scan_date
+       FROM dbo.Nginx_Intranet_Audit
+      WHERE scan_date = (SELECT MAX(scan_date) FROM dbo.Nginx_Intranet_Audit)
+        AND host IN (${hosts.map((_, i) => `@h${i}`).join(', ')})`,
+    hosts.map((h, i) => ({ name: `h${i}`, type: sql.NVarChar(64), value: h })),
+  )
+    .then((r) => r.recordset || [])
+    .catch(() => null);
   const value = {
     ok: true,
     notScanned: false,
@@ -168,7 +287,15 @@ async function loadIntranet(fresh, deps) {
     ownersReady: owners.ready !== false,
     // Dynatrace tablosu okunamadiysa HER satir 'olculemedi' (spa-discovery); ekran bandi soyler.
     dynatraceOkunamadi: !!(sonuc.rpKapsam && sonuc.rpKapsam.dynatraceOkunamadi),
-    ...buildIntranetRapor({ apps: sonuc.apps, ownersByNs: owners.byNs, beyanlar, coverage: sonuc.coverage }),
+    ...buildIntranetRapor({
+      apps: sonuc.apps,
+      ownersByNs: owners.byNs,
+      beyanlar,
+      coverage: sonuc.coverage,
+      dirRows,
+      dizinDurum: dirRows == null ? 'okunamadi' : 'var',
+      hosts,
+    }),
   };
   _cache = { at: Date.now(), value };
   return { ...value, cached: false };

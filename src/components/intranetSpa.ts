@@ -1,7 +1,7 @@
 // src/components/intranetSpa.ts — Nginx ARK SPA > Intranet SPA: saf yardımcılar (süzgeç, etiket, CSV).
 // Sayfa: IntranetSpaPage.tsx. Hesap sunucuda (server/spa-report/intranet.cjs); burada gösterim.
 // Yük DYNATRACE'ten (BMW_Application_Usage): beş durum, hiçbiri diğerine indirgenmez.
-import type { IntranetDegerlendirme, IntranetIstek, IntranetSatir } from '@/api/arkSpaApi';
+import type { IntranetDegerlendirme, IntranetIstek, IntranetKurulum, IntranetSatir } from '@/api/arkSpaApi';
 import type { Tone } from '@/components/denetim/ui';
 
 export const BEYAN_ETIKET: Record<string, string> = {
@@ -63,6 +63,53 @@ export const DEGERLENDIRME: Record<IntranetDegerlendirme, { label: string; tone:
   },
 };
 
+// INTRANET SUNUCU KURULUMU (Nginx_Intranet_Audit): uygulamanın kendi ortamının intranet nginx
+// sunucularında paket (/hysdeploy) + dosyalar (/usr/nginx/applications) + conf var mı.
+export const KURULUM: Record<IntranetKurulum['durum'], { label: string; tone: Tone; hint: string }> = {
+  tamam: {
+    label: 'tamamlandı',
+    tone: 'success',
+    hint: 'Ortamın taranan her intranet sunucusunda paket, uygulama dosyaları ve conf var.',
+  },
+  kismi: {
+    label: 'kısmi',
+    tone: 'warning',
+    hint: 'Bazı intranet sunucularında yok ya da bazı parçalar (paket / dosyalar / conf) eksik.',
+  },
+  yok: {
+    label: 'kurulu değil',
+    tone: 'danger',
+    hint: 'Ortamın taranan intranet sunucularının hiçbirinde bu uygulamanın izi yok.',
+  },
+  olculemedi: {
+    label: 'ölçülemedi',
+    tone: 'neutral',
+    hint: 'Intranet dizin taraması okunamadı ya da ortamın intranet sunucuları son taramada yok — “kurulu değil” demek değil.',
+  },
+  'sunucu-yok': {
+    label: 'ortamın intranet sunucusu yok',
+    tone: 'neutral',
+    hint: 'Uygulamanın ortamı (namespace eki) bilinmiyor ya da o ortamın intranet nginx sunucusu yok.',
+  },
+};
+
+const SUNUCU_DURUM: Record<string, string> = {
+  OK: 'tam',
+  YOK: 'kurulum yok',
+  MISSING_CONF: 'conf yok — nginx sunmuyor',
+  MISSING_APP: 'uygulama dosyaları yok',
+  MISSING_HYS: 'paket dizini yok',
+  ONLY_HYS: 'yarım (yalnız paket)',
+  ONLY_APP: 'yarım (yalnız dosyalar)',
+  ONLY_CONF: 'yarım (yalnız conf)',
+};
+export const sunucuDurumu = (s: string) => SUNUCU_DURUM[s] || s || 'bilinmiyor';
+
+export function kurulumMetni(k: IntranetKurulum): string {
+  const l = KURULUM[k.durum]?.label || k.durum;
+  return k.durum === 'tamam' || k.durum === 'kismi' || k.durum === 'yok' ? `${l} ${k.tam}/${k.beklenen}` : l;
+}
+
 export const nf = (n: number) => new Intl.NumberFormat('tr-TR').format(n);
 
 /** Yük hücresinin kısa metni (ekran + CSV aynı). */
@@ -88,15 +135,25 @@ export function istekIpucu(r: IntranetSatir): string {
 export type IstekSuzgec = 'all' | IntranetIstek;
 export type BeyanSuzgec = 'all' | 'bekleyen' | 'verilmis' | 'yes' | 'no' | 'unknown';
 export type DegSuzgec = 'all' | IntranetDegerlendirme;
+export type KurulumSuzgec = 'all' | IntranetKurulum['durum'];
 
 export function suzIntranet(
   rows: readonly IntranetSatir[],
-  f: { env: string; istek: IstekSuzgec; beyan: BeyanSuzgec; deg: DegSuzgec; ekip: string; q: string },
+  f: {
+    env: string;
+    istek: IstekSuzgec;
+    beyan: BeyanSuzgec;
+    deg: DegSuzgec;
+    ekip: string;
+    q: string;
+    kurulum?: KurulumSuzgec;
+  },
 ): IntranetSatir[] {
   const ara = f.q.trim().toLowerCase();
   return rows.filter((r) => {
     if (f.env !== 'all' && r.env !== f.env) return false;
     if (f.istek !== 'all' && r.istek !== f.istek) return false;
+    if (f.kurulum && f.kurulum !== 'all' && r.kurulum.durum !== f.kurulum) return false;
     if (f.beyan === 'bekleyen' && r.inUse) return false;
     if (f.beyan === 'verilmis' && !r.inUse) return false;
     if ((f.beyan === 'yes' || f.beyan === 'no' || f.beyan === 'unknown') && r.inUse !== f.beyan) return false;
@@ -132,6 +189,11 @@ export const INTRANET_CSV_BASLIK = [
   'dynatrace_gun',
   'dynatrace_servis',
   'dynatrace_olcum_gunu',
+  'intranet_kurulum',
+  'kurulu_sunucu',
+  'beklenen_sunucu',
+  'eksik_sunucular',
+  'taranmayan_sunucular',
   'degerlendirme',
 ] as const;
 
@@ -155,6 +217,12 @@ export function intranetCsvSatirlari(rows: readonly IntranetSatir[], tarih: (v: 
     r.dynatrace?.windowDays != null ? String(r.dynatrace.windowDays) : '',
     r.dynatrace?.services != null ? String(r.dynatrace.services) : '',
     r.dynatrace?.scanDate || '',
+    KURULUM[r.kurulum.durum]?.label || r.kurulum.durum,
+    // SAYI YALNIZ KARAR VERİLDİYSE: ölçülemeyen kurulum "0 sunucu" yazmaz.
+    r.kurulum.beklenen ? String(r.kurulum.tam) : '',
+    r.kurulum.beklenen ? String(r.kurulum.beklenen) : '',
+    r.kurulum.eksik.join(' '),
+    r.kurulum.taranmayan.join(' '),
     r.degerlendirme.map((d) => DEGERLENDIRME[d]?.label || d).join(' + '),
   ]);
 }

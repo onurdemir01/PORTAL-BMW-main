@@ -144,6 +144,31 @@ export interface IntranetSatir {
   inUseAt: string | null;
   note: string;
   degerlendirme: IntranetDegerlendirme[];
+  /** Kendi ortamının intranet nginx sunucularındaki kurulum (Nginx_Intranet_Audit). */
+  kurulum: IntranetKurulum;
+}
+/** tamam = ortamın TARANAN her intranet sunucusunda paket + dosyalar + conf var; taranmayan sunucu
+ *  eksik sayılmaz (taranmayan listesinde). */
+export interface IntranetKurulum {
+  durum: 'tamam' | 'kismi' | 'yok' | 'olculemedi' | 'sunucu-yok';
+  tam: number;
+  beklenen: number;
+  sunucular: {
+    host: string;
+    site: string;
+    /** /hysdeploy/<ns>/<app>/ */
+    hys: boolean;
+    /** /usr/nginx/applications/<ns>/<app>/ */
+    app: boolean;
+    /** application-confs/<app>-<ns>.conf */
+    conf: boolean;
+    /** OK | MISSING_CONF | MISSING_APP | MISSING_HYS | ONLY_* | YOK (o sunucuda hiç izi yok) */
+    status: string;
+  }[];
+  eksik: string[];
+  taranmayan: string[];
+  /** 'kesin' | 'ek-prod' (dizin namespace'i '-prod' eksiz) | '' */
+  eslesme: string;
 }
 export interface IntranetOrtam {
   env: string;
@@ -156,6 +181,9 @@ export interface IntranetOrtam {
   beyanli: number;
   kapatmaAdayi: number;
   celiski: number;
+  kurulumTamam: number;
+  kurulumKismi: number;
+  kurulumYok: number;
 }
 export interface IntranetRapor {
   ok: boolean;
@@ -168,6 +196,11 @@ export interface IntranetRapor {
   rows?: IntranetSatir[];
   envs?: IntranetOrtam[];
   sorunluCluster?: { cluster: string; durum: string; sebep: string }[];
+  /** Intranet dizin taraması: 'var' | 'okunamadi' */
+  dizinDurum?: 'var' | 'okunamadi';
+  dizinTarihi?: string | null;
+  /** Son dizin taramasında satırı olmayan intranet sunucuları */
+  taranmayanSunucu?: string[];
   hesaplandi?: string | null;
   cached?: boolean;
 }

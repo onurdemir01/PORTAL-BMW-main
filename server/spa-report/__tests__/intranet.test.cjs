@@ -15,6 +15,12 @@
 //   IS8 uclar: GET rapor; PUT beyan (kim OTURUMDAN), 400'ler, onbellek silinir
 //   IS9 uygulama beyani SPA Raporu ile AYNI fonksiyon (UPDATE varsa, yoksa INSERT ark)
 //   IS10 sayfa kaydi: DB seed + elements + menu + route + sunucu kapisi; kesif hesabi paylasilir
+// Intranet sunucu kurulumu (ayni gun: "deployment tamamlanmis tamamlanmamis mi"):
+//   IS11 kendi ortaminin TARANAN intranet sunucularina gore tamam / kismi / yok; taranmayan sunucu
+//        eksik SAYILMAZ; baska ortamin sunucusu sayilmaz; '-prod' eksiz dizin ns'i eslesir
+//   IS12 dizin okunamadi / ortamin sunucusu taranmadi -> olculemedi; ortamin intranet sunucusu yok
+//        -> sunucu-yok; ortam ozeti
+//   IS13 yukleyici dizin tablosunu intranet sunuculariyla okur; sorgu duserse olculemedi
 'use strict';
 
 const { test } = require('node:test');
@@ -54,6 +60,12 @@ const A = (application, o = {}) => ({
   weakEvidence: false, pattern: 'uyuyor', ...o,
 });
 const kur = (apps, o = {}) => buildIntranetRapor({ apps, ownersByNs: new Map(), beyanlar: new Map(), ...o });
+const SQL = new Proxy({}, { get: () => () => 'tip' });
+// Intranet dizin satiri (Nginx_Intranet_Audit).
+const DZ = (host, ns, app, o = {}) => ({
+  host, namespace: ns, application: app, hys_deployed: 1, app_deployed: 1, conf_exists: 1, status: 'OK', scan_date: '2026-10-18', ...o,
+});
+const PROD_INTRA = ['GBNGXAP50', 'GBNGXP50', 'GBNGXP51', 'GBNGXT50'];
 const satir = (out, app) => out.rows.find((r) => r.application === app);
 
 test('IS1 yalniz SPA ve intranet / karisik ag', () => {
@@ -177,8 +189,9 @@ test('IS6 ortam ozeti, siralama, sorunlu cluster', () => {
 test('IS7 yukleyici: tablo yok, sahipler, onbellek, Dynatrace okunamadi', async () => {
   onbellekSil();
   require('../../audit/ns-owners.cjs')._resetCache();
-  const mssql = { query: async (q) => {
+  const mssql = { sql: SQL, query: async (q) => {
     if (String(q).includes('Openshift_Namespace_Owners')) return { recordset: [{ namespace: 'kart-prod', owner_group_name: 'GT-Kart', owner_email: 'kart@banka.com', lookup_status: 'OK' }] };
+    if (String(q).includes('FROM dbo.Nginx_Intranet_Audit')) return { recordset: [] };
     throw new Error('beklenmeyen sorgu');
   } };
   let cagri = 0;
@@ -211,7 +224,7 @@ test('IS8 uclar: rapor, beyan yazimi (kim oturumdan), 400, onbellek silinir', as
   let beyan = new Map();
   const yazilan = [];
   const { s, base } = await sunucu({
-    mssql: { query: async () => ({ recordset: [] }) },
+    mssql: { sql: SQL, query: async () => ({ recordset: [] }) },
     spaKesfi: async () => ({ scanDate: '2026-10-18', apps: [A('z-ui', { istek: 'yok', reqShown: 0 })], coverage: { clusters: [] }, rpKapsam: {} }),
     loadBeyanlar: async () => beyan,
     uygulamaBeyaniYaz: async (b) => {
@@ -266,3 +279,82 @@ test('IS10 sayfa kaydi + kesif hesabi paylasilir', () => {
   assert.equal(require('../../nginx-console/index.cjs').spaKesfiPaylas.name, 'spaHesapPaylas');
   assert.match(oku('server/spa-report/intranet.cjs'), /require\('\.\.\/nginx-console\/index\.cjs'\)\.spaKesfiPaylas/);
 });
+
+test('IS11 kurulum: kendi ortaminin taranan sunucularina gore tamam / kismi / yok', () => {
+  const out = kur(
+    [A('tam-ui'), A('yarim-ui'), A('tek-ui'), A('yok-ui'), A('ek-ui'), A('test-ui', { namespace: 'kart-test', env: 'test' })],
+    {
+      hosts: PROD_INTRA,
+      dirRows: [
+        DZ('GBNGXP50', 'kart-prod', 'tam-ui'), DZ('GBNGXP51', 'kart-prod', 'tam-ui'),
+        DZ('GBNGXP50', 'kart-prod', 'yarim-ui'), DZ('GBNGXP51', 'kart-prod', 'yarim-ui', { app_deployed: 0, status: 'MISSING_APP' }),
+        DZ('GBNGXP51', 'kart-prod', 'tek-ui'),
+        // baska ortamin sunucusu: PROD uygulamasinin kurulumuna SAYILMAZ
+        DZ('GBNGXT50', 'kart-prod', 'yok-ui'),
+        // '-prod' eksiz dizin ns'i
+        DZ('GBNGXP50', 'kart', 'ek-ui'), DZ('GBNGXP51', 'kart', 'ek-ui'),
+        DZ('GBNGXT50', 'kart-test', 'test-ui'),
+      ],
+    },
+  );
+  const k = (app) => satir(out, app).kurulum;
+  // GBNGXAP50 o gun taranmadi: eksik SAYILMAZ, ayrica listelenir
+  assert.deepEqual([k('tam-ui').durum, k('tam-ui').tam, k('tam-ui').beklenen, k('tam-ui').taranmayan], ['tamam', 2, 2, ['GBNGXAP50']]);
+  assert.deepEqual([k('yarim-ui').durum, k('yarim-ui').tam, k('yarim-ui').eksik], ['kismi', 1, ['GBNGXP51']]);
+  assert.equal(k('yarim-ui').sunucular.find((x) => x.host === 'GBNGXP51').status, 'MISSING_APP');
+  assert.deepEqual([k('tek-ui').durum, k('tek-ui').eksik], ['kismi', ['GBNGXP50']]);
+  assert.equal(k('tek-ui').sunucular.find((x) => x.host === 'GBNGXP50').status, 'YOK');
+  assert.equal(k('yok-ui').durum, 'yok', 'TEST sunucusundaki dizin PROD uygulamasina sayildi');
+  assert.deepEqual([k('ek-ui').durum, k('ek-ui').eslesme], ['tamam', 'ek-prod']);
+  assert.deepEqual([k('test-ui').durum, k('test-ui').beklenen], ['tamam', 1]);
+  assert.equal(k('tam-ui').eslesme, 'kesin');
+  assert.deepEqual(out.taranmayanSunucu, ['GBNGXAP50']);
+  assert.equal(out.dizinTarihi, '2026-10-18');
+});
+
+test('IS12 kurulum olculemedi / sunucu-yok; ortam ozeti', () => {
+  const apps = [A('a-ui'), A('x-ui', { namespace: 'kart', env: null })];
+  const dus = kur(apps, { hosts: PROD_INTRA, dirRows: null, dizinDurum: 'okunamadi' });
+  assert.equal(satir(dus, 'a-ui').kurulum.durum, 'olculemedi', 'dizin okunamadi ama kurulum karari verildi');
+  assert.deepEqual(dus.taranmayanSunucu, PROD_INTRA);
+  // ortamin hicbir intranet sunucusu taranmadi (yalniz TEST taranmis)
+  const tarama = kur(apps, { hosts: PROD_INTRA, dirRows: [DZ('GBNGXT50', 'kart-test', 'z-ui')] });
+  assert.equal(satir(tarama, 'a-ui').kurulum.durum, 'olculemedi');
+  assert.equal(satir(tarama, 'x-ui').kurulum.durum, 'sunucu-yok');
+  const out = kur([A('t1'), A('t2'), A('k1'), A('y1'), A('y2')], {
+    hosts: ['GBNGXP50', 'GBNGXP51'],
+    dirRows: [DZ('GBNGXP50', 'kart-prod', 't1'), DZ('GBNGXP51', 'kart-prod', 't1'), DZ('GBNGXP50', 'kart-prod', 't2'), DZ('GBNGXP51', 'kart-prod', 't2'), DZ('GBNGXP50', 'kart-prod', 'k1')],
+  });
+  const p = out.envs.find((e) => e.env === 'PROD');
+  assert.deepEqual([p.kurulumTamam, p.kurulumKismi, p.kurulumYok], [2, 1, 2]);
+  // dizin okunamadi: beklenen sunucularin HEPSI taranmayan (olculemedi), "eksik" degil
+  assert.deepEqual([satir(dus, 'a-ui').kurulum.taranmayan, satir(dus, 'a-ui').kurulum.eksik], [['GBNGXAP50', 'GBNGXP50', 'GBNGXP51'], []]);
+});
+
+test('IS13 yukleyici dizin tablosunu intranet sunuculariyla okur; sorgu duserse olculemedi', async () => {
+  require('../../audit/ns-owners.cjs')._resetCache();
+  const sorgular = [];
+  let dizinDussun = false;
+  const mssql = { sql: SQL, query: async (q, params) => {
+    sorgular.push({ q: String(q), params });
+    if (String(q).includes('FROM dbo.Nginx_Intranet_Audit')) {
+      if (dizinDussun) throw new Error('Invalid object name');
+      return { recordset: [DZ('GBNGXP50', 'kart-prod', 'z-ui'), DZ('GBNGXP51', 'kart-prod', 'z-ui')] };
+    }
+    return { recordset: [] };
+  } };
+  const deps = { mssql, loadBeyanlar: async () => new Map(), spaKesfi: async () => ({ scanDate: '2026-10-18', apps: [A('z-ui')], coverage: { clusters: [] }, rpKapsam: {} }) };
+  onbellekSil();
+  const r = await loadIntranet(true, deps);
+  const q = sorguBul(sorgular);
+  assert.ok(q.params.some((p) => p.value === 'GBNGXAP51') && q.params.some((p) => p.value === 'GBNGXD50'), 'intranet sunuculari sorguda yok');
+  assert.ok(!q.params.some((p) => p.value === 'GBNGXP40'), 'internet sunucusu intranet kurulumuna girdi');
+  assert.equal(r.dizinDurum, 'var');
+  assert.equal(r.rows[0].kurulum.tam, 2);
+  dizinDussun = true;
+  onbellekSil();
+  const d = await loadIntranet(true, deps);
+  assert.equal(d.dizinDurum, 'okunamadi');
+  assert.equal(d.rows[0].kurulum.durum, 'olculemedi');
+});
+const sorguBul = (sorgular) => sorgular.find((x) => x.q.includes('FROM dbo.Nginx_Intranet_Audit'));
