@@ -719,7 +719,7 @@ export default function NginxSpaSummary({ tier }: { tier: 'internet' | 'intranet
               <th className={th} style={hl('internet')} title="İnternete açık (route tipi passthrough) SPA’lar: kaçı internet nginx’lerine deploy edilmiş (H+A), kaçı servise tanımlı (location/include), kaçı ikisi birden (yük alıyor)">
                 İnternet · deploy / tanım / çalışıyor
               </th>
-              <th className={th} style={hl('intranet')} title="İntranet (route tipi reencrypt) SPA’ların kaçı intranet nginx’lerine TAM kurulu (hysdeploy + applications + conf)">
+              <th className={th} style={hl('intranet')} title="İntranet SPA’ların (Gerçek SPA Keşfi: pod’da nginx + reencrypt route — Nginx ARK SPA › Intranet SPA ile aynı liste ve aynı hesap) kaçı ortamın taranan her intranet nginx’ine TAM kurulu (hysdeploy + applications + conf)">
                 İntranet · nginx’e kurulu
               </th>
               <th className={th} title="Ortamdaki route sayısı, kaçı SPA uygulamasına ait ve payı">Route’lar</th>
@@ -740,7 +740,12 @@ export default function NginxSpaSummary({ tier }: { tier: 'internet' | 'intranet
                           OpenShift envanterindeki <b style={{ color: 'var(--text-secondary)' }}>{fmtNumber(c.ocpApps)}</b> uygulamanın <b style={{ color: 'var(--text-secondary)' }}>{pctText(spaShare)}</b>’i SPA
                         </div>
                         <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-                          internete açık {fmtNumber(c.internetTotal)} · iç ağda {fmtNumber(c.intranetTotal)}
+                          internete açık {fmtNumber(c.internetTotal)} ·{' '}
+                          {/* AD KALIBI (2026-10-19): bu sutun ad kalibi + route envanteri sayar; intranet kurulum
+                              sutunu ise Gercek SPA Kesfi'ni (Intranet SPA sayfasi) - iki sayi farkli olabilir. */}
+                          <span title={c.intranetKaynak === 'intranet-spa' ? `Ad kalıbına (-app-v / -app-emb-v) ve route envanterine göre iç ağ (reencrypt) SPA’ları. İntranet kurulum sütunu ise Gerçek SPA Keşfi’nin listesini sayar (${fmtNumber(c.intranetKurulumToplam || 0)} uygulama); bu yüzden iki sayı farklı olabilir.` : undefined}>
+                            iç ağda {fmtNumber(c.intranetTotal)}{c.intranetKaynak === 'intranet-spa' ? ' (ad kalıbı)' : ''}
+                          </span>
                           {c.unknownTotal ? <> · <NoRouteLink c={c} env={env} onOpen={setOpen} /></> : null}
                         </div>
                       </div>
@@ -825,10 +830,12 @@ export default function NginxSpaSummary({ tier }: { tier: 'internet' | 'intranet
                         <ClickCell
                           disabled={!c.measuredIntranet}
                           count={c.intranetMissingCount + c.intranetPartialCount}
-                          onClick={() => setOpen({ title: `${env} · intranet nginx’lerine kurulmamış SPA’lar`, subtitle: `${fmtNumber(c.intranetMissingCount)} hiç yok · ${fmtNumber(c.intranetPartialCount)} yarım (üç dizinden biri eksik)`, rows: rowsFromCoverage(c.missingDetail?.intranet || []) })}
+                          onClick={() => setOpen({ title: `${env} · intranet nginx’lerine kurulmamış SPA’lar`, subtitle: c.intranetKaynak === 'intranet-spa' ? `${fmtNumber(c.intranetMissingCount)} hiç kurulmamış · ${fmtNumber(c.intranetPartialCount)} yarım (taranan sunuculardan en az birinde eksik) — Nginx ARK SPA › Intranet SPA ile aynı liste` : `${fmtNumber(c.intranetMissingCount)} hiç yok · ${fmtNumber(c.intranetPartialCount)} yarım (üç dizinden biri eksik)`, rows: rowsFromCoverage(c.missingDetail?.intranet || []) })}
                         >
-                          <Big n={c.measuredIntranet ? c.intranetFull : 0} of={c.intranetTotal} label="kurulumu tamam olan uygulama" />
-                          <Bar value={c.intranetFull} total={c.intranetTotal} measured={c.measuredIntranet} title="Gerekli üç dizin de yerinde olan iç ağ (intranet) uygulamaları." />
+                          {/* PAYDA (2026-10-19): ortak hesapta ortamin intranet SPA'lari (Intranet SPA sayfasindaki
+                              "uygulama"); SPA sutunundaki ad kalibi sayisi DEGIL. */}
+                          <Big n={c.measuredIntranet ? c.intranetFull : 0} of={c.intranetKaynak === 'intranet-spa' ? c.intranetKurulumToplam || 0 : c.intranetTotal} label="kurulumu tamam olan uygulama" />
+                          <Bar value={c.intranetFull} total={c.intranetKaynak === 'intranet-spa' ? c.intranetKurulumToplam || 0 : c.intranetTotal} measured={c.measuredIntranet} title={c.intranetKaynak === 'intranet-spa' ? 'Ortamın taranan her intranet nginx’inde üç dizini de (hysdeploy + applications + conf) yerinde olan intranet SPA’ları.' : 'Gerekli üç dizin de yerinde olan iç ağ (intranet) uygulamaları.'} />
                         </ClickCell>
                         {c.measuredIntranet && (c.intranetPartialCount > 0 || c.intranetMissingCount > 0) && (
                           <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
@@ -836,6 +843,22 @@ export default function NginxSpaSummary({ tier }: { tier: 'internet' | 'intranet
                             {c.intranetPartialCount > 0 && c.intranetMissingCount > 0 && ' · '}
                             {c.intranetMissingCount > 0 && <span style={{ color: 'var(--status-danger)' }} title="Hiçbir dizini bulunamadı.">hiç kurulmamış: {fmtNumber(c.intranetMissingCount)}</span>}
                           </div>
+                        )}
+                        {/* OLCULEMEDI AYRI KOVA: "kurulmamis" sayilmaz (Intranet SPA sayfasiyla ayni). */}
+                        {(c.intranetOlculemediCount || 0) + (c.intranetSunucuYokCount || 0) > 0 && (
+                          <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                            {(c.intranetOlculemediCount || 0) > 0 && <span title="Ortamın intranet sunucuları son dizin taramasında yok: kurulum ölçülemedi, “kurulmamış” sayılmadı.">ölçülemedi: {fmtNumber(c.intranetOlculemediCount || 0)}</span>}
+                            {(c.intranetOlculemediCount || 0) > 0 && (c.intranetSunucuYokCount || 0) > 0 && ' · '}
+                            {(c.intranetSunucuYokCount || 0) > 0 && <span title="Uygulamanın ortamında intranet nginx sunucusu tanımlı değil.">ortamın intranet sunucusu yok: {fmtNumber(c.intranetSunucuYokCount || 0)}</span>}
+                          </div>
+                        )}
+                        {c.intranetKaynakHata && (
+                          <div className="text-[11px]" style={{ color: 'var(--status-warning)' }}>
+                            {c.intranetKaynakHata} — bu “kurulmamış” demek değildir.
+                          </div>
+                        )}
+                        {c.intranetKaynak === 'intranet-spa' && (
+                          <Where>Kaynak: Gerçek SPA Keşfi — Nginx ARK SPA › Intranet SPA ile aynı liste ve aynı hesap.</Where>
                         )}
                       </div>
                     ) : <span style={{ color: 'var(--text-muted)' }}>—</span>}
@@ -904,7 +927,19 @@ export default function NginxSpaSummary({ tier }: { tier: 'internet' | 'intranet
       {routeOpen && <RouteListModal kaynak={routeOpen} onClose={() => setRouteOpen(null)} />}
       {open && <MissingAppsModal title={open.title} subtitle={open.subtitle} rows={open.rows} ownersReady={cov.ownersReady !== false} onClose={() => setOpen(null)} />}
       <div className="px-4 py-2 border-t text-[11px] leading-relaxed" style={{ borderColor: 'var(--border-subtle)', color: 'var(--text-muted)' }}>
-        <b>Tıklayın:</b> sayıya tıklayınca o ortamda henüz deploy olmamış uygulamalar ve sahipleri (ekip, e-posta), IP’ye tıklayınca o IP’ye çözen route’lar listelenir. <b>SPA</b> = OpenShift’te adında <code>-app-v</code>/<code>-app-emb-v</code> geçen uygulama; sayım uygulama × ortam. <b>İnternet</b> = route tipi passthrough; <b>deploy edilmiş</b> = internete açık sunucuda /hysdeploy + /usr/nginx/applications dizinleri (H+A), <b>servise tanımlı</b> = vhost’ta location/include (PROD’da eski GBRVP* sunucularının proxy_pass’i), <b>çalışıyor</b> = ikisi birden (kesişim; “deploy edilmiş − çalışıyor” = tanımsız olanlar, “servise tanımlı − çalışıyor” = paketi olmayanlar). <b>İntranet</b> = route tipi reencrypt, intranet nginx’lerinde üç dizin de yerindeyse “tam kurulu”. <b>Taralı</b> = o ortam için nginx kaydı yok, ölçülemedi.
+        <b>Tıklayın:</b> sayıya tıklayınca o ortamda henüz deploy olmamış uygulamalar ve sahipleri (ekip, e-posta), IP’ye tıklayınca o IP’ye çözen route’lar listelenir. <b>SPA</b> = OpenShift’te adında <code>-app-v</code>/<code>-app-emb-v</code> geçen uygulama; sayım uygulama × ortam. <b>İnternet</b> = route tipi passthrough; <b>deploy edilmiş</b> = internete açık sunucuda /hysdeploy + /usr/nginx/applications dizinleri (H+A), <b>servise tanımlı</b> = vhost’ta location/include (PROD’da eski GBRVP* sunucularının proxy_pass’i), <b>çalışıyor</b> = ikisi birden (kesişim; “deploy edilmiş − çalışıyor” = tanımsız olanlar, “servise tanımlı − çalışıyor” = paketi olmayanlar). {cov.intranetKaynak === 'intranet-spa'
+          ? <><b>İntranet</b> = Gerçek SPA Keşfi’nin intranet SPA’ları (pod’da nginx + reencrypt route), Nginx ARK SPA › Intranet SPA ile aynı liste ve aynı hesap: ortamın taranan her intranet nginx’inde üç dizin de (hysdeploy + applications + conf) yerindeyse “tam kurulu”, hiçbirinde izi yoksa “hiç kurulmamış”, arada “yarım”; taranmayan sunucu “eksik” sayılmaz. OpenShift SPA sütunundaki “iç ağda” sayısı ad kalıbına göredir, bu yüzden farklı olabilir. </>
+          : <><b>İntranet</b> = route tipi reencrypt, intranet nginx’lerinde üç dizin de yerindeyse “tam kurulu”. </>}
+        <b>Taralı</b> = o ortam için nginx kaydı yok, ölçülemedi.
+        {!!cov.intranetRapor?.platformDisi.length && (
+          <span> ARK dışı cluster’lardaki intranet SPA’lar iki ekranda da sayılmaz: {cov.intranetRapor.platformDisi.map((d) => `${d.platform} ${fmtNumber(d.uygulama)}`).join(', ')}.</span>
+        )}
+        {!!cov.intranetRapor?.ortamsiz && (
+          <span> Namespace’i ortam eki taşımayan {fmtNumber(cov.intranetRapor.ortamsiz)} intranet SPA bir ortama yerleştirilemedi (Intranet SPA sayfasında “BILINMIYOR”).</span>
+        )}
+        {!!cov.intranetRapor?.taranmayanSunucu.length && (
+          <span style={{ color: 'var(--status-warning)' }}> Son intranet dizin taramasında satırı olmayan sunucular: {cov.intranetRapor.taranmayanSunucu.join(', ')} — oradaki kurulum ölçülemedi.</span>
+        )}
         {routes?.routeTableMissing && <span style={{ color: 'var(--status-warning)' }}> Route envanteri okunamadı (route_inventory job’ı koşmalı).</span>}
       </div>
     </section>

@@ -34,9 +34,16 @@
 //   olculemedi  dizin tablosu okunamadi ya da ortamin intranet sunuculari o gun taranmadi
 //   sunucu-yok  uygulamanin ortaminin intranet sunucusu yok (ortam bilinmiyor)
 // Taranmayan sunucu "eksik" SAYILMAZ: ayrica listelenir.
+//
+// PLATFORM (2026-10-19): kesif her jump sunucusunun cluster'larini tarar (yalniz ARK degil).
+// Sayfa "Nginx ARK SPA" altinda ve Nginx Hub > Kapsam & Tasima ayni rapordan beslenir; ikisi
+// ayni kumeyi saysin diye satir, cluster'larindan en az biri istenen platformda
+// (ocp-platforms PLATFORM_CLUSTERS, Kapsam'in OpenShift sorgusuyla ayni liste) olan uygulamadir.
+// Disarida kalanlar SESSIZCE dusmez: platformDisi (platform + cluster'lar + sayi).
 'use strict';
 
 const { intranetHosts, envOfHost, siteOfHost } = require('../audit/nginx-hosts.cjs');
+const { platformOfCluster } = require('../audit/ocp-platforms.cjs');
 
 const TTL_MS = 60 * 1000;
 let _cache = { at: 0, value: null };
@@ -150,8 +157,9 @@ function kurulumHesapla(env, ns, app, idx, hosts) {
  * @param {object[]|null} [p.dirRows] Nginx_Intranet_Audit son gun (intranet sunuculari)
  * @param {'var'|'okunamadi'} [p.dizinDurum]
  * @param {string[]} [p.hosts]     intranet sunuculari (varsayilan nginx-hosts listesi)
+ * @param {string}   [p.platform]  yalniz bu platformun cluster'larindaki uygulamalar (bkz. PLATFORM)
  */
-function buildIntranetRapor({ apps, ownersByNs, beyanlar, coverage, dirRows, dizinDurum = 'var', hosts }) {
+function buildIntranetRapor({ apps, ownersByNs, beyanlar, coverage, dirRows, dizinDurum = 'var', hosts, platform = 'ark' }) {
   const sunucuListesi = (hosts || intranetHosts()).map(U);
   const dIdx = dizinIndeksi(dizinDurum === 'var' ? dirRows : []);
   const { ownersFor } = require('../audit/ns-owners.cjs');
@@ -159,8 +167,22 @@ function buildIntranetRapor({ apps, ownersByNs, beyanlar, coverage, dirRows, diz
   const beyan = new Map();
   for (const [k, v] of beyanlar || []) if (!String(k).includes('\u0000')) beyan.set(L(k), v);
 
-  const rows = (apps || [])
-    .filter((a) => a.spa === 'evet' && INTRANET_AG.has(a.ag))
+  const adaylar = (apps || []).filter((a) => a.spa === 'evet' && INTRANET_AG.has(a.ag));
+  const disi = new Map();
+  const icinde = adaylar.filter((a) => {
+    const cl = (a.clusters || []).map(L);
+    if (cl.some((c) => platformOfCluster(c) === platform)) return true;
+    const p = [...new Set(cl.map((c) => platformOfCluster(c) || 'bilinmiyor'))].sort().join('+') || 'cluster-yok';
+    if (!disi.has(p)) disi.set(p, { platform: p, uygulama: 0, clusters: new Set() });
+    disi.get(p).uygulama += 1;
+    for (const c of cl) disi.get(p).clusters.add(c);
+    return false;
+  });
+  const platformDisi = [...disi.values()]
+    .map((d) => ({ platform: d.platform, uygulama: d.uygulama, clusters: [...d.clusters].sort() }))
+    .sort((a, b) => b.uygulama - a.uygulama || a.platform.localeCompare(b.platform));
+
+  const rows = icinde
     .map((a) => {
       const ns = T(a.namespace);
       const app = T(a.application);
@@ -210,6 +232,25 @@ function buildIntranetRapor({ apps, ownersByNs, beyanlar, coverage, dirRows, diz
       a.application.localeCompare(b.application) ||
       a.namespace.localeCompare(b.namespace),
   );
+  // SUNUCUDA VAR, LISTEDE YOK (bilgi): ortamin intranet sunucusundaki dizin cifti ayni ortamin
+  // hicbir satiriyla ((ns, app) aynen ya da '-prod' eksiz ns) eslesmiyor - retire, route tipi
+  // degismis ya da baska platform. Kapsam & Tasima'nin "yalniz sunucuda" alani buradan.
+  const satirKey = new Set(rows.map((r) => `${r.env}|${L(r.namespace)}|${L(r.application)}`));
+  const fazla = new Map();
+  for (const d of dizinDurum === 'var' ? dirRows || [] : []) {
+    const host = U(d.host);
+    const ns = L(d.namespace);
+    const app = L(d.application);
+    if (!ns || !app || !sunucuListesi.includes(host)) continue;
+    const env = envOfHost(host);
+    if (satirKey.has(`${env}|${ns}|${app}`) || (!ns.endsWith('-prod') && satirKey.has(`${env}|${ns}-prod|${app}`))) continue;
+    const k = `${env}|${ns}|${app}`;
+    if (!fazla.has(k)) fazla.set(k, { env, namespace: T(d.namespace), application: T(d.application), hosts: [] });
+    if (!fazla.get(k).hosts.includes(host)) fazla.get(k).hosts.push(host);
+  }
+  const sunucudaFazla = [...fazla.values()].sort(
+    (a, b) => sira(a.env) - sira(b.env) || a.application.localeCompare(b.application) || a.namespace.localeCompare(b.namespace),
+  );
   const envler = [...new Set(rows.map((r) => r.env))].sort((a, b) => sira(a) - sira(b) || a.localeCompare(b));
   const envs = envler.map((env) => {
     const rs = rows.filter((r) => r.env === env);
@@ -243,12 +284,16 @@ function buildIntranetRapor({ apps, ownersByNs, beyanlar, coverage, dirRows, diz
   return {
     rows,
     envs,
+    platform,
+    platformDisi,
     dynatraceTarihi: dynatraceTarihi || null,
     sorunluCluster,
     dizinDurum,
     dizinTarihi: dIdx.tarih || null,
+    intranetSunuculari: sunucuListesi,
     // Son dizin taramasinda satiri olmayan intranet sunuculari: oradaki kurulum OLCULEMEDI.
     taranmayanSunucu: dizinDurum === 'var' ? sunucuListesi.filter((h) => !dIdx.taranan.has(h)) : sunucuListesi,
+    sunucudaFazla,
   };
 }
 

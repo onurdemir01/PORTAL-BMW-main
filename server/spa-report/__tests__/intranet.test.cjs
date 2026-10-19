@@ -56,7 +56,7 @@ const { buildSpaDiscovery } = require('../../nginx-console/spa-discovery.cjs');
 const A = (application, o = {}) => ({
   application, namespace: 'kart-prod', env: 'prod', spa: 'evet', ag: 'intranet', istek: 'var', reqShown: 120,
   usage: { scanDate: '2026-10-18', windowDays: 35, services: 2 }, hosts: [`${application}-kart-prod.apps.fw.garanti.com.tr`],
-  clusters: ['gbocpp1', 'gbocpp2'], staleClusters: [], kapsamDurum: 'tam', kapsamVar: 2, kapsamToplam: 2,
+  clusters: ['gbocpprod1', 'gbocpprod2'], staleClusters: [], kapsamDurum: 'tam', kapsamVar: 2, kapsamToplam: 2,
   weakEvidence: false, pattern: 'uyuyor', ...o,
 });
 const kur = (apps, o = {}) => buildIntranetRapor({ apps, ownersByNs: new Map(), beyanlar: new Map(), ...o });
@@ -103,22 +103,22 @@ const D = (cluster, ns, workload, termination, o = {}) => ({
 const Uu = (cluster, ns, app, req, o = {}) => ({
   cluster, namespace: ns, app, scan_date: '2026-10-18', window_days: 35, req_total: req, services_total: 1, measured: 1, note: '', ...o,
 });
-const RUNS = [{ cluster: 'gbocpp1', durum: 'ok', routes: 5, scan_date: '2026-10-18' }, { cluster: 'gbocpp2', durum: 'ok', routes: 5, scan_date: '2026-10-18' }];
+const RUNS = [{ cluster: 'gbocpprod1', durum: 'ok', routes: 5, scan_date: '2026-10-18' }, { cluster: 'gbocpprod2', durum: 'ok', routes: 5, scan_date: '2026-10-18' }];
 
 test('IS3 gercek kesif hesabi uzerinden: cluster toplami, servis-yok, olculemeyen cluster, tablo dustu', () => {
   const disc = [
-    D('gbocpp1', 'kart-prod', 'aktif-ui', 'reencrypt'), D('gbocpp2', 'kart-prod', 'aktif-ui', 'reencrypt'),
-    D('gbocpp1', 'kart-prod', 'sessiz-ui', 'reencrypt'), D('gbocpp2', 'kart-prod', 'sessiz-ui', 'reencrypt'),
-    D('gbocpp1', 'kart-prod', 'yarim-ui', 'reencrypt'), D('gbocpp2', 'kart-prod', 'yarim-ui', 'reencrypt'),
-    D('gbocpp1', 'kart-prod', 'servissiz-ui', 'reencrypt'),
-    D('gbocpp1', 'kart-prod', 'dis-ui', 'passthrough'),
-    D('gbocpp1', 'kart-prod', 'api', 'reencrypt', { is_spa: 0, signal: '' }),
+    D('gbocpprod1', 'kart-prod', 'aktif-ui', 'reencrypt'), D('gbocpprod2', 'kart-prod', 'aktif-ui', 'reencrypt'),
+    D('gbocpprod1', 'kart-prod', 'sessiz-ui', 'reencrypt'), D('gbocpprod2', 'kart-prod', 'sessiz-ui', 'reencrypt'),
+    D('gbocpprod1', 'kart-prod', 'yarim-ui', 'reencrypt'), D('gbocpprod2', 'kart-prod', 'yarim-ui', 'reencrypt'),
+    D('gbocpprod1', 'kart-prod', 'servissiz-ui', 'reencrypt'),
+    D('gbocpprod1', 'kart-prod', 'dis-ui', 'passthrough'),
+    D('gbocpprod1', 'kart-prod', 'api', 'reencrypt', { is_spa: 0, signal: '' }),
   ];
   const usage = [
-    Uu('gbocpp1', 'kart-prod', 'aktif-ui', 7), Uu('gbocpp2', 'kart-prod', 'aktif-ui', 5),
-    Uu('gbocpp1', 'kart-prod', 'sessiz-ui', 0), Uu('gbocpp2', 'kart-prod', 'sessiz-ui', 0),
-    Uu('gbocpp1', 'kart-prod', 'yarim-ui', 0), Uu('gbocpp2', 'kart-prod', 'yarim-ui', 0, { measured: 0, note: 'servis okunamadi: 403' }),
-    Uu('gbocpp1', 'kart-prod', 'servissiz-ui', 0, { services_total: 0 }),
+    Uu('gbocpprod1', 'kart-prod', 'aktif-ui', 7), Uu('gbocpprod2', 'kart-prod', 'aktif-ui', 5),
+    Uu('gbocpprod1', 'kart-prod', 'sessiz-ui', 0), Uu('gbocpprod2', 'kart-prod', 'sessiz-ui', 0),
+    Uu('gbocpprod1', 'kart-prod', 'yarim-ui', 0), Uu('gbocpprod2', 'kart-prod', 'yarim-ui', 0, { measured: 0, note: 'servis okunamadi: 403' }),
+    Uu('gbocpprod1', 'kart-prod', 'servissiz-ui', 0, { services_total: 0 }),
   ];
   const kes = buildSpaDiscovery(disc, [], usage, RUNS, { tablolar: {} }, null);
   const out = kur(kes.apps, { coverage: kes.coverage });
@@ -151,7 +151,7 @@ test('IS5 degerlendirme olcumu ve beyani yan yana okur', () => {
   const out = kur(
     [
       A('kapat', { istek: 'yok', reqShown: 0 }), A('teyit', { istek: 'yok', reqShown: 0 }), A('cel'),
-      A('sy', { istek: 'servis-yok', reqShown: 0 }), A('zayif', { weakEvidence: true, staleClusters: ['gbocpp2'] }),
+      A('sy', { istek: 'servis-yok', reqShown: 0 }), A('zayif', { weakEvidence: true, staleClusters: ['gbocpprod2'] }),
       A('kullaniyor', { istek: 'yok', reqShown: 0 }),
     ],
     { beyanlar: new Map([['kart-prod/kapat', { inUse: 'no' }], ['kart-prod/cel', { inUse: 'no' }], ['kart-prod/sy', { inUse: 'no' }], ['kart-prod/kullaniyor', { inUse: 'yes' }]]) },
@@ -174,16 +174,16 @@ test('IS6 ortam ozeti, siralama, sorunlu cluster', () => {
     {
       beyanlar: new Map([['kart-prod/p2', { inUse: 'no' }]]),
       coverage: { clusters: [
-        { cluster: 'gbocpp1', status: 'ok', bucket: 'guncel', stale: false, reason: '' },
-        { cluster: 'gbocpp2', status: 'login', bucket: 'taranamadi', stale: true, reason: 'login basarisiz' },
-        { cluster: 'gbocpt1', status: 'ok', bucket: 'onceki', stale: true, reason: '' },
+        { cluster: 'gbocpprod1', status: 'ok', bucket: 'guncel', stale: false, reason: '' },
+        { cluster: 'gbocpprod2', status: 'login', bucket: 'taranamadi', stale: true, reason: 'login basarisiz' },
+        { cluster: 'gbocptest1', status: 'ok', bucket: 'onceki', stale: true, reason: '' },
       ] },
     },
   );
   assert.deepEqual(out.rows.map((r) => r.env), ['TEST', 'PROD', 'PROD', 'PROD', 'PROD', 'BILINMIYOR']);
   const p = out.envs.find((e) => e.env === 'PROD');
   assert.deepEqual([p.uygulama, p.var, p.yok, p.servisYok, p.olculemedi, p.olcumYok, p.beyanli, p.kapatmaAdayi, p.celiski], [4, 1, 2, 1, 0, 0, 1, 1, 0]);
-  assert.deepEqual(out.sorunluCluster.map((c) => c.cluster), ['gbocpp2', 'gbocpt1']);
+  assert.deepEqual(out.sorunluCluster.map((c) => c.cluster), ['gbocpprod2', 'gbocptest1']);
 });
 
 test('IS7 yukleyici: tablo yok, sahipler, onbellek, Dynatrace okunamadi', async () => {

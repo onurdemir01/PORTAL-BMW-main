@@ -340,4 +340,10 @@ function initSpaReport(app) {
   console.log('[ARK SPA] module mounted at /api/spa-report');
 }
 
-module.exports = { initSpaReport, loadReport, declKey, loadBeyanlar, uygulamaBeyaniYaz, BEYAN };
+/** Nginx ARK SPA > Intranet SPA raporu, sayfanin KULLANDIGI hesap ve onbellek (2026-10-19): Nginx Hub >
+ *  Kapsam & Tasima'nin intranet kurulum hucresi buradan beslenir; iki ekran ayni sayiyi gosterir. */
+function intranetOzeti(fresh) {
+  return require('./intranet.cjs').loadIntranet(!!fresh, { loadBeyanlar, uygulamaBeyaniYaz });
+}
+
+module.exports = { initSpaReport, loadReport, declKey, loadBeyanlar, uygulamaBeyaniYaz, BEYAN, intranetOzeti };

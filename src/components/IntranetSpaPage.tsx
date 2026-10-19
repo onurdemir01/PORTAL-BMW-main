@@ -388,6 +388,14 @@ export default function IntranetSpaPage() {
           bu sunuculardaki kurulum ölçülemedi, “eksik” sayılmadı.
         </div>
       )}
+      {/* PLATFORM (2026-10-19): satirlar ARK cluster'larindan (Nginx Hub > Kapsam & Tasima ile ayni kume);
+          disarida kalan sessizce dusmez. */}
+      {!!data?.platformDisi?.length && (
+        <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+          ARK dışı cluster’lardaki intranet SPA’lar bu listeye girmez:{' '}
+          {data.platformDisi.map((d) => `${d.platform} ${d.uygulama} (${d.clusters.join(', ') || 'cluster yok'})`).join(' · ')}
+        </div>
+      )}
       {!!data?.sorunluCluster?.length && (
         <div className="text-[11px]" style={{ color: 'var(--status-warning-text)' }}>
           Keşfi eksik ya da eski olan cluster’lar:{' '}

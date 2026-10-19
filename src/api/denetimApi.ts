@@ -313,6 +313,17 @@ export interface SpaCoverageRow {
   /** Bu ortamda satir uretilen intranet sunuculari. */
   intranetHosts: string[];
   intranetCoverage: number | null;
+  /** Intranet kurulum hucresinin kaynagi (2026-10-19): 'intranet-spa' = Nginx ARK SPA > Intranet SPA
+   *  ile AYNI hesap (Gercek SPA Kesfi satirlari; ARK), 'ad-kalibi' = eski hesap (baska platform). */
+  intranetKaynak?: 'intranet-spa' | 'ad-kalibi';
+  /** Ortak rapor okunamadiysa / dizin taramasi yoksa neden (hucre "olculemedi"). */
+  intranetKaynakHata?: string;
+  /** 'intranet-spa': ortamin intranet SPA sayisi (Intranet SPA sayfasindaki "uygulama"). */
+  intranetKurulumToplam?: number;
+  /** 'intranet-spa': ortamin sunucusu taranmadigi icin olculemeyen; "kurulmamis" DEGIL. */
+  intranetOlculemediCount?: number;
+  /** 'intranet-spa': ortamin hic intranet nginx sunucusu yok. */
+  intranetSunucuYokCount?: number;
   /** BULGU: intranet uygulamasi INTERNETE ACIK sunucuda tanimli. Intranet
    *  sunucusunda olmasi normaldir, bulgu degildir. */
   intranetInNginx: number;
@@ -509,6 +520,17 @@ export interface SpaCoverageResult {
   intranetTableMissing?: boolean;
   /** Beklenmeyen durum: intranet sunucusunda servis vhost'u tanimi bulundu. */
   intranetVhostRows?: number;
+  intranetKaynak?: 'intranet-spa' | 'ad-kalibi';
+  intranetKaynakHata?: string;
+  /** Ortak Intranet SPA raporunun tarihleri ve kapsami (ARK). */
+  intranetRapor?: {
+    kesifTarihi: string | null;
+    dizinTarihi: string | null;
+    dizinDurum: 'var' | 'okunamadi';
+    taranmayanSunucu: string[];
+    platformDisi: { platform: string; uygulama: number; clusters: string[] }[];
+    ortamsiz: number;
+  } | null;
   rows: SpaCoverageRow[];
   message?: string;
 }

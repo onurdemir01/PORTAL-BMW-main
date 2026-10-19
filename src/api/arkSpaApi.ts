@@ -201,6 +201,10 @@ export interface IntranetRapor {
   dizinTarihi?: string | null;
   /** Son dizin taramasında satırı olmayan intranet sunucuları */
   taranmayanSunucu?: string[];
+  /** Satırlar bu platformun cluster'larından (Nginx Hub > Kapsam & Taşıma ile aynı küme). */
+  platform?: string;
+  /** Platform dışında kalan intranet SPA'lar: platform (ya da 'bilinmiyor' / 'cluster-yok') + cluster'lar. */
+  platformDisi?: { platform: string; uygulama: number; clusters: string[] }[];
   hesaplandi?: string | null;
   cached?: boolean;
 }

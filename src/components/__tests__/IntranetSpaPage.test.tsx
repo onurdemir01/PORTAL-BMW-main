@@ -14,6 +14,8 @@
 //   IU7 kurulum sütunu (tamamlandı / kısmi + eksik sunucu / kurulu değil / ölçülemedi), özet kutusu
 //       süzgeci, sunucu başına ayrıntı (paket / dosyalar / conf), taranmayan sunucu ve okunamadı
 //       bantları, CSV
+//   IU9 platform: ARK dışı cluster'lardaki intranet SPA'lar sessizce düşmez, bantta platform + sayı +
+//       cluster (Nginx Hub › Kapsam & Taşıma ile aynı küme, 2026-10-19)
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { render } from '@/test/test-utils';
@@ -213,5 +215,17 @@ describe('Intranet SPA', () => {
     render(<IntranetSpaPage />);
     await screen.findByText('atil-ui');
     expect(screen.getByText(/Intranet dizin taraması \(Nginx_Intranet_Audit\) okunamadı/)).toBeTruthy();
+  });
+
+  it('IU9 ARK dışı cluster bandı', async () => {
+    mockRapor.mockResolvedValue(rapor({ platformDisi: [{ platform: 'wyden', uygulama: 2, clusters: ['giocp3rdwyprod1'] }, { platform: 'cluster-yok', uygulama: 1, clusters: [] }] }));
+    const { unmount } = render(<IntranetSpaPage />);
+    await screen.findByText('atil-ui');
+    expect(screen.getByText('ARK dışı cluster’lardaki intranet SPA’lar bu listeye girmez: wyden 2 (giocp3rdwyprod1) · cluster-yok 1 (cluster yok)')).toBeTruthy();
+    unmount();
+    mockRapor.mockResolvedValue(rapor());
+    render(<IntranetSpaPage />);
+    await screen.findByText('atil-ui');
+    expect(screen.queryByText(/ARK dışı cluster/)).toBeNull();
   });
 });
