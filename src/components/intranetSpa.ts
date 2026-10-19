@@ -112,6 +112,21 @@ export function kurulumMetni(k: IntranetKurulum): string {
 
 export const nf = (n: number) => new Intl.NumberFormat('tr-TR').format(n);
 
+/** Beyan kaydindan sonra sunucuyu yeniden beklemeden satirin kararini ayni kuralla guncelle. */
+export function degerlendirIntranet(
+  r: Pick<IntranetSatir, 'istek' | 'ag' | 'zayifKanit' | 'eskiCluster'>,
+  inUse: IntranetSatir['inUse'],
+): IntranetDegerlendirme[] {
+  const d: IntranetDegerlendirme[] = [];
+  if (r.istek === 'yok' && inUse === 'no') d.push('kapatma-adayi');
+  else if (r.istek === 'yok' && !inUse) d.push('teyit-bekliyor');
+  if (r.istek === 'var' && inUse === 'no') d.push('celiski');
+  if (r.ag === 'karisik') d.push('internet-route-da-var');
+  if (r.zayifKanit) d.push('zayif-kanit');
+  if (r.eskiCluster.length) d.push('eski-veri');
+  return d;
+}
+
 /** Yük hücresinin kısa metni (ekran + CSV aynı). */
 export function istekMetni(r: IntranetSatir): string {
   if (r.istek === 'var') return `istek alıyor · ${nf(r.req ?? 0)}`;

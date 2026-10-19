@@ -312,6 +312,21 @@ test('IS11 kurulum: kendi ortaminin taranan sunucularina gore tamam / kismi / yo
   assert.equal(out.dizinTarihi, '2026-10-18');
 });
 
+test('IS11b namespace fallback her sunucuda ayri uygulanir; kesin eslesme onceliklidir', () => {
+  const out = kur([A('gecis-ui')], {
+    hosts: ['GBNGXP50', 'GBNGXP51'],
+    dirRows: [
+      DZ('GBNGXP50', 'kart-prod', 'gecis-ui'),
+      DZ('GBNGXP50', 'kart', 'gecis-ui', { app_deployed: 0, status: 'MISSING_APP' }),
+      DZ('GBNGXP51', 'kart', 'gecis-ui'),
+    ],
+  });
+  const k = satir(out, 'gecis-ui').kurulum;
+  assert.deepEqual([k.durum, k.tam, k.beklenen, k.eslesme], ['tamam', 2, 2, 'ek-prod']);
+  assert.equal(k.sunucular.find((s) => s.host === 'GBNGXP50').status, 'OK', 'ayni sunucuda fallback kesin kaydi ezdi');
+  assert.equal(k.sunucular.find((s) => s.host === 'GBNGXP51').status, 'OK', 'baska sunucudaki kesin kayit fallback eslesmesini bastirdi');
+});
+
 test('IS12 kurulum olculemedi / sunucu-yok; ortam ozeti', () => {
   const apps = [A('a-ui'), A('x-ui', { namespace: 'kart', env: null })];
   const dus = kur(apps, { hosts: PROD_INTRA, dirRows: null, dizinDurum: 'okunamadi' });

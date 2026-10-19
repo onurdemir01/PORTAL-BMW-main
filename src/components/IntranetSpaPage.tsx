@@ -34,6 +34,7 @@ import {
   ISTEK,
   KURULUM,
   kurulumMetni,
+  degerlendirIntranet,
   sunucuDurumu,
   intranetCsvSatirlari,
   istekIpucu,
@@ -272,13 +273,17 @@ export default function IntranetSpaPage() {
               ...d,
               rows: (d.rows || []).map((x) =>
                 x.namespace === r.namespace && x.application === r.application
-                  ? {
-                      ...x,
-                      inUse: (inUse as IntranetSatir['inUse']) || null,
-                      note,
-                      inUseBy: c.inUseBy ?? x.inUseBy,
-                      inUseAt: c.inUseAt ?? x.inUseAt,
-                    }
+                  ? (() => {
+                      const yeniBeyan = (inUse as IntranetSatir['inUse']) || null;
+                      return {
+                        ...x,
+                        inUse: yeniBeyan,
+                        note,
+                        inUseBy: c.inUseBy ?? x.inUseBy,
+                        inUseAt: c.inUseAt ?? x.inUseAt,
+                        degerlendirme: degerlendirIntranet(x, yeniBeyan),
+                      };
+                    })()
                   : x,
               ),
             }
