@@ -3571,6 +3571,9 @@ function initAnsibleRunner(app) {
       // AWX'in "Prompt on Launch → Variables" bayragi — FieldOverridesModal'in serbest
       // "Ek Degiskenler" kutusunu bilgilendirmek icin (bkz. plan: free-form extra_vars gap).
       const askVariables = !!detail.ask_variables_on_launch;
+      // YEREL OKUMA (2026-10-20): nginx_ops.yml sablonunda action=read AWX'e gitmez; form
+      // tanimlari Portal'dan gosterir (selfservice/nginx-tanim-okuma.cjs).
+      const yerelOkuma = require('../selfservice/nginx-tanim-okuma.cjs').yerelOkumaOf(detail);
 
       // Survey AWX'te devre disiysa (survey_enabled === false): admin bu template icin
       // portal uzerinden KENDI survey'ini tasarladiysa (bkz. FieldOverridesModal "Survey
@@ -3591,6 +3594,7 @@ function initAnsibleRunner(app) {
           askVariables,
           templateId: req.params.templateId,
           gates,
+          yerelOkuma,
         });
       }
 
@@ -3642,6 +3646,7 @@ function initAnsibleRunner(app) {
         askVariables,
         templateId: req.params.templateId,
         gates,
+        yerelOkuma,
       });
     } catch (err) {
       const { status, message } = friendlyAwxError(err);
@@ -4283,6 +4288,19 @@ function initAnsibleRunner(app) {
           jobType,
           req,
         });
+
+      // ── YEREL OKUMA (2026-10-20) ─────────────────────────────────────────────
+      // nginx_ops.yml sablonunda action=read AWX job'i BASLATMAZ (kullanici: "Ansible job'ini
+      // tetiklememize gerek yok"); form tanimlari /api/selfservice/nginx-tanimlar'dan gosterir.
+      // Kapilardan (OCO / Smart) ONCE: okuma icin talep acilmaz.
+      if (require('../selfservice/nginx-tanim-okuma.cjs').yerelOkumaMi(detail, extraVars)) {
+        return res.status(400).json({
+          ok: false,
+          yerelOkuma: true,
+          message:
+            'Read işi başlatılmaz: mevcut tanımlar (hangi location’a hangi uygulama cevap veriyor) formda gösterilir.',
+        });
+      }
 
       // ── DEGISIKLIK KAPILARI (OCO penceresi + Smart onayi) ────────────────────
       // Mantik server/ansible/change-gates.cjs'e TASINDI — davranis AYNI. Cikarilma

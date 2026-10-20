@@ -289,6 +289,8 @@ export const ansibleApi = {
     message?: string;
     /** Bu serviste tanimli kapilar (on bilgi; karar launch-ss'te). */
     gates?: SurveyGates;
+    /** nginx_ops.yml sablonu: action=read AWX'e gitmez, tanimlar formda gosterilir (2026-10-20). */
+    yerelOkuma?: { tur: 'nginx-tanimlar'; eylemAlanlari: string[]; deger: string } | null;
   }> => fetch(`${BASE}/survey/${serverId}/${templateId}`).then(safeJson),
 
   // Admin-only: gizlenmiş (hidden) alanlar dahil TÜM survey alanlarını döner —

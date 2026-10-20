@@ -39,6 +39,7 @@ import OpenshiftCheckSection from '@/components/self_service/OpenshiftCheckSecti
 import { SkeletonList } from '@/components/common/Skeleton';
 import LoadError from '@/components/common/LoadError';
 import KapamaOnayiUyarisi from '@/components/self_service/KapamaOnayiUyarisi';
+import NginxTanimOkuma from '@/components/self_service/NginxTanimOkuma';
 import SmartTalepSayaci from '@/components/common/SmartTalepSayaci';
 import { fmtDateTime } from '@/utils/datetime';
 import { isFieldActive as isFieldActiveShared } from '../../shared/surveyConditions.cjs';
@@ -101,6 +102,9 @@ function SurveyModal({ item, onClose, inline = false }: SurveyModalProps) {
   // onceden duyurulur (2026-09-21, kullanici: "OCO form doldurulduktan sonra sorulunca
   // insanlar en basta is tetiklemeye korkuyor"). Karar yine sunucuda (launch-ss).
   const [gates, setGates] = useState<SurveyGates | null>(null);
+  // YEREL OKUMA (2026-10-20): nginx_ops.yml sablonunda action=read AWX'e gitmez; tanimlar
+  // formda gosterilir (sunucu launch-ss'te de reddeder).
+  const [yerelOkuma, setYerelOkuma] = useState<{ tur: string; eylemAlanlari: string[]; deger: string } | null>(null);
   const [limit, setLimit] = useState('');
   const [forks, setForks] = useState('');
   const [jobTags, setJobTags] = useState('');
@@ -207,6 +211,7 @@ function SurveyModal({ item, onClose, inline = false }: SurveyModalProps) {
         }
         setValues(defaults);
         setGates(r.gates || null);
+        setYerelOkuma(r.yerelOkuma || null);
         if (r.launchOptions) {
           setLaunchOptions(r.launchOptions);
           setLimit(String(r.launchOptions.limit?.current ?? ''));
@@ -230,6 +235,13 @@ function SurveyModal({ item, onClose, inline = false }: SurveyModalProps) {
     return isFieldActiveShared(f.dependsOn, values);
   }
   const visibleFields = fields.filter(isFieldActive);
+  // Alan adi harf duyarsiz (AWX survey'leri "ENV"/"env" yazabiliyor).
+  const alanDegeri = (adlar: string[]) => {
+    for (const [k, v] of Object.entries(values)) if (adlar.includes(k.toLowerCase())) return String(v ?? '').trim();
+    return '';
+  };
+  const yerelOkumaAktif =
+    !!yerelOkuma && alanDegeri(yerelOkuma.eylemAlanlari).toLowerCase() === yerelOkuma.deger;
 
   // OCO on uyarisi: kullanicinin SU ANKI secimi OCO isteyecek mi? Sunucudaki kuralin
   // (server/oco/prod-detect.cjs + change-gates isOcoGateApplicable) UX kopyasi:
@@ -377,6 +389,7 @@ function SurveyModal({ item, onClose, inline = false }: SurveyModalProps) {
   }
 
   async function launch(ocoAction?: 'schedule' | 'later') {
+    if (yerelOkumaAktif) return; // read is baslatmaz; tanimlar formda
     setSubmitAttempted(true); // tüm alan hatalarını göster
     if (hasAnyFieldError) {
       setErr(
@@ -1016,6 +1029,15 @@ function SurveyModal({ item, onClose, inline = false }: SurveyModalProps) {
             </>
           )}
 
+          {yerelOkumaAktif && !resultView && (
+            <NginxTanimOkuma
+              env={alanDegeri(['env', 'ortam'])}
+              service={alanDegeri(['service', 'servis'])}
+              namespace={alanDegeri(['namespace']) || undefined}
+              application={alanDegeri(['application', 'app', 'uygulama']) || undefined}
+            />
+          )}
+
           {pendingTicket && (
             <div className="space-y-3 animate-fade-in text-center py-6">
               {pendingTicket.status === 'PENDING' && (
@@ -1183,7 +1205,10 @@ function SurveyModal({ item, onClose, inline = false }: SurveyModalProps) {
               {resultView ? 'Kapat' : 'İptal'}
             </button>
           )}
-          {!jobId && !pendingTicket && !ocoState && (
+          {yerelOkumaAktif && !resultView && (
+            <span className="text-xs text-[var(--text-muted)]">Read için iş başlatılmaz — tanımlar yukarıda.</span>
+          )}
+          {!jobId && !pendingTicket && !ocoState && !yerelOkumaAktif && (
             <button
               onClick={() => launch()}
               disabled={launching || loading || hasAnyFieldError}

@@ -43,7 +43,13 @@ vi.mock('@/contexts/JobTrackerContext', () => ({ useJobTracker: () => ({ addJob:
 const KEPT = 'Yalnız ESKİ sunuculardan kaldırır; yeni filo korunur.';
 const BLOCKED = 'Yeni filo korunamıyor — silme BAŞLATILMAZ';
 
-function veri(): NginxMigrationResult {
+// GLOMO'nun eski filosu kapali (2026-10-20): silme diyalogu GLOMO DISI satirla sinanir; GLOMO
+// satiri ayri testte (dugme pasif, istek gitmez).
+function veri(grup: 'other' | 'glomo' = 'other'): NginxMigrationResult {
+  const G =
+    grup === 'glomo'
+      ? { id: 'glomo', label: 'GLOMO', svc: 'GLOMO', eski: 'GBRVPP07', yeni: 'GBNGXP40' }
+      : { id: 'other', label: 'WEBFORMS', svc: 'WEBFORMS', eski: 'GBRVPP01', yeni: 'GBNGXP44' };
   return {
     ok: true,
     proxyReady: true,
@@ -53,13 +59,13 @@ function veri(): NginxMigrationResult {
     ownersReady: true,
     groups: [
       {
-        id: 'glomo',
-        label: 'GLOMO',
-        oldHosts: ['GBRVPP07'],
-        newHosts: ['GBNGXP40'],
-        newHostsScanned: ['GBNGXP40'],
-        oldHostsSeen: ['GBRVPP07'],
-        serviceLocations: [{ service: 'GLOMO', locations: 1, defined: 1, partial: 0, none: 0, notScanned: 0 }],
+        id: G.id,
+        label: G.label,
+        oldHosts: [G.eski],
+        newHosts: [G.yeni],
+        newHostsScanned: [G.yeni],
+        oldHostsSeen: [G.eski],
+        serviceLocations: [{ service: G.svc, locations: 1, defined: 1, partial: 0, none: 0, notScanned: 0 }],
         apps: [
           {
             namespace: 'digital-banking-ch-prod',
@@ -70,12 +76,12 @@ function veri(): NginxMigrationResult {
             suffixAdded: false,
             forms: ['upstream'],
             written: ['base_up'],
-            services: ['GLOMO'],
-            oldHosts: ['GBRVPP07'],
+            services: [G.svc],
+            oldHosts: [G.eski],
             locations: ['/base/'],
             locationCount: 1,
-            paths: [{ service: 'GLOMO', location: '/base/', hosts: ['GBRVPP07'], newHosts: ['GBNGXP40'], newStatus: 'defined', traffic: null }],
-            perHost: { GBNGXP40: { hys: true, app: true, conf: true } },
+            paths: [{ service: G.svc, location: '/base/', hosts: [G.eski], newHosts: [G.yeni], newStatus: 'defined', traffic: null }],
+            perHost: { [G.yeni]: { hys: true, app: true, conf: true } },
             readyHosts: 1,
             scannedHosts: 1,
             status: 'ready',
@@ -111,6 +117,21 @@ beforeEach(() => {
   api.nginxMigration.mockResolvedValue(veri());
   api.config.mockResolvedValue({ ok: true, config: { awxServerId: 1, templateId: 10, deleteTemplateId: 20 } });
   api.trackingList.mockResolvedValue({ ok: true, rows: [], pathJobs: [] });
+});
+
+describe('GLOMO eski filosu kapalı (2026-10-20)', () => {
+  it('GLOMO satırında düğme pasif, gerekçe yazılı; tıklansa da ön kontrol / silme isteği gitmez', async () => {
+    api.nginxMigration.mockResolvedValue(veri('glomo'));
+    render(<NginxProdMigration />);
+    const btn = await screen.findByRole('button', { name: /Eski filo kapalı/ });
+    await waitFor(() => expect(api.config).toHaveBeenCalled());
+    expect(btn).toBeDisabled();
+    expect(btn.getAttribute('title') || '').toMatch(/GLOMO için eski filoya .* hiçbir işte gidilmez/);
+    fireEvent.click(btn);
+    expect(api.deleteGuard).not.toHaveBeenCalled();
+    expect(api.remove).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: /Eski tanımı kaldır/ })).toBeNull();
+  });
 });
 
 describe('Eski tanımı kaldır — yeni filo vaadi KOŞULLU', () => {

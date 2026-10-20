@@ -172,6 +172,25 @@ function initSelfService(app) {
     }
   });
 
+  // GET /nginx-tanimlar — Nginx - RVP Operations "read" (2026-10-20): AWX job'i BASLATILMAZ;
+  // silme akisinin okudugu tarama verisinden "hangi location'a hangi uygulama cevap veriyor".
+  // Bkz. nginx-tanim-okuma.cjs.
+  router.get("/nginx-tanimlar", async (req, res) => {
+    try {
+      const { nginxTanimlari } = require("./nginx-tanim-okuma.cjs");
+      const r = await nginxTanimlari({
+        env: req.query.env,
+        service: req.query.service,
+        namespace: req.query.namespace,
+        application: req.query.application,
+      });
+      if (!r.ok) return res.status(r.status || 400).json(r);
+      res.json(r);
+    } catch (err) {
+      res.status(500).json({ ok: false, message: err.message || "Tanımlar okunamadı." });
+    }
+  });
+
   // "Ansible" sekmesinin etiket/sira/aktiflik metadata'si (Smart/Digerleri katalogu
   // kaldirildigi icin geriye yalniz bu grup kaldi).
   router.get("/", async (req, res) => {

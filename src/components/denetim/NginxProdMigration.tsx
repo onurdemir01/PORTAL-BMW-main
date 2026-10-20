@@ -54,6 +54,12 @@ const nf = (n: number) => new Intl.NumberFormat('tr-TR').format(n);
 // gecerse gosterilir, gecmezse NEDENI yazilir. (Eski metin yeni sunucularin etkilenmeyecegini
 // KOSULSUZ vaat ediyordu ve YANLISTI: nginx_ops new_fleet'i gormezse silmeyi yeni filoya da goturur.)
 const NEW_FLEET_KEPT = 'Yalnız ESKİ sunuculardan kaldırır; yeni filo korunur.';
+// ESKI FILOSU KAPALI gruplar (2026-10-20, kullanici: "Glomo icin tasarladigin tum islerde eski
+// filoya gitmeyi kaldirabilirsin"). Sunucudaki kopya: server/nginx-migration/index.cjs
+// ESKI_FILO_KAPALI (sunucu da reddeder; test ikisini karsilastirir).
+const ESKI_FILO_KAPALI = new Set(['glomo']);
+const ESKI_FILO_KAPALI_SEBEP =
+  'GLOMO için eski filoya (GBRVPP07-10 / GBRVPAP03-06) hiçbir işte gidilmez (2026-10-20); eski sunucudan kaldırma yapılmaz. Tanımlar yalnız yeni filoda.';
 const NEW_FLEET_BLOCKED = 'Yeni filo korunamıyor — silme BAŞLATILMAZ';
 // Silme guvenli ama survey'deki new_fleet sorusu (varsayilani false / zorunlu+varsayilansiz)
 // new_fleet gondermeyen DIGER nginx_ops islerini bozuyor: yonetici template'i duzeltmeli.
@@ -807,7 +813,8 @@ export default function NginxProdMigration() {
             }
             onClearSelection={() => setSelected(new Set())}
             selectedTotal={selectedApps.length}
-            canDelete={deleteConfigured}
+            canDelete={deleteConfigured && !ESKI_FILO_KAPALI.has(g.id)}
+            silmeKapali={ESKI_FILO_KAPALI.has(g.id) ? ESKI_FILO_KAPALI_SEBEP : undefined}
             onDelete={(app) => setPendingDelete({ group: g, app, pathIdx: 0 })}
             tracking={tracking}
             trackingReady={trackingReady}
@@ -2017,6 +2024,7 @@ function GroupPanel({
   sideFilter,
   onTrack,
   canDelete,
+  silmeKapali,
   onDelete,
   kaynakTarihleri,
 }: {
@@ -2042,6 +2050,8 @@ function GroupPanel({
   sideFilter: 'all' | 'defined' | 'partial' | 'none' | 'not-scanned';
   onTrack: (app: NginxMigrationApp) => void;
   canDelete: boolean;
+  /** Grubun eski filosu kapaliysa gerekce: dugme pasif ve bunu soyler. */
+  silmeKapali?: string;
   onDelete: (app: NginxMigrationApp) => void;
 }) {
   const trackOf = (a: NginxMigrationApp) =>
@@ -2437,12 +2447,14 @@ function GroupPanel({
                       className="mt-1 flex items-center gap-1 px-2 py-1 text-[10px] font-semibold rounded-lg border disabled:opacity-40 whitespace-nowrap"
                       style={{ borderColor: 'var(--status-danger)', color: 'var(--status-danger)' }}
                       title={
-                        !canDelete
-                          ? "Silme job'ı yapılandırılmamış (yönetici paneli: nginx_ops template)"
-                          : `Eski sunucudaki ${a.paths.map((p) => p.service + '-PROD.conf ' + p.location).join(' / ')} tanımını (ve kullanılmayan upstream'i) kaldır — 23:00'e zamanlanır. ${NEW_FLEET_KEPT} Portal, AWX'in bunu kabul ettiğini doğrulayamazsa işi başlatmaz.`
+                        silmeKapali
+                          ? silmeKapali
+                          : !canDelete
+                            ? "Silme job'ı yapılandırılmamış (yönetici paneli: nginx_ops template)"
+                            : `Eski sunucudaki ${a.paths.map((p) => p.service + '-PROD.conf ' + p.location).join(' / ')} tanımını (ve kullanılmayan upstream'i) kaldır — 23:00'e zamanlanır. ${NEW_FLEET_KEPT} Portal, AWX'in bunu kabul ettiğini doğrulayamazsa işi başlatmaz.`
                       }
                     >
-                      <TrashIcon className="w-3.5 h-3.5" /> Eski tanımı kaldır
+                      <TrashIcon className="w-3.5 h-3.5" /> {silmeKapali ? 'Eski filo kapalı' : 'Eski tanımı kaldır'}
                     </button>
                   </td>
                   <td
