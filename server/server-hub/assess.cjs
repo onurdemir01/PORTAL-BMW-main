@@ -1256,11 +1256,27 @@ function assess(data, opts = {}) {
     }
 
   // ── Bulgular ───────────────────────────────────────────────────────────────────
+  // SEVIYE DEGISIKLIKLERI (2026-10-20, Server Hub > Kurallar & Limitler; ayarlar.cjs): kod -> seviye.
+  // Yalniz SEVIYE degisir (sunucu durumu, sayaclar, siralama); kod, metin ve eylem ayni. Degisen
+  // bulgu varsayilanini defaultSeverity'de tasir: ekran "seviye degistirildi" der, gizlemez.
+  // 'ok' (sorun yok) bulgusu listede kalir ama sayilmaz ve sunucu durumunu etkilemez.
+  const seviyeler = (opts && opts.seviyeler) || {};
+  const seviyeOf = (code, severity) => (SEV[seviyeler[code]] != null ? seviyeler[code] : severity);
   const hosts = [];
   for (const h of byHost.values()) {
     const F = h.findings;
-    const add = (severity, area, code, text, fix, ek) =>
-      F.push({ severity, area, code, text, fix: fix || null, ...(ek || {}) });
+    const add = (severity, area, code, text, fix, ek) => {
+      const s = seviyeOf(code, severity);
+      F.push({
+        severity: s,
+        ...(s !== severity ? { defaultSeverity: severity } : {}),
+        area,
+        code,
+        text,
+        fix: fix || null,
+        ...(ek || {}),
+      });
+    };
     // ── yukleme ve tarama kapsami (v3) ──
     if (h.loadExcluded) {
       const ilk = h.loadExcludedIssues[0];
@@ -2268,6 +2284,8 @@ function flattenFindings(hosts) {
         envGroup: h.envGroup,
         scanDate: h.scanDate,
         severity: f.severity,
+        // Admin seviyeyi degistirdiyse kodun varsayilani (ekran isaretler).
+        ...(f.defaultSeverity ? { defaultSeverity: f.defaultSeverity } : {}),
         area: f.area,
         code: f.code,
         text: f.text,

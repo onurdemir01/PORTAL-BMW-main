@@ -942,6 +942,34 @@ const TABLES = [
       )`,
   },
   {
+    // Server Hub Admin ayarlari (2026-10-20): bulgu seviyesi degisiklikleri ('seviye:<KOD>') ve tek
+    // seferde girilebilecek sunucu sayisi ('limit:<ad>'). Yalniz VARSAYILANDAN farkli olan satir
+    // tutulur (bkz. server/server-hub/ayarlar.cjs).
+    name: 'server_hub_ayarlar',
+    sql: `
+      CREATE TABLE server_hub_ayarlar (
+        anahtar     NVARCHAR(96)  NOT NULL PRIMARY KEY,
+        deger       NVARCHAR(256) NOT NULL,
+        aciklama    NVARCHAR(500) NULL,
+        updated_by  NVARCHAR(128) NOT NULL,
+        updated_at  DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+      )`,
+  },
+  {
+    // Server Hub ayar gecmisi: kim, ne zaman, eski -> yeni (varsayilana donus dahil).
+    name: 'server_hub_ayar_gecmisi',
+    sql: `
+      CREATE TABLE server_hub_ayar_gecmisi (
+        id          INT IDENTITY(1,1) PRIMARY KEY,
+        anahtar     NVARCHAR(96)  NOT NULL,
+        eski        NVARCHAR(256) NULL,
+        yeni        NVARCHAR(256) NULL,
+        aciklama    NVARCHAR(500) NULL,
+        degistiren  NVARCHAR(128) NOT NULL,
+        zaman       DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+      )`,
+  },
+  {
     // Uygulama Retirement (2026-09-21, kullanici talebi): ekibin elle surecinin (Smart silme kaydi ->
     // stop -> secilen tarihte silme -> IP/LB/DNS kayitlari) Portal'da takibi. Kayit = uygulama (tum
     // ortamlar/siteler); silme tarihi kaydi acan secer, bos ise stop + delete_after_days (45).

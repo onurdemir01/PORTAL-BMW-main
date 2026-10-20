@@ -43,6 +43,8 @@ import { toast } from '@/hooks/useToast';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import RebootKontroluTab from './RebootKontroluTab';
 import RetirementTab from './RetirementTab';
+import KurallarTab from './KurallarTab';
+import { useSunucuLimiti, LimitNotu, sunucuAdlari, limitAsildi } from './sunucuLimiti';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
 
 const SM_BTN =
@@ -1226,6 +1228,8 @@ function KapsamaPaneli({ c }: { c: NonNullable<ShOverview['summary']>['scanCover
  */
 function ReadinessTab() {
   const [metin, setMetin] = useState('');
+  const hazirlikLimiti = useSunucuLimiti('hazirlik');
+  const girilen = sunucuAdlari(metin).length;
   const [r, setR] = useState<ShReadiness | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -1265,9 +1269,10 @@ function ReadinessTab() {
           style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)' }}
         />
         <div className="flex items-center gap-2">
-          <button onClick={calistir} disabled={busy || !metin.trim()} className={SM_BTN} style={smBtn(true)}>
+          <button onClick={calistir} disabled={busy || !metin.trim() || limitAsildi(hazirlikLimiti, girilen)} className={SM_BTN} style={smBtn(true)}>
             {busy ? 'Bakılıyor…' : 'Açılır mı?'}
           </button>
+          <LimitNotu limit={hazirlikLimiti} sayi={girilen} />
           <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
             Salt okunur — hiçbir iş başlatmaz. Son taramanın verisine bakar
             {r?.latestScan ? ` (${r.latestScan})` : ''}.
@@ -1378,6 +1383,28 @@ function ReadinessTab() {
   );
 }
 
+/** Admin'in degistirdigi seviye sayisi / ayarlar okunamadi (Kurallar & Limitler). */
+function SeviyeAyarBandi({ ayar }: { ayar?: { okunamadi: boolean; seviyeDegisen: number } | null }) {
+  if (!ayar || (!ayar.okunamadi && !ayar.seviyeDegisen)) return null;
+  return (
+    <div className="text-[12px] rounded-lg border px-3 py-2" style={{ borderColor: ayar.okunamadi ? 'var(--status-warning)' : 'var(--border-subtle)', color: ayar.okunamadi ? 'var(--status-warning-text)' : 'var(--text-secondary)' }}>
+      {ayar.okunamadi
+        ? 'Server Hub ayarları okunamadı: bu raporda varsayılan seviyeler uygulandı.'
+        : `Bu raporda ${ayar.seviyeDegisen} bulgu kodunun seviyesi Admin tarafından değiştirildi (Kurallar & Limitler sekmesi). Değişen bulgular “seviye değiştirildi” işaretiyle görünür.`}
+    </div>
+  );
+}
+
+/** Bulgu seviyesi Admin tarafindan degistirildiyse varsayilani yazan isaret. */
+function SeviyeDegistiIsareti({ d }: { d?: ShSeverity }) {
+  if (!d) return null;
+  return (
+    <span className="text-[10px]" style={{ color: 'var(--text-muted)' }} title="Seviye Server Hub › Kurallar & Limitler'den değiştirildi">
+      seviye değiştirildi · varsayılan {SEV[d].label}
+    </span>
+  );
+}
+
 function SevPill({ s, n }: { s: ShSeverity; n?: number }) {
   const t = SEV[s];
   const I = t.icon;
@@ -1396,7 +1423,7 @@ function SevPill({ s, n }: { s: ShSeverity; n?: number }) {
 // ── Sayfa ────────────────────────────────────────────────────────────────────────────
 export default function ServerHubPage() {
   // Sekmeler: Sunucular (tarama raporu) | Retirement (uygulama emeklilik akisi, 2026-09-21)
-  const [tab, setTab] = useState<'hosts' | 'findings' | 'readiness' | 'reboot' | 'retirement'>('hosts');
+  const [tab, setTab] = useState<'hosts' | 'findings' | 'readiness' | 'reboot' | 'retirement' | 'kurallar'>('hosts');
   // Kartlardan bulgu detayina gecis (kullanici, 2026-09-22): kart -> Bulgular sekmesi + hazir suzgec
   const [findingsFilter, setFindingsFilter] = useState<{
     area?: string;
@@ -1427,7 +1454,9 @@ export default function ServerHubPage() {
           <p className="text-sm mt-0.5 max-w-4xl" style={{ color: 'var(--text-muted)' }}>
             {tab === 'hosts'
               ? 'Reboot sonrası her şey doğru açılacak mı, sunucularda atıl bir şey var mı? Günlük tarama: init script referans uyumu, JBoss 7/8 JVM’leri (auto-start, kapalı, restart-required), RHA/IHS/Nginx syntax ve vhost yükü (hc.html/hc.jsp hariç), boşta IP, sshd sınırları.'
-              : 'Uygulama retirement: Smart silme kaydı → tüm ortam/site keşfi → STOP (auto-start kapat, durdur, paketi .old) → seçilen tarihte silme → IP/LB/DNS kayıtları.'}
+              : tab === 'kurallar'
+                ? 'Hangi maddeler taranıyor, hangi çıktı kritik / uyarı / bilgi / sorun yok sayılıyor; seviyeleri ve tek seferde girilebilecek sunucu sayısını buradan değiştirin.'
+                : 'Uygulama retirement: Smart silme kaydı → tüm ortam/site keşfi → STOP (auto-start kapat, durdur, paketi .old) → seçilen tarihte silme → IP/LB/DNS kayıtları.'}
           </p>
         </div>
         <div className="flex gap-1 rounded-lg p-0.5" style={{ background: 'var(--bg-elevated)' }}>
@@ -1438,6 +1467,7 @@ export default function ServerHubPage() {
               { id: 'readiness', label: 'Açılış Hazırlığı' },
               { id: 'reboot', label: 'Reboot Kontrolü' },
               { id: 'retirement', label: 'Retirement' },
+              { id: 'kurallar', label: 'Kurallar & Limitler' },
             ] as const
           ).map((t) => (
             <button
@@ -1459,6 +1489,7 @@ export default function ServerHubPage() {
       {tab === 'readiness' && <ReadinessTab />}
       {tab === 'reboot' && <RebootKontroluTab />}
       {tab === 'retirement' && <RetirementTab />}
+      {tab === 'kurallar' && <KurallarTab />}
     </div>
   );
 }
@@ -1469,6 +1500,8 @@ function HostsTab({
   onGoFindings: (f: { area?: string; code?: string; product?: string; envGroup?: string }) => void;
 }) {
   const { addJob } = useJobTracker();
+  // Tek seferde taranabilecek sunucu (2026-10-20): Admin Kurallar & Limitler'den degistirir.
+  const taraLimiti = useSunucuLimiti('tara');
   const [data, setData] = useState<ShOverviewV3 | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
@@ -1612,6 +1645,8 @@ function HostsTab({
       <SemaBandi su={data.schemaUnknown} />
       {/* EK-1: v3 tarayici verisi varken Portal eski surume geri ALINMAZ - tek satir uyari. */}
       <GeriAlmaBandi rb={data.rollback} />
+      {/* Kurallar & Limitler (2026-10-20): Admin seviye degistirdiyse rapor bunu SOYLER. */}
+      <SeviyeAyarBandi ayar={data.ayar} />
 
       {yukleme && (
         <div
@@ -2305,14 +2340,15 @@ function HostsTab({
             <ArrowDownTrayIcon className="w-3.5 h-3.5" /> CSV
           </button>
           <button
-            disabled={busy != null || rows.length === 0 || rows.length > 50}
+            disabled={busy != null || rows.length === 0 || limitAsildi(taraLimiti, rows.length)}
             onClick={() => scanNow(rows.map((h) => h.host))}
             className={SM_BTN}
             style={smBtn(true)}
-            title="Listedeki sunucuları şimdi tara (en çok 50)"
+            title={`Listedeki sunucuları şimdi tara (tek seferde en fazla ${taraLimiti.enCok ?? '…'}; Admin Kurallar & Limitler'den değiştirir)`}
           >
             <BoltIcon className="w-3.5 h-3.5" /> Listedekileri tara
           </button>
+          <LimitNotu limit={taraLimiti} sayi={rows.length} />
         </div>
       </div>
 
@@ -2682,6 +2718,8 @@ function HostModal({
                         </div>
                         <div className="text-[10px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
                           {AREA[f.area] || f.area} · {kodEtiketi(f.code)}
+                          {f.defaultSeverity ? ' · ' : ''}
+                          <SeviyeDegistiIsareti d={f.defaultSeverity} />
                         </div>
                         <LogKanit f={f} />
                         <AtfedilemeyenTrafik f={f} />
@@ -3532,6 +3570,7 @@ export function FindingsTab({
           <option value="danger">kritik</option>
           <option value="warning">uyarı</option>
           <option value="info">bilgi</option>
+          <option value="ok">sorun yok (seviyesi değiştirilen)</option>
         </select>
         <select
           value={product}
@@ -3644,6 +3683,11 @@ export function FindingsTab({
                 </td>
                 <td className="px-3 py-1.5">
                   <SevPill s={f.severity} />
+                  {f.defaultSeverity && (
+                    <div>
+                      <SeviyeDegistiIsareti d={f.defaultSeverity} />
+                    </div>
+                  )}
                 </td>
                 <td className="px-3 py-1.5">{AREA_TR[f.area] || f.area}</td>
                 <td className="px-3 py-1.5 font-mono text-[11px]" title={kodEtiketi(f.code)}>

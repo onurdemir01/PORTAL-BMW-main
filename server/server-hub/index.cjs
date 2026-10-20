@@ -12,6 +12,8 @@
 const express = require('express');
 const { assess, flattenFindings, parseTargets, hedefUserinfoSil } = require('./assess.cjs');
 const { maskText, maskJvmArgs, maskJvmArgDiff } = require('./mask.cjs');
+// Admin ayarlari (2026-10-20): bulgu seviyesi degisiklikleri + tek seferde sunucu sayisi.
+const ayarlar = require('./ayarlar.cjs');
 
 // ── KOLON LISTELERI (sozlesme v3 P9) ───────────────────────────────────────────────
 // Yildizli (tum kolon) SELECT YOK. Her tablo icin BEKLENEN kolonlar (sozlesme kayit_tipleri + DDL) ile
@@ -271,9 +273,15 @@ async function loadJvmAgir(host) {
 async function getAssessment(fresh) {
   if (!fresh && _cache.value && Date.now() - _cache.at < CACHE_MS) return _cache.value;
   const { tableMissing, data } = await loadLatest();
+  // Seviye degisiklikleri bulgu uretilirken uygulanir; ayarlar okunamazsa varsayilanlar (ekran soyler).
+  const ayar = await ayarlar.oku();
   const value = tableMissing
     ? { tableMissing: true, hosts: [], summary: null, latestScan: null }
-    : { tableMissing: false, ...assess(data) };
+    : { tableMissing: false, ...assess(data, { seviyeler: ayar.seviyeler }) };
+  value.ayar = {
+    okunamadi: ayar.okunamadi === true,
+    seviyeDegisen: Object.keys(ayar.seviyeler).length,
+  };
   // SEMA BILINMIYOR (C3) sonucu onbellege ALINMAZ: gecici hata 60 sn boyunca "kapali" /
   // "geri alma serbest" gostermesin; bir sonraki istek kolonlari yeniden okur. Onceki
   // (saglam) onbellek de silinir - ekran ayni dakika icinde iki farkli gercek gostermesin.
@@ -509,6 +517,8 @@ function initServerHub(app) {
         // EK-1: v3 tarayici verisi varken (ya da sema bilinmiyorken) Portal eski surume
         // geri ALINMAZ.
         rollback: rollbackBilgisi(a),
+        // Admin'in degistirdigi bulgu seviyesi sayisi / ayarlar okunamadi (rapor bunu gizlemez).
+        ayar: a.ayar || null,
         summary: a.summary,
         // Taramadan dusen sunucular listede yok; summary.taramadanDusen'de ayri.
         hosts: a.hosts.filter((h) => !h.taramadanDustu).map(hostRow),
@@ -570,8 +580,12 @@ function initServerHub(app) {
           .filter(Boolean),
       ),
     ];
-    if (!hosts.length || hosts.length > 50 || hosts.some((h) => !HOST_RE.test(h)))
-      return res.status(400).json({ ok: false, message: '1-50 arası geçerli sunucu adı gerekli.' });
+    const enCok = await ayarlar.limit('tara');
+    if (!hosts.length || hosts.length > enCok || hosts.some((h) => !HOST_RE.test(h)))
+      return res.status(400).json({
+        ok: false,
+        message: `1-${enCok} arası geçerli sunucu adı gerekli (tek seferde en fazla ${enCok} sunucu; Admin Server Hub › Kurallar & Limitler'den artırabilir).`,
+      });
     try {
       const r = await launch(
         req,
@@ -651,10 +665,12 @@ function initServerHub(app) {
       const istenen = parseTargets(metin.replace(/[\s;]+/g, ',')).map((t) => t.host);
       if (!istenen.length)
         return res.status(400).json({ ok: false, message: 'Sunucu listesi boş.' });
-      if (istenen.length > 500)
-        return res
-          .status(400)
-          .json({ ok: false, message: 'Tek seferde en fazla 500 sunucu sorgulanabilir.' });
+      const enCok = await ayarlar.limit('hazirlik');
+      if (istenen.length > enCok)
+        return res.status(400).json({
+          ok: false,
+          message: `Tek seferde en fazla ${enCok} sunucu sorgulanabilir (${istenen.length} girildi; Admin Server Hub › Kurallar & Limitler'den artırabilir).`,
+        });
       const a = await getAssessment(false);
       const { rebootReadiness } = require('./reboot-readiness.cjs');
       res.json({ ok: true, ...rebootReadiness(a.hosts || [], istenen, a.latestScan || null) });
@@ -765,7 +781,28 @@ function initServerHub(app) {
   // sunucuya yayilir?
 
   // Reboot Kontrolu (2026-10-08): once/sonra goruntu + otomatik duzeltme (reboot-check.cjs).
-  require('./reboot-check.cjs').mount(router, { launch, HOST_RE });
+  require('./reboot-check.cjs').mount(router, { launch, HOST_RE, limit: ayarlar.limit });
+
+  // ── KURALLAR & LIMITLER (2026-10-20) ───────────────────────────────────────────────
+  // Kullanici: "hangi maddeler taraniyor ve hangi maddelerin hangi ciktilari kritik, uyari, bilgi ve
+  // sorun yok olarak algilaniyor? ... istedigimde bunlarin kritiklik seviyesini degistirebilmek
+  // istiyorum" ve "tek seferde kac sunucu yazilabilecegini ... gostermeni ... limitin
+  // arttirilabilmesi icin adminlere yetki". Router zaten yalniz Admin.
+  const kuralMount = require('./kurallar.cjs').mount;
+  kuralMount(router, {
+    ayarlar,
+    getAssessment: (fresh) => getAssessment(fresh === true),
+    onbellekSil: () => {
+      _cache = { at: 0, value: null };
+    },
+    audit: (req, detail) => {
+      try {
+        require('../audit/index.cjs').auditPortal(req, 'server_hub', { detail: JSON.stringify(detail) });
+      } catch {
+        /* best-effort */
+      }
+    },
+  });
 
   router.get('/job-status/:serverId/:jobId', async (req, res) => {
     const serverId = Number(req.params.serverId);
