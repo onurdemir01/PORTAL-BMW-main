@@ -107,33 +107,54 @@ function hata(status, message) {
   return e;
 }
 
-/** Tek anahtari yazar; varsayilana donuyorsa satiri siler. Gecmise eski -> yeni yazilir. */
+/** Tek anahtari yazar; varsayilana donuyorsa satiri siler. Ayar + gecmis tek transaction'dir. */
 async function yaz(anahtar, yeni, varsayilan, aciklama, kim) {
   const simdiki = await oku(true);
   if (simdiki.okunamadi) throw hata(503, `Server Hub ayarları okunamadı: ${simdiki.hata}`);
-  const eski = simdiki.kayitlar[anahtar] ? simdiki.kayitlar[anahtar].deger : String(varsayilan);
   const not = T(aciklama).slice(0, 500) || null;
-  // Degismeyen deger yazilmaz ve gecmise satir dusmez.
-  if (String(yeni) === eski) return { anahtar, eski, yeni: eski, degismedi: true, varsayilan: eski === String(varsayilan) };
-  if (String(yeni) === String(varsayilan)) {
-    await db().query(`DELETE FROM server_hub_ayarlar WHERE anahtar = $1`, [anahtar]);
-  } else {
-    const upd = await db().query(
-      `UPDATE server_hub_ayarlar SET deger = $1, aciklama = $2, updated_by = $3, updated_at = GETUTCDATE() WHERE anahtar = $4`,
-      [String(yeni), not, kim, anahtar],
-    );
-    if (!upd.rowCount)
-      await db().query(
-        `INSERT INTO server_hub_ayarlar (anahtar, deger, aciklama, updated_by) VALUES ($1, $2, $3, $4)`,
-        [anahtar, String(yeni), not, kim],
-      );
-  }
-  await db().query(
-    `INSERT INTO server_hub_ayar_gecmisi (anahtar, eski, yeni, aciklama, degistiren) VALUES ($1, $2, $3, $4, $5)`,
-    [anahtar, eski, String(yeni), not, kim],
+  const tabloKapisi = `SET XACT_ABORT ON;
+    IF OBJECT_ID(N'server_hub_ayarlar', N'U') IS NULL OR OBJECT_ID(N'server_hub_ayar_gecmisi', N'U') IS NULL
+      THROW 50001, N'Server Hub ayar tablolari hazir degil.', 1;
+    DECLARE @eski nvarchar(max);
+    DECLARE @degisti bit = 0;
+    BEGIN TRAN;
+    SELECT @eski = deger FROM server_hub_ayarlar WITH (UPDLOCK, HOLDLOCK) WHERE anahtar = $1;
+    SET @eski = COALESCE(@eski, $5);`;
+  const ayarSql =
+    String(yeni) === String(varsayilan)
+      ? `DELETE FROM server_hub_ayarlar WHERE anahtar = $1;`
+      : `UPDATE server_hub_ayarlar WITH (UPDLOCK, HOLDLOCK)
+           SET deger = $2, aciklama = $3, updated_by = $4, updated_at = GETUTCDATE()
+         WHERE anahtar = $1;
+         IF @@ROWCOUNT = 0
+           INSERT INTO server_hub_ayarlar (anahtar, deger, aciklama, updated_by)
+           VALUES ($1, $2, $3, $4);`;
+  const tx = await db().query(
+    `${tabloKapisi}
+     IF @eski <> $2
+     BEGIN
+       ${ayarSql}
+       INSERT INTO server_hub_ayar_gecmisi (anahtar, eski, yeni, aciklama, degistiren)
+       VALUES ($1, @eski, $2, $3, $4);
+       SET @degisti = 1;
+     END
+     COMMIT;
+     SELECT @eski AS eski, $2 AS yeni, @degisti AS degisti;`,
+    [anahtar, String(yeni), not, kim, String(varsayilan)],
   );
+  const sonuc = tx.rows && tx.rows[0];
+  if (!sonuc) throw new Error('Server Hub ayar yazımı sonucu okunamadı.');
+  const eski = T(sonuc.eski);
+  const gercekYeni = T(sonuc.yeni);
+  const degismedi = sonuc.degisti === false || sonuc.degisti === 0;
   onbellekSil();
-  return { anahtar, eski, yeni: String(yeni), varsayilan: String(yeni) === String(varsayilan) };
+  return {
+    anahtar,
+    eski,
+    yeni: gercekYeni,
+    degismedi,
+    varsayilan: gercekYeni === String(varsayilan),
+  };
 }
 
 async function seviyeYaz({ kod, seviye, aciklama, kim }) {
