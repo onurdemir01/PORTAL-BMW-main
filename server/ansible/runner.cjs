@@ -2681,11 +2681,15 @@ function initAnsibleRunner(app) {
       // cevirmis olabilir (choice-sources.cjs). Istemci bunu gorunce <select> cizer ve
       // secenekleri /ss/choices/:source'tan ceker; AWX tarafinda alan yine metin'dir.
       const choicesSource = ov.choicesSource && ov.choicesSource.source ? ov.choicesSource : undefined;
+      // KOSULLU GOSTERIM (2026-10-22): yalnizca KODLA verilen alan ayarlari (selfservice/
+      // api-generator-secim.cjs) dependsOn tasir; admin ekrani AWX alanlarina dependsOn
+      // kaydetmez. resolveLaunchExtraVars AYNI kurali (kosulGecerli) uygular.
+      const dependsOn = kosulGecerli(field, ov) ? ov.dependsOn : undefined;
       return {
         name: field.variable,
         label: ov.label || field.question_name,
         type: choicesSource ? (field.type === 'multiselect' ? 'multiselect' : 'multiplechoice') : field.type,
-        required,
+        required: required || !!ov.requiredWhenActive,
         defaultValue: ov.defaultValue !== undefined ? ov.defaultValue : field.default || '',
         choices: choicesSource ? [] : field.choices || [],
         hidden: !!ov.hidden,
@@ -2693,6 +2697,8 @@ function initAnsibleRunner(app) {
         min: field.min,
         max: field.max,
         ...(choicesSource ? { choicesSource } : {}),
+        ...(dependsOn ? { dependsOn } : {}),
+        ...(ov.kodlaBagli ? { kodlaBagli: true } : {}),
       };
     });
     return includeHidden ? mapped : mapped.filter((f) => !f.hidden);
@@ -2717,11 +2723,38 @@ function initAnsibleRunner(app) {
   // guvenilmez) ve gizli alanlarin varsayilan degerlerini ACIKCA extra_vars'a ekler —
   // hicbir alan sessizce atlanmaz. Dogrulama basarisiz olursa {status, field} tasiyan
   // bir Error firlatir.
+  // Bir AWX alaninin dependsOn'u uygulanabilir mi: alan gizli degil ve AWX onu zorunlu tutuyorsa
+  // bir AWX varsayilani olmali - yoksa alan HER ZAMAN sorulur (gizlenip gonderilmezse AWX launch'i
+  // reddederdi). mapSurveySpec ve resolveLaunchExtraVars AYNI kurali kullanir.
+  function kosulGecerli(field, ov) {
+    if (!ov || !ov.dependsOn || ov.hidden) return false;
+    return !field.required || String(field.default ?? '') !== '';
+  }
+
   function resolveLaunchExtraVars(rawFields, overrides, submittedValues) {
     const extraVars = {};
+    const ovOf = (field) => (overrides.fieldOverrides || []).find((o) => o.fieldName === field.variable) || {};
+    // KOSUL icin etkin degerler (resolveCustomSurveyExtraVars ile ayni): gizliyse admin varsayilani,
+    // degilse kullanicinin gonderdigi ham deger.
+    const effective = {};
     for (const field of rawFields || []) {
-      const ov = (overrides.fieldOverrides || []).find((o) => o.fieldName === field.variable) || {};
-      const required = !!field.required;
+      const ov = ovOf(field);
+      if (ov.hidden) effective[field.variable] = ov.defaultValue !== undefined ? ov.defaultValue : field.default || '';
+      else {
+        const raw = submittedValues ? submittedValues[field.variable] : undefined;
+        effective[field.variable] = raw === undefined || raw === null ? '' : String(raw).trim();
+      }
+    }
+    for (const field of rawFields || []) {
+      const ov = ovOf(field);
+      // Kosulu saglanmayan alan kullaniciya HIC sorulmadi: dogrulanmaz, extra_vars'a girmez
+      // (istemcideki visibleFields ile AYNI shared/surveyConditions.cjs karari). AWX zorunluysa
+      // kendi varsayilani gider (kosulGecerli bunu sart kosar).
+      if (kosulGecerli(field, ov) && !surveyConditions.isFieldActive(ov.dependsOn, effective)) {
+        if (field.required) extraVars[field.variable] = field.default;
+        continue;
+      }
+      const required = !!field.required || !!ov.requiredWhenActive;
       const isHidden = !!ov.hidden;
       const label = field.question_name || field.variable;
 
@@ -3568,6 +3601,9 @@ function initAnsibleRunner(app) {
         `/api/v2/job_templates/${req.params.templateId}/`,
       );
       const launchOptions = extractLaunchOptions(detail);
+      // API Generator: chosen_api KODLA envanter listesine bagli (selfservice/api-generator-secim.cjs).
+      // Launch (resolveSsLaunchPlan) AYNI etkin ayarlari kullanir.
+      const etkinOv = require('../selfservice/api-generator-secim.cjs').etkinOverrides(detail, overrides);
       // AWX'in "Prompt on Launch → Variables" bayragi — FieldOverridesModal'in serbest
       // "Ek Degiskenler" kutusunu bilgilendirmek icin (bkz. plan: free-form extra_vars gap).
       const askVariables = !!detail.ask_variables_on_launch;
@@ -3608,7 +3644,7 @@ function initAnsibleRunner(app) {
           `/api/v2/job_templates/${req.params.templateId}/survey_spec/`,
         );
         specHadFields = Array.isArray(spec.spec) && spec.spec.length > 0;
-        fields = mapSurveySpec(spec.spec, overrides, { includeHidden: wantsAdminView });
+        fields = mapSurveySpec(spec.spec, etkinOv, { includeHidden: wantsAdminView });
       } catch (surveyErr) {
         // survey_spec olmayan template'ler icin AWX 404 doner — extra_vars fallback'e gec
         if (surveyErr.status !== 404) throw surveyErr;
@@ -3677,7 +3713,10 @@ function initAnsibleRunner(app) {
       const isAdmin = req.session?.user?.role === 'Admin';
       const mappedFields = mapSurveySpec(
         surveySpec.spec,
-        readCustom(server.id, req.params.templateId),
+        require('../selfservice/api-generator-secim.cjs').etkinOverrides(
+          detail,
+          readCustom(server.id, req.params.templateId),
+        ),
         { includeHidden: isAdmin },
       );
       const surveyFields = mappedFields.map((f) => ({
@@ -4086,7 +4125,11 @@ function initAnsibleRunner(app) {
 
     // Override'lar (field hidden/default, ek serbest degiskenler, launch-option
     // varsayilanlari) survey olsun olmasin HER ZAMAN okunur — hicbiri survey'e bagimli degil.
-    const overrides = readCustom(server.id, templateId);
+    // API Generator'da chosen_api KODLA baglidir; survey ekraniyla AYNI etkin ayarlar.
+    const overrides = require('../selfservice/api-generator-secim.cjs').etkinOverrides(
+      detail,
+      readCustom(server.id, templateId),
+    );
 
     let extraVars = {};
     let specFields = null;

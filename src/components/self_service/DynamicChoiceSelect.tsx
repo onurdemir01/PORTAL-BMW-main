@@ -238,7 +238,7 @@ export default function DynamicChoiceSelect({ id, source, values, value, onChang
             {filter.trim() ? `${visible.length} / ${choices.length} eşleşme` : `${choices.length} kayıt — yazarak daraltın`}
             {selected && (
               <button type="button" className="ml-2 underline decoration-dotted" onClick={() => setOpen(false)}>
-                vazgeç
+                iptal
               </button>
             )}
           </div>

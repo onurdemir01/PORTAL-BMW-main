@@ -66,4 +66,34 @@ function clusterCoverage(hosts) {
   };
 }
 
-module.exports = { API_CLUSTERS, clusterCoverage };
+// API Generator job'unun (bmw_nginx/api_generator/api_generator.yaml) dev / test / qa play'lerinin
+// sunuculari. Production play'i yukaridaki uc kumenin TAMAMIDIR. Self Servis'teki rate limit
+// API listesi yalnizca job'in o ortamda GERCEKTEN calistigi sunuculardaki konfigurasyonlari sunar
+// (choice-sources 'nginx-api-gateway-confs'); liste job'la ayrisirsa secilen API job'un
+// sunucularinda bulunmaz.
+const API_GENERATOR_NONPROD = {
+  DEV: ['GBNGWD01', 'GBNGWD02'],
+  TEST: ['GBNGWT03', 'GBNGWT04'],
+  QA: ['GBNGWQ01', 'GBNGWQ02'],
+};
+
+/**
+ * API Generator'ın bir ortam (+ production'da `site`) için çalıştığı sunucular — playbook'taki
+ * play listeleri ve `site_ok` kuralıyla aynı: boş / all / hepsi / tumu / tümü = hepsi, pendik =
+ * GBNGWP*, ankara = GBNGWAP* (GBNGX* yalnız "hepsi"de). Tanınmayan site boş liste döner (job da durur).
+ * @param {string} env dev / test / qa / prod (harf duyarsız; production = prod)
+ * @param {string} [site]
+ * @returns {string[]}
+ */
+function apiGeneratorHosts(env, site) {
+  const e = UP(env) === 'PRODUCTION' ? 'PROD' : UP(env);
+  if (e !== 'PROD') return (API_GENERATOR_NONPROD[e] || []).slice();
+  const s = String(site || '').trim().toLowerCase();
+  const all = API_CLUSTERS.reduce((a, c) => a.concat(c.hosts.map(UP)), []);
+  if (['', 'all', 'hepsi', 'tumu', 'tümü'].includes(s)) return all;
+  if (s === 'pendik') return all.filter((h) => /^GBNGWP/.test(h));
+  if (s === 'ankara') return all.filter((h) => /^GBNGWAP/.test(h));
+  return [];
+}
+
+module.exports = { API_CLUSTERS, API_GENERATOR_NONPROD, apiGeneratorHosts, clusterCoverage };

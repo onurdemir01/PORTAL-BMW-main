@@ -928,6 +928,9 @@ export interface SurveyField {
     conditions?: SurveyFieldCondition[];
     groups?: SurveyFieldConditionGroup[];
   };
+  /** Alan ayarı KODLA verilmiş (ör. API Generator `chosen_api` → envanter listesi); Alan
+   *  Ayarları'ndaki kaynak / koşul seçimi bu alanda etkisizdir (server/selfservice/api-generator-secim.cjs). */
+  kodlaBagli?: boolean;
 }
 
 export interface SurveyFieldConditionGroup {

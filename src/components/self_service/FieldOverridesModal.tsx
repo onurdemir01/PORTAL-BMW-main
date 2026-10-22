@@ -69,6 +69,8 @@ interface LocalFieldState {
   hidden: boolean;
   /** Metin alanı envanterden beslenen seçim kutusuna çevrildiyse. */
   choicesSource?: ChoicesSource;
+  /** Alan ayarı kodla verilmiş (ör. API Generator chosen_api): kaynak / görünürlük burada değiştirilemez. */
+  kodlaBagli?: boolean;
 }
 
 // Hangi alan tipleri kaynağa bağlanabilir. AWX survey alanında yalnızca metin (AWX'in
@@ -489,12 +491,13 @@ export default function FieldOverridesModal({
               label: f.label,
               // Kaynağa bağlı alan sunucudan 'multiplechoice' gelir; admin ekranı AWX'teki
               // asıl tipi (metin) bilmeli ki kaynak kapatılınca doğru davransın.
-              type: existing?.choicesSource?.source && f.type === 'multiplechoice' ? 'text' : f.type,
+              type: (existing?.choicesSource?.source || f.kodlaBagli) && f.type === 'multiplechoice' ? 'text' : f.type,
               required: f.required,
               description: f.description,
               defaultValue: f.defaultValue || '',
-              hidden: suggestHidden ? true : f.hidden,
+              hidden: f.kodlaBagli ? false : suggestHidden ? true : f.hidden,
               choicesSource: existing?.choicesSource?.source ? existing.choicesSource : undefined,
+              kodlaBagli: !!f.kodlaBagli,
             };
           }),
         );
@@ -1523,6 +1526,7 @@ export default function FieldOverridesModal({
                     <input
                       type="checkbox"
                       checked={!f.hidden}
+                      disabled={f.kodlaBagli}
                       onChange={(e) => updateField(f.name, { hidden: !e.target.checked })}
                     />
                   </label>
@@ -1530,7 +1534,13 @@ export default function FieldOverridesModal({
                 {f.description && (
                   <p className="text-xs text-[var(--text-muted)] mb-1.5">{f.description}</p>
                 )}
-                {f.hidden ? (
+                {f.kodlaBagli ? (
+                  <p className="text-xs text-[var(--text-secondary)]" data-testid="kodla-bagli-alan">
+                    Bu alan kodla bağlı: işlem rate limit değiştirme ya da okuma seçildiğinde gösterilir ve
+                    API Generator envanterindeki API konfigürasyonlarından seçilir (serbest metin girilemez).
+                    Seçenek kaynağı ve görünürlük burada değiştirilemez.
+                  </p>
+                ) : f.hidden ? (
                   <div>
                     <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1 flex items-center gap-1">
                       <LockClosedIcon className="w-3 h-3" />
