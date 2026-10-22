@@ -191,8 +191,15 @@ export default function DynamicChoiceSelect({ id, source, values, value, onChang
   const secim = (
     <div className="space-y-1.5" id={id} onBlur={onBlur}>
       {selected && !open ? (
-        <div className={`flex items-center justify-between gap-2 rounded-lg border px-2.5 py-1.5 text-[12px] ${error ? 'border-red-400' : 'border-[var(--border)]'} bg-[var(--bg-surface)]`}>
-          <span className="font-mono truncate" title={selected.label}>{selected.label}</span>
+        // SEÇİLİ DEĞER BELİRGİN (kullanıcı, 2026-10-22: "seçim yapılan satırı biraz highlight edebiliriz"):
+        // vurgu rengiyle çerçeve + zemin, metin kırpılmaz (uzun konfigürasyon adı + yol alt satıra sarar).
+        <div
+          className={`flex items-start justify-between gap-2 rounded-lg border-2 px-2.5 py-1.5 text-[12px] ${error ? 'border-red-400' : 'border-[var(--accent)]'} bg-[rgb(var(--accent-rgb)_/_0.08)]`}
+          data-testid="secim-secili"
+        >
+          <span className="font-mono font-semibold text-[var(--text-primary)] break-all min-w-0" title={selected.label}>
+            {selected.label}
+          </span>
           <span className="flex gap-2 shrink-0">
             <button type="button" className="text-[11px] underline decoration-dotted text-[var(--text-muted)]" onClick={() => setOpen(true)}>
               değiştir
@@ -234,7 +241,7 @@ export default function DynamicChoiceSelect({ id, source, values, value, onChang
         />
       )}
       {showList && (
-        <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] max-h-72 overflow-y-auto" role="listbox">
+        <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] max-h-96 overflow-y-auto" role="listbox">
           <div className="px-2 py-1 text-[10px] text-[var(--text-muted)] border-b border-[var(--border-subtle)]">
             {filter.trim() ? `${visible.length} / ${choices.length} eşleşme` : `${choices.length} kayıt — yazarak daraltın`}
             {selected && (
@@ -255,9 +262,10 @@ export default function DynamicChoiceSelect({ id, source, values, value, onChang
                   aria-selected={c.value === value}
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => pick(c.value)}
-                  className={`block w-full text-left px-2 py-1 text-[12px] font-mono whitespace-nowrap overflow-hidden text-ellipsis hover:bg-[var(--bg-elevated)] ${c.value === value ? 'bg-[var(--bg-elevated)] font-semibold' : ''}`}
+                  className={`block w-full text-left px-2 py-1 text-[12px] font-mono whitespace-nowrap overflow-hidden text-ellipsis border-l-4 hover:bg-[rgb(var(--accent-rgb)_/_0.06)] ${c.value === value ? 'border-[var(--accent)] bg-[rgb(var(--accent-rgb)_/_0.12)] font-semibold text-[var(--text-primary)]' : 'border-transparent'}`}
                   title={c.label}
                 >
+                  {c.value === value && <span aria-hidden="true">✓ </span>}
                   {c.label}
                 </button>
               ))}
@@ -280,11 +288,11 @@ export default function DynamicChoiceSelect({ id, source, values, value, onChang
   if (!source.details) return secim;
   return (
     <div className="flex flex-wrap items-start gap-3">
-      <div className="flex-[1_1_22rem] min-w-0">{secim}</div>
+      <div className="flex-[3_1_26rem] min-w-0">{secim}</div>
       {/* Yalnız liste yüklü ve değer LİSTEDEYKEN: bağlı alan boşaltılınca ya da liste değişirken yanıltıcı
           "listede yok" hatası çıkmasın (asıl neden formda görünür). */}
       {value && !open && !missingParam && choices.some((c) => c.value === value) && (
-        <ChoiceDetailsPanel className="flex-[1_1_18rem] min-w-0" source={source.source} params={params} value={value} />
+        <ChoiceDetailsPanel className="flex-[2_1_20rem] min-w-0" source={source.source} params={params} value={value} />
       )}
     </div>
   );

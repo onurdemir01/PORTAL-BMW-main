@@ -174,8 +174,10 @@ function SurveyModal({ item, onClose, inline = false }: SurveyModalProps) {
     // survey formlarina da yariyor (uzun etiketler alt satira dusmuyor).
     // 2026-09-16: 760 -> 1040 (ekrana sigacak sekilde). Envanterden gelen secenek etiketleri
     // (location yolu + uygulama/namespace) uzun; dar pencerede alt satira kayiyordu.
+    // 2026-10-22: 1040 -> 1280 (kullanici: "pencereyi biraz daha genisletelim"). API Generator'da
+    // secim + sagdaki "birlikte etkilenecek uclar" paneli yan yana; konfigurasyon adlari uzun.
     useFloatingWindow(
-      { w: Math.min(1040, (typeof window !== 'undefined' ? window.innerWidth : 1040) - 40), h: 640 },
+      { w: Math.min(1280, (typeof window !== 'undefined' ? window.innerWidth : 1280) - 40), h: 640 },
       { w: 420, h: 380 },
       { autoHeight: true },
     );

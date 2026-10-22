@@ -104,6 +104,23 @@ describe('DynamicChoiceSelect + ChoiceDetailsPanel', () => {
     expect(panel.textContent).not.toContain('Birlikte etkilenecek');
   });
 
+  it('CD7 seçili değer vurgulu ve tam metin; açık listede seçili satır işaretli', async () => {
+    const UZUN = 'GAR.CST.REST.DIGITAL-ONBOARDING-PB_DIGITAL-ONBOARDING-PB-CH_V0';
+    const ETIKET = `${UZUN} - /digital-onboarding-pb/digital-onboarding-pb/v0/`;
+    api.choices.mockResolvedValue({ ok: true, choices: [{ value: 'GAR.A', label: 'GAR.A - /a/v0' }, { value: UZUN, label: ETIKET }] });
+    render(<DynamicChoiceSelect id="c" source={KAYNAK} values={DEGERLER} value={UZUN} onChange={vi.fn()} />);
+    const secili = await screen.findByTestId('secim-secili');
+    await waitFor(() => expect(secili.textContent).toContain(ETIKET));
+    expect(secili.className).toContain('border-[var(--accent)]');
+    expect(secili.querySelector('span')!.className).toContain('break-all');
+    within(secili).getByText('değiştir').click();
+    const secenek = await screen.findByRole('option', { selected: true });
+    expect(secenek.textContent).toBe(`✓ ${ETIKET}`);
+    expect(secenek.className).toContain('border-[var(--accent)]');
+    const diger = screen.getAllByRole('option').find((o) => o !== secenek)!;
+    expect(diger.className).toContain('border-transparent');
+  });
+
   it('CD6 zorunlu alan boşken ya da değer listede yokken panel yok, ayrıntı istenmez', async () => {
     const { rerender } = render(
       <DynamicChoiceSelect id="c" source={KAYNAK} values={{ ...DEGERLER, env: '' }} value="ORT.CST.REST.A.V1" onChange={vi.fn()} />,

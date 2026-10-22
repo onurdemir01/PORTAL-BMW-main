@@ -205,22 +205,20 @@ test('AG8 kaynak: job sunuculari, izinli onekli konfigurasyon adlari, etiket ve 
     satir('GBNGWT03', 'ORT.TEST.ONLY.conf', '/t/v0', '1r/s', ''),
     satir('gbngwd02', 'ort.kucuk.harf.conf', '/k/v0', '', ''),
   ], hosts);
-  assert.deepEqual(out.map((c) => c.value), ['ORT.CST.REST.A.V1', 'GAR.B.V1']);
-  const a = out[0];
-  assert.equal(a.group, 'Rate limit tanımlı — tüm sunucularda var');
-  assert.equal(a.label,
-    'ORT.CST.REST.A.V1  ·  örnek uç /das-a/a-channel/v0/x (dosyada 2 uç)  ·  IP limiti 100r/s / 50r/s (sunucular arasında farklı)' +
-    '  ·  location limiti 300r/s  ·  2/2 sunucuda var');
-  assert.match(out[1].label, /IP limiti tanımsız  ·  location limiti tanımsız  ·  1\/2 sunucuda var$/);
-  assert.match(out[1].group, /^Envanterde rate limit görünmüyor/);
-  const adli = cs.apiGatewayConfChoices([satir('GBNGWD01', 'GAR.N.conf', '/n/v0', '1r/s', ''), satir('GBNGWD01', 'GAR.N.conf', '@custom_403_json', '', '')], hosts);
-  assert.match(adli[0].label, /örnek uç \/n\/v0  ·/, '@ad (named location) API ucu sayilmamali');
-  const eksik = cs.apiGatewayConfChoices([satir('GBNGWD01', 'DAS.C.V1.conf', '/c/v0', '5r/s', '')], hosts, 'customers');
-  assert.match(eksik[0].group, /bazı sunucularda yok/);
-  assert.match(eksik[0].label, /1\/2 sunucuda var \(customers\)$/);
-  const sirali = cs.apiGatewayConfChoices([satir('GBNGWD01', 'GAR.Z.conf', '/z', '', ''), satir('GBNGWD01', 'GAR.Y.conf', '/y', '1r/s', ''),
-    satir('GBNGWD01', 'GAR.X.conf', '/x', '1r/s', ''), satir('GBNGWD02', 'GAR.X.conf', '/x', '1r/s', '')], hosts);
-  assert.deepEqual(sirali.map((c) => c.value), ['GAR.X', 'GAR.Y', 'GAR.Z'], 'gruplar: tanimli+tam, tanimli+eksik, limitsiz');
+  // Kullanici (2026-10-22): "sadece API ismi gozuksun ... <API Ismi> <API> bu sekilde olsun". Etiket
+  // "<konfigurasyon> - <kok yol>"; limit / kapsam / grup YOK (secimin sagindaki panelde).
+  assert.deepEqual(out.map((c) => c.value), ['GAR.B.V1', 'ORT.CST.REST.A.V1'], 'alfabetik, grupsuz');
+  assert.deepEqual(out.map((c) => c.label), ['GAR.B.V1 - /gar-b/v0/z', 'ORT.CST.REST.A.V1 - /das-a/a-channel/v0/x']);
+  assert.ok(out.every((c) => !('group' in c)), 'grup basligi olmamali ("Envanterde rate limit gorunmuyor" yaniltiyordu)');
+  const ornek = cs.apiGatewayConfChoices([
+    satir('GBNGWD01', 'GAR.CST.REST.DIGITAL-ONBOARDING-PB_DIGITAL-ONBOARDING-PB-CH_V0.conf', '/digital-onboarding-pb/digital-onboarding-pb/v0/token', '', ''),
+    satir('GBNGWD01', 'GAR.CST.REST.DIGITAL-ONBOARDING-PB_DIGITAL-ONBOARDING-PB-CH_V0.conf', '/digital-onboarding-pb/digital-onboarding-pb/v0/', '', ''),
+  ], hosts);
+  assert.equal(ornek[0].label,
+    'GAR.CST.REST.DIGITAL-ONBOARDING-PB_DIGITAL-ONBOARDING-PB-CH_V0 - /digital-onboarding-pb/digital-onboarding-pb/v0/');
+  const adli = cs.apiGatewayConfChoices([satir('GBNGWD01', 'GAR.N.conf', '/n/v0', '1r/s', ''), satir('GBNGWD01', 'GAR.N.conf', '@a', '', '')], hosts);
+  assert.equal(adli[0].label, 'GAR.N - /n/v0', '@ad (named location) API ucu / kok sayilmamali');
+  assert.equal(cs.apiGatewayConfChoices([satir('GBNGWD01', 'GAR.Y.conf', '@x', '', '')], hosts)[0].label, 'GAR.Y', 'yol yoksa yalniz ad');
   for (const p of ['site', 'channel']) assert.ok(!cs.getSource('nginx-api-gateway-confs').params.find((x) => x.name === p).required);
   const load = String(cs.getSource('nginx-api-gateway-confs').load);
   assert.match(load, /apiGeneratorHosts\(env, site, channel\)/);

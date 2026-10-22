@@ -420,9 +420,8 @@ const SOURCES = {
   //   * production'da kanal (mblcustomers / customers / mcustomers) verilirse yalniz o kanalin kumesi;
   //     kapsam o kumeye gore sayilir (kullanici 2026-10-22: "Prod ve customers secince ... o sunuculara
   //     bakmaliydi").
-  // Etiket acik Turkce kanit tasir: ornek uc + dosyadaki uc sayisi, mevcut IP / location limiti (farkliysa
-  // hepsi, "tanimsiz" = envanterde limit yok) ve kac sunucuda var. Gruplar: limiti tanimli + her yerde /
-  // limiti tanimli + bazi sunucularda yok (job o sunucularda "bulunamadi" ile durur) / limit tanimi yok.
+  // Etiket yalniz "<konfigurasyon> - <kok yol>"; limitler / kapsam / birlikte etkilenecek uclar secimin
+  // sagindaki ayrinti panelinde (details).
   'nginx-api-gateway-confs': {
     label: 'Nginx API Generator — rate limit değiştirilebilir API konfigürasyonları (API envanteri)',
     params: [
@@ -432,7 +431,8 @@ const SOURCES = {
       { name: 'islem', label: 'İşlem alanı (op_selection; read ise kanal zorunlu değil)', required: false },
     ],
     async load({ env, site, channel, islem }) {
-      const kume = apiGatewayKumesi(env, channel, islem);
+      // Yalniz dogrulama: prod'da rate limit icin kanal kumesi zorunlu (bilinmiyorsa 400).
+      apiGatewayKumesi(env, channel, islem);
       const { query, sql } = require('../inventory/mssql.cjs');
       const { apiGeneratorHosts } = require('../../shared/nginxApiClusters.cjs');
       const hosts = new Set(apiGeneratorHosts(env, site, channel));
@@ -443,12 +443,12 @@ const SOURCES = {
       const d = dateRes.recordset?.[0]?.d;
       if (!d) return [];
       const r = await query(
-        `SELECT host, config_file, api_location, ip_rate_limit, server_rate_limit
+        `SELECT host, config_file, api_location
            FROM dbo.NginxRateLimitInventory
           WHERE scan_date = @d`,
         [{ name: 'd', type: sql.NVarChar(10), value: d }],
       );
-      return apiGatewayConfChoices(r.recordset || [], hosts, kume ? kume.key : '');
+      return apiGatewayConfChoices(r.recordset || [], hosts);
     },
     // Secilen konfigurasyonun AYRINTISI (formda secimin saginda): ayni rate limit zone'unu
     // paylasan API uclari. Kullanici (2026-10-22): "secilen kok API'yle beraber etkilenecek diger
@@ -532,57 +532,35 @@ const ZONE_SORGU_SINIRI = 50;
 // (harf duyarli alt dizgi, Jinja `in` gibi) iceriyorsa konfigurasyon dosyasi kabul edilir.
 const API_GENERATOR_GRANTED_DOMAINS = ['GAR', 'GLS', 'GES', 'GFY', 'ORT', 'GSG', 'DAS', 'GYB'];
 
-const GRUP_TAM = 'Rate limit tanımlı — tüm sunucularda var';
-const GRUP_EKSIK = 'Rate limit tanımlı — bazı sunucularda yok (iş o sunucularda "bulunamadı" ile durur)';
-// "Tanimi yok" degil "gorunmuyor": envanter ayristiricisi 2026-09-24 - 10-22 arasi '/' iceren zone
-// adlarini (/x/y/v0_rate_limit) OKUYAMIYORDU; olcemedigimizi "yok" diye yazmayiz.
-const GRUP_LIMITSIZ = 'Envanterde rate limit görünmüyor — iş limit zone bulamazsa durur';
-
 /**
  * SAF: envanter satirlari -> secenekler (DB'siz test edilir).
- * @param {object[]} rows {host, config_file, api_location, ip_rate_limit, server_rate_limit}
+ *
+ * Etiket YALNIZ "<konfigurasyon adi> - <kok yol>" (kullanici, 2026-10-22: "sadece API ismi gozuksun ...
+ * <API Ismi> <API> bu sekilde olsun", or. "GAR.CST.REST.DIGITAL-ONBOARDING-PB_DIGITAL-ONBOARDING-PB-CH_V0 -
+ * /digital-onboarding-pb/digital-onboarding-pb/v0/"). Limitler, kapsam ve birlikte etkilenecek uclar secimin
+ * sagindaki panelde. Grup basligi YOK: "Envanterde rate limit gorunmuyor" basligi limiti olan bir API'yi de
+ * (eski ayristirici '/' iceren zone'lari okuyamiyordu) o gruba koyuyor, kullaniciyi yaniltiyordu.
+ * Kok yol: konfigurasyondaki en kisa location (kok API; alt yollar onunla baslar). '@ad' location sayilmaz.
+ * @param {object[]} rows {host, config_file, api_location}
  * @param {Set<string>} hosts job'in calistigi sunucular (BUYUK harf)
- * @param {string} [kume] kanal kumesi adi (kapsam metni icin; bos = ortamin tum sunuculari)
  */
-function apiGatewayConfChoices(rows, hosts, kume = '') {
+function apiGatewayConfChoices(rows, hosts) {
   const byConf = new Map();
   for (const row of rows || []) {
     const host = String(row.host || '').trim().toUpperCase();
     if (!hosts.has(host)) continue;
-    const conf = String(row.config_file || '').trim().replace(/\.conf$/i, '');
+    const conf = String(row.config_file || '').trim().replace(/.conf$/i, '');
     if (!conf || !API_GENERATOR_GRANTED_DOMAINS.some((g) => conf.includes(g))) continue;
-    if (!byConf.has(conf)) byConf.set(conf, { hosts: new Set(), locs: new Set(), ip: new Set(), loc: new Set() });
-    const c = byConf.get(conf);
-    c.hosts.add(host);
+    if (!byConf.has(conf)) byConf.set(conf, new Set());
     const yol = String(row.api_location || '').trim();
-    if (yol && !yol.startsWith('@')) c.locs.add(yol);
-    const ip = String(row.ip_rate_limit || '').trim();
-    if (ip) c.ip.add(ip);
-    const lc = String(row.server_rate_limit || '').trim();
-    if (lc) c.loc.add(lc);
+    if (yol && !yol.startsWith('@')) byConf.get(conf).add(yol);
   }
-  const toplam = hosts.size;
-  const limit = (set) =>
-    set.size === 0 ? 'tanımsız' : set.size === 1 ? [...set][0] : `${[...set].sort().join(' / ')} (sunucular arasında farklı)`;
-  const sira = [GRUP_TAM, GRUP_EKSIK, GRUP_LIMITSIZ];
   return [...byConf.entries()]
     .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([conf, c]) => {
-      const yollar = [...c.locs].sort((a, b) => a.length - b.length || a.localeCompare(b));
-      const ornek = yollar.length
-        ? `örnek uç ${yollar[0]}` + (yollar.length > 1 ? ` (dosyada ${yollar.length} uç)` : '')
-        : 'uç bulunamadı';
-      const limitli = c.ip.size > 0 || c.loc.size > 0;
-      const tam = c.hosts.size === toplam;
-      return {
-        value: conf,
-        label:
-          `${conf}  ·  ${ornek}  ·  IP limiti ${limit(c.ip)}  ·  location limiti ${limit(c.loc)}  ·  ` +
-          `${c.hosts.size}/${toplam} sunucuda var${kume ? ` (${kume})` : ''}`,
-        group: !limitli ? GRUP_LIMITSIZ : tam ? GRUP_TAM : GRUP_EKSIK,
-      };
-    })
-    .sort((a, b) => sira.indexOf(a.group) - sira.indexOf(b.group));
+    .map(([conf, locs]) => {
+      const kok = [...locs].sort((a, b) => a.length - b.length || a.localeCompare(b))[0];
+      return { value: conf, label: kok ? `${conf} - ${kok}` : conf };
+    });
 }
 
 const T = (s) => String(s == null ? '' : s).trim();
