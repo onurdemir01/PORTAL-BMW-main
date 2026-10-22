@@ -207,18 +207,22 @@ test('AG8 kaynak: job sunuculari, izinli onekli konfigurasyon adlari, etiket ve 
   ], hosts);
   // Kullanici (2026-10-22): "sadece API ismi gozuksun ... <API Ismi> <API> bu sekilde olsun". Etiket
   // "<konfigurasyon> - <kok yol>"; limit / kapsam / grup YOK (secimin sagindaki panelde).
+  // Iki satir (2026-10-22): label = ad, alt = kok yol (kokYolu; AG16).
   assert.deepEqual(out.map((c) => c.value), ['GAR.B.V1', 'ORT.CST.REST.A.V1'], 'alfabetik, grupsuz');
-  assert.deepEqual(out.map((c) => c.label), ['GAR.B.V1 - /gar-b/v0/z', 'ORT.CST.REST.A.V1 - /das-a/a-channel/v0/x']);
+  assert.deepEqual(out.map((c) => [c.label, c.alt]), [['GAR.B.V1', '/gar-b/v0/z'], ['ORT.CST.REST.A.V1', '/das-a/a-channel/v0/x']]);
   assert.ok(out.every((c) => !('group' in c)), 'grup basligi olmamali ("Envanterde rate limit gorunmuyor" yaniltiyordu)');
   const ornek = cs.apiGatewayConfChoices([
     satir('GBNGWD01', 'GAR.CST.REST.DIGITAL-ONBOARDING-PB_DIGITAL-ONBOARDING-PB-CH_V0.conf', '/digital-onboarding-pb/digital-onboarding-pb/v0/token', '', ''),
     satir('GBNGWD01', 'GAR.CST.REST.DIGITAL-ONBOARDING-PB_DIGITAL-ONBOARDING-PB-CH_V0.conf', '/digital-onboarding-pb/digital-onboarding-pb/v0/', '', ''),
   ], hosts);
-  assert.equal(ornek[0].label,
-    'GAR.CST.REST.DIGITAL-ONBOARDING-PB_DIGITAL-ONBOARDING-PB-CH_V0 - /digital-onboarding-pb/digital-onboarding-pb/v0/');
+  assert.deepEqual([ornek[0].label, ornek[0].alt],
+    ['GAR.CST.REST.DIGITAL-ONBOARDING-PB_DIGITAL-ONBOARDING-PB-CH_V0', '/digital-onboarding-pb/digital-onboarding-pb/v0/']);
   const adli = cs.apiGatewayConfChoices([satir('GBNGWD01', 'GAR.N.conf', '/n/v0', '1r/s', ''), satir('GBNGWD01', 'GAR.N.conf', '@a', '', '')], hosts);
-  assert.equal(adli[0].label, 'GAR.N - /n/v0', '@ad (named location) API ucu / kok sayilmamali');
-  assert.equal(cs.apiGatewayConfChoices([satir('GBNGWD01', 'GAR.Y.conf', '@x', '', '')], hosts)[0].label, 'GAR.Y', 'yol yoksa yalniz ad');
+  assert.deepEqual([adli[0].label, adli[0].alt], ['GAR.N', '/n/v0'], '@ad (named location) API ucu / kok sayilmamali');
+  const yolsuz = cs.apiGatewayConfChoices([satir('GBNGWD01', 'GAR.Y.conf', '@x', '', '')], hosts)[0];
+  assert.ok(yolsuz.label === 'GAR.Y' && !('alt' in yolsuz), 'yol yoksa yalniz ad');
+  // '.conf' soneki NOKTALI atilir: "GAR.Xconf" adinin sonu kirpilmamali (2026-10-22 regresyonu: /.conf$/i).
+  assert.equal(cs.apiGatewayConfChoices([satir('GBNGWD01', 'GAR.Xconf', '/x/v0', '', '')], hosts)[0].value, 'GAR.Xconf');
   for (const p of ['site', 'channel']) assert.ok(!cs.getSource('nginx-api-gateway-confs').params.find((x) => x.name === p).required);
   const load = String(cs.getSource('nginx-api-gateway-confs').load);
   assert.match(load, /apiGeneratorHosts\(env, site, channel\)/);
@@ -432,6 +436,34 @@ test('AG13 prod: kanal bos / taninmiyorsa liste ve ayrinti DB ye gitmeden 400; l
   );
 });
 
+test('AG16 kok yol: once ZONE ADINDAN, yoksa ortak yol oneki; en kisa location child cikarmaz', () => {
+  // Kullanici (2026-10-22): "secim ekraninda kok yol degil de child API cikti ... rate limit zone isminden
+  // cikartabilirsin". Kok API'nin kendi location'i dosyada yoksa en kisa location bir CHILD'dir.
+  const k = cs.kokYolu;
+  const childlar = ['/r/v0/ab', '/r/v0/abc/def'];
+  assert.equal(k(childlar, ['/r/v0_rate_limit', '/r/v0_location_limit']), '/r/v0', 'zone adindan');
+  assert.equal(k(childlar, []), '/r/v0/', 'zone yoksa ortak onek (en kisa location /r/v0/ab DEGIL)');
+  assert.equal(k(['/d/v0/', '/d/v0/token'], ['/d/v0_rate_limit']), '/d/v0/', 'dosyadaki gercek yol (sondaki / dahil)');
+  assert.equal(k(['/d/v0', '/d/v0/token'], ['/d/v0/_rate_limit']), '/d/v0', 'zone govdesinde sondaki / -> gercek yol');
+  assert.equal(k(['/das-a/v0/x'], ['das-a/v0_rate_limit']), '/das-a/v0', 'basinda / olmayan zone govdesi');
+  assert.equal(k(['/x/v0/a', '/x/v0/b'], ['ORT.CST.REST.X.V1_rate_limit']), '/x/v0/', 'yol bicimli olmayan zone adi atlanir');
+  // Cocuga ozel zone (/r/v0/ab_rate_limit) da varsa TUM location'larin onu olan kok secilir.
+  assert.equal(k(childlar, ['/r/v0/ab_rate_limit', '/r/v0/ab_rate_limit', '/r/v0_rate_limit']), '/r/v0');
+  assert.equal(k(['/tek/v0/a'], []), '/tek/v0/a', 'tek location kendisi');
+  assert.equal(k(['/a/v0', '/b/v0'], []), '/a/v0', 'ortak onek yoksa en kisa');
+  assert.equal(k([], []), '');
+  // Liste etiketi ve panel AYNI kurali kullanir.
+  const hosts = new Set(['GBNGWD01']);
+  const rows = [zs('GBNGWD01', 'GAR.R.conf', '/r/v0/ab', '1r/s', '', '/r/v0_rate_limit', ''),
+    zs('GBNGWD01', 'GAR.R.conf', '/r/v0/abc/def', '1r/s', '', '/r/v0_rate_limit', '')];
+  assert.equal(cs.apiGatewayConfChoices(rows, hosts)[0].alt, '/r/v0');
+  const d = cs.apiGatewayConfDetay(rows, hosts, 'GAR.R', { zoneVar: true });
+  assert.equal(d.kokYol, '/r/v0');
+  assert.ok(d.uclar.every((u) => !u.kok), 'kok API location i dosyada yoksa hicbir uc kok isaretlenmez');
+  const d2 = cs.apiGatewayConfDetay([...rows, zs('GBNGWD01', 'GAR.R.conf', '/r/v0', '1r/s', '', '/r/v0_rate_limit', '')], hosts, 'GAR.R', { zoneVar: true });
+  assert.deepEqual(d2.uclar.filter((u) => u.kok).map((u) => u.yol), ['/r/v0']);
+});
+
 test('AG15 details SQL hatti (sahte mssql): zone kolonu varsa ortak kullanicilar parametreli sorulur, yoksa sorulmaz; mod', async () => {
   const yol = require.resolve('../../inventory/mssql.cjs');
   const eski = require.cache[yol];
@@ -449,6 +481,9 @@ test('AG15 details SQL hatti (sahte mssql): zone kolonu varsa ortak kullanicilar
           return { recordset: [zs('GBNGWP25', 'GAR.A.conf', '/a/v0', '5r/s', '', kolonVar ? Z : undefined, kolonVar ? '' : undefined)] };
         }
         if (/ip_zone IN/.test(metin)) return { recordset: [zs('GBNGWP25', 'GAR.B.conf', '/b/v0', '5r/s', '', Z, '')] };
+        if (/SELECT host, config_file, api_location/.test(metin) && !/ IN \(/.test(metin)) {
+          return { recordset: [zs('GBNGWP25', 'GAR.R.conf', '/r/v0/ab', '', '', kolonVar ? '/r/v0_rate_limit' : undefined, kolonVar ? '' : undefined)] };
+        }
         throw new Error('beklenmeyen sorgu: ' + metin);
       },
     },
@@ -472,6 +507,18 @@ test('AG15 details SQL hatti (sahte mssql): zone kolonu varsa ortak kullanicilar
     d = await src.details({ env: 'dev', site: '', channel: '', islem: 'rate_limit_change' }, 'GAR.A');
     assert.equal(d.zoneBilgisi, false);
     assert.ok(!cagri.some((c) => !/COL_LENGTH/.test(c.metin) && /ip_zone/.test(c.metin)), 'kolon yokken ip_zone sorgulanmamali');
+    // Liste (load): kok yol ZONE ADINDAN; kolon yokken zone okunmaz ve ortak onek / tek yol kullanilir.
+    cs.clearCache();
+    kolonVar = true;
+    cagri.length = 0;
+    let liste = await src.load({ env: 'prod', site: '', channel: 'customers', islem: 'rate_limit_change' });
+    assert.deepEqual(liste, [{ value: 'GAR.R', label: 'GAR.R', alt: '/r/v0' }]);
+    assert.ok(cagri.some((c) => /SELECT host, config_file, api_location, ip_zone, server_zone/.test(c.metin)), 'liste zone kolonlarini okumuyor');
+    kolonVar = false;
+    cagri.length = 0;
+    liste = await src.load({ env: 'prod', site: '', channel: 'customers', islem: 'rate_limit_change' });
+    assert.deepEqual(liste, [{ value: 'GAR.R', label: 'GAR.R', alt: '/r/v0/ab' }]);
+    assert.ok(!cagri.some((c) => !/COL_LENGTH/.test(c.metin) && /ip_zone/.test(c.metin)), 'kolon yokken liste ip_zone okumamali');
   } finally {
     if (eski) require.cache[yol] = eski;
     else delete require.cache[yol];

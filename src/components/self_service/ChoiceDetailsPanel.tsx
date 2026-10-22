@@ -79,6 +79,12 @@ export default function ChoiceDetailsPanel({ source, params, value, className = 
                 : "Rate limit zone'a yazılır; aşağıdaki uçlar aynı zone'u kullandığı için limit değişikliği hepsine birlikte yansır."}
             </p>
           </div>
+          {detay.kokYol && (
+            <div className="text-[11px] min-w-0 truncate" title={detay.kokYol} data-testid="secim-ayrinti-kok">
+              <span className="text-[var(--text-secondary)]">Kök API: </span>
+              <code className="font-mono text-[var(--accent)]">{detay.kokYol}</code>
+            </div>
+          )}
           {zoneSatiri.length > 0 && (
             <div className="text-[11px] text-[var(--text-secondary)] space-y-0.5" data-testid="secim-ayrinti-zone">
               {zoneSatiri.map(({ z, tur }) => (

@@ -437,16 +437,22 @@ const SOURCES = {
       const { apiGeneratorHosts } = require('../../shared/nginxApiClusters.cjs');
       const hosts = new Set(apiGeneratorHosts(env, site, channel));
       if (!hosts.size) return [];
+      // Kok yol zone adindan cikarilir (kokYolu); ip_zone / server_zone yeni yukleyiciyle gelir, eski
+      // kurulumda yoksa sorgu patlamasin diye once varliklari sorulur.
       const dateRes = await query(
-        `SELECT CONVERT(varchar(10), MAX(scan_date), 23) AS d FROM dbo.NginxRateLimitInventory`,
+        `SELECT CONVERT(varchar(10), MAX(scan_date), 23) AS d,
+                COL_LENGTH('dbo.NginxRateLimitInventory', 'ip_zone') AS iz,
+                COL_LENGTH('dbo.NginxRateLimitInventory', 'server_zone') AS sz
+           FROM dbo.NginxRateLimitInventory`,
       );
-      const d = dateRes.recordset?.[0]?.d;
-      if (!d) return [];
+      const m = dateRes.recordset?.[0] || {};
+      if (!m.d) return [];
+      const kol = m.iz != null && m.sz != null ? ', ip_zone, server_zone' : '';
       const r = await query(
-        `SELECT host, config_file, api_location
+        `SELECT host, config_file, api_location${kol}
            FROM dbo.NginxRateLimitInventory
           WHERE scan_date = @d`,
-        [{ name: 'd', type: sql.NVarChar(10), value: d }],
+        [{ name: 'd', type: sql.NVarChar(10), value: m.d }],
       );
       return apiGatewayConfChoices(r.recordset || [], hosts);
     },
@@ -549,18 +555,77 @@ function apiGatewayConfChoices(rows, hosts) {
   for (const row of rows || []) {
     const host = String(row.host || '').trim().toUpperCase();
     if (!hosts.has(host)) continue;
-    const conf = String(row.config_file || '').trim().replace(/.conf$/i, '');
+    const conf = String(row.config_file || '').trim().replace(/\.conf$/i, '');
     if (!conf || !API_GENERATOR_GRANTED_DOMAINS.some((g) => conf.includes(g))) continue;
-    if (!byConf.has(conf)) byConf.set(conf, new Set());
+    if (!byConf.has(conf)) byConf.set(conf, { locs: new Set(), zonlar: new Set() });
+    const c = byConf.get(conf);
     const yol = String(row.api_location || '').trim();
-    if (yol && !yol.startsWith('@')) byConf.get(conf).add(yol);
+    if (yol && !yol.startsWith('@')) c.locs.add(yol);
+    for (const z of [row.ip_zone, row.server_zone]) if (String(z || '').trim()) c.zonlar.add(String(z).trim());
   }
+  // Iki satir (kullanici, 2026-10-22: "<API adi> ile <Kok Yol> alt alta ve farkli renklerle"): label = ad,
+  // alt = kok yol. Arama ikisinde de yapilir.
   return [...byConf.entries()]
     .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([conf, locs]) => {
-      const kok = [...locs].sort((a, b) => a.length - b.length || a.localeCompare(b))[0];
-      return { value: conf, label: kok ? `${conf} - ${kok}` : conf };
+    .map(([conf, c]) => {
+      const kok = kokYolu(c.locs, c.zonlar);
+      return kok ? { value: conf, label: conf, alt: kok } : { value: conf, label: conf };
     });
+}
+
+/**
+ * SAF: bir konfigurasyonun KOK API yolu.
+ *
+ * Eskiden "en kisa location" aliniyordu; kok API'nin kendi location'i dosyada yoksa (yalniz alt yollar
+ * tanimliysa) bir CHILD yol cikiyordu (kullanici, 2026-10-22: "kok yol degil de child API cikti ...
+ * rate limit zone isminden cikartabilirsin"). Sira:
+ *  1. Rate limit ZONE ADI: `<kok>_rate_limit` / `<kok>_location_limit` (create bu adi kok API yolundan
+ *     kurar). Yol bicimli ('/' iceren) govdeler adaydir; tum location'larin onu olan aday yegdir, sonra en
+ *     cok kullanilan, sonra en kisa. Dosyada `<kok>` ya da `<kok>/` location'i varsa o yazilir (sondaki
+ *     '/' dahil gercek yol).
+ *  2. Zone adi yoksa (eski yukleyici / adlandirma disi zone): location'larin ORTAK YOL ONEKI (parca
+ *     sinirinda; /x/v0/a + /x/v0/b -> /x/v0/).
+ *  3. Ortak onek yoksa en kisa location.
+ * @param {Iterable<string>} locs '@ad' haric location yollari
+ * @param {Iterable<string>} zonlar konfigurasyonun zone adlari
+ */
+function kokYolu(locs, zonlar) {
+  const yollar = [...new Set(locs || [])].filter(Boolean);
+  const onekMi = (kok, y) => {
+    const k = kok.replace(/\/+$/, '');
+    return y === k || y.startsWith(`${k}/`);
+  };
+  const say = new Map();
+  for (const z of zonlar || []) {
+    const m = /^(.*)_(?:rate|location)_limit$/.exec(String(z || '').trim());
+    if (!m || !m[1].includes('/')) continue;
+    const govde = m[1].startsWith('/') ? m[1] : `/${m[1]}`;
+    say.set(govde, (say.get(govde) || 0) + 1);
+  }
+  if (say.size) {
+    const adaylar = [...say.keys()];
+    const kapsayan = adaylar.filter((a) => yollar.length > 0 && yollar.every((y) => onekMi(a, y)));
+    const sec = (liste) =>
+      liste.slice().sort((a, b) => say.get(b) - say.get(a) || a.length - b.length || a.localeCompare(b))[0];
+    const govde = kapsayan.length ? kapsayan.slice().sort((a, b) => a.length - b.length || a.localeCompare(b))[0] : sec(adaylar);
+    const yalin = govde.replace(/\/+$/, '');
+    return yollar.find((y) => y === `${yalin}/`) || yollar.find((y) => y === yalin) || yalin;
+  }
+  if (!yollar.length) return '';
+  if (yollar.length === 1) return yollar[0];
+  const parcalar = yollar.map((y) => y.split('/'));
+  const ortak = [];
+  for (let i = 0; i < Math.min(...parcalar.map((p) => p.length)); i += 1) {
+    const p = parcalar[0][i];
+    if (parcalar.every((q) => q[i] === p)) ortak.push(p);
+    else break;
+  }
+  const onek = ortak.join('/');
+  if (onek.replace(/\//g, '')) {
+    const yalin = onek.replace(/\/+$/, '');
+    return yollar.find((y) => y === `${yalin}/`) || yollar.find((y) => y === yalin) || `${yalin}/`;
+  }
+  return yollar.slice().sort((a, b) => a.length - b.length || a.localeCompare(b))[0];
 }
 
 const T = (s) => String(s == null ? '' : s).trim();
@@ -637,10 +702,18 @@ function apiGatewayConfDetay(rows, hosts, conf, opts = {}) {
     e.ipEt = e.ipEt || ipEt;
     e.locEt = e.locEt || locEt;
   }
+  // Kok: listedeki etiketle AYNI kural (kokYolu: once zone adi, sonra ortak onek). Kok API'nin kendi
+  // location'i dosyada yoksa hicbir uc "kok" isaretlenmez; panel kok yolu ayrica yazar.
   const kendiYollar = [...uc.values()].filter((e) => e.kendi).map((e) => e.yol);
-  // Kok: konfigurasyondaki diger TUM yollarin onu oldugu en kisa yol (/x/v0 -> /x/v0/a, /x/v0/b).
-  const aday = kendiYollar.slice().sort((a, b) => a.length - b.length || a.localeCompare(b))[0] || '';
-  const kok = aday && kendiYollar.every((y) => y === aday || y.startsWith(aday.endsWith('/') ? aday : `${aday}/`)) ? aday : '';
+  const kendiZonlar = kendiSatirlar.flatMap((r) => [T(r.ip_zone), T(r.server_zone)]).filter(Boolean);
+  const kokYol = kokYolu(kendiYollar, zoneBilgisi ? kendiZonlar : []);
+  // "kok" etiketi yalniz GERCEK kok'e: dosyada var VE diger tum yollar onunla basliyor (ortak kok yokken
+  // kokYolu'nun yedegi olan en kisa yol, kardes bir API'dir - kok diye isaretlenmez).
+  const kokSade = kokYol.replace(/\/+$/, '');
+  const kok =
+    kendiYollar.includes(kokYol) && kendiYollar.every((y) => y === kokYol || y === kokSade || y.startsWith(`${kokSade}/`))
+      ? kokYol
+      : '';
   const deger = (set) => [...set].sort().join(' / ');
   const uclar = [...uc.values()]
     .map((e) => ({
@@ -667,6 +740,7 @@ function apiGatewayConfDetay(rows, hosts, conf, opts = {}) {
   return {
     conf: T(conf),
     kume: opts.kume || '',
+    kokYol,
     toplamSunucu: hosts.size,
     taramaTarihi: opts.taramaTarihi || '',
     zoneBilgisi,
@@ -849,6 +923,7 @@ module.exports = {
   apiGatewayConfDetay,
   apiGatewayKumesi,
   confZonelari,
+  kokYolu,
   loadChoiceDetails,
   clustersForEnv,
   listSources,

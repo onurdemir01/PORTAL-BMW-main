@@ -733,6 +733,8 @@ export interface ChoiceDetailUc {
 
 export interface ChoiceDetails {
   conf: string;
+  /** Kök API yolu (zone adından; yoksa location'ların ortak öneki). */
+  kokYol: string;
   kume: string;
   toplamSunucu: number;
   taramaTarihi: string;
@@ -756,6 +758,8 @@ export interface ChoiceSourceInfo {
 export interface DynamicChoice {
   value: string;
   label: string;
+  /** İkinci satır (ör. API Generator: konfigürasyonun kök API yolu); ayrı renkte, label'ın altında. */
+  alt?: string;
   group?: string;
 }
 

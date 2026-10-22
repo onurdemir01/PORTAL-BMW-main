@@ -11,7 +11,7 @@
 //   CD6 bağlı zorunlu alan boşaltılınca / değer listede değilken panel yok ve ayrıntı istenmez
 //       (yanıltıcı "listede yok" hatası çıkmasın — inceleme 2026-10-22)
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { render, screen, waitFor, within, fireEvent } from '@testing-library/react';
 
 const api = vi.hoisted(() => ({ choices: vi.fn(), choiceDetails: vi.fn() }));
 vi.mock('@/api/ansibleApi', () => ({ ansibleApi: api }));
@@ -30,7 +30,7 @@ const uc = (o: Record<string, unknown>) => ({
   locFarkli: false, ipZone: Z, locZone: '', etkiler: { ip: true, location: false }, ...o,
 });
 const DETAY = {
-  conf: 'ORT.CST.REST.A.V1', kume: 'customers', toplamSunucu: 12, taramaTarihi: '2026-10-22', zoneBilgisi: true,
+  conf: 'ORT.CST.REST.A.V1', kokYol: '/das-a/a-channel/v0', kume: 'customers', toplamSunucu: 12, taramaTarihi: '2026-10-22', zoneBilgisi: true,
   zoneKirpildi: false, zonelar: { ip: [Z], location: [] }, mod: 'degisiklik' as const, etkilenen: 3,
   uclar: [
     uc({ yol: '/das-a/a-channel/v0', kok: true }),
@@ -53,6 +53,7 @@ describe('DynamicChoiceSelect + ChoiceDetailsPanel', () => {
     const panel = await screen.findByTestId('secim-ayrinti');
     await waitFor(() => expect(within(panel).getByText('Birlikte etkilenecek API uçları (3)')).toBeInTheDocument());
     expect(within(panel).getByTestId('secim-ayrinti-zone').textContent).toContain(Z);
+    expect(within(panel).getByTestId('secim-ayrinti-kok').textContent).toBe('Kök API: /das-a/a-channel/v0');
     const satirlar = within(panel).getAllByTestId('secim-ayrinti-uc');
     expect(satirlar).toHaveLength(4);
     expect(within(satirlar[0]).getByText('kök')).toBeInTheDocument();
@@ -104,21 +105,33 @@ describe('DynamicChoiceSelect + ChoiceDetailsPanel', () => {
     expect(panel.textContent).not.toContain('Birlikte etkilenecek');
   });
 
-  it('CD7 seçili değer vurgulu ve tam metin; açık listede seçili satır işaretli', async () => {
+  it('CD7 ad ve kök yol ALT ALTA, farklı renkte; seçili değer vurgulu, açık listede seçili satır işaretli', async () => {
     const UZUN = 'GAR.CST.REST.DIGITAL-ONBOARDING-PB_DIGITAL-ONBOARDING-PB-CH_V0';
-    const ETIKET = `${UZUN} - /digital-onboarding-pb/digital-onboarding-pb/v0/`;
-    api.choices.mockResolvedValue({ ok: true, choices: [{ value: 'GAR.A', label: 'GAR.A - /a/v0' }, { value: UZUN, label: ETIKET }] });
+    const KOK = '/digital-onboarding-pb/digital-onboarding-pb/v0/';
+    api.choices.mockResolvedValue({ ok: true, choices: [{ value: 'GAR.A', label: 'GAR.A', alt: '/a/v0' }, { value: UZUN, label: UZUN, alt: KOK }] });
     render(<DynamicChoiceSelect id="c" source={KAYNAK} values={DEGERLER} value={UZUN} onChange={vi.fn()} />);
     const secili = await screen.findByTestId('secim-secili');
-    await waitFor(() => expect(secili.textContent).toContain(ETIKET));
+    await waitFor(() => expect(screen.getByTestId('secim-secili-ad').textContent).toBe(UZUN));
+    const alt = screen.getByTestId('secim-secili-alt');
+    expect(alt.textContent).toBe(KOK);
+    expect(alt.className).toContain('block');
+    expect(alt.className).toContain('text-[var(--accent)]');
+    expect(screen.getByTestId('secim-secili-ad').className).toContain('text-[var(--text-primary)]');
     expect(secili.className).toContain('border-[var(--accent)]');
-    expect(secili.querySelector('span')!.className).toContain('break-all');
     within(secili).getByText('değiştir').click();
     const secenek = await screen.findByRole('option', { selected: true });
-    expect(secenek.textContent).toBe(`✓ ${ETIKET}`);
+    const [adSatiri, yolSatiri] = Array.from(secenek.children) as HTMLElement[];
+    expect(adSatiri.textContent).toBe(`✓ ${UZUN}`);
+    expect(yolSatiri.textContent).toBe(KOK);
+    expect(yolSatiri.className).toContain('text-[var(--accent)]');
+    expect(adSatiri.className).toContain('text-[var(--text-primary)]');
     expect(secenek.className).toContain('border-[var(--accent)]');
     const diger = screen.getAllByRole('option').find((o) => o !== secenek)!;
     expect(diger.className).toContain('border-transparent');
+    // Arama kök yolda da çalışır.
+    const kutu = screen.getByRole('textbox');
+    fireEvent.change(kutu, { target: { value: '/a/v0' } });
+    await waitFor(() => expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual(['GAR.A/a/v0']));
   });
 
   it('CD6 zorunlu alan boşken ya da değer listede yokken panel yok, ayrıntı istenmez', async () => {
