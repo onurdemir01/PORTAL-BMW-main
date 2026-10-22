@@ -56,6 +56,8 @@ const N = new Date('2026-11-20T12:00:00Z');
 const silinebilir = (status) => ({
   id: 7, record_id: 3, host: 'GBJBOP01', app_name: 'CRM', jboss_gen: 7, app_path: '/hysdeploy/CRM.ear',
   env: 'PROD', smart_no: '123', planned_delete_at: '2026-11-01', stop_at: '2026-10-01', delete_after_days: 45,
+  // Taze silme on kontrolu (2026-10-22): silme yalniz onun listesiyle baslar.
+  delete_onkontrol_json: JSON.stringify({ jobId: 70, at: '2026-11-20T19:50:00Z', durum: 'ok', izinler: ['onay:sil:CRM|JBoss7|GBJBOP01'] }),
   status,
 });
 

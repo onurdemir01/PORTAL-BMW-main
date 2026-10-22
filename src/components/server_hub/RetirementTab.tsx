@@ -31,7 +31,7 @@ function WebKaynak({ w }: { w: RtWeb }) {
   );
 }
 import { retirementAdimi } from './retirementAdim';
-import OnKontrolListesi, { onKontrolHazir } from './RetirementOnKontrol';
+import OnKontrolListesi, { onKontrolHazir, OnKontrolGorunumu, geriAlHazir, geriAlinabilir, onKontrolSuruyor } from './RetirementOnKontrol';
 import { stopTrafikOzeti, stopOnayAcikMi, type TrafikIsDurumu } from './retirementTrafik';
 import { blokAyristir, bloklaraBol, degisimTuru, jkAyristir, jkDegAyristir, JK_ETIKET, kipAyristir, sonraMetni, sonucAyristir, YORUM_ONEKI, type BlokSatiri, type DegisimTuru, type JkDeg, type JkSatiri, type Kip } from './retirementVhostPlan';
 
@@ -735,6 +735,13 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
   // PROD STOP ZAMANI (2026-10-09): varsayilan OCO penceresine zamanla; "simdi" yalniz acik secimle.
   const [stopZamani, setStopZamani] = useState<'oco' | 'simdi'>('oco');
   const [geriAl, setGeriAl] = useState<{ t: RtTarget } | null>(null);
+  // GERI ALMA ON KONTROLU BEKLEYENLER (2026-10-22): "Geri aktif et" once on kontrolu baslatir; bitince
+  // onay penceresi BU oturumda baslatilan hedef icin kendiliginden acilir (STOP'taki onayBekleyen gibi).
+  // Bekleyen = (hedef, baslatilan on kontrol isi): pencere YALNIZ o isin sonucu geldiginde acilir (eski kayit
+  // eski bir listeyi ya da yanlis "basarisiz" bildirimini getirmesin).
+  const geriAlBekleyen = useRef<{ tid: number; jobId: number | null }[]>([]);
+  // SILME ON KONTROLU LISTESI (2026-10-22): durdurulmus hedefin "neyin silinecegi" listesi.
+  const [silmeListe, setSilmeListe] = useState<number | null>(null);
   const [iptalSor, setIptalSor] = useState(false);
   // BEKLEMEYI ATLA (admin): silme tarihini bugune ceker; onay icin uygulama adi yazilir.
   // HEDEF BASINA (2026-10-12): hangi sunucunun beklemesi atlanacak.
@@ -938,12 +945,20 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
   // ── GERI AL (kullanici, 2026-10-07) ─────────────────────────────────────────────
   // "Uygulamami geri aktif et vs ve yaptigimiz degisiklikler geri alinmali."
   // Hedef 'rolling_back' olur olmaz zamanlanmis SILME devre disi kalir.
-  const rollback = async (t: RtTarget, confirmed: boolean) => {
-    setBusy(t.id); setGeriAl(null);
+  // ON KONTROL (2026-10-22, kullanici: "DELETE ve GERI AL icin de on kontrol listesini yap"): confirmed=false
+  // geri alma ON KONTROLUNU baslatir (hicbir sey degismez); bitince onay penceresi listeyle acilir. Onay
+  // YALNIZ o listeyi betige gonderir (sunucu da ayni kurali uygular, bir liste bir onaya).
+  // Donus: is baslatildi mi (iptal + geri al akisi kac hedefin basladigini durust soylesin).
+  const rollback = async (t: RtTarget, confirmed: boolean, onKontrolJobId: number | null = null): Promise<boolean> => {
+    setBusy(t.id);
+    // Yalniz ONAY penceresi kapanir: on kontrol baslatmak (ornegin iptal + geri al dongusunde) baska bir hedef
+    // icin acilmis pencereyi kapatmaz.
+    if (confirmed) setGeriAl(null);
     try {
-      const r = await retirementApi.rollback(id, t.id, confirmed);
-      if (!r.ok) { toast.error(r.message || 'İş başlatılamadı.'); return; }
-      toast.success(`${confirmed ? 'Geri alma' : 'Geri alma planı'} işi başladı (#${r.jobId}).`);
+      const r = await retirementApi.rollback(id, t.id, confirmed, onKontrolJobId);
+      if (!r.ok) { toast.error(r.message || 'İş başlatılamadı.'); return false; }
+      if (!confirmed) geriAlBekleyen.current = [...geriAlBekleyen.current.filter((x) => x.tid !== t.id), { tid: t.id, jobId: r.jobId ?? null }];
+      toast.success(confirmed ? `Geri alma işi başladı (#${r.jobId}).` : `${t.appName} @ ${t.host}: geri alma ön kontrolü başladı (#${r.jobId}) — bitince onay penceresi açılacak.`);
       // VHOST GERI ACMA SESSIZ KALMAZ: atlanan/hatali girdiler kullaniciya soylenir,
       // yoksa uygulama ayaga kalkar ama onune trafik gelmez ve sebebi gorunmez.
       if (confirmed && r.web) {
@@ -952,7 +967,7 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
       }
       let done = false;
       addJob({
-        title: `Retirement: ${confirmed ? 'GERİ AL' : 'geri alma planı'} ${t.appName} @ ${t.host}`,
+        title: `Retirement: ${confirmed ? 'GERİ AL' : 'geri alma ön kontrolü'} ${t.appName} @ ${t.host}`,
         fetchStatus: async () => {
           const st = await retirementApi.jobStatus(id, t.id, r.awxServerId, r.jobId as number);
           if (!st.ok) throw new Error(st.message || 'Durum okunamadı.');
@@ -961,7 +976,8 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
         },
       });
       await load();
-    } catch (e: unknown) { toast.error(e instanceof Error ? e.message : String(e)); } finally { setBusy(null); }
+      return true;
+    } catch (e: unknown) { toast.error(e instanceof Error ? e.message : String(e)); return false; } finally { setBusy(null); }
   };
   // ── IPTAL, GERI ALMA DEGILDIR (kullanici bulgusu 2026-10-08) ────────────────────
   // "Kaydi iptal ettim de otomatik geri donecek mi? Sanki su an iptal ettim ama geri
@@ -1065,10 +1081,50 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
       );
       return;
     }
-    // HER HEDEF ICIN SIRAYLA: rollback() kendi hatasini kendi bildirir ve durumu
-    // 'rolling_back' yapar, yani silme kapisi zaten kapanir.
-    for (const t of durdurulmus) await rollback(t, true);
+    // HER HEDEF ICIN SIRAYLA ON KONTROL (2026-10-22): onayli geri alma artik yalniz kendi on kontrolunun
+    // listesiyle kosar. Kayit iptal edildigi icin zamanlanmis silme zaten tetiklenmez; her hedefin on
+    // kontrolu bitince onay penceresi sirayla acilir.
+    let basladi = 0;
+    for (const t of durdurulmus) if (await rollback(t, false)) basladi += 1;
+    if (basladi === durdurulmus.length) toast.success(`Kayıt iptal edildi. ${basladi} hedef için geri alma ön kontrolü başladı — her biri bitince onay penceresi açılır.`);
+    else if (basladi) toast.error(`Kayıt iptal edildi. ${basladi}/${durdurulmus.length} hedef için geri alma ön kontrolü başladı; diğerleri başlatılamadı (yukarıdaki hatalar) — onlar DURDURULMUŞ kaldı.`);
+    else toast.error('Kayıt iptal edildi ama hiçbir hedef için geri alma ön kontrolü başlatılamadı — uygulamalar DURDURULMUŞ kaldı.');
     await load();
+  };
+  // GERI ALMA ON KONTROLU BITTI: hazirsa onay penceresi acilir, basarisizsa sebebi soylenir (bekleyenler sirayla).
+  useEffect(() => {
+    if (!rec || geriAl || !geriAlBekleyen.current.length) return;
+    for (const b of [...geriAlBekleyen.current]) {
+      const t = rec.targets.find((x) => x.id === b.tid);
+      const k = t?.geriAlOnKontrol;
+      // Bu isin sonucu henuz kayitta yok (eski kayit / baska is) ya da suruyor: bekle.
+      if (t && (!k || (b.jobId != null && k.jobId !== b.jobId) || onKontrolSuruyor(k))) continue;
+      geriAlBekleyen.current = geriAlBekleyen.current.filter((x) => x.tid !== b.tid);
+      if (!t) continue;
+      if (!geriAlinabilir(t)) { toast.error(`${t.appName} @ ${t.host}: hedef artık geri alınabilir durumda değil (${t.status}) — onay penceresi açılmadı.`); continue; }
+      if (geriAlHazir(t)) { setGeriAl({ t }); return; }
+      toast.error(`${t.appName} @ ${t.host}: geri alma ön kontrolü başarısız — ${t.geriAlOnKontrol?.mesaj || 'ayrıntı için Olaylar / iş çıktısı'}`);
+    }
+  }, [rec, geriAl]);
+  // SILME ON KONTROLU (elle): hicbir sey silinmez; liste hedef satirinda / pencerede gorunur.
+  const silmeOnKontrol = async (t: RtTarget) => {
+    setBusy(t.id);
+    try {
+      const r = await retirementApi.deletePlan(id, t.id);
+      if (!r.ok) { toast.error(r.message || 'Silme ön kontrolü başlatılamadı.'); return; }
+      if (r.record) setRec(r.record);
+      toast.success(`${t.appName} @ ${t.host}: silme ön kontrolü başladı (#${r.jobId}) — hiçbir şey silinmez, liste bitince görünür.`);
+      let done = false;
+      addJob({
+        title: `Retirement: silme ön kontrolü ${t.appName} @ ${t.host}`,
+        fetchStatus: async () => {
+          const st = await retirementApi.jobStatus(id, t.id, r.awxServerId, r.jobId as number);
+          if (!st.ok) throw new Error(st.message || 'Durum okunamadı.');
+          if (TERMINAL.has(st.status) && !done) { done = true; await load(); setSilmeListe(t.id); }
+          return { status: st.status, output: st.output || '', result: st.result };
+        },
+      });
+    } catch (e: unknown) { toast.error(e instanceof Error ? e.message : String(e)); } finally { setBusy(null); }
   };
   const addNote = async () => { if (!note.trim()) return; const r = await retirementApi.note(id, note.trim()); if (r.ok) { setRec(r.record); setNote(''); } };
 
@@ -1099,6 +1155,9 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
               Durdurulmuş hedeflerin silme günü geldiğinde, o gün <b>{rec.deleteAt?.saat || '23:00'} (TR)</b>’den sonraki
               ilk turda AWX’te silme işi başlatılır — ek onay istenmez. Portal o saatte kapalıysa iş <b>ertesi gece</b>
               {' '}{rec.deleteAt?.saat || '23:00'}’e kalır, gündüze kaymaz.
+              {' '}<b>Silme ön kontrolü:</b> silme saatinden bir saat önce zamanlayıcı neyin silineceğini okur (hiçbir şey
+              silinmez) ve liste hedef satırında görünür; silme <b>yalnız bu listedeki</b> dosya ve JBoss tanımlarını siler,
+              liste dışında bir işlem gerekirse hiçbir şey silmeden durur.
               {rec.deleteNowAt && <span style={{ color: 'var(--status-danger)' }}> Admin beklemeyi atladı ({fmtDateTime(rec.deleteNowAt)}): saat beklenmez, ilk turda başlar.</span>}
             </div>
           )}
@@ -1232,10 +1291,36 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
                               : <button onClick={() => { setAtlaAd(''); setAtlaSor(t); }} className="underline decoration-dotted" style={{ color: 'var(--status-danger)' }} title="Admin: YALNIZ bu sunucunun silme beklemesini atla; zamanlayıcı ilk turda siler, diğer hedefler kendi tarihini bekler">beklemeyi atla (admin)</button>}
                           </div>
                         )}
+                        {/* SILME ON KONTROLU (2026-10-22): neyin silinecegi listesi + durumu; silme yalniz bu listeyle. */}
+                        {t.status === 'stopped' && !t.deletedAt && rec.status !== 'cancelled' && rec.status !== 'deleted' && (
+                          <div className="mt-1 text-[10px] flex flex-wrap items-center gap-x-1.5">
+                            {(() => {
+                              const k = t.silmeOnKontrol;
+                              if (!k) return <span style={{ color: 'var(--text-muted)' }} title="Zamanlayıcı silme saatinden bir saat önce koşar">silme ön kontrolü: henüz yok</span>;
+                              if (onKontrolSuruyor(k)) return <span style={{ color: 'var(--status-warning)' }}>silme ön kontrolü sürüyor{k.jobId ? ` (#${k.jobId})` : ''}…</span>;
+                              const dosya = k.onkontrol.filter((x) => x.startsWith('ONKONTROL\tdosya\t') && !x.startsWith('ONKONTROL\tdosya\t-\t')).length;
+                              const renk = k.durum !== 'ok' ? 'var(--status-danger)' : k.hazir ? 'var(--status-success)' : 'var(--text-secondary)';
+                              return (
+                                <button onClick={() => setSilmeListe(t.id)} className="underline decoration-dotted" style={{ color: renk }} title="Silinecek dosyalar, kaldırılacak JBoss tanımları, komutlar ve dokunulmayacaklar">
+                                  {k.durum === 'ok' ? `silme listesi: ${dosya} dosya${k.hazir ? '' : k.kullanildi ? ' (kullanıldı)' : ' (bayat — silmeden önce yenilenir)'}` : 'silme ön kontrolü BAŞARISIZ'}{k.at ? ` · ${fmtDateTime(k.at)}` : ''}
+                                </button>
+                              );
+                            })()}
+                            {!onKontrolSuruyor(t.silmeOnKontrol) && (
+                              <button disabled={busy != null} onClick={() => silmeOnKontrol(t)} className="underline decoration-dotted disabled:opacity-50" style={{ color: 'var(--accent)' }} title="Neyin silineceğini sunucudan şimdi oku (hiçbir şey silinmez)">silme ön kontrolü</button>
+                            )}
+                          </div>
+                        )}
                         {(t.status === 'stopped' || t.status === 'rollback_failed' || (t.status === 'failed' && (t.webSonuc || []).some((w) => w.status === 'ok'))) && !t.deletedAt && (
-                          <div className="flex gap-1 mt-1">
-                            <button disabled={busy != null} onClick={() => rollback(t, false)} className={SM_BTN} style={smBtn()} title="Geri alma planı: ne yapılacağını göster, hiçbir şey değişmez"><ClipboardDocumentCheckIcon className="w-3.5 h-3.5" /> Geri alma planı</button>
-                            <button disabled={busy != null} onClick={() => setGeriAl({ t })} className={SM_BTN} style={{ ...smBtn(true), background: 'var(--status-ok, #15803d)', borderColor: 'var(--status-ok, #15803d)' }} title="Uygulamayı geri aktif et: paketler geri adlandırılır, auto-start açılır, JVM başlatılır, vhost'lar geri açılır"><ArrowUturnLeftIcon className="w-3.5 h-3.5" /> Geri aktif et</button>
+                          <div className="flex flex-wrap gap-1 mt-1 items-center">
+                            {/* ON KONTROL ONCE (2026-10-22): dugme geri alma on kontrolunu baslatir (hicbir sey
+                                degismez); bitince onay penceresi neyin yapilacagi listesiyle acilir. */}
+                            {onKontrolSuruyor(t.geriAlOnKontrol)
+                              ? <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>geri alma ön kontrolü sürüyor… bitince onay penceresi açılır</span>
+                              : <button disabled={busy != null} onClick={() => rollback(t, false)} className={SM_BTN} style={{ ...smBtn(true), background: 'var(--status-ok, #15803d)', borderColor: 'var(--status-ok, #15803d)' }} title="Önce ön kontrol: hangi paketlerin geri adlandırılacağı, hangi komutların çalışacağı sunucudan okunur (hiçbir şey değişmez); bitince onay penceresi bu listeyle açılır"><ArrowUturnLeftIcon className="w-3.5 h-3.5" /> Geri aktif et</button>}
+                            {geriAlHazir(t) && !onKontrolSuruyor(t.geriAlOnKontrol) && (
+                              <button onClick={() => setGeriAl({ t })} className="text-[10px] underline decoration-dotted" style={{ color: 'var(--accent)' }} title="Son geri alma ön kontrolünün listesiyle onay penceresini aç">onay penceresini aç</button>
+                            )}
                           </div>
                         )}
                       </td>
@@ -1508,27 +1593,79 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
           </div>
         );
       })()}
-      {geriAl && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,.45)' }} onClick={() => setGeriAl(null)}>
-          <div className="rounded-xl border p-4 max-w-xl w-full space-y-3" style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border)' }} onClick={(e) => e.stopPropagation()}>
-            <div className="text-sm font-semibold">{geriAl.t.appName} @ {geriAl.t.host} geri aktif edilecek</div>
-            <ul className="text-[12px] space-y-1 list-disc pl-4" style={{ color: 'var(--text-secondary)' }}>
-              <li>Paketler <code>.{rec?.smartNo}.old</code> sonekinden kurtarılır (hedefte aynı adlı yeni bir paket varsa <b>üzerine yazılmaz, atlanır</b>)</li>
-              <li><code>auto-start=true</code> yapılır</li>
-              <li>JVM başlatılır ve RUNNING olması beklenir</li>
-              <li>STOP'ta kaldırılan Apache/IHS vhost'ları geri açılır (<code>apachectl -t</code> geçmezse geri alınır)</li>
-              <li><b>Zamanlanmış silme devre dışı kalır</b> — hedef artık "stopped" olmadığı için silme işi hiç tetiklenmez</li>
-            </ul>
-            <div className="text-[11px] rounded-lg px-3 py-2 border" style={{ color: 'var(--text-secondary)', borderColor: 'var(--border-subtle)' }}>
-              Uygulama <b>canlıya geri döner</b>. PROD hedefte trafik almaya başlar — bunun planlı olduğundan emin olun.
-            </div>
-            <div className="flex justify-end gap-2">
-              <button onClick={() => setGeriAl(null)} className={SM_BTN} style={smBtn()}>İptal</button>
-              <button onClick={() => rollback(geriAl.t, true)} className={SM_BTN} style={{ ...smBtn(true), background: 'var(--status-ok, #15803d)', borderColor: 'var(--status-ok, #15803d)' }}>Onayla ve geri aktif et</button>
+      {geriAl && (() => {
+        // Pencere hedefin GUNCEL halini gosterir (on kontrol sonucu sonradan yazilmis olabilir).
+        const gt = rec?.targets.find((x) => x.id === geriAl.t.id) || geriAl.t;
+        const k = gt.geriAlOnKontrol;
+        const geriAcilacak = (gt.webSonuc || []).filter((w) => w.status === 'ok');
+        return (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,.45)' }} onClick={() => setGeriAl(null)}>
+            <div className="w-[96vw] max-w-[1100px] rounded-2xl border p-5 space-y-3 max-h-[94vh] overflow-auto" style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-subtle)' }} onClick={(e) => e.stopPropagation()}>
+              <div className="text-sm font-semibold">{gt.appName} @ {gt.host} geri aktif edilecek <span className="font-normal" style={{ color: 'var(--text-muted)' }}>(JBoss {gt.gen ?? '?'}, {gt.env})</span></div>
+              {k?.mesaj && (
+                <div className="text-[12px] rounded-lg border px-3 py-2" style={{ borderColor: 'var(--status-info)', background: 'var(--status-info-bg)' }}>
+                  <b>Ön kontrol sonucu:</b> {k.mesaj}
+                  <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}> · iş #{k.jobId ?? '?'}{k.at ? ` · ${fmtDateTime(k.at)}` : ''}</span>
+                </div>
+              )}
+              {/* ON KONTROL LISTESI (2026-10-22): paketler, komutlar, konfigurasyon, dokunulmayacaklar; onay
+                  YALNIZ bu listeyi betige gonderir. */}
+              <OnKontrolGorunumu satirlar={k?.onkontrol} hazir={geriAlHazir(gt)} kip="geri-al" kisaltildi={k?.kisaltildi} />
+              {!geriAlinabilir(gt) && (
+                <div role="alert" className="text-[12px] rounded-lg border px-3 py-2" style={{ borderColor: 'var(--status-danger)', color: 'var(--status-danger-text)' }}>
+                  Hedef artık geri alınabilir durumda değil ({gt.status}{gt.deletedAt ? ', silindi' : ''}) — onay açılmaz.
+                </div>
+              )}
+              <ul className="text-[12px] space-y-1 list-disc pl-4" style={{ color: 'var(--text-secondary)' }}>
+                <li>
+                  {geriAcilacak.length
+                    ? <>STOP'ta kaldırılan {geriAcilacak.length} vhost geri açılır (<code>apachectl -t</code> geçmezse geri alınır): <span className="font-mono">{geriAcilacak.map((w) => `${w.host} / ${w.serverName}`).join(' · ')}</span></>
+                    : <>STOP'ta otomatik kaldırılmış vhost yok — geri açılacak web tanımı yok</>}
+                </li>
+                <li><b>Zamanlanmış silme devre dışı kalır</b> — hedef artık "stopped" olmadığı için silme işi hiç tetiklenmez</li>
+              </ul>
+              <div className="text-[11px] rounded-lg px-3 py-2 border" style={{ color: 'var(--text-secondary)', borderColor: 'var(--border-subtle)' }}>
+                Uygulama <b>canlıya geri döner</b>. PROD hedefte trafik almaya başlar — bunun planlı olduğundan emin olun.
+              </div>
+              <div className="flex justify-end gap-2">
+                <button onClick={() => setGeriAl(null)} className={SM_BTN} style={smBtn()}>İptal</button>
+                <button disabled={!geriAlHazir(gt) || !geriAlinabilir(gt) || busy != null} onClick={() => rollback(gt, true, k?.jobId ?? null)} className={`${SM_BTN} disabled:opacity-50`} style={{ ...smBtn(true), background: 'var(--status-ok, #15803d)', borderColor: 'var(--status-ok, #15803d)' }}>Onayla ve geri aktif et</button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
+      {silmeListe != null && rec && (() => {
+        const t = rec.targets.find((x) => x.id === silmeListe);
+        if (!t) return null;
+        const k = t.silmeOnKontrol;
+        return (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,.45)' }} onClick={() => setSilmeListe(null)}>
+            <div className="w-[96vw] max-w-[1100px] rounded-2xl border p-5 space-y-3 max-h-[94vh] overflow-auto" style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-subtle)' }} onClick={(e) => e.stopPropagation()}>
+              <div className="text-sm font-semibold">Silme ön kontrolü — {t.appName} @ {t.host} <span className="font-normal" style={{ color: 'var(--text-muted)' }}>(JBoss {t.gen ?? '?'}, {t.env})</span></div>
+              {!k ? (
+                <div className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>Henüz silme ön kontrolü yok. Zamanlayıcı silme saatinden bir saat önce koşar; şimdi görmek için “Ön kontrolü çalıştır”.</div>
+              ) : (
+                <>
+                  <div className="text-[12px] rounded-lg border px-3 py-2" style={{ borderColor: k.durum === 'failed' ? 'var(--status-danger)' : 'var(--status-info)', background: k.durum === 'failed' ? undefined : 'var(--status-info-bg)' }}>
+                    <b>{onKontrolSuruyor(k) ? 'Ön kontrol sürüyor' : k.durum === 'ok' ? 'Ön kontrol sonucu' : 'Ön kontrol BAŞARISIZ — silme yapılmaz'}:</b> {k.mesaj || '—'}
+                    <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                      iş #{k.jobId ?? '?'}{k.at ? ` · ${fmtDateTime(k.at)}` : ''} · {k.kaynak === 'zamanlayici' ? 'zamanlayıcı' : `elle${k.kullanici ? ` (${k.kullanici})` : ''}`}{k.kullanildi ? ' · bu liste silmede kullanıldı' : ''}
+                    </div>
+                  </div>
+                  {(k.durum === 'ok' || k.onkontrol.length > 0) && <OnKontrolGorunumu satirlar={k.onkontrol} hazir={k.hazir} kip="silme" kisaltildi={k.kisaltildi} />}
+                </>
+              )}
+              <div className="flex justify-end gap-2">
+                <button onClick={() => setSilmeListe(null)} className={SM_BTN} style={smBtn()}>Kapat</button>
+                {t.status === 'stopped' && !onKontrolSuruyor(k) && rec.status !== 'cancelled' && rec.status !== 'deleted' && (
+                  <button disabled={busy != null} onClick={() => { setSilmeListe(null); silmeOnKontrol(t); }} className={`${SM_BTN} disabled:opacity-50`} style={smBtn(true)}>{k ? 'Ön kontrolü yeniden çalıştır' : 'Ön kontrolü çalıştır'}</button>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </Modal>
   );
 }

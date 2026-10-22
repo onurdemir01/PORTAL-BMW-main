@@ -3,8 +3,8 @@
 import { describe, expect, test } from 'vitest';
 import { screen } from '@testing-library/react';
 import { render } from '@/test/test-utils';
-import type { RtTarget } from '@/api/retirementApi';
-import OnKontrolListesi, { onKontrolAyristir, onKontrolHazir } from '../RetirementOnKontrol';
+import type { RtOnKontrolKaydi, RtTarget } from '@/api/retirementApi';
+import OnKontrolListesi, { geriAlHazir, geriAlinabilir, onKontrolAyristir, onKontrolHazir, OnKontrolGorunumu, onKontrolSuruyor } from '../RetirementOnKontrol';
 
 const SATIRLAR = [
   'ONKONTROL\tuygulama\tGBPOSWEBAPI\tJBoss 7 - kurulum /usr/jboss/AppServer, controller GBJEXP05, host=master; su an STARTED, auto-start=true',
@@ -62,5 +62,63 @@ describe('Retirement ön kontrol listesi', () => {
     expect(onKontrolHazir(hedef())).toBe(true);
     expect(onKontrolHazir(hedef({ stopIzin: null }))).toBe(false);
     expect(onKontrolHazir(hedef({ stopIzin: { jobId: 10, at: null, izinler: ['mv:/x'] } }))).toBe(false);
+  });
+});
+
+// DELETE ve GERİ AL ön kontrolü (2026-10-22, kullanıcı: "DELETE ve GERİ AL için de ön kontrol listesini yap").
+const SILME = [
+  'ONKONTROL\tuygulama\tGBPOSWEBAPI\tJBoss 7 - kurulum /usr/jboss/AppServer, controller GBJEXP05, host=master; server-config var (DISABLED)',
+  'ONKONTROL\tkonfig\t/host=master/server-config=GBPOSWEBAPI\tKALDIRILACAK (su an DISABLED)',
+  'ONKONTROL\tkomut\trm -rf -- /vhosting/GBPOSWEBAPI.ear.23523236.old\tDEGISTIRIR - dosya sistemi, KALICI SILME (geri alinamaz)',
+  'ONKONTROL\tkomut\tls deployment\tsalt okunur - icerik havuzu',
+  'ONKONTROL\tdosya\t/vhosting/GBPOSWEBAPI.ear.23523236.old\tSILINECEK',
+  'ONKONTROL\tdokunulmaz\t/vhosting8/GBPOSWEBAPI.ear.23523236.old\tJBoss 8 paketi olabilir - silinmez',
+];
+const kayit = (o: Partial<RtOnKontrolKaydi> = {}): RtOnKontrolKaydi => ({
+  jobId: 20, at: '2026-10-22T19:10:00Z', durum: 'ok', mesaj: 'PLAN', onkontrol: SILME, kisaltildi: false, kaynak: 'elle', kullanici: null,
+  kullanildi: false, hazir: true, izinler: ['onay:geri-al:GBPOSWEBAPI|JBoss7|GBJEXP05'], ...o,
+});
+
+describe('Retirement silme / geri alma ön kontrolü', () => {
+  test('OKU5 silme listesi: kaldırılacak JBoss tanımları, KALICI silinecek dosyalar, dokunulmayacaklar ve güvence', () => {
+    render(<OnKontrolGorunumu satirlar={SILME} hazir kip="silme" />);
+    expect(screen.getByText('Kaldırılacak JBoss tanımları')).toBeInTheDocument();
+    expect(screen.getByText('Silinecek dosyalar (KALICI)')).toBeInTheDocument();
+    expect(screen.getByText(/SİLİNECEK/)).toBeInTheDocument();
+    expect(screen.getByText('rm -rf -- /vhosting/GBPOSWEBAPI.ear.23523236.old')).toBeInTheDocument();
+    expect(screen.getByText('/vhosting8/GBPOSWEBAPI.ear.23523236.old')).toBeInTheDocument();
+    expect(screen.getByText(/HİÇBİR ŞEY SİLMEDEN/)).toBeInTheDocument();
+  });
+
+  test('OKU6 geri alma listesi hazır değilse onayın açılmayacağını söyler; liste gelmediyse uyarı', () => {
+    render(<OnKontrolGorunumu satirlar={['ONKONTROL\tdosya\t/vhosting/A.ear.1.old\t/vhosting/A.ear']} hazir={false} kip="geri-al" />);
+    expect(screen.getByText(/Geri adlandırılacak dosyalar/)).toBeInTheDocument();
+    expect(screen.getByText(/onay açılmaz/)).toBeInTheDocument();
+  });
+
+  test('OKU7 geri alma onayı yalnız hazır ve GERİ ALMA onay kimliği taşıyan ön kontrolle', () => {
+    expect(geriAlHazir({ geriAlOnKontrol: kayit() })).toBe(true);
+    expect(geriAlHazir({ geriAlOnKontrol: kayit({ hazir: false }) })).toBe(false);
+    expect(geriAlHazir({ geriAlOnKontrol: kayit({ izinler: ['onay:GBPOSWEBAPI|JBoss7|GBJEXP05'] }) })).toBe(false);
+    expect(geriAlHazir({ geriAlOnKontrol: kayit({ izinler: ['onay:sil:GBPOSWEBAPI|JBoss7|GBJEXP05'] }) })).toBe(false);
+    expect(geriAlHazir({ geriAlOnKontrol: null })).toBe(false);
+  });
+
+  test('OKU8 süren ön kontrol: başlatılıyor ve AWX’te; 30 dakikadan eskisi TAKILMIŞ sayılır (yeniden başlatılabilir)', () => {
+    const simdi = Date.parse('2026-10-22T19:20:00Z');
+    expect(onKontrolSuruyor(kayit({ durum: 'running' }), simdi)).toBe(true);
+    expect(onKontrolSuruyor(kayit({ durum: 'baslatiliyor' }), simdi)).toBe(true);
+    expect(onKontrolSuruyor(kayit(), simdi)).toBe(false);
+    expect(onKontrolSuruyor(null, simdi)).toBe(false);
+    expect(onKontrolSuruyor(kayit({ durum: 'running' }), Date.parse('2026-10-22T19:41:00Z'))).toBe(false);
+  });
+
+  test('OKU9 geri alınabilir durum sunucunun kapısıyla aynı (silinen / silinmekte olan hedefte onay yok)', () => {
+    expect(geriAlinabilir({ status: 'stopped', deletedAt: null, webSonuc: null })).toBe(true);
+    expect(geriAlinabilir({ status: 'rollback_failed', deletedAt: null, webSonuc: null })).toBe(true);
+    expect(geriAlinabilir({ status: 'deleting', deletedAt: null, webSonuc: null })).toBe(false);
+    expect(geriAlinabilir({ status: 'stopped', deletedAt: '2026-10-22T20:00:00Z', webSonuc: null })).toBe(false);
+    expect(geriAlinabilir({ status: 'failed', deletedAt: null, webSonuc: [{ host: 'W', serverName: 's', product: 'IHS', confFile: '/c', status: 'ok', jobId: 1, message: null }] })).toBe(true);
+    expect(geriAlinabilir({ status: 'failed', deletedAt: null, webSonuc: [] })).toBe(false);
   });
 });

@@ -35,7 +35,7 @@ const DEFAULT_DAYS = Number(process.env.RETIREMENT_DELETE_DAYS || 45);
 // okunur (kaydedilen deger yeniden baslatmadan bir sonraki STOP'ta gecerli). Oncelik ve
 // kaynak: server/retirement/ayar.cjs. Ortam degiskeni yedek olarak kalir.
 const { sccAyar, sccKaydet } = require('./ayar.cjs');
-const { stopSonucu, stopKarari, onKontrolIzinleri, planKaydi } = require('./stop-sonuc.cjs');
+const { stopSonucu, stopKarari, onKontrolIzinleri, planKaydi, onKontrolOku, onKontrolBasladi, onKontrolSonucu, onKontrolGecerli, onKontrolGorunum } = require('./stop-sonuc.cjs');
 const isAdmin = (req) => req.session?.user?.role === 'Admin';
 const SAFE_ID = /^[A-Za-z0-9_-]{1,64}$/;
 
@@ -98,6 +98,10 @@ function rowTarget(t) {
       try { at = JSON.parse(t.stop_izin_json).at || null; } catch { at = null; }
       return { jobId: t.last_job_id ?? null, at, izinler: iz };
     })(),
+    // SILME VE GERI ALMA ON KONTROLU (2026-10-22, bkz. stop-sonuc.cjs): liste + durum + onaya / silmeye
+    // hazir mi. Silme listesi yalniz tazeyken hazir (zamanlayiciyla ayni sure); geri alma insan onayli.
+    silmeOnKontrol: onKontrolGorunum(t.delete_onkontrol_json, 'delete', { maxYasDk: _sched.silmePlanTazeDk() }),
+    geriAlOnKontrol: onKontrolGorunum(t.rollback_onkontrol_json, 'rollback'),
   };
 }
 async function addEvent(recordId, username, kind, text) {
@@ -551,6 +555,43 @@ function initRetirement(app) {
     if (!text) return res.status(400).json({ ok: false, message: 'Not boş.' });
     try { await addEvent(id, req.session?.user?.username, 'note', text); res.json({ ok: true, record: await loadRecord(id) }); }
     catch (err) { res.status(500).json({ ok: false, message: err.message }); }
+  });
+
+  // ── SILME ON KONTROLU (elle, 2026-10-22) ─────────────────────────────────────────
+  // Kullanici: "DELETE ve GERI AL icin de on kontrol listesini yap". Silmeyi zamanlayici yine kendisi
+  // baslatir (EKSTRA ONAY YOK kurali) ama YALNIZ taze bir silme on kontrolunun listesiyle; on kontrolu
+  // silme saatinden bir saat once kendisi de kosar (poller.deleteTick). Bu uc, durdurulmus bir hedefte
+  // "ne silinecek?" sorusunu HER AN sordurur: plan_only=true, hicbir sey silinmez; sonuc ekranda listelenir
+  // ve silme anina tazeyse zamanlayici onu kullanir. Suren on kontrolun ustune ikincisi baslatilmaz.
+  router.post('/:id/targets/:tid/delete-plan', async (req, res) => {
+    const id = Number(req.params.id); const tid = Number(req.params.tid);
+    try {
+      const rec = await loadRecord(id);
+      if (!rec) return res.status(400).json({ ok: false, message: 'Kayıt yok.' });
+      if (rec.status === 'cancelled' || rec.status === 'deleted')
+        return res.status(400).json({ ok: false, message: `Kayıt ${rec.status === 'cancelled' ? 'iptal edilmiş' : 'zaten silinmiş'} — silme yapılmayacak.` });
+      const t = rec.targets.find((x) => x.id === tid);
+      if (!t) return res.status(400).json({ ok: false, message: 'Hedef yok.' });
+      if (!t.gen) return res.status(400).json({ ok: false, message: `${t.host}: JBoss nesli belirlenemedi.` });
+      if (t.status !== 'stopped' || t.deletedAt)
+        return res.status(409).json({ ok: false, message: `${t.appName} @ ${t.host} silinmeye hazır değil (durum: ${t.status}) — silme ön kontrolü yalnız durdurulmuş hedefte.` });
+      const sok = t.silmeOnKontrol;
+      if (sok && (sok.durum === 'running' || sok.durum === 'baslatiliyor') && Date.now() - Date.parse(sok.at) < 30 * 60000)
+        return res.status(409).json({ ok: false, message: `Silme ön kontrolü zaten sürüyor (iş #${sok.jobId ?? '?'}).` });
+      const r = await launch(
+        req,
+        `Retirement: silme ön kontrolü ${t.appName} @ ${t.host}`,
+        { target_host: t.host, application: t.appName, jboss_gen: String(t.gen), app_path: t.appPath || '', smart_no: rec.smartNo, plan_only: true, requested_by: req.session?.user?.username || 'Portal' },
+        { op: 'delete_plan', id, tid },
+        DELETE_REGISTRY_KEY,
+      );
+      await db().query(
+        `UPDATE retirement_targets SET delete_onkontrol_json = $1, updated_at = GETUTCDATE() WHERE id = $2 AND status = 'stopped'`,
+        [onKontrolBasladi(r.jobId, { kaynak: 'elle', kullanici: req.session?.user?.username || null, awxServerId: r.awxServerId ?? null }), tid],
+      );
+      await addEvent(id, req.session?.user?.username, 'delete-plan', `${t.appName} @ ${t.host}: silme ön kontrolü (iş #${r.jobId}) — hiçbir şey silinmez, liste ekranda`);
+      res.json({ ok: true, ...r, planOnly: true, record: await loadRecord(id) });
+    } catch (err) { res.status(err.status || 500).json({ ok: false, message: err.message }); }
   });
 
   // STOP: plan (confirmed=false) -> onay (confirmed=true). PROD: OCO zorunlu, ilk gercek stop'ta SCC maili.
@@ -1112,8 +1153,51 @@ function initRetirement(app) {
           message: `${t.appName} @ ${t.host} durumu "${t.status}" — geri alma yalnızca durdurulmuş (stopped) hedefler için yapılır.`,
         });
 
+      // ── ON KONTROL (kullanici 2026-10-22: "DELETE ve GERI AL icin de on kontrol listesini yap") ──────
+      // Onayli geri alma YALNIZ son geri alma on kontrolunun izin listesiyle kosar (STOP ile ayni kural):
+      // liste yoksa / basarisizsa / zaten bir onaya verildiyse onay ACILMAZ; betik de izinsiz baslamaz.
+      // Suren on kontrolun ustune ikincisi baslatilmaz (hangi listenin onaylandigi belirsizlesirdi).
+      const gok = t.geriAlOnKontrol;
+      if (!confirmed && gok && (gok.durum === 'running' || gok.durum === 'baslatiliyor') && Date.now() - Date.parse(gok.at) < 30 * 60000)
+        return res.status(409).json({ ok: false, message: `Geri alma ön kontrolü zaten sürüyor (iş #${gok.jobId ?? '?'}); bitince onay penceresi açılır.` });
+      if (confirmed && !gok?.hazir)
+        return res.status(409).json({
+          ok: false,
+          message:
+            'Önce geri alma ön kontrolü: “Geri aktif et” sunucuda ne yapılacağını okur, başarıyla dönünce onay açılır. ' +
+            'Ön kontrolün izin listesi yok, başarısız ya da zaten kullanılmış — yeniden çalıştırın. (AWX’teki retirement betikleri güncel değilse ön kontrol bu listeyi üretmez.)',
+        });
+
+      // CLAIM, launch'tan ONCE ve TEK kosullu yazimda (bagimsiz inceleme 2026-10-22):
+      //  - ON KONTROL TUKENIR: ham kayit yeniden okunur ve dogrulanir; onay ekranda GORULEN on kontrol isine
+      //    (onKontrolJobId) baglidir - arada biten baska bir on kontrolun listesi onaylanamaz; ayni liste iki
+      //    onaya (cift tik / iki sekme) verilemez.
+      //  - HEDEF DURUMU 'rolling_back' olur: arada gececek bir deleteTick hedefi 'stopped' gorup silmeyi
+      //    claim edemez (eskiden durum launch'tan SONRA kosulsuz yaziliyordu - silme ile geri alma ayni anda
+      //    kosabilirdi). Yazim yalniz durum hala kapidan gecen durumsa tutar.
+      // Launch duserse ikisi de geri alinir; liste yeniden onaylanabilir.
+      let hamOk = null;
+      let kullanildi = null;
+      let izinler = null;
+      if (confirmed) {
+        const ham = await db().query(`SELECT rollback_onkontrol_json FROM retirement_targets WHERE id = $1`, [tid]);
+        hamOk = ham.rows?.[0]?.rollback_onkontrol_json ?? null;
+        const gorulen = Number(req.body?.onKontrolJobId);
+        izinler = Number.isInteger(gorulen) && gorulen > 0 ? onKontrolGecerli(hamOk, 'rollback', { jobId: gorulen }) : null;
+        kullanildi = izinler ? JSON.stringify({ ...onKontrolOku(hamOk), kullanildi: true }) : null;
+        const claim = izinler
+          ? await db().query(
+            `UPDATE retirement_targets SET status = 'rolling_back', rollback_job_id = NULL, result_text = NULL, rollback_onkontrol_json = $1, updated_at = GETUTCDATE()
+              WHERE id = $2 AND status = $3 AND rollback_onkontrol_json = $4`,
+            [kullanildi, tid, t.status, hamOk],
+          )
+          : { rowCount: 0 };
+        if (!claim.rowCount)
+          return res.status(409).json({ ok: false, message: 'Geri alma ön kontrolü ya da hedefin durumu bu arada değişti (başka bir ön kontrol bitti, liste başka bir onaya verildi ya da silme başladı) — ekranı tazeleyip ön kontrolü yeniden çalıştırın.' });
+      }
+
       // app_path GIDER (job_3438186): geri alma betigi in-place sunucuda kurulumu app_path ile dogrular;
-      // gelmezse HICBIR SEY yapmadan durur.
+      // gelmezse HICBIR SEY yapmadan durur. Onayli kosuda YALNIZ on kontrolun izin listesi gider.
       const extraVars = {
         target_host: t.host,
         application: t.appName,
@@ -1122,28 +1206,38 @@ function initRetirement(app) {
         smart_no: rec.smartNo,
         plan_only: !confirmed,
         requested_by: req.session?.user?.username || 'Portal',
+        ...(confirmed ? { izinler } : {}),
       };
-      const r = await launch(
-        req,
-        `Retirement: ${confirmed ? 'GERI AL' : 'geri alma planı'} ${t.appName} @ ${t.host}`,
-        extraVars,
-        { op: confirmed ? 'rollback' : 'rollback_plan', id, tid },
-        ROLLBACK_REGISTRY_KEY,
-      );
+      let r;
+      try {
+        r = await launch(
+          req,
+          `Retirement: ${confirmed ? 'GERI AL' : 'geri alma ön kontrolü'} ${t.appName} @ ${t.host}`,
+          extraVars,
+          { op: confirmed ? 'rollback' : 'rollback_plan', id, tid },
+          ROLLBACK_REGISTRY_KEY,
+        );
+      } catch (e) {
+        if (confirmed)
+          await db().query(
+            `UPDATE retirement_targets SET status = $1, rollback_onkontrol_json = $2, updated_at = GETUTCDATE()
+              WHERE id = $3 AND status = 'rolling_back' AND rollback_job_id IS NULL AND rollback_onkontrol_json = $4`,
+            [t.status, hamOk, tid, kullanildi],
+          );
+        throw e;
+      }
 
       if (confirmed) {
-        // DURUMU HEMEN DEGISTIR. Is numarasini yazmadan once durumu 'rolling_back'
-        // yapmak, silme kapisini AYNI transaksiyonda kapatir; arada gececek bir
-        // deleteTick'in hedefi 'stopped' gorup silmeye baslamasi imkansiz olur.
+        // Durum launch'tan ONCE 'rolling_back' yapildi (claim); burada yalniz is numarasi yazilir.
         await db().query(
-          `UPDATE retirement_targets SET status = 'rolling_back', rollback_job_id = $1, result_text = NULL, updated_at = GETUTCDATE() WHERE id = $2`,
-          [r.jobId, tid],
+          `UPDATE retirement_targets SET rollback_job_id = $1, rollback_onkontrol_json = $3, updated_at = GETUTCDATE() WHERE id = $2 AND status = 'rolling_back'`,
+          [r.jobId, tid, JSON.stringify({ ...JSON.parse(kullanildi), rollbackJobId: r.jobId ?? null })],
         );
         await addEvent(
           id,
           req.session?.user?.username,
           'rollback',
-          `${t.appName} @ ${t.host} GERİ ALINIYOR (iş #${r.jobId}) — zamanlanmış silme devre dışı`,
+          `${t.appName} @ ${t.host} GERİ ALINIYOR (iş #${r.jobId}) — zamanlanmış silme devre dışı · ön kontrol #${gok.jobId} listesiyle (${izinler.length - 1} işlem)`,
         );
         // WEB KATMANI: STOP'ta kaldirilan vhost'lar geri acilir. `apache_restore_vhost`
         // apache_retire_vhost'un tersidir ve ayni disiplini tasir (yedek, apachectl -t,
@@ -1153,11 +1247,16 @@ function initRetirement(app) {
         return res.json({ ok: true, ...r, planOnly: false, web });
       }
 
-      await db().query(
-        `UPDATE retirement_targets SET rollback_job_id = $1, updated_at = GETUTCDATE() WHERE id = $2`,
-        [r.jobId, tid],
+      // Yeni on kontrol eskisinin yerine gecer (sonucu job-status / zamanlayici yazar). Yalniz hedef hala
+      // geri alinabilir durumdaysa: bu arada baslamis bir geri almanin ya da silmenin kaydi EZILMEZ.
+      // rollback_job_id YAZILMAZ - o alan onayli geri alma isinindir (sonuclandirma onu okur).
+      const ok = await db().query(
+        `UPDATE retirement_targets SET rollback_onkontrol_json = $3, updated_at = GETUTCDATE() WHERE id = $2 AND status = $1`,
+        [t.status, tid, onKontrolBasladi(r.jobId, { kaynak: 'elle', kullanici: req.session?.user?.username || null, awxServerId: r.awxServerId ?? null })],
       );
-      await addEvent(id, req.session?.user?.username, 'rollback_plan', `${t.appName} @ ${t.host} geri alma planı (iş #${r.jobId})`);
+      if (!ok.rowCount)
+        return res.status(409).json({ ok: false, message: `Hedefin durumu bu arada değişti; ön kontrol işi (#${r.jobId}) kaydedilmedi — ekranı tazeleyin.` });
+      await addEvent(id, req.session?.user?.username, 'rollback_plan', `${t.appName} @ ${t.host} geri alma ön kontrolü (iş #${r.jobId}) — bitince onay penceresi açılır`);
       res.json({ ok: true, ...r, planOnly: true });
     } catch (err) {
       res.status(err.status || 500).json({ ok: false, message: err.message });
@@ -1174,10 +1273,31 @@ function initRetirement(app) {
       const [statusInfo, outputInfo] = await Promise.all([runner.getJobStatusOnServer(serverId, jobId), runner.getJobOutputOnServer(serverId, jobId)]);
       const TERMINAL = new Set(['successful', 'failed', 'error', 'canceled']);
       let result = null;
-      if (TERMINAL.has(statusInfo.status)) {
+      // SILME / GERI ALMA ON KONTROLU (2026-10-22): bu is hedefin silme ya da geri alma on kontrol isiyse
+      // sonucu (liste + izinler) KENDI kaydina yazilir; hedef durumu ve STOP alanlari degismez.
+      const hedefSatir = await db().query(`SELECT host, delete_onkontrol_json, rollback_onkontrol_json FROM retirement_targets WHERE id = $1`, [tid]);
+      const hs = hedefSatir.rows?.[0] || {};
+      const okTur = [
+        ['delete', 'delete_onkontrol_json', 'app_retirement_delete_result'],
+        ['rollback', 'rollback_onkontrol_json', 'app_retirement_rollback_result'],
+      ].find(([, alan]) => {
+        const o = onKontrolOku(hs[alan]);
+        return o && Number(o.jobId) === jobId && (o.awxServerId == null || Number(o.awxServerId) === serverId);
+      });
+      if (TERMINAL.has(statusInfo.status) && okTur) {
+        const [kind, alan, anahtar] = okTur;
+        result = require('../opsx/index.cjs').extractStatsKey(statusInfo.artifacts, anahtar) || null;
+        const o = onKontrolOku(hs[alan]);
+        if (o.durum === 'running') {
+          const yeni = onKontrolSonucu(kind, statusInfo.status, result, jobId, o);
+          const u = await db().query(`UPDATE retirement_targets SET ${alan} = $1, updated_at = GETUTCDATE() WHERE id = $2 AND ${alan} = $3`, [yeni, tid, hs[alan]]);
+          const y = JSON.parse(yeni);
+          if (u.rowCount)
+            await addEvent(id, null, `${kind}-plan-result`, `iş #${jobId}: ${kind === 'delete' ? 'silme' : 'geri alma'} ön kontrolü ${y.durum === 'ok' ? 'HAZIR' : 'BAŞARISIZ'} — ${y.mesaj}`);
+        }
+      } else if (TERMINAL.has(statusInfo.status)) {
         const { extractStatsKey } = require('../opsx/index.cjs');
         // HEDEFIN KENDI SONUCU: toplu iste ayni is birden fazla hedefi tasir (stop-sonuc.cjs).
-        const hedefSatir = await db().query(`SELECT host FROM retirement_targets WHERE id = $1`, [tid]);
         const ss = stopSonucu(statusInfo.artifacts, hedefSatir.rows?.[0]?.host, extractStatsKey);
         result = ss.sonuc;
         const karar = stopKarari(statusInfo.status, ss);
@@ -1248,11 +1368,15 @@ function initRetirement(app) {
           { op: 'stop', id: t.recordId, tid: t.targetId },
         );
       }
+      // SILME IKI ASAMALI (2026-10-22, bkz. poller.deleteTick): once on kontrol (plan_only=true), sonra
+      // YALNIZ o on kontrolun izin listesiyle gercek silme. Izin listesi yoksa gercek silme baslatilmaz.
+      if (!t.planOnly && !(Array.isArray(t.izinler) && t.izinler.length))
+        throw new Error('silme on kontrolunun izin listesi yok - gercek silme baslatilmadi');
       return launch(
         null,
-        `Retirement: DELETE ${t.application} @ ${t.host}`,
-        { ...ortak, plan_only: false },
-        { op: 'delete', id: t.recordId, tid: t.targetId },
+        `Retirement: ${t.planOnly ? 'silme ön kontrolü' : 'DELETE'} ${t.application} @ ${t.host}`,
+        { ...ortak, plan_only: !!t.planOnly, ...(t.planOnly ? {} : { izinler: t.izinler }) },
+        { op: t.planOnly ? 'delete_plan' : 'delete', id: t.recordId, tid: t.targetId },
         DELETE_REGISTRY_KEY,
       );
     },
@@ -1293,7 +1417,8 @@ function initRetirement(app) {
       const ok = kind === 'stop' ? stopKarari(info.status, ss).ok : info.status === 'successful' && line.split('\t')[2] === 'OK';
       // SKIP (yalniz web): eylem yapilacak bir sey bulmadi - basarili DEGIL, ayri gosterilir.
       const skip = info.status === 'successful' && line.split('\t')[2] === 'SKIP';
-      return { terminal: true, ok, skip, message: msg };
+      // awxStatus + sonuc: silme / geri alma ON KONTROLU (poller.onKontrolTick) listeyi ve izinleri buradan okur.
+      return { terminal: true, ok, skip, message: msg, awxStatus: info.status, sonuc: r };
     },
     // WEB KATMANI: var olan `server_hub_fix` / apache_retire_vhost CAGRILIR, yeniden
     // YAZILMAZ. O eylem kanitli davraniyor: yedek alir, dosyada tek vhost varsa

@@ -85,6 +85,24 @@ export interface RtTarget {
   /** Onaylanacak on kontrolun izin listesi; yalniz son on kontrol isine aitse dolu. Bos ise onay acilmaz:
    *  onayli STOP betige yalniz bu listeyi gonderir, betik liste disi hicbir islem yapmaz. */
   stopIzin?: { jobId: number | null; at: string | null; izinler: string[] } | null;
+  /** SILME ON KONTROLU (2026-10-22): zamanlayici silme saatinden bir saat once kosar (ya da elle "Silme ön
+   *  kontrolü"); silme YALNIZ taze ve hazir listeyle yapilir. null = hic on kontrol yok. */
+  silmeOnKontrol?: RtOnKontrolKaydi | null;
+  /** GERI ALMA ON KONTROLU (2026-10-22): onayli geri alma YALNIZ hazir listeyle; bir liste bir onaya. */
+  geriAlOnKontrol?: RtOnKontrolKaydi | null;
+}
+/** Silme / geri alma on kontrolunun kaydi (sunucu: stop-sonuc.onKontrolGorunum). */
+export interface RtOnKontrolKaydi {
+  jobId: number | null; at: string | null;
+  /** baslatiliyor | running | ok | failed */
+  durum: string; mesaj: string | null;
+  /** `ONKONTROL\t<tur>\t<ne>\t<ayrinti>` satirlari (STOP ile ayni bicim). */
+  onkontrol: string[]; kisaltildi: boolean;
+  kaynak: string | null; kullanici: string | null;
+  /** Liste bir onaya / bir silmeye verildi; yeniden icin yeni on kontrol gerekir. */
+  kullanildi: boolean;
+  /** Onaya / silmeye verilebilir (basarili, kullanilmamis, silmede taze). */
+  hazir: boolean; izinler: string[];
 }
 export interface RtRecord {
   id: number; app: string; smartNo: string; ocoNo: string | null; ownerEmail: string | null; requestedBy: string;
@@ -165,8 +183,12 @@ export const retirementApi = {
   // GERI AL (2026-10-07): STOP'un tersi. Hedef 'rolling_back' olur olmaz zamanlanmis
   // SILME devre disi kalir (deleteTick yalniz 'stopped' hedefe bakar) - ayri bir iptal
   // cagrisi YOK ve olmasi da yanlis olurdu.
-  rollback: (id: number, tid: number, confirmed: boolean): Promise<RtLaunch & { web?: { denendi: number; atlanan: number; hata: number; notlar: string[] } }> =>
-    fetch(`${BASE}/${id}/targets/${tid}/rollback`, json({ confirmed })).then(safeJson),
+  /** `onKontrolJobId`: onayda ZORUNLU - ekranda gosterilen geri alma on kontrolunun is numarasi (sunucu yalniz o listeyi onaylar). */
+  rollback: (id: number, tid: number, confirmed: boolean, onKontrolJobId?: number | null): Promise<RtLaunch & { web?: { denendi: number; atlanan: number; hata: number; notlar: string[] } }> =>
+    fetch(`${BASE}/${id}/targets/${tid}/rollback`, json({ confirmed, onKontrolJobId: onKontrolJobId ?? undefined })).then(safeJson),
+  /** SILME ON KONTROLU (elle, 2026-10-22): durdurulmus hedefte "ne silinecek?" - hicbir sey silinmez. */
+  deletePlan: (id: number, tid: number): Promise<RtLaunch & { record?: RtRecord }> =>
+    fetch(`${BASE}/${id}/targets/${tid}/delete-plan`, json({})).then(safeJson),
   /** Gecis durumunda takilmis hedefin AWX isini OKUR ve gercek sonucu yazar.
    *  Okunamazsa hicbir sey yazmaz (okunamadi != basarisiz). */
   /** Web (vhost) adimini yeniden dene: 'failed'/'skip' girdiler 'pending'e doner, zamanlayici

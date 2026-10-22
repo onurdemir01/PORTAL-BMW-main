@@ -4495,6 +4495,19 @@ async function setupTables() {
       sql: `ALTER TABLE retirement_targets ADD stop_izin_json NVARCHAR(MAX) NULL`,
     },
     {
+      // SILME VE GERI ALMA ON KONTROLU (2026-10-22, kullanici: "DELETE ve GERI AL icin de on kontrol listesini
+      // yap"). {jobId, at, durum, mesaj, onkontrol[], izinler[], kullanildi}: silme (zamanlayici) ve onayli
+      // geri alma betige YALNIZ bu listeyi gonderir; bir on kontrol bir kez kullanilir (bkz. stop-sonuc.cjs).
+      table: 'retirement_targets',
+      col: 'delete_onkontrol_json',
+      sql: `ALTER TABLE retirement_targets ADD delete_onkontrol_json NVARCHAR(MAX) NULL`,
+    },
+    {
+      table: 'retirement_targets',
+      col: 'rollback_onkontrol_json',
+      sql: `ALTER TABLE retirement_targets ADD rollback_onkontrol_json NVARCHAR(MAX) NULL`,
+    },
+    {
       table: 'smart_tickets',
       col: 'cancel_note',
       sql: `ALTER TABLE smart_tickets ADD cancel_note NVARCHAR(1000) NULL`,
