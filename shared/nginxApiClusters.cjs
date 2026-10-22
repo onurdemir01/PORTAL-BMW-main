@@ -67,7 +67,10 @@ function clusterCoverage(hosts) {
 }
 
 // API Generator job'unun (bmw_nginx/api_generator/api_generator.yaml) dev / test / qa play'lerinin
-// sunuculari. Production play'i yukaridaki uc kumenin TAMAMIDIR. Self Servis'teki rate limit
+// sunuculari. Production play'i yukaridaki uc kumenin TAMAMIDIR; ama production rate_limit_change
+// (2026-10-22) yalniz `channel`in kumesinde calisir - Ansible'daki kopya
+// `api_generator/operations/vars/main.yaml` (api_generator_kanal_kumeleri) bu listeyle AYNI olmalidir
+// (bekciler: Portal AG9, Ansible check_rate_limit_kanal_kumesi.py K7). Self Servis'teki rate limit
 // API listesi yalnizca job'in o ortamda GERCEKTEN calistigi sunuculardaki konfigurasyonlari sunar
 // (choice-sources 'nginx-api-gateway-confs'); liste job'la ayrisirsa secilen API job'un
 // sunucularinda bulunmaz.
@@ -83,6 +86,8 @@ const API_GENERATOR_NONPROD = {
  * GBNGWP*, ankara = GBNGWAP* (GBNGX* yalnız "hepsi"de). Tanınmayan site boş liste döner (job da durur).
  * @param {string} env dev / test / qa / prod (harf duyarsız; production = prod)
  * @param {string} [site]
+ * @param {string} [channel] production'da kümeyi seçer; tanınmayan / boş kanal DARALTMAZ (54 sunucu).
+ *   Rate limit listesi için kanalın zorunluluğu çağıranda (choice-sources `apiGatewayKumesi`).
  * @returns {string[]}
  */
 function apiGeneratorHosts(env, site, channel) {

@@ -10,6 +10,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { ansibleApi, type ChoicesSource, type DynamicChoice } from '@/api/ansibleApi';
 import { TextInput } from '@/components/ui/Form';
+import ChoiceDetailsPanel from './ChoiceDetailsPanel';
 
 interface Props {
   id: string;
@@ -187,7 +188,7 @@ export default function DynamicChoiceSelect({ id, source, values, value, onChang
     setFilter('');
     setOpen(false);
   };
-  return (
+  const secim = (
     <div className="space-y-1.5" id={id} onBlur={onBlur}>
       {selected && !open ? (
         <div className={`flex items-center justify-between gap-2 rounded-lg border px-2.5 py-1.5 text-[12px] ${error ? 'border-red-400' : 'border-[var(--border)]'} bg-[var(--bg-surface)]`}>
@@ -271,6 +272,19 @@ export default function DynamicChoiceSelect({ id, source, values, value, onChang
           Bu ortam için envanterde kayıt bulunamadı — envanter taraması güncel değilse listeyi
           yöneticiye bildirin.
         </p>
+      )}
+    </div>
+  );
+  // AYRINTI (kaynak `details` sunuyorsa; 2026-10-22): seçim yapılınca sağda — dar ekranda / dar
+  // pencerede altta — seçimin ayrıntısı. flex-wrap: modal ve sayfa genişliğinden bağımsız sarar.
+  if (!source.details) return secim;
+  return (
+    <div className="flex flex-wrap items-start gap-3">
+      <div className="flex-[1_1_22rem] min-w-0">{secim}</div>
+      {/* Yalnız liste yüklü ve değer LİSTEDEYKEN: bağlı alan boşaltılınca ya da liste değişirken yanıltıcı
+          "listede yok" hatası çıkmasın (asıl neden formda görünür). */}
+      {value && !open && !missingParam && choices.some((c) => c.value === value) && (
+        <ChoiceDetailsPanel className="flex-[1_1_18rem] min-w-0" source={source.source} params={params} value={value} />
       )}
     </div>
   );

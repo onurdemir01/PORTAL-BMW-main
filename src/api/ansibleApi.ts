@@ -462,6 +462,18 @@ export const ansibleApi = {
     );
   },
 
+  // Seçilen değerin ayrıntısı (kaynak `details` sunuyorsa; ör. API Generator: birlikte etkilenecek uçlar).
+  choiceDetails: (
+    source: string,
+    params: Record<string, string>,
+    value: string,
+  ): Promise<{ ok: boolean; detay?: ChoiceDetails; message?: string }> => {
+    const q = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) if (v && k !== 'value') q.set(k, v);
+    q.set('value', value);
+    return fetch(`${BASE}/ss/choices/${encodeURIComponent(source)}/details?${q.toString()}`).then(safeJson);
+  },
+
   getCustomization: (
     serverId: number,
     templateId: number,
@@ -699,6 +711,39 @@ export interface ChoicesSource {
   optional?: string[];
   /** Sabit seçenekler (form alanına bağlı değil; ör. tenant: 'ark'). */
   options?: Record<string, string>;
+  /** Kaynak seçilen değerin ayrıntısını sunar; seçimin yanında gösterilir (kodla bağlanan kaynaklar). */
+  details?: boolean;
+}
+
+/** Ayrıntıdaki bir API ucu (API Generator: seçilen konfigürasyonla aynı zone'u paylaşan uç). */
+export interface ChoiceDetailUc {
+  yol: string;
+  conf: string;
+  kok: boolean;
+  baskaConf: boolean;
+  sunucu: number;
+  ip: string;
+  loc: string;
+  ipFarkli: boolean;
+  locFarkli: boolean;
+  ipZone: string;
+  locZone: string;
+  etkiler: { ip: boolean; location: boolean };
+}
+
+export interface ChoiceDetails {
+  conf: string;
+  kume: string;
+  toplamSunucu: number;
+  taramaTarihi: string;
+  /** false: envanter zone adını tutmuyor (eski yükleyici) — liste yalnız bu konfigürasyonun uçları. */
+  zoneBilgisi: boolean;
+  zoneKirpildi: boolean;
+  zonelar: { ip: string[]; location: string[] };
+  /** 'degisiklik' (rate limit değiştirme) | 'bilgi' (okuma: hiçbir şey değişmez). */
+  mod: 'degisiklik' | 'bilgi';
+  etkilenen: number;
+  uclar: ChoiceDetailUc[];
 }
 
 export interface ChoiceSourceInfo {

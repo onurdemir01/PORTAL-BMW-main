@@ -3443,6 +3443,21 @@ function initAnsibleRunner(app) {
     }
   });
 
+  // GET /api/ansible/ss/choices/:source/details?value=...&env=... — secilen degerin ayrintisi
+  // (API Generator: secilen konfigurasyonla AYNI zone'u paylasan, limit degisikliginden birlikte
+  // etkilenecek API uclari). Ayni koruma (requireAuth); deger listede yoksa ayrinti verilmez.
+  // Deger yolda degil sorguda: konum turu degerler "/" tasir.
+  app.get('/api/ansible/ss/choices/:source/details', requireAuth, async (req, res) => {
+    try {
+      const params = {};
+      for (const [k, v] of Object.entries(req.query || {})) if (k !== 'value') params[k] = String(v ?? '');
+      const detay = await choiceSources.loadChoiceDetails(req.params.source, params, String(req.query.value ?? ''));
+      res.json({ ok: true, detay });
+    } catch (err) {
+      res.status(err.status || 503).json({ ok: false, message: err.message });
+    }
+  });
+
   app.get('/api/ansible/ss/items', requireAuth, (req, res) => {
     res.json({ ok: true, items: readSsItems() });
   });

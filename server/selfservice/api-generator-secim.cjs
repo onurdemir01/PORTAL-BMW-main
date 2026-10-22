@@ -31,12 +31,17 @@ function apiGeneratorMi(detail) {
   return PLAYBOOK_RE.test(T(detail && detail.playbook));
 }
 
-// Kaynak parametreleri: ortam zorunlu; site (production'da Pendik / Ankara) ve kanal (production'da
-// mblcustomers / customers / mcustomers kumesi) formda varsa listeyi daraltir, yoksa yok sayilir.
+// Kaynak parametreleri: ortam zorunlu; site (production'da Pendik / Ankara) listeyi daraltir. Kanal
+// production'da mblcustomers / customers / mcustomers kumesini secer ve rate_limit_change icin orada
+// ZORUNLUDUR (job da kanalsiz durur; kaynak acik mesajla reddeder); `islem` (op_selection) read ise
+// zorunlu degil (okuma bir sey degistirmez, job tum sunucularda okur). Non-prod'da kanal yok sayilir.
+// `details`: secilen konfigurasyonla ayni zone'u paylasan, birlikte etkilenecek API uclari formda
+// secimin saginda gosterilir (kullanici, 2026-10-22).
 const kaynakTanimi = () => ({
   source: KAYNAK,
-  params: { env: 'env', site: 'site', channel: 'channel' },
-  optional: ['site', 'channel'],
+  params: { env: 'env', site: 'site', channel: 'channel', islem: ISLEM_ALANI },
+  optional: ['site', 'channel', 'islem'],
+  details: true,
 });
 const kosul = () => ({
   mode: 'any',
