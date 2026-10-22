@@ -85,15 +85,24 @@ const API_GENERATOR_NONPROD = {
  * @param {string} [site]
  * @returns {string[]}
  */
-function apiGeneratorHosts(env, site) {
+function apiGeneratorHosts(env, site, channel) {
   const e = UP(env) === 'PRODUCTION' ? 'PROD' : UP(env);
   if (e !== 'PROD') return (API_GENERATOR_NONPROD[e] || []).slice();
   const s = String(site || '').trim().toLowerCase();
-  const all = API_CLUSTERS.reduce((a, c) => a.concat(c.hosts.map(UP)), []);
+  // Kanal (mblcustomers / customers / mcustomers) production'da kumeyi belirler: o kanalin API'leri
+  // yalniz o kumenin sunucularindadir. Tanınmayan / boş kanal daraltmaz.
+  const kume = apiCluster(channel);
+  const all = (kume ? [kume] : API_CLUSTERS).reduce((a, c) => a.concat(c.hosts.map(UP)), []);
   if (['', 'all', 'hepsi', 'tumu', 'tümü'].includes(s)) return all;
   if (s === 'pendik') return all.filter((h) => /^GBNGWP/.test(h));
   if (s === 'ankara') return all.filter((h) => /^GBNGWAP/.test(h));
   return [];
 }
 
-module.exports = { API_CLUSTERS, API_GENERATOR_NONPROD, apiGeneratorHosts, clusterCoverage };
+/** Kanal adına (harf duyarsız) karşılık gelen production kümesi; yoksa null. */
+function apiCluster(channel) {
+  const k = String(channel || '').trim().toLowerCase();
+  return (k && API_CLUSTERS.find((c) => c.key === k)) || null;
+}
+
+module.exports = { API_CLUSTERS, API_GENERATOR_NONPROD, apiGeneratorHosts, apiCluster, clusterCoverage };

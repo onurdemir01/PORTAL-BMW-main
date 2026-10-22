@@ -3616,8 +3616,9 @@ function initAnsibleRunner(app) {
       // Tasarimcisi") o alanlar gosterilir; tasarlanmamissa eskisi gibi hicbir alan
       // gosterilmez/istenmez (AWX'in kendi extra_vars fallback'ine de dusulmez).
       if (detail.survey_enabled === false) {
-        const customFields = Array.isArray(overrides.customSurveyFields)
-          ? overrides.customSurveyFields
+        // API Generator'da chosen_api Survey Tasarimcisi alaniysa da KODLA baglidir (etkinOv).
+        const customFields = Array.isArray(etkinOv.customSurveyFields)
+          ? etkinOv.customSurveyFields
           : [];
         const visibleCustomFields = wantsAdminView
           ? customFields

@@ -31,7 +31,19 @@ function apiGeneratorMi(detail) {
   return PLAYBOOK_RE.test(T(detail && detail.playbook));
 }
 
-/** chosen_api icin kodla verilen alan ayari (DB'deki etiket / varsayilan korunur). */
+// Kaynak parametreleri: ortam zorunlu; site (production'da Pendik / Ankara) ve kanal (production'da
+// mblcustomers / customers / mcustomers kumesi) formda varsa listeyi daraltir, yoksa yok sayilir.
+const kaynakTanimi = () => ({
+  source: KAYNAK,
+  params: { env: 'env', site: 'site', channel: 'channel' },
+  optional: ['site', 'channel'],
+});
+const kosul = () => ({
+  mode: 'any',
+  conditions: ISLEMLER.map((v) => ({ field: ISLEM_ALANI, equals: v })),
+});
+
+/** chosen_api icin kodla verilen AWX alan ayari (DB'deki etiket / varsayilan korunur). */
 function kodBaglama(eski) {
   const o = eski || {};
   return {
@@ -39,29 +51,48 @@ function kodBaglama(eski) {
     ...(o.label ? { label: o.label } : {}),
     ...(o.defaultValue !== undefined ? { defaultValue: o.defaultValue } : {}),
     hidden: false,
-    choicesSource: { source: KAYNAK, params: { env: 'env', site: 'site' }, optional: ['site'] },
-    dependsOn: {
-      mode: 'any',
-      conditions: ISLEMLER.map((v) => ({ field: ISLEM_ALANI, equals: v })),
-    },
+    choicesSource: kaynakTanimi(),
+    dependsOn: kosul(),
     requiredWhenActive: true,
     kodlaBagli: true,
   };
 }
 
 /**
- * Etkin alan ayarlari: api_generator sablonunda chosen_api kodla baglanir; diger sablonlarda
- * girdi AYNEN (ayni nesne) doner.
+ * Survey Tasarimcisi (AWX survey kapali) alani icin AYNI bag: kaynak + kosul kodla verilir, alan
+ * yalniz kosul saglanirken sorulur ve o zaman zorunludur (resolveCustomSurveyExtraVars kosulu
+ * saglanmayan alani dogrulamaz / gondermez). Etiket, aciklama ve tip yoneticide kalir.
+ */
+function kodTasarimciAlani(alan) {
+  return {
+    ...alan,
+    hidden: false,
+    required: true,
+    choicesSource: kaynakTanimi(),
+    dependsOn: kosul(),
+    kodlaBagli: true,
+  };
+}
+
+/**
+ * Etkin alan ayarlari: api_generator sablonunda chosen_api kodla baglanir (AWX alan ayari VE varsa
+ * Survey Tasarimcisi alani); diger sablonlarda girdi AYNEN (ayni nesne) doner.
  */
 function etkinOverrides(detail, overrides) {
   if (!apiGeneratorMi(detail)) return overrides;
   const base = overrides || {};
   const liste = Array.isArray(base.fieldOverrides) ? base.fieldOverrides : [];
   const eski = liste.find((o) => o && o.fieldName === ALAN);
-  return {
+  const out = {
     ...base,
     fieldOverrides: [...liste.filter((o) => !o || o.fieldName !== ALAN), kodBaglama(eski)],
   };
+  if (Array.isArray(base.customSurveyFields)) {
+    out.customSurveyFields = base.customSurveyFields.map((f) =>
+      f && String(f.name || '').trim() === ALAN ? kodTasarimciAlani(f) : f,
+    );
+  }
+  return out;
 }
 
-module.exports = { PLAYBOOK_RE, ALAN, ISLEM_ALANI, ISLEMLER, KAYNAK, apiGeneratorMi, kodBaglama, etkinOverrides };
+module.exports = { PLAYBOOK_RE, ALAN, ISLEM_ALANI, ISLEMLER, KAYNAK, apiGeneratorMi, kodBaglama, kodTasarimciAlani, etkinOverrides };

@@ -46,8 +46,8 @@ test('AG1 api_generator: chosen_api envanter listesine bagli, yalniz rate_limit_
   const c = ov.fieldOverrides.find((o) => o.fieldName === 'chosen_api');
   assert.ok(c, 'chosen_api ayari yok');
   assert.equal(c.choicesSource.source, 'nginx-api-gateway-confs');
-  assert.deepEqual(c.choicesSource.params, { env: 'env', site: 'site' });
-  assert.deepEqual(c.choicesSource.optional, ['site']);
+  assert.deepEqual(c.choicesSource.params, { env: 'env', site: 'site', channel: 'channel' });
+  assert.deepEqual(c.choicesSource.optional, ['site', 'channel']);
   assert.equal(c.hidden, false);
   assert.equal(c.requiredWhenActive, true);
   assert.equal(c.kodlaBagli, true);
@@ -100,6 +100,7 @@ test('AG5 runner: survey ekrani, sablon detayi ve launch AYNI etkin ayarlari kul
   const survey = SRC.slice(SRC.indexOf("app.get('/api/ansible/survey/:serverId/:templateId'"), SRC.indexOf("app.get('/api/ansible/template-detail/"));
   assert.match(survey, /const etkinOv = require\('\.\.\/selfservice\/api-generator-secim\.cjs'\)\.etkinOverrides\(detail, overrides\)/);
   assert.match(survey, /mapSurveySpec\(spec\.spec, etkinOv,/);
+  assert.match(survey, /const customFields = Array\.isArray\(etkinOv\.customSurveyFields\)\s*\?\s*etkinOv\.customSurveyFields/);
   const detay = SRC.slice(SRC.indexOf("app.get('/api/ansible/template-detail/"), SRC.indexOf("app.get('/api/ansible/template-detail/") + 3000);
   assert.match(detay, /etkinOverrides\(\s*detail,\s*readCustom\(server\.id, req\.params\.templateId\),?\s*\)/);
   const plan = SRC.slice(SRC.indexOf('async function resolveSsLaunchPlan'), SRC.indexOf('async function resolveSsLaunchPlan') + 2500);
@@ -179,6 +180,12 @@ test('AG8 kaynak: job sunuculari, izinli onekli konfigurasyon adlari, etiket ve 
   assert.ok(apiGeneratorHosts('prod', 'ankara').every((h) => /^GBNGWAP/.test(h)) && apiGeneratorHosts('prod', 'ankara').length === 16);
   assert.deepEqual(apiGeneratorHosts('prod', 'izmir'), []);
   assert.deepEqual(apiGeneratorHosts('uat'), []);
+  const customers = apiGeneratorHosts('prod', '', 'Customers');
+  assert.deepEqual(customers, API_CLUSTERS.find((k) => k.key === 'customers').hosts);
+  assert.equal(customers.length, 12);
+  assert.deepEqual(apiGeneratorHosts('prod', 'pendik', 'customers'), customers.filter((h) => /^GBNGWP/.test(h)));
+  assert.equal(apiGeneratorHosts('prod', '', 'bilinmeyen-kanal').length, 54, 'taninmayan kanal daraltmamali');
+  assert.deepEqual(apiGeneratorHosts('dev', '', 'customers'), ['GBNGWD01', 'GBNGWD02'], 'non-prod kanal ile daralmaz');
 
   const hosts = new Set(['GBNGWD01', 'GBNGWD02']);
   const satir = (host, conf, yol, ip, lc) => ({ host, config_file: conf, api_location: yol, ip_rate_limit: ip, server_rate_limit: lc });
@@ -193,15 +200,60 @@ test('AG8 kaynak: job sunuculari, izinli onekli konfigurasyon adlari, etiket ve 
   ], hosts);
   assert.deepEqual(out.map((c) => c.value), ['ORT.CST.REST.A.V1', 'GAR.B.V1']);
   const a = out[0];
-  assert.equal(a.group, 'Tüm sunucularda');
-  assert.match(a.label, /^ORT\.CST\.REST\.A\.V1  ·  \/das-a\/a-channel\/v0\/x \(\+1 yol\)  ·  IP 100r\/s \| 50r\/s \(farklı\)  ·  Location 300r\/s  ·  2\/2 sunucu$/);
-  assert.match(out[1].label, /IP yok  ·  Location yok  ·  1\/2 sunucu$/);
-  assert.match(out[1].group, /Bazı sunucularda yok/);
-  assert.ok(!cs.getSource('nginx-api-gateway-confs').params.find((p) => p.name === 'site').required);
+  assert.equal(a.group, 'Rate limit tanımlı — tüm sunucularda var');
+  assert.equal(a.label,
+    'ORT.CST.REST.A.V1  ·  örnek uç /das-a/a-channel/v0/x (dosyada 2 uç)  ·  IP limiti 100r/s / 50r/s (sunucular arasında farklı)' +
+    '  ·  location limiti 300r/s  ·  2/2 sunucuda var');
+  assert.match(out[1].label, /IP limiti tanımsız  ·  location limiti tanımsız  ·  1\/2 sunucuda var$/);
+  assert.match(out[1].group, /Rate limit tanımı yok/);
+  const eksik = cs.apiGatewayConfChoices([satir('GBNGWD01', 'DAS.C.V1.conf', '/c/v0', '5r/s', '')], hosts, 'customers');
+  assert.match(eksik[0].group, /bazı sunucularda yok/);
+  assert.match(eksik[0].label, /1\/2 sunucuda var \(customers\)$/);
+  const sirali = cs.apiGatewayConfChoices([satir('GBNGWD01', 'GAR.Z.conf', '/z', '', ''), satir('GBNGWD01', 'GAR.Y.conf', '/y', '1r/s', ''),
+    satir('GBNGWD01', 'GAR.X.conf', '/x', '1r/s', ''), satir('GBNGWD02', 'GAR.X.conf', '/x', '1r/s', '')], hosts);
+  assert.deepEqual(sirali.map((c) => c.value), ['GAR.X', 'GAR.Y', 'GAR.Z'], 'gruplar: tanimli+tam, tanimli+eksik, limitsiz');
+  for (const p of ['site', 'channel']) assert.ok(!cs.getSource('nginx-api-gateway-confs').params.find((x) => x.name === p).required);
   const load = String(cs.getSource('nginx-api-gateway-confs').load);
-  assert.match(load, /apiGeneratorHosts\(env, site\)/);
+  assert.match(load, /apiGeneratorHosts\(env, site, channel\)/);
   assert.match(load, /MAX\(scan_date\)/);
   assert.equal(new Set(API_CLUSTERS.flatMap((k) => k.hosts)).size, 54);
+});
+
+test('AG10 Survey Tasarimcisi: chosen_api alani da kodla bagli; gercek resolveCustomSurveyExtraVars ile kosul / zorunluluk', () => {
+  const tasarim = [
+    { name: 'op_selection', label: 'İşlem', type: 'multiplechoice', required: true, defaultValue: '', choices: ['activate', 'rate_limit_change', 'read'], hidden: false },
+    { name: 'env', label: 'Ortam', type: 'multiplechoice', required: true, defaultValue: '', choices: ['dev', 'prod'], hidden: false },
+    { name: 'selected_api', label: 'API', type: 'multiplechoice', required: false, defaultValue: '', choices: ['/x/'], hidden: false },
+    { name: 'chosen_api', label: 'API Seçimi', type: 'text', required: false, defaultValue: '', choices: [], hidden: false,
+      description: 'ipucu', choicesSource: { source: 'nginx-api-locations', params: { env: 'env' } } },
+  ];
+  const db = derinDondur({ fieldOverrides: [], customSurveyFields: tasarim.map((f) => ({ ...f })) });
+  const out = ag.etkinOverrides(DETAY, db);
+  const c = out.customSurveyFields.find((f) => f.name === 'chosen_api');
+  assert.equal(c.label, 'API Seçimi');
+  assert.equal(c.description, 'ipucu');
+  assert.equal(c.type, 'text');
+  assert.equal(c.required, true);
+  assert.equal(c.kodlaBagli, true);
+  assert.equal(c.choicesSource.source, 'nginx-api-gateway-confs');
+  assert.ok(c.dependsOn);
+  for (const n of ['op_selection', 'env', 'selected_api']) assert.deepEqual(out.customSurveyFields.find((f) => f.name === n), db.customSurveyFields.find((f) => f.name === n));
+  assert.equal(ag.etkinOverrides(BASKA, db), db);
+  assert.equal('customSurveyFields' in ag.etkinOverrides(DETAY, { fieldOverrides: [] }), false);
+
+  const i = SRC.indexOf('function resolveCustomSurveyExtraVars(');
+  const j = SRC.indexOf('\n    return extraVars;\n  }\n', i);
+  assert.ok(i >= 0 && j > i);
+  const splitMulti = SRC.slice(SRC.indexOf('function splitMulti('), SRC.indexOf('// SECENEK KAYNAGI DOGRULAMASI'));
+  const coz = new Function('surveyConditions', `${splitMulti}\n${SRC.slice(i, j)}\n    return extraVars;\n  }\n; return resolveCustomSurveyExtraVars;`)(surveyConditions);
+  let ev = coz(out.customSurveyFields, { op_selection: 'activate', env: 'prod', selected_api: '/x/', chosen_api: 'ORT.X' });
+  assert.equal('chosen_api' in ev, false, 'acma / kapatmada chosen_api gonderilmemeli');
+  assert.throws(() => coz(out.customSurveyFields, { op_selection: 'rate_limit_change', env: 'prod', chosen_api: '' }), (e) => e.status === 400);
+  ev = coz(out.customSurveyFields, { op_selection: 'read', env: 'prod', chosen_api: 'ORT.X' });
+  assert.equal(ev.chosen_api, 'ORT.X');
+  const modal = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'src', 'components', 'self_service', 'FieldOverridesModal.tsx'), 'utf8');
+  assert.match(modal, /setKodlaBagliAdlar\(new Set\(\(specRes\.fields \|\| \[\]\)\.filter\(\(f\) => f\.kodlaBagli\)/);
+  assert.match(modal, /data-testid="kodla-bagli-tasarimci-alani"/);
 });
 
 test('AG9 (depo verilirse) host listeleri ve izinli domainler api_generator playbook\'uyla AYNI', (t) => {

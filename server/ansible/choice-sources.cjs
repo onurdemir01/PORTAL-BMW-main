@@ -417,19 +417,25 @@ const SOURCES = {
   //     yol sanilir -> listeye girmez.
   //   * yalnizca job'in o ortamda (ve production'da `site`ta) calistigi sunuculardaki dosyalar
   //     (shared/nginxApiClusters.cjs apiGeneratorHosts).
-  // Etiket kaniti tasir: ornek yol, mevcut IP / location limiti (farkliysa hepsi) ve kac sunucuda var.
-  // Bazi sunucularda olmayan API ayri grupta: job o sunucularda "bulunamadi" ile durur.
+  //   * production'da kanal (mblcustomers / customers / mcustomers) verilirse yalniz o kanalin kumesi;
+  //     kapsam o kumeye gore sayilir (kullanici 2026-10-22: "Prod ve customers secince ... o sunuculara
+  //     bakmaliydi").
+  // Etiket acik Turkce kanit tasir: ornek uc + dosyadaki uc sayisi, mevcut IP / location limiti (farkliysa
+  // hepsi, "tanimsiz" = envanterde limit yok) ve kac sunucuda var. Gruplar: limiti tanimli + her yerde /
+  // limiti tanimli + bazi sunucularda yok (job o sunucularda "bulunamadi" ile durur) / limit tanimi yok.
   'nginx-api-gateway-confs': {
     label: 'Nginx API Generator — rate limit değiştirilebilir API konfigürasyonları (API envanteri)',
     params: [
       { name: 'env', label: 'Ortam alanı (dev/test/qa/prod)', required: true },
       { name: 'site', label: 'Lokasyon alanı (all/pendik/ankara; opsiyonel)', required: false },
+      { name: 'channel', label: 'Kanal alanı (mblcustomers/customers/mcustomers; opsiyonel)', required: false },
     ],
-    async load({ env, site }) {
+    async load({ env, site, channel }) {
       const { query, sql } = require('../inventory/mssql.cjs');
-      const { apiGeneratorHosts } = require('../../shared/nginxApiClusters.cjs');
-      const hosts = new Set(apiGeneratorHosts(env, site));
+      const { apiGeneratorHosts, apiCluster } = require('../../shared/nginxApiClusters.cjs');
+      const hosts = new Set(apiGeneratorHosts(env, site, channel));
       if (!hosts.size) return [];
+      const kume = normEnv(env) === 'PROD' ? apiCluster(channel) : null;
       const dateRes = await query(
         `SELECT CONVERT(varchar(10), MAX(scan_date), 23) AS d FROM dbo.NginxRateLimitInventory`,
       );
@@ -441,7 +447,7 @@ const SOURCES = {
           WHERE scan_date = @d`,
         [{ name: 'd', type: sql.NVarChar(10), value: d }],
       );
-      return apiGatewayConfChoices(r.recordset || [], hosts);
+      return apiGatewayConfChoices(r.recordset || [], hosts, kume ? kume.key : '');
     },
   },
 };
@@ -450,12 +456,17 @@ const SOURCES = {
 // (harf duyarli alt dizgi, Jinja `in` gibi) iceriyorsa konfigurasyon dosyasi kabul edilir.
 const API_GENERATOR_GRANTED_DOMAINS = ['GAR', 'GLS', 'GES', 'GFY', 'ORT', 'GSG', 'DAS', 'GYB'];
 
+const GRUP_TAM = 'Rate limit tanımlı — tüm sunucularda var';
+const GRUP_EKSIK = 'Rate limit tanımlı — bazı sunucularda yok (iş o sunucularda "bulunamadı" ile durur)';
+const GRUP_LIMITSIZ = 'Rate limit tanımı yok — değiştirilecek limit bulunamaz';
+
 /**
  * SAF: envanter satirlari -> secenekler (DB'siz test edilir).
  * @param {object[]} rows {host, config_file, api_location, ip_rate_limit, server_rate_limit}
  * @param {Set<string>} hosts job'in calistigi sunucular (BUYUK harf)
+ * @param {string} [kume] kanal kumesi adi (kapsam metni icin; bos = ortamin tum sunuculari)
  */
-function apiGatewayConfChoices(rows, hosts) {
+function apiGatewayConfChoices(rows, hosts, kume = '') {
   const byConf = new Map();
   for (const row of rows || []) {
     const host = String(row.host || '').trim().toUpperCase();
@@ -473,20 +484,27 @@ function apiGatewayConfChoices(rows, hosts) {
     if (lc) c.loc.add(lc);
   }
   const toplam = hosts.size;
-  const limit = (set) => (set.size === 0 ? 'yok' : set.size === 1 ? [...set][0] : `${[...set].sort().join(' | ')} (farklı)`);
+  const limit = (set) =>
+    set.size === 0 ? 'tanımsız' : set.size === 1 ? [...set][0] : `${[...set].sort().join(' / ')} (sunucular arasında farklı)`;
+  const sira = [GRUP_TAM, GRUP_EKSIK, GRUP_LIMITSIZ];
   return [...byConf.entries()]
     .sort((a, b) => a[0].localeCompare(b[0]))
     .map(([conf, c]) => {
       const yollar = [...c.locs].sort((a, b) => a.length - b.length || a.localeCompare(b));
-      const ornek = yollar.length ? yollar[0] + (yollar.length > 1 ? ` (+${yollar.length - 1} yol)` : '') : 'yol yok';
+      const ornek = yollar.length
+        ? `örnek uç ${yollar[0]}` + (yollar.length > 1 ? ` (dosyada ${yollar.length} uç)` : '')
+        : 'uç bulunamadı';
+      const limitli = c.ip.size > 0 || c.loc.size > 0;
       const tam = c.hosts.size === toplam;
       return {
         value: conf,
-        label: `${conf}  ·  ${ornek}  ·  IP ${limit(c.ip)}  ·  Location ${limit(c.loc)}  ·  ${c.hosts.size}/${toplam} sunucu`,
-        group: tam ? 'Tüm sunucularda' : 'Bazı sunucularda yok — iş o sunucularda "bulunamadı" ile durur',
+        label:
+          `${conf}  ·  ${ornek}  ·  IP limiti ${limit(c.ip)}  ·  location limiti ${limit(c.loc)}  ·  ` +
+          `${c.hosts.size}/${toplam} sunucuda var${kume ? ` (${kume})` : ''}`,
+        group: !limitli ? GRUP_LIMITSIZ : tam ? GRUP_TAM : GRUP_EKSIK,
       };
     })
-    .sort((a, b) => (a.group === b.group ? 0 : a.group === 'Tüm sunucularda' ? -1 : 1));
+    .sort((a, b) => sira.indexOf(a.group) - sira.indexOf(b.group));
 }
 
 function listSources() {
