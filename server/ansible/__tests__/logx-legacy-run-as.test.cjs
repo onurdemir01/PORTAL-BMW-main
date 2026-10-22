@@ -278,10 +278,87 @@ test('gecici dizin HER durumda SAHIBIYLE temizlenir (always: iki gorev)', () => 
   assert.match(baglanan, /olusturan \| default\(''\)\) == 'baglanan'/);
 });
 
+// ── YORUMLAYICI YOKLAMASI: TEK `raw` ISTISNASI (2026-10-22) ─────────────────────────────────────────
+// Hakan Isci, e3faefa / 895aa4f (2026-10-21; README "Legacy Python interpreter uyumlulugu"): bazi
+// legacy JBoss sunucularinda Ansible platform-python 3.6'yi seciyor ve Python isteyen moduller (find,
+// stat, archive) MODULE FAILURE veriyor; ayni sunucuda python3.11 var. Uygun yorumlayiciyi bulan gorev
+// Python ISTEMEMELI - yani `raw` burada ZORUNLU (command / stat de Python ister). Bu bekci eskiden her
+// `raw`u yasakliyordu ve uretimdeki bu duzeltmeyle kirmiziya dondu.
+// Yasagin NIYETI korunur: kabuga dis girdi YERLESMEZ ve yan etki YOK. Tek istisna:
+//   - yalniz kaynak play'in pre_tasks'inda, TEK `raw` gorevi (baska yerde raw / shell / script yok);
+//   - metni SABIT: Jinja ({{ }} / {% %}) yok - envanter / dosya adi kabuga giremez;
+//   - salt okur: yonlendirme yalniz 2>/dev/null; yazan / yetki yukselten komut yok;
+//   - changed_when false, failed_when false (yoklama dusse de normal yorumlayici kesfi surer), kendi
+//     become'u yok; ardindaki set_fact YALNIZ ansible_python_interpreter'i, cikti varsa, yoklamadan kurar.
+const YAZAN_KOMUT = /(^|[\s;|&(`$])(rm|mv|cp|tee|chmod|chown|chgrp|mkdir|rmdir|touch|ln|dd|truncate|install|dzdo|sudo|su|kill|pkill|curl|wget|scp|rsync|crontab|systemctl|yum|dnf|rpm|pip3?|sh|bash|ksh|zsh|eval|exec|source)(\s|$)|sed\s+-i/;
+// Python -c metninde yazan / calistiran / ice aktaran her sey yasak (surum olcumu yalniz sys ister).
+const PY_YAZAN = /\b(open|exec|eval|compile|__import__|importlib|subprocess|shutil|socket|pathlib|write\w*|unlink|remove|rename|replace|mkdir|makedirs|chmod|chown|system|popen|spawn\w*|fork)\b|\bos\b/;
+// Modul ANAHTARI olarak (kisa ad ve ansible.legacy dahil): metin aramasi "- raw:" / "shell:" kisa adlarini kacirirdi.
+const modulAnahtari = (ad) => new RegExp('^( +)(?:- +)?(?:ansible\\.(?:builtin|legacy)\\.)?' + ad + ':(.*)$', 'gm');
+function yorumlayiciYoklamasi(f) {
+  const t = metin(f);
+  for (const yasak of ['shell', 'script'])
+    assert.equal([...t.matchAll(modulAnahtari(yasak))].length, 0, f + ': ' + yasak + ' modulu');
+  const rawAnahtar = [...t.matchAll(modulAnahtari('raw'))];
+  assert.equal(rawAnahtar.length, 1, f + ': raw gorevi ' + rawAnahtar.length + ' (yalniz yorumlayici yoklamasi olabilir)');
+  const kaynak = playler(t).filter((p) => [...p.metin.matchAll(modulAnahtari('raw'))].length > 0);
+  assert.equal(kaynak.length, 1, f + ': raw tasiyan play ' + kaynak.length);
+  assert.ok(!yerel(kaynak[0]), f + ': yoklama yerel play' + "'de - kaynak sunucunun yorumlayicisini olcmez");
+  const pre = (kaynak[0].metin.match(/^ {2}pre_tasks:\n([\s\S]*?)^ {2}tasks:$/m) || [])[1];
+  assert.ok(pre, f + ': raw pre_tasks disinda');
+  const g = gorevler('-\n' + pre);
+  const rawlar = g.filter((x) => [...x.matchAll(modulAnahtari('raw'))].length > 0);
+  assert.equal(rawlar.length, 1, f + ": pre_tasks'ta raw gorevi " + rawlar.length);
+  const raw = rawlar[0];
+  // GOVDE GIRINTIYLE okunur: blok skalerin icine yazilmis girintili bir "register:" satiri govdeyi
+  // erken bitirip ardindaki satirlari denetimden kaciramaz (bagimsiz inceleme 2026-10-22).
+  const satirlar = raw.split('\n');
+  const mi = satirlar.findIndex((l) => /^( +)(?:ansible\.(?:builtin|legacy)\.)?raw:/.test(l));
+  const mm = satirlar[mi].match(/^( +)(?:ansible\.(?:builtin|legacy)\.)?raw:\s*(.*)$/);
+  assert.match(mm[2], /^\|[-+]?\s*$/, f + ': raw metni blok skaler (| ya da |-) degil - beklenen bicim "ansible.builtin.raw: |"; katlanmis (>) skaler kabuk satirlarini birlestirir');
+  const ind = mm[1].length;
+  const govdeSatir = [];
+  for (const l of satirlar.slice(mi + 1)) {
+    if (l.trim() !== '' && l.length - l.trimStart().length <= ind) break;
+    govdeSatir.push(l);
+  }
+  const govde = govdeSatir.join('\n');
+  assert.ok(/python/.test(govde), f + ': raw govdesi okunamadi (beklenen: "ansible.builtin.raw: |" blok skaleri)');
+  assert.ok(!/\{\{|\{%|\{#/.test(govde), f + ': raw metnine Jinja yerlesiyor - dis girdi kabuga girer');
+  // Python -c metni ayri denetlenir (orada > / >= karsilastirmadir); kabuk kopyasindan cikarilir.
+  const pyDeseni = /("\$py"|\$py|python[0-9.]*)\s+-c\s+'([^']*)'/g;
+  for (const m of govde.matchAll(pyDeseni))
+    assert.ok(!PY_YAZAN.test(m[2]), f + ': yoklamanin Python metni yazan / calistiran kod iceriyor: ' + (m[2].match(PY_YAZAN) || [''])[0]);
+  const kabuk = govde.replace(pyDeseni, '$1 -c ' + "''");
+  const yonlendirmesiz = kabuk.replace(/[0-9]?>\s*\/dev\/null(?![\w./-])/g, '').replace(/[0-9]?>&[0-9]-?/g, '');
+  assert.ok(!/>/.test(yonlendirmesiz), f + ': raw icinde dosyaya yonlendirme var (yalniz >/dev/null ve 2>&1 bicimleri serbest)');
+  assert.ok(!YAZAN_KOMUT.test(kabuk), f + ': raw icinde yazan / yetki yukselten / ic kabuk acan komut: ' + (kabuk.match(YAZAN_KOMUT) || [''])[0].trim());
+  assert.ok(!/\bfind\b[^\n]*\s-(delete|exec|execdir|ok|okdir|fprint\w*|fls)\b/.test(kabuk), f + ': raw icindeki find yazan / calistiran eylem kullaniyor');
+  const anahtar = (k) => new RegExp('^ {' + ind + '}' + k + ':\\s*(.*)$', 'm');
+  assert.equal((raw.match(anahtar('register')) || [])[1], 'logx_python_probe', f + ': yoklama kaydi');
+  assert.equal((raw.match(anahtar('changed_when')) || [])[1], 'false', f + ': yoklama degisiklik raporluyor');
+  assert.equal((raw.match(anahtar('failed_when')) || [])[1], 'false', f + ': yoklama dusunce is duser');
+  assert.ok(!new RegExp('^ {' + ind + '}become(_user|_method)?:', 'm').test(raw), f + ": yoklamanin kendi become'u var");
+  const sf = g.filter((x) => /ansible\.builtin\.set_fact:/.test(x));
+  assert.equal(sf.length, 1, f + ': pre_tasks set_fact sayisi ' + sf.length);
+  assert.match(sf[0], /set_fact:\n\s+ansible_python_interpreter: "\{\{ logx_python_probe\.stdout_lines /, f + ': set_fact yalniz yorumlayiciyi yoklamadan kurmuyor');
+  const sfGirinti = (sf[0].match(/^( +)ansible\.builtin\.set_fact:$/m) || ['', ''])[1].length + 2;
+  const sfAnahtar = [...sf[0].matchAll(new RegExp('^ {' + sfGirinti + '}([A-Za-z_]+):', 'gm'))].map((m) => m[1]);
+  assert.deepEqual(sfAnahtar, ['ansible_python_interpreter'], f + ': set_fact yorumlayici disinda degisken kuruyor (' + sfAnahtar + ')');
+  assert.match(sf[0], /^\s+when: \(logx_python_probe\.stdout_lines \| default\(\[\]\) \| length\) > 0$/m, f + ': yoklama bos donunce de yorumlayici degisiyor');
+  assert.equal(g.length, 2, f + ": pre_tasks'ta yoklama disinda gorev (" + g.length + ')');
+}
+
+test('yorumlayici yoklamasi: tek, sabit metinli, salt okur `raw` (kesif ve transfer)', () => {
+  for (const f of DOSYALAR) yorumlayiciYoklamasi(f);
+});
+
 test('gecici alan on kontrolu YAN ETKISIZ: yalniz stat ve argv`li df; kabuk yok', () => {
   const t = metin('logx_legacy_transfer.yml');
-  for (const yasak of ['ansible.builtin.shell', 'ansible.builtin.raw', 'ansible.builtin.script'])
-    assert.ok(!t.includes(yasak), `transfer playbook'unda ${yasak}`);
+  // `raw` yalniz pre_tasks'taki yorumlayici yoklamasinda (yukaridaki bekci); gecici alan olcumu kabuksuz.
+  for (const yasak of ['shell', 'script'])
+    assert.equal([...t.matchAll(modulAnahtari(yasak))].length, 0, `transfer playbook'unda ${yasak} modulu`);
+  assert.equal([...t.replace(/^ {2}pre_tasks:\n[\s\S]*?(?=^ {2}tasks:$)/gm, '').matchAll(modulAnahtari('raw'))].length, 0, 'transfer gorevlerinde (pre_tasks disi) raw');
   const tum = kaynakGorevleri();
   const komut = tum.filter((g) => /ansible\.builtin\.command:/.test(g));
   assert.equal(komut.length, 1, 'tek komut gorevi beklenir (bos alan olcumu)');
