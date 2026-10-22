@@ -46,7 +46,9 @@ const GECE = new Date('2026-10-06T20:30:00Z');
 const hedef = (o = {}) => ({
   id: 7, record_id: 3, host: 'GBJBOP01', app_name: 'CRM', jboss_gen: 7, app_path: '/hysdeploy/CRM.ear',
   env: 'PROD', smart_no: '123', oco_no: 'OCO-1', scheduled_at: '2026-10-06T10:00:00Z',
-  window_end: '2026-10-06T14:00:00Z', ...o,
+  window_end: '2026-10-06T14:00:00Z',
+  // ON KONTROLUN ONAYLANAN IZIN LISTESI (2026-10-22): zamanlanmis STOP yalniz bununla kosar.
+  last_job_id: 50, stop_izin_json: JSON.stringify({ jobId: 50, izinler: ['onay:CRM|JBoss7|GBJBOP01', 'mv:/vhosting/CRM.ear'] }), ...o,
 });
 
 test('RP1 pencere ACIKSA STOP tetiklenir ve CLAIM once yapilir', async () => {
@@ -59,6 +61,7 @@ test('RP1 pencere ACIKSA STOP tetiklenir ve CLAIM once yapilir', async () => {
   assert.equal(cagri.length, 1);
   assert.equal(cagri[0].kind, 'stop');
   assert.equal(cagri[0].t.host, 'GBJBOP01');
+  assert.deepEqual(cagri[0].t.izinler, ['onay:CRM|JBoss7|GBJBOP01', 'mv:/vhosting/CRM.ear'], 'zamanlanmis STOP onaylanan izin listesini betige tasimiyor');
   // CLAIM LAUNCH'TAN ONCE: iki tick ust uste binerse ayni hedef iki kez baslatilmasin
   const claim = yazilan.findIndex((w) => /status = 'stopping'/.test(w.sql) && /status = 'stop_scheduled'/.test(w.sql));
   assert.ok(claim >= 0, 'claim UPDATE yok');
@@ -97,6 +100,26 @@ test('RP4 LAUNCH DUSERSE claim GERI ALINIR (pencere icinde tekrar denenebilsin)'
   const geri = yazilan.find((w) => /SET status = 'stop_scheduled'/.test(w.sql));
   assert.ok(geri, "claim geri alinmamis - hedef 'stopping'de kalir ve bir daha denenmez");
   assert.match(String(geri.params[0]), /AWX 500/);
+});
+
+test('RP16 izin listesi YOK / bozuk / baska on kontrol isinin ise zamanlanmis STOP BASLATILMAZ, failed + sebep', async () => {
+  const durumlar = [
+    { stop_izin_json: null },
+    { stop_izin_json: '{bozuk' },
+    { stop_izin_json: JSON.stringify({ jobId: 49, izinler: ['onay:CRM|JBoss7|GBJBOP01'] }) },
+    { stop_izin_json: JSON.stringify({ jobId: 50, izinler: ['mv:/x'] }) },
+  ];
+  for (const o of durumlar) {
+    const yazilan = dbKur([['FROM retirement_targets t JOIN retirement_records r', [hedef(o)]]]);
+    const cagri = [];
+    poller.startPoller(async (kind, t) => { cagri.push({ kind, t }); return { jobId: 999 }; });
+    const r = await poller._stopTick(N);
+    poller.stopPoller();
+    assert.equal(cagri.length, 0, `izin listesi gecersizken STOP baslatildi: ${JSON.stringify(o)}`);
+    assert.equal(r.kosan, 0);
+    const f = yazilan.find((w) => /SET status = 'failed'/.test(w.sql) && /status = 'stop_scheduled'/.test(w.sql));
+    assert.ok(f && /izin listesi yok/.test(String((f.params || [])[0] || '')), "hedef stop_scheduled'da sessizce kaldi ya da sebep yazilmadi");
+  }
 });
 
 test('RP5 DELETE: tarihi gelmeyen hedef tetiklenmez', async () => {

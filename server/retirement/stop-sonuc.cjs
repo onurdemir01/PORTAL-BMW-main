@@ -37,4 +37,47 @@ function stopKarari(jobStatus, { sonuc, coklu }) {
   return { line, kod, mesaj, ok: jobStatus === 'successful' && kod === 'OK', plan: jobStatus === 'successful', planOnly: sonuc ? !!sonuc.plan_only : null };
 }
 
-module.exports = { stopSonucu, stopKarari };
+// ── ON KONTROL LISTESI + IZIN LISTESI (kullanici, 2026-10-22) ─────────────────────────────────────
+// "On Kontrol adiminda hangi komutlarin uygulanacagi, hangi uygulamanin, hangi konfigurasyonlarin,
+// filesystem'de hangi dizinlerin etkilenecegi acik acik yazdiralim ve bunlarin disinda hicbir seye
+// dokunulmadigindan emin olalim."
+// Playbook on kontrolde `onkontrol` (ekranda gosterilen liste) ve `izinler` (her DEGISTIREN islemin
+// kimligi + `onay:<APP>|JBoss<GEN>|<controller>`) yayar. Portal izinleri on kontrol isinin numarasiyla
+// saklar ve onayda hedef basina betige geri gonderir; betik listede olmayan hicbir islemi yapmaz,
+// liste gelmezse hic baslamaz. Izin listesi YALNIZ ayni on kontrol isine aitse gecerlidir.
+
+/** Saklanan izin kaydi -> izin dizisi ya da null (yok / bozuk / onay kimligi yok / baska is). */
+function onKontrolIzinleri(json, jobId) {
+  let o;
+  try {
+    o = typeof json === 'string' ? JSON.parse(json) : json;
+  } catch {
+    return null;
+  }
+  if (!o || !Array.isArray(o.izinler)) return null;
+  const iz = o.izinler.map((x) => String(x)).filter(Boolean);
+  if (!iz.some((x) => x.startsWith('onay:'))) return null;
+  if (jobId != null && Number(o.jobId) !== Number(jobId)) return null;
+  return iz;
+}
+
+/** Hedef sonucu -> { detailJson, izinJson }. Ayrinti KESILMEZ (kesik JSON okunamaz, ayrinti sessizce
+ *  kaybolurdu): sinir asilirsa once adim listesi kisaltilir ve isaretlenir. */
+function planKaydi(result, jobId) {
+  const dizi = (x) => (Array.isArray(x) ? x.map((y) => String(y)) : null);
+  const st = dizi(result?.steps);
+  const rn = dizi(result?.renamed);
+  const ok = dizi(result?.onkontrol);
+  const iz = dizi(result?.izinler);
+  let detailJson = null;
+  if (st || rn || ok) {
+    const d = { steps: st || [], renamed: rn || [], onkontrol: ok || [] };
+    detailJson = JSON.stringify(d);
+    if (detailJson.length > 60000) detailJson = JSON.stringify({ ...d, steps: d.steps.slice(0, 100), kisaltildi: true });
+    if (detailJson.length > 60000) detailJson = JSON.stringify({ steps: [], renamed: d.renamed.slice(0, 100), onkontrol: d.onkontrol.slice(0, 200), kisaltildi: true });
+  }
+  const izinJson = iz && iz.some((x) => x.startsWith('onay:')) ? JSON.stringify({ jobId: Number(jobId), at: new Date().toISOString(), izinler: iz }) : null;
+  return { detailJson, izinJson };
+}
+
+module.exports = { stopSonucu, stopKarari, onKontrolIzinleri, planKaydi };

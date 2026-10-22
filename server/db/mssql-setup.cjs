@@ -4486,6 +4486,15 @@ async function setupTables() {
       sql: `ALTER TABLE retirement_records ADD dns_turleri_json NVARCHAR(MAX) NULL`,
     },
     {
+      // ON KONTROLUN IZIN LISTESI (2026-10-22, kullanici: on kontrolde yazilanlarin "disinda hicbir
+      // seye dokunulmadigindan emin olalim"). {jobId, at, izinler[]}: onayli STOP (elle ya da OCO
+      // penceresinde zamanlayici) betige YALNIZ bu listeyi gonderir; betik liste disi islem yapmaz.
+      // detail_json'dan AYRI: gercek STOP'un sonucu detail_json'u ezer, onaylanan liste kaybolmamali.
+      table: 'retirement_targets',
+      col: 'stop_izin_json',
+      sql: `ALTER TABLE retirement_targets ADD stop_izin_json NVARCHAR(MAX) NULL`,
+    },
+    {
       table: 'smart_tickets',
       col: 'cancel_note',
       sql: `ALTER TABLE smart_tickets ADD cancel_note NVARCHAR(1000) NULL`,

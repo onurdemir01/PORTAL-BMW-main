@@ -20,6 +20,7 @@
 // ve kayit ile AWX arasinda ayrisma riski dogurur (ayni gerekce ScaleX'te de yazili).
 'use strict';
 const { webTekille } = require('./web-liste.cjs');
+const { onKontrolIzinleri } = require('./stop-sonuc.cjs');
 
 const db = require('../db/index.cjs');
 const { stopZamani, etkinSilmeGunu, silmeZamaniGeldi } = require('./schedule.cjs');
@@ -76,7 +77,7 @@ async function olay(recordId, kind, text) {
 async function stopTick(now) {
   const { rows } = await db.query(
     `SELECT t.id, t.record_id, t.host, t.app_name, t.jboss_gen, t.app_path, t.env,
-            t.scheduled_at, t.window_end,
+            t.scheduled_at, t.window_end, t.last_job_id, t.stop_izin_json,
             r.smart_no, r.oco_no, r.status AS rec_status
        FROM retirement_targets t
        JOIN retirement_records r ON r.id = t.record_id
@@ -102,6 +103,19 @@ async function stopTick(now) {
       }
       continue;
     }
+    // ONAYLANAN LISTE (2026-10-22): zamanlanmis STOP da yalniz onaylanan on kontrolun izin listesiyle
+    // kosar. Liste yoksa (bu ozellikten once zamanlanmis ya da bozuk) is BASLATILMAZ, sebebi yazilir -
+    // betik zaten izinsiz baslamazdi; sessizce 'stop_scheduled'da birakmak pencereyi kacirirdi.
+    t.izinler = onKontrolIzinleri(t.stop_izin_json, t.last_job_id);
+    if (!t.izinler) {
+      const u = await db.query(
+        `UPDATE retirement_targets SET status = 'failed', result_text = $1, updated_at = GETUTCDATE()
+          WHERE id = $2 AND status = 'stop_scheduled'`,
+        ['Onaylanan ön kontrolün izin listesi yok — zamanlanmış STOP başlatılmadı, hiçbir şey yapılmadı. Ön kontrolü yeniden çalıştırıp onaylayın.', t.id],
+      );
+      if (u.rowCount) await olay(t.record_id, 'schedule-expired', `${t.app_name} @ ${t.host}: onaylanan on kontrol izin listesi yok - STOP baslatilmadi`);
+      continue;
+    }
     // TOPLU STOP (2026-10-08): ayni kayit + ayni zamanlama ani = kullanici onlari TEK iste
     // secti; pencere acilinca da TEK is baslar (tek SCC maili). Asagida gruplanir.
     const g = `${t.record_id}|${new Date(t.scheduled_at).getTime()}`;
@@ -122,7 +136,7 @@ async function stopTick(now) {
     }
     if (!alinan.length) continue;
     const t = alinan[0];
-    const hedef = (x) => ({ targetId: x.id, host: x.host, application: x.app_name, gen: x.jboss_gen, appPath: x.app_path });
+    const hedef = (x) => ({ targetId: x.id, host: x.host, application: x.app_name, gen: x.jboss_gen, appPath: x.app_path, izinler: x.izinler });
     const etiket = alinan.length > 1 ? `${t.app_name} @ ${alinan.map((x) => x.host).join(', ')}` : `${t.app_name} @ ${t.host}`;
     let r;
     try {

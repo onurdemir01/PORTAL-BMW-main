@@ -35,7 +35,7 @@ const DEFAULT_DAYS = Number(process.env.RETIREMENT_DELETE_DAYS || 45);
 // okunur (kaydedilen deger yeniden baslatmadan bir sonraki STOP'ta gecerli). Oncelik ve
 // kaynak: server/retirement/ayar.cjs. Ortam degiskeni yedek olarak kalir.
 const { sccAyar, sccKaydet } = require('./ayar.cjs');
-const { stopSonucu, stopKarari } = require('./stop-sonuc.cjs');
+const { stopSonucu, stopKarari, onKontrolIzinleri, planKaydi } = require('./stop-sonuc.cjs');
 const isAdmin = (req) => req.session?.user?.role === 'Admin';
 const SAFE_ID = /^[A-Za-z0-9_-]{1,64}$/;
 
@@ -89,6 +89,15 @@ function rowTarget(t) {
         return null;
       }
     })(),
+    // ONAYLANACAK ON KONTROLUN IZIN LISTESI (bkz. stop-sonuc.cjs). Yalniz son on kontrol isine
+    // (last_job_id) aitse gecerli; yoksa onay acilmaz.
+    stopIzin: (() => {
+      const iz = onKontrolIzinleri(t.stop_izin_json, t.last_job_id);
+      if (!iz) return null;
+      let at = null;
+      try { at = JSON.parse(t.stop_izin_json).at || null; } catch { at = null; }
+      return { jobId: t.last_job_id ?? null, at, izinler: iz };
+    })(),
   };
 }
 async function addEvent(recordId, username, kind, text) {
@@ -113,15 +122,17 @@ async function loadRecord(id) {
 // onay pencereden SAATLER once veriliyor. Onayladigin liste ile isin kostugu andaki
 // gercek ayrisabilir; o anda ekranda kimse yok. Donmus liste uygulanir, bulunamayan
 // vhost ATLANIR ve raporlanir - sessizce "tamamlandi" demek en kotu sonuc olurdu.
+// IN-PLACE: kesif `elle` isaretlediyse (yalniz ad/sertifika eslesmesi, iki kurulumlu sunucu - bkz.
+// discover.cjs inPlaceIsaretle) girdi 'manual' donar: web adimi onu OTOMATIK KAPATMAZ, sebebi yazilir.
 function webDondur(web) {
   return webTekille(Array.isArray(web) ? web : []).liste.map((w) => ({
     host: String(w.host || ''),
     serverName: String(w.serverName || ''),
     product: String(w.product || ''),
     confFile: String(w.confFile || ''),
-    status: 'pending',
+    status: w.elle ? 'manual' : 'pending',
     jobId: null,
-    message: null,
+    message: w.elle ? String(w.elle) : null,
   }));
 }
 
@@ -251,6 +262,7 @@ async function vhostPlanBaslat(req, id, tid, webs) {
     if (gorulen.has(anahtar)) continue;
     gorulen.add(anahtar);
     const kim = { host: w.host, serverName: w.serverName, confFile: w.confFile || '' };
+    if (w.elle) { out.push({ ...kim, ok: false, elle: true, message: String(w.elle) }); continue; }
     if (!APACHE_URUN.has(String(w.product || '').toUpperCase())) { out.push({ ...kim, ok: false, elle: true, message: `${w.product || 'bilinmeyen urun'}: otomatik kapatma yok (NGINX elle)` }); continue; }
     if (!w.confFile || !w.serverName) { out.push({ ...kim, ok: false, elle: true, message: 'conf dosyasi ya da ServerName kesifte cozulemedi' }); continue; }
     try {
@@ -418,8 +430,19 @@ function initRetirement(app) {
     if (planned && !/^\d{4}-\d{2}-\d{2}$/.test(planned)) return res.status(400).json({ ok: false, message: 'Silme tarihi YYYY-AA-GG olmalı.' });
     try {
       const disc = await discover(app);
-      const wanted = Array.isArray(b.targets) && b.targets.length ? new Set(b.targets.map((t) => `${String(t.host).toUpperCase()}|${t.appName}`)) : null;
-      const targets = disc.targets.filter((t) => !wanted || wanted.has(`${t.host}|${t.appName}`));
+      // SECIM KURULUMU DA ICERIR (job_3438186): in-place sunucuda ayni host|app iki hedef (JBoss 7 ve
+      // JBoss 8). Kurulumsuz bir secim ikisini birden ya da yanlisini alabilirdi; in-place hedefte
+      // kurulum belirtilmemisse kayit ACILMAZ.
+      const kolAnahtar = (h, a, g) => `${String(h).toUpperCase()}|${a}|${g == null || g === '' ? '' : Number(g)}`;
+      let targets = disc.targets;
+      if (Array.isArray(b.targets) && b.targets.length) {
+        const belirsiz = b.targets.filter((x) => (x.gen == null || x.gen === '')
+          && disc.targets.filter((t) => t.host === String(x.host).toUpperCase() && t.appName === x.appName).length > 1);
+        if (belirsiz.length)
+          return res.status(400).json({ ok: false, message: `${belirsiz.map((x) => `${x.appName} @ ${x.host}`).join(', ')}: bu sunucuda uygulama hem JBoss 7 hem JBoss 8'de var (in-place); hangi kurulumun retire edileceğini seçin.` });
+        const wanted = new Set(b.targets.map((x) => (x.gen == null || x.gen === '' ? `${String(x.host).toUpperCase()}|${x.appName}|*` : kolAnahtar(x.host, x.appName, x.gen))));
+        targets = disc.targets.filter((t) => wanted.has(kolAnahtar(t.host, t.appName, t.gen)) || wanted.has(`${t.host}|${t.appName}|*`));
+      }
       if (!targets.length) return res.status(400).json({ ok: false, message: 'Envanterde bu uygulama için hedef bulunamadı (MWAppsInventory).' });
       if (targets.some((t) => t.env === 'PROD') && !ocoNo) return res.status(400).json({ ok: false, message: 'PROD hedef var: altyapı OCO numarası zorunlu (kayıtla birlikte açılmalı).' });
       const user = req.session?.user?.username || 'unknown';
@@ -601,6 +624,11 @@ function initRetirement(app) {
           return res.status(409).json({ ok: false, message: `${on(t)}Bu hedefin STOP'u OCO penceresine zamanlanmış; ön kontrol zamanlamayı düşürürdü. Gerekirse önce kaydı iptal edin.` });
         if (confirmed && t.status !== 'planned')
           return res.status(409).json({ ok: false, message: `${on(t)}Önce ön kontrol: "Retirement'ı başlat" sunucuda ne yapılacağını okur, başarıyla dönünce onay açılır.` });
+        // (4) ONAYLANAN LISTENIN DISINDA HICBIR SEY (2026-10-22): onayli STOP yalniz son on kontrolun
+        //     izin listesiyle kosar (bkz. stop-sonuc.cjs). Liste yoksa (eski playbook ciktisi / bozuk /
+        //     baska on kontrol isi) onay ACILMAZ; betik de izinsiz hic baslamaz.
+        if (confirmed && !t.stopIzin)
+          return res.status(409).json({ ok: false, message: `${on(t)}Ön kontrolün izin listesi yok ya da güncel değil — "Retirement'ı başlat" ile ön kontrolü yeniden çalıştırın. (AWX'teki retirement betikleri güncel değilse ön kontrol bu listeyi üretmez; önce betikler yüklenmeli.)` });
       }
       // Ortam tum hedeflerde ayni (yukarida); OCO/SCC kararlari ilk hedefin ortamiyla verilir.
       const t = hedefler[0];
@@ -678,9 +706,11 @@ function initRetirement(app) {
       const notifyScc = confirmed && t.env === 'PROD' && !rec.sccNotifiedAt;
       if (notifyScc && !SCC_MAIL_TO) console.warn('[Retirement] SCC adresi tanimsiz (ekran ve RETIREMENT_SCC_MAIL_TO bos); SCC maili gonderilemeyecek');
       // Tek hedefte eski degiskenler (eski playbook surumu da calisir); cokluda rt_hedefler.
+      // Onayli kosuda HEDEF BASINA onaylanan izin listesi gider; betik listede olmayan islemi yapmaz.
+      const izinOf = (h) => (confirmed ? { izinler: h.stopIzin.izinler } : {});
       const hedefVars = coklu
-        ? { rt_hedefler: hedefler.map((h) => ({ host: h.host, application: h.appName, jboss_gen: String(h.gen), app_path: h.appPath || '' })) }
-        : { target_host: t.host, application: t.appName, jboss_gen: String(t.gen), app_path: t.appPath || '' };
+        ? { rt_hedefler: hedefler.map((h) => ({ host: h.host, application: h.appName, jboss_gen: String(h.gen), app_path: h.appPath || '', ...izinOf(h) })) }
+        : { target_host: t.host, application: t.appName, jboss_gen: String(t.gen), app_path: t.appPath || '', ...izinOf(t) };
       const extraVars = {
         ...hedefVars, smart_no: rec.smartNo,
         plan_only: !confirmed, notify_scc: notifyScc && !!SCC_MAIL_TO, scc_mail_to: SCC_MAIL_TO, scc_mail_cc: SCC_MAIL_CC || undefined,
@@ -695,8 +725,14 @@ function initRetirement(app) {
       const r = await launch(req, `Retirement: ${confirmed ? 'STOP' : 'plan'} ${etiket}`, extraVars, { op: confirmed ? 'stop' : 'plan', id, tid: coklu ? tids : tids[0] });
       // Toplu iste TUM hedefler ayni is numarasini tasir; job-status her hedefi kendi
       // sonucuyla (sunucu adiyla) sonuclandirir.
+      // Yeni on kontrol eski izin listesini GECERSIZ kilar (sonuc gelince yenisi yazilir).
       for (const h of hedefler)
-        await db().query(`UPDATE retirement_targets SET status = $1, last_job_id = $2, updated_at = GETUTCDATE() WHERE id = $3`, [confirmed ? 'stopping' : 'planning', r.jobId, h.id]);
+        await db().query(
+          confirmed
+            ? `UPDATE retirement_targets SET status = $1, last_job_id = $2, updated_at = GETUTCDATE() WHERE id = $3`
+            : `UPDATE retirement_targets SET status = $1, last_job_id = $2, stop_izin_json = NULL, updated_at = GETUTCDATE() WHERE id = $3`,
+          [confirmed ? 'stopping' : 'planning', r.jobId, h.id],
+        );
       if (rec.status === 'open' && confirmed) await db().query(`UPDATE retirement_records SET status = 'stopping', updated_at = GETUTCDATE() WHERE id = $1`, [id]);
       // VHOST ADIMI HEMEN (kullanici 2026-10-09: "stop islemi tetiklenir tetiklenmez baslasin"):
       // zamanlayicinin turunu beklemeden webTick (hedef artik 'stopping'). Zamanlayici o an
@@ -861,7 +897,10 @@ function initRetirement(app) {
       const DUZENLENIR = new Set(['pending', 'planned', 'stop_scheduled', 'active', 'failed', 'rollback_failed']);
       const sonuc = [];
       for (const t of rec.targets) {
-        const d = (disc.targets || []).find((x) => String(x.host).toUpperCase() === String(t.host).toUpperCase() && String(x.appName).toUpperCase() === String(t.appName).toUpperCase());
+        // KURULUM DA ESLESIR (in-place: ayni host|app iki hedef). Kurulum eslesmezse diger surumun web
+        // listesi bu hedefe EKLENMEZDI - ama eklenirdi: eski kod ilk bulunani aliyordu.
+        const d = (disc.targets || []).find((x) => String(x.host).toUpperCase() === String(t.host).toUpperCase() && String(x.appName).toUpperCase() === String(t.appName).toUpperCase()
+          && (x.gen ?? null) === (t.gen == null ? null : Number(t.gen)));
         const yeniWeb = d ? d.web : [];
         const eskiK = new Set((t.web || []).map(webAnahtar));
         const eklenen = yeniWeb.filter((w) => !eskiK.has(webAnahtar(w)));
@@ -993,11 +1032,22 @@ function initRetirement(app) {
         : info.status === 'successful' && line.split('	')[2] === 'OK';
       const yeni = basarili ? adim.ok : adim.hata;
       const zamanSql = basarili && adim.zaman ? `, ${adim.zaman} = GETUTCDATE()` : '';
-      await db().query(
-        `UPDATE retirement_targets SET status = $1, result_text = $2${zamanSql}, updated_at = GETUTCDATE()
-          WHERE id = $3 AND status = $4`,
-        [yeni, msg.slice(0, 1000), tid, t.status],
-      );
+      if (adim.kind === 'stop' && t.status === 'planning') {
+        // ON KONTROL TAZELENDIYSE ayrinti ve izin listesi de yazilir (eskiden yalniz durum yaziliyordu:
+        // onay penceresi bos kaliyor, onay ise izin listesi olmadigi icin acilmazdi).
+        const { detailJson, izinJson } = planKaydi(r, jobId);
+        await db().query(
+          `UPDATE retirement_targets SET status = $1, result_text = $2, plan_text = $3, detail_json = $4, stop_izin_json = $5, updated_at = GETUTCDATE()
+            WHERE id = $6 AND status = $7`,
+          [yeni, msg.slice(0, 1000), msg.slice(0, 1000), detailJson, basarili ? izinJson : null, tid, t.status],
+        );
+      } else {
+        await db().query(
+          `UPDATE retirement_targets SET status = $1, result_text = $2${zamanSql}, updated_at = GETUTCDATE()
+            WHERE id = $3 AND status = $4`,
+          [yeni, msg.slice(0, 1000), tid, t.status],
+        );
+      }
       await addEvent(id, req.session?.user?.username, 'refresh', `${t.appName} @ ${t.host}: ${t.status} -> ${yeni} (iş #${jobId}, ${info.status})`);
       res.json({ ok: true, degisti: true, from: t.status, to: yeni, jobId, jobStatus: info.status, message: msg, record: await loadRecord(id) });
     } catch (err) {
@@ -1062,10 +1112,13 @@ function initRetirement(app) {
           message: `${t.appName} @ ${t.host} durumu "${t.status}" — geri alma yalnızca durdurulmuş (stopped) hedefler için yapılır.`,
         });
 
+      // app_path GIDER (job_3438186): geri alma betigi in-place sunucuda kurulumu app_path ile dogrular;
+      // gelmezse HICBIR SEY yapmadan durur.
       const extraVars = {
         target_host: t.host,
         application: t.appName,
         jboss_gen: String(t.gen),
+        app_path: t.appPath || '',
         smart_no: rec.smartNo,
         plan_only: !confirmed,
         requested_by: req.session?.user?.username || 'Portal',
@@ -1133,18 +1186,14 @@ function initRetirement(app) {
         // AYRINTI: STEP ve RENAMED satirlari. `line` yalniz OZET; plan onayinda hangi
         // dosyalara dokunulacagi bu listelerde. Alanlar gelmezse null yazilir (eski
         // playbook surumu) - uydurulmaz.
-        const detailJson = (() => {
-          const st = Array.isArray(result?.steps) ? result.steps : null;
-          const rn = Array.isArray(result?.renamed) ? result.renamed : null;
-          if (!st && !rn) return null;
-          return JSON.stringify({ steps: st || [], renamed: rn || [] }).slice(0, 60000);
-        })();
+        // ON KONTROLDE ayrica `onkontrol` (ekrandaki liste) ve `izinler` (onayda betige geri gider).
+        const { detailJson, izinJson } = planKaydi(result, jobId);
         const cur = await db().query(`SELECT status, last_job_id FROM retirement_targets WHERE id = $1`, [tid]);
         const row = cur.rows?.[0];
         if (row && Number(row.last_job_id) === jobId && (row.status === 'planning' || row.status === 'stopping')) {
           const planOnly = result ? !!result.plan_only : row.status === 'planning';
           if (planOnly) {
-            await db().query(`UPDATE retirement_targets SET status = $1, plan_text = $2, detail_json = $3, updated_at = GETUTCDATE() WHERE id = $4`, [karar.plan ? 'planned' : 'failed', msg.slice(0, 1000), detailJson, tid]);
+            await db().query(`UPDATE retirement_targets SET status = $1, plan_text = $2, detail_json = $3, stop_izin_json = $4, updated_at = GETUTCDATE() WHERE id = $5`, [karar.plan ? 'planned' : 'failed', msg.slice(0, 1000), detailJson, karar.plan ? izinJson : null, tid]);
           } else if (karar.ok && /\tOK\t/.test(line)) {
             await db().query(`UPDATE retirement_targets SET status = 'stopped', result_text = $1, detail_json = $2, stopped_at = GETUTCDATE(), updated_at = GETUTCDATE() WHERE id = $3`, [msg.slice(0, 1000), detailJson, tid]);
             await db().query(`UPDATE retirement_records SET stop_at = COALESCE(stop_at, GETUTCDATE()), scc_notified_at = CASE WHEN $2 = 1 THEN COALESCE(scc_notified_at, GETUTCDATE()) ELSE scc_notified_at END, updated_at = GETUTCDATE() WHERE id = $1`, [id, (await sccAyar()).to ? 1 : 0]);
@@ -1176,9 +1225,11 @@ function initRetirement(app) {
   try {
     require('./poller.cjs').startPoller(async (kind, t) => {
       // TOPLU zamanlanmis STOP (poller ayni kayit + ayni anda dolan hedefleri gruplar): rt_hedefler.
+      // ZAMANLANMIS STOP DA onaylanan izin listesiyle kosar (poller listesi olmayan hedefi baslatmaz).
+      const izinOf = (h) => (kind === 'stop' ? { izinler: h.izinler || [] } : {});
       const hedefVars = kind === 'stop' && Array.isArray(t.hedefler) && t.hedefler.length > 1
-        ? { rt_hedefler: t.hedefler.map((h) => ({ host: h.host, application: h.application, jboss_gen: String(h.gen), app_path: h.appPath || '' })) }
-        : { target_host: t.host, application: t.application, jboss_gen: String(t.gen), app_path: t.appPath || '' };
+        ? { rt_hedefler: t.hedefler.map((h) => ({ host: h.host, application: h.application, jboss_gen: String(h.gen), app_path: h.appPath || '', ...izinOf(h) })) }
+        : { target_host: t.host, application: t.application, jboss_gen: String(t.gen), app_path: t.appPath || '', ...izinOf(t) };
       const ortak = {
         ...hedefVars,
         smart_no: t.smartNo,

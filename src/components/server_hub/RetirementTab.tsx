@@ -21,15 +21,17 @@ function WebKaynak({ w }: { w: RtWeb }) {
   const k = String(w.kaynak || '');
   const ajp = k.includes('ajp');
   const mc = k.includes('mc');
-  if (!ajp && !mc) return null;
+  if (!ajp && !mc && !w.elle) return null;
   return (
     <>
+      {w.elle && <span className="ml-1 px-1 rounded border text-[9px] font-semibold" style={{ color: 'var(--status-warning-text)', borderColor: 'var(--status-warning)' }} title={w.elle}>elle</span>}
       {ajp && <span className="ml-1 px-1 rounded border text-[9px] font-semibold" style={{ color: 'var(--status-info)', borderColor: 'var(--status-info)' }} title={`mod_jk/proxy hedefi ${w.ajpHedef || ''} bu JVM'in portu${k === 'ajp' ? ' — ad eşleşmesiyle BULUNAMAZDI' : ''}`}>AJP</span>}
       {mc && <span className="ml-1 px-1 rounded border text-[9px] font-semibold" style={{ color: 'var(--status-info)', borderColor: 'var(--status-info)' }} title={`Red Hat Apache mod_cluster: vhost balancer://${w.mcBalancer || ''} = uygulama adı (JBoss 8 kendini bu adla duyurur). Aynı site + ortamdaki web sunucusu; o anki üye JVM doğrulanmadı.`}>mod_cluster</span>}
     </>
   );
 }
 import { retirementAdimi } from './retirementAdim';
+import OnKontrolListesi, { onKontrolHazir } from './RetirementOnKontrol';
 import { stopTrafikOzeti, stopOnayAcikMi, type TrafikIsDurumu } from './retirementTrafik';
 import { blokAyristir, bloklaraBol, degisimTuru, jkAyristir, jkDegAyristir, JK_ETIKET, kipAyristir, sonraMetni, sonucAyristir, YORUM_ONEKI, type BlokSatiri, type DegisimTuru, type JkDeg, type JkSatiri, type Kip } from './retirementVhostPlan';
 
@@ -534,12 +536,13 @@ function CreateModal({ defaultDays, onClose, onCreated }: { defaultDays: number;
       if (d.ok) {
         setDisc(d);
         const surumler = new Set(d.targets.map((t) => t.gen ?? 0));
-        setSel(surumler.size > 1 ? new Set() : new Set(d.targets.map((t) => `${t.host}|${t.appName}`)));
+        // IN-PLACE (job_3438186): ayni sunucuda iki kurulum iki ayri hedef; anahtar kurulumu da icerir.
+        setSel(surumler.size > 1 ? new Set() : new Set(d.targets.map((t) => `${t.host}|${t.appName}|${t.gen ?? ''}`)));
       } else toast.error(d.message || 'Keşif başarısız.');
     }
     catch (e: unknown) { toast.error(e instanceof Error ? e.message : String(e)); } finally { setDiscLoading(false); }
   };
-  const key = (t: { host: string; appName: string }) => `${t.host}|${t.appName}`;
+  const key = (t: { host: string; appName: string; gen: number | null }) => `${t.host}|${t.appName}|${t.gen ?? ''}`;
   const selected = (disc?.targets || []).filter((t) => sel.has(key(t)));
   const surumler = [...new Set((disc?.targets || []).map((t) => t.gen ?? 0))].sort();
   const surumEtiket = (g: number) => (g ? `JBoss ${g}` : 'sürümü bilinmeyen');
@@ -570,7 +573,7 @@ function CreateModal({ defaultDays, onClose, onCreated }: { defaultDays: number;
     }
     setBusy(true);
     try {
-      const r = await retirementApi.create({ app, smartNo: f.smartNo.trim(), ocoNo: f.ocoNo.trim() || undefined, ownerEmail: f.ownerEmail.trim() || undefined, deleteAfterDays: Number(f.deleteAfterDays) || defaultDays, plannedDeleteAt: f.plannedDeleteAt || null, dnsReuse: f.dnsReuse, lbReuse: f.lbReuse, notes: f.notes, targets: selected.map((t) => ({ host: t.host, appName: t.appName })) });
+      const r = await retirementApi.create({ app, smartNo: f.smartNo.trim(), ocoNo: f.ocoNo.trim() || undefined, ownerEmail: f.ownerEmail.trim() || undefined, deleteAfterDays: Number(f.deleteAfterDays) || defaultDays, plannedDeleteAt: f.plannedDeleteAt || null, dnsReuse: f.dnsReuse, lbReuse: f.lbReuse, notes: f.notes, targets: selected.map((t) => ({ host: t.host, appName: t.appName, gen: t.gen })) });
       if (!r.ok) { toast.error(r.message || 'Kayıt açılamadı.'); return; }
       toast.success(`Retirement kaydı #${r.id} açıldı (${selected.length} hedef).`); onCreated(r.id);
     } catch (e: unknown) { toast.error(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); }
@@ -688,7 +691,14 @@ function CreateModal({ defaultDays, onClose, onCreated }: { defaultDays: number;
                       <td className="px-2 py-1" style={t.site === 'Ankara' ? { color: 'var(--status-warning)', fontWeight: 600 } : undefined}>{t.site}</td>
                       <td className="px-2 py-1"><b>{t.env}</b></td>
                       <td className="px-2 py-1">{t.appName}</td>
-                      <td className="px-2 py-1">{t.gen ? `JBoss ${t.gen}` : <span style={{ color: 'var(--status-danger)' }}>?</span>}</td>
+                      <td className="px-2 py-1">{t.gen ? `JBoss ${t.gen}` : <span style={{ color: 'var(--status-danger)' }}>?</span>}
+                        {t.inPlace && (
+                          <span className="ml-1 rounded px-1 text-[10px] font-semibold" style={{ background: 'var(--status-warning-bg)', color: 'var(--status-warning-text)' }}
+                            title={`Bu sunucuda uygulama ${(t.digerSurumler || []).map((g) => (g ? `JBoss ${g}` : 'sürümü bilinmeyen kurulum')).join(', ')} kurulumunda da var. Yalnız seçtiğiniz kurulum işlenir: diğer kurulumun JVM’ine, paketine ve paylaşımlı /hysdeploy paketine DOKUNULMAZ; yalnız adıyla eşleşen vhost’lar elle kapatılır.`}>
+                            in-place
+                          </span>
+                        )}
+                      </td>
                       <td className="px-2 py-1 text-[10px]" style={{ color: 'var(--text-muted)' }}>{t.inventoryStatus || '—'}</td>
                       <td className="px-2 py-1 text-[10px]"><HubHucresi hub={t.hub} okunamadi={hubYok} /></td>
                       <td className="px-2 py-1 text-[10px]">{t.web.length ? t.web.map((w) => <div key={w.host + w.serverName} title={t.webHow}>{w.host} · {w.serverName}{w.product ? ` (${w.product})` : ''}<WebKaynak w={w} /></div>) : <div role="alert" className="max-w-[22rem] font-semibold" style={{ color: 'var(--status-danger)' }} title={t.webHow}>⚠ {t.webUyari || 'web vhost’u bulunamadı — elle doğrulayın'}</div>}</td>
@@ -1277,6 +1287,9 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
               <div key={t.id} className={ask.ts.length > 1 ? 'rounded-xl border p-3 space-y-2' : 'space-y-3'} style={ask.ts.length > 1 ? { borderColor: 'var(--border-subtle)' } : undefined}>
                 {ask.ts.length > 1 && <div className="text-[12px] font-semibold font-mono">{t.host} <span className="font-sans font-normal" style={{ color: 'var(--text-muted)' }}>({t.site})</span></div>}
                 <div className="text-[12px] rounded-lg border px-3 py-2" style={{ borderColor: 'var(--status-info)', background: 'var(--status-info-bg)' }}><b>Ön kontrol sonucu:</b> {t.planText}</div>
+                {/* ON KONTROL LISTESI (2026-10-22): uygulama, konfigurasyon, komutlar, dosyalar ve
+                    dokunulmayacaklar; onay yalniz bu listeyi betige gonderir. */}
+                <OnKontrolListesi t={t} />
                 {/* PLAN AYRINTISI: ozet "2 paket yeniden adlandirilacak" diyor ama HANGI iki
                     paket oldugunu soylemiyordu. Islem geri alinamaz; onay vermeden once
                     dokunulacak dosyalar GORUNMELI. Alan gelmediyse (eski playbook) hic
@@ -1317,7 +1330,7 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
                 </label>
               </fieldset>
             )}
-            <div className="flex justify-end gap-2"><button onClick={() => setAsk(null)} className={SM_BTN} style={smBtn()}>İptal</button><button disabled={!ask.ts.every((t) => stopOnayAcikMi(stopTrafikOzeti(t, askDisc), trafikIs[t.id]?.durum, trafikOnay, olcumuBekleme))} onClick={() => stopCalistir(ask.ts, true, ask.ts[0].env === 'PROD' && stopZamani === 'simdi')} className={`${SM_BTN} disabled:opacity-50`} style={{ ...smBtn(true), background: 'var(--status-danger)', borderColor: 'var(--status-danger)' }}>{ask.ts[0].env === 'PROD' && rec?.ocoNo && stopZamani === 'oco' ? (ask.ts.length > 1 ? `Onayla ve ${ask.ts.length} sunucuyu OCO penceresine zamanla` : 'Onayla ve OCO penceresine zamanla') : ask.ts.length > 1 ? `Onayla ve ${ask.ts.length} sunucuyu durdur` : 'Onayla ve durdur'}</button></div>
+            <div className="flex justify-end gap-2"><button onClick={() => setAsk(null)} className={SM_BTN} style={smBtn()}>İptal</button><button disabled={!ask.ts.every((t) => stopOnayAcikMi(stopTrafikOzeti(t, askDisc), trafikIs[t.id]?.durum, trafikOnay, olcumuBekleme) && onKontrolHazir(t))} onClick={() => stopCalistir(ask.ts, true, ask.ts[0].env === 'PROD' && stopZamani === 'simdi')} className={`${SM_BTN} disabled:opacity-50`} style={{ ...smBtn(true), background: 'var(--status-danger)', borderColor: 'var(--status-danger)' }}>{ask.ts[0].env === 'PROD' && rec?.ocoNo && stopZamani === 'oco' ? (ask.ts.length > 1 ? `Onayla ve ${ask.ts.length} sunucuyu OCO penceresine zamanla` : 'Onayla ve OCO penceresine zamanla') : ask.ts.length > 1 ? `Onayla ve ${ask.ts.length} sunucuyu durdur` : 'Onayla ve durdur'}</button></div>
           </div>
         </div>
       )}
