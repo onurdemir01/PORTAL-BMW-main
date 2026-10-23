@@ -105,6 +105,11 @@ bash /vhosting8/bmw_portal/app/PORTAL-BMW-main/deploy/install-node.sh node-v22.2
 ```
 
 - Checksum tutmazsa betik **kurmaz**. Ikili bu sunucuda calismazsa (glibc/mimari) symlink'e baglanmaz.
+- **Kurumsal CA (2026-10-23 uretim olayi):** resmi ikili RHEL'in sistem sertifika deposunu KULLANMAZ;
+  LDAPS / AWX / Smart dogrulanamaz ve giris "Kimlik dogrulama sunucusuna su an ulasilamiyor" der. `run.sh`,
+  `release*.sh` ve systemd birimi bu yuzden `NODE_EXTRA_CA_CERTS=/etc/pki/tls/certs/ca-bundle.crt` verir
+  (acilis satirinda `ek CA: ...` yazar). Elle baslatiyorsaniz ayni degiskeni verin; `.env` ile verilemez
+  (surec acilisinda okunur).
 - `run.sh`, `release.sh`, `release-git.sh`, cron watchdog'u ve `bmw-portal@.service`
   `<BASE_DIR>/runtime/node` varsa onu kullanir; yoksa eskisi gibi PATH'teki / `/usr/bin/node`.
 - Geri donus: `ln -sfn <onceki-surum-dizini> /vhosting8/bmw_portal/runtime/node` + restart.

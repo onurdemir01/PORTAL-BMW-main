@@ -35,6 +35,9 @@ KEEP_PREV=1
 # Portal'a ozel Node (deploy/install-node.sh) varsa npm ci / build de ONU kullanir (run.sh ile ayni kural).
 PORTAL_NODE_HOME="${PORTAL_NODE_HOME:-$BASE_DIR/runtime/node}"
 if [[ -x "$PORTAL_NODE_HOME/bin/node" ]]; then export PATH="$PORTAL_NODE_HOME/bin:$PATH"; fi
+# Kurumsal CA: resmi Node ikilisi sistem deposunu kullanmaz (bkz. run.sh) - npm ci / build de ayni ortamla.
+SISTEM_CA="/etc/pki/tls/certs/ca-bundle.crt"
+if [[ -z "${NODE_EXTRA_CA_CERTS:-}" && -r "$SISTEM_CA" ]]; then export NODE_EXTRA_CA_CERTS="$SISTEM_CA"; fi
 
 ENV_NAME="${1:-}"
 BRANCH="${2:-main}"

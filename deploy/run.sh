@@ -45,6 +45,13 @@ LOG_ROTATE_KEEP=3
 # betikten gectigi icin ayni node'u kullanir. Yoksa davranis degismez (PATH'teki node).
 PORTAL_NODE_HOME="${PORTAL_NODE_HOME:-${PORTAL_BASE_DIR:-$(cd "$ROOT_DIR/../.." 2>/dev/null && pwd)}/runtime/node}"
 if [[ -x "$PORTAL_NODE_HOME/bin/node" ]]; then export PATH="$PORTAL_NODE_HOME/bin:$PATH"; fi
+# KURUMSAL CA (2026-10-23, uretim: Node 22.23.4'e gecince girislerde "Kimlik dogrulama sunucusuna su an
+# ulasilamiyor"). RHEL'in nodejs RPM'i sistemin sertifika deposunu (kurumsal CA dahil) kullanir; nodejs.org
+# ikilisi yalniz kendi gomulu kok listesine guvenir ve LDAPS / AWX / Smart gibi kurumsal sertifikali uclari
+# dogrulayamaz. NODE_EXTRA_CA_CERTS sistem deposunu EKLER (genel kokler kalir); surec acilisinda okunur,
+# .env ile verilemez. Disaridan verilmisse ezilmez; RPM node'da zararsiz.
+SISTEM_CA="/etc/pki/tls/certs/ca-bundle.crt"
+if [[ -z "${NODE_EXTRA_CA_CERTS:-}" && -r "$SISTEM_CA" ]]; then export NODE_EXTRA_CA_CERTS="$SISTEM_CA"; fi
 
 usage() {
   echo "Kullanim: $0 <dev|test|qa|prod> [start|stop|restart|status|logs]" >&2
@@ -182,7 +189,7 @@ rotate_log_if_needed() {
 ensure_dependencies_and_build() {
   command -v node >/dev/null 2>&1 || { echo "HATA: node bulunamadi (en az 22.23.4: dnf module enable nodejs:22, ya da deploy/install-node.sh)." >&2; exit 1; }
   command -v npm  >/dev/null 2>&1 || { echo "HATA: npm bulunamadi." >&2; exit 1; }
-  echo "[$ENV_NAME] node: $(command -v node) $(node -v 2>/dev/null)"
+  echo "[$ENV_NAME] node: $(command -v node) $(node -v 2>/dev/null) · ek CA: ${NODE_EXTRA_CA_CERTS:-yok}"
 
   if [[ ! -d "$ROOT_DIR/node_modules" ]]; then
     echo "[$ENV_NAME] node_modules yok → npm ci calistiriliyor (ilk kurulum)…"

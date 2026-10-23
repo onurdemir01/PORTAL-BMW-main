@@ -33,6 +33,9 @@ WorkingDirectory=/vhosting8/bmw_portal/app/PORTAL-BMW-main
 # (dotenv zaten-set edilen degeri ezmez, bu yuzden bu satir kesin garantidir).
 # Kurumsal nginx :3000'e proxy'ler — PORT .env.%i icinde 3000'dir.
 Environment=NODE_ENV=production
+# Kurumsal CA (2026-10-23): resmi Node ikilisi sistem sertifika deposunu kullanmaz - LDAPS/AWX/Smart
+# dogrulanamaz, giris "Kimlik dogrulama sunucusuna ulasilamiyor" der. Sistem deposu EKLENIR (bkz. run.sh).
+Environment=NODE_EXTRA_CA_CERTS=/etc/pki/tls/certs/ca-bundle.crt
 # Portal'a ozel Node (deploy/install-node.sh, 2026-10-23) varsa o, yoksa RPM'in /usr/bin/node'u.
 # `exec`: systemd'nin izledigi PID dogrudan node olur (sh ara sureci kalmaz).
 ExecStart=/bin/sh -c 'N=/vhosting8/bmw_portal/runtime/node/bin/node; [ -x "$N" ] || N=/usr/bin/node; exec "$N" server/index.cjs "$1"' _ %i
