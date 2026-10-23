@@ -324,7 +324,7 @@ function checkNodeVersion() {
     `Node ${running}${simulated ? ' (simule)' : ''}: ${bad.length} paket engines araligini karsilamiyor`,
     lines.join(' | '),
     'Node 22`ye gecince bu uyarilar biter. Gecis: docs/DEVREYE-ALMA.md > "Node 22`ye gecis". ' +
-      'package.json `engines` BILEREK >=20.18.0 birakildi — prod bugun kirilmasin diye.',
+      'package.json `engines` guvenlik tabaninda (>=22.23.4); Node 20 destek disi ve yamasiz.',
   );
 }
 

@@ -1,0 +1,37 @@
+# .github/dependabot.yml — paketleri GUNCEL tutan haftalik otomatik PR'lar (2026-10-23).
+#
+# Neden: "PHP gibi zafiyetleri bir daha yasamamak icin her sey en guncel kalsin". Elle yapilan
+# toplu guncelleme bir kez olur; bu dosya her hafta tekrarlar.
+#
+# Kurallar:
+#   - cooldown 7 gun: npm'de solucan kampanyalari (Shai-Hulud) yeni surum yayimlayarak yayiliyor;
+#     birkac saatlik bir surum saldirinin kendisi olabilir. Yalniz en az 7 gunluk surum onerilir.
+#     (Guvenlik guncellemeleri bu beklemeye tabi degildir; depo ayarindan ayrica acilir.)
+#   - Kucuk / yama guncellemeleri gruplanir (calisma zamani ve gelistirme ayri PR); BUYUK surumler
+#     tek tek gelir: her biri degisiklik notu ve testle ayrica degerlendirilir.
+#   - @types/node calisma zamaniyla (Node 22) ayni ana surumde tutulur.
+#   - Birlestirmeden once: npm test, npx vitest run, npx tsc --noEmit, npm run lint, npm run build.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Istanbul
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 6
+    labels:
+      - bagimlilik
+    groups:
+      calisma-zamani-kucuk:
+        dependency-type: production
+        update-types: [minor, patch]
+      gelistirme-kucuk:
+        dependency-type: development
+        update-types: [minor, patch]
+    ignore:
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]

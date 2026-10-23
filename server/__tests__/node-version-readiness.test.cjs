@@ -9,7 +9,8 @@
 //   calisan bir veritabani surucusu var.
 //
 // Bu bekci iki seyi kilitler: (1) on kontrol bu ayrimi OLCUYOR (liste kodda gomulu
-// DEGIL), (2) `engines` bilerek 20'de kaliyor — prod bugun kirilmasin diye.
+// DEGIL), (2) `engines` Node guvenlik tabaninda (2026-10-23: prod 22.23.4'e gecti; 20 destek
+// disi ve yamasiz, kullanici "her seyi en guncele getir" dedi).
 'use strict';
 
 const { test } = require('node:test');
@@ -21,13 +22,19 @@ const { execFileSync } = require('node:child_process');
 const ROOT = path.join(__dirname, '..', '..');
 const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
 
-test('NV1 `engines` BILEREK 20`de — prod bugun kirilmiyor', () => {
+test('NV1 `engines` Node guvenlik tabaninda (acilis uyarisiyla ayni taban)', () => {
+  // 2026-10-23: prod Node 22.23.4'e gecti; Node 20 Nisan 2026'da destek disi kaldi ve Ekim
+  // 2026 guvenlik yamasini almadi. Calisma zamani paketleri (tedious, ldapts 9) zaten Node 22
+  // istiyor. `engines` alt siniri, acilista `[Guvenlik]` uyarisi veren tabanla
+  // (server/node-guvenlik.cjs YAMALI[22]) AYNI olmali: biri yukselir de digeri kalirsa ikisi
+  // farkli seyler soyler.
   const pkg = JSON.parse(read('package.json'));
   const range = pkg.engines && pkg.engines.node;
   assert.ok(range, 'engines.node yok');
-  // 22 dayatmak, prod Node 20'deyken `npm ci`yi kendi paketimizde de uyariya
-  // sokar ve gecisi ZORUNLU kilar. Gecis kullanicinin karari.
-  assert.match(range, /20/, `engines 20'yi kapsamiyor: ${range} — prod Node 20.20.2`);
+  const m = /^>=(\d+)\.(\d+)\.(\d+)$/.exec(range);
+  assert.ok(m, `engines bicimi >=X.Y.Z degil: ${range}`);
+  const { YAMALI } = require('../node-guvenlik.cjs');
+  assert.deepEqual(m.slice(1).map(Number), YAMALI[22], `engines (${range}) guvenlik tabanindan (${YAMALI[22].join('.')}) farkli`);
 });
 
 test('NV2 on kontrol uyumsuzlugu OLCUYOR (liste gomulu degil)', () => {
