@@ -513,6 +513,26 @@ export interface ScaleXScope {
   apps?: string[];
 }
 
+/**
+ * YOKLAMA UÇLARI İÇİN AYRIŞTIRICI (2026-10-23). Sunucu ScaleX'in 403 / 404 redlerini
+ * 409'a çeviriyor (kurumsal nginx 403 / 404 gövdesini HTML sayfasıyla değiştiriyordu);
+ * asıl kod `upstreamStatus`ta gelir. Yoklama döngüleri bu reddi eskiden ancak gövde HTML
+ * olduğu için FIRLATILAN hatadan anlıyordu; düz bir `{ ok: false }` gövdesi `finished`
+ * taşımadığından döngüyü sonsuza dek döndürürdü. Burada 4xx red FIRLATILIR ve hatanın
+ * `status`u ASIL koddur (403 / 404 / 401): "yetki hatasında dur" mantığı aynen çalışır.
+ * 5xx ve ağ geçidi durumları `safeJson`ın bugünkü davranışında kalır (geçici, yeniden denenir).
+ */
+export async function durumJson(res: Response): Promise<any> {
+  const body = await safeJson(res);
+  if (!res.ok && res.status < 500 && body && typeof body === 'object' && body.ok === false) {
+    throw Object.assign(new Error(body.message || `HTTP ${res.status}`), {
+      status: Number(body.upstreamStatus) || res.status,
+      code: body.code,
+    });
+  }
+  return body;
+}
+
 async function post<T>(path: string, body: unknown): Promise<T> {
   const r = await fetch(`${BASE}${path}`, {
     method: 'POST',
@@ -572,7 +592,7 @@ export const scalexApi = {
 
   async discoverNamespacesStatus(serverId: number, jobId: number, env: string, tenant: string) {
     const q = new URLSearchParams({ env, tenant });
-    return safeJson(
+    return durumJson(
       await fetch(`${BASE}/namespaces/discover/${serverId}/${jobId}/status?${q}`),
     ) as Promise<{
       ok: boolean;
@@ -586,7 +606,7 @@ export const scalexApi = {
   },
 
   async discoverStatus(serverId: number, jobId: number) {
-    return safeJson(await fetch(`${BASE}/discover/${serverId}/${jobId}/status`)) as Promise<{
+    return durumJson(await fetch(`${BASE}/discover/${serverId}/${jobId}/status`)) as Promise<{
       ok: boolean;
       status: string;
       finished: boolean;
@@ -705,7 +725,7 @@ export const scalexApi = {
    */
   async runStatus(serverId: number, jobId: number, secenek: { tamCikti?: boolean } = {}) {
     const ek = secenek.tamCikti ? '?cikti=tam' : '';
-    return safeJson(await fetch(`${BASE}/run/${serverId}/${jobId}/status${ek}`)) as Promise<{
+    return durumJson(await fetch(`${BASE}/run/${serverId}/${jobId}/status${ek}`)) as Promise<{
       ok: boolean;
       status: string;
       finished: boolean;

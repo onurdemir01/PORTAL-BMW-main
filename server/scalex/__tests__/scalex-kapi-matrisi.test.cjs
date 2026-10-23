@@ -103,6 +103,16 @@ function kur(s) {
 const etiket = (s) =>
   `${s.env}/${s.action}/${s.mode} kip=${s.kip} smart=${s.smart} kim=${s.kim} oco=${s.oco} eylem=${s.eylem}`;
 
+// NGINX'IN YAKALADIGI RED (2026-10-23): ScaleX 403 / 404 redlerini 409'a cevirir; asil kod
+// `upstreamStatus`ta, tur `code`da, mesaj aynen govdede (bkz. index.cjs nginxRedCevirici).
+function nginxeUlasmayanRed(r, asil, ad = '') {
+  assert.equal(r.status, 409, `${ad}: ${r.status} ${r.metin}`);
+  assert.equal(r.json?.ok, false, ad);
+  assert.equal(r.json.upstreamStatus, asil, ad);
+  assert.equal(r.json.code, asil === 403 ? 'scalex_forbidden' : 'scalex_not_found', ad);
+  assert.ok(String(r.json.message || '').trim(), `${ad}: red mesaji bos`);
+}
+
 function* hucreler() {
   const KIP = ['varsayilan', 'oco_only'];
   const SMART = ['yok', 'hazir', 'akissiz', 'baglantisiz'];
@@ -949,7 +959,7 @@ test('KM15 zamanlama iptali / suresi gecmesi: islem satirlari KAPANIR, yaniltici
   id = await zamanla();
   sim.ayar.kullanici = sim.KULLANICILAR.bora;
   r = await iptal(id);
-  assert.equal(r.status, 403);
+  nginxeUlasmayanRed(r, 403, 'baska ekibin kaydi');
   assert.equal(sim.ocoKaydi(id).status, 'SCHEDULED');
   assert.equal(sim.denetimde('scalex_oco_schedule_forbidden').length, 1);
 
@@ -1062,7 +1072,7 @@ test('KM16 toplu geri alma tekil geri alma ile AYNI kapidan gecer', async (t) =>
 test('KM17 admin durum karti: yalniz Admin; kip, eksikler, bilet onizlemesi, siradan kullanicinin karari', async (t) => {
   sim.konsoluSustur(t);
   const kart = () => sim.istek('GET', '/api/scalex/admin/gate-status');
-  assert.equal((await kart()).status, 403, 'siradan kullanici onay ayarlarini okudu');
+  nginxeUlasmayanRed(await kart(), 403, 'siradan kullanici onay ayarlarini okudu');
 
   sim.ayar.kullanici = sim.KULLANICILAR.yonetici;
   let r = await kart();
@@ -1121,7 +1131,7 @@ test('KM18 SMART kurali anahtari: yalniz Admin, yalniz iki deger, ANINDA gecerli
   const yaz = (mode) => sim.istek('PUT', '/api/scalex/admin/smart-mode', { mode });
 
   // Siradan kullanici kapiyi indiremez.
-  assert.equal((await yaz('oco_only')).status, 403);
+  nginxeUlasmayanRed(await yaz('oco_only'), 403, 'siradan kullanici kapiyi indirdi');
   assert.equal(sim.kayit.ayarYazimlari.length, 0);
   assert.equal(
     (await sim.calistir({ ocoNumber: OCO_NO })).status,
@@ -1603,9 +1613,9 @@ test('KM22 zamanlanmis islemler listesi: her rolde DIZI; Admin herkesinkini, kul
   // Baska modulun kaydi ScaleX'ten iptal edilemez / guncellenemez (varligi da soylenmez).
   sim.ayar.kullanici = sim.KULLANICILAR.ayse;
   const ssIptal = await sim.istek('POST', '/api/scalex/oco-schedules/99001/cancel', {});
-  assert.equal(ssIptal.status, 404, ssIptal.metin);
+  nginxeUlasmayanRed(ssIptal, 404, 'baska modulun kaydi iptal');
   const ssGuncel = await sim.istek('POST', '/api/scalex/oco-schedules/99001/update', { ocoNumber: '7654321' });
-  assert.equal(ssGuncel.status, 404, ssGuncel.metin);
+  nginxeUlasmayanRed(ssGuncel, 404, 'baska modulun kaydi guncelleme');
   assert.equal(sim.ocoKaydi(99001).status, 'SCHEDULED');
   // ScaleX kaydinin iptal yaniti da ham paketi tasimaz.
   const iptal = await sim.istek('POST', `/api/scalex/oco-schedules/${z.json.scheduleId}/cancel`, {});
@@ -2105,4 +2115,42 @@ test('KM30 admin kartinin kural kutusu = onizleme ve calistirma karari; ayar deg
   const kapali = kartlar['kip=varsayilan smart=hazir oco=kapali'];
   assert.deepEqual([kapali.geriAl.oco, kapali.geriAl.gerekceZorunlu], ['skip', false], 'OCO kapaliyken Geri Al karti degismedi');
   assert.equal(kartlar['kip=oco_only smart=hazir oco=varsayilan'].geriAl.smart, 'skip', 'yalniz OCO kipi Geri Al kartina yansimadi');
+});
+
+// ── KM31 NGINX'IN YAKALADIGI REDLER EKRANA ULASIR ─────────────────────────────────
+// Kurumsal nginx 403 / 404 govdesini HTML sayfasiyla degistiriyordu: yetkisi olmayan
+// namespace'te kullanici "Sunucu beklenmeyen bir yanit dondu (HTTP 403) [<!doctype html>"
+// goruyordu. Olcut: red 409 + asil kod + ASIL MESAJ; is baslamaz; 401 degismez.
+test('KM31 yetki / sahiplik reddi 409 + asil kodla ekrana ulasir; is baslamaz, deneme izlenir; 401 degismez', async (t) => {
+  sim.konsoluSustur(t);
+  const once = sim.baslatmalar().length;
+  for (const [ad, r] of [
+    ['onizleme', await sim.onizle({ env: 'test', namespace: 'yasak-ns' })],
+    ['calistirma', await sim.calistir({ env: 'test', namespace: 'yasak-ns' })],
+    [
+      'kesif',
+      await sim.istek('POST', '/api/scalex/discover', {
+        env: 'test', tenant: 't1', namespace: 'yasak-ns', clusters: ['c1'], apps: ['api'],
+      }),
+    ],
+  ]) {
+    nginxeUlasmayanRed(r, 403, ad);
+    assert.match(r.json.message, /yasak-ns/, `${ad}: asil neden kayboldu`);
+  }
+  assert.equal(sim.baslatmalar().length, once, 'reddedilen istek AWX isi baslatti');
+
+  // Baskasinin isi: durum sorgusu ve iptal reddedilir, deneme denetime yazilir.
+  sim.sifirla();
+  const is = await sim.calistir({ env: 'test' });
+  assert.equal(is.status, 200, is.metin);
+  const { serverId, jobId } = is.json;
+  sim.ayar.kullanici = sim.KULLANICILAR.bora;
+  nginxeUlasmayanRed(await sim.istek('GET', `/api/scalex/run/${serverId}/${jobId}/status`), 403, 'baskasinin isinin durumu');
+  nginxeUlasmayanRed(await sim.istek('POST', `/api/scalex/cancel/${serverId}/${jobId}`, {}), 403, 'baskasinin isini iptal');
+  assert.equal(sim.denetimde('scalex_access_denied').length, 2, 'yetkisiz deneme izlenmedi');
+  assert.equal(sim.iptaller().length, 0, 'baskasinin isi iptal edildi');
+
+  // Oturum yok: 401 DEGISMEZ (istemcinin oturum bekcisi 401'e bakar).
+  sim.ayar.kullanici = null;
+  assert.equal((await sim.istek('GET', `/api/scalex/run/${serverId}/${jobId}/status`)).status, 401);
 });
