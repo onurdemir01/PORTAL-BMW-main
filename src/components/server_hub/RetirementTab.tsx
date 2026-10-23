@@ -13,7 +13,7 @@ import { TableEmptyRow } from '@/components/common/EmptyState';
 import { fmtDate, fmtDateTime } from '@/utils/datetime';
 import RetirementAkis from './RetirementAkis';
 import RetirementDnsIp from './RetirementDnsIp';
-import RetirementCanli, { hedefTazelenmeli } from './RetirementCanli';
+import RetirementCanli, { hedefTazelenmeli, orphanUzlastirilabilir } from './RetirementCanli';
 import { BOS_FILTRE, kayitFiltrele, type KayitFiltre } from './retirementFiltre';
 
 /** Vhost'un nasil bulundugu (2026-10-12): AJP/proxy hedefiyle bulunanlar etiketlenir. */
@@ -754,6 +754,8 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
   // HEDEFI KAYITTAN CIKAR (2026-10-13): istem disi kayda giren (ornegin JBoss 8) ve henuz dokunulmamis hedef.
   const [cikarSor, setCikarSor] = useState<RtTarget | null>(null);
   const [cikarNeden, setCikarNeden] = useState('');
+  const [uzlastir, setUzlastir] = useState<RtTarget | null>(null);
+  const [uzlastirJob, setUzlastirJob] = useState('');
   const cikarilabilir = (t: RtTarget) => ['pending', 'planned', 'failed', 'stop_scheduled', 'active'].includes(t.status) && !(t.status === 'failed' && (t.webSonuc || []).some((w) => w.status === 'ok'));
   const hedefCikar = async () => {
     if (!cikarSor) return;
@@ -1056,7 +1058,11 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
     setBusy(t.id);
     try {
       const r = await retirementApi.refreshStatus(id, t.id);
-      if (!r.ok) { toast.error(r.message || 'Durum tazelenemedi.'); return; }
+      if (!r.ok) {
+        if (r.jobMissing && orphanUzlastirilabilir(t)) { setUzlastir(t); setUzlastirJob(''); }
+        else toast.error(r.message || 'Durum tazelenemedi.');
+        return;
+      }
       if (r.degisti) {
         toast.success(`${t.appName} @ ${t.host}: ${r.from} → ${r.to}`);
         if (r.record) setRec(r.record); else await load();
@@ -1064,6 +1070,20 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
         toast.success(r.message || 'Durum değişmedi.');
       }
     } catch (e: unknown) { toast.error(e instanceof Error ? e.message : String(e)); } finally { setBusy(null); }
+  };
+  const jobUzlastir = async () => {
+    if (!uzlastir) return;
+    const jobId = Number(uzlastirJob);
+    if (!Number.isInteger(jobId) || jobId <= 0) { toast.error('Geçerli bir AWX job ID girin.'); return; }
+    setBusy(uzlastir.id);
+    try {
+      const r = await retirementApi.reconcileJob(id, uzlastir.id, jobId);
+      if (!r.ok) { toast.error(r.message || 'AWX işi uzlaştırılamadı.'); return; }
+      if (r.record) setRec(r.record); else await load();
+      toast.success(r.message || `AWX işi #${jobId} hedefe bağlandı.`);
+      setUzlastir(null); setUzlastirJob('');
+    } catch (e: unknown) { toast.error(e instanceof Error ? e.message : String(e)); }
+    finally { setBusy(null); }
   };
   const cancel = async (geriAlDa: boolean) => {
     setIptalSor(false);
@@ -1131,6 +1151,19 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
   return (
     <Modal open onClose={onClose} title={rec ? `Retirement #${rec.id} — ${rec.app}` : `Retirement #${id}`} subtitle={rec ? `Smart ${rec.smartNo}${rec.ocoNo ? ` · OCO ${rec.ocoNo}` : ''} · açan ${rec.requestedBy} · ${fmtDateTime(rec.createdAt)}` : undefined} icon={TrashIcon} size="wide"
       footer={<div className="flex items-center gap-2 w-full">{rec && rec.status !== 'cancelled' && rec.status !== 'deleted' && <button onClick={() => setIptalSor(true)} className={SM_BTN} style={{ ...smBtn(), color: 'var(--status-danger)', borderColor: 'var(--status-danger)' }}><XMarkIcon className="w-3.5 h-3.5" /> Kaydı iptal et</button>}<span className="ml-auto" /><button onClick={onClose} className={SM_BTN} style={smBtn()}>Kapat</button></div>}>
+      <Modal open={!!uzlastir} onClose={() => { setUzlastir(null); setUzlastirJob(''); }} title="Mevcut AWX işini uzlaştır" size="sm"
+        footer={<div className="flex justify-end gap-2"><button onClick={() => { setUzlastir(null); setUzlastirJob(''); }} className={SM_BTN} style={smBtn()}>İptal</button><button disabled={busy != null} onClick={jobUzlastir} className={`${SM_BTN} disabled:opacity-50`} style={smBtn(true)}>Doğrula ve bağla</button></div>}>
+        <div className="space-y-3 text-[12px]" style={{ color: 'var(--text-secondary)' }}>
+          <div role="alert" className="rounded-lg border px-3 py-2" style={{ borderColor: 'var(--status-warning)', background: 'var(--status-warning-bg)' }}>
+            Portal job ID’yi kaydedemediği için işin başlayıp başlamadığı bilinmiyor. Bu işlem <b>yeni STOP/DELETE başlatmaz</b>. Yalnız Portal iş geçmişi ve AWX metadata’sı server, template, eylem, hedef ve launch zamanında tam eşleşirse mevcut job ID bağlanır.
+          </div>
+          <div><b>{uzlastir?.appName}</b> @ <span className="font-mono">{uzlastir?.host}</span> · {uzlastir?.status === 'deleting' ? 'DELETE' : 'STOP'}</div>
+          <label className="block font-semibold">AWX job ID
+            <input type="number" min={1} value={uzlastirJob} onChange={(e) => setUzlastirJob(e.target.value)} className={`${INPUT} mt-1 font-mono`} style={inputStyle} autoFocus />
+          </label>
+          <p>AWX iş geçmişindeki numarayı girin. Kanıtlardan biri eksik veya çelişkiliyse claim değişmeden kalır.</p>
+        </div>
+      </Modal>
       {err && <div className="text-sm rounded-xl px-3 py-2 border" style={{ color: 'var(--status-danger)', background: 'var(--status-danger-bg)', borderColor: 'var(--status-danger)' }}>{err}</div>}
       {rec && (
         <div className="space-y-3">

@@ -1013,6 +1013,78 @@ function initRetirement(app) {
     } catch (err) { res.status(500).json({ ok: false, message: err.message }); }
   });
 
+  // ORPHAN CLAIM UZLASTIRMA: AWX isi zaten baslamis olabilir; burada ASLA yeni is
+  // baslatilmaz. Operatorun verdigi job ID ancak Portal launch history + AWX metadata
+  // ayni server/template/eylem/hedef/zamani kanitlarsa bos claim'e baglanir.
+  router.post('/:id/targets/:tid/reconcile-job', async (req, res) => {
+    const id = Number(req.params.id); const tid = Number(req.params.tid); const jobId = Number(req.body?.jobId);
+    if (!Number.isInteger(jobId) || jobId <= 0)
+      return res.status(400).json({ ok: false, message: 'Geçerli bir AWX job ID girin.' });
+    try {
+      const rec = await loadRecord(id);
+      if (!rec) return res.status(400).json({ ok: false, message: 'Kayıt yok.' });
+      const t = rec.targets.find((x) => x.id === tid);
+      if (!t) return res.status(400).json({ ok: false, message: 'Hedef yok.' });
+      const kind = t.status === 'stopping' ? 'stop' : t.status === 'deleting' ? 'delete' : null;
+      if (!kind) return res.status(409).json({ ok: false, message: `Hedef bu durumda uzlaştırılamaz (${t.status}).` });
+
+      const reg = require('../ansible/playbook-registry.cjs');
+      const key = kind === 'stop' ? REGISTRY_KEY : DELETE_REGISTRY_KEY;
+      const registry = await reg.getByKey(key).catch(() => null);
+      const templateId = registry && registry.enabled !== false ? reg.getEffectiveTemplateId(registry) : null;
+      const serverId = registry && registry.awxServerId != null ? Number(registry.awxServerId) : 0;
+      if (!templateId)
+        return res.status(409).json({ ok: false, message: `Playbook Kayıtları › ${key} etkin template bilgisi yok; job güvenle doğrulanamaz.` });
+      const expectedPlaybook = require('../ansible/template-preflight.cjs').BEKLENEN_PLAYBOOK[key];
+
+      const [historyResult, bindingResult, eventResult, job] = await Promise.all([
+        db().query(
+          `SELECT TOP 1 awx_server_id, template_id, template_name, job_id, started_at, params
+             FROM ansible_job_history WHERE job_id = $1 AND awx_server_id = $2 ORDER BY id DESC`,
+          [jobId, serverId],
+        ),
+        db().query(
+          `SELECT id, record_id, host, app_name, jboss_gen, app_path
+             FROM retirement_targets WHERE last_job_id = $1 OR delete_job_id = $1`,
+          [jobId],
+        ),
+        db().query(
+          `SELECT TOP 20 at, text FROM retirement_events
+             WHERE record_id = $1 AND kind = 'error' ORDER BY at DESC, id DESC`,
+          [id],
+        ),
+        require('../ansible/runner.cjs').getJobStatusOnServer(serverId, jobId),
+      ]);
+      const history = historyResult.rows?.[0] || null;
+      const karar = require('./orphan-recovery.cjs').validateRecovery({
+        kind, target: t, record: rec, history, job,
+        expectedServerId: serverId, expectedTemplateId: templateId, expectedPlaybook,
+        claimEvents: eventResult.rows || [],
+        existingBindings: bindingResult.rows || [],
+      });
+      if (!karar.ok) return res.status(409).json({ ok: false, message: karar.reason });
+
+      const yaz = await db().query(
+        `UPDATE retirement_targets SET ${karar.field} = $1, updated_at = GETUTCDATE()
+          WHERE id = $2 AND record_id = $3 AND status = $4 AND ${karar.field} IS NULL
+            AND NOT EXISTS (
+              SELECT 1 FROM retirement_targets WITH (UPDLOCK, HOLDLOCK)
+               WHERE id <> $2 AND (last_job_id = $1 OR delete_job_id = $1)
+                 AND ($5 = 'delete' OR record_id <> $3)
+            )`,
+        [karar.jobId, tid, id, karar.status, kind],
+      );
+      if (!yaz.rowCount)
+        return res.status(409).json({ ok: false, message: 'Hedef bu arada değişti; ekranı tazeleyip yeniden deneyin.' });
+      await addEvent(id, req.session?.user?.username, 'reconcile',
+        `${t.appName} @ ${t.host}: ${kind.toUpperCase()} orphan claim, doğrulanmış AWX işi #${jobId} ile uzlaştırıldı (server ${serverId}, template ${templateId}).`);
+      try { require('../audit/index.cjs').auditPortal(req, 'retirement_orphan_reconcile', { detail: JSON.stringify({ id, tid, kind, jobId, serverId, templateId }) }); } catch { /* best-effort */ }
+      res.json({ ok: true, jobId, jobStatus: job.status, message: `AWX işi #${jobId} hedefe bağlandı; sonucu mevcut poller güvenle sonlandıracak.`, record: await loadRecord(id) });
+    } catch (err) {
+      res.status(err.status || 502).json({ ok: false, message: `AWX işi doğrulanamadı: ${err.message}` });
+    }
+  });
+
   router.post('/:id/targets/:tid/refresh-status', async (req, res) => {
     const id = Number(req.params.id);
     const tid = Number(req.params.tid);
