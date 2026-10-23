@@ -45,6 +45,7 @@ echo "── [4/4] Ozet"
 cat <<EOF
   Sonraki adimlar (docs/DEPLOYMENT.md):
     1. Node 22.23.4+ (20.x EOL, CVE-2026-111497): dnf module reset -y nodejs && dnf module enable -y nodejs:22 && dnf install -y nodejs
+       (dnf yamali surumu getirmiyorsa root'suz: deploy/install-node.sh ile resmi ikili, docs/DEPLOYMENT.md)
     2. Zip'i kopyala:  cp PORTAL-BMW-main.zip $BASE_DIR/deploy/
     3. Surum yukle:    dzdo su - $APP_USER; cd $BASE_DIR; \\
                        app/PORTAL-BMW-main/deploy/release.sh prod

@@ -29,12 +29,16 @@ ZIP_FILE="$DEPLOY_DIR/PORTAL-BMW-main.zip"
 APP_ROOT="$APP_DIR/PORTAL-BMW-main"
 KEEP_BACKUPS=3
 KEEP_PREV=1
+# Portal'a ozel Node (deploy/install-node.sh) varsa npm ci / build de ONU kullanir (run.sh ile ayni kural).
+PORTAL_NODE_HOME="${PORTAL_NODE_HOME:-$BASE_DIR/runtime/node}"
+if [[ -x "$PORTAL_NODE_HOME/bin/node" ]]; then export PATH="$PORTAL_NODE_HOME/bin:$PATH"; fi
 
 ENV_NAME="${1:-}"
 case "$ENV_NAME" in dev|test|qa|prod) ;; *) echo "Kullanim: $0 <dev|test|qa|prod>" >&2; exit 2 ;; esac
 
 [[ -f "$ZIP_FILE" ]] || { echo "HATA: $ZIP_FILE yok — once zip'i deploy/ altina kopyalayin." >&2; exit 1; }
 command -v node >/dev/null || { echo "HATA: node bulunamadi." >&2; exit 1; }
+echo "[release] node: $(command -v node) $(node -v)"
 command -v unzip >/dev/null || { echo "HATA: unzip bulunamadi." >&2; exit 1; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

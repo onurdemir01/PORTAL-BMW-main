@@ -89,6 +89,30 @@ cp .env.example .env.prod && vi .env.prod
 `run.sh start` **node_modules ve dist eksikse otomatik `npm ci` + `npm run build` calistirir**
 — elle kurulum adimi gerekmez, tek komut yeterlidir ("bir kere calistir, calissin").
 
+## Node dnf'ten yamali gelmiyorsa (`install-node.sh`, 2026-10-23)
+
+`dnf upgrade nodejs` "Nothing to do" diyorsa sunucunun baktigi depo (kurumsal ayna / Satellite)
+yamali paketi henuz yayinlamamistir. Resmi nodejs.org ikilisi **RPM'e dokunmadan, root'suz**
+Portal'a ozel kurulur:
+
+```bash
+# was kullanicisiyla. Sunucu internete cikamiyorsa iki dosyayi baska makinede indirip kopyalayin.
+mkdir -p /vhosting8/bmw_portal/runtime/indirilen && cd /vhosting8/bmw_portal/runtime/indirilen
+curl -fLO https://nodejs.org/dist/v22.23.4/node-v22.23.4-linux-x64.tar.xz
+curl -fLO https://nodejs.org/dist/v22.23.4/SHASUMS256.txt
+bash /vhosting8/bmw_portal/app/PORTAL-BMW-main/deploy/install-node.sh node-v22.23.4-linux-x64.tar.xz
+/vhosting8/bmw_portal/app/PORTAL-BMW-main/deploy/run.sh prod restart   # acilista "node: .../runtime/node/bin/node v22.23.4" yazar
+```
+
+- Checksum tutmazsa betik **kurmaz**. Ikili bu sunucuda calismazsa (glibc/mimari) symlink'e baglanmaz.
+- `run.sh`, `release.sh`, `release-git.sh`, cron watchdog'u ve `bmw-portal@.service`
+  `<BASE_DIR>/runtime/node` varsa onu kullanir; yoksa eskisi gibi PATH'teki / `/usr/bin/node`.
+- Geri donus: `ln -sfn <onceki-surum-dizini> /vhosting8/bmw_portal/runtime/node` + restart.
+  RPM'e tam donus: `rm /vhosting8/bmw_portal/runtime/node` + restart.
+- **Bakim sizde**: dnf bu kopyayi guncellemez; sonraki Node guvenlik yayininda ayni iki komut yeni
+  surumle tekrarlanir. Tarayicilar (Tenable/Qualys) RPM'deki eski `nodejs`'i gormeye devam eder —
+  dnf yamali surumu getirince RPM guncellenip runtime/node kaldirilabilir.
+
 ## GitHub deposu private ise (`release-git.sh`, 2026-10-23)
 
 Depo herkese açıkken sunucu `https://github.com/onurdemir01/PORTAL-BMW-main.git` adresinden

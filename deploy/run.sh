@@ -39,6 +39,13 @@ ALL_ENVS=(dev test qa prod)
 LOG_ROTATE_MAX_BYTES=$((20 * 1024 * 1024)) # 20MB
 LOG_ROTATE_KEEP=3
 
+# ── Portal'a ozel Node (2026-10-23) ─────────────────────────────────────────────
+# dnf deposu yamali surumu getiremediginde resmi nodejs.org ikilisi <BASE_DIR>/runtime/node
+# altina kurulur (deploy/install-node.sh). Varsa PATH'te ONCE gelir — cron watchdog'u da bu
+# betikten gectigi icin ayni node'u kullanir. Yoksa davranis degismez (PATH'teki node).
+PORTAL_NODE_HOME="${PORTAL_NODE_HOME:-${PORTAL_BASE_DIR:-$(cd "$ROOT_DIR/../.." 2>/dev/null && pwd)}/runtime/node}"
+if [[ -x "$PORTAL_NODE_HOME/bin/node" ]]; then export PATH="$PORTAL_NODE_HOME/bin:$PATH"; fi
+
 usage() {
   echo "Kullanim: $0 <dev|test|qa|prod> [start|stop|restart|status|logs]" >&2
   exit 2
@@ -173,8 +180,9 @@ rotate_log_if_needed() {
 
 # ── Onkosul otomatik onarim: node_modules/dist eksikse kur/insa et ──────────────
 ensure_dependencies_and_build() {
-  command -v node >/dev/null 2>&1 || { echo "HATA: node bulunamadi (RHEL: dnf module enable nodejs:22 - en az 22.23.4)." >&2; exit 1; }
+  command -v node >/dev/null 2>&1 || { echo "HATA: node bulunamadi (en az 22.23.4: dnf module enable nodejs:22, ya da deploy/install-node.sh)." >&2; exit 1; }
   command -v npm  >/dev/null 2>&1 || { echo "HATA: npm bulunamadi." >&2; exit 1; }
+  echo "[$ENV_NAME] node: $(command -v node) $(node -v 2>/dev/null)"
 
   if [[ ! -d "$ROOT_DIR/node_modules" ]]; then
     echo "[$ENV_NAME] node_modules yok → npm ci calistiriliyor (ilk kurulum)…"

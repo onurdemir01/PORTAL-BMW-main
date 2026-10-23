@@ -32,12 +32,16 @@ REPO_URL="${PORTAL_REPO_URL:-https://github.com/onurdemir01/PORTAL-BMW-main.git}
 YETKI_IPUCU="Depo private ise: was kullanicisina salt-okunur deploy key (SSH) tanimlayin ve PORTAL_REPO_URL=git@github.com:onurdemir01/PORTAL-BMW-main.git verin; mevcut agacta: git -C <APP_ROOT> remote set-url origin <ayni adres>. Ayrinti: docs/DEPLOYMENT.md"
 KEEP_BACKUPS=3
 KEEP_PREV=1
+# Portal'a ozel Node (deploy/install-node.sh) varsa npm ci / build de ONU kullanir (run.sh ile ayni kural).
+PORTAL_NODE_HOME="${PORTAL_NODE_HOME:-$BASE_DIR/runtime/node}"
+if [[ -x "$PORTAL_NODE_HOME/bin/node" ]]; then export PATH="$PORTAL_NODE_HOME/bin:$PATH"; fi
 
 ENV_NAME="${1:-}"
 BRANCH="${2:-main}"
 case "$ENV_NAME" in dev|test|qa|prod) ;; *) echo "Kullanim: $0 <dev|test|qa|prod> [branch]" >&2; exit 2 ;; esac
 
 command -v node >/dev/null || { echo "HATA: node bulunamadi." >&2; exit 1; }
+echo "[release-git] node: $(command -v node) $(node -v)"
 command -v git >/dev/null || { echo "HATA: git bulunamadi." >&2; exit 1; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
