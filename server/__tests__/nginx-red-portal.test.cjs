@@ -4,8 +4,9 @@
 // govdesini HTML sayfasiyla degistiriyor; gercek `createApp` /api altindaki redleri cevirir.
 //
 //   NP1 /api altinda `ok:false` 403 / 404 -> 409 + asil kod; GET disi 503 -> 424; GET 503 kalir
-//   NP2 HARIC yollar (OpsX salt-okunur; retirement / server-hub / nginx-console / nginx-cis
-//       kapsam disi) eskisi gibi; onek siniri (`/opsxyz` haric DEGIL)
+//   NP2 HARIC yollar (retirement / server-hub / nginx-console / nginx-cis kapsam disi) eskisi
+//       gibi; onek siniri (`/retirementx` haric DEGIL)
+//   NP5 OpsX DAHIL (2026-10-23): 403 / 404 -> 409, eylemde 503 -> 424, GET 503 kalir
 //   NP3 modulun kendi cevirici katmani (ScaleX / LogX gibi) ONCELIKLI: cift cevrim yok
 //   NP4 /api disi yollara dokunulmaz
 'use strict';
@@ -31,6 +32,7 @@ async function kur() {
     '/api/nginx-console',
     '/api/nginx-cis',
     '/api/opsxyz',
+    '/api/retirementx',
   ]) {
     app.get(`${onek}/yasak`, red(403));
     app.get(`${onek}/yok`, red(404));
@@ -92,7 +94,6 @@ test('NP2 haric yollar eskisi gibi; onek siniri dogru', async (t) => {
   t.mock.method(console, 'warn', () => {});
   const istek = await kur();
   for (const onek of [
-    '/api/opsx',
     '/api/retirement',
     '/api/server-hub',
     '/api/nginx-console',
@@ -102,8 +103,25 @@ test('NP2 haric yollar eskisi gibi; onek siniri dogru', async (t) => {
     assert.equal((await istek('GET', `${onek}/yok`)).status, 404, `${onek} cevrildi`);
     assert.equal((await istek('POST', `${onek}/awx`)).status, 503, `${onek} cevrildi`);
   }
-  const r = await istek('GET', '/api/opsxyz/yasak');
-  assert.equal(r.status, 409, '/opsxyz haric tutuldu: onek siniri yanlis');
+  const r = await istek('GET', '/api/retirementx/yasak');
+  assert.equal(r.status, 409, '/retirementx haric tutuldu: onek siniri yanlis');
+});
+
+test('NP5 OpsX dahil: 403 / 404 -> 409, eylemde 503 -> 424, GET 503 kalir', async (t) => {
+  t.mock.method(console, 'warn', () => {});
+  const istek = await kur();
+  let r = await istek('GET', '/api/opsx/yasak');
+  assert.equal(r.status, 409);
+  assert.equal(r.json.code, 'portal_forbidden');
+  assert.equal(r.json.upstreamStatus, 403);
+  assert.equal(r.json.nginxRed, true);
+  r = await istek('GET', '/api/opsx/yok');
+  assert.equal(r.status, 409);
+  assert.equal(r.json.upstreamStatus, 404);
+  r = await istek('POST', '/api/opsx/awx');
+  assert.equal(r.status, 424);
+  assert.equal(r.json.upstreamStatus, 503);
+  assert.equal((await istek('GET', '/api/opsx/awx')).status, 503, 'OpsX yoklamasinin gecici hatasi cevrildi');
 });
 
 test('NP3 modulun kendi cevirici katmani oncelikli; cift cevrim yok', async (t) => {
