@@ -7,7 +7,10 @@
 //
 // Bu ara katman bir yonlendiricinin ILK katmani olarak baglanir ve `ok: false` tasiyan JSON
 // redlerini nginx'in dokunmadigi koda cevirir. Asil kod `upstreamStatus`ta, tur `code`da kalir
-// (cagiranin kendi `code`u varsa korunur); mesaj ve diger alanlar aynen.
+// (cagiranin kendi `code`u varsa korunur); mesaj ve diger alanlar aynen. `nginxRed: true`
+// isareti istemciye "bu yanit bugune dek HTML gelirdi" der: `src/api/http.ts` safeJson onu
+// uretimdeki BUGUNKU akisla ayni sekilde FIRLATIR (ekranlarin akisi degismez, yalniz mesaj
+// ve asil kod dogru gelir).
 //
 //   403 -> 409  `<onek>_forbidden`      (her yontem)
 //   404 -> 409  `<onek>_not_found`      (her yontem)
@@ -22,9 +25,12 @@
 
 const YAKALANAN_5XX = new Set([502, 503, 504]);
 
-function nginxRedCevirici({ onek, eylem5xx = false }) {
+// `haric`: baglandigi yola GORELI onekler (or. '/opsx'); bu yollar hic cevrilmez.
+function nginxRedCevirici({ onek, eylem5xx = false, haric = [] }) {
   const kodlar = { 403: `${onek}_forbidden`, 404: `${onek}_not_found` };
+  const haricMi = (yol) => haric.some((h) => yol === h || yol.startsWith(`${h}/`));
   return function nginxRedCeviriciMw(req, res, next) {
+    if (haric.length && haricMi(req.path)) return next();
     const asilJson = res.json.bind(res);
     res.json = (body) => {
       if (!body || typeof body !== 'object' || body.ok !== false) return asilJson(body);
@@ -45,7 +51,7 @@ function nginxRedCevirici({ onek, eylem5xx = false }) {
       }
       if (!yeni) return asilJson(body);
       res.status(yeni);
-      return asilJson({ ...body, code: body.code || kod, upstreamStatus: asil });
+      return asilJson({ ...body, code: body.code || kod, upstreamStatus: asil, nginxRed: true });
     };
     next();
   };

@@ -5,6 +5,7 @@
 //   NG1 403 / 404 `ok:false` -> 409 her yontemde; kod, asil durum, mesaj ve ayrinti
 //   NG2 eylem5xx: GET disi isteklerde 501 -> 409, 502 / 503 / 504 -> 424; GET'te 5xx KALIR
 //   NG3 dokunulmayanlar: 401, 500, eylem5xx kapaliyken 5xx, ok:false olmayan govde, metin
+//   NG4 `haric` onekleri (baglandigi yola goreli) hic cevrilmez; onek siniri tam
 'use strict';
 
 const { test } = require('node:test');
@@ -59,6 +60,7 @@ test('NG1 403 / 404 her yontemde 409; kod, asil durum, mesaj ve ayrinti korunur'
         ayrinti: { a: 1 },
         code: 'ornek_forbidden',
         upstreamStatus: 403,
+        nginxRed: true,
       });
       r = await u.istek(method, '/kod/404');
       assert.equal(r.status, 409, method);
@@ -119,5 +121,30 @@ test('NG3 401, 500, eylem5xx kapaliyken 5xx, ok:false olmayan ve metin govde DEG
   } finally {
     kapali.kapat();
     acik.kapat();
+  }
+});
+
+test('NG4 haric onekler cevrilmez; onek siniri tam', async () => {
+  const app = express();
+  app.use('/api', nginxRedCevirici({ onek: 'ornek', eylem5xx: true, haric: ['/opsx'] }));
+  for (const yol of ['/api/opsx/x', '/api/opsx', '/api/opsxyz/x', '/api/diger/x'])
+    app.post(yol, (req, res) => res.status(403).json({ ok: false, message: 'ret' }));
+  const s = await new Promise((r) => {
+    const x = app.listen(0, '127.0.0.1', () => r(x));
+  });
+  const url = `http://127.0.0.1:${s.address().port}`;
+  try {
+    for (const [yol, kod] of [
+      ['/api/opsx/x', 403],
+      ['/api/opsx', 403],
+      ['/api/opsxyz/x', 409],
+      ['/api/diger/x', 409],
+    ]) {
+      const r = await fetch(url + yol, { method: 'POST' });
+      assert.equal(r.status, kod, yol);
+    }
+  } finally {
+    s.closeAllConnections();
+    s.close();
   }
 });

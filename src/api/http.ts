@@ -49,6 +49,29 @@ export async function safeJson(res: Response): Promise<any> {
   // gerekir (polling dongusu 403'te durmali, 502'de yeniden denemeli).
   const body = await res.json();
   if (!res.ok && body && typeof body === 'object') {
+    // NGINX'İN YAKALADIĞI RET (2026-10-23). Sunucu `ok:false` 403 / 404'ü 409'a, eylemdeki
+    // 5xx'i 424'e çeviriyor ve asıl kodu `upstreamStatus`ta yazıyor (server/util/nginx-red.cjs):
+    // kurumsal nginx bu kodların gövdesini HTML sayfasıyla değiştiriyordu. Üretimde bu redler
+    // bugüne dek HTML geldiği için burada FIRLATILIYORDU ve ekranların akışı buna göre kuruldu. (Örneğin bir yoklama döngüsü
+    // reddi fırlatılan hatadan anlar; düz bir `{ ok:false }` gövdesi `finished` taşımadığı için
+    // onu sonsuza dek döndürürdü.) Akış AYNI kalır: ret yine fırlatılır. Değişen tek şey HTML
+    // önizlemesi yerine sunucunun mesajı ve hatanın `status`unun ASIL kod olmasıdır.
+    // `nginxRed`: ortak çevirici işareti; 5xx'ten çevrilmiş redde de (424 / 409) aynı kural.
+    // Bir modülün kendi çevirdiği ret (ScaleX `eylemRoute`: `scalex_not_configured`,
+    // `awx_unreachable`) işaretsizdir ve ekranı onu gövdeden okur: GÖVDE olarak döner.
+    const b0 = body as Record<string, unknown>;
+    const asil = Number(b0.upstreamStatus);
+    if (b0.nginxRed === true && asil >= 400) {
+      const b = b0;
+      const mesaj =
+        (typeof b.message === 'string' && b.message.trim()) ||
+        (typeof b.error === 'string' && b.error.trim()) ||
+        `İstek reddedildi (HTTP ${asil}).`;
+      throw Object.assign(new Error(mesaj), {
+        status: asil,
+        ...(typeof b.code === 'string' ? { code: b.code } : {}),
+      });
+    }
     return Object.assign(body, { _httpStatus: res.status });
   }
   return body;
@@ -81,7 +104,8 @@ export async function okJson<T = any>(res: Response): Promise<T> {
       (typeof b.error === 'string' && b.error.trim()) ||
       `Sunucu hatası (HTTP ${res.status}).`;
     throw Object.assign(new Error(mesaj), {
-      status: res.status,
+      // 5xx'ten çevrilmiş redde (409 / 424) asıl kod `upstreamStatus`ta.
+      status: Number(b.upstreamStatus) || res.status,
       ...(typeof b.code === 'string' ? { code: b.code } : {}),
     }) as ApiError;
   }
