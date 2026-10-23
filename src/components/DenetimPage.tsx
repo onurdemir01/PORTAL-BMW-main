@@ -962,10 +962,13 @@ function OcpCoverage() {
     setLoading(true);
     try {
       const r = await denetimApi.ocpCoverage(p);
-      if (r.ok) {
+      // BİÇİM DENETİMİ (2026-10-23): `ok: true` ama listeler yoksa sayfa çökmesin, okunamadı desin.
+      const bicimTamam = Array.isArray(r.rows) && Array.isArray(r.clusters) && Array.isArray(r.patterns);
+      if (r.ok && bicimTamam) {
         setData(r);
         setErr('');
-      } else setErr(r.message || 'Veri alınamadı.');
+      } else if (r.ok) setErr('Veri okunamadı: sunucu yanıtında beklenen alanlar yok.');
+      else setErr(r.message || 'Veri alınamadı.');
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {

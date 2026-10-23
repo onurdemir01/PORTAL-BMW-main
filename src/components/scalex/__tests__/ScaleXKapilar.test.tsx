@@ -1074,3 +1074,15 @@ describe('geliştirme kipinde (StrictMode) adımlar yanıtı işler', () => {
     expect(api.apps).toHaveBeenCalledTimes(2);
   });
 });
+
+// BİÇİM DENETİMİ (2026-10-23): gerçek tarayıcı taraması "ok:true ama alan yok" yanıtında
+// Admin › ScaleX sekmesinin ÇÖKTÜĞÜNÜ buldu (`policy.smartStatus`). Kart artık okunamadı der.
+describe('admin durum kartı — yarım yanıt', () => {
+  it('ok:true ama policy / smart yok: kart çökmez, okunamadı yazılır; "eksik" denmez', async () => {
+    api.gateStatus.mockResolvedValue({ ok: true });
+    render(<ScaleXKapiDurumu />);
+    expect(await screen.findByText('Onay kapılarının durumu okunamadı')).toBeInTheDocument();
+    expect(screen.getByText(/beklenen alanlar yok/)).toBeInTheDocument();
+    expect(screen.queryByText(/— eksik/)).not.toBeInTheDocument();
+  });
+});
