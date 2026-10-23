@@ -127,6 +127,8 @@ test('TL3 yalniz nginx -T de olan location listede; kaynak, hedef ve sinif dogru
       T('GBRVPP08', VH, '/consent-mng/', 'proxy', 'consent-ups'),
       // baska dosyadan include edilen parca: vhost server blogunun dosyasindan
       T('GBRVPP07', '/usr/nginx/conf.d/parcalar/transfer.conf', '/domestic-trf/', 'proxy', 'domestic-trf-svc', VH),
+      // Root conf.d include parcasi da dosya gibi gorunur; servis gercek server blogundan gelmeli.
+      T('GBRVPP07', '/usr/nginx/conf.d/cors.conf', '/root-fragment/', 'static', '', VH),
       T('GBRVPP07', VH, '= /robots.txt', 'static'),
       T('GBRVPP07', VH, '/eski/', 'return'),
       // config'in bildigi location: sinif degismez, yalniz kaynak eklenir
@@ -151,13 +153,15 @@ test('TL3 yalniz nginx -T de olan location listede; kaynak, hedef ve sinif dogru
   const d = by['/domestic-trf/'];
   assert.ok(d, 'baska dosyadan include edilen /domestic-trf/ listede yok');
   assert.equal(d.service, 'GLOMO');
+  assert.equal(by['/root-fragment/'].service, 'GLOMO');
+  assert.equal(g.locations.some((l) => l.service === 'CORS'), false);
   assert.deepEqual(by['= /robots.txt'].siniflar, ['statik']);
   assert.deepEqual(by['/eski/'].siniflar, ['yonlendirme']);
   assert.deepEqual(by['/inc/'].siniflar, ['include'], 'nginx -T config in bildigi location a sinif eklememeli');
   assert.deepEqual(by['/inc/'].kaynaklar, ['config', 'nginx-T']);
   assert.deepEqual(by['/bilinen/'].kaynaklar, ['config']);
   for (const yok of ['/nginx_status', '/ic/', '/open-x/']) assert.equal(by[yok], undefined, yok + ' listeye girmemeli');
-  assert.equal(g.totals.locations.total, 6);
+  assert.equal(g.totals.locations.total, 7);
   assert.ok(g.locations.every((l) => l.eskide === true));
 });
 
@@ -215,4 +219,53 @@ test('TL6 loadMigration nginx -T satirlarini eski + yeni sunucular icin okur', a
   assert.match(q.t, /s\.seq = l\.srv_seq/);
   const hosts = q.params.map((p) => p.value);
   assert.ok(hosts.includes('GBRVPP07') && hosts.includes(glomo.newHosts[0]), 'eski ve yeni sunucular sorguda olmali');
+});
+
+test('TL7 bos ama basarili nginx -T detail sorgusu kaynak hazir sayilir', async () => {
+  const query = async (text) => {
+    const t = String(text);
+    const rs = (recordset) => ({ recordset });
+    if (t.includes('MAX(scan_date), 23) AS d')) return rs([{ d: '2026-10-18' }]);
+    return rs([]);
+  };
+  const sql = new Proxy({}, { get: () => () => 'tip' });
+  const r = await loadMigration({ query, sql, hasProxyColumns: async () => true });
+  assert.equal(r.auditReady, true, 'bos sonuc sorgu hatasi sayildi');
+});
+
+test('TL8 nginx -T tarihi varken detail sorgusu duserse kaynak hazir sayilmaz', async () => {
+  const query = async (text) => {
+    const t = String(text);
+    const rs = (recordset) => ({ recordset });
+    if (t.includes('MAX(scan_date), 23) AS d')) return rs([{ d: '2026-10-18' }]);
+    if (t.includes('FROM dbo.Nginx_Audit_Locations l')) throw new Error('ETIMEOUT');
+    return rs([]);
+  };
+  const sql = new Proxy({}, { get: () => () => 'tip' });
+  const r = await loadMigration({ query, sql, hasProxyColumns: async () => true });
+  assert.equal(r.auditScanDate, '2026-10-18', 'tarih sorgusu basarili kaniti korunmali');
+  assert.equal(r.auditReady, false, 'detail hatasi bos ama basarili sonuc gibi sunuldu');
+});
+
+test('TL9 config proxy kolonlari yoksa bagimsiz nginx -T kaynagi yine okunur', async () => {
+  let auditCalls = 0;
+  const query = async (text) => {
+    const t = String(text);
+    const rs = (recordset) => ({ recordset });
+    if (t.includes('MAX(scan_date), 23) AS d')) return rs([{ d: '2026-10-18' }]);
+    if (t.includes('FROM dbo.Nginx_Audit_Locations l')) {
+      auditCalls++;
+      return rs([T('GBRVPP07', VH, '/audit-only/', 'static')]);
+    }
+    return rs([]);
+  };
+  const sql = new Proxy({}, { get: () => () => 'tip' });
+  const r = await loadMigration({ query, sql, hasProxyColumns: async () => false });
+  assert.equal(r.proxyReady, false);
+  assert.equal(r.auditReady, true);
+  assert.equal(auditCalls, 1, 'nginx-T detail sorgusu erken donusle atlandi');
+  assert.ok(
+    r.groups.find((g) => g.id === 'glomo').locations.some((l) => l.location === '/audit-only/'),
+    'bagimsiz nginx-T location kayboldu',
+  );
 });

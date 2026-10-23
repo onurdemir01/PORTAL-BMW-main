@@ -229,9 +229,12 @@ const SELECT =
 export function TumLocationlar({
   g,
   kaynakTarihleri,
+  nginxTHazir,
 }: {
   g: NginxMigrationGroup;
   kaynakTarihleri?: { config: string | null; nginxT: string | null };
+  /** Satir sayisindan bagimsiz nginx -T detail sorgusu basari durumu. */
+  nginxTHazir?: boolean;
 }) {
   const list = useMemo(() => g.locations || [], [g]);
   const [durum, setDurum] = useState<LocDurumSuzgec>('eksik');
@@ -245,7 +248,9 @@ export function TumLocationlar({
   const oz = useMemo(() => tumLocOzeti(list), [list]);
   if (!g.locations) return null;
   const baslikId = `tum-loc-${g.id}`;
-  const nginxTYok = kaynakTarihleri && !kaynakTarihleri.nginxT;
+  const nginxTYok =
+    nginxTHazir === false ||
+    (nginxTHazir == null && !!kaynakTarihleri && !kaynakTarihleri.nginxT);
   return (
     <section
       aria-labelledby={baslikId}
@@ -500,8 +505,8 @@ export function TumLocationlar({
         </div>
         {nginxTYok && (
           <div style={{ color: 'var(--status-warning-text)' }}>
-            nginx -T taraması okunamadı (nginx_audit tablosu yok ya da iş hiç koşmadı): liste yalnız
-            config taramasından; içinde iç içe blok olan location'lar eksik olabilir.
+            nginx -T taraması okunamadı (tablo/sonuç sorgusu okunamadı ya da iş hiç koşmadı): liste
+            yalnız config taramasından; içinde iç içe blok olan location'lar eksik olabilir.
           </div>
         )}
       </div>

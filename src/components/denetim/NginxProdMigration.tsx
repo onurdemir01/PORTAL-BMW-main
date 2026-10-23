@@ -780,6 +780,7 @@ export default function NginxProdMigration() {
             sortBy={sortBy}
             ownersReady={data.ownersReady !== false}
             kaynakTarihleri={{ config: data.proxyScanDate, nginxT: data.auditScanDate ?? null }}
+            nginxTHazir={data.auditReady === true}
             canCreate={configured}
             onCreate={(app) => setPending({ group: g, app, pathIdx: 0 })}
             pathJobs={pathJobs}
@@ -2027,9 +2028,11 @@ function GroupPanel({
   silmeKapali,
   onDelete,
   kaynakTarihleri,
+  nginxTHazir,
 }: {
   g: NginxMigrationGroup;
   kaynakTarihleri?: { config: string | null; nginxT: string | null };
+  nginxTHazir?: boolean;
   onlyProblem: boolean;
   q: string;
   sortBy: 'status' | 'team' | 'app' | 'plan' | 'load';
@@ -2168,7 +2171,7 @@ function GroupPanel({
     >
       <div className="p-3 space-y-3">
         <LocationProgress g={g} />
-        <TumLocationlar g={g} kaynakTarihleri={kaynakTarihleri} />
+        <TumLocationlar g={g} kaynakTarihleri={kaynakTarihleri} nginxTHazir={nginxTHazir} />
         <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
           <StatTile
             label="uygulama"
