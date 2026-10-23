@@ -260,9 +260,12 @@ Asil kod `upstreamStatus`ta, tur `code`da (`portal_forbidden`, `scalex_not_found
 firlatir (mesaj ve asil kodla). 401, 500 ve GET'teki 5xx degismez. Baglanti: tum `/api`
 (`server/service.cjs`, onek `portal`); ScaleX ve LogX kendi oneklerini kullanir.
 
-**Haric:** `/api/opsx` (OpsX bu depoda salt-okunur), `/api/retirement`, `/api/server-hub`,
-`/api/nginx-console`, `/api/nginx-cis` (bu calismanin kapsami disi). Bu yollar eskisi gibi
-403 / 404 / 5xx doner. Acmak icin `service.cjs`teki `haric` listesinden cikarilir; once o modulun
+**OpsX dahil (2026-10-23):** OpsX kodu bu depoda salt-okunur, ama ekraninin butun cagrilari
+`safeJson`dan gecer ve hata koduna bakan ozel bir kontrolu yok; isaretli ret uretimdeki gibi
+firlatilir.
+
+**Haric:** `/api/retirement`, `/api/server-hub`, `/api/nginx-console`, `/api/nginx-cis` (bu
+calismanin kapsami disi). Bu yollar eskisi gibi 403 / 404 / 5xx doner. Acmak icin `service.cjs`teki `haric` listesinden cikarilir; once o modulun
 ekraninin 403 / 404 / 5xx'e bagli davranisi kontrol edilmeli.
 
 Tarayicida dogrulama: ag sekmesinde ret `409` / `424` gorunur, govdede `upstreamStatus` asil koddur.

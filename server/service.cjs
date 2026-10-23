@@ -82,15 +82,17 @@ function createApp() {
   // 502 / 503 / 504 -> 424; asil kod `upstreamStatus`ta (bkz. util/nginx-red.cjs). Yukaridaki
   // gunluk sarmalayicidan SONRA baglanir: gunluk cevrilmis kodu ve asil kodu birlikte yazar.
   //
-  // HARIC: OpsX salt-okunur (sunucu ve ekran kodu bu depoda degistirilmiyor; ekrani yeni
-  // koda gore uyarlanamaz). retirement / server-hub / nginx-console / nginx-cis bu calismanin
-  // kapsami disinda. Bu yollarin yanitlari eskisi gibi kalir.
+  // OpsX (2026-10-23) DAHIL: OpsX kodu bu depoda salt-okunur, ama ekraninin butun cagrilari
+  // `safeJson`dan gecer ve hata koduna bakan ozel bir kontrolu yok; isaretli ret uretimdeki
+  // gibi firlatilir, akisi degismez. OpsX testleri kendi uygulamalarini kurar (createApp yok).
+  // HARIC: retirement / server-hub / nginx-console / nginx-cis bu calismanin kapsami disinda;
+  // bu yollarin yanitlari eskisi gibi kalir.
   app.use(
     "/api",
     nginxRedCevirici({
       onek: "portal",
       eylem5xx: true,
-      haric: ["/opsx", "/retirement", "/server-hub", "/nginx-console", "/nginx-cis"],
+      haric: ["/retirement", "/server-hub", "/nginx-console", "/nginx-cis"],
     }),
   );
 
