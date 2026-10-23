@@ -115,7 +115,6 @@ export default function WebApp() {
   const matchedCount = data.matchedTotal ?? data.matchSummary
     .filter((m) => m.how !== "eşleşmedi" && m.how !== "web sunucusu var, server_name tutmadı")
     .reduce((a, m) => a + m.count, 0);
-  const eslesmisKova = (h: string) => h !== "eşleşmedi" && h !== "web sunucusu var, server_name tutmadı";
 
   return (
     <div className="space-y-3">
@@ -172,37 +171,14 @@ export default function WebApp() {
         <Stat n={data.tierSummary.find((t) => t.tier === "3-tier")?.count ?? 0} l="3-tier uygulama" />
       </div>
 
-      <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-elevated)]/60 px-4 py-3">
-        <div className="text-xs font-semibold text-[var(--text-secondary)] mb-1.5">Eşleşme yolları (uygulama sunucusu sayısı) — her uygulamanın kendi açıklaması satırında</div>
-        <div className="flex flex-wrap gap-2">
-          {data.matchSummary.map((m) => (
-            <span key={m.how} className={`text-[11px] px-2 py-1 rounded-lg border ${
-              eslesmisKova(m.how) ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                : m.how === "eşleşmedi" ? "bg-red-50 text-red-700 border-red-200"
-                : "bg-amber-50 text-amber-700 border-amber-200"
-            }`}>
-              {m.how} · {nf(m.count)}
-            </span>
-          ))}
-        </div>
-        <details className="mt-2">
-        <summary className="text-[11px] text-[var(--text-secondary)] cursor-pointer">Eşleştirme kuralları</summary>
-        <p className="text-[11px] text-[var(--text-muted)] mt-1 max-w-4xl">
-          Topoloji envanterdeki domain’den okunur; domain yoksa eşleşme kanıtından (web sunucusu ayrı host → 3-tier, aynı host → 2-tier).{" "}
-          3-tier sunucularda web sunucusu, uygulama sunucusunun adındaki <b>5. karakter</b>{" "}
-          <code className="px-1 rounded bg-[var(--bg-surface)]">A</code> →{" "}
-          <code className="px-1 rounded bg-[var(--bg-surface)]">W</code> çevrilerek bulunur
-          (DACR<b>A</b>AP01 → DACR<b>W</b>AP01); ayrıca son harf <b>P</b> yapılmış aday da denenir
-          (Pendik 6 harf: GOJBAB03 → GOJB<b>W</b>P03, Ankara 7 harf). 2-tier’de web sunucusu uygulamanın kendi
-          sunucusudur. Doğru vhost’u bulmak için uygulama adı küçük harfle{" "}
-          <code className="px-1 rounded bg-[var(--bg-surface)]">server_name</code> içinde aranır — önce tam
-          ad, tutmazsa ortam son eki atılmış taban ad. Sertifika envanterinde yoksa <b>Server Hub</b> vhost
-          taraması denenir. Ad hiç tutmasa da vhost’un mod_jk/proxy hedefi uygulamanın JVM portuna gidiyorsa
-          eşleşir (<b>AJP</b> etiketi). Retirement keşfiyle aynı kurallar; hangi yolun tuttuğu satırda yazar.
+      {/* "Eslesme yollari" ozet kutusu KALDIRILDI (2026-10-23, kullanici: "asiri kalabalik gozu
+          yoruyor ... sadece satirlarin en sonunda nasil eslestirildigine dair bilgi kalsa"). Yol her
+          satirin "Eslesme nasil kuruldu" kolonunda; Server Hub hatasi tek basina uyari olarak kalir. */}
+      {data.hubHata && (
+        <p role="alert" className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+          Server Hub okunamadı ({data.hubHata}) — yalnız sertifika envanteri eşleşmesi gösteriliyor.
         </p>
-        </details>
-        {data.hubHata && <p className="text-[11px] mt-1 text-amber-700">Server Hub okunamadı ({data.hubHata}) — yalnız sertifika envanteri eşleşmesi gösteriliyor.</p>}
-      </div>
+      )}
 
       {dns && (
         <p className="text-[11px] text-[var(--text-muted)]">

@@ -87,6 +87,19 @@ describe('Web-App: uygulama başına tek satır', () => {
     expect(within(tr).getByText('3-tier')).toHaveAttribute('title', 'Envanterde domain yok — eşleşme kanıtından');
   });
 
+  // WG7 (2026-10-23, kullanıcı: "Eşleşme yolları ... aşırı kalabalık gözü yoruyor ... sadece satırların
+  // en sonunda nasıl eşleştirildiğine dair bilgi kalsa"): özet kutusu YOK, yol satırda; Server Hub hatası
+  // kutuyla birlikte kaybolmaz, tek başına uyarı olarak kalır.
+  it('WG7 "Eşleşme yolları" özet kutusu yok; açıklama satırda; Server Hub hatası uyarı olarak kalır', async () => {
+    mockWebApp.mockResolvedValue({ ...veri([satir('GBCRAP01')]), hubHata: 'vhost: zaman aşımı' });
+    render(<WebApp />);
+    expect(await screen.findAllByTestId('webapp-nasil')).toHaveLength(1);
+    expect(screen.queryByText(/Eşleşme yolları/)).not.toBeInTheDocument();
+    expect(screen.queryByText('Eşleştirme kuralları')).not.toBeInTheDocument();
+    expect(screen.queryByText(/harf-dönüşümü \+ server_name \(tam ad\) · 1/)).not.toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('Server Hub okunamadı (vhost: zaman aşımı)');
+  });
+
   it('WG6 grupla: vhost tekil, bulan uygulama sunucuları birikir; eşleşmeyen sunucu da satırda', () => {
     const g = grupla([satir('GBCRAP01'), satir('GBCRAP02'), satir('GBCRAP03', { matched: false, web: [], how: 'eşleşmedi' })]);
     expect(g).toHaveLength(1);
