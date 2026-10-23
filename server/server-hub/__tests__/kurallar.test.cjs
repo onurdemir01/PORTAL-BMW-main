@@ -34,7 +34,7 @@ function stub(rel, exports) {
 }
 
 // ── sahte Portal DB (yalniz ayarlar.cjs ve reboot-check'in sorgulari) ─────────────────────────
-const DB = { ayar: new Map(), gecmis: [], dus: false, sorgular: [] };
+const DB = { ayar: new Map(), gecmis: [], dus: false, gecmisDussun: false, sorgular: [] };
 const N = (s) => String(s).replace(/\s+/g, ' ').trim();
 stub('../../db/index.cjs', {
   query: async (sql, p = []) => {
@@ -43,23 +43,16 @@ stub('../../db/index.cjs', {
     if (DB.dus) throw new Error('baglanti yok');
     if (s.startsWith('SELECT anahtar, deger, aciklama, updated_by, updated_at FROM server_hub_ayarlar'))
       return { rows: [...DB.ayar.values()], rowCount: DB.ayar.size };
-    if (s.startsWith('UPDATE server_hub_ayarlar SET deger = $1')) {
-      const r = DB.ayar.get(p[3]);
-      if (!r) return { rows: [], rowCount: 0 };
-      Object.assign(r, { deger: p[0], aciklama: p[1], updated_by: p[2], updated_at: new Date() });
-      return { rows: [], rowCount: 1 };
-    }
-    if (s.startsWith('INSERT INTO server_hub_ayarlar')) {
-      DB.ayar.set(p[0], { anahtar: p[0], deger: p[1], aciklama: p[2], updated_by: p[3], updated_at: new Date() });
-      return { rows: [], rowCount: 1 };
-    }
-    if (s.startsWith('DELETE FROM server_hub_ayarlar WHERE anahtar = $1')) {
-      const v = DB.ayar.delete(p[0]);
-      return { rows: [], rowCount: v ? 1 : 0 };
-    }
-    if (s.startsWith('INSERT INTO server_hub_ayar_gecmisi')) {
-      DB.gecmis.push({ id: DB.gecmis.length + 1, anahtar: p[0], eski: p[1], yeni: p[2], aciklama: p[3], degistiren: p[4], zaman: new Date() });
-      return { rows: [], rowCount: 1 };
+    if (s.startsWith('SET XACT_ABORT ON;') && s.includes('BEGIN TRAN;') && s.includes('COMMIT;')) {
+      // Gercek SQL transaction'i gibi: gecmis yazimi duserse ayar degisikligi de uygulanmaz.
+      const [anahtar, yeni, aciklama, kim, varsayilan] = p;
+      const eski = DB.ayar.get(anahtar)?.deger || varsayilan;
+      if (yeni === eski) return { rows: [{ eski, yeni, degisti: 0 }], rowCount: 1 };
+      if (DB.gecmisDussun) throw new Error('gecmis yazilamadi');
+      if (s.includes('DELETE FROM server_hub_ayarlar')) DB.ayar.delete(anahtar);
+      else DB.ayar.set(anahtar, { anahtar, deger: yeni, aciklama, updated_by: kim, updated_at: new Date() });
+      DB.gecmis.push({ id: DB.gecmis.length + 1, anahtar, eski, yeni, aciklama, degistiren: kim, zaman: new Date() });
+      return { rows: [{ eski, yeni, degisti: 1 }], rowCount: 1 };
     }
     if (/^SELECT TOP \d+ anahtar, eski, yeni, aciklama, degistiren, zaman FROM server_hub_ayar_gecmisi ORDER BY id DESC/.test(s))
       return { rows: [...DB.gecmis].reverse(), rowCount: DB.gecmis.length };
@@ -71,6 +64,7 @@ const sifirla = () => {
   DB.ayar.clear();
   DB.gecmis.length = 0;
   DB.dus = false;
+  DB.gecmisDussun = false;
   DB.sorgular.length = 0;
   require('../ayarlar.cjs').onbellekSil();
 };
@@ -221,6 +215,36 @@ test('KR3 ayarlar: okuma, okunamadi, yazma, gecmis, dogrulama', async () => {
   assert.equal(DB.ayar.has('limit:reboot'), false, 'varsayilana donen limit satiri silinmeli');
   const g = await ayarlar.gecmis(10);
   assert.deepEqual([g[0].anahtar, g[0].eski, g[0].yeni], ['limit:reboot', '500', '50'], 'gecmis en yeni once');
+});
+
+test('KR3b ayar ve gecmis atomik: gecmis hatasinda ayar degismez, tekrar yazilabilir', async () => {
+  sifirla();
+  assert.equal(await ayarlar.limit('tara'), 50, 'varsayilan cache olusmadi');
+  DB.gecmisDussun = true;
+  await assert.rejects(
+    ayarlar.limitYaz({ ad: 'tara', deger: 100, aciklama: 'kapasite', kim: 'ayse' }),
+    /gecmis yazilamadi/,
+  );
+  assert.equal(DB.ayar.has('limit:tara'), false, '500 donen yazma ayari degistirdi');
+  assert.equal(await ayarlar.limit('tara'), 50, 'basarisiz yazma cache/DB gercegini degistirdi');
+
+  DB.gecmisDussun = false;
+  const r = await ayarlar.limitYaz({ ad: 'tara', deger: 100, aciklama: 'kapasite', kim: 'ayse' });
+  assert.deepEqual([r.eski, r.yeni, DB.ayar.get('limit:tara').deger], ['50', '100', '100']);
+  assert.deepEqual(DB.gecmis.map((x) => [x.eski, x.yeni]), [['50', '100']]);
+  const sql = DB.sorgular.find((q) => q.startsWith('SET XACT_ABORT ON;'));
+  assert.match(sql, /IF OBJECT_ID.+BEGIN TRAN;.+SELECT @eski = deger.+WITH \(UPDLOCK, HOLDLOCK\).+server_hub_ayar_gecmisi.+COMMIT;/);
+});
+
+test('KR3c eszamanli yazilarin gecmis zinciri transaction icindeki gercek onceki degeri kullanir', async () => {
+  sifirla();
+  const [a, b] = await Promise.all([
+    ayarlar.seviyeYaz({ kod: 'NO_LOAD', seviye: 'danger', kim: 'admin-a' }),
+    ayarlar.seviyeYaz({ kod: 'NO_LOAD', seviye: 'info', kim: 'admin-b' }),
+  ]);
+  assert.deepEqual([a.eski, a.yeni, b.eski, b.yeni], ['warning', 'danger', 'danger', 'info']);
+  assert.deepEqual(DB.gecmis.map((x) => [x.eski, x.yeni]), [['warning', 'danger'], ['danger', 'info']]);
+  assert.equal(DB.ayar.get('seviye:NO_LOAD').deger, 'info');
 });
 
 // ── uctan uca: gercek initServerHub, sahte mssql (bos tarama) + sahte AWX kaydi ──────────────
