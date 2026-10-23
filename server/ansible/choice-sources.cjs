@@ -402,7 +402,359 @@ const SOURCES = {
       return out;
     },
   },
+
+  // ── API GENERATOR > RATE LIMIT: SECILEBILIR API LISTESI (kullanici, 2026-10-22) ─────────────
+  //
+  // "rate limit degistirmeye tikladiklarinda ilgili API'yi elle degil oradan drop down menuden
+  //  secerek girmelerini rica ediyorum."
+  //
+  // Self Servis'te api_generator sablonunun `chosen_api` alani bu kaynaga KODLA baglanir
+  // (selfservice/api-generator-secim.cjs). 'nginx-api-locations'tan farki: yalnizca rate_limit_change'in
+  // GERCEKTEN isleyebildigi degerler sunulur:
+  //   * deger = konfigurasyon dosya adi ('.conf' atilmis). Playbook adi izinli domain onekini
+  //     (GAR, ORT, DAS ...) iceriyorsa KONFIGURASYON kabul eder ve zone'lari dosyadan okur; envanterdeki
+  //     uc nokta yollari (/x/y/v0/ornek/uc) zone govdesine cozulemiyordu. Onek tasimayan ad playbook'ta
+  //     yol sanilir -> listeye girmez.
+  //   * yalnizca job'in o ortamda (ve production'da `site`ta) calistigi sunuculardaki dosyalar
+  //     (shared/nginxApiClusters.cjs apiGeneratorHosts).
+  //   * production'da kanal (mblcustomers / customers / mcustomers) verilirse yalniz o kanalin kumesi;
+  //     kapsam o kumeye gore sayilir (kullanici 2026-10-22: "Prod ve customers secince ... o sunuculara
+  //     bakmaliydi").
+  // Etiket yalniz "<konfigurasyon> - <kok yol>"; limitler / kapsam / birlikte etkilenecek uclar secimin
+  // sagindaki ayrinti panelinde (details).
+  'nginx-api-gateway-confs': {
+    label: 'Nginx API Generator — rate limit değiştirilebilir API konfigürasyonları (API envanteri)',
+    params: [
+      { name: 'env', label: 'Ortam alanı (dev/test/qa/prod)', required: true },
+      { name: 'site', label: 'Lokasyon alanı (all/pendik/ankara; opsiyonel)', required: false },
+      { name: 'channel', label: 'Kanal alanı (mblcustomers/customers/mcustomers; production rate limit için zorunlu)', required: false },
+      { name: 'islem', label: 'İşlem alanı (op_selection; read ise kanal zorunlu değil)', required: false },
+    ],
+    async load({ env, site, channel, islem }) {
+      // Yalniz dogrulama: prod'da rate limit icin kanal kumesi zorunlu (bilinmiyorsa 400).
+      apiGatewayKumesi(env, channel, islem);
+      const { query, sql } = require('../inventory/mssql.cjs');
+      const { apiGeneratorHosts } = require('../../shared/nginxApiClusters.cjs');
+      const hosts = new Set(apiGeneratorHosts(env, site, channel));
+      if (!hosts.size) return [];
+      // Kok yol zone adindan cikarilir (kokYolu); ip_zone / server_zone yeni yukleyiciyle gelir, eski
+      // kurulumda yoksa sorgu patlamasin diye once varliklari sorulur.
+      const dateRes = await query(
+        `SELECT CONVERT(varchar(10), MAX(scan_date), 23) AS d,
+                COL_LENGTH('dbo.NginxRateLimitInventory', 'ip_zone') AS iz,
+                COL_LENGTH('dbo.NginxRateLimitInventory', 'server_zone') AS sz
+           FROM dbo.NginxRateLimitInventory`,
+      );
+      const m = dateRes.recordset?.[0] || {};
+      if (!m.d) return [];
+      const kol = m.iz != null && m.sz != null ? ', ip_zone, server_zone' : '';
+      const r = await query(
+        `SELECT host, config_file, api_location${kol}
+           FROM dbo.NginxRateLimitInventory
+          WHERE scan_date = @d`,
+        [{ name: 'd', type: sql.NVarChar(10), value: m.d }],
+      );
+      return apiGatewayConfChoices(r.recordset || [], hosts);
+    },
+    // Secilen konfigurasyonun AYRINTISI (formda secimin saginda): ayni rate limit zone'unu
+    // paylasan API uclari. Kullanici (2026-10-22): "secilen kok API'yle beraber etkilenecek diger
+    // children API'ler sagda liste halinde gozuksun kullanici bunun bilincinde olsun". Rate limit
+    // limit-zones.conf'taki ZONE'a yazilir; zone'u kullanan her uc birlikte degisir.
+    async details({ env, site, channel, islem }, conf) {
+      const kume = apiGatewayKumesi(env, channel, islem);
+      const { query, sql } = require('../inventory/mssql.cjs');
+      const { apiGeneratorHosts } = require('../../shared/nginxApiClusters.cjs');
+      const hosts = new Set(apiGeneratorHosts(env, site, channel));
+      // ip_zone / server_zone kolonlarini yeni envanter yukleyicisi ekler (metadata-only ALTER);
+      // eski kurulumda yoksa sorgu patlamasin diye once varliklari sorulur.
+      const meta = await query(
+        `SELECT CONVERT(varchar(10), MAX(scan_date), 23) AS d,
+                COL_LENGTH('dbo.NginxRateLimitInventory', 'ip_zone') AS iz,
+                COL_LENGTH('dbo.NginxRateLimitInventory', 'server_zone') AS sz
+           FROM dbo.NginxRateLimitInventory`,
+      );
+      const m = meta.recordset?.[0] || {};
+      const zoneVar = m.iz != null && m.sz != null;
+      const opts = { kume: kume ? kume.key : '', taramaTarihi: m.d || '', zoneVar, mod: saltOkuma(islem) ? 'bilgi' : 'degisiklik' };
+      if (!m.d || !hosts.size) return apiGatewayConfDetay([], hosts, conf, opts);
+      const kol = zoneVar ? ', ip_zone, server_zone' : '';
+      const d = [{ name: 'd', type: sql.NVarChar(10), value: m.d }];
+      const kendi = await query(
+        `SELECT host, config_file, api_location, ip_rate_limit, server_rate_limit${kol}
+           FROM dbo.NginxRateLimitInventory
+          WHERE scan_date = @d AND config_file IN (@c1, @c2)`,
+        [...d, { name: 'c1', type: sql.NVarChar(255), value: conf }, { name: 'c2', type: sql.NVarChar(255), value: `${conf}.conf` }],
+      );
+      const rows = (kendi.recordset || []).slice();
+      const zonelar = zoneVar ? confZonelari(rows, hosts, conf) : [];
+      if (zonelar.length > ZONE_SORGU_SINIRI) opts.zoneKirpildi = true;
+      if (zonelar.length && !opts.zoneKirpildi) {
+        const zp = zonelar.map((z, i) => ({ name: `z${i}`, type: sql.NVarChar(512), value: z }));
+        const ad = zp.map((p) => `@${p.name}`).join(', ');
+        const ortak = await query(
+          `SELECT host, config_file, api_location, ip_rate_limit, server_rate_limit, ip_zone, server_zone
+             FROM dbo.NginxRateLimitInventory
+            WHERE scan_date = @d AND (ip_zone IN (${ad}) OR server_zone IN (${ad}))`,
+          [...d, ...zp],
+        );
+        rows.push(...(ortak.recordset || []));
+      }
+      return apiGatewayConfDetay(rows, hosts, conf, opts);
+    },
+  },
 };
+
+// Production'da API listesi ve ayrinti KANALIN sunucu kumesine gore gelir: api_generator'in
+// rate_limit_change'i prod'da yalniz o kumede calisir (operations/vars/main.yaml, kume disi
+// sunucu isten cikar) ve kanal bos / taninmiyorsa HICBIR sey yapmadan durur. Liste de ayni kurali
+// uygular: 54 sunucunun listesini gosterip isin durmasini beklemek yerine kullaniciya simdi soyler.
+// `read` hicbir sey degistirmez ve job'u kanal bilinmiyorsa eskisi gibi tum sunucularda okur: orada
+// kanal ZORUNLU DEGIL (yanlis yazilmis kanalla okuma engellenmez; liste daralmaz).
+const saltOkuma = (islem) => T(islem).toLowerCase() === 'read';
+
+function apiGatewayKumesi(env, channel, islem) {
+  if (normEnv(env) !== 'PROD') return null;
+  const { API_CLUSTERS, apiCluster } = require('../../shared/nginxApiClusters.cjs');
+  const kume = apiCluster(channel);
+  if (kume) return kume;
+  if (saltOkuma(islem)) return null;
+  const ad = String(channel || '').trim();
+  const gecerli = API_CLUSTERS.map((k) => k.key).join(' / ');
+  throw Object.assign(
+    new Error(
+      ad
+        ? `Kanal "${ad}" için production sunucu kümesi tanımlı değil (geçerli: ${gecerli}); iş de bu kanalla çalışmaz.`
+        : `Production'da liste kanalın sunucu kümesinden gelir — önce Kanal alanını doldurun (${gecerli}).`,
+    ),
+    { status: 400 },
+  );
+}
+
+// Ikinci sorgunun parametre sayisi sinirli; bir konfigurasyon pratikte 1-4 zone kullanir.
+// Asilirsa ortak kullanicilar ARANMAZ ve panel bunu acikca yazar (sessiz kirpma yok).
+const ZONE_SORGU_SINIRI = 50;
+
+// rate_limit_change.yaml 'Granted Domains for APIs' listesiyle AYNI: chosen_api bunlardan birini
+// (harf duyarli alt dizgi, Jinja `in` gibi) iceriyorsa konfigurasyon dosyasi kabul edilir.
+const API_GENERATOR_GRANTED_DOMAINS = ['GAR', 'GLS', 'GES', 'GFY', 'ORT', 'GSG', 'DAS', 'GYB'];
+
+/**
+ * SAF: envanter satirlari -> secenekler (DB'siz test edilir).
+ *
+ * Etiket YALNIZ "<konfigurasyon adi> - <kok yol>" (kullanici, 2026-10-22: "sadece API ismi gozuksun ...
+ * <API Ismi> <API> bu sekilde olsun", or. "GAR.CST.REST.DIGITAL-ONBOARDING-PB_DIGITAL-ONBOARDING-PB-CH_V0 -
+ * /digital-onboarding-pb/digital-onboarding-pb/v0/"). Limitler, kapsam ve birlikte etkilenecek uclar secimin
+ * sagindaki panelde. Grup basligi YOK: "Envanterde rate limit gorunmuyor" basligi limiti olan bir API'yi de
+ * (eski ayristirici '/' iceren zone'lari okuyamiyordu) o gruba koyuyor, kullaniciyi yaniltiyordu.
+ * Kok yol: konfigurasyondaki en kisa location (kok API; alt yollar onunla baslar). '@ad' location sayilmaz.
+ * @param {object[]} rows {host, config_file, api_location}
+ * @param {Set<string>} hosts job'in calistigi sunucular (BUYUK harf)
+ */
+function apiGatewayConfChoices(rows, hosts) {
+  const byConf = new Map();
+  for (const row of rows || []) {
+    const host = String(row.host || '').trim().toUpperCase();
+    if (!hosts.has(host)) continue;
+    const conf = String(row.config_file || '').trim().replace(/\.conf$/i, '');
+    if (!conf || !API_GENERATOR_GRANTED_DOMAINS.some((g) => conf.includes(g))) continue;
+    if (!byConf.has(conf)) byConf.set(conf, { locs: new Set(), zonlar: new Set() });
+    const c = byConf.get(conf);
+    const yol = String(row.api_location || '').trim();
+    if (yol && !yol.startsWith('@')) c.locs.add(yol);
+    for (const z of [row.ip_zone, row.server_zone]) if (String(z || '').trim()) c.zonlar.add(String(z).trim());
+  }
+  // Iki satir (kullanici, 2026-10-22: "<API adi> ile <Kok Yol> alt alta ve farkli renklerle"): label = ad,
+  // alt = kok yol. Arama ikisinde de yapilir.
+  return [...byConf.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([conf, c]) => {
+      const kok = kokYolu(c.locs, c.zonlar);
+      return kok ? { value: conf, label: conf, alt: kok } : { value: conf, label: conf };
+    });
+}
+
+/**
+ * SAF: bir konfigurasyonun KOK API yolu.
+ *
+ * Eskiden "en kisa location" aliniyordu; kok API'nin kendi location'i dosyada yoksa (yalniz alt yollar
+ * tanimliysa) bir CHILD yol cikiyordu (kullanici, 2026-10-22: "kok yol degil de child API cikti ...
+ * rate limit zone isminden cikartabilirsin"). Sira:
+ *  1. Rate limit ZONE ADI: `<kok>_rate_limit` / `<kok>_location_limit` (create bu adi kok API yolundan
+ *     kurar). Yol bicimli ('/' iceren) govdeler adaydir; tum location'larin onu olan aday yegdir, sonra en
+ *     cok kullanilan, sonra en kisa. Dosyada `<kok>` ya da `<kok>/` location'i varsa o yazilir (sondaki
+ *     '/' dahil gercek yol).
+ *  2. Zone adi yoksa (eski yukleyici / adlandirma disi zone): location'larin ORTAK YOL ONEKI (parca
+ *     sinirinda; /x/v0/a + /x/v0/b -> /x/v0/).
+ *  3. Ortak onek yoksa en kisa location.
+ * @param {Iterable<string>} locs '@ad' haric location yollari
+ * @param {Iterable<string>} zonlar konfigurasyonun zone adlari
+ */
+function kokYolu(locs, zonlar) {
+  const yollar = [...new Set(locs || [])].filter(Boolean);
+  const onekMi = (kok, y) => {
+    const k = kok.replace(/\/+$/, '');
+    return y === k || y.startsWith(`${k}/`);
+  };
+  const say = new Map();
+  for (const z of zonlar || []) {
+    const m = /^(.*)_(?:rate|location)_limit$/.exec(String(z || '').trim());
+    if (!m || !m[1].includes('/')) continue;
+    const govde = m[1].startsWith('/') ? m[1] : `/${m[1]}`;
+    say.set(govde, (say.get(govde) || 0) + 1);
+  }
+  if (say.size) {
+    const adaylar = [...say.keys()];
+    const kapsayan = adaylar.filter((a) => yollar.length > 0 && yollar.every((y) => onekMi(a, y)));
+    const sec = (liste) =>
+      liste.slice().sort((a, b) => say.get(b) - say.get(a) || a.length - b.length || a.localeCompare(b))[0];
+    const govde = kapsayan.length ? kapsayan.slice().sort((a, b) => a.length - b.length || a.localeCompare(b))[0] : sec(adaylar);
+    const yalin = govde.replace(/\/+$/, '');
+    return yollar.find((y) => y === `${yalin}/`) || yollar.find((y) => y === yalin) || yalin;
+  }
+  if (!yollar.length) return '';
+  if (yollar.length === 1) return yollar[0];
+  const parcalar = yollar.map((y) => y.split('/'));
+  const ortak = [];
+  for (let i = 0; i < Math.min(...parcalar.map((p) => p.length)); i += 1) {
+    const p = parcalar[0][i];
+    if (parcalar.every((q) => q[i] === p)) ortak.push(p);
+    else break;
+  }
+  const onek = ortak.join('/');
+  if (onek.replace(/\//g, '')) {
+    const yalin = onek.replace(/\/+$/, '');
+    return yollar.find((y) => y === `${yalin}/`) || yollar.find((y) => y === yalin) || `${yalin}/`;
+  }
+  return yollar.slice().sort((a, b) => a.length - b.length || a.localeCompare(b))[0];
+}
+
+const T = (s) => String(s == null ? '' : s).trim();
+const confAdi = (row) => T(row.config_file).replace(/\.conf$/i, '');
+
+/** SAF: secilen konfigurasyonun (job sunucularindaki) zone adlari; NULL (eski yukleyici) / bos atlanir. */
+function confZonelari(rows, hosts, conf) {
+  const hedef = T(conf).toLowerCase();
+  const out = new Set();
+  for (const r of rows || []) {
+    if (!hosts.has(T(r.host).toUpperCase()) || confAdi(r).toLowerCase() !== hedef) continue;
+    if (T(r.ip_zone)) out.add(T(r.ip_zone));
+    if (T(r.server_zone)) out.add(T(r.server_zone));
+  }
+  return [...out].sort();
+}
+
+/**
+ * SAF: secilen konfigurasyon icin "birlikte etkilenecek API uclari" (DB'siz test edilir).
+ *
+ * Zone bilgisi VARSA (envanter ip_zone / server_zone yaziyorsa): konfigurasyonun zone'larini kullanan
+ * TUM uclar - baska konfigurasyondakiler dahil (zone http seviyesinde ortaktir; rate_limit_change o
+ * zone'un hizini limit-zones.conf'ta degistirir). Zone bilgisi YOKSA (eski yukleyici, kolon NULL):
+ * yalniz bu konfigurasyondaki uclar ve limitleri; panel bunu acikca yazar.
+ * `@ad` (named location) API ucu degildir, listelenmez.
+ * @param {object[]} rows {host, config_file, api_location, ip_rate_limit, server_rate_limit, ip_zone?, server_zone?}
+ * @param {Set<string>} hosts job'in calistigi sunucular (BUYUK harf)
+ */
+function apiGatewayConfDetay(rows, hosts, conf, opts = {}) {
+  const hedef = T(conf).toLowerCase();
+  const icinde = (rows || []).filter((r) => hosts.has(T(r.host).toUpperCase()));
+  const kendiMi = (r) => confAdi(r).toLowerCase() === hedef;
+  const kendiSatirlar = icinde.filter(kendiMi);
+  const zoneBilgisi = !!opts.zoneVar && kendiSatirlar.some((r) => r.ip_zone != null || r.server_zone != null);
+  // SUNUCU BAZINDA (2026-10-22 inceleme): rate_limit_change bir sunucuda yalniz O SUNUCUDAKI
+  // konfigurasyonun zone'larini degistirir; konfigurasyonun olmadigi sunucu "bulunamadi" ile durur ve
+  // oradaki ortak zone'a dokunmaz. Zone'lar '@ad' location'lardan da toplanir (playbook dosyadaki TUM
+  // limit_req satirlarini alir) ama '@ad' API ucu olarak listelenmez.
+  const ipZ = new Map(); // host -> Set(zone)
+  const locZ = new Map();
+  const ekle = (m, h, z) => {
+    if (!z) return;
+    if (!m.has(h)) m.set(h, new Set());
+    m.get(h).add(z);
+  };
+  const varMi = (m, h, z) => !!z && m.has(h) && m.get(h).has(z);
+  if (zoneBilgisi) {
+    for (const r of kendiSatirlar) {
+      ekle(ipZ, T(r.host).toUpperCase(), T(r.ip_zone));
+      ekle(locZ, T(r.host).toUpperCase(), T(r.server_zone));
+    }
+  }
+  // Ayni satir iki sorgudan da gelebilir (kendi konfigurasyonu + zone eslesmesi); asagidaki
+  // birikimler Set / OR oldugu icin tekrar sayilmaz.
+  const uc = new Map();
+  for (const r of icinde) {
+    if (T(r.api_location).startsWith('@')) continue;
+    const h = T(r.host).toUpperCase();
+    const kendi = kendiMi(r);
+    const ipEt = zoneBilgisi ? varMi(ipZ, h, T(r.ip_zone)) : kendi && !!T(r.ip_rate_limit);
+    const locEt = zoneBilgisi ? varMi(locZ, h, T(r.server_zone)) : kendi && !!T(r.server_rate_limit);
+    if (!kendi && !ipEt && !locEt) continue;
+    const c = confAdi(r);
+    const anahtar = `${c.toLowerCase()} ${T(r.api_location)}`;
+    if (!uc.has(anahtar)) {
+      uc.set(anahtar, { conf: c, yol: T(r.api_location), kendi, hosts: new Set(), ip: new Set(), loc: new Set(), ipEt: false, locEt: false, ipZone: new Set(), locZone: new Set() });
+    }
+    const e = uc.get(anahtar);
+    e.hosts.add(T(r.host).toUpperCase());
+    if (T(r.ip_rate_limit)) e.ip.add(T(r.ip_rate_limit));
+    if (T(r.server_rate_limit)) e.loc.add(T(r.server_rate_limit));
+    if (zoneBilgisi && T(r.ip_zone)) e.ipZone.add(T(r.ip_zone));
+    if (zoneBilgisi && T(r.server_zone)) e.locZone.add(T(r.server_zone));
+    e.ipEt = e.ipEt || ipEt;
+    e.locEt = e.locEt || locEt;
+  }
+  // Kok: listedeki etiketle AYNI kural (kokYolu: once zone adi, sonra ortak onek). Kok API'nin kendi
+  // location'i dosyada yoksa hicbir uc "kok" isaretlenmez; panel kok yolu ayrica yazar.
+  const kendiYollar = [...uc.values()].filter((e) => e.kendi).map((e) => e.yol);
+  const kendiZonlar = kendiSatirlar.flatMap((r) => [T(r.ip_zone), T(r.server_zone)]).filter(Boolean);
+  const kokYol = kokYolu(kendiYollar, zoneBilgisi ? kendiZonlar : []);
+  // "kok" etiketi yalniz GERCEK kok'e: dosyada var VE diger tum yollar onunla basliyor (ortak kok yokken
+  // kokYolu'nun yedegi olan en kisa yol, kardes bir API'dir - kok diye isaretlenmez).
+  const kokSade = kokYol.replace(/\/+$/, '');
+  const kok =
+    kendiYollar.includes(kokYol) && kendiYollar.every((y) => y === kokYol || y === kokSade || y.startsWith(`${kokSade}/`))
+      ? kokYol
+      : '';
+  const deger = (set) => [...set].sort().join(' / ');
+  const uclar = [...uc.values()]
+    .map((e) => ({
+      yol: e.yol,
+      conf: e.conf,
+      kok: e.kendi && e.yol === kok,
+      baskaConf: !e.kendi,
+      sunucu: e.hosts.size,
+      ip: deger(e.ip),
+      loc: deger(e.loc),
+      ipFarkli: e.ip.size > 1,
+      locFarkli: e.loc.size > 1,
+      ipZone: deger(e.ipZone),
+      locZone: deger(e.locZone),
+      etkiler: { ip: e.ipEt, location: e.locEt },
+    }))
+    .sort(
+      (a, b) =>
+        Number(a.baskaConf) - Number(b.baskaConf) ||
+        Number(b.kok) - Number(a.kok) ||
+        a.conf.localeCompare(b.conf) ||
+        a.yol.localeCompare(b.yol),
+    );
+  return {
+    conf: T(conf),
+    kume: opts.kume || '',
+    kokYol,
+    toplamSunucu: hosts.size,
+    taramaTarihi: opts.taramaTarihi || '',
+    zoneBilgisi,
+    zoneKirpildi: !!opts.zoneKirpildi,
+    zonelar: {
+      ip: [...new Set([...ipZ.values()].flatMap((s) => [...s]))].sort(),
+      location: [...new Set([...locZ.values()].flatMap((s) => [...s]))].sort(),
+    },
+    // 'degisiklik' (rate_limit_change) | 'bilgi' (read: hicbir sey degismez, panel dili buna gore)
+    mod: opts.mod === 'bilgi' ? 'bilgi' : 'degisiklik',
+    etkilenen: uclar.filter((u) => u.etkiler.ip || u.etkiler.location).length,
+    uclar,
+  };
+}
 
 function listSources() {
   return Object.entries(SOURCES).map(([name, s]) => ({
@@ -453,6 +805,46 @@ async function loadChoices(sourceName, params) {
   return choices;
 }
 
+// ── SECIMIN AYRINTISI (kaynakta `details` varsa) ─────────────────────────────
+// Ayni sinirlar: anahtar KULLANICI GIRDISI (parametreler + secilen deger) tasir; MAX + FIFO +
+// TTL'de silme (yukaridaki onbellekle ayni gerekce, Portal 2026-09 OOM'lari).
+const DETAIL_TTL_MS = 60 * 1000;
+const DETAIL_MAX_ENTRIES = 64;
+const detailCache = new Map(); // key -> { at, detay }
+
+/**
+ * Secilen degerin ayrintisi. Deger kaynaktaki LISTEDE degilse ayrinti verilmez (404): rota,
+ * listede olmayan rastgele adlarla envanteri yoklamak icin kullanilamaz.
+ */
+async function loadChoiceDetails(sourceName, params, value) {
+  const src = getSource(sourceName);
+  if (!src || typeof src.details !== 'function') {
+    throw Object.assign(new Error(`Bu seçenek kaynağının ayrıntı görünümü yok: ${sourceName}`), { status: 404 });
+  }
+  const secilen = String(value ?? '').trim();
+  if (!secilen) throw Object.assign(new Error('Ayrıntı için bir seçim gerekli.'), { status: 400 });
+  const liste = await loadChoices(sourceName, params);
+  if (!liste.some((c) => c.value === secilen)) {
+    throw Object.assign(new Error(`"${secilen}" bu listede yok; ayrıntı gösterilemez.`), { status: 404 });
+  }
+  const p = {};
+  for (const def of src.params) p[def.name] = String((params || {})[def.name] ?? '').trim();
+  for (const def of src.options || []) {
+    p[def.name] = String((params || {})[def.name] ?? '').trim() || String(def.default ?? '');
+  }
+  const key = `${cacheKey(sourceName, p)}|${secilen}`;
+  const varolan = detailCache.get(key);
+  if (varolan) {
+    if (Date.now() - varolan.at < DETAIL_TTL_MS) return varolan.detay;
+    detailCache.delete(key);
+  }
+  const detay = await src.details(p, secilen);
+  detailCache.delete(key);
+  while (detailCache.size >= DETAIL_MAX_ENTRIES) detailCache.delete(detailCache.keys().next().value);
+  detailCache.set(key, { at: Date.now(), detay });
+  return detay;
+}
+
 /**
  * Bir alanin choicesSource tanimindan, formdaki degerlere bakarak kaynak parametrelerini
  * kurar. `values` = kullanicinin gonderdigi (ya da gizli alanlar icin etkin) degerler.
@@ -480,6 +872,10 @@ async function assertValueInSource(choicesSource, value, values, label) {
   try {
     choices = await loadChoices(choicesSource.source, paramsFromValues(choicesSource, values));
   } catch (e) {
+    // 400 = kaynak GIRDIYI reddetti (or. prod'da taninmayan kanal): kesinti degil, kullanici duzeltir.
+    if (e.status === 400) {
+      throw Object.assign(new Error(`${label}: ${e.message} İş başlatılmadı.`), { status: 400 });
+    }
     throw Object.assign(
       new Error(
         `${label}: seçenek listesi doğrulanamadı (${e.message}). İş başlatılmadı — biraz sonra tekrar deneyin.`,
@@ -516,11 +912,19 @@ function validateChoicesSource(choicesSource, knownFieldNames) {
 
 function clearCache() {
   cache.clear();
+  detailCache.clear();
 }
 
 module.exports = {
   SOURCES,
   SPA_RE,
+  API_GENERATOR_GRANTED_DOMAINS,
+  apiGatewayConfChoices,
+  apiGatewayConfDetay,
+  apiGatewayKumesi,
+  confZonelari,
+  kokYolu,
+  loadChoiceDetails,
   clustersForEnv,
   listSources,
   getSource,

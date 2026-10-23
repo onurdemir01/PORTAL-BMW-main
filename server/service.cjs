@@ -7,12 +7,17 @@ const compression = require("compression");
 const { oturumHizAnahtari } = require("./auth/oturum-cerezi.cjs");
 const { originKontrolu } = require("./auth/origin-kontrolu.cjs");
 const { guvenlikBasliklari } = require("./auth/guvenlik-basliklari.cjs");
+const { brotliGovdeReddi } = require("./auth/brotli-govde-reddi.cjs");
 
 function createApp() {
   const app = express();
 
   // L-01: Remove Express fingerprint header
   app.disable("x-powered-by");
+
+  // CVE-2026-111497 (Node Brotli cozucusu, RCE): `Content-Encoding: br` govde HIC bir
+  // ayristiriciya ulasmadan reddedilir — tum route'lardan ve govde ayristiricilarindan ONCE.
+  app.use(brotliGovdeReddi());
 
   // Nginx bir 5xx yanitinin govdesini kendi hata sayfasiyla degistirebiliyor (bu host'ta
   // dogrulandi — bkz. git log) — yani istemci tarafinda gercek hata mesaji hicbir zaman

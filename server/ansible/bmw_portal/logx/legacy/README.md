@@ -92,7 +92,33 @@ yazıldığını merak ediyorsanız önce buraya bakın.
   listelenir. Metin kullanıcıya bir cümlelik özetle birlikte AYNEN gösterilir; yolu, asıl hatayı
   ve denenen kullanıcıyı taşımaya devam etmelidir. Özet kuralları `src/utils/legacySebep.ts`
   içindedir ve bu metinlerdeki sabit ifadelere dayanır (bkz. "Portalın okuduğu alanlar").
+### Legacy Python interpreter uyumluluğu (2026-10-21)
 
+Bazı legacy JBoss sunucularında Ansible interpreter discovery varsayılan olarak
+`/usr/libexec/platform-python` / `python3` üzerinden Python 3.6 seçebiliyor. Güncel AWX/Ansible
+execution environment ile bu durumda `ansible.builtin.find` gibi Python gerektiren modüller,
+dosya sistemi ve `was` erişimi doğru olsa bile `MODULE FAILURE` ile çalışmayabiliyor.
+
+Sahadaki örnekte uygulama ve log dizinleri `was` kullanıcısıyla okunabiliyor ve
+`/usr/libexec/platform-python` çalışıyordu; ancak sürümü 3.6.8 idi. Aynı sunucuda
+`/usr/bin/python3.11` bulunduğu halde Ansible otomatik keşifte eski platform Python'ı seçiyordu.
+
+Çözüm olarak discovery play'ine Python gerektirmeyen `ansible.builtin.raw` tabanlı bir
+`pre_tasks` kontrolü eklendi:
+
+- PATH ile `/usr/bin` ve `/usr/local/bin` altındaki Python adayları bulunur.
+- Adaylar gerçekten çalıştırılarak sürümleri doğrulanır; yalnız Python `>= 3.8` kabul edilir.
+- Birden fazla uygun interpreter varsa gerçek sürümü en yüksek olan seçilir ve
+  `ansible_python_interpreter` yalnız bu play için ayarlanır.
+- Bozuk binary/symlink veya Python olmayan `python3*` adayları otomatik elenir.
+- Uygun modern Python bulunamazsa `ansible_python_interpreter` değiştirilmez; Ansible'ın normal
+  interpreter discovery/fallback davranışı korunur.
+- Probe görevi `failed_when: false` olduğundan interpreter araştırmasının kendisi legacy keşif
+  akışını düşürmez.
+
+Bu kontrol özellikle Python kullanan ilk `ansible.builtin.find` görevinden önce çalışır.
+Amaç sunuculara yeni Python kurmak veya sistemdeki `python3` symlink'ini değiştirmek değil;
+sunucuda zaten bulunan uyumlu interpreter'ı Ansible için güvenli ve dinamik olarak seçmektir.
 ### Güvenlik
 
 - Dosya keşfi `ansible.builtin.find` MODÜLÜ ile yapılır (kabuk `find` komutu DEĞİL).

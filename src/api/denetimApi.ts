@@ -155,9 +155,44 @@ export interface NginxMigrationOther {
   locations: string[];
   locationCount: number;
 }
+/** Eski sunuculardaki TEK location (ad kalibindan BAGIMSIZ, 2026-10-18): SPA, ad kalibina uymayan,
+ *  cozulemeyen ve eski sunucuda zaten include olan location'larin hepsi; yeni sunucudaki durumuyla. */
+export type NginxMigrationLocSinif =
+  | 'spa'
+  | 'spa-disi'
+  | 'cozulemedi'
+  | 'include'
+  // yalniz nginx -T'nin gordugu davranislar (proxy_pass / include olmayan location'lar)
+  | 'statik'
+  | 'yonlendirme'
+  | 'erisim-engeli'
+  | 'diger';
+export interface NginxMigrationLocation {
+  service: string;
+  location: string;
+  oldHosts: string[];
+  /** proxy hedefi (upstream server / proxy_ssl_name / yazilan ad) ya da include adi */
+  targets: string[];
+  written: string[];
+  siniflar: NginxMigrationLocSinif[];
+  /** "ns/app" (envanterden ya da include'dan) */
+  apps: string[];
+  /** 'config' = Nginx_Config_Audit, 'nginx-T' = Nginx_Audit_Locations. Yalniz 'nginx-T' ise config
+   *  taramasi bu location'i GORMEDI (ic ice blok, baska dosyadan include, statik/return). */
+  kaynaklar: ('config' | 'nginx-T')[];
+  /** nginx -T davranisi: proxy | static | return | rewrite | deny | other */
+  davranislar: string[];
+  /** false = yalniz YENI sunucularda var (eski sunucularda o vhost'ta yok); sayimlara girmez */
+  eskide: boolean;
+  newHosts: string[];
+  newStatus: 'defined' | 'partial' | 'none' | 'not-scanned';
+  traffic: SpaYukOlcumu | null;
+}
 export interface NginxMigrationGroup {
   id: string;
   label: string;
+  /** eski sunuculardaki TUM location'lar; eksikler basta (none, partial, not-scanned, defined) */
+  locations?: NginxMigrationLocation[];
   oldHosts: string[];
   newHosts: string[];
   newHostsScanned: string[];
@@ -201,6 +236,9 @@ export interface NginxMigrationResult {
   dirsReady: boolean;
   proxyScanDate: string | null;
   dirScanDate: string | null;
+  /** nginx -T (nginx_audit) son tarama gunu - "Tum location'lar" listesinin ikinci kaynagi */
+  auditScanDate?: string | null;
+  auditReady?: boolean;
   groups: NginxMigrationGroup[];
 }
 
@@ -275,6 +313,17 @@ export interface SpaCoverageRow {
   /** Bu ortamda satir uretilen intranet sunuculari. */
   intranetHosts: string[];
   intranetCoverage: number | null;
+  /** Intranet kurulum hucresinin kaynagi (2026-10-19): 'intranet-spa' = Nginx ARK SPA > Intranet SPA
+   *  ile AYNI hesap (Gercek SPA Kesfi satirlari; ARK), 'ad-kalibi' = eski hesap (baska platform). */
+  intranetKaynak?: 'intranet-spa' | 'ad-kalibi';
+  /** Ortak rapor okunamadiysa / dizin taramasi yoksa neden (hucre "olculemedi"). */
+  intranetKaynakHata?: string;
+  /** 'intranet-spa': ortamin intranet SPA sayisi (Intranet SPA sayfasindaki "uygulama"). */
+  intranetKurulumToplam?: number;
+  /** 'intranet-spa': ortamin sunucusu taranmadigi icin olculemeyen; "kurulmamis" DEGIL. */
+  intranetOlculemediCount?: number;
+  /** 'intranet-spa': ortamin hic intranet nginx sunucusu yok. */
+  intranetSunucuYokCount?: number;
   /** BULGU: intranet uygulamasi INTERNETE ACIK sunucuda tanimli. Intranet
    *  sunucusunda olmasi normaldir, bulgu degildir. */
   intranetInNginx: number;
@@ -471,6 +520,17 @@ export interface SpaCoverageResult {
   intranetTableMissing?: boolean;
   /** Beklenmeyen durum: intranet sunucusunda servis vhost'u tanimi bulundu. */
   intranetVhostRows?: number;
+  intranetKaynak?: 'intranet-spa' | 'ad-kalibi';
+  intranetKaynakHata?: string;
+  /** Ortak Intranet SPA raporunun tarihleri ve kapsami (ARK). */
+  intranetRapor?: {
+    kesifTarihi: string | null;
+    dizinTarihi: string | null;
+    dizinDurum: 'var' | 'okunamadi';
+    taranmayanSunucu: string[];
+    platformDisi: { platform: string; uygulama: number; clusters: string[] }[];
+    ortamsiz: number;
+  } | null;
   rows: SpaCoverageRow[];
   message?: string;
 }

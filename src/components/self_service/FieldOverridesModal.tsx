@@ -69,6 +69,8 @@ interface LocalFieldState {
   hidden: boolean;
   /** Metin alanı envanterden beslenen seçim kutusuna çevrildiyse. */
   choicesSource?: ChoicesSource;
+  /** Alan ayarı kodla verilmiş (ör. API Generator chosen_api): kaynak / görünürlük burada değiştirilemez. */
+  kodlaBagli?: boolean;
 }
 
 // Hangi alan tipleri kaynağa bağlanabilir. AWX survey alanında yalnızca metin (AWX'in
@@ -355,6 +357,9 @@ export default function FieldOverridesModal({
 }) {
   const [fields, setFields] = useState<LocalFieldState[]>([]);
   const [choiceSources, setChoiceSources] = useState<ChoiceSourceInfo[]>([]);
+  // Kodla bağlı alanlar (sunucu survey yanıtında kodlaBagli işaretli olanlar; ör. API Generator
+  // chosen_api) — Survey Tasarımcısı'nda bunların kaynak / koşul editörü yerine not gösterilir.
+  const [kodlaBagliAdlar, setKodlaBagliAdlar] = useState<Set<string>>(new Set());
   const [surveyEnabled, setSurveyEnabled] = useState(true);
   const [launchOptions, setLaunchOptions] = useState<LaunchOptions | null>(null);
   const [launchOptionOverrides, setLaunchOptionOverrides] = useState<
@@ -473,6 +478,7 @@ export default function FieldOverridesModal({
           setLoadFailed(false);
         }
         setSurveyEnabled(specRes.surveyEnabled);
+        setKodlaBagliAdlar(new Set((specRes.fields || []).filter((f) => f.kodlaBagli).map((f) => f.name)));
         setLaunchOptions(specRes.launchOptions);
         setAskVariables(specRes.askVariables);
         const existingOverrides = customRes.ok ? customRes.customization?.fieldOverrides || [] : [];
@@ -489,12 +495,13 @@ export default function FieldOverridesModal({
               label: f.label,
               // Kaynağa bağlı alan sunucudan 'multiplechoice' gelir; admin ekranı AWX'teki
               // asıl tipi (metin) bilmeli ki kaynak kapatılınca doğru davransın.
-              type: existing?.choicesSource?.source && f.type === 'multiplechoice' ? 'text' : f.type,
+              type: (existing?.choicesSource?.source || f.kodlaBagli) && f.type === 'multiplechoice' ? 'text' : f.type,
               required: f.required,
               description: f.description,
               defaultValue: f.defaultValue || '',
-              hidden: suggestHidden ? true : f.hidden,
+              hidden: f.kodlaBagli ? false : suggestHidden ? true : f.hidden,
               choicesSource: existing?.choicesSource?.source ? existing.choicesSource : undefined,
+              kodlaBagli: !!f.kodlaBagli,
             };
           }),
         );
@@ -1212,7 +1219,15 @@ export default function FieldOverridesModal({
                       </div>
                     </div>
 
-                    {SOURCE_BINDABLE_CUSTOM.has(f.type) && choiceSources.length > 0 && (
+                    {kodlaBagliAdlar.has(f.name.trim()) && (
+                      <p className="text-xs text-[var(--text-secondary)]" data-testid="kodla-bagli-tasarimci-alani">
+                        Bu alan kodla bağlı: işlem rate limit değiştirme ya da okuma seçildiğinde gösterilir ve o zaman
+                        zorunludur; API Generator envanterindeki API konfigürasyonlarından seçilir (serbest metin
+                        girilemez). Buradaki seçenek kaynağı ve koşullu gösterim ayarları bu alan için kullanılmaz.
+                      </p>
+                    )}
+
+                    {!kodlaBagliAdlar.has(f.name.trim()) && SOURCE_BINDABLE_CUSTOM.has(f.type) && choiceSources.length > 0 && (
                       <ChoicesSourceEditor
                         value={f.choicesSource}
                         sources={choiceSources}
@@ -1296,6 +1311,7 @@ export default function FieldOverridesModal({
                       />
                     </div>
 
+                    {!kodlaBagliAdlar.has(f.name.trim()) && (
                     <div className="border-t border-[var(--border)] pt-2">
                       <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)] cursor-pointer mb-1.5">
                         <input
@@ -1484,6 +1500,7 @@ export default function FieldOverridesModal({
                         sağlanmazsa alan kullanıcıya hiç sorulmaz ve extra_vars'a eklenmez.
                       </p>
                     </div>
+                    )}
 
                     <div className="flex justify-end">
                       <button
@@ -1523,6 +1540,7 @@ export default function FieldOverridesModal({
                     <input
                       type="checkbox"
                       checked={!f.hidden}
+                      disabled={f.kodlaBagli}
                       onChange={(e) => updateField(f.name, { hidden: !e.target.checked })}
                     />
                   </label>
@@ -1530,7 +1548,13 @@ export default function FieldOverridesModal({
                 {f.description && (
                   <p className="text-xs text-[var(--text-muted)] mb-1.5">{f.description}</p>
                 )}
-                {f.hidden ? (
+                {f.kodlaBagli ? (
+                  <p className="text-xs text-[var(--text-secondary)]" data-testid="kodla-bagli-alan">
+                    Bu alan kodla bağlı: işlem rate limit değiştirme ya da okuma seçildiğinde gösterilir ve
+                    API Generator envanterindeki API konfigürasyonlarından seçilir (serbest metin girilemez).
+                    Seçenek kaynağı ve görünürlük burada değiştirilemez.
+                  </p>
+                ) : f.hidden ? (
                   <div>
                     <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1 flex items-center gap-1">
                       <LockClosedIcon className="w-3 h-3" />

@@ -25,15 +25,23 @@ BASE_DIR="${PORTAL_BASE_DIR:-/vhosting8/bmw_portal}"
 DEPLOY_DIR="$BASE_DIR/deploy"
 APP_DIR="$BASE_DIR/app"
 APP_ROOT="$APP_DIR/PORTAL-BMW-main"
-REPO_URL="https://github.com/onurdemir01/PORTAL-BMW-main.git"
+# Depo PRIVATE ise (2026-10-23) anonim HTTPS klonu duser. PORTAL_REPO_URL ile SSH adresi verilir
+# (salt-okunur deploy key; port 22 kapaliysa ~/.ssh/config'te github.com icin ssh.github.com:443)
+# ya da HTTPS + git credential helper'da salt-okunur token. Token ASLA URL'e yazilmaz (ps / log).
+REPO_URL="${PORTAL_REPO_URL:-https://github.com/onurdemir01/PORTAL-BMW-main.git}"
+YETKI_IPUCU="Depo private ise: was kullanicisina salt-okunur deploy key (SSH) tanimlayin ve PORTAL_REPO_URL=git@github.com:onurdemir01/PORTAL-BMW-main.git verin; mevcut agacta: git -C <APP_ROOT> remote set-url origin <ayni adres>. Ayrinti: docs/DEPLOYMENT.md"
 KEEP_BACKUPS=3
 KEEP_PREV=1
+# Portal'a ozel Node (deploy/install-node.sh) varsa npm ci / build de ONU kullanir (run.sh ile ayni kural).
+PORTAL_NODE_HOME="${PORTAL_NODE_HOME:-$BASE_DIR/runtime/node}"
+if [[ -x "$PORTAL_NODE_HOME/bin/node" ]]; then export PATH="$PORTAL_NODE_HOME/bin:$PATH"; fi
 
 ENV_NAME="${1:-}"
 BRANCH="${2:-main}"
 case "$ENV_NAME" in dev|test|qa|prod) ;; *) echo "Kullanim: $0 <dev|test|qa|prod> [branch]" >&2; exit 2 ;; esac
 
 command -v node >/dev/null || { echo "HATA: node bulunamadi." >&2; exit 1; }
+echo "[release-git] node: $(command -v node) $(node -v)"
 command -v git >/dev/null || { echo "HATA: git bulunamadi." >&2; exit 1; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -43,7 +51,7 @@ TS="$(date +%Y%m%d-%H%M%S)"
 if [[ ! -d "$APP_ROOT/.git" ]]; then
   echo "[release-git] $APP_ROOT bir git deposu degil — klonlaniyor: $REPO_URL"
   mkdir -p "$APP_DIR"
-  git clone --branch "$BRANCH" "$REPO_URL" "$APP_ROOT"
+  git clone --branch "$BRANCH" "$REPO_URL" "$APP_ROOT" || { echo "HATA: klon basarisiz. $YETKI_IPUCU" >&2; exit 1; }
   cd "$APP_ROOT"
   npm ci --no-audit --no-fund
   npm run build
@@ -58,9 +66,10 @@ STAGE_ROOT="$STAGE_DIR/PORTAL-BMW-main"
 mkdir -p "$STAGE_DIR"
 trap 'rm -rf "$STAGE_DIR"' EXIT
 echo "[release-git] fetch origin/$BRANCH (calisan agac dokunulmaz)"
-git -C "$APP_ROOT" fetch origin "$BRANCH"
+git -C "$APP_ROOT" fetch origin "$BRANCH" || { echo "HATA: fetch basarisiz. $YETKI_IPUCU" >&2; exit 1; }
 echo "[release-git] hazirlik klonu: $STAGE_ROOT"
-git clone --quiet --branch "$BRANCH" --reference "$APP_ROOT" --dissociate "$REPO_URL" "$STAGE_ROOT"
+git clone --quiet --branch "$BRANCH" --reference "$APP_ROOT" --dissociate "$REPO_URL" "$STAGE_ROOT" \
+  || { echo "HATA: hazirlik klonu basarisiz. $YETKI_IPUCU" >&2; exit 1; }
 git -C "$STAGE_ROOT" reset --hard "origin/$BRANCH" --quiet
 echo "[release-git] surum: $(git -C "$STAGE_ROOT" log --oneline -1)"
 if [[ -f "$STAGE_ROOT/deploy/stage-lib.sh" ]]; then source "$STAGE_ROOT/deploy/stage-lib.sh"; else source "$SCRIPT_DIR/stage-lib.sh"; fi

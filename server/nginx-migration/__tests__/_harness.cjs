@@ -127,6 +127,26 @@ h.GROUPS = [
       },
     ],
   },
+  // GLOMO DISI grup (2026-10-20): GLOMO'nun eski filosu kapali - "eski tanimi kaldir" GLOMO'da AWX'e
+  // gitmez (index.cjs ESKI_FILO_KAPALI). Silme makinesinin testleri (new_fleet kapisi, iptal,
+  // denetim) bu grupla kosar.
+  {
+    id: 'other',
+    newHosts: ['GBNGXP44'],
+    oldHosts: ['GBRVPP01', 'GBRVPP02'],
+    apps: [
+      {
+        namespace: 'webforms-ch-prod',
+        application: 'base-app-v0',
+        status: 'ready',
+        written: ['base_up'],
+        paths: [
+          { service: 'WEBFORMS', location: '/base/', hosts: ['GBRVPP01'], newStatus: 'defined' },
+          { service: 'WEBFORMS', location: '/yeni/', hosts: ['GBRVPP01'], newStatus: 'missing' },
+        ],
+      },
+    ],
+  },
 ];
 stub('audit/nginx-migration.cjs', { loadMigration: async () => ({ groups: h.GROUPS }) });
 stub('audit/index.cjs', { auditPortal: (_req, action, opts) => h.audits.push({ action, ...opts }) });
@@ -299,7 +319,9 @@ h.call = (method, urlPath, body) =>
     req.end(data);
   });
 
-h.BODY = { group: 'glomo', namespace: 'digital-banking-ch-prod', application: 'base-app-v0', service: 'GLOMO', inputPath: '/base/' };
+h.BODY = { group: 'other', namespace: 'webforms-ch-prod', application: 'base-app-v0', service: 'WEBFORMS', inputPath: '/base/' };
+// GLOMO satiri: eski filosu kapali (silme reddedilir), tanim yeni filoya gider.
+h.GLOMO_BODY = { group: 'glomo', namespace: 'digital-banking-ch-prod', application: 'base-app-v0', service: 'GLOMO', inputPath: '/base/' };
 h.sil = (body = h.BODY) => h.call('POST', '/api/nginx-migration/delete', body);
 
 h.launches = () => h.awx.istekler.filter((r) => r.method === 'POST' && /\/launch\/$/.test(r.yol));

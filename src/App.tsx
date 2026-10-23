@@ -15,6 +15,7 @@ const DenetimPage = lazyWithRetry(() => import('@/components/DenetimPage'));
 const OcoTakvimiPage = lazyWithRetry(() => import('@/components/OcoTakvimiPage'));
 const ArkSpaRaporuPage = lazyWithRetry(() => import('@/components/ArkSpaRaporuPage'));
 const GlomoGecisPlaniPage = lazyWithRetry(() => import('@/components/GlomoGecisPlaniPage'));
+const IntranetSpaPage = lazyWithRetry(() => import('@/components/IntranetSpaPage'));
 // Nginx Audit > tek sunucu sayfasi: kendi URL'i var, Denetim gorunurlugune tabi.
 const NginxAuditHostPage = lazyWithRetry(() => import('@/components/denetim/NginxAuditHostPage'));
 const EnvanterPage = lazyWithRetry(() => import('@/components/EnvanterPage'));
@@ -94,6 +95,9 @@ export default function App() {
             </Route>
             <Route element={<PageVisibilityRoute pageId="ArkGlomoGecis" />}>
               <Route path="/ark-spa/glomo-gecis-plani" element={<GlomoGecisPlaniPage />} />
+            </Route>
+            <Route element={<PageVisibilityRoute pageId="ArkIntranetSpa" />}>
+              <Route path="/ark-spa/intranet-spa" element={<IntranetSpaPage />} />
             </Route>
             <Route element={<PageVisibilityRoute pageId="Performance" />}>
               <Route path="/performance" element={<DynatracePage />} />

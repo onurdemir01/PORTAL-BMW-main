@@ -72,7 +72,15 @@ describe('Retirement orphan claim gorunurlugu', () => {
     expect(hedefTazelenmeli(hedef('stopped'), '2026-10-12T12:00:00Z')).toBe(true);
   });
 
-  test('RO5 uzlastirma yalniz gercek STOP/DELETE orphan claim icin sunulur', () => {
+  test('RO5 suren silme / geri alma on kontrolu canli tazeleme ister (hedef stopped kalir); biten istemez', () => {
+    const ok = (durum: string) => ({ jobId: 5, at: null, durum, mesaj: null, onkontrol: [], kisaltildi: false, kaynak: null, kullanici: null, kullanildi: false, hazir: false, izinler: [] });
+    expect(hedefTazelenmeli(hedef('stopped'))).toBe(false);
+    expect(hedefTazelenmeli(hedef('stopped', { silmeOnKontrol: ok('running') }))).toBe(true);
+    expect(hedefTazelenmeli(hedef('stopped', { geriAlOnKontrol: ok('baslatiliyor') }))).toBe(true);
+    expect(hedefTazelenmeli(hedef('stopped', { geriAlOnKontrol: ok('ok'), silmeOnKontrol: ok('failed') }))).toBe(false);
+  });
+
+  test('RO6 uzlastirma yalniz gercek STOP/DELETE orphan claim icin sunulur', () => {
     expect(orphanUzlastirilabilir(hedef('stopping'))).toBe(true);
     expect(orphanUzlastirilabilir(hedef('deleting'))).toBe(true);
     expect(orphanUzlastirilabilir(hedef('planning'))).toBe(false);

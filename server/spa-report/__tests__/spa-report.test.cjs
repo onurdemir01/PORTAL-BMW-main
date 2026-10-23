@@ -140,7 +140,8 @@ test('AR8: sayfa UC YERDE de kayitli (menu sessizce dusmesin)', () => {
   const oku = (p) => fs.readFileSync(path.join(KOK, p), 'utf8').replace(/"/g, "'");
   assert.match(oku('server/db/mssql-setup.cjs'), /element_key: 'ArkSpaRaporu'/, 'DB seed');
   assert.match(oku('src/config/elements.ts'), /id: 'ArkSpaRaporu'/, 'elements.ts PAGES');
-  assert.match(oku('src/config/elements.ts'), /itemIds: \['ArkSpaRaporu', 'ArkGlomoGecis'\]/, 'NAV_GROUPS');
+  // Intranet SPA (2026-10-19) ucuncu sayfa; kaydi ayrica intranet.test.cjs IS12'de.
+  assert.match(oku('src/config/elements.ts'), /itemIds: \['ArkSpaRaporu', 'ArkGlomoGecis', 'ArkIntranetSpa'\]/, 'NAV_GROUPS');
   assert.match(oku('src/App.tsx'), /path='\/ark-spa\/spa-raporu'/, 'App.tsx route');
   // Glomo Gecis Plani ayri sayfa (2026-10-13): seed + elements + route + sunucu kapisi.
   assert.match(oku('server/db/mssql-setup.cjs'), /element_key: 'ArkGlomoGecis'/, 'Glomo DB seed');

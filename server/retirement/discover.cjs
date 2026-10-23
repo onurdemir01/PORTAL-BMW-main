@@ -69,12 +69,32 @@ function jvmSec(idx, host, app, gen) {
   return l.length === 1 ? l[0] : null;
 }
 
+// URUN SURUMUNUN MAJORU (ilk sayi). Eskiden "herhangi bir yerde 8 var mi" bakiliyordu:
+// EAP 7.4.8 / 7.3.8 / 7.0.8 JBoss 8 sayiliyordu (job_3438186 denetimi, 2026-10-22).
 function genOf(jbossVersion) {
   const v = String(jbossVersion || '');
-  if (/(^|[^0-9])8([^0-9]|$)/.test(v) || /jboss8|eap.?8/i.test(v)) return 8;
-  if (/(^|[^0-9])7([^0-9]|$)/.test(v) || /jboss7|eap.?7/i.test(v)) return 7;
-  return null;
+  if (/jboss.?8|eap.?8/i.test(v)) return 8;
+  if (/jboss.?7|eap.?7/i.test(v)) return 7;
+  const m = /(\d+)/.exec(v);
+  const n = m ? Number(m[1]) : NaN;
+  return n === 7 || n === 8 ? n : null;
 }
+
+// KURULUM KOLU = retirement betiklerinin GEN'i (OpsX kurulumKolu ile ayni kural). Betikler GEN'e gore
+// KURULUM DIZINI secer: 7 = /usr/jboss/AppServer + /vhosting, 8 = /usr/jboss8/AppServer + /vhosting8.
+// Envanter iki kurulumu app_path ile ayirir; kol oradan okunur, yoksa urun majoru. Standart disi
+// sunucuda /usr/jboss altinda JBoss 8 urunu kurulu olabilir (GBJBOP18): urun surumu kolu SOYLEMEZ.
+function kolOf(appPath, jbossVersion) {
+  const p = String(appPath || '').trim().toLowerCase();
+  if (p.startsWith('/vhosting8/')) return 8;
+  if (p.startsWith('/vhosting/')) return 7;
+  return genOf(jbossVersion);
+}
+// Envanterin 'NF' (paket dizini bulunamadi) isareti ve mutlak olmayan yol = paket yolu YOK.
+const paketYolu = (p) => {
+  const s = String(p || '').trim();
+  return s.startsWith('/') ? s : '';
+};
 
 /**
  * @param {string} base  uygulama taban adi (CRM)
@@ -334,6 +354,33 @@ async function hubBaglamiYukle(query) {
   return { vhostRows, hubVhostsByHost, ipMap: ipSahipleri(ipRows), jvmOf: (host, app, gen = null) => jvmSec(jvms, host, app, gen), hata };
 }
 
+// IN-PLACE ISARETI + WEB ADIMI (job_3438186 denetimi): ayni sunucu + uygulama birden cok kolda ise
+// hedef `inPlace` (ve `digerSurumler`) tasir. Web listesinde YALNIZ AD / SERTIFIKA eslesmesiyle
+// bulunan vhost hangi kurulumun onunde durdugunu SOYLEMEZ (JBoss 7 retire'i JBoss 8'in Red Hat
+// Apache vhost'unu kapatabiliyordu): in-place hedefte bu girdiler `elle` isaretlenir ve otomatik
+// kapatilmaz. Otomatik kalanlar: AJP/proxy hedefi SECILEN kurulumun JVM portu (ajp) ya da
+// mod_cluster (mc - yalniz JBoss 8, mcWeb zaten kolu suzer).
+function inPlaceIsaretle(targets) {
+  const kollar = new Map();
+  for (const t of targets) {
+    const k = `${t.host}|${U(t.appName)}`;
+    if (!kollar.has(k)) kollar.set(k, new Set());
+    kollar.get(k).add(t.gen ?? 0);
+  }
+  for (const t of targets) {
+    const set = kollar.get(`${t.host}|${U(t.appName)}`);
+    if (!set || set.size < 2) continue;
+    t.inPlace = true;
+    t.digerSurumler = [...set].filter((g) => g !== (t.gen ?? 0)).sort();
+    const diger = t.digerSurumler.map((g) => (g ? `JBoss ${g}` : 'sürümü bilinmeyen kurulum')).join(', ');
+    t.web = (t.web || []).map((w) => {
+      const k = String(w.kaynak || 'ad');
+      if (/(^|\+)(ajp|mc)(\+|$)/.test(k)) return w;
+      return { ...w, elle: `in-place: ${t.appName} bu sunucuda ${diger} kurulumunda da var; vhost yalnız ad/sertifika ile eşleşti, hangi kurulumun önünde olduğu doğrulanamadı — otomatik kapatılmaz, elle kontrol edilmeli` };
+    });
+  }
+}
+
 function buildTargets(base, invRows, certRows, jvmRows, vhostRows, ipRows = []) {
   const ipMap = ipSahipleri(ipRows);
   const certByHost = buildCertIndex(certRows || []);
@@ -359,10 +406,15 @@ function buildTargets(base, invRows, certRows, jvmRows, vhostRows, ipRows = []) 
     const { base: b } = parseAppName(app);
     const env = hedefOrtami(app, r.env);
     if (U(b) !== U(base)) continue;
-    const key = `${host}|${app}`;
+    // IN-PLACE (job_3438186, 2026-10-22 - CANLI ETKI): ayni uygulama ayni sunucuda hem JBoss 7 hem
+    // JBoss 8'de calisabilir; envanter iki satir dondurur. Anahtar eskiden `host|app` idi: IKINCI satir
+    // atiliyor, hangi surumun gorunecegini SQL satir sirasi (ORDER BY yok) seciyordu - JBoss 7 retire
+    // edilmek istenirken JBoss 8 hedefi olusabiliyordu ve betik bunu yakalayamaz (yol ve surum tutarli).
+    // Anahtar KOL'u da icerir: iki kurulum iki ayri hedef, kullanici hangisini acikca secer.
+    const gen = kolOf(r.app_path, r.jboss_version);
+    const key = `${host}|${app}|${gen ?? ''}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    const gen = genOf(r.jboss_version);
     const j = jvmSec(jvms, host, app, gen);
     // Sertifika eslesmesi + Server Hub + AJP/proxy (ortak: Denetim > Web-App de kullanir).
     const web = webZenginlestir(app, host, matchWebForApp({ app, appHost: host, domain: r.domain || '' }, certByHost),
@@ -373,7 +425,7 @@ function buildTargets(base, invRows, certRows, jvmRows, vhostRows, ipRows = []) 
     const runningSrc = j && j.running_src != null && j.running_src !== '' ? U(j.running_src) : null;
     targets.push({
       host, site: siteOf(host), env, appName: app, gen,
-      appPath: r.app_path || '', inventoryStatus: r.status || '', domain: r.domain || '', tier: web.tier,
+      appPath: paketYolu(r.app_path), inventoryStatus: r.status || '', domain: r.domain || '', tier: web.tier,
       web: web.web.map((w) => ({
         host: w.host, serverName: w.serverName, product: w.product, port: w.port, confFile: w.confFile,
         kaynak: w.kaynak || 'ad', ...(w.ajpHedef ? { ajpHedef: w.ajpHedef } : {}), ...(w.mcBalancer ? { mcBalancer: w.mcBalancer } : {}),
@@ -393,8 +445,9 @@ function buildTargets(base, invRows, certRows, jvmRows, vhostRows, ipRows = []) 
       } : null,
     });
   }
+  inPlaceIsaretle(targets);
   const order = { PROD: 0, QA: 1, TEST: 2, DEV: 3, ALPHA: 4, ODM: 5 };
-  targets.sort((a, b) => (order[a.env] ?? 9) - (order[b.env] ?? 9) || a.site.localeCompare(b.site) || a.host.localeCompare(b.host));
+  targets.sort((a, b) => (order[a.env] ?? 9) - (order[b.env] ?? 9) || a.site.localeCompare(b.site) || a.host.localeCompare(b.host) || (a.gen ?? 0) - (b.gen ?? 0));
   const summary = {
     total: targets.length,
     bySite: { Pendik: targets.filter((t) => t.site === 'Pendik').length, Ankara: targets.filter((t) => t.site === 'Ankara').length },
@@ -494,4 +547,4 @@ async function searchApps(q) {
   return [...bases].sort();
 }
 
-module.exports = { buildTargets, discover, searchApps, siteOf, parseAppName, hedefOrtami, genOf, jvmIndeksi, jvmSec, trafikSinifi, ajpWeb, mcWeb, hedefSunucusu, webZenginlestir, hubBaglamiYukle };
+module.exports = { buildTargets, discover, searchApps, siteOf, parseAppName, hedefOrtami, genOf, kolOf, paketYolu, inPlaceIsaretle, jvmIndeksi, jvmSec, trafikSinifi, ajpWeb, mcWeb, hedefSunucusu, webZenginlestir, hubBaglamiYukle };

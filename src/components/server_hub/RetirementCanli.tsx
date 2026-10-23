@@ -6,6 +6,7 @@
 // birkac saniyede bir cagirdigi /canli ucundan gelir (o uc bekleyen vhost islerini de baslatir).
 import React, { useEffect, useState } from 'react';
 import type { RtIsler, RtTarget, RtWeb2, RtZamanlayici } from '@/api/retirementApi';
+import { onKontrolSuruyor } from './RetirementOnKontrol';
 
 export const GECIS = new Set(['planning', 'stopping', 'deleting', 'rolling_back']);
 const IS_ADI: Record<string, string> = { planning: 'Ön kontrol', stopping: 'JBoss STOP', deleting: 'Silme', rolling_back: 'Geri alma' };
@@ -38,7 +39,10 @@ export function hedefAktif(t: RtTarget, kayitAtladi?: string | null): boolean {
 
 /** Spinner gercegiyle veri yenilemeyi ayir: claim sonrasi job ID yazimi kisa sure gecikebilir. */
 export function hedefTazelenmeli(t: RtTarget, kayitAtladi?: string | null): boolean {
-  return GECIS.has(t.status) || silmeSirada(t, kayitAtladi) || (t.webSonuc || []).some((w) => w.status === 'pending' || w.status === 'running');
+  // SILME / GERI ALMA ON KONTROLU (2026-10-22) hedef durumunu degistirmez ('stopped' kalir): suren on
+  // kontrol de canli tazeleme ister ki liste ve geri alma onay penceresi ekran kapanmadan dolsun.
+  const okSuruyor = [t.silmeOnKontrol, t.geriAlOnKontrol].some((k) => onKontrolSuruyor(k));
+  return GECIS.has(t.status) || silmeSirada(t, kayitAtladi) || okSuruyor || (t.webSonuc || []).some((w) => w.status === 'pending' || w.status === 'running');
 }
 
 // AWX is durumu -> ekran. Okunmamis (status yok) != calismiyor.

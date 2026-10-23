@@ -193,6 +193,39 @@ const ERISIM_DESENI =
   /permission denied|operation not permitted|\(13\)|does not exist or is empty|could not open|cannot open|can't open|unable to open|cannot load|bio_new_file|memmanagerfile|can't create directory|read-only file system|key database|\bgsk|\bssl0\d{3}e|no such file or directory/i;
 const erisimKaynakli = (detail) => ERISIM_DESENI.test(String(detail || ''));
 
+/** Web urununun calisma durumu (ps): "kontrol olculemedi" bulgusunun once bunu soylemesi gerekir. */
+function calismaDurumu(w) {
+  if (w.running) return 'ürün ÇALIŞIYOR (süreç görüldü)';
+  if (w.runningKnown) return 'ürün çalışmıyor (süreç yok)';
+  return 'ürünün çalışıp çalışmadığı ölçülemedi (süreç listesi görünmüyor)';
+}
+
+/**
+ * Dogrulanamayan sozdiziminin KOK NEDENI, tarayicinin ham ciktisindan (kullanici, 2026-10-19).
+ * Birden cok neden ayni anda olabilir (uretim: RHA'da kutuphane + error log yetkisi); hepsi yazilir.
+ * Kutuphane ve config yolu calisan urunde "kontrol ortami eksik" demektir, config hatasi DEGIL.
+ */
+const ERISIM_NEDENLERI = [
+  [
+    /cannot open shared object file/i,
+    'kontrol, çalışan sunucunun kütüphane yolunu göremedi (ör. libssl) — config hatası değil, kontrol ortamı eksik',
+  ],
+  [
+    /Could not open configuration file/i,
+    'kontrol varsayılan config dosyasını bulamadı — ürün başka bir config / kurulum yoluyla çalışıyor',
+  ],
+  [
+    /SSL0227E|GSK|key database|certificate|could not open SSL|BIO_new_file/i,
+    'www sertifika / anahtar deposunu okuyamadı',
+  ],
+  [/Permission denied|\(13\)|Operation not permitted/i, 'www bir dosyaya erişemedi (yetki)'],
+];
+function erisimNedeni(ham) {
+  const t = String(ham || '');
+  const n = ERISIM_NEDENLERI.filter(([re]) => re.test(t)).map(([, m]) => m);
+  return n.length ? n.join(' + ') : 'hata bir dosyaya erişimden kaynaklanıyor (yetki ya da eksik dosya)';
+}
+
 /**
  * @param {object} data  { hosts, init, jboss, jvms, web, vhosts, ips, sshd, loadIssues, mwApps, invEnv }
  *                       her sunucu icin SON taramanin satirlari (yeni kolonlar eski semada yok = null)
@@ -1223,11 +1256,27 @@ function assess(data, opts = {}) {
     }
 
   // ── Bulgular ───────────────────────────────────────────────────────────────────
+  // SEVIYE DEGISIKLIKLERI (2026-10-20, Server Hub > Kurallar & Limitler; ayarlar.cjs): kod -> seviye.
+  // Yalniz SEVIYE degisir (sunucu durumu, sayaclar, siralama); kod, metin ve eylem ayni. Degisen
+  // bulgu varsayilanini defaultSeverity'de tasir: ekran "seviye degistirildi" der, gizlemez.
+  // 'ok' (sorun yok) bulgusu listede kalir ama sayilmaz ve sunucu durumunu etkilemez.
+  const seviyeler = (opts && opts.seviyeler) || {};
+  const seviyeOf = (code, severity) => (SEV[seviyeler[code]] != null ? seviyeler[code] : severity);
   const hosts = [];
   for (const h of byHost.values()) {
     const F = h.findings;
-    const add = (severity, area, code, text, fix, ek) =>
-      F.push({ severity, area, code, text, fix: fix || null, ...(ek || {}) });
+    const add = (severity, area, code, text, fix, ek) => {
+      const s = seviyeOf(code, severity);
+      F.push({
+        severity: s,
+        ...(s !== severity ? { defaultSeverity: severity } : {}),
+        area,
+        code,
+        text,
+        fix: fix || null,
+        ...(ek || {}),
+      });
+    };
     // ── yukleme ve tarama kapsami (v3) ──
     if (h.loadExcluded) {
       const ilk = h.loadExcludedIssues[0];
@@ -1619,12 +1668,18 @@ function assess(data, opts = {}) {
       else if (w.syntax === 'UNKNOWN') sinif = 'UNKNOWN';
       else sinif = 'OK';
       if (sinif === 'UNVERIFIED') {
+        // URUN CALISIYOR MU + KOK NEDEN (kullanici, 2026-10-19: "bu hatalar normal mi, urunler
+        // gercekten var calisiyor ancak bu kontroller mi yapilamadi?" / "urunlerin gercekten var ve
+        // calisiyor olmalari bu kontrollerin sagligini anlamamiz acisindan cok onemli"). Metin once
+        // urunun calisip calismadigini (ps), sonra kontrolun NEDEN dogrulayamadigini soyler:
+        // calisan bir urunde kutuphane / config yolu bulunamamasi config hatasi DEGIL, kontrolun
+        // calisan urunden farkli ortamda kosmasidir.
         add(
           'warning',
           'web',
           'SYNTAX_UNVERIFIED',
-          `${w.product} sözdizimi DOĞRULANAMADI — hata bir dosyaya erişimden kaynaklanıyor ` +
-            `(yetki ya da eksik dosya); config satırını yorumlamak çözüm değildir: ${w.detail}`.trim(),
+          `${w.product} sözdizimi DOĞRULANAMADI — ${calismaDurumu(w)}; ${erisimNedeni(ham)}; ` +
+            `config satırını yorumlamak çözüm değildir: ${w.detail}`.trim(),
         );
         continue;
       }
@@ -1708,11 +1763,12 @@ function assess(data, opts = {}) {
         );
       }
     }
-    // ip
+    // ip - BOSTA IP UYARI DEGIL, BILGI (kullanici, 2026-10-19: "bosta IP olan sunucu bunlari warning
+    // olarak gosterme lutfen"). Sayim ve liste yerinde; sunucunun durumunu 'warning'e cekmez.
     for (const ip of h.ips)
       if (ip.usedBy === 'none' && !ip.primary)
         add(
-          'warning',
+          'info',
           'ip',
           'IP_UNUSED',
           `${ip.ip} (${ip.iface}) hiçbir vhost/soket kullanmıyor — boşta IP`,
@@ -2228,6 +2284,8 @@ function flattenFindings(hosts) {
         envGroup: h.envGroup,
         scanDate: h.scanDate,
         severity: f.severity,
+        // Admin seviyeyi degistirdiyse kodun varsayilani (ekran isaretler).
+        ...(f.defaultSeverity ? { defaultSeverity: f.defaultSeverity } : {}),
         area: f.area,
         code: f.code,
         text: f.text,

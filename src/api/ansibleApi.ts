@@ -289,6 +289,8 @@ export const ansibleApi = {
     message?: string;
     /** Bu serviste tanimli kapilar (on bilgi; karar launch-ss'te). */
     gates?: SurveyGates;
+    /** nginx_ops.yml sablonu: action=read AWX'e gitmez, tanimlar formda gosterilir (2026-10-20). */
+    yerelOkuma?: { tur: 'nginx-tanimlar'; eylemAlanlari: string[]; deger: string } | null;
   }> => fetch(`${BASE}/survey/${serverId}/${templateId}`).then(safeJson),
 
   // Admin-only: gizlenmiş (hidden) alanlar dahil TÜM survey alanlarını döner —
@@ -458,6 +460,18 @@ export const ansibleApi = {
     return fetch(`${BASE}/ss/choices/${encodeURIComponent(source)}${qs ? `?${qs}` : ''}`).then(
       safeJson,
     );
+  },
+
+  // Seçilen değerin ayrıntısı (kaynak `details` sunuyorsa; ör. API Generator: birlikte etkilenecek uçlar).
+  choiceDetails: (
+    source: string,
+    params: Record<string, string>,
+    value: string,
+  ): Promise<{ ok: boolean; detay?: ChoiceDetails; message?: string }> => {
+    const q = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) if (v && k !== 'value') q.set(k, v);
+    q.set('value', value);
+    return fetch(`${BASE}/ss/choices/${encodeURIComponent(source)}/details?${q.toString()}`).then(safeJson);
   },
 
   getCustomization: (
@@ -697,6 +711,41 @@ export interface ChoicesSource {
   optional?: string[];
   /** Sabit seçenekler (form alanına bağlı değil; ör. tenant: 'ark'). */
   options?: Record<string, string>;
+  /** Kaynak seçilen değerin ayrıntısını sunar; seçimin yanında gösterilir (kodla bağlanan kaynaklar). */
+  details?: boolean;
+}
+
+/** Ayrıntıdaki bir API ucu (API Generator: seçilen konfigürasyonla aynı zone'u paylaşan uç). */
+export interface ChoiceDetailUc {
+  yol: string;
+  conf: string;
+  kok: boolean;
+  baskaConf: boolean;
+  sunucu: number;
+  ip: string;
+  loc: string;
+  ipFarkli: boolean;
+  locFarkli: boolean;
+  ipZone: string;
+  locZone: string;
+  etkiler: { ip: boolean; location: boolean };
+}
+
+export interface ChoiceDetails {
+  conf: string;
+  /** Kök API yolu (zone adından; yoksa location'ların ortak öneki). */
+  kokYol: string;
+  kume: string;
+  toplamSunucu: number;
+  taramaTarihi: string;
+  /** false: envanter zone adını tutmuyor (eski yükleyici) — liste yalnız bu konfigürasyonun uçları. */
+  zoneBilgisi: boolean;
+  zoneKirpildi: boolean;
+  zonelar: { ip: string[]; location: string[] };
+  /** 'degisiklik' (rate limit değiştirme) | 'bilgi' (okuma: hiçbir şey değişmez). */
+  mod: 'degisiklik' | 'bilgi';
+  etkilenen: number;
+  uclar: ChoiceDetailUc[];
 }
 
 export interface ChoiceSourceInfo {
@@ -709,6 +758,8 @@ export interface ChoiceSourceInfo {
 export interface DynamicChoice {
   value: string;
   label: string;
+  /** İkinci satır (ör. API Generator: konfigürasyonun kök API yolu); ayrı renkte, label'ın altında. */
+  alt?: string;
   group?: string;
 }
 
@@ -926,6 +977,9 @@ export interface SurveyField {
     conditions?: SurveyFieldCondition[];
     groups?: SurveyFieldConditionGroup[];
   };
+  /** Alan ayarı KODLA verilmiş (ör. API Generator `chosen_api` → envanter listesi); Alan
+   *  Ayarları'ndaki kaynak / koşul seçimi bu alanda etkisizdir (server/selfservice/api-generator-secim.cjs). */
+  kodlaBagli?: boolean;
 }
 
 export interface SurveyFieldConditionGroup {

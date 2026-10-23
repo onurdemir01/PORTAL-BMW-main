@@ -1632,6 +1632,9 @@ function minDays(parsed) {
 
 module.exports = {
   initNginxConsole,
+  // Nginx ARK SPA > Intranet SPA (2026-10-19) Gercek SPA Kesfi'nin AYNI hesabini okur (devam eden
+  // hesaba katilir; ayni anda acilan iki sayfa tek hesap).
+  spaKesfiPaylas: spaHesapPaylas,
   _adminKapisi: adminKapisi,
   _ADMIN_DISI_OKUMA: ADMIN_DISI_OKUMA,
   _SEKME_YOLLARI: SEKME_YOLLARI,

@@ -14,6 +14,7 @@ import { Modal } from '@/components/common/Modal';
 import { fmtDateTime } from '@/utils/datetime';
 import { toast } from '@/hooks/useToast';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
+import { useSunucuLimiti, LimitNotu, limitAsildi } from './sunucuLimiti';
 import { DURUM, bilgiAyristir, goruntuAyristir, islemAyristir, onceOzeti, rebootOldu, sunucuListesi, urunTablosu, type Durum, type IslemSatiri } from './rebootKontrolu';
 
 const TERMINAL = new Set(['successful', 'failed', 'error', 'canceled']);
@@ -286,6 +287,8 @@ export default function RebootKontroluTab() {
   };
 
   const hosts = sunucuListesi(metin);
+  // Tek seferde sunucu sayisi (2026-10-20): Admin Server Hub > Kurallar & Limitler'den degistirir.
+  const rebootLimiti = useSunucuLimiti('reboot');
   const bilinmeyen = bilinen ? hosts.filter((h) => !bilinen.has(h)) : [];
 
   const onceAl = async () => {
@@ -329,11 +332,11 @@ export default function RebootKontroluTab() {
           <input value={not} onChange={(e) => setNot(e.target.value)} placeholder="Not (ör. Ekim patch'i)" className="w-full px-3 py-2 text-xs border rounded-lg h-fit" style={inputStil} />
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <button type="button" disabled={!hosts.length || hosts.length > 50 || busy} onClick={onceAl} className={BTN}
+          <button type="button" disabled={!hosts.length || limitAsildi(rebootLimiti, hosts.length) || busy} onClick={onceAl} className={BTN}
             style={{ background: 'var(--accent)', borderColor: 'var(--accent)', color: 'var(--accent-fg, #fff)' }}>
             <CameraIcon className="w-4 h-4" /> Reboot öncesi görüntüyü al ({hosts.length})
           </button>
-          {hosts.length > 50 && <span className="text-[11px]" style={{ color: 'var(--status-danger)' }}>En fazla 50 sunucu.</span>}
+          <LimitNotu limit={rebootLimiti} sayi={hosts.length} />
           {bilinmeyen.length > 0 && (
             <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: 'var(--status-warning)' }}>
               <ExclamationTriangleIcon className="w-3.5 h-3.5" /> Server Hub'da bilinmeyen: {bilinmeyen.join(', ')} — adı kontrol edin

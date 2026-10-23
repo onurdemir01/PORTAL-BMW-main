@@ -19,6 +19,7 @@ const express = require('express');
 const { PLATFORM_CLUSTERS, ENV_CLUSTERS, ENVS, envOfNamespace } = require('./ocp-platforms.cjs');
 const { tierOfHost, envOfHost } = require('./nginx-hosts.cjs');
 const { indexIntranetRows, coverageForEnv } = require('./nginx-intranet.cjs');
+const intranetKapsam = require('./intranet-kapsam.cjs');
 const { summarizeAudit, readLatestAuditDate } = require('./nginx-audit.cjs');
 // Tarama SAATI (2026-09-23): tablolarda `scanned_at` varsa okunur, yoksa null.
 const { scanStamp } = require('./scan-stamp.cjs');
@@ -1128,6 +1129,25 @@ function initDenetim(app) {
         .sort((a, b) => a.localeCompare(b, 'tr'))
         .slice(0, 40);
 
+      // INTRANET KURULUMU = Nginx ARK SPA > Intranet SPA ile AYNI hesap (kullanici, 2026-10-19:
+      // "farkli sayfada farkli veri gozukmesi bizim yanlis raporlama yapmamiza sebep oluyor").
+      // Hucre ve tikla-listesi o raporun satirlarindan (ayni onbellek); bkz. intranet-kapsam.cjs.
+      // Rapor yalniz ARK icin var: baska platformda eski ad kalibi hesabi, kaynagi yazilarak.
+      // Rapor okunamazsa intranet hucresi OLCULEMEDI - ad kalibi hesabina donulmez.
+      let ortakIntranet = null;
+      let ortakIntranetHata = '';
+      if (platform === 'ark') {
+        try {
+          const r = await require('../spa-report/index.cjs').intranetOzeti(
+            String(req.query.fresh || '') === '1',
+          );
+          if (intranetKapsam.raporHazir(r)) ortakIntranet = r;
+          else ortakIntranetHata = intranetKapsam.raporHatasi(r);
+        } catch (err) {
+          ortakIntranetHata = intranetKapsam.raporHatasi(null, err.message);
+        }
+      }
+
       const ENV_LIST = [
         ...new Set([
           ...ENVS.map((e) => e.toUpperCase()),
@@ -1191,6 +1211,17 @@ function initDenetim(app) {
         // INTRANET KAPSAMI: uygulama uc dizinin UCUNDE de var mi? Hesap ayri modulde
         // (nginx-intranet.cjs) - orada birim testleriyle kilitli.
         const ic = coverageForEnv(bucket.intranet, intraIdx.get(e), CAP);
+        const ortak =
+          platform !== 'ark'
+            ? null
+            : ortakIntranet
+              ? intranetKapsam.intranetHucresi(
+                  ortakIntranet,
+                  e,
+                  (nss) => ownersFor(owners.byNs, nss),
+                  CAP,
+                )
+              : intranetKapsam.olculemediHucre(ortakIntranetHata);
         const onlyNginx = [];
         for (const [k, v] of n) if (!o.has(k)) onlyNginx.push(v);
 
@@ -1222,12 +1253,14 @@ function initDenetim(app) {
           // olmayanlar; intranet = hic kurulmamis + yarim kurulmus (eksik dizinler ve sunucular)
           missingDetail: {
             internet: internetMissing.slice(0, CAP).map((a) => detailOf(e, a, { kind: 'missing' })),
-            intranet: [
-              ...ic.missing.map((a) => detailOf(e, a, { kind: 'missing' })),
-              ...ic.partial.map((x) =>
-                detailOf(e, x.app, { kind: 'partial', namespace: x.namespace, hosts: x.hosts }),
-              ),
-            ],
+            intranet: ortak
+              ? ortak.detay
+              : [
+                  ...ic.missing.map((a) => detailOf(e, a, { kind: 'missing' })),
+                  ...ic.partial.map((x) =>
+                    detailOf(e, x.app, { kind: 'partial', namespace: x.namespace, hosts: x.hosts }),
+                  ),
+                ],
             // ROUTE'SUZ SPA'lar (kullanici, 2026-09-18): OpenShift'te var ama route envanterinde
             // hic kaydi yok -> internet/intranet siniflandirilamiyor; nginx'te tanimli olup
             // olmadigi ayrica yazilir (inNginx: eski sunucuda proxy / include var mi).
@@ -1270,6 +1303,10 @@ function initDenetim(app) {
           intranetOnlyOnServer: ic.onlyOnServer,
           intranetHosts: ic.hosts,
           intranetCoverage: ic.coverage,
+          intranetKaynak: 'ad-kalibi',
+          // ARK: yukaridaki ad kalibi alanlari Intranet SPA raporundan gelenlerle EZILIR
+          // (intranetTotal kalir: SPA sutunundaki "ic agda" sayisi, ad kalibi + route envanteri).
+          ...(ortak ? ortak.alanlar : {}),
           // BULGU DARALDI: intranet uygulamasinin INTERNETE ACIK sunucuda tanimli
           // olmasi. Intranet sunucusunda olmasi artik NORMALDIR, bulgu degildir.
           intranetInNginx: inNginx.intranet.length,
@@ -1292,12 +1329,20 @@ function initDenetim(app) {
         };
       }).filter(
         (r) =>
-          r.internetTotal || r.intranetTotal || r.otherTotal || r.unknownTotal || r.onlyNginxCount,
+          r.internetTotal ||
+          r.intranetTotal ||
+          r.intranetKurulumToplam ||
+          r.otherTotal ||
+          r.unknownTotal ||
+          r.onlyNginxCount,
       );
 
       // Intranet sunuculari HENUZ TARANMADIYSA bunu ekran SOYLEMELI: aksi halde "hicbir
       // intranet uygulamasi deploy edilmemis" gibi okunur ve yanlis alarm uretir.
-      const intranetScanned = intraIdx.size > 0;
+      const intranetScanned = ortakIntranet
+        ? ortakIntranet.dizinDurum === 'var' &&
+          ortakIntranet.taranmayanSunucu.length < ortakIntranet.intranetSunuculari.length
+        : intraIdx.size > 0;
 
       res.json({
         ok: true,
@@ -1313,6 +1358,19 @@ function initDenetim(app) {
         intranetTableMissing,
         // Beklenmeyen durum: intranet sunucusunda servis vhost'u tanimi bulundu.
         intranetVhostRows,
+        // Intranet kurulum hucresinin kaynagi ve Intranet SPA raporunun kapsami (ekranda yazilir).
+        intranetKaynak: platform === 'ark' ? 'intranet-spa' : 'ad-kalibi',
+        intranetKaynakHata: ortakIntranetHata,
+        intranetRapor: ortakIntranet
+          ? {
+              kesifTarihi: ortakIntranet.kesifTarihi || null,
+              dizinTarihi: ortakIntranet.dizinTarihi || null,
+              dizinDurum: ortakIntranet.dizinDurum,
+              taranmayanSunucu: ortakIntranet.taranmayanSunucu,
+              platformDisi: ortakIntranet.platformDisi,
+              ortamsiz: ortakIntranet.rows.filter((r) => r.env === 'BILINMIYOR').length,
+            }
+          : null,
         routeMatch: matchStats,
         ownersReady: owners.ready,
         // PROD nginx kumesinin kaynagi: eski sunucudaki proxy_pass satirlari (cozum sayilari)

@@ -189,6 +189,46 @@ async function loadReport(fresh) {
 
 const BEYAN = new Set(['yes', 'no', 'unknown']);
 
+/** SPA Raporu'ndan girilen uygulama beyani Intranet SPA sayfasinda da hemen gorunsun. */
+const intranetOnbellekSil = () => {
+  try {
+    require('./intranet.cjs').onbellekSil();
+  } catch {
+    /* modul yoksa yoksay */
+  }
+};
+
+/**
+ * UYGULAMA SEVIYESI BEYAN (SPA Tasimalari ile AYNI alan: nginx_migration_tracking). SPA Raporu'nun
+ * location'siz beyani ve Intranet SPA sayfasi (2026-10-19) buradan yazar: ayni uygulama icin TEK
+ * cevap, hangi ekrandan girilirse girilsin.
+ * MEVCUT SATIR VARSA ONU GUNCELLE: beyan tek alandir, ikinci bir satir acmak ayni uygulama icin
+ * iki farkli cevap uretirdi (bkz. dosya basligi).
+ */
+async function uygulamaBeyaniYaz({ namespace: ns, application: app2, inUse, note, by }) {
+  const ex = await db.query(
+    `SELECT TOP 1 group_id FROM nginx_migration_tracking
+      WHERE namespace = $1 AND application = $2 ORDER BY updated_at DESC`,
+    [ns, app2],
+  );
+  if (ex.rows.length) {
+    await db.query(
+      `UPDATE nginx_migration_tracking
+          SET in_use = $3, in_use_by = $4, in_use_at = GETUTCDATE(), note = $5,
+              updated_by = $4, updated_at = GETUTCDATE()
+        WHERE group_id = $1 AND namespace = $2 AND application = $6`,
+      [ex.rows[0].group_id, ns, inUse, by, note, app2],
+    );
+  } else {
+    await db.query(
+      `INSERT INTO nginx_migration_tracking (group_id, namespace, application, state, in_use, in_use_by, in_use_at, note, updated_by)
+       VALUES ('ark', $1, $2, 'none', $3, $4, GETUTCDATE(), $5, $4)`,
+      [ns, app2, inUse, by, note],
+    );
+  }
+  _cache = { at: 0, value: null };
+}
+
 function initSpaReport(app) {
   const { requireAuth } = require('../auth/index.cjs');
   // GLOMO GECIS PLANI AYRI SAYFA (2026-10-13): /gecis uclari kendi gorunurluk anahtariyla
@@ -205,6 +245,20 @@ function initSpaReport(app) {
   }
   require('./gecis.cjs').mountGecis(gecisRouter, { loadReport });
   app.use('/api/spa-report', gecisRouter);
+
+  // INTRANET SPA AYRI SAYFA (2026-10-19): kendi gorunurluk anahtari ('ArkIntranetSpa'), rapor
+  // router'indan ONCE (Glomo plani gibi). Beyan SPA Raporu ile AYNI uygulama alanina yazilir.
+  const intranetRouter = express.Router();
+  intranetRouter.use(express.json({ limit: '64kb' }));
+  intranetRouter.use('/intranet', requireAuth);
+  try {
+    const { requireVisible } = require('../auth/visibility.cjs');
+    intranetRouter.use('/intranet', requireVisible('ArkIntranetSpa'));
+  } catch {
+    /* gorunurluk motoru yoksa yoksay */
+  }
+  require('./intranet.cjs').mountIntranet(intranetRouter, { loadBeyanlar, uygulamaBeyaniYaz });
+  app.use('/api/spa-report', intranetRouter);
 
   const router = express.Router();
   router.use(express.json({ limit: '256kb' }));
@@ -274,29 +328,8 @@ function initSpaReport(app) {
 
     // LOCATION YOKSA ESKI DAVRANIS: uygulama seviyesi beyan (SPA Tasimalari ile AYNI alan).
     try {
-      // MEVCUT SATIR VARSA ONU GUNCELLE: beyan tek alandir, ikinci bir satir acmak ayni
-      // uygulama icin iki farkli cevap uretirdi (bkz. dosya basligi).
-      const ex = await db.query(
-        `SELECT TOP 1 group_id FROM nginx_migration_tracking
-          WHERE namespace = $1 AND application = $2 ORDER BY updated_at DESC`,
-        [ns, app2],
-      );
-      if (ex.rows.length) {
-        await db.query(
-          `UPDATE nginx_migration_tracking
-              SET in_use = $3, in_use_by = $4, in_use_at = GETUTCDATE(), note = $5,
-                  updated_by = $4, updated_at = GETUTCDATE()
-            WHERE group_id = $1 AND namespace = $2 AND application = $6`,
-          [ex.rows[0].group_id, ns, inUse, by, note, app2],
-        );
-      } else {
-        await db.query(
-          `INSERT INTO nginx_migration_tracking (group_id, namespace, application, state, in_use, in_use_by, in_use_at, note, updated_by)
-           VALUES ('ark', $1, $2, 'none', $3, $4, GETUTCDATE(), $5, $4)`,
-          [ns, app2, inUse, by, note],
-        );
-      }
-      _cache = { at: 0, value: null };
+      await uygulamaBeyaniYaz({ namespace: ns, application: app2, inUse, note, by });
+      intranetOnbellekSil();
       res.json({ ok: true, inUse, inUseBy: by, note, scope: 'application' });
     } catch (err) {
       res.status(500).json({ ok: false, message: err.message });
@@ -307,4 +340,10 @@ function initSpaReport(app) {
   console.log('[ARK SPA] module mounted at /api/spa-report');
 }
 
-module.exports = { initSpaReport, loadReport, declKey };
+/** Nginx ARK SPA > Intranet SPA raporu, sayfanin KULLANDIGI hesap ve onbellek (2026-10-19): Nginx Hub >
+ *  Kapsam & Tasima'nin intranet kurulum hucresi buradan beslenir; iki ekran ayni sayiyi gosterir. */
+function intranetOzeti(fresh) {
+  return require('./intranet.cjs').loadIntranet(!!fresh, { loadBeyanlar, uygulamaBeyaniYaz });
+}
+
+module.exports = { initSpaReport, loadReport, declKey, loadBeyanlar, uygulamaBeyaniYaz, BEYAN, intranetOzeti };

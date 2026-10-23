@@ -46,8 +46,15 @@ const GECE = new Date('2026-10-06T20:30:00Z');
 const hedef = (o = {}) => ({
   id: 7, record_id: 3, host: 'GBJBOP01', app_name: 'CRM', jboss_gen: 7, app_path: '/hysdeploy/CRM.ear',
   env: 'PROD', smart_no: '123', oco_no: 'OCO-1', scheduled_at: '2026-10-06T10:00:00Z',
-  window_end: '2026-10-06T14:00:00Z', ...o,
+  window_end: '2026-10-06T14:00:00Z',
+  // ON KONTROLUN ONAYLANAN IZIN LISTESI (2026-10-22): zamanlanmis STOP yalniz bununla kosar.
+  last_job_id: 50, stop_izin_json: JSON.stringify({ jobId: 50, izinler: ['onay:CRM|JBoss7|GBJBOP01', 'mv:/vhosting/CRM.ear'] }), ...o,
 });
+
+// SILME IKI ASAMALI (2026-10-22): gercek silme yalniz TAZE, basarili ve kullanilmamis bir silme on
+// kontrolunun izin listesiyle baslar. Silmenin TETIKLENDIGINI soyleyen testler bunu tasir (yeni kural
+// ayri bekcide: silme-geri-al-onkontrol.test.cjs).
+const silmePlani = (at, o = {}) => JSON.stringify({ jobId: 70, at, durum: 'ok', izinler: ['onay:sil:A|JBoss8|H', 'rm:/vhosting8/A.ear.1.old'], ...o });
 
 test('RP1 pencere ACIKSA STOP tetiklenir ve CLAIM once yapilir', async () => {
   const yazilan = dbKur([["FROM retirement_targets t JOIN retirement_records r", [hedef()]]]);
@@ -59,6 +66,7 @@ test('RP1 pencere ACIKSA STOP tetiklenir ve CLAIM once yapilir', async () => {
   assert.equal(cagri.length, 1);
   assert.equal(cagri[0].kind, 'stop');
   assert.equal(cagri[0].t.host, 'GBJBOP01');
+  assert.deepEqual(cagri[0].t.izinler, ['onay:CRM|JBoss7|GBJBOP01', 'mv:/vhosting/CRM.ear'], 'zamanlanmis STOP onaylanan izin listesini betige tasimiyor');
   // CLAIM LAUNCH'TAN ONCE: iki tick ust uste binerse ayni hedef iki kez baslatilmasin
   const claim = yazilan.findIndex((w) => /status = 'stopping'/.test(w.sql) && /status = 'stop_scheduled'/.test(w.sql));
   assert.ok(claim >= 0, 'claim UPDATE yok');
@@ -99,6 +107,26 @@ test('RP4 LAUNCH DUSERSE claim GERI ALINIR (pencere icinde tekrar denenebilsin)'
   assert.match(String(geri.params[0]), /AWX 500/);
 });
 
+test('RP16 izin listesi YOK / bozuk / baska on kontrol isinin ise zamanlanmis STOP BASLATILMAZ, failed + sebep', async () => {
+  const durumlar = [
+    { stop_izin_json: null },
+    { stop_izin_json: '{bozuk' },
+    { stop_izin_json: JSON.stringify({ jobId: 49, izinler: ['onay:CRM|JBoss7|GBJBOP01'] }) },
+    { stop_izin_json: JSON.stringify({ jobId: 50, izinler: ['mv:/x'] }) },
+  ];
+  for (const o of durumlar) {
+    const yazilan = dbKur([['FROM retirement_targets t JOIN retirement_records r', [hedef(o)]]]);
+    const cagri = [];
+    poller.startPoller(async (kind, t) => { cagri.push({ kind, t }); return { jobId: 999 }; });
+    const r = await poller._stopTick(N);
+    poller.stopPoller();
+    assert.equal(cagri.length, 0, `izin listesi gecersizken STOP baslatildi: ${JSON.stringify(o)}`);
+    assert.equal(r.kosan, 0);
+    const f = yazilan.find((w) => /SET status = 'failed'/.test(w.sql) && /status = 'stop_scheduled'/.test(w.sql));
+    assert.ok(f && /izin listesi yok/.test(String((f.params || [])[0] || '')), "hedef stop_scheduled'da sessizce kaldi ya da sebep yazilmadi");
+  }
+});
+
 test('RP5 DELETE: tarihi gelmeyen hedef tetiklenmez', async () => {
   dbKur([["FROM retirement_targets t JOIN retirement_records r", [{
     id: 9, record_id: 4, host: 'H', app_name: 'A', jboss_gen: 8, app_path: '', env: 'TEST',
@@ -116,6 +144,7 @@ test('RP6 DELETE: tarih gelince tetiklenir, plan_only YOK (insan izlemiyor)', as
   dbKur([["FROM retirement_targets t JOIN retirement_records r", [{
     id: 9, record_id: 4, host: 'H', app_name: 'A', jboss_gen: 8, app_path: '', env: 'TEST',
     smart_no: '1', planned_delete_at: '2026-10-05', stop_at: '2026-09-01', delete_after_days: 45,
+    delete_onkontrol_json: silmePlani('2026-10-06T19:45:00Z'),
   }]]]);
   const cagri = [];
   poller.startPoller(async (kind, t) => { cagri.push({ kind, t }); return { jobId: 777 }; });
@@ -123,6 +152,8 @@ test('RP6 DELETE: tarih gelince tetiklenir, plan_only YOK (insan izlemiyor)', as
   poller.stopPoller();
   assert.equal(r.kosan, 1);
   assert.equal(cagri[0].kind, 'delete');
+  assert.equal(cagri[0].t.planOnly, false, 'gercek silme plan_only=false gitmiyor');
+  assert.deepEqual(cagri[0].t.izinler, ['onay:sil:A|JBoss8|H', 'rm:/vhosting8/A.ear.1.old'], 'silme on kontrolun izin listesini tasimiyor');
 });
 
 test('RP7 SONLANDIRMA: basarili DELETE "deleted" yazar, basarisiz "failed"', async () => {
@@ -248,7 +279,7 @@ test('RP6b DELETE gun geldi ama 23:00 (TR) olmadan TETIKLENMEZ; admin "beklemeyi
   assert.equal(r.kosan, 0, 'gun ortasinda (15:00 TR) silme tetiklendi - 23:00 kurali yok');
   assert.equal(cagri.length, 0);
 
-  dbKur([["FROM retirement_targets t JOIN retirement_records r", satir({ delete_now_at: '2026-10-06T11:00:00Z' })]]);
+  dbKur([["FROM retirement_targets t JOIN retirement_records r", satir({ delete_now_at: '2026-10-06T11:00:00Z', delete_onkontrol_json: silmePlani('2026-10-06T11:30:00Z') })]]);
   cagri = [];
   poller.startPoller(async (k) => { cagri.push(k); return { jobId: 1 }; });
   r = await poller._deleteTick(N);
@@ -382,7 +413,7 @@ test('RP13 HEDEF BASINA beklemeyi atla: yalniz isaretli hedef tarih/23:00 beklem
   const satir = (o) => ({ id: 1, record_id: 4, host: 'H', app_name: 'A', jboss_gen: 8, app_path: '', env: 'TEST',
     smart_no: '1', planned_delete_at: '2026-12-31', stop_at: '2026-10-01', delete_after_days: 45, ...o });
   dbKur([["FROM retirement_targets t JOIN retirement_records r", [
-    satir({ id: 21, host: 'GBJBOT01', hedef_delete_now_at: '2026-10-06T11:00:00Z' }),
+    satir({ id: 21, host: 'GBJBOT01', hedef_delete_now_at: '2026-10-06T11:00:00Z', delete_onkontrol_json: silmePlani('2026-10-06T11:30:00Z') }),
     satir({ id: 22, host: 'GBJBOT02' }),
   ]]]);
   const cagri = [];
@@ -475,6 +506,6 @@ test('RP15 DELETE launch basariliysa job ID yazimi dusse de claim korunur', asyn
   await launchSonrasiDbHatasiTekrarBaslatmaz({
     kind: 'delete', baslangicDurumu: 'stopped', claimDurumu: 'deleting', jobAlani: 'delete_job_id',
     tick: poller._deleteTick, now: GECE,
-    satir: hedef({ planned_delete_at: '2026-10-05', stop_at: '2026-09-01', delete_after_days: 45 }),
+    satir: hedef({ planned_delete_at: '2026-10-05', stop_at: '2026-09-01', delete_after_days: 45, delete_onkontrol_json: silmePlani('2026-10-06T19:45:00Z') }),
   });
 });

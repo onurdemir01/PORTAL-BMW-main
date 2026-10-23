@@ -57,7 +57,8 @@ test('TS4 toplu uc: kapilar HER hedefte ve HEPSI launch\'tan ONCE; tek launch, t
     assert.ok(i > dongu && i < launch, `kapi hedef dongusunde degil: ${k}`);
   }
   assert.equal(uc.split('await launch(req, `Retirement: ${confirmed').length - 1, 1, 'STOP isi birden fazla kez baslatiliyor');
-  assert.match(uc, /for \(const h of hedefler\)\s*await db\(\)\.query\(`UPDATE retirement_targets SET status = \$1, last_job_id = \$2/, 'hedeflere ayni is no yazilmiyor');
+  // On kontrolde ayrica eski izin listesi silinir (2026-10-22); iki bicimde de ayni is no yazilir.
+  assert.match(uc, /for \(const h of hedefler\)\s*await db\(\)\.query\(\s*confirmed\s*\? `UPDATE retirement_targets SET status = \$1, last_job_id = \$2[^`]*`\s*: `UPDATE retirement_targets SET status = \$1, last_job_id = \$2, stop_izin_json = NULL/, 'hedeflere ayni is no yazilmiyor');
 });
 
 test('TS5 toplu uc: farkli ortam ve ayni sunucu reddedilir; cokluda rt_hedefler, tekte eski degiskenler', () => {

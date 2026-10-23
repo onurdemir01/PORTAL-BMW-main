@@ -54,8 +54,9 @@ test('DB1 secenek onbellegi GIRIS SAYISINI sinirliyor', () => {
 });
 
 test('DB2 SURESI DOLAN giris SILINIYOR (TTL bellegi de koruyor)', () => {
-  const i = CS.indexOf('const hit = cache.get(key);');
-  const govde = CS.slice(i, i + 700);
+  // OKUMA DALI ile SINIRLI (2026-10-22): eskiden `slice(i, i + 700)` yaziminda onceki FIFO
+  // silmesine de uzaniyordu; TTL silmesi kaldirilinca bekci YESIL kaliyordu (mutasyonla olculdu).
+  const govde = dilim(CS, 'const hit = cache.get(key);', 'const choices = await src.load(p);');
   assert.match(govde, /cache\.delete\(key\)/, 'suresi dolan giris silinmiyor — TTL yalnizca tazeligi koruyor');
   // Silme, "taze mi" kontrolunden SONRA olmali; once olsaydi taze giris de silinirdi.
   const tazeIdx = govde.indexOf('< CACHE_TTL_MS');
@@ -78,6 +79,29 @@ test('DB3 yeniden yazimda FIFO sirasi TAZELENIYOR', () => {
   const silIdx = govde.indexOf('cache.delete(key)');
   const setIdx = govde.indexOf('cache.set(key,');
   assert.ok(silIdx > 0 && silIdx < setIdx, 'yazimdan once silinmiyor — FIFO sirasi bozulur');
+});
+
+// ── DB1b-DB3b: secimin AYRINTI onbellegi (2026-10-22; anahtar parametre + secilen deger) ──
+
+test('DB1b ayrinti onbellegi GIRIS SAYISINI sinirliyor, suresi dolan siliniyor, FIFO tazeleniyor', () => {
+  assert.match(CS, /const DETAIL_MAX_ENTRIES = \d+;/, 'giris tavani yok');
+  const govde = dilim(CS, 'async function loadChoiceDetails(', '\n}\n');
+  assert.match(
+    govde,
+    /while \(detailCache\.size >= DETAIL_MAX_ENTRIES\) detailCache\.delete\(detailCache\.keys\(\)\.next\(\)\.value\)/,
+    'dolunca en eski atilmiyor',
+  );
+  // OKUMA DALI ile SINIRLI dilim: yazimdan onceki FIFO silmesi de `detailCache.delete(key)` -
+  // dilim oraya uzanirsa TTL silmesi kaldirilsa bile bekci yesil kalir (mutasyon turu P10).
+  const oku2 = dilim(govde, 'const varolan = detailCache.get(key);', 'const detay = await src.details(p, secilen);');
+  const tazeIdx = oku2.indexOf('< DETAIL_TTL_MS');
+  const silIdx = oku2.indexOf('detailCache.delete(key)');
+  assert.ok(tazeIdx > 0 && silIdx > tazeIdx, 'suresi dolan giris silinmiyor (ya da taze giris de siliniyor)');
+  assert.ok(!/if \((?:false|0|null|undefined)\)/.test(govde), 'silme OLU DALA alinmis');
+  const yaz = govde.slice(govde.indexOf('const detay = await src.details(p, secilen);'));
+  const s = yaz.indexOf('detailCache.delete(key)');
+  const w = yaz.indexOf('detailCache.set(key,');
+  assert.ok(s > 0 && s < w, 'yazimdan once silinmiyor — FIFO sirasi bozulur');
 });
 
 // ── DB4-DB6: legacy yedek dosyasi ──────────────────────────────────────────

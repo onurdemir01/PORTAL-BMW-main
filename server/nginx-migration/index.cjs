@@ -170,6 +170,14 @@ function buildExtraVars({ service, application, namespace, inputPath, user }) {
   };
 }
 
+/**
+ * ESKI FILOSU KAPALI gruplar (2026-10-20). Kullanici: "Glomo icin tasarladigin tum islerde eski
+ * filoya gitmeyi kaldirabilirsin." Bu gruplarda "Eski tanimi kaldir" AWX'e GITMEZ (nginx_ops da
+ * GLOMO prod'da eski filoya hicbir iste gitmez). Ekrandaki kopya: NginxProdMigration.tsx
+ * ESKI_FILO_KAPALI (test ikisini karsilastirir).
+ */
+const ESKI_FILO_KAPALI = new Set(['glomo']);
+
 /** nginx_ops (action=delete, env=prod) extra_vars - saf, test edilebilir. */
 function buildDeleteExtraVars({ service, inputPath, user }) {
   return {
@@ -811,6 +819,14 @@ function initNginxMigration(app) {
 
   // -- Eylem: eski sunucudaki location (+ upstream) tanimini kaldir (23:00'e zamanlanir) --
   router.post('/delete', async (req, res) => {
+    if (ESKI_FILO_KAPALI.has(String((req.body && req.body.group) || ''))) {
+      return res.status(409).json({
+        ok: false,
+        code: 'eski_filo_kapali',
+        message:
+          'GLOMO için eski filoya (GBRVPP07-10 / GBRVPAP03-06) hiçbir işte gidilmez (2026-10-20): eski sunucudan kaldırma işi başlatılmadı.',
+      });
+    }
     const cfg = await readConfig();
     if (!cfg.awxServerId || !cfg.deleteTemplateId) {
       return res.status(409).json({
@@ -949,4 +965,4 @@ function initNginxMigration(app) {
 }
 
 module.exports = {
-  initNginxMigration, isDefinitionConfirmed, buildExtraVars, buildDeleteExtraVars, jobTemplateAllowed, userMail, validateRequest, normalizeTracking, rowToTracking, jobShape, syncJobStatusToTracking, JOB_TERMINAL, JOB_LIVE, TRACK_STATES, _CONFIG_NAME: CONFIG_NAME };
+  initNginxMigration, ESKI_FILO_KAPALI, isDefinitionConfirmed, buildExtraVars, buildDeleteExtraVars, jobTemplateAllowed, userMail, validateRequest, normalizeTracking, rowToTracking, jobShape, syncJobStatusToTracking, JOB_TERMINAL, JOB_LIVE, TRACK_STATES, _CONFIG_NAME: CONFIG_NAME };

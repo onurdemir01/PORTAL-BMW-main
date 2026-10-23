@@ -114,6 +114,20 @@ Ayrıntı: `docs/DEPLOYMENT.md`.
 Prod bugün **Node 20.20.2** koşuyor. `package.json` `engines` **bilerek** `>=20.18.0`
 bırakıldı — bugün hiçbir şey kırılmasın diye.
 
+> **ARTIK ACİL (2026-10-23):** Node.js 2026-10-21 güvenlik yayını 10 CVE kapattı; en ağırı
+> **CVE-2026-111497** (High, gömülü Brotli çözücüsünde sınır dışı yazma → uzaktan kod çalıştırma).
+> Yamalı sürümler yalnız **22.23.4 / 24.22.1 / 26.12.1**. **20.x 2026-04-30'da ömrünü doldurdu, yama
+> almadı** — 20.20.2 açık kalır. Portal'da çözücüye giden en kısa yol Express 5'in gövde
+> ayrıştırıcısıydı (`Content-Encoding: br` gövdeyi açıyor, oturum kontrolünden önce koşuyor); bu yol
+> `server/auth/brotli-govde-reddi.cjs` ile **kapatıldı** (415). Ama giden `fetch` yanıtları ve TLS /
+> DNS açıkları (CVE-2026-106069, -105483, -106072, -105482) yalnız Node yükseltmesiyle kapanır.
+> Hedef: **en az 22.23.4** (ya da 24.22.1 — geliştirme makinesi 24.x'te, test takımı orada yeşil).
+> RHEL'de `dnf module reset -y nodejs && dnf module enable -y nodejs:22 && dnf install -y nodejs`;
+> Red Hat paketi düzeltmeyi kendi sürüm numarasıyla taşıyabilir — `dnf updateinfo list --security`
+> çıktısında ilgili RHSA'yı doğrulayın. dnf "Nothing to do" diyorsa (sunucu deposu geride):
+> `deploy/install-node.sh` resmi ikiliyi root'suz `<BASE_DIR>/runtime/node` altına kurar
+> (ayrıntı: `docs/DEPLOYMENT.md` → "Node dnf'ten yamali gelmiyorsa").
+
 ### Bugün ne uyumsuz
 
 `npm run preflight` bunu **ölçer** (liste kodda gömülü değil, `package-lock.json`'dan
@@ -135,8 +149,9 @@ PREFLIGHT_NODE_VERSION=20.20.2 npm run preflight
 
 ### Geçiş adımları
 
-1. Sunucuya Node 22 kur (nvm ya da paket yöneticisi).
-2. `deploy/run.sh` kullandığı Node'u `PATH`ten alır — ayrı bir değişiklik gerekmez.
+1. Sunucuya Node 22 kur (paket yöneticisi ya da `deploy/install-node.sh` ile resmi ikili).
+2. `deploy/run.sh` kullandığı Node'u `PATH`ten alır; `<BASE_DIR>/runtime/node` varsa onu öne
+   koyar ve açılışta yolunu + sürümünü yazar.
 3. `npm ci` — EBADENGINE uyarıları biter.
 4. **Jenkins**: Global Tool olarak `node22` tanımlayın, sonra `Jenkinsfile`'daki
    `tools { nodejs 'node20' }` satırını `'node22'` yapın. Matris **bilerek eklenmedi**:

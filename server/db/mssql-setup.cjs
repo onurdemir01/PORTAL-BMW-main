@@ -942,6 +942,34 @@ const TABLES = [
       )`,
   },
   {
+    // Server Hub Admin ayarlari (2026-10-20): bulgu seviyesi degisiklikleri ('seviye:<KOD>') ve tek
+    // seferde girilebilecek sunucu sayisi ('limit:<ad>'). Yalniz VARSAYILANDAN farkli olan satir
+    // tutulur (bkz. server/server-hub/ayarlar.cjs).
+    name: 'server_hub_ayarlar',
+    sql: `
+      CREATE TABLE server_hub_ayarlar (
+        anahtar     NVARCHAR(96)  NOT NULL PRIMARY KEY,
+        deger       NVARCHAR(256) NOT NULL,
+        aciklama    NVARCHAR(500) NULL,
+        updated_by  NVARCHAR(128) NOT NULL,
+        updated_at  DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+      )`,
+  },
+  {
+    // Server Hub ayar gecmisi: kim, ne zaman, eski -> yeni (varsayilana donus dahil).
+    name: 'server_hub_ayar_gecmisi',
+    sql: `
+      CREATE TABLE server_hub_ayar_gecmisi (
+        id          INT IDENTITY(1,1) PRIMARY KEY,
+        anahtar     NVARCHAR(96)  NOT NULL,
+        eski        NVARCHAR(256) NULL,
+        yeni        NVARCHAR(256) NULL,
+        aciklama    NVARCHAR(500) NULL,
+        degistiren  NVARCHAR(128) NOT NULL,
+        zaman       DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+      )`,
+  },
+  {
     // Uygulama Retirement (2026-09-21, kullanici talebi): ekibin elle surecinin (Smart silme kaydi ->
     // stop -> secilen tarihte silme -> IP/LB/DNS kayitlari) Portal'da takibi. Kayit = uygulama (tum
     // ortamlar/siteler); silme tarihi kaydi acan secer, bos ise stop + delete_after_days (45).
@@ -1973,6 +2001,17 @@ const ELEMENT_SEED = [
     label: 'Glomo Geçiş Planı',
     route: '/ark-spa/glomo-gecis-plani',
     sort_order: 2,
+    roles: ['Admin', 'User'],
+  },
+  {
+    // INTRANET SPA (kullanici, 2026-10-19): intranet SPA'lar yuk aliyor mu + ekip kullanim beyani.
+    // Ekiplere acik (beyani ekip girer; SPA Raporu ile ayni uygulama beyani).
+    element_key: 'ArkIntranetSpa',
+    element_type: 'page',
+    parent_key: 'navgroup:arkspa',
+    label: 'Intranet SPA',
+    route: '/ark-spa/intranet-spa',
+    sort_order: 3,
     roles: ['Admin', 'User'],
   },
   {
@@ -4445,6 +4484,28 @@ async function setupTables() {
       table: 'retirement_records',
       col: 'dns_turleri_json',
       sql: `ALTER TABLE retirement_records ADD dns_turleri_json NVARCHAR(MAX) NULL`,
+    },
+    {
+      // ON KONTROLUN IZIN LISTESI (2026-10-22, kullanici: on kontrolde yazilanlarin "disinda hicbir
+      // seye dokunulmadigindan emin olalim"). {jobId, at, izinler[]}: onayli STOP (elle ya da OCO
+      // penceresinde zamanlayici) betige YALNIZ bu listeyi gonderir; betik liste disi islem yapmaz.
+      // detail_json'dan AYRI: gercek STOP'un sonucu detail_json'u ezer, onaylanan liste kaybolmamali.
+      table: 'retirement_targets',
+      col: 'stop_izin_json',
+      sql: `ALTER TABLE retirement_targets ADD stop_izin_json NVARCHAR(MAX) NULL`,
+    },
+    {
+      // SILME VE GERI ALMA ON KONTROLU (2026-10-22, kullanici: "DELETE ve GERI AL icin de on kontrol listesini
+      // yap"). {jobId, at, durum, mesaj, onkontrol[], izinler[], kullanildi}: silme (zamanlayici) ve onayli
+      // geri alma betige YALNIZ bu listeyi gonderir; bir on kontrol bir kez kullanilir (bkz. stop-sonuc.cjs).
+      table: 'retirement_targets',
+      col: 'delete_onkontrol_json',
+      sql: `ALTER TABLE retirement_targets ADD delete_onkontrol_json NVARCHAR(MAX) NULL`,
+    },
+    {
+      table: 'retirement_targets',
+      col: 'rollback_onkontrol_json',
+      sql: `ALTER TABLE retirement_targets ADD rollback_onkontrol_json NVARCHAR(MAX) NULL`,
     },
     {
       table: 'smart_tickets',

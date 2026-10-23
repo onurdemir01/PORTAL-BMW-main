@@ -20,9 +20,10 @@
 // ve kayit ile AWX arasinda ayrisma riski dogurur (ayni gerekce ScaleX'te de yazili).
 'use strict';
 const { webTekille } = require('./web-liste.cjs');
+const { onKontrolIzinleri, onKontrolOku, onKontrolBasladi, onKontrolSonucu, onKontrolGecerli } = require('./stop-sonuc.cjs');
 
 const db = require('../db/index.cjs');
-const { stopZamani, etkinSilmeGunu, silmeZamaniGeldi } = require('./schedule.cjs');
+const { stopZamani, etkinSilmeGunu, silmeZamaniGeldi, silmeOnKontrolZamaniGeldi, silmePlanTazeDk } = require('./schedule.cjs');
 
 let _timer = null;
 let _launch = null;
@@ -76,7 +77,7 @@ async function olay(recordId, kind, text) {
 async function stopTick(now) {
   const { rows } = await db.query(
     `SELECT t.id, t.record_id, t.host, t.app_name, t.jboss_gen, t.app_path, t.env,
-            t.scheduled_at, t.window_end,
+            t.scheduled_at, t.window_end, t.last_job_id, t.stop_izin_json,
             r.smart_no, r.oco_no, r.status AS rec_status
        FROM retirement_targets t
        JOIN retirement_records r ON r.id = t.record_id
@@ -102,6 +103,19 @@ async function stopTick(now) {
       }
       continue;
     }
+    // ONAYLANAN LISTE (2026-10-22): zamanlanmis STOP da yalniz onaylanan on kontrolun izin listesiyle
+    // kosar. Liste yoksa (bu ozellikten once zamanlanmis ya da bozuk) is BASLATILMAZ, sebebi yazilir -
+    // betik zaten izinsiz baslamazdi; sessizce 'stop_scheduled'da birakmak pencereyi kacirirdi.
+    t.izinler = onKontrolIzinleri(t.stop_izin_json, t.last_job_id);
+    if (!t.izinler) {
+      const u = await db.query(
+        `UPDATE retirement_targets SET status = 'failed', result_text = $1, updated_at = GETUTCDATE()
+          WHERE id = $2 AND status = 'stop_scheduled'`,
+        ['Onaylanan ön kontrolün izin listesi yok — zamanlanmış STOP başlatılmadı, hiçbir şey yapılmadı. Ön kontrolü yeniden çalıştırıp onaylayın.', t.id],
+      );
+      if (u.rowCount) await olay(t.record_id, 'schedule-expired', `${t.app_name} @ ${t.host}: onaylanan on kontrol izin listesi yok - STOP baslatilmadi`);
+      continue;
+    }
     // TOPLU STOP (2026-10-08): ayni kayit + ayni zamanlama ani = kullanici onlari TEK iste
     // secti; pencere acilinca da TEK is baslar (tek SCC maili). Asagida gruplanir.
     const g = `${t.record_id}|${new Date(t.scheduled_at).getTime()}`;
@@ -122,7 +136,7 @@ async function stopTick(now) {
     }
     if (!alinan.length) continue;
     const t = alinan[0];
-    const hedef = (x) => ({ targetId: x.id, host: x.host, application: x.app_name, gen: x.jboss_gen, appPath: x.app_path });
+    const hedef = (x) => ({ targetId: x.id, host: x.host, application: x.app_name, gen: x.jboss_gen, appPath: x.app_path, izinler: x.izinler });
     const etiket = alinan.length > 1 ? `${t.app_name} @ ${alinan.map((x) => x.host).join(', ')}` : `${t.app_name} @ ${t.host}`;
     let r;
     try {
@@ -167,10 +181,21 @@ async function stopTick(now) {
   return { kosan, gecen };
 }
 
-/** Silme tarihi gelen hedefler. Yalniz 'stopped' olanlar: durdurulmamis uygulama silinmez. */
+/** Silme tarihi gelen hedefler. Yalniz 'stopped' olanlar: durdurulmamis uygulama silinmez.
+ *
+ * IKI ASAMA (kullanici 2026-10-22: "DELETE ve GERI AL icin de on kontrol listesini yap"): EKSTRA ONAY YOK
+ * kurali (2026-10-06, "tarih geldiginde is yapilir") korunur, ama silme artik KENDI ON KONTROLUNUN
+ * listesiyle kosar:
+ *   1) silme saatinden bir saat once (bkz. schedule.silmeOnKontrolZamaniGeldi) on kontrol baslatilir
+ *      (plan_only=true; hicbir sey silinmez). Liste ve izinler delete_onkontrol_json'a yazilir
+ *      (onKontrolTick) ve ekranda gorunur.
+ *   2) silme ani gelince YALNIZ taze (silmePlanTazeDk), basarili ve kullanilmamis on kontrolun izin
+ *      listesiyle gercek silme baslar; betik listede olmayan hicbir seyi silmez.
+ * On kontrol BASARISIZSA ayni gece yeniden denenmez (her turda is baslatmak yerine): liste tazeligini
+ * yitirince (ertesi gece) yeniden kosar. Sebep ekranda ve olaylarda. */
 async function deleteTick(now) {
   const { rows } = await db.query(
-    `SELECT t.id, t.record_id, t.host, t.app_name, t.jboss_gen, t.app_path, t.env,
+    `SELECT t.id, t.record_id, t.host, t.app_name, t.jboss_gen, t.app_path, t.env, t.delete_onkontrol_json,
             r.smart_no, r.planned_delete_at, r.stop_at, r.delete_after_days, r.delete_now_at,
             t.delete_now_at AS hedef_delete_now_at
        FROM retirement_targets t
@@ -178,6 +203,8 @@ async function deleteTick(now) {
       WHERE t.status = 'stopped' AND t.deleted_at IS NULL AND r.status NOT IN ('cancelled', 'deleted')`,
   );
   let kosan = 0;
+  let planlanan = 0;
+  const tazeDk = silmePlanTazeDk();
   for (const t of rows || []) {
     const bilgi = {
       plannedDeleteAt: t.planned_delete_at,
@@ -187,7 +214,19 @@ async function deleteTick(now) {
       deleteNowAt: t.delete_now_at,
     };
     // HEDEF BASINA "beklemeyi atla" (2026-10-12): yalniz bu hedef icin tarih ve 23:00 beklenmez.
-    if (!t.hedef_delete_now_at && !silmeZamaniGeldi(bilgi, now)) continue;
+    const atla = !!t.hedef_delete_now_at;
+    if (!atla && !silmeOnKontrolZamaniGeldi(bilgi, now)) continue;
+    const plan = onKontrolOku(t.delete_onkontrol_json);
+    const planAni = plan ? Date.parse(plan.at) : NaN;
+    const taze = Number.isFinite(planAni) && now.getTime() - planAni < tazeDk * 60000;
+    const izinler = onKontrolGecerli(plan, 'delete', { maxYasDk: tazeDk, now });
+    if (!izinler) {
+      // Taze ama henuz bitmemis / basarisiz on kontrol: bekle (yeniden baslatma yok).
+      if (taze && plan && !plan.kullanildi) continue;
+      if (await silmeOnKontrolBaslat(t, now)) planlanan += 1;
+      continue;
+    }
+    if (!atla && !silmeZamaniGeldi(bilgi, now)) continue;
     const claim = await db.query(
       `UPDATE retirement_targets SET status = 'deleting', updated_at = GETUTCDATE()
         WHERE id = $1 AND status = 'stopped'`,
@@ -196,8 +235,7 @@ async function deleteTick(now) {
     if (!claim.rowCount) continue;
     let r;
     try {
-      // EKSTRA ONAY YOK ama PLAN DA YOK: kullanici karari "tarih geldiginde is yapilir".
-      // plan_only=false dogrudan gider; plan asamasi insan onayi icindi, burada insan yok.
+      // EKSTRA ONAY YOK, ON KONTROL VAR: plan_only=false YALNIZ on kontrolun izin listesiyle gider.
       r = await _launch('delete', {
         recordId: t.record_id,
         targetId: t.id,
@@ -207,6 +245,8 @@ async function deleteTick(now) {
         appPath: t.app_path,
         env: t.env,
         smartNo: t.smart_no,
+        planOnly: false,
+        izinler,
       });
     } catch (e) {
       await db.query(
@@ -218,11 +258,13 @@ async function deleteTick(now) {
       continue;
     }
     try {
-      await db.query(`UPDATE retirement_targets SET delete_job_id = $1, updated_at = GETUTCDATE() WHERE id = $2`, [r?.jobId ?? null, t.id]);
+      // ON KONTROL TUKENDI: ayni liste ikinci bir silmeye verilmez (yeniden deneme yeni on kontrol ister).
+      const kullanildi = JSON.stringify({ ...plan, kullanildi: true, deleteJobId: r?.jobId ?? null });
+      await db.query(`UPDATE retirement_targets SET delete_job_id = $1, delete_onkontrol_json = $2, updated_at = GETUTCDATE() WHERE id = $3`, [r?.jobId ?? null, kullanildi, t.id]);
       await olay(
         t.record_id,
         'delete',
-        `${t.app_name} @ ${t.host}: silme tarihi geldi (${etkinSilmeGunu(bilgi)}), DELETE isi #${r?.jobId ?? '?'}`,
+        `${t.app_name} @ ${t.host}: silme tarihi geldi (${etkinSilmeGunu(bilgi)}), DELETE isi #${r?.jobId ?? '?'} - on kontrol #${plan.jobId} listesiyle (${izinler.length - 1} islem)`,
       );
       kosan += 1;
     } catch (e) {
@@ -237,7 +279,91 @@ async function deleteTick(now) {
       );
     }
   }
-  return { kosan };
+  return { kosan, planlanan };
+}
+
+/** Silme on kontrolunu baslatir (plan_only=true, hicbir sey silinmez). CLAIM once: kayit 'baslatiliyor'
+ *  yazilir (ayni anda ikinci tur ayni hedefe ikinci on kontrol baslatmasin); launch duserse eski kayit
+ *  geri yazilir ve bir sonraki tur tekrar dener (STOP / DELETE claim'iyle ayni kural). */
+async function silmeOnKontrolBaslat(t, now) {
+  const eski = t.delete_onkontrol_json ?? null;
+  const claimJson = JSON.stringify({ durum: 'baslatiliyor', at: now.toISOString(), kaynak: 'zamanlayici' });
+  const c = await db.query(
+    eski == null
+      ? `UPDATE retirement_targets SET delete_onkontrol_json = $1, updated_at = GETUTCDATE() WHERE id = $2 AND status = 'stopped' AND delete_onkontrol_json IS NULL`
+      : `UPDATE retirement_targets SET delete_onkontrol_json = $1, updated_at = GETUTCDATE() WHERE id = $2 AND status = 'stopped' AND delete_onkontrol_json = $3`,
+    eski == null ? [claimJson, t.id] : [claimJson, t.id, eski],
+  );
+  if (!c.rowCount) return false;
+  let r;
+  try {
+    r = await _launch('delete', {
+      recordId: t.record_id,
+      targetId: t.id,
+      host: t.host,
+      application: t.app_name,
+      gen: t.jboss_gen,
+      appPath: t.app_path,
+      env: t.env,
+      smartNo: t.smart_no,
+      planOnly: true,
+    });
+  } catch (e) {
+    await db.query(
+      `UPDATE retirement_targets SET delete_onkontrol_json = $1, updated_at = GETUTCDATE() WHERE id = $2 AND delete_onkontrol_json = $3`,
+      [eski, t.id, claimJson],
+    );
+    await olay(t.record_id, 'error', `${t.app_name} @ ${t.host}: silme on kontrolu baslatilamadi — ${e.message}`);
+    return false;
+  }
+  await db.query(
+    `UPDATE retirement_targets SET delete_onkontrol_json = $1, updated_at = GETUTCDATE() WHERE id = $2 AND delete_onkontrol_json = $3`,
+    [onKontrolBasladi(r?.jobId ?? null, { kaynak: 'zamanlayici', awxServerId: r?.awxServerId ?? null }), t.id, claimJson],
+  );
+  await olay(t.record_id, 'delete-plan', `${t.app_name} @ ${t.host}: silme on kontrolu #${r?.jobId ?? '?'} baslatildi - silme yalniz bu listeyle yapilir`);
+  return true;
+}
+
+// ── SILME / GERI ALMA ON KONTROLU SONUCU (2026-10-22) ──────────────────────────────────────────────
+// On kontrol isleri hedef durumunu degistirmez; sonucu (liste + izinler) kendi kaydina yazilir.
+// Zamanlayicinin baslattigi silme on kontrolunu kimse izlemiyor; geri alma on kontrolunu ekran izler
+// (job-status) ama ekran kapanirsa sonuc burada da yazilir. OKUNAMADI != BASARISIZ: AWX okunamazsa
+// kayit 'running' KALIR, sonraki tur tekrar bakar.
+const ONKONTROL_ALANI = Object.freeze({ delete: 'delete_onkontrol_json', rollback: 'rollback_onkontrol_json' });
+async function onKontrolTick(recordId = null) {
+  if (typeof _finalize !== 'function') return { kapanan: 0 };
+  const { rows } = await db.query(
+    `SELECT id, record_id, host, app_name, delete_onkontrol_json, rollback_onkontrol_json
+       FROM retirement_targets
+      WHERE (delete_onkontrol_json LIKE '%"durum":"running"%' OR rollback_onkontrol_json LIKE '%"durum":"running"%')${recordId != null ? ' AND record_id = $1' : ''}`,
+    recordId != null ? [recordId] : [],
+  );
+  let kapanan = 0;
+  for (const t of rows || []) {
+    for (const [kind, alan] of Object.entries(ONKONTROL_ALANI)) {
+      const o = onKontrolOku(t[alan]);
+      if (!o || o.durum !== 'running' || !o.jobId) continue;
+      let s;
+      try {
+        s = await _finalize(kind, { job_id: o.jobId, host: t.host });
+      } catch (e) {
+        console.warn(`[Retirement poller] ${kind} on kontrolu #${o.jobId} okunamadi:`, e.message);
+        continue;
+      }
+      if (!s || !s.terminal) continue;
+      const yeni = onKontrolSonucu(kind, s.awxStatus, s.sonuc, o.jobId, o);
+      const u = await db.query(`UPDATE retirement_targets SET ${alan} = $1, updated_at = GETUTCDATE() WHERE id = $2 AND ${alan} = $3`, [yeni, t.id, t[alan]]);
+      if (!u.rowCount) continue;
+      kapanan += 1;
+      const y = JSON.parse(yeni);
+      await olay(
+        t.record_id,
+        y.durum === 'ok' ? `${kind}-plan` : 'error',
+        `${t.app_name} @ ${t.host}: ${kind === 'delete' ? 'silme' : 'geri alma'} on kontrolu #${o.jobId} ${y.durum === 'ok' ? 'HAZIR' : 'BASARISIZ'} - ${y.mesaj}`,
+      );
+    }
+  }
+  return { kapanan };
 }
 
 // Sonuclandirilacak adimlar. STOP ve DELETE AYRI alanlarda is numarasi tasiyor
@@ -487,15 +613,17 @@ async function tick(now = new Date()) {
   if (typeof _launch !== 'function') return { skipped: 'launcher yok' };
   _sonTur = now.getTime();
   const s = await stopTick(now);
+  // On kontrol sonuclari silmeden ONCE okunur: biten silme on kontrolu ayni turda silmeye donusebilsin.
+  const ok = await onKontrolTick();
   const d = await deleteTick(now);
   const f = await finalizeTick();
   const w = await webTick();
   const ws = await webSonucTick();
-  if (s.kosan || s.gecen || d.kosan || f.kapanan || w.kosan || w.elle || ws.kapanan)
+  if (s.kosan || s.gecen || d.kosan || d.planlanan || ok.kapanan || f.kapanan || w.kosan || w.elle || ws.kapanan)
     console.log(
-      `[Retirement poller] STOP kosan=${s.kosan} penceresi-gecen=${s.gecen} · DELETE kosan=${d.kosan} · kapanan=${f.kapanan} · WEB kosan=${w.kosan} elle=${w.elle} sonuclanan=${ws.kapanan}`,
+      `[Retirement poller] STOP kosan=${s.kosan} penceresi-gecen=${s.gecen} · DELETE kosan=${d.kosan} on-kontrol=${d.planlanan} · on-kontrol-sonuc=${ok.kapanan} · kapanan=${f.kapanan} · WEB kosan=${w.kosan} elle=${w.elle} sonuclanan=${ws.kapanan}`,
     );
-  return { stop: s, delete: d, finalize: f, web: w, webSonuc: ws };
+  return { stop: s, onKontrol: ok, delete: d, finalize: f, web: w, webSonuc: ws };
 }
 
 function startPoller(launch, finalize, web) {
@@ -547,7 +675,9 @@ async function kayitCanli(recordId) {
     // calisiyor" ekranda gorunsun ve biten is 5 dk'lik turu beklemeden sonuclansin. Ayni
     // finalizeAdim - okunamazsa hedefe hicbir sey yazilmaz.
     const f = await finalizeTick(recordId).catch(() => ({ kapanan: 0 }));
-    return { kosan: w.kosan, kapanan: ws.kapanan + f.kapanan };
+    // Silme / geri alma on kontrolunun sonucu da: geri alma onay penceresi ekran kapaliyken de dolsun.
+    const ok = await onKontrolTick(recordId).catch(() => ({ kapanan: 0 }));
+    return { kosan: w.kosan, kapanan: ws.kapanan + f.kapanan + ok.kapanan };
   } finally {
     _ticking = false;
   }
@@ -562,4 +692,4 @@ function stopPoller() {
   _web = null;
 }
 
-module.exports = { startPoller, stopPoller, tick, webSimdi, kayitCanli, zamanlayici, awxDurumu, pollSaniye: () => Math.round(cfg().intervalMs / 1000), _stopTick: stopTick, _deleteTick: deleteTick, _finalizeTick: finalizeTick, _webTick: webTick, _webSonucTick: webSonucTick };
+module.exports = { startPoller, stopPoller, tick, webSimdi, kayitCanli, zamanlayici, awxDurumu, pollSaniye: () => Math.round(cfg().intervalMs / 1000), _stopTick: stopTick, _deleteTick: deleteTick, _onKontrolTick: onKontrolTick, _finalizeTick: finalizeTick, _webTick: webTick, _webSonucTick: webSonucTick };

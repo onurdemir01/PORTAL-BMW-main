@@ -79,6 +79,23 @@ function silmeZamaniGeldi({ plannedDeleteAt, stopAt, deleteAfterDays, deleteNowA
   return y.saat >= silmeSaati();
 }
 
+// 4. SILME ON KONTROLU (kullanici 2026-10-22: "DELETE ve GERI AL icin de on kontrol listesini yap"). Silme
+//    yalniz kendi on kontrolunun listesiyle kosar (bkz. poller.deleteTick). On kontrol silme saatinden
+//    BIR SAAT once (22:00 TR) baslar: liste silmeden once ekranda gorunur ve silme aninda tazedir.
+//    "Beklemeyi atla" bunu da beklemez. Liste RETIREMENT_DELETE_PLAN_MAX_AGE_MINUTES (vars. 180 dk)
+//    icinde tazedir; daha eskisiyle silme YAPILMAZ, on kontrol yeniden kosar.
+/** Silme on kontrolunun zamani geldi mi? Gun (TR) <= bugun VE saat >= silme saati - 1 (ya da beklemeyi atla). */
+function silmeOnKontrolZamaniGeldi({ plannedDeleteAt, stopAt, deleteAfterDays, deleteNowAt }, now = new Date()) {
+  const g = etkinSilmeGunu({ plannedDeleteAt, stopAt, deleteAfterDays });
+  if (!g) return false;
+  const y = yerel(now);
+  if (g > y.gun) return false;
+  if (deleteNowAt) return true;
+  return y.saat >= Math.max(0, silmeSaati() - 1);
+}
+/** Silme on kontrolunun tazelik suresi (dk). Bozuk deger 180'e duser; 30..1440. */
+const silmePlanTazeDk = () => _sayi(process.env.RETIREMENT_DELETE_PLAN_MAX_AGE_MINUTES, 180, 30, 1440);
+
 /** Ekran icin: silme ANI (silme gunu, TR silme saatinde) ISO olarak + metin. null = tarih yok. */
 function silmeAni(bilgi) {
   const g = etkinSilmeGunu(bilgi);
@@ -114,4 +131,4 @@ function stopZamani({ scheduledAt, windowEnd }, now = new Date()) {
   return { durum: 'run', sebep: 'kesinti penceresi acik' };
 }
 
-module.exports = { etkinSilmeGunu, silmeZamaniGeldi, silmeAni, silmeSaati, stopZamani, yerel };
+module.exports = { etkinSilmeGunu, silmeZamaniGeldi, silmeOnKontrolZamaniGeldi, silmePlanTazeDk, silmeAni, silmeSaati, stopZamani, yerel };

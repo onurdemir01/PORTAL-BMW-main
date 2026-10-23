@@ -33,6 +33,42 @@ export interface OpenshiftCheckRow {
   owner_email: string | null;
 }
 
+// Nginx - RVP Operations "read" (2026-10-20): AWX job'i baslatilmaz; tanimlar silme akisinin
+// okudugu tarama verisinden (bkz. server/selfservice/nginx-tanim-okuma.cjs).
+export interface NginxTanimSunucu {
+  host: string;
+  /** PROD'da 'yeni' | 'eski' | 'bilinmiyor'; non-prod'da null */
+  filo: string | null;
+}
+export interface NginxTanimCevap {
+  application: string | null;
+  namespace: string | null;
+  /** eski filo proxy satiri: uygulama adi hedef adresten TAHMIN */
+  tahmin: boolean;
+  hedef: string | null;
+  sunucular: NginxTanimSunucu[];
+}
+export interface NginxTanimSatir {
+  location: string;
+  cevaplar: NginxTanimCevap[];
+  /** sunucular arasinda ayni location'a FARKLI uygulama cevap veriyor */
+  tutarsiz: boolean;
+}
+export interface NginxTanimlar {
+  ok: boolean;
+  message?: string;
+  /** 'var' tanim bulundu | 'yok' taramada tanim yok | 'olculemedi' tarama okunamadi / hic kosmadi */
+  durum?: 'var' | 'yok' | 'olculemedi';
+  sebep?: string;
+  env?: string;
+  service?: string;
+  taramaTarihi?: string | null;
+  satirlar: NginxTanimSatir[];
+  /** GLOMO prod: listelenmeyen eski filo satiri sayisi (eski filoya gidilmez) */
+  eskiFiloGizli?: number;
+  glomoProd?: boolean;
+}
+
 export const selfServiceApi = {
   // "Ansible" sekmesinin DB'deki etiket/sira bilgisini dondurur (Smart/Diğerleri katalogu
   // kaldirildigi icin store artik yok — bkz. server/selfservice/store.cjs readGroups).
@@ -70,5 +106,12 @@ export const selfServiceApi = {
       body: JSON.stringify({ items }),
     });
     return json(r);
+  },
+
+  async nginxTanimlari(p: { env: string; service: string; namespace?: string; application?: string }): Promise<NginxTanimlar> {
+    const q = new URLSearchParams();
+    for (const [k, v] of Object.entries(p)) if (v) q.set(k, v);
+    const r = await fetch(`${BASE}/nginx-tanimlar?${q.toString()}`);
+    return r.json().catch(() => ({ ok: false, message: "Yanıt okunamadı.", satirlar: [] }));
   },
 };

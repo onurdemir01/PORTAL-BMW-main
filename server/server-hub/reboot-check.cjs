@@ -15,6 +15,7 @@
 'use strict';
 
 const REGISTRY_KEY = 'reboot_check';
+// Varsayilan; Admin Server Hub > Kurallar & Limitler'den degistirir (ayarlar.cjs 'limit:reboot').
 const MAX_HOST = 50;
 const TERMINAL = new Set(['successful', 'failed', 'error', 'canceled']);
 
@@ -137,7 +138,7 @@ async function ilerlet(r) {
   return kayit(r.id);
 }
 
-function mount(router, { launch, HOST_RE }) {
+function mount(router, { launch, HOST_RE, limit }) {
   router.get('/reboot-check', async (req, res) => {
     try {
       const { rows } = await db().query(
@@ -192,8 +193,12 @@ function mount(router, { launch, HOST_RE }) {
           .filter(Boolean),
       ),
     ];
-    if (!hosts.length || hosts.length > MAX_HOST || hosts.some((h) => !HOST_RE.test(h)))
-      return res.status(400).json({ ok: false, message: `1-${MAX_HOST} arası geçerli sunucu adı gerekli.` });
+    const enCok = limit ? await limit('reboot') : MAX_HOST;
+    if (!hosts.length || hosts.length > enCok || hosts.some((h) => !HOST_RE.test(h)))
+      return res.status(400).json({
+        ok: false,
+        message: `1-${enCok} arası geçerli sunucu adı gerekli (tek seferde en fazla ${enCok} sunucu; Admin Server Hub › Kurallar & Limitler'den artırabilir).`,
+      });
     const not = String(req.body?.not || '').slice(0, 500);
     try {
       const j = await launch(

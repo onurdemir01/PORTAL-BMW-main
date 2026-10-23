@@ -41,6 +41,7 @@ import {
 import { Panel, StatTile, Pill, Code, Note } from './ui';
 import { OwnerCell, ownerText } from './OwnerCell';
 import { DirCell, HacLegend } from './HacCell';
+import { TumLocationlar } from './TumLocationlar';
 import { kismiEtiket, kismiAciklama, yolYukOzeti } from './yukPencere';
 import { downloadCsv as csvDownload } from '@/utils/csv';
 import { toast } from '@/hooks/useToast';
@@ -53,6 +54,12 @@ const nf = (n: number) => new Intl.NumberFormat('tr-TR').format(n);
 // gecerse gosterilir, gecmezse NEDENI yazilir. (Eski metin yeni sunucularin etkilenmeyecegini
 // KOSULSUZ vaat ediyordu ve YANLISTI: nginx_ops new_fleet'i gormezse silmeyi yeni filoya da goturur.)
 const NEW_FLEET_KEPT = 'Yalnız ESKİ sunuculardan kaldırır; yeni filo korunur.';
+// ESKI FILOSU KAPALI gruplar (2026-10-20, kullanici: "Glomo icin tasarladigin tum islerde eski
+// filoya gitmeyi kaldirabilirsin"). Sunucudaki kopya: server/nginx-migration/index.cjs
+// ESKI_FILO_KAPALI (sunucu da reddeder; test ikisini karsilastirir).
+const ESKI_FILO_KAPALI = new Set(['glomo']);
+const ESKI_FILO_KAPALI_SEBEP =
+  'GLOMO için eski filoya (GBRVPP07-10 / GBRVPAP03-06) hiçbir işte gidilmez (2026-10-20); eski sunucudan kaldırma yapılmaz. Tanımlar yalnız yeni filoda.';
 const NEW_FLEET_BLOCKED = 'Yeni filo korunamıyor — silme BAŞLATILMAZ';
 // Silme guvenli ama survey'deki new_fleet sorusu (varsayilani false / zorunlu+varsayilansiz)
 // new_fleet gondermeyen DIGER nginx_ops islerini bozuyor: yonetici template'i duzeltmeli.
@@ -772,6 +779,8 @@ export default function NginxProdMigration() {
             q={q}
             sortBy={sortBy}
             ownersReady={data.ownersReady !== false}
+            kaynakTarihleri={{ config: data.proxyScanDate, nginxT: data.auditScanDate ?? null }}
+            nginxTHazir={data.auditReady === true}
             canCreate={configured}
             onCreate={(app) => setPending({ group: g, app, pathIdx: 0 })}
             pathJobs={pathJobs}
@@ -805,7 +814,8 @@ export default function NginxProdMigration() {
             }
             onClearSelection={() => setSelected(new Set())}
             selectedTotal={selectedApps.length}
-            canDelete={deleteConfigured}
+            canDelete={deleteConfigured && !ESKI_FILO_KAPALI.has(g.id)}
+            silmeKapali={ESKI_FILO_KAPALI.has(g.id) ? ESKI_FILO_KAPALI_SEBEP : undefined}
             onDelete={(app) => setPendingDelete({ group: g, app, pathIdx: 0 })}
             tracking={tracking}
             trackingReady={trackingReady}
@@ -1982,10 +1992,12 @@ function LocationProgress({ g }: { g: NginxMigrationGroup }) {
         </table>
       )}
       <div className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
-        Sayım vhost başına farklı location; SPA olmayan (API) ve çözülemeyen hedefler de dâhil —
-        vhost'un tamamı. “Tanımlı” = yeni sunucunun <Code>{'<SERVIS>'}-PROD.conf</Code> dosyasında
-        aynı location var (include ya da proxy). Uygulama satırlarındaki H/A/C ise dosyaların hazır
-        olup olmadığını gösterir.
+        Sayım vhost başına farklı location; ad kalıbına uymayan, çözülemeyen, eski sunucuda include
+        olan ve yalnız nginx -T taramasının gördüğü location'lar da dâhil — vhost'un tamamı (liste
+        aşağıda: “Tüm location'lar”). “Tanımlı” = yeni sunucunun{' '}
+        <Code>{'<SERVIS>'}-PROD.conf</Code> vhost'unda aynı location var (config ya da nginx -T
+        taramasına göre). Uygulama satırlarındaki H/A/C ise dosyaların hazır olup olmadığını
+        gösterir.
       </div>
     </div>
   );
@@ -2013,9 +2025,14 @@ function GroupPanel({
   sideFilter,
   onTrack,
   canDelete,
+  silmeKapali,
   onDelete,
+  kaynakTarihleri,
+  nginxTHazir,
 }: {
   g: NginxMigrationGroup;
+  kaynakTarihleri?: { config: string | null; nginxT: string | null };
+  nginxTHazir?: boolean;
   onlyProblem: boolean;
   q: string;
   sortBy: 'status' | 'team' | 'app' | 'plan' | 'load';
@@ -2036,6 +2053,8 @@ function GroupPanel({
   sideFilter: 'all' | 'defined' | 'partial' | 'none' | 'not-scanned';
   onTrack: (app: NginxMigrationApp) => void;
   canDelete: boolean;
+  /** Grubun eski filosu kapaliysa gerekce: dugme pasif ve bunu soyler. */
+  silmeKapali?: string;
   onDelete: (app: NginxMigrationApp) => void;
 }) {
   const trackOf = (a: NginxMigrationApp) =>
@@ -2152,6 +2171,7 @@ function GroupPanel({
     >
       <div className="p-3 space-y-3">
         <LocationProgress g={g} />
+        <TumLocationlar g={g} kaynakTarihleri={kaynakTarihleri} nginxTHazir={nginxTHazir} />
         <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
           <StatTile
             label="uygulama"
@@ -2430,12 +2450,14 @@ function GroupPanel({
                       className="mt-1 flex items-center gap-1 px-2 py-1 text-[10px] font-semibold rounded-lg border disabled:opacity-40 whitespace-nowrap"
                       style={{ borderColor: 'var(--status-danger)', color: 'var(--status-danger)' }}
                       title={
-                        !canDelete
-                          ? "Silme job'ı yapılandırılmamış (yönetici paneli: nginx_ops template)"
-                          : `Eski sunucudaki ${a.paths.map((p) => p.service + '-PROD.conf ' + p.location).join(' / ')} tanımını (ve kullanılmayan upstream'i) kaldır — 23:00'e zamanlanır. ${NEW_FLEET_KEPT} Portal, AWX'in bunu kabul ettiğini doğrulayamazsa işi başlatmaz.`
+                        silmeKapali
+                          ? silmeKapali
+                          : !canDelete
+                            ? "Silme job'ı yapılandırılmamış (yönetici paneli: nginx_ops template)"
+                            : `Eski sunucudaki ${a.paths.map((p) => p.service + '-PROD.conf ' + p.location).join(' / ')} tanımını (ve kullanılmayan upstream'i) kaldır — 23:00'e zamanlanır. ${NEW_FLEET_KEPT} Portal, AWX'in bunu kabul ettiğini doğrulayamazsa işi başlatmaz.`
                       }
                     >
-                      <TrashIcon className="w-3.5 h-3.5" /> Eski tanımı kaldır
+                      <TrashIcon className="w-3.5 h-3.5" /> {silmeKapali ? 'Eski filo kapalı' : 'Eski tanımı kaldır'}
                     </button>
                   </td>
                   <td
@@ -2637,7 +2659,7 @@ ${st.total ? `${st.done}/${st.total} location tanımlı` : ''}`}
             // uygulamalar da bulunabilir (ad kalıbına uymayanlar) — liste "kesinlikle API"
             // demez, "ad kalıbına uymuyor" der. Ayrımı container'da nginx process'i arayan
             // tarama yapacak (bkz. server/audit/spa-pattern.cjs).
-            hint="Ad kalıbı (-app-v / -app-emb-v) tutmayan hedefler: yeni sunucuda dizin beklenmez, proxy tanımıyla taşınır. Ad kalıbına uymayan gerçek SPA'lar da burada olabilir."
+            hint="Ad kalıbı (-app-v / -app-emb-v) tutmayan hedefler: yeni sunucuda dizin beklenmez, proxy tanımıyla taşınır. Ad kalıbına uymayan gerçek SPA'lar da burada olabilir. Yeni sunucularda olmayanlar yukarıdaki “Tüm location'lar” listesinde."
             rows={g.nonSpa}
             tone="neutral"
           />

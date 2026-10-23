@@ -10,6 +10,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { ansibleApi, type ChoicesSource, type DynamicChoice } from '@/api/ansibleApi';
 import { TextInput } from '@/components/ui/Form';
+import ChoiceDetailsPanel from './ChoiceDetailsPanel';
 
 interface Props {
   id: string;
@@ -34,6 +35,9 @@ export function splitMulti(v: string): string[] {
     .map((x) => x.trim())
     .filter(Boolean);
 }
+
+/** Seçeneğin tam metni (ipucu): ad + varsa ikinci satır. */
+const baslik = (c: DynamicChoice) => (c.alt ? `${c.label}\n${c.alt}` : c.label);
 
 /** Kaynak parametrelerini form değerlerinden kurar (sunucudaki paramsFromValues ile aynı). */
 export function paramsFor(source: ChoicesSource, values: Record<string, string>) {
@@ -95,7 +99,14 @@ export default function DynamicChoiceSelect({ id, source, values, value, onChang
 
   const groups = useMemo(() => {
     const f = filter.trim().toLowerCase();
-    const list = f ? choices.filter((c) => c.label.toLowerCase().includes(f) || c.value.toLowerCase().includes(f)) : choices;
+    const list = f
+      ? choices.filter(
+          (c) =>
+            c.label.toLowerCase().includes(f) ||
+            c.value.toLowerCase().includes(f) ||
+            (c.alt || '').toLowerCase().includes(f),
+        )
+      : choices;
     const m = new Map<string, DynamicChoice[]>();
     for (const c of list) {
       const g = c.group || '';
@@ -158,9 +169,12 @@ export default function DynamicChoiceSelect({ id, source, values, value, onChang
             <div key={g || '_'}>
               {g && <div className="text-[10px] uppercase tracking-wide text-[var(--text-muted)] mt-1">{g}</div>}
               {cs.map((c) => (
-                <label key={c.value} className="flex items-center gap-2 text-[12px] cursor-pointer py-0.5" title={c.label}>
+                <label key={c.value} className="flex items-center gap-2 text-[12px] cursor-pointer py-0.5" title={baslik(c)}>
                   <input type="checkbox" checked={picked.has(c.value)} onChange={() => toggle(c.value)} />
-                  <span className="font-mono whitespace-nowrap overflow-hidden text-ellipsis">{c.label}</span>
+                  <span className="font-mono whitespace-nowrap overflow-hidden text-ellipsis">
+                    {c.label}
+                    {c.alt && <span className="ml-2 text-[var(--accent)]">{c.alt}</span>}
+                  </span>
                 </label>
               ))}
             </div>
@@ -179,7 +193,7 @@ export default function DynamicChoiceSelect({ id, source, values, value, onChang
   // kendiliginden acilmiyor, tiklamak gerekiyor; kullanici sorgunun calistigini anlamiyor".
   // Yerel <select> arama sonucunu gostermez; simdi yazdikca eslesenler HEMEN altta listelenir,
   // tiklayinca (ya da Enter ile ilk eslesen) secilir, secim rozet olarak gorunur.
-  const selected = choices.find((c) => c.value === value) || (value ? { value, label: value } : null);
+  const selected: DynamicChoice | null = choices.find((c) => c.value === value) || (value ? { value, label: value } : null);
   const visible = groups.flatMap(([g, cs]) => cs.map((c) => ({ ...c, g })));
   const showList = !missingParam && !loading && (open || (!selected && filter.trim().length > 0));
   const pick = (v: string) => {
@@ -187,11 +201,25 @@ export default function DynamicChoiceSelect({ id, source, values, value, onChang
     setFilter('');
     setOpen(false);
   };
-  return (
+  const secim = (
     <div className="space-y-1.5" id={id} onBlur={onBlur}>
       {selected && !open ? (
-        <div className={`flex items-center justify-between gap-2 rounded-lg border px-2.5 py-1.5 text-[12px] ${error ? 'border-red-400' : 'border-[var(--border)]'} bg-[var(--bg-surface)]`}>
-          <span className="font-mono truncate" title={selected.label}>{selected.label}</span>
+        // SEÇİLİ DEĞER BELİRGİN (kullanıcı, 2026-10-22: "seçim yapılan satırı biraz highlight edebiliriz"):
+        // vurgu rengiyle çerçeve + zemin, metin kırpılmaz (uzun konfigürasyon adı + yol alt satıra sarar).
+        <div
+          className={`flex items-start justify-between gap-2 rounded-lg border-2 px-2.5 py-1.5 text-[12px] ${error ? 'border-red-400' : 'border-[var(--accent)]'} bg-[rgb(var(--accent-rgb)_/_0.08)]`}
+          data-testid="secim-secili"
+        >
+          <span className="min-w-0 font-mono break-all" title={baslik(selected)}>
+            <span className="block font-semibold text-[var(--text-primary)]" data-testid="secim-secili-ad">
+              {selected.label}
+            </span>
+            {selected.alt && (
+              <span className="block text-[11px] text-[var(--accent)]" data-testid="secim-secili-alt">
+                {selected.alt}
+              </span>
+            )}
+          </span>
           <span className="flex gap-2 shrink-0">
             <button type="button" className="text-[11px] underline decoration-dotted text-[var(--text-muted)]" onClick={() => setOpen(true)}>
               değiştir
@@ -233,12 +261,12 @@ export default function DynamicChoiceSelect({ id, source, values, value, onChang
         />
       )}
       {showList && (
-        <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] max-h-72 overflow-y-auto" role="listbox">
+        <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] max-h-96 overflow-y-auto" role="listbox">
           <div className="px-2 py-1 text-[10px] text-[var(--text-muted)] border-b border-[var(--border-subtle)]">
             {filter.trim() ? `${visible.length} / ${choices.length} eşleşme` : `${choices.length} kayıt — yazarak daraltın`}
             {selected && (
               <button type="button" className="ml-2 underline decoration-dotted" onClick={() => setOpen(false)}>
-                vazgeç
+                iptal
               </button>
             )}
           </div>
@@ -254,10 +282,19 @@ export default function DynamicChoiceSelect({ id, source, values, value, onChang
                   aria-selected={c.value === value}
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => pick(c.value)}
-                  className={`block w-full text-left px-2 py-1 text-[12px] font-mono whitespace-nowrap overflow-hidden text-ellipsis hover:bg-[var(--bg-elevated)] ${c.value === value ? 'bg-[var(--bg-elevated)] font-semibold' : ''}`}
-                  title={c.label}
+                  className={`block w-full text-left px-2 py-1 text-[12px] font-mono border-l-4 hover:bg-[rgb(var(--accent-rgb)_/_0.06)] ${c.value === value ? 'border-[var(--accent)] bg-[rgb(var(--accent-rgb)_/_0.12)] font-semibold' : 'border-transparent'}`}
+                  title={baslik(c)}
                 >
-                  {c.label}
+                  {/* İki satır (kullanıcı, 2026-10-22): ad üstte, ikinci satır (kök yol) altta ve ayrı renkte. */}
+                  <span className="block whitespace-nowrap overflow-hidden text-ellipsis text-[var(--text-primary)]">
+                    {c.value === value && <span aria-hidden="true">✓ </span>}
+                    {c.label}
+                  </span>
+                  {c.alt && (
+                    <span className="block whitespace-nowrap overflow-hidden text-ellipsis text-[11px] font-normal text-[var(--accent)]">
+                      {c.alt}
+                    </span>
+                  )}
                 </button>
               ))}
             </div>
@@ -271,6 +308,19 @@ export default function DynamicChoiceSelect({ id, source, values, value, onChang
           Bu ortam için envanterde kayıt bulunamadı — envanter taraması güncel değilse listeyi
           yöneticiye bildirin.
         </p>
+      )}
+    </div>
+  );
+  // AYRINTI (kaynak `details` sunuyorsa; 2026-10-22): seçim yapılınca sağda — dar ekranda / dar
+  // pencerede altta — seçimin ayrıntısı. flex-wrap: modal ve sayfa genişliğinden bağımsız sarar.
+  if (!source.details) return secim;
+  return (
+    <div className="flex flex-wrap items-start gap-3">
+      <div className="flex-[3_1_26rem] min-w-0">{secim}</div>
+      {/* Yalnız liste yüklü ve değer LİSTEDEYKEN: bağlı alan boşaltılınca ya da liste değişirken yanıltıcı
+          "listede yok" hatası çıkmasın (asıl neden formda görünür). */}
+      {value && !open && !missingParam && choices.some((c) => c.value === value) && (
+        <ChoiceDetailsPanel className="flex-[2_1_20rem] min-w-0" source={source.source} params={params} value={value} />
       )}
     </div>
   );

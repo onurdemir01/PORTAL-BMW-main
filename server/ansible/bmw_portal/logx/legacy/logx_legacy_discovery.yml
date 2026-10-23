@@ -15,6 +15,39 @@
       - /vhosting8
     legacy_log_dir_regex: "logs?[0-9]*"
 
+  pre_tasks:
+    - name: "En uygun modern Python interpreter'i bul"
+      ansible.builtin.raw: |
+        best=""
+        best_ver=""
+
+        candidates="$(command -v python3 2>/dev/null || true) $(command -v python 2>/dev/null || true) $(find /usr/bin /usr/local/bin -maxdepth 1 \( -type f -o -type l \) -name 'python3*' -print 2>/dev/null)"
+
+        for py in $candidates; do
+          [ -x "$py" ] || continue
+
+          ver=$("$py" -c 'import sys; sys.exit(1) if sys.version_info < (3,8) else None; print("%03d%03d%03d" % sys.version_info[:3])' 2>/dev/null) || continue
+
+          case "$ver" in
+            *[!0-9]*|'') continue ;;
+          esac
+
+          if [ -z "$best_ver" ] || [ "$ver" -gt "$best_ver" ]; then
+            best="$py"
+            best_ver="$ver"
+          fi
+        done
+
+        [ -n "$best" ] && printf '%s\n' "$best"
+        exit 0
+      register: logx_python_probe
+      changed_when: false
+      failed_when: false
+
+    - name: "Modern Python bulunduysa Ansible interpreter olarak kullan"
+      ansible.builtin.set_fact:
+        ansible_python_interpreter: "{{ logx_python_probe.stdout_lines | first | trim }}"
+      when: (logx_python_probe.stdout_lines | default([]) | length) > 0
   tasks:
     - block:
       - name: "Önce app'a ait EAR klasörlerini bul (daraltılmış keşif)"

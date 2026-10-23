@@ -44,7 +44,10 @@ export interface ShUnattributed {
   trafficState?: string | null;
 }
 export interface ShFinding {
-  severity: Exclude<ShSeverity, 'ok'>;
+  /** 'ok' yalniz Admin seviyeyi "sorun yok"a cektiyse (Kurallar & Limitler): listede kalir, sayilmaz. */
+  severity: ShSeverity;
+  /** Admin seviyeyi degistirdiyse kodun varsayilan seviyesi. */
+  defaultSeverity?: ShSeverity;
   area: 'init' | 'jboss' | 'jvm' | 'web' | 'ip' | 'ssh' | 'scan';
   code: string;
   text: string;
@@ -264,6 +267,8 @@ export interface ShOverview {
   rollback?: ShRollback;
   /** C3: sys.columns okunamadi - tum eylemler kapali, sonuc onbellekte degil. */
   schemaUnknown?: boolean;
+  /** Admin'in degistirdigi bulgu seviyesi sayisi; okunamadi = varsayilanlar uygulandi. */
+  ayar?: { okunamadi: boolean; seviyeDegisen: number } | null;
 }
 export interface ShFindingRow {
   host: string;
@@ -272,7 +277,8 @@ export interface ShFindingRow {
   env?: string;
   envGroup?: string;
   scanDate: string | null;
-  severity: Exclude<ShSeverity, 'ok'>;
+  severity: ShSeverity;
+  defaultSeverity?: ShSeverity;
   area: ShFinding['area'];
   code: string;
   text: string;
@@ -332,6 +338,75 @@ export interface ShJobStatus {
   message?: string;
 }
 
+// ── Kurallar & Limitler (2026-10-20) ─────────────────────────────────────────────────
+/** Bir tarama maddesinin bir ciktisi. kod null = "sorun yok" (bulgu uretilmez, degistirilemez). */
+export interface ShKuralCikti {
+  kod: string | null;
+  kosul: string;
+  varsayilan: ShSeverity;
+  gecerli: ShSeverity;
+  degistiren?: string | null;
+  zaman?: string | null;
+  aciklama?: string;
+  /** son taramada bu kodla kac bulgu / kac sunucu; null = OLCULEMEDI (0 degil) */
+  bulgu?: number | null;
+  sunucu?: number | null;
+}
+export interface ShKuralMadde {
+  id: string;
+  alan: string;
+  alanAd: string;
+  ad: string;
+  neTaranir: string;
+  ciktilar: ShKuralCikti[];
+}
+export type ShLimitAd = 'tara' | 'reboot' | 'hazirlik';
+export interface ShLimit {
+  ad: ShLimitAd;
+  etiket: string;
+  aciklama: string;
+  varsayilan: number;
+  ust: number;
+  gecerli: number;
+  degistiren: string | null;
+  zaman: string | null;
+  not: string;
+}
+export interface ShAyarGecmis {
+  anahtar: string;
+  eski: string | null;
+  yeni: string | null;
+  aciklama: string;
+  degistiren: string;
+  zaman: string | null;
+}
+export interface ShKurallar {
+  ok: boolean;
+  message?: string;
+  okunamadi: boolean;
+  hata?: string;
+  taramaTarihi: string | null;
+  sayimOlculdu: boolean;
+  alanlar: Record<string, string>;
+  maddeler: ShKuralMadde[];
+  limitler: ShLimit[];
+  /** null = gecmis okunamadi */
+  gecmis: ShAyarGecmis[] | null;
+}
+export interface ShAyarYazim {
+  ok: boolean;
+  message?: string;
+  eski?: string;
+  yeni?: string;
+  degismedi?: boolean;
+}
+
+const put = (body: unknown) => ({
+  method: 'PUT',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(body),
+});
+
 const json = (body: unknown) => ({
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
@@ -390,4 +465,13 @@ export const serverHubApi = {
     fetch(`${BASE}/reboot-readiness`, json({ hosts })).then(safeJson),
   jobStatus: (awxServerId: number, jobId: number): Promise<ShJobStatus> =>
     fetch(`${BASE}/job-status/${awxServerId}/${jobId}`).then(safeJson),
+  // KURALLAR & LIMITLER (2026-10-20): tarama maddeleri + seviyeler (Admin degistirir), limitler.
+  kurallar: (fresh = false): Promise<ShKurallar> =>
+    fetch(`${BASE}/kurallar${fresh ? '?fresh=1' : ''}`).then(safeJson),
+  limitler: (): Promise<{ ok: boolean; okunamadi?: boolean; limitler: ShLimit[]; message?: string }> =>
+    fetch(`${BASE}/limitler`).then(safeJson),
+  seviyeDegistir: (kod: string, seviye: ShSeverity, aciklama: string): Promise<ShAyarYazim> =>
+    fetch(`${BASE}/kurallar/seviye/${encodeURIComponent(kod)}`, put({ seviye, aciklama })).then(safeJson),
+  limitDegistir: (ad: ShLimitAd, deger: number, aciklama: string): Promise<ShAyarYazim> =>
+    fetch(`${BASE}/kurallar/limit/${encodeURIComponent(ad)}`, put({ deger, aciklama })).then(safeJson),
 };

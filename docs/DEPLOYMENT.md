@@ -71,7 +71,7 @@ baglandigini dogrular. Teshis: `./deploy/run.sh prod status`, `tail -n 60 logs/p
 ```bash
 # root ile (bir kez):
 sudo bash deploy/setup-rhel.sh          # dizinler + firewalld + SELinux
-sudo dnf module enable -y nodejs:20 && sudo dnf install -y nodejs
+sudo dnf module reset -y nodejs && sudo dnf module enable -y nodejs:22 && sudo dnf install -y nodejs   # en az 22.23.4 (20.x EOL)
 
 # was kullanicisiyla:
 dzdo su - was
@@ -88,6 +88,56 @@ cp .env.example .env.prod && vi .env.prod
 
 `run.sh start` **node_modules ve dist eksikse otomatik `npm ci` + `npm run build` calistirir**
 — elle kurulum adimi gerekmez, tek komut yeterlidir ("bir kere calistir, calissin").
+
+## Node dnf'ten yamali gelmiyorsa (`install-node.sh`, 2026-10-23)
+
+`dnf upgrade nodejs` "Nothing to do" diyorsa sunucunun baktigi depo (kurumsal ayna / Satellite)
+yamali paketi henuz yayinlamamistir. Resmi nodejs.org ikilisi **RPM'e dokunmadan, root'suz**
+Portal'a ozel kurulur:
+
+```bash
+# was kullanicisiyla. Sunucu internete cikamiyorsa iki dosyayi baska makinede indirip kopyalayin.
+mkdir -p /vhosting8/bmw_portal/runtime/indirilen && cd /vhosting8/bmw_portal/runtime/indirilen
+curl -fLO https://nodejs.org/dist/v22.23.4/node-v22.23.4-linux-x64.tar.xz
+curl -fLO https://nodejs.org/dist/v22.23.4/SHASUMS256.txt
+bash /vhosting8/bmw_portal/app/PORTAL-BMW-main/deploy/install-node.sh node-v22.23.4-linux-x64.tar.xz
+/vhosting8/bmw_portal/app/PORTAL-BMW-main/deploy/run.sh prod restart   # acilista "node: .../runtime/node/bin/node v22.23.4" yazar
+```
+
+- Checksum tutmazsa betik **kurmaz**. Ikili bu sunucuda calismazsa (glibc/mimari) symlink'e baglanmaz.
+- `run.sh`, `release.sh`, `release-git.sh`, cron watchdog'u ve `bmw-portal@.service`
+  `<BASE_DIR>/runtime/node` varsa onu kullanir; yoksa eskisi gibi PATH'teki / `/usr/bin/node`.
+- Geri donus: `ln -sfn <onceki-surum-dizini> /vhosting8/bmw_portal/runtime/node` + restart.
+  RPM'e tam donus: `rm /vhosting8/bmw_portal/runtime/node` + restart.
+- **Bakim sizde**: dnf bu kopyayi guncellemez; sonraki Node guvenlik yayininda ayni iki komut yeni
+  surumle tekrarlanir. Tarayicilar (Tenable/Qualys) RPM'deki eski `nodejs`'i gormeye devam eder —
+  dnf yamali surumu getirince RPM guncellenip runtime/node kaldirilabilir.
+
+## GitHub deposu private ise (`release-git.sh`, 2026-10-23)
+
+Depo herkese açıkken sunucu `https://github.com/onurdemir01/PORTAL-BMW-main.git` adresinden
+**anonim** klonluyordu; private yapılınca `release-git.sh` "klon/fetch basarisiz" ile durur. Çözüm
+(bir kez, `was` kullanıcısıyla) — **salt-okunur deploy key**:
+
+```bash
+ssh-keygen -t ed25519 -f ~/.ssh/portal_deploy -N "" -C "gblabt02 portal deploy (salt-okunur)"
+cat ~/.ssh/portal_deploy.pub   # GitHub > depo > Settings > Deploy keys > Add (Allow write access KAPALI)
+cat >> ~/.ssh/config <<'EOF'
+Host github.com
+  HostName ssh.github.com
+  Port 443
+  User git
+  IdentityFile ~/.ssh/portal_deploy
+  IdentitiesOnly yes
+EOF
+ssh -T git@github.com          # "successfully authenticated" görmelisiniz
+git -C /vhosting8/bmw_portal/app/PORTAL-BMW-main remote set-url origin git@github.com:onurdemir01/PORTAL-BMW-main.git
+export PORTAL_REPO_URL=git@github.com:onurdemir01/PORTAL-BMW-main.git   # ~/.bash_profile'a da ekleyin
+```
+
+`Port 443`: kurumsal ağda 22 kapalıysa GitHub SSH'ı 443'ten de verir. Proxy zorunluysa HTTPS +
+`git credential` deposunda salt-okunur (fine-grained, yalnız bu depo, "Contents: Read") token da olur;
+token **URL'e yazılmaz** (ps / log'da görünür).
 
 ## Surum guncelleme (rutin)
 
