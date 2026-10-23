@@ -62,11 +62,17 @@ function parseSimpleYaml(src) {
 // degistirildi: kosullu mantik eklenince "yanlis dalin sessizce calismasi" ihtimali
 // "gorunur ama bozuk metin" ihtimalinden daha tehlikeli hale geldi - launch NET bir
 // hata mesajiyla durmasi, garip bir Smart talebinin acilmasindan daha guvenli.
+// GUVENLIK (2026-10-23): sablonu admin yazar ve sunucuda render edilir; kalkan, sablonun JS
+// nesnelerinin ic ozelliklerinden kod calistirmaya ulasmasini keser (sablon-kalkani.cjs).
 const nunjucks = require('nunjucks');
-const smartMetaEnv = new nunjucks.Environment(null, {
-  autoescape: false,
-  throwOnUndefined: true,
-});
+const { sablonKalkaniKur } = require('./sablon-kalkani.cjs');
+const smartMetaEnv = sablonKalkaniKur(
+  nunjucks,
+  new nunjucks.Environment(null, {
+    autoescape: false,
+    throwOnUndefined: true,
+  }),
+);
 
 function buildSmartMetadata(
   metadataFieldsRaw,
