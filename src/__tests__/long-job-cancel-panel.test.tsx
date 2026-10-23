@@ -458,3 +458,15 @@ describe('LongJobCancelPanel', () => {
     expect(row.textContent).not.toMatch(/İPTAL TOKEN'I GEÇERSİZ/);
   });
 });
+
+// BİÇİM DENETİMİ (2026-10-23): gerçek tarayıcı taraması "ok:true ama alan yok" yanıtında
+// Admin sayfasının ÇÖKTÜĞÜNÜ buldu (`status.open.stillRunning`). Panel artık okunamadı der.
+describe('yarım durum yanıtı', () => {
+  it('P-B1 ok:true ama `open` yok: panel çökmez, durum okunamadı yazılır', async () => {
+    mockFetch({ 'GET /api/ansible/longjob-cancel/status': () => json({ ok: true }) });
+    render(<LongJobCancelPanel summary={[]} />);
+    expect(
+      await screen.findByText(/Durum alınamadı: sunucu yanıtında beklenen alanlar yok/),
+    ).toBeTruthy();
+  });
+});

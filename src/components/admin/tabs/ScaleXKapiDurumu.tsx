@@ -138,6 +138,12 @@ const ScaleXKapiDurumu: React.FC<Props> = ({ reloadKey = 0, onOrnekBaglam }) => 
         setHata(r.message || 'Onay kapılarının durumu okunamadı.');
         return;
       }
+      // BİÇİM DENETİMİ (2026-10-23): `ok: true` ama kartın okuduğu alanlar yoksa (eski sunucu,
+      // yarım yanıt) kart ÇÖKMEZ, "okunamadı" der. Gerçek tarayıcı taraması bunu çökme olarak buldu.
+      if (!r.policy || !r.smart) {
+        setHata('Sunucu yanıtında beklenen alanlar yok (eski sürüm ya da yarım yanıt).');
+        return;
+      }
       setDurum(r);
       onOrnekBaglam?.(r.ornekBaglam || {});
     } catch (e) {

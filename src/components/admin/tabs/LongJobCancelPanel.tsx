@@ -423,10 +423,12 @@ export default function LongJobCancelPanel({ summary }: { summary: Summary }) {
   const loadStatus = useCallback(async () => {
     try {
       const r: StatusResp = await fetch(`${API}/status`).then(safeJson);
-      if (r.ok) {
+      // BİÇİM DENETİMİ (2026-10-23): `ok: true` ama `open` yoksa panel çökmesin, okunamadı desin.
+      if (r.ok && r.open) {
         setStatus(r);
         setStatusErr(null);
-      } else setStatusErr(r.message || "Durum alınamadı.");
+      } else if (r.ok) setStatusErr("sunucu yanıtında beklenen alanlar yok (eski sürüm ya da yarım yanıt).");
+      else setStatusErr(r.message || "Durum alınamadı.");
     } catch (e: unknown) {
       setStatusErr(e instanceof Error ? e.message : String(e));
     }

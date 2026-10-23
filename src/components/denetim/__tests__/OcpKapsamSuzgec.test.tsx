@@ -114,3 +114,14 @@ describe('Denetim > OpenShift — sütun süzgeci ve cluster farkı', () => {
     expect(yuzde.getAttribute('title')).toBe('3 / 4 uygulama');
   });
 });
+
+// BİÇİM DENETİMİ (2026-10-23): gerçek tarayıcı taraması "ok:true ama listeler yok" yanıtında
+// Denetim sayfasının ÇÖKTÜĞÜNÜ buldu (`data.clusters.length`). Sayfa artık okunamadı der.
+describe('Denetim > OpenShift — yarım yanıt', () => {
+  it('ok:true ama clusters / patterns yok: sayfa çökmez, okunamadı yazılır', async () => {
+    mockOcp.mockReset();
+    mockOcp.mockResolvedValue({ ok: true, rows: [] });
+    render(<DenetimPage />, { initialEntries: ['/denetim?tab=ocp'] });
+    expect(await screen.findByText('Veri okunamadı: sunucu yanıtında beklenen alanlar yok.')).toBeTruthy();
+  });
+});
