@@ -71,6 +71,7 @@ test('NR1 403 / 404 JSON reddi 409 olur; mesaj, ayrinti ve cagiranin kodu korunu
       restriction: { kaynak: 'ns' },
       code: 'scalex_forbidden',
       upstreamStatus: 403,
+      nginxRed: true,
     });
     r = await u.al('/yok');
     assert.equal(r.status, 409);

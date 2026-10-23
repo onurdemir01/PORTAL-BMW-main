@@ -8,6 +8,7 @@ const { oturumHizAnahtari } = require("./auth/oturum-cerezi.cjs");
 const { originKontrolu } = require("./auth/origin-kontrolu.cjs");
 const { guvenlikBasliklari } = require("./auth/guvenlik-basliklari.cjs");
 const { brotliGovdeReddi } = require("./auth/brotli-govde-reddi.cjs");
+const { nginxRedCevirici } = require("./util/nginx-red.cjs");
 
 function createApp() {
   const app = express();
@@ -73,6 +74,25 @@ function createApp() {
     };
     next();
   });
+
+  // NGINX'IN YAKALADIGI REDLER KULLANICIYA ULASSIN (2026-10-23). Kurumsal nginx 403 / 404 /
+  // 5xx govdesini kendi HTML sayfasiyla degistiriyor; modullerin bilerek verdigi redler
+  // ("yetkiniz yok", "kayit bulunamadi", "AWX yanit vermedi") ekrana hic ulasmiyordu. Butun
+  // /api yanitlarinda `ok:false` 403 / 404 -> 409; kullanici eylemlerinde (GET disi) 501 -> 409,
+  // 502 / 503 / 504 -> 424; asil kod `upstreamStatus`ta (bkz. util/nginx-red.cjs). Yukaridaki
+  // gunluk sarmalayicidan SONRA baglanir: gunluk cevrilmis kodu ve asil kodu birlikte yazar.
+  //
+  // HARIC: OpsX salt-okunur (sunucu ve ekran kodu bu depoda degistirilmiyor; ekrani yeni
+  // koda gore uyarlanamaz). retirement / server-hub / nginx-console / nginx-cis bu calismanin
+  // kapsami disinda. Bu yollarin yanitlari eskisi gibi kalir.
+  app.use(
+    "/api",
+    nginxRedCevirici({
+      onek: "portal",
+      eylem5xx: true,
+      haric: ["/opsx", "/retirement", "/server-hub", "/nginx-console", "/nginx-cis"],
+    }),
+  );
 
   // L-06: Gzip compression — nobetci/list 55KB → ~8KB
   app.use(compression());

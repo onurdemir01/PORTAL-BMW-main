@@ -234,3 +234,30 @@ npm run lint:ascii                 # yorum/log ASCII guard'i
 ```
 
 Kalici calisma (crash/reboot kurtarma) kurulumu icin yukaridaki "Kalici Calisma" bolumune bakin.
+
+## Hata yanitlari ve kurumsal nginx (2026-10-23)
+
+Kurumsal nginx `proxy_intercept_errors` + `error_page 403 404 500 502 503 504` ile calisir: bu
+kodlu yanitlarin GOVDESINI kendi HTML sayfasiyla degistirir. Portalin bilerek verdigi bir ret
+("yetkiniz yok", "kayit bulunamadi", "AWX yanit vermedi") bu kodlarla donerse mesaj ekrana
+ulasmaz; kullanici "Sunucu beklenmeyen bir yanit dondu (HTTP 403)" gorur.
+
+`server/util/nginx-red.cjs` bu redleri nginx'in dokunmadigi koda cevirir:
+
+| Asil | Doner | Ne zaman |
+| --- | --- | --- |
+| 403 / 404 | 409 | `ok:false` JSON, her yontem |
+| 501 | 409 | yalniz GET disi (kullanici eylemi) |
+| 502 / 503 / 504 | 424 | yalniz GET disi (kullanici eylemi) |
+
+Asil kod `upstreamStatus`ta, tur `code`da (`portal_forbidden`, `scalex_not_found`, ...). Govdeye
+`nginxRed: true` eklenir; istemcinin `safeJson`i bu yaniti uretimdeki bugunku akisla ayni sekilde
+firlatir (mesaj ve asil kodla). 401, 500 ve GET'teki 5xx degismez. Baglanti: tum `/api`
+(`server/service.cjs`, onek `portal`); ScaleX ve LogX kendi oneklerini kullanir.
+
+**Haric:** `/api/opsx` (OpsX bu depoda salt-okunur), `/api/retirement`, `/api/server-hub`,
+`/api/nginx-console`, `/api/nginx-cis` (bu calismanin kapsami disi). Bu yollar eskisi gibi
+403 / 404 / 5xx doner. Acmak icin `service.cjs`teki `haric` listesinden cikarilir; once o modulun
+ekraninin 403 / 404 / 5xx'e bagli davranisi kontrol edilmeli.
+
+Tarayicida dogrulama: ag sekmesinde ret `409` / `424` gorunur, govdede `upstreamStatus` asil koddur.
