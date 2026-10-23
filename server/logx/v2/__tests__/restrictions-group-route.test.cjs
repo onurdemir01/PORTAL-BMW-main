@@ -15,6 +15,8 @@
 // uzerinden kosturur.
 'use strict';
 
+const { reddedildi } = require('./fixtures/nginx-red.cjs');
+
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('node:http');
@@ -93,14 +95,14 @@ test('L1a GRUP izinli kisitli uygulama: gruptaki kullanici GECER (rota katmani)'
   assert.equal(r.status, 200, `grup izni rota katmaninda eslesmedi: ${r.status} ${r.body}`);
 });
 
-test('L1b gruba UYE OLMAYAN kullanici 403 alir (genisletme, daraltma degil)', async () => {
+test('L1b gruba UYE OLMAYAN kullanici reddedilir (genisletme, daraltma degil)', async () => {
   const r = await istek(kullanici({ groups: ['CN=baska,OU=Groups,DC=example,DC=com'] }));
-  assert.equal(r.status, 403, r.body);
+  reddedildi(r, 403, r.body);
 });
 
-test('L1c oturumda grup alani HIC yoksa (eski oturum / yerel kullanici) 403, cokme yok', async () => {
+test('L1c oturumda grup alani HIC yoksa (eski oturum / yerel kullanici) red, cokme yok', async () => {
   const r = await istek(kullanici({}));
-  assert.equal(r.status, 403, r.body);
+  reddedildi(r, 403, r.body);
 });
 
 test('L1d Admin her zaman gecer', async () => {

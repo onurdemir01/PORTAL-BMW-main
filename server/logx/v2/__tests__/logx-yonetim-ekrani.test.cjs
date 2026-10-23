@@ -8,6 +8,8 @@
 //   Y4 Altyapi teshisi — eksik kimlik alanlari; bastion yedegi EKSIK sayilmaz.
 'use strict';
 
+const { reddedildi } = require('./fixtures/nginx-red.cjs');
+
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('node:http');
@@ -176,7 +178,7 @@ test('Y1d aciklayici, red gunlugu, etiketler ve altyapi YALNIZCA Admin', async (
     '/manage/infra',
   ]) {
     const r = await al(yol, kullanici);
-    assert.equal(r.status, 403, `${yol} admin-disina acik`);
+    reddedildi(r, 403, `${yol} admin-disina acik`);
   }
 });
 

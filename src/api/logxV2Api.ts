@@ -25,16 +25,24 @@ async function json<T>(r: Response): Promise<T> {
     }
     const text = await r.text().catch(() => '');
     let message = text;
+    let asilDurum = r.status;
+    let code: string | undefined;
     try {
       const parsed = JSON.parse(text);
       message = parsed.error || parsed.message || text;
+      // NGINX'IN YAKALADIGI REDLER (2026-10-23): sunucu 403 / 404'ü 409'a, eylemlerdeki
+      // 502 / 503 / 504'ü 424'e çeviriyor (kurumsal nginx bu kodların gövdesini HTML
+      // sayfasıyla değiştiriyordu). Asıl kod `upstreamStatus`ta gelir; hataya o iliştirilir.
+      if (Number.isInteger(parsed.upstreamStatus)) asilDurum = parsed.upstreamStatus;
+      if (typeof parsed.code === 'string') code = parsed.code;
     } catch {
       /* duz metin hata */
     }
     // HTTP durumu hataya iliştirilir: çağıranın "yetkin yok" (403) ile "sunucu hatası"nı
     // ayırt edebilmesi için tek yol bu — aksi halde ikisi de aynı boş ekranı gösterir.
     throw Object.assign(new Error(String(message).slice(0, 300) || `HTTP ${r.status}`), {
-      status: r.status,
+      status: asilDurum,
+      ...(code ? { code } : {}),
     });
   }
   return safeJson(r);

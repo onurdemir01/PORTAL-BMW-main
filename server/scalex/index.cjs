@@ -760,32 +760,13 @@ function restoreConflictBody(busy) {
 
 // ── NGINX'IN YAKALADIGI REDLER KULLANICIYA ULASSIN (2026-10-23) ─────────────────
 //
-// Kurumsal nginx `proxy_intercept_errors` + `error_page 403 404 500 502 503 504` ile bu kodlu
-// yanitlarin GOVDESINI kendi HTML sayfasiyla degistiriyor (bkz. oco/client.cjs `httpStatus`).
-// 5xx'i `eylemRoute` zaten ceviriyor; ama 403 / 404 redleri (namespace / uygulama yetkisi,
-// baskasinin isi, kayit yok) ekrana "Sunucu beklenmeyen bir yanit dondu (HTTP 403)
-// [<!doctype html>...]" diye dusuyordu. Asil neden ("bu namespace icin yetkiniz yok; su
-// gruba basvurun") kullaniciya HIC ulasmiyordu.
-//
-// ScaleX'in 403 / 404 ile donen her JSON reddi (`ok: false`) 409'a cevrilir; asil kod
-// `upstreamStatus`ta, tur `code`da (`scalex_forbidden` / `scalex_not_found`) kalir. Istemci
-// yoklama uclarinda bu reddi FIRLATIR ve hatanin `status`u asil koddur, yani "403'te dur"
-// mantigi aynen calisir (src/api/scalexApi.ts `durumJson`). 401 (oturum) ve 5xx (gecici;
-// yoklayicilar yeniden dener) DEGISMEZ.
-const NGINX_YAKALAR = { 403: 'scalex_forbidden', 404: 'scalex_not_found' };
-function nginxRedCevirici(req, res, next) {
-  const asilJson = res.json.bind(res);
-  res.json = (body) => {
-    const kod = NGINX_YAKALAR[res.statusCode];
-    if (kod && body && typeof body === 'object' && body.ok === false) {
-      const asil = res.statusCode;
-      res.status(409);
-      return asilJson({ ...body, code: body.code || kod, upstreamStatus: asil });
-    }
-    return asilJson(body);
-  };
-  next();
-}
+// 403 / 404 redleri (namespace / uygulama yetkisi, baskasinin isi, kayit yok) ekrana
+// "Sunucu beklenmeyen bir yanit dondu (HTTP 403) [<!doctype html>...]" diye dusuyordu. Ortak
+// cevirici (server/util/nginx-red.cjs) bunlari 409'a cevirir; asil kod `upstreamStatus`ta, tur
+// `code`da (`scalex_forbidden` / `scalex_not_found`). Istemci yoklama uclarinda bu reddi
+// FIRLATIR ve hatanin `status`u asil koddur (src/api/scalexApi.ts `durumJson`). 5xx'i ScaleX
+// `eylemRoute`ta kendisi cevirir (eylem5xx kapali).
+const nginxRedCevirici = require('../util/nginx-red.cjs').nginxRedCevirici({ onek: 'scalex' });
 
 function currentUser(req) {
   return req.session?.user || { username: 'anonymous', role: 'User' };
