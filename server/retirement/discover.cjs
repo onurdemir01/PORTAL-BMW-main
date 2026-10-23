@@ -304,6 +304,71 @@ function mcWeb(app, appHost, gen, vhostRows) {
   return out;
 }
 
+// -- ADAY VHOST INDEKSI (2026-10-23, kullanici: "denetim -> web-app envanteri vb. sayfalar cok gec
+// yukleniyor") -------------------------------------------------------------------------------------
+// ajpWeb / mcWeb her uygulama satiri icin filonun TUM vhost listesini tariyordu (uygulama x vhost); Web-App
+// soguk hesabi sentetik 5000 x 20000'de 25,6 sn surdu ve olay dongusunu kilitledi (retirement kesfi de ayni
+// koddan gecer). Indeks yalniz ADAY secer: (cozulmus hedef sunucu, port) -> vhost'lar ve balancer adi ->
+// vhost'lar. Esleme kurali ajpWeb/mcWeb'de AYNEN kalir (ilk tutan hedefte dur, localhost/127.x, IP tek
+// sahip, '~', JBoss 7, site+ortam); aday kumesi gercek eslesmelerin UST KUMESI ve sirasi korunur.
+// Indeks ayni vhost dizisi + ipMap icin BIR KEZ kurulur (WeakMap - istek bitince serbest kalir).
+const BOS_IP = new Map();
+const _vhostIndeksleri = new WeakMap();
+function vhostIndeksi(vhostRows, ipMap) {
+  let ipBasina = _vhostIndeksleri.get(vhostRows);
+  if (!ipBasina) _vhostIndeksleri.set(vhostRows, (ipBasina = new WeakMap()));
+  const hazir = ipBasina.get(ipMap);
+  if (hazir) return hazir;
+  const ajp = new Map();
+  const mc = new Map();
+  const ekle = (m, k, vi) => {
+    let l = m.get(k);
+    if (!l) m.set(k, (l = []));
+    if (l[l.length - 1] !== vi) l.push(vi);
+  };
+  for (let vi = 0; vi < vhostRows.length; vi++) {
+    const v = vhostRows[vi];
+    for (const t of String(v.proxy_targets || '').split(',')) {
+      const x = t.trim();
+      if (!x || x.startsWith('~')) continue;
+      const i = x.lastIndexOf(':');
+      if (i > 0) {
+        const srv = hedefSunucusu(x.slice(0, i), v.host, ipMap);
+        if (srv != null) {
+          let pm = ajp.get(srv);
+          if (!pm) ajp.set(srv, (pm = new Map()));
+          ekle(pm, x.slice(i + 1), vi);
+        }
+      } else if (!x.includes(':')) {
+        ekle(mc, x.toLowerCase(), vi);
+      }
+    }
+  }
+  const idx = { ajp, mc };
+  ipBasina.set(ipMap, idx);
+  return idx;
+}
+/** Bu uygulamanin ajpWeb/mcWeb'de eslesebilecegi vhost'lar (ust kume), orijinal sirayla. */
+function adayVhostlar(app, host, ctx) {
+  const vhostRows = ctx.vhostRows || [];
+  if (!vhostRows.length) return vhostRows;
+  const idx = vhostIndeksi(vhostRows, ctx.ipMap || BOS_IP);
+  const set = new Set();
+  const jvm = ctx.jvm || null;
+  if (jvm) {
+    const pm = idx.ajp.get(U(host));
+    if (pm) {
+      for (const p of new Set([...portListesi(jvm.cfg_ports), ...portListesi(jvm.ports)])) {
+        for (const vi of pm.get(p) || []) set.add(vi);
+      }
+    }
+  }
+  if (ctx.modCluster !== false && Number(ctx.gen ?? null) !== 7) {
+    for (const ad of adVaryantlari(app)) for (const vi of idx.mc.get(ad) || []) set.add(vi);
+  }
+  return [...set].sort((a, b) => a - b).map((vi) => vhostRows[vi]);
+}
+
 function webZenginlestir(app, host, web, ctx) {
   let w = web;
   if (!w.matched) w = hubWebFallback(app, host, w, ctx.hubVhostsByHost || new Map());
@@ -335,8 +400,11 @@ function webZenginlestir(app, host, web, ctx) {
     return { ...wx, matched: true, web: [...mevcut.values()],
       how: `${wx.matched ? `${wx.how} + ` : ''}${ozet} (${liste.length} vhost${yeni ? `, ${yeni} yalniz ${kisa} ile bulundu` : ''})` };
   };
-  w = ekle(w, ajpWeb(host, ctx.jvm || null, ctx.vhostRows || [], ctx.ipMap || new Map()), 'ajp', 'AJP/proxy hedefi = JVM portu', 'AJP');
-  if (ctx.modCluster !== false) w = ekle(w, mcWeb(app, host, ctx.gen ?? null, ctx.vhostRows || []), 'mc', 'mod_cluster balancer adı = uygulama adı', 'mod_cluster');
+  // Tum filo yerine yalniz ADAY vhost'lar (bkz. vhostIndeksi) - sonuc ayni, is uygulama x vhost degil.
+  const ipMap = ctx.ipMap || BOS_IP;
+  const adaylar = adayVhostlar(app, host, { ...ctx, ipMap });
+  w = ekle(w, ajpWeb(host, ctx.jvm || null, adaylar, ipMap), 'ajp', 'AJP/proxy hedefi = JVM portu', 'AJP');
+  if (ctx.modCluster !== false) w = ekle(w, mcWeb(app, host, ctx.gen ?? null, adaylar), 'mc', 'mod_cluster balancer adı = uygulama adı', 'mod_cluster');
   return w;
 }
 
@@ -559,4 +627,4 @@ async function searchApps(q) {
   return [...bases].sort();
 }
 
-module.exports = { buildTargets, discover, searchApps, siteOf, parseAppName, hedefOrtami, genOf, kolOf, paketYolu, inPlaceIsaretle, jvmIndeksi, jvmSec, trafikSinifi, ajpWeb, mcWeb, hedefSunucusu, webZenginlestir, hubBaglamiYukle };
+module.exports = { buildTargets, discover, searchApps, siteOf, parseAppName, hedefOrtami, genOf, kolOf, paketYolu, inPlaceIsaretle, jvmIndeksi, jvmSec, trafikSinifi, ajpWeb, mcWeb, hedefSunucusu, webZenginlestir, hubBaglamiYukle, adayVhostlar, ipSahipleri };

@@ -9,6 +9,7 @@
 //   WO4 hata onbellege YAZILMAZ: sonraki istek yeniden dener
 //   WO5 suzulen kume CAP'ten buyukse capped=true, degilse false (eski ">= CAP" yanlis pozitifi yok)
 //   WO6 uzun hesap olay dongusune nefes aldirir (DILIM satirda bir setImmediate)
+//   WO7 Denetim yanit onbellegi /web-app i atlar (iki katman: bayat varyant + bellek)
 'use strict';
 
 process.env.WEBAPP_ONBELLEK_MS = String(10 * 60 * 1000);
@@ -153,4 +154,13 @@ test('WO6 uzun hesap olay dongusune nefes aldirir', async () => {
     await s.getir('&fresh=1');
     assert.ok(sayac - az >= 4, `1000 satirda yalniz ${sayac - az} ek nefes (beklenen >= 4)`);
   } finally { global.setImmediate = asil; s.kapat(); }
+});
+
+test('WO7 Denetim yanit onbellegi /web-app i ATLAR (kendi onbellegi var; ikinci katman bayat varyant + bellek)', () => {
+  const fs = require('node:fs');
+  const src = fs.readFileSync(path.join(__dirname, '..', 'denetim.cjs'), 'utf8');
+  const kod = src.split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+  assert.match(kod, /router\.use\(\(req, res, next\) => \(req\.path === '\/web-app' \? next\(\) : responseCache\.middleware\(req, res, next\)\)\);/,
+    'yanit onbellegi /web-app icin de devrede');
+  assert.ok(!/router\.use\(responseCache\.middleware\);/.test(kod), 'yanit onbellegi kosulsuz takili');
 });

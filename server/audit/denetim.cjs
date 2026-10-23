@@ -126,7 +126,10 @@ function initDenetim(app) {
   // kontrolunu atlayamaz. 60 sn; ?fresh=1 (Yenile dugmesi) atlar. Bkz. response-cache.cjs
   const { createResponseCache } = require('./response-cache.cjs');
   const responseCache = createResponseCache();
-  router.use(responseCache.middleware);
+  // /web-app HARIC (2026-10-23): kendi tek-ucuslu tam sonuc onbellegi var (web-app.cjs, 10 dk, fresh=1);
+  // burada da tutulsa her arama varyanti 1-2 MB'lik ayri giris olur (64 giris), govde iki kez
+  // serilestirilir ve "Yenile" sonrasi diger varyantlar 60 sn eski kalir.
+  router.use((req, res, next) => (req.path === '/web-app' ? next() : responseCache.middleware(req, res, next)));
 
   // ── 1) NGINX SPA AUDIT ──────────────────────────────────────────────────────────────
   // Nginx_Config_Audit gunluk satir tutar; HER ZAMAN en son scan_date okunur (tarih
