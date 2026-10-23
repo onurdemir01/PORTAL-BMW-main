@@ -33,6 +33,7 @@ function WebKaynak({ w }: { w: RtWeb }) {
 import { retirementAdimi } from './retirementAdim';
 import OnKontrolListesi, { onKontrolHazir, OnKontrolGorunumu, geriAlHazir, geriAlinabilir, onKontrolSuruyor } from './RetirementOnKontrol';
 import { stopTrafikOzeti, stopOnayAcikMi, type TrafikIsDurumu } from './retirementTrafik';
+import { WebAyrinti, webKey } from './RetirementWebSatir';
 import { blokAyristir, bloklaraBol, degisimTuru, jkAyristir, jkDegAyristir, JK_ETIKET, kipAyristir, sonraMetni, sonucAyristir, YORUM_ONEKI, type BlokSatiri, type DegisimTuru, type JkDeg, type JkSatiri, type Kip } from './retirementVhostPlan';
 
 /** On kontrolde vhost basina kapatma plani (ekran durumu). */
@@ -701,10 +702,10 @@ function CreateModal({ defaultDays, onClose, onCreated }: { defaultDays: number;
                       </td>
                       <td className="px-2 py-1 text-[10px]" style={{ color: 'var(--text-muted)' }}>{t.inventoryStatus || '—'}</td>
                       <td className="px-2 py-1 text-[10px]"><HubHucresi hub={t.hub} okunamadi={hubYok} /></td>
-                      <td className="px-2 py-1 text-[10px]">{t.web.length ? t.web.map((w) => <div key={w.host + w.serverName} title={t.webHow}>{w.host} · {w.serverName}{w.product ? ` (${w.product})` : ''}<WebKaynak w={w} /></div>) : <div role="alert" className="max-w-[22rem] font-semibold" style={{ color: 'var(--status-danger)' }} title={t.webHow}>⚠ {t.webUyari || 'web vhost’u bulunamadı — elle doğrulayın'}</div>}</td>
+                      <td className="px-2 py-1 text-[10px]">{t.web.length ? t.web.map((w, i) => <div key={webKey(w, i)} title={t.webHow}>{w.host} · {w.serverName}<WebAyrinti w={w} /><WebKaynak w={w} /></div>) : <div role="alert" className="max-w-[22rem] font-semibold" style={{ color: 'var(--status-danger)' }} title={t.webHow}>⚠ {t.webUyari || 'web vhost’u bulunamadı — elle doğrulayın'}</div>}</td>
                       <td className="px-2 py-1 text-[10px]">
                         {t.web.length
-                          ? t.web.map((w) => <div key={`tr-${w.host}-${w.serverName}`}><TrafikHucresi tr={w.trafik} /></div>)
+                          ? t.web.map((w, i) => <div key={`tr-${webKey(w, i)}`}><TrafikHucresi tr={w.trafik} /></div>)
                           : <span style={{ color: 'var(--text-muted)' }}>—</span>}
                       </td>
                       <td className="px-2 py-1 font-mono text-[10px]"><div className="truncate max-w-[28rem]" title={t.appPath}>{t.appPath || '—'}</div></td>
@@ -1263,7 +1264,7 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
                       <td className="px-2.5 py-1.5"><b>{t.env}</b></td>
                       <td className="px-2.5 py-1.5">{t.appName}</td>
                       <td className="px-2.5 py-1.5">{t.gen ? `JBoss ${t.gen}` : '?'}</td>
-                      <td className="px-2.5 py-1.5 text-[10px]">{t.web.length ? t.web.map((w) => <div key={w.host + w.serverName}>{w.host} · {w.serverName}<WebKaynak w={w} /></div>) : <span className="font-semibold" style={{ color: 'var(--status-danger)' }} title="Keşifte web vhost’u bulunamadı: retirement vhost kapatmaz, web sunucusunu elle doğrulayın">⚠ web bulunamadı — elle doğrulayın</span>}</td>
+                      <td className="px-2.5 py-1.5 text-[10px]">{t.web.length ? t.web.map((w, i) => <div key={webKey(w, i)}>{w.host} · {w.serverName}<WebAyrinti w={w} /><WebKaynak w={w} /></div>) : <span className="font-semibold" style={{ color: 'var(--status-danger)' }} title="Keşifte web vhost’u bulunamadı: retirement vhost kapatmaz, web sunucusunu elle doğrulayın">⚠ web bulunamadı — elle doğrulayın</span>}</td>
                       <td className="px-2.5 py-1.5"><Pill label={st.label} color={st.color} /></td>
                       <td className="px-2.5 py-1.5 text-[10px]" style={{ color: isBelirsiz ? 'var(--status-warning)' : 'var(--text-secondary)' }}><div className="max-w-[40rem] truncate" title={t.resultText || t.planText || ''}>{t.resultText || t.planText || (isId ? `iş #${isId}` : isBelirsiz ? 'iş numarası yazılamadı — durum doğrulanamıyor' : '—')}</div></td>
                       <td className="px-2.5 py-1.5">

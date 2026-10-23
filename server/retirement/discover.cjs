@@ -12,6 +12,7 @@
 'use strict';
 
 const { buildCertIndex, matchWebForApp, webHostAdaylari, adVaryantlari } = require('../audit/web-app.cjs');
+const { webConfKanonik, urunAilesi } = require('./web-liste.cjs');
 
 const U = (s) => String(s || '').trim().toUpperCase();
 
@@ -310,11 +311,22 @@ function webZenginlestir(app, host, web, ctx) {
   const ekle = (wx, liste, tur, ozet, kisa) => {
     if (!liste.length) return wx;
     const mevcut = new Map((wx.web || []).map((x) => [anahtar(x), { ...x }]));
+    // AYNI DOSYA, IKI YAZIM (bkz. web-liste.cjs): IHS sertifika girdisi 'mod-jk.conf' = Server Hub
+    // '/usr/IBMIHS/conf/mod-jk.conf' (ayni host + ServerName + port). BELIRLENIMCI: baska kokun
+    // '<...>/conf/X'i ya da RHA dosyasi birlesmez. Birlesen girdi Map'te YERINDE kalir (satir sirasi
+    // degismez), 'ad+tur' olur ve mutlak yolu alir.
+    const kanonik = new Map();
+    for (const [mk, x] of mevcut) {
+      const c = webConfKanonik(x);
+      if (c !== String(x.confFile || '')) kanonik.set(anahtar({ ...x, confFile: c }), mk);
+    }
     let yeni = 0;
     for (const a of liste) {
       const k = anahtar(a);
-      if (mevcut.has(k)) {
-        const m = mevcut.get(k);
+      const hedef = mevcut.has(k) ? k : (urunAilesi(a.product) !== 'RHA' ? kanonik.get(k) : undefined);
+      if (hedef && hedef !== k) mevcut.get(hedef).confFile = a.confFile;
+      if (hedef) {
+        const m = mevcut.get(hedef);
         m.kaynak = m.kaynak && m.kaynak !== 'ad' ? `${m.kaynak}+${tur}` : `ad+${tur}`;
         if (a.ajpHedef) m.ajpHedef = a.ajpHedef;
         if (a.mcBalancer) m.mcBalancer = a.mcBalancer;

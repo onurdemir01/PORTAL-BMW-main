@@ -10,7 +10,7 @@
 // PROD hedef: oco_no zorunlu; ilk gercek STOP'ta SCC maili (adres: Retirement sayfasi ya da RETIREMENT_SCC_MAIL_TO; bossa uyari).
 // STOP her zaman once PLAN (plan_only=true) kosar, kullanici onaylayinca uygulanir.
 'use strict';
-const { webTekille } = require('./web-liste.cjs');
+const { webTekille, webYenidenDeneHazirla } = require('./web-liste.cjs');
 
 const express = require('express');
 const { discover, searchApps } = require('./discover.cjs');
@@ -260,11 +260,9 @@ const APACHE_URUN = new Set(['RHA', 'IHS', 'APACHE', 'IBMIHS']);
 async function vhostPlanBaslat(req, id, tid, webs) {
   const out = [];
   // AYNI vhost listede iki kez varsa (kesif iki kaynaktan) iki plan isi = ekranda ayni blok iki kez.
-  const gorulen = new Set();
-  for (const w of webs || []) {
-    const anahtar = `${String(w.host || '').toUpperCase()}|${String(w.confFile || '')}|${String(w.serverName || '').toLowerCase()}`;
-    if (gorulen.has(anahtar)) continue;
-    gorulen.add(anahtar);
+  // Tekillestirme web adimiyla AYNI (webTekille): goreli/mutlak conf yazimi da ayni dosya sayilir
+  // (2026-10-23, 'mod-jk.conf' + '/usr/IBMIHS/conf/mod-jk.conf' iki plan isi aciyordu).
+  for (const w of webTekille(Array.isArray(webs) ? webs : []).liste) {
     const kim = { host: w.host, serverName: w.serverName, confFile: w.confFile || '' };
     if (w.elle) { out.push({ ...kim, ok: false, elle: true, message: String(w.elle) }); continue; }
     if (!APACHE_URUN.has(String(w.product || '').toUpperCase())) { out.push({ ...kim, ok: false, elle: true, message: `${w.product || 'bilinmeyen urun'}: otomatik kapatma yok (NGINX elle)` }); continue; }
@@ -865,8 +863,10 @@ function initRetirement(app) {
       if (!t) return res.status(400).json({ ok: false, message: 'Hedef yok.' });
       if (t.status !== 'stopped')
         return res.status(409).json({ ok: false, message: `Web adımı yalnız durdurulmuş hedefte yeniden denenir (hedef: ${t.status}).` });
-      const secilen = webTekille(t.webSonuc || []).liste.filter((w) => w.status === 'failed' || w.status === 'skip');
-      if (!secilen.length) return res.status(409).json({ ok: false, message: 'Yeniden denenecek başarısız ya da atlanmış vhost yok.' });
+      // Uygulamayla AYNI secim (webYenidenDeneHazirla, 2026-10-23): onizlenen ile kosan ayni olur.
+      const { secilen, surenYuzunden } = webYenidenDeneHazirla(webTekille(t.webSonuc || []).liste);
+      if (!secilen.length)
+        return res.status(409).json({ ok: false, message: surenYuzunden ? `${surenYuzunden} vhost için aynı dosyada iş hâlâ sürüyor; sonuç okunmadan yeniden denenmez.` : 'Yeniden denenecek başarısız ya da atlanmış vhost yok.' });
       const vhostPlan = await vhostPlanBaslat(req, id, tid, secilen);
       await addEvent(id, req.session?.user?.username, 'web',
         `${t.appName} @ ${t.host}: web adimi yeniden deneme ONIZLEMESI - ${secilen.map((w) => `${w.host} / ${w.serverName}`).join(', ')}`);
@@ -889,20 +889,15 @@ function initRetirement(app) {
       try { liste = JSON.parse(rows?.[0]?.web_result_json || 'null'); } catch { liste = null; }
       if (!Array.isArray(liste) || !liste.length)
         return res.status(400).json({ ok: false, message: 'Bu hedefin web listesi yok (kayıt açılırken vhost bulunamamış).' });
-      liste = webTekille(liste).liste;
-      const YENIDEN = new Set(['failed', 'skip']);
-      const secilen = liste.filter((w) => YENIDEN.has(w.status));
+      // Web adimi kuraliyla tekillenir, sonra yeniden deneme hazirlanir (webYenidenDeneHazirla): failed/skip
+      // -> pending (onceki is no / mesaj korunur), conf kanonik yola yukselir, ayni dosyanin basarisiz
+      // yazimlari TEK denemeye iner; ayni dosyada is suruyorsa o girdi bu tur denenmez. Onizleme ayni fonksiyonu kullanir.
+      const hazir = webYenidenDeneHazirla(webTekille(liste).liste);
+      const secilen = hazir.secilen;
       if (!secilen.length) {
-        const suren = liste.filter((w) => w.status === 'running').length;
-        return res.status(409).json({ ok: false, message: suren ? `${suren} vhost işi hâlâ sürüyor; sonuç okunmadan yeniden denenmez.` : 'Yeniden denenecek başarısız ya da atlanmış vhost yok.' });
+        return res.status(409).json({ ok: false, message: hazir.surenYuzunden ? `${hazir.surenYuzunden} vhost için aynı dosyada iş hâlâ sürüyor; sonuç okunmadan yeniden denenmez.` : 'Yeniden denenecek başarısız ya da atlanmış vhost yok.' });
       }
-      for (const w of secilen) {
-        w.oncekiJobId = w.jobId ?? null;
-        w.oncekiMesaj = w.message ?? null;
-        w.status = 'pending';
-        w.jobId = null;
-        w.message = 'yeniden denenecek';
-      }
+      liste = hazir.liste;
       await db().query(`UPDATE retirement_targets SET web_result_json = $1, updated_at = GETUTCDATE() WHERE id = $2 AND status = 'stopped'`, [JSON.stringify(liste).slice(0, 60000), tid]);
       await addEvent(id, req.session?.user?.username, 'web',
         `${t.appName} @ ${t.host}: web adimi YENIDEN DENENECEK - ${secilen.map((w) => `${w.host} / ${w.serverName}`).join(', ')}`);
@@ -934,7 +929,7 @@ function initRetirement(app) {
       if (!rec) return res.status(400).json({ ok: false, message: 'Kayıt yok.' });
       if (rec.status === 'cancelled') return res.status(400).json({ ok: false, message: 'Kayıt iptal edilmiş.' });
       const disc = await discover(rec.app);
-      const { webAnahtar } = require('./web-liste.cjs');
+      const { webKanonikAnahtar } = require('./web-liste.cjs');
       const DUZENLENIR = new Set(['pending', 'planned', 'stop_scheduled', 'active', 'failed', 'rollback_failed']);
       const sonuc = [];
       for (const t of rec.targets) {
@@ -943,8 +938,10 @@ function initRetirement(app) {
         const d = (disc.targets || []).find((x) => String(x.host).toUpperCase() === String(t.host).toUpperCase() && String(x.appName).toUpperCase() === String(t.appName).toUpperCase()
           && (x.gen ?? null) === (t.gen == null ? null : Number(t.gen)));
         const yeniWeb = d ? d.web : [];
-        const eskiK = new Set((t.web || []).map(webAnahtar));
-        const eklenen = yeniWeb.filter((w) => !eskiK.has(webAnahtar(w)));
+        // Karsilastirma web adimiyla AYNI anahtarla: eski kayittaki 'mod-jk.conf' ile yeni kesifteki
+        // '/usr/IBMIHS/conf/mod-jk.conf' ayni dosya - "eklenecek" diye ikinci kez gosterilmez.
+        const eskiK = new Set((t.web || []).map((w) => webKanonikAnahtar(w)));
+        const eklenen = yeniWeb.filter((w) => !eskiK.has(webKanonikAnahtar(w)));
         const satir = { tid: t.id, host: t.host, appName: t.appName, env: t.env, status: t.status, eski: (t.web || []).length, eklenen, webHow: d ? d.webHow : 'kesifte hedef yok', webUyari: d ? d.webUyari || null : null, islem: 'yok' };
         if (!eklenen.length) { satir.islem = 'degisiklik yok'; sonuc.push(satir); continue; }
         if (t.deletedAt || t.status === 'deleted') { satir.islem = 'silinmiş hedef - vhost elle kapatılmalı'; sonuc.push(satir); continue; }

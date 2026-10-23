@@ -156,11 +156,16 @@ test('TD8 liste ortam kirilimi TEK sorgu (kayit basina sorgu yok) ve PROD ayrisi
 
 test('TD11 web adimini YENIDEN DENE: yalniz failed/skip, suren isa dokunmaz, yalniz durdurulmus hedef', () => {
   const ep = ucDilimi("router.post('/:id/targets/:tid/web-retry'", "router.post('/:id/targets/:tid/refresh-status'");
-  assert.match(ep, /const YENIDEN = new Set\(\['failed', 'skip'\]\)/, 'yeniden denenecek durumlar degisti');
-  assert.ok(!/YENIDEN = new Set\([^)]*running/.test(ep), "suren ('running') is yeniden kuyruga alinabiliyor - ayni vhost icin iki is");
   assert.match(ep, /if \(t\.status !== 'stopped'\)/, 'durdurulmamis hedefte web adimi yeniden denenebiliyor');
-  assert.match(ep, /w\.status = 'pending';/, 'girdi zamanlayicinin aldigi duruma donmuyor');
-  assert.match(ep, /w\.oncekiJobId = w\.jobId/, 'onceki is numarasi kayboluyor (iz yok)');
+  // 2026-10-23: secim ve donusum onizlemeyle ORTAK yardimcida (web-liste.cjs webYenidenDeneHazirla).
+  assert.match(ep, /const hazir = webYenidenDeneHazirla\(webTekille\(liste\)\.liste\);/, 'uygulama ortak yeniden deneme yardimcisini kullanmiyor');
+  const WL = fs.readFileSync(path.join(__dirname, '..', 'web-liste.cjs'), 'utf8');
+  const yd = WL.slice(WL.indexOf('function webYenidenDeneHazirla('), WL.indexOf('module.exports'));
+  assert.ok(yd.length > 100, 'webYenidenDeneHazirla yok');
+  assert.match(yd, /const YENIDEN = new Set\(\['failed', 'skip'\]\)/, 'yeniden denenecek durumlar degisti');
+  assert.ok(!/YENIDEN = new Set\([^)]*running/.test(yd), "suren ('running') is yeniden kuyruga alinabiliyor - ayni vhost icin iki is");
+  assert.match(yd, /status: 'pending'/, 'girdi zamanlayicinin aldigi duruma donmuyor');
+  assert.match(yd, /oncekiJobId: w\.jobId \?\? null/, 'onceki is numarasi kayboluyor (iz yok)');
 });
 
 test('TD12 Akis paneli web adimini KANITSIZ "bitti" gostermez', () => {
@@ -184,7 +189,8 @@ test('TD13 on kontrol KAPATILACAK vhost blogunu gosterir: ayni eylem PLAN kipind
   assert.ok(!/plan_only: false/.test(blok), 'onizlemede vhost GERCEKTEN kapatilabiliyor');
   assert.match(blok, /'server_hub_fix'\)/);
   // Kullanici (2026-10-08): "satirlari 2 kere yazmis gibi" - ayni vhost iki kez planlanmaz.
-  assert.ok(blok.includes('if (gorulen.has(anahtar)) continue;'), 'ayni vhost iki kez planlaniyor');
+  // 2026-10-23: tekillestirme web adimiyla ORTAK (webTekille - goreli/mutlak conf yazimi da ayni dosya).
+  assert.match(blok, /for \(const w of webTekille\(/, 'ayni vhost iki kez planlaniyor (plan web adimindan farkli tekillestiriyor)');
   // URUN KAPISI KENDISI kilitlenir: 'elle: true' metni conf-bilinmiyor dalinda da geciyor ve
   // urun kapisini kaldiran mutasyonu GORMUYORDU (V2, ilk tur).
   assert.match(blok, /if \(!APACHE_URUN\.has\(String\(w\.product \|\| ''\)\.toUpperCase\(\)\)\) \{ out\.push\(\{ \.\.\.kim, ok: false, elle: true/, 'NGINX icin is baslatiliyor (urun kapisi yok)');
@@ -197,7 +203,8 @@ test('TD13 on kontrol KAPATILACAK vhost blogunu gosterir: ayni eylem PLAN kipind
 test('TD14 yeniden deneme ONIZLEMESI: yalniz failed/skip vhost planlanir, HICBIR SEY degistirilmez', () => {
   // Kullanici (2026-10-08): "yeniden denemeye de onizleme ekle"
   const ep = ucDilimi("router.post('/:id/targets/:tid/web-retry/plan'", "router.post('/:id/targets/:tid/web-retry',");
-  assert.match(ep, /\.filter\(\(w\) => w\.status === 'failed' \|\| w\.status === 'skip'\)/, 'onizleme yeniden denenmeyecek vhost\'lari da planliyor');
+  // 2026-10-23: yalniz failed/skip secimi uygulamayla ORTAK yardimcida (bkz. TD11).
+  assert.match(ep, /const \{ secilen, surenYuzunden \} = webYenidenDeneHazirla\(webTekille\(t\.webSonuc \|\| \[\]\)\.liste\);/, 'onizleme uygulamayla ayni secimi yapmiyor');
   assert.match(ep, /await vhostPlanBaslat\(req, id, tid, secilen\)/, 'onizleme ortak plan yardimcisini kullanmiyor');
   assert.match(ep, /if \(t\.status !== 'stopped'\)/);
   assert.ok(!/UPDATE retirement_targets/.test(ep), 'onizleme web listesini DEGISTIRIYOR - kapatma onaysiz kuyruga girebilir');
