@@ -35,3 +35,13 @@ updates:
     ignore:
       - dependency-name: "@types/node"
         update-types: ["version-update:semver-major"]
+      # BILEREK ERTELENEN BUYUK SURUMLER (2026-10-23). Kosul gerceklesince satiri silin.
+      # TypeScript 7: typescript-eslint en fazla <6.1.0 destekliyor; 7 lint'i kirar.
+      #   Kaldirma kosulu: @typescript-eslint/parser peerDependencies typescript 7'yi kapsadiginda.
+      - dependency-name: "typescript"
+        versions: [">=7.0.0"]
+      # undici 8: HTTP/2 varsayilan + dispatcher degisikligi; AWX / SMART / OCO / Dynatrace'e giden
+      #   tum istekleri etkiler, kurumsal proxy olmadan dogrulanamaz. 7.x hatti yama aliyor.
+      #   Kaldirma kosulu: bir sunucuda kanarya (proxy + TLS + AWX) gecince.
+      - dependency-name: "undici"
+        versions: [">=8.0.0"]
