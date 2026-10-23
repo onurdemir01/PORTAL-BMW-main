@@ -111,11 +111,22 @@ Ayrıntı: `docs/DEPLOYMENT.md`.
 
 ## Node 22'ye geçiş
 
-> **GÜNCEL DURUM (2026-10-23):** Prod Node **22.23.4**'e geçti (`deploy/install-node.sh`).
-> `package.json` `engines` artık **`>=22.23.4`**: açılıştaki `[Guvenlik]` uyarısıyla aynı güvenlik
-> tabanı (`server/node-guvenlik.cjs`, bekçi NV1). Çalışma zamanı paketleri (`tedious`, `ldapts` 9)
-> zaten Node 22 istiyor. **Kalan tek elle adım Jenkins'tir** (aşağıda 4. adım). Aşağıdaki metin
-> geçişin nasıl yapıldığını anlatır.
+> **GÜNCEL DURUM (2026-10-23):** Portalı çalıştıran bir makine şimdilik **Node 22.22.2**'de kalıyor
+> (yükseltme yapılamıyor). Bu yüzden iki kavram ayrıldı:
+>
+> - **Uyumluluk** — `package.json` `engines`: **`^22.22.2 || ^24.15.0 || >=26.0.0`**. Projenin
+>   derleme dahil GERÇEKTEN çalıştığı en eski sürümler (`jsdom` bunu istiyor). Bekçi NV1, her hattın
+>   en eski sürümünün kilitteki her paketin şartını karşıladığını denetler. 22.22.2'de `npm ci`
+>   artık uyarı vermez.
+> - **Güvenlik** — `server/node-guvenlik.cjs` `YAMALI` (22.23.4 / 24.22.1 / 26.12.1). Altındaki
+>   sürümde açılışta `[Guvenlik]` uyarısı yazılır ve **telafi korumaları** kurulur:
+>   - giden `fetch` Brotli istemez ve Brotli yanıtı reddeder (CVE-2026-111497);
+>   - NUL baytlı konak adı DNS'e gitmez (CVE-2026-105482 / -48930).
+>   Loglarda URL kimliği her sürümde maskelenir (CVE-2026-48615 için de).
+>
+> TLS sunucu kimliği / IP doğrulaması düzeltmeleri (CVE-2026-48618, -106069, -106072) **yalnızca
+> Node yükseltmesiyle** gelir; 22.23.4 aynı hatta, uyumluluk ölçümü 22.22.2 ile aynı (#215).
+> Kalan elle adım: Jenkins (aşağıda 4. adım).
 
 Prod geçiş öncesinde **Node 20.20.2** koşuyordu ve `engines` o gün kırılmasın diye `>=20.18.0`
 bırakılmıştı.
@@ -163,7 +174,8 @@ PREFLIGHT_NODE_VERSION=20.20.2 npm run preflight
    `tools { nodejs 'node20' }` satırını `'node22'` yapın. Matris **bilerek eklenmedi**:
    `tools` bloğu var olmayan bir araç adına bağlanırsa boru hattı **komple düşer**
    ve o tanım bu repodan doğrulanamıyor.
-5. `package.json` `engines` → `>=22.23.4` (2026-10-23, yapıldı).
+5. `package.json` `engines` uyumluluk aralığı: `^22.22.2 || ^24.15.0 || >=26.0.0`. Güvenlik tabanı
+   ayrı tutulur (açılış uyarısı ve telafi korumaları, `server/node-guvenlik.cjs`).
 
 ### Geri dönüş
 
