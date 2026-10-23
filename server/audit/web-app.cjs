@@ -341,112 +341,40 @@ function registerWebApp(router) {
 
   router.get('/web-app', async (req, res) => {
     try {
-      const { query } = require('../inventory/mssql.cjs');
       const key = SOURCES[String(req.query.source || 'mw')] ? String(req.query.source) : 'mw';
       const src = SOURCES[key];
       const q = String(req.query.q || '')
         .trim()
         .toLowerCase();
       const onlyUnmatched = String(req.query.onlyUnmatched || '') === '1';
+      const taze = String(req.query.fresh || '') === '1';
       const CAP = 1000;
 
-      const [appRes, certRes] = await Promise.all([
-        query(`SELECT DISTINCT app, host, env, domain${src.genKolon ? `, ${src.genKolon}` : ''} FROM ${src.table}
-                WHERE app IS NOT NULL AND app <> ''`),
-        query(`SELECT host, ip, port, server_name, conf_file, product, env
-                 FROM dbo.BMW_Certificates_Inventory`).catch(() => ({
-          recordset: [],
-          _missing: true,
-        })),
-      ]);
-      const certMissing = !!certRes._missing;
-
-      const certByHost = buildCertIndex(certRes.recordset || []);
-      // SERVER HUB + AJP (2026-10-13): retirement kesfiyle AYNI zenginlestirme (discover.cjs).
-      // Server Hub okunamazsa yalniz sertifika eslemesi kalir; ekran bunu hubHata ile soyler.
-      const { webZenginlestir, hubBaglamiYukle, siteOf, genOf } = require('../retirement/discover.cjs');
-      const hub = await hubBaglamiYukle(query).catch((e) => ({ vhostRows: [], hubVhostsByHost: new Map(), ipMap: new Map(), jvmOf: () => null, hata: [e.message] }));
-      // Ozet kovasi: AJP parantezindeki sayilar kovayi parcalamasin.
-      const howKova = (h) => String(h).replace(/AJP\/proxy hedefi = JVM portu \([^)]*\)/, 'AJP/proxy hedefi = JVM portu');
-
-      const howCount = {};
-      const tierCount = {};
+      const h = await webAppSonucu(key, taze);
+      // Arama / suzme ONBELLEKTEKI tam sonuc uzerinde (alfabetik sirali); sayaclar suzmeden bagimsiz.
       const rows = [];
-      let total = 0;
-      let eslesen = 0;
-
-      for (const a of appRes.recordset || []) {
-        const app = String(a.app || '').trim();
-        const appHost = String(a.host || '').trim();
-        if (!app) continue;
-
-        const domain = String(a.domain || '').trim();
-        const m = webZenginlestir(app, appHost, matchWebForApp({ app, appHost, domain }, certByHost),
-          { hubVhostsByHost: hub.hubVhostsByHost, vhostRows: hub.vhostRows, ipMap: hub.ipMap,
-            jvm: hub.jvmOf(appHost, app, src.genKolon ? genOf(a[src.genKolon]) : null),
-            // mod_cluster yalniz JBoss (8) icin; WAS kaynaginda balancer adi eslesmesi yapilmaz.
-            gen: src.genKolon ? genOf(a[src.genKolon]) : null, modCluster: key === 'mw' })
-        const { how, matched } = m;
-        const topoloji = topolojiOf(domain, appHost, m);
-        const tier = topoloji.tier;
-        if (matched) eslesen++;
-
-        howCount[howKova(how)] = (howCount[howKova(how)] || 0) + 1;
-        tierCount[tier] = (tierCount[tier] || 0) + 1;
-        total++;
-
-        if (onlyUnmatched && matched) continue;
-        if (q && !app.toLowerCase().includes(q) && !appHost.toLowerCase().includes(q)) continue;
-        if (rows.length >= CAP) continue;
-
-        rows.push({
-          app,
-          appHost,
-          env: String(a.env || '').trim(),
-          domain,
-          // DNS -> VIP cozumunde hangi bolgenin DNS sunuculari (gtdmz / fw); null = bilinmiyor.
-          dnsBolge: dnsBolgesi(domain),
-          tier,
-          tierKaynak: topoloji.kaynak,
-          how,
-          nasil: nasilAciklama({ app, appHost, domain, m, topoloji }),
-          matched,
-          // Bir uygulama birden fazla vhost'ta servis ediliyor olabilir; hepsi dondurulur.
-          // DNS BOLGESI VHOST BASINA (2026-10-16, kullanici: "Ankara IP'lerinin hicbiri cozulememis"):
-          // hangi DNS sunucusuna sorulacagi COZULEN ADIN kendi alanina baglidir (x.gtdmz.com.tr ->
-          // gtdmz). Eskiden yalniz envanterdeki uygulama domain'ine bakiliyordu; domain bos satirlarda
-          // bolge null kaliyor, Ankara uyesi Ankara DNS'ine HIC sorulmayip Portal cozucusunun (Pendik)
-          // cevabiyla "Ankara VIP'i farkli olabilir" diye gosteriliyordu.
-          web: (m.web || []).map((w) => ({
-            ip: '', port: '', confFile: '', product: '', ...w, kaynak: w.kaynak || 'ad', site: siteOf(w.host),
-            dnsBolge: dnsBolgesi(w.serverName) || dnsBolgesi(domain),
-          })),
-          webHostCandidate: m.webHostCandidate,
-          vhostCountOnHost: m.vhostCountOnHost,
-        });
+      let uyan = 0;
+      for (const r of h.rows) {
+        if (onlyUnmatched && r.matched) continue;
+        if (q && !r.app.toLowerCase().includes(q) && !r.appHost.toLowerCase().includes(q)) continue;
+        uyan += 1;
+        if (rows.length < CAP) rows.push(r);
       }
-
-      rows.sort(
-        (x, y) => x.app.localeCompare(y.app, 'tr') || x.appHost.localeCompare(y.appHost, 'tr'),
-      );
 
       res.json({
         ok: true,
         source: key,
         label: src.label,
         sources: Object.entries(SOURCES).map(([k, v]) => ({ key: k, label: v.label })),
-        certMissing,
-        hubHata: hub.hata && hub.hata.length ? hub.hata.join('; ') : null,
-        total,
-        matchedTotal: eslesen,
+        certMissing: h.certMissing,
+        hubHata: h.hubHata,
+        total: h.total,
+        matchedTotal: h.eslesen,
         shown: rows.length,
-        capped: rows.length >= CAP,
-        matchSummary: Object.entries(howCount)
-          .map(([how, count]) => ({ how, count }))
-          .sort((a, b) => b.count - a.count),
-        tierSummary: Object.entries(tierCount)
-          .map(([tier, count]) => ({ tier, count }))
-          .sort((a, b) => b.count - a.count),
+        capped: uyan > rows.length,
+        hesaplandi: h.hesaplandi,
+        matchSummary: h.matchSummary,
+        tierSummary: h.tierSummary,
         rows,
       });
     } catch (err) {
@@ -455,4 +383,137 @@ function registerWebApp(router) {
   });
 }
 
-module.exports = { registerWebApp, dnsCozumle, dnsBolgesi, DNS_BOLGELER, adVaryantlari, webHostOf, webHostAdaylari, tierOf, topolojiOf, nasilAciklama, buildCertIndex, matchWebForApp };
+// -- HESAP ONBELLEGI + TEK UCUS (2026-10-23) ---------------------------------------------
+// Kullanici: "sorgulama yaparken bir turlu getirmedi sorgular cok uzun suruyor 'Yenile' butonu donup
+// duruyor". Arama kutusundaki her degisiklik (300 ms gecikmeyle) TUM hesabi bastan kosturuyordu:
+// sertifika envanteri + Server Hub tablolari tamamen cekilir, her uygulama satiri icin AJP/mod_cluster
+// eslemesi tum vhost listesinde dolasir - ve bu senkron dongu Node'u (TUM Portal'i) bitene kadar
+// kilitler. Birkac harf = ayni agir hesap uc-dort kez sirada, onceki istekler de iptal edilmiyor.
+// Simdi: kaynak basina TAM sonuc (suzmesiz, sinirsiz, sirali) bir kez hesaplanir, WEBAPP_ONBELLEK_MS
+// (varsayilan 10 dk, 0 = onbellek yok) tutulur; ayni anda gelen istekler AYNI hesabi bekler (tek
+// ucus). Arama onbellekteki satirlar uzerinde suzulur. "Yenile" (fresh=1) onbellegi atlar; suren bir
+// hesap varsa onu bekler (o zaten taze). Hata onbellege YAZILMAZ. Anahtar kaynak adi (SOURCES: 2
+// deger) - Map sinirli. Veri gunluk taramalardan gelir; hesap zamani ekranda yazilir.
+const ONBELLEK_VARSAYILAN_MS = 10 * 60 * 1000;
+function onbellekMs() {
+  const n = parseInt(process.env.WEBAPP_ONBELLEK_MS || '', 10);
+  return Number.isInteger(n) && n >= 0 && n <= 60 * 60 * 1000 ? n : ONBELLEK_VARSAYILAN_MS;
+}
+// Hesap dongusu her DILIM satirda olay dongusune nefes aldirir: hesap surerken Portal donmaz.
+const DILIM = 200;
+const nefes = () => new Promise((ok) => setImmediate(ok));
+const _hesaplar = new Map();
+
+function webAppSonucu(key, taze) {
+  const c = _hesaplar.get(key);
+  if (c && (c.bekliyor || (!taze && Date.now() - c.at < onbellekMs()))) return c.p;
+  const kayit = { at: Date.now(), bekliyor: true, p: null };
+  kayit.p = webAppHesapla(key).then(
+    (v) => { kayit.bekliyor = false; kayit.at = Date.now(); return v; },
+    (e) => { if (_hesaplar.get(key) === kayit) _hesaplar.delete(key); throw e; },
+  );
+  _hesaplar.set(key, kayit);
+  return kayit.p;
+}
+
+async function webAppHesapla(key) {
+  const { query } = require('../inventory/mssql.cjs');
+  const src = SOURCES[key];
+  const [appRes, certRes] = await Promise.all([
+    query(`SELECT DISTINCT app, host, env, domain${src.genKolon ? `, ${src.genKolon}` : ''} FROM ${src.table}
+            WHERE app IS NOT NULL AND app <> ''`),
+    query(`SELECT host, ip, port, server_name, conf_file, product, env
+             FROM dbo.BMW_Certificates_Inventory`).catch(() => ({
+      recordset: [],
+      _missing: true,
+    })),
+  ]);
+  const certMissing = !!certRes._missing;
+
+  const certByHost = buildCertIndex(certRes.recordset || []);
+  // SERVER HUB + AJP (2026-10-13): retirement kesfiyle AYNI zenginlestirme (discover.cjs).
+  // Server Hub okunamazsa yalniz sertifika eslemesi kalir; ekran bunu hubHata ile soyler.
+  const { webZenginlestir, hubBaglamiYukle, siteOf, genOf } = require('../retirement/discover.cjs');
+  const hub = await hubBaglamiYukle(query).catch((e) => ({ vhostRows: [], hubVhostsByHost: new Map(), ipMap: new Map(), jvmOf: () => null, hata: [e.message] }));
+  // Ozet kovasi: AJP parantezindeki sayilar kovayi parcalamasin.
+  const howKova = (h) => String(h).replace(/AJP\/proxy hedefi = JVM portu \([^)]*\)/, 'AJP/proxy hedefi = JVM portu');
+
+  const howCount = {};
+  const tierCount = {};
+  const rows = [];
+  let total = 0;
+  let eslesen = 0;
+  let sira = 0;
+
+  for (const a of appRes.recordset || []) {
+    if (++sira % DILIM === 0) await nefes();
+    const app = String(a.app || '').trim();
+    const appHost = String(a.host || '').trim();
+    if (!app) continue;
+
+    const domain = String(a.domain || '').trim();
+    const m = webZenginlestir(app, appHost, matchWebForApp({ app, appHost, domain }, certByHost),
+      { hubVhostsByHost: hub.hubVhostsByHost, vhostRows: hub.vhostRows, ipMap: hub.ipMap,
+        jvm: hub.jvmOf(appHost, app, src.genKolon ? genOf(a[src.genKolon]) : null),
+        // mod_cluster yalniz JBoss (8) icin; WAS kaynaginda balancer adi eslesmesi yapilmaz.
+        gen: src.genKolon ? genOf(a[src.genKolon]) : null, modCluster: key === 'mw' })
+    const { how, matched } = m;
+    const topoloji = topolojiOf(domain, appHost, m);
+    const tier = topoloji.tier;
+    if (matched) eslesen++;
+
+    howCount[howKova(how)] = (howCount[howKova(how)] || 0) + 1;
+    tierCount[tier] = (tierCount[tier] || 0) + 1;
+    total++;
+
+    rows.push({
+      app,
+      appHost,
+      env: String(a.env || '').trim(),
+      domain,
+      // DNS -> VIP cozumunde hangi bolgenin DNS sunuculari (gtdmz / fw); null = bilinmiyor.
+      dnsBolge: dnsBolgesi(domain),
+      tier,
+      tierKaynak: topoloji.kaynak,
+      how,
+      nasil: nasilAciklama({ app, appHost, domain, m, topoloji }),
+      matched,
+      // Bir uygulama birden fazla vhost'ta servis ediliyor olabilir; hepsi dondurulur.
+      // DNS BOLGESI VHOST BASINA (2026-10-16, kullanici: "Ankara IP'lerinin hicbiri cozulememis"):
+      // hangi DNS sunucusuna sorulacagi COZULEN ADIN kendi alanina baglidir (x.gtdmz.com.tr ->
+      // gtdmz). Eskiden yalniz envanterdeki uygulama domain'ine bakiliyordu; domain bos satirlarda
+      // bolge null kaliyor, Ankara uyesi Ankara DNS'ine HIC sorulmayip Portal cozucusunun (Pendik)
+      // cevabiyla "Ankara VIP'i farkli olabilir" diye gosteriliyordu.
+      web: (m.web || []).map((w) => ({
+        ip: '', port: '', confFile: '', product: '', ...w, kaynak: w.kaynak || 'ad', site: siteOf(w.host),
+        dnsBolge: dnsBolgesi(w.serverName) || dnsBolgesi(domain),
+      })),
+      webHostCandidate: m.webHostCandidate,
+      vhostCountOnHost: m.vhostCountOnHost,
+    });
+  }
+
+  rows.sort(
+    (x, y) => x.app.localeCompare(y.app, 'tr') || x.appHost.localeCompare(y.appHost, 'tr'),
+  );
+
+  return {
+    certMissing,
+    hubHata: hub.hata && hub.hata.length ? hub.hata.join('; ') : null,
+    total,
+    eslesen,
+    hesaplandi: new Date().toISOString(),
+    matchSummary: Object.entries(howCount)
+      .map(([how, count]) => ({ how, count }))
+      .sort((a, b) => b.count - a.count),
+    tierSummary: Object.entries(tierCount)
+      .map(([tier, count]) => ({ tier, count }))
+      .sort((a, b) => b.count - a.count),
+    rows,
+  };
+}
+
+/** Test icin: hesap onbellegini bosaltir. */
+function _webAppOnbellekTemizle() { _hesaplar.clear(); }
+
+module.exports = { registerWebApp, _webAppOnbellekTemizle, dnsCozumle, dnsBolgesi, DNS_BOLGELER, adVaryantlari, webHostOf, webHostAdaylari, tierOf, topolojiOf, nasilAciklama, buildCertIndex, matchWebForApp };

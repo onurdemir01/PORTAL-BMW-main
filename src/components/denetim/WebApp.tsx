@@ -3,7 +3,7 @@
 // Her uygulama satirinin onunde onu SERVIS EDEN web sunucusu: host, ip, port, server_name.
 // Eslesmenin NASIL kuruldugu her satirda yaziyor - kural tahmine dayali oldugu icin
 // guvenilirlik gizlenmemeli (route eslesmesinde oldugu gibi).
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LoadingLogo } from '@/components/common/LoadingLogo';
 import {
   ArrowPathIcon, ArrowDownTrayIcon, MagnifyingGlassIcon,
@@ -90,14 +90,24 @@ export default function WebApp() {
   // Uygulama (+ ortam) basina TEK satir; web sunuculari tekil (bkz. webAppGrup.ts).
   const gruplar = useMemo(() => grupla(data?.rows || []), [data]);
 
-  const load = useCallback(async (s: string, needle: string, unmatched: boolean) => {
+  // YALNIZ SON ISTEK SAYILIR (2026-10-23, kullanici: "sorgulama yaparken bir turlu getirmedi ... 'Yenile'
+  // butonu donup duruyor"): yeni arama oncekini iptal eder; gec gelen eski cevap yeni sonucu ezmez ve
+  // spinner'i erken sondurmez.
+  const sonIstek = useRef<AbortController | null>(null);
+  useEffect(() => () => sonIstek.current?.abort(), []);
+  const load = useCallback(async (s: string, needle: string, unmatched: boolean, fresh = false) => {
+    sonIstek.current?.abort();
+    const ac = new AbortController();
+    sonIstek.current = ac;
     setLoading(true);
     try {
-      const r = await denetimApi.webApp(s, needle, unmatched);
+      const r = await denetimApi.webApp(s, needle, unmatched, { fresh, signal: ac.signal });
+      if (ac.signal.aborted) return;
       if (r.ok) { setData(r); setErr(""); } else setErr(r.message || "Veri alınamadı.");
     } catch (e: unknown) {
+      if (ac.signal.aborted) return;
       setErr(e instanceof Error ? e.message : String(e));
-    } finally { setLoading(false); }
+    } finally { if (sonIstek.current === ac) setLoading(false); }
   }, []);
 
   // Arama sunucu tarafinda uygulaniyor (tablo buyuk); yazarken her tusa istek atmamak
@@ -135,6 +145,11 @@ export default function WebApp() {
         </label>
         <span className="text-xs text-[var(--text-muted)] tabular-nums">
           {nf(gruplar.length)} uygulama · {nf(data.shown)} / {nf(data.total)} uygulama sunucusu
+          {data.hesaplandi && (
+            <span title="Sonuç sunucuda 10 dakika saklanır; arama bu sonuç üzerinde yapılır. Yenile yeniden hesaplar.">
+              {" "}· {new Date(data.hesaplandi).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })} itibarıyla
+            </span>
+          )}
         </span>
         <div className="ml-auto flex items-center gap-2">
           <button
@@ -150,7 +165,7 @@ export default function WebApp() {
           >
             <ArrowDownTrayIcon className="w-3.5 h-3.5" /> CSV
           </button>
-          <button onClick={() => load(source, q, onlyUnmatched)} className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs border border-[var(--border)] rounded-lg hover:bg-[var(--bg-elevated)]">
+          <button onClick={() => load(source, q, onlyUnmatched, true)} title="Envanteri ve Server Hub taramasını yeniden okuyup eşleştirmeyi baştan hesaplar" className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs border border-[var(--border)] rounded-lg hover:bg-[var(--bg-elevated)]">
             <ArrowPathIcon className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} /> Yenile
           </button>
         </div>

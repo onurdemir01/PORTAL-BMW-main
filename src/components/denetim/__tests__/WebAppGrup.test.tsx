@@ -9,7 +9,7 @@
 //   WG5 topoloji rozeti kaynağını söyler (domain yok -> eşleşme kanıtı)
 //   WG6 grupla(): tekilleştirme + hangi uygulama sunucusundan geldiği
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen, within } from '@testing-library/react';
+import { screen, within, fireEvent, waitFor } from '@testing-library/react';
 import { render } from '@/test/test-utils';
 import WebApp from '@/components/denetim/WebApp';
 import { grupla } from '@/components/denetim/webAppGrup';
@@ -98,6 +98,40 @@ describe('Web-App: uygulama başına tek satır', () => {
     expect(screen.queryByText('Eşleştirme kuralları')).not.toBeInTheDocument();
     expect(screen.queryByText(/harf-dönüşümü \+ server_name \(tam ad\) · 1/)).not.toBeInTheDocument();
     expect(screen.getByRole('alert')).toHaveTextContent('Server Hub okunamadı (vhost: zaman aşımı)');
+  });
+
+  // WG8-WG9 (2026-10-23, kullanıcı: "sorgulama yaparken bir türlü getirmedi ... 'Yenile' butonu dönüp
+  // duruyor"): Yenile sunucu önbelleğini atlar; yeni arama eskisini iptal eder, geç gelen eski cevap
+  // yeni sonucu ezmez.
+  it('WG8 Yenile fresh ile ister; arama ve ilk yükleme önbellekten', async () => {
+    mockWebApp.mockResolvedValue(veri([satir('GBCRAP01')]));
+    render(<WebApp />);
+    await screen.findAllByTestId('webapp-satir');
+    expect(mockWebApp.mock.calls[0][3]).toMatchObject({ fresh: false });
+    fireEvent.click(screen.getByRole('button', { name: /Yenile/ }));
+    await waitFor(() => expect(mockWebApp).toHaveBeenCalledTimes(2));
+    expect(mockWebApp.mock.calls[1][3]).toMatchObject({ fresh: true });
+  });
+
+  it('WG9 geç gelen eski cevap yeni arama sonucunu ezmez; eski istek iptal edilir', async () => {
+    let eskiCoz: (v: WebAppResult) => void = () => {};
+    mockWebApp
+      .mockResolvedValueOnce(veri([satir('GBCRAP01')]))
+      .mockImplementationOnce(() => new Promise<WebAppResult>((ok) => { eskiCoz = ok; }))
+      .mockResolvedValueOnce(veri([satir('GBYENI01', { app: 'yeni' })]));
+    render(<WebApp />);
+    await screen.findAllByTestId('webapp-satir');
+    const kutu = screen.getByPlaceholderText('uygulama ya da sunucu ara');
+    fireEvent.change(kutu, { target: { value: 'e' } });
+    await waitFor(() => expect(mockWebApp).toHaveBeenCalledTimes(2));
+    const eskiSinyal = (mockWebApp.mock.calls[1][3] as { signal: AbortSignal }).signal;
+    fireEvent.change(kutu, { target: { value: 'yeni' } });
+    expect(await screen.findByText('yeni')).toBeInTheDocument();
+    expect(eskiSinyal.aborted).toBe(true);
+    eskiCoz(veri([satir('GBESKI01', { app: 'eski' })]));
+    await new Promise((ok) => setTimeout(ok, 20));
+    expect(screen.queryByText('eski')).not.toBeInTheDocument();
+    expect(screen.getByText('yeni')).toBeInTheDocument();
   });
 
   it('WG6 grupla: vhost tekil, bulan uygulama sunucuları birikir; eşleşmeyen sunucu da satırda', () => {

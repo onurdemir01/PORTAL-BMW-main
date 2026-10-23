@@ -5,6 +5,8 @@
 // sertifika envanteri + Server Hub vhost taramasi + AJP/proxy hedefi = JVM portu.
 'use strict';
 
+// Hesap onbellegi (WEBAPP_ONBELLEK_MS) bu dosyada KAPALI: her test kendi verisiyle yeniden hesaplar.
+process.env.WEBAPP_ONBELLEK_MS = '0';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');

@@ -975,6 +975,8 @@ export interface WebAppResult {
   matchedTotal?: number;
   shown: number;
   capped: boolean;
+  /** Sunucudaki tam sonucun hesaplandigi an (ISO); onbellekten geldiyse eski olabilir. */
+  hesaplandi?: string;
   matchSummary: { how: string; count: number }[];
   tierSummary: { tier: string; count: number }[];
   rows: WebAppRow[];
@@ -1394,11 +1396,15 @@ export const denetimApi = {
   // SUZGECLER SUNUCUYA GIDER: tum kume 20,9 MB ve 70.059 satir (2026-09-30'da olculdu,
   // ekran donuyordu). Sorgu dizesi onbellek anahtarina girer, her suzgec bilesimi
   // kendi onbellegini alir.
-  webApp: (source: string, q?: string, onlyUnmatched?: boolean): Promise<WebAppResult> =>
+  // Sunucu tam sonucu kaynak basina onbellekte tutar (WEBAPP_ONBELLEK_MS); arama onun uzerinde
+  // suzulur. fresh: "Yenile" - onbellegi atla. signal: yeni arama eskisini iptal eder.
+  webApp: (source: string, q?: string, onlyUnmatched?: boolean, opts?: { fresh?: boolean; signal?: AbortSignal }): Promise<WebAppResult> =>
     fetch(
       `${BASE}/web-app?source=${encodeURIComponent(source)}` +
         (q ? `&q=${encodeURIComponent(q)}` : '') +
-        (onlyUnmatched ? '&onlyUnmatched=1' : ''),
+        (onlyUnmatched ? '&onlyUnmatched=1' : '') +
+        (opts?.fresh ? '&fresh=1' : ''),
+      opts?.signal ? { signal: opts.signal } : undefined,
     ).then(safeJson),
 
   webAppDns: (istekler: { ad: string; bolge: string | null }[]): Promise<WebAppDnsResult> =>
