@@ -119,6 +119,15 @@ Sahadaki örnekte uygulama ve log dizinleri `was` kullanıcısıyla okunabiliyor
 Bu kontrol özellikle Python kullanan ilk `ansible.builtin.find` görevinden önce çalışır.
 Amaç sunuculara yeni Python kurmak veya sistemdeki `python3` symlink'ini değiştirmek değil;
 sunucuda zaten bulunan uyumlu interpreter'ı Ansible için güvenli ve dinamik olarak seçmektir.
+
+Transfer playbook'u ek olarak yorumlayiciyi iki yetki baglaminda dogrular. Adaylar `PATH` veya
+`/usr/local` altindan alinmaz; yalniz literal `/usr/bin/python3.8`–`python3.14` ve
+`/usr/bin/python3` yollari taranir. Cozulmus hedefin `/usr/bin`/`/bin` altinda, root sahipli ve
+grup/diger kullanicilar tarafindan yazilamaz olmasi gerekir. Ayni aday hem baglanan kullanici hem
+`logx_legacy_user` (varsayilan `was`) ile Python >= 3.8 olarak calisiyorsa secilir. Ortak aday
+yoksa transfer eski interpreter'a sessizce dusmez; host sonucu
+`modern_python_bulunamadi` ile `failed/error` yayinlanir ve Python isteyen dosya/arsiv gorevleri
+o hostta calistirilmaz.
 ### Güvenlik
 
 - Dosya keşfi `ansible.builtin.find` MODÜLÜ ile yapılır (kabuk `find` komutu DEĞİL).
