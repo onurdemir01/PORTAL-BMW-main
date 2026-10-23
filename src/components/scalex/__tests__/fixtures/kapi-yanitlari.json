@@ -1334,6 +1334,31 @@
         "enabled": true,
         "environments": null
       },
+      "kurallar": {
+        "prodDisi": {
+          "ortam": "test",
+          "oco": "skip",
+          "smart": "skip",
+          "smartStatus": "not_applicable"
+        },
+        "bilinmeyenOrtam": {
+          "prodSayilir": true,
+          "oco": "require",
+          "smart": "require",
+          "smartStatus": "not_configured"
+        },
+        "dryRun": {
+          "oco": "skip",
+          "smart": "skip",
+          "smartStatus": "not_applicable"
+        },
+        "geriAl": {
+          "oco": "warn",
+          "smart": "require",
+          "smartStatus": "not_configured",
+          "gerekceZorunlu": true
+        }
+      },
       "ornekBaglam": {
         "talepEden": "yonetici",
         "ortam": "prod",
@@ -1397,6 +1422,31 @@
         "enabled": true,
         "environments": null
       },
+      "kurallar": {
+        "prodDisi": {
+          "ortam": "test",
+          "oco": "skip",
+          "smart": "skip",
+          "smartStatus": "not_applicable"
+        },
+        "bilinmeyenOrtam": {
+          "prodSayilir": true,
+          "oco": "require",
+          "smart": "require",
+          "smartStatus": "ready"
+        },
+        "dryRun": {
+          "oco": "skip",
+          "smart": "skip",
+          "smartStatus": "not_applicable"
+        },
+        "geriAl": {
+          "oco": "warn",
+          "smart": "skip",
+          "smartStatus": "skipped_by_rule",
+          "gerekceZorunlu": true
+        }
+      },
       "ornekBaglam": {
         "talepEden": "yonetici",
         "ortam": "prod",
@@ -1450,6 +1500,31 @@
       "oco": {
         "enabled": true,
         "environments": null
+      },
+      "kurallar": {
+        "prodDisi": {
+          "ortam": "test",
+          "oco": "skip",
+          "smart": "skip",
+          "smartStatus": "not_applicable"
+        },
+        "bilinmeyenOrtam": {
+          "prodSayilir": true,
+          "oco": "require",
+          "smart": "skip",
+          "smartStatus": "disabled_by_admin"
+        },
+        "dryRun": {
+          "oco": "skip",
+          "smart": "skip",
+          "smartStatus": "not_applicable"
+        },
+        "geriAl": {
+          "oco": "warn",
+          "smart": "skip",
+          "smartStatus": "disabled_by_admin",
+          "gerekceZorunlu": true
+        }
       },
       "ornekBaglam": {
         "talepEden": "yonetici",

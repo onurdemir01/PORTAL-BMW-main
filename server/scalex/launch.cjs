@@ -83,6 +83,13 @@ function isProdEnv(env) {
   );
 }
 
+// ORTAM BILINMIYORSA PROD SAYILIR: bilgi yoklugu kapilari ATLATMAZ. Kapi cozucusu ve admin
+// durum kartinin kural kutusu (index.cjs `/admin/gate-status`) bu tek fonksiyonu kullanir.
+function prodSayilirMi(environment) {
+  const envKnown = typeof environment === 'string' && environment.trim() !== '';
+  return !envKnown || isProdEnv(environment);
+}
+
 // SAF — dogrudan test edilir. Ekran bunu `/preview` uzerinden okur ve kullaniciya
 // calistirmadan ONCE gosterir.
 function computeBlastRadius({
@@ -688,8 +695,7 @@ function gatePolicyFor({ action, executionMode, environment, ocoConfig, smart })
       reason: 'dry_run hicbir sey degistirmez',
     };
 
-  const envKnown = typeof environment === 'string' && environment.trim() !== '';
-  const prod = !envKnown || isProdEnv(environment); // ORTAM BILINMIYORSA PROD SAYILIR
+  const prod = prodSayilirMi(environment);
 
   // OCO hangi ortamlarda isteniyor?
   const cfg = ocoConfig || {};
@@ -781,6 +787,7 @@ module.exports = {
   prodWrittenConfirmThreshold,
   verifyThresholds,
   isProdEnv,
+  prodSayilirMi,
   computeBlastRadius,
   isHpaPinAllowed,
   smartEksikleri,

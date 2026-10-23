@@ -372,8 +372,25 @@ export interface ScaleXGateStatus {
    * prod. Eski sunucu bu alanı göndermez.
    */
   oco?: { enabled: boolean; environments: string[] | null };
+  /**
+   * Kural kutusu (2026-10-23): sunucunun GERÇEK çözücüsünün örnek durumlardaki kararı
+   * (sıradan kullanıcı için). Kart kuralları buradan kurar; eski sunucu göndermez.
+   */
+  kurallar?: ScaleXKapiKurallari;
   /** Şablonda kullanılabilecek `scalex.*` değişkenleri ve örnek değerleri. */
   ornekBaglam: Record<string, string | number>;
+}
+
+type KuralKarari = Pick<ScaleXGatePolicy, 'oco' | 'smart' | 'smartStatus'>;
+export interface ScaleXKapiKurallari {
+  /** Prod dışı örnek bir ortamda `Durdur + Uygula`. */
+  prodDisi: KuralKarari & { ortam: string };
+  /** Ortamı bilinmeyen istek: prod sayılıyor mu ve kararı. */
+  bilinmeyenOrtam: KuralKarari & { prodSayilir: boolean };
+  /** Prod'da değişiklik yapmayan çalışma. */
+  dryRun: KuralKarari;
+  /** Prod'da tekil Geri Al; gerekçe `/run`'ın uyguladığı kuralla. */
+  geriAl: KuralKarari & { gerekceZorunlu: boolean };
 }
 
 /**

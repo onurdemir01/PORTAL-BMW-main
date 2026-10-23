@@ -69,7 +69,7 @@ import ScaleXPage from '@/components/scalex/ScaleXPage';
 import PreviewStep from '@/components/scalex/steps/PreviewStep';
 import OperationStep from '@/components/scalex/steps/OperationStep';
 import IslemOnayStep from '@/components/scalex/steps/IslemOnayStep';
-import ScaleXKapiDurumu from '@/components/admin/tabs/ScaleXKapiDurumu';
+import ScaleXKapiDurumu, { kuralCumleleri } from '@/components/admin/tabs/ScaleXKapiDurumu';
 import NamespaceStep from '@/components/scalex/steps/NamespaceStep';
 import WorkloadStep from '@/components/scalex/steps/WorkloadStep';
 
@@ -924,6 +924,79 @@ describe('admin durum kartı', () => {
     expect(await screen.findByText('Onay kapılarının durumu okunamadı')).toBeInTheDocument();
     expect(screen.queryByText(/— eksik/)).not.toBeInTheDocument();
     expect(screen.queryByText(/BAŞLAMIYOR/)).not.toBeInTheDocument();
+  });
+});
+
+describe('admin kartının kural kutusu sunucunun kararından (sabit metin yok)', () => {
+  const kurallariOku = async () =>
+    within(await screen.findByTestId('scalex-kapi-kurallari'))
+      .getAllByRole('listitem')
+      .map((li) => li.textContent);
+
+  it('gerçek sunucu yanıtındaki karar cümleye dönüşür; istisna kuralı ve kip nedeniyle yazılır', async () => {
+    api.gateStatus.mockResolvedValue(ORNEK.kart.tanimsiz);
+    const { unmount } = render(<ScaleXKapiDurumu />);
+    expect(await kurallariOku()).toEqual([
+      "SMART yalnızca production'da sorulur; prod dışı ortamda (örnek: test) istenmez.",
+      'Ortam bilinmiyorsa prod sayılır: onay kapıları prod’daki gibi uygulanır.',
+      'Ön kontrol (dry_run) hiçbir kapıdan geçmez.',
+      'Geri Al (prod): OCO uyarı olarak geçer (pencere dışında da çalışır); gerekçe zorunlu; SMART gerekli ama tanımlı değil (değişiklik başlamaz).',
+    ]);
+    unmount();
+
+    // Sunucudaki "action: restore" istisna kuralı Geri Al satırına NEDENİYLE yansır.
+    api.gateStatus.mockResolvedValue(ORNEK.kart.hazir);
+    const ikinci = render(<ScaleXKapiDurumu />);
+    expect((await kurallariOku())[3]).toBe(
+      'Geri Al (prod): OCO uyarı olarak geçer (pencere dışında da çalışır); gerekçe zorunlu; SMART istenmez (istisna kuralı).',
+    );
+    ikinci.unmount();
+
+    api.gateStatus.mockResolvedValue(ORNEK.kart.kapali);
+    render(<ScaleXKapiDurumu />);
+    expect((await kurallariOku())[3]).toMatch(/SMART istenmez \(yalnız OCO kipi\)\.$/);
+  });
+
+  it('sunucu farklı karar verirse cümleler de değişir (kod sabit kural yazmaz)', () => {
+    const k = structuredClone(ORNEK.kart.hazir.kurallar!);
+    k.prodDisi.smart = 'require';
+    k.dryRun.oco = 'require';
+    k.geriAl.oco = 'skip';
+    k.geriAl.gerekceZorunlu = false;
+    k.bilinmeyenOrtam.oco = 'skip';
+    expect(kuralCumleleri(k, ORNEK.kart.hazir.policy)).toEqual([
+      'SMART prod dışı ortamda da (örnek: test) sorulur.',
+      'Ortam bilinmiyorsa SMART için prod sayılır; OCO: OCO istenmez (OCO ortam listesinde yer almıyor).',
+      'Ön kontrol (dry_run): OCO numarası istenir; SMART istenmez.',
+      'Geri Al (prod): OCO istenmez; gerekçe istenmez; SMART istenmez (istisna kuralı).',
+    ]);
+    k.bilinmeyenOrtam.prodSayilir = false;
+    expect(kuralCumleleri(k, ORNEK.kart.hazir.policy)[1]).toBe('Ortam bilinmiyorsa prod sayılmaz.');
+  });
+
+  it('eski sunucu kural göndermezse kutu görünmez ve hiçbir kural uydurulmaz', async () => {
+    const { kurallar: _yok, ...eski } = ORNEK.kart.hazir;
+    api.gateStatus.mockResolvedValue(eski);
+    render(<ScaleXKapiDurumu />);
+    await screen.findByTestId('scalex-kullanici-karari');
+    expect(screen.queryByTestId('scalex-kapi-kurallari')).not.toBeInTheDocument();
+    expect(screen.queryByText(/yalnızca production/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Ortam bilinmiyorsa/)).not.toBeInTheDocument();
+  });
+
+  it('admin sekmesinde kapı kuralı SABİT yazılmaz', () => {
+    const kaynak = readFileSync(
+      resolve(process.cwd(), 'src/components/admin/tabs/ScaleXAdminTab.tsx'),
+      'utf8',
+    );
+    for (const sabit of [
+      /SMART yalnızca production/,
+      /Ortam bilinmiyorsa prod/,
+      /hiçbir kapıdan geçmez/,
+      /OCO'yu uyarı olarak geçer/,
+    ]) {
+      expect(kaynak).not.toMatch(sabit);
+    }
   });
 });
 

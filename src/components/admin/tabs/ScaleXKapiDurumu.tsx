@@ -17,7 +17,12 @@ import {
   InformationCircleIcon,
   XCircleIcon,
 } from '@heroicons/react/24/outline';
-import { scalexApi, type ScaleXGateStatus } from '@/api/scalexApi';
+import {
+  scalexApi,
+  type ScaleXGatePolicy,
+  type ScaleXGateStatus,
+  type ScaleXKapiKurallari,
+} from '@/api/scalexApi';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import LoadError from '@/components/common/LoadError';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
@@ -64,6 +69,51 @@ function kullaniciKarari(d: ScaleXGateStatus): { ton: 'ok' | 'uyari' | 'engel'; 
     ton: 'ok',
     metin: `Prod değişikliklerinde ${oco}, ardından SMART kaydı açılır ve onay beklenir.`,
   };
+}
+
+const OCO_KARARI: Record<ScaleXKapiKurallari['geriAl']['oco'], string> = {
+  require: 'OCO numarası istenir',
+  warn: 'OCO uyarı olarak geçer (pencere dışında da çalışır)',
+  skip: 'OCO istenmez',
+};
+
+/** SMART kararı ve NEDENİ (istisna kuralı / yalnız OCO kipi / tanımsız) tek ifadede. */
+function smartMetni(d: ScaleXKapiKurallari['geriAl'] | ScaleXKapiKurallari['dryRun']): string {
+  if (d.smart === 'require')
+    return d.smartStatus === 'not_configured'
+      ? 'SMART gerekli ama tanımlı değil (değişiklik başlamaz)'
+      : 'SMART onayı istenir';
+  if (d.smartStatus === 'skipped_by_rule') return 'SMART istenmez (istisna kuralı)';
+  if (d.smartStatus === 'disabled_by_admin') return 'SMART istenmez (yalnız OCO kipi)';
+  return 'SMART istenmez';
+}
+
+/**
+ * KURAL KUTUSU SUNUCUDAN (2026-10-23). Bu cümleler eskiden admin sekmesinde SABİT yazılıydı
+ * ("SMART yalnızca production'da", "ortam bilinmiyorsa prod sayılır", "dry_run hiçbir
+ * kapıdan geçmez", "Geri Al OCO'yu uyarı olarak geçer"). Şimdi her biri sunucunun gerçek
+ * kapı çözücüsünün örnek durumlardaki kararından kurulur; kod değişirse metin de değişir.
+ */
+export function kuralCumleleri(k: ScaleXKapiKurallari, prod: ScaleXGatePolicy): string[] {
+  const dryRunSerbest = k.dryRun.oco === 'skip' && k.dryRun.smart === 'skip';
+  const b = k.bilinmeyenOrtam;
+  const prodGibi = b.oco === prod.oco && b.smart === prod.smart && b.smartStatus === prod.smartStatus;
+  return [
+    k.prodDisi.smart === 'skip'
+      ? `SMART yalnızca production'da sorulur; prod dışı ortamda (örnek: ${k.prodDisi.ortam}) istenmez.`
+      : `SMART prod dışı ortamda da (örnek: ${k.prodDisi.ortam}) sorulur.`,
+    // OCO ortam LİSTESİ tanımlıyken boş ortam listede olmadığı için OCO istenmez; kart bunu
+    // saklamaz. (Ortamsız istek bugün her uçta 400 alır; bu kural savunma katmanıdır.)
+    !b.prodSayilir
+      ? 'Ortam bilinmiyorsa prod sayılmaz.'
+      : prodGibi
+        ? 'Ortam bilinmiyorsa prod sayılır: onay kapıları prod’daki gibi uygulanır.'
+        : `Ortam bilinmiyorsa SMART için prod sayılır; OCO: ${OCO_KARARI[b.oco]} (OCO ortam listesinde yer almıyor).`,
+    dryRunSerbest
+      ? 'Ön kontrol (dry_run) hiçbir kapıdan geçmez.'
+      : `Ön kontrol (dry_run): ${OCO_KARARI[k.dryRun.oco]}; ${smartMetni(k.dryRun)}.`,
+    `Geri Al (prod): ${OCO_KARARI[k.geriAl.oco]}; gerekçe ${k.geriAl.gerekceZorunlu ? 'zorunlu' : 'istenmez'}; ${smartMetni(k.geriAl)}.`,
+  ];
 }
 
 const TON: Record<'ok' | 'uyari' | 'engel', string> = {
@@ -175,6 +225,19 @@ const ScaleXKapiDurumu: React.FC<Props> = ({ reloadKey = 0, onOrnekBaglam }) => 
                 ? `${durum.oco.environments.join(', ')} (OCO ayarındaki ortam listesi).`
                 : 'hiçbiri — OCO ortam listesi boş.'}
         </p>
+      )}
+
+      {/* KURAL KUTUSU: cümleler sunucunun kararından (bkz. kuralCumleleri). Eski sunucu
+          `kurallar` göndermez: kutu görünmez, sabit bir kural da uydurulmaz. */}
+      {durum.kurallar && (
+        <ul
+          className="rounded-lg bg-[var(--bg-inset)] p-3 text-xs text-[var(--text-secondary)] space-y-1 list-disc pl-6"
+          data-testid="scalex-kapi-kurallari"
+        >
+          {kuralCumleleri(durum.kurallar, durum.policy).map((c) => (
+            <li key={c}>{c}</li>
+          ))}
+        </ul>
       )}
 
       {/* SMART KURALI ANAHTARI */}
