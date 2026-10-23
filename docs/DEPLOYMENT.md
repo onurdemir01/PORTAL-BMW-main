@@ -89,6 +89,32 @@ cp .env.example .env.prod && vi .env.prod
 `run.sh start` **node_modules ve dist eksikse otomatik `npm ci` + `npm run build` calistirir**
 — elle kurulum adimi gerekmez, tek komut yeterlidir ("bir kere calistir, calissin").
 
+## GitHub deposu private ise (`release-git.sh`, 2026-10-23)
+
+Depo herkese açıkken sunucu `https://github.com/onurdemir01/PORTAL-BMW-main.git` adresinden
+**anonim** klonluyordu; private yapılınca `release-git.sh` "klon/fetch basarisiz" ile durur. Çözüm
+(bir kez, `was` kullanıcısıyla) — **salt-okunur deploy key**:
+
+```bash
+ssh-keygen -t ed25519 -f ~/.ssh/portal_deploy -N "" -C "gblabt02 portal deploy (salt-okunur)"
+cat ~/.ssh/portal_deploy.pub   # GitHub > depo > Settings > Deploy keys > Add (Allow write access KAPALI)
+cat >> ~/.ssh/config <<'EOF'
+Host github.com
+  HostName ssh.github.com
+  Port 443
+  User git
+  IdentityFile ~/.ssh/portal_deploy
+  IdentitiesOnly yes
+EOF
+ssh -T git@github.com          # "successfully authenticated" görmelisiniz
+git -C /vhosting8/bmw_portal/app/PORTAL-BMW-main remote set-url origin git@github.com:onurdemir01/PORTAL-BMW-main.git
+export PORTAL_REPO_URL=git@github.com:onurdemir01/PORTAL-BMW-main.git   # ~/.bash_profile'a da ekleyin
+```
+
+`Port 443`: kurumsal ağda 22 kapalıysa GitHub SSH'ı 443'ten de verir. Proxy zorunluysa HTTPS +
+`git credential` deposunda salt-okunur (fine-grained, yalnız bu depo, "Contents: Read") token da olur;
+token **URL'e yazılmaz** (ps / log'da görünür).
+
 ## Surum guncelleme (rutin)
 
 ```bash
