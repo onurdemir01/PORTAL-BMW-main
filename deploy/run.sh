@@ -258,8 +258,11 @@ start_env() {
   # kullanilir (SETSID_BIN yalniz "setsid" ya da "" olur, bosluk/glob riski yok).
   local SETSID_BIN=""
   command -v setsid >/dev/null 2>&1 && SETSID_BIN="setsid"
+  # 200>&- : start/restart kilidinin fd'si (run_locked) node'a GECMEZ. flock kilidi fd acik kaldikca
+  # yasar; devralan node sureci kilidi omru boyunca tutuyordu ve sonraki her 'restart' "baska bir
+  # start/restart suruyor" ile duseyordu (2026-10-23, Node 22.23.4 gecisinde uretimde goruldu).
   NODE_ENV=production nohup $SETSID_BIN node "$ROOT_DIR/server/index.cjs" "$ENV_NAME" \
-    < /dev/null >> "$OUT_FILE" 2>&1 &
+    < /dev/null >> "$OUT_FILE" 2>&1 200>&- &
   local pid=$!
   echo "$pid" > "$PID_FILE"
   # "listening" gorulene ya da surec olene kadar bekle (en fazla ~15 sn). Onceden 1 sn
