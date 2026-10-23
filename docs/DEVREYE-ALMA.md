@@ -111,8 +111,14 @@ Ayrıntı: `docs/DEPLOYMENT.md`.
 
 ## Node 22'ye geçiş
 
-Prod bugün **Node 20.20.2** koşuyor. `package.json` `engines` **bilerek** `>=20.18.0`
-bırakıldı — bugün hiçbir şey kırılmasın diye.
+> **GÜNCEL DURUM (2026-10-23):** Prod Node **22.23.4**'e geçti (`deploy/install-node.sh`).
+> `package.json` `engines` artık **`>=22.23.4`**: açılıştaki `[Guvenlik]` uyarısıyla aynı güvenlik
+> tabanı (`server/node-guvenlik.cjs`, bekçi NV1). Çalışma zamanı paketleri (`tedious`, `ldapts` 9)
+> zaten Node 22 istiyor. **Kalan tek elle adım Jenkins'tir** (aşağıda 4. adım). Aşağıdaki metin
+> geçişin nasıl yapıldığını anlatır.
+
+Prod geçiş öncesinde **Node 20.20.2** koşuyordu ve `engines` o gün kırılmasın diye `>=20.18.0`
+bırakılmıştı.
 
 > **ARTIK ACİL (2026-10-23):** Node.js 2026-10-21 güvenlik yayını 10 CVE kapattı; en ağırı
 > **CVE-2026-111497** (High, gömülü Brotli çözücüsünde sınır dışı yazma → uzaktan kod çalıştırma).
@@ -157,9 +163,10 @@ PREFLIGHT_NODE_VERSION=20.20.2 npm run preflight
    `tools { nodejs 'node20' }` satırını `'node22'` yapın. Matris **bilerek eklenmedi**:
    `tools` bloğu var olmayan bir araç adına bağlanırsa boru hattı **komple düşer**
    ve o tanım bu repodan doğrulanamıyor.
-5. İsterseniz `package.json` `engines`'i `>=22.0.0` yapın — tek satır.
+5. `package.json` `engines` → `>=22.23.4` (2026-10-23, yapıldı).
 
 ### Geri dönüş
 
-`engines` 20'de kaldığı sürece Node 20'ye geri dönmek serbesttir; hiçbir kod 22'ye
-özgü API kullanmıyor (kullanılsaydı `tsc`/testler 20'de kırılırdı).
+**Node 20'ye geri dönüş artık yok (2026-10-23).** Node 20 destek dışı ve Ekim 2026 güvenlik
+yamasını almadı; `tedious` ve `ldapts` 9 Node 22 istiyor. Node sorunu olursa geri dönüş
+22.x içinde yapılır (bir önceki 22 yama sürümü), 20'ye değil.

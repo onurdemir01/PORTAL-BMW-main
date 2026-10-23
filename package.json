@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "type": "module",
   "engines": {
-    "node": ">=20.18.0"
+    "node": ">=22.23.4"
   },
   "scripts": {
     "dev": "vite",
@@ -47,11 +47,11 @@
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@tanstack/react-virtual": "^3.14.5",
     "compression": "^1.8.1",
-    "dotenv": "^17.4.2",
+    "dotenv": "^18.0.8",
     "express": "^5.2.1",
     "express-rate-limit": "^8.5.2",
     "express-session": "^1.19.0",
-    "ldapts": "^8.1.8",
+    "ldapts": "^9.2.0",
     "mssql": "^12.7.0",
     "nunjucks": "^3.2.4",
     "react": "^19.1.1",
@@ -70,9 +70,9 @@
     "@types/react-dom": "^19.2.7",
     "@typescript-eslint/eslint-plugin": "^8.69.0",
     "@typescript-eslint/parser": "^8.69.0",
-    "@vitejs/plugin-react": "^5.0.0",
+    "@vitejs/plugin-react": "^6.1.2",
     "autoprefixer": "^10.4.23",
-    "concurrently": "^9.2.1",
+    "concurrently": "^10.0.6",
     "eslint": "^10.9.1",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-react-hooks": "^7.1.1",
@@ -81,12 +81,11 @@
     "husky": "^9.1.7",
     "jsdom": "^30.0.1",
     "lint-staged": "^17.4.1",
-    "msw": "^2.15.0",
     "postcss": "^8.5.6",
     "prettier": "^3.9.6",
     "tailwindcss": "^4.1.18",
-    "typescript": "~5.8.2",
-    "vite": "^6.2.0",
+    "typescript": "^6.0.3",
+    "vite": "^8.3.4",
     "vitest": "^5.0.0"
   }
 }
