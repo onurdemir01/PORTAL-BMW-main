@@ -150,6 +150,8 @@ function stubLayout(viewport = 600, row = 64) {
   const origRect = Element.prototype.getBoundingClientRect;
   const origH = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight');
   const origW = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetWidth');
+  const origCH = Object.getOwnPropertyDescriptor(Element.prototype, 'clientHeight');
+  const origCW = Object.getOwnPropertyDescriptor(Element.prototype, 'clientWidth');
   const isScroller = (el: Element) =>
     typeof el.className === 'string' && el.className.includes('overflow-y-auto');
 
@@ -163,6 +165,16 @@ function stubLayout(viewport = 600, row = 64) {
     },
   });
   Object.defineProperty(HTMLElement.prototype, 'offsetWidth', { configurable: true, value: 800 });
+  // @tanstack/virtual-core 3.19.6 (2026-10-16) gorus alanini `clientHeight` / `clientWidth`
+  // ile olcmeye gecti (kenarlik ve kaydirma cubugu sona hizali satirlari ortmesin diye). jsdom
+  // bunlari da 0 dondurur: ikisi de sabitlenir, hangi surum hangisini okursa okusun.
+  Object.defineProperty(Element.prototype, 'clientHeight', {
+    configurable: true,
+    get() {
+      return isScroller(this) ? viewport : row;
+    },
+  });
+  Object.defineProperty(Element.prototype, 'clientWidth', { configurable: true, value: 800 });
 
   // `measureElement` gercek yuksekligi buradan alir.
   Element.prototype.getBoundingClientRect = function () {
@@ -184,6 +196,8 @@ function stubLayout(viewport = 600, row = 64) {
     Element.prototype.getBoundingClientRect = origRect;
     if (origH) Object.defineProperty(HTMLElement.prototype, 'offsetHeight', origH);
     if (origW) Object.defineProperty(HTMLElement.prototype, 'offsetWidth', origW);
+    if (origCH) Object.defineProperty(Element.prototype, 'clientHeight', origCH);
+    if (origCW) Object.defineProperty(Element.prototype, 'clientWidth', origCW);
   };
 }
 
