@@ -693,7 +693,11 @@ test('D7 gateVars client anahtari TASIMAZ', () => {
   ]);
 });
 test('D8 restore gerekcesiz calistirilamaz', () => {
-  assert.match(codeOnly(INDEX), /policy\.oco === 'warn' && !reason[\s\S]{0,300}reasonRequired/);
+  // 2026-10-23: kural tek yardimcida (`geriAlmaGerekceZorunlu`); `/run` onu uygular, admin
+  // kartinin kural kutusu ondan okur. Davranis: scalex-kapi-matrisi KM30.
+  const code = codeOnly(INDEX);
+  assert.match(code, /function geriAlmaGerekceZorunlu\(policy\) \{\s*return policy\.oco === 'warn';\s*\}/);
+  assert.match(code, /geriAlmaGerekceZorunlu\(policy\) && !reason[\s\S]{0,300}reasonRequired/);
 });
 test('D9 OCO zamanlama ScaleX icin KAPALI (schedule hook throw eder)', () => {
   assert.match(codeOnly(INDEX), /createOcoAwxSchedule:\s*async \(\) => \{[\s\S]{0,220}throw/);
@@ -1662,7 +1666,20 @@ test('L5 kapi politikasini soran HER uc ortami GERCEKTEN geciriyor', () => {
   // gecirir ve cozucu onu politikaya AKTARIR. Davranis: scalex-kapi-matrisi KM1 (prod
   // disi hucreler) ve KM16.
   const code = codeOnly(INDEX);
-  const calls = code.match(/resolveGatePolicy\(req, \{[^}]*\}\)/g) || [];
+  // ADMIN KARTININ ORNEK DURUMLARI (2026-10-23) BILEREK sabit ortam gecirir: kural kutusu
+  // "prod disi / bilinmeyen / dry_run / Geri Al" icin cozucunun kararini sorar. Yalniz
+  // `kapiKurallari` icinde ve yalniz bu ornek ortamlarla; geri kalan her cagri istegin ortamini.
+  const kBas = code.indexOf('async function kapiKurallari');
+  assert.ok(kBas > 0, 'kapiKurallari bulunamadi');
+  const kurallarKodu = code.slice(kBas, code.indexOf('\n}\n', kBas));
+  const ornekler = kurallarKodu.match(/resolveGatePolicy\(req, \{[^}]*\}\)/g) || [];
+  assert.equal(ornekler.length, 4, `kural kutusu ornek sayisi: ${ornekler.length}`);
+  for (const c of ornekler) {
+    assert.match(c, /environment:\s*(ORNEK_PROD_DISI_ORTAM|''|'prod')\s*\}\)$/, `ornek durumda belirsiz ortam: ${c}`);
+    assert.match(c, /\.\.\.ortak/, `ornek durum herkesIcin degil: ${c}`);
+  }
+  assert.match(kurallarKodu, /const ortak = \{[^}]*herkesIcin: true/);
+  const calls = code.replace(kurallarKodu, '').match(/resolveGatePolicy\(req, \{[^}]*\}\)/g) || [];
   assert.ok(calls.length >= 4, `resolveGatePolicy cagrisi kaybolmus: ${calls.length}`);
   for (const c of calls) {
     assert.match(c, /environment:\s*(env|'prod')/, `ortam gecirilmeyen politika cagrisi: ${c}`);

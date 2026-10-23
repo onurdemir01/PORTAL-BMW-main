@@ -2000,3 +2000,109 @@ test('KM29 kesif namespace tavani ve bicimi sunucuda: asan istek DB ye ve AWX e 
     else process.env.SCALEX_MAX_AUDIT_NAMESPACES = eski;
   }
 });
+
+// ── KM30 ADMIN KARTININ KURAL KUTUSU SUNUCUDAN ───────────────────────────────────
+// Admin > ScaleX karti "SMART yalnizca production'da", "ortam bilinmiyorsa prod sayilir",
+// "dry_run hicbir kapidan gecmez", "Geri Al OCO'yu uyari olarak gecer (gerekce zorunlu)"
+// diye SABIT yaziyordu. Olcut: karttaki her kural, AYNI ayarda `/preview`in ve `/run`in
+// gercek karariyla ayni ve ayar degisince ANINDA degisir.
+test('KM30 admin kartinin kural kutusu = onizleme ve calistirma karari; ayar degisince degisir', async (t) => {
+  sim.konsoluSustur(t);
+  const kartAl = async () => {
+    const once = sim.ayar.kullanici;
+    sim.ayar.kullanici = sim.KULLANICILAR.yonetici;
+    try {
+      const r = await sim.istek('GET', '/api/scalex/admin/gate-status');
+      assert.equal(r.status, 200, r.metin);
+      return r.json;
+    } finally {
+      sim.ayar.kullanici = once;
+    }
+  };
+  const ozet = (p) => ({ oco: p.oco, smart: p.smart, smartStatus: p.smartStatus });
+  const OCO_AYARLARI = {
+    varsayilan: null,
+    kapali: { enabled: false },
+    listeli: { enabled: true, environments: ['prod', 'test'] },
+  };
+  let hucre = 0;
+  const kartlar = {};
+  for (const kip of ['varsayilan', 'oco_only'])
+    for (const smart of ['yok', 'hazir'])
+      for (const [ocoAdi, ocoCheck] of Object.entries(OCO_AYARLARI)) {
+        const ad = `kip=${kip} smart=${smart} oco=${ocoAdi}`;
+        const kurulum = (s) => {
+          const govde = kur({ kip, smart, kim: 'ayse', oco: 'numarasiz', eylem: '-', ...s });
+          if (ocoCheck) sim.ayar.ozellestirme = { ...(sim.ayar.ozellestirme || {}), ocoCheck };
+          return govde;
+        };
+        kurulum({ env: 'prod', action: 'stop', mode: 'apply' });
+        const kart = await kartAl();
+        const k = kart.kurallar;
+        assert.ok(k, `${ad}: kartta kural kutusu yok`);
+        kartlar[ad] = k;
+
+        // Prod disi ornek ortam ve dry_run: onizlemenin AYNI secimdeki karari.
+        let on = await sim.onizle(kurulum({ env: k.prodDisi.ortam, action: 'stop', mode: 'apply' }));
+        assert.equal(on.status, 200, on.metin);
+        assert.deepEqual(ozet(k.prodDisi), ozet(on.json.gatePolicy), `${ad}: prod disi kurali onizlemeden ayrisiyor`);
+        on = await sim.onizle(kurulum({ env: 'prod', action: 'stop', mode: 'dry_run' }));
+        assert.equal(on.status, 200, on.metin);
+        assert.deepEqual(ozet(k.dryRun), ozet(on.json.gatePolicy), `${ad}: dry_run kurali onizlemeden ayrisiyor`);
+
+        // Ortami bilinmeyen istek: SMART icin prod sayilir. OCO ortam LISTESI tanimliysa bos
+        // ortam listede olmadigi icin OCO istenmez (cozucunun bugunku davranisi; kart bunu
+        // ayrica yazar). Bu yola istekle ULASILAMAZ: asagida bos ortam her uctan 400 alir.
+        assert.equal(k.bilinmeyenOrtam.prodSayilir, true, `${ad}: bilinmeyen ortam prod sayilmiyor`);
+        assert.deepEqual(
+          [k.bilinmeyenOrtam.smart, k.bilinmeyenOrtam.smartStatus],
+          [kart.policy.smart, kart.policy.smartStatus],
+          `${ad}: bilinmeyen ortamda SMART prod kararindan ayrisiyor`,
+        );
+        assert.equal(k.bilinmeyenOrtam.oco, ocoAdi === 'listeli' ? 'skip' : kart.policy.oco, `${ad}: bilinmeyen ortamin OCO karari`);
+
+        // Geri Al: karar onizlemeyle ayni; gerekce kurali `/run`in uyguladigiyla ayni.
+        const geriAlGovde = kurulum({ env: 'prod', action: 'restore', mode: 'apply' });
+        on = await sim.onizle(geriAlGovde);
+        assert.equal(on.status, 200, on.metin);
+        assert.deepEqual(ozet(k.geriAl), ozet(on.json.gatePolicy), `${ad}: Geri Al kurali onizlemeden ayrisiyor`);
+        const gerekcesiz = { ...geriAlGovde };
+        delete gerekcesiz.reason;
+        const r = await sim.calistir(gerekcesiz);
+        if (!on.json.gatePolicy.blocked) {
+          assert.equal(
+            r.status === 400 && r.json?.reasonRequired === true,
+            k.geriAl.gerekceZorunlu,
+            `${ad}: kart "gerekce ${k.geriAl.gerekceZorunlu ? 'zorunlu' : 'istenmez'}" diyor, calistirma ${r.status} ${r.metin}`,
+          );
+        }
+        hucre++;
+      }
+  assert.equal(hucre, 12);
+
+  // BOS ORTAM HICBIR KARAR UCUNA ULASMAZ (bilinmeyen ortam kurali yalniz savunma katmani).
+  kur({ kip: 'varsayilan', smart: 'hazir', kim: 'ayse', oco: 'numarasiz', eylem: '-' });
+  const once = [sim.kayit.awxIstekleri.length, sim.kayit.ocoSorgulari.length, sim.kayit.smartTalepleri.length];
+  for (const [ad, r] of [
+    ['onizleme', await sim.onizle({ env: '' })],
+    ['calistirma', await sim.calistir({ env: '' })],
+    ['toplu geri alma', await sim.istek('POST', '/api/scalex/restore-all', { env: '', tenant: 't1', reason: 'INC-1' })],
+    ['kapi ozeti', await sim.istek('GET', '/api/scalex/gate-summary?env=')],
+  ]) {
+    assert.equal(r.status, 400, `${ad}: bos ortam reddedilmedi (${r.status} ${r.metin})`);
+  }
+  assert.deepEqual(
+    [sim.kayit.awxIstekleri.length, sim.kayit.ocoSorgulari.length, sim.kayit.smartTalepleri.length],
+    once,
+    'bos ortamli istek bir dis sisteme gitti',
+  );
+
+  // MUTLAK DEGERLER (tutarlilik tek basina yetmez: cozucu bozulsa iki taraf birlikte kayardi).
+  const v = kartlar['kip=varsayilan smart=hazir oco=varsayilan'];
+  assert.equal(v.prodDisi.smart, 'skip');
+  assert.deepEqual([v.dryRun.oco, v.dryRun.smart], ['skip', 'skip']);
+  assert.deepEqual([v.geriAl.oco, v.geriAl.gerekceZorunlu, v.geriAl.smart], ['warn', true, 'require']);
+  const kapali = kartlar['kip=varsayilan smart=hazir oco=kapali'];
+  assert.deepEqual([kapali.geriAl.oco, kapali.geriAl.gerekceZorunlu], ['skip', false], 'OCO kapaliyken Geri Al karti degismedi');
+  assert.equal(kartlar['kip=oco_only smart=hazir oco=varsayilan'].geriAl.smart, 'skip', 'yalniz OCO kipi Geri Al kartina yansimadi');
+});

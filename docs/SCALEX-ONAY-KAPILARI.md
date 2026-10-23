@@ -96,6 +96,18 @@ okur; sabit cümle yoktur:
 | İşlem ve onay adımı | `POST /api/scalex/preview` | seçim tamamlanınca (kesin karar) |
 | Admin kartı | `GET /api/scalex/admin/gate-status` | kart açılınca / ayar kaydedilince |
 
+Admin kartının **kural kutusu** da sabit değildir (2026-10-23). Eskiden "SMART yalnızca
+production'da", "ortam bilinmiyorsa prod sayılır", "dry_run hiçbir kapıdan geçmez", "Geri Al
+OCO'yu uyarı olarak geçer (gerekçe zorunlu)" diye sabit yazıyordu. Şimdi `admin/gate-status`
+yanıtındaki `kurallar` alanından kurulur. Sunucu bu alanı aynı çözücüyü dört örnek durumla
+sorarak üretir: prod dışı ortam (`test`), ortamı boş istek, prod'da `dry_run` ve prod'da Geri Al.
+Geri Al'ın gerekçe kuralı, `/run`'ın uyguladığı aynı fonksiyondan (`geriAlmaGerekceZorunlu`) gelir.
+
+Ortamı boş istek SMART için prod sayılır. Ama OCO **ortam listesi** tanımlıysa boş ortam listede
+olmadığı için o istekte OCO istenmez; kart bunu ayrıca yazar. Bu yola istekle ulaşılamaz: boş
+ortamlı istek `/preview`, `/run`, `/restore-all` ve `/gate-summary`'de dış sisteme gitmeden
+`400` alır (KM30).
+
 Anahtar, SMART tanımı, OCO ortam listesi, istisna kuralları ve yöneticinin kendi "SMART atla"
 tercihi değiştiğinde ekranlar yeniden başlatma olmadan yeni kuralı gösterir. Kapsam adımında
 namespace ve işlem henüz seçilmemiştir: bunlara bağlı bir istisna kuralı varsa ekran "kesin

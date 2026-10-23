@@ -312,6 +312,35 @@ async function resolveGatePolicy(
   return { policy, gateCfg };
 }
 
+// TEKIL GERI ALMADA GEREKCE KURALI. `/run` bunu uygular; admin durum kartinin kural
+// kutusu da AYNI fonksiyondan okur (ekran kurali sabit yazmasin).
+function geriAlmaGerekceZorunlu(policy) {
+  return policy.oco === 'warn';
+}
+
+// ADMIN KARTININ KURAL KUTUSU (2026-10-23). Kart "SMART yalnizca production'da", "ortam
+// bilinmiyorsa prod sayilir", "dry_run hicbir kapidan gecmez", "Geri Al OCO'yu uyari olarak
+// gecer" diye SABIT yaziyordu. Simdi her cumle GERCEK cozucunun (resolveGatePolicy,
+// siradan kullanici icin) ornek durumlardaki kararindan kurulur; kod degisirse ekran da
+// degisir. Ornek prod disi ortam adi yalniz SMART kuralini sormak icindir.
+const ORNEK_PROD_DISI_ORTAM = 'test';
+async function kapiKurallari(req) {
+  const ortak = { tenant: '', clusters: [], namespace: '', herkesIcin: true };
+  const [prodDisi, bilinmeyen, dryRun, geriAl] = await Promise.all([
+    resolveGatePolicy(req, { ...ortak, action: 'stop', executionMode: 'apply', environment: ORNEK_PROD_DISI_ORTAM }),
+    resolveGatePolicy(req, { ...ortak, action: 'stop', executionMode: 'apply', environment: '' }),
+    resolveGatePolicy(req, { ...ortak, action: 'stop', executionMode: 'dry_run', environment: 'prod' }),
+    resolveGatePolicy(req, { ...ortak, action: 'restore', executionMode: 'apply', environment: 'prod' }),
+  ]);
+  const ozet = (p) => ({ oco: p.oco, smart: p.smart, smartStatus: p.smartStatus });
+  return {
+    prodDisi: { ortam: ORNEK_PROD_DISI_ORTAM, ...ozet(prodDisi.policy) },
+    bilinmeyenOrtam: { prodSayilir: launch.prodSayilirMi(''), ...ozet(bilinmeyen.policy) },
+    dryRun: ozet(dryRun.policy),
+    geriAl: { ...ozet(geriAl.policy), gerekceZorunlu: geriAlmaGerekceZorunlu(geriAl.policy) },
+  };
+}
+
 // ORTAK KAPININ 5xx'i KULLANICIYA ULASMAZ. Kurumsal ters-proxy 5xx govdelerini SPA
 // sayfasiyla degistiriyor (bkz. template-preflight.cjs, 2026-08-10 HAR'i): sunucu
 // "Smart talebi acilamadi: ..." derken ekran "Portal yeniden baslatiliyor, tekrar
@@ -1891,7 +1920,7 @@ function initScaleX(app) {
       }
       // Geri alma OCO penceresi disinda da calisabilir ama GEREKCESIZ calisamaz —
       // iz kalmali ve gerekce hem portal kaydina hem SMART metadata'sina gitmeli.
-      if (policy.oco === 'warn' && !reason) {
+      if (geriAlmaGerekceZorunlu(policy) && !reason) {
         return res.status(400).json({
           ok: false,
           reasonRequired: true,
@@ -2766,6 +2795,8 @@ function initScaleX(app) {
               : null,
           };
         })(),
+        // Kural kutusu: her cumle gercek cozucunun ornek durumlardaki kararindan.
+        kurallar: await kapiKurallari(req),
         // Sablonda kullanilabilecek degiskenler ve ornek degerleri (ekran yardim metni).
         ornekBaglam: ornek,
       });

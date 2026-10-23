@@ -560,21 +560,8 @@ const ScaleXAdminTab: React.FC = () => {
             <p className="text-sm font-semibold text-[var(--text-primary)]">
               Onay kapıları (SMART / OCO)
             </p>
-            <div className="rounded-lg bg-[var(--bg-inset)] p-3 text-xs text-[var(--text-secondary)] space-y-1">
-              <p>
-                <strong>SMART yalnızca production'da</strong> sorulur. OCO'nun hangi ortamlarda
-                istendiği aşağıda, OCO ayarından okunur. Değişiklik izi her ortamda tutulur.
-              </p>
-              <p>
-                <strong>Ortam bilinmiyorsa prod sayılır</strong> — bilgi yokluğu kapıyı açar.
-              </p>
-              <p>
-                <span className="font-mono">dry_run</span> hiçbir kapıdan geçmez;{' '}
-                <strong>Geri Al</strong> OCO istenen ortamda OCO'yu uyarı olarak geçer (gerekçe
-                zorunlu). SMART için aşağıdaki kural geçerlidir; kullanıcı ekranları bu kartla aynı
-                kararı gösterir.
-              </p>
-            </div>
+            {/* Kural cümleleri artık SABİT değil: durum kartı onları sunucunun kapı
+                çözücüsünden kurar (ScaleXKapiDurumu › kuralCumleleri). */}
             {/* DURUM KARTI: kural anahtari, SMART tanimli mi, eksik ne, kullanici bugun ne gorur.
                 Eskiden burada yalnizca "SMART yapilandirilmadan prod'da apply calismaz" yaziyordu;
                 ayarin EKSIK oldugunu soyleyen hicbir sey yoktu. */}
