@@ -4,6 +4,7 @@
 'use strict';
 
 const db = require('../../db/index.cjs');
+const { maskeDeseniDenetle } = require('../maske-deseni.cjs');
 
 // MSSQL unique-constraint ihlali (2627 = PRIMARY/UNIQUE KEY, 2601 = unique index). Duplicate
 // ekleme yakalanmazsa yakalanmamis hata → 500. Bunu dostca 409'a ceviririz.
@@ -410,7 +411,10 @@ async function listMaskRules() {
   return rows.map(normalizeBit);
 }
 
-function validateMaskRule(data) {
+// 2026-10-23: desen derlenmenin yaninda guvenlik acisindan da sinanir (maske-deseni.cjs):
+// ic ice sinirsiz niceleyici ve sure sinirli davranis denetimi. Bayrak normallestirilmis
+// haliyle saklanir (`g` her zaman; `y` atilir).
+async function validateMaskRule(data) {
   const name = String(data.name || '').trim();
   const pattern = String(data.pattern || '').trim();
   const flags = String(data.flags || 'g').trim() || 'g';
@@ -419,14 +423,15 @@ function validateMaskRule(data) {
   if (!pattern) throw Object.assign(new Error('pattern zorunlu.'), { status: 400 });
   if (!replacement) throw Object.assign(new Error('replacement zorunlu.'), { status: 400 });
   if (!/^[gimsuy]*$/.test(flags)) throw Object.assign(new Error('flags gecersiz.'), { status: 400 });
-  try { new RegExp(pattern, flags); } catch (e) {
-    throw Object.assign(new Error(`pattern derlenemedi: ${e.message}`), { status: 400 });
+  const denetim = await maskeDeseniDenetle(pattern, flags);
+  if (!denetim.ok) {
+    throw Object.assign(new Error(`pattern reddedildi: ${denetim.sebep}`), { status: 400 });
   }
-  return { name, pattern, flags, replacement };
+  return { name, pattern, flags: denetim.flags, replacement };
 }
 
 async function createMaskRule(data) {
-  const v = validateMaskRule(data);
+  const v = await validateMaskRule(data);
   const sortOrder = Number(data.sort_order ?? data.sortOrder ?? 0) || 0;
   const enabled = data.enabled === false || data.enabled === 0 ? 0 : 1;
   return insertOrConflict(
@@ -440,7 +445,7 @@ async function createMaskRule(data) {
 }
 
 async function updateMaskRule(id, data) {
-  const v = validateMaskRule(data);
+  const v = await validateMaskRule(data);
   const sortOrder = Number(data.sort_order ?? data.sortOrder ?? 0) || 0;
   const enabled = data.enabled === false || data.enabled === 0 ? 0 : 1;
   const { rows } = await db.query(
