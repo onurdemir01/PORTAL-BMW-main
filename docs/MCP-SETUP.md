@@ -21,9 +21,9 @@ npm install        # undici paketi MCP TLS/proxy desteği için gerekli
 DT_MANAGED_MCP_URL=https://dynatrace-mcp.apps-3rd-t.fw.garanti.com.tr/mcp
 
 INSTANA_MCP_URL=https://instana-mcp.apps-3rd-t.fw.garanti.com.tr/mcp
-INSTANA_API_TOKEN_NONPROD=FWTG0Jq8TX6rojLiiUzisg
+INSTANA_API_TOKEN_NONPROD=
 INSTANA_BASE_URL_NONPROD=https://nonprod-gt.instana.apps.gbocpinstest2.fw.garanti.com.tr
-INSTANA_API_TOKEN_PROD=5HGxA5JrQc-zED2Fg6Xx7g
+INSTANA_API_TOKEN_PROD=
 INSTANA_BASE_URL_PROD=https://prod-gt.instana.apps.gbocpinsprod2.fw.garanti.com.tr
 
 # TLS — SEÇENEK A (hızlı, geçici): sertifika doğrulamasını kapat
