@@ -173,7 +173,7 @@ rotate_log_if_needed() {
 
 # ── Onkosul otomatik onarim: node_modules/dist eksikse kur/insa et ──────────────
 ensure_dependencies_and_build() {
-  command -v node >/dev/null 2>&1 || { echo "HATA: node bulunamadi (RHEL: dnf module enable nodejs:20)." >&2; exit 1; }
+  command -v node >/dev/null 2>&1 || { echo "HATA: node bulunamadi (RHEL: dnf module enable nodejs:22 - en az 22.23.4)." >&2; exit 1; }
   command -v npm  >/dev/null 2>&1 || { echo "HATA: npm bulunamadi." >&2; exit 1; }
 
   if [[ ! -d "$ROOT_DIR/node_modules" ]]; then

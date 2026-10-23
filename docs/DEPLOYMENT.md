@@ -71,7 +71,7 @@ baglandigini dogrular. Teshis: `./deploy/run.sh prod status`, `tail -n 60 logs/p
 ```bash
 # root ile (bir kez):
 sudo bash deploy/setup-rhel.sh          # dizinler + firewalld + SELinux
-sudo dnf module enable -y nodejs:20 && sudo dnf install -y nodejs
+sudo dnf module reset -y nodejs && sudo dnf module enable -y nodejs:22 && sudo dnf install -y nodejs   # en az 22.23.4 (20.x EOL)
 
 # was kullanicisiyla:
 dzdo su - was
