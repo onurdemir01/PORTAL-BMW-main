@@ -126,6 +126,31 @@ describe('Intranet SPA', () => {
     hata.mockRestore();
   });
 
+  it('IU3b beyan sonrasi degerlendirme, ozet ve suzgec beklemeden guncellenir', async () => {
+    mockRapor.mockResolvedValue(rapor({
+      rows: [
+        R('bekle-ui', { istek: 'yok', req: 0, degerlendirme: ['teyit-bekliyor'] }),
+        R('celiski-ui'),
+      ],
+    }));
+    mockBeyan.mockResolvedValue({ ok: true, inUseBy: 'veli', inUseAt: '2026-10-19T08:00:00.000Z' });
+    render(<IntranetSpaPage />);
+    await screen.findByText('bekle-ui');
+
+    fireEvent.change(screen.getByLabelText('bekle-ui ekip beyanı'), { target: { value: 'no' } });
+    await waitFor(() => expect(satirMetni('bekle-ui')).toMatch(/kapatma adayı/));
+    expect(satirMetni('bekle-ui')).not.toMatch(/ekip teyidi bekleniyor/);
+
+    fireEvent.change(screen.getByLabelText('celiski-ui ekip beyanı'), { target: { value: 'no' } });
+    await waitFor(() => expect(satirMetni('celiski-ui')).toMatch(/çelişki/));
+
+    const ozet = screen.getByTestId('intranet-ozet');
+    expect(within(ozet).getByRole('button', { name: /kapatma adayı\s*1/ })).toBeTruthy();
+    const celiski = within(ozet).getByRole('button', { name: /çelişki\s*1/ });
+    fireEvent.click(celiski);
+    expect(govdeSatirlari().map((x) => x.textContent)).toEqual([expect.stringContaining('celiski-ui')]);
+  });
+
   it('IU4 özet kutuları süzgeç gibi çalışır', async () => {
     mockRapor.mockResolvedValue(rapor());
     render(<IntranetSpaPage />);

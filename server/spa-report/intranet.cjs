@@ -113,12 +113,17 @@ function kurulumHesapla(env, ns, app, idx, hosts) {
   const bos = { tam: 0, beklenen: 0, sunucular: [], eksik: [], taranmayan: [], eslesme: '' };
   if (!beklenenHost.length) return { ...bos, durum: 'sunucu-yok' };
   const k = `${L(ns)}|${L(app)}`;
-  let satirlar = (idx.kesin.get(k) || []).filter((r) => beklenenHost.includes(U(r.host)));
-  let eslesme = satirlar.length ? 'kesin' : '';
-  if (!satirlar.length) {
-    satirlar = (idx.ekProd.get(k) || []).filter((r) => beklenenHost.includes(U(r.host)));
-    if (satirlar.length) eslesme = 'ek-prod';
-  }
+  const kesinByHost = new Map(
+    (idx.kesin.get(k) || []).filter((r) => beklenenHost.includes(U(r.host))).map((r) => [U(r.host), r]),
+  );
+  const ekProdByHost = new Map(
+    (idx.ekProd.get(k) || []).filter((r) => beklenenHost.includes(U(r.host))).map((r) => [U(r.host), r]),
+  );
+  // Namespace yazimi sunucular arasinda gecis sirasinda karisik olabilir. Her sunucuda kesin
+  // eslesmeyi tercih et; yalniz o sunucuda yoksa '-prod' eksiz yazima dus. Bir sunucudaki kesin
+  // satir diger sunucunun gecerli fallback satirini bastirmamali.
+  const satirlar = beklenenHost.map((h) => kesinByHost.get(h) || ekProdByHost.get(h)).filter(Boolean);
+  const eslesme = satirlar.some((r) => !kesinByHost.has(U(r.host))) ? 'ek-prod' : satirlar.length ? 'kesin' : '';
   const taranan = beklenenHost.filter((h) => idx.taranan.has(h));
   const taranmayan = beklenenHost.filter((h) => !idx.taranan.has(h));
   const byHost = new Map(satirlar.map((r) => [U(r.host), r]));
