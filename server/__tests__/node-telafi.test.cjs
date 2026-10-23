@@ -5,6 +5,7 @@
 //
 //   NT1 yalniz tabanin altindaki surumde kurulur (yamali Node'da hicbir sey degismez)
 //   NT2 giden fetch: basliksiz istek `accept-encoding: gzip, deflate`; verilen baslik korunur
+//   NT2b sarmalayici HTTPS isteginde de bunu alttaki fetch'e verir (undici https'te br ister)
 //   NT3 giden fetch (global ve undici): `content-encoding: br` yanit REDDEDILIR; gzip calisir
 //   NT4 dns: NUL bayti olan ad (geri cagirimli, promise, resolve4) reddedilir; normal ad cozulur
 //   NT5 kaldirinca ozgun fonksiyonlar geri gelir
@@ -66,6 +67,37 @@ test('NT2 basliksiz istek gzip, deflate ister; verilen baslik korunur', async ()
   assert.equal(gorulenKodlama, 'gzip, deflate');
   await (await fetch(`${taban}/duz`, { headers: { 'Accept-Encoding': 'identity' } })).text();
   assert.equal(gorulenKodlama, 'identity');
+});
+
+test('NT2b sarmalayici HTTPS isteginde alttaki fetch e gzip, deflate verir; verilen baslik ve govde korunur', async () => {
+  // undici fetch HTTP'de zaten `gzip, deflate` ister, HTTPS'te `br` de ekler: yerel HTTP sunucusu
+  // bu farki GORMEZ. Alttaki fetch sahte: ne aldigi dogrudan olculur.
+  let gelen = null;
+  const sahte = async (input, init) => {
+    gelen = {
+      kodlama: init.headers.get('accept-encoding'),
+      tur: init.headers.get('content-type'),
+      govde: init.body,
+      yontem: init.method,
+    };
+    return new Response('{}', { headers: { 'content-type': 'application/json' } });
+  };
+  const f = g.brotliRedliFetch(sahte, Headers);
+  await f('https://ornek.test/x');
+  assert.equal(gelen.kodlama, 'gzip, deflate');
+  await f('https://ornek.test/x', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: '{"a":1}',
+  });
+  assert.deepEqual(gelen, {
+    kodlama: 'gzip, deflate',
+    tur: 'application/json',
+    govde: '{"a":1}',
+    yontem: 'POST',
+  });
+  await f('https://ornek.test/x', { headers: [['Accept-Encoding', 'identity']] });
+  assert.equal(gelen.kodlama, 'identity');
 });
 
 test('NT3 br yanit reddedilir (global ve undici fetch); gzip ve duz yanit calisir', async () => {
