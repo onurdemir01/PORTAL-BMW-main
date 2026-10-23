@@ -7,6 +7,7 @@
 
 const { test, mock, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
+const { modulTaklitSecenegi } = require('../../__tests__/fixtures/modul-taklit.cjs');
 
 let tv, rv, ov, legacy, nextId;
 
@@ -93,15 +94,18 @@ async function fakeQuery(sqlText, params) {
   throw new Error(`fakeQuery: karsilanmayan SQL: ${s.slice(0, 100)}`);
 }
 
-mock.module('../mssql.cjs', {
-  exports: {
+// Secenek Node surumune gore (22: namedExports, 24+: exports). Dogrudan `{ exports }` vermek
+// Node 22'de modulu SESSIZCE bos birakiyordu (bkz. fixtures/modul-taklit.cjs).
+mock.module(
+  '../mssql.cjs',
+  modulTaklitSecenegi({
     query: (sqlText, params) => fakeQuery(sqlText, params),
     sql: { NVarChar: () => 'nvarchar', Int: 'int', MAX: 'max' },
     isAvailable: () => true,
     getPool: async () => null,
     poolStats: () => ({}),
-  },
-});
+  }),
+);
 
 const inv = require('../index.cjs');
 
