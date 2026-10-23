@@ -158,21 +158,32 @@ function writeLine(line) {
   }
 }
 
+// URL ICINDEKI KIMLIK BILGISI MASKELENIR (2026-10-23). `sema://kullanici:sifre@sunucu` bicimi
+// loga ASLA acik yazilmaz: Smart istemcisi proxy adresini her cagrida logluyordu ve Node'un
+// yamasiz surumleri (22.22.2, CVE-2026-48615) tunel hatalarinda proxy kimligini mesaja koyar.
+// Yalniz parola maskelenir; sema, kullanici ve sunucu teshis icin kalir.
+const URL_KIMLIK = /\b([a-z][a-z0-9+.-]*:\/\/)([^\s/:@]+):([^\s/@]+)@/gi;
+function kimlikMaskele(metin) {
+  return typeof metin === 'string' ? metin.replace(URL_KIMLIK, '$1$2:***@') : metin;
+}
+
 // `console.*` argumanlarini tek bir satira cevirir. `util.format` kullanilmaz:
 // `console.log("%s", x)` gibi bicimlendirme zaten ORIJINAL console tarafindan
 // stdout'a uygulaniyor; burada amac okunabilir bir DOSYA satiri.
 function formatArgs(args) {
-  return args
-    .map((a) => {
-      if (typeof a === 'string') return a;
-      if (a instanceof Error) return a.stack || a.message;
-      try {
-        return JSON.stringify(a);
-      } catch {
-        return String(a);
-      }
-    })
-    .join(' ');
+  return kimlikMaskele(
+    args
+      .map((a) => {
+        if (typeof a === 'string') return a;
+        if (a instanceof Error) return a.stack || a.message;
+        try {
+          return JSON.stringify(a);
+        } catch {
+          return String(a);
+        }
+      })
+      .join(' '),
+  );
 }
 
 const LEVELS = ['log', 'warn', 'error', 'info', 'debug'];
@@ -230,7 +241,7 @@ function install(opts = {}) {
   for (const level of LEVELS) {
     original[level] = console[level].bind(console);
     console[level] = (...args) => {
-      if (cfg.toStdout) original[level](...args);
+      if (cfg.toStdout) original[level](...args.map(kimlikMaskele));
       writeLine(`${new Date().toISOString()} [${level.toUpperCase()}] ${formatArgs(args)}\n`);
     };
   }
@@ -261,6 +272,7 @@ module.exports = {
   // saf/ic yardimcilar — birim testleri icin acildi
   stamp,
   formatArgs,
+  kimlikMaskele,
   numEnv,
   DEFAULT_MAX_BYTES,
   DEFAULT_KEEP,

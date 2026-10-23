@@ -37,6 +37,12 @@ require('dotenv').config({ path: path0.resolve(__dirname, '../.env') });
 // uyarir ve `console.*` dokunulmamis kalir. Log kaybi, hizmet kaybindan iyidir.
 require('./log.cjs').install({ root: path0.resolve(__dirname, '..'), envName: APP_ENV });
 
+// YAMASIZ NODE ICIN TELAFI KORUMALARI (2026-10-23) — log kurulumundan HEMEN sonra, diger
+// moduller yuklenmeden ONCE: `undici.fetch`i sonradan okuyan modul sarilmis halini alir.
+// Yalniz calisan surum guvenlik tabaninin altindaysa kurulur (bkz. node-guvenlik.cjs).
+const { nodeGuvenlikDurumu, telafiKorumalariniKur } = require('./node-guvenlik.cjs');
+const TELAFI = telafiKorumalariniKur();
+
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
@@ -57,7 +63,6 @@ process.on('uncaughtException', (err) => {
 });
 
 const { createApp } = require('./service.cjs');
-const { nodeGuvenlikDurumu } = require('./node-guvenlik.cjs');
 const { initAuth } = require('./auth/index.cjs');
 const { initAnsible } = require('./ansible/index.cjs');
 const { initSelfService } = require('./selfservice/index.cjs');
@@ -419,6 +424,12 @@ async function main() {
     // Calisan Node guvenlik tabaninin altindaysa tek satir uyari (davranis degismez).
     const nodeDurumu = nodeGuvenlikDurumu();
     if (!nodeDurumu.ok) console.warn(`[Guvenlik] ${nodeDurumu.mesaj}`);
+    if (TELAFI.length)
+      console.warn(
+        `[Guvenlik] Yamasiz Node icin telafi korumalari devrede: ${TELAFI.join(', ')} ` +
+          '(giden Brotli yaniti reddi, NUL bayti olan konak adi reddi). TLS kimlik dogrulamasi ' +
+          'duzeltmeleri yalniz Node yukseltmesiyle gelir.',
+      );
   });
 
   // ── BELLEK NABZI — "OOM kapandi mi?" sorusunu OLCULEBILIR yapar ────────────

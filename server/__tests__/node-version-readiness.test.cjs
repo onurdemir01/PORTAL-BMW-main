@@ -9,8 +9,8 @@
 //   calisan bir veritabani surucusu var.
 //
 // Bu bekci iki seyi kilitler: (1) on kontrol bu ayrimi OLCUYOR (liste kodda gomulu
-// DEGIL), (2) `engines` Node guvenlik tabaninda (2026-10-23: prod 22.23.4'e gecti; 20 destek
-// disi ve yamasiz, kullanici "her seyi en guncele getir" dedi).
+// DEGIL), (2) `engines` projenin GERCEKTEN calistigi en eski surumleri soyler; guvenlik tabani
+// AYRIDIR (acilis uyarisi + telafi korumalari, server/node-guvenlik.cjs).
 'use strict';
 
 const { test } = require('node:test');
@@ -22,19 +22,36 @@ const { execFileSync } = require('node:child_process');
 const ROOT = path.join(__dirname, '..', '..');
 const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
 
-test('NV1 `engines` Node guvenlik tabaninda (acilis uyarisiyla ayni taban)', () => {
-  // 2026-10-23: prod Node 22.23.4'e gecti; Node 20 Nisan 2026'da destek disi kaldi ve Ekim
-  // 2026 guvenlik yamasini almadi. Calisma zamani paketleri (tedious, ldapts 9) zaten Node 22
-  // istiyor. `engines` alt siniri, acilista `[Guvenlik]` uyarisi veren tabanla
-  // (server/node-guvenlik.cjs YAMALI[22]) AYNI olmali: biri yukselir de digeri kalirsa ikisi
-  // farkli seyler soyler.
+test('NV1 `engines` gercek uyumluluk araligi; guvenlik tabani ayri', () => {
+  // 2026-10-23: portalin calistigi makine Node 22.22.2'de kaliyor (yukseltme simdilik yok).
+  // `engines` = projenin derleme dahil GERCEKTEN calistigi en eski surumler (jsdom
+  // `^22.22.2 || ^24.15.0 || >=26.0.0` istiyor). Guvenlik tabani (YAMALI) AYRI: acilista
+  // `[Guvenlik]` uyarisi ve yamasiz surumde telafi korumalari. Ikisini tek alana koymak, calisan
+  // bir makinede her `npm ci`yi EBADENGINE uyarisina gomuyordu.
+  const semver = require('semver');
   const pkg = JSON.parse(read('package.json'));
   const range = pkg.engines && pkg.engines.node;
   assert.ok(range, 'engines.node yok');
-  const m = /^>=(\d+)\.(\d+)\.(\d+)$/.exec(range);
-  assert.ok(m, `engines bicimi >=X.Y.Z degil: ${range}`);
+  const tabanlar = new semver.Range(range).set.map((cs) =>
+    semver.minVersion(new semver.Range(cs.map((c) => c.value).join(' '))).version,
+  );
+  // (1) TAAHHUT DURUST: her hattin en eski surumu kilitteki HER paketin engines'ini karsilar.
+  const kilit = JSON.parse(read('package-lock.json')).packages;
+  const karsilamayan = [];
+  for (const [yol, bilgi] of Object.entries(kilit)) {
+    const e = yol && bilgi.engines && bilgi.engines.node;
+    if (!e) continue;
+    for (const t of tabanlar) if (!semver.satisfies(t, e)) karsilamayan.push(`${t} < ${yol} (${e})`);
+  }
+  assert.deepEqual(karsilamayan, [], `engines desteklenmeyen surumu vaat ediyor:\n${karsilamayan.join('\n')}`);
+  // (2) Portalin calistigi makine (22.22.2) kapsaniyor.
+  assert.ok(semver.satisfies('22.22.2', range), `engines (${range}) 22.22.2'yi kapsamiyor`);
+  // (3) Her hatta guvenlik tabani, uyumluluk tabaninin ALTINDA olamaz.
   const { YAMALI } = require('../node-guvenlik.cjs');
-  assert.deepEqual(m.slice(1).map(Number), YAMALI[22], `engines (${range}) guvenlik tabanindan (${YAMALI[22].join('.')}) farkli`);
+  for (const t of tabanlar) {
+    const ana = semver.major(t);
+    if (YAMALI[ana]) assert.ok(semver.gte(YAMALI[ana].join('.'), t), `${ana} hattinda guvenlik tabani ${YAMALI[ana].join('.')} < uyumluluk tabani ${t}`);
+  }
 });
 
 test('NV2 on kontrol uyumsuzlugu OLCUYOR (liste gomulu degil)', () => {
