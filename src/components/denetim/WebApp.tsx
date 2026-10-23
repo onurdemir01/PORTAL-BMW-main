@@ -10,6 +10,7 @@ import {
 } from "@heroicons/react/24/outline";
 import { denetimApi, type WebAppResult, type WebAppRow, type WebAppVhost, type WebAppDnsCevap } from "@/api/denetimApi";
 import { Select } from "@/components/ui/Form";
+import { fmtTime } from "@/utils/datetime";
 import { fmtNumber } from "@/utils/datetime";
 import { TableEmptyRow } from "@/components/common/EmptyState";
 import { downloadCsv as csvDownload } from '@/utils/csv';
@@ -147,7 +148,7 @@ export default function WebApp() {
           {nf(gruplar.length)} uygulama · {nf(data.shown)} / {nf(data.total)} uygulama sunucusu
           {data.hesaplandi && (
             <span title="Sonuç sunucuda 10 dakika saklanır; arama bu sonuç üzerinde yapılır. Yenile yeniden hesaplar.">
-              {" "}· {new Date(data.hesaplandi).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })} itibarıyla
+              {" "}· {fmtTime(data.hesaplandi)} itibarıyla
             </span>
           )}
         </span>
@@ -328,11 +329,16 @@ export default function WebApp() {
                     </div>
                   ) : <span className="text-[var(--text-muted)]">—</span>}
                 </td>
+                {/* KAPALI GELIR (2026-10-23, kullanici: "Web-App sayfasinda bosluklar kalmis"): sunucu basina
+                    tum gerekce cumleleri acik basildiginda 4-8 sunuculu uygulamalarda satir yuzlerce piksel
+                    uzuyordu - sutun ekranin sagindaydi, gorunen kisimda yalniz bosluk kaliyordu. Sunucu basina
+                    TEK satir ozet; cumleler tiklayinca acilir. */}
                 <td className="px-3 py-2 text-[11px] min-w-[22rem] max-w-[40rem]">
-                  <div className="flex flex-col gap-1.5">
+                  <div className="flex flex-col gap-0.5">
                     {g.satirlar.map((r) => (
-                      <div key={r.appHost} data-testid="webapp-nasil">
-                        <div className="flex items-center gap-1.5">
+                      <details key={r.appHost} data-testid="webapp-nasil" className="group">
+                        <summary className="flex items-center gap-1.5 cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+                          <span aria-hidden className="text-[9px] text-[var(--text-muted)] transition-transform group-open:rotate-90">▶</span>
                           <b className="font-mono text-[var(--text-primary)]">{r.appHost}</b>
                           <span className={`text-[10px] px-1.5 py-0.5 rounded border whitespace-nowrap ${
                             r.matched ? "bg-emerald-50 text-emerald-700 border-emerald-200"
@@ -341,11 +347,11 @@ export default function WebApp() {
                           }`}>
                             {r.matched ? "eşleşti" : r.how}
                           </span>
-                        </div>
-                        <ul className="mt-0.5 space-y-0.5 text-[var(--text-secondary)] whitespace-normal">
+                        </summary>
+                        <ul className="mt-0.5 mb-1 ml-3.5 space-y-0.5 text-[var(--text-secondary)] whitespace-normal">
                           {(r.nasil && r.nasil.length ? r.nasil : [r.how]).map((s, i) => <li key={i}>{s}</li>)}
                         </ul>
-                      </div>
+                      </details>
                     ))}
                   </div>
                 </td>

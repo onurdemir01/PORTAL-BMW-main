@@ -134,6 +134,22 @@ describe('Web-App: uygulama başına tek satır', () => {
     expect(screen.getByText('yeni')).toBeInTheDocument();
   });
 
+  // WG10 (2026-10-23, kullanıcı: "Web-App sayfasına bakıyorum şuan böyle boşluklar kalmış gözüküyor"): gerekçe
+  // cümleleri açık basılınca 4-8 sunuculu uygulamada satır yüzlerce piksel uzuyordu (sütun ekranın sağında).
+  it('WG10 gerekçe KAPALI gelir: sunucu başına tek satır özet, cümleler açılınca', async () => {
+    mockWebApp.mockResolvedValue(veri([satir('GBCRAP01'), satir('GBCRAP02')]));
+    render(<WebApp />);
+    const bloklar = await screen.findAllByTestId('webapp-nasil');
+    for (const b of bloklar) {
+      expect(b.tagName).toBe('DETAILS');
+      expect(b).not.toHaveAttribute('open');
+    }
+    const ozet = bloklar[0].querySelector('summary')!;
+    expect(within(ozet).getByText('GBCRAP01')).toBeInTheDocument();
+    expect(within(ozet).getByText('eşleşti')).toBeInTheDocument();
+    expect(within(ozet).queryByText(/5\. harf A→W/)).not.toBeInTheDocument();
+  });
+
   it('WG6 grupla: vhost tekil, bulan uygulama sunucuları birikir; eşleşmeyen sunucu da satırda', () => {
     const g = grupla([satir('GBCRAP01'), satir('GBCRAP02'), satir('GBCRAP03', { matched: false, web: [], how: 'eşleşmedi' })]);
     expect(g).toHaveLength(1);
