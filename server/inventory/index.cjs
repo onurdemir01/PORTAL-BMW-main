@@ -387,6 +387,24 @@ async function filterTablesByRole(tables, role, username) {
   }
 }
 
+// Calisan kosulun GOSTERIM metni (2026-10-23): @param adlari baglanan degerlerle degistirilir.
+// Yalniz ekrana yazilir; calisan sorgu parametreli kalir. Onceki hali her ad icin
+// `new RegExp('@' + ad + '\b')` kuruyordu: JS metninde '\b' sozcuk siniri degil GERI ALMA
+// karakteridir, desen hicbir zaman eslesmiyordu ve ekranda `@filter0` gibi yer tutucular
+// kaliyordu. Tek geciste degistirilir: bir degerin icindeki `@ad` metni yeniden islenmez,
+// degerdeki `$&` gibi ozel diziler degistirme kalibi olarak yorumlanmaz.
+const GOSTERIMDE_GIZLI_PARAMETRELER = new Set(['limitVal', 'offsetVal']);
+function calisanKosulMetni(where, parametreler) {
+  const p = parametreler || {};
+  return String(where || '').replace(/@([A-Za-z_]\w*)/g, (tam, ad) => {
+    if (GOSTERIMDE_GIZLI_PARAMETRELER.has(ad)) return tam;
+    if (!Object.prototype.hasOwnProperty.call(p, ad)) return tam;
+    const deger = p[ad];
+    const v = deger && typeof deger === 'object' ? deger.value : deger;
+    return typeof v === 'string' ? `'${v.replace(/'/g, "''")}'` : String(v);
+  });
+}
+
 // ── Advanced filter WHERE builder ─────────────────────────────────────────────
 // Onceden "WHERE " onekli string donuyordu; caller .startsWith("WHERE ")/.slice(6) ile
 // bunu tekrar cikariyordu — kirilgan coupling (kurumsal AI kod incelemesi, review.md #8).
@@ -1507,16 +1525,7 @@ function initInventory(app) {
         const w = parts.length ? `WHERE ${parts.join(' AND ')}` : '';
         // Gosterim metni: @param adlarini baglanan degerlerle degistir.
         if (!_appliedWhere && w) {
-          let metin = w;
-          for (const [ad, deger] of Object.entries(req2.parameters || {})) {
-            if (ad === 'limitVal' || ad === 'offsetVal') continue;
-            const v = deger && typeof deger === 'object' ? deger.value : deger;
-            metin = metin.replace(
-              new RegExp('@' + ad + '\b', 'g'),
-              typeof v === 'string' ? `'${v.replace(/'/g, "''")}'` : String(v),
-            );
-          }
-          _appliedWhere = metin;
+          _appliedWhere = calisanKosulMetni(w, req2.parameters);
         }
         return w;
       };
@@ -2226,6 +2235,7 @@ module.exports = {
   _extractReferencedTables: extractReferencedTables,
   _writeSavedQueries: writeSavedQueries,
   _buildAdvancedWhereClause: buildAdvancedWhereClause,
+  _calisanKosulMetni: calisanKosulMetni,
   _colExprFor: colExprFor,
   _strParam: strParam,
   _setSqCache: (v) => {
