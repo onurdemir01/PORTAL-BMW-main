@@ -219,6 +219,12 @@ function initLogXv2(app) {
     .loadMaskRules()
     .catch(() => {});
   const router = express.Router();
+  // ILK ARA KATMAN (2026-10-23): kurumsal nginx 403 / 404 / 5xx govdesini HTML sayfasiyla
+  // degistiriyor; kisitlama reddi ("bu uygulama icin yetkiniz yok; su gruba basvurun") ve
+  // "playbook kaydi tanimli degil" gibi bilincli redler ekrana HIC ulasmiyordu. `ok:false`
+  // 403 / 404 -> 409; kullanici eylemlerinde (GET disi) 501 -> 409, 502 / 503 / 504 -> 424.
+  // Asil kod `upstreamStatus`ta. 401, 500 ve GET'teki 5xx DEGISMEZ (bkz. util/nginx-red.cjs).
+  router.use(require('../../util/nginx-red.cjs').nginxRedCevirici({ onek: 'logx', eylem5xx: true }));
   // /admin CRUD'lari portal_audit_logs'a yazilir (LogX akis audit'i logx_audit_logs'ta kalir).
   try {
     router.use('/admin', require('../../audit/index.cjs').auditMutations('logx_admin'));

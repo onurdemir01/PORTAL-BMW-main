@@ -9,6 +9,8 @@
 // sey" diye haftalarca gorunmez kaldi.
 'use strict';
 
+const { reddedildi } = require('./fixtures/nginx-red.cjs');
+
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('node:http');
@@ -187,7 +189,7 @@ const admin = { username: 'boss', role: 'Admin', authSource: 'ldap', groups: [] 
 test('R4 rota: 403 yaniti `restriction` tasir, `error` alani YOK, red DENETIME yazilir', async () => {
   denetim.length = 0;
   const r = await al(`/legacy/hosts?app=${APP}`, veli);
-  assert.equal(r.status, 403);
+  reddedildi(r, 403);
   assert.equal(r.body.error, undefined, 'istemci `error`u mesajin yerine gosterir');
   assert.match(r.body.message, /LogX'te kısıtlı/);
   assert.deepEqual(r.body.restriction.allowedGroups, ['odeme-ekibi']);

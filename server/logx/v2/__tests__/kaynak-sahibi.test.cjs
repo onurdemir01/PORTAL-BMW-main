@@ -8,6 +8,8 @@
 // akislar uctan uca kosar, SQL metnine degil DAVRANISA bakilir.
 'use strict';
 
+const { reddedildi } = require('./fixtures/nginx-red.cjs');
+
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('node:http');
@@ -250,7 +252,7 @@ test('S1 baslangicta KIMSE sahip degil: admin-disi kullanici hicbir kaynagi yone
     resourceType: 'legacy_app',
     resourceKey: 'X',
   });
-  assert.equal(k.status, 403, JSON.stringify(k.body));
+  reddedildi(k, 403);
   assert.equal(T.restrictions.length, 0);
 });
 
@@ -266,9 +268,9 @@ test('S2 sahip ekleme/silme YALNIZCA admin; sahip bile sahip ekleyemez', async (
     resourceKey: 'X',
     username: 'veli',
   });
-  assert.equal(b.status, 403, 'sahip sahip ekleyebildi');
+  reddedildi(b, 403, 'sahip sahip ekleyebildi');
   const c = await istek('DELETE', `/manage/owners/${a.body.owner.id}`, ali);
-  assert.equal(c.status, 403, 'sahip sahip silebildi');
+  reddedildi(c, 403, 'sahip sahip silebildi');
   assert.equal(T.owners.length, 1);
   await bekle(20);
   assert.ok(portalDenetim.length >= 1, 'sahip ekleme portal denetimine yazilmadi');
@@ -301,7 +303,7 @@ test('S3 sahip KENDI kaynagini kisitlar ve izinlerini yonetir; baskasininkine do
     resourceType: 'legacy_app',
     resourceKey: 'Y',
   });
-  assert.equal(y.status, 403);
+  reddedildi(y, 403);
   // Admin'in olusturdugu baska bir kisitlamanin izinleri: 403.
   const z = (
     await istek('POST', '/manage/restrictions', admin, {
@@ -309,11 +311,8 @@ test('S3 sahip KENDI kaynagini kisitlar ve izinlerini yonetir; baskasininkine do
       resourceKey: 'Z',
     })
   ).body.restriction.id;
-  assert.equal(
-    (await istek('POST', `/manage/restrictions/${z}/grants`, ali, { username: 'ali' })).status,
-    403,
-  );
-  assert.equal((await istek('DELETE', `/manage/restrictions/${z}`, ali)).status, 403);
+  reddedildi(await istek('POST', `/manage/restrictions/${z}/grants`, ali, { username: 'ali' }), 403);
+  reddedildi(await istek('DELETE', `/manage/restrictions/${z}`, ali), 403);
   assert.equal(T.grants.length, 1, 'yetkisiz izin yazildi');
   // Kendi kisitini kaldirabilir.
   assert.equal((await istek('DELETE', `/manage/restrictions/${id}`, ali)).status, 200);
@@ -327,13 +326,11 @@ test('S4 GRUP sahibi oturumdaki gruplarla eslesir', async () => {
   });
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.equal(T.restrictions[0].resource_key, 'PROD');
-  assert.equal(
-    (
-      await istek('POST', '/manage/restrictions', veli, {
-        resourceType: 'env',
-        resourceKey: 'PROD',
-      })
-    ).status,
+  reddedildi(
+    await istek('POST', '/manage/restrictions', veli, {
+      resourceType: 'env',
+      resourceKey: 'PROD',
+    }),
     403,
   );
 });

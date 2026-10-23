@@ -107,6 +107,28 @@ LOGX_STAGING_FALLBACK_DIR=/tmp/logx-v2-fallback
 | OCP: `Forbidden: User "system:anonymous" cannot list ... projects/pods` | Bastion (terminal_host) hedef cluster'a **`oc login` DEĞİL** — oturumsuz/anonim çağrı; vault cluster kimliği (ör. `uxmid`) oturum açmamış veya RBAC yetkisiz | Bastion'da hedef cluster için geçerli `oc login`/context olmalı (gerçek login adımı ayrı projede). Referans playbook artık `ignore_errors` + `block/rescue` ile bu hatayı **per-cluster `error`** olarak yakalayıp portal'a `overall_status: failed` + net mesaj döndürür (sessiz "artifacts bulunamadı" yerine)                                                                                                                                                                |
 | `Log arşivi portal sunucusunda bulunamadı` (indirme 404)                | Playbook arşivi kaynak host'un **yerel diskine** yazıyor ya da staging dizini portal ile **aynı NFS yolundan** paylaşılmıyor                                 | **staging_dir = portal ile PAYLAŞILAN NFS mount** olmalı; kaynak host arşivi NFS'e cp yapmalı, portal aynı NFS'ten okur. Portalın env'i (`LOGX_V2_STAGING_LEGACY_DIR`/`_OCP_DIR`) portalın NFS mount yolunu göstermeli. Portal artık dosyayı `filename` ile bu köklerde de arar (mount yolu farkına dayanıklı — bkz. `downloads.cjs resolveStagedFile`); yine de dosya paylaşılan NFS'te DEĞİLSE bulunamaz. Kaynak host NFS'e erişemiyorsa arşiv portal host'una fetch edilmeli |
 
+### Ekrana ulaşan hata kodları (2026-10-23)
+
+Kurumsal nginx 403, 404 ve 5xx yanıtlarının gövdesini kendi HTML sayfasıyla değiştiriyor. LogX'in
+bilerek verdiği redler bu yüzden kullanıcıya ulaşmıyordu: kısıtlamanın açıklaması (izinli grup,
+başvuru yolu), "Bu isteğe erişim yetkiniz yok", "playbook kaydı tanımlı değil" ve "AWX yanıt vermedi"
+gibi mesajlar kayboluyordu. Ekranda yalnızca "ters-proxy yanıt döndü" ya da "İndirme başarısız
+(HTTP 403)" görünüyordu.
+
+LogX yönlendiricisinin ilk ara katmanı (`server/util/nginx-red.cjs`) `ok:false` taşıyan bu redleri
+nginx'in dokunmadığı koda çevirir. Asıl kod `upstreamStatus`'ta, mesaj ve `restriction` ayrıntısı
+aynen gövdede kalır:
+
+| Asıl | Döner | `code` | Ne zaman |
+| --- | --- | --- | --- |
+| 403 | 409 | `logx_forbidden` | her istek (kısıtlama, başkasının isteği / indirmesi, yalnız Admin) |
+| 404 | 409 | `logx_not_found` | her istek (istek / iş / kayıt / AWX şablonu bulunamadı) |
+| 501 | 409 | `logx_not_configured` | yalnız GET dışı (kullanıcı eylemi) |
+| 502 / 503 / 504 | 424 | `logx_upstream_unavailable` | yalnız GET dışı (kullanıcı eylemi) |
+
+401 (oturum), 500 ve GET'teki 5xx değişmez; yoklayıcılar geçici hatayı yeniden dener. İstemci
+(`src/api/logxV2Api.ts`) hatanın `status`'unu asıl koddan okur.
+
 ### İndirme dosya-erişim mimarisi (özet)
 
 Portal, indirilecek ZIP'i **dosya sisteminden okuyup stream eder** (token akışı FS yolunu

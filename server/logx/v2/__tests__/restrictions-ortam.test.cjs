@@ -8,6 +8,8 @@
 // son-ekinden (logx_env_suffix_map) gelir. Anahtar BUYUK harfe normalize edilir.
 'use strict';
 
+const { reddedildi } = require('./fixtures/nginx-red.cjs');
+
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('node:http');
@@ -203,7 +205,7 @@ test('O3 cluster seciminde kapali ortam EN ERKEN reddedilir (+ denetim); acik or
     tenant: 'ark',
     clusters: ['c1'],
   });
-  assert.equal(r.status, 403, JSON.stringify(r.body));
+  reddedildi(r, 403);
   assert.equal(r.body.restriction.resourceType, 'env');
   assert.match(r.body.message, /PROD ortamı LogX'te kısıtlı/);
   assert.ok(denetim.some((d) => d.action === 'v2_denied' && JSON.parse(d.detail).type === 'env'));
@@ -230,7 +232,7 @@ test('O3 cluster seciminde kapali ortam EN ERKEN reddedilir (+ denetim); acik or
 test('O4 AND: ortam acik ama namespace kapali -> 403; ikisi de acik -> 200', async () => {
   const yol = '/ocp/cache/apps?env=prod&tenant=ark&cluster=c1&namespace=kisitli';
   const a = await istek('GET', yol, prodcu);
-  assert.equal(a.status, 403);
+  reddedildi(a, 403);
   assert.equal(a.body.restriction.resourceType, 'ocp_namespace');
   const b = await istek('GET', yol, ikisi);
   assert.equal(b.status, 200, JSON.stringify(b.body));
@@ -240,7 +242,7 @@ test('O4 AND: ortam acik ama namespace kapali -> 403; ikisi de acik -> 200', asy
     '/ocp/cache/apps?env=prod&tenant=ark&cluster=c1&namespace=acik',
     yabanci,
   );
-  assert.equal(c.status, 403);
+  reddedildi(c, 403);
   assert.equal(c.body.restriction.resourceType, 'env');
 });
 
@@ -320,11 +322,11 @@ test('O6 ortam kapaliyken uygulama listesi bos + sebep', async () => {
 test('O7 namespace kesfi ve log cekme kapali ortamda reddedilir (istek girdisinden)', async () => {
   ocpIstegi();
   const k = await istek('POST', '/ocp/r1/namespaces/discover', yabanci);
-  assert.equal(k.status, 403, JSON.stringify(k.body));
+  reddedildi(k, 403);
   const f = await istek('POST', '/ocp/r1/discover-fetch', yabanci, {
     targets: [{ namespace: 'acik', appName: 'a' }],
   });
-  assert.equal(f.status, 403, JSON.stringify(f.body));
+  reddedildi(f, 403);
   assert.equal(f.body.restriction.resourceType, 'env');
 });
 
@@ -375,10 +377,64 @@ test('O9 legacy transfer: gizli PROD dosyasinin yolu dogrudan gonderilse de 403'
   const r = await istek('POST', '/legacy/r2/transfer', yabanci, {
     selected: [{ host: 'h1', path: '/a/X.ear/p.log' }],
   });
-  assert.equal(r.status, 403, JSON.stringify(r.body));
+  reddedildi(r, 403);
   assert.equal(r.body.restriction.resourceKey, 'PROD');
   const t = await istek('POST', '/legacy/r2/transfer', yabanci, {
     selected: [{ host: 'h1', path: '/a/X-T.ear/t.log' }],
   });
   assert.equal(t.status, 200, JSON.stringify(t.body));
 });
+
+// NGINX'IN YAKALADIGI 5xx (2026-10-23): kullanici EYLEMINDE bagimli sistem / yapilandirma
+// hatasi nginx'in dokunmadigi koda cevrilir ve ASIL MESAJ ekrana ulasir. GET'teki 5xx
+// DEGISMEZ (yoklayicilar gecici hatayi yeniden dener). Bkz. server/util/nginx-red.cjs.
+test('O10 eylemde 503 -> 424, 501 -> 409 (asil mesajla); GET 503 aynen kalir', async () => {
+  require('../requests.cjs').getRequestRow = async () => ({
+    request_id: 'r2',
+    discovery_result_json: JSON.stringify(LEGACY_SONUC),
+  });
+  const legacy = require('../legacy.cjs');
+  const once = { transfer: legacy.transfer, hosts: legacy.listHostsForApp };
+  const govde = { selected: [{ host: 'h1', path: '/a/X-T.ear/t.log' }] };
+  try {
+    legacy.transfer = async () => {
+      throw Object.assign(new Error('AWX yanit vermedi; log aktarimi baslatilamadi.'), { status: 503 });
+    };
+    const r = await istek('POST', '/legacy/r2/transfer', yabanci, govde);
+    assert.equal(r.status, 424, JSON.stringify(r.body));
+    assert.equal(r.body.upstreamStatus, 503);
+    assert.equal(r.body.code, 'logx_upstream_unavailable');
+    assert.match(r.body.message, /AWX yanit vermedi/);
+
+    legacy.transfer = async () => {
+      throw Object.assign(new Error('Playbook kaydi tanimli degil.'), { status: 501 });
+    };
+    const k = await istek('POST', '/legacy/r2/transfer', yabanci, govde);
+    assert.equal(k.status, 409, JSON.stringify(k.body));
+    assert.equal(k.body.upstreamStatus, 501);
+    assert.equal(k.body.code, 'logx_not_configured');
+
+    legacy.listHostsForApp = async () => {
+      throw Object.assign(new Error('Envanter DB baglantisi yok.'), { status: 503 });
+    };
+    const g = await istek('GET', '/legacy/hosts?app=serbest-uygulama', yabanci);
+    assert.equal(g.status, 503, 'GET 5xx cevrildi: yoklayici gecici hatayi tanimaz');
+    assert.equal(g.body.upstreamStatus, undefined);
+  } finally {
+    legacy.transfer = once.transfer;
+    legacy.listHostsForApp = once.hosts;
+  }
+});
+
+test('O11 cevirici LogX yonlendiricisinin ILK katmani ve eylem 5xx cevrimi acik', () => {
+  const kaynak = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'index.cjs'), 'utf8');
+  const bas = kaynak.indexOf('function initLogXv2(app)');
+  const ilk = kaynak.indexOf('router.use(', bas);
+  assert.ok(bas > 0 && ilk > bas);
+  assert.match(
+    kaynak.slice(ilk, ilk + 140),
+    /^router\.use\(require\('\.\.\/\.\.\/util\/nginx-red\.cjs'\)\.nginxRedCevirici\(\{ onek: 'logx', eylem5xx: true \}\)\)/,
+    'ilk ara katman cevirici degil ya da eylem 5xx cevrimi kapali',
+  );
+});
+
