@@ -174,10 +174,20 @@ Bilerek verilen her ret **4xx**'tür ve gövdede `message` taşır. Asıl kaynak
 | 409   | `schedule_needs_admin_cancel`    | kayıt AWX zamanlayıcısında / SMART onayında; Admin iptali gerekir |
 | 409   | `gate_inconsistent`              | SMART gerekli dendi ama kayıt açılmadı; iş başlatılmadı |
 | 409   | — (`upstreamStatus` dolu)        | ortak kapı 5xx döndü (ör. SMART talebi açılamadı)     |
+| 409   | `scalex_forbidden` (`upstreamStatus: 403`) | yetki reddi: namespace / uygulama kısıtı, başkasının işi ya da kaydı, yalnız Admin |
+| 409   | `scalex_not_found` (`upstreamStatus: 404`) | kayıt yok ya da ScaleX kaydı değil                  |
 | 424   | `awx_unreachable`                | AWX başlatma isteğine yanıt vermedi                   |
 
-Durum yoklama uçları (`…/status`) bu çevrimin dışındadır: geçici hata 5xx olarak kalır ve
-ekran sınırlı sayıda yeniden dener.
+**403 / 404 neden 409 (2026-10-23).** Kurumsal nginx 403, 404 ve 5xx yanıtlarının gövdesini
+kendi HTML sayfasıyla değiştiriyor. Yetkisi olmayan bir namespace seçen kullanıcı, asıl neden
+yerine "Sunucu beklenmeyen bir yanıt döndü (HTTP 403) [<!doctype html> …]" görüyordu. ScaleX
+yönlendiricisinin ilk ara katmanı (`nginxRedCevirici`) `ok:false` taşıyan her 403 / 404 JSON
+reddini 409'a çevirir. Asıl kod `upstreamStatus`'ta, tür `code`'da, mesaj aynen gövdede
+kalır. Bu çevrim durum yoklama uçlarında da geçerlidir. Ekranın yoklama çağrıları
+(`scalexApi.durumJson`) reddi asıl kodla fırlatır; "yetki hatasında dur" mantığı aynen
+çalışır. 401 (oturum) çevrilmez.
+
+Durum yoklama uçlarında geçici hata 5xx olarak kalır ve ekran sınırlı sayıda yeniden dener.
 
 ## Canlıya alma
 
