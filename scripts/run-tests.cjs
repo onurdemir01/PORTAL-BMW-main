@@ -70,6 +70,7 @@ const TEST_DIRS = [
   'src/components/server_hub/__tests__',
   'src/components/admin/__tests__',
   'src/components/admin/tabs/sistem/__tests__',
+  'src/components/admin/tabs/logxv2/__tests__',
   'src/components/common/__tests__',
   'src/components/self_service/__tests__',
   'src/components/denetim/__tests__',

@@ -8,6 +8,12 @@
 // PHONE_GEN, TCKN'den sonra kosmali (cifte maskeleme onlenir).
 'use strict';
 
+const {
+  bayraklariNormallestir,
+  icIceSinirsizNiceleyici,
+  davranisDenetle,
+} = require('./maske-deseni.cjs');
+
 const RULES = [
   // Turkish TCKN (11 digits, starts with non-zero)
   { name: 'TCKN',       re: /\b[1-9]\d{10}\b/g,                                      tag: '[TCKN]'        },
@@ -37,14 +43,37 @@ const RULES = [
 
 // ── DB'den yuklenen kural seti (cache) ────────────────────────────────────────
 let _dbRules = null; // null → DB henuz yuklenmedi (fallback: RULES sabiti)
+// Guvenlik denetiminden gecemeyen DB kurallari (ad + sebep); admin ekrani bunu gosterir.
+let _reddedilen = [];
 
+// Kural deseni admin'den gelir ve her AI log satirina olay dongusunde uygulanir (2026-10-23):
+//   - bayrak normallestirilir: `g` her zaman (yoksa replace yalniz ILK eslesmeyi maskeliyordu),
+//     `y` atilir (eslesmeyi tek konuma baglar);
+//   - yapisal (ic ice sinirsiz niceleyici) ve davranissal (worker'da sure sinirli) denetimden
+//     gecemeyen kural UYGULANMAZ; felaket geri izleme butun portali kilitler.
+// Ayrintilar: maske-deseni.cjs.
 function compileRule(row) {
+  const flags = bayraklariNormallestir(row.flags || 'g');
+  const yapisal = icIceSinirsizNiceleyici(row.pattern);
+  if (yapisal) return { red: { name: row.name, sebep: yapisal } };
   try {
-    return { name: row.name, re: new RegExp(row.pattern, row.flags || 'g'), tag: row.replacement };
+    return { kural: { name: row.name, re: new RegExp(row.pattern, flags), tag: row.replacement }, flags };
   } catch (e) {
-    console.warn(`[Masker] kural derlenemedi (${row.name}):`, e.message);
-    return null;
+    return { red: { name: row.name, sebep: `derlenemedi: ${e.message}` } };
   }
+}
+
+async function sinirliParalel(ogeler, esZaman, fn) {
+  const sonuc = new Array(ogeler.length);
+  let sira = 0;
+  const isci = async () => {
+    while (sira < ogeler.length) {
+      const i = sira++;
+      sonuc[i] = await fn(ogeler[i]);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(esZaman, ogeler.length) }, isci));
+  return sonuc;
 }
 
 async function reloadMaskRules() {
@@ -52,11 +81,31 @@ async function reloadMaskRules() {
   const { rows } = await db.query(
     `SELECT name, pattern, flags, replacement, sort_order FROM logx_mask_rules WHERE enabled = 1 ORDER BY sort_order, id`
   );
-  const compiled = rows.map(compileRule).filter(Boolean);
+  const reddedilen = [];
+  const adaylar = [];
+  for (const row of rows) {
+    const c = compileRule(row);
+    if (c.red) reddedilen.push(c.red);
+    else adaylar.push({ row, ...c });
+  }
+  const sinamalar = await sinirliParalel(adaylar, 4, (a) => davranisDenetle(a.row.pattern, a.flags));
+  const compiled = [];
+  adaylar.forEach((a, i) => {
+    if (sinamalar[i].ok) compiled.push(a.kural);
+    else reddedilen.push({ name: a.row.name, sebep: sinamalar[i].sebep });
+  });
+  for (const r of reddedilen) {
+    console.warn(`[Masker] kural UYGULANMIYOR (${r.name}):`, r.sebep);
+  }
+  _reddedilen = reddedilen;
   // Guvenlik: DB'de hic gecerli kural yoksa fallback sabit set kullanilmaya devam eder —
   // maskeleme hicbir kosulda tamamen devre disi kalmaz.
   _dbRules = compiled.length ? compiled : null;
   return compiled.length;
+}
+
+function reddedilenKurallar() {
+  return _reddedilen.map((r) => ({ ...r }));
 }
 
 async function loadMaskRules() {
@@ -117,4 +166,4 @@ function maskLines(lines) {
   return { maskedLines, totalMasked, countsByRule };
 }
 
-module.exports = { maskString, maskLines, loadMaskRules, reloadMaskRules };
+module.exports = { maskString, maskLines, loadMaskRules, reloadMaskRules, reddedilenKurallar };

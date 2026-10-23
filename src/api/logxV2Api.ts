@@ -507,7 +507,7 @@ export const logxV2Api = {
     // Tablo, sunucu CRUD'u ve `masker.reloadMaskRules()` vardi; istemci YOKTU.
     listMaskRules: () =>
       fetch(`${BASE}/admin/mask-rules`).then((r) =>
-        json<{ ok: boolean; rows: MaskRuleRow[] }>(r),
+        json<{ ok: boolean; rows: MaskRuleRow[]; reddedilen?: MaskRuleRed[] }>(r),
       ),
     createMaskRule: (data: Partial<MaskRuleRow>) =>
       postJson<{ ok: boolean; row: MaskRuleRow }>('/admin/mask-rules', data),
@@ -721,6 +721,12 @@ export interface RestrictionRow {
 }
 
 /** `logx_mask_rules` satiri — indirilen loglarda PII maskeleme kurali. */
+/** Guvenlik denetiminden gecemedigi icin UYGULANMAYAN kural (ad + sebep). */
+export interface MaskRuleRed {
+  name: string;
+  sebep: string;
+}
+
 export interface MaskRuleRow {
   id: number;
   name: string;

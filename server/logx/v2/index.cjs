@@ -1117,7 +1117,12 @@ function initLogXv2(app) {
     '/admin/mask-rules',
     requireAdmin,
     asyncRoute(async (req, res) => {
-      res.json({ ok: true, rows: await adminData.listMaskRules() });
+      // reddedilen: guvenlik denetiminden gecemedigi icin UYGULANMAYAN kurallar (ekran gosterir).
+      res.json({
+        ok: true,
+        rows: await adminData.listMaskRules(),
+        reddedilen: masker.reddedilenKurallar(),
+      });
     }),
   );
   router.post(

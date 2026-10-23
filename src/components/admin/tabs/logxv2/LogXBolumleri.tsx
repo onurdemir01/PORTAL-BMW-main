@@ -9,6 +9,7 @@ import {
   logxV2Api,
   type EnvSuffixRow,
   type PlaybookReadinessRow,
+  type MaskRuleRed,
   type MaskRuleRow,
   type AdminRequestRow,
 } from '@/api/logxV2Api';
@@ -71,6 +72,7 @@ export const EnvSuffixSection: React.FC = () => {
  */
 export const MaskRulesSection: React.FC = () => {
   const [rows, setRows] = useState<MaskRuleRow[]>([]);
+  const [reddedilen, setReddedilen] = useState<MaskRuleRed[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
@@ -79,6 +81,7 @@ export const MaskRulesSection: React.FC = () => {
     try {
       const r = await logxV2Api.admin.listMaskRules();
       setRows(r.rows || []);
+      setReddedilen(Array.isArray(r.reddedilen) ? r.reddedilen : []);
       setErr(null);
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
@@ -108,10 +111,25 @@ export const MaskRulesSection: React.FC = () => {
         maskelemez. Teslim yoluna bağlanması ayrı bir iş.
       </div>
       <p className="text-xs text-[var(--text-muted)]">
-        Desen sunucuda <code>new RegExp(desen, bayrak)</code> ile <strong>derlenerek</strong>
-        doğrulanır; derlenmeyen kural kaydedilmez. Kayıttan sonra maskeleyici önbelleği
+        Desen sunucuda <code>new RegExp(desen, bayrak)</code> ile <strong>derlenerek</strong> ve
+        <strong> hız açısından sınanarak</strong> doğrulanır: derlenmeyen ya da felaket geri
+        izleme riski taşıyan (ör. <code>(\w+\s?)+$</code>) kural kaydedilmez, çünkü maskeleme
+        sırasında bütün portalı kilitleyebilir. Bayrağa <code>g</code> her zaman eklenir (yoksa
+        satırdaki yalnız ilk eşleşme maskelenirdi). Kayıttan sonra maskeleyici önbelleği
         yeniden yüklenir — değişiklik <strong>anında</strong> etkilidir.
       </p>
+      {reddedilen.length > 0 && (
+        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-2.5 text-xs text-red-700">
+          <strong>Şu kurallar güvenlik denetiminden geçmediği için uygulanmıyor:</strong>
+          <ul className="mt-1 list-disc pl-5">
+            {reddedilen.map((r) => (
+              <li key={r.name}>
+                <code>{r.name}</code> — {r.sebep}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       {err && (
         <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-2.5 text-xs text-red-700">
           {err}
