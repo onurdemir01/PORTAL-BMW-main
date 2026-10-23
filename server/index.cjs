@@ -57,6 +57,7 @@ process.on('uncaughtException', (err) => {
 });
 
 const { createApp } = require('./service.cjs');
+const { nodeGuvenlikDurumu } = require('./node-guvenlik.cjs');
 const { initAuth } = require('./auth/index.cjs');
 const { initAnsible } = require('./ansible/index.cjs');
 const { initSelfService } = require('./selfservice/index.cjs');
@@ -413,8 +414,11 @@ async function main() {
   const server = app.listen(PORT, () => {
     const envLabel = APP_ENV || '(APP_ENV yok — .env.local/.env)';
     console.log(
-      `[Server] listening on :${PORT}  ·  ortam=${envLabel}  ·  NODE_ENV=${process.env.NODE_ENV || '(unset)'}`,
+      `[Server] listening on :${PORT}  ·  ortam=${envLabel}  ·  NODE_ENV=${process.env.NODE_ENV || '(unset)'}  ·  node=${process.version}`,
     );
+    // Calisan Node guvenlik tabaninin altindaysa tek satir uyari (davranis degismez).
+    const nodeDurumu = nodeGuvenlikDurumu();
+    if (!nodeDurumu.ok) console.warn(`[Guvenlik] ${nodeDurumu.mesaj}`);
   });
 
   // ── BELLEK NABZI — "OOM kapandi mi?" sorusunu OLCULEBILIR yapar ────────────
