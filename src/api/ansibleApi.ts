@@ -277,6 +277,21 @@ export const ansibleApi = {
   deleteSsItem: (id: string): Promise<{ ok: boolean; items: AnsibleSsItem[] }> =>
     fetch(`${BASE}/ss/items/${id}`, { method: 'DELETE' }).then(safeJson),
 
+  // AWX sunucu yönetimi (Admin > Ansible): etkin / devre dışı + kapatma öncesi bağımlılıklar.
+  awxSunucuYonetim: (): Promise<{ ok: boolean; servers?: AwxSunucuKaydi[]; message?: string }> =>
+    fetch(`${BASE}/awx-servers/yonetim`).then(safeJson),
+  awxSunucuBagimlilik: (no: number): Promise<{ ok: boolean; ozet?: AwxBagimlilikOzeti; message?: string }> =>
+    fetch(`${BASE}/awx-servers/${no}/bagimlilik`).then(safeJson),
+  awxSunucuDurum: (
+    no: number,
+    enabled: boolean,
+  ): Promise<{ ok: boolean; yuklendi?: boolean; message?: string; ozet?: AwxBagimlilikOzeti }> =>
+    fetch(`${BASE}/awx-servers/${no}/durum`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled }),
+    }).then(safeJson),
+
   // Servisin kime açık olduğu ("Alanları Yönet" > Kimler kullanabilir?). Admin.
   saveSsAccess: (
     id: string,
@@ -944,6 +959,34 @@ export interface AdminOcoSchedule {
   createdAt: string;
   /** Kaydi hangi modul olusturdu — sunucu `(awxServerId, awxTemplateId)`ten cozer. */
   module?: string | null;
+}
+
+/** ansible_awx_servers satırı (sırlar gelmez). `bellekte`: çalışan Portal bu sunucuyu kullanıyor mu. */
+export interface AwxSunucuKaydi {
+  no: number;
+  name: string;
+  url: string;
+  enabled: boolean;
+  lastStatus: string | null;
+  lastCheckedAt: string | null;
+  bellekte: boolean;
+}
+
+export interface AwxBagimlilikKalemi {
+  anahtar: string;
+  baslik: string;
+  adet: number;
+  ipucu: string;
+  ornekler?: string[];
+}
+
+/** server/ansible/awx-sunucu-bagimlilik.cjs */
+export interface AwxBagimlilikOzeti {
+  serverNo: number;
+  engeller: AwxBagimlilikKalemi[];
+  uyarilar: AwxBagimlilikKalemi[];
+  okunamayan: { anahtar: string; baslik: string; hata: string }[];
+  kapatilabilir: boolean;
 }
 
 /** Self Service erişimi (server/ansible/ss-erisim.cjs): kapali = yalnız admin. */

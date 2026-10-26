@@ -6,6 +6,7 @@ import {
 import { ansibleApi, type AwxTemplate } from "@/api/ansibleApi";
 import { fmtDate } from "@/utils/datetime";
 import LongJobCancelPanel from "./LongJobCancelPanel";
+import AwxSunucuYonetimi from "./AwxSunucuYonetimi";
 
 interface ServerHealth {
   id: number; name: string; url: string; configured: boolean;
@@ -95,6 +96,9 @@ export default function AnsibleConfigTab() {
           </div>
         )}
       </section>
+
+      {/* Etkin / devre dışı (2026-10-26) — kapatmadan önce bağımlılık özeti */}
+      <AwxSunucuYonetimi onDegisti={reload} />
 
       {/* AWX Template Özeti — Çoklu Sunucu */}
       <section>

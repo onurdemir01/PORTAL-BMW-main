@@ -154,6 +154,34 @@ function assertTemplateMatchesRegistry(tpl, serverId, templateId, expectedPlaybo
   }
 }
 
+// BASKA SUNUCUYA GECIS DOGRULANMADAN YAPILMAZ (2026-10-26, maestro 1 kapatma incelemesi).
+// AWX template numaralari SUNUCUYA OZGUDUR: maestro2'deki #501, maestro1'deki #501 ile
+// ayni is olmak zorunda degil. Eski yol kayitli sunucu "yok" deyince (kapatilmis sunucu
+// da 404 doner) ayni numarayi diger sunucuda bulup BASLATIYOR, sonra kayda kalici
+// yaziyordu; tek koruma playbook karsilastirmasiydi ve o da fail-open'di (template
+// okunamazsa / kayitta playbook yolu bossa gecerdi). Alternatif sunucuda artik iki taraf
+// da OKUNMUS ve AYNI playbook dosyasi olmali; degilse is baslamaz ve neden soylenir.
+function assertAlternatifAyniIs(tpl, alternative, configuredServerId, templateId, expectedPlaybookPath, keyName) {
+  const beklenen = path.basename(String(expectedPlaybookPath || '')).trim().toLowerCase();
+  const gercek = tpl ? path.basename(String(tpl.playbook || '')).trim().toLowerCase() : '';
+  if (beklenen && gercek && beklenen === gercek) return;
+  const neden = !beklenen
+    ? `"${keyName}" kaydında playbook yolu boş`
+    : !tpl
+      ? `AWX ${alternative} üzerindeki template okunamadı`
+      : !gercek
+        ? `AWX ${alternative} üzerindeki template'in playbook alanı boş`
+        : `AWX ${alternative} üzerindeki template başka bir playbook koşuyor ('${gercek}', beklenen '${beklenen}')`;
+  throw Object.assign(
+    new Error(
+      `Template #${templateId} kayıtlı AWX ${configuredServerId} üzerinde çalıştırılamadı; AWX ${alternative} üzerindeki ` +
+        `aynı numaralı template'in aynı iş olduğu doğrulanamadı (${neden}). İş başlatılmadı. ` +
+        `Admin > Playbook Kayıtları'nda "${keyName}" satırının AWX sunucusunu ve template ID'sini düzeltin.`,
+    ),
+    { status: 409, code: 'awx_alternatif_dogrulanamadi' },
+  );
+}
+
 // AWX, "Prompt on launch" kapali template'lerde extra_vars'i SESSIZCE yok sayar — is
 // baslar ama playbook bos girdiyle calisir (2026-08-09'da app-discovery boyle dustu).
 // Hata metni ve kodu ortak (template-preflight.promptKapaliHatasi): ScaleX ve eski yol
@@ -286,6 +314,7 @@ async function launchJob(requestId, jobType, extraVars, limit = '') {
       );
       awxServerId = alternative;
       const tpl = await readTemplateSummary(awxServerId, templateId);
+      assertAlternatifAyniIs(tpl, alternative, configuredServerId, templateId, registryRow.playbookPath, keyName);
       assertTemplateMatchesRegistry(tpl, awxServerId, templateId, registryRow.playbookPath);
       assertTemplateAcceptsExtraVars(tpl, templateId, extraVars, keyName);
       launch = await runner.launchJobOnServer(awxServerId, templateId, extraVars, limit, requester);
@@ -307,6 +336,16 @@ async function launchJob(requestId, jobType, extraVars, limit = '') {
         candidateServerIds.length > 0
           ? `Template ${templateId} yalnızca AWX ${candidateServerIds.join(',')} üzerinde bulundu.`
           : `Template ${templateId} erişilebilen AWX sunucularında bulunamadı.`;
+      // Sunucunun KENDISI yoksa (kapatilmis ya da tanimsiz) "template bulunamadi" demek
+      // yaniltir: admin AWX'te template arar.
+      if (err.code === 'awx_server_missing') {
+        throw Object.assign(
+          new Error(
+            `${err.message} "${keyName}" kaydı bu sunucuyu gösteriyor. ${hint} Admin > Playbook Kayıtları'nda AWX sunucusunu ve template ID'sini güncelleyin.`,
+          ),
+          { status: 503, code: 'awx_server_missing' },
+        );
+      }
       throw Object.assign(
         new Error(
           `AWX HTTP 404: job template bulunamadı (templateId=${templateId}, awxServerId=${configuredServerId}). ${hint} Admin > Playbook Registry'de awx_server_id alanını veya AWX_LOGX_SERVER_ID değerini kontrol edin.`,

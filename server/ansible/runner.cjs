@@ -48,13 +48,42 @@ function isConfigured() {
 // secret alanlari icin env AWX_{no}_* fallback surer. DB yuklenmediyse/tablo bossa
 // eski davranis (yalniz env) aynen korunur.
 let _awxServersCache = null; // null → DB henuz yuklenmedi
+// DEVRE DISI SUNUCULAR (2026-10-26, maestro 1 kapatma): DB'de enabled=0 olan server_no'lar.
+// Uc is gorur: (1) env fallback (AWX_<no>_*) kapatilmis sunucuyu geri DIRILTMEZ; (2) bu
+// sunucuya giden istek "bulunamadi" yerine "devre disi" der; (3) sirlari loglarda
+// maskelenmeye devam eder (eski isin ciktisinda gecebilir).
+let _awxDevreDisi = new Map(); // server_no -> { name, url }
+let _awxDevreDisiSirlar = [];
 
+// Basarili okumada true. Okunamazsa eski liste aynen kalir (restart'a kadar).
 async function loadAwxServers() {
   try {
     const dbx = require('../db/index.cjs');
-    const { rows } = await dbx.query(
-      `SELECT * FROM ansible_awx_servers WHERE enabled = 1 ORDER BY server_no`,
-    );
+    const { rows: tumu } = await dbx.query(`SELECT * FROM ansible_awx_servers ORDER BY server_no`);
+    const rows = tumu.filter((r) => !!r.enabled);
+    const kapali = new Map();
+    const sirlar = [];
+    for (const r of tumu) {
+      if (r.enabled) continue;
+      const no = Number(r.server_no);
+      kapali.set(no, { name: r.name || `AWX ${no}`, url: r.url || '' });
+      for (const v of [
+        r.token,
+        r.password,
+        r.client_secret,
+        process.env[`AWX_${no}_TOKEN`],
+        process.env[`AWX_${no}_PASSWORD`],
+        process.env[`AWX_${no}_CLIENT_SECRET`],
+      ]) {
+        if (v) sirlar.push(String(v));
+      }
+    }
+    _awxDevreDisi = kapali;
+    _awxDevreDisiSirlar = sirlar;
+    if (kapali.size) {
+      const liste = [...kapali].map(([no, k]) => `${k.name} (#${no})`).join(', ');
+      console.log(`[Ansible] devre disi AWX sunuculari: ${liste}`);
+    }
     _awxServersCache = rows.map((r) => ({
       id: Number(r.server_no),
       name: r.name || `AWX ${r.server_no}`,
@@ -76,9 +105,22 @@ async function loadAwxServers() {
         .join(', ');
       console.log(`[Ansible] ${_awxServersCache.length} AWX sunucusu DB'den yuklendi: ${ozet}`);
     }
+    return true;
   } catch (e) {
     console.warn("[Ansible] AWX sunuculari DB'den yuklenemedi, env fallback:", e.message);
+    return false;
   }
+}
+
+// Sunucu listede yoksa atilan hata. `code` ile LogX v2 bunu "template yok" (AWX 404) ile
+// karistirmaz; kapatilmis sunucu adiyla soylenir.
+function sunucuYokHatasi(id) {
+  const no = Number(id);
+  const kapali = _awxDevreDisi.get(no);
+  const message = kapali
+    ? `AWX sunucusu #${no} (${kapali.name}) devre dışı bırakıldı.`
+    : 'AWX sunucusu bulunamadı.';
+  return Object.assign(new Error(message), { status: 404, code: 'awx_server_missing' });
 }
 
 // ── API TABANI (AAP 2.5 uyumu) ────────────────────────
@@ -150,6 +192,9 @@ function getServers() {
   for (let i = 1; i <= 9; i++) {
     const url = (process.env[`AWX_${i}_URL`] || '').trim();
     if (!url) continue;
+    // DB'de kapatilmis sunucu env'de kalmis olsa da geri gelmez (DB okunamadan acilista
+    // bu kume bostur: .env'den AWX_<no>_* satirlarini da kaldirin).
+    if (_awxDevreDisi.has(i)) continue;
     servers.push({
       id: i,
       name: (process.env[`AWX_${i}_NAME`] || `AWX ${i}`).trim(),
@@ -1376,7 +1421,7 @@ async function launchJobOnServer(
   { anketBellegi = false } = {},
 ) {
   const server = getServerById(serverId);
-  if (!server) throw Object.assign(new Error('AWX sunucusu bulunamadı.'), { status: 404 });
+  if (!server) throw sunucuYokHatasi(serverId);
 
   const id = Number(templateId);
   if (isNaN(id) || id <= 0)
@@ -1458,7 +1503,7 @@ function ignoredFieldNames(raw) {
 // awxRequestToServer). Iki argumanli cagrilarin davranisi DEGISMEDI.
 async function getJobStatusOnServer(serverId, jobId, opts = null) {
   const server = getServerById(serverId);
-  if (!server) throw Object.assign(new Error('AWX sunucusu bulunamadı.'), { status: 404 });
+  if (!server) throw sunucuYokHatasi(serverId);
 
   const id = Number(jobId);
   if (isNaN(id) || id <= 0) throw Object.assign(new Error('Geçersiz job ID.'), { status: 400 });
@@ -1513,7 +1558,7 @@ const stdoutCache = require('./job-stdout-cache.cjs');
  */
 async function getJobOutputOnServer(serverId, jobId, { artimli = false } = {}) {
   const server = getServerById(serverId);
-  if (!server) throw Object.assign(new Error('AWX sunucusu bulunamadı.'), { status: 404 });
+  if (!server) throw sunucuYokHatasi(serverId);
 
   const id = Number(jobId);
   if (isNaN(id) || id <= 0) throw Object.assign(new Error('Geçersiz job ID.'), { status: 400 });
@@ -1600,7 +1645,7 @@ async function readJobState(server, token, kind, id) {
 /** Disari acik sarmalayici (long-job-cancel dogrulamasi): { status, createdBy } ya da hata. */
 async function getJobStateOnServer(serverId, jobId, kind = 'job') {
   const server = getServerById(serverId);
-  if (!server) throw Object.assign(new Error('AWX sunucusu bulunamadı.'), { status: 404 });
+  if (!server) throw sunucuYokHatasi(serverId);
   const id = Number(jobId);
   if (!Number.isInteger(id) || id <= 0) throw Object.assign(new Error('Geçersiz job ID.'), { status: 400 });
   const token = await getTokenForServer(server);
@@ -1632,7 +1677,7 @@ async function awxWhoAmI(server, token, { viaToken = false } = {}) {
  */
 async function whoAmIWithTokenOnServer(serverId, token) {
   const server = getServerById(serverId);
-  if (!server) throw Object.assign(new Error('AWX sunucusu bulunamadı.'), { status: 404 });
+  if (!server) throw sunucuYokHatasi(serverId);
   const me = await awxRequestToServer(server, String(token || ''), 'GET', '/api/v2/me/');
   const u = me && Array.isArray(me.results) ? me.results[0] : null;
   if (!u || !u.username) throw new Error('AWX /api/v2/me/ yanıtında kullanıcı adı yok.');
@@ -1669,7 +1714,7 @@ async function whoAmIWithTokenOnServer(serverId, token) {
 // (ScaleX, LogX, Telnet) authToken GECMEZ: davranislari DEGISMEDI.
 async function cancelJobOnServer(serverId, jobId, opts = {}) {
   const server = getServerById(serverId);
-  if (!server) throw Object.assign(new Error('AWX sunucusu bulunamadı.'), { status: 404 });
+  if (!server) throw sunucuYokHatasi(serverId);
 
   const id = Number(jobId);
   if (isNaN(id) || id <= 0) throw Object.assign(new Error('Geçersiz job ID.'), { status: 400 });
@@ -2036,6 +2081,126 @@ function initAnsibleRunner(app) {
       configured: !!(s.token || (s.user && s.password)),
     }));
     res.json({ ok: true, servers });
+  });
+
+  // -- AWX SUNUCU YONETIMI (2026-10-26) -----------------------------------------
+  // Kullanici: "maestro 1'e olan baglantiyi kapatmak istiyorum ... Ansible info'da bunu
+  // kaldiramiyorum ... 2-3 yilda bir." Yalniz ETKIN / DEVRE DISI anahtari: satir SILINMEZ
+  // (silinirse acilistaki env seed'i AWX_<no>_URL'den geri ekler) ve adres / kimlik bu
+  // ekrandan duzenlenmez (sirlar Portal'a gelmez). Kapatmadan once bagimlilik ozeti
+  // (awx-sunucu-bagimlilik.cjs) ENGEL varsa reddeder. Degisiklik restart'siz gecerlidir.
+  const awxBagimlilik = require('./awx-sunucu-bagimlilik.cjs');
+  const sunucuNo = (v) => {
+    const n = Number(v);
+    return Number.isInteger(n) && n >= 1 && n <= 9 ? n : null;
+  };
+
+  app.get('/api/ansible/awx-servers/yonetim', requireAuth, requireAdmin, async (_req, res) => {
+    try {
+      const { rows } = await require('../db/index.cjs').query(
+        `SELECT server_no, name, url, enabled, last_status, last_checked_at
+           FROM ansible_awx_servers ORDER BY server_no`,
+      );
+      const bellekte = new Set(getServers().map((s) => Number(s.id)));
+      res.json({
+        ok: true,
+        servers: rows.map((r) => ({
+          no: Number(r.server_no),
+          name: r.name || `AWX ${r.server_no}`,
+          url: r.url || '',
+          enabled: !!r.enabled,
+          lastStatus: r.last_status || null,
+          lastCheckedAt: r.last_checked_at || null,
+          // DB ile calisan surecin listesi ayrisirsa (yenileme dustu) ekran bunu soyler.
+          bellekte: bellekte.has(Number(r.server_no)),
+        })),
+      });
+    } catch (e) {
+      res.status(503).json({ ok: false, message: `AWX sunucu kayıtları okunamadı: ${e.message}` });
+    }
+  });
+
+  async function awxSunucuSatiri(no) {
+    const { rows } = await require('../db/index.cjs').query(
+      `SELECT server_no, name, url, enabled FROM ansible_awx_servers WHERE server_no = $1`,
+      [no],
+    );
+    return rows[0] || null;
+  }
+
+  app.get('/api/ansible/awx-servers/:no/bagimlilik', requireAuth, requireAdmin, async (req, res) => {
+    const no = sunucuNo(req.params.no);
+    if (!no) return res.status(400).json({ ok: false, message: 'Geçersiz sunucu numarası.' });
+    try {
+      const satir = await awxSunucuSatiri(no);
+      if (!satir) return res.status(404).json({ ok: false, message: `AWX #${no} kaydı yok.` });
+      const ozet = await awxBagimlilik.bagimlilikOzeti(no, {
+        db: require('../db/index.cjs'),
+        sunucuUrl: satir.url,
+      });
+      res.json({ ok: true, ozet });
+    } catch (e) {
+      res.status(503).json({ ok: false, message: `Bağımlılık özeti alınamadı: ${e.message}` });
+    }
+  });
+
+  app.post('/api/ansible/awx-servers/:no/durum', requireAuth, requireAdmin, async (req, res) => {
+    const no = sunucuNo(req.params.no);
+    if (!no) return res.status(400).json({ ok: false, message: 'Geçersiz sunucu numarası.' });
+    const enabled = req.body && req.body.enabled;
+    if (typeof enabled !== 'boolean') {
+      return res.status(400).json({ ok: false, message: 'enabled true ya da false olmalı.' });
+    }
+    const dbx = require('../db/index.cjs');
+    try {
+      const satir = await awxSunucuSatiri(no);
+      if (!satir) return res.status(404).json({ ok: false, message: `AWX #${no} kaydı yok.` });
+      if (!enabled) {
+        // SON ETKIN SUNUCU KAPATILMAZ: DB'de etkin satir kalmazsa getServers() .env'deki
+        // AWX_1..9'a doner ve kapatilan sunucu dahil hepsi geri gelir.
+        const { rows: etkin } = await dbx.query(
+          `SELECT server_no FROM ansible_awx_servers WHERE enabled = 1`,
+        );
+        if (!etkin.some((r) => Number(r.server_no) !== no)) {
+          return res.status(409).json({
+            ok: false,
+            message: "Son etkin AWX sunucusu devre dışı bırakılamaz (Portal .env'deki sunuculara geri döner).",
+          });
+        }
+        const ozet = await awxBagimlilik.bagimlilikOzeti(no, { db: dbx, sunucuUrl: satir.url });
+        if (!ozet.kapatilabilir) {
+          return res.status(409).json({
+            ok: false,
+            message: ozet.okunamayan.length
+              ? 'Bağımlılıkların bir kısmı okunamadı; güvenli olduğu doğrulanamadan kapatılmaz.'
+              : 'Önce bitmesi gereken işler var.',
+            ozet,
+          });
+        }
+      }
+      await dbx.query(
+        `UPDATE ansible_awx_servers SET enabled = $1, updated_at = GETUTCDATE() WHERE server_no = $2`,
+        [enabled ? 1 : 0, no],
+      );
+      _serverTokenCaches.delete(no);
+      const yuklendi = await loadAwxServers();
+      try {
+        require('../audit/index.cjs').auditPortal(req, 'awx_server_durum', {
+          username: req.session?.user?.username || null,
+          detail: JSON.stringify({ no, name: satir.name, enabled }),
+        });
+      } catch { /* audit yoksa yoksay */ }
+      console.log(`[Ansible] AWX #${no} (${satir.name}) ${enabled ? 'etkinlestirildi' : 'devre disi birakildi'}`);
+      res.json({
+        ok: true,
+        yuklendi,
+        message: yuklendi
+          ? `AWX #${no} (${satir.name}) ${enabled ? 'etkinleştirildi' : 'devre dışı bırakıldı'}.`
+          : 'Kaydedildi ama sunucu listesi bellekte yenilenemedi; Portal yeniden başlatılana kadar eski liste geçerli.',
+      });
+    } catch (e) {
+      res.status(500).json({ ok: false, message: `Kaydedilemedi: ${e.message}` });
+    }
   });
 
   // GET /api/ansible/awx/recent-jobs — Dashboard "Kuyruktaki Ansible Isleri" karti icin
@@ -5257,7 +5422,8 @@ function initAnsibleRunner(app) {
   // GET /api/ansible/ss/job-status/:serverId/:jobId — Job durumu (tum kullanicilar)
   app.get('/api/ansible/ss/job-status/:serverId/:jobId', requireAuth, async (req, res) => {
     const server = getServerById(req.params.serverId);
-    if (!server) return res.status(404).json({ ok: false, message: 'Sunucu bulunamadı.' });
+    // Gecmisteki eski is kapatilmis bir sunucudaysa "bulunamadi" degil "devre disi" yazar.
+    if (!server) return res.status(404).json({ ok: false, message: sunucuYokHatasi(req.params.serverId).message });
 
     // Tek `dbx` — fonksiyon boyunca IDOR kontrolunde VE terminal-durum finalize
     // blogunda ayni degisken kullanilir (onceden ikinci kullanim ayri bir ic
@@ -5735,7 +5901,7 @@ async function listCancelableTemplatesForServer(server) {
 // tokenSource 'cancel_token'. Verilmezse eski davranis (servis kullanicisi).
 async function getTemplateCapabilitiesOnServer(serverId, templateId, kind = 'job', opts = {}) {
   const server = getServerById(serverId);
-  if (!server) throw Object.assign(new Error('AWX sunucusu bulunamadı.'), { status: 404 });
+  if (!server) throw sunucuYokHatasi(serverId);
   const id = Number(templateId);
   if (!Number.isInteger(id) || id <= 0) throw Object.assign(new Error('Geçersiz template ID.'), { status: 400 });
   const viaToken = !!(opts && typeof opts.authToken === 'string' && opts.authToken);
@@ -5776,7 +5942,7 @@ async function getTemplateCapabilitiesOnServer(serverId, templateId, kind = 'job
  */
 async function getTemplateLaunchSettingsOnServer(serverId, templateId) {
   const server = getServerById(serverId);
-  if (!server) throw Object.assign(new Error('AWX sunucusu bulunamadı.'), { status: 404 });
+  if (!server) throw sunucuYokHatasi(serverId);
   const id = Number(templateId);
   if (!Number.isInteger(id) || id <= 0) throw Object.assign(new Error('Geçersiz template ID.'), { status: 400 });
   const token = await getTokenForServer(server);
@@ -5809,7 +5975,7 @@ async function getTemplateLaunchSettingsOnServer(serverId, templateId) {
  */
 async function getTemplateSummaryOnServer(serverId, templateId) {
   const server = getServerById(serverId);
-  if (!server) throw Object.assign(new Error('AWX sunucusu bulunamadı.'), { status: 404 });
+  if (!server) throw sunucuYokHatasi(serverId);
   const id = Number(templateId);
   if (!Number.isInteger(id) || id <= 0) throw Object.assign(new Error('Geçersiz template ID.'), { status: 400 });
   const token = await getTokenForServer(server);
@@ -5834,7 +6000,7 @@ async function getTemplateSummaryOnServer(serverId, templateId) {
  */
 async function getTemplateVariableDefaultsOnServer(serverId, templateId) {
   const server = getServerById(serverId);
-  if (!server) throw Object.assign(new Error('AWX sunucusu bulunamadı.'), { status: 404 });
+  if (!server) throw sunucuYokHatasi(serverId);
   const id = Number(templateId);
   if (!Number.isInteger(id) || id <= 0) throw Object.assign(new Error('Geçersiz template ID.'), { status: 400 });
   const token = await getTokenForServer(server);
@@ -5867,7 +6033,7 @@ async function getTemplateVariableDefaultsOnServer(serverId, templateId) {
  */
 async function prefillSurveyDefaultsOnServer(serverId, templateId, extraVars = {}) {
   const server = getServerById(serverId);
-  if (!server) throw Object.assign(new Error('AWX sunucusu bulunamadı.'), { status: 404 });
+  if (!server) throw sunucuYokHatasi(serverId);
   const token = await getTokenForServer(server);
   return fillRequiredSurveyDefaults(server, token, Number(templateId), extraVars);
 }
@@ -5883,7 +6049,7 @@ async function prefillSurveyDefaultsOnServer(serverId, templateId, extraVars = {
  */
 async function getSurveySpecOnServer(serverId, templateId) {
   const server = getServerById(serverId);
-  if (!server) throw Object.assign(new Error('AWX sunucusu bulunamadı.'), { status: 404 });
+  if (!server) throw sunucuYokHatasi(serverId);
   const id = Number(templateId);
   if (!Number.isInteger(id) || id <= 0) throw Object.assign(new Error('Geçersiz template ID.'), { status: 400 });
   const token = await getTokenForServer(server);
@@ -5915,6 +6081,7 @@ function redactAwxSecrets(text) {
   } catch {
     /* sunucu listesi okunamazsa genel kaliplar yine uygulanir */
   }
+  for (const v of _awxDevreDisiSirlar) add(v);
   for (const c of _serverTokenCaches.values()) add(c && c.token);
   add(_tokenCache.token);
   add(process.env.AWX_TOKEN);
@@ -5952,6 +6119,9 @@ module.exports = {
   cancelJobOnServer,
   getJobStateOnServer,
   getServerById,
+  // AWX sunucu yonetimi (devre disi birakma) - birim testleri icin:
+  _loadAwxServers: loadAwxServers,
+  _sunucuYokHatasi: sunucuYokHatasi,
   listRunningJobsAcrossServers,
   // Uzun suren is iptali (long-job-cancel.cjs / long-job-watcher.cjs):
   listLongJobCandidatesAcrossServers,
