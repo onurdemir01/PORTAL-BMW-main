@@ -52,7 +52,7 @@
     "express-rate-limit": "^8.5.2",
     "express-session": "^1.19.0",
     "ldapts": "^9.2.0",
-    "mssql": "^12.7.0",
+    "mssql": "^12.7.10",
     "nunjucks": "^3.2.4",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
