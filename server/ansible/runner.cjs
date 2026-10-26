@@ -11,6 +11,8 @@ const { readResponseLimited } = require('../util/bounded-read.cjs');
 const surveyConditions = require('../../shared/surveyConditions.cjs');
 // Veritabanindan beslenen secenek listeleri (bkz. choice-sources.cjs basligi).
 const choiceSources = require('./choice-sources.cjs');
+// Self Service ekip bazli erisim: kapali / ekipler / herkes (bkz. ss-erisim.cjs basligi).
+const ssErisim = require('./ss-erisim.cjs');
 
 // parseSimpleYaml ve Smart metadata isleyicisi: server/smart/metadata.cjs (OpsX ile ORTAK).
 const { parseSimpleYaml, buildSmartMetadata } = require('../smart/metadata.cjs');
@@ -2486,6 +2488,9 @@ function initAnsibleRunner(app) {
   }
 
   function ssRowToItem(r) {
+    // Grup listesi okunamazsa bos liste + isaret: "ekipler" kipinde kimseye acmaz (fail-closed),
+    // admin ekrani da listenin bozuk oldugunu soyler.
+    const gruplar = ssErisim.grupListesiOku(r.access_groups);
     return {
       id: r.id,
       title: r.title,
@@ -2494,6 +2499,9 @@ function initAnsibleRunner(app) {
       awxTemplateId: Number(r.awx_template_id),
       enabled: !!r.enabled,
       order: r.sort_order ?? 0,
+      accessMode: r.access_mode || null,
+      accessGroups: gruplar || [],
+      ...(gruplar === null ? { accessGroupsBozuk: true } : {}),
     };
   }
 
@@ -2503,24 +2511,58 @@ function initAnsibleRunner(app) {
   }
 
   // Yazma: delete-all + re-insert (kucuk, admin-only liste) — sonra cache tazele.
+  // TEK TRANSACTION (2026-10-26): eskiden DELETE ayri, her INSERT ayri sorguydu; arada bir
+  // INSERT duserse liste yarim kaliyordu. Erisim ayari (access_mode / access_groups) da bu
+  // satirlarda yasadigi icin yarim yazim bir servisin ekip kisitini sessizce silebilirdi.
+  // Simdi ya hepsi yazilir ya hicbiri (TRY/CATCH + ROLLBACK).
+  const SS_YAZIM_TAVAN = 200; // satir basina 9 parametre; MSSQL tek istekte 2100 parametre alir
   async function writeSsItems(items) {
-    await dbx.query(`DELETE FROM ansible_ss_items`);
-    for (const i of items) {
-      await dbx.query(
-        `INSERT INTO ansible_ss_items (id, title, description, awx_server_id, awx_template_id, enabled, sort_order)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [
-          i.id,
-          i.title,
-          i.description || '',
-          Number(i.awxServerId) || 1,
-          Number(i.awxTemplateId),
-          i.enabled ? 1 : 0,
-          Number(i.order) || 0,
-        ],
-      );
+    if (items.length > SS_YAZIM_TAVAN) {
+      throw new Error(`Self Service listesi en fazla ${SS_YAZIM_TAVAN} servis tutabilir.`);
     }
+    const params = [];
+    const ekle = items.map((i) => {
+      const b = params.length;
+      params.push(
+        i.id,
+        i.title,
+        i.description || '',
+        Number(i.awxServerId) || 1,
+        Number(i.awxTemplateId),
+        i.enabled ? 1 : 0,
+        Number(i.order) || 0,
+        i.accessMode || null,
+        JSON.stringify(Array.isArray(i.accessGroups) ? i.accessGroups : []),
+      );
+      const p = Array.from({ length: 9 }, (_, k) => `$${b + k + 1}`).join(', ');
+      return `INSERT INTO ansible_ss_items (id, title, description, awx_server_id, awx_template_id, enabled, sort_order, access_mode, access_groups) VALUES (${p});`;
+    });
+    await dbx.query(
+      `BEGIN TRY
+         BEGIN TRAN;
+         DELETE FROM ansible_ss_items;
+         ${ekle.join('\n         ')}
+         COMMIT TRAN;
+       END TRY
+       BEGIN CATCH
+         IF @@TRANCOUNT > 0 ROLLBACK TRAN;
+         THROW;
+       END CATCH`,
+      params,
+    );
     await reloadSsItemsCache();
+  }
+
+  // Tek servisin erisim ayari: yalniz o satir guncellenir (liste yeniden yazilmaz).
+  async function writeSsAccess(id, erisim) {
+    const r = await dbx.query(
+      `UPDATE ansible_ss_items
+          SET enabled = $1, access_mode = $2, access_groups = $3, updated_at = GETUTCDATE()
+        WHERE id = $4`,
+      [erisim.enabled ? 1 : 0, erisim.accessMode, JSON.stringify(erisim.accessGroups), id],
+    );
+    await reloadSsItemsCache();
+    return r.rowCount;
   }
 
   // Overrides composite (serverId_templateId) anahtariyla saklanir — ayni template ID
@@ -3458,8 +3500,10 @@ function initAnsibleRunner(app) {
     }
   });
 
+  // Admin TUM servisleri erisim ayariyla gorur; digerleri yalniz erisebildiklerini (kapali ve
+  // kendi ekibine acilmamis servisler listede hic yoktur - eskiden filtre yalniz istemcideydi).
   app.get('/api/ansible/ss/items', requireAuth, (req, res) => {
-    res.json({ ok: true, items: readSsItems() });
+    res.json({ ok: true, items: ssErisim.ssKullaniciListesi(readSsItems(), req.session?.user) });
   });
 
   // POST /api/ansible/ss/items — Admin, SS item ekle/guncelle
@@ -3560,6 +3604,8 @@ function initAnsibleRunner(app) {
       awxTemplateId: templateId,
       enabled: !!enabled,
       order: Number(order) || 0,
+      accessMode: enabled ? 'herkes' : 'kapali',
+      accessGroups: [],
     };
     items.push(newItem);
     try {
@@ -3568,6 +3614,32 @@ function initAnsibleRunner(app) {
       return res.status(500).json({ ok: false, message: `Kaydedilemedi: ${e.message}` });
     }
     res.json({ ok: true, item: newItem, items });
+  });
+
+  // POST /api/ansible/ss/items/:id/access - Admin, servisin kime acik oldugu ("Alanlari Yonet"
+  // penceresindeki Erisim bolumu). Govde: { mode: 'kapali'|'ekipler'|'herkes', groups: [] }.
+  // Gruplar her kipte saklanir (servisi gecici kapatan admin ekip listesini kaybetmesin); hangi
+  // kipin gecerli oldugunu `mode` belirler.
+  app.post('/api/ansible/ss/items/:id/access', requireAuth, requireAdmin, async (req, res) => {
+    const id = String(req.params.id || '');
+    if (!readSsItems().some((i) => i.id === id)) {
+      return res.status(404).json({ ok: false, message: 'Servis bulunamadı.' });
+    }
+    const d = ssErisim.ssErisimDogrula(req.body);
+    if (d.hata) return res.status(400).json({ ok: false, message: d.hata });
+    try {
+      const n = await writeSsAccess(id, d);
+      if (!n) return res.status(404).json({ ok: false, message: 'Servis bulunamadı.' });
+    } catch (e) {
+      return res.status(500).json({ ok: false, message: `Kaydedilemedi: ${e.message}` });
+    }
+    try {
+      require('../audit/index.cjs').auditPortal(req, 'ss_access_save', {
+        username: req.session?.user?.username || null,
+        detail: JSON.stringify({ id, mode: d.accessMode, groups: d.accessGroups }),
+      });
+    } catch { /* audit yoksa yoksay */ }
+    res.json({ ok: true, item: readSsItems().find((i) => i.id === id) || null });
   });
 
   // DELETE /api/ansible/ss/items/:id — Admin, SS item sil
@@ -3589,6 +3661,20 @@ function initAnsibleRunner(app) {
   app.get('/api/ansible/survey/:serverId/:templateId', requireAuth, async (req, res) => {
     const server = getServerById(req.params.serverId);
     if (!server) return res.status(404).json({ ok: false, message: 'Sunucu bulunamadı.' });
+    // Form (survey + varsayilanlar) yalniz o servise erisebilen kullaniciya acilir: kapali ya da
+    // baska ekibe acik bir servisin alanlari uc dogrudan cagrilarak okunamasin. Admin muaf
+    // (Alanlari Yonet bu ucu ScaleX gibi Self Service disi template'ler icin de cagirir).
+    if (
+      req.session?.user?.role !== 'Admin' &&
+      !readSsItems().some(
+        (i) =>
+          ssErisim.ssErisimVar(i, req.session?.user) &&
+          Number(i.awxServerId) === server.id &&
+          Number(i.awxTemplateId) === Number(req.params.templateId),
+      )
+    ) {
+      return res.status(403).json({ ok: false, message: 'Bu servis size açık değil.' });
+    }
     try {
       const token = await getTokenForServer(server);
       const overrides = readCustom(server.id, req.params.templateId);
@@ -3708,7 +3794,10 @@ function initAnsibleRunner(app) {
 
   // GET /api/ansible/template-detail/:serverId/:templateId — Template tam detayi
   // (bilgi modali icin: genel ayarlar + survey + extra_vars + credentials + son calistirmalar)
-  app.get('/api/ansible/template-detail/:serverId/:templateId', requireAuth, async (req, res) => {
+  // requireAnsiblePage (2026-10-26): tek cagiran Ansible sayfasi (template listesi zaten bu
+  // kapinin arkasinda). Kapisiz uc, ekip kisitli bir servisin template ayrintisini (extra_vars
+  // dahil) her oturuma aciyordu.
+  app.get('/api/ansible/template-detail/:serverId/:templateId', requireAuth, requireAnsiblePage, async (req, res) => {
     const server = getServerById(req.params.serverId);
     if (!server) return res.status(404).json({ ok: false, message: 'Sunucu bulunamadı.' });
     try {
@@ -4309,17 +4398,18 @@ function initAnsibleRunner(app) {
     // amacli) — bu yuzden enabled kontrolu Admin'ler icin atlanir, aksi halde admin
     // kendi henuz yayinlamadigi bir isi bile calistiramaz ("kullanicilara kapali"
     // == diger kullanicilardan gizli, Admin'den degil).
-    const isAdmin = req.session?.user?.role === 'Admin';
+    // EKIP KISITI (2026-10-26): "ekipler" kipindeki servisi yalniz secilen LDAP gruplarinin
+    // uyeleri baslatir (ss-erisim.cjs). Liste filtresi tek basina yetmez: uc dogrudan cagrilabilir.
     const ssItem = readSsItems().find(
       (i) =>
-        (isAdmin || i.enabled) &&
+        ssErisim.ssErisimVar(i, req.session?.user) &&
         Number(i.awxServerId) === server.id &&
         Number(i.awxTemplateId) === templateId,
     );
     if (!ssItem) {
       return res
         .status(403)
-        .json({ ok: false, message: 'Bu template Self Service listesinde kayıtlı/etkin değil.' });
+        .json({ ok: false, message: 'Bu servis Self Service listesinde kayıtlı değil ya da size açık değil.' });
     }
 
     const username = req.session?.user?.username || 'anonymous';

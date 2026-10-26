@@ -391,8 +391,8 @@ function TemplateInfoModal({ serverId, template, onClose }: TemplateInfoModalPro
         awxServerId: serverId,
         awxTemplateId: template.id,
         // Yeni eklenen Self Service otomasyonlari varsayilan olarak kullanicilara KAPALI
-        // baslar — admin, "Self Service Yonetimi" ekranindaki gorunurluk anahtariyla
-        // bilinclii sekilde acmadan hicbir kullanici gormez.
+        // baslar — admin, hemen acilan "Alanlari Yonet" penceresindeki "Kimler kullanabilir?"
+        // bolumunden (secili ekipler / herkes) bilincli sekilde acmadan hicbir kullanici gormez.
         enabled: false,
         // Date.now() (ms) MSSQL'deki sort_order INT (32-bit, maks ~2.14 milyar) sinirini
         // asiyordu — HER kayitta "Validation failed for parameter" ile 500 donduruyordu.
@@ -420,7 +420,7 @@ function TemplateInfoModal({ serverId, template, onClose }: TemplateInfoModalPro
   // Alan incelemesi kaydın hemen ardından açılır — arkadaki template detay modalının
   // yerini alır (kayıt anının doğal, atlanamaz bir devamı olarak).
   if (fieldsReviewItem) {
-    return <FieldOverridesModal item={fieldsReviewItem} onClose={() => { setFieldsReviewItem(null); onClose(); }} />;
+    return <FieldOverridesModal item={fieldsReviewItem} ssErisimItem={fieldsReviewItem} onClose={() => { setFieldsReviewItem(null); onClose(); }} />;
   }
 
   return createPortal(

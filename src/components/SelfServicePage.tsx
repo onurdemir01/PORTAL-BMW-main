@@ -7,6 +7,7 @@ import { ansibleApi, type OcoWindowInfo, type SmartTicketStatusYaniti } from '@/
 import { nobetciApi, type NobetciResult } from '@/api/nobetciApi';
 import type { AnsibleSsItem, SurveyField, JobHistoryRecord, LaunchOptions, SurveyGates } from '@/api/ansibleApi';
 import FieldOverridesModal from '@/components/self_service/FieldOverridesModal';
+import { ssErisimModu, grupEtiketi } from '@/components/self_service/SsErisimBolumu';
 import DynamicChoiceSelect, { MULTI_SEP, splitMulti } from '@/components/self_service/DynamicChoiceSelect';
 import AnsibleLogTerminal from '@/components/common/AnsibleLogTerminal';
 import { useJobTracker } from '@/contexts/JobTrackerContext';
@@ -1288,6 +1289,32 @@ function SurveyModal({ item, onClose, inline = false }: SurveyModalProps) {
 // ── History Modal ─────────────────────────────────────────────────────────────
 
 // item verilirse yalniz o servisin (AWX sunucu + template) gecmisi (2026-09-21).
+// Admin'e servisin kime acik oldugunu hatirlatan rozet. "Herkes"te rozet yok (varsayilan
+// gorunum); kapali ve ekip kisitli servis ilk bakista ayirt edilsin.
+function ErisimRozeti({ item }: { item: AnsibleSsItem }) {
+  const mod = ssErisimModu(item);
+  if (mod === 'kapali') {
+    return (
+      <span data-testid="ss-rozet-kapali" className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-100">
+        kullanıcılara kapalı
+      </span>
+    );
+  }
+  if (mod === 'ekipler') {
+    const gruplar = item.accessGroups || [];
+    return (
+      <span
+        data-testid="ss-rozet-ekipler"
+        title={gruplar.map(grupEtiketi).join(', ') || 'Ekip listesi boş — servis kimseye açık değil'}
+        className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-sky-50 text-sky-700 border border-sky-100"
+      >
+        {gruplar.length ? `${gruplar.length} ekibe açık` : 'ekip seçilmedi'}
+      </span>
+    );
+  }
+  return null;
+}
+
 function HistoryModal({ onClose, item }: { onClose: () => void; item?: AnsibleSsItem | null }) {
   // Salt okunur pencere: gercek arka plan tiklamasi kapatir, surukleme kapatmaz.
   const backdrop = useBackdropDismiss(onClose);
@@ -1515,6 +1542,14 @@ function AnsibleSection({ isAdmin, selected = null, onItems, onSelect }: {
       )
       .finally(() => setLoading(false));
   }, []);
+  // Erisim kaydedilince liste SESSIZCE tazelenir: reload() yukleme gostergesine dusup acik
+  // formu sifirlardi. Okunamazsa eski liste kalir (rozet bir sonraki acilista duzelir).
+  const sessizYenile = useCallback(() => {
+    ansibleApi
+      .ssItems()
+      .then((r) => setItems(r.items || []))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     reload();
@@ -1546,7 +1581,10 @@ function AnsibleSection({ isAdmin, selected = null, onItems, onSelect }: {
       // Backend artık AWX'e karşı GERÇEKTEN doğruluyor (var mı, allowlist'te mi,
       // aynı sunucu+template zaten kayıtlı mı) — bu yüzden hata burada mutlaka
       // gösterilmeli, aksi halde admin sessizce geçersiz bir kayıt oluşturduğunu sanır.
-      const r = await ansibleApi.saveSsItem({ ...draft, enabled: true, order: items.length + 1 });
+      // KAPALI BASLAR (2026-10-26, kullanici: "default olarak eklenen servisler kullanicilara
+      // kapali gelsin"): eskiden burada enabled: true gidiyordu ve servis kayit aninda herkese
+      // aciliyordu. Kime acik olacagi hemen acilan "Alanlari Yonet" penceresinde secilir.
+      const r = await ansibleApi.saveSsItem({ ...draft, enabled: false, order: items.length + 1 });
       if (!r.ok) {
         setSaveError(r.message || 'Kaydedilemedi.');
         return;
@@ -1587,9 +1625,7 @@ function AnsibleSection({ isAdmin, selected = null, onItems, onSelect }: {
     return (
       <div className="space-y-3">
         <div className="flex items-center gap-2 flex-wrap text-xs">
-          {isAdmin && !item.enabled && (
-            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-100">kullanıcılara kapalı</span>
-          )}
+          {isAdmin && <ErisimRozeti item={item} />}
           <span style={{ color: 'var(--text-muted)' }}>AWX template #{item.awxTemplateId} · sunucu {item.awxServerId}</span>
           {resetNote && (
             <span
@@ -1630,7 +1666,7 @@ function AnsibleSection({ isAdmin, selected = null, onItems, onSelect }: {
           />
         </div>
         {showHistory && <HistoryModal item={item} onClose={() => setShowHistory(false)} />}
-        {fieldsItem && <FieldOverridesModal item={fieldsItem} onClose={() => setFieldsItem(null)} />}
+        {fieldsItem && <FieldOverridesModal item={fieldsItem} ssErisimItem={fieldsItem} onErisimKaydedildi={sessizYenile} onClose={() => setFieldsItem(null)} />}
       </div>
     );
   }
@@ -1767,11 +1803,7 @@ function AnsibleSection({ isAdmin, selected = null, onItems, onSelect }: {
                       <h3 className="font-bold text-base">{item.title}</h3>
                       {/* enabled=false SADECE normal kullanicilardan gizler — admin her zaman
                         gorur ve calistirabilir; bu rozet admin'e bunu hatirlatir. */}
-                      {isAdmin && !item.enabled && (
-                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-100">
-                          kullanıcılara kapalı
-                        </span>
-                      )}
+                      {isAdmin && <ErisimRozeti item={item} />}
                     </div>
                     {isAdmin && (
                       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition flex-shrink-0">
@@ -1815,7 +1847,7 @@ function AnsibleSection({ isAdmin, selected = null, onItems, onSelect }: {
 
       {launchItem && <SurveyModal item={launchItem} onClose={() => setLaunchItem(null)} />}
       {showHistory && <HistoryModal onClose={() => setShowHistory(false)} />}
-      {fieldsItem && <FieldOverridesModal item={fieldsItem} onClose={() => setFieldsItem(null)} />}
+      {fieldsItem && <FieldOverridesModal item={fieldsItem} ssErisimItem={fieldsItem} onErisimKaydedildi={sessizYenile} onClose={() => setFieldsItem(null)} />}
     </div>
   );
 }

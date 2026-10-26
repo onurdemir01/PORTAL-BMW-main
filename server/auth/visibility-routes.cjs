@@ -130,6 +130,21 @@ function initVisibilityRoutes(app, { requireAuth, requireAdmin }) {
     }
   });
 
+  // LDAP GRUP ARAMA (2026-10-26): Self Service otomasyonunu ekiplere acarken grup dizinden
+  // secilir (bkz. ldap.cjs searchLdapGroups). Ayni sinirlar: admin, en az 3 karakter, tavan.
+  router.get('/ldap-groups', requireAdmin, async (req, res) => {
+    const q = String(req.query.q || '').trim();
+    if (q.length < 3) {
+      return res.json({ ok: true, groups: [], message: 'En az 3 karakter yazın.' });
+    }
+    try {
+      const groups = await require('./ldap.cjs').searchLdapGroups(q, Number(req.query.limit) || 25);
+      res.json({ ok: true, groups });
+    } catch (err) {
+      res.status(502).json({ ok: false, error: err.message });
+    }
+  });
+
   router.post('/elements', requireAdmin, async (req, res) => {
     try {
       await elementsStore.upsertElement(req.body || {});

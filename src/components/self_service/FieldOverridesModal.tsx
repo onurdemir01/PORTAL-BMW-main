@@ -42,6 +42,8 @@ import {
 } from '@/api/ansibleApi';
 
 import { fmtDateTime } from '@/utils/datetime';
+import type { AnsibleSsItem, SsErisimModu } from '@/api/ansibleApi';
+import { SsErisimBolumu, ssErisimModu } from './SsErisimBolumu';
 
 const fmtWhen = (iso: string) => fmtDateTime(iso);
 import { buildSuggestions, type SurveySuggestion } from '@/utils/surveySuggestions';
@@ -336,9 +338,19 @@ export default function FieldOverridesModal({
   onClose,
   smartBaglami,
   ocoAyarYoksaAcik = false,
+  ssErisimItem,
+  onErisimKaydedildi,
 }: {
   item: FieldOverridesModalItem;
   onClose: () => void;
+  /**
+   * Self Service servisi (SelfServicePage / AnsiblePage "Self Service olarak ekle"). Verilirse
+   * pencerenin başında "Kimler kullanabilir?" bölümü çıkar ve Kaydet erişimi de yazar. ScaleX
+   * gibi Self Service dışı çağıranlar vermez; onlarda bölüm yoktur.
+   */
+  ssErisimItem?: AnsibleSsItem;
+  /** Erişim kaydedilince (liste yenilensin diye). */
+  onErisimKaydedildi?: (item: AnsibleSsItem | null) => void;
   /**
    * Bir modülün SMART alan eşlemesine eklediği değişkenler, ÖRNEK değerleriyle
    * (ScaleX: `{{scalex.ozet}}` vb. — bkz. server/smart/metadata.cjs). Verilirse yardım
@@ -441,6 +453,19 @@ export default function FieldOverridesModal({
   const [reloadTick, setReloadTick] = useState(0);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
+  // Erisim: acilistaki hal saklanir; Kaydet yalniz DEGISTIYSE erisim ucunu cagirir.
+  const erisimIlk = useMemo(
+    () =>
+      ssErisimItem
+        ? { mode: ssErisimModu(ssErisimItem), groups: ssErisimItem.accessGroups || [] }
+        : null,
+    [ssErisimItem],
+  );
+  const [erisim, setErisim] = useState<{ mode: SsErisimModu; groups: string[] } | null>(erisimIlk);
+  const erisimDegisti =
+    !!erisim &&
+    !!erisimIlk &&
+    (erisim.mode !== erisimIlk.mode || erisim.groups.join('\n') !== erisimIlk.groups.join('\n'));
 
   useEffect(() => {
     ansibleApi
@@ -851,6 +876,10 @@ export default function FieldOverridesModal({
   const invalidSmartApproval = smartApproval.enabled && !smartApproval.flowKey.trim();
 
   async function save() {
+    if (erisim && erisim.mode === 'ekipler' && erisim.groups.length === 0) {
+      setErr('"Seçili ekipler" seçili ama hiç ekip eklenmedi — en az bir LDAP grubu ekleyin ya da başka bir seçenek seçin.');
+      return;
+    }
     if (invalidHidden) {
       setErr(
         `"${invalidHidden.label}" gizli ama varsayılan değeri yok — önce bir varsayılan değer girin.`,
@@ -955,6 +984,18 @@ export default function FieldOverridesModal({
         setErr(r.message || 'Kaydedilemedi.');
         return;
       }
+      if (ssErisimItem && erisim && erisimDegisti) {
+        // Alan ayarlari yazildi; erisim ayri uca gider. Duserse pencere ACIK kalir ve neyin
+        // kaydedilip neyin kaydedilmedigi soylenir (yari kayit sessiz kalmasin).
+        const a = await ansibleApi
+          .saveSsAccess(ssErisimItem.id, erisim)
+          .catch((e: unknown) => ({ ok: false, message: e instanceof Error ? e.message : String(e), item: null }));
+        if (!a.ok) {
+          setErr(`Alan ayarları kaydedildi, erişim kaydedilemedi: ${a.message || 'bilinmeyen hata'}`);
+          return;
+        }
+        onErisimKaydedildi?.(a.item || null);
+      }
       onClose();
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : String(e));
@@ -996,6 +1037,14 @@ export default function FieldOverridesModal({
       }
     >
       <div className="space-y-4">
+        {ssErisimItem && erisim && (
+          <SsErisimBolumu
+            mode={erisim.mode}
+            groups={erisim.groups}
+            onChange={setErisim}
+            bozuk={!!ssErisimItem.accessGroupsBozuk}
+          />
+        )}
         {/* GECMIS SURUMLER (2026-09-16): her kayittan onceki hal saklanir; tek tikla geri yukleme. */}
         {!loading && (
           <details

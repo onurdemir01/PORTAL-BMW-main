@@ -277,6 +277,17 @@ export const ansibleApi = {
   deleteSsItem: (id: string): Promise<{ ok: boolean; items: AnsibleSsItem[] }> =>
     fetch(`${BASE}/ss/items/${id}`, { method: 'DELETE' }).then(safeJson),
 
+  // Servisin kime açık olduğu ("Alanları Yönet" > Kimler kullanabilir?). Admin.
+  saveSsAccess: (
+    id: string,
+    access: { mode: SsErisimModu; groups: string[] },
+  ): Promise<{ ok: boolean; item?: AnsibleSsItem | null; message?: string }> =>
+    fetch(`${BASE}/ss/items/${encodeURIComponent(id)}/access`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(access),
+    }).then(safeJson),
+
   surveySpec: (
     serverId: number,
     templateId: number,
@@ -935,6 +946,9 @@ export interface AdminOcoSchedule {
   module?: string | null;
 }
 
+/** Self Service erişimi (server/ansible/ss-erisim.cjs): kapali = yalnız admin. */
+export type SsErisimModu = 'kapali' | 'ekipler' | 'herkes';
+
 export interface AnsibleSsItem {
   id: string;
   title: string;
@@ -943,6 +957,12 @@ export interface AnsibleSsItem {
   awxTemplateId: number;
   enabled: boolean;
   order: number;
+  /** Yalnız admin yanıtında. null = bu özellikten önceki kayıt (açıksa herkes). */
+  accessMode?: SsErisimModu | null;
+  /** Yalnız admin yanıtında: erişimi olan LDAP grupları (tam DN ya da CN). */
+  accessGroups?: string[];
+  /** Kayıtlı grup listesi sunucuda okunamadı (servis kimseye açık değil). */
+  accessGroupsBozuk?: boolean;
 }
 
 export interface SurveyField {

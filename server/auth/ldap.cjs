@@ -446,6 +446,73 @@ async function searchLdapUsers(query, limit = 25) {
   }
 }
 
+/**
+ * LDAP GRUP ARAMASI (2026-10-26) - Self Service otomasyonunu belirli ekiplere acarken grup
+ * dizinden SECILIR (kullanici: "LDAP konfigurasyonumuz var, oradan gruplari cekip yetki
+ * tanimlayabiliyorduk"). Kullanici aramasiyla ayni ilkeler: en az 3 karakter, tavanli
+ * sonuc, 60 sn onbellek, hata yukari cikar (bos liste "boyle grup yok" demek olurdu).
+ *
+ * Once dizinli ONEK aramasi (cn / sAMAccountName); sonuc yoksa ICEREN aramasi (ekip adini
+ * "Middleware" diye bilen kisi "GT-Middleware"i da bulsun). Donen `dn` yetki kaydina
+ * yazilir: CN ayni olup farkli OU'daki iki grup birbirine karismaz.
+ */
+const _grupOnbellek = new Map();
+
+async function searchLdapGroups(query, limit = 25) {
+  const q = String(query || '').trim();
+  if (q.length < 3 || !isConfigured()) return [];
+
+  const baseDn = process.env.LDAP_BASE_DN;
+  const bindDn = process.env.LDAP_BIND_DN;
+  const bindPass = process.env.LDAP_BIND_PASSWORD || '';
+  const tavan = Math.min(Math.max(Number(limit) || 25, 1), 50);
+  const e = escapeFilter(q);
+  const anahtar = `${q.toLowerCase()}|${tavan}`;
+  const onbellekte = _grupOnbellek.get(anahtar);
+  if (onbellekte && Date.now() - onbellekte.at < ARAMA_ONBELLEK_MS) return onbellekte.groups;
+
+  const hizli = `(&(objectClass=group)(|(cn=${e}*)(sAMAccountName=${e}*)))`;
+  const genis = `(&(objectClass=group)(|(cn=*${e}*)(description=*${e}*)))`;
+
+  const client = createClient();
+  try {
+    await client.bind(bindDn, bindPass);
+    const ara = async (filter) =>
+      (
+        await client.search(baseDn, {
+          filter,
+          scope: 'sub',
+          attributes: ['cn', 'description', 'sAMAccountName'],
+          sizeLimit: tavan,
+        })
+      ).searchEntries || [];
+    let girdiler = await ara(hizli);
+    if (!girdiler.length) girdiler = await ara(genis);
+    const tekil = new Set();
+    const groups = [];
+    for (const g of girdiler) {
+      const dn = String(g.dn || '').trim();
+      if (!dn || tekil.has(dn.toLowerCase())) continue;
+      tekil.add(dn.toLowerCase());
+      const desc = Array.isArray(g.description) ? g.description[0] : g.description;
+      groups.push({
+        dn,
+        cn: String(g.cn || g.sAMAccountName || '') || dn,
+        description: String(desc || '') || null,
+      });
+      if (groups.length >= tavan) break;
+    }
+    if (_grupOnbellek.size >= ARAMA_ONBELLEK_TAVAN) _grupOnbellek.delete(_grupOnbellek.keys().next().value);
+    _grupOnbellek.set(anahtar, { at: Date.now(), groups });
+    return groups;
+  } catch (err) {
+    console.warn('[LDAP] searchLdapGroups hatasi:', err.message);
+    throw new Error('LDAP grup araması yapılamadı: ' + err.message);
+  } finally {
+    await client.unbind().catch(() => {});
+  }
+}
+
 async function findLdapUserByUsername(username) {
   const uname = String(username || '').trim();
   if (!uname || !isConfigured()) return null;
@@ -632,6 +699,7 @@ function clearCache(username) {
 module.exports = {
   authenticate,
   searchLdapUsers,
+  searchLdapGroups,
   authenticateLocal,
   isConfigured,
   clearCache,

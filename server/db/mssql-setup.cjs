@@ -1236,6 +1236,8 @@ const TABLES = [
         awx_template_id INT NOT NULL,
         enabled         BIT NOT NULL DEFAULT 0,
         sort_order      INT NOT NULL DEFAULT 0,
+        access_mode     NVARCHAR(16) NULL,
+        access_groups   NVARCHAR(MAX) NULL,
         updated_at      DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
         UNIQUE(awx_server_id, awx_template_id)
       )`,
@@ -3977,6 +3979,18 @@ async function setupTables() {
       table: 'scalex_state_mirror',
       col: 'last_restore_error',
       sql: `ALTER TABLE scalex_state_mirror ADD last_restore_error NVARCHAR(1000) NULL`,
+    },
+    {
+      // Self Service ekip bazli erisim (2026-10-26, bkz. server/ansible/ss-erisim.cjs).
+      // NULL = bu ozellikten onceki kayit: enabled=1 ise "herkes" sayilir (davranis degismez).
+      table: 'ansible_ss_items',
+      col: 'access_mode',
+      sql: `ALTER TABLE ansible_ss_items ADD access_mode NVARCHAR(16) NULL`,
+    },
+    {
+      table: 'ansible_ss_items',
+      col: 'access_groups',
+      sql: `ALTER TABLE ansible_ss_items ADD access_groups NVARCHAR(MAX) NULL`,
     },
     {
       // MEVCUT kurulumlar icin: ansible_awx_servers zaten varsa CREATE TABLE blogu
