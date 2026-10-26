@@ -237,7 +237,7 @@ test('CS11 RVP listeleri sunucuda kurulu (ad standardi disi) uygulamalari ekler 
     assert.deepEqual(apps.map((a) => a.value),
       ['digi-main-container-app-v0', 'digi-main-container-app-v1', 'public-website-v0'],
       'standart adlilar once; sunucuda kurulu standart disi eklenir; API (pension-api-v1), QA ve intranet sunucusu karismaz');
-    assert.equal(byVal['public-website-v0'].group, 'Sunucuda kurulu, ad standardı dışı');
+    assert.equal(byVal['public-website-v0'].group, 'Ad standardı dışı (sunucuda kurulu ya da konteynerde nginx)');
     assert.match(byVal['public-website-v0'].alt, /Sunucuda kurulu: GBNGXT33, GBNGXT34/);
     assert.match(byVal['public-website-v0'].alt, /OpenShift envanterinde yok/);
     assert.match(byVal['public-website-v0'].alt, /ad standardı dışı/);
@@ -255,6 +255,61 @@ test('CS11 RVP listeleri sunucuda kurulu (ad standardi disi) uygulamalari ekler 
     const yedek = await cs.getSource('ocp-spa-applications').load({ env: 'test', namespace: 'ges-pension-digital-ch-test', tenant: 'ark' });
     assert.deepEqual(yedek.map((a) => a.value), ['digi-main-container-app-v0', 'digi-main-container-app-v1'], 'tarama okunamazsa eski davranis');
     assert.ok(yedek.every((a) => /Sunucu taraması okunamadı/.test(a.alt)), 'okunamama sessiz');
+  } finally {
+    if (savedAdmin) require.cache[adminPath] = savedAdmin; else delete require.cache[adminPath];
+    if (savedMssql) require.cache[mssqlPath] = savedMssql; else delete require.cache[mssqlPath];
+  }
+});
+
+// CS12 (2026-10-26, ayni gun sorgu sonucu): public-website-v0 uc test cluster'inda BMW_Spa_Discovery'de
+// is_spa=1 (konteynerde nginx-start.sh). Sunucu dizin taramasi uygulamayi ancak deploy'dan SONRA gorur;
+// henuz hicbir nginx sunucusunda olmayan, ad standardina uymayan bir SPA da listelenmeli.
+test('CS12 SPA Kesfi kaniti: konteynerinde nginx olan (ad standardi disi, henuz sunucuda yok) uygulama listelenir', async () => {
+  const adminPath = require.resolve('../../logx/v2/admin.cjs');
+  const mssqlPath = require.resolve('../../inventory/mssql.cjs');
+  const savedAdmin = require.cache[adminPath];
+  const savedMssql = require.cache[mssqlPath];
+  let kesifHatasi = false;
+  const sorgular = [];
+  require.cache[adminPath] = { id: adminPath, filename: adminPath, loaded: true,
+    exports: { getClusterTree: async () => ({ test: { ark: ['gbocptest1', 'gbocptest2'] }, prod: { ark: ['gbocpprod1'] } }) } };
+  require.cache[mssqlPath] = { id: mssqlPath, filename: mssqlPath, loaded: true, exports: {
+    sql: { NVarChar: () => 'nvarchar' },
+    query: async (q) => {
+      const t = String(q).replace(/\s+/g, ' ');
+      sorgular.push(t);
+      if (t.includes('FROM dbo.Openshift_Inventory')) return { recordset: [
+        { namespace: 'ges-pension-digital-ch-test', application: 'digi-main-container-app-v0' },
+        { namespace: 'ges-pension-digital-ch-test', application: 'public-website-v0' },
+      ] };
+      if (t.includes('FROM dbo.Nginx_Intranet_Audit')) return { recordset: [] };
+      if (t.includes('FROM dbo.BMW_Spa_Discovery')) {
+        if (kesifHatasi) throw new Error('tablo yok');
+        return { recordset: [
+          { cluster: 'gbocptest1', namespace: 'ges-pension-digital-ch-test', workload: 'public-website-v0' },
+          { cluster: 'GBOCPTEST2', namespace: 'ges-pension-digital-ch-test', workload: 'public-website-v0' },
+          { cluster: 'gbocpprod1', namespace: 'ges-pension-digital-ch-test', workload: 'baska-ortam-v0' },
+          { cluster: 'gbocptest1', namespace: 'ges-pension-digital-ch-test', workload: '' },
+        ] };
+      }
+      return { recordset: [] };
+    } } };
+  try {
+    const apps = await cs.getSource('ocp-spa-applications').load({ env: 'test', namespace: 'ges-pension-digital-ch-test', tenant: 'ark' });
+    assert.deepEqual(apps.map((a) => a.value), ['digi-main-container-app-v0', 'public-website-v0'], 'baska ortamin cluster i karisti ya da kesif kaniti eklenmedi');
+    const pw = apps.find((a) => a.value === 'public-website-v0');
+    assert.equal(pw.group, 'Ad standardı dışı (sunucuda kurulu ya da konteynerde nginx)');
+    assert.equal(pw.alt, "Sunucuda kurulu değil · OpenShift'te var · SPA Keşfi: konteynerde nginx (GBOCPTEST2, gbocptest1) · ad standardı dışı");
+    assert.equal(apps.find((a) => a.value === 'digi-main-container-app-v0').alt, "Sunucuda kurulu değil · OpenShift'te var");
+    const kq = sorgular.find((q) => q.includes('FROM dbo.BMW_Spa_Discovery'));
+    assert.ok(kq && /d\.is_spa = 1/.test(kq) && /MAX\(scan_date\)/.test(kq) && /GROUP BY cluster/.test(kq), 'kesif sorgusu cluster basina son tarama + is_spa suzgeci degil');
+
+    const nsler = await cs.getSource('ocp-namespaces').load({ env: 'test', tenant: 'ark' });
+    assert.equal(nsler.find((n) => n.value === 'ges-pension-digital-ch-test').label, 'ges-pension-digital-ch-test  (2 SPA)');
+
+    kesifHatasi = true;
+    const yedek = await cs.getSource('ocp-spa-applications').load({ env: 'test', namespace: 'ges-pension-digital-ch-test', tenant: 'ark' });
+    assert.deepEqual(yedek.map((a) => a.value), ['digi-main-container-app-v0'], 'kesif okunamazsa liste dusmeli degil, eski kurala donmeli');
   } finally {
     if (savedAdmin) require.cache[adminPath] = savedAdmin; else delete require.cache[adminPath];
     if (savedMssql) require.cache[mssqlPath] = savedMssql; else delete require.cache[mssqlPath];

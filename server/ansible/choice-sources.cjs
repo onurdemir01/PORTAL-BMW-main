@@ -174,6 +174,47 @@ async function sunucudaKuruluSpalar(env) {
   return [...kurulu.values()];
 }
 
+// -- SPA KESFI KANITI (2026-10-26) ----------------------------------------------------------------
+// Ayni gun ges-pension-digital-ch-test sorgusu: public-website-v0 uc test cluster'inda da
+// BMW_Spa_Discovery'de is_spa=1 (konteynerde nginx-start.sh). Sunucu dizin taramasi bir uygulamayi
+// ancak bir nginx sunucusuna deploy edildikten SONRA gorur; ad standardina uymayan YENI bir SPA o ana
+// kadar listede yoktu. openshift_spa_discovery isi ada degil konteynerde nginx kosup kosmadigina bakar.
+// Kapsam ocpPairsForEnv ile ayni: ortamin cluster'lari (tenant verilmis ve katalog bossa bos; katalog
+// yoksa namespace son-eki), cluster basina SON tarama, yalniz is_spa = 1. Okunamazsa null.
+async function kesifteSpaOlanlar(env, tenant) {
+  const clusters = new Set((await clustersForEnv(env, tenant)).map((c) => c.toLowerCase()));
+  if (!clusters.size && String(tenant || '').trim()) return [];
+  const sonek = `-${String(env || '').trim().toLowerCase()}`;
+  const { query } = require('../inventory/mssql.cjs');
+  let rows;
+  try {
+    rows =
+      (
+        await query(
+          `SELECT d.cluster, d.namespace, d.workload FROM dbo.BMW_Spa_Discovery d
+             JOIN (SELECT cluster, MAX(scan_date) AS sd FROM dbo.BMW_Spa_Discovery GROUP BY cluster) m
+               ON m.cluster = d.cluster AND m.sd = d.scan_date
+            WHERE d.is_spa = 1`,
+        )
+      ).recordset || [];
+  } catch (e) {
+    console.warn('[choice-sources] BMW_Spa_Discovery okunamadi (SPA Kesfi):', e.message);
+    return null;
+  }
+  const kesif = new Map();
+  for (const r of rows) {
+    const cluster = String(r.cluster || '').trim();
+    const namespace = String(r.namespace || '').trim();
+    const application = String(r.workload || '').trim();
+    if (!cluster || !namespace || !application) continue;
+    if (clusters.size ? !clusters.has(cluster.toLowerCase()) : !namespace.toLowerCase().endsWith(sonek)) continue;
+    const k = `${namespace}|${application}`;
+    if (!kesif.has(k)) kesif.set(k, { namespace, application, clusters: new Set() });
+    kesif.get(k).clusters.add(cluster);
+  }
+  return [...kesif.values()];
+}
+
 // dbo.Nginx_Config_Audit (nginx_config_audit job'i): son taramadaki SPA location'lari.
 async function nginxAuditRows(env, service) {
   const { query, sql } = require('../inventory/mssql.cjs');
@@ -198,15 +239,18 @@ const SOURCES = {
   // Self Servis > Nginx - RVP Operations (nginx_ops): OpenShift namespace'leri. LogX/OpsX
   // ile AYNI envanter tablosu (Openshift_Inventory), ortam cluster katalogundan.
   'ocp-namespaces': {
-    label: 'OpenShift namespace listesi (Openshift Uygulama Envanteri, ortam + cluster grubu; SPA sayısına sunucuda kurulu olanlar da girer)',
+    label: 'OpenShift namespace listesi (Openshift Uygulama Envanteri, ortam + cluster grubu; SPA sayısına sunucuda kurulu olanlar ve SPA Keşfi ile konteynerinde nginx görülenler de girer)',
     params: [{ name: 'env', label: 'Ortam alanı (dev/test/qa/prod)', required: true }],
     // SABIT secenekler (form alanina bagli degil; admin ekraninda metin olarak girilir).
     // tenant: ocp_cluster_index.tenant (LogX/OpsX ile ayni katalog) — RVP icin 'ark'.
     options: [{ name: 'tenant', label: 'Cluster grubu (tenant, ör. ark)', default: 'ark' }],
     async load({ env, tenant }) {
-      const [pairs, sunucu] = await Promise.all([ocpPairsForEnv(env, tenant), sunucudaKuruluSpalar(env)]);
-      // SPA sayisi: ad kuralina uyan OpenShift uygulamalari + sunucuda kurulu olanlar (tekil). Yalniz
-      // sunucuda kurulu bir uygulamanin namespace'i OpenShift envanterinde olmasa da listelenir.
+      const [pairs, sunucu, kesif] = await Promise.all([
+        ocpPairsForEnv(env, tenant), sunucudaKuruluSpalar(env), kesifteSpaOlanlar(env, tenant),
+      ]);
+      // SPA sayisi: ad kuralina uyan OpenShift uygulamalari + sunucuda kurulu olanlar + SPA Kesfi'nde
+      // konteynerinde nginx olanlar (tekil). Yalniz sunucuda kurulu bir uygulamanin namespace'i OpenShift
+      // envanterinde olmasa da listelenir.
       const spalar = new Map();
       const ekle = (ns, app) => {
         if (!spalar.has(ns)) spalar.set(ns, new Set());
@@ -217,6 +261,7 @@ const SOURCES = {
         ekle(p.namespace, isSpaApp(p.application) ? p.application : null);
       }
       for (const s of sunucu || []) ekle(s.namespace, s.application);
+      for (const s of kesif || []) ekle(s.namespace, s.application);
       const count = new Map([...spalar].map(([ns, set]) => [ns, set.size]));
       // SPA'si olan namespace'ler once — nginx_ops SPA tanimi icin anlamli olanlar onlar.
       return [...count.entries()]
@@ -230,9 +275,10 @@ const SOURCES = {
   },
 
   // Secilen namespace'teki SPA uygulamalari: OpenShift'te -app-v / -app-emb-v adli olanlar + ortamin
-  // sunucularinda kurulu olanlar (sunucudaKuruluSpalar - ad standardina uymasa da).
+  // sunucularinda kurulu olanlar (sunucudaKuruluSpalar) + SPA Kesfi'nde konteynerinde nginx olanlar
+  // (kesifteSpaOlanlar) - ad standardina uymasa da.
   'ocp-spa-applications': {
-    label: 'SPA uygulamaları (seçilen namespace): OpenShift *-app-v* adlılar + sunucuda kurulu olanlar (dizin taraması)',
+    label: 'SPA uygulamaları (seçilen namespace): OpenShift *-app-v* adlılar + sunucuda kurulu olanlar (dizin taraması) + SPA Keşfi ile konteynerinde nginx görülenler',
     params: [
       { name: 'env', label: 'Ortam alanı', required: true },
       { name: 'namespace', label: 'Namespace alanı', required: true },
@@ -240,27 +286,33 @@ const SOURCES = {
     options: [{ name: 'tenant', label: 'Cluster grubu (tenant, ör. ark)', default: 'ark' }],
     async load({ env, namespace, tenant }) {
       const ns = String(namespace || '').trim();
-      const [pairs, sunucu] = await Promise.all([ocpPairsForEnv(env, tenant), sunucudaKuruluSpalar(env)]);
+      const [pairs, sunucu, kesif] = await Promise.all([
+        ocpPairsForEnv(env, tenant), sunucudaKuruluSpalar(env), kesifteSpaOlanlar(env, tenant),
+      ]);
       const ocpde = new Set(pairs.filter((p) => p.namespace === ns).map((p) => p.application));
       const kurulu = new Map((sunucu || []).filter((s) => s.namespace === ns).map((s) => [s.application, s.hosts]));
-      const apps = new Set([...[...ocpde].filter(isSpaApp), ...kurulu.keys()]);
-      // KARSILASTIRMA ikinci satirda: hangi sunucularda kurulu, OpenShift envanterinde var mi, ad
-      // standardina uyuyor mu. Ad standardina uymayanlar ayri grupta, en sonda.
+      const kesifte = new Map((kesif || []).filter((s) => s.namespace === ns).map((s) => [s.application, s.clusters]));
+      const apps = new Set([...[...ocpde].filter(isSpaApp), ...kurulu.keys(), ...kesifte.keys()]);
+      // KARSILASTIRMA ikinci satirda: hangi sunucularda kurulu, OpenShift envanterinde var mi, SPA
+      // Kesfi konteynerde nginx gordu mu, ad standardina uyuyor mu. Ad standardina uymayanlar ayri
+      // grupta, en sonda.
       return [...apps]
         .sort((a, b) => isSpaApp(b) - isSpaApp(a) || a.localeCompare(b))
         .map((a) => {
           const hosts = kurulu.get(a);
+          const cls = kesifte.get(a);
           const parca = [
             hosts ? `Sunucuda kurulu: ${[...hosts].sort().join(', ')}`
               : sunucu ? 'Sunucuda kurulu değil' : 'Sunucu taraması okunamadı',
             ocpde.has(a) ? "OpenShift'te var" : 'OpenShift envanterinde yok',
           ];
+          if (cls) parca.push(`SPA Keşfi: konteynerde nginx (${[...cls].sort().join(', ')})`);
           if (!isSpaApp(a)) parca.push('ad standardı dışı');
           return {
             value: a,
             label: a,
             alt: parca.join(' · '),
-            group: isSpaApp(a) ? 'Ad standardına uyan' : 'Sunucuda kurulu, ad standardı dışı',
+            group: isSpaApp(a) ? 'Ad standardına uyan' : 'Ad standardı dışı (sunucuda kurulu ya da konteynerde nginx)',
           };
         });
     },
