@@ -129,6 +129,51 @@ async function ocpPairsForEnv(env, tenant) {
   }));
 }
 
+// -- SUNUCUDA KURULU SPA'LAR (2026-10-26) ---------------------------------------------------
+// Kullanici: "listelemeyi ayni zamanda sunucunun file sistemindeki uygulamalara gore de ekleme veya
+// karsilastirma yapabilir miyiz? Cunku bazi uygulamalar isim standardina uymuyor." Ornek:
+// ges-pension-digital-ch-test/public-website-v0 GBNGXT33'te /hysdeploy altinda kurulu, ama adi
+// -app-v icermedigi icin RVP Operations listesinde yoktu.
+// Kaynak: nginx_config_audit isinin dizin taramasi (dbo.Nginx_Intranet_Audit - adi tarihsel). Is HER
+// nginx sunucusunda /hysdeploy/<ns>/<app>/ ve /usr/nginx/applications/<ns>/<app>/ dizinlerini ADA
+// BAKMADAN listeler (nginx_config_scan.sh, nginx_audit_analyze.py). Burada: son tarama, dizin izi olan
+// (hys_deployed ya da app_deployed) satirlar, yalniz secilen ortamin (sunucu adindan) INTERNET katmani
+// sunuculari - RVP tanimi servis vhost'una yazilir, intranet SPA sunucularinda servis vhost'u yoktur.
+// Dizin izi gercek kurulum kanitidir; ad kuralinin YERINE degil YANINA eklenir. Okunamazsa null:
+// liste eskisi gibi yalniz OpenShift + ad kuralindan gelir ve bu durum satirda yazar.
+async function sunucudaKuruluSpalar(env) {
+  const hedef = normEnv(env);
+  if (!hedef) return [];
+  const { envOfHost, tierOfHost } = require('../audit/nginx-hosts.cjs');
+  const { query } = require('../inventory/mssql.cjs');
+  let rows;
+  try {
+    rows =
+      (
+        await query(
+          `SELECT host, namespace, application FROM dbo.Nginx_Intranet_Audit
+            WHERE scan_date = (SELECT MAX(scan_date) FROM dbo.Nginx_Intranet_Audit)
+              AND (hys_deployed = 1 OR app_deployed = 1)`,
+        )
+      ).recordset || [];
+  } catch (e) {
+    console.warn('[choice-sources] Nginx_Intranet_Audit okunamadi (sunucu dizin taramasi):', e.message);
+    return null;
+  }
+  const kurulu = new Map();
+  for (const r of rows) {
+    const host = String(r.host || '').trim().toUpperCase();
+    const namespace = String(r.namespace || '').trim();
+    const application = String(r.application || '').trim();
+    if (!host || !namespace || !application) continue;
+    if (envOfHost(host) !== hedef || tierOfHost(host) !== 'internet') continue;
+    const k = `${namespace}|${application}`;
+    if (!kurulu.has(k)) kurulu.set(k, { namespace, application, hosts: new Set() });
+    kurulu.get(k).hosts.add(host);
+  }
+  return [...kurulu.values()];
+}
+
 // dbo.Nginx_Config_Audit (nginx_config_audit job'i): son taramadaki SPA location'lari.
 async function nginxAuditRows(env, service) {
   const { query, sql } = require('../inventory/mssql.cjs');
@@ -153,19 +198,26 @@ const SOURCES = {
   // Self Servis > Nginx - RVP Operations (nginx_ops): OpenShift namespace'leri. LogX/OpsX
   // ile AYNI envanter tablosu (Openshift_Inventory), ortam cluster katalogundan.
   'ocp-namespaces': {
-    label: 'OpenShift namespace listesi (Openshift Uygulama Envanteri, ortam + cluster grubu)',
+    label: 'OpenShift namespace listesi (Openshift Uygulama Envanteri, ortam + cluster grubu; SPA sayısına sunucuda kurulu olanlar da girer)',
     params: [{ name: 'env', label: 'Ortam alanı (dev/test/qa/prod)', required: true }],
     // SABIT secenekler (form alanina bagli degil; admin ekraninda metin olarak girilir).
     // tenant: ocp_cluster_index.tenant (LogX/OpsX ile ayni katalog) — RVP icin 'ark'.
     options: [{ name: 'tenant', label: 'Cluster grubu (tenant, ör. ark)', default: 'ark' }],
     async load({ env, tenant }) {
-      const pairs = await ocpPairsForEnv(env, tenant);
-      const count = new Map();
+      const [pairs, sunucu] = await Promise.all([ocpPairsForEnv(env, tenant), sunucudaKuruluSpalar(env)]);
+      // SPA sayisi: ad kuralina uyan OpenShift uygulamalari + sunucuda kurulu olanlar (tekil). Yalniz
+      // sunucuda kurulu bir uygulamanin namespace'i OpenShift envanterinde olmasa da listelenir.
+      const spalar = new Map();
+      const ekle = (ns, app) => {
+        if (!spalar.has(ns)) spalar.set(ns, new Set());
+        if (app) spalar.get(ns).add(app);
+      };
       for (const p of pairs) {
         if (!p.namespace) continue;
-        if (!count.has(p.namespace)) count.set(p.namespace, 0);
-        if (isSpaApp(p.application)) count.set(p.namespace, count.get(p.namespace) + 1);
+        ekle(p.namespace, isSpaApp(p.application) ? p.application : null);
       }
+      for (const s of sunucu || []) ekle(s.namespace, s.application);
+      const count = new Map([...spalar].map(([ns, set]) => [ns, set.size]));
       // SPA'si olan namespace'ler once — nginx_ops SPA tanimi icin anlamli olanlar onlar.
       return [...count.entries()]
         .sort((a, b) => (b[1] > 0) - (a[1] > 0) || a[0].localeCompare(b[0]))
@@ -177,9 +229,10 @@ const SOURCES = {
     },
   },
 
-  // Secilen namespace'teki YALNIZCA SPA uygulamalari (-app-v / -app-emb-v adli).
+  // Secilen namespace'teki SPA uygulamalari: OpenShift'te -app-v / -app-emb-v adli olanlar + ortamin
+  // sunucularinda kurulu olanlar (sunucudaKuruluSpalar - ad standardina uymasa da).
   'ocp-spa-applications': {
-    label: 'OpenShift SPA uygulamaları (seçilen namespace, yalnızca *-app-v* adlılar)',
+    label: 'SPA uygulamaları (seçilen namespace): OpenShift *-app-v* adlılar + sunucuda kurulu olanlar (dizin taraması)',
     params: [
       { name: 'env', label: 'Ortam alanı', required: true },
       { name: 'namespace', label: 'Namespace alanı', required: true },
@@ -187,15 +240,29 @@ const SOURCES = {
     options: [{ name: 'tenant', label: 'Cluster grubu (tenant, ör. ark)', default: 'ark' }],
     async load({ env, namespace, tenant }) {
       const ns = String(namespace || '').trim();
-      const pairs = await ocpPairsForEnv(env, tenant);
-      const apps = [
-        ...new Set(
-          pairs
-            .filter((p) => p.namespace === ns && isSpaApp(p.application))
-            .map((p) => p.application),
-        ),
-      ];
-      return apps.sort().map((a) => ({ value: a, label: a }));
+      const [pairs, sunucu] = await Promise.all([ocpPairsForEnv(env, tenant), sunucudaKuruluSpalar(env)]);
+      const ocpde = new Set(pairs.filter((p) => p.namespace === ns).map((p) => p.application));
+      const kurulu = new Map((sunucu || []).filter((s) => s.namespace === ns).map((s) => [s.application, s.hosts]));
+      const apps = new Set([...[...ocpde].filter(isSpaApp), ...kurulu.keys()]);
+      // KARSILASTIRMA ikinci satirda: hangi sunucularda kurulu, OpenShift envanterinde var mi, ad
+      // standardina uyuyor mu. Ad standardina uymayanlar ayri grupta, en sonda.
+      return [...apps]
+        .sort((a, b) => isSpaApp(b) - isSpaApp(a) || a.localeCompare(b))
+        .map((a) => {
+          const hosts = kurulu.get(a);
+          const parca = [
+            hosts ? `Sunucuda kurulu: ${[...hosts].sort().join(', ')}`
+              : sunucu ? 'Sunucuda kurulu değil' : 'Sunucu taraması okunamadı',
+            ocpde.has(a) ? "OpenShift'te var" : 'OpenShift envanterinde yok',
+          ];
+          if (!isSpaApp(a)) parca.push('ad standardı dışı');
+          return {
+            value: a,
+            label: a,
+            alt: parca.join(' · '),
+            group: isSpaApp(a) ? 'Ad standardına uyan' : 'Sunucuda kurulu, ad standardı dışı',
+          };
+        });
     },
   },
 

@@ -193,3 +193,70 @@ test('CS12 tekli kaynak secimi combobox: yerel select yok, yazdikca liste, Enter
   // hook sirasi: useState(open) erken donusten (multiple) ONCE
   assert.ok(sel.indexOf('const [open, setOpen] = useState(false)') < sel.indexOf('if (multiple) {'), 'open state erken donusten sonra tanimli (hook sirasi)');
 });
+
+// CS11 (2026-10-26, kullanici: "listelemeyi ayni zamanda sunucunun file sistemindeki uygulamalara gore de
+// ekleme veya karsilastirma yapabilir miyiz? Cunku bazi uygulamalar isim standardina uymuyor"):
+// ges-pension-digital-ch-test/public-website-v0 GBNGXT33'te /hysdeploy altinda kurulu ama -app-v icermiyor.
+// RVP listeleri ortamin INTERNET sunucularindaki dizin taramasini (Nginx_Intranet_Audit) da kullanir.
+test('CS11 RVP listeleri sunucuda kurulu (ad standardi disi) uygulamalari ekler ve karsilastirir', async () => {
+  const adminPath = require.resolve('../../logx/v2/admin.cjs');
+  const mssqlPath = require.resolve('../../inventory/mssql.cjs');
+  const savedAdmin = require.cache[adminPath];
+  const savedMssql = require.cache[mssqlPath];
+  let taramaHatasi = false;
+  const sorgular = [];
+  require.cache[adminPath] = { id: adminPath, filename: adminPath, loaded: true,
+    exports: { getClusterTree: async () => ({ test: { ark: ['ark-test-1'] } }) } };
+  require.cache[mssqlPath] = { id: mssqlPath, filename: mssqlPath, loaded: true, exports: {
+    sql: { NVarChar: () => 'nvarchar' },
+    query: async (q) => {
+      const t = String(q).replace(/\s+/g, ' ');
+      sorgular.push(t);
+      if (t.includes('FROM dbo.Openshift_Inventory')) return { recordset: [
+        { namespace: 'ges-pension-digital-ch-test', application: 'digi-main-container-app-v0' },
+        { namespace: 'ges-pension-digital-ch-test', application: 'digi-main-container-app-v1' },
+        { namespace: 'ges-pension-digital-ch-test', application: 'pension-api-v1' },
+        { namespace: 'baska-ns-test', application: 'x-app-v0' },
+      ] };
+      if (t.includes('FROM dbo.Nginx_Intranet_Audit')) {
+        if (taramaHatasi) throw new Error('tablo yok');
+        return { recordset: [
+          { host: 'GBNGXT33', namespace: 'ges-pension-digital-ch-test', application: 'public-website-v0' },
+          { host: 'GBNGXT34', namespace: 'ges-pension-digital-ch-test', application: 'public-website-v0' },
+          { host: 'GBNGXT33', namespace: 'ges-pension-digital-ch-test', application: 'digi-main-container-app-v0' },
+          { host: 'GBNGXQ02', namespace: 'ges-pension-digital-ch-test', application: 'yalniz-qa-v0' },
+          { host: 'GBNGXT50', namespace: 'ges-pension-digital-ch-test', application: 'intranet-sitesi-v0' },
+          { host: 'GBNGXT33', namespace: 'yalniz-sunucuda-ns-test', application: 'eski-site-v2' },
+        ] };
+      }
+      return { recordset: [] };
+    } } };
+  try {
+    const apps = await cs.getSource('ocp-spa-applications').load({ env: 'test', namespace: 'ges-pension-digital-ch-test', tenant: 'ark' });
+    const byVal = Object.fromEntries(apps.map((a) => [a.value, a]));
+    assert.deepEqual(apps.map((a) => a.value),
+      ['digi-main-container-app-v0', 'digi-main-container-app-v1', 'public-website-v0'],
+      'standart adlilar once; sunucuda kurulu standart disi eklenir; API (pension-api-v1), QA ve intranet sunucusu karismaz');
+    assert.equal(byVal['public-website-v0'].group, 'Sunucuda kurulu, ad standardı dışı');
+    assert.match(byVal['public-website-v0'].alt, /Sunucuda kurulu: GBNGXT33, GBNGXT34/);
+    assert.match(byVal['public-website-v0'].alt, /OpenShift envanterinde yok/);
+    assert.match(byVal['public-website-v0'].alt, /ad standardı dışı/);
+    assert.match(byVal['digi-main-container-app-v0'].alt, /^Sunucuda kurulu: GBNGXT33 · OpenShift'te var$/);
+    assert.match(byVal['digi-main-container-app-v1'].alt, /^Sunucuda kurulu değil · OpenShift'te var$/);
+    assert.ok(sorgular.some((q) => /MAX\(scan_date\)/.test(q) && /hys_deployed = 1 OR app_deployed = 1/.test(q)),
+      'son tarama ve dizin izi suzgeci SQL de degil');
+
+    const nsler = await cs.getSource('ocp-namespaces').load({ env: 'test', tenant: 'ark' });
+    const ns = Object.fromEntries(nsler.map((n) => [n.value, n]));
+    assert.equal(ns['ges-pension-digital-ch-test'].label, 'ges-pension-digital-ch-test  (3 SPA)', 'sayim tekil: 2 OpenShift + 1 yalniz sunucuda');
+    assert.ok(ns['yalniz-sunucuda-ns-test'], 'yalniz sunucuda kurulu uygulamanin namespace i listelenmiyor');
+
+    taramaHatasi = true;
+    const yedek = await cs.getSource('ocp-spa-applications').load({ env: 'test', namespace: 'ges-pension-digital-ch-test', tenant: 'ark' });
+    assert.deepEqual(yedek.map((a) => a.value), ['digi-main-container-app-v0', 'digi-main-container-app-v1'], 'tarama okunamazsa eski davranis');
+    assert.ok(yedek.every((a) => /Sunucu taraması okunamadı/.test(a.alt)), 'okunamama sessiz');
+  } finally {
+    if (savedAdmin) require.cache[adminPath] = savedAdmin; else delete require.cache[adminPath];
+    if (savedMssql) require.cache[mssqlPath] = savedMssql; else delete require.cache[mssqlPath];
+  }
+});
