@@ -20,8 +20,10 @@ const DURUM_ETIKET: Record<string, string> = {
   silinecek: 'silinecek', silinmemeli: 'SİLİNMEMELİ', kalacak: 'kalacak (DNS kullanılmaya devam edecek)',
   iade: 'iade edilecek', iade_edilmez: 'iade EDİLMEZ', olculemedi: 'ölçülemedi — elle doğrulayın', ozel_ip_yok: 'vhost belirli bir IP\'ye bağlı değil — iade yok',
 };
+// Sari / kirmizi METIN -text tokeniyle (beyaz zeminde --status-warning 2.2:1); kenar asil tonda kalir.
+const metinRengi = (r?: string) => (r === 'var(--status-danger)' ? 'var(--status-danger-text)' : r === 'var(--status-warning)' ? 'var(--status-warning-text)' : r);
 function Durum({ d }: { d: string }) {
-  return <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold border whitespace-nowrap" style={{ color: DURUM_RENK[d], borderColor: DURUM_RENK[d] }}>{DURUM_ETIKET[d] || d}</span>;
+  return <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold border whitespace-nowrap" style={{ color: metinRengi(DURUM_RENK[d]), borderColor: DURUM_RENK[d] }}>{DURUM_ETIKET[d] || d}</span>;
 }
 const TH = 'px-2.5 py-1.5 text-left text-[11px] font-semibold';
 const TD = 'px-2.5 py-1.5 align-top';
@@ -71,7 +73,7 @@ export default function RetirementDnsIp({ id, app }: { id: number; app: string }
       <div className="px-3 pb-3 space-y-3 text-[12px]">
         <div className="flex items-center gap-2">
           {yukleniyor && <span style={{ color: 'var(--text-muted)' }}>hesaplanıyor (DNS sorgusu dahil)…</span>}
-          {hata && <span style={{ color: 'var(--status-danger)' }}>{hata}</span>}
+          {hata && <span style={{ color: 'var(--status-danger-text)' }}>{hata}</span>}
           <span className="ml-auto" />
           {d && <button onClick={kopyala} className="inline-flex items-center gap-1 text-[11px] underline decoration-dotted" style={{ color: 'var(--accent)' }}><ClipboardDocumentIcon className="w-3.5 h-3.5" /> Smart için metni kopyala</button>}
           <button onClick={yukle} disabled={yukleniyor} className="inline-flex items-center gap-1 text-[11px] underline decoration-dotted" style={{ color: 'var(--accent)' }}><ArrowPathIcon className="w-3.5 h-3.5" /> Yeniden hesapla</button>
@@ -79,7 +81,7 @@ export default function RetirementDnsIp({ id, app }: { id: number; app: string }
         {d && (
           <>
             {(d.hubHata || (d.taranmayan && d.taranmayan.length > 0)) && (
-              <div className="rounded-lg border px-3 py-2" style={{ color: 'var(--status-warning)', borderColor: 'var(--status-warning)', background: 'var(--status-warning-bg)' }}>
+              <div className="rounded-lg border px-3 py-2" style={{ color: 'var(--status-warning-text)', borderColor: 'var(--status-warning)', background: 'var(--status-warning-bg)' }}>
                 {d.hubHata ? `Server Hub okunamadı (${d.hubHata}) — IP paylaşımı ölçülemedi.` : `Server Hub'da taranmamış web sunucusu: ${d.taranmayan!.join(', ')} — bu sunuculardaki IP'lerin paylaşımı ölçülemedi.`}
               </div>
             )}
@@ -94,10 +96,10 @@ export default function RetirementDnsIp({ id, app }: { id: number; app: string }
                       {d.dns.map((x) => (
                         <tr key={x.ad} className="border-t" style={{ borderColor: 'var(--border-subtle)' }}>
                           <td className={`${TD} font-mono font-semibold`}>{x.ad}</td>
-                          <td className={`${TD} font-mono`}>{x.vip ? x.vip.join(', ') || '—' : <span style={{ color: 'var(--status-warning)' }}>çözülemedi ({x.cozumHata})</span>}</td>
+                          <td className={`${TD} font-mono`}>{x.vip ? x.vip.join(', ') || '—' : <span style={{ color: 'var(--status-warning-text)' }}>çözülemedi ({x.cozumHata})</span>}</td>
                           <td className={`${TD} text-[11px]`}>
                             {x.vhostlar.map((v) => <div key={v.host + v.serverName}>{v.host} · {v.serverName}</div>)}
-                            {x.paylasilan.map((v) => <div key={'p' + v.host + v.serverName} style={{ color: 'var(--status-warning)' }}>başka vhost: {v.host} · {v.serverName}</div>)}
+                            {x.paylasilan.map((v) => <div key={'p' + v.host + v.serverName} style={{ color: 'var(--status-warning-text)' }}>başka vhost: {v.host} · {v.serverName}</div>)}
                           </td>
                           <td className={TD}>
                             <div className="flex gap-2 text-[11px]">
@@ -128,7 +130,7 @@ export default function RetirementDnsIp({ id, app }: { id: number; app: string }
                       <tr key={'v' + x.ip} className="border-t" style={{ borderColor: 'var(--border-subtle)' }}>
                         <td className={`${TD} font-mono font-semibold`}>{x.ip}</td>
                         <td className={TD}>LB VIP <span className="text-[10px] font-mono" style={{ color: 'var(--text-muted)' }}>364308_Delete_6</span></td>
-                        <td className={`${TD} text-[11px]`}>DNS: {x.dnsler.join(', ')}{x.sebep && <div style={{ color: 'var(--status-warning)' }}>{x.sebep}</div>}</td>
+                        <td className={`${TD} text-[11px]`}>DNS: {x.dnsler.join(', ')}{x.sebep && <div style={{ color: 'var(--status-warning-text)' }}>{x.sebep}</div>}</td>
                         <td className={TD}><Durum d={x.durum} /></td>
                       </tr>
                     ))}
@@ -138,7 +140,7 @@ export default function RetirementDnsIp({ id, app }: { id: number; app: string }
                         <td className={TD}>Web sunucusu IP</td>
                         <td className={`${TD} text-[11px]`}>
                           {x.host} · {x.vhostlar.join(', ')}
-                          {x.digerleri.length > 0 && <div style={{ color: 'var(--status-warning)' }}>bu IP'yi dinleyen başka vhost: {x.digerleri.join(', ')}</div>}
+                          {x.digerleri.length > 0 && <div style={{ color: 'var(--status-warning-text)' }}>bu IP'yi dinleyen başka vhost: {x.digerleri.join(', ')}</div>}
                         </td>
                         <td className={TD}><Durum d={x.durum} /></td>
                       </tr>

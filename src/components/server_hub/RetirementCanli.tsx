@@ -4,9 +4,16 @@
 // Kayit penceresinde is surerken gorunur: hedef basina JBoss isi (on kontrol / STOP / silme / geri
 // alma) ve vhost isleri - her biri durum cipi, donen gosterge ve gecen sure ile. Veri, pencerenin
 // birkac saniyede bir cagirdigi /canli ucundan gelir (o uc bekleyen vhost islerini de baslatir).
+//
+// 2026-10-26: web durum etiketleri / tonlari ortak (retirementStil WEB_DURUM); metin renkleri -text tokenlari.
+// Istege bagli `onCikti`: "iş #N" yaninda (KARDES oge; span'in metni degismez - RO2) "çıktıyı izle" baglantisi,
+// kayit penceresindeki ayrinti satirinin "İş çıktısı" sekmesini acar. Yalniz hedefin is listesi varsa.
 import React, { useEffect, useState } from 'react';
 import type { RtIsler, RtTarget, RtWeb2, RtZamanlayici } from '@/api/retirementApi';
 import { onKontrolSuruyor } from './RetirementOnKontrol';
+import { LINK, TON, WEB_DURUM } from './retirementStil';
+import { gecisAdimi } from './retirementSatir';
+import type { IsIpucu } from './retirementCikti';
 
 export const GECIS = new Set(['planning', 'stopping', 'deleting', 'rolling_back']);
 const IS_ADI: Record<string, string> = { planning: 'Ön kontrol', stopping: 'JBoss STOP', deleting: 'Silme', rolling_back: 'Geri alma' };
@@ -89,7 +96,7 @@ function Adimlar({ adimlar }: { adimlar: { ad: string; durum: AdimDurum; alt?: s
 
 function KumSaati() {
   return (
-    <span aria-hidden className="inline-flex w-3.5 h-3.5 items-center justify-center animate-pulse motion-reduce:animate-none" style={{ color: 'var(--status-warning)' }}>
+    <span aria-hidden className="inline-flex w-3.5 h-3.5 items-center justify-center animate-pulse motion-reduce:animate-none" style={{ color: 'var(--status-warning-text)' }}>
       <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M4 1.5h8M4 14.5h8M5 1.5c0 3.5 6 3.5 6 6.5s-6 3-6 6.5M11 1.5c0 3.5-6 3.5-6 6.5s6 3 6 6.5" /></svg>
     </span>
   );
@@ -106,29 +113,21 @@ function Doner() {
   return <span aria-hidden className="inline-block w-3 h-3 rounded-full border-2 animate-spin motion-reduce:animate-none" style={{ borderColor: 'var(--status-info)', borderTopColor: 'transparent' }} />;
 }
 
-const WEB_DURUM: Record<string, { etiket: string; renk: string }> = {
-  pending: { etiket: 'sırada', renk: 'var(--text-muted)' },
-  running: { etiket: 'çalışıyor', renk: 'var(--status-info)' },
-  ok: { etiket: 'kaldırıldı', renk: 'var(--status-success)' },
-  skip: { etiket: 'yapılacak şey yoktu', renk: 'var(--text-muted)' },
-  failed: { etiket: 'BAŞARISIZ', renk: 'var(--status-danger)' },
-  manual: { etiket: 'elle yapılmalı', renk: 'var(--status-warning)' },
-};
-
-function WebCip({ w, simdi }: { w: RtWeb2; simdi: number }) {
-  const d = WEB_DURUM[w.status] || { etiket: w.status, renk: 'var(--text-muted)' };
+function WebCip({ w, simdi, onCikti }: { w: RtWeb2; simdi: number; onCikti?: () => void }) {
+  const d = WEB_DURUM[w.status] || { etiket: w.status, ton: 'notr' as const };
   return (
     <div className="flex items-center gap-2 rounded-md border px-2 py-1 text-[11px]" style={{ borderColor: 'var(--border-subtle)' }} title={w.message || undefined}>
-      {w.status === 'running' ? <Doner /> : <span className="w-2 h-2 rounded-full" style={{ background: d.renk }} />}
+      {w.status === 'running' ? <Doner /> : <span className="w-2 h-2 rounded-full" style={{ background: TON[d.ton].renk }} />}
       <span className="font-mono">{w.host} · {w.serverName}</span>
-      <span className="font-semibold" style={{ color: d.renk }}>{d.etiket}</span>
-      {w.jobId ? <span style={{ color: 'var(--text-muted)' }}>iş #{w.jobId}</span> : null}
+      <span className="font-semibold" style={{ color: TON[d.ton].metin }}>{d.etiket}</span>
+      {w.jobId ? <span style={{ color: 'var(--text-secondary)' }}>iş #{w.jobId}</span> : null}
+      {w.jobId && onCikti ? <button type="button" onClick={onCikti} className={LINK} style={{ color: 'var(--accent)' }}>çıktıyı izle</button> : null}
       {w.basladi && <span style={{ color: 'var(--text-muted)' }}>{w.status === 'running' ? sure(w.basladi, null, simdi) : w.bitti ? `${sure(w.basladi, w.bitti)} sürdü` : ''}</span>}
     </div>
   );
 }
 
-export default function RetirementCanli({ targets, kayitAtladi, zamanlayici, isler }: { targets: RtTarget[]; kayitAtladi?: string | null; zamanlayici?: RtZamanlayici; isler?: RtIsler }) {
+export default function RetirementCanli({ targets, kayitAtladi, zamanlayici, isler, onCikti }: { targets: RtTarget[]; kayitAtladi?: string | null; zamanlayici?: RtZamanlayici; isler?: RtIsler; onCikti?: (tid: number, ipucu: IsIpucu) => void }) {
   const izlenen = targets.filter((t) => hedefAktif(t, kayitAtladi) || gecisBelirsiz(t) || (t.status === 'failed' && (t.webSonuc || []).some((w) => w.status === 'ok')));
   const [simdi, setSimdi] = useState(() => Date.now());
   const aktif = izlenen.some((t) => hedefAktif(t, kayitAtladi));
@@ -139,11 +138,15 @@ export default function RetirementCanli({ targets, kayitAtladi, zamanlayici, isl
   }, [aktif]);
   if (!izlenen.length) return null;
   const belirsizVar = izlenen.some(gecisBelirsiz);
+  const baslik = aktif ? (belirsizVar ? 'Çalışan, sıradaki ve doğrulanamayan işler' : 'Çalışan ve sıradaki işler') : belirsizVar ? 'Doğrulanamayan işler' : 'İşler bitti';
+  // Canli bolge YALNIZ baslik: panelde saniyede bir ilerleyen sure / geri sayim var, tumu canli bolge olsa
+  // ekran okuyucu her saniye konusurdu (denetim B16). Durum degisimi (bitti / dogrulanamayan) duyurulur.
   return (
-    <div className="rounded-lg border p-3 space-y-2" style={{ borderColor: 'var(--status-info)', background: 'var(--status-info-bg)' }} aria-live="polite">
+    <div className="rounded-lg border p-3 space-y-2" style={{ borderColor: 'var(--status-info)', background: 'var(--status-info-bg)' }}>
+      <span className="sr-only" aria-live="polite">{baslik}</span>
       <div className="flex items-center gap-2 text-[12px] font-semibold">
-        {aktif && <Doner />} {aktif ? (belirsizVar ? 'Çalışan, sıradaki ve doğrulanamayan işler' : 'Çalışan ve sıradaki işler') : belirsizVar ? 'Doğrulanamayan işler' : 'İşler bitti'}
-        <span className="font-normal text-[11px]" style={{ color: 'var(--text-muted)' }}>— birkaç saniyede bir kendiliğinden tazelenir{belirsizVar ? '; belirsiz işler operatör uzlaştırması gerektirir' : ''}</span>
+        {aktif && <Doner />} {baslik}
+        <span className="font-normal text-[11px]" style={{ color: 'var(--text-secondary)' }}>— birkaç saniyede bir kendiliğinden tazelenir{belirsizVar ? '; belirsiz işler operatör uzlaştırması gerektirir' : ''}</span>
       </div>
       {izlenen.map((t) => {
         const web = t.webSonuc || [];
@@ -155,27 +158,36 @@ export default function RetirementCanli({ targets, kayitAtladi, zamanlayici, isl
         const jobId = gecisJobId(t);
         const awx = awxEtiket(is?.status);
         const gs = geriSayim(zamanlayici, simdi);
+        // Cikti baglantisi yalniz o ADIMIN isi hedefin listesindeyse (eski sunucuda alan yok; listede olmayan is
+        // icin baglanti baska bir isin ciktisini acardi).
+        const cikti = onCikti && (t.awxIsleri || []).length > 0 ? onCikti : undefined;
+        const gecisAdim = gecisAdimi(t.status);
+        const gecisListede = !!gecisAdim && (t.awxIsleri || []).some((x) => x.adim === gecisAdim);
+        const webListede = (i: number) => (t.awxIsleri || []).some((x) => x.adim === 'web' && x.web === i);
         return (
           <div key={t.id} className="rounded-md px-2.5 py-2 space-y-1.5" style={{ background: 'var(--bg-surface)' }}>
             <div className="flex flex-wrap items-center gap-2 text-[12px]">
               <span className="font-mono font-semibold">{t.host}</span>
               <span style={{ color: 'var(--text-muted)' }}>{t.appName}</span>
               {sirada ? (
-                <span className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 font-semibold" style={{ color: 'var(--status-warning)', background: 'var(--status-warning-bg)' }}>
+                <span className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 font-semibold" style={{ color: 'var(--status-warning-text)', background: 'var(--status-warning-bg)' }}>
                   <KumSaati /> SİLME SIRADA
                 </span>
               ) : gecis && !belirsiz ? (
-                <span className="inline-flex items-center gap-1.5" style={{ color: 'var(--status-info)' }}>
-                  {awx.calisiyor ? <Doner /> : <KumSaati />} <b>{IS_ADI[t.status]}</b>
-                  <> · iş #{is?.jobId ?? jobId} · <b>{awx.etiket}</b></>
-                  {' '}· {sure(t.updatedAt, null, simdi)}
-                </span>
+                <>
+                  <span className="inline-flex items-center gap-1.5" style={{ color: 'var(--status-info)' }}>
+                    {awx.calisiyor ? <Doner /> : <KumSaati />} <b>{IS_ADI[t.status]}</b>
+                    <> · iş #{is?.jobId ?? jobId} · <b>{awx.etiket}</b></>
+                    {' '}· {sure(t.updatedAt, null, simdi)}
+                  </span>
+                  {cikti && gecisAdim && gecisListede && <button type="button" onClick={() => cikti(t.id, { adim: gecisAdim })} className={LINK} style={{ color: 'var(--accent)' }}>çıktıyı izle</button>}
+                </>
               ) : (
-                <span style={{ color: t.status === 'failed' ? 'var(--status-danger)' : 'var(--status-success)' }}>JBoss: {t.status === 'stopped' ? 'durduruldu' : t.status === 'failed' ? 'BAŞARISIZ' : t.status}</span>
+                <span style={{ color: t.status === 'failed' ? 'var(--status-danger-text)' : 'var(--status-success)' }}>JBoss: {t.status === 'stopped' ? 'durduruldu' : t.status === 'failed' ? 'BAŞARISIZ' : t.status}</span>
               )}
             </div>
             {belirsiz && (
-              <div role="alert" className="text-[11px] font-semibold" style={{ color: 'var(--status-warning)' }}>
+              <div role="alert" className="text-[11px] font-semibold" style={{ color: 'var(--status-warning-text)' }}>
                 {IS_ADI[t.status]} claim’i var fakat iş numarası yazılamadı; AWX başlangıç sonucu doğrulanamıyor. Aynı dış işlem otomatik yeniden başlatılmaz; operatör AWX geçmişiyle uzlaştırmalıdır.
               </div>
             )}
@@ -187,7 +199,7 @@ export default function RetirementCanli({ targets, kayitAtladi, zamanlayici, isl
                   { ad: 'Çalışıyor', durum: 'bekliyor' },
                   { ad: 'Silindi', durum: 'bekliyor' },
                 ]} />
-                <div className="text-[11px]" style={{ color: zamanlayici && !zamanlayici.calisiyor ? 'var(--status-danger)' : 'var(--text-secondary)' }}>
+                <div className="text-[11px]" style={{ color: zamanlayici && !zamanlayici.calisiyor ? 'var(--status-danger-text)' : 'var(--text-secondary)' }}>
                   Zamanlayıcının sonraki turunda başlar: <b>{gs.metin}</b>
                   {zamanlayici?.calisiyor ? <span style={{ color: 'var(--text-muted)' }}> (tur her {Math.round(zamanlayici.aralikSn / 60)} dk’da bir; ortalama bekleme ~{Math.round(zamanlayici.aralikSn / 120)} dk)</span> : null}
                 </div>
@@ -207,11 +219,11 @@ export default function RetirementCanli({ targets, kayitAtladi, zamanlayici, isl
               ]} />
             )}
             {yarim && (
-              <div role="alert" className="text-[11px] font-semibold" style={{ color: 'var(--status-danger)' }}>
+              <div role="alert" className="text-[11px] font-semibold" style={{ color: 'var(--status-danger-text)' }}>
                 JBoss STOP başarısız ama vhost kaldırıldı — uygulama çalışıyor olabilir, önüne trafik gelmez. Vhost'u geri açmak ya da STOP'u yeniden denemek gerekir.
               </div>
             )}
-            {web.length > 0 && <div className="flex flex-wrap gap-1.5">{web.map((w, i) => <WebCip key={i} w={w} simdi={simdi} />)}</div>}
+            {web.length > 0 && <div className="flex flex-wrap gap-1.5">{web.map((w, i) => <WebCip key={i} w={w} simdi={simdi} onCikti={cikti && webListede(i) ? () => cikti(t.id, { adim: 'web', web: i }) : undefined} />)}</div>}
           </div>
         );
       })}

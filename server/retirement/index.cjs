@@ -36,6 +36,8 @@ const DEFAULT_DAYS = Number(process.env.RETIREMENT_DELETE_DAYS || 45);
 // kaynak: server/retirement/ayar.cjs. Ortam degiskeni yedek olarak kalir.
 const { sccAyar, sccKaydet } = require('./ayar.cjs');
 const { stopSonucu, stopKarari, onKontrolIzinleri, planKaydi, onKontrolOku, onKontrolBasladi, onKontrolSonucu, onKontrolGecerli, onKontrolGorunum } = require('./stop-sonuc.cjs');
+// HEDEFIN AWX ISLERI + IS CIKTISI UCU (2026-10-26): liste ve salt okunur cikti ucu ayri modulde.
+const { hedefIsleri, isGecmisiOku, maskele, maskeleDerin } = require('./is-ciktisi.cjs');
 const isAdmin = (req) => req.session?.user?.role === 'Admin';
 const SAFE_ID = /^[A-Za-z0-9_-]{1,64}$/;
 
@@ -58,6 +60,20 @@ function rowRecord(r) {
     deleteNowAt: r.delete_now_at ?? null,
   };
 }
+// IN-PLACE (2026-10-26, kullanici: "JBoss ya da uygulamasi icin ayni sunucuda JBoss 8 de kesfedilirse giris
+// yapan kisiyi uyaralim ... Hicbir sey engellemesin ama insanlar yine de bilincinde olsun"). Kesfin isareti
+// kayit acilirken diger_surumler'e yazilir: [] = tek kurulum, [8] = ayni sunucuda JBoss 8 de var (0 = surumu
+// bilinmeyen kurulum). NULL = bu alandan once acilmis kayit: inPlace null (bilinmiyor, "yok" DEGIL).
+function inPlaceOf(json) {
+  if (json == null) return { inPlace: null, digerSurumler: null };
+  let a;
+  try { a = JSON.parse(json); } catch { a = null; }
+  if (!Array.isArray(a)) return { inPlace: null, digerSurumler: null };
+  const d = a.map(Number).filter((g) => Number.isInteger(g) && g >= 0);
+  return { inPlace: d.length > 0, digerSurumler: d };
+}
+const digerSurumlerYaz = (t) =>
+  JSON.stringify(t.inPlace && Array.isArray(t.digerSurumler) ? t.digerSurumler.map(Number).filter((g) => Number.isInteger(g) && g >= 0).slice(0, 10) : []);
 function rowTarget(t) {
   let web = [];
   try { web = t.web_json ? JSON.parse(t.web_json) : []; } catch { web = []; }
@@ -102,6 +118,7 @@ function rowTarget(t) {
     // hazir mi. Silme listesi yalniz tazeyken hazir (zamanlayiciyla ayni sure); geri alma insan onayli.
     silmeOnKontrol: onKontrolGorunum(t.delete_onkontrol_json, 'delete', { maxYasDk: _sched.silmePlanTazeDk() }),
     geriAlOnKontrol: onKontrolGorunum(t.rollback_onkontrol_json, 'rollback'),
+    ...inPlaceOf(t.diger_surumler),
   };
 }
 async function addEvent(recordId, username, kind, text) {
@@ -114,7 +131,14 @@ async function loadRecord(id) {
     db().query(`SELECT * FROM retirement_targets WHERE record_id = $1 ORDER BY CASE env WHEN 'PROD' THEN 0 WHEN 'QA' THEN 1 WHEN 'TEST' THEN 2 ELSE 3 END, site, host`, [id]),
     db().query(`SELECT TOP 200 * FROM retirement_events WHERE record_id = $1 ORDER BY at DESC, id DESC`, [id]),
   ]);
-  return { ...rowRecord(r.rows[0]), targets: (t.rows || []).map(rowTarget), events: (e.rows || []).map((x) => ({ id: x.id, at: x.at, username: x.username, kind: x.kind, text: x.text })) };
+  // HEDEFIN AWX ISLERI (is-ciktisi.cjs): is gecmisi TEK sorguda okunur (on kontrol / STOP ayrimi icin).
+  // Okunamazsa liste yine doner; kanitlanamayan is listeye konmaz (awxIsleriEksik).
+  const hedefler = t.rows || [];
+  const gecmis = await isGecmisiOku(db(), hedefler).catch(() => null);
+  const sunucuVar = (sid) => {
+    try { return !!require('../ansible/runner.cjs').getServerById(sid); } catch { return null; }
+  };
+  return { ...rowRecord(r.rows[0]), targets: hedefler.map((x) => ({ ...rowTarget(x), ...hedefIsleri(x, gecmis, { sunucuVar }) })), events: (e.rows || []).map((x) => ({ id: x.id, at: x.at, username: x.username, kind: x.kind, text: x.text })) };
 }
 
 // ── WEB KATMANI STOP'TA KALKAR (kullanici karari 2026-10-06) ─────────────────────────
@@ -202,6 +226,13 @@ async function webGeriAl(id, tid, username) {
       const r = await runner.launchJobOnServer(serverId, templateId, extraVars, '', {});
       w.status = 'restoring';
       w.jobId = r?.jobId ?? null;
+      // SUNUCU ISLE BIRLIKTE YAZILIR (2026-10-26): is gecmisine yazilmayan bu isin sunucusu baska yerden
+      // kanitlanamaz; eski kaldirma isinin sunucusu kalsaydi cikti ucu baska sunucudaki ayni numarayi okurdu.
+      w.awxServerId = serverId;
+      // Isaret: bu awxServerId BU isin (is-ciktisi.cjs webSunucusu); isaretsiz eski 'restoring' girdisine guvenilmez.
+      w.sunucuIsi = w.jobId;
+      w.basladi = new Date().toISOString();
+      delete w.bitti;
       w.message = `apache_restore_vhost iş #${r?.jobId ?? '?'}`;
       ozet.denendi += 1;
     } catch (e) {
@@ -286,6 +317,13 @@ function initRetirement(app) {
   router.use(requireAuth);
   router.use((req, res, next) => (isAdmin(req) ? next() : res.status(403).json({ ok: false, message: 'Retirement yalnız Admin.' })));
   try { router.use(require('../auth/visibility.cjs').requireVisiblePrefix('ServerHub')); } catch { /* yoksay */ }
+  // IS CIKTISI (2026-10-26, salt okunur, ayri modul): Admin + ServerHub kapilarindan SONRA baglanir.
+  require('./is-ciktisi.cjs').mount(router, {
+    db,
+    audit: (req, detail) => {
+      try { require('../audit/index.cjs').auditPortal(req, 'retirement_is_ciktisi_reddi', { detail: JSON.stringify(detail), result: 'denied' }); } catch { /* best-effort */ }
+    },
+  });
 
   router.get('/config', async (_req, res) => { const scc = await sccAyar(); res.json({ ok: true, defaultDays: DEFAULT_DAYS, sccMailConfigured: !!scc.to, sccMailTo: scc.to || null,
     sccMailCc: scc.cc || null, sccKaynak: scc.kaynak, sccGuncelleyen: scc.guncelleyen, sccGuncellendi: scc.guncellendi, sccDbHatasi: scc.dbHatasi,
@@ -454,11 +492,18 @@ function initRetirement(app) {
         [app, smartNo, ocoNo || null, String(b.ownerEmail || '').slice(0, 256) || null, user, days, planned, b.dnsReuse ? 1 : 0, b.lbReuse ? 1 : 0, String(b.notes || '').slice(0, 4000) || null],
       );
       const id = ins.rows[0].id;
+      // IN-PLACE ISARETI KAYITLA SAKLANIR (diger_surumler, bkz. inPlaceOf): ekran kayit acildiktan sonra da
+      // "ayni sunucuda diger kurulum var" uyarisini gosterebilsin.
       for (const t of targets) {
-        await db().query(`INSERT INTO retirement_targets (record_id, host, site, env, app_name, jboss_gen, app_path, web_json) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-          [id, t.host, t.site, t.env, t.appName, t.gen, t.appPath || null, JSON.stringify(t.web)]);
+        await db().query(`INSERT INTO retirement_targets (record_id, host, site, env, app_name, jboss_gen, app_path, web_json, diger_surumler) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+          [id, t.host, t.site, t.env, t.appName, t.gen, t.appPath || null, JSON.stringify(t.web), digerSurumlerYaz(t)]);
       }
-      await addEvent(id, user, 'created', `Kayıt açıldı: ${targets.length} hedef (${disc.summary.bySite.Pendik} Pendik, ${disc.summary.bySite.Ankara} Ankara); Smart ${smartNo}${ocoNo ? ', OCO ' + ocoNo : ''}; silme ${planned || days + ' gün sonra'}`);
+      // Olay metni 1000 karakterde kesilir (addEvent): ilk 5 in-place hedef + "+N" (sessizce yarida kalmasin).
+      const inPlace = targets.filter((t) => t.inPlace);
+      const ipMetni = inPlace.slice(0, 5).map((t) => `${t.appName} @ ${t.host} (JBoss ${t.gen ?? '?'}; aynı sunucuda diğer kurulum: ${(t.digerSurumler || []).map((g) => (g ? `JBoss ${g}` : 'sürümü bilinmeyen')).join(', ')})`).join(', ') +
+        (inPlace.length > 5 ? ` +${inPlace.length - 5} hedef daha (hedef satırlarında)` : '');
+      await addEvent(id, user, 'created', `Kayıt açıldı: ${targets.length} hedef (${disc.summary.bySite.Pendik} Pendik, ${disc.summary.bySite.Ankara} Ankara); Smart ${smartNo}${ocoNo ? ', OCO ' + ocoNo : ''}; silme ${planned || days + ' gün sonra'}` +
+        (inPlace.length ? ` · IN-PLACE: ${ipMetni}` : ''));
       try { require('../audit/index.cjs').auditPortal(req, 'retirement', { detail: JSON.stringify({ op: 'create', id, app, targets: targets.length }) }); } catch { /* */ }
       res.json({ ok: true, id, record: await loadRecord(id) });
     } catch (err) { res.status(500).json({ ok: false, message: err.message }); }
@@ -1400,7 +1445,9 @@ function initRetirement(app) {
       if (TERMINAL.has(statusInfo.status)) {
         fixResult = require('../opsx/index.cjs').extractStatsKey(statusInfo.artifacts, 'server_hub_fix_result') || null;
       }
-      res.json({ ok: true, status: statusInfo.status, output: outputInfo.output || '', result, fixResult });
+      // CIKTI MASKELI (2026-10-26): is ciktisi ucuyla AYNI zincir - ayni isin ciktisi bir yoldan maskeli,
+      // digerinden ham donerse maske islevsiz kalirdi. result / fixResult (artifacts, vhost BLOK satirlari) da.
+      res.json({ ok: true, status: statusInfo.status, output: maskele(outputInfo.output || ''), result: maskeleDerin(result), fixResult: maskeleDerin(fixResult) });
     } catch (err) { res.status(err.status || 500).json({ ok: false, message: err.message }); }
   });
 
@@ -1531,4 +1578,4 @@ function initRetirement(app) {
   console.log('[Retirement] mounted at /api/retirement');
 }
 
-module.exports = { initRetirement, REGISTRY_KEY, DELETE_REGISTRY_KEY, ROLLBACK_REGISTRY_KEY, DEFAULT_DAYS };
+module.exports = { initRetirement, REGISTRY_KEY, DELETE_REGISTRY_KEY, ROLLBACK_REGISTRY_KEY, DEFAULT_DAYS, _webGeriAl: webGeriAl };

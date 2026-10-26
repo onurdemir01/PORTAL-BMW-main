@@ -23,14 +23,15 @@ import { fmtDate, fmtDateTime } from '@/utils/datetime';
 
 type Durum = 'bitti' | 'suruyor' | 'bekliyor' | 'hata' | 'elle' | 'atlandi' | 'bilinmiyor';
 
+// `renk` METIN rengi de (durum adi): sari / kirmizi icin -text tokenlari (2026-10-26; ikon tonu beyazda AA alti).
 const SIM: Record<Durum, { isaret: string; renk: string }> = {
   bitti: { isaret: '✓', renk: 'var(--status-success)' },
-  suruyor: { isaret: '◴', renk: 'var(--status-warning)' },
+  suruyor: { isaret: '◴', renk: 'var(--status-warning-text)' },
   bekliyor: { isaret: '○', renk: 'var(--text-muted)' },
-  hata: { isaret: '✕', renk: 'var(--status-danger)' },
-  elle: { isaret: '✋', renk: 'var(--status-warning)' },
+  hata: { isaret: '✕', renk: 'var(--status-danger-text)' },
+  elle: { isaret: '✋', renk: 'var(--status-warning-text)' },
   atlandi: { isaret: '–', renk: 'var(--text-muted)' },
-  bilinmiyor: { isaret: '?', renk: 'var(--status-warning)' },
+  bilinmiyor: { isaret: '?', renk: 'var(--status-warning-text)' },
 };
 
 interface Asama {
@@ -215,7 +216,7 @@ export default function RetirementAkis({ rec, t }: { rec: RtRecord; t: RtTarget 
                 <span style={{ color: s.renk }}>{a.durum}</span>
                 {a.bilgi && <span style={{ color: 'var(--text-secondary)' }}>· {a.bilgi}</span>}
               </div>
-              <div className="font-mono text-[10px] leading-snug" style={{ color: 'var(--text-muted)' }}>
+              <div className="font-mono text-[11px] leading-snug" style={{ color: 'var(--text-muted)' }}>
                 {a.komut}
               </div>
             </div>

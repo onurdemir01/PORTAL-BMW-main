@@ -90,7 +90,36 @@ export interface RtTarget {
   silmeOnKontrol?: RtOnKontrolKaydi | null;
   /** GERI ALMA ON KONTROLU (2026-10-22): onayli geri alma YALNIZ hazir listeyle; bir liste bir onaya. */
   geriAlOnKontrol?: RtOnKontrolKaydi | null;
+  /** HEDEFIN BILINEN AWX ISLERI (2026-10-26, sunucu: retirement/is-ciktisi.cjs hedefIsleri). Yalniz DB'den;
+   *  pipeline sirasinda, adim basina son is. Alan yoksa (eski sunucu) is ciktisi dugmeleri gizlenir. */
+  awxIsleri?: RtHedefIs[];
+  /** Bir is numarasinin hangi adima ait oldugu kanitlanamadi; o is listede YOK (tahmin yok). */
+  awxIsleriEksik?: boolean;
+  /** IN-PLACE (kayit acilirken saklanir): ayni sunucuda uygulamanin diger JBoss kurulumu da var.
+   *  null = bu alandan once acilmis kayit (bilinmiyor - "yok" DEGIL); alan yoksa eski sunucu. */
+  inPlace?: boolean | null;
+  /** Diger kurulum(lar)in JBoss surumu (0 = surumu bilinmeyen kurulum); [] = tek kurulum; null = bilinmiyor. */
+  digerSurumler?: number[] | null;
 }
+/** Retirement isinin adimi (is ciktisi ucu `adim` parametresi). */
+export type RtIsAdim = 'onkontrol' | 'stop' | 'web' | 'delete_onkontrol' | 'delete' | 'rollback_onkontrol' | 'rollback';
+/** Hedefin bir AWX isi. `web`: `webSonuc` icindeki OZGUN sira (yalniz adim 'web'). `sunucuKapali`: isin
+ *  AWX sunucusu devre disi / bulunamiyor (cikti ancak Portal arsivinden); sunucu bilinmiyorsa alan yok. */
+export interface RtHedefIs {
+  adim: RtIsAdim; web?: number; jobId: number; durum: 'suruyor' | 'basarili' | 'basarisiz' | 'iptal' | 'bilinmiyor';
+  basladi: string | null; bitti: string | null; kaynak?: 'elle' | 'zamanlayici' | null; sunucuKapali?: boolean;
+}
+/** Is ciktisi (GET /:id/targets/:tid/is-ciktisi). `output` sunucuda MASKELI. `kaynak: 'arsiv'`: AWX sunucusu
+ *  kapali ya da is AWX'te yok; Portal arsivi (status null, bitti true). `kirpildi`: Portal sinirinda kesildi. */
+export interface RtIsCiktisi {
+  ok: true; kaynak: 'awx' | 'arsiv'; adim: RtIsAdim; web?: number; jobId: number; awxServerId: number | null; sunucuAdi: string | null;
+  status: string | null; bitti: boolean; output: string; kirpildi: boolean; started: string | null; finished: string | null; elapsed: number | null;
+  awxUrl?: string | null; arsivTarihi?: string | null; uyari?: string | null; jobExplanation?: string | null; resultTraceback?: string | null;
+}
+/** Ret: `kalici` true (HTTP 400/409) = yeniden denemek ise yaramaz; false (HTTP 424) = gecici, yeniden dene.
+ *  Kodlar: gecersiz | hedef_yok | is_yok | sunucu_belirsiz | template_uyusmuyor | awx_server_missing |
+ *  awx_job_missing | olculemedi | awx_okunamadi. */
+export interface RtIsCiktisiRed { ok: false; code: string; kalici: boolean; message: string; _httpStatus?: number }
 /** Silme / geri alma on kontrolunun kaydi (sunucu: stop-sonuc.onKontrolGorunum). */
 export interface RtOnKontrolKaydi {
   jobId: number | null; at: string | null;
@@ -218,6 +247,10 @@ export const retirementApi = {
     fetch(`${BASE}/${id}/targets/${tid}/delete-now`, json({ confirmApp })).then(safeJson),
   deleteNow: (id: number, confirmApp: string): Promise<{ ok: boolean; message?: string; oncekiTarih?: string | null; hedefSayisi?: number; pollSaniye?: number; record?: RtRecord }> =>
     fetch(`${BASE}/${id}/delete-now`, json({ confirmApp })).then(safeJson),
+  /** IS CIKTISI (salt okunur, yan etkisiz): istemci sunucu / is numarasi VERMEZ; sunucu hedefin kendi
+   *  kaydindan cozer. Is surerken yoklanir (bitti: true gelince durulur). */
+  isCiktisi: (id: number, tid: number, adim: RtIsAdim, web?: number, signal?: AbortSignal): Promise<RtIsCiktisi | RtIsCiktisiRed> =>
+    fetch(`${BASE}/${id}/targets/${tid}/is-ciktisi?adim=${encodeURIComponent(adim)}${web != null ? `&web=${web}` : ''}`, { signal }).then(safeJson),
   jobStatus: (id: number, tid: number, awxServerId: number, jobId: number): Promise<{ ok: boolean; status: string; output: string; result?: unknown; message?: string;
     /** server_hub_fix isleri (vhost plani): kapatilacak blok + RESULT satiri. */
     fixResult?: { line?: string; blok?: string[]; jk?: string[]; kip?: string; jkdeg?: string[] } | null }> =>

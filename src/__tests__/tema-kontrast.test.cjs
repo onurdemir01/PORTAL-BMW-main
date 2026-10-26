@@ -91,6 +91,18 @@ const METIN_CIFTLERI = [
   ['--text-muted', '--bg-surface', 'soluk metin kart ustunde'],
   ['--text-secondary', '--bg-surface', 'ikincil metin kart ustunde'],
   ['--accent', '--bg-surface', 'baglanti metni kart ustunde'],
+  // TK-ek (2026-10-26, Retirement ortak dili retirementStil.ts): server_hub TK7/TK8 kapsami disinda,
+  // tokenlar elle secildi; burada iki temada sayiyla kilitlenir.
+  ['--accent', '--accent-bg', 'aksan hap / cip metni kendi zemininde'],
+  ['--text-secondary', '--status-neutral-bg', 'notr hap metni kendi zemininde'],
+  ['--text-on-accent', '--status-danger', 'kirmizi dolu dugme metni (BTN_TEHLIKE)'],
+  ['--text-on-accent', '--status-success', 'yesil dolu dugme metni (BTN_BASARI)'],
+  // Retirement kayit ayrintisi / is ciktisi (2026-10-26): tablo basligi, kutu govdeleri, hata ozeti.
+  ['--text-secondary', '--bg-elevated', 'tablo basligi (TH_STIL)'],
+  ['--text-secondary', '--status-warning-bg', 'uyari kutusunda ikincil metin (in-place listesi / kontrol listesi notu)'],
+  ['--text-primary', '--status-warning-bg', 'uyari kutusu govde metni'],
+  ['--text-secondary', '--status-danger-bg', 'hata ozeti satir numarasi'],
+  ['--text-primary', '--status-danger-bg', 'hata kutusu / hata ozeti govde metni'],
 ];
 
 test('TK0 matematik dogru: siyah/beyaz 21:1, ayni renk 1:1, bilinen cift', () => {

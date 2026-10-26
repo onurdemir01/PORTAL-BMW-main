@@ -1015,6 +1015,7 @@ const TABLES = [
         result_text   NVARCHAR(1000) NULL,
         last_job_id   INT NULL,
         stopped_at    DATETIME2 NULL,
+        diger_surumler NVARCHAR(100) NULL,
         updated_at    DATETIME2 NOT NULL DEFAULT GETUTCDATE()
       )`,
   },
@@ -4522,6 +4523,14 @@ async function setupTables() {
       sql: `ALTER TABLE retirement_targets ADD rollback_onkontrol_json NVARCHAR(MAX) NULL`,
     },
     {
+      // IN-PLACE ISARETI (2026-10-26, kullanici: "ayni sunucuda JBoss 8 de kesfedilirse giris yapan kisiyi
+      // uyaralim ... hicbir sey engellemesin"). Kayit acilirken kesfin `digerSurumler`i JSON dizi olarak
+      // yazilir: [] tek kurulum, [8] ayni sunucuda JBoss 8 de var. NULL = alandan once acilmis kayit (bilinmiyor).
+      table: 'retirement_targets',
+      col: 'diger_surumler',
+      sql: `ALTER TABLE retirement_targets ADD diger_surumler NVARCHAR(100) NULL`,
+    },
+    {
       table: 'smart_tickets',
       col: 'cancel_note',
       sql: `ALTER TABLE smart_tickets ADD cancel_note NVARCHAR(1000) NULL`,
@@ -4642,6 +4651,9 @@ async function setupTables() {
     { name: 'IX_invhist_open', table: 'inventory_history', cols: 'table_name, valid_to' },
     { name: 'IX_invhist_at', table: 'inventory_history', cols: 'table_name, valid_from, valid_to' },
     { name: 'IX_invhistruns_started', table: 'inventory_history_runs', cols: 'started_at DESC' },
+    // Is gecmisi is numarasiyla okunur: Retirement kaydi (loadRecord, 4 sn'de bir /canli) hedeflerin isleri,
+    // ss/job-status sahiplik kontrolu (job_id + awx_server_id). Tabloda baska indeks yoktu (tam tarama).
+    { name: 'IX_ajh_job', table: 'ansible_job_history', cols: 'job_id, awx_server_id' },
   ];
   for (const { name, table, cols } of indexes) {
     try {

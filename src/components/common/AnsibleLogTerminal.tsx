@@ -27,6 +27,11 @@ type Props = {
   /** Verilirse başlık çubuğu bir sürükle-taşı tutamacı olur (bkz. JobTrackerBar.tsx —
    * kayan pencereyi başlıktan tutup taşımak için). Buton tıklamaları bundan etkilenmez. */
   onHeaderPointerDown?: (e: React.PointerEvent) => void;
+  /** Yeni çıktıda en alta kaydır (varsayılan true). `false` yalnız kullanıcının açık "Takibi durdur"
+   * seçimiyle verilir (Retirement iş çıktısı); diğer kullananlar değişmez. */
+  autoScroll?: boolean;
+  /** Verilirse durum pilinin metni bu olur (ör. "arşiv · durum bilinmiyor"); renk durumdan gelir. */
+  statusLabel?: string;
 };
 
 const RUNNING = new Set(["pending", "waiting", "running", ""]);
@@ -62,7 +67,7 @@ function statusMeta(status: string): TermStatus {
   }
 }
 
-const AnsibleLogTerminal: React.FC<Props> = ({ output, status, title = "ansible-output", elapsedSec, placeholder = "Konsol çıktısı bekleniyor…", className = "", size = "compact", onMinimize, onClose, onHeaderPointerDown }) => {
+const AnsibleLogTerminal: React.FC<Props> = ({ output, status, title = "ansible-output", elapsedSec, placeholder = "Konsol çıktısı bekleniyor…", className = "", size = "compact", onMinimize, onClose, onHeaderPointerDown, autoScroll = true, statusLabel }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const prevLenRef = useRef(0);
   const [flash, setFlash] = useState(false);
@@ -74,15 +79,21 @@ const AnsibleLogTerminal: React.FC<Props> = ({ output, status, title = "ansible-
 
   // Yeni çıktı geldiğinde: KOŞULSUZ en alta kaydır (kullanıcı yukarı kaydırmış olsa
   // bile) — canlı log takibinde her zaman son satır görünsün istendi, "yakınsa takip
-  // et" sezgisi burada istenmiyor.
+  // et" sezgisi burada istenmiyor. `autoScroll={false}` yalnız kullanıcının açık
+  // ‘Takibi durdur’ seçimiyle.
   useLayoutEffect(() => {
     if (output.length > prevLenRef.current) {
       const el = scrollRef.current;
-      if (el) el.scrollTop = el.scrollHeight;
+      if (el && autoScroll) el.scrollTop = el.scrollHeight;
       if (prevLenRef.current > 0) { setFlash(true); }
     }
     prevLenRef.current = output.length;
-  }, [output]);
+  }, [output, autoScroll]);
+
+  // Takip yeniden açılınca hemen sona in.
+  useLayoutEffect(() => {
+    if (autoScroll && scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  }, [autoScroll]);
 
   useEffect(() => {
     if (!flash) return;
@@ -115,33 +126,33 @@ const AnsibleLogTerminal: React.FC<Props> = ({ output, status, title = "ansible-
         className={`relative flex items-center gap-2 px-3 py-2 border-b border-white/[0.06] ${onHeaderPointerDown ? "cursor-move select-none" : ""}`}
         style={{ background: "var(--term-bg-header)" }}
       >
-        <span className="text-[11px] font-mono text-white/40 truncate" title={title}>{title}</span>
+        <span className="text-[11px] font-mono text-white/60 truncate" title={title}>{title}</span>
 
         <div className="ml-auto flex items-center gap-3">
-          {lineCount > 0 && <span className="text-[10px] font-mono text-white/30">{lineCount} satır</span>}
-          {typeof elapsedSec === "number" && running && <span className="text-[10px] font-mono text-white/30">{elapsedSec}sn</span>}
+          {lineCount > 0 && <span className="text-[10px] font-mono text-white/60">{lineCount} satır</span>}
+          {typeof elapsedSec === "number" && running && <span className="text-[10px] font-mono text-white/60">{elapsedSec}sn</span>}
           <span className="flex items-center gap-1.5 text-[10px] font-semibold" style={{ color: meta.color }}>
             <span
               className={`w-1.5 h-1.5 rounded-full ${running ? "animate-status-pulse" : ""}`}
               style={{ background: meta.dot, color: meta.dot }}
             />
-            {meta.label}
+            {statusLabel || meta.label}
           </span>
-          <button onClick={copy} onPointerDown={(e) => e.stopPropagation()} className="text-white/30 hover:text-white/70 transition-colors" title="Kopyala">
+          <button onClick={copy} onPointerDown={(e) => e.stopPropagation()} className="text-white/60 hover:text-white/85 transition-colors" title="Kopyala">
             {copied ? <CheckIcon className="w-3.5 h-3.5 text-emerald-400" /> : <ClipboardIcon className="w-3.5 h-3.5" />}
           </button>
           {output && (
-            <button onClick={download} onPointerDown={(e) => e.stopPropagation()} className="text-white/30 hover:text-white/70 transition-colors" title="İndir">
+            <button onClick={download} onPointerDown={(e) => e.stopPropagation()} className="text-white/60 hover:text-white/85 transition-colors" title="İndir">
               <ArrowDownTrayIcon className="w-3.5 h-3.5" />
             </button>
           )}
           {onMinimize && (
-            <button onClick={onMinimize} onPointerDown={(e) => e.stopPropagation()} className="text-white/30 hover:text-white/70 transition-colors" title="Küçült">
+            <button onClick={onMinimize} onPointerDown={(e) => e.stopPropagation()} className="text-white/60 hover:text-white/85 transition-colors" title="Küçült">
               <MinusIcon className="w-3.5 h-3.5" />
             </button>
           )}
           {onClose && (
-            <button onClick={onClose} onPointerDown={(e) => e.stopPropagation()} className="text-white/30 hover:text-white/70 transition-colors" title="Kapat">
+            <button onClick={onClose} onPointerDown={(e) => e.stopPropagation()} className="text-white/60 hover:text-white/85 transition-colors" title="Kapat">
               <XMarkIcon className="w-3.5 h-3.5" />
             </button>
           )}
@@ -168,7 +179,7 @@ const AnsibleLogTerminal: React.FC<Props> = ({ output, status, title = "ansible-
             {running && <span className="animate-caret" style={{ color: meta.color }}>▋</span>}
           </pre>
         ) : (
-          <div className="flex items-center gap-2 text-xs font-mono text-white/40 py-2">
+          <div className="flex items-center gap-2 text-xs font-mono text-white/60 py-2">
             {running && (
               <span className="inline-flex gap-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-white/40 animate-bounce" style={{ animationDelay: "0ms" }} />

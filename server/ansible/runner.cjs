@@ -1538,6 +1538,12 @@ async function getJobStatusOnServer(serverId, jobId, opts = null) {
     // Isin AWX job template'i (2026-10-04, nginx-migration job-status sahiplik kontrolu).
     // Alan yoksa / sayi degilse undefined: cagiran "OLCULEMEDI" der, "baska template" DEMEZ.
     templateId: Number.isInteger(data.job_template) && data.job_template > 0 ? data.job_template : undefined,
+    // Erken / parse hatasinda stdout BOS doner; sebep bu iki alandadir (2026-10-26, Retirement is ciktisi).
+    // HAM doner: ekrana giden yol maskeler (retirement/is-ciktisi.cjs maskele).
+    resultTraceback: data.result_traceback || '',
+    jobExplanation: data.job_explanation || '',
+    // Is bitse de AWX olaylari islerken stdout eksik olabilir (arsiv bunu bekler); alan yoksa undefined.
+    eventProcessingFinished: typeof data.event_processing_finished === 'boolean' ? data.event_processing_finished : undefined,
   };
 }
 
