@@ -38,6 +38,7 @@ const TEST_DIRS = [
   'server/nginx-migration/__tests__',
   'server/nginx-cis/__tests__',
   'server/nginx-console/__tests__',
+  'server/nginx-loadtest/__tests__',
   'server/server-hub/__tests__',
   'server/retirement/__tests__',
   'server/admin/__tests__',

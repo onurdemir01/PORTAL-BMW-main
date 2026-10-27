@@ -1,0 +1,1184 @@
+---
+
+- name: --- [Play] Nginx yuk testi - girdi kapisi ve hedefler ---
+  hosts: localhost
+  gather_facts: no
+  vars:
+    yt_re_islem: '^(on_kontrol|kosu|durdur)\Z'
+    yt_re_kosu_id: '^[0-9]{1,10}\Z'
+    yt_re_host: '^[A-Z0-9][A-Z0-9-]{1,30}\Z'
+    yt_re_nonprod_adi: '^GBNG[WX]A?[DTQ]'
+    yt_edu_hostlari: ['GBNGXT51']
+    yt_re_ipv4: '^((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\Z'
+    yt_re_ozel_ip: '^(0|127|169\.254|22[4-9]|2[3-5][0-9])\.'
+    yt_re_vhost: '^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*\Z'
+    yt_re_b64: '^[A-Za-z0-9+/]+={0,2}\Z'
+    yt_re_sha256: '^[0-9a-f]{64}\Z'
+    yt_re_hizlar: '^[0-9]{1,3}( [0-9]{1,3}){0,4}\Z'
+    yt_re_sayi: '^[0-9]{1,5}\Z'
+    yt_re_k6_yolu: '^/[A-Za-z0-9._/-]{1,200}\Z'
+    yt_re_ua: '^[a-z][a-z0-9-]{2,30}\Z'
+    yt_re_cikti_kok: '^/sw/BMW_PORTAL(_DEV)?(/[A-Za-z0-9._-]+)+\Z'
+    yt_re_baslik: '^#[\t -~]{0,200}\Z'
+    yt_re_satir: '^[0-9.]+\t[0-9]+\t[a-z]+\t[a-z]+\t/[A-Za-z0-9._~!$&''()*+,;=:@%/-]*\Z'
+    yt_re_kotu_yol: '\t//|/\.\.(/|\Z)|;'
+    yt_re_cr: '\r'
+    yt_betik_adlari: ['kos.sh', 'yuk_k6.js', 'cpu_kaydedici.sh', 'on_kontrol.sh', 'durdur.sh']
+  tasks:
+    - name: --- [Task] Girdi kapisi ---
+      block:
+        - name: --- [Task] Islem, kosu kimligi, hedef ve yuk makinesi (ad kurali, prod ve EDU yok) ---
+          ansible.builtin.assert:
+            that:
+              - (yuk_islem | default('') | string) is match(yt_re_islem)
+              - (yuk_run_id | default('') | string) is match(yt_re_kosu_id)
+              - (yuk_hedef_host | default('') | string) is match(yt_re_host)
+              - (yuk_yuk_host | default('') | string) is match(yt_re_host)
+              - (yuk_hedef_host | string) != (yuk_yuk_host | string)
+              - (yuk_hedef_host | string) is match(yt_re_nonprod_adi)
+              - (yuk_yuk_host | string) is match(yt_re_nonprod_adi)
+              - (yuk_hedef_host | string) not in yt_edu_hostlari
+              - (yuk_yuk_host | string) not in yt_edu_hostlari
+            fail_msg: "yuk_islem on_kontrol|kosu|durdur, yuk_run_id rakam, yuk_hedef_host ve yuk_yuk_host FARKLI ve ad kuralina gore DEV/TEST/QA (GBNG[WX][A][DTQ]..., EDU degil) olmali; hicbir sey yapilmadi."
+            quiet: true
+
+        - name: --- [Task] Kosu parametreleri (on kontrol ve kosu) ---
+          ansible.builtin.assert:
+            that:
+              - (yuk_hedef_ip | default('') | string) is match(yt_re_ipv4)
+              - not ((yuk_hedef_ip | string) is match(yt_re_ozel_ip))
+              - (yuk_host_basligi | default('') | string) is match(yt_re_vhost)
+              - (yuk_host_basligi | string | length) <= 253
+              - (yuk_sni | default('') | string) in ['0', '1']
+              - (yuk_senaryo_tur | default('') | string) in ['K', 'B']
+              - (yuk_senaryo_b64 | default('') | string) is match(yt_re_b64)
+              - ((yuk_senaryo_b64 | string | length) % 4) == 0
+              - (yuk_senaryo_b64 | string | length) <= 273080
+              - (yuk_senaryo_sha256 | default('') | string) is match(yt_re_sha256)
+              - (yuk_hizlar | default('') | string) is match(yt_re_hizlar)
+              - ((yuk_hizlar | string).split(' ') | map('int') | min) >= 1
+              - ((yuk_hizlar | string).split(' ') | map('int') | max) <= 450
+              - (yuk_tekrar | default('') | string) is match(yt_re_sayi)
+              - (yuk_tekrar | int) >= 1 and (yuk_tekrar | int) <= 3
+              - (yuk_kip | default('') | string) in ['yeni', 'ka']
+              - (yuk_ae | default('') | string) in ['br', 'gzip', 'identity']
+              - (yuk_isinma_sn | default('') | string) is match(yt_re_sayi)
+              - (yuk_isinma_sn | int) >= 5 and (yuk_isinma_sn | int) <= 60
+              - (yuk_sure_sn | default('') | string) is match(yt_re_sayi)
+              - (yuk_sure_sn | int) >= 30 and (yuk_sure_sn | int) <= 300
+              - (yuk_bosluk_sn | default('') | string) is match(yt_re_sayi)
+              - (yuk_bosluk_sn | int) >= 0 and (yuk_bosluk_sn | int) <= 120
+              - (yuk_bosta_bas_sn | default('') | string) is match(yt_re_sayi)
+              - (yuk_bosta_bas_sn | int) >= 30 and (yuk_bosta_bas_sn | int) <= 120
+              - (yuk_maxvu | default('') | string) is match(yt_re_sayi)
+              - (yuk_maxvu | int) >= 10 and (yuk_maxvu | int) <= 199
+              - (yuk_butce_sn | default('') | string) is match(yt_re_sayi)
+              - (yuk_butce_sn | int) <= 2700
+              - (yuk_butce_sn | int) >= ((yuk_bosta_bas_sn | int) + ((yuk_hizlar | string).split(' ') | length) * (yuk_tekrar | int) * ((yuk_isinma_sn | int) + (yuk_sure_sn | int) + (yuk_bosluk_sn | int)) + 120)
+              - (yuk_k6_yolu | default('') | string) is match(yt_re_k6_yolu)
+              - not ((yuk_k6_yolu | string) is search('[.][.]'))
+              - (yuk_ua_onek | default('') | string) is match(yt_re_ua)
+              - (yuk_cikti_kok | default('') | string) is match(yt_re_cikti_kok)
+              - not ((yuk_cikti_kok | string) is search('[.][.]'))
+            fail_msg: "kosu parametreleri sinir disi ya da bicimsiz (IPv4, vhost, sni, senaryo, hizlar 1..450 en cok 5, tekrar 1..3, isinma 5..60, sure 30..300, bosluk 0..120, bosta 30..120, maxvu 10..199, butce formul..2700, k6 yolu, UA oneki, /sw koku); hicbir sey yapilmadi."
+            quiet: true
+          when: (yuk_islem | default('')) != 'durdur'
+
+        - name: --- [Task] Senaryo cozulur ---
+          ansible.builtin.set_fact:
+            yt_tsv: "{{ yuk_senaryo_b64 | b64decode }}"
+          when: (yuk_islem | default('')) != 'durdur'
+
+        - name: --- [Task] Senaryo satirlari ---
+          ansible.builtin.set_fact:
+            yt_govde: "{{ (yt_tsv[:-1] if yt_tsv.endswith('\n') else yt_tsv).split('\n') }}"
+          when: (yuk_islem | default('')) != 'durdur'
+
+        - name: --- [Task] Senaryo veri satirlari (istege bagli tek baslik satiri haric) ---
+          ansible.builtin.set_fact:
+            yt_veri: "{{ yt_govde[1:] if ((yt_govde | length) > 0 and yt_govde[0].startswith('#')) else yt_govde }}"
+          when: (yuk_islem | default('')) != 'durdur'
+
+        - name: --- [Task] Senaryo her satiriyla yeniden denetlenir (beyaz liste, sorgu yok, sha256) ---
+          ansible.builtin.assert:
+            that:
+              - not (yt_tsv is search(yt_re_cr))
+              - (yt_tsv | length) <= 204800
+              - (yt_veri | length) >= 1
+              - (yt_veri | length) <= 400
+              - (yt_veri | reject('match', yt_re_satir) | list | length) == 0
+              - (yt_veri | select('search', yt_re_kotu_yol) | list | length) == 0
+              - (yt_govde | length) == (yt_veri | length) or (yt_govde[0] is match(yt_re_baslik))
+              - (yt_tsv | hash('sha256')) == (yuk_senaryo_sha256 | string)
+            fail_msg: "senaryo reddedildi: 1..400 veri satiri (5 SEKME kolonu, yol beyaz listede; ?, #, noktali virgul (ornegin ;jsessionid), ters bolu, // ile baslayan ya da .. parcali yol YOK), CR yok, en cok 200 KB ve sha256 yuk_senaryo_sha256 ile ayni olmali; hicbir sey yapilmadi."
+            quiet: true
+          when: (yuk_islem | default('')) != 'durdur'
+
+        - name: --- [Task] Betiklerin kaynak sha1'i ---
+          ansible.builtin.stat:
+            path: "{{ playbook_dir }}/files/{{ item }}"
+            checksum_algorithm: sha1
+          loop: "{{ yt_betik_adlari }}"
+          register: yt_kaynak_stat
+
+        - name: --- [Task] Kaynak sha1 tablosu ---
+          ansible.builtin.set_fact:
+            yt_kaynak_sha1: "{{ (yt_kaynak_sha1 | default({})) | combine({item.item: (item.stat.checksum | default(''))}) }}"
+          loop: "{{ yt_kaynak_stat.results }}"
+          loop_control:
+            label: "{{ item.item }}"
+
+        - name: --- [Task] Betiklerin hepsi var ---
+          ansible.builtin.assert:
+            that:
+              - (yt_kaynak_sha1 | dict2items | selectattr('value', 'equalto', '') | list | length) == 0
+              - (yt_kaynak_sha1 | length) == (yt_betik_adlari | length)
+            fail_msg: "files/ altindaki betiklerden biri yok (AWX proje kopyasi eksik); hicbir sey yapilmadi."
+            quiet: true
+
+        - name: --- [Task] Kontrol dugumunde gecici toplama dizini ---
+          ansible.builtin.tempfile:
+            state: directory
+            prefix: portal_yuktesti_
+          register: yt_ctl
+          when: (yuk_islem | default('')) == 'kosu'
+
+        - name: --- [Task] Toplama dizini ---
+          ansible.builtin.set_fact:
+            yt_ctl_dizin: "{{ yt_ctl.path }}"
+          when: (yuk_islem | default('')) == 'kosu'
+
+        - name: --- [Task] Hedef nginx sunucusu (AWX limit KULLANILMAZ) ---
+          ansible.builtin.add_host:
+            name: "{{ yuk_hedef_host }}"
+            groups: yuk_hedef
+          changed_when: false
+
+        - name: --- [Task] Yuk makinesi (AWX limit KULLANILMAZ) ---
+          ansible.builtin.add_host:
+            name: "{{ yuk_yuk_host }}"
+            groups: yuk_makine
+          changed_when: false
+
+      rescue:
+        - name: --- [Task] Girdi reddedildi, hicbir sey YAPILMAZ ---
+          ansible.builtin.set_fact:
+            yt_girdi_hatasi: >-
+              {{ ((ansible_failed_result.results | default([]) | selectattr('failed', 'defined') | selectattr('failed') | map(attribute='msg') | list | first)
+                  | default(ansible_failed_result.msg | default('girdi dogrulanamadi'))) | string | truncate(300) }}
+
+        - name: --- [Task] Gecici toplama dizini kaldirilir ---
+          ansible.builtin.file:
+            path: "{{ yt_ctl.path }}"
+            state: absent
+          changed_when: false
+          failed_when: false
+          when: (yt_ctl.path | default('') | length) > 0
+
+- name: --- [Play] Nginx yuk testi - hedef sunucu (on kontrol ya da CPU kaydedici baslat) ---
+  hosts: yuk_hedef
+  gather_facts: no
+  become: true
+  become_method: dzdo
+  become_user: www
+  ignore_unreachable: true
+  vars:
+    ansible_pipelining: true
+  tasks:
+    - name: --- [Task] Hedef ---
+      block:
+        - name: --- [Task] www ev dizini ---
+          become: false
+          ansible.builtin.getent:
+            database: passwd
+            key: www
+
+        - name: --- [Task] Kosu dizini ---
+          ansible.builtin.set_fact:
+            yt_ust: "{{ ansible_facts.getent_passwd.www[4] }}/.portal_yuktesti"
+            yt_dizin: "{{ ansible_facts.getent_passwd.www[4] }}/.portal_yuktesti/{{ yuk_run_id }}"
+
+        - name: --- [Task] Kosu dizini bicimi ---
+          ansible.builtin.assert:
+            that:
+              - yt_dizin is match('^/[A-Za-z0-9._/-]+/[.]portal_yuktesti/[0-9]{1,10}$')
+            fail_msg: "www ev dizini beklenmeyen bicimde: {{ yt_ust | truncate(120) }}"
+            quiet: true
+
+        - name: --- [Task] Hazirlik ---
+          when: yuk_islem in ['on_kontrol', 'kosu']
+          block:
+            - name: --- [Task] Kosu dizini (0700, www) ---
+              ansible.builtin.file:
+                path: "{{ item }}"
+                state: directory
+                mode: '0700'
+              loop:
+                - "{{ yt_ust }}"
+                - "{{ yt_dizin }}"
+
+            - name: --- [Task] www uid'i (kopya sahibi kapisi) ---
+              ansible.builtin.command:
+                cmd: id -u
+              register: yt_h_id
+              changed_when: false
+
+            - name: --- [Task] Betikler kosu dizinine ---
+              ansible.builtin.copy:
+                src: "files/{{ item }}"
+                dest: "{{ yt_dizin }}/{{ item }}"
+                mode: '0600'
+              loop: "{{ ['on_kontrol.sh'] if yuk_islem == 'on_kontrol' else ['cpu_kaydedici.sh'] }}"
+              register: yt_h_kopya
+              changed_when: false
+              ignore_errors: true
+
+            - name: --- [Task] Kopyalarin dogrulanmasi ---
+              ansible.builtin.stat:
+                path: "{{ yt_dizin }}/{{ item.item }}"
+                checksum_algorithm: sha1
+                get_checksum: true
+              loop: "{{ yt_h_kopya.results | default([]) }}"
+              loop_control:
+                label: "{{ item.item }}"
+              register: yt_h_kstat
+              failed_when: false
+
+            - name: --- [Task] Kosu dizininin dogrulanmasi ---
+              ansible.builtin.stat:
+                path: "{{ yt_dizin }}"
+              register: yt_h_dstat
+              failed_when: false
+
+            - name: --- [Task] Kopya kapisi baslangici ---
+              ansible.builtin.set_fact:
+                yt_h_red: []
+
+            - name: --- [Task] Kopya kapisi (sha1, sahip uid, duzenli dosya, grup/diger yazamaz) ---
+              ansible.builtin.set_fact:
+                yt_h_red: "{{ yt_h_red + [item.item.item] }}"
+              loop: "{{ yt_h_kstat.results | default([]) }}"
+              loop_control:
+                label: "{{ item.item.item }}"
+              when: >-
+                not (((item.stat.checksum | default('')) == (hostvars['localhost'].yt_kaynak_sha1[item.item.item] | default('-')))
+                     and ((item.stat.uid | default(-1) | string) == (yt_h_id.stdout | default('') | trim))
+                     and (item.stat.isreg | default(false))
+                     and not (item.stat.wgrp | default(true))
+                     and not (item.stat.woth | default(true)))
+
+            - name: --- [Task] Kopya kapisi sonucu ---
+              ansible.builtin.set_fact:
+                yt_h_kapi: >-
+                  {{ (yt_h_kopya is not failed)
+                     and ((yt_h_kstat.results | default([]) | length) >= 1)
+                     and ((yt_h_red | length) == 0)
+                     and (yt_h_dstat.stat.isdir | default(false))
+                     and ((yt_h_dstat.stat.uid | default(-1) | string) == (yt_h_id.stdout | default('') | trim))
+                     and ((yt_h_dstat.stat.mode | default('')) == '0700') }}
+
+            - name: --- [Task] Kopya dogrulanamadiysa DUR ---
+              ansible.builtin.fail:
+                msg: "betik kopyasi dogrulanamadi (kopya {{ 'basarisiz' if (yt_h_kopya is failed) else 'ok' }}, reddedilen {{ yt_h_red | join(',') }}, dizin sahibi/izni {{ yt_h_dstat.stat.uid | default('?') }}/{{ yt_h_dstat.stat.mode | default('?') }}); hicbir sey calistirilmadi"
+              when: not (yt_h_kapi | bool)
+
+        - name: --- [Task] On kontrol (hedef) ---
+          when: yuk_islem == 'on_kontrol'
+          block:
+            - name: --- [Task] IP yerel mi, server_name, nginx master, /web_log, log bicimi (yuk YOK) ---
+              ansible.builtin.command:
+                argv:
+                  - timeout
+                  - -k
+                  - '10'
+                  - '120'
+                  - env
+                  - "HEDEF_IP={{ yuk_hedef_ip }}"
+                  - "HOST_BASLIGI={{ yuk_host_basligi }}"
+                  - bash
+                  - "{{ yt_dizin }}/on_kontrol.sh"
+                  - hedef
+                chdir: "{{ yt_dizin }}"
+              register: yt_hk_run
+              changed_when: false
+              failed_when: false
+
+            - name: --- [Task] On kontrol ciktisi (hedef) ---
+              ansible.builtin.debug:
+                msg: "{{ yt_hk_run.stdout_lines | default([]) }}"
+
+            - name: --- [Task] On kontrol satirlari baslangici ---
+              ansible.builtin.set_fact:
+                yt_hk: {}
+
+            - name: --- [Task] On kontrol satirlari (anahtar, deger) ---
+              ansible.builtin.set_fact:
+                yt_hk: "{{ yt_hk | combine({item.split('\t')[0]: (item.split('\t')[1] | default(''))}) }}"
+              loop: "{{ yt_hk_run.stdout_lines | default([]) | select('match', '^[a-z_0-9]+\t') | list }}"
+
+            - name: --- [Task] On kontrol sonuc satiri (hedef) ---
+              ansible.builtin.set_fact:
+                yt_hk_sonuc: "{{ (yt_hk_run.stdout_lines | default([]) | select('match', '^SONUC\t') | list | last | default('SONUC\tFAIL\tbetik sonuc satiri basmadi (rc ' ~ (yt_hk_run.rc | default('?')) ~ ')')).split('\t') }}"
+
+        - name: --- [Task] CPU kaydedici (hedef) ---
+          when: yuk_islem == 'kosu'
+          block:
+            - name: --- [Task] Kaydedici ayrik baslatilir (setsid nohup timeout; pid dosyasi) ---
+              ansible.builtin.shell:
+                cmd: "setsid nohup timeout -k 300 {{ (yuk_butce_sn | int) + 120 }} env SURE={{ (yuk_butce_sn | int) + 60 }} BOSTA_BAS={{ yuk_bosta_bas_sn | int }} UA_ONEK={{ yuk_ua_onek | quote }} SONUC={{ yt_dizin | quote }} bash {{ (yt_dizin ~ '/cpu_kaydedici.sh') | quote }} R{{ yuk_run_id | int }} 'portal run {{ yuk_run_id | int }}' > {{ (yt_dizin ~ '/kaydedici.out') | quote }} 2>&1 < /dev/null & echo $! > {{ (yt_dizin ~ '/kaydedici.pid') | quote }}"
+                chdir: "{{ yt_dizin }}"
+              changed_when: false
+
+            - name: --- [Task] Kaydedici baslama zamani ---
+              ansible.builtin.set_fact:
+                yt_kaydedici_basladi: true
+                yt_kaydedici_bas: "{{ now().timestamp() | int }}"
+
+            - name: --- [Task] Bos ornek bekleniyor (YUKU SIMDI BASLATIN ya da HATA) ---
+              ansible.builtin.wait_for:
+                path: "{{ yt_dizin }}/kaydedici.out"
+                search_regex: '(?P<hazir>YUKU SIMDI BASLATIN)|(?P<hata>^HATA: .*$|^(?:/bin/sh: line [0-9]+: )?(?:setsid|nohup|timeout|env|bash): .*$)'
+                timeout: "{{ (yuk_bosta_bas_sn | int) + 90 }}"
+              register: yt_hazir_bekle
+              failed_when: false
+
+            - name: --- [Task] Kaydedici hazir mi ---
+              ansible.builtin.set_fact:
+                yt_kaydedici_hazir: "{{ ((yt_hazir_bekle.match_groupdict | default({})).hazir | default('', true) | length) > 0 }}"
+                yt_kaydedici_mesaj: "{{ ((yt_hazir_bekle.match_groupdict | default({})).hata | default('', true)) or (yt_hazir_bekle.msg | default('')) }}"
+
+        - name: --- [Task] Hedef play tamam ---
+          ansible.builtin.set_fact:
+            yt_p2_bitti: true
+
+      rescue:
+        - name: --- [Task] Beklenmeyen hata (hedef) ---
+          ansible.builtin.set_fact:
+            yt_p2_hata: "{{ ansible_failed_result.msg | default('beklenmeyen hata') | string | truncate(300) }}"
+
+- name: --- [Play] Nginx yuk testi - yuk makinesi (k6 on kontrolu ya da kos.sh) ---
+  hosts: yuk_makine
+  gather_facts: no
+  become: true
+  become_method: dzdo
+  become_user: www
+  ignore_unreachable: true
+  vars:
+    ansible_pipelining: true
+  tasks:
+    - name: --- [Task] Yuk makinesi ---
+      block:
+        - name: --- [Task] www ev dizini ---
+          become: false
+          ansible.builtin.getent:
+            database: passwd
+            key: www
+
+        - name: --- [Task] Kosu dizini ---
+          ansible.builtin.set_fact:
+            yt_ust: "{{ ansible_facts.getent_passwd.www[4] }}/.portal_yuktesti"
+            yt_dizin: "{{ ansible_facts.getent_passwd.www[4] }}/.portal_yuktesti/{{ yuk_run_id }}"
+
+        - name: --- [Task] Kosu dizini bicimi ---
+          ansible.builtin.assert:
+            that:
+              - yt_dizin is match('^/[A-Za-z0-9._/-]+/[.]portal_yuktesti/[0-9]{1,10}$')
+            fail_msg: "www ev dizini beklenmeyen bicimde: {{ yt_ust | truncate(120) }}"
+            quiet: true
+
+        - name: --- [Task] Hazirlik ---
+          when: >-
+            (yuk_islem == 'on_kontrol')
+            or (yuk_islem == 'kosu' and (hostvars[yuk_hedef_host].yt_kaydedici_hazir | default(false) | bool))
+          block:
+            - name: --- [Task] Kosu dizinleri (0700, www) ---
+              ansible.builtin.file:
+                path: "{{ item }}"
+                state: directory
+                mode: '0700'
+              loop:
+                - "{{ yt_ust }}"
+                - "{{ yt_dizin }}"
+                - "{{ yt_dizin }}/senaryo"
+                - "{{ yt_dizin }}/sonuc"
+
+            - name: --- [Task] www uid'i (kopya sahibi kapisi) ---
+              ansible.builtin.command:
+                cmd: id -u
+              register: yt_y_id
+              changed_when: false
+
+            - name: --- [Task] Betikler kosu dizinine ---
+              ansible.builtin.copy:
+                src: "files/{{ item }}"
+                dest: "{{ yt_dizin }}/{{ item }}"
+                mode: '0600'
+              loop: "{{ ['on_kontrol.sh'] if yuk_islem == 'on_kontrol' else ['kos.sh', 'yuk_k6.js'] }}"
+              register: yt_y_kopya
+              changed_when: false
+              ignore_errors: true
+
+            - name: --- [Task] Senaryo (yalniz yol listesi) kosu dizinine ---
+              ansible.builtin.copy:
+                content: "{{ hostvars['localhost'].yt_tsv }}"
+                dest: "{{ yt_dizin }}/senaryo/{{ yuk_senaryo_tur }}.tsv"
+                mode: '0600'
+              register: yt_y_senaryo
+              changed_when: false
+              ignore_errors: true
+
+            - name: --- [Task] Kopyalarin dogrulanmasi ---
+              ansible.builtin.stat:
+                path: "{{ yt_dizin }}/{{ item.item }}"
+                checksum_algorithm: sha1
+                get_checksum: true
+              loop: "{{ yt_y_kopya.results | default([]) }}"
+              loop_control:
+                label: "{{ item.item }}"
+              register: yt_y_kstat
+              failed_when: false
+
+            - name: --- [Task] Senaryo kopyasinin dogrulanmasi (sha256) ---
+              ansible.builtin.stat:
+                path: "{{ yt_dizin }}/senaryo/{{ yuk_senaryo_tur }}.tsv"
+                checksum_algorithm: sha256
+                get_checksum: true
+              register: yt_y_sstat
+              failed_when: false
+
+            - name: --- [Task] Kosu dizininin dogrulanmasi ---
+              ansible.builtin.stat:
+                path: "{{ yt_dizin }}"
+              register: yt_y_dstat
+              failed_when: false
+
+            - name: --- [Task] Kopya kapisi baslangici ---
+              ansible.builtin.set_fact:
+                yt_y_red: []
+
+            - name: --- [Task] Kopya kapisi (sha1, sahip uid, duzenli dosya, grup/diger yazamaz) ---
+              ansible.builtin.set_fact:
+                yt_y_red: "{{ yt_y_red + [item.item.item] }}"
+              loop: "{{ yt_y_kstat.results | default([]) }}"
+              loop_control:
+                label: "{{ item.item.item }}"
+              when: >-
+                not (((item.stat.checksum | default('')) == (hostvars['localhost'].yt_kaynak_sha1[item.item.item] | default('-')))
+                     and ((item.stat.uid | default(-1) | string) == (yt_y_id.stdout | default('') | trim))
+                     and (item.stat.isreg | default(false))
+                     and not (item.stat.wgrp | default(true))
+                     and not (item.stat.woth | default(true)))
+
+            - name: --- [Task] Kopya kapisi sonucu ---
+              ansible.builtin.set_fact:
+                yt_y_kapi: >-
+                  {{ (yt_y_kopya is not failed)
+                     and (yt_y_senaryo is not failed)
+                     and ((yt_y_kstat.results | default([]) | length) >= 1)
+                     and ((yt_y_red | length) == 0)
+                     and ((yt_y_sstat.stat.checksum | default('')) == (yuk_senaryo_sha256 | string))
+                     and ((yt_y_sstat.stat.uid | default(-1) | string) == (yt_y_id.stdout | default('') | trim))
+                     and (yt_y_dstat.stat.isdir | default(false))
+                     and ((yt_y_dstat.stat.uid | default(-1) | string) == (yt_y_id.stdout | default('') | trim))
+                     and ((yt_y_dstat.stat.mode | default('')) == '0700') }}
+
+            - name: --- [Task] Kopya dogrulanamadiysa DUR ---
+              ansible.builtin.fail:
+                msg: "betik/senaryo kopyasi dogrulanamadi (kopya {{ 'basarisiz' if (yt_y_kopya is failed or yt_y_senaryo is failed) else 'ok' }}, reddedilen {{ yt_y_red | join(',') }}, senaryo sha256 {{ 'esit' if ((yt_y_sstat.stat.checksum | default('')) == (yuk_senaryo_sha256 | string)) else 'FARKLI' }}, dizin sahibi/izni {{ yt_y_dstat.stat.uid | default('?') }}/{{ yt_y_dstat.stat.mode | default('?') }}); hicbir sey calistirilmadi"
+              when: not (yt_y_kapi | bool)
+
+        - name: --- [Task] On kontrol (yuk makinesi) ---
+          when: yuk_islem == 'on_kontrol'
+          block:
+            - name: --- [Task] k6 ikilisi (var mi, sha256) ---
+              ansible.builtin.stat:
+                path: "{{ yuk_k6_yolu }}"
+                checksum_algorithm: sha256
+                get_checksum: true
+              register: yt_k6_stat
+              failed_when: false
+
+            - name: --- [Task] k6 surumu ---
+              ansible.builtin.command:
+                argv:
+                  - timeout
+                  - '30'
+                  - "{{ yuk_k6_yolu }}"
+                  - version
+              register: yt_k6_surum_run
+              changed_when: false
+              failed_when: false
+              when: (yt_k6_stat.stat.isreg | default(false)) and (yt_k6_stat.stat.executable | default(false))
+
+            - name: --- [Task] k6 ozeti ---
+              ansible.builtin.set_fact:
+                yt_k6:
+                  var: "{{ (yt_k6_stat.stat.isreg | default(false)) and (yt_k6_stat.stat.executable | default(false)) and ((yt_k6_surum_run.rc | default(1)) == 0) }}"
+                  surum: "{{ (yt_k6_surum_run.stdout_lines | default([]) | first | default('') | truncate(120)) if ((yt_k6_surum_run.rc | default(1)) == 0) else '' }}"
+                  sha256: "{{ yt_k6_stat.stat.checksum | default('') if (yt_k6_stat.stat.isreg | default(false)) else '' }}"
+
+            - name: --- [Task] Senaryodaki her tekil yol icin TEK HTTP/1.1 istegi (cerezsiz, vekilsiz) ---
+              ansible.builtin.command:
+                argv:
+                  - timeout
+                  - -k
+                  - '10'
+                  - '600'
+                  - env
+                  - "HEDEF_IP={{ yuk_hedef_ip }}"
+                  - "HOST_BASLIGI={{ yuk_host_basligi }}"
+                  - "SNI={{ yuk_sni }}"
+                  - "SENARYO={{ yt_dizin }}/senaryo/{{ yuk_senaryo_tur }}.tsv"
+                  - "UA_ONEK={{ yuk_ua_onek }}"
+                  - bash
+                  - "{{ yt_dizin }}/on_kontrol.sh"
+                  - yollar
+                chdir: "{{ yt_dizin }}"
+              register: yt_yk_run
+              changed_when: false
+              failed_when: false
+              when: ((hostvars[yuk_hedef_host].yt_hk | default({})).ip_yerel | default('-')) == '1'
+
+            - name: --- [Task] On kontrol ciktisi (yuk makinesi) ---
+              ansible.builtin.debug:
+                msg: "{{ yt_yk_run.stdout_lines | default([]) }}"
+
+            - name: --- [Task] On kontrol satirlari baslangici ---
+              ansible.builtin.set_fact:
+                yt_yk: {}
+                yt_yk_hatalar: []
+
+            - name: --- [Task] On kontrol satirlari (anahtar, deger) ---
+              ansible.builtin.set_fact:
+                yt_yk: "{{ yt_yk | combine({item.split('\t')[0]: (item.split('\t')[1] | default(''))}) }}"
+              loop: "{{ yt_yk_run.stdout_lines | default([]) | select('match', '^[a-z_0-9]+\t') | list }}"
+
+            - name: --- [Task] 200 donmeyen ilk yollar ---
+              ansible.builtin.set_fact:
+                yt_yk_hatalar: "{{ yt_yk_hatalar + [{'yol': (item.split('\t')[2] | default('')), 'status': (item.split('\t')[1] | default(''))}] }}"
+              loop: "{{ (yt_yk_run.stdout_lines | default([]) | select('match', '^HATA\t') | list)[:20] }}"
+
+            - name: --- [Task] On kontrol ozet ve sonuc satiri (yuk makinesi) ---
+              ansible.builtin.set_fact:
+                yt_yk_ozet: "{{ (yt_yk_run.stdout_lines | default([]) | select('match', '^OZET\t') | list | last | default('')).split('\t') }}"
+                yt_yk_sonuc: "{{ ['SONUC', 'FAIL', 'hedef IP hedefte yerel degil ya da olculemedi; istek gonderilmedi'] if (yt_yk_run is skipped) else (yt_yk_run.stdout_lines | default([]) | select('match', '^SONUC\t') | list | last | default('SONUC\tFAIL\tbetik sonuc satiri basmadi (rc ' ~ (yt_yk_run.rc | default('?')) ~ ')')).split('\t') }}"
+
+        - name: --- [Task] Yuk kosusu (kos.sh + k6) ---
+          when: yuk_islem == 'kosu' and (hostvars[yuk_hedef_host].yt_kaydedici_hazir | default(false) | bool)
+          block:
+            - name: --- [Task] Kosu baslar ---
+              ansible.builtin.set_fact:
+                yt_kos_basladi: true
+
+            - name: --- [Task] kos.sh (timeout ile sinirli; async + poll 15) ---
+              ansible.builtin.command:
+                argv:
+                  - timeout
+                  - -k
+                  - '30'
+                  - "{{ yuk_butce_sn | int }}"
+                  - env
+                  - -u
+                  - LIMIT_MUAF
+                  - "HEDEF=https://{{ yuk_hedef_ip }}"
+                  - "HOST_BASLIGI={{ yuk_host_basligi }}"
+                  - "SNI={{ yuk_sni }}"
+                  - "HIZLAR={{ yuk_hizlar }}"
+                  - "TEKRAR={{ yuk_tekrar | int }}"
+                  - "KIP={{ yuk_kip }}"
+                  - "AE={{ yuk_ae }}"
+                  - "ISINMA={{ yuk_isinma_sn | int }}s"
+                  - "SURE={{ yuk_sure_sn | int }}s"
+                  - "BOSLUK={{ yuk_bosluk_sn | int }}"
+                  - "MAXVU={{ yuk_maxvu | int }}"
+                  - "K6={{ yuk_k6_yolu }}"
+                  - "UA_ONEK={{ yuk_ua_onek }}"
+                  - "SENARYO_DIZIN={{ yt_dizin }}/senaryo"
+                  - "SONUC={{ yt_dizin }}/sonuc"
+                  - bash
+                  - "{{ yt_dizin }}/kos.sh"
+                  - "R{{ yuk_run_id | int }}"
+                  - "{{ yuk_senaryo_tur }}"
+                chdir: "{{ yt_dizin }}"
+              register: yt_kos_run
+              changed_when: false
+              failed_when: false
+              async: "{{ (yuk_butce_sn | int) + 300 }}"
+              poll: 15
+
+            - name: --- [Task] kos.sh ciktisi ---
+              ansible.builtin.debug:
+                msg: "{{ yt_kos_run.stdout_lines | default([]) }}"
+
+            - name: --- [Task] kos.sh sonucu ---
+              ansible.builtin.set_fact:
+                yt_kos_rc: "{{ yt_kos_run.rc | default(-1) | int }}"
+                yt_kos_dur: "{{ (yt_kos_run.stdout_lines | default([]) | select('match', '^(DUR|HATA): ') | list | last | default('')) | truncate(300) }}"
+                yt_kos_hata: "{{ (yt_kos_run.stderr_lines | default([]) | select('match', '^HATA: ') | list | last | default('')) | truncate(300) }}"
+
+        - name: --- [Task] Yuk makinesi play tamam ---
+          ansible.builtin.set_fact:
+            yt_p3_bitti: true
+
+      rescue:
+        - name: --- [Task] Beklenmeyen hata (yuk makinesi) ---
+          ansible.builtin.set_fact:
+            yt_p3_hata: "{{ ansible_failed_result.msg | default('beklenmeyen hata') | string | truncate(300) }}"
+
+- name: --- [Play] Nginx yuk testi - CPU kaydedici durdurulur (TERM) ---
+  hosts: yuk_hedef
+  gather_facts: no
+  become: true
+  become_method: dzdo
+  become_user: www
+  ignore_unreachable: true
+  vars:
+    ansible_pipelining: true
+  tasks:
+    - name: --- [Task] Kaydediciyi durdur ---
+      when: yuk_islem == 'kosu' and (yt_kaydedici_basladi | default(false) | bool)
+      block:
+        - name: --- [Task] Kaydedici pid dosyasi ---
+          ansible.builtin.slurp:
+            src: "{{ yt_dizin }}/kaydedici.pid"
+          register: yt_kpid_raw
+          failed_when: false
+
+        - name: --- [Task] Kaydedici pid ---
+          ansible.builtin.set_fact:
+            yt_kpid: "{{ (yt_kpid_raw.content | b64decode | trim) if (yt_kpid_raw.content is defined) else '' }}"
+
+        - name: --- [Task] Surecin komut satiri (pid yeniden kullanilmis olabilir) ---
+          ansible.builtin.slurp:
+            src: "/proc/{{ yt_kpid }}/cmdline"
+          register: yt_kcmd
+          failed_when: false
+          when: yt_kpid is match('^[0-9]{1,10}$')
+
+        - name: --- [Task] Kaydedici hala calisiyor mu ---
+          ansible.builtin.set_fact:
+            yt_kcanli: "{{ (yt_kcmd.content is defined) and ((yt_dizin ~ '/cpu_kaydedici.sh') in (yt_kcmd.content | b64decode)) }}"
+
+        - name: --- [Task] Kaydediciye TERM (trap bitir; bilgi_*.txt yazilir) ---
+          ansible.builtin.command:
+            argv:
+              - kill
+              - -TERM
+              - "{{ yt_kpid }}"
+          changed_when: false
+          failed_when: false
+          when: yt_kcanli | bool
+
+        - name: --- [Task] Kaydedici bitene dek beklenir (en cok 290 sn) ---
+          ansible.builtin.wait_for:
+            path: "/proc/{{ yt_kpid }}"
+            state: absent
+            timeout: 290
+          register: yt_kbekle
+          failed_when: false
+          when: yt_kcanli | bool
+
+        - name: --- [Task] Kaydedici ozet dosyasi (bilgi_*.txt) ---
+          ansible.builtin.find:
+            paths: "{{ yt_dizin }}/R{{ yuk_run_id | int }}"
+            patterns: 'bilgi_*.txt'
+          register: yt_kbilgi
+          failed_when: false
+
+        - name: --- [Task] Kaydedici ciktisi ---
+          ansible.builtin.slurp:
+            src: "{{ yt_dizin }}/kaydedici.out"
+          register: yt_kout
+          failed_when: false
+
+        - name: --- [Task] Kaydedici ciktisi (son satirlar) ---
+          ansible.builtin.debug:
+            msg: "{{ (yt_kout.content | default('') | b64decode).split('\n')[-15:] }}"
+
+        - name: --- [Task] Kaydedici sonucu ---
+          ansible.builtin.set_fact:
+            yt_kaydedici_rc: "{{ 0 if ((yt_kbilgi.matched | default(0)) > 0) else (2 if ('HATA: ' in (yt_kout.content | default('') | b64decode)) else -1) }}"
+            yt_kaydedici_durdu: "{{ not (yt_kcanli | bool) or ((yt_kbekle.state | default('')) == 'absent') }}"
+
+        - name: --- [Task] Test log satirlari sikistirilir (log_*.tsv -> .gz) ---
+          ansible.builtin.find:
+            paths: "{{ yt_dizin }}/R{{ yuk_run_id | int }}"
+            patterns: 'log_*.tsv'
+          register: yt_klog
+          failed_when: false
+          when: yt_kaydedici_durdu | bool
+
+        - name: --- [Task] gzip ---
+          ansible.builtin.command:
+            argv:
+              - gzip
+              - -f
+              - "{{ item.path }}"
+          loop: "{{ yt_klog.files | default([]) }}"
+          loop_control:
+            label: "{{ item.path | basename }}"
+          changed_when: false
+          when: yt_kaydedici_durdu | bool
+
+        - name: --- [Task] Kaydedici durdurma tamam ---
+          ansible.builtin.set_fact:
+            yt_p4_bitti: true
+
+      rescue:
+        - name: --- [Task] Beklenmeyen hata (kaydedici durdurma) ---
+          ansible.builtin.set_fact:
+            yt_p4_hata: "{{ ansible_failed_result.msg | default('beklenmeyen hata') | string | truncate(300) }}"
+
+- name: --- [Play] Nginx yuk testi - sonuc dosyalari kontrol dugumune ---
+  hosts: yuk_hedef:yuk_makine
+  gather_facts: no
+  become: true
+  become_method: dzdo
+  become_user: www
+  ignore_unreachable: true
+  vars:
+    ansible_pipelining: true
+  tasks:
+    - name: --- [Task] Toplama ---
+      when: >-
+        yuk_islem == 'kosu'
+        and (hostvars['localhost'].yt_ctl_dizin is defined)
+        and (hostvars[yuk_yuk_host].yt_kos_basladi | default(false) | bool)
+        and (yt_dizin is defined)
+      block:
+        - name: --- [Task] Sonuc dizini ---
+          ansible.builtin.set_fact:
+            yt_sonuc_dizini: "{{ yt_dizin ~ ('/R' if (inventory_hostname in groups['yuk_hedef']) else '/sonuc/R') ~ (yuk_run_id | int) }}"
+
+        - name: --- [Task] Sonuc dosyalari ---
+          ansible.builtin.find:
+            paths: "{{ yt_sonuc_dizini }}"
+            file_type: file
+          register: yt_sonuc_bul
+
+        - name: --- [Task] Boyut siniri (Portal okuyucusu en cok 200 MiB) ---
+          ansible.builtin.assert:
+            that:
+              - (yt_sonuc_bul.files | map(attribute='size') | sum) <= 209715200
+            fail_msg: "sonuc dosyalari 200 MiB'tan buyuk ({{ yt_sonuc_bul.files | map(attribute='size') | sum }} bayt); toplanmadi"
+            quiet: true
+
+        - name: --- [Task] Dosyalar kontrol dugumune (duz) ---
+          ansible.builtin.fetch:
+            src: "{{ item.path }}"
+            dest: "{{ hostvars['localhost'].yt_ctl_dizin }}/"
+            flat: true
+          loop: "{{ yt_sonuc_bul.files }}"
+          loop_control:
+            label: "{{ item.path | basename }}"
+
+        - name: --- [Task] Toplanan dosyalar ---
+          ansible.builtin.set_fact:
+            yt_toplanan: "{{ yt_sonuc_bul.files | map(attribute='path') | map('basename') | list }}"
+            yt_p5_bitti: true
+
+      rescue:
+        - name: --- [Task] Beklenmeyen hata (toplama) ---
+          ansible.builtin.set_fact:
+            yt_p5_hata: "{{ ansible_failed_result.msg | default('beklenmeyen hata') | string | truncate(300) }}"
+
+- name: --- [Play] Nginx yuk testi - /sw kopyasi (GBLABT02 uzerinden) ---
+  hosts: localhost
+  gather_facts: no
+  ignore_unreachable: true
+  tasks:
+    - name: --- [Task] /sw kopyasi ---
+      when: (yt_ctl_dizin is defined) and ((yuk_islem | default('')) == 'kosu')
+      block:
+        - name: --- [Task] Kosu basari durumu (hedef ve yuk makinesi) ---
+          ansible.builtin.set_fact:
+            yt_kosu_basarili: >-
+              {{ ((hostvars[yuk_yuk_host].yt_kos_rc | default(-1) | int) == 0)
+                 and ((hostvars[yuk_hedef_host].yt_kaydedici_rc | default(-1) | int) == 0)
+                 and (hostvars[yuk_hedef_host].yt_p5_bitti | default(false) | bool)
+                 and (hostvars[yuk_yuk_host].yt_p5_bitti | default(false) | bool) }}
+            yt_bit_epoch: "{{ now().timestamp() | int }}"
+
+        - name: --- [Task] Kopya (yalniz kos.sh basladiysa; yoksa toplanacak sonuc yok) ---
+          when: hostvars[yuk_yuk_host].yt_kos_basladi | default(false) | bool
+          block:
+            - name: --- [Task] Toplanan dosyalar (kontrol dugumu) ---
+              ansible.builtin.find:
+                paths: "{{ yt_ctl_dizin }}"
+                file_type: file
+              register: yt_ctl_dosyalar
+
+            - name: --- [Task] Kosu /sw dizini ---
+              ansible.builtin.set_fact:
+                yt_sw_dizin: "{{ yuk_cikti_kok }}/{{ yuk_run_id | int }}"
+                yt_dosyalar: []
+
+            - name: --- [Task] Dosya listesi (ad, bayt) ---
+              ansible.builtin.set_fact:
+                yt_dosyalar: "{{ yt_dosyalar + [{'ad': (item.path | basename), 'bayt': (item.size | int)}] }}"
+              loop: "{{ yt_ctl_dosyalar.files | sort(attribute='path') }}"
+              loop_control:
+                label: "{{ item.path | basename }}"
+
+            - name: --- [Task] Istemci ozetleri (istemci_*.json) ---
+              ansible.builtin.set_fact:
+                yt_istemci_ozet: "{{ (yt_istemci_ozet | default([])) + [lookup('ansible.builtin.file', item.path) | from_json] }}"
+              loop: "{{ yt_ctl_dosyalar.files | sort(attribute='path') | selectattr('path', 'search', '/istemci_[^/]*[.]json$') | list }}"
+              loop_control:
+                label: "{{ item.path | basename }}"
+
+            - name: --- [Task] Kopyalanacak dosya yoksa DUR ---
+              ansible.builtin.fail:
+                msg: "hicbir sonuc dosyasi toplanamadi; /sw'ye yazilmadi"
+              when: (yt_ctl_dosyalar.files | length) == 0
+
+            - name: --- [Task] /sw kosu dizini (GBLABT02) ---
+              ansible.builtin.file:
+                path: "{{ yt_sw_dizin }}"
+                state: directory
+                mode: '0777'
+              delegate_to: GBLABT02
+              register: yt_sw_r_dizin
+
+            - name: --- [Task] GBLABT02 erisilemediyse DUR (/sw kosu dizini) ---
+              ansible.builtin.fail:
+                msg: "GBLABT02 erisilemedi (/sw kosu dizini): {{ yt_sw_r_dizin.msg | default('baglanti hatasi') | string | truncate(200) }}"
+              when: yt_sw_r_dizin is unreachable
+
+            - name: --- [Task] Sonuc dosyalari /sw'ye (GBLABT02) ---
+              ansible.builtin.copy:
+                src: "{{ item.path }}"
+                dest: "{{ yt_sw_dizin }}/{{ item.path | basename }}"
+                mode: '0666'
+              loop: "{{ yt_ctl_dosyalar.files | sort(attribute='path') }}"
+              loop_control:
+                label: "{{ item.path | basename }}"
+              delegate_to: GBLABT02
+              register: yt_sw_r_kopya
+
+            - name: --- [Task] GBLABT02 erisilemediyse DUR (sonuc dosyalari) ---
+              ansible.builtin.fail:
+                msg: "GBLABT02 erisilemedi (sonuc dosyalari): {{ (yt_sw_r_kopya.results | default([]) | selectattr('unreachable', 'defined') | selectattr('unreachable') | map(attribute='msg') | list | first | default('baglanti hatasi')) | string | truncate(200) }}"
+              when: (yt_sw_r_kopya is unreachable) or ((yt_sw_r_kopya.results | default([]) | selectattr('unreachable', 'defined') | selectattr('unreachable') | list | length) > 0)
+
+            - name: --- [Task] sha256 (kontrol dugumundeki kopyalar) ---
+              ansible.builtin.stat:
+                path: "{{ item.path }}"
+                checksum_algorithm: sha256
+                get_checksum: true
+              loop: "{{ yt_ctl_dosyalar.files | sort(attribute='path') }}"
+              loop_control:
+                label: "{{ item.path | basename }}"
+              register: yt_ctl_sha
+
+            - name: --- [Task] SHA256SUMS (GBLABT02) ---
+              ansible.builtin.copy:
+                content: "{{ yt_ctl_sha.results | map(attribute='stat') | map(attribute='checksum') | zip(yt_ctl_sha.results | map(attribute='item') | map(attribute='path') | map('basename')) | map('join', '  ') | join('\n') }}\n"
+                dest: "{{ yt_sw_dizin }}/SHA256SUMS"
+                mode: '0666'
+              delegate_to: GBLABT02
+              register: yt_sw_r_sums
+
+            - name: --- [Task] GBLABT02 erisilemediyse DUR (SHA256SUMS) ---
+              ansible.builtin.fail:
+                msg: "GBLABT02 erisilemedi (SHA256SUMS): {{ yt_sw_r_sums.msg | default('baglanti hatasi') | string | truncate(200) }}"
+              when: yt_sw_r_sums is unreachable
+
+            - name: --- [Task] /sw kopyasi tamam ---
+              ansible.builtin.set_fact:
+                yt_sw_tamam: true
+
+      rescue:
+        - name: --- [Task] /sw kopyasi basarisiz ---
+          ansible.builtin.set_fact:
+            yt_sw_hata: "{{ ansible_failed_result.msg | default('beklenmeyen hata') | string | truncate(300) }}"
+
+      always:
+        - name: --- [Task] Gecici toplama dizini kaldirilir ---
+          ansible.builtin.file:
+            path: "{{ yt_ctl_dizin }}"
+            state: absent
+          changed_when: false
+          failed_when: false
+
+- name: --- [Play] Nginx yuk testi - durdur ve temizlik (iki sunucu) ---
+  hosts: yuk_hedef:yuk_makine
+  gather_facts: no
+  become: true
+  become_method: dzdo
+  become_user: www
+  ignore_unreachable: true
+  vars:
+    ansible_pipelining: true
+    yt_durdur_betik: "{{ yt_dtmp.path | default('') }}"
+  tasks:
+    - name: --- [Task] Durdur ve temizlik ---
+      when: (yt_dizin | default('') | length) > 0
+      block:
+        - name: --- [Task] Kalan surecler durdurulur (durdur ve kosu) ---
+          when: yuk_islem in ['kosu', 'durdur']
+          block:
+            - name: --- [Task] Baglanan kullanicinin uid'i (kopya sahibi kapisi) ---
+              become: false
+              ansible.builtin.command:
+                cmd: id -u
+              register: yt_d_ben
+              changed_when: false
+              failed_when: false
+
+            - name: --- [Task] Kosuya ozel rastgele betik adi (mktemp) ---
+              become: false
+              ansible.builtin.tempfile:
+                state: file
+                path: /var/tmp
+                prefix: .portal_yuktesti_durdur.
+                suffix: .sh
+              register: yt_dtmp
+              changed_when: false
+              failed_when: false
+
+            - name: --- [Task] Durdurma betigi sunucuya ---
+              become: false
+              ansible.builtin.copy:
+                src: files/durdur.sh
+                dest: "{{ yt_durdur_betik }}"
+                mode: '0644'
+              register: yt_d_kopya
+              changed_when: false
+              ignore_errors: true
+
+            - name: --- [Task] Kopyanin dogrulanmasi (sha1, sahip uid, duzenli dosya, izin) ---
+              become: false
+              ansible.builtin.stat:
+                path: "{{ yt_durdur_betik }}"
+                checksum_algorithm: sha1
+                get_checksum: true
+              register: yt_d_stat
+              failed_when: false
+
+            - name: --- [Task] Kosunun surecleri (pid dosyalari, k6, betikler) TERM, 10 sn sonra KILL ---
+              ansible.builtin.command:
+                argv:
+                  - timeout
+                  - -k
+                  - '10'
+                  - '90'
+                  - bash
+                  - "{{ yt_durdur_betik }}"
+                  - "{{ yt_dizin }}"
+              register: yt_d_run
+              changed_when: false
+              failed_when: false
+              when: >-
+                (yt_d_kopya is not failed)
+                and ((hostvars['localhost'].yt_kaynak_sha1['durdur.sh'] | default('') | length) > 0)
+                and ((yt_d_stat.stat.checksum | default('')) == (hostvars['localhost'].yt_kaynak_sha1['durdur.sh'] | default('')))
+                and ((yt_d_stat.stat.uid | default(-1) | string) == (yt_d_ben.stdout | default('') | trim))
+                and (yt_d_stat.stat.isreg | default(false))
+                and not (yt_d_stat.stat.wgrp | default(true))
+                and not (yt_d_stat.stat.woth | default(true))
+
+            - name: --- [Task] Durdurma ciktisi ---
+              ansible.builtin.debug:
+                msg: "{{ yt_d_run.stdout_lines | default([]) }}"
+
+            - name: --- [Task] Durdurma sonucu ---
+              ansible.builtin.set_fact:
+                yt_durdurulan: []
+                yt_durdur_sonuc: "{{ (yt_d_run.stdout_lines | default([]) | select('match', '^SONUC\t') | list | last | default('SONUC\tFAIL\t0\tdurdurma betigi calismadi ya da kopyasi dogrulanamadi')).split('\t') }}"
+
+            - name: --- [Task] Durdurulan surecler (host ad pid sonuc) ---
+              ansible.builtin.set_fact:
+                yt_durdurulan: "{{ yt_durdurulan + [inventory_hostname ~ ' ' ~ (item.split('\t')[2] | default('?')) ~ ' pid ' ~ (item.split('\t')[1] | default('?')) ~ ' ' ~ (item.split('\t')[3] | default('?'))] }}"
+              loop: "{{ yt_d_run.stdout_lines | default([]) | select('match', '^DURDUR\t') | list }}"
+
+        - name: --- [Task] Kosu dizini silinsin mi ---
+          ansible.builtin.set_fact:
+            yt_dizin_sil: >-
+              {{ (yuk_islem == 'on_kontrol')
+                 or ((yuk_islem in ['kosu', 'durdur']) and ((yt_durdur_sonuc | default(['SONUC', 'FAIL']))[1] == 'OK')
+                     and ((yuk_islem == 'durdur')
+                          or (hostvars['localhost'].yt_sw_tamam | default(false) | bool)
+                          or not (hostvars[yuk_yuk_host].yt_kos_basladi | default(false) | bool))) }}
+
+        - name: --- [Task] Kosu dizini kaldirilir ---
+          ansible.builtin.file:
+            path: "{{ yt_dizin }}"
+            state: absent
+          changed_when: false
+          when: yt_dizin_sil | bool
+
+        - name: --- [Task] Temizlik tamam ---
+          ansible.builtin.set_fact:
+            yt_p7_bitti: true
+
+      rescue:
+        - name: --- [Task] Beklenmeyen hata (temizlik) ---
+          ansible.builtin.set_fact:
+            yt_p7_hata: "{{ ansible_failed_result.msg | default('beklenmeyen hata') | string | truncate(300) }}"
+
+      always:
+        - name: --- [Task] Kosuya ozel durdurma betigi silinir ---
+          become: false
+          ansible.builtin.file:
+            path: "{{ yt_durdur_betik }}"
+            state: absent
+          changed_when: false
+          failed_when: false
+          when: (yt_durdur_betik | length) > 0
+
+- name: --- [Play] Nginx yuk testi - sonuc ---
+  hosts: localhost
+  gather_facts: no
+  vars:
+    yt8_gecti: "{{ yt_girdi_hatasi is not defined }}"
+  tasks:
+    - name: --- [Task] Sonuc derlenir ---
+      block:
+        - name: --- [Task] Play hatalari ve tamamlanmayan play'ler ---
+          ansible.builtin.set_fact:
+            yt_hatalar: >-
+              {{ ([('girdi reddedildi, hicbir sey yapilmadi: ' ~ yt_girdi_hatasi)] if not (yt8_gecti | bool) else [])
+                 + ([] if not (yt8_gecti | bool) else (
+                     ([('hedef ' ~ yuk_hedef_host ~ ': ' ~ hostvars[yuk_hedef_host].yt_p2_hata)] if (hostvars[yuk_hedef_host].yt_p2_hata is defined) else [])
+                     + ([('hedef ' ~ yuk_hedef_host ~ ': play tamamlanmadi (erisilemedi ya da dustu)')] if (hostvars[yuk_hedef_host].yt_p2_bitti is not defined and hostvars[yuk_hedef_host].yt_p2_hata is not defined) else [])
+                     + ([('yuk makinesi ' ~ yuk_yuk_host ~ ': ' ~ hostvars[yuk_yuk_host].yt_p3_hata)] if (hostvars[yuk_yuk_host].yt_p3_hata is defined) else [])
+                     + ([('yuk makinesi ' ~ yuk_yuk_host ~ ': play tamamlanmadi (erisilemedi ya da dustu)')] if (hostvars[yuk_yuk_host].yt_p3_bitti is not defined and hostvars[yuk_yuk_host].yt_p3_hata is not defined) else [])
+                     + ([('kaydedici durdurma: ' ~ hostvars[yuk_hedef_host].yt_p4_hata)] if (hostvars[yuk_hedef_host].yt_p4_hata is defined) else [])
+                     + ([('toplama ' ~ yuk_hedef_host ~ ': ' ~ hostvars[yuk_hedef_host].yt_p5_hata)] if (hostvars[yuk_hedef_host].yt_p5_hata is defined) else [])
+                     + ([('toplama ' ~ yuk_yuk_host ~ ': ' ~ hostvars[yuk_yuk_host].yt_p5_hata)] if (hostvars[yuk_yuk_host].yt_p5_hata is defined) else [])
+                     + ([('/sw kopyasi: ' ~ yt_sw_hata)] if (yt_sw_hata is defined) else [])
+                     + ([('temizlik ' ~ yuk_hedef_host ~ ': ' ~ hostvars[yuk_hedef_host].yt_p7_hata)] if (hostvars[yuk_hedef_host].yt_p7_hata is defined) else [])
+                     + ([('temizlik ' ~ yuk_yuk_host ~ ': ' ~ hostvars[yuk_yuk_host].yt_p7_hata)] if (hostvars[yuk_yuk_host].yt_p7_hata is defined) else []))) }}
+
+        - name: --- [Task] On kontrol bolumu ---
+          ansible.builtin.set_fact:
+            yt_s_onk: >-
+              {{ {'ip_yerel': ((hostvars[yuk_hedef_host].yt_hk | default({})).ip_yerel | default('-')) == '1',
+                  'server_name_var': ((hostvars[yuk_hedef_host].yt_hk | default({})).server_name_var | default('-')) == '1',
+                  'master_sayisi': (((hostvars[yuk_hedef_host].yt_hk | default({})).master_sayisi | int) if (((hostvars[yuk_hedef_host].yt_hk | default({})).master_sayisi | default('-')) is match('^[0-9]{1,4}$')) else none),
+                  'web_log_df': (((hostvars[yuk_hedef_host].yt_hk | default({})).web_log_df | int) if (((hostvars[yuk_hedef_host].yt_hk | default({})).web_log_df | default('-')) is match('^[0-9]{1,3}$')) else none),
+                  'log_dizini_okunur': ((hostvars[yuk_hedef_host].yt_hk | default({})).log_dizini_okunur | default('0')) == '1',
+                  'log_format_ua': ({'1': true, '0': false})[(hostvars[yuk_hedef_host].yt_hk | default({})).log_format_ua | default('-')] | default(none),
+                  'statik_direktif': ({'1': true, '0': false})[(hostvars[yuk_hedef_host].yt_hk | default({})).statik_direktif | default('-')] | default(none),
+                  'k6_var': ((hostvars[yuk_yuk_host].yt_k6 | default({})).var | default(false) | bool),
+                  'k6_surum': (((hostvars[yuk_yuk_host].yt_k6 | default({})).surum | default('')) or none),
+                  'k6_sha256': (((hostvars[yuk_yuk_host].yt_k6 | default({})).sha256 | default('')) or none),
+                  'yollar_toplam': ((hostvars[yuk_yuk_host].yt_yk_ozet | default([]))[1] | default('0') | int),
+                  'yollar_200': ((hostvars[yuk_yuk_host].yt_yk_ozet | default([]))[2] | default('0') | int),
+                  'ilk_hatalar': (hostvars[yuk_yuk_host].yt_yk_hatalar | default([])),
+                  'sikistirma': {'statik': ((hostvars[yuk_yuk_host].yt_yk_ozet | default([]))[3] | default('0') | int),
+                                 'dinamik': ((hostvars[yuk_yuk_host].yt_yk_ozet | default([]))[4] | default('0') | int),
+                                 'sikistirmasiz': ((hostvars[yuk_yuk_host].yt_yk_ozet | default([]))[5] | default('0') | int)}} }}
+          when: (yt8_gecti | bool) and ((yuk_islem | default('')) == 'on_kontrol')
+
+        - name: --- [Task] On kontrol engelleri (Portal kosuyu bunlarla BASLATMAZ) ---
+          ansible.builtin.set_fact:
+            yt_engeller: >-
+              {{ (['hedef: ' ~ ((hostvars[yuk_hedef_host].yt_hk_sonuc | default(['', 'FAIL', 'olculmedi']))[2] | default(''))] if ((hostvars[yuk_hedef_host].yt_hk_sonuc | default(['', 'FAIL']))[1] | default('FAIL')) != 'OK' else [])
+                 + (['yuk makinesi: ' ~ ((hostvars[yuk_yuk_host].yt_yk_sonuc | default(['', 'FAIL', 'olculmedi']))[2] | default(''))] if ((hostvars[yuk_yuk_host].yt_yk_sonuc | default(['', 'FAIL']))[1] | default('FAIL')) != 'OK' else [])
+                 + (['hedef IP ' ~ yuk_hedef_ip ~ ' hedef sunucuda yerel degil'] if not yt_s_onk.ip_yerel else [])
+                 + (['server_name ' ~ yuk_host_basligi ~ ' nginx -T ciktisinda yok ya da nginx -T okunamadi'] if not yt_s_onk.server_name_var else [])
+                 + (['log dizini /web_log okunamiyor'] if not yt_s_onk.log_dizini_okunur else [])
+                 + (['k6 yok ya da calistirilamiyor: ' ~ yuk_k6_yolu] if not yt_s_onk.k6_var else [])
+                 + (['hicbir yol denenmedi'] if (yt_s_onk.yollar_toplam | int) == 0 else []) }}
+          when: (yt8_gecti | bool) and ((yuk_islem | default('')) == 'on_kontrol')
+
+        - name: --- [Task] Kosu bolumu ---
+          ansible.builtin.set_fact:
+            yt_s_kosu: >-
+              {{ {'kos_rc': ((hostvars[yuk_yuk_host].yt_kos_rc | int) if (hostvars[yuk_yuk_host].yt_kos_rc is defined) else none),
+                  'kaydedici_rc': ((hostvars[yuk_hedef_host].yt_kaydedici_rc | int) if ((hostvars[yuk_hedef_host].yt_kaydedici_rc | default(-1) | int) >= 0) else none),
+                  'bas_epoch': ((hostvars[yuk_hedef_host].yt_kaydedici_bas | int) if (hostvars[yuk_hedef_host].yt_kaydedici_bas is defined) else none),
+                  'bit_epoch': ((yt_bit_epoch | int) if (yt_bit_epoch is defined) else none),
+                  'istemci_ozet': (yt_istemci_ozet | default([])),
+                  'dosyalar': (yt_dosyalar | default([])),
+                  'sw_dizin': (yt_sw_dizin if (yt_sw_tamam | default(false) | bool) else none)} }}
+          when: (yt8_gecti | bool) and ((yuk_islem | default('')) == 'kosu')
+
+        - name: --- [Task] Durdurma bolumu ---
+          ansible.builtin.set_fact:
+            yt_s_durdur:
+              durdurulan: "{{ (hostvars[yuk_hedef_host].yt_durdurulan | default([])) + (hostvars[yuk_yuk_host].yt_durdurulan | default([])) }}"
+          when: (yt8_gecti | bool) and ((yuk_islem | default('')) in ['kosu', 'durdur'])
+
+        - name: --- [Task] Durum ---
+          ansible.builtin.set_fact:
+            yt_durum: >-
+              {{ 'FAIL' if not (yt8_gecti | bool)
+                 else (('OK' if ((yt_engeller | length) == 0 and (yt_hatalar | length) == 0) else 'FAIL') if (yuk_islem | default('')) == 'on_kontrol'
+                 else (('OK' if ((((hostvars[yuk_hedef_host].yt_durdur_sonuc | default(['', 'FAIL']))[1] | default('FAIL')) == 'OK')
+                                 and (((hostvars[yuk_yuk_host].yt_durdur_sonuc | default(['', 'FAIL']))[1] | default('FAIL')) == 'OK')
+                                 and (yt_hatalar | length) == 0) else 'FAIL') if (yuk_islem | default('')) == 'durdur'
+                 else ('OK' if ((yt_kosu_basarili | default(false) | bool) and (yt_sw_tamam | default(false) | bool) and (yt_hatalar | length) == 0)
+                       else ('DUR' if ((yt_s_kosu.kos_rc in [4, 130]) and (yt_sw_tamam | default(false) | bool) and (yt_s_kosu.kaydedici_rc == 0))
+                       else 'FAIL')))) }}
+
+        - name: --- [Task] Silinmeyen kosu dizinleri (kos.sh basladi, /sw kopyasi tamamlanmadi) ---
+          ansible.builtin.set_fact:
+            yt_korunan: >-
+              {{ [] if ((yt_sw_tamam | default(false) | bool) or not (hostvars[yuk_yuk_host].yt_kos_basladi | default(false) | bool))
+                 else (([yuk_hedef_host ~ ':' ~ hostvars[yuk_hedef_host].yt_dizin] if (hostvars[yuk_hedef_host].yt_dizin is defined) else [])
+                       + ([yuk_yuk_host ~ ':' ~ hostvars[yuk_yuk_host].yt_dizin] if (hostvars[yuk_yuk_host].yt_dizin is defined) else [])) }}
+          when: (yt8_gecti | bool) and ((yuk_islem | default('')) == 'kosu')
+
+        - name: --- [Task] Hata metni govdesi ve korunan dizin notu ---
+          ansible.builtin.set_fact:
+            yt_korunan_not: "{{ ('kosu dizini silinmedi (/sw kopyasi yok, veri elle kurtarilabilir): ' ~ (yt_korunan | default([]) | join(', '))) if ((yt_korunan | default([]) | length) > 0) else '' }}"
+            yt_hata_govde: >-
+              {{ (yt_hatalar
+                  + (yt_engeller | default([]))
+                  + ([('kaydedici hazir olmadi: ' ~ (hostvars[yuk_hedef_host].yt_kaydedici_mesaj | default('') | string | truncate(200)))] if ((yt8_gecti | bool) and (yuk_islem | default('')) == 'kosu' and (hostvars[yuk_hedef_host].yt_kaydedici_basladi is defined) and not (hostvars[yuk_hedef_host].yt_kaydedici_hazir | default(false) | bool)) else [])
+                  + ([('kos.sh rc ' ~ (hostvars[yuk_yuk_host].yt_kos_rc | string) ~ ': ' ~ ((hostvars[yuk_yuk_host].yt_kos_dur | default('')) or (hostvars[yuk_yuk_host].yt_kos_hata | default(''))))] if ((yt8_gecti | bool) and (yuk_islem | default('')) == 'kosu' and (hostvars[yuk_yuk_host].yt_kos_rc is defined) and ((hostvars[yuk_yuk_host].yt_kos_rc | int) != 0)) else [])
+                  + (['kaydedici ozet dosyasi bilgi_*.txt yazilmadi'] if ((yt8_gecti | bool) and (yuk_islem | default('')) == 'kosu' and (hostvars[yuk_hedef_host].yt_kaydedici_hazir | default(false) | bool) and ((hostvars[yuk_hedef_host].yt_kaydedici_rc | default(-1) | int) != 0)) else [])
+                  + (['durdurma ' ~ yuk_hedef_host ~ ': ' ~ ((hostvars[yuk_hedef_host].yt_durdur_sonuc | default([]))[3] | default('olculmedi'))] if ((yt8_gecti | bool) and (yuk_islem | default('')) == 'durdur' and ((hostvars[yuk_hedef_host].yt_durdur_sonuc | default(['', 'FAIL']))[1] | default('FAIL')) != 'OK') else [])
+                  + (['durdurma ' ~ yuk_yuk_host ~ ': ' ~ ((hostvars[yuk_yuk_host].yt_durdur_sonuc | default([]))[3] | default('olculmedi'))] if ((yt8_gecti | bool) and (yuk_islem | default('')) == 'durdur' and ((hostvars[yuk_yuk_host].yt_durdur_sonuc | default(['', 'FAIL']))[1] | default('FAIL')) != 'OK') else []))
+                 | join('; ') }}
+
+        - name: --- [Task] Hata metni (korunan dizin notu sonda ve her zaman sigar) ---
+          ansible.builtin.set_fact:
+            yt_hata_metni: >-
+              {{ (([yt_hata_govde | truncate([298 - (yt_korunan_not | length), 20] | max, true, '...', 0)] + [yt_korunan_not]) | select | join('; ') | truncate(300))
+                 if ((yt_korunan_not | length) > 0) else (yt_hata_govde | truncate(300)) }}
+
+        - name: --- [Task] Sonuc sozlesmesi ---
+          ansible.builtin.set_fact:
+            yt_sonuc: >-
+              {{ {'surum': 1,
+                  'run_id': (yuk_run_id | default('') | string | truncate(20)),
+                  'islem': (yuk_islem | default('') | string | truncate(20)),
+                  'durum': yt_durum,
+                  'hata': (yt_hata_metni if ((yt_hata_metni | length) > 0) else none),
+                  'on_kontrol': (yt_s_onk | default(none)),
+                  'kosu': (yt_s_kosu | default(none)),
+                  'durdur': (yt_s_durdur | default(none))} }}
+
+      rescue:
+        - name: --- [Task] Sonuc derlenemedi ---
+          ansible.builtin.set_fact:
+            yt_sonuc: >-
+              {{ {'surum': 1,
+                  'run_id': (yuk_run_id | default('') | string | truncate(20)),
+                  'islem': (yuk_islem | default('') | string | truncate(20)),
+                  'durum': 'FAIL',
+                  'hata': (('sonuc derlenemedi: ' ~ (ansible_failed_result.msg | default('?') | string)) | truncate(300)),
+                  'on_kontrol': none,
+                  'kosu': none,
+                  'durdur': none} }}
+
+    - name: --- [Task] Sonuc (set_stats) ---
+      ansible.builtin.set_stats:
+        data:
+          nginx_loadtest_result: "{{ yt_sonuc }}"
+        per_host: false
+        aggregate: false
+
+    - name: --- [Task] Sonuc ozeti ---
+      ansible.builtin.debug:
+        msg: "{{ yt_sonuc.islem }} {{ yt_sonuc.durum }}: {{ yt_sonuc.hata | default('-', true) }}"
+
+    - name: --- [Task] Basarisizsa job dusurulur ---
+      ansible.builtin.fail:
+        msg: "{{ yt_sonuc.durum }}: {{ yt_sonuc.hata | default('ayrinti yok', true) }}"
+      when: yt_sonuc.durum != 'OK'
+

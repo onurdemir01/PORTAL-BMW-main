@@ -1,0 +1,249 @@
+{
+ "_aciklama": "har_senaryo.py (Python 3.12.10) ciktisi; girdiler testte ayni ureteclerle (girdi/sentetik/kenar/ikinci) uretilir. Uretim: scratchpad har_fark_uret.py, 2026-10-27.",
+ "vakalar": [
+  {
+   "ad": "A_sentetik",
+   "host": "glomo-test.fw.garantibbva.com.tr",
+   "sorguAt": false,
+   "buyukEsik": null,
+   "harlar": [
+    {
+     "uretec": "sentetik",
+     "ad": "s.har.json",
+     "agirlik": null
+    }
+   ],
+   "beklenen": {
+    "rc": 0,
+    "K": "2\t1\tjs\tbuyuk\t/app-v1/assets/a.js\n1\t1\thtml\tkucuk\t/app-v1/\n1\t1\tcss\torta\t/app-v1/assets/s.css\n1\t1\tconfig\tkucuk\t/app-v1/config\n1\t1\tjs\tkucuk\t/app-v1/assets/__federation_shared_@scope-ui/x.js\n",
+    "B": "1\t1\tjs\tbuyuk\t/app-v1/assets/a.js\n",
+    "OZET": "# har_senaryo.py ozeti - yalniz sayilar (deger, baslik, cerez, sorgu yok)\nhost=glomo-test.fw.garantibbva.com.tr\nsorgu_politikasi=sorgulu_istegi_ele\nbuyuk_esik_bayt=512000\nkolonlar(K.tsv,B.tsv)=agirlik<TAB>har<TAB>tur<TAB>boyut<TAB>yol\n\n[HAR 1] dosya=s.har.json sayfa_agirligi=1\n  toplam_giris=21 kalan=6 tekil_yol=5 ham_bayt=1265000 sorgusu_atilan=0 belge_ilk_satirda=evet kosullu_304=1\n  elenen: baska_host=1 durum_0=1 get_degil_HEAD=1 get_degil_POST=1 hata_404=1 hata_500=1 kisisel_veri_suphesi=2 onbellek_disk=1 onbellek_memory=1 oneagent_rb=1 sema_disi(data/blob)=1 sorgulu=1 yonlendirme_301=1 yonlendirme_307=1\n  tur: config=1 css=1 html=1 js=3\n  boyut: buyuk=2 kucuk=3 orta=1\n  sayfa_1.txt_satir=6\n\n[TOPLAM] K_satir=5 K_toplam_agirlik=6 K_agirlikli_ort_ham_bayt=210833 B_satir=1 sayfa_dosyasi=1 K_304_agirlik=1\nNOT: K agirliginin %16.7'i tarayicida 304 (kosullu GET, govdesiz) idi. Yuk testi kosulsuz gonderir; sunucu 200 + tam govde doner, CPU-ms/istek ve bayt/istek biraz yuksek cikar. Butun adimlarda ayni oynatildigi icin adimlar arasi orana etkisi kucuktur (MAKUL).\n"
+   }
+  },
+  {
+   "ad": "B_sorgu_at_agirlik2",
+   "host": "glomo-test.fw.garantibbva.com.tr",
+   "sorguAt": true,
+   "buyukEsik": null,
+   "harlar": [
+    {
+     "uretec": "sentetik",
+     "ad": "s.har.json",
+     "agirlik": 2.0
+    }
+   ],
+   "beklenen": {
+    "rc": 0,
+    "K": "4\t1\tjs\tbuyuk\t/app-v1/assets/a.js\n2\t1\thtml\tkucuk\t/app-v1/\n2\t1\tcss\torta\t/app-v1/assets/s.css\n2\t1\tconfig\tkucuk\t/app-v1/config\n2\t1\tjs\tkucuk\t/app-v1/assets/__federation_shared_@scope-ui/x.js\n2\t1\tjs\tkucuk\t/app-v1/assets/q.js\n",
+    "B": "1\t1\tjs\tbuyuk\t/app-v1/assets/a.js\n",
+    "OZET": "# har_senaryo.py ozeti - yalniz sayilar (deger, baslik, cerez, sorgu yok)\nhost=glomo-test.fw.garantibbva.com.tr\nsorgu_politikasi=sorguyu_at_yolu_tut\nbuyuk_esik_bayt=512000\nkolonlar(K.tsv,B.tsv)=agirlik<TAB>har<TAB>tur<TAB>boyut<TAB>yol\n\n[HAR 1] dosya=s.har.json sayfa_agirligi=2\n  toplam_giris=21 kalan=7 tekil_yol=6 ham_bayt=1266000 sorgusu_atilan=1 belge_ilk_satirda=evet kosullu_304=1\n  elenen: baska_host=1 durum_0=1 get_degil_HEAD=1 get_degil_POST=1 hata_404=1 hata_500=1 kisisel_veri_suphesi=2 onbellek_disk=1 onbellek_memory=1 oneagent_rb=1 sema_disi(data/blob)=1 yonlendirme_301=1 yonlendirme_307=1\n  tur: config=1 css=1 html=1 js=4\n  boyut: buyuk=2 kucuk=4 orta=1\n  sayfa_1.txt_satir=7\n\n[TOPLAM] K_satir=6 K_toplam_agirlik=14 K_agirlikli_ort_ham_bayt=180857 B_satir=1 sayfa_dosyasi=1 K_304_agirlik=2\nNOT: K agirliginin %14.3'i tarayicida 304 (kosullu GET, govdesiz) idi. Yuk testi kosulsuz gonderir; sunucu 200 + tam govde doner, CPU-ms/istek ve bayt/istek biraz yuksek cikar. Butun adimlarda ayni oynatildigi icin adimlar arasi orana etkisi kucuktur (MAKUL).\n"
+   }
+  },
+  {
+   "ad": "K_kenar",
+   "host": "glomo-test.fw.garantibbva.com.tr",
+   "sorguAt": false,
+   "buyukEsik": null,
+   "harlar": [
+    {
+     "uretec": "kenar",
+     "ad": "kenar.har.json",
+     "agirlik": null
+    }
+   ],
+   "beklenen": {
+    "rc": 0,
+    "K": "2\t1\tjs\torta\t/k/b.js\n1\t1\thtml\tkucuk\t/k/index.html\n1\t1\tjson\tkucuk\t/k/veri\n1\t1\tdiger\tkucuk\t/k/vnd\n1\t1\tfont\tkucuk\t/k/f\n1\t1\tfont\tkucuk\t/k/f2\n1\t1\timg\tkucuk\t/k/img\n1\t1\tjs\tkucuk\t/k/tj\n1\t1\tcss\tkucuk\t/k/c\n1\t1\tjs\tkucuk\t/k/x.MJS\n1\t1\tfont\tkucuk\t/k/x.WOFF2\n1\t1\timg\tkucuk\t/k/x.svg\n1\t1\tdiger\tkucuk\t/k/x.map\n1\t1\thtml\tkucuk\t/k/dizin/\n1\t1\thtml\tkucuk\t/\n1\t1\tcss\tkucuk\t/k/port.css\n1\t1\tjs\tkucuk\t/k/buyukharf.js\n1\t1\tjs\tkucuk\t/k/bosluk.js\n1\t1\tjs\tkucuk\t/k/kullanici.js\n1\t1\tjs\tkucuk\t/k/sekme.js\n1\t1\tjs\tkucuk\t/k/sorgu-bos.js\n1\t1\tjs\tkucuk\t/k/parca.js\n1\t1\tjs\tkucuk\t//k/cift.js\n1\t1\tjs\tkucuk\t/k/../ust.js\n1\t1\tjs\tkucuk\t/k/rb_x/y.js\n1\t1\timg\tkucuk\t/k/u/x@2x.png\n1\t1\tjs\tkucuk\t/k/@kapsam/paket.js\n1\t1\tjs\tkucuk\t/k/durum-metin.js\n1\t1\tjs\tkucuk\t/k/durum-ondalik.js\n1\t1\tjs\tkucuk\t/k/durum-1.js\n1\t1\tjs\tkucuk\t/k/durum-204.js\n1\t1\tjs\tkucuk\t/k/durum-alt.js\n1\t1\tjs\torta\t/k/boyut-metin.js\n1\t1\tjs\tkucuk\t/k/boyut-eksi.js\n1\t1\tjs\tkucuk\t/k/boyut-kotu.js\n1\t1\tjs\torta\t/k/boyut-ondalik.js\n1\t1\tjs\torta\t/k/esik.js\n1\t1\tjs\tkucuk\t/k/esik-alt.js\n1\t1\tjs\tkucuk\t/k/onbellek-bos.js\n1\t1\tjs\tkucuk\t/k/onbellek-liste.js\n1\t1\tjs\tkucuk\t/k/onbellek-sifir.js\n1\t1\tjs\tkucuk\t/k/icerik-yok.js\n1\t1\tjs\tkucuk\t/k/mime-sayi.js\n2\t1\tjs\tbuyuk\t/k/kosullu.js\n",
+    "B": "1\t1\tjs\tbuyuk\t/k/kosullu.js\n",
+    "OZET": "# har_senaryo.py ozeti - yalniz sayilar (deger, baslik, cerez, sorgu yok)\nhost=glomo-test.fw.garantibbva.com.tr\nsorgu_politikasi=sorgulu_istegi_ele\nbuyuk_esik_bayt=512000\nkolonlar(K.tsv,B.tsv)=agirlik<TAB>har<TAB>tur<TAB>boyut<TAB>yol\n\n[HAR 1] dosya=kenar.har.json sayfa_agirligi=1\n  toplam_giris=79 kalan=46 tekil_yol=44 ham_bayt=2179604 sorgusu_atilan=0 belge_ilk_satirda=evet kosullu_304=1\n  elenen: baska_host=4 bicim_disi=4 durum_0=2 get_degil_?=4 get_degil_PATCH=1 kisisel_veri_suphesi=5 onbellek_diger=3 oneagent_rb=1 sema_disi(data/blob)=3 url_ayristirilamadi=5 yonlendirme_399=1\n  tur: css=2 diger=2 font=3 html=3 img=3 js=32 json=1\n  boyut: buyuk=2 kucuk=39 orta=5\n  sayfa_1.txt_satir=46\n\n[TOPLAM] K_satir=44 K_toplam_agirlik=46 K_agirlikli_ort_ham_bayt=47382 B_satir=1 sayfa_dosyasi=1 K_304_agirlik=1\nNOT: K agirliginin %2.2'i tarayicida 304 (kosullu GET, govdesiz) idi. Yuk testi kosulsuz gonderir; sunucu 200 + tam govde doner, CPU-ms/istek ve bayt/istek biraz yuksek cikar. Butun adimlarda ayni oynatildigi icin adimlar arasi orana etkisi kucuktur (MAKUL).\n"
+   }
+  },
+  {
+   "ad": "K_kenar_sorgu_esik",
+   "host": "glomo-test.fw.garantibbva.com.tr",
+   "sorguAt": true,
+   "buyukEsik": 60000,
+   "harlar": [
+    {
+     "uretec": "kenar",
+     "ad": "kenar.har.json",
+     "agirlik": 0.1
+    }
+   ],
+   "beklenen": {
+    "rc": 0,
+    "K": "0.2\t1\tjs\tbuyuk\t/k/b.js\n0.1\t1\thtml\tkucuk\t/k/index.html\n0.1\t1\tjson\tkucuk\t/k/veri\n0.1\t1\tdiger\tkucuk\t/k/vnd\n0.1\t1\tfont\tkucuk\t/k/f\n0.1\t1\tfont\tkucuk\t/k/f2\n0.1\t1\timg\tkucuk\t/k/img\n0.1\t1\tjs\tkucuk\t/k/tj\n0.1\t1\tcss\tkucuk\t/k/c\n0.1\t1\tjs\tkucuk\t/k/x.MJS\n0.1\t1\tfont\tkucuk\t/k/x.WOFF2\n0.1\t1\timg\tkucuk\t/k/x.svg\n0.1\t1\tdiger\tkucuk\t/k/x.map\n0.1\t1\thtml\tkucuk\t/k/dizin/\n0.1\t1\thtml\tkucuk\t/\n0.1\t1\tcss\tkucuk\t/k/port.css\n0.1\t1\tjs\tkucuk\t/k/buyukharf.js\n0.1\t1\tjs\tkucuk\t/k/bosluk.js\n0.1\t1\tjs\tkucuk\t/k/kullanici.js\n0.1\t1\tjs\tkucuk\t/k/sekme.js\n0.1\t1\tjs\tkucuk\t/k/sorgu-bos.js\n0.1\t1\tjs\tkucuk\t/k/parca.js\n0.1\t1\tjs\tkucuk\t//k/cift.js\n0.1\t1\tjs\tkucuk\t/k/../ust.js\n0.1\t1\tjs\tkucuk\t/k/rb_x/y.js\n0.1\t1\timg\tkucuk\t/k/u/x@2x.png\n0.1\t1\tjs\tkucuk\t/k/@kapsam/paket.js\n0.1\t1\tjs\tkucuk\t/k/durum-metin.js\n0.1\t1\tjs\tkucuk\t/k/durum-ondalik.js\n0.1\t1\tjs\tkucuk\t/k/durum-1.js\n0.1\t1\tjs\tkucuk\t/k/durum-204.js\n0.1\t1\tjs\tkucuk\t/k/durum-alt.js\n0.1\t1\tjs\torta\t/k/boyut-metin.js\n0.1\t1\tjs\tkucuk\t/k/boyut-eksi.js\n0.1\t1\tjs\tkucuk\t/k/boyut-kotu.js\n0.1\t1\tjs\torta\t/k/boyut-ondalik.js\n0.1\t1\tjs\torta\t/k/esik.js\n0.1\t1\tjs\tkucuk\t/k/esik-alt.js\n0.1\t1\tjs\tkucuk\t/k/onbellek-bos.js\n0.1\t1\tjs\tkucuk\t/k/onbellek-liste.js\n0.1\t1\tjs\tkucuk\t/k/onbellek-sifir.js\n0.1\t1\tjs\tkucuk\t/k/icerik-yok.js\n0.1\t1\tjs\tkucuk\t/k/mime-sayi.js\n0.2\t1\tjs\tbuyuk\t/k/kosullu.js\n",
+    "B": "1\t1\tjs\tbuyuk\t/k/b.js\n1\t1\tjs\tbuyuk\t/k/kosullu.js\n",
+    "OZET": "# har_senaryo.py ozeti - yalniz sayilar (deger, baslik, cerez, sorgu yok)\nhost=glomo-test.fw.garantibbva.com.tr\nsorgu_politikasi=sorguyu_at_yolu_tut\nbuyuk_esik_bayt=60000\nkolonlar(K.tsv,B.tsv)=agirlik<TAB>har<TAB>tur<TAB>boyut<TAB>yol\n\n[HAR 1] dosya=kenar.har.json sayfa_agirligi=0.1\n  toplam_giris=79 kalan=46 tekil_yol=44 ham_bayt=2179604 sorgusu_atilan=0 belge_ilk_satirda=evet kosullu_304=1\n  elenen: baska_host=4 bicim_disi=4 durum_0=2 get_degil_?=4 get_degil_PATCH=1 kisisel_veri_suphesi=5 onbellek_diger=3 oneagent_rb=1 sema_disi(data/blob)=3 url_ayristirilamadi=5 yonlendirme_399=1\n  tur: css=2 diger=2 font=3 html=3 img=3 js=32 json=1\n  boyut: buyuk=4 kucuk=39 orta=3\n  sayfa_1.txt_satir=46\n\n[TOPLAM] K_satir=44 K_toplam_agirlik=4.6 K_agirlikli_ort_ham_bayt=47382 B_satir=2 sayfa_dosyasi=1 K_304_agirlik=0.1\nNOT: K agirliginin %2.2'i tarayicida 304 (kosullu GET, govdesiz) idi. Yuk testi kosulsuz gonderir; sunucu 200 + tam govde doner, CPU-ms/istek ve bayt/istek biraz yuksek cikar. Butun adimlarda ayni oynatildigi icin adimlar arasi orana etkisi kucuktur (MAKUL).\n"
+   }
+  },
+  {
+   "ad": "C_coklu_ondalik",
+   "host": "glomo-test.fw.garantibbva.com.tr",
+   "sorguAt": false,
+   "buyukEsik": null,
+   "harlar": [
+    {
+     "uretec": "sentetik",
+     "ad": "s.har.json",
+     "agirlik": 1.5
+    },
+    {
+     "uretec": "ikinci",
+     "ad": "iki.har.json",
+     "agirlik": 0.25
+    },
+    {
+     "uretec": "kenar",
+     "ad": "kenar.har.json",
+     "agirlik": 3.0
+    }
+   ],
+   "beklenen": {
+    "rc": 0,
+    "K": "3\t1\tjs\tbuyuk\t/app-v1/assets/a.js\n1.5\t1\thtml\tkucuk\t/app-v1/\n1.5\t1\tcss\torta\t/app-v1/assets/s.css\n1.5\t1\tconfig\tkucuk\t/app-v1/config\n1.5\t1\tjs\tkucuk\t/app-v1/assets/__federation_shared_@scope-ui/x.js\n0.25\t2\tjs\tbuyuk\t/app-v1/assets/a.js\n0.75\t2\tjs\tkucuk\t/app-v1/assets/b.js\n0.25\t2\tcss\tbuyuk\t/app-v1/assets/c.css\n6\t3\tjs\torta\t/k/b.js\n3\t3\thtml\tkucuk\t/k/index.html\n3\t3\tjson\tkucuk\t/k/veri\n3\t3\tdiger\tkucuk\t/k/vnd\n3\t3\tfont\tkucuk\t/k/f\n3\t3\tfont\tkucuk\t/k/f2\n3\t3\timg\tkucuk\t/k/img\n3\t3\tjs\tkucuk\t/k/tj\n3\t3\tcss\tkucuk\t/k/c\n3\t3\tjs\tkucuk\t/k/x.MJS\n3\t3\tfont\tkucuk\t/k/x.WOFF2\n3\t3\timg\tkucuk\t/k/x.svg\n3\t3\tdiger\tkucuk\t/k/x.map\n3\t3\thtml\tkucuk\t/k/dizin/\n3\t3\thtml\tkucuk\t/\n3\t3\tcss\tkucuk\t/k/port.css\n3\t3\tjs\tkucuk\t/k/buyukharf.js\n3\t3\tjs\tkucuk\t/k/bosluk.js\n3\t3\tjs\tkucuk\t/k/kullanici.js\n3\t3\tjs\tkucuk\t/k/sekme.js\n3\t3\tjs\tkucuk\t/k/sorgu-bos.js\n3\t3\tjs\tkucuk\t/k/parca.js\n3\t3\tjs\tkucuk\t//k/cift.js\n3\t3\tjs\tkucuk\t/k/../ust.js\n3\t3\tjs\tkucuk\t/k/rb_x/y.js\n3\t3\timg\tkucuk\t/k/u/x@2x.png\n3\t3\tjs\tkucuk\t/k/@kapsam/paket.js\n3\t3\tjs\tkucuk\t/k/durum-metin.js\n3\t3\tjs\tkucuk\t/k/durum-ondalik.js\n3\t3\tjs\tkucuk\t/k/durum-1.js\n3\t3\tjs\tkucuk\t/k/durum-204.js\n3\t3\tjs\tkucuk\t/k/durum-alt.js\n3\t3\tjs\torta\t/k/boyut-metin.js\n3\t3\tjs\tkucuk\t/k/boyut-eksi.js\n3\t3\tjs\tkucuk\t/k/boyut-kotu.js\n3\t3\tjs\torta\t/k/boyut-ondalik.js\n3\t3\tjs\torta\t/k/esik.js\n3\t3\tjs\tkucuk\t/k/esik-alt.js\n3\t3\tjs\tkucuk\t/k/onbellek-bos.js\n3\t3\tjs\tkucuk\t/k/onbellek-liste.js\n3\t3\tjs\tkucuk\t/k/onbellek-sifir.js\n3\t3\tjs\tkucuk\t/k/icerik-yok.js\n3\t3\tjs\tkucuk\t/k/mime-sayi.js\n6\t3\tjs\tbuyuk\t/k/kosullu.js\n",
+    "B": "1\t1\tjs\tbuyuk\t/app-v1/assets/a.js\n1\t2\tcss\tbuyuk\t/app-v1/assets/c.css\n1\t3\tjs\tbuyuk\t/k/kosullu.js\n",
+    "OZET": "# har_senaryo.py ozeti - yalniz sayilar (deger, baslik, cerez, sorgu yok)\nhost=glomo-test.fw.garantibbva.com.tr\nsorgu_politikasi=sorgulu_istegi_ele\nbuyuk_esik_bayt=512000\nkolonlar(K.tsv,B.tsv)=agirlik<TAB>har<TAB>tur<TAB>boyut<TAB>yol\n\n[HAR 1] dosya=s.har.json sayfa_agirligi=1.5\n  toplam_giris=21 kalan=6 tekil_yol=5 ham_bayt=1265000 sorgusu_atilan=0 belge_ilk_satirda=evet kosullu_304=1\n  elenen: baska_host=1 durum_0=1 get_degil_HEAD=1 get_degil_POST=1 hata_404=1 hata_500=1 kisisel_veri_suphesi=2 onbellek_disk=1 onbellek_memory=1 oneagent_rb=1 sema_disi(data/blob)=1 sorgulu=1 yonlendirme_301=1 yonlendirme_307=1\n  tur: config=1 css=1 html=1 js=3\n  boyut: buyuk=2 kucuk=3 orta=1\n  sayfa_1.txt_satir=6\n[HAR 2] dosya=iki.har.json sayfa_agirligi=0.25\n  toplam_giris=5 kalan=5 tekil_yol=3 ham_bayt=1400030 sorgusu_atilan=0 belge_ilk_satirda=HAYIR(belge yok) kosullu_304=1\n  elenen: -\n  tur: css=1 js=4\n  boyut: buyuk=2 kucuk=3\n  sayfa_2.txt_satir=5\n[HAR 3] dosya=kenar.har.json sayfa_agirligi=3\n  toplam_giris=79 kalan=46 tekil_yol=44 ham_bayt=2179604 sorgusu_atilan=0 belge_ilk_satirda=evet kosullu_304=1\n  elenen: baska_host=4 bicim_disi=4 durum_0=2 get_degil_?=4 get_degil_PATCH=1 kisisel_veri_suphesi=5 onbellek_diger=3 oneagent_rb=1 sema_disi(data/blob)=3 url_ayristirilamadi=5 yonlendirme_399=1\n  tur: css=2 diger=2 font=3 html=3 img=3 js=32 json=1\n  boyut: buyuk=2 kucuk=39 orta=5\n  sayfa_3.txt_satir=46\n\n[TOPLAM] K_satir=52 K_toplam_agirlik=148.25 K_agirlikli_ort_ham_bayt=59266 B_satir=3 sayfa_dosyasi=3 K_304_agirlik=4.75\nNOT: K agirliginin %3.2'i tarayicida 304 (kosullu GET, govdesiz) idi. Yuk testi kosulsuz gonderir; sunucu 200 + tam govde doner, CPU-ms/istek ve bayt/istek biraz yuksek cikar. Butun adimlarda ayni oynatildigi icin adimlar arasi orana etkisi kucuktur (MAKUL).\n"
+   }
+  },
+  {
+   "ad": "D_coklu_kucuk_agirlik",
+   "host": "glomo-test.fw.garantibbva.com.tr",
+   "sorguAt": false,
+   "buyukEsik": null,
+   "harlar": [
+    {
+     "uretec": "ikinci",
+     "ad": "iki.har.json",
+     "agirlik": 0.0078125
+    },
+    {
+     "uretec": "sentetik",
+     "ad": "s.har.json",
+     "agirlik": 1234567.5
+    }
+   ],
+   "beklenen": {
+    "rc": 0,
+    "K": "0.0078125\t1\tjs\tbuyuk\t/app-v1/assets/a.js\n0.0234375\t1\tjs\tkucuk\t/app-v1/assets/b.js\n0.0078125\t1\tcss\tbuyuk\t/app-v1/assets/c.css\n2469135\t2\tjs\tbuyuk\t/app-v1/assets/a.js\n1.23457e+06\t2\thtml\tkucuk\t/app-v1/\n1.23457e+06\t2\tcss\torta\t/app-v1/assets/s.css\n1.23457e+06\t2\tconfig\tkucuk\t/app-v1/config\n1.23457e+06\t2\tjs\tkucuk\t/app-v1/assets/__federation_shared_@scope-ui/x.js\n",
+    "B": "1\t1\tjs\tbuyuk\t/app-v1/assets/a.js\n1\t1\tcss\tbuyuk\t/app-v1/assets/c.css\n",
+    "OZET": "# har_senaryo.py ozeti - yalniz sayilar (deger, baslik, cerez, sorgu yok)\nhost=glomo-test.fw.garantibbva.com.tr\nsorgu_politikasi=sorgulu_istegi_ele\nbuyuk_esik_bayt=512000\nkolonlar(K.tsv,B.tsv)=agirlik<TAB>har<TAB>tur<TAB>boyut<TAB>yol\n\n[HAR 1] dosya=iki.har.json sayfa_agirligi=0.0078125\n  toplam_giris=5 kalan=5 tekil_yol=3 ham_bayt=1400030 sorgusu_atilan=0 belge_ilk_satirda=HAYIR(belge yok) kosullu_304=1\n  elenen: -\n  tur: css=1 js=4\n  boyut: buyuk=2 kucuk=3\n  sayfa_1.txt_satir=5\n[HAR 2] dosya=s.har.json sayfa_agirligi=1.23457e+06\n  toplam_giris=21 kalan=6 tekil_yol=5 ham_bayt=1265000 sorgusu_atilan=0 belge_ilk_satirda=evet kosullu_304=1\n  elenen: baska_host=1 durum_0=1 get_degil_HEAD=1 get_degil_POST=1 hata_404=1 hata_500=1 kisisel_veri_suphesi=2 onbellek_disk=1 onbellek_memory=1 oneagent_rb=1 sema_disi(data/blob)=1 sorgulu=1 yonlendirme_301=1 yonlendirme_307=1\n  tur: config=1 css=1 html=1 js=3\n  boyut: buyuk=2 kucuk=3 orta=1\n  sayfa_2.txt_satir=6\n\n[TOPLAM] K_satir=8 K_toplam_agirlik=7.40741e+06 K_agirlikli_ort_ham_bayt=210833 B_satir=2 sayfa_dosyasi=2 K_304_agirlik=1.23457e+06\nNOT: K agirliginin %16.7'i tarayicida 304 (kosullu GET, govdesiz) idi. Yuk testi kosulsuz gonderir; sunucu 200 + tam govde doner, CPU-ms/istek ve bayt/istek biraz yuksek cikar. Butun adimlarda ayni oynatildigi icin adimlar arasi orana etkisi kucuktur (MAKUL).\n"
+   }
+  },
+  {
+   "ad": "E_ihlal",
+   "host": "glomo-test.fw.garantibbva.com.tr",
+   "sorguAt": false,
+   "buyukEsik": null,
+   "harlar": [
+    {
+     "uretec": "ihlalli",
+     "ad": "c.har.json",
+     "agirlik": null
+    }
+   ],
+   "beklenen": {
+    "rc": 3
+   }
+  },
+  {
+   "ad": "F_bos",
+   "host": "glomo-test.fw.garantibbva.com.tr",
+   "sorguAt": false,
+   "buyukEsik": null,
+   "harlar": [
+    {
+     "uretec": "bos",
+     "ad": "bos.har.json",
+     "agirlik": null
+    }
+   ],
+   "beklenen": {
+    "rc": 2
+   }
+  },
+  {
+   "ad": "G_bicim",
+   "host": "glomo-test.fw.garantibbva.com.tr",
+   "sorguAt": false,
+   "buyukEsik": null,
+   "harlar": [
+    {
+     "uretec": "bicim",
+     "ad": "b.har.json",
+     "agirlik": null
+    }
+   ],
+   "beklenen": {
+    "rc": 2
+   }
+  },
+  {
+   "ad": "H_json_degil",
+   "host": "glomo-test.fw.garantibbva.com.tr",
+   "sorguAt": false,
+   "buyukEsik": null,
+   "harlar": [
+    {
+     "uretec": "bozuk",
+     "ad": "j.har.json",
+     "agirlik": null
+    }
+   ],
+   "beklenen": {
+    "rc": 2
+   }
+  },
+  {
+   "ad": "I_negatif",
+   "host": "glomo-test.fw.garantibbva.com.tr",
+   "sorguAt": false,
+   "buyukEsik": null,
+   "harlar": [
+    {
+     "uretec": "sentetik",
+     "ad": "s.har.json",
+     "agirlik": -1.0
+    }
+   ],
+   "beklenen": {
+    "rc": 2
+   }
+  },
+  {
+   "ad": "J_host_buyuk",
+   "host": "  GLOMO-TEST.fw.garantibbva.com.tr ",
+   "sorguAt": false,
+   "buyukEsik": null,
+   "harlar": [
+    {
+     "uretec": "sentetik",
+     "ad": "s.har.json",
+     "agirlik": null
+    }
+   ],
+   "beklenen": {
+    "rc": 0,
+    "K": "2\t1\tjs\tbuyuk\t/app-v1/assets/a.js\n1\t1\thtml\tkucuk\t/app-v1/\n1\t1\tcss\torta\t/app-v1/assets/s.css\n1\t1\tconfig\tkucuk\t/app-v1/config\n1\t1\tjs\tkucuk\t/app-v1/assets/__federation_shared_@scope-ui/x.js\n",
+    "B": "1\t1\tjs\tbuyuk\t/app-v1/assets/a.js\n",
+    "OZET": "# har_senaryo.py ozeti - yalniz sayilar (deger, baslik, cerez, sorgu yok)\nhost=glomo-test.fw.garantibbva.com.tr\nsorgu_politikasi=sorgulu_istegi_ele\nbuyuk_esik_bayt=512000\nkolonlar(K.tsv,B.tsv)=agirlik<TAB>har<TAB>tur<TAB>boyut<TAB>yol\n\n[HAR 1] dosya=s.har.json sayfa_agirligi=1\n  toplam_giris=21 kalan=6 tekil_yol=5 ham_bayt=1265000 sorgusu_atilan=0 belge_ilk_satirda=evet kosullu_304=1\n  elenen: baska_host=1 durum_0=1 get_degil_HEAD=1 get_degil_POST=1 hata_404=1 hata_500=1 kisisel_veri_suphesi=2 onbellek_disk=1 onbellek_memory=1 oneagent_rb=1 sema_disi(data/blob)=1 sorgulu=1 yonlendirme_301=1 yonlendirme_307=1\n  tur: config=1 css=1 html=1 js=3\n  boyut: buyuk=2 kucuk=3 orta=1\n  sayfa_1.txt_satir=6\n\n[TOPLAM] K_satir=5 K_toplam_agirlik=6 K_agirlikli_ort_ham_bayt=210833 B_satir=1 sayfa_dosyasi=1 K_304_agirlik=1\nNOT: K agirliginin %16.7'i tarayicida 304 (kosullu GET, govdesiz) idi. Yuk testi kosulsuz gonderir; sunucu 200 + tam govde doner, CPU-ms/istek ve bayt/istek biraz yuksek cikar. Butun adimlarda ayni oynatildigi icin adimlar arasi orana etkisi kucuktur (MAKUL).\n"
+   }
+  },
+  {
+   "ad": "L_baska_host",
+   "host": "baska.example",
+   "sorguAt": false,
+   "buyukEsik": null,
+   "harlar": [
+    {
+     "uretec": "sentetik",
+     "ad": "s.har.json",
+     "agirlik": null
+    }
+   ],
+   "beklenen": {
+    "rc": 2
+   }
+  }
+ ]
+}

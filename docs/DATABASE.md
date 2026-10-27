@@ -93,6 +93,29 @@ ayrismasina yol acardi. Ekip yalnizca `in_use`, `planned_date` ve `note` yazabil
 isareti (`migrated_date`) taramayla dogrulanan bir olgudur ve `/api/spa-plan/declare` ona
 DOKUNMAZ (bekci SP4).
 
+## Nginx Hub / Yuk Testi
+
+Portal DB'si (nitelendirilmemis tablo adlari; `PORTAL_DB_*` bos ise TBMWANS). Ayrinti:
+[NGINX-YUK-TESTI.md](NGINX-YUK-TESTI.md).
+
+| Tablo | Amac | Modul |
+|---|---|---|
+| `nginx_loadtest_senaryolar` | Senaryo: YALNIZ yol satirlari (kanonik TSV + sha256, yol sayisi, ayristirici ozeti). HAR tarayicidan cikmaz; yumusak silme (`silindi`) | nginx-loadtest/index.cjs |
+| `nginx_loadtest_kosular` | On kontrol (`islem='on_kontrol'`) ve kosu (`islem='kosu'`) satirlari: hedef / IP / vhost / yuk makinesi, parametreler, AWX sunucu + is numarasi (uclar istemciden ALMAZ), durum (`QUEUED`..`OKUNAMADI`), maskeli set_stats, gecerlilik + nedenler. `kilit_id` (kosunun kilit kimligi; Durdur kilitleri bununla durdur isine baglar), `durdur_awx_server_id` / `durdur_awx_job_id` (son Durdur isi, `GET /kosular/:id` `durdurIsi`), `sonuclandirma_denemesi` (INT NOT NULL DEFAULT 0: poller FINALIZING sayaci; 3'u gecerse `/sw` okunmaz - cokme dongusu kalkani; `POST /kosular/:id/yeniden-oku` sifirlar). Indeks `IX_nlk_job`, `IX_nlk_hedef` | nginx-loadtest/index.cjs, poller.cjs |
+| `nginx_loadtest_adimlar` | Kosu basina TUR satiri (`R<id>_<K\|B>_<kip>_<ae>_<hiz>_r<n>`): istemci/sunucu metrikleri (FLOAT, NULL = olculmedi), `ham` JSON. Zaman serisi YOK. Indeks `IX_nla_kosu` | nginx-loadtest/poller.cjs |
+| `nginx_loadtest_kilitleri` | CAS kilidi, `opsx_was_locks` bicimi: `G\|global`, `T\|<HEDEF>`, `L\|<YUK>`; satir SILINMEZ, TTL 75 dk. `bag_turu` (`on_kontrol` \| `kosu` \| `durdur`): bagli isin turu; AWX iptali / hatasinda kosu ve durdur kilidi BIRAKILMAZ, isten cozulur (`awx_*` = NULL) ve TTL ile duser (`kilit.bagliIsKarari`). Ise bagli tutulan kilit AWX sunucusunu kapatmayi engeller | nginx-loadtest/kilit.cjs |
+
+**Saklama:** `db/housekeeping.cjs` gece temizliginde kosular ve adimlari
+`NGINX_LOADTEST_RETENTION_DAYS` (varsayilan 365) gunden eskiyse en cok 500'luk `DELETE TOP (@n)`
+partileriyle siler: once adimlar, sonra adimi kalmamis kosular. Suren kosu
+(`QUEUED`/`RUNNING`/`FINALIZING`) silinmez. Senaryolar ve kilit satirlari silinmez.
+Ham olcum dosyalari DB'de degil, `/sw/BMW_PORTAL/nginx_loadtest/<kosu>/` altindadir.
+
+**Sema notu (2026-10-27 tur 2):** `kilit_id`, `durdur_awx_server_id`, `durdur_awx_job_id`,
+`sonuclandirma_denemesi` (kosular) ve `bag_turu` (kilitleri) dogrudan `CREATE TABLE` icindedir:
+tablolar henuz hicbir ortamda yaratilmadi (ozellik dagitilmadi), ALTER yok. Tablo daha once
+yaratilmis bir ortama getirilirse bu kolonlar icin ALTER eklenmelidir.
+
 ## Crypto Hub (harici tarama verisi)
 
 DDL portal boot'unda DEGIL, `bmw_automation_folder/crypto_hub/files/crypto_hub_schema.sql`

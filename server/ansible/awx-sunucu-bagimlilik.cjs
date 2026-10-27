@@ -34,11 +34,21 @@ const ENGELLER = [
     sql: `SELECT COUNT(*) AS n FROM smart_tickets WHERE awx_server_id = $1 AND status IN ('PENDING','LAUNCHING')`,
   },
   {
+    // Nginx Yuk Testi (2026-10-27) da burada: kosu ve on kontrol isleri kilit tutar; kilidi ve
+    // kosunun sonucu bu sunucudan okunur. Yuk testi ISI basina BIR sayilir (uc kilidi tek is):
+    // tutulan kilidin isi ile suren kosu satirinin isi UNION ile tekillestirilir; kilidi
+    // baglanamamis (yarim) kosu da sayilir.
     anahtar: 'kilit',
-    baslik: 'Tutulan OpsX / Crypto Hub kilidi',
-    ipucu: 'Kilit, işin sonucu bu sunucudan okunarak bırakılır; kapatılırsa süre dolana kadar kalır.',
+    baslik: 'Tutulan OpsX / Crypto Hub kilidi ya da süren Nginx Yük Testi',
+    ipucu: 'Kilit, işin sonucu bu sunucudan okunarak bırakılır; kapatılırsa süre dolana kadar kalır. Yük testi için Nginx Hub > Yük Testi ekranında koşunun bitmesini bekleyin ya da Durdur ile durdurun.',
     sql: `SELECT (SELECT COUNT(*) FROM opsx_was_locks WHERE held = 1 AND awx_server_id = $1)
-               + (SELECT COUNT(*) FROM crypto_hub_locks WHERE held = 1 AND awx_server_id = $1) AS n`,
+               + (SELECT COUNT(*) FROM crypto_hub_locks WHERE held = 1 AND awx_server_id = $1)
+               + (SELECT COUNT(*) FROM (
+                    SELECT awx_job_id FROM nginx_loadtest_kilitleri WHERE held = 1 AND awx_server_id = $1 AND awx_job_id IS NOT NULL
+                    UNION
+                    SELECT awx_job_id FROM nginx_loadtest_kosular
+                     WHERE awx_server_id = $1 AND awx_job_id IS NOT NULL AND durum IN ('QUEUED','RUNNING','FINALIZING')
+                  ) yt) AS n`,
   },
   {
     anahtar: 'scalex',

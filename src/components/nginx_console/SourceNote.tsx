@@ -8,7 +8,7 @@ import React from 'react';
 import { GuncellemeRozeti } from '@/components/common/GuncellemeRozeti';
 import { InformationCircleIcon } from '@heroicons/react/24/outline';
 
-export type SourceKey = 'console' | 'audit' | 'cis' | 'spa' | 'api' | 'inventory' | 'rvpstatic';
+export type SourceKey = 'console' | 'audit' | 'cis' | 'spa' | 'api' | 'inventory' | 'rvpstatic' | 'yuktesti';
 
 const SOURCES: Record<SourceKey, { job: string; what: string; refresh: string }> = {
   console: {
@@ -49,6 +49,13 @@ const SOURCES: Record<SourceKey, { job: string; what: string; refresh: string }>
     refresh:
       'Bu liste bir taramadan GELMEZ. Sunucu eklenince ya da çıkınca rvpSecim.ts güncellenmelidir — ' +
       'listede göremediğiniz bir sunucu için GT Agile BMW ekibine danışın.',
+  },
+  // Yuk Testi (2026-10-27): veri ZAMANLANMIS bir taramadan gelmez; her kosu kullanicinin baslattigi kendi
+  // AWX isidir (bmw_portal/nginx_loadtest). Var olan bir dokum / denetim isinin adi yazilmaz.
+  yuktesti: {
+    job: 'nginx_loadtest.yml (Portal’ın başlattığı koşular)',
+    what: 'her koşunun /sw’deki sonuç dizini (nginx_loadtest/<koşu>: k6 istemci özeti, hedefin CPU kaydı ve access log satırları); Portal tablolarında adım adım değerlendirme',
+    refresh: 'Zamanlanmış tarama yok — yeni ölçüm için “Yeni koşu”. Sonuçlar iş bitince Portal tarafından okunur.',
   },
 };
 

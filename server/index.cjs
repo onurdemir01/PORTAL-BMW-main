@@ -186,6 +186,12 @@ async function main() {
       optional: true,
     },
     {
+      // Nginx Hub > Yuk Testi (2026-10-27): ayri router /api/nginx-loadtest + sonuclandirici poller.
+      name: 'nginxLoadtest',
+      init: () => require('./nginx-loadtest/index.cjs').initNginxLoadtest(app),
+      optional: true,
+    },
+    {
       name: 'retirement',
       init: () => require('./retirement/index.cjs').initRetirement(app),
       optional: true,

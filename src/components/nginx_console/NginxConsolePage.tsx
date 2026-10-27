@@ -13,6 +13,7 @@ import { useSearchParams } from 'react-router-dom';
 import {
   ArrowPathIcon, ChevronDownIcon, ChevronRightIcon, DocumentIcon, DocumentPlusIcon, FolderIcon, FolderOpenIcon,
   MagnifyingGlassIcon, PaperAirplaneIcon, ShieldCheckIcon, ServerStackIcon, ArrowUturnLeftIcon, Squares2X2Icon, ClockIcon, ChartBarIcon, TrashIcon, ScaleIcon, FunnelIcon, QuestionMarkCircleIcon,
+  BeakerIcon,
 } from '@heroicons/react/24/outline';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { useAuth } from '@/contexts/AuthContext';
@@ -28,6 +29,7 @@ import { DriftTab } from './DriftTab';
 import { CisTab } from './CisTab';
 import { RateLimitTab } from './RateLimitTab';
 import { RvpSecimTab } from './RvpSecimTab';
+import { YukTestiTab } from './YukTestiTab';
 import { SourceNote, type SourceKey } from './SourceNote';
 // DENETIM'DEN TASINDI (kullanici, 2026-09-22): "Denetim'deki tum nginx sayfalarini Nginx Hub'a
 // gom." Bilesenler yerinde kaldi (denetim/), yalniz sekme burada. Denetim'de artik nginx sekmesi yok.
@@ -40,8 +42,8 @@ import HelpModal from '@/components/common/HelpModal';
 import { nginxConsoleApi, type NcHost, type NcTree, type NcTreeDir, type NcFile, type NcCertsResult, type NcAggCert, type NcCert, type NcChange } from '@/api/nginxConsoleApi';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
 
-type Tab = 'dashboard' | 'instances' | 'config' | 'certs' | 'changes' | 'orphans' | 'drift' | 'cis' | 'ratelimit' | 'rvpsecim' | 'spadiscovery' | 'api' | 'envanter' | 'audit';
-const TABS: readonly Tab[] = ['dashboard', 'instances', 'config', 'changes', 'certs', 'orphans', 'drift', 'cis', 'ratelimit', 'rvpsecim', 'spadiscovery', 'api', 'envanter', 'audit'];
+type Tab = 'dashboard' | 'instances' | 'config' | 'certs' | 'changes' | 'orphans' | 'drift' | 'cis' | 'ratelimit' | 'rvpsecim' | 'yuktesti' | 'spadiscovery' | 'api' | 'envanter' | 'audit';
+const TABS: readonly Tab[] = ['dashboard', 'instances', 'config', 'changes', 'certs', 'orphans', 'drift', 'cis', 'ratelimit', 'rvpsecim', 'yuktesti', 'spadiscovery', 'api', 'envanter', 'audit'];
 // Panel basliklarindaki kucuk dugmeler: HEPSI ayni boyut/yazi (2026-09-19: btn-primary'nin buyuk
 // dolgusu "Sunucular" basligini eziyordu, iki dugmenin yazisi da farkli buyuklukteydi).
 const SM_BTN = 'inline-flex items-center gap-1 h-7 px-2.5 text-[11px] font-medium leading-none rounded-lg border whitespace-nowrap disabled:opacity-40';
@@ -65,6 +67,9 @@ const HUB_TABS = [
   // RP Secimi (2026-10-05, kullanici): "hangi sunucuya deployment yapacagini bilmiyor" -
   // salt okunur sihirbaz, tanim YAPMAZ (karar tablosu rvpSecim.ts).
   { id: 'rvpsecim', label: 'RP Seçimi', icon: QuestionMarkCircleIcon },
+  // Yuk Testi (2026-10-27, kullanici): el kitiyle yapilan k6 yuk testi AWX uzerinden; varsayilan KAPALI
+  // (tab:nginx:yuktesti), is baslatan dugmeler yalniz Admin.
+  { id: 'yuktesti', label: 'Yük Testi', icon: BeakerIcon },
 ] as const;
 // SPA + GERCEK SPA KESFI BIRLESTI (kullanici, 2026-10-08: "ikisi kafa karistirmaya
 // basladi"). Ayri 'spa' sekmesi KALDIRILDI; iki sayfa artik tek girisin ALT SEKMELERI
@@ -188,7 +193,7 @@ export default function NginxConsolePage() {
   // her sekmenin basinda kaynak isi, verinin tarihi ve nasil tazelenecegi yazar.
   const SOURCE_OF: Record<Tab, SourceKey> = {
     dashboard: 'console', instances: 'console', config: 'console', changes: 'console', certs: 'console',
-    orphans: 'console', drift: 'console', audit: 'audit', cis: 'cis', ratelimit: 'api', rvpsecim: 'rvpstatic', spadiscovery: 'spa', api: 'api', envanter: 'inventory',
+    orphans: 'console', drift: 'console', audit: 'audit', cis: 'cis', ratelimit: 'api', rvpsecim: 'rvpstatic', yuktesti: 'yuktesti', spadiscovery: 'spa', api: 'api', envanter: 'inventory',
   };
   // Dokum tabanli sekmelerde "son tarama" = en yeni dokum/gorulme ani.
   const lastDump = useMemo(() => {
@@ -243,6 +248,7 @@ export default function NginxConsolePage() {
       {tab === 'rvpsecim' && canSee('tab:nginx:rvpsecim') && <RvpSecimTab />}
       {tab === 'cis' && canSee('tab:nginx:cis') && <CisTab isAdmin={isAdmin} onOpenHost={(h) => go('config', h)} />}
       {tab === 'ratelimit' && canSee('tab:nginx:ratelimit') && <RateLimitTab />}
+      {tab === 'yuktesti' && canSee('tab:nginx:yuktesti') && <YukTestiTab isAdmin={isAdmin} />}
       {tab === 'spadiscovery' && (canSee('tab:nginx:spadiscovery') || canSee('tab:nginx:spa')) && (
         <NginxSpaBirlesik
           kesifGorunur={canSee('tab:nginx:spadiscovery')}

@@ -1751,6 +1751,136 @@ const TABLES = [
         UNIQUE(lock_key)
       )`,
   },
+  {
+    // Nginx Hub > Yuk Testi (2026-10-27) - senaryo: YALNIZ yol satirlari (HAR tarayicidan cikmaz).
+    // tsv kanonik (basliksiz, LF), sha256 onun ozeti; playbook ayni ozeti dogrular. Yumusak silme:
+    // gecmis kosular (durdurma dahil) govdeye erismeye devam eder. Bkz. docs/NGINX-YUK-TESTI.md.
+    name: 'nginx_loadtest_senaryolar',
+    sql: `
+      CREATE TABLE nginx_loadtest_senaryolar (
+        id           INT IDENTITY(1,1) PRIMARY KEY,
+        ad           NVARCHAR(120) NOT NULL,
+        aciklama     NVARCHAR(500) NULL,
+        vhost        NVARCHAR(255) NULL,
+        senaryo_tur  CHAR(1) NOT NULL,
+        tsv          NVARCHAR(MAX) NOT NULL,
+        sha256       CHAR(64) NOT NULL,
+        yol_sayisi   INT NOT NULL,
+        ozet         NVARCHAR(MAX) NULL,
+        kaynak       NVARCHAR(20) NOT NULL,
+        created_by   NVARCHAR(100) NULL,
+        created_at   DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        silindi      BIT NOT NULL DEFAULT 0
+      )`,
+  },
+  {
+    // Yuk Testi kosulari: on kontrol (islem='on_kontrol', yuk uretmez) ve kosu (islem='kosu').
+    // AWX sunucu/is numarasi YALNIZ burada tutulur; uclar istemciden almaz. durum:
+    // QUEUED|RUNNING|FINALIZING|DONE|FAILED|CANCELED|OKUNAMADI. OKUNAMADI basari DEGILDIR.
+    // sonuc = maskeli set_stats (+ portal_analiz). Saklama: housekeeping 365 gun, TOP(@n) partileri.
+    // kilit_id: kosunun kilit kimligi (Durdur kilitleri bununla durdur isine baglar);
+    // durdur_awx_*: son Durdur isi; sonuclandirma_denemesi: poller'in FINALIZING sayaci (> 3 ise /sw
+    // okunmaz - cokme dongusu kalkani; "yeniden oku" ucu sifirlar). Tablo hic dagitilmadi: ALTER yok.
+    name: 'nginx_loadtest_kosular',
+    sql: `
+      CREATE TABLE nginx_loadtest_kosular (
+        id                  INT IDENTITY(1,1) PRIMARY KEY,
+        senaryo_id          INT NOT NULL,
+        on_kontrol_kosu_id  INT NULL,
+        islem               NVARCHAR(20) NOT NULL,
+        etiket              NVARCHAR(120) NULL,
+        adim                NVARCHAR(20) NULL,
+        hedef_host          NVARCHAR(64) NOT NULL,
+        hedef_ip            VARCHAR(45) NOT NULL,
+        vhost               NVARCHAR(255) NOT NULL,
+        yuk_host            NVARCHAR(64) NOT NULL,
+        parametreler        NVARCHAR(MAX) NULL,
+        durum               NVARCHAR(20) NOT NULL,
+        awx_server_id       INT NULL,
+        awx_job_id          INT NULL,
+        sw_dizin            NVARCHAR(400) NULL,
+        sonuc               NVARCHAR(MAX) NULL,
+        on_kontrol_ozet     NVARCHAR(MAX) NULL,
+        gecerlilik          NVARCHAR(20) NULL,
+        gecersiz_nedenleri  NVARCHAR(MAX) NULL,
+        created_by          NVARCHAR(100) NULL,
+        created_at          DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        started_at          DATETIME2 NULL,
+        finished_at         DATETIME2 NULL,
+        finalized_at        DATETIME2 NULL,
+        iptal_eden          NVARCHAR(100) NULL,
+        kilit_id            NVARCHAR(64) NULL,
+        durdur_awx_server_id INT NULL,
+        durdur_awx_job_id   INT NULL,
+        sonuclandirma_denemesi INT NOT NULL DEFAULT 0
+      )`,
+  },
+  {
+    // Kosu basina TUR satiri (R<id>_<K|B>_<kip>_<ae>_<hiz>_r<n>). Metrik kolonlari NULL olabilir:
+    // NULL = olculmedi (asla 0 sayilmaz). Zaman serisi TUTULMAZ; ham = analizin geri kalani (JSON).
+    name: 'nginx_loadtest_adimlar',
+    sql: `
+      CREATE TABLE nginx_loadtest_adimlar (
+        id               INT IDENTITY(1,1) PRIMARY KEY,
+        kosu_id          INT NOT NULL,
+        tur              NVARCHAR(120) NOT NULL,
+        senaryo          CHAR(1) NULL,
+        kip              NVARCHAR(8) NULL,
+        ae               NVARCHAR(10) NULL,
+        hiz              INT NULL,
+        deneme           INT NULL,
+        gecerlilik       NVARCHAR(20) NOT NULL,
+        nedenler         NVARCHAR(MAX) NULL,
+        p50              FLOAT NULL,
+        p95              FLOAT NULL,
+        p99              FLOAT NULL,
+        ttfb_p95         FLOAT NULL,
+        tls_p95          FLOAT NULL,
+        connect_p95      FLOAT NULL,
+        hata_orani       FLOAT NULL,
+        gercek_rps       FLOAT NULL,
+        bayt_istek       FLOAT NULL,
+        n_istek          FLOAT NULL,
+        n_429            FLOAT NULL,
+        n_5xx            FLOAT NULL,
+        dropped          FLOAT NULL,
+        istek_sunucu     FLOAT NULL,
+        rps_sunucu       FLOAT NULL,
+        cpu_ms_istek     FLOAT NULL,
+        host_cpu_ort     FLOAT NULL,
+        kapasite_rps     FLOAT NULL,
+        srt_p50          FLOAT NULL,
+        srt_p95          FLOAT NULL,
+        srt_p99          FLOAT NULL,
+        sikistirma_turu  NVARCHAR(16) NULL,
+        ham              NVARCHAR(MAX) NULL
+      )`,
+  },
+  {
+    // Yuk Testi kilidi - opsx_was_locks ile AYNI bicim (compare-and-set, server/nginx-loadtest/kilit.cjs).
+    // Anahtarlar: G|global, T|<HEDEF>, L|<YUK>. Satir SILINMEZ, kilit `held = 0` ile birakilir.
+    // TTL 75 dk (AWX template timeout <= 60 dk). Tutulan kilit AWX sunucusunu kapatmayi engeller.
+    // bag_turu: bagli isin turu (on_kontrol | kosu | durdur); AWX iptali / hatasinda kosu ve durdur
+    // kilidi BIRAKILMAZ, isten cozulur ve TTL ile duser (kilit.bagliIsKarari).
+    name: 'nginx_loadtest_kilitleri',
+    sql: `
+      CREATE TABLE nginx_loadtest_kilitleri (
+        id             INT IDENTITY(1,1) PRIMARY KEY,
+        lock_key       NVARCHAR(450) NOT NULL,
+        held           BIT NULL,
+        holder         NVARCHAR(255) NULL,
+        lock_id        NVARCHAR(64) NULL,
+        target_desc    NVARCHAR(500) NULL,
+        locked_until   DATETIME2 NULL,
+        awx_server_id  INT NULL,
+        awx_job_id     INT NULL,
+        bag_turu       NVARCHAR(12) NULL,
+        last_op_finished_at NVARCHAR(40) NULL,
+        created_at     DATETIME2 NULL DEFAULT GETUTCDATE(),
+        updated_at     DATETIME2 NULL DEFAULT GETUTCDATE(),
+        UNIQUE(lock_key)
+      )`,
+  },
 ];
 
 // LogX v2 EAR-klasor-son-eki → ortam etiketi varsayilan seed'i (admin ekranindan duzenlenebilir).
@@ -2545,6 +2675,16 @@ const ELEMENT_SEED = [
     sort_order: 31,
     default_visible: 0,
   },
+  {
+    // Yuk Testi (2026-10-27): k6 ile non-prod nginx yuk testi + sonuclar. Varsayilan KAPALI;
+    // panelden acilan Admin olmayan kullanici yalniz sonuclari okur (baslatma Admin'de).
+    element_key: 'tab:nginx:yuktesti',
+    element_type: 'tab',
+    parent_key: 'NginxConsole',
+    label: 'Yük Testi',
+    sort_order: 32,
+    default_visible: 0,
+  },
 ];
 
 const NGINX_TAB_KEYS_SEED = [
@@ -2562,6 +2702,7 @@ const NGINX_TAB_KEYS_SEED = [
   'audit',
   'ratelimit',
   'rvpsecim',
+  'yuktesti',
 ];
 
 async function seedPortalElements(pool) {
@@ -3150,6 +3291,18 @@ const PLAYBOOK_REGISTRY_SEED = [
       'bmw_portal/nginx_console/nginx_console_push.yml — tek sunucuda tek dosya (create/update): yol beyaz listesi, deployment kilidi, yedek (.console_backup), nginx -t, dusserse geri alma, reload; ardindan dokum yenilenir. Yalniz Admin tetikler.',
     playbook_path: null,
     env_var_name: 'NGINX_CONSOLE_PUSH_TEMPLATE_ID',
+  },
+  {
+    // Nginx Hub > Yuk Testi (2026-10-27): TEK playbook, uc kip (yuk_islem on_kontrol | kosu | durdur).
+    // Sunucu secilmezse NGINX_LOADTEST_AWX_SERVER_ID, o da yoksa #1 (0'a dusulmez).
+    key_name: 'nginx_loadtest_run',
+    display_name: 'Nginx Hub — Yük Testi (k6)',
+    category: 'nginx',
+    handler: 'nginx_loadtest_run',
+    description:
+      'bmw_portal/nginx_loadtest/nginx_loadtest.yml — non-prod nginx hedefine izinli yuk makinesinden k6 ile sabit hizli yuk; on kontrol (yuk yok), kosu (CPU kaydedici + k6, sonuclar /sw/BMW_PORTAL/nginx_loadtest/<kosu>/) ve durdur kipleri. Prompt on launch (Variables) ACIK, Limit kullanilmaz, template timeout <= 60 dk, Concurrent Jobs ACIK (durdur kosu surerken calisabilsin). Yalniz Admin tetikler; bkz. docs/NGINX-YUK-TESTI.md.',
+    playbook_path: null,
+    env_var_name: 'NGINX_LOADTEST_RUN_TEMPLATE_ID',
   },
   {
     key_name: 'opsx_openshift_pods',
@@ -4555,6 +4708,33 @@ async function setupTables() {
       col: 'kontrol_at',
       sql: `ALTER TABLE spa_gecis_app ADD kontrol_at DATETIME2 NULL`,
     },
+    {
+      // Nginx Yuk Testi tur 2 (2026-10-27): bu kolonlar CREATE TABLE'da da var; tablo onceki bicimiyle
+      // bir yerde yaratildiysa da eklensin (poller / kilit sorgulari "Invalid column name" ile dusmesin).
+      table: 'nginx_loadtest_kilitleri',
+      col: 'bag_turu',
+      sql: `ALTER TABLE nginx_loadtest_kilitleri ADD bag_turu NVARCHAR(12) NULL`,
+    },
+    {
+      table: 'nginx_loadtest_kosular',
+      col: 'kilit_id',
+      sql: `ALTER TABLE nginx_loadtest_kosular ADD kilit_id NVARCHAR(64) NULL`,
+    },
+    {
+      table: 'nginx_loadtest_kosular',
+      col: 'durdur_awx_server_id',
+      sql: `ALTER TABLE nginx_loadtest_kosular ADD durdur_awx_server_id INT NULL`,
+    },
+    {
+      table: 'nginx_loadtest_kosular',
+      col: 'durdur_awx_job_id',
+      sql: `ALTER TABLE nginx_loadtest_kosular ADD durdur_awx_job_id INT NULL`,
+    },
+    {
+      table: 'nginx_loadtest_kosular',
+      col: 'sonuclandirma_denemesi',
+      sql: `ALTER TABLE nginx_loadtest_kosular ADD sonuclandirma_denemesi INT NOT NULL CONSTRAINT DF_nlk_sonuclandirma_denemesi DEFAULT 0`,
+    },
   ];
 
   for (const { table, col, sql } of alters) {
@@ -4654,6 +4834,10 @@ async function setupTables() {
     // Is gecmisi is numarasiyla okunur: Retirement kaydi (loadRecord, 4 sn'de bir /canli) hedeflerin isleri,
     // ss/job-status sahiplik kontrolu (job_id + awx_server_id). Tabloda baska indeks yoktu (tam tarama).
     { name: 'IX_ajh_job', table: 'ansible_job_history', cols: 'job_id, awx_server_id' },
+    // Yuk Testi: poller/kilit isi numarasiyla, liste hedefe gore, adimlar kosuya gore okunur.
+    { name: 'IX_nlk_job', table: 'nginx_loadtest_kosular', cols: 'awx_server_id, awx_job_id' },
+    { name: 'IX_nlk_hedef', table: 'nginx_loadtest_kosular', cols: 'hedef_host, created_at' },
+    { name: 'IX_nla_kosu', table: 'nginx_loadtest_adimlar', cols: 'kosu_id' },
   ];
   for (const { name, table, cols } of indexes) {
     try {

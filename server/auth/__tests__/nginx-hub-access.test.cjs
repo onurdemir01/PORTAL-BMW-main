@@ -36,6 +36,8 @@ const TABS = [
   'api',
   'envanter',
   'audit',
+  // Yuk Testi (2026-10-27): ayri router; seed varsayilani KAPALI, render kapisi canSee.
+  'yuktesti',
 ];
 
 // Ekranda SEKME olarak cizilenler: 'spa' artik bir sekme DEGIL (birlesik sayfanin alt
@@ -174,6 +176,11 @@ test('NH-A3 sunucu kapıları: uçlar sayfa + sekme kapısından geçer', () => 
 
   const cis = read('server/nginx-cis/index.cjs');
   assert.ok(cis.includes("requireVisible('tab:nginx:cis')"), 'CIS uçları sekme kapısında değil');
+
+  // Yuk Testi ayri router (2026-10-27): sayfa + sekme kapisi kendi dosyasinda.
+  const yt = read('server/nginx-loadtest/index.cjs');
+  assert.ok(yt.includes("requireVisiblePrefix('NginxConsole')"), 'Yük Testi uçları sayfa kapısında değil');
+  assert.ok(yt.includes("requireVisible('tab:nginx:yuktesti')"), 'Yük Testi uçları sekme kapısında değil');
 
   const den = read('server/audit/denetim.cjs');
   assert.ok(

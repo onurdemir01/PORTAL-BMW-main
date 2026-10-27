@@ -15,6 +15,8 @@
 //      daha eski satirlar silinir (LOGX_V2_ROW_RETENTION_DAYS; jobs/downloads/ingest
 //      ON DELETE CASCADE). Her adim KUCUK PARTILERLE (TOP N) yapilir — tek buyuk
 //      DELETE/UPDATE transaction log'unu doldurur (Ansible nginx_audit'te yasandi).
+//      Nginx Yuk Testi kosulari + adimlari (NGINX_LOADTEST_RETENTION_DAYS, 365) da ayni
+//      desenle, en cok 500'luk partilerle silinir.
 //
 // Zamanlayici deseni server/db/full-backup.cjs ile AYNI (setInterval + saat penceresi +
 // portal_config_blobs'ta son calisma). Buradaki numEnv() de oradaki ile ayni tuzaklari
@@ -42,8 +44,14 @@ function getConfig() {
     logxBlobRetentionDays: numEnv(process.env.LOGX_V2_BLOB_RETENTION_DAYS, 30, { min: 1, max: 3650 }),
     logxRowRetentionDays: numEnv(process.env.LOGX_V2_ROW_RETENTION_DAYS, 180, { min: 7, max: 3650 }),
     batchSize: numEnv(process.env.DB_HOUSEKEEPING_BATCH, 2000, { min: 100, max: 50000 }),
+    // Nginx Yuk Testi kosulari + adimlari (2026-10-27): bir yil; karsilastirma icin referans
+    // kosular aylar sonra da okunur. Senaryolar silinmez (kucuk, yumusak silinir).
+    nginxLoadtestRetentionDays: numEnv(process.env.NGINX_LOADTEST_RETENTION_DAYS, 365, { min: 30, max: 3650 }),
   };
 }
+
+// Yuk Testi partisi: satir basina NVARCHAR(MAX) JSON (sonuc / ham) tasidigi icin kucuk tutulur.
+const NGINX_LOADTEST_PARTI = 500;
 
 const state = {
   status: 'idle', // idle | running | done | error
@@ -51,6 +59,8 @@ const state = {
   finishedAt: null,
   logxBlobsCleared: 0,
   logxRequestsDeleted: 0,
+  nginxLoadtestStepsDeleted: 0,
+  nginxLoadtestRunsDeleted: 0,
   lastError: null,
   alertsSent: {}, // { [fileName]: 'YYYY-MM-DD' } — dosya basina gunde bir uyari
   lastUsage: null, // son okunan doluluk ozeti (ekran icin, DB'ye gitmeden)
@@ -281,6 +291,8 @@ async function runHousekeeping() {
   state.lastError = null;
   state.logxBlobsCleared = 0;
   state.logxRequestsDeleted = 0;
+  state.nginxLoadtestStepsDeleted = 0;
+  state.nginxLoadtestRunsDeleted = 0;
   try {
     const pool = await getPool();
     if (!pool) throw new Error('Portal DB bağlantısı yok.');
@@ -314,9 +326,31 @@ async function runHousekeeping() {
       { d: cfg.logxRowRetentionDays },
     );
 
+    // 3) Nginx Yuk Testi: once eski kosularin adim satirlari, sonra adimi kalmamis eski kosular
+    //    (FK yok; sira bu yuzden onemli). Suren kosu (QUEUED/RUNNING/FINALIZING) ASLA silinmez.
+    state.nginxLoadtestStepsDeleted = await batched(
+      pool,
+      `DELETE TOP (@n) FROM nginx_loadtest_adimlar
+        WHERE kosu_id IN (SELECT id FROM nginx_loadtest_kosular
+                           WHERE created_at < DATEADD(day, -@d, GETUTCDATE())
+                             AND durum NOT IN ('QUEUED', 'RUNNING', 'FINALIZING'))`,
+      Math.min(cfg.batchSize, NGINX_LOADTEST_PARTI),
+      { d: cfg.nginxLoadtestRetentionDays },
+    );
+    state.nginxLoadtestRunsDeleted = await batched(
+      pool,
+      `DELETE TOP (@n) FROM nginx_loadtest_kosular
+        WHERE created_at < DATEADD(day, -@d, GETUTCDATE())
+          AND durum NOT IN ('QUEUED', 'RUNNING', 'FINALIZING')
+          AND NOT EXISTS (SELECT 1 FROM nginx_loadtest_adimlar a WHERE a.kosu_id = nginx_loadtest_kosular.id)`,
+      Math.min(cfg.batchSize, NGINX_LOADTEST_PARTI),
+      { d: cfg.nginxLoadtestRetentionDays },
+    );
+
     state.status = 'done';
     console.log(
-      `[DBHousekeeping] tamam: logx blob=${state.logxBlobsCleared} istek=${state.logxRequestsDeleted}`,
+      `[DBHousekeeping] tamam: logx blob=${state.logxBlobsCleared} istek=${state.logxRequestsDeleted}` +
+        ` yuktesti adim=${state.nginxLoadtestStepsDeleted} kosu=${state.nginxLoadtestRunsDeleted}`,
     );
   } catch (e) {
     state.status = 'error';

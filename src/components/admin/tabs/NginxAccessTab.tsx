@@ -24,6 +24,8 @@ const TAB_LABELS: Record<string, string> = {
   envanter: 'Envanter',
   audit: 'Audit',
   spadiscovery: 'Gerçek SPA Keşfi',
+  // Yuk Testi (2026-10-27): sekme acilan Admin olmayan kullanici sonuclari okur; kosu baslatamaz.
+  yuktesti: 'Yük Testi',
 };
 
 export default function NginxAccessTab() {

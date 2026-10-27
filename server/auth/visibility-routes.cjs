@@ -410,6 +410,8 @@ function initVisibilityRoutes(app, { requireAuth, requireAdmin }) {
     'audit',
     'spadiscovery',
     'rvpsecim',
+    // Yuk Testi (2026-10-27): ayri router /api/nginx-loadtest, requireVisible('tab:nginx:yuktesti').
+    'yuktesti',
   ];
   const nginxKeys = () => ['NginxConsole', ...NGINX_TAB_KEYS.map((t) => 'tab:nginx:' + t)];
 

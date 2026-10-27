@@ -59,6 +59,10 @@ const PLAYBOOKS = {
   // Nginx Hub (2026-09-19): dokum (salt okunur) + tek dosya push
   nginxConsoleFetch: 'nginx_console/nginx_console_fetch.yml',
   nginxConsolePush: 'nginx_console/nginx_console_push.yml',
+  // Nginx Hub Yuk Testi (k6): tek playbook, uc kip (yuk_islem on_kontrol|kosu|durdur).
+  // AWX'e limit GITMEZ; hedef ve yuk makinesi extra_var + add_host ile. Ayna Ansible deposuyla
+  // BAYT BAYT ayni (nginx-loadtest-ayna.test.cjs).
+  nginxLoadtest: 'nginx_loadtest/nginx_loadtest.yml',
   telnetOpenshift: 'telnet_openshift/telnet_openshift.yaml',
 };
 
