@@ -78,7 +78,7 @@ test('RD9 eksiz paket adi QA sunucusundaysa QA (envanter env), PROD DEGIL; son e
 
 test('RD10 AJP/proxy: ad tutmasa da vhost hedefi uygulamanin sunucusu + JVM portu ise BULUNUR', () => {
   // Kullanici (2026-10-12): "uygulamanin ismi onur ama Apache'ye cansu.fwgaranti.com.tr diye tanim yapilmis olabilir"
-  const inv = [{ app: 'ONUR', host: 'GBJBOP10', env: 'Production', domain: 'fw.garanti.com.tr', jboss_version: '8.0', app_path: '', status: 'stopped' }];
+  const inv = [{ app: 'ONUR', host: 'GBJBOP10', env: 'Production', domain: 'fw.garanti.com.tr', jboss_version: '7.4', app_path: '', status: 'stopped' }]; // IHS -> JBoss 7
   const jvm = [{ host: 'GBJBOP10', jvm: 'ONUR', running: 0, auto_start: 'false', scan_date: '2026-10-12', ports: '', cfg_ports: '8159,8230' }];
   const V = (host, sn, px, listen = '10.9.9.9:443') => ({ host, server_name: sn, listen, conf_file: `/usr/IBMIHS/conf/${sn}.conf`, product: 'IHS', proxy_targets: px });
   const vh = [
@@ -98,7 +98,7 @@ test('RD10 AJP/proxy: ad tutmasa da vhost hedefi uygulamanin sunucusu + JVM port
 });
 
 test('RD11 JVM portu bilinmiyorsa (cfg_ports ve ports bos) AJP eslesmesi YAPILMAZ; ad eslesmesi aynen calisir', () => {
-  const inv = [{ app: 'ONUR', host: 'GBJBOP10', env: 'Production', domain: 'fw.garanti.com.tr', jboss_version: '8.0' }];
+  const inv = [{ app: 'ONUR', host: 'GBJBOP10', env: 'Production', domain: 'fw.garanti.com.tr', jboss_version: '7.4' }]; // IHS -> JBoss 7
   const vh = [{ host: 'GBJBOP10', server_name: 'onur.fw.garanti.com.tr', listen: '*:443', conf_file: '/c', product: 'IHS', proxy_targets: 'gbjbop10:8159' }];
   const t = buildTargets('ONUR', inv, [], [{ host: 'GBJBOP10', jvm: 'ONUR', running: 0, ports: '', cfg_ports: null }], vh, []).targets[0];
   assert.deepEqual(t.web.map((w) => [w.serverName, w.kaynak]), [['onur.fw.garanti.com.tr', 'ad']]);

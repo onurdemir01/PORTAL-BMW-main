@@ -87,10 +87,9 @@ test('IN5 in-place hedefte yalniz AD ile eslesen vhost otomatik kapatilmaz (elle
   assert.ok(otomatik(yedi).includes('pos7.garanti.com.tr'), 'JBoss 7 AJP vhostu (kendi JVM portu) otomatik kalmali');
   assert.ok(otomatik(sekiz).includes('pos8.garanti.com.tr'), 'JBoss 8 mod_cluster vhostu otomatik kalmali');
   assert.ok(!otomatik(sekiz).includes('pos7.garanti.com.tr'), 'JBoss 8 retire JBoss 7 AJP vhostunu otomatik kapatacak');
-  for (const x of [yedi, sekiz]) {
-    assert.ok(elle(x).includes('gbposwebapi.garanti.com.tr'), `JBoss ${x.gen}: yalniz adla eslesen vhost elle isaretlenmedi`);
-    assert.match(x.web.find((w) => w.elle).elle, /in-place: .*elle kontrol edilmeli/);
-  }
+  assert.ok(elle(yedi).includes('gbposwebapi.garanti.com.tr'), 'JBoss 7: yalniz adla eslesen vhost elle isaretlenmedi');
+  assert.match(yedi.web.find((w) => w.elle).elle, /in-place: .*elle kontrol edilmeli/);
+  assert.ok(!sekiz.web.some((w) => w.serverName === 'gbposwebapi.garanti.com.tr'), 'JBoss 8 hedefi IHS vhostunu listeliyor (IN10)');
   // in-place DEGILSE ad eslesmesi eskisi gibi otomatik
   const tek = buildTargets('GBPOSWEBAPI', [a7], certs, jvm, vh, ips).targets[0];
   assert.ok(tek.web.every((w) => !w.elle), 'tek kurulumlu hedefte vhost elle isaretlendi (davranis degismemeli)');
@@ -138,19 +137,26 @@ test('IN9 diger kurulumun kesin (ajp/mc) vhost u bu hedefin listesinden cikar; s
   assert.ok(a7.web.length === 1 && a7.web[0].elle && a8.web.length === 1 && a8.web[0].elle, 'sahipsiz vhost dusuruldu');
 });
 
-// IN10 (2026-10-27, kullanici: "Jboss7 secimi yaptigimda neden gidip Redhat Apache'deki vhost'u kesfedip kullaniciya
-// yansitiyoruz?"): JBoss 7 hedefinde yalniz ad/sertifika ile eslesen RHA vhost'u listelenmez (in-place olsun olmasin);
-// AJP/proxy ile kesin eslesen RHA kalir; JBoss 8 hedefinde RHA ad eslesmesi aynen kalir.
-test('IN10 JBoss 7 hedefi yalniz adla eslesen Red Hat Apache vhost unu listelemez; JBoss 8 listeler', () => {
+// IN10 (2026-10-27, kullanici: "Jboss7'ler icin web process'imiz kesin olarak sadece IBM Apache, Jboss8'ler icin
+// web process'imiz kesin olarak sadece Redhat Apache"): JBoss 7 hedefi yalniz IHS, JBoss 8 hedefi yalniz RHA listeler;
+// bag turu (ad / ajp / mc) fark etmez. Urunu bilinmeyen girdi ve surumu bilinmeyen hedef eskisi gibi kalir.
+test('IN10 JBoss 7 yalniz IHS, JBoss 8 yalniz Red Hat Apache vhost listeler (ad/ajp/mc fark etmez)', () => {
   const certs = [
     { host: 'GOJBWP05', ip: '', port: '443', server_name: 'gbposwebapi.garanti.com.tr', conf_file: '/ihs/GBPOSWEBAPI.conf', product: 'IHS', env: 'PROD' },
     { host: 'GOJBWP05', ip: '', port: '8543', server_name: 'gbposwebapi.garanti.com.tr', conf_file: '/usr/apache/conf.d/GBPOSWEBAPI.conf', product: 'RHA', env: 'PROD' },
+    { host: 'GOJBWP05', ip: '', port: '9443', server_name: 'gbposwebapi.garanti.com.tr', conf_file: '/x/GBPOSWEBAPI.conf', product: '', env: 'PROD' },
   ];
+  const ips = [{ host: 'GOJBAP05', ip: '10.0.0.5' }];
+  const jvm = [{ host: 'GOJBAP05', jvm: 'GBPOSWEBAPI', running: 1, auto_start: 'true', scan_date: '2026-10-27', ports: '', cfg_ports: '8009' }];
+  const vh = [{ host: 'GOJBWP05', server_name: 'ajp-rha.garanti.com.tr', aliases: '', listen: '*:443', conf_file: '/rha/ajp.conf', product: 'RHA', proxy_targets: '10.0.0.5:8009' }];
   const a7 = { ...r7, host: 'GOJBAP05', domain: 'garanti.com.tr' };
-  const yedi = buildTargets('GBPOSWEBAPI', [a7], certs, [], [], []).targets[0];
-  assert.deepEqual(yedi.web.map((w) => w.product), ['IHS'], 'JBoss 7 hedefi RHA ad eslesmesini hala listeliyor');
-  assert.match(yedi.webHow, /yalnız adla eşleşen 1 Red Hat Apache vhost'u sayılmadı/);
+  const yedi = buildTargets('GBPOSWEBAPI', [a7], certs, jvm, vh, ips).targets[0];
+  assert.deepEqual(yedi.web.map((w) => w.product).sort(), ['', 'IHS'], 'JBoss 7 hedefi Red Hat Apache vhostu listeliyor (ad ya da ajp)');
+  assert.match(yedi.webHow, /JBoss 7 için 2 Red Hat Apache vhost'u sayılmadı \(JBoss 7 yalnız IBM HTTP Server arkasında çalışır\)/);
   const a8 = { ...r8, host: 'GOJBAP05', domain: 'garanti.com.tr' };
   const sekiz = buildTargets('GBPOSWEBAPI', [a8], certs, [], [], []).targets[0];
-  assert.ok(sekiz.web.some((w) => w.product === 'RHA'), 'JBoss 8 hedefinde RHA ad eslesmesi kayboldu');
+  assert.deepEqual(sekiz.web.map((w) => w.product).sort(), ['', 'RHA'], 'JBoss 8 hedefi IBM HTTP Server vhostu listeliyor');
+  assert.match(sekiz.webHow, /JBoss 8 için 1 IBM HTTP Server vhost'u sayılmadı/);
+  const bilinmeyen = buildTargets('GBPOSWEBAPI', [{ ...a7, jboss_version: '', app_path: '' }], certs, [], [], []).targets[0];
+  assert.equal(bilinmeyen.web.length, 3, 'surumu bilinmeyen hedefte eleme yapilmamali');
 });
