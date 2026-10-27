@@ -163,15 +163,21 @@ function OnceSonra({ v }: { v: VhostPlanDurumu }) {
   );
 }
 
+// ELLE AYRI BASLIKTA (2026-10-27, kullanici: "Jboss7 sectim gidip Redhat Apache'yi de bulup islem yapmaya
+// calisiyor gibi"): 'elle' girdiler web adiminda KAPATILMAZ ama "Kapatilacak" basligi altinda gorunuyordu.
 function VhostBloklar({ liste }: { liste?: VhostPlanDurumu[] }) {
   if (!liste || !liste.length) return null;
+  const kapatilacak = liste.filter((v) => v.durum !== 'elle');
+  const elle = liste.filter((v) => v.durum === 'elle');
   return (
     <div className="text-[12px] rounded-lg border px-3 py-2 space-y-3" style={{ borderColor: liste.some((v) => v.durum === 'hata') ? 'var(--status-danger)' : 'var(--border-subtle)' }}>
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="font-semibold" style={{ color: 'var(--text-muted)' }}>Kapatılacak VirtualHost blokları (web adımı)</div>
-        <RenkAciklama />
-      </div>
-      {liste.map((v) => (
+      {kapatilacak.length > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="font-semibold" style={{ color: 'var(--text-muted)' }}>Kapatılacak VirtualHost blokları (web adımı)</div>
+          <RenkAciklama />
+        </div>
+      )}
+      {kapatilacak.map((v) => (
         <div key={v.host + v.serverName + v.confFile} className="space-y-2">
           <div>
             <span className="font-mono font-semibold">{v.serverName}</span>
@@ -189,6 +195,18 @@ function VhostBloklar({ liste }: { liste?: VhostPlanDurumu[] }) {
           )}
         </div>
       ))}
+      {elle.length > 0 && (
+        <div className="space-y-2" data-testid="rt-vhost-elle">
+          <div className="font-semibold" style={{ color: 'var(--status-warning-text)' }}>Otomatik kapatılmayacak — dokunulmaz, gerekirse elle kontrol edin</div>
+          {elle.map((v) => (
+            <div key={v.host + v.serverName + v.confFile}>
+              <span className="font-mono font-semibold">{v.serverName}</span>
+              <span style={{ color: 'var(--text-muted)' }}> @ {v.host} · <span className="font-mono">{v.confFile || '?'}</span></span>
+              <div style={{ color: 'var(--text-secondary)' }}>{v.mesaj}</div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

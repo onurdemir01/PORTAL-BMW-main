@@ -117,3 +117,23 @@ test('IN8 GERI AL betige app_path gonderir (in-place dogrulamasi)', () => {
   const ep = dilim("router.post('/:id/targets/:tid/rollback'", "const r = await launch(");
   assert.match(ep, /app_path: t\.appPath \|\| ''/, "GERI AL app_path gondermiyor - in-place'te betik durur ya da yanlis kurulumu isler");
 });
+
+// IN9 (2026-10-27, kullanici: "Jboss7 sectim gidip Redhat Apache'yi de bulup islem yapmaya calisiyor gibi"):
+// JBoss 7 hedefi RHA mod_cluster vhost'unu yalniz adiyla buluyordu; ayni vhost'u JBoss 8 hedefi mod_cluster ile
+// kesin eslestiriyor. Diger kurulumun ajp/mc ile sahiplendigi ad-eslesmesi bu hedeften CIKAR; sahipsiz olan elle kalir.
+test('IN9 diger kurulumun kesin (ajp/mc) vhost u bu hedefin listesinden cikar; sahipsiz ad eslesmesi elle kalir', () => {
+  const { inPlaceIsaretle } = require('../discover.cjs');
+  const rha = { host: 'GBJBWT03', serverName: 'gbcorporatebankingservice-d.fw.garanti.com.tr', product: 'RHA', port: '8543', confFile: '/usr/apache/conf.d/GBCORPORATEBANKINGSERVICE-D.conf' };
+  const ihs = { host: 'GBJBWT03', serverName: 'gbcorporatebankingservice-d.fw.garanti.com.tr', product: 'IHS', port: '80', confFile: 'mod-jk.conf' };
+  const t7 = { host: 'GBJBAT03', appName: 'GBCORPORATEBANKINGSERVICE-D', gen: 7, web: [{ ...ihs, kaynak: 'ad' }, { ...rha, kaynak: 'ad' }] };
+  const t8 = { host: 'GBJBAT03', appName: 'GBCORPORATEBANKINGSERVICE-D', gen: 8, web: [{ ...rha, kaynak: 'ad+mc', mcBalancer: 'x' }] };
+  inPlaceIsaretle([t7, t8]);
+  assert.deepEqual(t7.web.map((w) => w.product), ['IHS'], 'JBoss 7 hedefi JBoss 8 in mod_cluster vhost unu hala listeliyor');
+  assert.ok(t7.web[0].elle, 'sahipsiz ad eslesmesi elle isaretlenmedi');
+  assert.deepEqual(t8.web.map((w) => [w.product, !!w.elle]), [['RHA', false]], 'JBoss 8 in kesin vhost u bozuldu');
+  // Kimse kesin sahiplenmiyorsa iki hedefte de elle kalir (eski davranis)
+  const a7 = { ...t7, web: [{ ...rha, kaynak: 'ad' }] };
+  const a8 = { ...t8, web: [{ ...rha, kaynak: 'ad' }] };
+  inPlaceIsaretle([a7, a8]);
+  assert.ok(a7.web.length === 1 && a7.web[0].elle && a8.web.length === 1 && a8.web[0].elle, 'sahipsiz vhost dusuruldu');
+});

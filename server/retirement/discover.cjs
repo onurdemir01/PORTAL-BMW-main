@@ -12,7 +12,7 @@
 'use strict';
 
 const { buildCertIndex, matchWebForApp, webHostAdaylari, adVaryantlari } = require('../audit/web-app.cjs');
-const { webConfKanonik, urunAilesi } = require('./web-liste.cjs');
+const { webConfKanonik, urunAilesi, webKanonikAnahtar } = require('./web-liste.cjs');
 
 const U = (s) => String(s || '').trim().toUpperCase();
 
@@ -447,17 +447,36 @@ function inPlaceIsaretle(targets) {
     if (!kollar.has(k)) kollar.set(k, new Set());
     kollar.get(k).add(t.gen ?? 0);
   }
+  // DIGER KURULUMUN KESIN VHOST'U (2026-10-27, kullanici: "Jboss7 sectim gidip Redhat Apache'yi de bulup islem
+  // yapmaya calisiyor gibi"): JBoss 7 hedefi RHA mod_cluster vhost'unu yalniz adiyla buluyordu; ayni vhost'u
+  // JBoss 8 hedefi mod_cluster ile KESIN eslestiriyor. Yalniz ad/sertifika ile eslesen ve diger kurulumun ajp/mc
+  // ile sahiplendigi vhost bu hedefin listesinden cikar (o kurulumun onunde durur). Sahipsiz olan 'elle' kalir.
+  const kesin = (w) => /(^|\+)(ajp|mc)(\+|$)/.test(String(w.kaynak || 'ad'));
+  const sahipli = new Map();
+  for (const t of targets) {
+    for (const w of t.web || []) {
+      if (!kesin(w)) continue;
+      const k = `${t.host}|${U(t.appName)}|${webKanonikAnahtar(w)}`;
+      if (!sahipli.has(k)) sahipli.set(k, new Set());
+      sahipli.get(k).add(t.gen ?? 0);
+    }
+  }
   for (const t of targets) {
     const set = kollar.get(`${t.host}|${U(t.appName)}`);
     if (!set || set.size < 2) continue;
     t.inPlace = true;
     t.digerSurumler = [...set].filter((g) => g !== (t.gen ?? 0)).sort();
     const diger = t.digerSurumler.map((g) => (g ? `JBoss ${g}` : 'sürümü bilinmeyen kurulum')).join(', ');
-    t.web = (t.web || []).map((w) => {
-      const k = String(w.kaynak || 'ad');
-      if (/(^|\+)(ajp|mc)(\+|$)/.test(k)) return w;
-      return { ...w, elle: `in-place: ${t.appName} bu sunucuda ${diger} kurulumunda da var; vhost yalnız ad/sertifika ile eşleşti, hangi kurulumun önünde olduğu doğrulanamadı — otomatik kapatılmaz, elle kontrol edilmeli` };
-    });
+    t.web = (t.web || [])
+      .filter((w) => {
+        if (kesin(w)) return true;
+        const s = sahipli.get(`${t.host}|${U(t.appName)}|${webKanonikAnahtar(w)}`);
+        return !s || ![...s].some((g) => g !== (t.gen ?? 0));
+      })
+      .map((w) => {
+        if (kesin(w)) return w;
+        return { ...w, elle: `in-place: ${t.appName} bu sunucuda ${diger} kurulumunda da var; vhost yalnız ad/sertifika ile eşleşti, hangi kurulumun önünde olduğu doğrulanamadı — otomatik kapatılmaz, elle kontrol edilmeli` };
+      });
   }
 }
 
