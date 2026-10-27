@@ -73,15 +73,26 @@ function jsonNesne(s) {
 // (become_pass, ssh_pass, pass) - "passed" / "bypass" DEGIL.
 const HASSAS = /(password|passwd|passphrase|pwd|secret|token|api[_-]?key|apikey|credential)/i;
 const hassasAnahtar = (k) => HASSAS.test(k) || /(^|[_.-])pass($|[_.-])/i.test(k);
+// Yapilandirilmis artifact anahtari, degerin kendisinde `password=` gibi bir ipucu olmayabilir.
+// Sir sozcugu iceren alan fail-closed maskelenir; yalniz degeri sir olmayan kararlastirilmis
+// telemetry anahtarlari korunur. Boylece `password_hash` / `token_value` acik kalmazken sayac ve
+// durum alanlari kullanilabilir kalir.
+const YAPISAL_TELEMETRI = new Set(['token_count', 'password_rotation_days', 'credential_status', 'secret_detected']);
+const hassasYapisalAnahtar = (k) => {
+  const ad = String(k ?? '').toLowerCase();
+  return !YAPISAL_TELEMETRI.has(ad) && (/(^|[_.-])authorization$/.test(ad) || hassasAnahtar(ad));
+};
 const DEGER = `("(?:\\\\.|[^"\\\\\\r\\n])*"|'(?:\\\\.|[^'\\\\\\r\\n])*'|[^\\s"',;}&]+)`;
 const ANAHTAR_DEGER = new RegExp(`(["']?)([A-Za-z0-9_.-]*(?:pass|pwd|secret|token|api[_-]?key|credential)[A-Za-z0-9_.-]*)\\1(\\s*[=:]\\s*)${DEGER}`, 'gi');
 const SECENEK_DEGER = new RegExp(`(^|\\s)(-{1,2}[A-Za-z0-9_-]*pass[A-Za-z0-9_-]*\\s+)${DEGER}`, 'gim');
-const YETKI_BASLIGI = /(Authorization\s*:\s*(?:Basic|Digest|Token|Negotiate)\s+)\S+/gi;
+const YETKI_JSON = new RegExp(`(["'])((?:[A-Za-z0-9_.-]*[_.-])?Authorization)\\1(\\s*:\\s*)${DEGER}`, 'gi');
+const YETKI_BASLIGI = /(\bAuthorization\s*:\s*)[^\r\n]+/gi;
 const URL_KIMLIGI = /(\b[a-z][a-z0-9+.-]*:\/\/[^\s:/@]+:)([^\s@/]+)(@)/gi;
 const tirnakli = (v) => (v[0] === '"' || v[0] === "'" ? `${v[0]}***${v[0]}` : '***');
 function yerelMaske(s) {
   return s
     .replace(ANAHTAR_DEGER, (tam, q, k, ayr, v) => (hassasAnahtar(k) ? `${q}${k}${q}${ayr}${tirnakli(v)}` : tam))
+    .replace(YETKI_JSON, (tam, q, k, ayr, v) => `${q}${k}${q}${ayr}${tirnakli(v)}`)
     .replace(SECENEK_DEGER, (tam, bas, sec, v) => (hassasAnahtar(sec.trim().replace(/^-+/, '')) ? `${bas}${sec}${tirnakli(v)}` : tam))
     .replace(YETKI_BASLIGI, '$1***')
     .replace(URL_KIMLIGI, '$1***$3');
@@ -94,7 +105,7 @@ function maskele(metin) {
 /** Nesne / dizi icindeki her metne maskele (eski job-status'un result / fixResult alanlari). */
 const maskeleDerin = (v) => (typeof v === 'string' ? maskele(v)
   : Array.isArray(v) ? v.map(maskeleDerin)
-    : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, maskeleDerin(x)])) : v);
+    : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, hassasYapisalAnahtar(k) && x != null ? '***' : maskeleDerin(x)])) : v);
 
 // ── IS GECMISI ─────────────────────────────────────────────────────────────────────────────────
 function aileOf(templateName) {
