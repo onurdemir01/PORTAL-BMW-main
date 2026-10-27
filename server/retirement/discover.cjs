@@ -522,6 +522,13 @@ function buildTargets(base, invRows, certRows, jvmRows, vhostRows, ipRows = []) 
     // UNMEASURED (hidepid / ps korlugu) ise calisma durumu BILINMIYOR; NULL (eski satir ya da
     // kolon henuz yok) bilinen sayilir.
     const runningSrc = j && j.running_src != null && j.running_src !== '' ? U(j.running_src) : null;
+    // JBOSS 7 + YALNIZ ADLA BULUNAN RHA (2026-10-27, kullanici: "Jboss7 secimi yaptigimda neden gidip Redhat
+    // Apache'deki vhost'u kesfedip kullaniciya yansitiyoruz? kafa karistiriyor"). RHA, JBoss 7'nin onunde ancak
+    // AJP/proxy ile durur ve o bag kesin eslesmeyle (kaynak ajp) bulunur. Yalniz ad/sertifika ile eslesen RHA
+    // vhost'u JBoss 8'in mod_cluster onudur: listelenmez, otomatik kapatilmaz; sayisi webHow'da soylenir.
+    const rhaAd = (w) => gen === 7 && urunAilesi(w.product) === 'RHA' && !/(^|\+)(ajp|mc)(\+|$)/.test(String(w.kaynak || 'ad'));
+    const elenenRha = web.web.filter(rhaAd).length;
+    if (elenenRha) web.web = web.web.filter((w) => !rhaAd(w));
     targets.push({
       host, site: siteOf(host), env, appName: app, gen,
       appPath: paketYolu(r.app_path), inventoryStatus: r.status || '', domain: r.domain || '', tier: web.tier,
@@ -530,7 +537,7 @@ function buildTargets(base, invRows, certRows, jvmRows, vhostRows, ipRows = []) 
         kaynak: w.kaynak || 'ad', ...(w.ajpHedef ? { ajpHedef: w.ajpHedef } : {}), ...(w.mcBalancer ? { mcBalancer: w.mcBalancer } : {}),
         trafik: trafikSinifi(vhostByKey.get(`${U(w.host)}|${String(w.serverName || '').trim().toLowerCase()}`)),
       })),
-      webHow: web.how,
+      webHow: elenenRha ? `${web.how} · JBoss 7 için yalnız adla eşleşen ${elenenRha} Red Hat Apache vhost'u sayılmadı (JBoss 8'in mod_cluster önü)` : web.how,
       // WEB BULUNAMADI UYARISI (2026-10-12, kullanici: "3-tier bir uygulamayi retire etmek
       // istedigimizde web vhost icin herhangi bir uyari vermedi"). Bos web listesi "web yok"
       // DEMEK DEGIL: retirement o vhost'u KAPATMAZ ve trafik kontrolu de yapamaz.

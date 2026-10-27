@@ -31,7 +31,8 @@ test('RD3: kesif tum ortamlari ve iki siteyi toplar; web sunucusu 5. harf A->W +
     { app: 'CRM-T', host: 'GBCRAT01', env: 'Test', domain: 'x', jboss_version: '8.0', app_path: '', status: 'stopped' },
     { app: 'CRMX', host: 'GBZZAP01', env: 'Production', domain: 'x', jboss_version: '7', app_path: '', status: 'running' }, // baska uygulama
   ];
-  const certs = [{ host: 'GBCRWAP01', ip: '1', port: '443', server_name: 'crm.fw.local', conf_file: '/c', product: 'RHA', env: 'P' }];
+  const certs = [{ host: 'GBCRWAP01', ip: '1', port: '443', server_name: 'crm.fw.local', conf_file: '/c', product: 'IHS', env: 'P' }];
+  // JBoss 7 hedefi: yalniz adla eslesen RHA artik sayilmaz (IN10), bu yuzden ornek IHS
   const r = buildTargets('CRM', inv, certs, [{ host: 'GBCRAAP01', jvm: 'CRM', running: 1, auto_start: 'true', scan_date: '2026-09-21' }]);
   assert.equal(r.summary.total, 3);
   assert.deepEqual(r.summary.bySite, { Pendik: 2, Ankara: 1 });

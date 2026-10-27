@@ -137,3 +137,20 @@ test('IN9 diger kurulumun kesin (ajp/mc) vhost u bu hedefin listesinden cikar; s
   inPlaceIsaretle([a7, a8]);
   assert.ok(a7.web.length === 1 && a7.web[0].elle && a8.web.length === 1 && a8.web[0].elle, 'sahipsiz vhost dusuruldu');
 });
+
+// IN10 (2026-10-27, kullanici: "Jboss7 secimi yaptigimda neden gidip Redhat Apache'deki vhost'u kesfedip kullaniciya
+// yansitiyoruz?"): JBoss 7 hedefinde yalniz ad/sertifika ile eslesen RHA vhost'u listelenmez (in-place olsun olmasin);
+// AJP/proxy ile kesin eslesen RHA kalir; JBoss 8 hedefinde RHA ad eslesmesi aynen kalir.
+test('IN10 JBoss 7 hedefi yalniz adla eslesen Red Hat Apache vhost unu listelemez; JBoss 8 listeler', () => {
+  const certs = [
+    { host: 'GOJBWP05', ip: '', port: '443', server_name: 'gbposwebapi.garanti.com.tr', conf_file: '/ihs/GBPOSWEBAPI.conf', product: 'IHS', env: 'PROD' },
+    { host: 'GOJBWP05', ip: '', port: '8543', server_name: 'gbposwebapi.garanti.com.tr', conf_file: '/usr/apache/conf.d/GBPOSWEBAPI.conf', product: 'RHA', env: 'PROD' },
+  ];
+  const a7 = { ...r7, host: 'GOJBAP05', domain: 'garanti.com.tr' };
+  const yedi = buildTargets('GBPOSWEBAPI', [a7], certs, [], [], []).targets[0];
+  assert.deepEqual(yedi.web.map((w) => w.product), ['IHS'], 'JBoss 7 hedefi RHA ad eslesmesini hala listeliyor');
+  assert.match(yedi.webHow, /yalnız adla eşleşen 1 Red Hat Apache vhost'u sayılmadı/);
+  const a8 = { ...r8, host: 'GOJBAP05', domain: 'garanti.com.tr' };
+  const sekiz = buildTargets('GBPOSWEBAPI', [a8], certs, [], [], []).targets[0];
+  assert.ok(sekiz.web.some((w) => w.product === 'RHA'), 'JBoss 8 hedefinde RHA ad eslesmesi kayboldu');
+});
