@@ -3,8 +3,10 @@
 // Kart (Bolum), etiketli alan (Alan), girdi stilleri ve durum haplari. Renkler retirementStil.ts TON'dan
 // (metin her zaman `metin` alanindan; koyu temada AA). Hub'in yerel smBtn'i ('#fff') KULLANILMAZ.
 import React from 'react';
-import { Hap } from '@/components/server_hub/RetirementUi';
-import { gecerlilikBilgisi, kosuDurumu, ISLEM_ETIKETI } from './yukTestiOrtak';
+import { ExclamationTriangleIcon } from '@heroicons/react/24/outline';
+import type { NlHedefTuru, NlMotor } from '@/api/nginxLoadtestApi';
+import { Cip, Hap } from '@/components/server_hub/RetirementUi';
+import { SERBEST_CIP_IPUCU, WRK_CIP_IPUCU, gecerlilikBilgisi, kosuDurumu, ISLEM_ETIKETI } from './yukTestiOrtak';
 
 /** Metin / sayi girdisi ve secim kutusu: token renkli; hata varsa tehlike kenari. GIRDI 32px ve tam genislik;
  *  baska boy / genislik isteyen yer GIRDI_TABAN + kendi h-* w-* siniflarini kullanir (iki h-* / w-* carpismasin). */
@@ -33,18 +35,40 @@ export function Bolum({ baslik, aciklama, eylem, children, className = '', govde
   );
 }
 
-/** Etiket + denetim + yardim / hata satiri. `id` denetime verilir (label htmlFor). */
-export function Alan({ id, etiket, yardim, hata, children, className = '' }: {
-  id: string; etiket: React.ReactNode; yardim?: React.ReactNode; hata?: string | null; children: React.ReactNode; className?: string;
+/** Etiket + denetim + yardim / not / hata satiri. `id` denetime verilir (label htmlFor). `not`: engel olmayan ama
+ *  bilinmesi gereken durum (uyari tonu; hata varsa hata, yoksa not, yoksa yardim gorunur).
+ *  Inceleme UI4 (2026-10-28): gorunen satirin id'si (hata > not > yardim) id'si `id` olan denetime aria-describedby ile
+ *  baglanir (ekran okuyucu odakta okur). Cocuk birden cok olabilir (Host basligi: input + datalist): Children.map ile
+ *  yalniz eslesen cocuk klonlanir; map her zaman uygulanir (aciklama gelip gidince denetim yeniden kurulmaz, odak kalir). */
+export function Alan({ id, etiket, yardim, not, hata, children, className = '' }: {
+  id: string; etiket: React.ReactNode; yardim?: React.ReactNode; not?: React.ReactNode; hata?: string | null; children: React.ReactNode; className?: string;
 }) {
+  const aciklamaId = hata ? `${id}-hata` : not ? `${id}-not` : yardim ? `${id}-yardim` : undefined;
   return (
     <div className={`min-w-0 ${className}`}>
       <label htmlFor={id} className="mb-1 block text-[11px] font-semibold leading-4" style={{ color: 'var(--text-secondary)' }}>{etiket}</label>
-      {children}
+      {React.Children.map(children, (c) => (React.isValidElement<{ id?: string }>(c) && c.props.id === id
+        ? React.cloneElement(c as React.ReactElement<React.HTMLAttributes<HTMLElement>>, { 'aria-describedby': aciklamaId })
+        : c))}
       {hata
         ? <p id={`${id}-hata`} className="mt-1 text-[11px] leading-4" style={{ color: 'var(--status-danger-text)' }}>{hata}</p>
-        : yardim ? <p className="mt-1 text-[11px] leading-4" style={{ color: 'var(--text-muted)' }}>{yardim}</p> : null}
+        : not ? (
+          <p id={`${id}-not`} className="mt-1 flex items-start gap-1 text-[11px] leading-4" style={{ color: 'var(--status-warning-text)' }}>
+            <ExclamationTriangleIcon className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden /><span className="min-w-0">{not}</span>
+          </p>
+        ) : yardim ? <p id={`${id}-yardim`} className="mt-1 text-[11px] leading-4" style={{ color: 'var(--text-muted)' }}>{yardim}</p> : null}
     </div>
+  );
+}
+
+/** Serbest hedef ve wrk cipleri (k6 + sunucu varsayilandir: cip YOK). Tur / motor kosu satirindan. */
+export function TurMotorCipleri({ hedefTuru, motor }: { hedefTuru?: NlHedefTuru | null; motor?: NlMotor | null }) {
+  if (hedefTuru !== 'serbest' && motor !== 'wrk') return null;
+  return (
+    <>
+      {hedefTuru === 'serbest' && <Cip ton="uyari" cerceve title={SERBEST_CIP_IPUCU}>serbest</Cip>}
+      {motor === 'wrk' && <Cip cerceve title={WRK_CIP_IPUCU}>wrk</Cip>}
+    </>
   );
 }
 

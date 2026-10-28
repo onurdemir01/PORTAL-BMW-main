@@ -10,9 +10,13 @@
 // durdurma "durdur" kipindeki AWX isidir. O is baslatilamazsa sunucu 424 durdur_baslatilamadi der: ekran bunu
 // KALICI hata kutusunda gosterir (basari bildirimi YOK). Iptal edilmis kosuda Admin "Kalan süreçleri durdur" ile
 // ayni ucu yeniden cagirabilir. Ön kontrolde durdur isi yoktur: yalniz "AWX işi iptal ediliyor".
+//
+// TUR 3 (2026-10-28): adim degerleri ve birimleri `adimDegerleri` ile (wrk: baglanti; kayitta `hizlar` yok). Serbest
+// hedefte sunucu olcumu yoktur (CPU, kapasite, sunucu rps "—"); durdurma yalniz yuk sunucusundaki araci sonlandirir
+// (hedefe baglanilmaz, kaydedici yok). Tur ve motor kosu satirindan; eski satir sunucu / k6.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeftIcon, ArrowPathIcon, ChevronDownIcon, ChevronRightIcon, StopCircleIcon } from '@heroicons/react/24/outline';
-import { nginxLoadtestApi, type NlAdim, type NlKosuAyrinti } from '@/api/nginxLoadtestApi';
+import { nginxLoadtestApi, type NlAdim, type NlKosuAyrinti, type NlMotor } from '@/api/nginxLoadtestApi';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { toast } from '@/hooks/useToast';
 import { Modal } from '@/components/common/Modal';
@@ -24,17 +28,21 @@ import { sureMetni } from '@/components/server_hub/retirementCikti';
 import HizGrafigi from './Grafik';
 import KosuCiktisi from './KosuCiktisi';
 import OnKontrolPaneli from './OnKontrolPaneli';
-import { Bolum, GecerlilikHapi, KosuDurumHapi, Tanim, islemEtiketi } from './YukUi';
+import { Bolum, GecerlilikHapi, KosuDurumHapi, Tanim, TurMotorCipleri, islemEtiketi } from './YukUi';
 import {
-  AE_ETIKETI, AKTIF_DURUMLAR, KIP_ETIKETI, OKUNAMADI_ACIKLAMASI, SONUC_DENEME_SINIRI, adimEtiketi, adimGecerliligi, adimSirala, butceSn, uyarilariAyir,
-  durdurBaslatilamadiMetni, gecerlilikBilgisi, hataMetni, hizGrupla, kalanSurecDurdurulabilir, ondalik, seriAdi, sonucOkunuyorMetni,
-  yenidenOkunabilir, yuzde,
+  AE_ETIKETI, AKTIF_DURUMLAR, KIP_ETIKETI, OKUNAMADI_ACIKLAMASI, SONUC_DENEME_SINIRI, adimDegerleri, adimEtiketi, adimGecerliligi, adimSirala, butceSn,
+  durdurBaslatilamadiMetni, gecerlilikBilgisi, hataMetni, hizGrupla, kademeMetni, kalanSurecDurdurulabilir, motorOf, ondalik, seriAdi, sonucOkunuyorMetni,
+  uyarilariAyir, yenidenOkunabilir, yuzde, type AdimBirimi,
 } from './yukTestiOrtak';
 
 type Sekme = 'sonuc' | 'onkontrol' | 'cikti';
 const SEKME_ADI: Record<Sekme, string> = { sonuc: 'Sonuçlar', onkontrol: 'Ön kontrol', cikti: 'İş çıktısı' };
 /** Pencere kaynagi 'log' degilse sunucu rps'i olculmedi (analiz istemci rps'ini kopyalar): hucre "—". */
 const PENCERE_ISTEMCI = 'sunucu logunda bu adımın satırı yok; pencere istemci saatinden';
+/** Serbest hedefte CPU kaydedici ve nginx logu yok: sunucu olculeri "—". */
+const SERBEST_SUNUCU_YOK = 'serbest hedef: sunucu ölçümü yok';
+/** Kosunun motoru: satirdaki deger (normallestirilmis), yoksa kanonik parametreden (eski kayit k6). */
+const kosuMotoru = (k: Pick<NlKosuAyrinti, 'motor' | 'parametreler'>): NlMotor => (k.motor === 'wrk' || k.motor === 'k6' ? k.motor : motorOf(k.parametreler));
 
 export default function KosuAyrinti({ kosuId, isAdmin, onGeri }: { kosuId: number; isAdmin: boolean; onGeri: () => void }) {
   const [veri, setVeri] = useState<{ kosu: NlKosuAyrinti; adimlar: NlAdim[] } | null>(null);
@@ -68,6 +76,9 @@ export default function KosuAyrinti({ kosuId, isAdmin, onGeri }: { kosuId: numbe
   async function durdur() {
     if (busyRef.current || !veri) return;
     const islem = veri.kosu.islem;
+    // Serbest hedefte kaydedici yok (hedefe baglanilmaz); arac adi motorla. k6 + sunucu metinleri BIREBIR eskisi.
+    const tur = { hedefTuru: veri.kosu.hedefTuru === 'serbest' ? 'serbest' as const : 'sunucu' as const, motor: kosuMotoru(veri.kosu) };
+    const durdurulan = tur.hedefTuru === 'serbest' ? tur.motor : `${tur.motor} ve kaydedici`;
     busyRef.current = true;
     setDurduruluyor(true);
     try {
@@ -80,7 +91,7 @@ export default function KosuAyrinti({ kosuId, isAdmin, onGeri }: { kosuId: numbe
         }
         if (r.code === 'durdur_baslatilamadi') {
           setDurdurSor(false);
-          setDurdurHata(hataMetni(r, durdurBaslatilamadiMetni(r)));
+          setDurdurHata(hataMetni(r, durdurBaslatilamadiMetni(r, tur)));
           void yukle();
           return;
         }
@@ -91,7 +102,7 @@ export default function KosuAyrinti({ kosuId, isAdmin, onGeri }: { kosuId: numbe
       if (islem === 'kosu') {
         // Sunucu durdur isi baslamadan 200 donmez (424); eski sunucuya karsi yine de basari denmez.
         if (!r.durdurIsi) {
-          setDurdurHata(durdurBaslatilamadiMetni(r));
+          setDurdurHata(durdurBaslatilamadiMetni(r, tur));
           void yukle();
           return;
         }
@@ -100,7 +111,7 @@ export default function KosuAyrinti({ kosuId, isAdmin, onGeri }: { kosuId: numbe
           // AWX iptali olmadi: sunucu kilitleri koşu işinde bırakır (iş bitince kurala göre çözülür).
           toast.warning(`Durdurma işi AWX #${r.durdurIsi.jobId} başlatıldı, ancak koşunun AWX işi iptal edilemedi: ${r.iptalHatasi}. Kilitler koşu işi bitince bırakılır.`);
         } else {
-          toast.success(`Durdurma işi AWX #${r.durdurIsi.jobId} başlatıldı; k6 ve kaydedici durdurulduğunda kilitler bırakılır.`);
+          toast.success(`Durdurma işi AWX #${r.durdurIsi.jobId} başlatıldı; ${durdurulan} durdurulduğunda kilitler bırakılır.`);
         }
       } else {
         toast.success('AWX işi iptal ediliyor.');
@@ -163,6 +174,15 @@ export default function KosuAyrinti({ kosuId, isAdmin, onGeri }: { kosuId: numbe
   const sure = kosu.startedAt && kosu.finishedAt ? (Date.parse(kosu.finishedAt) - Date.parse(kosu.startedAt)) / 1000 : null;
   const panelId = `yuk-kosu-panel-${kosu.id}`;
   const durdurDugmesi = aktif ? 'Durdur' : 'Kalan süreçleri durdur';
+  const serbest = kosu.hedefTuru === 'serbest';
+  const motor = kosuMotoru(kosu);
+  // Adim degerleri ve birim kosunun motoruyla (wrk kaydinda `hizlar` yok; dogrudan p.hizlar okunmaz).
+  const ad = adimDegerleri(p ? { ...p, motor } : { motor });
+  // Serbest hedefte durdurma yalniz yuk sunucusunda (hedef sunucu yok, kaydedici yok); arac adi motorla.
+  const aracYazi = motor === 'wrk' ? 'wrk’yi' : 'k6’yi';
+  const durdurmaKapsami = serbest
+    ? <><span className="font-mono">{kosu.yukHost}</span> üzerindeki {aracYazi} sonlandırır (serbest hedefe bağlanılmaz; kaydedici yoktur)</>
+    : <><span className="font-mono">{kosu.hedefHost}</span> ile <span className="font-mono">{kosu.yukHost}</span> üzerindeki {motor} ve CPU kaydedicisini sonlandırır</>;
 
   return (
     <div className="space-y-3">
@@ -173,13 +193,16 @@ export default function KosuAyrinti({ kosuId, isAdmin, onGeri }: { kosuId: numbe
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-[15px] font-semibold leading-6" style={{ color: 'var(--text-primary)' }}>{islemEtiketi(kosu.islem)} #{kosu.id}</h2>
               {kosu.adim && <Cip cerceve>{kosu.adim}</Cip>}
+              <TurMotorCipleri hedefTuru={kosu.hedefTuru} motor={motor} />
               <KosuDurumHapi durum={kosu.durum} />
               {kosu.durum === 'FINALIZING' && kosu.sonuclandirmaDenemesi >= 1 && (
                 <span className="text-[11px] tabular-nums" style={{ color: 'var(--text-secondary)' }} title={sonucOkunuyorMetni(kosu.sonuclandirmaDenemesi)}>{`deneme ${fmtNumber(kosu.sonuclandirmaDenemesi)}/${SONUC_DENEME_SINIRI}`}</span>
               )}
               {kosu.islem === 'kosu' && <GecerlilikHapi gecerlilik={kosu.gecerlilik} />}
               {kosu.durdurIsi && (
-                <Cip ton="uyari" cerceve title="“Durdur” kipindeki AWX işi: iki sunucudaki k6 ve CPU kaydedicisini sonlandırır; başarıyla bitince kilitler bırakılır.">{`Durdurma işi AWX #${kosu.durdurIsi.awxJobId}`}</Cip>
+                <Cip ton="uyari" cerceve title={serbest
+                  ? `“Durdur” kipindeki AWX işi: yük sunucusundaki ${aracYazi} sonlandırır; başarıyla bitince kilitler bırakılır.`
+                  : `“Durdur” kipindeki AWX işi: iki sunucudaki ${motor} ve CPU kaydedicisini sonlandırır; başarıyla bitince kilitler bırakılır.`}>{`Durdurma işi AWX #${kosu.durdurIsi.awxJobId}`}</Cip>
               )}
             </div>
             {kosu.etiket && <p className="mt-0.5 truncate text-[12px]" style={{ color: 'var(--text-secondary)' }} title={kosu.etiket}>{kosu.etiket}</p>}
@@ -196,17 +219,29 @@ export default function KosuAyrinti({ kosuId, isAdmin, onGeri }: { kosuId: numbe
           </div>
         </div>
         <dl className="grid grid-cols-2 gap-x-4 gap-y-2.5 @2xl/yuk:grid-cols-3 @5xl/yuk:grid-cols-5">
-          <Tanim etiket="Hedef" title={`${kosu.hedefHost}${kosu.hedefIp ? ` · ${kosu.hedefIp}` : ''}`}><span className="font-mono">{kosu.hedefHost}</span>{kosu.hedefIp && <span className="font-mono" style={{ color: 'var(--text-secondary)' }}> · {kosu.hedefIp}</span>}</Tanim>
+          {serbest ? (
+            <Tanim etiket="Hedef (serbest)" title={`${kosu.hedefIp || '—'} · serbest hedef${kosu.serbestAg ? ` · izinli ağ ${kosu.serbestAg}` : ''}`}>
+              <span className="font-mono">{kosu.hedefIp || '—'}</span>{kosu.serbestAg && <span className="font-mono" style={{ color: 'var(--text-secondary)' }}> · {kosu.serbestAg}</span>}
+            </Tanim>
+          ) : (
+            <Tanim etiket="Hedef" title={`${kosu.hedefHost || '—'}${kosu.hedefIp ? ` · ${kosu.hedefIp}` : ''}`}><span className="font-mono">{kosu.hedefHost || '—'}</span>{kosu.hedefIp && <span className="font-mono" style={{ color: 'var(--text-secondary)' }}> · {kosu.hedefIp}</span>}</Tanim>
+          )}
           <Tanim etiket="Vhost (Host başlığı)" title={kosu.vhost || ''}>{kosu.vhost || '—'}{p?.sni ? <span style={{ color: 'var(--text-secondary)' }}> · SNI</span> : null}</Tanim>
           <Tanim etiket="Yük sunucusu" title={kosu.yukHost || ''}><span className="font-mono">{kosu.yukHost || '—'}</span></Tanim>
           <Tanim etiket="Senaryo" title={kosu.senaryoAd || ''}>{kosu.senaryoAd || (kosu.senaryoId != null ? `#${kosu.senaryoId}` : '—')}</Tanim>
-          <Tanim etiket="Hızlar · tekrar" title={p ? `${p.hizlar.join(', ')} istek/sn` : ''}>{p ? `${p.hizlar.join(' · ')} /sn × ${p.tekrar}` : '—'}</Tanim>
+          {ad.motor === 'wrk' ? (
+            <Tanim etiket="Bağlantılar · tekrar" title={p ? `${ad.degerler.join(', ')} bağlantı · ${p.is_parcacigi ?? '—'} iş parçacığı · ortalama toplam ≤ ${p.tavan_rps ?? '—'} istek/sn` : ''}>
+              {p ? `${ad.degerler.join(' · ')} bağlantı × ${p.tekrar}` : '—'}
+            </Tanim>
+          ) : (
+            <Tanim etiket="Hızlar · tekrar" title={p ? `${ad.degerler.join(', ')} istek/sn` : ''}>{p ? `${ad.degerler.join(' · ')} /sn × ${p.tekrar}` : '—'}</Tanim>
+          )}
           <Tanim etiket="Süreler" title={p ? `ısınma ${p.isinma} sn, ölçüm ${p.sure} sn, bekleme ${p.bosluk} sn, boşta ölçüm ${p.bosta} sn` : ''}>{p ? `${p.isinma} + ${p.sure} sn · ara ${p.bosluk} sn` : '—'}</Tanim>
-          <Tanim etiket="Bağlantı · sıkıştırma">{p ? `${KIP_ETIKETI[p.kip] || p.kip} · ${AE_ETIKETI[p.ae] || p.ae}` : '—'}</Tanim>
+          <Tanim etiket={ad.motor === 'wrk' ? 'Bağlantı kipi · sıkıştırma' : 'Bağlantı · sıkıştırma'}>{p ? `${KIP_ETIKETI[p.kip] || p.kip} · ${AE_ETIKETI[p.ae] || p.ae}` : '—'}</Tanim>
           <Tanim etiket="Başlatan" title={kosu.createdBy || ''}>{kosu.createdBy || '—'}</Tanim>
           <Tanim etiket="Başladı" title={fmtDateTime(kosu.startedAt || kosu.createdAt)}>{fmtDateTime(kosu.startedAt || kosu.createdAt)}</Tanim>
           <Tanim etiket={aktif ? 'Tahmini süre' : 'Süre'}>
-            {aktif ? (p ? `≈ ${sureMetni(butceSn(p))}` : '—') : sure != null && sure >= 0 ? sureMetni(sure) : '—'}
+            {aktif ? (p ? `≈ ${sureMetni(butceSn({ ...p, motor }))}` : '—') : sure != null && sure >= 0 ? sureMetni(sure) : '—'}
             {kosu.awxJobId != null && <span className="font-mono" style={{ color: 'var(--text-secondary)' }}> · AWX #{kosu.awxJobId}</span>}
           </Tanim>
         </dl>
@@ -233,11 +268,11 @@ export default function KosuAyrinti({ kosuId, isAdmin, onGeri }: { kosuId: numbe
           })}
         </div>
         <div role="tabpanel" id={panelId} aria-labelledby={`yuk-sekme-${kosu.id}-${etkin}`} tabIndex={0} className="p-4">
-          {etkin === 'sonuc' && <Sonuclar kosu={kosu} adimlar={adimlar} aktif={aktif} />}
+          {etkin === 'sonuc' && <Sonuclar kosu={kosu} adimlar={adimlar} aktif={aktif} birim={ad.birim} />}
           {/* Kosunun dayandigi on kontrol, KENDI durumuyla (DONE/OK: kosu ancak oyle baslar) degerlendirilir - kosunun
               RUNNING / FAILED durumu on kontrolu "temiz" ya da "başarısız" gostermez. */}
           {etkin === 'onkontrol' && (kosu.islem === 'kosu' && kosu.onKontrol
-            ? <OnKontrolPaneli kosu={{ durum: 'DONE', onKontrol: kosu.onKontrol, sunucuDegerlendirmesi: kosu.sunucuDegerlendirmesi, isDurumu: 'OK', isHatasi: null }} baglam="kayit" />
+            ? <OnKontrolPaneli kosu={{ durum: 'DONE', onKontrol: kosu.onKontrol, sunucuDegerlendirmesi: kosu.sunucuDegerlendirmesi, isDurumu: 'OK', isHatasi: null, hedefTuru: kosu.hedefTuru, motor }} baglam="kayit" />
             : kosu.onKontrol || !aktif
               ? <OnKontrolPaneli kosu={kosu} />
               : <UyariKutusu ton="bilgi" rol="status" baslik="Ön kontrol sürüyor — sonuç iş bitince burada görünür." />)}
@@ -259,12 +294,17 @@ export default function KosuAyrinti({ kosuId, isAdmin, onGeri }: { kosuId: numbe
           </p>
         ) : aktif ? (
           <p className="text-[13px] leading-5" style={{ color: 'var(--text-primary)' }}>
-            AWX işi iptal edilir ve “durdur” kipinde ayrı bir iş, <span className="font-mono">{kosu.hedefHost}</span> ile <span className="font-mono">{kosu.yukHost}</span> üzerindeki k6 ve CPU kaydedicisini sonlandırır.
+            AWX işi iptal edilir ve “durdur” kipinde ayrı bir iş, {durdurmaKapsami}.
             Yarıda kalan koşunun sonuçları geçersiz sayılır. Kilitler, durdurma işi başarıyla bitince bırakılır.
+          </p>
+        ) : serbest ? (
+          <p className="text-[13px] leading-5" style={{ color: 'var(--text-primary)' }}>
+            AWX işi zaten durdu; AWX iptali uzaktaki {aracYazi} durdurmaz. “Durdur” kipinde ayrı bir iş, <span className="font-mono">{kosu.yukHost}</span> üzerinde bu koşudan kalan süreçleri sonlandırır (serbest hedefe bağlanılmaz).
+            Kilitler, durdurma işi başarıyla bitince bırakılır.
           </p>
         ) : (
           <p className="text-[13px] leading-5" style={{ color: 'var(--text-primary)' }}>
-            AWX işi zaten durdu; AWX iptali uzaktaki k6’yi ve CPU kaydedicisini durdurmaz. “Durdur” kipinde ayrı bir iş, <span className="font-mono">{kosu.hedefHost}</span> ile <span className="font-mono">{kosu.yukHost}</span> üzerinde bu koşudan kalan süreçleri sonlandırır.
+            AWX işi zaten durdu; AWX iptali uzaktaki {aracYazi} ve CPU kaydedicisini durdurmaz. “Durdur” kipinde ayrı bir iş, <span className="font-mono">{kosu.hedefHost}</span> ile <span className="font-mono">{kosu.yukHost}</span> üzerinde bu koşudan kalan süreçleri sonlandırır.
             Kilitler, durdurma işi başarıyla bitince bırakılır.
           </p>
         )}
@@ -274,7 +314,9 @@ export default function KosuAyrinti({ kosuId, isAdmin, onGeri }: { kosuId: numbe
 }
 
 // ── Sonuclar ────────────────────────────────────────────────────────────────────────
-function Sonuclar({ kosu, adimlar, aktif }: { kosu: NlKosuAyrinti; adimlar: NlAdim[]; aktif: boolean }) {
+function Sonuclar({ kosu, adimlar, aktif, birim }: { kosu: NlKosuAyrinti; adimlar: NlAdim[]; aktif: boolean; birim: AdimBirimi }) {
+  const serbest = kosu.hedefTuru === 'serbest';
+  const wrk = birim === 'bağlantı';
   const nproc = kosu.analiz.nproc;
   const gruplar = hizGrupla(adimlar, nproc);
   const g = gecerlilikBilgisi(kosu.gecerlilik);
@@ -292,7 +334,7 @@ function Sonuclar({ kosu, adimlar, aktif }: { kosu: NlKosuAyrinti; adimlar: NlAd
   const okunamadi = kosu.durum === 'OKUNAMADI';
   // Grafik etiketi ve sirasi tekrar'la (deneme Portal'da hep 1): ayni hizdaki r1 / r2 soldan saga.
   const sirali = adimSirala(adimlar).filter((a) => a.hiz != null);
-  const nokta = (f: (a: NlAdim) => number | null) => sirali.map((a) => ({ x: a.hiz as number, y: f(a), durum: a.gecerlilik, etiket: `${a.hiz}/sn · ${adimEtiketi(a)}` }));
+  const nokta = (f: (a: NlAdim) => number | null) => sirali.map((a) => ({ x: a.hiz as number, y: f(a), durum: a.gecerlilik, etiket: `${kademeMetni(a.hiz, birim)} · ${adimEtiketi(a)}` }));
   const tekSeri = new Set(gruplar.map((x) => x.seri)).size <= 1;
   const cizgi = (f: (x: (typeof gruplar)[number]) => number | null) => (tekSeri ? gruplar.map((x) => ({ x: x.hiz, y: f(x) })) : []);
 
@@ -300,11 +342,11 @@ function Sonuclar({ kosu, adimlar, aktif }: { kosu: NlKosuAyrinti; adimlar: NlAd
     <div className="space-y-4">
       {aktif && (kosu.durum === 'FINALIZING' ? (
         <UyariKutusu ton="bilgi" rol="status" baslik={sonucOkunuyorMetni(kosu.sonuclandirmaDenemesi)}>
-          AWX işi bitti; Portal sonuç dosyalarını /sw’den okuyup her adımı (hız × tekrar) ayrı ayrı değerlendiriyor. Okuma {SONUC_DENEME_SINIRI} denemede başarısız olursa koşu “sonuç okunamadı” olur.
+          AWX işi bitti; Portal sonuç dosyalarını /sw’den okuyup her adımı ({wrk ? 'bağlantı' : 'hız'} × tekrar) ayrı ayrı değerlendiriyor. Okuma {SONUC_DENEME_SINIRI} denemede başarısız olursa koşu “sonuç okunamadı” olur.
         </UyariKutusu>
       ) : (
         <UyariKutusu ton="bilgi" rol="status" baslik="Koşu sürüyor — sonuçlar iş bitince okunur ve burada görünür.">
-          Portal, iş bitince sonuç dosyalarını /sw’den okuyup her adımı (hız × tekrar) ayrı ayrı değerlendirir. Bu sayfayı kapatabilirsiniz.
+          Portal, iş bitince sonuç dosyalarını /sw’den okuyup her adımı ({wrk ? 'bağlantı' : 'hız'} × tekrar) ayrı ayrı değerlendirir. Bu sayfayı kapatabilirsiniz.
         </UyariKutusu>
       ))}
       {okunamadi && (
@@ -347,24 +389,28 @@ function Sonuclar({ kosu, adimlar, aktif }: { kosu: NlKosuAyrinti; adimlar: NlAd
       {adimlar.length > 0 && (
         <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border @3xl/yuk:grid-cols-4" style={{ borderColor: 'var(--border-subtle)', background: 'var(--border-subtle)' }}>
           <OzetHucre etiket="Geçerli adım" alt="doyma dahil; geçersiz adım hesaba katılmaz">{fmtNumber(nGecerli)} / {fmtNumber(adimlar.length)}</OzetHucre>
-          <OzetHucre etiket={`CPU-ms/istek${kademeCpu != null ? ` @ ${kademeCpu}/sn` : ''}`} alt={tlsPay != null ? `TLS payı %${ondalik(tlsPay * 100, 0)}` : 'nginx worker, user+sys, arka plan çıkarılmış'}>{ondalik(gk?.cpuMsIstek, 3)}</OzetHucre>
-          <OzetHucre etiket={`p95${kademeP95 != null ? ` @ ${kademeP95}/sn` : ''}`} alt="istemci (k6), geçerli adımların ortalaması">{gp?.p95 != null ? `${ondalik(gp.p95, 1)} ms` : '—'}</OzetHucre>
-          <OzetHucre etiket="Tahmini kapasite" alt={nproc != null ? `${fmtNumber(nproc)} çekirdek × 1000 × 0,8 / CPU-ms` : 'çekirdek sayısı × 1000 × 0,8 / CPU-ms'}>{gk?.kapasiteRps != null ? `~${fmtNumber(Math.round(gk.kapasiteRps))} istek/sn` : '—'}</OzetHucre>
+          {/* Serbest hedefte CPU kaydedici yok: CPU ve kapasite olculmez ("—"), sifir DEGIL; CPU kademesi de yok. */}
+          <OzetHucre etiket={`CPU-ms/istek${!serbest && kademeCpu != null ? ` @ ${kademeMetni(kademeCpu, birim)}` : ''}`}
+            alt={serbest ? SERBEST_SUNUCU_YOK : tlsPay != null ? `TLS payı %${ondalik(tlsPay * 100, 0)}` : 'nginx worker, user+sys, arka plan çıkarılmış'}>{serbest ? '—' : ondalik(gk?.cpuMsIstek, 3)}</OzetHucre>
+          <OzetHucre etiket={`p95${kademeP95 != null ? ` @ ${kademeMetni(kademeP95, birim)}` : ''}`} alt={wrk ? 'istemci (wrk, CO düzeltmeli), geçerli adımların ortalaması' : 'istemci (k6), geçerli adımların ortalaması'}>{gp?.p95 != null ? `${ondalik(gp.p95, 1)} ms` : '—'}</OzetHucre>
+          <OzetHucre etiket="Tahmini kapasite" alt={serbest ? SERBEST_SUNUCU_YOK : nproc != null ? `${fmtNumber(nproc)} çekirdek × 1000 × 0,8 / CPU-ms` : 'çekirdek sayısı × 1000 × 0,8 / CPU-ms'}>{!serbest && gk?.kapasiteRps != null ? `~${fmtNumber(Math.round(gk.kapasiteRps))} istek/sn` : '—'}</OzetHucre>
         </dl>
       )}
       {adimlar.length > 0 && (
         <div className="grid gap-5 @3xl/yuk:grid-cols-2">
-          <HizGrafigi baslik="p95 yanıt süresi" birim="ms" noktalar={nokta((a) => a.p95)} cizgi={cizgi((x) => x.p95)} />
-          <HizGrafigi baslik="CPU-ms / istek" birim="ms" basamak={3} noktalar={nokta((a) => a.cpuMsIstek)} cizgi={cizgi((x) => x.cpuMsIstek)} bos="CPU ölçülmedi (sunucu kaydı yok ya da adımlar geçersiz)." />
+          <HizGrafigi baslik="p95 yanıt süresi" birim="ms" noktalar={nokta((a) => a.p95)} cizgi={cizgi((x) => x.p95)} xBirimi={birim} />
+          <HizGrafigi baslik="CPU-ms / istek" birim="ms" basamak={3} noktalar={nokta((a) => (serbest ? null : a.cpuMsIstek))} cizgi={cizgi((x) => (serbest ? null : x.cpuMsIstek))} xBirimi={birim}
+            bos={serbest ? 'Serbest hedef: sunucu ölçümü yok (CPU kaydedici ve nginx logu çalışmaz).' : 'CPU ölçülmedi (sunucu kaydı yok ya da adımlar geçersiz).'} />
         </div>
       )}
-      <AdimTablosu adimlar={adimlar} aktif={aktif} />
+      <AdimTablosu adimlar={adimlar} aktif={aktif} birim={birim} serbest={serbest} />
     </div>
   );
 }
 
 // ── Adim tablosu ────────────────────────────────────────────────────────────────────
-const KOLONLAR: { anahtar: string; baslik: string; genislik: string; sag?: boolean; ipucu?: string }[] = [
+type AdimKolonu = { anahtar: string; baslik: string; genislik: string; sag?: boolean; ipucu?: string };
+const KOLONLAR: AdimKolonu[] = [
   { anahtar: 'hiz', baslik: 'Hız', genislik: '6rem', ipucu: 'istek/sn · tekrar' },
   { anahtar: 'durum', baslik: 'Durum', genislik: '9rem' },
   { anahtar: 'p95', baslik: 'p95 ms', genislik: '5.5rem', sag: true, ipucu: 'istemci (k6) p95; ayrıntıda p50 / p99' },
@@ -376,20 +422,35 @@ const KOLONLAR: { anahtar: string; baslik: string; genislik: string; sag?: boole
   { anahtar: 'kap', baslik: 'Kapasite', genislik: '6.5rem', sag: true, ipucu: 'çekirdek × 1000 × 0,8 / CPU-ms/istek' },
   { anahtar: 'ac', baslik: '', genislik: '2.5rem' },
 ];
+/** wrk: ilk kolon baglanti sayisi (istek/sn DEGIL), yuzdelikler CO duzeltmeli, dropped olculmez; serbest: sunucu kolonlari bos. */
+const WRK_KOLON: Record<string, Partial<AdimKolonu>> = {
+  hiz: { baslik: 'Bağlantı', ipucu: 'eşzamanlı bağlantı sayısı · tekrar (kapalı döngü; ortalama toplam hız tavanlı)' },
+  p95: { ipucu: 'istemci (wrk, CO düzeltmeli) p95; ayrıntıda p50 / p99' },
+  hata: { ipucu: '2xx / 3xx dışı yanıt ve soket hatası oranı' },
+  kodlar: { ipucu: '429 ve 5xx yanıt sayısı; wrk düşen istek (dropped) ölçmez' },
+};
+const SUNUCU_KOLONLARI = new Set(['cpu', 'host', 'kap']);
+/** Serbest hedefte sunucu logu yok: rps kolonunun ipucu sunucu logundan soz etmez. */
+const SERBEST_RPS_IPUCU = `istemcinin gerçekleşen hızı / ${SERBEST_SUNUCU_YOK}`;
+const kolonlar = (birim: AdimBirimi, serbest: boolean): AdimKolonu[] => KOLONLAR.map((k) => ({
+  ...k, ...(birim === 'bağlantı' ? WRK_KOLON[k.anahtar] : null), ...(serbest && SUNUCU_KOLONLARI.has(k.anahtar) ? { ipucu: SERBEST_SUNUCU_YOK } : null),
+  ...(serbest && k.anahtar === 'rps' ? { ipucu: SERBEST_RPS_IPUCU } : null),
+}));
 const sayiHucre = 'px-2.5 py-1.5 text-right tabular-nums';
 
-function AdimTablosu({ adimlar, aktif }: { adimlar: NlAdim[]; aktif: boolean }) {
+function AdimTablosu({ adimlar, aktif, birim, serbest }: { adimlar: NlAdim[]; aktif: boolean; birim: AdimBirimi; serbest: boolean }) {
   const [acik, setAcik] = useState<Set<string>>(new Set());
   const sirali = adimSirala(adimlar);
   const cokSeri = new Set(adimlar.map(seriAdi)).size > 1;
   const degistir = (k: string) => setAcik((s) => { const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n; });
+  const kolonListesi = kolonlar(birim, serbest);
   return (
     <div>
-      <h3 className="mb-1.5 text-[12px] font-semibold" style={{ color: 'var(--text-primary)' }}>Adımlar <span className="font-normal" style={{ color: 'var(--text-secondary)' }}>— her satır bir hız × tekrar (TUR)</span></h3>
+      <h3 className="mb-1.5 text-[12px] font-semibold" style={{ color: 'var(--text-primary)' }}>Adımlar <span className="font-normal" style={{ color: 'var(--text-secondary)' }}>— her satır bir {birim === 'bağlantı' ? 'bağlantı sayısı' : 'hız'} × tekrar (TUR)</span></h3>
       <div className="overflow-x-auto rounded-lg border" style={{ borderColor: 'var(--border-subtle)' }}>
         <table className="pf-table-sticky w-full min-w-[56rem] table-fixed border-collapse" aria-label="Adım sonuçları">
-          <colgroup>{KOLONLAR.map((k) => <col key={k.anahtar} style={{ width: k.genislik }} />)}</colgroup>
-          <thead><tr>{KOLONLAR.map((k) => (
+          <colgroup>{kolonListesi.map((k) => <col key={k.anahtar} style={{ width: k.genislik }} />)}</colgroup>
+          <thead><tr>{kolonListesi.map((k) => (
             <th key={k.anahtar} scope="col" title={k.ipucu} className={`px-2.5 py-1.5 text-[11px] whitespace-nowrap ${k.sag ? 'text-right' : 'text-left'}`}
               style={k.anahtar === 'hiz' ? { ...TH_STIL, left: 0, zIndex: 3, boxShadow: 'inset 0 -1px 0 var(--border), inset -1px 0 0 var(--border-subtle)' } : TH_STIL}>
               {k.anahtar === 'ac' ? <span className="sr-only">Ayrıntı</span> : k.baslik}
@@ -397,7 +458,7 @@ function AdimTablosu({ adimlar, aktif }: { adimlar: NlAdim[]; aktif: boolean }) 
           ))}</tr></thead>
           <tbody className="text-[12px]" style={{ color: 'var(--text-primary)' }}>
             {sirali.length === 0 ? (
-              <TableEmptyRow colSpan={KOLONLAR.length} title={aktif ? 'Adımlar koşu bitince görünür.' : 'Adım sonucu yok.'} description={aktif ? undefined : 'İş başarısız olduysa iş çıktısına bakın; kısmen biten koşuda tamamlanan adımlar listelenir.'} />
+              <TableEmptyRow colSpan={kolonListesi.length} title={aktif ? 'Adımlar koşu bitince görünür.' : 'Adım sonucu yok.'} description={aktif ? undefined : 'İş başarısız olduysa iş çıktısına bakın; kısmen biten koşuda tamamlanan adımlar listelenir.'} />
             ) : sirali.map((a, i) => {
               const k = `${a.tur}|${i}`;
               const ac = acik.has(k);
@@ -410,7 +471,7 @@ function AdimTablosu({ adimlar, aktif }: { adimlar: NlAdim[]; aktif: boolean }) 
                   <tr className="border-t align-top" style={{ borderColor: 'var(--border-subtle)' }}>
                     {/* Ilk kolon yatay kaydirmada yerinde kalir (dar ekranda tablo kendi icinde kayar). */}
                     <td className="sticky left-0 z-[1] px-2.5 py-1.5" style={{ background: 'var(--bg-surface)', boxShadow: 'inset -1px 0 0 var(--border-subtle)' }}>
-                      <div className="font-semibold tabular-nums">{a.hiz != null ? `${a.hiz}/sn` : '—'}</div>
+                      <div className="truncate font-semibold tabular-nums" title={birim === 'bağlantı' ? kademeMetni(a.hiz, birim) : undefined}>{kademeMetni(a.hiz, birim)}</div>
                       <div className="truncate text-[11px]" style={{ color: 'var(--text-secondary)' }} title={a.tur}>{`${adimEtiketi(a)}${cokSeri ? ` · ${seriAdi(a)}` : ''}`}</div>
                     </td>
                     <td className="px-2.5 py-1.5">
@@ -423,10 +484,16 @@ function AdimTablosu({ adimlar, aktif }: { adimlar: NlAdim[]; aktif: boolean }) 
                     <td className={sayiHucre} title={`p50 ${ondalik(a.p50)} · p99 ${ondalik(a.p99)} ms`}>{ondalik(a.p95)}</td>
                     <td className={sayiHucre} style={(a.hataOrani ?? 0) > 0.001 ? { color: 'var(--status-danger-text)', fontWeight: 600 } : undefined}>{yuzde(a.hataOrani)}</td>
                     <td className={sayiHucre} style={kotuKod ? { color: 'var(--status-danger-text)', fontWeight: 600 } : (a.dropped ?? 0) > 0 ? { color: 'var(--status-warning-text)', fontWeight: 600 } : undefined}>{kod.map((x) => (x == null ? '—' : fmtNumber(x))).join(' · ')}</td>
-                    <td className={sayiHucre}>{ondalik(a.gercekRps, 0)} / {pencereIstemci ? <span title={PENCERE_ISTEMCI}>—</span> : ondalik(a.rpsSunucu, 0)}</td>
-                    <td className={sayiHucre}>{ondalik(a.cpuMsIstek, 3)}</td>
-                    <td className={sayiHucre} style={(a.hostCpuOrt ?? 0) > 90 ? { color: 'var(--status-warning-text)', fontWeight: 600 } : undefined}>{a.hostCpuOrt != null ? `%${ondalik(a.hostCpuOrt, 0)}` : '—'}</td>
-                    <td className={sayiHucre}>{a.kapasiteRps != null ? `~${fmtNumber(Math.round(a.kapasiteRps))}` : '—'}</td>
+                    <td className={sayiHucre}>{ondalik(a.gercekRps, 0)} / {serbest ? <span title={SERBEST_SUNUCU_YOK}>—</span> : pencereIstemci ? <span title={PENCERE_ISTEMCI}>—</span> : ondalik(a.rpsSunucu, 0)}</td>
+                    {serbest ? (
+                      <>{['cpu', 'host', 'kap'].map((s) => <td key={s} className={sayiHucre} style={{ color: 'var(--text-muted)' }} title={SERBEST_SUNUCU_YOK}>—</td>)}</>
+                    ) : (
+                      <>
+                        <td className={sayiHucre}>{ondalik(a.cpuMsIstek, 3)}</td>
+                        <td className={sayiHucre} style={(a.hostCpuOrt ?? 0) > 90 ? { color: 'var(--status-warning-text)', fontWeight: 600 } : undefined}>{a.hostCpuOrt != null ? `%${ondalik(a.hostCpuOrt, 0)}` : '—'}</td>
+                        <td className={sayiHucre}>{a.kapasiteRps != null ? `~${fmtNumber(Math.round(a.kapasiteRps))}` : '—'}</td>
+                      </>
+                    )}
                     <td className="px-1 py-1.5 text-center">
                       <button type="button" onClick={() => degistir(k)} aria-expanded={ac} aria-label={`${a.tur} ayrıntısı`} className="rounded p-0.5 focus-visible:outline-offset-2!" style={{ color: 'var(--text-secondary)' }}>
                         {ac ? <ChevronDownIcon className="h-4 w-4" aria-hidden /> : <ChevronRightIcon className="h-4 w-4" aria-hidden />}
@@ -435,7 +502,7 @@ function AdimTablosu({ adimlar, aktif }: { adimlar: NlAdim[]; aktif: boolean }) 
                   </tr>
                   {ac && (
                     <tr style={{ background: 'var(--bg-elevated)' }}>
-                      <td colSpan={KOLONLAR.length} className="px-3 py-2.5">
+                      <td colSpan={kolonListesi.length} className="px-3 py-2.5">
                         <dl className="grid grid-cols-2 gap-x-4 gap-y-2 @2xl/yuk:grid-cols-4 @5xl/yuk:grid-cols-6">
                           <Tanim etiket="TUR" title={a.tur}><span className="font-mono text-[11px]">{a.tur}</span></Tanim>
                           <Tanim etiket="p50 · p99 ms">{ondalik(a.p50)} · {ondalik(a.p99)}</Tanim>

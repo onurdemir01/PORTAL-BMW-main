@@ -1780,7 +1780,12 @@ const TABLES = [
     // sonuc = maskeli set_stats (+ portal_analiz). Saklama: housekeeping 365 gun, TOP(@n) partileri.
     // kilit_id: kosunun kilit kimligi (Durdur kilitleri bununla durdur isine baglar);
     // durdur_awx_*: son Durdur isi; sonuclandirma_denemesi: poller'in FINALIZING sayaci (> 3 ise /sw
-    // okunmaz - cokme dongusu kalkani; "yeniden oku" ucu sifirlar). Tablo hic dagitilmadi: ALTER yok.
+    // okunmaz - cokme dongusu kalkani; "yeniden oku" ucu sifirlar).
+    // Tur 3 (2026-10-28): hedef_turu 'sunucu' | 'serbest' (serbest = LB VIP / yonetilmeyen sunucu;
+    // hedef_host '' - NULL'a cevrilmez), motor 'k6' | 'wrk' (parametreler.motor'un liste / suzgec
+    // kopyasi, ayni INSERT), plan_uyarilari (on kontrolun onay isteyen plan uyarilari, JSON dizi; bos
+    // ise NULL). Tablo bir ortamda onceki bicimiyle yaratilmis olabilir: kolonlar asagidaki alters
+    // listesinde de var (mevcut satirlar sunucu / k6 / NULL olur).
     name: 'nginx_loadtest_kosular',
     sql: `
       CREATE TABLE nginx_loadtest_kosular (
@@ -1812,7 +1817,10 @@ const TABLES = [
         kilit_id            NVARCHAR(64) NULL,
         durdur_awx_server_id INT NULL,
         durdur_awx_job_id   INT NULL,
-        sonuclandirma_denemesi INT NOT NULL DEFAULT 0
+        sonuclandirma_denemesi INT NOT NULL DEFAULT 0,
+        hedef_turu          NVARCHAR(10) NOT NULL DEFAULT 'sunucu',
+        motor               NVARCHAR(8) NOT NULL DEFAULT 'k6',
+        plan_uyarilari      NVARCHAR(2000) NULL
       )`,
   },
   {
@@ -3294,13 +3302,14 @@ const PLAYBOOK_REGISTRY_SEED = [
   },
   {
     // Nginx Hub > Yuk Testi (2026-10-27): TEK playbook, uc kip (yuk_islem on_kontrol | kosu | durdur).
-    // Sunucu secilmezse NGINX_LOADTEST_AWX_SERVER_ID, o da yoksa #1 (0'a dusulmez).
+    // Sunucu secilmezse NGINX_LOADTEST_AWX_SERVER_ID, o da yoksa #1 (0'a dusulmez). Tur 3: k6 / wrk
+    // ve serbest hedef (var olan DB satiri guncellenmez; yalniz yeni kurulumun gorunen adi).
     key_name: 'nginx_loadtest_run',
-    display_name: 'Nginx Hub — Yük Testi (k6)',
+    display_name: 'Nginx Hub — Yük Testi (k6 / wrk)',
     category: 'nginx',
     handler: 'nginx_loadtest_run',
     description:
-      'bmw_portal/nginx_loadtest/nginx_loadtest.yml — non-prod nginx hedefine izinli yuk makinesinden k6 ile sabit hizli yuk; on kontrol (yuk yok), kosu (CPU kaydedici + k6, sonuclar /sw/BMW_PORTAL/nginx_loadtest/<kosu>/) ve durdur kipleri. Prompt on launch (Variables) ACIK, Limit kullanilmaz, template timeout <= 60 dk, Concurrent Jobs ACIK (durdur kosu surerken calisabilsin). Yalniz Admin tetikler; bkz. docs/NGINX-YUK-TESTI.md.',
+      'bmw_portal/nginx_loadtest/nginx_loadtest.yml — izinli yuk makinesinden k6 (acik dongu, sabit istek/sn) ya da wrk (kapali dongu, sabit baglanti, hiz tavanli) ile yuk; hedef non-prod bir nginx sunucusu (CPU kaydedici + nginx logu) ya da serbest hedef (izinli agdaki LB VIP / yonetilmeyen sunucu: yalniz istemci olcumu, hedefe SSH yok). On kontrol (yuk yok), kosu (sonuclar /sw/BMW_PORTAL/nginx_loadtest/<kosu>/) ve durdur kipleri. Prompt on launch (Variables) ACIK, Limit kullanilmaz, template timeout <= 60 dk, Concurrent Jobs ACIK, Execute / Admin rolu yalniz Portal servis hesabinda. Yalniz Admin tetikler; bkz. docs/NGINX-YUK-TESTI.md.',
     playbook_path: null,
     env_var_name: 'NGINX_LOADTEST_RUN_TEMPLATE_ID',
   },
@@ -4734,6 +4743,23 @@ async function setupTables() {
       table: 'nginx_loadtest_kosular',
       col: 'sonuclandirma_denemesi',
       sql: `ALTER TABLE nginx_loadtest_kosular ADD sonuclandirma_denemesi INT NOT NULL CONSTRAINT DF_nlk_sonuclandirma_denemesi DEFAULT 0`,
+    },
+    {
+      // Nginx Yuk Testi tur 3 (2026-10-28): elle hedef IP (sunucu | serbest) + wrk motoru. Ozellik
+      // itildi, tablo bir ortamda yaratilmis olabilir: mevcut satirlar sunucu / k6 / NULL olur.
+      table: 'nginx_loadtest_kosular',
+      col: 'hedef_turu',
+      sql: `ALTER TABLE nginx_loadtest_kosular ADD hedef_turu NVARCHAR(10) NOT NULL CONSTRAINT DF_nlk_hedef_turu DEFAULT 'sunucu'`,
+    },
+    {
+      table: 'nginx_loadtest_kosular',
+      col: 'motor',
+      sql: `ALTER TABLE nginx_loadtest_kosular ADD motor NVARCHAR(8) NOT NULL CONSTRAINT DF_nlk_motor DEFAULT 'k6'`,
+    },
+    {
+      table: 'nginx_loadtest_kosular',
+      col: 'plan_uyarilari',
+      sql: `ALTER TABLE nginx_loadtest_kosular ADD plan_uyarilari NVARCHAR(2000) NULL`,
     },
   ];
 

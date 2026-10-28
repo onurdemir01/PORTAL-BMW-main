@@ -12,13 +12,78 @@
 // HATA SINIFI: baslatmadan ONCE dusen hata (sablon, playbook eslesmesi, prompt) ve AWX'in KESIN
 // reddi (4xx) `belirsiz: false` tasir - is yok, kilit birakilabilir. Ag hatasi / 5xx / zaman asimi
 // `belirsiz: true` tasir: is AWX'te baslamis olabilir, cagiran kilidi TTL'e birakir (guvenli taraf).
+//
+// DENETIM AYRINTISI (tur 3): server/audit/index.cjs `detail`i 2000 karakterde KESER (paylasilan modul,
+// degismez). Kesilen JSON gecersiz olurdu: serbest + wrk kosusunda onaylanan uyarilar + plan uyarilari
+// ~2250 karakter olculdu. Bu modulun (ve index.cjs'in) her denetim ayrintisi denetimAyrintisi() ile
+// HER ZAMAN gecerli JSON ve en cok DENETIM_SINIRI karakter kurulur; JSON metni ASLA ortadan kesilmez.
 'use strict';
 
 const KAYIT_ANAHTARI = 'nginx_loadtest_run';
 const BEKLENEN_PLAYBOOK_ADI = 'nginx_loadtest.yml';
+const DENETIM_SINIRI = 2000;
+// Kosuyu / isi tanitan alanlar: kisaltmanin HICBIR adiminda atilmaz ya da kisaltilmaz (sinira sigmayan
+// son care disinda; o da yalniz bunlari tutar).
+const DENETIM_ANAHTARLARI = Object.freeze([
+  'kosuId', 'adim', 'islem', 'hedefTuru', 'motor', 'hedefHost', 'hedefIp', 'yukHost', 'vhost', 'senaryoId', 'senaryoSha256',
+  'onKontrolKosuId', 'jobId', 'awxServerId', 'templateId', 'code', 'id',
+]);
+const DENETIM_ISARETLERI = new Set(['kirpildi', 'kirpilan', 'atilan']);
 
 function hata(status, code, message, ek) {
   return Object.assign(new Error(message), { status, code }, ek || {});
+}
+
+/** Metnin ilk `n` kod noktasi + uc nokta karakteri U+2026 (vekil cifti bolunmez). */
+function kisalt(metin, n) {
+  const k = Array.from(String(metin));
+  return k.length > n ? `${k.slice(0, n).join('')}…` : String(metin);
+}
+const kisaltDerin = (v, n) => (typeof v === 'string' ? kisalt(v, n)
+  : Array.isArray(v) ? v.map((x) => kisaltDerin(x, n))
+    : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([a, b]) => [a, kisaltDerin(b, n)])) : v);
+
+/**
+ * Denetim ayrintisi: nesne -> en cok `sinir` karakterlik GECERLI JSON. Sigiyorsa JSON.stringify ile
+ * birebir aynidir. Sigmazsa sirayla, her adimdan sonra yeniden olculur: (1) anahtar disi metin
+ * dizilerinin (onaylanan / plan uyarilari) HER OGESI kisa onek + U+2026 (oge sayisi korunur), `kirpildi:
+ * true`; (2) bu diziler atilir, oge sayilari `kirpilan: { ad: n }`; (3) anahtar disi metinler (ic ice
+ * dahil) kisaltilir; (4) anahtar disi alanlar buyukten kucuge atilir, sayilari `atilan: n`; (5) son
+ * care yalniz anahtar alanlar. Anahtar alanlar (DENETIM_ANAHTARLARI) 1-4'te degismez.
+ */
+function denetimAyrintisi(nesne, { sinir = DENETIM_SINIRI, anahtarlar = DENETIM_ANAHTARLARI } = {}) {
+  const kaynak = nesne && typeof nesne === 'object' && !Array.isArray(nesne) ? nesne : {};
+  let o = { ...kaynak };
+  const metin = () => JSON.stringify(o);
+  if (metin().length <= sinir) return metin();
+  const anahtar = new Set(anahtarlar);
+  const serbestAlan = (k) => !anahtar.has(k) && !DENETIM_ISARETLERI.has(k);
+  const diziler = Object.keys(o).filter((k) => serbestAlan(k) && Array.isArray(o[k]) && o[k].some((x) => typeof x === 'string'));
+  for (const n of [160, 80, 40]) {
+    for (const k of diziler) o[k] = kaynak[k].map((x) => (typeof x === 'string' ? kisalt(x, n) : x));
+    o.kirpildi = true;
+    if (metin().length <= sinir) return metin();
+  }
+  const kirpilan = {};
+  for (const k of diziler) {
+    kirpilan[k] = kaynak[k].length;
+    delete o[k];
+    o.kirpilan = { ...kirpilan };
+    if (metin().length <= sinir) return metin();
+  }
+  for (const n of [200, 60]) {
+    for (const k of Object.keys(o)) if (serbestAlan(k)) o[k] = kisaltDerin(o[k], n);
+    if (metin().length <= sinir) return metin();
+  }
+  // Atilan alanlarin SAYISI (adlari cok alanli nesnede attigi kadar yer tutardi).
+  const uzunluk = (v) => (JSON.stringify(v) || '').length;
+  for (const k of Object.keys(o).filter(serbestAlan).sort((a, b) => uzunluk(o[b]) - uzunluk(o[a]))) {
+    delete o[k];
+    o.atilan = (o.atilan || 0) + 1;
+    if (metin().length <= sinir) return metin();
+  }
+  o = { ...Object.fromEntries(Object.entries(o).filter(([k]) => anahtar.has(k)).map(([k, v]) => [k, kisaltDerin(v, 60)])), kirpildi: true };
+  return metin().length <= sinir ? metin() : JSON.stringify({ kirpildi: true });
 }
 
 function maskele(s) {
@@ -124,7 +189,7 @@ async function isBaslat(req, { sablon, extraVars, sablonAdi, denetim }) {
     require('../audit/index.cjs').auditPortal(req, d.eylem || 'nginx_loadtest_baslat', {
       targetHost: d.targetHost || null,
       targetIp: d.targetIp || null,
-      detail: JSON.stringify({ ...(d.ayrinti || {}), jobId: result.jobId, awxServerId: serverId, templateId }).slice(0, 2000),
+      detail: denetimAyrintisi({ ...(d.ayrinti || {}), jobId: result.jobId, awxServerId: serverId, templateId }),
     });
   } catch {
     /* best-effort */
@@ -132,4 +197,6 @@ async function isBaslat(req, { sablon, extraVars, sablonAdi, denetim }) {
   return { jobId: result.jobId, status: result.status ?? null, awxServerId: serverId, templateId };
 }
 
-module.exports = { KAYIT_ANAHTARI, BEKLENEN_PLAYBOOK_ADI, sunucuSec, sablonuCoz, playbookDogrula, isBaslat };
+module.exports = {
+  KAYIT_ANAHTARI, BEKLENEN_PLAYBOOK_ADI, DENETIM_SINIRI, DENETIM_ANAHTARLARI, sunucuSec, sablonuCoz, playbookDogrula, isBaslat, denetimAyrintisi,
+};

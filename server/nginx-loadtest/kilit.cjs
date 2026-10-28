@@ -2,10 +2,15 @@
 //
 // Desen opsx/was-state.cjs kilit takiminin KOPYASI (o da ScaleX tryLockRestore'dan): TEK UPDATE
 // ifadesi hem kontrol hem yazmadir, TOCTOU yok. Anahtarlar:
-//   G|global   - ayni anda tek yuk KOSUSU (estate genelinde; paylasilan TEST kullanicilari 429 yemesin)
-//   T|<HEDEF>  - ayni hedefe ikinci is (on kontrol istekleri de hedefin loguna yazilir ve olcumu bozar)
-//   L|<YUK>    - ayni yuk makinesinden ikinci is
-// On kontrol T + L alir; kosu G + T + L alir. Alma sirasi HER ZAMAN G, T, L.
+//   G|global    - ayni anda tek yuk KOSUSU (estate genelinde; paylasilan TEST kullanicilari 429 yemesin)
+//   T|<HEDEF>   - ayni hedefe ikinci is (on kontrol istekleri de hedefin loguna yazilir ve olcumu bozar)
+//   T|IP:<ip>   - serbest hedef (LB VIP / yonetilmeyen sunucu): ayni IP'ye ikinci is
+//   L|<YUK>     - ayni yuk makinesinden ikinci is
+// Sunucu hedefi: on kontrol T + L, kosu G + T + L. Serbest hedef: on kontrol DE G alir (G + T|IP +
+// L): serbest on kontrolun istekleri VIP arkasindaki bir hostun olcum penceresine girmesin. VIP
+// arkasindaki hostlar T kilidiyle KORUNMAZ (Portal VIP'in havuzunu bilmez); G yalniz kosulari ve
+// serbest on kontrolleri siralar. Alma sirasi HER ZAMAN G, T, L. Serbest hedefte gecerli IPv4
+// yoksa anahtar URETILMEZ (hata; sessiz `T|NULL` yok).
 // Kilit UPDATE ile BIRAKILIR, satir SILINMEZ (TBMWANS: DELETE yok). `db` nesnesi PARAMETRE olarak
 // gelir (testte sahte db).
 //
@@ -32,11 +37,24 @@ function kilitSuresiDk(env = process.env) {
   return Math.min(Math.max(n, SABLON_ZAMAN_ASIMI_DK + 5), 720);
 }
 
-/** Anahtar listesi, ALMA SIRASIYLA. `kosu` true ise global anahtar da alinir. */
-function kilitAnahtarlari({ hedef, yuk, kosu = false }) {
+/**
+ * Anahtar listesi, ALMA SIRASIYLA. Global anahtar `kosu` ise ya da hedef serbestse (on kontrol
+ * dahil) alinir. Serbest hedefte T anahtari IP'dir; gecerli IPv4 degilse TypeError.
+ */
+function kilitAnahtarlari({ hedef, hedefIp = null, hedefTuru = 'sunucu', yuk, kosu = false }) {
+  if (hedefTuru !== 'sunucu' && hedefTuru !== 'serbest') {
+    throw new TypeError(`kilitAnahtarlari: hedefTuru gecersiz (${String(hedefTuru).slice(0, 20)})`);
+  }
+  const serbest = hedefTuru === 'serbest';
   const out = [];
-  if (kosu) out.push('G|global');
-  out.push(`T|${String(hedef).trim().toUpperCase()}`, `L|${String(yuk).trim().toUpperCase()}`);
+  if (kosu || serbest) out.push('G|global');
+  if (serbest) {
+    if (!require('./dogrula.cjs').gecerliIpv4(hedefIp)) throw new TypeError('kilitAnahtarlari: serbest hedefte gecerli bir IPv4 gerekli');
+    out.push(`T|IP:${hedefIp}`);
+  } else {
+    out.push(`T|${String(hedef).trim().toUpperCase()}`);
+  }
+  out.push(`L|${String(yuk).trim().toUpperCase()}`);
   return out;
 }
 
@@ -280,7 +298,12 @@ async function bekleyenKilitIsleri(db, limit = 20) {
 
 /** Dolu kilit icin kullaniciya gosterilecek tek satir (kim, ne, ne zamana kadar). */
 function doluKilitMesaji(busyKey, busy) {
-  const ne = busyKey === 'G|global' ? 'Başka bir yük testi koşuyor' : busyKey.startsWith('T|') ? `${busyKey.slice(2)} üzerinde başka bir iş var` : `${busyKey.slice(2)} yük makinesi meşgul`;
+  // T|IP: dali T| dalindan ONCE (serbest hedef). G metni degismez: kim bolumundeki target_desc isi soyler.
+  const ne = busyKey === 'G|global'
+    ? 'Başka bir yük testi koşuyor'
+    : busyKey.startsWith('T|IP:')
+      ? `${busyKey.slice(5)} IP'sine yönelik başka bir iş var`
+      : busyKey.startsWith('T|') ? `${busyKey.slice(2)} üzerinde başka bir iş var` : `${busyKey.slice(2)} yük makinesi meşgul`;
   const kim = busy && busy.holder ? ` (${busy.holder}${busy.target_desc ? `: ${busy.target_desc}` : ''}${busy.awx_job_id != null ? `, AWX iş #${busy.awx_job_id}` : ''})` : '';
   return `${ne}${kim}. İş bitince kilit kendiliğinden bırakılır.`;
 }

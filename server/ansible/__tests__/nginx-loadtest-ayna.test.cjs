@@ -15,11 +15,17 @@
 //       files/<x> aynada var, set_stats nginx_loadtest_result son fail'den ONCE ve kosulsuz.
 //   NA5 2026-10-27 inceleme kurallarinin CI'da kosabilen metin kismi (bekcinin L2/L5/L7'si): delegate_to
 //       iceren play ignore_unreachable ve her delegate gorevinin HEMEN ardinda '<kayit> is unreachable'
-//       fail'i (donguluyse ogeler de); localhost play'lerinde ciplak yuk_islem yok; kaydedici KILL (-k) >
-//       Play 4 beklemesi >= 290 sn; kaydedici hazir deseni (wait_for gibi cok satirli) /proc yarisi
-//       satirini hata saymaz; senaryo yolunda ';' yasak; kaydedici yalniz kendi ADIM'inin satirini sayar.
+//       fail'i (donguluyse ogeler de); localhost play'lerinde fail_msg DISINDA hicbir yerde (ifade, gorev adi,
+//       msg, vars) ciplak yuk_islem / yuk_hedef_turu / yuk_motor yok; kaydedici KILL (-k) > Play 4 beklemesi
+//       >= 290 sn; kaydedici hazir deseni (wait_for gibi cok satirli) /proc yarisi satirini hata saymaz;
+//       senaryo yolunda ';' yasak; kaydedici yalniz kendi ADIM'inin satirini sayar; (7) Play 2 ve Play 3'un ilk
+//       gorevi getent register edilir ve HEMEN ardindan '<kayit> is unreachable' fail'i 'erisilemedi (ssh): ...' der
+//       (ignore_unreachable altinda erisilemeyen hostta getent yok sayilir; yoksa sonraki gorev tanimsiz getent_passwd
+//       ile duser ve operator 'undefined variable' gorur; 2026-10-28).
+//   NA7 Portal ile playbook'un ortak yuzeyi: dogrula.cjs EKSTRA_ANAHTARLAR = aynadaki README'nin
+//       '| `yuk_*` |' tablo satirlari (30 degisken; bekcinin L3'u README = playbook kapisi der).
 // Davranis (girdi kapisi, sonuc derlemesi, betikler) Ansible deposundaki bekcide; k6 mantigi
-// nginx-loadtest-k6.test.cjs'te.
+// nginx-loadtest-k6.test.cjs'te; wrk / Lua / playbook metin kurallari (NA6) nginx-loadtest-wrk.test.cjs'te.
 // NGINX_LOADTEST_AYNA: mutasyon kopyasi dizini (verilmezse depodaki ayna).
 'use strict';
 
@@ -31,17 +37,20 @@ const path = require('node:path');
 const Module = require('node:module');
 const { PLAYBOOKS, abs } = require('../paths.cjs');
 
-const DIR = process.env.NGINX_LOADTEST_AYNA || path.join(__dirname, '..', 'bmw_portal', 'nginx_loadtest');
+const AYNA = path.join(__dirname, '..', 'bmw_portal', 'nginx_loadtest');
+const DIR = process.env.NGINX_LOADTEST_AYNA || AYNA;
 
 // Ayna degistiginde: dosyalari Ansible deposuyla ESLE, sonra bu listeyi guncelle (sha256sum).
 const BEKLENEN = {
-  'README.md': '74123ed974f917ff3bd658866092bb32c3e9427210a149f5db47b6de7ea7dd7b',
+  'README.md': '9314418eea65c3928bde0735c7d6da65f12679c2ee559d31409ffa52502537c5',
   'files/cpu_kaydedici.sh': 'd9c5bff9ab329d2d48b1bc0383b9c13fcf907e5bda1840ae9a5ceb8bf7495ac8',
-  'files/durdur.sh': '13d8ffec710ebdbb2f550fde716239103f99f85aae10e07be997c930924c7400',
+  'files/durdur.sh': 'd555cfc5731771f57711bccccbcc78f73c094f4f3a954c9430164ef4c61380e4',
   'files/kos.sh': 'c3574b1109369c002cf4d56141557bb1fbf74d5ad78f2d38dfb9167834d2fa5b',
   'files/on_kontrol.sh': '8b7f448d081b8fa22ecd9e0709b970379523e750a5850a25866127fec6ee9753',
+  'files/wrk_kos.sh': '0e2ed64448ab7b11f4ca52798051fa15ce92f112b2794811b660e99f7697df8f',
   'files/yuk_k6.js': '7e8bee8da1af1e4a1b164dd732d45f9cf42cdff6d1b19948d9b6bed211e14967',
-  'nginx_loadtest.yml': 'ddfbd0a2b75e10c17d761331e56be61dc9abe2498304cd16e99f09c1f69f087f',
+  'files/yuk_wrk.lua': '2a44afc388007721690e9cce4b736ed0175f128bf6ef1a44b59588f93605e16b',
+  'nginx_loadtest.yml': '879645abdc18b35834a977796754355feb712781beceff687a92a6b82d15da9d',
 };
 
 function tumDosyalar(kok) {
@@ -120,7 +129,8 @@ function preflightYukle(sablonlar) {
 
 test('NA3 kayit: PLAYBOOKS.nginxLoadtest aynadaki playbook, BEKLENEN_PLAYBOOK yanlis sablonu reddeder', async () => {
   assert.equal(PLAYBOOKS.nginxLoadtest, 'nginx_loadtest/nginx_loadtest.yml');
-  assert.equal(path.resolve(abs(PLAYBOOKS.nginxLoadtest)), path.resolve(path.join(DIR, 'nginx_loadtest.yml')));
+  // Kayit depodaki aynayi gosterir (NGINX_LOADTEST_AYNA mutasyon kopyasi kaydi degistirmez).
+  assert.equal(path.resolve(abs(PLAYBOOKS.nginxLoadtest)), path.resolve(path.join(AYNA, 'nginx_loadtest.yml')));
   const T = (id, playbook) => ({ id, name: `tpl${id}`, playbook, ask_variables: true });
   let y = preflightYukle([T(7, 'bmw_portal/nginx_loadtest/nginx_loadtest.yml')]);
   try {
@@ -156,7 +166,7 @@ test('NA4 metin kurallari: LF, yorum/script/strategy/poll 0 yok, betikler var, s
   assert.ok(!/^\s*limit:/m.test(yml) && !/LIMIT_MUAF=/.test(yml), 'limit / LIMIT_MUAF degeri yok');
   assert.ok(!yml.includes('\\"'), '\\" yok (Ansible {{ }} icinde patlar)');
   const anilan = new Set([...yml.matchAll(/files\/([A-Za-z0-9_.]+)/g)].map((m) => m[1]));
-  for (const ad of ['kos.sh', 'yuk_k6.js', 'cpu_kaydedici.sh', 'on_kontrol.sh']) {
+  for (const ad of ['kos.sh', 'yuk_k6.js', 'cpu_kaydedici.sh', 'on_kontrol.sh', 'wrk_kos.sh', 'yuk_wrk.lua']) {
     assert.ok(yml.includes(`'${ad}'`), `${ad} playbook'ta anilmiyor`);
     anilan.add(ad);
   }
@@ -178,7 +188,7 @@ function sonrakiGorev(satirlar, bas, girinti) {
   return i;
 }
 
-test('NA5 S8: delegate/unreachable, korumali yuk_islem, kaydedici KILL/bekleme, hazir deseni, ";" yasagi, ADIM suzgeci', () => {
+test('NA5 S8: delegate/unreachable, korumali yuk_islem, kaydedici KILL/bekleme, hazir deseni, ";" yasagi, ADIM suzgeci, getent erisilemezlik', () => {
   const yml = oku('nginx_loadtest.yml');
   const playlar = yml.split(/\n(?=- name: )/).filter((p) => /^ {2}hosts: /m.test(p));
   assert.equal(playlar.length, 8, 'play sayisi (test yanlis yere bakiyor olmasin)');
@@ -214,16 +224,17 @@ test('NA5 S8: delegate/unreachable, korumali yuk_islem, kaydedici KILL/bekleme, 
     });
   }
 
-  // (2) extra_var'siz kosuda localhost play'leri patlamamali: Jinja'da ciplak yuk_islem yok (fail_msg duz metindir).
+  // (2) extra_var'siz kosuda localhost play'leri patlamamali: islem / hedef turu / motor adi fail_msg DISINDA
+  // hicbir yerde (Jinja, gorev adi, msg, vars) ciplak gecmez (fail_msg duz metindir; Portal'a giden ret metni).
   for (const p of playlar.filter((x) => /^ {2}hosts: localhost$/m.test(x))) {
     const metin = p
       .split('\n')
       .filter((s) => !/^\s+fail_msg: /.test(s))
       .join('\n');
-    const ciplak = [...metin.matchAll(/\byuk_islem\b(?!\s*\|\s*default\()/g)].map((m) =>
+    const ciplak = [...metin.matchAll(/\b(yuk_islem|yuk_hedef_turu|yuk_motor)\b(?!\s*\|\s*default\()/g)].map((m) =>
       metin.slice(Math.max(0, m.index - 30), m.index + 30),
     );
-    assert.deepEqual(ciplak, [], `localhost play'inde korumasiz yuk_islem: ${p.split('\n')[0]}`);
+    assert.deepEqual(ciplak, [], `localhost play'inde korumasiz yuk_islem / yuk_hedef_turu / yuk_motor: ${p.split('\n')[0]}`);
   }
 
   // (3) kaydedici: TERM timeout'a gider; '-k K' bitir'i keser. Play 4 W sn bekler: W >= 290 ve K > W.
@@ -262,5 +273,38 @@ test('NA5 S8: delegate/unreachable, korumali yuk_islem, kaydedici KILL/bekleme, 
   assert.ok(
     kayd.includes('index($0, " user-agent=" UA "/" ADIM "_")') && kayd.includes('index($0, "\\"" UA "/" ADIM "_")'),
     'iki test satiri esiginde de <UA_ONEK>/<ADIM>_ aranmali',
+  );
+
+  // (7) Play 2 (hedef) ve Play 3 (yuk makinesi): blogun ilk gorevi getent (become: false, register) ve HEMEN ardindan
+  // 'when: <kayit> is unreachable' fail'i; ileti trim + yazdirilabilir ASCII (play vars '[^ -~]') + en cok 160 karakter.
+  for (const [i, ad] of [[1, 'hedef'], [2, 'yuk makinesi']]) {
+    const p = playlar[i];
+    const m =
+      /\n {6}block:\n {8}- name: --- \[Task\] www ev dizini ---\n {10}become: false\n {10}ansible\.builtin\.getent:\n {12}database: passwd\n {12}key: www\n {10}register: (\w+)\n\n {8}- name: [^\n]+\n {10}ansible\.builtin\.fail:\n {12}msg: "([^\n]*)"\n {10}when: (\w+) is unreachable\n/.exec(
+        p,
+      );
+    assert.ok(
+      m &&
+        m[3] === m[1] &&
+        m[2] ===
+          `erisilemedi (ssh): {{ ${m[1]}.msg | default('baglanti hatasi') | string | trim | regex_replace(yt_re_ascii_disi, '?') | truncate(160, true, '...', 0) }}`,
+      `${ad} play'i: ilk gorev getent register edilip HEMEN ardindan 'when: <kayit> is unreachable' fail'i ('erisilemedi (ssh): ...') gelmeli: ${m ? m[0] : 'yok'}`,
+    );
+    assert.match(p, /^ {4}yt_re_ascii_disi: '\[\^ -~\]'$/m, `${ad} play vars: yt_re_ascii_disi '[^ -~]' (erisilemezlik iletisi yazdirilabilir ASCII)`);
+  }
+});
+
+test('NA7 Portal EKSTRA_ANAHTARLAR = aynadaki README degisken tablosu (30 yuk_* satiri)', () => {
+  // Ortak yuzey (sozlesme 3. bolum): Portal'in gonderdigi anahtarlar ile playbook'un kapisinin denetledigi anahtarlar.
+  // Ansible bekcisi (L3) README tablosunu playbook'a, bu test Portal'a baglar; ikisi birlikte uc yuzu esitler.
+  const tablo = new Set([...oku('README.md').matchAll(/^\|\s*`(yuk_[a-z0-9_]+)`\s*\|/gm)].map((m) => m[1]));
+  assert.equal(tablo.size, 30, `README degisken tablosu 30 satir olmali: ${[...tablo].join(',')}`);
+  const { EKSTRA_ANAHTARLAR } = require('../../nginx-loadtest/dogrula.cjs');
+  const portal = new Set(EKSTRA_ANAHTARLAR);
+  assert.equal(portal.size, EKSTRA_ANAHTARLAR.length, 'EKSTRA_ANAHTARLAR tekrar iceriyor');
+  assert.deepEqual(
+    [...portal].sort(),
+    [...tablo].sort(),
+    'Portal EKSTRA_ANAHTARLAR README / playbook sozlesmesiyle ayni degil (eksik/fazla anahtar son kapida red ya da yok sayilir)',
   );
 });

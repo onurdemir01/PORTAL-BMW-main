@@ -101,9 +101,9 @@ Portal DB'si (nitelendirilmemis tablo adlari; `PORTAL_DB_*` bos ise TBMWANS). Ay
 | Tablo | Amac | Modul |
 |---|---|---|
 | `nginx_loadtest_senaryolar` | Senaryo: YALNIZ yol satirlari (kanonik TSV + sha256, yol sayisi, ayristirici ozeti). HAR tarayicidan cikmaz; yumusak silme (`silindi`) | nginx-loadtest/index.cjs |
-| `nginx_loadtest_kosular` | On kontrol (`islem='on_kontrol'`) ve kosu (`islem='kosu'`) satirlari: hedef / IP / vhost / yuk makinesi, parametreler, AWX sunucu + is numarasi (uclar istemciden ALMAZ), durum (`QUEUED`..`OKUNAMADI`), maskeli set_stats, gecerlilik + nedenler. `kilit_id` (kosunun kilit kimligi; Durdur kilitleri bununla durdur isine baglar), `durdur_awx_server_id` / `durdur_awx_job_id` (son Durdur isi, `GET /kosular/:id` `durdurIsi`), `sonuclandirma_denemesi` (INT NOT NULL DEFAULT 0: poller FINALIZING sayaci; 3'u gecerse `/sw` okunmaz - cokme dongusu kalkani; `POST /kosular/:id/yeniden-oku` sifirlar). Indeks `IX_nlk_job`, `IX_nlk_hedef` | nginx-loadtest/index.cjs, poller.cjs |
+| `nginx_loadtest_kosular` | On kontrol (`islem='on_kontrol'`) ve kosu (`islem='kosu'`) satirlari: hedef / IP / vhost / yuk makinesi, parametreler, AWX sunucu + is numarasi (uclar istemciden ALMAZ), durum (`QUEUED`..`OKUNAMADI`), maskeli set_stats, gecerlilik + nedenler. `kilit_id` (kosunun kilit kimligi; Durdur kilitleri bununla durdur isine baglar), `durdur_awx_server_id` / `durdur_awx_job_id` (son Durdur isi, `GET /kosular/:id` `durdurIsi`), `sonuclandirma_denemesi` (INT NOT NULL DEFAULT 0: poller FINALIZING sayaci; 3'u gecerse `/sw` okunmaz - cokme dongusu kalkani; `POST /kosular/:id/yeniden-oku` sifirlar). Tur 3: `hedef_turu` (NVARCHAR(10) NOT NULL DEFAULT `'sunucu'`; `'sunucu'` \| `'serbest'` - serbest = LB VIP / yonetilmeyen sunucu, satirda `hedef_host = ''`, NULL'a cevrilmez), `motor` (NVARCHAR(8) NOT NULL DEFAULT `'k6'`; `'k6'` \| `'wrk'`, kanonik `parametreler.motor`'un liste / suzgec kopyasi, ayni INSERT'te yazilir), `plan_uyarilari` (NVARCHAR(2000) NULL: on kontrolun onay isteyen plan uyarilari, JSON dizi; bos ise NULL; kosu bu listeyi onaylatir, yeni uyari cikarsa `on_kontrol_eski`). Indeks `IX_nlk_job`, `IX_nlk_hedef` | nginx-loadtest/index.cjs, poller.cjs |
 | `nginx_loadtest_adimlar` | Kosu basina TUR satiri (`R<id>_<K\|B>_<kip>_<ae>_<hiz>_r<n>`): istemci/sunucu metrikleri (FLOAT, NULL = olculmedi), `ham` JSON. Zaman serisi YOK. Indeks `IX_nla_kosu` | nginx-loadtest/poller.cjs |
-| `nginx_loadtest_kilitleri` | CAS kilidi, `opsx_was_locks` bicimi: `G\|global`, `T\|<HEDEF>`, `L\|<YUK>`; satir SILINMEZ, TTL 75 dk. `bag_turu` (`on_kontrol` \| `kosu` \| `durdur`): bagli isin turu; AWX iptali / hatasinda kosu ve durdur kilidi BIRAKILMAZ, isten cozulur (`awx_*` = NULL) ve TTL ile duser (`kilit.bagliIsKarari`). Ise bagli tutulan kilit AWX sunucusunu kapatmayi engeller | nginx-loadtest/kilit.cjs |
+| `nginx_loadtest_kilitleri` | CAS kilidi, `opsx_was_locks` bicimi: `G\|global`, `T\|<HEDEF>`, `T\|IP:<ip>` (serbest hedef: hedef sunucu yok, kilit IP'ye), `L\|<YUK>`; satir SILINMEZ, TTL 75 dk. Sunucu hedefinde on kontrol `T` + `L`, kosu `G` + `T` + `L`; serbest hedefte on kontrol DE `G` alir (`G` + `T\|IP:` + `L`: serbest on kontrolun istekleri VIP arkasindaki bir hostun olcum penceresine girmesin). VIP arkasindaki hostlar `T` kilidiyle korunmaz (Portal VIP havuzunu bilmez). `bag_turu` (`on_kontrol` \| `kosu` \| `durdur`): bagli isin turu; AWX iptali / hatasinda kosu ve durdur kilidi BIRAKILMAZ, isten cozulur (`awx_*` = NULL) ve TTL ile duser (`kilit.bagliIsKarari`). Ise bagli tutulan kilit AWX sunucusunu kapatmayi engeller | nginx-loadtest/kilit.cjs |
 
 **Saklama:** `db/housekeeping.cjs` gece temizliginde kosular ve adimlari
 `NGINX_LOADTEST_RETENTION_DAYS` (varsayilan 365) gunden eskiyse en cok 500'luk `DELETE TOP (@n)`
@@ -111,10 +111,14 @@ partileriyle siler: once adimlar, sonra adimi kalmamis kosular. Suren kosu
 (`QUEUED`/`RUNNING`/`FINALIZING`) silinmez. Senaryolar ve kilit satirlari silinmez.
 Ham olcum dosyalari DB'de degil, `/sw/BMW_PORTAL/nginx_loadtest/<kosu>/` altindadir.
 
-**Sema notu (2026-10-27 tur 2):** `kilit_id`, `durdur_awx_server_id`, `durdur_awx_job_id`,
-`sonuclandirma_denemesi` (kosular) ve `bag_turu` (kilitleri) dogrudan `CREATE TABLE` icindedir:
-tablolar henuz hicbir ortamda yaratilmadi (ozellik dagitilmadi), ALTER yok. Tablo daha once
-yaratilmis bir ortama getirilirse bu kolonlar icin ALTER eklenmelidir.
+**Sema notu (tur 2 + tur 3, 2026-10-28):** ozellik itildi; tablolar bir ortamda onceki bicimiyle
+yaratilmis olabilir. Bu yuzden sonradan eklenen her kolon HEM `CREATE TABLE` icinde HEM `alters`
+listesindedir (eksikse boot'ta eklenir): tur 2 `kilit_id`, `durdur_awx_server_id`, `durdur_awx_job_id`,
+`sonuclandirma_denemesi` (kosular), `bag_turu` (kilitleri); tur 3 `hedef_turu` (`DF_nlk_hedef_turu`
+DEFAULT `'sunucu'`), `motor` (`DF_nlk_motor` DEFAULT `'k6'`), `plan_uyarilari` (NULL). Mevcut satirlar
+sunucu / k6 / NULL olur. `hedef_host` NOT NULL kalir (serbest satirda `''`); `IX_nlk_hedef` yeniden
+kurulmaz. `nginx_loadtest_adimlar` sema degismez: wrk kosusunda `hiz` kolonu baglanti sayisidir (birim
+kosu satirinin `motor`'undan).
 
 ## Crypto Hub (harici tarama verisi)
 

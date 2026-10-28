@@ -19,7 +19,10 @@
 //   YPL15 olay islemesi bitmemis terminal is: 10 dk beklenir, sonra "cikti eksik olabilir" nedeniyle yazilir
 //   YPL16 deneme sayaci: okuma hatasi < 3 denemede FINALIZING kalir; > 3 ise /sw hic okunmaz
 //   YPL17 sw_dizin bildirilmediyse /sw okunmaz: FAILED + GECERSIZ
-//   YPL18 tick / tetikle sonuclandirmanin istedigi kolonlari okur
+//   YPL18 tick / tetikle sonuclandirmanin istedigi kolonlari okur (tur 3: hedef_turu, motor)
+//   -- tur 3 (2026-10-28) --
+//   YPL19 kosuAnaliz'e tur / motor satirdan; set_stats yankisi yalniz metinse karsilastirilir (null
+//         playbook hatasini korur); wrk_kos.sh rc neden metni; serbest kosu (sunucu dosyasiz) DONE
 'use strict';
 
 const { test } = require('node:test');
@@ -58,6 +61,7 @@ function sifirla(ek = {}) {
     okumaHatasi: null,
     analiz: { gecerlilik: 'GECERLI', nedenler: [], uyarilar: ['u1'], adimlar: [], ozet: { nproc: 8 } },
     analizCagri: 0,
+    analizSecenek: null,
     bekleyenKilit: [],
     aktif: [],
     tekSatir: [],
@@ -129,9 +133,10 @@ sahteC('sonuc.cjs', {
   },
 });
 sahteC('analiz.cjs', {
-  kosuAnaliz: (veri, { adim }) => {
+  kosuAnaliz: (veri, secenek) => {
     D.analizCagri += 1;
-    D.analizAdim = adim;
+    D.analizAdim = secenek && secenek.adim;
+    D.analizSecenek = secenek;
     if (typeof D.analiz === 'function') return D.analiz(veri);
     return D.analiz;
   },
@@ -602,9 +607,11 @@ test('YPL17 sw_dizin bildirilmediyse /sw okunmaz: FAILED + GECERSIZ', async () =
 });
 
 test('YPL18 tick ve tetikle sonuclandirmanin istedigi kolonlari okur', async () => {
-  for (const k of ['parametreler', 'started_at', 'created_at', 'sonuclandirma_denemesi', 'kilit_id']) {
+  for (const k of ['parametreler', 'started_at', 'created_at', 'sonuclandirma_denemesi', 'kilit_id', 'hedef_turu', 'motor']) {
     assert.match(pl.SONUCLANDIRMA_KOLONLARI, new RegExp(`\\b${k}\\b`), k);
   }
+  // Tur 3 kolonlari kilit_id'den sonra, DATEDIFF'ten once.
+  assert.match(pl.SONUCLANDIRMA_KOLONLARI.replace(/\s+/g, ' '), /kilit_id, hedef_turu, motor, DATEDIFF\(/);
   assert.match(pl.SONUCLANDIRMA_KOLONLARI.replace(/\s+/g, ' '), /DATEDIFF\(SECOND, COALESCE\(started_at, created_at\), GETUTCDATE\(\)\) AS calisma_yas_sn/);
   // tick satiri oldugu gibi gecirir: eski satirdaki 404 "is yok" olur.
   sifirla({ awxHata: Object.assign(new Error('not found'), { status: 404 }), aktif: [KOSU({ calisma_yas_sn: 99999 })] });
@@ -619,4 +626,67 @@ test('YPL18 tick ve tetikle sonuclandirmanin istedigi kolonlari okur', async () 
   const tek = D.sorgular.find((s) => /^SELECT id, islem, durum/.test(s.q));
   assert.ok(tek && tek.q.includes(pl.SONUCLANDIRMA_KOLONLARI.replace(/\s+/g, ' ')), 'tetikle kolonlari eksik okuyor');
   assert.equal(D.son && D.son.durum, 'DONE');
+});
+
+test('YPL19 tur 3: analiz secenekleri satirdan, yanki karsilastirmasi, wrk_kos.sh rc, serbest kosu DONE', async () => {
+  // Serbest + wrk kosu: sunucu dosyasi yok (C'nin okuyucusu toleransli), analiz tur / motor ile -> DONE.
+  sifirla();
+  D.awx.artifacts = { nginx_loadtest_result: STATS({ surum: 2, hedef_turu: 'serbest', motor: 'wrk', kosu: { kos_rc: 0, kaydedici_rc: null, sw_dizin: '/sw/BMW_PORTAL/nginx_loadtest/17' } }) };
+  D.analiz = {
+    gecerlilik: 'GECERLI', nedenler: [], uyarilar: ['sunucu_olcumu_yok(serbest_hedef)'],
+    adimlar: [ADIM({ tur: 'R17_K_ka_br_8_r1', hiz: 8, cpu_ms_istek: null, host_cpu_ort: null, istek_sunucu: null, rps_sunucu: null, kapasite_rps: null, dropped: null, ttfb_p95: null })], ozet: {},
+  };
+  let o = await pl.kosuyuSonuclandir(KOSU({ hedef_turu: 'serbest', motor: 'wrk' }));
+  assert.deepEqual(o, { terminal: true, durum: 'DONE' });
+  assert.deepEqual(D.analizSecenek, { adim: 'R17', hedefTuru: 'serbest', motor: 'wrk' });
+  assert.deepEqual([D.son.durum, D.son.gecerlilik, D.son.swDizin], ['DONE', 'GECERLI', '/sw/BMW_PORTAL/nginx_loadtest/17']);
+  assert.deepEqual([D.adimInsert[0].params[5], D.adimInsert[0].params[9 + 13], D.adimInsert[0].params[9 + 15]], [8, null, null], 'olculmeyen sunucu metrigi 0 yazildi');
+  // Eski satir (kolonlar NULL / yok): sunucu / k6.
+  sifirla();
+  D.awx.artifacts = { nginx_loadtest_result: STATS() };
+  await pl.kosuyuSonuclandir(KOSU());
+  assert.deepEqual(D.analizSecenek, { adim: 'R17', hedefTuru: 'sunucu', motor: 'k6' });
+  // Yanki (K7): yalniz METIN ise satirla karsilastirilir.
+  const sn = (ham, kosu) => pl.statsNormalle(ham, kosu);
+  assert.equal(sn(STATS({ hedef_turu: 'sunucu', motor: 'k6' }), KOSU()).uyusmazlik, null);
+  assert.ok(sn(STATS({ hedef_turu: 'sunucu', motor: 'k6' }), KOSU()).stats);
+  assert.deepEqual(sn(STATS({ hedef_turu: 'serbest' }), KOSU()), { stats: null, uyusmazlik: 'hedef_turu serbest' });
+  assert.deepEqual(sn(STATS({ motor: 'wrk' }), KOSU({ hedef_turu: 'sunucu', motor: 'k6' })), { stats: null, uyusmazlik: 'motor wrk' });
+  assert.deepEqual(sn(STATS({ hedef_turu: 'sunucu' }), KOSU({ hedef_turu: 'serbest', motor: 'wrk' })), { stats: null, uyusmazlik: 'hedef_turu sunucu' });
+  assert.deepEqual(sn(STATS({ hedef_turu: 'serbest', motor: 'k6' }), KOSU({ hedef_turu: 'serbest', motor: 'wrk' })), { stats: null, uyusmazlik: 'motor k6' });
+  for (const yanki of [{ hedef_turu: null, motor: null }, {}, { hedef_turu: 5, motor: false }]) {
+    const s = sn(STATS(yanki), KOSU({ hedef_turu: 'serbest', motor: 'wrk' }));
+    assert.equal(s.uyusmazlik, null, JSON.stringify(yanki));
+    assert.ok(s.stats, `${JSON.stringify(yanki)}: null yanki stats'i dusurdu`);
+  }
+  // Uyusmazlik kosuda: OKUNAMADI, analiz yok.
+  sifirla();
+  D.awx.artifacts = { nginx_loadtest_result: STATS({ hedef_turu: 'sunucu', motor: 'k6' }) };
+  await pl.kosuyuSonuclandir(KOSU({ hedef_turu: 'serbest', motor: 'k6' }));
+  assert.deepEqual([D.son.durum, D.son.gecerlilik], ['OKUNAMADI', 'OKUNAMADI']);
+  assert.match(D.son.nedenler[0], /bu koşuya ait değil \(hedef_turu sunucu\)/);
+  assert.equal(D.analizCagri, 0);
+  // Null yanki + girdi reddi (eski / yeni playbook): set_stats kullanilir, playbook'un metni KORUNUR.
+  sifirla();
+  const ret = 'girdi reddedildi, hicbir sey yapilmadi: is gecerlilik suresi dolmus ya da gecersiz (yuk_son_epoch)';
+  D.awx = { ...D.awx, status: 'failed', jobExplanation: 'Job failed', artifacts: { nginx_loadtest_result: STATS({ islem: 'on_kontrol', durum: 'FAIL', hata: ret, hedef_turu: null, motor: null, kosu: null, on_kontrol: null }) } };
+  await pl.kosuyuSonuclandir(KOSU({ islem: 'on_kontrol', hedef_turu: 'serbest', motor: 'wrk' }));
+  assert.deepEqual([D.son.durum, D.son.sonuc.hata], ['FAILED', ret]);
+  // wrk kosusu rc: neden metni wrk_kos.sh (k6 metni birebir kos.sh).
+  sifirla();
+  D.awx = { ...D.awx, status: 'failed', artifacts: { nginx_loadtest_result: STATS({ durum: 'DUR', hata: 'wrk_kos.sh rc 4: DUR: R17_K_ka_br_8_r1 - 429 alindi (3)', motor: 'wrk', kosu: { kos_rc: 4, kaydedici_rc: 0, sw_dizin: '/sw/BMW_PORTAL/nginx_loadtest/17' } }) } };
+  D.analiz = { gecerlilik: 'GECERLI', nedenler: [], uyarilar: [], adimlar: [ADIM()], ozet: {} };
+  await pl.kosuyuSonuclandir(KOSU({ motor: 'wrk' }));
+  assert.deepEqual([D.son.durum, D.son.gecerlilik], ['DONE', 'KISMI']);
+  assert.ok(D.son.nedenler.includes('wrk_kos.sh rc=4'), JSON.stringify(D.son.nedenler));
+  assert.ok(!D.son.nedenler.includes('kos.sh rc=4'));
+  sifirla();
+  D.awx = { ...D.awx, status: 'failed', artifacts: { nginx_loadtest_result: STATS({ durum: 'DUR', kosu: { kos_rc: 4, kaydedici_rc: 0, sw_dizin: '/sw/BMW_PORTAL/nginx_loadtest/17' } }) } };
+  await pl.kosuyuSonuclandir(KOSU({ motor: 'k6' }));
+  assert.ok(D.son.nedenler.includes('kos.sh rc=4'));
+  // On kontrol de yankiyla dogrulanir (baska motorun sonucu bu on kontrole yazilmaz).
+  sifirla();
+  D.awx.artifacts = { nginx_loadtest_result: STATS({ islem: 'on_kontrol', kosu: null, on_kontrol: { ip_yuk_makinesinde: false }, hedef_turu: 'serbest', motor: 'k6' }) };
+  assert.equal((await pl.kosuyuSonuclandir(KOSU({ islem: 'on_kontrol', hedef_turu: 'serbest', motor: 'wrk' }))).durum, 'OKUNAMADI');
+  assert.match(D.son.sonuc.hata, /\(motor k6\)/);
 });

@@ -8,12 +8,27 @@
 // GET yollari) -> requireVisiblePrefix('NginxConsole') -> requireVisible('tab:nginx:yuktesti').
 // Yazan her uc ve /durum ayrica isleyicide Admin ister.
 //
-// AWX KIMLIKLERI ISTEMCIDEN ALINMAZ: sunucu / is numarasi kosu satirindan okunur; hedef IP'si
-// istemciden gelir ama sunucunun turettigi aday listesinde olmak ZORUNDADIR.
+// AWX KIMLIKLERI ISTEMCIDEN ALINMAZ: sunucu / is numarasi kosu satirindan okunur.
+//
+// HEDEF IP SINIFLANDIRMASI (tur 3, 2026-10-28): hedef IP'yi kullanici yazar (host secici istege
+// bagli). Sunucu IP'nin sahibini envanterlerden bulur (dogrula.ipSinifla) ve karari KENDISI verir:
+// IP tam bir non-prod nginx sunucusunun (ya da secilen hostun; paylasilan VIP dahil) ise 'sunucu'
+// (bugunku yol: CPU kaydedici + nginx logu, IP sunucunun aday listesinde olmak ZORUNDA); hicbir
+// nginx sunucusunun degilse ancak Portal izin listesinde (NGINX_LOADTEST_SERBEST_AGLAR), yasak
+// listenin disinda, PROD / EDU / bilinmeyen sahipsiz ve envanter tazeyse 'serbest' (yalniz istemci
+// olcumu; hedefe SSH yok; tavan 200 r/s / 50 baglanti; onay metni = IP; on kontrol de G|global).
+// Ekran (/ip-sinifi) yalniz gosterir; on kontrol VE kosu kapisi siniflandirmayi YENIDEN yapar.
+//
+// TEHDIT MODELI: extra_vars AWX'te her degiskenin ustundedir; playbook kapilari Portal hatasina ve
+// AWX Relaunch'una (yuk_son_epoch, 15 dk) karsi savunma derinligidir, AWX'te Execute yetkili
+// kotu niyetli kullaniciya karsi SINIR DEGIL. Asil sinir AWX RBAC (sablonun Execute / Admin rolu
+// yalniz Portal servis hesabinda). "Sahipsiz" IP PROD olmadiginin kaniti degil: LB VIP'leri
+// envanterde yok, asil koruma dar tutulan izin listesidir.
 //
 // AKIS: senaryo (yalniz yol satirlari) -> on kontrol isi (yuk uretmez) -> kosu (on kontrol <= 15 dk,
-// ayni kullanici, DONE/OK, onay metni = hedef host, uyarilar acikca onaylanmis) -> poller
-// sonuclandirir (bkz. poller.cjs). Ayrintilar: docs/NGINX-YUK-TESTI.md.
+// ayni kullanici, DONE/OK, onay metni = hedef host ya da serbestte hedef IP, uyarilar - plan
+// uyarilari dahil - acikca onaylanmis, sinif ve plan uyarilari degismemis) -> poller sonuclandirir
+// (bkz. poller.cjs). Ayrintilar: docs/NGINX-YUK-TESTI.md.
 //
 // DURDUR: AWX iptali uzaktaki async kos.sh/k6'yi ve ayrik kaydediciyi DURDURMAZ. Kosu icin durdur
 // kipindeki is baslatilamazsa 424 durdur_baslatilamadi (iptal basarili olsa da); baslarsa kosunun
@@ -94,7 +109,7 @@ function hataYaniti(req, res, e, eylem, hedef) {
   const code = (e && e.code) || (status === 424 ? 'beklenmeyen' : 'gecersiz_istek');
   if (!(e && Number.isInteger(e.status))) console.warn('[NginxYukTesti] beklenmeyen hata:', maskele(e && e.message));
   const body = { ok: false, code, message: maskele((e && e.message) || 'Beklenmeyen hata.') };
-  for (const k of ['uyarilar', 'engeller', 'asimlar', 'hatalar', 'kilit', 'env', 'iptal', 'iptalHatasi', 'durdurHatasi']) if (e && e[k] !== undefined) body[k] = e[k];
+  for (const k of ['uyarilar', 'engeller', 'asimlar', 'hatalar', 'kilit', 'env', 'iptal', 'iptalHatasi', 'durdurHatasi', 'sahipler']) if (e && e[k] !== undefined) body[k] = e[k];
   // Reddedilen baslatma denemesi de denetime yazilir (uretim hedefi, izinsiz yuk makinesi ...).
   if (eylem && DENETLENEN_RET.has(status)) {
     try {
@@ -102,7 +117,8 @@ function hataYaniti(req, res, e, eylem, hedef) {
         result: 'fail',
         targetHost: (hedef && hedef.host) || null,
         targetIp: (hedef && hedef.ip) || null,
-        detail: JSON.stringify({ code, message: body.message, ...(hedef && hedef.kosuId ? { kosuId: hedef.kosuId } : {}) }).slice(0, 2000),
+        // Gecerli JSON, en cok 2000 karakter (uzun mesaj kisaltilir; kod ve kosu no kalir) - baslat.cjs.
+        detail: baslat.denetimAyrintisi({ code, message: body.message, ...(hedef && hedef.kosuId ? { kosuId: hedef.kosuId } : {}) }),
       });
     } catch {
       /* best-effort */
@@ -136,6 +152,13 @@ async function birKezTekrarla(ad, fn) {
   }
 }
 
+// Is baslamadigi KESIN olan her yolda bu istegin kilitleri birakilir (yalniz bu lock_id'li dolu
+// satirlar). Birakma da hata alirsa (DB hala erisilemiyor) kilit TTL ile duser ve uyari yazilir;
+// yeniden deneme yok (kesintiyi cozmez).
+function kilitleriBirak(anahtarlar, lockId) {
+  return kilit.releaseLocks(db(), anahtarlar, lockId).catch((e) => console.warn('[NginxYukTesti] kilit birakilamadi (TTL ile dusecek):', maskele(e && e.message)));
+}
+
 // ── SATIR -> API ──────────────────────────────────────────────────────────────────────────
 
 function senaryoApi(r) {
@@ -159,7 +182,10 @@ function kosuApi(r) {
     islem: r.islem,
     etiket: r.etiket ?? null,
     adim: r.adim ?? null,
-    hedefHost: r.hedef_host,
+    // Serbest satirda hedef_host '' (DB'de NULL'a cevrilmez); API null doner. Eski satir: sunucu / k6.
+    hedefTuru: r.hedef_turu || 'sunucu',
+    motor: r.motor || 'k6',
+    hedefHost: r.hedef_host || null,
     hedefIp: r.hedef_ip,
     vhost: r.vhost,
     yukHost: r.yuk_host,
@@ -195,13 +221,25 @@ const KOSU_KOLONLARI = `k.id, k.senaryo_id, k.on_kontrol_kosu_id, k.islem, k.eti
   k.yuk_host, k.parametreler, k.durum, k.awx_server_id, k.awx_job_id, k.sw_dizin, k.sonuc, k.on_kontrol_ozet,
   k.gecerlilik, k.gecersiz_nedenleri, k.created_by, k.created_at, k.started_at, k.finished_at, k.finalized_at,
   k.iptal_eden, k.kilit_id, k.durdur_awx_server_id, k.durdur_awx_job_id, k.sonuclandirma_denemesi,
+  k.hedef_turu, k.motor, k.plan_uyarilari,
   s.ad AS senaryo_ad, DATEDIFF(SECOND, k.finished_at, GETUTCDATE()) AS yas_sn,
   DATEDIFF(SECOND, k.created_at, GETUTCDATE()) AS olusma_yas_sn`;
 
 // Liste ucu: buyuk JSON kolonlari (sonuc, on kontrol ozeti, parametreler) TASINMAZ.
 const LISTE_KOLONLARI = `k.id, k.senaryo_id, k.on_kontrol_kosu_id, k.islem, k.etiket, k.adim, k.hedef_host, k.hedef_ip, k.vhost,
   k.yuk_host, k.durum, k.awx_server_id, k.awx_job_id, k.gecerlilik, k.created_by, k.created_at, k.started_at,
-  k.finished_at, s.ad AS senaryo_ad`;
+  k.finished_at, k.hedef_turu, k.motor, s.ad AS senaryo_ad`;
+
+/** Satirin motoru: liste kopyasi (kosular.motor), yoksa kanonik parametreler.motor, yoksa k6 (eski satir). */
+function motorOf(x) {
+  return (x && x.motor) || (jsonOku(x && x.parametreler) || {}).motor || 'k6';
+}
+
+/** Saklanmis JSON metin dizisi (plan_uyarilari) -> string[] (bozuk / yok -> []). */
+function metinDizisi(v) {
+  const d = jsonOku(v);
+  return Array.isArray(d) ? d.filter((s) => typeof s === 'string') : [];
+}
 
 async function kosuOku(id) {
   const { rows } = await dbOku((d) =>
@@ -221,11 +259,22 @@ async function senaryoOku(id) {
 
 // ── PLAN: kapilarin TAMAMI (on kontrol ve kosu AYNI fonksiyondan gecer) ───────────────────
 
+/** Bugunku (tur 2) ip_hedefte_yok metni: hostun aday IP listesiyle. */
+function ipHedefteYok(hedefIp, hedefHost, ay, ek) {
+  return hata(409, 'ip_hedefte_yok', ay.ipler.length
+    ? `${hedefIp}, ${hedefHost} için bilinen IP'lerden değil (${ay.ipler.join(', ')}).`
+    : `${hedefHost} için bilinen bir IP yok (nginx taraması / envanter).`, ek);
+}
+
 /**
- * Senaryo + envanter + ortam + yuk makinesi + IP + vhost + sinirlar. Her kosu baslatmasinda
- * YENIDEN olculur (15 dk icinde envanter / limit degismis olabilir).
+ * Senaryo + envanter + IP siniflandirmasi + ortam + yuk makinesi + Host basligi + sinirlar. Her
+ * kosu baslatmasinda YENIDEN olculur (15 dk icinde envanter / limit / IP'nin sahibi degismis
+ * olabilir). `hedefHost` istege bagli (null = yazilan IP siniflandirilir). Sira: kaynaklar ->
+ * (hedefHost varsa) hedef kapisi -> ipSinifla -> sunucu: hedef / yuk makinesi kapisi, aday IP
+ * savunmasi, vhost listede mi (D7: firlatma yok), sinirlar; serbest: yuk makinesi kapisi, serbest
+ * sinirlari -> iki kipte Host basligi uretim kapisi (409 host_uretim) ve plan uyarilari.
  */
-async function kosuPlani({ senaryoId, hedefHost, hedefIp, vhost, yukHost, sni, parametrelerHam, etiket }) {
+async function kosuPlani({ senaryoId, hedefHost = null, hedefIp, vhost, yukHost, sni, parametrelerHam, etiket }) {
   const sen = await senaryoOku(senaryoId);
   if (!sen || sen.silindi === true || sen.silindi === 1) throw hata(409, 'senaryo_yok', 'Senaryo bulunamadı (silinmiş olabilir).');
   if (dg.sha256Hex(sen.tsv || '') !== String(sen.sha256 || '').trim()) {
@@ -233,27 +282,49 @@ async function kosuPlani({ senaryoId, hedefHost, hedefIp, vhost, yukHost, sni, p
   }
   const { query, sql } = require('../inventory/mssql.cjs');
   const izinli = dg.yukHostlari();
-  const k = await dg.kaynaklariOku({ query, sql, hostlar: [hedefHost, yukHost] });
-  const hk = dg.hedefKapisi(hedefHost, { nginxSatiri: k.nginx.get(hedefHost) || null, invEnv: k.inv.get(hedefHost) });
-  if (!hk.ok) throw kapidan(hk);
-  const yk = dg.yukHostKapisi(yukHost, {
-    hedef: hedefHost, izinli, nginxSatiri: k.nginx.get(yukHost) || null, invEnv: k.inv.get(yukHost), invVar: k.inv.has(yukHost),
+  const aglar = dg.serbestAglar();
+  const yasak = dg.serbestYasak();
+  const k = await dg.kaynaklariOku({ query, sql, hostlar: [hedefHost, yukHost].filter(Boolean), ip: hedefIp, vhost });
+  if (hedefHost) {
+    const hk0 = dg.hedefKapisi(hedefHost, { nginxSatiri: k.nginx.get(hedefHost) || null, invEnv: k.inv.get(hedefHost) });
+    if (!hk0.ok) throw kapidan(hk0);
+  }
+  const sinif = dg.ipSinifla(hedefIp, k, { aglar, yasak, hedefHost, yukHost });
+  if (!sinif.ok) {
+    if (sinif.code === 'ip_hedefte_yok' && hedefHost) throw ipHedefteYok(hedefIp, hedefHost, dg.hedefAyrintisi(k, hedefHost), { sahipler: sinif.sahipler });
+    throw kapidan(sinif);
+  }
+  const yukKapisi = (hedef) => dg.yukHostKapisi(yukHost, {
+    hedef, izinli, nginxSatiri: k.nginx.get(yukHost) || null, invEnv: k.inv.get(yukHost), invVar: k.inv.has(yukHost),
   });
-  if (!yk.ok) throw kapidan(yk);
-  const ay = dg.hedefAyrintisi(k, hedefHost);
-  if (!ay.ipler.includes(hedefIp)) {
-    throw hata(409, 'ip_hedefte_yok', ay.ipler.length
-      ? `${hedefIp}, ${hedefHost} için bilinen IP'lerden değil (${ay.ipler.join(', ')}).`
-      : `${hedefHost} için bilinen bir IP yok (nginx taraması / envanter).`);
+  let env = null;
+  let p;
+  let vhostListede = null;
+  if (sinif.tur === 'sunucu') {
+    const host = sinif.host;
+    const hk = dg.hedefKapisi(host, { nginxSatiri: k.nginx.get(host) || null, invEnv: k.inv.get(host) });
+    if (!hk.ok) throw kapidan(hk);
+    env = hk.env;
+    const yk = yukKapisi(host);
+    if (!yk.ok) throw kapidan(yk);
+    const ay = dg.hedefAyrintisi(k, host);
+    // Savunma: IP sunucunun aday listesinde (tarama listen + envanter IP'si) olmak ZORUNDA.
+    if (!ay.ipler.includes(hedefIp)) throw ipHedefteYok(hedefIp, host, ay);
+    // D7: listede olmayan Host basligi ENGEL degil (joker / regex server_name); denetime yazilir.
+    vhostListede = Array.isArray(ay.vhostlar) ? ay.vhostlar.includes(vhost) : null;
+    p = dg.parametreler(parametrelerHam, { sni, hizSiniri: ay.hizSiniri, vuSiniri: ay.vuSiniri, hedefTuru: 'sunucu' });
+  } else {
+    const yk = yukKapisi(null);
+    if (!yk.ok) throw kapidan(yk);
+    p = dg.parametreler(parametrelerHam, { sni, hizSiniri: null, vuSiniri: null, hedefTuru: 'serbest' });
   }
-  if (Array.isArray(ay.vhostlar) && !ay.vhostlar.includes(vhost)) {
-    throw hata(409, 'vhost_hedefte_yok', `${vhost}, ${hedefHost} üzerindeki nginx server_name'leri arasında yok (son tarama).`);
-  }
-  const p = dg.parametreler(parametrelerHam, { sni, hizSiniri: ay.hizSiniri, vuSiniri: ay.vuSiniri });
   if (!p.ok) throw kapidan(p);
+  const hb = dg.hostBasligiDegerlendir(vhost, k, { hedefTuru: sinif.tur, yukHost });
+  if (!hb.ok) throw kapidan(hb);
   return {
     senaryo: { id: Number(sen.id), ad: sen.ad, tur: sen.senaryo_tur, tsv: sen.tsv, sha256: String(sen.sha256).trim() },
-    hedefHost, hedefIp, vhost, yukHost, etiket: etiket || null, env: hk.env, parametreler: p.deger,
+    hedefTuru: sinif.tur, hedefHost: sinif.tur === 'sunucu' ? sinif.host : null, hedefIp, vhost, yukHost, etiket: etiket || null, env,
+    parametreler: p.deger, serbestAg: sinif.tur === 'serbest' ? sinif.ag : null, vhostListede, uyarilar: hb.uyarilar,
   };
 }
 
@@ -275,15 +346,20 @@ async function kosuyuBaslat(req, { islem, plan, onKontrolKosuId = null, onaylana
   const user = kullanici(req);
   const kullaniciAdi = String(user.username || 'unknown').slice(0, 100);
   const sablon = await baslat.sablonuCoz();
-  const anahtarlar = kilit.kilitAnahtarlari({ hedef: plan.hedefHost, yuk: plan.yukHost, kosu: islem === 'kosu' });
+  const hedefTuru = plan.hedefTuru === 'serbest' ? 'serbest' : 'sunucu';
+  const motor = plan.parametreler && plan.parametreler.motor === 'wrk' ? 'wrk' : 'k6';
+  const anahtarlar = kilit.kilitAnahtarlari({ hedef: plan.hedefHost, hedefIp: plan.hedefIp, hedefTuru, yuk: plan.yukHost, kosu: islem === 'kosu' });
   const lockId = crypto.randomUUID();
   const runner = require('../ansible/runner.cjs');
+  // Kilit aciklamasi (kilit_dolu mesajinda target_desc): k6 + sunucu metni tur 2 ile BIREBIR.
+  const hedefMetni = plan.hedefHost || `${plan.hedefIp} (serbest)`;
+  const planUyarilari = Array.isArray(plan.uyarilar) ? plan.uyarilar : [];
   let alinan;
   try {
     alinan = await kilit.acquireLocks(db(), anahtarlar, {
       lockId,
       holder: kullaniciAdi,
-      desc: `${islem === 'kosu' ? 'yük testi' : 'ön kontrol'} ${plan.hedefHost} <- ${plan.yukHost}`,
+      desc: `${islem === 'kosu' ? 'yük testi' : 'ön kontrol'} ${hedefMetni} <- ${plan.yukHost}${motor === 'wrk' ? ' (wrk)' : ''}`,
       ttlMin: kilit.kilitSuresiDk(),
       // Durum da doner: bayat kilidin birakilip birakilmayacagina bag turuyle kural karar verir.
       isJobTerminal: async (sid, jid) => {
@@ -293,6 +369,9 @@ async function kosuyuBaslat(req, { islem, plan, onKontrolKosuId = null, onaylana
     });
   } catch (e) {
     console.warn('[NginxYukTesti] kilit alinamadi (DB) - is baslatilmadi:', maskele(e && e.message));
+    // Onceki anahtarlar alinmis olabilir (G|global alindi, T|... satiri hata atti): birakilmazsa G
+    // TTL boyunca var olmayan bir isi gosterirdi.
+    await kilitleriBirak(anahtarlar, lockId);
     throw hata(424, 'db_okunamadi', 'İş kilidi alınamadı; iş başlatılmadı, lütfen tekrar deneyin.');
   }
   if (!alinan.ok) throw hata(409, 'kilit_dolu', kilit.doluKilitMesaji(alinan.busyKey, alinan.busy), { kilit: alinan.busyKey });
@@ -300,26 +379,30 @@ async function kosuyuBaslat(req, { islem, plan, onKontrolKosuId = null, onaylana
   let kosuId;
   try {
     // kilit_id: Durdur kosunun kilitlerini (ise bagli olmasalar da) bu kimlikle durdur isine baglar.
+    // Serbest satirda hedef_host '' (NULL'a cevrilmez); motor parametreler.motor'un liste kopyasi;
+    // plan_uyarilari bos ise NULL (ekran ve kosu onayi ayni listeyi gorur).
     const ins = await db().query(
-      `INSERT INTO nginx_loadtest_kosular (senaryo_id, on_kontrol_kosu_id, islem, etiket, hedef_host, hedef_ip, vhost, yuk_host, parametreler, durum, created_by, kilit_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'QUEUED', $10, $11) RETURNING id`,
-      [plan.senaryo.id, onKontrolKosuId, islem, plan.etiket, plan.hedefHost, plan.hedefIp, plan.vhost, plan.yukHost, JSON.stringify(plan.parametreler), kullaniciAdi, lockId],
+      `INSERT INTO nginx_loadtest_kosular (senaryo_id, on_kontrol_kosu_id, islem, etiket, hedef_host, hedef_ip, vhost, yuk_host, parametreler, durum, created_by, kilit_id, hedef_turu, motor, plan_uyarilari)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'QUEUED', $10, $11, $12, $13, $14) RETURNING id`,
+      [plan.senaryo.id, onKontrolKosuId, islem, plan.etiket, plan.hedefHost || '', plan.hedefIp, plan.vhost, plan.yukHost, JSON.stringify(plan.parametreler), kullaniciAdi, lockId,
+        hedefTuru, motor, planUyarilari.length ? JSON.stringify(planUyarilari) : null],
     );
     kosuId = Number(ins.rows && ins.rows[0] && ins.rows[0].id);
     if (!(kosuId > 0)) throw new Error('koşu numarası dönmedi');
   } catch (e) {
-    await kilit.releaseLocks(db(), anahtarlar, lockId).catch(() => {});
+    await kilitleriBirak(anahtarlar, lockId);
     throw hata(424, 'db_okunamadi', `Koşu kaydı yazılamadı; iş başlatılmadı: ${maskele(e && e.message)}`);
   }
   const adim = `R${kosuId}`;
   const kok = dg.ciktiKok();
+  const simdiSn = Math.floor(Date.now() / 1000);
   const ev = dg.ekstraDegiskenler({
     islem, kosuId, hedefHost: plan.hedefHost, yukHost: plan.yukHost, hedefIp: plan.hedefIp, vhost: plan.vhost,
-    senaryo: plan.senaryo, p: plan.parametreler, k6: dg.k6Yolu(), kok,
+    senaryo: plan.senaryo, p: plan.parametreler, k6: dg.k6Yolu(), kok, hedefTuru, wrk: dg.wrkYolu(), simdiSn,
   });
-  const ihlal = dg.ekstraDegiskenleriDenetle(ev);
+  const ihlal = dg.ekstraDegiskenleriDenetle(ev, { simdiSn });
   if (ihlal.length) {
-    await kilit.releaseLocks(db(), anahtarlar, lockId).catch(() => {});
+    await kilitleriBirak(anahtarlar, lockId);
     await kosuBasarisiz(kosuId, adim, { hata: `son kapı: ${ihlal.join(', ')}` });
     throw hata(409, 'sinir_asildi', `Gönderilecek değişkenler son denetimi geçemedi: ${ihlal.join(', ')}.`);
   }
@@ -328,14 +411,18 @@ async function kosuyuBaslat(req, { islem, plan, onKontrolKosuId = null, onaylana
     is = await baslat.isBaslat(req, {
       sablon,
       extraVars: ev,
-      sablonAdi: `Nginx Yük Testi: ${islem === 'kosu' ? 'koşu' : 'ön kontrol'} ${adim} ${plan.hedefHost}`,
+      sablonAdi: `Nginx Yük Testi: ${islem === 'kosu' ? 'koşu' : 'ön kontrol'} ${adim} ${plan.hedefHost || plan.hedefIp}`,
       denetim: {
         eylem: islem === 'kosu' ? 'nginx_loadtest_baslat' : 'nginx_loadtest_on_kontrol',
-        targetHost: plan.hedefHost,
+        targetHost: plan.hedefHost || null,
         targetIp: plan.hedefIp,
+        // Uzun diziler sonda. 2000 karaktere sigmazsa baslat.denetimAyrintisi once dizilerin ogelerini
+        // kisaltir, sonra dizileri atar (sayilari kalir); kimlik alanlari her zaman kalir, JSON gecerli.
         ayrinti: {
-          kosuId, adim, islem, vhost: plan.vhost, yukHost: plan.yukHost, senaryoId: plan.senaryo.id, senaryoSha256: plan.senaryo.sha256,
-          parametreler: plan.parametreler, etiket: plan.etiket, onKontrolKosuId, onaylananUyarilar,
+          kosuId, adim, islem, hedefTuru, motor, hedefHost: plan.hedefHost || null, hedefIp: plan.hedefIp,
+          vhost: plan.vhost, vhostListede: plan.vhostListede ?? null, serbestAg: plan.serbestAg ?? null,
+          yukHost: plan.yukHost, senaryoId: plan.senaryo.id, senaryoSha256: plan.senaryo.sha256,
+          parametreler: plan.parametreler, etiket: plan.etiket, onKontrolKosuId, planUyarilari, onaylananUyarilar,
         },
       },
     });
@@ -345,7 +432,7 @@ async function kosuyuBaslat(req, { islem, plan, onKontrolKosuId = null, onaylana
       // terminale ulasinca supurme kurala gore birakir / tutar (iptal edilemediyse yuk kilitli kalir).
       await kilit.bindLocks(db(), anahtarlar, lockId, { awxServerId: e.awxServerId, awxJobId: e.jobId, bagTuru: islem }).catch(() => {});
     } else if (!(e && e.belirsiz)) {
-      await kilit.releaseLocks(db(), anahtarlar, lockId).catch(() => {});
+      await kilitleriBirak(anahtarlar, lockId);
     }
     await kosuBasarisiz(kosuId, adim, { hata: maskele(e && e.message).slice(0, 1000), code: (e && e.code) || null, belirsiz: !!(e && e.belirsiz) },
       e && e.jobId != null ? e.jobId : null, e && e.jobId != null ? e.awxServerId : null);
@@ -396,8 +483,12 @@ function onKontrolGovdesi(b) {
   const g = b && typeof b === 'object' ? b : {};
   const senaryoId = sayi(g.senaryoId);
   if (!senaryoId) throw hata(400, 'gecersiz_istek', 'senaryoId gerekli.');
-  const hedefHost = dg.hostNormalle(g.hedefHost);
-  if (!hedefHost) throw hata(400, 'gecersiz_istek', 'Geçersiz hedef sunucu adı.');
+  // Hedef host ISTEGE BAGLI (host secici): yoksa yazilan IP siniflandirilir. Verilmis ama gecersizse 400.
+  let hedefHost = null;
+  if (g.hedefHost !== undefined && g.hedefHost !== null && g.hedefHost !== '') {
+    hedefHost = dg.hostNormalle(g.hedefHost);
+    if (!hedefHost) throw hata(400, 'gecersiz_istek', 'Geçersiz hedef sunucu adı.');
+  }
   const yukHost = dg.hostNormalle(g.yukHost);
   if (!yukHost) throw hata(400, 'gecersiz_istek', 'Geçersiz yük makinesi adı.');
   const hedefIp = typeof g.hedefIp === 'string' ? g.hedefIp.trim() : '';
@@ -460,11 +551,75 @@ function yonlendiriciKur() {
         const y = dg.yukHostKapisi(h, { izinli, nginxSatiri: k.nginx.get(h) || null, invEnv: k.inv.get(h), invVar: k.inv.has(h) });
         return { host: h, env: envOfHost(h), uygun: y.ok, neden: y.ok ? null : y.message };
       });
+      // Serbest hedef izin listesi: acik mi herkese, aglarin kendisi YALNIZ Admin'e.
+      const aglar = dg.serbestAglar();
       res.json({
         ok: true, hedefler, yukHostlari, sinirlar: dg.SINIRLAR, varsayilan: dg.VARSAYILAN,
         taramaVerisi: k.sunucular !== null, rateLimitVerisi: k.ayarlar !== null,
+        serbest: { acik: aglar.length > 0, aglar: isAdmin(req) ? aglar.map((a) => a.metin) : [] },
+        motorlar: [...dg.MOTORLAR],
       });
     } catch (e) {
+      hataYaniti(req, res, e);
+    }
+  });
+
+  // Yazilan IP'nin sinifi (ekran yalniz GOSTERIR; kesin karar on kontrol / kosu kapisinda yeniden
+  // verilir). Yalniz Admin (ADMIN_DISI_OKUMA'da YOK); Portal DB'ye ve denetime YAZMAZ. Akis
+  // kosuPlani ile ayni sira: kaynaklar -> (hedefHost varsa) hedef kapisi -> ipSinifla.
+  router.get('/ip-sinifi', async (req, res) => {
+    try {
+      adminSart(req);
+      const q = req.query || {};
+      const ip = typeof q.ip === 'string' ? q.ip.trim() : '';
+      if (!dg.gecerliIpv4(ip)) throw hata(400, 'gecersiz_istek', 'ip noktalı IPv4 olmalı.');
+      const hostAl = (ad) => {
+        const v = q[ad];
+        if (v === undefined || v === '') return null;
+        const h = typeof v === 'string' ? dg.hostNormalle(v) : '';
+        if (!h) throw hata(400, 'gecersiz_istek', `Geçersiz ${ad === 'yukHost' ? 'yük makinesi' : 'hedef sunucu'} adı.`);
+        return h;
+      };
+      const yukHost = hostAl('yukHost');
+      const hedefHost = hostAl('hedefHost');
+      const { query, sql } = require('../inventory/mssql.cjs');
+      const k = await dg.kaynaklariOku({ query, sql, hostlar: [hedefHost, yukHost].filter(Boolean), ip });
+      if (hedefHost) {
+        const hk0 = dg.hedefKapisi(hedefHost, { nginxSatiri: k.nginx.get(hedefHost) || null, invEnv: k.inv.get(hedefHost) });
+        if (!hk0.ok) throw kapidan(hk0);
+      }
+      const sinif = dg.ipSinifla(ip, k, { aglar: dg.serbestAglar(), yasak: dg.serbestYasak(), hedefHost, yukHost });
+      if (!sinif.ok) {
+        if (sinif.code === 'ip_hedefte_yok' && hedefHost) throw ipHedefteYok(ip, hedefHost, dg.hedefAyrintisi(k, hedefHost), { sahipler: sinif.sahipler });
+        throw kapidan(sinif);
+      }
+      if (sinif.tur === 'serbest') {
+        return res.json({ ok: true, tur: 'serbest', ip, host: null, ag: sinif.ag, digerSahipler: sinif.digerSahipler });
+      }
+      // Sunucu: /hedefler satiriyla AYNI alanlar; uygun:false da 200 (ekran on kontrol dugmesini kapatir).
+      const h = sinif.host;
+      const kaynaklar = [...((k.ipSahipleri && k.ipSahipleri.get(h)) || [])].sort();
+      const kp = dg.hedefKapisi(h, { nginxSatiri: k.nginx.get(h) || null, invEnv: k.inv.get(h) });
+      if (!kp.ok) {
+        const { envOfHost } = require('../audit/nginx-hosts.cjs');
+        return res.json({
+          ok: true, tur: 'sunucu', ip, host: h, env: envOfHost(h), vhostlar: [], vhostVerisi: false, hizSiniri: null, vuSiniri: null,
+          uygun: false, neden: kp.message, kod: kp.code, kaynaklar,
+        });
+      }
+      const ay = dg.hedefAyrintisi(k, h);
+      const sifir = dg.sifirSinir(ay.hizSiniri, ay.vuSiniri);
+      const adaySiz = !ay.ipler.includes(ip);
+      res.json({
+        ok: true, tur: 'sunucu', ip, host: h, env: kp.env, vhostlar: ay.vhostlar || [], vhostVerisi: Array.isArray(ay.vhostlar),
+        hizSiniri: ay.hizSiniri, vuSiniri: ay.vuSiniri,
+        uygun: !sifir && !adaySiz,
+        neden: sifir ? dg.SIFIR_SINIR_MESAJI : adaySiz ? ipHedefteYok(ip, h, ay).message : null,
+        kod: sifir ? 'sinir_asildi' : adaySiz ? 'ip_hedefte_yok' : null,
+        kaynaklar,
+      });
+    } catch (e) {
+      // Eylem yok: salt okunur siniflandirma denetime yazilmaz.
       hataYaniti(req, res, e);
     }
   });
@@ -508,7 +663,7 @@ function yonlendiriciKur() {
       const id = Number(rows[0] && rows[0].id);
       try {
         require('../audit/index.cjs').auditPortal(req, 'nginx_loadtest_senaryo_ekle', {
-          detail: JSON.stringify({ id, ad: s.ad, vhost: s.vhost, senaryoTur: s.senaryoTur, kaynak: s.kaynak, yolSayisi: s.yolSayisi, sha256: s.sha256 }).slice(0, 2000),
+          detail: baslat.denetimAyrintisi({ id, ad: s.ad, vhost: s.vhost, senaryoTur: s.senaryoTur, kaynak: s.kaynak, yolSayisi: s.yolSayisi, sha256: s.sha256 }),
         });
       } catch {
         /* best-effort */
@@ -528,7 +683,7 @@ function yonlendiriciKur() {
       const r = await dbOku((d) => d.query(`UPDATE nginx_loadtest_senaryolar SET silindi = 1 WHERE id = $1 AND silindi = 0`, [id]));
       if (!r.rowCount) throw hata(409, 'senaryo_yok', 'Senaryo bulunamadı ya da zaten silinmiş.');
       try {
-        require('../audit/index.cjs').auditPortal(req, 'nginx_loadtest_senaryo_sil', { detail: JSON.stringify({ id }) });
+        require('../audit/index.cjs').auditPortal(req, 'nginx_loadtest_senaryo_sil', { detail: baslat.denetimAyrintisi({ id }) });
       } catch {
         /* best-effort */
       }
@@ -570,20 +725,34 @@ function yonlendiriciKur() {
       if (yas == null || !Number.isFinite(yas) || yas > ON_KONTROL_MAX_YAS_SN || yas < -60) {
         throw hata(409, 'on_kontrol_eski', `Ön kontrol ${yas == null ? 'zamanı okunamadı' : `${Math.round(yas / 60)} dk önce bitti`}; en çok 15 dk önceki ön kontrol kabul edilir.`);
       }
-      if (!dg.onayMetniDogru(b.confirmText, ok.hedef_host)) {
-        throw hata(409, 'onay_metni', `Onay için hedef sunucu adını (${ok.hedef_host}) birebir yazın.`);
+      // Tur ve motor SATIRDAN (set_stats yankisindan degil); eski satir: DB varsayilani sunucu / k6.
+      const tur = ok.hedef_turu || 'sunucu';
+      const motor = motorOf(ok);
+      if (tur === 'serbest' ? !dg.onayMetniDogru(b.confirmText, ok.hedef_ip) : !dg.onayMetniDogru(b.confirmText, ok.hedef_host)) {
+        throw hata(409, 'onay_metni', tur === 'serbest'
+          ? `Onay için hedef IP'yi (${ok.hedef_ip}) birebir yazın.`
+          : `Onay için hedef sunucu adını (${ok.hedef_host}) birebir yazın.`);
       }
-      const { engeller, uyarilar } = dg.onKontrolDegerlendir(jsonOku(ok.on_kontrol_ozet));
-      if (engeller.length) throw hata(409, 'on_kontrol_eski', `Ön kontrol koşuya izin vermiyor: ${engeller.join('; ')}.`, { engeller });
+      const deg = dg.onKontrolDegerlendir(jsonOku(ok.on_kontrol_ozet), { hedefTuru: tur, motor });
+      if (deg.engeller.length) throw hata(409, 'on_kontrol_eski', `Ön kontrol koşuya izin vermiyor: ${deg.engeller.join('; ')}.`, { engeller: deg.engeller });
+      // Onaylanacak liste = on kontrolde saklanan plan uyarilari + on kontrol degerlendirmesi (ekranla ayni).
+      const sakliPlanUyarilari = metinDizisi(ok.plan_uyarilari);
+      const uyarilar = [...sakliPlanUyarilari, ...deg.uyarilar];
       if (uyarilar.length && b.uyariOnay !== true) {
         throw hata(409, 'uyari_onayi', 'Ön kontrol uyarılarını okuyup açıkça onaylamanız gerekiyor.', { uyarilar });
       }
       // Parametreler ISTEMCIDEN DEGIL on kontrol satirindan; yeniden olculur ve ayni kalmali.
       const sakli = jsonOku(ok.parametreler) || {};
       const plan = await kosuPlani({
-        senaryoId: Number(ok.senaryo_id), hedefHost: ok.hedef_host, hedefIp: ok.hedef_ip, vhost: ok.vhost, yukHost: ok.yuk_host,
+        senaryoId: Number(ok.senaryo_id), hedefHost: tur === 'serbest' ? null : ok.hedef_host, hedefIp: ok.hedef_ip, vhost: ok.vhost, yukHost: ok.yuk_host,
         sni: sakli.sni, parametrelerHam: sakli, etiket: ok.etiket,
       });
+      if (plan.hedefTuru !== tur || (plan.hedefHost || '') !== (ok.hedef_host || '')) {
+        throw hata(409, 'on_kontrol_eski', "Hedef IP'nin sınıfı ön kontrolden bu yana değişti; ön kontrolü yeniden çalıştırın.");
+      }
+      // Onaylanmamis uyari gecmez: yeniden kurulan planin saklanmayan uyarisi varsa on kontrol eskidir.
+      const yeniUyari = plan.uyarilar.find((u) => !sakliPlanUyarilari.includes(u));
+      if (yeniUyari) throw hata(409, 'on_kontrol_eski', `Ön kontrolden bu yana yeni uyarı çıktı (${yeniUyari}); ön kontrolü yeniden çalıştırın.`);
       if (kararliJson(plan.parametreler) !== kararliJson(sakli)) {
         throw hata(409, 'on_kontrol_eski', 'Parametreler ön kontrolden bu yana değişti; ön kontrolü yeniden çalıştırın.');
       }
@@ -634,6 +803,22 @@ function yonlendiriciKur() {
         if (!LISTE_DURUMLARI.has(durum)) throw hata(400, 'gecersiz_istek', `durum şunlardan biri olmalı: ${[...LISTE_DURUMLARI].join(', ')}.`);
         kosul('k.durum =', durum);
       }
+      // Serbest satirin hedef sunucusu yok: IP / hedef turu / motor suzgecleri (gecersiz deger 400).
+      const ipSuz = deger('ip');
+      if (ipSuz !== undefined) {
+        if (!dg.gecerliIpv4(ipSuz)) throw hata(400, 'gecersiz_istek', 'ip noktalı IPv4 olmalı.');
+        kosul('k.hedef_ip =', ipSuz);
+      }
+      const turSuz = deger('hedefTuru');
+      if (turSuz !== undefined) {
+        if (!dg.HEDEF_TURLERI.includes(turSuz)) throw hata(400, 'gecersiz_istek', "hedefTuru 'sunucu' ya da 'serbest' olmalı.");
+        kosul('k.hedef_turu =', turSuz);
+      }
+      const motorSuz = deger('motor');
+      if (motorSuz !== undefined) {
+        if (!dg.MOTORLAR.includes(motorSuz)) throw hata(400, 'gecersiz_istek', "motor 'k6' ya da 'wrk' olmalı.");
+        kosul('k.motor =', motorSuz);
+      }
       const hamOnceki = deger('onceki');
       if (hamOnceki !== undefined) {
         const onceki = sayi(hamOnceki);
@@ -660,20 +845,31 @@ function yonlendiriciKur() {
       if (!k) throw hata(409, 'kosu_yok', 'Koşu bulunamadı.');
       const { rows: adimlar } = await dbOku((d) => d.query(`SELECT * FROM nginx_loadtest_adimlar WHERE kosu_id = $1 ORDER BY id ASC`, [id]));
       let okOzet = null;
-      if (k.islem === 'on_kontrol') okOzet = jsonOku(k.on_kontrol_ozet);
-      else if (k.on_kontrol_kosu_id != null) {
-        const { rows } = await dbOku((d) => d.query(`SELECT on_kontrol_ozet FROM nginx_loadtest_kosular WHERE id = $1`, [Number(k.on_kontrol_kosu_id)]));
+      let planUyarilari = [];
+      if (k.islem === 'on_kontrol') {
+        okOzet = jsonOku(k.on_kontrol_ozet);
+        planUyarilari = metinDizisi(k.plan_uyarilari);
+      } else if (k.on_kontrol_kosu_id != null) {
+        const { rows } = await dbOku((d) => d.query(`SELECT on_kontrol_ozet, plan_uyarilari FROM nginx_loadtest_kosular WHERE id = $1`, [Number(k.on_kontrol_kosu_id)]));
         okOzet = jsonOku(rows[0] && rows[0].on_kontrol_ozet);
+        planUyarilari = metinDizisi(rows[0] && rows[0].plan_uyarilari);
       }
-      const deg = okOzet ? dg.onKontrolDegerlendir(okOzet) : null;
+      const tur = k.hedef_turu || 'sunucu';
+      const motor = motorOf(k);
+      const deg = okOzet ? dg.onKontrolDegerlendir(okOzet, { hedefTuru: tur, motor }) : null;
+      // Izinli ag ekran icin env'den SU AN hesaplanir (DB okumaz); playbook'un esledigi girdi onKontrol.serbest_ag.
+      const serbestAg = tur === 'serbest' ? (dg.serbestAgBul(k.hedef_ip, dg.serbestAglar()) || {}).metin || null : null;
       res.json({
         ok: true,
         kosu: {
           ...kosuApi(k),
           parametreler: jsonOku(k.parametreler),
+          planUyarilari,
+          serbestAg,
           onKontrol: okOzet,
           onKontrolEngelleri: deg ? deg.engeller : [],
-          onKontrolUyarilari: deg ? deg.uyarilar : [],
+          // Ekran ve kosu onayi AYNI listeyi gorur: plan uyarilari basta.
+          onKontrolUyarilari: [...planUyarilari, ...(deg ? deg.uyarilar : [])],
           onKontrolYasSn: k.islem === 'on_kontrol' && k.yas_sn != null ? Number(k.yas_sn) : null,
           gecersizNedenleri: jsonOku(k.gecersiz_nedenleri) || [],
           sonucOzet: jsonOku(k.sonuc),
@@ -770,6 +966,9 @@ function yonlendiriciKur() {
       const kim = String(kullanici(req).username || 'unknown').slice(0, 100);
       const sonuc = { iptal: null, iptalHatasi: null, durdurIsi: null, durdurHatasi: null };
       const runner = require('../ansible/runner.cjs');
+      // Durdurmada siniflandirma YENIDEN YAPILMAZ: tur ve motor satirdan (eski satir: sunucu / k6).
+      const tur = k.hedef_turu || 'sunucu';
+      const motor = motorOf(k);
       if (sid != null && jid > 0) {
         try {
           sonuc.iptal = await runner.cancelJobOnServer(sid, jid);
@@ -786,17 +985,22 @@ function yonlendiriciKur() {
           const sen = await senaryoOku(Number(k.senaryo_id));
           const p = jsonOku(k.parametreler);
           if (!sen || !p) throw hata(409, 'senaryo_yok', 'Koşunun senaryosu ya da parametreleri okunamadı.');
+          const simdiSn = Math.floor(Date.now() / 1000);
           const ev = dg.ekstraDegiskenler({
             islem: 'durdur', kosuId: id, hedefHost: k.hedef_host, yukHost: k.yuk_host, hedefIp: k.hedef_ip, vhost: k.vhost,
-            senaryo: { tur: sen.senaryo_tur, tsv: sen.tsv, sha256: String(sen.sha256).trim() }, p, k6: dg.k6Yolu(), kok: dg.ciktiKok(),
+            senaryo: { tur: sen.senaryo_tur, tsv: sen.tsv, sha256: String(sen.sha256).trim() }, p: { ...p, motor }, k6: dg.k6Yolu(), kok: dg.ciktiKok(),
+            hedefTuru: tur, wrk: dg.wrkYolu(), simdiSn,
           });
-          const ihlal = dg.ekstraDegiskenleriDenetle(ev);
+          const ihlal = dg.ekstraDegiskenleriDenetle(ev, { simdiSn });
           if (ihlal.length) throw hata(409, 'sinir_asildi', `Durdurma değişkenleri son denetimi geçemedi: ${ihlal.join(', ')}.`);
           const is = await baslat.isBaslat(req, {
             sablon: await baslat.sablonuCoz(),
             extraVars: ev,
-            sablonAdi: `Nginx Yük Testi: durdur R${id} ${k.hedef_host}`,
-            denetim: { eylem: 'nginx_loadtest_durdur', targetHost: k.hedef_host, targetIp: k.hedef_ip, ayrinti: { kosuId: id, iptal: sonuc.iptal, iptalHatasi: sonuc.iptalHatasi } },
+            sablonAdi: `Nginx Yük Testi: durdur R${id} ${k.hedef_host || k.hedef_ip}`,
+            denetim: {
+              eylem: 'nginx_loadtest_durdur', targetHost: k.hedef_host || null, targetIp: k.hedef_ip,
+              ayrinti: { kosuId: id, hedefTuru: tur, motor, iptal: sonuc.iptal, iptalHatasi: sonuc.iptalHatasi },
+            },
           });
           sonuc.durdurIsi = { jobId: is.jobId, awxServerId: is.awxServerId };
         } catch (e) {
@@ -825,10 +1029,12 @@ function yonlendiriciKur() {
           }
         }
       }
-      // Kosu: durdurma isi yoksa uzaktaki yuk surebilir; iptal basarili olsa da BASARI DEGIL.
+      // Kosu: durdurma isi yoksa uzaktaki yuk surebilir; iptal basarili olsa da BASARI DEGIL. Metin
+      // motor ve ture gore (k6 + sunucu tur 2 ile birebir; serbestte hedefte kaydedici yok).
       if (k.islem === 'kosu' && !sonuc.durdurIsi) {
+        const uzaktaki = tur === 'serbest' ? motor : `${motor} / kaydedici`;
         throw hata(424, 'durdur_baslatilamadi',
-          `AWX işi ${iptalOldu ? 'iptal edildi' : 'iptal edilemedi'}, ancak durdurma işi başlatılamadı: ${sonuc.durdurHatasi}. Uzaktaki k6 / kaydedici sürüyor olabilir; Durdur'u yeniden deneyin. Kilitler koşunun süre sınırına kadar tutulur.`,
+          `AWX işi ${iptalOldu ? 'iptal edildi' : 'iptal edilemedi'}, ancak durdurma işi başlatılamadı: ${sonuc.durdurHatasi}. Uzaktaki ${uzaktaki} sürüyor olabilir; Durdur'u yeniden deneyin. Kilitler koşunun süre sınırına kadar tutulur.`,
           { iptal: sonuc.iptal, iptalHatasi: sonuc.iptalHatasi, durdurHatasi: sonuc.durdurHatasi });
       }
       if (!iptalOldu && !sonuc.durdurIsi && sid != null && jid > 0) {
@@ -839,8 +1045,8 @@ function yonlendiriciKur() {
         try {
           require('../audit/index.cjs').auditPortal(req, 'nginx_loadtest_durdur', {
             result: sonuc.iptal && sonuc.iptal.canceled ? 'ok' : 'fail',
-            targetHost: k.hedef_host, targetIp: k.hedef_ip,
-            detail: JSON.stringify({ kosuId: id, ...sonuc }).slice(0, 2000),
+            targetHost: k.hedef_host || null, targetIp: k.hedef_ip,
+            detail: baslat.denetimAyrintisi({ kosuId: id, ...sonuc }),
           });
         } catch {
           /* best-effort */
@@ -872,7 +1078,7 @@ function yonlendiriciKur() {
       try {
         require('../audit/index.cjs').auditPortal(req, 'nginx_loadtest_yeniden_oku', {
           targetHost: (k && k.hedef_host) || null, targetIp: (k && k.hedef_ip) || null,
-          detail: JSON.stringify({ kosuId: id, oncekiDurum: k ? k.durum : null, oncekiGecerlilik: k ? k.gecerlilik ?? null : null }).slice(0, 2000),
+          detail: baslat.denetimAyrintisi({ kosuId: id, oncekiDurum: k ? k.durum : null, oncekiGecerlilik: k ? k.gecerlilik ?? null : null }),
         });
       } catch {
         /* best-effort */
@@ -904,14 +1110,25 @@ function yonlendiriciKur() {
       const adimlarOf = async (id) => (await dbOku((d) => d.query(`SELECT * FROM nginx_loadtest_adimlar WHERE kosu_id = $1 ORDER BY id ASC`, [id]))).rows.map(adimAnaliz);
       const ra = await adimlarOf(ref);
       const aa = await adimlarOf(aday);
+      // Motor / hedef turu / is parcacigi / hiz tavani satirdan: k6 ile wrk, farkli is parcacigi ve
+      // farkli tavan_rps (wrk) VERI_YOK; serbest taraf CPU'suz karar yolu (analiz.kararVer, sozlesme 10.2).
+      const parcacik = (x) => (jsonOku(x.parametreler) || {}).is_parcacigi ?? null;
+      const tavan = (x) => (jsonOku(x.parametreler) || {}).tavan_rps ?? null;
       let karar;
       try {
         const analiz = poller.cModulu('analiz.cjs');
-        karar = analiz.kararVer(ra, aa, { ...(esikCpu !== undefined ? { esikCpu } : {}), ...(esikP95 !== undefined ? { esikP95 } : {}) });
+        karar = analiz.kararVer(ra, aa, {
+          ...(esikCpu !== undefined ? { esikCpu } : {}), ...(esikP95 !== undefined ? { esikP95 } : {}),
+          refMotor: motorOf(r), adayMotor: motorOf(a), refHedefTuru: r.hedef_turu || 'sunucu', adayHedefTuru: a.hedef_turu || 'sunucu',
+          refIsParcacigi: parcacik(r), adayIsParcacigi: parcacik(a), refTavanRps: tavan(r), adayTavanRps: tavan(a),
+        });
       } catch (e) {
         throw hata(424, 'analiz_okunamadi', `Karşılaştırma hesaplanamadı: ${maskele(e && e.message)}`);
       }
-      const ozet = (x) => ({ id: Number(x.id), etiket: x.etiket ?? null, createdAt: iso(x.created_at), gecerlilik: x.gecerlilik ?? null, durum: x.durum });
+      const ozet = (x) => ({
+        id: Number(x.id), etiket: x.etiket ?? null, createdAt: iso(x.created_at), gecerlilik: x.gecerlilik ?? null, durum: x.durum,
+        motor: motorOf(x), hedefTuru: x.hedef_turu || 'sunucu',
+      });
       res.json({
         ok: true, karar: karar.karar, nedenler: karar.nedenler || [], tablo: karar.tablo || [],
         kademe: karar.kademe ?? null, kombinasyon: karar.kombinasyon ?? null, ref: ozet(r), aday: ozet(a),

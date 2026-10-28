@@ -9,6 +9,8 @@
 // olan) kullanici sonuclari okur; is baslatan / silen dugme ona HIC cizilmez (sunucu da reddeder).
 // Yerlesim kapsayici sorgulariyla (@container/yuk): sol menu ve "Taleplerim" paneli acikken icerik 600 px'e
 // iniyor; ekran genisligine gore kirilim yanlis yerde iki kolona gecerdi.
+// Tur 3 (2026-10-28): hedef IP elle yazilir (sunucu hedefi ya da izinli agdaki LB VIP'i / yonetilmeyen sunucu =
+// serbest hedef, yalniz istemci olcumu); yuk araci k6 (acik dongu) ya da wrk (kapali dongu, hiz tavanli).
 import React, { useState } from 'react';
 import { BeakerIcon, ChartBarSquareIcon, DocumentTextIcon, PlayCircleIcon, ArrowsRightLeftIcon } from '@heroicons/react/24/outline';
 import KosuListesi from './yukTesti/KosuListesi';
@@ -41,8 +43,9 @@ export function YukTestiTab({ isAdmin }: { isAdmin: boolean }) {
             <BeakerIcon className="h-5 w-5" style={{ color: 'var(--nginx-green)' }} aria-hidden /> Yük Testi
           </h2>
           <p className="mt-0.5 text-[12px] leading-5" style={{ color: 'var(--text-secondary)' }}>
-            DEV / TEST / QA nginx sunucusuna k6 ile sabit hızlı yük: istek başına CPU (nginx worker), p95 ve kapasite ölçülür; iki koşu karşılaştırılıp
-            bir ayar değişikliğinin kalıp kalmayacağına karar verilir. Önce ön kontrol (yük üretmez), sonra onaylı koşu.
+            DEV / TEST / QA nginx sunucusuna ya da izinli ağdaki bir LB VIP’ine k6 (sabit istek/sn) ya da wrk (sabit bağlantı, hız tavanlı) ile yük: sunucu hedefinde
+            istek başına CPU (nginx worker), p95 ve kapasite ölçülür; serbest hedefte (LB / envanterde olmayan sunucu) yalnız istemci ölçümü yapılır. İki koşu
+            karşılaştırılıp bir ayar değişikliğinin kalıp kalmayacağına karar verilir. Önce ön kontrol (yük üretmez), sonra onaylı koşu.
             {!isAdmin && <> Salt okunur: koşu başlatma ve senaryo yönetimi yöneticilere açıktır.</>}
           </p>
         </div>

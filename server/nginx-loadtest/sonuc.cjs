@@ -3,8 +3,9 @@
 // NE OKUR: nginx_loadtest.yml (kosu modu) iki makinedeki kit ciktilarini toplayip Portal'in /sw
 // kosu dizinine DUZ (alt dizinsiz) yazar. Bu modul o dizini okur ve analiz.cjs'in bekledigi
 // KosuVerisi'ni kurar; el kitinin karsilastir.py `Adim.yukle()` adiminin karsiligidir:
-//   istemci_<TUR>.csv            yuk_k6.js ozeti (kos.sh'in basarili saydigi kosu)
-//   hatali_istemci_<TUR>.csv     kos.sh'in DUR dedigi kosu (429 / http2 / rc!=0 / n_olcum bos)
+//   istemci_<TUR>.csv            yuk_k6.js ozeti (kos.sh'in basarili saydigi kosu) ya da wrk_kos.sh'in ayni
+//                                semali awk ciktisi (wrk'nin olcemedigi hucreler bos: analizde null)
+//   hatali_istemci_<TUR>.csv     kos.sh / wrk_kos.sh'in DUR dedigi kosu (429 / 5xx / http2 / rc!=0 / olcum yok)
 //   zaman.csv, baslatilan.csv    kos.sh: bitis ve baslangic damgalari
 //   sunucu_<ADIM>_<host>.csv     cpu_kaydedici.sh: saniyelik worker/host CPU ornekleri
 //   bilgi_<ADIM>_<host>.txt      cpu_kaydedici.sh: nproc, clk_tck, df, konf ozeti, gecersiz=
@@ -13,6 +14,9 @@
 //   konf_*.txt, NOT.txt, istemci_*.json, SHA256SUMS
 // Hepsi istege bagli: eksik dosya analizde "olculmedi" (null) ya da GECERSIZ nedeni olur, okuma
 // hatasi OLMAZ. karsilastir.py'nin glob/sirasi korunur (ad sirasina gore, buyuk-kucuk harf duyarli).
+// Serbest hedef kosusunda (kaydedici yok) dizinde yalniz yuk makinesinin dosyalari olur (istemci_*,
+// hatali_istemci_*, zaman.csv, baslatilan.csv, SHA256SUMS); okuyucu motor / hedef turu bilmez, sunucu
+// dosyalarini serbestte yok sayan analizdir (analiz.cjs PORTAL FARKLARI 8).
 //
 // OKUNAMADI != GECERSIZ. Su durumlarda `.code = 'OKUNAMADI'` ile hata atilir ve analiz YAPILMAZ:
 // dizin yok/okunamiyor, bayt ya da dosya tavani asildi, gzip bozuk, SHA256SUMS'te listelenen dosya

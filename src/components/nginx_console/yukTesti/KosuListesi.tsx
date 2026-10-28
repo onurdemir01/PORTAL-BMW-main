@@ -4,6 +4,8 @@
 // ayrinti acilir. Suren is varsa liste 15 sn'de bir tazelenir (yoklama yalniz liste ekrandayken).
 // Sayfalama: sunucu `dahaVar` derse "Daha eski koşular" bir sonraki sayfayi (`onceki` = listedeki en kucuk id)
 // ekler. Tazeleme yalniz ilk sayfayi yeniden okur; yuklenmis eski sayfalar korunur (ilk sayfanin altinda kalanlar).
+// Hedef etiketi `hedefHost ?? hedefIp` (2026-10-28): serbest hedefte host yok, IP gorunur; hedef suzgeci ayni etiketle
+// kurulur (bos / null secenek OLUSMAZ). Serbest ve wrk kosulari ciple isaretlenir (k6 + sunucu cipsiz).
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowPathIcon } from '@heroicons/react/24/outline';
 import { nginxLoadtestApi, type NlKosu } from '@/api/nginxLoadtestApi';
@@ -12,8 +14,8 @@ import { TableEmptyRow } from '@/components/common/EmptyState';
 import { fmtDateTime, fmtNumber, fmtRelative } from '@/utils/datetime';
 import { TBL_BTN, smBtn } from '@/components/server_hub/retirementStil';
 import { Cip, TabloIskelet, UyariKutusu, type Kolon } from '@/components/server_hub/RetirementUi';
-import { AKTIF_DURUMLAR } from './yukTestiOrtak';
-import { GIRDI_TABAN, GecerlilikHapi, KosuDurumHapi, girdiStili, islemEtiketi } from './YukUi';
+import { AKTIF_DURUMLAR, hedefEtiketi } from './yukTestiOrtak';
+import { GIRDI_TABAN, GecerlilikHapi, KosuDurumHapi, TurMotorCipleri, girdiStili, islemEtiketi } from './YukUi';
 
 type Suzgec = 'hepsi' | 'kosu' | 'on_kontrol';
 // Dort kolon (sol menu + "Taleplerim" acikken icerik ~585 px): esnek "Koşu" kolonu etiket, senaryo ve kimin
@@ -90,8 +92,8 @@ export default function KosuListesi({ onAc, yenileAnahtari = 0 }: { onAc: (id: n
     return () => window.clearInterval(z);
   }, [aktifVar, yukle]);
 
-  const hedefler = useMemo(() => [...new Set((kosular || []).map((k) => k.hedefHost))].sort(), [kosular]);
-  const liste = (kosular || []).filter((k) => (suzgec === 'hepsi' || k.islem === suzgec) && (!hedef || k.hedefHost === hedef));
+  const hedefler = useMemo(() => [...new Set((kosular || []).map(hedefEtiketi).filter(Boolean))].sort(), [kosular]);
+  const liste = (kosular || []).filter((k) => (suzgec === 'hepsi' || k.islem === suzgec) && (!hedef || hedefEtiketi(k) === hedef));
 
   return (
     <div className="space-y-3">
@@ -102,7 +104,7 @@ export default function KosuListesi({ onAc, yenileAnahtari = 0 }: { onAc: (id: n
               style={suzgec === k ? { background: 'var(--bg-surface)', color: 'var(--text-primary)', boxShadow: 'inset 0 0 0 1px var(--border)' } : { color: 'var(--text-secondary)' }}>{ad}</button>
           ))}
         </div>
-        <select value={hedef} onChange={(e) => setHedef(e.target.value)} className={`${GIRDI_TABAN} h-8 w-48`} style={girdiStili()} aria-label="Hedef sunucu">
+        <select value={hedef} onChange={(e) => setHedef(e.target.value)} className={`${GIRDI_TABAN} h-8 w-48`} style={girdiStili()} aria-label="Hedef sunucu ya da IP">
           <option value="">Tüm hedefler</option>
           {hedefler.map((h) => <option key={h} value={h}>{h}</option>)}
         </select>
@@ -135,8 +137,17 @@ export default function KosuListesi({ onAc, yenileAnahtari = 0 }: { onAc: (id: n
                   <div className="truncate text-[11px] tabular-nums" style={{ color: 'var(--text-muted)' }} title={`${k.createdBy || '—'} · ${fmtDateTime(k.createdAt)}`}>{`${k.createdBy || '—'} · ${fmtRelative(k.createdAt) || fmtDateTime(k.createdAt)}`}</div>
                 </td>
                 <td className="px-2.5 py-2">
-                  <div className="truncate font-mono text-[12px]" title={k.hedefHost}>{k.hedefHost}</div>
-                  <div className="truncate text-[11px]" style={{ color: 'var(--text-secondary)' }} title={`${k.hedefIp || '—'} · ${k.vhost || '—'}`}>{k.hedefIp ? <span className="font-mono">{k.hedefIp}</span> : '—'}{` · ${k.vhost || '—'}`}</div>
+                  {/* Dar kolonda cipler alt satira gecer; etiket (IP / host) kesilmez (uzun host adi kolona sigmazsa kesilir). */}
+                  <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1">
+                    <span className="min-w-0 max-w-full truncate font-mono text-[12px]" title={hedefEtiketi(k) || undefined}>{hedefEtiketi(k) || '—'}</span>
+                    <TurMotorCipleri hedefTuru={k.hedefTuru} motor={k.motor} />
+                  </div>
+                  {/* Sunucu hedefinde ikinci satir IP · vhost; serbestte IP zaten etiket: yalniz vhost. */}
+                  {k.hedefHost ? (
+                    <div className="truncate text-[11px]" style={{ color: 'var(--text-secondary)' }} title={`${k.hedefIp || '—'} · ${k.vhost || '—'}`}>{k.hedefIp ? <span className="font-mono">{k.hedefIp}</span> : '—'}{` · ${k.vhost || '—'}`}</div>
+                  ) : (
+                    <div className="truncate text-[11px]" style={{ color: 'var(--text-secondary)' }} title={k.vhost || ''}>{k.vhost || '—'}</div>
+                  )}
                 </td>
                 <td className="px-2.5 py-2">
                   <div className="flex flex-col items-start gap-1">

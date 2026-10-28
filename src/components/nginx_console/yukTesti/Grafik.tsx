@@ -1,12 +1,13 @@
-// src/components/nginx_console/yukTesti/Grafik.tsx — hiz (istek/sn) -> olcu grafigi, ELLE SVG (2026-10-27).
+// src/components/nginx_console/yukTesti/Grafik.tsx — kademe (k6: istek/sn, wrk: baglanti) -> olcu grafigi, ELLE SVG (2026-10-27).
 //
+// Yatay eksenin birimi `xBirimi` (2026-10-28): wrk kosusunda adim degeri baglanti sayisidir, istek/sn DEGIL.
 // Grafik kutuphanesi YOK (NimTabs Donut/MiniBar ile ayni yol). Tek eksen; her adim (TUR) bir nokta, gecerli
 // adimlarin hiz ortalamasi 2px cizgi. Nokta bicimi durumu da tasir (renk tek basina degil): gecerli = dolu
 // daire, doyma = dolu baklava, gecersiz = bos daire. Ayni hizdaki tekrarlar hafif yana kaydirilir. Uzerine
 // gelince ipucu; ekran okuyucu icin ozet aria-label (ayni veri adim tablosunda da var).
 // Genislik ResizeObserver ile olculur: viewBox olceklemesi dar kartta yazilari okunmaz kucultuyordu.
 import React, { useLayoutEffect, useRef, useState } from 'react';
-import { ondalik } from './yukTestiOrtak';
+import { ondalik, type AdimBirimi } from './yukTestiOrtak';
 
 export interface GrafikNoktasi { x: number; y: number | null; durum: string | null; etiket: string }
 
@@ -46,8 +47,9 @@ function Isaret({ durum, x, y }: { durum: string | null; x: number; y: number })
   return <circle cx={x} cy={y} r={5} fill="var(--accent)" {...halka} />;
 }
 
-export default function HizGrafigi({ baslik, birim, noktalar, cizgi, basamak = 1, bos = 'Ölçülmüş değer yok.' }: {
+export default function HizGrafigi({ baslik, birim, noktalar, cizgi, basamak = 1, bos = 'Ölçülmüş değer yok.', xBirimi = 'istek/sn' }: {
   baslik: string; birim: string; noktalar: GrafikNoktasi[]; cizgi: { x: number; y: number | null }[]; basamak?: number; bos?: string;
+  xBirimi?: AdimBirimi;
 }) {
   const [ref, genislik] = useGenislik();
   const [uzerinde, setUzerinde] = useState<number | null>(null);
@@ -75,7 +77,7 @@ export default function HizGrafigi({ baslik, birim, noktalar, cizgi, basamak = 1
   };
   const yol = cizgi.filter((c) => c.y != null).sort((a, b) => a.x - b.x).map((c, i) => `${i ? 'L' : 'M'}${px(c.x).toFixed(1)} ${py(c.y as number).toFixed(1)}`).join('');
   const ozet = olcu.length
-    ? `${baslik}: ${xler.map((x) => `${x} istek/sn ${cizgi.find((c) => c.x === x)?.y != null ? `${ondalik(cizgi.find((c) => c.x === x)?.y, basamak)} ${birim}` : 'ölçülmedi'}`).join(', ')}`
+    ? `${baslik}: ${xler.map((x) => `${x} ${xBirimi} ${cizgi.find((c) => c.x === x)?.y != null ? `${ondalik(cizgi.find((c) => c.x === x)?.y, basamak)} ${birim}` : 'ölçülmedi'}`).join(', ')}`
     : `${baslik}: ${bos}`;
   const u = uzerinde != null ? noktalar[uzerinde] : null;
   const yIpucu = (n: GrafikNoktasi) => `${n.etiket}: ${n.y == null ? 'ölçülmedi' : `${ondalik(n.y, basamak)} ${birim}`}${n.durum ? ` · ${DURUM_ADI[n.durum] || n.durum}` : ''}`;
@@ -83,7 +85,7 @@ export default function HizGrafigi({ baslik, birim, noktalar, cizgi, basamak = 1
     <figure className="min-w-0">
       <figcaption className="mb-1.5 flex items-baseline justify-between gap-2">
         <span className="text-[12px] font-semibold" style={{ color: 'var(--text-primary)' }}>{baslik}</span>
-        <span className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>{birim} · yatay: istek/sn</span>
+        <span className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>{birim} · yatay: {xBirimi}</span>
       </figcaption>
       <div ref={ref} className="relative w-full">
         {!olcu.length ? (

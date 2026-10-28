@@ -27,6 +27,28 @@
 //   7. TUR uyarilari (ham.uyarilar; Python tablo.md'de "uyarili kosular") kosu duzeyi `uyarilar`a da
 //      "<tur>: <uyari>" olarak katilir (tekil, en cok MAX_ADIM_UYARI + tek ozet satiri). TUR alanlari,
 //      rps_sunucu dahil, DEGISMEZ (Python esdegerligi).
+//   8. Hedef turu ve yuk araci (kosuAnaliz secenekleri `hedefTuru` 'sunucu' | 'serbest', `motor`
+//      'k6' | 'wrk'; varsayilanlar 'sunucu' / 'k6' ve onlarla cikti BUGUNKUYLE BIREBIR):
+//      - serbest (LB VIP ya da yonetilmeyen sunucu; hedefe SSH yok, yalniz istemci olcumu): kesitler,
+//        log ve diger trafik TAMAMEN yok sayilir (CPU, rps_sunucu, srt_*, istek_sunucu, host CPU,
+//        kapasite null; dizinde yine de sunucu_/bilgi_/log_/diger_ dosyasi varsa tek uyari). Gecerlilik
+//        yalniz istemci kurallarindan: rc, 429, 5xx, http2, hata > %0.1, k6'da dropped -> DOYMA. 429 /
+//        5xx nedeninde sunucu sayisi YAZILMAZ (olculmedi; "sunucu=0" yanlis olurdu). Sunucu verisine
+//        dayanan TUR uyarilari (log penceresi, sunucu kaydi, arka plan) uretilmez.
+//      - wrk (kapali dongu: `hiz` kolonu baglanti sayisidir; p50/p95/p99 wrk'nin koordineli ihmal (CO)
+//        duzeltmeli histogramindan): rc etiketi `wrk_rc=`; dropped olculmez (null) -> dropped DOYMA'si
+//        yok, sunucuda host CPU > %90 DOYMA'si AYNEN. TLS payi yok: ayristirma ve cpu_tlsli_pay HER ZAMAN
+//        null (wrk TLS surumunu sabitlemez; 'yeni' kipinde oturum devami / TLS 1.3 K/yeni - K/ka farkini
+//        kucuk gosterir; 'yeni' adim varsa kosu uyarisi).
+//   9. CPU'suz karar yolu (kararVer): taraflardan biri serbest ya da iki taraf wrk ve CPU kademesinde bir
+//      tarafin CPU-ms/istek'i doyma DISI bir nedenle yok -> ortak kademelerde bugunku p95 zarar hesabi
+//      (ayni esik / gurultu formulu ve satirlar); zarar RET, yoksa NOTR + "CPU olculmedi ...": ASLA
+//      KALICI. Farkli yuk araci (k6 / wrk), farkli is parcacigi sayisi (wrk) ve farkli hiz tavani (wrk
+//      tavan_rps; ayni N farkli yuk demektir) VERI_YOK. k6+k6 sunucu+sunucu BUGUNKU gibidir (CPU yoksa
+//      VERI_YOK ya da DOYMA): sozlesmenin D4 kararinin
+//      harfinden BILINCLI sapma (karsilastir.py esdegerligi korunur; "CPU yoksa asla KALICI" ozu orada
+//      da gecerli; sozlesme K25, orkestrator onayli). Kademe birimi metinlerde k6 'istek/sn', wrk
+//      'baglanti'; wrk'nin istemci bayt yedegi baslik + govde sayar, TLS haric.
 // null = olculmedi (hicbir zaman 0 yerine gecmez). Fonksiyonlar saftir: G/C yok, saat yok.
 'use strict';
 
@@ -40,10 +62,20 @@ const MAX_TEKRAR = 3;
 const ADIM_RE = /^[A-Za-z0-9-]+$/;
 // Kosu duzeyine katilan TUR uyarisi satiri tavani (poller kosu uyarilarinin ilk 100'unu saklar: KOSU_UYARI_TAVANI).
 const MAX_ADIM_UYARI = 40;
+// Secenek degerleri (PORTAL FARKLARI 8): hedef turu ve yuk araci; ilk deger varsayilandir.
+const HEDEF_TURLERI = Object.freeze(['sunucu', 'serbest']);
+const MOTORLAR = Object.freeze(['k6', 'wrk']);
+// Serbest hedefte yok sayilan cpu_kaydedici.sh dosyalari (sunucu_*.csv, bilgi_*.txt, log_*, diger_*).
+const SUNUCU_DOSYA_RE = /^(sunucu|bilgi|log|diger)_/;
+const SERBEST_UYARISI = 'sunucu_olcumu_yok(serbest_hedef)';
+const WRK_TLS_UYARISI = 'wrk_tls_payi_hesaplanmaz(oturum_devami_ya_da_tls13_olabilir)';
+const CPU_YOK_SERBEST = 'CPU olculmedi (serbest hedef): KALICI verilmez; karar p95 ve hata oranina gore';
+const CPU_YOK_WRK = 'CPU olculmedi (wrk, sunucu kaydi eksik): KALICI verilmez; karar p95 ve hata oranina gore';
 
 // GECERSIZ / HATALI / DOYMA neden onekleri -> (anlami, ne yapilir). Ekran yalniz gorulenleri aciklar.
 const NEDENLER = Object.freeze([
   { onek: 'k6_rc', anlam: 'k6 hata koduyla bitti.', cozum: 'Is ciktisindaki k6 mesajina bakin; kosuyu tekrarlayin.' },
+  { onek: 'wrk_rc', anlam: 'wrk hata koduyla bitti.', cozum: 'Is ciktisindaki wrk mesajina bakin; kosuyu tekrarlayin.' },
   { onek: '429', anlam: 'Rate limit (limit_req / limit_conn) asildi.', cozum: "Hizlari dusurun; ayni IP'den baska yuk var mi bakin." },
   { onek: '5xx', anlam: 'Olcum fazinda sunucu hatasi (5xx).', cozum: "error.log'a bakin; nedeni giderip kosuyu tekrarlayin." },
   { onek: 'http2', anlam: 'HTTP/2 ile gidildi.', cozum: 'k6 surumunu ve GODEBUG=http2client=0 ayarini kontrol edin.' },
@@ -54,7 +86,7 @@ const NEDENLER = Object.freeze([
   { onek: 'konf_degisti', anlam: 'Kayit sirasinda nginx konfigurasyonu degisti.', cozum: 'Deney suresince o sunucuya konf dagitilmamali.' },
   { onek: 'pencere_kisa', anlam: "Kaydedici olcum fazinin 30 sn'den azini gordu (gec basladi / erken durdu).", cozum: 'Kosuyu tekrarlayin; kaydedici erken durduysa is ciktisina bakin.' },
   { onek: 'reload', anlam: 'Olcum penceresinde reload oldu (worker PID kumesi degisti).', cozum: "Eski worker'lar ('shutting down') bitene kadar bekleyip kosuyu tekrarlayin." },
-  { onek: 'hatali_kosu', anlam: "kos.sh bu TUR'u durdurdu (429 / http2 / k6 hatasi / olcum yok).", cozum: 'Nedeni giderip yeni kosu baslatin.' },
+  { onek: 'hatali_kosu', anlam: "kos.sh / wrk_kos.sh bu TUR'u durdurdu (429 / 5xx / soket / hata orani / http2 / hata kodu / olcum yok).", cozum: 'Nedeni giderip yeni kosu baslatin.' },
   { onek: 'tamamlanmadi', anlam: 'TUR baslatildi ama istemci sonucu yazilmadi (kosu kesildi ya da durduruldu).', cozum: 'Yeni kosu baslatin.' },
   { onek: 'doyma:', anlam: 'Istenen hiz tutturulamadi (dropped > 0) ya da hedefin CPU ortalamasi %90 ustunde.', cozum: 'Daha dusuk hizla kosun; kapasite tahmini bu kademede gecerli degil.' },
 ]);
@@ -337,7 +369,11 @@ function denemeSec(ctx, tur, ist, uyari) {
   return { idx, hedef };
 }
 
-/** karsilastir.py `kosu_hesapla`. Python'un `r` sozlugu + Portal icin birkac ek alan (_ onekli). */
+/**
+ * karsilastir.py `kosu_hesapla`. Python'un `r` sozlugu + Portal icin birkac ek alan (_ onekli).
+ * Serbest hedefte (ctx.serbest; ctx'te kesit / log zaten bos) olcum penceresi kurulmaz, sunucu
+ * verisine dayanan alanlar null, ilgili TUR uyarilari yok (PORTAL FARKLARI 8). rc etiketi ctx.rcEtiketi.
+ */
 function kosuHesapla(ctx, tur, ist, arkaKesit) {
   const r = { tur };
   Object.assign(r, kosuAyir(tur, ist));
@@ -351,7 +387,7 @@ function kosuHesapla(ctx, tur, ist, arkaKesit) {
   const satirlar = sec.idx;
   const olcum = kayit ? satirlar.filter((i) => kayit.faz[i] === ctx.olcumKod) : [];
   const zaman = ctx.zaman.get(tur);
-  if (zaman && zaman[2] !== '' && zaman[2] !== '0') gecersiz.push(`k6_rc=${zaman[2]}`);
+  if (zaman && zaman[2] !== '' && zaman[2] !== '0') gecersiz.push(`${ctx.rcEtiketi}=${zaman[2]}`);
   let w0 = null;
   let w1 = null;
   let kaynak;
@@ -370,13 +406,14 @@ function kosuHesapla(ctx, tur, ist, arkaKesit) {
       const fark = mn - (zaman[0] + r.isinma_sn);
       if (Math.abs(fark - 2) > 10) uyari.push(`saat_farki~${fd(pyYuvarla(fark))}s(sunucu-istemci)`);
     }
-  } else if (zaman) {
+  } else if (zaman && !ctx.serbest) {
     const isinma = r.isinma_sn || 30;
     w0 = zaman[0] + isinma + 5;
     w1 = zaman[1] - 5;
     kaynak = 'istemci_saati';
     uyari.push('log_satiri_yok:pencere_istemci_saatinden');
   } else {
+    // Ne log ne zaman satiri var ya da serbest hedef (sunucu olcumu yok): pencere kurulmaz.
     kaynak = '-';
   }
   r.pencere_kaynak = kaynak;
@@ -396,17 +433,19 @@ function kosuHesapla(ctx, tur, ist, arkaKesit) {
   r.sunucu_rt_p50 = yuzdelik(rts, 50);
   r.sunucu_rt_p95 = yuzdelik(rts, 95);
   r.sunucu_rt_p99 = yuzdelik(rts, 99);
-  r.n_log_olcum = olcum.length;
+  r.n_log_olcum = ctx.serbest ? null : olcum.length;
   r.govde_bayt_istek = bls.length ? pyToplam(bls) / bls.length : null;
   r['yeniden_baglanti_%'] = crs.length ? (100.0 * crs.filter((c) => c > 1).length) / crs.length : null;
   // 429 her fazda sayilir (k6 ilk 429'da kosuyu keser); 5xx yalniz olcum fazinda (istemci sayaci da oyle)
   let s429 = 0;
   for (const i of satirlar) if (kayit.durum[i] === 429) s429++;
-  if ((r.n_429 || 0) > 0 || s429) gecersiz.push(`429(istemci=${fd(r.n_429 || 0)},sunucu=${s429})`);
-  if ((r.n_5xx || 0) > 0 || s5xx) gecersiz.push(`5xx(istemci=${fd(r.n_5xx || 0)},sunucu=${s5xx})`);
+  // Serbest hedefte sunucu sayilmadi: nedende sunucu sayisi YOK (olculmedi, 0 degil).
+  const sunucuda = (n) => (ctx.serbest ? '' : `,sunucu=${n}`);
+  if ((r.n_429 || 0) > 0 || s429) gecersiz.push(`429(istemci=${fd(r.n_429 || 0)}${sunucuda(s429)})`);
+  if ((r.n_5xx || 0) > 0 || s5xx) gecersiz.push(`5xx(istemci=${fd(r.n_5xx || 0)}${sunucuda(s5xx)})`);
   if ((r.http2 || 0) > 0) gecersiz.push('http2');
   if ((r.hata_orani || 0) > HATA_ESIK + EPS) gecersiz.push(`hata_%${fx(100 * r.hata_orani, 2)}(>%${fx(100 * HATA_ESIK, 1)})`);
-  if (r.n_olcum) {
+  if (r.n_olcum && !ctx.serbest) {
     const fark = Math.abs(olcum.length - r.n_olcum) / r.n_olcum;
     r['log_istemci_fark_%'] = 100.0 * fark;
     if (satirlar.length && fark > LOG_ESIK_GECERSIZ) gecersiz.push(`log_istemci_farki_%${fx(100 * fark, 1)}`);
@@ -495,8 +534,8 @@ function kosuHesapla(ctx, tur, ist, arkaKesit) {
   r.uyari = uyari.join(';');
   r._gecersiz = gecersiz;
   r._uyari = uyari;
-  r._s429 = s429;
-  r._s5xx = s5xx;
+  r._s429 = ctx.serbest ? null : s429;
+  r._s5xx = ctx.serbest ? null : s5xx;
   r._kesit = kesitAdi;
   return r;
 }
@@ -695,17 +734,114 @@ function kademeSec(x, varsayilan) {
   return v === null ? varsayilan : Math.trunc(v);
 }
 
+/** Metin secenegi (motor / hedef turu): verilmediyse varsayilan; izinli degil ise TypeError (sessiz varsayim yok). */
+function secenekDegeri(x, varsayilan, izinli, ad) {
+  if (x === undefined) return varsayilan;
+  if (izinli.includes(x)) return x;
+  throw new TypeError(`kararVer: ${ad} gecersiz (${izinli.join(' | ')})`);
+}
+
 /**
- * Iki kosunun adim satirlari arasinda karar (karsilastir.py `karar_ver`).
+ * wrk is parcacigi sayisi ve hiz tavani (tavan_rps): null / verilmedi = bilinmiyor (karsilastirilmaz);
+ * pozitif tam sayi degilse TypeError.
+ */
+function isParcacigiDegeri(x, ad) {
+  if (x === undefined || x === null) return null;
+  const v = sayi(x);
+  if (v === null || !Number.isInteger(v) || v < 1) throw new TypeError(`kararVer: ${ad} gecersiz (pozitif tam sayi ya da null)`);
+  return v;
+}
+
+/** Bir ortak kademenin p95 satiri ve zarari (zarar esigi = max(esikZarar, 3 x referans p95 gurultusu)). */
+function p95Satiri(sat, zarar, rg, ag, h, esikZarar) {
+  const rp = rg.p95;
+  const ap = ag.p95;
+  if (rp && ap !== null) {
+    const kotu = oran(ap, rp);
+    const ez = pyMax(esikZarar / 100.0, 3 * (rg.gurultu_p95 || 0));
+    sat.push(`p95 @${fd(h)}: ref=${fx(rp, 1)} aday=${fx(ap, 1)} degisim=%${fxs(100 * kotu, 1)} (zarar esigi %${fx(100 * ez, 1)})`);
+    if (kotu > ez + EPS) zarar.push(`p95 @${fd(h)} %${fxs(100 * kotu, 1)}`);
+  }
+}
+
+/**
+ * CPU kademesinin bayt/istek satiri. Ag maliyeti sunucu logundaki govde baytindan ($body_bytes_sent); yoksa
+ * istemci yedegi: k6 data_received yeni kipte her istegin TLS el sikismasini (sertifika zinciri) ve
+ * basliklarini da sayar, sikistirma farkini kucuk gosterir; wrk baslik + govde sayar, TLS haric.
+ */
+function baytSatiri(sat, notlar, rKc, aKc, kc, motor) {
+  let rb = rKc.govde_bayt_istek;
+  let ab = aKc.govde_bayt_istek;
+  let kaynak = 'govde, sunucu logu';
+  if (!rb || ab === null) {
+    rb = rKc.bayt_istek;
+    ab = aKc.bayt_istek;
+    kaynak = motor === 'wrk' ? 'istemci (wrk): baslik + govde, TLS haric' : 'istemci data_received: TLS + baslik dahil, fark kucuk gorunur';
+  }
+  if (rb && ab !== null) {
+    const bd = oran(ab, rb);
+    sat.push(`bayt/istek @${fd(kc)} [${kaynak}]: ref=${fx(rb, 0)} aday=${fx(ab, 0)} degisim=%${fxs(100 * bd, 1)}`);
+    if (bd > 0.12 + EPS) notlar.push(`ag maliyeti: bayt/istek %${fxs(100 * bd, 1)} (> %12)`);
+  }
+}
+
+/** B (buyuk dosya) senaryosunun ortak kademelerinde TTFB p95 satirlari (bilgi; karara girmez). */
+function bTtfbSatirlari(sat, ref, ady) {
+  const bKombo = { senaryo: 'B', kip: 'yeni', ae: 'br' };
+  const rB = hizGruplari(ref, bKombo);
+  const aB = hizGruplari(ady, bKombo);
+  for (const h of [...rB.keys()].filter((x) => aB.has(x)).sort((a, b) => a - b)) {
+    const rt = rB.get(h).ttfb_p95;
+    const at = aB.get(h).ttfb_p95;
+    if (rt && at !== null) sat.push(`B (buyuk dosya) TTFB p95 @${fd(h)}: ref=${fx(rt, 1)} aday=${fx(at, 1)} degisim=%${fxs(100 * oran(at, rt), 1)}`);
+  }
+}
+
+/**
+ * CPU'suz karar yolu (PORTAL FARKLARI 9): ortak kademelerde bugunku p95 zarar hesabi (ayni esik, ayni
+ * `p95 @..` satirlari) + bilgi satirlari (bayt, B TTFB). Zarar RET; yoksa NOTR + `cpuNotu`. CPU kazanci ve
+ * p95 kazanci kurallari CPU olcusu ister: bu yol ASLA KALICI vermez.
+ */
+function cpusuzKarar(bitir, b, cpuNotu) {
+  const { sat, notlar, ortak, rG, aG, kc, ref, ady, esikZarar, motor, birim } = b;
+  if (!ortak.length) return bitir('VERI_YOK', [...sat, `ortak ${birim} kademesi yok`]);
+  const zarar = [];
+  for (const h of ortak) p95Satiri(sat, zarar, rG.get(h), aG.get(h), h, esikZarar);
+  const rKc = kc === null ? undefined : rG.get(kc);
+  const aKc = kc === null ? undefined : aG.get(kc);
+  if (rKc && aKc) baytSatiri(sat, notlar, rKc, aKc, kc, motor);
+  bTtfbSatirlari(sat, ref, ady);
+  const not = notlar.map((n) => 'not: ' + n);
+  if (zarar.length) return bitir('RET', [...sat, 'zarar: ' + zarar.join('; '), ...not]);
+  return bitir('NOTR', [...sat, cpuNotu, ...not]);
+}
+
+/**
+ * Iki kosunun adim satirlari arasinda karar (karsilastir.py `karar_ver`). Motor / hedef turu / is
+ * parcacigi / hiz tavani secenekleri kosu satirlarindan gelir (PORTAL FARKLARI 9); verilmezse k6 / sunucu /
+ * null / null ve cikti bugunkuyle BIREBIR. Gecersiz motor / hedef turu / is parcacigi / tavan TypeError.
+ * wrk'de ayni baglanti kademesi farkli tavanla (tavan_rps: hedefin olculmus limit_req'i ya da serbest 200)
+ * farkli yuk demektir (Lua delay = N * 1000 / tavan): iki tavan biliniyor ve farkliysa VERI_YOK.
  * @param {object[]} refAdimlar  referans kosunun adim satirlari
  * @param {object[]} adayAdimlar aday kosunun adim satirlari
- * @param {{esikCpu?: number, esikP95?: number, esikZarar?: number, kademeCpu?: number, kademeP95?: number}} [secenek]
+ * @param {{esikCpu?: number, esikP95?: number, esikZarar?: number, kademeCpu?: number, kademeP95?: number,
+ *   refMotor?: 'k6'|'wrk', adayMotor?: 'k6'|'wrk', refHedefTuru?: 'sunucu'|'serbest',
+ *   adayHedefTuru?: 'sunucu'|'serbest', refIsParcacigi?: number|null, adayIsParcacigi?: number|null,
+ *   refTavanRps?: number|null, adayTavanRps?: number|null}} [secenek]
  */
 function kararVer(refAdimlar, adayAdimlar, secenek = {}) {
   const s = secenek || {};
   const esikCpu = secenekSayi(s.esikCpu, 10);
   const esikP95 = secenekSayi(s.esikP95, 10);
   const esikZarar = secenekSayi(s.esikZarar, 5);
+  const refMotor = secenekDegeri(s.refMotor, 'k6', MOTORLAR, 'refMotor');
+  const adayMotor = secenekDegeri(s.adayMotor, 'k6', MOTORLAR, 'adayMotor');
+  const refTur = secenekDegeri(s.refHedefTuru, 'sunucu', HEDEF_TURLERI, 'refHedefTuru');
+  const adayTur = secenekDegeri(s.adayHedefTuru, 'sunucu', HEDEF_TURLERI, 'adayHedefTuru');
+  const refIp = isParcacigiDegeri(s.refIsParcacigi, 'refIsParcacigi');
+  const adayIp = isParcacigiDegeri(s.adayIsParcacigi, 'adayIsParcacigi');
+  const refTavan = isParcacigiDegeri(s.refTavanRps, 'refTavanRps');
+  const adayTavan = isParcacigiDegeri(s.adayTavanRps, 'adayTavanRps');
   const ref = kosulariHazirla(refAdimlar);
   const ady = kosulariHazirla(adayAdimlar);
   const refAd = (ref.find((r) => r.adim) || {}).adim || 'referans';
@@ -718,10 +854,23 @@ function kararVer(refAdimlar, adayAdimlar, secenek = {}) {
   const kp = kademeSec(s.kademeP95, ortak.length ? ortak[ortak.length - 1] : null);
   const tablo = tabloYap(rG, aG);
   const bitir = (karar, satirlar) => ({ karar, nedenler: satirlar, tablo, kademe: { cpu: kc, p95: kp }, kombinasyon: kombo });
+  // Kademe birimi: k6 acik dongu (istek/sn), wrk kapali dongu (baglanti sayisi). Motorlar asagida esit.
+  const birim = refMotor === 'wrk' ? 'baglanti' : 'istek/sn';
 
   const sat = [];
   const adyKosular = [...aG.values()].flatMap((g) => g.kosular);
   sat.push(`referans=${refAd} aday=${adyAd} senaryo=${kombo.senaryo} kip=${kombo.kip} ae=${kombo.ae}`);
+  if (refMotor !== adayMotor) {
+    return bitir('VERI_YOK', [...sat, `farkli yuk araci: referans ${refMotor}, aday ${adayMotor}; k6 (acik dongu, istek/sn) ve wrk (kapali dongu, baglanti) sonuclari karsilastirilmaz`]);
+  }
+  if (refMotor === 'wrk' && refIp !== null && adayIp !== null && refIp !== adayIp) {
+    return bitir('VERI_YOK', [...sat, `farkli is parcacigi sayisi: referans ${fd(refIp)}, aday ${fd(adayIp)}; ayni is parcacigi sayisiyla yeniden kosun`]);
+  }
+  // Ayni N, farkli tavan: kademe ayni sayida baglanti ama farkli sunulan yuk (dusuk tavanda p95 dusuk
+  // cikar -> sahte KALICI / RET). CPU'suz (serbest) yoldan da ONCE: karisik kipte de gecerli.
+  if (refMotor === 'wrk' && refTavan !== null && adayTavan !== null && refTavan !== adayTavan) {
+    return bitir('VERI_YOK', [...sat, `farkli hiz tavani: referans ${fd(refTavan)} istek/sn, aday ${fd(adayTavan)} istek/sn; ayni tavanla yeniden kosun`]);
+  }
   if (!aG.size || !rG.size) {
     return bitir('VERI_YOK', [...sat, `${kombo.senaryo}/${kombo.kip}/${kombo.ae} kosusu eksik (referans ${rG.size} kademe, aday ${aG.size} kademe)`]);
   }
@@ -743,18 +892,21 @@ function kararVer(refAdimlar, adayAdimlar, secenek = {}) {
   const eksikR = ortak.filter((h) => !yeterliMi(rG.get(h)));
   if (eksikR.length) {
     return bitir('GECERSIZ', [...sat,
-      `referans ${refAd} kullanilamaz: ${eksikR.join(',')} istek/sn kademesinde yeterli gecerli kosu yok (en az 2): ${nedenMetni(eksikR.flatMap((h) => rG.get(h).kosular))}`,
+      `referans ${refAd} kullanilamaz: ${eksikR.join(',')} ${birim} kademesinde yeterli gecerli kosu yok (en az 2): ${nedenMetni(eksikR.flatMap((h) => rG.get(h).kosular))}`,
       `once referansi duzeltin (hata_ ise: yollar hala 200 mu?), sonra referansi tekrar=${ekTekrar(rG, eksikR)} ile yeniden kosun`]);
   }
   const eksikA = [...aG.keys()].sort((a, b) => a - b).filter((h) => !yeterliMi(aG.get(h)));
   if (eksikA.length) {
     return bitir('GECERSIZ', [...sat,
       'tekrar kosun: ' + nedenMetni(adyKosular),
-      `${eksikA.join(',')} istek/sn kademesinde yeterli gecerli kosu yok (en az 2). Adayi tekrar=${ekTekrar(aG, eksikA)} ile yeniden kosun (GECERSIZ kosu kararda dislanir)`]);
+      `${eksikA.join(',')} ${birim} kademesinde yeterli gecerli kosu yok (en az 2). Adayi tekrar=${ekTekrar(aG, eksikA)} ile yeniden kosun (GECERSIZ kosu kararda dislanir)`]);
   }
   const notlar = [];
   const dislanan = nedenMetni(adyKosular);
   if (dislanan) notlar.push(`dislanan GECERSIZ kosu: ${dislanan} (her kademede en az 2 gecerli kosu kaldi)`);
+  const cpusuz = { sat, notlar, ortak, rG, aG, kc, ref, ady, esikZarar, motor: refMotor, birim };
+  // Serbest hedefte CPU hic olculmez (kaydedici yok): CPU blogundan ONCE CPU'suz yol.
+  if (refTur === 'serbest' || adayTur === 'serbest') return cpusuzKarar(bitir, cpusuz, CPU_YOK_SERBEST);
   const rKc = kc === null ? undefined : rG.get(kc);
   const aKc = kc === null ? undefined : aG.get(kc);
   if (!rKc || !aKc || !rKc.cpu_ms_istek || rKc.cpu_ms_istek <= 0 || aKc.cpu_ms_istek === null) {
@@ -763,10 +915,13 @@ function kararVer(refAdimlar, adayAdimlar, secenek = {}) {
       if (rKc.doyma && rKc.cpu_ms_istek === null) doyan.push(`referans ${refAd}`);
       if (aKc.doyma && aKc.cpu_ms_istek === null) doyan.push(`aday ${adyAd}`);
       if (doyan.length) {
-        return bitir('DOYMA', [...sat, `${fd(kc)} istek/sn kademesinde CPU-ms/istek yok: ${doyan.join(' ve ')} doydu (dropped>0 ya da host CPU>%90); daha dusuk bir kademeyle tekrar kosun`]);
+        return bitir('DOYMA', [...sat, `${fd(kc)} ${birim} kademesinde CPU-ms/istek yok: ${doyan.join(' ve ')} doydu (dropped>0 ya da host CPU>%90); daha dusuk bir kademeyle tekrar kosun`]);
       }
+      // wrk + wrk: CPU doyma disi bir nedenle yok (kaydedici eksik) -> CPU'suz yol. k6 + k6 BUGUNKU gibi
+      // VERI_YOK (karsilastir.py esdegerligi; sozlesme K25).
+      if (refMotor === 'wrk') return cpusuzKarar(bitir, cpusuz, CPU_YOK_WRK);
     }
-    return bitir('VERI_YOK', [...sat, kc === null ? 'ortak istek/sn kademesi yok' : `${fd(kc)} istek/sn kademesinde CPU-ms/istek yok (sunucu kaydi?)`]);
+    return bitir('VERI_YOK', [...sat, kc === null ? `ortak ${birim} kademesi yok` : `${fd(kc)} ${birim} kademesinde CPU-ms/istek yok (sunucu kaydi?)`]);
   }
   let gCpu = rKc.gurultu_cpu;
   if (gCpu === null) {
@@ -779,14 +934,7 @@ function kararVer(refAdimlar, adayAdimlar, secenek = {}) {
   const zarar = [];
   let cpuKotuMax = null;
   for (const h of ortak) {
-    const rp = rG.get(h).p95;
-    const ap = aG.get(h).p95;
-    if (rp && ap !== null) {
-      const kotu = oran(ap, rp);
-      const ez = pyMax(esikZarar / 100.0, 3 * (rG.get(h).gurultu_p95 || 0));
-      sat.push(`p95 @${fd(h)}: ref=${fx(rp, 1)} aday=${fx(ap, 1)} degisim=%${fxs(100 * kotu, 1)} (zarar esigi %${fx(100 * ez, 1)})`);
-      if (kotu > ez + EPS) zarar.push(`p95 @${fd(h)} %${fxs(100 * kotu, 1)}`);
-    }
+    p95Satiri(sat, zarar, rG.get(h), aG.get(h), h, esikZarar);
     const rc = rG.get(h).cpu_ms_istek;
     const ac = aG.get(h).cpu_ms_istek;
     if (rc && ac !== null) {
@@ -807,29 +955,8 @@ function kararVer(refAdimlar, adayAdimlar, secenek = {}) {
     sat.push(`p95 kazanci @${fd(kp)}: %${fx(100 * p95Kazanc, 1)} esik=%${fx(100 * esik2, 1)}`);
   }
   if (Math.abs(cpuKazanc - esik1) <= 0.03) notlar.push('CPU kazanci esige 3 puandan yakin: 3. tekrar onerilir');
-  // Ag maliyeti sunucu logundaki govde baytindan ($body_bytes_sent): k6 data_received yeni kipte her istegin
-  // TLS el sikismasini (sertifika zinciri) ve basliklarini da sayar, sikistirma farkini kucuk gosterir.
-  let rb = rKc.govde_bayt_istek;
-  let ab = aKc.govde_bayt_istek;
-  let kaynak = 'govde, sunucu logu';
-  if (!rb || ab === null) {
-    rb = rKc.bayt_istek;
-    ab = aKc.bayt_istek;
-    kaynak = 'istemci data_received: TLS + baslik dahil, fark kucuk gorunur';
-  }
-  if (rb && ab !== null) {
-    const bd = oran(ab, rb);
-    sat.push(`bayt/istek @${fd(kc)} [${kaynak}]: ref=${fx(rb, 0)} aday=${fx(ab, 0)} degisim=%${fxs(100 * bd, 1)}`);
-    if (bd > 0.12 + EPS) notlar.push(`ag maliyeti: bayt/istek %${fxs(100 * bd, 1)} (> %12)`);
-  }
-  const bKombo = { senaryo: 'B', kip: 'yeni', ae: 'br' };
-  const rB = hizGruplari(ref, bKombo);
-  const aB = hizGruplari(ady, bKombo);
-  for (const h of [...rB.keys()].filter((x) => aB.has(x)).sort((a, b) => a - b)) {
-    const rt = rB.get(h).ttfb_p95;
-    const at = aB.get(h).ttfb_p95;
-    if (rt && at !== null) sat.push(`B (buyuk dosya) TTFB p95 @${fd(h)}: ref=${fx(rt, 1)} aday=${fx(at, 1)} degisim=%${fxs(100 * oran(at, rt), 1)}`);
-  }
+  baytSatiri(sat, notlar, rKc, aKc, kc, refMotor);
+  bTtfbSatirlari(sat, ref, ady);
   let karar;
   if (zarar.length) {
     karar = 'RET';
@@ -870,7 +997,12 @@ function ayristirmaGruplardan(y, ka, idn, kademe) {
 // Kosu analizi (Portal): KosuVerisi -> adim satirlari + kosu gecerliligi + ozet
 // ---------------------------------------------------------------------------------------------
 
-function adimHazirla(veri) {
+/**
+ * KosuVerisi -> hesap baglami. Serbest hedefte kesit ve log TAMAMEN yok sayilir (bos gecer; PORTAL
+ * FARKLARI 8); diger trafik yalniz kesit + log penceresi olan CPU hesabinda okunur, serbestte o hesap hic
+ * kurulmaz. `rcEtiketi`: zaman.csv rc nedeninin oneki (k6_rc / wrk_rc).
+ */
+function adimHazirla(veri, { serbest = false, motor = 'k6' } = {}) {
   const istemci = new Map();
   for (const x of veri.istemci || []) if (x && x.satir && x.satir.tur) istemci.set(x.satir.tur, x.satir);
   const hatali = new Map();
@@ -887,14 +1019,32 @@ function adimHazirla(veri) {
       zamanN.set(s.tur, (zamanN.get(s.tur) || 0) + 1);
     }
   }
-  const log = veri.log && veri.log.turlar instanceof Map ? veri.log : { fazlar: [], turlar: new Map() };
+  const log = !serbest && veri.log && veri.log.turlar instanceof Map ? veri.log : { fazlar: [], turlar: new Map() };
   return {
     istemci, hatali, zaman, zamanTum, zamanN,
-    kesitler: Array.isArray(veri.kesitler) ? veri.kesitler : [],
+    kesitler: !serbest && Array.isArray(veri.kesitler) ? veri.kesitler : [],
     log: log.turlar,
     olcumKod: log.fazlar.indexOf('olcum'),
     diger: veri.diger instanceof Map ? veri.diger : new Map(),
+    serbest,
+    rcEtiketi: motor === 'wrk' ? 'wrk_rc' : 'k6_rc',
   };
+}
+
+/**
+ * Serbest hedefte yok sayilan sunucu tarafi dosya sayisi: dizin listesindeki (veri.dosyalar)
+ * sunucu_/bilgi_/log_/diger_ dosyalari; listesi olmayan (bellekte kurulmus) veride en az kesit, log
+ * ve diger trafik kaynagi kadar.
+ */
+function sunucuDosyaSayisi(veri) {
+  const listede = Array.isArray(veri.dosyalar)
+    ? veri.dosyalar.filter((d) => d && typeof d.ad === 'string' && SUNUCU_DOSYA_RE.test(d.ad)).length
+    : 0;
+  const loglar = Array.isArray(veri.loglar) ? veri.loglar.length : 0;
+  const logTuru = veri.log && veri.log.turlar instanceof Map && veri.log.turlar.size ? 1 : 0;
+  const kaynak = (Array.isArray(veri.kesitler) ? veri.kesitler.length : 0) + Math.max(loglar, logTuru)
+    + (veri.diger instanceof Map && veri.diger.size ? 1 : 0);
+  return Math.max(listede, kaynak);
 }
 
 function tamVeyaNull(x) {
@@ -1014,15 +1164,22 @@ function temizle(x) {
 }
 
 /**
- * Bir kosu dizininin (tek ADIM) analizi. Kosu `uyarilar`i: okuma uyarilari, kesit/kayit uyarilari,
+ * Bir kosu dizininin (tek ADIM) analizi. Kosu `uyarilar`i: okuma uyarilari, kesit/kayit uyarilari
+ * (serbest hedefte yerine yok sayilan sunucu dosyasi + sunucu_olcumu_yok), wrk TLS payi uyarisi,
  * atlanan baska ADIM TUR'lari, sonra TUR uyarilari ("<tur>: <uyari>", bkz. adimUyarilariniKat).
+ * Serbest hedefte sunucu tarafi yok sayilir, wrk'de TLS payi hesaplanmaz (PORTAL FARKLARI 8); `ozet`
+ * semasi iki secenekte de ayni. Gecersiz hedefTuru / motor TypeError (cagiran: poller, kosu satirindan).
  * @param {object} veri  sonuc.cjs kosuDiziniOku ciktisi
- * @param {{adim: string}} secenek  ornek 'R17'; bu ADIM'a ait olmayan TUR'lar atlanir (uyari)
+ * @param {{adim: string, hedefTuru?: 'sunucu'|'serbest', motor?: 'k6'|'wrk'}} secenek  adim ornek 'R17';
+ *   bu ADIM'a ait olmayan TUR'lar atlanir (uyari). Varsayilanlar 'sunucu' / 'k6' (bugunku cikti).
  */
-function kosuAnaliz(veri, { adim } = {}) {
+function kosuAnaliz(veri, { adim, hedefTuru = 'sunucu', motor = 'k6' } = {}) {
   if (!veri || typeof veri !== 'object') throw new TypeError('kosuAnaliz: veri yok');
   if (typeof adim !== 'string' || !ADIM_RE.test(adim)) throw new TypeError('kosuAnaliz: adim gecersiz');
-  const ctx = adimHazirla(veri);
+  if (!HEDEF_TURLERI.includes(hedefTuru)) throw new TypeError('kosuAnaliz: hedefTuru gecersiz (sunucu | serbest)');
+  if (!MOTORLAR.includes(motor)) throw new TypeError('kosuAnaliz: motor gecersiz (k6 | wrk)');
+  const serbest = hedefTuru === 'serbest';
+  const ctx = adimHazirla(veri, { serbest, motor });
   const uyarilar = Array.isArray(veri.uyarilar) ? veri.uyarilar.slice() : [];
   const dislama = dislamaListesi(ctx);
   const arka = new Map();
@@ -1042,8 +1199,15 @@ function kosuAnaliz(veri, { adim } = {}) {
     }
   }
   const logVar = Array.isArray(veri.loglar) ? veri.loglar.length > 0 : ctx.log.size > 0;
-  if (!ctx.kesitler.length) uyarilar.push('sunucu_kaydi_yok(cpu_olculmedi)');
-  if (!logVar) uyarilar.push('sunucu_logu_yok(log_istemci_karsilastirmasi_yapilmadi)');
+  if (serbest) {
+    // Serbest hedefte kaydedici yok: dizinde yine de sunucu dosyasi varsa (karisiklik) yok sayildigi soylenir.
+    const yokSayilan = sunucuDosyaSayisi(veri);
+    if (yokSayilan) uyarilar.push(`serbest_kosuda_sunucu_dosyalari_yok_sayildi(${yokSayilan})`);
+    uyarilar.push(SERBEST_UYARISI);
+  } else {
+    if (!ctx.kesitler.length) uyarilar.push('sunucu_kaydi_yok(cpu_olculmedi)');
+    if (!logVar) uyarilar.push('sunucu_logu_yok(log_istemci_karsilastirmasi_yapilmadi)');
+  }
 
   const kosular = [];
   const adimlar = [];
@@ -1075,6 +1239,8 @@ function kosuAnaliz(veri, { adim } = {}) {
   const baslayanlar = [...(veri.baslatilan || []).map((s) => s.tur), ...ctx.zamanTum.map((z) => z[0])];
   for (const tur of baslayanlar) if (tur) hataliEkle(tur, Object.create(null), 'tamamlanmadi(istemci_sonucu_yok)');
   adimlar.push(...hataliSatirlar);
+  // wrk TLS surumunu sabitlemez ve oturumu devam ettirebilir: 'yeni' kipi her istekte tam el sikismasi demek degil.
+  if (motor === 'wrk' && adimlar.some((a) => a.kip === 'yeni')) uyarilar.push(WRK_TLS_UYARISI);
   for (const tur of atlanan) uyarilar.push(`baska_adim_atlandi:${tur}`);
   adimUyarilariniKat(uyarilar, adimlar);
 
@@ -1083,14 +1249,18 @@ function kosuAnaliz(veri, { adim } = {}) {
     x.kapasite_tahmini_rps = nproc && g.o.cpu_ms_istek ? (nproc * 1000 * 0.8) / g.o.cpu_ms_istek : null;
     return { senaryo: g.senaryo, kip: g.kip, ae: g.ae, hiz: g.hiz, ...x };
   });
-  const yG = hizGruplari(kosular, { senaryo: 'K', kip: 'yeni', ae: 'br' });
-  const yHiz = [...yG.keys()].sort((a, b) => a - b);
-  const ayr = ayristirmaGruplardan(
-    yG,
-    hizGruplari(kosular, { senaryo: 'K', kip: 'ka', ae: 'br' }),
-    hizGruplari(kosular, { senaryo: 'K', kip: 'yeni', ae: 'identity' }),
-    yHiz.length ? yHiz[Math.floor(yHiz.length / 2)] : null,
-  );
+  // TLS payi (K/yeni/br - K/ka/br) wrk'de anlamsiz: ayristirma ve cpu_tlsli_pay HER ZAMAN null.
+  let ayr = null;
+  if (motor !== 'wrk') {
+    const yG = hizGruplari(kosular, { senaryo: 'K', kip: 'yeni', ae: 'br' });
+    const yHiz = [...yG.keys()].sort((a, b) => a - b);
+    ayr = ayristirmaGruplardan(
+      yG,
+      hizGruplari(kosular, { senaryo: 'K', kip: 'ka', ae: 'br' }),
+      hizGruplari(kosular, { senaryo: 'K', kip: 'yeni', ae: 'identity' }),
+      yHiz.length ? yHiz[Math.floor(yHiz.length / 2)] : null,
+    );
+  }
 
   const sayac = { GECERLI: 0, DOYMA: 0, GECERSIZ: 0, HATALI: 0 };
   for (const a of adimlar) sayac[a.gecerlilik]++;
@@ -1134,7 +1304,7 @@ function kosuAnaliz(veri, { adim } = {}) {
     gruplar,
     ayristirma: ayr,
     cpu_tlsli_pay: ayr && ayr.toplam ? ayr.tls / ayr.toplam : null,
-    loglar: Array.isArray(veri.loglar) ? veri.loglar.map((l) => ({ dosya: l.dosya, satir: l.satir, atlanan: l.atlanan })) : [],
+    loglar: !serbest && Array.isArray(veri.loglar) ? veri.loglar.map((l) => ({ dosya: l.dosya, satir: l.satir, atlanan: l.atlanan })) : [],
     sha256: veri.sha256 || null,
     okunan_bayt: typeof veri.okunanBayt === 'number' ? veri.okunanBayt : null,
   };

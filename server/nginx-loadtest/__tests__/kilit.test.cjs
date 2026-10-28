@@ -12,6 +12,10 @@
 //   YK11 casLock: suresi dolmus kilidi YALNIZ ise bagli degilse devralir (12 saat tavani haric)
 //   YK12 isinKilitleriniCoz: yalniz o isin dolu kilitleri; uzatma kisaltmaz
 //   YK13 durdurIsineBagla: kosunun kilit_id'li dolu kilitleri durdur isine baglanir, sure uzar
+//   YK14 tur 3 anahtarlari: serbest on kontrol de G alir, T|IP:<ip>; gecersiz IP / tur hata (sessiz
+//        T|NULL yok); doluKilitMesaji T|IP dali (G metni degismez)
+//   YK15 kilit alma ortasinda istisna: acquireLocks firlatir (alinani birakmaz, cagiran birakir);
+//        releaseLocks yalniz bu lock_id'li dolu satirlari birakir (yabanci kilit kalir)
 //
 // Sahte db kilit tablosunun ANLAMINI uygular: CAS kosulu SQL metninden okunur, yani WHERE'deki
 // bir kosulu silen degisiklik buradaki davranisi da degistirir (mutasyonla olculdu).
@@ -371,6 +375,37 @@ test('YK13 durdurIsineBagla: kosunun dolu kilitleri durdur isine baglanir, sure 
   assert.equal(db.sorgular.length, once);
 });
 
+test('YK14 tur 3 anahtarlari: serbest on kontrol de G alir, T|IP; gecersiz IP hata; dolu kilit mesaji', async () => {
+  // Sunucu hedefi: tur 2 ile ayni (IP anahtara girmez).
+  assert.deepEqual(kl.kilitAnahtarlari({ hedef: 'GBNGXT33', hedefIp: '10.0.0.9', yuk: 'GBNGXT34', kosu: true }), ['G|global', 'T|GBNGXT33', 'L|GBNGXT34']);
+  assert.deepEqual(kl.kilitAnahtarlari({ hedef: 'gbngxt33', hedefIp: '10.0.0.9', hedefTuru: 'sunucu', yuk: 'GBNGXT34' }), ['T|GBNGXT33', 'L|GBNGXT34']);
+  // Serbest hedef: on kontrolde DE G; T anahtari IP.
+  assert.deepEqual(kl.kilitAnahtarlari({ hedef: null, hedefIp: '10.20.30.40', hedefTuru: 'serbest', yuk: 'gbngxt34' }), ['G|global', 'T|IP:10.20.30.40', 'L|GBNGXT34']);
+  assert.deepEqual(kl.kilitAnahtarlari({ hedef: null, hedefIp: '10.20.30.40', hedefTuru: 'serbest', yuk: 'GBNGXT34', kosu: true }), ['G|global', 'T|IP:10.20.30.40', 'L|GBNGXT34']);
+  // Gecerli IPv4 yoksa anahtar URETILMEZ (sessiz T|NULL / T|IP: yok); taninmayan tur da hata.
+  for (const ip of [null, undefined, '', '10.20.30', ' 10.20.30.40', '10.20.30.40/24', 'GBNGXT33', '10.20.30.256']) {
+    assert.throws(() => kl.kilitAnahtarlari({ hedef: 'GBNGXT33', hedefIp: ip, hedefTuru: 'serbest', yuk: 'GBNGXT34' }), TypeError, String(ip));
+  }
+  assert.throws(() => kl.kilitAnahtarlari({ hedef: 'GBNGXT33', hedefTuru: 'lb', yuk: 'GBNGXT34' }), TypeError);
+  // Serbest anahtarlar ayni CAS ile alinir; ayni IP'ye ikinci is T|IP'de durur.
+  const db = kilitDb();
+  const s1 = kl.kilitAnahtarlari({ hedefIp: '10.20.30.40', hedefTuru: 'serbest', yuk: 'GBNGXT34' });
+  assert.equal((await AL(db, s1, 'a')).ok, true);
+  db.satirlar.get('G|global').held = 0;
+  db.satirlar.get('L|GBNGXT34').held = 0;
+  const r = await AL(db, kl.kilitAnahtarlari({ hedefIp: '10.20.30.40', hedefTuru: 'serbest', yuk: 'GBNGXT35' }), 'b');
+  assert.deepEqual([r.ok, r.busyKey], [false, 'T|IP:10.20.30.40']);
+  for (const s of db.sorgular) assert.doesNotMatch(s.q, /10\.20\.30\.40/, `IP SQL metninde: ${s.q}`);
+  // doluKilitMesaji: T|IP dali T| dalindan ONCE; G / T / L metinleri degismez.
+  assert.equal(
+    kl.doluKilitMesaji('T|IP:10.20.30.40', { holder: 'ali', target_desc: 'ön kontrol 10.20.30.40 (serbest) <- GBNGXT34 (wrk)', awx_job_id: 9 }),
+    "10.20.30.40 IP'sine yönelik başka bir iş var (ali: ön kontrol 10.20.30.40 (serbest) <- GBNGXT34 (wrk), AWX iş #9). İş bitince kilit kendiliğinden bırakılır.",
+  );
+  assert.equal(kl.doluKilitMesaji('G|global', { holder: 'ali', target_desc: 'ön kontrol 10.20.30.40 (serbest) <- GBNGXT34' }), 'Başka bir yük testi koşuyor (ali: ön kontrol 10.20.30.40 (serbest) <- GBNGXT34). İş bitince kilit kendiliğinden bırakılır.');
+  assert.equal(kl.doluKilitMesaji('T|GBNGXT33', null), 'GBNGXT33 üzerinde başka bir iş var. İş bitince kilit kendiliğinden bırakılır.');
+  assert.equal(kl.doluKilitMesaji('L|GBNGXT34', null), 'GBNGXT34 yük makinesi meşgul. İş bitince kilit kendiliğinden bırakılır.');
+});
+
 test('YK8 AWX sunucusunu kapatma ozeti suren yuk testini ve tutulan kilidi ENGEL sayar', async () => {
   const { _ENGELLER, bagimlilikOzeti } = require('../../ansible/awx-sunucu-bagimlilik.cjs');
   const e = _ENGELLER.find((x) => x.anahtar === 'kilit');
@@ -387,4 +422,29 @@ test('YK8 AWX sunucusunu kapatma ozeti suren yuk testini ve tutulan kilidi ENGEL
   const o = await bagimlilikOzeti(2, { db, env: {} });
   assert.equal(o.kapatilabilir, false);
   assert.ok(o.okunamayan.some((x) => x.anahtar === 'kilit'));
+});
+
+test('YK15 kilit alma ortasinda istisna: acquireLocks firlatir; releaseLocks yalniz bu lock_id\'li dolu satirlari birakir', async () => {
+  const db = kilitDb();
+  const keys = kl.kilitAnahtarlari({ hedefIp: '10.20.30.40', hedefTuru: 'serbest', yuk: 'GBNGXT34' });
+  // L baska bir isin; bu istek G'yi alir, T|IP satir garantisi gecici hata atar (deadlock kurbani).
+  assert.equal((await AL(db, ['L|GBNGXT34'], 'yabanci')).ok, true);
+  const asil = db.query;
+  let atildi = false;
+  db.query = async (sql, params = []) => {
+    if (!atildi && /^\s*IF NOT EXISTS/.test(sql) && params[0] === 'T|IP:10.20.30.40') {
+      atildi = true;
+      throw Object.assign(new Error('deadlock kurbani'), { number: 1205 });
+    }
+    return asil(sql, params);
+  };
+  await assert.rejects(AL(db, keys, 'ben'), /deadlock kurbani/);
+  db.query = asil;
+  // acquireLocks istisnada alinmisi BIRAKMAZ: birakma cagiranin (index.cjs kosuyuBaslat catch'i).
+  assert.deepEqual([db.satirlar.get('G|global').held, db.satirlar.get('G|global').lock_id], [1, 'ben']);
+  await kl.releaseLocks(db, keys, 'ben');
+  assert.equal(db.satirlar.get('G|global').held, 0, 'bu istegin G kilidi birakilmadi');
+  assert.deepEqual([db.satirlar.get('L|GBNGXT34').held, db.satirlar.get('L|GBNGXT34').lock_id], [1, 'yabanci'], 'yabanci kilit birakildi');
+  assert.equal(db.satirlar.has('T|IP:10.20.30.40'), false, 'fikstur: T|IP satiri yazilmamis olmali');
+  assert.equal((await AL(db, ['G|global'], 'sonraki')).ok, true, 'birakilan G yeniden alinamadi');
 });

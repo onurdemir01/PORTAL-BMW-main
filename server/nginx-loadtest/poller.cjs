@@ -19,6 +19,10 @@
 //      veri /sw'de) playbook isi dusurse de DONE + KISMI'dir.
 // OKUNAMADI != BASARISIZ != BASARI: AWX okunamazsa satir oldugu gibi kalir (sonraki tur); is bitti
 // ama sonuc okunamadiysa durum OKUNAMADI olur - ASLA DONE degil. Eksik artifact basari sayilmaz.
+// TUR 3 (hedef turu + motor): set_stats surum 2 `hedef_turu` / `motor` yankisi YALNIZ metinse satirla
+// karsilastirilir (farkliysa sonuc bu kosuya ait degil); null / yok (girdi reddi, eski playbook)
+// denetlenmez ki playbook'un "girdi reddedildi ..." metni kaybolmasin. Analiz turu ve motoru satirdan
+// alir; serbest kosuda sunucu dosyasi olmamasi okuma hatasi degildir (sonuc.cjs toleransli).
 // COKME DONGUSU KALKANI: /sw okumasi hata verirse satir FINALIZING kalir ve sonraki tur yeniden
 // dener (en cok 3 deneme); sayac 3'u gecmisse (surec okuma sirasinda olmus olabilir) /sw hic
 // okunmaz, satir OKUNAMADI olur. Admin "yeniden oku" ucuyla sayaci sifirlayabilir.
@@ -54,8 +58,9 @@ const VARSAYILAN_BUTCE_SN = 2700;
 const DENEME_NEDENI = 'sonuç 3 denemede okunamadı (Portal süreci okuma sırasında yeniden başlamış olabilir)';
 const OLAY_EKSIK_NEDENI = 'AWX olay işlemesi tamamlanmadı; arşivlenen çıktı eksik olabilir';
 const SW_YOK_NEDENI = "yük başlamadı ya da sonuçlar /sw'ye kopyalanmadı (playbook sw_dizin bildirmedi)";
-// tick ve tetikle AYNI kolonlari okur (sonuclandirma butceyi, satir yasini, deneme sayisini ister).
-const SONUCLANDIRMA_KOLONLARI = `id, islem, durum, awx_server_id, awx_job_id, parametreler, started_at, created_at, sonuclandirma_denemesi, kilit_id,
+// tick ve tetikle AYNI kolonlari okur (sonuclandirma butceyi, satir yasini, deneme sayisini, hedef
+// turunu ve motoru ister).
+const SONUCLANDIRMA_KOLONLARI = `id, islem, durum, awx_server_id, awx_job_id, parametreler, started_at, created_at, sonuclandirma_denemesi, kilit_id, hedef_turu, motor,
        DATEDIFF(SECOND, COALESCE(started_at, created_at), GETUTCDATE()) AS calisma_yas_sn`;
 
 let _timer = null;
@@ -123,12 +128,17 @@ function calismaYasiSn(kosu) {
 
 /**
  * set_stats -> maskeli nesne ya da null. Yayinlanan sonuc BU kosuya ait degilse (run_id / islem
- * tutmuyor) KULLANILMAZ: baska bir isin sonucunu bu kosuya yazmak sessiz yanlistir.
+ * tutmuyor; metin olarak yayinlanmis hedef_turu / motor satirdan farkli) KULLANILMAZ: baska bir
+ * isin sonucunu bu kosuya yazmak sessiz yanlistir. Yanki null ya da yoksa denetlenmez.
  */
 function statsNormalle(ham, kosu) {
   if (!ham || typeof ham !== 'object' || Array.isArray(ham)) return { stats: null, uyusmazlik: null };
   if (String(ham.run_id ?? '') !== String(kosu.id)) return { stats: null, uyusmazlik: `run_id ${String(ham.run_id ?? '?').slice(0, 20)}` };
   if (String(ham.islem ?? '') !== String(kosu.islem)) return { stats: null, uyusmazlik: `islem ${String(ham.islem ?? '?').slice(0, 20)}` };
+  if (typeof ham.hedef_turu === 'string' && ham.hedef_turu !== (kosu.hedef_turu || 'sunucu')) {
+    return { stats: null, uyusmazlik: `hedef_turu ${ham.hedef_turu.slice(0, 20)}` };
+  }
+  if (typeof ham.motor === 'string' && ham.motor !== (kosu.motor || 'k6')) return { stats: null, uyusmazlik: `motor ${ham.motor.slice(0, 20)}` };
   let s = maskeleDerin(ham);
   s.durum = String(s.durum ?? '').trim().toUpperCase();
   if (JSON.stringify(s).length > SONUC_MAX_BAYT && s.kosu && typeof s.kosu === 'object') {
@@ -263,8 +273,11 @@ async function kosuKarari(kosu, st, stats, uyusmazlik, { deneme = OKUMA_DENEME_S
     ekNedenler.push(`playbook başka bir dizin bildirdi (${String(kosuBolumu.sw_dizin).slice(0, 200)}); Portal ${dizin} dizinini okudu`);
   }
   if (stats.durum === 'DUR') ekNedenler.push('koşu erken durdu (DUR)');
+  // Tur ve motor satirdan (set_stats yankisindan degil); eski satir: DB varsayilani sunucu / k6.
+  const hedefTuru = kosu.hedef_turu || 'sunucu';
+  const motor = kosu.motor || 'k6';
   const kosRc = kosuBolumu ? SAYI(kosuBolumu.kos_rc) : null;
-  if (kosRc !== null && kosRc !== 0) ekNedenler.push(`kos.sh rc=${kosRc}`);
+  if (kosRc !== null && kosRc !== 0) ekNedenler.push(`${motor === 'wrk' ? 'wrk_kos.sh' : 'kos.sh'} rc=${kosRc}`);
   const basarili = kosuBasarili(st.status, stats.durum);
   const hataMetni = `AWX işi başarısız (${st.status}${stats.hata ? `: ${String(stats.hata).slice(0, 300)}` : ''})`;
 
@@ -278,7 +291,7 @@ async function kosuKarari(kosu, st, stats, uyusmazlik, { deneme = OKUMA_DENEME_S
   let okumaHatasi = null;
   try {
     const veri = await cModulu('sonuc.cjs').kosuDiziniOku(dizin, { adim: `R${id}` });
-    analiz = analizNormalle(await cModulu('analiz.cjs').kosuAnaliz(veri, { adim: `R${id}` }));
+    analiz = analizNormalle(await cModulu('analiz.cjs').kosuAnaliz(veri, { adim: `R${id}`, hedefTuru, motor }));
   } catch (e) {
     okumaHatasi = `sonuç dizini okunamadı/çözümlenemedi: ${maskele(e && e.message).slice(0, 400)}`;
   }

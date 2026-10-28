@@ -6,8 +6,10 @@
 // sikistirma tespiti, handleSummary CSV kolonlari, dropped/5xx'in yalniz olcum fazindan okunmasi) +
 // Portal farklari: User-Agent oneki UA_ONEK (varsayilan portal-yuktesti), HOST_BASLIGI ZORUNLU (GLOMO
 // varsayilani yok), SNI'da hosts eslemesi HOST_BASLIGI ile.
+// K7: k6 ve wrk istemci dosyalari ayni semayi tasir: ozet_hesapla ciktisinin anahtar sirasi = wrk_kos.sh
+// JSON_ANAHTARLARI (wrk_kos.sh'in awk bicimleyicisi bu sirayla yazar; Portal okuyucusu iki motorda tek).
 // Gercek k6 davranisini (TLS, HTTP/1.1, esik iptali) DOGRULAMAZ; o kisim ilk kanarya kosusunda gorulur.
-// YUK_K6: mutasyon kopyasi (verilmezse aynadaki betik).
+// YUK_K6 / WRK_KOS: mutasyon kopyalari (verilmezse aynadaki betikler).
 'use strict';
 
 const { test, before, after } = require('node:test');
@@ -20,6 +22,8 @@ const { pathToFileURL } = require('node:url');
 const BETIK =
   process.env.YUK_K6 || path.join(__dirname, '..', 'bmw_portal', 'nginx_loadtest', 'files', 'yuk_k6.js');
 const KAYNAK = fs.readFileSync(BETIK, 'utf8');
+const WRK_KOS =
+  process.env.WRK_KOS || path.join(__dirname, '..', 'bmw_portal', 'nginx_loadtest', 'files', 'wrk_kos.sh');
 let GECICI;
 let SENARYO;
 let KOTU;
@@ -248,4 +252,24 @@ test('K6 sinirlar ve girdi dogrulamasi; SNI=1 hosts eslemesi HOST_BASLIGI ile', 
   sahte.cagrilar = [];
   sni.olcum();
   assert.ok(sahte.cagrilar[0].u.startsWith('https://vhost.test.example/'), sahte.cagrilar[0].u);
+});
+
+test('K7 ozet_hesapla anahtar sirasi = wrk_kos.sh JSON_ANAHTARLARI (iki motorun istemci JSON semasi ayni)', async () => {
+  const m = await yukle(temel());
+  const jsonAnahtarlari = (fs.readFileSync(WRK_KOS, 'utf8').match(/^JSON_ANAHTARLARI="([^"]*)"$/m) || [])[1];
+  assert.ok(jsonAnahtarlari, 'wrk_kos.sh JSON_ANAHTARLARI satiri okunamadi');
+  const bos = Object.keys(m.ozet_hesapla({ metrics: {} }));
+  const dolu = Object.keys(
+    m.ozet_hesapla({
+      metrics: { 'http_reqs{scenario:olcum}': { values: { count: 10 } }, 'data_received{scenario:olcum}': { values: { count: 100 } } },
+      setup_data: { sikistirma_turu: 'STATIK' },
+    }),
+  );
+  assert.deepEqual(bos, jsonAnahtarlari.split(' '), 'ozet_hesapla (bos metrik) anahtar sirasi');
+  assert.deepEqual(dolu, bos, 'anahtar sirasi metrik dolulugundan bagimsiz');
+  // handleSummary'nin yazdigi JSON da ayni sirada (wrk_kos.sh JSON'u bununla karsilastirilir)
+  const cikti = m.handleSummary({ metrics: {} });
+  const json = Object.entries(cikti).find(([ad]) => ad.endsWith('.json'));
+  assert.ok(json, 'handleSummary JSON yazmadi');
+  assert.deepEqual(Object.keys(JSON.parse(json[1])), bos);
 });

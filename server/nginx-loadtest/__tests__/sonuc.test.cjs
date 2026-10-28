@@ -24,6 +24,8 @@
 //   SN19 satir tavanlari: zaman/baslatilan 2000, istemci/hatali 100, sunucu 20000, diger 20000 saniye,
 //        bilgi uyari=/gecersiz= 2000 -> asilinca dosya adiyla OKUNAMADI; log= tavansiz (her *.log bir satir)
 //   SN20 faz kodu haritasi 256 adla sinirli (cikti ayni)
+//   SN21 wrk_kos.sh bicimli istemci CSV'si (tur 3, 5.4) serbest kosu dizininden okunur: olculmeyen hucreler ''
+//        kalir ve analizde null olur (asla 0), http2 olculmus 0; JSON eslesi listelenir ve dogrulanir
 'use strict';
 
 const { test, after } = require('node:test');
@@ -38,7 +40,9 @@ const { pipeline } = require('node:stream/promises');
 
 const sonuc = require('../sonuc.cjs');
 const { kosuDiziniOku } = sonuc;
+const { kosuAnaliz } = require('../analiz.cjs');
 const { Kurgu, standart, portalDuzeniYaz, KOLON, tl } = require('./fixtures/kurgu.cjs');
+const { WRK_ORNEK, JSON_ANAHTARLARI, WRK_OLCULMEYEN, wrkIstemci, wrkOrnekDosyalari } = require('./fixtures/wrk-serbest.cjs');
 
 const KOK = fs.mkdtempSync(path.join(os.tmpdir(), 'yuktesti-sonuc-'));
 after(() => fs.rmSync(KOK, { recursive: true, force: true }));
@@ -478,4 +482,40 @@ test('SN20 faz kodu haritasi 256 adla sinirli (UA faz alani sinirsiz farkli olab
   assert.deepEqual([...faz.slice(253, 258)], [253, 254, 255, 255, 255]);
   assert.deepEqual([faz[1000], faz[1001]], [255, 3]);
   assert.equal(b.fazlar[255], 'f255');
+});
+
+test('SN21 wrk_kos.sh bicimli istemci CSV si serbest kosu dizininden okunur; bos hucreler analizde null, http2 0', async () => {
+  const d = portalDuzeniYaz(path.join(KOK, 'wrk21'), wrkOrnekDosyalari());
+  const v = await kosuDiziniOku(d, { adim: 'R70' });
+  // Serbest dizini: yalniz yuk makinesinin dosyalari; eksik sunucu dosyalari hata ya da uyari DEGIL.
+  assert.deepEqual(v.dosyalar.map((x) => x.ad),
+    ['SHA256SUMS', 'baslatilan.csv', 'istemci_R70_K_ka_br_4_r1.csv', 'istemci_R70_K_ka_br_4_r1.json', 'zaman.csv']);
+  assert.deepEqual(v.sha256, { durum: 'dogrulandi', dosya_sayisi: 4 }, 'JSON eslesi de SHA256SUMS ile dogrulanir');
+  assert.deepEqual([v.kesitler, v.loglar, v.diger.size, v.log.turlar.size, v.not, v.uyarilar], [[], [], 0, 0, '', []]);
+  assert.deepEqual(v.istemci.map((x) => x.dosya), ['istemci_R70_K_ka_br_4_r1.csv'], 'JSON ayristirilmaz (yalniz listelenir)');
+  const s = v.istemci[0].satir;
+  assert.deepEqual(Object.keys(s), KOLON);
+  for (const k of WRK_OLCULMEYEN) assert.equal(s[k], '', `${k}: bos hucre`);
+  assert.deepEqual([s.hiz, s.n_olcum, s.rps_gercek, s.p50, s.p95, s.p99, s.hata_orani, s.http2, s.bayt_istek, s.sikistirma_turu],
+    ['4', '22812', '190.1', '12.346', '25.512', '40.125', '0', '0', '1534.47', 'STATIK']);
+  // Fikstur ornegi 5.4 bicimine uyar: JSON anahtar sirasi JSON_ANAHTARLARI (ayni 30 ad), olculmeyen null,
+  // sayilar yuvarlanmamis; AN fiksturlerinin ureteci ayni baytlari uretir.
+  const j = JSON.parse(WRK_ORNEK.json);
+  assert.deepEqual(Object.keys(j), JSON_ANAHTARLARI);
+  assert.deepEqual([...Object.keys(j)].sort(), [...KOLON].sort());
+  for (const k of WRK_OLCULMEYEN) assert.equal(j[k], null, `json ${k}`);
+  assert.deepEqual([j.http2, j.hata_orani, j.bayt_istek], [0, 0.000350692617920393, 1534.46962125197]);
+  assert.deepEqual(wrkIstemci(WRK_ORNEK.satir), { csv: WRK_ORNEK.csv, json: WRK_ORNEK.json });
+  // Analizde bos hucre null (asla 0): serbest + wrk ve varsayilan (sunucu + k6) okumada ayni istemci alanlari.
+  for (const secenek of [{ hedefTuru: 'serbest', motor: 'wrk' }, {}]) {
+    const a = kosuAnaliz(v, { adim: 'R70', ...secenek });
+    const yer = JSON.stringify(secenek);
+    assert.equal(a.adimlar.length, 1, yer);
+    const x = a.adimlar[0];
+    for (const k of ['ttfb_p95', 'tls_p95', 'connect_p95', 'dropped']) assert.equal(x[k], null, `${yer} ${k}`);
+    for (const k of ['p95_js', 'p95_css', 'p95_html', 'p95_json', 'p95_config', 'p95_buyuk']) assert.equal(x.ham[k], null, `${yer} ham.${k}`);
+    assert.deepEqual([x.tur, x.hiz, x.kip, x.n_istek, x.gercek_rps, x.p50, x.p95, x.p99, x.hata_orani, x.bayt_istek, x.ham.http2, x.sikistirma_turu, x.deneme],
+      ['R70_K_ka_br_4_r1', 4, 'ka', 22812, 190.1, 12.346, 25.512, 40.125, 0, 1534.47, 0, 'STATIK', 1], yer);
+    assert.equal(x.gecerlilik, 'GECERLI', `${yer}: ${x.nedenler}`);
+  }
 });

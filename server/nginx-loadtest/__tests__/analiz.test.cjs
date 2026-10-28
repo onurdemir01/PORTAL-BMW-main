@@ -19,12 +19,24 @@
 //   AN10 TUR uyarilari kosu duzeyi uyarilar'da "<tur>: <uyari>" (sonda, adim sirasiyla; S6 / analiz-2)
 //   AN11 TUR uyarisi tavani 40 + ozet satiri; HATALI satirlar dahil; tekillestirme tavandan once
 //   AN12 suzgecli (poller: adim) ve suzgecsiz okuma fiksturlerde ayni analizi verir
+// Tur 3 (hedef turu sunucu | serbest, yuk araci k6 | wrk; analiz.cjs PORTAL FARKLARI 8 / 9):
+//   AN13 serbest: yalniz istemci; CPU / log alanlari null, sunucu_olcumu_yok (iki eski uyari yok), sunucu
+//        TUR uyarilari yok, 429 / 5xx / hata / http2 / rc istemciden, k6 dropped -> DOYMA
+//   AN14 serbest + dizinde sunucu dosyalari: hepsi yok sayilir (sonuc yalniz-istemci diziniyle BIREBIR) + uyari
+//   AN15 wrk: wrk_rc= etiketi, dropped null -> DOYMA yok, sunucuda host CPU > %90 DOYMA, http2 0 gecerli
+//   AN16 kararVer: farkli yuk araci ve (wrk) farkli is parcacigi sayisi / farkli hiz tavani (tavan_rps) VERI_YOK + neden
+//   AN17 kararVer CPU'suz yol: serbest ya da wrk+wrk (kaydedici eksik) -> RET / NOTR, ASLA KALICI; doyma
+//        DOYMA; k6+k6 sunucu+sunucu bugunku VERI_YOK
+//   AN18 wrk metin birimleri ("baglanti kademesinde") ve istemci bayt etiketi; k6 metinleri aynen
+//   AN19 secenek dogrulamasi (TypeError); varsayilanlarla cikti tur 3 oncesiyle BAYT BAYT ayni (altin ozet)
+//   AN20 wrk: ayristirma ve cpu_tlsli_pay null; 'yeni' kipinde wrk_tls_payi_hesaplanmaz uyarisi, ka ve k6'da yok
 // Python karsilastirmasi (AN1-AN5) kosu duzeyi `uyarilar`i KAPSAMAZ (karsilastir.py'de kosu duzeyi
 // uyari listesi yok); TUR uyarilari AN2'de ham.uyarilar uzerinden metin olarak karsilastirilir.
 'use strict';
 
 const { test, after } = require('node:test');
 const assert = require('node:assert/strict');
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -33,6 +45,7 @@ const sonuc = require('../sonuc.cjs');
 const { kosuAnaliz, kararVer, ayristirma, NEDENLER, _pyForTest: py, _adimUyarilariniKatForTest: uyariKat } = require('../analiz.cjs');
 const { ADIMLAR, KARARLAR } = require('./fixtures/senaryolar.cjs');
 const { parmakIzi, portalDuzeniYaz, standart, Kurgu } = require('./fixtures/kurgu.cjs');
+const { WRK_OLCULMEYEN, wrkKosu, wrkDosyalari, serbestDosyalari } = require('./fixtures/wrk-serbest.cjs');
 const BEKLENEN = require('./fixtures/karsilastir-beklenen.json');
 
 const KOK = fs.mkdtempSync(path.join(os.tmpdir(), 'yuktesti-analiz-'));
@@ -512,4 +525,427 @@ test('AN12 suzgecli (poller: adim) ve suzgecsiz okuma fiksturlerde ayni analizi 
     assert.ok(!x.veri.uyarilar.some((u) => u.startsWith('log_baska_adim_satiri')), `${a.ad}: elenen satir olmamali`);
     assert.deepEqual(kosuAnaliz(await sonuc.kosuDiziniOku(x.dizin), { adim: a.ad }), x.analiz, a.ad);
   }
+});
+
+// ---------------------------------------------------------------------------------------------
+// Tur 3: hedef turu (sunucu | serbest) ve yuk araci (k6 | wrk) -- analiz.cjs PORTAL FARKLARI 8 / 9
+// ---------------------------------------------------------------------------------------------
+
+const SERBEST_UYARI = 'sunucu_olcumu_yok(serbest_hedef)';
+const WRK_TLS = 'wrk_tls_payi_hesaplanmaz(oturum_devami_ya_da_tls13_olabilir)';
+const CPU_YOK_SERBEST = 'CPU olculmedi (serbest hedef): KALICI verilmez; karar p95 ve hata oranina gore';
+const CPU_YOK_WRK = 'CPU olculmedi (wrk, sunucu kaydi eksik): KALICI verilmez; karar p95 ve hata oranina gore';
+// Sunucu verisine dayanan TUR uyarilari: serbest hedefte HIC uretilmez.
+const SUNUCU_TUR_UYARISI = /^(log_satiri_yok|sunucu_kaydi_yok|sunucu_logunda_bu_tur_yok|pencerede_ornek_yok|arka_plan_)/;
+// Sunucu verisinden gelen adim alanlari (ust duzey ve ham): serbest hedefte hepsi null (olculmedi, 0 DEGIL).
+const SUNUCU_ALANLARI = ['cpu_ms_istek', 'host_cpu_ort', 'kapasite_rps', 'rps_sunucu', 'istek_sunucu', 'srt_p50', 'srt_p95', 'srt_p99'];
+const SUNUCU_HAM = ['kesit', 'n_log_olcum', 'n_429_sunucu', 'n_5xx_sunucu', 'log_istemci_fark_yuzde', 'pencere_sn', 'user_ms',
+  'sys_ms', 'cpu_oran_ms_sn', 'arka_ms_sn', 'host_cpu_max', 'diger_rps', 'govde_bayt_istek', 'yeniden_baglanti_yuzde'];
+const WRK = { refMotor: 'wrk', adayMotor: 'wrk' };
+
+let t3Sira = 0;
+/** Tur 3 kurgusu: dosyalar (`donustur` ile wrk / serbest bicimine) -> Portal duzeni -> okuma -> secenekli analiz. */
+async function t3Analiz(k, { dosya = {}, donustur = (d) => d, secenek = {} } = {}) {
+  const dizin = portalDuzeniYaz(path.join(KOK, `t3-${k.adim}-${++t3Sira}`), donustur(k.dosyalar(dosya)));
+  const veri = await sonuc.kosuDiziniOku(dizin, { adim: k.adim });
+  return { veri, analiz: kosuAnaliz(veri, { adim: k.adim, ...secenek }) };
+}
+const turla = (an) => new Map(an.adimlar.map((a) => [a.tur, a]));
+function aciklamali(an) {
+  for (const a of an.adimlar) for (const n of a.nedenler) assert.ok(NEDENLER.some((d) => n.startsWith(d.onek)), `aciklamasiz neden: ${n}`);
+}
+
+/** wrk kosusu: 2 / 4 / 8 baglanti x 2 tekrar, ka kipi; `kosuEk(n, r)` kosu ayarini degistirir. */
+function wrkKurgu(ad, kosuEk = null) {
+  const k = new Kurgu(ad);
+  for (const n of [2, 4, 8]) for (const r of [1, 2]) wrkKosu(k, { kip: 'ka', hiz: n, r, ...(kosuEk ? kosuEk(n, r) : {}) });
+  return k;
+}
+/** wrk bicimli dosyalarla sunucu kipinde motor wrk analizi; adim satirlarini dondurur. */
+async function wrkAdimlari(k, { dosya = {} } = {}) {
+  return (await t3Analiz(k, { dosya, donustur: (d) => wrkDosyalari(k, d), secenek: { motor: 'wrk' } })).analiz.adimlar;
+}
+/** Serbest k6 kosusu (yalniz yuk makinesi dosyalari): 50 / 100 / 200 istek/sn x 2 tekrar. */
+async function serbestK6(ad, kosuEk) {
+  const k = standart(ad, { hizlar: [50, 100, 200], kosuEk });
+  return (await t3Analiz(k, { donustur: serbestDosyalari, secenek: { hedefTuru: 'serbest' } })).analiz.adimlar;
+}
+
+test('AN13 serbest: yalniz istemci olcumu; CPU / log alanlari null, sunucu_olcumu_yok, sunucu uyarilari yok, istemci kurallari calisir', async () => {
+  const k = new Kurgu('R71');
+  for (const r of [1, 2]) k.kosu({ hiz: 50, r });
+  k.kosu({ hiz: 100, r: 1, n429: 3 });
+  k.kosu({ hiz: 100, r: 2, istemciAlan: { n_5xx: 2 } });
+  k.kosu({ hiz: 200, r: 1, hata: 0.002 });
+  k.kosu({ hiz: 200, r: 2, istemciAlan: { http2: 1 } });
+  k.kosu({ hiz: 300, r: 1, dropped: 5 });
+  k.kosu({ hiz: 300, r: 2, hatali: true });
+  const { veri, analiz: a } = await t3Analiz(k, { donustur: serbestDosyalari, secenek: { hedefTuru: 'serbest' } });
+  assert.ok(veri.dosyalar.every((d) => /^(?:(?:hatali_)?istemci_|zaman\.csv$|baslatilan\.csv$|SHA256SUMS$)/.test(d.ad)),
+    `fikstur: serbest dizininde yalniz yuk makinesi dosyalari: ${veri.dosyalar.map((d) => d.ad).join(' ')}`);
+  const t = turla(a);
+  // Gecerlilik yalniz istemci kurallarindan; 429 / 5xx nedeninde sunucu sayisi YOK (olculmedi). (Hata orani
+  // istemci CSV'sinde 3 haneye yuvarlidir: 3/1200 -> 0.003.)
+  const bekle = {
+    R71_K_yeni_br_50_r1: ['GECERLI', []],
+    R71_K_yeni_br_50_r2: ['GECERLI', []],
+    R71_K_yeni_br_100_r1: ['GECERSIZ', ['429(istemci=3)', 'hata_%0.30(>%0.1)']],
+    R71_K_yeni_br_100_r2: ['GECERSIZ', ['5xx(istemci=2)']],
+    R71_K_yeni_br_200_r1: ['GECERSIZ', ['hata_%0.20(>%0.1)']],
+    R71_K_yeni_br_200_r2: ['GECERSIZ', ['http2']],
+    R71_K_yeni_br_300_r1: ['DOYMA', ['doyma:dropped=5']],
+    R71_K_yeni_br_300_r2: ['HATALI', ['hatali_kosu(kos.sh_durdurdu)', 'k6_rc=99']],
+  };
+  assert.deepEqual([...t.keys()].sort(), Object.keys(bekle).sort());
+  for (const [tur, [gecerlilik, nedenler]] of Object.entries(bekle)) {
+    assert.equal(t.get(tur).gecerlilik, gecerlilik, tur);
+    assert.deepEqual(t.get(tur).nedenler, nedenler, tur);
+  }
+  for (const s of a.adimlar) {
+    for (const f of SUNUCU_ALANLARI) assert.equal(s[f], null, `${s.tur}.${f}`);
+    for (const f of SUNUCU_HAM) assert.equal(s.ham[f], null, `${s.tur}.ham.${f}`);
+    assert.equal(s.ham.pencere_kaynak, '-', `${s.tur}: serbestte olcum penceresi kurulmaz`);
+    assert.ok(!s.ham.uyarilar.some((u) => SUNUCU_TUR_UYARISI.test(u)), `${s.tur}: ${s.ham.uyarilar}`);
+  }
+  // Istemci alanlari aynen (null yalniz olculmeyende).
+  const g = t.get('R71_K_yeni_br_50_r1');
+  assert.deepEqual([g.p95, g.n_istek, g.gercek_rps, g.bayt_istek, g.ttfb_p95, g.deneme], [50, 1200, 20, 10000, 40, 1]);
+  // Kosu uyarilari: tam liste; sunucu_kaydi_yok(cpu_olculmedi) / sunucu_logu_yok(...) YERINE tek uyari.
+  assert.deepEqual(a.uyarilar, [SERBEST_UYARI, 'R71_K_yeni_br_300_r1: dropped_iterations=5']);
+  assert.equal(a.gecerlilik, 'KISMI');
+  assert.equal(a.nedenler.length, 5);
+  assert.deepEqual([a.ozet.nproc, a.ozet.kesitler, a.ozet.loglar, a.ozet.ayristirma, a.ozet.cpu_tlsli_pay], [null, [], [], null, null]);
+  assert.ok(a.ozet.gruplar.every((x) => x.cpu_ms_istek === null && x.host_cpu_ort === null && x.kapasite_tahmini_rps === null));
+  // Ayni dizin sunucu kipinde (varsayilan) bugunku gibi: iki eski uyari, sunucu sayili metin, sunucu TUR uyarilari.
+  const s = kosuAnaliz(veri, { adim: 'R71' });
+  assert.deepEqual(s.uyarilar.slice(0, 2), ['sunucu_kaydi_yok(cpu_olculmedi)', 'sunucu_logu_yok(log_istemci_karsilastirmasi_yapilmadi)']);
+  assert.ok(!s.uyarilar.includes(SERBEST_UYARI));
+  assert.deepEqual(turla(s).get('R71_K_yeni_br_100_r1').nedenler, ['429(istemci=3,sunucu=0)', 'hata_%0.30(>%0.1)']);
+  assert.ok(s.adimlar.every((x) => x.ham.uyarilar.includes('log_satiri_yok:pencere_istemci_saatinden')));
+  assert.deepEqual(Object.keys(a.ozet), Object.keys(s.ozet), 'ozet semasi degismez');
+  assert.deepEqual(Object.keys(a.adimlar[0]), Object.keys(s.adimlar[0]), 'adim semasi degismez');
+  aciklamali(a);
+});
+
+test('AN14 serbest: dizindeki sunucu dosyalari (kesit, bilgi, log, diger) yok sayilir ve tek uyariyla soylenir; sonuc yalniz-istemci diziniyle ayni', async () => {
+  const yap = () => {
+    const k = standart('R72', {
+      ru: 22,
+      hizlar: [100, 250],
+      kosuEk: (h, r) => {
+        if (h === 100 && r === 2) return { n429: 3, istemciAlan: { n_429: 0, hata_orani: 0 } }; // 429 yalniz sunucu logunda
+        if (h === 250 && r === 1) return { host: 760 }; // host CPU %95
+        if (h === 250 && r === 2) return { fark: 1.05 }; // log / istemci farki %5
+        return {};
+      },
+    });
+    k.digerEkle(k.t0, k.t, 1);
+    return k;
+  };
+  const tam = await t3Analiz(yap(), { secenek: { hedefTuru: 'serbest' } });
+  const yalniz = await t3Analiz(yap(), { donustur: serbestDosyalari, secenek: { hedefTuru: 'serbest' } });
+  // Sunucu dosyalari gercekten veri tasiyor: ayni dizin sunucu kipinde CPU, DOYMA, 429 ve log farki gorur.
+  const sun = turla(kosuAnaliz(tam.veri, { adim: 'R72' }));
+  assert.equal(sun.get('R72_K_yeni_br_250_r1').gecerlilik, 'DOYMA');
+  assert.deepEqual(sun.get('R72_K_yeni_br_100_r2').nedenler, ['429(istemci=0,sunucu=3)']);
+  assert.deepEqual(sun.get('R72_K_yeni_br_250_r2').nedenler, ['log_istemci_farki_%4.8']);
+  assert.ok(sun.get('R72_K_yeni_br_100_r1').cpu_ms_istek > 0);
+  // Serbest kipte hicbiri etkilemez: adim satirlari yalniz-istemci diziniyle BIREBIR, hepsi GECERLI.
+  assert.deepEqual(tam.analiz.adimlar, yalniz.analiz.adimlar);
+  assert.ok(tam.analiz.adimlar.every((x) => x.gecerlilik === 'GECERLI' && x.cpu_ms_istek === null && x.istek_sunucu === null));
+  assert.deepEqual([tam.analiz.gecerlilik, tam.analiz.nedenler], ['GECERLI', []]);
+  const sunucuDosyasi = tam.veri.dosyalar.map((d) => d.ad).filter((ad) => /^(sunucu|bilgi|log|diger)_/.test(ad));
+  assert.deepEqual(sunucuDosyasi, ['bilgi_R72_test.txt', 'diger_R72_test.tsv', 'log_R72_test.tsv.gz', 'sunucu_R72_test.csv']);
+  assert.deepEqual(tam.analiz.uyarilar, ['serbest_kosuda_sunucu_dosyalari_yok_sayildi(4)', SERBEST_UYARI]);
+  assert.deepEqual(yalniz.analiz.uyarilar, [SERBEST_UYARI]);
+  // ozet: kesit / log / nproc yok; geri kalani (okunan bayt, sha ozeti ve NOT.txt disinda) ayni.
+  const ozetKiyas = (o) => ({ ...o, okunan_bayt: null, sha256: null, not: null });
+  assert.deepEqual(ozetKiyas(tam.analiz.ozet), ozetKiyas(yalniz.analiz.ozet));
+  assert.deepEqual([tam.analiz.ozet.kesitler, tam.analiz.ozet.loglar, tam.analiz.ozet.nproc], [[], [], null]);
+  // Dosya listesi olmayan (bellekte kurulmus) veri: en az kesit + log + diger kaynagi kadar sayilir.
+  const bellek = kosuAnaliz({ ...tam.veri, dosyalar: undefined }, { adim: 'R72', hedefTuru: 'serbest' });
+  assert.deepEqual(bellek.uyarilar, ['serbest_kosuda_sunucu_dosyalari_yok_sayildi(3)', SERBEST_UYARI]);
+  assert.deepEqual(bellek.adimlar, yalniz.analiz.adimlar);
+});
+
+test('AN15 wrk: rc etiketi wrk_rc=, dropped olculmez (null, DOYMA yok), sunucuda host CPU > %90 DOYMA aynen, http2 0 gecerli', async () => {
+  const k = new Kurgu('R73');
+  for (const n of [2, 4]) for (const r of [1, 2]) wrkKosu(k, { kip: 'ka', hiz: n, r, host: n === 4 && r === 2 ? 760 : 400 });
+  wrkKosu(k, { kip: 'ka', hiz: 8, r: 1, hatali: true });
+  const { veri, analiz: a } = await t3Analiz(k, { donustur: (d) => wrkDosyalari(k, d), secenek: { motor: 'wrk' } });
+  const ist = veri.istemci.find((x) => x.satir.tur === 'R73_K_ka_br_2_r1').satir;
+  for (const f of WRK_OLCULMEYEN) assert.equal(ist[f], '', `fikstur: wrk CSV'sinde ${f} bos hucre`);
+  assert.equal(ist.http2, '0');
+  const t = turla(a);
+  for (const tur of ['R73_K_ka_br_2_r1', 'R73_K_ka_br_2_r2', 'R73_K_ka_br_4_r1']) {
+    const s = t.get(tur);
+    assert.equal(s.gecerlilik, 'GECERLI', `${tur}: ${s.nedenler}`);
+    assert.deepEqual(s.nedenler, []);
+    for (const f of ['dropped', 'ttfb_p95', 'tls_p95', 'connect_p95']) assert.equal(s[f], null, `${tur}.${f}: olculmedi (0 DEGIL)`);
+    for (const f of ['p95_js', 'p95_css', 'p95_html', 'p95_json', 'p95_config', 'p95_buyuk']) assert.equal(s.ham[f], null, `${tur}.ham.${f}`);
+    assert.equal(s.ham.http2, 0);
+    assert.ok(s.cpu_ms_istek > 0, `${tur}: sunucu kipinde CPU olculur`);
+    assert.ok(!s.ham.uyarilar.some((u) => u.startsWith('dropped_iterations')), `${tur}: ${s.ham.uyarilar}`);
+  }
+  assert.equal(t.get('R73_K_ka_br_4_r2').gecerlilik, 'DOYMA');
+  assert.deepEqual(t.get('R73_K_ka_br_4_r2').nedenler, ['doyma:host_cpu_%95.0(>%90)']);
+  const h = t.get('R73_K_ka_br_8_r1');
+  assert.equal(h.gecerlilik, 'HATALI');
+  assert.deepEqual(h.nedenler, ['hatali_kosu(kos.sh_durdurdu)', 'wrk_rc=99']);
+  // Ayni veri k6 diye okunursa etiket k6_rc= (bugunku); TEK fark etiket (ka kipi: TLS kurali devreye girmez).
+  const k6 = kosuAnaliz(veri, { adim: 'R73' });
+  assert.deepEqual(turla(k6).get('R73_K_ka_br_8_r1').nedenler, ['hatali_kosu(kos.sh_durdurdu)', 'k6_rc=99']);
+  assert.equal(JSON.stringify(k6.adimlar).replaceAll('k6_rc=', 'wrk_rc='), JSON.stringify(a.adimlar));
+  assert.deepEqual(a.uyarilar, k6.uyarilar);
+  assert.ok(!a.uyarilar.includes(WRK_TLS), 'ka kipinde TLS payi uyarisi yok');
+  assert.deepEqual(NEDENLER.find((d) => d.onek === 'wrk_rc'),
+    { onek: 'wrk_rc', anlam: 'wrk hata koduyla bitti.', cozum: 'Is ciktisindaki wrk mesajina bakin; kosuyu tekrarlayin.' });
+  assert.equal(NEDENLER.find((d) => d.onek === 'hatali_kosu').anlam,
+    "kos.sh / wrk_kos.sh bu TUR'u durdurdu (429 / 5xx / soket / hata orani / http2 / hata kodu / olcum yok).");
+  aciklamali(a);
+});
+
+test('AN16 kararVer: farkli yuk araci (k6 / wrk), farkli is parcacigi sayisi ve farkli hiz tavani (wrk) VERI_YOK; ilk satir degismez', async () => {
+  const m = await hazirla();
+  const r10 = m.get('R10').analiz.adimlar;
+  const r11 = m.get('R11').analiz.adimlar;
+  const ilk = 'referans=R10 aday=R11 senaryo=K kip=yeni ae=br';
+  for (const [refMotor, adayMotor] of [['k6', 'wrk'], ['wrk', 'k6']]) {
+    const x = kararVer(r10, r11, { refMotor, adayMotor });
+    assert.equal(x.karar, 'VERI_YOK');
+    assert.deepEqual(x.nedenler, [ilk,
+      `farkli yuk araci: referans ${refMotor}, aday ${adayMotor}; k6 (acik dongu, istek/sn) ve wrk (kapali dongu, baglanti) sonuclari karsilastirilmaz`]);
+    assert.deepEqual(Object.keys(x), ['karar', 'nedenler', 'tablo', 'kademe', 'kombinasyon']);
+    assert.equal(x.tablo.length, 3, 'tablo yine kurulur');
+  }
+  // Motor farki adim eksikliginden ONCE denetlenir; serbest + sunucu farki VERI_YOK DEGIL (AN17: CPU'suz yol).
+  assert.match(kararVer([], [], { refMotor: 'wrk' }).nedenler[1], /^farkli yuk araci: referans wrk, aday k6;/);
+  assert.notEqual(kararVer(r10, r11, { adayHedefTuru: 'serbest' }).karar, 'VERI_YOK');
+  // wrk + wrk: is parcacigi farki VERI_YOK (sayi metin olarak da gelebilir); ayni ya da bilinmeyen (null) -> karar verilir.
+  for (const [refIsParcacigi, adayIsParcacigi] of [[2, 4], ['2', '4']]) {
+    const x = kararVer(r10, r11, { ...WRK, refIsParcacigi, adayIsParcacigi });
+    assert.equal(x.karar, 'VERI_YOK');
+    assert.deepEqual(x.nedenler, [ilk, 'farkli is parcacigi sayisi: referans 2, aday 4; ayni is parcacigi sayisiyla yeniden kosun']);
+  }
+  const bugun = kararVer(r10, r11);
+  assert.equal(bugun.karar, 'KALICI');
+  for (const ip of [{ refIsParcacigi: 2, adayIsParcacigi: 2 }, { refIsParcacigi: 2, adayIsParcacigi: null }, {}]) {
+    assert.deepEqual(kararVer(r10, r11, { ...WRK, ...ip }), bugun, `wrk + wrk ${JSON.stringify(ip)}: CPU varken bugunku akis`);
+  }
+  // k6'da is parcacigi karsilastirilmaz.
+  assert.deepEqual(kararVer(r10, r11, { refIsParcacigi: 2, adayIsParcacigi: 4 }), bugun);
+
+  // wrk + wrk, ayni N 2/4/8 ve T=2, farkli hiz tavani (tavan_rps 450 / 90): ayni kademe farkli sunulan yuk
+  // (Lua delay = N * 1000 / tavan; dusuk tavanda p95 dusuk cikar). Denetim yokken bu cift KALICI aliyordu.
+  const wRef = await wrkAdimlari(wrkKurgu('R93'));
+  const wAday = await wrkAdimlari(wrkKurgu('R94', () => ({ ru: 21 })));
+  const T2 = { ...WRK, refIsParcacigi: 2, adayIsParcacigi: 2 };
+  const tavansiz = kararVer(wRef, wAday, T2);
+  assert.equal(tavansiz.karar, 'KALICI', 'fikstur: tavan bilinmeden karar KALICI');
+  const wIlk = 'referans=R93 aday=R94 senaryo=K kip=ka ae=br';
+  for (const [refTavanRps, adayTavanRps, a, b] of [[450, 90, 450, 90], [90, 450, 90, 450], ['450', '90', 450, 90]]) {
+    const x = kararVer(wRef, wAday, { ...T2, refTavanRps, adayTavanRps });
+    assert.equal(x.karar, 'VERI_YOK', `${refTavanRps} -> ${adayTavanRps}`);
+    assert.deepEqual(x.nedenler, [wIlk, `farkli hiz tavani: referans ${a} istek/sn, aday ${b} istek/sn; ayni tavanla yeniden kosun`]);
+    assert.deepEqual(Object.keys(x), ['karar', 'nedenler', 'tablo', 'kademe', 'kombinasyon']);
+  }
+  // CPU'suz yolda da (bir taraf serbest: sunucu 450 -> serbest 200) once tavan denetimi.
+  const karisik = kararVer(wRef, wAday, { ...T2, adayHedefTuru: 'serbest', refTavanRps: 450, adayTavanRps: 200 });
+  assert.deepEqual([karisik.karar, karisik.nedenler[1]], ['VERI_YOK', 'farkli hiz tavani: referans 450 istek/sn, aday 200 istek/sn; ayni tavanla yeniden kosun']);
+  // Is parcacigi farki once soylenir (ilk VERI_YOK nedeni).
+  assert.match(kararVer(wRef, wAday, { ...WRK, refIsParcacigi: 2, adayIsParcacigi: 4, refTavanRps: 450, adayTavanRps: 90 }).nedenler[1], /^farkli is parcacigi sayisi:/);
+  // Ayni tavan ya da bilinmeyen (null / verilmedi) tavan: karar DEGISMEZ (eski satir, tur 3 oncesi cagiran).
+  for (const tv of [{ refTavanRps: 450, adayTavanRps: 450 }, { refTavanRps: 450, adayTavanRps: null }, { refTavanRps: null, adayTavanRps: 90 }, {}]) {
+    assert.deepEqual(kararVer(wRef, wAday, { ...T2, ...tv }), tavansiz, JSON.stringify(tv));
+  }
+  // k6'da tavan karsilastirilmaz (k6 adimi istek/sn'dir).
+  assert.deepEqual(kararVer(r10, r11, { refTavanRps: 450, adayTavanRps: 90 }), bugun);
+});
+
+test('AN17 kararVer CPU\'suz yol: serbest ya da wrk+wrk (kaydedici eksik) -> RET / NOTR, ASLA KALICI; doyma DOYMA; k6+k6 bugunku VERI_YOK', async () => {
+  const m = await hazirla();
+  const S = { refHedefTuru: 'serbest', adayHedefTuru: 'serbest' };
+  const ref = await serbestK6('R74');
+  const ayni = await serbestK6('R75');
+  const kotu = await serbestK6('R76', (h) => (h === 200 ? { p95: 60 } : {}));
+  const iyi = await serbestK6('R77', () => ({ p95: 35 }));
+  const hatali = await serbestK6('R78', (h, r) => (h === 100 && r === 1 ? { istemciAlan: { n_5xx: 2 } } : {}));
+  const p95 = (h, a, d) => `p95 @${h}: ref=50.0 aday=${a} degisim=%${d} (zarar esigi %5.0)`;
+  const bayt = 'bayt/istek @100 [istemci data_received: TLS + baslik dahil, fark kucuk gorunur]: ref=10000 aday=10000 degisim=%+0.0';
+  const cpuSatiri = (n) => n.some((x) => x.startsWith('CPU-ms/istek') || x.startsWith('p95 kazanci') || x.startsWith('kural:'));
+  // Fark yok -> NOTR + CPU olculmedi notu (tam satirlar: bugunku p95 satirlari, CPU satiri YOK).
+  const n = kararVer(ref, ayni, S);
+  assert.equal(n.karar, 'NOTR');
+  assert.deepEqual(n.nedenler, ['referans=R74 aday=R75 senaryo=K kip=yeni ae=br', p95(50, '50.0', '+0.0'), p95(100, '50.0', '+0.0'),
+    p95(200, '50.0', '+0.0'), bayt, CPU_YOK_SERBEST]);
+  // p95 esik ustu kotulesme -> RET (bugunku zarar satiri).
+  const r = kararVer(ref, kotu, S);
+  assert.equal(r.karar, 'RET');
+  assert.deepEqual(r.nedenler.slice(1), [p95(50, '50.0', '+0.0'), p95(100, '50.0', '+0.0'), p95(200, '60.0', '+20.0'), bayt, 'zarar: p95 @200 %+20.0']);
+  // Buyuk p95 kazanci (%30, CPU'lu yolda p95 kurali KALICI derdi): yine NOTR.
+  const k = kararVer(ref, iyi, S);
+  assert.equal(k.karar, 'NOTR');
+  assert.deepEqual(k.nedenler.slice(1), [p95(50, '35.0', '-30.0'), p95(100, '35.0', '-30.0'), p95(200, '35.0', '-30.0'), bayt, CPU_YOK_SERBEST]);
+  // Hata (istemci 5xx) -> RET (bugunku hata kurali CPU'dan once).
+  const h = kararVer(ref, hatali, S);
+  assert.equal(h.karar, 'RET');
+  assert.equal(h.nedenler[1], 'hata artti: R78_K_yeni_br_100_r1 429=0 5xx=2 hata=%0.00 (referans %0.00)');
+  for (const x of [n, r, k, h]) assert.ok(!cpuSatiri(x.nedenler), x.nedenler.join('\n'));
+  // Tek taraf serbest yeter: CPU'lu R10 -> R11 (bugun KALICI) CPU'suz yoldan NOTR olur; CPU satiri yok.
+  for (const sec of [{ adayHedefTuru: 'serbest' }, { refHedefTuru: 'serbest' }]) {
+    const x = kararVer(m.get('R10').analiz.adimlar, m.get('R11').analiz.adimlar, sec);
+    assert.equal(x.karar, 'NOTR', JSON.stringify(sec));
+    assert.equal(x.nedenler[x.nedenler.length - 1], CPU_YOK_SERBEST);
+    assert.ok(!cpuSatiri(x.nedenler));
+  }
+  // wrk + wrk sunucu: kademede adayin CPU'su kaydedici eksik oldugu icin yok (doyma DEGIL) -> CPU'suz yol.
+  const wRef = await wrkAdimlari(wrkKurgu('R79'));
+  const wYok = await wrkAdimlari(wrkKurgu('R80'), { dosya: { sunucuYok: true, bilgiYok: true } });
+  assert.ok(wYok.every((x) => x.cpu_ms_istek === null && x.gecerlilik === 'GECERLI'), 'fikstur: aday CPU olcusuz, gecerli');
+  const wn = kararVer(wRef, wYok, WRK);
+  assert.equal(wn.karar, 'NOTR');
+  const wp95 = (x, a, d) => `p95 @${x}: ref=50.0 aday=${a} degisim=%${d} (zarar esigi %5.0)`;
+  assert.deepEqual(wn.nedenler, ['referans=R79 aday=R80 senaryo=K kip=ka ae=br', wp95(2, '50.0', '+0.0'), wp95(4, '50.0', '+0.0'),
+    wp95(8, '50.0', '+0.0'), 'bayt/istek @4 [govde, sunucu logu]: ref=1000 aday=1000 degisim=%+0.0', CPU_YOK_WRK]);
+  // Ayni veri k6 + k6: bugunku gibi VERI_YOK (D4'ten bilincli sapma, sozlesme K25).
+  const k6 = kararVer(wRef, wYok);
+  assert.equal(k6.karar, 'VERI_YOK');
+  assert.equal(k6.nedenler[k6.nedenler.length - 1], '4 istek/sn kademesinde CPU-ms/istek yok (sunucu kaydi?)');
+  // wrk CPU'suz yolda p95 zarari -> RET.
+  const wKotu = await wrkAdimlari(wrkKurgu('R81', (x) => (x === 8 ? { p95: 60 } : {})), { dosya: { sunucuYok: true, bilgiYok: true } });
+  const wr = kararVer(wRef, wKotu, WRK);
+  assert.equal(wr.karar, 'RET');
+  assert.equal(wr.nedenler[wr.nedenler.length - 1], 'zarar: p95 @8 %+20.0');
+  assert.ok(!wr.nedenler.includes(CPU_YOK_WRK));
+  // Doyma yuzunden CPU yoksa bugunku gibi DOYMA ("daha dusuk kademe" yonlendirmesi), birim baglanti.
+  const wDoyma = await wrkAdimlari(wrkKurgu('R82', (x) => (x === 4 ? { host: 760 } : {})));
+  const wd = kararVer(wRef, wDoyma, WRK);
+  assert.equal(wd.karar, 'DOYMA');
+  assert.equal(wd.nedenler[1], '4 baglanti kademesinde CPU-ms/istek yok: aday R82 doydu (dropped>0 ya da host CPU>%90); daha dusuk bir kademeyle tekrar kosun');
+  // wrk + wrk iki tarafta CPU varsa bugunku tam akis (KALICI dahil).
+  const wIyi = await wrkAdimlari(wrkKurgu('R85', () => ({ ru: 21 })));
+  const wk = kararVer(wRef, wIyi, WRK);
+  assert.equal(wk.karar, 'KALICI');
+  assert.ok(wk.nedenler.some((x) => x.startsWith('CPU-ms/istek @4: ')));
+  // k6 + k6 sunucu + sunucu, CPU yok: bugunku VERI_YOK metni (acik varsayilanlarla da).
+  for (const sec of [{}, { refMotor: 'k6', adayMotor: 'k6', refHedefTuru: 'sunucu', adayHedefTuru: 'sunucu' }]) {
+    const v = kararVer(m.get('R10').analiz.adimlar, m.get('R39').analiz.adimlar, sec);
+    assert.equal(v.karar, 'VERI_YOK');
+    assert.equal(v.nedenler[v.nedenler.length - 1], '250 istek/sn kademesinde CPU-ms/istek yok (sunucu kaydi?)');
+  }
+});
+
+test('AN18 wrk metin birimleri ("baglanti kademesinde") ve istemci bayt etiketi (baslik + govde, TLS haric); k6 metinleri aynen', async () => {
+  // Referansin 4 baglanti kademesinde tek gecerli tekrar (r1: log / istemci farki %5 -> GECERSIZ).
+  const kotuRef = await wrkAdimlari(wrkKurgu('R83', (n, r) => (n === 4 && r === 1 ? { fark: 1.05 } : {})));
+  const iyi = await wrkAdimlari(wrkKurgu('R86'));
+  const gr = kararVer(kotuRef, iyi, WRK);
+  assert.equal(gr.karar, 'GECERSIZ');
+  assert.equal(gr.nedenler[1], 'referans R83 kullanilamaz: 4 baglanti kademesinde yeterli gecerli kosu yok (en az 2): R83_K_ka_br_4_r1(log_istemci_farki_%4.8)');
+  assert.equal(kararVer(kotuRef, iyi).nedenler[1], 'referans R83 kullanilamaz: 4 istek/sn kademesinde yeterli gecerli kosu yok (en az 2): R83_K_ka_br_4_r1(log_istemci_farki_%4.8)');
+  const ga = kararVer(iyi, kotuRef, WRK);
+  assert.equal(ga.karar, 'GECERSIZ');
+  assert.deepEqual(ga.nedenler.slice(1), ['tekrar kosun: R83_K_ka_br_4_r1(log_istemci_farki_%4.8)',
+    '4 baglanti kademesinde yeterli gecerli kosu yok (en az 2). Adayi tekrar=3 ile yeniden kosun (GECERSIZ kosu kararda dislanir)']);
+  assert.equal(kararVer(iyi, kotuRef).nedenler[2],
+    '4 istek/sn kademesinde yeterli gecerli kosu yok (en az 2). Adayi tekrar=3 ile yeniden kosun (GECERSIZ kosu kararda dislanir)');
+  // Ortak kademe yok: CPU'lu ve CPU'suz (serbest) yolda ayni birimli metin.
+  const k16 = new Kurgu('R87');
+  for (const r of [1, 2]) wrkKosu(k16, { kip: 'ka', hiz: 16, r });
+  const az = await wrkAdimlari(k16);
+  for (const sec of [WRK, { ...WRK, adayHedefTuru: 'serbest' }]) {
+    const x = kararVer(iyi, az, sec);
+    assert.deepEqual([x.karar, x.nedenler[1]], ['VERI_YOK', 'ortak baglanti kademesi yok'], JSON.stringify(sec));
+  }
+  assert.equal(kararVer(iyi, az).nedenler[1], 'ortak istek/sn kademesi yok');
+  // Bayt satiri istemci yedegi (sunucu logu yok): wrk etiketi; k6 etiketi aynen; baska satir farki yok.
+  const lr = await wrkAdimlari(wrkKurgu('R88'), { dosya: { logYok: true } });
+  const la = await wrkAdimlari(wrkKurgu('R89', () => ({ ru: 21 })), { dosya: { logYok: true } });
+  const ETIKET_WRK = 'bayt/istek @4 [istemci (wrk): baslik + govde, TLS haric]: ref=10000 aday=10000 degisim=%+0.0';
+  const ETIKET_K6 = 'bayt/istek @4 [istemci data_received: TLS + baslik dahil, fark kucuk gorunur]: ref=10000 aday=10000 degisim=%+0.0';
+  const w = kararVer(lr, la, WRK);
+  const k6 = kararVer(lr, la);
+  assert.ok(w.nedenler.includes(ETIKET_WRK) && !w.nedenler.includes(ETIKET_K6), w.nedenler.join('\n'));
+  assert.ok(k6.nedenler.includes(ETIKET_K6));
+  assert.deepEqual(w.nedenler.map((x) => (x === ETIKET_WRK ? ETIKET_K6 : x)), k6.nedenler);
+  assert.equal(w.karar, k6.karar);
+  // CPU'suz (serbest) yolda da wrk etiketi.
+  assert.ok(kararVer(lr, la, { ...WRK, refHedefTuru: 'serbest' }).nedenler.includes(ETIKET_WRK));
+});
+
+// Tur 3 oncesi (946ec3b) analiz.cjs'in fikstur katalogundaki TAM ciktisinin (her ADIM'in kosuAnaliz'i + her
+// KARAR'in kararVer'i, JSON) sha256'si. Varsayilan secenekler bu ciktiyi BAYT BAYT korur (sozlesme tur 3,
+// 10.1 / 10.2). Analiz bilincli olarak degisirse yeniden hesaplanir: ciktiOzeti(await hazirla()).
+const ALTIN_OZET = 'd07d5a3e84093cddbc98a09daa8550c3c6ebbdb2b9ab16c791a74000d26ea4f9';
+function ciktiOzeti(m) {
+  const h = crypto.createHash('sha256');
+  for (const a of ADIMLAR) h.update(`${a.ad}\n${JSON.stringify(m.get(a.ad).analiz)}\n`);
+  for (const k of KARARLAR) {
+    h.update(`${k.ref}>${k.aday}\n${JSON.stringify(kararVer(m.get(k.ref).analiz.adimlar, m.get(k.aday).analiz.adimlar, k.node || {}))}\n`);
+  }
+  return h.digest('hex');
+}
+
+test('AN19 secenek dogrulamasi (TypeError); varsayilanlarla cikti tur 3 oncesiyle BAYT BAYT ayni (altin ozet, acik varsayilanlar)', async () => {
+  const m = await hazirla();
+  const veri = m.get('R10').veri;
+  for (const s of [{ hedefTuru: 'Sunucu' }, { hedefTuru: 'x' }, { hedefTuru: null }, { hedefTuru: 1 }, { motor: 'K6' }, { motor: 'wrk2' },
+    { motor: null }, { motor: ['k6'] }]) {
+    assert.throws(() => kosuAnaliz(veri, { adim: 'R10', ...s }), TypeError, JSON.stringify(s));
+  }
+  const r10 = m.get('R10').analiz.adimlar;
+  const r11 = m.get('R11').analiz.adimlar;
+  for (const s of [{ refMotor: 'x' }, { adayMotor: null }, { refHedefTuru: 'Serbest' }, { adayHedefTuru: 0 }, { refIsParcacigi: 0 },
+    { adayIsParcacigi: -2 }, { refIsParcacigi: 1.5 }, { refIsParcacigi: 'abc' }, { adayIsParcacigi: {} },
+    { refTavanRps: 0 }, { adayTavanRps: -90 }, { refTavanRps: 4.5 }, { adayTavanRps: 'abc' }]) {
+    assert.throws(() => kararVer(r10, r11, s), TypeError, JSON.stringify(s));
+  }
+  // Altin ozet: bugunku (varsayilan) cikti tur 3 oncesiyle ayni.
+  assert.equal(ciktiOzeti(m), ALTIN_OZET);
+  // Varsayilanlar ACIKCA verildiginde de cikti ayni (her fikstur, her karar).
+  for (const a of ADIMLAR) {
+    const x = m.get(a.ad);
+    assert.equal(JSON.stringify(kosuAnaliz(x.veri, { adim: a.ad, hedefTuru: 'sunucu', motor: 'k6' })), JSON.stringify(x.analiz), a.ad);
+  }
+  const VARS = { refMotor: 'k6', adayMotor: 'k6', refHedefTuru: 'sunucu', adayHedefTuru: 'sunucu', refIsParcacigi: null, adayIsParcacigi: null, refTavanRps: null, adayTavanRps: null };
+  for (const k of KARARLAR) {
+    const ra = m.get(k.ref).analiz.adimlar;
+    const aa = m.get(k.aday).analiz.adimlar;
+    assert.equal(JSON.stringify(kararVer(ra, aa, { ...(k.node || {}), ...VARS })), JSON.stringify(kararVer(ra, aa, k.node || {})), `${k.ref}->${k.aday}`);
+  }
+});
+
+test('AN20 wrk: ayristirma ve cpu_tlsli_pay HER ZAMAN null; yeni kipinde wrk_tls_payi_hesaplanmaz uyarisi, ka ve k6da yok', async () => {
+  // R10'un wrk esi: ayni kademede K/yeni/br x2, K/ka/br, K/yeni/identity x2 (k6 olarak okunsa TLS payi cikardi).
+  const k = new Kurgu('R84');
+  for (const r of [1, 2]) wrkKosu(k, { hiz: 4, r });
+  wrkKosu(k, { kip: 'ka', hiz: 4, r: 1, ru: 16, rs: 4 });
+  for (const r of [1, 2]) wrkKosu(k, { ae: 'identity', hiz: 4, r, ru: 20, rs: 5 });
+  const { veri, analiz: w } = await t3Analiz(k, { donustur: (d) => wrkDosyalari(k, d), secenek: { motor: 'wrk' } });
+  const k6 = kosuAnaliz(veri, { adim: 'R84' });
+  assert.deepEqual(k6.ozet.ayristirma, { hiz: 4, toplam: 10, tls: 5, sik: 2.5, kalan: 2.5, user: 8, sys: 2 }, 'fikstur: k6 olarak TLS payi hesaplanir');
+  yakin(k6.ozet.cpu_tlsli_pay, 0.5, 'k6 TLS payi');
+  assert.deepEqual([w.ozet.ayristirma, w.ozet.cpu_tlsli_pay], [null, null]);
+  assert.deepEqual(Object.keys(w.ozet), Object.keys(k6.ozet), 'ozet semasi degismez');
+  // Uyari: bir kez, kosu duzeyinde, katlanan TUR uyarilarindan ONCE; adim satirlari ve diger uyarilar k6 analiziyle ayni.
+  assert.equal(w.uyarilar.filter((u) => u === WRK_TLS).length, 1);
+  const ilkKatli = w.uyarilar.findIndex((u) => KATLI.test(u));
+  assert.ok(ilkKatli === -1 || w.uyarilar.indexOf(WRK_TLS) < ilkKatli, w.uyarilar.join(' | '));
+  assert.deepEqual(w.uyarilar.filter((u) => u !== WRK_TLS), k6.uyarilar);
+  assert.deepEqual(w.adimlar, k6.adimlar);
+  assert.ok(!k6.uyarilar.includes(WRK_TLS), "k6'da TLS payi uyarisi hic yok");
+  // Serbest + wrk + yeni: uyari var, ayristirma null.
+  const s = kosuAnaliz(veri, { adim: 'R84', hedefTuru: 'serbest', motor: 'wrk' });
+  assert.ok(s.uyarilar.includes(WRK_TLS));
+  assert.equal(s.ozet.ayristirma, null);
+  // Yalniz ka kipi: uyari yok; HATALI bir 'yeni' adim da adimdir (uyari var).
+  const kaK = wrkKurgu('R90');
+  const ka = (await t3Analiz(kaK, { donustur: (d) => wrkDosyalari(kaK, d), secenek: { motor: 'wrk' } })).analiz;
+  assert.ok(ka.adimlar.length === 6 && ka.adimlar.every((x) => x.kip === 'ka'));
+  assert.ok(!ka.uyarilar.includes(WRK_TLS));
+  const kh = wrkKurgu('R92');
+  wrkKosu(kh, { hiz: 16, r: 1, hatali: true });
+  const hh = await t3Analiz(kh, { donustur: (d) => wrkDosyalari(kh, d), secenek: { motor: 'wrk' } });
+  assert.equal(turla(hh.analiz).get('R92_K_yeni_br_16_r1').gecerlilik, 'HATALI');
+  assert.ok(hh.analiz.uyarilar.includes(WRK_TLS));
 });

@@ -8,6 +8,9 @@
 //   YKP3 kimlikler istemciden alinmaz: sunucu / template / limit / extra_vars kayittan, govdedeki
 //        fazlalik yok sayilir; /durum ve /durdur is numarasini satirdan okur
 //   YKP4 on kontrol 409 / 424 kodlari: her reddedilen istek AWX'e GITMEZ, kilit kalmaz, ret denetlenir
+//   YKP4c kilit alma ortasinda DB hatasi (G alindi, sonraki anahtar hata atti): istegin aldigi kilitler
+//         birakilir (yabanci lock_id'li olan degil), 424 sonrasi tekrar deneyen istek gecer; birakma da hata
+//         alirsa maskeli uyari yazilir, kilit sure dolana kadar kalir (tekrar deneyen kilit_dolu, sonra gecer)
 //   YKP5 basarili on kontrol: satir RUNNING + adim, T+L kilidi ise bagli, gecmiste senaryo maskeli
 //   YKP6 kosu: on kontrol kapisi (sahip, DONE/OK, 15 dk, onay metni, engel, uyari onayi), G+T+L,
 //        govdedeki hedef/parametre YOK SAYILIR, yeniden olcum (envanter uretime dondu -> red)
@@ -25,6 +28,26 @@
 //   YKP17 /kosular suzgeci + sayfalama: islem / durum / hedef / onceki / limit, dahaVar, 400
 //   YKP18 kosu ayrintisi: durdurIsi, sonuclandirmaDenemesi; olculmus limit 0 hedefi /hedefler'de kapali
 //   YKP19 bayat kilit: baslatma yolu AWX durumunu iletir; kural bag turune gore birakir / tutar
+//   -- tur 3 (2026-10-28: elle hedef IP sunucu | serbest, wrk motoru, D7) --
+//   YKP20 serbest on kontrol uctan uca: satir (hedef_turu, hedef_host '', motor, plan_uyarilari), extra_vars,
+//         G + T|IP + L kilidi (on kontrolde de G)
+//   YKP21 serbest kosu: onay metni = IP, serbest uyarisi onay ister, sinif degisince on_kontrol_eski
+//   YKP22 elle yazilan IP'nin siniflari uctan uca (ret denetime yazilir, AWX'e gitmez)
+//   YKP23 wrk on kontrol: extra_vars degerleri, tavan sunucuda hesaplanir, wrk + SNI 400
+//   YKP24 /ip-sinifi: yalniz Admin, yanit sekilleri, uygun:false 200, host secici, DB / denetim yok
+//   YKP25 /kosular ip / hedefTuru / motor suzgecleri + 400 + kosuApi alanlari
+//   YKP26 serbest / wrk durdur: extra_vars satirdan, 424 metni motor ve ture gore (k6 + sunucu birebir)
+//   YKP27 /karsilastir: kararVer'e motor / hedef turu / is parcacigi / hiz tavani (tavan_rps) secenekleri, ozet alanlari
+//   YKP28 /hedefler: serbest (aglar yalniz Admin), motorlar, sinirlar ve varsayilanlar
+//   YKP29 D7: listede olmayan Host basligiyla sunucu on kontrolu baslar; kosu D7 uyarisinin onayini ister
+//   YKP30 plan uyarilari: satirda saklanir, ayrintida basta, kosu onayi ister, yeni uyari on_kontrol_eski
+//   YKP31 host_uretim uctan uca (iki kipte 409, satir yok, ret denetimde)
+//   YKP32 kilit aciklamasi (target_desc): k6 + sunucu birebir, wrk eki, serbestte IP
+//   YKP33 denetim ayrintisi: serbest + wrk kosusu ve uzun mesajli ret saklandigi hal (2000'de kesim) ile
+//         GECERLI JSON, <= 2000; kimlik alanlari birebir; uzun uyari dizileri kisaltilir / atilir (sayi kalir)
+//   -- tur 3 inceleme (2026-10-28) --
+//   YKP34 yarim tarama gunu uctan uca: dunku limit (409 sinir_asildi, wrk tavani, sifir sinir), dunku sahiplik
+//         (409 hedef_uretim), dunku ad (409 host_uretim), dunku hedef satirlari; bugunku varsa bugunku
 'use strict';
 
 const { test } = require('node:test');
@@ -74,9 +97,27 @@ function sifirla() {
     nginxEnv: { GBNGXT33: 'test' },
     invEnv: { GBNGXT33: 'Test', GBNGXT34: 'Test' },
     kilitDbHata: false,
+    // Tek seferlik gecici kilit hatasi: { desen, onek, sonra, mesaj, ardindan } - desene uyan ve anahtari
+    // onekle baslayan ILK sorgu hata atar (sonra: true ise once yazar, yaniti kaybeder: COMMIT edilmis CAS;
+    // mesaj: hata metni; ardindan: bu hata atildiktan sonra kurulan ikinci tek seferlik hata).
+    kilitHata: null,
     ayarlar: null,
     tetiklenen: [],
+    // Tur 3 sahte TBMWANS verisi: IP sahipligi (Inventory ip, IPInventory, tarama listen), tazelik.
+    envSorgular: [],
+    nginxEk: [],
+    invIp: [],
+    ipEnvanteri: [{ host: 'GBNGXT33', ip: '10.0.0.5' }, { host: 'GBNGXT33', ip: '10.0.0.9' }, { host: 'GBNGXT34', ip: '10.0.0.6' }],
+    ipEnvYasSaat: 2,
+    taramaYasGun: 0,
+    taramaYok: false,
+    tarama: [
+      { host: 'GBNGXT33', listen: '10.0.0.9:443 ssl', server_name: 'app.test.local api.test.local' },
+      { host: 'GBNGXT34', listen: '443 ssl', server_name: 'rp.test.local' },
+    ],
   });
+  // Serbest hedef / wrk env'leri her testte temiz (test kendisi kurar).
+  for (const k of ['NGINX_LOADTEST_SERBEST_AGLAR', 'NGINX_LOADTEST_SERBEST_YASAK', 'NGINX_LOADTEST_WRK']) delete process.env[k];
 }
 sifirla();
 
@@ -91,6 +132,13 @@ function sureUzat(r, q, params) {
 function kilitSorgusu(q, params) {
   const s = D.kilitler;
   if (/nginx_loadtest_kilitleri/.test(q) && D.kilitDbHata) throw new Error('kilit tablosu yok');
+  const h = D.kilitHata;
+  if (h && h.desen.test(q) && String(params[0]).startsWith(h.onek)) {
+    D.kilitHata = null;
+    if (h.sonra) kilitSorgusu(q, params);
+    D.kilitHata = h.ardindan || null;
+    throw Object.assign(new Error(h.mesaj || 'deadlock kurbani (sahte)'), { number: 1205 });
+  }
   if (/^IF NOT EXISTS \(SELECT 1 FROM nginx_loadtest_kilitleri/.test(q)) {
     if (!s.has(params[0])) s.set(params[0], { id: s.size + 1, lock_key: params[0], held: 0 });
     return { rows: [], rowCount: 1 };
@@ -189,10 +237,13 @@ sahte('../../db/index.cjs', {
     if (/^SELECT TOP \(\$1\)/.test(q)) {
       return { rows: D.kosular.filter(listeSuz(q, params)).sort((a, b) => b.id - a.id).slice(0, params[0]).map(kosuSatiri) };
     }
-    if (/^INSERT INTO nginx_loadtest_kosular \(senaryo_id, on_kontrol_kosu_id, islem, etiket, hedef_host, hedef_ip, vhost, yuk_host, parametreler, durum, created_by, kilit_id\)/.test(q)) {
-      const [senaryo_id, on_kontrol_kosu_id, islem, etiket, hedef_host, hedef_ip, vhost, yuk_host, parametreler, created_by, kilit_id] = params;
+    if (/^INSERT INTO nginx_loadtest_kosular \(senaryo_id, on_kontrol_kosu_id, islem, etiket, hedef_host, hedef_ip, vhost, yuk_host, parametreler, durum, created_by, kilit_id, hedef_turu, motor, plan_uyarilari\) VALUES \(\$1, \$2, \$3, \$4, \$5, \$6, \$7, \$8, \$9, 'QUEUED', \$10, \$11, \$12, \$13, \$14\) RETURNING id$/.test(q)) {
+      const [senaryo_id, on_kontrol_kosu_id, islem, etiket, hedef_host, hedef_ip, vhost, yuk_host, parametreler, created_by, kilit_id, hedef_turu, motor, plan_uyarilari] = params;
       const id = 100 + D.kosular.length + 1;
-      D.kosular.push({ id, senaryo_id, on_kontrol_kosu_id, islem, etiket, hedef_host, hedef_ip, vhost, yuk_host, parametreler, created_by, kilit_id, durum: 'QUEUED', created_at: new Date(D.simdi), sonuclandirma_denemesi: 0 });
+      D.kosular.push({
+        id, senaryo_id, on_kontrol_kosu_id, islem, etiket, hedef_host, hedef_ip, vhost, yuk_host, parametreler, created_by, kilit_id, hedef_turu, motor, plan_uyarilari,
+        durum: 'QUEUED', created_at: new Date(D.simdi), sonuclandirma_denemesi: 0,
+      });
       return { rows: [{ id }], rowCount: 1 };
     }
     // Baslatma sonrasi: is numarasi is numarasiz satira HER ZAMAN yazilir; durum yalniz QUEUED ise RUNNING.
@@ -228,8 +279,8 @@ sahte('../../db/index.cjs', {
       return { rows: [], rowCount: r ? 1 : 0 };
     }
     if (/^SELECT \* FROM nginx_loadtest_adimlar WHERE kosu_id = \$1/.test(q)) return { rows: D.adimlar.filter((x) => x.kosu_id === params[0]) };
-    if (/^SELECT on_kontrol_ozet FROM nginx_loadtest_kosular WHERE id = \$1$/.test(q)) {
-      return { rows: D.kosular.filter((x) => x.id === params[0]).map((x) => ({ on_kontrol_ozet: x.on_kontrol_ozet })) };
+    if (/^SELECT on_kontrol_ozet, plan_uyarilari FROM nginx_loadtest_kosular WHERE id = \$1$/.test(q)) {
+      return { rows: D.kosular.filter((x) => x.id === params[0]).map((x) => ({ on_kontrol_ozet: x.on_kontrol_ozet, plan_uyarilari: x.plan_uyarilari ?? null })) };
     }
     if (/^INSERT INTO ansible_job_history/.test(q)) {
       D.gecmis.push(params);
@@ -245,32 +296,78 @@ sahte('../../db/index.cjs', {
   },
 });
 
+// LIKE (yalniz %) -> tam eslesme: sahte envanter parametreli LIKE'i ANLAMIYLA uygular.
+const like = (deger, desen) => new RegExp(`^${String(desen).split('%').map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('.*')}$`).test(String(deger));
+// Tarama gunu: satirin `gun` alani, yoksa TARAMA_GUNU (tazelik sahtesinin `son`u). Servers penceresi son iki
+// gun (kod) ya da yalniz MAX gunu (eski okuma; mutasyon olcumunde ANLAMIYLA uygulanir).
+const TARAMA_GUNU = '2026-10-27';
+const ONCEKI_GUN = (g) => new Date(Date.parse(`${g}T00:00:00Z`) - 86400000).toISOString().slice(0, 10);
+const SON_IKI = 'scan_date >= DATEADD(day, -1, (SELECT MAX(scan_date) FROM dbo.Nginx_Audit_Servers))';
+const SON_TEK = 'scan_date = (SELECT MAX(scan_date) FROM dbo.Nginx_Audit_Servers)';
+const gunu = (r) => r.gun || TARAMA_GUNU;
+const LIMIT_DIREKTIF = new Set(['limit_req_zone', 'limit_conn_zone', 'limit_req', 'limit_conn']);
+function taramaPenceresi(q) {
+  const enSon = D.tarama.map(gunu).sort().at(-1);
+  if (q.includes(SON_IKI)) return [q.replace(SON_IKI, '<P>'), D.tarama.filter((r) => gunu(r) >= ONCEKI_GUN(enSon))];
+  if (q.includes(SON_TEK)) return [q.replace(SON_TEK, '<P>'), D.tarama.filter((r) => gunu(r) === enSon)];
+  return [q, null];
+}
+
+// Sahte TBMWANS: kaynaklariOku'nun sorgularini metniyle tanir; IP SQL metninde degil parametrede (= / LIKE / IN).
 sahte('../../inventory/mssql.cjs', {
   sql: { NVarChar: (n) => `nvarchar(${n})` },
-  query: async (q, params = []) => {
+  query: async (sql0, params = []) => {
+    const q = String(sql0).replace(/\s+/g, ' ').trim();
+    D.envSorgular.push({ q, params });
     if (D.invHata) throw D.invHata;
     const hostlar = new Set(params.map((p) => p.value));
+    const deger = (ad) => (params.find((p) => p.name === ad) || {}).value;
     if (/FROM dbo\.nginx_inventory/.test(q)) {
       return { recordset: [
         { hostname: 'GBNGXT33', env: D.nginxEnv.GBNGXT33, ip: '10.0.0.5' },
         { hostname: 'GBNGXT34', env: 'test', ip: '10.0.0.6' },
         { hostname: 'GBNGXP40', env: 'Production', ip: '10.9.0.1' },
         { hostname: 'GBNGXT51', env: 'test', ip: '10.0.0.51' },
+        ...D.nginxEk,
       ] };
     }
+    if (/^SELECT host, env, ip FROM dbo\.Inventory WHERE LTRIM\(RTRIM\(ip\)\) = @ip0$/.test(q)) return { recordset: D.invIp.filter((r) => r.ip === deger('ip0')) };
     if (/FROM dbo\.Inventory/.test(q)) return { recordset: Object.entries(D.invEnv).filter(([h]) => hostlar.has(h)).map(([host, env]) => ({ host, env })) };
+    if (/^SELECT OBJECT_ID\('dbo\.IPInventory'\) AS oid$/.test(q)) return { recordset: [{ oid: D.ipEnvanteri ? 21 : null }] };
+    if (/^SELECT OBJECT_ID\('dbo\.Nginx_Audit_Servers'\) AS oid$/.test(q)) return { recordset: [{ oid: D.taramaYok ? null : 7 }] };
     if (/OBJECT_ID/.test(q)) return { recordset: [{ oid: 7 }] };
-    if (/FROM dbo\.Nginx_Audit_Servers/.test(q)) {
-      return { recordset: [
-        { host: 'GBNGXT33', listen: '10.0.0.9:443 ssl', server_name: 'app.test.local api.test.local' },
-        { host: 'GBNGXT34', listen: '443 ssl', server_name: 'rp.test.local' },
-      ].filter((r) => hostlar.has(r.host)) };
+    if (/^SELECT TOP 1 1 AS x FROM dbo\.IPInventory$/.test(q)) return { recordset: D.ipEnvanteri.length ? [{ x: 1 }] : [] };
+    if (/^SELECT host, ip FROM dbo\.IPInventory WHERE LTRIM\(RTRIM\(ip\)\) = @ip1 OR LTRIM\(RTRIM\(ip\)\) LIKE @ip2$/.test(q)) {
+      return { recordset: D.ipEnvanteri.filter((r) => r.ip === deger('ip1') || like(r.ip, deger('ip2'))) };
     }
-    if (/FROM dbo\.Nginx_Audit_Settings/.test(q)) {
-      return { recordset: (D.ayarlar || [
-        { host: 'GBNGXT33', directive: 'limit_req_zone', value: '$binary_remote_addr zone=request_limit:20m rate=300r/s' },
-        { host: 'GBNGXT33', directive: 'limit_req', value: 'zone=request_limit burst=200 nodelay' },
-      ]).filter((r) => hostlar.has(r.host)) };
+    if (/^SELECT DATEDIFF\(HOUR, MAX\(last_seen_at\), GETDATE\(\)\) AS yas_saat/.test(q)) return { recordset: [{ yas_saat: D.ipEnvYasSaat, son: '2026-10-27 08:00:00' }] };
+    if (/^SELECT DATEDIFF\(DAY, MAX\(scan_date\), CAST\(GETDATE\(\) AS DATE\)\) AS yas_gun/.test(q)) return { recordset: [{ yas_gun: D.taramaYasGun, son: TARAMA_GUNU }] };
+    const [qp, pen] = taramaPenceresi(q);
+    if (pen && /^SELECT DISTINCT host, listen FROM dbo\.Nginx_Audit_Servers WHERE <P> AND listen LIKE @ip3$/.test(qp)) {
+      return { recordset: pen.filter((r) => like(r.listen, deger('ip3'))).map(({ host, listen }) => ({ host, listen })) };
+    }
+    if (pen && /^SELECT DISTINCT host, server_name, CONVERT\(varchar\(10\), scan_date, 23\) AS gun FROM dbo\.Nginx_Audit_Servers WHERE <P>$/.test(qp)) {
+      return { recordset: pen.map((r) => ({ host: r.host, server_name: r.server_name ?? null, gun: gunu(r) })) };
+    }
+    if (pen && /^SELECT host, listen, server_name, CONVERT\(varchar\(10\), scan_date, 23\) AS gun FROM dbo\.Nginx_Audit_Servers WHERE <P> AND host IN \(@s\d+(,@s\d+)*\)$/.test(qp)) {
+      return { recordset: pen.filter((r) => hostlar.has(r.host)).map((r) => ({ host: r.host, listen: r.listen, server_name: r.server_name, gun: gunu(r) })) };
+    }
+    if (/FROM dbo\.Nginx_Audit_Servers/.test(q)) throw new Error(`taninmayan tarama sorgusu: ${q}`);
+    // Settings: gun seek'i (d = MAX, o = onceki), host basina varlik (HERHANGI bir satir), etkin gunun limitleri.
+    const ayarlar = D.ayarlar || [
+      { host: 'GBNGXT33', directive: 'limit_req_zone', value: '$binary_remote_addr zone=request_limit:20m rate=300r/s' },
+      { host: 'GBNGXT33', directive: 'limit_req', value: 'zone=request_limit burst=200 nodelay' },
+    ];
+    if (/^SELECT CONVERT\(varchar\(10\), m\.d, 23\) AS d, CONVERT\(varchar\(10\), \(SELECT MAX\(scan_date\) FROM dbo\.Nginx_Audit_Settings WHERE scan_date < m\.d\), 23\) AS o FROM \(SELECT MAX\(scan_date\) AS d FROM dbo\.Nginx_Audit_Settings\) AS m$/.test(q)) {
+      const g = [...new Set(ayarlar.map(gunu))].sort();
+      return { recordset: [{ d: g.at(-1) ?? null, o: g.length > 1 ? g.at(-2) : null }] };
+    }
+    if (/^SELECT h\.host, CASE WHEN EXISTS \(SELECT 1 FROM dbo\.Nginx_Audit_Settings s WHERE s\.scan_date = CONVERT\(date, @d, 23\) AND s\.host = h\.host\) THEN 1 ELSE 0 END AS d_var, CASE WHEN EXISTS \(SELECT 1 FROM dbo\.Nginx_Audit_Settings s WHERE s\.scan_date = CONVERT\(date, @o, 23\) AND s\.host = h\.host\) THEN 1 ELSE 0 END AS o_var FROM \(VALUES \(@a\d+\)(, \(@a\d+\))*\) AS h\(host\)$/.test(q)) {
+      const var1 = (h, g) => (g != null && ayarlar.some((r) => r.host === h && gunu(r) === g) ? 1 : 0);
+      return { recordset: params.filter((p) => /^a\d+$/.test(p.name)).map((p) => ({ host: p.value, d_var: var1(p.value, deger('d')), o_var: var1(p.value, deger('o')) })) };
+    }
+    if (/^SELECT host, directive, value FROM dbo\.Nginx_Audit_Settings WHERE scan_date = CONVERT\(date, @g, 23\) AND directive IN \('limit_req_zone', 'limit_conn_zone', 'limit_req', 'limit_conn'\) AND host IN \(@a\d+(,@a\d+)*\)$/.test(q)) {
+      return { recordset: ayarlar.filter((r) => hostlar.has(r.host) && gunu(r) === deger('g') && LIMIT_DIREKTIF.has(r.directive)).map(({ host, directive, value }) => ({ host, directive, value })) };
     }
     throw new Error(`beklenmeyen envanter sorgusu: ${q}`);
   },
@@ -358,9 +455,19 @@ const OK_OZET = {
   ip_yerel: true, server_name_var: true, master_sayisi: 1, web_log_df: 30, log_dizini_okunur: true, log_format_ua: true, statik_direktif: null,
   k6_var: true, k6_surum: 'k6 v0.49.0', k6_sha256: 'a'.repeat(64), yollar_toplam: 2, yollar_200: 2, ilk_hatalar: [], sikistirma: { statik: 0, dinamik: 2, sikistirmasiz: 0 },
 };
+// Serbest hedef (LB VIP / yonetilmeyen sunucu): hicbir envanterde yok, izin listesinde.
+const SERBEST_IP = '10.20.30.40';
+const SERBEST_AG = '10.20.30.0/24';
+const SGOVDE = (ek = {}) => GOVDE({ hedefHost: null, hedefIp: SERBEST_IP, parametreler: {}, ...ek });
+const OK_OZET_SERBEST = {
+  ip_yerel: null, server_name_var: null, master_sayisi: null, web_log_df: null, log_dizini_okunur: null, log_format_ua: null, statik_direktif: null,
+  ip_yuk_makinesinde: false, serbest_ag: SERBEST_AG, k6_var: true, k6_surum: 'k6 v0.49.0', k6_sha256: 'a'.repeat(64),
+  wrk_var: null, wrk_calisiyor: null, wrk_surum: null, wrk_sha256: null, yollar_toplam: 2, yollar_200: 2, ilk_hatalar: [], sikistirma: { statik: 0, dinamik: 2, sikistirmasiz: 0 },
+};
+
 /** Tamamlanmis on kontrol satiri (gercek on kontrol ucundan gecmis gibi). */
-async function onKontrolHazirla({ ozet = OK_OZET, yasDk = 5, sahip = 'onur', durum = 'DONE', sonucDurum = 'OK' } = {}) {
-  const r = await istek('POST', '/kosular/on-kontrol', { body: GOVDE() });
+async function onKontrolHazirla({ ozet = OK_OZET, yasDk = 5, sahip = 'onur', durum = 'DONE', sonucDurum = 'OK', govde = GOVDE() } = {}) {
+  const r = await istek('POST', '/kosular/on-kontrol', { body: govde });
   assert.equal(r.statusCode, 200, JSON.stringify(r.body));
   const k = D.kosular.find((x) => x.id === r.body.kosuId);
   Object.assign(k, { durum, created_by: sahip, finished_at: D.simdi - yasDk * 60000, sonuc: JSON.stringify({ durum: sonucDurum, run_id: String(k.id), islem: 'on_kontrol', on_kontrol: ozet }), on_kontrol_ozet: JSON.stringify(ozet) });
@@ -375,12 +482,15 @@ test('YKP1 kapilar: oturum, Admin, sayfa/sekme gorunurlugu (davranis)', { timeou
   const yazanlar = [
     ['POST', '/senaryolar', {}], ['DELETE', '/senaryolar/1'], ['POST', '/kosular/on-kontrol', GOVDE()], ['POST', '/kosular', { onKontrolKosuId: 1 }],
     ['POST', '/kosular/1/durdur', {}], ['GET', '/kosular/1/durum'], ['PUT', '/senaryolar/1', {}], ['POST', '/kosular/1/yeniden-oku', {}],
+    ['GET', '/ip-sinifi?ip=10.0.0.9'],
   ];
   for (const [m, u, b] of yazanlar) {
     D.sorgular = [];
+    D.envSorgular = [];
     const r = await istek(m, u, { session: KULLANICI, body: b });
     assert.equal(r.statusCode, 403, `${m} ${u}: Admin olmayan gecti`);
     assert.equal(D.sorgular.length, 0, `${m} ${u}: uc DB'ye dokundu`);
+    assert.equal(D.envSorgular.length, 0, `${m} ${u}: uc envanteri okudu`);
   }
   assert.equal(D.launch.length, 0);
   for (const u of ['/hedefler', '/senaryolar', '/senaryolar/1', '/kosular', '/kosular/101', '/karsilastir?ref=1&aday=2']) {
@@ -394,7 +504,7 @@ test('YKP1 kapilar: oturum, Admin, sayfa/sekme gorunurlugu (davranis)', { timeou
   }
   // Isleyici de Admin ister (kapi atlansa bile): dogrudan isleyici kontrolu kaynakta.
   const kod = fs.readFileSync(IDX_YOL, 'utf8');
-  for (const uc of ["router.post('/senaryolar'", "router.delete('/senaryolar/:id'", "router.post('/kosular/on-kontrol'", "router.post('/kosular'", "router.get('/kosular/:id/durum'", "router.post('/kosular/:id/durdur'", "router.post('/kosular/:id/yeniden-oku'"]) {
+  for (const uc of ["router.post('/senaryolar'", "router.delete('/senaryolar/:id'", "router.post('/kosular/on-kontrol'", "router.post('/kosular'", "router.get('/kosular/:id/durum'", "router.post('/kosular/:id/durdur'", "router.post('/kosular/:id/yeniden-oku'", "router.get('/ip-sinifi'"]) {
     const i = kod.indexOf(uc);
     assert.ok(i > 0, uc);
     assert.match(kod.slice(i, i + 400), /adminSart\(req\)/, `${uc} isleyicide Admin denetlemiyor`);
@@ -417,7 +527,7 @@ test('YKP2 kapi sirasi, nginxRed haric listesi, ADMIN_DISI_OKUMA', () => {
   assert.doesNotMatch(haric[1], /nginx-loadtest/, 'yuk testi router\'i haric: 403/404 govdeleri HTML\'e doner');
   const ornek = ['/hedefler', '/senaryolar', '/senaryolar/12', '/kosular', '/kosular/12', '/karsilastir'];
   for (const re of yt._ADMIN_DISI_OKUMA) assert.ok(ornek.some((o) => re.test(o)), `ornegi olmayan desen: ${re}`);
-  for (const yasak of ['/kosular/12/durum', '/kosular/12/durdur', '/kosular/on-kontrol', '/senaryolar/12/sil', '/kosular/12/yeniden-oku']) {
+  for (const yasak of ['/kosular/12/durum', '/kosular/12/durdur', '/kosular/on-kontrol', '/senaryolar/12/sil', '/kosular/12/yeniden-oku', '/ip-sinifi']) {
     assert.ok(!yt._ADMIN_DISI_OKUMA.some((re) => re.test(yasak)), `${yasak} Admin olmayana acik`);
   }
 });
@@ -433,6 +543,7 @@ test('YKP3 kimlikler istemciden alinmaz (baslatma, durum, durdurma)', { timeout:
   const [sid, tid, ev, limit] = D.launch[0];
   assert.deepEqual([sid, tid, limit], [3, 44, ''], 'sunucu/template kayittan, limit bos degil');
   assert.deepEqual(Object.keys(ev).sort(), [...dg.EKSTRA_ANAHTARLAR].sort(), 'govdedeki fazlalik extra_vars\'a sizdi');
+  assert.equal(Object.keys(ev).length, 30);
   assert.equal(ev.yuk_hedef_host, 'GBNGXT33');
   assert.equal(ev.yuk_islem, 'on_kontrol');
   assert.equal(ev.yuk_run_id, String(r.body.kosuId));
@@ -459,8 +570,10 @@ test('YKP4 on kontrol 409/424 kodlari: AWX\'e gitmez, kilit kalmaz, ret denetlen
     ['Inventory uretim isareti', () => { D.invEnv.GBNGXT33 = 'PROD'; }, GOVDE(), 409, 'hedef_uretim'],
     ['izinsiz yuk makinesi', () => {}, GOVDE({ yukHost: 'GBNGXT33' }), 409, 'ayni_host'],
     ['listede olmayan yuk makinesi', () => {}, GOVDE({ yukHost: 'GBNGXD01' }), 409, 'yuk_host_izinsiz'],
-    ['IP hedefte yok', () => {}, GOVDE({ hedefIp: '10.0.0.6' }), 409, 'ip_hedefte_yok'],
-    ['vhost hedefte yok', () => {}, GOVDE({ vhost: 'baska.test.local' }), 409, 'vhost_hedefte_yok'],
+    // Tur 3: sahibi olmayan IP host secicide ip_hedefte_yok; yuk makinesinin IP'si siniflandirmada ayni_host.
+    // vhost listede olmamak artik ENGEL degil (D7, YKP29).
+    ['IP hedefte yok', () => {}, GOVDE({ hedefIp: '10.0.0.77' }), 409, 'ip_hedefte_yok'],
+    ['IP yuk makinesinin', () => {}, GOVDE({ hedefIp: '10.0.0.6' }), 409, 'ayni_host'],
     ['olculen limit_req asildi', () => {}, GOVDE({ parametreler: { hizlar: [271] } }), 409, 'sinir_asildi'],
     ['butce asildi', () => {}, GOVDE({ parametreler: { hizlar: [10, 20, 30, 40, 50], tekrar: 3, sure: 300 } }), 409, 'sinir_asildi'],
     ['senaryo yok', () => {}, GOVDE({ senaryoId: 99 }), 409, 'senaryo_yok'],
@@ -524,6 +637,81 @@ test('YKP4b AWX baslatma hatasi: kesin ret kilidi birakir, belirsiz hata kilidi 
   assert.match(D.kosular[0].sonuc, /"belirsiz":true/);
 });
 
+test('YKP4c kilit alma ortasinda DB hatasi: alinmis kilitler birakilir (424), tekrar deneyen istek gecer; birakma da hata alirsa uyari, kilit sure dolana kadar', { timeout: 20000 }, async () => {
+  const dolu = () => [...D.kilitler.entries()].filter(([, v]) => v.held).map(([k]) => k).sort();
+  // Serbest on kontrol (G + T|IP + L): G alindi, T|IP satir garantisi gecici hata (deadlock kurbani 1205).
+  sifirla();
+  senaryoEkle();
+  process.env.NGINX_LOADTEST_SERBEST_AGLAR = SERBEST_AG;
+  D.kilitHata = { desen: /^IF NOT EXISTS \(SELECT 1 FROM nginx_loadtest_kilitleri/, onek: 'T|IP:' };
+  // Birakma BASARILIYKEN "kilit birakilamadi" uyarisi yazilmaz (operator var olmayan bir takili kilidi aramasin).
+  const ilkUyarilar = [];
+  const eskiWarn0 = console.warn;
+  console.warn = (...a) => ilkUyarilar.push(a.join(' '));
+  let r = await istek('POST', '/kosular/on-kontrol', { body: SGOVDE() }).finally(() => { console.warn = eskiWarn0; });
+  assert.deepEqual(ilkUyarilar.filter((u) => /kilit birakilamadi/.test(u)), [], 'birakma basariliyken birakilamadi uyarisi yazildi');
+  assert.deepEqual([r.statusCode, r.body.code, r.body.message], [424, 'db_okunamadi', 'İş kilidi alınamadı; iş başlatılmadı, lütfen tekrar deneyin.']);
+  assert.equal(D.kilitHata, null, 'fikstur: hata atilmadi');
+  assert.ok(D.kilitler.get('G|global') && D.kilitler.get('G|global').lock_id, 'fikstur: G alinmadan hata (YKP4 durumu)');
+  assert.deepEqual([D.launch.length, D.kosular.length, dolu()], [0, 0, []], 'G|global TTL boyunca tutulu kaldi');
+  // "Tekrar deneyin" diyen mesajdan sonra tekrar deneyen istek kilit_dolu ALMAZ.
+  r = await istek('POST', '/kosular/on-kontrol', { body: SGOVDE() });
+  assert.equal(r.statusCode, 200, JSON.stringify(r.body));
+  // Sunucu kosusu (G + T + L): G ve T alindi; L'nin CAS'i YAZILDI ama yanit kayboldu -> uc anahtar da birakilir.
+  sifirla();
+  senaryoEkle();
+  const ok = await onKontrolHazirla();
+  D.kilitHata = { desen: /^UPDATE nginx_loadtest_kilitleri SET held = 1/, onek: 'L|', sonra: true };
+  const kos = () => istek('POST', '/kosular', { body: { onKontrolKosuId: ok.id, confirmText: 'GBNGXT33', uyariOnay: true } });
+  r = await kos();
+  assert.deepEqual([r.statusCode, r.body.code], [424, 'db_okunamadi'], JSON.stringify(r.body));
+  assert.equal(D.kilitler.get('L|GBNGXT34').lock_id, D.kilitler.get('G|global').lock_id, 'fikstur: L yazilmadi');
+  assert.deepEqual([D.launch.length, dolu()], [1, []]);
+  r = await kos();
+  assert.equal(r.statusCode, 200, JSON.stringify(r.body));
+  assert.deepEqual(dolu(), ['G|global', 'L|GBNGXT34', 'T|GBNGXT33']);
+  // Yabanci kilit birakilmaz: istegin anahtar listesindeki L baska bir isin (lock_id 'yabanci'); G alindi,
+  // T|IP hata atti -> yalniz bu istegin lock_id'li dolu satiri (G) birakilir.
+  sifirla();
+  senaryoEkle();
+  process.env.NGINX_LOADTEST_SERBEST_AGLAR = SERBEST_AG;
+  D.kilitler.set('L|GBNGXT34', { id: 1, lock_key: 'L|GBNGXT34', held: 1, lock_id: 'yabanci', holder: 'ali', locked_until: BAS + 3600000 });
+  D.kilitHata = { desen: /^IF NOT EXISTS \(SELECT 1 FROM nginx_loadtest_kilitleri/, onek: 'T|IP:' };
+  r = await istek('POST', '/kosular/on-kontrol', { body: SGOVDE() });
+  assert.deepEqual([r.statusCode, r.body.code], [424, 'db_okunamadi']);
+  assert.deepEqual([dolu(), D.kilitler.get('L|GBNGXT34').lock_id], [['L|GBNGXT34'], 'yabanci'], 'yabanci kilit birakildi');
+  // Birakma da hata alirsa (DB hala erisilemiyor): yeniden deneme yok, sessiz de kalinmaz (maskeli uyari).
+  // G bu istegin kilidi olarak ise bagsiz kalir: sure dolana kadar tekrar deneyen kilit_dolu alir, sonra gecer.
+  sifirla();
+  senaryoEkle();
+  process.env.NGINX_LOADTEST_SERBEST_AGLAR = SERBEST_AG;
+  D.kilitHata = {
+    desen: /^IF NOT EXISTS \(SELECT 1 FROM nginx_loadtest_kilitleri/, onek: 'T|IP:',
+    ardindan: { desen: /^UPDATE nginx_loadtest_kilitleri SET held = 0/, onek: 'G|', mesaj: 'baglanti koptu password=gizli123' },
+  };
+  const uyarilar = [];
+  const eskiWarn = console.warn;
+  console.warn = (...a) => uyarilar.push(a.join(' '));
+  try {
+    r = await istek('POST', '/kosular/on-kontrol', { body: SGOVDE() });
+  } finally {
+    console.warn = eskiWarn;
+  }
+  assert.deepEqual([r.statusCode, r.body.code, r.body.message], [424, 'db_okunamadi', 'İş kilidi alınamadı; iş başlatılmadı, lütfen tekrar deneyin.']);
+  assert.equal(D.kilitHata, null, 'fikstur: birakma hatasi atilmadi');
+  const g = D.kilitler.get('G|global');
+  assert.deepEqual([dolu(), g.holder, g.awx_job_id, D.launch.length, D.kosular.length], [['G|global'], 'onur', null, 0, 0]);
+  const birakma = uyarilar.filter((u) => /kilit birakilamadi/.test(u));
+  assert.equal(birakma.length, 1, `birakma hatasi sessiz kaldi: ${JSON.stringify(uyarilar)}`);
+  assert.match(birakma[0], /^\[NginxYukTesti\] kilit birakilamadi \(TTL ile dusecek\): baglanti koptu password=/);
+  assert.doesNotMatch(birakma[0], /gizli123/, 'uyari maskelenmedi');
+  r = await istek('POST', '/kosular/on-kontrol', { body: SGOVDE() });
+  assert.deepEqual([r.statusCode, r.body.code, r.body.kilit], [409, 'kilit_dolu', 'G|global'], JSON.stringify(r.body));
+  D.simdi = g.locked_until + 60000;
+  r = await istek('POST', '/kosular/on-kontrol', { body: SGOVDE() });
+  assert.equal(r.statusCode, 200, JSON.stringify(r.body));
+});
+
 test('YKP5 basarili on kontrol: satir, kilitler, gecmis, denetim', { timeout: 10000 }, async () => {
   sifirla();
   senaryoEkle();
@@ -531,15 +719,21 @@ test('YKP5 basarili on kontrol: satir, kilitler, gecmis, denetim', { timeout: 10
   assert.equal(r.statusCode, 200);
   const k = D.kosular.find((x) => x.id === r.body.kosuId);
   assert.deepEqual([k.durum, k.adim, k.awx_server_id, k.awx_job_id, k.islem, k.sw_dizin], ['RUNNING', `R${k.id}`, 3, 900, 'on_kontrol', null]);
-  assert.deepEqual(JSON.parse(k.parametreler), { hizlar: [100, 250], tekrar: 2, isinma: 30, sure: 120, bosluk: 30, bosta: 60, maxvu: 150, kip: 'yeni', ae: 'br', sni: true, butceSn: 60 + 2 * 2 * (30 + 120 + 30 + 20) + 120 });
+  assert.deepEqual(JSON.parse(k.parametreler), { motor: 'k6', hizlar: [100, 250], tekrar: 2, isinma: 30, sure: 120, bosluk: 30, bosta: 60, maxvu: 150, kip: 'yeni', ae: 'br', sni: true, butceSn: 60 + 2 * 2 * (30 + 120 + 30 + 20) + 120 });
+  // Tur 3 kolonlari: k6 + sunucu satiri; plan uyarisi yok (NULL).
+  assert.deepEqual([k.hedef_turu, k.motor, k.hedef_host, k.plan_uyarilari], ['sunucu', 'k6', 'GBNGXT33', null]);
   assert.equal(D.launch[0][2].yuk_sni, '1');
+  assert.deepEqual([D.launch[0][2].yuk_hedef_turu, D.launch[0][2].yuk_motor], ['sunucu', 'k6']);
+  assert.ok(Math.abs(Number(D.launch[0][2].yuk_son_epoch) - (Math.floor(Date.now() / 1000) + 900)) <= 5, 'yuk_son_epoch simdi + 900 degil');
   assert.deepEqual([...D.kilitler.keys()].sort(), ['L|GBNGXT34', 'T|GBNGXT33'], 'on kontrol global kilit aldi ya da hedef/yuk kilidini almadi');
   for (const v of D.kilitler.values()) assert.deepEqual([v.held, v.awx_server_id, v.awx_job_id], [1, 3, 900]);
   const params = JSON.parse(D.gecmis[0][6]);
   assert.match(params.yuk_senaryo_b64, /^<\d+ b64>$/, 'is gecmisine senaryo govdesi yazildi');
   const d = D.denetim.find((x) => x.eylem === 'nginx_loadtest_on_kontrol');
   assert.deepEqual([d.targetHost, d.targetIp], ['GBNGXT33', '10.0.0.9']);
-  assert.ok(JSON.parse(d.detail).jobId === 900);
+  const det = JSON.parse(d.detail);
+  assert.ok(det.jobId === 900);
+  assert.deepEqual([det.hedefTuru, det.motor, det.serbestAg, det.vhostListede, det.planUyarilari], ['sunucu', 'k6', null, true, []]);
 });
 
 test('YKP6 kosu: on kontrol kapisi, istemci govdesi yok sayilir, yeniden olcum', { timeout: 20000 }, async () => {
@@ -718,7 +912,11 @@ test('YKP11 karsilastir: DB adimlariyla kararVer; on kontrol karsilastirilmaz', 
   // kararVer'in kademe / kombinasyon'u ekrana gecer (UI CPU ve p95 kademesini bundan gosterir).
   assert.deepEqual([r.body.kademe, r.body.kombinasyon], [{ cpu: 100, p95: 100 }, { senaryo: 'K', kip: 'yeni', ae: 'br' }]);
   const c = kararCagri.at(-1);
-  assert.deepEqual([c.r[0].tur, c.r[0].nedenler, c.a[0].ham, c.a[0].nedenler, c.s], ['R1_K_yeni_br_100_r1', ['x'], { a: 1 }, [], { esikCpu: 5 }]);
+  // Tur 3: esiklerin yaninda motor / hedef turu / is parcacigi / hiz tavani secenekleri (eski satir: k6 / sunucu / null / null).
+  assert.deepEqual([c.r[0].tur, c.r[0].nedenler, c.a[0].ham, c.a[0].nedenler, c.s], ['R1_K_yeni_br_100_r1', ['x'], { a: 1 }, [], {
+    esikCpu: 5, refMotor: 'k6', adayMotor: 'k6', refHedefTuru: 'sunucu', adayHedefTuru: 'sunucu', refIsParcacigi: null, adayIsParcacigi: null,
+    refTavanRps: null, adayTavanRps: null,
+  }]);
   assert.equal((await istek('GET', '/karsilastir?ref=1&aday=3')).body.code, 'kosu_yok');
   assert.equal((await istek('GET', '/karsilastir?ref=1')).statusCode, 400);
   assert.equal((await istek('GET', '/karsilastir?ref=1&aday=2&esikP95=500')).statusCode, 400);
@@ -751,7 +949,7 @@ test('YKP13 kurulum: modul kaydi, tablolar + indeksler, sekme ve kayit seed\'ler
     assert.match(kur, new RegExp(`name: '${t}',\\s+sql: .\\s+CREATE TABLE ${t} \\(`), `${t} tablosu yok`);
   }
   assert.match(kur, /CREATE TABLE nginx_loadtest_kilitleri \([\s\S]*?UNIQUE\(lock_key\)/, 'kilit anahtari tekil degil');
-  // Tur 2 kolonlari dogrudan CREATE TABLE icinde (tablolar hic dagitilmadi: ALTER yok).
+  // Tur 2 ve tur 3 kolonlari CREATE TABLE icinde; ozellik bir ortamda yaratilmis olabilir: ALTER de var.
   const tablo = (t) => {
     const i = kur.indexOf(`CREATE TABLE ${t} (`);
     return kur.slice(i, kur.indexOf('`', i));
@@ -761,14 +959,29 @@ test('YKP13 kurulum: modul kaydi, tablolar + indeksler, sekme ve kayit seed\'ler
     ['nginx_loadtest_kosular', /\bdurdur_awx_server_id\s+INT NULL/],
     ['nginx_loadtest_kosular', /\bdurdur_awx_job_id\s+INT NULL/],
     ['nginx_loadtest_kosular', /\bsonuclandirma_denemesi\s+INT NOT NULL DEFAULT 0/],
+    ['nginx_loadtest_kosular', /\bhedef_turu\s+NVARCHAR\(10\) NOT NULL DEFAULT 'sunucu'/],
+    ['nginx_loadtest_kosular', /\bmotor\s+NVARCHAR\(8\) NOT NULL DEFAULT 'k6'/],
+    ['nginx_loadtest_kosular', /\bplan_uyarilari\s+NVARCHAR\(2000\) NULL/],
     ['nginx_loadtest_kilitleri', /\bbag_turu\s+NVARCHAR\(12\) NULL/],
   ]) assert.match(tablo(t), kolon, `${t}: ${kolon} kolonu yok`);
+  assert.doesNotMatch(kur, /Tablo hic dagitilmadi: ALTER yok/, 'eski "ALTER yok" yorumu kaldi (ozellik itildi)');
+  const alterSql = (kolon) => {
+    const m = new RegExp(`table: 'nginx_loadtest_kosular',\\s+col: '${kolon}',\\s+sql: \`([^\`]*)\``).exec(kur);
+    return m && m[1];
+  };
+  assert.equal(alterSql('hedef_turu'), "ALTER TABLE nginx_loadtest_kosular ADD hedef_turu NVARCHAR(10) NOT NULL CONSTRAINT DF_nlk_hedef_turu DEFAULT 'sunucu'");
+  assert.equal(alterSql('motor'), "ALTER TABLE nginx_loadtest_kosular ADD motor NVARCHAR(8) NOT NULL CONSTRAINT DF_nlk_motor DEFAULT 'k6'");
+  assert.equal(alterSql('plan_uyarilari'), 'ALTER TABLE nginx_loadtest_kosular ADD plan_uyarilari NVARCHAR(2000) NULL');
+  // ALTER'lar tur 2 girdilerinin ARDINDA.
+  assert.ok(kur.indexOf("col: 'sonuclandirma_denemesi'") < kur.indexOf("col: 'hedef_turu'"), 'tur 3 ALTER tur 2 girdilerinden once');
   for (const [ad, tablo, kolon] of [['IX_nlk_job', 'nginx_loadtest_kosular', 'awx_server_id, awx_job_id'], ['IX_nlk_hedef', 'nginx_loadtest_kosular', 'hedef_host, created_at'], ['IX_nla_kosu', 'nginx_loadtest_adimlar', 'kosu_id']]) {
     assert.ok(kur.includes(`{ name: '${ad}', table: '${tablo}', cols: '${kolon}' }`), `${ad} indeksi yok`);
   }
   const reg = kur.slice(kur.indexOf("key_name: 'nginx_loadtest_run',"), kur.indexOf("key_name: 'nginx_loadtest_run',") + 1200);
   assert.match(reg, /category: 'nginx',/);
   assert.match(reg, /env_var_name: 'NGINX_LOADTEST_RUN_TEMPLATE_ID',/);
+  assert.match(reg, /display_name: 'Nginx Hub — Yük Testi \(k6 \/ wrk\)',/);
+  assert.match(reg, /serbest hedef/i, 'seed aciklamasi serbest hedefi anlatmiyor');
   const tabSeed = kur.match(/const NGINX_TAB_KEYS_SEED = \[([\s\S]*?)\];/);
   assert.ok(tabSeed && /'yuktesti'/.test(tabSeed[1]), 'NGINX_TAB_KEYS_SEED yuktesti tasimiyor');
   assert.match(oku('scripts/run-tests.cjs'), /'server\/nginx-loadtest\/__tests__',/);
@@ -1023,4 +1236,615 @@ test('YKP19 bayat kilit: baslatma yolu AWX durumunu iletir; kural bag turune gor
   const r3 = await istek('POST', '/kosular/on-kontrol', { body: GOVDE() });
   assert.deepEqual([r3.statusCode, r3.body.code], [409, 'kilit_dolu'], JSON.stringify(r3.body));
   for (const [kk, v] of D.kilitler) assert.deepEqual([v.held, v.lock_id, v.awx_job_id, v.bag_turu], [1, k.kosu.kilit_id, null, null], kk);
+});
+
+// ── TUR 3 (2026-10-28) ─────────────────────────────────────────────────────────────────────
+
+const RP_UYARISI = () => dg.YUK_MAKINESI_RP_UYARISI('GBNGXT34');
+const tutulan = () => [...D.kilitler.entries()].filter(([, v]) => v.held).map(([k]) => k).sort();
+
+test('YKP20 serbest on kontrol uctan uca: siniflandirma, satir, extra_vars, G + T|IP + L', { timeout: 10000 }, async () => {
+  sifirla();
+  senaryoEkle();
+  process.env.NGINX_LOADTEST_SERBEST_AGLAR = SERBEST_AG;
+  const r = await istek('POST', '/kosular/on-kontrol', { body: SGOVDE() });
+  assert.equal(r.statusCode, 200, JSON.stringify(r.body));
+  const k = D.kosular.find((x) => x.id === r.body.kosuId);
+  assert.deepEqual([k.hedef_turu, k.hedef_host, k.hedef_ip, k.motor, k.islem, k.vhost], ['serbest', '', SERBEST_IP, 'k6', 'on_kontrol', 'app.test.local']);
+  // GBNGXT34 internet RP: serbest plan uyarisi satirda (onay isteyecek).
+  assert.deepEqual(JSON.parse(k.plan_uyarilari), [RP_UYARISI()]);
+  assert.deepEqual(JSON.parse(k.parametreler), { motor: 'k6', hizlar: [50, 100, 200], tekrar: 2, isinma: 30, sure: 120, bosluk: 30, bosta: 60, maxvu: 50, kip: 'yeni', ae: 'br', sni: false, butceSn: 1380 });
+  const ev = D.launch[0][2];
+  assert.deepEqual([ev.yuk_hedef_turu, ev.yuk_hedef_host, ev.yuk_hedef_ip, ev.yuk_motor, ev.yuk_hizlar, ev.yuk_maxvu, ev.yuk_islem], ['serbest', '', SERBEST_IP, 'k6', '50 100 200', '50', 'on_kontrol']);
+  assert.deepEqual(dg.ekstraDegiskenleriDenetle(ev), []);
+  // Serbest on kontrol G de alir (VIP arkasindaki hostun olcum penceresine girmesin); T anahtari IP.
+  assert.deepEqual(tutulan(), ['G|global', 'L|GBNGXT34', `T|IP:${SERBEST_IP}`]);
+  for (const v of D.kilitler.values()) assert.deepEqual([v.held, v.awx_job_id, v.bag_turu], [1, 900, 'on_kontrol']);
+  const d = D.denetim.find((x) => x.eylem === 'nginx_loadtest_on_kontrol');
+  assert.deepEqual([d.targetHost, d.targetIp], [null, SERBEST_IP]);
+  const det = JSON.parse(d.detail);
+  assert.deepEqual([det.hedefTuru, det.motor, det.serbestAg, det.vhostListede, det.planUyarilari], ['serbest', 'k6', SERBEST_AG, null, [RP_UYARISI()]]);
+  assert.equal(D.gecmis[0][3], `Nginx Yük Testi: ön kontrol R${k.id} ${SERBEST_IP}`);
+  // Ikinci serbest on kontrol global kilitte durur; mesaj isi soyler.
+  const r2 = await istek('POST', '/kosular/on-kontrol', { body: SGOVDE() });
+  assert.deepEqual([r2.statusCode, r2.body.code], [409, 'kilit_dolu']);
+  assert.match(r2.body.message, /^Başka bir yük testi koşuyor \(onur: ön kontrol 10\.20\.30\.40 \(serbest\) <- GBNGXT34, AWX iş #900\)/);
+  // Ayrinti: tur, motor, hedefHost null, izinli ag (env'den su an).
+  const g = await istek('GET', `/kosular/${k.id}`);
+  assert.deepEqual([g.body.kosu.hedefTuru, g.body.kosu.motor, g.body.kosu.hedefHost, g.body.kosu.serbestAg, g.body.kosu.planUyarilari], ['serbest', 'k6', null, SERBEST_AG, [RP_UYARISI()]]);
+});
+
+test('YKP21 serbest kosu: onay metni hedef IP, serbest uyarisi onay ister, sinif degisince on_kontrol_eski', { timeout: 20000 }, async () => {
+  const hazirla = async () => {
+    sifirla();
+    senaryoEkle();
+    process.env.NGINX_LOADTEST_SERBEST_AGLAR = SERBEST_AG;
+    return onKontrolHazirla({ govde: SGOVDE(), ozet: OK_OZET_SERBEST });
+  };
+  const kos = (ok, ek) => istek('POST', '/kosular', { body: { onKontrolKosuId: ok.id, ...ek } });
+  let ok = await hazirla();
+  let r = await kos(ok, { confirmText: 'GBNGXT33', uyariOnay: true });
+  assert.deepEqual([r.statusCode, r.body.code, r.body.message], [409, 'onay_metni', "Onay için hedef IP'yi (10.20.30.40) birebir yazın."]);
+  r = await kos(ok, { confirmText: '', uyariOnay: true });
+  assert.equal(r.body.code, 'onay_metni', 'bos onay metni serbestte kabul edildi');
+  // Plan uyarisi + sabit SERBEST uyarisi: ikisi de acik onay ister (ekranla ayni liste).
+  r = await kos(ok, { confirmText: SERBEST_IP });
+  assert.deepEqual([r.statusCode, r.body.code, r.body.uyarilar], [409, 'uyari_onayi', [RP_UYARISI(), dg.SERBEST_UYARISI]]);
+  assert.equal(D.launch.length, 1, 'onaysiz kosu baslatildi');
+  r = await kos(ok, { confirmText: ` ${SERBEST_IP} `, uyariOnay: true });
+  assert.equal(r.statusCode, 200, JSON.stringify(r.body));
+  const kosu = D.kosular.find((x) => x.id === r.body.kosuId);
+  assert.deepEqual([kosu.hedef_turu, kosu.hedef_host, kosu.motor, kosu.islem, kosu.on_kontrol_kosu_id], ['serbest', '', 'k6', 'kosu', ok.id]);
+  const ev = D.launch.at(-1)[2];
+  assert.deepEqual([ev.yuk_islem, ev.yuk_hedef_turu, ev.yuk_hedef_host, ev.yuk_hedef_ip], ['kosu', 'serbest', '', SERBEST_IP]);
+  assert.deepEqual(tutulan(), ['G|global', 'L|GBNGXT34', `T|IP:${SERBEST_IP}`]);
+  const d = D.denetim.find((x) => x.eylem === 'nginx_loadtest_baslat' && x.result !== 'fail');
+  assert.deepEqual([d.targetHost, d.targetIp], [null, SERBEST_IP]);
+  assert.deepEqual(JSON.parse(d.detail).onaylananUyarilar, [RP_UYARISI(), dg.SERBEST_UYARISI]);
+  assert.ok(D.denetim.some((x) => x.eylem === 'nginx_loadtest_baslat' && x.result === 'fail' && JSON.parse(x.detail).code === 'onay_metni'), 'onay metni reddi denetime yazilmadi');
+  // Sinif degisti: IP artik bir nginx sunucusunun (son tarama) -> on_kontrol_eski, kosu yok.
+  ok = await hazirla();
+  D.tarama.push({ host: 'GBNGXT33', listen: `${SERBEST_IP}:443 ssl`, server_name: 'app.test.local' });
+  r = await kos(ok, { confirmText: SERBEST_IP, uyariOnay: true });
+  assert.deepEqual([r.statusCode, r.body.code, r.body.message], [409, 'on_kontrol_eski', "Hedef IP'nin sınıfı ön kontrolden bu yana değişti; ön kontrolü yeniden çalıştırın."]);
+  assert.equal(D.launch.length, 1, 'sinifi degisen kosu baslatildi');
+  // Serbest izin listesi kapandi: kosu kapisi yeniden siniflandirir -> serbest_kapali.
+  ok = await hazirla();
+  delete process.env.NGINX_LOADTEST_SERBEST_AGLAR;
+  r = await kos(ok, { confirmText: SERBEST_IP, uyariOnay: true });
+  assert.deepEqual([r.statusCode, r.body.code], [409, 'serbest_kapali']);
+  // Serbestte engel: IP yuk makinesinde yerel ya da olculemedi (hedef kurallari yok).
+  ok = await hazirla();
+  Object.assign(ok, { on_kontrol_ozet: JSON.stringify({ ...OK_OZET_SERBEST, ip_yuk_makinesinde: null }) });
+  r = await kos(ok, { confirmText: SERBEST_IP, uyariOnay: true });
+  assert.deepEqual([r.statusCode, r.body.code, r.body.engeller], [409, 'on_kontrol_eski', ['hedef IP yük makinesinde yerel ya da ölçülemedi']]);
+});
+
+test('YKP22 elle yazilan IP: siniflar uctan uca, ret denetime yazilir, AWX\'e gitmez', { timeout: 30000 }, async () => {
+  const AGLAR = () => { process.env.NGINX_LOADTEST_SERBEST_AGLAR = SERBEST_AG; };
+  const durumlar = [
+    ['tek nginx sahibi -> sunucu', () => {}, '10.0.0.9', null, 200, null],
+    ['iki nginx sahibi', () => { D.tarama.push({ host: 'GBNGXT35', listen: '10.0.0.9:443', server_name: 'x.test.local' }); }, '10.0.0.9', null, 409, 'ip_belirsiz'],
+    ['adi cozulemeyen sahip', () => { D.ipEnvanteri.push({ host: '', ip: '10.0.0.9' }); }, '10.0.0.9', null, 409, 'ip_sahibi_cozulemedi'],
+    ['adi cozulemeyen sahip (host secici)', () => { D.ipEnvanteri.push({ host: '', ip: '10.0.0.9' }); }, '10.0.0.9', 'GBNGXT33', 409, 'ip_sahibi_cozulemedi'],
+    ['PROD nginx sahibi', () => {}, '10.9.0.1', null, 409, 'hedef_uretim'],
+    ['nginx olmayan PROD sahip (izinli agda)', () => { AGLAR(); D.invIp.push({ host: 'GBDBP01', env: 'Production', ip: '10.20.30.50' }); }, '10.20.30.50', null, 409, 'hedef_uretim'],
+    ['yuk makinesinin IP\'si', () => {}, '10.0.0.6', null, 409, 'ayni_host'],
+    ['sahipsiz, serbest kapali', () => {}, SERBEST_IP, null, 409, 'serbest_kapali'],
+    ['izinli agda degil', () => { process.env.NGINX_LOADTEST_SERBEST_AGLAR = '10.20.31.0/24'; }, SERBEST_IP, null, 409, 'ip_izinli_agda_degil'],
+    ['yasakli agda', () => { AGLAR(); process.env.NGINX_LOADTEST_SERBEST_YASAK = '10.20.30.32/27'; }, SERBEST_IP, null, 409, 'ip_yasakli_agda'],
+    ['yasak listesi gecersiz (sunucu IP\'si de kapanir)', () => { process.env.NGINX_LOADTEST_SERBEST_YASAK = 'YKP22-bozuk'; }, '10.0.0.9', null, 409, 'ip_yasak_listesi_gecersiz'],
+    ['envanter bayat', () => { AGLAR(); D.ipEnvYasSaat = 72; }, SERBEST_IP, null, 424, 'envanter_bayat'],
+    ['IPInventory yok', () => { AGLAR(); D.ipEnvanteri = null; }, SERBEST_IP, null, 424, 'envanter_okunamadi'],
+    ['IP yalniz IPInventory\'de (aday listesinde degil)', () => { D.ipEnvanteri.push({ host: 'GBNGXT33', ip: '10.0.0.88' }); }, '10.0.0.88', null, 409, 'ip_hedefte_yok'],
+  ];
+  for (const [ad, hazirla, ip, hedefHost, http, kod] of durumlar) {
+    sifirla();
+    senaryoEkle();
+    hazirla();
+    const r = await istek('POST', '/kosular/on-kontrol', { body: GOVDE({ hedefHost, hedefIp: ip }) });
+    assert.deepEqual([r.statusCode, r.body.code], [http, kod || undefined], `${ad}: ${JSON.stringify(r.body)}`);
+    if (http === 200) {
+      const k = D.kosular.find((x) => x.id === r.body.kosuId);
+      assert.deepEqual([k.hedef_turu, k.hedef_host, D.launch[0][2].yuk_hedef_host, D.launch[0][2].yuk_hedef_turu], ['sunucu', 'GBNGXT33', 'GBNGXT33', 'sunucu'], ad);
+      assert.deepEqual(tutulan(), ['L|GBNGXT34', 'T|GBNGXT33'], ad);
+      continue;
+    }
+    assert.equal(D.launch.length, 0, `${ad}: AWX isi baslatildi`);
+    assert.equal(D.kosular.length, 0, `${ad}: kosu satiri yazildi`);
+    assert.deepEqual(tutulan(), [], `${ad}: kilit tutulu kaldi`);
+    const d = D.denetim.find((x) => x.eylem === 'nginx_loadtest_on_kontrol');
+    assert.ok(d && d.result === 'fail' && JSON.parse(d.detail).code === kod, `${ad}: ret denetime yazilmadi`);
+    assert.deepEqual([d.targetHost, d.targetIp], [hedefHost, ip], ad);
+    // Sahipler (sozlesme 8.2 adim 5'ten sonra bilinir) govdeye kopyalanir; sahiplik oncesi retlerde
+    // ve aday IP savunmasinda (siniflandirma gecti) yok.
+    if (!['ip_sahibi_cozulemedi', 'ip_yasakli_agda', 'ip_yasak_listesi_gecersiz', 'ip_hedefte_yok'].includes(kod)) assert.ok(Array.isArray(r.body.sahipler), `${ad}: sahipler govdede yok`);
+  }
+  // Savunma metni (tur 2 ile ayni aday listeli metin).
+  sifirla();
+  senaryoEkle();
+  D.ipEnvanteri.push({ host: 'GBNGXT33', ip: '10.0.0.88' });
+  const r = await istek('POST', '/kosular/on-kontrol', { body: GOVDE({ hedefHost: null, hedefIp: '10.0.0.88' }) });
+  assert.equal(r.body.message, "10.0.0.88, GBNGXT33 için bilinen IP'lerden değil (10.0.0.5, 10.0.0.9).");
+  // hedefHost istege bagli: undefined / null / '' -> elle IP; verilmis ama gecersiz -> 400.
+  for (const hedefHost of [undefined, '']) {
+    sifirla();
+    senaryoEkle();
+    const x = await istek('POST', '/kosular/on-kontrol', { body: GOVDE({ hedefHost }) });
+    assert.equal(x.statusCode, 200, `${JSON.stringify(hedefHost)}: ${JSON.stringify(x.body)}`);
+  }
+  for (const hedefHost of ['GB NG', '  ', 5, 'GBNGXT33;rm']) {
+    sifirla();
+    senaryoEkle();
+    const x = await istek('POST', '/kosular/on-kontrol', { body: GOVDE({ hedefHost }) });
+    assert.deepEqual([x.statusCode, x.body.code, x.body.message], [400, 'gecersiz_istek', 'Geçersiz hedef sunucu adı.'], JSON.stringify(hedefHost));
+  }
+});
+
+test('YKP23 wrk on kontrol: extra_vars bolum 3, tavan sunucuda hesaplanir, wrk + SNI 400', { timeout: 10000 }, async () => {
+  sifirla();
+  senaryoEkle();
+  // Gonderilen tavan_rps / hizlar yok sayilir: tavan hedefin olculmus limit_req'inin %90'i (300 r/s -> 270).
+  let r = await istek('POST', '/kosular/on-kontrol', { body: GOVDE({ parametreler: { motor: 'wrk', tavan_rps: 450, hizlar: [999] } }) });
+  assert.equal(r.statusCode, 200, JSON.stringify(r.body));
+  const k = D.kosular.find((x) => x.id === r.body.kosuId);
+  assert.deepEqual([k.motor, k.hedef_turu], ['wrk', 'sunucu']);
+  assert.deepEqual(JSON.parse(k.parametreler), { motor: 'wrk', baglantilar: [2, 4, 8], is_parcacigi: 2, tavan_rps: 270, tekrar: 2, isinma: 30, sure: 120, bosluk: 30, bosta: 60, kip: 'yeni', ae: 'br', sni: false, butceSn: 1380 });
+  const ev = D.launch[0][2];
+  assert.deepEqual(
+    [ev.yuk_motor, ev.yuk_hizlar, ev.yuk_maxvu, ev.yuk_baglantilar, ev.yuk_is_parcacigi, ev.yuk_tavan_rps, ev.yuk_sni, ev.yuk_wrk_yolu, ev.yuk_k6_yolu, ev.yuk_hedef_turu, ev.yuk_butce_sn],
+    ['wrk', '', '', '2 4 8', '2', '270', '0', '/home/www/bin/wrk', '/home/www/bin/k6', 'sunucu', '1380'],
+  );
+  assert.deepEqual(dg.ekstraDegiskenleriDenetle(ev), []);
+  // wrk yolu env'den.
+  sifirla();
+  senaryoEkle();
+  process.env.NGINX_LOADTEST_WRK = '/opt/wrk/bin/wrk';
+  r = await istek('POST', '/kosular/on-kontrol', { body: GOVDE({ parametreler: { motor: 'wrk', baglantilar: [4, 8], is_parcacigi: 4 } }) });
+  assert.equal(r.statusCode, 200, JSON.stringify(r.body));
+  assert.deepEqual([D.launch[0][2].yuk_wrk_yolu, D.launch[0][2].yuk_baglantilar, D.launch[0][2].yuk_is_parcacigi], ['/opt/wrk/bin/wrk', '4 8', '4']);
+  // wrk + SNI -> 400 (gizli donusum yok); N % T != 0 -> 409; ikisi de AWX'e gitmez.
+  for (const [govde, http, kod, mesaj] of [
+    [GOVDE({ sni: true, parametreler: { motor: 'wrk' } }), 400, 'gecersiz_istek', "wrk SNI'yi Host başlığına göre seçemez (IP adresi SNI olarak gider); SNI kutusunu kapatın."],
+    [GOVDE({ parametreler: { motor: 'wrk', baglantilar: [3, 6], is_parcacigi: 2 } }), 409, 'sinir_asildi', 'Sınır aşıldı: bağlantı 3, iş parçacığı sayısına (2) tam bölünmüyor.'],
+  ]) {
+    sifirla();
+    senaryoEkle();
+    const x = await istek('POST', '/kosular/on-kontrol', { body: govde });
+    assert.deepEqual([x.statusCode, x.body.code, x.body.message], [http, kod, mesaj]);
+    assert.deepEqual([D.launch.length, D.kosular.length], [0, 0]);
+  }
+});
+
+test('YKP24 /ip-sinifi: yalniz Admin, yanit sekilleri, uygun:false 200, host secici, DB / denetim yok', { timeout: 20000 }, async () => {
+  sifirla();
+  process.env.NGINX_LOADTEST_SERBEST_AGLAR = SERBEST_AG;
+  // Admin olmayan: router 403 (uygulama duzeyinde nginxRedCevirici 409'a cevirir); envanter okunmaz.
+  let r = await istek('GET', '/ip-sinifi?ip=10.0.0.9', { session: KULLANICI });
+  assert.equal(r.statusCode, 403);
+  assert.equal(D.envSorgular.length, 0, 'Admin olmayan icin envanter okundu');
+  assert.ok(!yt._ADMIN_DISI_OKUMA.some((re) => re.test('/ip-sinifi')), '/ip-sinifi Admin olmayana acik');
+  const kod = fs.readFileSync(IDX_YOL, 'utf8');
+  const uc = kod.indexOf("router.get('/ip-sinifi'");
+  assert.ok(uc > 0 && /adminSart\(req\)/.test(kod.slice(uc, uc + 200)), '/ip-sinifi isleyicide Admin denetlemiyor');
+  // Sunucu: /hedefler satiriyla ayni alanlar + kaynaklar.
+  r = await istek('GET', '/ip-sinifi?ip=10.0.0.9&yukHost=GBNGXT34');
+  assert.equal(r.statusCode, 200, JSON.stringify(r.body));
+  assert.deepEqual(r.body, {
+    ok: true, tur: 'sunucu', ip: '10.0.0.9', host: 'GBNGXT33', env: 'TEST', vhostlar: ['api.test.local', 'app.test.local'], vhostVerisi: true,
+    hizSiniri: 270, vuSiniri: null, uygun: true, neden: null, kod: null, kaynaklar: ['dbo.IPInventory', 'tarama'],
+  });
+  // Serbest.
+  r = await istek('GET', `/ip-sinifi?ip=${SERBEST_IP}&yukHost=GBNGXT34`);
+  assert.deepEqual([r.statusCode, r.body], [200, { ok: true, tur: 'serbest', ip: SERBEST_IP, host: null, ag: SERBEST_AG, digerSahipler: [] }]);
+  // uygun:false da 200: olculmus limit 0 ve aday listesinde olmayan IP.
+  D.ayarlar = [
+    { host: 'GBNGXT33', directive: 'limit_req_zone', value: '$binary_remote_addr zone=login:10m rate=1r/s' },
+    { host: 'GBNGXT33', directive: 'limit_req', value: 'zone=login burst=5' },
+  ];
+  r = await istek('GET', '/ip-sinifi?ip=10.0.0.9');
+  assert.deepEqual([r.statusCode, r.body.tur, r.body.uygun, r.body.kod, r.body.neden], [200, 'sunucu', false, 'sinir_asildi', dg.SIFIR_SINIR_MESAJI]);
+  D.ayarlar = null;
+  D.ipEnvanteri.push({ host: 'GBNGXT33', ip: '10.0.0.88' });
+  r = await istek('GET', '/ip-sinifi?ip=10.0.0.88');
+  assert.deepEqual([r.statusCode, r.body.uygun, r.body.kod, r.body.neden], [200, false, 'ip_hedefte_yok', "10.0.0.88, GBNGXT33 için bilinen IP'lerden değil (10.0.0.5, 10.0.0.9)."]);
+  // Paylasilan VIP: hedefHost ile 200 sunucu; ayni IP hedefHost'suz 409 ip_belirsiz.
+  D.nginxEk.push({ hostname: 'GBNGXT35', env: 'test', ip: '10.0.0.7' });
+  D.tarama.push({ host: 'GBNGXT33', listen: '10.0.0.100:443 ssl', server_name: 'vip.test.local' }, { host: 'GBNGXT35', listen: '10.0.0.100:443 ssl', server_name: 'vip.test.local' });
+  r = await istek('GET', '/ip-sinifi?ip=10.0.0.100&hedefHost=GBNGXT33&yukHost=GBNGXT34');
+  assert.deepEqual([r.statusCode, r.body.tur, r.body.host, r.body.uygun, r.body.kaynaklar], [200, 'sunucu', 'GBNGXT33', true, ['tarama']], JSON.stringify(r.body));
+  r = await istek('GET', '/ip-sinifi?ip=10.0.0.100&yukHost=GBNGXT34');
+  assert.deepEqual([r.statusCode, r.body.code, r.body.message], [409, 'ip_belirsiz', '10.0.0.100 birden çok nginx sunucusunda tanımlı (GBNGXT33, GBNGXT35); hedef sunucuyu listeden seçin.']);
+  assert.deepEqual(r.body.sahipler.map((s) => s.host), ['GBNGXT33', 'GBNGXT35']);
+  // hedefHost + adi cozulemeyen sahip -> 409 ip_sahibi_cozulemedi (host secici de fail-closed).
+  D.ipEnvanteri.push({ host: '', ip: '10.0.0.100' });
+  r = await istek('GET', '/ip-sinifi?ip=10.0.0.100&hedefHost=GBNGXT33');
+  assert.deepEqual([r.statusCode, r.body.code], [409, 'ip_sahibi_cozulemedi']);
+  // hedefHost IP'nin sahibi degil -> tur 2 aday listeli metin; hedefHost uretim -> hedef kapisi.
+  r = await istek('GET', '/ip-sinifi?ip=10.0.0.9&hedefHost=GBNGXT34');
+  assert.deepEqual([r.statusCode, r.body.code, r.body.message], [409, 'ip_hedefte_yok', "10.0.0.9, GBNGXT34 için bilinen IP'lerden değil (10.0.0.6)."]);
+  r = await istek('GET', '/ip-sinifi?ip=10.9.0.1&hedefHost=GBNGXP40');
+  assert.deepEqual([r.statusCode, r.body.code], [409, 'hedef_uretim']);
+  // yukHost verilmezse ayni_host denetimi atlanir; verilirse uygulanir.
+  assert.equal((await istek('GET', '/ip-sinifi?ip=10.0.0.6')).body.host, 'GBNGXT34');
+  assert.equal((await istek('GET', '/ip-sinifi?ip=10.0.0.6&yukHost=GBNGXT34')).body.code, 'ayni_host');
+  // Gecersiz girdi 400.
+  for (const u of ['/ip-sinifi', '/ip-sinifi?ip=10.0.0', '/ip-sinifi?ip=evil.com', '/ip-sinifi?ip=10.0.0.9&hedefHost=GB%20NG', '/ip-sinifi?ip=10.0.0.9&yukHost=..']) {
+    r = await istek('GET', u);
+    assert.deepEqual([r.statusCode, r.body.code], [400, 'gecersiz_istek'], u);
+  }
+  r = await istek('GET', '/ip-sinifi', { query: { ip: ['10.0.0.9'] } });
+  assert.equal(r.statusCode, 400);
+  // Portal DB'ye, denetime, AWX'e hic dokunulmadi.
+  assert.equal(D.sorgular.length, 0, '/ip-sinifi Portal DB\'ye dokundu');
+  assert.equal(D.denetim.length, 0, '/ip-sinifi denetime yazdi');
+  assert.equal(D.launch.length, 0);
+});
+
+test('YKP25 /kosular: ip / hedefTuru / motor suzgecleri, 400, kosuApi alanlari', { timeout: 10000 }, async () => {
+  sifirla();
+  senaryoEkle();
+  D.kosular.push(
+    { id: 1, islem: 'kosu', durum: 'DONE', hedef_host: 'GBNGXT33', hedef_ip: '10.0.0.9', created_at: new Date(BAS), senaryo_id: 1 },
+    { id: 2, islem: 'kosu', durum: 'DONE', hedef_host: '', hedef_ip: SERBEST_IP, hedef_turu: 'serbest', motor: 'wrk', created_at: new Date(BAS), senaryo_id: 1 },
+    { id: 3, islem: 'on_kontrol', durum: 'DONE', hedef_host: 'GBNGXT33', hedef_ip: '10.0.0.9', hedef_turu: 'sunucu', motor: 'wrk', created_at: new Date(BAS), senaryo_id: 1 },
+    { id: 4, islem: 'kosu', durum: 'FAILED', hedef_host: '', hedef_ip: '10.20.30.41', hedef_turu: 'serbest', motor: 'k6', created_at: new Date(BAS), senaryo_id: 1 },
+  );
+  const ids = (b) => b.kosular.map((x) => x.id);
+  let r = await istek('GET', '/kosular');
+  const k = Object.fromEntries(r.body.kosular.map((x) => [x.id, x]));
+  // Eski satir (kolonsuz) sunucu / k6; serbest satirin hedefHost'u null (DB'de '').
+  assert.deepEqual([k[1].hedefTuru, k[1].motor, k[1].hedefHost], ['sunucu', 'k6', 'GBNGXT33']);
+  assert.deepEqual([k[2].hedefTuru, k[2].motor, k[2].hedefHost, k[2].hedefIp], ['serbest', 'wrk', null, SERBEST_IP]);
+  assert.deepEqual(ids((await istek('GET', `/kosular?ip=${SERBEST_IP}`)).body), [2]);
+  assert.deepEqual(ids((await istek('GET', '/kosular?hedefTuru=serbest')).body), [4, 2]);
+  assert.deepEqual(ids((await istek('GET', '/kosular?motor=wrk')).body), [3, 2]);
+  assert.deepEqual(ids((await istek('GET', '/kosular?hedefTuru=serbest&motor=k6&islem=kosu')).body), [4]);
+  assert.deepEqual(ids((await istek('GET', '/kosular?ip=10.0.0.9&hedefTuru=sunucu', { session: KULLANICI })).body), [3]);
+  const son = D.sorgular.filter((s) => /^SELECT TOP \(\$1\)/.test(s.q)).at(-1);
+  assert.doesNotMatch(son.q, /10\.0\.0\.9|sunucu'/, 'suzgec degeri SQL metnine gomuldu');
+  assert.match(son.q, /k\.hedef_turu, k\.motor, s\.ad AS senaryo_ad/, 'liste kolonlarinda tur / motor yok');
+  for (const bozuk of ['ip=10.0.0', 'ip=evil.com', 'ip=10.0.0.9%20', 'hedefTuru=lb', 'hedefTuru=SUNUCU', 'motor=K6', 'motor=wrk2']) {
+    r = await istek('GET', `/kosular?${bozuk}`);
+    assert.deepEqual([r.statusCode, r.body.code], [400, 'gecersiz_istek'], bozuk);
+  }
+  for (const query of [{ ip: ['10.0.0.9'] }, { hedefTuru: ['serbest'] }, { motor: ['wrk', 'k6'] }]) {
+    r = await istek('GET', '/kosular', { query });
+    assert.deepEqual([r.statusCode, r.body.code], [400, 'gecersiz_istek'], JSON.stringify(query));
+  }
+});
+
+test('YKP26 serbest / wrk durdur: extra_vars satirdan, 424 metni motor ve ture gore', { timeout: 20000 }, async () => {
+  const satir = (id, ek) => ({
+    id, islem: 'kosu', durum: 'RUNNING', senaryo_id: 1, hedef_host: 'GBNGXT33', hedef_ip: '10.0.0.9', vhost: 'app.test.local', yuk_host: 'GBNGXT34',
+    awx_server_id: 3, awx_job_id: 800 + id, created_at: new Date(D.simdi - 600000), kilit_id: `kilit-${id}`, ...ek,
+  });
+  const pws = JSON.stringify(dg.parametreler({ motor: 'wrk' }, { sni: false, hedefTuru: 'serbest' }).deger);
+  sifirla();
+  senaryoEkle();
+  D.kosular.push(satir(1, { hedef_host: '', hedef_ip: SERBEST_IP, hedef_turu: 'serbest', motor: 'wrk', parametreler: pws }));
+  let r = await istek('POST', '/kosular/1/durdur');
+  assert.equal(r.statusCode, 200, JSON.stringify(r.body));
+  const ev = D.launch.at(-1)[2];
+  assert.deepEqual([ev.yuk_islem, ev.yuk_hedef_turu, ev.yuk_hedef_host, ev.yuk_hedef_ip, ev.yuk_motor, ev.yuk_baglantilar, ev.yuk_tavan_rps], ['durdur', 'serbest', '', SERBEST_IP, 'wrk', '2 4 8', '200']);
+  assert.deepEqual(dg.ekstraDegiskenleriDenetle(ev), []);
+  assert.equal(D.gecmis.at(-1)[3], `Nginx Yük Testi: durdur R1 ${SERBEST_IP}`);
+  assert.ok(D.denetim.some((x) => x.eylem === 'nginx_loadtest_durdur' && x.targetHost === null && x.targetIp === SERBEST_IP), 'serbest durdur denetimi');
+  const metin = async (ek) => {
+    sifirla();
+    senaryoEkle();
+    D.kosular.push(satir(2, ek));
+    D.launchHata = Object.assign(new Error('AWX 503'), { status: 503 });
+    const x = await istek('POST', '/kosular/2/durdur');
+    assert.deepEqual([x.statusCode, x.body.code], [424, 'durdur_baslatilamadi'], JSON.stringify(x.body));
+    return x.body.message;
+  };
+  const bas = 'AWX işi iptal edildi, ancak durdurma işi başlatılamadı: AWX işi başlatılamadı: AWX 503. ';
+  const son = " sürüyor olabilir; Durdur'u yeniden deneyin. Kilitler koşunun süre sınırına kadar tutulur.";
+  assert.equal(await metin({ hedef_turu: 'serbest', motor: 'wrk', hedef_host: '', hedef_ip: SERBEST_IP, parametreler: pws }), `${bas}Uzaktaki wrk${son}`);
+  assert.equal(await metin({ hedef_turu: 'sunucu', motor: 'wrk', parametreler: JSON.stringify(dg.parametreler({ motor: 'wrk' }, { sni: false }).deger) }), `${bas}Uzaktaki wrk / kaydedici${son}`);
+  assert.equal(await metin({ hedef_turu: 'serbest', motor: 'k6', hedef_host: '', hedef_ip: SERBEST_IP, parametreler: JSON.stringify(dg.parametreler({}, { sni: false, hedefTuru: 'serbest' }).deger) }), `${bas}Uzaktaki k6${son}`);
+  // Eski satir (tur / motor kolonu ve parametreler.motor yok) -> k6 + sunucu: tur 2 metni BIREBIR.
+  const eskiP = JSON.stringify({ hizlar: [100], tekrar: 1, isinma: 30, sure: 120, bosluk: 30, bosta: 60, maxvu: 150, kip: 'yeni', ae: 'br', sni: false, butceSn: 380 });
+  assert.equal(await metin({ parametreler: eskiP }), "AWX işi iptal edildi, ancak durdurma işi başlatılamadı: AWX işi başlatılamadı: AWX 503. Uzaktaki k6 / kaydedici sürüyor olabilir; Durdur'u yeniden deneyin. Kilitler koşunun süre sınırına kadar tutulur.");
+  // Eski satirin durdurma degiskenleri: sunucu / k6, son kapidan gecer (tur 2 sureMin oncesi satir da).
+  sifirla();
+  senaryoEkle();
+  D.kosular.push(satir(3, { parametreler: JSON.stringify({ ...JSON.parse(eskiP), sure: 30 }) }));
+  r = await istek('POST', '/kosular/3/durdur');
+  assert.equal(r.statusCode, 200, JSON.stringify(r.body));
+  const ev3 = D.launch.at(-1)[2];
+  assert.deepEqual([ev3.yuk_hedef_turu, ev3.yuk_motor, ev3.yuk_hedef_host, ev3.yuk_sure_sn], ['sunucu', 'k6', 'GBNGXT33', '30']);
+});
+
+test('YKP27 /karsilastir: kararVer\'e motor / hedef turu / is parcacigi, ozet alanlari', { timeout: 10000 }, async () => {
+  sifirla();
+  senaryoEkle();
+  const pw = dg.parametreler({ motor: 'wrk', baglantilar: [2, 4] }, { sni: false, hedefTuru: 'serbest' }).deger;
+  D.kosular.push(
+    { id: 1, islem: 'kosu', durum: 'DONE', etiket: 'A', created_at: new Date(BAS), senaryo_id: 1, hedef_turu: 'serbest', motor: 'wrk', parametreler: JSON.stringify(pw) },
+    { id: 2, islem: 'kosu', durum: 'DONE', etiket: 'B', created_at: new Date(BAS), senaryo_id: 1, parametreler: JSON.stringify({ hizlar: [100] }) },
+  );
+  const r = await istek('GET', '/karsilastir?ref=1&aday=2&esikP95=7');
+  assert.equal(r.statusCode, 200, JSON.stringify(r.body));
+  assert.deepEqual(kararCagri.at(-1).s, {
+    esikP95: 7, refMotor: 'wrk', adayMotor: 'k6', refHedefTuru: 'serbest', adayHedefTuru: 'sunucu', refIsParcacigi: 2, adayIsParcacigi: null,
+    refTavanRps: 200, adayTavanRps: null,
+  });
+  assert.deepEqual([r.body.ref.motor, r.body.ref.hedefTuru, r.body.aday.motor, r.body.aday.hedefTuru], ['wrk', 'serbest', 'k6', 'sunucu']);
+  // Motor kolonu yoksa parametreler.motor (liste kopyasi eksik eski satir icin).
+  D.kosular[0].motor = undefined;
+  await istek('GET', '/karsilastir?ref=1&aday=2');
+  assert.equal(kararCagri.at(-1).s.refMotor, 'wrk');
+  // Hiz tavani (wrk tavan_rps) iki satirin parametrelerinden: sunucu 450 (limit olculmedi) ile limit_req
+  // 100 r/s olculmus hedefin 90'i. Farkli tavan analizde VERI_YOK (analiz AN16).
+  const p450 = dg.parametreler({ motor: 'wrk' }, { sni: false }).deger;
+  const p90 = dg.parametreler({ motor: 'wrk' }, { sni: false, hizSiniri: 90 }).deger;
+  assert.deepEqual([p450.tavan_rps, p90.tavan_rps], [450, 90], 'fikstur: tavanlar');
+  D.kosular.push(
+    { id: 3, islem: 'kosu', durum: 'DONE', etiket: 'C', created_at: new Date(BAS), senaryo_id: 1, hedef_turu: 'sunucu', motor: 'wrk', parametreler: JSON.stringify(p450) },
+    { id: 4, islem: 'kosu', durum: 'DONE', etiket: 'D', created_at: new Date(BAS), senaryo_id: 1, hedef_turu: 'sunucu', motor: 'wrk', parametreler: JSON.stringify(p90) },
+  );
+  assert.equal((await istek('GET', '/karsilastir?ref=3&aday=4')).statusCode, 200);
+  assert.deepEqual([kararCagri.at(-1).s.refTavanRps, kararCagri.at(-1).s.adayTavanRps, kararCagri.at(-1).s.refIsParcacigi], [450, 90, 2]);
+});
+
+test('YKP28 /hedefler: serbest (aglar yalniz Admin), motorlar, sinirlar ve varsayilanlar', { timeout: 10000 }, async () => {
+  sifirla();
+  process.env.NGINX_LOADTEST_SERBEST_AGLAR = '10.20.30.0/24, 10.20.31.15';
+  let r = await istek('GET', '/hedefler');
+  assert.equal(r.statusCode, 200, JSON.stringify(r.body));
+  assert.deepEqual(r.body.serbest, { acik: true, aglar: ['10.20.30.0/24', '10.20.31.15/32'] });
+  assert.deepEqual(r.body.motorlar, ['k6', 'wrk']);
+  for (const [a, v] of Object.entries({ baglantiMin: 1, maxBaglanti: 199, maxBaglantiSayisi: 5, isParcacigiMin: 1, maxIsParcacigi: 16, serbestTavanRps: 200, serbestMaxBaglanti: 50, maxHiz: 450 })) {
+    assert.equal(r.body.sinirlar[a], v, a);
+  }
+  assert.deepEqual([r.body.varsayilan.motor, r.body.varsayilan.baglantilar, r.body.varsayilan.is_parcacigi, r.body.varsayilan.serbest, r.body.varsayilan.hizlar], ['k6', [2, 4, 8], 2, { hizlar: [50, 100, 200], maxvu: 50 }, [100, 250, 400]]);
+  // Admin olmayan acik / kapali bilgisini gorur, aglari gormez.
+  r = await istek('GET', '/hedefler', { session: KULLANICI });
+  assert.deepEqual(r.body.serbest, { acik: true, aglar: [] });
+  delete process.env.NGINX_LOADTEST_SERBEST_AGLAR;
+  r = await istek('GET', '/hedefler');
+  assert.deepEqual(r.body.serbest, { acik: false, aglar: [] });
+  // Hedef listesi degismedi.
+  assert.deepEqual(r.body.hedefler.find((x) => x.host === 'GBNGXT33').ipler, ['10.0.0.5', '10.0.0.9']);
+});
+
+test('YKP29 D7: listede olmayan Host basligiyla sunucu on kontrolu baslar; kosu D7 uyarisinin onayini ister', { timeout: 20000 }, async () => {
+  sifirla();
+  senaryoEkle();
+  const r = await istek('POST', '/kosular/on-kontrol', { body: GOVDE({ vhost: 'baska.test.local' }) });
+  assert.equal(r.statusCode, 200, JSON.stringify(r.body));
+  const k = D.kosular.find((x) => x.id === r.body.kosuId);
+  assert.deepEqual([k.vhost, D.launch[0][2].yuk_host_basligi, k.plan_uyarilari], ['baska.test.local', 'baska.test.local', null]);
+  assert.equal(JSON.parse(D.denetim.find((x) => x.eylem === 'nginx_loadtest_on_kontrol').detail).vhostListede, false);
+  // Listedeki ad -> true; tarama tablosu yoksa -> null (bilinmiyor).
+  sifirla();
+  senaryoEkle();
+  await istek('POST', '/kosular/on-kontrol', { body: GOVDE() });
+  assert.equal(JSON.parse(D.denetim.find((x) => x.eylem === 'nginx_loadtest_on_kontrol').detail).vhostListede, true);
+  sifirla();
+  senaryoEkle();
+  D.taramaYok = true;
+  const r0 = await istek('POST', '/kosular/on-kontrol', { body: GOVDE({ hedefIp: '10.0.0.5' }) });
+  assert.equal(r0.statusCode, 200, JSON.stringify(r0.body));
+  assert.equal(JSON.parse(D.denetim.find((x) => x.eylem === 'nginx_loadtest_on_kontrol').detail).vhostListede, null);
+  // Kosu: playbook server_name'i nginx -T'de bulamadi -> engel DEGIL, onay isteyen uyari.
+  sifirla();
+  senaryoEkle();
+  const ok = await onKontrolHazirla({ ozet: { ...OK_OZET, server_name_var: false }, govde: GOVDE({ vhost: 'baska.test.local' }) });
+  let r2 = await istek('POST', '/kosular', { body: { onKontrolKosuId: ok.id, confirmText: 'GBNGXT33' } });
+  assert.deepEqual([r2.statusCode, r2.body.code, r2.body.uyarilar], [409, 'uyari_onayi', [dg.HOST_LISTEDE_YOK_UYARISI]]);
+  const g = await istek('GET', `/kosular/${ok.id}`);
+  assert.deepEqual([g.body.kosu.onKontrolEngelleri, g.body.kosu.onKontrolUyarilari], [[], [dg.HOST_LISTEDE_YOK_UYARISI]]);
+  r2 = await istek('POST', '/kosular', { body: { onKontrolKosuId: ok.id, confirmText: 'GBNGXT33', uyariOnay: true } });
+  assert.equal(r2.statusCode, 200, JSON.stringify(r2.body));
+  assert.equal(D.launch.at(-1)[2].yuk_host_basligi, 'baska.test.local');
+});
+
+test('YKP30 plan uyarilari: satirda, ayrintida basta, kosu onayi ister, yeni uyari on_kontrol_eski', { timeout: 20000 }, async () => {
+  const hazirla = async () => {
+    sifirla();
+    senaryoEkle();
+    process.env.NGINX_LOADTEST_SERBEST_AGLAR = SERBEST_AG;
+    return onKontrolHazirla({ govde: SGOVDE({ vhost: 'yok.test.local' }), ozet: OK_OZET_SERBEST });
+  };
+  const plan = [dg.HOST_TARAMADA_YOK_UYARISI('yok.test.local'), RP_UYARISI()];
+  let ok = await hazirla();
+  assert.deepEqual(JSON.parse(ok.plan_uyarilari), plan);
+  let g = await istek('GET', `/kosular/${ok.id}`);
+  assert.deepEqual([g.body.kosu.planUyarilari, g.body.kosu.onKontrolUyarilari, g.body.kosu.onKontrolEngelleri], [plan, [...plan, dg.SERBEST_UYARISI], []]);
+  let r = await istek('POST', '/kosular', { body: { onKontrolKosuId: ok.id, confirmText: SERBEST_IP } });
+  assert.deepEqual([r.statusCode, r.body.code, r.body.uyarilar], [409, 'uyari_onayi', [...plan, dg.SERBEST_UYARISI]]);
+  r = await istek('POST', '/kosular', { body: { onKontrolKosuId: ok.id, confirmText: SERBEST_IP, uyariOnay: true } });
+  assert.equal(r.statusCode, 200, JSON.stringify(r.body));
+  const kosu = D.kosular.find((x) => x.id === r.body.kosuId);
+  assert.deepEqual(JSON.parse(kosu.plan_uyarilari), plan);
+  // Kosu satirinin ayrintisi on kontrol satirinin plan uyarilarini gosterir.
+  g = await istek('GET', `/kosular/${kosu.id}`);
+  assert.deepEqual([g.body.kosu.planUyarilari, g.body.kosu.onKontrolUyarilari.length], [plan, 3]);
+  assert.deepEqual(JSON.parse(D.denetim.find((x) => x.eylem === 'nginx_loadtest_baslat' && x.result !== 'fail').detail).onaylananUyarilar, [...plan, dg.SERBEST_UYARISI]);
+  // Kosu aninda yeni plan uyarisi (Host basligi artik yuk makinesinin server_name'i) -> on_kontrol_eski.
+  ok = await hazirla();
+  D.tarama.push({ host: 'GBNGXT34', listen: '443 ssl', server_name: 'yok.test.local' });
+  r = await istek('POST', '/kosular', { body: { onKontrolKosuId: ok.id, confirmText: SERBEST_IP, uyariOnay: true } });
+  assert.deepEqual([r.statusCode, r.body.code, r.body.message], [409, 'on_kontrol_eski', `Ön kontrolden bu yana yeni uyarı çıktı (${dg.YUK_MAKINESI_HAVUZDA_UYARISI('yok.test.local', 'GBNGXT34')}); ön kontrolü yeniden çalıştırın.`]);
+  assert.equal(D.launch.length, 1, 'onaylanmamis uyariyla kosu baslatildi');
+  // Kaybolan uyari engel degil (yeniden kurulan liste saklananin alt kumesi).
+  ok = await hazirla();
+  D.tarama.push({ host: 'GBNGXT33', listen: '443 ssl', server_name: 'yok.test.local' });
+  r = await istek('POST', '/kosular', { body: { onKontrolKosuId: ok.id, confirmText: SERBEST_IP, uyariOnay: true } });
+  assert.equal(r.statusCode, 200, JSON.stringify(r.body));
+});
+
+test('YKP31 host_uretim: yalniz uretimde tanimli Host basligi iki kipte 409, satir yok, ret denetimde', { timeout: 20000 }, async () => {
+  for (const [ad, govde] of [['sunucu', GOVDE({ vhost: 'prod.only.local' })], ['serbest', SGOVDE({ vhost: 'prod.only.local' })]]) {
+    sifirla();
+    senaryoEkle();
+    process.env.NGINX_LOADTEST_SERBEST_AGLAR = SERBEST_AG;
+    D.tarama.push({ host: 'GBNGXP40', listen: '10.9.0.1:443 ssl', server_name: 'prod.only.local' });
+    const r = await istek('POST', '/kosular/on-kontrol', { body: govde });
+    assert.deepEqual([r.statusCode, r.body.code, r.body.message], [409, 'host_uretim', 'Host başlığı (prod.only.local) son taramada yalnız üretim / EDU / ortamı bilinmeyen nginx sunucularında tanımlı (GBNGXP40); bu adla yük testi yapılmaz.'], ad);
+    assert.deepEqual(r.body.sahipler.map((s) => s.host), ['GBNGXP40'], ad);
+    assert.deepEqual([D.launch.length, D.kosular.length, tutulan()], [0, 0, []], ad);
+    const d = D.denetim.find((x) => x.eylem === 'nginx_loadtest_on_kontrol');
+    assert.ok(d && d.result === 'fail' && JSON.parse(d.detail).code === 'host_uretim', ad);
+  }
+  // Kosu aninda: ad on kontrolden sonra yalniz uretimde kaldi -> 409 host_uretim.
+  sifirla();
+  senaryoEkle();
+  D.tarama.push({ host: 'GBNGXT35', listen: '443', server_name: 'tasinan.test.local' }, { host: 'GBNGXP40', listen: '443', server_name: 'tasinan.test.local' });
+  const ok = await onKontrolHazirla({ govde: GOVDE({ vhost: 'tasinan.test.local' }) });
+  D.tarama = D.tarama.filter((x) => x.host !== 'GBNGXT35');
+  const r = await istek('POST', '/kosular', { body: { onKontrolKosuId: ok.id, confirmText: 'GBNGXT33', uyariOnay: true } });
+  assert.deepEqual([r.statusCode, r.body.code], [409, 'host_uretim']);
+  assert.equal(D.launch.length, 1);
+});
+
+test('YKP32 kilit aciklamasi: k6 + sunucu tur 2 ile birebir, wrk eki, serbestte IP', { timeout: 20000 }, async () => {
+  const desc = () => [...new Set([...D.kilitler.values()].map((v) => v.target_desc))];
+  sifirla();
+  senaryoEkle();
+  await istek('POST', '/kosular/on-kontrol', { body: GOVDE() });
+  assert.deepEqual(desc(), ['ön kontrol GBNGXT33 <- GBNGXT34']);
+  sifirla();
+  senaryoEkle();
+  await kosuBaslat();
+  assert.deepEqual(desc(), ['yük testi GBNGXT33 <- GBNGXT34']);
+  sifirla();
+  senaryoEkle();
+  await istek('POST', '/kosular/on-kontrol', { body: GOVDE({ parametreler: { motor: 'wrk' } }) });
+  assert.deepEqual(desc(), ['ön kontrol GBNGXT33 <- GBNGXT34 (wrk)']);
+  sifirla();
+  senaryoEkle();
+  process.env.NGINX_LOADTEST_SERBEST_AGLAR = SERBEST_AG;
+  await istek('POST', '/kosular/on-kontrol', { body: SGOVDE({ parametreler: { motor: 'wrk' } }) });
+  assert.deepEqual(desc(), ['ön kontrol 10.20.30.40 (serbest) <- GBNGXT34 (wrk)']);
+  // Ayni IP'ye ikinci is: T|IP kilidi (G yeni bir serbest on kontrolde de dolu oldugu icin once G).
+  D.kilitler.get('G|global').held = 0;
+  const r = await istek('POST', '/kosular/on-kontrol', { body: SGOVDE({ yukHost: 'GBNGXT34' }) });
+  assert.deepEqual([r.statusCode, r.body.code, r.body.kilit], [409, 'kilit_dolu', 'T|IP:10.20.30.40']);
+  assert.match(r.body.message, /^10\.20\.30\.40 IP'sine yönelik başka bir iş var \(onur: ön kontrol 10\.20\.30\.40 \(serbest\) <- GBNGXT34 \(wrk\), AWX iş #900\)\. İş bitince kilit kendiliğinden bırakılır\.$/);
+});
+
+test('YKP33 denetim ayrintisi: serbest + wrk kosusu ve uzun mesajli ret GECERLI JSON, <= 2000, kimlik alanlari kalir', { timeout: 20000 }, async () => {
+  const baslat = require('../baslat.cjs');
+  // Gercek server/audit/index.cjs detail'i String(detail).slice(0, 2000) ile saklar: saklanan deger budur.
+  const sakli = (d) => String(d).slice(0, 2000);
+  sifirla();
+  senaryoEkle();
+  process.env.NGINX_LOADTEST_SERBEST_AGLAR = SERBEST_AG;
+  const OZET_WRK = { ...OK_OZET_SERBEST, k6_var: null, k6_surum: null, k6_sha256: null, wrk_var: true, wrk_calisiyor: true, wrk_surum: 'wrk 4.2.0 [epoll] Copyright (C) 2012 Will Glozer', wrk_sha256: 'b'.repeat(64) };
+  const ok = await onKontrolHazirla({ govde: SGOVDE({ vhost: 'yok.test.local', parametreler: { motor: 'wrk' } }), ozet: OZET_WRK });
+  const r = await istek('POST', '/kosular', { body: { onKontrolKosuId: ok.id, confirmText: SERBEST_IP, uyariOnay: true } });
+  assert.equal(r.statusCode, 200, JSON.stringify(r.body));
+  const kosu = D.kosular.find((x) => x.id === r.body.kosuId);
+  const plan = [dg.HOST_TARAMADA_YOK_UYARISI('yok.test.local'), RP_UYARISI()];
+  const onaylanan = [...plan, dg.SERBEST_UYARISI, dg.WRK_UYARISI];
+  const d = D.denetim.find((x) => x.eylem === 'nginx_loadtest_baslat' && x.result !== 'fail');
+  assert.ok(d.detail.length <= 2000, `ayrinti ${d.detail.length} karakter`);
+  const det = JSON.parse(sakli(d.detail));
+  // Kimlik alanlari BIREBIR.
+  assert.deepEqual(
+    [det.kosuId, det.adim, det.islem, det.hedefTuru, det.motor, det.hedefHost, det.hedefIp, det.yukHost, det.vhost, det.senaryoId, det.onKontrolKosuId, det.jobId, det.awxServerId, det.templateId],
+    [kosu.id, `R${kosu.id}`, 'kosu', 'serbest', 'wrk', null, SERBEST_IP, 'GBNGXT34', 'yok.test.local', 1, ok.id, kosu.awx_job_id, 3, 44],
+  );
+  assert.equal(det.senaryoSha256, D.senaryolar[0].sha256);
+  // Olculen durum: tam ayrinti siniri asar (eski .slice(0, 2000) gecersiz JSON yaziyordu); diziler kisaltildi, sayilari ayni.
+  assert.equal(det.kirpildi, true);
+  assert.ok(JSON.stringify({ ...det, kirpildi: undefined, planUyarilari: plan, onaylananUyarilar: onaylanan }).length > 2000, 'durum kisaltma istemiyor (test kor)');
+  assert.equal(det.onaylananUyarilar.length, onaylanan.length);
+  assert.equal(det.planUyarilari.length, plan.length);
+  det.onaylananUyarilar.forEach((u, i) => assert.ok(u === onaylanan[i] || (u.endsWith('…') && onaylanan[i].startsWith(u.slice(0, -1))), `oge ${i} onek degil: ${u}`));
+  assert.deepEqual(det.parametreler, JSON.parse(kosu.parametreler));
+
+  // Uzun mesajli ret (424 envanter_okunamadi): kod ve mesajin basi kalir, JSON gecerli.
+  sifirla();
+  senaryoEkle();
+  D.invHata = new Error(`TBMWANS ${'x'.repeat(3000)}`);
+  const ret = await istek('POST', '/kosular/on-kontrol', { body: GOVDE() });
+  assert.deepEqual([ret.statusCode, ret.body.code], [424, 'envanter_okunamadi']);
+  const dr = D.denetim.find((x) => x.eylem === 'nginx_loadtest_on_kontrol' && x.result === 'fail');
+  assert.ok(dr.detail.length <= 2000, `ret ayrintisi ${dr.detail.length} karakter`);
+  const detR = JSON.parse(sakli(dr.detail));
+  assert.equal(detR.code, 'envanter_okunamadi');
+  assert.ok(detR.message.startsWith('dbo.nginx_inventory okunamadı: TBMWANS x') && detR.message.endsWith('…'), detR.message.slice(0, 80));
+
+  // Saf yardimci: sigan nesne JSON.stringify ile BIREBIR; sigmayan her durumda gecerli JSON <= sinir, anahtarlar kalir.
+  const kucuk = { kosuId: 7, islem: 'on_kontrol', hedefTuru: 'sunucu', motor: 'k6', planUyarilari: ['a'], jobId: 900 };
+  assert.equal(baslat.denetimAyrintisi(kucuk), JSON.stringify(kucuk));
+  const anahtarlar = { kosuId: 5, adim: 'R5', islem: 'kosu', hedefTuru: 'serbest', motor: 'wrk', hedefHost: null, hedefIp: '10.20.30.40', yukHost: 'GBNGXT34', vhost: 'a.test.local', jobId: 901, awxServerId: 3, templateId: 44 };
+  const dev = {
+    ...anahtarlar, notlar: Array(100).fill('n'.repeat(100)), uzun: 'z'.repeat(5000), ic: { m: 'q'.repeat(3000), sayi: 4 },
+    ...Object.fromEntries(Array.from({ length: 300 }, (_, i) => [`f${i}`, 'v'.repeat(10)])),
+  };
+  const sd = baslat.denetimAyrintisi(dev);
+  assert.ok(sd.length <= 2000, `dev ayrinti ${sd.length}`);
+  const od = JSON.parse(sd);
+  assert.deepEqual(Object.fromEntries(Object.keys(anahtarlar).map((k) => [k, od[k]])), anahtarlar);
+  assert.deepEqual([od.kirpildi, od.kirpilan, Number.isInteger(od.atilan) && od.atilan > 0], [true, { notlar: 100 }, true]);
+  for (const sinir of [120, 400, 900]) {
+    const s = baslat.denetimAyrintisi(dev, { sinir });
+    assert.ok(s.length <= sinir, `sinir ${sinir}: ${s.length}`);
+    assert.equal(JSON.parse(s).kirpildi, true);
+  }
+  // Anahtar alani bile sigmiyorsa yalniz kisaltilmis anahtarlar kalir (yine gecerli JSON).
+  const tasan = JSON.parse(baslat.denetimAyrintisi({ kosuId: 9, vhost: 'v'.repeat(3000), ek: 'e'.repeat(3000) }));
+  assert.deepEqual([tasan.kosuId, tasan.vhost.length, tasan.ek, tasan.kirpildi], [9, 61, undefined, true]);
+});
+
+test('YKP34 yarim tarama gunu uctan uca: dunku limit / sahiplik / ad / hedef satirlari uygulanir, bugunku varsa bugunku', { timeout: 30000 }, async () => {
+  // Bugun (MAX) yarim yuklendi: GBNGXT33 / GBNGXP40 satirlari henuz yok, dunku tam gun elde.
+  const DUN = ONCEKI_GUN(TARAMA_GUNU);
+  const limit = (host, rate, gun) => [
+    { host, directive: 'limit_req_zone', value: `$binary_remote_addr zone=request_limit:20m rate=${rate}`, gun },
+    { host, directive: 'limit_req', value: 'zone=request_limit burst=200 nodelay', gun },
+  ];
+  const baskaHostBugun = { host: 'GBNGXT34', directive: 'worker_processes', value: 'auto', gun: TARAMA_GUNU };
+  const kur = (ayarlar) => {
+    sifirla();
+    senaryoEkle();
+    D.ayarlar = ayarlar;
+  };
+  // (1) Limit yalniz dunku Settings'te (100 r/s): k6 400 -> 409 sinir_asildi; wrk tavani dunden (90).
+  kur([baskaHostBugun, ...limit('GBNGXT33', '100r/s', DUN)]);
+  let r = await istek('POST', '/kosular/on-kontrol', { body: GOVDE({ parametreler: { hizlar: [400] } }) });
+  assert.deepEqual([r.statusCode, r.body.code, r.body.message], [409, 'sinir_asildi', "Sınır aşıldı: hız 400 izinli aralıkta değil (1..90, hedefin ölçülmüş limit_req değerinin %90'ı)."]);
+  assert.equal(D.launch.length, 0);
+  r = await istek('POST', '/kosular/on-kontrol', { body: GOVDE({ parametreler: { motor: 'wrk' } }) });
+  assert.equal(r.statusCode, 200, JSON.stringify(r.body));
+  assert.equal(D.launch[0][2].yuk_tavan_rps, '90', 'wrk tavani dunku limitten hesaplanmadi');
+  const h = (await istek('GET', '/hedefler')).body.hedefler.find((x) => x.host === 'GBNGXT33');
+  assert.deepEqual([h.hizSiniri, h.uygun], [90, true]);
+  // Dunku 1 r/s: "bu hedefe yuk testi yapilamaz" reddi atlanmaz.
+  kur([baskaHostBugun, ...limit('GBNGXT33', '1r/s', DUN)]);
+  r = await istek('POST', '/kosular/on-kontrol', { body: GOVDE({ parametreler: { hizlar: [1], maxvu: 10 } }) });
+  assert.deepEqual([r.statusCode, r.body.code, r.body.message], [409, 'sinir_asildi', dg.SIFIR_SINIR_MESAJI]);
+  // Bugunku Settings satiri varsa bugunku (300 r/s -> 270), dunku 100 r/s KULLANILMAZ.
+  kur([...limit('GBNGXT33', '300r/s', TARAMA_GUNU), ...limit('GBNGXT33', '100r/s', DUN)]);
+  r = await istek('POST', '/kosular/on-kontrol', { body: GOVDE({ parametreler: { motor: 'wrk' } }) });
+  assert.deepEqual([r.statusCode, D.launch[0][2].yuk_tavan_rps], [200, '270'], JSON.stringify(r.body));
+  // (2) Sahiplik: PROD nginx'in IP'si yalniz dunku Servers'ta -> 409 hedef_uretim (serbest DEGIL), AWX'e gitmez.
+  kur(null);
+  process.env.NGINX_LOADTEST_SERBEST_AGLAR = SERBEST_AG;
+  D.tarama.push({ host: 'GBNGXP40', listen: `${SERBEST_IP}:443 ssl`, server_name: 'www.prodapp.local', gun: DUN });
+  r = await istek('POST', '/kosular/on-kontrol', { body: SGOVDE() });
+  assert.deepEqual([r.statusCode, r.body.code, r.body.message], [409, 'hedef_uretim', `${SERBEST_IP}, GBNGXP40 sunucusuna ait (ortamı PROD); yük testi yapılmaz.`]);
+  assert.deepEqual([D.launch.length, D.kosular.length], [0, 0]);
+  assert.deepEqual((await istek('GET', `/ip-sinifi?ip=${SERBEST_IP}&yukHost=GBNGXT34`)).body.code, 'hedef_uretim');
+  // (3) Host basligi yalniz dunku PROD satirinda -> 409 host_uretim.
+  kur(null);
+  D.tarama.push({ host: 'GBNGXP40', listen: '10.9.0.1:443 ssl', server_name: 'prod.only.local', gun: DUN });
+  r = await istek('POST', '/kosular/on-kontrol', { body: GOVDE({ vhost: 'prod.only.local' }) });
+  assert.deepEqual([r.statusCode, r.body.code], [409, 'host_uretim']);
+  // (4) Hedef satirlari: GBNGXT33 bugun henuz yazilmadi; dunku listen'i aday (ip_hedefte_yok DEGIL), vhost listede.
+  kur(null);
+  D.tarama = [
+    { host: 'GBNGXT33', listen: '10.0.0.9:443 ssl', server_name: 'app.test.local api.test.local', gun: DUN },
+    { host: 'GBNGXT34', listen: '443 ssl', server_name: 'rp.test.local', gun: DUN },
+    { host: 'GBNGXT34', listen: '443 ssl', server_name: 'rp.test.local', gun: TARAMA_GUNU },
+  ];
+  r = await istek('POST', '/kosular/on-kontrol', { body: GOVDE() });
+  assert.equal(r.statusCode, 200, JSON.stringify(r.body));
+  assert.equal(JSON.parse(D.denetim.find((x) => x.eylem === 'nginx_loadtest_on_kontrol').detail).vhostListede, true);
 });
