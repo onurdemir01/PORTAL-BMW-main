@@ -50,6 +50,35 @@ function filoHaritasi(groups) {
   return m;
 }
 
+const OPSIYONEL_AUDIT_KOLONLARI = new Set(['kind', 'target_url']);
+
+/** Yalniz eski Nginx_Config_Audit semasindaki opsiyonel kolon eksikligini tanir. */
+function opsiyonelKolonEksikMi(err) {
+  const bekleyen = [err];
+  const gorulen = new Set();
+  const kayitlar = [];
+  while (bekleyen.length) {
+    const hata = bekleyen.pop();
+    if (!hata || (typeof hata !== 'object' && typeof hata !== 'function') || gorulen.has(hata)) continue;
+    gorulen.add(hata);
+    kayitlar.push(hata);
+    if (hata.originalError) bekleyen.push(hata.originalError);
+    if (hata.info) bekleyen.push(hata.info);
+    if (hata.cause) bekleyen.push(hata.cause);
+    if (Array.isArray(hata.precedingErrors)) bekleyen.push(...hata.precedingErrors);
+  }
+  // Bir hata zincirindeki baglanti / yetki / baska SQL hatasi, 207 kaydiyla maskelenemez.
+  if (kayitlar.some((hata) => U(hata.code) && U(hata.code) !== 'EREQUEST')) return false;
+  if (kayitlar.some((hata) => Number.isFinite(Number(hata.number)) && Number(hata.number) !== 207)) return false;
+  return kayitlar.some((hata) => {
+    const kolonlar = [...T(hata.message).matchAll(/Invalid column name ['"]([^'"]+)['"]/gi)]
+      .map((m) => T(m[1]).toLowerCase());
+    return Number(hata.number) === 207
+      && kolonlar.length > 0
+      && kolonlar.every((kolon) => OPSIYONEL_AUDIT_KOLONLARI.has(kolon));
+  });
+}
+
 /**
  * SAF tablo kurucu: satirlar -> location basina uygulama(lar) ve sunuculari.
  * @param {object[]} rows  {host, location_path, application, namespace, kind?, target_url?}
@@ -119,12 +148,19 @@ async function satirlariOku(query, sql, E, S) {
   const where = `scan_date = @d AND UPPER(env) = @e AND UPPER(service) = @s`;
   const p = [...params, { name: 'd', type: sql.NVarChar(10), value: tarih }];
   // kind / target_url kolonlari DDL'e sonradan geldi; yoksa bunlarsiz okunur.
-  const r = await query(
-    `SELECT DISTINCT host, location_path, application, namespace, kind, target_url FROM dbo.Nginx_Config_Audit WHERE ${where}`,
-    p,
-  ).catch(() =>
-    query(`SELECT DISTINCT host, location_path, application, namespace FROM dbo.Nginx_Config_Audit WHERE ${where}`, p),
-  );
+  let r;
+  try {
+    r = await query(
+      `SELECT DISTINCT host, location_path, application, namespace, kind, target_url FROM dbo.Nginx_Config_Audit WHERE ${where}`,
+      p,
+    );
+  } catch (err) {
+    if (!opsiyonelKolonEksikMi(err)) throw err;
+    r = await query(
+      `SELECT DISTINCT host, location_path, application, namespace FROM dbo.Nginx_Config_Audit WHERE ${where}`,
+      p,
+    );
+  }
   return { tarih, rows: r.recordset || [] };
 }
 
