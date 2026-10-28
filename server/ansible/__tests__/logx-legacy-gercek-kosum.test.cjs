@@ -117,8 +117,32 @@ function kostur(
   vars,
   tmp,
   envanter = 'localhost,',
-  { sonucsuz = false, ayrintili = false } = {},
+  { sonucsuz = false, ayrintili = false, uretimProbe = false } = {},
 ) {
+  // Bu suite transferin dosya/arsiv/artifact davranisini yerel macOS dosya sistemiyle olcer.
+  // Uretim interpreter kapisi yalniz root kontrollu /usr/bin yollarini kabul eder; gelistirici
+  // makinesindeki Ansible Python'i Homebrew/venv altinda olabilir ve dzdo/was kimligi yoktur.
+  // Kapi kendi run-as guard testlerinde sinanir; burada yalniz fixture kopyasinda controller'in
+  // zaten calisan Python'i secilerek transferin geri kalan uctan uca davranisi korunur.
+  if (playbook === AKTARIM && !uretimProbe) {
+    const yerel = path.join(tmp, 'logx_legacy_transfer.yerel-test.yml');
+    const kaynak = fs.readFileSync(playbook, 'utf8');
+    const uyarlanmis = kaynak.replace(
+      /^ {2}pre_tasks:\n[\s\S]*?(?=^ {2}tasks:$)/m,
+      [
+        '  pre_tasks:',
+        '    - name: "Yerel test yorumlayicisini kullan"',
+        '      ansible.builtin.set_fact:',
+        '        ansible_python_interpreter: "{{ ansible_playbook_python }}"',
+        '        logx_python_ortak_adaylar: ["yerel-test"]',
+        '      changed_when: false',
+        '',
+      ].join('\n'),
+    );
+    assert.notEqual(uyarlanmis, kaynak, 'transfer pre_tasks yerel fixture icin uyarlanamadi');
+    fs.writeFileSync(yerel, uyarlanmis);
+    playbook = yerel;
+  }
   const vf = path.join(tmp, `vars-${path.basename(playbook)}.json`);
   fs.writeFileSync(vf, JSON.stringify({ ansible_become: false, ...vars }));
   const r = spawnSync(
@@ -690,6 +714,76 @@ test(
           `${ad}: dosya sistemine dokunuldu`,
         );
       }
+    } finally {
+      temizle(kok);
+    }
+  },
+);
+
+test(
+  'LG13 run-as probe baslatilamazsa tek-host acik modern_python_bulunamadi artifacti yayinlar',
+  { skip: ANSIBLE_YOK },
+  () => {
+    const kok = agacKur();
+    try {
+      const { rc, sonuc, cikti } = kostur(
+        AKTARIM,
+        {
+          ansible_become_exe: '/kesinlikle/yok/dzdo',
+          selected_files: [{ host: 'localhost', path: path.join(kok, TARANACAK[0]) }],
+          staging_dir: path.join(kok, 'staging'),
+          fallback_dir: path.join(kok, 'fallback'),
+          archive_name: 'lg13.zip',
+        },
+        kok,
+        'localhost,',
+        { uretimProbe: true },
+      );
+      assert.equal(rc, 0, cikti.slice(-2500));
+      assert.equal(sonuc.overall_status, 'failed');
+      assert.equal(sonuc.staged_path, '');
+      assert.match(sonuc.error, /^modern_python_bulunamadi:/);
+      assert.equal((cikti.match(/RUN: \{/g) || []).length, 1, 'logx_result birden cok yayinlandi');
+    } finally {
+      temizle(kok);
+    }
+  },
+);
+
+test(
+  'LG14 run-as probe baslatilamazsa cok-host birlestirme kosmaz ve her host sebep tasir',
+  { skip: ANSIBLE_YOK },
+  () => {
+    const kok = agacKur();
+    try {
+      const { rc, sonuc, cikti } = kostur(
+        AKTARIM,
+        {
+          ansible_become_exe: '/kesinlikle/yok/dzdo',
+          selected_files: [
+            { host: 'sunucu-a', path: path.join(kok, TARANACAK[0]) },
+            { host: 'sunucu-b', path: path.join(kok, TARANACAK[1]) },
+          ],
+          staging_dir: path.join(kok, 'staging'),
+          fallback_dir: path.join(kok, 'fallback'),
+          archive_name: 'lg14.zip',
+        },
+        kok,
+        'sunucu-a,sunucu-b,',
+        { uretimProbe: true },
+      );
+      assert.notEqual(rc, 0, 'cok-host toplayici yokken is yesil kaldi');
+      assert.equal(sonuc.overall_status, 'failed');
+      assert.equal(sonuc.staged_path, '');
+      assert.deepEqual(
+        sonuc.hosts.map((h) => [h.host, h.status]).sort(),
+        [
+          ['SUNUCU-A', 'error'],
+          ['SUNUCU-B', 'error'],
+        ],
+      );
+      assert.ok(sonuc.hosts.every((h) => /^modern_python_bulunamadi:/.test(h.error)));
+      assert.ok(!/TASK \[Mevcut per-host parca ZIP'lerini bul/.test(cikti), 'Python isteyen birlestirme gorevi calisti');
     } finally {
       temizle(kok);
     }
