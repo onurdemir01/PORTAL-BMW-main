@@ -55,6 +55,31 @@ let _awxServersCache = null; // null → DB henuz yuklenmedi
 let _awxDevreDisi = new Map(); // server_no -> { name, url }
 let _awxDevreDisiSirlar = [];
 
+// DB UPDATE basarili olduktan sonra reload duserse kapatilan sunucu eski cache'te calisir
+// kalmamali. Etkinlestirme ise tam satir/sir bilgisi okunmadan yerelde uydurulmaz.
+function awxSunucuDurumuBellekteUygula(no, enabled, satir = {}) {
+  const id = Number(no);
+  if (!Number.isInteger(id) || id < 1 || enabled) return;
+  const onceki = (_awxServersCache || []).find((s) => Number(s.id) === id);
+  if (_awxServersCache) _awxServersCache = _awxServersCache.filter((s) => Number(s.id) !== id);
+  _awxDevreDisi.set(id, { name: satir.name || onceki?.name || `AWX ${id}`, url: satir.url || onceki?.url || '' });
+  const sirlar = [
+    onceki?.token, onceki?.password, onceki?.clientSecret,
+    process.env[`AWX_${id}_TOKEN`], process.env[`AWX_${id}_PASSWORD`], process.env[`AWX_${id}_CLIENT_SECRET`],
+  ].filter(Boolean).map(String);
+  _awxDevreDisiSirlar = [...new Set([..._awxDevreDisiSirlar, ...sirlar])];
+}
+
+function awxUrlKimligi(value) {
+  const ham = String(value || '').trim();
+  if (!ham) return '';
+  try {
+    return new URL(ham).origin.toLowerCase();
+  } catch {
+    return ham.replace(/\/+$/, '').toLowerCase();
+  }
+}
+
 // Basarili okumada true. Okunamazsa eski liste aynen kalir (restart'a kadar).
 async function loadAwxServers() {
   try {
@@ -208,11 +233,15 @@ function getServers() {
     });
   }
   // Backward compat: legacy AWX_URL as server 0
-  if (servers.length === 0 && process.env.AWX_URL) {
+  const legacyUrl = String(process.env.AWX_URL || '').trim();
+  const legacyDevreDisi = [..._awxDevreDisi.values()].some(
+    (s) => awxUrlKimligi(s.url) === awxUrlKimligi(legacyUrl),
+  );
+  if (servers.length === 0 && legacyUrl && !legacyDevreDisi) {
     servers.push({
       id: 0,
       name: 'AWX',
-      url: process.env.AWX_URL.trim(),
+      url: legacyUrl,
       token: process.env.AWX_TOKEN || null,
       user: process.env.AWX_USER || null,
       password: process.env.AWX_PASSWORD || null,
@@ -2189,6 +2218,9 @@ function initAnsibleRunner(app) {
         [enabled ? 1 : 0, no],
       );
       _serverTokenCaches.delete(no);
+      // Once guvenlik karari yerel surece uygulanir; tam reload basarisiz olsa da bu
+      // sunucu eski cache veya env fallback uzerinden yeni is alamaz.
+      awxSunucuDurumuBellekteUygula(no, enabled, satir);
       const yuklendi = await loadAwxServers();
       try {
         require('../audit/index.cjs').auditPortal(req, 'awx_server_durum', {
@@ -2197,12 +2229,19 @@ function initAnsibleRunner(app) {
         });
       } catch { /* audit yoksa yoksay */ }
       console.log(`[Ansible] AWX #${no} (${satir.name}) ${enabled ? 'etkinlestirildi' : 'devre disi birakildi'}`);
+      if (enabled && !yuklendi) {
+        return res.status(503).json({
+          ok: false,
+          yuklendi: false,
+          message: 'Kaydedildi ama sunucu listesi bellekte yenilenemedi; sunucu güvenli olarak etkinleştirilmedi.',
+        });
+      }
       res.json({
         ok: true,
         yuklendi,
         message: yuklendi
           ? `AWX #${no} (${satir.name}) ${enabled ? 'etkinleştirildi' : 'devre dışı bırakıldı'}.`
-          : 'Kaydedildi ama sunucu listesi bellekte yenilenemedi; Portal yeniden başlatılana kadar eski liste geçerli.',
+          : `AWX #${no} (${satir.name}) devre dışı bırakıldı; sunucu listesinin tamamı yenilenemedi.`,
       });
     } catch (e) {
       res.status(500).json({ ok: false, message: `Kaydedilemedi: ${e.message}` });
@@ -6127,6 +6166,7 @@ module.exports = {
   getServerById,
   // AWX sunucu yonetimi (devre disi birakma) - birim testleri icin:
   _loadAwxServers: loadAwxServers,
+  _awxSunucuDurumuBellekteUygula: awxSunucuDurumuBellekteUygula,
   _sunucuYokHatasi: sunucuYokHatasi,
   listRunningJobsAcrossServers,
   // Uzun suren is iptali (long-job-cancel.cjs / long-job-watcher.cjs):
