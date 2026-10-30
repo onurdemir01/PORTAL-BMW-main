@@ -71,17 +71,75 @@ const ENGELLER = [
     sql: `SELECT COUNT(*) AS n FROM opsx_was_ops WHERE awx_server_id = $1 AND audited_at IS NULL`,
   },
   {
-    // retirement_targets sunucu numarasi tutmuyor: isin sunucusu okuma aninda Playbook
-    // Kayitlarindan cozulur. Retirement kayitlari bu sunucuyu gosteriyorsa ucustaki hedef
-    // ENGELDIR (kapatilirsa "durumu okunamadi"da kalir; kayit cevrilirse BASKA sunucuda ayni
-    // numarali is okunur).
+    // Ucustaki isin sahibi GUNCEL Playbook Kaydi degildir: kayit yeni AWX'e tasinmis olsa da
+    // eski AWX'te baslayan isin sonucu oradan okunur. STOP / DELETE / ROLLBACK sahipligini
+    // launch aninda yazilan history kanitlar. History INSERT'i best-effort dustuyse sahiplik
+    // belirsizdir ve butun disable denemeleri engellenir; registry tasindiginda yeni sunucuya
+    // yanlis sahiplik verilmez. Zamanlanmis STOP henuz launch edilmedigi icin yalniz gelecekte
+    // kullanacagi guncel kayitla baglanir. Web geri acma history'ye yazilmiyor; onun sahibi jobId ile
+    // birlikte web_result_json'a yazilan awxServerId + sunucuIsi isaretidir. History/JSON
+    // sorgusu okunamazsa dis dongu bunu okunamayan sayip fail-closed kalir.
     anahtar: 'retirement',
     baslik: 'Uçuştaki Retirement hedefi',
     ipucu: 'Retirement ekranında durdurma / silme / geri alma bitene kadar bekleyin.',
-    sql: `SELECT CASE WHEN EXISTS (SELECT 1 FROM ansible_playbook_registry
-                                    WHERE key_name LIKE 'app[_]retirement[_]%' AND awx_server_id = $1)
-                      THEN (SELECT COUNT(*) FROM retirement_targets WHERE status IN ${UCUSTA_RETIREMENT})
-                      ELSE 0 END AS n`,
+    sql: `SELECT COUNT(*) AS n
+            FROM retirement_targets t
+            OUTER APPLY (
+              SELECT COUNT(*) AS history_count,
+                     SUM(CASE WHEN h.awx_server_id = $1 THEN 1 ELSE 0 END) AS server_count
+                FROM ansible_job_history h
+               WHERE h.job_id = CASE t.status
+                       WHEN 'stopping' THEN t.last_job_id
+                       WHEN 'deleting' THEN t.delete_job_id
+                       WHEN 'rolling_back' THEN t.rollback_job_id
+                     END
+                 AND JSON_VALUE(CASE WHEN ISJSON(h.params) = 1 THEN h.params ELSE '{}' END, '$.plan_only') = 'false'
+                 AND (
+                   (t.status = 'stopping' AND h.template_name LIKE 'Retirement: STOP %')
+                   OR (t.status = 'deleting' AND h.template_name LIKE 'Retirement: DELETE %')
+                   OR (t.status = 'rolling_back' AND h.template_name LIKE 'Retirement: GERI AL%')
+                 )
+                 AND (
+                   (
+                     UPPER(JSON_VALUE(CASE WHEN ISJSON(h.params) = 1 THEN h.params ELSE '{}' END, '$.target_host')) = UPPER(t.host)
+                     AND UPPER(JSON_VALUE(CASE WHEN ISJSON(h.params) = 1 THEN h.params ELSE '{}' END, '$.application')) = UPPER(t.app_name)
+                     AND COALESCE(JSON_VALUE(CASE WHEN ISJSON(h.params) = 1 THEN h.params ELSE '{}' END, '$.jboss_gen'), '<NULL>')
+                         = COALESCE(CONVERT(NVARCHAR(50), t.jboss_gen), '<NULL>')
+                   )
+                   OR EXISTS (
+                     SELECT 1
+                       FROM OPENJSON(CASE WHEN ISJSON(h.params) = 1 THEN h.params ELSE '{}' END, '$.rt_hedefler')
+                       WITH (host NVARCHAR(255) '$.host', application NVARCHAR(255) '$.application', jboss_gen NVARCHAR(50) '$.jboss_gen') ht
+                      WHERE UPPER(ht.host) = UPPER(t.host)
+                        AND UPPER(ht.application) = UPPER(t.app_name)
+                        AND COALESCE(ht.jboss_gen, '<NULL>') = COALESCE(CONVERT(NVARCHAR(50), t.jboss_gen), '<NULL>')
+                   )
+                 )
+            ) owner
+           WHERE (
+               (t.status IN ${UCUSTA_RETIREMENT} AND (
+                  (t.status = 'stop_scheduled' AND EXISTS (
+                     SELECT 1 FROM ansible_playbook_registry r
+                      WHERE r.key_name LIKE 'app[_]retirement[_]%' AND r.awx_server_id = $1
+                  ))
+                  OR (t.status IN ('stopping','deleting','rolling_back')
+                      AND (COALESCE(owner.server_count, 0) > 0 OR owner.history_count = 0))
+               ))
+               -- Web isi ana STOP'tan bagimsiz tamamlanir: hedef 'stopped' olduktan sonra da
+               -- web_result_json 'running' kalabilir, dolayisiyla hedef status filtresine girmez.
+               OR EXISTS (
+                  SELECT 1
+                    FROM OPENJSON(CASE WHEN ISJSON(t.web_result_json) = 1 THEN t.web_result_json ELSE '[]' END)
+                    WITH (status NVARCHAR(32) '$.status', jobId BIGINT '$.jobId',
+                          awxServerId INT '$.awxServerId', sunucuIsi BIGINT '$.sunucuIsi') w
+                   WHERE w.status IN ('running','restoring')
+                     AND (
+                       (w.awxServerId = $1 AND (w.status <> 'restoring' OR w.sunucuIsi = w.jobId))
+                       OR w.awxServerId IS NULL
+                       OR (w.status = 'restoring' AND (w.sunucuIsi IS NULL OR w.sunucuIsi <> w.jobId))
+                     )
+               )
+             )`,
   },
 ];
 
