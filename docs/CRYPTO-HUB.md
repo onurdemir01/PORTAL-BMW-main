@@ -296,11 +296,14 @@ Kod `server/crypto-hub/node.cjs`, sabitler `shared/cryptoHubNodes.cjs`.
    Smart yapılandırılmamış ve hiç `TIMEOUT` olmayan `PENDING`, AWX kalıcı hata) satır
    **`OLCULEMEDI/TAKILDI`** kapanır — başarı sayılmaz, ekran "durum bilinmiyor, mevcut node'ları
    okuyun" der. Bilet hâlâ `PENDING` ise Portal'da iptal edilir (sonradan onaylansa da iş
-   başlamaz). AWX işi okunabiliyor ve sürüyorsa satır açık kalır.
+   başlamaz). İptal edilemezse (poller bileti bu arada almış olabilir) satır ve kilit açık
+   kalır, sonraki taramada yeniden denenir. AWX işi okunabiliyor ve sürüyorsa satır açık kalır.
 6. **Yönetici kapatması**: `POST /node-change/:id/kapat {gerekce}` — yalnız Admin, gerekçe 10–500.
    Satır `IPTAL/ADMIN_KAPATTI` kapanır (kilit açılır), `PENDING` bilet Portal'da iptal edilir,
    `crypto_hub_node_change_admin_kapat` ve sonuç denetimi yazılır. Takip penceresinde
-   "Talebi kapat (yönetici)" düğmesi.
+   "Talebi kapat (yönetici)" düğmesi. AWX işi başlamış talep (`awx_job_id` dolu) ya da Portal'da
+   iptal edilemeyen `PENDING` bilet **409** ile kapatılmaz (kilit bırakılırsa ikinci bir değişiklik
+   aynı gruba yazabilirdi); bu satırlar iş sonucuyla ya da 5. maddedeki süreyle kapanır.
 7. **Numara metni**: bekleyen talep her yerde aynı biçimde: Smart numarası varsa `Smart #<no>`,
    yoksa `Portal #<talep>` (`shared/cryptoHubNodes.cjs` `talepNoMetni` = ekran `smartNo`).
 
