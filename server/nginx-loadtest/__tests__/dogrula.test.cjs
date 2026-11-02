@@ -23,7 +23,7 @@
 //        IPInventory tireli host onarimi
 //   YD18 parametreler wrk (kanonik nesne, tavan_rps hesaplanir, mesajlar) + k6 serbest tavanlari
 //   YD19 butceSn adim sayisi motora gore (motor'suz eski nesne k6)
-//   YD20 ekstraDegiskenler / son kapi: 30 anahtar, yuk_son_epoch penceresi, wrk + serbest kurallari
+//   YD20 ekstraDegiskenler / son kapi: 33 anahtar (tur 4), yuk_son_epoch penceresi, wrk + serbest kurallari
 //   YD21 onKontrolDegerlendir: k6 + sunucu SABIT fikstur (tur 2 + yalniz D7), wrk iki engel, serbest
 //   YD22 kaynaklariOku ip / vhost: parametreli, IP SQL metninde YOK; ip'siz cagrinin sorgulari tur 2 ile ayni
 //   YD23 D7: server_name_var false / null -> uyari (listenin basinda), engel degil
@@ -36,6 +36,8 @@
 //   YD26b host_uretim kume kurallari ayri fiksturle: P iki gunun birlesimi (PROD bugun yalniz baska adla
 //         yazildi: dunku ad yine 409), S = P + N (non-prod hostun dunku bayat adi 'taramada yok' uyarisini
 //         susturmaz)
+//   -- tur 4 (2026-11-02: arac setleri) --
+//   YD40 extra_vars arac alanlari + son kapi; YD41 onKontrolDegerlendir aracli / eski satir birebir
 'use strict';
 
 const { test } = require('node:test');
@@ -278,13 +280,16 @@ test('YD8 on kontrol: engeller ve acik onay isteyen uyarilar', () => {
   assert.equal(dg.onayMetniDogru(undefined, 'GBNGXT33'), false);
 });
 
+// Tur 4: etkin arac seti (ekstraDegiskenler `arac`).
+const ARAC = Object.freeze({ dizin: '/sw/BMW_PORTAL/nginx_loadtest/araclar/5', k6Sha256: 'cd'.repeat(32), wrkSha256: 'ef'.repeat(32) });
+
 function evOrnek(ek = {}) {
   const s = dg.senaryoSatirlari([SATIR('/a.js'), SATIR('/b.css', { tur: 'css' })]);
   const p = dg.parametreler({}, { sni: false }).deger;
   return {
     ...dg.ekstraDegiskenler({
       islem: 'kosu', kosuId: 17, hedefHost: 'GBNGXT33', yukHost: 'GBNGXT34', hedefIp: '10.0.0.5', vhost: 'app.test.local',
-      senaryo: { tur: 'K', tsv: s.tsv, sha256: s.sha256 }, p, k6: '/home/www/bin/k6', kok: '/sw/BMW_PORTAL/nginx_loadtest', wrk: '/home/www/bin/wrk',
+      senaryo: { tur: 'K', tsv: s.tsv, sha256: s.sha256 }, p, kok: '/sw/BMW_PORTAL/nginx_loadtest', arac: ARAC,
     }),
     ...ek,
   };
@@ -294,16 +299,17 @@ test('YD9 extra_vars son kapisi: yalniz sozlesme anahtarlari, hepsi metin, b64 v
   const ev = evOrnek();
   assert.deepEqual(dg.ekstraDegiskenleriDenetle(ev), []);
   assert.deepEqual(Object.keys(ev).sort(), [...dg.EKSTRA_ANAHTARLAR].sort());
-  // Tur 3: 30 anahtar - tur 2'nin 23'u aynen, ardindan 7 yeni (sira sozlesme bolum 3).
-  assert.equal(dg.EKSTRA_ANAHTARLAR.length, 30);
+  // Tur 4: 33 anahtar - tur 2'nin 23'u aynen, tur 3'un 7'si, ardindan tur 4'un 3 arac anahtari.
+  assert.equal(dg.EKSTRA_ANAHTARLAR.length, 33);
   assert.deepEqual(dg.EKSTRA_ANAHTARLAR.slice(0, 23), [
     'yuk_islem', 'yuk_run_id', 'yuk_hedef_host', 'yuk_yuk_host', 'yuk_hedef_ip', 'yuk_host_basligi', 'yuk_sni',
     'yuk_senaryo_tur', 'yuk_senaryo_b64', 'yuk_senaryo_sha256', 'yuk_hizlar', 'yuk_tekrar', 'yuk_kip', 'yuk_ae',
     'yuk_isinma_sn', 'yuk_sure_sn', 'yuk_bosluk_sn', 'yuk_bosta_bas_sn', 'yuk_maxvu', 'yuk_butce_sn', 'yuk_k6_yolu',
     'yuk_ua_onek', 'yuk_cikti_kok',
   ]);
-  assert.deepEqual(dg.EKSTRA_ANAHTARLAR.slice(23), ['yuk_hedef_turu', 'yuk_motor', 'yuk_baglantilar', 'yuk_is_parcacigi', 'yuk_wrk_yolu', 'yuk_tavan_rps', 'yuk_son_epoch']);
-  assert.deepEqual([ev.yuk_hedef_turu, ev.yuk_motor, ev.yuk_baglantilar, ev.yuk_is_parcacigi, ev.yuk_tavan_rps, ev.yuk_wrk_yolu], ['sunucu', 'k6', '', '', '', '/home/www/bin/wrk']);
+  assert.deepEqual(dg.EKSTRA_ANAHTARLAR.slice(23, 30), ['yuk_hedef_turu', 'yuk_motor', 'yuk_baglantilar', 'yuk_is_parcacigi', 'yuk_wrk_yolu', 'yuk_tavan_rps', 'yuk_son_epoch']);
+  assert.deepEqual(dg.EKSTRA_ANAHTARLAR.slice(30), ['yuk_arac_dizin', 'yuk_k6_sha256', 'yuk_wrk_sha256']);
+  assert.deepEqual([ev.yuk_hedef_turu, ev.yuk_motor, ev.yuk_baglantilar, ev.yuk_is_parcacigi, ev.yuk_tavan_rps, ev.yuk_wrk_yolu], ['sunucu', 'k6', '', '', '', '/yeni-playbook-gerekli/wrk']);
   for (const [k, v] of Object.entries(ev)) assert.equal(typeof v, 'string', k);
   assert.equal(ev.yuk_hizlar, '100 250 400');
   assert.equal(ev.yuk_butce_sn, '1380'); // 60 + 6 x (30 + 120 + 30 + 20) + 120
@@ -324,14 +330,16 @@ test('YD9 extra_vars son kapisi: yalniz sozlesme anahtarlari, hepsi metin, b64 v
   assert.ok(ihlal({ yuk_tekrar: 2 }).includes('yuk_tekrar'), 'sayi tipi kabul edildi (metin bekleniyor)');
   const eksik = evOrnek();
   delete eksik.yuk_cikti_kok;
-  assert.deepEqual(dg.ekstraDegiskenleriDenetle(eksik), ['yuk_cikti_kok']);
+  // Tur 4: kok yoksa arac dizini de dogrulanamaz (startsWith kok + '/araclar/').
+  assert.deepEqual(dg.ekstraDegiskenleriDenetle(eksik), ['yuk_cikti_kok', 'yuk_arac_dizin']);
   // Is gecmisine senaryo govdesi gitmez.
   const m = dg.gecmisIcinMaskele(ev);
   assert.match(m.yuk_senaryo_b64, /^<\d+ b64>$/);
   assert.equal(m.yuk_hedef_host, 'GBNGXT33');
-  // Ortam: gecersiz k6 / kok yolu varsayilana duser; kosu dizini sunucuda kurulur.
-  assert.equal(dg.k6Yolu({ NGINX_LOADTEST_K6: '/opt/k6/bin/k6' }), '/opt/k6/bin/k6');
-  assert.equal(dg.k6Yolu({ NGINX_LOADTEST_K6: 'k6; rm -rf /' }), '/home/www/bin/k6');
+  // Ortam: gecersiz kok yolu varsayilana duser; kosu dizini sunucuda kurulur. Tur 4: k6 / wrk yolu
+  // env'den OKUNMAZ (NGINX_LOADTEST_K6 / _WRK kalkti; yollar isaret degeri).
+  assert.equal(dg.k6Yolu, undefined);
+  assert.equal(dg.wrkYolu, undefined);
   assert.equal(dg.ciktiKok({ NGINX_LOADTEST_DIR: '/sw/BMW_PORTAL_DEV/nginx_loadtest/' }), '/sw/BMW_PORTAL_DEV/nginx_loadtest');
   assert.equal(dg.ciktiKok({}), '/sw/BMW_PORTAL/nginx_loadtest');
   assert.equal(dg.kosuDizini('/sw/BMW_PORTAL/nginx_loadtest', '17'), '/sw/BMW_PORTAL/nginx_loadtest/17');
@@ -866,10 +874,9 @@ test('YD18 parametreler wrk: kanonik nesne, hesaplanan tavan, her mesaj; k6 serb
   );
   assert.deepEqual([dg.VARSAYILAN.motor, dg.VARSAYILAN.baglantilar, dg.VARSAYILAN.is_parcacigi, dg.VARSAYILAN.serbest], ['k6', [2, 4, 8], 2, { hizlar: [50, 100, 200], maxvu: 50 }]);
   assert.ok(Object.isFrozen(dg.VARSAYILAN.serbest) && Object.isFrozen(dg.VARSAYILAN.baglantilar));
-  assert.deepEqual([[...dg.MOTORLAR], [...dg.HEDEF_TURLERI], dg.VARSAYILAN_WRK], [['k6', 'wrk'], ['sunucu', 'serbest'], '/home/www/bin/wrk']);
-  assert.equal(dg.wrkYolu({ NGINX_LOADTEST_WRK: '/opt/wrk/bin/wrk' }), '/opt/wrk/bin/wrk');
-  for (const kotu of ['wrk', '/home/www/../tmp/wrk', '/home/www/bin/wrk;id']) assert.equal(dg.wrkYolu({ NGINX_LOADTEST_WRK: kotu }), '/home/www/bin/wrk', kotu);
-  assert.equal(dg.wrkYolu({}), '/home/www/bin/wrk');
+  assert.deepEqual([[...dg.MOTORLAR], [...dg.HEDEF_TURLERI], dg.WRK_SURUM, dg.ESKI_K6_ISARETI, dg.ESKI_WRK_ISARETI],
+    [['k6', 'wrk'], ['sunucu', 'serbest'], '4.2.0', '/yeni-playbook-gerekli/k6', '/yeni-playbook-gerekli/wrk']);
+  assert.equal(dg.VARSAYILAN_WRK, undefined);
 });
 
 test('YD19 butceSn: adim sayisi motora gore; motor\'suz eski nesne k6', () => {
@@ -885,11 +892,11 @@ test('YD19 butceSn: adim sayisi motora gore; motor\'suz eski nesne k6', () => {
 });
 
 const SIMDI = 1793000000;
-function evKur({ p = dg.parametreler({}, { sni: false }).deger, hedefTuru = 'sunucu', islem = 'kosu', simdiSn = SIMDI } = {}) {
+function evKur({ p = dg.parametreler({}, { sni: false }).deger, hedefTuru = 'sunucu', islem = 'kosu', simdiSn = SIMDI, arac = islem === 'durdur' ? null : ARAC } = {}) {
   const s = dg.senaryoSatirlari([SATIR('/a.js'), SATIR('/b.css', { tur: 'css' })]);
   return dg.ekstraDegiskenler({
     islem, kosuId: 17, hedefHost: 'GBNGXT33', yukHost: 'GBNGXT34', hedefIp: hedefTuru === 'serbest' ? '10.20.30.40' : '10.0.0.5', vhost: 'app.test.local',
-    senaryo: { tur: 'K', tsv: s.tsv, sha256: s.sha256 }, p, k6: '/home/www/bin/k6', kok: '/sw/BMW_PORTAL/nginx_loadtest', wrk: '/home/www/bin/wrk', hedefTuru, simdiSn,
+    senaryo: { tur: 'K', tsv: s.tsv, sha256: s.sha256 }, p, kok: '/sw/BMW_PORTAL/nginx_loadtest', arac, hedefTuru, simdiSn,
   });
 }
 
@@ -897,11 +904,11 @@ test('YD20 extra_vars tur 3: k6 / wrk x sunucu / serbest, is gecerlilik penceres
   const den = (ev, simdiSn = SIMDI) => dg.ekstraDegiskenleriDenetle(ev, { simdiSn });
   const k6 = evKur();
   assert.deepEqual(den(k6), []);
-  assert.equal(Object.keys(k6).length, 30);
+  assert.equal(Object.keys(k6).length, 33);
   assert.deepEqual(Object.keys(k6), [...dg.EKSTRA_ANAHTARLAR]);
   assert.deepEqual(
     [k6.yuk_hedef_turu, k6.yuk_hedef_host, k6.yuk_motor, k6.yuk_hizlar, k6.yuk_maxvu, k6.yuk_baglantilar, k6.yuk_is_parcacigi, k6.yuk_tavan_rps, k6.yuk_son_epoch, k6.yuk_wrk_yolu, k6.yuk_k6_yolu],
-    ['sunucu', 'GBNGXT33', 'k6', '100 250 400', '150', '', '', '', String(SIMDI + 900), '/home/www/bin/wrk', '/home/www/bin/k6'],
+    ['sunucu', 'GBNGXT33', 'k6', '100 250 400', '150', '', '', '', String(SIMDI + 900), '/yeni-playbook-gerekli/wrk', '/yeni-playbook-gerekli/k6'],
   );
   const pws = dg.parametreler({ motor: 'wrk' }, { sni: false, hedefTuru: 'serbest' }).deger;
   const ws = evKur({ p: pws, hedefTuru: 'serbest' });
@@ -975,7 +982,7 @@ test('YD20 extra_vars tur 3: k6 / wrk x sunucu / serbest, is gecerlilik penceres
   // Butce ek paysiz formulun tam sinirinda gecer (1260 = 60 + 3 * 2 * 180 + 120).
   assert.deepEqual(den({ ...wu, yuk_butce_sn: '1260' }), []);
   // Durdur: "on_kontrol, kosu" kurallari DENETLENMEZ (eski satir), hedef turu yoksa sunucu sayilir
-  // ama anahtar eksik oldugu icin yine reddedilir (Portal her zaman 30 anahtar gonderir).
+  // ama anahtar eksik oldugu icin yine reddedilir (Portal her zaman 33 anahtar gonderir).
   const dk = evKur({ islem: 'durdur', p: eskiP });
   assert.deepEqual(den(dk), []);
   assert.deepEqual(den({ ...dk, yuk_sure_sn: '30', yuk_son_epoch: '1', yuk_hizlar: '999' }), [], 'durdurda kosu kurallari denetlendi');
@@ -1033,9 +1040,9 @@ test('YD21 onKontrolDegerlendir: k6 + sunucu sabit fikstur (D7 haric tur 2 ile b
   assert.deepEqual(dg.onKontrolDegerlendir(wrkTemiz, { motor: 'wrk' }), { engeller: [], uyarilar: [dg.WRK_UYARISI] });
   assert.deepEqual(dg.onKontrolDegerlendir({ ...wrkTemiz, wrk_var: false, wrk_calisiyor: false }, { motor: 'wrk' }).engeller, ['wrk yük makinesinde bulunamadı ya da çalıştırılamıyor']);
   assert.deepEqual(dg.onKontrolDegerlendir({ ...wrkTemiz, wrk_var: false, wrk_calisiyor: true, wrk_surum: 'wrk  [epoll] Copyright' }, { motor: 'wrk' }).engeller,
-    ["wrk yük makinesinde çalışıyor ama sürümü okunamadı ya da 4 altında (wrk  [epoll] Copyright); wrk'yi make VER=4.2.0 ile yeniden derleyin"]);
+    ['wrk yük makinesinde çalışıyor ama sürümü okunamadı ya da 4 altında (wrk  [epoll] Copyright); araç setini yeniden hazırlayın (Yük Testi › Araçlar)']);
   assert.deepEqual(dg.onKontrolDegerlendir({ ...wrkTemiz, wrk_var: 'false', wrk_calisiyor: 'true', wrk_surum: null }, { motor: 'wrk' }).engeller,
-    ["wrk yük makinesinde çalışıyor ama sürümü okunamadı ya da 4 altında (-); wrk'yi make VER=4.2.0 ile yeniden derleyin"]);
+    ['wrk yük makinesinde çalışıyor ama sürümü okunamadı ya da 4 altında (-); araç setini yeniden hazırlayın (Yük Testi › Araçlar)']);
   const wk = dg.onKontrolDegerlendir({ ...wrkTemiz, ip_yerel: false, wrk_var: false, wrk_calisiyor: false, log_dizini_okunur: false, server_name_var: false }, { motor: 'wrk' });
   assert.deepEqual(wk.engeller, ['seçilen IP hedef sunucuda yerel değil (ya da ölçülemedi)', 'wrk yük makinesinde bulunamadı ya da çalıştırılamıyor', 'log dizini /web_log okunamıyor']);
   assert.deepEqual(wk.uyarilar, [dg.HOST_LISTEDE_YOK_UYARISI, dg.WRK_UYARISI]);
@@ -1360,4 +1367,98 @@ test('YD26b host_uretim kume kurallari: P iki gunun birlesimi, S = P + N (bayat 
   const y = await hb('tasindi.test.local', s, 'serbest');
   assert.equal(y.ok, true, JSON.stringify(y));
   assert.equal(y.uyarilar[0], dg.HOST_TARAMADA_YOK_UYARISI('tasindi.test.local'));
+});
+
+// ── TUR 4 (2026-11-02, arac_sozlesme 3.1 / 3.7) ──────────────────────────────────────────────
+//   YD40 extra_vars arac alanlari: 33 anahtar, isaret degerleri, durdurda ''; son kapi her arac kuralini
+//        yakalar (eski Portal yolu, kok disi dizin, '..', rakamsiz id, buyuk harfli / bozuk sha; motor k6'da da
+//        wrk sha'si); durdurda degerler denetlenmez ama anahtarlar zorunlu
+//   YD41 onKontrolDegerlendir: aracli false -> cikti BIREBIR secenegsiz cagriyla ayni (eski satir); aracli true
+//        -> dort engel metni; wrk yeni metin
+
+test('YD40 extra_vars tur 4: arac dizini + iki sha, isaret yollari, durdurda bos, son kapi kurallari', () => {
+  const den = (ev, simdiSn = SIMDI) => dg.ekstraDegiskenleriDenetle(ev, { simdiSn });
+  assert.equal(dg.EKSTRA_ANAHTARLAR.length, 33);
+  for (const [ad, p] of [['k6', dg.parametreler({}, { sni: false }).deger], ['wrk', dg.parametreler({ motor: 'wrk' }, { sni: false, hizSiniri: 270 }).deger]]) {
+    const ev = evKur({ p });
+    assert.deepEqual(den(ev), [], ad);
+    assert.deepEqual([ev.yuk_arac_dizin, ev.yuk_k6_sha256, ev.yuk_wrk_sha256, ev.yuk_k6_yolu, ev.yuk_wrk_yolu],
+      [ARAC.dizin, ARAC.k6Sha256, ARAC.wrkSha256, dg.ESKI_K6_ISARETI, dg.ESKI_WRK_ISARETI], ad);
+    assert.deepEqual(Object.keys(ev), [...dg.EKSTRA_ANAHTARLAR], ad);
+  }
+  const k6 = evKur();
+  const wrk = evKur({ p: dg.parametreler({ motor: 'wrk' }, { sni: false, hizSiniri: 270 }).deger });
+  // Arac seti verilmezse uc alan '' -> on kontrol / kosu son kapisi reddeder.
+  const aracsiz = evKur({ arac: null });
+  assert.deepEqual([aracsiz.yuk_arac_dizin, aracsiz.yuk_k6_sha256, aracsiz.yuk_wrk_sha256], ['', '', '']);
+  assert.deepEqual(den(aracsiz), ['yuk_arac_dizin', 'yuk_k6_sha256', 'yuk_wrk_sha256']);
+  for (const [ev, ek, anahtar] of [
+    [k6, { yuk_k6_yolu: '/home/www/bin/k6' }, 'yuk_k6_yolu'],
+    [k6, { yuk_wrk_yolu: '/home/www/bin/wrk' }, 'yuk_wrk_yolu'],
+    [wrk, { yuk_wrk_yolu: '/home/www/bin/wrk' }, 'yuk_wrk_yolu'],
+    [k6, { yuk_arac_dizin: '' }, 'yuk_arac_dizin'],
+    [k6, { yuk_arac_dizin: '/sw/BMW_PORTAL/baska/araclar/5' }, 'yuk_arac_dizin'],
+    [k6, { yuk_arac_dizin: '/sw/BMW_PORTAL/nginx_loadtest/araclar/../5' }, 'yuk_arac_dizin'],
+    [k6, { yuk_arac_dizin: '/sw/BMW_PORTAL/nginx_loadtest/araclar/abc' }, 'yuk_arac_dizin'],
+    [k6, { yuk_arac_dizin: '/sw/BMW_PORTAL/nginx_loadtest/araclar/5/k6' }, 'yuk_arac_dizin'],
+    [k6, { yuk_arac_dizin: '/tmp/araclar/5' }, 'yuk_arac_dizin'],
+    [k6, { yuk_arac_dizin: 5 }, 'yuk_arac_dizin'],
+    [k6, { yuk_k6_sha256: 'CD'.repeat(32) }, 'yuk_k6_sha256'],
+    [k6, { yuk_k6_sha256: 'c'.repeat(63) }, 'yuk_k6_sha256'],
+    [wrk, { yuk_k6_sha256: '' }, 'yuk_k6_sha256'],
+    [k6, { yuk_wrk_sha256: 'x'.repeat(64) }, 'yuk_wrk_sha256'],
+    [k6, { yuk_wrk_sha256: '' }, 'yuk_wrk_sha256'],
+  ]) assert.ok(den({ ...ev, ...ek }).includes(anahtar), `${JSON.stringify(ek)} -> ${anahtar} beklendi: ${JSON.stringify(den({ ...ev, ...ek }))}`);
+  // Kok DEV iken dizin de DEV kokunde olmali (startsWith yuk_cikti_kok + '/araclar/').
+  const dev = { ...k6, yuk_cikti_kok: '/sw/BMW_PORTAL_DEV/nginx_loadtest' };
+  assert.deepEqual(den(dev), ['yuk_arac_dizin']);
+  assert.deepEqual(den({ ...dev, yuk_arac_dizin: '/sw/BMW_PORTAL_DEV/nginx_loadtest/araclar/5' }), []);
+  // Durdur: arac null -> uc alan ''; degerler denetlenmez, anahtarlar zorunlu.
+  const eskiP = { hizlar: [100], tekrar: 1, isinma: 30, sure: 120, bosluk: 30, bosta: 60, maxvu: 150, kip: 'ka', ae: 'gzip', sni: false, butceSn: 380 };
+  const dk = evKur({ islem: 'durdur', p: eskiP });
+  assert.deepEqual([dk.yuk_arac_dizin, dk.yuk_k6_sha256, dk.yuk_wrk_sha256, dk.yuk_k6_yolu, dk.yuk_wrk_yolu], ['', '', '', dg.ESKI_K6_ISARETI, dg.ESKI_WRK_ISARETI]);
+  assert.deepEqual(den(dk), []);
+  assert.deepEqual(den({ ...dk, yuk_arac_dizin: '/x', yuk_k6_sha256: 'Z', yuk_k6_yolu: '/home/www/bin/k6' }), [], 'durdurda arac degerleri denetlendi');
+  for (const k of ['yuk_arac_dizin', 'yuk_k6_sha256', 'yuk_wrk_sha256']) {
+    const eksik = { ...dk };
+    delete eksik[k];
+    assert.deepEqual(den(eksik), [k], `durdurda ${k} eksigi yakalanmadi`);
+  }
+});
+
+test('YD41 onKontrolDegerlendir tur 4: aracli false birebir eski; aracli true dort engel; wrk yeni metin', () => {
+  const ARAC_OK = { arac_dogrulandi: true, arac_sha256: 'cd'.repeat(32), arac_glibc: '2.28', arac_hata: null };
+  // aracli false (eski satir): arac alanlari olsa da olmasa da cikti secenegsiz cagriyla AYNI.
+  for (const [ad, ek] of YD21_SABIT) {
+    for (const arac of [{}, ARAC_OK, { arac_dogrulandi: false, arac_hata: 'sha256 farkli' }]) {
+      const ok = { ...YD21_TEMIZ, ...ek, ...arac };
+      assert.deepEqual(dg.onKontrolDegerlendir(ok, { aracli: false, aracSha256: 'ab'.repeat(32) }), dg.onKontrolDegerlendir({ ...YD21_TEMIZ, ...ek }), `${ad} ${JSON.stringify(arac)}`);
+    }
+  }
+  const sha = 'cd'.repeat(32);
+  const e = (arac, s = { aracli: true, aracSha256: sha }) => dg.onKontrolDegerlendir({ ...YD21_TEMIZ, ...arac }, s).engeller;
+  assert.deepEqual(e(ARAC_OK), []);
+  assert.deepEqual(e({ ...ARAC_OK, arac_dogrulandi: false, arac_hata: 'sha256 farkli (beklenen cdcdcdcdcdcd..., bulunan 000000000000...)' }),
+    ['yük aracı kopyası doğrulanamadı: sha256 farkli (beklenen cdcdcdcdcdcd..., bulunan 000000000000...)']);
+  for (const v of [null, undefined, 'true', 1]) {
+    assert.deepEqual(e({ ...ARAC_OK, arac_dogrulandi: v, arac_hata: null }),
+      ['yük aracı kopyası doğrulanamadı: ölçülemedi (playbook araç kopyalamayı desteklemiyor olabilir; Ansible deposunu güncelleyin)'], String(v));
+  }
+  // Eski playbook (arac_* hic yok): olculemedi engeli.
+  assert.deepEqual(e({}), ['yük aracı kopyası doğrulanamadı: ölçülemedi (playbook araç kopyalamayı desteklemiyor olabilir; Ansible deposunu güncelleyin)']);
+  assert.deepEqual(e({ ...ARAC_OK, arac_sha256: 'ab'.repeat(32) }), ["yük aracı kopyasının sha256'sı araç setiyle aynı değil"]);
+  assert.deepEqual(e({ ...ARAC_OK, arac_sha256: 'ab'.repeat(32) }, { aracli: true }), [], 'aracSha256 verilmeden sha karsilastirildi');
+  assert.deepEqual(e({ ...ARAC_OK, arac_hata: 'glibc uyumsuz: makinede glibc 2.28, arac GLIBC_2.34 istiyor' }),
+    ['yük aracı çalıştırılamadı: glibc uyumsuz: makinede glibc 2.28, arac GLIBC_2.34 istiyor']);
+  // Arac engeli yollar maddesinden ONCE, motor ve log dizini engellerinden SONRA.
+  assert.deepEqual(e({ k6_var: false, log_dizini_okunur: false, yollar_toplam: 0, arac_dogrulandi: false, arac_hata: 'kopya yok ya da duzenli dosya degil' }), [
+    'k6 yük makinesinde bulunamadı', 'log dizini /web_log okunamıyor', 'yük aracı kopyası doğrulanamadı: kopya yok ya da duzenli dosya degil', 'ön kontrolde hiçbir yol denenmedi',
+  ]);
+  // Serbest ve wrk kiplerinde de arac engeli.
+  const serbest = { ip_yuk_makinesinde: false, k6_var: true, yollar_toplam: 2, yollar_200: 2 };
+  assert.deepEqual(dg.onKontrolDegerlendir(serbest, { hedefTuru: 'serbest', aracli: true }).engeller.length, 1);
+  assert.deepEqual(dg.onKontrolDegerlendir({ ...serbest, ...ARAC_OK }, { hedefTuru: 'serbest', aracli: true, aracSha256: sha }).engeller, []);
+  const w = { ...YD21_TEMIZ, k6_var: null, wrk_var: false, wrk_calisiyor: true, wrk_surum: 'wrk 3.1.2', ...ARAC_OK };
+  assert.deepEqual(dg.onKontrolDegerlendir(w, { motor: 'wrk', aracli: true, aracSha256: sha }).engeller,
+    ['wrk yük makinesinde çalışıyor ama sürümü okunamadı ya da 4 altında (wrk 3.1.2); araç setini yeniden hazırlayın (Yük Testi › Araçlar)']);
 });

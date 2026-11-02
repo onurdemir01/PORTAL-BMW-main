@@ -6,6 +6,8 @@
 //   T|<HEDEF>   - ayni hedefe ikinci is (on kontrol istekleri de hedefin loguna yazilir ve olcumu bozar)
 //   T|IP:<ip>   - serbest hedef (LB VIP / yonetilmeyen sunucu): ayni IP'ye ikinci is
 //   L|<YUK>     - ayni yuk makinesinden ikinci is
+//   A|araclar   - tur 4: ayni anda tek arac hazirlama isi (k6 + wrk -> /sw); L|<DERLEME> ile birlikte
+//                 alinir (derleme bir yuk makinesinde yapilirsa olcumu bozmasin)
 // Sunucu hedefi: on kontrol T + L, kosu G + T + L. Serbest hedef: on kontrol DE G alir (G + T|IP +
 // L): serbest on kontrolun istekleri VIP arkasindaki bir hostun olcum penceresine girmesin. VIP
 // arkasindaki hostlar T kilidiyle KORUNMAZ (Portal VIP'in havuzunu bilmez); G yalniz kosulari ve
@@ -80,10 +82,13 @@ async function ensureLockRow(db, key) {
  * Bagli isin TURU + AWX'in TERMINAL durumu -> 'birak' | 'tut'. TEK saf kural; poller
  * sonuclandirmasi, kilit supurmesi ve acquireLocks'un bayat-kilit kontrolu bunu kullanir.
  *
- *   AWX durumu        | on_kontrol / NULL | kosu | durdur
- *   successful        | birak             | birak| birak
- *   failed            | birak             | birak| tut
- *   canceled, error   | birak             | tut  | tut
+ *   AWX durumu        | on_kontrol / NULL | kosu, araclar | durdur
+ *   successful        | birak             | birak         | birak
+ *   failed            | birak             | birak         | tut
+ *   canceled, error   | birak             | tut           | tut
+ *
+ * araclar (tur 4): iptal edilen / hatali iste uzakta `timeout -k 30 1800` ile biten derleme surebilir;
+ * kilit TTL ile duser.
  *
  * `tut`: kilit DOLU kalir ama isten cozulur (yalniz TTL birakir). Terminal OLMAYAN ya da
  * bilinmeyen durum icin cagrilmaz (cagiran TERMINAL'e bakar); yine de cagrilirsa 'tut' doner
@@ -91,7 +96,7 @@ async function ensureLockRow(db, key) {
  */
 function bagliIsKarari(bagTuru, awxStatus) {
   const s = String(awxStatus ?? '').trim().toLowerCase();
-  const t = bagTuru == null || bagTuru === '' || bagTuru === 'on_kontrol' ? 'on_kontrol' : bagTuru === 'kosu' ? 'kosu' : 'durdur';
+  const t = bagTuru == null || bagTuru === '' || bagTuru === 'on_kontrol' ? 'on_kontrol' : bagTuru === 'kosu' || bagTuru === 'araclar' ? 'kosu' : 'durdur';
   if (s === 'successful') return 'birak';
   if (s === 'failed') return t === 'durdur' ? 'tut' : 'birak';
   if (s === 'canceled' || s === 'error') return t === 'on_kontrol' ? 'birak' : 'tut';
@@ -266,8 +271,8 @@ async function durdurIsineBagla(db, kilitId, { awxServerId, awxJobId, uzatSn }) 
 }
 
 // Ayni ise bagli kilitlerin bag turu normalde tektir (bindLocks hepsine ayni degeri yazar); yine de
-// farkli gelirse EN SIKI olan alinir (durdur > kosu > on_kontrol/NULL).
-const BAG_SIRASI = (t) => (t == null || t === '' || t === 'on_kontrol' ? 0 : t === 'kosu' ? 1 : 2);
+// farkli gelirse EN SIKI olan alinir (durdur > kosu > on_kontrol/NULL/araclar).
+const BAG_SIRASI = (t) => (t == null || t === '' || t === 'on_kontrol' || t === 'araclar' ? 0 : t === 'kosu' ? 1 : 2);
 
 /** Bir ise bagli DOLU kilitlerin isleri (poller supurmesi). Kosu satiri yazilamamis olsa da birakilsin. */
 async function bekleyenKilitIsleri(db, limit = 20) {
@@ -301,14 +306,17 @@ function doluKilitMesaji(busyKey, busy) {
   // T|IP: dali T| dalindan ONCE (serbest hedef). G metni degismez: kim bolumundeki target_desc isi soyler.
   const ne = busyKey === 'G|global'
     ? 'Başka bir yük testi koşuyor'
-    : busyKey.startsWith('T|IP:')
-      ? `${busyKey.slice(5)} IP'sine yönelik başka bir iş var`
-      : busyKey.startsWith('T|') ? `${busyKey.slice(2)} üzerinde başka bir iş var` : `${busyKey.slice(2)} yük makinesi meşgul`;
+    : busyKey === 'A|araclar'
+      ? 'Başka bir araç hazırlama işi sürüyor'
+      : busyKey.startsWith('T|IP:')
+        ? `${busyKey.slice(5)} IP'sine yönelik başka bir iş var`
+        : busyKey.startsWith('T|') ? `${busyKey.slice(2)} üzerinde başka bir iş var` : `${busyKey.slice(2)} yük makinesi meşgul`;
   const kim = busy && busy.holder ? ` (${busy.holder}${busy.target_desc ? `: ${busy.target_desc}` : ''}${busy.awx_job_id != null ? `, AWX iş #${busy.awx_job_id}` : ''})` : '';
   return `${ne}${kim}. İş bitince kilit kendiliğinden bırakılır.`;
 }
 
 module.exports = {
+  BAG_SIRASI,
   SABLON_ZAMAN_ASIMI_DK,
   VARSAYILAN_KILIT_DK,
   kilitSuresiDk,

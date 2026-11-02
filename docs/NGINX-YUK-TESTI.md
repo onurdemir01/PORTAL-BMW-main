@@ -24,16 +24,17 @@ Portal'a özgüdür ve aynı istemci dosya şemasını yazar.
 
 | Parça | Yer |
 |---|---|
-| Ekran | `src/components/nginx_console/YukTestiTab.tsx`, `src/components/nginx_console/yukTesti/` |
+| Ekran | `src/components/nginx_console/YukTestiTab.tsx`, `src/components/nginx_console/yukTesti/` (Araçlar paneli: `yukTesti/Araclar.tsx`) |
 | API | `server/nginx-loadtest/index.cjs` → `/api/nginx-loadtest/*` |
 | Kapılar (girdi, IP sınıflandırması, ortam, sınırlar) | `server/nginx-loadtest/dogrula.cjs` |
 | Kilit (`nginx_loadtest_kilitleri`) | `server/nginx-loadtest/kilit.cjs` |
 | AWX başlatma | `server/nginx-loadtest/baslat.cjs` |
 | Sonuçlandırıcı (sunucu tarafı) | `server/nginx-loadtest/poller.cjs` |
+| Yük araçları (k6 + wrk arac setleri: sabit arşiv özetleri, hazırlama, geri çekme, etkin set kapısı, sonuçlandırma) | `server/nginx-loadtest/araclar.cjs` |
 | Sonuç dizini okuma / analiz | `server/nginx-loadtest/sonuc.cjs`, `server/nginx-loadtest/analiz.cjs` |
-| Playbook | Ansible deposu `bmw_portal/nginx_loadtest/nginx_loadtest.yml` (+ `files/`: `kos.sh`, `yuk_k6.js`, `cpu_kaydedici.sh`, `on_kontrol.sh`, `durdur.sh`, `wrk_kos.sh`, `yuk_wrk.lua`; `README.md`); Portal aynası `server/ansible/bmw_portal/nginx_loadtest/` |
-| Tablolar | `nginx_loadtest_senaryolar`, `_kosular`, `_adimlar`, `_kilitleri` — bkz. [DATABASE.md](DATABASE.md) |
-| Bekçiler | `server/nginx-loadtest/__tests__/` (dogrula, kilit, kapi, poller, sonuc, analiz) |
+| Playbook | Ansible deposu `bmw_portal/nginx_loadtest/nginx_loadtest.yml` (+ `files/`: `kos.sh`, `yuk_k6.js`, `cpu_kaydedici.sh`, `on_kontrol.sh`, `durdur.sh`, `wrk_kos.sh`, `yuk_wrk.lua`, `arac_hazirla.sh`; `README.md`); Portal aynası `server/ansible/bmw_portal/nginx_loadtest/` |
+| Tablolar | `nginx_loadtest_senaryolar`, `_kosular`, `_adimlar`, `_kilitleri`, `_araclar` — bkz. [DATABASE.md](DATABASE.md) |
+| Bekçiler | `server/nginx-loadtest/__tests__/` (dogrula, kilit, kapi, poller, sonuc, analiz, araclar) |
 
 ---
 
@@ -41,8 +42,8 @@ Portal'a özgüdür ve aynı istemci dosya şemasını yazar.
 
 ### 2.1 AWX job template'i
 
-Tek template, üç kip: playbook `yuk_islem` ile `on_kontrol` (yük yok), `kosu` ve `durdur`
-çalışır.
+Tek template, dört kip: playbook `yuk_islem` ile `on_kontrol` (yük yok), `kosu`, `durdur` ve
+`araclar` (yük araçlarını /sw'ye hazırlar, yalnız Admin; §2.2) çalışır.
 
 | Ayar | Değer |
 |---|---|
@@ -62,8 +63,9 @@ Ayrıca:
 
 * Ansible deposu AWX'e **zip ile** gider (`tools/ansible-zip.py`): `bmw_portal/nginx_loadtest/`
   altındaki yeni dosyalar zip'e girmeli. Portal aynası ile Ansible deposundaki kopya bayt bayt
-  aynı olmalı (bekçi denetler). Playbook her kipte `files/` altındaki yedi betiğin hepsini arar:
-  zip'te `wrk_kos.sh` ya da `yuk_wrk.lua` eksikse **k6 koşuları da** "betiklerden biri yok" ile düşer.
+  aynı olmalı (bekçi denetler). Playbook her kipte `files/` altındaki sekiz betiğin hepsini arar:
+  zip'te `wrk_kos.sh`, `yuk_wrk.lua` ya da `arac_hazirla.sh` eksikse **her kip** "files/ altindaki
+  betiklerden biri yok (AWX proje kopyasi eksik); hicbir sey yapilmadi" ile düşer.
 * Template'i template-preflight'ın beklediği playbook'a bağlayın: başka bir playbook'u koşturan
   Template ID girilirse iş **başlatılmaz** (409 `awx_template_playbook_mismatch`).
 * Uzun iş uyarısı (Teams, 30 dk) gelebilir; bu template'i otomatik iptal izin listesine
@@ -75,38 +77,101 @@ Ayrıca:
   ("is gecerlilik suresi dolmus ya da gecersiz"). AWX kuyruğunda 15 dk'dan uzun bekleyen iş de aynı
   nedenle reddedilir (fail-closed; Portal `FAILED` gösterir).
 
-### 2.2 Yük makinesi: k6, wrk ve serbest hedef izin dosyası
+### 2.2 Yük araçları (k6, wrk) ve serbest hedef izin dosyası
 
-**k6**
+**Yük araçları: elle kurulum YOK**
 
-* Varsayılan yol `/home/www/bin/k6` (`NGINX_LOADTEST_K6`). `www` kullanıcısı çalıştırabilmeli.
-* En az **v0.45** (kos.sh denetler, eskiyse koşu başlamaz).
-* Kurulum: kurumun onaylı kanalından tek ikili (`k6-vX.Y.Z-linux-amd64.tar.gz`) getirin,
-  yayıncının sha256 listesiyle doğrulayın, `install -m 0755 k6 /home/www/bin/k6`. Sunucunun dnf
-  aynası geride olabilir; paket yöneticisine güvenmeyin.
-* Ön kontrol k6'nın **sürümünü ve sha256'sını** raporlar; koşular arasında değişmemeli.
+k6 ve wrk yük makinelerine **kurulmaz**. Admin, Yük Testi › **Araçlar** bölümünden **"Araçları
+hazırla"** ile aynı AWX şablonunu `yuk_islem='araclar'` kipinde başlatır (§3 "Araçlar"):
 
-**wrk** (yalnız wrk koşusu için gerekir)
+1. Derleme makinesi (varsayılan **GBLABT02**; Admin `NGINX_LOADTEST_DERLEME_HOSTLARI` listesinden seçer)
+   `www` olarak, www ev dizinindeki geçici bir derleme dizininde (`/tmp` **değil**: `/tmp` noexec)
+   çalışır. Kurumsal vekil (`NGINX_LOADTEST_ARAC_PROXY`, kimlik bilgisi yok) **yalnız üç indirme
+   görevinde** kullanılır; derleme vekilsiz koşar. TLS doğrulaması kapatılmaz: vekil TLS'i açıyorsa
+   kurum CA'sı derleme makinesinin güven deposunda olmalı.
+2. **k6** — resmî sürüm arşivi (`k6-<sürüm>-linux-amd64.tar.gz`) ve resmî `k6-<sürüm>-checksums.txt`
+   indirilir; arşiv, açılmadan önce Portal'da **sabitlenen** `NGINX_LOADTEST_K6_ARSIV_SHA256` ile
+   (ve checksums satırıyla) doğrulanır; tutmazsa hiçbir şey açılmaz ya da çalışmaz. Sürüm varsayılan **v0.49.0**
+   (`yuk_k6.js` ve kitin yazıldığı sürüm; `kos.sh` alt sınırı v0.45; resmî Go ikilisi statiktir, RHEL
+   8 / 9 farkı etkilemez). `NGINX_LOADTEST_K6_SURUM` ile v0.45.0..v0.59.x seçilebilir; **1.x
+   desteklenmez** (uç özet biçimi değişti, burada doğrulanamaz).
+3. **wrk 4.2.0** — `github.com/wg/wrk` 4.2.0 etiket arşivi indirilir, açılmadan / derlenmeden önce
+   Portal'da **sabitlenen** `NGINX_LOADTEST_WRK_KAYNAK_SHA256` ile doğrulanır (tutmazsa iş düşer,
+   hiçbir şey derlenmez) ve varsayılan Makefile ile
+   `make VER=4.2.0` derlenir: paketli OpenSSL 1.1.1 ve LuaJIT 2.1 **statik** bağlanır, ikili yalnız
+   glibc'ye bağlıdır (`WITH_OPENSSL` verilmez; `-march` yok). Betik ikilinin sistem `libssl` /
+   `libcrypto` / `libluajit`'e bağlı olmadığını `ldd` ile doğrular. **Kabul edilen risk:** paketli
+   OpenSSL 1.1.1'in desteği bitti (EOL, 2023-09); yalnız iç TEST hedeflerine giden bir istemcide
+   kullanılır (sunucu tarafı yok), sürüm dizesi set kaydında (`wrk_openssl`) görünür.
+4. İki ikili `<NGINX_LOADTEST_DIR>/araclar/<id>/` altına yazılır (`k6`, `wrk` **0644**, yani /sw'den
+   doğrudan çalıştırılamaz; ayrıca insan için `SHA256SUMS` ve `manifest.json`). Yazım `www` ile
+   değil, bugünkü sonuç kopyası gibi kontrol düğümünden GBLABT02 üzerinden yapılır; önce `.<id>.yarim`
+   dizinine yazılır, `mv -T` ile adı değiştirilir ve geri okunup sha256 ile doğrulanır.
+5. Portal iki sha256'yı (ve arşiv / kaynak özetlerini, derleme makinesinin RHEL ve glibc sürümünü,
+   wrk'nin gerektirdiği en yüksek glibc sembolünü) `nginx_loadtest_araclar` tablosuna yazar. **Güven
+   kökü Portal'dır**: yük makinesi /sw'deki `SHA256SUMS` / `manifest.json`'a güvenmez.
 
-* Varsayılan yol `/home/www/bin/wrk` (`NGINX_LOADTEST_WRK`). Asgari **4.0** (`delay()`,
-  `wrk.thread:stop()`), önerilen **4.2.0**. Resmî ikili yoktur: kurumun onaylı kaynağından
-  (sürüm etiketli arşiv ya da etiketli klon) operatör derler.
-* Bağımlılıklar: `gcc`, `make`, `tar` / `unzip`, klon ise `git`; wrk'nin paketli OpenSSL'i derlenecekse
-  `perl`. Tercihen dağıtımın bakımlı OpenSSL'i: `openssl-devel` kurulu iken
+Her **ön kontrol ve koşu** seçilen motorun ikilisini /sw'deki etkin setten koşu dizinine
+(`<www ev>/.portal_yuktesti/<koşu>/arac/<k6|wrk>`, 0700) kopyalar, sha256'sını **yalnız Portal'ın
+gönderdiği değerle** karşılaştırır; doğrulanmayan kopya **hiç çalıştırılmadan** silinir. İş bitince
+(Durdur dahil) `arac/` dizini silinir. Yük makinelerine kalıcı bir şey kurulmaz.
 
-  ```
-  make VER=4.2.0 WITH_OPENSSL=/usr
-  install -m 0755 wrk /home/www/bin/wrk
-  /home/www/bin/wrk -v | head -1        # "wrk 4." ile başlamalı
-  sha256sum /home/www/bin/wrk           # değeri kurulum kaydına yazın
-  ```
+* **Eski elle kurulumlar** (`/home/www/bin/k6`, GBLABT02'deki wrk) yerinde kalır ama **kullanılmaz**;
+  `NGINX_LOADTEST_K6` / `NGINX_LOADTEST_WRK` artık okunmaz.
+* **Derleme makinesi ve RHEL 8 / 9:** RHEL 9'da derlenen wrk glibc ≥ 2.34 sembolleri isteyebilir ve
+  RHEL 8 (glibc 2.28) yük makinelerinde **çalışmaz**. Panel bunu önceden uyarır; ön kontrol "glibc
+  uyumsuz" engeliyle bildirir. Tüm yük makinelerinde çalışması için listeye bir RHEL 8 DEV / TEST / QA
+  nginx makinesi ekleyip araçları orada hazırlayın. GBLABT02'nin RHEL sürümü ilk işte kaydedilir.
+* **Arşiv özetleri sabittir (ilk kullanımda güven YOK):** iki arşivin sha256'sı Portal ortamında
+  (`NGINX_LOADTEST_K6_ARSIV_SHA256`, `NGINX_LOADTEST_WRK_KAYNAK_SHA256`; tam 64 hex) **verilmek
+  zorundadır**; nasıl hesaplanacağı aşağıda ("Arşiv özetlerini sabitleme"). Biri eksik ya da geçersizse
+  "Araçları hazırla" 409 `arac_ozet_sabit_yok` ile reddedilir (iş, kilit, kayıt yok) ve **hiçbir set
+  kullanılmaz** (ön kontrol / koşu 409 `araclar_ozet_sabit_yok`). Panelde Admin onayı yoktur.
+* **Etkin set** Portal DB'dendir: en yeni başarılı (DONE), **geri çekilmemiş** ve arşiv özetleri **şu
+  anki** env değerleriyle aynı olan set. Env'deki özetler değişirse eski setler kendiliğinden devre
+  dışı kalır (409 `araclar_ozet_degisti`: araçları yeniden hazırlayın). k6 sürümünü
+  (`NGINX_LOADTEST_K6_SURUM`) değiştirirseniz o sürümün arşiv özetini de sabitleyin; aksi halde
+  hazırlama düşer, mevcut set etkin kalır.
+* **Geri çekme:** Admin, Araçlar bölümünden bir DONE seti **"Geri çek"** ile devre dışı bırakır (onay
+  penceresi; denetime `nginx_loadtest_araclar_geri_cek` yazılır; kayıt silinmez, geri alınamaz). Etkin
+  set kurala uyan bir önceki sete düşer; öyle bir set yoksa araçlar yeniden hazırlanana dek ön kontrol
+  ve koşu reddedilir (409 `araclar_geri_cekildi`). Süren koşular durdurulmaz; geri çekilen setle
+  yapılmış ön kontrol koşuya izin vermez (409 `on_kontrol_eski`).
+* Eski set dizinleri silinmez (Admin elle siler).
 
-* **`VER=4.2.0` zorunludur.** Makefile sürümü `git describe`'dan alır: `.git`'siz arşivden derlenen
-  ikili `wrk  [epoll] ...`, etiketsiz klon kısa bir hash basar. Bu ikililer çalışır ama sürüm satırı
-  okunamaz; ön kontrol "wrk yük makinesinde çalışıyor ama sürümü okunamadı ya da 4 altında" engeliyle
-  durur.
-* Ön kontrol yalnız **seçili motorun** ikilisini ölçer (wrk koşusunda k6 aranmaz ve tersi); sürüm ve
-  sha256 raporlanır.
+**Arşiv özetlerini sabitleme** (bir kez; k6 sürümü değişince yeniden)
+
+Operatör, **kurum vekili dışında** (vekil TLS'i açıyorsa aynı içerik görülebilir) ya da yayınlanmış
+değerle karşılaştırarak iki özeti hesaplar. Playbook'un indirdiği adresler (v0.49.0 için):
+
+```bash
+# wrk 4.2.0 kaynak arşivi (GitHub etiket arşivi)
+curl -fsSL -x http://tekprxv2.fw.garanti.com.tr:80 -o wrk-4.2.0.tar.gz \
+  https://github.com/wg/wrk/archive/refs/tags/4.2.0.tar.gz
+sha256sum wrk-4.2.0.tar.gz
+
+# k6 v0.49.0 linux-amd64 arşivi ve resmî checksums dosyası
+curl -fsSL -x http://tekprxv2.fw.garanti.com.tr:80 -o k6-v0.49.0-linux-amd64.tar.gz \
+  https://github.com/grafana/k6/releases/download/v0.49.0/k6-v0.49.0-linux-amd64.tar.gz
+curl -fsSL -x http://tekprxv2.fw.garanti.com.tr:80 -o k6-v0.49.0-checksums.txt \
+  https://github.com/grafana/k6/releases/download/v0.49.0/k6-v0.49.0-checksums.txt
+sha256sum k6-v0.49.0-linux-amd64.tar.gz
+grep '  k6-v0.49.0-linux-amd64.tar.gz$' k6-v0.49.0-checksums.txt   # ayni deger olmali
+```
+
+(Vekilsiz bir ağda `-x ...` bölümünü çıkarın.) k6 değeri resmî checksums dosyasındaki satırla ve
+mümkünse GitHub sürüm sayfasında yayınlanan değerle aynı olmalı; farklıysa **sabitlemeyin**. İki
+değeri Portal sunucusunun `.env` dosyasına yazıp Portal'ı yeniden başlatın:
+
+```bash
+NGINX_LOADTEST_K6_ARSIV_SHA256=<sha256sum çıktısının ilk sütunu, 64 hex>
+NGINX_LOADTEST_WRK_KAYNAK_SHA256=<sha256sum çıktısının ilk sütunu, 64 hex>
+```
+
+Değerler herkese açıktır (gizli değildir) ve Araçlar panelinde gösterilir. Arşiv sonradan değişirse
+(GitHub etiket arşivleri geçmişte değişti) hazırlama işi "arşiv sabitlenen özetle uyuşmuyor" notuyla
+düşer ve hiçbir şey derlenmez: arşivi yeniden bağımsız doğrulayın, gerçekten değiştiyse env değerini
+güncelleyin. Aynı metin playbook README'sinde de vardır.
 
 **Serbest hedef izin dosyası** (yalnız serbest hedef isteniyorsa; her yük makinesinde)
 
@@ -143,11 +208,15 @@ install -m 0644 serbest_aglar /etc/portal_yuktesti/serbest_aglar
 | `NGINX_LOADTEST_RUN_TEMPLATE_ID` | — | Template ID (Playbook Kayıtları satırında yoksa) |
 | `NGINX_LOADTEST_AWX_SERVER_ID` | `1` | AWX sunucusu (kayıtta yoksa) |
 | `NGINX_LOADTEST_YUK_HOSTLARI` | `GBNGXT34` | İzinli yük makineleri (virgülle). Listedeki makine de ad kuralına göre DEV/TEST/QA, üretim işaretsiz ve envanterde olmalı; liste kapıyı **gevşetemez**. Geçersiz giriş atılır. |
-| `NGINX_LOADTEST_K6` | `/home/www/bin/k6` | Yük makinesinde k6 yolu |
-| `NGINX_LOADTEST_WRK` | `/home/www/bin/wrk` | Yük makinesinde wrk yolu (`make VER=4.2.0` ile derlenmiş). Geçersiz yol varsayılana düşer. |
+| `NGINX_LOADTEST_K6`, `NGINX_LOADTEST_WRK` | — | **Artık kullanılmaz** (tur 4): araçlar /sw'deki arac setinden kopyalanır; playbook'a `yuk_k6_yolu` / `yuk_wrk_yolu` olarak sabit işaret değeri (`/yeni-playbook-gerekli/k6`, `/yeni-playbook-gerekli/wrk`) gider. |
+| `NGINX_LOADTEST_DERLEME_HOSTLARI` | `GBLABT02` | Araç derleme makineleri (virgül / boşluk / `;`). Her girdi `GBLABT02` ya da ad kuralına göre DEV / TEST / QA nginx adı (EDU değil); geçersiz girdi atılır (log'a bir kez); liste boş kalırsa `GBLABT02`. İlk eleman varsayılan. |
+| `NGINX_LOADTEST_ARAC_PROXY` | `http://tekprxv2.fw.garanti.com.tr:80` | İndirme vekili. `yok` = vekilsiz. Yalnız `http://<ad>:<port>` (küçük harfe çevrilir); kimlik bilgisi (`@`), `https://`, yol **geçersizdir** → "Araçları hazırla" 409 `arac_proxy_gecersiz`. Adres yalnız Admin'e gösterilir. |
+| `NGINX_LOADTEST_K6_SURUM` | `v0.49.0` | k6 sürümü; `v0.45.0`..`v0.59.x` dışı uyarıyla varsayılana düşer (1.x desteklenmez). |
+| `NGINX_LOADTEST_K6_ARSIV_SHA256` | — (**zorunlu**) | `k6-<NGINX_LOADTEST_K6_SURUM>-linux-amd64.tar.gz` arşivinin sha256'sı; tam 64 hex (büyük harf küçültülür). Yok / geçersiz → "Araçları hazırla" 409 `arac_ozet_sabit_yok`, hiçbir set etkin değil (§2.2 "Arşiv özetlerini sabitleme"). Önceki setten devralınmaz. |
+| `NGINX_LOADTEST_WRK_KAYNAK_SHA256` | — (**zorunlu**) | wrk 4.2.0 kaynak arşivinin (`https://github.com/wg/wrk/archive/refs/tags/4.2.0.tar.gz`) sha256'sı; aynı kural. Değişirse eski setler etkin olmaz (yeniden hazırlayın). |
 | `NGINX_LOADTEST_SERBEST_AGLAR` | boş = **serbest hedef KAPALI** | Serbest hedef izin listesi: virgül / boşluk / `;` ayrık `a.b.c.d/n` (n **24..32**) ya da tek IP (= /32). Biçimsiz, /24'ten geniş, host bitli ya da özel aralık (0/8, 127/8, 169.254/16, 224+) girdisi **atılır** (liste daralır, log'a bir kez yazılır); en çok 64 girdi. Dar tutun: tek VIP `/32` ya da yalnız VIP alt ağı `/24`. Örnek: `10.20.30.0/24,10.20.31.15` |
 | `NGINX_LOADTEST_SERBEST_YASAK` | boş | İsteğe bağlı yasak liste (ör. PROD VIP aralıkları): aynı biçim, her önek (geniş yasak güvenlidir). **İki kipte** ve izin listesinden **önce** uygulanır. Tek geçersiz girdi **tüm yük testini** kapatır (409 `ip_yasak_listesi_gecersiz`): yasak listesinde girdi atmak fail-open olurdu. |
-| `NGINX_LOADTEST_DIR` | `/sw/BMW_PORTAL/nginx_loadtest` | Sonuç kökü; koşu dizini `<kök>/<koşu no>/`. Playbook (GBLABT02 üzerinden yazar) ve Portal (okur) **aynı yolu** görmeli. |
+| `NGINX_LOADTEST_DIR` | `/sw/BMW_PORTAL/nginx_loadtest` | Sonuç kökü; koşu dizini `<kök>/<koşu no>/`, arac setleri `<kök>/araclar/<id>/`. Playbook (GBLABT02 üzerinden yazar) ve Portal (okur) **aynı yolu** görmeli. Araç hazırlama `/sw/BMW_PORTAL(_DEV)/...` dışındaki köke yazmaz (409 `sinir_asildi`). |
 | `NGINX_LOADTEST_LOCK_TTL_MIN` | `75` | Kilit süresi, dk (65..720) |
 | `NGINX_LOADTEST_POLL_SN` | `30` | Sonuçlandırıcı aralığı, sn (10..600) |
 | `NGINX_LOADTEST_RETENTION_DAYS` | `365` | DB saklama, gün (30..3650) |
@@ -159,29 +228,43 @@ env ile gevşetilmez.
 
 Sekme `tab:nginx:yuktesti` **varsayılan kapalıdır**. Admin › Nginx Hub Erişimi'nden kullanıcıya
 ya da AD grubuna açılır. Admin olmayan kullanıcı yalnız **sonuçları okur** (hedefler, senaryolar,
-koşular, karşılaştırma). Senaryo yazma/silme, IP sınıflandırması (`/ip-sinifi`), ön kontrol, koşu,
+koşular, karşılaştırma, araç setleri — vekil adresi hariç). Araç hazırlama ve araç setini geri çekme **yalnız
+Admin**. Senaryo yazma/silme, IP sınıflandırması (`/ip-sinifi`), ön kontrol, koşu,
 durdurma ve canlı iş çıktısı **yalnız Admin**. Serbest izin listesindeki ağlar `/hedefler`'de yalnız
 Admin'e gösterilir (diğerleri yalnız açık / kapalı bilgisini görür).
 
 ### 2.5 Teslim sırası
 
-1. **Önce Portal** (DB kolonları — `hedef_turu`, `motor`, `plan_uyarilari` — açılışta ALTER ile
-   kendiliğinden eklenir; mevcut satırlar sunucu / k6 olur).
-2. **Sonra Ansible deposu zip'i.** Yeni dosyalar `bmw_portal/nginx_loadtest/files/wrk_kos.sh` ve
-   `files/yuk_wrk.lua` zip listesinde **ayrıca** sayılmalı; değişenler `nginx_loadtest.yml`,
-   `README.md`, `files/durdur.sh`, `bmw_nginx/tests/check_nginx_loadtest_job.py`.
-3. Operatör: yük makinesine wrk (§2.2; gerekirse `NGINX_LOADTEST_WRK`); serbest hedef isteniyorsa
-   `NGINX_LOADTEST_SERBEST_AGLAR` (+ isteğe bağlı `NGINX_LOADTEST_SERBEST_YASAK`) **ve** her yük
-   makinesine `/etc/portal_yuktesti/serbest_aglar`; AWX'te şablonun Execute / Admin rolü yalnız Portal
-   servis hesabında.
-4. Kanarya: Ansible deposundaki `bmw_portal/nginx_loadtest/README.md` "Kanarya" listesi (wrk sürümü,
-   1 adımlık wrk koşusu, serbest ön kontrol ve izin dosyasının kaldırılınca reddi, Relaunch reddi,
-   koşu kapısı).
+Tur 4 (yük araçları /sw'den):
 
-Ara dönem: Portal yeni, playbook eski iken k6 + sunucu koşuları çalışır (eski playbook yeni yedi
-değişkeni yok sayar); serbest ve wrk istekleri eski girdi kapısında reddedilir (yük üretilmez).
-Playbook yeni, Portal eski iken eski Portal'ın ön kontrol / koşu istekleri reddedilir (yeni
-değişkenler zorunlu), durdurma isteği kabul edilir.
+1. **Ansible deposu zip'i.** Yeni `bmw_portal/nginx_loadtest/files/arac_hazirla.sh` zip listesinde
+   **ayrıca** sayılmalı; değişenler `nginx_loadtest.yml`, `README.md`, `files/durdur.sh`,
+   `bmw_nginx/tests/check_nginx_loadtest_job.py`. Bu andan Portal dağıtılana dek ön kontrol / koşu
+   "arac degiskenleri eksik ya da gecersiz ..." ile reddedilir; durdur çalışır.
+2. **Portal** (DB: `nginx_loadtest_araclar` tablosu ve `nginx_loadtest_kosular.arac_id` açılışta
+   CREATE / ALTER ile kendiliğinden eklenir; eski satırlar `arac_id` NULL). Önce iki arşiv özetini
+   `.env`'e yazın (§2.2 "Arşiv özetlerini sabitleme"); yoksa hazırlama 409 `arac_ozet_sabit_yok`.
+3. Admin › Yük Testi › **Araçlar** › "Araçları hazırla" (GBLABT02). Set hazır olana dek ön kontrol /
+   koşu 409 `araclar_hazir_degil`.
+4. Kanarya: Ansible deposundaki `bmw_portal/nginx_loadtest/README.md` "Kanarya" listesi (araç işinin
+   set_stats alanları, /sw izinleri, vekilsiz deneme, k6 ve wrk ön kontrolü RHEL 8 ve RHEL 9 yük
+   makinesinde, Durdur'da `arac/` silinmesi, /sw'deki ikili bozulunca "sha256 farkli").
+
+Ara dönem (fail-closed):
+
+* Portal yeni, playbook eski: eski kapı işaret yolunu kabul eder ama ikili orada yoktur → ön kontrol
+  "k6 yok ya da calistirilamiyor: /yeni-playbook-gerekli/k6" ile FAIL; Portal da "yük aracı kopyası
+  doğrulanamadı: ölçülemedi (playbook araç kopyalamayı desteklemiyor olabilir; Ansible deposunu
+  güncelleyin)" der. Araç hazırlama işi eski kapıda reddedilir; Portal satırı FAILED yazar ve
+  sonuna " (Ansible deposu güncel değil: araclar kipi yok)" ekler. Durdur çalışır.
+* Playbook yeni, Portal eski: ön kontrol / koşu yeni araç kapısında "arac degiskenleri eksik ya da
+  gecersiz ... Portal surumu playbook ile uyumsuz ya da araclar hazirlanmadi" ile reddedilir; durdur
+  çalışır.
+* Dağıtımdan önce alınmış (≤ 15 dk) OK ön kontrolle koşu 409 `on_kontrol_eski` "Yük araçları ön
+  kontrolden bu yana yeniden hazırlandı; ön kontrolü yeniden çalıştırın." (beklenen).
+
+Önceki turlar: tur 3'te Portal önce, sonra zip (`wrk_kos.sh`, `yuk_wrk.lua`); tur 2 ve 3 ara dönem
+kuralları geçmişte kaldı.
 
 ---
 
@@ -282,6 +365,37 @@ değişkenler zorunlu), durdurma isteği kabul edilir.
     * `CANCELED` / `FAILED` koşuya yeniden Durdur serbesttir (kalan süreç temizliği); `DONE` koşu
       409 `kosu_bitti`.
 
+### Araçlar
+
+Yük Testi › **Araçlar** (herkes görür; düğmeler yalnız Admin'e):
+
+* **Etkin araç seti #N** — k6 ve wrk sürümü ve sha256'sı, derleme makinesi (RHEL / glibc), hazırlanma
+  zamanı ve kişi, AWX işi, /sw dizini, arşiv özetleri (sabit değerle doğrulandı). Admin'e **Geri çek**.
+* **Arşiv özetleri sabitlenmemiş** (kırmızı, herkes görür) — eksik / geçersiz env adları; bu durumda
+  hazırlama kapalıdır ve hiçbir set kullanılmaz.
+* **Araçları hazırla** (Admin) — derleme makinesi seçilir (`NGINX_LOADTEST_DERLEME_HOSTLARI`), vekil
+  sunucu ve iki sabit özet gösterilir; onaydan sonra AWX `araclar` işi başlar (kilit `A|araclar` +
+  `L|<derleme>`; aynı anda tek hazırlama işi). Süren koşular etkilenmez; yeni set yalnız iş başarıyla
+  bitince etkin olur. İş sürerken panel 10 sn'de bir yenilenir. İptal ucu yoktur (AWX'ten iptal).
+  İş AWX'te okunamaz hâlde kalırsa (AWX sunucusu yapılandırmadan kalktı, kalıcı 403 / 5xx) panel süre
+  sınırı (40 dk) aşılınca "durumu okunamıyor" uyarısı gösterir; Portal okumayı bütçe + 10 dk + 12 sa
+  dener, sonra kaydı `OKUNAMADI` yazar ve düğme açılır (kilit 12 saatlik devralma kuralıyla zaten düşer).
+* **Geri çek** (Admin) — DONE bir seti onay penceresiyle devre dışı bırakır (§2.2); etkin set kurala
+  uyan bir önceki sete düşer. Geçmişte "geri çekildi" / "özet farklı" (şu anki sabitlerle hazırlanmamış)
+  çipleri görünür.
+* **Uyarılar** — set yoksa "Kullanılabilir araç seti yok" (sunucunun nedeniyle); wrk glibc > 2.28
+  istiyorsa "wrk RHEL 8’de çalışmayabilir".
+* **Geçmiş** — son 10 hazırlama işi (durum, derleme makinesi, sürümler, hata).
+
+Ön kontrol ve koşu etkin seti ister: özet env'i yoksa 409 `araclar_ozet_sabit_yok`, hiç uygun set
+yoksa `araclar_hazir_degil`, setler başka özetlerle hazırlandıysa `araclar_ozet_degisti`, uygun setler
+geri çekildiyse `araclar_geri_cekildi` (kapı şablon çözümünden sonra, kilitten önce: kilit / satır /
+iş oluşmaz). Ön kontrol satırına kullandığı set yazılır (`arac_id`); koşu, ön kontrolün seti hâlâ
+etkin değilse (yeniden hazırlandı / geri çekildi) ya da ön kontrol araç setlerinden önce yapıldıysa
+(`arac_id` NULL, ayrı metin) 409 `on_kontrol_eski`. Ön kontrolde "Araç kopyası (sha256)" satırı yük makinesindeki kopyanın
+doğrulanıp doğrulanmadığını gösterir; doğrulanmayan kopya, sha256'sı setten farklı kopya ve
+çalıştırılamayan kopya (ör. glibc uyumsuz) **engeldir**.
+
 Toplam süre (bütçe) sunucuda hesaplanır ve en çok **2700 sn** olabilir:
 
 ```
@@ -361,13 +475,22 @@ eder. İş hataları **409** (kalıcı) ya da **424** (geçici) döner; 5xx yok.
 | Durdur: koşu henüz başlatılıyor (QUEUED, iş numarası yok, < 120 sn) | `baslatiliyor` |
 | Durdur: koşunun durdurma işi başlatılamadı (iptal başarılı olsa da) | `durdur_baslatilamadi` (424) |
 | Yeniden oku: koşu değil, iş numarası yok ya da sonucu okunamamış değil | `yeniden_okunamaz` |
+| Ön kontrol / koşu: arşiv özeti env'i (`NGINX_LOADTEST_K6_ARSIV_SHA256` / `_WRK_KAYNAK_SHA256`) yok ya da geçersiz | `araclar_ozet_sabit_yok` |
+| Ön kontrol / koşu: etkin araç seti yok (başarılı, geri çekilmemiş, şu anki özetlerle) | `araclar_hazir_degil` |
+| Ön kontrol / koşu: başarılı setler başka arşiv özetleriyle hazırlandı (env değişti) | `araclar_ozet_degisti` |
+| Ön kontrol / koşu: şu anki özetlerle hazırlanmış setler geri çekildi | `araclar_geri_cekildi` |
+| Ön kontrol / koşu: araç seti okunamadı | `db_okunamadi` (424) |
+| Koşu: ön kontrolün araç seti (`arac_id`) yok ya da artık etkin değil (değerlendirmeden önce) | `on_kontrol_eski` |
+| Araç hazırlama: derleme makinesi izin listesinde değil / vekil geçersiz / arşiv özetleri sabitlenmemiş | `derleme_host_izinsiz` / `arac_proxy_gecersiz` / `arac_ozet_sabit_yok` |
+| Araç geri çekme: set yok / DONE değil / zaten geri çekildi | `arac_yok` / `arac_geri_cekilemez` / `zaten_geri_cekildi` |
 
 `vhost_hedefte_yok` artık üretilmez (Host başlığı serbest metin, §3 adım 4). Ret gövdesinde IP'nin
 bilinen sahipleri `sahipler: [{ host, env, nginx, kaynaklar }]` (en çok 10) döner.
 
 Diğerleri: AWX sunucu / iş numarası **istemciden alınmaz** (koşu satırından okunur); `LIMIT_MUAF` ve
-proxy değişkenleri hiç gönderilmez (son kapı fazladan ve eksik anahtarı reddeder: her iş tam 30
-değişkenle gider; playbook kurallarının aynası); iş geçmişine senaryo gövdesi yerine boyut izi
+proxy değişkenleri koşu kiplerinde hiç gönderilmez (son kapı fazladan ve eksik anahtarı reddeder: her
+ön kontrol / koşu / durdurma işi tam 33 değişkenle, araç hazırlama işi tam 10 değişkenle gider — vekil
+`yuk_proxy` yalnız onda; playbook kurallarının aynası); iş geçmişine senaryo gövdesi yerine boyut izi
 (`<n b64>`) yazılır; iş çıktısı ve set_stats her yanıtta maskelenir; her başlatma, durdurma, yeniden
 okuma ve reddedilen deneme `nginx_loadtest_*` eylemiyle `targetHost` (serbestte boş) / `targetIp`
 dolu olarak denetime yazılır (ayrıntıda `hedefTuru`, `motor`, `hedefHost`, `hedefIp`, `serbestAg`,
@@ -470,7 +593,8 @@ sonuçlarıyla karşılaştırılmaz."
 ### 4.4 Kilitler: iş bitti ≠ yük bitti
 
 Anahtarlar: `G|global` (aynı anda tek koşu), `T|<HEDEF>` (sunucu hedefi), `T|IP:<ip>` (serbest hedef),
-`L|<YUK>` (yük makinesi). Sunucu hedefinde ön kontrol `T` + `L`, koşu `G` + `T` + `L`; **serbest
+`L|<YUK>` (yük makinesi), `A|araclar` (aynı anda tek araç hazırlama işi; `L|<DERLEME>` ile birlikte
+alınır: derleme bir yük makinesinde yapılırsa o makinedeki yük işini bekletir ve tersi). Sunucu hedefinde ön kontrol `T` + `L`, koşu `G` + `T` + `L`; **serbest
 hedefte ön kontrol de** `G` alır (`G` + `T|IP:` + `L`): serbest ön kontrolün istekleri VIP
 arkasındaki bir hostun ölçüm penceresine girmesin. **VIP arkasındaki hostlar `T` kilidiyle
 korunmaz** (Portal VIP'in havuzunu bilmez). Dolu kilit mesajı kimin hangi işi tuttuğunu söyler
@@ -482,12 +606,12 @@ işi bitti" diye bırakılmaz; bağlı işin türüne (`bag_turu`) ve AWX durumu
 (`kilit.cjs` `bagliIsKarari`, tek kural; sonuçlandırıcı, kilit süpürmesi ve yeni kilit alma aynı
 kuralı kullanır):
 
-| AWX durumu | ön kontrol (yük yok) | koşu | durdurma işi |
-|---|---|---|---|
-| `successful` | bırak | bırak | bırak |
-| `failed` | bırak | bırak (playbook temizledi) | **tut** (kalan süreç olabilir) |
-| `canceled`, `error` | bırak | **tut** | **tut** |
-| bitmemiş / okunamadı | tutulur (değişmez) | | |
+| AWX durumu | ön kontrol (yük yok) | koşu | araç hazırlama (`bag_turu 'araclar'`) | durdurma işi |
+|---|---|---|---|---|
+| `successful` | bırak | bırak | bırak | bırak |
+| `failed` | bırak | bırak (playbook temizledi) | bırak | **tut** (kalan süreç olabilir) |
+| `canceled`, `error` | bırak | **tut** | **tut** (uzakta `timeout -k 30 1800` ile biten derleme sürebilir) | **tut** |
+| bitmemiş / okunamadı | tutulur (değişmez) | | | |
 
 * **tut**: kilit dolu kalır ama işten çözülür (AWX sunucu/iş numarası silinir); yalnız süre
   (`locked_until`) dolunca düşer. Sonuçlandırıcı bir koşu işini tutarken süreyi en az
@@ -636,18 +760,21 @@ retlerinde ayrıca `sahipler`).
 
 | Uç | Erişim | Not |
 |---|---|---|
-| `GET /hedefler` | okuma | hedefler (uygun / değil + neden, aday IP, vhost önerileri, ölçülen tavanlar), yük makineleri, sınırlar (`baglantiMin`, `maxBaglanti`, `maxBaglantiSayisi`, `isParcacigiMin`, `maxIsParcacigi`, `serbestTavanRps`, `serbestMaxBaglanti` dahil), varsayılanlar (`motor`, `baglantilar`, `is_parcacigi`, `serbest: { hizlar, maxvu }` dahil), `serbest: { acik, aglar }` (`aglar` yalnız Admin'e dolu), `motorlar: ['k6', 'wrk']` |
+| `GET /hedefler` | okuma | hedefler (uygun / değil + neden, aday IP, vhost önerileri, ölçülen tavanlar), yük makineleri, sınırlar (`baglantiMin`, `maxBaglanti`, `maxBaglantiSayisi`, `isParcacigiMin`, `maxIsParcacigi`, `serbestTavanRps`, `serbestMaxBaglanti` dahil), varsayılanlar (`motor`, `baglantilar`, `is_parcacigi`, `serbest: { hizlar, maxvu }` dahil), `serbest: { acik, aglar }` (`aglar` yalnız Admin'e dolu), `motorlar: ['k6', 'wrk']`, `araclar: { hazir, aracId, k6Surum, wrkSurum, kod: null \| 'araclar_ozet_sabit_yok' \| 'araclar_hazir_degil' \| 'araclar_ozet_degisti' \| 'araclar_geri_cekildi' \| 'db_okunamadi', mesaj }` (araç seti okunamazsa `hazir: false`, `db_okunamadi`; uç yine 200) |
 | `GET /ip-sinifi?ip=&yukHost=&hedefHost=` | Admin | yazılan IP'nin sınıfı; DB'ye ve denetime **yazmaz**. `ip` zorunlu, iki host isteğe bağlı (verilmiş ama geçersizse 400; `yukHost` yoksa `ayni_host` denetimi atlanır). Sunucu: `{ ok, tur: 'sunucu', ip, host, env, vhostlar, vhostVerisi, hizSiniri, vuSiniri, uygun, neden, kod, kaynaklar }` (`uygun: false` da 200'dür: ön kontrol yapılamaz); serbest: `{ ok, tur: 'serbest', ip, host: null, ag, digerSahipler: [{ host, env }] }`; ret: §4.1 kodları (400 / 409 / 424) + `sahipler` |
 | `GET /senaryolar`, `GET /senaryolar/:id` | okuma | `:id` TSV'yi ve özeti de döner |
 | `POST /senaryolar`, `DELETE /senaryolar/:id` | Admin | silme yumuşaktır |
 | `POST /kosular/on-kontrol` | Admin | `{ senaryoId, hedefHost?, hedefIp, vhost, yukHost, sni, parametreler, etiket? }` → `{ kosuId, jobId, awxServerId }`. `hedefHost` isteğe bağlı (`undefined` / `null` / `''` = yazılan IP sınıflandırılır). `parametreler.motor` `'k6'` (varsayılan) ya da `'wrk'`; k6: `hizlar`, `maxvu`; wrk: `baglantilar`, `is_parcacigi`; ortak `tekrar`, `isinma`, `sure`, `bosluk`, `bosta`, `kip`, `ae`. `tavan_rps` gönderilse de yok sayılır (sunucu hesaplar). |
 | `POST /kosular` | Admin | `{ onKontrolKosuId, confirmText, uyariOnay }` — `confirmText` sunucu hedefinde host adı, serbest hedefte hedef IP |
 | `GET /kosular?islem=&durum=&hedef=&ip=&hedefTuru=&motor=&onceki=&limit=` | okuma | `islem` ∈ `kosu`, `on_kontrol`; `durum` ∈ `QUEUED`, `RUNNING`, `FINALIZING`, `DONE`, `FAILED`, `CANCELED`, `OKUNAMADI`; `hedef` = sunucu adı; `ip` = hedef IPv4; `hedefTuru` ∈ `sunucu`, `serbest`; `motor` ∈ `k6`, `wrk`; `onceki` = koşu no (yalnız `id < onceki`, "daha eski" sayfası); `limit` 1..200 (varsayılan 50). Sıra `id` azalan. Yanıtta `dahaVar` (limit + 1 satır çekilir). Satırlarda `hedefTuru`, `motor`, `hedefHost` (serbestte `null`). Geçersiz değer (ya da tekrarlanan parametre) → 400 `gecersiz_istek` |
-| `GET /kosular/:id` | okuma | ayrıntı: parametreler, `hedefTuru`, `motor`, ön kontrol özeti + engel / uyarı listesi (`onKontrolUyarilari` = plan uyarıları başta + ön kontrol uyarıları), `planUyarilari` (ön kontrol satırınınki), `serbestAg` (serbest satırda Portal izin listesinde **şu an** eşleşen ağ ya da `null`), geçerlilik nedenleri, adımlar; `durdurIsi: { awxServerId, awxJobId } \| null` (son durdurma işi), `sonuclandirmaDenemesi` (sonuçlandırma deneme sayısı) |
+| `GET /kosular/:id` | okuma | ayrıntı: parametreler, `hedefTuru`, `motor`, ön kontrol özeti + engel / uyarı listesi (`onKontrolUyarilari` = plan uyarıları başta + ön kontrol uyarıları), `planUyarilari` (ön kontrol satırınınki), `serbestAg` (serbest satırda Portal izin listesinde **şu an** eşleşen ağ ya da `null`), geçerlilik nedenleri, adımlar; `durdurIsi: { awxServerId, awxJobId } \| null` (son durdurma işi), `sonuclandirmaDenemesi` (sonuçlandırma deneme sayısı); tur 4: `aracId` (satırın arac seti ya da `null` — eski satır) ve `aracSeti: { id, k6Surum, wrkSurum, k6Sha256, wrkSha256, derlemeHost } \| null` (durumundan bağımsız); `aracId` doluysa ön kontrol engellerine araç kopyası maddeleri eklenir |
 | `GET /kosular/:id/durum?since=` | Admin | maskeli iş çıktısı; `since` = elinizdeki metnin uzunluğu → yalnız devamı (`outputOffset`, `outputLength`) |
 | `POST /kosular/:id/durdur` | Admin | AWX iptali + (koşu) `durdur` kipi. Başarı: `{ ok, iptal, iptalHatasi, durdurIsi: { jobId, awxServerId } \| null, durdurHatasi: null }`. 409 `baslatiliyor`, 409 `kosu_bitti`, 424 `durdur_baslatilamadi` (gövdede `iptal`, `iptalHatasi`, `durdurHatasi`; metin motor ve türe göre), 424 `awx_okunamadi` (ön kontrol iptal edilemedi) |
 | `POST /kosular/:id/yeniden-oku` | Admin | sonucu okunamamış koşuyu yeniden sonuçlandırır → `{ ok: true }`; değilse 409 `yeniden_okunamaz` |
 | `GET /karsilastir?ref=&aday=&esikCpu=&esikP95=` | okuma | karar, nedenler, tablo, kademe, kombinasyon; `ref` / `aday` özetinde `motor`, `hedefTuru` |
+| `GET /araclar` | okuma | `{ ok, etkin, calisan, gecmis (en çok 10, id azalan), ayar: { derlemeHostlari, varsayilanDerlemeHost, k6Surum, wrkSurum: '4.2.0', proxyTanimli, proxy (yalnız Admin'e dolu), proxyHatasi, k6ArsivSha256, wrkKaynakSha256 (env sabitleri ya da null), ozetEksikleri (['<ENV> tanımlı değil' \| '<ENV> 64 hex değil']), isSuresiSn (2400) }, kapi: { kod, mesaj } }` (`kapi` = `/hedefler` `araclar.kod` / `mesaj`). Araç seti: `{ id, durum, derlemeHost, k6Surum, wrkSurum, k6Sha256, wrkSha256, k6ArsivSha256, wrkKaynakSha256, ozetlerGuncel, geriCekildi, geriCeken, geriCekmeAt, calismaYasSn, swDizin (yalnız DONE), derlemeRhel, derlemeGlibc, wrkGlibcGerekli, wrkOpenssl, wrkLuajit, hata, awxServerId, awxJobId, awxUrl, createdBy, createdAt, startedAt, finishedAt }` |
+| `POST /araclar` | Admin | `{ derlemeHost? }` (yoksa listenin ilki) → `{ aracId, jobId, awxServerId }`. 400 `gecersiz_istek` (geçersiz ad), 409 `derleme_host_izinsiz`, 409 `arac_proxy_gecersiz`, 409 `arac_ozet_sabit_yok` (iki arşiv özeti env'i zorunlu; iş, kilit, kayıt yok), 409 `sablon_yok`, 409 `kilit_dolu` ("Başka bir araç hazırlama işi sürüyor ..."), 409 `sinir_asildi` (son kapı), 424 `db_okunamadi` / `awx_okunamadi`. Extra vars: `yuk_islem='araclar'` + 9 alan (README); `yuk_k6_arsiv_sha256` / `yuk_wrk_kaynak_sha256` her zaman 64 küçük hex; `limit` boş |
+| `POST /araclar/:id/geri-cek` | Admin | gövde yok → `{ ok, arac, kapi: { hazir, aracId, kod, mesaj } }` (yeni etkin set ya da neden). Denetim `nginx_loadtest_araclar_geri_cek`. 400 `gecersiz_istek`, 409 `arac_yok`, `arac_geri_cekilemez` (DONE değil), `zaten_geri_cekildi`, 424 `db_okunamadi`. Eski `POST /araclar/:id/onayla` kalktı |
 
 ---
 
@@ -674,8 +801,22 @@ retlerinde ayrıca `sahipler`).
 | Karşılaştırma `VERI_YOK`: "farkli hiz tavani: referans … istek/sn, aday … istek/sn; ayni tavanla yeniden kosun" | İki wrk koşusu farklı tavanla alınmış (limit_req değişikliği, eksik tarama verisi, farklı hedef ya da sunucu ↔ serbest): aynı bağlantı kademesi farklı yük demektir. Referansı ya da adayı aynı tavanla (aynı hedef sınırı / aynı hedef türü) yeniden koşun; koşu ayrıntısındaki parametrelerde `tavan_rps` görünür. |
 | Ön kontrol FAIL: "serbest izin listesi: …" | Yük makinesindeki `/etc/portal_yuktesti/serbest_aglar` yok, sahibi www, grup / diğer yazabiliyor, 16 KB / 64 girdi üstü, geçersiz satır var ya da IP listede değil (§2.2). Dosya Portal listesinin alt kümesi olmalı. |
 | Ön kontrol engeli "hedef IP yük makinesinde yerel ya da ölçülemedi" | Serbest hedef IP yük makinesinin kendi adresi ya da yük makinesi IP'leri okunamadı; başka bir yük makinesi seçin. |
-| Ön kontrol engeli "wrk yük makinesinde çalışıyor ama sürümü okunamadı ya da 4 altında" | wrk `VER`'siz derlenmiş (`wrk  [epoll] ...`) ya da eski: `make VER=4.2.0 WITH_OPENSSL=/usr` ile yeniden derleyin (§2.2). |
-| Ön kontrol engeli "wrk yük makinesinde bulunamadı ya da çalıştırılamıyor" | `/home/www/bin/wrk` (ya da `NGINX_LOADTEST_WRK`) yok ya da www çalıştıramıyor (`install -m 0755`). |
+| Ön kontrol engeli "wrk yük makinesinde çalışıyor ama sürümü okunamadı ya da 4 altında" | Arac setindeki wrk beklenen sürüm satırını basmıyor: araç setini yeniden hazırlayın (Yük Testi › Araçlar). |
+| Ön kontrol engeli "wrk yük makinesinde bulunamadı ya da çalıştırılamıyor" / "k6 yük makinesinde bulunamadı" | Kopya çalışmadı: aynı ön kontrolde "yük aracı ..." engeline bakın. Engel `/yeni-playbook-gerekli/...` yolunu anıyorsa playbook eski (§2.5): Ansible deposunu güncelleyin. |
+| 409 `araclar_hazir_degil` | Etkin araç seti yok (ilk dağıtım ya da hazırlama işleri başarısız). Admin › Yük Testi › Araçlar › "Araçları hazırla". |
+| 409 `araclar_geri_cekildi` | Şu anki özetlerle hazırlanmış setlerin hepsi geri çekildi: araçları yeniden hazırlayın. |
+| 409 `on_kontrol_eski`: "Etkin yük aracı seti ön kontrolden bu yana değişti" | Ön kontrolden sonra yeni bir set etkin oldu ya da ön kontrolün seti geri çekildi: ön kontrolü yeniden çalıştırın. |
+| 409 `on_kontrol_eski`: "Bu ön kontrol araç setleri gelmeden (eski sürümle) yapıldı" | Ön kontrol tur 4'ten önce alındı (`arac_id` NULL): ön kontrolü yeniden çalıştırın. |
+| Ön kontrol engeli "yük aracı kopyası doğrulanamadı: sha256 farkli (...)" | /sw'deki ikili set hazırlandıktan sonra değişmiş ya da bozulmuş; kopya çalıştırılmadan silindi. Araçları yeniden hazırlayın. "ölçülemedi (playbook araç kopyalamayı desteklemiyor olabilir ...)" ise playbook eski. "kopya basarisiz: ..." ise yük makinesinde www /sw'deki set dizinini okuyamıyor. |
+| Ön kontrol engeli "yük aracı çalıştırılamadı: glibc uyumsuz: makinede glibc 2.28, arac GLIBC_2.34 istiyor" | wrk RHEL 9'da derlendi, yük makinesi RHEL 8. Listeye (`NGINX_LOADTEST_DERLEME_HOSTLARI`) bir RHEL 8 DEV / TEST / QA nginx makinesi ekleyip araçları orada yeniden hazırlayın (§2.2). |
+| Araç işi FAILED "derleme makinesi ...: indirme basarisiz (k6 checksums / k6 arsivi / wrk kaynagi): ..." | Vekil (407 kimlik / 403 yasak), vekilin GitHub'a (ve `objects.githubusercontent.com` yönlendirmesine) izni ya da TLS (kurum CA'sı güven deposunda değil: "certificate verify failed") — TLS doğrulaması kapatılmaz. `NGINX_LOADTEST_ARAC_PROXY`'yi ve vekil kurallarını kontrol edin. Checksum tutmazsa aşağıdaki satıra bakın. |
+| Araç işi FAILED "... did not match ..." / "... sabit arsiv ozetiyle (NGINX_LOADTEST_K6_ARSIV_SHA256) farkli ..." / "arsiv ozeti sabit degerden farkli ..." + "(arşiv sabitlenen özetle uyuşmuyor ...)" | İndirilen arşiv `NGINX_LOADTEST_K6_ARSIV_SHA256` / `NGINX_LOADTEST_WRK_KAYNAK_SHA256` ile aynı değil; hiçbir şey açılmadı / derlenmedi. Arşivi kurum vekili dışında yeniden doğrulayın (§2.2 "Arşiv özetlerini sabitleme"); gerçekten değiştiyse env değerini güncelleyip Portal'ı yeniden başlatın. Değişen arşiv bir tedarik zinciri saldırısı da olabilir: doğrulamadan sabitlemeyin. |
+| "Araçları hazırla" 409 `arac_ozet_sabit_yok` / panelde kırmızı "Arşiv özetleri sabitlenmemiş" | İki env değeri yok ya da tam 64 hex değil (§2.2 "Arşiv özetlerini sabitleme"). |
+| Ön kontrol 409 `araclar_ozet_degisti` | Env'deki özetler değişti; mevcut setler eski özetlerle hazırlandı. Araçları yeniden hazırlayın. |
+| Panelde "Hazırlama işinin durumu okunamıyor" | AWX işi okunamıyor (sunucu yapılandırmadan kalktı, kalıcı 403 / 5xx). İşi AWX'ten kontrol edin; Portal bütçe + 10 dk + 12 sa sonra kaydı `OKUNAMADI` yazar ve hazırlama yeniden açılır. |
+| Araç işi FAILED "/sw yayini: arac dizini zaten var: ..." | Aynı iş AWX'ten yeniden başlatılmış; dizine iki kez yazılmaz. Portal'dan yeniden hazırlayın. |
+| Araç işi FAILED "... (Ansible deposu güncel değil: araclar kipi yok)" | AWX'teki playbook tur 4 öncesi: Ansible deposu zip'ini güncelleyin (§2.5). |
+| Araç işi FAILED "derleme: ..." | `arac_hazirla.sh` ileti metni: eksik derleme aracı (`derleme araci yok: perl` vb.), `make basarisiz (rc N): ...`, wrk sistem kütüphanesine bağlı, beklenmeyen arşiv üyesi. Derleme makinesini değiştirin ya da eksik paketi kurdurun. |
 | wrk koşusu DUR "soket hatasi esigi asildi" | Hedef ya da LB bağlantıları reddediyor / kesiyor. wrk SNI olarak IP gönderir; katı bir TLS profili el sıkışmayı reddedebilir (ön kontroldeki curl IP'de SNI göndermediği için geçer). |
 | wrk koşusu DUR "429 alindi" / "sunucu hatasi alindi" | IP başına rate limit aşıldı ya da hedef 5xx dönüyor: bağlantı sayılarını düşürün; aynı IP'den başka yük var mı bakın. Ortalama hız tavanın altındayken 429 geliyorsa yolun `limit_req` burst'ü bağlantı sayısından küçük ya da burst'süz: istekler anlık kümelenir (§3 adım 3). O yolda k6 kullanın ya da daha az bağlantıyla koşun. |
 | İş "is gecerlilik suresi dolmus ya da gecersiz" ile reddedildi | İş AWX'ten yeniden başlatıldı (Relaunch) ya da AWX kuyruğunda 15 dk'dan uzun bekledi. Portal'dan yeniden başlatın; AWX'ten Relaunch yapmayın. |

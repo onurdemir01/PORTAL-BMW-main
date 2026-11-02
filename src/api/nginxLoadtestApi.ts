@@ -14,6 +14,12 @@
 // `sunucu` hedef (CPU + nginx logu), hicbir nginx sunucusunun degilse ve izinli agdaysa `serbest` hedef
 // (yalniz istemci olcumu; hedefHost null). Yuk araci `k6` (acik dongu, istek/sn) ya da `wrk` (kapali dongu,
 // baglanti; toplam hiz sunucunun hesapladigi tavanla sinirli). Eski kayitta tur / motor yok: sunucu / k6.
+//
+// TUR 4 (2026-11-02, kullanici: araclar bir kez /sw'ye, her kosu kopyalar, dogrular, siler): Admin "Araçları hazırla"
+// (POST /araclar) k6'yi indirip wrk'yi derler ve /sw'ye yazar; Portal sha256'lari saklar, yuk makinesi kopyayi
+// YALNIZ bu degerle dogrular. Iki arsiv ozeti Portal env'inde SABITTIR (onay toreni yok); Admin bir seti geri ceker
+// (POST /araclar/:id/geri-cek). /hedefler `araclar` durumu tasir (alan yoksa fail-closed: hazir degil); on kontrol
+// ozeti arac kopyasinin dogrulamasini (arac_*), kosu ayrintisi kullandigi seti (aracId / aracSeti) verir.
 import { okJson, safeJson } from './http';
 
 const BASE = '/api/nginx-loadtest';
@@ -72,7 +78,37 @@ export interface NlHedefler {
   serbest: { acik: boolean; aglar: string[] };
   /** Sunucunun kabul ettigi yuk araclari; alan gelmezse yalniz k6 (eski sunucu wrk'yi kabul etmez). */
   motorlar: NlMotor[];
+  /** Etkin arac seti (tur 4). Alan gelmezse hazir DEGIL (kod 'bilinmiyor'): on kontrol kapali kalir. */
+  araclar: NlAracDurumu;
 }
+
+/** Bir 'araclar' AWX isi ve onun /sw arac seti (Portal DB nginx_loadtest_araclar satiri). sha256'lar yalniz DONE'da dolu;
+ *  `swDizin` yalniz DONE iken. `ozetlerGuncel`: setin arsiv ozetleri su anki Portal sabitleriyle ayni (degilse set etkin
+ *  olamaz). `geriCekildi`: Admin geri cekti. `calismaYasSn`: baslangictan bu yana saniye (suren is uyarisi icin). */
+export interface NlAracSeti {
+  id: number; durum: NlDurum; derlemeHost: string; k6Surum: string; wrkSurum: string;
+  k6Sha256: string | null; wrkSha256: string | null; k6ArsivSha256: string | null; wrkKaynakSha256: string | null;
+  ozetlerGuncel: boolean; geriCekildi: boolean; geriCeken: string | null; geriCekmeAt: string | null; calismaYasSn: number | null; swDizin: string | null;
+  derlemeRhel: string | null; derlemeGlibc: string | null; wrkGlibcGerekli: string | null; wrkOpenssl: string | null;
+  wrkLuajit: string | null; hata: string | null; awxServerId: number | null; awxJobId: number | null; awxUrl: string | null;
+  createdBy: string | null; createdAt: string | null; startedAt: string | null; finishedAt: string | null;
+}
+/** GET /araclar `ayar`: `proxy` yalniz Admin isteginde dolu (Admin disina null). `k6ArsivSha256` / `wrkKaynakSha256`: Portal
+ *  env'indeki sabit arsiv ozetleri (yoksa null); `ozetEksikleri` bos degilse hazirlama kapali. `isSuresiSn`: hazirlama isinin
+ *  ust siniri + pay (suren is bunu asarsa "durum okunamiyor" uyarisi). */
+export interface NlAracAyar {
+  derlemeHostlari: string[]; varsayilanDerlemeHost: string; k6Surum: string; wrkSurum: string;
+  proxyTanimli: boolean; proxy: string | null; proxyHatasi: string | null;
+  k6ArsivSha256: string | null; wrkKaynakSha256: string | null; ozetEksikleri: string[]; isSuresiSn: number;
+}
+/** GET /araclar `kapi`: etkin set yoksa nedeni (/hedefler `araclar.kod` / `mesaj` ile ayni kurallar). */
+export interface NlAracKapi { kod: string | null; mesaj: string | null }
+export interface NlAraclar { ok: true; etkin: NlAracSeti | null; calisan: NlAracSeti | null; gecmis: NlAracSeti[]; ayar: NlAracAyar; kapi: NlAracKapi }
+/** /hedefler `araclar`: kod null | 'araclar_ozet_sabit_yok' | 'araclar_hazir_degil' | 'araclar_ozet_degisti' |
+ *  'araclar_geri_cekildi' | 'db_okunamadi' (istemci: 'bilinmiyor'). */
+export interface NlAracDurumu { hazir: boolean; aracId: number | null; k6Surum: string | null; wrkSurum: string | null; kod: string | null; mesaj: string | null }
+/** Kosu ayrintisinin kullandigi arac seti (satirin arac_id'siyle; durumundan bagimsiz). */
+export type NlKosuAracSeti = Pick<NlAracSeti, 'id' | 'k6Surum' | 'wrkSurum' | 'k6Sha256' | 'wrkSha256' | 'derlemeHost'>;
 
 export interface NlSenaryo {
   id: number; ad: string; aciklama: string | null; vhost: string | null; senaryoTur: 'K' | 'B'; yolSayisi: number;
@@ -98,6 +134,9 @@ export interface NlOnKontrol {
   wrkVar: boolean | null; wrkCalisiyor: boolean | null; wrkSurum: string | null; wrkSha256: string | null;
   yollarToplam: number | null; yollar200: number | null; ilkHatalar: { yol: string; status: string }[];
   sikistirma: { statik: number | null; dinamik: number | null; sikistirmasiz: number | null } | null;
+  /** Tur 4: yuk sunucusundaki arac kopyasi Portal'in sha256'siyla dogrulandi mi (blok kosmadiysa null), kopyanin
+   *  sha256'si, yuk sunucusunun glibc surumu ve kopya / calistirma hatasi (glibc uyumsuz ...). */
+  aracDogrulandi: boolean | null; aracSha256: string | null; aracGlibc: string | null; aracHata: string | null;
 }
 export interface NlKosu {
   id: number; islem: NlIslem; etiket: string | null; adim: string | null;
@@ -128,6 +167,8 @@ export interface NlKosuAyrinti extends NlKosu {
   durdurIsi: { awxServerId: number | null; awxJobId: number } | null;
   /** Poller'in sonucu okuma denemesi (FINALIZING'de "deneme N/3"); alan yoksa 0. */
   sonuclandirmaDenemesi: number;
+  /** Tur 4: satirin arac seti (eski satir: null; "Araç kopyası" satiri ve arac engeli YOK). */
+  aracId: number | null; aracSeti: NlKosuAracSeti | null;
 }
 /** Bir TUR (adim) satiri. Sure ms, hata_orani oran (0..1), host_cpu yuzde. */
 export interface NlAdim {
@@ -160,6 +201,9 @@ export interface NlEylem {
   ok: boolean; message?: string; code?: string; kosuId?: number; jobId?: number | null; awxServerId?: number; id?: number; uyarilar?: string[]; _httpStatus?: number;
   iptal?: { canceled?: boolean; alreadyTerminal?: boolean } | null; iptalHatasi?: string | null;
   durdurIsi?: { jobId: number; awxServerId: number } | null; durdurHatasi?: string | null;
+  /** POST /araclar: baslatilan arac seti; POST /araclar/:id/geri-cek: geri cekilen set (ham, aracSetiNormalle ile okunur)
+   *  ve yeni kapi durumu. */
+  aracId?: number; arac?: unknown; kapi?: { hazir?: boolean; aracId?: number | null; kod?: string | null; mesaj?: string | null };
 }
 /** GET /kosular suzgeci: `onceki` = yalniz bu numaradan kucuk kayitlar (sayfalama), `limit` 1..200 (sunucu varsayilani 50).
  *  `ip` hedef IP (IPv4), `hedefTuru` / `motor` kosu satirindan. */
@@ -278,7 +322,68 @@ export function onKontrolNormalle(x: unknown): NlOnKontrol | null {
     yollarToplam: sayiVeya(alan(ham, 'yollarToplam', 'yollar_toplam')), yollar200: sayiVeya(alan(ham, 'yollar200', 'yollar_200')),
     ilkHatalar: (Array.isArray(hatalar) ? hatalar : []).map((h) => { const o = nesne(h); return { yol: String(o.yol ?? ''), status: String(o.status ?? '') }; }),
     sikistirma: sik ? { statik: sayiVeya(sik.statik), dinamik: sayiVeya(sik.dinamik), sikistirmasiz: sayiVeya(sik.sikistirmasiz) } : null,
+    aracDogrulandi: mantikVeya(alan(ham, 'aracDogrulandi', 'arac_dogrulandi')), aracSha256: metinVeya(alan(ham, 'aracSha256', 'arac_sha256')),
+    aracGlibc: metinVeya(alan(ham, 'aracGlibc', 'arac_glibc')), aracHata: metinVeya(alan(ham, 'aracHata', 'arac_hata')),
   };
+}
+/** Arac seti satiri (camel ya da snake; eksik alan null, bayrak false). id yoksa null (gecersiz satir listeye girmez). */
+export function aracSetiNormalle(x: unknown): NlAracSeti | null {
+  const r = nesne(x);
+  const id = sayiVeya(alan(r, 'id'));
+  if (id == null) return null;
+  const m = (...a: string[]) => metinVeya(alan(r, ...a));
+  return {
+    id, durum: (m('durum') ?? 'FAILED') as NlDurum, derlemeHost: m('derlemeHost', 'derleme_host') ?? '', k6Surum: m('k6Surum', 'k6_surum') ?? '',
+    wrkSurum: m('wrkSurum', 'wrk_surum') ?? '', k6Sha256: m('k6Sha256', 'k6_sha256'), wrkSha256: m('wrkSha256', 'wrk_sha256'),
+    k6ArsivSha256: m('k6ArsivSha256', 'k6_arsiv_sha256'), wrkKaynakSha256: m('wrkKaynakSha256', 'wrk_kaynak_sha256'),
+    ozetlerGuncel: mantikVeya(alan(r, 'ozetlerGuncel', 'ozetler_guncel')) === true, geriCekildi: mantikVeya(alan(r, 'geriCekildi', 'geri_cekildi')) === true,
+    geriCeken: m('geriCeken', 'geri_ceken'), geriCekmeAt: m('geriCekmeAt', 'geri_cekme_at'), calismaYasSn: sayiVeya(alan(r, 'calismaYasSn', 'calisma_yas_sn')),
+    swDizin: m('swDizin', 'sw_dizin'),
+    derlemeRhel: m('derlemeRhel', 'derleme_rhel'), derlemeGlibc: m('derlemeGlibc', 'derleme_glibc'), wrkGlibcGerekli: m('wrkGlibcGerekli', 'wrk_glibc_gerekli'),
+    wrkOpenssl: m('wrkOpenssl', 'wrk_openssl'), wrkLuajit: m('wrkLuajit', 'wrk_luajit'), hata: m('hata'),
+    awxServerId: sayiVeya(alan(r, 'awxServerId', 'awx_server_id')), awxJobId: sayiVeya(alan(r, 'awxJobId', 'awx_job_id')), awxUrl: m('awxUrl', 'awx_url'),
+    createdBy: m('createdBy', 'created_by'), createdAt: m('createdAt', 'created_at'), startedAt: m('startedAt', 'started_at'), finishedAt: m('finishedAt', 'finished_at'),
+  };
+}
+/** Hazirlama isinin ust siniri + pay (sunucu ARAC_IS_SURESI_SN + YOK_PAYI_SN); `ayar.isSuresiSn` gelmezse. */
+export const ARAC_IS_SURESI_SN = 2400;
+/** GET /araclar: listeler dizi (gecersiz satir atilir), ayar alanlari tipli; derleme listesi bossa varsayilan tek eleman.
+ *  `ozetEksikleri` alani gelmezse (eski sunucu) bos; `kapi` gelmezse kod / mesaj null. */
+export function araclarNormalle(x: unknown): NlAraclar {
+  const r = nesne(x);
+  const a = nesne(r.ayar);
+  const kapi = nesne(r.kapi);
+  const isSuresi = sayiVeya(alan(a, 'isSuresiSn', 'is_suresi_sn'));
+  const hostlar = metinDizisi(alan(a, 'derlemeHostlari', 'derleme_hostlari'));
+  const varsayilan = metinVeya(alan(a, 'varsayilanDerlemeHost', 'varsayilan_derleme_host')) ?? hostlar[0] ?? '';
+  return {
+    ok: true, etkin: aracSetiNormalle(r.etkin), calisan: aracSetiNormalle(r.calisan),
+    gecmis: (Array.isArray(r.gecmis) ? r.gecmis : []).map(aracSetiNormalle).filter((s): s is NlAracSeti => s != null),
+    ayar: {
+      derlemeHostlari: hostlar.length ? hostlar : varsayilan ? [varsayilan] : [], varsayilanDerlemeHost: varsayilan,
+      k6Surum: metinVeya(alan(a, 'k6Surum', 'k6_surum')) ?? '', wrkSurum: metinVeya(alan(a, 'wrkSurum', 'wrk_surum')) ?? '4.2.0',
+      proxyTanimli: mantikVeya(alan(a, 'proxyTanimli', 'proxy_tanimli')) === true, proxy: metinVeya(alan(a, 'proxy')),
+      proxyHatasi: metinVeya(alan(a, 'proxyHatasi', 'proxy_hatasi')),
+      k6ArsivSha256: metinVeya(alan(a, 'k6ArsivSha256', 'k6_arsiv_sha256')), wrkKaynakSha256: metinVeya(alan(a, 'wrkKaynakSha256', 'wrk_kaynak_sha256')),
+      ozetEksikleri: metinDizisi(alan(a, 'ozetEksikleri', 'ozet_eksikleri')), isSuresiSn: isSuresi != null && isSuresi > 0 ? isSuresi : ARAC_IS_SURESI_SN,
+    },
+    kapi: { kod: metinVeya(kapi.kod), mesaj: metinVeya(kapi.mesaj) },
+  };
+}
+/** /hedefler `araclar` alani yoksa (eski sunucu) fail-closed: hazir degil, on kontrol kapali. */
+export const ARAC_DURUMU_YOK: Readonly<NlAracDurumu> = Object.freeze({ hazir: false, aracId: null, k6Surum: null, wrkSurum: null, kod: 'bilinmiyor', mesaj: 'Sunucu araç durumunu bildirmedi.' });
+/** `hazir` YALNIZ boolean true ise true ('true' metni, 1 ... hazir DEGIL). */
+function aracDurumuNormalle(x: unknown): NlAracDurumu {
+  if (!x || typeof x !== 'object' || Array.isArray(x)) return { ...ARAC_DURUMU_YOK };
+  const r = x as Ham;
+  return {
+    hazir: r.hazir === true, aracId: sayiVeya(alan(r, 'aracId', 'arac_id')), k6Surum: metinVeya(alan(r, 'k6Surum', 'k6_surum')),
+    wrkSurum: metinVeya(alan(r, 'wrkSurum', 'wrk_surum')), kod: metinVeya(r.kod), mesaj: metinVeya(r.mesaj),
+  };
+}
+function kosuAracSetiNormalle(x: unknown): NlKosuAracSeti | null {
+  const s = aracSetiNormalle(jsonNesne(x));
+  return s ? { id: s.id, k6Surum: s.k6Surum, wrkSurum: s.wrkSurum, k6Sha256: s.k6Sha256, wrkSha256: s.wrkSha256, derlemeHost: s.derlemeHost } : null;
 }
 const hedefTuruVeya = (x: unknown): NlHedefTuru => (x === 'serbest' ? 'serbest' : 'sunucu');
 const motorVeya = (...xs: unknown[]): NlMotor => (xs.find((x) => x === 'k6' || x === 'wrk') as NlMotor | undefined) ?? 'k6';
@@ -324,6 +429,8 @@ export function kosuNormalle(x: unknown): NlKosuAyrinti {
     },
     durdurIsi: durdurIsiNormalle(alan(r, 'durdurIsi')),
     sonuclandirmaDenemesi: sayiVeya(alan(r, 'sonuclandirmaDenemesi', 'sonuclandirma_denemesi')) ?? 0,
+    aracId: sayiVeya(alan(r, 'aracId', 'arac_id')),
+    aracSeti: kosuAracSetiNormalle(alan(r, 'aracSeti', 'arac_seti')),
   };
 }
 const sayiDizisi = (x: unknown): number[] | null => (Array.isArray(x) && x.length && x.every((v) => Number.isInteger(v)) ? (x as number[]) : null);
@@ -352,6 +459,7 @@ export function hedeflerNormalle(x: unknown): NlHedefler {
     },
     serbest: { acik: serbest.acik === true, aglar: metinDizisi(serbest.aglar) },
     motorlar: motorlar.length ? [...new Set(motorlar)] : ['k6'],
+    araclar: aracDurumuNormalle(r.araclar),
   };
 }
 /** /ip-sinifi 200 govdesi: listeler dizi, sinirlar sayi ya da null; tur bilinmiyorsa RET (fail-closed). */
@@ -437,4 +545,10 @@ export const nginxLoadtestApi = {
     if (o.esikP95 != null) q.set('esikP95', String(o.esikP95));
     return karsilastirmaNormalle(await okJson<NlKarsilastirma>(await fetch(`${BASE}/karsilastir?${q}`)));
   },
+  /** Arac setleri (okuma Admin disina acik; `ayar.proxy` yalniz Admin'e dolu). */
+  araclar: async (): Promise<NlAraclar> => araclarNormalle(await okJson<unknown>(await fetch(`${BASE}/araclar`))),
+  /** Admin. 409 derleme_host_izinsiz / arac_proxy_gecersiz / arac_ozet_sabit_yok / kilit_dolu / sinir_asildi; 424 db_okunamadi. */
+  araclariHazirla: (body: { derlemeHost: string }): Promise<NlEylem> => fetch(`${BASE}/araclar`, json(body)).then(safeJson),
+  /** Admin. DONE bir seti geri ceker; 409 arac_yok / arac_geri_cekilemez / zaten_geri_cekildi; 424 db_okunamadi. */
+  aracGeriCek: (id: number): Promise<NlEylem> => fetch(`${BASE}/araclar/${id}/geri-cek`, json({})).then(safeJson),
 };

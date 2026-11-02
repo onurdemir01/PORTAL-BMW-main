@@ -15,9 +15,12 @@
 // YO18 serbest sinir daraltmasi ve wrk tavani; YO19 sozlesme 11 neden metinleri.
 // Tur 3 incelemesi (2026-10-28): YO20 (WR2) wrk uyarisi tavanin ORTALAMA hizi sinirladigini, kumelenmeyi ve burst / 429
 // riskini soyler ("aşamaz" demez); YO21 (UI1) hic yol denenmediyse olculmemis sikistirma sifirlari bilgi satirinda yok.
+// Tur 4 (2026-11-02, araclar /sw'den): YT45o geri donus degerlendirmesi - aracli satirda dogrulanmamis kopya ENGEL (motor
+// engelinden once; hata metni ya da "ölçülemedi"), eski (aracId null) satirda kural yok; glibc bilgi satiri; YT43o glibc esigi.
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { adimNormalle, hedeflerNormalle, kosuNormalle, nginxLoadtestApi, onKontrolNormalle, type NlAdim, type NlKosuAyrinti, type NlSinirlar } from '@/api/nginxLoadtestApi';
 import {
+  glibcRhel8Ustu, shaKisa,
   GECERLILIK, HOST_LISTEDE_YOK_UYARISI, OKUNAMADI_ACIKLAMASI, SERBEST_ON_KONTROL_BILGISI, SERBEST_UYARISI, SINIR_SIFIR_METNI, WRK_UYARISI, adimDegerleri, adimEtiketi,
   adimSirala, baglantiBeklemesiMs, baglantilariAyristir, butceSn, ciktiBirlestir, durdurBaslatilamadiMetni, hedefEtiketi, hedefSinirlari, hizGrupla, hizlariAyristir,
   ipGecerli, kademeMetni, kalanSurecDurdurulabilir, motorOf, nedenMetni, onKontrolDegerlendir, onKontrolKalanMs, parametreHatalari, sonucOkunuyorMetni, tavanNedeni,
@@ -292,7 +295,7 @@ describe('Yük Testi — saf yardımcılar', () => {
     // wrk: calisiyor ama surum okunamadi / bulunamadi - iki ayri metin; sabit wrk uyarisi.
     const wrk = { ...temel, k6_var: null, wrk_var: false, wrk_calisiyor: true, wrk_surum: 'wrk  [epoll] Copyright (C) 2012 Will Glozer' };
     const w1 = d(wrk, { motor: 'wrk' });
-    expect(w1.engeller).toEqual(['Yük sunucusunda wrk çalışıyor ama sürümü okunamadı ya da 4 altında (wrk  [epoll] Copyright (C) 2012 Will Glozer); wrk’yi make VER=4.2.0 ile yeniden derleyin.']);
+    expect(w1.engeller).toEqual(['Yük sunucusunda wrk çalışıyor ama sürümü okunamadı ya da 4 altında (wrk  [epoll] Copyright (C) 2012 Will Glozer); araç setini yeniden hazırlayın (Yük Testi › Araçlar).']);
     expect(w1.uyarilar).toEqual([WRK_UYARISI]);
     expect(d({ ...wrk, wrk_calisiyor: false, wrk_surum: null }, { motor: 'wrk' }).engeller).toEqual(['Yük sunucusunda wrk bulunamadı ya da çalıştırılamıyor.']);
     const w3 = d({ ...wrk, wrk_var: true, wrk_surum: 'wrk 4.2.0 [epoll] Copyright (C) 2012 Will Glozer', wrk_sha256: 'd'.repeat(64) }, { motor: 'wrk' });
@@ -463,5 +466,35 @@ describe('Yük Testi — API istemcisi (fetch)', () => {
     expect(await nginxLoadtestApi.ipSinifi('10.20.30.41')).toMatchObject({ ok: false, code: 'envanter_bayat', _httpStatus: 424 });
     f.mockResolvedValueOnce(jsonYanit({ ok: true, tur: 'bilinmeyen', ip: '10.20.30.42' }));
     expect(await nginxLoadtestApi.ipSinifi('10.20.30.42')).toMatchObject({ ok: false, code: 'beklenmeyen' });
+  });
+});
+
+describe('Tur 4 — araç kopyası (2026-11-02)', () => {
+  const temel = { ip_yerel: true, server_name_var: true, k6_var: true, k6_surum: 'k6 v0.49.0', master_sayisi: 1, web_log_df: 10, log_dizini_okunur: true, log_format_ua: true, yollar_toplam: 3, yollar_200: 3 };
+  const d = (ok: Record<string, unknown>, ek: Partial<Pick<NlKosuAyrinti, 'motor' | 'aracId' | 'sunucuDegerlendirmesi'>> = {}) => onKontrolDegerlendir({ durum: 'DONE', onKontrol: onKontrolNormalle(ok), ...ek });
+
+  it('YT45o aracli satırda doğrulanmamış kopya engel (motor engelinden önce); eski satırda kural yok; glibc bilgi satırı', () => {
+    // Eski satir (aracId yok / null): arac alanlari olmasa da engel YOK, cikti bugunkuyle ayni.
+    expect(d(temel).engeller).toEqual([]);
+    expect(d(temel, { aracId: null }).engeller).toEqual([]);
+    expect(d({ ...temel, arac_dogrulandi: false, arac_hata: 'sha256 farkli (beklenen aaaa..., bulunan bbbb...)' }, { aracId: null }).engeller).toEqual([]);
+    // Aracli: olculmedi (alan yok) / false + hata / dogrulandi.
+    expect(d(temel, { aracId: 5 }).engeller).toEqual(['Yük aracı kopyası doğrulanamadı: ölçülemedi.']);
+    expect(d({ ...temel, arac_dogrulandi: false, arac_hata: 'sha256 farkli (beklenen aaaa..., bulunan bbbb...)' }, { aracId: 5 }).engeller)
+      .toEqual(['Yük aracı kopyası doğrulanamadı: sha256 farkli (beklenen aaaa..., bulunan bbbb...).']);
+    expect(d({ ...temel, arac_dogrulandi: 'True', arac_sha256: 'c'.repeat(64), arac_glibc: '2.28' }, { aracId: 5 })).toEqual({ engeller: [], uyarilar: [], bilgiler: ['k6 k6 v0.49.0', 'yük sunucusu glibc 2.28'] });
+    // Motor engeli arac engelinden SONRA.
+    expect(d({ ...temel, k6_var: false }, { aracId: 5 }).engeller).toEqual(['Yük aracı kopyası doğrulanamadı: ölçülemedi.', 'Yük sunucusunda k6 bulunamadı.']);
+    // Sunucu degerlendirmesi varsa o esas (istemci arac kuralini eklemez).
+    expect(d(temel, { aracId: 5, sunucuDegerlendirmesi: { engeller: [], uyarilar: [] } }).engeller).toEqual([]);
+  });
+
+  it('YT43o glibc eşiği sayısal ve RHEL 8 (2.28) üstü; sha kısaltma', () => {
+    expect(glibcRhel8Ustu('2.34')).toBe(true);
+    expect(glibcRhel8Ustu('2.29')).toBe(true);
+    expect(glibcRhel8Ustu('3.0')).toBe(true);
+    for (const g of ['2.28', '2.17', '2.9', '', null, undefined, '-', 'x']) expect(glibcRhel8Ustu(g)).toBe(false);
+    expect(shaKisa('a'.repeat(64))).toBe(`${'a'.repeat(16)}…`);
+    expect(shaKisa(null)).toBe('—');
   });
 });

@@ -48,6 +48,16 @@
 //   -- tur 3 inceleme (2026-10-28) --
 //   YKP34 yarim tarama gunu uctan uca: dunku limit (409 sinir_asildi, wrk tavani, sifir sinir), dunku sahiplik
 //         (409 hedef_uretim), dunku ad (409 host_uretim), dunku hedef satirlari; bugunku varsa bugunku
+//   -- tur 4 (2026-11-02: arac setleri /sw'den) --
+//   YKP40 arac kapisi: set yok -> 409 araclar_hazir_degil, ozet env yok / gecersiz -> araclar_ozet_sabit_yok,
+//         ozet degisti -> araclar_ozet_degisti, geri cekildi -> araclar_geri_cekildi, okunamadi -> 424; iki
+//         ucta da kilit / satir / AWX yok (kapi sablondan SONRA, kilitten ONCE)
+//   YKP41 extra_vars: uc arac alani = etkin set, iki isaret sabiti; INSERT'te arac_id; durdurda uc alan ''
+//   YKP42 kosu: on kontrolun arac_id'si NULL (ayri metin, PU5) ya da etkin setten farkli (yeniden hazirlandi /
+//         geri cekildi) -> 409 on_kontrol_eski (degerlendirmeden ONCE); arac kopyasi dogrulanmamis on kontrol
+//         kosuya izin vermez; arac sha'si motora gore
+//   YKP43 /hedefler.araclar (hazir / ozet degisti / ozet yok / okunamadi, uc 200) ve /kosular/:id aracId + aracSeti; eski satir
+//         (arac_id NULL) BIREBIR (arac engeli yok)
 'use strict';
 
 const { test } = require('node:test');
@@ -60,6 +70,7 @@ function sahte(rel, exports) {
   const p = Module._resolveFilename(path.join(__dirname, rel), module);
   require.cache[p] = { id: p, filename: p, loaded: true, exports };
 }
+const { aracSatiri, aracSorgusu, ozetEnvKur, SHA_K6, SHA_WRK } = require('./arac-sahte-tablo.cjs');
 // C'nin modulleri: poller.cModulu once require.cache'e bakar (dosya olmasa da sahte calisir).
 function sahteC(ad, exports) {
   const p = path.join(__dirname, '..', ad);
@@ -115,9 +126,15 @@ function sifirla() {
       { host: 'GBNGXT33', listen: '10.0.0.9:443 ssl', server_name: 'app.test.local api.test.local' },
       { host: 'GBNGXT34', listen: '443 ssl', server_name: 'rp.test.local' },
     ],
+    // Tur 4: hazir (DONE, sabit ozetlerle) arac seti #5; arac sorgulari SQL metninden uygulanir.
+    araclar: [aracSatiri()],
+    aracDbHata: null,
+    aracSorgular: [],
   });
   // Serbest hedef / wrk env'leri her testte temiz (test kendisi kurar).
-  for (const k of ['NGINX_LOADTEST_SERBEST_AGLAR', 'NGINX_LOADTEST_SERBEST_YASAK', 'NGINX_LOADTEST_WRK']) delete process.env[k];
+  for (const k of ['NGINX_LOADTEST_SERBEST_AGLAR', 'NGINX_LOADTEST_SERBEST_YASAK', 'NGINX_LOADTEST_WRK', 'NGINX_LOADTEST_K6', 'NGINX_LOADTEST_DIR']) delete process.env[k];
+  // Tur 4 D1: iki arsiv ozeti sabit (etkin set bunlarla hazirlanmis olmali).
+  ozetEnvKur();
 }
 sifirla();
 
@@ -216,6 +233,8 @@ sahte('../../db/index.cjs', {
     D.sorgular.push({ q, params });
     const k = kilitSorgusu(q, params);
     if (k) return k;
+    const a = aracSorgusu(D, q, params);
+    if (a) return a;
     if (/^SELECT id, ad, aciklama, vhost, senaryo_tur, tsv, sha256, yol_sayisi, ozet, kaynak, created_by, created_at, silindi FROM nginx_loadtest_senaryolar WHERE id = \$1$/.test(q)) {
       return { rows: D.senaryolar.filter((x) => x.id === params[0]) };
     }
@@ -237,11 +256,11 @@ sahte('../../db/index.cjs', {
     if (/^SELECT TOP \(\$1\)/.test(q)) {
       return { rows: D.kosular.filter(listeSuz(q, params)).sort((a, b) => b.id - a.id).slice(0, params[0]).map(kosuSatiri) };
     }
-    if (/^INSERT INTO nginx_loadtest_kosular \(senaryo_id, on_kontrol_kosu_id, islem, etiket, hedef_host, hedef_ip, vhost, yuk_host, parametreler, durum, created_by, kilit_id, hedef_turu, motor, plan_uyarilari\) VALUES \(\$1, \$2, \$3, \$4, \$5, \$6, \$7, \$8, \$9, 'QUEUED', \$10, \$11, \$12, \$13, \$14\) RETURNING id$/.test(q)) {
-      const [senaryo_id, on_kontrol_kosu_id, islem, etiket, hedef_host, hedef_ip, vhost, yuk_host, parametreler, created_by, kilit_id, hedef_turu, motor, plan_uyarilari] = params;
+    if (/^INSERT INTO nginx_loadtest_kosular \(senaryo_id, on_kontrol_kosu_id, islem, etiket, hedef_host, hedef_ip, vhost, yuk_host, parametreler, durum, created_by, kilit_id, hedef_turu, motor, plan_uyarilari, arac_id\) VALUES \(\$1, \$2, \$3, \$4, \$5, \$6, \$7, \$8, \$9, 'QUEUED', \$10, \$11, \$12, \$13, \$14, \$15\) RETURNING id$/.test(q)) {
+      const [senaryo_id, on_kontrol_kosu_id, islem, etiket, hedef_host, hedef_ip, vhost, yuk_host, parametreler, created_by, kilit_id, hedef_turu, motor, plan_uyarilari, arac_id] = params;
       const id = 100 + D.kosular.length + 1;
       D.kosular.push({
-        id, senaryo_id, on_kontrol_kosu_id, islem, etiket, hedef_host, hedef_ip, vhost, yuk_host, parametreler, created_by, kilit_id, hedef_turu, motor, plan_uyarilari,
+        id, senaryo_id, on_kontrol_kosu_id, islem, etiket, hedef_host, hedef_ip, vhost, yuk_host, parametreler, created_by, kilit_id, hedef_turu, motor, plan_uyarilari, arac_id,
         durum: 'QUEUED', created_at: new Date(D.simdi), sonuclandirma_denemesi: 0,
       });
       return { rows: [{ id }], rowCount: 1 };
@@ -454,6 +473,8 @@ const GOVDE = (ek = {}) => ({ senaryoId: 1, hedefHost: 'GBNGXT33', hedefIp: '10.
 const OK_OZET = {
   ip_yerel: true, server_name_var: true, master_sayisi: 1, web_log_df: 30, log_dizini_okunur: true, log_format_ua: true, statik_direktif: null,
   k6_var: true, k6_surum: 'k6 v0.49.0', k6_sha256: 'a'.repeat(64), yollar_toplam: 2, yollar_200: 2, ilk_hatalar: [], sikistirma: { statik: 0, dinamik: 2, sikistirmasiz: 0 },
+  // Tur 4: yuk makinesindeki arac kopyasi dogrulandi (sha256 = etkin setin k6'si; wrk satirinda onKontrolHazirla cevirir).
+  arac_dogrulandi: true, arac_sha256: SHA_K6, arac_glibc: '2.28', arac_hata: null,
 };
 // Serbest hedef (LB VIP / yonetilmeyen sunucu): hicbir envanterde yok, izin listesinde.
 const SERBEST_IP = '10.20.30.40';
@@ -463,6 +484,7 @@ const OK_OZET_SERBEST = {
   ip_yerel: null, server_name_var: null, master_sayisi: null, web_log_df: null, log_dizini_okunur: null, log_format_ua: null, statik_direktif: null,
   ip_yuk_makinesinde: false, serbest_ag: SERBEST_AG, k6_var: true, k6_surum: 'k6 v0.49.0', k6_sha256: 'a'.repeat(64),
   wrk_var: null, wrk_calisiyor: null, wrk_surum: null, wrk_sha256: null, yollar_toplam: 2, yollar_200: 2, ilk_hatalar: [], sikistirma: { statik: 0, dinamik: 2, sikistirmasiz: 0 },
+  arac_dogrulandi: true, arac_sha256: SHA_K6, arac_glibc: '2.28', arac_hata: null,
 };
 
 /** Tamamlanmis on kontrol satiri (gercek on kontrol ucundan gecmis gibi). */
@@ -470,6 +492,8 @@ async function onKontrolHazirla({ ozet = OK_OZET, yasDk = 5, sahip = 'onur', dur
   const r = await istek('POST', '/kosular/on-kontrol', { body: govde });
   assert.equal(r.statusCode, 200, JSON.stringify(r.body));
   const k = D.kosular.find((x) => x.id === r.body.kosuId);
+  // Tur 4: wrk satirinda yuk makinesi wrk kopyasini dogrular (sha256 = setin wrk'si).
+  if (k.motor === 'wrk' && ozet.arac_sha256 === SHA_K6) ozet = { ...ozet, arac_sha256: SHA_WRK };
   Object.assign(k, { durum, created_by: sahip, finished_at: D.simdi - yasDk * 60000, sonuc: JSON.stringify({ durum: sonucDurum, run_id: String(k.id), islem: 'on_kontrol', on_kontrol: ozet }), on_kontrol_ozet: JSON.stringify(ozet) });
   for (const kl of D.kilitler.values()) kl.held = 0; // poller birakmis gibi
   return k;
@@ -482,7 +506,7 @@ test('YKP1 kapilar: oturum, Admin, sayfa/sekme gorunurlugu (davranis)', { timeou
   const yazanlar = [
     ['POST', '/senaryolar', {}], ['DELETE', '/senaryolar/1'], ['POST', '/kosular/on-kontrol', GOVDE()], ['POST', '/kosular', { onKontrolKosuId: 1 }],
     ['POST', '/kosular/1/durdur', {}], ['GET', '/kosular/1/durum'], ['PUT', '/senaryolar/1', {}], ['POST', '/kosular/1/yeniden-oku', {}],
-    ['GET', '/ip-sinifi?ip=10.0.0.9'],
+    ['GET', '/ip-sinifi?ip=10.0.0.9'], ['POST', '/araclar', { derlemeHost: 'GBLABT02' }], ['POST', '/araclar/5/geri-cek', {}],
   ];
   for (const [m, u, b] of yazanlar) {
     D.sorgular = [];
@@ -493,7 +517,7 @@ test('YKP1 kapilar: oturum, Admin, sayfa/sekme gorunurlugu (davranis)', { timeou
     assert.equal(D.envSorgular.length, 0, `${m} ${u}: uc envanteri okudu`);
   }
   assert.equal(D.launch.length, 0);
-  for (const u of ['/hedefler', '/senaryolar', '/senaryolar/1', '/kosular', '/kosular/101', '/karsilastir?ref=1&aday=2']) {
+  for (const u of ['/hedefler', '/senaryolar', '/senaryolar/1', '/kosular', '/kosular/101', '/karsilastir?ref=1&aday=2', '/araclar']) {
     const r = await istek('GET', u, { session: KULLANICI });
     assert.notEqual(r.statusCode, 403, `salt okunur ${u} Admin olmayana kapali`);
     assert.notEqual(r.statusCode, 401, u);
@@ -504,7 +528,7 @@ test('YKP1 kapilar: oturum, Admin, sayfa/sekme gorunurlugu (davranis)', { timeou
   }
   // Isleyici de Admin ister (kapi atlansa bile): dogrudan isleyici kontrolu kaynakta.
   const kod = fs.readFileSync(IDX_YOL, 'utf8');
-  for (const uc of ["router.post('/senaryolar'", "router.delete('/senaryolar/:id'", "router.post('/kosular/on-kontrol'", "router.post('/kosular'", "router.get('/kosular/:id/durum'", "router.post('/kosular/:id/durdur'", "router.post('/kosular/:id/yeniden-oku'", "router.get('/ip-sinifi'"]) {
+  for (const uc of ["router.post('/senaryolar'", "router.delete('/senaryolar/:id'", "router.post('/kosular/on-kontrol'", "router.post('/kosular'", "router.get('/kosular/:id/durum'", "router.post('/kosular/:id/durdur'", "router.post('/kosular/:id/yeniden-oku'", "router.get('/ip-sinifi'", "router.post('/araclar'", "router.post('/araclar/:id/geri-cek'"]) {
     const i = kod.indexOf(uc);
     assert.ok(i > 0, uc);
     assert.match(kod.slice(i, i + 400), /adminSart\(req\)/, `${uc} isleyicide Admin denetlemiyor`);
@@ -525,9 +549,9 @@ test('YKP2 kapi sirasi, nginxRed haric listesi, ADMIN_DISI_OKUMA', () => {
   const haric = servis.match(/haric:\s*\[([^\]]*)\]/);
   assert.ok(haric, 'nginxRedCevirici haric listesi okunamadi');
   assert.doesNotMatch(haric[1], /nginx-loadtest/, 'yuk testi router\'i haric: 403/404 govdeleri HTML\'e doner');
-  const ornek = ['/hedefler', '/senaryolar', '/senaryolar/12', '/kosular', '/kosular/12', '/karsilastir'];
+  const ornek = ['/hedefler', '/senaryolar', '/senaryolar/12', '/kosular', '/kosular/12', '/karsilastir', '/araclar'];
   for (const re of yt._ADMIN_DISI_OKUMA) assert.ok(ornek.some((o) => re.test(o)), `ornegi olmayan desen: ${re}`);
-  for (const yasak of ['/kosular/12/durum', '/kosular/12/durdur', '/kosular/on-kontrol', '/senaryolar/12/sil', '/kosular/12/yeniden-oku', '/ip-sinifi']) {
+  for (const yasak of ['/kosular/12/durum', '/kosular/12/durdur', '/kosular/on-kontrol', '/senaryolar/12/sil', '/kosular/12/yeniden-oku', '/ip-sinifi', '/araclar/5/geri-cek', '/araclar/5']) {
     assert.ok(!yt._ADMIN_DISI_OKUMA.some((re) => re.test(yasak)), `${yasak} Admin olmayana acik`);
   }
 });
@@ -543,7 +567,7 @@ test('YKP3 kimlikler istemciden alinmaz (baslatma, durum, durdurma)', { timeout:
   const [sid, tid, ev, limit] = D.launch[0];
   assert.deepEqual([sid, tid, limit], [3, 44, ''], 'sunucu/template kayittan, limit bos degil');
   assert.deepEqual(Object.keys(ev).sort(), [...dg.EKSTRA_ANAHTARLAR].sort(), 'govdedeki fazlalik extra_vars\'a sizdi');
-  assert.equal(Object.keys(ev).length, 30);
+  assert.equal(Object.keys(ev).length, 33);
   assert.equal(ev.yuk_hedef_host, 'GBNGXT33');
   assert.equal(ev.yuk_islem, 'on_kontrol');
   assert.equal(ev.yuk_run_id, String(r.body.kosuId));
@@ -1393,16 +1417,17 @@ test('YKP23 wrk on kontrol: extra_vars bolum 3, tavan sunucuda hesaplanir, wrk +
   const ev = D.launch[0][2];
   assert.deepEqual(
     [ev.yuk_motor, ev.yuk_hizlar, ev.yuk_maxvu, ev.yuk_baglantilar, ev.yuk_is_parcacigi, ev.yuk_tavan_rps, ev.yuk_sni, ev.yuk_wrk_yolu, ev.yuk_k6_yolu, ev.yuk_hedef_turu, ev.yuk_butce_sn],
-    ['wrk', '', '', '2 4 8', '2', '270', '0', '/home/www/bin/wrk', '/home/www/bin/k6', 'sunucu', '1380'],
+    ['wrk', '', '', '2 4 8', '2', '270', '0', '/yeni-playbook-gerekli/wrk', '/yeni-playbook-gerekli/k6', 'sunucu', '1380'],
   );
   assert.deepEqual(dg.ekstraDegiskenleriDenetle(ev), []);
-  // wrk yolu env'den.
+  // Tur 4: wrk yolu env'den OKUNMAZ (NGINX_LOADTEST_WRK kalkti): isaret degeri; ikili arac setinden.
   sifirla();
   senaryoEkle();
   process.env.NGINX_LOADTEST_WRK = '/opt/wrk/bin/wrk';
   r = await istek('POST', '/kosular/on-kontrol', { body: GOVDE({ parametreler: { motor: 'wrk', baglantilar: [4, 8], is_parcacigi: 4 } }) });
+  delete process.env.NGINX_LOADTEST_WRK;
   assert.equal(r.statusCode, 200, JSON.stringify(r.body));
-  assert.deepEqual([D.launch[0][2].yuk_wrk_yolu, D.launch[0][2].yuk_baglantilar, D.launch[0][2].yuk_is_parcacigi], ['/opt/wrk/bin/wrk', '4 8', '4']);
+  assert.deepEqual([D.launch[0][2].yuk_wrk_yolu, D.launch[0][2].yuk_baglantilar, D.launch[0][2].yuk_is_parcacigi, D.launch[0][2].yuk_wrk_sha256], ['/yeni-playbook-gerekli/wrk', '4 8', '4', SHA_WRK]);
   // wrk + SNI -> 400 (gizli donusum yok); N % T != 0 -> 409; ikisi de AWX'e gitmez.
   for (const [govde, http, kod, mesaj] of [
     [GOVDE({ sni: true, parametreler: { motor: 'wrk' } }), 400, 'gecersiz_istek', "wrk SNI'yi Host başlığına göre seçemez (IP adresi SNI olarak gider); SNI kutusunu kapatın."],
@@ -1847,4 +1872,229 @@ test('YKP34 yarim tarama gunu uctan uca: dunku limit / sahiplik / ad / hedef sat
   r = await istek('POST', '/kosular/on-kontrol', { body: GOVDE() });
   assert.equal(r.statusCode, 200, JSON.stringify(r.body));
   assert.equal(JSON.parse(D.denetim.find((x) => x.eylem === 'nginx_loadtest_on_kontrol').detail).vhostListede, true);
+});
+
+// ── TUR 4: ARAC SETLERI ─────────────────────────────────────────────────────────────────────
+
+const ARAC_MESAJ = {
+  hazirDegil: 'Yük araçları henüz hazırlanmadı: Yük Testi › Araçlar bölümünden “Araçları hazırla” ile k6 ve wrk’yi /sw’ye hazırlayın (yalnız Admin).',
+  ozetDegisti: 'Sabitlenen arşiv özetleriyle hazırlanmış bir araç seti yok (özetler değişmiş olabilir): Yük Testi › Araçlar bölümünden “Araçları hazırla” ile yeniden hazırlayın (yalnız Admin).',
+  geriCekildi: 'Sabitlenen özetlerle hazırlanmış araç setleri geri çekildi: Yük Testi › Araçlar bölümünden “Araçları hazırla” ile yeni set hazırlayın (yalnız Admin).',
+  ozetSabitYok: (eksik) => `Yük aracı arşiv özetleri sabitlenmemiş (${eksik}): iki özeti de Portal ortamına (.env) 64 haneli sha256 olarak yazıp Portal’ı yeniden başlatın; komutlar docs/NGINX-YUK-TESTI.md › “Arşiv özetlerini sabitleme” bölümünde.`,
+  okunamadi: 'Araç seti okunamadı; iş başlatılmadı, lütfen tekrar deneyin.',
+  onKontrolEski: 'Etkin yük aracı seti ön kontrolden bu yana değişti (yeniden hazırlandı ya da geri çekildi); ön kontrolü yeniden çalıştırın.',
+  onKontrolAracsiz: 'Bu ön kontrol araç setleri gelmeden (eski sürümle) yapıldı; ön kontrolü yeniden çalıştırın.',
+};
+const kilitDenemesi = (bas) => D.sorgular.slice(bas).filter((s) => /^UPDATE nginx_loadtest_kilitleri SET held = 1|^IF NOT EXISTS \(SELECT 1 FROM nginx_loadtest_kilitleri/.test(s.q)).length;
+
+test('YKP40 arac kapisi: set yok / ozet sabit yok / ozet degisti / geri cekildi / okunamadi -> 409 / 424; kilit, satir, AWX yok; kapi sablondan sonra', { timeout: 30000 }, async () => {
+  const durumlar = [
+    ['set yok', () => { D.araclar = []; }, 409, 'araclar_hazir_degil', ARAC_MESAJ.hazirDegil],
+    ['yalniz FAILED / suren set', () => { D.araclar = [aracSatiri({ id: 3, durum: 'FAILED', k6_sha256: null, wrk_sha256: null }), aracSatiri({ id: 4, durum: 'RUNNING' })]; }, 409, 'araclar_hazir_degil', ARAC_MESAJ.hazirDegil],
+    ['k6 ozet env yok', () => { ozetEnvKur({ k6: null }); }, 409, 'araclar_ozet_sabit_yok', ARAC_MESAJ.ozetSabitYok('NGINX_LOADTEST_K6_ARSIV_SHA256 tanımlı değil')],
+    ['wrk ozet env gecersiz', () => { ozetEnvKur({ wrk: 'f'.repeat(63) }); }, 409, 'araclar_ozet_sabit_yok', ARAC_MESAJ.ozetSabitYok('NGINX_LOADTEST_WRK_KAYNAK_SHA256 64 hex değil')],
+    ['env ozeti degisti (k6)', () => { ozetEnvKur({ k6: '1'.repeat(64) }); }, 409, 'araclar_ozet_degisti', ARAC_MESAJ.ozetDegisti],
+    ['env ozeti degisti (wrk)', () => { ozetEnvKur({ wrk: '2'.repeat(64) }); }, 409, 'araclar_ozet_degisti', ARAC_MESAJ.ozetDegisti],
+    ['istenen ayni, kaydedilen farkli', () => { D.araclar = [aracSatiri({ wrk_kaynak_sha256: '3'.repeat(64) })]; }, 409, 'araclar_hazir_degil', ARAC_MESAJ.hazirDegil],
+    ['eski TOFU seti (istenen NULL)', () => { D.araclar = [aracSatiri({ istenen_wrk_kaynak_sha256: null })]; }, 409, 'araclar_ozet_degisti', ARAC_MESAJ.ozetDegisti],
+    ['geri cekildi', () => { D.araclar = [aracSatiri({ geri_ceken: 'onur', geri_cekme_at: new Date() })]; }, 409, 'araclar_geri_cekildi', ARAC_MESAJ.geriCekildi],
+    ['DONE ama sha yok', () => { D.araclar = [aracSatiri({ wrk_sha256: null })]; }, 409, 'araclar_hazir_degil', ARAC_MESAJ.hazirDegil],
+    ['DB okunamadi', () => { D.aracDbHata = new Error('Invalid object name nginx_loadtest_araclar'); }, 424, 'db_okunamadi', ARAC_MESAJ.okunamadi],
+  ];
+  for (const [ad, kur, http, kod, mesaj] of durumlar) {
+    // On kontrol.
+    sifirla();
+    senaryoEkle();
+    kur();
+    const bas = D.sorgular.length;
+    let r = await istek('POST', '/kosular/on-kontrol', { body: GOVDE() });
+    assert.deepEqual([r.statusCode, r.body.code, r.body.message], [http, kod, mesaj], `${ad} on kontrol: ${JSON.stringify(r.body)}`);
+    assert.equal(kilitDenemesi(bas), 0, `${ad}: arac kapisindan once kilit alindi`);
+    assert.deepEqual([D.kosular.length, D.launch.length, D.kilitler.size], [0, 0, 0], ad);
+    assert.ok(D.denetim.some((x) => x.eylem === 'nginx_loadtest_on_kontrol' && x.result === 'fail' && JSON.parse(x.detail).code === kod), `${ad}: ret denetime yazilmadi`);
+    // Kosu: on kontrol hazir set ile yapildi, sonra set gitti / bozuldu.
+    sifirla();
+    senaryoEkle();
+    const ok = await onKontrolHazirla();
+    kur();
+    const bas2 = D.sorgular.length;
+    const n = D.kosular.length;
+    r = await istek('POST', '/kosular', { body: { onKontrolKosuId: ok.id, confirmText: 'GBNGXT33', uyariOnay: true } });
+    assert.deepEqual([r.statusCode, r.body.code, r.body.message], [http, kod, mesaj], `${ad} kosu: ${JSON.stringify(r.body)}`);
+    assert.equal(kilitDenemesi(bas2), 0, `${ad}: kosuda arac kapisindan once kilit alindi`);
+    assert.deepEqual([D.kosular.length, D.launch.length], [n, 1], ad);
+  }
+  // Sablon yoksa sablon_yok ONCE gelir (arac seti okunmaz).
+  sifirla();
+  senaryoEkle();
+  D.araclar = [];
+  D.registry = null;
+  const r = await istek('POST', '/kosular/on-kontrol', { body: GOVDE() });
+  assert.deepEqual([r.statusCode, r.body.code], [409, 'sablon_yok']);
+  assert.equal(D.aracSorgular.length, 0, 'arac seti sablondan once okundu');
+});
+
+test('YKP41 extra_vars arac alanlari = etkin set; INSERT arac_id; durdurda uc alan bos', { timeout: 20000 }, async () => {
+  sifirla();
+  senaryoEkle();
+  // Daha eski set, daha yeni BASKA ozetli set (#6) ve daha yeni GERI CEKILMIS set (#7): etkin olan su anki
+  // ozetlerle hazirlanmis en yeni geri cekilmemis set (#5).
+  D.araclar = [aracSatiri({ id: 2, k6_sha256: '1'.repeat(64), sw_dizin: '/sw/BMW_PORTAL/nginx_loadtest/araclar/2' }), aracSatiri(),
+    aracSatiri({ id: 6, istenen_k6_arsiv_sha256: '9'.repeat(64), k6_arsiv_sha256: '9'.repeat(64), k6_sha256: '2'.repeat(64), sw_dizin: '/sw/BMW_PORTAL/nginx_loadtest/araclar/6' }),
+    aracSatiri({ id: 7, geri_ceken: 'onur', geri_cekme_at: new Date(), k6_sha256: '3'.repeat(64), sw_dizin: '/sw/BMW_PORTAL/nginx_loadtest/araclar/7' })];
+  const r = await istek('POST', '/kosular/on-kontrol', { body: GOVDE() });
+  assert.equal(r.statusCode, 200, JSON.stringify(r.body));
+  const ev = D.launch[0][2];
+  assert.deepEqual([ev.yuk_arac_dizin, ev.yuk_k6_sha256, ev.yuk_wrk_sha256, ev.yuk_k6_yolu, ev.yuk_wrk_yolu],
+    ['/sw/BMW_PORTAL/nginx_loadtest/araclar/5', SHA_K6, SHA_WRK, dg.ESKI_K6_ISARETI, dg.ESKI_WRK_ISARETI]);
+  assert.deepEqual([dg.ESKI_K6_ISARETI, dg.ESKI_WRK_ISARETI], ['/yeni-playbook-gerekli/k6', '/yeni-playbook-gerekli/wrk']);
+  assert.equal(Object.keys(ev).length, 33);
+  assert.deepEqual(dg.ekstraDegiskenleriDenetle(ev), []);
+  const k = D.kosular.find((x) => x.id === r.body.kosuId);
+  assert.equal(k.arac_id, 5, 'on kontrol satirina arac_id yazilmadi');
+  assert.equal(JSON.parse(D.denetim.find((x) => x.eylem === 'nginx_loadtest_on_kontrol').detail).aracId, 5);
+  // Eski Portal yolu son kapida reddedilir.
+  assert.deepEqual(dg.ekstraDegiskenleriDenetle({ ...ev, yuk_k6_yolu: '/home/www/bin/k6' }), ['yuk_k6_yolu']);
+  // Kosu da ayni set; satirina arac_id.
+  for (const kl of D.kilitler.values()) kl.held = 0;
+  Object.assign(k, { durum: 'DONE', finished_at: D.simdi - 60000, sonuc: JSON.stringify({ durum: 'OK', run_id: String(k.id), islem: 'on_kontrol', on_kontrol: OK_OZET }), on_kontrol_ozet: JSON.stringify(OK_OZET) });
+  const r2 = await istek('POST', '/kosular', { body: { onKontrolKosuId: k.id, confirmText: 'GBNGXT33', uyariOnay: true } });
+  assert.equal(r2.statusCode, 200, JSON.stringify(r2.body));
+  const kosu = D.kosular.find((x) => x.id === r2.body.kosuId);
+  assert.equal(kosu.arac_id, 5);
+  assert.deepEqual([D.launch[1][2].yuk_arac_dizin, D.launch[1][2].yuk_k6_sha256], ['/sw/BMW_PORTAL/nginx_loadtest/araclar/5', SHA_K6]);
+  // Durdur: uc arac alani '' (arac setsiz de calisir), isaretler ayni.
+  D.araclar = [];
+  const d = await istek('POST', `/kosular/${kosu.id}/durdur`, { body: {} });
+  assert.equal(d.statusCode, 200, JSON.stringify(d.body));
+  const dev = D.launch.at(-1)[2];
+  assert.deepEqual([dev.yuk_islem, dev.yuk_arac_dizin, dev.yuk_k6_sha256, dev.yuk_wrk_sha256, dev.yuk_k6_yolu, dev.yuk_wrk_yolu], ['durdur', '', '', '', dg.ESKI_K6_ISARETI, dg.ESKI_WRK_ISARETI]);
+  assert.equal(Object.keys(dev).length, 33);
+});
+
+test('YKP42 kosu: on kontrolun arac_id NULL / farkli -> on_kontrol_eski (degerlendirmeden ONCE); kopya dogrulanmadiysa kosu yok', { timeout: 20000 }, async () => {
+  const kos = (ok) => istek('POST', '/kosular', { body: { onKontrolKosuId: ok.id, confirmText: 'GBNGXT33', uyariOnay: true } });
+  // (a) Eski (tur 3) on kontrol satiri: arac_id NULL. Ozetinde engel olsa da kod on_kontrol_eski + AYRI metin (PU5).
+  sifirla();
+  senaryoEkle();
+  let ok = await onKontrolHazirla({ ozet: { ...OK_OZET, ip_yerel: false } });
+  ok.arac_id = null;
+  let r = await kos(ok);
+  assert.deepEqual([r.statusCode, r.body.code, r.body.message], [409, 'on_kontrol_eski', ARAC_MESAJ.onKontrolAracsiz], JSON.stringify(r.body));
+  assert.equal(r.body.engeller, undefined, 'arac denetimi degerlendirmeden SONRA');
+  assert.equal(D.launch.length, 1);
+  // (a2) arac_id NULL ve su an etkin set de yok: yine on_kontrol_eski (degerlendirmeye gecmez).
+  D.araclar = [];
+  r = await kos(ok);
+  assert.deepEqual([r.statusCode, r.body.code, r.body.message, r.body.engeller], [409, 'on_kontrol_eski', ARAC_MESAJ.onKontrolAracsiz, undefined], JSON.stringify(r.body));
+  D.araclar = [aracSatiri()];
+  // (b) Araclar on kontrolden sonra yeniden hazirlandi (#6 etkin): on_kontrol_eski, degerlendirmeden ONCE.
+  sifirla();
+  senaryoEkle();
+  ok = await onKontrolHazirla({ ozet: { ...OK_OZET, master_sayisi: 2 } });
+  D.araclar.push(aracSatiri({ id: 6, sw_dizin: '/sw/BMW_PORTAL/nginx_loadtest/araclar/6' }));
+  r = await kos(ok);
+  assert.deepEqual([r.statusCode, r.body.code, r.body.message], [409, 'on_kontrol_eski', ARAC_MESAJ.onKontrolEski], JSON.stringify(r.body));
+  assert.equal(r.body.engeller, undefined);
+  assert.equal(D.launch.length, 1, 'kosu baslatildi');
+  // (b2) On kontrolun seti (#5) geri cekildi, daha eski uygun set (#4) etkin oldu: on_kontrol_eski.
+  sifirla();
+  senaryoEkle();
+  D.araclar = [aracSatiri({ id: 4, sw_dizin: '/sw/BMW_PORTAL/nginx_loadtest/araclar/4' }), aracSatiri()];
+  ok = await onKontrolHazirla();
+  assert.equal(ok.arac_id, 5);
+  Object.assign(D.araclar[1], { geri_ceken: 'onur', geri_cekme_at: new Date() });
+  r = await kos(ok);
+  assert.deepEqual([r.statusCode, r.body.code, r.body.message], [409, 'on_kontrol_eski', ARAC_MESAJ.onKontrolEski], JSON.stringify(r.body));
+  assert.equal(D.launch.length, 1, 'geri cekilen setle kosu baslatildi');
+  // (b3) Tek set geri cekildi (etkin set yok): kapi kodu araclar_geri_cekildi, kosu yok.
+  D.araclar = [D.araclar[1]];
+  r = await kos(ok);
+  assert.deepEqual([r.statusCode, r.body.code, r.body.message], [409, 'araclar_geri_cekildi', ARAC_MESAJ.geriCekildi], JSON.stringify(r.body));
+  assert.equal(D.launch.length, 1);
+  // (c) Ayni set: arac kopyasi dogrulanmamis on kontrol kosuya izin vermez (engel listede).
+  sifirla();
+  senaryoEkle();
+  ok = await onKontrolHazirla({ ozet: { ...OK_OZET, arac_dogrulandi: false, arac_hata: 'sha256 farkli (beklenen cccccccccccc..., bulunan 000000000000...)' } });
+  r = await kos(ok);
+  assert.deepEqual([r.statusCode, r.body.code], [409, 'on_kontrol_eski']);
+  assert.deepEqual(r.body.engeller, ['yük aracı kopyası doğrulanamadı: sha256 farkli (beklenen cccccccccccc..., bulunan 000000000000...)']);
+  // (d) Kopya dogrulandi ama sha set degil (motor k6 -> setin k6 sha'si beklenir).
+  sifirla();
+  senaryoEkle();
+  ok = await onKontrolHazirla({ ozet: { ...OK_OZET, arac_sha256: SHA_WRK } });
+  r = await kos(ok);
+  assert.deepEqual(r.body.engeller, ["yük aracı kopyasının sha256'sı araç setiyle aynı değil"]);
+  // (e) wrk on kontrolu: setin wrk sha'si beklenir; dogru sha ile kosu baslar.
+  sifirla();
+  senaryoEkle();
+  ok = await onKontrolHazirla({ govde: GOVDE({ parametreler: { motor: 'wrk' } }), ozet: { ...OK_OZET, k6_var: null, wrk_var: true, wrk_calisiyor: true, wrk_surum: 'wrk 4.2.0 [epoll] Copyright (C) 2012 Will Glozer' } });
+  assert.equal(JSON.parse(ok.on_kontrol_ozet).arac_sha256, SHA_WRK);
+  r = await kos(ok);
+  assert.equal(r.statusCode, 200, JSON.stringify(r.body));
+  assert.equal(D.launch.at(-1)[2].yuk_wrk_sha256, SHA_WRK);
+  // (f) Yaris: on kontrol denetiminden sonra (kosuyuBaslat'a girerken) set degisti -> on_kontrol_eski, kilit yok.
+  sifirla();
+  senaryoEkle();
+  ok = await onKontrolHazirla();
+  const gercek = D.araclar;
+  let n = 0;
+  Object.defineProperty(D, 'araclar', { configurable: true, get() { n += 1; return n > 1 ? [...gercek, aracSatiri({ id: 7, sw_dizin: '/sw/BMW_PORTAL/nginx_loadtest/araclar/7' })] : gercek; }, set(v) { Object.defineProperty(D, 'araclar', { value: v, writable: true, configurable: true, enumerable: true }); } });
+  const bas = D.sorgular.length;
+  r = await kos(ok);
+  Object.defineProperty(D, 'araclar', { value: gercek, writable: true, configurable: true, enumerable: true });
+  assert.deepEqual([r.statusCode, r.body.code, r.body.message], [409, 'on_kontrol_eski', ARAC_MESAJ.onKontrolEski], JSON.stringify(r.body));
+  assert.equal(kilitDenemesi(bas), 0);
+});
+
+test('YKP43 /hedefler.araclar ve /kosular/:id aracId + aracSeti; eski satir birebir', { timeout: 20000 }, async () => {
+  sifirla();
+  let h = await istek('GET', '/hedefler', { session: KULLANICI });
+  assert.equal(h.statusCode, 200);
+  assert.deepEqual(h.body.araclar, { hazir: true, aracId: 5, k6Surum: 'v0.49.0', wrkSurum: '4.2.0', kod: null, mesaj: null });
+  sifirla();
+  ozetEnvKur({ wrk: '4'.repeat(64) });
+  h = await istek('GET', '/hedefler');
+  assert.deepEqual(h.body.araclar, { hazir: false, aracId: null, k6Surum: null, wrkSurum: null, kod: 'araclar_ozet_degisti', mesaj: ARAC_MESAJ.ozetDegisti });
+  sifirla();
+  ozetEnvKur({ k6: null, wrk: null });
+  h = await istek('GET', '/hedefler');
+  assert.deepEqual([h.statusCode, h.body.araclar.hazir, h.body.araclar.kod], [200, false, 'araclar_ozet_sabit_yok']);
+  sifirla();
+  D.araclar = [];
+  h = await istek('GET', '/hedefler');
+  assert.deepEqual([h.body.araclar.hazir, h.body.araclar.kod, h.body.araclar.mesaj], [false, 'araclar_hazir_degil', ARAC_MESAJ.hazirDegil]);
+  sifirla();
+  D.aracDbHata = new Error('tablo yok');
+  h = await istek('GET', '/hedefler');
+  assert.equal(h.statusCode, 200, 'arac okuma hatasi /hedefler i dusurdu');
+  assert.deepEqual(h.body.araclar, { hazir: false, aracId: null, k6Surum: null, wrkSurum: null, kod: 'db_okunamadi', mesaj: 'Araç seti okunamadı; yeniden deneyin.' });
+  assert.ok(h.body.hedefler.length > 0);
+  // Ayrinti: aracli on kontrol.
+  sifirla();
+  senaryoEkle();
+  const ok = await onKontrolHazirla({ ozet: { ...OK_OZET, arac_dogrulandi: false, arac_hata: 'kopya yok ya da duzenli dosya degil' } });
+  let g = await istek('GET', `/kosular/${ok.id}`, { session: KULLANICI });
+  assert.equal(g.statusCode, 200, JSON.stringify(g.body));
+  assert.equal(g.body.kosu.aracId, 5);
+  assert.deepEqual(g.body.kosu.aracSeti, { id: 5, k6Surum: 'v0.49.0', wrkSurum: '4.2.0', k6Sha256: SHA_K6, wrkSha256: SHA_WRK, derlemeHost: 'GBLABT02' });
+  assert.deepEqual(g.body.kosu.onKontrolEngelleri, ['yük aracı kopyası doğrulanamadı: kopya yok ya da duzenli dosya degil']);
+  // Set sonradan FAILED / geri cekilmis olsa da satirin seti okunur (durumdan bagimsiz).
+  D.araclar[0].durum = 'FAILED';
+  g = await istek('GET', `/kosular/${ok.id}`);
+  assert.equal(g.body.kosu.aracSeti.id, 5);
+  // Eski satir (arac_id NULL, ozetinde arac_* yok): arac engeli YOK, aracSeti null; engeller tur 3 ile ayni.
+  const eskiOzet = { ...OK_OZET };
+  for (const a of ['arac_dogrulandi', 'arac_sha256', 'arac_glibc', 'arac_hata']) delete eskiOzet[a];
+  Object.assign(ok, { arac_id: null, on_kontrol_ozet: JSON.stringify(eskiOzet) });
+  const once = D.aracSorgular.length;
+  g = await istek('GET', `/kosular/${ok.id}`);
+  assert.deepEqual([g.body.kosu.aracId, g.body.kosu.aracSeti, g.body.kosu.onKontrolEngelleri], [null, null, []]);
+  assert.deepEqual({ engeller: g.body.kosu.onKontrolEngelleri, uyarilar: g.body.kosu.onKontrolUyarilari }, dg.onKontrolDegerlendir(eskiOzet, { hedefTuru: 'sunucu', motor: 'k6' }));
+  assert.equal(D.aracSorgular.length, once, 'eski satir icin arac seti okundu');
+  // Arac seti okunamazsa ayrinti yine doner (gosterim eksik).
+  ok.arac_id = 5;
+  D.aracDbHata = new Error('x');
+  g = await istek('GET', `/kosular/${ok.id}`);
+  assert.deepEqual([g.statusCode, g.body.kosu.aracId, g.body.kosu.aracSeti], [200, 5, null]);
 });

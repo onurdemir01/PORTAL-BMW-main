@@ -10,7 +10,8 @@
 //   (d) Lua AE_DEGER = yuk_k6.js AE_DEGER.
 //   (e) User-Agent '<UA_ONEK>/<TUR>/<FAZ>/<DENEME>'; 'close' yalniz KIP == 'yeni' kosulunda; response() ilk 429 ya da
 //       >= 500'de wrk.thread:stop(); done() yuzdelikleri latency:percentile ile; wrk_kos.sh awk'i us -> ms (/ 1000).
-//   (f) durdur.sh wrk adayi ([w]rk + ' -s <kosu_dizini>/yuk_wrk.lua') ve wrk_kos.sh.
+//   (f) durdur.sh wrk adayi ([w]rk + ' -s <kosu_dizini>/yuk_wrk.lua') ve wrk_kos.sh; tur 4: argv[0]'i
+//       <kosu_dizini>/arac/ altinda olan surec ('arac') kurali wrk kuralindan HEMEN sonra.
 //   (g) playbook: hedef add_host yalniz sunucu hedefte; wrk -> yuk_sni '0' maddesi; groups['yuk_hedef'] YOK; her
 //       when / failed_when / changed_when degerinde ve her assert.that maddesinde parantez derinligi 0'da ' if ' YOK
 //       (eski Ansible kosul yolu '{% if <ifade> %}' TemplateSyntaxError verir; '( ile baslar ) ile biter' yetmez).
@@ -205,6 +206,14 @@ test('NA6 (f) durdur.sh wrk adayi ve wrk_kos.sh', () => {
     'durdur.sh: [w]rk deseni ve -s <kosu_dizini>/yuk_wrk.lua',
   );
   assert.ok(dur.includes('$3 == ENVIRON["D"] "wrk_kos.sh"'), 'durdur.sh bash betik listesinde wrk_kos.sh');
+  // Tur 4: kosu dizinindeki arac kopyasindan calisan her surec (k6 version, wrk yukleme sinamasi, takilmis -v) 'arac'
+  // adiyla durur; kural wrk kuralindan HEMEN sonra (k6 run / wrk yuku once kendi adlariyla eslesir).
+  const s = dur.split('\n');
+  const w = s.findIndex((x) => x.includes('"yuk_wrk.lua") > 0) { print p "\\twrk"; next }'));
+  assert.ok(
+    w > 0 && s[w + 1] === '    if (index($2, ENVIRON["D"] "arac/") == 1) { print p "\\tarac"; next }',
+    `durdur.sh: arac/ kurali wrk kuralindan hemen sonra: ${s[w + 1]}`,
+  );
 });
 
 // Kosul metinleri: when / failed_when / changed_when degeri (tek satir ya da '>-' blogu, tam metin) ve her assert.that maddesi.
@@ -260,8 +269,8 @@ test('NA6 (g) playbook: hedef add_host sunucu kosullu, wrk sni 0, groups[yuk_hed
   const yml = oku('nginx_loadtest.yml');
   assert.match(
     yml,
-    /ansible\.builtin\.add_host:\n\s+name: "\{\{ yuk_hedef_host \}\}"\n\s+groups: yuk_hedef\n\s+changed_when: false\n\s+when: \(yuk_hedef_turu \| default\('sunucu'\) \| string\) == 'sunucu'\n/,
-    'hedef add_host yalniz sunucu hedefte (serbestte hedef host yok, Play 2 / 4 atlanir)',
+    /ansible\.builtin\.add_host:\n\s+name: "\{\{ yuk_hedef_host \}\}"\n\s+groups: yuk_hedef\n\s+changed_when: false\n\s+when: \(\(yuk_hedef_turu \| default\('sunucu'\) \| string\) == 'sunucu'\) and \(\(yuk_islem \| default\(''\) \| string\) != 'araclar'\)\n/,
+    'hedef add_host yalniz sunucu hedefte ve araclar disinda (serbestte hedef host yok, Play 2 / 4 atlanir)',
   );
   assert.ok(
     yml.includes("- (((yuk_sni | string) == '0') if ((yuk_motor | default('') | string) == 'wrk') else true)\n"),
@@ -282,7 +291,7 @@ test('NA6 (g) playbook: hedef add_host sunucu kosullu, wrk sni 0, groups[yuk_hed
 test('NA6 (j)-(m) izin dosyasi literal ve sirasi, Play 2 kosu kapisi, is gecerlilik suresi, ASCII ret nedeni ve uid', () => {
   const yml = oku('nginx_loadtest.yml');
   const playlar = yml.split(/\n(?=- name: )/).filter((p) => /^ {2}hosts: /m.test(p));
-  assert.equal(playlar.length, 8, 'play sayisi (test yanlis yere bakiyor olmasin)');
+  assert.equal(playlar.length, 10, 'play sayisi (test yanlis yere bakiyor olmasin)');
 
   // (j)
   const IZIN = '/etc/portal_yuktesti/serbest_aglar';

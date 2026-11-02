@@ -16,7 +16,6 @@
     yt_re_sha256: '^[0-9a-f]{64}\Z'
     yt_re_hizlar: '^[0-9]{1,3}( [0-9]{1,3}){0,4}\Z'
     yt_re_sayi: '^[0-9]{1,5}\Z'
-    yt_re_ikili_yolu: '^/[A-Za-z0-9._/-]{1,200}\Z'
     yt_re_epoch: '^[0-9]{10}\Z'
     yt_re_ua: '^[a-z][a-z0-9-]{2,30}\Z'
     yt_re_cikti_kok: '^/sw/BMW_PORTAL(_DEV)?(/[A-Za-z0-9._-]+)+\Z'
@@ -24,7 +23,13 @@
     yt_re_satir: '^[0-9.]+\t[0-9]+\t[a-z]+\t[a-z]+\t/[A-Za-z0-9._~!$&''()*+,;=:@%/-]*\Z'
     yt_re_kotu_yol: '\t//|/\.\.(/|\Z)|;'
     yt_re_cr: '\r'
-    yt_betik_adlari: ['kos.sh', 'yuk_k6.js', 'cpu_kaydedici.sh', 'on_kontrol.sh', 'durdur.sh', 'wrk_kos.sh', 'yuk_wrk.lua']
+    yt_re_k6_surum: '^v0[.](4[5-9]|5[0-9])[.][0-9]{1,2}\Z'
+    yt_re_proxy: '^http://[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?:[0-9]{1,5}\Z'
+    yt_re_arac_dizin: '^/sw/BMW_PORTAL(_DEV)?(/[A-Za-z0-9._-]+)+/araclar/[0-9]{1,10}\Z'
+    yt_derleme_hostlari: ['GBLABT02']
+    yt_eski_k6_isareti: '/yeni-playbook-gerekli/k6'
+    yt_eski_wrk_isareti: '/yeni-playbook-gerekli/wrk'
+    yt_betik_adlari: ['kos.sh', 'yuk_k6.js', 'cpu_kaydedici.sh', 'on_kontrol.sh', 'durdur.sh', 'wrk_kos.sh', 'yuk_wrk.lua', 'arac_hazirla.sh']
   tasks:
     - name: --- [Task] Girdi kapisi ---
       block:
@@ -43,6 +48,45 @@
               - (yuk_yuk_host | string) not in yt_edu_hostlari
             fail_msg: "yuk_islem on_kontrol|kosu|durdur, yuk_run_id rakam, yuk_hedef_turu sunucu|serbest; sunucu: yuk_hedef_host ad kuralina gore DEV/TEST/QA (GBNG[WX][A][DTQ]..., EDU degil), serbest: yuk_hedef_host bos; yuk_yuk_host DEV/TEST/QA ve hedeften FARKLI olmali; hicbir sey yapilmadi."
             quiet: true
+          when: (yuk_islem | default('') | string) != 'araclar'
+
+        - name: --- [Task] Araclar girdileri (derleme makinesi, surumler, ozetler, vekil, /sw koku) ---
+          ansible.builtin.assert:
+            that:
+              - (yuk_run_id | default('') | string) is match(yt_re_kosu_id)
+              - (yuk_derleme_host | default('') | string) is match(yt_re_host)
+              - ((yuk_derleme_host | default('') | string) in yt_derleme_hostlari) or (((yuk_derleme_host | default('') | string) is match(yt_re_nonprod_adi)) and ((yuk_derleme_host | default('') | string) not in yt_edu_hostlari))
+              - (yuk_k6_surum | default('') | string) is match(yt_re_k6_surum)
+              - (yuk_wrk_surum | default('') | string) == '4.2.0'
+              - ((yuk_proxy | default('') | string) == '') or ((yuk_proxy | default('') | string) is match(yt_re_proxy))
+              - (yuk_cikti_kok | default('') | string) is match(yt_re_cikti_kok)
+              - not ((yuk_cikti_kok | default('') | string) is search('[.][.]'))
+            fail_msg: "araclar girdileri gecersiz (yuk_run_id rakam; yuk_derleme_host GBLABT02 ya da DEV/TEST/QA nginx adi, EDU degil; yuk_k6_surum v0.45..v0.59; yuk_wrk_surum 4.2.0; yuk_proxy bos ya da http://<ad>:<port>; /sw koku); hicbir sey yapilmadi."
+            quiet: true
+          when: (yuk_islem | default('') | string) == 'araclar'
+
+        - name: --- [Task] Araclar arsiv ozetleri Portal'da sabit (ilk kullanimda guven yok) ---
+          ansible.builtin.assert:
+            that:
+              - (yuk_k6_arsiv_sha256 | default('') | string) is match(yt_re_sha256)
+              - (yuk_wrk_kaynak_sha256 | default('') | string) is match(yt_re_sha256)
+            fail_msg: "araclar girdileri gecersiz (arsiv ozetleri sabit degil): Portal'da NGINX_LOADTEST_K6_ARSIV_SHA256 ve NGINX_LOADTEST_WRK_KAYNAK_SHA256 64 kucuk hex olmali (README 'Arsiv ozetlerini sabitleme'); hicbir sey indirilmedi."
+            quiet: true
+          when: (yuk_islem | default('') | string) == 'araclar'
+
+        - name: --- [Task] Arac degiskenleri (on kontrol ve kosu) ---
+          ansible.builtin.assert:
+            that:
+              - (yuk_arac_dizin | default('') | string) is match(yt_re_arac_dizin)
+              - not ((yuk_arac_dizin | default('') | string) is search('[.][.]'))
+              - (yuk_arac_dizin | default('') | string).startswith((yuk_cikti_kok | default('') | string) ~ '/araclar/')
+              - (yuk_k6_sha256 | default('') | string) is match(yt_re_sha256)
+              - (yuk_wrk_sha256 | default('') | string) is match(yt_re_sha256)
+              - (yuk_k6_yolu | default('') | string) == yt_eski_k6_isareti
+              - (yuk_wrk_yolu | default('') | string) == yt_eski_wrk_isareti
+            fail_msg: "arac degiskenleri eksik ya da gecersiz (yuk_arac_dizin <yuk_cikti_kok>/araclar/<id>, yuk_k6_sha256 ve yuk_wrk_sha256 64 kucuk hex, yuk_k6_yolu/yuk_wrk_yolu yeni Portal isareti): Portal surumu playbook ile uyumsuz ya da araclar hazirlanmadi; hicbir sey yapilmadi."
+            quiet: true
+          when: (yuk_islem | default('') | string) in ['on_kontrol', 'kosu']
 
         - name: --- [Task] Kosu parametreleri (on kontrol ve kosu) ---
           ansible.builtin.assert:
@@ -90,16 +134,12 @@
               - (yuk_butce_sn | default('') | string) is match(yt_re_sayi)
               - (yuk_butce_sn | int) <= 2700
               - (yuk_butce_sn | int) >= ((yuk_bosta_bas_sn | int) + ((((yuk_hizlar if ((yuk_motor | default('') | string) == 'k6') else yuk_baglantilar) | string).split(' ')) | length) * (yuk_tekrar | int) * ((yuk_isinma_sn | int) + (yuk_sure_sn | int) + (yuk_bosluk_sn | int)) + 120)
-              - (yuk_k6_yolu | default('') | string) is match(yt_re_ikili_yolu)
-              - not ((yuk_k6_yolu | string) is search('[.][.]'))
-              - (yuk_wrk_yolu | default('') | string) is match(yt_re_ikili_yolu)
-              - not ((yuk_wrk_yolu | string) is search('[.][.]'))
               - (yuk_ua_onek | default('') | string) is match(yt_re_ua)
               - (yuk_cikti_kok | default('') | string) is match(yt_re_cikti_kok)
               - not ((yuk_cikti_kok | string) is search('[.][.]'))
-            fail_msg: "kosu parametreleri sinir disi ya da bicimsiz (hedef_turu sunucu|serbest, IPv4, vhost, sni, senaryo, motor k6|wrk; k6: hizlar 1..450 (serbest 200) en cok 5, maxvu 10..199 (serbest 50); wrk: baglantilar 1..199 (serbest 50) tekil en cok 5, is_parcacigi 1..16 en kucuk baglantidan buyuk degil ve her baglantiyi boler, tavan_rps 1..450 (serbest 200), sni 0; butce adim sayisina gore; tekrar 1..3, isinma 5..60, sure 30..300, bosluk 0..120, bosta 30..120, butce formul..2700, k6 ve wrk yolu, UA oneki, /sw koku); hicbir sey yapilmadi."
+            fail_msg: "kosu parametreleri sinir disi ya da bicimsiz (hedef_turu sunucu|serbest, IPv4, vhost, sni, senaryo, motor k6|wrk; k6: hizlar 1..450 (serbest 200) en cok 5, maxvu 10..199 (serbest 50); wrk: baglantilar 1..199 (serbest 50) tekil en cok 5, is_parcacigi 1..16 en kucuk baglantidan buyuk degil ve her baglantiyi boler, tavan_rps 1..450 (serbest 200), sni 0; butce adim sayisina gore; tekrar 1..3, isinma 5..60, sure 30..300, bosluk 0..120, bosta 30..120, butce formul..2700, UA oneki, /sw koku); hicbir sey yapilmadi."
             quiet: true
-          when: (yuk_islem | default('')) != 'durdur'
+          when: (yuk_islem | default('')) not in ['durdur', 'araclar']
 
         - name: --- [Task] Is gecerlilik suresi (AWX'ten yeniden baslatma reddedilir) ---
           ansible.builtin.assert:
@@ -114,17 +154,17 @@
         - name: --- [Task] Senaryo cozulur ---
           ansible.builtin.set_fact:
             yt_tsv: "{{ yuk_senaryo_b64 | b64decode }}"
-          when: (yuk_islem | default('')) != 'durdur'
+          when: (yuk_islem | default('')) not in ['durdur', 'araclar']
 
         - name: --- [Task] Senaryo satirlari ---
           ansible.builtin.set_fact:
             yt_govde: "{{ (yt_tsv[:-1] if yt_tsv.endswith('\n') else yt_tsv).split('\n') }}"
-          when: (yuk_islem | default('')) != 'durdur'
+          when: (yuk_islem | default('')) not in ['durdur', 'araclar']
 
         - name: --- [Task] Senaryo veri satirlari (istege bagli tek baslik satiri haric) ---
           ansible.builtin.set_fact:
             yt_veri: "{{ yt_govde[1:] if ((yt_govde | length) > 0 and yt_govde[0].startswith('#')) else yt_govde }}"
-          when: (yuk_islem | default('')) != 'durdur'
+          when: (yuk_islem | default('')) not in ['durdur', 'araclar']
 
         - name: --- [Task] Senaryo her satiriyla yeniden denetlenir (beyaz liste, sorgu yok, sha256) ---
           ansible.builtin.assert:
@@ -139,7 +179,7 @@
               - (yt_tsv | hash('sha256')) == (yuk_senaryo_sha256 | string)
             fail_msg: "senaryo reddedildi: 1..400 veri satiri (5 SEKME kolonu, yol beyaz listede; ?, #, noktali virgul (ornegin ;jsessionid), ters bolu, // ile baslayan ya da .. parcali yol YOK), CR yok, en cok 200 KB ve sha256 yuk_senaryo_sha256 ile ayni olmali; hicbir sey yapilmadi."
             quiet: true
-          when: (yuk_islem | default('')) != 'durdur'
+          when: (yuk_islem | default('')) not in ['durdur', 'araclar']
 
         - name: --- [Task] Betiklerin kaynak sha1'i ---
           ansible.builtin.stat:
@@ -175,18 +215,38 @@
             yt_ctl_dizin: "{{ yt_ctl.path }}"
           when: (yuk_islem | default('')) == 'kosu'
 
+        - name: --- [Task] Kontrol dugumunde arac toplama dizini (araclar) ---
+          ansible.builtin.tempfile:
+            state: directory
+            prefix: portal_yukarac_
+          register: yt_actl
+          when: (yuk_islem | default('') | string) == 'araclar'
+
+        - name: --- [Task] Arac toplama dizini ---
+          ansible.builtin.set_fact:
+            yt_actl_dizin: "{{ yt_actl.path }}"
+          when: (yuk_islem | default('') | string) == 'araclar'
+
         - name: --- [Task] Hedef nginx sunucusu (AWX limit KULLANILMAZ; serbest hedefte YOK) ---
           ansible.builtin.add_host:
             name: "{{ yuk_hedef_host }}"
             groups: yuk_hedef
           changed_when: false
-          when: (yuk_hedef_turu | default('sunucu') | string) == 'sunucu'
+          when: ((yuk_hedef_turu | default('sunucu') | string) == 'sunucu') and ((yuk_islem | default('') | string) != 'araclar')
 
         - name: --- [Task] Yuk makinesi (AWX limit KULLANILMAZ) ---
           ansible.builtin.add_host:
             name: "{{ yuk_yuk_host }}"
             groups: yuk_makine
           changed_when: false
+          when: (yuk_islem | default('') | string) != 'araclar'
+
+        - name: --- [Task] Derleme makinesi (araclar; AWX limit KULLANILMAZ) ---
+          ansible.builtin.add_host:
+            name: "{{ yuk_derleme_host }}"
+            groups: yuk_derleme
+          changed_when: false
+          when: (yuk_islem | default('') | string) == 'araclar'
 
       rescue:
         - name: --- [Task] Girdi reddedildi, hicbir sey YAPILMAZ ---
@@ -202,6 +262,14 @@
           changed_when: false
           failed_when: false
           when: (yt_ctl.path | default('') | length) > 0
+
+        - name: --- [Task] Gecici arac toplama dizini kaldirilir ---
+          ansible.builtin.file:
+            path: "{{ yt_actl.path }}"
+            state: absent
+          changed_when: false
+          failed_when: false
+          when: (yt_actl.path | default('') | length) > 0
 
 - name: --- [Play] Nginx yuk testi - hedef sunucu (on kontrol ya da CPU kaydedici baslat) ---
   hosts: yuk_hedef
@@ -434,6 +502,11 @@
     yt_re_uid: '^[0-9]+\Z'
     yt_re_yazdirilamaz: '[^\s!-~]'
     yt_re_ascii_disi: '[^ -~]'
+    yt_re_glibc_surum: 'GLIBC_[0-9]+[.][0-9]+'
+    yt_re_glibc_satiri: '^glibc [0-9]+[.][0-9]+'
+    yt_re_dolu_satir: '.*[^ ]'
+    yt_re_arac_adi: '^arac\Z'
+    yt_re_eski_arac: '/[0-9]{1,10}/arac\Z'
   tasks:
     - name: --- [Task] Yuk makinesi ---
       block:
@@ -476,6 +549,26 @@
                 - "{{ yt_dizin }}"
                 - "{{ yt_dizin }}/senaryo"
                 - "{{ yt_dizin }}/sonuc"
+
+            - name: --- [Task] Eski kosularin arac kopyalari (1 gunden eski <id>/arac; kosu ve sonuc dizinlerine dokunulmaz) ---
+              ansible.builtin.find:
+                paths: "{{ yt_ust }}"
+                file_type: directory
+                patterns: "{{ yt_re_arac_adi }}"
+                use_regex: true
+                recurse: true
+                depth: 2
+                age: 1d
+              register: yt_y_eski_arac
+              failed_when: false
+
+            - name: --- [Task] Eski arac kopyalari silinir (yalniz <id>/arac; bu kosununki haric) ---
+              ansible.builtin.file:
+                path: "{{ item }}"
+                state: absent
+              loop: "{{ yt_y_eski_arac.files | default([]) | map(attribute='path') | select('match', '^' ~ (yt_ust | regex_escape) ~ yt_re_eski_arac) | reject('equalto', yt_dizin ~ '/arac') | list }}"
+              changed_when: false
+              failed_when: false
 
             - name: --- [Task] www uid'i (kopya sahibi kapisi) ---
               ansible.builtin.command:
@@ -562,6 +655,67 @@
                 msg: "betik/senaryo kopyasi dogrulanamadi (kopya {{ 'basarisiz' if (yt_y_kopya is failed or yt_y_senaryo is failed) else 'ok' }}, reddedilen {{ yt_y_red | join(',') }}, senaryo sha256 {{ 'esit' if ((yt_y_sstat.stat.checksum | default('')) == (yuk_senaryo_sha256 | string)) else 'FARKLI' }}, dizin sahibi/izni {{ yt_y_dstat.stat.uid | default('?') }}/{{ yt_y_dstat.stat.mode | default('?') }}); hicbir sey calistirilmadi"
               when: not (yt_y_kapi | bool)
 
+            - name: --- [Task] Arac dizini (0700, www) ---
+              ansible.builtin.file:
+                path: "{{ yt_dizin }}/arac"
+                state: directory
+                mode: '0700'
+
+            - name: --- [Task] Secili motorun ikilisi /sw arac setinden kosu dizinine ---
+              ansible.builtin.copy:
+                remote_src: true
+                src: "{{ yuk_arac_dizin }}/{{ yuk_motor }}"
+                dest: "{{ yt_dizin }}/arac/{{ yuk_motor }}"
+                mode: '0700'
+              register: yt_y_arac_kopya
+              changed_when: false
+              ignore_errors: true
+
+            - name: --- [Task] Arac kopyasinin dogrulanmasi (sha256) ---
+              ansible.builtin.stat:
+                path: "{{ yt_dizin }}/arac/{{ yuk_motor }}"
+                checksum_algorithm: sha256
+                get_checksum: true
+              register: yt_y_arac_stat
+              failed_when: false
+
+            - name: --- [Task] Arac dizininin dogrulanmasi ---
+              ansible.builtin.stat:
+                path: "{{ yt_dizin }}/arac"
+              register: yt_y_arac_dstat
+              failed_when: false
+
+            - name: --- [Task] Beklenen arac ozeti (YALNIZ Portal degeri; /sw SHA256SUMS'a guvenilmez) ---
+              ansible.builtin.set_fact:
+                yt_arac_beklenen: "{{ yuk_k6_sha256 if (yuk_motor == 'k6') else yuk_wrk_sha256 }}"
+
+            - name: --- [Task] Arac kopyasi kapisi (ilk tutan neden; bos = dogrulandi) ---
+              ansible.builtin.set_fact:
+                yt_arac_neden: >-
+                  {{ ('kopya basarisiz: ' ~ (yt_y_arac_kopya.msg | default('?') | string | regex_replace(yt_re_ascii_disi, '?') | truncate(120, true, '...', 0))) if (yt_y_arac_kopya is failed)
+                     else ('kopya yok ya da duzenli dosya degil' if not (yt_y_arac_stat.stat.isreg | default(false))
+                     else (('sha256 farkli (beklenen ' ~ (yt_arac_beklenen | string)[:12] ~ '..., bulunan ' ~ (yt_y_arac_stat.stat.checksum | default('-') | string)[:12] ~ '...)') if ((yt_y_arac_stat.stat.checksum | default('')) != (yt_arac_beklenen | string))
+                     else (('sahip/izin uygun degil (' ~ (yt_y_arac_stat.stat.uid | default('?')) ~ '/' ~ (yt_y_arac_stat.stat.mode | default('?')) ~ ')') if not (((yt_y_arac_stat.stat.uid | default(-1) | string) == (yt_y_id.stdout | default('-') | trim)) and ((yt_y_arac_stat.stat.mode | default('')) == '0700') and ((yt_y_arac_dstat.stat.mode | default('')) == '0700') and ((yt_y_arac_dstat.stat.uid | default(-1) | string) == (yt_y_id.stdout | default('-') | trim)))
+                     else ''))) }}
+
+            - name: --- [Task] Arac kopyasi sonucu ---
+              ansible.builtin.set_fact:
+                yt_arac:
+                  dogrulandi: "{{ (yt_arac_neden | length) == 0 }}"
+                  sha256: "{{ yt_y_arac_stat.stat.checksum | default('') }}"
+                  hata: "{{ yt_arac_neden }}"
+
+            - name: --- [Task] Dogrulanmamis kopya silinir (ASLA calistirilmaz) ---
+              ansible.builtin.file:
+                path: "{{ yt_dizin }}/arac/{{ yuk_motor }}"
+                state: absent
+              when: not (yt_arac.dogrulandi | bool)
+
+            - name: --- [Task] Arac kopyasi dogrulanamadiysa DUR (kosu) ---
+              ansible.builtin.fail:
+                msg: "arac kopyasi dogrulanamadi: {{ yt_arac.hata }}; yuk gonderilmedi"
+              when: (yuk_islem == 'kosu') and not (yt_arac.dogrulandi | bool)
+
         - name: --- [Task] Serbest hedef izin listesi (/etc/portal_yuktesti/serbest_aglar) ---
           when: (yuk_islem in ['on_kontrol', 'kosu']) and (yuk_hedef_turu == 'serbest')
           block:
@@ -647,7 +801,7 @@
           block:
             - name: --- [Task] k6 ikilisi (var mi, sha256) ---
               ansible.builtin.stat:
-                path: "{{ yuk_k6_yolu }}"
+                path: "{{ yt_dizin }}/arac/k6"
                 checksum_algorithm: sha256
                 get_checksum: true
               register: yt_k6_stat
@@ -659,12 +813,12 @@
                 argv:
                   - timeout
                   - '30'
-                  - "{{ yuk_k6_yolu }}"
+                  - "{{ yt_dizin }}/arac/k6"
                   - version
               register: yt_k6_surum_run
               changed_when: false
               failed_when: false
-              when: (yuk_motor == 'k6') and (yt_k6_stat.stat.isreg | default(false)) and (yt_k6_stat.stat.executable | default(false))
+              when: (yuk_motor == 'k6') and (yt_k6_stat.stat.isreg | default(false)) and (yt_k6_stat.stat.executable | default(false)) and (yt_arac.dogrulandi | default(false) | bool)
 
             - name: --- [Task] k6 ozeti ---
               ansible.builtin.set_fact:
@@ -676,7 +830,7 @@
 
             - name: --- [Task] wrk ikilisi (var mi, sha256) ---
               ansible.builtin.stat:
-                path: "{{ yuk_wrk_yolu }}"
+                path: "{{ yt_dizin }}/arac/wrk"
                 checksum_algorithm: sha256
                 get_checksum: true
               register: yt_wrk_stat
@@ -688,12 +842,12 @@
                 argv:
                   - timeout
                   - '30'
-                  - "{{ yuk_wrk_yolu }}"
+                  - "{{ yt_dizin }}/arac/wrk"
                   - -v
               register: yt_wrk_surum_run
               changed_when: false
               failed_when: false
-              when: (yuk_motor == 'wrk') and (yt_wrk_stat.stat.isreg | default(false)) and (yt_wrk_stat.stat.executable | default(false))
+              when: (yuk_motor == 'wrk') and (yt_wrk_stat.stat.isreg | default(false)) and (yt_wrk_stat.stat.executable | default(false)) and (yt_arac.dogrulandi | default(false) | bool)
 
             - name: --- [Task] wrk surum satiri ---
               ansible.builtin.set_fact:
@@ -708,6 +862,32 @@
                   surum: "{{ yt_wrk_satiri | truncate(120) }}"
                   sha256: "{{ yt_wrk_stat.stat.checksum | default('') if (yt_wrk_stat.stat.isreg | default(false)) else '' }}"
               when: yuk_motor == 'wrk'
+
+            - name: --- [Task] Yuk makinesinin glibc surumu ---
+              ansible.builtin.command:
+                argv:
+                  - getconf
+                  - GNU_LIBC_VERSION
+              register: yt_y_glibc
+              changed_when: false
+              failed_when: false
+
+            - name: --- [Task] Arac calistirma hatasi (glibc disi; rc ve stderr'in ilk dolu satiri; wrk -v rc 1 normaldir) ---
+              ansible.builtin.set_fact:
+                yt_arac_cal_ilk: "{{ (((yt_k6_surum_run.stderr_lines | default([])) if (yuk_motor == 'k6') else (yt_wrk_surum_run.stderr_lines | default([]))) | select('match', yt_re_dolu_satir) | list | first | default('-')) | regex_replace(yt_re_ascii_disi, '?') | truncate(120, true, '...', 0) }}"
+                yt_arac_cal_hata: >-
+                  {{ ('rc ' ~ (yt_k6_surum_run.rc | string) ~ ((' (calistirma izni yok: noexec ya da SELinux?)') if ((yt_k6_surum_run.rc | int) == 126) else '') ~ ': ')
+                     if ((yuk_motor == 'k6') and (yt_k6_surum_run.rc is defined) and ((yt_k6_surum_run.rc | int) != 0))
+                     else (('rc ' ~ (yt_wrk_surum_run.rc | string) ~ ((' (calistirma izni yok: noexec ya da SELinux?)') if ((yt_wrk_surum_run.rc | int) == 126) else '') ~ ', surum satiri yok: ')
+                           if ((yuk_motor == 'wrk') and (yt_wrk_surum_run.rc is defined) and ((yt_wrk_satiri | default('') | length) == 0)) else '') }}
+
+            - name: --- [Task] Arac ozeti (kopya, sha256, glibc; calistirma hatasi) ---
+              ansible.builtin.set_fact:
+                yt_arac_ozet:
+                  dogrulandi: "{{ yt_arac.dogrulandi | default(false) | bool }}"
+                  sha256: "{{ yt_arac.sha256 | default('') }}"
+                  glibc: "{{ ((yt_y_glibc.stdout | default('') | trim).split(' ') | last) if ((yt_y_glibc.stdout | default('') | trim) is match(yt_re_glibc_satiri)) else '' }}"
+                  hata: "{{ (yt_arac.hata | default('')) or ((('glibc uyumsuz: makinede glibc ' ~ (((yt_y_glibc.stdout | default('') | trim).split(' ') | last) | default('?')) ~ ', arac ' ~ (((yt_k6_surum_run.stderr | default('')) ~ (yt_wrk_surum_run.stderr | default(''))) | regex_search(yt_re_glibc_surum)) ~ ' istiyor') if ((((yt_k6_surum_run.stderr | default('')) ~ (yt_wrk_surum_run.stderr | default(''))) | regex_search(yt_re_glibc_surum)) is string) else (((yt_arac_cal_hata | trim) ~ ' ' ~ yt_arac_cal_ilk) if ((yt_arac_cal_hata | trim | length) > 0) else ''))) }}"
 
             - name: --- [Task] Senaryodaki her tekil yol icin TEK HTTP/1.1 istegi (cerezsiz, vekilsiz) ---
               ansible.builtin.command:
@@ -792,8 +972,8 @@
                   - "SURE={{ yuk_sure_sn | int }}s"
                   - "BOSLUK={{ yuk_bosluk_sn | int }}"
                   - "MAXVU={{ yuk_maxvu | int }}"
-                  - "K6={{ yuk_k6_yolu }}"
-                  - "WRK={{ yuk_wrk_yolu }}"
+                  - "K6={{ yt_dizin }}/arac/k6"
+                  - "WRK={{ yt_dizin }}/arac/wrk"
                   - "UA_ONEK={{ yuk_ua_onek }}"
                   - "SENARYO_DIZIN={{ yt_dizin }}/senaryo"
                   - "SONUC={{ yt_dizin }}/sonuc"
@@ -1207,6 +1387,7 @@
           ansible.builtin.file:
             path: "{{ yt_dizin }}"
             state: absent
+          register: yt_d_dizin_sil
           changed_when: false
           when: yt_dizin_sil | bool
 
@@ -1220,6 +1401,15 @@
             yt_p7_hata: "{{ ansible_failed_result.msg | default('beklenmeyen hata') | string | truncate(300) }}"
 
       always:
+        - name: --- [Task] Arac kopyasi silinir (her yolda) ---
+          ansible.builtin.file:
+            path: "{{ yt_dizin }}/arac"
+            state: absent
+          register: yt_d_arac_sil
+          changed_when: false
+          ignore_errors: true
+          when: (yt_dizin | default('') | length) > 0
+
         - name: --- [Task] Kosuya ozel durdurma betigi silinir ---
           become: false
           ansible.builtin.file:
@@ -1228,6 +1418,619 @@
           changed_when: false
           failed_when: false
           when: (yt_durdur_betik | length) > 0
+
+- name: '--- [Play] Nginx yuk testi - araclar: indirme ve derleme (derleme makinesi) ---'
+  hosts: yuk_derleme
+  gather_facts: no
+  become: true
+  become_method: dzdo
+  become_user: www
+  ignore_unreachable: true
+  vars:
+    ansible_pipelining: true
+    yt_re_ascii_disi: '[^ -~]'
+    yt_re_sha_bas: '^[0-9a-f]{64}'
+    yt_re_sums_satiri: '^[0-9a-f]{64}  [A-Za-z0-9._-]+\Z'
+    yt_re_derleme_adi: '^arac_[0-9]+\Z'
+    yt_re_eski_derleme: '/arac_[0-9]{1,10}\Z'
+    yt_k6_url_taban: 'https://github.com/grafana/k6/releases/download'
+    yt_wrk_url_taban: 'https://github.com/wg/wrk/archive/refs/tags'
+    yt_proxy_ortam: "{{ ({'http_proxy': yuk_proxy, 'https_proxy': yuk_proxy, 'HTTP_PROXY': yuk_proxy, 'HTTPS_PROXY': yuk_proxy}) if ((yuk_proxy | default('') | string | length) > 0) else {} }}"
+  tasks:
+    - name: --- [Task] Derleme makinesi ---
+      block:
+        - name: --- [Task] www ev dizini ---
+          become: false
+          ansible.builtin.getent:
+            database: passwd
+            key: www
+          register: yt_a_getent
+
+        - name: --- [Task] Derleme makinesi erisilemediyse DUR (ssh) ---
+          ansible.builtin.fail:
+            msg: "erisilemedi (ssh): {{ yt_a_getent.msg | default('baglanti hatasi') | string | trim | regex_replace(yt_re_ascii_disi, '?') | truncate(160, true, '...', 0) }}"
+          when: yt_a_getent is unreachable
+
+        - name: --- [Task] Derleme dizini (www ev dizininde; /tmp noexec) ---
+          ansible.builtin.set_fact:
+            yt_a_ust: "{{ ansible_facts.getent_passwd.www[4] }}/.portal_yuktesti"
+            yt_a_dizin: "{{ ansible_facts.getent_passwd.www[4] }}/.portal_yuktesti/arac_{{ yuk_run_id | int }}"
+
+        - name: --- [Task] Derleme dizini bicimi ---
+          ansible.builtin.assert:
+            that:
+              - yt_a_dizin is match('^/[A-Za-z0-9._/-]+/[.]portal_yuktesti/arac_[0-9]{1,10}$')
+            fail_msg: "www ev dizini beklenmeyen bicimde: {{ yt_a_ust | truncate(120) }}"
+            quiet: true
+
+        - name: --- [Task] Onceki yarim deneme silinir ---
+          ansible.builtin.file:
+            path: "{{ yt_a_dizin }}"
+            state: absent
+
+        - name: --- [Task] Derleme dizinleri (0700, www) ---
+          ansible.builtin.file:
+            path: "{{ item }}"
+            state: directory
+            mode: '0700'
+          loop:
+            - "{{ yt_a_ust }}"
+            - "{{ yt_a_dizin }}"
+            - "{{ yt_a_dizin }}/indir"
+            - "{{ yt_a_dizin }}/derleme"
+            - "{{ yt_a_dizin }}/cikti"
+            - "{{ yt_a_dizin }}/tmp"
+
+        - name: --- [Task] Eski derleme dizinleri (1 gunden eski arac_<id>; iptal edilmis isler) ---
+          ansible.builtin.find:
+            paths: "{{ yt_a_ust }}"
+            file_type: directory
+            patterns: "{{ yt_re_derleme_adi }}"
+            use_regex: true
+            recurse: false
+            age: 1d
+          register: yt_a_eski
+          failed_when: false
+
+        - name: --- [Task] Eski derleme dizinleri silinir (bu isinki haric) ---
+          ansible.builtin.file:
+            path: "{{ item }}"
+            state: absent
+          loop: "{{ yt_a_eski.files | default([]) | map(attribute='path') | select('match', '^' ~ (yt_a_ust | regex_escape) ~ yt_re_eski_derleme) | reject('equalto', yt_a_dizin) | list }}"
+          changed_when: false
+          failed_when: false
+
+        - name: --- [Task] www uid'i (kopya sahibi kapisi) ---
+          ansible.builtin.command:
+            cmd: id -u
+          register: yt_a_id
+          changed_when: false
+
+        - name: --- [Task] Derleme betigi derleme dizinine ---
+          ansible.builtin.copy:
+            src: files/arac_hazirla.sh
+            dest: "{{ yt_a_dizin }}/arac_hazirla.sh"
+            mode: '0600'
+          register: yt_a_kopya
+          changed_when: false
+          ignore_errors: true
+
+        - name: --- [Task] Derleme betigi kopyasinin dogrulanmasi ---
+          ansible.builtin.stat:
+            path: "{{ yt_a_dizin }}/arac_hazirla.sh"
+            checksum_algorithm: sha1
+            get_checksum: true
+          register: yt_a_kstat
+          failed_when: false
+
+        - name: --- [Task] Derleme dizininin dogrulanmasi ---
+          ansible.builtin.stat:
+            path: "{{ yt_a_dizin }}"
+          register: yt_a_dstat
+          failed_when: false
+
+        - name: --- [Task] Derleme betigi dogrulanamadiysa DUR (sha1, sahip uid, duzenli dosya, grup/diger yazamaz, dizin 0700) ---
+          ansible.builtin.fail:
+            msg: "derleme betigi kopyasi dogrulanamadi; hicbir sey indirilmedi"
+          when: >-
+            not ((yt_a_kopya is not failed)
+                 and ((yt_a_kstat.stat.checksum | default('')) == (hostvars['localhost'].yt_kaynak_sha1['arac_hazirla.sh'] | default('-')))
+                 and ((yt_a_kstat.stat.uid | default(-1) | string) == (yt_a_id.stdout | default('-') | trim))
+                 and (yt_a_kstat.stat.isreg | default(false))
+                 and not (yt_a_kstat.stat.wgrp | default(true))
+                 and not (yt_a_kstat.stat.woth | default(true))
+                 and (yt_a_dstat.stat.isdir | default(false))
+                 and ((yt_a_dstat.stat.uid | default(-1) | string) == (yt_a_id.stdout | default('-') | trim))
+                 and ((yt_a_dstat.stat.mode | default('')) == '0700'))
+
+        - name: --- [Task] Indirme 1/3 k6 checksums (yalniz bu gorevde vekil) ---
+          ansible.builtin.get_url:
+            url: "{{ yt_k6_url_taban }}/{{ yuk_k6_surum }}/k6-{{ yuk_k6_surum }}-checksums.txt"
+            dest: "{{ yt_a_dizin }}/indir/k6-checksums.txt"
+            tmp_dest: "{{ yt_a_dizin }}/indir"
+            mode: '0600'
+            timeout: 120
+            validate_certs: true
+          environment: "{{ yt_proxy_ortam }}"
+          register: yt_a_ind_sums
+          ignore_errors: true
+
+        - name: --- [Task] Derleme makinesi erisilemediyse DUR (k6 checksums) ---
+          ansible.builtin.fail:
+            msg: "erisilemedi (ssh): {{ yt_a_ind_sums.msg | default('baglanti hatasi') | string | trim | regex_replace(yt_re_ascii_disi, '?') | truncate(160, true, '...', 0) }}"
+          when: yt_a_ind_sums is unreachable
+
+        - name: --- [Task] Indirme basarisizsa DUR (k6 checksums) ---
+          ansible.builtin.fail:
+            msg: "indirme basarisiz (k6 checksums): {{ yt_a_ind_sums.msg | default('?') | string | regex_replace(yt_re_ascii_disi, '?') | truncate(200, true, '...', 0) }}"
+          when: yt_a_ind_sums is failed
+
+        - name: --- [Task] k6 checksums okunur ---
+          ansible.builtin.slurp:
+            src: "{{ yt_a_dizin }}/indir/k6-checksums.txt"
+          register: yt_a_sums_raw
+
+        - name: --- [Task] k6 arsivinin resmi checksums satiri ---
+          ansible.builtin.set_fact:
+            yt_a_k6_arsiv: "k6-{{ yuk_k6_surum }}-linux-amd64.tar.gz"
+            yt_a_k6_eslesen: "{{ (yt_a_sums_raw.content | b64decode).split('\n') | map('trim') | select('match', yt_re_sums_satiri) | select('search', '  ' ~ (('k6-' ~ yuk_k6_surum ~ '-linux-amd64.tar.gz') | regex_escape) ~ '$') | map('regex_search', yt_re_sha_bas) | list }}"
+
+        - name: --- [Task] Resmi checksums satiri tek ve Portal'in sabit arsiv ozetiyle ayni ---
+          ansible.builtin.assert:
+            that:
+              - (yt_a_k6_eslesen | length) == 1
+              - (yt_a_k6_eslesen | first) == (yuk_k6_arsiv_sha256 | string)
+            fail_msg: "k6 checksums dosyasinda {{ yt_a_k6_arsiv }} icin tek satir yok ya da Portal'in sabit arsiv ozetiyle (NGINX_LOADTEST_K6_ARSIV_SHA256) farkli; hicbir sey indirilmedi ya da derlenmedi"
+            quiet: true
+
+        - name: --- [Task] k6 arsiv ozeti (Portal'in sabit degeri) ---
+          ansible.builtin.set_fact:
+            yt_a_k6_arsiv_sha: "{{ yuk_k6_arsiv_sha256 | string }}"
+
+        - name: --- [Task] Indirme 2/3 k6 arsivi (sabit ozetle checksum; yalniz bu gorevde vekil) ---
+          ansible.builtin.get_url:
+            url: "{{ yt_k6_url_taban }}/{{ yuk_k6_surum }}/{{ yt_a_k6_arsiv }}"
+            dest: "{{ yt_a_dizin }}/indir/k6.tar.gz"
+            checksum: "sha256:{{ yuk_k6_arsiv_sha256 }}"
+            tmp_dest: "{{ yt_a_dizin }}/indir"
+            mode: '0600'
+            timeout: 300
+            validate_certs: true
+          environment: "{{ yt_proxy_ortam }}"
+          register: yt_a_ind_k6
+          ignore_errors: true
+
+        - name: --- [Task] Derleme makinesi erisilemediyse DUR (k6 arsivi) ---
+          ansible.builtin.fail:
+            msg: "erisilemedi (ssh): {{ yt_a_ind_k6.msg | default('baglanti hatasi') | string | trim | regex_replace(yt_re_ascii_disi, '?') | truncate(160, true, '...', 0) }}"
+          when: yt_a_ind_k6 is unreachable
+
+        - name: --- [Task] Indirme basarisizsa DUR (k6 arsivi) ---
+          ansible.builtin.fail:
+            msg: "indirme basarisiz (k6 arsivi): {{ yt_a_ind_k6.msg | default('?') | string | regex_replace(yt_re_ascii_disi, '?') | truncate(200, true, '...', 0) }}"
+          when: yt_a_ind_k6 is failed
+
+        - name: --- [Task] Indirme 3/3 wrk kaynagi (sabit ozetle checksum; yalniz bu gorevde vekil) ---
+          ansible.builtin.get_url:
+            url: "{{ yt_wrk_url_taban }}/{{ yuk_wrk_surum }}.tar.gz"
+            dest: "{{ yt_a_dizin }}/indir/wrk.tar.gz"
+            checksum: "sha256:{{ yuk_wrk_kaynak_sha256 }}"
+            tmp_dest: "{{ yt_a_dizin }}/indir"
+            mode: '0600'
+            timeout: 300
+            validate_certs: true
+          environment: "{{ yt_proxy_ortam }}"
+          register: yt_a_ind_wrk
+          ignore_errors: true
+
+        - name: --- [Task] Derleme makinesi erisilemediyse DUR (wrk kaynagi) ---
+          ansible.builtin.fail:
+            msg: "erisilemedi (ssh): {{ yt_a_ind_wrk.msg | default('baglanti hatasi') | string | trim | regex_replace(yt_re_ascii_disi, '?') | truncate(160, true, '...', 0) }}"
+          when: yt_a_ind_wrk is unreachable
+
+        - name: --- [Task] Indirme basarisizsa DUR (wrk kaynagi) ---
+          ansible.builtin.fail:
+            msg: "indirme basarisiz (wrk kaynagi): {{ yt_a_ind_wrk.msg | default('?') | string | regex_replace(yt_re_ascii_disi, '?') | truncate(200, true, '...', 0) }}"
+          when: yt_a_ind_wrk is failed
+
+        - name: --- [Task] k6 arsivinin sha256'si ---
+          ansible.builtin.stat:
+            path: "{{ yt_a_dizin }}/indir/k6.tar.gz"
+            checksum_algorithm: sha256
+            get_checksum: true
+          register: yt_a_ast_k6
+
+        - name: --- [Task] wrk kaynak arsivinin sha256'si ---
+          ansible.builtin.stat:
+            path: "{{ yt_a_dizin }}/indir/wrk.tar.gz"
+            checksum_algorithm: sha256
+            get_checksum: true
+          register: yt_a_ast_wrk
+
+        - name: --- [Task] Arsiv ozetleri ---
+          ansible.builtin.set_fact:
+            yt_a_arsiv:
+              k6: "{{ yt_a_ast_k6.stat.checksum | default('') }}"
+              wrk: "{{ yt_a_ast_wrk.stat.checksum | default('') }}"
+
+        - name: --- [Task] Arsivler Portal'in sabit ozetleriyle ayni degilse DUR (acmadan, derlemeden, calistirmadan once) ---
+          ansible.builtin.assert:
+            that:
+              - (yt_a_arsiv.k6 | string) == (yuk_k6_arsiv_sha256 | string)
+              - (yt_a_arsiv.wrk | string) == (yuk_wrk_kaynak_sha256 | string)
+            fail_msg: "arsiv ozeti sabit degerden farkli (k6 {{ (yt_a_arsiv.k6 | string)[:12] }}... / beklenen {{ (yuk_k6_arsiv_sha256 | string)[:12] }}..., wrk {{ (yt_a_arsiv.wrk | string)[:12] }}... / beklenen {{ (yuk_wrk_kaynak_sha256 | string)[:12] }}...); hicbir sey acilmadi, derlenmedi ya da calistirilmadi"
+            quiet: true
+
+        - name: --- [Task] k6 ikilisi cikarilir, wrk derlenir (vekilsiz; timeout -k 30 1800) ---
+          ansible.builtin.command:
+            argv:
+              - timeout
+              - -k
+              - '30'
+              - '1800'
+              - env
+              - -u
+              - http_proxy
+              - -u
+              - https_proxy
+              - -u
+              - HTTP_PROXY
+              - -u
+              - HTTPS_PROXY
+              - -u
+              - ALL_PROXY
+              - -u
+              - all_proxy
+              - -u
+              - MAKEFLAGS
+              - "TMPDIR={{ yt_a_dizin }}/tmp"
+              - "K6_SURUM={{ yuk_k6_surum }}"
+              - "WRK_SURUM={{ yuk_wrk_surum }}"
+              - bash
+              - "{{ yt_a_dizin }}/arac_hazirla.sh"
+              - "{{ yt_a_dizin }}"
+            chdir: "{{ yt_a_dizin }}"
+          register: yt_a_run
+          changed_when: false
+          failed_when: false
+
+        - name: --- [Task] Derleme ciktisi (son 40 satir) ---
+          ansible.builtin.debug:
+            msg: "{{ (yt_a_run.stdout_lines | default([]))[-40:] }}"
+
+        - name: --- [Task] Derleme bilgisi baslangici ---
+          ansible.builtin.set_fact:
+            yt_a_bilgi: {}
+
+        - name: --- [Task] Derleme bilgisi (anahtar, deger; yazdirilabilir ASCII, en cok 120) ---
+          ansible.builtin.set_fact:
+            yt_a_bilgi: "{{ yt_a_bilgi | combine({item.split('\t')[0]: ((item.split('\t')[1] | default('')) | regex_replace(yt_re_ascii_disi, '?') | truncate(120, true, '...', 0))}) }}"
+          loop: "{{ yt_a_run.stdout_lines | default([]) | select('match', '^[a-z_0-9]+\t') | list }}"
+
+        - name: --- [Task] Derleme sonuc satiri ---
+          ansible.builtin.set_fact:
+            yt_a_sonuc: "{{ (yt_a_run.stdout_lines | default([]) | select('match', '^SONUC\t') | list | last | default('SONUC\tFAIL\tbetik sonuc satiri basmadi (rc ' ~ (yt_a_run.rc | default('?')) ~ ')')).split('\t') }}"
+
+        - name: --- [Task] Derleme basarisizsa DUR ---
+          ansible.builtin.fail:
+            msg: "derleme: {{ yt_a_sonuc[2] | default('?') | regex_replace(yt_re_ascii_disi, '?') | truncate(240, true, '...', 0) }}"
+          when: (yt_a_sonuc[1] | default('FAIL')) != 'OK'
+
+        - name: --- [Task] Derlenen ikililerin sha256'si ---
+          ansible.builtin.stat:
+            path: "{{ yt_a_dizin }}/cikti/{{ item }}"
+            checksum_algorithm: sha256
+            get_checksum: true
+          loop:
+            - k6
+            - wrk
+          register: yt_a_cstat
+
+        - name: --- [Task] Ikili ozetleri ---
+          ansible.builtin.set_fact:
+            yt_a_sha:
+              k6: "{{ yt_a_cstat.results[0].stat.checksum | default('') }}"
+              wrk: "{{ yt_a_cstat.results[1].stat.checksum | default('') }}"
+
+        - name: --- [Task] Ikili ozetleri okundu ---
+          ansible.builtin.assert:
+            that:
+              - yt_a_sha.k6 is match('^[0-9a-f]{64}$')
+              - yt_a_sha.wrk is match('^[0-9a-f]{64}$')
+            fail_msg: "derleme ciktisi okunamadi"
+            quiet: true
+
+        - name: --- [Task] Ikililer kontrol dugumune (duz) ---
+          ansible.builtin.fetch:
+            src: "{{ yt_a_dizin }}/cikti/{{ item }}"
+            dest: "{{ hostvars['localhost'].yt_actl_dizin }}/"
+            flat: true
+            validate_checksum: true
+          loop:
+            - k6
+            - wrk
+          register: yt_a_fetch
+
+        - name: --- [Task] Derleme makinesi erisilemediyse DUR (ikililerin aktarimi) ---
+          ansible.builtin.fail:
+            msg: "erisilemedi (ssh): {{ (yt_a_fetch.results | default([]) | selectattr('unreachable', 'defined') | selectattr('unreachable') | map(attribute='msg') | list | first | default(yt_a_fetch.msg | default('baglanti hatasi'))) | string | trim | regex_replace(yt_re_ascii_disi, '?') | truncate(160, true, '...', 0) }}"
+          when: (yt_a_fetch is unreachable) or ((yt_a_fetch.results | default([]) | selectattr('unreachable', 'defined') | selectattr('unreachable') | list | length) > 0)
+
+        - name: --- [Task] Derleme makinesi play tamam ---
+          ansible.builtin.set_fact:
+            yt_pa_bitti: true
+
+      rescue:
+        - name: --- [Task] Beklenmeyen hata (derleme makinesi) ---
+          ansible.builtin.set_fact:
+            yt_pa_hata: "{{ ansible_failed_result.msg | default('beklenmeyen hata') | string | regex_replace(yt_re_ascii_disi, '?') | truncate(300) }}"
+
+      always:
+        - name: --- [Task] Derleme dizini silinir (her yolda) ---
+          ansible.builtin.file:
+            path: "{{ yt_a_dizin }}"
+            state: absent
+          changed_when: false
+          failed_when: false
+          when: (yt_a_dizin | default('') | length) > 0
+
+- name: '--- [Play] Nginx yuk testi - araclar: /sw yayini (GBLABT02 uzerinden) ---'
+  hosts: localhost
+  gather_facts: no
+  ignore_unreachable: true
+  vars:
+    yt_re_ascii_disi: '[^ -~]'
+    yt_re_gblabt02_erisilemedi: '^GBLABT02 erisilemedi '
+  tasks:
+    - name: --- [Task] Arac seti /sw yayini ---
+      when: ((yuk_islem | default('') | string) == 'araclar') and (yt_actl_dizin is defined)
+      block:
+        - name: --- [Task] Yayin (yalniz derleme makinesi play'i tamamsa) ---
+          when: hostvars[yuk_derleme_host].yt_pa_bitti | default(false) | bool
+          block:
+            - name: --- [Task] Kontrol dugumune gelen kopyalarin sha256'si ---
+              ansible.builtin.stat:
+                path: "{{ yt_actl_dizin }}/{{ item }}"
+                checksum_algorithm: sha256
+                get_checksum: true
+              loop:
+                - k6
+                - wrk
+              register: yt_arac_lstat
+
+            - name: --- [Task] Kontrol dugumu kopyasi derlenenle ayni ---
+              ansible.builtin.assert:
+                that:
+                  - (yt_arac_lstat.results[0].stat.checksum | default('')) == (hostvars[yuk_derleme_host].yt_a_sha.k6 | default('-'))
+                  - (yt_arac_lstat.results[1].stat.checksum | default('')) == (hostvars[yuk_derleme_host].yt_a_sha.wrk | default('-'))
+                fail_msg: "kontrol dugumune gelen kopya derleme makinesindekiyle ayni degil"
+                quiet: true
+
+            - name: --- [Task] Arac seti /sw dizinleri ---
+              ansible.builtin.set_fact:
+                yt_arac_sw: "{{ yuk_cikti_kok }}/araclar/{{ yuk_run_id | int }}"
+                yt_arac_yarim: "{{ yuk_cikti_kok }}/araclar/.{{ yuk_run_id | int }}.yarim"
+
+            - name: --- [Task] /sw araclar dizini var mi (GBLABT02) ---
+              ansible.builtin.stat:
+                path: "{{ yuk_cikti_kok }}/araclar"
+              delegate_to: GBLABT02
+              register: yt_a_sw_r_kstat
+
+            - name: --- [Task] GBLABT02 erisilemediyse DUR (araclar dizini denetimi) ---
+              ansible.builtin.fail:
+                msg: "GBLABT02 erisilemedi (araclar dizini denetimi): {{ yt_a_sw_r_kstat.msg | default('baglanti hatasi') | string | truncate(200) }}"
+              when: yt_a_sw_r_kstat is unreachable
+
+            - name: --- [Task] araclar yolu dizin degilse DUR ---
+              ansible.builtin.fail:
+                msg: "araclar yolu dizin degil: {{ yuk_cikti_kok }}/araclar; yazilmadi"
+              when: (yt_a_sw_r_kstat.stat.exists | default(false) | bool) and not (yt_a_sw_r_kstat.stat.isdir | default(false) | bool)
+
+            - name: --- [Task] araclar dizini olusturma adimi (rescue iletisi icin) ---
+              ansible.builtin.set_fact:
+                yt_a_sw_adim: araclar_dizini
+
+            - name: --- [Task] /sw araclar dizini (GBLABT02; YALNIZ yoksa, 0755 - yuk makinelerinde www girebilsin) ---
+              ansible.builtin.file:
+                path: "{{ yuk_cikti_kok }}/araclar"
+                state: directory
+                mode: '0755'
+              delegate_to: GBLABT02
+              register: yt_a_sw_r_kok
+              when: not (yt_a_sw_r_kstat.stat.exists | default(false) | bool)
+
+            - name: --- [Task] GBLABT02 erisilemediyse DUR (araclar dizini) ---
+              ansible.builtin.fail:
+                msg: "GBLABT02 erisilemedi (araclar dizini): {{ yt_a_sw_r_kok.msg | default('baglanti hatasi') | string | truncate(200) }}"
+              when: yt_a_sw_r_kok is unreachable
+
+            - name: --- [Task] araclar dizini adimi bitti ---
+              ansible.builtin.set_fact:
+                yt_a_sw_adim: ''
+
+            - name: --- [Task] Arac seti dizini zaten var mi (GBLABT02) ---
+              ansible.builtin.stat:
+                path: "{{ yt_arac_sw }}"
+              delegate_to: GBLABT02
+              register: yt_a_sw_var
+
+            - name: --- [Task] GBLABT02 erisilemediyse DUR (arac dizini denetimi) ---
+              ansible.builtin.fail:
+                msg: "GBLABT02 erisilemedi (arac dizini denetimi): {{ yt_a_sw_var.msg | default('baglanti hatasi') | string | truncate(200) }}"
+              when: yt_a_sw_var is unreachable
+
+            - name: --- [Task] Ayni arac dizinine iki kez yazilmaz ---
+              ansible.builtin.fail:
+                msg: "arac dizini zaten var: {{ yt_arac_sw }} (ayni is yeniden baslatilmis olabilir); yazilmadi"
+              when: yt_a_sw_var.stat.exists | default(true) | bool
+
+            - name: --- [Task] Onceki yarim yayin silinir (GBLABT02) ---
+              ansible.builtin.file:
+                path: "{{ yt_arac_yarim }}"
+                state: absent
+              delegate_to: GBLABT02
+              register: yt_a_sw_r_ysil
+
+            - name: --- [Task] GBLABT02 erisilemediyse DUR (yarim dizin silme) ---
+              ansible.builtin.fail:
+                msg: "GBLABT02 erisilemedi (yarim dizin silme): {{ yt_a_sw_r_ysil.msg | default('baglanti hatasi') | string | truncate(200) }}"
+              when: yt_a_sw_r_ysil is unreachable
+
+            - name: --- [Task] Yarim yayin dizini (GBLABT02) ---
+              ansible.builtin.file:
+                path: "{{ yt_arac_yarim }}"
+                state: directory
+                mode: '0755'
+              delegate_to: GBLABT02
+              register: yt_a_sw_r_yarim
+
+            - name: --- [Task] GBLABT02 erisilemediyse DUR (yarim dizin) ---
+              ansible.builtin.fail:
+                msg: "GBLABT02 erisilemedi (yarim dizin): {{ yt_a_sw_r_yarim.msg | default('baglanti hatasi') | string | truncate(200) }}"
+              when: yt_a_sw_r_yarim is unreachable
+
+            - name: --- [Task] Ikililer /sw'ye (0644; /sw'den calistirilmaz) ---
+              ansible.builtin.copy:
+                src: "{{ yt_actl_dizin }}/{{ item }}"
+                dest: "{{ yt_arac_yarim }}/{{ item }}"
+                mode: '0644'
+              loop:
+                - k6
+                - wrk
+              delegate_to: GBLABT02
+              register: yt_a_sw_r_kopya
+
+            - name: --- [Task] GBLABT02 erisilemediyse DUR (arac dosyalari) ---
+              ansible.builtin.fail:
+                msg: "GBLABT02 erisilemedi (arac dosyalari): {{ (yt_a_sw_r_kopya.results | default([]) | selectattr('unreachable', 'defined') | selectattr('unreachable') | map(attribute='msg') | list | first | default('baglanti hatasi')) | string | truncate(200) }}"
+              when: (yt_a_sw_r_kopya is unreachable) or ((yt_a_sw_r_kopya.results | default([]) | selectattr('unreachable', 'defined') | selectattr('unreachable') | list | length) > 0)
+
+            - name: --- [Task] SHA256SUMS (GBLABT02; insan icin, yuk makinesi buna guvenmez) ---
+              ansible.builtin.copy:
+                content: "{{ hostvars[yuk_derleme_host].yt_a_sha.k6 }}  k6\n{{ hostvars[yuk_derleme_host].yt_a_sha.wrk }}  wrk\n"
+                dest: "{{ yt_arac_yarim }}/SHA256SUMS"
+                mode: '0644'
+              delegate_to: GBLABT02
+              register: yt_a_sw_r_sums
+
+            - name: --- [Task] GBLABT02 erisilemediyse DUR (SHA256SUMS) ---
+              ansible.builtin.fail:
+                msg: "GBLABT02 erisilemedi (SHA256SUMS): {{ yt_a_sw_r_sums.msg | default('baglanti hatasi') | string | truncate(200) }}"
+              when: yt_a_sw_r_sums is unreachable
+
+            - name: --- [Task] Derleme bilgisi (manifest icin) ---
+              ansible.builtin.set_fact:
+                yt_arac_b: "{{ hostvars[yuk_derleme_host].yt_a_bilgi | default({}) }}"
+
+            - name: --- [Task] Manifest ---
+              ansible.builtin.set_fact:
+                yt_arac_manifest: >-
+                  {{ {'surum': 1,
+                      'arac_id': (yuk_run_id | int),
+                      'olusturma_epoch': (now().timestamp() | int),
+                      'awx_job_id': ((tower_job_id | int) if (tower_job_id is defined) else none),
+                      'k6': {'surum': (yuk_k6_surum | string),
+                             'sha256': hostvars[yuk_derleme_host].yt_a_sha.k6,
+                             'arsiv': ('k6-' ~ yuk_k6_surum ~ '-linux-amd64.tar.gz'),
+                             'arsiv_sha256': hostvars[yuk_derleme_host].yt_a_k6_arsiv_sha,
+                             'surum_satiri': ((yt_arac_b.k6_surum_satiri | default('')) if ((yt_arac_b.k6_surum_satiri | default('-')) not in ['-', '']) else none),
+                             'statik': ({'1': true, '0': false}[yt_arac_b.k6_statik | default('-')] | default(none))},
+                      'wrk': {'surum': (yuk_wrk_surum | string),
+                              'sha256': hostvars[yuk_derleme_host].yt_a_sha.wrk,
+                              'kaynak': ('wrk-' ~ yuk_wrk_surum ~ '.tar.gz'),
+                              'kaynak_sha256': hostvars[yuk_derleme_host].yt_a_arsiv.wrk,
+                              'kaynak_sabit': ((yuk_wrk_kaynak_sha256 | string | length) > 0),
+                              'surum_satiri': ((yt_arac_b.wrk_surum_satiri | default('')) if ((yt_arac_b.wrk_surum_satiri | default('-')) not in ['-', '']) else none),
+                              'glibc_gerekli': ((yt_arac_b.wrk_glibc_gerekli | default('')) if ((yt_arac_b.wrk_glibc_gerekli | default('-')) not in ['-', '']) else none),
+                              'openssl': ((yt_arac_b.wrk_openssl | default('')) if ((yt_arac_b.wrk_openssl | default('-')) not in ['-', '']) else none),
+                              'luajit': ((yt_arac_b.wrk_luajit | default('')) if ((yt_arac_b.wrk_luajit | default('-')) not in ['-', '']) else none),
+                              'kutuphaneler': ((yt_arac_b.wrk_kutuphaneler | default('')) if ((yt_arac_b.wrk_kutuphaneler | default('-')) not in ['-', '']) else none)},
+                      'derleme': {'host': (yuk_derleme_host | string),
+                                  'rhel': ((yt_arac_b.derleme_rhel | default('')) if ((yt_arac_b.derleme_rhel | default('-')) not in ['-', '']) else none),
+                                  'glibc': ((yt_arac_b.derleme_glibc | default('')) if ((yt_arac_b.derleme_glibc | default('-')) not in ['-', '']) else none),
+                                  'os': ((yt_arac_b.derleme_os | default('')) if ((yt_arac_b.derleme_os | default('-')) not in ['-', '']) else none)}} }}
+
+            - name: --- [Task] manifest.json (GBLABT02; insan icin) ---
+              ansible.builtin.copy:
+                content: "{{ yt_arac_manifest | to_nice_json }}\n"
+                dest: "{{ yt_arac_yarim }}/manifest.json"
+                mode: '0644'
+              delegate_to: GBLABT02
+              register: yt_a_sw_r_man
+
+            - name: --- [Task] GBLABT02 erisilemediyse DUR (manifest.json) ---
+              ansible.builtin.fail:
+                msg: "GBLABT02 erisilemedi (manifest.json): {{ yt_a_sw_r_man.msg | default('baglanti hatasi') | string | truncate(200) }}"
+              when: yt_a_sw_r_man is unreachable
+
+            - name: --- [Task] Yarim dizin son adina (mv -T; dolu hedefte mv de reddeder, bos hedefin uzerine yazar; asil kapi yukaridaki stat) ---
+              ansible.builtin.command:
+                argv:
+                  - mv
+                  - -T
+                  - --
+                  - "{{ yt_arac_yarim }}"
+                  - "{{ yt_arac_sw }}"
+              changed_when: false
+              delegate_to: GBLABT02
+              register: yt_a_sw_r_mv
+
+            - name: --- [Task] GBLABT02 erisilemediyse DUR (yeniden adlandirma) ---
+              ansible.builtin.fail:
+                msg: "GBLABT02 erisilemedi (yeniden adlandirma): {{ yt_a_sw_r_mv.msg | default('baglanti hatasi') | string | truncate(200) }}"
+              when: yt_a_sw_r_mv is unreachable
+
+            - name: --- [Task] /sw'den geri okuma (sha256, duzenli dosya, 0644) ---
+              ansible.builtin.stat:
+                path: "{{ yt_arac_sw }}/{{ item }}"
+                checksum_algorithm: sha256
+                get_checksum: true
+              loop:
+                - k6
+                - wrk
+              delegate_to: GBLABT02
+              register: yt_a_sw_r_son
+
+            - name: --- [Task] GBLABT02 erisilemediyse DUR (geri okuma) ---
+              ansible.builtin.fail:
+                msg: "GBLABT02 erisilemedi (geri okuma): {{ (yt_a_sw_r_son.results | default([]) | selectattr('unreachable', 'defined') | selectattr('unreachable') | map(attribute='msg') | list | first | default('baglanti hatasi')) | string | truncate(200) }}"
+              when: (yt_a_sw_r_son is unreachable) or ((yt_a_sw_r_son.results | default([]) | selectattr('unreachable', 'defined') | selectattr('unreachable') | list | length) > 0)
+
+            - name: --- [Task] Geri okunan ikililer derlenenle ayni ---
+              ansible.builtin.assert:
+                that:
+                  - (yt_a_sw_r_son.results[0].stat.checksum | default('')) == (hostvars[yuk_derleme_host].yt_a_sha.k6 | default('-'))
+                  - (yt_a_sw_r_son.results[1].stat.checksum | default('')) == (hostvars[yuk_derleme_host].yt_a_sha.wrk | default('-'))
+                  - (yt_a_sw_r_son.results[0].stat.isreg | default(false)) and (yt_a_sw_r_son.results[1].stat.isreg | default(false))
+                  - ((yt_a_sw_r_son.results[0].stat.mode | default('')) == '0644') and ((yt_a_sw_r_son.results[1].stat.mode | default('')) == '0644')
+                fail_msg: "/sw okuma dogrulamasi tutmadi: {{ yt_arac_sw }}"
+                quiet: true
+
+            - name: --- [Task] Arac seti yayini tamam ---
+              ansible.builtin.set_fact:
+                yt_arac_tamam: true
+
+      rescue:
+        - name: --- [Task] Arac seti yayini basarisiz ---
+          ansible.builtin.set_fact:
+            yt_arac_yayin_hata: "{{ ((('araclar dizini olusturulamadi (GBLABT02, 0755): ') if (((yt_a_sw_adim | default('')) == 'araclar_dizini') and not ((ansible_failed_result.msg | default('') | string) is match(yt_re_gblabt02_erisilemedi))) else '') ~ (ansible_failed_result.msg | default('beklenmeyen hata') | string)) | regex_replace(yt_re_ascii_disi, '?') | truncate(300) }}"
+
+        - name: --- [Task] Yarim yayin dizini silinir (GBLABT02; erisilemezse kalir, Portal satiri FAILED) ---
+          ansible.builtin.file:
+            path: "{{ yt_arac_yarim | default('') }}"
+            state: absent
+          delegate_to: GBLABT02
+          failed_when: false
+          when: (yt_arac_yarim | default('') | length) > 0
+
+      always:
+        - name: --- [Task] Gecici arac toplama dizini kaldirilir ---
+          ansible.builtin.file:
+            path: "{{ yt_actl_dizin }}"
+            state: absent
+          changed_when: false
+          failed_when: false
 
 - name: --- [Play] Nginx yuk testi - sonuc ---
   hosts: localhost
@@ -1254,7 +2057,25 @@
                      + ([('toplama ' ~ yuk_yuk_host ~ ': ' ~ hostvars[yuk_yuk_host].yt_p5_hata)] if (hostvars[yuk_yuk_host].yt_p5_hata is defined) else [])
                      + ([('/sw kopyasi: ' ~ yt_sw_hata)] if (yt_sw_hata is defined) else [])
                      + ([('temizlik ' ~ yuk_hedef_host ~ ': ' ~ hostvars[yuk_hedef_host].yt_p7_hata)] if ((yt8_tur == 'sunucu') and (hostvars[yuk_hedef_host].yt_p7_hata is defined)) else [])
-                     + ([('temizlik ' ~ yuk_yuk_host ~ ': ' ~ hostvars[yuk_yuk_host].yt_p7_hata)] if (hostvars[yuk_yuk_host].yt_p7_hata is defined) else []))) }}
+                     + ([('temizlik ' ~ yuk_yuk_host ~ ': ' ~ hostvars[yuk_yuk_host].yt_p7_hata)] if (hostvars[yuk_yuk_host].yt_p7_hata is defined) else [])
+                     + (['durdurma ' ~ yuk_hedef_host ~ ': ' ~ ((hostvars[yuk_hedef_host].yt_durdur_sonuc | default([]))[3] | default('olculmedi'))] if ((yt8_tur == 'sunucu') and ((yuk_islem | default('')) == 'kosu') and (hostvars[yuk_hedef_host].yt_durdur_sonuc is defined) and ((hostvars[yuk_hedef_host].yt_durdur_sonuc[1] | default('FAIL')) != 'OK')) else [])
+                     + (['durdurma ' ~ yuk_yuk_host ~ ': ' ~ ((hostvars[yuk_yuk_host].yt_durdur_sonuc | default([]))[3] | default('olculmedi'))] if (((yuk_islem | default('')) == 'kosu') and (hostvars[yuk_yuk_host].yt_durdur_sonuc is defined) and ((hostvars[yuk_yuk_host].yt_durdur_sonuc[1] | default('FAIL')) != 'OK')) else [])
+                     + ([('temizlik ' ~ yuk_hedef_host ~ ': play tamamlanmadi (erisilemedi ya da dustu)')] if ((yt8_tur == 'sunucu') and (hostvars[yuk_hedef_host].yt_dizin is defined) and (hostvars[yuk_hedef_host].yt_p7_bitti is not defined) and (hostvars[yuk_hedef_host].yt_p7_hata is not defined)) else [])
+                     + ([('temizlik ' ~ yuk_yuk_host ~ ': play tamamlanmadi (erisilemedi ya da dustu)')] if ((hostvars[yuk_yuk_host].yt_dizin is defined) and (hostvars[yuk_yuk_host].yt_p7_bitti is not defined) and (hostvars[yuk_yuk_host].yt_p7_hata is not defined)) else [])
+                     + ([('temizlik ' ~ yuk_hedef_host ~ ': kosu dizini silinemedi (erisilemedi): ' ~ hostvars[yuk_hedef_host].yt_dizin)] if ((yt8_tur == 'sunucu') and ((hostvars[yuk_hedef_host].yt_d_dizin_sil | default({})) is unreachable)) else [])
+                     + ([('temizlik ' ~ yuk_yuk_host ~ ': kosu dizini silinemedi (erisilemedi): ' ~ hostvars[yuk_yuk_host].yt_dizin)] if ((hostvars[yuk_yuk_host].yt_d_dizin_sil | default({})) is unreachable) else [])
+                     + ([('temizlik ' ~ yuk_yuk_host ~ ': arac kopyasi silinemedi' ~ (' (erisilemedi)' if ((hostvars[yuk_yuk_host].yt_d_arac_sil | default({})) is unreachable) else ''))] if (((hostvars[yuk_yuk_host].yt_d_arac_sil | default({})) is failed) or ((hostvars[yuk_yuk_host].yt_d_arac_sil | default({})) is unreachable)) else []))) }}
+          when: (yuk_islem | default('') | string) != 'araclar'
+
+        - name: --- [Task] Araclar hatalari (derleme makinesi ve /sw yayini) ---
+          ansible.builtin.set_fact:
+            yt_hatalar: >-
+              {{ ([('girdi reddedildi, hicbir sey yapilmadi: ' ~ yt_girdi_hatasi)] if not (yt8_gecti | bool) else [])
+                 + ([] if not (yt8_gecti | bool) else (
+                     ([('derleme makinesi ' ~ yuk_derleme_host ~ ': ' ~ hostvars[yuk_derleme_host].yt_pa_hata)] if (hostvars[yuk_derleme_host].yt_pa_hata is defined) else [])
+                     + ([('derleme makinesi ' ~ yuk_derleme_host ~ ': play tamamlanmadi (erisilemedi ya da dustu)')] if (hostvars[yuk_derleme_host].yt_pa_bitti is not defined and hostvars[yuk_derleme_host].yt_pa_hata is not defined) else [])
+                     + ([('/sw yayini: ' ~ yt_arac_yayin_hata)] if (yt_arac_yayin_hata is defined) else []))) }}
+          when: (yuk_islem | default('') | string) == 'araclar'
 
         - name: --- [Task] On kontrol bolumu ---
           ansible.builtin.set_fact:
@@ -1268,6 +2089,10 @@
                   'statik_direktif': ((({'1': true, '0': false})[(hostvars[yuk_hedef_host].yt_hk | default({})).statik_direktif | default('-')] | default(none)) if (yt8_tur == 'sunucu') else none),
                   'ip_yuk_makinesinde': (({'1': true, '0': false})[((hostvars[yuk_yuk_host].yt_yk | default({})).ip_yuk_makinesinde | default('-'))] | default(none)),
                   'serbest_ag': ((((hostvars[yuk_yuk_host].yt_serbest_izin | default({})).ag | default('')) or none) if (yt8_tur == 'serbest') else none),
+                  'arac_dogrulandi': ((hostvars[yuk_yuk_host].yt_arac_ozet | default({})).dogrulandi | default(none)),
+                  'arac_sha256': (((hostvars[yuk_yuk_host].yt_arac_ozet | default({})).sha256 | default('')) or none),
+                  'arac_glibc': (((hostvars[yuk_yuk_host].yt_arac_ozet | default({})).glibc | default('')) or none),
+                  'arac_hata': (((hostvars[yuk_yuk_host].yt_arac_ozet | default({})).hata | default('')) or none),
                   'k6_var': (((hostvars[yuk_yuk_host].yt_k6 | default({})).var | default(false) | bool) if (yt8_motor == 'k6') else none),
                   'k6_surum': ((((hostvars[yuk_yuk_host].yt_k6 | default({})).surum | default('')) or none) if (yt8_motor == 'k6') else none),
                   'k6_sha256': ((((hostvars[yuk_yuk_host].yt_k6 | default({})).sha256 | default('')) or none) if (yt8_motor == 'k6') else none),
@@ -1290,8 +2115,10 @@
                  + (['yuk makinesi: ' ~ ((hostvars[yuk_yuk_host].yt_yk_sonuc | default(['', 'FAIL', 'olculmedi']))[2] | default(''))] if ((hostvars[yuk_yuk_host].yt_yk_sonuc | default(['', 'FAIL']))[1] | default('FAIL')) != 'OK' else [])
                  + (['hedef IP ' ~ yuk_hedef_ip ~ ' hedef sunucuda yerel degil'] if ((yt8_tur == 'sunucu') and not yt_s_onk.ip_yerel) else [])
                  + (['log dizini /web_log okunamiyor'] if ((yt8_tur == 'sunucu') and not yt_s_onk.log_dizini_okunur) else [])
-                 + (['k6 yok ya da calistirilamiyor: ' ~ yuk_k6_yolu] if ((yt8_motor == 'k6') and not (yt_s_onk.k6_var | bool)) else [])
-                 + (([('wrk calisiyor ama surumu okunamadi ya da 4 altinda (' ~ (yt_s_onk.wrk_surum or '-') ~ '); make VER=4.2.0 ile derleyin: ' ~ yuk_wrk_yolu)] if (yt_s_onk.wrk_calisiyor | bool) else [('wrk yok ya da calistirilamiyor: ' ~ yuk_wrk_yolu)]) if ((yt8_motor == 'wrk') and not (yt_s_onk.wrk_var | bool)) else [])
+                 + (['arac kopyasi dogrulanamadi: ' ~ (yt_s_onk.arac_hata or 'olculmedi')] if not (yt_s_onk.arac_dogrulandi is sameas true) else [])
+                 + (['arac calistirilamadi: ' ~ yt_s_onk.arac_hata] if ((yt_s_onk.arac_dogrulandi is sameas true) and (yt_s_onk.arac_hata is string)) else [])
+                 + (['k6 kopyasi calistirilamiyor: ' ~ (hostvars[yuk_yuk_host].yt_dizin | default('-')) ~ '/arac/k6'] if ((yt8_motor == 'k6') and not (yt_s_onk.k6_var | bool)) else [])
+                 + (([('wrk calisiyor ama surumu okunamadi ya da 4 altinda (' ~ (yt_s_onk.wrk_surum or '-') ~ '); arac setini yeniden hazirlayin (Portal Arac paneli)')] if (yt_s_onk.wrk_calisiyor | bool) else [('wrk kopyasi calistirilamiyor: ' ~ (hostvars[yuk_yuk_host].yt_dizin | default('-')) ~ '/arac/wrk')]) if ((yt8_motor == 'wrk') and not (yt_s_onk.wrk_var | bool)) else [])
                  + (['hicbir yol denenmedi'] if (yt_s_onk.yollar_toplam | int) == 0 else []) }}
           when: (yt8_gecti | bool) and ((yuk_islem | default('')) == 'on_kontrol')
 
@@ -1313,17 +2140,48 @@
               durdurulan: "{{ ((hostvars[yuk_hedef_host].yt_durdurulan | default([])) if (yt8_tur == 'sunucu') else []) + (hostvars[yuk_yuk_host].yt_durdurulan | default([])) }}"
           when: (yt8_gecti | bool) and ((yuk_islem | default('')) in ['kosu', 'durdur'])
 
+        - name: --- [Task] Araclar bolumu (derleme bilgisi) ---
+          ansible.builtin.set_fact:
+            yt8_ab: "{{ hostvars[yuk_derleme_host].yt_a_bilgi | default({}) }}"
+          when: (yt8_gecti | bool) and ((yuk_islem | default('')) == 'araclar')
+
+        - name: --- [Task] Araclar bolumu ---
+          ansible.builtin.set_fact:
+            yt_s_arac: >-
+              {{ {'arac_id': (yuk_run_id | int),
+                  'derleme_host': (yuk_derleme_host | string),
+                  'derleme_rhel': ((yt8_ab.derleme_rhel | default('')) if ((yt8_ab.derleme_rhel | default('-')) not in ['-', '']) else none),
+                  'derleme_glibc': ((yt8_ab.derleme_glibc | default('')) if ((yt8_ab.derleme_glibc | default('-')) not in ['-', '']) else none),
+                  'derleme_os': ((yt8_ab.derleme_os | default('')) if ((yt8_ab.derleme_os | default('-')) not in ['-', '']) else none),
+                  'k6_surum': (yuk_k6_surum | string),
+                  'k6_surum_satiri': ((yt8_ab.k6_surum_satiri | default('')) if ((yt8_ab.k6_surum_satiri | default('-')) not in ['-', '']) else none),
+                  'k6_sha256': (((hostvars[yuk_derleme_host].yt_a_sha | default({})).k6 | default('')) or none),
+                  'k6_arsiv_sha256': ((hostvars[yuk_derleme_host].yt_a_k6_arsiv_sha | default('')) or none),
+                  'k6_statik': ({'1': true, '0': false}[yt8_ab.k6_statik | default('-')] | default(none)),
+                  'wrk_surum': (yuk_wrk_surum | string),
+                  'wrk_surum_satiri': ((yt8_ab.wrk_surum_satiri | default('')) if ((yt8_ab.wrk_surum_satiri | default('-')) not in ['-', '']) else none),
+                  'wrk_sha256': (((hostvars[yuk_derleme_host].yt_a_sha | default({})).wrk | default('')) or none),
+                  'wrk_kaynak_sha256': (((hostvars[yuk_derleme_host].yt_a_arsiv | default({})).wrk | default('')) or none),
+                  'wrk_kaynak_sabit': ((yuk_wrk_kaynak_sha256 | default('') | string | length) > 0),
+                  'wrk_glibc_gerekli': ((yt8_ab.wrk_glibc_gerekli | default('')) if ((yt8_ab.wrk_glibc_gerekli | default('-')) not in ['-', '']) else none),
+                  'wrk_openssl': ((yt8_ab.wrk_openssl | default('')) if ((yt8_ab.wrk_openssl | default('-')) not in ['-', '']) else none),
+                  'wrk_luajit': ((yt8_ab.wrk_luajit | default('')) if ((yt8_ab.wrk_luajit | default('-')) not in ['-', '']) else none),
+                  'wrk_kutuphaneler': ((yt8_ab.wrk_kutuphaneler | default('')) if ((yt8_ab.wrk_kutuphaneler | default('-')) not in ['-', '']) else none),
+                  'sw_dizin': (yt_arac_sw if (yt_arac_tamam | default(false) | bool) else none)} }}
+          when: (yt8_gecti | bool) and ((yuk_islem | default('')) == 'araclar')
+
         - name: --- [Task] Durum ---
           ansible.builtin.set_fact:
             yt_durum: >-
               {{ 'FAIL' if not (yt8_gecti | bool)
+                 else (('OK' if ((yt_arac_tamam | default(false) | bool) and ((yt_hatalar | length) == 0)) else 'FAIL') if ((yuk_islem | default('')) == 'araclar')
                  else (('OK' if ((yt_engeller | length) == 0 and (yt_hatalar | length) == 0) else 'FAIL') if (yuk_islem | default('')) == 'on_kontrol'
                  else (('OK' if ((((hostvars[yuk_yuk_host].yt_durdur_sonuc | default(['', 'FAIL']))[1] | default('FAIL')) == 'OK')
                                  and ((yt8_tur == 'serbest') or (((hostvars[yuk_hedef_host].yt_durdur_sonuc | default(['', 'FAIL']))[1] | default('FAIL')) == 'OK'))
                                  and (yt_hatalar | length) == 0) else 'FAIL') if (yuk_islem | default('')) == 'durdur'
                  else ('OK' if ((yt_kosu_basarili | default(false) | bool) and (yt_sw_tamam | default(false) | bool) and (yt_hatalar | length) == 0)
                        else ('DUR' if ((yt_s_kosu.kos_rc in [4, 130]) and (yt_sw_tamam | default(false) | bool) and ((yt8_tur == 'serbest') or (yt_s_kosu.kaydedici_rc == 0)))
-                       else 'FAIL')))) }}
+                       else 'FAIL'))))) }}
 
         - name: --- [Task] Silinmeyen kosu dizinleri (kosu betigi basladi, /sw kopyasi tamamlanmadi) ---
           ansible.builtin.set_fact:
@@ -1333,9 +2191,20 @@
                        + ([yuk_yuk_host ~ ':' ~ hostvars[yuk_yuk_host].yt_dizin] if (hostvars[yuk_yuk_host].yt_dizin is defined) else [])) }}
           when: (yt8_gecti | bool) and ((yuk_islem | default('')) == 'kosu')
 
+        - name: --- [Task] Silinmeyen kosu dizinleri (durdurma dogrulanamadi ya da surec kaldi; Play 7 silmedi) ---
+          ansible.builtin.set_fact:
+            yt_kalan: >-
+              {{ (((([yuk_hedef_host ~ ':' ~ hostvars[yuk_hedef_host].yt_dizin] if ((hostvars[yuk_hedef_host].yt_dizin is defined) and (hostvars[yuk_hedef_host].yt_dizin_sil is defined) and not (hostvars[yuk_hedef_host].yt_dizin_sil | bool)) else []) if (yt8_tur == 'sunucu') else [])
+                   + ([yuk_yuk_host ~ ':' ~ hostvars[yuk_yuk_host].yt_dizin] if ((hostvars[yuk_yuk_host].yt_dizin is defined) and (hostvars[yuk_yuk_host].yt_dizin_sil is defined) and not (hostvars[yuk_yuk_host].yt_dizin_sil | bool)) else []))
+                 | reject('in', (yt_korunan | default([]))) | list) }}
+          when: (yt8_gecti | bool) and ((yuk_islem | default('')) in ['kosu', 'durdur'])
+
         - name: --- [Task] Hata metni govdesi ve korunan dizin notu ---
           ansible.builtin.set_fact:
-            yt_korunan_not: "{{ ('kosu dizini silinmedi (/sw kopyasi yok, veri elle kurtarilabilir): ' ~ (yt_korunan | default([]) | join(', '))) if ((yt_korunan | default([]) | length) > 0) else '' }}"
+            yt_korunan_not: >-
+              {{ ([(('kosu dizini silinmedi (/sw kopyasi yok, veri elle kurtarilabilir): ' ~ (yt_korunan | default([]) | join(', '))) if ((yt_korunan | default([]) | length) > 0) else '')]
+                  + [(('kosu dizini silinmedi (durdurma tamamlanmadi; elle silin): ' ~ (yt_kalan | default([]) | join(', '))) if ((yt_kalan | default([]) | length) > 0) else '')])
+                 | select | join('; ') }}
             yt_hata_govde: >-
               {{ (yt_hatalar
                   + (yt_engeller | default([]))
@@ -1364,7 +2233,8 @@
                   'hata': (yt_hata_metni if ((yt_hata_metni | length) > 0) else none),
                   'on_kontrol': (yt_s_onk | default(none)),
                   'kosu': (yt_s_kosu | default(none)),
-                  'durdur': (yt_s_durdur | default(none))} }}
+                  'durdur': (yt_s_durdur | default(none)),
+                  'araclar': (yt_s_arac | default(none))} }}
 
       rescue:
         - name: --- [Task] Sonuc derlenemedi ---
@@ -1379,7 +2249,8 @@
                   'hata': (('sonuc derlenemedi: ' ~ (ansible_failed_result.msg | default('?') | string)) | truncate(300)),
                   'on_kontrol': none,
                   'kosu': none,
-                  'durdur': none} }}
+                  'durdur': none,
+                  'araclar': none} }}
 
     - name: --- [Task] Sonuc (set_stats) ---
       ansible.builtin.set_stats:

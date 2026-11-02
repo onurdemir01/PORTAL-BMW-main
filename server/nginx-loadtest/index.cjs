@@ -33,6 +33,13 @@
 // DURDUR: AWX iptali uzaktaki async kos.sh/k6'yi ve ayrik kaydediciyi DURDURMAZ. Kosu icin durdur
 // kipindeki is baslatilamazsa 424 durdur_baslatilamadi (iptal basarili olsa da); baslarsa kosunun
 // kilitleri (kilit_id) durdur isine baglanir ve o is basariyla bitince birakilir (kilit.cjs).
+//
+// ARAC SETLERI (tur 4, 2026-11-02): k6 / wrk yuk makinelerine kurulmaz; Admin /araclar ile /sw'ye
+// hazirlar (araclar.cjs). On kontrol ve kosu etkin seti ister (sablon cozumunden SONRA, kilitten
+// ONCE: 409 araclar_ozet_sabit_yok / araclar_hazir_degil / araclar_ozet_degisti / araclar_geri_cekildi,
+// 424 okunamadi); satira arac_id yazilir ve extra_vars setin /sw dizinini ve sha256'larini tasir.
+// Kosu, on kontrolun arac_id'si NULL (arac oncesi) ya da etkin set degilse 409 on_kontrol_eski.
+// Admin bir DONE seti geri cekebilir (POST /araclar/:id/geri-cek).
 'use strict';
 
 const crypto = require('node:crypto');
@@ -41,6 +48,7 @@ const dg = require('./dogrula.cjs');
 const kilit = require('./kilit.cjs');
 const baslat = require('./baslat.cjs');
 const poller = require('./poller.cjs');
+const araclar = require('./araclar.cjs');
 const { adminOkumaKapisi, isAdmin } = require('../auth/admin-okuma-kapisi.cjs');
 
 const TERMINAL = new Set(['successful', 'failed', 'error', 'canceled']);
@@ -63,6 +71,7 @@ const ADMIN_DISI_OKUMA = Object.freeze([
   /^\/kosular\/?$/,
   /^\/kosular\/\d+\/?$/,
   /^\/karsilastir\/?$/,
+  /^\/araclar\/?$/,
 ]);
 
 const db = () => require('../db/index.cjs');
@@ -221,7 +230,7 @@ const KOSU_KOLONLARI = `k.id, k.senaryo_id, k.on_kontrol_kosu_id, k.islem, k.eti
   k.yuk_host, k.parametreler, k.durum, k.awx_server_id, k.awx_job_id, k.sw_dizin, k.sonuc, k.on_kontrol_ozet,
   k.gecerlilik, k.gecersiz_nedenleri, k.created_by, k.created_at, k.started_at, k.finished_at, k.finalized_at,
   k.iptal_eden, k.kilit_id, k.durdur_awx_server_id, k.durdur_awx_job_id, k.sonuclandirma_denemesi,
-  k.hedef_turu, k.motor, k.plan_uyarilari,
+  k.hedef_turu, k.motor, k.plan_uyarilari, k.arac_id,
   s.ad AS senaryo_ad, DATEDIFF(SECOND, k.finished_at, GETUTCDATE()) AS yas_sn,
   DATEDIFF(SECOND, k.created_at, GETUTCDATE()) AS olusma_yas_sn`;
 
@@ -342,10 +351,14 @@ async function kosuBasarisiz(kosuId, adim, sonuc, jobId = null, awxServerId = nu
  * Kilit -> satir (QUEUED) -> son kapi -> AWX -> kilidi ise bagla -> RUNNING.
  * Sablon kilitten ONCE cozulur: template yoksa ne kilit ne satir olusur.
  */
-async function kosuyuBaslat(req, { islem, plan, onKontrolKosuId = null, onaylananUyarilar = [] }) {
+async function kosuyuBaslat(req, { islem, plan, onKontrolKosuId = null, onaylananUyarilar = [], beklenenAracId = null }) {
   const user = kullanici(req);
   const kullaniciAdi = String(user.username || 'unknown').slice(0, 100);
   const sablon = await baslat.sablonuCoz();
+  // Arac kapisi: sablondan SONRA, kilitten ONCE (set yoksa ne kilit ne satir olusur).
+  const aracSeti = await araclar.aracKapisi(db());
+  const aracId = Number(aracSeti.id);
+  if (beklenenAracId != null && Number(beklenenAracId) !== aracId) throw hata(409, 'on_kontrol_eski', araclar.MESAJ.onKontrolEski);
   const hedefTuru = plan.hedefTuru === 'serbest' ? 'serbest' : 'sunucu';
   const motor = plan.parametreler && plan.parametreler.motor === 'wrk' ? 'wrk' : 'k6';
   const anahtarlar = kilit.kilitAnahtarlari({ hedef: plan.hedefHost, hedefIp: plan.hedefIp, hedefTuru, yuk: plan.yukHost, kosu: islem === 'kosu' });
@@ -382,10 +395,10 @@ async function kosuyuBaslat(req, { islem, plan, onKontrolKosuId = null, onaylana
     // Serbest satirda hedef_host '' (NULL'a cevrilmez); motor parametreler.motor'un liste kopyasi;
     // plan_uyarilari bos ise NULL (ekran ve kosu onayi ayni listeyi gorur).
     const ins = await db().query(
-      `INSERT INTO nginx_loadtest_kosular (senaryo_id, on_kontrol_kosu_id, islem, etiket, hedef_host, hedef_ip, vhost, yuk_host, parametreler, durum, created_by, kilit_id, hedef_turu, motor, plan_uyarilari)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'QUEUED', $10, $11, $12, $13, $14) RETURNING id`,
+      `INSERT INTO nginx_loadtest_kosular (senaryo_id, on_kontrol_kosu_id, islem, etiket, hedef_host, hedef_ip, vhost, yuk_host, parametreler, durum, created_by, kilit_id, hedef_turu, motor, plan_uyarilari, arac_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'QUEUED', $10, $11, $12, $13, $14, $15) RETURNING id`,
       [plan.senaryo.id, onKontrolKosuId, islem, plan.etiket, plan.hedefHost || '', plan.hedefIp, plan.vhost, plan.yukHost, JSON.stringify(plan.parametreler), kullaniciAdi, lockId,
-        hedefTuru, motor, planUyarilari.length ? JSON.stringify(planUyarilari) : null],
+        hedefTuru, motor, planUyarilari.length ? JSON.stringify(planUyarilari) : null, aracId],
     );
     kosuId = Number(ins.rows && ins.rows[0] && ins.rows[0].id);
     if (!(kosuId > 0)) throw new Error('koşu numarası dönmedi');
@@ -398,7 +411,7 @@ async function kosuyuBaslat(req, { islem, plan, onKontrolKosuId = null, onaylana
   const simdiSn = Math.floor(Date.now() / 1000);
   const ev = dg.ekstraDegiskenler({
     islem, kosuId, hedefHost: plan.hedefHost, yukHost: plan.yukHost, hedefIp: plan.hedefIp, vhost: plan.vhost,
-    senaryo: plan.senaryo, p: plan.parametreler, k6: dg.k6Yolu(), kok, hedefTuru, wrk: dg.wrkYolu(), simdiSn,
+    senaryo: plan.senaryo, p: plan.parametreler, kok, hedefTuru, arac: araclar.aracDegiskeni(aracSeti), simdiSn,
   });
   const ihlal = dg.ekstraDegiskenleriDenetle(ev, { simdiSn });
   if (ihlal.length) {
@@ -422,7 +435,7 @@ async function kosuyuBaslat(req, { islem, plan, onKontrolKosuId = null, onaylana
           kosuId, adim, islem, hedefTuru, motor, hedefHost: plan.hedefHost || null, hedefIp: plan.hedefIp,
           vhost: plan.vhost, vhostListede: plan.vhostListede ?? null, serbestAg: plan.serbestAg ?? null,
           yukHost: plan.yukHost, senaryoId: plan.senaryo.id, senaryoSha256: plan.senaryo.sha256,
-          parametreler: plan.parametreler, etiket: plan.etiket, onKontrolKosuId, planUyarilari, onaylananUyarilar,
+          parametreler: plan.parametreler, etiket: plan.etiket, onKontrolKosuId, aracId, planUyarilari, onaylananUyarilar,
         },
       },
     });
@@ -558,6 +571,8 @@ function yonlendiriciKur() {
         taramaVerisi: k.sunucular !== null, rateLimitVerisi: k.ayarlar !== null,
         serbest: { acik: aglar.length > 0, aglar: isAdmin(req) ? aglar.map((a) => a.metin) : [] },
         motorlar: [...dg.MOTORLAR],
+        // Tur 4: arac seti durumu (DB okunamazsa hazir:false + db_okunamadi; uc 200 kalir).
+        araclar: await araclar.aracDurumuEkran(db()),
       });
     } catch (e) {
       hataYaniti(req, res, e);
@@ -733,7 +748,17 @@ function yonlendiriciKur() {
           ? `Onay için hedef IP'yi (${ok.hedef_ip}) birebir yazın.`
           : `Onay için hedef sunucu adını (${ok.hedef_host}) birebir yazın.`);
       }
-      const deg = dg.onKontrolDegerlendir(jsonOku(ok.on_kontrol_ozet), { hedefTuru: tur, motor });
+      // Tur 4: on kontrol etkin arac setiyle yapilmis olmali (degerlendirmeden ONCE). Set yoksa karar
+      // kosuyuBaslat'taki arac kapisinda (sablondan sonra, kilitten once) verilir.
+      if (ok.arac_id == null) throw hata(409, 'on_kontrol_eski', araclar.MESAJ.onKontrolAracsiz);
+      let etkinArac;
+      try {
+        etkinArac = (await araclar.aracDurumu(db())).etkin;
+      } catch {
+        throw hata(424, 'db_okunamadi', araclar.MESAJ.okunamadi);
+      }
+      if (etkinArac && Number(etkinArac.id) !== Number(ok.arac_id)) throw hata(409, 'on_kontrol_eski', araclar.MESAJ.onKontrolEski);
+      const deg = dg.onKontrolDegerlendir(jsonOku(ok.on_kontrol_ozet), { hedefTuru: tur, motor, aracli: true, aracSha256: araclar.motorSha(etkinArac, motor) });
       if (deg.engeller.length) throw hata(409, 'on_kontrol_eski', `Ön kontrol koşuya izin vermiyor: ${deg.engeller.join('; ')}.`, { engeller: deg.engeller });
       // Onaylanacak liste = on kontrolde saklanan plan uyarilari + on kontrol degerlendirmesi (ekranla ayni).
       const sakliPlanUyarilari = metinDizisi(ok.plan_uyarilari);
@@ -756,7 +781,7 @@ function yonlendiriciKur() {
       if (kararliJson(plan.parametreler) !== kararliJson(sakli)) {
         throw hata(409, 'on_kontrol_eski', 'Parametreler ön kontrolden bu yana değişti; ön kontrolü yeniden çalıştırın.');
       }
-      const r = await kosuyuBaslat(req, { islem: 'kosu', plan, onKontrolKosuId: okId, onaylananUyarilar: uyarilar });
+      const r = await kosuyuBaslat(req, { islem: 'kosu', plan, onKontrolKosuId: okId, onaylananUyarilar: uyarilar, beklenenAracId: Number(ok.arac_id) });
       res.json({ ok: true, ...r });
     } catch (e) {
       hataYaniti(req, res, e, 'nginx_loadtest_baslat', ok ? { host: ok.hedef_host, ip: ok.hedef_ip, kosuId: e && e.kosuId } : null);
@@ -856,13 +881,29 @@ function yonlendiriciKur() {
       }
       const tur = k.hedef_turu || 'sunucu';
       const motor = motorOf(k);
-      const deg = okOzet ? dg.onKontrolDegerlendir(okOzet, { hedefTuru: tur, motor }) : null;
+      // Tur 4: satirin arac seti (durumundan bagimsiz); okunamazsa yalniz gosterim eksik kalir.
+      const aracId = k.arac_id == null ? null : Number(k.arac_id);
+      let aracSatiri = null;
+      if (aracId != null) {
+        try {
+          aracSatiri = await araclar.aracSetiOku(db(), aracId);
+        } catch (e) {
+          console.warn(`[NginxYukTesti] kosu ${id} arac seti ${aracId} okunamadi:`, maskele(e && e.message));
+        }
+      }
+      const aracApi = aracSatiri ? araclar.aracApi(aracSatiri) : null;
+      const aracSeti = aracApi
+        ? { id: aracApi.id, k6Surum: aracApi.k6Surum, wrkSurum: aracApi.wrkSurum, k6Sha256: aracApi.k6Sha256, wrkSha256: aracApi.wrkSha256, derlemeHost: aracApi.derlemeHost }
+        : null;
+      const deg = okOzet ? dg.onKontrolDegerlendir(okOzet, { hedefTuru: tur, motor, aracli: aracId != null, aracSha256: araclar.motorSha(aracSatiri, motor) }) : null;
       // Izinli ag ekran icin env'den SU AN hesaplanir (DB okumaz); playbook'un esledigi girdi onKontrol.serbest_ag.
       const serbestAg = tur === 'serbest' ? (dg.serbestAgBul(k.hedef_ip, dg.serbestAglar()) || {}).metin || null : null;
       res.json({
         ok: true,
         kosu: {
           ...kosuApi(k),
+          aracId,
+          aracSeti,
           parametreler: jsonOku(k.parametreler),
           planUyarilari,
           serbestAg,
@@ -988,8 +1029,8 @@ function yonlendiriciKur() {
           const simdiSn = Math.floor(Date.now() / 1000);
           const ev = dg.ekstraDegiskenler({
             islem: 'durdur', kosuId: id, hedefHost: k.hedef_host, yukHost: k.yuk_host, hedefIp: k.hedef_ip, vhost: k.vhost,
-            senaryo: { tur: sen.senaryo_tur, tsv: sen.tsv, sha256: String(sen.sha256).trim() }, p: { ...p, motor }, k6: dg.k6Yolu(), kok: dg.ciktiKok(),
-            hedefTuru: tur, wrk: dg.wrkYolu(), simdiSn,
+            senaryo: { tur: sen.senaryo_tur, tsv: sen.tsv, sha256: String(sen.sha256).trim() }, p: { ...p, motor }, kok: dg.ciktiKok(),
+            hedefTuru: tur, arac: null, simdiSn,
           });
           const ihlal = dg.ekstraDegiskenleriDenetle(ev, { simdiSn });
           if (ihlal.length) throw hata(409, 'sinir_asildi', `Durdurma değişkenleri son denetimi geçemedi: ${ihlal.join(', ')}.`);
@@ -1086,6 +1127,40 @@ function yonlendiriciKur() {
       res.json({ ok: true });
     } catch (e) {
       hataYaniti(req, res, e, 'nginx_loadtest_yeniden_oku', k ? { host: k.hedef_host, ip: k.hedef_ip, kosuId: k.id } : null);
+    }
+  });
+
+  // ── ARAC SETLERI (tur 4) ──────────────────────────────────────────────────────────────
+  // Okuma Admin disina acik (ADMIN_DISI_OKUMA); vekil adresi yalniz Admin'e. Hazirlama ve geri cekme Admin.
+  router.get('/araclar', async (req, res) => {
+    try {
+      res.json(await araclar.araclarYaniti(req, { isAdmin }));
+    } catch (e) {
+      hataYaniti(req, res, e);
+    }
+  });
+
+  router.post('/araclar', async (req, res) => {
+    try {
+      adminSart(req);
+      const r = await araclar.araclariHazirla(req, req.body);
+      res.json({ ok: true, ...r });
+    } catch (e) {
+      const g = req.body && typeof req.body === 'object' ? req.body : {};
+      const host = (typeof g.derlemeHost === 'string' && dg.hostNormalle(g.derlemeHost)) || null;
+      hataYaniti(req, res, e, 'nginx_loadtest_araclar_hazirla', { host, ip: null });
+    }
+  });
+
+  router.post('/araclar/:id/geri-cek', async (req, res) => {
+    try {
+      adminSart(req);
+      const id = sayi(req.params.id);
+      if (!id) throw hata(400, 'gecersiz_istek', 'Geçersiz araç seti numarası.');
+      const r = await araclar.aracGeriCek(req, id);
+      res.json({ ok: true, ...r });
+    } catch (e) {
+      hataYaniti(req, res, e, 'nginx_loadtest_araclar_geri_cek', null);
     }
   });
 

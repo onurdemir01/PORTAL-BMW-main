@@ -1820,7 +1820,8 @@ const TABLES = [
         sonuclandirma_denemesi INT NOT NULL DEFAULT 0,
         hedef_turu          NVARCHAR(10) NOT NULL DEFAULT 'sunucu',
         motor               NVARCHAR(8) NOT NULL DEFAULT 'k6',
-        plan_uyarilari      NVARCHAR(2000) NULL
+        plan_uyarilari      NVARCHAR(2000) NULL,
+        arac_id             INT NULL
       )`,
   },
   {
@@ -1887,6 +1888,49 @@ const TABLES = [
         created_at     DATETIME2 NULL DEFAULT GETUTCDATE(),
         updated_at     DATETIME2 NULL DEFAULT GETUTCDATE(),
         UNIQUE(lock_key)
+      )`,
+  },
+  {
+    // Yuk Testi arac setleri (tur 4, 2026-11-02): her satir bir 'araclar' AWX isi VE bir /sw arac seti.
+    // Etkin set = en yeni DONE + geri cekilmemis (geri_cekme_at NULL) + arsiv ozetleri su anki env sabitleriyle
+    // (NGINX_LOADTEST_K6_ARSIV_SHA256 / _WRK_KAYNAK_SHA256) ayni. kaynak_onay / onaylayan / onay_at eski onay
+    // toreninden kalir, OKUNMAZ (yikici goc yok). sha256'lar playbook set_stats'tan (derleme + /sw geri okuma) gelir;
+    // yuk makinesi kopyayi YALNIZ bu degerle dogrular. Satir silinmez (kucuk tablo). Kilit A|araclar + L|<DERLEME>
+    // (nginx_loadtest_kilitleri, bag_turu 'araclar'). Saklama (housekeeping) bu tabloya dokunmaz.
+    name: 'nginx_loadtest_araclar',
+    sql: `
+      CREATE TABLE nginx_loadtest_araclar (
+        id                        INT IDENTITY(1,1) PRIMARY KEY,
+        durum                     NVARCHAR(20) NOT NULL,
+        derleme_host              NVARCHAR(64) NOT NULL,
+        k6_surum                  NVARCHAR(20) NOT NULL,
+        wrk_surum                 NVARCHAR(20) NOT NULL,
+        istenen_k6_arsiv_sha256   CHAR(64) NULL,
+        istenen_wrk_kaynak_sha256 CHAR(64) NULL,
+        k6_sha256                 CHAR(64) NULL,
+        wrk_sha256                CHAR(64) NULL,
+        k6_arsiv_sha256           CHAR(64) NULL,
+        wrk_kaynak_sha256         CHAR(64) NULL,
+        kaynak_onay               BIT NOT NULL DEFAULT 0,
+        onaylayan                 NVARCHAR(100) NULL,
+        onay_at                   DATETIME2 NULL,
+        sw_dizin                  NVARCHAR(400) NULL,
+        derleme_rhel              NVARCHAR(8) NULL,
+        derleme_glibc             NVARCHAR(16) NULL,
+        wrk_glibc_gerekli         NVARCHAR(16) NULL,
+        hata                      NVARCHAR(1000) NULL,
+        sonuc                     NVARCHAR(MAX) NULL,
+        awx_server_id             INT NULL,
+        awx_job_id                INT NULL,
+        kilit_id                  NVARCHAR(64) NULL,
+        sonuclandirma_denemesi    INT NOT NULL DEFAULT 0,
+        created_by                NVARCHAR(100) NULL,
+        created_at                DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        started_at                DATETIME2 NULL,
+        finished_at               DATETIME2 NULL,
+        finalized_at              DATETIME2 NULL,
+        geri_ceken                NVARCHAR(100) NULL,
+        geri_cekme_at             DATETIME2 NULL
       )`,
   },
 ];
@@ -3309,7 +3353,7 @@ const PLAYBOOK_REGISTRY_SEED = [
     category: 'nginx',
     handler: 'nginx_loadtest_run',
     description:
-      'bmw_portal/nginx_loadtest/nginx_loadtest.yml — izinli yuk makinesinden k6 (acik dongu, sabit istek/sn) ya da wrk (kapali dongu, sabit baglanti, hiz tavanli) ile yuk; hedef non-prod bir nginx sunucusu (CPU kaydedici + nginx logu) ya da serbest hedef (izinli agdaki LB VIP / yonetilmeyen sunucu: yalniz istemci olcumu, hedefe SSH yok). On kontrol (yuk yok), kosu (sonuclar /sw/BMW_PORTAL/nginx_loadtest/<kosu>/) ve durdur kipleri. Prompt on launch (Variables) ACIK, Limit kullanilmaz, template timeout <= 60 dk, Concurrent Jobs ACIK, Execute / Admin rolu yalniz Portal servis hesabinda. Yalniz Admin tetikler; bkz. docs/NGINX-YUK-TESTI.md.',
+      'bmw_portal/nginx_loadtest/nginx_loadtest.yml — izinli yuk makinesinden k6 (acik dongu, sabit istek/sn) ya da wrk (kapali dongu, sabit baglanti, hiz tavanli) ile yuk; hedef non-prod bir nginx sunucusu (CPU kaydedici + nginx logu) ya da serbest hedef (izinli agdaki LB VIP / yonetilmeyen sunucu: yalniz istemci olcumu, hedefe SSH yok). On kontrol (yuk yok), kosu (sonuclar /sw/BMW_PORTAL/nginx_loadtest/<kosu>/), durdur ve araclar kipi (k6 + wrk /sw\'ye; yalniz Admin). Prompt on launch (Variables) ACIK, Limit kullanilmaz, template timeout <= 60 dk, Concurrent Jobs ACIK, Execute / Admin rolu yalniz Portal servis hesabinda. Yalniz Admin tetikler; bkz. docs/NGINX-YUK-TESTI.md.',
     playbook_path: null,
     env_var_name: 'NGINX_LOADTEST_RUN_TEMPLATE_ID',
   },
@@ -4761,6 +4805,25 @@ async function setupTables() {
       col: 'plan_uyarilari',
       sql: `ALTER TABLE nginx_loadtest_kosular ADD plan_uyarilari NVARCHAR(2000) NULL`,
     },
+    {
+      // Nginx Yuk Testi tur 4 (2026-11-02): on kontrol / kosunun kullandigi arac seti
+      // (nginx_loadtest_araclar.id). Eski satirlar NULL (arac engeli ve "Arac kopyasi" satiri yok).
+      table: 'nginx_loadtest_kosular',
+      col: 'arac_id',
+      sql: `ALTER TABLE nginx_loadtest_kosular ADD arac_id INT NULL`,
+    },
+    {
+      // Nginx Yuk Testi tur 4 D2 (2026-11-02): Admin bir DONE arac setini geri ceker. Tablo onceki
+      // surumle yaratilmis olabilir: kolon yoksa eklenir (NULL = geri cekilmemis).
+      table: 'nginx_loadtest_araclar',
+      col: 'geri_ceken',
+      sql: `ALTER TABLE nginx_loadtest_araclar ADD geri_ceken NVARCHAR(100) NULL`,
+    },
+    {
+      table: 'nginx_loadtest_araclar',
+      col: 'geri_cekme_at',
+      sql: `ALTER TABLE nginx_loadtest_araclar ADD geri_cekme_at DATETIME2 NULL`,
+    },
   ];
 
   for (const { table, col, sql } of alters) {
@@ -4864,6 +4927,8 @@ async function setupTables() {
     { name: 'IX_nlk_job', table: 'nginx_loadtest_kosular', cols: 'awx_server_id, awx_job_id' },
     { name: 'IX_nlk_hedef', table: 'nginx_loadtest_kosular', cols: 'hedef_host, created_at' },
     { name: 'IX_nla_kosu', table: 'nginx_loadtest_adimlar', cols: 'kosu_id' },
+    // Yuk Testi arac setleri (tur 4): poller is numarasiyla okur.
+    { name: 'IX_nlarac_job', table: 'nginx_loadtest_araclar', cols: 'awx_server_id, awx_job_id' },
   ];
   for (const { name, table, cols } of indexes) {
     try {

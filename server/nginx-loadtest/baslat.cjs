@@ -27,6 +27,8 @@ const DENETIM_SINIRI = 2000;
 const DENETIM_ANAHTARLARI = Object.freeze([
   'kosuId', 'adim', 'islem', 'hedefTuru', 'motor', 'hedefHost', 'hedefIp', 'yukHost', 'vhost', 'senaryoId', 'senaryoSha256',
   'onKontrolKosuId', 'jobId', 'awxServerId', 'templateId', 'code', 'id',
+  // Tur 4: arac hazirlama isi (araclar.cjs).
+  'aracId', 'derlemeHost',
 ]);
 const DENETIM_ISARETLERI = new Set(['kirpildi', 'kirpilan', 'atilan']);
 

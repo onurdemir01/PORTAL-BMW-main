@@ -23,6 +23,8 @@
 //   -- tur 3 (2026-10-28) --
 //   YPL19 kosuAnaliz'e tur / motor satirdan; set_stats yankisi yalniz metinse karsilastirilir (null
 //         playbook hatasini korur); wrk_kos.sh rc neden metni; serbest kosu (sunucu dosyasiz) DONE
+//   -- tur 4 (2026-11-02) --
+//   YPL20 tick arac sonuclandirmasini (araclar.cjs) her turda cagirir; arac hatasi kosuyu durdurmaz
 'use strict';
 
 const { test } = require('node:test');
@@ -689,4 +691,31 @@ test('YPL19 tur 3: analiz secenekleri satirdan, yanki karsilastirmasi, wrk_kos.s
   D.awx.artifacts = { nginx_loadtest_result: STATS({ islem: 'on_kontrol', kosu: null, on_kontrol: { ip_yuk_makinesinde: false }, hedef_turu: 'serbest', motor: 'k6' }) };
   assert.equal((await pl.kosuyuSonuclandir(KOSU({ islem: 'on_kontrol', hedef_turu: 'serbest', motor: 'wrk' }))).durum, 'OKUNAMADI');
   assert.match(D.son.sonuc.hata, /\(motor k6\)/);
+});
+
+test('YPL20 tur 4: tick arac sonuclandirmasini her turda cagirir; arac hatasi kosu sonuclandirmasini durdurmaz', async () => {
+  const yol = path.join(__dirname, '..', 'araclar.cjs');
+  const onceki = require.cache[yol];
+  let cagri = 0;
+  let hataVer = true;
+  sahteC('araclar.cjs', {
+    araclariSonuclandir: async () => {
+      cagri += 1;
+      if (hataVer) throw new Error('Invalid object name nginx_loadtest_araclar');
+      return { bayat: 0, kapanan: 2 };
+    },
+  });
+  try {
+    sifirla({ awxHata: Object.assign(new Error('not found'), { status: 404 }), aktif: [KOSU({ calisma_yas_sn: 99999 })] });
+    let t = await pl.tick();
+    assert.deepEqual([t.kapanan, t.arac, cagri], [1, 0, 1], 'arac hatasi kosu sonuclandirmasini durdurdu');
+    assert.equal(D.son && D.son.durum, 'OKUNAMADI');
+    hataVer = false;
+    sifirla({ aktif: [] });
+    t = await pl.tick();
+    assert.deepEqual([t.kapanan, t.arac, cagri], [0, 2, 2]);
+  } finally {
+    if (onceki) require.cache[yol] = onceki;
+    else delete require.cache[yol];
+  }
 });

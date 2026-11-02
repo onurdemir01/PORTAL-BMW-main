@@ -8,6 +8,8 @@
 // `baglantilar` (wrk, baglanti): adim sayisi, etiketler ve birimler YALNIZ `adimDegerleri` uzerinden okunur
 // (wrk kaydinda `hizlar` yoktur; dogrudan `p.hizlar` okuyan ekran cokerdi). Serbest hedefte iki motorda en cok
 // 200 istek/sn ve 50 baglanti / VU; hedef kurallari (IP hedefte yerel, server_name, log ...) degerlendirilmez.
+// TUR 4 (2026-11-02): araclar /sw'den kopyalanir; aracli on kontrol satirinda (aracId != null) dogrulanmamis kopya
+// ENGEL (sunucu degerlendirmesi yoksa); wrk surum metni arac setinin yeniden hazirlanmasini soyler.
 import type { Ton } from '@/components/server_hub/retirementStil';
 import {
   EK_SINIRLAR, type NlAdim, type NlAdimGecerlilik, type NlDurum, type NlEylem, type NlGecerlilik, type NlHedef, type NlHedefTuru, type NlKarar, type NlKosu,
@@ -250,6 +252,19 @@ export const SERBEST_CIP_IPUCU = 'Serbest hedef: yalnız istemci ölçümü (CPU
 export const WRK_CIP_IPUCU = 'Kapalı döngü: hız sütunu bağlantı sayısıdır; gecikme CO düzeltmeli; TLS 1.2’ye sabit değildir ve oturum devamı olabilir (TLS payı hesaplanmaz)';
 
 // ── On kontrol ──────────────────────────────────────────────────────────────────────
+/** wrk'nin istedigi glibc RHEL 8'in glibc'sinden (2.28) YENI mi (sayisal; "2.34" > "2.28", "2.28" degil). Bicimsiz /
+ *  bos deger false (uyari yalniz olculmus gereksinimde). */
+export const RHEL8_GLIBC = '2.28';
+export function glibcRhel8Ustu(g: string | null | undefined): boolean {
+  const m = /^(\d+)\.(\d+)/.exec(String(g ?? '').trim());
+  if (!m) return false;
+  const [maj, min] = [Number(m[1]), Number(m[2])];
+  const [rMaj, rMin] = RHEL8_GLIBC.split('.').map(Number);
+  return maj > rMaj || (maj === rMaj && min > rMin);
+}
+/** sha256 kisa gosterim: ilk `n` hane + "…" (tamami title'da). */
+export const shaKisa = (sha: string | null | undefined, n = 16) => (sha ? `${sha.slice(0, n)}…` : '—');
+
 /** On kontrol bu kadar sure gecerli (sunucu 15 dk'dan eski on kontrole dayanan kosuyu reddeder). */
 export const ON_KONTROL_OMRU_MS = 15 * 60 * 1000;
 export interface OnKontrolDegerlendirmesi {
@@ -261,7 +276,7 @@ export interface OnKontrolDegerlendirmesi {
   bilgiler: string[];
 }
 type DegerlendirmeGirdisi = Pick<NlKosuAyrinti, 'durum' | 'onKontrol'>
-  & Partial<Pick<NlKosuAyrinti, 'sunucuDegerlendirmesi' | 'isDurumu' | 'isHatasi' | 'hedefTuru' | 'motor' | 'parametreler'>>;
+  & Partial<Pick<NlKosuAyrinti, 'sunucuDegerlendirmesi' | 'isDurumu' | 'isHatasi' | 'hedefTuru' | 'motor' | 'parametreler' | 'aracId'>>;
 /** Sunucu metni cumle basi buyuk harfle; "wrk" arac adidir (sozlesme metni kucuk harfle baslar), oldugu gibi kalir. */
 const buyukBasla = (x: string) => (/^wrk\b/.test(x) ? x : x.charAt(0).toLocaleUpperCase('tr-TR') + x.slice(1));
 /** Sunucu metinleri (dogrula.cjs, sozlesme 8.4 / 19): geri donus degerlendirmesi ayni uyarilari onaylatir. */
@@ -297,6 +312,7 @@ export function onKontrolDegerlendir(k: DegerlendirmeGirdisi | null): OnKontrolD
   }
   if (o.k6Surum) d.bilgiler.push(`k6 ${o.k6Surum}${o.k6Sha256 ? ` · sha256 ${o.k6Sha256.slice(0, 12)}…` : ''}`);
   if (o.wrkSurum) d.bilgiler.push(`wrk ${wrkSurumu(o.wrkSurum)}${o.wrkSha256 ? ` · sha256 ${o.wrkSha256.slice(0, 12)}…` : ''}`);
+  if (o.aracGlibc) d.bilgiler.push(`yük sunucusu glibc ${o.aracGlibc}`);
   // Hic yol denenmediyse (0 / 0) sikistirma sifirlari OLCULMEDI: olculmus gibi yazilmaz.
   if (o.sikistirma && (o.yollarToplam ?? 0) > 0) d.bilgiler.push(`Sıkıştırma: statik ${fmtNumber(o.sikistirma.statik)}, dinamik ${fmtNumber(o.sikistirma.dinamik)}, sıkıştırmasız ${fmtNumber(o.sikistirma.sikistirmasiz)}`);
   if (serbest) d.bilgiler.push(SERBEST_ON_KONTROL_BILGISI);
@@ -312,10 +328,12 @@ export function onKontrolDegerlendir(k: DegerlendirmeGirdisi | null): OnKontrolD
     // D7: Host basligi listede olmamak (ya da olculememek) olcum dogrulugu sorunudur: onay isteyen UYARI, listenin basinda.
     if (o.serverNameVar !== true) d.uyarilar.unshift(HOST_LISTEDE_YOK_UYARISI);
   }
+  // Tur 4: aracli satirda (eski satir aracId null: kural YOK) dogrulanmamis kopya engeldir; motor maddesinden once.
+  if (k.aracId != null && o.aracDogrulandi !== true) d.engeller.push(`Yük aracı kopyası doğrulanamadı: ${o.aracHata ?? 'ölçülemedi'}.`);
   if (motor === 'wrk') {
     if (o.wrkVar !== true) {
       d.engeller.push(o.wrkCalisiyor === true
-        ? `Yük sunucusunda wrk çalışıyor ama sürümü okunamadı ya da 4 altında (${o.wrkSurum || '-'}); wrk’yi make VER=4.2.0 ile yeniden derleyin.`
+        ? `Yük sunucusunda wrk çalışıyor ama sürümü okunamadı ya da 4 altında (${o.wrkSurum || '-'}); araç setini yeniden hazırlayın (Yük Testi › Araçlar).`
         : 'Yük sunucusunda wrk bulunamadı ya da çalıştırılamıyor.');
     }
   } else if (o.k6Var === false) d.engeller.push('Yük sunucusunda k6 bulunamadı.');

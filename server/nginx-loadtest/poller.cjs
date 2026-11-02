@@ -26,6 +26,8 @@
 // COKME DONGUSU KALKANI: /sw okumasi hata verirse satir FINALIZING kalir ve sonraki tur yeniden
 // dener (en cok 3 deneme); sayac 3'u gecmisse (surec okuma sirasinda olmus olabilir) /sw hic
 // okunmaz, satir OKUNAMADI olur. Admin "yeniden oku" ucuyla sayaci sifirlayabilir.
+// TUR 4 (arac setleri): tick her turda araclar.araclariSonuclandir()'i da cagirir; arac isinin
+// hatasi kosu sonuclandirmasini DURDURMAZ (ayri try). Arac isi de OLAY_BEKLEME_SN kuralini kullanir.
 'use strict';
 
 const path = require('node:path');
@@ -483,12 +485,18 @@ async function tick() {
       console.warn(`[NginxYukTesti poller] kosu ${k.id} durumu okunamadi:`, maskele(e && e.message));
     }
   }
+  // Arac hazirlama isleri (tur 4): ayri tablo, ayri karar; hata yalniz uyari.
+  const arac = await require('./araclar.cjs').araclariSonuclandir().catch((e) => {
+    console.warn('[NginxYukTesti poller] arac sonuclandirmasi:', maskele(e && e.message));
+    return { bayat: 0, kapanan: 0 };
+  });
   const s = await kilitSupur().catch((e) => {
     console.warn('[NginxYukTesti poller] kilit supurmesi:', maskele(e && e.message));
     return 0;
   });
-  if (b || kapanan || s) console.log(`[NginxYukTesti poller] bayat=${b} sonuclanan=${kapanan} birakilan-kilit=${s}`);
-  return { bayat: b, kapanan, kilit: s };
+  const aracKapanan = (arac && arac.kapanan) || 0;
+  if (b || kapanan || s || aracKapanan) console.log(`[NginxYukTesti poller] bayat=${b} sonuclanan=${kapanan} arac=${aracKapanan} birakilan-kilit=${s}`);
+  return { bayat: b, kapanan, kilit: s, arac: aracKapanan };
 }
 
 function startPoller() {
@@ -525,6 +533,7 @@ module.exports = {
   METRIKLER,
   KOSU_UYARI_TAVANI,
   OKUMA_DENEME_SINIRI,
+  OLAY_BEKLEME_SN,
   DENEME_NEDENI,
   OLAY_EKSIK_NEDENI,
   SW_YOK_NEDENI,
@@ -540,6 +549,7 @@ module.exports = {
   kosuKarari,
   kosuyuSonuclandir,
   bayatKuyruk,
+  ciktiArsivle,
   kilitSupur,
   tick,
   startPoller,

@@ -21,6 +21,12 @@ gider. İki motor vardır (`yuk_motor`):
 
 Sonuç dosyaları GBLABT02 üzerinden `/sw`'ye yazılır; Portal oradan okur, analiz eder ve kendi DB'sine yazar.
 
+Yük araçları (k6 ve wrk) yük makinelerine **kurulmaz**. Admin, Portal'ın "Araçlar" panelinden bu playbook'u dördüncü
+kipte (`yuk_islem: araclar`) bir kez koşturur: bir derleme makinesinde (varsayılan GBLABT02) kurumsal vekil üzerinden
+resmî k6 arşivi indirilip doğrulanır, wrk 4.2.0 kaynağı indirilip derlenir ve ikisi `/sw`'de sürümlü bir araç seti
+dizinine yazılır ("Araç seti (/sw)"). Her ön kontrol ve koşu seçilen motorun ikilisini o dizinden www'nin koşu dizinine
+kopyalar, sha256'sını **yalnız Portal'ın verdiği değerle** doğrular, kopyadan çalıştırır ve iş sonunda siler.
+
 Kaynak: el kiti `f5_rehber/har_yuk_testi` (kos.sh, yuk_k6.js, cpu_kaydedici.sh). Kit betikleri kopyalanmış, yalnız
 aşağıda ("Betikler") sayılan Portal farkları eklenmiştir. wrk betikleri (`wrk_kos.sh`, `yuk_wrk.lua`), `on_kontrol.sh`
 ve `durdur.sh` Portal'a özgüdür. Portal tarafı sözleşmesi: Portal `docs/NGINX-YUK-TESTI.md` ve uygulama sözleşmesi.
@@ -29,17 +35,19 @@ ve `durdur.sh` Portal'a özgüdür. Portal tarafı sözleşmesi: Portal `docs/NG
 
 | Dosya | İş |
 |---|---|
-| `nginx_loadtest.yml` | Tek playbook, üç kip (`yuk_islem`: `on_kontrol`, `kosu`, `durdur`), iki hedef türü, iki motor. Sekiz play (aşağıda). |
+| `nginx_loadtest.yml` | Tek playbook, dört kip (`yuk_islem`: `on_kontrol`, `kosu`, `durdur`, `araclar`), iki hedef türü, iki motor. On play (aşağıda). |
 | `files/on_kontrol.sh` | Yük üretmeyen ön kontrol. `hedef` kipi hedefte (IP yerel mi, `nginx -T`'de server_name, nginx master sayısı, `/web_log` doluluğu ve okunabilirliği, log biçimi, statik sıkıştırma direktifi); `yollar` kipi yük makinesinde (senaryodaki her tekil yola TEK HTTP/1.1 isteği). |
 | `files/kos.sh` | Kit kopyası: bir ADIM'ın (hız × tekrar) k6 koşularını sırayla çalıştırır (motor `k6`). |
 | `files/yuk_k6.js` | Kit kopyası: açık döngü (constant-arrival-rate) k6 betiği, istek başına TEK GET. |
 | `files/wrk_kos.sh` | Portal'a özgü: bir ADIM'ın (bağlantı × tekrar) wrk koşularını sırayla çalıştırır (motor `wrk`); dış sözleşmesi (çıkış kodları, `DUR:`/`HATA:` satırları, sonuç dosyaları, `kos.pid`) kos.sh ile aynı. |
 | `files/yuk_wrk.lua` | Portal'a özgü wrk betiği: ağırlıklı yol seçimi, bağlantı başına bekleme ile ortalama hız tavanı, ilk 429 / 5xx'te iş parçacığını durdurma, tam sayılı özet dosyası. |
 | `files/cpu_kaydedici.sh` | Kit kopyası: hedefte saniyede bir worker CPU örneği + yalnız test UA'lı log satırları (yalnız sunucu hedefte). |
-| `files/durdur.sh` | Bir koşunun bir sunucuda kalan süreçlerini (pid dosyaları, k6, wrk, kit ve Portal betikleri) TERM, 10 sn sonra KILL. |
+| `files/durdur.sh` | Bir koşunun bir sunucuda kalan süreçlerini (pid dosyaları, k6, wrk, koşu dizinindeki araç kopyasından çalışan süreçler, kit ve Portal betikleri) TERM, 10 sn sonra KILL. |
+| `files/arac_hazirla.sh` | Portal'a özgü (araclar kipi, derleme makinesinde www ile): k6 arşivinden yalnız ikiliyi çıkarır, wrk'yi derler, ikisini doğrular (sürüm satırı, kütüphaneler, glibc gereksinimi). Ağa çıkmaz; indirme Play 8'in `get_url` görevlerindedir. |
 
-AWX zip'ine yeni iki dosya da girmelidir: `yt_betik_adlari` her kipte yedi betiğin hepsini denetler; biri eksikse k6
-koşuları da "betiklerden biri yok" ile düşer.
+AWX zip'ine yeni `files/arac_hazirla.sh` de girmelidir (ayrıca sayın): `yt_betik_adlari` her kipte sekiz betiğin
+hepsini denetler; biri eksikse her kip "files/ altindaki betiklerden biri yok (AWX proje kopyasi eksik); hicbir sey
+yapilmadi" ile düşer.
 
 Portal'daki birebir aynası: `server/ansible/bmw_portal/nginx_loadtest/**` (iki kopya **bayt bayt
 aynı**; Portal testi `nginx-loadtest-ayna.test.cjs` sabit sha256 listesiyle ve
@@ -47,13 +55,21 @@ aynı**; Portal testi `nginx-loadtest-ayna.test.cjs` sabit sha256 listesiyle ve
 
 ## Akış
 
-Play sırası (strateji **linear**; `strategy: free`, `poll: 0`/`async_status` YOK; yeni play yok):
+Play sırası (strateji **linear**; `strategy: free`, `poll: 0`/`async_status` YOK; tur 4'te Play 8 ve Play 9 eklendi,
+sonuç play'i Play 10):
 
-1. **localhost — girdi kapısı** (`block`/`rescue`): üç `assert` (1. her kip: işlem, koşu kimliği, hedef türü, hedef
-   ve yük makinesi; 2. on_kontrol/kosu: parametreler, motor, sınırlar, bütçe; 3. on_kontrol/kosu: iş geçerlilik süresi
-   `yuk_son_epoch`); senaryo base64'ten çözülür, **her satırı** yeniden denetlenir, sha256 karşılaştırılır;
-   betiklerin kaynak sha1'leri alınır; yük makinesi `yuk_makine` grubuna `add_host` ile eklenir; hedef `yuk_hedef`
-   grubuna **yalnız sunucu hedefte** eklenir (AWX `limit` KULLANILMAZ). Reddedilirse hiçbir hosta bağlanılmaz.
+1. **localhost — girdi kapısı** (`block`/`rescue`): altı `assert`, sırayla: (1) araclar dışı her kip: işlem, koşu
+   kimliği, hedef türü, hedef ve yük makinesi; (2) yalnız araclar: derleme makinesi, k6 / wrk sürümleri, vekil, /sw
+   kökü; (3) yalnız araclar: iki arşiv özeti (`yuk_k6_arsiv_sha256`, `yuk_wrk_kaynak_sha256`) ZORUNLU 64 küçük hex —
+   boş ya da eksikse `araclar girdileri gecersiz (arsiv ozetleri sabit degil): Portal'da NGINX_LOADTEST_K6_ARSIV_SHA256
+   ve NGINX_LOADTEST_WRK_KAYNAK_SHA256 ...` ile hiçbir şey indirilmez ("Arşiv özetlerini sabitleme"); (4)
+   on_kontrol/kosu: araç değişkenleri (`yuk_arac_dizin`, iki sha256, iki işaret yolu; parametre assert'inden ÖNCE: eski
+   Portal ilk bu iletiyi görür); (5) on_kontrol/kosu: parametreler, motor, sınırlar, bütçe; (6) durdur dışı her kip:
+   iş geçerlilik süresi `yuk_son_epoch`; senaryo base64'ten çözülür, **her satırı** yeniden
+   denetlenir, sha256 karşılaştırılır (araclar ve durdur'da senaryo yok); betiklerin kaynak sha1'leri alınır; yük
+   makinesi `yuk_makine` grubuna `add_host` ile eklenir; hedef `yuk_hedef` grubuna **yalnız sunucu hedefte** eklenir;
+   araclar kipinde YALNIZ derleme makinesi `yuk_derleme` grubuna eklenir ve kontrol düğümünde geçici araç toplama dizini
+   açılır (AWX `limit` KULLANILMAZ). Reddedilirse hiçbir hosta bağlanılmaz.
 2. **yuk_hedef** (become www; serbestte host yok, play "no hosts matched" ile atlanır): `on_kontrol` →
    `on_kontrol.sh hedef`; `kosu` → koşu dizini, `cpu_kaydedici.sh` + `on_kontrol.sh` kopyası (kapı), önce **koşu
    kapısı**: `on_kontrol.sh hedef` yeniden koşar (yük üretmez) ve `ip_yerel` `1` değilse kaydedici ve yük BAŞLAMAZ
@@ -64,18 +80,32 @@ Play sırası (strateji **linear**; `strategy: free`, `poll: 0`/`async_status` Y
 3. **yuk_makine** (become www):
    - Hazırlık (`on_kontrol`; `kosu`ta serbest hedefte her zaman, sunucu hedefte yalnız kaydedici hazırsa): koşu
      dizini, betik kopyası (motora göre `kos.sh` + `yuk_k6.js` ya da `wrk_kos.sh` + `yuk_wrk.lua`; ön kontrolde
-     `on_kontrol.sh`), senaryo kopyası (kapı).
+     `on_kontrol.sh`), senaryo kopyası (kapı). Ardından **araç kopyası**: seçili motorun ikilisi
+     `<yuk_arac_dizin>/<k6|wrk>`'den `copy remote_src` ile `<koşu dizini>/arac/<k6|wrk>`'ye (dizin ve dosya 0700, www)
+     alınır; sha256'sı YALNIZ Portal'ın verdiği `yuk_k6_sha256` / `yuk_wrk_sha256` ile karşılaştırılır (/sw'deki
+     `SHA256SUMS` / `manifest.json`'a güvenilmez), sahip ve izinler denetlenir. Doğrulanmayan kopya hiç çalıştırılmadan
+     silinir; `kosu`'da `arac kopyasi dogrulanamadi: <neden>; yuk gonderilmedi` ile durulur, `on_kontrol`'de neden
+     sonuca gider (engel). Hazırlığın başında **eski araç kopyaları süpürülür**: `~/.portal_yuktesti` altında 1 günden
+     eski (mtime) `<rakam>/arac` dizinleri silinir (AWX iptalinde Play 7 koşmaz ve kopya kalırdı); YALNIZ `arac/` alt
+     dizini: koşu dizinleri, korunan sonuçlar (`kosu dizini silinmedi (/sw kopyasi yok ...)`) ve `arac_<id>` derleme
+     dizinleri dokunulmaz, bu koşunun `arac/`'ı hariçtir. Süpürme hatası işi düşürmez.
    - Serbest hedefte **izin dosyası**: `/etc/portal_yuktesti/serbest_aglar` (yol playbook'ta LİTERAL; extra_vars ile
      yönlendirilemez) okunur ve hedef IP'yi kapsayan girdi aranır (biçim ve ret nedenleri "Serbest izin dosyası"nda).
      Blok `fail` etmez: ret, yollar ve koşu görevlerinin `when`'iyle uygulanır ve neden set_stats'a gider.
-   - `on_kontrol` → seçili motorun ikilisi (k6: var mı/`version`/sha256; wrk: var mı/`-v` sürüm satırı/sha256) +
+   - `on_kontrol` → seçili motorun koşu dizinindeki kopyası (k6: var mı/`version`/sha256; wrk: var mı/`-v` sürüm
+     satırı/sha256; ikisi de yalnız kopya doğrulandıysa çalıştırılır), yük makinesinin glibc'si (`getconf
+     GNU_LIBC_VERSION`; `version`/`-v` yükleyici hatası `GLIBC_x.y` derse `glibc uyumsuz: ...`; başka bir nedenle
+     çalışmazsa — noexec, SELinux, `Exec format error` — `rc <n>: <stderr'in ilk dolu satırı>`, rc 126'da
+     `(calistirma izni yok: noexec ya da SELinux?)` ipucuyla; wrk'de `-v`'nin rc 1'i normaldir, yalnız sürüm satırı
+     yoksa `rc <n>, surum satiri yok: ...`) +
      `on_kontrol.sh yollar`. Bu istekler sunucu hedefte YALNIZ hedefte ölçülen `ip_yerel` `1` iken, serbest hedefte
      YALNIZ izin dosyası IP'yi kapsarken gider; aksi halde hiç istek gönderilmez ve yük makinesi sonucu `FAIL`
      (`hedef IP hedefte yerel degil ya da olculemedi; istek gonderilmedi` ya da `serbest izin listesi: <neden>;
      istek gonderilmedi`).
    - `kosu` → TEK async görev: `timeout -k 30 <bütçe> env -u LIMIT_MUAF ... bash kos.sh|wrk_kos.sh R<id> <K|B>`
      (`async: bütçe+300`, `poll: 15`); iki betiğe de aynı ortam gider (`HIZLAR`, `BAGLANTILAR`, `IS_PARCACIGI`,
-     `TAVAN_RPS`, `MAXVU`, `K6`, `WRK` ...); her betik kendine ait olmayanları yok sayar.
+     `TAVAN_RPS`, `MAXVU`, `K6=<koşu dizini>/arac/k6`, `WRK=<koşu dizini>/arac/wrk` ...); her betik kendine ait
+     olmayanları yok sayar.
 4. **yuk_hedef** (serbestte atlanır): kaydediciye `kill -TERM <pid>` (pid'in komut satırı koşu dizinini içeriyorsa),
    bitmesi en çok 290 sn beklenir (trap `bitir` `bilgi_*.txt` yazar; sarmalayıcının KILL'i 300 sn'de),
    `log_*.tsv` gzip'lenir.
@@ -93,20 +123,49 @@ Play sırası (strateji **linear**; `strategy: free`, `poll: 0`/`async_status` Y
    (/sw kopyası tamam YA DA koşu betiği hiç başlamadı)). Koşu betiği başladı ama /sw kopyası yoksa (DUR'un ya da
    başarılı ama kopyalanamamış koşunun TEK kopyası) dizin kalır ve yerleri `hata` metninin sonuna eklenir:
    `kosu dizini silinmedi (/sw kopyasi yok, veri elle kurtarilabilir): <host>:<dizin>, ...`
-   (metnin geri kalanı bu not sığsın diye tam ölçüyle kısaltılır; toplam en çok 300 karakter).
-8. **localhost — sonuç**: `set_stats nginx_loadtest_result` **her yolda** (girdi reddi, erişilemeyen
+   (metnin geri kalanı bu not sığsın diye tam ölçüyle kısaltılır; toplam en çok 300 karakter). Süreçler durdurulamadığı
+   ya da durdurma doğrulanamadığı için silinmeyen dizin de (`kosu` ve `durdur`) aynı yere yazılır: `kosu dizini silinmedi
+   (durdurma tamamlanmadi; elle silin): <host>:<dizin>`; `kosu`'da ayrıca `durdurma <H>: <neden>` ve durum FAIL
+   (/sw kopyası tamam olsa da: süreç kalmış olabilir). `always`'te `<koşu dizini>/arac` HER YOLDA silinir (koşu dizini
+   korunsa da; `ignore_errors`: silinemezse Play 10 `temizlik <Y>: arac kopyasi silinemedi`). **Temizlikte makineye
+   erişilemezse** (ignore_unreachable altında kayıt `failed` değil `unreachable`dır ve Play 7'nin yerel `set_fact`'leri
+   `yt_p7_bitti`'yi yine yazar) sessiz geçilmez: `temizlik <H>: kosu dizini silinemedi (erisilemedi): <dizin>`,
+   `temizlik <Y>: arac kopyasi silinemedi (erisilemedi)`, durum FAIL. Koşu dizini açılmış bir hostta Play 7 hiç
+   tamamlanmadıysa (`yt_p7_bitti` yok, `yt_p7_hata` yok): `temizlik <H>: play tamamlanmadi (erisilemedi ya da dustu)`.
+8. **yuk_derleme — araclar: indirme ve derleme** (yalnız araclar; become www; diğer kiplerde grup yok, atlanır):
+   www ev dizininde `~/.portal_yuktesti/arac_<id>/` (`/tmp` noexec: kullanılmaz) altında `indir/`, `derleme/`,
+   `cikti/`, `tmp/` (önce aynı id'nin yarım denemesi silinir); 1 günden eski başka `arac_<id>` derleme dizinleri
+   (iptal edilmiş işler) silinir, bu işinki hariç; `arac_hazirla.sh` kopyası (sha1, sahip, izin kapısı); üç `get_url`
+   (k6 `checksums.txt` — arşivin satırı TAM bir kez ve Portal'ın sabit `yuk_k6_arsiv_sha256`'sıyla AYNI olmalı; k6
+   linux-amd64 arşivi `checksum: sha256:<yuk_k6_arsiv_sha256>`; wrk 4.2.0 kaynak arşivi `checksum:
+   sha256:<yuk_wrk_kaynak_sha256>`) — vekil ortamı YALNIZ bu üç görevde (`environment: "{{ yt_proxy_ortam }}"`),
+   `validate_certs: true`, `tmp_dest` derleme dizini; ardından diskteki iki arşivin sha256'sı sabit değerlerle bir kez
+   daha karşılaştırılır (`arsiv ozeti sabit degerden farkli (...); hicbir sey acilmadi, derlenmedi ya da
+   calistirilmadi`) — **hiçbir arşiv sabit özetle doğrulanmadan açılmaz, derlenmez, çalıştırılmaz**; `arac_hazirla.sh`
+   vekilsiz (`env -u ...`, `timeout -k 30 1800`, `TMPDIR=<dizin>/tmp`); iki ikilinin sha256'sı ve `fetch` ile kontrol
+   düğümüne aktarım. `always`'te derleme dizini her yolda silinir.
+9. **localhost — araclar: /sw yayını** (`ignore_unreachable: true`; Play 6 yapısı): kontrol düğümündeki kopyalar
+   derlenenle aynı mı; GBLABT02 üzerinden (bağlanan kullanıcı) `<yuk_cikti_kok>/araclar/` dizini (yoksa `0755` ile
+   oluşturulur, varsa moduna dokunulmaz; dizin değilse `araclar yolu dizin degil`, oluşturulamazsa `araclar dizini
+   olusturulamadi (GBLABT02, 0755): ...`), hedef `<id>/` zaten varsa DUR, `.<id>.yarim/` (0755) altına `k6`, `wrk` (0644), `SHA256SUMS`, `manifest.json`; `mv -T` ile son ada;
+   geri okuma (sha256, düzenli dosya, 0644). Her GBLABT02 görevinin hemen ardından `is unreachable` fail'i; `rescue`
+   yarım dizini siler (erişilemezse kalır), `always` kontrol düğümü dizinini siler.
+10. **localhost — sonuç**: `set_stats nginx_loadtest_result` **her yolda** (girdi reddi, erişilemeyen
    host, betik hatası, derleme hatası dahil; derleme düşerse `rescue` en küçük FAIL sonucunu yazar),
    ardından `durum` OK değilse job düşürülür (`DUR` dahil; Portal'ın okuyuşu aşağıda). Serbestte hedefin
    hostvars'ına HİÇ erişilmez (her erişim `sunucu` dalında ya da kısa devreyle korunur).
 
-Her uzak play ve GBLABT02'ye delegate eden /sw play'i `ignore_unreachable: true` ve
+**araclar kipi**: Play 1 → Play 8 → Play 9 → Play 10; Play 2-7'nin grubu yoktur ve atlanır. Koşu kiplerinde Play 8'in
+grubu yoktur, Play 9 atlanır.
+
+Her uzak play ve GBLABT02'ye delegate eden /sw play'leri `ignore_unreachable: true` ve
 `block`/`rescue` taşır: bir host (ya da GBLABT02) düşse de sonraki play'ler (durdurma, temizlik,
-sonuç) koşar. Play 2 ve Play 3'ün ilk görevi (`getent`, become'suz) register edilir; host ssh ile
+sonuç) koşar. Play 2, Play 3 ve Play 8'in ilk görevi (`getent`, become'suz) register edilir; host ssh ile
 erişilemezse hemen ardındaki `is unreachable` fail'i rescue'ya `erisilemedi (ssh): <ssh iletisi>` verir
-ve Play 8 `hedef <H>: erisilemedi (ssh): ...` / `yuk makinesi <Y>: erisilemedi (ssh): ...` yazar
-("Tuzaklar"). localhost play'leri hiç extra_var gelmese de koşar (AWX'ten elle başlatma, Variables
-prompt kapalı): üç ad (işlem, hedef türü, motor) localhost play'lerinde her yerde `| default(...)` ile geçer;
-girdi kapısı reddeder, Play 6 atlanır, Play 8 `girdi reddedildi` sonucunu yayınlar. Uzak play'lerde hedef türü ve
+ve Play 10 `hedef <H>: erisilemedi (ssh): ...` / `yuk makinesi <Y>: erisilemedi (ssh): ...` / `derleme makinesi <D>:
+erisilemedi (ssh): ...` yazar ("Tuzaklar"). localhost play'leri hiç extra_var gelmese de koşar (AWX'ten elle başlatma,
+Variables prompt kapalı): üç ad (işlem, hedef türü, motor) localhost play'lerinde her yerde `| default(...)` ile geçer;
+girdi kapısı reddeder, Play 6 ve Play 9 atlanır, Play 10 `girdi reddedildi` sonucunu yayınlar. Uzak play'lerde hedef türü ve
 motor yalnız `on_kontrol`/`kosu` dallarında ve işlem karşılaştırmasıyla kısa devre korunarak geçer: eski Portal'ın
 hedef türü ve motor göndermeyen durdurması uzak play'lerde hiçbir ifadeyi patlatmaz.
 
@@ -114,17 +173,20 @@ hedef türü ve motor göndermeyen durdurması uzak play'lerde hiçbir ifadeyi p
 
 Katalog anahtarı `nginx_loadtest_run` (kategori `nginx`, env `NGINX_LOADTEST_RUN_TEMPLATE_ID`),
 Portal `BEKLENEN_PLAYBOOK.nginx_loadtest_run = 'nginx_loadtest.yml'`. **`limit` her zaman boş**;
-`LIMIT_MUAF` ve vekil sunucu değişkenleri hiç gönderilmez. Değerler string beklenir (Portal sayı
-da gönderebilir; playbook `| string` ile denetler). Portal HER ZAMAN 30 değişkenin hepsini gönderir; motora ait
-olmayan adım değişkenleri boş metindir (`''`).
+`LIMIT_MUAF` hiç gönderilmez; vekil (`yuk_proxy`) YALNIZ araclar işinde gider. Değerler string beklenir (Portal sayı
+da gönderebilir; playbook `| string` ile denetler). Koşu kiplerinde (on_kontrol, kosu, durdur) Portal HER ZAMAN 33
+değişkenin hepsini gönderir; motora ait olmayan adım değişkenleri boş metindir (`''`), durdurda araç değişkenleri
+`''`. araclar işinde TAM 10 değişken gider (`yuk_islem`, `yuk_run_id`, `yuk_derleme_host`, `yuk_k6_surum`,
+`yuk_wrk_surum`, `yuk_k6_arsiv_sha256`, `yuk_wrk_kaynak_sha256`, `yuk_proxy`, `yuk_cikti_kok`, `yuk_son_epoch`; bu sıra).
+Tablo 39 değişken: 33 koşu + 6 yalnız araclar.
 
-| Değişken | Tip | Zorunlu | Kural |
+| Değişken | Tip | Denetlendiği kip | Kural |
 |---|---|---|---|
-| `yuk_islem` | string | her kip | `on_kontrol` \| `kosu` \| `durdur` |
-| `yuk_run_id` | string | her kip | `^[0-9]{1,10}$` (Portal koşu id'si; ADIM `R<id>`, koşu dizini `~www/.portal_yuktesti/<id>`) |
+| `yuk_islem` | string | her kip | `on_kontrol` \| `kosu` \| `durdur` \| `araclar` |
+| `yuk_run_id` | string | her kip | `^[0-9]{1,10}$` (Portal koşu id'si; ADIM `R<id>`, koşu dizini `~www/.portal_yuktesti/<id>`; araclar: araç seti id'si, /sw dizini `<kök>/araclar/<id>`) |
 | `yuk_hedef_turu` | string | on_kontrol, kosu (durdurda yoksa `sunucu`) | `sunucu` \| `serbest` |
-| `yuk_hedef_host` | string | her kip | sunucu: `^[A-Z0-9][A-Z0-9-]{1,30}$`, ad kuralına göre DEV/TEST/QA (`GBNG[WX][A][DTQ]...`), EDU istisnası (GBNGXT51) değil; serbest: `''` (dolu ise red) |
-| `yuk_yuk_host` | string | her kip | aynı ad kuralı; hedeften FARKLI |
+| `yuk_hedef_host` | string | on_kontrol, kosu, durdur | sunucu: `^[A-Z0-9][A-Z0-9-]{1,30}$`, ad kuralına göre DEV/TEST/QA (`GBNG[WX][A][DTQ]...`), EDU istisnası (GBNGXT51) değil; serbest: `''` (dolu ise red) |
+| `yuk_yuk_host` | string | on_kontrol, kosu, durdur | aynı ad kuralı; hedeften FARKLI |
 | `yuk_motor` | string | on_kontrol, kosu | `k6` \| `wrk` |
 | `yuk_hedef_ip` | string | on_kontrol, kosu | IPv4; 0/127/169.254/224+ değil; sunucuda hedefte yerel olduğu ön kontrolde ve koşu başında ölçülür |
 | `yuk_host_basligi` | string | on_kontrol, kosu | RFC1123 küçük harf, port/joker yok, ≤ 253 (yalnız biçim; hedefin server_name listesinde olması ŞART değil) |
@@ -137,7 +199,7 @@ olmayan adım değişkenleri boş metindir (`''`).
 | `yuk_baglantilar` | string | on_kontrol, kosu | wrk: hızlarla aynı biçim, her biri 1..199 (serbest 1..50), tam sayı olarak tekil; k6: `''` |
 | `yuk_is_parcacigi` | string | on_kontrol, kosu | wrk: 1..16, en küçük bağlantı sayısından büyük değil ve her bağlantı sayısını tam böler; k6: `''` |
 | `yuk_tavan_rps` | string | on_kontrol, kosu | wrk: 1..450 (serbest 1..200); Portal hesaplar (sunucu: hedefin ölçülmüş limit_req tavanı, en çok 450; serbest: 200), kullanıcı girmez; k6: `''` |
-| `yuk_son_epoch` | string | on_kontrol, kosu | `^[0-9]{10}$`; şimdi ≤ değer ≤ şimdi + 1800 (AWX EE saati; Portal şimdi + 900 gönderir); durdurda denetlenmez |
+| `yuk_son_epoch` | string | on_kontrol, kosu, araclar | `^[0-9]{10}$`; şimdi ≤ değer ≤ şimdi + 1800 (AWX EE saati; Portal şimdi + 900 gönderir); durdurda denetlenmez |
 | `yuk_tekrar` | string | on_kontrol, kosu | 1..3 |
 | `yuk_kip` | string | on_kontrol, kosu | `yeni` (her istek yeni bağlantı) \| `ka` (keep-alive) |
 | `yuk_ae` | string | on_kontrol, kosu | `br` \| `gzip` \| `identity` |
@@ -146,15 +208,37 @@ olmayan adım değişkenleri boş metindir (`''`).
 | `yuk_bosluk_sn` | string | on_kontrol, kosu | 0..120 |
 | `yuk_bosta_bas_sn` | string | on_kontrol, kosu | 30..120 (kaydedicinin yük öncesi boşta örneği; serbestte kaydedici yok, yalnız bütçeye girer) |
 | `yuk_butce_sn` | string | on_kontrol, kosu | ≤ 2700 ve ≥ `bosta + adım_sayısı × tekrar × (isinma + sure + bosluk) + 120` (adım sayısı: k6'da hız, wrk'de bağlantı sayısı) |
-| `yuk_k6_yolu` | string | on_kontrol, kosu | `^/[A-Za-z0-9._/-]{1,200}$`, `..` yok, iki motorda da (varsayılan Portal'da `/home/www/bin/k6`) |
-| `yuk_wrk_yolu` | string | on_kontrol, kosu | `yuk_k6_yolu` ile aynı kural, iki motorda da (Portal `NGINX_LOADTEST_WRK`, varsayılan `/home/www/bin/wrk`) |
+| `yuk_k6_yolu` | string | on_kontrol, kosu | SABİT işaret `/yeni-playbook-gerekli/k6` (tur 4; ikili artık koşu dizinindeki araç kopyasıdır). Eski playbook bu yolu kabul eder ama bulamaz: yeni Portal + eski playbook ön kontrolü "k6 yok ya da calistirilamiyor" ile düşer, eski `/home/www/bin` ikilisi SESSİZCE kullanılmaz |
+| `yuk_wrk_yolu` | string | on_kontrol, kosu | SABİT işaret `/yeni-playbook-gerekli/wrk` (aynı gerekçe) |
+| `yuk_arac_dizin` | string | on_kontrol, kosu | Etkin araç setinin /sw dizini: `^/sw/BMW_PORTAL(_DEV)?(/...)+/araclar/[0-9]{1,10}$`, `..` yok, `<yuk_cikti_kok>/araclar/` ile başlar; durdurda `''` (denetlenmez) |
+| `yuk_k6_sha256` | string | on_kontrol, kosu | Etkin setin k6 sha256'sı (64 küçük hex; iki motorda da); yük makinesi kopyayı YALNIZ bununla doğrular; durdurda `''` |
+| `yuk_wrk_sha256` | string | on_kontrol, kosu | Etkin setin wrk sha256'sı (64 küçük hex; motor k6'da da denetlenir); durdurda `''` |
 | `yuk_ua_onek` | string | on_kontrol, kosu | `^[a-z][a-z0-9-]{2,30}$` (Portal: `portal-yuktesti`) |
-| `yuk_cikti_kok` | string | on_kontrol, kosu | `^/sw/BMW_PORTAL(_DEV)?/...`, `..` yok (Portal: `NGINX_LOADTEST_DIR`, varsayılan `/sw/BMW_PORTAL/nginx_loadtest`) |
+| `yuk_cikti_kok` | string | on_kontrol, kosu, araclar | `^/sw/BMW_PORTAL(_DEV)?/...`, `..` yok (Portal: `NGINX_LOADTEST_DIR`, varsayılan `/sw/BMW_PORTAL/nginx_loadtest`) |
+| `yuk_derleme_host` | string | araclar | `^[A-Z0-9][A-Z0-9-]{1,30}$` ve (playbook listesi `yt_derleme_hostlari`: GBLABT02, ya da ad kuralına göre DEV/TEST/QA nginx makinesi, EDU değil); Portal ayrıca `NGINX_LOADTEST_DERLEME_HOSTLARI` listesini ister |
+| `yuk_k6_surum` | string | araclar | `^v0[.](4[5-9]\|5[0-9])[.][0-9]{1,2}$` (Portal varsayılanı `v0.49.0`; 1.x desteklenmez) |
+| `yuk_wrk_surum` | string | araclar | tam `4.2.0` |
+| `yuk_k6_arsiv_sha256` | string | araclar | ZORUNLU 64 küçük hex (Portal `NGINX_LOADTEST_K6_ARSIV_SHA256`; boş kabul edilmez): resmî checksums satırı bununla aynı olmalı, arşiv `get_url checksum:` ve diskte yeniden sha256 ile doğrulanır |
+| `yuk_wrk_kaynak_sha256` | string | araclar | ZORUNLU 64 küçük hex (Portal `NGINX_LOADTEST_WRK_KAYNAK_SHA256`; boş kabul edilmez, ilk kullanımda güven YOK): kaynak arşivi `get_url checksum:` ve diskte yeniden sha256 ile doğrulanmadan açılmaz / derlenmez |
+| `yuk_proxy` | string | araclar | `''` (vekilsiz) ya da `^http://[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?:[0-9]{1,5}$` (kimlik bilgisi, yol, büyük harf YOK); YALNIZ Play 8'in üç `get_url` görevine ortam olarak gider |
 
 `durdur` kipinde yalnız ilk assert (işlem, koşu kimliği, hedef türü, hedef, yük makinesi) denetlenir; diğerleri gelse
-de kullanılmaz. **Durdur kipinde `yuk_hedef_turu` yoksa `sunucu` sayılır**: eski Portal'ın 4 ya da 23 değişkenli
-durdurması yeni playbook'la çalışır. on_kontrol/kosu'da `yuk_hedef_turu` ve `yuk_motor` ZORUNLUDUR (eski Portal'ın
-on_kontrol/kosu isteği reddedilir; zararsız). Teslim sırası: önce Portal, sonra bu deponun zip'i.
+de kullanılmaz (araç değişkenleri dahil). **Durdur kipinde `yuk_hedef_turu` yoksa `sunucu` sayılır**: eski Portal'ın 4,
+23 ya da 30 değişkenli durdurması yeni playbook'la çalışır. on_kontrol/kosu'da `yuk_hedef_turu`, `yuk_motor` ve beş araç
+değişkeni ZORUNLUDUR: eski Portal'ın (tur 3) 30 değişkenli on_kontrol/kosu isteği araç assert'inin iletisiyle
+reddedilir ("arac degiskenleri eksik ya da gecersiz ... Portal surumu playbook ile uyumsuz ya da araclar hazirlanmadi;
+hicbir sey yapilmadi"); hiçbir host eklenmez. Teslim sırası (tur 4): önce bu deponun zip'i (yeni `files/arac_hazirla.sh`
+ayrıca sayılır), sonra Portal, sonra Admin "Araçları hazırla"; arada ön kontrol/koşu reddedilir, durdur çalışır.
+
+### Karışık sürüm penceresi
+
+| Durum | Sonuç |
+|---|---|
+| Yeni Portal + eski playbook, ön kontrol | Eski kapı işaret yolunu kabul eder; eski Play 3 ikiliyi bulamaz: "k6 yok ya da calistirilamiyor: /yeni-playbook-gerekli/k6" (wrk'de "wrk yok ..."), FAIL; koşu başlamaz |
+| Yeni Portal + eski playbook, araclar | Eski 1. assert `yuk_islem`'i reddeder; set_stats `islem: araclar` yankısıyla gelir, Portal "Ansible deposu güncel değil" der |
+| Eski Portal + yeni playbook, ön kontrol / koşu | Araç assert'i (2. assert'ten önce) reddeder; hiçbir host eklenmez |
+| Durdur (her iki pencere) | Çalışır (araç değişkenleri durdurda denetlenmez) |
+| Zip'te `files/arac_hazirla.sh` eksik | Her kip "betiklerden biri yok" ile düşer |
 
 ### Senaryo satırı
 
@@ -177,27 +261,47 @@ Tek yazar localhost, `per_host: false`, `aggregate: false`, `fail`'den ÖNCE ve 
                 ip_yuk_makinesinde (bool|null), serbest_ag (str|null),
                 k6_var (bool|null), k6_surum (str|null), k6_sha256 (str|null),
                 wrk_var (bool|null), wrk_calisiyor (bool|null), wrk_surum (str|null), wrk_sha256 (str|null),
+                arac_dogrulandi (bool|null), arac_sha256 (str|null), arac_glibc (str|null), arac_hata (str|null),
                 yollar_toplam, yollar_200, ilk_hatalar: [{yol, status}] (≤20),
                 sikistirma: {statik, dinamik, sikistirmasiz} } | null,
   kosu: { kos_rc (int|null), kaydedici_rc (int|null), bas_epoch, bit_epoch,
           istemci_ozet: [istemci_<TUR>.json içerikleri], dosyalar: [{ad, bayt}], sw_dizin (str|null) } | null,
-  durdur: { durdurulan: ["<HOST> <ad> pid <pid> <TERM|KILL|KALDI>"] } | null }
+  durdur: { durdurulan: ["<HOST> <ad> pid <pid> <TERM|KILL|KALDI>"] } | null,
+  araclar: { arac_id (int), derleme_host, derleme_rhel, derleme_glibc, derleme_os, k6_surum, k6_surum_satiri,
+             k6_sha256, k6_arsiv_sha256, k6_statik (bool|null), wrk_surum, wrk_surum_satiri, wrk_sha256,
+             wrk_kaynak_sha256, wrk_kaynak_sabit (bool), wrk_glibc_gerekli, wrk_openssl, wrk_luajit,
+             wrk_kutuphaneler, sw_dizin (str|null) } | null }
 ```
+
+Üst düzey anahtarlar her yolda aynıdır (11; `surum` 2 kalır, `araclar` eklemelidir). araclar işinde `hedef_turu`,
+`motor`, `on_kontrol`, `kosu`, `durdur` `null`; `araclar` girdi reddinde `null`, aksi hâlde doludur (derleme ya da
+yayın düşse de; ölçülemeyen alan `null`, `-` de `null`). `sw_dizin` YALNIZ /sw yayını ve geri okuma tamamsa dolu.
+Koşu kiplerinde `araclar: null`. araclar hata metinleri: `girdi reddedildi, hicbir sey yapilmadi: <ileti>`,
+`derleme makinesi <D>: erisilemedi (ssh): ...`, `derleme makinesi <D>: indirme basarisiz (k6 checksums | k6 arsivi |
+wrk kaynagi): <get_url iletisi>`, `derleme makinesi <D>: derleme: <SONUC mesajı>`, `derleme makinesi <D>: play
+tamamlanmadi (erisilemedi ya da dustu)`, `/sw yayini: <...>` (`arac dizini zaten var: ...`, `GBLABT02 erisilemedi
+(...)`, `/sw okuma dogrulamasi tutmadi: ...`).
 
 - `hedef_turu` / `motor`: geçerli girdinin yankısı (geçersiz ya da yoksa, ör. girdi reddi ya da eski Portal'ın
   durdurması, `null`). Portal yankıyı yalnız metinse koşu satırıyla karşılaştırır.
+- `arac_*` (on_kontrol, iki türde): `arac_dogrulandi` koşu dizinindeki kopya Portal'ın sha256'sıyla doğrulandı mı
+  (blok hiç koşmadıysa `null`), `arac_sha256` kopyanın ölçülen sha256'sı, `arac_glibc` yük makinesinin glibc'si,
+  `arac_hata` kopya nedeni ya da `glibc uyumsuz: makinede glibc <g>, arac GLIBC_<x.y> istiyor`.
 - Hedef alanları (`ip_yerel` ... `statik_direktif`) sunucuda bugünkü anlamda (ölçülmediyse bool alanlar `false`),
   serbestte yedisi `null`. `ip_yuk_makinesinde`: `on_kontrol.sh yollar`'ın ölçümü (iki türde; ölçülmediyse `null`).
   `serbest_ag`: yük makinesi izin dosyasında hedef IP'yi kapsayan girdi (yalnız serbest; aksi `null`).
-- `k6_*` yalnız motor k6'da, `wrk_*` yalnız motor wrk'te dolu; diğerleri `null`. `wrk_calisiyor` true ama
-  `wrk_var` false: ikili çalışıyor, ama sürüm satırı okunamadı ya da 4 altında (`make VER=4.2.0`'sız derleme).
+- `k6_*` yalnız motor k6'da, `wrk_*` yalnız motor wrk'te dolu; diğerleri `null`; ikisi de koşu dizinindeki araç
+  kopyasının ölçümüdür. `wrk_calisiyor` true ama `wrk_var` false: ikili çalışıyor, ama sürüm satırı okunamadı ya da 4
+  altında (`make VER=4.2.0`'sız derleme; araç seti yeniden hazırlanır).
 - `durum`:
   - `on_kontrol`: `OK` yalnız ölçülen taraflarda **engel** yoksa. Engeller (Portal koşuyu başlatmaz): sunucu
     hedefte hedefin sonucu OK değil, hedef IP hedefte yerel değil (ya da ölçülemedi: o zaman yük makinesinden HİÇ
     istek gitmez ve yük makinesi tarafı da `FAIL`), `/web_log` okunamıyor; iki türde yük makinesi sonucu OK değil
-    (serbestte izin dosyası reddi dahil), seçili motorun ikilisi yok/çalışmıyor (wrk'de iki ayrı metin: "wrk yok ya
-    da calistirilamiyor" / "wrk calisiyor ama surumu okunamadi ya da 4 altinda ... make VER=4.2.0 ile derleyin"),
-    hiç yol denenmedi, hedef IP yük makinesinde yerel (istek gönderilmez). **server_name `nginx -T`'de yok engel
+    (serbestte izin dosyası reddi dahil), araç kopyası doğrulanamadı (`arac kopyasi dogrulanamadi: <neden|olculmedi>`)
+    ya da doğrulandı ama çalıştırılamadı (`arac calistirilamadi: glibc uyumsuz: ...`), seçili motorun kopyası
+    çalışmıyor ("k6 kopyasi calistirilamiyor: <dizin>/arac/k6"; wrk'de iki ayrı metin: "wrk kopyasi calistirilamiyor:
+    <dizin>/arac/wrk" / "wrk calisiyor ama surumu okunamadi ya da 4 altinda (...); arac setini yeniden hazirlayin
+    (Portal Arac paneli)"), hiç yol denenmedi, hedef IP yük makinesinde yerel (istek gönderilmez). **server_name `nginx -T`'de yok engel
     DEĞİLDİR**: `server_name_var` aynen yayınlanır, Portal onay isteyen bir uyarı gösterir (joker / regex ad olabilir).
     Uyarılar `durum`'u bozmaz: `yollar_200 < yollar_toplam`, `sikistirma.statik > 0`, `web_log_df ≥ 65` ya da
     `null`, `log_format_ua false`. `master_sayisi` ölçülemediyse `null` (0 değil: 0 bir ölçümdür, hidepid ya da
@@ -208,6 +312,7 @@ Tek yazar localhost, `per_host: false`, `aggregate: false`, `fail`'den ÖNCE ve 
     ana kadarki veri /sw'de (sunucuda ayrıca `kaydedici_rc 0`; serbestte kaydedici yok); diğer her şey `FAIL`.
     Serbest koşuda izin dosyası reddi: `yuk makinesi <Y>: serbest izin listesi: <neden>; yuk gonderilmedi`.
   - `durdur`: `OK` = yük makinesinde ve (sunucuda) hedefte `durdur.sh` "kalan süreç yok" dedi; aksi `FAIL` (job düşer).
+  - `araclar`: `OK` = /sw yayını ve geri okuma tamam ve hata yok; aksi `FAIL`.
 - **DUR sözleşmesi**: `OK` dışındaki her `durum`'da (DUR dahil) son görev job'ı düşürür, AWX `failed`
   der. Portal kararı set_stats'tan verir: `durum: DUR` + AWX `failed` koşusu **başarılı** sayılır
   (`DONE`, geçerlilik en iyi `KISMI`; veri /sw'de), `durum: FAIL` her zaman başarısız, AWX `canceled`
@@ -226,7 +331,10 @@ AWX iptali uzaktaki async koşu betiğini (kos.sh/k6 ya da wrk_kos.sh/wrk) ve ay
 bitti" ≠ "yük bitti"). Portal kilitleri bu yüzden işe bağlıdır ve işin türüne göre bırakılır. Anahtarlar: sunucu
 hedefte `G|global` (yalnız koşu) + `T|<HOST>` + `L|<YUK>`; serbest hedefte `G|global` (ön kontrol DAHİL: serbest ön
 kontrolün trafiği VIP arkasındaki bir hostun ölçüm penceresine girmesin) + `T|IP:<ip>` + `L|<YUK>`. VIP arkasındaki
-hostlar `T` kilidiyle korunmaz (Portal VIP havuzunu bilmez; asıl koruma izin listesi ve G kilidi).
+hostlar `T` kilidiyle korunmaz (Portal VIP havuzunu bilmez; asıl koruma izin listesi ve G kilidi). araclar işi:
+`A|araclar` (aynı anda tek araç hazırlama) + `L|<derleme makinesi>` (derleme bir yük makinesinde yapılırsa ölçümü
+bozmasın), bağ türü `araclar`: `successful`/`failed` bitince bırakılır, `canceled`/`error` bitince süresiyle düşer
+(uzakta `timeout -k 30 1800` ile biten derleme sürebilir).
 
 - Bağlı iş `successful` biterse kilit hemen bırakılır. `durdur` kipindeki iş ancak ölçülen sunucular
   "kalan süreç yok" derse `successful` biter (aksi halde `durum: FAIL` ve job düşer).
@@ -248,7 +356,8 @@ kullanıcı, `delegate_to: GBLABT02`, dizin 0777, dosya 0666; Portal aynı mount
 - `SHA256SUMS` (`sha256sum -c` biçimi; kontrol düğümündeki kopyalardan)
 
 Kök: PROD `/sw/BMW_PORTAL/nginx_loadtest`, DEV `/sw/BMW_PORTAL_DEV/nginx_loadtest` (Portal
-`docs/DEV-PROD.md` ile aynı ayrım). /sw koşu dizinlerinin saklama süresi bu playbook'ta yoktur.
+`docs/DEV-PROD.md` ile aynı ayrım). /sw koşu dizinlerinin saklama süresi bu playbook'ta yoktur. Araç setleri aynı kökün
+`araclar/` alt dizinindedir ("Araç seti (/sw)").
 
 ## Betikler (kitten farklar ve Portal'a özgü betikler)
 
@@ -265,8 +374,24 @@ Kök: PROD `/sw/BMW_PORTAL/nginx_loadtest`, DEV `/sw/BMW_PORTAL_DEV/nginx_loadte
   bir koşudan yetim kalmış k6, `R90` gibi önek çakışması dahil) `diger` trafiktir. Çıktılar kitle aynı.
 - `on_kontrol.sh`: Portal'a özgü (dosya başında ayrıntı); hedefte koşu kapısı için de koşar.
 - `durdur.sh`: Portal'a özgü. Adaylar: koşu dizinindeki `*.pid`'ler, `k6 run` (`[k]6`), wrk (`$2` adı `[w]rk...`
-  VE komut satırında ` -s <kosu_dizini>/yuk_wrk.lua`; wrk_kos.sh wrk'yi bu argüman sırasıyla çağırır) ve
-  `bash <kosu_dizini>/kos.sh|wrk_kos.sh|cpu_kaydedici.sh|on_kontrol.sh`. Başka koşunun wrk'sine dokunulmaz.
+  VE komut satırında ` -s <kosu_dizini>/yuk_wrk.lua`; wrk_kos.sh wrk'yi bu argüman sırasıyla çağırır), argv[0]'ı
+  `<kosu_dizini>/arac/` altında olan her süreç (araç kopyası: `k6 version`, wrk yükleme sınaması, takılmış `-v`; adı
+  `arac`) ve `bash <kosu_dizini>/kos.sh|wrk_kos.sh|cpu_kaydedici.sh|on_kontrol.sh`. Başka koşunun wrk'sine ve araç
+  kopyasına dokunulmaz. Kopyadan çalışan `k6 run` / wrk yükü `<kosu_dizini>/arac/k6|wrk` yoluyla k6 / wrk kuralına da
+  uyar.
+- `arac_hazirla.sh` (araclar kipi, Play 8): kullanım `arac_hazirla.sh <dizin>` (`<www ev>/.portal_yuktesti/arac_<id>`),
+  ortam `K6_SURUM`, `WRK_SURUM`, `TMPDIR`. Sıra: vekil ortamını siler (`unset ... http_proxy ...`) → girdi (dizin
+  biçimi, sürümler, iki arşiv; çıkış 2) → derleme araçları (`tar gzip gcc make perl objdump ldd getconf sha256sum
+  strings nproc`; eksik ilk ad, çıkış 3) → derleme makinesi bilgisi (`/etc/os-release`, `getconf GNU_LIBC_VERSION`) →
+  k6: arşiv listesi (her üye `k6-<v>-linux-amd64/` altında, `..` ve mutlak üye yok) → yalnız `k6` üyesi
+  `--no-same-owner --no-same-permissions` ile çıkarılır → `install -m 0700` → `k6 version` ilk satırı `k6 <v>` →
+  `ldd` (statik mi) → wrk: arşiv listesi (`wrk-4.2.0/`) → çıkarma → `deps/` altında `openssl-*` ve LuaJIT var mı →
+  `make -C ... -j <min(nproc, 4)> VER=4.2.0` (`derleme.log`) → `install -m 0700` → `wrk -v` satırı `wrk 4.2.0 ` →
+  `ldd` (libssl / libcrypto / libluajit / liblua varsa ret) → `strings` (OpenSSL / LuaJIT sürümü) → `objdump -T`
+  (gereken en yüksek `GLIBC_` sürümü). Çıktı `anahtar<TAB>değer` satırları (`derleme_rhel derleme_glibc derleme_os
+  k6_surum_satiri k6_statik k6_glibc_gerekli wrk_surum_satiri wrk_kutuphaneler wrk_glibc_gerekli wrk_openssl
+  wrk_luajit`; ölçülemeyen `-`) ve son satır `SONUC<TAB>OK|FAIL<TAB><mesaj>`; çıkış 0 / 2 / 3 / 4. `derleme/` ve
+  `tmp/` çıkışta silinir. Ağ aracı, vekil ataması, işlemciye özgü bayrak ve sistem OpenSSL'i YOK.
 - `wrk_kos.sh` (motor wrk): dış sözleşme kos.sh ile aynı; kullanım `wrk_kos.sh <ADIM> <K|B> [--kuru]`, çıkış 0 /
   2 (girdi ya da ön koşul, yük YOK) / 4 (DUR) / 130. Sıra: girdi denetimi (`BAGLANTILAR` ≤ 199 tekil en çok 5,
   `IS_PARCACIGI` 1..16 en küçük bağlantıdan büyük değil ve her bağlantıyı böler, `TAVAN_RPS` zorunlu 1..450, `SNI`
@@ -348,43 +473,115 @@ konf_*) kitle **aynıdır**; Portal'ın analizi (karsilastir.py portu) bunlara d
 | Uzun iş otomatik iptali | listeye EKLENMEZ: AWX iptali uzak async koşuyu durdurmaz; Portal "Durdur" bu playbook'u `durdur` kipiyle koşturur |
 
 Portal tarafı: `NGINX_LOADTEST_RUN_TEMPLATE_ID`, `NGINX_LOADTEST_AWX_SERVER_ID`,
-`NGINX_LOADTEST_DIR`, `NGINX_LOADTEST_K6`, `NGINX_LOADTEST_WRK` (wrk ikilisi, varsayılan `/home/www/bin/wrk`),
-`NGINX_LOADTEST_YUK_HOSTLARI` (izinli yük makineleri), `NGINX_LOADTEST_SERBEST_AGLAR` (serbest hedef izin listesi:
+`NGINX_LOADTEST_DIR`, `NGINX_LOADTEST_DERLEME_HOSTLARI`, `NGINX_LOADTEST_ARAC_PROXY`, `NGINX_LOADTEST_K6_SURUM`,
+`NGINX_LOADTEST_K6_ARSIV_SHA256`, `NGINX_LOADTEST_WRK_KAYNAK_SHA256` ("Araç seti (/sw)"; `NGINX_LOADTEST_K6` ve
+`NGINX_LOADTEST_WRK` ARTIK KULLANILMAZ), `NGINX_LOADTEST_YUK_HOSTLARI` (izinli yük makineleri), `NGINX_LOADTEST_SERBEST_AGLAR` (serbest hedef izin listesi:
 virgüllü `a.b.c.d/n`, en küçük /24 ya da tek IP; boşsa serbest KAPALI), `NGINX_LOADTEST_SERBEST_YASAK` (isteğe bağlı
 yasak ağlar, iki türde izin listesinden önce; tek geçersiz girdi tüm yük testini kapatır). Portal listeleri
 playbook'a GÖNDERİLMEZ (extra_var olarak ezilebilirdi); playbook'un kendi listesi yük makinesindeki izin dosyasıdır.
 
-## k6 kurulumu (yük makinesi, bir kez, elle)
+## Araç seti (/sw)
 
-Bu playbook k6 KURMAZ; yalnız varlığını, sürümünü ve sha256'sını ölçer (`on_kontrol`, motor k6).
+Bu playbook yük makinelerine hiçbir şey KURMAZ. k6 ve wrk, Admin'in Portal › Yük Testi › Araçlar › "Araçları hazırla"
+düğmesiyle başlattığı `araclar` işinde bir kez hazırlanır ve `/sw`'de saklanır; tüm makinelerde `/sw` bağlıdır.
 
-1. Kurumun onaylı kanalından k6 **linux-amd64** arşivini ve aynı sürümün `k6-v<sürüm>-checksums.txt`
-   dosyasını alın (en az v0.45; ikisi de aynı kaynaktan).
-2. Arşivi doğrulayın, doğrulanmadan açmayın:
-   `sha256sum -c --ignore-missing k6-v<sürüm>-checksums.txt` → arşiv satırı `OK` olmalı.
-3. Açın ve yalnız ikiliyi www'nin dizinine koyun: `install -m 0755 k6 /home/www/bin/k6`
-   (sahibi www; grup/diğer YAZAMAZ). Başka yol kullanılırsa Portal'da `NGINX_LOADTEST_K6`.
-4. `/home/www/bin/k6 version` ilk satırı ve `sha256sum /home/www/bin/k6` çıktısını kayda geçirin.
-   Her ön kontrol `k6_surum` ve `k6_sha256`'yı gösterir; kayıttakiyle aynı olmalı (farklıysa ikili
-   değişmiştir: koşu başlatmayın, kaynağını araştırın).
-5. Yük makinesinden hedefin 443'üne erişim (firewall) ve `curl` varlığı ön kontrolle görülür.
+Düzen (kök = koşu sonuçlarıyla AYNI `yuk_cikti_kok`, Portal `NGINX_LOADTEST_DIR`):
 
-## wrk kurulumu (yük makinesi, bir kez, elle)
+```
+<kök>/araclar/                    yoksa Play 9 0755 ile oluşturur (varsa moduna dokunulmaz)
+<kök>/araclar/.<id>.yarim/        yalnız yayın sırasında; başarıda mv -T ile <id>/ olur, hatada silinir
+<kök>/araclar/<id>/               0755, sahibi AWX'in GBLABT02'ye bağlanan kullanıcısı
+    k6                            0644 (çalıştırılabilir DEĞİL: /sw'den doğrudan koşulmaz)
+    wrk                           0644
+    SHA256SUMS                    iki satır ("<sha>  k6", "<sha>  wrk"; sha256sum -c biçimi)
+    manifest.json                 sürümler, özetler, derleme makinesi bilgisi (to_nice_json)
+```
 
-Bu playbook wrk KURMAZ ve derlemez; yalnız varlığını, `-v` sürüm satırını ve sha256'sını ölçer (`on_kontrol`, motor
-wrk). Resmî ikili yok: operatör kurumun onaylı kaynağından (iç ayna ya da onaylı arşiv) derler. Asgari 4.0
-(`delay()`, `wrk.thread:stop()`), önerilen **4.2.0**.
+- `<id>` Portal'ın araç seti satırıdır (`nginx_loadtest_araclar.id`); aynı dizine iki kez yazılmaz (hedef varsa iş
+  `arac dizini zaten var` ile düşer). Sürüm adı dizine yazılmaz; sürümler `manifest.json`'da ve Portal DB'de.
+- `manifest.json` alanları: `surum` (1), `arac_id`, `olusturma_epoch`, `awx_job_id`; `k6` {`surum`, `sha256`, `arsiv`,
+  `arsiv_sha256`, `surum_satiri`, `statik`}; `wrk` {`surum`, `sha256`, `kaynak`, `kaynak_sha256`, `kaynak_sabit`,
+  `surum_satiri`, `glibc_gerekli`, `openssl`, `luajit`, `kutuphaneler`}; `derleme` {`host`, `rhel`, `glibc`, `os`}.
+- **Güven kökü Portal'dır**: yük makinesi `/sw`'deki `SHA256SUMS`'a ve `manifest.json`'a GÜVENMEZ; iki dosya insan
+  içindir. Her ön kontrol / koşu kopyanın sha256'sını yalnız Portal'ın extra var ile verdiği değerle
+  (`yuk_k6_sha256` / `yuk_wrk_sha256`) karşılaştırır. Doğrulanmamış ikili ASLA çalıştırılmaz (ne `version`/`-v`, ne yük)
+  ve hemen silinir.
+- Koşu kopyası: `<www ev>/.portal_yuktesti/<koşu id>/arac/<k6|wrk>` (dizin ve dosya 0700, sahibi www). `/tmp`
+  KULLANILMAZ (`/tmp` noexec bağlıdır; derleme de www ev dizininde yapılır, `TMPDIR=<derleme dizini>/tmp`). Play 7 koşu
+  dizinini korusa da `arac/`'ı her yolda siler; erişilemeyen makinede kopya kalır (sonraki Portal Durdur ya da elle
+  silme).
+- **k6** (`yuk_k6_surum`, Portal `NGINX_LOADTEST_K6_SURUM`, varsayılan `v0.49.0`; izinli `v0.45.0`..`v0.59.x`; 1.x
+  desteklenmez: uç özet davranışı değişti, `handleSummary`/`data.metrics` biçimi sınanmadı): resmî
+  `k6-<v>-checksums.txt` ve `k6-<v>-linux-amd64.tar.gz` indirilir; arşivin satırı checksums dosyasında TAM bir kez
+  olmalı ve Portal'ın sabit `NGINX_LOADTEST_K6_ARSIV_SHA256` değeriyle AYNI olmalı; arşiv `get_url checksum:
+  sha256:<sabit değer>` ile indirilir ve açılmadan önce diskte yeniden karşılaştırılır. Resmî Go ikilisi statiktir
+  (`k6_statik`): RHEL 8 / 9 farkı k6'yı etkilemez. Sürüm değişirse (`NGINX_LOADTEST_K6_SURUM`) özet de yeniden
+  sabitlenir ("Arşiv özetlerini sabitleme").
+- **wrk** 4.2.0 SABİT: kaynak `github.com/wg/wrk` 4.2.0 etiket arşivi (üst dizin `wrk-4.2.0/`), derleme arşivdeki
+  varsayılan Makefile ile `make VER=4.2.0` (`VER` ZORUNLU: arşivde `.git` yok, `VER`'siz derleme `wrk -v`'de sürümsüz
+  satır basar). `deps/` altındaki paketli OpenSSL 1.1.1 ve LuaJIT 2.1 statik bağlanır: ikili yalnız glibc'ye (libc,
+  libm, libdl, libpthread, ld-linux; libgcc_s olabilir) bağlıdır. Sistem OpenSSL'i verilmez (RHEL 8 OpenSSL 1.1 /
+  RHEL 9 OpenSSL 3.0 farkı ikiliyi taşınamaz yapardı) ve `-march` gibi işlemciye özgü bayrak yoktur; `ldd` çıktısında
+  libssl / libcrypto / libluajit / liblua görülürse iş düşer.
+- **İki arşiv özeti de SABİT (ilk kullanımda güven yok)**: wrk kaynak arşivi ve k6 arşivi YALNIZ Portal env'inde
+  sabitlenmiş sha256 ile (`NGINX_LOADTEST_WRK_KAYNAK_SHA256`, `NGINX_LOADTEST_K6_ARSIV_SHA256`) indirilir ve açılmadan,
+  derlenmeden, çalıştırılmadan önce doğrulanır; özet yoksa Portal işi başlatmaz (409) ve playbook girdi kapısı da
+  reddeder. "İlk iş özeti kaydeder, Admin onaylar" yolu KALDIRILDI: `make` (Makefile, OpenSSL `Configure`, LuaJIT
+  derlemesi) keyfi kabuk kodudur ve onaydan önce derleme makinesinde www olarak koşardı. `wrk_kaynak_sabit` /
+  `kaynak_sabit` artık her başarılı işte `true`dur (alan geriye uyum için kalır).
 
-1. Bağımlılıklar (derleme makinesinde): `gcc`, `make`, `tar`/`unzip`, klon ise `git`, paketli OpenSSL'i derlemek için
-   `perl`. Tercihen dağıtımın bakımlı OpenSSL'i: `openssl-devel` (paketli 1.1.1'in desteği bitti).
-2. Kaynağı açıp derleyin: `make VER=4.2.0 WITH_OPENSSL=/usr` (dağıtım OpenSSL'i) ya da `make VER=4.2.0` (paketli).
-   `VER` ZORUNLU: wrk sürüm satırını `git describe`'dan alır; .git'siz arşivden `VER`'siz derleme `wrk  [epoll] ...`,
-   etiketsiz klon kısa hash basar ve ön kontrol "wrk calisiyor ama surumu okunamadi" der.
-3. Yalnız ikiliyi www'nin dizinine koyun: `install -m 0755 wrk /home/www/bin/wrk` (sahibi www; grup/diğer YAZAMAZ).
-   Başka yol kullanılırsa Portal'da `NGINX_LOADTEST_WRK`.
-4. `/home/www/bin/wrk -v | head -1` çıktısının `wrk 4.` ile başladığını doğrulayın (`wrk -v` kullanım metniyle
-   birlikte 1 ile çıkar; normaldir) ve `sha256sum /home/www/bin/wrk` çıktısını kayda geçirin. Her wrk ön kontrolü
-   `wrk_surum` ve `wrk_sha256`'yı gösterir; kayıttakiyle aynı olmalı.
+- **glibc kuralı**: derleme makinesinin glibc'si (`derleme_glibc`) ve wrk'nin istediği en yüksek glibc sembol sürümü
+  (`objdump -T`, `wrk_glibc_gerekli`) kaydedilir. RHEL 9'da (glibc 2.34) derlenen wrk RHEL 8'de (glibc 2.28)
+  çalışmayabilir: ön kontrol `version`/`-v` yükleyici hatasını `arac calistirilamadi: glibc uyumsuz: makinede glibc
+  2.28, arac GLIBC_2.34 istiyor` olarak bildirir ve Portal Araçlar paneli önceden uyarır. RHEL 8 bir DEV/TEST/QA nginx
+  makinesi Portal `NGINX_LOADTEST_DERLEME_HOSTLARI` listesine eklenip orada hazırlanırsa ikili iki sürümde de çalışır.
+  GBLABT02'nin RHEL sürümünü ilk iş kaydeder.
+- **Vekil yalnız indirmede**: kurumsal vekil (Portal `NGINX_LOADTEST_ARAC_PROXY`; yalnız `http://<ad>:<port>`, kimlik
+  bilgisi yok; `yok` = vekilsiz) YALNIZ Play 8'in üç `get_url` görevine görev düzeyi `environment` olarak gider.
+  `arac_hazirla.sh` vekilsiz koşar (`env -u` + betik içinde `unset`); başka hiçbir görevde `environment` yoktur.
+- **TLS doğrulaması kapatılmaz**: `validate_certs: true`. Vekil TLS'i açıyorsa (kurum CA'sı) derleme makinesinin sistem
+  güven deposunda olmalıdır; değilse iş `indirme basarisiz (...): ... CERTIFICATE_VERIFY_FAILED` ile düşer.
+- **Eski elle kurulumlar kullanılmaz**: yük makinelerinde elle kurulmuş k6
+  (`install -m 0755 k6 /home/www/bin/k6` ile) ve GBLABT02'deki eski wrk yerinde kalır, hiçbir iş onları çalıştırmaz. `yuk_k6_yolu` /
+  `yuk_wrk_yolu` artık sabit işaret yolları taşır (`/yeni-playbook-gerekli/k6`, `/yeni-playbook-gerekli/wrk`): yeni
+  Portal + eski playbook penceresinde eski ikili SESSİZCE kullanılmaz (fail-closed).
+- **Eski set dizinleri silinmez**: Portal etkin seti DB'den bilir; eski `<kök>/araclar/<id>/` dizinlerini Admin elle
+  siler (etkin seti silmeyin: o set yeniden hazırlanana dek her ön kontrol "kopya basarisiz" ile düşer).
+
+### Arşiv özetlerini sabitleme
+
+Bir kez (ve k6 sürümü değişince), Portal'ın kullandığı kurumsal vekili (Portal `NGINX_LOADTEST_ARAC_PROXY` değeri)
+kullanabilen bir Linux makinesinde, boş bir dizinde, playbook'un indirdiği dosyaların AYNISI indirilir:
+
+```
+VEKIL='<Portal NGINX_LOADTEST_ARAC_PROXY degeri>'
+curl -fsSL -x "$VEKIL" -o wrk-4.2.0.tar.gz https://github.com/wg/wrk/archive/refs/tags/4.2.0.tar.gz
+sha256sum wrk-4.2.0.tar.gz
+curl -fsSL -x "$VEKIL" -o k6-v0.49.0-linux-amd64.tar.gz https://github.com/grafana/k6/releases/download/v0.49.0/k6-v0.49.0-linux-amd64.tar.gz
+curl -fsSL -x "$VEKIL" -o k6-v0.49.0-checksums.txt https://github.com/grafana/k6/releases/download/v0.49.0/k6-v0.49.0-checksums.txt
+sha256sum k6-v0.49.0-linux-amd64.tar.gz
+grep ' k6-v0.49.0-linux-amd64.tar.gz$' k6-v0.49.0-checksums.txt
+sha256sum -c --ignore-missing k6-v0.49.0-checksums.txt
+```
+
+- k6: `sha256sum` çıktısındaki değer resmî `k6-v0.49.0-checksums.txt` satırıyla AYNI olmalı (son komut
+  `k6-v0.49.0-linux-amd64.tar.gz: OK` der); değilse DURUN, değeri kullanmayın. Mümkünse resmî değeri bir de sürüm
+  sayfasından (github.com/grafana/k6/releases, v0.49.0) ya da vekil dışı bir ağdan karşılaştırın.
+- wrk: GitHub etiket arşivini isteğe göre üretir; resmî bir checksums dosyası yoktur. Değeri mümkünse ikinci, bağımsız
+  bir ağdan (vekil dışı) da hesaplayıp karşılaştırın; aynıysa kullanın.
+- Değerler Portal sunucusunun `.env` dosyasına (64 küçük hex) yazılır ve Portal yeniden başlatılır:
+
+```
+NGINX_LOADTEST_K6_ARSIV_SHA256=<k6-v0.49.0-linux-amd64.tar.gz sha256>
+NGINX_LOADTEST_WRK_KAYNAK_SHA256=<wrk-4.2.0.tar.gz sha256>
+```
+
+- k6 sürümü `NGINX_LOADTEST_K6_SURUM` ile değiştirilirse komutlardaki `v0.49.0` yeni sürümle değiştirilip k6 özeti
+  yeniden sabitlenir. Sabit değerler değişince, eski değerlerle hazırlanmış setler Portal'da etkin sayılmaz (yeniden
+  "Araçları hazırla").
+- Arşiv sonradan değişirse (GitHub sıkıştırması değişti, vekil içeriği değiştirdi) iş indirmede `indirme basarisiz
+  (wrk kaynagi): The checksum ... did not match` ya da açmadan önce `arsiv ozeti sabit degerden farkli` ile düşer ve
+  hiçbir şey açılmaz / derlenmez; yeni değer yukarıdaki gibi BAĞIMSIZ doğrulanmadan env'e yazılmaz.
 
 ## Serbest izin dosyası (yük makinesi başına, operatör)
 
@@ -432,6 +629,7 @@ install -m 0644 serbest_aglar /etc/portal_yuktesti/serbest_aglar
 | on_kontrol.sh hedef / yollar | `timeout -k 10 120` / `timeout -k 10 600` (≤400 yol × 5 sn / 4 paralel); koşu kapısı `timeout -k 10 120` |
 | wrk_kos.sh | yükleme sınaması `timeout -k 5 30`; TUR başına 200 kapısı ≤ 180 sn (bütçe formülünde yok, Portal'ın adım payına girer) |
 | durdur.sh | TERM → 10 sn → KILL; dış `timeout -k 10 90` |
+| araclar (Play 8) | get_url `timeout` 120 / 300 / 300 sn; `arac_hazirla.sh` `timeout -k 30 1800` (wrk + paketli OpenSSL/LuaJIT derlemesi birkaç dakika) |
 
 ## Güvenlik: tehdit modeli ve katmanlar
 
@@ -464,6 +662,11 @@ install -m 0644 serbest_aglar /etc/portal_yuktesti/serbest_aglar
   kaynakla), sahip uid (www), düzenli dosya, grup/diğer yazamaz ve dizin 0700/www doğrulanır.
   `durdur.sh` opsx_was deseniyle bağlanan kullanıcı adına `/var/tmp` mktemp dosyasına kopyalanır
   (sahip uid = bağlanan kullanıcı), `always` ile silinir. `ansible.builtin.script` YOK.
+- Araç kopyası: `/sw`'deki ikililer 0644'tür (çalıştırılamaz); tek çalışma yolu koşu dizinindeki doğrulanmış kopyadır.
+  Kopyanın sha256'sı yalnız Portal'ın değeriyle karşılaştırılır (/sw'deki `SHA256SUMS` / `manifest.json`'a güvenilmez),
+  sahip www ve 0700 denetlenir; doğrulanmayan kopya çalıştırılmadan silinir. Derleme betiği de koşu betikleri gibi sha1 /
+  sahip / izin kapısından geçer. /sw'ye www yazmaz: ikililer kontrol düğümüne `fetch` edilir ve Play 6'nın kanıtlanmış
+  yoluyla (GBLABT02, bağlanan kullanıcı) yazılır.
 - `nginx -T` estate komutuyla (`dzdo <nginx> -p /usr/nginx/ -c /usr/nginx/nginx.conf -e /web_log/error.log -T`,
   `nginx_console_dump.sh` ile aynı; dzdo reddederse dzdo'suz); çıktı yalnız geçici dosyada aranır, basılmaz.
 
@@ -568,36 +771,67 @@ install -m 0644 serbest_aglar /etc/portal_yuktesti/serbest_aglar
 - `log_*.tsv` adım başına büyük (~25-30 MB); hedefte gzip'lenir, toplam 200 MiB'ı aşan sonuç toplanmaz.
 - Koşu sırasında log rotate, reload ya da deploy olursa kaydedici bunu `bilgi_*.txt`'ye yazar; Portal
   analizi koşuyu GECERSIZ sayar.
+- **GitHub etiket arşivinin sha256'sı değişebilir**: GitHub etiket arşivlerini isteğe göre üretir; sıkıştırma değişince
+  (2023-01'de oldu) aynı etiketin arşiv özeti değişir. Özet yine de Portal'da SABİTTİR (ilk kullanımda güven yok):
+  değişirse iş `indirme basarisiz (wrk kaynagi): The checksum ... did not match` ile düşer, hiçbir şey açılmaz /
+  derlenmez; yeni değer "Arşiv özetlerini sabitleme"deki gibi bağımsız doğrulanıp env'e yazılır (değişen arşiv bir
+  tedarik zinciri saldırısı da olabilir: doğrulamadan yazmayın).
+- **Release indirmesi yönlendirilir**: `github.com/.../releases/download/...` ve etiket arşivleri
+  `objects.githubusercontent.com` / `codeload.github.com` gibi başka adlara yönlenir; vekil bunlara da izin vermelidir
+  (yoksa 403 / 407 ile `indirme basarisiz (...)`).
+- **fetch + become iki kat aktarım**: become ile `fetch` dosyayı önce slurp ile okur (base64); iki ikili (toplam ~60 MB)
+  derleme makinesinden kontrol düğümüne bellekte iki kat yük olarak gelir, sonra GBLABT02'ye yazılır. Bilinçli bedel
+  (www'nin /sw'ye yazma izni bilinmiyor).
+- **`copy remote_src` /sw okunamıyorsa**: yük makinesinde /sw bağlı değilse ya da www okuyamıyorsa kopya düşer ve ön
+  kontrol `arac kopyasi dogrulanamadi: kopya basarisiz: <ileti>` der (koşu başlamaz).
+- **Derleme süresi sınırlı**: `arac_hazirla.sh` `timeout -k 30 1800` ile koşar (rc 124: `betik sonuc satiri basmadi`).
+  AWX'ten iptal edilen araclar işinde uzaktaki derleme sürebilir; Portal kilidi (`A|araclar`) bu yüzden iptal / hata
+  sonrası süresiyle düşer. Aynı `arac_<id>` dizini her denemede önce silinir.
+- **Paketli OpenSSL 1.1.1 desteği bitti (EOL)**: kabul edilen risk — yalnız iç TEST hedeflerine (ve izinli LB
+  VIP'lerine) giden, sunucu olarak dinlemeyen bir istemcide kullanılır; sürüm `wrk_openssl` olarak kaydedilir; sistem
+  OpenSSL'i bilinçli olarak bağlanmaz (RHEL 8 / 9 arasında taşınabilirlik).
+- **`mv -T` boş hedefin üzerine yazar**: dolu hedefte reddeder, boş `<id>/` dizinine ise taşır; asıl kapı mv'den önceki
+  `stat` (`arac dizini zaten var`) ve sonraki geri okumadır (sha256 Portal değeriyle).
+- **AWX iptali temizliği atlar**: iptal edilen ön kontrol / koşuda Play 7, iptal edilen araclar işinde Play 8'in
+  `always`'i koşmaz; kalan `<id>/arac` ve `arac_<id>` dizinleri 1 gün sonra bir sonraki ön kontrol / koşu / araclar
+  işi tarafından süpürülür (yalnız bu alt dizinler; korunan koşu sonuçlarına dokunulmaz).
 
 ## Bekçiler
 
 - Ansible deposu: `python -B bmw_nginx/tests/check_nginx_loadtest_job.py` (Git Bash ya da Linux, PyYAML, jinja2, node).
-  L1 metin (CRLF, `#`, SEKME, ters eğik çizgi, yasak modüller; koşul metninde derinlik 0'da ` if ` yok), L2 yapı
-  (play sırası, rescue, delegate/unreachable, Play 2 / 3'te getent register + hemen ardından `is unreachable` fail'i,
-  localhost play'lerinde korumasız işlem / hedef türü / motor adı yok, kaydedici süreleri ve hazır deseni, set_stats),
-  L3 girdi sözleşmesi (30 değişken = README tablosu; tek async görev iki betiğin ortamını taşır), L4 betik
+  L1 metin (CRLF, `#`, SEKME, ters eğik çizgi, yasak modüller; koşul metninde derinlik 0'da ` if ` yok; tur 4: vekil
+  ortamı yalnız Play 8'in üç get_url görevinde, `validate_certs: false` yok, Play 3 / 8'de `/tmp` yok), L2 yapı
+  (10 play sırası, rescue, delegate/unreachable, Play 2 / 3 / 8'de getent register + hemen ardından `is unreachable`
+  fail'i, localhost play'lerinde korumasız işlem / hedef türü / motor adı yok, kaydedici süreleri ve hazır deseni,
+  set_stats), L3 girdi sözleşmesi (33 koşu + 10 araclar değişkeni; README tablosu 39; `yuk_proxy` ve eski yol
+  değişkenleri yalnız izinli yerlerde; tek async görev iki betiğin ortamını taşır, K6 / WRK araç kopyası), L4 betik
   başvuruları, L5 girdi kapısı (dört kip × motor birleşimi, eski Portal'ın durdurmaları, §4'ün ihlal durumlarının
   hepsi), L6 sonuç derlemesi ve play'ler (serbest/wrk dalları, patlayan hedef hostvars'ı ile serbest, D7, Play 2 koşu
-  kapısı ve reddinden sonraki Play 3-8 zinciri, erişilemeyen hedef / yük makinesi (Play 2-8: yalnız getent,
+  kapısı ve reddinden sonraki Play 3-10 zinciri, erişilemeyen hedef / yük makinesi (Play 2-10: yalnız getent,
   `erisilemedi (ssh): ...`), Play 3 izin dosyası (ret nedeni en çok 40 karakter; set_fact sonuçlarında vekil yok,
-  davranış aynı), wrk `-v` sürüm satırı, değişkensiz durdur), L7 betik davranışı (sahte k6/wrk/curl/ps/ip/proc ile;
-  wrk_kos.sh sırası, DUR koşulları, istemci dosyası şeması, wrk ortamında `IS_PARCACIGI`; durdur.sh wrk kuralı; gerçek
-  procps ile `[k]6`/`[w]rk`), L8 k6 mantığı, L9 README, L10 Portal aynası, L11 yuk_wrk.lua (metin, her zaman:
+  davranış aynı), wrk `-v` sürüm satırı, değişkensiz durdur; tur 4: araclar girdisi ve ihlalleri, eski Portal'ın 30
+  değişkenli isteği, Play 3 araç kopyası kapısı, Play 7 `arac/` silmesi, Play 8 / 9 sahte modüllerle, Play 10 araclar
+  sonucu), L7 betik davranışı (sahte k6/wrk/curl/ps/ip/proc ile; wrk_kos.sh sırası, DUR koşulları, istemci dosyası
+  şeması, wrk ortamında `IS_PARCACIGI`; durdur.sh wrk ve `arac/` kuralları; gerçek procps ile `[k]6`/`[w]rk`;
+  `arac_hazirla.sh` sahte derleme araçları ve Python `tarfile` arşivleriyle; `make` yoksa küçük sahte make), L8 k6 mantığı, L9 README, L10 Portal aynası, L11 yuk_wrk.lua (metin, her zaman:
   `delay()`'in her dönüşü ≥ D ve ilk `N / T` çağrıda `[D, 2D)`, init `IS_PARCACIGI`, wrk_kos.sh wrk ortamı, iş
   parçacığına özgü tohum: init'te `math.randomseed(os.time() + (tonumber(id) or 0) * 7919)`, setup'ta
   `thread:set('id', #threads)`, başka randomseed yok; isteğe bağlı Lua yorumlayıcısıyla mantık, iki iş parçacığının
-  ilk `N / T` jitter dizisi farklı), L12 (isteğe bağlı) Portal `dogrula.cjs`'nin ürettiği extra_vars'ın girdi
-  kapısından geçmesi. `kosul()` Ansible'ın iki koşul yolunu da sınar (derleme + bool sonuç). Mutasyon kopyaları:
+  ilk `N / T` jitter dizisi farklı), L12 (isteğe bağlı) Portal `dogrula.cjs` ve `araclar.cjs`'nin ürettiği
+  extra_vars'ın girdi kapısından geçmesi (anahtar sıraları, işaret yolları), L13 `arac_hazirla.sh` / `durdur.sh` metni. `kosul()` Ansible'ın iki koşul yolunu da sınar (derleme + bool sonuç). Mutasyon kopyaları:
   `NGINX_LOADTEST_YML`, `NGINX_LOADTEST_FILES`, `NGINX_LOADTEST_README`; yalnız bazı bölümler:
   `NGINX_LOADTEST_ONLY='L[1-79]'`; kabuk testinden yalnız biri: `NGINX_LOADTEST_KABUK=wrk|durdur|...`; Portal
   deposu: `NGINX_LOADTEST_PORTAL_DEPO` (L10, L12); Lua: `NGINX_LOADTEST_LUA` (yorumlayıcı ya da sarmalayıcı;
   kurulumsuz yol: bir LuaJIT `lua51.dll`'ini ctypes ile yükleyen `.cmd`) ya da PATH'te `luajit`/`lua5.1`/`lua`.
   Gerçek procps `ps` için WSL/Linux:
   `NGINX_LOADTEST_ONLY='L[1-79]' python3 -B ...` (node yoksa L8 hariç). KÖR alanlar: gerçek Ansible, gerçek wrk / Lua
-  / k6 / nginx koşmaz (sahteleri sözleşmeyi taklit eder; kanarya).
+  / k6 / nginx koşmaz (sahteleri sözleşmeyi taklit eder; kanarya); gerçek indirme ve derleme koşmaz (`arac_hazirla.sh`
+  sahte tar arşivleri ve sahte gcc / make / objdump / ldd ile sınanır; gerçek wrk Makefile'ı, vekil, GitHub
+  yönlendirmesi ve RHEL 8 / 9 glibc farkı kanaryada).
 - Gerçek Ansible ile (isteğe bağlı, WSL'de ansible-core 2.16): `ansible-playbook --syntax-check`, hiç extra_var olmadan
-  koşu (localhost; diğer hostlar ulaşılamaz adrese eşlenmiş): girdi reddi, Play 6 atlanır, Play 8 `set_stats`
-  yayınlar ve job `girdi reddedildi` ile düşer; serbest durdur ve serbest ön kontrol (yük makinesi erişilemez) Play 8'e
+  koşu (localhost; diğer hostlar ulaşılamaz adrese eşlenmiş): girdi reddi, Play 6 ve 9 atlanır, Play 10 `set_stats`
+  yayınlar ve job `girdi reddedildi` ile düşer; araclar girdisi + erişilemeyen derleme makinesi Play 10'a ulaşır ve
+  `derleme makinesi <D>: erisilemedi (ssh): ...` der; serbest durdur ve serbest ön kontrol (yük makinesi erişilemez) Play 10'a
   ulaşır ve `yuk makinesi <Y>: erisilemedi (ssh): ...` der (sunucu ön kontrol / koşu, iki host erişilemezken:
   `hedef <H>: erisilemedi (ssh): ...; yuk makinesi <Y>: ...`). Girdi kapısının maddeleri gerçek `Conditional` ile
   varsayılan ve eski yolda (`_ANSIBLE_DISABLE_BACKPORTED_INSPECTIONS=1`), 2.19 davranışı
@@ -606,7 +840,9 @@ install -m 0644 serbest_aglar /etc/portal_yuktesti/serbest_aglar
   tırnaklı küçük harf tanımlayıcı olan tablo satırı YALNIZ `yuk_*` değişkenleri içindir (özet anahtarları, istemci
   eşlemesi ve set_stats alanları ters tırnaksız tablo ya da kod bloğu).
 - Portal: `server/ansible/__tests__/nginx-loadtest-ayna.test.cjs` (ayna + kayıt; NA5 delegate ve Play 2 / 3 getent
-  erişilemezlik fail'i; NA7 Portal `EKSTRA_ANAHTARLAR` = bu README'nin değişken tablosu), `nginx-loadtest-wrk.test.cjs`
+  erişilemezlik fail'i; NA7 Portal `EKSTRA_ANAHTARLAR` + `ARAC_EKSTRA_ANAHTARLAR` = bu README'nin değişken tablosu, 39),
+  `nginx-loadtest-arac.test.cjs` (NA8: vekil ortamı yalnız Play 8 get_url'lerinde, TLS doğrulaması, Play 3 araç kopyası,
+  `/tmp` yok, Play 7 `arac/` silmesi, Play 9 `mv -T` / 0644 / SHA256SUMS / manifest, `arac_hazirla.sh` metni, 10 play), `nginx-loadtest-wrk.test.cjs`
   (NA6: yuk_wrk.lua / wrk_kos.sh / durdur.sh / playbook metin kuralları; (i) tohum satırları, (m) ret nedeni kesmesi ve
   dosya metni temizliği), `nginx-loadtest-k6.test.cjs` (k6 mantığı; K7 `ozet_hesapla` anahtar sırası =
   wrk_kos.sh `JSON_ANAHTARLARI`), genel playbook bekçileri.
@@ -648,3 +884,22 @@ wrk ve serbest hedef:
 10. AWX'te şablonun Execute rolü yalnız Portal servis hesabında; eski bir ön kontrol işini 15 dk sonra Relaunch →
     `is gecerlilik suresi` ile red.
 11. Sunucu koşusunda Play 2 koşu kapısı `ip_yerel 1` görür (iş çıktısında `Kosu kapisi` görevi).
+
+Araç seti (tur 4; ilk ön kontrolden önce):
+
+0. İki arşiv özeti "Arşiv özetlerini sabitleme"deki gibi bağımsız hesaplanıp Portal `.env`'ine yazıldı; özetsiz
+   "Araçları hazırla" Portal'da 409 ile, bir özeti bilerek bozulmuş iş `indirme basarisiz (...): The checksum ...` ile
+   düşer ve derleme makinesinde `~/.portal_yuktesti/arac_<id>` kalmaz.
+1. `araclar` işi (GBLABT02): set_stats `araclar` bölümünde `derleme_rhel`, `derleme_glibc`, `wrk_glibc_gerekli`,
+   `wrk_openssl` (`OpenSSL 1.1.1...`), `wrk_luajit`, `k6_statik true`; `wrk_kutuphaneler`'de libssl / libcrypto yok;
+   `/sw` dizini 0755, dosyalar 0644, `SHA256SUMS` dizinde `sha256sum -c SHA256SUMS` ile OK.
+2. Aynı iş vekilsiz (Portal `NGINX_LOADTEST_ARAC_PROXY=yok`) denenirse açık `indirme basarisiz (...)` iletisi.
+3. Bir yük makinesinde k6 ön kontrolü: "Araç kopyası" geçti, `arac_sha256` = setin k6 sha256'sı; iş bitince
+   `<www ev>/.portal_yuktesti/` altında `arac/` kalmaz.
+4. wrk ön kontrolü bir RHEL 8 ve bir RHEL 9 yük makinesinde (`arac_glibc` satırı; RHEL 9'da derlenmiş wrk RHEL 8'de
+   `glibc uyumsuz` engeli verirse araçları RHEL 8 bir derleme makinesinde yeniden hazırlayın).
+5. 1 adımlık k6 ve wrk koşusu sürerken `ps` çıktısında ikili yolu `<koşu dizini>/arac/...`; Portal "Durdur" ikisini de
+   durdurur ve `arac/` silinir.
+6. `/sw`'deki `k6` dosyasına bir bayt eklenip ön kontrol koşulursa `arac kopyasi dogrulanamadi: sha256 farkli (...)`
+   engeli; sonra araçlar yeniden hazırlanır.
+7. Eski elle kurulum (`/home/www/bin/k6`) silinmeden kalır ve hiçbir iş çıktısında geçmez.

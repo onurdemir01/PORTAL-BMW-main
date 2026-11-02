@@ -21,8 +21,11 @@
 //  - D7: Host basligi iki kipte serbest metin; sunucu kipinde server_name'ler oneri, listede olmayan ad ENGEL degil
 //    (alanin altinda not; on kontrol onay isteyen uyari verir).
 //  - Girdiye bagli kalici on kontrol reddi (host_uretim, hedef_uretim, ip_* ...): ayni girdiyle dugme kapali kalir.
+// TUR 4 (2026-11-02): /hedefler `araclar.hazir` false iken (set yok, onay bekliyor, okunamadi ya da sunucu bildirmedi)
+// formun ustunde hata kutusu + "Araçlar" dugmesi; on kontrol KAPALI (sunucu da 409 araclar_hazir_degil der). Hazirsa
+// formun altinda kullanilacak set ("Araç seti #N: k6 ... · wrk ...").
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowPathIcon, BoltIcon, ClipboardDocumentCheckIcon, ServerStackIcon } from '@heroicons/react/24/outline';
+import { ArrowPathIcon, BoltIcon, ClipboardDocumentCheckIcon, ServerStackIcon, WrenchScrewdriverIcon } from '@heroicons/react/24/outline';
 import {
   hedeflerNormalle, nginxLoadtestApi, type NlAe, type NlHedef, type NlHedefler, type NlHedefTuru, type NlIpSinifi, type NlKip, type NlKosuAyrinti,
   type NlMotor, type NlParametreler, type NlSenaryo, type NlVarsayilanlar,
@@ -73,7 +76,7 @@ type SinifSonucu =
 /** Sunucu hedefinin form icin gereken alanlari (/ip-sinifi sunucu yaniti ya da /hedefler satiri). */
 type SunucuHedefi = Pick<NlHedef, 'host' | 'env' | 'vhostlar' | 'vhostVerisi' | 'hizSiniri' | 'vuSiniri'>;
 
-export default function YeniKosu({ onBasladi, onSenaryolar }: { onBasladi: (kosuId: number) => void; onSenaryolar: () => void }) {
+export default function YeniKosu({ onBasladi, onSenaryolar, onAraclar }: { onBasladi: (kosuId: number) => void; onSenaryolar: () => void; onAraclar?: () => void }) {
   const [veri, setVeri] = useState<NlHedefler | null>(null);
   const [senaryolar, setSenaryolar] = useState<NlSenaryo[] | null>(null);
   const [yukHata, setYukHata] = useState('');
@@ -233,7 +236,9 @@ export default function YeniKosu({ onBasladi, onSenaryolar }: { onBasladi: (kosu
   } : null;
   const imza = govde ? JSON.stringify(govde) : '';
   const girdiReddi = !!girdiRet && girdiRet === imza;
-  const onKontrolAcik = gecerli && !sinifEngeli && !girdiReddi;
+  // Tur 4: arac seti hazir degilse on kontrol kapali (sunucu 409 araclar_* der: hazir degil / ozet sabit yok / ozet degisti / geri cekildi).
+  const araclarHazir = veri?.araclar.hazir === true;
+  const onKontrolAcik = gecerli && !sinifEngeli && !girdiReddi && araclarHazir;
   const degerlendirme = useMemo(() => onKontrolDegerlendir(okKayit), [okKayit]);
   const kalanMs = onKontrolKalanMs(okKayit, simdi, okAlindi);
   const formDegisti = !!ok && imza !== ok.imza;
@@ -333,7 +338,8 @@ export default function YeniKosu({ onBasladi, onSenaryolar }: { onBasladi: (kosu
   const sifirSinir = sinir.maxHiz < 1 || sinir.maxBaglanti < 1;
   // On kontrol bu formu artik kapsamiyor (form degisti / sunucu eski dedi / 15 dk doldu).
   const okGecersiz = formDegisti || !!okEski || (kalanMs != null && kalanMs <= 0);
-  const neden = sinifReddi ? sinifEngeli
+  const neden = !araclarHazir ? 'Yük araçları hazır değil.'
+    : sinifReddi ? sinifEngeli
     : !gecerli ? 'Önce formdaki eksikleri giderin.'
       : sinifEngeli ? sinifEngeli
         : girdiReddi ? 'Bu girdiyle ön kontrol reddedildi — hedefi, IP’yi, Host başlığını ya da parametreleri değiştirin.'
@@ -367,6 +373,12 @@ export default function YeniKosu({ onBasladi, onSenaryolar }: { onBasladi: (kosu
 
   return (
     <div className="space-y-4">
+      {!araclarHazir && (
+        <UyariKutusu ton="hata" rol="alert" baslik="Yük araçları hazır değil"
+          eylem={onAraclar ? <button type="button" onClick={onAraclar} className={TBL_BTN} style={smBtn(true)}><WrenchScrewdriverIcon className="h-3.5 w-3.5" aria-hidden /> Araçlar</button> : undefined}>
+          {veri.araclar.mesaj || 'Araç durumu okunamadı.'}
+        </UyariKutusu>
+      )}
       <div className="grid items-start gap-4 @4xl/yuk:grid-cols-[minmax(0,1fr)_19rem]">
         <div className="min-w-0 space-y-4">
           <Bolum baslik="1 · Senaryo" aciklama="Yük testinin gönderdiği yollar ve ağırlıkları. Senaryo HAR’dan ya da yol listesinden “Senaryolar” bölümünde oluşturulur.">
@@ -494,6 +506,12 @@ export default function YeniKosu({ onBasladi, onSenaryolar }: { onBasladi: (kosu
               </Alan>
             </div>
           </Bolum>
+          {araclarHazir && (
+            <p className="flex items-center gap-1.5 text-[11px] leading-4" style={{ color: 'var(--text-secondary)' }}>
+              <WrenchScrewdriverIcon className="h-3.5 w-3.5 shrink-0" aria-hidden />
+              <span className="min-w-0">{`Araç seti #${veri.araclar.aracId ?? '?'}: k6 ${veri.araclar.k6Surum || '?'} · wrk ${veri.araclar.wrkSurum || '?'}`}</span>
+            </p>
+          )}
         </div>
 
         <aside className="min-w-0 space-y-3 @4xl/yuk:sticky @4xl/yuk:top-4">

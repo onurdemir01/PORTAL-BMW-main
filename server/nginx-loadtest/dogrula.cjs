@@ -107,10 +107,11 @@ const IPV4_RE = /^(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])(\.(25[0-5]|2[0-4
 // RFC 1123 ad: kucuk harf, port YOK, joker YOK, '~' (regex server_name) YOK, bosluk YOK.
 const VHOST_RE = /^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/;
 const HIZLAR_RE = /^[0-9]{1,3}( [0-9]{1,3}){0,4}$/;
-const K6_YOLU_RE = /^\/[A-Za-z0-9._/-]{1,200}$/;
 const UA_ONEK_RE = /^[a-z][a-z0-9-]{2,30}$/;
 const SHA256_RE = /^[0-9a-f]{64}$/;
 const CIKTI_KOK_RE = /^\/[A-Za-z0-9._/-]{1,200}$/;
+// Tur 4 (2026-11-02, arac_sozlesme 3.1): etkin arac setinin /sw dizini (<yuk_cikti_kok>/araclar/<id>).
+const ARAC_DIZIN_RE = /^\/sw\/BMW_PORTAL(_DEV)?(\/[A-Za-z0-9._-]+)+\/araclar\/[0-9]{1,10}$/;
 const ADIM_RE = /^R[0-9]{1,10}$/;
 const TUR_RE = /^[A-Za-z0-9_-]{1,120}$/;
 // har_senaryo.py BEYAZ_LISTE ve yuk_k6.js YOL_RE ile BIREBIR: sorgu (?), parca (#), bosluk,
@@ -141,8 +142,12 @@ const BOZUK_YUZDE = /%(?![0-9A-Fa-f]{2})/;
 const KONTROL_KARAKTERI = /[\u0000-\u001f\u007f]/;
 
 const VARSAYILAN_YUK_HOSTLARI = Object.freeze(['GBNGXT34']);
-const VARSAYILAN_K6 = '/home/www/bin/k6';
-const VARSAYILAN_WRK = '/home/www/bin/wrk';
+// Tur 4: yuk araclari her on kontrol / kosuda /sw'deki arac setinden kosu dizinine kopyalanir.
+// yuk_k6_yolu / yuk_wrk_yolu artik SABIT isaret degeri tasir: yeni Portal + ESKI playbook penceresinde
+// eski playbook /home/www/bin ikilisini SESSIZCE kullanmasin (isaret yolu yoktur; on kontrol duser).
+const WRK_SURUM = '4.2.0';
+const ESKI_K6_ISARETI = '/yeni-playbook-gerekli/k6';
+const ESKI_WRK_ISARETI = '/yeni-playbook-gerekli/wrk';
 const VARSAYILAN_CIKTI_KOK = '/sw/BMW_PORTAL/nginx_loadtest';
 const UA_ONEK = 'portal-yuktesti';
 // Son kapi (playbook 2. assert ile ayni): sayi alanlari, is gecerlilik penceresinin ust payi.
@@ -691,7 +696,7 @@ const SAYI = (v) => {
  * Serbest: hedef kurallari (ip_yerel, server_name, log dizini, master, df, log_format) yok; yollar
  * ve sikistirma iki kipte ayni (yuk makinesi tarafi). Sabit uyarilar listenin sonunda.
  */
-function onKontrolDegerlendir(ok, { hedefTuru = 'sunucu', motor = 'k6' } = {}) {
+function onKontrolDegerlendir(ok, { hedefTuru = 'sunucu', motor = 'k6', aracli = false, aracSha256 = null } = {}) {
   const engeller = [];
   const uyarilar = [];
   if (!ok || typeof ok !== 'object') return { engeller: ['ön kontrol sonucu okunamadı'], uyarilar };
@@ -708,12 +713,22 @@ function onKontrolDegerlendir(ok, { hedefTuru = 'sunucu', motor = 'k6' } = {}) {
   if (motor === 'wrk') {
     if (!EVET(ok.wrk_var)) {
       engeller.push(EVET(ok.wrk_calisiyor)
-        ? `wrk yük makinesinde çalışıyor ama sürümü okunamadı ya da 4 altında (${ok.wrk_surum || '-'}); wrk'yi make VER=4.2.0 ile yeniden derleyin`
+        ? `wrk yük makinesinde çalışıyor ama sürümü okunamadı ya da 4 altında (${ok.wrk_surum || '-'}); araç setini yeniden hazırlayın (Yük Testi › Araçlar)`
         : 'wrk yük makinesinde bulunamadı ya da çalıştırılamıyor');
     }
   } else if (!EVET(ok.k6_var)) engeller.push('k6 yük makinesinde bulunamadı');
   // CPU kaydedici /web_log'u okuyamazsa sunucu tarafi olcum yok: playbook bunu ENGEL sayar.
   if (!serbest && HAYIR(ok.log_dizini_okunur)) engeller.push('log dizini /web_log okunamıyor');
+  // Tur 4: arac setiyle baslatilan satir (arac_id dolu). Eski satir (aracli false) BIREBIR eskisi gibi.
+  if (aracli) {
+    const aracHata = typeof ok.arac_hata === 'string' && ok.arac_hata.trim() ? ok.arac_hata.trim() : '';
+    if (ok.arac_dogrulandi !== true) {
+      engeller.push(`yük aracı kopyası doğrulanamadı: ${aracHata || 'ölçülemedi (playbook araç kopyalamayı desteklemiyor olabilir; Ansible deposunu güncelleyin)'}`);
+    } else {
+      if (aracSha256 && ok.arac_sha256 !== aracSha256) engeller.push("yük aracı kopyasının sha256'sı araç setiyle aynı değil");
+      if (aracHata) engeller.push(`yük aracı çalıştırılamadı: ${aracHata}`);
+    }
+  }
   const toplam = SAYI(ok.yollar_toplam);
   const iki = SAYI(ok.yollar_200);
   if (!(toplam > 0)) engeller.push('ön kontrolde hiçbir yol denenmedi');
@@ -752,23 +767,6 @@ function yukHostlari(env = process.env) {
 
 function yolGuvenli(v, re) {
   return typeof v === 'string' && re.test(v) && !v.split('/').includes('..');
-}
-
-function k6Yolu(env = process.env) {
-  const v = String(env.NGINX_LOADTEST_K6 ?? '').trim();
-  if (!v) return VARSAYILAN_K6;
-  if (yolGuvenli(v, K6_YOLU_RE)) return v;
-  console.warn('[NginxYukTesti] NGINX_LOADTEST_K6 gecersiz, varsayilan kullaniliyor');
-  return VARSAYILAN_K6;
-}
-
-/** Yuk makinesinde wrk yolu (k6Yolu ile ayni kural; playbook iki yolu da ayni desenle denetler). */
-function wrkYolu(env = process.env) {
-  const v = String(env.NGINX_LOADTEST_WRK ?? '').trim();
-  if (!v) return VARSAYILAN_WRK;
-  if (yolGuvenli(v, K6_YOLU_RE)) return v;
-  console.warn('[NginxYukTesti] NGINX_LOADTEST_WRK gecersiz, varsayilan kullaniliyor');
-  return VARSAYILAN_WRK;
 }
 
 // ── SERBEST HEDEF AG LISTELERI (Portal env; playbook'a GONDERILMEZ - extra_var ezilebilirdi) ──
@@ -885,13 +883,15 @@ function kosuDizini(kok, kosuId) {
 // ── EXTRA_VARS ────────────────────────────────────────────────────────────────────────────
 
 // Sozlesme bolum 3: gonderilen TUM anahtarlar (fazlasi ve eksigi son kapida reddedilir). Tur 2'nin
-// 23 anahtari aynen, ardindan tur 3'un 7 anahtari (sira playbook README tablosuyla ayni).
+// 23 anahtari aynen, ardindan tur 3'un 7 anahtari, ardindan tur 4'un 3 arac anahtari (33; sira
+// playbook README tablosuyla ayni).
 const EKSTRA_ANAHTARLAR = Object.freeze([
   'yuk_islem', 'yuk_run_id', 'yuk_hedef_host', 'yuk_yuk_host', 'yuk_hedef_ip', 'yuk_host_basligi', 'yuk_sni',
   'yuk_senaryo_tur', 'yuk_senaryo_b64', 'yuk_senaryo_sha256', 'yuk_hizlar', 'yuk_tekrar', 'yuk_kip', 'yuk_ae',
   'yuk_isinma_sn', 'yuk_sure_sn', 'yuk_bosluk_sn', 'yuk_bosta_bas_sn', 'yuk_maxvu', 'yuk_butce_sn', 'yuk_k6_yolu',
   'yuk_ua_onek', 'yuk_cikti_kok',
   'yuk_hedef_turu', 'yuk_motor', 'yuk_baglantilar', 'yuk_is_parcacigi', 'yuk_wrk_yolu', 'yuk_tavan_rps', 'yuk_son_epoch',
+  'yuk_arac_dizin', 'yuk_k6_sha256', 'yuk_wrk_sha256',
 ]);
 
 /**
@@ -899,8 +899,10 @@ const EKSTRA_ANAHTARLAR = Object.freeze([
  * yuk_hedef_host ''. Motorun ilgisiz alanlari '' (k6: baglantilar / is_parcacigi / tavan_rps; wrk:
  * hizlar / maxvu). yuk_son_epoch = simdi + isGecerlilikSn: AWX'ten sonradan yeniden baslatma
  * (Relaunch) playbook kapisinda reddedilir. Durdur eski (motor'suz) satirdan da kurulur: k6.
+ * Tur 4: `arac` = etkin arac seti { dizin, k6Sha256, wrkSha256 } (on kontrol / kosu); null (durdur)
+ * -> uc alan ''. yuk_k6_yolu / yuk_wrk_yolu her kipte SABIT isaret degeri.
  */
-function ekstraDegiskenler({ islem, kosuId, hedefHost, yukHost, hedefIp, vhost, senaryo, p, k6, ua = UA_ONEK, kok, hedefTuru = 'sunucu', wrk = wrkYolu(), simdiSn = Math.floor(Date.now() / 1000) }) {
+function ekstraDegiskenler({ islem, kosuId, hedefHost, yukHost, hedefIp, vhost, senaryo, p, ua = UA_ONEK, kok, hedefTuru = 'sunucu', arac = null, simdiSn = Math.floor(Date.now() / 1000) }) {
   const wrkMi = p.motor === 'wrk';
   const liste = (v) => (Array.isArray(v) ? v.join(' ') : '');
   return {
@@ -924,16 +926,19 @@ function ekstraDegiskenler({ islem, kosuId, hedefHost, yukHost, hedefIp, vhost, 
     yuk_bosta_bas_sn: String(p.bosta),
     yuk_maxvu: wrkMi ? '' : String(p.maxvu),
     yuk_butce_sn: String(butceSn(p)),
-    yuk_k6_yolu: k6,
+    yuk_k6_yolu: ESKI_K6_ISARETI,
     yuk_ua_onek: ua,
     yuk_cikti_kok: kok,
     yuk_hedef_turu: hedefTuru,
     yuk_motor: wrkMi ? 'wrk' : 'k6',
     yuk_baglantilar: wrkMi ? liste(p.baglantilar) : '',
     yuk_is_parcacigi: wrkMi ? String(p.is_parcacigi) : '',
-    yuk_wrk_yolu: wrk,
+    yuk_wrk_yolu: ESKI_WRK_ISARETI,
     yuk_tavan_rps: wrkMi ? String(p.tavan_rps) : '',
     yuk_son_epoch: String(Math.floor(simdiSn) + SINIRLAR.isGecerlilikSn),
+    yuk_arac_dizin: arac ? String(arac.dizin ?? '') : '',
+    yuk_k6_sha256: arac ? String(arac.k6Sha256 ?? '') : '',
+    yuk_wrk_sha256: arac ? String(arac.wrkSha256 ?? '') : '',
   };
 }
 
@@ -1024,10 +1029,16 @@ function ekstraDegiskenleriDenetle(ev, { simdiSn = Math.floor(Date.now() / 1000)
     const adimlar = metin(wrk ? 'yuk_baglantilar' : 'yuk_hizlar') ? ev[wrk ? 'yuk_baglantilar' : 'yuk_hizlar'].split(' ').length : NaN;
     const altSinir = Number(ev.yuk_bosta_bas_sn) + adimlar * Number(ev.yuk_tekrar) * (Number(ev.yuk_isinma_sn) + Number(ev.yuk_sure_sn) + Number(ev.yuk_bosluk_sn)) + 120;
     if (butce === null || butce < 1 || butce > SINIRLAR.maxButceSn || !(butce >= altSinir)) ihlal.push('yuk_butce_sn');
-    if (!yolGuvenli(ev.yuk_k6_yolu, K6_YOLU_RE)) ihlal.push('yuk_k6_yolu');
-    if (!yolGuvenli(ev.yuk_wrk_yolu, K6_YOLU_RE)) ihlal.push('yuk_wrk_yolu');
+    // Tur 4: eski yol degiskenleri yalniz isaret degeri; arac dizini <yuk_cikti_kok>/araclar/<id>.
+    if (ev.yuk_k6_yolu !== ESKI_K6_ISARETI) ihlal.push('yuk_k6_yolu');
+    if (ev.yuk_wrk_yolu !== ESKI_WRK_ISARETI) ihlal.push('yuk_wrk_yolu');
     if (!metin('yuk_ua_onek') || !UA_ONEK_RE.test(ev.yuk_ua_onek)) ihlal.push('yuk_ua_onek');
     if (!yolGuvenli(ev.yuk_cikti_kok, CIKTI_KOK_RE)) ihlal.push('yuk_cikti_kok');
+    if (!yolGuvenli(ev.yuk_arac_dizin, ARAC_DIZIN_RE) || !metin('yuk_cikti_kok') || !ev.yuk_arac_dizin.startsWith(`${ev.yuk_cikti_kok}/araclar/`)) {
+      ihlal.push('yuk_arac_dizin');
+    }
+    if (!metin('yuk_k6_sha256') || !SHA256_RE.test(ev.yuk_k6_sha256)) ihlal.push('yuk_k6_sha256');
+    if (!metin('yuk_wrk_sha256') || !SHA256_RE.test(ev.yuk_wrk_sha256)) ihlal.push('yuk_wrk_sha256');
   }
   // Bilinmeyen anahtar gonderilmez (LIMIT_MUAF, proxy degiskenleri, ...); eksik anahtar da yok.
   for (const k of Object.keys(ev)) if (!EKSTRA_ANAHTARLAR.includes(k)) ihlal.push(k);
@@ -1527,7 +1538,14 @@ module.exports = {
   UA_ONEK,
   MOTORLAR,
   HEDEF_TURLERI,
-  VARSAYILAN_WRK,
+  WRK_SURUM,
+  ESKI_K6_ISARETI,
+  ESKI_WRK_ISARETI,
+  ARAC_DIZIN_RE,
+  SHA256_RE,
+  RUN_ID_RE,
+  EPOCH_RE,
+  SON_EPOCH_UST_PAY_SN,
   SERBEST_UYARISI,
   WRK_UYARISI,
   HOST_LISTEDE_YOK_UYARISI,
@@ -1573,8 +1591,8 @@ module.exports = {
   onKontrolDegerlendir,
   onayMetniDogru,
   yukHostlari,
-  k6Yolu,
-  wrkYolu,
+  yolGuvenli,
+  birKezUyar,
   ciktiKok,
   kosuDizini,
   serbestAglar,

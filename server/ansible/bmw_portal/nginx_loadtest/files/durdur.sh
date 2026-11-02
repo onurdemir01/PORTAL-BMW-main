@@ -7,6 +7,8 @@
 #                satirinda ' -s <kosu_dizini>/yuk_wrk.lua'; wrk_kos.sh bu sirayla cagirir)
 #             3) bash <kosu_dizini>/kos.sh | wrk_kos.sh | cpu_kaydedici.sh | on_kontrol.sh (timeout KILL'lenirse yetim
 #                kalmasin)
+#             4) argv[0]'i <kosu_dizini>/arac/ altinda olan her surec (kosu dizinine kopyalanan k6 / wrk: 'k6 version',
+#                wrk yukleme sinamasi, takilmis '-v'; 'k6 run' ve wrk yuku 2. maddeyle de eslesir)
 #           Once TERM; 10 sn icinde bitmeyene KILL; 2 sn sonra hala duran KALDI sayilir.
 # Eslesme : ps -eo pid=,args= -ww | awk. Dizin awk'a ORTAM degiskeniyle gider (awk'in kendi komut satirinda yok)
 #           ve desenler [k]6 / [w]rk: awk kendi satirini eslemez (bkz. README "Tuzaklar": ps|awk kendine eslesir).
@@ -40,6 +42,7 @@ ADAY="$(printf '%s\n' "$LISTE" | D="$DIZIN/" PIDLER="$PIDLER" BEN="$$" UST="$PPI
     if (index($0, ENVIRON["D"]) == 0) next
     if ($2 ~ /(^|\/)[k]6[^\/]*$/ && $3 == "run") { print p "\tk6"; next }
     if ($2 ~ /(^|\/)[w]rk[^\/]*$/ && index($0, " -s " ENVIRON["D"] "yuk_wrk.lua") > 0) { print p "\twrk"; next }
+    if (index($2, ENVIRON["D"] "arac/") == 1) { print p "\tarac"; next }
     if ($2 ~ /(^|\/)(ba)?sh$/ && ($3 == ENVIRON["D"] "kos.sh" || $3 == ENVIRON["D"] "cpu_kaydedici.sh" || $3 == ENVIRON["D"] "on_kontrol.sh" || $3 == ENVIRON["D"] "wrk_kos.sh")) {
       n = split($3, a, "/"); print p "\t" a[n]; next
     }

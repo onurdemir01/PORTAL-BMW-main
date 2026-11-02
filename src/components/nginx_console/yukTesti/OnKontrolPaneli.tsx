@@ -16,6 +16,8 @@
 // Dogrulama UV1 (2026-10-28): bos serbest_ag tek basina "reddetti" DEMEK DEGIL. "kaldı" YALNIZ is hatasi Play 3'un ret
 // metnini ("serbest izin listesi: <neden>") tasiyorsa; izin bloguna hic gelinmediyse (SSH erisilemedi, dzdo hatasi,
 // kopya kapisi: Play 8 ayni null'u yayinlar) satir "ölçülemedi".
+// TUR 4 (2026-11-02): aracli satirda (aracId != null) motor satirindan once "Araç kopyası (sha256)" (iki hedef turunde);
+// eski satirda bu satir YOK. Yuk sunucusunun glibc'si bilgi satirinda.
 import React from 'react';
 import { CheckCircleIcon, ExclamationTriangleIcon, MinusCircleIcon, XCircleIcon } from '@heroicons/react/24/outline';
 import type { NlKosuAyrinti, NlMotor, NlOnKontrol } from '@/api/nginxLoadtestApi';
@@ -53,7 +55,17 @@ function yollarSatiri(o: NlOnKontrol): Kontrol {
     deger: o.yollarToplam == null ? undefined : !(o.yollarToplam > 0) ? 'hiçbir yol denenmedi' : `${fmtNumber(o.yollar200)} / ${fmtNumber(o.yollarToplam)}`,
   };
 }
-function kontroller(o: NlOnKontrol, serbest: boolean, motor: NlMotor, isHatasi: string | null): Kontrol[] {
+/** Tur 4: yuk sunucusundaki arac kopyasi (Portal'in sha256'siyla dogrulama). Dogrulandi ve hata yok: gecti (ilk 12 hane);
+ *  dogrulanmadi ya da dogrulandi ama calistirilamadi (glibc uyumsuz ...): kaldi (hata metni); blok kosmadi: olculemedi. */
+function aracSatiri(o: NlOnKontrol): Kontrol {
+  const ad = 'Araç kopyası (sha256)';
+  if (o.aracDogrulandi === true && !o.aracHata) return { ad, sonuc: 'gecti', deger: o.aracSha256 ? `${o.aracSha256.slice(0, 12)}…` : undefined };
+  if (o.aracDogrulandi === false || (o.aracDogrulandi === true && o.aracHata)) return { ad, sonuc: 'kaldi', deger: o.aracHata || undefined };
+  return { ad, sonuc: 'yok' };
+}
+function kontroller(o: NlOnKontrol, serbest: boolean, motor: NlMotor, isHatasi: string | null, aracli: boolean): Kontrol[] {
+  // Eski (aracsiz) satirda arac satiri YOK: gorunum degismez.
+  const arac = aracli ? [aracSatiri(o)] : [];
   if (serbest) {
     return [
       // Hedef IP yuk sunucusunun kendisi olamaz (istek gonderilmez): yerel DEGIL = gecti.
@@ -61,6 +73,7 @@ function kontroller(o: NlOnKontrol, serbest: boolean, motor: NlMotor, isHatasi: 
       // serbest_ag yalniz izin dosyasi IP'yi kapsadiginda dolu (yoksa yollar atlanir, kayit FAILED). Bos iken kaldi YALNIZ
       // Play 3 ret metniyle (dosya okundu ve reddetti); izin bloguna hic gelinmediyse olculemedi (UV1).
       { ad: 'Yük sunucusu izin dosyası', sonuc: o.serbestAg ? 'gecti' : /serbest izin listesi/.test(isHatasi ?? '') ? 'kaldi' : 'yok', deger: o.serbestAg || undefined },
+      ...arac,
       motorSatiri(o, motor),
       yollarSatiri(o),
     ];
@@ -74,6 +87,7 @@ function kontroller(o: NlOnKontrol, serbest: boolean, motor: NlMotor, isHatasi: 
     { ad: '/web_log doluluğu < %65', sonuc: df == null ? 'yok' : df < 65 ? 'gecti' : 'uyari', deger: df == null ? undefined : `%${fmtNumber(df)}` },
     { ad: 'Log dizini okunur', sonuc: ikili(o.logDiziniOkunur) },
     { ad: 'log_format “user-agent=” yazıyor', sonuc: ikili(o.logFormatUa, 'uyari') },
+    ...arac,
     motorSatiri(o, motor),
     yollarSatiri(o),
   ];
@@ -83,7 +97,7 @@ const HATA_KOLONLARI: Kolon[] = [{ anahtar: 'yol', baslik: 'Yol' }, { anahtar: '
 
 export type OnKontrolBaglami = 'sihirbaz' | 'kayit';
 export default function OnKontrolPaneli({ kosu, baglam = 'sihirbaz' }: {
-  kosu: Pick<NlKosuAyrinti, 'durum' | 'onKontrol'> & Partial<Pick<NlKosuAyrinti, 'sunucuDegerlendirmesi' | 'isDurumu' | 'isHatasi' | 'hedefTuru' | 'motor' | 'parametreler'>>;
+  kosu: Pick<NlKosuAyrinti, 'durum' | 'onKontrol'> & Partial<Pick<NlKosuAyrinti, 'sunucuDegerlendirmesi' | 'isDurumu' | 'isHatasi' | 'hedefTuru' | 'motor' | 'parametreler' | 'aracId'>>;
   baglam?: OnKontrolBaglami;
 }) {
   const o = kosu.onKontrol;
@@ -94,7 +108,7 @@ export default function OnKontrolPaneli({ kosu, baglam = 'sihirbaz' }: {
     <div className="space-y-3">
       {o ? (
         <ul className="grid gap-x-4 gap-y-1.5 @lg/yuk:grid-cols-2" aria-label="Ön kontrol maddeleri">
-          {kontroller(o, kosu.hedefTuru === 'serbest', motor, kosu.isHatasi ?? null).map((k) => {
+          {kontroller(o, kosu.hedefTuru === 'serbest', motor, kosu.isHatasi ?? null, kosu.aracId != null).map((k) => {
             const i = IKON[k.sonuc];
             return (
               <li key={k.ad} className="flex min-w-0 items-center gap-2 text-[12px] leading-5">

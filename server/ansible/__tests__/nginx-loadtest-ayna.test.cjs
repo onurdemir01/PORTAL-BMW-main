@@ -22,8 +22,12 @@
 //       gorevi getent register edilir ve HEMEN ardindan '<kayit> is unreachable' fail'i 'erisilemedi (ssh): ...' der
 //       (ignore_unreachable altinda erisilemeyen hostta getent yok sayilir; yoksa sonraki gorev tanimsiz getent_passwd
 //       ile duser ve operator 'undefined variable' gorur; 2026-10-28).
-//   NA7 Portal ile playbook'un ortak yuzeyi: dogrula.cjs EKSTRA_ANAHTARLAR = aynadaki README'nin
-//       '| `yuk_*` |' tablo satirlari (30 degisken; bekcinin L3'u README = playbook kapisi der).
+//   NA7 Portal ile playbook'un ortak yuzeyi: dogrula.cjs EKSTRA_ANAHTARLAR (33) ve araclar.cjs
+//       ARAC_EKSTRA_ANAHTARLAR (10) birlesimi = aynadaki README'nin '| `yuk_*` |' tablo satirlari (39 degisken;
+//       bekcinin L3'u README = playbook kapisi der).
+//   Tur 4: NA5 play sayisi 10; rescue'daki delegate temizlik gorevi ('failed_when: false', ardinda fail yok) istisna;
+//       (7) Play 8 (derleme makinesi) de getent + erisilemezlik fail'i. Araclar metin kurallari NA8'de
+//       (nginx-loadtest-arac.test.cjs).
 // Davranis (girdi kapisi, sonuc derlemesi, betikler) Ansible deposundaki bekcide; k6 mantigi
 // nginx-loadtest-k6.test.cjs'te; wrk / Lua / playbook metin kurallari (NA6) nginx-loadtest-wrk.test.cjs'te.
 // NGINX_LOADTEST_AYNA: mutasyon kopyasi dizini (verilmezse depodaki ayna).
@@ -42,15 +46,16 @@ const DIR = process.env.NGINX_LOADTEST_AYNA || AYNA;
 
 // Ayna degistiginde: dosyalari Ansible deposuyla ESLE, sonra bu listeyi guncelle (sha256sum).
 const BEKLENEN = {
-  'README.md': '9314418eea65c3928bde0735c7d6da65f12679c2ee559d31409ffa52502537c5',
+  'README.md': 'ac435641a6b7bfc1cbc5fa91b8e6d610aab2270f16885c94dd52110796f2cc6d',
+  'files/arac_hazirla.sh': 'ef1a342b21bcad90fa0b858769ad41a9a1e788422ee39dac8b174205ea55772b',
   'files/cpu_kaydedici.sh': 'd9c5bff9ab329d2d48b1bc0383b9c13fcf907e5bda1840ae9a5ceb8bf7495ac8',
-  'files/durdur.sh': 'd555cfc5731771f57711bccccbcc78f73c094f4f3a954c9430164ef4c61380e4',
+  'files/durdur.sh': '9bb495c5117afba0320b72cb1230f8ccc4fabbfb0ce3c8d9c8f70be88f891b81',
   'files/kos.sh': 'c3574b1109369c002cf4d56141557bb1fbf74d5ad78f2d38dfb9167834d2fa5b',
   'files/on_kontrol.sh': '8b7f448d081b8fa22ecd9e0709b970379523e750a5850a25866127fec6ee9753',
   'files/wrk_kos.sh': '0e2ed64448ab7b11f4ca52798051fa15ce92f112b2794811b660e99f7697df8f',
   'files/yuk_k6.js': '7e8bee8da1af1e4a1b164dd732d45f9cf42cdff6d1b19948d9b6bed211e14967',
   'files/yuk_wrk.lua': '2a44afc388007721690e9cce4b736ed0175f128bf6ef1a44b59588f93605e16b',
-  'nginx_loadtest.yml': '879645abdc18b35834a977796754355feb712781beceff687a92a6b82d15da9d',
+  'nginx_loadtest.yml': '57fa3425de00ee10e1198f371e53496c444cfcce78eef46d4671739ac236c0ca',
 };
 
 function tumDosyalar(kok) {
@@ -166,7 +171,7 @@ test('NA4 metin kurallari: LF, yorum/script/strategy/poll 0 yok, betikler var, s
   assert.ok(!/^\s*limit:/m.test(yml) && !/LIMIT_MUAF=/.test(yml), 'limit / LIMIT_MUAF degeri yok');
   assert.ok(!yml.includes('\\"'), '\\" yok (Ansible {{ }} icinde patlar)');
   const anilan = new Set([...yml.matchAll(/files\/([A-Za-z0-9_.]+)/g)].map((m) => m[1]));
-  for (const ad of ['kos.sh', 'yuk_k6.js', 'cpu_kaydedici.sh', 'on_kontrol.sh', 'wrk_kos.sh', 'yuk_wrk.lua']) {
+  for (const ad of ['kos.sh', 'yuk_k6.js', 'cpu_kaydedici.sh', 'on_kontrol.sh', 'wrk_kos.sh', 'yuk_wrk.lua', 'arac_hazirla.sh']) {
     assert.ok(yml.includes(`'${ad}'`), `${ad} playbook'ta anilmiyor`);
     anilan.add(ad);
   }
@@ -191,7 +196,7 @@ function sonrakiGorev(satirlar, bas, girinti) {
 test('NA5 S8: delegate/unreachable, korumali yuk_islem, kaydedici KILL/bekleme, hazir deseni, ";" yasagi, ADIM suzgeci, getent erisilemezlik', () => {
   const yml = oku('nginx_loadtest.yml');
   const playlar = yml.split(/\n(?=- name: )/).filter((p) => /^ {2}hosts: /m.test(p));
-  assert.equal(playlar.length, 8, 'play sayisi (test yanlis yere bakiyor olmasin)');
+  assert.equal(playlar.length, 10, 'play sayisi (test yanlis yere bakiyor olmasin)');
 
   // (1) GBLABT02 erisilemezse localhost play'den DUSMEMELI ve kopya 'tamam' sayilmamali.
   const delegeli = playlar.filter((p) => /^\s+delegate_to: /m.test(p));
@@ -206,6 +211,19 @@ test('NA5 S8: delegate/unreachable, korumali yuk_islem, kaydedici KILL/bekleme, 
       const girinti = satirlar[b].indexOf('- name: ');
       const e = sonrakiGorev(satirlar, i + 1, girinti);
       const gorev = satirlar.slice(b, e).join('\n');
+      // Gorevin bulundugu liste (block / rescue / always): rescue'daki temizlik gorevi istisnadir ('failed_when: false',
+      // ardinda fail / assert YOK): rescue'da fail localhost'u play'den dusurur ve sonuc play'i kosmaz (Play 9 yarim
+      // dizin silmesi; erisilemezse dizin kalir, Portal satiri zaten FAILED).
+      let u = b - 1;
+      while (u > 0 && !(/^\s*(block|rescue|always):$/.test(satirlar[u]) && satirlar[u].search(/\S/) === girinti - 2)) u--;
+      if (/^\s*rescue:$/.test(satirlar[u])) {
+        assert.match(gorev, /^\s+failed_when: false$/m, `rescue'daki delegate gorevi temizlik olmali (failed_when: false): ${satirlar[b].trim()}`);
+        let r = e;
+        while (r < satirlar.length && !(satirlar[r].trim() !== '' && satirlar[r].search(/\S/) <= girinti - 2)) r++;
+        const rescueSonu = satirlar.slice(e, r).join('\n');
+        assert.ok(!/ansible\.builtin\.(fail|assert):/.test(rescueSonu), `rescue'daki delegate gorevinden sonra fail/assert olmamali: ${satirlar[b].trim()}`);
+        return;
+      }
       const kayit = (gorev.match(/^\s+register: (\w+)$/m) || [])[1];
       assert.ok(kayit, `delegate gorevi register edilmeli: ${satirlar[b].trim()}`);
       const sonraki = satirlar.slice(e, sonrakiGorev(satirlar, e + 1, girinti)).join('\n');
@@ -277,7 +295,7 @@ test('NA5 S8: delegate/unreachable, korumali yuk_islem, kaydedici KILL/bekleme, 
 
   // (7) Play 2 (hedef) ve Play 3 (yuk makinesi): blogun ilk gorevi getent (become: false, register) ve HEMEN ardindan
   // 'when: <kayit> is unreachable' fail'i; ileti trim + yazdirilabilir ASCII (play vars '[^ -~]') + en cok 160 karakter.
-  for (const [i, ad] of [[1, 'hedef'], [2, 'yuk makinesi']]) {
+  for (const [i, ad] of [[1, 'hedef'], [2, 'yuk makinesi'], [7, 'derleme makinesi']]) {
     const p = playlar[i];
     const m =
       /\n {6}block:\n {8}- name: --- \[Task\] www ev dizini ---\n {10}become: false\n {10}ansible\.builtin\.getent:\n {12}database: passwd\n {12}key: www\n {10}register: (\w+)\n\n {8}- name: [^\n]+\n {10}ansible\.builtin\.fail:\n {12}msg: "([^\n]*)"\n {10}when: (\w+) is unreachable\n/.exec(
@@ -294,14 +312,19 @@ test('NA5 S8: delegate/unreachable, korumali yuk_islem, kaydedici KILL/bekleme, 
   }
 });
 
-test('NA7 Portal EKSTRA_ANAHTARLAR = aynadaki README degisken tablosu (30 yuk_* satiri)', () => {
-  // Ortak yuzey (sozlesme 3. bolum): Portal'in gonderdigi anahtarlar ile playbook'un kapisinin denetledigi anahtarlar.
-  // Ansible bekcisi (L3) README tablosunu playbook'a, bu test Portal'a baglar; ikisi birlikte uc yuzu esitler.
+test('NA7 Portal EKSTRA_ANAHTARLAR + ARAC_EKSTRA_ANAHTARLAR = aynadaki README degisken tablosu (39 yuk_* satiri)', () => {
+  // Ortak yuzey (sozlesme 3. bolum, tur 4 2.3 / 3.1): Portal'in gonderdigi anahtarlar (kosu kipleri 33 + araclar 10) ile
+  // playbook'un kapisinin denetledigi anahtarlar. Ansible bekcisi (L3) README tablosunu playbook'a, bu test Portal'a
+  // baglar; ikisi birlikte uc yuzu esitler.
   const tablo = new Set([...oku('README.md').matchAll(/^\|\s*`(yuk_[a-z0-9_]+)`\s*\|/gm)].map((m) => m[1]));
-  assert.equal(tablo.size, 30, `README degisken tablosu 30 satir olmali: ${[...tablo].join(',')}`);
+  assert.equal(tablo.size, 39, `README degisken tablosu 39 satir olmali: ${[...tablo].join(',')}`);
   const { EKSTRA_ANAHTARLAR } = require('../../nginx-loadtest/dogrula.cjs');
-  const portal = new Set(EKSTRA_ANAHTARLAR);
-  assert.equal(portal.size, EKSTRA_ANAHTARLAR.length, 'EKSTRA_ANAHTARLAR tekrar iceriyor');
+  const { ARAC_EKSTRA_ANAHTARLAR } = require('../../nginx-loadtest/araclar.cjs');
+  assert.equal(EKSTRA_ANAHTARLAR.length, 33, 'EKSTRA_ANAHTARLAR 33 anahtar (kosu kipleri)');
+  assert.equal(ARAC_EKSTRA_ANAHTARLAR.length, 10, 'ARAC_EKSTRA_ANAHTARLAR 10 anahtar (araclar)');
+  assert.equal(new Set(EKSTRA_ANAHTARLAR).size, EKSTRA_ANAHTARLAR.length, 'EKSTRA_ANAHTARLAR tekrar iceriyor');
+  assert.equal(new Set(ARAC_EKSTRA_ANAHTARLAR).size, ARAC_EKSTRA_ANAHTARLAR.length, 'ARAC_EKSTRA_ANAHTARLAR tekrar iceriyor');
+  const portal = new Set([...EKSTRA_ANAHTARLAR, ...ARAC_EKSTRA_ANAHTARLAR]);
   assert.deepEqual(
     [...portal].sort(),
     [...tablo].sort(),

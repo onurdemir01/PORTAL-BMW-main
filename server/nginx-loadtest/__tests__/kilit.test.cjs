@@ -16,6 +16,7 @@
 //        T|NULL yok); doluKilitMesaji T|IP dali (G metni degismez)
 //   YK15 kilit alma ortasinda istisna: acquireLocks firlatir (alinani birakmaz, cagiran birakir);
 //        releaseLocks yalniz bu lock_id'li dolu satirlari birakir (yabanci kilit kalir)
+//   YK16 tur 4 araclar: bagliIsKarari('araclar') kosu sutunu, BAG_SIRASI 0, A|araclar mesaji, supurme
 //
 // Sahte db kilit tablosunun ANLAMINI uygular: CAS kosulu SQL metninden okunur, yani WHERE'deki
 // bir kosulu silen degisiklik buradaki davranisi da degistirir (mutasyonla olculdu).
@@ -447,4 +448,24 @@ test('YK15 kilit alma ortasinda istisna: acquireLocks firlatir; releaseLocks yal
   assert.deepEqual([db.satirlar.get('L|GBNGXT34').held, db.satirlar.get('L|GBNGXT34').lock_id], [1, 'yabanci'], 'yabanci kilit birakildi');
   assert.equal(db.satirlar.has('T|IP:10.20.30.40'), false, 'fikstur: T|IP satiri yazilmamis olmali');
   assert.equal((await AL(db, ['G|global'], 'sonraki')).ok, true, 'birakilan G yeniden alinamadi');
+});
+
+// Tur 4 (2026-11-02): arac hazirlama isi (bag_turu 'araclar', anahtar A|araclar + L|<DERLEME>).
+test('YK16 tur 4 araclar: bagliIsKarari kosu sutunu, BAG_SIRASI 0, A|araclar dolu kilit mesaji; L| metni degismez', async () => {
+  // successful / failed birakir; canceled / error TUTAR (uzakta timeout -k 30 1800 ile biten derleme olabilir).
+  assert.deepEqual(['successful', 'failed', 'canceled', 'error'].map((s) => kl.bagliIsKarari('araclar', s)), ['birak', 'birak', 'tut', 'tut']);
+  for (const s of ['running', 'pending', null]) assert.equal(kl.bagliIsKarari('araclar', s), 'tut', String(s));
+  assert.equal(kl.BAG_SIRASI('araclar'), 0);
+  assert.deepEqual([kl.BAG_SIRASI(null), kl.BAG_SIRASI('on_kontrol'), kl.BAG_SIRASI('kosu'), kl.BAG_SIRASI('durdur'), kl.BAG_SIRASI('x')], [0, 0, 1, 2, 2]);
+  assert.equal(
+    kl.doluKilitMesaji('A|araclar', { holder: 'ali', target_desc: 'araç hazırlama GBLABT02', awx_job_id: 77 }),
+    'Başka bir araç hazırlama işi sürüyor (ali: araç hazırlama GBLABT02, AWX iş #77). İş bitince kilit kendiliğinden bırakılır.',
+  );
+  assert.equal(kl.doluKilitMesaji('A|araclar', null), 'Başka bir araç hazırlama işi sürüyor. İş bitince kilit kendiliğinden bırakılır.');
+  assert.equal(kl.doluKilitMesaji('L|GBLABT02', null), 'GBLABT02 yük makinesi meşgul. İş bitince kilit kendiliğinden bırakılır.');
+  // Supurme: araclar'a bagli iki kilit tek is olarak, bag turu korunur.
+  const db = kilitDb();
+  assert.equal((await AL(db, ['A|araclar', 'L|GBLABT02'], 'arac-1')).ok, true);
+  await kl.bindLocks(db, ['A|araclar', 'L|GBLABT02'], 'arac-1', { awxServerId: 3, awxJobId: 501, bagTuru: 'araclar' });
+  assert.deepEqual(await kl.bekleyenKilitIsleri(db), [{ serverId: 3, jobId: 501, bagTuru: 'araclar' }]);
 });

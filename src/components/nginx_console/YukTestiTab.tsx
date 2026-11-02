@@ -11,20 +11,24 @@
 // iniyor; ekran genisligine gore kirilim yanlis yerde iki kolona gecerdi.
 // Tur 3 (2026-10-28): hedef IP elle yazilir (sunucu hedefi ya da izinli agdaki LB VIP'i / yonetilmeyen sunucu =
 // serbest hedef, yalniz istemci olcumu); yuk araci k6 (acik dongu) ya da wrk (kapali dongu, hiz tavanli).
+// Tur 4 (2026-11-02): "Araçlar" alt gorunumu (herkese okunur; hazirlama ve kaynak onayi yalniz Admin): k6 + wrk bir kez
+// /sw'ye hazirlanir, her on kontrol / kosu kopyayi sha256 ile dogrulayip kullanir ve siler.
 import React, { useState } from 'react';
-import { BeakerIcon, ChartBarSquareIcon, DocumentTextIcon, PlayCircleIcon, ArrowsRightLeftIcon } from '@heroicons/react/24/outline';
+import { BeakerIcon, ChartBarSquareIcon, DocumentTextIcon, PlayCircleIcon, ArrowsRightLeftIcon, WrenchScrewdriverIcon } from '@heroicons/react/24/outline';
 import KosuListesi from './yukTesti/KosuListesi';
 import KosuAyrinti from './yukTesti/KosuAyrinti';
 import YeniKosu from './yukTesti/YeniKosu';
 import Senaryolar from './yukTesti/Senaryolar';
 import Karsilastir from './yukTesti/Karsilastir';
+import Araclar from './yukTesti/Araclar';
 
-type Gorunum = 'kosular' | 'yeni' | 'senaryolar' | 'karsilastir';
+type Gorunum = 'kosular' | 'yeni' | 'senaryolar' | 'karsilastir' | 'araclar';
 const GORUNUMLER: { id: Gorunum; ad: string; ikon: React.ComponentType<React.SVGProps<SVGSVGElement>>; yalnizAdmin?: boolean }[] = [
   { id: 'kosular', ad: 'Koşular', ikon: ChartBarSquareIcon },
   { id: 'yeni', ad: 'Yeni koşu', ikon: PlayCircleIcon, yalnizAdmin: true },
   { id: 'senaryolar', ad: 'Senaryolar', ikon: DocumentTextIcon },
   { id: 'karsilastir', ad: 'Karşılaştır', ikon: ArrowsRightLeftIcon },
+  { id: 'araclar', ad: 'Araçlar', ikon: WrenchScrewdriverIcon },
 ];
 
 export function YukTestiTab({ isAdmin }: { isAdmin: boolean }) {
@@ -66,9 +70,10 @@ export function YukTestiTab({ isAdmin }: { isAdmin: boolean }) {
       {etkin === 'kosular' && (kosuId != null
         ? <KosuAyrinti key={kosuId} kosuId={kosuId} isAdmin={isAdmin} onGeri={() => setKosuId(null)} />
         : <KosuListesi onAc={setKosuId} />)}
-      {etkin === 'yeni' && isAdmin && <YeniKosu onBasladi={(id) => { setGorunum('kosular'); setKosuId(id); }} onSenaryolar={() => git('senaryolar')} />}
+      {etkin === 'yeni' && isAdmin && <YeniKosu onBasladi={(id) => { setGorunum('kosular'); setKosuId(id); }} onSenaryolar={() => git('senaryolar')} onAraclar={() => git('araclar')} />}
       {etkin === 'senaryolar' && <Senaryolar isAdmin={isAdmin} />}
       {etkin === 'karsilastir' && <Karsilastir />}
+      {etkin === 'araclar' && <Araclar isAdmin={isAdmin} />}
     </div>
   );
 }

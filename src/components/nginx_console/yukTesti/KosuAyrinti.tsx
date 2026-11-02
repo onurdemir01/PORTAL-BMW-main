@@ -14,6 +14,8 @@
 // TUR 3 (2026-10-28): adim degerleri ve birimleri `adimDegerleri` ile (wrk: baglanti; kayitta `hizlar` yok). Serbest
 // hedefte sunucu olcumu yoktur (CPU, kapasite, sunucu rps "—"); durdurma yalniz yuk sunucusundaki araci sonlandirir
 // (hedefe baglanilmaz, kaydedici yok). Tur ve motor kosu satirindan; eski satir sunucu / k6.
+// TUR 4 (2026-11-02): satirin arac seti ust bilgide ("Araç seti #N (k6 ... · wrk ...)"); on kontrol paneline aracId gider
+// (eski satir null: "Araç kopyası" satiri yok).
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeftIcon, ArrowPathIcon, ChevronDownIcon, ChevronRightIcon, StopCircleIcon } from '@heroicons/react/24/outline';
 import { nginxLoadtestApi, type NlAdim, type NlKosuAyrinti, type NlMotor } from '@/api/nginxLoadtestApi';
@@ -206,6 +208,12 @@ export default function KosuAyrinti({ kosuId, isAdmin, onGeri }: { kosuId: numbe
               )}
             </div>
             {kosu.etiket && <p className="mt-0.5 truncate text-[12px]" style={{ color: 'var(--text-secondary)' }} title={kosu.etiket}>{kosu.etiket}</p>}
+            {kosu.aracSeti && (
+              <p className="mt-0.5 truncate text-[11px]" style={{ color: 'var(--text-secondary)' }}
+                title={`Derleme ${kosu.aracSeti.derlemeHost || '?'} · k6 sha256 ${kosu.aracSeti.k6Sha256 || '—'} · wrk sha256 ${kosu.aracSeti.wrkSha256 || '—'}`}>
+                {`Araç seti #${kosu.aracSeti.id} (k6 ${kosu.aracSeti.k6Surum} · wrk ${kosu.aracSeti.wrkSurum})`}
+              </p>
+            )}
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
             {isAdmin && yenidenOku && (
@@ -272,7 +280,7 @@ export default function KosuAyrinti({ kosuId, isAdmin, onGeri }: { kosuId: numbe
           {/* Kosunun dayandigi on kontrol, KENDI durumuyla (DONE/OK: kosu ancak oyle baslar) degerlendirilir - kosunun
               RUNNING / FAILED durumu on kontrolu "temiz" ya da "başarısız" gostermez. */}
           {etkin === 'onkontrol' && (kosu.islem === 'kosu' && kosu.onKontrol
-            ? <OnKontrolPaneli kosu={{ durum: 'DONE', onKontrol: kosu.onKontrol, sunucuDegerlendirmesi: kosu.sunucuDegerlendirmesi, isDurumu: 'OK', isHatasi: null, hedefTuru: kosu.hedefTuru, motor }} baglam="kayit" />
+            ? <OnKontrolPaneli kosu={{ durum: 'DONE', onKontrol: kosu.onKontrol, sunucuDegerlendirmesi: kosu.sunucuDegerlendirmesi, isDurumu: 'OK', isHatasi: null, hedefTuru: kosu.hedefTuru, motor, aracId: kosu.aracId }} baglam="kayit" />
             : kosu.onKontrol || !aktif
               ? <OnKontrolPaneli kosu={kosu} />
               : <UyariKutusu ton="bilgi" rol="status" baslik="Ön kontrol sürüyor — sonuç iş bitince burada görünür." />)}

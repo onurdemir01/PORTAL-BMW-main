@@ -63,6 +63,11 @@
 // YT3  (UV3) onay girdisinin erisilebilir aciklamasi ipucu ("Yapıştırma kapalı"); yanlis yazimda uyusmazlik metni de;
 //      dogru yazimda aria-describedby gorunmeyen id gostermez.
 // YT24 (UV4) KosuAyrinti "Bağlantılar" ve "Bağlantı" kolon ipuclari "ortalama toplam" der; YT22 (UV4) SNI notu tam opak.
+// Tur 4 (2026-11-02, araclar /sw'den; YT40-43, 46, 47 yuk-testi-araclar.test.tsx'te):
+// YT44 YeniKosu: /hedefler araclar.hazir false (ya da alan yok) -> form ustunde hata kutusu (sunucu mesaji / yedek metin),
+//      "Araçlar" dugmesi Araçlar gorunumune gecer, on kontrol dugmesi KAPALI; hazirsa formun altinda set bilgisi.
+// YT45 OnKontrolPaneli "Araç kopyası (sha256)" satiri: gecti (ilk 12 hane) / kaldi (hata) / dogrulandi + hata kaldi /
+//      olculemedi; aracId null (eski satir) satir YOK; glibc bilgi satirinda; KosuAyrinti ust bilgide arac seti.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, fireEvent, waitFor, within, createEvent } from '@testing-library/react';
 import { render } from '@/test/test-utils';
@@ -98,6 +103,7 @@ const HEDEFLER = {
   varsayilan: { motor: 'k6', ...PARAM, baglantilar: [2, 4, 8], is_parcacigi: 2, serbest: { hizlar: [50, 100, 200], maxvu: 50 } },
   serbest: { acik: true, aglar: ['10.20.30.0/24'] },
   motorlar: ['k6', 'wrk'],
+  araclar: { hazir: true, aracId: 5, k6Surum: 'v0.49.0', wrkSurum: '4.2.0', kod: null, mesaj: null },
 };
 /** /ip-sinifi yanitlari (istemcinin normallestirdigi sekil). */
 const SUNUCU_SINIFI = (host: string, ip: string, o: Record<string, unknown> = {}) => ({
@@ -119,6 +125,7 @@ const bekle = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const api = vi.hoisted(() => ({
   hedefler: vi.fn(), senaryolar: vi.fn(), senaryo: vi.fn(), senaryoKaydet: vi.fn(), senaryoSil: vi.fn(), onKontrol: vi.fn(),
   baslat: vi.fn(), kosular: vi.fn(), kosu: vi.fn(), durum: vi.fn(), durdur: vi.fn(), yenidenOku: vi.fn(), karsilastir: vi.fn(), ipSinifi: vi.fn(),
+  araclar: vi.fn(), araclariHazirla: vi.fn(), aracGeriCek: vi.fn(),
 }));
 vi.mock('@/api/nginxLoadtestApi', async (orijinal) => ({ ...(await orijinal<typeof import('@/api/nginxLoadtestApi')>()), nginxLoadtestApi: api }));
 const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() }));
@@ -142,7 +149,7 @@ function ayrinti(o: Partial<NlKosuAyrinti> = {}): NlKosuAyrinti {
     ...(KOSU_LISTE as unknown as NlKosuAyrinti), hedefTuru: 'sunucu', motor: 'k6', serbestAg: null, planUyarilari: [],
     parametreler: { motor: 'k6', ...PARAM } as NlKosuAyrinti['parametreler'], onKontrol: null,
     gecersizNedenleri: [], sonucOzet: null, onKontrolKosuId: null, sunucuDegerlendirmesi: null, onKontrolYasSn: null, isDurumu: null, isHatasi: null,
-    analiz: { nproc: null, cpuTlsliPay: null, uyarilar: [], okumaHatasi: null }, durdurIsi: null, sonuclandirmaDenemesi: 0, ...o,
+    analiz: { nproc: null, cpuTlsliPay: null, uyarilar: [], okumaHatasi: null }, durdurIsi: null, sonuclandirmaDenemesi: 0, aracId: null, aracSeti: null, ...o,
   };
 }
 const kosuYukle = (o: Partial<NlKosuAyrinti> = {}, adimlar: unknown[] = []) => api.kosu.mockResolvedValue({ ok: true, kosu: ayrinti(o), adimlar });
@@ -1172,5 +1179,86 @@ describe('Yük Testi — tur 3 incelemesi (2026-10-28)', () => {
     expect(await screen.findByText(/^Farklı hız tavanı: referans 90 istek\/sn, aday 450 istek\/sn — /)).toBeTruthy();
     // Ayrintilar bir kez okunur (kosu basina).
     expect(api.kosu.mock.calls.map((c) => c[0]).sort()).toEqual([50, 51, 52]);
+  });
+});
+
+describe('Yük Testi — araçlar (tur 4, 2026-11-02)', () => {
+  const AYAR = { derlemeHostlari: ['GBLABT02'], varsayilanDerlemeHost: 'GBLABT02', k6Surum: 'v0.49.0', wrkSurum: '4.2.0', proxyTanimli: false, proxy: null, proxyHatasi: null, k6ArsivSha256: null, wrkKaynakSha256: null, ozetEksikleri: [], isSuresiSn: 2400 };
+
+  it('YT44 YeniKosu: araçlar hazır değil -> hata kutusu + “Araçlar” düğmesi, ön kontrol kapalı', async () => {
+    api.araclar.mockResolvedValue({ ok: true, etkin: null, calisan: null, gecmis: [], ayar: AYAR, kapi: { kod: 'araclar_hazir_degil', mesaj: null } });
+    const mesaj = 'Yük araçları henüz hazırlanmadı: Yük Testi › Araçlar bölümünden “Araçları hazırla” ile k6 ve wrk’yi /sw’ye hazırlayın (yalnız Admin).';
+    api.hedefler.mockResolvedValue({ ...HEDEFLER, araclar: { hazir: false, aracId: null, k6Surum: null, wrkSurum: null, kod: 'araclar_hazir_degil', mesaj } });
+    await yeniKosuAc();
+    fireEvent.change(hostSecici(), { target: { value: 'GBNGXT10' } });
+    fireEvent.change(screen.getByLabelText('Hedef IP'), { target: { value: '10.1.2.3' } });
+    const kutu = screen.getByText('Yük araçları hazır değil').closest('div[role="alert"]') as HTMLElement;
+    expect(within(kutu).getByText(mesaj)).toBeTruthy();
+    // Siniflandirma bitse de (form gecerli) dugme kapali kalir; neden arac kutusunu soyler.
+    await waitFor(() => expect(screen.getByText(/Sunucu hedefi: GBNGXT10/)).toBeTruthy(), SINIF_BEKLE);
+    expect(okDugmesi()).toBeDisabled();
+    expect(screen.getByText('Yük araçları hazır değil.')).toBeTruthy();
+    expect(screen.queryByText(/^Araç seti #/)).toBeNull();
+    fireEvent.click(within(kutu).getByRole('button', { name: /Araçlar/ }));
+    expect(await screen.findByRole('tab', { name: /Araçlar/, selected: true })).toBeTruthy();
+    expect(await screen.findByText('Kullanılabilir araç seti yok')).toBeTruthy();
+  });
+
+  it('YT44b alan hiç yoksa (eski sunucu) fail-closed; hazırsa form altında set bilgisi ve düğme açık', async () => {
+    const eski: Record<string, unknown> = { ...HEDEFLER };
+    delete eski.araclar;
+    api.hedefler.mockResolvedValueOnce(eski);
+    const r = render(<YukTestiTab isAdmin />);
+    fireEvent.click(await screen.findByRole('tab', { name: /Yeni koşu/ }));
+    expect(await screen.findByText('Sunucu araç durumunu bildirmedi.')).toBeTruthy();
+    expect(okDugmesi()).toBeDisabled();
+    r.unmount();
+    await yeniKosuAc();
+    expect(screen.queryByText('Yük araçları hazır değil')).toBeNull();
+    expect(screen.getByText('Araç seti #5: k6 v0.49.0 · wrk 4.2.0')).toBeTruthy();
+    fireEvent.change(hostSecici(), { target: { value: 'GBNGXT10' } });
+    fireEvent.change(screen.getByLabelText('Hedef IP'), { target: { value: '10.1.2.3' } });
+    await waitFor(() => expect(okDugmesi()).toBeEnabled(), SINIF_BEKLE);
+  });
+
+  it('YT45 ön kontrol paneli “Araç kopyası (sha256)”: geçti / kaldı / ölçülemedi; eski satırda (aracId null) YOK; glibc bilgisi', () => {
+    const satir = (ad: string) => (screen.getByText(ad).closest('li') as HTMLElement).textContent || '';
+    const AD = 'Araç kopyası (sha256)';
+    const panel = (ok: Record<string, unknown>, ek: Partial<NlKosuAyrinti> = {}) => render(<OnKontrolPaneli kosu={{ durum: 'DONE', onKontrol: onKontrolNormalle(ok), sunucuDegerlendirmesi: { engeller: [], uyarilar: [] }, ...ek }} />);
+    const sha = 'c'.repeat(64);
+    const r1 = panel({ ...ON_KONTROL_UYARILI, arac_dogrulandi: true, arac_sha256: sha, arac_glibc: '2.28' }, { aracId: 5 });
+    expect(satir(AD)).toBe(`${AD}${'c'.repeat(12)}… · geçti`);
+    // Satir motor satirindan hemen ONCE.
+    const adlar = within(screen.getByRole('list', { name: 'Ön kontrol maddeleri' })).getAllByRole('listitem').map((li) => li.textContent || '');
+    expect(adlar.findIndex((t) => t.startsWith(AD))).toBe(adlar.findIndex((t) => t.startsWith('Yük sunucusunda k6')) - 1);
+    expect(screen.getByText(/yük sunucusu glibc 2\.28/)).toBeTruthy();
+    r1.unmount();
+    const r2 = panel({ ...ON_KONTROL_UYARILI, arac_dogrulandi: false, arac_hata: 'sha256 farkli (beklenen cccc..., bulunan dddd...)' }, { aracId: 5 });
+    expect(satir(AD)).toBe(`${AD}sha256 farkli (beklenen cccc..., bulunan dddd...) · kaldı`);
+    r2.unmount();
+    const r3 = panel({ ...ON_KONTROL_UYARILI, arac_dogrulandi: true, arac_sha256: sha, arac_hata: 'glibc uyumsuz: makinede glibc 2.28, arac GLIBC_2.34 istiyor' }, { aracId: 5, motor: 'k6' });
+    expect(satir(AD)).toBe(`${AD}glibc uyumsuz: makinede glibc 2.28, arac GLIBC_2.34 istiyor · kaldı`);
+    r3.unmount();
+    const r4 = panel(ON_KONTROL_UYARILI, { aracId: 5 });
+    expect(satir(AD)).toBe(`${AD}ölçülemedi`);
+    r4.unmount();
+    // Serbest hedefte de (yuk sunucusu satirlari arasinda).
+    const r5 = panel({ ip_yuk_makinesinde: false, serbest_ag: '10.20.30.0/24', k6_var: true, yollar_toplam: 2, yollar_200: 2, arac_dogrulandi: true, arac_sha256: sha }, { hedefTuru: 'serbest', aracId: 5 });
+    expect(satir(AD)).toMatch(/geçti$/);
+    r5.unmount();
+    // Eski satir: arac alanlari dolu olsa da satir YOK.
+    panel({ ...ON_KONTROL_UYARILI, arac_dogrulandi: false, arac_hata: 'x' }, { aracId: null });
+    expect(screen.queryByText(AD)).toBeNull();
+  });
+
+  it('YT45b koşu ayrıntısı: üst bilgide araç seti; “Ön kontrol” sekmesinde araç satırı (koşunun aracId’siyle)', async () => {
+    kosuYukle({
+      durum: 'DONE', aracId: 5, aracSeti: { id: 5, k6Surum: 'v0.49.0', wrkSurum: '4.2.0', k6Sha256: 'c'.repeat(64), wrkSha256: 'e'.repeat(64), derlemeHost: 'GBLABT02' },
+      onKontrol: onKontrolNormalle({ ...ON_KONTROL_UYARILI, arac_dogrulandi: true, arac_sha256: 'c'.repeat(64) }),
+    });
+    render(<KosuAyrinti kosuId={17} isAdmin={false} onGeri={vi.fn()} />);
+    expect(await screen.findByText('Araç seti #5 (k6 v0.49.0 · wrk 4.2.0)')).toBeTruthy();
+    fireEvent.click(screen.getByRole('tab', { name: 'Ön kontrol' }));
+    expect(await screen.findByText('Araç kopyası (sha256)')).toBeTruthy();
   });
 });
