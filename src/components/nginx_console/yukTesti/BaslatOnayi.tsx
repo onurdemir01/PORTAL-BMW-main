@@ -8,6 +8,7 @@
 // Sunucu 409 uyari_onayi ile KENDI uyari listesini donerse liste burada gosterilir ve kutu yeniden istenir.
 // Pencere girdi tasir: arka plana tiklamak kapatmaz; "İptal" ve Esc kapatir (gonderim surerken degil).
 // Yuk satiri ve tahmini sure `adimDegerleri` / `butceSn` ile: wrk kaydinda `hizlar` yoktur (baglanti kademeleri).
+// HTTP/2 (2026-11-02): h2 k6 satirinda kipten once "HTTP/2"; h1 k6 ve wrk metinleri BIREBIR eskisi.
 // Dogrulama UV3 (2026-10-28): onay girdisi aria-describedby ile ipucuna (yuk-onay-ipucu; yapistirma kapali) ve yanlis
 // yazimda footer'daki uyusmazlik metnine (yuk-onay-durum) baglidir. Gorunmeyen id'ye bag yok: span yalniz !nameOk iken.
 import React, { useState } from 'react';
@@ -18,20 +19,21 @@ import { fmtNumber } from '@/utils/datetime';
 import { SM_BTN, smBtn } from '@/components/server_hub/retirementStil';
 import { Cip, UyariKutusu } from '@/components/server_hub/RetirementUi';
 import { sureMetni } from '@/components/server_hub/retirementCikti';
-import { AE_ETIKETI, KIP_ETIKETI, SERBEST_CIP_IPUCU, adimDegerleri, butceSn } from './yukTestiOrtak';
+import { AE_ETIKETI, KIP_ETIKETI, PROTOKOL_ETIKETI, SERBEST_CIP_IPUCU, adimDegerleri, butceSn, protokolOf } from './yukTestiOrtak';
 import { GIRDI_TABAN, girdiStili } from './YukUi';
 
 export interface BaslatOnayiDegeri { confirmText: string; uyariOnay: boolean }
 
 /** Yuk satiri: k6 metni eskisiyle BIREBIR; wrk "wrk · 2 · 4 · 8 bağlantı × 2 tekrar = 6 adım · 2 iş parçacığı · ortalama ≤ 450 istek/sn · ...". */
-function yukMetni(p: NonNullable<NlKosuAyrinti['parametreler']>): string {
+export function yukMetni(p: NonNullable<NlKosuAyrinti['parametreler']>): string {
   const { motor, degerler } = adimDegerleri(p);
   const adim = degerler.length * p.tekrar;
   const kipAe = `${KIP_ETIKETI[p.kip] || p.kip} · ${AE_ETIKETI[p.ae] || p.ae}`;
   if (motor === 'wrk') {
     return `wrk · ${degerler.join(' · ')} bağlantı × ${p.tekrar} tekrar = ${fmtNumber(adim)} adım · ${p.is_parcacigi ?? '—'} iş parçacığı · ortalama ≤ ${p.tavan_rps ?? '—'} istek/sn · ${kipAe}`;
   }
-  return `${degerler.join(' · ')} istek/sn × ${p.tekrar} tekrar = ${fmtNumber(adim)} adım · ${kipAe}`;
+  const h2 = protokolOf(p) === 'h2' ? `${PROTOKOL_ETIKETI.h2} · ` : '';
+  return `${degerler.join(' · ')} istek/sn × ${p.tekrar} tekrar = ${fmtNumber(adim)} adım · ${h2}${kipAe}`;
 }
 
 export default function BaslatOnayi({ onKontrol, senaryo, uyarilar, sunucuUyarilari, busy, hata, onOnay, onKapat }: {

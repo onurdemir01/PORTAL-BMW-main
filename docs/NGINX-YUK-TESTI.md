@@ -332,14 +332,16 @@ kuralları geçmişte kaldı.
    kadar beş kademe). Hazır ayarlar `GET /hedefler` `sinirlar`'ına, hedefin ölçülmüş `limit_req` /
    `limit_conn` tavanına, serbest tavanlara (200 r/s / 50 bağlantı) ve 2700 sn bütçeye kırpılır;
    testte sunucunun kendi `parametreler` doğrulamasından geçtiği sınanır. Tekrar, ısınma, boşluk,
-   boşta, kip, sıkıştırma, maks VU, iş parçacığı ve SNI kapalı **Gelişmiş ayarlar** bölümündedir;
-   her alanın altında etkisini anlatan bir cümle vardır. Gönderilen gövde ve sunucu doğrulamaları
-   değişmedi.
+   boşta, kip, sıkıştırma, protokol (HTTP/1.1 / HTTP/2, §5.2), maks VU, iş parçacığı ve SNI kapalı
+   **Gelişmiş ayarlar** bölümündedir; her alanın altında etkisini anlatan bir cümle vardır. Gönderilen
+   gövde ve sunucu doğrulamaları değişmedi (protokol eklendi: `parametreler.protokol`, yoksa `h1`).
 5. **Ön kontrol** (yük üretmez) — sunucu: seçilen IP hedefte yerel mi, Host başlığı `nginx -T`'de var
    mı (uyarı), tek nginx master, `/web_log` doluluğu ve okunabilirliği, etkin `log_format`'ta
    `user-agent=` var mı; serbest: IP yük makinesinde yerel değil mi ve yük makinesindeki izin dosyası
    (eşleşen girdi raporlanır). İki kipte: seçili motor var mı (sürüm, sha256), senaryodaki her yol 200
-   dönüyor mu, sıkıştırma (statik / dinamik / yok).
+   dönüyor mu, sıkıştırma (statik / dinamik / yok). HTTP/2 koşusunda ayrıca her yol curl `--http2` ile
+   denenir; hedef bu Host için ALPN ile HTTP/2 sunmuyorsa ya da ölçülemediyse koşu **başlatılamaz**
+   (§5.2).
 6. **Başlat** — son **15 dk** içinde **sizin** çalıştırdığınız, tamamlanmış ve OK ön kontrol
    gerekir; parametreler ön kontroldekinin aynısıdır (istemci değiştiremez). Onay penceresinde
    sunucu hedefinde hedef sunucu adını, serbest hedefte **hedef IP'yi** birebir yazın. Uyarı varsa
@@ -505,7 +507,7 @@ bilinen sahipleri `sahipler: [{ host, env, nginx, kaynaklar }]` (en çok 10) dö
 
 Diğerleri: AWX sunucu / iş numarası **istemciden alınmaz** (koşu satırından okunur); `LIMIT_MUAF` ve
 proxy değişkenleri koşu kiplerinde hiç gönderilmez (son kapı fazladan ve eksik anahtarı reddeder: her
-ön kontrol / koşu / durdurma işi tam 33 değişkenle, araç hazırlama işi tam 10 değişkenle gider — vekil
+ön kontrol / koşu / durdurma işi tam 34 değişkenle (34. `yuk_protokol`, §5.2), araç hazırlama işi tam 10 değişkenle gider — vekil
 `yuk_proxy` yalnız onda; playbook kurallarının aynası); iş geçmişine senaryo gövdesi yerine boyut izi
 (`<n b64>`) yazılır; iş çıktısı ve set_stats her yanıtta maskelenir; her başlatma, durdurma, yeniden
 okuma ve reddedilen deneme `nginx_loadtest_*` eylemiyle `targetHost` (serbestte boş) / `targetIp`
@@ -719,12 +721,23 @@ olarak yazar; eski worker'lar çıkınca toplam düşer.
   bu durumda sayı yazardı: bilinçli fark, testte açık eşleme.)
 * **Reload anı**: kaydedici örneklerinde PID kümesinin değiştiği / 'shutting down' worker görülen her
   ardışık dizi bir olaydır: ilk görüldüğü an, ondan önceki değişmemiş örnek (reload bu ikisi arasında),
-  son örnek, worker sayıları, o an süren adım ve fazı (`isinma` / `olcum` / `bosluk` — bir önceki adımdan
-  sonraki boşluk / `kosu_oncesi`) ve değdiği adımlar. Olay (ilk–son örnek) bir adımın ölçüm penceresine
-  (başlangıç + ısınma .. bitiş) değiyorsa adımı ve fazı o adımın `olcum`'udur: ısınmada / boşlukta / koşu
-  öncesinde başlayıp eski worker'ları ölçüme taşan reload adımı düşürür, ekran "ölçüm etkilenmedi" demez.
-  Analiz özetinde `ozet.reloadlar`, adım satırında
-  `ham.reloadlar`. Yalnız gösterimdir; geçerlilik kuralı değişmez (penceredeki reload yine `GECERSIZ`).
+  son örnek, worker sayıları, adım ve fazı ve değdiği adımlar. Faz **CPU penceresiyle kesin** eşleşir
+  (h2 turu, 2026-11-02): CPU-ms/istek, ölçüm fazının tamamına değil, nginx logundaki ölçüm satırlarının
+  `[ilk + 3 sn, son − 2 sn]` aralığına (log yoksa istemci saatiyle `[başlangıç + ısınma + 5, bitiş − 5]`)
+  bakar. Fazlar (ilk tutan):
+  * `olcum` — olayın kanıtı (bitişik iki örnekte farklı PID kümesi ya da 'shutting down' worker
+    örneği) bir adımın CPU penceresinin içinde: adım reload nedeniyle `GECERSIZ` ve CPU'su boştur.
+    Isınmada / boşlukta / koşu öncesinde başlayıp eski worker'ları pencereye taşan reload da budur.
+  * `olcum_kenari` — olay ölçüm fazına (başlangıç + ısınma .. bitiş) değiyor ama CPU penceresinin
+    **dışında** (ölçümün ilk ya da son birkaç saniyesi): adım **etkilenmez**, ekran "ölçümün başında ya
+    da sonunda, CPU penceresi dışında (ölçüm etkilenmedi)" der. Eskiden bu olay `olcum` yazılıyor, adım
+    ise `GECERLI` kalıyordu (çelişki).
+  * `isinma` / `bosluk` (bir önceki adımdan sonraki boşluk) / `kosu_oncesi` — o an süren adım ve fazı.
+  Değişmez: bir adımın nedenlerinde `reload(worker_pid_degisti)` varsa **ve yalnız o zaman** o adıma
+  yazılmış bir `olcum` olayı vardır (tek olay boşluksuz iki adımın penceresine kanıt bırakırsa ilk adıma
+  yazılır). Kenar olay başka kesitteyse (adımın CPU'su başka kaydedici dosyasından) de `olcum_kenari`dır.
+  Analiz özetinde `ozet.reloadlar`, adım satırında `ham.reloadlar`. Yalnız gösterimdir; geçerlilik
+  kuralı değişmez (penceredeki reload yine `GECERSIZ`).
 * **Konfigürasyon değişimi** (`konf_degisti`) kaydedicinin yalnız başta ve sonda aldığı özet farkıdır:
   anı bilinmez ve **tüm** adımlara yazılır. Değişikliğin anını bulmak kaydedicide (Ansible) ara özet
   ister; bu tur kapsamı dışında.
@@ -775,11 +788,12 @@ Serbest koşuda sunucu verisine dayanan adım uyarıları (`log_satiri_yok:pence
 |---|---|
 | `wrk_rc=<rc>` | wrk hata koduyla bitti (zaman.csv çıkış kodu; k6'da aynen `k6_rc=<rc>`). İş çıktısındaki wrk mesajına bakın; koşuyu tekrarlayın. |
 | `429(istemci=<n>)`, `5xx(istemci=<n>)` | Serbest hedefte yalnız istemci sayısı: sunucu sayısı **ölçülmedi** (0 değil), nedende `sunucu=` yoktur. Sunucu kipinde biçim değişmez: `429(istemci=<n>,sunucu=<m>)`. |
-| `hatali_kosu(kos.sh_durdurdu)` | Metin wrk'te de aynen: TUR'u `wrk_kos.sh` durdurduysa da (429 / 5xx / soket / hata oranı / hata kodu / ölçüm yok). |
+| `hatali_kosu(kos.sh_durdurdu)` | Metin wrk'te de aynen: TUR'u `wrk_kos.sh` durdurduysa da (429 / 5xx / soket / hata oranı / beklenmeyen protokol / hata kodu / ölçüm yok). |
 
 **Karşılaştırma (kararVer)** — ilk satır (`referans=.. aday=.. senaryo=.. kip=.. ae=..`) değişmez; hemen ardından:
 
 * motorlar farklıysa `VERI_YOK`: `farkli yuk araci: referans <m>, aday <m>; k6 (acik dongu, istek/sn) ve wrk (kapali dongu, baglanti) sonuclari karsilastirilmaz`;
+* protokoller farklıysa `VERI_YOK`: `farkli protokol: referans HTTP/1.1, aday HTTP/2; ayni protokolle yeniden kosun` (§5.2);
 * iki wrk koşusunun iş parçacığı sayısı farklıysa (ikisi de biliniyorsa) `VERI_YOK`: `farkli is parcacigi sayisi: referans <t>, aday <t>; ayni is parcacigi sayisiyla yeniden kosun`;
 * iki wrk koşusunun hız tavanı (`parametreler.tavan_rps`) farklıysa (ikisi de biliniyorsa; CPU'suz yolda da) `VERI_YOK`: `farkli hiz tavani: referans <a> istek/sn, aday <b> istek/sn; ayni tavanla yeniden kosun`. Aynı bağlantı kademesi farklı tavanla farklı sunulan yük demektir (bekleme `d = ceil(N × 1000 / tavan)`): düşük tavanlı koşunun p95'i düşük çıkar ve sahte `KALICI` / `RET` doğardı. Tavan, hedefin ölçülmüş `limit_req`'i değişince, tarama verisi eksik olunca (450'ye çıkar) ya da sunucu (≤ 450) ile serbest (200) hedef karşılaştırılınca farklılaşır.
 
@@ -806,6 +820,66 @@ kademesi" yazmaz.
 da `DOYMA` (karsilastir.py diferansiyel eşdeğerliği korunur; D4'ün "CPU yoksa asla KALICI" özü burada
 da geçerlidir — `VERI_YOK` KALICI değildir).
 
+### 5.2 Protokol (HTTP/1.1 / HTTP/2)
+
+Tarayıcılar HTTPS'te çoğunlukla HTTP/2 kullanır; HTTP/2 nginx'in CPU'sunu (HPACK, akış yönetimi) ve
+yanıt süresini HTTP/1.1'den farklı etkiler. Koşu bu yüzden protokolü seçebilir (**Gelişmiş ayarlar** ›
+Protokol). Varsayılan ve alanı olmayan **eski koşular HTTP/1.1**'dir; davranışları değişmedi.
+
+* **Kısıtlar:** HTTP/2 yalnız **k6** ile (wrk yalnız HTTP/1.1 konuşur) ve yalnız **keep-alive (`ka`)**
+  bağlantı kipiyle seçilir. "Her isteğe yeni bağlantı" HTTP/2'de tarayıcı davranışı değildir ve k6'nın bu
+  durumdaki davranışı ölçülmedi. Kural her katmanda aynıdır: arayüz (seçim kapalı), sunucu (400
+  `gecersiz_istek`: "HTTP/2 yalnız k6 ile seçilebilir; wrk yalnız HTTP/1.1 konuşur." / "HTTP/2 yalnız
+  keep-alive (ka) bağlantı kipiyle koşulur; …"), Portal son kapısı (`yuk_protokol` ihlali), playbook
+  kapısı ve betikler (`kos.sh`, `wrk_kos.sh`, `yuk_k6.js`).
+* **Saklama:** protokol koşu satırının `parametreler` JSON'undadır (`"protokol":"h1"|"h2"`); **DB şeması
+  değişmedi**. Liste ucu protokolü `parametreler`'den `LIKE '%"protokol":"h2"%'` ile okur (`JSON_VALUE`
+  değil: Portal DB'sinin uyumluluk seviyesi bilinmiyor; kanonik JSON boşluksuzdur). Ön kontrol → koşu
+  eşitliğinde protokolsüz (bu sürümden önce saklanmış) ön kontrol `h1` sayılır.
+* **AWX:** extra var `yuk_protokol` (`'h1'` | `'h2'`) Portal'dan **her zaman** gider (34. değişken;
+  durdurma işinde eski satırdan `h1`). Playbook kapısı `yuk_protokol | default('h1')` kullanır: hangi
+  tarafın önce dağıtıldığı fark etmez. Yeni Portal + eski playbook (HTTP/2 istendi, HTTP/1.1 koşuldu)
+  üç yerde yakalanır: ön kontrolde `alpn_h2` gelmez → engel ("HTTP/2 desteği ölçülemedi …"); set_stats
+  `protokol` yankısı farklıysa sonuç bu koşuya ait sayılmaz (`OKUNAMADI`, "yayınlanan sonuç bu koşuya
+  ait değil (protokol h1)"); analizde istemci satırında `protokol` kolonu yoksa
+  `protokol_farkli(beklenen=h2,olculen=yok)`.
+* **Ön kontrol (ALPN):** HTTP/2 koşusunda yük makinesindeki curl her tekil yolu `--http2` ile dener;
+  özet `protokol`, `curl_h2`, `yollar_yanitli`, `yollar_h2`, `alpn_h2` taşır. Engeller (TEK, ilk tutan; motor
+  engelinden hemen sonra): ön kontrol HTTP/2 için yapılmamış (`protokol` `h1`) → "ön kontrol HTTP/2 için
+  yapılmadı"; curl HTTP/2'siz → "yük makinesindeki curl HTTP/2 desteklemiyor"; `alpn_h2` false →
+  "Hedef bu Host için HTTP/2 sunmuyor (ALPN): n/m yol HTTP/2 ile yanıt verdi …"; `alpn_h2` true değil
+  (yok / ölçülemedi) → "HTTP/2 desteği ölçülemedi …" (fail-closed). HTTP/1.1 koşusunda bu alanlar
+  **okunmaz**, çıktı öncekiyle birebir aynıdır. **SNI notu:** SNI kapalıyken (Host yalnız başlıkta) nginx
+  ALPN'i IP:443'ün **varsayılan** sunucusunun http2 ayarıyla seçer; `listen … http2` (eski biçim) dinleme
+  soketi geneline, `http2 on;` (1.25.1+) SNI ile seçilen server bloğuna uygulanır. Hedef site h2 açıkken
+  "sunmuyor" görüyorsanız SNI'yi açın.
+* **k6'nın HTTP/2 modeli (MAKUL, sahada ölçülmedi):** k6 v0.49 (Go net/http) HTTP/2'yi ALPN ile seçer
+  (`GODEBUG=http2client=0` yalnız HTTP/1.1 koşusunda verilir). Her sanal kullanıcı kendi bağlantısında
+  istekleri **sırayla** gönderir (VU başına tek akış); tarayıcıdaki gibi tek bağlantıda çok sayıda eş
+  zamanlı akış ölçülmez. HTTP/2 koşusuna bu yüzden koşu uyarısı yazılır:
+  `h2_vu_basina_tek_akis(tarayici_coklamasi_olculmez)`. İlk gerçek HTTP/2 koşusunda nginx
+  `connection_request` (adım `ham.yeniden_baglanti_yuzde`) ile doğrulanmalıdır (≈ 100 beklenir).
+  CPU-ms/istek ve p95 yalnız **aynı protokolle** koşulmuş koşularla karşılaştırılır.
+* **Çalışma anı denetimi:** k6 `setup()` her kontrol yolunun protokolünü beklenenle (`HTTP/1.1` |
+  `HTTP/2.0`) karşılaştırır; ölçüm / ısınma isteklerinde beklenen dışı yanıt `protokol_uyumsuz` sayacını
+  artırır ve koşuyu keser (`kos.sh` DUR).
+* **Sonuç kolonları:** istemci CSV / JSON şeması 30 kolon **aynen** + sonda `protokol` (`h1` | `h2`) ve
+  `protokol_uyumsuz` (32 kolon; wrk hep `h1` / `0`). `http2` kolonu yeni satırlarda yalnız bilgidir (HTTP/2.0
+  yanıt sayısı, ısınma + ölçüm); geçerlilik kararı `protokol_uyumsuz`'dan verilir: HTTP/1.1'de
+  `> 0` → `http2` (eski kod), HTTP/2'de `> 0` → `h2_disi(<n>)`. Satırın `protokol`'ü koşununkinden farklıysa
+  `protokol_farkli(beklenen=<p>,olculen=<p|yok>)`. Kolonu olmayan eski satır HTTP/1.1 koşusunda bugünkü
+  kuralla (`http2 > 0` → `http2`) değerlendirilir. Adım `ham`'ında `protokol` / `protokol_uyumsuz` yalnız
+  kolon varsa bulunur (eski koşuların analiz çıktısı değişmedi). TUR adı değişmedi (protokol koşu
+  düzeyinde sabittir).
+* **Karşılaştırma:** farklı protokol `VERI_YOK` ("aynı protokolle yeniden koşun"; motor kuralından hemen
+  sonra, wrk iş parçacığı / tavan kurallarından önce).
+
+| Neden | Anlamı |
+|---|---|
+| `h2_disi(<n>)` | HTTP/2 koşusunda `<n>` yanıt HTTP/2 dışında geldi; adım HTTP/2 ölçümü sayılmaz. Hedefin bu Host için h2 sunduğunu doğrulayın ya da HTTP/1.1 ile koşun. |
+| `protokol_farkli(beklenen=<p>,olculen=<p\|yok>)` | Yük aracı istenen protokolü kullanmadı (`yok` = istemci satırında protokol kolonu yok: eski `yuk_k6.js`). Ansible deposunu güncelleyin, koşuyu tekrarlayın. |
+| `http2` | Yalnız HTTP/1.1 koşusunda: HTTP/2 ile gidildi (`GODEBUG=http2client=0` tutmadı). |
+
 ---
 
 ## 6. API
@@ -815,18 +889,18 @@ retlerinde ayrıca `sahipler`).
 
 | Uç | Erişim | Not |
 |---|---|---|
-| `GET /hedefler` | okuma | hedefler (uygun / değil + neden, aday IP, vhost önerileri, ölçülen tavanlar), yük makineleri, sınırlar (`baglantiMin`, `maxBaglanti`, `maxBaglantiSayisi`, `isParcacigiMin`, `maxIsParcacigi`, `serbestTavanRps`, `serbestMaxBaglanti` dahil), varsayılanlar (`motor`, `baglantilar`, `is_parcacigi`, `serbest: { hizlar, maxvu }` dahil), `serbest: { acik, aglar }` (`aglar` yalnız Admin'e dolu), `motorlar: ['k6', 'wrk']`, `araclar: { hazir, aracId, k6Surum, wrkSurum, kod: null \| 'araclar_ozet_sabit_yok' \| 'araclar_hazir_degil' \| 'araclar_ozet_degisti' \| 'araclar_geri_cekildi' \| 'db_okunamadi', mesaj }` (araç seti okunamazsa `hazir: false`, `db_okunamadi`; uç yine 200) |
+| `GET /hedefler` | okuma | hedefler (uygun / değil + neden, aday IP, vhost önerileri, ölçülen tavanlar), yük makineleri, sınırlar (`baglantiMin`, `maxBaglanti`, `maxBaglantiSayisi`, `isParcacigiMin`, `maxIsParcacigi`, `serbestTavanRps`, `serbestMaxBaglanti` dahil), varsayılanlar (`motor`, `baglantilar`, `is_parcacigi`, `protokol: 'h1'`, `serbest: { hizlar, maxvu }` dahil), `serbest: { acik, aglar }` (`aglar` yalnız Admin'e dolu), `motorlar: ['k6', 'wrk']`, `protokoller: ['h1', 'h2']` (alan yoksa arayüz yalnız HTTP/1.1 sunar), `araclar: { hazir, aracId, k6Surum, wrkSurum, kod: null \| 'araclar_ozet_sabit_yok' \| 'araclar_hazir_degil' \| 'araclar_ozet_degisti' \| 'araclar_geri_cekildi' \| 'db_okunamadi', mesaj }` (araç seti okunamazsa `hazir: false`, `db_okunamadi`; uç yine 200) |
 | `GET /ip-sinifi?ip=&yukHost=&hedefHost=` | Admin | yazılan IP'nin sınıfı; DB'ye ve denetime **yazmaz**. `ip` zorunlu, iki host isteğe bağlı (verilmiş ama geçersizse 400; `yukHost` yoksa `ayni_host` denetimi atlanır). Sunucu: `{ ok, tur: 'sunucu', ip, host, env, vhostlar, vhostVerisi, hizSiniri, vuSiniri, uygun, neden, kod, kaynaklar }` (`uygun: false` da 200'dür: ön kontrol yapılamaz); serbest: `{ ok, tur: 'serbest', ip, host: null, ag, digerSahipler: [{ host, env }] }`; ret: §4.1 kodları (400 / 409 / 424) + `sahipler` |
 | `GET /senaryolar`, `GET /senaryolar/:id` | okuma | `:id` TSV'yi ve özeti de döner |
 | `POST /senaryolar`, `DELETE /senaryolar/:id` | Admin | silme yumuşaktır |
-| `POST /kosular/on-kontrol` | Admin | `{ senaryoId, hedefHost?, hedefIp, vhost, yukHost, sni, parametreler, etiket? }` → `{ kosuId, jobId, awxServerId }`. `hedefHost` isteğe bağlı (`undefined` / `null` / `''` = yazılan IP sınıflandırılır). `parametreler.motor` `'k6'` (varsayılan) ya da `'wrk'`; k6: `hizlar`, `maxvu`; wrk: `baglantilar`, `is_parcacigi`; ortak `tekrar`, `isinma`, `sure`, `bosluk`, `bosta`, `kip`, `ae`. `tavan_rps` gönderilse de yok sayılır (sunucu hesaplar). |
+| `POST /kosular/on-kontrol` | Admin | `{ senaryoId, hedefHost?, hedefIp, vhost, yukHost, sni, parametreler, etiket? }` → `{ kosuId, jobId, awxServerId }`. `hedefHost` isteğe bağlı (`undefined` / `null` / `''` = yazılan IP sınıflandırılır). `parametreler.motor` `'k6'` (varsayılan) ya da `'wrk'`; k6: `hizlar`, `maxvu`; wrk: `baglantilar`, `is_parcacigi`; ortak `tekrar`, `isinma`, `sure`, `bosluk`, `bosta`, `kip`, `ae`, `protokol` (`'h1'` varsayılan \| `'h2'` yalnız k6 + `kip: 'ka'`; aksi 400). `tavan_rps` gönderilse de yok sayılır (sunucu hesaplar). |
 | `POST /kosular` | Admin | `{ onKontrolKosuId, confirmText, uyariOnay }` — `confirmText` sunucu hedefinde host adı, serbest hedefte hedef IP |
-| `GET /kosular?islem=&durum=&hedef=&ip=&hedefTuru=&motor=&onceki=&limit=` | okuma | `islem` ∈ `kosu`, `on_kontrol`; `durum` ∈ `QUEUED`, `RUNNING`, `FINALIZING`, `DONE`, `FAILED`, `CANCELED`, `OKUNAMADI`; `hedef` = sunucu adı; `ip` = hedef IPv4; `hedefTuru` ∈ `sunucu`, `serbest`; `motor` ∈ `k6`, `wrk`; `onceki` = koşu no (yalnız `id < onceki`, "daha eski" sayfası); `limit` 1..200 (varsayılan 50). Sıra `id` azalan. Yanıtta `dahaVar` (limit + 1 satır çekilir). Satırlarda `hedefTuru`, `motor`, `hedefHost` (serbestte `null`). Geçersiz değer (ya da tekrarlanan parametre) → 400 `gecersiz_istek` |
-| `GET /kosular/:id` | okuma | ayrıntı: parametreler, `hedefTuru`, `motor`, ön kontrol özeti + engel / uyarı listesi (`onKontrolUyarilari` = plan uyarıları başta + ön kontrol uyarıları), `planUyarilari` (ön kontrol satırınınki), `serbestAg` (serbest satırda Portal izin listesinde **şu an** eşleşen ağ ya da `null`), geçerlilik nedenleri, adımlar; `durdurIsi: { awxServerId, awxJobId } \| null` (son durdurma işi), `sonuclandirmaDenemesi` (sonuçlandırma deneme sayısı); tur 4: `aracId` (satırın arac seti ya da `null` — eski satır) ve `aracSeti: { id, k6Surum, wrkSurum, k6Sha256, wrkSha256, derlemeHost } \| null` (durumundan bağımsız); `aracId` doluysa ön kontrol engellerine araç kopyası maddeleri eklenir; sade turu: `sonucOzeti` (§5.0) ve her adımda `cpuOlculemedi` (`reload` \| `sayac_geriledi` \| `net_negatif` \| `negatif_deger` — eski satırda DB'deki negatif / 0 değer \| `null`) ile `reloadlar: [{ t, tOnce, tSon, tur, faz }]` (epoch sn); `cpuMsIstek` / `kapasiteRps` asla ≤ 0 (eski satırda da null'a çevrilir, DB değişmez) |
+| `GET /kosular?islem=&durum=&hedef=&ip=&hedefTuru=&motor=&onceki=&limit=` | okuma | `islem` ∈ `kosu`, `on_kontrol`; `durum` ∈ `QUEUED`, `RUNNING`, `FINALIZING`, `DONE`, `FAILED`, `CANCELED`, `OKUNAMADI`; `hedef` = sunucu adı; `ip` = hedef IPv4; `hedefTuru` ∈ `sunucu`, `serbest`; `motor` ∈ `k6`, `wrk`; `onceki` = koşu no (yalnız `id < onceki`, "daha eski" sayfası); `limit` 1..200 (varsayılan 50). Sıra `id` azalan. Yanıtta `dahaVar` (limit + 1 satır çekilir). Satırlarda `hedefTuru`, `motor`, `protokol` (`h1` \| `h2`; eski satır `h1`), `hedefHost` (serbestte `null`). Geçersiz değer (ya da tekrarlanan parametre) → 400 `gecersiz_istek` |
+| `GET /kosular/:id` | okuma | ayrıntı: parametreler, `hedefTuru`, `motor`, `protokol`, ön kontrol özeti (HTTP/2'de `protokol`, `curl_h2`, `alpn_h2`, `yollar_yanitli`, `yollar_h2`) + engel / uyarı listesi (`onKontrolUyarilari` = plan uyarıları başta + ön kontrol uyarıları), `planUyarilari` (ön kontrol satırınınki), `serbestAg` (serbest satırda Portal izin listesinde **şu an** eşleşen ağ ya da `null`), geçerlilik nedenleri, adımlar; `durdurIsi: { awxServerId, awxJobId } \| null` (son durdurma işi), `sonuclandirmaDenemesi` (sonuçlandırma deneme sayısı); tur 4: `aracId` (satırın arac seti ya da `null` — eski satır) ve `aracSeti: { id, k6Surum, wrkSurum, k6Sha256, wrkSha256, derlemeHost } \| null` (durumundan bağımsız); `aracId` doluysa ön kontrol engellerine araç kopyası maddeleri eklenir; sade turu: `sonucOzeti` (§5.0) ve her adımda `cpuOlculemedi` (`reload` \| `sayac_geriledi` \| `net_negatif` \| `negatif_deger` — eski satırda DB'deki negatif / 0 değer \| `null`) ile `reloadlar: [{ t, tOnce, tSon, tur, faz }]` (epoch sn; `faz` ∈ `isinma`, `olcum`, `olcum_kenari`, `bosluk`, `kosu_oncesi`, §5.0); `cpuMsIstek` / `kapasiteRps` asla ≤ 0 (eski satırda da null'a çevrilir, DB değişmez) |
 | `GET /kosular/:id/durum?since=` | Admin | maskeli iş çıktısı; `since` = elinizdeki metnin uzunluğu → yalnız devamı (`outputOffset`, `outputLength`) |
 | `POST /kosular/:id/durdur` | Admin | AWX iptali + (koşu) `durdur` kipi. Başarı: `{ ok, iptal, iptalHatasi, durdurIsi: { jobId, awxServerId } \| null, durdurHatasi: null }`. 409 `baslatiliyor`, 409 `kosu_bitti`, 424 `durdur_baslatilamadi` (gövdede `iptal`, `iptalHatasi`, `durdurHatasi`; metin motor ve türe göre), 424 `awx_okunamadi` (ön kontrol iptal edilemedi) |
 | `POST /kosular/:id/yeniden-oku` | Admin | sonucu okunamamış koşuyu yeniden sonuçlandırır → `{ ok: true }`; değilse 409 `yeniden_okunamaz` |
-| `GET /karsilastir?ref=&aday=&esikCpu=&esikP95=` | okuma | karar, nedenler, tablo, kademe, kombinasyon; `ref` / `aday` özetinde `motor`, `hedefTuru` |
+| `GET /karsilastir?ref=&aday=&esikCpu=&esikP95=` | okuma | karar, nedenler, tablo, kademe, kombinasyon; `ref` / `aday` özetinde `motor`, `hedefTuru`, `protokol` (farklıysa karar `VERI_YOK`, §5.2) |
 | `GET /araclar` | okuma | `{ ok, etkin, calisan, gecmis (en çok 10, id azalan), ayar: { derlemeHostlari, varsayilanDerlemeHost, k6Surum, wrkSurum: '4.2.0', proxyTanimli, proxy (yalnız Admin'e dolu), proxyHatasi, k6ArsivSha256, wrkKaynakSha256 (env sabitleri ya da null), ozetEksikleri (['<ENV> tanımlı değil' \| '<ENV> 64 hex değil']), isSuresiSn (2400) }, kapi: { kod, mesaj } }` (`kapi` = `/hedefler` `araclar.kod` / `mesaj`). Araç seti: `{ id, durum, derlemeHost, k6Surum, wrkSurum, k6Sha256, wrkSha256, k6ArsivSha256, wrkKaynakSha256, ozetlerGuncel, geriCekildi, geriCeken, geriCekmeAt, calismaYasSn, swDizin (yalnız DONE), derlemeRhel, derlemeGlibc, wrkGlibcGerekli, wrkOpenssl, wrkLuajit, hata, awxServerId, awxJobId, awxUrl, createdBy, createdAt, startedAt, finishedAt }` |
 | `POST /araclar` | Admin | `{ derlemeHost? }` (yoksa listenin ilki) → `{ aracId, jobId, awxServerId }`. 400 `gecersiz_istek` (geçersiz ad), 409 `derleme_host_izinsiz`, 409 `arac_proxy_gecersiz`, 409 `arac_ozet_sabit_yok` (iki arşiv özeti env'i zorunlu; iş, kilit, kayıt yok), 409 `sablon_yok`, 409 `kilit_dolu` ("Başka bir araç hazırlama işi sürüyor ..."), 409 `sinir_asildi` (son kapı), 424 `db_okunamadi` / `awx_okunamadi`. Extra vars: `yuk_islem='araclar'` + 9 alan (README); `yuk_k6_arsiv_sha256` / `yuk_wrk_kaynak_sha256` her zaman 64 küçük hex; `limit` boş |
 | `POST /araclar/:id/geri-cek` | Admin | gövde yok → `{ ok, arac, kapi: { hazir, aracId, kod, mesaj } }` (yeni etkin set ya da neden). Denetim `nginx_loadtest_araclar_geri_cek`. 400 `gecersiz_istek`, 409 `arac_yok`, `arac_geri_cekilemez` (DONE değil), `zaten_geri_cekildi`, 424 `db_okunamadi`. Eski `POST /araclar/:id/onayla` kalktı |

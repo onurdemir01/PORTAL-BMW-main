@@ -31,11 +31,16 @@
 // basta bosta olcum, VU / is parcacigi, baglanti kipi, sikistirma, SNI ve etiket kapali "Gelişmiş ayarlar" altinda; her
 // alanin etkisi tek cumle (ALAN_ACIKLAMASI). Gelismis alanda hata varsa bolum acik kalir ve dugmede sayi gorunur.
 // Kanonik govde ve imza DEGISMEDI.
+// HTTP/2 (2026-11-02, h2_sozlesme.md 5.3; kullanici: "gercek tarayicilar cogunlukla h2 kullanir"): Gelişmiş ayarlar'da
+// "Bağlantı"dan once Protokol (HTTP/1.1 varsayilan). wrk secili ya da sunucu h2 kabul etmiyorsa (/hedefler protokoller'de h2
+// yok) secim kapali ve gonderilen h1. h2 secilince kip 'ka' yapilir ve 'yeni' secenegi kapanir (h1'e donunce kip degismez).
+// Govdede parametreler.protokol HER ZAMAN dolu; imza protokolu icerir (degisince on kontrol eskir). Sunucunun protokol
+// 400'leri (gecersiz_istek) alan hatasi olarak gorunur.
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowPathIcon, BoltIcon, ChevronDownIcon, ChevronRightIcon, ClipboardDocumentCheckIcon, ServerStackIcon, WrenchScrewdriverIcon } from '@heroicons/react/24/outline';
 import {
   hedeflerNormalle, nginxLoadtestApi, type NlAe, type NlHedef, type NlHedefler, type NlHedefTuru, type NlIpSinifi, type NlKip, type NlKosuAyrinti,
-  type NlMotor, type NlParametreler, type NlSenaryo, type NlVarsayilanlar,
+  type NlMotor, type NlParametreler, type NlProtokol, type NlSenaryo, type NlVarsayilanlar,
 } from '@/api/nginxLoadtestApi';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { toast } from '@/hooks/useToast';
@@ -51,7 +56,7 @@ import {
 } from './hazirAyarlar';
 import { Alan, Bolum, GIRDI, KosuDurumHapi, girdiStili } from './YukUi';
 import {
-  AE_ETIKETI, AKTIF_DURUMLAR, GIRDIYE_BAGLI_RETLER, KIP_ETIKETI, SERBEST_VHOST_YARDIMI, VHOST_LISTEDE_YOK_NOTU, adimDegerleri, baglantiBeklemesiMs,
+  AE_ETIKETI, AKTIF_DURUMLAR, GIRDIYE_BAGLI_RETLER, KIP_ETIKETI, PROTOKOL_ETIKETI, SERBEST_VHOST_YARDIMI, VHOST_LISTEDE_YOK_NOTU, adimDegerleri, baglantiBeklemesiMs,
   baglantilariAyristir, butceSn, hataMetni, hedefSinirlari, hizlariAyristir, ipGecerli, nedenMetni, onKontrolDegerlendir, onKontrolKalanMs,
   parametreHatalari, tavanNedeni, tavanRps, vhostGecerli,
 } from './yukTestiOrtak';
@@ -64,12 +69,15 @@ interface Form {
   hizlar: string | null; maxvu: string | null;
   baglantilar: string; is_parcacigi: string;
   tekrar: string; isinma: string; sure: string; bosluk: string; bosta: string; kip: NlKip; ae: NlAe; etiket: string;
+  /** Kullanicinin secimi; gonderilen deger wrk'de ya da sunucu h2 kabul etmiyorsa h1 (bkz. `protokol`). */
+  protokol: NlProtokol;
 }
-const formBaslangic = (v: NlVarsayilanlar, yukHost = ''): Form => ({
+const formBaslangic = (v: NlVarsayilanlar, yukHost = '', h2Acik = false): Form => ({
   senaryoId: '', hedefHost: '', hedefIp: '', vhost: null, yukHost, sni: false, motor: v.motor === 'wrk' ? 'wrk' : 'k6',
   hizlar: null, maxvu: null, baglantilar: v.baglantilar.join(' '), is_parcacigi: String(v.is_parcacigi),
   tekrar: String(v.tekrar), isinma: String(v.isinma), sure: String(v.sure), bosluk: String(v.bosluk),
-  bosta: String(v.bosta), kip: v.kip, ae: v.ae, etiket: '',
+  bosta: String(v.bosta), kip: h2Acik && v.protokol === 'h2' ? 'ka' : v.kip, ae: v.ae, etiket: '',
+  protokol: h2Acik && v.protokol === 'h2' ? 'h2' : 'h1',
 });
 const tamSayi = (s: string) => (/^\s*\d+\s*$/.test(s) ? Number(s) : NaN);
 /** Siniflandirma istegi yazma bitince (her tusta degil). */
@@ -109,6 +117,7 @@ export default function YeniKosu({ onBasladi, onSenaryolar, onAraclar }: { onBas
   const [sinif, setSinif] = useState<{ anahtar: string; sonuc: SinifSonucu } | null>(null);
   const [sinifDeneme, setSinifDeneme] = useState(0);
   const [gelismisAcik, setGelismisAcik] = useState(false);
+  const [protokolRet, setProtokolRet] = useState<{ anahtar: string; mesaj: string } | null>(null);
   const busyRef = useRef(false);
 
   const yukle = useCallback(async () => {
@@ -126,7 +135,7 @@ export default function YeniKosu({ onBasladi, onSenaryolar, onAraclar }: { onBas
   // Form ilk veriyle kurulur (render sirasinda; effect'te setState yok).
   if (veri && !form) {
     const yuk = veri.yukHostlari.filter((y) => y.uygun);
-    setForm(formBaslangic(veri.varsayilan, yuk.length === 1 ? yuk[0].host : ''));
+    setForm(formBaslangic(veri.varsayilan, yuk.length === 1 ? yuk[0].host : '', !!veri.protokoller?.includes('h2')));
   }
 
   const okKayitOku = useCallback(async (id: number) => {
@@ -204,6 +213,14 @@ export default function YeniKosu({ onBasladi, onSenaryolar, onAraclar }: { onBas
   const maxvuMetni = form ? form.maxvu ?? String(k6Varsayilan?.maxvu ?? '') : '';
   const motor: NlMotor = form?.motor === 'wrk' ? 'wrk' : 'k6';
   const sniEtkin = motor !== 'wrk';
+  // HTTP/2 yalniz k6 ve yalniz sunucu kabul ediyorsa; aksi halde gonderilen h1 (secim kapali). h2'de kip 'ka'.
+  const h2Acik = !!veri?.protokoller?.includes('h2');
+  const protokolSecilebilir = motor === 'k6' && h2Acik;
+  const protokol: NlProtokol = protokolSecilebilir && form?.protokol === 'h2' ? 'h2' : 'h1';
+  const kip: NlKip = protokol === 'h2' ? 'ka' : form?.kip ?? 'yeni';
+  // Sunucunun protokol reddi (400 gecersiz_istek, HTTP/2 metni) ayni motor / protokol / kip secimiyle alan hatasi kalir.
+  const protokolAnahtari = `${motor}|${protokol}|${kip}`;
+  const protokolRetMetni = protokolRet && protokolRet.anahtar === protokolAnahtari ? protokolRet.mesaj : null;
   const hizlar = hizlariAyristir(hizlarMetni);
   const baglantilar = form ? baglantilariAyristir(form.baglantilar) : null;
   const param: NlParametreler | null = form ? {
@@ -212,7 +229,7 @@ export default function YeniKosu({ onBasladi, onSenaryolar, onAraclar }: { onBas
       ? { baglantilar: baglantilar ?? [], is_parcacigi: tamSayi(form.is_parcacigi) }
       : { hizlar: hizlar ?? [], maxvu: tamSayi(maxvuMetni) }),
     tekrar: tamSayi(form.tekrar), isinma: tamSayi(form.isinma), sure: tamSayi(form.sure), bosluk: tamSayi(form.bosluk),
-    bosta: tamSayi(form.bosta), kip: form.kip, ae: form.ae,
+    bosta: tamSayi(form.bosta), kip, ae: form.ae, protokol,
   } : null;
   const pHata = param && sinir ? parametreHatalari(param, sinir) : {};
   if (form && motor === 'k6' && hizlar == null) pHata.hizlar = 'Yalnız sayı yazın, boşlukla ayırın (ör. 100 250 400).';
@@ -239,8 +256,8 @@ export default function YeniKosu({ onBasladi, onSenaryolar, onAraclar }: { onBas
   // Gelismis alanlardaki hata sayisi: bolum kapaliyken de soylenir. Hata bolumu ACAR ve acik birakir: hata duzelince
   // kendiliginden kapansa odaktaki alan gizlenir, odak sayfaya duser (inceleme bulgusu 2). Render sirasinda kosullu
   // setState (React'in "onceki degere gore durum ayarla" kalibi): effect'teki gibi bir kare kapali cizilmez.
-  const gelismisHatalari = [...(['tekrar', 'isinma', 'bosluk', 'bosta', 'kip', 'ae'] as const), ...(motor === 'wrk' ? ['is_parcacigi'] as const : ['maxvu'] as const)]
-    .filter((k) => !!pHata[k]).length + (fHata.etiket ? 1 : 0);
+  const gelismisHatalari = [...(['tekrar', 'isinma', 'bosluk', 'bosta', 'kip', 'ae', 'protokol'] as const), ...(motor === 'wrk' ? ['is_parcacigi'] as const : ['maxvu'] as const)]
+    .filter((k) => !!pHata[k]).length + (fHata.etiket ? 1 : 0) + (protokolRetMetni ? 1 : 0);
   if (gelismisHatalari > 0 && !gelismisAcik) setGelismisAcik(true);
   const gecerli = !!form && !!param && !Object.keys(pHata).length && !Object.keys(fHata).length;
   // Siniflandirma kapisi: surerken, kalici retle ve `uygun:false` sunucu hedefinde on kontrol kapali; 424 kapatmaz.
@@ -292,6 +309,11 @@ export default function YeniKosu({ onBasladi, onSenaryolar, onAraclar }: { onBas
       if (!r.ok || r.kosuId == null) {
         setIslemHata(hataMetni(r, 'Ön kontrol başlatılamadı.'));
         if (r.code && GIRDIYE_BAGLI_RETLER.has(r.code)) setGirdiRet(imza);
+        // HTTP/2 kurallarinin sunucu reddi alanin altinda da (Gelişmiş ayarlar acilir).
+        if (r.code === 'gecersiz_istek' && /HTTP\/2|protokol/.test(r.message ?? '')) {
+          setProtokolRet({ anahtar: protokolAnahtari, mesaj: String(r.message) });
+          setGelismisAcik(true);
+        }
         return;
       }
       setGirdiRet(null);
@@ -365,7 +387,7 @@ export default function YeniKosu({ onBasladi, onSenaryolar, onAraclar }: { onBas
   const gelismisGorunur = gelismisAcik;
   const gelismisOzeti = [
     `tekrar ${param.tekrar}`, `ısınma ${form.isinma} sn`, `bekleme ${form.bosluk} sn`, `başta ${form.bosta} sn`,
-    motor === 'wrk' ? `${form.is_parcacigi} iş parçacığı` : `en çok ${maxvuMetni} VU`, KIP_ETIKETI[form.kip], AE_ETIKETI[form.ae],
+    motor === 'wrk' ? `${form.is_parcacigi} iş parçacığı` : `en çok ${maxvuMetni} VU`, ...(protokol === 'h2' ? [PROTOKOL_ETIKETI.h2] : []), KIP_ETIKETI[kip], AE_ETIKETI[form.ae],
     ...(sniEtkin && form.sni ? ['SNI'] : []),
   ].join(' · ');
   // On kontrol bu formu artik kapsamiyor (form degisti / sunucu eski dedi / 15 dk doldu).
@@ -574,9 +596,22 @@ export default function YeniKosu({ onBasladi, onSenaryolar, onAraclar }: { onBas
                         <input id="yuk-maxvu" type="number" inputMode="numeric" min={10} max={sinir.maxVu} value={maxvuMetni} onChange={(e) => degistir('maxvu', e.target.value)} className={`${GIRDI} tabular-nums`} style={girdiStili(!!pHata.maxvu)} aria-invalid={!!pHata.maxvu} />
                       </Alan>
                     )}
-                  <Alan id="yuk-kip" etiket={motor === 'wrk' ? 'Bağlantı kipi' : 'Bağlantı'} yardim={motor === 'wrk' ? `${ALAN_ACIKLAMASI.kip} ${ALAN_ACIKLAMASI.kipWrk}` : ALAN_ACIKLAMASI.kip}>
-                    <select id="yuk-kip" value={form.kip} onChange={(e) => degistir('kip', e.target.value as NlKip)} className={GIRDI} style={girdiStili()}>
-                      {(['yeni', 'ka'] as const).map((k) => <option key={k} value={k}>{KIP_ETIKETI[k]}</option>)}
+                  {/* HTTP/2: yalniz k6; wrk ya da h2'yi kabul etmeyen sunucuda kapali ve HTTP/1.1 gosterir. */}
+                  <Alan id="yuk-protokol" etiket="Protokol" hata={pHata.protokol || protokolRetMetni}
+                    yardim={motor === 'wrk' ? ALAN_ACIKLAMASI.protokolWrk : !h2Acik ? ALAN_ACIKLAMASI.protokolYok : ALAN_ACIKLAMASI.protokol}>
+                    <select id="yuk-protokol" value={protokol} disabled={!protokolSecilebilir} className={GIRDI} style={girdiStili(!!(pHata.protokol || protokolRetMetni))}
+                      onChange={(e) => {
+                        const v: NlProtokol = e.target.value === 'h2' ? 'h2' : 'h1';
+                        // h2 keep-alive ister: kip 'ka' yapilir (gorunur); h1'e donunce kip kendiliginden degismez.
+                        setForm((f) => (f ? { ...f, protokol: v, ...(v === 'h2' ? { kip: 'ka' as const } : {}) } : f));
+                      }}>
+                      {(['h1', 'h2'] as const).map((k) => <option key={k} value={k}>{PROTOKOL_ETIKETI[k]}</option>)}
+                    </select>
+                  </Alan>
+                  <Alan id="yuk-kip" etiket={motor === 'wrk' ? 'Bağlantı kipi' : 'Bağlantı'} hata={pHata.kip || null}
+                    yardim={motor === 'wrk' ? `${ALAN_ACIKLAMASI.kip} ${ALAN_ACIKLAMASI.kipWrk}` : protokol === 'h2' ? ALAN_ACIKLAMASI.kipH2 : ALAN_ACIKLAMASI.kip}>
+                    <select id="yuk-kip" value={kip} onChange={(e) => degistir('kip', e.target.value as NlKip)} className={GIRDI} style={girdiStili(!!pHata.kip)}>
+                      {(['yeni', 'ka'] as const).map((k) => <option key={k} value={k} disabled={k === 'yeni' && protokol === 'h2'}>{KIP_ETIKETI[k]}</option>)}
                     </select>
                   </Alan>
                   <Alan id="yuk-ae" etiket="Sıkıştırma (Accept-Encoding)" yardim={ALAN_ACIKLAMASI.ae}>

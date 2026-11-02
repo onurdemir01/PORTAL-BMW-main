@@ -25,6 +25,12 @@
 // (CPU-ms/istek ve kapasite neden null) ve `reloadlar` (adim araligina degen reload anlari), kosu `sonucOzeti` (toplam
 // istek, en iyi / en kotu p95, 429 / 5xx toplamlari, kosu duzeyi reload olaylari). CPU-ms/istek ve kapasite istemcide de
 // ASLA negatif / sifir gosterilmez (eski sunucu, eski satir): null + neden.
+//
+// HTTP/2 (2026-11-02, h2_sozlesme.md; kullanici: "gercek tarayicilar cogunlukla h2 kullanir"): kanonik parametrede
+// `protokol` ('h1' | 'h2'; alani olmayan eski satir h1). h2 yalniz k6 ve kip 'ka'. /hedefler `protokoller` (alan yoksa
+// yalniz h1: eski sunucu h2 kabul etmez). Kosu satiri `protokol` (liste ve ayrinti; yoksa parametrelerden, o da yoksa h1).
+// On kontrol ozeti h2'de `protokol`, `curl_h2`, `alpn_h2`, `yollar_yanitli`, `yollar_h2` tasir (camelCase'e cevrilir).
+// Reload fazi `olcum_kenari`: olay olcum penceresine degdi ama CPU penceresinin disinda (olcum etkilenmedi).
 import { okJson, safeJson } from './http';
 
 const BASE = '/api/nginx-loadtest';
@@ -41,6 +47,8 @@ export type NlIslem = 'on_kontrol' | 'kosu';
 export type NlHedefTuru = 'sunucu' | 'serbest';
 /** `k6`: acik dongu (adim = istek/sn); `wrk`: kapali dongu (adim = baglanti sayisi, toplam hiz tavanli). */
 export type NlMotor = 'k6' | 'wrk';
+/** HTTP surumu: `h1` HTTP/1.1, `h2` HTTP/2 (yalniz k6 ve keep-alive). Alani olmayan eski kayit h1. */
+export type NlProtokol = 'h1' | 'h2';
 
 /** `neden` sunucunun mesaji, `kod` makine kodu. `hizSiniri` / `vuSiniri`: o hedefin limit_req / limit_conn'undan
  *  turetilen ust sinir (veri yoksa null); genel sinirlari DARALTIR. `vhostVerisi` false: server_name dokumu yok. */
@@ -70,12 +78,15 @@ export interface NlParametreler {
   hizlar?: number[]; maxvu?: number;
   baglantilar?: number[]; is_parcacigi?: number; tavan_rps?: number;
   tekrar: number; isinma: number; sure: number; bosluk: number; bosta: number; kip: NlKip; ae: NlAe;
+  /** Yoksa h1 (eski kayit). h2 yalniz k6 ve kip 'ka'. */
+  protokol?: NlProtokol;
 }
 /** /hedefler varsayilanlari: iki motorun alanlari birlikte; serbest hedefte k6 hiz ve VU varsayilani ayri. */
 export interface NlVarsayilanlar {
   motor: NlMotor; hizlar: number[]; maxvu: number; baglantilar: number[]; is_parcacigi: number;
   tekrar: number; isinma: number; sure: number; bosluk: number; bosta: number; kip: NlKip; ae: NlAe;
   serbest: { hizlar: number[]; maxvu: number };
+  protokol?: NlProtokol;
 }
 export interface NlHedefler {
   ok: true; hedefler: NlHedef[]; yukHostlari: NlYukHost[]; sinirlar: NlSinirlar; varsayilan: NlVarsayilanlar;
@@ -83,6 +94,8 @@ export interface NlHedefler {
   serbest: { acik: boolean; aglar: string[] };
   /** Sunucunun kabul ettigi yuk araclari; alan gelmezse yalniz k6 (eski sunucu wrk'yi kabul etmez). */
   motorlar: NlMotor[];
+  /** Sunucunun kabul ettigi protokoller; alan gelmezse yalniz h1 (eski sunucu h2 kabul etmez: secim kapali). */
+  protokoller?: NlProtokol[];
   /** Etkin arac seti (tur 4). Alan gelmezse hazir DEGIL (kod 'bilinmiyor'): on kontrol kapali kalir. */
   araclar: NlAracDurumu;
 }
@@ -142,6 +155,10 @@ export interface NlOnKontrol {
   /** Tur 4: yuk sunucusundaki arac kopyasi Portal'in sha256'siyla dogrulandi mi (blok kosmadiysa null), kopyanin
    *  sha256'si, yuk sunucusunun glibc surumu ve kopya / calistirma hatasi (glibc uyumsuz ...). */
   aracDogrulandi: boolean | null; aracSha256: string | null; aracGlibc: string | null; aracHata: string | null;
+  /** HTTP/2 on kontrolu (yalniz h2 isteginde dolu; h1 / eski playbook: null): on kontrolun yapildigi protokol, yuk
+   *  sunucusundaki curl HTTP/2 destekliyor mu, ALPN ile h2 sunuldu mu (her yanitli yol h2: true; biri degil: false;
+   *  yanitli yol yok: null), yanit veren ve h2 ile yanit veren yol sayisi. */
+  protokol?: NlProtokol | null; curlH2?: boolean | null; alpnH2?: boolean | null; yollarYanitli?: number | null; yollarH2?: number | null;
 }
 export interface NlKosu {
   id: number; islem: NlIslem; etiket: string | null; adim: string | null;
@@ -152,6 +169,8 @@ export interface NlKosu {
   finishedAt: string | null; awxJobId: number | null;
   /** Kosu satirindan (eski satir: sunucu / k6). */
   hedefTuru: NlHedefTuru; motor: NlMotor;
+  /** Kosunun protokolu (liste kolonu, yoksa parametreler.protokol, yoksa h1). */
+  protokol: NlProtokol;
   /** Serbest satirda Portal izin listesinde SU AN eslesen girdi (yalniz ayrinti). */
   serbestAg?: string | null;
   /** On kontrol satirinin plan uyarilari (Host basligi / yuk sunucusu havuzu; onay ister; yalniz ayrinti). */
@@ -199,7 +218,7 @@ export interface NlAdim {
 }
 /** Reload (worker PID kumesi degisimi) ani: epoch saniye; `tOnce` ile `t` arasinda oldu, `tSon`'a dek surdu. */
 export interface NlReloadAni {
-  t: number; tOnce: number | null; tSon: number; tur: string | null; faz: 'isinma' | 'olcum' | 'bosluk' | 'kosu_oncesi' | string;
+  t: number; tOnce: number | null; tSon: number; tur: string | null; faz: 'isinma' | 'olcum' | 'olcum_kenari' | 'bosluk' | 'kosu_oncesi' | string;
 }
 export interface NlReloadOlayi extends NlReloadAni {
   kesit: string; workerOnce: number | null; workerSonra: number | null; kapananEnCok: number; etkilenenTurlar: string[];
@@ -215,7 +234,7 @@ export interface NlSonucOzeti {
  *  fark_yuzde YUZDE cinsinden (aday / ref - 1) x 100. */
 export interface NlKarsilastirmaSatiri { hiz: number | null; ref: Record<string, unknown> | null; aday: Record<string, unknown> | null; farkYuzde: Record<string, number | null> }
 /** Karsilastirmanin bir tarafi; `motor` / `hedefTuru` kosu satirindan (eski sunucu vermez). */
-export interface NlKarsilastirmaTarafi { id: number; etiket: string | null; createdAt: string | null; motor?: NlMotor; hedefTuru?: NlHedefTuru }
+export interface NlKarsilastirmaTarafi { id: number; etiket: string | null; createdAt: string | null; motor?: NlMotor; hedefTuru?: NlHedefTuru; protokol?: NlProtokol }
 export interface NlKarsilastirma {
   ok: true; karar: NlKarar; nedenler: string[]; tablo: NlKarsilastirmaSatiri[];
   ref: NlKarsilastirmaTarafi; aday: NlKarsilastirmaTarafi;
@@ -406,6 +425,9 @@ export function onKontrolNormalle(x: unknown): NlOnKontrol | null {
     sikistirma: sik ? { statik: sayiVeya(sik.statik), dinamik: sayiVeya(sik.dinamik), sikistirmasiz: sayiVeya(sik.sikistirmasiz) } : null,
     aracDogrulandi: mantikVeya(alan(ham, 'aracDogrulandi', 'arac_dogrulandi')), aracSha256: metinVeya(alan(ham, 'aracSha256', 'arac_sha256')),
     aracGlibc: metinVeya(alan(ham, 'aracGlibc', 'arac_glibc')), aracHata: metinVeya(alan(ham, 'aracHata', 'arac_hata')),
+    protokol: protokolDegeri(alan(ham, 'protokol')),
+    curlH2: mantikVeya(alan(ham, 'curlH2', 'curl_h2')), alpnH2: mantikVeya(alan(ham, 'alpnH2', 'alpn_h2')),
+    yollarYanitli: sayiVeya(alan(ham, 'yollarYanitli', 'yollar_yanitli')), yollarH2: sayiVeya(alan(ham, 'yollarH2', 'yollar_h2')),
   };
 }
 /** Arac seti satiri (camel ya da snake; eksik alan null, bayrak false). id yoksa null (gecersiz satir listeye girmez). */
@@ -469,6 +491,10 @@ function kosuAracSetiNormalle(x: unknown): NlKosuAracSeti | null {
 }
 const hedefTuruVeya = (x: unknown): NlHedefTuru => (x === 'serbest' ? 'serbest' : 'sunucu');
 const motorVeya = (...xs: unknown[]): NlMotor => (xs.find((x) => x === 'k6' || x === 'wrk') as NlMotor | undefined) ?? 'k6';
+/** 'h1' | 'h2' ya da null (bilinmeyen deger protokol SAYILMAZ). */
+const protokolDegeri = (x: unknown): NlProtokol | null => (x === 'h1' || x === 'h2' ? x : null);
+/** Ilk gecerli protokol; hicbiri yoksa h1 (eski kayit). */
+export const protokolVeya = (...xs: unknown[]): NlProtokol => (xs.map(protokolDegeri).find((x) => x != null) ?? 'h1');
 /**
  * Liste satiri (GET /kosular): tur ve motor kosu satirindan; eski satirda yok -> sunucu / k6. Serbest satirda
  * `hedefHost` bos metin gelebilir (DB `''`): null'a cevrilir (etiket `hedefHost ?? hedefIp` bos kalmasin).
@@ -481,6 +507,7 @@ export function kosuSatiriNormalle(x: unknown): NlKosu {
     hedefHost: metinVeya(alan(r, 'hedefHost', 'hedef_host')),
     hedefTuru: hedefTuruVeya(alan(r, 'hedefTuru', 'hedef_turu')),
     motor: motorVeya(alan(r, 'motor'), p?.motor),
+    protokol: protokolVeya(alan(r, 'protokol'), p?.protokol),
   };
 }
 export function kosuNormalle(x: unknown): NlKosuAyrinti {
@@ -528,6 +555,7 @@ export function hedeflerNormalle(x: unknown): NlHedefler {
   const sv = nesne(v.serbest);
   const serbest = nesne(r.serbest);
   const motorlar = (Array.isArray(r.motorlar) ? r.motorlar : []).filter((m): m is NlMotor => m === 'k6' || m === 'wrk');
+  const protokoller = (Array.isArray(r.protokoller) ? r.protokoller : []).filter((m): m is NlProtokol => m === 'h1' || m === 'h2');
   return {
     ...(r as unknown as NlHedefler),
     hedefler: Array.isArray(r.hedefler) ? (r.hedefler as NlHedef[]) : [],
@@ -536,12 +564,15 @@ export function hedeflerNormalle(x: unknown): NlHedefler {
     varsayilan: {
       ...(v as unknown as NlVarsayilanlar),
       motor: motorVeya(v.motor),
+      protokol: protokolVeya(v.protokol),
       baglantilar: sayiDizisi(v.baglantilar) ?? [2, 4, 8],
       is_parcacigi: sayiVeya(v.is_parcacigi) ?? 2,
       serbest: { hizlar: sayiDizisi(sv.hizlar) ?? [50, 100, 200], maxvu: sayiVeya(sv.maxvu) ?? 50 },
     },
     serbest: { acik: serbest.acik === true, aglar: metinDizisi(serbest.aglar) },
     motorlar: motorlar.length ? [...new Set(motorlar)] : ['k6'],
+    // h1 her sunucuda gecerlidir (alani olmayan eski sunucu yalniz h1 konusur).
+    protokoller: [...new Set<NlProtokol>(['h1', ...protokoller])],
     araclar: aracDurumuNormalle(r.araclar),
   };
 }
@@ -563,8 +594,15 @@ function ipSinifiNormalle(x: Ham): NlIpSinifi | NlIpSinifiRet {
 }
 function karsilastirmaNormalle(x: NlKarsilastirma & { tablo?: unknown[] }): NlKarsilastirma {
   const sayilar = (o: unknown) => Object.fromEntries(Object.entries(nesne(o)).map(([k, v]) => [k, sayiVeya(v)]));
+  // Taraf protokolu yalniz 'h1' / 'h2' ise tasinir (eski sunucu vermez: ekran kosu satirindan okur).
+  const tarafNormalle = (t: NlKarsilastirmaTarafi): NlKarsilastirmaTarafi => {
+    const o = { ...nesne(t) } as Ham;
+    const pr = protokolDegeri(o.protokol);
+    delete o.protokol;
+    return (pr ? { ...o, protokol: pr } : o) as unknown as NlKarsilastirmaTarafi;
+  };
   return {
-    ...x, nedenler: metinDizisi(x.nedenler),
+    ...x, ref: tarafNormalle(x.ref), aday: tarafNormalle(x.aday), nedenler: metinDizisi(x.nedenler),
     tablo: (Array.isArray(x.tablo) ? x.tablo : []).map((t) => {
       const r = nesne(t);
       const taraf = (o: unknown) => (o && typeof o === 'object' && !Array.isArray(o) ? (o as Ham) : null);

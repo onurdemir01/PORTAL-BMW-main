@@ -5,6 +5,9 @@
 // Kod listesi server/nginx-loadtest/analiz.cjs'ten (NEDENLER onekleri, kosuHesapla gecersiz / uyari, kosuAnaliz kosu
 // uyarilari) ve cpu_kaydedici.sh'in bilgi_*.txt gecersiz= / uyari= satirlarindan; testte her kod icin cumle kilitli.
 // Bilinmeyen kod `bilinmiyor: true` ile oldugu gibi doner (ekran "kod" diye yazar; sessizce yutulmaz).
+// HTTP/2 (2026-11-02, h2_sozlesme.md 5.2): h2_disi(N), protokol_farkli(beklenen=..,olculen=..) nedenleri ve h2 kosu uyarisi
+// (bilgi); `http2` cumlesi DEGISMEZ (yalniz HTTP/1.1 kosusunda uretilir). Reload fazi `olcum_kenari`: olcume degdi ama
+// CPU penceresinin disinda (olcum etkilenmedi).
 import type { NlReloadAni } from '@/api/nginxLoadtestApi';
 import { fmtNumber, fmtTimeSeconds } from '@/utils/datetime';
 
@@ -18,6 +21,10 @@ const sayiTr = (s: string) => {
 };
 const ondalikTr = sayiTr;
 type Kural = { re: RegExp; ton: NedenTonu; cumle: (m: RegExpExecArray) => string };
+const PROTOKOL_ADI: Record<string, string> = { h1: 'HTTP/1.1', h2: 'HTTP/2', yok: 'bilinmiyor' };
+/** analiz.cjs H2_UYARISI ('h2_vu_basina_tek_akis(tarayici_coklamasi_olculmez)'): HTTP/2 kosusunun olcum modeli (bilgi). */
+export const H2_UYARI_KODU_RE = /^h2_vu_basina_tek_akis\(.*\)$/;
+export const H2_UYARI_CUMLESI = 'HTTP/2 koşusu: k6 her sanal kullanıcıda tek bağlantı açar ve istekleri sırayla gönderir; tarayıcıdaki gibi tek bağlantıda çok sayıda eş zamanlı akış ölçülmez. Yalnız HTTP/2 koşularıyla karşılaştırın.';
 
 /** Adim gecersizlik / doyma / hatali nedenleri (adim.nedenler; kosu gecersizNedenleri'nin icindekiler). */
 const NEDEN_KURALLARI: Kural[] = [
@@ -27,13 +34,15 @@ const NEDEN_KURALLARI: Kural[] = [
   { re: /^429\(istemci=(\d+)(?:,sunucu=(\d+))?\)$/, ton: 'hata', cumle: (m) => `Hedef ${sayiTr(m[1])} isteği 429 ile reddetti (hız sınırı: limit_req / limit_conn${m[2] != null ? `; sunucu logunda ${sayiTr(m[2])}` : ''}); ölçüm sınıra takıldı, hızı düşürün.` },
   { re: /^5xx\(istemci=(\d+)(?:,sunucu=(\d+))?\)$/, ton: 'hata', cumle: (m) => `Sunucu ${sayiTr(m[1])} isteğe 5xx hata yanıtı verdi${m[2] != null ? ` (sunucu logunda ${sayiTr(m[2])})` : ''}; nedenini error.log’da arayın.` },
   { re: /^http2$/, ton: 'hata', cumle: () => 'İstekler HTTP/2 ile gitti; ölçüm HTTP/1.1 için kurulu olduğundan bu adım karşılaştırılamaz.' },
+  { re: /^h2_disi\((\d+)\)$/, ton: 'hata', cumle: (m) => `HTTP/2 koşusunda ${sayiTr(m[1])} yanıt HTTP/2 dışında geldi; bu adım HTTP/2 ölçümü sayılmaz.` },
+  { re: /^protokol_farkli\(beklenen=(h1|h2),olculen=(h1|h2|yok)\)$/, ton: 'hata', cumle: (m) => `Yük aracı istenen protokolü kullanmadı (beklenen ${PROTOKOL_ADI[m[1]]}, ölçülen ${PROTOKOL_ADI[m[2]]}); Ansible deposu eski olabilir.` },
   { re: /^hata_%([\d.]+)\(>%([\d.]+)\)$/, ton: 'hata', cumle: (m) => `İsteklerin %${ondalikTr(m[1])}’i başarısız oldu (404, zaman aşımı …; eşik %${ondalikTr(m[2])}); senaryodaki yollar hâlâ 200 dönüyor mu bakın.` },
   { re: /^log_istemci_farki_%([\d.]+)$/, ton: 'hata', cumle: (m) => `Sunucu logundaki istek sayısı yük aracının gönderdiğinden %${ondalikTr(m[1])} farklı; isteklerin bir kısmı başka sunucuya gitmiş olabilir.` },
   { re: /^kayit:log_dondu:(.+)$/, ton: 'hata', cumle: (m) => `Ölçüm sırasında nginx logu döndürüldü ya da küçüldü (rotate: ${m[1]}); sunucu tarafı sayımlar eksik.` },
   { re: /^kayit:(.+)$/, ton: 'hata', cumle: (m) => `CPU kaydedicisi bu adımı geçersiz saydı (${m[1]}).` },
   { re: /^disk_%(\d+)$/, ton: 'hata', cumle: (m) => `/web_log diski %${m[1]} dolu (≥ %65); disk temizliği logları silebileceği için ölçüm güvenilir değil.` },
   { re: /^pencere_kisa\(([\d.]+)s\)$/, ton: 'hata', cumle: (m) => `CPU kaydedicisi ölçümün yalnız ${ondalikTr(m[1])} saniyesini gördü (en az 30 sn gerekir); kaydedici geç başlamış ya da erken durmuş.` },
-  { re: /^hatali_kosu\(.*\)$/, ton: 'hata', cumle: () => 'Yük betiği bu adımı yarıda durdurdu (429, 5xx, soket hatası, yüksek hata oranı ya da HTTP/2).' },
+  { re: /^hatali_kosu\(.*\)$/, ton: 'hata', cumle: () => 'Yük betiği bu adımı yarıda durdurdu (429, 5xx, soket hatası, yüksek hata oranı ya da beklenmeyen protokol).' },
   { re: /^tamamlanmadi\(.*\)$/, ton: 'hata', cumle: () => 'Adım başladı ama sonucu yazılmadı (koşu kesildi ya da durduruldu).' },
   { re: /^istemci_sonucu_yok$/, ton: 'hata', cumle: () => 'Hiçbir adımın sonucu yazılmadı; koşu ölçüm yapamadı.' },
   { re: /^doyma:dropped=(\d+)$/, ton: 'uyari', cumle: (m) => `Yük aracı istenen hızı tutturamadı: ${sayiTr(m[1])} istek zamanında gönderilemedi (dropped); bu adımın kapasite tahmini kullanılmaz.` },
@@ -66,6 +75,7 @@ const UYARI_KURALLARI: Kural[] = [
   { re: /^serbest_kosuda_sunucu_dosyalari_yok_sayildi\((\d+)\)$/, ton: 'bilgi', cumle: (m) => `Serbest hedefte sunucu ölçümü yok; dizindeki ${m[1]} sunucu dosyası yok sayıldı.` },
   { re: /^sunucu_olcumu_yok\(serbest_hedef\)$/, ton: 'bilgi', cumle: () => 'Serbest hedef: CPU ve sunucu logu ölçülmez; sonuçlar yalnız yük aracının ölçümüdür.' },
   { re: /^sunucu_logu_yok\(.*\)$/, ton: 'uyari', cumle: () => 'Hedefin nginx logu okunamadı; sunucu ile yük aracının istek sayıları karşılaştırılmadı.' },
+  { re: /^h2_vu_basina_tek_akis\(.*\)$/, ton: 'bilgi', cumle: () => H2_UYARI_CUMLESI },
   { re: /^wrk_tls_payi_hesaplanmaz\(.*\)$/, ton: 'bilgi', cumle: () => 'wrk TLS sürümünü sabitlemez ve oturumu sürdürebilir; TLS payı hesaplanmaz.' },
   { re: /^tekrar_kosu_ayristirilamadi\(.*\)$/, ton: 'uyari', cumle: () => 'Adım yeniden denenmiş ama sunucu logunda denemeler ayırt edilemedi; sunucu sayımları iki denemeyi birlikte içerebilir.' },
   { re: /^tekrar_kosu:deneme_(\d+)_kullanildi\((\d+)_eski_satir_atildi\)$/, ton: 'bilgi', cumle: (m) => `Adım yeniden denendi; ${m[1]}. deneme kullanıldı, önceki denemenin ${sayiTr(m[2])} log satırı atıldı.` },
@@ -108,7 +118,10 @@ export function uyariAcikla(u: string): NedenAciklamasi & { tur: string | null }
 }
 
 // ── Reload ani ──────────────────────────────────────────────────────────────────────
-const FAZ_METNI: Record<string, string> = { isinma: 'ısınma sırasında', olcum: 'ölçüm sırasında', bosluk: 'adımlar arası beklemede', kosu_oncesi: 'koşu başlamadan önce' };
+const FAZ_METNI: Record<string, string> = {
+  isinma: 'ısınma sırasında', olcum: 'ölçüm sırasında', olcum_kenari: 'ölçümün başında ya da sonunda, CPU penceresi dışında', bosluk: 'adımlar arası beklemede',
+  kosu_oncesi: 'koşu başlamadan önce',
+};
 /** Epoch saniye -> "SS:DD:ss", portalin saat diliminde (PORTAL_TZ; kaydedici ve AWX ciktisi da o dilimde). */
 export function saatMetni(t: number): string {
   return Number.isFinite(t) ? fmtTimeSeconds(t * 1000) : '—';

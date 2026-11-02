@@ -22,8 +22,8 @@
 //       gorevi getent register edilir ve HEMEN ardindan '<kayit> is unreachable' fail'i 'erisilemedi (ssh): ...' der
 //       (ignore_unreachable altinda erisilemeyen hostta getent yok sayilir; yoksa sonraki gorev tanimsiz getent_passwd
 //       ile duser ve operator 'undefined variable' gorur; 2026-10-28).
-//   NA7 Portal ile playbook'un ortak yuzeyi: dogrula.cjs EKSTRA_ANAHTARLAR (33) ve araclar.cjs
-//       ARAC_EKSTRA_ANAHTARLAR (10) birlesimi = aynadaki README'nin '| `yuk_*` |' tablo satirlari (39 degisken;
+//   NA7 Portal ile playbook'un ortak yuzeyi: dogrula.cjs EKSTRA_ANAHTARLAR (34; h2: yuk_protokol) ve araclar.cjs
+//       ARAC_EKSTRA_ANAHTARLAR (10) birlesimi = aynadaki README'nin '| `yuk_*` |' tablo satirlari (40 degisken;
 //       bekcinin L3'u README = playbook kapisi der).
 //   Tur 4: NA5 play sayisi 10; rescue'daki delegate temizlik gorevi ('failed_when: false', ardinda fail yok) istisna;
 //       (7) Play 8 (derleme makinesi) de getent + erisilemezlik fail'i. Araclar metin kurallari NA8'de
@@ -46,16 +46,16 @@ const DIR = process.env.NGINX_LOADTEST_AYNA || AYNA;
 
 // Ayna degistiginde: dosyalari Ansible deposuyla ESLE, sonra bu listeyi guncelle (sha256sum).
 const BEKLENEN = {
-  'README.md': 'ac435641a6b7bfc1cbc5fa91b8e6d610aab2270f16885c94dd52110796f2cc6d',
+  'README.md': 'cec8640564578b57d5102ef266c1ee01afbbf9491749cfdd5efab7e174bdee7e',
   'files/arac_hazirla.sh': 'ef1a342b21bcad90fa0b858769ad41a9a1e788422ee39dac8b174205ea55772b',
   'files/cpu_kaydedici.sh': 'd9c5bff9ab329d2d48b1bc0383b9c13fcf907e5bda1840ae9a5ceb8bf7495ac8',
   'files/durdur.sh': '9bb495c5117afba0320b72cb1230f8ccc4fabbfb0ce3c8d9c8f70be88f891b81',
-  'files/kos.sh': 'c3574b1109369c002cf4d56141557bb1fbf74d5ad78f2d38dfb9167834d2fa5b',
-  'files/on_kontrol.sh': '8b7f448d081b8fa22ecd9e0709b970379523e750a5850a25866127fec6ee9753',
-  'files/wrk_kos.sh': '0e2ed64448ab7b11f4ca52798051fa15ce92f112b2794811b660e99f7697df8f',
-  'files/yuk_k6.js': '7e8bee8da1af1e4a1b164dd732d45f9cf42cdff6d1b19948d9b6bed211e14967',
+  'files/kos.sh': 'd6e457573665b94ff9a73768749a5d14b5c15c252778d33cd31300adc01c6275',
+  'files/on_kontrol.sh': '2393f7a90ed60625f30ee3756361cc16936c72c4b96bba9abfa6697f6960033b',
+  'files/wrk_kos.sh': 'f61f7c7c61db115b6e2f3a47b1ceb83089d63360009c3c3ce6d104a8b84e9196',
+  'files/yuk_k6.js': 'c9baa255e694f518a11768dc960978a631f2e871b4a71b4df0e57f2b79cc5cbd',
   'files/yuk_wrk.lua': '2a44afc388007721690e9cce4b736ed0175f128bf6ef1a44b59588f93605e16b',
-  'nginx_loadtest.yml': '57fa3425de00ee10e1198f371e53496c444cfcce78eef46d4671739ac236c0ca',
+  'nginx_loadtest.yml': '9e7c8eadaa0bb5b83322f318669968f85827b718990f25c32431255cf6cab804',
 };
 
 function tumDosyalar(kok) {
@@ -312,15 +312,16 @@ test('NA5 S8: delegate/unreachable, korumali yuk_islem, kaydedici KILL/bekleme, 
   }
 });
 
-test('NA7 Portal EKSTRA_ANAHTARLAR + ARAC_EKSTRA_ANAHTARLAR = aynadaki README degisken tablosu (39 yuk_* satiri)', () => {
-  // Ortak yuzey (sozlesme 3. bolum, tur 4 2.3 / 3.1): Portal'in gonderdigi anahtarlar (kosu kipleri 33 + araclar 10) ile
+test('NA7 Portal EKSTRA_ANAHTARLAR + ARAC_EKSTRA_ANAHTARLAR = aynadaki README degisken tablosu (40 yuk_* satiri)', () => {
+  // Ortak yuzey (sozlesme 3. bolum, tur 4 2.3 / 3.1): Portal'in gonderdigi anahtarlar (kosu kipleri 34 + araclar 10) ile
   // playbook'un kapisinin denetledigi anahtarlar. Ansible bekcisi (L3) README tablosunu playbook'a, bu test Portal'a
   // baglar; ikisi birlikte uc yuzu esitler.
   const tablo = new Set([...oku('README.md').matchAll(/^\|\s*`(yuk_[a-z0-9_]+)`\s*\|/gm)].map((m) => m[1]));
-  assert.equal(tablo.size, 39, `README degisken tablosu 39 satir olmali: ${[...tablo].join(',')}`);
+  assert.equal(tablo.size, 40, `README degisken tablosu 40 satir olmali: ${[...tablo].join(',')}`);
   const { EKSTRA_ANAHTARLAR } = require('../../nginx-loadtest/dogrula.cjs');
   const { ARAC_EKSTRA_ANAHTARLAR } = require('../../nginx-loadtest/araclar.cjs');
-  assert.equal(EKSTRA_ANAHTARLAR.length, 33, 'EKSTRA_ANAHTARLAR 33 anahtar (kosu kipleri)');
+  assert.equal(EKSTRA_ANAHTARLAR.length, 34, 'EKSTRA_ANAHTARLAR 34 anahtar (kosu kipleri; 34. yuk_protokol)');
+  assert.equal(EKSTRA_ANAHTARLAR[33], 'yuk_protokol', 'yuk_protokol son (34.) anahtar');
   assert.equal(ARAC_EKSTRA_ANAHTARLAR.length, 10, 'ARAC_EKSTRA_ANAHTARLAR 10 anahtar (araclar)');
   assert.equal(new Set(EKSTRA_ANAHTARLAR).size, EKSTRA_ANAHTARLAR.length, 'EKSTRA_ANAHTARLAR tekrar iceriyor');
   assert.equal(new Set(ARAC_EKSTRA_ANAHTARLAR).size, ARAC_EKSTRA_ANAHTARLAR.length, 'ARAC_EKSTRA_ANAHTARLAR tekrar iceriyor');

@@ -20,6 +20,8 @@
 //       eski worker'lar ('shutting down') olcum penceresine kadar yasar -> adim reload'la GECERSIZ; olay ve adimin
 //       reloadlar'i o adimin 'olcum'u (eskiden baslangic anina gore 'isinma' / 'bosluk' / 'kosu_oncesi' yazilip ekran
 //       "olcum etkilenmedi" diyordu). Kontrol: isinmada baslayip isinmada biten reload 'isinma' kalir, adim dusmez.
+//   RG4 reload nedeni <=> o adima yazilmis 'olcum' olayi; olcumun son saniyesinde (CPU penceresi disi) biten reload
+//       'olcum_kenari', adim GECERLI (h2_sozlesme.md 6)
 'use strict';
 
 const { test, after } = require('node:test');
@@ -205,4 +207,26 @@ test('RG3 isinmada / boslukta / kosu oncesinde baslayip olcume tasan reload: adi
   const { adimlar, ozet } = await tasanReload('RK', b2 + 1 + 25, 2);
   assert.ok(adimlar.every((a) => a.gecerlilik === 'GECERLI'), adimlar.map((a) => a.nedenler).join('|'));
   assert.deepEqual(ozet.reloadlar.map((x) => [x.tur, x.faz]), [['RK_K_ka_identity_100_r2', 'isinma']]);
+});
+
+// RG4 (h2_sozlesme.md 6.5): reload nedeni <=> o adima yazilmis 'olcum' olayi; gercek R2 + tasan reload durumlari.
+test('RG4 reload degismezi: neden ancak olay o adimin CPU penceresindeyse (olcum); kenar olay adimi dusurmez', async () => {
+  const kontrol = (adimlar, reloadlar, yer) => {
+    for (const a of adimlar) {
+      const olcum = reloadlar.some((o) => o.tur === a.tur && o.faz === 'olcum');
+      assert.equal(a.nedenler.includes('reload(worker_pid_degisti)'), olcum, `${yer}/${a.tur}`);
+    }
+  };
+  const { n, adimlar, ozet } = await apiyeKadar();
+  kontrol(n.adimlar, n.ozet.reloadlar, 'R2');
+  kontrol(adimlar, ozet.reloadlar, 'R2 API');
+  const b2 = yerel(GERCEK[1].bas);
+  // Isinmada / boslukta / kosu oncesinde baslayip olcume tasan, isinmada biten ve olcumun son 2 saniyesinde biten reload.
+  for (const [ad, ani, sure] of [['RI', b2 + 26, 10], ['RK', b2 + 26, 2], ['RS', b2 + 1 + 30 + 119, 1]]) {
+    const r = await tasanReload(ad, ani, sure);
+    kontrol(r.adimlar, r.ozet.reloadlar, ad);
+  }
+  const s = await tasanReload('RS', b2 + 1 + 30 + 119, 1);
+  assert.deepEqual(s.ozet.reloadlar.map((x) => [x.tur, x.faz]), [['RS_K_ka_identity_100_r2', 'olcum_kenari']]);
+  assert.ok(s.adimlar.every((a) => a.gecerlilik === 'GECERLI'), s.adimlar.map((a) => a.nedenler).join('|'));
 });

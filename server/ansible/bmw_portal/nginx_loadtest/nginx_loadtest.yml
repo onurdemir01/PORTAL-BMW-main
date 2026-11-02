@@ -122,6 +122,9 @@
               - (yuk_tekrar | default('') | string) is match(yt_re_sayi)
               - (yuk_tekrar | int) >= 1 and (yuk_tekrar | int) <= 3
               - (yuk_kip | default('') | string) in ['yeni', 'ka']
+              - (yuk_protokol | default('h1') | string) in ['h1', 'h2']
+              - (((yuk_protokol | default('h1') | string) == 'h1') if ((yuk_motor | default('') | string) == 'wrk') else true)
+              - (((yuk_kip | default('') | string) == 'ka') if ((yuk_protokol | default('h1') | string) == 'h2') else true)
               - (yuk_ae | default('') | string) in ['br', 'gzip', 'identity']
               - (yuk_isinma_sn | default('') | string) is match(yt_re_sayi)
               - (yuk_isinma_sn | int) >= 5 and (yuk_isinma_sn | int) <= 60
@@ -137,7 +140,7 @@
               - (yuk_ua_onek | default('') | string) is match(yt_re_ua)
               - (yuk_cikti_kok | default('') | string) is match(yt_re_cikti_kok)
               - not ((yuk_cikti_kok | string) is search('[.][.]'))
-            fail_msg: "kosu parametreleri sinir disi ya da bicimsiz (hedef_turu sunucu|serbest, IPv4, vhost, sni, senaryo, motor k6|wrk; k6: hizlar 1..450 (serbest 200) en cok 5, maxvu 10..199 (serbest 50); wrk: baglantilar 1..199 (serbest 50) tekil en cok 5, is_parcacigi 1..16 en kucuk baglantidan buyuk degil ve her baglantiyi boler, tavan_rps 1..450 (serbest 200), sni 0; butce adim sayisina gore; tekrar 1..3, isinma 5..60, sure 30..300, bosluk 0..120, bosta 30..120, butce formul..2700, UA oneki, /sw koku); hicbir sey yapilmadi."
+            fail_msg: "kosu parametreleri sinir disi ya da bicimsiz (hedef_turu sunucu|serbest, IPv4, vhost, sni, senaryo, motor k6|wrk; k6: hizlar 1..450 (serbest 200) en cok 5, maxvu 10..199 (serbest 50); wrk: baglantilar 1..199 (serbest 50) tekil en cok 5, is_parcacigi 1..16 en kucuk baglantidan buyuk degil ve her baglantiyi boler, tavan_rps 1..450 (serbest 200), sni 0; butce adim sayisina gore; tekrar 1..3, isinma 5..60, sure 30..300, bosluk 0..120, bosta 30..120, butce formul..2700, UA oneki, /sw koku; protokol h1|h2 (h2 yalniz k6 ve kip ka)); hicbir sey yapilmadi."
             quiet: true
           when: (yuk_islem | default('')) not in ['durdur', 'araclar']
 
@@ -889,7 +892,7 @@
                   glibc: "{{ ((yt_y_glibc.stdout | default('') | trim).split(' ') | last) if ((yt_y_glibc.stdout | default('') | trim) is match(yt_re_glibc_satiri)) else '' }}"
                   hata: "{{ (yt_arac.hata | default('')) or ((('glibc uyumsuz: makinede glibc ' ~ (((yt_y_glibc.stdout | default('') | trim).split(' ') | last) | default('?')) ~ ', arac ' ~ (((yt_k6_surum_run.stderr | default('')) ~ (yt_wrk_surum_run.stderr | default(''))) | regex_search(yt_re_glibc_surum)) ~ ' istiyor') if ((((yt_k6_surum_run.stderr | default('')) ~ (yt_wrk_surum_run.stderr | default(''))) | regex_search(yt_re_glibc_surum)) is string) else (((yt_arac_cal_hata | trim) ~ ' ' ~ yt_arac_cal_ilk) if ((yt_arac_cal_hata | trim | length) > 0) else ''))) }}"
 
-            - name: --- [Task] Senaryodaki her tekil yol icin TEK HTTP/1.1 istegi (cerezsiz, vekilsiz) ---
+            - name: --- [Task] Senaryodaki her tekil yol icin TEK istek (h1 ya da h2; cerezsiz, vekilsiz) ---
               ansible.builtin.command:
                 argv:
                   - timeout
@@ -902,6 +905,7 @@
                   - "SNI={{ yuk_sni }}"
                   - "SENARYO={{ yt_dizin }}/senaryo/{{ yuk_senaryo_tur }}.tsv"
                   - "UA_ONEK={{ yuk_ua_onek }}"
+                  - "PROTOKOL={{ yuk_protokol | default('h1') }}"
                   - bash
                   - "{{ yt_dizin }}/on_kontrol.sh"
                   - yollar
@@ -968,6 +972,7 @@
                   - "TEKRAR={{ yuk_tekrar | int }}"
                   - "KIP={{ yuk_kip }}"
                   - "AE={{ yuk_ae }}"
+                  - "PROTOKOL={{ yuk_protokol | default('h1') }}"
                   - "ISINMA={{ yuk_isinma_sn | int }}s"
                   - "SURE={{ yuk_sure_sn | int }}s"
                   - "BOSLUK={{ yuk_bosluk_sn | int }}"
@@ -2105,7 +2110,12 @@
                   'ilk_hatalar': (hostvars[yuk_yuk_host].yt_yk_hatalar | default([])),
                   'sikistirma': {'statik': ((hostvars[yuk_yuk_host].yt_yk_ozet | default([]))[3] | default('0') | int),
                                  'dinamik': ((hostvars[yuk_yuk_host].yt_yk_ozet | default([]))[4] | default('0') | int),
-                                 'sikistirmasiz': ((hostvars[yuk_yuk_host].yt_yk_ozet | default([]))[5] | default('0') | int)}} }}
+                                 'sikistirmasiz': ((hostvars[yuk_yuk_host].yt_yk_ozet | default([]))[5] | default('0') | int)},
+                  'protokol': (((hostvars[yuk_yuk_host].yt_yk | default({})).protokol | default('')) if (((hostvars[yuk_yuk_host].yt_yk | default({})).protokol | default('')) in ['h1', 'h2']) else none),
+                  'curl_h2': (({'1': true, '0': false})[((hostvars[yuk_yuk_host].yt_yk | default({})).curl_h2 | default('-'))] | default(none)),
+                  'alpn_h2': (({'1': true, '0': false})[((hostvars[yuk_yuk_host].yt_yk | default({})).alpn_h2 | default('-'))] | default(none)),
+                  'yollar_yanitli': (((hostvars[yuk_yuk_host].yt_yk | default({})).yollar_yanitli | int) if (((hostvars[yuk_yuk_host].yt_yk | default({})).yollar_yanitli | default('-')) is match('^[0-9]{1,4}$')) else none),
+                  'yollar_h2': (((hostvars[yuk_yuk_host].yt_yk | default({})).yollar_h2 | int) if (((hostvars[yuk_yuk_host].yt_yk | default({})).yollar_h2 | default('-')) is match('^[0-9]{1,4}$')) else none)} }}
           when: (yt8_gecti | bool) and ((yuk_islem | default('')) == 'on_kontrol')
 
         - name: --- [Task] On kontrol engelleri (Portal kosuyu bunlarla BASLATMAZ) ---
@@ -2119,6 +2129,8 @@
                  + (['arac calistirilamadi: ' ~ yt_s_onk.arac_hata] if ((yt_s_onk.arac_dogrulandi is sameas true) and (yt_s_onk.arac_hata is string)) else [])
                  + (['k6 kopyasi calistirilamiyor: ' ~ (hostvars[yuk_yuk_host].yt_dizin | default('-')) ~ '/arac/k6'] if ((yt8_motor == 'k6') and not (yt_s_onk.k6_var | bool)) else [])
                  + (([('wrk calisiyor ama surumu okunamadi ya da 4 altinda (' ~ (yt_s_onk.wrk_surum or '-') ~ '); arac setini yeniden hazirlayin (Portal Arac paneli)')] if (yt_s_onk.wrk_calisiyor | bool) else [('wrk kopyasi calistirilamiyor: ' ~ (hostvars[yuk_yuk_host].yt_dizin | default('-')) ~ '/arac/wrk')]) if ((yt8_motor == 'wrk') and not (yt_s_onk.wrk_var | bool)) else [])
+                 + (['HTTP/2: hedef bu Host icin ALPN ile h2 sunmuyor (' ~ (yt_s_onk.yollar_h2 | string) ~ '/' ~ (yt_s_onk.yollar_yanitli | string) ~ ' yol h2)'] if (((yuk_protokol | default('h1') | string) == 'h2') and (yt_s_onk.alpn_h2 is sameas false)) else [])
+                 + (['HTTP/2 olculemedi (curl h2 desteklemiyor ya da yanitli yol yok)'] if (((yuk_protokol | default('h1') | string) == 'h2') and (yt_s_onk.alpn_h2 is none)) else [])
                  + (['hicbir yol denenmedi'] if (yt_s_onk.yollar_toplam | int) == 0 else []) }}
           when: (yt8_gecti | bool) and ((yuk_islem | default('')) == 'on_kontrol')
 
@@ -2229,6 +2241,7 @@
                   'islem': (yuk_islem | default('') | string | truncate(20)),
                   'hedef_turu': ((yuk_hedef_turu | default('') | string) if ((yuk_hedef_turu | default('') | string) in ['sunucu', 'serbest']) else none),
                   'motor': ((yuk_motor | default('') | string) if ((yuk_motor | default('') | string) in ['k6', 'wrk']) else none),
+                  'protokol': ((yuk_protokol | default('h1') | string) if ((yuk_protokol | default('h1') | string) in ['h1', 'h2']) else none),
                   'durum': yt_durum,
                   'hata': (yt_hata_metni if ((yt_hata_metni | length) > 0) else none),
                   'on_kontrol': (yt_s_onk | default(none)),
@@ -2245,6 +2258,7 @@
                   'islem': (yuk_islem | default('') | string | truncate(20)),
                   'hedef_turu': ((yuk_hedef_turu | default('') | string) if ((yuk_hedef_turu | default('') | string) in ['sunucu', 'serbest']) else none),
                   'motor': ((yuk_motor | default('') | string) if ((yuk_motor | default('') | string) in ['k6', 'wrk']) else none),
+                  'protokol': ((yuk_protokol | default('h1') | string) if ((yuk_protokol | default('h1') | string) in ['h1', 'h2']) else none),
                   'durum': 'FAIL',
                   'hata': (('sonuc derlenemedi: ' ~ (ansible_failed_result.msg | default('?') | string)) | truncate(300)),
                   'on_kontrol': none,

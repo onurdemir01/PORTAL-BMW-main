@@ -10,16 +10,18 @@
 // CPU olculmediyse (serbest taraf ya da analizin CPU'suz karar yolu) karar basliginda "CPU kademesi" yazilmaz.
 // Inceleme SA2 (2026-10-28): iki wrk kosusunun hiz tavani (parametreler.tavan_rps) farkliysa uyari: baglanti basina
 // bekleme ceil(N x 1000 / tavan) oldugundan ayni baglanti kademesi farkli yuktur (sunucu bu durumda VERI YOK doner).
+// HTTP/2 (2026-11-02, h2_sozlesme.md D7): secicide h2 kosusu "HTTP/2" ile isaretli; iki tarafin protokolu karar satirinda;
+// protokoller farkliysa karar ONCESI bilgi kutusu (sunucu VERI YOK doner; karar yine sunucudan).
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { ArrowsRightLeftIcon } from '@heroicons/react/24/outline';
-import { nginxLoadtestApi, sayiVeya, type NlKarsilastirma, type NlKosu } from '@/api/nginxLoadtestApi';
+import { nginxLoadtestApi, sayiVeya, type NlKarsilastirma, type NlKosu, type NlProtokol } from '@/api/nginxLoadtestApi';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { TableEmptyRow } from '@/components/common/EmptyState';
 import { fmtDate, fmtNumber } from '@/utils/datetime';
 import { SM_BTN, TH_STIL, TON, smBtn } from '@/components/server_hub/retirementStil';
 import { Hap, UyariKutusu } from '@/components/server_hub/RetirementUi';
 import { Alan, Bolum, GIRDI, girdiStili } from './YukUi';
-import { farkMetni, gecerlilikBilgisi, hedefEtiketi, kademeMetni, kararBilgisi, ondalik, yuzde, type AdimBirimi } from './yukTestiOrtak';
+import { PROTOKOL_ETIKETI, farkMetni, gecerlilikBilgisi, hedefEtiketi, kademeMetni, kararBilgisi, kosuProtokolu, ondalik, yuzde, type AdimBirimi } from './yukTestiOrtak';
 
 /** Tabloda gosterilen olculer (analiz.cjs FARK_ALANLARI'ndan); `iyi`: dusuk olan iyi mi. */
 const OLCULER: { k: string; ad: string; basamak: number; oran?: boolean; dusukIyi: boolean }[] = [
@@ -30,8 +32,10 @@ const OLCULER: { k: string; ad: string; basamak: number; oran?: boolean; dusukIy
   { k: 'host_cpu_ort', ad: 'Host CPU %', basamak: 0, dusukIyi: true },
 ];
 /** Secici metni; gecerlilik GECERLILIK tablosunun Turkce etiketiyle ("kısmen geçerli"; ham kod "kismi" DEGIL). */
-const kosuEtiketi = (k: NlKosu) => `#${k.id}${k.etiket ? ` · ${k.etiket}` : ''} · ${hedefEtiketi(k)}${k.hedefTuru === 'serbest' ? ' (serbest)' : ''}${k.motor === 'wrk' ? ' · wrk' : ''} · ${fmtDate(k.createdAt)}${k.gecerlilik && k.gecerlilik !== 'GECERLI' ? ` · ${gecerlilikBilgisi(k.gecerlilik)?.etiket}` : ''}`;
+const kosuEtiketi = (k: NlKosu) => `#${k.id}${k.etiket ? ` · ${k.etiket}` : ''} · ${hedefEtiketi(k)}${k.hedefTuru === 'serbest' ? ' (serbest)' : ''}${k.motor === 'wrk' ? ' · wrk' : ''}${protokolAdi(k) === 'h2' ? ` · ${PROTOKOL_ETIKETI.h2}` : ''} · ${fmtDate(k.createdAt)}${k.gecerlilik && k.gecerlilik !== 'GECERLI' ? ` · ${gecerlilikBilgisi(k.gecerlilik)?.etiket}` : ''}`;
 const motorAdi = (k: NlKosu) => (k.motor === 'wrk' ? 'wrk' : 'k6');
+/** Kosu satirinin protokolu (wrk her zaman HTTP/1.1; eski satir h1). */
+const protokolAdi = (k: Pick<NlKosu, 'motor' | 'protokol'>): NlProtokol => (k.motor === 'wrk' ? 'h1' : kosuProtokolu(k));
 
 export default function Karsilastir() {
   const [kosular, setKosular] = useState<NlKosu[] | null>(null);
@@ -87,6 +91,7 @@ export default function Karsilastir() {
   const farkliIsParcacigi = ikisiWrk && wRef?.isParcacigi != null && wAday?.isParcacigi != null && wRef.isParcacigi !== wAday.isParcacigi;
   const farkliTavan = ikisiWrk && wRef?.tavanRps != null && wAday?.tavanRps != null && wRef.tavanRps !== wAday.tavanRps;
   const serbestVar = !!refK && !!adayK && (refK.hedefTuru === 'serbest' || adayK.hedefTuru === 'serbest');
+  const farkliProtokol = !!refK && !!adayK && protokolAdi(refK) !== protokolAdi(adayK);
 
   async function karsilastir() {
     if (!refK || !adayK || !hazir) return;
@@ -110,6 +115,10 @@ export default function Karsilastir() {
   // CPU olculmediyse (bir taraf serbest ya da sunucu CPU'suz karar yolu: analiz.cjs "CPU olculmedi (...)" satiri)
   // "CPU kademesi" yazilmaz: karar p95 ve hata oranina gore verildi.
   const cpuOlculmedi = !!sonuc && (sonuc.ref.hedefTuru === 'serbest' || sonuc.aday.hedefTuru === 'serbest' || serbestVar || sonuc.nedenler.some((n) => n.startsWith('CPU olculmedi (')));
+  // Taraf protokolu: sunucu yaniti (yoksa secilen kosu satiri). Iki taraf HTTP/1.1 ise satir BIREBIR eskisi (yazilmaz).
+  const tarafProt = (t: 'ref' | 'aday'): NlProtokol => sonuc?.[t].protokol ?? ((t === 'ref' ? refK : adayK) ? protokolAdi((t === 'ref' ? refK : adayK) as NlKosu) : 'h1');
+  const protokolGoster = !!sonuc && (tarafProt('ref') === 'h2' || tarafProt('aday') === 'h2');
+  const tarafProtokolu = (t: 'ref' | 'aday') => (protokolGoster ? ` (${PROTOKOL_ETIKETI[tarafProt(t)]})` : '');
   const secenekler = (haric: string) => (kosular || []).filter((k) => String(k.id) !== haric).map((k) => <option key={k.id} value={String(k.id)}>{kosuEtiketi(k)}</option>);
 
   return (
@@ -140,8 +149,11 @@ export default function Karsilastir() {
           </div>
         </div>
         {kosular && kosular.length < 2 && <p className="mt-2 text-[11px]" style={{ color: 'var(--text-secondary)' }}>Karşılaştırma için en az iki bitmiş koşu gerekir.</p>}
-        {(farkliOrtam || farkliMotor || farkliIsParcacigi || farkliTavan || serbestVar) && (
+        {(farkliOrtam || farkliMotor || farkliProtokol || farkliIsParcacigi || farkliTavan || serbestVar) && (
           <div className="mt-3 space-y-2">
+            {farkliProtokol && refK && adayK && (
+              <UyariKutusu ton="bilgi" baslik={`İki koşu farklı protokolle koşuldu (${PROTOKOL_ETIKETI[protokolAdi(refK)]} / ${PROTOKOL_ETIKETI[protokolAdi(adayK)]}); sonuç “Veri yok” döner, aynı protokolle yeniden koşun.`} />
+            )}
             {farkliMotor && <UyariKutusu ton="uyari" baslik="Koşular farklı yük araçlarıyla alınmış (k6 / wrk): karar VERİ YOK döner." />}
             {farkliIsParcacigi && <UyariKutusu ton="uyari" baslik="Koşular farklı iş parçacığı sayısıyla alınmış: karar VERİ YOK döner." />}
             {farkliTavan && wRef && wAday && (
@@ -160,7 +172,7 @@ export default function Karsilastir() {
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--text-secondary)' }}>Karar</span>
               <Hap label={karar.etiket} ton={karar.ton} />
-              <span className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>#{sonuc.ref.id} → #{sonuc.aday.id}{sonuc.kademe ? `${cpuOlculmedi ? '' : ` · CPU kademesi ${kademeMetni(sonuc.kademe.cpu, birim)}`} · p95 kademesi ${kademeMetni(sonuc.kademe.p95, birim)}` : ''}</span>
+              <span className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>#{sonuc.ref.id}{tarafProtokolu('ref')} → #{sonuc.aday.id}{tarafProtokolu('aday')}{sonuc.kademe ? `${cpuOlculmedi ? '' : ` · CPU kademesi ${kademeMetni(sonuc.kademe.cpu, birim)}`} · p95 kademesi ${kademeMetni(sonuc.kademe.p95, birim)}` : ''}</span>
             </div>
             <p className="mt-1 text-[13px] leading-5" style={{ color: 'var(--text-primary)' }}>{karar.aciklama}</p>
           </div>

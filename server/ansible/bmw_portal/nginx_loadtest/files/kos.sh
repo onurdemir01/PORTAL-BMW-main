@@ -6,12 +6,13 @@
 #           AE=identity HIZLAR=250 HEDEF=... ./kos.sh R17 K   ./kos.sh R17 K --kuru  (yalniz plani yazar)
 # Ortam   : HOST_BASLIGI(zorunlu) SENARYO_DIZIN(./senaryo) SONUC(./sonuc) HIZLAR("100 250 400"; B icin "10") TEKRAR(2)
 #           KIP(yeni|ka) AE(br|gzip|identity) ISINMA(30s) SURE(120s) BOSLUK(30 sn) K6(k6) MAXVU SNI UA_ONEK
+#           PROTOKOL(h1|h2; h2 yalniz KIP=ka)
 # Portal  : el kiti f5_rehber/har_yuk_testi/kos.sh'in kopyasi. Farklar YALNIZ: UA_ONEK k6'ya gecer, HOST_BASLIGI
-#           varsayilansiz, LIMIT_MUAF yasak (hep 0), kendi pid'i $SONUC/../kos.pid, TERM (Portal durdur / timeout)
+#           varsayilansiz, PROTOKOL (h2: GODEBUG http2client=0 verilmez), LIMIT_MUAF yasak (hep 0), kendi pid'i $SONUC/../kos.pid, TERM (Portal durdur / timeout)
 #           calisan k6'yi da sonlandirir (k6 ve bosluk beklemesi arka planda + wait: trap ertelenmez).
 set -u
 BURASI="$(cd "$(dirname "$0")" && pwd)"
-kullanim() { sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+kullanim() { sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
 hata() { echo "HATA: $*" >&2; exit 2; }
 
 KURU=0; ARGS=()
@@ -35,7 +36,7 @@ UA_ONEK="${UA_ONEK:-portal-yuktesti}"
 SENARYO_DIZIN="${SENARYO_DIZIN:-./senaryo}"
 SONUC="${SONUC:-./sonuc}"
 if [ "$SEN" = B ]; then HIZLAR="${HIZLAR:-10}"; else HIZLAR="${HIZLAR:-100 250 400}"; fi
-TEKRAR="${TEKRAR:-2}"; KIP="${KIP:-yeni}"; AE="${AE:-br}"
+TEKRAR="${TEKRAR:-2}"; KIP="${KIP:-yeni}"; AE="${AE:-br}"; PROTOKOL="${PROTOKOL:-h1}"
 # BOSLUK 30: arka plan CPU'su icin kosular arasinda ~20 sn kalir (dislama -2/+8 sn); 3+ sn saat farkina dayanir.
 ISINMA="${ISINMA:-30s}"; SURE="${SURE:-120s}"; BOSLUK="${BOSLUK:-30}"; K6="${K6:-k6}"
 LIMIT_MUAF=0; MAXVU="${MAXVU:-150}"; SNI="${SNI:-0}"
@@ -55,6 +56,8 @@ SURE_SN="$(saniye "$SURE")" || hata "SURE bicimi: $SURE (ornek 120s)"
 [[ "$BOSLUK" =~ ^[0-9]+$ ]] || hata "BOSLUK saniye (tam sayi) olmali"
 [[ "$KIP" == yeni || "$KIP" == ka ]] || hata "KIP yeni ya da ka olmali"
 [[ "$AE" == br || "$AE" == gzip || "$AE" == identity ]] || hata "AE br, gzip ya da identity olmali"
+[[ "$PROTOKOL" == h1 || "$PROTOKOL" == h2 ]] || hata "PROTOKOL h1 ya da h2 olmali"
+if [ "$PROTOKOL" = h2 ] && [ "$KIP" != ka ]; then hata "PROTOKOL=h2 yalniz KIP=ka ile"; fi
 [ -n "${HIZLAR//[[:space:]]/}" ] || hata "HIZLAR bos olamaz (ornek: HIZLAR=\"100 250 400\")"
 for h in $HIZLAR; do
   [[ "$h" =~ ^[1-9][0-9]*$ ]] || hata "HIZLAR icinde gecersiz deger: '$h'"
@@ -77,7 +80,7 @@ for h in $HIZLAR; do
 done
 DIZIN="$SONUC/$ADIM"
 TOPLAM=$(( ${#KOSULAR[@]} * (ISINMA_SN + SURE_SN + BOSLUK + 5) ))
-echo "== kos.sh  adim=$ADIM senaryo=$SEN ($SATIR satir) kip=$KIP ae=$AE hizlar=[$HIZLAR] tekrar=$TEKRAR"
+echo "== kos.sh  adim=$ADIM senaryo=$SEN ($SATIR satir) kip=$KIP ae=$AE protokol=$PROTOKOL hizlar=[$HIZLAR] tekrar=$TEKRAR"
 echo "   her kosu: ${ISINMA_SN}s isinma + ${SURE_SN}s olcum + ${BOSLUK}s bosluk;  toplam ~$(( TOPLAM / 60 )) dk $(( TOPLAM % 60 )) sn"
 echo "   hedef=${HEDEF:-<HEDEF verilmedi>} host=$HOST_BASLIGI sonuc=$DIZIN"
 for k in ${KOSULAR[@]+"${KOSULAR[@]}"}; do
@@ -97,7 +100,14 @@ else
 fi
 
 unset HTTP_PROXY HTTPS_PROXY ALL_PROXY NO_PROXY http_proxy https_proxy all_proxy no_proxy
-export GODEBUG="${GODEBUG:+$GODEBUG,}http2client=0"
+# Miras GODEBUG'daki http2client= girdileri silinir; h1'de http2client=0 eklenir, h2'de eklenmez (k6 ALPN ile h2 konusur).
+GD=""
+IFS=, read -r -a GD_PARCA <<< "${GODEBUG:-}"
+for g in ${GD_PARCA[@]+"${GD_PARCA[@]}"}; do
+  case "$g" in ""|http2client=*) ;; *) GD="${GD:+$GD,}$g" ;; esac
+done
+[ "$PROTOKOL" = h1 ] && GD="${GD:+$GD,}http2client=0"
+if [ -n "$GD" ]; then export GODEBUG="$GD"; else unset GODEBUG; fi
 mutlak() {   # k6 Windows'ta yerel bicimde (C:/...) yol ister; Linux'ta mutlak POSIX yol
   local d b; d="$(cd "$(dirname "$1")" && pwd)"; b="$(basename "$1")"
   if command -v cygpath >/dev/null 2>&1; then cygpath -m "$d/$b"; else echo "$d/$b"; fi
@@ -142,7 +152,7 @@ for k in ${KOSULAR[@]+"${KOSULAR[@]}"}; do
     -e HEDEF="$HEDEF" -e HOST_BASLIGI="$HOST_BASLIGI" -e SENARYO="$SENARYO_M" -e TUR="$TUR" -e ADIM="$ADIM" \
     -e SEN="$SEN" -e HIZ="$HIZ" -e KIP="$KIP" -e AE="$AE" -e ISINMA="${ISINMA_SN}s" -e SURE="${SURE_SN}s" \
     -e CIKTI="$DIZIN_M" -e LIMIT_MUAF="$LIMIT_MUAF" -e MAXVU="$MAXVU" -e SNI="$SNI" -e DENEME="$DENEME" \
-    -e UA_ONEK="$UA_ONEK" "$BETIK_M" &
+    -e UA_ONEK="$UA_ONEK" -e PROTOKOL="$PROTOKOL" "$BETIK_M" &
   COCUK=$!
   [ "$KESILDI" = 1 ] && kill -TERM "$COCUK" 2>/dev/null
   rc=0; bekle_cocuk "$COCUK" || rc=$?
@@ -155,11 +165,18 @@ for k in ${KOSULAR[@]+"${KOSULAR[@]}"}; do
   elif [ ! -s "$CSV" ]; then
     neden="k6 sonuc yazmadi (rc=$rc). Yukaridaki k6 hatasina bakin (on kontrol: senaryodaki yollarin hepsi 200 mu? SENARYO/HEDEF?)"
   else
-    n429="$(kolon "$CSV" n_429)"; h2="$(kolon "$CSV" http2)"; dr="$(kolon "$CSV" dropped)"; no="$(kolon "$CSV" n_olcum)"
+    n429="$(kolon "$CSV" n_429)"; dr="$(kolon "$CSV" dropped)"; no="$(kolon "$CSV" n_olcum)"
+    pr="$(kolon "$CSV" protokol)"; pu="$(kolon "$CSV" protokol_uyumsuz)"
     if [ "${n429:-0}" != 0 ]; then
       neden="429 alindi ($n429): IP basina rate limit asildi. HIZLAR'i dusurun; baska yuk testi var mi bakin."
-    elif [ "${h2:-0}" != 0 ]; then
-      neden="HTTP/2 kullanildi ($h2): GODEBUG=http2client=0 tutmadi; k6 surumunu kontrol edin."
+    elif [ "$pr" != "$PROTOKOL" ]; then
+      neden="protokol farkli: istenen $PROTOKOL, k6 ozeti '${pr:-yok}' (yuk_k6.js eski olabilir)"
+    elif [ "${pu:-0}" != 0 ]; then
+      if [ "$PROTOKOL" = h2 ]; then
+        neden="HTTP/2 disi yanit ($pu): hedef bu Host icin h2 sunmuyor ya da baglanti HTTP/1.1'e dustu."
+      else
+        neden="HTTP/1.1 disi yanit ($pu): GODEBUG=http2client=0 tutmadi; k6 surumunu kontrol edin."
+      fi
     elif [ "$rc" != 0 ]; then
       neden="k6 rc=$rc (esik ya da hata). Yukaridaki ciktiya bakin."
     elif [ -z "$no" ] || [ "$no" = 0 ]; then

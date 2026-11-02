@@ -36,7 +36,7 @@ ve `durdur.sh` Portal'a özgüdür. Portal tarafı sözleşmesi: Portal `docs/NG
 | Dosya | İş |
 |---|---|
 | `nginx_loadtest.yml` | Tek playbook, dört kip (`yuk_islem`: `on_kontrol`, `kosu`, `durdur`, `araclar`), iki hedef türü, iki motor. On play (aşağıda). |
-| `files/on_kontrol.sh` | Yük üretmeyen ön kontrol. `hedef` kipi hedefte (IP yerel mi, `nginx -T`'de server_name, nginx master sayısı, `/web_log` doluluğu ve okunabilirliği, log biçimi, statik sıkıştırma direktifi); `yollar` kipi yük makinesinde (senaryodaki her tekil yola TEK HTTP/1.1 isteği). |
+| `files/on_kontrol.sh` | Yük üretmeyen ön kontrol. `hedef` kipi hedefte (IP yerel mi, `nginx -T`'de server_name, nginx master sayısı, `/web_log` doluluğu ve okunabilirliği, log biçimi, statik sıkıştırma direktifi); `yollar` kipi yük makinesinde (senaryodaki her tekil yola TEK istek: HTTP/1.1, `yuk_protokol` h2 ise `curl --http2` ile ALPN; h2'de `alpn_h2` satırı). |
 | `files/kos.sh` | Kit kopyası: bir ADIM'ın (hız × tekrar) k6 koşularını sırayla çalıştırır (motor `k6`). |
 | `files/yuk_k6.js` | Kit kopyası: açık döngü (constant-arrival-rate) k6 betiği, istek başına TEK GET. |
 | `files/wrk_kos.sh` | Portal'a özgü: bir ADIM'ın (bağlantı × tekrar) wrk koşularını sırayla çalıştırır (motor `wrk`); dış sözleşmesi (çıkış kodları, `DUR:`/`HATA:` satırları, sonuç dosyaları, `kos.pid`) kos.sh ile aynı. |
@@ -174,11 +174,11 @@ hedef türü ve motor göndermeyen durdurması uzak play'lerde hiçbir ifadeyi p
 Katalog anahtarı `nginx_loadtest_run` (kategori `nginx`, env `NGINX_LOADTEST_RUN_TEMPLATE_ID`),
 Portal `BEKLENEN_PLAYBOOK.nginx_loadtest_run = 'nginx_loadtest.yml'`. **`limit` her zaman boş**;
 `LIMIT_MUAF` hiç gönderilmez; vekil (`yuk_proxy`) YALNIZ araclar işinde gider. Değerler string beklenir (Portal sayı
-da gönderebilir; playbook `| string` ile denetler). Koşu kiplerinde (on_kontrol, kosu, durdur) Portal HER ZAMAN 33
+da gönderebilir; playbook `| string` ile denetler). Koşu kiplerinde (on_kontrol, kosu, durdur) Portal HER ZAMAN 34
 değişkenin hepsini gönderir; motora ait olmayan adım değişkenleri boş metindir (`''`), durdurda araç değişkenleri
 `''`. araclar işinde TAM 10 değişken gider (`yuk_islem`, `yuk_run_id`, `yuk_derleme_host`, `yuk_k6_surum`,
 `yuk_wrk_surum`, `yuk_k6_arsiv_sha256`, `yuk_wrk_kaynak_sha256`, `yuk_proxy`, `yuk_cikti_kok`, `yuk_son_epoch`; bu sıra).
-Tablo 39 değişken: 33 koşu + 6 yalnız araclar.
+Tablo 40 değişken: 34 koşu + 6 yalnız araclar.
 
 | Değişken | Tip | Denetlendiği kip | Kural |
 |---|---|---|---|
@@ -202,6 +202,7 @@ Tablo 39 değişken: 33 koşu + 6 yalnız araclar.
 | `yuk_son_epoch` | string | on_kontrol, kosu, araclar | `^[0-9]{10}$`; şimdi ≤ değer ≤ şimdi + 1800 (AWX EE saati; Portal şimdi + 900 gönderir); durdurda denetlenmez |
 | `yuk_tekrar` | string | on_kontrol, kosu | 1..3 |
 | `yuk_kip` | string | on_kontrol, kosu | `yeni` (her istek yeni bağlantı) \| `ka` (keep-alive) |
+| `yuk_protokol` | string | on_kontrol, kosu | `h1` (HTTP/1.1) \| `h2` (HTTP/2); YOKSA `h1` (eski Portal); `h2` yalnız motor `k6` ve `yuk_kip` `ka` ile; durdurda denetlenmez. 34. koşu değişkeni (bkz. "Protokol") |
 | `yuk_ae` | string | on_kontrol, kosu | `br` \| `gzip` \| `identity` |
 | `yuk_isinma_sn` | string | on_kontrol, kosu | 5..60 |
 | `yuk_sure_sn` | string | on_kontrol, kosu | 30..300 |
@@ -234,6 +235,8 @@ ayrıca sayılır), sonra Portal, sonra Admin "Araçları hazırla"; arada ön k
 
 | Durum | Sonuç |
 |---|---|
+| Eski Portal (`yuk_protokol` yok) + yeni playbook | `default('h1')`: bugünkü HTTP/1.1 davranışı, set_stats `protokol: 'h1'` |
+| Yeni Portal (h2) + eski playbook | Eski playbook `yuk_protokol`'ü tanımaz, HTTP/1.1 koşar; ön kontrolde `alpn_h2` gelmez (Portal engeli "ölçülemedi"), set_stats'ta `protokol` yankısı yok, istemci satırında `protokol` kolonu yok (analiz `protokol_farkli(beklenen=h2,olculen=yok)`) |
 | Yeni Portal + eski playbook, ön kontrol | Eski kapı işaret yolunu kabul eder; eski Play 3 ikiliyi bulamaz: "k6 yok ya da calistirilamiyor: /yeni-playbook-gerekli/k6" (wrk'de "wrk yok ..."), FAIL; koşu başlamaz |
 | Yeni Portal + eski playbook, araclar | Eski 1. assert `yuk_islem`'i reddeder; set_stats `islem: araclar` yankısıyla gelir, Portal "Ansible deposu güncel değil" der |
 | Eski Portal + yeni playbook, ön kontrol / koşu | Araç assert'i (2. assert'ten önce) reddeder; hiçbir host eklenmez |
@@ -254,7 +257,7 @@ yuk_wrk.lua aynı beyaz listeyi yeniden uygular.
 Tek yazar localhost, `per_host: false`, `aggregate: false`, `fail`'den ÖNCE ve koşulsuz. Toplam < 16 KB.
 
 ```
-{ surum: 2, run_id, islem, hedef_turu: 'sunucu'|'serbest'|null, motor: 'k6'|'wrk'|null,
+{ surum: 2, run_id, islem, hedef_turu: 'sunucu'|'serbest'|null, motor: 'k6'|'wrk'|null, protokol: 'h1'|'h2'|null,
   durum: 'OK'|'FAIL'|'DUR', hata: <≤300 karakter|null>,
   on_kontrol: { ip_yerel (bool|null), server_name_var (bool|null), master_sayisi (int|null), web_log_df (int|null),
                 log_dizini_okunur (bool|null), log_format_ua (bool|null), statik_direktif (bool|null),
@@ -263,7 +266,9 @@ Tek yazar localhost, `per_host: false`, `aggregate: false`, `fail`'den ÖNCE ve 
                 wrk_var (bool|null), wrk_calisiyor (bool|null), wrk_surum (str|null), wrk_sha256 (str|null),
                 arac_dogrulandi (bool|null), arac_sha256 (str|null), arac_glibc (str|null), arac_hata (str|null),
                 yollar_toplam, yollar_200, ilk_hatalar: [{yol, status}] (≤20),
-                sikistirma: {statik, dinamik, sikistirmasiz} } | null,
+                sikistirma: {statik, dinamik, sikistirmasiz},
+                protokol ('h1'|'h2'|null), curl_h2 (bool|null), alpn_h2 (bool|null),
+                yollar_yanitli (int|null), yollar_h2 (int|null) } | null,
   kosu: { kos_rc (int|null), kaydedici_rc (int|null), bas_epoch, bit_epoch,
           istemci_ozet: [istemci_<TUR>.json içerikleri], dosyalar: [{ad, bayt}], sw_dizin (str|null) } | null,
   durdur: { durdurulan: ["<HOST> <ad> pid <pid> <TERM|KILL|KALDI>"] } | null,
@@ -273,7 +278,7 @@ Tek yazar localhost, `per_host: false`, `aggregate: false`, `fail`'den ÖNCE ve 
              wrk_kutuphaneler, sw_dizin (str|null) } | null }
 ```
 
-Üst düzey anahtarlar her yolda aynıdır (11; `surum` 2 kalır, `araclar` eklemelidir). araclar işinde `hedef_turu`,
+Üst düzey anahtarlar her yolda aynıdır (12; `surum` 2 kalır, `araclar` ve `protokol` eklemelidir). araclar işinde `hedef_turu`,
 `motor`, `on_kontrol`, `kosu`, `durdur` `null`; `araclar` girdi reddinde `null`, aksi hâlde doludur (derleme ya da
 yayın düşse de; ölçülemeyen alan `null`, `-` de `null`). `sw_dizin` YALNIZ /sw yayını ve geri okuma tamamsa dolu.
 Koşu kiplerinde `araclar: null`. araclar hata metinleri: `girdi reddedildi, hicbir sey yapilmadi: <ileti>`,
@@ -284,6 +289,12 @@ tamamlanmadi (erisilemedi ya da dustu)`, `/sw yayini: <...>` (`arac dizini zaten
 
 - `hedef_turu` / `motor`: geçerli girdinin yankısı (geçersiz ya da yoksa, ör. girdi reddi ya da eski Portal'ın
   durdurması, `null`). Portal yankıyı yalnız metinse koşu satırıyla karşılaştırır.
+- `protokol`: `yuk_protokol | default('h1')` yankısı (yoksa `h1`, geçersizse `null`; rescue'daki yedek sonuçta da).
+  Eski playbook bu anahtarı hiç yazmaz; Portal yalnız metinse satırın protokolüyle karşılaştırır.
+- on_kontrol `protokol` / `curl_h2` / `alpn_h2` / `yollar_yanitli` / `yollar_h2`: `on_kontrol.sh yollar`'ın satırları.
+  `protokol` her yeni ölçümde dolu; diğer dördü YALNIZ h2'de (h1'de `null`). `alpn_h2` true = yanıt veren her yol
+  HTTP/2 ile yanıt verdi, false = en az biri HTTP/1.1, `null` = ölçülemedi (yanıtlı yol yok, curl h2'siz ya da eski
+  betik).
 - `arac_*` (on_kontrol, iki türde): `arac_dogrulandi` koşu dizinindeki kopya Portal'ın sha256'sıyla doğrulandı mı
   (blok hiç koşmadıysa `null`), `arac_sha256` kopyanın ölçülen sha256'sı, `arac_glibc` yük makinesinin glibc'si,
   `arac_hata` kopya nedeni ya da `glibc uyumsuz: makinede glibc <g>, arac GLIBC_<x.y> istiyor`.
@@ -298,7 +309,9 @@ tamamlanmadi (erisilemedi ya da dustu)`, `/sw yayini: <...>` (`arac dizini zaten
     hedefte hedefin sonucu OK değil, hedef IP hedefte yerel değil (ya da ölçülemedi: o zaman yük makinesinden HİÇ
     istek gitmez ve yük makinesi tarafı da `FAIL`), `/web_log` okunamıyor; iki türde yük makinesi sonucu OK değil
     (serbestte izin dosyası reddi dahil), araç kopyası doğrulanamadı (`arac kopyasi dogrulanamadi: <neden|olculmedi>`)
-    ya da doğrulandı ama çalıştırılamadı (`arac calistirilamadi: glibc uyumsuz: ...`), seçili motorun kopyası
+    ya da doğrulandı ama çalıştırılamadı (`arac calistirilamadi: glibc uyumsuz: ...`), h2 istendi ve hedef ALPN ile h2
+    sunmuyor (`HTTP/2: hedef bu Host icin ALPN ile h2 sunmuyor (<n2>/<ny> yol h2)`) ya da ölçülemedi (`HTTP/2
+    olculemedi (curl h2 desteklemiyor ya da yanitli yol yok)`; h1'de bu iki engel YOK), seçili motorun kopyası
     çalışmıyor ("k6 kopyasi calistirilamiyor: <dizin>/arac/k6"; wrk'de iki ayrı metin: "wrk kopyasi calistirilamiyor:
     <dizin>/arac/wrk" / "wrk calisiyor ama surumu okunamadi ya da 4 altinda (...); arac setini yeniden hazirlayin
     (Portal Arac paneli)"), hiç yol denenmedi, hedef IP yük makinesinde yerel (istek gönderilmez). **server_name `nginx -T`'de yok engel
@@ -307,7 +320,7 @@ tamamlanmadi (erisilemedi ya da dustu)`, `/sw yayini: <...>` (`arac dizini zaten
     `null`, `log_format_ua false`. `master_sayisi` ölçülemediyse `null` (0 değil: 0 bir ölçümdür, hidepid ya da
     nginx yok); Portal ölçülmüş ≠ 1'i engel (kaydedici koşuda zaten `HATA` ile durur), `null`'u uyarı sayar.
   - `kosu`: `OK` = `kos_rc 0` + (sunucuda `kaydedici_rc 0` ve hedef toplandı) + yük makinesi toplandı + /sw kopyası
-    tamam; `DUR` = koşu betiği bir adımda durdu (`kos_rc` 4: kos.sh'de 429/HTTP2/k6 hatası/boş özet, wrk_kos.sh'de
+    tamam; `DUR` = koşu betiği bir adımda durdu (`kos_rc` 4: kos.sh'de 429/protokol farkı/HTTP sürüm uyumsuzluğu/k6 hatası/boş özet, wrk_kos.sh'de
     429/5xx/soket/hata oranı/sayaç tutarsızlığı/wrk hatası/boş özet, ikisinde de TERM; 130: boşlukta kesildi) ve o
     ana kadarki veri /sw'de (sunucuda ayrıca `kaydedici_rc 0`; serbestte kaydedici yok); diğer her şey `FAIL`.
     Serbest koşuda izin dosyası reddi: `yuk makinesi <Y>: serbest izin listesi: <neden>; yuk gonderilmedi`.
@@ -362,9 +375,10 @@ Kök: PROD `/sw/BMW_PORTAL/nginx_loadtest`, DEV `/sw/BMW_PORTAL_DEV/nginx_loadte
 ## Betikler (kitten farklar ve Portal'a özgü betikler)
 
 - `yuk_k6.js`: User-Agent öneki `UA_ONEK` (varsayılan `portal-yuktesti`, `^[a-z][a-z0-9-]{2,30}$`);
-  `HOST_BASLIGI` zorunlu (GLOMO varsayılanı kaldırıldı, yoksa init'te hata). Eşikler, iptal mantığı,
-  setup ön kontrolü ve çıktılar kitle aynı.
-- `kos.sh`: `UA_ONEK` k6'ya geçer; `HOST_BASLIGI` varsayılansız; `LIMIT_MUAF` YASAK (verilirse hata,
+  `HOST_BASLIGI` zorunlu (GLOMO varsayılanı kaldırıldı, yoksa init'te hata); `PROTOKOL` (`h1` | `h2`, bkz.
+  "Protokol"): `http2_kullanildi` eşiği yerine `protokol_uyumsuz` eşiği, setup her kontrol yolunun sürümüne bakar,
+  CSV/JSON'a `protokol` ve `protokol_uyumsuz` eklenir. Diğer eşikler, iptal mantığı ve çıktılar kitle aynı.
+- `kos.sh`: `UA_ONEK` ve `PROTOKOL` k6'ya geçer (GODEBUG `http2client=0` yalnız h1'de); `HOST_BASLIGI` varsayılansız; `LIMIT_MUAF` YASAK (verilirse hata,
   k6'ya hep `0`); kendi pid'i `$SONUC/../kos.pid`; INT/TERM trap'i çalışan k6'yı (ve boşluk
   beklemesini) TERM ile sonlandırır — k6 ve `sleep` arka planda + `wait` ile koşar, trap ertelenmez;
   TERM'de adım `hatali_` önekiyle saklanır, `DUR: ... durduruldu (TERM ...)`, çıkış 4. wrk değişkenlerini yok sayar.
@@ -430,7 +444,7 @@ dropped denetimi yoktur (wrk yalnız HTTP/1.1 konuşur, kapalı döngüde düşe
 
 ### wrk istemci dosyası eşlemesi (`istemci_<TUR>.csv` / `.json`)
 
-Şema yuk_k6.js ile AYNI (30 kolon, JSON anahtar sırası `ozet_hesapla` ile aynı). I = ısınma özeti, O = ölçüm özeti
+Şema yuk_k6.js ile AYNI (32 kolon, JSON anahtar sırası `ozet_hesapla` ile aynı; wrk yalnız HTTP/1.1, `PROTOKOL=h2` rc 2). I = ısınma özeti, O = ölçüm özeti
 (yoksa ısınma-DUR yolu: n_olcum 0). Ölçülemeyen istemci alanı boş / `null`, asla 0.
 
 | alan | değer |
@@ -450,12 +464,51 @@ dropped denetimi yoktur (wrk yalnız HTTP/1.1 konuşur, kapalı döngüde düşe
 | p95_js, p95_css, p95_html, p95_json, p95_config, p95_buyuk | null |
 | sikistirma_turu | 200 kapısının sonucu (STATIK / DINAMIK / YOK / boş) |
 | isinma_sn, sure_sn, deneme | ISINMA, SURE, DENEME |
+| protokol | `h1` (metin) |
+| protokol_uyumsuz | 0 (sayı) |
 
 Biçim: CSV = başlık + TEK veri satırı; sayı `int(v*1000+0.5)/1000` (yuk_k6.js `hucre`), null boş. JSON 2 boşluk
 girintili, sayı yuvarlanmamış, null `null`; NaN/sonsuz asla. İkisi de `.tmp` + `mv` (`LC_ALL=C`).
 
 Çıktı adları ve biçimleri (istemci_*, zaman.csv, baslatilan.csv, sunucu_*, log_*, diger_*, bilgi_*,
 konf_*) kitle **aynıdır**; Portal'ın analizi (karsilastir.py portu) bunlara dayanır.
+
+## Protokol (HTTP/1.1 | HTTP/2)
+
+Tarayıcılar çoğunlukla HTTP/2 kullanır; `yuk_protokol` `h2` seçilirse k6 hedefle ALPN üzerinden HTTP/2 konuşur.
+
+- Değerler `h1` | `h2`; değişken yoksa `h1` (eski Portal ve eski satırlar bugünkü HTTP/1.1 davranışıdır). `h2` YALNIZ
+  motor `k6` ve kip `ka` ile: wrk yalnız HTTP/1.1 konuşur (`wrk_kos.sh` `PROTOKOL=h2`'yi rc 2 ile reddeder); tarayıcı
+  HTTP/2'de bağlantıyı açık tutar, "her isteğe yeni bağlantı" h2'de temsil edici değildir. Ret her katmanda: Portal,
+  playbook kapısı (`fail_msg` "protokol h1|h2 (h2 yalniz k6 ve kip ka)"), kos.sh (`PROTOKOL=h2 yalniz KIP=ka ile`),
+  yuk_k6.js init.
+- `PROTOKOL` ortamı playbook → kos.sh / wrk_kos.sh / on_kontrol.sh; kos.sh → k6 `-e PROTOKOL`. kos.sh miras
+  `GODEBUG`'daki `http2client=` girdilerini siler; h1'de `http2client=0` ekler, h2'de eklemez (boş kalırsa `unset`).
+- k6 denetimi: beklenen sürüm h1'de `HTTP/1.1`, h2'de `HTTP/2.0` (`res.proto`). setup() HER kontrol yolunun sürümüne
+  bakar (200 denetiminden sonra; h2'de ileti "Hedef bu Host icin ALPN ile h2 sunmuyor; HTTP/1.1 ile kosun ya da SNI=1
+  deneyin."). Isınma ve ölçümde beklenen dışı her yanıt `protokol_uyumsuz` sayacını artırır; eşik `count<1`
+  abortOnFail. `http2_kullanildi` eşiksiz bilgidir (HTTP/2.0 yanıt sayısı). Boş `proto` (başarısız istek) uyumsuz
+  sayılmaz, hata oranına girer.
+- CSV/JSON şeması: 30 kolon AYNEN + sona `protokol` (`h1`|`h2`) ve `protokol_uyumsuz` (tam sayı) = 32. `http2`
+  kolonunun anlamı yeni satırlarda "HTTP/2.0 yanıt sayısı (ısınma + ölçüm)": h2 koşusunda her yanıtta doludur, karar
+  `protokol_uyumsuz`'dan verilir. Kolonu olmayan eski satırda bugünkü kural sürer (`http2 > 0` geçersiz).
+- kos.sh DUR sırası: 429 → protokol → rc → `n_olcum` → dropped. Nedenler: `protokol farkli: istenen <p>, k6 ozeti
+  '<p|yok>' (yuk_k6.js eski olabilir)`; h1 `HTTP/1.1 disi yanit (<n>): GODEBUG=http2client=0 tutmadi; k6 surumunu
+  kontrol edin.`; h2 `HTTP/2 disi yanit (<n>): hedef bu Host icin h2 sunmuyor ya da baglanti HTTP/1.1'e dustu.`
+  Eski `http2` kolonu DUR için okunmaz.
+- Ön kontrol (`on_kontrol.sh yollar`): her ölçümde `protokol h1|h2` satırı. h2'de curl `--http2` (h1'de `--http1.1`,
+  curl HTTP/2'siz ise bayraksız: bugünkü gibi); `curl_h2 1|0` (0 ise hiç istek atılmadan `SONUC FAIL`), OZET'ten
+  sonra `yollar_yanitli`, `yollar_h2`, `alpn_h2 1|0|-`. Playbook engeli: h2 + `alpn_h2` false → `HTTP/2: hedef bu Host
+  icin ALPN ile h2 sunmuyor (<n2>/<ny> yol h2)`; h2 + `null` → `HTTP/2 olculemedi (...)`. `SONUC` OK/FAIL anlamı
+  değişmez. Ön kontrolde k6'nın kendisi istek atmaz: h2 kanıtı curl ALPN'idir, k6'nın kanıtı koşu başındaki setup()
+  (başarısızsa ilk TUR yük üretilmeden DUR).
+- ALPN notu: SNI kapalıyken nginx ALPN'i IP:443'ün varsayılan sunucusunun http2 ayarıyla seçer; `listen ... http2`
+  (eski biçim) dinleme soketi geneli, `http2 on;` (1.25.1+) SNI ile seçilen server bloğu. Hedef h2 sunmuyorsa `SNI=1`
+  ile yeniden denenebilir.
+- h2 ölçüm modeli (MAKUL, sahada ölçülmedi): k6 v0.49 her sanal kullanıcıda kendi bağlantısında istekleri SIRAYLA
+  gönderir (VU başına tek akış); tarayıcıdaki tek bağlantıda çok sayıda eş zamanlı akış ölçülmez. İlk gerçek h2
+  koşusunda nginx `connection_request` ile doğrulanır. Sonuçlar yalnız aynı protokolle koşulan koşularla karşılaştırılır.
+- Sunucu logu ayrıştırması (cpu_kaydedici.sh) HTTP sürümüne bağlı değildir: h2 satırları da sayılır. TUR adı değişmez.
 
 ## AWX template ayarları
 
@@ -803,7 +856,7 @@ install -m 0644 serbest_aglar /etc/portal_yuktesti/serbest_aglar
   ortamı yalnız Play 8'in üç get_url görevinde, `validate_certs: false` yok, Play 3 / 8'de `/tmp` yok), L2 yapı
   (10 play sırası, rescue, delegate/unreachable, Play 2 / 3 / 8'de getent register + hemen ardından `is unreachable`
   fail'i, localhost play'lerinde korumasız işlem / hedef türü / motor adı yok, kaydedici süreleri ve hazır deseni,
-  set_stats), L3 girdi sözleşmesi (33 koşu + 10 araclar değişkeni; README tablosu 39; `yuk_proxy` ve eski yol
+  set_stats), L3 girdi sözleşmesi (34 koşu + 10 araclar değişkeni; README tablosu 40; `yuk_proxy` ve eski yol
   değişkenleri yalnız izinli yerlerde; tek async görev iki betiğin ortamını taşır, K6 / WRK araç kopyası), L4 betik
   başvuruları, L5 girdi kapısı (dört kip × motor birleşimi, eski Portal'ın durdurmaları, §4'ün ihlal durumlarının
   hepsi), L6 sonuç derlemesi ve play'ler (serbest/wrk dalları, patlayan hedef hostvars'ı ile serbest, D7, Play 2 koşu
@@ -840,7 +893,7 @@ install -m 0644 serbest_aglar /etc/portal_yuktesti/serbest_aglar
   tırnaklı küçük harf tanımlayıcı olan tablo satırı YALNIZ `yuk_*` değişkenleri içindir (özet anahtarları, istemci
   eşlemesi ve set_stats alanları ters tırnaksız tablo ya da kod bloğu).
 - Portal: `server/ansible/__tests__/nginx-loadtest-ayna.test.cjs` (ayna + kayıt; NA5 delegate ve Play 2 / 3 getent
-  erişilemezlik fail'i; NA7 Portal `EKSTRA_ANAHTARLAR` + `ARAC_EKSTRA_ANAHTARLAR` = bu README'nin değişken tablosu, 39),
+  erişilemezlik fail'i; NA7 Portal `EKSTRA_ANAHTARLAR` + `ARAC_EKSTRA_ANAHTARLAR` = bu README'nin değişken tablosu, 40),
   `nginx-loadtest-arac.test.cjs` (NA8: vekil ortamı yalnız Play 8 get_url'lerinde, TLS doğrulaması, Play 3 araç kopyası,
   `/tmp` yok, Play 7 `arac/` silmesi, Play 9 `mv -T` / 0644 / SHA256SUMS / manifest, `arac_hazirla.sh` metni, 10 play), `nginx-loadtest-wrk.test.cjs`
   (NA6: yuk_wrk.lua / wrk_kos.sh / durdur.sh / playbook metin kuralları; (i) tohum satırları, (m) ret nedeni kesmesi ve
@@ -863,6 +916,9 @@ k6 / sunucu hedef (ilk kurulum):
    `bilgi_*.txt`'de `test_satiri > 0`.
 7. Koşu sırasında Portal "Durdur": k6, kos.sh ve kaydedici iki sunucuda da biter mi; durdurma işi
    `successful` bitince Portal kilitleri bırakır mı.
+8. HTTP/2 (`yuk_protokol` h2, kip `ka`): h2 sunan bir TEST vhost'ta ön kontrol `alpn_h2 true`, h2 sunmayan birinde
+   `HTTP/2: hedef bu Host icin ALPN ile h2 sunmuyor` engeli; 1 adımlık h2 koşusunda istemci CSV'sinde `protokol` h2,
+   `protokol_uyumsuz` 0, `http2` ≈ istek sayısı; nginx logunda `connection_request` ile VU başına bağlantı modeli not edilir.
 
 wrk ve serbest hedef:
 
@@ -870,7 +926,8 @@ wrk ve serbest hedef:
    `wrk_kos.sh --kuru` planı yazar (`TAVAN_RPS` verilerek).
 2. wrk ön kontrolü (TEST hedef): `wrk_var` / `wrk_calisiyor` / sürüm / sha256 kayıttakiyle aynı.
 3. 1 adımlık wrk koşusu (N=1, T=1, tekrar 1, süre 40, `ka`) limit_req payı olan TEST hedefte: istemci CSV/JSON'da
-   `n_olcum > 0`, p50/p95/p99 dolu, `http2` 0, `n_429` 0, gerçek /sn ≤ tavan, Portal analizi geçerli.
+   `n_olcum > 0`, p50/p95/p99 dolu, `http2` 0, `protokol` h1, `protokol_uyumsuz` 0, `n_429` 0, gerçek /sn ≤ tavan,
+   Portal analizi geçerli.
 4. Aynısı `yeni` kipinde: p95 DOLU beklenir (wrk gecikmeyi keep-alive denetiminden önce kaydeder); boşsa bu README'ye
    not düşülür (analiz null kalır).
 5. Aynı ayarla iki wrk tekrarının p95 farkı not edilir (wrk eşikleri için veri).

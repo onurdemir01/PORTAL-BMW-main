@@ -11,10 +11,13 @@
 // SADELESTIRME (2026-11-02): sonuc ozeti (sunucu `sonucOzeti` vermezse adimlardan ayni kuralla) - sonucOzetiHesapla.
 // TUR 4 (2026-11-02): araclar /sw'den kopyalanir; aracli on kontrol satirinda (aracId != null) dogrulanmamis kopya
 // ENGEL (sunucu degerlendirmesi yoksa); wrk surum metni arac setinin yeniden hazirlanmasini soyler.
+// HTTP/2 (2026-11-02, h2_sozlesme.md): protokol h1 | h2 (eski kayit h1). h2 yalniz k6 ve keep-alive; parametreHatalari
+// sunucunun 400 kurallarini aynalar. On kontrol degerlendirmesi (sunucu degerlendirmesi yoksa) h2'de motor maddesinden
+// hemen sonra TEK engel: on kontrol h2 icin yapilmadi > curl h2'siz > hedef ALPN ile h2 sunmuyor > olculemedi.
 import type { Ton } from '@/components/server_hub/retirementStil';
 import {
   EK_SINIRLAR, type NlAdim, type NlAdimGecerlilik, type NlDurum, type NlEylem, type NlGecerlilik, type NlHedef, type NlHedefTuru, type NlKarar, type NlKosu,
-  type NlKosuAyrinti, type NlMotor, type NlParametreler, type NlSinirlar, type NlSonucOzeti,
+  type NlKosuAyrinti, type NlMotor, type NlOnKontrol, type NlParametreler, type NlProtokol, type NlSinirlar, type NlSonucOzeti,
 } from '@/api/nginxLoadtestApi';
 import { fmtNumber } from '@/utils/datetime';
 
@@ -75,6 +78,11 @@ export const kararBilgisi = (k: string | null | undefined) => KARAR[k as NlKarar
 export const ISLEM_ETIKETI: Record<string, string> = { on_kontrol: 'Ön kontrol', kosu: 'Koşu' };
 export const KIP_ETIKETI: Record<string, string> = { yeni: 'yeni bağlantı', ka: 'keep-alive' };
 export const AE_ETIKETI: Record<string, string> = { br: 'brotli (br)', gzip: 'gzip', identity: 'sıkıştırmasız' };
+export const PROTOKOL_ETIKETI: Record<NlProtokol, string> = { h1: 'HTTP/1.1', h2: 'HTTP/2' };
+/** Kanonik parametrenin protokolu: yalniz 'h2' HTTP/2'dir; alani olmayan eski kayit ve bilinmeyen deger h1. */
+export const protokolOf = (p: { protokol?: unknown } | null | undefined): NlProtokol => (p?.protokol === 'h2' ? 'h2' : 'h1');
+/** Kosunun protokolu: satirin normallestirilmis alani, yoksa kanonik parametre (eski kayit h1). */
+export const kosuProtokolu = (k: { protokol?: unknown; parametreler?: { protokol?: unknown } | null }): NlProtokol => (k.protokol === 'h2' || k.protokol === 'h1' ? k.protokol : protokolOf(k.parametreler));
 
 /** Hedef / yuk sunucusu uygunsuzluk kodlari (sozlesme 8) -> ekran metni; bilinmeyen kod oldugu gibi. */
 const NEDEN: Record<string, string> = {
@@ -203,6 +211,10 @@ export function parametreHatalari(p: NlParametreler, sinir: NlSinirlar): Paramet
   if (!aralik(p.bosta, 30, 120)) h.bosta = '30–120 sn';
   if (p.kip !== 'yeni' && p.kip !== 'ka') h.kip = 'yeni ya da ka';
   if (!['br', 'gzip', 'identity'].includes(p.ae)) h.ae = 'br, gzip ya da identity';
+  // HTTP/2 (sunucu dogrula.parametreler ile ayni kurallar; alan yoksa h1).
+  if (p.protokol !== undefined && p.protokol !== 'h1' && p.protokol !== 'h2') h.protokol = "protokol 'h1' ya da 'h2' olmalı.";
+  else if (p.protokol === 'h2' && motorOf(p) === 'wrk') h.protokol = 'HTTP/2 yalnız k6 ile seçilebilir; wrk yalnız HTTP/1.1 konuşur.';
+  else if (p.protokol === 'h2' && p.kip !== 'ka') h.kip = 'HTTP/2 yalnız keep-alive (ka) bağlantı kipiyle koşulur.';
   if (!Object.keys(h).length && butceSn(p) > s.maxButceSn) {
     h.butce = `Toplam süre ${Math.ceil(butceSn(p) / 60)} dk; üst sınır ${Math.floor(s.maxButceSn / 60)} dk. ${motorOf(p) === 'wrk' ? 'Bağlantı kademesi' : 'Hız'}, tekrar ya da süreyi azaltın.`;
   }
@@ -250,6 +262,7 @@ export const SERBEST_VHOST_YARDIMI = 'Serbest hedefte server_name listesi yok; i
 /** Liste / karsilastirma etiketi: sunucu hedefinde host adi, serbestte IP (`hedefHost ?? hedefIp`). */
 export const hedefEtiketi = (k: Pick<NlKosu, 'hedefHost' | 'hedefIp'>) => k.hedefHost || k.hedefIp || '';
 export const SERBEST_CIP_IPUCU = 'Serbest hedef: yalnız istemci ölçümü (CPU ve nginx logu yok)';
+export const H2_CIP_IPUCU = 'HTTP/2 koşusu: yalnız HTTP/2 koşularıyla karşılaştırılır';
 export const WRK_CIP_IPUCU = 'Kapalı döngü: hız sütunu bağlantı sayısıdır; gecikme CO düzeltmeli; TLS 1.2’ye sabit değildir ve oturum devamı olabilir (TLS payı hesaplanmaz)';
 
 // ── On kontrol ──────────────────────────────────────────────────────────────────────
@@ -277,7 +290,7 @@ export interface OnKontrolDegerlendirmesi {
   bilgiler: string[];
 }
 type DegerlendirmeGirdisi = Pick<NlKosuAyrinti, 'durum' | 'onKontrol'>
-  & Partial<Pick<NlKosuAyrinti, 'sunucuDegerlendirmesi' | 'isDurumu' | 'isHatasi' | 'hedefTuru' | 'motor' | 'parametreler' | 'aracId'>>;
+  & Partial<Pick<NlKosuAyrinti, 'sunucuDegerlendirmesi' | 'isDurumu' | 'isHatasi' | 'hedefTuru' | 'motor' | 'parametreler' | 'aracId' | 'protokol'>>;
 /** Sunucu metni cumle basi buyuk harfle; "wrk" arac adidir (sozlesme metni kucuk harfle baslar), oldugu gibi kalir. */
 const buyukBasla = (x: string) => (/^wrk\b/.test(x) ? x : x.charAt(0).toLocaleUpperCase('tr-TR') + x.slice(1));
 /** Sunucu metinleri (dogrula.cjs, sozlesme 8.4 / 19): geri donus degerlendirmesi ayni uyarilari onaylatir. */
@@ -338,6 +351,11 @@ export function onKontrolDegerlendir(k: DegerlendirmeGirdisi | null): OnKontrolD
         : 'Yük sunucusunda wrk bulunamadı ya da çalıştırılamıyor.');
     }
   } else if (o.k6Var === false) d.engeller.push('Yük sunucusunda k6 bulunamadı.');
+  // HTTP/2: hedef h2 sunmuyorsa ya da olculemediyse kosu baslatilamaz (fail-closed); sunucunun metinleri ve sirasi.
+  if (motor !== 'wrk' && kosuProtokolu(k) === 'h2') {
+    const h2 = h2Engeli(o);
+    if (h2) d.engeller.push(h2);
+  }
   if (o.yollarToplam != null && o.yollar200 != null && o.yollar200 < o.yollarToplam) {
     d.uyarilar.push(`${fmtNumber(o.yollarToplam - o.yollar200)} / ${fmtNumber(o.yollarToplam)} yol 200 dönmedi — HAR alındıktan sonra deploy olmuş olabilir; k6 kurulum adımında bu yollarla koşu durur.`);
   }
@@ -352,6 +370,17 @@ export function onKontrolDegerlendir(k: DegerlendirmeGirdisi | null): OnKontrolD
   if (serbest) d.uyarilar.push(SERBEST_UYARISI);
   if (motor === 'wrk') d.uyarilar.push(WRK_UYARISI);
   return d;
+}
+/** HTTP/2 on kontrol engeli (ilk tutan TEK madde; sunucu dogrula.onKontrolDegerlendir ile ayni metin ve sira); yoksa null. */
+export function h2Engeli(o: Pick<NlOnKontrol, 'protokol' | 'curlH2' | 'alpnH2' | 'yollarYanitli' | 'yollarH2'>): string | null {
+  if (typeof o.protokol === 'string' && o.protokol !== 'h2') return 'Ön kontrol HTTP/2 için yapılmadı; ön kontrolü yeniden çalıştırın.';
+  if (o.curlH2 === false) return 'Yük sunucusundaki curl HTTP/2 desteklemiyor; HTTP/2 ön kontrolü yapılamadı.';
+  if (o.alpnH2 === false) {
+    const s = (v: number | null | undefined) => (v == null ? '?' : String(v));
+    return `Hedef bu Host için HTTP/2 sunmuyor (ALPN): ${s(o.yollarH2)}/${s(o.yollarYanitli)} yol HTTP/2 ile yanıt verdi. nginx’te bu server bloğunda http2 açık değil ya da SNI kapalıyken IP:443’ün varsayılan sunucusu HTTP/2 sunmuyor; HTTP/1.1 ile koşun ya da SNI’yi açın.`;
+  }
+  if (o.alpnH2 !== true) return 'HTTP/2 desteği ölçülemedi (playbook HTTP/2 ön kontrolünü desteklemiyor olabilir; Ansible deposunu güncelleyin).';
+  return null;
 }
 /** On kontrolun kalan gecerlilik suresi (ms). Sunucu yasi verdiyse (onKontrolYasSn, `alindi` anindaki) o esas
  *  alinir - istemci saati kaymis olabilir; yoksa bitis anindan. Ikisi de yoksa null. */

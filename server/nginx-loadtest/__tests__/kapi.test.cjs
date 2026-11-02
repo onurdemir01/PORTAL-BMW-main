@@ -61,6 +61,10 @@
 //   -- sade turu (2026-11-02) --
 //   YKP44 /kosular/:id kosu.sonucOzeti (toplam istek, p95 en iyi / kotu, konf, reload olaylari) ve adim satirinda
 //         cpuOlculemedi / reloadlar; eski R2 satirinin negatif CPU / kapasitesi null (DB degismez)
+//   -- HTTP/2 secimi (2026-11-02, h2_sozlesme.md 4.2) --
+//   IX-H /hedefler protokoller + varsayilan; on kontrol h2 (kanonik + yuk_protokol); kosu: h2 olculemedi / ALPN yok
+//        409, h2 kanitli 200, h1 kosusu h2 alanlarini okumaz, protokolsuz (dagitim oncesi) h1 on kontrol gecer;
+//        liste CASE ifadesi + kosuApi; ayrinti; karsilastir refProtokol / adayProtokol + ozetler
 'use strict';
 
 const { test } = require('node:test');
@@ -570,7 +574,7 @@ test('YKP3 kimlikler istemciden alinmaz (baslatma, durum, durdurma)', { timeout:
   const [sid, tid, ev, limit] = D.launch[0];
   assert.deepEqual([sid, tid, limit], [3, 44, ''], 'sunucu/template kayittan, limit bos degil');
   assert.deepEqual(Object.keys(ev).sort(), [...dg.EKSTRA_ANAHTARLAR].sort(), 'govdedeki fazlalik extra_vars\'a sizdi');
-  assert.equal(Object.keys(ev).length, 33);
+  assert.equal(Object.keys(ev).length, 34);
   assert.equal(ev.yuk_hedef_host, 'GBNGXT33');
   assert.equal(ev.yuk_islem, 'on_kontrol');
   assert.equal(ev.yuk_run_id, String(r.body.kosuId));
@@ -746,7 +750,7 @@ test('YKP5 basarili on kontrol: satir, kilitler, gecmis, denetim', { timeout: 10
   assert.equal(r.statusCode, 200);
   const k = D.kosular.find((x) => x.id === r.body.kosuId);
   assert.deepEqual([k.durum, k.adim, k.awx_server_id, k.awx_job_id, k.islem, k.sw_dizin], ['RUNNING', `R${k.id}`, 3, 900, 'on_kontrol', null]);
-  assert.deepEqual(JSON.parse(k.parametreler), { motor: 'k6', hizlar: [100, 250], tekrar: 2, isinma: 30, sure: 120, bosluk: 30, bosta: 60, maxvu: 150, kip: 'yeni', ae: 'br', sni: true, butceSn: 60 + 2 * 2 * (30 + 120 + 30 + 20) + 120 });
+  assert.deepEqual(JSON.parse(k.parametreler), { motor: 'k6', hizlar: [100, 250], tekrar: 2, isinma: 30, sure: 120, bosluk: 30, bosta: 60, maxvu: 150, kip: 'yeni', ae: 'br', sni: true, protokol: 'h1', butceSn: 60 + 2 * 2 * (30 + 120 + 30 + 20) + 120 });
   // Tur 3 kolonlari: k6 + sunucu satiri; plan uyarisi yok (NULL).
   assert.deepEqual([k.hedef_turu, k.motor, k.hedef_host, k.plan_uyarilari], ['sunucu', 'k6', 'GBNGXT33', null]);
   assert.equal(D.launch[0][2].yuk_sni, '1');
@@ -942,7 +946,7 @@ test('YKP11 karsilastir: DB adimlariyla kararVer; on kontrol karsilastirilmaz', 
   // Tur 3: esiklerin yaninda motor / hedef turu / is parcacigi / hiz tavani secenekleri (eski satir: k6 / sunucu / null / null).
   assert.deepEqual([c.r[0].tur, c.r[0].nedenler, c.a[0].ham, c.a[0].nedenler, c.s], ['R1_K_yeni_br_100_r1', ['x'], { a: 1 }, [], {
     esikCpu: 5, refMotor: 'k6', adayMotor: 'k6', refHedefTuru: 'sunucu', adayHedefTuru: 'sunucu', refIsParcacigi: null, adayIsParcacigi: null,
-    refTavanRps: null, adayTavanRps: null,
+    refTavanRps: null, adayTavanRps: null, refProtokol: 'h1', adayProtokol: 'h1',
   }]);
   assert.equal((await istek('GET', '/karsilastir?ref=1&aday=3')).body.code, 'kosu_yok');
   assert.equal((await istek('GET', '/karsilastir?ref=1')).statusCode, 400);
@@ -1280,7 +1284,7 @@ test('YKP20 serbest on kontrol uctan uca: siniflandirma, satir, extra_vars, G + 
   assert.deepEqual([k.hedef_turu, k.hedef_host, k.hedef_ip, k.motor, k.islem, k.vhost], ['serbest', '', SERBEST_IP, 'k6', 'on_kontrol', 'app.test.local']);
   // GBNGXT34 internet RP: serbest plan uyarisi satirda (onay isteyecek).
   assert.deepEqual(JSON.parse(k.plan_uyarilari), [RP_UYARISI()]);
-  assert.deepEqual(JSON.parse(k.parametreler), { motor: 'k6', hizlar: [50, 100, 200], tekrar: 2, isinma: 30, sure: 120, bosluk: 30, bosta: 60, maxvu: 50, kip: 'yeni', ae: 'br', sni: false, butceSn: 1380 });
+  assert.deepEqual(JSON.parse(k.parametreler), { motor: 'k6', hizlar: [50, 100, 200], tekrar: 2, isinma: 30, sure: 120, bosluk: 30, bosta: 60, maxvu: 50, kip: 'yeni', ae: 'br', sni: false, protokol: 'h1', butceSn: 1380 });
   const ev = D.launch[0][2];
   assert.deepEqual([ev.yuk_hedef_turu, ev.yuk_hedef_host, ev.yuk_hedef_ip, ev.yuk_motor, ev.yuk_hizlar, ev.yuk_maxvu, ev.yuk_islem], ['serbest', '', SERBEST_IP, 'k6', '50 100 200', '50', 'on_kontrol']);
   assert.deepEqual(dg.ekstraDegiskenleriDenetle(ev), []);
@@ -1416,7 +1420,7 @@ test('YKP23 wrk on kontrol: extra_vars bolum 3, tavan sunucuda hesaplanir, wrk +
   assert.equal(r.statusCode, 200, JSON.stringify(r.body));
   const k = D.kosular.find((x) => x.id === r.body.kosuId);
   assert.deepEqual([k.motor, k.hedef_turu], ['wrk', 'sunucu']);
-  assert.deepEqual(JSON.parse(k.parametreler), { motor: 'wrk', baglantilar: [2, 4, 8], is_parcacigi: 2, tavan_rps: 270, tekrar: 2, isinma: 30, sure: 120, bosluk: 30, bosta: 60, kip: 'yeni', ae: 'br', sni: false, butceSn: 1380 });
+  assert.deepEqual(JSON.parse(k.parametreler), { motor: 'wrk', baglantilar: [2, 4, 8], is_parcacigi: 2, tavan_rps: 270, tekrar: 2, isinma: 30, sure: 120, bosluk: 30, bosta: 60, kip: 'yeni', ae: 'br', sni: false, protokol: 'h1', butceSn: 1380 });
   const ev = D.launch[0][2];
   assert.deepEqual(
     [ev.yuk_motor, ev.yuk_hizlar, ev.yuk_maxvu, ev.yuk_baglantilar, ev.yuk_is_parcacigi, ev.yuk_tavan_rps, ev.yuk_sni, ev.yuk_wrk_yolu, ev.yuk_k6_yolu, ev.yuk_hedef_turu, ev.yuk_butce_sn],
@@ -1597,7 +1601,7 @@ test('YKP27 /karsilastir: kararVer\'e motor / hedef turu / is parcacigi, ozet al
   assert.equal(r.statusCode, 200, JSON.stringify(r.body));
   assert.deepEqual(kararCagri.at(-1).s, {
     esikP95: 7, refMotor: 'wrk', adayMotor: 'k6', refHedefTuru: 'serbest', adayHedefTuru: 'sunucu', refIsParcacigi: 2, adayIsParcacigi: null,
-    refTavanRps: 200, adayTavanRps: null,
+    refTavanRps: 200, adayTavanRps: null, refProtokol: 'h1', adayProtokol: 'h1',
   });
   assert.deepEqual([r.body.ref.motor, r.body.ref.hedefTuru, r.body.aday.motor, r.body.aday.hedefTuru], ['wrk', 'serbest', 'k6', 'sunucu']);
   // Motor kolonu yoksa parametreler.motor (liste kopyasi eksik eski satir icin).
@@ -1951,7 +1955,7 @@ test('YKP41 extra_vars arac alanlari = etkin set; INSERT arac_id; durdurda uc al
   assert.deepEqual([ev.yuk_arac_dizin, ev.yuk_k6_sha256, ev.yuk_wrk_sha256, ev.yuk_k6_yolu, ev.yuk_wrk_yolu],
     ['/sw/BMW_PORTAL/nginx_loadtest/araclar/5', SHA_K6, SHA_WRK, dg.ESKI_K6_ISARETI, dg.ESKI_WRK_ISARETI]);
   assert.deepEqual([dg.ESKI_K6_ISARETI, dg.ESKI_WRK_ISARETI], ['/yeni-playbook-gerekli/k6', '/yeni-playbook-gerekli/wrk']);
-  assert.equal(Object.keys(ev).length, 33);
+  assert.equal(Object.keys(ev).length, 34);
   assert.deepEqual(dg.ekstraDegiskenleriDenetle(ev), []);
   const k = D.kosular.find((x) => x.id === r.body.kosuId);
   assert.equal(k.arac_id, 5, 'on kontrol satirina arac_id yazilmadi');
@@ -1972,7 +1976,8 @@ test('YKP41 extra_vars arac alanlari = etkin set; INSERT arac_id; durdurda uc al
   assert.equal(d.statusCode, 200, JSON.stringify(d.body));
   const dev = D.launch.at(-1)[2];
   assert.deepEqual([dev.yuk_islem, dev.yuk_arac_dizin, dev.yuk_k6_sha256, dev.yuk_wrk_sha256, dev.yuk_k6_yolu, dev.yuk_wrk_yolu], ['durdur', '', '', '', dg.ESKI_K6_ISARETI, dg.ESKI_WRK_ISARETI]);
-  assert.equal(Object.keys(dev).length, 33);
+  assert.equal(Object.keys(dev).length, 34);
+  assert.equal(dev.yuk_protokol, 'h1', 'durdur eski satirdan h1');
 });
 
 test('YKP42 kosu: on kontrolun arac_id NULL / farkli -> on_kontrol_eski (degerlendirmeden ONCE); kopya dogrulanmadiysa kosu yok', { timeout: 20000 }, async () => {
@@ -2131,4 +2136,113 @@ test('YKP44 sade turu: /kosular/:id sonucOzeti ve adim cpuOlculemedi / reloadlar
   D.kosular.push({ id: 2, islem: 'on_kontrol', durum: 'DONE', hedef_host: 'GBNGXT33', hedef_ip: '10.0.0.9', created_at: new Date(BAS), senaryo_id: 1, sonuc: null });
   const h = await istek('GET', '/kosular/2');
   assert.deepEqual([h.body.kosu.sonucOzeti.adimSayisi, h.body.kosu.sonucOzeti.toplamIstek, h.body.kosu.sonucOzeti.konfDegisti, h.body.kosu.sonucOzeti.reloadlar], [0, null, null, []]);
+});
+
+// -- HTTP/2 secimi (h2_sozlesme.md 4.2) --
+const { _kosuApiForTest: kosuApiH, _protokolOfForTest: protokolOfH, _LISTE_KOLONLARI: LISTE_KOLONLARI_H } = require('../index.cjs');
+const H2_CASE = `CASE WHEN k.parametreler LIKE '%"protokol":"h2"%' THEN 'h2' ELSE 'h1' END AS protokol`;
+const OK_OZET_H2 = { ...OK_OZET, protokol: 'h2', curl_h2: true, alpn_h2: true, yollar_yanitli: 2, yollar_h2: 2 };
+
+test('IX-H protokol: /hedefler, on kontrol -> kosu (h2 engeli, eski h1 on kontrol gecerli), liste / ayrinti / karsilastir', { timeout: 30000 }, async () => {
+  sifirla();
+  senaryoEkle();
+  // /hedefler: varsayilan h1 + secilebilir protokoller.
+  let r = await istek('GET', '/hedefler');
+  assert.equal(r.statusCode, 200, JSON.stringify(r.body));
+  assert.deepEqual([r.body.varsayilan.protokol, r.body.protokoller], ['h1', ['h1', 'h2']]);
+  // Govdede h2 + yeni / wrk + h2: 400, AWX'e gitmez.
+  for (const p of [{ hizlar: [100, 250], protokol: 'h2' }, { motor: 'wrk', kip: 'ka', protokol: 'h2' }, { hizlar: [100], protokol: 'h3' }]) {
+    r = await istek('POST', '/kosular/on-kontrol', { body: GOVDE({ parametreler: p }) });
+    assert.deepEqual([r.statusCode, r.body.code], [400, 'gecersiz_istek'], JSON.stringify(p));
+  }
+  assert.equal(D.launch.length, 0);
+  // h2 on kontrol: kanonik parametrelerde protokol h2, extra_vars yuk_protokol h2.
+  const govdeH2 = GOVDE({ parametreler: { hizlar: [100, 250], kip: 'ka', protokol: 'h2' } });
+  const kos = (ok) => istek('POST', '/kosular', { body: { onKontrolKosuId: ok.id, confirmText: 'GBNGXT33' } });
+  let ok = await onKontrolHazirla({ govde: govdeH2, ozet: OK_OZET });
+  assert.equal(JSON.parse(ok.parametreler).protokol, 'h2');
+  assert.deepEqual([D.launch.at(-1)[2].yuk_protokol, D.launch.at(-1)[2].yuk_kip], ['h2', 'ka']);
+  // Eski playbook ozeti (h2 alani yok): kosu 409, metin "olculemedi"; AWX'e gitmez.
+  const nLaunch = D.launch.length;
+  r = await kos(ok);
+  assert.deepEqual([r.statusCode, r.body.code], [409, 'on_kontrol_eski'], JSON.stringify(r.body));
+  assert.deepEqual(r.body.engeller, ['HTTP/2 desteği ölçülemedi (playbook HTTP/2 ön kontrolünü desteklemiyor olabilir; Ansible deposunu güncelleyin)']);
+  assert.equal(D.launch.length, nLaunch);
+  // Hedef h2 sunmuyor (alpn false): 409 sayili metin.
+  sifirla();
+  senaryoEkle();
+  ok = await onKontrolHazirla({ govde: govdeH2, ozet: { ...OK_OZET_H2, alpn_h2: false, yollar_h2: 0 } });
+  r = await kos(ok);
+  assert.equal(r.statusCode, 409);
+  assert.match(r.body.engeller[0], /^Hedef bu Host için HTTP\/2 sunmuyor \(ALPN\): 0\/2 yol/);
+  // Ayrinti ucu ayni degerlendirmeyi satirin protokoluyle gosterir.
+  const ay = await istek('GET', `/kosular/${ok.id}`);
+  assert.equal(ay.body.kosu.protokol, 'h2');
+  assert.match(JSON.stringify(ay.body), /HTTP\/2 sunmuyor \(ALPN\)/, 'ayrinti h2 engelini gostermiyor');
+  // h2 kanitli on kontrol: kosu baslar, yuk_protokol h2.
+  sifirla();
+  senaryoEkle();
+  ok = await onKontrolHazirla({ govde: govdeH2, ozet: OK_OZET_H2 });
+  r = await kos(ok);
+  assert.equal(r.statusCode, 200, JSON.stringify(r.body));
+  const kH2 = D.kosular.find((x) => x.id === r.body.kosuId);
+  assert.deepEqual([JSON.parse(kH2.parametreler).protokol, D.launch.at(-1)[2].yuk_protokol], ['h2', 'h2']);
+  // h1 kosusu h2 alanlarini OKUMAZ: alpn false olsa da engel yok.
+  sifirla();
+  senaryoEkle();
+  ok = await onKontrolHazirla({ ozet: { ...OK_OZET, protokol: 'h1', alpn_h2: false, curl_h2: false } });
+  assert.equal(JSON.parse(ok.parametreler).protokol, 'h1');
+  r = await kos(ok);
+  assert.equal(r.statusCode, 200, JSON.stringify(r.body));
+  assert.equal(D.launch.at(-1)[2].yuk_protokol, 'h1');
+  // Dagitimdan ONCE saklanmis (protokolsuz) h1 on kontrolu kosuya gecer (409 parametre degisti DEGIL).
+  sifirla();
+  senaryoEkle();
+  ok = await onKontrolHazirla();
+  const p = JSON.parse(ok.parametreler);
+  delete p.protokol;
+  ok.parametreler = JSON.stringify(p);
+  r = await kos(ok);
+  assert.equal(r.statusCode, 200, JSON.stringify(r.body));
+  assert.equal(D.launch.at(-1)[2].yuk_protokol, 'h1');
+  // Saklanan h2 ama yeniden kurulan plan h1 olamaz: protokol ayni kaldikca esitlik bozulmaz; saklanan bozuk deger 400 (yeniden olcum).
+  sifirla();
+  senaryoEkle();
+  ok = await onKontrolHazirla();
+  ok.parametreler = JSON.stringify({ ...JSON.parse(ok.parametreler), protokol: 'h3' });
+  r = await kos(ok);
+  assert.notEqual(r.statusCode, 200, 'bozuk saklanan protokol kosuya gecti');
+  assert.equal(D.launch.length, 1);
+
+  // Liste: SQL CASE ifadesi (JSON_VALUE yok) ve kanonik JSON'da LIKE deseni yalniz h2'yi yakalar.
+  assert.ok(LISTE_KOLONLARI_H.replace(/\s+/g, ' ').includes(H2_CASE), LISTE_KOLONLARI_H);
+  assert.doesNotMatch(LISTE_KOLONLARI_H, /JSON_VALUE/);
+  const desen = '"protokol":"h2"';
+  assert.ok(JSON.stringify(dg.parametreler({ protokol: 'h2', kip: 'ka' }, { sni: false }).deger).includes(desen));
+  for (const ham of [{}, { protokol: 'h1' }, { motor: 'wrk' }]) assert.ok(!JSON.stringify(dg.parametreler(ham, { sni: false }).deger).includes(desen), JSON.stringify(ham));
+  r = await istek('GET', '/kosular');
+  assert.equal(r.statusCode, 200);
+  const son = D.sorgular.filter((s) => /^SELECT TOP \(\$1\)/.test(s.q)).at(-1);
+  assert.ok(son.q.includes(H2_CASE), 'liste sorgusunda protokol CASE yok');
+  // kosuApi: liste kolonu (parametreler tasinmaz) ya da parametreler JSON'u; ikisi de yoksa h1; deger enum disi h1.
+  assert.equal(kosuApiH({ id: 1, protokol: 'h2' }).protokol, 'h2');
+  assert.equal(kosuApiH({ id: 1, protokol: 'h1', parametreler: '{"protokol":"h2"}' }).protokol, 'h1', 'liste kolonu once');
+  assert.equal(kosuApiH({ id: 1, parametreler: '{"protokol":"h2"}' }).protokol, 'h2');
+  assert.equal(kosuApiH({ id: 1, parametreler: '{"motor":"k6"}' }).protokol, 'h1');
+  assert.equal(kosuApiH({ id: 1 }).protokol, 'h1');
+  assert.deepEqual([protokolOfH({ parametreler: '{"protokol":"h3"}' }), protokolOfH({ parametreler: 'bozuk' }), protokolOfH(null)], ['h1', 'h1', 'h1']);
+
+  // Karsilastir: protokoller satirdan kararVer'e, ozetlere.
+  sifirla();
+  senaryoEkle();
+  D.kosular.push(
+    { id: 1, islem: 'kosu', durum: 'DONE', etiket: 'A', created_at: new Date(BAS), senaryo_id: 1, parametreler: JSON.stringify({ hizlar: [100] }) },
+    { id: 2, islem: 'kosu', durum: 'DONE', etiket: 'B', created_at: new Date(BAS), senaryo_id: 1, parametreler: JSON.stringify(dg.parametreler({ protokol: 'h2', kip: 'ka', hizlar: [100] }, { sni: false }).deger) },
+  );
+  r = await istek('GET', '/karsilastir?ref=1&aday=2');
+  assert.equal(r.statusCode, 200, JSON.stringify(r.body));
+  assert.deepEqual([kararCagri.at(-1).s.refProtokol, kararCagri.at(-1).s.adayProtokol], ['h1', 'h2']);
+  assert.deepEqual([r.body.ref.protokol, r.body.aday.protokol], ['h1', 'h2']);
+  r = await istek('GET', '/karsilastir?ref=2&aday=2');
+  assert.deepEqual([kararCagri.at(-1).s.refProtokol, kararCagri.at(-1).s.adayProtokol], ['h2', 'h2']);
 });

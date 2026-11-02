@@ -1,10 +1,13 @@
 // yuk_k6.js - Portal Nginx Hub "Yuk Testi" icin ACIK DONGU yuk testi: sabit varis hizi, her iterasyon TEK istek.
-// Kaynak  : el kiti f5_rehber/har_yuk_testi/yuk_k6.js; Portal farki YALNIZ UA oneki (UA_ONEK) ve zorunlu
-//           HOST_BASLIGI (varsayilan host YOK). Geri kalan her satir kitle ayni (bkz. README "Betikler").
+// Kaynak  : el kiti f5_rehber/har_yuk_testi/yuk_k6.js; Portal farki YALNIZ UA oneki (UA_ONEK), zorunlu
+//           HOST_BASLIGI (varsayilan host YOK) ve PROTOKOL (h2 secimi). Geri kalan her satir kitle ayni (bkz. README "Betikler").
 // Amac    : nginx ayarlari arasinda istek basina CPU ve yanit suresini adil karsilastirmak (kos.sh cagirir).
 // Kullanim: GODEBUG=http2client=0 k6 run -e HEDEF=https://<nginx_ip> -e HOST_BASLIGI=<vhost> -e SENARYO=<MUTLAK yol>/K.tsv \
 //             -e TUR=R17_K_yeni_br_250_r1 [-e HIZ=250 -e KIP=yeni|ka -e AE=br|gzip|identity -e ISINMA=30s \
-//             -e SURE=120s -e CIKTI=<dizin> -e DENEME=1 -e UA_ONEK=portal-yuktesti] yuk_k6.js
+//             -e SURE=120s -e CIKTI=<dizin> -e DENEME=1 -e UA_ONEK=portal-yuktesti -e PROTOKOL=h1|h2] yuk_k6.js
+//           GODEBUG=http2client=0 YALNIZ PROTOKOL=h1 icin; PROTOKOL=h2 (yalniz KIP=ka) GODEBUG'suz kosulur (ALPN ile h2).
+// Protokol: her olcum/isinma yaniti PROTOKOL'un beklenen surumunde (HTTP/1.1 | HTTP/2.0) olmali; disindaki yanit
+//           protokol_uyumsuz sayacini artirir ve kosu kesilir. http2_kullanildi yalniz bilgi (HTTP/2.0 yanit sayisi).
 // Gonderilen basliklar YALNIZ: Host, Accept-Encoding, User-Agent (<UA_ONEK>/<TUR>/<faz>/<deneme>). Cerez
 // yok: her istek bos bir cookie jar ile gider. URL her zaman HEDEF + yol; host HAR'dan alinmaz.
 // DENEME: ayni TUR'un kacinci kosusu (kos.sh verir); DUR'dan sonra tekrar kosulan TUR'un eski log satirlari
@@ -32,6 +35,7 @@ const LIMIT_MUAF = __ENV.LIMIT_MUAF === '1';
 const MAXVU = Number(__ENV.MAXVU || 150);
 const CIKTI = (__ENV.CIKTI || '.').replace(/[\\/]+$/, '');
 const SNI = __ENV.SNI === '1';
+const PROTOKOL = __ENV.PROTOKOL || 'h1';
 const IP_SINIRI = 450; // rate_limits.conf: limit_req 500 r/s/IP (burst 200); pay birakildi
 const AE_DEGER = { br: 'gzip, deflate, br, zstd', gzip: 'gzip', identity: 'identity' };
 const YOL_RE = /^\/[A-Za-z0-9._~!$&'()*+,;=:@%\/-]*$/;
@@ -49,6 +53,9 @@ if (!/^[a-z][a-z0-9-]{2,30}$/.test(UA_ONEK)) throw new Error('UA_ONEK yalniz kuc
 if (!/^[A-Za-z0-9_-]+$/.test(TUR)) throw new Error('TUR yalniz harf, rakam, _ ve - icerebilir: "' + TUR + '"');
 if (!/^[1-9][0-9]*$/.test(DENEME)) throw new Error('DENEME pozitif tam sayi olmali: "' + DENEME + '"');
 if (KIP !== 'yeni' && KIP !== 'ka') throw new Error('KIP yeni ya da ka olmali');
+if (PROTOKOL !== 'h1' && PROTOKOL !== 'h2') throw new Error('PROTOKOL h1 ya da h2 olmali');
+if (PROTOKOL === 'h2' && KIP !== 'ka') throw new Error('PROTOKOL=h2 yalniz KIP=ka ile (HTTP/2 baglantiyi acik tutar)');
+const BEKLENEN = PROTOKOL === 'h2' ? 'HTTP/2.0' : 'HTTP/1.1';
 if (!(AE in AE_DEGER)) throw new Error('AE br, gzip ya da identity olmali');
 if (!(Number.isInteger(HIZ) && HIZ > 0)) throw new Error('HIZ pozitif tam sayi olmali');
 if (HIZ > IP_SINIRI && !LIMIT_MUAF) {
@@ -86,6 +93,7 @@ const senaryo = new SharedArray('senaryo', function () {
 const TOPLAM_AGIRLIK = senaryo[senaryo.length - 1].k;
 
 const http2 = new Counter('http2_kullanildi');
+const uyumsuz = new Counter('protokol_uyumsuz');
 const d429 = new Counter('durum_429');
 const d5xx = new Counter('durum_5xx');
 const sikDinamik = new Counter('sikistirma_dinamik');
@@ -106,7 +114,7 @@ senaryolar.olcum = {
 };
 
 const esikler = {
-  http2_kullanildi: [{ threshold: 'count<1', abortOnFail: true }],
+  protokol_uyumsuz: [{ threshold: 'count<1', abortOnFail: true }],
   // 429 HER fazda kosuyu keser (n_429 da butun fazlari sayar); dropped ve 5xx ise yalniz olcum fazindan okunur.
   durum_429: [{ threshold: 'count<1', abortOnFail: true }],
   // Asagidakiler sahte esik: alt metriklerin ozet verisinde gorunmesi icin (hic kirmizi olmaz).
@@ -164,7 +172,8 @@ function istek(faz) {
     tags: { har: s.har, tur: s.tur, boyut: s.boyut },
     jar: new http.CookieJar(),
   });
-  if (res.proto && res.proto !== 'HTTP/1.1') http2.add(1);
+  if (res.proto && res.proto !== BEKLENEN) uyumsuz.add(1);
+  if (res.proto === 'HTTP/2.0') http2.add(1);
   if (res.status === 429) d429.add(1);
   else if (res.status >= 500) d5xx.add(1);
   return res;
@@ -190,7 +199,8 @@ export function setup() {
     throw new Error('on kontrol: ' + s.yol + ' -> HTTP ' + res.status + ' (200 bekleniyordu). HEDEF ve HOST_BASLIGI dogru mu, ' +
       'sunucu cerezsiz yanit veriyor mu? (sertifika/SNI sorunu ise -e SNI=1 deneyin)');
   }
-  if (res.proto && res.proto !== 'HTTP/1.1') throw new Error('on kontrol: protokol ' + res.proto + ' (HTTP/1.1 bekleniyordu). GODEBUG=http2client=0 verin.');
+  const protDisi = [];
+  if (res.proto && res.proto !== BEKLENEN) protDisi.push(s.yol + ' -> ' + res.proto);
   // Senaryodaki BUTUN tekil yollar: hash'li bundle adlari her deploy'da degisir; HAR'dan sonra deploy olduysa
   // 404'ler hata oranina girer ve her adimi RET/GECERSIZ yapar. Kosu baslamadan durdurulur.
   const goruldu = {};
@@ -204,11 +214,16 @@ export function setup() {
     n++;
     const r = kontrolGet(x);
     if (r.status !== 200) hatali.push(x.yol + ' -> HTTP ' + r.status);
+    if (r.proto && r.proto !== BEKLENEN) protDisi.push(x.yol + ' -> ' + r.proto);
   }
   if (hatali.length) {
     throw new Error('on kontrol: ' + hatali.length + '/' + n + ' yol 200 donmedi (ilk 5: ' + hatali.slice(0, 5).join(', ') +
       '). HAR alindiktan sonra deploy olmus olabilir: HAR\'lari yenileyip senaryoyu yeniden uretin ya da bu satirlari ' +
       'senaryo dosyasindan silin (butun adimlarda AYNI senaryo kullanilmali).');
+  }
+  if (protDisi.length) {
+    throw new Error('on kontrol: ' + protDisi.length + ' yol ' + BEKLENEN + ' disinda yanit verdi (ilk: ' + protDisi[0] + '). ' +
+      (PROTOKOL === 'h2' ? 'Hedef bu Host icin ALPN ile h2 sunmuyor; HTTP/1.1 ile kosun ya da SNI=1 deneyin.' : 'GODEBUG=http2client=0 verin.'));
   }
   const ce = String(res.headers['Content-Encoding'] || '').toLowerCase();
   const cl = res.headers['Content-Length'];
@@ -222,7 +237,7 @@ export function setup() {
 
 const KOLONLAR = ['tur', 'adim', 'senaryo', 'kip', 'ae', 'hiz', 'n_olcum', 'rps_gercek', 'p50', 'p95', 'p99', 'ttfb_p95', 'tls_p95',
   'connect_p95', 'hata_orani', 'n_429', 'n_5xx', 'dropped', 'http2', 'bayt_istek', 'p95_js', 'p95_css', 'p95_html',
-  'p95_json', 'p95_config', 'p95_buyuk', 'sikistirma_turu', 'isinma_sn', 'sure_sn', 'deneme'];
+  'p95_json', 'p95_config', 'p95_buyuk', 'sikistirma_turu', 'isinma_sn', 'sure_sn', 'deneme', 'protokol', 'protokol_uyumsuz'];
 
 export function ozet_hesapla(data) {
   const m = data.metrics || {};
@@ -262,6 +277,8 @@ export function ozet_hesapla(data) {
     sikistirma_turu: sik, isinma_sn: ISINMA_SN, sure_sn: SURE_SN, deneme: Number(DENEME),
   };
   for (let i = 0; i < TURLER.length; i++) o['p95_' + TURLER[i]] = trend('http_req_duration{scenario:olcum,tur:' + TURLER[i] + '}', 'p(95)');
+  o.protokol = PROTOKOL;
+  o.protokol_uyumsuz = deger('protokol_uyumsuz', 'count') || 0;
   return o;
 }
 
@@ -279,7 +296,7 @@ export function handleSummary(data) {
     '   olcum istek=' + o.n_olcum + '  gercek=' + hucre(o.rps_gercek) + '/sn  p50=' + hucre(o.p50) + '  p95=' + hucre(o.p95) +
       '  p99=' + hucre(o.p99) + ' ms  ttfb_p95=' + hucre(o.ttfb_p95) + '  tls_p95=' + hucre(o.tls_p95),
     '   hata=' + hucre(o.hata_orani) + '  429=' + o.n_429 + '  5xx=' + o.n_5xx + '  dropped=' + o.dropped + '  http2=' + o.http2 +
-      '  bayt/istek=' + hucre(o.bayt_istek),
+      '  bayt/istek=' + hucre(o.bayt_istek) + '  protokol=' + o.protokol + '  uyumsuz=' + o.protokol_uyumsuz,
     '   yazildi: ' + CIKTI + '/istemci_' + TUR + '.csv', '',
   ].join('\n');
   const out = { stdout: metin };

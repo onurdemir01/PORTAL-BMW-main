@@ -5,7 +5,7 @@
 // Sayfalama: sunucu `dahaVar` derse "Daha eski koşular" bir sonraki sayfayi (`onceki` = listedeki en kucuk id)
 // ekler. Tazeleme yalniz ilk sayfayi yeniden okur; yuklenmis eski sayfalar korunur (ilk sayfanin altinda kalanlar).
 // Hedef etiketi `hedefHost ?? hedefIp` (2026-10-28): serbest hedefte host yok, IP gorunur; hedef suzgeci ayni etiketle
-// kurulur (bos / null secenek OLUSMAZ). Serbest ve wrk kosulari ciple isaretlenir (k6 + sunucu cipsiz).
+// kurulur (bos / null secenek OLUSMAZ). Serbest, wrk ve HTTP/2 kosulari ciple isaretlenir (k6 + sunucu + HTTP/1.1 cipsiz).
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowPathIcon } from '@heroicons/react/24/outline';
 import { nginxLoadtestApi, type NlKosu } from '@/api/nginxLoadtestApi';
@@ -140,7 +140,7 @@ export default function KosuListesi({ onAc, yenileAnahtari = 0 }: { onAc: (id: n
                   {/* Dar kolonda cipler alt satira gecer; etiket (IP / host) kesilmez (uzun host adi kolona sigmazsa kesilir). */}
                   <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1">
                     <span className="min-w-0 max-w-full truncate font-mono text-[12px]" title={hedefEtiketi(k) || undefined}>{hedefEtiketi(k) || '—'}</span>
-                    <TurMotorCipleri hedefTuru={k.hedefTuru} motor={k.motor} />
+                    <TurMotorCipleri hedefTuru={k.hedefTuru} motor={k.motor} protokol={k.protokol} />
                   </div>
                   {/* Sunucu hedefinde ikinci satir IP · vhost; serbestte IP zaten etiket: yalniz vhost. */}
                   {k.hedefHost ? (

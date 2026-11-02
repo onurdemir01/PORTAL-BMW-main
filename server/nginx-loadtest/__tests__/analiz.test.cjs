@@ -34,6 +34,9 @@
 //   AN21 CPU-ms/istek ve kapasite asla negatif (reload sayac dususu, sayac gerilemesi, net negatif; DB'deki eski deger)
 //   AN22 reload anlari: zaman, faz, etkilenen TUR'lar (ozet.reloadlar, ham.reloadlar)
 //   AN23 her neden / uyari NEDEN_KALIPLARI'ndan birine uyar
+// HTTP/2 secimi ve reload penceresi (2026-11-02, h2_sozlesme.md; PORTAL FARKLARI 11 / 12):
+//   AN-H1..H5 protokol kolonlari, h2_disi / protokol_farkli, kararVer farkli protokol, kosuAnaliz secenegi
+//   AN-R1 reload fazi CPU penceresiyle kesin (olcum_kenari); AN-R2 reload nedeni <=> olcum olayi degismezi
 // Python karsilastirmasi (AN1-AN5) kosu duzeyi `uyarilar`i KAPSAMAZ (karsilastir.py'de kosu duzeyi
 // uyari listesi yok); TUR uyarilari AN2'de ham.uyarilar uzerinden metin olarak karsilastirilir.
 'use strict';
@@ -719,7 +722,7 @@ test('AN15 wrk: rc etiketi wrk_rc=, dropped olculmez (null, DOYMA yok), sunucuda
   assert.deepEqual(NEDENLER.find((d) => d.onek === 'wrk_rc'),
     { onek: 'wrk_rc', anlam: 'wrk hata koduyla bitti.', cozum: 'Is ciktisindaki wrk mesajina bakin; kosuyu tekrarlayin.' });
   assert.equal(NEDENLER.find((d) => d.onek === 'hatali_kosu').anlam,
-    "kos.sh / wrk_kos.sh bu TUR'u durdurdu (429 / 5xx / soket / hata orani / http2 / hata kodu / olcum yok).");
+    "kos.sh / wrk_kos.sh bu TUR'u durdurdu (429 / 5xx / soket / hata orani / http2 / protokol / hata kodu / olcum yok).");
   aciklamali(a);
 });
 
@@ -1105,6 +1108,12 @@ test('AN23 her neden / uyari NEDEN_KALIPLARI listesinden birine uyar (arayuz esl
   const wk = wrkKurgu('R91');
   wrkKosu(wk, { hiz: 16, r: 1, hatali: true });
   analizler.push((await t3Analiz(wk, { donustur: (d) => wrkDosyalari(wk, d), secenek: { motor: 'wrk' } })).analiz);
+  // HTTP/2 (PORTAL FARKLARI 12): h2_disi(n) ve protokol_farkli(...) kodlari.
+  analizler.push((await t3Analiz(kaKurgu('R77'), {
+    donustur: (d) => protokolKolonu(d, (tur) => ({ protokol: 'h2', protokol_uyumsuz: tur.endsWith('_250_r1') ? 2 : 0 })), secenek: { protokol: 'h2' },
+  })).analiz);
+  analizler.push((await t3Analiz(kaKurgu('R78'), { secenek: { protokol: 'h2' } })).analiz);
+  analizler.push((await t3Analiz(kaKurgu('R79'), { donustur: (d) => protokolKolonu(d, () => ({ protokol: 'h2' })) })).analiz);
   const gorulen = new Set();
   let n = 0;
   for (const an of analizler) {
@@ -1130,7 +1139,242 @@ test('AN23 her neden / uyari NEDEN_KALIPLARI listesinden birine uyar (arayuz esl
   }
   assert.ok(n > 50, `kapsam az: ${n}`);
   for (const k of ['reload', 'konf_degisti', '429', '5xx', 'hata', 'doyma_dropped', 'doyma_host_cpu', 'hatali_kosu', 'tamamlanmadi',
-    'cpu_olculemedi', 'disk', 'kayit']) {
+    'cpu_olculemedi', 'disk', 'kayit', 'h2_disi', 'protokol_farkli']) {
     assert.ok(gorulen.has(k), `fikstur kapsami: ${k} hic uretilmedi`);
   }
+});
+
+// ---------------------------------------------------------------------------------------------
+// HTTP/2 secimi ve reload penceresi (h2_sozlesme.md 4.4 / 6; analiz.cjs PORTAL FARKLARI 11 / 12)
+//   AN-H1 h2 satiri (http2 = n, protokol h2, uyumsuz 0) GECERLI; http2 kolonu bilgi
+//   AN-H2 h2 protokol_uyumsuz > 0 -> h2_disi(n); h1 yeni satir protokol_uyumsuz > 0 -> http2
+//   AN-H3 protokol_farkli: beklenen h2 kolon yok / beklenen h1 satir h2; beklenen h1 kolon yok -> bugunku kural
+//   AN-H4 kararVer farkli protokol VERI_YOK (motor kuralindan sonra); gecersiz deger TypeError
+//   AN-H5 kosuAnaliz: h2 kosu uyarisi; wrk + h2 / gecersiz protokol TypeError; h1 + eski satir ham'da protokol YOK
+//   AN-R1 reload fazi CPU penceresiyle kesin: [bas+isinma, w0) / (w1, bit] olcum_kenari (adim GECERLI), pencere ici olcum
+//   AN-R2 degismez: reload nedeni <=> o TUR'a yazilmis 'olcum' olayi (tum fiksturler)
+// ---------------------------------------------------------------------------------------------
+
+/** istemci_ / hatali_istemci_ CSV'lerine yuk_k6.js 32 kolon semasinin son iki kolonunu ekler; `f(tur)` -> { protokol, protokol_uyumsuz, http2 }. */
+function protokolKolonu(dosyalar, f) {
+  const out = new Map(dosyalar);
+  for (const [ad, x] of dosyalar) {
+    if (!/^(hatali_)?istemci_.*\.csv$/.test(ad)) continue;
+    const [bas, veri, ...kalan] = x.icerik.split('\n');
+    const kol = bas.split(',');
+    const deger = veri.split(',');
+    const e = f(deger[kol.indexOf('tur')]) || {};
+    if (e.http2 !== undefined) deger[kol.indexOf('http2')] = String(e.http2);
+    const satirlar = e.protokol === undefined ? [bas, deger.join(',')]
+      : [`${bas},protokol,protokol_uyumsuz`, `${deger.join(',')},${e.protokol},${e.protokol_uyumsuz ?? 0}`];
+    out.set(ad, { ...x, icerik: [...satirlar, ...kalan].join('\n') });
+  }
+  return out;
+}
+const H2_KOSU = 'h2_vu_basina_tek_akis(tarayici_coklamasi_olculmez)';
+const kaKurgu = (ad) => standart(ad, { kosuEk: () => ({ kip: 'ka' }) });
+const KA = (h, r) => `_K_ka_br_${h}_r${r}`;
+
+test('AN-H1 h2 satiri: http2 = yanit sayisi (bilgi), protokol h2, uyumsuz 0 -> GECERLI; ham protokol alanlari', async () => {
+  const k = kaKurgu('R70');
+  const { analiz: a } = await t3Analiz(k, { donustur: (d) => protokolKolonu(d, () => ({ protokol: 'h2', protokol_uyumsuz: 0, http2: 1300 })), secenek: { protokol: 'h2' } });
+  assert.equal(a.adimlar.length, 6);
+  for (const x of a.adimlar) {
+    assert.equal(x.gecerlilik, 'GECERLI', `${x.tur}: ${x.nedenler.join(';')}`);
+    assert.deepEqual([x.ham.http2, x.ham.protokol, x.ham.protokol_uyumsuz], [1300, 'h2', 0]);
+  }
+  // Ayni dizin h1 olarak (yeni satir, uyumsuz 0) okunursa protokol_farkli; eski kural (http2 > 0) h2'de UYGULANMAZ.
+  const { analiz: b } = await t3Analiz(k, { donustur: (d) => protokolKolonu(d, () => ({ protokol: 'h2', protokol_uyumsuz: 0, http2: 1300 })) });
+  assert.ok(b.adimlar.every((x) => x.nedenler.includes('protokol_farkli(beklenen=h1,olculen=h2)') && !x.nedenler.includes('http2')));
+});
+
+test('AN-H2 protokol_uyumsuz > 0: h2 -> h2_disi(n); h1 yeni satir -> http2 (eski neden kodu)', async () => {
+  const k = kaKurgu('R71');
+  const ozel = `R71${KA(250, 1)}`;
+  const { analiz: a } = await t3Analiz(k, {
+    donustur: (d) => protokolKolonu(d, (tur) => ({ protokol: 'h2', protokol_uyumsuz: tur === ozel ? 3 : 0, http2: 1197 })), secenek: { protokol: 'h2' },
+  });
+  const t = turla(a);
+  assert.deepEqual([t.get(ozel).gecerlilik, t.get(ozel).nedenler], ['GECERSIZ', ['h2_disi(3)']]);
+  assert.equal(t.get(ozel).ham.protokol_uyumsuz, 3);
+  assert.ok([...t.values()].filter((x) => x.tur !== ozel).every((x) => x.gecerlilik === 'GECERLI'));
+  aciklamali(a);
+  // h1 kosusu, yeni (32 kolon) satir: http2 kolonu 0 olsa da karar protokol_uyumsuz'dan -> 'http2'.
+  const h1 = standart('R72');
+  const o1 = 'R72_K_yeni_br_250_r1';
+  const { analiz: b } = await t3Analiz(h1, { donustur: (d) => protokolKolonu(d, (tur) => ({ protokol: 'h1', protokol_uyumsuz: tur === o1 ? 2 : 0, http2: 0 })) });
+  assert.deepEqual(turla(b).get(o1).nedenler, ['http2']);
+  assert.ok(b.adimlar.filter((x) => x.tur !== o1).every((x) => x.gecerlilik === 'GECERLI'));
+  // h1 yeni satir: http2 > 0 ama uyumsuz 0 -> GECERLI (eski kolon karar vermez).
+  const { analiz: c } = await t3Analiz(h1, { donustur: (d) => protokolKolonu(d, () => ({ protokol: 'h1', protokol_uyumsuz: 0, http2: 5 })) });
+  assert.ok(c.adimlar.every((x) => x.gecerlilik === 'GECERLI'), c.adimlar.map((x) => x.nedenler.join(';')).join('|'));
+  // HATALI (kos.sh DUR) satirinda da: hatali_kosu + h2_disi.
+  const kh = kaKurgu('R73');
+  kh.kosu({ kip: 'ka', hiz: 400, r: 3, hatali: true });
+  const { analiz: h } = await t3Analiz(kh, { donustur: (d) => protokolKolonu(d, (tur) => ({ protokol: 'h2', protokol_uyumsuz: tur === `R73${KA(400, 3)}` ? 7 : 0 })), secenek: { protokol: 'h2' } });
+  assert.deepEqual(turla(h).get(`R73${KA(400, 3)}`).nedenler, ['hatali_kosu(kos.sh_durdurdu)', 'k6_rc=99', 'h2_disi(7)']);
+});
+
+test('AN-H3 protokol_farkli: beklenen h2 kolon yok (eski playbook) / beklenen h1 satir h2; h1 + kolon yok bugunku kural', async () => {
+  const k = kaKurgu('R74');
+  // Eski yuk_k6.js (30 kolon) h1 kosmus, Portal h2 istemis.
+  const { analiz: a } = await t3Analiz(k, { secenek: { protokol: 'h2' } });
+  assert.ok(a.adimlar.every((x) => x.gecerlilik === 'GECERSIZ' && x.nedenler.join(';') === 'protokol_farkli(beklenen=h2,olculen=yok)'), a.adimlar.map((x) => x.nedenler).join('|'));
+  assert.ok(a.adimlar.every((x) => !('protokol' in x.ham)), 'kolonsuz satirda ham protokol alani yok');
+  // Kolon yok + http2 > 0 + beklenen h2: yine protokol_farkli (eski http2 kurali h2'de yok).
+  const { analiz: b } = await t3Analiz(k, { donustur: (d) => protokolKolonu(d, () => ({ http2: 9 })), secenek: { protokol: 'h2' } });
+  assert.ok(b.adimlar.every((x) => x.nedenler.join(';') === 'protokol_farkli(beklenen=h2,olculen=yok)'));
+  // Kolon yok + beklenen h1: bugunku kural (http2 > 0 -> http2; 0 -> GECERLI).
+  const { analiz: c } = await t3Analiz(k, { donustur: (d) => protokolKolonu(d, () => ({ http2: 9 })) });
+  assert.ok(c.adimlar.every((x) => x.nedenler.join(';') === 'http2'));
+  assert.ok((await t3Analiz(k)).analiz.adimlar.every((x) => x.gecerlilik === 'GECERLI'));
+  // Tanimsiz protokol degeri ('h3', bos) kolon yok sayilir.
+  const { analiz: d } = await t3Analiz(k, { donustur: (x) => protokolKolonu(x, () => ({ protokol: 'h3' })), secenek: { protokol: 'h2' } });
+  assert.ok(d.adimlar.every((x) => x.nedenler.join(';') === 'protokol_farkli(beklenen=h2,olculen=yok)'));
+  // Hic sonuc yazmayan (tamamlanmadi) TUR protokol hakkinda bir sey soylemez.
+  const kk = kaKurgu('R75');
+  kk.kesik({ hiz: 450 });
+  const { analiz: e } = await t3Analiz(kk, { donustur: (x) => protokolKolonu(x, () => ({ protokol: 'h2' })), secenek: { protokol: 'h2' } });
+  const kesik = turla(e).get('R75_K_yeni_br_450_r1').nedenler;
+  assert.equal(kesik[0], 'tamamlanmadi(istemci_sonucu_yok)');
+  assert.ok(!kesik.some((n) => n.startsWith('protokol_farkli')), kesik.join(';'));
+});
+
+test('AN-H4 kararVer: farkli protokol VERI_YOK (motor kuralindan sonra), ayni protokol sonucu degismez, gecersiz TypeError', async () => {
+  const m = await hazirla();
+  const ra = m.get('R10').analiz.adimlar;
+  const aa = m.get('R11').analiz.adimlar;
+  const k = kararVer(ra, aa, { refProtokol: 'h1', adayProtokol: 'h2' });
+  assert.equal(k.karar, 'VERI_YOK');
+  assert.deepEqual(k.nedenler.slice(1), ['farkli protokol: referans HTTP/1.1, aday HTTP/2; ayni protokolle yeniden kosun']);
+  assert.equal(k.nedenler[0], kararVer(ra, aa).nedenler[0], 'ilk satir degismez');
+  assert.equal(kararVer(ra, aa, { refProtokol: 'h2', adayProtokol: 'h1' }).nedenler[1], 'farkli protokol: referans HTTP/2, aday HTTP/1.1; ayni protokolle yeniden kosun');
+  assert.equal(kararVer(ra, aa, { adayProtokol: 'h2' }).karar, 'VERI_YOK', 'verilmeyen taraf h1');
+  for (const s of [{ refProtokol: 'h2', adayProtokol: 'h2' }, { refProtokol: 'h1', adayProtokol: 'h1' }]) {
+    assert.equal(JSON.stringify(kararVer(ra, aa, s)), JSON.stringify(kararVer(ra, aa)), JSON.stringify(s));
+  }
+  // Motor farki once gelir.
+  const km = kararVer(ra, aa, { refMotor: 'wrk', adayMotor: 'k6', refProtokol: 'h1', adayProtokol: 'h2' });
+  assert.match(km.nedenler[1], /^farkli yuk araci:/);
+  assert.equal(km.nedenler.length, 2);
+  // wrk farkli tavan / is parcacigindan ONCE.
+  const kw = kararVer(ra, aa, { ...WRK, refTavanRps: 200, adayTavanRps: 450, refIsParcacigi: 2, adayIsParcacigi: 4, refProtokol: 'h1', adayProtokol: 'h2' });
+  assert.match(kw.nedenler[1], /^farkli protokol:/);
+  for (const s of [{ refProtokol: 'h3' }, { adayProtokol: 'H2' }, { refProtokol: null }, { adayProtokol: 2 }]) {
+    assert.throws(() => kararVer(ra, aa, s), TypeError, JSON.stringify(s));
+  }
+});
+
+test('AN-H5 kosuAnaliz protokol secenegi: h2 kosu uyarisi; wrk + h2 / gecersiz TypeError; h1 + eski fikstur birebir', async () => {
+  const m = await hazirla();
+  const veri = m.get('R10').veri;
+  assert.throws(() => kosuAnaliz(veri, { adim: 'R10', motor: 'wrk', protokol: 'h2' }), { name: 'TypeError', message: 'kosuAnaliz: wrk yalniz h1' });
+  for (const p of ['h3', 'H1', null, 2]) {
+    assert.throws(() => kosuAnaliz(veri, { adim: 'R10', protokol: p }), { name: 'TypeError', message: 'kosuAnaliz: protokol gecersiz (h1 | h2)' }, String(p));
+  }
+  // h1 acik = varsayilan; eski fiksturde ham'da protokol anahtari YOK, uyari yok.
+  for (const a of ADIMLAR) {
+    const x = m.get(a.ad);
+    assert.equal(JSON.stringify(kosuAnaliz(x.veri, { adim: a.ad, protokol: 'h1' })), JSON.stringify(x.analiz), a.ad);
+    assert.ok(x.analiz.adimlar.every((s) => !('protokol' in s.ham) && !('protokol_uyumsuz' in s.ham)), a.ad);
+    assert.ok(!x.analiz.uyarilar.includes(H2_KOSU), a.ad);
+  }
+  // h2: kosu uyarisi bir kez, katlanan TUR uyarilarindan ONCE; adim satirlari h1 yeni satirla ayni (protokol disinda).
+  const k = kaKurgu('R76');
+  const h2 = (await t3Analiz(k, { donustur: (d) => protokolKolonu(d, () => ({ protokol: 'h2' })), secenek: { protokol: 'h2' } })).analiz;
+  assert.equal(h2.uyarilar.filter((u) => u === H2_KOSU).length, 1);
+  const ilkKatli = h2.uyarilar.findIndex((u) => KATLI.test(u));
+  assert.ok(ilkKatli === -1 || h2.uyarilar.indexOf(H2_KOSU) < ilkKatli, h2.uyarilar.join(' | '));
+  const h1 = (await t3Analiz(k, { donustur: (d) => protokolKolonu(d, () => ({ protokol: 'h1' })) })).analiz;
+  assert.deepEqual(h2.uyarilar.filter((u) => u !== H2_KOSU), h1.uyarilar);
+  assert.equal(JSON.stringify(h2.adimlar).replaceAll('"protokol":"h2"', '"protokol":"h1"'), JSON.stringify(h1.adimlar));
+  assert.equal(require('../analiz.cjs').H2_UYARISI, H2_KOSU);
+  assert.ok(NEDENLER.some((d) => d.onek === 'h2_disi') && NEDENLER.some((d) => d.onek === 'protokol_farkli'));
+});
+
+/** Reload faz / neden degismezi (h2_sozlesme 6.5): reload nedeni <=> o TUR'a yazilmis 'olcum' olayi. */
+function reloadDegismezi(an, yer) {
+  const olcum = new Set(an.ozet.reloadlar.filter((o) => o.faz === 'olcum').map((o) => o.tur));
+  for (const a of an.adimlar) {
+    assert.equal(a.nedenler.includes('reload(worker_pid_degisti)'), olcum.has(a.tur), `${yer}/${a.tur}: neden ${a.nedenler.join(';')} / olaylar ${JSON.stringify(an.ozet.reloadlar.map((o) => [o.tur, o.faz]))}`);
+  }
+  for (const o of an.ozet.reloadlar) {
+    assert.ok(['isinma', 'olcum', 'olcum_kenari', 'bosluk', 'kosu_oncesi'].includes(o.faz), `${yer}: faz ${o.faz}`);
+    assert.ok(!('_kanit' in o), `${yer}: ic alan cikti`);
+  }
+  for (const a of an.adimlar) assert.ok(!('_cpu_pencere' in a) && !('_cpu_pencere' in a.ham), `${yer}/${a.tur}: ic alan cikti`);
+}
+
+test('AN-R1 reload fazi CPU penceresiyle kesin: olcum basi / sonu olcum_kenari (adim GECERLI), pencere ici olcum', async () => {
+  // Kurgu: bas+1..bas+70 log (isinma 10), olcum log bas+11..bas+70 -> CPU penceresi [bas+14, bas+68]; olcum fazi [bas+10, bas+72].
+  const tek = async (ad, ofs, dosya = {}) => {
+    const k = new Kurgu(ad);
+    k.kosu({ hiz: 100, reload: true, reloadOfs: ofs });
+    k.kosu({ hiz: 100, r: 2 });
+    return (await t3Analiz(k, { dosya })).analiz;
+  };
+  const T1 = (ad) => `${ad}_K_yeni_br_100_r1`;
+  // (a) Olcumun ilk saniyeleri (bitisik farkli-PID cifti [bas+11, bas+12], w0 = bas+14 oncesi).
+  const a = await tek('R60', 12);
+  assert.deepEqual(a.ozet.reloadlar.map((o) => [o.t - T0, o.tur, o.faz, o.etkilenen_turlar]), [[60 + 12, T1('R60'), 'olcum_kenari', [T1('R60')]]]);
+  assert.equal(turla(a).get(T1('R60')).gecerlilik, 'GECERLI', turla(a).get(T1('R60')).nedenler.join(';'));
+  assert.deepEqual(turla(a).get(T1('R60')).ham.reloadlar.map((o) => o.faz), ['olcum_kenari']);
+  // w0 sinirinda: cift [bas+13, bas+14] pencerede degil (a.t < w0) -> kenar; [bas+14, bas+15] pencerede -> olcum + neden.
+  assert.equal((await tek('R61', 14)).ozet.reloadlar[0].faz, 'olcum_kenari');
+  const b = await tek('R62', 15);
+  assert.deepEqual(b.ozet.reloadlar.map((o) => [o.tur, o.faz]), [[T1('R62'), 'olcum']]);
+  assert.ok(turla(b).get(T1('R62')).nedenler.includes('reload(worker_pid_degisti)'));
+  // (b) Olcumun ortasi: olcum (eskisi gibi).
+  assert.equal((await tek('R63', 40)).ozet.reloadlar[0].faz, 'olcum');
+  // (c) Son saniyeler: cift [bas+68, bas+69] (w1 = bas+68 sonrasi) -> kenar; [bas+67, bas+68] -> olcum.
+  const c = await tek('R64', 69);
+  assert.deepEqual(c.ozet.reloadlar.map((o) => [o.tur, o.faz]), [[T1('R64'), 'olcum_kenari']]);
+  assert.equal(turla(c).get(T1('R64')).gecerlilik, 'GECERLI');
+  assert.equal((await tek('R65', 68)).ozet.reloadlar[0].faz, 'olcum');
+  // (d) Isinma (olcum fazina degmez) isinma kalir.
+  assert.equal((await tek('R66', 5)).ozet.reloadlar[0].faz, 'isinma');
+  // (e) Ikinci kesit (ayni an): adimin CPU penceresi ana kesitten -> ana kesitteki olay olcum, digeri olcum_kenari.
+  const e = await tek('R67', 40, { ekKesit: [T0 + 60 + 20, T0 + 60 + 60] });
+  assert.deepEqual(e.ozet.reloadlar.map((o) => [o.kesit, o.faz]), [['R67_test', 'olcum'], ['R67_test_2', 'olcum_kenari']]);
+  for (const an of [a, b, c, e]) reloadDegismezi(an, 'AN-R1');
+  // 'shutting down' (k > 0) ornegi pencerede: tek ornek kanit; pencere disinda kenar.
+  const kk = new Kurgu('R68');
+  kk.kosu({ hiz: 100, kapanan: [12, 13] });
+  kk.kosu({ hiz: 100, r: 2 });
+  const k1 = (await t3Analiz(kk)).analiz;
+  assert.deepEqual(k1.ozet.reloadlar.map((o) => [o.tur, o.faz]), [[T1('R68'), 'olcum_kenari']]);
+  const kp = new Kurgu('R69');
+  kp.kosu({ hiz: 100, kapanan: [30, 31] });
+  kp.kosu({ hiz: 100, r: 2 });
+  const k2 = (await t3Analiz(kp)).analiz;
+  assert.deepEqual(k2.ozet.reloadlar.map((o) => [o.tur, o.faz]), [[T1('R69'), 'olcum']]);
+  assert.ok(turla(k2).get(T1('R69')).nedenler.includes('reload(worker_pid_degisti)'));
+  reloadDegismezi(k1, 'R68');
+  reloadDegismezi(k2, 'R69');
+});
+
+test('AN-R2 degismez: reload nedeni <=> o TUR\'a yazilmis olcum olayi (kurgu fiksturleri + reload kaliplari)', async () => {
+  const m = await hazirla();
+  for (const [ad, x] of m) reloadDegismezi(x.analiz, ad);
+  const ekler = [
+    standart('R93', { ru: 22, reload: true }),
+    standart('R96', { ru: 22, reload: true }),
+  ];
+  const isinma = new Kurgu('R97');
+  isinma.kosu({ hiz: 100, reload: true, reloadOfs: 5 });
+  isinma.kosu({ hiz: 100, r: 2 });
+  const once = new Kurgu('R98');
+  once.kosu({ hiz: 100, reload: true, reloadOfs: -30, kapanan: [-60, -55] });
+  // Isinmada reload, eski worker'lar olcume tasar (RG3 kalibi).
+  const tasan = new Kurgu('R59');
+  tasan.kosu({ hiz: 100, reload: true, reloadOfs: 5, kapanan: [5, 25] });
+  tasan.kosu({ hiz: 100, r: 2 });
+  // CPU penceresinin tam sinirinda (w0 = bas+14) gorulen reload: cift [bas+13, bas+14] pencerede degil, olay [t, t_son]
+  // pencereye degiyor -> ortusme kurali 'olcum' der ama adim dusmez (degismez bozulur); kanit kurali 'olcum_kenari'.
+  const sinir = new Kurgu('R58');
+  sinir.kosu({ hiz: 100, reload: true, reloadOfs: 14 });
+  sinir.kosu({ hiz: 100, r: 2 });
+  for (const k of [...ekler, isinma, once, tasan, sinir]) reloadDegismezi((await t3Analiz(k)).analiz, k.adim);
+  const t = (await t3Analiz(tasan)).analiz;
+  assert.deepEqual(t.ozet.reloadlar.map((o) => [o.tur, o.faz]), [['R59_K_yeni_br_100_r1', 'olcum']]);
 });

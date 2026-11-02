@@ -199,6 +199,8 @@ function kosuApi(r) {
     // Serbest satirda hedef_host '' (DB'de NULL'a cevrilmez); API null doner. Eski satir: sunucu / k6.
     hedefTuru: r.hedef_turu || 'sunucu',
     motor: r.motor || 'k6',
+    // HTTP surumu: liste kolonu ya da parametreler JSON'u; alani olmayan eski satir h1.
+    protokol: protokolOf(r),
     hedefHost: r.hedef_host || null,
     hedefIp: r.hedef_ip,
     vhost: r.vhost,
@@ -240,14 +242,23 @@ const KOSU_KOLONLARI = `k.id, k.senaryo_id, k.on_kontrol_kosu_id, k.islem, k.eti
   s.ad AS senaryo_ad, DATEDIFF(SECOND, k.finished_at, GETUTCDATE()) AS yas_sn,
   DATEDIFF(SECOND, k.created_at, GETUTCDATE()) AS olusma_yas_sn`;
 
-// Liste ucu: buyuk JSON kolonlari (sonuc, on kontrol ozeti, parametreler) TASINMAZ.
+// Liste ucu: buyuk JSON kolonlari (sonuc, on kontrol ozeti, parametreler) TASINMAZ. Protokol
+// parametreler JSON'undan LIKE ile (JSON_VALUE degil: DB uyumluluk seviyesi bilinmiyor; kanonik
+// JSON bosluksuz JSON.stringify, deger h1|h2 enum).
 const LISTE_KOLONLARI = `k.id, k.senaryo_id, k.on_kontrol_kosu_id, k.islem, k.etiket, k.adim, k.hedef_host, k.hedef_ip, k.vhost,
   k.yuk_host, k.durum, k.awx_server_id, k.awx_job_id, k.gecerlilik, k.created_by, k.created_at, k.started_at,
-  k.finished_at, k.hedef_turu, k.motor, s.ad AS senaryo_ad`;
+  k.finished_at, k.hedef_turu, k.motor, s.ad AS senaryo_ad,
+  CASE WHEN k.parametreler LIKE '%"protokol":"h2"%' THEN 'h2' ELSE 'h1' END AS protokol`;
 
 /** Satirin motoru: liste kopyasi (kosular.motor), yoksa kanonik parametreler.motor, yoksa k6 (eski satir). */
 function motorOf(x) {
   return (x && x.motor) || (jsonOku(x && x.parametreler) || {}).motor || 'k6';
+}
+
+/** Satirin protokolu: liste kolonu (protokol), yoksa kanonik parametreler.protokol, yoksa h1 (eski satir). */
+function protokolOf(x) {
+  const v = (x && x.protokol) || (jsonOku(x && x.parametreler) || {}).protokol;
+  return v === 'h2' ? 'h2' : 'h1';
 }
 
 /** Saklanmis JSON metin dizisi (plan_uyarilari) -> string[] (bozuk / yok -> []). */
@@ -577,6 +588,7 @@ function yonlendiriciKur() {
         taramaVerisi: k.sunucular !== null, rateLimitVerisi: k.ayarlar !== null,
         serbest: { acik: aglar.length > 0, aglar: isAdmin(req) ? aglar.map((a) => a.metin) : [] },
         motorlar: [...dg.MOTORLAR],
+        protokoller: [...dg.PROTOKOLLER],
         // Tur 4: arac seti durumu (DB okunamazsa hazir:false + db_okunamadi; uc 200 kalir).
         araclar: await araclar.aracDurumuEkran(db()),
       });
@@ -764,7 +776,7 @@ function yonlendiriciKur() {
         throw hata(424, 'db_okunamadi', araclar.MESAJ.okunamadi);
       }
       if (etkinArac && Number(etkinArac.id) !== Number(ok.arac_id)) throw hata(409, 'on_kontrol_eski', araclar.MESAJ.onKontrolEski);
-      const deg = dg.onKontrolDegerlendir(jsonOku(ok.on_kontrol_ozet), { hedefTuru: tur, motor, aracli: true, aracSha256: araclar.motorSha(etkinArac, motor) });
+      const deg = dg.onKontrolDegerlendir(jsonOku(ok.on_kontrol_ozet), { hedefTuru: tur, motor, aracli: true, aracSha256: araclar.motorSha(etkinArac, motor), protokol: protokolOf(ok) });
       if (deg.engeller.length) throw hata(409, 'on_kontrol_eski', `Ön kontrol koşuya izin vermiyor: ${deg.engeller.join('; ')}.`, { engeller: deg.engeller });
       // Onaylanacak liste = on kontrolde saklanan plan uyarilari + on kontrol degerlendirmesi (ekranla ayni).
       const sakliPlanUyarilari = metinDizisi(ok.plan_uyarilari);
@@ -784,7 +796,8 @@ function yonlendiriciKur() {
       // Onaylanmamis uyari gecmez: yeniden kurulan planin saklanmayan uyarisi varsa on kontrol eskidir.
       const yeniUyari = plan.uyarilar.find((u) => !sakliPlanUyarilari.includes(u));
       if (yeniUyari) throw hata(409, 'on_kontrol_eski', `Ön kontrolden bu yana yeni uyarı çıktı (${yeniUyari}); ön kontrolü yeniden çalıştırın.`);
-      if (kararliJson(plan.parametreler) !== kararliJson(sakli)) {
+      // Protokolsuz (HTTP/2 seciminden once saklanmis) on kontrol h1 sayilir: dagitim oncesi on kontrol gecerli kalir.
+      if (kararliJson(plan.parametreler) !== kararliJson({ ...sakli, protokol: sakli.protokol ?? 'h1' })) {
         throw hata(409, 'on_kontrol_eski', 'Parametreler ön kontrolden bu yana değişti; ön kontrolü yeniden çalıştırın.');
       }
       const r = await kosuyuBaslat(req, { islem: 'kosu', plan, onKontrolKosuId: okId, onaylananUyarilar: uyarilar, beklenenAracId: Number(ok.arac_id) });
@@ -901,7 +914,7 @@ function yonlendiriciKur() {
       const aracSeti = aracApi
         ? { id: aracApi.id, k6Surum: aracApi.k6Surum, wrkSurum: aracApi.wrkSurum, k6Sha256: aracApi.k6Sha256, wrkSha256: aracApi.wrkSha256, derlemeHost: aracApi.derlemeHost }
         : null;
-      const deg = okOzet ? dg.onKontrolDegerlendir(okOzet, { hedefTuru: tur, motor, aracli: aracId != null, aracSha256: araclar.motorSha(aracSatiri, motor) }) : null;
+      const deg = okOzet ? dg.onKontrolDegerlendir(okOzet, { hedefTuru: tur, motor, aracli: aracId != null, aracSha256: araclar.motorSha(aracSatiri, motor), protokol: protokolOf(k) }) : null;
       // Izinli ag ekran icin env'den SU AN hesaplanir (DB okumaz); playbook'un esledigi girdi onKontrol.serbest_ag.
       const serbestAg = tur === 'serbest' ? (dg.serbestAgBul(k.hedef_ip, dg.serbestAglar()) || {}).metin || null : null;
       const sonucOzet = jsonOku(k.sonuc);
@@ -1196,7 +1209,7 @@ function yonlendiriciKur() {
       const ra = await adimlarOf(ref);
       const aa = await adimlarOf(aday);
       // Motor / hedef turu / is parcacigi / hiz tavani satirdan: k6 ile wrk, farkli is parcacigi ve
-      // farkli tavan_rps (wrk) VERI_YOK; serbest taraf CPU'suz karar yolu (analiz.kararVer, sozlesme 10.2).
+      // farkli tavan_rps (wrk) ve farkli protokol VERI_YOK; serbest taraf CPU'suz karar yolu (analiz.kararVer, sozlesme 10.2).
       const parcacik = (x) => (jsonOku(x.parametreler) || {}).is_parcacigi ?? null;
       const tavan = (x) => (jsonOku(x.parametreler) || {}).tavan_rps ?? null;
       let karar;
@@ -1206,13 +1219,14 @@ function yonlendiriciKur() {
           ...(esikCpu !== undefined ? { esikCpu } : {}), ...(esikP95 !== undefined ? { esikP95 } : {}),
           refMotor: motorOf(r), adayMotor: motorOf(a), refHedefTuru: r.hedef_turu || 'sunucu', adayHedefTuru: a.hedef_turu || 'sunucu',
           refIsParcacigi: parcacik(r), adayIsParcacigi: parcacik(a), refTavanRps: tavan(r), adayTavanRps: tavan(a),
+          refProtokol: protokolOf(r), adayProtokol: protokolOf(a),
         });
       } catch (e) {
         throw hata(424, 'analiz_okunamadi', `Karşılaştırma hesaplanamadı: ${maskele(e && e.message)}`);
       }
       const ozet = (x) => ({
         id: Number(x.id), etiket: x.etiket ?? null, createdAt: iso(x.created_at), gecerlilik: x.gecerlilik ?? null, durum: x.durum,
-        motor: motorOf(x), hedefTuru: x.hedef_turu || 'sunucu',
+        motor: motorOf(x), hedefTuru: x.hedef_turu || 'sunucu', protokol: protokolOf(x),
       });
       res.json({
         ok: true, karar: karar.karar, nedenler: karar.nedenler || [], tablo: karar.tablo || [],
@@ -1239,4 +1253,7 @@ module.exports = {
   _kosuPlaniForTest: kosuPlani,
   _kararliJsonForTest: kararliJson,
   _adimApiForTest: adimApi,
+  _kosuApiForTest: kosuApi,
+  _protokolOfForTest: protokolOf,
+  _LISTE_KOLONLARI: LISTE_KOLONLARI,
 };

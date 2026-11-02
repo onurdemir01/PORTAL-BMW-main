@@ -4,9 +4,9 @@
 // (metin her zaman `metin` alanindan; koyu temada AA). Hub'in yerel smBtn'i ('#fff') KULLANILMAZ.
 import React from 'react';
 import { ExclamationTriangleIcon } from '@heroicons/react/24/outline';
-import type { NlHedefTuru, NlMotor } from '@/api/nginxLoadtestApi';
+import type { NlHedefTuru, NlMotor, NlProtokol } from '@/api/nginxLoadtestApi';
 import { Cip, Hap } from '@/components/server_hub/RetirementUi';
-import { SERBEST_CIP_IPUCU, WRK_CIP_IPUCU, gecerlilikBilgisi, kosuDurumu, ISLEM_ETIKETI } from './yukTestiOrtak';
+import { H2_CIP_IPUCU, SERBEST_CIP_IPUCU, WRK_CIP_IPUCU, gecerlilikBilgisi, kosuDurumu, ISLEM_ETIKETI } from './yukTestiOrtak';
 
 /** Metin / sayi girdisi ve secim kutusu: token renkli; hata varsa tehlike kenari. GIRDI 32px ve tam genislik;
  *  baska boy / genislik isteyen yer GIRDI_TABAN + kendi h-* w-* siniflarini kullanir (iki h-* / w-* carpismasin). */
@@ -61,13 +61,15 @@ export function Alan({ id, etiket, yardim, not, hata, children, className = '' }
   );
 }
 
-/** Serbest hedef ve wrk cipleri (k6 + sunucu varsayilandir: cip YOK). Tur / motor kosu satirindan. */
-export function TurMotorCipleri({ hedefTuru, motor }: { hedefTuru?: NlHedefTuru | null; motor?: NlMotor | null }) {
-  if (hedefTuru !== 'serbest' && motor !== 'wrk') return null;
+/** Serbest hedef, wrk ve HTTP/2 cipleri (k6 + sunucu + HTTP/1.1 varsayilandir: cip YOK). Tur / motor / protokol kosu satirindan. */
+export function TurMotorCipleri({ hedefTuru, motor, protokol }: { hedefTuru?: NlHedefTuru | null; motor?: NlMotor | null; protokol?: NlProtokol | null }) {
+  const h2 = protokol === 'h2' && motor !== 'wrk';
+  if (hedefTuru !== 'serbest' && motor !== 'wrk' && !h2) return null;
   return (
     <>
       {hedefTuru === 'serbest' && <Cip ton="uyari" cerceve title={SERBEST_CIP_IPUCU}>serbest</Cip>}
       {motor === 'wrk' && <Cip cerceve title={WRK_CIP_IPUCU}>wrk</Cip>}
+      {h2 && <Cip cerceve title={H2_CIP_IPUCU}>HTTP/2</Cip>}
     </>
   );
 }

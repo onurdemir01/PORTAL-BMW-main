@@ -18,13 +18,15 @@
 // kopya kapisi: Play 8 ayni null'u yayinlar) satir "ölçülemedi".
 // TUR 4 (2026-11-02): aracli satirda (aracId != null) motor satirindan once "Araç kopyası (sha256)" (iki hedef turunde);
 // eski satirda bu satir YOK. Yuk sunucusunun glibc'si bilgi satirinda.
+// HTTP/2 (2026-11-02, h2_sozlesme.md 5.2): h2 kosusunun on kontrolunde son satir "HTTP/2 (ALPN)" (gecti: her yanitli yol h2;
+// kaldi: hedef h2 sunmuyor; olculemedi: curl h2'siz / yanitli yol yok / eski playbook). h1'de satir YOK (gorunum BIREBIR).
 import React from 'react';
 import { CheckCircleIcon, ExclamationTriangleIcon, MinusCircleIcon, XCircleIcon } from '@heroicons/react/24/outline';
 import type { NlKosuAyrinti, NlMotor, NlOnKontrol } from '@/api/nginxLoadtestApi';
 import { TableEmptyRow } from '@/components/common/EmptyState';
 import { fmtNumber } from '@/utils/datetime';
 import { TabloIskelet, UyariKutusu, type Kolon } from '@/components/server_hub/RetirementUi';
-import { motorOf, onKontrolDegerlendir } from './yukTestiOrtak';
+import { kosuProtokolu, motorOf, onKontrolDegerlendir } from './yukTestiOrtak';
 
 type Sonuc = 'gecti' | 'kaldi' | 'uyari' | 'yok';
 const IKON: Record<Sonuc, { Ikon: React.ComponentType<React.SVGProps<SVGSVGElement>>; renk: string; ad: string }> = {
@@ -63,9 +65,20 @@ function aracSatiri(o: NlOnKontrol): Kontrol {
   if (o.aracDogrulandi === false || (o.aracDogrulandi === true && o.aracHata)) return { ad, sonuc: 'kaldi', deger: o.aracHata || undefined };
   return { ad, sonuc: 'yok' };
 }
-function kontroller(o: NlOnKontrol, serbest: boolean, motor: NlMotor, isHatasi: string | null, aracli: boolean): Kontrol[] {
-  // Eski (aracsiz) satirda arac satiri YOK: gorunum degismez.
+/** HTTP/2 (ALPN) satiri: n2 / ny sayilari bilinmiyorsa '?'. On kontrol h2 icin yapilmadiysa (protokol h1) ya da curl h2'siz
+ *  ya da yanitli yol yoksa olculemedi (gecti DEGIL). */
+function h2Satiri(o: NlOnKontrol): Kontrol {
+  const ad = 'HTTP/2 (ALPN)';
+  const s = (v: number | null | undefined) => (v == null ? '?' : fmtNumber(v));
+  const yapilmadi = typeof o.protokol === 'string' && o.protokol !== 'h2';
+  if (!yapilmadi && o.alpnH2 === true) return { ad, sonuc: 'gecti', deger: `${s(o.yollarH2)}/${s(o.yollarYanitli)} yol HTTP/2 ile yanıt verdi` };
+  if (!yapilmadi && o.alpnH2 === false && o.curlH2 !== false) return { ad, sonuc: 'kaldi', deger: `Hedef bu Host için HTTP/2 sunmuyor (${s(o.yollarH2)}/${s(o.yollarYanitli)} yol)` };
+  return { ad, sonuc: 'yok', deger: o.curlH2 === false ? 'curl HTTP/2 desteklemiyor' : undefined };
+}
+function kontroller(o: NlOnKontrol, serbest: boolean, motor: NlMotor, isHatasi: string | null, aracli: boolean, h2: boolean): Kontrol[] {
+  // Eski (aracsiz) satirda arac satiri YOK: gorunum degismez. h1'de HTTP/2 satiri YOK.
   const arac = aracli ? [aracSatiri(o)] : [];
+  const h2Satirlari = h2 ? [h2Satiri(o)] : [];
   if (serbest) {
     return [
       // Hedef IP yuk sunucusunun kendisi olamaz (istek gonderilmez): yerel DEGIL = gecti.
@@ -76,6 +89,7 @@ function kontroller(o: NlOnKontrol, serbest: boolean, motor: NlMotor, isHatasi: 
       ...arac,
       motorSatiri(o, motor),
       yollarSatiri(o),
+      ...h2Satirlari,
     ];
   }
   const df = o.webLogDf;
@@ -90,6 +104,7 @@ function kontroller(o: NlOnKontrol, serbest: boolean, motor: NlMotor, isHatasi: 
     ...arac,
     motorSatiri(o, motor),
     yollarSatiri(o),
+    ...h2Satirlari,
   ];
 }
 
@@ -97,18 +112,19 @@ const HATA_KOLONLARI: Kolon[] = [{ anahtar: 'yol', baslik: 'Yol' }, { anahtar: '
 
 export type OnKontrolBaglami = 'sihirbaz' | 'kayit';
 export default function OnKontrolPaneli({ kosu, baglam = 'sihirbaz' }: {
-  kosu: Pick<NlKosuAyrinti, 'durum' | 'onKontrol'> & Partial<Pick<NlKosuAyrinti, 'sunucuDegerlendirmesi' | 'isDurumu' | 'isHatasi' | 'hedefTuru' | 'motor' | 'parametreler' | 'aracId'>>;
+  kosu: Pick<NlKosuAyrinti, 'durum' | 'onKontrol'> & Partial<Pick<NlKosuAyrinti, 'sunucuDegerlendirmesi' | 'isDurumu' | 'isHatasi' | 'hedefTuru' | 'motor' | 'parametreler' | 'aracId' | 'protokol'>>;
   baglam?: OnKontrolBaglami;
 }) {
   const o = kosu.onKontrol;
   const d = onKontrolDegerlendir(kosu);
   const kayit = baglam === 'kayit';
   const motor: NlMotor = kosu.motor === 'wrk' || kosu.motor === 'k6' ? kosu.motor : motorOf(kosu.parametreler);
+  const h2 = motor !== 'wrk' && kosuProtokolu(kosu) === 'h2';
   return (
     <div className="space-y-3">
       {o ? (
         <ul className="grid gap-x-4 gap-y-1.5 @lg/yuk:grid-cols-2" aria-label="Ön kontrol maddeleri">
-          {kontroller(o, kosu.hedefTuru === 'serbest', motor, kosu.isHatasi ?? null, kosu.aracId != null).map((k) => {
+          {kontroller(o, kosu.hedefTuru === 'serbest', motor, kosu.isHatasi ?? null, kosu.aracId != null, h2).map((k) => {
             const i = IKON[k.sonuc];
             return (
               <li key={k.ad} className="flex min-w-0 items-center gap-2 text-[12px] leading-5">

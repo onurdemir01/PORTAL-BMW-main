@@ -12,7 +12,8 @@
 //  - Butce (butceSn) <= maxButceSn: asarsa once tekrar, sonra olcum suresi, en son kademe sayisi azaltilir.
 //  - Standart = sunucunun /hedefler varsayilani (serbestte serbest varsayilani); varsayilan hiz hedef sinirini asarsa
 //    hizlar sinirin %25 / %50 / %85'ine olceklenir. Hizli deneme ~5 dk kucuk yuk, Kapasite sinira kadar 5 kademe.
-import type { NlMotor, NlParametreler, NlSinirlar, NlVarsayilanlar } from '@/api/nginxLoadtestApi';
+//  - HTTP/2 (h2_sozlesme.md): hazir ayar protokolu DEGISTIRMEZ; h2'de kanonik parametrenin kipi 'ka' (h2 yalniz keep-alive).
+import type { NlMotor, NlParametreler, NlProtokol, NlSinirlar, NlVarsayilanlar } from '@/api/nginxLoadtestApi';
 import { butceSn, sinirlariTamamla } from './yukTestiOrtak';
 
 export type HazirAyarAdi = 'hizli' | 'standart' | 'kapasite';
@@ -120,13 +121,16 @@ export function hazirAyar(ad: HazirAyarAdi, sinir: NlSinirlar, varsayilan: NlVar
   };
 }
 
-/** Hazir ayarin motora gore kanonik parametresi (butce ve parametreHatalari icin; kip / ae disaridan). */
-export function hazirAyarParametresi(d: HazirAyarDegerleri, motor: NlMotor, kip: NlParametreler['kip'] = 'yeni', ae: NlParametreler['ae'] = 'br'): NlParametreler {
+/** Hazir ayarin motora gore kanonik parametresi (butce ve parametreHatalari icin; kip / ae / protokol disaridan). wrk her
+ *  zaman h1; h2'de kip 'ka' (HTTP/2 yalniz keep-alive). */
+export function hazirAyarParametresi(d: HazirAyarDegerleri, motor: NlMotor, kip: NlParametreler['kip'] = 'yeni', ae: NlParametreler['ae'] = 'br', protokol: NlProtokol = 'h1'): NlParametreler {
   const sayilar = (x: string) => x.split(/\s+/).filter(Boolean).map(Number);
+  const h2 = protokol === 'h2' && motor !== 'wrk';
   return {
     motor,
     ...(motor === 'wrk' ? { baglantilar: sayilar(d.baglantilar), is_parcacigi: Number(d.is_parcacigi) } : { hizlar: sayilar(d.hizlar), maxvu: Number(d.maxvu) }),
-    tekrar: Number(d.tekrar), isinma: Number(d.isinma), sure: Number(d.sure), bosluk: Number(d.bosluk), bosta: Number(d.bosta), kip, ae,
+    tekrar: Number(d.tekrar), isinma: Number(d.isinma), sure: Number(d.sure), bosluk: Number(d.bosluk), bosta: Number(d.bosta), kip: h2 ? 'ka' : kip, ae,
+    protokol: h2 ? 'h2' : 'h1',
   };
 }
 export const hazirAyarSuresiSn = (d: HazirAyarDegerleri, motor: NlMotor) => butceSn(hazirAyarParametresi(d, motor));
@@ -162,4 +166,9 @@ export const ALAN_ACIKLAMASI = {
   sni: 'TLS el sıkışmasında Host başlığındaki adı gönderir; sunucu sertifikayı ada göre seçiyorsa açın, bağlantı yine seçilen IP’ye gider.',
   sniWrk: 'wrk SNI’yi Host başlığına göre seçemez (IP adresi SNI olarak gider).',
   etiket: 'Karşılaştırmada bu koşuyu tanımak için kısa not; ör. “T0 — F5 öncesi” ya da “gzip_static açık”.',
+  // HTTP/2 (h2_sozlesme.md 5.2; metinler AYNEN).
+  protokol: 'Tarayıcılar çoğunlukla HTTP/2 kullanır; HTTP/2 sunucunun CPU’sunu ve yanıt süresini HTTP/1.1’den farklı etkiler, bu yüzden sonuçlar yalnız aynı protokolle koşulan koşularla karşılaştırılır.',
+  protokolWrk: 'wrk yalnız HTTP/1.1 konuşur; HTTP/2 için yük aracı olarak k6’yı seçin.',
+  protokolYok: 'Sunucu bu sürümde HTTP/2 koşusunu kabul etmiyor.',
+  kipH2: 'HTTP/2 yalnız keep-alive ile koşulur: tarayıcılar HTTP/2’de bağlantıyı açık tutar, her isteğe yeni bağlantı açmaz.',
 } as const;

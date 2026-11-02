@@ -21,9 +21,11 @@
 // ikincil; reload ani sunucu verdiyse) ve adim basina ozet tablo (SonucOzeti.tsx). CPU-ms/istek, kapasite, drop,
 // grafikler ve teknik adim tablosu kapali "Ayrıntı" bolumunde. CPU-ms/istek ve kapasite ASLA negatif: deger yoksa "—"
 // ve nedeni (cpuOlculemedi) ipucunda.
+// HTTP/2 (2026-11-02, h2_sozlesme.md 5.3): ust bilgide "Protokol" (HTTP/1.1 / HTTP/2; wrk "HTTP/1.1 (wrk)") ve h2 cipi;
+// h2 kosu uyarisi (k6 VU basina tek akis) analiz uyarilarindan ayri, bilgi tonunda; on kontrol paneline protokol gider.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeftIcon, ArrowPathIcon, ChevronDownIcon, ChevronRightIcon, StopCircleIcon } from '@heroicons/react/24/outline';
-import { nginxLoadtestApi, type NlAdim, type NlKosuAyrinti, type NlMotor } from '@/api/nginxLoadtestApi';
+import { nginxLoadtestApi, type NlAdim, type NlKosuAyrinti, type NlMotor, type NlProtokol } from '@/api/nginxLoadtestApi';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { toast } from '@/hooks/useToast';
 import { Modal } from '@/components/common/Modal';
@@ -33,13 +35,13 @@ import { BTN_TEHLIKE, BTN_UYARI, LINK, SM_BTN, TBL_BTN, TH_STIL, TON, smBtn } fr
 import { Cip, Hap, OzetHucre, UyariKutusu } from '@/components/server_hub/RetirementUi';
 import { sureMetni } from '@/components/server_hub/retirementCikti';
 import HizGrafigi from './Grafik';
-import { cpuOlculemediMetni, nedenAcikla, uyariAcikla } from './nedenler';
+import { H2_UYARI_KODU_RE, cpuOlculemediMetni, nedenAcikla, uyariAcikla } from './nedenler';
 import { KosuOzetSatiri, NedenListesi, OzetTablosu, nedenGruplari, ozetSec, reloadOzetMetni } from './SonucOzeti';
 import KosuCiktisi from './KosuCiktisi';
 import OnKontrolPaneli from './OnKontrolPaneli';
 import { Bolum, GecerlilikHapi, KosuDurumHapi, Tanim, TurMotorCipleri, islemEtiketi } from './YukUi';
 import {
-  AE_ETIKETI, AKTIF_DURUMLAR, KIP_ETIKETI, OKUNAMADI_ACIKLAMASI, SONUC_DENEME_SINIRI, adimDegerleri, adimEtiketi, adimGecerliligi, adimSirala, butceSn,
+  AE_ETIKETI, AKTIF_DURUMLAR, KIP_ETIKETI, OKUNAMADI_ACIKLAMASI, PROTOKOL_ETIKETI, kosuProtokolu, SONUC_DENEME_SINIRI, adimDegerleri, adimEtiketi, adimGecerliligi, adimSirala, butceSn,
   durdurBaslatilamadiMetni, gecerlilikBilgisi, hataMetni, hizGrupla, kademeMetni, kalanSurecDurdurulabilir, motorOf, ondalik, seriAdi, sonucOkunuyorMetni,
   turEtiketi, uyarilariAyir, yenidenOkunabilir, yuzde, type AdimBirimi,
 } from './yukTestiOrtak';
@@ -185,6 +187,8 @@ export default function KosuAyrinti({ kosuId, isAdmin, onGeri }: { kosuId: numbe
   const durdurDugmesi = aktif ? 'Durdur' : 'Kalan süreçleri durdur';
   const serbest = kosu.hedefTuru === 'serbest';
   const motor = kosuMotoru(kosu);
+  // wrk her zaman HTTP/1.1 konusur (satir ne derse desin).
+  const protokol = motor === 'wrk' ? 'h1' : kosuProtokolu(kosu);
   // Adim degerleri ve birim kosunun motoruyla (wrk kaydinda `hizlar` yok; dogrudan p.hizlar okunmaz).
   const ad = adimDegerleri(p ? { ...p, motor } : { motor });
   // Serbest hedefte durdurma yalniz yuk sunucusunda (hedef sunucu yok, kaydedici yok); arac adi motorla.
@@ -202,7 +206,7 @@ export default function KosuAyrinti({ kosuId, isAdmin, onGeri }: { kosuId: numbe
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-[15px] font-semibold leading-6" style={{ color: 'var(--text-primary)' }}>{islemEtiketi(kosu.islem)} #{kosu.id}</h2>
               {kosu.adim && <Cip cerceve>{kosu.adim}</Cip>}
-              <TurMotorCipleri hedefTuru={kosu.hedefTuru} motor={motor} />
+              <TurMotorCipleri hedefTuru={kosu.hedefTuru} motor={motor} protokol={protokol} />
               <KosuDurumHapi durum={kosu.durum} />
               {kosu.durum === 'FINALIZING' && kosu.sonuclandirmaDenemesi >= 1 && (
                 <span className="text-[11px] tabular-nums" style={{ color: 'var(--text-secondary)' }} title={sonucOkunuyorMetni(kosu.sonuclandirmaDenemesi)}>{`deneme ${fmtNumber(kosu.sonuclandirmaDenemesi)}/${SONUC_DENEME_SINIRI}`}</span>
@@ -252,6 +256,7 @@ export default function KosuAyrinti({ kosuId, isAdmin, onGeri }: { kosuId: numbe
             <Tanim etiket="Hızlar · tekrar" title={p ? `${ad.degerler.join(', ')} istek/sn` : ''}>{p ? `${ad.degerler.join(' · ')} /sn × ${p.tekrar}` : '—'}</Tanim>
           )}
           <Tanim etiket="Süreler" title={p ? `ısınma ${p.isinma} sn, ölçüm ${p.sure} sn, bekleme ${p.bosluk} sn, boşta ölçüm ${p.bosta} sn` : ''}>{p ? `${p.isinma} + ${p.sure} sn · ara ${p.bosluk} sn` : '—'}</Tanim>
+          <Tanim etiket="Protokol">{motor === 'wrk' ? `${PROTOKOL_ETIKETI.h1} (wrk)` : PROTOKOL_ETIKETI[protokol]}</Tanim>
           <Tanim etiket={ad.motor === 'wrk' ? 'Bağlantı kipi · sıkıştırma' : 'Bağlantı · sıkıştırma'}>{p ? `${KIP_ETIKETI[p.kip] || p.kip} · ${AE_ETIKETI[p.ae] || p.ae}` : '—'}</Tanim>
           <Tanim etiket="Başlatan" title={kosu.createdBy || ''}>{kosu.createdBy || '—'}</Tanim>
           <Tanim etiket="Başladı" title={fmtDateTime(kosu.startedAt || kosu.createdAt)}>{fmtDateTime(kosu.startedAt || kosu.createdAt)}</Tanim>
@@ -283,11 +288,11 @@ export default function KosuAyrinti({ kosuId, isAdmin, onGeri }: { kosuId: numbe
           })}
         </div>
         <div role="tabpanel" id={panelId} aria-labelledby={`yuk-sekme-${kosu.id}-${etkin}`} tabIndex={0} className="p-4">
-          {etkin === 'sonuc' && <Sonuclar kosu={kosu} adimlar={adimlar} aktif={aktif} birim={ad.birim} />}
+          {etkin === 'sonuc' && <Sonuclar kosu={kosu} adimlar={adimlar} aktif={aktif} birim={ad.birim} protokol={protokol} />}
           {/* Kosunun dayandigi on kontrol, KENDI durumuyla (DONE/OK: kosu ancak oyle baslar) degerlendirilir - kosunun
               RUNNING / FAILED durumu on kontrolu "temiz" ya da "başarısız" gostermez. */}
           {etkin === 'onkontrol' && (kosu.islem === 'kosu' && kosu.onKontrol
-            ? <OnKontrolPaneli kosu={{ durum: 'DONE', onKontrol: kosu.onKontrol, sunucuDegerlendirmesi: kosu.sunucuDegerlendirmesi, isDurumu: 'OK', isHatasi: null, hedefTuru: kosu.hedefTuru, motor, aracId: kosu.aracId }} baglam="kayit" />
+            ? <OnKontrolPaneli kosu={{ durum: 'DONE', onKontrol: kosu.onKontrol, sunucuDegerlendirmesi: kosu.sunucuDegerlendirmesi, isDurumu: 'OK', isHatasi: null, hedefTuru: kosu.hedefTuru, motor, aracId: kosu.aracId, parametreler: kosu.parametreler, protokol }} baglam="kayit" />
             : kosu.onKontrol || !aktif
               ? <OnKontrolPaneli kosu={kosu} />
               : <UyariKutusu ton="bilgi" rol="status" baslik="Ön kontrol sürüyor — sonuç iş bitince burada görünür." />)}
@@ -329,13 +334,15 @@ export default function KosuAyrinti({ kosuId, isAdmin, onGeri }: { kosuId: numbe
 }
 
 // ── Sonuclar ────────────────────────────────────────────────────────────────────────
-function Sonuclar({ kosu, adimlar, aktif, birim }: { kosu: NlKosuAyrinti; adimlar: NlAdim[]; aktif: boolean; birim: AdimBirimi }) {
+function Sonuclar({ kosu, adimlar, aktif, birim, protokol }: { kosu: NlKosuAyrinti; adimlar: NlAdim[]; aktif: boolean; birim: AdimBirimi; protokol: NlProtokol }) {
   const serbest = kosu.hedefTuru === 'serbest';
   const wrk = birim === 'bağlantı';
   const nproc = kosu.analiz.nproc;
   const gruplar = hizGrupla(adimlar, nproc);
   const g = gecerlilikBilgisi(kosu.gecerlilik);
-  const uyarilar = kosu.analiz.uyarilar;
+  // HTTP/2 kosu uyarisi olcum modelini anlatir (bilgi): uyari kutusunda sayilmaz, ayri bilgi kutusunda.
+  const h2Bilgisi = kosu.analiz.uyarilar.filter((u) => H2_UYARI_KODU_RE.test(u));
+  const uyarilar = kosu.analiz.uyarilar.filter((u) => !H2_UYARI_KODU_RE.test(u));
   const ayrik = uyarilariAyir(uyarilar);
   const hizlar =[...new Set(gruplar.map((x) => x.hiz))].sort((a, b) => a - b);
   // Kademeler analiz.cjs ile ayni: CPU = ortadaki hiz, p95 = en yuksek hiz.
@@ -386,7 +393,8 @@ function Sonuclar({ kosu, adimlar, aktif, birim }: { kosu: NlKosuAyrinti; adimla
           {adimlar.length > 0 && <p>Tamamlanan adımlar aşağıda; yarım kalan adım geçersiz sayılır.</p>}
         </UyariKutusu>
       )}
-      {adimlar.length > 0 && <KosuOzetSatiri ozet={ozet} adimlar={adimlar} birim={birim} />}
+      {adimlar.length > 0 && <KosuOzetSatiri ozet={ozet} adimlar={adimlar} birim={birim} protokol={protokol} />}
+      {h2Bilgisi.length > 0 && <UyariKutusu ton="bilgi" rol="status" baslik={uyariAcikla(h2Bilgisi[0]).cumle} />}
       {g && !aktif && !(okunamadi && kosu.gecerlilik === 'OKUNAMADI') && (
         <div className="rounded-lg px-3 py-2.5" style={{ background: TON[g.ton].zemin, boxShadow: `inset 4px 0 0 ${TON[g.ton].renk}, inset 0 0 0 1px ${TON[g.ton].kenar}` }} role="status">
           <div className="text-[13px] font-semibold leading-5" style={{ color: TON[g.ton].metin }}>Ölçüm {g.etiket}</div>

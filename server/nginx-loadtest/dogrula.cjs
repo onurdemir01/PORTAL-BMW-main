@@ -85,11 +85,14 @@ const VARSAYILAN = Object.freeze({
   motor: 'k6',
   baglantilar: Object.freeze([2, 4, 8]),
   is_parcacigi: 2,
+  // HTTP surumu (h1 = HTTP/1.1, h2 = HTTP/2; h2 yalniz k6 + kip ka). Alani olmayan eski satir h1.
+  protokol: 'h1',
   // Serbest hedefte tanimsiz hizlar / maxvu buradan (sunucuda yukaridaki degerler).
   serbest: Object.freeze({ hizlar: Object.freeze([50, 100, 200]), maxvu: 50 }),
 });
 
 const MOTORLAR = Object.freeze(['k6', 'wrk']);
+const PROTOKOLLER = Object.freeze(['h1', 'h2']);
 const HEDEF_TURLERI = Object.freeze(['sunucu', 'serbest']);
 const IZINLI_ORTAM = new Set(['DEV', 'TEST', 'QA']);
 const KIPLER = new Set(['yeni', 'ka']);
@@ -422,8 +425,9 @@ function sifirSinir(hizSiniri, vuSiniri) {
  * `hizSiniri` / `vuSiniri`: hedefin olculmus rate limitinden daraltilmis tavan (yoksa null; 0 ise
  * hedef yuk testine KAPALI: 409 sinir_asildi).
  * Kanonik nesneler (ilgisiz anahtar GIRMEZ; motor'suz eski nesne k6 sayilir):
- *   k6  { motor:'k6', hizlar, tekrar, isinma, sure, bosluk, bosta, maxvu, kip, ae, sni, butceSn }
- *   wrk { motor:'wrk', baglantilar, is_parcacigi, tavan_rps, tekrar, isinma, sure, bosluk, bosta, kip, ae, sni:false, butceSn }
+ *   k6  { motor:'k6', hizlar, tekrar, isinma, sure, bosluk, bosta, maxvu, kip, ae, sni, protokol, butceSn }
+ *   wrk { motor:'wrk', baglantilar, is_parcacigi, tavan_rps, tekrar, isinma, sure, bosluk, bosta, kip, ae, sni:false, protokol:'h1', butceSn }
+ * protokol: yoksa 'h1'; 'h2' yalniz k6 ve kip 'ka' (HTTP/2'de her istege yeni baglanti tarayici davranisi degil).
  * `tavan_rps` girdiden ALINMAZ: sunucu min(450, hizSiniri), serbest min(200, ...). Serbest hedefte
  * iki motorda hiz / tavan <= 200 ve VU / baglanti <= 50.
  */
@@ -464,6 +468,12 @@ function parametreler(ham, { sni, hizSiniri = null, vuSiniri = null, hedefTuru =
   const ae = al('ae');
   if (!KIPLER.has(kip)) return red(400, 'gecersiz_istek', "kip 'yeni' ya da 'ka' olmalı.");
   if (!AE_DEGERLERI.has(ae)) return red(400, 'gecersiz_istek', "ae 'br', 'gzip' ya da 'identity' olmalı.");
+  const protokol = g.protokol === undefined ? VARSAYILAN.protokol : g.protokol;
+  if (!PROTOKOLLER.includes(protokol)) return red(400, 'gecersiz_istek', "protokol 'h1' ya da 'h2' olmalı.");
+  if (wrk && protokol === 'h2') return red(400, 'gecersiz_istek', 'HTTP/2 yalnız k6 ile seçilebilir; wrk yalnız HTTP/1.1 konuşur.');
+  if (protokol === 'h2' && kip !== 'ka') {
+    return red(400, 'gecersiz_istek', 'HTTP/2 yalnız keep-alive (ka) bağlantı kipiyle koşulur; HTTP/2’de her isteğe yeni bağlantı tarayıcı davranışı değildir.');
+  }
   if (typeof sni !== 'boolean') return red(400, 'gecersiz_istek', 'sni true/false olmalı.');
   // wrk SNI olarak URL'deki IP'yi gonderir: Host basligina gore secemez. Gizli donusum YOK.
   if (wrk && sni) return red(400, 'gecersiz_istek', WRK_SNI_MESAJI);
@@ -514,8 +524,8 @@ function parametreler(ham, { sni, hizSiniri = null, vuSiniri = null, hedefTuru =
   aralik('bosta', SINIRLAR.bostaMin, SINIRLAR.bostaMax, 'boşta başlangıç');
   if (!wrk) aralik('maxvu', SINIRLAR.maxVuMin, Math.min(serbest ? SINIRLAR.serbestMaxBaglanti : SINIRLAR.maxVu, olculenVu), 'maxvu', serbest ? SERBEST_EKI : '');
   const p = wrk
-    ? { motor: 'wrk', baglantilar, is_parcacigi: isParcacigi, tavan_rps: tavanRps, ...sayilar, kip, ae, sni: false }
-    : { motor: 'k6', hizlar, ...sayilar, kip, ae, sni };
+    ? { motor: 'wrk', baglantilar, is_parcacigi: isParcacigi, tavan_rps: tavanRps, ...sayilar, kip, ae, sni: false, protokol: 'h1' }
+    : { motor: 'k6', hizlar, ...sayilar, kip, ae, sni, protokol };
   if (!asim.length) {
     const b = butceSn(p);
     if (b > SINIRLAR.maxButceSn) asim.push(`toplam süre ${b} sn > ${SINIRLAR.maxButceSn} sn (hız/tekrar/süre azaltın)`);
@@ -695,14 +705,18 @@ const SAYI = (v) => {
  * olcumu (false ya da null) ENGEL degil, listenin BASINDA uyari (joker / regex server_name).
  * Serbest: hedef kurallari (ip_yerel, server_name, log dizini, master, df, log_format) yok; yollar
  * ve sikistirma iki kipte ayni (yuk makinesi tarafi). Sabit uyarilar listenin sonunda.
+ * protokol (kosu SATIRININ parametreler.protokol'u, yoksa 'h1'): h1'de cikti BIREBIR eskisi (h2
+ * alanlari okunmaz). h2'de motor blogundan hemen sonra TEK engel (ilk tutan): on kontrol h2 icin
+ * yapilmadi > curl h2'siz > hedef ALPN ile h2 sunmuyor > olculemedi (fail-closed).
  */
-function onKontrolDegerlendir(ok, { hedefTuru = 'sunucu', motor = 'k6', aracli = false, aracSha256 = null } = {}) {
+function onKontrolDegerlendir(ok, { hedefTuru = 'sunucu', motor = 'k6', aracli = false, aracSha256 = null, protokol = 'h1' } = {}) {
   const engeller = [];
   const uyarilar = [];
   if (!ok || typeof ok !== 'object') return { engeller: ['ön kontrol sonucu okunamadı'], uyarilar };
   if (!HEDEF_TURLERI.includes(hedefTuru) || !MOTORLAR.includes(motor)) {
     return { engeller: ['ön kontrol sonucu okunamadı (hedef türü ya da yük aracı tanınmadı)'], uyarilar };
   }
+  if (!PROTOKOLLER.includes(protokol)) return { engeller: ['ön kontrol sonucu okunamadı (protokol tanınmadı)'], uyarilar };
   const serbest = hedefTuru === 'serbest';
   if (serbest) {
     if (!HAYIR(ok.ip_yuk_makinesinde)) engeller.push('hedef IP yük makinesinde yerel ya da ölçülemedi');
@@ -717,6 +731,19 @@ function onKontrolDegerlendir(ok, { hedefTuru = 'sunucu', motor = 'k6', aracli =
         : 'wrk yük makinesinde bulunamadı ya da çalıştırılamıyor');
     }
   } else if (!EVET(ok.k6_var)) engeller.push('k6 yük makinesinde bulunamadı');
+  if (protokol === 'h2') {
+    const h2Engeli = (() => {
+      if (typeof ok.protokol === 'string' && ok.protokol !== 'h2') return 'ön kontrol HTTP/2 için yapılmadı; ön kontrolü yeniden çalıştırın';
+      if (ok.curl_h2 === false) return 'yük makinesindeki curl HTTP/2 desteklemiyor; HTTP/2 ön kontrolü yapılamadı';
+      if (ok.alpn_h2 === false) {
+        const s = (v) => (SAYI(v) === null ? '?' : String(SAYI(v)));
+        return `Hedef bu Host için HTTP/2 sunmuyor (ALPN): ${s(ok.yollar_h2)}/${s(ok.yollar_yanitli)} yol HTTP/2 ile yanıt verdi. nginx’te bu server bloğunda http2 açık değil ya da SNI kapalıyken IP:443’ün varsayılan sunucusu HTTP/2 sunmuyor; HTTP/1.1 ile koşun ya da SNI’yi açın.`;
+      }
+      if (ok.alpn_h2 !== true) return 'HTTP/2 desteği ölçülemedi (playbook HTTP/2 ön kontrolünü desteklemiyor olabilir; Ansible deposunu güncelleyin)';
+      return null;
+    })();
+    if (h2Engeli) engeller.push(h2Engeli);
+  }
   // CPU kaydedici /web_log'u okuyamazsa sunucu tarafi olcum yok: playbook bunu ENGEL sayar.
   if (!serbest && HAYIR(ok.log_dizini_okunur)) engeller.push('log dizini /web_log okunamıyor');
   // Tur 4: arac setiyle baslatilan satir (arac_id dolu). Eski satir (aracli false) BIREBIR eskisi gibi.
@@ -884,7 +911,7 @@ function kosuDizini(kok, kosuId) {
 
 // Sozlesme bolum 3: gonderilen TUM anahtarlar (fazlasi ve eksigi son kapida reddedilir). Tur 2'nin
 // 23 anahtari aynen, ardindan tur 3'un 7 anahtari, ardindan tur 4'un 3 arac anahtari (33; sira
-// playbook README tablosuyla ayni).
+// playbook README tablosuyla ayni), ardindan HTTP/2 secimi yuk_protokol (34).
 const EKSTRA_ANAHTARLAR = Object.freeze([
   'yuk_islem', 'yuk_run_id', 'yuk_hedef_host', 'yuk_yuk_host', 'yuk_hedef_ip', 'yuk_host_basligi', 'yuk_sni',
   'yuk_senaryo_tur', 'yuk_senaryo_b64', 'yuk_senaryo_sha256', 'yuk_hizlar', 'yuk_tekrar', 'yuk_kip', 'yuk_ae',
@@ -892,6 +919,7 @@ const EKSTRA_ANAHTARLAR = Object.freeze([
   'yuk_ua_onek', 'yuk_cikti_kok',
   'yuk_hedef_turu', 'yuk_motor', 'yuk_baglantilar', 'yuk_is_parcacigi', 'yuk_wrk_yolu', 'yuk_tavan_rps', 'yuk_son_epoch',
   'yuk_arac_dizin', 'yuk_k6_sha256', 'yuk_wrk_sha256',
+  'yuk_protokol',
 ]);
 
 /**
@@ -901,6 +929,7 @@ const EKSTRA_ANAHTARLAR = Object.freeze([
  * (Relaunch) playbook kapisinda reddedilir. Durdur eski (motor'suz) satirdan da kurulur: k6.
  * Tur 4: `arac` = etkin arac seti { dizin, k6Sha256, wrkSha256 } (on kontrol / kosu); null (durdur)
  * -> uc alan ''. yuk_k6_yolu / yuk_wrk_yolu her kipte SABIT isaret degeri.
+ * yuk_protokol HER ZAMAN gonderilir: 'h2' yalniz p.protokol === 'h2' iken, aksi (eski satir, durdur) 'h1'.
  */
 function ekstraDegiskenler({ islem, kosuId, hedefHost, yukHost, hedefIp, vhost, senaryo, p, ua = UA_ONEK, kok, hedefTuru = 'sunucu', arac = null, simdiSn = Math.floor(Date.now() / 1000) }) {
   const wrkMi = p.motor === 'wrk';
@@ -939,6 +968,7 @@ function ekstraDegiskenler({ islem, kosuId, hedefHost, yukHost, hedefIp, vhost, 
     yuk_arac_dizin: arac ? String(arac.dizin ?? '') : '',
     yuk_k6_sha256: arac ? String(arac.k6Sha256 ?? '') : '',
     yuk_wrk_sha256: arac ? String(arac.wrkSha256 ?? '') : '',
+    yuk_protokol: p.protokol === 'h2' ? 'h2' : 'h1',
   };
 }
 
@@ -1017,6 +1047,10 @@ function ekstraDegiskenleriDenetle(ev, { simdiSn = Math.floor(Date.now() / 1000)
     aralik('yuk_tekrar', 1, SINIRLAR.maxTekrar);
     if (!KIPLER.has(ev.yuk_kip)) ihlal.push('yuk_kip');
     if (!AE_DEGERLERI.has(ev.yuk_ae)) ihlal.push('yuk_ae');
+    // Protokol: h1 | h2; h2 yalniz k6 ve kip ka (playbook kapisinin uc satiri).
+    if (!PROTOKOLLER.includes(ev.yuk_protokol) || (wrk && ev.yuk_protokol !== 'h1') || (ev.yuk_protokol === 'h2' && ev.yuk_kip !== 'ka')) {
+      ihlal.push('yuk_protokol');
+    }
     aralik('yuk_isinma_sn', SINIRLAR.isinmaMin, SINIRLAR.isinmaMax);
     aralik('yuk_sure_sn', SINIRLAR.sureMin, SINIRLAR.sureMax);
     aralik('yuk_bosluk_sn', SINIRLAR.boslukMin, SINIRLAR.boslukMax);
@@ -1537,6 +1571,7 @@ module.exports = {
   VARSAYILAN,
   UA_ONEK,
   MOTORLAR,
+  PROTOKOLLER,
   HEDEF_TURLERI,
   WRK_SURUM,
   ESKI_K6_ISARETI,

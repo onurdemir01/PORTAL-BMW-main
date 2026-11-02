@@ -8,7 +8,10 @@
 // varsayilani yok), SNI'da hosts eslemesi HOST_BASLIGI ile.
 // K7: k6 ve wrk istemci dosyalari ayni semayi tasir: ozet_hesapla ciktisinin anahtar sirasi = wrk_kos.sh
 // JSON_ANAHTARLARI (wrk_kos.sh'in awk bicimleyicisi bu sirayla yazar; Portal okuyucusu iki motorda tek).
-// Gercek k6 davranisini (TLS, HTTP/1.1, esik iptali) DOGRULAMAZ; o kisim ilk kanarya kosusunda gorulur.
+// K-H1..K-H3 (h2 sozlesmesi): PROTOKOL h1 | h2 (h2 yalniz KIP=ka, yoksa h1), beklenen surum disi yanit
+// protokol_uyumsuz sayacina (esik count<1 abortOnFail), HTTP/2.0 yanit http2_kullanildi'ya (esiksiz bilgi), setup HER
+// kontrol yolunun surumune bakar; CSV/JSON 32 kolon (sona protokol, protokol_uyumsuz).
+// Gercek k6 davranisini (TLS, ALPN ile h2 / HTTP/1.1, esik iptali) DOGRULAMAZ; o kisim ilk kanarya kosusunda gorulur.
 // YUK_K6 / WRK_KOS: mutasyon kopyalari (verilmezse aynadaki betikler).
 'use strict';
 
@@ -112,7 +115,9 @@ test('K1 secenekler: hiz, sure, TLS 1.2, 429/http2 kesme esikleri, govde atilir,
   assert.equal(o.scenarios.olcum.maxVUs, 150);
   assert.deepEqual(o.tlsVersion, { min: 'tls1.2', max: 'tls1.2' });
   assert.equal(o.thresholds.durum_429[0].abortOnFail, true);
-  assert.equal(o.thresholds.http2_kullanildi[0].abortOnFail, true);
+  // h2 sozlesmesi D5: kesme esigi protokol_uyumsuz (beklenen surum disi yanit); http2_kullanildi yalniz bilgi (esiksiz)
+  assert.deepEqual(o.thresholds.protokol_uyumsuz, [{ threshold: 'count<1', abortOnFail: true }]);
+  assert.equal(o.thresholds.http2_kullanildi, undefined, 'http2_kullanildi esigi YOK (h2 kosusunda her yanitta dolu)');
   assert.ok(o.thresholds['dropped_iterations{scenario:olcum}'] && o.thresholds['durum_5xx{scenario:olcum}']);
   assert.equal(o.hosts, undefined, 'SNI yokken hosts eslemesi yok');
   assert.equal(o.discardResponseBodies, true);
@@ -211,9 +216,12 @@ test('K5 handleSummary: CSV kolonlari (Portal analizi ve karsilastir.py ile ayni
   assert.equal(
     bas,
     'tur,adim,senaryo,kip,ae,hiz,n_olcum,rps_gercek,p50,p95,p99,ttfb_p95,tls_p95,connect_p95,hata_orani,n_429,n_5xx,' +
-      'dropped,http2,bayt_istek,p95_js,p95_css,p95_html,p95_json,p95_config,p95_buyuk,sikistirma_turu,isinma_sn,sure_sn,deneme',
+      'dropped,http2,bayt_istek,p95_js,p95_css,p95_html,p95_json,p95_config,p95_buyuk,sikistirma_turu,isinma_sn,sure_sn,deneme,' +
+      'protokol,protokol_uyumsuz',
   );
   const s = Object.fromEntries(bas.split(',').map((k, i) => [k, satir.split(',')[i]]));
+  assert.equal(s.protokol, 'h1', 'PROTOKOL verilmezse h1');
+  assert.equal(s.protokol_uyumsuz, '0', 'olculmemis uyumsuz sayaci 0 (bos degil)');
   assert.equal(s.n_olcum, '30000');
   assert.equal(s.rps_gercek, '250');
   assert.equal(s.p50, '12.346');
@@ -272,4 +280,82 @@ test('K7 ozet_hesapla anahtar sirasi = wrk_kos.sh JSON_ANAHTARLARI (iki motorun 
   const json = Object.entries(cikti).find(([ad]) => ad.endsWith('.json'));
   assert.ok(json, 'handleSummary JSON yazmadi');
   assert.deepEqual(Object.keys(JSON.parse(json[1])), bos);
+  // h2 sozlesmesi D6: 30 kolon AYNEN + sona protokol, protokol_uyumsuz (wrk_kos.sh KOLONLAR da ayni; NA6 (c))
+  const kolonlar = (KAYNAK.match(/const KOLONLAR = \[([^\]]*)\]/) || [])[1];
+  const liste = [...String(kolonlar).matchAll(/'([a-z0-9_]+)'/g)].map((x) => x[1]);
+  assert.equal(liste.length, 32, 'KOLONLAR 32');
+  assert.deepEqual(liste.slice(-2), ['protokol', 'protokol_uyumsuz'], 'son iki kolon protokol, protokol_uyumsuz');
+  assert.deepEqual(bos.slice(-2), ['protokol', 'protokol_uyumsuz'], 'ozet_hesapla son iki anahtar (wrk JSON_ANAHTARLARI sonu ile ayni)');
+});
+
+// ---------------------------------------------------------------- h2 sozlesmesi (A1-A5)
+const h2Yanit = () => ({ status: 200, proto: 'HTTP/2.0', headers: { 'Content-Encoding': 'br' } });
+
+async function tekIstek(env, yanit) {
+  const m = await yukle(env); // Counter kurucusu sayaci sifirlar
+  const asil = sahte.yanit;
+  try {
+    sahte.yanit = yanit;
+    m.olcum();
+  } finally {
+    sahte.yanit = asil;
+  }
+  return { uyumsuz: sahte.sayaclar.protokol_uyumsuz, http2: sahte.sayaclar.http2_kullanildi };
+}
+
+test('K-H1 istek(): beklenen surum disi yanit protokol_uyumsuz, HTTP/2.0 yanit http2_kullanildi (bilgi)', async () => {
+  const h2 = { ...temel(), PROTOKOL: 'h2', KIP: 'ka' };
+  const yanit = (proto) => () => ({ status: 200, proto, headers: {} });
+  assert.deepEqual(await tekIstek(temel(), yanit('HTTP/2.0')), { uyumsuz: 1, http2: 1 }, 'h1 + HTTP/2.0');
+  assert.deepEqual(await tekIstek(temel(), yanit('HTTP/1.1')), { uyumsuz: 0, http2: 0 }, 'h1 + HTTP/1.1');
+  assert.deepEqual(await tekIstek(h2, yanit('HTTP/1.1')), { uyumsuz: 1, http2: 0 }, 'h2 + HTTP/1.1');
+  assert.deepEqual(await tekIstek(h2, yanit('HTTP/2.0')), { uyumsuz: 0, http2: 1 }, 'h2 + HTTP/2.0');
+  assert.deepEqual(await tekIstek(h2, yanit('')), { uyumsuz: 0, http2: 0 }, 'h2 + bos proto (basarisiz istek: hata oranina girer)');
+  assert.deepEqual(await tekIstek(temel(), yanit('')), { uyumsuz: 0, http2: 0 }, 'h1 + bos proto');
+});
+
+test('K-H2 setup(): HER kontrol yolunun surumu beklenenle karsilastirilir (200 denetiminden sonra)', async () => {
+  const h2 = await yukle({ ...temel(), PROTOKOL: 'h2', KIP: 'ka' });
+  sahte.yanit = h2Yanit;
+  assert.equal(h2.setup().sikistirma_turu, 'DINAMIK', 'h2 + butun yollar HTTP/2.0 gecer');
+  // sikistirma denetim yolu (a.js) h2, ikinci yol (/app-v1/) h1
+  sahte.yanit = (u) => (u.endsWith('/app-v1/') ? { status: 200, proto: 'HTTP/1.1', headers: {} } : h2Yanit());
+  assert.throws(
+    () => h2.setup(),
+    (e) =>
+      /1 yol HTTP\/2\.0 disinda yanit verdi \(ilk: \/app-v1\/ -> HTTP\/1\.1\)/.test(e.message) && /ALPN/.test(e.message) &&
+      !/GODEBUG/.test(e.message),
+  );
+  const h1 = await yukle(temel());
+  sahte.yanit = (u) => (u.endsWith('/app-v1/') ? { status: 200, proto: 'HTTP/2.0', headers: {} } : brYanit());
+  assert.throws(
+    () => h1.setup(),
+    (e) =>
+      /1 yol HTTP\/1\.1 disinda yanit verdi \(ilk: \/app-v1\/ -> HTTP\/2\.0\)/.test(e.message) &&
+      /GODEBUG=http2client=0/.test(e.message) && !/ALPN/.test(e.message),
+    'h1: IKINCI yolun HTTP/2.0 yaniti da reddedilir (bugun yalniz ilk yola bakiliyordu)',
+  );
+  // 200 denetimi once: 404 + yanlis surum -> 200 iletisi
+  sahte.yanit = () => ({ status: 404, proto: 'HTTP/1.1', headers: {} });
+  assert.throws(() => h2.setup(), /404/);
+  sahte.yanit = brYanit;
+});
+
+test('K-H3 PROTOKOL girdisi: h1 | h2, h2 yalniz KIP=ka, yoksa h1', async () => {
+  await hataVerir({ ...temel(), PROTOKOL: 'h3' }, /PROTOKOL h1 ya da h2 olmali/);
+  await hataVerir({ ...temel(), PROTOKOL: 'H2', KIP: 'ka' }, /PROTOKOL h1 ya da h2 olmali/);
+  await hataVerir({ ...temel(), PROTOKOL: 'h2' }, /PROTOKOL=h2 yalniz KIP=ka/, 'KIP verilmezse yeni: h2 reddedilir');
+  await hataVerir({ ...temel(), PROTOKOL: 'h2', KIP: 'yeni' }, /PROTOKOL=h2 yalniz KIP=ka/);
+  const varsayilan = await yukle(temel());
+  assert.equal(varsayilan.ozet_hesapla({ metrics: {} }).protokol, 'h1', 'PROTOKOL yoksa h1');
+  const h2 = await yukle({ ...temel(), PROTOKOL: 'h2', KIP: 'ka' });
+  assert.equal(h2.options.noConnectionReuse, false, 'h2 + ka: baglanti yeniden kullanilir');
+  const o = h2.ozet_hesapla({ metrics: { protokol_uyumsuz: { values: { count: 4 } }, http2_kullanildi: { values: { count: 900 } } } });
+  assert.equal(o.protokol, 'h2');
+  assert.equal(o.protokol_uyumsuz, 4);
+  assert.equal(o.http2, 900, 'http2 kolonu HTTP/2.0 yanit sayisi (bilgi)');
+  const cikti = h2.handleSummary({ metrics: { protokol_uyumsuz: { values: { count: 4 } } } });
+  assert.match(cikti.stdout, / protokol=h2 {2}uyumsuz=4/, 'ozet metin satiri protokol ve uyumsuz');
+  const csv = Object.entries(cikti).find(([ad]) => ad.endsWith('.csv'))[1].trim().split('\n');
+  assert.ok(csv[1].endsWith(',h2,4'), `CSV son iki hucre h2,4: ${csv[1]}`);
 });

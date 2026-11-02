@@ -25,6 +25,8 @@
 //         playbook hatasini korur); wrk_kos.sh rc neden metni; serbest kosu (sunucu dosyasiz) DONE
 //   -- tur 4 (2026-11-02) --
 //   YPL20 tick arac sonuclandirmasini (araclar.cjs) her turda cagirir; arac hatasi kosuyu durdurmaz
+//   -- HTTP/2 secimi (2026-11-02) --
+//   PL-H protokol satirdan kosuAnaliz'e; set_stats protokol yankisi yalniz metinse karsilastirilir (yok / null kabul)
 'use strict';
 
 const { test } = require('node:test');
@@ -640,14 +642,14 @@ test('YPL19 tur 3: analiz secenekleri satirdan, yanki karsilastirmasi, wrk_kos.s
   };
   let o = await pl.kosuyuSonuclandir(KOSU({ hedef_turu: 'serbest', motor: 'wrk' }));
   assert.deepEqual(o, { terminal: true, durum: 'DONE' });
-  assert.deepEqual(D.analizSecenek, { adim: 'R17', hedefTuru: 'serbest', motor: 'wrk' });
+  assert.deepEqual(D.analizSecenek, { adim: 'R17', hedefTuru: 'serbest', motor: 'wrk', protokol: 'h1' });
   assert.deepEqual([D.son.durum, D.son.gecerlilik, D.son.swDizin], ['DONE', 'GECERLI', '/sw/BMW_PORTAL/nginx_loadtest/17']);
   assert.deepEqual([D.adimInsert[0].params[5], D.adimInsert[0].params[9 + 13], D.adimInsert[0].params[9 + 15]], [8, null, null], 'olculmeyen sunucu metrigi 0 yazildi');
   // Eski satir (kolonlar NULL / yok): sunucu / k6.
   sifirla();
   D.awx.artifacts = { nginx_loadtest_result: STATS() };
   await pl.kosuyuSonuclandir(KOSU());
-  assert.deepEqual(D.analizSecenek, { adim: 'R17', hedefTuru: 'sunucu', motor: 'k6' });
+  assert.deepEqual(D.analizSecenek, { adim: 'R17', hedefTuru: 'sunucu', motor: 'k6', protokol: 'h1' });
   // Yanki (K7): yalniz METIN ise satirla karsilastirilir.
   const sn = (ham, kosu) => pl.statsNormalle(ham, kosu);
   assert.equal(sn(STATS({ hedef_turu: 'sunucu', motor: 'k6' }), KOSU()).uyusmazlik, null);
@@ -718,4 +720,34 @@ test('YPL20 tur 4: tick arac sonuclandirmasini her turda cagirir; arac hatasi ko
     if (onceki) require.cache[yol] = onceki;
     else delete require.cache[yol];
   }
+});
+
+// -- HTTP/2 secimi (h2_sozlesme.md 4.3) --
+test('PL-H protokol satirdan kosuAnaliz\'e; set_stats protokol yankisi yalniz metinse karsilastirilir', async () => {
+  const H2P = JSON.stringify({ hizlar: [100], kip: 'ka', protokol: 'h2', butceSn: BUTCE });
+  assert.deepEqual([pl.protokolOf(KOSU()), pl.protokolOf(KOSU({ parametreler: H2P })), pl.protokolOf(KOSU({ parametreler: { protokol: 'h2' } })),
+    pl.protokolOf(KOSU({ parametreler: '{"protokol":"h3"}' })), pl.protokolOf(KOSU({ parametreler: 'bozuk' })), pl.protokolOf(null)], ['h1', 'h2', 'h2', 'h1', 'h1', 'h1']);
+  // butceSnOf ayni yardimciyi kullanir: davranis degismedi.
+  assert.deepEqual([pl.butceSnOf(KOSU()), pl.butceSnOf(KOSU({ parametreler: 'bozuk' })), pl.butceSnOf(KOSU({ parametreler: '[1]' }))], [BUTCE, 2700, 2700]);
+  sifirla();
+  D.awx.artifacts = { nginx_loadtest_result: STATS({ surum: 2, protokol: 'h2' }) };
+  await pl.kosuyuSonuclandir(KOSU({ parametreler: H2P }));
+  assert.deepEqual(D.analizSecenek, { adim: 'R17', hedefTuru: 'sunucu', motor: 'k6', protokol: 'h2' });
+  const sn = (ham, kosu) => pl.statsNormalle(ham, kosu);
+  assert.deepEqual(sn(STATS({ protokol: 'h1' }), KOSU({ parametreler: H2P })), { stats: null, uyusmazlik: 'protokol h1' });
+  assert.deepEqual(sn(STATS({ protokol: 'h2' }), KOSU()), { stats: null, uyusmazlik: 'protokol h2' });
+  assert.deepEqual(sn(STATS({ protokol: 'h'.repeat(40) }), KOSU()).uyusmazlik, `protokol ${'h'.repeat(20)}`);
+  for (const yanki of [{}, { protokol: null }, { protokol: 2 }]) {
+    const s = sn(STATS(yanki), KOSU({ parametreler: H2P }));
+    assert.equal(s.uyusmazlik, null, JSON.stringify(yanki));
+    assert.ok(s.stats, `${JSON.stringify(yanki)}: eski playbook (yankisiz) sonucu dusuruldu`);
+  }
+  assert.equal(sn(STATS({ protokol: 'h2' }), KOSU({ parametreler: H2P })).uyusmazlik, null);
+  // Uyusmazlik kosuda: OKUNAMADI, analiz cagrilmaz.
+  sifirla();
+  D.awx.artifacts = { nginx_loadtest_result: STATS({ protokol: 'h1' }) };
+  await pl.kosuyuSonuclandir(KOSU({ parametreler: H2P }));
+  assert.deepEqual([D.son.durum, D.son.gecerlilik], ['OKUNAMADI', 'OKUNAMADI']);
+  assert.match(D.son.nedenler[0], /bu koşuya ait değil \(protokol h1\)/);
+  assert.equal(D.analizCagri, 0);
 });

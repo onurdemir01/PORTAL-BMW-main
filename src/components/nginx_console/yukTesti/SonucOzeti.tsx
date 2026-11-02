@@ -6,15 +6,17 @@
 // basina ozet tablo (istek, gercek hiz, p50 / p95 / p99, hata %, 429, 5xx, host CPU, sonuc). Her kolon basliginin
 // ipucu (title) ve tablonun altinda acilir "Sütunlar ne anlatıyor?" listesi ayni metni tasir. Teknik kolonlar
 // (CPU-ms/istek, kapasite, drop) KosuAyrinti'nin "Ayrıntı" bolumunde. Eski kosuda olmayan deger "—".
+// HTTP/2 (2026-11-02): h2 kosusunun ozet satiri "HTTP/2" cipiyle baslar; reload fazi `olcum_kenari` (olcume degdi, CPU
+// penceresinin disinda) "ölçüm etkilenmedi" der.
 import React, { useState } from 'react';
 import { ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
-import type { NlAdim, NlKosuAyrinti, NlReloadAni, NlSonucOzeti } from '@/api/nginxLoadtestApi';
+import type { NlAdim, NlKosuAyrinti, NlProtokol, NlReloadAni, NlSonucOzeti } from '@/api/nginxLoadtestApi';
 import { TableEmptyRow } from '@/components/common/EmptyState';
 import { fmtNumber } from '@/utils/datetime';
 import { TH_STIL, TON } from '@/components/server_hub/retirementStil';
-import { Hap } from '@/components/server_hub/RetirementUi';
+import { Cip, Hap } from '@/components/server_hub/RetirementUi';
 import { kosuNedeniniAyir, nedenAcikla, reloadZamanMetni, type NedenAciklamasi } from './nedenler';
-import { adimGecerliligi, adimSirala, kademeMetni, ondalik, sonucOzetiHesapla, turEtiketi, yuzde, type AdimBirimi } from './yukTestiOrtak';
+import { H2_CIP_IPUCU, PROTOKOL_ETIKETI, adimGecerliligi, adimSirala, kademeMetni, ondalik, sonucOzetiHesapla, turEtiketi, yuzde, type AdimBirimi } from './yukTestiOrtak';
 
 // ── Kolonlar ve ipuclari ────────────────────────────────────────────────────────────
 type OzetKolonu = { anahtar: string; baslik: string; genislik: string; sag?: boolean; ipucu: string };
@@ -42,14 +44,14 @@ const ms = (x: number | null | undefined) => ondalik(x, x != null && Math.abs(x)
 /** Sunucu ozeti varsa o (reload olaylari onda), yoksa adimlardan ayni kuralla. */
 export const ozetSec = (kosu: Pick<NlKosuAyrinti, 'sonucOzeti'>, adimlar: NlAdim[]): NlSonucOzeti => kosu.sonucOzeti ?? sonucOzetiHesapla(adimlar);
 
-export function KosuOzetSatiri({ ozet, adimlar, birim }: { ozet: NlSonucOzeti; adimlar: NlAdim[]; birim: AdimBirimi }) {
+export function KosuOzetSatiri({ ozet, adimlar, birim, protokol = 'h1' }: { ozet: NlSonucOzeti; adimlar: NlAdim[]; birim: AdimBirimi; protokol?: NlProtokol }) {
   const etiket = (tur: string) => turEtiketi(tur, adimlar, birim);
   const hatalar: string[] = [];
   if ((ozet.toplam429 ?? 0) > 0) hatalar.push(`${fmtNumber(ozet.toplam429 as number)} istek 429 (hız sınırı)`);
   if ((ozet.toplam5xx ?? 0) > 0) hatalar.push(`${fmtNumber(ozet.toplam5xx as number)} istek 5xx (sunucu hatası)`);
   if (!hatalar.length && (ozet.enYuksekHataOrani ?? 0) > 0) hatalar.push(`en yüksek hata oranı ${yuzde(ozet.enYuksekHataOrani)}`);
   const hataTon = hatalar.length ? TON.hata : TON.basari;
-  return (
+  const tablo = (
     <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border @3xl/yuk:grid-cols-4" style={{ borderColor: 'var(--border-subtle)', background: 'var(--border-subtle)' }} aria-label="Koşu özeti">
       <OzetKutu etiket="Gönderilen istek" alt={`${fmtNumber(ozet.adimSayisi)} adım, ${fmtNumber(ozet.gecerliAdimSayisi)} geçerli · ısınma hariç`}>
         {ozet.toplamIstek != null ? fmtNumber(ozet.toplamIstek) : '—'}
@@ -64,6 +66,17 @@ export function KosuOzetSatiri({ ozet, adimlar, birim }: { ozet: NlSonucOzeti; a
         <span style={{ color: hataTon.metin }}>{hatalar.length ? hatalar.join(' · ') : 'Hata yok'}</span>
       </OzetKutu>
     </dl>
+  );
+  // h1 gorunumu BIREBIR eskisi (sarmalayici yok).
+  if (protokol !== 'h2') return tablo;
+  return (
+    <div className="space-y-1.5">
+      <div className="flex flex-wrap items-center gap-1.5 text-[11px]" style={{ color: 'var(--text-secondary)' }}>
+        <Cip cerceve title={H2_CIP_IPUCU}>{PROTOKOL_ETIKETI.h2}</Cip>
+        <span>Bu koşu HTTP/2 ile ölçüldü.</span>
+      </div>
+      {tablo}
+    </div>
   );
 }
 function OzetKutu({ etiket, alt, children }: { etiket: string; alt: string; children: React.ReactNode }) {
@@ -143,7 +156,7 @@ export function NedenListesi({ gruplar, adimlar, birim }: { gruplar: NedenGrubu[
 
 /** Olcum penceresi disindaki reload adimi gecersiz yapmaz (sade_sozlesme v2): cumlede soylenir. */
 const OLCUM_DISI_NOTU: Record<string, string> = {
-  isinma: ' (ölçüm etkilenmedi)', bosluk: ' (ölçüm etkilenmedi)', kosu_oncesi: ' (ölçüm etkilenmedi)',
+  isinma: ' (ölçüm etkilenmedi)', olcum_kenari: ' (ölçüm etkilenmedi)', bosluk: ' (ölçüm etkilenmedi)', kosu_oncesi: ' (ölçüm etkilenmedi)',
 };
 /**
  * Kosu ozetindeki reload olaylarindan bir adim nedeninin altinda GOSTERILMEYENLER (isinma / bekleme sirasindaki, ya da

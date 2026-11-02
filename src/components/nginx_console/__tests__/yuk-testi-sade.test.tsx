@@ -267,7 +267,7 @@ function ayrinti(o: Partial<NlKosuAyrinti> = {}): NlKosuAyrinti {
     onKontrol: null, gecersizNedenleri: ['R2_K_ka_identity_100_r2(konf_degisti;reload(worker_pid_degisti))', 'R2_K_ka_identity_250_r2(konf_degisti;reload(worker_pid_degisti))'],
     sonucOzet: null, onKontrolKosuId: 1, sunucuDegerlendirmesi: null, onKontrolYasSn: null, isDurumu: 'OK', isHatasi: null,
     analiz: { nproc: 8, cpuTlsliPay: null, uyarilar: ['kayit:R2_gbngxt33:konf_degisti(kayit_sirasinda):0dc6843c88ef3f73->648462d7a1358dd1'], okumaHatasi: null },
-    durdurIsi: null, sonuclandirmaDenemesi: 0, aracId: null, aracSeti: null, sonucOzeti: null, ...o,
+    durdurIsi: null, sonuclandirmaDenemesi: 0, aracId: null, aracSeti: null, sonucOzeti: null, protokol: 'h1', ...o,
   };
 }
 /** 14:59:12 Istanbul saati: ekran PORTAL_TZ'de yazar (test makinesinin saat dilimi sonucu degistirmez). */
@@ -347,7 +347,7 @@ describe('Yük Testi sade — yeni koşu formu (SD8)', () => {
     expect(document.activeElement).toBe(screen.getByLabelText('Tekrar'));
     fireEvent.click(screen.getByRole('button', { name: /^Gelişmiş ayarlar/ }));
     expect(screen.getByRole('button', { name: /^Gelişmiş ayarlar/ })).toHaveAttribute('aria-expanded', 'false');
-    // Govde kanonik (yeni alan yok): hedef secilip on kontrol istenir.
+    // Govde kanonik (protokol HER ZAMAN dolu, varsayilan h1 - h2_sozlesme.md 5.3): hedef secilip on kontrol istenir.
     fireEvent.change(screen.getByLabelText('Hedef sunucu (isteğe bağlı)'), { target: { value: 'GBNGXT33' } });
     const ok = screen.getByRole('button', { name: /Ön kontrolü başlat/ });
     await waitFor(() => expect(ok).toBeEnabled(), { timeout: 3000 });
@@ -355,7 +355,7 @@ describe('Yük Testi sade — yeni koşu formu (SD8)', () => {
     await waitFor(() => expect(api.onKontrol).toHaveBeenCalledTimes(1));
     expect(api.onKontrol.mock.calls[0][0]).toEqual({
       senaryoId: 3, hedefHost: 'GBNGXT33', hedefIp: '192.168.133.27', vhost: 'glomo-test.garantibbva.com.tr', yukHost: 'GBNGXT34', sni: false,
-      parametreler: { motor: 'k6', hizlar: [50, 90], maxvu: 150, tekrar: 1, isinma: 10, sure: 40, bosluk: 10, bosta: 30, kip: 'yeni', ae: 'br' },
+      parametreler: { motor: 'k6', hizlar: [50, 90], maxvu: 150, tekrar: 1, isinma: 10, sure: 40, bosluk: 10, bosta: 30, kip: 'yeni', ae: 'br', protokol: 'h1' },
     });
     // wrk: ayni hazir ayar baglanti kademeleriyle.
     fireEvent.click(screen.getByRole('radio', { name: /^wrk/ }));
@@ -566,6 +566,8 @@ describe('Yük Testi sade — sunucuyla çapraz kontrol (SD11, SD12)', () => {
       pencerede_ornek_yok: 'pencerede_ornek_yok', arka_plan_yok: 'arka_plan_yok(0_kabul)', arka_plan_az: 'arka_plan_az(12s)', diger_trafik: 'diger_trafik_%7',
       perf_ek_yuku: 'perf_ek_yuku(kararda_kullanilmaz)', tekrar_kosu_ayristirilamadi: "tekrar_kosu_ayristirilamadi(log'da_deneme_kolonu_yok)",
       tekrar_kosu_deneme: 'tekrar_kosu:deneme_2_kullanildi(120_eski_satir_atildi)', cpu_olculemedi: 'cpu_olculemedi(sayac_geriledi)',
+      // HTTP/2 (h2_sozlesme.md 4.4).
+      h2_disi: 'h2_disi(3)', protokol_farkli: 'protokol_farkli(beklenen=h2,olculen=yok)',
     };
     expect(Object.keys(ORNEK).sort()).toEqual(NEDEN_KALIPLARI.map((k) => k.kod).sort());
     for (const k of NEDEN_KALIPLARI) {

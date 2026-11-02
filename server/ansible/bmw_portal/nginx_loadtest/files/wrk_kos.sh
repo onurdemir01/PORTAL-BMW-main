@@ -4,7 +4,8 @@
 # Kullanim: HEDEF=https://<IPv4> HOST_BASLIGI=<vhost> TAVAN_RPS=<n> ./wrk_kos.sh <ADIM> <K|B> [--kuru]
 # Ortam   : HOST_BASLIGI ve TAVAN_RPS (zorunlu) BAGLANTILAR("2 4 8"; B icin "2") IS_PARCACIGI(2) TEKRAR(2) KIP(yeni|ka)
 #           AE(br|gzip|identity) ISINMA(30s) SURE(120s) BOSLUK(30 sn) WRK(wrk) UA_ONEK(portal-yuktesti)
-#           SENARYO_DIZIN(./senaryo) SONUC(./sonuc) SNI(yalniz 0) LIMIT_MUAF(yalniz 0); HIZLAR, MAXVU, K6 yok sayilir.
+#           SENARYO_DIZIN(./senaryo) SONUC(./sonuc) SNI(yalniz 0) LIMIT_MUAF(yalniz 0) PROTOKOL(yalniz h1: wrk yalniz HTTP/1.1);
+#           HIZLAR, MAXVU, K6 yok sayilir.
 # Cikis   : 0 tamam, 2 girdi / on kosul hatasi (HATA: stderr; yuk YOK), 4 DUR (DUR: stdout), 130 boslukta kesildi.
 # Portal  : Portal'a ozgu (el kitinde yok); dis sozlesme kos.sh ile AYNI (cikis kodlari, DUR/HATA satirlari, sonuc/<ADIM>/
 #           dosya adlari ve semasi, pid $SONUC/../kos.pid, INT/TERM trap'i calisan wrk'yi da durdurur).
@@ -26,11 +27,11 @@
 set -u
 export LC_ALL=C
 BURASI="$(cd "$(dirname "$0")" && pwd)"
-kullanim() { sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+kullanim() { sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
 hata() { echo "HATA: $*" >&2; exit 2; }
 
-KOLONLAR="tur,adim,senaryo,kip,ae,hiz,n_olcum,rps_gercek,p50,p95,p99,ttfb_p95,tls_p95,connect_p95,hata_orani,n_429,n_5xx,dropped,http2,bayt_istek,p95_js,p95_css,p95_html,p95_json,p95_config,p95_buyuk,sikistirma_turu,isinma_sn,sure_sn,deneme"
-JSON_ANAHTARLARI="tur adim senaryo kip ae hiz n_olcum rps_gercek p50 p95 p99 ttfb_p95 tls_p95 connect_p95 hata_orani n_429 n_5xx dropped http2 bayt_istek p95_buyuk sikistirma_turu isinma_sn sure_sn deneme p95_js p95_css p95_html p95_json p95_config"
+KOLONLAR="tur,adim,senaryo,kip,ae,hiz,n_olcum,rps_gercek,p50,p95,p99,ttfb_p95,tls_p95,connect_p95,hata_orani,n_429,n_5xx,dropped,http2,bayt_istek,p95_js,p95_css,p95_html,p95_json,p95_config,p95_buyuk,sikistirma_turu,isinma_sn,sure_sn,deneme,protokol,protokol_uyumsuz"
+JSON_ANAHTARLARI="tur adim senaryo kip ae hiz n_olcum rps_gercek p50 p95 p99 ttfb_p95 tls_p95 connect_p95 hata_orani n_429 n_5xx dropped http2 bayt_istek p95_buyuk sikistirma_turu isinma_sn sure_sn deneme p95_js p95_css p95_html p95_json p95_config protokol protokol_uyumsuz"
 OZET_ANAHTARLARI="surum istek bayt sure_us e_connect e_read e_write e_timeout e_status s1xx s2xx s3xx s429 s4xx s5xx sdiger lat_max_us p50_us p95_us p99_us is_parcacigi"
 WRK_ZAMAN_ASIMI=10s
 SOKET_HATA_ESIGI=10
@@ -63,6 +64,8 @@ UA_ONEK="${UA_ONEK:-portal-yuktesti}"
 SNI="${SNI:-0}"
 [ "$SNI" != 1 ] || hata "wrk SNI'yi Host basligina gore secemez (IP adresi SNI olarak gider); SNI=0 kullanin"
 [ "$SNI" = 0 ] || hata "SNI yalniz bos ya da 0 olabilir: '$SNI'"
+PROTOKOL="${PROTOKOL:-h1}"
+[ "$PROTOKOL" = h1 ] || hata "wrk yalniz HTTP/1.1 konusur (PROTOKOL=$PROTOKOL)"
 SENARYO_DIZIN="${SENARYO_DIZIN:-./senaryo}"
 SONUC="${SONUC:-./sonuc}"
 if [ "$SEN" = B ]; then BAGLANTILAR="${BAGLANTILAR:-2}"; else BAGLANTILAR="${BAGLANTILAR:-2 4 8}"; fi
@@ -344,7 +347,7 @@ yaz_istemci() {   # yaz_istemci <I degerleri|""> <O degerleri|"">: istemci_<TUR>
       }
       NUM["n_429"] = iv["s429"] + ov["s429"]
       NUM["n_5xx"] = ov["s5xx"]
-      NUM["http2"] = 0
+      NUM["http2"] = 0; STR["protokol"] = "h1"; NUM["protokol_uyumsuz"] = 0
       if (ovar && ov["istek"] > 0) NUM["bayt_istek"] = ov["bayt"] / ov["istek"]
       NUM["isinma_sn"] = isinma + 0; NUM["sure_sn"] = sure + 0; NUM["deneme"] = deneme + 0
       nj = split(jsonlar, J, " ")

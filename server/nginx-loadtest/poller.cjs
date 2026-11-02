@@ -106,8 +106,8 @@ const TAM = (v) => {
 const metinListesi = (v, adet, uzunluk) =>
   (Array.isArray(v) ? v : []).slice(0, adet).map((x) => maskele(String(x ?? '')).slice(0, uzunluk));
 
-/** Kosunun butcesi (parametreler.butceSn, sunucunun hesapladigi); okunamazsa en kotu durum. */
-function butceSnOf(kosu) {
+/** Satirin kanonik parametreleri (metin ya da nesne) -> nesne ya da null. */
+function parametrelerOf(kosu) {
   let p = kosu && kosu.parametreler;
   if (typeof p === 'string') {
     try {
@@ -116,8 +116,20 @@ function butceSnOf(kosu) {
       p = null;
     }
   }
-  const b = p && typeof p === 'object' ? Number(p.butceSn) : NaN;
+  return p && typeof p === 'object' && !Array.isArray(p) ? p : null;
+}
+
+/** Kosunun butcesi (parametreler.butceSn, sunucunun hesapladigi); okunamazsa en kotu durum. */
+function butceSnOf(kosu) {
+  const p = parametrelerOf(kosu);
+  const b = p ? Number(p.butceSn) : NaN;
   return Number.isInteger(b) && b > 0 && b <= VARSAYILAN_BUTCE_SN ? b : VARSAYILAN_BUTCE_SN;
+}
+
+/** Satirin protokolu (parametreler.protokol); alani olmayan eski satir h1. */
+function protokolOf(kosu) {
+  const p = parametrelerOf(kosu);
+  return p && p.protokol === 'h2' ? 'h2' : 'h1';
 }
 
 /** Satirin yasi (sn): COALESCE(started_at, created_at)'ten bu yana; DB saati, yoksa yerel saat. */
@@ -130,8 +142,9 @@ function calismaYasiSn(kosu) {
 
 /**
  * set_stats -> maskeli nesne ya da null. Yayinlanan sonuc BU kosuya ait degilse (run_id / islem
- * tutmuyor; metin olarak yayinlanmis hedef_turu / motor satirdan farkli) KULLANILMAZ: baska bir
- * isin sonucunu bu kosuya yazmak sessiz yanlistir. Yanki null ya da yoksa denetlenmez.
+ * tutmuyor; metin olarak yayinlanmis hedef_turu / motor / protokol satirdan farkli) KULLANILMAZ:
+ * baska bir isin sonucunu bu kosuya yazmak sessiz yanlistir. Yanki null ya da yoksa denetlenmez
+ * (eski playbook protokol yankisi basmaz; h2 istenip h1 kosulmasini analiz protokol kolonu yakalar).
  */
 function statsNormalle(ham, kosu) {
   if (!ham || typeof ham !== 'object' || Array.isArray(ham)) return { stats: null, uyusmazlik: null };
@@ -141,6 +154,7 @@ function statsNormalle(ham, kosu) {
     return { stats: null, uyusmazlik: `hedef_turu ${ham.hedef_turu.slice(0, 20)}` };
   }
   if (typeof ham.motor === 'string' && ham.motor !== (kosu.motor || 'k6')) return { stats: null, uyusmazlik: `motor ${ham.motor.slice(0, 20)}` };
+  if (typeof ham.protokol === 'string' && ham.protokol !== protokolOf(kosu)) return { stats: null, uyusmazlik: `protokol ${ham.protokol.slice(0, 20)}` };
   let s = maskeleDerin(ham);
   s.durum = String(s.durum ?? '').trim().toUpperCase();
   if (JSON.stringify(s).length > SONUC_MAX_BAYT && s.kosu && typeof s.kosu === 'object') {
@@ -278,6 +292,7 @@ async function kosuKarari(kosu, st, stats, uyusmazlik, { deneme = OKUMA_DENEME_S
   // Tur ve motor satirdan (set_stats yankisindan degil); eski satir: DB varsayilani sunucu / k6.
   const hedefTuru = kosu.hedef_turu || 'sunucu';
   const motor = kosu.motor || 'k6';
+  const protokol = protokolOf(kosu);
   const kosRc = kosuBolumu ? SAYI(kosuBolumu.kos_rc) : null;
   if (kosRc !== null && kosRc !== 0) ekNedenler.push(`${motor === 'wrk' ? 'wrk_kos.sh' : 'kos.sh'} rc=${kosRc}`);
   const basarili = kosuBasarili(st.status, stats.durum);
@@ -293,7 +308,7 @@ async function kosuKarari(kosu, st, stats, uyusmazlik, { deneme = OKUMA_DENEME_S
   let okumaHatasi = null;
   try {
     const veri = await cModulu('sonuc.cjs').kosuDiziniOku(dizin, { adim: `R${id}` });
-    analiz = analizNormalle(await cModulu('analiz.cjs').kosuAnaliz(veri, { adim: `R${id}`, hedefTuru, motor }));
+    analiz = analizNormalle(await cModulu('analiz.cjs').kosuAnaliz(veri, { adim: `R${id}`, hedefTuru, motor, protokol }));
   } catch (e) {
     okumaHatasi = `sonuç dizini okunamadı/çözümlenemedi: ${maskele(e && e.message).slice(0, 400)}`;
   }
@@ -541,6 +556,7 @@ module.exports = {
   cModulu,
   pollSaniye,
   butceSnOf,
+  protokolOf,
   calismaYasiSn,
   statsNormalle,
   onKontrolKarari,

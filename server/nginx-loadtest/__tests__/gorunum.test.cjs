@@ -5,6 +5,7 @@
 //   GR2 reloadlar: ham.reloadlar camelCase; bozuk / bilinmeyen faz atlanir; eski satir []
 //   GR3 sonucOzeti: toplam istek, p95 en iyi / en kotu (gecerli; yoksa tum), 429 / 5xx / hata, konf, reloadlar
 //   GR4 bos / eski kosu: adim yok, ozet yok -> null / 0 / [] (cokmez)
+//   GR-H 'olcum_kenari' fazli reload olayi (olcum fazinin basi / sonu, CPU penceresi disi) adim ve ozete gecer
 'use strict';
 
 const { test } = require('node:test');
@@ -116,4 +117,13 @@ test('GR4 bos / eski kosu: adim ve analiz ozeti yok -> null / 0 / [] (cokmez)', 
   assert.deepEqual(sonucOzeti(undefined, undefined), bos);
   assert.deepEqual(sonucOzeti([], { kirpildi: true }), bos);
   assert.deepEqual(sonucOzeti([], []), bos);
+});
+
+// -- h2_sozlesme.md 4.5 / 6: 'olcum_kenari' fazi (olcum fazinin basi / sonu, CPU penceresi disinda) API'ye gecer.
+test('GR-H olcum_kenari fazli reload olayi adim ve ozet gorunumune gecer', () => {
+  const ham = { t: 1800000072, t_once: 1800000071, t_son: 1800000072, tur: 'R60_K_yeni_br_100_r1', faz: 'olcum_kenari' };
+  const a = adimGorunumu({ tur: 'R60_K_yeni_br_100_r1', nedenler: [], ham: { reloadlar: [ham] } });
+  assert.deepEqual(a.reloadlar, [{ t: 1800000072, tOnce: 1800000071, tSon: 1800000072, tur: 'R60_K_yeni_br_100_r1', faz: 'olcum_kenari' }]);
+  const o = sonucOzeti([a], { reloadlar: [{ ...ham, kesit: 'R60_test', worker_once: 2, worker_sonra: 2, kapanan_en_cok: 0, etkilenen_turlar: ['R60_K_yeni_br_100_r1'] }] });
+  assert.deepEqual(o.reloadlar.map((x) => [x.faz, x.tur, x.kesit, x.etkilenenTurlar]), [['olcum_kenari', 'R60_K_yeni_br_100_r1', 'R60_test', ['R60_K_yeni_br_100_r1']]]);
 });

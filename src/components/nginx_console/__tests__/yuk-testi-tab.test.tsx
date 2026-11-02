@@ -275,7 +275,7 @@ describe('Yük Testi — yeni koşu akışı', () => {
     fireEvent.click(screen.getByRole('button', { name: /Ön kontrolü başlat/ }));
     await waitFor(() => expect(api.onKontrol).toHaveBeenCalledTimes(1));
     expect(api.onKontrol.mock.calls[0][0]).toEqual({
-      senaryoId: 3, hedefHost: 'GBNGXT10', hedefIp: '10.1.2.4', vhost: 'glomo-test.fw.garantibbva.com.tr', yukHost: 'GBNGXT34', sni: false, parametreler: { motor: 'k6', ...PARAM },
+      senaryoId: 3, hedefHost: 'GBNGXT10', hedefIp: '10.1.2.4', vhost: 'glomo-test.fw.garantibbva.com.tr', yukHost: 'GBNGXT34', sni: false, parametreler: { motor: 'k6', ...PARAM, protokol: 'h1' },
     });
     expect(await screen.findByText(/uyarı — başlatırken açıkça onaylamanız gerekir/)).toBeTruthy();
     await waitFor(() => expect(screen.getByRole('button', { name: /Koşuyu başlat/ })).toBeEnabled());
@@ -625,7 +625,7 @@ describe('Yük Testi — hedef IP ve sınıflandırma (2026-10-28)', () => {
     await waitFor(() => expect(api.onKontrol).toHaveBeenCalledTimes(1));
     expect(api.onKontrol.mock.calls[0][0]).toEqual({
       senaryoId: 3, hedefHost: null, hedefIp: '10.20.30.40', vhost: 'glomo-test.fw.garantibbva.com.tr', yukHost: 'GBNGXT34', sni: false,
-      parametreler: { motor: 'k6', hizlar: [50, 100, 200], maxvu: 50, tekrar: 2, isinma: 30, sure: 120, bosluk: 30, bosta: 60, kip: 'yeni', ae: 'br' },
+      parametreler: { motor: 'k6', hizlar: [50, 100, 200], maxvu: 50, tekrar: 2, isinma: 30, sure: 120, bosluk: 30, bosta: 60, kip: 'yeni', ae: 'br', protokol: 'h1' },
     });
     // Serbest on kontrol paneli: yuk sunucusu satirlari ve bilgi.
     expect(await screen.findByText('IP yük sunucusunda yerel değil')).toBeTruthy();
@@ -758,7 +758,7 @@ describe('Yük Testi — hedef IP ve sınıflandırma (2026-10-28)', () => {
     await waitFor(() => expect(api.onKontrol).toHaveBeenCalledTimes(1));
     const govde = api.onKontrol.mock.calls[0][0];
     expect(govde.sni).toBe(false);
-    expect(govde.parametreler).toEqual({ motor: 'wrk', baglantilar: [2, 4, 8], is_parcacigi: 2, tekrar: 2, isinma: 30, sure: 120, bosluk: 30, bosta: 60, kip: 'yeni', ae: 'br' });
+    expect(govde.parametreler).toEqual({ motor: 'wrk', baglantilar: [2, 4, 8], is_parcacigi: 2, tekrar: 2, isinma: 30, sure: 120, bosluk: 30, bosta: 60, kip: 'yeni', ae: 'br', protokol: 'h1' });
     expect(govde.parametreler).not.toHaveProperty('hizlar');
     expect(govde.parametreler).not.toHaveProperty('tavan_rps');
     // wrk on kontrol paneli ve bilgi satiri.

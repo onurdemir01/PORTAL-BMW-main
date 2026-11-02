@@ -3,14 +3,16 @@
 # Kullanim: on_kontrol.sh hedef    (hedef nginx sunucusunda, www ile)
 #             ortam: HEDEF_IP HOST_BASLIGI [LOGDIR(/web_log) NGINX_PREFIX(/usr/nginx) NGINX_BIN NGINX_ERRLOG PROC_ROOT]
 #           on_kontrol.sh yollar   (yuk makinesinde, www ile)
-#             ortam: HEDEF_IP HOST_BASLIGI SNI(0|1) SENARYO(<tsv>) [UA_ONEK(portal-yuktesti) PARALEL(4) ZAMAN(5) CURL(curl)]
+#             ortam: HEDEF_IP HOST_BASLIGI SNI(0|1) SENARYO(<tsv>) [UA_ONEK(portal-yuktesti) PARALEL(4) ZAMAN(5) CURL(curl)
+#                    PROTOKOL(h1)]
 # Cikti   : SEKME ayrimli satirlar; son satir SONUC<TAB><OK|FAIL><TAB><mesaj>. '-' = olculemedi.
 #   hedef : ip_yerel 1|0|-, nginx_T ok|fail, server_name_var 1|0|-, master_sayisi <n>, web_log_df <yuzde>|-,
 #           log_dizini_okunur 1|0, log_format_ua 1|0|-, statik_direktif 1|0|-
 #   yollar: ip_yuk_makinesinde 1|0|-, YOL<TAB><status><TAB><http surumu><TAB><content-encoding|-><TAB><content-length 1|0><TAB><yol>
 #           (senaryo sirasiyla), HATA<TAB><status><TAB><yol> (200 olmayan ilk 20), OZET<TAB><toplam><TAB><n200><TAB>
-#           <statik><TAB><dinamik><TAB><sikistirmasiz> (sikistirma yalniz 200 yanitlarda sayilir)
-# Istek   : tekil yol basina TEK HTTP/1.1 GET (en cok 400 yol, istek basina 5 sn, en cok 4 paralel); https://<ip><yol> +
+#           <statik><TAB><dinamik><TAB><sikistirmasiz> (sikistirma yalniz 200 yanitlarda sayilir); protokol h1|h2;
+#           yalniz h2: curl_h2 1|0, yollar_yanitli <n>, yollar_h2 <n>, alpn_h2 1|0|- (OZET'ten sonra)
+# Istek   : tekil yol basina TEK GET: h1 --http1.1 (curl destekliyorsa), h2 --http2 (ALPN) (en cok 400 yol, istek basina 5 sn, en cok 4 paralel); https://<ip><yol> +
 #           Host basligi (SNI=1: https://<host><yol> + --resolve host:443:ip). Accept-Encoding: br, gzip;
 #           User-Agent <UA_ONEK>/onkontrol/1. Cerez, vekil sunucu ve ~/.curlrc YOK (-q, --noproxy '*', proxy env silinir).
 # nginx -T: nginx_console_dump.sh ile AYNI estate komutu (dzdo <nginx> -p ... -c ... -e ... -T; dzdo yoksa/reddederse
@@ -53,7 +55,7 @@ tek_yol() {   # tek_yol "<sira><TAB><yol>": tek istek, tek satir (PIPE_BUF altin
   local sira="${1%%$'\t'*}" yol="${1#*$'\t'}" url ust out
   local a=(-q -sS -o /dev/null -D - --max-time "$ZAMAN" --connect-timeout "$ZAMAN" -k --noproxy '*'
            -H 'Accept-Encoding: br, gzip' -A "$UA_ONEK/onkontrol/1" -w '\n@@KOD %{http_code}\n')
-  [ "$HTTP11" = 1 ] && a+=(--http1.1)
+  [ -n "$HTTP_SURUM" ] && a+=("$HTTP_SURUM")
   if [ "$SNI" = 1 ]; then
     a+=(--resolve "$HOST_BASLIGI:443:$HEDEF_IP"); url="https://$HOST_BASLIGI$yol"
   else
@@ -131,6 +133,8 @@ yollar() {
   [[ "${SNI:-}" == 0 || "${SNI:-}" == 1 ]] || red "SNI 0 ya da 1 olmali"
   UA_ONEK="${UA_ONEK:-portal-yuktesti}"
   [[ "$UA_ONEK" =~ ^[a-z][a-z0-9-]{2,30}$ ]] || red "UA_ONEK gecersiz"
+  PROTOKOL="${PROTOKOL:-h1}"
+  [[ "$PROTOKOL" == h1 || "$PROTOKOL" == h2 ]] || red "PROTOKOL h1 ya da h2 olmali"
   PARALEL="${PARALEL:-4}"; ZAMAN="${ZAMAN:-5}"; CURL="${CURL:-curl}"
   [[ "$PARALEL" =~ ^[1-4]$ ]] || red "PARALEL 1..4 olmali"
   [[ "$ZAMAN" =~ ^[1-9]$ ]] || red "ZAMAN 1..9 sn olmali"
@@ -140,6 +144,7 @@ yollar() {
   # Hedef IP bu (yuk) makinede yerelse istekler hedefe degil yuk makinesinin kendi nginx'ine gider: RED.
   ipy="$(ip_yerel_mi "$HEDEF_IP")"
   printf 'ip_yuk_makinesinde\t%s\n' "$ipy"
+  printf 'protokol\t%s\n' "$PROTOKOL"
   [ "$ipy" = 0 ] || red "hedef IP yuk makinesinde yerel ya da olculemedi ($ipy); istek gonderilmedi" 3
 
   GECICI="$(mktemp -d "${TMPDIR:-/tmp}/onkontrol.XXXXXX")" || red "gecici dizin olusturulamadi"
@@ -154,9 +159,17 @@ yollar() {
   [ "$n" -ge 1 ] || red "senaryoda yol yok"
   [ "$n" -le "$YOL_SINIRI" ] || red "senaryoda $n tekil yol var (en cok $YOL_SINIRI)"
 
-  HTTP11=0
-  "$CURL" --version 2>/dev/null | grep -qiE '^features:.*http2' && HTTP11=1
-  export HEDEF_IP HOST_BASLIGI SNI UA_ONEK ZAMAN CURL HTTP11
+  ch2=0
+  "$CURL" --version 2>/dev/null | grep -qiE '^features:.*http2' && ch2=1
+  HTTP_SURUM=""
+  if [ "$PROTOKOL" = h2 ]; then
+    printf 'curl_h2\t%d\n' "$ch2"
+    [ "$ch2" = 1 ] || red "curl HTTP/2 desteklemiyor; HTTP/2 on kontrolu yapilamadi, istek gonderilmedi"
+    HTTP_SURUM=--http2
+  elif [ "$ch2" = 1 ]; then
+    HTTP_SURUM=--http1.1
+  fi
+  export HEDEF_IP HOST_BASLIGI SNI UA_ONEK ZAMAN CURL HTTP_SURUM
   while IFS= read -r satir; do sira=$((sira + 1)); printf '%d\t%s\0' "$sira" "$satir"; done < "$d/yollar" \
     | xargs -0 -n 1 -P "$PARALEL" bash "$0" _tek > "$d/sonuc"
   sort -n -k1,1 "$d/sonuc" | cut -f2- > "$d/sirali"
@@ -166,6 +179,11 @@ yollar() {
       if ($2 == "200") { o++; if ($4 == "-") y++; else if ($5 == 1) s++; else dn++ }
       else if (h < 20) { printf "HATA\t%s\t%s\n", $2, $6; h++ } }
     END { printf "OZET\t%d\t%d\t%d\t%d\t%d\n", t, o, s, dn, y }' "$d/sirali"
+  if [ "$PROTOKOL" = h2 ]; then
+    awk -F'\t' '
+      $1 == "YOL" && $3 != "-" { ny++; if ($3 ~ /^HTTP\/2/) n2++ }
+      END { printf "yollar_yanitli\t%d\nyollar_h2\t%d\nalpn_h2\t%s\n", ny, n2, (ny == 0 ? "-" : (n2 == ny ? "1" : "0")) }' "$d/sirali"
+  fi
   [ "$(grep -c '^YOL' "$d/sirali")" -eq "$n" ] || red "$n yoldan yalniz $(grep -c '^YOL' "$d/sirali") sonuc dondu"
   sonuc OK "$n yol denendi"
 }

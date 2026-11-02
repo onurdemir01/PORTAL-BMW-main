@@ -97,7 +97,7 @@ test('NA6 (a)-(e), (h), (i) yuk_wrk.lua ust duzeyi, sabitler, basliklar, durma, 
   // (c)
   const k6Kolon = tirnakliListe((k6.match(/const KOLONLAR = \[([^\]]*)\]/) || [])[1] || '');
   const shKolon = ((wk.match(/^KOLONLAR="([^"]*)"$/m) || [])[1] || '').split(',');
-  assert.equal(k6Kolon.length, 30, 'yuk_k6.js KOLONLAR okunamadi');
+  assert.equal(k6Kolon.length, 32, 'yuk_k6.js KOLONLAR okunamadi (30 + h2: protokol, protokol_uyumsuz)');
   assert.deepEqual(shKolon, k6Kolon, 'wrk_kos.sh KOLONLAR = yuk_k6.js KOLONLAR');
 
   // (d)

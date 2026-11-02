@@ -56,9 +56,21 @@
 //      ham.cpu_olculemedi = kod. Kapasite yalniz cpu_ms_istek > 0 iken. DB'den gelen eski satirdaki negatif
 //      CPU kararda null sayilir. karsilastir.py bu durumda sayi yazardi (AN2 acik esleme).
 //  11. Reload ani: kaydedici orneklerinden olaylar (reloadOlaylari) ozet.reloadlar'a, TUR'a degenler
-//      ham.reloadlar'a yazilir (yalniz gosterim; gecerlilik ve karar DEGISMEZ); olcum penceresine tasan olay
-//      o TUR'un 'olcum'u (isinmada / boslukta baslasa da). konf_degisti'nin ani
-//      bilinmez (kaydedici ozeti yalniz basta ve sonda alir).
+//      ham.reloadlar'a yazilir (yalniz gosterim; gecerlilik ve karar DEGISMEZ). Faz CPU penceresiyle KESIN
+//      eslesir (h2_sozlesme 6): olayin kaniti (bitisik farkli-PID cifti ya da 'shutting down' ornegi) bir
+//      TUR'un CPU penceresinin [w0, w1] (pencereCpu'nun baktigi aralik) icindeyse o TUR'un 'olcum'u (adim
+//      reload nedeniyle GECERSIZ); yalniz [bas + isinma, bit] olcum fazina degiyorsa 'olcum_kenari' (olcumun
+//      basinda ya da sonunda, CPU penceresi disinda; adim etkilenmez). Tek olay iki TUR'un penceresine kanit
+//      birakirsa (bosluk 0) ilk TUR'a yazilir. konf_degisti'nin ani bilinmez (kaydedici ozeti yalniz basta ve
+//      sonda alir).
+//  12. Protokol (kosuAnaliz secenegi `protokol` 'h1' | 'h2', varsayilan 'h1'; h2 yalniz k6): istemci
+//      satirinin `protokol` / `protokol_uyumsuz` kolonlari (yuk_k6.js 32 kolon) varsa karar
+//      protokol_uyumsuz'dan (h1: 'http2', h2: 'h2_disi(n)'); kolon istenenden farkliysa
+//      'protokol_farkli(beklenen=..,olculen=..)'. Kolonu olmayan eski satir: h1'de bugunku `http2 > 0`
+//      kurali, h2'de protokol_farkli(olculen=yok) (eski playbook h1 kosmus). h2'de `http2` kolonu bilgi
+//      (HTTP/2.0 yanit sayisi). h2 kosusuna kosu uyarisi: k6 v0.49 her VU'da tek baglantida istekleri
+//      sirayla gonderir, tarayici coklamasi olculmez (MAKUL; sahada olculmedi). karsilastir.py'de protokol
+//      yok: h1 + eski satirla cikti BIREBIR. kararVer: farkli protokol VERI_YOK (motor kuralindan sonra).
 // null = olculmedi (hicbir zaman 0 yerine gecmez). Fonksiyonlar saftir: G/C yok, saat yok.
 'use strict';
 
@@ -75,10 +87,14 @@ const MAX_ADIM_UYARI = 40;
 // Secenek degerleri (PORTAL FARKLARI 8): hedef turu ve yuk araci; ilk deger varsayilandir.
 const HEDEF_TURLERI = Object.freeze(['sunucu', 'serbest']);
 const MOTORLAR = Object.freeze(['k6', 'wrk']);
+const PROTOKOLLER = Object.freeze(['h1', 'h2']);
+const PROTOKOL_ADI = Object.freeze({ h1: 'HTTP/1.1', h2: 'HTTP/2' });
 // Serbest hedefte yok sayilan cpu_kaydedici.sh dosyalari (sunucu_*.csv, bilgi_*.txt, log_*, diger_*).
 const SUNUCU_DOSYA_RE = /^(sunucu|bilgi|log|diger)_/;
 const SERBEST_UYARISI = 'sunucu_olcumu_yok(serbest_hedef)';
 const WRK_TLS_UYARISI = 'wrk_tls_payi_hesaplanmaz(oturum_devami_ya_da_tls13_olabilir)';
+// PORTAL FARKLARI 12: k6 HTTP/2'de VU basina tek akis; tarayicidaki eszamanli akislar olculmez.
+const H2_UYARISI = 'h2_vu_basina_tek_akis(tarayici_coklamasi_olculmez)';
 const CPU_YOK_SERBEST = 'CPU olculmedi (serbest hedef): KALICI verilmez; karar p95 ve hata oranina gore';
 const CPU_YOK_WRK = 'CPU olculmedi (wrk, sunucu kaydi eksik): KALICI verilmez; karar p95 ve hata oranina gore';
 
@@ -88,7 +104,9 @@ const NEDENLER = Object.freeze([
   { onek: 'wrk_rc', anlam: 'wrk hata koduyla bitti.', cozum: 'Is ciktisindaki wrk mesajina bakin; kosuyu tekrarlayin.' },
   { onek: '429', anlam: 'Rate limit (limit_req / limit_conn) asildi.', cozum: "Hizlari dusurun; ayni IP'den baska yuk var mi bakin." },
   { onek: '5xx', anlam: 'Olcum fazinda sunucu hatasi (5xx).', cozum: "error.log'a bakin; nedeni giderip kosuyu tekrarlayin." },
-  { onek: 'http2', anlam: 'HTTP/2 ile gidildi.', cozum: 'k6 surumunu ve GODEBUG=http2client=0 ayarini kontrol edin.' },
+  { onek: 'http2', anlam: 'HTTP/2 ile gidildi.', cozum: 'k6 surumunu ve GODEBUG=http2client=0 ayarini kontrol edin (HTTP/1.1 kosusu).' },
+  { onek: 'h2_disi', anlam: 'HTTP/2 kosusunda HTTP/2 disi yanit geldi.', cozum: 'Hedefin bu Host icin h2 sundugunu (on kontrol) dogrulayin; ya da HTTP/1.1 ile kosun.' },
+  { onek: 'protokol_farkli', anlam: 'Yuk araci istenen protokolu kullanmadi.', cozum: 'Ansible deposunu (yuk_k6.js) guncelleyin; kosuyu tekrarlayin.' },
   { onek: 'hata_', anlam: "Istek hatasi %0.1'i asti (404, zaman asimi ...).", cozum: 'Senaryodaki yollar hala 200 mu (deploy oldu mu)? Gerekirse senaryoyu yenileyin, kosuyu tekrarlayin.' },
   { onek: 'log_istemci_farki', anlam: "Sunucu logundaki istek sayisi k6'nin saydigindan %2'den fazla farkli.", cozum: 'Dogru sunucu ve IP mi? Isteklerin bir kismi baska sunucuya mi gidiyor?' },
   { onek: 'kayit:log_dondu', anlam: 'Kayit sirasinda log dondu ya da kuculdu (rotate).', cozum: 'Kosuyu tekrarlayin.' },
@@ -96,7 +114,7 @@ const NEDENLER = Object.freeze([
   { onek: 'konf_degisti', anlam: 'Kayit sirasinda nginx konfigurasyonu degisti.', cozum: 'Deney suresince o sunucuya konf dagitilmamali.' },
   { onek: 'pencere_kisa', anlam: "Kaydedici olcum fazinin 30 sn'den azini gordu (gec basladi / erken durdu).", cozum: 'Kosuyu tekrarlayin; kaydedici erken durduysa is ciktisina bakin.' },
   { onek: 'reload', anlam: 'Olcum penceresinde reload oldu (worker PID kumesi degisti).', cozum: "Eski worker'lar ('shutting down') bitene kadar bekleyip kosuyu tekrarlayin." },
-  { onek: 'hatali_kosu', anlam: "kos.sh / wrk_kos.sh bu TUR'u durdurdu (429 / 5xx / soket / hata orani / http2 / hata kodu / olcum yok).", cozum: 'Nedeni giderip yeni kosu baslatin.' },
+  { onek: 'hatali_kosu', anlam: "kos.sh / wrk_kos.sh bu TUR'u durdurdu (429 / 5xx / soket / hata orani / http2 / protokol / hata kodu / olcum yok).", cozum: 'Nedeni giderip yeni kosu baslatin.' },
   { onek: 'tamamlanmadi', anlam: 'TUR baslatildi ama istemci sonucu yazilmadi (kosu kesildi ya da durduruldu).', cozum: 'Yeni kosu baslatin.' },
   { onek: 'doyma:', anlam: 'Istenen hiz tutturulamadi (dropped > 0) ya da hedefin CPU ortalamasi %90 ustunde.', cozum: 'Daha dusuk hizla kosun; kapasite tahmini bu kademede gecerli degil.' },
 ]);
@@ -110,6 +128,8 @@ const NEDEN_KALIPLARI = Object.freeze([
   { kod: '429', tur: 'neden', re: /^429\(istemci=(\d+)(?:,sunucu=(\d+))?\)$/ },
   { kod: '5xx', tur: 'neden', re: /^5xx\(istemci=(\d+)(?:,sunucu=(\d+))?\)$/ },
   { kod: 'http2', tur: 'neden', re: /^http2$/ },
+  { kod: 'h2_disi', tur: 'neden', re: /^h2_disi\((\d+)\)$/ },
+  { kod: 'protokol_farkli', tur: 'neden', re: /^protokol_farkli\(beklenen=(h1|h2),olculen=(h1|h2|yok)\)$/ },
   { kod: 'hata', tur: 'neden', re: /^hata_%([0-9.]+)\(>%0\.1\)$/ },
   { kod: 'log_istemci_farki', tur: 'neden', re: /^log_istemci_farki_%([0-9.]+)$/ },
   { kod: 'kayit', tur: 'neden', re: /^kayit:(.+)$/ },
@@ -367,13 +387,18 @@ function negatifseNull(x) {
  * Reload olaylari (PORTAL FARKLARI 11): kaydedici orneklerinde worker PID kumesinin degistigi ya da
  * 'shutting down' worker goruldugu ardisik ornek dizileri. Her olay: ilk goruldugu ornek (t), ondan
  * onceki degismemis ornek (t_once; kayit olayin icinde basladiysa null), son ornek (t_son), worker
- * sayilari, o an suren TUR ve fazi (zaman.csv + istemci isinma_sn; TUR disinda bir onceki TUR'un
- * 'bosluk'u ya da 'kosu_oncesi'; olay bir TUR'un olcum penceresine tasiyorsa o TUR ve 'olcum') ve [t, t_son] araligina (gozlenen olay) degen TUR'lar. Kesit basina en cok
- * MAX_RELOAD_KESIT, toplamda MAX_RELOAD olay; zamana gore sirali. Serbest hedefte kesit yok -> [].
+ * sayilari, TUR ve faz, [t, t_son] araligina (gozlenen olay) degen TUR'lar. Faz (ilk tutan):
+ *   a. olayin kaniti (bitisik farkli-PID cifti [a.t, b.t] ya da k > 0 ornegi) ayni kesitte bir TUR'un CPU
+ *      penceresinin [w0, w1] icinde -> o TUR (w0'a gore ilk) ve 'olcum' (pencereCpu.reload ile esdeger)
+ *   b. [t, t_son] bir TUR'un olcum fazina [bas + isinma, bit] degiyor -> o TUR ve 'olcum_kenari'
+ *   c. aksi o an suren TUR ve fazi (isinma) ya da onceki TUR'un 'bosluk'u ya da 'kosu_oncesi'.
+ * `pencereler`: Map(tur -> { w0, w1, kesit }) (kosuHesapla r._cpu_pencere; yalniz CPU penceresi kurulan
+ * TUR'lar). Kesit basina en cok MAX_RELOAD_KESIT, toplamda MAX_RELOAD olay; zamana gore sirali. Serbest
+ * hedefte kesit yok -> [].
  */
 const MAX_RELOAD_KESIT = 20;
 const MAX_RELOAD = 50;
-function reloadOlaylari(ctx) {
+function reloadOlaylari(ctx, pencereler = new Map()) {
   const turlar = ctx.zamanTum.slice().sort((a, b) => a[1] - b[1]);
   const isinma = (tur) => {
     const ist = ctx.istemci.get(tur) || ctx.hatali.get(tur);
@@ -383,7 +408,7 @@ function reloadOlaylari(ctx) {
   const yerlestir = (t) => {
     let onceki = null;
     for (const [tur, b, e] of turlar) {
-      if (b <= t && t <= e) return { tur, faz: t < b + isinma(tur) ? 'isinma' : 'olcum' };
+      if (b <= t && t <= e) return { tur, faz: t < b + isinma(tur) ? 'isinma' : 'olcum_kenari' };
       if (e < t) onceki = tur;
     }
     return onceki ? { tur: onceki, faz: 'bosluk' } : { tur: null, faz: 'kosu_oncesi' };
@@ -400,7 +425,8 @@ function reloadOlaylari(ctx) {
     for (let i = 0; i < o.length; i++) {
       const b = o[i];
       const a = i > 0 ? o[i - 1] : null;
-      const degisti = (a !== null && a.p !== b.p) || b.k > 0;
+      const pidDegisti = a !== null && a.p !== b.p;
+      const degisti = pidDegisti || b.k > 0;
       if (!degisti) {
         kapat();
         continue;
@@ -408,25 +434,35 @@ function reloadOlaylari(ctx) {
       if (!cur) {
         cur = {
           kesit: k.anahtar, t: b.t, t_once: a ? a.t : null, t_son: b.t,
-          worker_once: a ? a.n : null, worker_sonra: b.n, kapanan_en_cok: b.k || 0,
+          worker_once: a ? a.n : null, worker_sonra: b.n, kapanan_en_cok: b.k || 0, _kanit: [],
         };
       } else {
         cur.t_son = b.t;
         cur.worker_sonra = b.n;
         if (b.k > cur.kapanan_en_cok) cur.kapanan_en_cok = b.k;
       }
+      if (pidDegisti) cur._kanit.push({ t0: a.t, t1: b.t });
+      if (b.k > 0) cur._kanit.push({ t0: b.t, t1: b.t });
     }
     kapat();
     tum.push(...olaylar);
   }
   tum.sort((x, y) => x.t - y.t);
+  // CPU pencereleri baslangica (w0) gore; esitlikte TUR adi (kararli sira).
+  const pencereListesi = [...pencereler].filter(([, p]) => p && Number.isFinite(p.w0) && Number.isFinite(p.w1))
+    .sort(([ta, a], [tb, b]) => a.w0 - b.w0 || (ta < tb ? -1 : ta > tb ? 1 : 0));
   return tum.slice(0, MAX_RELOAD).map((x) => {
-    // [t, t_son] bir TUR'un olcum penceresine [bas + isinma, bit] degiyorsa olay o TUR'un 'olcum'udur: isinmada /
-    // boslukta / kosu oncesinde baslayip eski worker'lar olcume tasinca pencereCpu adimi reload'la dusurur.
-    const olc = turlar.find(([tur, b, e]) => b + isinma(tur) <= x.t_son && x.t <= e);
-    const y = olc ? { tur: olc[0], faz: 'olcum' } : yerlestir(x.t);
+    const { _kanit: kanit, ...olay } = x;
+    // a. Kanit bir TUR'un CPU penceresinde: pencereCpu o adimi reload'la dusurdu -> 'olcum'.
+    const cpu = pencereListesi.find(([, p]) => p.kesit === x.kesit && kanit.some((k) => p.w0 <= k.t0 && k.t1 <= p.w1));
+    // b. Olcum fazina degiyor ama CPU penceresinin disinda (ilk / son saniyeler) -> 'olcum_kenari'.
+    const kenar = cpu ? null : turlar.find(([tur, b, e]) => b + isinma(tur) <= x.t_son && x.t <= e);
+    let y;
+    if (cpu) y = { tur: cpu[0], faz: 'olcum' };
+    else if (kenar) y = { tur: kenar[0], faz: 'olcum_kenari' };
+    else y = yerlestir(x.t);
     const etkilenen = [...new Set(turlar.filter(([, b, e]) => b <= x.t_son && x.t <= e).map(([tur]) => tur))];
-    return { ...x, tur: y.tur, faz: y.faz, etkilenen_turlar: etkilenen };
+    return { ...olay, tur: y.tur, faz: y.faz, etkilenen_turlar: etkilenen };
   });
 }
 
@@ -538,6 +574,7 @@ function kosuHesapla(ctx, tur, ist, arkaKesit) {
   for (const k of ['rps_sunucu', 'cpu_ms_istek', 'user_ms', 'sys_ms', 'cpu_oran_ms_sn', 'arka_ms_sn', 'host_cpu_ort',
     'host_cpu_max', 'pencere_sn', 'diger_rps']) r[k] = null;
   r._cpu_yok = null;
+  r._cpu_pencere = null;
   const rts = [];
   const bls = [];
   const crs = [];
@@ -562,7 +599,21 @@ function kosuHesapla(ctx, tur, ist, arkaKesit) {
   const sunucuda = (n) => (ctx.serbest ? '' : `,sunucu=${n}`);
   if ((r.n_429 || 0) > 0 || s429) gecersiz.push(`429(istemci=${fd(r.n_429 || 0)}${sunucuda(s429)})`);
   if ((r.n_5xx || 0) > 0 || s5xx) gecersiz.push(`5xx(istemci=${fd(r.n_5xx || 0)}${sunucuda(s5xx)})`);
-  if ((r.http2 || 0) > 0) gecersiz.push('http2');
+  // PORTAL FARKLARI 12: protokol kolonu varsa karar protokol_uyumsuz'dan; yoksa (eski satir) h1'de bugunku kural.
+  const hamProt = typeof ist.protokol === 'string' ? ist.protokol.trim() : '';
+  const prot = hamProt === 'h1' || hamProt === 'h2' ? hamProt : null;
+  r.protokol = prot;
+  r.protokol_uyumsuz = prot ? sayi(ist.protokol_uyumsuz) || 0 : null;
+  if (prot === null) {
+    // Bos istemci satiri (tamamlanmadi: hic sonuc yok) protokol hakkinda bir sey soylemez.
+    if (ctx.protokol === 'h2') {
+      if (Object.keys(ist).length) gecersiz.push('protokol_farkli(beklenen=h2,olculen=yok)');
+    } else if ((r.http2 || 0) > 0) gecersiz.push('http2');
+  } else if (prot !== ctx.protokol) {
+    gecersiz.push(`protokol_farkli(beklenen=${ctx.protokol},olculen=${prot})`);
+  } else if (r.protokol_uyumsuz > 0) {
+    gecersiz.push(prot === 'h1' ? 'http2' : `h2_disi(${fd(r.protokol_uyumsuz)})`);
+  }
   if ((r.hata_orani || 0) > HATA_ESIK + EPS) gecersiz.push(`hata_%${fx(100 * r.hata_orani, 2)}(>%${fx(100 * HATA_ESIK, 1)})`);
   if (r.n_olcum && !ctx.serbest) {
     const fark = Math.abs(olcum.length - r.n_olcum) / r.n_olcum;
@@ -586,6 +637,7 @@ function kosuHesapla(ctx, tur, ist, arkaKesit) {
       kesitAdi = kesit.anahtar;
       const clk = clkAl(kesit);
       const pc = pencereCpu(kesit.ornekler, w0, w1, clk);
+      if (pc !== null) r._cpu_pencere = { w0, w1, kesit: kesit.anahtar };
       const b = kesit.bilgi || {};
       for (const g of b.gecersiz || []) gecersiz.push('kayit:' + g);
       for (const nm of ['df_bas', 'df_bit']) {
@@ -950,12 +1002,15 @@ function cpusuzKarar(bitir, b, cpuNotu) {
  * null / null ve cikti bugunkuyle BIREBIR. Gecersiz motor / hedef turu / is parcacigi / tavan TypeError.
  * wrk'de ayni baglanti kademesi farkli tavanla (tavan_rps: hedefin olculmus limit_req'i ya da serbest 200)
  * farkli yuk demektir (Lua delay = N * 1000 / tavan): iki tavan biliniyor ve farkliysa VERI_YOK.
+ * Protokol (PORTAL FARKLARI 12): farkli protokol (HTTP/1.1 / HTTP/2) VERI_YOK, motor kuralindan hemen sonra;
+ * verilmezse 'h1' (eski satir), gecersiz deger TypeError.
  * @param {object[]} refAdimlar  referans kosunun adim satirlari
  * @param {object[]} adayAdimlar aday kosunun adim satirlari
  * @param {{esikCpu?: number, esikP95?: number, esikZarar?: number, kademeCpu?: number, kademeP95?: number,
  *   refMotor?: 'k6'|'wrk', adayMotor?: 'k6'|'wrk', refHedefTuru?: 'sunucu'|'serbest',
  *   adayHedefTuru?: 'sunucu'|'serbest', refIsParcacigi?: number|null, adayIsParcacigi?: number|null,
- *   refTavanRps?: number|null, adayTavanRps?: number|null}} [secenek]
+ *   refTavanRps?: number|null, adayTavanRps?: number|null, refProtokol?: 'h1'|'h2',
+ *   adayProtokol?: 'h1'|'h2'}} [secenek]
  */
 function kararVer(refAdimlar, adayAdimlar, secenek = {}) {
   const s = secenek || {};
@@ -966,6 +1021,8 @@ function kararVer(refAdimlar, adayAdimlar, secenek = {}) {
   const adayMotor = secenekDegeri(s.adayMotor, 'k6', MOTORLAR, 'adayMotor');
   const refTur = secenekDegeri(s.refHedefTuru, 'sunucu', HEDEF_TURLERI, 'refHedefTuru');
   const adayTur = secenekDegeri(s.adayHedefTuru, 'sunucu', HEDEF_TURLERI, 'adayHedefTuru');
+  const refProtokol = secenekDegeri(s.refProtokol, 'h1', PROTOKOLLER, 'refProtokol');
+  const adayProtokol = secenekDegeri(s.adayProtokol, 'h1', PROTOKOLLER, 'adayProtokol');
   const refIp = isParcacigiDegeri(s.refIsParcacigi, 'refIsParcacigi');
   const adayIp = isParcacigiDegeri(s.adayIsParcacigi, 'adayIsParcacigi');
   const refTavan = isParcacigiDegeri(s.refTavanRps, 'refTavanRps');
@@ -990,6 +1047,9 @@ function kararVer(refAdimlar, adayAdimlar, secenek = {}) {
   sat.push(`referans=${refAd} aday=${adyAd} senaryo=${kombo.senaryo} kip=${kombo.kip} ae=${kombo.ae}`);
   if (refMotor !== adayMotor) {
     return bitir('VERI_YOK', [...sat, `farkli yuk araci: referans ${refMotor}, aday ${adayMotor}; k6 (acik dongu, istek/sn) ve wrk (kapali dongu, baglanti) sonuclari karsilastirilmaz`]);
+  }
+  if (refProtokol !== adayProtokol) {
+    return bitir('VERI_YOK', [...sat, `farkli protokol: referans ${PROTOKOL_ADI[refProtokol]}, aday ${PROTOKOL_ADI[adayProtokol]}; ayni protokolle yeniden kosun`]);
   }
   if (refMotor === 'wrk' && refIp !== null && adayIp !== null && refIp !== adayIp) {
     return bitir('VERI_YOK', [...sat, `farkli is parcacigi sayisi: referans ${fd(refIp)}, aday ${fd(adayIp)}; ayni is parcacigi sayisiyla yeniden kosun`]);
@@ -1237,6 +1297,7 @@ function adimSatiri(r, gecerlilik, nedenler, nproc, logVar, ist, reloadlar = [])
       n_429_sunucu: r._s429,
       n_5xx_sunucu: r._s5xx,
       http2: r.http2,
+      ...(r.protokol !== null ? { protokol: r.protokol, protokol_uyumsuz: r.protokol_uyumsuz } : {}),
       p95_js: r.p95_js,
       p95_css: r.p95_css,
       p95_html: r.p95_html,
@@ -1299,18 +1360,23 @@ function temizle(x) {
  * (serbest hedefte yerine yok sayilan sunucu dosyasi + sunucu_olcumu_yok), wrk TLS payi uyarisi,
  * atlanan baska ADIM TUR'lari, sonra TUR uyarilari ("<tur>: <uyari>", bkz. adimUyarilariniKat).
  * Serbest hedefte sunucu tarafi yok sayilir, wrk'de TLS payi hesaplanmaz (PORTAL FARKLARI 8); `ozet`
- * semasi iki secenekte de ayni. Gecersiz hedefTuru / motor TypeError (cagiran: poller, kosu satirindan).
+ * semasi iki secenekte de ayni. Gecersiz hedefTuru / motor / protokol (ya da wrk + h2) TypeError (cagiran:
+ * poller, kosu satirindan). Protokol h2 ise kosu uyarisi H2_UYARISI (PORTAL FARKLARI 12).
  * @param {object} veri  sonuc.cjs kosuDiziniOku ciktisi
- * @param {{adim: string, hedefTuru?: 'sunucu'|'serbest', motor?: 'k6'|'wrk'}} secenek  adim ornek 'R17';
- *   bu ADIM'a ait olmayan TUR'lar atlanir (uyari). Varsayilanlar 'sunucu' / 'k6' (bugunku cikti).
+ * @param {{adim: string, hedefTuru?: 'sunucu'|'serbest', motor?: 'k6'|'wrk', protokol?: 'h1'|'h2'}} secenek
+ *   adim ornek 'R17'; bu ADIM'a ait olmayan TUR'lar atlanir (uyari). Varsayilanlar 'sunucu' / 'k6' / 'h1'
+ *   (bugunku cikti).
  */
-function kosuAnaliz(veri, { adim, hedefTuru = 'sunucu', motor = 'k6' } = {}) {
+function kosuAnaliz(veri, { adim, hedefTuru = 'sunucu', motor = 'k6', protokol = 'h1' } = {}) {
   if (!veri || typeof veri !== 'object') throw new TypeError('kosuAnaliz: veri yok');
   if (typeof adim !== 'string' || !ADIM_RE.test(adim)) throw new TypeError('kosuAnaliz: adim gecersiz');
   if (!HEDEF_TURLERI.includes(hedefTuru)) throw new TypeError('kosuAnaliz: hedefTuru gecersiz (sunucu | serbest)');
   if (!MOTORLAR.includes(motor)) throw new TypeError('kosuAnaliz: motor gecersiz (k6 | wrk)');
+  if (!PROTOKOLLER.includes(protokol)) throw new TypeError('kosuAnaliz: protokol gecersiz (h1 | h2)');
+  if (motor === 'wrk' && protokol === 'h2') throw new TypeError('kosuAnaliz: wrk yalniz h1');
   const serbest = hedefTuru === 'serbest';
   const ctx = adimHazirla(veri, { serbest, motor });
+  ctx.protokol = protokol;
   const uyarilar = Array.isArray(veri.uyarilar) ? veri.uyarilar.slice() : [];
   const dislama = dislamaListesi(ctx);
   const arka = new Map();
@@ -1330,7 +1396,6 @@ function kosuAnaliz(veri, { adim, hedefTuru = 'sunucu', motor = 'k6' } = {}) {
     }
   }
   const logVar = Array.isArray(veri.loglar) ? veri.loglar.length > 0 : ctx.log.size > 0;
-  const reloadlar = reloadOlaylari(ctx);
   if (serbest) {
     // Serbest hedefte kaydedici yok: dizinde yine de sunucu dosyasi varsa (karisiklik) yok sayildigi soylenir.
     const yokSayilan = sunucuDosyaSayisi(veri);
@@ -1341,8 +1406,10 @@ function kosuAnaliz(veri, { adim, hedefTuru = 'sunucu', motor = 'k6' } = {}) {
     if (!logVar) uyarilar.push('sunucu_logu_yok(log_istemci_karsilastirmasi_yapilmadi)');
   }
 
+  // Once TUM kosuHesapla (normal + HATALI adaylar, bu sirayla), sonra CPU pencereleriyle reload olaylari,
+  // sonra adim satirlari (reload fazi CPU penceresine bagli; PORTAL FARKLARI 11).
   const kosular = [];
-  const adimlar = [];
+  const hesaplar = [];
   const atlanan = [];
   for (const [tur, ist] of ctx.istemci) {
     const r = kosuHesapla(ctx, tur, ist, arka);
@@ -1351,11 +1418,9 @@ function kosuAnaliz(veri, { adim, hedefTuru = 'sunucu', motor = 'k6' } = {}) {
       continue;
     }
     kosular.push(r);
-    const nedenler = r.durum === 'DOYMA' ? doymaNedenleri(r) : r._gecersiz.slice();
-    adimlar.push(adimSatiri(r, r.durum, nedenler, nproc, logVar, ist, reloadlar));
+    hesaplar.push({ r, ist, gecerlilik: r.durum, nedenler: r.durum === 'DOYMA' ? doymaNedenleri(r) : r._gecersiz.slice() });
   }
   // kos.sh'in DUR dedigi (hatali_) ya da baslayip hic istemci sonucu yazmayan TUR'lar: HATALI.
-  const hataliSatirlar = [];
   const gorulen = new Set(ctx.istemci.keys());
   const hataliEkle = (tur, ist, neden) => {
     if (gorulen.has(tur)) return;
@@ -1365,14 +1430,19 @@ function kosuAnaliz(veri, { adim, hedefTuru = 'sunucu', motor = 'k6' } = {}) {
       atlanan.push(tur);
       return;
     }
-    hataliSatirlar.push(adimSatiri(r, 'HATALI', [neden, ...r._gecersiz], nproc, logVar, ist, reloadlar));
+    hesaplar.push({ r, ist, gecerlilik: 'HATALI', nedenler: [neden, ...r._gecersiz] });
   };
   for (const [tur, ist] of ctx.hatali) hataliEkle(tur, ist, 'hatali_kosu(kos.sh_durdurdu)');
   const baslayanlar = [...(veri.baslatilan || []).map((s) => s.tur), ...ctx.zamanTum.map((z) => z[0])];
   for (const tur of baslayanlar) if (tur) hataliEkle(tur, Object.create(null), 'tamamlanmadi(istemci_sonucu_yok)');
-  adimlar.push(...hataliSatirlar);
+  const pencereler = new Map();
+  for (const h of hesaplar) if (h.r._cpu_pencere) pencereler.set(h.r.tur, h.r._cpu_pencere);
+  const reloadlar = reloadOlaylari(ctx, pencereler);
+  const adimlar = hesaplar.map((h) => adimSatiri(h.r, h.gecerlilik, h.nedenler, nproc, logVar, h.ist, reloadlar));
   // wrk TLS surumunu sabitlemez ve oturumu devam ettirebilir: 'yeni' kipi her istekte tam el sikismasi demek degil.
   if (motor === 'wrk' && adimlar.some((a) => a.kip === 'yeni')) uyarilar.push(WRK_TLS_UYARISI);
+  // PORTAL FARKLARI 12: HTTP/2 olcum modeli (k6 VU basina tek akis) kosu duzeyinde soylenir.
+  if (protokol === 'h2') uyarilar.push(H2_UYARISI);
   for (const tur of atlanan) uyarilar.push(`baska_adim_atlandi:${tur}`);
   adimUyarilariniKat(uyarilar, adimlar);
 
@@ -1450,6 +1520,9 @@ module.exports = {
   ayristirma,
   NEDENLER,
   NEDEN_KALIPLARI,
+  PROTOKOLLER,
+  H2_UYARISI,
+  WRK_TLS_UYARISI,
   EPS,
   _pyForTest: { sayi, pyToplam, pyMax, esikGecti, yuzdelik, medyan, ortalama, gurultu, oran, pyYuvarla, fx, fxs, fd },
   _kosulariHazirlaForTest: kosulariHazirla,

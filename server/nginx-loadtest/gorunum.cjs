@@ -12,7 +12,7 @@
 
 const RELOAD_NEDENI = 'reload(worker_pid_degisti)';
 const CPU_KODLARI = new Set(['reload', 'sayac_geriledi', 'net_negatif']);
-const FAZLAR = new Set(['isinma', 'olcum', 'bosluk', 'kosu_oncesi']);
+const FAZLAR = new Set(['isinma', 'olcum', 'olcum_kenari', 'bosluk', 'kosu_oncesi']);
 const MAX_RELOAD = 50;
 const TUR_RE = /^[A-Za-z0-9_-]{1,120}$/;
 
