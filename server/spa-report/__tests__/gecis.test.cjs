@@ -135,7 +135,8 @@ const rapor = {
 let raporAktif = rapor;
 
 let rol = 'User';
-async function sunucu(modul = gecis) {
+const NS_SAHIBI = async () => ({ ready: true, byNs: new Map([[ilk.namespace.toLowerCase(), { group: 'GT-Ekip', email: 'gt-ekip@banka.com', status: 'OK' }]]) });
+async function sunucu(modul = gecis, sahipYukle = NS_SAHIBI) {
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => { req.session = { user: { username: 'ali', role: rol } }; next(); });
@@ -143,7 +144,7 @@ async function sunucu(modul = gecis) {
   modul.mountGecis(router, {
     loadReport: async () => raporAktif,
     // Namespace sahibi tablosu: e-posta buradan gelir.
-    sahipYukle: async () => ({ ready: true, byNs: new Map([[ilk.namespace.toLowerCase(), { group: 'GT-Ekip', email: 'gt-ekip@banka.com', status: 'OK' }]]) }),
+    sahipYukle,
   });
   app.use('/api/spa-report', router);
   const s = app.listen(0);
@@ -244,6 +245,78 @@ test('GG4 ekip e-postasi namespace sahibi tablosundan gelir; canli raporda olmay
     const yok = j.apps.find((a) => a.namespace === ilk.namespace && a.application !== ilk.application && a.taramadaYok);
     if (yok) assert.deepEqual(yok.ekipEposta, ['gt-ekip@banka.com'], 'canli raporda olmayan uygulama e-postayi alamadi');
   } finally { s.close(); }
+});
+
+test('GG4b ekip UYGULAMA sahibinden (dbo.Openshift_App_Owners), yoksa namespace sahibi; ekipKaynak ayni sirada', async () => {
+  rol = 'User';
+  const { indexAppOwners } = require('../../audit/ns-owners.cjs');
+  const sahip = async () => ({
+    ...(await NS_SAHIBI()),
+    appReady: true,
+    byApp: indexAppOwners([
+      { namespace: ilk.namespace, application: ilk.application, owner_group_name: 'GT-Uyg', owner_email: 'uyg@banka.com', kaynak: 'SI51_AGILE' },
+    ]),
+  });
+  const { s, base } = await sunucu(gecis, sahip);
+  try {
+    const { j } = await istek(base, '/gecis');
+    const x = j.apps.find((a) => a.application === ilk.application);
+    // Canli rapordaki 'GT-Ekip' (kaynagi bilinmiyor) + uygulama sahibi 'GT-Uyg'.
+    assert.deepEqual(x.ekip, ['GT-Ekip', 'GT-Uyg']);
+    assert.deepEqual(x.ekipKaynak, ['', 'SI51_AGILE']);
+    assert.deepEqual(x.ekipEposta, ['uyg@banka.com']);
+    const yok = j.apps.find((a) => a.namespace === ilk.namespace && a.application !== ilk.application && a.taramadaYok);
+    if (yok) {
+      assert.deepEqual(yok.ekip, ['GT-Ekip']);
+      assert.deepEqual(yok.ekipKaynak, ['NAMESPACE'], 'namespace yedegi isaretlenmedi');
+    }
+  } finally { s.close(); }
+});
+
+test('GG4c ekipKaynak kurali iki yonde: DB NAMESPACE iken canli uygulama kaynagi; DB uygulama kaynagi canli NAMESPACE\'i yener', async () => {
+  rol = 'User';
+  const { indexAppOwners } = require('../../audit/ns-owners.cjs');
+  const eskiRapor = raporAktif;
+  const kur = (dbKaynak, canliKaynak) => {
+    raporAktif = {
+      ...rapor,
+      rows: rapor.rows.map((r) => (r.application === ilk.application ? { ...r, team: ['GT-X'], teamKaynak: [canliKaynak] } : r)),
+    };
+    return async () => ({
+      ready: true,
+      nsReady: true,
+      byNs: new Map([[ilk.namespace.toLowerCase(), { group: 'GT-X', email: 'x@banka.com', status: 'OK' }]]),
+      appReady: true,
+      byApp: indexAppOwners([{ namespace: ilk.namespace, application: ilk.application, owner_group_name: 'GT-X', owner_email: 'x@banka.com', kaynak: dbKaynak }]),
+    });
+  };
+  try {
+    // 1) DB satiri NAMESPACE (uygulama icin CMDB'de bulunamadi), canli rapor ayni grubu SI51_AGILE ile biliyor.
+    let { s, base } = await sunucu(gecis, kur('NAMESPACE', 'SI51_AGILE'));
+    try {
+      const { j } = await istek(base, '/gecis');
+      const x = j.apps.find((a) => a.application === ilk.application);
+      assert.deepEqual([x.ekip, x.ekipKaynak], [['GT-X'], ['SI51_AGILE']], 'DB NAMESPACE iken canli uygulama kaynagi tercih edilmedi');
+    } finally { s.close(); }
+    // 2) Ters yon: DB uygulama kaynagi (SI51_YAZILIM), canli rapor NAMESPACE -> DB kazanir.
+    ({ s, base } = await sunucu(gecis, kur('SI51_YAZILIM', 'NAMESPACE')));
+    try {
+      const { j } = await istek(base, '/gecis');
+      const x = j.apps.find((a) => a.application === ilk.application);
+      assert.deepEqual([x.ekip, x.ekipKaynak], [['GT-X'], ['SI51_YAZILIM']], 'DB uygulama kaynagi canli NAMESPACE\'e yenildi');
+      assert.equal(x.ekipVeriYok, undefined);
+    } finally { s.close(); }
+    // 3) Namespace tablosu okunamadi, uygulama sahibi ve canli ekip yok: "veri yok" bayragi.
+    raporAktif = { ...rapor, rows: rapor.rows.map((r) => (r.application === ilk.application ? { ...r, team: [], teamKaynak: [] } : r)) };
+    ({ s, base } = await sunucu(gecis, async () => ({ ready: true, nsReady: false, byNs: new Map(), appReady: true, byApp: new Map() })));
+    try {
+      const { j } = await istek(base, '/gecis');
+      const x = j.apps.find((a) => a.application === ilk.application);
+      assert.deepEqual([x.ekip, x.ekipVeriYok], [[], true], 'namespace verisi okunamadi ama "veri yok" isaretlenmedi');
+    } finally { s.close(); }
+  } finally {
+    raporAktif = eskiRapor;
+  }
 });
 
 // ── 2026-10-16: Set 7 talebi gocu + Kontrol ─────────────────────────────────────────────────

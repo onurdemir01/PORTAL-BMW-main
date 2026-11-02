@@ -253,4 +253,26 @@ describe('Intranet SPA', () => {
     await screen.findByText('atil-ui');
     expect(screen.queryByText(/ARK dışı cluster/)).toBeNull();
   });
+
+  it('IU-EK ekip kaynağı: namespace yedeği "(namespace sahibi)" ile işaretli, uygulama sahibi işaretsiz', async () => {
+    mockRapor.mockResolvedValue(rapor({
+      rows: [
+        R('aktif-ui', { ekip: ['APP-AGILE'], ekipKaynak: ['ARK997_AGILE'] }),
+        R('atil-ui', { ekip: ['GT-Kart'], ekipKaynak: ['NAMESPACE'] }),
+        R('eski-ui'),
+        R('veri-ui', { ekip: [], ekipKaynak: [], ekipVeriYok: true }),
+      ],
+    }));
+    render(<IntranetSpaPage />);
+    await screen.findByText('atil-ui');
+    // Namespace tablosu okunamadı + uygulama sahibi yok: "bilinmiyor" değil "veri yok".
+    expect(satirMetni('veri-ui')).toContain('veri yok');
+    expect(satirMetni('veri-ui')).not.toContain('bilinmiyor');
+    expect(satirMetni('eski-ui')).not.toContain('veri yok');
+    expect(satirMetni('aktif-ui')).toContain('APP-AGILE');
+    expect(satirMetni('aktif-ui')).not.toContain('namespace sahibi');
+    expect(satirMetni('atil-ui')).toContain('GT-Kart (namespace sahibi)');
+    expect(satirMetni('eski-ui')).toContain('GT-Kart');
+    expect(satirMetni('eski-ui')).not.toContain('namespace sahibi');
+  });
 });

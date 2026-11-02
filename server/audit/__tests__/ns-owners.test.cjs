@@ -46,7 +46,7 @@ test('Nginx_Config_Audit sutun adi location_path (job_3315997 sonrasi: "Invalid 
 // Bekci: denetim.cjs'te CAGRILAN her ns-owners / nginx-migration fonksiyonu import edilmis olmali.
 test('denetim.cjs: kullanilan yardimci fonksiyonlar gercekten import edilmis', () => {
   const src = fs.readFileSync(path.join(__dirname, '..', 'denetim.cjs'), 'utf8');
-  for (const fn of ['loadNamespaceOwners', 'ownersFor', 'loadMigration', 'summarizeAudit']) {
+  for (const fn of ['loadNamespaceOwners', 'ownersFor', 'ownersForApp', 'loadMigration', 'summarizeAudit']) {
     const used = (src.match(new RegExp(`\\b${fn}\\(`, 'g')) || []).length;
     if (!used) continue;
     const imported = new RegExp(`\\{[^}]*\\b${fn}\\b[^}]*\\}\\s*=\\s*require\\(`).test(src);

@@ -17,6 +17,7 @@ import { arkSpaApi, type GecisPlani, type GecisSet, type GecisUygulama } from '@
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { toast } from '@/hooks/useToast';
 import { fmtDateTime } from '@/utils/datetime';
+import { EkipListesi } from '@/components/denetim/EkipKaynak';
 
 // Kalan calisma ustte; tamamlanmis setlerin uygulamalari katlanir bolumde.
 const KALAN_SETLER = [7];
@@ -68,7 +69,7 @@ function EkipHucre({ a }: { a: GecisUygulama }) {
     // Hucre sabit genislikte; adres tek satirda kisaltilir (tam hali ipucunda), kopyala dugmesi
     // her zaman gorunur.
     <div className="w-[12rem] space-y-0.5">
-      <div className="text-[11px] break-words">{a.ekip.length ? a.ekip.join(', ') : <span style={{ color: 'var(--text-muted)' }}>—</span>}</div>
+      <div className="text-[11px] break-words"><EkipListesi groups={a.ekip} kaynaklar={a.ekipKaynak} bos="—" veriYok={!!a.ekipVeriYok} /></div>
       {ep.map((e) => (
         <div key={e} className="flex items-center gap-1 text-[11px] min-w-0">
           <a href={`mailto:${e}`} className="flex items-center gap-1 min-w-0 underline decoration-dotted" style={{ color: 'var(--accent)' }} title={`${e} adresine e-posta yaz`}>
@@ -340,7 +341,7 @@ export default function GlomoGecisPlani() {
           </button>
         )}
       </div>
-      {data?.ok && data.epostaVar === false && <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Ekip e-postaları okunamadı (namespace sahibi tablosu); yalnız ekip adları gösteriliyor.</div>}
+      {data?.ok && data.epostaVar === false && <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Ekip e-postaları okunamadı (uygulama / namespace sahibi tabloları); yalnız ekip adları gösteriliyor.</div>}
 
       {KALAN_SETLER.map((no) => {
         const liste = bekleyen.filter((a) => a.setNo === no);

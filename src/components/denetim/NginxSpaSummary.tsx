@@ -96,7 +96,7 @@ function MissingAppsModal({ title, subtitle, rows, ownersReady, onClose }: {
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
             {fmtNumber(list.length)} uygulama · {fmtNumber(emails.length)} farklı e-posta
-            {!ownersReady && <span style={{ color: 'var(--status-warning)' }}> · sahiplik tablosu okunamadı (dbo.Openshift_Namespace_Owners)</span>}
+            {!ownersReady && <span style={{ color: 'var(--status-warning)' }}> · sahiplik tabloları okunamadı (dbo.Openshift_App_Owners / dbo.Openshift_Namespace_Owners)</span>}
           </span>
           <div className="flex gap-2">
             <button onClick={csv} className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs border border-[var(--border)] rounded-lg hover:bg-[var(--bg-elevated)]">
@@ -127,7 +127,7 @@ function MissingAppsModal({ title, subtitle, rows, ownersReady, onClose }: {
                 {hasEnv && <th className="text-left px-2 py-1.5 font-semibold">Ortam</th>}
                 <th className="text-left px-2 py-1.5 font-semibold">Uygulama</th>
                 <th className="text-left px-2 py-1.5 font-semibold">Namespace</th>
-                <th className="text-left px-2 py-1.5 font-semibold" title="namespace'in CMDB sahibi (dbo.Openshift_Namespace_Owners)">Ekip</th>
+                <th className="text-left px-2 py-1.5 font-semibold" title="Uygulamanın CMDB sahibi; bulunamazsa namespace sahibi (işaretli)">Ekip</th>
                 <th className="text-left px-2 py-1.5 font-semibold">E-posta</th>
                 <th className="text-left px-2 py-1.5 font-semibold">Eksik olan</th>
               </tr>

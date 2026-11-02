@@ -1010,7 +1010,7 @@ function buildMigration({
  * @param hasProxyColumns async () => boolean  (Nginx_Config_Audit kind/target_url DDL'i)
  */
 async function loadMigration({ query, sql, hasProxyColumns }) {
-  const { loadNamespaceOwners, ownersFor } = require('./ns-owners.cjs');
+  const { loadNamespaceOwners, ownersForApp } = require('./ns-owners.cjs');
   const oldHosts = [...new Set(MIGRATION_GROUPS.flatMap((g) => g.oldHosts))];
   const newHosts = [...new Set(MIGRATION_GROUPS.flatMap((g) => g.newHosts))];
   const inList = (prefix, arr) => ({
@@ -1143,7 +1143,7 @@ async function loadMigration({ query, sql, hasProxyColumns }) {
   });
   const owners = await loadNamespaceOwners(query);
   for (const g of groups) {
-    for (const a of g.apps) a.owner = ownersFor(owners.byNs, [a.namespace]);
+    for (const a of g.apps) a.owner = ownersForApp(owners, a.application, [a.namespace]);
   }
   return {
     ok: true,

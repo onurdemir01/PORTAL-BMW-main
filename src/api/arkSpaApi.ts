@@ -15,6 +15,10 @@ export interface ArkSatir {
   hosts: string[];
   vhosts: string[];
   team: string[];
+  /** team ile AYNI SIRADA kaynak (SI51_AGILE … / NAMESPACE = namespace sahibi); boş = bilinmiyor. */
+  teamKaynak?: string[];
+  /** Namespace sahiplik tablosu okunamadı ve uygulamanın kendi sahibi yok: "veri yok" (≠ bilinmiyor). */
+  teamVeriYok?: boolean;
   /** ÖLÇÜM. Beyandan ayrıdır ve biri diğerini ezmez. null = bu location hiç ölçülmedi. */
   traffic: ArkYuk | null;
   /** EKİBİN BEYANI. null = ekip beyan etmemiş ("kullanmıyor" DEĞİL). */
@@ -76,7 +80,11 @@ export interface GecisUygulama {
   /** "Kontrol Ettim" anı (ISO, UTC) ya da null. Kimin bastığı TUTULMAZ. */
   kontrolAt: string | null;
   ekip: string[];
-  /** Ekip e-postalari (namespace sahibi tablosundan; yoksa bos). */
+  /** ekip ile AYNI SIRADA kaynak (SI51_AGILE … / NAMESPACE = namespace sahibi); '' = bilinmiyor. */
+  ekipKaynak?: string[];
+  /** Namespace sahiplik tablosu okunamadı ve uygulamanın kendi sahibi yok: "veri yok" (≠ bilinmiyor). */
+  ekipVeriYok?: boolean;
+  /** Ekip e-postalari (uygulama / namespace sahibi tablosundan; yoksa bos). */
   ekipEposta?: string[];
   locations: string[];
   yuk: { state: 'active' | 'idle' | 'unknown'; req7: number } | null;
@@ -137,6 +145,10 @@ export interface IntranetSatir {
     olcum: string;
   } | null;
   ekip: string[];
+  /** ekip ile AYNI SIRADA kaynak (SI51_AGILE … / NAMESPACE = namespace sahibi); boş = bilinmiyor. */
+  ekipKaynak?: string[];
+  /** Namespace sahiplik tablosu okunamadı ve uygulamanın kendi sahibi yok: "veri yok" (≠ bilinmiyor). */
+  ekipVeriYok?: boolean;
   ekipEposta: string[];
   /** EKİBİN BEYANI — SPA Raporu ve SPA Taşımaları ile AYNI uygulama beyanı. */
   inUse: 'yes' | 'no' | 'unknown' | null;

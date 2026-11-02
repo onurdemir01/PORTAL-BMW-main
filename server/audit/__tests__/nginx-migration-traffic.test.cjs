@@ -340,3 +340,37 @@ test('MT13 uygulama ozeti: HIC olculmeyen yol "yuk almiyor" bandina dusurmez (ek
     'ekran uygulama ozetini ortak kuraldan almiyor');
   assert.ok(!/\.filter\(Boolean\) as NonNullable<YukBilgi>/.test(ui), 'olculmeyen yolu atan eski ozet geri gelmis');
 });
+
+test('MT14 loadMigration: ekip UYGULAMA sahibinden (dbo.Openshift_App_Owners), yoksa namespace sahibi', async () => {
+  // 2026-11-02: namespace sahibi uygulamanin sahibi gibi yaziliyordu (geri donus almada sorun).
+  const nsOwners = require('../ns-owners.cjs');
+  const kur2 = (appRows) => {
+    const db = sahteDb();
+    const ic = db.query;
+    db.query = async (t) => {
+      const s = String(t);
+      if (s.includes('dbo.Openshift_Namespace_Owners'))
+        return { recordset: [{ namespace: 'glomo-prod', owner_group_name: 'GT-NS', owner_email: 'ns@x', lookup_status: 'OK' }] };
+      if (s.includes('dbo.Openshift_App_Owners')) {
+        if (appRows === null) throw new Error("Invalid object name 'dbo.Openshift_App_Owners'.");
+        return { recordset: appRows };
+      }
+      return ic(t);
+    };
+    return db;
+  };
+  const appOf = (r) => r.groups.find((x) => x.id === 'glomo').apps.find((x) => x.application === 'base-app-v0');
+  try {
+    nsOwners._resetCache();
+    const { r: r1 } = await yuklenen(kur2([{ namespace: 'glomo-prod', application: 'base-app-v0', owner_group_name: 'GT-APP', kaynak: 'SI51_AGILE' }]));
+    assert.deepEqual([appOf(r1).owner.groups, appOf(r1).owner.kaynaklar], [['GT-APP'], ['SI51_AGILE']]);
+    nsOwners._resetCache();
+    const { r: r2 } = await yuklenen(kur2([]));
+    assert.deepEqual([appOf(r2).owner.groups, appOf(r2).owner.kaynaklar], [['GT-NS'], ['NAMESPACE']]);
+    nsOwners._resetCache();
+    const { r: r3 } = await yuklenen(kur2(null));
+    assert.deepEqual([appOf(r3).owner.groups, appOf(r3).owner.kaynaklar, r3.ownersReady], [['GT-NS'], [], true]);
+  } finally {
+    nsOwners._resetCache();
+  }
+});

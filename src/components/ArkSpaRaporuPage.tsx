@@ -26,6 +26,7 @@ import { kismiEtiket, kismiAciklama } from '@/components/denetim/yukPencere';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { downloadCsv } from '@/utils/csv';
 import { fmtDate, EMPTY_MARK } from '@/utils/datetime';
+import { EkipListesi } from '@/components/denetim/EkipKaynak';
 
 /** Beyan tarihi: yalnizca gun. Saat/dakika bu ekranda karar degistirmiyor. Ortak
  *  bicimlendirici (Portal saat dilimi); bozuk deger bos kalir (CSV'de "—" yazmasin). */
@@ -479,7 +480,7 @@ export default function ArkSpaRaporuPage() {
                     className="px-2 py-1"
                     style={{ color: r.team.length ? undefined : 'var(--text-muted)' }}
                   >
-                    {r.team.length ? r.team.join(', ') : 'bilinmiyor'}
+                    <EkipListesi groups={r.team} kaynaklar={r.teamKaynak} veriYok={!!r.teamVeriYok} />
                   </td>
                   <td className="px-2 py-1">
                     <YukHucre t={r.traffic} />

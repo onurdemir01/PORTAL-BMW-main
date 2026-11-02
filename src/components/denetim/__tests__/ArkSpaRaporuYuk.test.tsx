@@ -86,4 +86,27 @@ describe('ArkSpaRaporuPage yük hücresi', () => {
     expect(screen.getByText('kisa-app-v1')).toBeTruthy();
     expect(screen.queryByText('atil-app-v1')).toBeNull();
   });
+
+  it('ekip kaynağı: namespace yedeği "(namespace sahibi)" ile işaretli', async () => {
+    mockReport.mockResolvedValue({
+      ...RAPOR,
+      rows: [
+        { ...satir('kisa-app-v1', null), team: ['APP-G'], teamKaynak: ['SI51_YAZILIM'] },
+        { ...satir('atil-app-v1', null), team: ['NS-G'], teamKaynak: ['NAMESPACE'] },
+        { ...satir('veri-app-v1', null), team: [], teamKaynak: [], teamVeriYok: true },
+        { ...satir('bos-app-v1', null), team: [], teamKaynak: [] },
+      ],
+    });
+    render(<ArkSpaRaporuPage />);
+    await screen.findByText('kisa-app-v1');
+    const satirOf = (a: string) => screen.getByText(a).closest('tr')?.textContent || '';
+    // Namespace tablosu okunamadı + uygulama sahibi yok: "bilinmiyor" değil "veri yok".
+    expect(satirOf('veri-app-v1')).toContain('veri yok');
+    expect(satirOf('bos-app-v1')).not.toContain('veri yok');
+    expect(satirOf('kisa-app-v1')).toContain('APP-G');
+    expect(satirOf('kisa-app-v1')).not.toContain('namespace sahibi');
+    expect(satirOf('atil-app-v1')).toContain('NS-G (namespace sahibi)');
+    const hucre = screen.getAllByText('APP-G').find((e) => e.tagName === 'SPAN');
+    expect(hucre?.getAttribute('title')).toContain('Yazılım Geliştirme Sorumlusu');
+  });
 });

@@ -156,7 +156,9 @@ function kurulumHesapla(env, ns, app, idx, hosts) {
  * SAF RAPOR KURUCU (veritabani yok).
  * @param {object}   p
  * @param {object[]} p.apps        Gercek SPA Kesfi uygulama satirlari (spa-discovery uygulamalar())
- * @param {Map}      p.ownersByNs  ns-owners indexOwners ciktisi
+ * @param {Map}      p.ownersByNs  ns-owners indexOwners ciktisi (yalniz namespace sahibi; eski imza)
+ * @param {object}   [p.owners]    ns-owners loadNamespaceOwners ciktisi: verilirse uygulama sahibi
+ *                                 once, yoksa namespace sahibi (ownersForApp); ownersByNs'i ezer
  * @param {Map}      p.beyanlar    index.cjs loadBeyanlar ciktisi ("ns/app" anahtarlari)
  * @param {object}   [p.coverage]  kesif kapsami (cluster durumlari)
  * @param {object[]|null} [p.dirRows] Nginx_Intranet_Audit son gun (intranet sunuculari)
@@ -164,10 +166,11 @@ function kurulumHesapla(env, ns, app, idx, hosts) {
  * @param {string[]} [p.hosts]     intranet sunuculari (varsayilan nginx-hosts listesi)
  * @param {string}   [p.platform]  yalniz bu platformun cluster'larindaki uygulamalar (bkz. PLATFORM)
  */
-function buildIntranetRapor({ apps, ownersByNs, beyanlar, coverage, dirRows, dizinDurum = 'var', hosts, platform = 'ark' }) {
+function buildIntranetRapor({ apps, ownersByNs, owners, beyanlar, coverage, dirRows, dizinDurum = 'var', hosts, platform = 'ark' }) {
   const sunucuListesi = (hosts || intranetHosts()).map(U);
   const dIdx = dizinIndeksi(dizinDurum === 'var' ? dirRows : []);
-  const { ownersFor } = require('../audit/ns-owners.cjs');
+  const { ownersForApp } = require('../audit/ns-owners.cjs');
+  const sahip = owners || { byNs: ownersByNs || new Map() };
   // UYGULAMA BEYANI (location'siz anahtar); harf duyarsiz, en yeni kazanir (Map sirasi).
   const beyan = new Map();
   for (const [k, v] of beyanlar || []) if (!String(k).includes('\u0000')) beyan.set(L(k), v);
@@ -192,7 +195,7 @@ function buildIntranetRapor({ apps, ownersByNs, beyanlar, coverage, dirRows, diz
       const ns = T(a.namespace);
       const app = T(a.application);
       const b = beyan.get(`${L(ns)}/${L(app)}`) || null;
-      const o = ownersFor(ownersByNs || new Map(), [ns]);
+      const o = ownersForApp(sahip, app, [ns]);
       const u = a.usage || null;
       const r = {
         env: a.env ? U(a.env) : 'BILINMIYOR',
@@ -220,6 +223,10 @@ function buildIntranetRapor({ apps, ownersByNs, beyanlar, coverage, dirRows, diz
           : null,
         ekip: o.groups,
         ekipEposta: o.emails,
+        // ekip ile AYNI SIRADA kaynak (SI51_AGILE ... / NAMESPACE); bos = kaynak bilinmiyor.
+        ekipKaynak: o.kaynaklar,
+        // Namespace tablosu okunamadi + uygulama sahibi yok: ekran "veri yok" der.
+        ...(o.veriYokNs && o.veriYokNs.length ? { ekipVeriYok: true } : {}),
         inUse: b && b.inUse && BEYAN.has(b.inUse) ? b.inUse : null,
         inUseBy: (b && b.inUseBy) || null,
         inUseAt: b ? iso(b.inUseAt) : null,
@@ -340,6 +347,7 @@ async function loadIntranet(fresh, deps) {
     ...buildIntranetRapor({
       apps: sonuc.apps,
       ownersByNs: owners.byNs,
+      owners,
       beyanlar,
       coverage: sonuc.coverage,
       dirRows,

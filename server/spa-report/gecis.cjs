@@ -148,15 +148,20 @@ const iso = (v) => {
   return Number.isNaN(d.getTime()) ? T(v) : d.toISOString();
 };
 
-/** Canli rapordaki Glomo uygulamalari: "ns/app" -> { ekip, locations, yuk }. */
+/** Canli rapordaki Glomo uygulamalari: "ns/app" -> { ekip, ekipKaynak, locations, yuk }.
+ *  ekipKaynak: grup -> kaynak (SPA raporunun teamKaynak'i; yoksa bilinmiyor). */
 function glomoCanli(rapor) {
   const m = new Map();
   for (const r of rapor?.rows || []) {
     if (T(r.service).toUpperCase() !== GLOMO) continue;
     const k = `${T(r.namespace)}/${T(r.application)}`;
-    if (!m.has(k)) m.set(k, { namespace: T(r.namespace), application: T(r.application), ekip: new Set(), locations: [], trafik: [] });
+    if (!m.has(k)) m.set(k, { namespace: T(r.namespace), application: T(r.application), ekip: new Set(), ekipKaynak: new Map(), locations: [], trafik: [] });
     const x = m.get(k);
-    for (const e of r.team || []) x.ekip.add(e);
+    (r.team || []).forEach((e, i) => {
+      x.ekip.add(e);
+      const k = (r.teamKaynak || [])[i];
+      if (k && (!x.ekipKaynak.has(e) || x.ekipKaynak.get(e) === 'NAMESPACE')) x.ekipKaynak.set(e, k);
+    });
     if (r.location && !x.locations.includes(r.location)) x.locations.push(r.location);
     x.trafik.push(r.traffic || null);
   }
@@ -193,7 +198,7 @@ async function planYukle(loadReport, sahipYukle = sahipleriYukle) {
   try { rapor = await loadReport(false); } catch { rapor = null; }
   const canli = glomoCanli(rapor);
   const sahipler = await sahipYukle().catch(() => ({ ready: false, byNs: new Map() }));
-  const { ownersFor } = require('../audit/ns-owners.cjs');
+  const { ownersForApp } = require('../audit/ns-owners.cjs');
   const raporVar = !!rapor && rapor.ok !== false && !rapor.notScanned;
 
   // EKSIKLER: canli raporda Glomo olup planda olmayan uygulama Set 7'ye (kaynak 'portal').
@@ -232,11 +237,21 @@ async function planYukle(loadReport, sahipYukle = sahipleriYukle) {
       gecisTarihi: r.gecis_tarihi ? T(r.gecis_tarihi) : null,
       // "Kontrol Ettim" ani (ISO, UTC). Kimin bastigi TUTULMAZ.
       kontrolAt: iso(r.kontrol_at),
-      ekip: (() => {
-        const o = ownersFor(sahipler.byNs, [r.namespace]);
-        return [...new Set([...(c ? [...c.ekip] : []), ...o.groups])];
+      // Ekip: uygulama sahibi (dbo.Openshift_App_Owners), yoksa namespace sahibi; canli
+      // rapordaki ekiple birlesir. ekipKaynak ekip ile AYNI SIRADA ('' = kaynak bilinmiyor).
+      ...(() => {
+        const o = ownersForApp(sahipler, r.application, [r.namespace]);
+        const ekip = [...new Set([...(c ? [...c.ekip] : []), ...o.groups])];
+        const ekipKaynak = ekip.map((g) => {
+          const i = o.groups.indexOf(g);
+          const db = i >= 0 ? o.kaynaklar[i] || '' : '';
+          const canliK = c ? c.ekipKaynak.get(g) || '' : '';
+          return db && db !== 'NAMESPACE' ? db : canliK || db;
+        });
+        // Namespace tablosu okunamadi + uygulama sahibi yok: ekran "veri yok" der.
+        const veriYok = !ekip.length && !!(o.veriYokNs && o.veriYokNs.length);
+        return { ekip, ekipKaynak, ekipEposta: o.emails, ...(veriYok ? { ekipVeriYok: true } : {}) };
       })(),
-      ekipEposta: ownersFor(sahipler.byNs, [r.namespace]).emails,
       locations: c && c.locations.length ? c.locations : (s ? s.locations : []),
       yuk: c ? yukOzeti(c.trafik) : null,
       // Rapor okunduysa ve uygulama orada yoksa: canli Glomo envanterinde gorulmuyor.

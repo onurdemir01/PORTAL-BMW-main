@@ -71,7 +71,8 @@ export interface SpaYukOlcumu {
   locations?: number;
 }
 
-/** Uygulamanin sorumlu ekibi = namespace'inin CMDB sahibi (dbo.Openshift_Namespace_Owners). */
+/** Uygulamanin sorumlu ekibi: once uygulamanin kendi CMDB sahibi (dbo.Openshift_App_Owners), yoksa
+ *  namespace'inin CMDB sahibi (dbo.Openshift_Namespace_Owners). */
 export interface AppOwner {
   /** benzersiz AD grup adlari; bos = hicbir namespace icin sahip cozulmemis */
   groups: string[];
@@ -79,6 +80,15 @@ export interface AppOwner {
   /** sahibi bilinmeyen namespace'ler */
   unknownNs: string[];
   namespaces?: string[];
+  /** groups ile AYNI SIRADA kaynak: SI51_AGILE | SI51_YAZILIM | ARK997_AGILE | ARK997_YAZILIM |
+   *  NAMESPACE (namespace sahibi yedegi). Bos / yok = kaynak bilinmiyor (uygulama tablosu yok). */
+  kaynaklar?: string[];
+  /** sahibi namespace yedeginden gelen namespace'ler */
+  nsSahibi?: string[];
+  /** uygulama sahibi yok VE namespace tablosu okunamadi: "veri yok" (bilinmiyor DEGIL) */
+  veriYokNs?: string[];
+  /** dbo.Openshift_App_Owners okundu mu */
+  appReady?: boolean;
 }
 
 export interface NginxSpaRow {

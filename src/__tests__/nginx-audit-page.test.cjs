@@ -236,7 +236,7 @@ test('Nginx SPA: ORTAM OZETI en ustte (SPA sayisi + envanter payi, nginx ilerlem
   }
   const covSrv = read('../server/audit/denetim.cjs');
   assert.ok(
-    covSrv.includes('missingDetail: {') && covSrv.includes('ownersFor(owners.byNs, nss)'),
+    covSrv.includes('missingDetail: {') && covSrv.includes('ownersForApp(owners, name, nss)'),
     'kapsam ucu eksik uygulamalari sahiplikle vermeli',
   );
   // internet SPA'larinin nginx SERVISI (vhost) kirilimi (2026-09-17): sunucu hesaplar, ekran bolunmus cubuk cizer

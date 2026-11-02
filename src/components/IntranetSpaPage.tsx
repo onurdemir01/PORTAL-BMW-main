@@ -27,6 +27,7 @@ import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { toast } from '@/hooks/useToast';
 import { downloadCsv } from '@/utils/csv';
 import { fmtDate, EMPTY_MARK } from '@/utils/datetime';
+import { EkipListesi } from '@/components/denetim/EkipKaynak';
 import {
   BEYAN_ETIKET,
   DEGERLENDIRME,
@@ -602,7 +603,7 @@ export default function IntranetSpaPage() {
                       </div>
                     </td>
                     <td className="px-2 py-1" style={{ color: r.ekip.length ? undefined : 'var(--text-muted)' }}>
-                      {r.ekip.length ? r.ekip.join(', ') : 'bilinmiyor'}
+                      <EkipListesi groups={r.ekip} kaynaklar={r.ekipKaynak} veriYok={!!r.ekipVeriYok} />
                       {r.ekipEposta.length > 0 && (
                         <div className="text-[11px]">
                           {r.ekipEposta.map((m) => (

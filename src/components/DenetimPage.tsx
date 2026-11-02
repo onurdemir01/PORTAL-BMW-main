@@ -728,7 +728,7 @@ export function NginxSpaAudit() {
                   </th>
                   <th
                     className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]"
-                    title="Sorumlu ekip: uygulamanin namespace'inin CMDB sahibi (dbo.Openshift_Namespace_Owners)"
+                    title="Sorumlu ekip: uygulamanın kendi CMDB sahibi (dbo.Openshift_App_Owners); bulunamazsa namespace sahibi (dbo.Openshift_Namespace_Owners), “(namespace sahibi)” diye işaretli"
                   >
                     Ekip
                   </th>

@@ -36,7 +36,7 @@ const {
   spaTrafikBirlesik,
 } = require('./nginx-migration.cjs');
 const { buildRouteStats } = require('./route-stats.cjs');
-const { loadNamespaceOwners, ownersFor } = require('./ns-owners.cjs');
+const { loadNamespaceOwners, ownersForApp } = require('./ns-owners.cjs');
 
 // Proxy (production) kolonlari DDL ile eklendi mi?
 //
@@ -572,6 +572,8 @@ function initDenetim(app) {
       // EKIP (2026-09-14): uygulamanin namespace'inin CMDB sahibi. Ortamlar farkli
       // namespace'te olabilir (glomo-dev / glomo-prod); hepsinin sahibi toplanir,
       // farkli ekiplerse hepsi listelenir. Namespace'siz satirlar "bilinmiyor".
+      // 2026-11-02: once UYGULAMANIN kendi CMDB sahibi (dbo.Openshift_App_Owners), yoksa
+      // namespace sahibi; kaynak her grupta tasinir (ekran namespace yedegini isaretler).
       const owners = await loadNamespaceOwners(query);
       for (const r of rows) {
         const nss = [
@@ -581,7 +583,7 @@ function initDenetim(app) {
               .filter(Boolean),
           ),
         ];
-        r.owner = { ...ownersFor(owners.byNs, nss), namespaces: nss };
+        r.owner = { ...ownersForApp(owners, r.application, nss), namespaces: nss };
       }
 
       // Filo ozeti: kac location yuk aliyor / almiyor / bilinmiyor (ekranda tek bakista).
@@ -1043,7 +1045,7 @@ function initDenetim(app) {
         return {
           app: name,
           namespaces: nss,
-          owner: { ...ownersFor(owners.byNs, nss), namespaces: nss },
+          owner: { ...ownersForApp(owners, name, nss), namespaces: nss },
           ...extra,
         };
       };
@@ -1221,7 +1223,7 @@ function initDenetim(app) {
               ? intranetKapsam.intranetHucresi(
                   ortakIntranet,
                   e,
-                  (nss) => ownersFor(owners.byNs, nss),
+                  (nss, app) => ownersForApp(owners, app, nss),
                   CAP,
                 )
               : intranetKapsam.olculemediHucre(ortakIntranetHata);

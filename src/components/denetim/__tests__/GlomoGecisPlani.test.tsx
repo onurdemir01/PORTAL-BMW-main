@@ -367,4 +367,24 @@ describe('GlomoGecisPlani', () => {
     await screen.findByText('yedi-app');
     expect(screen.queryByText(/Set 7 taşıması uygulanamadı/)).not.toBeInTheDocument();
   });
+
+  it('ekip kaynağı: namespace yedeği "(namespace sahibi)" ile işaretli, uygulama sahibi işaretsiz', async () => {
+    const p = plan(false);
+    p.apps = [
+      app('yedi-app', { setNo: 7, ekip: ['APP-G', 'NS-G'], ekipKaynak: ['SI51_AGILE', 'NAMESPACE'] }),
+      app('eski-app', { setNo: 7 }),
+      app('veri-app', { setNo: 7, ekip: [], ekipKaynak: [], ekipVeriYok: true }),
+      app('bos-app', { setNo: 7, ekip: [], ekipKaynak: [] }),
+    ];
+    mockGecis.mockResolvedValue(p);
+    render(<GlomoGecisPlani />);
+    await screen.findByText('yedi-app');
+    const satirOf = (a: string) => screen.getByText(a).closest('tr')?.textContent || '';
+    // Namespace tablosu okunamadı + uygulama sahibi yok: boş "—" değil "veri yok".
+    expect(satirOf('veri-app')).toContain('veri yok');
+    expect(satirOf('bos-app')).not.toContain('veri yok');
+    expect(satirOf('yedi-app')).toContain('APP-G, NS-G (namespace sahibi)');
+    expect(satirOf('eski-app')).toContain('GT-Ekip');
+    expect(satirOf('eski-app')).not.toContain('namespace sahibi');
+  });
 });

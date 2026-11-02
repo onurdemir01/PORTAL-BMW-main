@@ -63,7 +63,7 @@ function olculemediHucre(neden) {
  * Bir ortamin intranet kurulum hucresi (Kapsam satirinin alanlari) + tikla-listesi.
  * @param {object}   rapor    loadIntranet ciktisi (raporHazir)
  * @param {string}   env      'PROD', 'TEST' ...
- * @param {Function} ownerOf  (namespaces[]) => OwnerCell sekli ({groups, emails, unknownNs, namespaces})
+ * @param {Function} ownerOf  (namespaces[], application) => OwnerCell sekli ({groups, emails, unknownNs, namespaces})
  * @param {number}   [cap]
  */
 function intranetHucresi(rapor, env, ownerOf, cap = 300) {
@@ -85,7 +85,7 @@ function intranetHucresi(rapor, env, ownerOf, cap = 300) {
   const detay = (r, kind) => ({
     app: r.application,
     namespaces: [r.namespace],
-    owner: { ...ownerOf([r.namespace]), namespaces: [r.namespace] },
+    owner: { ...ownerOf([r.namespace], r.application), namespaces: [r.namespace] },
     kind,
     namespace: r.namespace,
     ...(kind === 'partial' ? { hosts: eksikler(r) } : {}),

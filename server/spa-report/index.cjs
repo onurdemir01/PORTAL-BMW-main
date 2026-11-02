@@ -163,7 +163,7 @@ async function loadReport(fresh) {
     return spaTrafikDurumu(trfIdx, k, tanimlar.get(k));
   };
 
-  const { loadNamespaceOwners, ownersFor } = require('../audit/ns-owners.cjs');
+  const { loadNamespaceOwners, ownersForApp } = require('../audit/ns-owners.cjs');
   const owners = await loadNamespaceOwners(query).catch(() => ({ byNs: new Map(), ready: false }));
   const beyanlar = await loadBeyanlar();
 
@@ -171,7 +171,8 @@ async function loadReport(fresh) {
     rows: spaSatirlari,
     trafficOf,
     beyanlar,
-    ekipOf: (ns) => (ownersFor(owners.byNs, [ns]) || {}).groups || [],
+    // Uygulama sahibi (yoksa namespace sahibi); kaynak teamKaynak'ta.
+    ekipOf: (ns, app) => ownersForApp(owners, app, [ns]),
     env: 'PROD',
   });
   const value = {
