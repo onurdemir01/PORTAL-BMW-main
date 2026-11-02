@@ -90,6 +90,20 @@ const TABLES = [
         updated_at      DATETIME2 NOT NULL DEFAULT GETUTCDATE()
       )`,
   },
+  {
+    // Admin > Playbook Kayitlari: silinen VARSAYILAN (PLAYBOOK_REGISTRY_SEED) satirlarin izi
+    // (2026-11-02, Portal DB). Seed "yoksa ekle" her acilista calistigi icin admin'in sildigi
+    // varsayilan satir restart'ta geri geliyordu. Bu tabloda anahtari olan satir seed
+    // tarafindan BIR DAHA eklenmez; "Geri yukle" izi siler ve seed satirini yeniden ekler.
+    // Iz silme ile AYNI islemde (tek batch, XACT_ABORT) yazilir - bkz. playbook-registry.cjs.
+    name: 'ansible_playbook_registry_silinen',
+    sql: `
+      CREATE TABLE ansible_playbook_registry_silinen (
+        key_name    NVARCHAR(100) NOT NULL PRIMARY KEY,
+        deleted_by  NVARCHAR(255) NULL,
+        deleted_at  DATETIME2     NOT NULL DEFAULT GETUTCDATE()
+      )`,
+  },
   // ── LogX v2 (guvenli dosya indirme yeniden tasarimi) ────────────────────────
   {
     // Sihirbaz oturumu basina bir satir — resumable state machine + TOCTOU kaynagi.
@@ -1752,6 +1766,42 @@ const TABLES = [
       )`,
   },
   {
+    // Crypto Hub > Indexer / Node degisikligi talepleri (2026-11-02, Portal DB - TBMWANS DEGIL).
+    // Bkz. server/crypto-hub/node.cjs ve docs/CRYPTO-HUB.md. Satir SILINMEZ (iz); kapanis
+    // kapandi_at dolarak tek kez (CAS). "Kiraci + kilit basina tek acik talep" kurali asagidaki
+    // filtreli tekil indeks UX_chnc_acik ile zorlanir. eski_ozet / yeni_ozet / sonuc_json YALNIZ
+    // maskeli deger tasir (node URL'i ya da sirri ASLA); plan_sha = sha256(plan + expect + new_sha
+    // base64'leri). es_talep_id: Ankara talebinde Istanbul satirinin id'si.
+    name: 'crypto_hub_node_changes',
+    sql: `
+      CREATE TABLE crypto_hub_node_changes (
+        id                  INT IDENTITY(1,1) PRIMARY KEY,
+        tenant_key          NVARCHAR(64)   NOT NULL,
+        grup                NVARCHAR(128)  NOT NULL,
+        kilit               NVARCHAR(128)  NOT NULL,
+        lokasyon            NVARCHAR(16)   NOT NULL,
+        yeni_node_id        NVARCHAR(64)   NOT NULL,
+        yeni_node_ad        NVARCHAR(200)  NULL,
+        eski_ozet           NVARCHAR(1000) NULL,
+        yeni_ozet           NVARCHAR(1000) NULL,
+        hedefler            NVARCHAR(2000) NOT NULL,
+        plan_sha            CHAR(64)       NOT NULL,
+        gerekce             NVARCHAR(500)  NOT NULL,
+        username            NVARCHAR(100)  NOT NULL,
+        durum               NVARCHAR(20)   NOT NULL,
+        smart_ticket_id     INT            NULL,
+        external_ticket_id  NVARCHAR(64)   NULL,
+        awx_server_id       INT            NULL,
+        awx_job_id          INT            NULL,
+        sonuc_kod           NVARCHAR(32)   NULL,
+        sonuc_json          NVARCHAR(MAX)  NULL,
+        es_talep_id         INT            NULL,
+        created_at          DATETIME2      NOT NULL DEFAULT SYSUTCDATETIME(),
+        updated_at          DATETIME2      NOT NULL DEFAULT SYSUTCDATETIME(),
+        kapandi_at          DATETIME2      NULL
+      )`,
+  },
+  {
     // Nginx Hub > Yuk Testi (2026-10-27) - senaryo: YALNIZ yol satirlari (HAR tarayicidan cikmaz).
     // tsv kanonik (basliksiz, LF), sha256 onun ozeti; playbook ayni ozeti dogrular. Yumusak silme:
     // gecmis kosular (durdurma dahil) govdeye erismeye devam eder. Bkz. docs/NGINX-YUK-TESTI.md.
@@ -2162,6 +2212,19 @@ const ELEMENT_SEED = [
     sort_order: 2,
     // default_visible=0 YETER: acik kurali olmayan normal kullanici goremez. `strict`
     // KULLANILMIYOR cunku o, yoneticileri de disarida birakirdi (2026-10-01 karari).
+    default_visible: 0,
+  },
+  {
+    // INDEXER / NODE DEGISIKLIGI TALEBI (kullanici karari D5, 2026-11-02: "yalniz yetkisi olan
+    // kullanicilar"). Talep acmanin TEK kapisi; tek basina Crypto Hub'da yalniz Indexer / Node
+    // sekmesini gosterir (app:metaco tek basina talep actirmaz). Metaco ogeleri gibi
+    // default_visible=0, `strict` YOK (2026-10-01: yoneticiler her seyi yapabilir; Smart onayi
+    // yine zorunlu, atlama yok).
+    element_key: 'cryptohub:node:degistir',
+    element_type: 'feature',
+    parent_key: 'CryptoHub',
+    label: 'Crypto Hub — Indexer / Node değişikliği talebi',
+    sort_order: 3,
     default_visible: 0,
   },
   {
@@ -3461,8 +3524,27 @@ const PLAYBOOK_REGISTRY_SEED = [
   },
 ];
 
+// Admin'in bilerek sildigi varsayilan satirlar (ansible_playbook_registry_silinen). Tablo YOKSA
+// (olusturma basarisiz) hic iz yazilamamistir - silme izi ayni islemde yazar - bos kume doner
+// ve seed bugunku gibi calisir. BASKA bir okuma hatasinda null doner: seed bu acilista HIC
+// ekleme yapmaz (silinmis satiri geri getirmektense yeni anahtari bir sonraki acilisa birakmak).
+async function silinenVarsayilanAnahtarlari(pool) {
+  try {
+    const r = await pool.request().query(`SELECT key_name FROM ansible_playbook_registry_silinen`);
+    return new Set((r.recordset || []).map((x) => x.key_name));
+  } catch (err) {
+    // 208 = tablo yok (oturum dilinden bagimsiz); metin yalniz yedek.
+    const no = err && (err.number ?? (err.originalError && err.originalError.info && err.originalError.info.number));
+    if (no === 208 || /Invalid object name/i.test(String(err && err.message))) return new Set();
+    console.warn('[DB] Silinen varsayilan playbook kayitlari okunamadi; seed bu acilista atlandi:', err.message);
+    return null;
+  }
+}
+
 async function seedPlaybookRegistry(pool) {
-  for (const row of PLAYBOOK_REGISTRY_SEED) {
+  const silinenler = await silinenVarsayilanAnahtarlari(pool);
+  for (const row of silinenler ? PLAYBOOK_REGISTRY_SEED : []) {
+    if (silinenler.has(row.key_name)) continue;
     try {
       const exists = await pool
         .request()
@@ -4923,6 +5005,9 @@ async function setupTables() {
     // Is gecmisi is numarasiyla okunur: Retirement kaydi (loadRecord, 4 sn'de bir /canli) hedeflerin isleri,
     // ss/job-status sahiplik kontrolu (job_id + awx_server_id). Tabloda baska indeks yoktu (tam tarama).
     { name: 'IX_ajh_job', table: 'ansible_job_history', cols: 'job_id, awx_server_id' },
+    // Crypto Hub node talepleri: tarama bilet numarasiyla, ekran kiraciya gore okur.
+    { name: 'IX_chnc_ticket', table: 'crypto_hub_node_changes', cols: 'smart_ticket_id' },
+    { name: 'IX_chnc_tenant', table: 'crypto_hub_node_changes', cols: 'tenant_key, created_at DESC' },
     // Yuk Testi: poller/kilit isi numarasiyla, liste hedefe gore, adimlar kosuya gore okunur.
     { name: 'IX_nlk_job', table: 'nginx_loadtest_kosular', cols: 'awx_server_id, awx_job_id' },
     { name: 'IX_nlk_hedef', table: 'nginx_loadtest_kosular', cols: 'hedef_host, created_at' },
@@ -4946,6 +5031,28 @@ async function setupTables() {
     }
   }
 
+  // ── Crypto Hub node talep kilidi: FILTRELI TEKIL indeks (2026-11-02) ─────────────
+  // Genel dongu yalniz duz CREATE INDEX uretir; bu indeks UNIQUE + WHERE ister, ayri blokta.
+  // "Kiraci + kilit basina tek acik talep" sozu bu indekse dayanir: POST /node-change indeksi
+  // sys.indexes'te (is_unique + has_filter) dogrulamadan talep ACMAZ (fail-closed).
+  try {
+    const exists = await pool
+      .request()
+      .query(
+        `SELECT 1 FROM sys.indexes WHERE name = 'UX_chnc_acik' AND object_id = OBJECT_ID('crypto_hub_node_changes')`,
+      );
+    if (!exists.recordset.length) {
+      await pool
+        .request()
+        .query(
+          `CREATE UNIQUE INDEX UX_chnc_acik ON crypto_hub_node_changes (tenant_key, kilit) WHERE kapandi_at IS NULL`,
+        );
+      console.log('[DB] Index olusturuldu: UX_chnc_acik (filtreli tekil)');
+    }
+  } catch (err) {
+    console.warn('[DB] Index olusturulamadi (UX_chnc_acik):', err.message);
+  }
+
   // ── OCP katalogu ilk kurulumu — EN SONDA ────────────────────────────────────
   // Digerlerinden FARKLI olarak BIR KERELIK calisir (isaret: portal_settings). Sebep:
   // admin bir cluster'i bilerek silerse restart onu geri getirmemeli.
@@ -4959,4 +5066,4 @@ async function setupTables() {
   }
 }
 
-module.exports = { setupTables };
+module.exports = { setupTables, PLAYBOOK_REGISTRY_SEED, seedPlaybookRegistry };

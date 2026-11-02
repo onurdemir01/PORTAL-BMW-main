@@ -128,9 +128,81 @@ async function update(id, fields) {
   return rows[0] ? parseRow(rows[0]) : null;
 }
 
-async function remove(id) {
-  const { rowCount } = await db.query(`DELETE FROM ansible_playbook_registry WHERE id = $1`, [id]);
-  return rowCount > 0;
+// -- Varsayilan (seed) satirlar ve silme izi (2026-11-02) --
+// Seed (server/db/mssql-setup.cjs PLAYBOOK_REGISTRY_SEED) her acilista "yoksa ekle" calisir;
+// admin'in sildigi varsayilan satir restart'ta geri geliyordu. Varsayilan bir satir silinirken
+// anahtari ansible_playbook_registry_silinen'e AYNI batch'te (XACT_ABORT + islem) yazilir:
+// iz yazilamazsa satir da silinmez (iz olmadan silmek bir sonraki acilista geri getirir).
+function varsayilanSatir(keyName) {
+  const { PLAYBOOK_REGISTRY_SEED } = require('../db/mssql-setup.cjs');
+  return PLAYBOOK_REGISTRY_SEED.find((r) => r.key_name === String(keyName || '')) || null;
+}
+
+// Doner: null (satir yok) | { keyName, displayName, varsayilan }.
+async function remove(id, { username } = {}) {
+  const { rows } = await db.query(`SELECT * FROM ansible_playbook_registry WHERE id = $1`, [id]);
+  if (!rows[0]) return null;
+  const row = parseRow(rows[0]);
+  const varsayilan = !!varsayilanSatir(row.keyName);
+  if (!varsayilan) {
+    const { rowCount } = await db.query(`DELETE FROM ansible_playbook_registry WHERE id = $1`, [id]);
+    return rowCount > 0 ? { keyName: row.keyName, displayName: row.displayName, varsayilan } : null;
+  }
+  const r = await db.query(
+    `SET XACT_ABORT ON;
+     BEGIN TRANSACTION;
+     IF NOT EXISTS (SELECT 1 FROM ansible_playbook_registry_silinen WHERE key_name = $2)
+       INSERT INTO ansible_playbook_registry_silinen (key_name, deleted_by) VALUES ($2, $3);
+     DELETE FROM ansible_playbook_registry OUTPUT DELETED.key_name WHERE id = $1 AND key_name = $2;
+     COMMIT TRANSACTION;`,
+    [id, row.keyName, username ? String(username).slice(0, 255) : null]
+  );
+  return r.rows.length ? { keyName: row.keyName, displayName: row.displayName, varsayilan } : null;
+}
+
+// Geri yuklenebilir silinmis varsayilanlar: izi olan, satiri olmayan VE hala seed'de olan anahtarlar.
+async function listSilinenVarsayilanlar() {
+  const { rows } = await db.query(
+    `SELECT s.key_name, s.deleted_by, s.deleted_at FROM ansible_playbook_registry_silinen s
+      WHERE NOT EXISTS (SELECT 1 FROM ansible_playbook_registry r WHERE r.key_name = s.key_name)
+      ORDER BY s.key_name`
+  );
+  const out = [];
+  for (const r of rows) {
+    const seed = varsayilanSatir(r.key_name);
+    if (!seed) continue;
+    out.push({
+      keyName: r.key_name,
+      displayName: seed.display_name,
+      category: seed.category,
+      deletedBy: r.deleted_by || null,
+      deletedAt: r.deleted_at || null,
+    });
+  }
+  return out;
+}
+
+// Izi siler ve seed satirini SEED DEGERLERIYLE yeniden ekler (seedPlaybookRegistry ile ayni
+// yedi kolon). Satir zaten varsa (or. admin ayni anahtarla elle acti) yalniz iz silinir.
+async function geriYukle(keyName) {
+  const seed = varsayilanSatir(keyName);
+  if (!seed) {
+    const e = new Error('Bu anahtar varsayılan kayıtlarda yok; geri yüklenemez.');
+    e.status = 400;
+    throw e;
+  }
+  await db.query(
+    `SET XACT_ABORT ON;
+     BEGIN TRANSACTION;
+     DELETE FROM ansible_playbook_registry_silinen WHERE key_name = $1;
+     IF NOT EXISTS (SELECT 1 FROM ansible_playbook_registry WHERE key_name = $1)
+       INSERT INTO ansible_playbook_registry
+         (key_name, display_name, description, category, handler, playbook_path, env_var_name)
+       VALUES ($1, $2, $3, $4, $5, $6, $7);
+     COMMIT TRANSACTION;`,
+    [seed.key_name, seed.display_name, seed.description, seed.category, seed.handler, seed.playbook_path, seed.env_var_name]
+  );
+  return getByKey(seed.key_name);
 }
 
 // Yalnizca awx_server_id sutununu key uzerinden gunceller — LogX v2 404-telafisi dogru
@@ -158,4 +230,7 @@ function getEffectiveTemplateId(row) {
   return null;
 }
 
-module.exports = { listAll, listEnabled, getByKey, create, update, remove, updateServerId, getEffectiveTemplateId };
+module.exports = {
+  listAll, listEnabled, getByKey, create, update, remove, updateServerId, getEffectiveTemplateId,
+  varsayilanSatir, listSilinenVarsayilanlar, geriYukle,
+};

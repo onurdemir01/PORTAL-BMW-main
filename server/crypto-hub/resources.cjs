@@ -456,21 +456,33 @@ async function isKaydiBul(db, serverId, jobId) {
  * Erisim karari (saf). Uygulama kapisi + kapali kiraci + sahiplik. Admin her isi gorur
  * (ama uygulama kapisi Admin icin de motorda sorulur).
  */
-function isErisimKarari({ kayit, user, gorunen, tenantOf, isOpen }) {
+// Indexer / Node isleri (2026-11-02, D5): uygulama yetkisi YERINE "app:metaco ya da node
+// yetkisi", isOpen YERINE nodeAcik. YALNIZ bu iki islemde; diger isler eski kurala tabi.
+const NODE_ISLERI = ['node_env_get', 'node_change'];
+
+function isErisimKarari({ kayit, user, gorunen, tenantOf, isOpen, nodeGorunen = false, nodeAcik = null }) {
   if (!kayit) {
     return { izin: false, status: 403, mesaj: 'Bu iş Crypto Hub kaydında bulunamadı — erişim verilmedi.' };
   }
   if (kayit.yabanci) return { izin: false, status: 403, mesaj: 'Bu iş bir Crypto Hub işi değil.' };
   const tenant = tenantOf(kayit.tenantKey);
   if (!tenant) return { izin: false, status: 403, mesaj: 'İşin ortamı tanınmadı — erişim verilmedi.' };
-  if (!gorunen || !gorunen.has(tenant.app)) {
-    return {
-      izin: false,
-      status: 403,
-      mesaj: `Bu alana erişiminiz yok (${tenant.appLabel || tenant.app}).`,
-    };
+  if (NODE_ISLERI.includes(kayit.action)) {
+    const goruyor = tenant.app === 'metaco' && ((gorunen && gorunen.has('metaco')) || nodeGorunen === true);
+    if (!goruyor) return { izin: false, status: 403, mesaj: 'Bu alana erişiminiz yok (Metaco).' };
+    if (typeof nodeAcik !== 'function' || !nodeAcik(tenant)) {
+      return { izin: false, status: 403, closed: true, mesaj: 'kapali' };
+    }
+  } else {
+    if (!gorunen || !gorunen.has(tenant.app)) {
+      return {
+        izin: false,
+        status: 403,
+        mesaj: `Bu alana erişiminiz yok (${tenant.appLabel || tenant.app}).`,
+      };
+    }
+    if (!isOpen(tenant)) return { izin: false, status: 403, closed: true, mesaj: 'kapali' };
   }
-  if (!isOpen(tenant)) return { izin: false, status: 403, closed: true, mesaj: 'kapali' };
   const u = user || {};
   if (u.role !== 'Admin' && !ayniKisi(kayit.username, u.username)) {
     return { izin: false, status: 403, mesaj: 'Bu iş size ait değil.' };

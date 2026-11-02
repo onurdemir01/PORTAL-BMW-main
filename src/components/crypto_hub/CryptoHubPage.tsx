@@ -44,6 +44,9 @@ import { PodsTab, ComponentOps } from './OpsPanel';
 import { ValuesModal } from './ValuesModal';
 import { ValuesCompare } from './ValuesCompare';
 import { ConfigMapsPanel } from './ConfigMapsPanel';
+import { NodePanel, type NodeBaslangic } from './NodePanel';
+import { baslangicSekmesi, sekmeListesi, type CryptoSekme } from './nodeOrtak';
+import type { NodeEsTalepOnerisi } from '@/api/cryptoHubApi';
 import { Modal } from '@/components/common/Modal';
 import { useJobTracker } from '@/contexts/JobTrackerContext';
 import { TableEmptyRow } from '@/components/common/EmptyState';
@@ -347,7 +350,7 @@ function Picker({ apps, onPick }: { apps: CryptoApp[]; onPick: (env: CryptoEnvOp
                       : 'yapılandırma eksik'
                 }
                 tone={e.production ? 'prod' : undefined}
-                closed={e.open === false}
+                closed={e.open === false || (e.nodeOnly === true && e.nodeOpen === false)}
                 onClick={() => onPick(e)}
               />
             ))}
@@ -890,7 +893,8 @@ export default function CryptoHubPage() {
   const [params, setParams] = useSearchParams();
   const tenantKey = params.get('t') || '';
   const [data, setData] = useState<CryptoOverview | null>(null);
-  const [tab, setTab] = useState<'durum' | 'podlar' | 'surumler' | 'configmap'>('durum');
+  // SEKME URL'DE (?s=node): Ankara onerisi ve baglanti paylasimi sekmeyi korusun.
+  const [tab, setTab] = useState<CryptoSekme>('durum');
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
@@ -988,13 +992,21 @@ export default function CryptoHubPage() {
     return null;
   }, [tenantKey, apps]);
 
+  // NODE-ONLY: kullanici bu ortami yalniz "Indexer / Node" yetkisiyle goruyor; /overview
+  // (app:metaco kapisi) CAGRILMAZ, nav'da yalniz o sekme durur.
+  const nodeOnly = scope?.env.nodeOnly === true;
+  const sekmeler = useMemo(() => sekmeListesi(scope?.app || '', nodeOnly), [scope?.app, nodeOnly]);
+
   // URL'de gecerli bir kiraci varsa verisi yuklenir; kullanici menuden geri dondugunde
   // (t parametresi kalkinca) ekran temizlenir.
   useEffect(() => {
     if (!apps) return;
     if (scope) {
-      setTab('durum');
-      void load(scope.env.key);
+      setTab(baslangicSekmesi(params.get('s'), sekmeler));
+      if (nodeOnly) {
+        setData(null);
+        setErr('');
+      } else void load(scope.env.key);
     } else {
       setData(null);
       setErr('');
@@ -1002,6 +1014,29 @@ export default function CryptoHubPage() {
   }, [scope?.env.key, apps]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const notes = useMemo(() => data?.notes || [], [data]);
+
+  const sekmeSec = (id: CryptoSekme) => {
+    setTab(id);
+    if (scope) setParams(id === 'node' ? { t: scope.env.key, s: 'node' } : { t: scope.env.key }, { replace: true });
+  };
+
+  // Ankara onerisi (D4): Ankara kiracisinin node sekmesi acilir ve sihirbaz ayni grupla baslar.
+  const ankaraAc = (o: NodeEsTalepOnerisi) =>
+    setParams({
+      t: o.tenant,
+      s: 'node',
+      g: o.grup,
+      ...(o.nodeId ? { n: o.nodeId } : {}),
+      es: String(o.esTalepId),
+    });
+  const esParam = Number(params.get('es'));
+  const nodeBaslangic: NodeBaslangic | null = params.get('g')
+    ? {
+        grup: params.get('g') || '',
+        nodeId: params.get('n'),
+        esTalepId: Number.isInteger(esParam) && esParam > 0 ? esParam : null,
+      }
+    : null;
 
   if (err && !apps)
     return (
@@ -1069,16 +1104,18 @@ export default function CryptoHubPage() {
             son tarama: {fmtDateTime(data.scannedAt)}
           </span>
         )}
-        <button
-          type="button"
-          className={SM_BTN}
-          style={btnStyle()}
-          onClick={rescan}
-          disabled={busy || !!data?.notConfigured}
-        >
-          <ArrowPathIcon className={'h-3.5 w-3.5 ' + (busy ? 'animate-spin' : '')} /> Taramayı
-          tazele
-        </button>
+        {!nodeOnly && (
+          <button
+            type="button"
+            className={SM_BTN}
+            style={btnStyle()}
+            onClick={rescan}
+            disabled={busy || !!data?.notConfigured}
+          >
+            <ArrowPathIcon className={'h-3.5 w-3.5 ' + (busy ? 'animate-spin' : '')} /> Taramayı
+            tazele
+          </button>
+        )}
         <button type="button" className={SM_BTN} style={btnStyle()} onClick={() => setParams({})}>
           Ortamı değiştir
         </button>
@@ -1088,7 +1125,7 @@ export default function CryptoHubPage() {
           kaybolmuyor - accent kenarli baslik, her islem icin renkli buyuk kart, ustunde ince
           bir renk seridi. Yazan islemler ayrica etiketli. Hicbiri dogrudan calismaz: once
           uygulanacak komutlari gosteren on onay penceresi acilir. */}
-      {!data?.notConfigured && actions.length > 0 && (
+      {!nodeOnly && !data?.notConfigured && actions.length > 0 && (
         <section
           className="rounded-2xl border-2 overflow-hidden"
           style={{ borderColor: 'var(--accent)', background: 'var(--bg-surface)' }}
@@ -1289,18 +1326,11 @@ export default function CryptoHubPage() {
             className="flex items-center gap-1 border-b"
             style={{ borderColor: 'var(--border-subtle)' }}
           >
-            {(
-              [
-                ['durum', 'Durum'],
-                ['podlar', 'Podlar'],
-                ['surumler', 'Sürümler'],
-                ['configmap', 'Config Map'],
-              ] as const
-            ).map(([id, label]) => (
+            {sekmeler.map(([id, label]) => (
               <button
                 key={id}
                 type="button"
-                onClick={() => setTab(id)}
+                onClick={() => sekmeSec(id)}
                 className="px-3 py-2 text-sm font-medium -mb-px border-b-2"
                 style={
                   tab === id
@@ -1321,7 +1351,18 @@ export default function CryptoHubPage() {
             ))}
           </nav>
 
-          {loading && !data ? (
+          {tab === 'node' ? (
+            <NodePanel
+              key={scope.env.key}
+              tenantKey={scope.env.key}
+              nodeAcik={scope.env.nodeOpen !== false}
+              baslangic={nodeBaslangic}
+              onBaslangicTuketildi={() =>
+                setParams({ t: scope.env.key, s: 'node' }, { replace: true })
+              }
+              onAnkara={ankaraAc}
+            />
+          ) : loading && !data ? (
             <LoadingLogo compact />
           ) : data ? (
             tab === 'durum' ? (

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
-import { PlusIcon, PencilSquareIcon, TrashIcon, CommandLineIcon } from "@heroicons/react/24/outline";
-import { playbookRegistryApi, type PlaybookRegistryEntry } from "@/api/playbookRegistryApi";
+import { PlusIcon, PencilSquareIcon, TrashIcon, CommandLineIcon, ArrowUturnLeftIcon } from "@heroicons/react/24/outline";
+import { playbookRegistryApi, type PlaybookRegistryEntry, type SilinenVarsayilan } from "@/api/playbookRegistryApi";
 import { ansibleApi, type AwxServer } from "@/api/ansibleApi";
 import { toast } from "@/hooks/useToast";
 import Card from "@/components/common/Card";
@@ -10,6 +10,7 @@ import EmptyState from "@/components/common/EmptyState";
 import LoadError from "@/components/common/LoadError";
 import { Select } from "@/components/ui/Form";
 import { LoadingLogo } from '@/components/common/LoadingLogo';
+import { fmtDateTime } from "@/utils/datetime";
 
 // SEED'DEKI HER KATEGORI BURADA OLMAK ZORUNDA. Liste `mssql-setup.cjs`
 // PLAYBOOK_REGISTRY_SEED ile ayrisirsa, kategorisi listede olmayan bir satiri admin
@@ -37,6 +38,17 @@ function SourceBadge({ row }: { row: PlaybookRegistryEntry }) {
   return <Badge weight="normal" className="bg-gray-50 text-gray-400">Tanımsız</Badge>;
 }
 
+// Silme onayı metni (2026-11-02). Kaydı Portal'ın bir özelliği kullanıyorsa bunu söyler (silme
+// yine serbest); varsayılan kayıtsa yeniden başlatmada geri gelmeyeceğini ve nereden geri
+// yükleneceğini söyler.
+export function silmeOnayMetni(row: Pick<PlaybookRegistryEntry, "displayName" | "kullanan" | "varsayilan">): string {
+  const parcalar = [`"${row.displayName}" kaydını silmek istediğinize emin misiniz?`];
+  if (row.kullanan) parcalar.push(`Bu kaydı ${row.kullanan} kullanıyor; silerseniz o ekran çalışmaz.`);
+  if (row.varsayilan)
+    parcalar.push('Bu bir varsayılan kayıt: yeniden başlatmada geri gelmez; "Silinen varsayılanlar" bölümünden geri yükleyebilirsiniz.');
+  return parcalar.join("\n\n");
+}
+
 export default function PlaybookRegistryTab() {
   const [rows, setRows] = useState<PlaybookRegistryEntry[]>([]);
   const [servers, setServers] = useState<AwxServer[]>([]);
@@ -49,16 +61,23 @@ export default function PlaybookRegistryTab() {
   // Liste OKUNAMADIYSA "Henuz playbook kaydi yok" denmez: kayitlar durdugu halde ekran bos
   // gorunuyor ve yeniden girilmeleri gerektigi sanilabiliyordu.
   const [yuklemeHatasi, setYuklemeHatasi] = useState<string | null>(null);
-  async function reload() {
-    setLoading(true);
+  // Silinen varsayılanlar: null = okunamadı (silinenHata dolu); "(0)" diye gösterilmez.
+  const [silinenler, setSilinenler] = useState<SilinenVarsayilan[] | null>([]);
+  const [silinenHata, setSilinenHata] = useState<string | null>(null);
+  const [geriYuklenen, setGeriYuklenen] = useState<string | null>(null);
+  // sessiz: silme / geri yükleme sonrası tazeleme; ekran yükleme göstergesine dönmez.
+  async function reload(sessiz = false) {
+    if (!sessiz) setLoading(true);
     setYuklemeHatasi(null);
     try {
       const r = await playbookRegistryApi.list();
       setRows(r.playbooks || []);
+      setSilinenler(r.silinenHata ? null : r.silinenVarsayilanlar || []);
+      setSilinenHata(r.silinenHata || null);
     } catch (e: unknown) {
       setYuklemeHatasi(e instanceof Error && e.message ? e.message : "İstek başarısız.");
     } finally {
-      setLoading(false);
+      if (!sessiz) setLoading(false);
     }
   }
 
@@ -137,10 +156,24 @@ export default function PlaybookRegistryTab() {
   }, [showForm, editId]);
 
   async function handleDelete(row: PlaybookRegistryEntry) {
-    if (!window.confirm(`"${row.displayName}" kaydını silmek istediğinize emin misiniz?`)) return;
+    if (!window.confirm(silmeOnayMetni(row))) return;
     const r = await playbookRegistryApi.remove(row.id);
-    if (r.ok) { setRows((prev) => prev.filter((x) => x.id !== row.id)); toast.success("Kayıt silindi."); }
-    else toast.error(r.message || "Silinemedi.");
+    if (r.ok) {
+      setRows((prev) => prev.filter((x) => x.id !== row.id));
+      toast.success("Kayıt silindi.");
+      if (r.varsayilan) void reload(true);
+    } else toast.error(r.message || "Silinemedi.");
+  }
+
+  async function handleGeriYukle(s: SilinenVarsayilan) {
+    setGeriYuklenen(s.keyName);
+    try {
+      const r = await playbookRegistryApi.geriYukle(s.keyName);
+      if (r.ok) { toast.success(`"${s.displayName}" geri yüklendi.`); await reload(true); }
+      else toast.error(r.message || "Geri yüklenemedi.");
+    } finally {
+      setGeriYuklenen(null);
+    }
   }
 
   if (loading) return <LoadingLogo compact />;
@@ -286,7 +319,7 @@ export default function PlaybookRegistryTab() {
         <LoadError
           title="Playbook kayıtları okunamadı"
           message={yuklemeHatasi}
-          onRetry={reload}
+          onRetry={() => reload()}
           testId="playbook-yukleme-hatasi"
         />
       ) : rows.length === 0 ? (
@@ -303,6 +336,7 @@ export default function PlaybookRegistryTab() {
                 </div>
                 <div className="text-xs text-slate-400 font-mono mt-0.5">{row.keyName} · {row.handler}</div>
                 {row.description && <div className="text-xs text-slate-500 mt-0.5">{row.description}</div>}
+                {row.kullanan && <div className="text-xs text-slate-500 mt-0.5">Kullanan: {row.kullanan}</div>}
               </div>
               {row.awxServerId && (
                 <Badge className="bg-violet-50 text-violet-700">AWX: {serverName(row.awxServerId)}</Badge>
@@ -313,13 +347,56 @@ export default function PlaybookRegistryTab() {
                 <PencilSquareIcon className="w-4 h-4" />
               </button>
               {row.handler !== "ocp_cluster" && (
-                <button onClick={() => handleDelete(row)} className="p-1 text-gray-400 hover:text-red-500 rounded transition-colors">
+                <button onClick={() => handleDelete(row)} aria-label={`${row.displayName} kaydını sil`} className="p-1 text-gray-400 hover:text-red-500 rounded transition-colors">
                   <TrashIcon className="w-4 h-4" />
                 </button>
               )}
             </Card>
           ))}
         </div>
+      )}
+
+      {!yuklemeHatasi && (silinenHata || (silinenler && silinenler.length > 0)) && (
+        <section className="space-y-2" data-testid="silinen-varsayilanlar">
+          <h3 className="text-sm font-medium text-slate-700">
+            {silinenler ? `Silinen varsayılanlar (${silinenler.length})` : "Silinen varsayılanlar"}
+          </h3>
+          {silinenHata ? (
+            <p className="text-xs text-red-600">Silinen varsayılanlar okunamadı: {silinenHata}</p>
+          ) : (
+            <>
+              <p className="text-xs text-gray-500">
+                Bu varsayılan kayıtlar silindi ve yeniden başlatmada geri eklenmez. Geri yüklenen kayıt
+                varsayılan değerleriyle gelir; Template ID ve AWX sunucusu yeniden girilmelidir.
+              </p>
+              {(silinenler || []).map((s) => (
+                <Card key={s.keyName} padding="sm" className="flex flex-wrap items-center gap-3">
+                  <Badge className="bg-slate-100 text-slate-600">{s.category}</Badge>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-sm text-slate-800">{s.displayName}</div>
+                    <div className="text-xs text-slate-400 font-mono mt-0.5">{s.keyName}</div>
+                    {(s.deletedBy || s.deletedAt) && (
+                      <div className="text-xs text-slate-500 mt-0.5">
+                        Silen: {s.deletedBy || "bilinmiyor"}
+                        {s.deletedAt ? ` · ${fmtDateTime(s.deletedAt)}` : ""}
+                      </div>
+                    )}
+                  </div>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => handleGeriYukle(s)}
+                    loading={geriYuklenen === s.keyName}
+                    disabled={geriYuklenen !== null}
+                    icon={<ArrowUturnLeftIcon className="w-4 h-4" />}
+                  >
+                    Geri yükle
+                  </Button>
+                </Card>
+              ))}
+            </>
+          )}
+        </section>
       )}
     </div>
   );

@@ -248,3 +248,191 @@ Servis hesabının ilgili namespace'te en az şu yetkileri olmalı:
 2. **Upgrade'in çalıştırılması** — plan zaten üretiliyor; yazan playbook bağlanınca onay
    düğmesi açılır (`runnable` bayrağı)
 3. **Prod'da yazan her işlem** OCO penceresi + Smart onayına bağlanacak
+
+---
+
+## 10. Indexer / Node değişikliği (2026-11-02)
+
+Metaco kiracılarında node'a bağlı her **grubun** (yeni tip `uis:<zincirAğ>` ya da eski tip
+`eski:<ad>`) şu anki node'u maskeli gösterilir. Yetkili kullanıcı katalogdan yeni node seçip
+gerekçe yazar, Portal **OpsX OpenShift'in Smart flow'unda** bilet açar; onaydan sonra mevcut
+Smart poller'ı `crypto_hub_ops` template'ini `crypto_hub_action=node_change` ile başlatır.
+Kod `server/crypto-hub/node.cjs`, sabitler `shared/cryptoHubNodes.cjs`.
+
+### 10.1 Kullanıcı kararları
+
+| # | Karar | Uygulama |
+|---|---|---|
+| D1 | Yeni Smart flow açılmaz; OpsX OpenShift'in kategorisi (konsolide katalog) kullanılır | `smartApprovalFor('openshift')`: flow key, metadata şablonu ve integration key OpsX'ten gelir. Yeni ayar yok. OpsX'te Smart kapatılmış olsa (`enabled:false`) bile node talebi onaysız **koşmaz**; admin atlama yolu da yok. |
+| D2 | Node değerleri katalogdan gelir | Ansible `vars/nodes.yml` + vault'lu `vars/node_sirlari.yml`. Portal yalnız `node_id` gönderir; yalnız maskeli değer ve sha256 görür. |
+| D3 | Eski tip de değiştirilebilir | 11 eski grup (10.7) + yeni tip `uis-*` grupları tek kuralla (10.9: adapter/api `NODE_ADDR`, indexer `NODE_URI_<ZA>` yoksa `NODE_ADDR`, processor yok). |
+| D4 | İstanbul ve Ankara ayrı talep | Her kiracı ayrı talep, ayrı bilet. `metaco_das_prod` talebinden sonra yanıttaki `esTalepOnerisi` Ankara'yı önerir; Ankara talebi `esTalepId` taşır. İstemci göndermezse (sihirbaz kapatılıp yeniden açıldı) sunucu, İstanbul'da aynı grup için son 7 günde açılmış, reddedilmemiş ve başka Ankara talebine bağlanmamış talebe **kendisi** bağlar. |
+| D6 | Bileşenlerin aynı node'da olup olmadığı bilinmiyor (2026-11-02) | Sihirbaz node taşıyan bileşenleri **işaretli** getirir (varsayılan birlikte); kullanıcı işareti kaldırıp alt küme seçebilir; seçilenler arasında hepsi ya da hiçbiri. Her bileşenin şu anki node'u yanında. Bileşenler farklı node'lardaysa "Bileşenler farklı node'lara bağlı" notu; **seçilenler** farklı node'lardaysa (tek node'a toplama) ek onay. Smart kaydı değişecek ve değişmeyecek bileşenleri ayrı satırlarda yazar. Tek deployment'lı gruplarda (eski tip) seçim gösterilmez. |
+| D5 | Yalnız yetkili kullanıcı | Yeni öğe `cryptohub:node:degistir` (Admin › Crypto Hub Erişimi › "node"). Tek başına yalnız Indexer / Node sekmesini açar. `app:metaco` tek başına talep **açtırmaz**, yalnız görüntületir. |
+
+### 10.2 Akış
+
+1. **Okuma**: `POST /api/crypto-hub/node-read {tenant}` → `node_env_get` (salt okunur, Smart'sız).
+   Sonuç `GET /node-read/:serverId/:jobId` ile alınır; 10 dk taze sayılır.
+2. **Talep**: `POST /node-change {tenant, grup, nodeId, gerekce, tutarsizlikOnay?, onayMetni?, esTalepId?, bilesenler?}`.
+   `bilesenler` = değişecek deployment adları (yoksa node taşıyan hepsi; boş, grup dışı ya da
+   node taşımayan bileşen **400 `node_secim`**). Plan yalnız seçilenlerden; `expect` grubun TÜM
+   literal satırlarını taşır (seçilmeyen bileşen onay beklerken değişirse iş yazmadan durur).
+   Sıra: yetki → kiracı açık mı → girdi → okuma taze mi → grup planı (değişken yok / ölçülemedi /
+   referans / GitOps / araç / bileşen seçimi / katalog / aynı node (seçilenler) / tutarsızlık
+   (seçilenler) / prod'da grup adı) → OpsX Smart ayarı →
+   template → **tekil indeks kapısı** → satır `ACILIYOR` → preflight + survey ön doldurma →
+   OpsX OpenShift template değişkenleri (şablon bağlamı) → bilet → satır `BEKLIYOR`.
+3. **Onay**: Smart poller → `performSsLaunch` (poller'a ve runner'a dokunulmadı). Onay süresi
+   **1440 dk** (`pendingLaunch.onayZamanAsimiDk`), `yutmaKorumasi: true`.
+4. **Sonuç**: 5 dk'lık arka plan taraması ve `GET /node-change/:id` satırı ilerletir. Smart
+   `REJECTED/TIMEOUT/CANCELLED/ERROR` → `REDDEDILDI/ZAMAN_ASIMI/IPTAL/HATA`. İş bitince
+   `crypto_hub_ops_result` içindeki `NODESUM` → `BASARILI/GERI_ALINDI/BAYAT/BASARISIZ`.
+   **NODESUM yoksa ya da başka talebe aitse `OLCULEMEDI`** (başarı uydurulmaz). Kapatma tek
+   kezdir (`kapandi_at IS NULL` CAS); sonuç denetimi (`crypto_hub_node_change_result`) bir kez,
+   talep sahibi adına yazılır.
+5. **Takılan talep**: bilete bağlanmış açık satır `ONAY_DK + 30 + 60` dk'yı (`TAKILDI_DK`) aşar ve
+   iş sonucu hâlâ okunamıyorsa (bilet `LAUNCHING`'de takılı, `LAUNCHED` ama job yok, `SCHEDULED`,
+   Smart yapılandırılmamış ve hiç `TIMEOUT` olmayan `PENDING`, AWX kalıcı hata) satır
+   **`OLCULEMEDI/TAKILDI`** kapanır — başarı sayılmaz, ekran "durum bilinmiyor, mevcut node'ları
+   okuyun" der. Bilet hâlâ `PENDING` ise Portal'da iptal edilir (sonradan onaylansa da iş
+   başlamaz). AWX işi okunabiliyor ve sürüyorsa satır açık kalır.
+6. **Yönetici kapatması**: `POST /node-change/:id/kapat {gerekce}` — yalnız Admin, gerekçe 10–500.
+   Satır `IPTAL/ADMIN_KAPATTI` kapanır (kilit açılır), `PENDING` bilet Portal'da iptal edilir,
+   `crypto_hub_node_change_admin_kapat` ve sonuç denetimi yazılır. Takip penceresinde
+   "Talebi kapat (yönetici)" düğmesi.
+7. **Numara metni**: bekleyen talep her yerde aynı biçimde: Smart numarası varsa `Smart #<no>`,
+   yoksa `Portal #<talep>` (`shared/cryptoHubNodes.cjs` `talepNoMetni` = ekran `smartNo`).
+
+### 10.3 Smart şablonu (admin)
+
+OpsX ekranı › **Smart Onayı** › OpenShift şablonu artık Crypto node taleplerini de taşır.
+Crypto bağlamı OpsX ile **aynı adları aynı sözlükle** doldurur. Bu yüzden mevcut dropdown
+eşlemeleri (ör. `{% if opsx.ortam == 'prod' %}Production_9{% else %}…{% endif %}`) aynen çalışır:
+
+| Bağlam | OpsX OpenShift | Crypto node |
+|---|---|---|
+| `opsx.islem` (≤ 400) | `Openshift rollout (restart)` | `Crypto Hub Indexer/Node Change — <kiracı> (…) — İstanbul/Ankara — <grup> [<id>] -> <yeni node id> (<ad>) \| Bileşenler: <seçilenler> \| Eski: <eski maskeli>` — yeni node id ve bileşen listesi **asla kesilmez**; kesilecekse önce kiracı öneki kısalır, kalan pay yalnız eski özete verilir |
+| `opsx.platform / uretimSebebi / talepEden` | `openshift` / `ortam=prod` / kullanıcı | aynı (`uretimSebebi` test kiracıda boş — OpsX test'te bilet açmaz) |
+| `opsx.ortam` | `test` / `prod` | `test` / `prod` (Ankara da `prod`) |
+| `opsx.cluster` | `metaco_das` … | `metaco_das` / `metaco_gar` |
+| `opsx.hedefler` | `ns,app;…` | `<namespace>,<deployment>;…` (yalnız seçilenler) |
+| `extraVars.oc_cluster / oc_input / oc_environment / email / choise` | OpsX değerleri | aynı adlar, Crypto değerleri (`choise: true`) |
+| `extraVars.<sabit>` | OpsX yapılandırmasındaki sabit ek değişkenler (`cfg.openshift.extraVars`) | **aynı** sabitler, aynı öncelik (`email` sabitlerde yoksa oturumdan) |
+| `extraVars.*` | OpsX OpenShift template değişkenleri (ör. `job_type`) | **aynı** template'in değişkenleri — JOBTYPE gibi alanlar OpsX değerini taşır |
+| `extraVars.openshift_operations` | `openshift_application_rollout` | **verilmez** (bu bir rollout değil) |
+| `extraVars.target_cluster` | yalnız tek cluster seçilince | **verilmez** (OpsX'te de isteğe bağlı; şablonda `\| default`) |
+
+Eşlik bekçisi `node-birim.test.cjs` N5c GERÇEK `opsxProductionKapisi`'ni koşturur, OpsX'in
+şablona verdiği bağlamı yakalar ve `opsx.*` / `extraVars.*` anahtarlarının node bağlamında
+olduğunu (adıyla yazılı istisnalar hariç) ve `uretimSebebi` / `talepEden` değerlerinin aynı
+olduğunu doğrular. OpsX'e yeni bir anahtar eklenirse bekçi kırmızı olur.
+
+**Bilet metni karışmaz (PS5):** `opsx.aciklama`'nın ilk satırı `Crypto Hub Indexer/Node Change —
+NODE DEĞİŞİKLİĞİ (rollout/restart değil; OpsX OpenShift onay akışı ortak kullanılır)`; ardından
+"Değişecek bileşenler" ve "Değişmeyecek bileşenler" satırları. JOBTYPE gibi dropdown alanları
+OpsX template değerini taşır; işlemi ayırt eden metin `opsx.islem` / `opsx.aciklama`'dır.
+
+Yalnız Crypto'nun verdiği ek alanlar (`opsx.aciklama` çok satırlı tam metin, `opsx.kiraci`,
+`opsx.lokasyon`, `opsx.grup`, `opsx.grupBaslik`, `opsx.eskiNode`, `opsx.yeniNode`,
+`opsx.yeniNodeAd`, `opsx.gerekce`, `opsx.deploymentlar`, `opsx.esTalep`) şablonda yalnız
+`| default(...)` ile kullanılmalı, ör. `ACIKLAMA: {{ opsx.aciklama | default(opsx.islem) }}`.
+Aksi halde OpsX'in kendi talebi render hatasıyla düşer. Şablon OpsX'e özgü bir alanı
+default'suz kullanırsa node talebi **400 `crypto_node_smart_sablon`** ile açılmaz; şablon boşsa
+da 400 döner (sabit nesneyle bilet açılmaz). Şablonda `Production` sabit yazıyorsa test talebi
+de Smart'ta Production görünür. Admin önizleme: `POST /api/crypto-hub/node-smart-onizle {tenant,
+grup, nodeId}` (Smart'a gitmez, satır yazmaz) — dönen `metadata` her alanın render edilmiş
+değerini gösterir; dropdown alanları gönderimden önce buradan kontrol edilir.
+
+**T14 kabul ölçütü (canlı, test kiracı):** konsolide OpsX flow'u şimdiye dek YALNIZ prod
+biletleri taşıdı (OpsX test'te bilet açmaz); Faz 1'deki tüm node biletleri `ortam=test` ve boş
+`uretimSebebi` ile gider. (1) Önizlemede ve açılan bilette JRENV, JOBTYPE ve **tüm**
+`PARAMETER_DROPDOWN` alanları dolu ve doğru görünmeli; test değerinin Name/KeyML karşılığı
+`GetModuleParametersWithoutCache`'ten bulunmalı (eşleşmeyen değeri Smart hata vermeden boş
+bırakır). (2) JOBTYPE OpsX template değerini (rollout) gösterir: onaycı işlemi `ACIKLAMA`'nın
+ilk satırından ("NODE DEĞİŞİKLİĞİ") ayırt eder; ayrı bir iş tipi gerekiyorsa şablonda
+`{% if opsx.kiraci is defined %}…{% endif %}` dalı kurulur. (3) Bilet metninde değişecek
+bileşenler ve yeni node id kesilmeden görünmeli.
+
+### 10.4 Veritabanı (Portal DB)
+
+Tablo `crypto_hub_node_changes` (bkz. `server/db/mssql-setup.cjs`). Durumlar: açık `ACILIYOR
+BEKLIYOR CALISIYOR`; kapalı `BASARILI GERI_ALINDI BAYAT BASARISIZ OLCULEMEDI REDDEDILDI
+ZAMAN_ASIMI IPTAL HATA`. Satır silinmez.
+
+**Tek açık talep:** filtreli tekil indeks
+`UX_chnc_acik ON crypto_hub_node_changes (tenant_key, kilit) WHERE kapandi_at IS NULL`.
+Talep açılırken indeks `sys.indexes`'te (`is_unique=1`, `has_filter=1`) doğrulanır; yoksa
+**503 `node_kilit_indeksi_yok`** döner (fail-closed). BTC ve LTC aynı deployment'ı paylaştığı
+için aynı kilidi (`eski-nbxplorer-mainnet`) kullanır.
+
+Yarım kalan açılışlar: `ACILIYOR` satır 10 dk'yı geçerse ve bilet `smart_tickets`'ta varsa
+sahiplenilir (`BEKLIYOR`); yoksa `HATA/ACILIS_KESILDI` olur. Yerel kaydı yazılamayan (yetim)
+bilet `BEKLIYOR` kalır (ikinci talep açılmasın diye) ve 24 sa sonra `HATA/YETIM_BILET` olur.
+
+### 10.5 Sır kuralı
+
+Node URL'i ya da `SIDECAR_AUTH_VALUE` **hiçbir yerde** bulunmaz: Portal DB,
+`smart_tickets.pending_launch_json`, `ansible_job_history.params`, denetim, Portal logları,
+Smart metadata, AWX extra_vars. Portal betiğin maskeli alanlarını bir kez daha süzer: yalnız
+`şema://host[:port][/****]`, `host:port` ve `****` geçer, gerisi `****` olur.
+
+### 10.6 Production
+
+Faz 1'de prod (İstanbul, Ankara, GAR) okuma dahil **kapalı**. Açılış İKİ anahtarla birlikte
+yapılır: `shared/cryptoHubNodes.cjs` `NODE_PROD_ACIK` listesine kiracı anahtarı + Ansible
+`vars/tenants.yml` `node_degisikligi_acik: true` (ZIP). `PRODUCTION_ENABLED` ve
+`crypto_hub_include_production` bunu açmaz. Bekçi CHN9 iki listenin eşit olmasını ister.
+Prod'da talep için grup adı aynen yazılır.
+
+### 10.7 Eski tip gruplar
+
+| Grup | Deployment eki | Kilit | Env'ler |
+|---|---|---|---|
+| `eski:solana-mainnet` | `solana-mainnet` | `eski-solana-mainnet` | `SOLRPC`, `SOLWSRPC` |
+| `eski:btc-mainnet` | `nbxplorer-mainnet` | `eski-nbxplorer-mainnet` | `NBXPLORER_BTCNODEENDPOINT`, `NBXPLORER_BTCRPCURL` |
+| `eski:ltc-mainnet` | `nbxplorer-mainnet` | `eski-nbxplorer-mainnet` | `NBXPLORER_LTCNODEENDPOINT`, `NBXPLORER_LTCRPCURL` |
+| `eski:btc-testnet` | `nbxplorer-testnet` | `eski-nbxplorer-testnet` | `NBXPLORER_BTCNODEENDPOINT`, `NBXPLORER_BTCRPCURL` |
+| `eski:ethereum-mainnet` | `ethereum-mainnet` | `eski-ethereum-mainnet` | `ETH_INDEXER_NODE_URI` |
+| `eski:ethereum-testnet-sepolia` | `ethereum-testnet-sepolia` | `eski-ethereum-testnet-sepolia` | `ETH_INDEXER_NODE_URI` |
+| `eski:avalanche-c-chain-mainnet` | `avalanche-c-chain-mainnet` | `eski-avalanche-c-chain-mainnet` | `ETH_INDEXER_NODE_URI` |
+| `eski:polygon-mainnet` | `polygon-mainnet` | `eski-polygon-mainnet` | `ETH_INDEXER_NODE_URI` |
+| `eski:cardano-mainnet` | `cardano-mainnet` | `eski-cardano-mainnet` | `OGMIOS` |
+| `eski:xrpl-mainnet` | `xrpl-mainnet` | `eski-xrpl-mainnet` | `XRP_INDEXER_SERVER_URI` |
+| `eski:polkadot-assethub` | `substrate-polkadot-assethub` | `eski-substrate-polkadot-assethub` | `SIDECAR_URL`, `SIDECAR_AUTH_VALUE` (sır) |
+
+Deployment adı `<release>-harmonize-<ek>` (DAS `hmz-`, GAR `hmzbank-`). Eski
+`bmw_openshift_jobs/metaco/node_changes.yaml` bu akışta **kullanılmaz**; içindeki gömülü SA
+jetonları döndürülmeli (ayrı iş).
+
+### 10.8 Faz 0 (das test, ilk koşu)
+
+`node_env_get` önce das test'te koşulur. Ölçülenler: her `uis-*` bileşeninde hangi env'ler var
+ve kaynak türü (10.9), `oc set env -e -` stdin ve `--patch-file` desteği, GitOps (Argo CD)
+sahipliği, replika 0 bileşenler, helm values eşleşmesi, processor/adapter `envFrom` kaynakları
+(`NODEDEP` envFrom notu). Bulgular buraya ve Ansible README'sine yazılır. `node_change` ancak
+bunlar kapandıktan sonra koşturulur.
+
+### 10.9 Yeni tip (uis) env haritası (kullanıcı ölçümü, harmonize-test 2026-11-02)
+
+| Grup | adapter | api | indexer | processor |
+|---|---|---|---|---|
+| `evm-ethereum-mainnet` | `NODE_ADDR` | `NODE_ADDR` | `NODE_URI_EVM_ETHEREUM_MAINNET` | — |
+| `evm-ethereum-testnet-sepolia` | `NODE_ADDR` | `NODE_ADDR` | `NODE_URI_EVM_ETHEREUM_TESTNET_SEPOLIA` | — |
+| `solana-mainnet` | `NODE_ADDR` | `NODE_ADDR` | `NODE_URI_SOLANA_MAINNET` | — |
+| `xrpl-mainnet` | (deployment yok) | `NODE_ADDR` | `NODE_ADDR` | — |
+
+Kural (Ansible `vars/nodes.yml` `crypto_hub_node_uis_kurali`, tek kaynak): adapter/api
+`NODE_ADDR`; indexer `NODE_URI_<ZA>` (ZA = zincirAğ büyük harf, `-` → `_`), yoksa `NODE_ADDR`;
+processor node env taşımaz. Yeni bir uis grubu kurala uyuyorsa kendiliğinden değiştirilebilir;
+beklenen değişken hiçbir bileşende yoksa grup **"Değiştirilemez: node değişkeni bulunamadı"**
+olarak gösterilir (`node_degisken_yok`). **Asla değişmeyenler** (betik ve Portal'da aynı desen,
+`YASAK_ENV_RE`; Portal bu adları taşıyan satırı ayrıştırırken atar): `HTTP(S)_PROXY`, `NO_PROXY`,
+`ADAPTER_ADDR`, `ADDRESS_API_URL_*`, `EVENT_API_URL`, `CHAIN_ID*`.
+
+**Kaynak sözlüğü** (betik `KAYNAKLAR` = Portal `NODE_KAYNAKLARI`, bekçi CHN11): `literal`,
+`secretRef` / `configMapRef` / `alanRef` (valueFrom — referans), `envFrom` (kapta açık yok, envFrom
+kaynağı adı **kesin** tanımlıyor — referans), `belirsiz` (envFrom kaynağı okunamadı — ölçülemedi),
+`yok`. Grubun değişkenini taşımayan kaptaki envFrom (ör. processor'daki genel ConfigMap) grubu
+kilitlemez. Sırlı katalog bastion'a task ortamıyla değil, stdin'den yazılan 0600 dosyayla gider
+(Ansible README "Katalog ve sırlar").

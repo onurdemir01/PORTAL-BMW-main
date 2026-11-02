@@ -810,6 +810,10 @@ function initCryptoHub(app) {
       uygulamaSonuclariniTara().catch((e) =>
         console.warn('[CryptoHub] uygulama sonuc taramasi yapilamadi:', e.message),
       );
+      // Indexer / Node talepleri (sozlesme 7.6): Smart durumu + AWX sonucu, tek kez kapatma.
+      require('./node.cjs')
+        .nodeSonuclariniTara()
+        .catch((e) => console.warn('[CryptoHub] node talep taramasi yapilamadi:', e.message));
     }, taramaSn * 1000);
     if (typeof zam.unref === 'function') zam.unref();
   }
@@ -843,6 +847,20 @@ function initCryptoHub(app) {
       return out;
     } catch {
       return new Set();
+    }
+  }
+
+  // INDEXER / NODE YETKISI (kullanici karari D5, 2026-11-02): "yalniz yetkisi olan kullanicilar".
+  // Ayri oge `cryptohub:node:degistir`: tek basina Crypto Hub'da YALNIZ Indexer / Node sekmesini
+  // acar; talep acmanin TEK kapisi budur (app:metaco tek basina talep actirmaz). Motor
+  // okunamazsa false (fail-closed).
+  async function nodeYetkisi(req) {
+    try {
+      const { canSee } = require('../auth/visibility.cjs');
+      const { getRequestUser } = require('../auth/utils.cjs');
+      return (await canSee(getRequestUser(req) || {}, 'cryptohub:node:degistir')) === true;
+    } catch {
+      return false;
     }
   }
 
@@ -885,6 +903,10 @@ function initCryptoHub(app) {
       gorunen: await gorunenUygulamalar(req),
       tenantOf,
       isOpen,
+      // Node isleri (node_env_get / node_change) node yetkisiyle de izlenir; kiraci kapisi
+      // isOpen degil nodeAcikMi (sozlesme 7.1).
+      nodeGorunen: await nodeYetkisi(req),
+      nodeAcik: require('../../shared/cryptoHubNodes.cjs').nodeAcikMi,
     });
     if (karar.izin) return karar;
     try {
@@ -912,7 +934,27 @@ function initCryptoHub(app) {
   // secime davet etmek olurdu.
   router.get('/tenants', async (req, res) => {
     const acik = await gorunenUygulamalar(req);
-    res.json({ ok: true, apps: selectionTree().filter((a) => acik.has(a.app)) });
+    // NODE-ONLY KULLANICI (D5): Metaco dali node yetkisiyle de doner; her ortamda nodeOnly /
+    // nodeOpen isaretleri ekran sekme suzgecini ve "kapali" gostergesini besler.
+    const nodeGorunen = await nodeYetkisi(req);
+    const { nodeAcikMi } = require('../../shared/cryptoHubNodes.cjs');
+    const suzulmus = selectionTree().filter((a) => acik.has(a.app) || (a.app === 'metaco' && nodeGorunen));
+    const apps = suzulmus.map((a) =>
+      a.app !== 'metaco'
+        ? a
+        : {
+            ...a,
+            domains: a.domains.map((d) => ({
+              ...d,
+              envs: d.envs.map((e) => ({
+                ...e,
+                nodeOnly: !acik.has('metaco'),
+                nodeOpen: nodeAcikMi(CRYPTO_TENANTS.find((t) => t.key === e.key)),
+              })),
+            })),
+          },
+    );
+    res.json({ ok: true, apps });
   });
 
   router.get('/overview', async (req, res) => {
@@ -1772,6 +1814,15 @@ function initCryptoHub(app) {
     }
   });
 
+  // INDEXER / NODE uclari (sozlesme 7.2): /nodes, /node-read, /node-change, /node-smart-onizle.
+  require('./node.cjs').initCryptoHubNode(router, {
+    gorunenUygulamalar,
+    nodeYetkisi,
+    kullanici,
+    loadTenant,
+    gecmisIcin,
+  });
+
   app.use('/api/crypto-hub', router);
   console.log('[CryptoHub] module mounted at /api/crypto-hub');
 }
@@ -1789,4 +1840,6 @@ module.exports = {
   uygulamaSonuclariniTara,
   SIR_ANAHTARI,
   OPS,
+  // Node islemleri OPS'ta DEGIL (/ops reddeder); playbook/betik listesiyle karsilastirma icin.
+  NODE_OPS: require('./node.cjs').NODE_OPS,
 };

@@ -24,8 +24,20 @@ export interface PlaybookRegistryEntry {
   visibility: string;
   sortOrder: number;
   effectiveTemplateId?: number | null;
+  // Seed (PLAYBOOK_REGISTRY_SEED) satırı mı — silinirse iz tutulur, "Silinen varsayılanlar"dan geri yüklenir.
+  varsayilan?: boolean;
+  // Bu anahtarı kullanan Portal özelliği (sunucudaki statik harita); null = Portal kodu kullanmıyor.
+  kullanan?: string | null;
   createdAt?: string;
   updatedAt?: string;
+}
+
+export interface SilinenVarsayilan {
+  keyName: string;
+  displayName: string;
+  category: string;
+  deletedBy: string | null;
+  deletedAt: string | null;
 }
 
 export interface AvailablePlaybook {
@@ -38,7 +50,11 @@ export interface AvailablePlaybook {
 
 export const playbookRegistryApi = {
   // KATI: okunamayan liste "kayit yok" diye gosterilmesin (bkz. api/http.ts okJson).
-  list: (): Promise<{ ok: boolean; playbooks?: PlaybookRegistryEntry[]; message?: string }> =>
+  // silinenVarsayilanlar null + silinenHata dolu: o bölüm okunamadı (liste yine gelir).
+  list: (): Promise<{
+    ok: boolean; playbooks?: PlaybookRegistryEntry[]; message?: string;
+    silinenVarsayilanlar?: SilinenVarsayilan[] | null; silinenHata?: string | null;
+  }> =>
     fetch(BASE).then(okJson),
 
   // Admin gerekmez — LogX sayfasının dinamik buton listesi için (template ID sızdırılmaz).
@@ -63,6 +79,10 @@ export const playbookRegistryApi = {
       body: JSON.stringify(data),
     }).then(safeJson),
 
-  remove: (id: number): Promise<{ ok: boolean; message?: string }> =>
+  remove: (id: number): Promise<{ ok: boolean; message?: string; varsayilan?: boolean; kullanan?: string | null }> =>
     fetch(`${BASE}/${id}`, { method: "DELETE" }).then(safeJson),
+
+  // Silinen varsayılanı geri yükler: izi siler, satırı seed değerleriyle yeniden ekler.
+  geriYukle: (keyName: string): Promise<{ ok: boolean; playbook?: PlaybookRegistryEntry; message?: string }> =>
+    fetch(`${BASE}/silinen/${encodeURIComponent(keyName)}/geri-yukle`, { method: "POST" }).then(safeJson),
 };

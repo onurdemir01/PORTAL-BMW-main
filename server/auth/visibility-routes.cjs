@@ -422,8 +422,19 @@ function initVisibilityRoutes(app, { requireAuth, requireAdmin }) {
   // Nginx/Denetim ile AYNI model: sayfa + secilen UYGULAMALAR. Fark, buradaki ogelerin
   // SIKI olmasi - Crypto Hub zaten siki, uygulama ogeleri de oyle; acik kural olmadan
   // hicbiri gorunmez ve admin muafiyeti de yoktur.
-  const CRYPTO_APP_KEYS = ['metaco', 'wyden'];
-  const cryptoKeys = () => ['CryptoHub', ...CRYPTO_APP_KEYS.map((a) => 'cryptohub:app:' + a)];
+  //
+  // INDEXER / NODE (2026-11-02, kullanici karari D5): ucuncu secenek `node` -> oge
+  // `cryptohub:node:degistir`. Tek basina verildiginde Crypto Hub'da yalniz Indexer / Node
+  // sekmesi gorunur ve talep acilabilir (sayfa kurali her durumda yazilir).
+  const CRYPTO_APP_KEYS = ['metaco', 'wyden', 'node'];
+  const CRYPTO_OGE = Object.freeze({
+    metaco: 'cryptohub:app:metaco',
+    wyden: 'cryptohub:app:wyden',
+    node: 'cryptohub:node:degistir',
+  });
+  const cryptoSekmesi = (elementKey) =>
+    CRYPTO_APP_KEYS.find((a) => CRYPTO_OGE[a] === elementKey) || null;
+  const cryptoKeys = () => ['CryptoHub', ...CRYPTO_APP_KEYS.map((a) => CRYPTO_OGE[a])];
 
   router.get('/crypto-access', requireAdmin, async (_req, res) => {
     try {
@@ -442,7 +453,7 @@ function initVisibilityRoutes(app, { requireAuth, requireAdmin }) {
           });
         const e = byP.get(k);
         if (r.elementKey === 'CryptoHub') e.page = r.allow;
-        else if (r.allow) e.tabs.push(r.elementKey.replace('cryptohub:app:', ''));
+        else if (r.allow && cryptoSekmesi(r.elementKey)) e.tabs.push(cryptoSekmesi(r.elementKey));
       }
       res.json({
         ok: true,
@@ -490,7 +501,7 @@ function initVisibilityRoutes(app, { requireAuth, requireAdmin }) {
             r.elementKey === key &&
             !(r.principalType === pt && r.principalId.toLowerCase() === pid),
         );
-        const app = key.replace('cryptohub:app:', '');
+        const app = cryptoSekmesi(key);
         const allow = key === 'CryptoHub' ? true : want.includes(app);
         // SECILMEYEN UYGULAMAYA KURAL YAZILMAZ: oge SIKI, kuralsiz zaten kapali.
         const mine =

@@ -15,6 +15,11 @@ export interface CryptoEnvOption {
   ready: boolean;
   /** false = ortam şimdilik kapalı (2026-09-26: production kapatıldı); seçilemez, API de reddeder */
   open: boolean;
+  /** true = kullanıcı bu ortamı YALNIZ "Indexer / Node" yetkisiyle görüyor (app:metaco yok):
+   *  ekran yalnız o sekmeyi gösterir, /overview çağrılmaz. */
+  nodeOnly?: boolean;
+  /** false = bu ortamda node değişikliği kapalı (Faz 1: production). */
+  nodeOpen?: boolean;
 }
 export interface CryptoDomain {
   domain: string;
@@ -490,4 +495,332 @@ export const cryptoOpsApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     }).then(safeJson),
+};
+
+// ── Indexer / Node değişikliği (2026-11-02) ──────────────────────────────────────────
+// Sunucu karşılığı: server/crypto-hub/node.cjs (sözleşme 7.2 / 7.4). Node DEĞERİ hiç gelmez:
+// yalnız maskeli gösterim + sha256. İstemci yalnız {tenant, grup, nodeId, gerekce,
+// tutarsizlikOnay, onayMetni, esTalepId} gönderir; plan / hedef / sha sunucuda kurulur.
+export type NodeBilesen = 'adapter' | 'api' | 'indexer' | 'processor';
+export type NodeOlcum = 'evet' | 'hayir' | 'olculemedi';
+export type NodeAracDurumu = 'var' | 'yok' | 'olculemedi';
+
+export interface NodeDep {
+  ad: string;
+  bilesen: NodeBilesen | null;
+  durum: 'running' | 'degraded' | 'stopped';
+  istenen: number | null;
+  hazir: number | null;
+  gitops: NodeOlcum;
+  /** false = bu deployment izinli env'lerin hiçbirini taşımıyor; değişiklik ona dokunmaz */
+  nodeBagli: boolean;
+  /** true = literal node değeri var; sihirbazda seçilebilir (eski sunucu yanıtında yok) */
+  secilebilir?: boolean;
+  /** bu bileşenin şu anki node'u (katalog eşleşmesi ya da yalnız maskeli değer) */
+  mevcutNode?: NodeMevcut | null;
+  /** envFrom bilgi notu: 'var' | 'olculemedi' | null (yok) */
+  envFrom?: 'var' | 'olculemedi' | null;
+}
+
+export interface NodeMevcut {
+  katalogId: string | null;
+  ad: string | null;
+  maskeli: Record<string, string>;
+}
+
+export interface NodeRol {
+  rol: string;
+  envler: string[];
+  bicim: 'url' | 'hostport' | 'sir';
+}
+
+export interface NodeEnv {
+  deployment: string;
+  container: string;
+  env: string;
+  rol: string;
+  /** literal | secretRef | configMapRef | alanRef | envFrom (referans) | belirsiz (ölçülemedi) | yok */
+  kaynak: string;
+  maskeli: string;
+  sha: string | null;
+  katalogId: string | null;
+  helm: NodeOlcum;
+}
+
+export interface NodeAday {
+  id: string;
+  ad: string;
+  maskeli: Record<string, string>;
+  /** tüm rollerin sha'sı şu anki değerle aynı — seçilemez */
+  kullanimda: boolean;
+  /** sırrı / değeri çözülemedi — seçilemez */
+  cozulemedi: boolean;
+  neden: string | null;
+}
+
+/** Açık: ACILIYOR BEKLIYOR CALISIYOR · kapalı: diğerleri (kapandiAt dolu). */
+export type NodeTalepDurumu =
+  | 'ACILIYOR'
+  | 'BEKLIYOR'
+  | 'CALISIYOR'
+  | 'BASARILI'
+  | 'GERI_ALINDI'
+  | 'BAYAT'
+  | 'BASARISIZ'
+  | 'OLCULEMEDI'
+  | 'REDDEDILDI'
+  | 'ZAMAN_ASIMI'
+  | 'IPTAL'
+  | 'HATA';
+
+export interface NodeBekleyen {
+  talepId: number;
+  externalTicketId: string | null;
+  username: string;
+  createdAt: string;
+  durum: NodeTalepDurumu;
+}
+
+export interface NodeGrup {
+  /** uis:<zincirAg> | eski:<ad> */
+  id: string;
+  tur: 'uis' | 'eski';
+  baslik: string;
+  kilit: string;
+  bilesenler: Record<NodeBilesen, NodeDep | null> | null;
+  deploymentlar: NodeDep[];
+  roller: NodeRol[];
+  envler: NodeEnv[];
+  mevcutNode: NodeMevcut | null;
+  tutarsiz: boolean;
+  /** kurala uyan node değişkeni hiçbir bileşende yok (yeni / uyumsuz uis grubu) */
+  degiskenYok?: boolean;
+  olculemedi: boolean;
+  referans: boolean;
+  gitops: boolean;
+  durdurulmus: string[];
+  adaylar: NodeAday[];
+  bekleyen: NodeBekleyen | null;
+  degistirilebilir: boolean;
+  /** değiştirilemiyorsa nedeni (sunucunun ret metniyle aynı) */
+  engel: string | null;
+  okumaBekleniyor: boolean;
+}
+
+export interface NodeTalepOzet {
+  talepId: number;
+  /** kiracı anahtarı (sunucu `tenant` adıyla döner) */
+  tenant?: string;
+  tenantKey?: string;
+  grup: string;
+  kilit?: string;
+  grupBaslik?: string | null;
+  gerekce?: string;
+  /** kapanmış talebin maskeli sonuç özeti (sonuc_json) */
+  sonuc?: NodeSonuc | null;
+  lokasyon: string;
+  yeniNodeId: string;
+  yeniNodeAd: string | null;
+  /** maskeli */
+  eskiOzet: string | null;
+  yeniOzet: string | null;
+  hedefler: string[];
+  username: string;
+  durum: NodeTalepDurumu;
+  sonucKod: string | null;
+  smartTicketId: number | null;
+  externalTicketId: string | null;
+  awxServerId: number | null;
+  awxJobId: number | null;
+  esTalepId: number | null;
+  createdAt: string;
+  kapandiAt: string | null;
+}
+
+export interface NodeOkumaAraclari {
+  stdinEnv: NodeAracDurumu;
+  patchFile: NodeAracDurumu;
+}
+
+export interface CryptoNodesResponse {
+  ok: boolean;
+  blocked?: string;
+  message?: string;
+  tenant?: {
+    key: string;
+    label: string;
+    lokasyon: 'İstanbul' | 'Ankara';
+    cluster: string;
+    namespace: string;
+    production: boolean;
+    nodeAcik: boolean;
+    esKiraci: string | null;
+  };
+  yetki?: { okuma: boolean; talep: boolean; admin: boolean };
+  tarama?: { scanDate: string | null; eski: boolean };
+  okuma?: {
+    durum: 'yok' | 'taze' | 'bayat' | 'suruyor';
+    at: string | null;
+    username: string | null;
+    jobId: number | null;
+    awxServerId: number | null;
+    eksik: boolean;
+    araclar: NodeOkumaAraclari | null;
+  };
+  gruplar?: NodeGrup[];
+  /** son 20 talep, yeni başta */
+  gecmis?: NodeTalepOzet[];
+}
+
+/** İstanbul talebinden sonra Ankara önerisi (yalnız metaco_das_prod). */
+export interface NodeEsTalepOnerisi {
+  tenant: string;
+  label: string;
+  acik: boolean;
+  grup: string;
+  /** Ankara kataloğunda aynı id varsa; yoksa null (ön seçim yapılmaz) */
+  nodeId: string | null;
+  esTalepId: number;
+}
+
+export interface NodeChangeResult {
+  ok: boolean;
+  pendingApproval?: boolean;
+  ticketId?: number;
+  externalTicketId?: string | null;
+  talepId?: number;
+  onayZamanAsimiDk?: number;
+  esTalepOnerisi?: NodeEsTalepOnerisi | null;
+  blocked?: string;
+  message?: string;
+}
+
+/** Bastion satırlarının (NODECHG / ROLLOUT / VERIFY / ROLLBACK / NODESUM / ERR) maskeli özeti. */
+export interface NodeSonuc {
+  sum: {
+    sonuc: 'ok' | 'geri_alindi' | 'bayat' | 'fail';
+    nodeId: string;
+    talepId: string;
+    kod: string;
+  } | null;
+  degisiklikler: {
+    deployment: string;
+    container: string;
+    env: string;
+    eski: string;
+    yeni: string;
+    /** yazildi | BAYAT | geri_alindi */
+    durum: string;
+  }[];
+  rollout: { deployment: string; durum: string; sureSn: number | null }[];
+  verify: { deployment: string; container: string; env: string; durum: string }[];
+  rollback: { deployment: string; durum: string }[];
+  yedek: string[];
+  hatalar: { stage: string; message: string }[];
+}
+
+export interface NodeChangeDetail {
+  ok: boolean;
+  talep?: NodeTalepOzet;
+  /** eski biçim; güncel sunucu sonucu `talep.sonuc` içinde verir */
+  sonuc?: NodeSonuc | null;
+  /** Portal'daki Smart kaydının durumu (smart_tickets) */
+  smart?: {
+    status: string;
+    statusName: string | null;
+    /** onay son tarihi (açılış + 1440 dk) */
+    sonTarih: string | null;
+    hata: string | null;
+  } | null;
+  esTalepOnerisi?: NodeEsTalepOnerisi | null;
+  blocked?: string;
+  message?: string;
+}
+
+export interface NodeReadStart {
+  ok: boolean;
+  jobId?: number;
+  awxServerId?: number;
+  /** true = aynı kiracıda süren bir okuma vardı; onun iş numarası döndü */
+  devam?: boolean;
+  blocked?: string;
+  message?: string;
+}
+
+export interface NodeReadStatus {
+  ok: boolean;
+  status?: string;
+  bitti?: boolean;
+  okuma?: {
+    at: string;
+    eksik: boolean;
+    araclar: NodeOkumaAraclari | null;
+    hatalar: { stage: string; message: string }[];
+  };
+  blocked?: string;
+  message?: string;
+}
+
+export interface NodeChangeBody {
+  tenant: string;
+  grup: string;
+  nodeId: string;
+  gerekce: string;
+  tutarsizlikOnay?: boolean;
+  /** yalnız production: grup kimliği aynen */
+  onayMetni?: string;
+  /** yalnız Ankara talebi: İstanbul talebinin numarası (gönderilmezse sunucu son İstanbul talebine bağlar) */
+  esTalepId?: number;
+  /** değişecek bileşenlerin deployment adları (yoksa node taşıyan hepsi) */
+  bilesenler?: string[];
+}
+
+export interface NodeKapatResult {
+  ok: boolean;
+  talep?: NodeTalepOzet;
+  smart?: { status: string | null; yerelIptal: boolean; hata?: string } | null;
+  blocked?: string;
+  message?: string;
+}
+
+export interface NodeSmartOnizleme {
+  ok: boolean;
+  flowKey?: string;
+  metadata?: Record<string, string>;
+  hata?: string;
+  blocked?: string;
+  message?: string;
+}
+
+const postJson = (url: string, body: unknown) =>
+  fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  }).then(safeJson);
+
+export const cryptoNodeApi = {
+  nodes: (tenant: string): Promise<CryptoNodesResponse> =>
+    fetch(`${BASE}/nodes?tenant=${encodeURIComponent(tenant)}`).then(safeJson),
+
+  /** Mevcut değerleri canlı oku (node_env_get; salt okunur AWX işi). */
+  read: (tenant: string): Promise<NodeReadStart> => postJson(`${BASE}/node-read`, { tenant }),
+
+  readStatus: (awxServerId: number, jobId: number): Promise<NodeReadStatus> =>
+    fetch(`${BASE}/node-read/${awxServerId}/${jobId}`).then(safeJson),
+
+  /** Smart talebi açar; onaydan sonra Portal işi kendisi başlatır. */
+  change: (body: NodeChangeBody): Promise<NodeChangeResult> =>
+    postJson(`${BASE}/node-change`, body),
+
+  changeDetail: (talepId: number): Promise<NodeChangeDetail> =>
+    fetch(`${BASE}/node-change/${talepId}`).then(safeJson),
+
+  /** Yalnız Admin: OpsX OpenShift Smart şablonunun bu talep için render'ı. Smart'a GİTMEZ. */
+  smartOnizle: (body: { tenant: string; grup: string; nodeId: string }): Promise<NodeSmartOnizleme> =>
+    postJson(`${BASE}/node-smart-onizle`, body),
+
+  /** Yalnız Admin: takılı açık talebi gerekçeyle kapatır (denetime yazılır). */
+  kapat: (talepId: number, gerekce: string): Promise<NodeKapatResult> =>
+    postJson(`${BASE}/node-change/${talepId}/kapat`, { gerekce }),
 };

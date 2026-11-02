@@ -16,6 +16,9 @@ import { TabAccessPanel } from './TabAccessPanel';
 const APP_LABELS: Record<string, string> = {
   metaco: 'Metaco',
   wyden: 'Wyden',
+  // Yalnız bu seçilirse kişi Crypto Hub'da YALNIZ "Indexer / Node" sekmesini görür ve talep
+  // açabilir; Metaco'nun diğer sekmeleri ve işlemleri kapalı kalır (2026-11-02).
+  node: 'Indexer / Node değişikliği talebi',
 };
 
 export default function CryptoAccessTab() {

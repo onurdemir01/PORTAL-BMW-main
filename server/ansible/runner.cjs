@@ -2483,20 +2483,10 @@ function initAnsibleRunner(app) {
   // ── Playbook Kayitlari (AI'in sohbette cagirdigi salt-okunur tanilama araclari) ────
   // bkz. server/ansible/playbook-registry.cjs — DB'de tutulur, admin ekranindan yonetilir.
 
-  // GET /api/ansible/playbooks — admin, tum kayitlar (template ID dahil)
-  app.get('/api/ansible/playbooks', requireAuth, requireAdmin, async (req, res) => {
-    try {
-      const playbookRegistry = require('./playbook-registry.cjs');
-      const rows = await playbookRegistry.listAll();
-      const withSource = rows.map((r) => ({
-        ...r,
-        effectiveTemplateId: playbookRegistry.getEffectiveTemplateId(r),
-      }));
-      res.json({ ok: true, playbooks: withSource });
-    } catch (err) {
-      res.status(500).json({ ok: false, message: err.message });
-    }
-  });
+  // GET /api/ansible/playbooks (admin, tum kayitlar + kullanan ozellik + silinen varsayilanlar),
+  // DELETE /api/ansible/playbooks/:id (varsayilan satirda silme izi) ve
+  // POST /api/ansible/playbooks/silinen/:keyName/geri-yukle - bkz. playbook-kayit-rotalari.cjs.
+  require('./playbook-kayit-rotalari.cjs').kaydet(app, { requireAuth, requireAdmin });
 
   // GET /api/ansible/playbooks/available — herkese acik (yalnizca giris), template ID SIZDIRILMAZ
   // LogX sayfasinin dinamik "Tanilama Araclari" listesi bunu kullanir.
@@ -2539,18 +2529,6 @@ function initAnsibleRunner(app) {
       res.json({ ok: true, playbook: row });
     } catch (err) {
       res.status(400).json({ ok: false, message: err.message });
-    }
-  });
-
-  // DELETE /api/ansible/playbooks/:id — admin, kayit sil
-  app.delete('/api/ansible/playbooks/:id', requireAuth, requireAdmin, async (req, res) => {
-    try {
-      const playbookRegistry = require('./playbook-registry.cjs');
-      const deleted = await playbookRegistry.remove(req.params.id);
-      if (!deleted) return res.status(404).json({ ok: false, message: 'Kayıt bulunamadı.' });
-      res.json({ ok: true });
-    } catch (err) {
-      res.status(500).json({ ok: false, message: err.message });
     }
   });
 

@@ -30,7 +30,7 @@ const oku = (...p) => fs.readFileSync(path.join(...p), 'utf8');
 const ansibleVar = () => fs.existsSync(path.join(CH, 'crypto_hub_ops.yml'));
 
 const IDX = oku(__dirname, '..', 'index.cjs');
-const { OPS, kaynakExtraVars } = require('../index.cjs');
+const { OPS, NODE_OPS, kaynakExtraVars } = require('../index.cjs');
 const { CRYPTO_TENANTS } = require('../../../shared/cryptoHubTenants.cjs');
 
 /** Yorum satirlarini atar (# ile baslayan). */
@@ -60,7 +60,11 @@ test('SB1 Portal OPS == ekran WRITES == API tip birligi (okur/yazar ayni)', () =
   assert.equal(OPS.resources_apply.writes, true);
 });
 
-test('SB2 Portal OPS == playbook ch_islemler == betik case listesi (Ansible deposu varsa)', (t) => {
+test('SB2 Portal OPS + NODE_OPS == playbook ch_islemler == betik case listesi (Ansible deposu varsa)', (t) => {
+  // Indexer / Node (2026-11-02): node_env_get / node_change OPS'ta DEGIL (/ops onlari reddeder,
+  // node_change yalniz Smart onayindan sonra poller ile kosar) ama playbook ve betik listesinde
+  // VAR. Karsilastirma birlesimle yapilir; iki kume ayrik olmali.
+  for (const a of Object.keys(NODE_OPS)) assert.ok(!OPS[a], `${a} OPS'a eklenmis - /ops Smart'siz kostururdu`);
   if (!ansibleVar()) return t.skip('Ansible deposu bu makinede yok (CRYPTO_HUB_ANSIBLE_ROOT)');
   const yml = kodsuz(oku(CH, 'crypto_hub_ops.yml'));
   const blok = /ch_islemler:\n((?:\s+- [a-z_]+\n)+)/.exec(yml);
@@ -70,7 +74,7 @@ test('SB2 Portal OPS == playbook ch_islemler == betik case listesi (Ansible depo
   const c = /^ {2}([a-z_]+(?:\|[a-z_]+)+)\) ;;$/m.exec(sh);
   assert.ok(c, 'betikteki izin satiri bulunamadi');
   const betik = c[1].split('|').sort();
-  const portal = Object.keys(OPS).sort();
+  const portal = [...Object.keys(OPS), ...Object.keys(NODE_OPS)].sort();
   assert.deepEqual(playbook, portal, 'Portal OPS != playbook ch_islemler');
   assert.deepEqual(betik, portal, 'Portal OPS != betik islem listesi');
   for (const a of portal) {
@@ -119,28 +123,53 @@ test('SB3 Portal crypto_hub_* degiskenleri playbook ortamina gecer, betik okur',
   assert.ok(uyg.crypto_hub_timeout >= 2400 && plan.crypto_hub_timeout >= 900);
   assert.throws(() => kaynakExtraVars('resources_get', tam), /beklenmeyen/);
 
+  // Indexer / Node (2026-11-02): node_change extra_vars'i da sozlesmeye girer; NODE_* ortam
+  // degiskenlerini kabuk degil crypto_hub_node.py okur (os.environ).
+  const nodeEv = require('../node.cjs').nodeExtraVars({
+    tenantKey: 'metaco_das_test',
+    grupId: 'uis:evm-ethereum-mainnet',
+    nodeId: 'das_test_eth_b',
+    talepId: 42,
+    plan: [{ d: 'hmz-harmonize-uis-indexer-evm-ethereum-mainnet', c: 'app', e: 'ETH_INDEXER_NODE_URI', r: 'rpc' }],
+    expect: { 'hmz-harmonize-uis-indexer-evm-ethereum-mainnet/app/ETH_INDEXER_NODE_URI': 'a'.repeat(64) },
+    newSha: { rpc: 'b'.repeat(64) },
+    hedefler: ['hmz-harmonize-uis-indexer-evm-ethereum-mainnet'],
+    email: 'x@y.z',
+  });
+
   if (!ansibleVar()) return t.skip('Ansible deposu bu makinede yok');
   const yml = oku(CH, 'crypto_hub_ops.yml');
   const sh = kodsuz(oku(CH, 'files', 'crypto_hub_ops.sh'));
+  const pyYol = path.join(CH, 'files', 'crypto_hub_node.py');
+  const py = fs.existsSync(pyYol) ? oku(pyYol) : '';
   const env = /environment:\n([\s\S]*?)\n\s+register: ch_ops/.exec(yml);
   assert.ok(env, 'playbook environment blogu bulunamadi');
+  // Bir degisken BIRDEN COK ortam adina gecebilir (or. crypto_hub_action hem ACTION'a hem
+  // NODE_BUTCE_SN ifadesine girer): eslesme KUME olarak tutulur.
   const esle = new Map();
   for (const m of env[1].matchAll(/^\s+([A-Z][A-Z0-9_]*): "(.*)"$/gm)) {
-    for (const v of m[2].matchAll(/\b(crypto_hub_[a-z0-9_]+)\b/g)) esle.set(v[1], m[1]);
+    for (const v of m[2].matchAll(/\b(crypto_hub_[a-z0-9_]+)\b/g)) {
+      if (!esle.has(v[1])) esle.set(v[1], new Set());
+      esle.get(v[1]).add(m[1]);
+    }
   }
+  const shOkur = (e) => new RegExp(`\\$\\{#?${e}\\b|\\$${e}\\b`).test(sh);
+  const pyOkur = (e) => new RegExp(`os\\.environ(?:\\.get\\(|\\[)["']${e}["']`).test(py);
   const portal = new Set([
     ...[...IDX.matchAll(/\b(crypto_hub_[a-z0-9_]+)\b/g)].map((m) => m[1]),
     ...Object.keys(plan),
     ...Object.keys(uyg),
+    ...Object.keys(nodeEv),
   ]);
   for (const v of [...portal].sort()) {
-    if (DEGISKEN_DEGIL.test(v) || PLAY_DUZEYI.has(v)) continue;
-    const e = esle.get(v);
-    assert.ok(e, `Portal '${v}' gonderiyor ama playbook bunu betige GECIRMIYOR (CM_NAME tuzagi)`);
-    assert.ok(
-      new RegExp(`\\$\\{#?${e}\\b|\\$${e}\\b`).test(sh),
-      `playbook ${v} -> ${e} geciriyor ama betik ${e} OKUMUYOR`,
-    );
+    if (!v.startsWith('crypto_hub_') || DEGISKEN_DEGIL.test(v) || PLAY_DUZEYI.has(v)) continue;
+    const e = [...(esle.get(v) || [])];
+    assert.ok(e.length, `Portal '${v}' gonderiyor ama playbook bunu betige GECIRMIYOR (CM_NAME tuzagi)`);
+    if (v.startsWith('crypto_hub_node_')) {
+      assert.ok(e.some(pyOkur), `playbook ${v} -> ${e.join('/')} geciriyor ama crypto_hub_node.py OKUMUYOR`);
+    } else {
+      assert.ok(e.some(shOkur), `playbook ${v} -> ${e.join('/')} geciriyor ama betik OKUMUYOR`);
+    }
   }
 });
 

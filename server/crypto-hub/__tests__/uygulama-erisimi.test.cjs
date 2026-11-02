@@ -107,3 +107,18 @@ test('UE7 Admin ekrani sekmeyi tanitiyor (gorunurluk motorundan yonetilebilsin)'
   assert.match(CFG, /admintab:cryptoaccess/, 'elements.ts kaydi yok - sekme Sayfa Erisimi’nden yonetilemez');
   assert.match(SEED, /element_key: 'admintab:cryptoaccess'/, 'seed kaydi yok');
 });
+
+test('UE8 Indexer / Node yetkisi AYRI oge, fail-closed; panelde node sekmesi (2026-11-02, D5)', () => {
+  const i = SRC.indexOf('async function nodeYetkisi');
+  assert.ok(i > 0, 'nodeYetkisi yok');
+  const blok = SRC.slice(i, i + 500);
+  assert.match(blok, /canSee\(getRequestUser\(req\) \|\| \{\}, 'cryptohub:node:degistir'\)\) === true/, 'yetki ayri ogeye sorulmuyor');
+  assert.match(blok, /catch \{\s*return false;/, 'motor hatasinda yetki VERILIYOR olabilir');
+  assert.match(ROUTES, /const CRYPTO_APP_KEYS = \['metaco', 'wyden', 'node'\];/);
+  assert.match(ROUTES, /node: 'cryptohub:node:degistir'/);
+  // Node uclari index.cjs'teki tenant'li uc sayimina girmez (node.cjs'te, kendi kapisi var):
+  // kapi orada okumaKarari ile; talep ucu YALNIZ nodeYetkisi.
+  const NODE_SRC = fs.readFileSync(path.join(__dirname, '..', 'node.cjs'), 'utf8');
+  assert.match(NODE_SRC, /yetki = \(await nodeYetkisi\(req\)\) === true;/);
+  assert.ok(!/gorunenUygulamalar/.test(NODE_SRC.slice(NODE_SRC.indexOf('async function talepAc'))), 'talep ucu uygulama yetkisine bakiyor');
+});
