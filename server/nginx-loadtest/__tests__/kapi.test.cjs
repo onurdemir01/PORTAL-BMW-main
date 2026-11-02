@@ -58,6 +58,9 @@
 //         kosuya izin vermez; arac sha'si motora gore
 //   YKP43 /hedefler.araclar (hazir / ozet degisti / ozet yok / okunamadi, uc 200) ve /kosular/:id aracId + aracSeti; eski satir
 //         (arac_id NULL) BIREBIR (arac engeli yok)
+//   -- sade turu (2026-11-02) --
+//   YKP44 /kosular/:id kosu.sonucOzeti (toplam istek, p95 en iyi / kotu, konf, reload olaylari) ve adim satirinda
+//         cpuOlculemedi / reloadlar; eski R2 satirinin negatif CPU / kapasitesi null (DB degismez)
 'use strict';
 
 const { test } = require('node:test');
@@ -2097,4 +2100,35 @@ test('YKP43 /hedefler.araclar ve /kosular/:id aracId + aracSeti; eski satir bire
   D.aracDbHata = new Error('x');
   g = await istek('GET', `/kosular/${ok.id}`);
   assert.deepEqual([g.statusCode, g.body.kosu.aracId, g.body.kosu.aracSeti], [200, 5, null]);
+});
+
+test('YKP44 sade turu: /kosular/:id sonucOzeti ve adim cpuOlculemedi / reloadlar; eski R2 satiri negatif CPU dondurmez', { timeout: 10000 }, async () => {
+  sifirla();
+  senaryoEkle();
+  const ozet = { kesitler: [{ anahtar: 'R1_gbngxt33', konf_degisti: true }], reloadlar: [{ kesit: 'R1_gbngxt33', t: 1800000300, t_once: 1800000299, t_son: 1800000305, worker_once: 8, worker_sonra: 8, kapanan_en_cok: 8, tur: 'R1_K_ka_identity_100_r2', faz: 'olcum', etkilenen_turlar: ['R1_K_ka_identity_100_r2'] }] };
+  D.kosular.push({ id: 1, islem: 'kosu', durum: 'DONE', gecerlilik: 'GECERSIZ', hedef_host: 'GBNGXT33', hedef_ip: '10.0.0.9', created_at: new Date(BAS), senaryo_id: 1, sonuc: JSON.stringify({ durum: 'OK', portal_analiz: { ozet, uyarilar: [] } }) });
+  const satir = (id, tur, ek) => ({ id, kosu_id: 1, tur, senaryo: 'K', kip: 'ka', ae: 'identity', hiz: 100, deneme: 1, gecerlilik: 'GECERSIZ', nedenler: '["konf_degisti"]', p50: 1.5, p95: 2, p99: 3, hata_orani: 0, gercek_rps: 100, n_istek: 12000, n_429: 0, n_5xx: 0, host_cpu_ort: 3, cpu_ms_istek: 0.2, kapasite_rps: 32000, ham: null, ...ek });
+  D.adimlar.push(
+    satir(1, 'R1_K_ka_identity_100_r1', {}),
+    // Eski satir (sade turu oncesi analiz): reload + negatif CPU / kapasite DB'de.
+    satir(2, 'R1_K_ka_identity_100_r2', { nedenler: '["konf_degisti","reload(worker_pid_degisti)"]', cpu_ms_istek: -1.372, kapasite_rps: -4665, p95: 2.5 }),
+    // Yeni analiz satiri: ham.cpu_olculemedi + ham.reloadlar.
+    satir(3, 'R1_K_ka_identity_250_r1', { hiz: 250, cpu_ms_istek: null, kapasite_rps: null, p95: 1.2, ham: JSON.stringify({ cpu_olculemedi: 'reload', reloadlar: [{ t: 1800000300, t_once: 1800000299, t_son: 1800000305, tur: 'R1_K_ka_identity_100_r2', faz: 'bosluk' }] }) }),
+  );
+  const g = await istek('GET', '/kosular/1', { session: KULLANICI });
+  assert.equal(g.statusCode, 200, JSON.stringify(g.body));
+  const [a, b, c] = g.body.adimlar;
+  assert.deepEqual([a.cpuMsIstek, a.kapasiteRps, a.cpuOlculemedi, a.reloadlar], [0.2, 32000, null, []]);
+  assert.deepEqual([b.cpuMsIstek, b.kapasiteRps, b.cpuOlculemedi, b.reloadlar], [null, null, 'reload', []]);
+  assert.deepEqual([c.cpuOlculemedi, c.reloadlar], ['reload', [{ t: 1800000300, tOnce: 1800000299, tSon: 1800000305, tur: 'R1_K_ka_identity_100_r2', faz: 'bosluk' }]]);
+  assert.deepEqual([b.nIstek, b.p95, b.gercekRps, b.n429, b.hostCpuOrt], [12000, 2.5, 100, 0, 3], 'diger alanlar aynen');
+  const o = g.body.kosu.sonucOzeti;
+  assert.deepEqual([o.adimSayisi, o.toplamIstek, o.p95EnIyi, o.p95EnKotu, o.p95Kapsam, o.konfDegisti, o.cpuOlculemeyenAdim, o.hataVar],
+    [3, 36000, { deger: 1.2, tur: 'R1_K_ka_identity_250_r1' }, { deger: 2.5, tur: 'R1_K_ka_identity_100_r2' }, 'tum', true, 2, false]);
+  assert.deepEqual(o.reloadlar.map((x) => [x.t, x.faz, x.kapananEnCok, x.etkilenenTurlar]), [[1800000300, 'olcum', 8, ['R1_K_ka_identity_100_r2']]]);
+  assert.deepEqual(g.body.kosu.sonucOzet.portal_analiz.ozet, ozet, 'ham sonuc ozeti degismeden doner');
+  // Sonucu olmayan (on kontrol / eski) satir: ozet bos ama var.
+  D.kosular.push({ id: 2, islem: 'on_kontrol', durum: 'DONE', hedef_host: 'GBNGXT33', hedef_ip: '10.0.0.9', created_at: new Date(BAS), senaryo_id: 1, sonuc: null });
+  const h = await istek('GET', '/kosular/2');
+  assert.deepEqual([h.body.kosu.sonucOzeti.adimSayisi, h.body.kosu.sonucOzeti.toplamIstek, h.body.kosu.sonucOzeti.konfDegisti, h.body.kosu.sonucOzeti.reloadlar], [0, null, null, []]);
 });

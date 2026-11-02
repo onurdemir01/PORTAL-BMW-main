@@ -325,6 +325,16 @@ kuralları geçmişte kaldı.
    listede olmayan ad **engel değildir** (joker / regex `server_name`'li siteler de test edilebilir),
    ön kontrolde `nginx -T` ölçümü bulamazsa onay isteyen bir uyarı çıkar. Yalnız üretim / EDU / ortamı
    bilinmeyen sunucularda tanımlı bir ad iki kipte reddedilir (409 `host_uretim`, §4.3).
+   **Form düzeni (sade turu):** üstte yalnız senaryo, hedef (IP + Host başlığı + yük makinesi), yük
+   (k6 hızları / wrk bağlantıları) ve ölçüm süresi; tahmini toplam süre büyük yazılır. Üç hazır ayar
+   düğmesi alanları doldurur (sonra elle değiştirilebilir, ekran "Özel ayar" der): **Hızlı deneme**
+   (~5 dk, küçük yük, tekrar 1), **Standart** (sunucu varsayılanı) ve **Kapasite** (hedef sınırına
+   kadar beş kademe). Hazır ayarlar `GET /hedefler` `sinirlar`'ına, hedefin ölçülmüş `limit_req` /
+   `limit_conn` tavanına, serbest tavanlara (200 r/s / 50 bağlantı) ve 2700 sn bütçeye kırpılır;
+   testte sunucunun kendi `parametreler` doğrulamasından geçtiği sınanır. Tekrar, ısınma, boşluk,
+   boşta, kip, sıkıştırma, maks VU, iş parçacığı ve SNI kapalı **Gelişmiş ayarlar** bölümündedir;
+   her alanın altında etkisini anlatan bir cümle vardır. Gönderilen gövde ve sunucu doğrulamaları
+   değişmedi.
 5. **Ön kontrol** (yük üretmez) — sunucu: seçilen IP hedefte yerel mi, Host başlığı `nginx -T`'de var
    mı (uyarı), tek nginx master, `/web_log` doluluğu ve okunabilirliği, etkin `log_format`'ta
    `user-agent=` var mı; serbest: IP yük makinesinde yerel değil mi ve yük makinesindeki izin dosyası
@@ -342,9 +352,15 @@ kuralları geçmişte kaldı.
    çıktıysa 409 `on_kontrol_eski` (ön kontrolü yeniden çalıştırın).
 7. **İzleme** — canlı iş çıktısı (maskeli). Sekme kapansa da sunucudaki sonuçlandırıcı işi bitirir,
    sonucu yazar, kilidi kurala göre bırakır ya da tutar (§4.1).
-8. **Sonuç** — geçerlilik `GECERLI` / `KISMI` / `GECERSIZ` / `OKUNAMADI` ve nedenleri; adım tablosu
-   (p50/p95/p99, TTFB, hata, 429/5xx, dropped, istemci/sunucu istek hızı, CPU-ms/istek, host CPU,
-   kapasite; serbestte sunucu alanları boş, wrk'de hız sütunu bağlantı sayısıdır). Erken duran koşu
+8. **Sonuç** — geçerlilik `GECERLI` / `KISMI` / `GECERSIZ` / `OKUNAMADI` ve nedenleri. En üstte koşu
+   özeti (gönderilen toplam istek, en iyi / en kötü p95 ve hangi adımda olduğu, hata durumu) ve adım
+   başına **özet tablo**: adım (hız ya da bağlantı × tekrar), gönderilen istek (yalnız ölçüm fazı),
+   gerçek hız, medyan (p50), p95, p99 (ms), hata %, 429, 5xx, host CPU %, sonuç. Her sütun başlığının
+   ipucu ölçünün ne anlattığını yazar. Nedenler düz Türkçe cümledir (ham kod altta küçük); aynı neden
+   bir kez yazılır, etkilenen adımlar ve — varsa — reload anı ("saat … civarında, 250/sn · r2 ölçüm
+   sırasında") ile. Teknik sütunlar (TTFB, dropped, istemci/sunucu istek hızı, CPU-ms/istek, kapasite)
+   ve grafikler kapalı **Ayrıntı** bölümündedir; CPU-ms/istek ve kapasite ölçülemediyse "—" ve nedeni
+   ipucunda (§5.0). Serbestte sunucu alanları boş, wrk'de adım sütunu bağlantı sayısıdır. Erken duran koşu
    (`DUR`, tamamlanan adımlar `/sw`'de) AWX'te `failed` görünse de **`DONE`** olur ve geçerliliği en
    iyi `KISMI`'dir (Karşılaştır'da seçilebilir).
 9. **Karşılaştır** — iki koşu; karar, nedenleri ve kademe tablosu (§5.1).
@@ -689,6 +705,45 @@ QUEUED → RUNNING → FINALIZING → DONE | FAILED | CANCELED | OKUNAMADI
   /kosular/:id/yeniden-oku` ile yeniden sonuçlandırmaya alır (satır `FINALIZING`, sayaç 0,
   sonuçlandırıcı hemen tetiklenir; `/sw` kopyasını ve SHA256SUMS'ı düzelttikten sonra).
 
+### 5.0 Reload, CPU ve sonuç özeti (sade turu, 2026-11-02)
+İlk gerçek koşuda (R2, GBNGXT33) nginx koşu sırasında iki kez reload oldu; ekran negatif CPU-ms/istek
+(-1,372) ve negatif kapasite gösterdi. Nedeni: kaydedici worker CPU'sunu **o anki** worker'ların toplamı
+olarak yazar; eski worker'lar çıkınca toplam düşer.
+
+* **CPU-ms/istek ve kapasite asla negatif ya da 0 değildir.** Ölçüm penceresinde reload (worker PID
+  kümesi değişti ya da 'shutting down' worker var), ham sayaç geriye gittiyse ya da arka plan
+  çıkarılınca sonuç negatifse CPU alanları **boş** (null) kalır; adım uyarısı
+  `cpu_olculemedi(reload | sayac_geriledi | net_negatif)`, `ham.cpu_olculemedi` = kod. Kapasite yalnız
+  CPU-ms/istek > 0 iken hesaplanır. Karar (`/karsilastir`) bu değerleri kullanmaz; DB'deki eski negatif
+  değer de kararda boş sayılır. Host CPU (`/proc/stat`) reload'dan etkilenmez, kalır. (karsilastir.py
+  bu durumda sayı yazardı: bilinçli fark, testte açık eşleme.)
+* **Reload anı**: kaydedici örneklerinde PID kümesinin değiştiği / 'shutting down' worker görülen her
+  ardışık dizi bir olaydır: ilk görüldüğü an, ondan önceki değişmemiş örnek (reload bu ikisi arasında),
+  son örnek, worker sayıları, o an süren adım ve fazı (`isinma` / `olcum` / `bosluk` — bir önceki adımdan
+  sonraki boşluk / `kosu_oncesi`) ve değdiği adımlar. Olay (ilk–son örnek) bir adımın ölçüm penceresine
+  (başlangıç + ısınma .. bitiş) değiyorsa adımı ve fazı o adımın `olcum`'udur: ısınmada / boşlukta / koşu
+  öncesinde başlayıp eski worker'ları ölçüme taşan reload adımı düşürür, ekran "ölçüm etkilenmedi" demez.
+  Analiz özetinde `ozet.reloadlar`, adım satırında
+  `ham.reloadlar`. Yalnız gösterimdir; geçerlilik kuralı değişmez (penceredeki reload yine `GECERSIZ`).
+* **Konfigürasyon değişimi** (`konf_degisti`) kaydedicinin yalnız başta ve sonda aldığı özet farkıdır:
+  anı bilinmez ve **tüm** adımlara yazılır. Değişikliğin anını bulmak kaydedicide (Ansible) ara özet
+  ister; bu tur kapsamı dışında.
+* **Neden kodları** sabit bir listededir (`analiz.cjs` `NEDEN_KALIPLARI`); ekran her kodu düz Türkçe
+  cümleye çevirir. Yeni kod eklenirse listeye de eklenir (test fikstür çıktısının her satırını sınar).
+* **Sonuç özeti** (`GET /kosular/:id` → `kosu.sonucOzeti`): adım sayısı, geçerli adım sayısı, toplam
+  istek (yalnız ölçüm fazı; ısınma hariç), en iyi / en kötü p95 (GECERLI + DOYMA adımlardan; hiç yoksa
+  tüm adımlardan, `p95Kapsam: 'tum'`), toplam 429 / 5xx, en yüksek hata oranı, `hataVar`, CPU'su
+  ölçülemeyen adım sayısı, `konfDegisti`, reload olayları. Eski koşularda da çalışır (eksik alan
+  null / `[]`).
+* **Eski koşular (R2 dahil):** reload anları yalnız bu turdan sonra analiz edilen koşularda vardır;
+  R2'nin satırları eski analizle yazıldığı için ekranda reload nedeni cümlesi çıkar, "saat …" çıkmaz.
+  Negatif değerler API'de null'a çevrilir (DB değişmez).
+* **Gerçek R2 fikstürü:** `__tests__/r2-gercek.test.cjs` R2 iş çıktısındaki sayıları (6 adımın
+  başlangıcı, istek, gerçek hız, p50 / p95 / p99, dropped, kaydedici konf özeti) sentetik kaydedici
+  örnekleri ve iki ölçüm içi reload ile tüm zincirden geçirir (analiz → poller → DB satırı → API);
+  çıktısı `fixtures/r2-gercek-api.json`'da bayt bayt kilitlidir ve arayüz testi (SD11) aynı dosyayı
+  çizer. Fikstür bilerek değişirse `YUK_R2_FIKSTUR_YAZ=1` ile yeniden yazılır.
+
 ### 5.1 Serbest hedef ve wrk analizi
 
 Analiz koşunun türünü ve motorunu **koşu satırından** alır (set_stats yankısından değil).
@@ -767,7 +822,7 @@ retlerinde ayrıca `sahipler`).
 | `POST /kosular/on-kontrol` | Admin | `{ senaryoId, hedefHost?, hedefIp, vhost, yukHost, sni, parametreler, etiket? }` → `{ kosuId, jobId, awxServerId }`. `hedefHost` isteğe bağlı (`undefined` / `null` / `''` = yazılan IP sınıflandırılır). `parametreler.motor` `'k6'` (varsayılan) ya da `'wrk'`; k6: `hizlar`, `maxvu`; wrk: `baglantilar`, `is_parcacigi`; ortak `tekrar`, `isinma`, `sure`, `bosluk`, `bosta`, `kip`, `ae`. `tavan_rps` gönderilse de yok sayılır (sunucu hesaplar). |
 | `POST /kosular` | Admin | `{ onKontrolKosuId, confirmText, uyariOnay }` — `confirmText` sunucu hedefinde host adı, serbest hedefte hedef IP |
 | `GET /kosular?islem=&durum=&hedef=&ip=&hedefTuru=&motor=&onceki=&limit=` | okuma | `islem` ∈ `kosu`, `on_kontrol`; `durum` ∈ `QUEUED`, `RUNNING`, `FINALIZING`, `DONE`, `FAILED`, `CANCELED`, `OKUNAMADI`; `hedef` = sunucu adı; `ip` = hedef IPv4; `hedefTuru` ∈ `sunucu`, `serbest`; `motor` ∈ `k6`, `wrk`; `onceki` = koşu no (yalnız `id < onceki`, "daha eski" sayfası); `limit` 1..200 (varsayılan 50). Sıra `id` azalan. Yanıtta `dahaVar` (limit + 1 satır çekilir). Satırlarda `hedefTuru`, `motor`, `hedefHost` (serbestte `null`). Geçersiz değer (ya da tekrarlanan parametre) → 400 `gecersiz_istek` |
-| `GET /kosular/:id` | okuma | ayrıntı: parametreler, `hedefTuru`, `motor`, ön kontrol özeti + engel / uyarı listesi (`onKontrolUyarilari` = plan uyarıları başta + ön kontrol uyarıları), `planUyarilari` (ön kontrol satırınınki), `serbestAg` (serbest satırda Portal izin listesinde **şu an** eşleşen ağ ya da `null`), geçerlilik nedenleri, adımlar; `durdurIsi: { awxServerId, awxJobId } \| null` (son durdurma işi), `sonuclandirmaDenemesi` (sonuçlandırma deneme sayısı); tur 4: `aracId` (satırın arac seti ya da `null` — eski satır) ve `aracSeti: { id, k6Surum, wrkSurum, k6Sha256, wrkSha256, derlemeHost } \| null` (durumundan bağımsız); `aracId` doluysa ön kontrol engellerine araç kopyası maddeleri eklenir |
+| `GET /kosular/:id` | okuma | ayrıntı: parametreler, `hedefTuru`, `motor`, ön kontrol özeti + engel / uyarı listesi (`onKontrolUyarilari` = plan uyarıları başta + ön kontrol uyarıları), `planUyarilari` (ön kontrol satırınınki), `serbestAg` (serbest satırda Portal izin listesinde **şu an** eşleşen ağ ya da `null`), geçerlilik nedenleri, adımlar; `durdurIsi: { awxServerId, awxJobId } \| null` (son durdurma işi), `sonuclandirmaDenemesi` (sonuçlandırma deneme sayısı); tur 4: `aracId` (satırın arac seti ya da `null` — eski satır) ve `aracSeti: { id, k6Surum, wrkSurum, k6Sha256, wrkSha256, derlemeHost } \| null` (durumundan bağımsız); `aracId` doluysa ön kontrol engellerine araç kopyası maddeleri eklenir; sade turu: `sonucOzeti` (§5.0) ve her adımda `cpuOlculemedi` (`reload` \| `sayac_geriledi` \| `net_negatif` \| `negatif_deger` — eski satırda DB'deki negatif / 0 değer \| `null`) ile `reloadlar: [{ t, tOnce, tSon, tur, faz }]` (epoch sn); `cpuMsIstek` / `kapasiteRps` asla ≤ 0 (eski satırda da null'a çevrilir, DB değişmez) |
 | `GET /kosular/:id/durum?since=` | Admin | maskeli iş çıktısı; `since` = elinizdeki metnin uzunluğu → yalnız devamı (`outputOffset`, `outputLength`) |
 | `POST /kosular/:id/durdur` | Admin | AWX iptali + (koşu) `durdur` kipi. Başarı: `{ ok, iptal, iptalHatasi, durdurIsi: { jobId, awxServerId } \| null, durdurHatasi: null }`. 409 `baslatiliyor`, 409 `kosu_bitti`, 424 `durdur_baslatilamadi` (gövdede `iptal`, `iptalHatasi`, `durdurHatasi`; metin motor ve türe göre), 424 `awx_okunamadi` (ön kontrol iptal edilemedi) |
 | `POST /kosular/:id/yeniden-oku` | Admin | sonucu okunamamış koşuyu yeniden sonuçlandırır → `{ ok: true }`; değilse 409 `yeniden_okunamaz` |

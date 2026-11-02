@@ -24,8 +24,15 @@
 // TUR 4 (2026-11-02): /hedefler `araclar.hazir` false iken (set yok, onay bekliyor, okunamadi ya da sunucu bildirmedi)
 // formun ustunde hata kutusu + "Araçlar" dugmesi; on kontrol KAPALI (sunucu da 409 araclar_hazir_degil der). Hazirsa
 // formun altinda kullanilacak set ("Araç seti #N: k6 ... · wrk ...").
+// SADELESTIRME (2026-11-02, R2 / AWX 3474239: "cok parametre var, her birinin etkisi ne?"): formun ustunde yalniz
+// senaryo, hedef (IP + Host basligi + yuk sunucusu), yuk (k6 hizlari / wrk baglantilari) ve olcum suresi; hazir ayar
+// dugmeleri (Hızlı deneme / Standart / Kapasite, hazirAyarlar.ts) alanlari doldurur, kullanici yine degistirir; secili
+// ayar aria-pressed, alanlar elle degisince "Özel". Tahmini toplam sure buyuk ve formulle. Tekrar, isinma, bekleme,
+// basta bosta olcum, VU / is parcacigi, baglanti kipi, sikistirma, SNI ve etiket kapali "Gelişmiş ayarlar" altinda; her
+// alanin etkisi tek cumle (ALAN_ACIKLAMASI). Gelismis alanda hata varsa bolum acik kalir ve dugmede sayi gorunur.
+// Kanonik govde ve imza DEGISMEDI.
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowPathIcon, BoltIcon, ClipboardDocumentCheckIcon, ServerStackIcon, WrenchScrewdriverIcon } from '@heroicons/react/24/outline';
+import { ArrowPathIcon, BoltIcon, ChevronDownIcon, ChevronRightIcon, ClipboardDocumentCheckIcon, ServerStackIcon, WrenchScrewdriverIcon } from '@heroicons/react/24/outline';
 import {
   hedeflerNormalle, nginxLoadtestApi, type NlAe, type NlHedef, type NlHedefler, type NlHedefTuru, type NlIpSinifi, type NlKip, type NlKosuAyrinti,
   type NlMotor, type NlParametreler, type NlSenaryo, type NlVarsayilanlar,
@@ -39,6 +46,9 @@ import { sureMetni } from '@/components/server_hub/retirementCikti';
 import BaslatOnayi, { type BaslatOnayiDegeri } from './BaslatOnayi';
 import KosuCiktisi from './KosuCiktisi';
 import OnKontrolPaneli from './OnKontrolPaneli';
+import {
+  ALAN_ACIKLAMASI, HAZIR_AYAR_ETIKETI, HAZIR_AYAR_SIRASI, hangiHazirAyar, hazirAyar, hazirAyarSuresiSn, type HazirAyarAdi, type HazirAyarDegerleri,
+} from './hazirAyarlar';
 import { Alan, Bolum, GIRDI, KosuDurumHapi, girdiStili } from './YukUi';
 import {
   AE_ETIKETI, AKTIF_DURUMLAR, GIRDIYE_BAGLI_RETLER, KIP_ETIKETI, SERBEST_VHOST_YARDIMI, VHOST_LISTEDE_YOK_NOTU, adimDegerleri, baglantiBeklemesiMs,
@@ -98,6 +108,7 @@ export default function YeniKosu({ onBasladi, onSenaryolar, onAraclar }: { onBas
   // IP siniflandirmasi: sonuc hangi istek anahtari icin (anahtar degisince eski sonuc gosterilmez: "sınıflandırılıyor").
   const [sinif, setSinif] = useState<{ anahtar: string; sonuc: SinifSonucu } | null>(null);
   const [sinifDeneme, setSinifDeneme] = useState(0);
+  const [gelismisAcik, setGelismisAcik] = useState(false);
   const busyRef = useRef(false);
 
   const yukle = useCallback(async () => {
@@ -225,6 +236,12 @@ export default function YeniKosu({ onBasladi, onSenaryolar, onAraclar }: { onBas
     else if (sunucuHost && yuk.host === sunucuHost) fHata.yuk = nedenMetni('ayni_host');
     if (form.etiket.length > 120) fHata.etiket = 'En çok 120 karakter.';
   }
+  // Gelismis alanlardaki hata sayisi: bolum kapaliyken de soylenir. Hata bolumu ACAR ve acik birakir: hata duzelince
+  // kendiliginden kapansa odaktaki alan gizlenir, odak sayfaya duser (inceleme bulgusu 2). Render sirasinda kosullu
+  // setState (React'in "onceki degere gore durum ayarla" kalibi): effect'teki gibi bir kare kapali cizilmez.
+  const gelismisHatalari = [...(['tekrar', 'isinma', 'bosluk', 'bosta', 'kip', 'ae'] as const), ...(motor === 'wrk' ? ['is_parcacigi'] as const : ['maxvu'] as const)]
+    .filter((k) => !!pHata[k]).length + (fHata.etiket ? 1 : 0);
+  if (gelismisHatalari > 0 && !gelismisAcik) setGelismisAcik(true);
   const gecerli = !!form && !!param && !Object.keys(pHata).length && !Object.keys(fHata).length;
   // Siniflandirma kapisi: surerken, kalici retle ve `uygun:false` sunucu hedefinde on kontrol kapali; 424 kapatmaz.
   // Ret formdaki diger eksiklerden ONCE soylenir (parametreyi duzeltmek bu hedefi acmaz).
@@ -244,8 +261,17 @@ export default function YeniKosu({ onBasladi, onSenaryolar, onAraclar }: { onBas
   const formDegisti = !!ok && imza !== ok.imza;
   const baslatilir = okBitti && !degerlendirme.engeller.length && !formDegisti && !okEski && (kalanMs == null || kalanMs > 0) && mesgul == null;
   const butce = param && adimDegerleri(param).degerler.length ? butceSn(param) : null;
+  // Hazir ayarlar hedefin (daraltilmis) sinirlariyla; serbestte serbest varsayilanlari. Formun degerleri birine birebir
+  // esitse o ayar secili gorunur; elle degisen alan "Özel" yapar.
+  const ayarlar = sinir && veri ? Object.fromEntries(HAZIR_AYAR_SIRASI.map((a) => [a, hazirAyar(a, sinir, veri.varsayilan, { serbest: hedefTuru === 'serbest' })])) as Record<HazirAyarAdi, HazirAyarDegerleri> : null;
+  const formAyari: HazirAyarDegerleri | null = form ? {
+    hizlar: hizlarMetni, maxvu: maxvuMetni, baglantilar: form.baglantilar, is_parcacigi: form.is_parcacigi,
+    tekrar: form.tekrar, isinma: form.isinma, sure: form.sure, bosluk: form.bosluk, bosta: form.bosta,
+  } : null;
+  const seciliAyar = ayarlar && formAyari ? hangiHazirAyar(formAyari, motor, ayarlar) : null;
 
   const degistir = <K extends keyof Form>(k: K, v: Form[K]) => setForm((f) => (f ? { ...f, [k]: v } : f));
+  const hazirUygula = (ad: HazirAyarAdi) => { if (ayarlar) setForm((f) => (f ? { ...f, ...ayarlar[ad] } : f)); };
   function hedefSec(host: string) {
     const h = veri?.hedefler.find((x) => x.host === host) ?? null;
     setForm((f) => {
@@ -336,6 +362,12 @@ export default function YeniKosu({ onBasladi, onSenaryolar, onAraclar }: { onBas
   const enKucukBaglanti = baglantilar?.length ? Math.min(...baglantilar) : null;
   const bekleme = enKucukBaglanti != null ? baglantiBeklemesiMs(enKucukBaglanti, tavan) : null;
   const sifirSinir = sinir.maxHiz < 1 || sinir.maxBaglanti < 1;
+  const gelismisGorunur = gelismisAcik;
+  const gelismisOzeti = [
+    `tekrar ${param.tekrar}`, `ısınma ${form.isinma} sn`, `bekleme ${form.bosluk} sn`, `başta ${form.bosta} sn`,
+    motor === 'wrk' ? `${form.is_parcacigi} iş parçacığı` : `en çok ${maxvuMetni} VU`, KIP_ETIKETI[form.kip], AE_ETIKETI[form.ae],
+    ...(sniEtkin && form.sni ? ['SNI'] : []),
+  ].join(' · ');
   // On kontrol bu formu artik kapsamiyor (form degisti / sunucu eski dedi / 15 dk doldu).
   const okGecersiz = formDegisti || !!okEski || (kalanMs != null && kalanMs <= 0);
   const neden = !araclarHazir ? 'Yük araçları hazır değil.'
@@ -426,24 +458,17 @@ export default function YeniKosu({ onBasladi, onSenaryolar, onAraclar }: { onBas
               {senaryo?.vhost && vhost && senaryo.vhost !== vhost && (
                 <div className="@lg/yuk:col-span-2"><UyariKutusu ton="uyari" baslik={`Senaryo ${senaryo.vhost} için hazırlanmış; seçilen vhost ${vhost}. Yollar bu vhost’ta 200 dönmeyebilir.`} /></div>
               )}
-              <label className={`flex items-start gap-2 text-[12px] @lg/yuk:col-span-2 ${sniEtkin ? 'cursor-pointer' : 'cursor-not-allowed'}`} style={{ color: sniEtkin ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
-                <input type="checkbox" className="mt-0.5 accent-[var(--accent)]" checked={sniEtkin && form.sni} disabled={!sniEtkin} onChange={(e) => degistir('sni', e.target.checked)} />
-                {sniEtkin
-                  ? <span>SNI ile bağlan <span style={{ color: 'var(--text-secondary)' }}>— TLS el sıkışmasında vhost adı gönderilir (sunucu sertifikayı ada göre seçiyorsa). Bağlantı yine seçilen IP’ye gider.</span></span>
-                  : <span>SNI ile bağlan <span style={{ color: 'var(--text-secondary)' }}>— wrk SNI’yi Host başlığına göre seçemez (IP adresi SNI olarak gider).</span></span>}
-              </label>
             </div>
           </Bolum>
 
-          <Bolum baslik="3 · Parametreler"
+          <Bolum baslik="3 · Yük ve süre"
             aciklama={motor === 'wrk'
               ? `Kapalı döngü: her adımda sabit bağlantı sayısı; her bağlantı yanıtı alınca, bağlantı başına sabit beklemeden sonra yeni istek gönderir (ortalama toplam ≤ ${tavan} istek/sn). Sınırlar: bağlantı ≤ ${sinir.maxBaglanti}, iş parçacığı ≤ ${sinir.maxIsParcacigi}, toplam ≤ ${dk} dk.`
-              : `Açık döngü: her hızda sabit varış hızı, her iterasyon tek GET. Sınırlar: hız ≤ ${sinir.maxHiz}/sn, VU ≤ ${sinir.maxVu}, toplam ≤ ${dk} dk.`}
-            eylem={<button type="button" onClick={() => setForm((f) => (f ? { ...formBaslangic(veri.varsayilan, f.yukHost), senaryoId: f.senaryoId, hedefHost: f.hedefHost, hedefIp: f.hedefIp, vhost: f.vhost, sni: f.sni, motor: f.motor, etiket: f.etiket } : f))} className={LINK} style={{ color: 'var(--accent)' }}>Varsayılanlara dön</button>}>
-            <div className="grid gap-3 @lg/yuk:grid-cols-2 @3xl/yuk:grid-cols-3">
+              : `Açık döngü: her hızda sabit varış hızı, her iterasyon tek GET. Sınırlar: hız ≤ ${sinir.maxHiz}/sn, VU ≤ ${sinir.maxVu}, toplam ≤ ${dk} dk.`}>
+            <div className="grid gap-3 @lg/yuk:grid-cols-2">
               {/* Yuk araci kipi: iki secenek de gorunur (dar kolonda secim kutusu aciklamayi kesiyordu). Yerel radyo:
                   ok tuslari secer; odak etiketin cevresinde gorunur. */}
-              <fieldset className="min-w-0 @lg/yuk:col-span-2 @3xl/yuk:col-span-3">
+              <fieldset className="min-w-0 @lg/yuk:col-span-2">
                 <legend className="mb-1 text-[11px] font-semibold leading-4" style={{ color: 'var(--text-secondary)' }}>Yük aracı</legend>
                 <div className="inline-flex max-w-full flex-wrap gap-1 rounded-lg p-0.5" style={{ background: 'var(--bg-elevated)' }}>
                   {motorlar.map((m) => {
@@ -458,52 +483,116 @@ export default function YeniKosu({ onBasladi, onSenaryolar, onAraclar }: { onBas
                   })}
                 </div>
               </fieldset>
+              {/* Hazir ayarlar: alanlari doldurur (kip / sikistirma / SNI / etiket dokunulmaz); secili olan aria-pressed. */}
+              <div className="min-w-0 @lg/yuk:col-span-2" role="group" aria-labelledby="yuk-hazir-baslik">
+                <div id="yuk-hazir-baslik" className="mb-1 text-[11px] font-semibold leading-4" style={{ color: 'var(--text-secondary)' }}>Hazır ayar</div>
+                <div className="grid gap-2 @lg/yuk:grid-cols-3">
+                  {HAZIR_AYAR_SIRASI.map((a) => {
+                    const secili = seciliAyar === a;
+                    const sn = ayarlar && !sifirSinir ? hazirAyarSuresiSn(ayarlar[a], motor) : null;
+                    return (
+                      <button key={a} type="button" onClick={() => hazirUygula(a)} aria-pressed={secili} disabled={!ayarlar || sifirSinir}
+                        className="flex min-w-0 flex-col justify-start rounded-lg px-3 py-2 text-left disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-offset-2!"
+                        style={secili
+                          ? { background: TON.aksan.zemin, boxShadow: `inset 0 0 0 1.5px ${TON.aksan.renk}`, color: 'var(--text-primary)' }
+                          : { background: 'var(--bg-surface)', boxShadow: 'inset 0 0 0 1px var(--border)', color: 'var(--text-primary)' }}>
+                        <span className="flex items-baseline justify-between gap-2">
+                          <span className="truncate text-[12px] font-semibold" title={HAZIR_AYAR_ETIKETI[a].ad}>{HAZIR_AYAR_ETIKETI[a].ad}</span>
+                          <span className="shrink-0 text-[11px] tabular-nums" style={{ color: secili ? TON.aksan.metin : 'var(--text-secondary)' }}>{sn != null ? `≈ ${sureMetni(sn)}` : '—'}</span>
+                        </span>
+                        <span className="mt-0.5 block text-[11px] leading-4" style={{ color: 'var(--text-secondary)' }}>{HAZIR_AYAR_ETIKETI[a].aciklama}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="mt-1 text-[11px] leading-4" style={{ color: 'var(--text-secondary)' }} aria-live="polite">
+                  {seciliAyar ? `${HAZIR_AYAR_ETIKETI[seciliAyar].ad} seçili; alanları yine değiştirebilirsiniz.` : 'Özel ayar: alanları kendiniz değiştirdiniz (bir hazır ayara tıklayınca değerler yeniden dolar).'}
+                </p>
+              </div>
               {motor === 'wrk' ? (
-                <>
-                  <Alan id="yuk-baglantilar" etiket="Bağlantılar" className="@3xl/yuk:col-span-2" hata={pHata.baglantilar || null} yardim={`Boşlukla ayırın; en çok 5 kademe, her biri 1–${sinir.maxBaglanti}. Her bağlantı yanıtı alınca, beklemeden sonra yeni istek gönderir.`}>
-                    <input id="yuk-baglantilar" value={form.baglantilar} onChange={(e) => degistir('baglantilar', e.target.value)} autoComplete="off" spellCheck={false} className={`${GIRDI} font-mono tabular-nums`} style={girdiStili(!!pHata.baglantilar)} aria-invalid={!!pHata.baglantilar} />
-                  </Alan>
-                  {sayiAlani('is_parcacigi', 'İş parçacığı', 1, sinir.maxIsParcacigi, '1–16; en küçük bağlantı sayısını aşamaz ve her bağlantı sayısını tam bölmeli (ör. 2 → 2 4 8).', pHata.is_parcacigi || null)}
-                  <div className="space-y-2 @lg/yuk:col-span-2 @3xl/yuk:col-span-3">
-                    {!sifirSinir && (
-                      <p className="rounded-lg px-3 py-2 text-[12px] leading-5 tabular-nums" style={{ background: 'var(--bg-elevated)', color: 'var(--text-primary)' }} aria-live="polite">
-                        {`Ortalama toplam hız tavanı: ${tavan} istek/sn (bağlantı başına bekleme ≈ ${bekleme ?? '—'} ms; ${tavanNedeni(veri.sinirlar, hedefTuru === 'sunucu' ? sunucuHedef : null, hedefTuru)})`}
-                      </p>
-                    )}
-                    {/* WR2: tavan ORTALAMA hizi sinirlar; anlik hiz kumelenir (Portal limit_req burst'unu okumaz). */}
-                    <UyariKutusu ton="uyari" baslik={`wrk kapalı döngüdür; Portal toplam hızı ORTALAMADA ${tavan} istek/sn ile sınırlar. İlk 429 ya da 5xx yanıtta koşu durur (DUR).`}>
-                      Bağlantılar birlikte başlar, ilk istekler rastgele yayılır ama istekler kümelenebilir: limit_req burst’ü bağlantı sayısından küçük ya da burst’süz yollarda 429 alınır ve koşu durur. Böyle yollarda k6 kullanın ya da küçük bağlantı sayılarıyla başlayın.
-                    </UyariKutusu>
-                  </div>
-                </>
+                <Alan id="yuk-baglantilar" etiket="Bağlantılar" hata={pHata.baglantilar || null} yardim={`${ALAN_ACIKLAMASI.baglantilar} Boşlukla ayırın; en çok 5 kademe, her biri 1–${sinir.maxBaglanti}.`}>
+                  <input id="yuk-baglantilar" value={form.baglantilar} onChange={(e) => degistir('baglantilar', e.target.value)} autoComplete="off" spellCheck={false} className={`${GIRDI} font-mono tabular-nums`} style={girdiStili(!!pHata.baglantilar)} aria-invalid={!!pHata.baglantilar} />
+                </Alan>
               ) : (
-                <Alan id="yuk-hizlar" etiket="Hızlar (istek/sn)" className="@lg/yuk:col-span-2 @3xl/yuk:col-span-3" hata={pHata.hizlar || null} yardim="Boşlukla ayırın; en çok 5 kademe. Her kademe ısınma + ölçüm süresi kadar koşar.">
+                <Alan id="yuk-hizlar" etiket="Hızlar (istek/sn)" hata={pHata.hizlar || null} yardim={`${ALAN_ACIKLAMASI.hizlar} Boşlukla ayırın; en çok 5 kademe.`}>
                   <input id="yuk-hizlar" value={hizlarMetni} onChange={(e) => degistir('hizlar', e.target.value)} autoComplete="off" spellCheck={false} className={`${GIRDI} font-mono tabular-nums`} style={girdiStili(!!pHata.hizlar)} aria-invalid={!!pHata.hizlar} />
                 </Alan>
               )}
-              {sayiAlani('tekrar', 'Tekrar', 1, sinir.maxTekrar, `Her ${motor === 'wrk' ? 'bağlantı kademesi' : 'hız'} kaç kez koşulsun (gürültü ölçümü için ≥ 2).`)}
-              {sayiAlani('isinma', 'Isınma (sn)', 5, sinir.isinmaMax, 'Ölçüme girmeyen ön yük.')}
-              {sayiAlani('sure', 'Ölçüm süresi (sn)', sinir.sureMin, sinir.sureMax, 'Her adımın ölçülen bölümü.')}
-              {sayiAlani('bosluk', 'Adımlar arası bekleme (sn)', 0, 120, serbest ? 'Serbest hedefte bu aralıkta CPU ölçülmez.' : 'Arka plan CPU’su bu aralıklarda ölçülür.')}
-              {sayiAlani('bosta', 'Başta boşta ölçüm (sn)', 30, 120, serbest ? 'Serbest hedefte CPU kaydedici yok; bu süre beklenmez, yalnız süre bütçesine eklenir.' : 'Yük başlamadan önceki arka plan ölçümü.')}
-              {motor === 'k6' && (
-                <Alan id="yuk-maxvu" etiket="En çok VU" hata={pHata.maxvu ? `Aralık: ${pHata.maxvu}` : null} yardim="Hız tutturulamazsa adım “doyma” olur.">
-                  <input id="yuk-maxvu" type="number" inputMode="numeric" min={10} max={sinir.maxVu} value={maxvuMetni} onChange={(e) => degistir('maxvu', e.target.value)} className={`${GIRDI} tabular-nums`} style={girdiStili(!!pHata.maxvu)} aria-invalid={!!pHata.maxvu} />
-                </Alan>
+              {sayiAlani('sure', 'Ölçüm süresi (sn)', sinir.sureMin, sinir.sureMax, ALAN_ACIKLAMASI.sure)}
+              {/* Tahmini toplam sure: buyuk ve formulle (her adim isinma + olcum + bekleme + 20 sn pay). */}
+              <div className="min-w-0 rounded-lg px-3 py-2.5 @lg/yuk:col-span-2" style={{ background: 'var(--bg-elevated)' }} aria-live="polite">
+                <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                  <span className="text-[12px] font-semibold" style={{ color: 'var(--text-secondary)' }}>Tahmini toplam süre</span>
+                  <span className="text-[20px] font-semibold leading-7 tabular-nums" style={{ fontFamily: 'var(--font-display)', color: pHata.butce ? 'var(--status-danger-text)' : 'var(--text-primary)' }}>
+                    {butce != null && Number.isFinite(butce) ? `≈ ${sureMetni(butce)}` : '—'}
+                  </span>
+                </div>
+                <div className="mt-1.5 h-1.5 rounded-full" style={{ background: 'var(--bg-surface)' }} role="meter" aria-label="Tahmini süre / üst sınır" aria-valuemin={0} aria-valuemax={sinir.maxButceSn} aria-valuenow={butce != null && Number.isFinite(butce) ? butce : 0}>
+                  <div className="h-full rounded-full" style={{ width: `${Math.round((Number.isFinite(butceOran) ? butceOran : 0) * 100)}%`, background: TON[butceTon].renk }} />
+                </div>
+                <p className="mt-1 text-[11px] leading-4 tabular-nums" style={{ color: pHata.butce ? 'var(--status-danger-text)' : 'var(--text-secondary)' }}>
+                  {pHata.butce || (adimSayisi != null
+                    ? `${fmtNumber(adimSayisi)} adım (${adim.degerler.length} ${motor === 'wrk' ? 'bağlantı kademesi' : 'hız'} × ${param.tekrar} tekrar) × (ısınma ${form.isinma} + ölçüm ${form.sure} + bekleme ${form.bosluk} + 20 sn pay) + başta ${form.bosta} sn + 120 sn. Üst sınır ${dk} dk.`
+                    : `Üst sınır ${dk} dk; iş bu süreyi aşarsa kendini durdurur.`)}
+                </p>
+              </div>
+              {motor === 'wrk' && (
+                <div className="space-y-2 @lg/yuk:col-span-2">
+                  {!sifirSinir && (
+                    <p className="rounded-lg px-3 py-2 text-[12px] leading-5 tabular-nums" style={{ background: 'var(--bg-elevated)', color: 'var(--text-primary)' }} aria-live="polite">
+                      {`Ortalama toplam hız tavanı: ${tavan} istek/sn (bağlantı başına bekleme ≈ ${bekleme ?? '—'} ms; ${tavanNedeni(veri.sinirlar, hedefTuru === 'sunucu' ? sunucuHedef : null, hedefTuru)})`}
+                    </p>
+                  )}
+                  {/* WR2: tavan ORTALAMA hizi sinirlar; anlik hiz kumelenir (Portal limit_req burst'unu okumaz). */}
+                  <UyariKutusu ton="uyari" baslik={`wrk kapalı döngüdür; Portal toplam hızı ORTALAMADA ${tavan} istek/sn ile sınırlar. İlk 429 ya da 5xx yanıtta koşu durur (DUR).`}>
+                    Bağlantılar birlikte başlar, ilk istekler rastgele yayılır ama istekler kümelenebilir: limit_req burst’ü bağlantı sayısından küçük ya da burst’süz yollarda 429 alınır ve koşu durur. Böyle yollarda k6 kullanın ya da küçük bağlantı sayılarıyla başlayın.
+                  </UyariKutusu>
+                </div>
               )}
-              <Alan id="yuk-kip" etiket={motor === 'wrk' ? 'Bağlantı kipi' : 'Bağlantı'}>
-                <select id="yuk-kip" value={form.kip} onChange={(e) => degistir('kip', e.target.value as NlKip)} className={GIRDI} style={girdiStili()}>
-                  {(['yeni', 'ka'] as const).map((k) => <option key={k} value={k}>{KIP_ETIKETI[k]}</option>)}
-                </select>
-              </Alan>
-              <Alan id="yuk-ae" etiket="Accept-Encoding">
-                <select id="yuk-ae" value={form.ae} onChange={(e) => degistir('ae', e.target.value as NlAe)} className={GIRDI} style={girdiStili()}>
-                  {(['br', 'gzip', 'identity'] as const).map((k) => <option key={k} value={k}>{AE_ETIKETI[k]}</option>)}
-                </select>
-              </Alan>
-              <Alan id="yuk-etiket" etiket="Etiket (isteğe bağlı)" className="@lg/yuk:col-span-2 @3xl/yuk:col-span-3" hata={fHata.etiket || null} yardim="Karşılaştırmada bu koşuyu tanımak için kısa not; ör. “T0 — F5 öncesi” ya da “gzip_static açık”.">
-                <input id="yuk-etiket" value={form.etiket} maxLength={120} onChange={(e) => degistir('etiket', e.target.value)} autoComplete="off" className={GIRDI} style={girdiStili(!!fHata.etiket)} />
-              </Alan>
+              {/* Gelismis ayarlar: kapali; hata varsa acik kalir. Icerik DOM'da kalir (hidden): deger ve imza degismez. */}
+              <div className="min-w-0 border-t pt-3 @lg/yuk:col-span-2" style={{ borderColor: 'var(--border-subtle)' }}>
+                <button type="button" onClick={() => setGelismisAcik((x) => !x)} aria-expanded={gelismisGorunur} aria-controls="yuk-gelismis"
+                  className="flex w-full min-w-0 items-start gap-1.5 rounded text-left focus-visible:outline-offset-2!">
+                  {gelismisGorunur ? <ChevronDownIcon className="mt-0.5 h-4 w-4 shrink-0" aria-hidden style={{ color: 'var(--text-secondary)' }} /> : <ChevronRightIcon className="mt-0.5 h-4 w-4 shrink-0" aria-hidden style={{ color: 'var(--text-secondary)' }} />}
+                  <span className="min-w-0 flex-1">
+                    <span className="flex flex-wrap items-center gap-2 text-[12px] font-semibold" style={{ color: 'var(--text-primary)' }}>
+                      Gelişmiş ayarlar
+                      {gelismisHatalari > 0 && <span className="rounded px-1.5 text-[11px] leading-4" style={{ background: TON.hata.zemin, color: TON.hata.metin }}>{`${gelismisHatalari} alan hatalı`}</span>}
+                    </span>
+                    <span className="mt-0.5 block truncate text-[11px] leading-4" style={{ color: 'var(--text-secondary)' }} title={gelismisOzeti}>{gelismisOzeti}</span>
+                  </span>
+                </button>
+                <div id="yuk-gelismis" hidden={!gelismisGorunur} className="mt-3 grid gap-3 @lg/yuk:grid-cols-2 @3xl/yuk:grid-cols-3">
+                  {sayiAlani('tekrar', 'Tekrar', 1, sinir.maxTekrar, ALAN_ACIKLAMASI.tekrar)}
+                  {sayiAlani('isinma', 'Isınma (sn)', 5, sinir.isinmaMax, ALAN_ACIKLAMASI.isinma)}
+                  {sayiAlani('bosluk', 'Adımlar arası bekleme (sn)', 0, 120, serbest ? ALAN_ACIKLAMASI.boslukSerbest : ALAN_ACIKLAMASI.bosluk)}
+                  {sayiAlani('bosta', 'Başta boşta ölçüm (sn)', 30, 120, serbest ? ALAN_ACIKLAMASI.bostaSerbest : ALAN_ACIKLAMASI.bosta)}
+                  {motor === 'wrk'
+                    ? sayiAlani('is_parcacigi', 'İş parçacığı', 1, sinir.maxIsParcacigi, `${ALAN_ACIKLAMASI.is_parcacigi} 1–16; her bağlantı sayısını tam bölmeli.`, pHata.is_parcacigi || null)
+                    : (
+                      <Alan id="yuk-maxvu" etiket="En çok VU" hata={pHata.maxvu ? `Aralık: ${pHata.maxvu}` : null} yardim={ALAN_ACIKLAMASI.maxvu}>
+                        <input id="yuk-maxvu" type="number" inputMode="numeric" min={10} max={sinir.maxVu} value={maxvuMetni} onChange={(e) => degistir('maxvu', e.target.value)} className={`${GIRDI} tabular-nums`} style={girdiStili(!!pHata.maxvu)} aria-invalid={!!pHata.maxvu} />
+                      </Alan>
+                    )}
+                  <Alan id="yuk-kip" etiket={motor === 'wrk' ? 'Bağlantı kipi' : 'Bağlantı'} yardim={motor === 'wrk' ? `${ALAN_ACIKLAMASI.kip} ${ALAN_ACIKLAMASI.kipWrk}` : ALAN_ACIKLAMASI.kip}>
+                    <select id="yuk-kip" value={form.kip} onChange={(e) => degistir('kip', e.target.value as NlKip)} className={GIRDI} style={girdiStili()}>
+                      {(['yeni', 'ka'] as const).map((k) => <option key={k} value={k}>{KIP_ETIKETI[k]}</option>)}
+                    </select>
+                  </Alan>
+                  <Alan id="yuk-ae" etiket="Sıkıştırma (Accept-Encoding)" yardim={ALAN_ACIKLAMASI.ae}>
+                    <select id="yuk-ae" value={form.ae} onChange={(e) => degistir('ae', e.target.value as NlAe)} className={GIRDI} style={girdiStili()}>
+                      {(['br', 'gzip', 'identity'] as const).map((k) => <option key={k} value={k}>{AE_ETIKETI[k]}</option>)}
+                    </select>
+                  </Alan>
+                  <label className={`flex items-start gap-2 text-[12px] @lg/yuk:col-span-2 ${sniEtkin ? 'cursor-pointer' : 'cursor-not-allowed'}`} style={{ color: sniEtkin ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
+                    <input type="checkbox" className="mt-0.5 accent-[var(--accent)]" checked={sniEtkin && form.sni} disabled={!sniEtkin} onChange={(e) => degistir('sni', e.target.checked)} />
+                    <span>SNI ile bağlan <span style={{ color: 'var(--text-secondary)' }}>{`— ${sniEtkin ? ALAN_ACIKLAMASI.sni : ALAN_ACIKLAMASI.sniWrk}`}</span></span>
+                  </label>
+                  <Alan id="yuk-etiket" etiket="Etiket (isteğe bağlı)" className="@lg/yuk:col-span-2 @3xl/yuk:col-span-3" hata={fHata.etiket || null} yardim={ALAN_ACIKLAMASI.etiket}>
+                    <input id="yuk-etiket" value={form.etiket} maxLength={120} onChange={(e) => degistir('etiket', e.target.value)} autoComplete="off" className={GIRDI} style={girdiStili(!!fHata.etiket)} />
+                  </Alan>
+                </div>
+              </div>
             </div>
           </Bolum>
           {araclarHazir && (

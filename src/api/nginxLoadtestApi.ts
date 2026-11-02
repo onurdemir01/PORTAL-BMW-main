@@ -20,6 +20,11 @@
 // YALNIZ bu degerle dogrular. Iki arsiv ozeti Portal env'inde SABITTIR (onay toreni yok); Admin bir seti geri ceker
 // (POST /araclar/:id/geri-cek). /hedefler `araclar` durumu tasir (alan yoksa fail-closed: hazir degil); on kontrol
 // ozeti arac kopyasinin dogrulamasini (arac_*), kosu ayrintisi kullandigi seti (aracId / aracSeti) verir.
+//
+// SADELESTIRME (2026-11-02, R2 / AWX 3474239 geri bildirimi; sozlesme sade_sozlesme.md v1): adim satiri `cpuOlculemedi`
+// (CPU-ms/istek ve kapasite neden null) ve `reloadlar` (adim araligina degen reload anlari), kosu `sonucOzeti` (toplam
+// istek, en iyi / en kotu p95, 429 / 5xx toplamlari, kosu duzeyi reload olaylari). CPU-ms/istek ve kapasite istemcide de
+// ASLA negatif / sifir gosterilmez (eski sunucu, eski satir): null + neden.
 import { okJson, safeJson } from './http';
 
 const BASE = '/api/nginx-loadtest';
@@ -169,6 +174,8 @@ export interface NlKosuAyrinti extends NlKosu {
   sonuclandirmaDenemesi: number;
   /** Tur 4: satirin arac seti (eski satir: null; "Araç kopyası" satiri ve arac engeli YOK). */
   aracId: number | null; aracSeti: NlKosuAracSeti | null;
+  /** Sadelestirme turu: sunucunun sonuc ozeti (eski sunucu: null; ekran adimlardan hesaplar). */
+  sonucOzeti: NlSonucOzeti | null;
 }
 /** Bir TUR (adim) satiri. Sure ms, hata_orani oran (0..1), host_cpu yuzde. */
 export interface NlAdim {
@@ -184,6 +191,25 @@ export interface NlAdim {
   hataOrani: number | null; gercekRps: number | null; baytIstek: number | null; nIstek: number | null; n429: number | null; n5xx: number | null;
   dropped: number | null; istekSunucu: number | null; rpsSunucu: number | null; cpuMsIstek: number | null; hostCpuOrt: number | null;
   kapasiteRps: number | null; srtP50: number | null; srtP95: number | null; srtP99: number | null; sikistirmaTuru: string | null;
+  /** Sadelestirme turu (2026-11-02): CPU-ms/istek ve kapasite hesaplanamadiysa nedeni (`reload`, `sayac_geriledi`,
+   *  `net_negatif`, `negatif_deger`); null = olculdu ya da olculmesi beklenmiyordu. Deger o zaman null'dir (asla negatif). */
+  cpuOlculemedi: string | null;
+  /** Bu adimin (isinma + olcum) araligina degen reload olaylari (eski satir: bos). */
+  reloadlar: NlReloadAni[];
+}
+/** Reload (worker PID kumesi degisimi) ani: epoch saniye; `tOnce` ile `t` arasinda oldu, `tSon`'a dek surdu. */
+export interface NlReloadAni {
+  t: number; tOnce: number | null; tSon: number; tur: string | null; faz: 'isinma' | 'olcum' | 'bosluk' | 'kosu_oncesi' | string;
+}
+export interface NlReloadOlayi extends NlReloadAni {
+  kesit: string; workerOnce: number | null; workerSonra: number | null; kapananEnCok: number; etkilenenTurlar: string[];
+}
+/** GET /kosular/:id `sonucOzeti` (sunucu adim satirlarindan hesaplar; alan yoksa ekran adimlardan hesaplar). */
+export interface NlSonucOzeti {
+  adimSayisi: number; gecerliAdimSayisi: number; toplamIstek: number | null;
+  p95EnIyi: { deger: number; tur: string } | null; p95EnKotu: { deger: number; tur: string } | null; p95Kapsam: 'gecerli' | 'tum' | null;
+  toplam429: number | null; toplam5xx: number | null; enYuksekHataOrani: number | null; hataVar: boolean;
+  cpuOlculemeyenAdim: number; konfDegisti: boolean | null; reloadlar: NlReloadOlayi[];
 }
 /** Karar tablosu satiri (analiz.cjs tabloYap): ref / aday hiz grubunun ozeti (snake_case; o tarafta kademe yoksa null),
  *  fark_yuzde YUZDE cinsinden (aday / ref - 1) x 100. */
@@ -295,7 +321,63 @@ export function adimNormalle(x: unknown): NlAdim {
     sikistirmaTuru: metinVeya(alan(r, 'sikistirmaTuru', 'sikistirma_turu')),
   } as NlAdim;
   for (const [k, s] of ADIM_ALANLARI) (a as unknown as Record<string, number | null>)[k] = sayiVeya(alan(r, k, s));
+  // CPU-ms/istek ve kapasite ASLA negatif / sifir degildir: sayac sifirlanan (reload) ya da arka plani asan adimda
+  // sunucu null + neden verir; eski sunucuya / eski satira karsi ayni kural burada da (deger null, neden negatif_deger
+  // ya da reload). Karar ve ortalama bu degerleri kullanmaz.
+  a.cpuOlculemedi = metinVeya(alan(r, 'cpuOlculemedi', 'cpu_olculemedi'));
+  a.reloadlar = reloadlarNormalle(alan(r, 'reloadlar'));
+  const reloadNedeni = a.nedenler.some((n) => n.startsWith('reload('));
+  const kotu = (x: number | null) => x != null && !(x > 0);
+  if (reloadNedeni || kotu(a.cpuMsIstek) || kotu(a.kapasiteRps)) {
+    if (!a.cpuOlculemedi && (a.cpuMsIstek != null || a.kapasiteRps != null)) a.cpuOlculemedi = reloadNedeni ? 'reload' : 'negatif_deger';
+    a.cpuMsIstek = null;
+    a.kapasiteRps = null;
+  }
   return a;
+}
+function reloadAniNormalle(x: unknown): NlReloadAni | null {
+  const o = nesne(x);
+  const t = sayiVeya(o.t);
+  if (t == null) return null;
+  return {
+    t, tOnce: sayiVeya(alan(o, 'tOnce', 't_once')), tSon: sayiVeya(alan(o, 'tSon', 't_son')) ?? t,
+    tur: metinVeya(o.tur), faz: metinVeya(o.faz) ?? 'olcum',
+  };
+}
+function reloadlarNormalle(x: unknown): NlReloadAni[] {
+  return (Array.isArray(x) ? x : []).map(reloadAniNormalle).filter((r): r is NlReloadAni => r != null);
+}
+function reloadOlayiNormalle(x: unknown): NlReloadOlayi | null {
+  const a = reloadAniNormalle(x);
+  if (!a) return null;
+  const o = nesne(x);
+  return {
+    ...a, kesit: metinVeya(o.kesit) ?? '', workerOnce: sayiVeya(alan(o, 'workerOnce', 'worker_once')), workerSonra: sayiVeya(alan(o, 'workerSonra', 'worker_sonra')),
+    kapananEnCok: sayiVeya(alan(o, 'kapananEnCok', 'kapanan_en_cok')) ?? 0, etkilenenTurlar: metinDizisi(alan(o, 'etkilenenTurlar', 'etkilenen_turlar')),
+  };
+}
+/** `sonucOzeti` nesnesi (camel ya da snake); alan yoksa null (ekran adimlardan hesaplar). */
+export function sonucOzetiNormalle(x: unknown): NlSonucOzeti | null {
+  const o = jsonNesne(x);
+  if (!o || !Object.keys(o).length) return null;
+  const p95 = (v: unknown) => {
+    const n = jsonNesne(v);
+    const d = n ? sayiVeya(n.deger) : null;
+    return n && d != null ? { deger: d, tur: String(n.tur ?? '') } : null;
+  };
+  const kapsam = alan(o, 'p95Kapsam', 'p95_kapsam');
+  return {
+    adimSayisi: sayiVeya(alan(o, 'adimSayisi', 'adim_sayisi')) ?? 0, gecerliAdimSayisi: sayiVeya(alan(o, 'gecerliAdimSayisi', 'gecerli_adim_sayisi')) ?? 0,
+    toplamIstek: sayiVeya(alan(o, 'toplamIstek', 'toplam_istek')),
+    p95EnIyi: p95(alan(o, 'p95EnIyi', 'p95_en_iyi')), p95EnKotu: p95(alan(o, 'p95EnKotu', 'p95_en_kotu')),
+    p95Kapsam: kapsam === 'gecerli' || kapsam === 'tum' ? kapsam : null,
+    toplam429: sayiVeya(alan(o, 'toplam429', 'toplam_429')), toplam5xx: sayiVeya(alan(o, 'toplam5xx', 'toplam_5xx')),
+    enYuksekHataOrani: sayiVeya(alan(o, 'enYuksekHataOrani', 'en_yuksek_hata_orani')),
+    hataVar: mantikVeya(alan(o, 'hataVar', 'hata_var')) === true,
+    cpuOlculemeyenAdim: sayiVeya(alan(o, 'cpuOlculemeyenAdim', 'cpu_olculemeyen_adim')) ?? 0,
+    konfDegisti: mantikVeya(alan(o, 'konfDegisti', 'konf_degisti')),
+    reloadlar: (Array.isArray(o.reloadlar) ? o.reloadlar : []).map(reloadOlayiNormalle).filter((r): r is NlReloadOlayi => r != null),
+  };
 }
 /** GET /kosular/:id `durdurIsi` ({ awxServerId, awxJobId }; durdur yanitindaki `jobId` de kabul) -> is numarasi yoksa null. */
 function durdurIsiNormalle(x: unknown): NlKosuAyrinti['durdurIsi'] {
@@ -431,6 +513,7 @@ export function kosuNormalle(x: unknown): NlKosuAyrinti {
     sonuclandirmaDenemesi: sayiVeya(alan(r, 'sonuclandirmaDenemesi', 'sonuclandirma_denemesi')) ?? 0,
     aracId: sayiVeya(alan(r, 'aracId', 'arac_id')),
     aracSeti: kosuAracSetiNormalle(alan(r, 'aracSeti', 'arac_seti')),
+    sonucOzeti: sonucOzetiNormalle(alan(r, 'sonucOzeti', 'sonuc_ozeti')),
   };
 }
 const sayiDizisi = (x: unknown): number[] | null => (Array.isArray(x) && x.length && x.every((v) => Number.isInteger(v)) ? (x as number[]) : null);

@@ -49,6 +49,16 @@
 //      harfinden BILINCLI sapma (karsilastir.py esdegerligi korunur; "CPU yoksa asla KALICI" ozu orada
 //      da gecerli; sozlesme K25, orkestrator onayli). Kademe birimi metinlerde k6 'istek/sn', wrk
 //      'baglanti'; wrk'nin istemci bayt yedegi baslik + govde sayar, TLS haric.
+//  10. CPU-ms/istek ASLA negatif degil (sade turu, ilk gercek kosu R2: reload sirasinda -1.372 ms/istek):
+//      worker sayaci eski worker'lar cikinca duser. Pencerede reload (PID kumesi degisti / 'shutting down'
+//      worker) varsa, ham fark negatifse ya da arka plan cikarilinca negatifse cpu_ms_istek, user_ms, sys_ms
+//      (ilk ikisinde cpu_oran_ms_sn de) null; TUR uyarisi `cpu_olculemedi(reload|sayac_geriledi|net_negatif)`,
+//      ham.cpu_olculemedi = kod. Kapasite yalniz cpu_ms_istek > 0 iken. DB'den gelen eski satirdaki negatif
+//      CPU kararda null sayilir. karsilastir.py bu durumda sayi yazardi (AN2 acik esleme).
+//  11. Reload ani: kaydedici orneklerinden olaylar (reloadOlaylari) ozet.reloadlar'a, TUR'a degenler
+//      ham.reloadlar'a yazilir (yalniz gosterim; gecerlilik ve karar DEGISMEZ); olcum penceresine tasan olay
+//      o TUR'un 'olcum'u (isinmada / boslukta baslasa da). konf_degisti'nin ani
+//      bilinmez (kaydedici ozeti yalniz basta ve sonda alir).
 // null = olculmedi (hicbir zaman 0 yerine gecmez). Fonksiyonlar saftir: G/C yok, saat yok.
 'use strict';
 
@@ -89,6 +99,42 @@ const NEDENLER = Object.freeze([
   { onek: 'hatali_kosu', anlam: "kos.sh / wrk_kos.sh bu TUR'u durdurdu (429 / 5xx / soket / hata orani / http2 / hata kodu / olcum yok).", cozum: 'Nedeni giderip yeni kosu baslatin.' },
   { onek: 'tamamlanmadi', anlam: 'TUR baslatildi ama istemci sonucu yazilmadi (kosu kesildi ya da durduruldu).', cozum: 'Yeni kosu baslatin.' },
   { onek: 'doyma:', anlam: 'Istenen hiz tutturulamadi (dropped > 0) ya da hedefin CPU ortalamasi %90 ustunde.', cozum: 'Daha dusuk hizla kosun; kapasite tahmini bu kademede gecerli degil.' },
+]);
+
+// Analizin urettigi TUM neden / uyari kodlari (sabit liste; arayuz bunlari duz Turkce cumleye esler,
+// sozlesme sade_sozlesme.md 3). tur: 'neden' = adim `nedenler` (GECERSIZ / HATALI / DOYMA), 'uyari' =
+// adim ham.uyarilar. Yeni bir kod eklenirse buraya da eklenir (AN23 fikstur ciktisinin her satirini sinar).
+const NEDEN_KALIPLARI = Object.freeze([
+  { kod: 'k6_rc', tur: 'neden', re: /^k6_rc=(.+)$/ },
+  { kod: 'wrk_rc', tur: 'neden', re: /^wrk_rc=(.+)$/ },
+  { kod: '429', tur: 'neden', re: /^429\(istemci=(\d+)(?:,sunucu=(\d+))?\)$/ },
+  { kod: '5xx', tur: 'neden', re: /^5xx\(istemci=(\d+)(?:,sunucu=(\d+))?\)$/ },
+  { kod: 'http2', tur: 'neden', re: /^http2$/ },
+  { kod: 'hata', tur: 'neden', re: /^hata_%([0-9.]+)\(>%0\.1\)$/ },
+  { kod: 'log_istemci_farki', tur: 'neden', re: /^log_istemci_farki_%([0-9.]+)$/ },
+  { kod: 'kayit', tur: 'neden', re: /^kayit:(.+)$/ },
+  { kod: 'disk', tur: 'neden', re: /^disk_%(\d+)$/ },
+  { kod: 'konf_degisti', tur: 'neden', re: /^konf_degisti$/ },
+  { kod: 'pencere_kisa', tur: 'neden', re: /^pencere_kisa\(([0-9.]+)s\)$/ },
+  { kod: 'reload', tur: 'neden', re: /^reload\(worker_pid_degisti\)$/ },
+  { kod: 'hatali_kosu', tur: 'neden', re: /^hatali_kosu\(kos\.sh_durdurdu\)$/ },
+  { kod: 'tamamlanmadi', tur: 'neden', re: /^tamamlanmadi\(istemci_sonucu_yok\)$/ },
+  { kod: 'doyma_dropped', tur: 'neden', re: /^doyma:dropped=(\d+)$/ },
+  { kod: 'doyma_host_cpu', tur: 'neden', re: /^doyma:host_cpu_%([0-9.]+)\(>%90\)$/ },
+  { kod: 'saat_farki', tur: 'uyari', re: /^saat_farki~(-?\d+)s\(sunucu-istemci\)$/ },
+  { kod: 'log_satiri_yok', tur: 'uyari', re: /^log_satiri_yok:pencere_istemci_saatinden$/ },
+  { kod: 'sunucu_logunda_bu_tur_yok', tur: 'uyari', re: /^sunucu_logunda_bu_tur_yok$/ },
+  { kod: 'yeni_kipinde_yeniden_kullanim', tur: 'uyari', re: /^yeni_kipinde_baglanti_yeniden_kullanilmis_%(\d+)$/ },
+  { kod: 'dropped_iterations', tur: 'uyari', re: /^dropped_iterations=(\d+)$/ },
+  { kod: 'sunucu_kaydi_yok', tur: 'uyari', re: /^sunucu_kaydi_yok$/ },
+  { kod: 'pencerede_ornek_yok', tur: 'uyari', re: /^pencerede_ornek_yok$/ },
+  { kod: 'arka_plan_yok', tur: 'uyari', re: /^arka_plan_yok\(0_kabul\)$/ },
+  { kod: 'arka_plan_az', tur: 'uyari', re: /^arka_plan_az\(([0-9.]+)s\)$/ },
+  { kod: 'diger_trafik', tur: 'uyari', re: /^diger_trafik_%(\d+)$/ },
+  { kod: 'perf_ek_yuku', tur: 'uyari', re: /^perf_ek_yuku\(kararda_kullanilmaz\)$/ },
+  { kod: 'tekrar_kosu_ayristirilamadi', tur: 'uyari', re: /^tekrar_kosu_ayristirilamadi\(log'da_deneme_kolonu_yok\)$/ },
+  { kod: 'tekrar_kosu_deneme', tur: 'uyari', re: /^tekrar_kosu:deneme_(\d+)_kullanildi\((\d+)_eski_satir_atildi\)$/ },
+  { kod: 'cpu_olculemedi', tur: 'uyari', re: /^cpu_olculemedi\((reload|sayac_geriledi|net_negatif)\)$/ },
 ]);
 
 // istemci_<TUR>.csv'den sayi olarak alinan alanlar (karsilastir.py kosu_hesapla ile ayni liste).
@@ -312,6 +358,78 @@ function arkaPlan(ornekler, dislama, clk) {
   return { user: medyan(us), sys: medyan(ss), blok: us.length, sn: sure };
 }
 
+/** DB'den gelen eski satirdaki negatif CPU-ms/istek (sayac sifirlanmasi) karara girmez. */
+function negatifseNull(x) {
+  return x !== null && x < 0 ? null : x;
+}
+
+/**
+ * Reload olaylari (PORTAL FARKLARI 11): kaydedici orneklerinde worker PID kumesinin degistigi ya da
+ * 'shutting down' worker goruldugu ardisik ornek dizileri. Her olay: ilk goruldugu ornek (t), ondan
+ * onceki degismemis ornek (t_once; kayit olayin icinde basladiysa null), son ornek (t_son), worker
+ * sayilari, o an suren TUR ve fazi (zaman.csv + istemci isinma_sn; TUR disinda bir onceki TUR'un
+ * 'bosluk'u ya da 'kosu_oncesi'; olay bir TUR'un olcum penceresine tasiyorsa o TUR ve 'olcum') ve [t, t_son] araligina (gozlenen olay) degen TUR'lar. Kesit basina en cok
+ * MAX_RELOAD_KESIT, toplamda MAX_RELOAD olay; zamana gore sirali. Serbest hedefte kesit yok -> [].
+ */
+const MAX_RELOAD_KESIT = 20;
+const MAX_RELOAD = 50;
+function reloadOlaylari(ctx) {
+  const turlar = ctx.zamanTum.slice().sort((a, b) => a[1] - b[1]);
+  const isinma = (tur) => {
+    const ist = ctx.istemci.get(tur) || ctx.hatali.get(tur);
+    const v = ist ? sayi(ist.isinma_sn) : null;
+    return v === null ? 0 : v;
+  };
+  const yerlestir = (t) => {
+    let onceki = null;
+    for (const [tur, b, e] of turlar) {
+      if (b <= t && t <= e) return { tur, faz: t < b + isinma(tur) ? 'isinma' : 'olcum' };
+      if (e < t) onceki = tur;
+    }
+    return onceki ? { tur: onceki, faz: 'bosluk' } : { tur: null, faz: 'kosu_oncesi' };
+  };
+  const tum = [];
+  for (const k of ctx.kesitler) {
+    const o = k.ornekler || [];
+    const olaylar = [];
+    let cur = null;
+    const kapat = () => {
+      if (cur && olaylar.length < MAX_RELOAD_KESIT) olaylar.push(cur);
+      cur = null;
+    };
+    for (let i = 0; i < o.length; i++) {
+      const b = o[i];
+      const a = i > 0 ? o[i - 1] : null;
+      const degisti = (a !== null && a.p !== b.p) || b.k > 0;
+      if (!degisti) {
+        kapat();
+        continue;
+      }
+      if (!cur) {
+        cur = {
+          kesit: k.anahtar, t: b.t, t_once: a ? a.t : null, t_son: b.t,
+          worker_once: a ? a.n : null, worker_sonra: b.n, kapanan_en_cok: b.k || 0,
+        };
+      } else {
+        cur.t_son = b.t;
+        cur.worker_sonra = b.n;
+        if (b.k > cur.kapanan_en_cok) cur.kapanan_en_cok = b.k;
+      }
+    }
+    kapat();
+    tum.push(...olaylar);
+  }
+  tum.sort((x, y) => x.t - y.t);
+  return tum.slice(0, MAX_RELOAD).map((x) => {
+    // [t, t_son] bir TUR'un olcum penceresine [bas + isinma, bit] degiyorsa olay o TUR'un 'olcum'udur: isinmada /
+    // boslukta / kosu oncesinde baslayip eski worker'lar olcume tasinca pencereCpu adimi reload'la dusurur.
+    const olc = turlar.find(([tur, b, e]) => b + isinma(tur) <= x.t_son && x.t <= e);
+    const y = olc ? { tur: olc[0], faz: 'olcum' } : yerlestir(x.t);
+    const etkilenen = [...new Set(turlar.filter(([, b, e]) => b <= x.t_son && x.t <= e).map(([tur]) => tur))];
+    return { ...x, tur: y.tur, faz: y.faz, etkilenen_turlar: etkilenen };
+  });
+}
+
 function kosuAyir(tur, ist) {
   const p = tur.split('_');
   const alti = p.length >= 6;
@@ -419,6 +537,7 @@ function kosuHesapla(ctx, tur, ist, arkaKesit) {
   r.pencere_kaynak = kaynak;
   for (const k of ['rps_sunucu', 'cpu_ms_istek', 'user_ms', 'sys_ms', 'cpu_oran_ms_sn', 'arka_ms_sn', 'host_cpu_ort',
     'host_cpu_max', 'pencere_sn', 'diger_rps']) r[k] = null;
+  r._cpu_yok = null;
   const rts = [];
   const bls = [];
   const crs = [];
@@ -493,7 +612,10 @@ function kosuHesapla(ctx, tur, ist, arkaKesit) {
         } else if (ap.sn < 30) {
           uyari.push(`arka_plan_az(${fd(ap.sn)}s)`);
         }
-        r.cpu_oran_ms_sn = pc.user + pc.sys;
+        // PORTAL FARKLARI 10: worker sayaci pencere icinde sifirlandiysa (reload / kapanan worker) ya da
+        // geriye gittiyse CPU hesaplanmaz (null + uyari); karsilastir.py negatif deger yazardi.
+        let cpuYok = pc.reload ? 'reload' : pc.user < 0 || pc.sys < 0 ? 'sayac_geriledi' : null;
+        r.cpu_oran_ms_sn = cpuYok ? null : pc.user + pc.sys;
         r.arka_ms_sn = ap.user + ap.sys;
         const f0 = Math.floor(pc.t0);
         const f1 = Math.floor(pc.t1);
@@ -517,13 +639,19 @@ function kosuHesapla(ctx, tur, ist, arkaKesit) {
           rps = r.rps_gercek;
         }
         r.rps_sunucu = rps;
-        if (rps) {
+        if (rps && !cpuYok) {
           const netUser = pc.user - ap.user;
           const netSys = pc.sys - ap.sys;
-          r.user_ms = netUser / rps;
-          r.sys_ms = netSys / rps;
-          r.cpu_ms_istek = (netUser + netSys) / rps;
+          if (netUser + netSys < 0) {
+            cpuYok = 'net_negatif';
+          } else {
+            r.user_ms = netUser / rps;
+            r.sys_ms = netSys / rps;
+            r.cpu_ms_istek = (netUser + netSys) / rps;
+          }
         }
+        r._cpu_yok = cpuYok;
+        if (cpuYok) uyari.push(`cpu_olculemedi(${cpuYok})`);
         if (r.diger_rps && rps && r.diger_rps > 0.02 * rps) uyari.push(`diger_trafik_%${fx((100 * r.diger_rps) / rps, 0)}`);
       }
     }
@@ -693,7 +821,7 @@ function kosulariHazirla(satirlar) {
       p95_buyuk: sayi(ham.p95_buyuk),
       diger_rps: sayi(ham.diger_rps),
       host_cpu_max: sayi(ham.host_cpu_max),
-      cpu_ms_istek: sayi(al(s, 'cpu_ms_istek')),
+      cpu_ms_istek: negatifseNull(sayi(al(s, 'cpu_ms_istek'))),
       user_ms: sayi(ham.user_ms),
       sys_ms: sayi(ham.sys_ms),
       n_429: sayi(al(s, 'n_429')),
@@ -1053,9 +1181,9 @@ function tamVeyaNull(x) {
 }
 
 /** Python `r` -> nginx_loadtest_adimlar satiri (sozlesme 6/7). */
-function adimSatiri(r, gecerlilik, nedenler, nproc, logVar, ist) {
+function adimSatiri(r, gecerlilik, nedenler, nproc, logVar, ist, reloadlar = []) {
   const tekrar = /_r([0-9]+)$/.exec(r.tur);
-  const kapasite = nproc && r.cpu_ms_istek ? (nproc * 1000 * 0.8) / r.cpu_ms_istek : null;
+  const kapasite = nproc && r.cpu_ms_istek > 0 ? (nproc * 1000 * 0.8) / r.cpu_ms_istek : null;
   return {
     tur: r.tur,
     senaryo: r.senaryo,
@@ -1117,6 +1245,9 @@ function adimSatiri(r, gecerlilik, nedenler, nproc, logVar, ist) {
       p95_buyuk: r.p95_buyuk,
       isinma_sn: r.isinma_sn,
       sure_sn: r.sure_sn,
+      cpu_olculemedi: r._cpu_yok,
+      reloadlar: reloadlar.filter((o) => o.etkilenen_turlar.includes(r.tur))
+        .map((o) => ({ t: o.t, t_once: o.t_once, t_son: o.t_son, tur: o.tur, faz: o.faz })),
     },
   };
 }
@@ -1199,6 +1330,7 @@ function kosuAnaliz(veri, { adim, hedefTuru = 'sunucu', motor = 'k6' } = {}) {
     }
   }
   const logVar = Array.isArray(veri.loglar) ? veri.loglar.length > 0 : ctx.log.size > 0;
+  const reloadlar = reloadOlaylari(ctx);
   if (serbest) {
     // Serbest hedefte kaydedici yok: dizinde yine de sunucu dosyasi varsa (karisiklik) yok sayildigi soylenir.
     const yokSayilan = sunucuDosyaSayisi(veri);
@@ -1220,7 +1352,7 @@ function kosuAnaliz(veri, { adim, hedefTuru = 'sunucu', motor = 'k6' } = {}) {
     }
     kosular.push(r);
     const nedenler = r.durum === 'DOYMA' ? doymaNedenleri(r) : r._gecersiz.slice();
-    adimlar.push(adimSatiri(r, r.durum, nedenler, nproc, logVar, ist));
+    adimlar.push(adimSatiri(r, r.durum, nedenler, nproc, logVar, ist, reloadlar));
   }
   // kos.sh'in DUR dedigi (hatali_) ya da baslayip hic istemci sonucu yazmayan TUR'lar: HATALI.
   const hataliSatirlar = [];
@@ -1233,7 +1365,7 @@ function kosuAnaliz(veri, { adim, hedefTuru = 'sunucu', motor = 'k6' } = {}) {
       atlanan.push(tur);
       return;
     }
-    hataliSatirlar.push(adimSatiri(r, 'HATALI', [neden, ...r._gecersiz], nproc, logVar, ist));
+    hataliSatirlar.push(adimSatiri(r, 'HATALI', [neden, ...r._gecersiz], nproc, logVar, ist, reloadlar));
   };
   for (const [tur, ist] of ctx.hatali) hataliEkle(tur, ist, 'hatali_kosu(kos.sh_durdurdu)');
   const baslayanlar = [...(veri.baslatilan || []).map((s) => s.tur), ...ctx.zamanTum.map((z) => z[0])];
@@ -1246,7 +1378,7 @@ function kosuAnaliz(veri, { adim, hedefTuru = 'sunucu', motor = 'k6' } = {}) {
 
   const gruplar = grupla(kosular).map((g) => {
     const x = grupOzeti(g.o);
-    x.kapasite_tahmini_rps = nproc && g.o.cpu_ms_istek ? (nproc * 1000 * 0.8) / g.o.cpu_ms_istek : null;
+    x.kapasite_tahmini_rps = nproc && g.o.cpu_ms_istek > 0 ? (nproc * 1000 * 0.8) / g.o.cpu_ms_istek : null;
     return { senaryo: g.senaryo, kip: g.kip, ae: g.ae, hiz: g.hiz, ...x };
   });
   // TLS payi (K/yeni/br - K/ka/br) wrk'de anlamsiz: ayristirma ve cpu_tlsli_pay HER ZAMAN null.
@@ -1302,6 +1434,7 @@ function kosuAnaliz(veri, { adim, hedefTuru = 'sunucu', motor = 'k6' } = {}) {
       };
     }),
     gruplar,
+    reloadlar,
     ayristirma: ayr,
     cpu_tlsli_pay: ayr && ayr.toplam ? ayr.tls / ayr.toplam : null,
     loglar: !serbest && Array.isArray(veri.loglar) ? veri.loglar.map((l) => ({ dosya: l.dosya, satir: l.satir, atlanan: l.atlanan })) : [],
@@ -1316,6 +1449,7 @@ module.exports = {
   kararVer,
   ayristirma,
   NEDENLER,
+  NEDEN_KALIPLARI,
   EPS,
   _pyForTest: { sayi, pyToplam, pyMax, esikGecti, yuzdelik, medyan, ortalama, gurultu, oran, pyYuvarla, fx, fxs, fd },
   _kosulariHazirlaForTest: kosulariHazirla,

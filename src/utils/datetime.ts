@@ -87,6 +87,14 @@ export function fmtTime(value: string | number | Date | null | undefined): strin
   return d.toLocaleTimeString(LOCALE, { timeZone: PORTAL_TZ, hour: "2-digit", minute: "2-digit" });
 }
 
+/** Saniyeli saat: "14:30:05". Bir kosu icindeki olaylar (or. yuk testinde reload ani) saniye
+ *  farkiyla ayrisir; tarih ayni gunun tekrari olur. */
+export function fmtTimeSeconds(value: string | number | Date | null | undefined): string {
+  const d = toDate(value);
+  if (!d) return EMPTY_MARK;
+  return d.toLocaleTimeString(LOCALE, { timeZone: PORTAL_TZ, hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+
 /** "2 saat önce" — mutlak tarihten daha hizli okunur, "en guncel hangisi" sorusunu
  *  tek bakista cevaplar. Mutlak deger `title` olarak verilmeli. */
 export function fmtRelative(value: string | number | Date | null | undefined): string {

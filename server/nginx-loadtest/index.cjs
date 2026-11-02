@@ -40,6 +40,10 @@
 // 424 okunamadi); satira arac_id yazilir ve extra_vars setin /sw dizinini ve sha256'larini tasir.
 // Kosu, on kontrolun arac_id'si NULL (arac oncesi) ya da etkin set degilse 409 on_kontrol_eski.
 // Admin bir DONE seti geri cekebilir (POST /araclar/:id/geri-cek).
+//
+// SONUC OZETI (sade turu, 2026-11-02): GET /kosular/:id adim satirlarina cpuOlculemedi + reloadlar ekler,
+// CPU-ms/istek ve kapasiteyi asla <= 0 dondurmez (eski satirda da; DB degismez) ve kosu.sonucOzeti
+// (toplam istek, en iyi / en kotu p95, 429 / 5xx / hata, konf degisimi, reload anlari) verir (gorunum.cjs).
 'use strict';
 
 const crypto = require('node:crypto');
@@ -49,6 +53,7 @@ const kilit = require('./kilit.cjs');
 const baslat = require('./baslat.cjs');
 const poller = require('./poller.cjs');
 const araclar = require('./araclar.cjs');
+const gorunum = require('./gorunum.cjs');
 const { adminOkumaKapisi, isAdmin } = require('../auth/admin-okuma-kapisi.cjs');
 
 const TERMINAL = new Set(['successful', 'failed', 'error', 'canceled']);
@@ -213,13 +218,14 @@ function kosuApi(r) {
 }
 
 const deve = (k) => k.replace(/_([a-z0-9])/g, (_, c) => c.toUpperCase());
+/** DB adim satiri -> API (camelCase); sade turu: cpuOlculemedi + reloadlar, CPU / kapasite asla <= 0 (gorunum.cjs). */
 function adimApi(r) {
   const o = {};
   for (const [k, v] of Object.entries(r)) {
     if (k === 'nedenler' || k === 'ham') o[k] = jsonOku(v);
     else o[deve(k)] = v;
   }
-  return o;
+  return gorunum.adimGorunumu(o);
 }
 /** kararVer'e giden adim: analiz ciktisiyla AYNI anahtarlar (snake), JSON alanlar cozulmus. */
 function adimAnaliz(r) {
@@ -898,6 +904,9 @@ function yonlendiriciKur() {
       const deg = okOzet ? dg.onKontrolDegerlendir(okOzet, { hedefTuru: tur, motor, aracli: aracId != null, aracSha256: araclar.motorSha(aracSatiri, motor) }) : null;
       // Izinli ag ekran icin env'den SU AN hesaplanir (DB okumaz); playbook'un esledigi girdi onKontrol.serbest_ag.
       const serbestAg = tur === 'serbest' ? (dg.serbestAgBul(k.hedef_ip, dg.serbestAglar()) || {}).metin || null : null;
+      const sonucOzet = jsonOku(k.sonuc);
+      const adimSatirlari = adimlar.map(adimApi);
+      const analizOzeti = sonucOzet && sonucOzet.portal_analiz && typeof sonucOzet.portal_analiz === 'object' ? sonucOzet.portal_analiz.ozet : null;
       res.json({
         ok: true,
         kosu: {
@@ -913,14 +922,15 @@ function yonlendiriciKur() {
           onKontrolUyarilari: [...planUyarilari, ...(deg ? deg.uyarilar : [])],
           onKontrolYasSn: k.islem === 'on_kontrol' && k.yas_sn != null ? Number(k.yas_sn) : null,
           gecersizNedenleri: jsonOku(k.gecersiz_nedenleri) || [],
-          sonucOzet: jsonOku(k.sonuc),
+          sonucOzet,
+          sonucOzeti: gorunum.sonucOzeti(adimSatirlari, analizOzeti),
           swDizin: k.sw_dizin ?? null,
           iptalEden: k.iptal_eden ?? null,
           finalizedAt: iso(k.finalized_at),
           durdurIsi: k.durdur_awx_job_id == null ? null : { awxServerId: Number(k.durdur_awx_server_id), awxJobId: Number(k.durdur_awx_job_id) },
           sonuclandirmaDenemesi: Number(k.sonuclandirma_denemesi) || 0,
         },
-        adimlar: adimlar.map(adimApi),
+        adimlar: adimSatirlari,
       });
     } catch (e) {
       hataYaniti(req, res, e);
@@ -1228,4 +1238,5 @@ module.exports = {
   _yonlendiriciKurForTest: yonlendiriciKur,
   _kosuPlaniForTest: kosuPlani,
   _kararliJsonForTest: kararliJson,
+  _adimApiForTest: adimApi,
 };

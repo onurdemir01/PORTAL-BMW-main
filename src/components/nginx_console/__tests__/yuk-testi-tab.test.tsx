@@ -143,13 +143,14 @@ import {
   onKontrolDegerlendir,
 } from '../yukTesti/yukTestiOrtak';
 import { adimNormalle, kosuNormalle, onKontrolNormalle } from '@/api/nginxLoadtestApi';
+import { ALAN_ACIKLAMASI } from '../yukTesti/hazirAyarlar';
 
 function ayrinti(o: Partial<NlKosuAyrinti> = {}): NlKosuAyrinti {
   return {
     ...(KOSU_LISTE as unknown as NlKosuAyrinti), hedefTuru: 'sunucu', motor: 'k6', serbestAg: null, planUyarilari: [],
     parametreler: { motor: 'k6', ...PARAM } as NlKosuAyrinti['parametreler'], onKontrol: null,
     gecersizNedenleri: [], sonucOzet: null, onKontrolKosuId: null, sunucuDegerlendirmesi: null, onKontrolYasSn: null, isDurumu: null, isHatasi: null,
-    analiz: { nproc: null, cpuTlsliPay: null, uyarilar: [], okumaHatasi: null }, durdurIsi: null, sonuclandirmaDenemesi: 0, aracId: null, aracSeti: null, ...o,
+    analiz: { nproc: null, cpuTlsliPay: null, uyarilar: [], okumaHatasi: null }, durdurIsi: null, sonuclandirmaDenemesi: 0, aracId: null, aracSeti: null, sonucOzeti: null, ...o,
   };
 }
 const kosuYukle = (o: Partial<NlKosuAyrinti> = {}, adimlar: unknown[] = []) => api.kosu.mockResolvedValue({ ok: true, kosu: ayrinti(o), adimlar });
@@ -161,6 +162,9 @@ async function yeniKosuAc() {
 }
 const hostSecici = () => screen.getByLabelText('Hedef sunucu (isteğe bağlı)');
 const okDugmesi = () => screen.getByRole('button', { name: /Ön kontrolü (başlat|yeniden çalıştır)/ });
+/** Sadelestirme (2026-11-02): teknik adim tablosu "Ayrıntı", ileri alanlar "Gelişmiş ayarlar" altinda (kapali). */
+const ayrintiAc = async () => fireEvent.click(await screen.findByRole('button', { name: /^Ayrıntı/ }));
+const gelismisAc = () => fireEvent.click(screen.getByRole('button', { name: /^Gelişmiş ayarlar/ }));
 
 beforeEach(() => {
   for (const f of Object.values(api)) f.mockReset();
@@ -468,6 +472,7 @@ describe('Yük Testi — koşu ayrıntısı (2026-10-27)', () => {
       adim({ tur: 'R17_K_yeni_br_100_r1', hiz: 100, deneme: 2, ham: { pencere_kaynak: 'log', uyarilar: [] } }),
     ]);
     render(<KosuAyrinti kosuId={17} isAdmin={false} onGeri={vi.fn()} />);
+    await ayrintiAc();
     const tablo = await screen.findByRole('table', { name: 'Adım sonuçları' });
     const [, s1, s2] = within(tablo).getAllByRole('row');
     expect(within(s1).getByTitle('R17_K_yeni_br_100_r1').textContent).toBe('r1 · deneme 2');
@@ -477,10 +482,11 @@ describe('Yük Testi — koşu ayrıntısı (2026-10-27)', () => {
     expect(within(s2).getByTitle('sunucu logunda bu adımın satırı yok; pencere istemci saatinden').textContent).toBe('—');
     // Sunucu hedefinde CPU kademesi etikette (serbestte yok: YT24).
     expect(screen.getByText('CPU-ms/istek @ 100/sn')).toBeTruthy();
-    expect(within(s2).getByTitle('diger_trafik_%50').textContent).toBe('1 uyarı');
+    // Sadelestirme: cip ipucu duz cumle (ham kod ayrintida, parantez icinde).
+    expect(within(s2).getByTitle(/^Ölçüm sırasında hedefe başka trafik de geldi \(test isteklerinin %50’i kadar\)/).textContent).toBe('1 uyarı');
     expect(within(s1).queryByText(/uyarı$/)).toBeNull();
     fireEvent.click(within(s2).getByRole('button', { name: 'R17_K_yeni_br_100_r2 ayrıntısı' }));
-    expect(within(screen.getByRole('list', { name: 'R17_K_yeni_br_100_r2 uyarıları' })).getByText('diger_trafik_%50')).toBeTruthy();
+    expect(within(screen.getByRole('list', { name: 'R17_K_yeni_br_100_r2 uyarıları' })).getByText('(diger_trafik_%50)')).toBeTruthy();
     // Grafik ipuclari tekrar'la (deneme 1 yazilmaz).
     const ipuclari = [...document.querySelectorAll('svg title')].map((t) => t.textContent || '');
     expect(ipuclari.some((t) => t.startsWith('100/sn · r1 · deneme 2:'))).toBe(true);
@@ -719,6 +725,7 @@ describe('Yük Testi — hedef IP ve sınıflandırma (2026-10-28)', () => {
     await yeniKosuAc();
     fireEvent.change(hostSecici(), { target: { value: 'GBNGXT10' } });
     fireEvent.click(screen.getByRole('button', { name: '10.1.2.3' }));
+    gelismisAc();
     const sni = screen.getByRole('checkbox', { name: /SNI ile bağlan/ });
     fireEvent.click(sni);
     expect(sni).toBeChecked();
@@ -782,7 +789,7 @@ describe('Yük Testi — hedef IP ve sınıflandırma (2026-10-28)', () => {
     api.ipSinifi.mockImplementation(async (ip: string) => (RETLER[ip] ? { ok: false, ...RETLER[ip], _httpStatus: 409 } : varsayilanSinif(ip)));
     await yeniKosuAc();
     // Formda baska bir eksik de var (tekrar 9): IP reddi yine ONCE soylenir (parametre duzeltmek bu hedefi acmaz).
-    expect(screen.getByLabelText('Tekrar')).toHaveAccessibleDescription('Her hız kaç kez koşulsun (gürültü ölçümü için ≥ 2).');
+    expect(screen.getByLabelText('Tekrar')).toHaveAccessibleDescription(ALAN_ACIKLAMASI.tekrar);
     fireEvent.change(screen.getByLabelText('Tekrar'), { target: { value: '9' } });
     // UI4: gorunen satir (hata > yardim) girdinin erisilebilir aciklamasi (ekran okuyucu odakta okur).
     expect(screen.getByLabelText('Tekrar')).toHaveAttribute('aria-invalid', 'true');
@@ -856,6 +863,7 @@ describe('Yük Testi — wrk ve serbest kayıtlar (2026-10-28)', () => {
     ]);
     const { unmount } = render(<KosuAyrinti kosuId={40} isAdmin={false} onGeri={vi.fn()} />);
     expect(await screen.findByRole('heading', { name: /Koşu #40/ })).toBeTruthy();
+    await ayrintiAc();
     expect(screen.getByTitle(SERBEST_CIP_IPUCU).textContent).toBe('serbest');
     expect(screen.getByTitle(WRK_CIP_IPUCU).textContent).toBe('wrk');
     expect(screen.getByText('Hedef (serbest)')).toBeTruthy();
@@ -871,9 +879,10 @@ describe('Yük Testi — wrk ve serbest kayıtlar (2026-10-28)', () => {
     expect(screen.queryByText(/CPU-ms\/istek @/)).toBeNull();
     // Serbestte CPU ve kapasite olculmez: "—" ve neden.
     expect(screen.getAllByText('serbest hedef: sunucu ölçümü yok')).toHaveLength(2);
-    // Yeni analiz uyarilari ham kodla, genel listede (adim uyarisi katlamasinda degil).
-    const kutu = screen.getByText('3 analiz uyarısı').closest('[role]') ?? document.body;
-    for (const u of YENI_UYARILAR) expect(within(kutu as HTMLElement).getByText(u).closest('details')).toBeNull();
+    // Yeni analiz uyarilari genel listede (adim uyarisi katlamasinda degil): duz cumle + altinda ham kod.
+    const kutu = screen.getByText('3 analiz uyarısı').closest('div.grid') as HTMLElement;
+    for (const u of YENI_UYARILAR) expect(within(kutu).getByText(`kod: ${u}`).closest('details')).toBeNull();
+    expect(within(kutu).getByText('Serbest hedefte sunucu ölçümü yok; dizindeki 4 sunucu dosyası yok sayıldı.')).toBeTruthy();
     const tablo = screen.getByRole('table', { name: 'Adım sonuçları' });
     expect(within(tablo).getByRole('columnheader', { name: 'Bağlantı' })).toBeTruthy();
     expect(within(tablo).getByRole('columnheader', { name: 'Bağlantı' }).getAttribute('title')).toContain('(kapalı döngü; ortalama toplam hız tavanlı)');
@@ -885,9 +894,11 @@ describe('Yük Testi — wrk ve serbest kayıtlar (2026-10-28)', () => {
     // Serbest adimda (pencere_kaynak '-') ipucu sunucu logundan SOZ ETMEZ: sunucu tarafi olcum hic yok.
     expect(within(tablo).queryAllByTitle(/sunucu logunda/)).toHaveLength(0);
     for (const s of satirlar) expect(within(s).getAllByTitle('serbest hedef: sunucu ölçümü yok').length).toBeGreaterThanOrEqual(4);
-    // Serbest neden bicimi ham gosterilir: 429(istemci=N) ve wrk_rc=.
+    // Serbest neden bicimi (429(istemci=N), wrk_rc=) duz cumleyle; sunucu sayisi yok (serbestte olculmez).
     const gecersiz = satirlar.find((s) => s.textContent?.includes('geçersiz')) as HTMLElement;
-    expect(within(gecersiz).getByTitle('429(istemci=3); wrk_rc=1').textContent).toBe('429(istemci=3) +1');
+    const ilk = 'Hedef 3 isteği 429 ile reddetti (hız sınırı: limit_req / limit_conn); ölçüm sınıra takıldı, hızı düşürün.';
+    const hucre = within(gecersiz).getByText(`${ilk} +1`);
+    expect(hucre.getAttribute('title')).toBe(`${ilk}\nwrk hata koduyla (1) bitti; bu adımın ölçümü tamamlanmadı.`);
     expect(screen.getAllByText('ms · yatay: bağlantı')).toHaveLength(2);
     unmount();
     // Durdur: serbestte yalniz yuk sunucusundaki wrk (kaydedici yok); basari metni motorla.

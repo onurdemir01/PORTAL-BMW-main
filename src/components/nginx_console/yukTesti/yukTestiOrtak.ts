@@ -8,12 +8,13 @@
 // `baglantilar` (wrk, baglanti): adim sayisi, etiketler ve birimler YALNIZ `adimDegerleri` uzerinden okunur
 // (wrk kaydinda `hizlar` yoktur; dogrudan `p.hizlar` okuyan ekran cokerdi). Serbest hedefte iki motorda en cok
 // 200 istek/sn ve 50 baglanti / VU; hedef kurallari (IP hedefte yerel, server_name, log ...) degerlendirilmez.
+// SADELESTIRME (2026-11-02): sonuc ozeti (sunucu `sonucOzeti` vermezse adimlardan ayni kuralla) - sonucOzetiHesapla.
 // TUR 4 (2026-11-02): araclar /sw'den kopyalanir; aracli on kontrol satirinda (aracId != null) dogrulanmamis kopya
 // ENGEL (sunucu degerlendirmesi yoksa); wrk surum metni arac setinin yeniden hazirlanmasini soyler.
 import type { Ton } from '@/components/server_hub/retirementStil';
 import {
   EK_SINIRLAR, type NlAdim, type NlAdimGecerlilik, type NlDurum, type NlEylem, type NlGecerlilik, type NlHedef, type NlHedefTuru, type NlKarar, type NlKosu,
-  type NlKosuAyrinti, type NlMotor, type NlParametreler, type NlSinirlar,
+  type NlKosuAyrinti, type NlMotor, type NlParametreler, type NlSinirlar, type NlSonucOzeti,
 } from '@/api/nginxLoadtestApi';
 import { fmtNumber } from '@/utils/datetime';
 
@@ -457,4 +458,41 @@ export function farkMetni(x: number | null | undefined): string {
   if (x == null || !Number.isFinite(x)) return '—';
   const r = Math.round(x * 10) / 10;
   return `${r > 0 ? '+' : r < 0 ? '−' : '±'}${fmtNumber(Math.abs(r))} %`;
+}
+
+// ── Sonuc ozeti (sade_sozlesme 2; sunucu alani yoksa ayni kural istemcide) ───────────────
+const gecerliMi = (g: string | null) => g === 'GECERLI' || g === 'DOYMA';
+const topla = (xs: (number | null)[]) => {
+  const v = xs.filter((x): x is number => x != null && Number.isFinite(x));
+  return v.length ? v.reduce((a, b) => a + b, 0) : null;
+};
+/**
+ * Adimlardan kosu ozeti: toplam istek (olcum fazi, nIstek), en iyi / en kotu p95 (gecerli + doyma adimlardan; hic yoksa
+ * tum satirlardan, `p95Kapsam` 'tum'), 429 / 5xx toplamlari, en yuksek hata orani. Reload olaylari ve konf bilgisi
+ * yalniz sunucudan gelir (burada bos / null).
+ */
+export function sonucOzetiHesapla(adimlar: NlAdim[]): NlSonucOzeti {
+  const gecerli = adimlar.filter((a) => gecerliMi(a.gecerlilik));
+  const p95Kume = (gecerli.some((a) => a.p95 != null) ? gecerli : adimlar).filter((a) => a.p95 != null && Number.isFinite(a.p95));
+  const kapsam: NlSonucOzeti['p95Kapsam'] = !p95Kume.length ? null : gecerli.some((a) => a.p95 != null) ? 'gecerli' : 'tum';
+  let iyi: NlAdim | null = null;
+  let kotu: NlAdim | null = null;
+  for (const a of p95Kume) {
+    if (!iyi || (a.p95 as number) < (iyi.p95 as number)) iyi = a;
+    if (!kotu || (a.p95 as number) > (kotu.p95 as number)) kotu = a;
+  }
+  const hatalar = adimlar.map((a) => a.hataOrani).filter((x): x is number => x != null && Number.isFinite(x));
+  return {
+    adimSayisi: adimlar.length, gecerliAdimSayisi: gecerli.length, toplamIstek: topla(adimlar.map((a) => a.nIstek)),
+    p95EnIyi: iyi ? { deger: iyi.p95 as number, tur: iyi.tur } : null, p95EnKotu: kotu ? { deger: kotu.p95 as number, tur: kotu.tur } : null, p95Kapsam: kapsam,
+    toplam429: topla(adimlar.map((a) => a.n429)), toplam5xx: topla(adimlar.map((a) => a.n5xx)),
+    enYuksekHataOrani: hatalar.length ? Math.max(...hatalar) : null,
+    hataVar: adimlar.some((a) => (a.n429 ?? 0) > 0 || (a.n5xx ?? 0) > 0 || (a.hataOrani ?? 0) > 0),
+    cpuOlculemeyenAdim: adimlar.filter((a) => a.cpuOlculemedi != null).length, konfDegisti: null, reloadlar: [],
+  };
+}
+/** TUR adi -> okunur adim etiketi ("250/sn · r2"); adim bulunamazsa TUR adinin kendisi. */
+export function turEtiketi(tur: string, adimlar: NlAdim[], birim: AdimBirimi): string {
+  const a = adimlar.find((x) => x.tur === tur);
+  return a ? `${kademeMetni(a.hiz, birim)} · ${adimEtiketi(a)}` : tur;
 }

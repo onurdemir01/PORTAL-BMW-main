@@ -16,6 +16,11 @@
 // (hedefe baglanilmaz, kaydedici yok). Tur ve motor kosu satirindan; eski satir sunucu / k6.
 // TUR 4 (2026-11-02): satirin arac seti ust bilgide ("Araç seti #N (k6 ... · wrk ...)"); on kontrol paneline aracId gider
 // (eski satir null: "Araç kopyası" satiri yok).
+// SADELESTIRME (2026-11-02, R2 / AWX 3474239: "kac istek gitti, medyan, p95, p99 nasil gorulur?"): Sonuçlar sekmesinin
+// ustunde kosu ozeti (toplam istek, en iyi / en kotu p95, hatalar), gecerlilik kutusunda nedenler DUZ CUMLEYLE (ham kod
+// ikincil; reload ani sunucu verdiyse) ve adim basina ozet tablo (SonucOzeti.tsx). CPU-ms/istek, kapasite, drop,
+// grafikler ve teknik adim tablosu kapali "Ayrıntı" bolumunde. CPU-ms/istek ve kapasite ASLA negatif: deger yoksa "—"
+// ve nedeni (cpuOlculemedi) ipucunda.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeftIcon, ArrowPathIcon, ChevronDownIcon, ChevronRightIcon, StopCircleIcon } from '@heroicons/react/24/outline';
 import { nginxLoadtestApi, type NlAdim, type NlKosuAyrinti, type NlMotor } from '@/api/nginxLoadtestApi';
@@ -28,13 +33,15 @@ import { BTN_TEHLIKE, BTN_UYARI, LINK, SM_BTN, TBL_BTN, TH_STIL, TON, smBtn } fr
 import { Cip, Hap, OzetHucre, UyariKutusu } from '@/components/server_hub/RetirementUi';
 import { sureMetni } from '@/components/server_hub/retirementCikti';
 import HizGrafigi from './Grafik';
+import { cpuOlculemediMetni, nedenAcikla, uyariAcikla } from './nedenler';
+import { KosuOzetSatiri, NedenListesi, OzetTablosu, nedenGruplari, ozetSec, reloadOzetMetni } from './SonucOzeti';
 import KosuCiktisi from './KosuCiktisi';
 import OnKontrolPaneli from './OnKontrolPaneli';
 import { Bolum, GecerlilikHapi, KosuDurumHapi, Tanim, TurMotorCipleri, islemEtiketi } from './YukUi';
 import {
   AE_ETIKETI, AKTIF_DURUMLAR, KIP_ETIKETI, OKUNAMADI_ACIKLAMASI, SONUC_DENEME_SINIRI, adimDegerleri, adimEtiketi, adimGecerliligi, adimSirala, butceSn,
   durdurBaslatilamadiMetni, gecerlilikBilgisi, hataMetni, hizGrupla, kademeMetni, kalanSurecDurdurulabilir, motorOf, ondalik, seriAdi, sonucOkunuyorMetni,
-  uyarilariAyir, yenidenOkunabilir, yuzde, type AdimBirimi,
+  turEtiketi, uyarilariAyir, yenidenOkunabilir, yuzde, type AdimBirimi,
 } from './yukTestiOrtak';
 
 type Sekme = 'sonuc' | 'onkontrol' | 'cikti';
@@ -345,6 +352,13 @@ function Sonuclar({ kosu, adimlar, aktif, birim }: { kosu: NlKosuAyrinti; adimla
   const nokta = (f: (a: NlAdim) => number | null) => sirali.map((a) => ({ x: a.hiz as number, y: f(a), durum: a.gecerlilik, etiket: `${kademeMetni(a.hiz, birim)} · ${adimEtiketi(a)}` }));
   const tekSeri = new Set(gruplar.map((x) => x.seri)).size <= 1;
   const cizgi = (f: (x: (typeof gruplar)[number]) => number | null) => (tekSeri ? gruplar.map((x) => ({ x: x.hiz, y: f(x) })) : []);
+  const [ayrintiAcik, setAyrintiAcik] = useState(false);
+  const ozet = ozetSec(kosu, adimlar);
+  const nedenler = nedenGruplari(kosu, adimlar, kosu.sonucOzeti);
+  // Bir adim nedeninin altinda yazilmayan reload olaylari (isinma / bekleme sirasinda ...) kosu duzeyi satirda: kullanici
+  // olayi yine gorur, olcumun etkilenmedigi de soylenir.
+  const reloadSatiri = reloadOzetMetni(ozet, adimlar, birim, new Set(nedenler.flatMap((x) => x.reloadlar.map((r) => r.t))));
+  const ayrintiId = `yuk-ayrinti-${kosu.id}`;
 
   return (
     <div className="space-y-4">
@@ -372,29 +386,35 @@ function Sonuclar({ kosu, adimlar, aktif, birim }: { kosu: NlKosuAyrinti; adimla
           {adimlar.length > 0 && <p>Tamamlanan adımlar aşağıda; yarım kalan adım geçersiz sayılır.</p>}
         </UyariKutusu>
       )}
+      {adimlar.length > 0 && <KosuOzetSatiri ozet={ozet} adimlar={adimlar} birim={birim} />}
       {g && !aktif && !(okunamadi && kosu.gecerlilik === 'OKUNAMADI') && (
         <div className="rounded-lg px-3 py-2.5" style={{ background: TON[g.ton].zemin, boxShadow: `inset 4px 0 0 ${TON[g.ton].renk}, inset 0 0 0 1px ${TON[g.ton].kenar}` }} role="status">
           <div className="text-[13px] font-semibold leading-5" style={{ color: TON[g.ton].metin }}>Ölçüm {g.etiket}</div>
           <p className="text-[12px] leading-5" style={{ color: 'var(--text-primary)' }}>{g.aciklama}</p>
-          {kosu.gecersizNedenleri.length > 0 && (
-            <ul className="mt-1 list-disc space-y-0.5 pl-4 text-[12px] leading-5" style={{ color: 'var(--text-primary)' }}>
-              {kosu.gecersizNedenleri.map((n) => <li key={n} className="wrap-anywhere font-mono text-[11px]">{n}</li>)}
-            </ul>
-          )}
+          {nedenler.length > 0 && <NedenListesi gruplar={nedenler} adimlar={adimlar} birim={birim} />}
+          {reloadSatiri && <p className="mt-1.5 wrap-anywhere text-[12px] leading-5" style={{ color: 'var(--text-primary)' }}>{reloadSatiri}</p>}
         </div>
       )}
+      {(adimlar.length > 0 || !aktif) && <OzetTablosu adimlar={adimlar} birim={birim} serbest={serbest} aktif={aktif} />}
       {uyarilar.length > 0 && (
         <UyariKutusu ton="uyari" baslik={`${uyarilar.length} analiz uyarısı`}>
-          {ayrik.genel.length > 0 && <ul className="list-disc space-y-0.5 pl-4">{ayrik.genel.map((u) => <li key={u} className="wrap-anywhere">{u}</li>)}</ul>}
+          {ayrik.genel.length > 0 && <ul className="space-y-1">{ayrik.genel.map((u) => <UyariSatiri key={u} metin={u} />)}</ul>}
           {ayrik.adim.length > 0 && (
             <details className={ayrik.genel.length > 0 ? 'mt-1.5' : undefined}>
-              <summary className="cursor-pointer">Adım uyarıları — adım tablosunda uyarı çipiyle işaretli</summary>
-              <ul className="mt-1 list-disc space-y-0.5 pl-4">{ayrik.adim.map((u) => <li key={u} className="wrap-anywhere font-mono text-[11px]">{u}</li>)}</ul>
+              <summary className="cursor-pointer">Adım uyarıları — teknik adım tablosunda uyarı çipiyle işaretli</summary>
+              <ul className="mt-1 space-y-1">{ayrik.adim.map((u) => <UyariSatiri key={u} metin={u} etiket={(t) => turEtiketi(t, adimlar, birim)} />)}</ul>
             </details>
           )}
         </UyariKutusu>
       )}
       {adimlar.length > 0 && (
+        <div>
+          <button type="button" onClick={() => setAyrintiAcik((x) => !x)} aria-expanded={ayrintiAcik} aria-controls={ayrintiId}
+            className="inline-flex items-center gap-1.5 rounded text-[12px] font-semibold focus-visible:outline-offset-2!" style={{ color: 'var(--text-primary)' }}>
+            {ayrintiAcik ? <ChevronDownIcon className="h-4 w-4" aria-hidden /> : <ChevronRightIcon className="h-4 w-4" aria-hidden />}
+            Ayrıntı <span className="font-normal" style={{ color: 'var(--text-secondary)' }}>— CPU / istek, kapasite, doyma, grafikler ve teknik adım tablosu</span>
+          </button>
+          <div id={ayrintiId} hidden={!ayrintiAcik} className="mt-3 space-y-4">
         <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border @3xl/yuk:grid-cols-4" style={{ borderColor: 'var(--border-subtle)', background: 'var(--border-subtle)' }}>
           <OzetHucre etiket="Geçerli adım" alt="doyma dahil; geçersiz adım hesaba katılmaz">{fmtNumber(nGecerli)} / {fmtNumber(adimlar.length)}</OzetHucre>
           {/* Serbest hedefte CPU kaydedici yok: CPU ve kapasite olculmez ("—"), sifir DEGIL; CPU kademesi de yok. */}
@@ -403,16 +423,27 @@ function Sonuclar({ kosu, adimlar, aktif, birim }: { kosu: NlKosuAyrinti; adimla
           <OzetHucre etiket={`p95${kademeP95 != null ? ` @ ${kademeMetni(kademeP95, birim)}` : ''}`} alt={wrk ? 'istemci (wrk, CO düzeltmeli), geçerli adımların ortalaması' : 'istemci (k6), geçerli adımların ortalaması'}>{gp?.p95 != null ? `${ondalik(gp.p95, 1)} ms` : '—'}</OzetHucre>
           <OzetHucre etiket="Tahmini kapasite" alt={serbest ? SERBEST_SUNUCU_YOK : nproc != null ? `${fmtNumber(nproc)} çekirdek × 1000 × 0,8 / CPU-ms` : 'çekirdek sayısı × 1000 × 0,8 / CPU-ms'}>{!serbest && gk?.kapasiteRps != null ? `~${fmtNumber(Math.round(gk.kapasiteRps))} istek/sn` : '—'}</OzetHucre>
         </dl>
-      )}
-      {adimlar.length > 0 && (
         <div className="grid gap-5 @3xl/yuk:grid-cols-2">
           <HizGrafigi baslik="p95 yanıt süresi" birim="ms" noktalar={nokta((a) => a.p95)} cizgi={cizgi((x) => x.p95)} xBirimi={birim} />
           <HizGrafigi baslik="CPU-ms / istek" birim="ms" basamak={3} noktalar={nokta((a) => (serbest ? null : a.cpuMsIstek))} cizgi={cizgi((x) => (serbest ? null : x.cpuMsIstek))} xBirimi={birim}
             bos={serbest ? 'Serbest hedef: sunucu ölçümü yok (CPU kaydedici ve nginx logu çalışmaz).' : 'CPU ölçülmedi (sunucu kaydı yok ya da adımlar geçersiz).'} />
         </div>
+        <AdimTablosu adimlar={adimlar} aktif={aktif} birim={birim} serbest={serbest} />
+          </div>
+        </div>
       )}
-      <AdimTablosu adimlar={adimlar} aktif={aktif} birim={birim} serbest={serbest} />
     </div>
+  );
+}
+
+/** Analiz uyarisi: duz cumle, altinda ham kod (destek icin). Katlanmis adim uyarisinda adim etiketi basta. */
+function UyariSatiri({ metin, etiket }: { metin: string; etiket?: (tur: string) => string }) {
+  const u = uyariAcikla(metin);
+  return (
+    <li className="min-w-0">
+      <p className="wrap-anywhere">{u.tur && etiket ? `${etiket(u.tur)}: ` : ''}{u.cumle}</p>
+      {u.kod && !u.bilinmiyor && <p className="wrap-anywhere font-mono text-[11px] leading-4" style={{ color: 'var(--text-secondary)' }}>{`kod: ${u.kod}`}</p>}
+    </li>
   );
 }
 
@@ -485,9 +516,9 @@ function AdimTablosu({ adimlar, aktif, birim, serbest }: { adimlar: NlAdim[]; ak
                     <td className="px-2.5 py-1.5">
                       <div className="flex flex-wrap items-center gap-1">
                         <Hap label={d.etiket} ton={d.ton} />
-                        {a.uyarilar.length > 0 && <Cip ton="uyari" cerceve title={a.uyarilar.join('\n')}>{`${fmtNumber(a.uyarilar.length)} uyarı`}</Cip>}
+                        {a.uyarilar.length > 0 && <Cip ton="uyari" cerceve title={a.uyarilar.map((u) => uyariAcikla(u).cumle).join('\n')}>{`${fmtNumber(a.uyarilar.length)} uyarı`}</Cip>}
                       </div>
-                      {a.nedenler.length > 0 && <div className="mt-0.5 truncate text-[11px]" style={{ color: d.ton === 'hata' ? 'var(--status-danger-text)' : 'var(--status-warning-text)' }} title={a.nedenler.join('; ')}>{a.nedenler[0]}{a.nedenler.length > 1 ? ` +${a.nedenler.length - 1}` : ''}</div>}
+                      {a.nedenler.length > 0 && <div className="mt-0.5 truncate text-[11px]" style={{ color: d.ton === 'hata' ? 'var(--status-danger-text)' : 'var(--status-warning-text)' }} title={a.nedenler.map((n) => nedenAcikla(n).cumle).join('\n')}>{nedenAcikla(a.nedenler[0]).cumle}{a.nedenler.length > 1 ? ` +${a.nedenler.length - 1}` : ''}</div>}
                     </td>
                     <td className={sayiHucre} title={`p50 ${ondalik(a.p50)} · p99 ${ondalik(a.p99)} ms`}>{ondalik(a.p95)}</td>
                     <td className={sayiHucre} style={(a.hataOrani ?? 0) > 0.001 ? { color: 'var(--status-danger-text)', fontWeight: 600 } : undefined}>{yuzde(a.hataOrani)}</td>
@@ -497,9 +528,9 @@ function AdimTablosu({ adimlar, aktif, birim, serbest }: { adimlar: NlAdim[]; ak
                       <>{['cpu', 'host', 'kap'].map((s) => <td key={s} className={sayiHucre} style={{ color: 'var(--text-muted)' }} title={SERBEST_SUNUCU_YOK}>—</td>)}</>
                     ) : (
                       <>
-                        <td className={sayiHucre}>{ondalik(a.cpuMsIstek, 3)}</td>
+                        <td className={sayiHucre} title={a.cpuOlculemedi ? cpuOlculemediMetni(a.cpuOlculemedi) : undefined}>{ondalik(a.cpuMsIstek, 3)}</td>
                         <td className={sayiHucre} style={(a.hostCpuOrt ?? 0) > 90 ? { color: 'var(--status-warning-text)', fontWeight: 600 } : undefined}>{a.hostCpuOrt != null ? `%${ondalik(a.hostCpuOrt, 0)}` : '—'}</td>
-                        <td className={sayiHucre}>{a.kapasiteRps != null ? `~${fmtNumber(Math.round(a.kapasiteRps))}` : '—'}</td>
+                        <td className={sayiHucre} title={a.cpuOlculemedi ? cpuOlculemediMetni(a.cpuOlculemedi) : undefined}>{a.kapasiteRps != null ? `~${fmtNumber(Math.round(a.kapasiteRps))}` : '—'}</td>
                       </>
                     )}
                     <td className="px-1 py-1.5 text-center">
@@ -521,16 +552,17 @@ function AdimTablosu({ adimlar, aktif, birim, serbest }: { adimlar: NlAdim[]; ak
                           <Tanim etiket="Bayt / istek">{a.baytIstek != null ? fmtNumber(Math.round(a.baytIstek)) : '—'}</Tanim>
                           <Tanim etiket="Sıkıştırma">{a.sikistirmaTuru || '—'}</Tanim>
                         </dl>
+                        {a.cpuOlculemedi && <p className="mt-2 text-[11px] leading-4" style={{ color: 'var(--status-warning-text)' }}>{cpuOlculemediMetni(a.cpuOlculemedi)}</p>}
                         {a.nedenler.length > 0 && (
                           <ul className="mt-2 list-disc space-y-0.5 pl-4 text-[11px] leading-4" style={{ color: 'var(--text-primary)' }}>
-                            {a.nedenler.map((n) => <li key={n} className="wrap-anywhere font-mono">{n}</li>)}
+                            {a.nedenler.map((n) => <li key={n} className="wrap-anywhere">{nedenAcikla(n).cumle} <span className="font-mono" style={{ color: 'var(--text-secondary)' }}>({n})</span></li>)}
                           </ul>
                         )}
                         {a.uyarilar.length > 0 && (
                           <div className="mt-2">
                             <div className="text-[11px] font-semibold leading-4" style={{ color: 'var(--status-warning-text)' }}>Adım uyarıları</div>
                             <ul className="mt-0.5 list-disc space-y-0.5 pl-4 text-[11px] leading-4" style={{ color: 'var(--text-primary)' }} aria-label={`${a.tur} uyarıları`}>
-                              {a.uyarilar.map((u) => <li key={u} className="wrap-anywhere font-mono">{u}</li>)}
+                              {a.uyarilar.map((u) => <li key={u} className="wrap-anywhere">{uyariAcikla(u).cumle} <span className="font-mono" style={{ color: 'var(--text-secondary)' }}>({u})</span></li>)}
                             </ul>
                           </div>
                         )}

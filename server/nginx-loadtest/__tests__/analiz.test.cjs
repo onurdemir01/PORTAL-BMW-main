@@ -30,6 +30,10 @@
 //   AN18 wrk metin birimleri ("baglanti kademesinde") ve istemci bayt etiketi; k6 metinleri aynen
 //   AN19 secenek dogrulamasi (TypeError); varsayilanlarla cikti tur 3 oncesiyle BAYT BAYT ayni (altin ozet)
 //   AN20 wrk: ayristirma ve cpu_tlsli_pay null; 'yeni' kipinde wrk_tls_payi_hesaplanmaz uyarisi, ka ve k6'da yok
+// Sade turu (2026-11-02; PORTAL FARKLARI 10 / 11):
+//   AN21 CPU-ms/istek ve kapasite asla negatif (reload sayac dususu, sayac gerilemesi, net negatif; DB'deki eski deger)
+//   AN22 reload anlari: zaman, faz, etkilenen TUR'lar (ozet.reloadlar, ham.reloadlar)
+//   AN23 her neden / uyari NEDEN_KALIPLARI'ndan birine uyar
 // Python karsilastirmasi (AN1-AN5) kosu duzeyi `uyarilar`i KAPSAMAZ (karsilastir.py'de kosu duzeyi
 // uyari listesi yok); TUR uyarilari AN2'de ham.uyarilar uzerinden metin olarak karsilastirilir.
 'use strict';
@@ -42,7 +46,7 @@ const os = require('node:os');
 const path = require('node:path');
 
 const sonuc = require('../sonuc.cjs');
-const { kosuAnaliz, kararVer, ayristirma, NEDENLER, _pyForTest: py, _adimUyarilariniKatForTest: uyariKat } = require('../analiz.cjs');
+const { kosuAnaliz, kararVer, ayristirma, NEDENLER, NEDEN_KALIPLARI, _pyForTest: py, _adimUyarilariniKatForTest: uyariKat } = require('../analiz.cjs');
 const { ADIMLAR, KARARLAR } = require('./fixtures/senaryolar.cjs');
 const { parmakIzi, portalDuzeniYaz, standart, Kurgu } = require('./fixtures/kurgu.cjs');
 const { WRK_OLCULMEYEN, wrkKosu, wrkDosyalari, serbestDosyalari } = require('./fixtures/wrk-serbest.cjs');
@@ -113,6 +117,7 @@ test('AN1 uretec, beklenenlerin uretildigi baytlari hala uretiyor (parmak izi)',
 test('AN2 TUR satirlari: her sayi, durum, neden ve uyari karsilastir.py ile ayni', async () => {
   const m = await hazirla();
   let sayac = 0;
+  let reloadSayisi = 0;
   for (const a of ADIMLAR) {
     const py = BEKLENEN.adimlar[a.ad];
     const an = m.get(a.ad).analiz;
@@ -122,10 +127,22 @@ test('AN2 TUR satirlari: her sayi, durum, neden ve uyari karsilastir.py ile ayni
     py.kosular.forEach((r, i) => {
       const n = satirlar[i];
       const yer = `${a.ad}/${r.tur}`;
-      for (const [pk, nk] of Object.entries(UST)) yakin(n[nk], r[pk], `${yer}.${nk}`);
-      for (const [pk, nk] of Object.entries(HAM)) yakin(n.ham[nk], r[pk], `${yer}.ham.${nk}`);
+      // PORTAL FARKLARI 10 (ACIK esleme): pencerede reload olan TUR'da CPU alanlari null + tek uyari;
+      // karsilastir.py sayac sifirlanmasini fark etmeden sayi yazar. Baska hicbir alan farkli degil.
+      const reloadlu = String(r.gecersiz_nedeni || '').split(';').includes('reload(worker_pid_degisti)');
+      const PORTAL_NULL = new Set(['cpu_ms_istek', 'user_ms', 'sys_ms', 'cpu_oran_ms_sn']);
+      const bek = (pk) => (reloadlu && PORTAL_NULL.has(pk) ? null : r[pk]);
+      for (const [pk, nk] of Object.entries(UST)) yakin(n[nk], bek(pk), `${yer}.${nk}`);
+      for (const [pk, nk] of Object.entries(HAM)) yakin(n.ham[nk], bek(pk), `${yer}.ham.${nk}`);
       assert.equal(n.gecerlilik, r.durum, `${yer}.gecerlilik`);
-      assert.equal(n.ham.uyarilar.join(';'), r.uyari, `${yer}.uyarilar`);
+      const cpuUyari = n.ham.uyarilar.filter((u) => u.startsWith('cpu_olculemedi('));
+      assert.deepEqual(cpuUyari, reloadlu ? ['cpu_olculemedi(reload)'] : [], `${yer}: cpu_olculemedi uyarisi`);
+      assert.equal(n.ham.cpu_olculemedi, reloadlu ? 'reload' : null, `${yer}.ham.cpu_olculemedi`);
+      if (reloadlu) {
+        assert.equal(n.kapasite_rps, null, `${yer}: reload'lu adimda kapasite yok`);
+        reloadSayisi++;
+      }
+      assert.equal(n.ham.uyarilar.filter((u) => !u.startsWith('cpu_olculemedi(')).join(';'), r.uyari, `${yer}.uyarilar`);
       const gecersiz = r.gecersiz_nedeni ? r.gecersiz_nedeni.split(';') : [];
       if (r.durum === 'DOYMA') {
         assert.ok(n.nedenler.length > 0 && n.nedenler.every((x) => x.startsWith('doyma:')), `${yer}: DOYMA nedeni acik yazilmali: ${n.nedenler}`);
@@ -140,6 +157,7 @@ test('AN2 TUR satirlari: her sayi, durum, neden ve uyari karsilastir.py ile ayni
     });
   }
   assert.ok(sayac > 200, `kapsam suphesiz az: ${sayac} TUR`);
+  assert.ok(reloadSayisi >= 3, `reload'lu TUR kapsami az: ${reloadSayisi}`);
 });
 
 test('AN3 gruplar, arka plan bloklari, nproc ve ayristirma karsilastir.py ile ayni', async () => {
@@ -876,7 +894,10 @@ test('AN18 wrk metin birimleri ("baglanti kademesinde") ve istemci bayt etiketi 
 // Tur 3 oncesi (946ec3b) analiz.cjs'in fikstur katalogundaki TAM ciktisinin (her ADIM'in kosuAnaliz'i + her
 // KARAR'in kararVer'i, JSON) sha256'si. Varsayilan secenekler bu ciktiyi BAYT BAYT korur (sozlesme tur 3,
 // 10.1 / 10.2). Analiz bilincli olarak degisirse yeniden hesaplanir: ciktiOzeti(await hazirla()).
-const ALTIN_OZET = 'd07d5a3e84093cddbc98a09daa8550c3c6ebbdb2b9ab16c791a74000d26ea4f9';
+// Sade turu (2026-11-02): reload'lu TUR'da CPU null + cpu_olculemedi uyarisi, ham.cpu_olculemedi / ham.reloadlar,
+// ozet.reloadlar eklendi (PORTAL FARKLARI 10 / 11); farklar AN2 ve AN21-AN23'te acik eslemeyle sinanir.
+// Onceki ozet (tur 3 oncesi): d07d5a3e84093cddbc98a09daa8550c3c6ebbdb2b9ab16c791a74000d26ea4f9.
+const ALTIN_OZET = '6f70a1ef7902800e1bda1d2b5d0581d669e7239b96dc91b229ac56a377ca1c11';
 function ciktiOzeti(m) {
   const h = crypto.createHash('sha256');
   for (const a of ADIMLAR) h.update(`${a.ad}\n${JSON.stringify(m.get(a.ad).analiz)}\n`);
@@ -948,4 +969,168 @@ test('AN20 wrk: ayristirma ve cpu_tlsli_pay HER ZAMAN null; yeni kipinde wrk_tls
   const hh = await t3Analiz(kh, { donustur: (d) => wrkDosyalari(kh, d), secenek: { motor: 'wrk' } });
   assert.equal(turla(hh.analiz).get('R92_K_yeni_br_16_r1').gecerlilik, 'HATALI');
   assert.ok(hh.analiz.uyarilar.includes(WRK_TLS));
+});
+
+// ---------------------------------------------------------------------------------------------
+// Sade turu (2026-11-02; analiz.cjs PORTAL FARKLARI 10 / 11, sade_sozlesme.md)
+//   AN21 CPU-ms/istek ve kapasite ASLA negatif: reload'da sayac dususu (R2), PID'siz sayac gerilemesi,
+//        arka plan > pencere (net negatif) -> null + cpu_olculemedi(kod); DB'deki negatif deger kararda null
+//   AN22 reload anlari: olay zamani, fazi (isinma / olcum / bosluk / kosu_oncesi), etkilenen TUR'lar
+//   AN23 uretilen her neden / uyari NEDEN_KALIPLARI'ndan birine uyar (arayuz esleme listesi tam)
+// ---------------------------------------------------------------------------------------------
+
+/** sunucu_*.csv'de t >= esik orneklerinin worker utime'ini `dusus` kadar azaltir (eski worker'lar cikti). */
+function sayacDusur(dosyalar, esik, dusus) {
+  const out = new Map(dosyalar);
+  for (const [ad, f] of dosyalar) {
+    if (!/^sunucu_.*\.csv$/.test(ad)) continue;
+    const satirlar = f.icerik.split('\n').map((s, i) => {
+      if (i === 0 || !s) return s;
+      const p = s.split(',');
+      if (Number(p[0]) >= esik) p[1] = String(Number(p[1]) - dusus);
+      return p.join(',');
+    });
+    out.set(ad, { ...f, icerik: satirlar.join('\n') });
+  }
+  return out;
+}
+
+function negatifYok(an, yer) {
+  for (const a of an.adimlar) {
+    for (const k of ['cpu_ms_istek', 'kapasite_rps']) assert.ok(a[k] === null || a[k] > 0, `${yer}/${a.tur}.${k} = ${a[k]}`);
+    if (a.ham.cpu_olculemedi === 'reload' || a.ham.cpu_olculemedi === 'sayac_geriledi') {
+      for (const k of ['user_ms', 'sys_ms', 'cpu_oran_ms_sn']) assert.equal(a.ham[k], null, `${yer}/${a.tur}.ham.${k}`);
+    }
+  }
+  for (const g of an.ozet.gruplar) {
+    for (const k of ['cpu_ms_istek', 'kapasite_tahmini_rps']) assert.ok(g[k] === null || g[k] > 0, `${yer}/grup ${g.hiz}.${k} = ${g[k]}`);
+  }
+}
+
+const T0 = 1800000000;
+// standart(): bosta 60, her kosu 92 sn (bas, isinma 10, olcum 60, zaman bit = bas + 72, bosluk 20).
+const kosuBas = (sira) => T0 + 60 + sira * 92;
+
+test('AN21 CPU-ms/istek ve kapasite asla negatif; sayac sifirlanmasi / gerilemesi / net negatif null + neden', async () => {
+  // (a) R2 kalibi: 250_r1 olcumunde reload, 5 sn sonra eski worker'lar cikar -> sayac 5000 tik duser.
+  const kA = standart('R93', { ru: 22, reload: true });
+  const a = (await t3Analiz(kA, { donustur: (d) => sayacDusur(d, kosuBas(2) + 45, 5000) })).analiz;
+  const aR = turla(a).get('R93_K_yeni_br_250_r1');
+  assert.equal(aR.gecerlilik, 'GECERSIZ');
+  assert.ok(aR.nedenler.includes('reload(worker_pid_degisti)'), aR.nedenler.join(';'));
+  assert.deepEqual([aR.cpu_ms_istek, aR.kapasite_rps, aR.ham.user_ms, aR.ham.sys_ms, aR.ham.cpu_oran_ms_sn], [null, null, null, null, null]);
+  assert.equal(aR.ham.cpu_olculemedi, 'reload');
+  assert.ok(aR.ham.uyarilar.includes('cpu_olculemedi(reload)'));
+  assert.ok(aR.host_cpu_ort !== null, 'host CPU (/proc/stat) reload ile bozulmaz, kalir');
+  assert.ok(a.uyarilar.includes('R93_K_yeni_br_250_r1: cpu_olculemedi(reload)'), 'kosu duzeyine de katlanir');
+  negatifYok(a, 'R93');
+  for (const x of a.adimlar.filter((y) => y.tur !== aR.tur)) assert.equal(x.ham.cpu_olculemedi, null, `${x.tur}: digerleri olculur`);
+
+  // (b) PID kumesi ayni ama sayac geriye gitti (kaydedici anomalisi): reload nedeni YOK, CPU null.
+  const kB = standart('R94', { ru: 22 });
+  const b = (await t3Analiz(kB, { donustur: (d) => sayacDusur(d, kosuBas(2) + 40, 5000) })).analiz;
+  const bR = turla(b).get('R94_K_yeni_br_250_r1');
+  assert.ok(!bR.nedenler.some((n) => n.startsWith('reload')), bR.nedenler.join(';'));
+  assert.equal(bR.gecerlilik, 'GECERLI', 'gecikme olcumu gecerli kalir');
+  assert.deepEqual([bR.cpu_ms_istek, bR.kapasite_rps, bR.ham.cpu_oran_ms_sn], [null, null, null]);
+  assert.equal(bR.ham.cpu_olculemedi, 'sayac_geriledi');
+  assert.ok(bR.ham.uyarilar.includes('cpu_olculemedi(sayac_geriledi)'));
+  negatifYok(b, 'R94');
+
+  // (c) Arka plan (40+10 tik/sn) kosudan (22+6) buyuk: net negatif -> null; ham oran olculur, kalir.
+  const kC = standart('R95', { ru: 22, kurgu: { bg: [40, 10] } });
+  const c = (await t3Analiz(kC)).analiz;
+  assert.ok(c.adimlar.length === 6 && c.adimlar.every((x) => x.ham.cpu_olculemedi === 'net_negatif' && x.cpu_ms_istek === null),
+    c.adimlar.map((x) => x.ham.cpu_olculemedi).join(','));
+  assert.ok(c.adimlar.every((x) => x.ham.cpu_oran_ms_sn > 0 && x.gecerlilik === 'GECERLI'));
+  negatifYok(c, 'R95');
+  assert.ok(c.ozet.gruplar.every((g) => g.cpu_ms_istek === null && g.kapasite_tahmini_rps === null));
+  assert.equal(kararVer(c.adimlar, c.adimlar).karar, 'VERI_YOK', 'olculemeyen CPU ile karar verilmez');
+
+  // (d) Eski DB satiri (R2): negatif cpu_ms_istek kararda null sayilir (KALICI'ya donusmez).
+  const ref = (await hazirla()).get('R10').analiz.adimlar;
+  const eski = ref.map((x) => ({ ...x, cpu_ms_istek: x.cpu_ms_istek === null ? null : -1.372 }));
+  const k = kararVer(ref, eski);
+  assert.equal(k.karar, 'VERI_YOK', k.nedenler.join('\n'));
+  assert.ok(!k.nedenler.some((s) => /-1\.372/.test(s)), 'negatif deger karar metnine girmez');
+});
+
+test('AN22 reload anlari: zaman, faz, etkilenen TUR (gosterim; gecerlilik degismez)', async () => {
+  const a = (await t3Analiz(standart('R96', { ru: 22, reload: true }))).analiz;
+  assert.deepEqual(a.ozet.reloadlar, [{
+    kesit: 'R96_test', t: kosuBas(2) + 40, t_once: kosuBas(2) + 39, t_son: kosuBas(2) + 40, worker_once: 2, worker_sonra: 2,
+    kapanan_en_cok: 0, tur: 'R96_K_yeni_br_250_r1', faz: 'olcum', etkilenen_turlar: ['R96_K_yeni_br_250_r1'],
+  }]);
+  for (const x of a.adimlar) {
+    const bek = x.tur === 'R96_K_yeni_br_250_r1'
+      ? [{ t: kosuBas(2) + 40, t_once: kosuBas(2) + 39, t_son: kosuBas(2) + 40, tur: 'R96_K_yeni_br_250_r1', faz: 'olcum' }] : [];
+    assert.deepEqual(x.ham.reloadlar, bek, x.tur);
+  }
+  // R58: kosular ARASINDA kapanan worker (100_r1 bas+83..85) ve reload (250_r1 bas+85): faz bosluk, etkilenen yok.
+  const r58 = (await hazirla()).get('R58').analiz;
+  assert.deepEqual(r58.ozet.reloadlar.map((o) => [o.t - T0, o.t_son - T0, o.kapanan_en_cok, o.tur, o.faz, o.etkilenen_turlar]), [
+    [60 + 83, 60 + 85, 1, 'R58_K_yeni_br_100_r1', 'bosluk', []],
+    [60 + 2 * 92 + 85, 60 + 2 * 92 + 85, 0, 'R58_K_yeni_br_250_r1', 'bosluk', []],
+  ]);
+  assert.ok(r58.adimlar.every((x) => x.ham.reloadlar.length === 0));
+  // Isinmada reload; kosu oncesinde reload; kayit 'shutting down' worker'la basliyor (t_once null).
+  const isinma = new Kurgu('R97');
+  isinma.kosu({ hiz: 100, reload: true, reloadOfs: 5 });
+  isinma.kosu({ hiz: 100, r: 2 });
+  const i = (await t3Analiz(isinma)).analiz;
+  assert.deepEqual(i.ozet.reloadlar.map((o) => [o.tur, o.faz, o.etkilenen_turlar]), [['R97_K_yeni_br_100_r1', 'isinma', ['R97_K_yeni_br_100_r1']]]);
+  assert.ok(!turla(i).get('R97_K_yeni_br_100_r1').nedenler.some((n) => n.startsWith('reload')), 'isinmadaki reload olcum penceresinde degil');
+  const once = new Kurgu('R98');
+  once.kosu({ hiz: 100, reload: true, reloadOfs: -30, kapanan: [-60, -55] });
+  const o = (await t3Analiz(once)).analiz;
+  assert.deepEqual(o.ozet.reloadlar.map((x) => [x.t - T0, x.t_once, x.t_son - T0, x.kapanan_en_cok, x.tur, x.faz]), [
+    [0, null, 4, 1, null, 'kosu_oncesi'],
+    [30, T0 + 29, 30, 0, null, 'kosu_oncesi'],
+  ]);
+  // Serbest hedefte kaydedici yok sayilir: reload listesi bos.
+  const s = (await t3Analiz(standart('R99', { ru: 22, reload: true }), { secenek: { hedefTuru: 'serbest' } })).analiz;
+  assert.deepEqual(s.ozet.reloadlar, []);
+  assert.ok(s.adimlar.every((x) => x.ham.reloadlar.length === 0 && x.ham.cpu_olculemedi === null));
+});
+
+test('AN23 her neden / uyari NEDEN_KALIPLARI listesinden birine uyar (arayuz eslemesi tam)', async () => {
+  const kodlar = NEDEN_KALIPLARI.map((k) => k.kod);
+  assert.equal(new Set(kodlar).size, kodlar.length, 'kodlar tekil');
+  const bul = (s, tur) => NEDEN_KALIPLARI.find((k) => k.tur === tur && k.re.test(s));
+  const analizler = [...(await hazirla()).values()].map((x) => x.analiz);
+  const kA = standart('R93', { ru: 22, reload: true });
+  analizler.push((await t3Analiz(kA, { donustur: (d) => sayacDusur(d, kosuBas(2) + 45, 5000) })).analiz);
+  analizler.push((await t3Analiz(standart('R94', { ru: 22 }), { donustur: (d) => sayacDusur(d, kosuBas(2) + 40, 5000) })).analiz);
+  analizler.push((await t3Analiz(standart('R95', { ru: 22, kurgu: { bg: [40, 10] } }))).analiz);
+  const wk = wrkKurgu('R91');
+  wrkKosu(wk, { hiz: 16, r: 1, hatali: true });
+  analizler.push((await t3Analiz(wk, { donustur: (d) => wrkDosyalari(wk, d), secenek: { motor: 'wrk' } })).analiz);
+  const gorulen = new Set();
+  let n = 0;
+  for (const an of analizler) {
+    for (const a of an.adimlar) {
+      for (const x of a.nedenler) {
+        const k = bul(x, 'neden');
+        assert.ok(k, `eslenmeyen neden: ${x}`);
+        gorulen.add(k.kod);
+        n++;
+      }
+      for (const x of a.ham.uyarilar) {
+        const k = bul(x, 'uyari');
+        assert.ok(k, `eslenmeyen uyari: ${x}`);
+        gorulen.add(k.kod);
+      }
+    }
+    for (const x of an.nedenler) {
+      if (x === 'istemci_sonucu_yok') continue;
+      const m = /^[A-Za-z0-9_-]+\((.*)\)$/.exec(x);
+      assert.ok(m, `kosu nedeni bicimi: ${x}`);
+      for (const ic of m[1].split(';')) assert.ok(bul(ic, 'neden'), `kosu nedeninde eslenmeyen: ${ic}`);
+    }
+  }
+  assert.ok(n > 50, `kapsam az: ${n}`);
+  for (const k of ['reload', 'konf_degisti', '429', '5xx', 'hata', 'doyma_dropped', 'doyma_host_cpu', 'hatali_kosu', 'tamamlanmadi',
+    'cpu_olculemedi', 'disk', 'kayit']) {
+    assert.ok(gorulen.has(k), `fikstur kapsami: ${k} hic uretilmedi`);
+  }
 });
