@@ -304,8 +304,11 @@ Kod `server/crypto-hub/node.cjs`, sabitler `shared/cryptoHubNodes.cjs`.
    "Talebi kapat (yönetici)" düğmesi. AWX işi başlamış talep (`awx_job_id` dolu) ya da Portal'da
    iptal edilemeyen `PENDING` bilet **409** ile kapatılmaz. Smart kaydı okunamıyorsa **503**,
    bilet artık `PENDING` değilse (ör. onaylanmış/başlatılıyor) **409** döner; AWX numarası henüz
-   satıra yazılmamış olsa da kilit korunur. Kilidi erken bırakmak ikinci bir değişikliğin aynı
-   gruba yazılmasıyla yarışabilirdi; bu satırlar iş sonucuyla ya da 5. maddedeki süreyle kapanır.
+   satıra yazılmamış olsa da kilit korunur. `ACILIYOR` satırına Smart bileti henüz bağlanmadıysa
+   da kapatma **409** döner. Dış bilet açılıp satıra bağlama başarısız olursa Portal başarı
+   bildirmez; `PENDING` bilet iptal edilir, iptal yarışı varsa satır açık ve kilitli kalır.
+   Kilidi erken bırakmak ikinci bir değişikliğin aynı gruba yazılmasıyla yarışabilirdi; bu
+   satırlar iş sonucuyla ya da 5. maddedeki süreyle kapanır.
 7. **Numara metni**: bekleyen talep her yerde aynı biçimde: Smart numarası varsa `Smart #<no>`,
    yoksa `Portal #<talep>` (`shared/cryptoHubNodes.cjs` `talepNoMetni` = ekran `smartNo`).
 

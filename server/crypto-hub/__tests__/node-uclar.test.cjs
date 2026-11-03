@@ -225,6 +225,18 @@ test('N8 openSmartTicket argumanlari birebir; preflight + prefill bilet ONCESI',
     assert.equal(m.CLUSTER, 'metaco_das');
   }));
 
+test('N8c Smart bileti satira baglanamazsa basari uydurmaz ve PENDING bileti iptal eder', () =>
+  ile(async (h) => {
+    h.okumaVer();
+    h.d.baglamaNoop = true;
+    const r = await h.istek('POST', '/node-change', K.nodecu, GOVDE());
+    assert.equal(r.status, 500, JSON.stringify(r.body));
+    assert.equal(r.body.blocked, 'smart_ticket_link_failed');
+    assert.equal(h.d.smartTickets[0].status, 'CANCELLED');
+    assert.equal(h.d.rows[0].durum, 'HATA');
+    assert.equal(h.d.rows[0].sonuc_kod, 'SMART_BAGLAMA');
+  }));
+
 test('N8b preflight hatasi: bilet acilmaz, satir HATA', () =>
   ile(async (h) => {
     h.okumaVer();
@@ -683,8 +695,14 @@ test('N16b onaylanmis veya okunamayan Smart biletinde Admin kilidi acamaz', () =
     const ticket = h.d.smartTickets.find((x) => x.id === b.ticketId);
     const yol = `/node-change/${b.talepId}/kapat`;
 
+    const aciliyor = { ...row, id: h.d.nextId++, kilit: 'aciliyor-kilit', durum: 'ACILIYOR', smart_ticket_id: null, external_ticket_id: null, kapandi_at: null };
+    h.d.rows.push(aciliyor);
+    let res = await h.istek('POST', `/node-change/${aciliyor.id}/kapat`, K.admin, { gerekce: 'Smart bileti henuz baglanmadi, kilit acilamaz' });
+    assert.equal(res.status, 409, JSON.stringify(res.body));
+    assert.equal(aciliyor.kapandi_at, null, 'ACILIYOR ticketsiz satir kapatildi');
+
     ticket.status = 'APPROVED';
-    let res = await h.istek('POST', yol, K.admin, { gerekce: 'Smart onaylandi, kilit guvenle acilamaz' });
+    res = await h.istek('POST', yol, K.admin, { gerekce: 'Smart onaylandi, kilit guvenle acilamaz' });
     assert.equal(res.status, 409, JSON.stringify(res.body));
     assert.equal(row.kapandi_at, null, 'onaylanmis fakat AWX numarasi yazilmamis talep kapatildi');
 
