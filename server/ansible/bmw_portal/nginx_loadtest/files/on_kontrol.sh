@@ -11,8 +11,12 @@
 #   yollar: ip_yuk_makinesinde 1|0|-, YOL<TAB><status><TAB><http surumu><TAB><content-encoding|-><TAB><content-length 1|0><TAB><yol>
 #           (senaryo sirasiyla), HATA<TAB><status><TAB><yol> (200 olmayan ilk 20), OZET<TAB><toplam><TAB><n200><TAB>
 #           <statik><TAB><dinamik><TAB><sikistirmasiz> (sikistirma yalniz 200 yanitlarda sayilir); protokol h1|h2;
-#           yalniz h2: curl_h2 1|0, yollar_yanitli <n>, yollar_h2 <n>, alpn_h2 1|0|- (OZET'ten sonra)
-# Istek   : tekil yol basina TEK GET: h1 --http1.1 (curl destekliyorsa), h2 --http2 (ALPN) (en cok 400 yol, istek basina 5 sn, en cok 4 paralel); https://<ip><yol> +
+#           yalniz h2: curl_h2 1|0, yollar_yanitli <n>, yollar_h2 <n>|-, alpn_h2 1|0|-, alpn_kaynak curl|openssl
+#           (OZET'ten sonra). curl_h2 1: alpn_h2 yollardan (her yanitli yol HTTP/2 mi), alpn_kaynak curl.
+#           curl_h2 0: yollar h1 gibi denenir, yollar_h2 '-', alpn_h2 openssl s_client ile TEK baglantida
+#           (HEDEF_IP:443, -alpn h2,http/1.1; SNI=1 -servername <host>, SNI=0 -noservername), alpn_kaynak openssl.
+# Istek   : tekil yol basina TEK GET: h1 --http1.1 (curl destekliyorsa), h2 --http2 (ALPN; curl h2'siz ise bayraksiz,
+#           ALPN openssl ile ayrica TEK TLS baglantisi) (en cok 400 yol, istek basina 5 sn, en cok 4 paralel); https://<ip><yol> +
 #           Host basligi (SNI=1: https://<host><yol> + --resolve host:443:ip). Accept-Encoding: br, gzip;
 #           User-Agent <UA_ONEK>/onkontrol/1. Cerez, vekil sunucu ve ~/.curlrc YOK (-q, --noproxy '*', proxy env silinir).
 # nginx -T: nginx_console_dump.sh ile AYNI estate komutu (dzdo <nginx> -p ... -c ... -e ... -T; dzdo yoksa/reddederse
@@ -72,6 +76,28 @@ tek_yol() {   # tek_yol "<sira><TAB><yol>": tek istek, tek satir (PIPE_BUF altin
       if (ver == "") { ver = "-"; ce = "-"; cl = 0 }
       printf "%s\tYOL\t%s\t%s\t%s\t%d\t%s\n", sira, kod, ver, (ce == "" ? "-" : ce), cl, yol
     }'
+}
+
+# alpn_openssl: curl h2'siz yuk makinesinde ALPN'i openssl s_client ile TEK baglantida olcer (HEDEF_IP:443).
+#   k6 (Go) gibi h2,http/1.1 sunulur: yalniz h2 sunulursa http2'siz nginx ortak protokol bulamayip el sikismayi
+#   no_application_protocol ile keser ve sonuc 'sunmuyor' (0) yerine 'olculemedi' (-) olurdu.
+#   SNI=1: -servername <HOST_BASLIGI>; SNI=0: -noservername (k6 IP'ye SNI gondermez; ayni varsayilan sunucu secilir).
+#   1.1.1 oncesi openssl -noservername tanimaz ama SNI'yi zaten yalniz -servername ile gonderir: o zaman secenek
+#   olmadan bir kez daha denenir. Cikti yalniz gecici dosyada; BASILMAZ. 1 (h2), 0 (h2 disi ya da ALPN yok),
+#   - (openssl/timeout yok, baglanti ya da el sikisma kurulamadi, -alpn desteklenmiyor, ALPN satiri yok).
+alpn_openssl() {
+  local a=(s_client -connect "$HEDEF_IP:443" -alpn h2,http/1.1)
+  if ! command -v openssl >/dev/null 2>&1 || ! command -v timeout >/dev/null 2>&1; then echo "-"; return; fi
+  if [ "$SNI" = 1 ]; then a+=(-servername "$HOST_BASLIGI"); else a+=(-noservername); fi
+  timeout -k 2 "$ZAMAN" openssl ${a[@]+"${a[@]}"} < /dev/null > "$d/alpn" 2>&1
+  if [ "$SNI" = 0 ] && ! grep -q '^New, ' "$d/alpn" && grep -qi 'noservername' "$d/alpn"; then
+    timeout -k 2 "$ZAMAN" openssl s_client -connect "$HEDEF_IP:443" -alpn h2,http/1.1 < /dev/null > "$d/alpn" 2>&1
+  fi
+  tr -d '\r' < "$d/alpn" | awk '
+    /^New, / { y = ($0 ~ /Cipher is \(NONE\)/) ? 0 : 1 }
+    /^ALPN protocol: / { p = substr($0, 16); sub(/[ ]+$/, "", p) }
+    /^No ALPN negotiated/ { n = 1 }
+    END { if (!y) print "-"; else if (p == "h2") print 1; else if (p != "" || n) print 0; else print "-" }'
 }
 
 hedef() {
@@ -164,8 +190,8 @@ yollar() {
   HTTP_SURUM=""
   if [ "$PROTOKOL" = h2 ]; then
     printf 'curl_h2\t%d\n' "$ch2"
-    [ "$ch2" = 1 ] || red "curl HTTP/2 desteklemiyor; HTTP/2 on kontrolu yapilamadi, istek gonderilmedi"
-    HTTP_SURUM=--http2
+    # curl h2'siz: yollar h1 yolu gibi (bayraksiz) denenir, ALPN OZET'ten sonra openssl ile olculur
+    [ "$ch2" = 1 ] && HTTP_SURUM=--http2
   elif [ "$ch2" = 1 ]; then
     HTTP_SURUM=--http1.1
   fi
@@ -179,10 +205,14 @@ yollar() {
       if ($2 == "200") { o++; if ($4 == "-") y++; else if ($5 == 1) s++; else dn++ }
       else if (h < 20) { printf "HATA\t%s\t%s\n", $2, $6; h++ } }
     END { printf "OZET\t%d\t%d\t%d\t%d\t%d\n", t, o, s, dn, y }' "$d/sirali"
-  if [ "$PROTOKOL" = h2 ]; then
+  if [ "$PROTOKOL" = h2 ] && [ "$ch2" = 1 ]; then
     awk -F'\t' '
       $1 == "YOL" && $3 != "-" { ny++; if ($3 ~ /^HTTP\/2/) n2++ }
       END { printf "yollar_yanitli\t%d\nyollar_h2\t%d\nalpn_h2\t%s\n", ny, n2, (ny == 0 ? "-" : (n2 == ny ? "1" : "0")) }' "$d/sirali"
+    printf 'alpn_kaynak\tcurl\n'
+  elif [ "$PROTOKOL" = h2 ]; then
+    awk -F'\t' '$1 == "YOL" && $3 != "-" { ny++ } END { printf "yollar_yanitli\t%d\n", ny }' "$d/sirali"
+    printf 'yollar_h2\t-\nalpn_h2\t%s\nalpn_kaynak\topenssl\n' "$(alpn_openssl)"
   fi
   [ "$(grep -c '^YOL' "$d/sirali")" -eq "$n" ] || red "$n yoldan yalniz $(grep -c '^YOL' "$d/sirali") sonuc dondu"
   sonuc OK "$n yol denendi"

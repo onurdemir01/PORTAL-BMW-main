@@ -66,11 +66,18 @@ function aracSatiri(o: NlOnKontrol): Kontrol {
   return { ad, sonuc: 'yok' };
 }
 /** HTTP/2 (ALPN) satiri: n2 / ny sayilari bilinmiyorsa '?'. On kontrol h2 icin yapilmadiysa (protokol h1) ya da curl h2'siz
- *  ya da yanitli yol yoksa olculemedi (gecti DEGIL). */
+ *  ya da yanitli yol yoksa olculemedi (gecti DEGIL). alpnKaynak 'openssl' (curl h2'siz, ALPN openssl ile): gecti / kaldi
+ *  openssl metniyle; olculemediyse asagidaki 'yok' yolu. */
 function h2Satiri(o: NlOnKontrol): Kontrol {
   const ad = 'HTTP/2 (ALPN)';
   const s = (v: number | null | undefined) => (v == null ? '?' : fmtNumber(v));
   const yapilmadi = typeof o.protokol === 'string' && o.protokol !== 'h2';
+  // curl HTTP/2'siz yuk makinesi: ALPN openssl ile olculdu (yollar HTTP/1.1 ile denendi, h2 yol sayisi yok).
+  if (!yapilmadi && o.alpnKaynak === 'openssl') {
+    if (o.alpnH2 === true) return { ad, sonuc: 'gecti', deger: 'Hedef ALPN ile HTTP/2 sunuyor (openssl ile ölçüldü; curl HTTP/2’siz, yollar HTTP/1.1 ile denendi)' };
+    if (o.alpnH2 === false) return { ad, sonuc: 'kaldi', deger: 'Hedef bu Host için HTTP/2 sunmuyor (openssl ile ölçüldü)' };
+    return { ad, sonuc: 'yok', deger: 'curl HTTP/2’siz; ALPN openssl ile ölçülemedi' };
+  }
   if (!yapilmadi && o.alpnH2 === true) return { ad, sonuc: 'gecti', deger: `${s(o.yollarH2)}/${s(o.yollarYanitli)} yol HTTP/2 ile yanıt verdi` };
   if (!yapilmadi && o.alpnH2 === false && o.curlH2 !== false) return { ad, sonuc: 'kaldi', deger: `Hedef bu Host için HTTP/2 sunmuyor (${s(o.yollarH2)}/${s(o.yollarYanitli)} yol)` };
   return { ad, sonuc: 'yok', deger: o.curlH2 === false ? 'curl HTTP/2 desteklemiyor' : undefined };

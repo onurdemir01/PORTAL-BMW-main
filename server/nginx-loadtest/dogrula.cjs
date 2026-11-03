@@ -707,7 +707,9 @@ const SAYI = (v) => {
  * ve sikistirma iki kipte ayni (yuk makinesi tarafi). Sabit uyarilar listenin sonunda.
  * protokol (kosu SATIRININ parametreler.protokol'u, yoksa 'h1'): h1'de cikti BIREBIR eskisi (h2
  * alanlari okunmaz). h2'de motor blogundan hemen sonra TEK engel (ilk tutan): on kontrol h2 icin
- * yapilmadi > curl h2'siz > hedef ALPN ile h2 sunmuyor > olculemedi (fail-closed).
+ * yapilmadi > curl h2'siz > hedef ALPN ile h2 sunmuyor > olculemedi (fail-closed). curl h2'siz iken
+ * alpn_kaynak 'openssl' (yeni playbook ALPN'i openssl s_client ile olcer) ise curl engeli yok; ALPN
+ * sonucu (true / false / olculemedi) ayni sirayla uygulanir. Eski playbook alpn_kaynak gondermez.
  */
 function onKontrolDegerlendir(ok, { hedefTuru = 'sunucu', motor = 'k6', aracli = false, aracSha256 = null, protokol = 'h1' } = {}) {
   const engeller = [];
@@ -734,8 +736,11 @@ function onKontrolDegerlendir(ok, { hedefTuru = 'sunucu', motor = 'k6', aracli =
   if (protokol === 'h2') {
     const h2Engeli = (() => {
       if (typeof ok.protokol === 'string' && ok.protokol !== 'h2') return 'ön kontrol HTTP/2 için yapılmadı; ön kontrolü yeniden çalıştırın';
-      if (ok.curl_h2 === false) return 'yük makinesindeki curl HTTP/2 desteklemiyor; HTTP/2 ön kontrolü yapılamadı';
+      // curl h2'siz: yeni playbook ALPN'i openssl ile olcer (alpn_kaynak 'openssl'); kaynak yoksa / baska ise eski engel.
+      const opensslAlpn = ok.alpn_kaynak === 'openssl';
+      if (ok.curl_h2 === false && !opensslAlpn) return 'yük makinesindeki curl HTTP/2 desteklemiyor; HTTP/2 ön kontrolü yapılamadı';
       if (ok.alpn_h2 === false) {
+        if (opensslAlpn) return 'Hedef bu Host için HTTP/2 sunmuyor (ALPN, openssl ile ölçüldü; yük makinesindeki curl HTTP/2 desteklemediği için yollar HTTP/1.1 ile denendi). nginx’te bu server bloğunda http2 açık değil ya da SNI kapalıyken IP:443’ün varsayılan sunucusu HTTP/2 sunmuyor; HTTP/1.1 ile koşun ya da SNI’yi açın.';
         const s = (v) => (SAYI(v) === null ? '?' : String(SAYI(v)));
         return `Hedef bu Host için HTTP/2 sunmuyor (ALPN): ${s(ok.yollar_h2)}/${s(ok.yollar_yanitli)} yol HTTP/2 ile yanıt verdi. nginx’te bu server bloğunda http2 açık değil ya da SNI kapalıyken IP:443’ün varsayılan sunucusu HTTP/2 sunmuyor; HTTP/1.1 ile koşun ya da SNI’yi açın.`;
       }

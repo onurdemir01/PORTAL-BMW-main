@@ -372,10 +372,13 @@ export function onKontrolDegerlendir(k: DegerlendirmeGirdisi | null): OnKontrolD
   return d;
 }
 /** HTTP/2 on kontrol engeli (ilk tutan TEK madde; sunucu dogrula.onKontrolDegerlendir ile ayni metin ve sira); yoksa null. */
-export function h2Engeli(o: Pick<NlOnKontrol, 'protokol' | 'curlH2' | 'alpnH2' | 'yollarYanitli' | 'yollarH2'>): string | null {
+export function h2Engeli(o: Pick<NlOnKontrol, 'protokol' | 'curlH2' | 'alpnH2' | 'yollarYanitli' | 'yollarH2' | 'alpnKaynak'>): string | null {
   if (typeof o.protokol === 'string' && o.protokol !== 'h2') return 'Ön kontrol HTTP/2 için yapılmadı; ön kontrolü yeniden çalıştırın.';
-  if (o.curlH2 === false) return 'Yük sunucusundaki curl HTTP/2 desteklemiyor; HTTP/2 ön kontrolü yapılamadı.';
+  // curl HTTP/2'siz: yeni playbook ALPN'i openssl ile olcer (alpnKaynak 'openssl'); kaynak yoksa eski engel (fail-closed).
+  const opensslAlpn = o.alpnKaynak === 'openssl';
+  if (o.curlH2 === false && !opensslAlpn) return 'Yük sunucusundaki curl HTTP/2 desteklemiyor; HTTP/2 ön kontrolü yapılamadı.';
   if (o.alpnH2 === false) {
+    if (opensslAlpn) return 'Hedef bu Host için HTTP/2 sunmuyor (ALPN, openssl ile ölçüldü; yük makinesindeki curl HTTP/2 desteklemediği için yollar HTTP/1.1 ile denendi). nginx’te bu server bloğunda http2 açık değil ya da SNI kapalıyken IP:443’ün varsayılan sunucusu HTTP/2 sunmuyor; HTTP/1.1 ile koşun ya da SNI’yi açın.';
     const s = (v: number | null | undefined) => (v == null ? '?' : String(v));
     return `Hedef bu Host için HTTP/2 sunmuyor (ALPN): ${s(o.yollarH2)}/${s(o.yollarYanitli)} yol HTTP/2 ile yanıt verdi. nginx’te bu server bloğunda http2 açık değil ya da SNI kapalıyken IP:443’ün varsayılan sunucusu HTTP/2 sunmuyor; HTTP/1.1 ile koşun ya da SNI’yi açın.`;
   }

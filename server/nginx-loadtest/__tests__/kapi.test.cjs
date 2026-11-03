@@ -2187,6 +2187,28 @@ test('IX-H protokol: /hedefler, on kontrol -> kosu (h2 engeli, eski h1 on kontro
   assert.equal(r.statusCode, 200, JSON.stringify(r.body));
   const kH2 = D.kosular.find((x) => x.id === r.body.kosuId);
   assert.deepEqual([JSON.parse(kH2.parametreler).protokol, D.launch.at(-1)[2].yuk_protokol], ['h2', 'h2']);
+  // AWX 3477866: curl h2'siz yuk makinesi, ALPN openssl ile (alpn_kaynak openssl): alpn true kosu baslar,
+  // alpn false openssl metinli 409; kaynak yoksa bugunku curl engeli (fail-closed).
+  const OZET_OSSL = { ...OK_OZET_H2, curl_h2: false, alpn_kaynak: 'openssl', yollar_h2: '-' };
+  sifirla();
+  senaryoEkle();
+  ok = await onKontrolHazirla({ govde: govdeH2, ozet: OZET_OSSL });
+  r = await kos(ok);
+  assert.equal(r.statusCode, 200, JSON.stringify(r.body));
+  assert.equal(D.launch.at(-1)[2].yuk_protokol, 'h2');
+  for (const [ozet, beklenen] of [
+    [{ ...OZET_OSSL, alpn_h2: false }, /^Hedef bu Host için HTTP\/2 sunmuyor \(ALPN, openssl ile ölçüldü;/],
+    [{ ...OZET_OSSL, alpn_kaynak: undefined }, /^yük makinesindeki curl HTTP\/2 desteklemiyor/],
+  ]) {
+    sifirla();
+    senaryoEkle();
+    ok = await onKontrolHazirla({ govde: govdeH2, ozet });
+    const n = D.launch.length;
+    r = await kos(ok);
+    assert.equal(r.statusCode, 409, JSON.stringify(r.body));
+    assert.match(r.body.engeller[0], beklenen);
+    assert.equal(D.launch.length, n);
+  }
   // h1 kosusu h2 alanlarini OKUMAZ: alpn false olsa da engel yok.
   sifirla();
   senaryoEkle();

@@ -323,6 +323,57 @@ describe('Yük Testi HTTP/2 — cümleler ve ön kontrol (H2-C8, H2-C9)', () => 
     expect(screen.queryByText('HTTP/2 (ALPN)')).toBeNull();
     expect(screen.getByText('Ön kontrol temiz — koşu başlatılabilir.')).toBeTruthy();
   });
+
+  it('H2-C9b curl HTTP/2’siz yük sunucusu, ALPN openssl ile (AWX 3477866): geçti / kaldı / ölçülemedi; kaynak yoksa curl engeli', () => {
+    const OSSL = { ...OK_H2, curl_h2: false, alpn_kaynak: 'openssl', yollar_h2: '-' };
+    const OPENSSL = 'Hedef bu Host için HTTP/2 sunmuyor (ALPN, openssl ile ölçüldü; yük makinesindeki curl HTTP/2 desteklemediği için yollar HTTP/1.1 ile denendi). nginx’te bu server bloğunda http2 açık değil ya da SNI kapalıyken IP:443’ün varsayılan sunucusu HTTP/2 sunmuyor; HTTP/1.1 ile koşun ya da SNI’yi açın.';
+    const CURL = 'Yük sunucusundaki curl HTTP/2 desteklemiyor; HTTP/2 ön kontrolü yapılamadı.';
+    const OLCULEMEDI = 'HTTP/2 desteği ölçülemedi (playbook HTTP/2 ön kontrolünü desteklemiyor olabilir; Ansible deposunu güncelleyin).';
+    const eng = (ok: Record<string, unknown>) => onKontrolDegerlendir({ durum: 'DONE', isDurumu: 'OK', motor: 'k6', protokol: 'h2', onKontrol: onKontrolNormalle(ok) }).engeller;
+    // (a) openssl + alpn true: engel yok, satir gecti.
+    const { unmount: u1 } = panel(OSSL);
+    expect(satir().textContent).toContain('Hedef ALPN ile HTTP/2 sunuyor (openssl ile ölçüldü; curl HTTP/2’siz, yollar HTTP/1.1 ile denendi) · geçti');
+    expect(screen.getByText('Ön kontrol temiz — koşu başlatılabilir.')).toBeTruthy();
+    u1();
+    expect(eng(OSSL)).toEqual([]);
+    // (b) openssl + alpn false: openssl metinli engel, satir kaldi.
+    const { unmount: u2 } = panel({ ...OSSL, alpn_h2: false });
+    expect(satir().textContent).toContain('Hedef bu Host için HTTP/2 sunmuyor (openssl ile ölçüldü) · kaldı');
+    expect(screen.getByText(OPENSSL)).toBeTruthy();
+    u2();
+    // (d) openssl + alpn olculemedi: olculemedi (gecti DEGIL).
+    for (const v of [null, '-']) {
+      const { unmount } = panel({ ...OSSL, alpn_h2: v });
+      expect(satir().textContent).toContain('curl HTTP/2’siz; ALPN openssl ile ölçülemedi · ölçülemedi');
+      unmount();
+      expect(eng({ ...OSSL, alpn_h2: v })).toEqual([OLCULEMEDI]);
+    }
+    // (c) kaynak yok / 'curl' / gecersiz: bugunku curl engeli ve satir metni (fail-closed).
+    for (const k of [undefined, 'curl', 'OpenSSL', 1]) {
+      for (const a of [true, false]) expect(eng({ ...OSSL, alpn_kaynak: k, alpn_h2: a })).toEqual([CURL]);
+      const { unmount } = panel({ ...OSSL, alpn_kaynak: k, alpn_h2: '-' });
+      expect(satir().textContent).toContain('curl HTTP/2 desteklemiyor · ölçülemedi');
+      unmount();
+    }
+    // curl kaynagi: bugunku sayili metinler aynen.
+    const { unmount: u3 } = panel({ ...OK_H2, alpn_kaynak: 'curl', yollar_h2: 1, alpn_h2: false });
+    expect(satir().textContent).toContain('Hedef bu Host için HTTP/2 sunmuyor (1/3 yol) · kaldı');
+    expect(screen.getByText(/^Hedef bu Host için HTTP\/2 sunmuyor \(ALPN\): 1\/3 yol HTTP\/2 ile yanıt verdi\./)).toBeTruthy();
+    u3();
+    // h1 on kontrolu openssl ile de h2'ye gecmez.
+    expect(eng({ ...OSSL, protokol: 'h1' })).toEqual(['Ön kontrol HTTP/2 için yapılmadı; ön kontrolü yeniden çalıştırın.']);
+    // ...ve panel satiri da openssl sonucunu gostermez (gecti / kaldi DEGIL; h1 on kontrolu h2 kaniti degil).
+    for (const a of [true, false]) {
+      const { unmount } = panel({ ...OSSL, protokol: 'h1', alpn_h2: a });
+      expect(satir().textContent).toContain('curl HTTP/2 desteklemiyor · ölçülemedi');
+      expect(satir().textContent).not.toMatch(/geçti|kaldı|openssl/);
+      expect(screen.getByText('Ön kontrol HTTP/2 için yapılmadı; ön kontrolü yeniden çalıştırın.')).toBeTruthy();
+      unmount();
+    }
+    // Sunucuyla ayni metin (istemci yalniz nokta ile biter; openssl metni zaten noktali).
+    const dg = sunucuCjs('../../../../server/nginx-loadtest/dogrula.cjs') as { onKontrolDegerlendir: (ok: unknown, s: unknown) => { engeller: string[] } };
+    expect(dg.onKontrolDegerlendir({ ...OSSL, alpn_h2: false }, { protokol: 'h2' }).engeller).toContain(OPENSSL);
+  });
 });
 
 describe('Yük Testi HTTP/2 — karşılaştır (H2-C10)', () => {
@@ -357,7 +408,10 @@ describe('Yük Testi HTTP/2 — normalleştirme ve saf kurallar (H2-C11)', () =>
     expect(kosuSatiriNormalle({ id: 1, protokol: 'h1', parametreler: { protokol: 'h2' } }).protokol).toBe('h1');
     expect(kosuSatiriNormalle({ id: 1, protokol: 'H2' }).protokol).toBe('h1');
     expect(onKontrolNormalle({ k6_var: true, protokol: 'h2', curl_h2: 'True', alpn_h2: 'False', yollar_yanitli: '4', yollar_h2: '1' })).toMatchObject({ protokol: 'h2', curlH2: true, alpnH2: false, yollarYanitli: 4, yollarH2: 1 });
-    expect(onKontrolNormalle({ k6_var: true, alpn_h2: '-' })).toMatchObject({ protokol: null, curlH2: null, alpnH2: null, yollarYanitli: null, yollarH2: null });
+    expect(onKontrolNormalle({ k6_var: true, alpn_h2: '-' })).toMatchObject({ protokol: null, curlH2: null, alpnH2: null, yollarYanitli: null, yollarH2: null, alpnKaynak: null });
+    expect(onKontrolNormalle({ k6_var: true, alpn_kaynak: 'openssl' })?.alpnKaynak).toBe('openssl');
+    expect(onKontrolNormalle({ k6_var: true, alpnKaynak: 'curl' })?.alpnKaynak).toBe('curl');
+    for (const v of ['OpenSSL', 'openssl ', '-', '', 1, true, null]) expect(onKontrolNormalle({ k6_var: true, alpn_kaynak: v })?.alpnKaynak).toBeNull();
     // Saf kurallar (sunucu 400 metinleriyle).
     const p = { ...P_H2 };
     expect(parametreHatalari(p, SINIR)).toEqual({});

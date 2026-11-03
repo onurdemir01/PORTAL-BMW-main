@@ -36,7 +36,7 @@ ve `durdur.sh` Portal'a özgüdür. Portal tarafı sözleşmesi: Portal `docs/NG
 | Dosya | İş |
 |---|---|
 | `nginx_loadtest.yml` | Tek playbook, dört kip (`yuk_islem`: `on_kontrol`, `kosu`, `durdur`, `araclar`), iki hedef türü, iki motor. On play (aşağıda). |
-| `files/on_kontrol.sh` | Yük üretmeyen ön kontrol. `hedef` kipi hedefte (IP yerel mi, `nginx -T`'de server_name, nginx master sayısı, `/web_log` doluluğu ve okunabilirliği, log biçimi, statik sıkıştırma direktifi); `yollar` kipi yük makinesinde (senaryodaki her tekil yola TEK istek: HTTP/1.1, `yuk_protokol` h2 ise `curl --http2` ile ALPN; h2'de `alpn_h2` satırı). |
+| `files/on_kontrol.sh` | Yük üretmeyen ön kontrol. `hedef` kipi hedefte (IP yerel mi, `nginx -T`'de server_name, nginx master sayısı, `/web_log` doluluğu ve okunabilirliği, log biçimi, statik sıkıştırma direktifi); `yollar` kipi yük makinesinde (senaryodaki her tekil yola TEK istek: HTTP/1.1, `yuk_protokol` h2 ise `curl --http2` ile ALPN; curl HTTP/2'siz derlenmişse yollar HTTP/1.1 ile denenir ve ALPN `openssl s_client` ile TEK bağlantıda ölçülür; h2'de `alpn_h2` ve `alpn_kaynak curl|openssl` satırları). |
 | `files/kos.sh` | Kit kopyası: bir ADIM'ın (hız × tekrar) k6 koşularını sırayla çalıştırır (motor `k6`). |
 | `files/yuk_k6.js` | Kit kopyası: açık döngü (constant-arrival-rate) k6 betiği, istek başına TEK GET. |
 | `files/wrk_kos.sh` | Portal'a özgü: bir ADIM'ın (bağlantı × tekrar) wrk koşularını sırayla çalıştırır (motor `wrk`); dış sözleşmesi (çıkış kodları, `DUR:`/`HATA:` satırları, sonuç dosyaları, `kos.pid`) kos.sh ile aynı. |
@@ -239,6 +239,8 @@ ayrıca sayılır), sonra Portal, sonra Admin "Araçları hazırla"; arada ön k
 | Yeni Portal (h2) + eski playbook | Eski playbook `yuk_protokol`'ü tanımaz, HTTP/1.1 koşar; ön kontrolde `alpn_h2` gelmez (Portal engeli "ölçülemedi"), set_stats'ta `protokol` yankısı yok, istemci satırında `protokol` kolonu yok (analiz `protokol_farkli(beklenen=h2,olculen=yok)`) |
 | Yeni Portal + eski playbook, ön kontrol | Eski kapı işaret yolunu kabul eder; eski Play 3 ikiliyi bulamaz: "k6 yok ya da calistirilamiyor: /yeni-playbook-gerekli/k6" (wrk'de "wrk yok ..."), FAIL; koşu başlamaz |
 | Yeni Portal + eski playbook, araclar | Eski 1. assert `yuk_islem`'i reddeder; set_stats `islem: araclar` yankısıyla gelir, Portal "Ansible deposu güncel değil" der |
+| Eski Portal (`alpn_kaynak`'ı tanımaz) + yeni playbook, h2 ön kontrol, curl HTTP/2'siz yük makinesi | Betik artık reddetmez (yollar HTTP/1.1, ALPN openssl ile); eski Portal `curl_h2 false`'u engel sayar ve koşuyu bugünkü gibi başlatmaz (fail-closed). curl HTTP/2'li makinede davranış aynı |
+| Yeni Portal + eski playbook, h2 ön kontrol, curl HTTP/2'siz yük makinesi | Eski betik istek atmadan `SONUC FAIL` verir, `alpn_kaynak` gelmez; Portal bugünkü "curl HTTP/2 desteklemiyor" engelini gösterir |
 | Eski Portal + yeni playbook, ön kontrol / koşu | Araç assert'i (2. assert'ten önce) reddeder; hiçbir host eklenmez |
 | Durdur (her iki pencere) | Çalışır (araç değişkenleri durdurda denetlenmez) |
 | Zip'te `files/arac_hazirla.sh` eksik | Her kip "betiklerden biri yok" ile düşer |
@@ -268,7 +270,7 @@ Tek yazar localhost, `per_host: false`, `aggregate: false`, `fail`'den ÖNCE ve 
                 yollar_toplam, yollar_200, ilk_hatalar: [{yol, status}] (≤20),
                 sikistirma: {statik, dinamik, sikistirmasiz},
                 protokol ('h1'|'h2'|null), curl_h2 (bool|null), alpn_h2 (bool|null),
-                yollar_yanitli (int|null), yollar_h2 (int|null) } | null,
+                alpn_kaynak ('curl'|'openssl'|null), yollar_yanitli (int|null), yollar_h2 (int|null) } | null,
   kosu: { kos_rc (int|null), kaydedici_rc (int|null), bas_epoch, bit_epoch,
           istemci_ozet: [istemci_<TUR>.json içerikleri], dosyalar: [{ad, bayt}], sw_dizin (str|null) } | null,
   durdur: { durdurulan: ["<HOST> <ad> pid <pid> <TERM|KILL|KALDI>"] } | null,
@@ -291,10 +293,14 @@ tamamlanmadi (erisilemedi ya da dustu)`, `/sw yayini: <...>` (`arac dizini zaten
   durdurması, `null`). Portal yankıyı yalnız metinse koşu satırıyla karşılaştırır.
 - `protokol`: `yuk_protokol | default('h1')` yankısı (yoksa `h1`, geçersizse `null`; rescue'daki yedek sonuçta da).
   Eski playbook bu anahtarı hiç yazmaz; Portal yalnız metinse satırın protokolüyle karşılaştırır.
-- on_kontrol `protokol` / `curl_h2` / `alpn_h2` / `yollar_yanitli` / `yollar_h2`: `on_kontrol.sh yollar`'ın satırları.
-  `protokol` her yeni ölçümde dolu; diğer dördü YALNIZ h2'de (h1'de `null`). `alpn_h2` true = yanıt veren her yol
-  HTTP/2 ile yanıt verdi, false = en az biri HTTP/1.1, `null` = ölçülemedi (yanıtlı yol yok, curl h2'siz ya da eski
-  betik).
+- on_kontrol `protokol` / `curl_h2` / `alpn_h2` / `alpn_kaynak` / `yollar_yanitli` / `yollar_h2`: `on_kontrol.sh
+  yollar`'ın satırları. `protokol` her yeni ölçümde dolu; diğerleri YALNIZ h2'de (h1'de `null`). `alpn_kaynak`
+  ALPN'in nereden ölçüldüğü: `'curl'` (curl HTTP/2'li: `alpn_h2` true = yanıt veren her yol HTTP/2 ile yanıt verdi,
+  false = en az biri HTTP/1.1, `null` = yanıtlı yol yok) ya da `'openssl'` (curl HTTP/2'siz: yollar HTTP/1.1 ile
+  denendi, `yollar_h2` `null`; `alpn_h2` TEK `openssl s_client -alpn h2,http/1.1` bağlantısından: true = sunucu h2
+  seçti, false = h2 dışı protokol ya da ALPN yok, `null` = openssl yok / bağlantı ya da el sıkışma kurulamadı).
+  Başka her değer `null`; eski betik bu satırı basmaz (`null`: curl h2'siz yük makinesinde bugünkü gibi
+  "ölçülemedi").
 - `arac_*` (on_kontrol, iki türde): `arac_dogrulandi` koşu dizinindeki kopya Portal'ın sha256'sıyla doğrulandı mı
   (blok hiç koşmadıysa `null`), `arac_sha256` kopyanın ölçülen sha256'sı, `arac_glibc` yük makinesinin glibc'si,
   `arac_hata` kopya nedeni ya da `glibc uyumsuz: makinede glibc <g>, arac GLIBC_<x.y> istiyor`.
@@ -310,8 +316,11 @@ tamamlanmadi (erisilemedi ya da dustu)`, `/sw yayini: <...>` (`arac dizini zaten
     istek gitmez ve yük makinesi tarafı da `FAIL`), `/web_log` okunamıyor; iki türde yük makinesi sonucu OK değil
     (serbestte izin dosyası reddi dahil), araç kopyası doğrulanamadı (`arac kopyasi dogrulanamadi: <neden|olculmedi>`)
     ya da doğrulandı ama çalıştırılamadı (`arac calistirilamadi: glibc uyumsuz: ...`), h2 istendi ve hedef ALPN ile h2
-    sunmuyor (`HTTP/2: hedef bu Host icin ALPN ile h2 sunmuyor (<n2>/<ny> yol h2)`) ya da ölçülemedi (`HTTP/2
-    olculemedi (curl h2 desteklemiyor ya da yanitli yol yok)`; h1'de bu iki engel YOK), seçili motorun kopyası
+    sunmuyor (`HTTP/2: hedef bu Host icin ALPN ile h2 sunmuyor (<n2>/<ny> yol h2)`; `alpn_kaynak` openssl ise
+    `... sunmuyor (openssl ile olculdu; curl h2 desteklemiyor, yollar HTTP/1.1 ile denendi)`) ya da ölçülemedi
+    (`HTTP/2 olculemedi (curl h2 desteklemiyor ya da yanitli yol yok)`; openssl ise `HTTP/2 olculemedi (curl h2
+    desteklemiyor, openssl ile ALPN olculemedi)`; h1'de bu iki engel YOK; `curl_h2` false TEK BAŞINA engel değildir:
+    openssl ALPN'i h2 ise engel yok), seçili motorun kopyası
     çalışmıyor ("k6 kopyasi calistirilamiyor: <dizin>/arac/k6"; wrk'de iki ayrı metin: "wrk kopyasi calistirilamiyor:
     <dizin>/arac/wrk" / "wrk calisiyor ama surumu okunamadi ya da 4 altinda (...); arac setini yeniden hazirlayin
     (Portal Arac paneli)"), hiç yol denenmedi, hedef IP yük makinesinde yerel (istek gönderilmez). **server_name `nginx -T`'de yok engel
@@ -497,11 +506,25 @@ Tarayıcılar çoğunlukla HTTP/2 kullanır; `yuk_protokol` `h2` seçilirse k6 h
   kontrol edin.`; h2 `HTTP/2 disi yanit (<n>): hedef bu Host icin h2 sunmuyor ya da baglanti HTTP/1.1'e dustu.`
   Eski `http2` kolonu DUR için okunmaz.
 - Ön kontrol (`on_kontrol.sh yollar`): her ölçümde `protokol h1|h2` satırı. h2'de curl `--http2` (h1'de `--http1.1`,
-  curl HTTP/2'siz ise bayraksız: bugünkü gibi); `curl_h2 1|0` (0 ise hiç istek atılmadan `SONUC FAIL`), OZET'ten
-  sonra `yollar_yanitli`, `yollar_h2`, `alpn_h2 1|0|-`. Playbook engeli: h2 + `alpn_h2` false → `HTTP/2: hedef bu Host
-  icin ALPN ile h2 sunmuyor (<n2>/<ny> yol h2)`; h2 + `null` → `HTTP/2 olculemedi (...)`. `SONUC` OK/FAIL anlamı
-  değişmez. Ön kontrolde k6'nın kendisi istek atmaz: h2 kanıtı curl ALPN'idir, k6'nın kanıtı koşu başındaki setup()
-  (başarısızsa ilk TUR yük üretilmeden DUR).
+  curl HTTP/2'siz ise bayraksız: bugünkü gibi); her zaman `curl_h2 1|0`. curl_h2 1: OZET'ten sonra `yollar_yanitli`,
+  `yollar_h2`, `alpn_h2 1|0|-` (yollardan), `alpn_kaynak curl`. curl_h2 0 (ör. RHEL 7 curl'ü; AWX 3477866'da
+  GBNGXT34 böyle reddedilmişti): ARTIK RED YOK; yollar h1 yolu gibi bayraksız denenir (200 / sıkıştırma ölçümü
+  aynı), OZET'ten sonra `yollar_yanitli <n>`, `yollar_h2 -`, `alpn_h2 1|0|-`, `alpn_kaynak openssl`. ALPN TEK
+  bağlantıda: `timeout <ZAMAN> openssl s_client -connect <HEDEF_IP>:443 -alpn h2,http/1.1` + SNI=1 `-servername
+  <host>` / SNI=0 `-noservername` (k6 IP'ye SNI göndermez, aynı varsayılan sunucu seçilir; 1.1.1 öncesi openssl
+  `-noservername`'i tanımaz ama SNI'yi zaten göndermez: seçeneksiz bir kez daha denenir), stdin `/dev/null`, çıktı
+  yalnız geçici dosyada (BASILMAZ). k6 gibi `h2,http/1.1` sunulur: yalnız `h2` sunulsaydı http2'siz nginx el
+  sıkışmayı `no_application_protocol` ile keserdi ve sonuç "sunmuyor" yerine "ölçülemedi" olurdu. `ALPN protocol:
+  h2` → 1; `ALPN protocol: <başka>` / `No ALPN negotiated` → 0; openssl / timeout yok, bağlantı ya da el sıkışma
+  kurulamadı (`Cipher is (NONE)`), seçenek desteklenmiyor ya da satır yok → `-` (fail-closed). Yanıtlı yol yoksa
+  (`yollar_yanitli 0`, yollar denendi ama hepsi 000) ALPN yine ölçülür: ön kontrol h2 engeli koymaz (Portal ve
+  playbook yalnız `yollar_toplam 0`'da "hiç yol denenmedi" ile engeller; burada yalnız "n/n yol 200 dönmedi"
+  uyarısı çıkar). curl kaynağında aynı durum `alpn_h2 -` → "ölçülemedi" engelidir; iki kaynak bu noktada
+  farklıdır, koşu güvenliğini k6 setup() (her kontrol yolunun sürümü) korur. Playbook engeli: h2 + `alpn_h2` false → `HTTP/2: hedef bu
+  Host icin ALPN ile h2 sunmuyor (<n2>/<ny> yol h2)` (openssl: `(openssl ile olculdu; curl h2 desteklemiyor, yollar
+  HTTP/1.1 ile denendi)`); h2 + `null` → `HTTP/2 olculemedi (...)`. `SONUC` OK/FAIL anlamı değişmez. Ön kontrolde
+  k6'nın kendisi istek atmaz: h2 kanıtı curl ya da openssl ALPN'idir, k6'nın kanıtı koşu başındaki setup() ve her
+  yanıtı sayan `protokol_uyumsuz` (başarısızsa ilk TUR yük üretilmeden DUR); koşu güvenliği curl'e bağlı değildir.
 - ALPN notu: SNI kapalıyken nginx ALPN'i IP:443'ün varsayılan sunucusunun http2 ayarıyla seçer; `listen ... http2`
   (eski biçim) dinleme soketi geneli, `http2 on;` (1.25.1+) SNI ile seçilen server bloğu. Hedef h2 sunmuyorsa `SNI=1`
   ile yeniden denenebilir.
@@ -919,6 +942,9 @@ k6 / sunucu hedef (ilk kurulum):
 8. HTTP/2 (`yuk_protokol` h2, kip `ka`): h2 sunan bir TEST vhost'ta ön kontrol `alpn_h2 true`, h2 sunmayan birinde
    `HTTP/2: hedef bu Host icin ALPN ile h2 sunmuyor` engeli; 1 adımlık h2 koşusunda istemci CSV'sinde `protokol` h2,
    `protokol_uyumsuz` 0, `http2` ≈ istek sayısı; nginx logunda `connection_request` ile VU başına bağlantı modeli not edilir.
+   curl'ü HTTP/2'siz yük makinesinde (GBNGXT34: `curl --version`'da `HTTP2` yok) aynı iki vhost: `curl_h2 0`,
+   `alpn_kaynak openssl`, `yollar_h2 -`, OZET bugünkü h1 ön kontrolüyle aynı; h2'li vhost'ta `alpn_h2 1` (engel yok),
+   h2'siz vhost'ta `alpn_h2 0` ve openssl metinli engel; `openssl version` ve SNI=0 / SNI=1 ikisi de not edilir.
 
 wrk ve serbest hedef:
 

@@ -340,8 +340,10 @@ kuralları geçmişte kaldı.
    `user-agent=` var mı; serbest: IP yük makinesinde yerel değil mi ve yük makinesindeki izin dosyası
    (eşleşen girdi raporlanır). İki kipte: seçili motor var mı (sürüm, sha256), senaryodaki her yol 200
    dönüyor mu, sıkıştırma (statik / dinamik / yok). HTTP/2 koşusunda ayrıca her yol curl `--http2` ile
-   denenir; hedef bu Host için ALPN ile HTTP/2 sunmuyorsa ya da ölçülemediyse koşu **başlatılamaz**
-   (§5.2).
+   denenir; yük makinesindeki curl HTTP/2'siz derlenmişse yollar HTTP/1.1 ile denenir ve ALPN tek
+   bağlantıda `openssl s_client -alpn h2,http/1.1` ile ölçülür (k6 HTTP/2'yi kendisi konuşur; curl yalnız ön
+   kontrol aracıdır). Hedef bu Host için ALPN ile HTTP/2 sunmuyorsa ya da ölçülemediyse koşu
+   **başlatılamaz** (§5.2).
 6. **Başlat** — son **15 dk** içinde **sizin** çalıştırdığınız, tamamlanmış ve OK ön kontrol
    gerekir; parametreler ön kontroldekinin aynısıdır (istemci değiştiremez). Onay penceresinde
    sunucu hedefinde hedef sunucu adını, serbest hedefte **hedef IP'yi** birebir yazın. Uyarı varsa
@@ -849,7 +851,24 @@ Protokol). Varsayılan ve alanı olmayan **eski koşular HTTP/1.1**'dir; davran�
   yapılmadı"; curl HTTP/2'siz → "yük makinesindeki curl HTTP/2 desteklemiyor"; `alpn_h2` false →
   "Hedef bu Host için HTTP/2 sunmuyor (ALPN): n/m yol HTTP/2 ile yanıt verdi …"; `alpn_h2` true değil
   (yok / ölçülemedi) → "HTTP/2 desteği ölçülemedi …" (fail-closed). HTTP/1.1 koşusunda bu alanlar
-  **okunmaz**, çıktı öncekiyle birebir aynıdır. **SNI notu:** SNI kapalıyken (Host yalnız başlıkta) nginx
+  **okunmaz**, çıktı öncekiyle birebir aynıdır.
+* **curl HTTP/2'siz yük makinesi (2026-11-03, AWX 3477866, GBNGXT34):** sistem curl'ü `http2` özelliği
+  olmadan derlenmişse ön kontrol artık reddetmez: yollar HTTP/1.1 ile denenir (200 / sıkıştırma ölçümü
+  aynı), ALPN ardından **tek bağlantıda** `openssl s_client -connect <IP>:443 -alpn h2,http/1.1` ile ölçülür (SNI
+  açıksa `-servername <Host>`, kapalıysa `-noservername`: k6 IP'ye SNI göndermez, aynı varsayılan sunucu
+  seçilir). Özete `alpn_kaynak` (`curl` | `openssl`) eklenir; openssl yolunda `curl_h2` false,
+  `yollar_h2` `-`. Kural: curl engeli **yalnız** `curl_h2` false **ve** `alpn_kaynak` `openssl` değilken
+  (alan yok / `curl` / tanınmayan değer → bugünkü curl engeli, fail-closed; eski playbook alanı
+  göndermez). `alpn_kaynak` `openssl` iken: `alpn_h2` true → engel yok (ön kontrol satırı "Hedef ALPN ile
+  HTTP/2 sunuyor (openssl ile ölçüldü; …)"); false → "Hedef bu Host için HTTP/2 sunmuyor (ALPN, openssl
+  ile ölçüldü; yük makinesindeki curl HTTP/2 desteklemediği için yollar HTTP/1.1 ile denendi) …";
+  ölçülemedi (openssl yok, bağlantı kurulamadı, satır yok) → "HTTP/2 desteği ölçülemedi …". Koşu
+  güvenliği curl'e bağlı değildir: k6 `setup()` ve `protokol_uyumsuz` her yanıtın protokolünü denetler.
+  k6 (Go) gibi `h2,http/1.1` sunulur: yalnız `h2` sunulsaydı http2'siz nginx el sıkışmayı keserdi ve
+  sonuç "sunmuyor" yerine "ölçülemedi" olurdu. Hiçbir yol yanıt vermediyse (`yollar_yanitli` 0, hepsi
+  000) ALPN yine ölçülür ve h2 engeli çıkmaz (yalnız "n/n yol 200 dönmedi" uyarısı; "hiçbir yol
+  denenmedi" engeli yalnız `yollar_toplam` 0'dadır); curl kaynağında aynı durum "ölçülemedi" engelidir.
+  **SNI notu:** SNI kapalıyken (Host yalnız başlıkta) nginx
   ALPN'i IP:443'ün **varsayılan** sunucusunun http2 ayarıyla seçer; `listen … http2` (eski biçim) dinleme
   soketi geneline, `http2 on;` (1.25.1+) SNI ile seçilen server bloğuna uygulanır. Hedef site h2 açıkken
   "sunmuyor" görüyorsanız SNI'yi açın.

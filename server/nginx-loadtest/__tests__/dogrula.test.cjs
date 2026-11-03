@@ -1567,6 +1567,20 @@ test('DG-H3 onKontrolDegerlendir protokol: h1 cikti birebir; h2 TEK engel (h2 ic
   assert.deepEqual(e({ curl_h2: false, alpn_h2: false }).engeller, [CURL]);
   assert.deepEqual(e({ protokol: 'h1', curl_h2: false, alpn_h2: false }).engeller, [YAPILMADI]);
   assert.deepEqual(e({ protokol: 'h1', alpn_h2: true }).engeller, [YAPILMADI], 'h1 on kontrol h2 kosusuna gecmez');
+  // AWX 3477866: curl h2'siz yuk makinesi, ALPN openssl ile olculdu (alpn_kaynak 'openssl'): curl engeli yok.
+  const OPENSSL = 'Hedef bu Host için HTTP/2 sunmuyor (ALPN, openssl ile ölçüldü; yük makinesindeki curl HTTP/2 desteklemediği için yollar HTTP/1.1 ile denendi). nginx’te bu server bloğunda http2 açık değil ya da SNI kapalıyken IP:443’ün varsayılan sunucusu HTTP/2 sunmuyor; HTTP/1.1 ile koşun ya da SNI’yi açın.';
+  const OSSL = { curl_h2: false, alpn_kaynak: 'openssl', yollar_h2: '-', yollar_yanitli: 10 };
+  assert.deepEqual(e({ ...OSSL, alpn_h2: true }), dg.onKontrolDegerlendir({ ...YD21_TEMIZ }), 'openssl + alpn true: engel yok');
+  assert.deepEqual(e({ ...OSSL, alpn_h2: false }).engeller, [OPENSSL]);
+  assert.deepEqual(e({ ...OSSL, alpn_h2: false, curl_h2: true }).engeller, [OPENSSL], 'openssl kaynagi metni curl_h2 ne olursa olsun');
+  for (const v of [null, undefined, '-', 'true']) assert.deepEqual(e({ ...OSSL, alpn_h2: v }).engeller, [OLCULEMEDI], `openssl ${JSON.stringify(v)}`);
+  // Fail-closed: kaynak yok / 'curl' / gecersiz -> bugunku curl engeli (alpn ne olursa olsun).
+  for (const k of [undefined, null, 'curl', 'OpenSSL', 'openssl ', 1, true]) {
+    for (const a of [true, false, null]) assert.deepEqual(e({ ...OSSL, alpn_kaynak: k, alpn_h2: a }).engeller, [CURL], `kaynak ${JSON.stringify(k)} alpn ${a}`);
+  }
+  assert.deepEqual(e({ curl_h2: true, alpn_kaynak: 'curl', alpn_h2: false, yollar_h2: 3, yollar_yanitli: 10 }).engeller, [ALPN(3, 10)], 'curl kaynagi bugunku sayili metin');
+  assert.deepEqual(e({ ...OSSL, protokol: 'h1', alpn_h2: true }).engeller, [YAPILMADI], 'openssl de yapilmadi kuralini gecmez');
+  assert.deepEqual(dg.onKontrolDegerlendir({ ...YD21_TEMIZ, ...OSSL, alpn_h2: false }, { protokol: 'h1' }), dg.onKontrolDegerlendir({ ...YD21_TEMIZ }), 'h1 kosusu alpn_kaynak okumaz');
   // TEK engel ve yeri: motor engelinden HEMEN sonra, /web_log engelinden once; uyarilar degismez.
   assert.deepEqual(e({ ip_yerel: false, k6_var: false, alpn_h2: false, yollar_h2: 0, yollar_yanitli: 2, log_dizini_okunur: false, master_sayisi: 2 }).engeller, [
     'seçilen IP hedef sunucuda yerel değil (ya da ölçülemedi)', 'k6 yük makinesinde bulunamadı', ALPN(0, 2), 'log dizini /web_log okunamıyor',

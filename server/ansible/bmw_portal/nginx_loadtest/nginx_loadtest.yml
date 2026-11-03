@@ -2114,6 +2114,7 @@
                   'protokol': (((hostvars[yuk_yuk_host].yt_yk | default({})).protokol | default('')) if (((hostvars[yuk_yuk_host].yt_yk | default({})).protokol | default('')) in ['h1', 'h2']) else none),
                   'curl_h2': (({'1': true, '0': false})[((hostvars[yuk_yuk_host].yt_yk | default({})).curl_h2 | default('-'))] | default(none)),
                   'alpn_h2': (({'1': true, '0': false})[((hostvars[yuk_yuk_host].yt_yk | default({})).alpn_h2 | default('-'))] | default(none)),
+                  'alpn_kaynak': (((hostvars[yuk_yuk_host].yt_yk | default({})).alpn_kaynak | default('')) if (((hostvars[yuk_yuk_host].yt_yk | default({})).alpn_kaynak | default('')) in ['curl', 'openssl']) else none),
                   'yollar_yanitli': (((hostvars[yuk_yuk_host].yt_yk | default({})).yollar_yanitli | int) if (((hostvars[yuk_yuk_host].yt_yk | default({})).yollar_yanitli | default('-')) is match('^[0-9]{1,4}$')) else none),
                   'yollar_h2': (((hostvars[yuk_yuk_host].yt_yk | default({})).yollar_h2 | int) if (((hostvars[yuk_yuk_host].yt_yk | default({})).yollar_h2 | default('-')) is match('^[0-9]{1,4}$')) else none)} }}
           when: (yt8_gecti | bool) and ((yuk_islem | default('')) == 'on_kontrol')
@@ -2129,8 +2130,8 @@
                  + (['arac calistirilamadi: ' ~ yt_s_onk.arac_hata] if ((yt_s_onk.arac_dogrulandi is sameas true) and (yt_s_onk.arac_hata is string)) else [])
                  + (['k6 kopyasi calistirilamiyor: ' ~ (hostvars[yuk_yuk_host].yt_dizin | default('-')) ~ '/arac/k6'] if ((yt8_motor == 'k6') and not (yt_s_onk.k6_var | bool)) else [])
                  + (([('wrk calisiyor ama surumu okunamadi ya da 4 altinda (' ~ (yt_s_onk.wrk_surum or '-') ~ '); arac setini yeniden hazirlayin (Portal Arac paneli)')] if (yt_s_onk.wrk_calisiyor | bool) else [('wrk kopyasi calistirilamiyor: ' ~ (hostvars[yuk_yuk_host].yt_dizin | default('-')) ~ '/arac/wrk')]) if ((yt8_motor == 'wrk') and not (yt_s_onk.wrk_var | bool)) else [])
-                 + (['HTTP/2: hedef bu Host icin ALPN ile h2 sunmuyor (' ~ (yt_s_onk.yollar_h2 | string) ~ '/' ~ (yt_s_onk.yollar_yanitli | string) ~ ' yol h2)'] if (((yuk_protokol | default('h1') | string) == 'h2') and (yt_s_onk.alpn_h2 is sameas false)) else [])
-                 + (['HTTP/2 olculemedi (curl h2 desteklemiyor ya da yanitli yol yok)'] if (((yuk_protokol | default('h1') | string) == 'h2') and (yt_s_onk.alpn_h2 is none)) else [])
+                 + ((['HTTP/2: hedef bu Host icin ALPN ile h2 sunmuyor (openssl ile olculdu; curl h2 desteklemiyor, yollar HTTP/1.1 ile denendi)'] if (yt_s_onk.alpn_kaynak == 'openssl') else ['HTTP/2: hedef bu Host icin ALPN ile h2 sunmuyor (' ~ (yt_s_onk.yollar_h2 | string) ~ '/' ~ (yt_s_onk.yollar_yanitli | string) ~ ' yol h2)']) if (((yuk_protokol | default('h1') | string) == 'h2') and (yt_s_onk.alpn_h2 is sameas false)) else [])
+                 + ((['HTTP/2 olculemedi (curl h2 desteklemiyor, openssl ile ALPN olculemedi)'] if (yt_s_onk.alpn_kaynak == 'openssl') else ['HTTP/2 olculemedi (curl h2 desteklemiyor ya da yanitli yol yok)']) if (((yuk_protokol | default('h1') | string) == 'h2') and (yt_s_onk.alpn_h2 is none)) else [])
                  + (['hicbir yol denenmedi'] if (yt_s_onk.yollar_toplam | int) == 0 else []) }}
           when: (yt8_gecti | bool) and ((yuk_islem | default('')) == 'on_kontrol')
 

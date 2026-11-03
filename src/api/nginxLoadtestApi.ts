@@ -30,6 +30,7 @@
 // `protokol` ('h1' | 'h2'; alani olmayan eski satir h1). h2 yalniz k6 ve kip 'ka'. /hedefler `protokoller` (alan yoksa
 // yalniz h1: eski sunucu h2 kabul etmez). Kosu satiri `protokol` (liste ve ayrinti; yoksa parametrelerden, o da yoksa h1).
 // On kontrol ozeti h2'de `protokol`, `curl_h2`, `alpn_h2`, `yollar_yanitli`, `yollar_h2` tasir (camelCase'e cevrilir).
+// 2026-11-03 (AWX 3477866, curl HTTP/2'siz yuk makinesi): `alpn_kaynak` ('curl' | 'openssl'); openssl ise curl engeli yok.
 // Reload fazi `olcum_kenari`: olay olcum penceresine degdi ama CPU penceresinin disinda (olcum etkilenmedi).
 import { okJson, safeJson } from './http';
 
@@ -159,6 +160,9 @@ export interface NlOnKontrol {
    *  sunucusundaki curl HTTP/2 destekliyor mu, ALPN ile h2 sunuldu mu (her yanitli yol h2: true; biri degil: false;
    *  yanitli yol yok: null), yanit veren ve h2 ile yanit veren yol sayisi. */
   protokol?: NlProtokol | null; curlH2?: boolean | null; alpnH2?: boolean | null; yollarYanitli?: number | null; yollarH2?: number | null;
+  /** ALPN'i olcen arac: 'curl' (curl HTTP/2'li, yollar h2 ile) ya da 'openssl' (curl HTTP/2'siz: yollar HTTP/1.1 ile denendi,
+   *  ALPN openssl s_client ile tek baglantida). Eski playbook / tanimsiz deger: null (curl h2'siz ise engel, fail-closed). */
+  alpnKaynak?: 'curl' | 'openssl' | null;
 }
 export interface NlKosu {
   id: number; islem: NlIslem; etiket: string | null; adim: string | null;
@@ -405,6 +409,10 @@ function durdurIsiNormalle(x: unknown): NlKosuAyrinti['durdurIsi'] {
   if (!o || jobId == null || jobId <= 0) return null;
   return { awxServerId: sayiVeya(alan(o, 'awxServerId', 'awx_server_id')), awxJobId: jobId };
 }
+/** alpn_kaynak yalniz 'curl' ya da 'openssl' (birebir); digeri null. */
+function alpnKaynakDegeri(v: unknown): 'curl' | 'openssl' | null {
+  return v === 'curl' || v === 'openssl' ? v : null;
+}
 export function onKontrolNormalle(x: unknown): NlOnKontrol | null {
   const ham = jsonNesne(x);
   if (!ham || !Object.keys(ham).length) return null;
@@ -428,6 +436,7 @@ export function onKontrolNormalle(x: unknown): NlOnKontrol | null {
     protokol: protokolDegeri(alan(ham, 'protokol')),
     curlH2: mantikVeya(alan(ham, 'curlH2', 'curl_h2')), alpnH2: mantikVeya(alan(ham, 'alpnH2', 'alpn_h2')),
     yollarYanitli: sayiVeya(alan(ham, 'yollarYanitli', 'yollar_yanitli')), yollarH2: sayiVeya(alan(ham, 'yollarH2', 'yollar_h2')),
+    alpnKaynak: alpnKaynakDegeri(alan(ham, 'alpnKaynak', 'alpn_kaynak')),
   };
 }
 /** Arac seti satiri (camel ya da snake; eksik alan null, bayrak false). id yoksa null (gecersiz satir listeye girmez). */
