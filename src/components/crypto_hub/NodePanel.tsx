@@ -5,8 +5,8 @@
 // kullanıcılar talep açsın.
 //
 // İLKELER
-//  * DEĞER GÖSTERİLMEZ: sunucu yalnız maskeli gösterim + sha256 verir. Ekran bir değeri
-//    "aynı" ya da "farklı" diye kendi hesaplamaz; katalog eşleşmesi sunucudan gelir.
+//  * DEĞER GÖSTERİLMEZ: sunucu yalnız maskeli gösterim + sha256 verir; kullanıcının yazdığı
+//    yeni değer de ekranda yalnız maskeli görünür (sihirbaz).
 //  * "Ölçülemedi" ≠ "yok": okuma düştüyse grup "Ölçülemedi" rozetini taşır ve değiştirilemez.
 //  * Okuma tazeliği: "Değiştir" okuma 10 dakikadan eskiyse önce okumayı başlatır (kullanıcıya
 //    ayrı bir "önce oku" adımı bırakılmaz); okuma sonrası grup değiştirilemez olduysa sihirbaz
@@ -36,15 +36,15 @@ import {
   METIN,
   BILESENLER,
   DURUM_ETIKETI,
-  adayEtiketi,
   bekleyenMetni,
   degistirDurumu,
+  depEnvAdlari,
   durumTonu,
   grupRozetleri,
-  katalogRozeti,
   mevcutNodeMetni,
   smartNo,
   talepGrupBasligi,
+  uisOzetMetni,
 } from './nodeOrtak';
 import { NodeDegisiklikModal } from './NodeDegisiklikModal';
 import { NodeRozet, NodeTakip, NODE_BTN, nodeBtnStil } from './NodeTakip';
@@ -105,7 +105,12 @@ function GrupKarti({
 }) {
   const rozetler = grupRozetleri(g);
   const okundu = g.envler.length > 0;
+  // Yeni tip tablo: okuma yapildiysa (okumaBekleniyor false) env'i olmayan grup da "okundu"dur;
+  // degiskenYok grubunda envler bos gelir ama "Henüz okunmadı" yanlis olurdu.
+  const uisOkundu = okundu || g.okumaBekleniyor === false;
   const roller = g.roller.map((r) => r.rol);
+  const uisTablo = g.tur === 'uis' && !!g.bilesenler;
+  const uisOzet = uisTablo && uisOkundu ? uisOzetMetni(g) : null;
   return (
     <article
       className="rounded-xl border p-3 space-y-2 min-w-0"
@@ -122,7 +127,7 @@ function GrupKarti({
           </div>
         </div>
         <NodeRozet ton="muted">{g.tur === 'uis' ? METIN.rozet.yeniTip : METIN.rozet.eskiTip}</NodeRozet>
-        {admin && g.adaylar.length > 0 && (
+        {admin && g.roller.length > 0 && g.envler.length > 0 && (
           <button type="button" className={NODE_BTN} style={nodeBtnStil()} onClick={onOnizle}>
             {METIN.smartOnizle}
           </button>
@@ -154,52 +159,75 @@ function GrupKarti({
         </button>
       )}
 
-      {g.tur === 'uis' && g.bilesenler ? (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
-          {BILESENLER.map((b) => {
-            const d = g.bilesenler ? g.bilesenler[b] : null;
-            const st = d ? DEP_DURUM[d.durum] : null;
-            return (
-              <div
-                key={b}
-                className="rounded-lg border px-2 py-1.5 min-w-0"
-                style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)' }}
-              >
-                <div className="text-[11px] font-semibold" style={{ color: 'var(--text-secondary)' }}>
-                  {b}
-                </div>
-                {!d ? (
-                  <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-                    {METIN.bilesenYok}
-                  </div>
-                ) : (
-                  <>
-                    <div className="text-[11px] break-all" style={{ color: 'var(--text-primary)' }} title={d.ad}>
-                      {d.ad}
-                    </div>
-                    <div className="text-[11px]" style={{ color: st?.renk }}>
-                      {st?.metin} · {d.hazir ?? '—'} / {d.istenen ?? '—'}
-                    </div>
-                    {okundu && !d.nodeBagli && (
-                      <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-                        {METIN.baglantiYok}
-                      </div>
-                    )}
-                    {okundu && d.mevcutNode && (
-                      <div className="text-[11px] break-all" style={{ color: 'var(--text-secondary)' }}>
-                        {mevcutNodeMetni(d, g.roller)}
-                      </div>
-                    )}
-                    {d.envFrom && (
-                      <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-                        {d.envFrom === 'olculemedi' ? METIN.envFromOlculemedi : METIN.envFromVar}
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-            );
-          })}
+      {uisTablo ? (
+        <div className="space-y-1 min-w-0">
+          <div className="overflow-x-auto rounded-lg border" style={{ borderColor: 'var(--border-subtle)' }}>
+            <table className="w-full text-[12px]" data-uis-tablo="">
+              <thead>
+                <tr style={{ color: 'var(--text-muted)', background: 'var(--bg-elevated)' }}>
+                  {METIN.uisBasliklar.map((b) => (
+                    <th key={b} scope="col" className="text-left font-medium px-2 py-1.5 whitespace-nowrap">
+                      {b}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {BILESENLER.map((b) => {
+                  const d = g.bilesenler ? g.bilesenler[b] : null;
+                  const st = d ? DEP_DURUM[d.durum] : null;
+                  return (
+                    <tr
+                      key={b}
+                      data-bilesen={b}
+                      className="border-t align-top"
+                      style={{ borderColor: 'var(--border-subtle)' }}
+                    >
+                      <td className="px-2 py-1.5 font-semibold whitespace-nowrap" style={{ color: 'var(--text-secondary)' }}>
+                        {b}
+                      </td>
+                      {!d ? (
+                        <td colSpan={4} className="px-2 py-1.5" style={{ color: 'var(--text-muted)' }}>
+                          {METIN.bilesenYok}
+                        </td>
+                      ) : (
+                        <>
+                          <td className="px-2 py-1.5 break-all" style={{ color: 'var(--text-primary)' }} title={d.ad}>
+                            {d.ad}
+                          </td>
+                          <td className="px-2 py-1.5 whitespace-nowrap" style={{ color: st?.renk }}>
+                            {st?.metin} · {d.hazir ?? '—'} / {d.istenen ?? '—'}
+                          </td>
+                          <td className="px-2 py-1.5 break-all" style={{ color: 'var(--text-primary)' }}>
+                            {depEnvAdlari(g, d.ad)}
+                          </td>
+                          <td className="px-2 py-1.5 break-all">
+                            {!uisOkundu ? (
+                              <span style={{ color: 'var(--text-muted)' }}>{METIN.okumaYok}</span>
+                            ) : !d.nodeBagli ? (
+                              <span style={{ color: 'var(--text-muted)' }}>{METIN.baglantiYok}</span>
+                            ) : (
+                              <span style={{ color: 'var(--text-primary)' }}>{mevcutNodeMetni(d, g.roller)}</span>
+                            )}
+                            {d.envFrom && (
+                              <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                                {d.envFrom === 'olculemedi' ? METIN.envFromOlculemedi : METIN.envFromVar}
+                              </div>
+                            )}
+                          </td>
+                        </>
+                      )}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          {uisOzet && (
+            <div className="text-[12px] break-all" style={{ color: 'var(--text-secondary)' }}>
+              {uisOzet}
+            </div>
+          )}
         </div>
       ) : (
         <ul className="space-y-0.5">
@@ -220,38 +248,38 @@ function GrupKarti({
         </ul>
       )}
 
-      <div className="space-y-0.5">
-        {!okundu ? (
-          <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
-            {METIN.okumaYok}
-          </div>
-        ) : g.mevcutNode && !g.tutarsiz ? (
-          roller.map((r) => (
-            <div key={r} className="text-[12px] break-all" style={{ color: 'var(--text-primary)' }}>
-              <b>{r}</b>: {g.mevcutNode?.maskeli[r] ?? '—'}
+      {/* Eski tip kartın node satırları (yeni tip kartta tablo kapsar; eski tip görünümü aynen). */}
+      {!uisTablo && (
+        <div className="space-y-0.5">
+          {!okundu ? (
+            <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
+              {METIN.okumaYok}
             </div>
-          ))
-        ) : (
-          g.envler.map((e) => (
-            <div
-              key={e.deployment + '/' + e.container + '/' + e.env}
-              className="text-[12px] break-all"
-              style={{ color: 'var(--text-primary)' }}
-            >
-              <b>{e.rol}</b>: {e.maskeli}{' '}
-              <span style={{ color: 'var(--text-muted)' }}>
-                ({e.deployment} / {e.env})
-              </span>
-            </div>
-          ))
-        )}
-      </div>
-
-      {(okundu || rozetler.length > 0) && (
-        <div className="flex flex-wrap gap-1.5">
-          {okundu && (
-            <NodeRozet ton={g.mevcutNode?.katalogId ? 'ok' : 'muted'}>{katalogRozeti(g)}</NodeRozet>
+          ) : g.mevcutNode && !g.tutarsiz ? (
+            roller.map((r) => (
+              <div key={r} className="text-[12px] break-all" style={{ color: 'var(--text-primary)' }}>
+                <b>{r}</b>: {g.mevcutNode?.maskeli[r] ?? '—'}
+              </div>
+            ))
+          ) : (
+            g.envler.map((e) => (
+              <div
+                key={e.deployment + '/' + e.container + '/' + e.env}
+                className="text-[12px] break-all"
+                style={{ color: 'var(--text-primary)' }}
+              >
+                <b>{e.rol}</b>: {e.maskeli}{' '}
+                <span style={{ color: 'var(--text-muted)' }}>
+                  ({e.deployment} / {e.env})
+                </span>
+              </div>
+            ))
           )}
+        </div>
+      )}
+
+      {rozetler.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
           {rozetler.map((r) => (
             <NodeRozet key={r.metin} ton={r.ton}>
               {r.metin}
@@ -273,13 +301,12 @@ function SmartOnizlemeModal({
   g: NodeGrup;
   onKapat: () => void;
 }) {
-  const [nodeId, setNodeId] = useState('');
   const [sonuc, setSonuc] = useState<NodeSmartOnizleme | null>(null);
   const [mesgul, setMesgul] = useState(false);
   const onizle = async () => {
     setMesgul(true);
     try {
-      setSonuc(await cryptoNodeApi.smartOnizle({ tenant: tenantKey, grup: g.id, nodeId }));
+      setSonuc(await cryptoNodeApi.smartOnizle({ tenant: tenantKey, grup: g.id }));
     } catch (e: unknown) {
       setSonuc({ ok: false, message: e instanceof Error ? e.message : String(e) });
     } finally {
@@ -298,7 +325,7 @@ function SmartOnizlemeModal({
           <button
             type="button"
             className="btn-primary"
-            disabled={!nodeId || mesgul}
+            disabled={mesgul}
             onClick={() => void onizle()}
           >
             Önizle
@@ -310,23 +337,6 @@ function SmartOnizlemeModal({
       }
     >
       <div className="space-y-2 min-w-0">
-        <label htmlFor="node-onizle" className="block text-[12px] font-medium" style={{ color: 'var(--text-primary)' }}>
-          {METIN.yeniNodeEtiket}
-        </label>
-        <select
-          id="node-onizle"
-          className="w-full text-[12px] rounded-lg border px-2 py-1.5"
-          style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)' }}
-          value={nodeId}
-          onChange={(e) => setNodeId(e.target.value)}
-        >
-          <option value="">{METIN.yeniNodeYerTutucu}</option>
-          {g.adaylar.map((a) => (
-            <option key={a.id} value={a.id}>
-              {adayEtiketi(a, g.roller)}
-            </option>
-          ))}
-        </select>
         {sonuc && !sonuc.ok && <Bant ton="danger">{sonuc.message || sonuc.hata || 'Önizleme yapılamadı.'}</Bant>}
         {sonuc?.ok && (
           <div className="space-y-1">
@@ -338,8 +348,8 @@ function SmartOnizlemeModal({
               <table className="w-full text-[12px]">
                 <thead>
                   <tr style={{ color: 'var(--text-muted)', background: 'var(--bg-elevated)' }}>
-                    <th className="text-left font-medium px-2 py-1.5">ElementName</th>
-                    <th className="text-left font-medium px-2 py-1.5">Değer</th>
+                    <th scope="col" className="text-left font-medium px-2 py-1.5">ElementName</th>
+                    <th scope="col" className="text-left font-medium px-2 py-1.5">Değer</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -362,13 +372,11 @@ function SmartOnizlemeModal({
 // ── Panel ────────────────────────────────────────────────────────────────────────────
 export interface NodeBaslangic {
   grup: string;
-  nodeId: string | null;
   esTalepId: number | null;
 }
 
 interface Sihirbaz {
   grupId: string;
-  nodeId: string | null;
   esTalepId: number | null;
 }
 
@@ -454,7 +462,7 @@ export function NodePanel({
           baslangicRef.current = null;
           const es = b.esTalepId;
           if (es != null) setEsBag((x) => ({ ...x, [b.grup]: es }));
-          setSihirbaz({ grupId: b.grup, nodeId: b.nodeId, esTalepId: b.esTalepId });
+          setSihirbaz({ grupId: b.grup, esTalepId: b.esTalepId });
           onBaslangicTuketildi?.();
           if (ok?.durum !== 'taze') void okumaBaslat();
         }
@@ -545,7 +553,7 @@ export function NodePanel({
 
   const degistirAc = (g: NodeGrup) => {
     setUyari('');
-    setSihirbaz({ grupId: g.id, nodeId: null, esTalepId: esBag[g.id] ?? null });
+    setSihirbaz({ grupId: g.id, esTalepId: esBag[g.id] ?? null });
     if (!okumaTaze) void okumaBaslat();
   };
 
@@ -680,7 +688,7 @@ export function NodePanel({
             <thead>
               <tr style={{ color: 'var(--text-muted)', background: 'var(--bg-elevated)' }}>
                 {METIN.gecmisBasliklar.map((b) => (
-                  <th key={b} className="text-left font-medium px-3 py-2 whitespace-nowrap">
+                  <th key={b} scope="col" className="text-left font-medium px-3 py-2 whitespace-nowrap">
                     {b}
                   </th>
                 ))}
@@ -694,7 +702,7 @@ export function NodePanel({
                 <tr key={h.talepId} className="border-t" style={{ borderColor: 'var(--border-subtle)' }}>
                   <td className="px-3 py-2 whitespace-nowrap">{fmtDateTime(h.createdAt)}</td>
                   <td className="px-3 py-2 break-all">{basliklar.get(h.grup) || talepGrupBasligi(h)}</td>
-                  <td className="px-3 py-2 break-all">{h.yeniNodeAd || h.yeniNodeId}</td>
+                  <td className="px-3 py-2 break-all">{h.yeniOzet || '—'}</td>
                   <td className="px-3 py-2 break-all">{h.username}</td>
                   <td className="px-3 py-2">
                     <button
@@ -726,7 +734,6 @@ export function NodePanel({
           onKapat={() => setSihirbaz(null)}
           onOkumaGerekli={() => void okumaBaslat()}
           esTalepId={sihirbaz.esTalepId}
-          onSecimNodeId={sihirbaz.nodeId}
           onAcildi={(r) => {
             const gid = sihirbaz.grupId;
             setEsBag((x) => {

@@ -1,9 +1,11 @@
 // shared/cryptoHubNodes.cjs - Crypto Hub > Indexer / Node degisikligi sabitleri (2026-11-02).
 //
-// Sozlesme: scratchpad/cryptohub/sozlesme.md bolum 2 + 7.1. KATALOG VERISI BURADA YOK: node
-// listesi ve sirlar yalniz Ansible tarafinda (vars/nodes.yml + vault'lu vars/node_sirlari.yml).
-// Portal katalogu yalniz node_env_get ciktisindaki NODECAT / NODEALLOW satirlarindan ogrenir
-// ve yalniz maskeli deger + sha256 gorur.
+// Sozlesme: scratchpad/serbest/sozlesme.md (2026-11-03). NODE LISTESI YOK: yeni deger SERBEST
+// METIN, kullanici sihirbazda grubun her rolu icin yazar (is birimi onayli). Portal degeri bu
+// moduldeki kurallarla dogrular (Ansible crypto_hub_node.py ile KARAKTER KARAKTER ayni desenler;
+// capraz bekci node-sozlesme.test.cjs CHN12), Portal DB'de yalniz sifreli tutar ve ekranda /
+// Smart'ta / denetimde yalniz maskeli deger + sha256 gosterir. Bu modul require ICERMEZ: Vite
+// dev shim'i ve tarayici ayni dosyayi saf modul olarak yukler.
 //
 // PROD ACILISI IKI ANAHTARLA (bolum 10): buradaki NODE_PROD_ACIK listesi + tenants.yml'deki
 // `node_degisikligi_acik: true`. Liste KODDA durur (DB/env YOK): bu depoda "bayat DB satiri kod
@@ -12,7 +14,7 @@
 
 const UIS_BILESENLER = Object.freeze(['adapter', 'api', 'indexer', 'processor']);
 
-/** Regex icin kacis (release adi katalogdan gelir ama yine de duz metin sayilir). */
+/** Regex icin kacis (release adi tenants.yml'den gelir ama yine de duz metin sayilir). */
 const kacis = (s) => String(s || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /**
@@ -34,7 +36,6 @@ function eskiDeseni(release) {
 }
 
 const GRUP_RE = /^(uis|eski):[a-z0-9][a-z0-9-]*[a-z0-9]$/;
-const NODE_ID_RE = /^[a-z0-9_]{3,64}$/;
 
 // Prod acilis anahtari 1 (anahtar 2: tenants.yml node_degisikligi_acik). Faz 1: bos.
 const NODE_PROD_ACIK = Object.freeze([]);
@@ -83,6 +84,86 @@ const TAKILDI_DK = ONAY_DK + 30 + 60;
 // Ankara talebi Istanbul'a bu sure icinde acilmis ayni grup talebine SUNUCUDA baglanir (PS6).
 const ES_TALEP_GUN = 7;
 
+// -- Yeni deger dogrulama ve maskeleme (sozlesme bolum 3) --------------------------------
+// Kaynak metinler Python crypto_hub_node.py ile BIREBIR (CHN12). `\s` YOK: JS ve Python'in
+// bosluk kumesi farkli; ASCII on kontrolunden sonra yalniz ASCII siniflari kalir. Hex kacis:
+// Python r"..." icinde cift tirnak yazilamaz, JS RegExp.source '/' kacirir.
+const DEGER_EN_COK = 2048;
+const BOS_MASKE = '(bos)';
+// crypto_hub_node_yeni_b64 ust siniri (2 rol x 2048 x JSON kacisi 2x + zarf ~ 11.2K).
+const YENI_B64_AZAMI = 16384;
+const DESEN = Object.freeze({
+  ascii: String.raw`^[\x20-\x7e]+$`,
+  yasak: String.raw`[;\x60]|\$\(`,
+  url: String.raw`^(https?|wss?)://[^\x20\x22\x24\x27\x3b\x3c\x3e\x5c\x60]+$`,
+  hostport: String.raw`^[A-Za-z0-9.-]+:[0-9]{1,5}$`,
+  sir: String.raw`^[\x21-\x7e](?:[\x20-\x7e]*[\x21-\x7e])?$`,
+});
+const BICIMLER = Object.freeze(['url', 'hostport', 'sir']);
+// Bayraksiz: `$` yalniz metnin sonunda eslesir (Python'da bu yuzden fullmatch).
+const DESEN_RE = Object.freeze({
+  ascii: new RegExp(DESEN.ascii),
+  yasak: new RegExp(DESEN.yasak),
+  url: new RegExp(DESEN.url),
+  hostport: new RegExp(DESEN.hostport),
+  sir: new RegExp(DESEN.sir),
+});
+
+/**
+ * Yeni deger dogrulamasi. null = gecerli (bos dahil: env bos degere yazilir); degilse neden
+ * kodu: bicim | tip | karakter | uzun | yasak | url | hostport | sir. Sira Python
+ * deger_dogrula ile BIREBIR. Deger KIRPILMAZ (trim yok): sir sessizce degismesin.
+ * @param {unknown} deger
+ * @param {string} bicim
+ * @returns {string|null}
+ */
+function degerDogrula(deger, bicim) {
+  if (!BICIMLER.includes(bicim)) return 'bicim';
+  if (typeof deger !== 'string') return 'tip';
+  if (deger === '') return null;
+  if (!DESEN_RE.ascii.test(deger)) return 'karakter';
+  if (deger.length > DEGER_EN_COK) return 'uzun';
+  if (DESEN_RE.yasak.test(deger)) return 'yasak';
+  if (bicim === 'url') return DESEN_RE.url.test(deger) ? null : 'url';
+  if (bicim === 'hostport') {
+    if (!DESEN_RE.hostport.test(deger)) return 'hostport';
+    const port = Number(deger.slice(deger.lastIndexOf(':') + 1));
+    return port >= 1 && port <= 65535 ? null : 'hostport';
+  }
+  return DESEN_RE.sir.test(deger) ? null : 'sir';
+}
+
+const URL_PARCA_RE = /^([A-Za-z][A-Za-z0-9+.-]*):\/\/([^/?#]*)(.*)$/;
+const YETKI_RE = /^[A-Za-z0-9.-]+(:[0-9]{1,5})?$/;
+const YETKI6_RE = /^\[[0-9A-Fa-f:.]+\](:[0-9]{1,5})?$/;
+
+/**
+ * Maskeli gosterim (Python maskele aynasi + bos deger): sema://host[:port][/****], host:port,
+ * ****, (bos), -. Yol, sorgu ve kullanici bilgisi hic gecmez. En cok 200 karakter.
+ * @param {string|null|undefined} deger
+ * @param {string} bicim
+ * @returns {string}
+ */
+function maskele(deger, bicim) {
+  if (deger == null) return '-';
+  if (deger === '') return BOS_MASKE;
+  if (bicim === 'sir') return '****';
+  if (bicim === 'hostport') return DESEN_RE.hostport.test(deger) ? deger.slice(0, 200) : '****';
+  const m = URL_PARCA_RE.exec(deger);
+  if (!m) return '****';
+  const sema = m[1];
+  let yetki = m[2];
+  const kalan = m[3];
+  let gizli = false;
+  if (yetki.includes('@')) {
+    yetki = yetki.slice(yetki.lastIndexOf('@') + 1);
+    gizli = true;
+  }
+  if (!YETKI_RE.test(yetki) && !YETKI6_RE.test(yetki)) return '****';
+  if (kalan !== '' && kalan !== '/') gizli = true;
+  return `${sema.toLowerCase()}://${yetki}${gizli ? '/****' : ''}`.slice(0, 200);
+}
+
 /** Talep numarasi metni (sunucu ve ekran AYNI): Smart numarasi varsa o, yoksa Portal kaydi. */
 function talepNoMetni(externalTicketId, talepId) {
   const dis = String(externalTicketId == null ? '' : externalTicketId).trim();
@@ -95,7 +176,6 @@ module.exports = {
   uisDeseni,
   eskiDeseni,
   GRUP_RE,
-  NODE_ID_RE,
   NODE_PROD_ACIK,
   nodeAcikMi,
   lokasyon,
@@ -112,4 +192,11 @@ module.exports = {
   TAKILDI_DK,
   ES_TALEP_GUN,
   talepNoMetni,
+  DEGER_EN_COK,
+  BOS_MASKE,
+  YENI_B64_AZAMI,
+  DESEN,
+  BICIMLER,
+  degerDogrula,
+  maskele,
 };

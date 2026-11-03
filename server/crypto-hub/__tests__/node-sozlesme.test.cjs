@@ -2,9 +2,12 @@
 //
 // CHN9  prod acilisi IKI anahtar: shared NODE_PROD_ACIK == tenants.yml node_degisikligi_acik: true
 // CHN10 vars/nodes.yml eski gruplari sozlesme 2.3 tablosuyla birebir; tek sir SIDECAR_AUTH_VALUE;
-//       .yml dosyalarinda '#' satiri ve CRLF yok
-// N15   DB: tablo + filtreli tekil indeks AYRI blokta (WHERE kapandi_at IS NULL) + yetki ogesi;
-//       /crypto-access 'node' sekmesi (davranis)
+//       node listesi YOK (crypto_hub_nodes, vars/node_sirlari.yml); '#' satiri ve CRLF yok
+// CHN12 yeni deger dogrulamasi Portal == Python (desen kaynak metinleri, eslesme kipi, ortak
+//       test vektorleri tests/deger_vektorleri.json gercek Portal fonksiyonlariyla)
+// CHN13 runner poller kancasi: launchOncesi === 'crypto_hub_node' performSsLaunch'tan ONCE
+// N15   DB: tablo (sifreli yeni_deger_secret, eski node kolonlari yok) + goc + filtreli tekil
+//       indeks AYRI blokta + yetki ogesi; tam yedek maskesi; /crypto-access 'node' sekmesi
 // N12b  /ops node islemlerini tanimaz (normalizeOps)
 //
 // Ansible deposu: CRYPTO_HUB_ANSIBLE_ROOT (yoksa bu makinedeki varsayilan). Depo yoksa capraz
@@ -69,16 +72,21 @@ test('CHN9 prod acilisi iki anahtar: NODE_PROD_ACIK == tenants.yml node_degisikl
   assert.deepEqual(acik.sort(), [...N.NODE_PROD_ACIK].sort(), 'prod acilisi iki yerde ayni degil');
 });
 
-test('CHN10 nodes.yml eski gruplari sozlesme 2.3 ile birebir; tek sir SIDECAR_AUTH_VALUE; # ve CRLF yok', (t) => {
+test('CHN10 nodes.yml eski gruplari sozlesme 2.3 ile birebir; tek sir SIDECAR_AUTH_VALUE; node listesi yok; # ve CRLF yok', (t) => {
   if (!ansibleVar()) return t.skip('Ansible deposu bu makinede yok');
   const p = path.join(CH, 'vars', 'nodes.yml');
-  const ps = path.join(CH, 'vars', 'node_sirlari.yml');
   assert.ok(fs.existsSync(p), 'vars/nodes.yml yok (A teslimi eksik)');
-  assert.ok(fs.existsSync(ps), 'vars/node_sirlari.yml yok (A teslimi eksik)');
-  for (const f of [p, ps, path.join(CH, 'crypto_hub_ops.yml'), path.join(CH, 'vars', 'tenants.yml')]) {
+  // Kullanici karari 2026-11-03: node listesi (katalog) ve sir dosyasi TAMAMEN kalkti.
+  assert.ok(!fs.existsSync(path.join(CH, 'vars', 'node_sirlari.yml')), 'vars/node_sirlari.yml hala var');
+  assert.ok(!/^crypto_hub_nodes\s*:/m.test(oku(p)), 'nodes.yml crypto_hub_nodes anahtarini tasiyor');
+  const ops = oku(CH, 'crypto_hub_ops.yml');
+  for (const kalinti of ['crypto_hub_node_id', 'node_sirlari', 'node_katalog', 'NODE_KATALOG']) {
+    assert.ok(!ops.includes(kalinti), `crypto_hub_ops.yml '${kalinti}' iceriyor`);
+  }
+  for (const f of [p, path.join(CH, 'crypto_hub_ops.yml'), path.join(CH, 'vars', 'tenants.yml')]) {
     const ham = fs.readFileSync(f, 'utf8');
     assert.ok(!ham.includes('\r'), `${path.basename(f)} CRLF iceriyor`);
-    if (f === p || f === ps) {
+    if (f === p) {
       assert.ok(!/^\s*#/m.test(ham), `${path.basename(f)} icinde # satiri var (README'ye)`);
     }
   }
@@ -110,21 +118,78 @@ test('CHN10 nodes.yml eski gruplari sozlesme 2.3 ile birebir; tek sir SIDECAR_AU
     for (const e of liste) assert.ok(!N.YASAK_ENV_RE.test(e.replace('{ZA}', 'X')), `uis kurali yasak ad: ${e}`);
   }
   for (const g of eski) for (const r of g.roller) for (const e of r.envler) assert.ok(!N.YASAK_ENV_RE.test(e), `${g.grup}: yasak ad ${e}`);
-  assert.ok(Array.isArray(doc.crypto_hub_nodes), 'crypto_hub_nodes listesi yok');
-  for (const n of doc.crypto_hub_nodes) {
-    assert.ok(N.NODE_ID_RE.test(n.id), `node id deseni: ${n.id}`);
-    // Ham YAML metni uzerinde: JSON.stringify(n) `"sablon":"` uretir, `sablon:\s*"` onu hic
-    // eslemezdi (bekci kordu).
-    assert.ok(!/sablon:\s*"[^"{]*[A-Za-z0-9]{20,}/.test(n.ham), `${n.id}: sablonda gomulu sir olabilir`);
+});
+
+test('CHN12 yeni deger dogrulamasi Portal == Python: desenler, eslesme kipi, sabitler, ortak vektorler', (t) => {
+  if (!ansibleVar()) return t.skip('Ansible deposu bu makinede yok');
+  const py = path.join(CH, 'files', 'crypto_hub_node.py');
+  const vek = path.join(CH, 'tests', 'deger_vektorleri.json');
+  assert.ok(fs.existsSync(py), 'files/crypto_hub_node.py yok (A teslimi eksik)');
+  assert.ok(fs.existsSync(vek), 'tests/deger_vektorleri.json yok (A teslimi eksik)');
+  const src = oku(py);
+  // Her desen TEK tanim, tek satir, r"..." kaynak metni Portal DESEN ile karakter karakter ayni.
+  const AD = { ascii: 'ASCII_RE', yasak: 'YASAK_RE', url: 'URL_RE', hostport: 'HOSTPORT_RE', sir: 'SIR_RE' };
+  for (const [k, ad] of Object.entries(AD)) {
+    const tanim = [...src.matchAll(new RegExp(`^${ad} = re\\.compile\\(r"([^"]*)"\\)$`, 'gm'))];
+    assert.equal(tanim.length, 1, `${ad} betikte tek satirlik tek tanim degil`);
+    assert.equal(tanim[0][1], N.DESEN[k], `${ad} kaynak metni Portal DESEN.${k} ile farkli`);
+    assert.equal(new RegExp(`^${ad}\\s*=`, 'm').test(src.replace(tanim[0][0], '')), false, `${ad} iki kez tanimli`);
   }
-  const sir = bolum(oku(ps), 'crypto_hub_node_sirlari');
-  assert.ok(sir, 'crypto_hub_node_sirlari sozlugu yok');
-  if (sir.satirIci) {
-    assert.equal(sir.satirIci, '{}', 'crypto_hub_node_sirlari satir ici yalniz {} olabilir');
-  } else {
-    const girdiler = [...sir.govde.matchAll(/^ {2}([A-Za-z0-9_]+):\s*(.*)$/gm)];
-    for (const m of girdiler) assert.match(m[2], /^!vault\b/, `${m[1]}: sir !vault ile sifreli degil`);
+  assert.match(src, new RegExp(`^DEGER_EN_COK = ${N.DEGER_EN_COK}$`, 'm'), 'DEGER_EN_COK farkli');
+  assert.ok(src.split('\n').includes(`BOS_MASKE = "${N.BOS_MASKE}"`), 'BOS_MASKE farkli');
+  // Eslesme kipi: Python `$` sondaki \n'den once de eslesir -> fullmatch; yasak search.
+  for (const ad of ['ASCII_RE', 'URL_RE', 'HOSTPORT_RE', 'SIR_RE']) {
+    assert.ok(src.includes(`${ad}.fullmatch(`), `${ad}.fullmatch kullanilmiyor`);
+    assert.ok(!new RegExp(`${ad}\\.(match|search)\\(`).test(src), `${ad} match/search ile kullaniliyor (\\n kacagi)`);
   }
+  assert.ok(src.includes('YASAK_RE.search('), 'YASAK_RE.search kullanilmiyor');
+  const kod = /^NODESUM_KODLARI = \(([^)]*)\)/m.exec(src);
+  assert.ok(kod, 'NODESUM_KODLARI bulunamadi');
+  assert.ok(!/BAYAT_KATALOG/.test(kod[1]), 'NODESUM_KODLARI BAYAT_KATALOG tasiyor');
+  // Ortak vektorler: Portal'in GERCEK fonksiyonlariyla birebir.
+  const ham = oku(vek);
+  assert.ok(!ham.includes('\r'), 'deger_vektorleri.json CRLF');
+  const liste = JSON.parse(ham);
+  assert.ok(Array.isArray(liste) && liste.length >= 36, `vektor sayisi az (${liste && liste.length})`);
+  const nedenler = new Set();
+  for (const v of liste) {
+    const deger = v.uzunluk ? v.deger + 'a'.repeat(v.uzunluk - v.deger.length) : v.deger;
+    const etiket = `${JSON.stringify(v.deger).slice(0, 60)} / ${v.bicim}`;
+    assert.equal(N.degerDogrula(deger, v.bicim), v.neden, `neden: ${etiket}`);
+    if (v.neden === null) assert.equal(N.maskele(deger, v.bicim), v.maske, `maske: ${etiket}`);
+    else assert.equal(v.maske, undefined, `${etiket}: hatali satirda maske`);
+    nedenler.add(v.neden);
+  }
+  for (const n of [null, 'bicim', 'karakter', 'uzun', 'yasak', 'url', 'hostport', 'sir']) {
+    assert.ok(nedenler.has(n), `vektorlerde ${n} nedeni yok`);
+  }
+});
+
+test("CHN13 runner poller kancasi: launchOncesi === 'crypto_hub_node' performSsLaunch'tan once, launchExtraVars ile", () => {
+  const src = oku(KOK, 'server', 'ansible', 'runner.cjs');
+  const bas = src.indexOf("require('../smart/poller.cjs').startPoller(async (ticket) =>");
+  assert.ok(bas > 0, 'poller geri cagrisi bulunamadi (bekci kor)');
+  const son = src.indexOf("console.warn('[Smart] poller baslatilamadi:'", bas);
+  assert.ok(son > bas);
+  const dilim = src.slice(bas, son);
+  const kanca = dilim.indexOf("ticket.pendingLaunch.launchOncesi === 'crypto_hub_node'");
+  const ekle = dilim.indexOf('launchOncesiDegerEkle(');
+  const oco = dilim.indexOf('if (ocoWindowStartIso && ocoWindowEndIso)');
+  const launch = dilim.lastIndexOf('performSsLaunch(');
+  assert.ok(kanca > 0, 'kanca kosulu yok');
+  assert.ok(ekle > kanca, 'launchOncesiDegerEkle kancadan sonra cagrilmiyor');
+  assert.ok(oco > ekle, 'kanca OCO dalindan ONCE olmali (OCO ile birlikte reddedilir)');
+  assert.ok(launch > ekle, 'kanca performSsLaunch tan once degil');
+  assert.match(dilim.slice(launch, launch + 400), /extraVars: launchExtraVars,/, 'launch kancanin extra_vars ini kullanmiyor');
+  assert.match(dilim, /OCO penceresiyle baslatilamaz/);
+  assert.match(dilim, /nodeMod\.gizliTemizle\(e\.message, gizliler\)/, 'launch hatasi gizliTemizle den gecmiyor');
+  // AWX 4xx log satiri da gizlileri bilsin (awxRequestToServer opts.gizliler, JO12).
+  assert.match(dilim.slice(launch, launch + 500), /\n\s*gizliler,\n/, 'kanca gizlileri performSsLaunch a vermiyor');
+  const psBas = src.indexOf('async function performSsLaunch(');
+  const ps = src.slice(psBas, src.indexOf('const jobId = data.id;', psBas));
+  assert.match(ps, /\/launch\/`,\s*payload,\s*gizliler\.length \? \{ gizliler \} : null,/, 'performSsLaunch gizlileri AWX istegine vermiyor');
+  // Kanca YALNIZ bir yerde (genel eklenti mekanizmasi yok).
+  assert.equal(src.split('launchOncesiDegerEkle(').length - 1, 1);
 });
 
 test('CHN11 kaynak sozlugu + yasak adlar betik ile Portal arasinda birebir (PS-3 sozlesme acigi)', (t) => {
@@ -238,11 +303,6 @@ function nodesYml(text) {
     }
     out.crypto_hub_node_uis_kurali = { rol: skaler(u.govde, 'rol'), bicim: skaler(u.govde, 'bicim'), bilesenler };
   } else out.crypto_hub_node_uis_kurali = null;
-  const n = bolum(text, 'crypto_hub_nodes');
-  if (!n) out.crypto_hub_nodes = null;
-  else if (n.satirIci === '[]') out.crypto_hub_nodes = [];
-  else if (n.satirIci) out.crypto_hub_nodes = null;
-  else out.crypto_hub_nodes = ogeler(n.govde, 'id').map(({ ilk, blok }) => ({ id: ilk, ham: blok }));
   return out;
 }
 
@@ -255,7 +315,19 @@ test('N15 DB: tablo, filtreli tekil indeks ayri blokta, genel indeksler, yetki o
   for (const kol of ['tenant_key', 'kilit', 'plan_sha', 'durum', 'smart_ticket_id', 'external_ticket_id', 'awx_job_id', 'sonuc_json', 'es_talep_id', 'kapandi_at']) {
     assert.match(tablo, new RegExp(`\\b${kol}\\b`), `kolon yok: ${kol}`);
   }
-  assert.ok(!/\bdeger\b|node_url|secret/i.test(tablo), 'tabloda deger tasiyabilecek kolon');
+  // Deger YALNIZ sifreli kolonda; eski node listesi kolonlari yeni kurulumda yok.
+  assert.match(tablo, /^\s*yeni_deger_secret\s+NVARCHAR\(MAX\)\s+NULL,$/m);
+  assert.ok(!/yeni_node_(id|ad)/.test(tablo), 'yeni kurulumda eski node kolonlari var');
+  const digerleri = tablo.replace(/^\s*yeni_deger_secret\s+NVARCHAR\(MAX\)\s+NULL,$/m, '');
+  assert.ok(!/\bdeger\b|node_url|secret/i.test(digerleri), 'tabloda deger tasiyabilecek baska kolon');
+  // Var olan tablo: kolon goc listesinde; eski yeni_node_id nullable (INSERT artik yazmiyor).
+  assert.match(SEED, /table: 'crypto_hub_node_changes',\s*col: 'yeni_deger_secret',\s*sql: 'ALTER TABLE crypto_hub_node_changes ADD yeni_deger_secret NVARCHAR\(MAX\) NULL'/);
+  assert.match(SEED, /COLUMN_NAME='yeni_node_id' AND IS_NULLABLE='NO'[^`]*ALTER TABLE crypto_hub_node_changes ALTER COLUMN yeni_node_id NVARCHAR\(64\) NULL/);
+  assert.ok(!/DROP COLUMN yeni_node/.test(SEED), 'yikici goc (kolon dusurme)');
+  // Tam yedek kolon adina gore maskeler: sifreli deger yedege de cikmaz.
+  const { SECRET_COLUMN_RE } = require('../../db/full-backup.cjs');
+  assert.ok(SECRET_COLUMN_RE.test('yeni_deger_secret'), 'tam yedek yeni_deger_secret i maskelemiyor');
+  assert.ok(SECRET_COLUMN_RE.test('pending_launch_json'));
   assert.ok(!/--/.test(tablo), '.cjs icindeki SQL de -- yorumu');
   const ux = SEED.indexOf('CREATE UNIQUE INDEX UX_chnc_acik');
   assert.ok(ux > 0, 'filtreli tekil indeks yok');

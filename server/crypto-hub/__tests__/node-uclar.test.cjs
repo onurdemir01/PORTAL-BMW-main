@@ -1,8 +1,10 @@
 // server/crypto-hub/__tests__/node-uclar.test.cjs - Indexer / Node uclari davranis bekcileri.
 //
-// N6 /node-change kapilari, N7 tek acik talep + Smart hata yollari, N8 openSmartTicket cagrisi
-// birebir ve sira, N9 sonuc taramasi (tek kez kapatma), N10 erisim (node-only), N11 sir yok
-// (pending_launch_json, ansible_job_history, denetim, loglar), okuma uclari.
+// N6 /node-change kapilari (yeni deger sekli / bicimi / bos onayi / ayni deger), N6d prod'da
+// sifreleme anahtari yoksa fail-closed, N7 tek acik talep + Smart hata yollari, N8 openSmartTicket
+// cagrisi birebir (password specField + launchOncesi kancasi), N9 sonuc taramasi (plan_sha kimligi,
+// tek kez kapatma), N10 erisim (node-only), N11 deger yalniz sifreli kolonda (pending_launch_json,
+// ansible_job_history, denetim, Smart, loglar duz deger gormez), N19 sifreli degerin omru.
 'use strict';
 
 const { test } = require('node:test');
@@ -42,6 +44,30 @@ test('N6 /node-change kapilari (yetki, prod, bayat, Smart yok, indeks yok, gerek
     assert.equal(r.body.blocked, 'node_gerekce');
     r = await post(K.nodecu, GOVDE({ grup: 'UIS:X' }));
     assert.equal(r.body.blocked, 'node_girdi');
+    // Yeni deger: rol kumesi, bicim (rol + neden govdede), bos onayi, eski govde (nodeId).
+    for (const yeni of [undefined, {}, { rpc: 'https://a.invalid', ws: 'wss://a.invalid' }, { rpc: 7 }]) {
+      r = await post(K.nodecu, GOVDE({ yeni }));
+      assert.equal(r.status, 400, JSON.stringify(yeni));
+      assert.equal(r.body.blocked, 'node_girdi');
+      assert.equal(r.body.message, 'Geçersiz istek: yeni değer rolleri.');
+    }
+    const eskiGovde = GOVDE({ nodeId: 'das_test_eth_b' });
+    delete eskiGovde.yeni;
+    r = await post(K.nodecu, eskiGovde);
+    assert.equal(r.body.blocked, 'node_girdi', 'eski (node id) govdeyle talep acildi');
+    r = await post(K.nodecu, GOVDE({ yeni: { rpc: `https://x.invalid/a b${SIR}` } }));
+    assert.equal(r.status, 400);
+    assert.equal(r.body.blocked, 'node_deger_bicim');
+    assert.equal(r.body.rol, 'rpc');
+    assert.equal(r.body.neden, 'url');
+    assert.ok(!JSON.stringify(r.body).includes(SIR), 'ret govdesi degeri yansitti');
+    r = await post(K.nodecu, GOVDE({ grup: G_BTC, yeni: { p2p: '', rpc: H.YENI.btcRpc } }));
+    assert.equal(r.status, 400);
+    assert.equal(r.body.blocked, 'node_bos_onay');
+    r = await post(K.nodecu, GOVDE({ yeni: { rpc: H.VAL.a } }));
+    assert.equal(r.status, 409);
+    assert.equal(r.body.blocked, 'node_ayni_node');
+    assert.equal(h.d.rows.length, 0, 'reddedilen govde satir yazdi');
     // bayat okuma
     h.NODE.NODE_OKUMA.clear();
     h.okumaVer({}, Date.now() - 11 * 60 * 1000);
@@ -74,7 +100,7 @@ test('N6 /node-change kapilari (yetki, prod, bayat, Smart yok, indeks yok, gerek
     h.d.indeks = false;
     h.NODE._sifirla();
     h.okumaVer();
-    r = await post(K.nodecu, GOVDE({ grup: G_BTC, nodeId: 'das_test_btc_b' }));
+    r = await post(K.nodecu, GOVDE({ grup: G_BTC }));
     assert.equal(r.status, 503);
     assert.equal(r.body.blocked, 'node_kilit_indeksi_yok');
   }));
@@ -95,7 +121,7 @@ test('N6b prod kiracida ad yazdirma (prod acik benzetimi)', () =>
       // D4: Istanbul talebinden sonra Ankara onerisi
       assert.equal(r.body.esTalepOnerisi.tenant, 'metaco_das_prod_ank');
       assert.equal(r.body.esTalepOnerisi.esTalepId, r.body.talepId);
-      assert.equal(r.body.esTalepOnerisi.nodeId, null, 'Ankara okumasi yokken node on secildi');
+      assert.ok(!('nodeId' in r.body.esTalepOnerisi), 'Ankara onerisi deger/node tasiyor (kullanici yeniden yazar)');
       const ist = r.body;
       const meta = h.d.smartCreated[0].metadata;
       assert.equal(meta.JRENV, 'Production_9');
@@ -119,7 +145,7 @@ test('N6b prod kiracida ad yazdirma (prod acik benzetimi)', () =>
       r = await h.istek('POST', '/node-change', K.nodecu, {
         ...g,
         grup: G_BTC,
-        nodeId: 'das_test_btc_b',
+        yeni: { ...H.YENI_GOVDE[G_BTC] },
         tenant: 'metaco_das_prod_ank',
         onayMetni: G_BTC,
         esTalepId: ist.talepId,
@@ -128,6 +154,40 @@ test('N6b prod kiracida ad yazdirma (prod acik benzetimi)', () =>
     } finally {
       N.nodeAcikMi = once;
     }
+  }));
+
+test('N6d production + sifreleme anahtari yok -> 503 node_sifreleme_yok; satir ve Smart bileti YOK', () =>
+  ile(async (h) => {
+    h.okumaVer();
+    const anahtar = process.env.ENV_OVERRIDES_ENCRYPTION_KEY;
+    const nodeEnv = process.env.NODE_ENV;
+    delete process.env.ENV_OVERRIDES_ENCRYPTION_KEY;
+    process.env.NODE_ENV = 'production';
+    let r;
+    try {
+      r = await h.istek('POST', '/node-change', K.nodecu, GOVDE());
+      // Onizleme deger almaz: anahtar istemez.
+      const on = await h.istek('POST', '/node-smart-onizle', K.admin, { tenant: T, grup: G_EVM });
+      assert.equal(on.status, 200, JSON.stringify(on.body));
+    } finally {
+      process.env.ENV_OVERRIDES_ENCRYPTION_KEY = anahtar;
+      if (nodeEnv === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = nodeEnv;
+    }
+    assert.equal(r.status, 503, JSON.stringify(r.body));
+    assert.equal(r.body.blocked, 'node_sifreleme_yok');
+    assert.match(r.body.message, /ENV_OVERRIDES_ENCRYPTION_KEY/);
+    assert.equal(h.d.rows.length, 0, 'anahtarsiz production talebi satir yazdi');
+    assert.equal(h.d.smartCreated.length, 0, 'anahtarsiz production talebi Smart bileti acti');
+    assert.ok(!h.d.logs.some((l) => /^INSERT INTO crypto_hub_node_changes/.test(l)));
+    // Dev/test (NODE_ENV != production) anahtarsiz: mevcut yardimci davranisi (duz) - talep acilir.
+    delete process.env.ENV_OVERRIDES_ENCRYPTION_KEY;
+    try {
+      r = await h.istek('POST', '/node-change', K.nodecu, GOVDE());
+    } finally {
+      process.env.ENV_OVERRIDES_ENCRYPTION_KEY = anahtar;
+    }
+    assert.equal(r.status, 200, JSON.stringify(r.body));
   }));
 
 test('N7 tek acik talep: esszamanli iki istek -> biri 409; BTC/LTC ortak kilit', () =>
@@ -142,9 +202,9 @@ test('N7 tek acik talep: esszamanli iki istek -> biri 409; BTC/LTC ortak kilit',
     const red = a.status === 409 ? a : b;
     assert.equal(red.body.blocked, 'node_bekleyen_talep');
     assert.match(red.body.message, /Smart #/);
-    let r = await h.istek('POST', '/node-change', K.nodecu, GOVDE({ grup: G_BTC, nodeId: 'das_test_btc_b' }));
+    let r = await h.istek('POST', '/node-change', K.nodecu, GOVDE({ grup: G_BTC }));
     assert.equal(r.status, 200);
-    r = await h.istek('POST', '/node-change', K.nodecu, GOVDE({ grup: G_LTC, nodeId: 'das_test_ltc_b' }));
+    r = await h.istek('POST', '/node-change', K.nodecu, GOVDE({ grup: G_LTC }));
     assert.equal(r.status, 409, 'ayni deploymenta iki esszamanli talep acildi');
   }));
 
@@ -173,13 +233,13 @@ test('N7b Smart hatasi satiri HATA ile kapatir; store_failed BEKLIYOR birakir; s
     assert.equal(r.status, 409);
     // Sablon OpsX'e ozgu degiskeni default'suz kullaniyor -> 400, bilet acilmaz.
     h.d.opsxCfg.smart.openshift.metadataFields = 'OP: {{ extraVars.openshift_operations }}';
-    r = await h.istek('POST', '/node-change', K.nodecu, GOVDE({ grup: G_BTC, nodeId: 'das_test_btc_b' }));
+    r = await h.istek('POST', '/node-change', K.nodecu, GOVDE({ grup: G_BTC }));
     assert.equal(r.status, 400);
     assert.equal(r.body.blocked, 'crypto_node_smart_sablon');
     assert.equal(h.d.smartCreated.length, 1, 'render hatasinda Smart cagrildi');
     assert.equal(h.d.rows[2].durum, 'HATA');
     h.d.opsxCfg.smart.openshift.metadataFields = '';
-    r = await h.istek('POST', '/node-change', K.nodecu, GOVDE({ grup: G_BTC, nodeId: 'das_test_btc_b' }));
+    r = await h.istek('POST', '/node-change', K.nodecu, GOVDE({ grup: G_BTC }));
     assert.equal(r.status, 400, 'bos sablonla sabit nesneyle bilet acildi');
   }));
 
@@ -196,8 +256,11 @@ test('N8 openSmartTicket argumanlari birebir; preflight + prefill bilet ONCESI',
     assert.equal(a.email, 'nodecu@x.test');
     assert.deepEqual(a.detail, { ask_limit_on_launch: false });
     assert.deepEqual(a.resolvedLaunchOptions, {});
-    assert.deepEqual(a.specFields, []);
-    assert.deepEqual(a.pendingLaunchExtras, { onayZamanAsimiDk: 1440, yutmaKorumasi: true });
+    assert.deepEqual(a.specFields, [{ variable: 'crypto_hub_node_yeni_b64', type: 'password' }]);
+    assert.deepEqual(a.pendingLaunchExtras, { onayZamanAsimiDk: 1440, yutmaKorumasi: true, launchOncesi: 'crypto_hub_node' });
+    assert.equal(a.extraVars.crypto_hub_node_yeni_b64, '', 'bekleyen pakette deger var');
+    assert.ok(!('crypto_hub_node_id' in a.extraVars));
+    assert.ok('crypto_hub_node_yeni_b64' in h.d.preflight[0].ev, 'preflight yeni_b64 anahtarini gormedi');
     assert.equal(a.auditAction, 'crypto_hub_node_change_ticket_open');
     assert.equal(a.overrides.smartApproval.flowKey, 'FLOW_OPENSHIFT', 'OpsX OpenShift flow key kullanilmadi');
     assert.equal(a.extraVars.zorunlu_alan, 'varsayilan', 'prefill sonucu bilete gitmedi');
@@ -213,6 +276,8 @@ test('N8 openSmartTicket argumanlari birebir; preflight + prefill bilet ONCESI',
     assert.equal(pl.onayZamanAsimiDk, 1440);
     assert.equal(pl.yutmaKorumasi, true);
     assert.equal(pl.templateName, `Crypto Hub: node_change @ ${T}`);
+    assert.equal(pl.launchOncesi, 'crypto_hub_node');
+    assert.equal(pl.extraVars.crypto_hub_node_yeni_b64, '');
     const row = h.d.rows[0];
     assert.equal(row.durum, 'BEKLIYOR');
     assert.equal(row.smart_ticket_id, t.id);
@@ -246,6 +311,10 @@ function onayla(h, ticketId, jobId) {
   const t = h.d.smartTickets.find((x) => x.id === ticketId);
   Object.assign(t, { status: 'LAUNCHED', awx_job_id: jobId, awx_server_id: 1 });
 }
+
+/** Talep satirinin plan_sha'si (betik NODESUM 3. alanda bunu basar). */
+const ps = (h, talepId) => h.d.rows.find((x) => x.id === talepId).plan_sha;
+const BASKA_SHA = 'f'.repeat(64);
 
 function isBitir(h, jobId, lines, status = 'successful') {
   h.d.jobs.set(jobId, { status, artifacts: { crypto_hub_ops_result: { tenant: T, action: 'node_change', lines } } });
@@ -286,7 +355,7 @@ test('N9 tarama: Smart durumlari ve AWX sonucu; NODESUM yok -> OLCULEMEDI; tek d
         onayla(h, b.ticketId, jobId);
         isBitir(h, jobId, [
           `NODECHG\t${T}\t${H.D.idx}\tapp\tETH_INDEXER_NODE_URI\t${H.URL_A}\t${H.URL_B}\tyazildi`,
-          `NODESUM\t${T}\t${sonuc}\tdas_test_eth_b\t${b.talepId}\t${kod}`,
+          `NODESUM\t${T}\t${sonuc}\t${ps(h, b.talepId)}\t${b.talepId}\t${kod}`,
         ]);
       });
       assert.equal(row.durum, beklenen, sonuc);
@@ -302,11 +371,33 @@ test('N9 tarama: Smart durumlari ve AWX sonucu; NODESUM yok -> OLCULEMEDI; tek d
     });
     assert.equal(girdi.durum, 'BASARISIZ');
     assert.equal(girdi.sonuc_kod, 'GIRDI');
+    // plan_sha '-' + talep no dogru + fail -> BASARISIZ (betik plani okuyamadi, olumsuz kabul).
+    const tireFail = await kapanis(GOVDE(), (b) => {
+      onayla(h, b.ticketId, 8600 + b.talepId);
+      isBitir(h, 8600 + b.talepId, [`NODESUM\t${T}\tfail\t-\t${b.talepId}\tARAC`], 'failed');
+    });
+    assert.equal(tireFail.durum, 'BASARISIZ');
+    assert.equal(tireFail.sonuc_kod, 'ARAC');
+    // plan_sha '-' + ok -> basari ASLA; farkli plan_sha -> NODESUM_UYUSMUYOR.
+    for (const sha of ['-', BASKA_SHA]) {
+      const row = await kapanis(GOVDE(), (b) => {
+        onayla(h, b.ticketId, 8700 + b.talepId);
+        isBitir(h, 8700 + b.talepId, [`NODESUM\t${T}\tok\t${sha}\t${b.talepId}\t-`]);
+      });
+      assert.equal(row.durum, 'OLCULEMEDI', `plan_sha ${sha} ile basari sayildi`);
+      assert.equal(row.sonuc_kod, 'NODESUM_UYUSMUYOR');
+    }
+    // Farkli plan_sha + fail de kabul edilmez (baska talebin satiri olabilir).
+    const baskaFail = await kapanis(GOVDE(), (b) => {
+      onayla(h, b.ticketId, 8800 + b.talepId);
+      isBitir(h, 8800 + b.talepId, [`NODESUM\t${T}\tfail\t${BASKA_SHA}\t${b.talepId}\tYAZMA`], 'failed');
+    });
+    assert.equal(baskaFail.durum, 'OLCULEMEDI');
     // NODESUM yok -> OLCULEMEDI (BASARILI uydurulmaz); baska talebin / kimliksiz basari sayilmaz.
-    for (const satir of [[], [`NODESUM\t${T}\tok\tdas_test_eth_b\t99999\t-`], [`NODESUM\t${T}\tok\t-\t-\t-`]]) {
+    for (const satir of [[], (b) => [`NODESUM\t${T}\tok\t${ps(h, b.talepId)}\t99999\t-`], [`NODESUM\t${T}\tok\t-\t-\t-`]]) {
       const row = await kapanis(GOVDE(), (b) => {
         onayla(h, b.ticketId, 8000 + b.talepId);
-        isBitir(h, 8000 + b.talepId, satir, 'failed');
+        isBitir(h, 8000 + b.talepId, typeof satir === 'function' ? satir(b) : satir, 'failed');
       });
       assert.equal(row.durum, 'OLCULEMEDI');
     }
@@ -320,7 +411,7 @@ test('N9 tarama: Smart durumlari ve AWX sonucu; NODESUM yok -> OLCULEMEDI; tek d
     assert.equal(row.kapandi_at, null);
     assert.equal(row.durum, 'CALISIYOR');
     // Esszamanli iki tarama -> TEK denetim kaydi
-    isBitir(h, 7777, [`NODESUM\t${T}\tok\tdas_test_eth_b\t${b.talepId}\t-`]);
+    isBitir(h, 7777, [`NODESUM\t${T}\tok\t${ps(h, b.talepId)}\t${b.talepId}\t-`]);
     const once = h.d.audits.filter((x) => x.action === 'crypto_hub_node_change_result').length;
     await Promise.all([h.NODE.nodeSonuclariniTara(), h.NODE.nodeSonuclariniTara()]);
     const sonra = h.d.audits.filter((x) => x.action === 'crypto_hub_node_change_result');
@@ -332,7 +423,7 @@ test('N9b ACILIYOR > 10 dk kapanir (bilet varsa sahiplenilir); yetim > 1440 dk k
   ile(async (h) => {
     const eski = (dk) => new Date(Date.now() - dk * 60000);
     const yeni = (o) => {
-      const r = { id: h.d.nextId++, tenant_key: T, grup: G_EVM, kilit: `k${h.d.nextId}`, durum: 'ACILIYOR', smart_ticket_id: null, external_ticket_id: null, awx_server_id: null, awx_job_id: null, kapandi_at: null, username: 'u', yeni_node_id: 'n', created_at: eski(1), ...o };
+      const r = { id: h.d.nextId++, tenant_key: T, grup: G_EVM, kilit: `k${h.d.nextId}`, durum: 'ACILIYOR', smart_ticket_id: null, external_ticket_id: null, awx_server_id: null, awx_job_id: null, kapandi_at: null, username: 'u', created_at: eski(1), ...o };
       h.d.rows.push(r);
       return r;
     };
@@ -448,8 +539,8 @@ test('N10b okuma uclari: launch, ayni okuma tekrar, sonuc bellege; is gecmisi ad
     assert.equal(r.body.okuma.durum, 'taze');
     const evm = r.body.gruplar.find((g) => g.id === G_EVM);
     assert.equal(evm.degistirilebilir, true);
-    assert.equal(evm.mevcutNode.katalogId, 'das_test_eth_a');
-    assert.equal(evm.adaylar.find((a) => a.id === 'das_test_eth_a').kullanimda, true);
+    assert.deepEqual(evm.mevcutNode, { maskeli: { rpc: H.URL_A } });
+    assert.ok(!('adaylar' in evm) && !('katalog' in r.body), '/nodes liste alanlari tasiyor');
     assert.ok(!JSON.stringify(r.body).includes(SIR), '/nodes cevabinda ham sir');
     // Wyden kullanicisi bu isin sonucunu okuyamaz; baska tur is node okumasi sayilmaz.
     r = await h.istek('GET', `/node-read/1/${jobId}`, K.wydenci);
@@ -470,43 +561,120 @@ test('N10b okuma uclari: launch, ayni okuma tekrar, sonuc bellege; is gecmisi ad
     assert.equal(r.body.gruplar.find((g) => g.id === G_EVM).bekleyen.talepId, b.talepId);
     // admin onizleme Smart'a gitmez
     const once = h.d.smartCreated.length;
-    r = await h.istek('POST', '/node-smart-onizle', K.nodecu, { tenant: T, grup: G_BTC, nodeId: 'das_test_btc_b' });
+    r = await h.istek('POST', '/node-smart-onizle', K.nodecu, { tenant: T, grup: G_BTC });
     assert.equal(r.status, 403);
-    r = await h.istek('POST', '/node-smart-onizle', K.admin, { tenant: T, grup: G_BTC, nodeId: 'das_test_btc_b' });
+    // Onizleme DEGER ALMAZ: govdede yeni yok, yeni ozet (önizleme).
+    r = await h.istek('POST', '/node-smart-onizle', K.admin, { tenant: T, grup: G_BTC });
     assert.equal(r.status, 200, JSON.stringify(r.body));
     assert.equal(r.body.flowKey, 'FLOW_OPENSHIFT');
     assert.match(r.body.metadata.ACIKLAMA, /nbxplorer-mainnet \(BTC\)/);
+    assert.match(r.body.metadata.ACIKLAMA, /Yeni node \(maskeli\): p2p=\(önizleme\); rpc=\(önizleme\)/);
     assert.equal(h.d.smartCreated.length, once, 'onizleme Smart bileti acti');
     assert.equal(h.d.rows.length, 1, 'onizleme satir yazdi');
   }));
 
-test('N11 sir hicbir yere gitmez: pending_launch_json, is gecmisi, denetim, Smart, loglar', () =>
+test('N11 deger DB/pending/denetim/Smart/log/gecmise duz gitmez; yalniz sifreli kolonda; kanca extra_vars kurar', () =>
   ile(async (h) => {
     let r = await h.istek('POST', '/node-read', K.nodecu, { tenant: T });
     h.bitir(r.body.jobId, H.satirlar());
     await h.istek('GET', `/node-read/1/${r.body.jobId}`, K.nodecu);
     await h.istek('GET', `/nodes?tenant=${T}`, K.nodecu);
-    const b = await talepAc(h, GOVDE({ grup: H.G_DOT, nodeId: 'das_test_dot_b' }));
+    const govde = GOVDE({ grup: H.G_DOT });
+    const yeniB64 = Buffer.from(
+      JSON.stringify({ degerler: { auth: govde.yeni.auth, url: govde.yeni.url }, bos_onay: [] }),
+      'utf8',
+    ).toString('base64');
+    const b = await talepAc(h, govde);
+    const row = h.d.rows.find((x) => x.id === b.talepId);
+    // Saklama: YALNIZ yeni_deger_secret, AES-GCM (enc:v1:), duz deger yok.
+    assert.match(row.yeni_deger_secret, /^enc:v1:/, 'deger sifresiz saklandi');
+    const insert = h.d.logs.findIndex((l) => /^INSERT INTO crypto_hub_node_changes/.test(l));
+    assert.ok(insert >= 0);
+    const tumParam = JSON.stringify(h.d.dbParams);
+    assert.ok(!tumParam.includes(SIR) && !tumParam.includes(yeniB64), 'DB parametrelerinde duz deger');
+    const t = h.d.smartTickets.find((x) => x.id === b.ticketId);
+    assert.ok(t.pending_launch_json.includes('"crypto_hub_node_yeni_b64":""'), 'pending yer tutucusu yok');
+    // Onay sonrasi kanca: gercek launchOncesiDegerEkle sifreli kolondan degeri koyar.
+    const k = await h.kanca(b.ticketId);
+    assert.equal(k.extraVars.crypto_hub_node_yeni_b64, yeniB64);
+    assert.equal(JSON.parse(t.pending_launch_json).extraVars.crypto_hub_node_yeni_b64, '', 'kanca bekleyen paketi degistirdi');
+    // performSsLaunch is gecmisine / denetime redactExtraVarsForHistory(specFields) yazar: ***gizli***.
+    const pl = JSON.parse(t.pending_launch_json);
+    const gecmis = require('../../ansible/runner.cjs').redactExtraVarsForHistory(k.extraVars, pl.specFields, pl.overrides);
+    assert.equal(gecmis.crypto_hub_node_yeni_b64, '***gizli***');
+    assert.ok(!JSON.stringify(gecmis).includes(yeniB64));
     onayla(h, b.ticketId, 6001);
     isBitir(h, 6001, [
       `NODECHG\t${T}\t${H.D.dot}\tsidecar\tSIDECAR_AUTH_VALUE\t${SIR}\t${SIR}\tyazildi`,
-      `NODESUM\t${T}\tok\tdas_test_dot_b\t${b.talepId}\t-`,
+      `NODESUM\t${T}\tok\t${row.plan_sha}\t${b.talepId}\t-`,
     ]);
     await h.NODE.nodeSonuclariniTara();
+    assert.equal(row.yeni_deger_secret, null, 'is AWX e verildikten sonra sifreli deger silinmedi');
     r = await h.istek('GET', `/node-change/${b.talepId}`, K.nodecu);
+    const denetim = h.d.audits.map((a) => a.opts);
+    const talepDenetimi = JSON.parse(h.d.audits.find((a) => a.action === 'crypto_hub_node_change_talep').opts.detail);
+    assert.equal(talepDenetimi.yeniOzet, 'auth=****; url=https://dot-c.node.invalid/****');
+    assert.deepEqual(talepDenetimi.yeniSha, { auth: H.hex(govde.yeni.auth), url: H.hex(govde.yeni.url) });
+    assert.deepEqual(talepDenetimi.bosRoller, []);
+    assert.ok(!('yeniNodeId' in talepDenetimi));
     const yerler = {
       smartTickets: JSON.stringify(h.d.smartTickets),
       smartMetadata: JSON.stringify(h.d.smartCreated),
       history: JSON.stringify(h.d.history),
-      audits: JSON.stringify(h.d.audits.map((a) => a.opts)),
+      audits: JSON.stringify(denetim),
       rows: JSON.stringify(h.d.rows),
+      dbParams: JSON.stringify(h.d.dbParams),
       logs: h.d.logs.join('\n'),
       cevap: JSON.stringify(r.body),
     };
     for (const [ad, metin] of Object.entries(yerler)) {
       assert.ok(!metin.includes(SIR), `${ad} sahte sir dizesini iceriyor`);
+      assert.ok(!metin.includes(yeniB64), `${ad} yeni_b64 metnini iceriyor`);
+      assert.ok(!metin.includes(govde.yeni.url) && !metin.includes(govde.yeni.auth), `${ad} ham degeri iceriyor`);
     }
     assert.equal(h.d.rows[0].durum, 'BASARILI');
+    // Istek govdesi denetime dusmez: crypto-hub router'inda auditMutations YOK.
+    const idx = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'index.cjs'), 'utf8');
+    assert.ok(!/auditMutations/.test(idx), 'crypto-hub router istek govdesini denetime yaziyor');
+  }));
+
+test('N19 sifreli degerin omru: kapanista ve CALISIYOR da NULL; genel SUTUNLAR secmez; kanca kapali/temizlenmis talebi reddeder', () =>
+  ile(async (h) => {
+    h.okumaVer();
+    const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'node.cjs'), 'utf8');
+    const sut = /const SUTUNLAR =\s*'([^']+)'/.exec(src);
+    assert.ok(sut, 'SUTUNLAR bulunamadi (bekci kor)');
+    assert.ok(!/yeni_deger_secret/.test(sut[1]), 'genel liste sifreli degeri seciyor');
+    assert.ok(/\bplan_sha\b/.test(sut[1]), 'SUTUNLAR plan_sha secmiyor (isSonucu kimligi)');
+    assert.ok(!/yeni_node_(id|ad)/.test(src), 'node.cjs eski node kolonlarini kullaniyor');
+    // Reddedilen bilet: talepKapat sifreli degeri siler.
+    const a = await talepAc(h);
+    const ra = h.d.rows.find((x) => x.id === a.talepId);
+    assert.ok(ra.yeni_deger_secret);
+    h.d.smartTickets.find((x) => x.id === a.ticketId).status = 'REJECTED';
+    await h.NODE.nodeSonuclariniTara();
+    assert.equal(ra.durum, 'REDDEDILDI');
+    assert.equal(ra.yeni_deger_secret, null, 'kapanista sifreli deger kaldi');
+    assert.ok(
+      h.d.logs.some((l) => /^UPDATE crypto_hub_node_changes SET durum = \$1, sonuc_kod = \$2, sonuc_json = \$3, kapandi_at = SYSUTCDATETIME\(\).*yeni_deger_secret = NULL/.test(l)),
+      'talepKapat SQL i yeni_deger_secret = NULL icermiyor',
+    );
+    await assert.rejects(() => h.kanca(a.ticketId), /talep kapanmis$/);
+    // Admin kapatmasi da (talepKapat yolu) siler.
+    const c = await talepAc(h);
+    const rc = h.d.rows.find((x) => x.id === c.talepId);
+    const k = await h.istek('POST', `/node-change/${c.talepId}/kapat`, K.admin, { gerekce: 'Bilet Smart tarafinda takildi, kilit aciliyor' });
+    assert.equal(k.status, 200, JSON.stringify(k.body));
+    assert.equal(rc.yeni_deger_secret, null, 'admin kapatmasinda sifreli deger kaldi');
+    // Is AWX'e verildi (CALISIYOR): ayni turda NULL; kanca artik deger bulamaz.
+    const b = await talepAc(h);
+    const rb = h.d.rows.find((x) => x.id === b.talepId);
+    onayla(h, b.ticketId, 6100);
+    await h.NODE.nodeSonuclariniTara();
+    assert.equal(rb.durum, 'CALISIYOR');
+    assert.equal(rb.yeni_deger_secret, null, 'CALISIYOR satirinda sifreli deger kaldi');
+    assert.ok(h.d.logs.some((l) => /SET durum = 'CALISIYOR'.*yeni_deger_secret = NULL/.test(l)));
+    await assert.rejects(() => h.kanca(b.ticketId), /deger yok \(temizlenmis\)$/);
   }));
 
 // ── 2026-11-02 duzeltme turu ────────────────────────────────────────────────────────────
@@ -539,7 +707,7 @@ test('N12 bilesen secimi uctan: secilenler plana/hedefe, bilet metni bilesenleri
     const evm = r.body.gruplar.find((g) => g.id === G_EVM);
     const idx = evm.deploymentlar.find((d) => d.ad === H.D.idx);
     assert.equal(idx.secilebilir, true);
-    assert.equal(idx.mevcutNode.katalogId, 'das_test_eth_a');
+    assert.deepEqual(idx.mevcutNode, { maskeli: { rpc: H.URL_A } });
     assert.equal(evm.deploymentlar.find((d) => d.ad === H.D.prc).secilebilir, false);
   }));
 
@@ -571,12 +739,12 @@ test('N13 PS8 baska kiracinin NODESUM satiri talebi kapatamaz; gecmis okunamazsa
     const row = h.d.rows.find((x) => x.id === b.talepId);
     const st = {
       status: 'successful',
-      artifacts: { crypto_hub_ops_result: { lines: [`NODESUM\tmetaco_gar_test\tok\tdas_test_eth_b\t${b.talepId}\t-`] } },
+      artifacts: { crypto_hub_ops_result: { lines: [`NODESUM\tmetaco_gar_test\tok\t${ps(h, b.talepId)}\t${b.talepId}\t-`] } },
     };
     const s = h.NODE.isSonucu(row, st);
     assert.equal(s.durum, 'OLCULEMEDI', 'baska kiracinin basari satiri kabul edildi');
     assert.equal(s.kod, 'NODESUM_UYUSMUYOR');
-    assert.equal(h.NODE.isSonucu(row, { ...st, artifacts: { crypto_hub_ops_result: { lines: [`NODESUM\t${T}\tok\tdas_test_eth_b\t${b.talepId}\t-`] } } }).durum, 'BASARILI');
+    assert.equal(h.NODE.isSonucu(row, { ...st, artifacts: { crypto_hub_ops_result: { lines: [`NODESUM\t${T}\tok\t${ps(h, b.talepId)}\t${b.talepId}\t-`] } } }).durum, 'BASARILI');
     // Gecmis (acik talepler) okunamazsa: fail-closed, Degistir hicbir grupta acik degil.
     h.d.dbBozuk = true;
     const r = await h.istek('GET', `/nodes?tenant=${T}`, K.nodecu);
@@ -595,7 +763,7 @@ test('N14 PS2 bilete bagli takili satir yas sinirinda TAKILDI kapanir; PENDING b
     const satir = (bilet, o = {}) => {
       const t = { id: tid++, external_ticket_id: `SM-${tid}`, status: 'PENDING', pending_launch_json: '{}', created_at: new Date(), ...bilet };
       h.d.smartTickets.push(t);
-      const r = { id: h.d.nextId++, tenant_key: T, grup: G_EVM, kilit: `k${h.d.nextId}`, durum: 'BEKLIYOR', smart_ticket_id: t.id, external_ticket_id: t.external_ticket_id, awx_server_id: null, awx_job_id: null, kapandi_at: null, username: 'u', yeni_node_id: 'das_test_eth_b', created_at: once(N.TAKILDI_DK + 5), ...o };
+      const r = { id: h.d.nextId++, tenant_key: T, grup: G_EVM, kilit: `k${h.d.nextId}`, durum: 'BEKLIYOR', smart_ticket_id: t.id, external_ticket_id: t.external_ticket_id, awx_server_id: null, awx_job_id: null, kapandi_at: null, username: 'u', created_at: once(N.TAKILDI_DK + 5), ...o };
       h.d.rows.push(r);
       return { r, t };
     };
@@ -654,7 +822,7 @@ test('N16 iptal yarisi: PENDING bilet iptal edilemezse satir ve kilit acik kalir
     const once = (dk) => new Date(Date.now() - dk * 60000);
     const t = { id: 990, external_ticket_id: 'SM-990', status: 'PENDING', pending_launch_json: '{}', created_at: new Date() };
     h.d.smartTickets.push(t);
-    const r = { id: h.d.nextId++, tenant_key: T, grup: G_EVM, kilit: 'k990', durum: 'BEKLIYOR', smart_ticket_id: t.id, external_ticket_id: t.external_ticket_id, awx_server_id: null, awx_job_id: null, kapandi_at: null, username: 'u', yeni_node_id: 'das_test_eth_b', created_at: once(N.TAKILDI_DK + 5) };
+    const r = { id: h.d.nextId++, tenant_key: T, grup: G_EVM, kilit: 'k990', durum: 'BEKLIYOR', smart_ticket_id: t.id, external_ticket_id: t.external_ticket_id, awx_server_id: null, awx_job_id: null, kapandi_at: null, username: 'u', created_at: once(N.TAKILDI_DK + 5) };
     h.d.rows.push(r);
     h.d.iptalYarisi = true;
     await h.NODE.nodeSonuclariniTara();
@@ -693,7 +861,7 @@ test('N6c PS6 Ankara talebi Istanbul bagini SUNUCUDA kurar (istemci esTalepId go
       assert.equal(ank.es_talep_id, ist.talepId, 'Ankara talebi Istanbul talebine baglanmadi');
       assert.match(h.d.smartCreated[1].metadata.ACIKLAMA, new RegExp(`İstanbul talebi: Smart #${ist.externalTicketId}`));
       // Istanbul kiracisinda ve baska grupta bag kurulmaz.
-      const b2 = await h.istek('POST', '/node-change', K.nodecu, GOVDE({ tenant: 'metaco_das_prod', grup: G_BTC, nodeId: 'das_test_btc_b', onayMetni: G_BTC }));
+      const b2 = await h.istek('POST', '/node-change', K.nodecu, GOVDE({ tenant: 'metaco_das_prod', grup: G_BTC, onayMetni: G_BTC }));
       assert.equal(h.d.rows.find((x) => x.id === b2.body.talepId).es_talep_id, null);
     } finally {
       N.nodeAcikMi = once;

@@ -1,15 +1,18 @@
 // src/components/crypto_hub/NodeDegisiklikModal.tsx — Indexer / Node değişikliği sihirbazı (2026-11-02).
 //
 // Beş adım: Mevcut → Yeni node → Etki → Gerekçe → Onay → "Talep aç" (Smart bileti; OpsX
-// OpenShift flow'u). Sihirbaz HİÇBİR değer göndermez: yalnız grup kimliği, katalog node id'si,
-// seçilen bileşenler (deployment adları), gerekçe ve onaylar. Plan, hedefler ve sha'lar sunucuda
-// son okumadan kurulur. Bileşen seçimi (2026-11-02): node taşıyan bileşenlerin hepsi işaretli
-// gelir; kullanıcı alt küme seçebilir, seçilenler arasında hepsi ya da hiçbiri uygulanır.
+// OpenShift flow'u). Kullanıcı kararı 2026-11-03: node listesi YOK; kullanıcı grubun her rolü için
+// yeni değeri kendisi yazar (iş birimi onaylı). Değer YALNIZ bu bileşenin state'inde durur: URL'ye,
+// tarayıcı deposuna, console'a, hata metnine ya da `title` niteliğine girmez; ekranda yalnız
+// maskeli hâli görünür. Biçim kuralı sunucuyla aynı modülden (shared/cryptoHubNodes.cjs). Bir rol
+// boş bırakılabilir: env boş değere yazılır, bu ayrıca onaylanır. Plan, hedefler ve sha'lar
+// sunucuda son okumadan kurulur. Bileşen seçimi (2026-11-02): node taşıyan bileşenlerin hepsi
+// işaretli gelir; kullanıcı alt küme seçebilir, seçilenler arasında hepsi ya da hiçbiri uygulanır.
 //
 // Okuma bayatsa sihirbaz kendi başına bir şey yapmaz: üst bileşen okumayı başlatır ve `okunuyor`
 // süresince ilerleme kapalıdır. Okuma sonrası grup değiştirilemez olursa üst bileşen sihirbazı
 // engel metniyle kapatır.
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ExclamationTriangleIcon, InformationCircleIcon } from '@heroicons/react/24/outline';
 import { Modal } from '@/components/common/Modal';
 import {
@@ -18,23 +21,36 @@ import {
   type NodeChangeResult,
   type NodeGrup,
 } from '@/api/cryptoHubApi';
+import { maskele } from '../../../shared/cryptoHubNodes.cjs';
 import {
   METIN,
   GEREKCE_EN_COK,
-  adayEtiketi,
-  adaySecilebilir,
+  ayniDegerMi,
   bilesenAdi,
+  bosRoller,
+  degerHatasi,
   etkilenenDeploymentlar,
   gerekceGecerli,
   mevcutNodeMetni,
   onayMetniEslesir,
+  rolMaskeliListesi,
   secilebilirler,
-  secimAdaydaMi,
   secimGoster,
   secimTutarsiz,
+  yeniGecerli,
+  yeniMaskeli,
 } from './nodeOrtak';
 
 type Kiraci = NonNullable<CryptoNodesResponse['tenant']>;
+
+/** Sunucu bu kodlarla reddederse kullanıcı "Yeni node" adımına döner. */
+const YENI_ADIM_KODLARI = ['node_ayni_node', 'node_deger_bicim', 'node_bos_onay'];
+
+const GIRDI_STIL: React.CSSProperties = {
+  borderColor: 'var(--border)',
+  background: 'var(--bg-surface)',
+  color: 'var(--text-primary)',
+};
 
 function Bilgi({ ton, children }: { ton: 'info' | 'warn' | 'danger'; children: React.ReactNode }) {
   const renk =
@@ -46,7 +62,7 @@ function Bilgi({ ton, children }: { ton: 'info' | 'warn' | 'danger'; children: R
   const Icon = ton === 'info' ? InformationCircleIcon : ExclamationTriangleIcon;
   return (
     <div
-      className="text-[12px] rounded-lg px-3 py-2 border flex items-start gap-2"
+      className="text-[13px] rounded-lg px-3 py-2 border flex items-start gap-2"
       style={{ color: renk[0], background: renk[1], borderColor: renk[0] }}
     >
       <Icon className="h-4 w-4 mt-0.5 shrink-0" />
@@ -64,7 +80,6 @@ export function NodeDegisiklikModal({
   onAcildi,
   onOkumaGerekli,
   esTalepId,
-  onSecimNodeId,
 }: {
   tenant: Kiraci;
   grupId: string;
@@ -75,14 +90,17 @@ export function NodeDegisiklikModal({
   onAcildi: (r: NodeChangeResult) => void;
   /** sunucu "okuma bayat" dediyse üst bileşen yeniden okur */
   onOkumaGerekli: () => void;
-  /** Ankara talebi: İstanbul talebinin numarası */
+  /** Ankara talebi: İstanbul talebinin numarası (değer taşınmaz; kullanıcı yeniden yazar) */
   esTalepId?: number | null;
-  /** Ankara talebi: İstanbul'da seçilen node (yalnız aday listesinde varsa ön seçilir) */
-  onSecimNodeId?: string | null;
 }) {
   const [adim, setAdim] = useState(0);
-  // null = kullanıcı henüz seçmedi: ön seçim (Ankara) okuma bittikten SONRA da uygulanabilsin.
-  const [nodeSecim, setNodeId] = useState<string | null>(null);
+  // rol -> yazılan değer. Yalnız burada; kırpılmaz (sır sessizce değişmesin).
+  const [yeni, setYeni] = useState<Record<string, string>>({});
+  // Onay, onaylandığı andaki BOŞ ROL LİSTESİNE bağlıdır: liste değişirse (başka rol boşaldı)
+  // onay kendiliğinden düşer ve kutu yeniden işaretlenmelidir.
+  const [bosOnayListe, setBosOnayListe] = useState<string | null>(null);
+  // null = bilinmiyor (crypto.subtle yok ya da henüz hesaplanmadı)
+  const [ayni, setAyni] = useState<boolean | null>(null);
   // null = kullanıcı dokunmadı: node taşıyan bileşenlerin HEPSİ (varsayılan birlikte).
   const [bilesenSecim, setBilesenSecim] = useState<string[] | null>(null);
   const [tutarsizOnay, setTutarsizOnay] = useState(false);
@@ -93,32 +111,44 @@ export function NodeDegisiklikModal({
   const [hata, setHata] = useState('');
   // Çift tıklama iki bilet açmasın: state güncellemesi gelmeden ikinci tıklama da geçerdi.
   const gonderRef = useRef(false);
+  // Aynı-değer hesabı yarışı: yalnız SON çağrının sonucu yazılır.
+  const ayniSira = useRef(0);
 
   const prod = tenant.production;
-  const adaylar = grup?.adaylar || [];
-  const onSecim = adaylar.find((x) => x.id === onSecimNodeId);
-  const nodeId = nodeSecim ?? (onSecim && adaySecilebilir(onSecim) ? onSecim.id : '');
-  const secilen = adaylar.find((a) => a.id === nodeId) || null;
   const bekle = okunuyor || !grup || grup.okumaBekleniyor;
-  const katalogAdi = (id: string | null) =>
-    id ? adaylar.find((a) => a.id === id)?.ad || id : METIN.katalogdaYok;
   const bilesenOf = (dep: string) =>
     grup?.deploymentlar.find((d) => d.ad === dep)?.bilesen || dep;
   const secilebilir = grup ? secilebilirler(grup) : [];
   const secim = bilesenSecim ?? secilebilir.map((d) => d.ad);
+  const secimAnahtari = secim.join('\n');
   const cokBilesen = !!grup && secimGoster(grup);
-  // Seçilenler şu an farklı node'larda: hepsini tek node'a toplamak ek onay ister.
+  // Seçilenler şu an farklı node'larda: hepsini tek değere toplamak ek onay ister.
   const tutarsizSecim = !!grup && secimTutarsiz(grup, secim);
-  const ayniNode = !!grup && !!secilen && secimAdaydaMi(grup, secim, secilen.id);
+  const yeniDeger = (rol: string) => yeni[rol] ?? '';
+  const bosListe = grup ? bosRoller(grup, yeni) : [];
+  const bosAnahtar = bosListe.join('\n');
+  const bosOnay = bosListe.length > 0 && bosOnayListe === bosAnahtar;
   const secimDegistir = (ad: string, acik: boolean) => {
     setBilesenSecim(acik ? Array.from(new Set([...secim, ad])) : secim.filter((x) => x !== ad));
     setTutarsizOnay(false);
   };
 
+  useEffect(() => {
+    if (!grup) return;
+    const sira = ++ayniSira.current;
+    let iptal = false;
+    void ayniDegerMi(grup, secimAnahtari ? secimAnahtari.split('\n') : [], yeni).then((s) => {
+      if (!iptal && sira === ayniSira.current) setAyni(s);
+    });
+    return () => {
+      iptal = true;
+    };
+  }, [grup, secimAnahtari, yeni]);
+
   const ileriAcik = (() => {
     if (bekle || !grup) return false;
     if (adim === 0) return secim.length > 0;
-    if (adim === 1) return !!secilen && adaySecilebilir(secilen) && !ayniNode;
+    if (adim === 1) return yeniGecerli(grup, yeni, bosOnay) && ayni !== true;
     if (adim === 2) return !tutarsizSecim || tutarsizOnay;
     if (adim === 3) return gerekceGecerli(gerekce);
     if (adim === 4) return prod ? onayMetniEslesir(onayYazi, grup.id) : onayKutusu;
@@ -126,7 +156,7 @@ export function NodeDegisiklikModal({
   })();
 
   async function talepAc() {
-    if (!grup || !secilen || gonderRef.current) return;
+    if (!grup || gonderRef.current) return;
     gonderRef.current = true;
     setGonderiyor(true);
     setHata('');
@@ -134,7 +164,8 @@ export function NodeDegisiklikModal({
       const r = await cryptoNodeApi.change({
         tenant: tenant.key,
         grup: grup.id,
-        nodeId: secilen.id,
+        yeni: Object.fromEntries(grup.roller.map((x) => [x.rol, yeniDeger(x.rol)])),
+        bosOnay: bosListe.length ? bosOnay : false,
         gerekce: gerekce.trim(),
         bilesenler: secim,
         tutarsizlikOnay: tutarsizSecim ? tutarsizOnay : false,
@@ -142,16 +173,23 @@ export function NodeDegisiklikModal({
         ...(esTalepId ? { esTalepId } : {}),
       });
       if (r.ok) {
+        setYeni({});
         onAcildi(r);
         return;
       }
-      setHata(r.message || 'Talep açılamadı.');
+      const neden = r.blocked === 'node_deger_bicim' && r.neden ? METIN.degerHata[r.neden] : null;
+      setHata(neden ? `${r.rol ? r.rol + ': ' : ''}${neden}` : r.message || METIN.talepAcilamadi);
       if (r.blocked === 'node_okuma_bayat') {
         setAdim(0);
         onOkumaGerekli();
+      } else if (r.blocked && YENI_ADIM_KODLARI.includes(r.blocked)) {
+        setAdim(1);
       }
     } catch (e: unknown) {
-      setHata(e instanceof Error ? e.message : String(e));
+      // Geçit (Portal yeniden başlıyor) metni sabit ve bilgilendiricidir: aynen gösterilir. Diğer
+      // hatalar yanıt gövdesi önizlemesi taşıyabilir; değer taşıyabilecek metin gösterilmez.
+      const gecit = !!e && typeof e === 'object' && (e as { gatewayUnavailable?: boolean }).gatewayUnavailable;
+      setHata(gecit && e instanceof Error ? e.message : METIN.talepBaglantiHatasi);
     } finally {
       gonderRef.current = false;
       setGonderiyor(false);
@@ -199,15 +237,15 @@ export function NodeDegisiklikModal({
   return (
     <Modal
       open
-      size="xl"
+      size="wide"
       title={baslik}
       subtitle={`${tenant.label} · ${tenant.lokasyon} · ${tenant.cluster} / ${tenant.namespace}`}
       onClose={onKapat}
       dismissOnBackdrop={false}
       footer={footer}
     >
-      <div className="space-y-3 min-w-0">
-        <ol className="flex items-center gap-2 flex-wrap text-[11px]" aria-label="Adımlar">
+      <div className="space-y-3 min-w-0 text-[13px]">
+        <ol className="flex items-center gap-2 flex-wrap text-[12px]" aria-label="Adımlar">
           {METIN.adimlar.map((a, i) => (
             <li
               key={a}
@@ -229,10 +267,10 @@ export function NodeDegisiklikModal({
 
         {grup && !bekle && adim === 0 && cokBilesen && (
           <fieldset className="rounded-lg border px-3 py-2 space-y-1.5 min-w-0" style={{ borderColor: 'var(--border-subtle)' }}>
-            <legend className="px-1 text-[12px] font-medium" style={{ color: 'var(--text-primary)' }}>
+            <legend className="px-1 text-[13px] font-medium" style={{ color: 'var(--text-primary)' }}>
               {METIN.secimBaslik}
             </legend>
-            <p className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>
+            <p className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>
               {METIN.secimAciklama}
             </p>
             {grup.tutarsiz && <Bilgi ton="warn">{METIN.secimFarkli}</Bilgi>}
@@ -241,7 +279,7 @@ export function NodeDegisiklikModal({
                 const secilir = secilebilir.some((x) => x.ad === d.ad);
                 const id = `node-bilesen-${d.ad}`;
                 return (
-                  <li key={d.ad} className="flex items-start gap-2 text-[12px] min-w-0">
+                  <li key={d.ad} className="flex items-start gap-2 text-[13px] min-w-0">
                     <input
                       id={id}
                       type="checkbox"
@@ -266,11 +304,11 @@ export function NodeDegisiklikModal({
 
         {grup && !bekle && adim === 0 && (
           <div className="overflow-x-auto rounded-lg border" style={{ borderColor: 'var(--border-subtle)' }}>
-            <table className="w-full text-[12px]">
+            <table className="w-full text-[13px]">
               <thead>
                 <tr style={{ color: 'var(--text-muted)', background: 'var(--bg-elevated)' }}>
                   {METIN.mevcutBasliklar.map((b) => (
-                    <th key={b} className="text-left font-medium px-2 py-1.5 whitespace-nowrap">
+                    <th key={b} scope="col" className="text-left font-medium px-3 py-2 whitespace-nowrap">
                       {b}
                     </th>
                   ))}
@@ -283,13 +321,12 @@ export function NodeDegisiklikModal({
                     className="border-t"
                     style={{ borderColor: 'var(--border-subtle)' }}
                   >
-                    <td className="px-2 py-1.5 break-all" title={e.deployment}>
+                    <td className="px-3 py-2 break-all" title={e.deployment}>
                       {bilesenOf(e.deployment)}
                     </td>
-                    <td className="px-2 py-1.5 break-all">{e.container}</td>
-                    <td className="px-2 py-1.5 break-all">{e.env}</td>
-                    <td className="px-2 py-1.5 break-all">{e.maskeli}</td>
-                    <td className="px-2 py-1.5 break-all">{katalogAdi(e.katalogId)}</td>
+                    <td className="px-3 py-2 break-all">{e.container}</td>
+                    <td className="px-3 py-2 break-all">{e.env}</td>
+                    <td className="px-3 py-2 break-all">{e.maskeli}</td>
                   </tr>
                 ))}
               </tbody>
@@ -298,44 +335,84 @@ export function NodeDegisiklikModal({
         )}
 
         {grup && !bekle && adim === 1 && (
-          <div className="space-y-2">
-            {adaylar.length === 0 ? (
-              <Bilgi ton="warn">{METIN.adayYok}</Bilgi>
-            ) : (
-              <>
-                <label
-                  htmlFor="node-yeni"
-                  className="block text-[12px] font-medium"
-                  style={{ color: 'var(--text-primary)' }}
-                >
-                  {METIN.yeniNodeEtiket}
+          <div className="space-y-3">
+            <div className="space-y-0.5">
+              <div className="font-medium" style={{ color: 'var(--text-primary)' }}>
+                {METIN.yeniBaslik}
+              </div>
+              <p className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>
+                {METIN.yeniAciklama}
+              </p>
+            </div>
+            {grup.roller.map((r) => {
+              const id = `node-yeni-${r.rol}`;
+              const deger = yeniDeger(r.rol);
+              const hataMetni = deger !== '' ? degerHatasi(deger, r.bicim) : null;
+              return (
+                <div key={r.rol} className="space-y-1 min-w-0" data-rol={r.rol}>
+                  <label htmlFor={id} className="block font-medium" style={{ color: 'var(--text-primary)' }}>
+                    {METIN.rolEtiket(r.rol, METIN.bicimEtiketi[r.bicim] || r.bicim)}
+                  </label>
+                  <div id={`${id}-env`} className="text-[12px] break-all" style={{ color: 'var(--text-muted)' }}>
+                    {METIN.rolEnvler(r.envler.join(', '))}
+                  </div>
+                  <input
+                    id={id}
+                    type={r.bicim === 'sir' ? 'password' : 'text'}
+                    autoComplete="off"
+                    spellCheck={false}
+                    autoCapitalize="off"
+                    autoCorrect="off"
+                    placeholder={METIN.yerTutucu[r.bicim] || ''}
+                    className="w-full max-w-full text-[13px] rounded-lg border px-2 py-1.5 font-mono"
+                    style={GIRDI_STIL}
+                    aria-invalid={hataMetni ? true : undefined}
+                    aria-describedby={`${id}-env ${id}-durum`}
+                    value={deger}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setYeni((x) => ({ ...x, [r.rol]: v }));
+                      // Rol boş/dolu değiştirdi: liste değişti, onay silinir (eski listeye
+                      // dönülse de kendiliğinden geri gelmez).
+                      if ((deger === '') !== (v === '')) setBosOnayListe(null);
+                    }}
+                  />
+                  {hataMetni ? (
+                    <div id={`${id}-durum`} role="alert" className="text-[12px]" style={{ color: 'var(--status-danger)' }}>
+                      {hataMetni}
+                    </div>
+                  ) : deger !== '' ? (
+                    <div id={`${id}-durum`} className="text-[12px] break-all" style={{ color: 'var(--text-muted)' }}>
+                      {METIN.smartGorunum(maskele(deger, r.bicim))}
+                    </div>
+                  ) : (
+                    <div id={`${id}-durum`} className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
+                      {METIN.bosRolNotu}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            {bosListe.length > 0 && (
+              <div className="space-y-1.5">
+                <Bilgi ton="warn">{METIN.bosUyari(bosListe.join(', '))}</Bilgi>
+                <label className="flex items-start gap-2" style={{ color: 'var(--text-primary)' }}>
+                  <input
+                    type="checkbox"
+                    className="mt-0.5"
+                    checked={bosOnay}
+                    onChange={(e) => setBosOnayListe(e.target.checked ? bosAnahtar : null)}
+                  />
+                  <span>{METIN.bosOnayKutusu}</span>
                 </label>
-                <select
-                  id="node-yeni"
-                  className="w-full max-w-full text-[12px] rounded-lg border px-2 py-1.5"
-                  style={{
-                    borderColor: 'var(--border)',
-                    background: 'var(--bg-surface)',
-                    color: 'var(--text-primary)',
-                  }}
-                  value={nodeId}
-                  onChange={(e) => setNodeId(e.target.value)}
-                >
-                  <option value="">{METIN.yeniNodeYerTutucu}</option>
-                  {adaylar.map((a) => (
-                    <option key={a.id} value={a.id} disabled={!adaySecilebilir(a)}>
-                      {adayEtiketi(a, grup.roller)}
-                    </option>
-                  ))}
-                </select>
-                {ayniNode && <Bilgi ton="warn">{METIN.secimAyniNode}</Bilgi>}
-              </>
+              </div>
             )}
+            {ayni === true && <Bilgi ton="warn">{METIN.secimAyniNode}</Bilgi>}
           </div>
         )}
 
         {grup && !bekle && adim === 2 && (
-          <div className="space-y-2 text-[12px]" style={{ color: 'var(--text-primary)' }}>
+          <div className="space-y-2" style={{ color: 'var(--text-primary)' }}>
             <div>{METIN.etkiListe}</div>
             <ul className="list-disc pl-5 space-y-0.5">
               {etkilenenDeploymentlar(grup, secim).map((d) => (
@@ -346,6 +423,7 @@ export function NodeDegisiklikModal({
             </ul>
             <Bilgi ton="info">{METIN.etkiDurustluk}</Bilgi>
             <Bilgi ton="warn">{METIN.etkiHelm}</Bilgi>
+            {bosListe.length > 0 && <Bilgi ton="warn">{METIN.bosUyari(bosListe.join(', '))}</Bilgi>}
             {tutarsizSecim && (
               <label className="flex items-start gap-2">
                 <input
@@ -365,7 +443,7 @@ export function NodeDegisiklikModal({
           <div className="space-y-1">
             <label
               htmlFor="node-gerekce"
-              className="block text-[12px] font-medium"
+              className="block font-medium"
               style={{ color: 'var(--text-primary)' }}
             >
               {METIN.gerekceEtiket}
@@ -374,17 +452,13 @@ export function NodeDegisiklikModal({
               id="node-gerekce"
               rows={4}
               maxLength={GEREKCE_EN_COK}
-              className="w-full text-[12px] rounded-lg border px-2 py-1.5"
-              style={{
-                borderColor: 'var(--border)',
-                background: 'var(--bg-surface)',
-                color: 'var(--text-primary)',
-              }}
+              className="w-full text-[13px] rounded-lg border px-2 py-1.5"
+              style={GIRDI_STIL}
               value={gerekce}
               onChange={(e) => setGerekce(e.target.value)}
             />
             <div
-              className="text-[11px] text-right tabular-nums"
+              className="text-[12px] text-right tabular-nums"
               style={{ color: gerekceGecerli(gerekce) ? 'var(--text-muted)' : 'var(--status-warning)' }}
             >
               {METIN.sayac(gerekce.trim().length)}
@@ -393,13 +467,11 @@ export function NodeDegisiklikModal({
         )}
 
         {grup && !bekle && adim === 4 && (
-          <div className="space-y-2 text-[12px]" style={{ color: 'var(--text-primary)' }}>
+          <div className="space-y-2" style={{ color: 'var(--text-primary)' }}>
             <Bilgi ton="info">{METIN.onayBilgi}</Bilgi>
-            {secilen && (
-              <div className="break-all" style={{ color: 'var(--text-secondary)' }}>
-                {METIN.yeniNodeEtiket}: {adayEtiketi(secilen, grup.roller)}
-              </div>
-            )}
+            <div className="break-all" style={{ color: 'var(--text-secondary)' }}>
+              {METIN.yeniNodeEtiket}: {rolMaskeliListesi(yeniMaskeli(grup, yeni), grup.roller)}
+            </div>
             <div className="break-all" style={{ color: 'var(--text-secondary)' }}>
               {METIN.secimBaslik}: {secim.map(bilesenOf).join(', ')}
             </div>
@@ -412,12 +484,8 @@ export function NodeDegisiklikModal({
                   id="node-onay-yazi"
                   type="text"
                   autoComplete="off"
-                  className="w-full text-[12px] rounded-lg border px-2 py-1.5"
-                  style={{
-                    borderColor: 'var(--border)',
-                    background: 'var(--bg-surface)',
-                    color: 'var(--text-primary)',
-                  }}
+                  className="w-full text-[13px] rounded-lg border px-2 py-1.5"
+                  style={GIRDI_STIL}
                   value={onayYazi}
                   onChange={(e) => setOnayYazi(e.target.value)}
                 />

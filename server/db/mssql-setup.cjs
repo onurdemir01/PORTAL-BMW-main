@@ -1769,9 +1769,12 @@ const TABLES = [
     // Crypto Hub > Indexer / Node degisikligi talepleri (2026-11-02, Portal DB - TBMWANS DEGIL).
     // Bkz. server/crypto-hub/node.cjs ve docs/CRYPTO-HUB.md. Satir SILINMEZ (iz); kapanis
     // kapandi_at dolarak tek kez (CAS). "Kiraci + kilit basina tek acik talep" kurali asagidaki
-    // filtreli tekil indeks UX_chnc_acik ile zorlanir. eski_ozet / yeni_ozet / sonuc_json YALNIZ
-    // maskeli deger tasir (node URL'i ya da sirri ASLA); plan_sha = sha256(plan + expect + new_sha
+    // filtreli tekil indeks UX_chnc_acik ile zorlanir. plan_sha = sha256(plan + expect + new_sha
     // base64'leri). es_talep_id: Ankara talebinde Istanbul satirinin id'si.
+    // yeni_deger_secret: girilen yeni degerin (crypto_hub_node_yeni_b64 metni) encryptSecretValue
+    // ile sifreli hali; is AWX'e verilince / talep kapaninca NULL. eski_ozet / yeni_ozet /
+    // sonuc_json YALNIZ maskeli. (2026-11-03: node listesi kalkti; eski kurulumdaki yeni_node_id /
+    // yeni_node_ad kolonlari dusurulmez, nullable yapilir ve kod onlari okumaz/yazmaz.)
     name: 'crypto_hub_node_changes',
     sql: `
       CREATE TABLE crypto_hub_node_changes (
@@ -1780,8 +1783,6 @@ const TABLES = [
         grup                NVARCHAR(128)  NOT NULL,
         kilit               NVARCHAR(128)  NOT NULL,
         lokasyon            NVARCHAR(16)   NOT NULL,
-        yeni_node_id        NVARCHAR(64)   NOT NULL,
-        yeni_node_ad        NVARCHAR(200)  NULL,
         eski_ozet           NVARCHAR(1000) NULL,
         yeni_ozet           NVARCHAR(1000) NULL,
         hedefler            NVARCHAR(2000) NOT NULL,
@@ -1795,6 +1796,7 @@ const TABLES = [
         awx_job_id          INT            NULL,
         sonuc_kod           NVARCHAR(32)   NULL,
         sonuc_json          NVARCHAR(MAX)  NULL,
+        yeni_deger_secret   NVARCHAR(MAX)  NULL,
         es_talep_id         INT            NULL,
         created_at          DATETIME2      NOT NULL DEFAULT SYSUTCDATETIME(),
         updated_at          DATETIME2      NOT NULL DEFAULT SYSUTCDATETIME(),
@@ -4906,6 +4908,12 @@ async function setupTables() {
       col: 'geri_cekme_at',
       sql: `ALTER TABLE nginx_loadtest_araclar ADD geri_cekme_at DATETIME2 NULL`,
     },
+    // Crypto Hub node degeri (2026-11-03): sifreli yeni deger kolonu (bkz. tablo yorumu).
+    {
+      table: 'crypto_hub_node_changes',
+      col: 'yeni_deger_secret',
+      sql: 'ALTER TABLE crypto_hub_node_changes ADD yeni_deger_secret NVARCHAR(MAX) NULL',
+    },
   ];
 
   for (const { table, col, sql } of alters) {
@@ -4922,6 +4930,19 @@ async function setupTables() {
     } catch (err) {
       console.warn(`[DB] Sutun eklenemedi (${table}.${col}):`, err.message);
     }
+  }
+
+  // Crypto Hub node listesi kalkti (2026-11-03): INSERT artik yeni_node_id yazmiyor. Eski
+  // kurulumda kolon NOT NULL kalirsa her talep duserdi -> nullable. Kolon DUSURULMEZ (yikici goc
+  // yok, eski satirlarin izi kalir).
+  try {
+    await pool
+      .request()
+      .query(
+        `IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='crypto_hub_node_changes' AND COLUMN_NAME='yeni_node_id' AND IS_NULLABLE='NO' AND TABLE_SCHEMA IN ('dbo', SCHEMA_NAME())) ALTER TABLE crypto_hub_node_changes ALTER COLUMN yeni_node_id NVARCHAR(64) NULL`,
+      );
+  } catch (err) {
+    console.warn('[DB] crypto_hub_node_changes.yeni_node_id nullable yapilamadi:', err.message);
   }
 
   // group_id sutunu yukaridaki alters dongusunde eklendikten SONRA calismali.

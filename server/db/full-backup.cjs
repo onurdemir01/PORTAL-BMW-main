@@ -322,4 +322,4 @@ function initDbFullBackup(app) {
   console.log('[DBFullBackup] endpoints mounted at /api/admin/db-full-backup');
 }
 
-module.exports = { initDbFullBackup, runBackup, getConfig };
+module.exports = { initDbFullBackup, runBackup, getConfig, SECRET_COLUMN_RE };

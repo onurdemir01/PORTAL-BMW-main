@@ -128,7 +128,6 @@ test('SB3 Portal crypto_hub_* degiskenleri playbook ortamina gecer, betik okur',
   const nodeEv = require('../node.cjs').nodeExtraVars({
     tenantKey: 'metaco_das_test',
     grupId: 'uis:evm-ethereum-mainnet',
-    nodeId: 'das_test_eth_b',
     talepId: 42,
     plan: [{ d: 'hmz-harmonize-uis-indexer-evm-ethereum-mainnet', c: 'app', e: 'ETH_INDEXER_NODE_URI', r: 'rpc' }],
     expect: { 'hmz-harmonize-uis-indexer-evm-ethereum-mainnet/app/ETH_INDEXER_NODE_URI': 'a'.repeat(64) },
@@ -161,8 +160,19 @@ test('SB3 Portal crypto_hub_* degiskenleri playbook ortamina gecer, betik okur',
     ...Object.keys(uyg),
     ...Object.keys(nodeEv),
   ]);
+  // DEGER tasiyan degisken ortama HIC girmez (ortam uzak komut satirina onek olur: -vvv / ps):
+  // playbook no_log'lu, async'siz bir command goreviyle stdin'den 0600 dosyaya yazar; ortamda
+  // yalniz dosya YOLU (NODE_YENI_DOSYA) durur, betik onu okur (2026-11-03).
+  const DOSYADAN = new Map([['crypto_hub_node_yeni_b64', 'NODE_YENI_DOSYA']]);
+  for (const [v, yolEnv] of DOSYADAN) {
+    assert.ok(v in nodeEv, `Portal ${v} gondermiyor (bekci kor)`);
+    assert.ok(!esle.has(v), `${v} playbook ORTAMINA gecirilmis (deger -vvv / ps'te gorunur)`);
+    assert.match(env[1], new RegExp(`^\\s+${yolEnv}: "`, 'm'), `playbook ortaminda ${yolEnv} (dosya yolu) yok`);
+    assert.ok(pyOkur(yolEnv), `crypto_hub_node.py ${yolEnv} okumuyor`);
+    assert.match(yml, new RegExp(`stdin: "\\{\\{ ${v} \\}\\}"`), `${v} stdin'le dosyaya yazilmiyor`);
+  }
   for (const v of [...portal].sort()) {
-    if (!v.startsWith('crypto_hub_') || DEGISKEN_DEGIL.test(v) || PLAY_DUZEYI.has(v)) continue;
+    if (!v.startsWith('crypto_hub_') || DEGISKEN_DEGIL.test(v) || PLAY_DUZEYI.has(v) || DOSYADAN.has(v)) continue;
     const e = [...(esle.get(v) || [])];
     assert.ok(e.length, `Portal '${v}' gonderiyor ama playbook bunu betige GECIRMIYOR (CM_NAME tuzagi)`);
     if (v.startsWith('crypto_hub_node_')) {

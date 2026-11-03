@@ -11,6 +11,11 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const express = require('express');
 
+// Sabit TEST anahtari (gercek deger degil): yeni node degeri kolonda enc:v1: ile sifreli durur.
+if (!process.env.ENV_OVERRIDES_ENCRYPTION_KEY) {
+  process.env.ENV_OVERRIDES_ENCRYPTION_KEY = '00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff';
+}
+
 const KOK = path.join(__dirname, '..', '..');
 const yol = (p) => require.resolve(path.join(KOK, p));
 const REAL_REDACT = require('../../ansible/runner.cjs').redactExtraVarsForHistory;
@@ -34,19 +39,33 @@ const D = {
 };
 const URL_A = 'https://eth-a.example.net/****';
 const URL_B = 'https://eth-b.example.net/****';
-const SHA = {
-  a: hex('eth-a'),
-  b: hex('eth-b'),
-  btcP2p: hex('btc-p2p-1'),
-  btcRpc: hex('btc-rpc-1'),
-  btcP2pB: hex('btc-p2p-2'),
-  btcRpcB: hex('btc-rpc-2'),
-  ltcP2p: hex('ltc-p2p-1'),
-  ltcRpc: hex('ltc-rpc-1'),
-  dotUrl: hex('dot-url-1'),
-  dotAuth: hex('dot-auth-1'),
-  dotUrlB: hex('dot-url-2'),
-  dotAuthB: hex('dot-auth-2'),
+// Canli (okumadaki) HAM degerler: betik bunlarin yalniz maskeli halini + sha256'sini basar.
+const VAL = {
+  a: 'https://eth-a.example.net/v3/KEYA',
+  b: 'https://eth-b.example.net/v3/KEYB',
+  btcP2p: '10.1.2.3:8333',
+  btcRpc: 'http://10.1.2.3:8332/wallet',
+  ltcP2p: '10.1.2.4:9333',
+  ltcRpc: 'http://10.1.2.4:9332/wallet',
+  dotUrl: `https://dot.example.net/v1/${SIR}`,
+  dotAuth: SIR,
+};
+const SHA = Object.fromEntries(Object.entries(VAL).map(([k, v]) => [k, hex(v)]));
+// Kullanicinin yazdigi YENI degerler (test isaretcisi SIR icerir: hicbir yere duz sizmamali).
+const YENI = {
+  evm: `https://eth-c.node.invalid/v3/${SIR}`,
+  btcP2p: 'btc-c.node.invalid:8333',
+  btcRpc: `http://btc-c.node.invalid:8332/${SIR}`,
+  ltcP2p: 'ltc-c.node.invalid:9333',
+  ltcRpc: `http://ltc-c.node.invalid:9332/${SIR}`,
+  dotUrl: `https://dot-c.node.invalid/${SIR}`,
+  dotAuth: `Bearer ${SIR}`,
+};
+const YENI_GOVDE = {
+  [G_EVM]: { rpc: YENI.evm },
+  [G_BTC]: { p2p: YENI.btcP2p, rpc: YENI.btcRpc },
+  [G_LTC]: { p2p: YENI.ltcP2p, rpc: YENI.ltcRpc },
+  [G_DOT]: { url: YENI.dotUrl, auth: YENI.dotAuth },
 };
 
 /**
@@ -84,9 +103,6 @@ function satirlar(o = {}) {
     o.tutarsiz ? URL_B : URL_A, o.tutarsiz ? SHA.b : SHA.a, 'evet',
   );
   if (!o.apiTasimaz) add('NODEENV', t, G_EVM, D.api, 'app', 'NODE_ADDR', 'rpc', 'literal', URL_A, SHA.a, 'hayir');
-  add('NODECAT', t, 'das_test_eth_a', G_EVM, 'rpc', 'Sağlayıcı A', URL_A, SHA.a, '-');
-  add('NODECAT', t, 'das_test_eth_b', G_EVM, 'rpc', 'Sağlayıcı B', URL_B, SHA.b, '-');
-  add('NODECAT', t, 'das_test_eth_c', G_EVM, 'rpc', 'Sağlayıcı C', '-', 'cozulemedi', 'sir_eksik');
 
   add('NODEGRP', t, G_BTC, 'eski', 'eski-nbxplorer-mainnet', 'nbxplorer-mainnet (BTC)');
   add('NODEDEP', t, G_BTC, D.nbx, '-', 1, 1, 9, 'hayir', 'hmz');
@@ -94,9 +110,6 @@ function satirlar(o = {}) {
   add('NODEALLOW', t, G_BTC, 'rpc', 'NBXPLORER_BTCRPCURL', 'url');
   add('NODEENV', t, G_BTC, D.nbx, 'nbxplorer', 'NBXPLORER_BTCNODEENDPOINT', 'p2p', 'literal', '10.1.2.3:8333', SHA.btcP2p, 'hayir');
   add('NODEENV', t, G_BTC, D.nbx, 'nbxplorer', 'NBXPLORER_BTCRPCURL', 'rpc', 'literal', 'http://10.1.2.3:8332/****', SHA.btcRpc, 'hayir');
-  add('NODECAT', t, 'das_test_btc_b', G_BTC, 'p2p', 'BTC B', '10.9.9.9:8333', SHA.btcP2pB, '-');
-  add('NODECAT', t, 'das_test_btc_b', G_BTC, 'rpc', 'BTC B', 'http://10.9.9.9:8332/****', SHA.btcRpcB, '-');
-  add('NODECAT', t, 'das_test_btc_tek', G_BTC, 'rpc', 'BTC yalniz rpc', 'http://10.8.8.8:8332/****', SHA.btcRpcB, '-');
 
   add('NODEGRP', t, G_LTC, 'eski', 'eski-nbxplorer-mainnet', 'nbxplorer-mainnet (LTC)');
   add('NODEDEP', t, G_LTC, D.nbx, '-', 1, 1, 9, 'hayir', 'hmz');
@@ -104,8 +117,6 @@ function satirlar(o = {}) {
   add('NODEALLOW', t, G_LTC, 'rpc', 'NBXPLORER_LTCRPCURL', 'url');
   add('NODEENV', t, G_LTC, D.nbx, 'nbxplorer', 'NBXPLORER_LTCNODEENDPOINT', 'p2p', 'literal', '10.1.2.4:9333', SHA.ltcP2p, 'hayir');
   add('NODEENV', t, G_LTC, D.nbx, 'nbxplorer', 'NBXPLORER_LTCRPCURL', 'rpc', 'literal', 'http://10.1.2.4:9332/****', SHA.ltcRpc, 'hayir');
-  add('NODECAT', t, 'das_test_ltc_b', G_LTC, 'p2p', 'LTC B', '10.7.7.7:9333', hex('ltc-p2p-2'), '-');
-  add('NODECAT', t, 'das_test_ltc_b', G_LTC, 'rpc', 'LTC B', 'http://10.7.7.7:9332/****', hex('ltc-rpc-2'), '-');
 
   // Polkadot: SIDECAR_AUTH_VALUE SIRDIR. Betik hatasi benzetimi: maskeli alanlarda HAM sir.
   add('NODEGRP', t, G_DOT, 'eski', 'eski-substrate-polkadot-assethub', 'substrate-polkadot-assethub');
@@ -114,8 +125,6 @@ function satirlar(o = {}) {
   add('NODEALLOW', t, G_DOT, 'url', 'SIDECAR_URL', 'url');
   add('NODEENV', t, G_DOT, D.dot, 'sidecar', 'SIDECAR_URL', 'url', 'literal', `https://dot.example.net/v1/${SIR}`, SHA.dotUrl, 'hayir');
   add('NODEENV', t, G_DOT, D.dot, 'sidecar', 'SIDECAR_AUTH_VALUE', 'auth', 'literal', SIR, SHA.dotAuth, 'hayir');
-  add('NODECAT', t, 'das_test_dot_b', G_DOT, 'url', 'DOT B', `https://dot-b.example.net/${SIR}`, SHA.dotUrlB, '-');
-  add('NODECAT', t, 'das_test_dot_b', G_DOT, 'auth', 'DOT B', SIR, SHA.dotAuthB, '-');
 
   if (!o.endYok) add('NODEEND', t, 'node_env_get', o.eksik ? 'eksik' : 'ok');
   return L;
@@ -160,13 +169,14 @@ function yeniDurum() {
 }
 
 const SUTUN_SIRASI = [
-  'tenant_key', 'grup', 'kilit', 'lokasyon', 'yeni_node_id', 'yeni_node_ad', 'eski_ozet', 'yeni_ozet',
-  'hedefler', 'plan_sha', 'gerekce', 'username', 'es_talep_id',
+  'tenant_key', 'grup', 'kilit', 'lokasyon', 'eski_ozet', 'yeni_ozet',
+  'hedefler', 'plan_sha', 'gerekce', 'username', 'es_talep_id', 'yeni_deger_secret',
 ];
 
 function dbSorgu(d, sqlText, p) {
   const s = String(sqlText).replace(/\s+/g, ' ').trim();
   d.logs.push(s);
+  (d.dbParams = d.dbParams || []).push(p);
   if (d.dbBozuk) return Promise.reject(new Error('db erisilemez'));
   const ok = (rows, rowCount) => Promise.resolve({ rows, rowCount: rowCount == null ? rows.length : rowCount });
   if (/FROM sys\.indexes WHERE name = 'UX_chnc_acik'/.test(s)) {
@@ -209,6 +219,7 @@ function dbSorgu(d, sqlText, p) {
       if (r.id !== Number(p[3])) continue;
       if (cas && r.kapandi_at != null) continue;
       Object.assign(r, { durum: p[0], sonuc_kod: p[1], sonuc_json: p[2], kapandi_at: new Date() });
+      if (/yeni_deger_secret = NULL/.test(s)) r.yeni_deger_secret = null;
       n += 1;
     }
     return ok([], n);
@@ -231,6 +242,7 @@ function dbSorgu(d, sqlText, p) {
   if (/^UPDATE crypto_hub_node_changes SET durum = 'CALISIYOR'/.test(s)) {
     const r = d.rows.find((x) => x.id === Number(p[2]) && x.kapandi_at == null);
     if (r) Object.assign(r, { durum: 'CALISIYOR', awx_server_id: p[0], awx_job_id: p[1] });
+    if (r && /yeni_deger_secret = NULL/.test(s)) r.yeni_deger_secret = null;
     return ok([], r ? 1 : 0);
   }
   if (/^SELECT TOP 1 id, external_ticket_id FROM crypto_hub_node_changes WHERE tenant_key = \$1 AND grup = \$2 AND created_at >= DATEADD\(day, -(\d+), SYSUTCDATETIME\(\)\) AND durum NOT IN \('REDDEDILDI', 'HATA', 'IPTAL'\) AND id NOT IN \(SELECT es_talep_id FROM crypto_hub_node_changes WHERE es_talep_id IS NOT NULL AND tenant_key = \$3\) ORDER BY created_at DESC, id DESC$/.test(s)) {
@@ -347,7 +359,9 @@ async function kur() {
       async prefillSurveyDefaultsOnServer(serverId, templateId, ev) {
         d.sira.push('prefill');
         d.prefill.push({ serverId, templateId });
-        return { ...ev, zorunlu_alan: 'varsayilan' };
+        // Ankette zorunlu + varsayilanli password sorusu benzetimi: bos alan '$encrypted$' olur.
+        const yeni = ev.crypto_hub_node_yeni_b64 === '' ? '$encrypted$' : ev.crypto_hub_node_yeni_b64;
+        return { ...ev, zorunlu_alan: 'varsayilan', crypto_hub_node_yeni_b64: yeni };
       },
       async getTemplateVariableDefaultsOnServer(serverId, templateId) {
         d.sira.push(`sablon:${templateId}`);
@@ -529,7 +543,13 @@ async function kur() {
     }
   }
 
-  return { d, istek, okumaVer, bitir, kapat, mod, NODE, RES };
+  /** Poller'in onay sonrasi kancasi: smart_tickets kaydindan gercek launchOncesiDegerEkle. */
+  async function kanca(ticketId) {
+    const t = d.smartTickets.find((x) => x.id === Number(ticketId));
+    return NODE.launchOncesiDegerEkle({ id: t.id, pendingLaunch: JSON.parse(t.pending_launch_json) });
+  }
+
+  return { d, istek, okumaVer, bitir, kapat, kanca, mod, NODE, RES };
 }
 
 const K = {
@@ -540,12 +560,18 @@ const K = {
   admin: { username: 'boss', role: 'Admin', mail: 'boss@x.test' },
 };
 
-const GOVDE = (o = {}) => ({
-  tenant: T,
-  grup: G_EVM,
-  nodeId: 'das_test_eth_b',
-  gerekce: 'Sağlayıcı A kesinti yaşıyor, B ye geçiyoruz',
-  ...o,
-});
+/** Talep govdesi: `yeni` verilmezse grubun YENI_GOVDE degerleri. */
+const GOVDE = (o = {}) => {
+  const grup = o.grup || G_EVM;
+  return {
+    tenant: T,
+    grup,
+    yeni: { ...YENI_GOVDE[grup] },
+    gerekce: 'Sağlayıcı A kesinti yaşıyor, C ye geçiyoruz',
+    ...o,
+  };
+};
 
-module.exports = { kur, satirlar, hex, SIR, T, G_EVM, G_BTC, G_LTC, G_DOT, D, SHA, URL_A, URL_B, K, GOVDE, dbSorgu, yeniDurum };
+module.exports = {
+  kur, satirlar, hex, SIR, T, G_EVM, G_BTC, G_LTC, G_DOT, D, SHA, VAL, YENI, YENI_GOVDE, URL_A, URL_B, K, GOVDE, dbSorgu, yeniDurum,
+};

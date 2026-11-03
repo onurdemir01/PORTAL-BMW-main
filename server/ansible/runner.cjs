@@ -375,6 +375,14 @@ function awxRequestToServer(server, token, method, pathname, body = null, opts =
     opts && Number.isFinite(opts.maxBytes) && opts.maxBytes > 0 ? opts.maxBytes : AWX_JSON_MAX_BYTES;
   const lib = parsed.protocol === 'https:' ? https : http;
   const bodyStr = body ? JSON.stringify(body) : null;
+  // `opts.gizliler`: cagiranin bildirdigi gizli metinler (Crypto Hub node degeri, launch kancasi).
+  // AWX 4xx govdesi bir degiskenin DEGERINI yansitabilir (or. anket dogrulama mesaji); log
+  // satirina, hata metnine ve `e.body`'ye dusmesin. JSON'da '/' ayrica '\/' olarak kacabilir.
+  const gizliler = (opts && Array.isArray(opts.gizliler) ? opts.gizliler : [])
+    .filter((g) => typeof g === 'string' && g.length >= 4)
+    .flatMap((g) => [g, g.split('/').join('\\/')])
+    .sort((x, y) => y.length - x.length);
+  const gizliSil = (m) => gizliler.reduce((acc, g) => acc.split(g).join('****'), String(m == null ? '' : m));
 
   return new Promise((resolve, reject) => {
     const options = {
@@ -443,23 +451,24 @@ function awxRequestToServer(server, token, method, pathname, body = null, opts =
             // SIR YANSIMASI: AWX/vekil hata govdesi istegin Authorization basligini geri
             // yansitabilir. Log satiri ve hata mesaji bu istegin token'i + bilinen tum AWX
             // sirlari (iptal token'i dahil) maskelenmeden YAZILMAZ (maskRequestSecrets).
-            const detail = maskRequestSecrets(summarizeAwxErrorBody(json), token);
+            const ozet = summarizeAwxErrorBody(json);
+            const detail = ozet ? maskRequestSecrets(gizliSil(ozet), token) : ozet;
             console.error(
               `[AWX] ${method} ${parsed.pathname} -> HTTP ${res.statusCode}:`,
-              maskRequestSecrets(data, token).slice(0, 1000),
+              maskRequestSecrets(gizliSil(data), token).slice(0, 1000),
             );
             reject(
               Object.assign(
                 new Error(
                   detail ? `AWX HTTP ${res.statusCode}: ${detail}` : `AWX HTTP ${res.statusCode}`,
                 ),
-                { status: res.statusCode, body: json },
+                { status: res.statusCode, body: gizliler.length ? null : json },
               ),
             );
           } else resolve(json);
         } catch {
           reject(
-            new Error(`AWX yanıtı JSON değil (${res.statusCode}): ${maskRequestSecrets(data, token).slice(0, 200)}`),
+            new Error(`AWX yanıtı JSON değil (${res.statusCode}): ${maskRequestSecrets(gizliSil(data), token).slice(0, 200)}`),
           );
         }
       });
@@ -3267,6 +3276,8 @@ function initAnsibleRunner(app) {
       // Istege bagli (change-gates.runChangeGates `yutmaKorumasi`): AWX degisken yutarsa
       // is IPTAL edilir ve hata firlatilir. Varsayilan kapali: Self Service AYNEN.
       yutmaKorumasi = false,
+      // Istege bagli (Crypto Hub node kancasi): AWX hata govdesinde maskelenecek gizli metinler.
+      gizliler = [],
     },
   ) {
     const token = await getTokenForServer(server);
@@ -3297,6 +3308,7 @@ function initAnsibleRunner(app) {
       'POST',
       `/api/v2/job_templates/${templateId}/launch/`,
       payload,
+      gizliler.length ? { gizliler } : null,
     );
     const jobId = data.id;
 
@@ -3456,6 +3468,19 @@ function initAnsibleRunner(app) {
         yutmaKorumasi,
       } = ticket.pendingLaunch;
 
+      // CRYPTO HUB NODE DEGERI (2026-11-03): node talebinin yeni degeri bekleyen pakette YOK
+      // (pending_launch_json duz metin; yer tutucu ''). Yalniz bu bilet turunde, launch'tan hemen
+      // once sifreli kolondan cozulup extra_vars'a konur. Genel eklenti mekanizmasi DEGIL; baska
+      // hicbir bilet bu dala girmez. Hata metni degeri tasimaz (gizliTemizle).
+      let launchExtraVars = extraVars;
+      let gizliler = [];
+      let nodeMod = null;
+      if (ticket.pendingLaunch && ticket.pendingLaunch.launchOncesi === 'crypto_hub_node') {
+        if (ocoWindowStartIso || ocoWindowEndIso) throw new Error('Crypto Hub node talebi OCO penceresiyle baslatilamaz.');
+        nodeMod = require('../crypto-hub/node.cjs');
+        ({ extraVars: launchExtraVars, gizliler } = await nodeMod.launchOncesiDegerEkle(ticket));
+      }
+
       // ONAY SONRASI OCO PENCERESI (2026-09-22, kullanici): Smart bileti artik talep aninda
       // aciliyor (15:00), onay da o sirada geliyor. Onay geldiginde pencere HENUZ ACILMADIYSA
       // is AWX'te o ana zamanlanir — personelin gece tekrar gelmesi gerekmez. Onay kapisi
@@ -3494,17 +3519,25 @@ function initAnsibleRunner(app) {
         // plan.mode === 'now': pencere acik, asagidaki normal launch calisir.
       }
 
-      return performSsLaunch(server, ticket.awxTemplateId, {
-        detail,
-        extraVars,
-        resolvedLaunchOptions,
-        specFields,
-        overrides,
-        username,
-        templateName,
-        req: null,
-        yutmaKorumasi: yutmaKorumasi === true,
-      });
+      try {
+        return await performSsLaunch(server, ticket.awxTemplateId, {
+          detail,
+          extraVars: launchExtraVars,
+          resolvedLaunchOptions,
+          specFields,
+          overrides,
+          username,
+          templateName,
+          req: null,
+          yutmaKorumasi: yutmaKorumasi === true,
+          gizliler,
+        });
+      } catch (e) {
+        if (!gizliler.length) throw e;
+        // poller bu metni smart_tickets.error_message'a yazar: AWX hata govdesi degeri yansitsa da
+        // DB'ye / loga dusmesin.
+        throw Object.assign(new Error(nodeMod.gizliTemizle(e.message, gizliler)), { status: e.status, code: e.code });
+      }
     });
   } catch (e) {
     console.warn('[Smart] poller baslatilamadi:', e.message);

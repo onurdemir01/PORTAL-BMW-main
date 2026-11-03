@@ -498,9 +498,9 @@ export const cryptoOpsApi = {
 };
 
 // ── Indexer / Node değişikliği (2026-11-02) ──────────────────────────────────────────
-// Sunucu karşılığı: server/crypto-hub/node.cjs (sözleşme 7.2 / 7.4). Node DEĞERİ hiç gelmez:
-// yalnız maskeli gösterim + sha256. İstemci yalnız {tenant, grup, nodeId, gerekce,
-// tutarsizlikOnay, onayMetni, esTalepId} gönderir; plan / hedef / sha sunucuda kurulur.
+// Sunucu karşılığı: server/crypto-hub/node.cjs (sözleşme 2026-11-03). İstemci yeni değeri
+// `yeni` alanında gönderir (rol başına serbest metin); sunucu doğrular, şifreli saklar;
+// yanıtlar yalnız maskeli + sha256 taşır. Plan / hedef / sha sunucuda son okumadan kurulur.
 export type NodeBilesen = 'adapter' | 'api' | 'indexer' | 'processor';
 export type NodeOlcum = 'evet' | 'hayir' | 'olculemedi';
 export type NodeAracDurumu = 'var' | 'yok' | 'olculemedi';
@@ -516,15 +516,13 @@ export interface NodeDep {
   nodeBagli: boolean;
   /** true = literal node değeri var; sihirbazda seçilebilir (eski sunucu yanıtında yok) */
   secilebilir?: boolean;
-  /** bu bileşenin şu anki node'u (katalog eşleşmesi ya da yalnız maskeli değer) */
+  /** bu bileşenin şu anki node değeri (yalnız maskeli) */
   mevcutNode?: NodeMevcut | null;
   /** envFrom bilgi notu: 'var' | 'olculemedi' | null (yok) */
   envFrom?: 'var' | 'olculemedi' | null;
 }
 
 export interface NodeMevcut {
-  katalogId: string | null;
-  ad: string | null;
   maskeli: Record<string, string>;
 }
 
@@ -543,19 +541,7 @@ export interface NodeEnv {
   kaynak: string;
   maskeli: string;
   sha: string | null;
-  katalogId: string | null;
   helm: NodeOlcum;
-}
-
-export interface NodeAday {
-  id: string;
-  ad: string;
-  maskeli: Record<string, string>;
-  /** tüm rollerin sha'sı şu anki değerle aynı — seçilemez */
-  kullanimda: boolean;
-  /** sırrı / değeri çözülemedi — seçilemez */
-  cozulemedi: boolean;
-  neden: string | null;
 }
 
 /** Açık: ACILIYOR BEKLIYOR CALISIYOR · kapalı: diğerleri (kapandiAt dolu). */
@@ -599,7 +585,6 @@ export interface NodeGrup {
   referans: boolean;
   gitops: boolean;
   durdurulmus: string[];
-  adaylar: NodeAday[];
   bekleyen: NodeBekleyen | null;
   degistirilebilir: boolean;
   /** değiştirilemiyorsa nedeni (sunucunun ret metniyle aynı) */
@@ -619,8 +604,6 @@ export interface NodeTalepOzet {
   /** kapanmış talebin maskeli sonuç özeti (sonuc_json) */
   sonuc?: NodeSonuc | null;
   lokasyon: string;
-  yeniNodeId: string;
-  yeniNodeAd: string | null;
   /** maskeli */
   eskiOzet: string | null;
   yeniOzet: string | null;
@@ -678,8 +661,6 @@ export interface NodeEsTalepOnerisi {
   label: string;
   acik: boolean;
   grup: string;
-  /** Ankara kataloğunda aynı id varsa; yoksa null (ön seçim yapılmaz) */
-  nodeId: string | null;
   esTalepId: number;
 }
 
@@ -693,13 +674,17 @@ export interface NodeChangeResult {
   esTalepOnerisi?: NodeEsTalepOnerisi | null;
   blocked?: string;
   message?: string;
+  /** node_deger_bicim: hatalı rol ve neden kodu (degerDogrula) */
+  rol?: string;
+  neden?: string;
 }
 
 /** Bastion satırlarının (NODECHG / ROLLOUT / VERIFY / ROLLBACK / NODESUM / ERR) maskeli özeti. */
 export interface NodeSonuc {
   sum: {
     sonuc: 'ok' | 'geri_alindi' | 'bayat' | 'fail';
-    nodeId: string;
+    /** talebin plan_sha'sı (64 hex) ya da '-' */
+    planSha: string;
     talepId: string;
     kod: string;
   } | null;
@@ -764,7 +749,10 @@ export interface NodeReadStatus {
 export interface NodeChangeBody {
   tenant: string;
   grup: string;
-  nodeId: string;
+  /** rol -> yeni değer (serbest metin, kırpılmaz); anahtarlar grubun rolleriyle birebir */
+  yeni: Record<string, string>;
+  /** boş bırakılan rol varsa kullanıcının ayrı onayı */
+  bosOnay?: boolean;
   gerekce: string;
   tutarsizlikOnay?: boolean;
   /** yalnız production: grup kimliği aynen */
@@ -817,7 +805,7 @@ export const cryptoNodeApi = {
     fetch(`${BASE}/node-change/${talepId}`).then(safeJson),
 
   /** Yalnız Admin: OpsX OpenShift Smart şablonunun bu talep için render'ı. Smart'a GİTMEZ. */
-  smartOnizle: (body: { tenant: string; grup: string; nodeId: string }): Promise<NodeSmartOnizleme> =>
+  smartOnizle: (body: { tenant: string; grup: string; bilesenler?: string[] }): Promise<NodeSmartOnizleme> =>
     postJson(`${BASE}/node-smart-onizle`, body),
 
   /** Yalnız Admin: takılı açık talebi gerekçeyle kapatır (denetime yazılır). */

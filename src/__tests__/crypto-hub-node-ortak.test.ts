@@ -2,7 +2,7 @@
 //
 //   O1 sekmeler: node sekmesi yalnız Metaco'da; node-only kullanıcıda YALNIZ o (D5)
 //   O2 gerekçe 10–500; production onayı grup kimliğini AYNEN ister (parça eşleşmesi yetmez)
-//   O3 aday: kullanımda / çözülemedi seçilemez, etiket ekleri sözleşme metniyle aynı
+//   O3 yeni değer: doğrulama ve maskeleme sunucuyla aynı modülden; hata metinleri neden kodlarıyla
 //   O4 sonuç metinleri: her kapalı durum sözleşme 9.2 metniyle; GERI_ALMA yedek yolunu söyler
 //   O5 Ankara önerisi yalnız metaco_das_prod talebinden sonra (D4)
 //   O6 "Değiştir": okuma bayatken AÇIK (sihirbaz okur), tazeyken engel; bekleyen talep kapatır
@@ -11,9 +11,9 @@
 import { describe, it, expect } from 'vitest';
 import {
   METIN,
-  adayEtiketi,
-  adaySecilebilir,
   baslangicSekmesi,
+  bosRoller,
+  degerHatasi,
   degistirDurumu,
   esOneriGoster,
   gerekceGecerli,
@@ -23,22 +23,16 @@ import {
   sekmeListesi,
   sonucMetni,
   sonucSatirlari,
+  yeniGecerli,
+  yeniMaskeli,
 } from '@/components/crypto_hub/nodeOrtak';
-import type { NodeAday, NodeGrup, NodeRol, NodeSonuc } from '@/api/cryptoHubApi';
+import * as NS from '../../shared/cryptoHubNodes.cjs';
+import type { NodeGrup, NodeRol, NodeSonuc } from '@/api/cryptoHubApi';
 
 const ROLLER: NodeRol[] = [
   { rol: 'rpc', envler: ['SOLRPC'], bicim: 'url' },
   { rol: 'ws', envler: ['SOLWSRPC'], bicim: 'url' },
 ];
-const aday = (ek: Partial<NodeAday> = {}): NodeAday => ({
-  id: 'das_test_sol_a',
-  ad: 'Sağlayıcı A',
-  maskeli: { ws: 'wss://a.example/****', rpc: 'https://a.example/****' },
-  kullanimda: false,
-  cozulemedi: false,
-  neden: null,
-  ...ek,
-});
 const grup =(ek: Partial<NodeGrup> = {}): NodeGrup => ({
   id: 'eski:solana-mainnet',
   tur: 'eski',
@@ -54,7 +48,6 @@ const grup =(ek: Partial<NodeGrup> = {}): NodeGrup => ({
   referans: false,
   gitops: false,
   durdurulmus: [],
-  adaylar: [],
   bekleyen: null,
   degistirilebilir: true,
   engel: null,
@@ -99,20 +92,45 @@ describe('O2 gerekçe ve onay metni', () => {
   });
 });
 
-describe('O3 adaylar', () => {
-  it('kullanımda ve çözülemedi seçilemez', () => {
-    expect(adaySecilebilir(aday())).toBe(true);
-    expect(adaySecilebilir(aday({ kullanimda: true }))).toBe(false);
-    expect(adaySecilebilir(aday({ cozulemedi: true }))).toBe(false);
+describe('O3 yeni değer doğrulama ve maskeleme (sunucuyla aynı modül)', () => {
+  it('METIN.degerHata anahtarları sunucu neden kodlarıyla BİREBİR; her neden bir cümleye çevrilir', () => {
+    expect(Object.keys(METIN.degerHata).sort()).toEqual(
+      ['bicim', 'hostport', 'karakter', 'sir', 'tip', 'url', 'uzun', 'yasak'].sort(),
+    );
+    const ornek: [string, string, string][] = [
+      ['x', 'baska', 'bicim'],
+      ['https://a.invalid/ü', 'url', 'karakter'],
+      ['https://a.invalid/' + 'a'.repeat(2048), 'url', 'uzun'],
+      ['https://a.invalid/;x', 'url', 'yasak'],
+      ['https://a.invalid/a b', 'url', 'url'],
+      ['a.invalid:0', 'hostport', 'hostport'],
+      [' abc', 'sir', 'sir'],
+    ];
+    for (const [d, b, kod] of ornek) {
+      expect(NS.degerDogrula(d, b), `${d} / ${b}`).toBe(kod);
+      expect(degerHatasi(d, b)).toBe(METIN.degerHata[kod]);
+    }
+    expect(METIN.degerHata.uzun).toBe('En çok 2048 karakter.');
+    expect(degerHatasi('', 'url')).toBeNull();
+    expect(degerHatasi('https://eth.node.invalid/v3/K', 'url')).toBeNull();
   });
-  it('etiket: ad — rol=maskeli; … (rol sırası grubun tanımından) + ek', () => {
-    expect(adayEtiketi(aday(), ROLLER)).toBe(
-      'Sağlayıcı A — rpc=https://a.example/****; ws=wss://a.example/****',
-    );
-    expect(adayEtiketi(aday({ kullanimda: true }), ROLLER)).toMatch(/ \(şu an kullanımda\)$/);
-    expect(adayEtiketi(aday({ cozulemedi: true }), ROLLER)).toMatch(
-      / \(sırrı çözülemedi — seçilemez\)$/,
-    );
+  it('maskeli önizleme ve boş roller (rol sırası grubun tanımından)', () => {
+    const g = grup();
+    const yeni = { rpc: 'https://sol.node.invalid/v1/ANAHTAR', ws: '' };
+    expect(yeniMaskeli(g, yeni)).toEqual({ rpc: 'https://sol.node.invalid/****', ws: '(bos)' });
+    expect(JSON.stringify(yeniMaskeli(g, yeni))).not.toContain('ANAHTAR');
+    expect(bosRoller(g, yeni)).toEqual(['ws']);
+    expect(bosRoller(g, {})).toEqual(['rpc', 'ws']);
+  });
+  it('yeniGecerli: her rol geçerli VE (boş yok ya da boş onaylı)', () => {
+    const g = grup();
+    const tam = { rpc: 'https://a.invalid', ws: 'wss://a.invalid' };
+    expect(yeniGecerli(g, tam, false)).toBe(true);
+    expect(yeniGecerli(g, { ...tam, ws: '' }, false)).toBe(false);
+    expect(yeniGecerli(g, { ...tam, ws: '' }, true)).toBe(true);
+    expect(yeniGecerli(g, { ...tam, ws: 'ftp://a.invalid' }, true)).toBe(false);
+    expect(yeniGecerli(g, {}, true)).toBe(true);
+    expect(yeniGecerli(grup({ roller: [] }), {}, true)).toBe(false);
   });
 });
 
@@ -126,11 +144,6 @@ describe('O4 sonuç metinleri (9.2)', () => {
       'BAYAT',
       'BAYAT_ESKI_DEGER',
       'Durdu, hiçbir şey yazılmadı — onay beklerken mevcut node değişmiş. Yeniden okuyup yeni talep açın.',
-    ],
-    [
-      'BAYAT',
-      'BAYAT_KATALOG',
-      "Durdu, hiçbir şey yazılmadı — seçilen node'un kaydı değişmiş. Yeniden okuyup yeni talep açın.",
     ],
     [
       'BAYAT',
@@ -251,7 +264,6 @@ describe('O7 rozetler ve sonuç tablosu', () => {
           kaynak: 'literal',
           maskeli: 'https://a/****',
           sha: 'a'.repeat(64),
-          katalogId: null,
           helm: 'evet',
         },
       ],
@@ -267,7 +279,7 @@ describe('O7 rozetler ve sonuç tablosu', () => {
   });
   it('NODECHG + ROLLOUT + VERIFY + ROLLBACK birleşir', () => {
     const s: NodeSonuc = {
-      sum: { sonuc: 'geri_alindi', nodeId: 'n', talepId: '4', kod: 'ROLLOUT' },
+      sum: { sonuc: 'geri_alindi', planSha: 'a'.repeat(64), talepId: '4', kod: 'ROLLOUT' },
       degisiklikler: [
         { deployment: 'd1', container: 'app', env: 'SOLRPC', eski: 'e', yeni: 'y', durum: 'geri_alindi' },
         { deployment: 'd2', container: 'app', env: 'SOLRPC', eski: 'e', yeni: 'y', durum: 'BAYAT' },
@@ -327,26 +339,137 @@ describe('O10 sonuç metinleri: TAKILDI, yönetici kapatması, istisna sonrası 
 });
 
 describe('O11 bileşen seçimi yardımcıları', () => {
-  it('seçime göre tutarsızlık, aday eşleşmesi ve etkilenenler', async () => {
+  it('seçime göre tutarsızlık, aynı değer (sha256, crypto.subtle) ve etkilenenler', async () => {
     const o = await import('@/components/crypto_hub/nodeOrtak');
-    const e = (deployment: string, sha: string, katalogId: string | null) => ({
-      deployment, container: 'app', env: 'NODE_ADDR', rol: 'rpc', kaynak: 'literal', maskeli: 'x', sha, katalogId, helm: 'hayir' as const,
+    const { createHash } = await import('node:crypto');
+    const sha = (v: string) => createHash('sha256').update(v, 'utf8').digest('hex');
+    const V1 = 'https://n1.node.invalid/v3/K1';
+    const V2 = 'https://n2.node.invalid/v3/K2';
+    const e = (deployment: string, deger: string) => ({
+      deployment, container: 'app', env: 'NODE_ADDR', rol: 'rpc', kaynak: 'literal', maskeli: 'x', sha: sha(deger), helm: 'hayir' as const,
     });
     const d = (ad: string, bilesen: 'adapter' | 'api' | 'indexer' | 'processor', ek = {}) => ({
       ad, bilesen, durum: 'running' as const, istenen: 1, hazir: 1, gitops: 'hayir' as const, nodeBagli: true, secilebilir: true, ...ek,
     });
     const g = grup({
+      roller: [{ rol: 'rpc', envler: ['NODE_ADDR'], bicim: 'url' }],
       deploymentlar: [d('a', 'adapter'), d('b', 'api'), d('c', 'indexer'), d('p', 'processor', { nodeBagli: false, secilebilir: false })],
-      envler: [e('a', 'S1', 'n1'), e('b', 'S2', 'n2'), e('c', 'S2', 'n2')],
+      envler: [e('a', V1), e('b', V2), e('c', V2)],
     });
     expect(o.secilebilirler(g).map((x) => x.ad)).toEqual(['a', 'b', 'c']);
     expect(o.secimGoster(g)).toBe(true);
     expect(o.secimTutarsiz(g, ['b', 'c'])).toBe(false);
     expect(o.secimTutarsiz(g, ['a', 'c'])).toBe(true);
-    expect(o.secimAdaydaMi(g, ['b', 'c'], 'n2')).toBe(true);
-    expect(o.secimAdaydaMi(g, ['a', 'b'], 'n2')).toBe(false);
+    expect(await o.ayniDegerMi(g, ['b', 'c'], { rpc: V2 })).toBe(true);
+    expect(await o.ayniDegerMi(g, ['a', 'b'], { rpc: V2 })).toBe(false);
+    expect(await o.ayniDegerMi(g, ['a'], { rpc: V1 })).toBe(true);
+    expect(await o.ayniDegerMi(g, ['b'], { rpc: '' })).toBe(false);
+    // crypto.subtle yoksa (güvenli olmayan bağlam): bilinmiyor -> null (uyarı yok, sunucu 409 der).
+    const subtle = globalThis.crypto.subtle;
+    Object.defineProperty(globalThis.crypto, 'subtle', { value: undefined, configurable: true });
+    try {
+      expect(await o.ayniDegerMi(g, ['b', 'c'], { rpc: V2 })).toBeNull();
+    } finally {
+      Object.defineProperty(globalThis.crypto, 'subtle', { value: subtle, configurable: true });
+    }
+    expect(await o.ayniDegerMi(g, ['b', 'c'], { rpc: V2 })).toBe(true);
     expect(o.etkilenenDeploymentlar(g, ['c'])).toEqual(['c']);
     expect(o.etkilenenDeploymentlar(g)).toEqual(['a', 'b', 'c']);
     expect(o.secimGoster(grup({ deploymentlar: [d('x', 'indexer')] }))).toBe(false);
+  });
+});
+
+// ── O12 kullanıcı geri bildirimi 2026-11-03: "Katalog" anlaşılmadı ───────────────────
+const ENV1 = {
+  deployment: 'd',
+  container: 'c',
+  env: 'SOLRPC',
+  rol: 'rpc',
+  kaynak: 'literal' as const,
+  maskeli: 'x',
+  sha: 'a'.repeat(64),
+  helm: 'hayir' as const,
+};
+
+describe('O12 kullanıcıya görünen metinlerde "katalog" yok; değer yalnız maskeli', () => {
+  /** METIN'i dolaşır: dizgi, dizi ve fonksiyon (örnek argümanla çağrılır) değerleri toplar. */
+  function metinler(x: unknown, yol: string, out: [string, string][]) {
+    if (typeof x === 'string') out.push([yol, x]);
+    else if (typeof x === 'function') {
+      const f = x as (...a: unknown[]) => unknown;
+      out.push([yol + '()', String(f('ornek_a', 'ornek_b', 'ornek_c'))]);
+    } else if (Array.isArray(x)) x.forEach((v, i) => metinler(v, `${yol}[${i}]`, out));
+    else if (x && typeof x === 'object')
+      for (const [k, v] of Object.entries(x)) metinler(v, `${yol}.${k}`, out);
+  }
+
+  it('METIN, DURUM_ETIKETI ve sonuç cümlelerinde "katalog" kelimesi yok', async () => {
+    const o = await import('@/components/crypto_hub/nodeOrtak');
+    const out: [string, string][] = [];
+    metinler(o.METIN, 'METIN', out);
+    metinler(o.DURUM_ETIKETI, 'DURUM_ETIKETI', out);
+    // Her durumun bilinen kodları (bilinmeyen kod metne aynen düşer; o kod adıdır, cümle değil).
+    const KODLAR: Partial<Record<keyof typeof o.DURUM_ETIKETI, string[]>> = {
+      GERI_ALINDI: ['ROLLOUT', 'VERIFY', 'YAZMA', 'BETIK'],
+      BAYAT: ['BAYAT_ESKI_DEGER', 'BAYAT_KAPSAM'],
+      BASARISIZ: ['GERI_ALMA'],
+      OLCULEMEDI: ['TAKILDI'],
+      IPTAL: ['ADMIN_KAPATTI'],
+    };
+    for (const d of Object.keys(o.DURUM_ETIKETI) as (keyof typeof o.DURUM_ETIKETI)[])
+      for (const k of ['', ...(KODLAR[d] || [])])
+        out.push([`sonucMetni(${d},${k})`, String(o.sonucMetni(d, k))]);
+    expect(out.length, 'bekçi boş koşuyor').toBeGreaterThan(80);
+    // Sunucu METIN'i de kullanıcıya gider (ret mesajları).
+    const sunucu = await import('../../server/crypto-hub/node.cjs');
+    metinler((sunucu as unknown as { METIN: unknown }).METIN ?? (sunucu as unknown as { default: { METIN: unknown } }).default.METIN, 'SUNUCU', out);
+    expect(out.some(([y]) => y.startsWith('SUNUCU.sifrelemeYok'))).toBe(true);
+    const kotu = out.filter(([, v]) => /katalog/i.test(v));
+    expect(kotu).toEqual([]);
+    // BAYAT_KATALOG nedeni kalktı: kod artık metne aynen düşer (cümle yok).
+    expect(o.sonucMetni('BAYAT', 'BAYAT_KATALOG')).toContain('BAYAT_KATALOG');
+  });
+
+  it('mevcut değer her yerde yalnız maskeli; node listesi yardımcıları ve metinleri yok', async () => {
+    const o = await import('@/components/crypto_hub/nodeOrtak');
+    const mn = { maskeli: { rpc: 'https://a/****', ws: 'wss://a/****' } };
+    const dep = { ad: 'd', bilesen: null, durum: 'running' as const, istenen: 1, hazir: 1, gitops: 'hayir' as const, nodeBagli: true };
+    expect(o.mevcutNodeMetni({ ...dep, mevcutNode: mn }, ROLLER)).toBe('rpc: https://a/****; ws: wss://a/****');
+    expect(o.uisOzetMetni(grup({ mevcutNode: mn, envler: [ENV1] }))).toBe(
+      "Tüm bileşenler aynı node'a bağlı: rpc: https://a/****; ws: wss://a/****",
+    );
+    expect(o.mevcutNodeMetni({ ...dep, mevcutNode: null }, ROLLER)).toBe('—');
+    expect(o.uisOzetMetni(grup({ mevcutNode: mn, envler: [ENV1], tutarsiz: true }))).toBeNull();
+    expect(o.uisOzetMetni(grup({ mevcutNode: mn }))).toBeNull();
+    // Özet "tüm bileşenler" diyemiyorsa yok: referanslı grup (sunucu maskeli '' verir), bir rolün
+    // değeri yok, node'a bağlı bir bileşenin literal değeri yok, ölçülemedi.
+    expect(o.uisOzetMetni(grup({ mevcutNode: { maskeli: { rpc: '', ws: '' } }, envler: [ENV1], referans: true }))).toBeNull();
+    expect(o.uisOzetMetni(grup({ mevcutNode: { maskeli: { rpc: 'https://a/****', ws: '' } }, envler: [ENV1] }))).toBeNull();
+    expect(o.uisOzetMetni(grup({ mevcutNode: mn, envler: [ENV1], referans: true }))).toBeNull();
+    expect(o.uisOzetMetni(grup({ mevcutNode: mn, envler: [ENV1], olculemedi: true }))).toBeNull();
+    const literalDep = { ...dep, ad: 'adapter', mevcutNode: mn };
+    const refDep = { ...dep, ad: 'indexer', mevcutNode: null };
+    const isleyici = { ...dep, ad: 'processor', nodeBagli: false, mevcutNode: null };
+    expect(o.uisOzetMetni(grup({ mevcutNode: mn, envler: [ENV1], deploymentlar: [literalDep, refDep] }))).toBeNull();
+    expect(o.uisOzetMetni(grup({ mevcutNode: mn, envler: [ENV1], deploymentlar: [literalDep, isleyici] }))).toBe(
+      "Tüm bileşenler aynı node'a bağlı: rpc: https://a/****; ws: wss://a/****",
+    );
+    const ad = o as unknown as Record<string, unknown>;
+    for (const k of [
+      'katalogRozeti', 'nodeRozeti', 'adaySecilebilir', 'adayEtiketi', 'maskeliOzet', 'secimAdaydaMi', 'adaySizNotu', 'adayYokMetni',
+    ])
+      expect(ad[k], k).toBeUndefined();
+    const m = o.METIN as unknown as Record<string, unknown>;
+    for (const k of [
+      'katalogda', 'katalogdaYok', 'nodeRozet', 'nodeTanimsiz', 'mevcutAciklama', 'yeniNodeYerTutucu', 'ekKullanimda',
+      'ekCozulemedi', 'adayYokListeBos', 'adayYokGrup', 'kartListeBos', 'kartGrupBos',
+    ])
+      expect(m[k], k).toBeUndefined();
+    expect(o.METIN.mevcutBasliklar).toEqual(['Bileşen', 'Kap', 'Env değişkeni', 'Şu anki değer (maskeli)']);
+    expect(o.METIN.uisBasliklar).toEqual(['Bileşen', 'Deployment', 'Durum', 'Node değişkeni', 'Şu anki değer']);
+    expect(o.METIN.gecmisBasliklar[2]).toBe('Yeni değer (maskeli)');
+    expect(o.METIN.yeniNodeEtiket).toBe('Yeni değer (maskeli)');
+    expect(o.METIN.smartGorunum('https://a.invalid/****')).toBe("Smart'ta böyle görünecek: https://a.invalid/****");
+    expect(o.METIN.bosUyari('p2p')).toBe("p2p boş bırakıldı: env değişkeni BOŞ değere yazılır, uygulama node'suz kalabilir.");
   });
 });

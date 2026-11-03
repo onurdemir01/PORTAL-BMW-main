@@ -1,7 +1,9 @@
 // server/crypto-hub/__tests__/node-birim.test.cjs - Indexer / Node saf fonksiyonlari (2026-11-02).
 //
-// N1 desenler, N2 satir ayristirici, N3 grup plani kapilari, N4 extra_vars (sir yok),
-// N5 Smart metadata (OpsX OpenShift sablonu, ayni sozluk), maske suzgeci.
+// N1 desenler, N2 satir ayristirici (NODECAT yok sayilir, NODESUM plan_sha), N3 grup plani
+// (serbest metin yeni deger: rol kumesi, bicim, bos onayi, ayni deger, tutarsizlik), N4 extra_vars
+// (yer tutucu yeni_b64), N5 Smart metadata (yalniz maskeli), N17 deger dogrulama / maskeleme
+// (Python ile ayni kural), N18 launch oncesi kanca (sifreli kolon -> extra_vars).
 'use strict';
 
 const { test } = require('node:test');
@@ -13,6 +15,8 @@ const H = require('./_node_harness.cjs');
 const { tenantOf } = require('../../../shared/cryptoHubTenants.cjs');
 
 const okuma = (o) => ({ parsed: NODE.parseNodeLines(H.satirlar(o)), at: Date.now() });
+const coz = (b) => JSON.parse(Buffer.from(b, 'base64').toString('utf8'));
+const BOS_SHA = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
 
 test('N1 uis deseni: hmz/hmzbank, 4 bilesen; eski desen uis- almaz', () => {
   const das = N.uisDeseni('hmz');
@@ -49,6 +53,8 @@ test('N1 uis deseni: hmz/hmzbank, 4 bilesen; eski desen uis- almaz', () => {
   assert.equal(g[0].bilesenler.adapter, null);
   assert.equal(g[0].bilesenler.indexer.ad, 'hmz-harmonize-uis-indexer-xrpl-mainnet');
   assert.equal(g[0].okumaBekleniyor, true);
+  assert.ok(!('adaylar' in g[0]), 'okumasiz grupta aday alani kaldi');
+  assert.equal(N.NODE_ID_RE, undefined, 'node id deseni kaldirilmadi');
 });
 
 test('N1b nodeAcikMi / lokasyon / es kiraci', () => {
@@ -66,10 +72,12 @@ test('N1b nodeAcikMi / lokasyon / es kiraci', () => {
   assert.ok(Object.isFrozen(N.NODE_PROD_ACIK));
 });
 
-test('N2 parseNodeLines: tum satir turleri; eksik alan hatalar\'a; NODESUM yok -> sum null', () => {
+test("N2 parseNodeLines: tum satir turleri; NODECAT yok sayilir; NODESUM plan_sha; eksik alan hatalar'a", () => {
   const t = H.T;
+  const PS = 'a'.repeat(64);
   const lines = [
     ...H.satirlar(),
+    `NODECAT\t${t}\teski_id\t${H.G_EVM}\trpc\tEski kayit\t${H.URL_B}\t${H.SHA.b}\t-`,
     `NODECHG\t${t}\t${H.D.idx}\tapp\tETH_INDEXER_NODE_URI\t${H.URL_A}\t${H.URL_B}\tyazildi`,
     `ROLLOUT\t${t}\t${H.D.idx}\tok\t42`,
     `VERIFY\t${t}\t${H.D.idx}\tapp\tETH_INDEXER_NODE_URI\tok`,
@@ -98,11 +106,17 @@ test('N2 parseNodeLines: tum satir turleri; eksik alan hatalar\'a; NODESUM yok -
   assert.ok(p.hatalar.some((h) => h.stage === 'ayristir'), 'eksik alanli satir sessizce atildi');
   assert.ok(p.hatalar.some((h) => h.stage === 'gitops'));
   assert.equal(p.sum, null, 'NODESUM yokken sonuc uydurulmamali');
-  const c = p.katalog.find((k) => k.id === 'das_test_eth_c');
-  assert.equal(c.cozulemedi, true);
-  assert.equal(c.neden, 'sir_eksik');
-  const s = NODE.parseNodeLines([`NODESUM\t${t}\tgeri_alindi\tdas_test_eth_b\t42\tROLLOUT`]);
-  assert.deepEqual(s.sum, { sonuc: 'geri_alindi', nodeId: 'das_test_eth_b', talepId: '42', kod: 'ROLLOUT' });
+  // NODECAT artik tanimsiz tur: alan yok, hata da yok (eski betik satiri sessizce yok sayilir).
+  assert.ok(!('katalog' in p), 'ayristiricida katalog alani kaldi');
+  assert.ok(!p.hatalar.some((h) => /NODECAT/.test(h.message)));
+  const s = NODE.parseNodeLines([`NODESUM\t${t}\tgeri_alindi\t${PS}\t42\tROLLOUT`]);
+  assert.deepEqual(s.sum, { sonuc: 'geri_alindi', planSha: PS, talepId: '42', kod: 'ROLLOUT' });
+  assert.equal(NODE.parseNodeLines([`NODESUM\t${t}\tfail\t-\t-\tGIRDI`]).sum.planSha, '-');
+  assert.equal(
+    NODE.parseNodeLines([`NODESUM\t${t}\tok\tdas_test_eth_b\t42\t-`]).sum.planSha,
+    '-',
+    'plan_sha olmayan 3. alan (eski betik node id) kabul edildi',
+  );
   const bozuk = NODE.parseNodeLines([`NODESUM\t${t}\tbelki\tx\t1\t-`]);
   assert.equal(bozuk.sum, null, 'tanimsiz sonuc kabul edildi');
   const karisik = NODE.parseNodeLines([`NODEEND\t${t}\tnode_env_get\tok`, `NODESUM\tbaska\tok\tx\t1\t-`]);
@@ -110,15 +124,15 @@ test('N2 parseNodeLines: tum satir turleri; eksik alan hatalar\'a; NODESUM yok -
   assert.equal(NODE.parseNodeLines(null), null);
 });
 
-test('N2b maske suzgeci: ham deger hicbir alanda kalmaz', () => {
+test('N2b maske suzgeci: ham deger hicbir alanda kalmaz; (bos) gecer', () => {
   const p = NODE.parseNodeLines(H.satirlar());
-  const ham = JSON.stringify({ e: p.envler, k: p.katalog });
+  const ham = JSON.stringify({ e: p.envler });
   assert.ok(!ham.includes(H.SIR), 'ham sir ayristiricidan gecti');
   const auth = p.envler.find((e) => e.env === 'SIDECAR_AUTH_VALUE');
   assert.equal(auth.maskeli, '****');
   assert.equal(p.envler.find((e) => e.env === 'SIDECAR_URL').maskeli, '****', 'yolda anahtar olan URL maskelenmeli');
   assert.equal(p.envler.find((e) => e.env === 'NBXPLORER_BTCNODEENDPOINT').maskeli, '10.1.2.3:8333');
-  assert.ok(p.maskeDuzeltildi >= 4);
+  assert.ok(p.maskeDuzeltildi >= 2);
   for (const [girdi, beklenen] of [
     ['https://eth-a.example.net/****', 'https://eth-a.example.net/****'],
     ['wss://h.example:8546', 'wss://h.example:8546'],
@@ -127,6 +141,8 @@ test('N2b maske suzgeci: ham deger hicbir alanda kalmaz', () => {
     ['https://h.example?key=abc', '****'],
     ['****', '****'],
     ['-', null],
+    ['(bos)', '(bos)'],
+    ['(bos) x', '****'],
     ['abc def', '****'],
     ['tcp://h.example:3001', 'tcp://h.example:3001'],
     ['ws://[fd00::1]:8546/****', 'ws://[fd00::1]:8546/****'],
@@ -134,65 +150,132 @@ test('N2b maske suzgeci: ham deger hicbir alanda kalmaz', () => {
   ]) {
     assert.equal(NODE.maskeGuvenli(girdi).deger, beklenen, girdi);
   }
+  // Betigin bos literal deger icin bastigi (bos) suzgecten DUZELTILMEDEN gecer.
+  const bos = NODE.parseNodeLines([
+    `NODEENV\t${H.T}\t${H.G_BTC}\t${H.D.nbx}\tnbxplorer\tNBXPLORER_BTCNODEENDPOINT\tp2p\tliteral\t(bos)\t${BOS_SHA}\thayir`,
+    `NODECHG\t${H.T}\t${H.D.nbx}\tnbxplorer\tNBXPLORER_BTCNODEENDPOINT\t10.1.2.3:8333\t(bos)\tyazildi`,
+  ]);
+  assert.equal(bos.envler[0].maskeli, '(bos)');
+  assert.equal(bos.degisiklikler[0].yeni, '(bos)');
+  assert.equal(bos.maskeDuzeltildi, 0, '(bos) maske hatasi sayildi');
 });
 
-test('N3 grupPlaniKur kapilari ve plan', () => {
-  const kod = (o, g, n, opts) => NODE.grupPlaniKur(okuma(o), g, n, opts).blocked || 'ok';
-  assert.equal(kod({}, H.G_EVM, 'das_test_eth_b'), 'ok');
-  assert.equal(kod({ tutarsiz: true }, H.G_EVM, 'das_test_eth_b'), 'node_tutarsiz_onay');
-  assert.equal(kod({ tutarsiz: true }, H.G_EVM, 'das_test_eth_b', { tutarsizlikOnay: true }), 'ok');
+test('N3 grupPlaniKur: kapilar, yeni deger sekli / bicimi / bos onayi / ayni deger, plan', () => {
+  const Y = H.YENI_GOVDE;
+  const kod = (o, g, yeni, opts) => NODE.grupPlaniKur(okuma(o), g, yeni, opts).blocked || 'ok';
+  assert.equal(kod({}, H.G_EVM, Y[H.G_EVM]), 'ok');
+  assert.equal(kod({ tutarsiz: true }, H.G_EVM, Y[H.G_EVM]), 'node_tutarsiz_onay');
+  assert.equal(kod({ tutarsiz: true }, H.G_EVM, Y[H.G_EVM], { tutarsizlikOnay: true }), 'ok');
   // envFrom = kaynak degiskeni KESIN tanimliyor (referans); belirsiz = kaynak okunamadi (olculemedi).
-  assert.equal(kod({ kaynak: 'envFrom' }, H.G_EVM, 'das_test_eth_b'), 'node_referans');
-  assert.equal(kod({ kaynak: 'belirsiz' }, H.G_EVM, 'das_test_eth_b'), 'node_olculemedi');
-  assert.equal(kod({ kaynak: 'bilinmeyen' }, H.G_EVM, 'das_test_eth_b'), 'node_olculemedi');
-  assert.equal(kod({ kaynak: 'secretRef' }, H.G_EVM, 'das_test_eth_b'), 'node_referans');
-  assert.equal(kod({ gitops: { adapter: 'evet' } }, H.G_EVM, 'das_test_eth_b'), 'node_gitops');
-  assert.equal(kod({ gitops: { api: 'olculemedi' } }, H.G_EVM, 'das_test_eth_b'), 'node_gitops', 'olculemedi gitops izinli sayildi');
-  assert.equal(kod({ stdin: 'yok', patch: 'olculemedi' }, H.G_EVM, 'das_test_eth_b'), 'node_arac_yok');
-  assert.equal(kod({ stdin: 'yok', patch: 'var' }, H.G_EVM, 'das_test_eth_b'), 'ok');
-  assert.equal(kod({}, H.G_EVM, 'das_test_eth_a'), 'node_ayni_node');
-  assert.equal(kod({}, H.G_EVM, 'das_test_eth_c'), 'node_katalog_disi', 'cozulemedi node secilebildi');
-  assert.equal(kod({}, H.G_EVM, 'yok_boyle_node'), 'node_katalog_disi');
-  assert.equal(kod({}, H.G_BTC, 'das_test_btc_tek'), 'node_katalog_disi', 'rol kumesi alt kume iken kabul edildi');
-  assert.equal(kod({}, H.G_BTC, 'das_test_eth_b'), 'node_katalog_disi', 'baska grubun node u kabul edildi');
-  assert.equal(kod({}, 'uis:yok-grup', 'das_test_eth_b'), 'node_girdi');
-  assert.equal(kod({}, H.G_EVM, 'das_test_eth_b', { production: true, onayMetni: 'uis:evm' }), 'node_onay_metni');
-  assert.equal(kod({}, H.G_EVM, 'das_test_eth_b', { production: true, onayMetni: H.G_EVM }), 'ok');
+  assert.equal(kod({ kaynak: 'envFrom' }, H.G_EVM, Y[H.G_EVM]), 'node_referans');
+  assert.equal(kod({ kaynak: 'belirsiz' }, H.G_EVM, Y[H.G_EVM]), 'node_olculemedi');
+  assert.equal(kod({ kaynak: 'bilinmeyen' }, H.G_EVM, Y[H.G_EVM]), 'node_olculemedi');
+  assert.equal(kod({ kaynak: 'secretRef' }, H.G_EVM, Y[H.G_EVM]), 'node_referans');
+  assert.equal(kod({ gitops: { adapter: 'evet' } }, H.G_EVM, Y[H.G_EVM]), 'node_gitops');
+  assert.equal(kod({ gitops: { api: 'olculemedi' } }, H.G_EVM, Y[H.G_EVM]), 'node_gitops', 'olculemedi gitops izinli sayildi');
+  assert.equal(kod({ stdin: 'yok', patch: 'olculemedi' }, H.G_EVM, Y[H.G_EVM]), 'node_arac_yok');
+  assert.equal(kod({ stdin: 'yok', patch: 'var' }, H.G_EVM, Y[H.G_EVM]), 'ok');
+  assert.equal(kod({}, 'uis:yok-grup', Y[H.G_EVM]), 'node_girdi');
+  assert.equal(kod({}, H.G_EVM, Y[H.G_EVM], { production: true, onayMetni: 'uis:evm' }), 'node_onay_metni');
+  assert.equal(kod({}, H.G_EVM, Y[H.G_EVM], { production: true, onayMetni: H.G_EVM }), 'ok');
+  // Izin listesi yok -> node_izin_yok (eski node_katalog_disi adi kalkti).
+  const izinsiz = H.satirlar().filter((l) => !(l.startsWith('NODEALLOW\t') && l.includes(`\t${H.G_EVM}\t`)));
+  const iz = NODE.grupPlaniKur({ parsed: NODE.parseNodeLines(izinsiz), at: Date.now() }, H.G_EVM, Y[H.G_EVM]);
+  assert.equal(iz.blocked, 'node_izin_yok');
+  assert.equal(iz.status, 409);
+  assert.equal(iz.message, NODE.METIN.aileYok);
 
-  const p = NODE.grupPlaniKur(okuma(), H.G_EVM, 'das_test_eth_b');
+  // Yeni deger sekli: rol kumesi grubun rolleriyle BIREBIR, degerler metin.
+  for (const yanlis of [null, undefined, [], 'x', {}, { rpc: Y[H.G_EVM].rpc, ws: 'wss://a.invalid' }, { rpc: 5 }, { RPC: 'https://a.invalid' }]) {
+    const r = NODE.grupPlaniKur(okuma(), H.G_EVM, yanlis);
+    assert.equal(r.blocked, 'node_girdi', JSON.stringify(yanlis));
+    assert.equal(r.status, 400);
+  }
+  assert.equal(kod({}, H.G_BTC, { p2p: H.YENI.btcP2p }), 'node_girdi', 'eksik rol kabul edildi');
+  // Bicim: ilk hatali rol (a.roller sirasi) ve neden kodu.
+  const b = NODE.grupPlaniKur(okuma(), H.G_EVM, { rpc: 'https://x.invalid/a b' });
+  assert.equal(b.blocked, 'node_deger_bicim');
+  assert.equal(b.status, 400);
+  assert.equal(b.rol, 'rpc');
+  assert.equal(b.neden, 'url');
+  assert.equal(b.message, 'Geçersiz değer (rpc): url.');
+  // KIRPMA YOK: bas/son bosluk desene takilir (sir sessizce degismesin).
+  assert.equal(NODE.grupPlaniKur(okuma(), H.G_EVM, { rpc: ` ${Y[H.G_EVM].rpc}` }).neden, 'url');
+  assert.equal(NODE.grupPlaniKur(okuma(), H.G_DOT, { url: H.YENI.dotUrl, auth: `${H.YENI.dotAuth} ` }).neden, 'sir');
+  const bb = NODE.grupPlaniKur(okuma(), H.G_BTC, { p2p: 'btc.invalid:0', rpc: 'ftp://x.invalid' });
+  assert.deepEqual([bb.rol, bb.neden], ['p2p', 'hostport'], 'rol sirasi a.roller degil');
+  assert.equal(NODE.grupPlaniKur(okuma(), H.G_DOT, { url: H.YENI.dotUrl, auth: 'a;b' }).neden, 'yasak');
+
+  // Bos rol: onaysiz 400; onayli ok (env bos degere yazilir).
+  const bosYeni = { p2p: '', rpc: H.YENI.btcRpc };
+  assert.equal(kod({}, H.G_BTC, bosYeni), 'node_bos_onay');
+  assert.equal(kod({}, H.G_BTC, bosYeni, { bosOnay: 'evet' }), 'node_bos_onay', 'true disi onay kabul edildi');
+  const bo = NODE.grupPlaniKur(okuma(), H.G_BTC, bosYeni, { bosOnay: true });
+  assert.equal(bo.ok, true, JSON.stringify(bo));
+  assert.deepEqual(bo.bosRoller, ['p2p']);
+  assert.equal(bo.newSha.p2p, BOS_SHA);
+  assert.deepEqual(coz(bo.yeniB64), { degerler: { p2p: '', rpc: H.YENI.btcRpc }, bos_onay: ['p2p'] });
+  assert.equal(bo.yeniMaskeli.p2p, '(bos)');
+  assert.match(bo.yeniOzet, /^p2p=\(bos\); rpc=http:\/\/btc-c\.node\.invalid:8332\/\*\*\*\*$/);
+
+  // Ayni deger: girilen degerin sha'si secilen her literal satirdakiyle ayni -> 409.
+  assert.equal(kod({}, H.G_EVM, { rpc: H.VAL.a }), 'node_ayni_node');
+  const ayni = NODE.grupPlaniKur(okuma(), H.G_EVM, { rpc: H.VAL.a });
+  assert.equal(ayni.status, 409);
+  assert.equal(ayni.message, 'Girilen değer seçilen bileşenlerde zaten kullanımda — değişiklik yok.');
+  assert.equal(kod({}, H.G_BTC, { p2p: H.VAL.btcP2p, rpc: H.VAL.btcRpc }), 'node_ayni_node');
+  assert.equal(kod({}, H.G_BTC, { p2p: H.VAL.btcP2p, rpc: H.YENI.btcRpc }), 'ok', 'tek rol degisimi ayni sayildi');
+
+  const p = NODE.grupPlaniKur(okuma(), H.G_EVM, Y[H.G_EVM]);
   // Varsayilan: node tasiyan TUM bilesenler (adapter/api/indexer); processor node tasimaz.
   assert.deepEqual(p.hedefler, [H.D.adp, H.D.api, H.D.idx].sort());
   assert.deepEqual(p.secilenler, ['adapter', 'api', 'indexer']);
   assert.deepEqual(p.secilmeyenler, []);
   assert.equal(p.plan.length, 3);
   assert.deepEqual(Object.keys(p.newSha), ['rpc']);
-  assert.equal(p.newSha.rpc, H.SHA.b);
+  assert.equal(p.newSha.rpc, H.hex(H.YENI.evm), 'new_sha girilen degerin sha256si degil');
+  assert.deepEqual(coz(p.yeniB64), { degerler: { rpc: H.YENI.evm }, bos_onay: [] });
+  assert.deepEqual(p.bosRoller, []);
   assert.equal(p.expect[`${H.D.idx}/app/NODE_URI_EVM_ETHEREUM_MAINNET`], H.SHA.a);
   assert.equal(p.expect[`${H.D.adp}/app/NODE_ADDR`], H.SHA.a);
+  assert.ok(!('node' in p), 'plan node kaydi tasiyor');
   // api bileseni env TASIMIYORSA: plana girmez, dokunulmaz, secilemez.
-  const pa = NODE.grupPlaniKur(okuma({ apiTasimaz: true }), H.G_EVM, 'das_test_eth_b');
+  const pa = NODE.grupPlaniKur(okuma({ apiTasimaz: true }), H.G_EVM, Y[H.G_EVM]);
   assert.deepEqual(pa.hedefler, [H.D.adp, H.D.idx].sort());
   assert.equal(
-    NODE.grupPlaniKur(okuma({ apiTasimaz: true }), H.G_EVM, 'das_test_eth_b', { bilesenler: [H.D.api] }).blocked,
+    NODE.grupPlaniKur(okuma({ apiTasimaz: true }), H.G_EVM, Y[H.G_EVM], { bilesenler: [H.D.api] }).blocked,
     'node_secim',
   );
-  assert.match(p.eskiOzet, /^rpc=https:\/\/eth-a\.example\.net\/\*\*\*\* \[Katalog: Sağlayıcı A\]$/);
-  assert.equal(p.yeniOzet, 'rpc=https://eth-b.example.net/****');
+  assert.equal(p.eskiOzet, 'rpc=https://eth-a.example.net/****');
+  assert.equal(p.yeniOzet, 'rpc=https://eth-c.node.invalid/****');
+  for (const k of ['metaco_das_test', 'metaco_das_prod_ank']) {
+    const oz = NODE.ozetKur({ tenant: tenantOf(k), plani: p, gerekce: 'gerekce metni yeterli', username: 'u' });
+    assert.doesNotMatch(JSON.stringify(oz), /katalog/i, `${k}: Smart metninde "katalog" kaldi`);
+    assert.ok(JSON.stringify(oz).includes('rpc=https://eth-a.example.net/****'), `${k}: eski maskeli deger yok`);
+    assert.ok(!JSON.stringify(oz).includes(H.SIR), `${k}: Smart metninde ham deger`);
+  }
 
   // Cok env'li grup ATOMIK: iki rol de planda.
-  const b = NODE.grupPlaniKur(okuma(), H.G_BTC, 'das_test_btc_b');
-  assert.equal(b.ok, true);
-  assert.deepEqual(Object.keys(b.newSha).sort(), ['p2p', 'rpc']);
-  assert.equal(b.plan.length, 2);
-  assert.equal(b.grup.kilit, 'eski-nbxplorer-mainnet');
+  const bt = NODE.grupPlaniKur(okuma(), H.G_BTC, Y[H.G_BTC]);
+  assert.equal(bt.ok, true);
+  assert.deepEqual(Object.keys(bt.newSha).sort(), ['p2p', 'rpc']);
+  assert.equal(bt.plan.length, 2);
+  assert.equal(bt.grup.kilit, 'eski-nbxplorer-mainnet');
   // Sir rolu: plan ve ozetlerde deger yok.
-  const dot = NODE.grupPlaniKur(okuma(), H.G_DOT, 'das_test_dot_b');
+  const dot = NODE.grupPlaniKur(okuma(), H.G_DOT, Y[H.G_DOT]);
   assert.equal(dot.ok, true);
-  assert.ok(!JSON.stringify(dot.plan).includes(H.SIR) && !dot.eskiOzet.includes(H.SIR) && !dot.yeniOzet.includes(H.SIR));
-  assert.match(dot.yeniOzet, /auth=\*\*\*\*/);
+  const disari = JSON.stringify({ plan: dot.plan, e: dot.eskiOzet, y: dot.yeniOzet, m: dot.yeniMaskeli, s: dot.newSha });
+  assert.ok(!disari.includes(H.SIR), 'plan / ozet / maske ham deger tasiyor');
+  assert.equal(dot.yeniOzet, 'auth=****; url=https://dot-c.node.invalid/****');
+
+  // Onizleme: deger almaz, ayni-deger / bos kontrolu yok, yeni ozet (önizleme).
+  const on = NODE.grupPlaniKur(okuma(), H.G_DOT, null, { onizleme: true, tutarsizlikOnay: true });
+  assert.equal(on.ok, true, JSON.stringify(on));
+  assert.equal(on.yeniOzet, 'auth=(önizleme); url=(önizleme)');
+  assert.equal(on.yeniB64, null);
 });
 
-test('N3b ekran gruplari: rozetler, engel sirasi, BTC/LTC ortak bekleyen', () => {
+test('N3b ekran gruplari: rozetler, engel sirasi, BTC/LTC ortak bekleyen; aday alani yok', () => {
   const parsed = NODE.parseNodeLines(H.satirlar({ tutarsiz: true, replicas: 0, apiTasimaz: true }));
   const bekleyenler = new Map([['eski-nbxplorer-mainnet', { talepId: 9, externalTicketId: 'SM-1', username: 'x', createdAt: null, durum: 'BEKLIYOR' }]]);
   const g = NODE.gruplariKur(parsed, { nodeAcik: true, talepYetkisi: true, bekleyenler });
@@ -202,13 +285,15 @@ test('N3b ekran gruplari: rozetler, engel sirasi, BTC/LTC ortak bekleyen', () =>
   assert.equal(evm.bilesenler.api.secilebilir, false);
   assert.equal(evm.bilesenler.indexer.nodeBagli, true);
   assert.equal(evm.bilesenler.indexer.secilebilir, true);
-  // Bilesen basina su anki katalog node'u (tutarsiz grupta bilesenler farkli).
-  assert.equal(evm.bilesenler.indexer.mevcutNode.katalogId, 'das_test_eth_a');
-  assert.equal(evm.bilesenler.adapter.mevcutNode.katalogId, 'das_test_eth_b');
+  // Bilesen basina su anki deger: yalniz maskeli (tutarsiz grupta bilesenler farkli).
+  assert.deepEqual(evm.bilesenler.indexer.mevcutNode, { maskeli: { rpc: H.URL_A } });
+  assert.deepEqual(evm.bilesenler.adapter.mevcutNode, { maskeli: { rpc: H.URL_B } });
   assert.equal(evm.bilesenler.processor.nodeBagli, false, 'processor node tasimaz');
   assert.equal(evm.bilesenler.processor.envFrom, 'var', 'NODEDEP envFrom notu ekrana gelmedi');
   assert.equal(evm.durdurulmus.length, 4);
-  assert.equal(evm.mevcutNode.katalogId, null, 'tutarsizken katalog eslesmesi uyduruldu');
+  assert.deepEqual(Object.keys(evm.mevcutNode), ['maskeli']);
+  assert.ok(!('adaylar' in evm), 'grup aday listesi tasiyor');
+  assert.ok(evm.envler.every((e) => !('katalogId' in e)), 'env satiri liste eslesmesi tasiyor');
   assert.equal(evm.degistirilebilir, true);
   for (const id of [H.G_BTC, H.G_LTC]) {
     const x = g.find((y) => y.id === id);
@@ -220,14 +305,14 @@ test('N3b ekran gruplari: rozetler, engel sirasi, BTC/LTC ortak bekleyen', () =>
   const yetkisiz = NODE.gruplariKur(parsed, { nodeAcik: true, talepYetkisi: false, bekleyenler: new Map() });
   assert.ok(yetkisiz.every((x) => x.engel === NODE.METIN.yetkiYok));
   assert.ok(!JSON.stringify(g).includes(H.SIR), 'ekran ciktisinda ham sir');
+  assert.doesNotMatch(JSON.stringify(g), /katalog/i);
 });
 
-test('N4 nodeExtraVars: yalniz sozlesme anahtarlari, deger yok, sinirlar', () => {
-  const p = NODE.grupPlaniKur(okuma(), H.G_DOT, 'das_test_dot_b');
+test('N4 nodeExtraVars: sozlesme 1.1 anahtar kumesi birebir; yeni_b64 yer tutucu; node id yok', () => {
+  const p = NODE.grupPlaniKur(okuma(), H.G_DOT, H.YENI_GOVDE[H.G_DOT]);
   const ev = NODE.nodeExtraVars({
     tenantKey: H.T,
     grupId: H.G_DOT,
-    nodeId: 'das_test_dot_b',
     talepId: 42,
     plan: p.plan,
     expect: p.expect,
@@ -239,32 +324,44 @@ test('N4 nodeExtraVars: yalniz sozlesme anahtarlari, deger yok, sinirlar', () =>
     'crypto_hub_action',
     'crypto_hub_node_expect_b64',
     'crypto_hub_node_grup',
-    'crypto_hub_node_id',
     'crypto_hub_node_new_sha_b64',
     'crypto_hub_node_plan_b64',
     'crypto_hub_node_talep',
+    'crypto_hub_node_yeni_b64',
     'crypto_hub_targets',
     'crypto_hub_tenant',
     'crypto_hub_timeout',
     'email',
   ]);
+  assert.equal(ev.crypto_hub_node_yeni_b64, '', 'bekleyen pakette deger var');
+  assert.ok(!('crypto_hub_node_id' in ev));
   assert.equal(ev.crypto_hub_action, 'node_change');
   assert.equal(ev.crypto_hub_timeout, 1800);
   assert.equal(ev.crypto_hub_node_talep, 42);
   assert.equal(ev.crypto_hub_targets, `deployment/${H.D.dot}`);
-  const coz = (b) => JSON.parse(Buffer.from(b, 'base64').toString('utf8'));
   const plan = coz(ev.crypto_hub_node_plan_b64);
   assert.deepEqual(Object.keys(plan[0]).sort(), ['c', 'd', 'e', 'r'], 'plan satirinda deger alani var');
-  assert.deepEqual(Object.keys(coz(ev.crypto_hub_node_new_sha_b64)).sort(), ['auth', 'url']);
+  assert.deepEqual(coz(ev.crypto_hub_node_new_sha_b64), { auth: H.hex(H.YENI.dotAuth), url: H.hex(H.YENI.dotUrl) });
   const hepsi = JSON.stringify(ev) + Object.values(ev).map((v) => (typeof v === 'string' ? Buffer.from(v, 'base64').toString('latin1') : '')).join('');
-  assert.ok(!hepsi.includes(H.SIR), 'extra_vars sir tasiyor');
+  assert.ok(!hepsi.includes(H.SIR), 'extra_vars deger tasiyor');
   for (const k of ['crypto_hub_node_plan_b64', 'crypto_hub_node_expect_b64', 'crypto_hub_node_new_sha_b64']) {
     assert.ok(ev[k].length <= 8192);
   }
-  const k1 = NODE.planKodla(p.plan, p.expect, p.newSha);
+  const k1 = NODE.planKodla(p.plan, p.expect, p.newSha, p.yeniB64);
   assert.match(k1.planSha, /^[0-9a-f]{64}$/);
+  assert.equal(
+    k1.planSha,
+    H.hex(ev.crypto_hub_node_plan_b64 + ev.crypto_hub_node_expect_b64 + ev.crypto_hub_node_new_sha_b64),
+    'plan_sha yeni_b64 icermemeli',
+  );
   const buyuk = Array.from({ length: 400 }, (_, i) => ({ d: `hmz-harmonize-x-${i}`, c: 'app', e: 'ETH_INDEXER_NODE_URI', r: 'rpc' }));
   assert.throws(() => NODE.planKodla(buyuk, {}, {}), /8192/);
+  assert.throws(() => NODE.planKodla(p.plan, p.expect, p.newSha, 'A'.repeat(N.YENI_B64_AZAMI + 1)), /16384/);
+  assert.doesNotThrow(() => NODE.planKodla(p.plan, p.expect, p.newSha, 'A'.repeat(N.YENI_B64_AZAMI)));
+  // Iki rol x 2048 karakter, JSON kacisi en kotu durum (sir rolunde " ve \ serbest) sinirin altinda.
+  const kotu = NODE.grupPlaniKur(okuma(), H.G_DOT, { url: `https://d.invalid/${'a'.repeat(2030)}`, auth: '"\\'.repeat(1024) });
+  assert.equal(kotu.ok, true, JSON.stringify(kotu));
+  assert.ok(kotu.yeniB64.length <= N.YENI_B64_AZAMI, String(kotu.yeniB64.length));
 });
 
 const OPSX_SABLON = [
@@ -278,7 +375,7 @@ const OPSX_SABLON = [
 
 function ornekOzet(tenantKey = H.T, esTalep = null) {
   const t = tenantOf(tenantKey);
-  const p = NODE.grupPlaniKur(okuma({ t: tenantKey }), H.G_DOT, 'das_test_dot_b', {
+  const p = NODE.grupPlaniKur(okuma({ t: tenantKey }), H.G_DOT, H.YENI_GOVDE[H.G_DOT], {
     production: t.production,
     onayMetni: H.G_DOT,
   });
@@ -286,15 +383,21 @@ function ornekOzet(tenantKey = H.T, esTalep = null) {
   return { t, p, ozet: NODE.ozetKur({ tenant: t, plani: p, gerekce: 'Gerekce\tsekmeli metin', username: 'nodecu', esTalep }) };
 }
 
-test('N5 cryptoNodeMetadata: OpsX sablonu ayni sozlukle render; bos/rollout sablonu 400; sir yok', () => {
+test('N5 cryptoNodeMetadata: OpsX sablonu ayni sozlukle render; yeni deger maskeli; bos/rollout sablonu 400; sir yok', () => {
   const { ozet } = ornekOzet();
   assert.equal(ozet.ortam, 'test');
   assert.equal(ozet.cluster, 'metaco_das');
   assert.equal(ozet.hedefler, `harmonize-test,${H.D.dot}`);
   assert.ok(ozet.islem.length <= 400);
-  for (const s of ['Crypto Hub Indexer/Node Change', H.T, 'İstanbul', H.G_DOT, 'das_test_dot_b', 'url=****']) {
+  for (const s of ['Crypto Hub Indexer/Node Change', H.T, 'İstanbul', H.G_DOT, '-> auth=****; url=https://dot-c.node.invalid/****']) {
     assert.ok(ozet.islem.includes(s), `islem ozetinde yok: ${s}`);
   }
+  // K5: opsx.yeniNode maskeli ozet; yeniNodeAd yok; bosRoller her zaman metin.
+  assert.equal(ozet.yeniNode, 'auth=****; url=https://dot-c.node.invalid/****');
+  assert.ok(!('yeniNodeAd' in ozet), 'opsx.yeniNodeAd kaldi');
+  assert.equal(ozet.bosRoller, '');
+  assert.match(ozet.aciklama, /\nYeni node \(maskeli\): auth=\*\*\*\*; url=https:\/\/dot-c\.node\.invalid\/\*\*\*\*\n/);
+  assert.doesNotMatch(ozet.aciklama, /boş değerle yazılacak/);
   const m = NODE.cryptoNodeMetadata(OPSX_SABLON, { username: 'nodecu', email: 'n@x' }, ozet, { job_type: 'run', openshift_operations: 'openshift_application_rollout' });
   assert.equal(m.JRDESTAPPLICATION_1, ozet.hedefler);
   assert.equal(m.JRENV, 'Test');
@@ -305,6 +408,14 @@ test('N5 cryptoNodeMetadata: OpsX sablonu ayni sozlukle render; bos/rollout sabl
   assert.match(m.TAM, /Lokasyon: İstanbul/);
   assert.match(m.TAM, /Gerekçe: Gerekce sekmeli metin/);
   assert.ok(!JSON.stringify(m).includes(H.SIR), 'metadata sir tasiyor');
+  assert.ok(!/[0-9a-f]{64}/.test(JSON.stringify(ozet)), 'Smart metninde sha256 var (en az sizinti: yok)');
+  // Bos rol: aciklamada uyari satiri, opsx.bosRoller dolu.
+  const tb = tenantOf(H.T);
+  const pb = NODE.grupPlaniKur(okuma(), H.G_BTC, { p2p: '', rpc: H.YENI.btcRpc }, { bosOnay: true });
+  const ob = NODE.ozetKur({ tenant: tb, plani: pb, gerekce: 'gerekce metni yeterli', username: 'u' });
+  assert.equal(ob.bosRoller, 'p2p');
+  assert.match(ob.aciklama, /\nUyarı: p2p boş değerle yazılacak \(talep eden onayladı; uygulama node'suz kalabilir\)\./);
+  assert.ok(ob.islem.includes('-> p2p=(bos); rpc=http://btc-c.node.invalid:8332/****'), ob.islem);
   // Ayni sablon OpsX baglaminda da render olur (default dali): OpsX bozulmaz.
   const opsx = require('../../smart/metadata.cjs').buildSmartMetadata(OPSX_SABLON, {
     username: 'u',
@@ -332,10 +443,11 @@ test('N5 cryptoNodeMetadata: OpsX sablonu ayni sozlukle render; bos/rollout sabl
 
 // ── 2026-11-02 duzeltme turu: bilesen secimi, gercek env adlari, PS1/PS3/PS4/PS7 ─────────
 
-test('N3c bilesen secimi: alt kume, secime gore tutarsizlik onayi ve ayni node, dogrulama', () => {
+test('N3c bilesen secimi: alt kume, secime gore tutarsizlik onayi ve ayni deger, dogrulama', () => {
   const o = okuma({ tutarsiz: true }); // adapter=B, api=A, indexer=A
-  const plan = (sec, opts = {}) => NODE.grupPlaniKur(o, H.G_EVM, 'das_test_eth_b', { bilesenler: sec, ...opts });
-  // Yalniz indexer (su an A) -> B: secim tek node'da, ek onay GEREKMEZ.
+  const plan = (sec, opts = {}, yeni = H.YENI_GOVDE[H.G_EVM]) =>
+    NODE.grupPlaniKur(o, H.G_EVM, yeni, { bilesenler: sec, ...opts });
+  // Yalniz indexer (su an A) -> C: secim tek degerde, ek onay GEREKMEZ.
   const p = plan([H.D.idx]);
   assert.equal(p.ok, true, JSON.stringify(p));
   assert.deepEqual(p.hedefler, [H.D.idx]);
@@ -349,15 +461,17 @@ test('N3c bilesen secimi: alt kume, secime gore tutarsizlik onayi ve ayni node, 
     `${H.D.idx}/app/NODE_URI_EVM_ETHEREUM_MAINNET`,
   ]);
   assert.equal(p.tutarsizToplama, false);
-  // adapter (B) + indexer (A) -> B: secilenler farkli node'da -> ek onay ZORUNLU.
+  // adapter (B) + indexer (A) -> C: secilenler farkli degerde -> ek onay ZORUNLU.
   assert.equal(plan([H.D.adp, H.D.idx]).blocked, 'node_tutarsiz_onay');
   const t = plan([H.D.adp, H.D.idx], { tutarsizlikOnay: true });
   assert.equal(t.ok, true);
   assert.equal(t.tutarsizToplama, true);
-  // Yalniz adapter (zaten B) -> B: secilenlerin hepsi zaten bu node'da.
-  assert.equal(plan([H.D.adp]).blocked, 'node_ayni_node');
+  // Yalniz adapter (zaten B) -> B: secilenlerin hepsi zaten bu degerde.
+  assert.equal(plan([H.D.adp], {}, { rpc: H.VAL.b }).blocked, 'node_ayni_node');
+  // adapter + indexer -> B: indexer A'da, ayni DEGIL (tutarsizlik onayi ister).
+  assert.equal(plan([H.D.adp, H.D.idx], {}, { rpc: H.VAL.b }).blocked, 'node_tutarsiz_onay');
   // Grup genelinde tutarsiz ama secim yoksa (varsayilan HEPSI) onay ister.
-  assert.equal(NODE.grupPlaniKur(o, H.G_EVM, 'das_test_eth_b').blocked, 'node_tutarsiz_onay');
+  assert.equal(NODE.grupPlaniKur(o, H.G_EVM, H.YENI_GOVDE[H.G_EVM]).blocked, 'node_tutarsiz_onay');
   // Dogrulama: bos, grup disi, tekrar, dizi degil.
   assert.equal(plan([]).blocked, 'node_secim');
   assert.equal(plan(['hmz-harmonize-uis-processor-evm-ethereum-mainnet']).blocked, 'node_secim', 'processor secilebildi');
@@ -384,7 +498,7 @@ test('N3d degisken yok: kurala uymayan uis grubu acik metinle degistirilemez; ya
   assert.equal(evm.engel, NODE.METIN.degiskenYok);
   assert.match(NODE.METIN.degiskenYok, /^Değiştirilemez: node değişkeni bulunamadı/);
   assert.equal(
-    NODE.grupPlaniKur({ parsed, at: Date.now() }, H.G_EVM, 'das_test_eth_b').blocked,
+    NODE.grupPlaniKur({ parsed, at: Date.now() }, H.G_EVM, H.YENI_GOVDE[H.G_EVM]).blocked,
     'node_degisken_yok',
   );
   // Asla degismeyenler: betik hatasiyla gelse bile izin listesine / plana girmez.
@@ -399,7 +513,7 @@ test('N3d degisken yok: kurala uymayan uis grubu acik metinle degistirilemez; ya
   assert.ok(!yasak.allow.some((a) => N.YASAK_ENV_RE.test(a.env)), 'yasak ad izin listesine girdi');
   assert.ok(!yasak.envler.some((e) => N.YASAK_ENV_RE.test(e.env)));
   assert.equal(yasak.hatalar.filter((x) => /yasak değişken/.test(x.message)).length, 4);
-  const pl = NODE.grupPlaniKur({ parsed: yasak, at: Date.now() }, H.G_EVM, 'das_test_eth_b');
+  const pl = NODE.grupPlaniKur({ parsed: yasak, at: Date.now() }, H.G_EVM, H.YENI_GOVDE[H.G_EVM]);
   assert.ok(!JSON.stringify(pl.plan).match(/PROXY|CHAIN_ID|ADDRESS_API/));
   for (const ad of ['HTTP_PROXY', 'https_proxy', 'NO_PROXY', 'ADAPTER_ADDR', 'EVENT_API_URL', 'ADDRESS_API_URL_X', 'CHAIN_ID', 'CHAIN_ID_HEX']) {
     assert.ok(N.YASAK_ENV_RE.test(ad), ad);
@@ -409,7 +523,7 @@ test('N3d degisken yok: kurala uymayan uis grubu acik metinle degistirilemez; ya
   }
 });
 
-test('N5b PS1 kisa alan: yeni node id ve bilesen listesi ASLA kesilmez (tutarsiz, uzun maskeli eski)', () => {
+test('N5b PS1 kisa alan: bilesen listesi ASLA kesilmez; yeni maskeli ozet 160ta kirpilir (iki uzun maske)', () => {
   const T = H.T;
   const uzun = (h) => `https://${h.repeat(110)}.example.net/****`;
   const L = H.satirlar().filter((l) => !(l.startsWith('NODEENV\t') && l.includes(`\t${H.G_EVM}\t`)));
@@ -417,15 +531,30 @@ test('N5b PS1 kisa alan: yeni node id ve bilesen listesi ASLA kesilmez (tutarsiz
   L.push(`NODEENV\t${T}\t${H.G_EVM}\t${H.D.api}\tapp\tNODE_ADDR\trpc\tliteral\t${uzun('b')}\t${H.hex('u2')}\thayir`);
   L.push(`NODEENV\t${T}\t${H.G_EVM}\t${H.D.idx}\tapp\tNODE_URI_EVM_ETHEREUM_MAINNET\trpc\tliteral\t${uzun('c')}\t${H.hex('u3')}\thayir`);
   const parsed = NODE.parseNodeLines(L);
-  const p = NODE.grupPlaniKur({ parsed, at: Date.now() }, H.G_EVM, 'das_test_eth_b', { tutarsizlikOnay: true });
+  const yeniUzun = { rpc: `https://${'n'.repeat(190)}.invalid/${H.SIR}` };
+  const p = NODE.grupPlaniKur({ parsed, at: Date.now() }, H.G_EVM, yeniUzun, { tutarsizlikOnay: true });
   assert.equal(p.ok, true, JSON.stringify(p));
   assert.ok(p.eskiOzet.length > 300, `eski ozet kisa kaldi (${p.eskiOzet.length}) - test kor`);
+  assert.ok(p.yeniOzet.length > 160, `yeni ozet kisa kaldi (${p.yeniOzet.length}) - test kor`);
+  // Iki rol x uzun maske (DOT): yeni ozet 400'u asabilecek boyda.
+  const dot = NODE.grupPlaniKur(okuma(), H.G_DOT, { url: `https://${'d'.repeat(190)}.invalid/x`, auth: H.YENI.dotAuth });
+  assert.equal(dot.ok, true);
   for (const k of ['metaco_das_test', 'metaco_das_prod_ank']) {
-    const oz = NODE.ozetKur({ tenant: tenantOf(k), plani: p, gerekce: 'gerekce metni yeterli', username: 'u' });
-    assert.ok(oz.islem.length <= 400, `${k}: ${oz.islem.length}`);
-    assert.ok(oz.islem.includes('-> das_test_eth_b (Sağlayıcı B)'), `${k}: yeni node id kesildi: ${oz.islem}`);
-    assert.ok(oz.islem.includes('Bileşenler: adapter, api, indexer'), `${k}: bilesen listesi kesildi`);
-    assert.ok(oz.islem.indexOf('das_test_eth_b') < oz.islem.indexOf('Eski:'), 'yeni node eski ozetten sonra');
+    for (const [plani, bilesen] of [
+      [p, 'Bileşenler: adapter, api, indexer'],
+      [dot, `Bileşenler: ${H.D.dot}`],
+    ]) {
+      const oz = NODE.ozetKur({ tenant: tenantOf(k), plani, gerekce: 'gerekce metni yeterli', username: 'u' });
+      assert.ok(oz.islem.length <= 400, `${k}: ${oz.islem.length}`);
+      assert.ok(oz.islem.includes(bilesen), `${k}: bilesen listesi kesildi: ${oz.islem}`);
+      const yeniKisim = oz.islem.slice(oz.islem.indexOf(' -> ') + 4, oz.islem.indexOf(' | Bileşenler:'));
+      assert.ok(yeniKisim.length <= 160, `yeni maskeli ozet 160'i asti (${yeniKisim.length})`);
+      assert.ok(oz.islem.indexOf(' -> ') < oz.islem.indexOf('Eski:') || !oz.islem.includes('Eski:'), 'yeni ozet eski ozetten sonra');
+      // Tam hali aciklama ve opsx.yeniNode'da.
+      assert.equal(oz.yeniNode, plani.yeniOzet);
+      assert.ok(oz.aciklama.includes(`Yeni node (maskeli): ${plani.yeniOzet}`));
+      assert.ok(!JSON.stringify(oz).includes(H.SIR));
+    }
   }
 });
 
@@ -433,7 +562,7 @@ test('N5b PS1 kisa alan: yeni node id ve bilesen listesi ASLA kesilmez (tutarsiz
 const fs = require('node:fs');
 const path = require('node:path');
 const KOK = path.join(__dirname, '..', '..');
-const coz = (p) => require.resolve(path.join(KOK, p));
+const cozYol = (p) => require.resolve(path.join(KOK, p));
 
 function opsxAnahtarlari() {
   const src = fs.readFileSync(path.join(KOK, 'opsx', 'index.cjs'), 'utf8');
@@ -469,7 +598,7 @@ function opsxAnahtarlari() {
 async function sahteyle(sahteler, fn) {
   const once = new Map();
   for (const [p, exp] of Object.entries(sahteler)) {
-    const r = coz(p);
+    const r = cozYol(p);
     once.set(r, require.cache[r]);
     require.cache[r] = { id: r, filename: r, loaded: true, exports: exp };
   }
@@ -533,7 +662,7 @@ test('N5c PS3 OpsX esligi: gercek opsxProductionKapisi baglaminin anahtarlari no
   assert.ok(opsxCtx && opsxCtx.opsx && opsxCtx.extraVars, 'OpsX baglami yakalanamadi');
   // Node baglami: ayni metadata sahtesiyle cryptoNodeMetadata.
   const t = tenantOf('metaco_das_prod');
-  const p = NODE.grupPlaniKur(okuma({ t: t.key }), H.G_DOT, 'das_test_dot_b', { production: true, onayMetni: H.G_DOT });
+  const p = NODE.grupPlaniKur(okuma({ t: t.key }), H.G_DOT, H.YENI_GOVDE[H.G_DOT], { production: true, onayMetni: H.G_DOT });
   const oz = NODE.ozetKur({ tenant: t, plani: p, gerekce: 'gerekce metni yeterli', username: 'nodecu' });
   const nodeCtx = await sahteyle({ 'smart/metadata.cjs': metaSahte }, async () => {
     NODE.cryptoNodeMetadata('X: y', { username: 'nodecu', email: 'n@x.test', templateName: 'T', templateId: 77, extraVars: { crypto_hub_action: 'node_change' } }, oz, sablonVar, {
@@ -602,4 +731,190 @@ test('N7c PS7 talep numarasi metni sunucu ve ekranda AYNI', () => {
   );
   assert.match(tg[0].engel, /\(Smart #SM-9\)/);
   assert.ok(!/Smart #\?|açılıyor, talep/.test(JSON.stringify(g) + JSON.stringify(tg)));
+});
+
+// ── N17 deger dogrulama + maskeleme (sozlesme 3; Python ile AYNI kural) ─────────────────
+test('N17 degerDogrula / maskele: sozlesme vektorleri; desen kaynak metinleri sozlesmeyle birebir', () => {
+  // Sozlesme 3.1 metinleri (bagimsiz kopya: kaynak metin sapinca kirmizi).
+  assert.deepEqual({ ...N.DESEN }, {
+    ascii: String.raw`^[\x20-\x7e]+$`,
+    yasak: String.raw`[;\x60]|\$\(`,
+    url: String.raw`^(https?|wss?)://[^\x20\x22\x24\x27\x3b\x3c\x3e\x5c\x60]+$`,
+    hostport: String.raw`^[A-Za-z0-9.-]+:[0-9]{1,5}$`,
+    sir: String.raw`^[\x21-\x7e](?:[\x20-\x7e]*[\x21-\x7e])?$`,
+  });
+  assert.equal(N.DEGER_EN_COK, 2048);
+  assert.equal(N.BOS_MASKE, '(bos)');
+  assert.equal(N.YENI_B64_AZAMI, 16384);
+  assert.deepEqual([...N.BICIMLER], ['url', 'hostport', 'sir']);
+  const dol = (s, n) => s + 'a'.repeat(n - s.length);
+  const V = [
+    ['https://eth.node.invalid/v3/KEY123', 'url', null, 'https://eth.node.invalid/****'],
+    ['https://h.invalid:8545', 'url', null, 'https://h.invalid:8545'],
+    ['https://h.invalid/', 'url', null, 'https://h.invalid'],
+    ['wss://u:p@xrpl.invalid:51233', 'url', null, 'wss://xrpl.invalid:51233/****'],
+    ['https://h.invalid?auth=K', 'url', null, 'https://h.invalid/****'],
+    ['wss://sol.invalid:8443/websocket?auth=K', 'url', null, 'wss://sol.invalid:8443/****'],
+    ['https://[::1]:8545/x', 'url', null, 'https://[::1]:8545/****'],
+    [dol('https://h.invalid/', 2048), 'url', null, 'https://h.invalid/****'],
+    [dol('https://h.invalid/', 2049), 'url', 'uzun'],
+    ['HTTPS://h.invalid', 'url', 'url'],
+    ['ftp://h.invalid', 'url', 'url'],
+    ['https://h.invalid/a b', 'url', 'url'],
+    ['https://h.invalid/"x', 'url', 'url'],
+    ["https://h.invalid/'x", 'url', 'url'],
+    ['https://h.invalid/<x>', 'url', 'url'],
+    ['https://h.invalid/x\\y', 'url', 'url'],
+    ['https://h.invalid/$x', 'url', 'url'],
+    ['https://h.invalid/;x', 'url', 'yasak'],
+    ['https://h.invalid/$(id)', 'url', 'yasak'],
+    ['https://h.invalid/`id`', 'url', 'yasak'],
+    ['https://h.invalid/x\n', 'url', 'karakter'],
+    ['https://h.invalid/\tx', 'url', 'karakter'],
+    ['https://h.invalid/ü', 'url', 'karakter'],
+    ['btc.invalid:8333', 'hostport', null, 'btc.invalid:8333'],
+    ['btc.invalid:0', 'hostport', 'hostport'],
+    ['btc.invalid:65536', 'hostport', 'hostport'],
+    ['btc.invalid:8333/x', 'hostport', 'hostport'],
+    ['Bearer abc', 'sir', null, '****'],
+    [' abc', 'sir', 'sir'],
+    ['abc ', 'sir', 'sir'],
+    ['a;b', 'sir', 'yasak'],
+    ['', 'url', null, '(bos)'],
+    ['', 'sir', null, '(bos)'],
+    ['', 'hostport', null, '(bos)'],
+    ['x', 'baska', 'bicim'],
+    ['', 'baska', 'bicim'],
+  ];
+  assert.equal(V.length, 36);
+  for (const [deger, bicim, neden, maske] of V) {
+    assert.equal(N.degerDogrula(deger, bicim), neden, `${JSON.stringify(deger)} / ${bicim}`);
+    if (neden === null) assert.equal(N.maskele(deger, bicim), maske, `maske ${JSON.stringify(deger)}`);
+  }
+  assert.equal(N.degerDogrula(5, 'url'), 'tip');
+  assert.equal(N.degerDogrula(null, 'sir'), 'tip');
+  assert.equal(N.maskele(null, 'url'), '-');
+  assert.equal(N.maskele('x'.repeat(300), 'hostport'), '****');
+  // Sozlesme 3.3 adim 6: sonuc her bicimde en cok 200 karakter (hostport dahil).
+  assert.equal(N.maskele(`${'h'.repeat(250)}:8333`, 'hostport').length, 200);
+  assert.ok(N.maskele(`https://${'h'.repeat(250)}.invalid/x`, 'url').length <= 200);
+  // Python ayni kumeyi disarida birakir (\r, U+2028, U+2029): canli degerin maskesi iki tarafta ayni.
+  for (const ayrac of ['\r', ' ', ' ']) assert.equal(N.maskele(`https://h.invalid/a${ayrac}b`, 'url'), '****');
+  // Maskeli cikti Portal suzgecinden duzeltilmeden gecer (betikle ayni bicim).
+  for (const [deger, bicim, neden] of V) {
+    if (neden !== null) continue;
+    const m = N.maskele(deger, bicim);
+    assert.equal(NODE.maskeGuvenli(m).duzeltildi, false, `suzgec ${m} maskesini bozdu`);
+  }
+});
+
+// ── N18 launch oncesi kanca (sozlesme 4.3) ───────────────────────────────────────────
+function kancaKur(o = {}) {
+  const env = require('../../db/env-overrides.cjs');
+  const grup = o.grup || H.G_BTC;
+  const yeni = o.yeni || { p2p: '', rpc: H.YENI.btcRpc };
+  const p = NODE.grupPlaniKur(okuma(), grup, yeni, { bosOnay: true });
+  assert.equal(p.ok, true, JSON.stringify(p));
+  const ev = NODE.nodeExtraVars({
+    tenantKey: H.T,
+    grupId: grup,
+    talepId: 42,
+    plan: p.plan,
+    expect: p.expect,
+    newSha: p.newSha,
+    hedefler: p.hedefler,
+    email: 'a@b.c',
+  });
+  const k = NODE.planKodla(p.plan, p.expect, p.newSha, p.yeniB64);
+  const row = {
+    id: 42,
+    tenant_key: H.T,
+    grup,
+    plan_sha: k.planSha,
+    smart_ticket_id: 7,
+    kapandi_at: null,
+    yeni_deger_secret: env.encryptSecretValue(p.yeniB64),
+  };
+  const db = { sorgular: [], async query(sql, prm) { this.sorgular.push(sql); return { rows: db.satir ? [{ ...db.satir }] : [] }; } };
+  db.satir = row;
+  const ticket = { id: 7, pendingLaunch: { extraVars: { ...ev, zorunlu_alan: 'v' }, launchOncesi: 'crypto_hub_node' } };
+  return { p, ev, row, db, ticket, env };
+}
+
+test('N18 launchOncesiDegerEkle: mutlu yol, her ret ayri, hata metninde deger yok, paket degismez', async () => {
+  const { p, db, ticket, row, env } = kancaKur();
+  assert.match(row.yeni_deger_secret, /^enc:v1:/, 'test anahtari kurulmadi (deger duz kaldi)');
+  const once = JSON.stringify(ticket.pendingLaunch);
+  const r = await NODE.launchOncesiDegerEkle(ticket, { db });
+  assert.equal(r.extraVars.crypto_hub_node_yeni_b64, p.yeniB64);
+  assert.equal(r.extraVars.zorunlu_alan, 'v', 'prefill alanlari korunmadi');
+  assert.deepEqual(r.gizliler.sort(), [p.yeniB64, H.YENI.btcRpc].sort(), 'bos deger gizli listesine girmemeli');
+  assert.equal(JSON.stringify(ticket.pendingLaunch), once, 'bekleyen paket degisti');
+  assert.match(db.sorgular[0], /SELECT id, tenant_key, grup, plan_sha, smart_ticket_id, kapandi_at, yeni_deger_secret FROM crypto_hub_node_changes WHERE id = \$1/);
+  // ACILIYOR'da kalmis satir (bilet baglanamadi): smart_ticket_id null kabul.
+  db.satir = { ...row, smart_ticket_id: null };
+  assert.equal((await NODE.launchOncesiDegerEkle(ticket, { db })).extraVars.crypto_hub_node_yeni_b64, p.yeniB64);
+
+  const sifrele = (o) => env.encryptSecretValue(Buffer.from(JSON.stringify(o), 'utf8').toString('base64'));
+  const durumlar = [
+    ['talep no gecersiz', (t) => (t.pendingLaunch.extraVars.crypto_hub_node_talep = 'x')],
+    ['bekleyen pakette deger var (beklenmiyor)', (t) => (t.pendingLaunch.extraVars.crypto_hub_node_yeni_b64 = p.yeniB64)],
+    ['bekleyen pakette deger var (beklenmiyor)', (t) => delete t.pendingLaunch.extraVars.crypto_hub_node_yeni_b64],
+    ['kayit yok', (_t, d) => (d.satir = null)],
+    ['talep kapanmis', (_t, d) => (d.satir.kapandi_at = new Date())],
+    ['kayit uyusmuyor', (_t, d) => (d.satir.tenant_key = 'metaco_gar_test')],
+    ['kayit uyusmuyor', (_t, d) => (d.satir.grup = H.G_LTC)],
+    ['bilet uyusmuyor', (_t, d) => (d.satir.smart_ticket_id = 8)],
+    ['plan ozeti uyusmuyor', (t) => (t.pendingLaunch.extraVars.crypto_hub_node_expect_b64 += 'x')],
+    ['deger yok (temizlenmis)', (_t, d) => (d.satir.yeni_deger_secret = null)],
+    ['deger yok (temizlenmis)', (_t, d) => (d.satir.yeni_deger_secret = '')],
+    ['deger cozulemedi', (_t, d) => (d.satir.yeni_deger_secret = 'enc:v1:bozuk')],
+    ['deger bicimi gecersiz', (_t, d) => (d.satir.yeni_deger_secret = env.encryptSecretValue('{bozuk}'))],
+    ['deger bicimi gecersiz', (_t, d) => (d.satir.yeni_deger_secret = sifrele({ degerler: { p2p: '', rpc: H.YENI.btcRpc }, bos_onay: ['p2p'], x: 1 }))],
+    ['deger bicimi gecersiz', (_t, d) => (d.satir.yeni_deger_secret = sifrele({ degerler: { p2p: '', rpc: H.YENI.btcRpc }, bos_onay: [] }))],
+    ['deger bicimi gecersiz', (_t, d) => (d.satir.yeni_deger_secret = sifrele({ degerler: { p2p: '', rpc: H.YENI.btcRpc }, bos_onay: ['p2p', 'rpc'] }))],
+    ['deger bicimi gecersiz', (_t, d) => (d.satir.yeni_deger_secret = sifrele({ degerler: { p2p: 1, rpc: H.YENI.btcRpc }, bos_onay: [] }))],
+    ['deger ozeti uyusmuyor', (_t, d) => (d.satir.yeni_deger_secret = sifrele({ degerler: { p2p: 'btc-x.invalid:1', rpc: H.YENI.btcRpc }, bos_onay: [] }))],
+    ['deger ozeti uyusmuyor', (_t, d) => (d.satir.yeni_deger_secret = sifrele({ degerler: { rpc: H.YENI.btcRpc }, bos_onay: [] }))],
+  ];
+  for (const [neden, boz] of durumlar) {
+    const k = kancaKur();
+    boz(k.ticket, k.db);
+    const pl = JSON.stringify(k.ticket.pendingLaunch);
+    await assert.rejects(
+      () => NODE.launchOncesiDegerEkle(k.ticket, { db: k.db }),
+      (e) => {
+        assert.match(e.message, /^Crypto Hub node talebi #(42|\?): /);
+        assert.ok(e.message.endsWith(neden), `${neden} beklendi: ${e.message}`);
+        assert.ok(!e.message.includes(H.SIR) && !e.message.includes(k.p.yeniB64), 'hata metninde deger');
+        return true;
+      },
+      neden,
+    );
+    assert.equal(JSON.stringify(k.ticket.pendingLaunch), pl, `${neden}: paket degisti`);
+  }
+  // Production: enc:v1: onekli olmayan deger reddedilir (anahtar tanimli olsa da).
+  const k2 = kancaKur();
+  k2.db.satir.yeni_deger_secret = k2.p.yeniB64;
+  const nodeEnv = process.env.NODE_ENV;
+  process.env.NODE_ENV = 'production';
+  try {
+    await assert.rejects(() => NODE.launchOncesiDegerEkle(k2.ticket, { db: k2.db }), /deger sifresiz$/);
+    const k3 = kancaKur();
+    assert.equal((await NODE.launchOncesiDegerEkle(k3.ticket, { db: k3.db })).extraVars.crypto_hub_node_yeni_b64, k3.p.yeniB64);
+  } finally {
+    if (nodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = nodeEnv;
+  }
+});
+
+test('N18b gizliTemizle: uzun gizli once, butun gecisler, 500 karakter', () => {
+  const b64 = Buffer.from(`{"degerler":{"rpc":"${H.YENI.evm}"}}`).toString('base64');
+  const m = `AWX 400: {"extra_vars":{"crypto_hub_node_yeni_b64":"${b64}","x":"${H.YENI.evm}"}} ${H.YENI.evm}`;
+  const t = NODE.gizliTemizle(m, [H.YENI.evm, b64, '', null]);
+  assert.ok(!t.includes(H.SIR) && !t.includes(b64), t);
+  assert.equal(t.split('****').length - 1, 3);
+  assert.equal(NODE.gizliTemizle('x'.repeat(900), []).length, 500);
+  // Kisa gizli uzunun parcasiysa uzun once degisir (parca kalmaz).
+  assert.equal(NODE.gizliTemizle('abcdef', ['abc', 'abcdef']), '****');
 });

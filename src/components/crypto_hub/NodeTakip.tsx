@@ -310,7 +310,7 @@ export function NodeTakip({
             <thead>
               <tr style={{ color: 'var(--text-muted)', background: 'var(--bg-elevated)' }}>
                 {METIN.sonucBasliklar.map((b) => (
-                  <th key={b} className="text-left font-medium px-2 py-1.5 whitespace-nowrap">
+                  <th key={b} scope="col" className="text-left font-medium px-2 py-1.5 whitespace-nowrap">
                     {b}
                   </th>
                 ))}

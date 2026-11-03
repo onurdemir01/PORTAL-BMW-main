@@ -3,16 +3,20 @@
 // Baglayici sozlesme: scratchpad/cryptohub/sozlesme.md (bolum 3, 4, 7, 8). Ozet:
 //   * node_env_get (salt okunur) dogrudan AWX'e gider; cikti maskeli deger + sha256.
 //   * node_change ASLA dogrudan baslatilmaz: OpsX OpenShift'in Smart flow'unda bilet acilir
-//     (kullanici karari D1: yeni flow YOK, konsolide katalog), onaydan sonra MEVCUT poller
+//     (kullanici karari D1: yeni flow YOK, konsolide OpsX flow'u), onaydan sonra MEVCUT poller
 //     (performSsLaunch) isi baslatir. /ops bu islemleri TANIMAZ (index.cjs OPS'ta yoklar).
 //   * Smart ayari OpsX'ten okunur (smartApprovalFor('openshift')). OpsX'te Smart kapatilmis
 //     olsa bile (enabled:false) node talebi onaysiz KOSMAZ; admin atlama yolu da yok.
 //   * Kiraci + kilit basina TEK acik talep: DB filtreli tekil indeksi (UX_chnc_acik) zorlar;
 //     indeks yoksa talep acilmaz (fail-closed).
 //
-// SIR KURALI (bolum 4): Portal node DEGERLERINI hic gormez. Betigin maskeli alanlari bile
-// burada bir kez daha suzulur (maskeGuvenli): betikte bir maske hatasi olsa da ham deger DB'ye,
-// Smart'a, loga ya da denetime gitmez.
+// DEGER KURALI (sozlesme 2026-11-03 bolum 4): node listesi YOK; kullanici yeni degeri rol basina
+// serbest metin yazar (is birimi onayli). Deger Portal'da YALNIZ su yerlerde bulunur: istek
+// govdesi -> crypto_hub_node_changes.yeni_deger_secret (encryptSecretValue, AES-256-GCM; is AWX'e
+// verilince / talep kapaninca NULL) -> onay sonrasi launch kancasi (launchOncesiDegerEkle) ->
+// AWX extra_vars. pending_launch_json'da yer tutucu '' durur; is gecmisi / denetim specFields
+// password satiriyla '***gizli***' gorur. Ekran, Smart, denetim ve loglar yalniz maskeli deger +
+// sha256 tasir. Betigin maskeli alanlari burada bir kez daha suzulur (maskeGuvenli).
 'use strict';
 
 const crypto = require('node:crypto');
@@ -52,8 +56,11 @@ const METIN = Object.freeze({
   takildi:
     "Talep belirlenen sürede sonuçlanmadı ve iş sonucu okunamadı; durum bilinmiyor — mevcut node'ları okuyun.",
   adminKapatti: (kim) => `Talep yönetici tarafından kapatıldı (${kim}).`,
-  ayniNode: 'Seçilen node zaten kullanımda — değişiklik yok.',
-  katalogDisi: 'Seçilen node bu grup için katalogda yok ya da sırrı çözülemedi.',
+  ayniNode: 'Girilen değer seçilen bileşenlerde zaten kullanımda — değişiklik yok.',
+  degerBicim: (rol, neden) => `Geçersiz değer (${rol}): ${neden}.`,
+  bosOnay: 'Boş bırakılan rol var; boş değerle yazılması ayrıca onaylanmalı.',
+  sifrelemeYok:
+    "Değer şifreleme anahtarı (ENV_OVERRIDES_ENCRYPTION_KEY) tanımlı değil — production'da talep açılmaz.",
   olculemedi: 'Grubun bazı değerleri ölçülemedi; kısmi plan ile talep açılmaz.',
   referans: 'Grupta Secret/ConfigMap referanslı env var — Portal bu sürümde değiştirmez.',
   gitops:
@@ -87,13 +94,14 @@ const sha256 = (s) => crypto.createHash('sha256').update(String(s), 'utf8').dige
 const hata = (status, blocked, message) => ({ ok: false, status, blocked, message });
 
 // ── Maske suzgeci ───────────────────────────────────────────────────────────────────
-// Betik yalniz su bicimleri basar (sozlesme 4; crypto_hub_node.py maskele): sema://host[:port]
-// (+ /**** ; IPv6 koseli), host:port, **** ve bos (-). Bunlarin DISINDA kalan her alan ham
-// deger olabilir -> **** olur (yol, sorgu, kullanici bilgisi hic gecmez).
+// Betik yalniz su bicimleri basar (sozlesme 3.3; crypto_hub_node.py maskele): sema://host[:port]
+// (+ /**** ; IPv6 koseli), host:port, ****, bos literal deger (bos) ve deger yok (-). Bunlarin
+// DISINDA kalan her alan ham deger olabilir -> **** olur (yol, sorgu, kullanici bilgisi gecmez).
 const MASKE_RE = [
   /^[a-z][a-z0-9+.-]*:\/\/([A-Za-z0-9.-]+|\[[0-9A-Fa-f:.]+\])(:[0-9]{1,5})?(\/\*\*\*\*)?$/,
   /^[A-Za-z0-9.-]+:[0-9]{1,5}$/,
   /^\*\*\*\*$/,
+  /^\(bos\)$/,
 ];
 
 /** @returns {{deger: string|null, duzeltildi: boolean}} */
@@ -112,7 +120,6 @@ const ALAN = Object.freeze({
   NODEDEP: 10,
   NODEALLOW: 6,
   NODEENV: 11,
-  NODECAT: 9,
   NODEEND: 4,
   NODECHG: 8,
   ROLLOUT: 5,
@@ -138,7 +145,6 @@ function parseNodeLines(lines) {
     deps: [],
     allow: [],
     envler: [],
-    katalog: [],
     end: null,
     degisiklikler: [],
     rollout: [],
@@ -228,20 +234,6 @@ function parseNodeLines(lines) {
           helm: ['evet', 'hayir', 'olculemedi'].includes(f[10]) ? f[10] : 'olculemedi',
         });
         break;
-      case 'NODECAT': {
-        const sha = HEX64.test(f[7]) ? f[7] : null;
-        out.katalog.push({
-          id: f[2],
-          grup: f[3],
-          rol: f[4],
-          ad: kirp(f[5], 80),
-          maskeli: guvenli(f[6]),
-          sha,
-          cozulemedi: !sha,
-          neden: f[8] && f[8] !== '-' ? kirp(f[8], 200) : null,
-        });
-        break;
-      }
       case 'NODEEND':
         out.end = { islem: f[2], durum: f[3] };
         break;
@@ -273,7 +265,8 @@ function parseNodeLines(lines) {
           out.hatalar.push({ stage: 'ayristir', message: 'NODESUM sonucu tanınmadı' });
           break;
         }
-        out.sum = { sonuc: f[2], nodeId: f[3], talepId: f[4], kod: f[5] };
+        // 3. alan plan_sha (64 hex) ya da '-' (betik girdiyi okuyamadi).
+        out.sum = { sonuc: f[2], planSha: HEX64.test(f[3]) ? f[3] : '-', talepId: f[4], kod: f[5] };
         break;
       case 'ERR':
         out.hatalar.push({ stage: f[2], message: kirp(f[3], 500) });
@@ -340,81 +333,34 @@ function grupAnalizi(parsed, grupId) {
   }
   const tutarsiz = [...rolShalari.values()].some((s) => s.size > 1);
 
-  const rolKumesi = new Set(roller.map((r) => r.rol));
-  const adayMap = new Map();
-  for (const k of parsed.katalog.filter((x) => x.grup === grupId)) {
-    if (!adayMap.has(k.id)) adayMap.set(k.id, { id: k.id, ad: k.ad, roller: new Map() });
-    adayMap.get(k.id).roller.set(k.rol, k);
-  }
-  const adaylar = [...adayMap.values()].map((n) => {
-    const nRol = new Set(n.roller.keys());
-    const rolEsit = !izinYok && ayniKume(nRol, rolKumesi);
-    const cozulemeyen = [...n.roller.values()].find((x) => x.cozulemedi);
-    const cozulemedi = !!cozulemeyen || !rolEsit;
-    const neden =
-      (cozulemeyen && cozulemeyen.neden) ||
-      (!rolEsit ? 'rol kümesi grupla eşleşmiyor' : cozulemeyen ? 'sır çözülemedi' : null);
-    const kullanimda =
-      !cozulemedi &&
-      roller.every((r) => {
-        const s = rolShalari.get(r.rol);
-        return s && s.size === 1 && s.has(n.roller.get(r.rol).sha);
-      });
-    const maskeli = {};
-    for (const [rol, k] of n.roller) maskeli[rol] = k.maskeli || '****';
-    return { id: n.id, ad: n.ad, maskeli, kullanimda, cozulemedi, neden, roller: n.roller };
-  });
-
   const maskeliOf = (rol) =>
     [...new Set(literal.filter((e) => e.rol === rol).map((e) => e.maskeli || '****'))].join(' | ');
-  const mevcutAday = adaylar.find((a) => a.kullanimda) || null;
   const mevcutNode = tasiyan.length
-    ? {
-        katalogId: mevcutAday ? mevcutAday.id : null,
-        ad: mevcutAday ? mevcutAday.ad : null,
-        maskeli: Object.fromEntries(roller.map((r) => [r.rol, maskeliOf(r.rol)])),
-      }
+    ? { maskeli: Object.fromEntries(roller.map((r) => [r.rol, maskeliOf(r.rol)])) }
     : null;
-  // Bilesen (deployment) basina su anki node: o deployment'in literal satirlari BIR katalog
-  // kaydina tam esleniyorsa o kayit; yoksa yalniz maskeli deger (ekran "Katalogda yok" der).
+  // Bilesen (deployment) basina su anki deger: YALNIZ maskeli (rol -> maskeli, cok degerde ' | ').
   const depNodeu = (dAd) => {
     const sat = literal.filter((e) => e.deployment === dAd);
     if (!sat.length) return null;
-    const rolSha = new Map();
-    for (const e of sat) {
-      if (!rolSha.has(e.rol)) rolSha.set(e.rol, new Set());
-      rolSha.get(e.rol).add(e.sha);
-    }
-    const aday = adaylar.find(
-      (x) =>
-        !x.cozulemedi &&
-        [...rolSha].every(([rol, s]) => s.size === 1 && x.roller.get(rol) && s.has(x.roller.get(rol).sha)),
-    );
     const maskeli = {};
-    for (const rol of rolSha.keys()) {
+    for (const rol of new Set(sat.map((e) => e.rol))) {
       maskeli[rol] = [...new Set(sat.filter((e) => e.rol === rol).map((e) => e.maskeli || '****'))].join(' | ');
     }
-    return { katalogId: aday ? aday.id : null, ad: aday ? aday.ad : null, maskeli };
+    return { maskeli };
   };
   const depNodelari = new Map(deps.map((d) => [d.ad, depNodeu(d.ad)]));
   // Secilebilir bilesen = literal node satiri olan deployment (plan yalniz literal satirdan kurulur).
   const secilebilir = deps.filter((d) => depNodelari.get(d.ad)).map((d) => d.ad);
-  const envCikti = envler.map((e) => {
-    const k = e.sha
-      ? adaylar.find((a) => !a.cozulemedi && a.roller.get(e.rol) && a.roller.get(e.rol).sha === e.sha)
-      : null;
-    return {
-      deployment: e.deployment,
-      container: e.container,
-      env: e.env,
-      rol: e.rol,
-      kaynak: e.kaynak,
-      maskeli: e.maskeli,
-      sha: e.sha,
-      katalogId: k ? k.id : null,
-      helm: e.helm,
-    };
-  });
+  const envCikti = envler.map((e) => ({
+    deployment: e.deployment,
+    container: e.container,
+    env: e.env,
+    rol: e.rol,
+    kaynak: e.kaynak,
+    maskeli: e.maskeli,
+    sha: e.sha,
+    helm: e.helm,
+  }));
   return {
     grup: g,
     deps,
@@ -432,7 +378,6 @@ function grupAnalizi(parsed, grupId) {
     gitops,
     durdurulmus,
     tutarsiz,
-    adaylar,
     mevcutNode,
     maskeliOf,
   };
@@ -501,14 +446,6 @@ function gruplariKur(parsed, { nodeAcik, talepYetkisi, bekleyenler } = {}) {
       referans: a.referans,
       gitops: a.gitops,
       durdurulmus: a.durdurulmus,
-      adaylar: a.adaylar.map((x) => ({
-        id: x.id,
-        ad: x.ad,
-        maskeli: x.maskeli,
-        kullanimda: x.kullanimda,
-        cozulemedi: x.cozulemedi,
-        neden: x.neden,
-      })),
       bekleyen,
       degistirilebilir: !engel,
       engel,
@@ -572,7 +509,6 @@ function taramadanGruplar(tenant, components, { nodeAcik, talepYetkisi, bekleyen
         referans: false,
         gitops: false,
         durdurulmus: g.deps.filter((d) => d.istenen === 0).map((d) => d.ad),
-        adaylar: [],
         bekleyen,
         degistirilebilir: !engel,
         engel,
@@ -581,18 +517,25 @@ function taramadanGruplar(tenant, components, { nodeAcik, talepYetkisi, bekleyen
     });
 }
 
-// ── Plan (sozlesme 7.5 adim 5) ──────────────────────────────────────────────────────
+// ── Plan (sozlesme 9.1) ─────────────────────────────────────────────────────────────
+const b64 = (o) => Buffer.from(JSON.stringify(o), 'utf8').toString('base64');
+const ONIZLEME_MASKE = '(önizleme)';
+
 /**
  * @param {{parsed: object}} okuma  son node_env_get okumasi
+ * @param {Record<string,string>|null} yeni  rol -> yeni deger (serbest metin; KIRPILMAZ).
+ *          Onizlemede yok sayilir.
  * @param {{tutarsizlikOnay?: boolean, onayMetni?: string, production?: boolean,
- *          bilesenler?: string[]|null}} opts  bilesenler: secilen deployment adlari (yoksa
- *          node tasiyan HEPSI - varsayilan birlikte). Atomiklik yalniz secilenler arasinda.
+ *          bilesenler?: string[]|null, bosOnay?: boolean, onizleme?: boolean}} opts
+ *          bilesenler: secilen deployment adlari (yoksa node tasiyan HEPSI - varsayilan
+ *          birlikte). Atomiklik yalniz secilenler arasinda. onizleme: deger alinmaz, ayni-deger
+ *          ve bos kontrolu yapilmaz, yeni ozet her rol icin ONIZLEME_MASKE.
  */
-function grupPlaniKur(okuma, grupId, nodeId, opts = {}) {
+function grupPlaniKur(okuma, grupId, yeni, opts = {}) {
   const parsed = okuma && okuma.parsed;
   const a = parsed ? grupAnalizi(parsed, grupId) : null;
   if (!a) return hata(400, 'node_girdi', METIN.girdi('grup son okumada yok'));
-  if (a.izinYok) return hata(409, 'node_katalog_disi', METIN.katalogDisi);
+  if (a.izinYok) return hata(409, 'node_izin_yok', METIN.aileYok);
   if (a.degiskenYok) return hata(409, 'node_degisken_yok', METIN.degiskenYok);
   if (a.olculemedi) return hata(409, 'node_olculemedi', METIN.olculemedi);
   if (a.referans) return hata(409, 'node_referans', METIN.referans);
@@ -609,14 +552,49 @@ function grupPlaniKur(okuma, grupId, nodeId, opts = {}) {
   }
   const disari = secim.find((x) => !a.secilebilir.includes(x));
   if (disari) return hata(400, 'node_secim', METIN.secimDisi(kirp(disari, 120)));
-  const node = a.adaylar.find((x) => x.id === nodeId);
-  if (!node || node.cozulemedi) return hata(409, 'node_katalog_disi', METIN.katalogDisi);
   const secilenSatir = a.literal.filter((e) => secim.includes(e.deployment));
-  // Ayni node: SECILEN bilesenlerin hepsi zaten bu node'da (gruptaki digerleri onemsiz).
-  if (secilenSatir.every((e) => node.roller.get(e.rol) && node.roller.get(e.rol).sha === e.sha)) {
-    return hata(409, 'node_ayni_node', METIN.ayniNode);
+  const roller = a.roller.map((r) => r.rol);
+
+  let newSha = null;
+  let yeniB64 = null;
+  let bosRoller = [];
+  let yeniMaskeli;
+  if (opts.onizleme) {
+    yeniMaskeli = Object.fromEntries(roller.map((r) => [r, ONIZLEME_MASKE]));
+  } else {
+    // Yeni deger sekli: rol kumesi grubun rolleriyle BIREBIR, her deger metin.
+    const anahtarlar =
+      yeni && typeof yeni === 'object' && !Array.isArray(yeni) ? Object.keys(yeni) : null;
+    if (
+      !anahtarlar ||
+      anahtarlar.length > 8 ||
+      !ayniKume(new Set(anahtarlar), new Set(roller)) ||
+      anahtarlar.some((k) => typeof yeni[k] !== 'string')
+    ) {
+      return hata(400, 'node_girdi', METIN.girdi('yeni değer rolleri'));
+    }
+    // Bicim: rol sirasi a.roller; ilk hatali rol doner (Python deger_dogrula ile ayni kural).
+    for (const r of a.roller) {
+      const neden = N.degerDogrula(yeni[r.rol], r.bicim);
+      if (neden) {
+        return { ...hata(400, 'node_deger_bicim', METIN.degerBicim(r.rol, neden)), rol: r.rol, neden };
+      }
+    }
+    bosRoller = roller.filter((r) => yeni[r] === '');
+    if (bosRoller.length && opts.bosOnay !== true) return hata(400, 'node_bos_onay', METIN.bosOnay);
+    newSha = Object.fromEntries(roller.map((r) => [r, sha256(yeni[r])]));
+    // Ayni deger: SECILEN bilesenlerin her literal satiri zaten girilen degerde.
+    if (secilenSatir.every((e) => e.sha === newSha[e.rol])) {
+      return hata(409, 'node_ayni_node', METIN.ayniNode);
+    }
+    yeniMaskeli = Object.fromEntries(a.roller.map((r) => [r.rol, N.maskele(yeni[r.rol], r.bicim)]));
+    // Sozlesme 1.2: anahtarlar a.roller sirasiyla; bos_onay = degeri "" olan rollerin SIRALI listesi.
+    yeniB64 = b64({
+      degerler: Object.fromEntries(roller.map((r) => [r, yeni[r]])),
+      bos_onay: [...bosRoller].sort(),
+    });
   }
-  // Tutarsizlik onayi: SECILENLER su an farkli node'lardaysa, hepsi tek node'a toplanacak.
+  // Tutarsizlik onayi: SECILENLER su an farkli node'lardaysa, hepsi tek degere toplanacak.
   const secimTutarsiz = a.roller.some(
     (r) => new Set(secilenSatir.filter((e) => e.rol === r.rol).map((e) => e.sha)).size > 1,
   );
@@ -637,37 +615,26 @@ function grupPlaniKur(okuma, grupId, nodeId, opts = {}) {
   // hicbir sey yazmadan durur (betik BAYAT_ESKI_DEGER).
   const expect = {};
   for (const p of a.literal.map(satirOf).sort(sirala)) expect[`${p.d}/${p.c}/${p.e}`] = p.sha;
-  const newSha = {};
-  for (const r of a.roller) newSha[r.rol] = node.roller.get(r.rol).sha;
   const etiket = (ad) => {
     const d = a.deps.find((x) => x.ad === ad);
     return (d && d.bilesen) || ad;
   };
   const secilenler = hedefler.map(etiket);
   const secilmeyenler = a.secilebilir.filter((x) => !hedefler.includes(x)).map(etiket);
-  const katalogIdleri = new Set(hedefler.map((d) => (a.depNodelari.get(d) || {}).katalogId || null));
-  const tekKatalog = katalogIdleri.size === 1 ? [...katalogIdleri][0] : null;
-  const katalogAd = tekKatalog ? (a.adaylar.find((x) => x.id === tekKatalog) || {}).ad || tekKatalog : null;
-  const katalogNotu = katalogAd
-    ? `Katalog: ${katalogAd}`
-    : katalogIdleri.size > 1
-      ? "Bileşenler farklı node'larda"
-      : 'Katalogda yok';
   const maskeliSecim = (rol) =>
     [...new Set(secilenSatir.filter((e) => e.rol === rol).map((e) => e.maskeli || '****'))].join(' | ');
-  const eskiOzet = kirp(
-    `${a.roller.map((r) => `${r.rol}=${maskeliSecim(r.rol)}`).join('; ')} [${katalogNotu}]`,
-    1000,
-  );
-  const yeniOzet = kirp(a.roller.map((r) => `${r.rol}=${node.maskeli[r.rol] || '****'}`).join('; '), 1000);
+  const eskiOzet = kirp(a.roller.map((r) => `${r.rol}=${maskeliSecim(r.rol)}`).join('; '), 1000);
+  const yeniOzet = kirp(a.roller.map((r) => `${r.rol}=${yeniMaskeli[r.rol]}`).join('; '), 1000);
   return {
     ok: true,
     grup: a.grup,
     analiz: a,
-    node: { id: node.id, ad: node.ad, maskeli: node.maskeli },
     plan: plan.map(({ d, c, e, r }) => ({ d, c, e, r })),
     expect,
     newSha,
+    yeniB64,
+    bosRoller,
+    yeniMaskeli,
     hedefler,
     secilenler,
     secilmeyenler,
@@ -677,10 +644,11 @@ function grupPlaniKur(okuma, grupId, nodeId, opts = {}) {
   };
 }
 
-const b64 = (o) => Buffer.from(JSON.stringify(o), 'utf8').toString('base64');
-
-/** plan / expect / new_sha base64'leri ve plan_sha (DB'de bayatlik izi). */
-function planKodla(plan, expect, newSha) {
+/**
+ * plan / expect / new_sha base64'leri ve plan_sha (DB'de bayatlik izi). yeni_b64 plan_sha'ya
+ * GIRMEZ (deger butunlugu new_sha ile baglanir) ama boyutu burada sinanir.
+ */
+function planKodla(plan, expect, newSha, yeniB64 = '') {
   const planB64 = b64(plan);
   const expectB64 = b64(expect);
   const newShaB64 = b64(newSha);
@@ -691,26 +659,30 @@ function planKodla(plan, expect, newSha) {
   ]) {
     if (v.length > B64_AZAMI) throw Object.assign(new Error(`${ad} ${B64_AZAMI} sınırını aşıyor`), { status: 400 });
   }
+  if (String(yeniB64 || '').length > N.YENI_B64_AZAMI) {
+    throw Object.assign(new Error(`yeni değer ${N.YENI_B64_AZAMI} sınırını aşıyor`), { status: 400 });
+  }
   return { planB64, expectB64, newShaB64, planSha: sha256(planB64 + expectB64 + newShaB64) };
 }
 
 /**
- * AWX extra_vars (sozlesme 6.3). YALNIZ id / ad / sha256: deger (URL / sir) YOK.
- * Smart onayindan sonra poller bunu AYNEN oynatir.
+ * AWX extra_vars (sozlesme 1.1). crypto_hub_node_yeni_b64 burada YER TUTUCU '' olur: gercek
+ * deger yalniz onay sonrasi launch kancasinda (launchOncesiDegerEkle) sifreli kolondan konur.
+ * Kanca calismazsa playbook'un ilk assert'i '' degeri reddeder (fail-closed).
  */
-function nodeExtraVars({ tenantKey, grupId, nodeId, talepId, plan, expect, newSha, hedefler, email }) {
+function nodeExtraVars({ tenantKey, grupId, talepId, plan, expect, newSha, hedefler, email }) {
   const k = planKodla(plan, expect, newSha);
   return {
     crypto_hub_tenant: tenantKey,
     crypto_hub_action: 'node_change',
     crypto_hub_targets: hedefler.map((d) => `deployment/${d}`).join(','),
+    crypto_hub_timeout: 1800,
     crypto_hub_node_grup: grupId,
-    crypto_hub_node_id: nodeId,
     crypto_hub_node_talep: Number(talepId),
     crypto_hub_node_plan_b64: k.planB64,
     crypto_hub_node_expect_b64: k.expectB64,
     crypto_hub_node_new_sha_b64: k.newShaB64,
-    crypto_hub_timeout: 1800,
+    crypto_hub_node_yeni_b64: '',
     email: String(email || ''),
   };
 }
@@ -737,13 +709,14 @@ function ozetKur({ tenant, plani, gerekce, username, esTalep }) {
   const ger = tekSatir(gerekce);
   const secilenler = plani.secilenler && plani.secilenler.length ? plani.secilenler : plani.hedefler;
   const secilmeyenler = plani.secilmeyenler || [];
-  // PS1: kisa alan (opsx.islem, OpsX sablonunda ACIKLAMA) 400 karakter. YENI node id ve
-  // degisecek bilesen listesi ASLA kesilmez; once uzun kiraci oneki kisaltilir, kalan pay
-  // yalniz eski ozete verilir (tutarsiz grupta eski ozet 1000 karaktere cikabilir).
+  // PS1: kisa alan (opsx.islem, OpsX sablonunda ACIKLAMA) 400 karakter. Degisecek bilesen
+  // listesi ASLA kesilmez; yeni MASKELI ozet en cok 160 karakter (iki rol x 200 karakterlik maske
+  // 400'u asabiliyordu; tam hali aciklama ve opsx.yeniNode'da). Once uzun kiraci oneki
+  // kisaltilir, kalan pay yalniz eski ozete verilir.
   const ISLEM_SINIRI = 400;
-  const zorunlu = tekSatir(
-    ` -> ${plani.node.id} (${kirp(plani.node.ad, 80)}) | Bileşenler: ${secilenler.join(', ')}`,
-  );
+  const bosRoller = Array.isArray(plani.bosRoller) ? plani.bosRoller : [];
+  // Bas bosluk tekSatir'in trim'inden ONCE eklenir ("...] -> yeni", "]-> " degil).
+  const zorunlu = ` -> ${tekSatir(`${kirp(plani.yeniOzet, 160)} | Bileşenler: ${secilenler.join(', ')}`)}`;
   let onek = tekSatir(
     `Crypto Hub Indexer/Node Change — ${tenant.key} (${tenant.appLabel} · ${tenant.envLabel}) — ${lok} — ${g.baslik} [${g.id}]`,
   );
@@ -763,9 +736,14 @@ function ozetKur({ tenant, plani, gerekce, username, esTalep }) {
     `Değişmeyecek bileşenler: ${secilmeyenler.length ? secilmeyenler.join(', ') : '— (hepsi değişiyor)'}`,
     `Etkilenen deployment'lar: ${plani.hedefler.join(', ')}`,
     `Mevcut node: ${plani.eskiOzet}`,
-    `Yeni node: ${plani.node.id} (${plani.node.ad}) — ${plani.yeniOzet}`,
+    `Yeni node (maskeli): ${plani.yeniOzet}`,
     `Gerekçe: ${ger}`,
   ];
+  if (bosRoller.length) {
+    satirlar.push(
+      `Uyarı: ${bosRoller.join(', ')} boş değerle yazılacak (talep eden onayladı; uygulama node'suz kalabilir).`,
+    );
+  }
   if (plani.tutarsizToplama) {
     satirlar.push("Not: seçilen bileşenler şu an farklı node'lara bağlı; talep hepsini tek node'a topluyor (kullanıcı onayladı).");
   }
@@ -787,8 +765,8 @@ function ozetKur({ tenant, plani, gerekce, username, esTalep }) {
     grup: g.id,
     grupBaslik: g.baslik,
     eskiNode: plani.eskiOzet,
-    yeniNode: plani.node.id,
-    yeniNodeAd: plani.node.ad,
+    yeniNode: plani.yeniOzet,
+    bosRoller: bosRoller.join(', '),
     gerekce: ger,
     deploymentlar: plani.hedefler.join(', '),
     bilesenler: secilenler.join(', '),
@@ -886,8 +864,9 @@ async function indeksVarMi(db, simdi = Date.now()) {
 }
 
 // ── DB ───────────────────────────────────────────────────────────────────────────────
+// Genel listeler yeni_deger_secret'i ASLA secmez (yalniz launch kancasi okur; bekci N19).
 const SUTUNLAR =
-  'id, tenant_key, grup, kilit, lokasyon, yeni_node_id, yeni_node_ad, eski_ozet, yeni_ozet, hedefler, gerekce, username, durum, smart_ticket_id, external_ticket_id, awx_server_id, awx_job_id, sonuc_kod, sonuc_json, es_talep_id, created_at, updated_at, kapandi_at';
+  'id, tenant_key, grup, kilit, lokasyon, eski_ozet, yeni_ozet, hedefler, plan_sha, gerekce, username, durum, smart_ticket_id, external_ticket_id, awx_server_id, awx_job_id, sonuc_kod, sonuc_json, es_talep_id, created_at, updated_at, kapandi_at';
 
 const ACIK_DURUMLAR = ['ACILIYOR', 'BEKLIYOR', 'CALISIYOR'];
 const KAPALI_DURUMLAR = [
@@ -920,8 +899,6 @@ function talepOzeti(r) {
     grup: r.grup,
     kilit: r.kilit,
     lokasyon: r.lokasyon,
-    yeniNodeId: r.yeni_node_id,
-    yeniNodeAd: r.yeni_node_ad || null,
     eskiOzet: r.eski_ozet || null,
     yeniOzet: r.yeni_ozet || null,
     hedefler: String(r.hedefler || '')
@@ -950,7 +927,7 @@ function talepOzeti(r) {
 async function talepKapat(db, id, sonuc, denetim = null) {
   if (!KAPALI_DURUMLAR.includes(sonuc.durum)) throw new Error(`talepKapat: gecersiz durum ${sonuc.durum}`);
   const r = await db.query(
-    `UPDATE crypto_hub_node_changes SET durum = $1, sonuc_kod = $2, sonuc_json = $3, kapandi_at = SYSUTCDATETIME(), updated_at = SYSUTCDATETIME() WHERE id = $4 AND kapandi_at IS NULL`,
+    `UPDATE crypto_hub_node_changes SET durum = $1, sonuc_kod = $2, sonuc_json = $3, kapandi_at = SYSUTCDATETIME(), updated_at = SYSUTCDATETIME(), yeni_deger_secret = NULL WHERE id = $4 AND kapandi_at IS NULL`,
     [sonuc.durum, sonuc.kod || null, sonuc.json == null ? null : JSON.stringify(sonuc.json), Number(id)],
   );
   const kapatti = !!r && r.rowCount === 1;
@@ -1025,12 +1002,14 @@ function isSonucu(row, statusInfo) {
   }
   const json = sonucOzeti(p, statusInfo && statusInfo.status);
   const s = p && p.sum;
-  // Basari YALNIZ bu talebin satiriyla (talep no + node id) sayilir. Betik girdiyi gecersiz
-  // bulursa kimlikleri '-' basar: o durumda olumsuz sonuc (fail / bayat) yine kabul edilir.
+  // Basari YALNIZ bu talebin satiriyla (talep no + plan_sha BIREBIR) sayilir. Betik girdiyi
+  // okuyamazsa plan_sha / talep yerine '-' basar: o durumda olumsuz sonuc yine kabul edilir.
+  const olumsuz = s && s.sonuc !== 'ok' && s.sonuc !== 'geri_alindi';
   const kimlik =
     s &&
-    ((String(s.talepId) === String(row.id) && String(s.nodeId) === String(row.yeni_node_id)) ||
-      (s.sonuc !== 'ok' && s.sonuc !== 'geri_alindi' && s.talepId === '-'));
+    ((String(s.talepId) === String(row.id) &&
+      (s.planSha === String(row.plan_sha || '').trim() || (s.planSha === '-' && olumsuz))) ||
+      (s.talepId === '-' && olumsuz));
   const tutarli = kimlik && (!p.tenantKey || p.tenantKey === row.tenant_key);
   if (!tutarli) return { durum: 'OLCULEMEDI', kod: s ? 'NODESUM_UYUSMUYOR' : 'NODESUM_YOK', json };
   return { durum: SUM_DURUM[s.sonuc], kod: s.kod && s.kod !== '-' ? s.kod : null, json };
@@ -1163,7 +1142,7 @@ async function satiriIlerlet(db, row, yol = 'tarama', simdi = Date.now()) {
     serverId = Number(t.awxServerId);
     jobId = Number(t.awxJobId);
     await db.query(
-      `UPDATE crypto_hub_node_changes SET durum = 'CALISIYOR', awx_server_id = $1, awx_job_id = $2, updated_at = SYSUTCDATETIME() WHERE id = $3 AND kapandi_at IS NULL`,
+      `UPDATE crypto_hub_node_changes SET durum = 'CALISIYOR', awx_server_id = $1, awx_job_id = $2, updated_at = SYSUTCDATETIME(), yeni_deger_secret = NULL WHERE id = $3 AND kapandi_at IS NULL`,
       [serverId, jobId, Number(row.id)],
     );
   }
@@ -1532,7 +1511,7 @@ function initCryptoHubNode(router, deps) {
       ok: true,
       talep: talepOzeti(row),
       smart,
-      esTalepOnerisi: esOnerisi(tenant, row.grup, row.yeni_node_id, Number(row.id)),
+      esTalepOnerisi: esOnerisi(tenant, row.grup, Number(row.id)),
     });
   });
 
@@ -1632,31 +1611,34 @@ function initCryptoHubNode(router, deps) {
   });
 }
 
-/** Istanbul talebinden sonra Ankara onerisi (D4). Yalniz es kiracisi olan kiracida. */
-function esOnerisi(tenant, grupId, nodeId, talepId) {
+/**
+ * Istanbul talebinden sonra Ankara onerisi (D4). Yalniz es kiracisi olan kiracida. Deger
+ * TASINMAZ: Ankara degerini kullanici sihirbazda yeniden yazar; bag esTalepId ile kurulur.
+ */
+function esOnerisi(tenant, grupId, talepId) {
   const esKey = tenant ? N.esKiraciOf(tenant.key) : null;
   const es = esKey ? tenantOf(esKey) : null;
   if (!es) return null;
-  const ok = NODE_OKUMA.get(es.key);
-  const varMi =
-    ok && ok.parsed.katalog.some((k) => k.id === nodeId && k.grup === grupId && !k.cozulemedi);
   return {
     tenant: es.key,
     label: es.envLabel,
     acik: N.nodeAcikMi(es),
     grup: grupId,
-    nodeId: varMi ? nodeId : null,
     esTalepId: talepId,
   };
 }
 
 /**
- * POST /node-change (ve onizleme). Sira sozlesme 7.5 ile BIREBIR.
+ * POST /node-change (ve onizleme). Sira sozlesme 9.1 ile BIREBIR. Govde: {tenant, grup, yeni,
+ * bosOnay?, gerekce, bilesenler?, tutarsizlikOnay?, onayMetni?, esTalepId?}. Onizleme deger ALMAZ.
  * @returns {Promise<{status:number, body:object}>}
  */
 async function talepAc(req, { nodeYetkisi, kullanici, onizleme }) {
   const body = (req && req.body) || {};
-  const red = (h) => ({ status: h.status, body: { ok: false, blocked: h.blocked, message: h.message } });
+  const red = (h) => ({
+    status: h.status,
+    body: { ok: false, blocked: h.blocked, message: h.message, ...(h.rol ? { rol: h.rol, neden: h.neden } : {}) },
+  });
   // 1
   const tenant = tenantOf(body.tenant);
   if (!tenant) return red(hata(400, 'node_girdi', METIN.girdi('bilinmeyen kiracı')));
@@ -1672,9 +1654,7 @@ async function talepAc(req, { nodeYetkisi, kullanici, onizleme }) {
   if (!N.nodeAcikMi(tenant)) return red(hata(403, 'node_kapali', METIN.kapali));
   // 3
   const grupId = String(body.grup || '').trim();
-  const nodeId = String(body.nodeId || '').trim();
   if (!N.GRUP_RE.test(grupId)) return red(hata(400, 'node_girdi', METIN.girdi('grup')));
-  if (!N.NODE_ID_RE.test(nodeId)) return red(hata(400, 'node_girdi', METIN.girdi('node')));
   const gerekce = String(body.gerekce == null ? '' : body.gerekce).trim();
   if (!onizleme && (gerekce.length < N.GEREKCE_EN_AZ || gerekce.length > N.GEREKCE_EN_COK)) {
     return red(hata(400, 'node_gerekce', METIN.gerekce));
@@ -1685,18 +1665,23 @@ async function talepAc(req, { nodeYetkisi, kullanici, onizleme }) {
     return red(hata(409, 'node_okuma_bayat', METIN.okumaBayat));
   }
   // 5
-  const plani = grupPlaniKur(okuma, grupId, nodeId, {
+  // Deger KIRPILMAZ (trim yok): bas/son bosluk desene takilir, ekran nedenini soyler.
+  const plani = grupPlaniKur(okuma, grupId, onizleme ? null : body.yeni, {
     tutarsizlikOnay: onizleme ? true : body.tutarsizlikOnay === true,
     onayMetni: onizleme ? grupId : body.onayMetni,
     production: tenant.production,
     bilesenler: body.bilesenler == null ? null : body.bilesenler,
+    bosOnay: body.bosOnay === true,
+    onizleme: !!onizleme,
   });
   if (!plani.ok) return red(plani);
-  let kod;
-  try {
-    kod = planKodla(plani.plan, plani.expect, plani.newSha);
-  } catch (e) {
-    return red(hata(400, 'node_girdi', METIN.girdi(e.message)));
+  let kod = null;
+  if (!onizleme) {
+    try {
+      kod = planKodla(plani.plan, plani.expect, plani.newSha, plani.yeniB64);
+    } catch (e) {
+      return red(hata(400, 'node_girdi', METIN.girdi(e.message)));
+    }
   }
   // 6
   const { smartApprovalFor } = require('../opsx/prod-approval.cjs');
@@ -1800,18 +1785,32 @@ async function talepAc(req, { nodeYetkisi, kullanici, onizleme }) {
     }
   }
 
+  // 8b - sifreleme anahtari kapisi (sozlesme 4.2/5): production'da anahtar yoksa satir yazilmaz,
+  // Smart acilmaz (fail-closed). Dev/test'te encryptSecretValue anahtarsiz duz doner (mevcut
+  // yardimci davranisi). Deger YALNIZ bu kolonda; pending_launch_json'da yer tutucu ''.
+  let yeniSifreli;
+  {
+    const envMod = require('../db/env-overrides.cjs');
+    if (process.env.NODE_ENV === 'production' && !envMod.getEncryptionKey()) {
+      return red(hata(503, 'node_sifreleme_yok', METIN.sifrelemeYok));
+    }
+    try {
+      yeniSifreli = envMod.encryptSecretValue(plani.yeniB64);
+    } catch {
+      return red(hata(503, 'node_sifreleme_yok', METIN.sifrelemeYok));
+    }
+  }
+
   // 9 - kilit: filtreli tekil indeks
   let talepId;
   try {
     const r = await db.query(
-      `INSERT INTO crypto_hub_node_changes (tenant_key, grup, kilit, lokasyon, yeni_node_id, yeni_node_ad, eski_ozet, yeni_ozet, hedefler, plan_sha, gerekce, username, durum, es_talep_id) OUTPUT INSERTED.id VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'ACILIYOR', $13)`,
+      `INSERT INTO crypto_hub_node_changes (tenant_key, grup, kilit, lokasyon, eski_ozet, yeni_ozet, hedefler, plan_sha, gerekce, username, durum, es_talep_id, yeni_deger_secret) OUTPUT INSERTED.id VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'ACILIYOR', $11, $12)`,
       [
         tenant.key,
         grupId,
         plani.grup.kilit,
         N.lokasyon(tenant),
-        nodeId,
-        kirp(plani.node.ad, 200),
         plani.eskiOzet,
         plani.yeniOzet,
         kirp(plani.hedefler.join(','), 2000),
@@ -1819,6 +1818,7 @@ async function talepAc(req, { nodeYetkisi, kullanici, onizleme }) {
         gerekce,
         username,
         esTalep ? esTalep.id : null,
+        yeniSifreli,
       ],
     );
     talepId = Number(r && r.rows && r.rows[0] && r.rows[0].id);
@@ -1850,7 +1850,6 @@ async function talepAc(req, { nodeYetkisi, kullanici, onizleme }) {
   const awxExtraVars = nodeExtraVars({
     tenantKey: tenant.key,
     grupId,
-    nodeId,
     talepId,
     plan: plani.plan,
     expect: plani.expect,
@@ -1876,6 +1875,9 @@ async function talepAc(req, { nodeYetkisi, kullanici, onizleme }) {
   } catch (e) {
     console.warn('[CryptoHub] survey varsayilanlari doldurulamadi:', e.message);
   }
+  // Yer tutucu KORUNUR: ankette crypto_hub_node_yeni_b64 icin zorunlu + varsayilanli bir soru
+  // varsa prefill '' yerine '$encrypted$' koyar; kanca o zaman her talebi reddederdi.
+  tamExtraVars = { ...tamExtraVars, crypto_hub_node_yeni_b64: '' };
   // 12
   const sablonVarsayilan = await sablonVarsayilaniOku();
   const ozet = ozetKur({ tenant, plani, gerekce, username, esTalep });
@@ -1892,11 +1894,14 @@ async function talepAc(req, { nodeYetkisi, kullanici, onizleme }) {
       extraVars: tamExtraVars,
       detail: { ask_limit_on_launch: false },
       resolvedLaunchOptions: {},
-      specFields: [],
+      // Launch sonrasi ansible_job_history.params / denetim / bilet ayrinti ekranlari degeri
+      // '***gizli***' gorur (redactExtraVarsForHistory).
+      specFields: [{ variable: 'crypto_hub_node_yeni_b64', type: 'password' }],
       buildSmartMetadata: (raw, ctx) => cryptoNodeMetadata(raw, ctx, ozet, sablonVarsayilan, anahtarlar),
       auditAction: 'crypto_hub_node_change_ticket_open',
       req,
-      pendingLaunchExtras: { onayZamanAsimiDk: N.ONAY_DK, yutmaKorumasi: true },
+      // launchOncesi: runner poller geri cagrisindaki TEK kanca (launchOncesiDegerEkle).
+      pendingLaunchExtras: { onayZamanAsimiDk: N.ONAY_DK, yutmaKorumasi: true, launchOncesi: 'crypto_hub_node' },
     });
   } catch (e) {
     if (e && e.blocked === 'crypto_node_smart_sablon') {
@@ -1952,7 +1957,9 @@ async function talepAc(req, { nodeYetkisi, kullanici, onizleme }) {
         bilesenler: plani.secilenler,
         degismeyenler: plani.secilmeyenler,
         eskiOzet: plani.eskiOzet,
-        yeniNodeId: nodeId,
+        yeniOzet: plani.yeniOzet,
+        yeniSha: plani.newSha,
+        bosRoller: plani.bosRoller,
         gerekce,
         talepId,
         ticketId: opened.ticketId,
@@ -1973,9 +1980,110 @@ async function talepAc(req, { nodeYetkisi, kullanici, onizleme }) {
     onayZamanAsimiDk: N.ONAY_DK,
     message: METIN.talepAcildi(opened.externalTicketId),
   };
-  const oneri = esOnerisi(tenant, grupId, nodeId, talepId);
+  const oneri = esOnerisi(tenant, grupId, talepId);
   if (oneri) out.esTalepOnerisi = oneri;
   return { status: 200, body: out };
+}
+
+// ── Launch oncesi kanca (sozlesme 4.3) ──────────────────────────────────────────────
+// runner.cjs poller geri cagrisi YALNIZ `pendingLaunch.launchOncesi === 'crypto_hub_node'` iken
+// cagirir. Bekleyen paketteki yer tutucu '' yerine sifreli kolondaki degeri koyar; paketin
+// kendisi DEGISMEZ (kopya doner). Her ret ASCII bir neden tasir, DEGER ICERMEZ.
+const B64_RE = /^[A-Za-z0-9+/]+={0,2}$/;
+
+/**
+ * @param {{id: number, pendingLaunch: {extraVars: object}}} ticket  smart_tickets kaydi
+ * @param {{db?: {query: Function}}} [o]
+ * @returns {Promise<{extraVars: object, gizliler: string[]}>}
+ */
+async function launchOncesiDegerEkle(ticket, { db } = {}) {
+  const pl = (ticket && ticket.pendingLaunch) || {};
+  const ev = (pl && pl.extraVars) || {};
+  const talepId = Number(ev.crypto_hub_node_talep);
+  const gecerliNo = Number.isInteger(talepId) && talepId > 0;
+  const red = (neden) => {
+    throw new Error(`Crypto Hub node talebi #${gecerliNo ? talepId : '?'}: ${neden}`);
+  };
+  if (!gecerliNo) red('talep no gecersiz');
+  if (ev.crypto_hub_node_yeni_b64 !== '') red('bekleyen pakette deger var (beklenmiyor)');
+  const vt = db || require('../db/index.cjs');
+  let row = null;
+  try {
+    const r = await vt.query(
+      `SELECT id, tenant_key, grup, plan_sha, smart_ticket_id, kapandi_at, yeni_deger_secret FROM crypto_hub_node_changes WHERE id = $1`,
+      [talepId],
+    );
+    row = r && r.rows && r.rows[0];
+  } catch {
+    red('kayit okunamadi');
+  }
+  if (!row) red('kayit yok');
+  if (row.kapandi_at != null) red('talep kapanmis');
+  if (row.tenant_key !== ev.crypto_hub_tenant || row.grup !== ev.crypto_hub_node_grup) red('kayit uyusmuyor');
+  // ACILIYOR'da kalmis satirda (bilete baglanamadi) smart_ticket_id null olabilir: kabul.
+  if (row.smart_ticket_id != null && Number(row.smart_ticket_id) !== Number(ticket.id)) red('bilet uyusmuyor');
+  const planSha = sha256(
+    String(ev.crypto_hub_node_plan_b64 || '') +
+      String(ev.crypto_hub_node_expect_b64 || '') +
+      String(ev.crypto_hub_node_new_sha_b64 || ''),
+  );
+  if (planSha !== String(row.plan_sha || '').trim()) red('plan ozeti uyusmuyor');
+  const sakli = row.yeni_deger_secret;
+  if (sakli == null || sakli === '') red('deger yok (temizlenmis)');
+  const envMod = require('../db/env-overrides.cjs');
+  if (process.env.NODE_ENV === 'production' && !String(sakli).startsWith(envMod.ENC_PREFIX)) red('deger sifresiz');
+  let yeniB64 = '';
+  try {
+    yeniB64 = envMod.decryptSecretValue(String(sakli));
+  } catch {
+    red('deger cozulemedi');
+  }
+  let zarf = null;
+  let newSha = null;
+  try {
+    if (!B64_RE.test(yeniB64) || yeniB64.length > N.YENI_B64_AZAMI) throw new Error('b64');
+    zarf = JSON.parse(Buffer.from(yeniB64, 'base64').toString('utf8'));
+    newSha = JSON.parse(Buffer.from(String(ev.crypto_hub_node_new_sha_b64 || ''), 'base64').toString('utf8'));
+  } catch {
+    red('deger bicimi gecersiz');
+  }
+  const nesne = (x) => !!x && typeof x === 'object' && !Array.isArray(x);
+  if (!nesne(zarf) || !ayniKume(new Set(Object.keys(zarf)), new Set(['degerler', 'bos_onay']))) {
+    red('deger bicimi gecersiz');
+  }
+  const degerler = zarf.degerler;
+  if (!nesne(degerler) || Object.values(degerler).some((v) => typeof v !== 'string')) red('deger bicimi gecersiz');
+  const bos = Object.keys(degerler).filter((r) => degerler[r] === '');
+  const bosOnay = zarf.bos_onay;
+  if (
+    !Array.isArray(bosOnay) ||
+    bosOnay.some((x) => typeof x !== 'string') ||
+    new Set(bosOnay).size !== bosOnay.length ||
+    !ayniKume(new Set(bosOnay), new Set(bos))
+  ) {
+    red('deger bicimi gecersiz');
+  }
+  if (
+    !nesne(newSha) ||
+    !ayniKume(new Set(Object.keys(newSha)), new Set(Object.keys(degerler))) ||
+    Object.keys(degerler).some((r) => sha256(degerler[r]) !== newSha[r])
+  ) {
+    red('deger ozeti uyusmuyor');
+  }
+  return {
+    extraVars: { ...ev, crypto_hub_node_yeni_b64: yeniB64 },
+    gizliler: [yeniB64, ...Object.values(degerler).filter((v) => v !== '')],
+  };
+}
+
+/** Hata metninden bilinen degerleri cikarir (Python `temizle` aynasi): uzun olan once. */
+function gizliTemizle(metin, gizliler) {
+  let s = String(metin == null ? '' : metin);
+  const liste = [...new Set((gizliler || []).filter((x) => typeof x === 'string' && x))].sort(
+    (a, b) => b.length - a.length,
+  );
+  for (const g of liste) s = s.split(g).join('****');
+  return s.slice(0, 500);
 }
 
 module.exports = {
@@ -2001,6 +2109,8 @@ module.exports = {
   nodeSonuclariniTara,
   talepAc,
   esOnerisi,
+  launchOncesiDegerEkle,
+  gizliTemizle,
   initCryptoHubNode,
   NODE_OKUMA,
   OKUMA_ISLERI,

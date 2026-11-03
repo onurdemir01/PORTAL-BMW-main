@@ -172,7 +172,7 @@ test('JO4 `collectJobEventsStdout` BAYT butcesi tasiyor (event sayisi degil)', (
 // PR #106 yalnizca DUZ METIN yolunu kapatmisti; JSON yolu acik kalmisti.
 let TEST_AWX_URL = 'http://127.0.0.1:1';
 
-function gercekJsonIstek(fnAdi) {
+function gercekJsonIstek(fnAdi, ekStok = {}) {
   let i = RUNNER_SRC.indexOf(`function ${fnAdi}(`);
   assert.ok(i > 0, `${fnAdi} bulunamadi`);
   // `async` oneki KESILMEMELI: kesilirse govdedeki `await` sozdizimi hatasi verir
@@ -196,6 +196,7 @@ function gercekJsonIstek(fnAdi) {
     _tokenCache: { token: null, expiresAt: null },
     getConfig: () => ({ url: TEST_AWX_URL }),
     getToken: async () => 'test-token',
+    ...ekStok,
   };
   const adlar = [];
   const degerler = [];
@@ -423,4 +424,49 @@ test('JO11 bellek nabzi duruyor ve surecin kapanmasini ENGELLEMIYOR', () => {
 
   // `unref()` SART: aksi halde dagitimda portal bir dakika gec kapanir.
   assert.match(blok, /\.unref\(\)/, 'zamanlayici `unref()` edilmemis — kapanmayi geciktirir');
+});
+
+// JO12 - CAGIRANIN GIZLILERI (Crypto Hub node kancasi, 2026-11-03): AWX 4xx govdesi bir
+// degiskenin DEGERINI yansitirsa (anket dogrulama mesaji) log satiri, hata metni ve e.body
+// o degeri tasimaz. Gizli bildirilmeyen cagrida davranis aynen kalir (body korunur).
+test('JO12 opts.gizliler: 4xx govdesindeki deger log/hata/body\'ye dusmuyor', async () => {
+  const GIZLI = 'eyJkZWdlcmxlciI6/SIRSIRb64';
+  const mod = gercekJsonIstek('awxRequestToServer', {
+    maskRequestSecrets: (s) => String(s),
+    summarizeAwxErrorBody: (j) => (j && j.detail) || null,
+  });
+  // Ham govdede ikinci kopya JSON kacisli ('/' -> '\/'): log satiri HAM metni yazar.
+  const yansit = `{"detail": "value ${GIZLI} too long", "kacisli": "${GIZLI.split('/').join('\\/')}"}`;
+  const srv = http.createServer((q, r) => {
+    r.writeHead(400, { 'content-type': 'application/json' });
+    r.end(yansit);
+  });
+  await new Promise((r) => srv.listen(0, '127.0.0.1', r));
+  const loglar = [];
+  const eski = console.error;
+  console.error = (...a) => loglar.push(a.join(' '));
+  try {
+    const sunucu = { url: `http://127.0.0.1:${srv.address().port}` };
+    let hata = null;
+    try {
+      await sureSinirli(mod.fn(sunucu, 't', 'POST', '/api/v2/x/', {}, { gizliler: [GIZLI] }), 15000, 'JO12');
+    } catch (e) {
+      hata = e;
+    }
+    assert.ok(hata && hata.status === 400, 'hata beklenirdi');
+    const hepsi = [hata.message, JSON.stringify(hata.body), ...loglar].join('\n');
+    assert.ok(!hepsi.includes('SIRSIR'), `gizli sizdi: ${hepsi}`);
+    assert.ok(loglar.some((l) => l.includes('HTTP 400') && l.includes('****')), 'log satiri yok ya da maskesiz - test kor');
+    loglar.length = 0;
+    hata = null;
+    try {
+      await sureSinirli(mod.fn(sunucu, 't', 'POST', '/api/v2/x/', {}), 15000, 'JO12b');
+    } catch (e) {
+      hata = e;
+    }
+    assert.ok(hata && hata.body && hata.body.detail.includes('SIRSIR'), 'gizlisiz cagrida body degismemeli');
+  } finally {
+    console.error = eski;
+    srv.close();
+  }
 });

@@ -2,15 +2,17 @@
 //
 //   U1 liste: gruplar, rozetler, bekleyen bant, kapalı "Değiştir" + title; yalnız-okuma kullanıcı;
 //      node-only kullanıcıda YALNIZ "Indexer / Node" sekmesi ve /overview ÇAĞRILMAZ (D5)
-//   U2 sihirbaz: kullanımda / çözülemedi seçilemez; tutarsızlık onayı; gerekçe sınırı; production
-//      ad yazdırma (parça eşleşmesi yetmez); "İptal"; bayat okumada otomatik okuma ve okuma sonrası
-//      engel çıkarsa sihirbaz kapanır; gövdede DEĞER yok
+//   U2 sihirbaz: rol başına değer kutusu (sır password, autocomplete/spellcheck kapalı), anlık biçim
+//      doğrulaması, maskeli önizleme, boş rol uyarısı + onay kutusu, aynı-değer uyarısı; tutarsızlık
+//      onayı; gerekçe sınırı; production ad yazdırma; "İptal"; sunucu reddinde doğru adıma dönüş;
+//      değer tarayıcı deposuna / console'a yazılmaz
 //   U3 takip: Smart durum adı aynen + son tarih; kapalı durum metni + sonuç tablosu; Ankara önerisi
 //      yalnız metaco_das_prod'da, kapalıysa düğme kapalı; Ankara bağlantısı sihirbazı aynı grupla
 //      açar ve esTalepId gönderir (D4)
 //   U4 yapı: her tablo overflow-x-auto içinde; yeni dosyalarda sabit renk yok
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { createHash } from 'node:crypto';
+import { render, screen, fireEvent, waitFor, within, cleanup } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -66,8 +68,16 @@ import { NodeTakip } from '@/components/crypto_hub/NodeTakip';
 import CryptoHubPage from '@/components/crypto_hub/CryptoHubPage';
 
 const UIS = 'uis:evm-ethereum-mainnet';
+const DOT = 'eski:polkadot-assethub';
 const H = (c: string) => c.repeat(64);
+const sha = (v: string) => createHash('sha256').update(v, 'utf8').digest('hex');
 const SIR = 'SIRSIR123';
+// Canlı değerler (ekran yalnız maskeli + sha görür) ve kullanıcının yazacağı yeni değer.
+const VA = 'https://eth-a.example.net/v3/KEYA';
+const VB = 'https://eth-b.example.net/v3/KEYB';
+const YENI = `https://eth-c.node.invalid/v3/${SIR}`;
+const YENI_MASKE = 'https://eth-c.node.invalid/****';
+const RPC_ETIKET = 'rpc — URL (http, https, ws, wss)';
 
 const dep = (ad: string, bilesen: NodeDep['bilesen'], ek: Partial<NodeDep> = {}): NodeDep => ({
   ad,
@@ -86,8 +96,7 @@ const env = (deployment: string, ek: Partial<NodeEnv> = {}): NodeEnv => ({
   rol: 'rpc',
   kaynak: 'literal',
   maskeli: 'https://eth-a.example.net/****',
-  sha: H('a'),
-  katalogId: 'das_test_eth_a',
+  sha: sha(VA),
   helm: 'hayir',
   ...ek,
 });
@@ -108,42 +117,12 @@ function uisGrup(ek: Partial<NodeGrup> = {}): NodeGrup {
     deploymentlar: [a, api, ix],
     roller: [{ rol: 'rpc', envler: ['ETH_INDEXER_NODE_URI'], bicim: 'url' }],
     envler: [env(AD), env(IX)],
-    mevcutNode: {
-      katalogId: 'das_test_eth_a',
-      ad: 'Sağlayıcı A',
-      maskeli: { rpc: 'https://eth-a.example.net/****' },
-    },
+    mevcutNode: { maskeli: { rpc: 'https://eth-a.example.net/****' } },
     tutarsiz: false,
     olculemedi: false,
     referans: false,
     gitops: false,
     durdurulmus: [],
-    adaylar: [
-      {
-        id: 'das_test_eth_a',
-        ad: 'Sağlayıcı A',
-        maskeli: { rpc: 'https://eth-a.example.net/****' },
-        kullanimda: true,
-        cozulemedi: false,
-        neden: null,
-      },
-      {
-        id: 'das_test_eth_b',
-        ad: 'Sağlayıcı B',
-        maskeli: { rpc: 'https://eth-b.example.net/****' },
-        kullanimda: false,
-        cozulemedi: false,
-        neden: null,
-      },
-      {
-        id: 'das_test_eth_c',
-        ad: 'Sağlayıcı C',
-        maskeli: { rpc: '-' },
-        kullanimda: false,
-        cozulemedi: true,
-        neden: 'sir_eksik',
-      },
-    ],
     bekleyen: null,
     degistirilebilir: true,
     engel: null,
@@ -165,6 +144,29 @@ function eskiGrup(ek: Partial<NodeGrup> = {}): NodeGrup {
     gitops: true,
     degistirilebilir: false,
     engel: "Bu deployment'lar GitOps (Argo CD) sahipli ya da sahiplik ölçülemedi — Portal değiştirmez.",
+    ...ek,
+  };
+}
+/** Eski tip, iki rollü (url + sır) grup: polkadot. */
+function dotGrup(ek: Partial<NodeGrup> = {}): NodeGrup {
+  const d = dep('hmz-harmonize-substrate-polkadot-assethub', null);
+  return {
+    ...uisGrup(),
+    id: DOT,
+    tur: 'eski',
+    baslik: 'substrate-polkadot-assethub',
+    kilit: 'eski-substrate-polkadot-assethub',
+    bilesenler: null,
+    deploymentlar: [d],
+    roller: [
+      { rol: 'auth', envler: ['SIDECAR_AUTH_VALUE'], bicim: 'sir' },
+      { rol: 'url', envler: ['SIDECAR_URL'], bicim: 'url' },
+    ],
+    envler: [
+      env(d.ad, { container: 'sidecar', env: 'SIDECAR_AUTH_VALUE', rol: 'auth', maskeli: '****', sha: sha('eski-sir') }),
+      env(d.ad, { container: 'sidecar', env: 'SIDECAR_URL', rol: 'url', maskeli: 'https://dot.example.net/****', sha: sha('https://dot.example.net/x') }),
+    ],
+    mevcutNode: { maskeli: { auth: '****', url: 'https://dot.example.net/****' } },
     ...ek,
   };
 }
@@ -204,10 +206,8 @@ const talep = (ek: Partial<NodeTalepOzet> = {}): NodeTalepOzet => ({
   grup: UIS,
   grupBaslik: 'evm-ethereum-mainnet',
   lokasyon: 'İstanbul',
-  yeniNodeId: 'das_test_eth_b',
-  yeniNodeAd: 'Sağlayıcı B',
   eskiOzet: 'rpc=https://eth-a.example.net/****',
-  yeniOzet: 'rpc=https://eth-b.example.net/****',
+  yeniOzet: 'rpc=https://eth-c.node.invalid/****',
   hedefler: [AD, IX],
   username: 'ali',
   durum: 'BEKLIYOR',
@@ -227,6 +227,9 @@ beforeEach(() => {
   m.takip.mockReturnValue({ talepSonu: null, sifirla: vi.fn(), sonDurum: null, sonDurumAlindiMs: null });
   m.changeDetail.mockResolvedValue({ ok: true, talep: talep(), sonuc: null });
 });
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 const kart = (id: string) => document.querySelector(`[data-grup="${id}"]`) as HTMLElement;
 const degistir = (id: string) =>
@@ -234,17 +237,16 @@ const degistir = (id: string) =>
 
 // ── U1 ───────────────────────────────────────────────────────────────────────────────
 describe('U1 liste', () => {
-  it('gruplar, bileşen sütunları, maskeli node, katalog ve engel rozetleri', async () => {
+  it('gruplar, bileşen sütunları, maskeli node ve engel rozetleri', async () => {
     m.nodes.mockResolvedValue(yanit());
     render(<NodePanel tenantKey="metaco_das_test" />);
     expect(await screen.findByText('Indexer / Node bağlantıları')).toBeTruthy();
     expect(screen.getByText("Yeni tip indexer'lar (uis)")).toBeTruthy();
     expect(screen.getByText("Eski tip indexer'lar")).toBeTruthy();
     const u = within(kart(UIS));
-    expect(u.getByText('— bu ağda yok')).toBeTruthy();
+    expect(u.getByText('bu ağda yok')).toBeTruthy();
     expect(u.getByText('node bağlantısı yok')).toBeTruthy();
-    expect(u.getByText('Katalog: Sağlayıcı A')).toBeTruthy();
-    expect(kart(UIS).textContent).toContain('rpc: https://eth-a.example.net/****');
+    expect(u.getByText("Tüm bileşenler aynı node'a bağlı: rpc: https://eth-a.example.net/****")).toBeTruthy();
     expect(u.getByText('Yeni tip')).toBeTruthy();
     expect(degistir(UIS).disabled).toBe(false);
     const e = within(kart('eski:ethereum-mainnet'));
@@ -375,28 +377,52 @@ async function sihirbazAc(r: CryptoNodesResponse, id = UIS) {
   fireEvent.click(degistir(id));
 }
 
+/** "Yeni node" adımında rolün kutusuna yazar. */
+const yaz = (etiket: string, deger: string) =>
+  fireEvent.change(screen.getByLabelText(etiket), { target: { value: deger } });
+
 describe('U2 sihirbaz', () => {
-  it('kullanımda / çözülemedi seçilemez; geçerli seçim İleri açar; "İptal" var', async () => {
+  it('rol başına kutu: anlık biçim hatası, maskeli önizleme, boş rol uyarısı; "İptal" var', async () => {
     await sihirbazAc(yanit());
     expect(screen.getByText('Node değişikliği — evm-ethereum-mainnet')).toBeTruthy();
-    expect(screen.getByText('Değer (maskeli)')).toBeTruthy();
+    expect(screen.getByText('Şu anki değer (maskeli)')).toBeTruthy();
     expect(btn('İptal')).toBeTruthy();
     fireEvent.click(btn('İleri'));
-    const sec = screen.getByLabelText('Yeni node') as HTMLSelectElement;
-    const opt = (id: string) => sec.querySelector(`option[value="${id}"]`) as HTMLOptionElement;
-    expect(opt('das_test_eth_a').disabled).toBe(true);
-    expect(opt('das_test_eth_a').textContent).toMatch(/ \(şu an kullanımda\)$/);
-    expect(opt('das_test_eth_c').disabled).toBe(true);
-    expect(opt('das_test_eth_c').textContent).toMatch(/ \(sırrı çözülemedi — seçilemez\)$/);
-    expect(opt('das_test_eth_b').disabled).toBe(false);
+    expect(screen.getByText('Yeni node değerleri')).toBeTruthy();
+    expect(screen.getByText('Env: ETH_INDEXER_NODE_URI')).toBeTruthy();
+    const kutu = screen.getByLabelText(RPC_ETIKET) as HTMLInputElement;
+    expect(kutu.type).toBe('text');
+    expect(kutu.getAttribute('autocomplete')).toBe('off');
+    expect(kutu.getAttribute('spellcheck')).toBe('false');
+    expect(kutu.getAttribute('maxlength')).toBeNull();
+    // Boş: not + uyarı + onay kutusu; İleri kapalı.
+    expect(screen.getByText('Boş — env değişkeni boş değere yazılır.')).toBeTruthy();
+    expect(screen.getByText("rpc boş bırakıldı: env değişkeni BOŞ değere yazılır, uygulama node'suz kalabilir.")).toBeTruthy();
     expect(btn('İleri').disabled).toBe(true);
-    fireEvent.change(sec, { target: { value: 'das_test_eth_b' } });
-    expect(btn('İleri').disabled).toBe(false);
+    // Hatalı: role=alert, sunucuyla aynı kural.
+    yaz(RPC_ETIKET, 'https://x.invalid/a b');
+    expect(screen.getByRole('alert').textContent).toMatch(/^URL http:\/\/, https:\/\/, ws:\/\/ ya da wss:\/\//);
+    expect(btn('İleri').disabled).toBe(true);
+    yaz(RPC_ETIKET, 'HTTPS://x.invalid');
+    expect(screen.getByRole('alert')).toBeTruthy();
+    yaz(RPC_ETIKET, 'https://x.invalid/ü');
+    expect(screen.getByRole('alert').textContent).toMatch(/^Yalnız yazdırılabilir ASCII/);
+    // Geçerli: maskeli önizleme; ham değer metin olarak hiçbir yerde yok.
+    yaz(RPC_ETIKET, YENI);
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getByText(`Smart'ta böyle görünecek: ${YENI_MASKE}`)).toBeTruthy();
+    expect(screen.queryByText(/boş bırakıldı/)).toBeNull();
+    await waitFor(() => expect(btn('İleri').disabled).toBe(false));
+    expect(document.body.textContent).not.toContain(SIR);
+    for (const el of Array.from(document.querySelectorAll('[title]')))
+      expect(el.getAttribute('title'), 'değer title niteliğine girdi').not.toContain(SIR);
     fireEvent.click(btn('İptal'));
     expect(screen.queryByText('Node değişikliği — evm-ethereum-mainnet')).toBeNull();
   });
 
-  it('test ortamı: tutarsızlık onayı, gerekçe sınırı, onay kutusu; gövdede değer yok; takip açılır', async () => {
+  it('test ortamı: tutarsızlık onayı, gerekçe, onay adımında maskeli değer; gövde yeni/bosOnay; depo ve console temiz', async () => {
+    const ls = vi.spyOn(Storage.prototype, 'setItem');
+    const konsol = (['log', 'info', 'warn', 'error', 'debug'] as const).map((k) => vi.spyOn(console, k));
     m.change.mockResolvedValue({
       ok: true,
       pendingApproval: true,
@@ -406,13 +432,11 @@ describe('U2 sihirbaz', () => {
       onayZamanAsimiDk: 1440,
     });
     // Gerçek tutarsızlık: adapter B'de, indexer A'da.
-    const tutarsizEnv = [
-      env(AD, { sha: H('b'), maskeli: 'https://eth-b.example.net/****', katalogId: 'das_test_eth_b' }),
-      env(IX),
-    ];
+    const tutarsizEnv = [env(AD, { sha: sha(VB), maskeli: 'https://eth-b.example.net/****' }), env(IX)];
     await sihirbazAc(yanit({ gruplar: [uisGrup({ tutarsiz: true, envler: tutarsizEnv })] }));
     fireEvent.click(btn('İleri'));
-    fireEvent.change(screen.getByLabelText('Yeni node'), { target: { value: 'das_test_eth_b' } });
+    yaz(RPC_ETIKET, YENI);
+    await waitFor(() => expect(btn('İleri').disabled).toBe(false));
     fireEvent.click(btn('İleri'));
     const etki = screen.getByText("Şu deployment'lar yeniden başlatılacak (her biri tek rollout):");
     const liste = etki.parentElement?.querySelector('ul') as HTMLElement;
@@ -434,6 +458,7 @@ describe('U2 sihirbaz', () => {
     fireEvent.change(g, { target: { value: 'Sağlayıcı A kesintide' } });
     expect(btn('İleri').disabled).toBe(false);
     fireEvent.click(btn('İleri'));
+    expect(screen.getByText(`Yeni değer (maskeli): rpc: ${YENI_MASKE}`)).toBeTruthy();
     expect(btn('Talep aç').disabled).toBe(true);
     expect(screen.queryByLabelText(/Onaylamak için grup adını yazın/)).toBeNull();
     fireEvent.click(
@@ -447,14 +472,66 @@ describe('U2 sihirbaz', () => {
     expect(govde).toEqual({
       tenant: 'metaco_das_test',
       grup: UIS,
-      nodeId: 'das_test_eth_b',
+      yeni: { rpc: YENI },
+      bosOnay: false,
       gerekce: 'Sağlayıcı A kesintide',
       bilesenler: [AD, IX],
       tutarsizlikOnay: true,
     });
-    expect(JSON.stringify(govde)).not.toMatch(new RegExp('https?:|' + SIR));
+    expect('nodeId' in govde).toBe(false);
     expect(await screen.findByText(/^Smart talebi açıldı \(kayıt no: SR-555\)\./)).toBeTruthy();
     expect(screen.queryByText('Node değişikliği — evm-ethereum-mainnet')).toBeNull();
+    // Değer tarayıcı deposuna ve console'a hiç yazılmadı.
+    for (const c of ls.mock.calls) expect(JSON.stringify(c)).not.toContain(SIR);
+    for (const k of konsol) for (const c of k.mock.calls) expect(JSON.stringify(c)).not.toContain(SIR);
+    expect(document.body.textContent).not.toContain(SIR);
+  });
+
+  it('sır rolü password; boş rol onay kutusu olmadan geçilmez; Etki adımında uyarı tekrar; gövde bosOnay true', async () => {
+    m.change.mockResolvedValue({ ok: true, ticketId: 901, externalTicketId: 'SR-560', talepId: 47 });
+    await sihirbazAc(yanit({ gruplar: [uisGrup(), dotGrup()] }), DOT);
+    fireEvent.click(btn('İleri'));
+    const sir = screen.getByLabelText('auth — gizli değer') as HTMLInputElement;
+    expect(sir.type).toBe('password');
+    expect(sir.getAttribute('autocomplete')).toBe('off');
+    expect(sir.getAttribute('spellcheck')).toBe('false');
+    yaz('auth — gizli değer', ` ${SIR}`);
+    expect(screen.getByRole('alert').textContent).toBe('Başta ve sonda boşluk olamaz.');
+    yaz('auth — gizli değer', `Bearer ${SIR}`);
+    expect(screen.getByText("Smart'ta böyle görünecek: ****")).toBeTruthy();
+    // url boş: uyarı + onay kutusu.
+    expect(screen.getByText("url boş bırakıldı: env değişkeni BOŞ değere yazılır, uygulama node'suz kalabilir.")).toBeTruthy();
+    await waitFor(() => expect(screen.getByLabelText('Boş değerle yazılmasını onaylıyorum (iş birimi onaylı).')).toBeTruthy());
+    expect(btn('İleri').disabled).toBe(true);
+    fireEvent.click(screen.getByLabelText('Boş değerle yazılmasını onaylıyorum (iş birimi onaylı).'));
+    await waitFor(() => expect(btn('İleri').disabled).toBe(false));
+    // Onay ROL LİSTESİNE bağlı: url doldurulup auth boşaltılınca kutu düşer, İleri kapanır.
+    yaz('url — URL (http, https, ws, wss)', 'https://dot.node.invalid');
+    yaz('auth — gizli değer', '');
+    expect(screen.getByText("auth boş bırakıldı: env değişkeni BOŞ değere yazılır, uygulama node'suz kalabilir.")).toBeTruthy();
+    const kutu2 = screen.getByLabelText('Boş değerle yazılmasını onaylıyorum (iş birimi onaylı).') as HTMLInputElement;
+    expect(kutu2.checked, 'başka rolün boş onayı yeni boş role taşındı').toBe(false);
+    expect(btn('İleri').disabled).toBe(true);
+    // Geri: url boş, auth dolu -> eski liste; onay yine kendiliğinden gelmez (yeniden işaretlenir).
+    yaz('url — URL (http, https, ws, wss)', '');
+    yaz('auth — gizli değer', `Bearer ${SIR}`);
+    fireEvent.click(screen.getByLabelText('Boş değerle yazılmasını onaylıyorum (iş birimi onaylı).'));
+    await waitFor(() => expect(btn('İleri').disabled).toBe(false));
+    // Erişilebilirlik: kutu env ipucuna ve durum satırına bağlı.
+    const url = screen.getByLabelText('url — URL (http, https, ws, wss)') as HTMLInputElement;
+    const bagli = (url.getAttribute('aria-describedby') || '').split(' ').map((x) => document.getElementById(x)?.textContent);
+    expect(bagli).toEqual(['Env: SIDECAR_URL', 'Boş — env değişkeni boş değere yazılır.']);
+    fireEvent.click(btn('İleri'));
+    expect(screen.getByText("url boş bırakıldı: env değişkeni BOŞ değere yazılır, uygulama node'suz kalabilir.")).toBeTruthy();
+    fireEvent.click(btn('İleri'));
+    fireEvent.change(screen.getByLabelText('Gerekçe (10–500 karakter)'), { target: { value: 'Sidecar url kaldırılıyor' } });
+    fireEvent.click(btn('İleri'));
+    expect(screen.getByText('Yeni değer (maskeli): auth: ****; url: (bos)')).toBeTruthy();
+    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(btn('Talep aç'));
+    await waitFor(() => expect(m.change).toHaveBeenCalledTimes(1));
+    expect(m.change.mock.calls[0][0]).toMatchObject({ grup: DOT, yeni: { auth: `Bearer ${SIR}`, url: '' }, bosOnay: true });
+    expect(document.body.textContent).not.toContain(SIR);
   });
 
   it('production: grup adını AYNEN yazdırır (parça yetmez); Ankara uyarısı; onayMetni gönderilir', async () => {
@@ -463,7 +540,8 @@ describe('U2 sihirbaz', () => {
       yanit({}, { key: 'metaco_das_prod', production: true, esKiraci: 'metaco_das_prod_ank' }),
     );
     fireEvent.click(btn('İleri'));
-    fireEvent.change(screen.getByLabelText('Yeni node'), { target: { value: 'das_test_eth_b' } });
+    yaz(RPC_ETIKET, YENI);
+    await waitFor(() => expect(btn('İleri').disabled).toBe(false));
     fireEvent.click(btn('İleri'));
     expect(
       screen.getByText(
@@ -484,8 +562,21 @@ describe('U2 sihirbaz', () => {
     expect(btn('Talep aç').disabled).toBe(false);
     fireEvent.click(btn('Talep aç'));
     await waitFor(() => expect(m.change).toHaveBeenCalledTimes(1));
-    expect(m.change.mock.calls[0][0]).toMatchObject({ tenant: 'metaco_das_prod', onayMetni: UIS });
+    expect(m.change.mock.calls[0][0]).toMatchObject({ tenant: 'metaco_das_prod', onayMetni: UIS, yeni: { rpc: YENI } });
   });
+
+  async function sonaKadar(r: CryptoNodesResponse) {
+    await sihirbazAc(r);
+    fireEvent.click(btn('İleri'));
+    yaz(RPC_ETIKET, YENI);
+    await waitFor(() => expect(btn('İleri').disabled).toBe(false));
+    fireEvent.click(btn('İleri'));
+    fireEvent.click(btn('İleri'));
+    fireEvent.change(screen.getByLabelText('Gerekçe (10–500 karakter)'), { target: { value: 'x'.repeat(12) } });
+    fireEvent.click(btn('İleri'));
+    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(btn('Talep aç'));
+  }
 
   it('sunucu reddi mesajı sihirbazda gösterilir, sihirbaz açık kalır', async () => {
     m.change.mockResolvedValue({
@@ -493,17 +584,32 @@ describe('U2 sihirbaz', () => {
       blocked: 'node_bekleyen_talep',
       message: 'Bu grup için açık bir talep var (Smart #SR-1). Sonuçlanmadan yeni talep açılamaz.',
     });
-    await sihirbazAc(yanit());
-    fireEvent.click(btn('İleri'));
-    fireEvent.change(screen.getByLabelText('Yeni node'), { target: { value: 'das_test_eth_b' } });
-    fireEvent.click(btn('İleri'));
-    fireEvent.click(btn('İleri'));
-    fireEvent.change(screen.getByLabelText('Gerekçe (10–500 karakter)'), { target: { value: 'x'.repeat(12) } });
-    fireEvent.click(btn('İleri'));
-    fireEvent.click(screen.getByRole('checkbox'));
-    fireEvent.click(btn('Talep aç'));
+    await sonaKadar(yanit());
     expect(await screen.findByText(/Bu grup için açık bir talep var \(Smart #SR-1\)/)).toBeTruthy();
     expect(screen.getByText('Node değişikliği — evm-ethereum-mainnet')).toBeTruthy();
+  });
+
+  it('ağ hatası: geçit metni aynen; diğer hatada gövde önizlemesi değil sabit metin', async () => {
+    const gecit = Object.assign(new Error('Portal şu an yeniden başlatılıyor (HTTP 502).'), { gatewayUnavailable: true });
+    m.change.mockRejectedValueOnce(gecit);
+    await sonaKadar(yanit());
+    expect(await screen.findByText('Portal şu an yeniden başlatılıyor (HTTP 502).')).toBeTruthy();
+    m.change.mockRejectedValueOnce(new Error(`Sunucu beklenmeyen bir yanıt döndü [${YENI}]`));
+    fireEvent.click(btn('Talep aç'));
+    expect(await screen.findByText('Talep açılamadı (bağlantı hatası).')).toBeTruthy();
+    expect(document.body.textContent).not.toContain(YENI);
+  });
+
+  it.each([
+    ['node_deger_bicim', { rol: 'rpc', neden: 'url', message: 'Geçersiz değer (rpc): url.' }, /^rpc: URL http:\/\//],
+    ['node_ayni_node', { message: 'Girilen değer seçilen bileşenlerde zaten kullanımda — değişiklik yok.' }, /zaten kullanımda/],
+    ['node_bos_onay', { message: 'Boş bırakılan rol var; boş değerle yazılması ayrıca onaylanmalı.' }, /^Boş bırakılan rol var/],
+  ])('sunucu %s derse "Yeni node" adımına döner ve nedeni söyler', async (blocked, ek, metin) => {
+    m.change.mockResolvedValue({ ok: false, blocked, ...ek });
+    await sonaKadar(yanit());
+    await waitFor(() => expect(screen.getByLabelText(RPC_ETIKET)).toBeTruthy());
+    expect(screen.getByText(metin)).toBeTruthy();
+    expect((screen.getByLabelText(RPC_ETIKET) as HTMLInputElement).value).toBe(YENI);
   });
 
   it('okuma bayat: Değiştir okumayı başlatır, okuma bitince grup değiştirilemezse engel metniyle kapanır', async () => {
@@ -585,7 +691,7 @@ describe('U3 takip', () => {
         sonucKod: '-',
         kapandiAt: '2026-11-02T11:00:00Z',
         sonuc: {
-        sum: { sonuc: 'ok', nodeId: 'das_test_eth_b', talepId: '42', kod: '-' },
+        sum: { sonuc: 'ok', planSha: H('c'), talepId: '42', kod: '-' },
         degisiklikler: [
           {
             deployment: AD,
@@ -641,7 +747,6 @@ describe('U3 takip', () => {
     label: 'Production (Ankara)',
     acik,
     grup: UIS,
-    nodeId: 'das_test_eth_b',
     esTalepId: 42,
   });
   const yeni = (acik: boolean) => ({
@@ -680,7 +785,7 @@ describe('U3 takip', () => {
     expect(onAnkara).toHaveBeenCalledWith(oneri(true));
   });
 
-  it('Ankara bağlantısı (?g&n&es): sihirbaz aynı grupla, node ön seçili açılır; esTalepId gönderilir', async () => {
+  it('Ankara bağlantısı (?g&es): sihirbaz aynı grupla açılır, değer ÖN DOLDURULMAZ (yeniden yazılır); esTalepId gönderilir', async () => {
     m.tenants.mockResolvedValue({
       ok: true,
       apps: [
@@ -717,14 +822,16 @@ describe('U3 takip', () => {
     m.change.mockResolvedValue({ ok: true, ticketId: 901, externalTicketId: 'SR-600', talepId: 44 });
     render(
       <MemoryRouter
-        initialEntries={[`/crypto-hub?t=metaco_das_prod_ank&s=node&g=${encodeURIComponent(UIS)}&n=das_test_eth_b&es=42`]}
+        initialEntries={[`/crypto-hub?t=metaco_das_prod_ank&s=node&g=${encodeURIComponent(UIS)}&es=42`]}
       >
         <CryptoHubPage />
       </MemoryRouter>,
     );
     expect(await screen.findByText('Node değişikliği — evm-ethereum-mainnet')).toBeTruthy();
     fireEvent.click(btn('İleri'));
-    expect((screen.getByLabelText('Yeni node') as HTMLSelectElement).value).toBe('das_test_eth_b');
+    expect((screen.getByLabelText(RPC_ETIKET) as HTMLInputElement).value).toBe('');
+    yaz(RPC_ETIKET, YENI);
+    await waitFor(() => expect(btn('İleri').disabled).toBe(false));
     fireEvent.click(btn('İleri'));
     fireEvent.click(btn('İleri'));
     fireEvent.change(screen.getByLabelText('Gerekçe (10–500 karakter)'), {
@@ -739,10 +846,11 @@ describe('U3 takip', () => {
     expect(m.change.mock.calls[0][0]).toMatchObject({
       tenant: 'metaco_das_prod_ank',
       grup: UIS,
-      nodeId: 'das_test_eth_b',
+      yeni: { rpc: YENI },
       esTalepId: 42,
       onayMetni: UIS,
     });
+    expect('nodeId' in m.change.mock.calls[0][0]).toBe(false);
     expect(m.read).not.toHaveBeenCalled();
   });
 
@@ -753,7 +861,7 @@ describe('U3 takip', () => {
       <MemoryRouter>
         <NodePanel
           tenantKey="metaco_das_prod_ank"
-          baslangic={{ grup: UIS, nodeId: 'das_test_eth_b', esTalepId: 42 }}
+          baslangic={{ grup: UIS, esTalepId: 42 }}
           okumaAralikMs={10}
         />
       </MemoryRouter>,
@@ -764,7 +872,8 @@ describe('U3 takip', () => {
     fireEvent.click(degistir(UIS));
     expect(await screen.findByText('Node değişikliği — evm-ethereum-mainnet')).toBeTruthy();
     fireEvent.click(btn('İleri'));
-    fireEvent.change(screen.getByLabelText('Yeni node'), { target: { value: 'das_test_eth_b' } });
+    yaz(RPC_ETIKET, YENI);
+    await waitFor(() => expect(btn('İleri').disabled).toBe(false));
     fireEvent.click(btn('İleri'));
     fireEvent.click(btn('İleri'));
     fireEvent.change(screen.getByLabelText('Gerekçe (10–500 karakter)'), { target: { value: 'İstanbul ile aynı geçiş' } });
@@ -784,7 +893,7 @@ describe('U5 bileşen seçimi', () => {
       ...d,
       nodeBagli: true,
       secilebilir: true,
-      mevcutNode: { katalogId: 'das_test_eth_a', ad: 'Sağlayıcı A', maskeli: { rpc: 'https://eth-a.example.net/****' } },
+      mevcutNode: { maskeli: { rpc: 'https://eth-a.example.net/****' } },
     }));
     return { ...g, deploymentlar: deps, envler: ek.envler || [env(AD), env(API), env(IX)] };
   };
@@ -797,14 +906,16 @@ describe('U5 bileşen seçimi', () => {
     for (const b of ['adapter', 'api', 'indexer']) {
       expect(kutu(b).checked).toBe(true);
     }
-    expect(screen.getAllByText(/— şu an: Sağlayıcı A/).length).toBe(3);
+    // Kullanıcı kararı 2026-11-03: yalnız maskeli değer.
+    expect(screen.getAllByText('— şu an: rpc: https://eth-a.example.net/****').length).toBe(3);
     for (const b of ['adapter', 'api', 'indexer']) fireEvent.click(kutu(b));
     expect(btn('İleri').disabled).toBe(true);
     expect(screen.getByText('En az bir bileşen seçin.')).toBeTruthy();
     fireEvent.click(kutu('indexer'));
     expect(btn('İleri').disabled).toBe(false);
     fireEvent.click(btn('İleri'));
-    fireEvent.change(screen.getByLabelText('Yeni node'), { target: { value: 'das_test_eth_b' } });
+    yaz(RPC_ETIKET, YENI);
+    await waitFor(() => expect(btn('İleri').disabled).toBe(false));
     fireEvent.click(btn('İleri'));
     const etki = screen.getByText("Şu deployment'lar yeniden başlatılacak (her biri tek rollout):");
     const liste = etki.parentElement?.querySelector('ul') as HTMLElement;
@@ -824,18 +935,15 @@ describe('U5 bileşen seçimi', () => {
   });
 
   it("farklı node'lar: not gösterilir; tek node'daki alt küme ek onay istemez, toplamak ister", async () => {
-    const envler = [
-      env(AD, { sha: H('b'), maskeli: 'https://eth-b.example.net/****', katalogId: 'das_test_eth_b' }),
-      env(API),
-      env(IX),
-    ];
+    const envler = [env(AD, { sha: sha(VB), maskeli: 'https://eth-b.example.net/****' }), env(API), env(IX)];
     await sihirbazAc(yanit({ gruplar: [ucBilesen({ tutarsiz: true, envler })] }));
     expect(screen.getByText("Bileşenler farklı node'lara bağlı.")).toBeTruthy();
     const kutu = (b: string) => screen.getByLabelText(new RegExp(`^${b} — şu an:`)) as HTMLInputElement;
     // Yalnız api + indexer (ikisi de A) -> C: ek onay yok.
     fireEvent.click(kutu('adapter'));
     fireEvent.click(btn('İleri'));
-    fireEvent.change(screen.getByLabelText('Yeni node'), { target: { value: 'das_test_eth_b' } });
+    yaz(RPC_ETIKET, YENI);
+    await waitFor(() => expect(btn('İleri').disabled).toBe(false));
     fireEvent.click(btn('İleri'));
     expect(screen.queryByLabelText(/hepsini seçilen node'a getirmeyi onaylıyorum/)).toBeNull();
     expect(btn('İleri').disabled).toBe(false);
@@ -849,20 +957,198 @@ describe('U5 bileşen seçimi', () => {
     expect(screen.getByLabelText(/hepsini seçilen node'a getirmeyi onaylıyorum/)).toBeTruthy();
   });
 
-  it('seçilen bileşenlerin hepsi zaten adaydaysa İleri kapalı ve açıklanır; tek bileşenli grupta seçim yok', async () => {
-    const envler = [
-      env(AD, { sha: H('b'), maskeli: 'https://eth-b.example.net/****', katalogId: 'das_test_eth_b' }),
-      env(API),
-      env(IX),
-    ];
+  it('girilen değer seçilen bileşenlerde zaten kullanımdaysa (sha256) İleri kapalı ve açıklanır', async () => {
+    const envler = [env(AD, { sha: sha(VB), maskeli: 'https://eth-b.example.net/****' }), env(API), env(IX)];
     await sihirbazAc(yanit({ gruplar: [ucBilesen({ tutarsiz: true, envler })] }));
     const kutu = (b: string) => screen.getByLabelText(new RegExp(`^${b} — şu an:`)) as HTMLInputElement;
     fireEvent.click(kutu('api'));
     fireEvent.click(kutu('indexer'));
     fireEvent.click(btn('İleri'));
-    fireEvent.change(screen.getByLabelText('Yeni node'), { target: { value: 'das_test_eth_b' } });
+    yaz(RPC_ETIKET, VB);
+    expect(
+      await screen.findByText('Girilen değer seçilen bileşenlerde zaten kullanımda — değişiklik yok.'),
+    ).toBeTruthy();
     expect(btn('İleri').disabled).toBe(true);
-    expect(screen.getByText("Seçilen bileşenler zaten bu node'da — değişiklik yok.")).toBeTruthy();
+    // Başka değer: uyarı kalkar, İleri açılır.
+    yaz(RPC_ETIKET, YENI);
+    await waitFor(() => expect(btn('İleri').disabled).toBe(false));
+    expect(screen.queryByText(/zaten kullanımda/)).toBeNull();
+    // Seçim değişince yeniden hesaplanır: adapter'ı geri alıp api'yi seçince VB artık aynı değil.
+    yaz(RPC_ETIKET, VB);
+    await screen.findByText(/zaten kullanımda/);
+    fireEvent.click(btn('Geri'));
+    fireEvent.click(kutu('api'));
+    fireEvent.click(btn('İleri'));
+    await waitFor(() => expect(screen.queryByText(/zaten kullanımda/)).toBeNull());
+    expect(btn('İleri').disabled).toBe(false);
+  });
+});
+
+// ── U6 görünüm (kullanıcı geri bildirimi 2026-11-03) ────────────────────────────────
+//   pencere geniş; "Katalog" sütunu/rozeti kalktı (yalnız maskeli); yeni tip kart tablosu (th scope);
+//   eski tip kart aynen; geçmişte yeni değer maskeli; admin Smart önizleme değer almaz
+describe('U6 görünüm', () => {
+  const WIDE = 'max-w-[min(90rem,95vw)]';
+
+  it('sihirbaz geniş pencerede açılır; mevcut tablo yalnız maskeli değer, eşleşme olsa da ad/"Katalog" sütunu yok', async () => {
+    const envler = [env(AD), env(IX, { maskeli: 'https://x.example.net/****' })];
+    await sihirbazAc(yanit({ gruplar: [uisGrup({ envler })] }));
+    const baslik = screen.getByText('Node değişikliği — evm-ethereum-mainnet');
+    const panel = baslik.closest(`[class*="${WIDE}"]`) as HTMLElement | null;
+    expect(panel, 'sihirbaz size="wide" değil').toBeTruthy();
+    const basliklar = Array.from(panel!.querySelectorAll('thead th')).map((t) => t.textContent);
+    expect(basliklar).toEqual(['Bileşen', 'Kap', 'Env değişkeni', 'Şu anki değer (maskeli)']);
+    expect(Array.from(panel!.querySelectorAll('thead th')).every((t) => t.getAttribute('scope') === 'col')).toBe(true);
+    // Sihirbaz gövdesi 13 px; tablo hücreleri px-3 py-2.
+    expect(panel!.querySelector('.space-y-3.text-\\[13px\\]')).toBeTruthy();
+    expect(Array.from(panel!.querySelectorAll('tbody td')).every((td) => /\bpx-3\b/.test(td.className) && /\bpy-2\b/.test(td.className))).toBe(true);
+    const satirlar = Array.from(panel!.querySelectorAll('tbody tr')).map((tr) =>
+      Array.from(tr.querySelectorAll('td')).map((td) => td.textContent),
+    );
+    expect(satirlar.map((x) => x.length)).toEqual([4, 4]);
+    expect(satirlar.map((x) => x[3])).toEqual(['https://eth-a.example.net/****', 'https://x.example.net/****']);
+    expect(panel!.textContent).not.toMatch(/katalog/i);
+    expect(panel!.textContent).not.toContain('Tanımlı değil');
+    fireEvent.click(btn('İleri'));
+    expect(panel!.textContent).not.toMatch(/katalog/i);
+  });
+
+  it('yeni tip kart tablosu: 4 satır sırayla, eksik bileşen, bağlantısız processor, env adları, özet', async () => {
+    const mA = { maskeli: { rpc: 'https://eth-a.example.net/****' } };
+    const a = dep(AD, 'adapter', { mevcutNode: mA });
+    const ix = dep(IX, 'indexer', { mevcutNode: { maskeli: { rpc: 'https://q.example.net/****' } } });
+    const PR = 'hmz-harmonize-uis-processor-evm-ethereum-mainnet';
+    const pr = dep(PR, 'processor', { nodeBagli: false });
+    const g = uisGrup({
+      bilesenler: { adapter: a, api: null, indexer: ix, processor: pr },
+      deploymentlar: [a, ix, pr],
+      envler: [env(AD), env(AD, { env: 'ETH_INDEXER_WS_URI', container: 'side' }), env(IX)],
+    });
+    m.nodes.mockResolvedValue(yanit({ gruplar: [g, eskiGrup()] }));
+    render(<NodePanel tenantKey="metaco_das_test" />);
+    await screen.findByText('Indexer / Node bağlantıları');
+    const tablo = kart(UIS).querySelector('[data-uis-tablo]') as HTMLElement;
+    expect(tablo, 'uis kartında tablo yok').toBeTruthy();
+    expect(tablo.closest('.overflow-x-auto')).toBeTruthy();
+    const basliklar = Array.from(tablo.querySelectorAll('th')).map((t) => t.textContent);
+    expect(basliklar).toEqual(['Bileşen', 'Deployment', 'Durum', 'Node değişkeni', 'Şu anki değer']);
+    expect(Array.from(tablo.querySelectorAll('th')).every((t) => t.getAttribute('scope') === 'col')).toBe(true);
+    expect(tablo.className).toMatch(/\bw-full\b/);
+    expect(tablo.className).toMatch(/text-\[12px\]/);
+    const satir = Array.from(tablo.querySelectorAll('tbody tr')) as HTMLElement[];
+    expect(satir.map((s) => s.getAttribute('data-bilesen'))).toEqual(['adapter', 'api', 'indexer', 'processor']);
+    const hucre = (i: number) => Array.from(satir[i].querySelectorAll('td')).map((td) => td.textContent);
+    expect(hucre(0)).toEqual([
+      'adapter',
+      AD,
+      'çalışıyor · 1 / 1',
+      'ETH_INDEXER_NODE_URI, ETH_INDEXER_WS_URI',
+      'rpc: https://eth-a.example.net/****',
+    ]);
+    expect(hucre(1)).toEqual(['api', 'bu ağda yok']);
+    expect(hucre(2).slice(3)).toEqual(['ETH_INDEXER_NODE_URI', 'rpc: https://q.example.net/****']);
+    expect(hucre(3)).toEqual(['processor', PR, 'çalışıyor · 1 / 1', '—', 'node bağlantısı yok']);
+    expect(within(kart(UIS)).getByText("Tüm bileşenler aynı node'a bağlı: rpc: https://eth-a.example.net/****")).toBeTruthy();
+    // eski 'rol: maskeli (deployment / env)' bloğu uis kartında yok
+    expect(kart(UIS).textContent).not.toContain(`(${AD} / ETH_INDEXER_NODE_URI)`);
+    // eski tip kart aynen: tablo yok, deployment satırı + rol satırı var
+    const eski = kart('eski:ethereum-mainnet');
+    expect(eski.querySelector('[data-uis-tablo]')).toBeNull();
+    expect(eski.querySelector('table')).toBeNull();
+    expect(eski.textContent).toContain('hmz-harmonize-ethereum-mainnet · çalışıyor · 1 / 1');
+    expect(eski.textContent).toContain('rpc: https://eth-a.example.net/****');
+    // Tutarsız eski tip: satır başına "rol: maskeli (deployment / env)" (aynen).
+    const ed = 'hmz-harmonize-ethereum-mainnet';
+    m.nodes.mockResolvedValue(
+      yanit({
+        gruplar: [eskiGrup({ tutarsiz: true, envler: [env(ed), env(ed, { container: 'b', env: 'X_URI', maskeli: 'https://z.example.net/****', sha: sha(VB) })] })],
+      }),
+    );
+    cleanup();
+    render(<NodePanel tenantKey="metaco_das_test" />);
+    await screen.findByText('Indexer / Node bağlantıları');
+    expect(kart('eski:ethereum-mainnet').textContent).toContain(`rpc: https://z.example.net/**** (${ed} / X_URI)`);
+  });
+
+  it('okunmamış uis kartı: "Henüz okunmadı" hücrede; tutarsız grupta özet satırı yok', async () => {
+    m.nodes.mockResolvedValue(
+      yanit({
+        gruplar: [
+          uisGrup({ envler: [], mevcutNode: null, okumaBekleniyor: true }),
+          uisGrup({ id: 'uis:b', baslik: 'b', tutarsiz: true }),
+        ],
+      }),
+    );
+    render(<NodePanel tenantKey="metaco_das_test" />);
+    await screen.findByText('Indexer / Node bağlantıları');
+    const t = kart(UIS).querySelector('[data-uis-tablo]') as HTMLElement;
+    expect(within(t).getAllByText('Henüz okunmadı').length).toBe(3);
+    expect(kart('uis:b').textContent).not.toContain("Tüm bileşenler aynı node'a bağlı");
+  });
+
+  it('okunmuş ama node değişkeni olmayan uis grubu "Henüz okunmadı" demez', async () => {
+    m.nodes.mockResolvedValue(
+      yanit({
+        gruplar: [
+          uisGrup({
+            envler: [],
+            mevcutNode: null,
+            degiskenYok: true,
+            okumaBekleniyor: false,
+            deploymentlar: uisGrup().deploymentlar.map((d) => ({ ...d, nodeBagli: false, mevcutNode: null })),
+          }),
+        ],
+      }),
+    );
+    render(<NodePanel tenantKey="metaco_das_test" />);
+    await screen.findByText('Indexer / Node bağlantıları');
+    const t = kart(UIS).querySelector('[data-uis-tablo]') as HTMLElement;
+    expect(within(t).queryByText('Henüz okunmadı')).toBeNull();
+    expect(within(t).getAllByText('node bağlantısı yok').length).toBeGreaterThan(0);
+  });
+
+  it('liste eşleşmesi rozeti hiçbir durumda yok; kartta "katalog" geçmez', async () => {
+    const eslesen = { maskeli: { rpc: 'https://eth-a.example.net/****' } };
+    const mn = { maskeli: { rpc: 'https://x.example.net/****' } };
+    m.nodes.mockResolvedValue(
+      yanit({
+        gruplar: [
+          uisGrup({ mevcutNode: eslesen }),
+          eskiGrup({ mevcutNode: eslesen }),
+          uisGrup({ id: 'uis:c', baslik: 'c', mevcutNode: mn }),
+          eskiGrup({ id: 'eski:c', baslik: 'c', mevcutNode: mn }),
+        ],
+      }),
+    );
+    render(<NodePanel tenantKey="metaco_das_test" />);
+    await screen.findByText('Indexer / Node bağlantıları');
+    for (const id of [UIS, 'eski:ethereum-mainnet', 'uis:c', 'eski:c']) {
+      expect(kart(id).textContent, id).not.toMatch(/Node: /);
+      expect(kart(id).textContent, id).not.toMatch(/katalog/i);
+      expect(kart(id).querySelector('[data-aday-notu]'), id).toBeNull();
+    }
+    expect(within(kart('uis:c')).getByText("Tüm bileşenler aynı node'a bağlı: rpc: https://x.example.net/****")).toBeTruthy();
+  });
+
+  it('geçmiş tablosu yeni değeri maskeli gösterir', async () => {
+    m.nodes.mockResolvedValue(yanit({ gecmis: [talep({ durum: 'BASARILI', kapandiAt: 'x' })] }));
+    render(<NodePanel tenantKey="metaco_das_test" />);
+    await screen.findByText('Indexer / Node bağlantıları');
+    expect(screen.getByRole('columnheader', { name: 'Yeni değer (maskeli)' })).toBeTruthy();
+    expect(screen.getByText('rpc=https://eth-c.node.invalid/****')).toBeTruthy();
+  });
+
+  it('admin Smart önizleme: seçim/değer yok, "Önizle" açık, istek yalnız {tenant, grup}', async () => {
+    m.nodes.mockResolvedValue(yanit({ yetki: { okuma: true, talep: true, admin: true } }));
+    m.smartOnizle.mockResolvedValue({ ok: true, flowKey: 'F', metadata: { ACIKLAMA: 'Yeni node (maskeli): rpc=(önizleme)' } });
+    render(<NodePanel tenantKey="metaco_das_test" />);
+    await screen.findByText('Indexer / Node bağlantıları');
+    fireEvent.click(within(kart(UIS)).getByRole('button', { name: 'Smart önizleme' }));
+    expect(document.querySelector('select')).toBeNull();
+    expect(btn('Önizle').disabled).toBe(false);
+    fireEvent.click(btn('Önizle'));
+    await waitFor(() => expect(m.smartOnizle).toHaveBeenCalledWith({ tenant: 'metaco_das_test', grup: UIS }));
+    expect(await screen.findByText('Yeni node (maskeli): rpc=(önizleme)')).toBeTruthy();
   });
 });
 
@@ -905,7 +1191,7 @@ describe('U4 yapı', () => {
     expect(s).toMatch(/^\s+node: 'Indexer \/ Node değişikliği talebi',$/m);
   });
 
-  it('istemci gövdesinde node değeri ya da sır alanı yok (yalnız id/ad/gerekçe/onay)', () => {
+  it('istemci gövdesi izinli alanlar: değer yalnız `yeni` (rol -> metin) alanında; nodeId yok', () => {
     const api = fs.readFileSync(path.join(__dirname, '..', 'api', 'cryptoHubApi.ts'), 'utf8');
     const govde = api.slice(api.indexOf('export interface NodeChangeBody'));
     const blok = govde.slice(0, govde.indexOf('}') + 1);
@@ -913,12 +1199,16 @@ describe('U4 yapı', () => {
     expect(alanlar).toEqual([
       'tenant',
       'grup',
-      'nodeId',
+      'yeni',
+      'bosOnay',
       'gerekce',
       'tutarsizlikOnay',
       'onayMetni',
       'esTalepId',
       'bilesenler',
     ]);
+    const onizle = /smartOnizle: \(body: \{([^}]*)\}\)/.exec(api);
+    expect(onizle, 'smartOnizle imzası bulunamadı').toBeTruthy();
+    expect(onizle![1]).not.toMatch(/nodeId|yeni/);
   });
 });

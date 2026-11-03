@@ -2,9 +2,11 @@
 //
 // Ekran metinleri BİREBİR sözleşmeden (cryptohub/sozlesme.md 9.2): sunucu ret metinleri ve
 // ekran metinleri ayrı yerlerde yazılırsa zamanla ayrışır; ekran metni burada TEK yerde durur.
-// Bu dosyada React yok — bileşenler ve testler aynı fonksiyonları kullanır.
+// Bu dosyada React yok — bileşenler ve testler aynı fonksiyonları kullanır. Değer doğrulama ve
+// maskeleme sunucuyla AYNI modülden (shared/cryptoHubNodes.cjs): ekran "geçerli" deyip sunucu
+// reddetmesin.
+import { degerDogrula, maskele, DEGER_EN_COK } from '../../../shared/cryptoHubNodes.cjs';
 import type {
-  NodeAday,
   NodeBekleyen,
   NodeDep,
   NodeGrup,
@@ -45,10 +47,11 @@ export const METIN = {
   bolumUis: "Yeni tip indexer'lar (uis)",
   bolumEski: "Eski tip indexer'lar",
   eskiOkumaYok: 'Eski tip grupları görmek için mevcut node\'ları okuyun.',
-  bilesenYok: '— bu ağda yok',
+  bilesenYok: 'bu ağda yok',
   baglantiYok: 'node bağlantısı yok',
-  katalogda: (ad: string) => `Katalog: ${ad}`,
-  katalogdaYok: 'Katalogda yok',
+  /** Yeni tip (uis) kart tablosu */
+  uisBasliklar: ['Bileşen', 'Deployment', 'Durum', 'Node değişkeni', 'Şu anki değer'] as const,
+  uisAyniNode: (m: string) => `Tüm bileşenler aynı node'a bağlı: ${m}`,
   rozet: {
     tutarsiz: "Tutarsız: bileşenler farklı node'a bağlı",
     degiskenYok: 'Değiştirilemez: node değişkeni bulunamadı',
@@ -72,19 +75,48 @@ export const METIN = {
   secimBos: 'En az bir bileşen seçin.',
   secimMevcut: (m: string) => `şu an: ${m}`,
   secilemez: 'node değeri yok — seçilemez',
-  secimAyniNode: "Seçilen bileşenler zaten bu node'da — değişiklik yok.",
+  secimAyniNode: 'Girilen değer seçilen bileşenlerde zaten kullanımda — değişiklik yok.',
   degistir: 'Değiştir',
   smartOnizle: 'Smart önizleme',
 
   sihirbazBaslik: (grupBaslik: string) => `Node değişikliği — ${grupBaslik}`,
   adimlar: ['Mevcut', 'Yeni node', 'Etki', 'Gerekçe', 'Onay'] as const,
-  mevcutBasliklar: ['Bileşen', 'Kap', 'Env', 'Değer (maskeli)', 'Katalog'] as const,
-  yeniNodeEtiket: 'Yeni node',
-  yeniNodeYerTutucu: 'Node seçin',
-  ekKullanimda: ' (şu an kullanımda)',
-  ekCozulemedi: ' (sırrı çözülemedi — seçilemez)',
-  adayYok:
-    'Bu grup için katalogda uygun node yok. Kataloğa ekleme Ansible tarafında yapılır (README).',
+  /** Kullanıcı kararı 2026-11-03: mevcut değer yalnız maskeli; liste eşleşmesi gösterilmez. */
+  mevcutBasliklar: ['Bileşen', 'Kap', 'Env değişkeni', 'Şu anki değer (maskeli)'] as const,
+  /** Onay adımı ve özet satırı etiketi */
+  yeniNodeEtiket: 'Yeni değer (maskeli)',
+  /** Yeni değer adımı (kullanıcı kararı 2026-11-03: değer serbest metin, iş birimi onaylı) */
+  yeniBaslik: 'Yeni node değerleri',
+  yeniAciklama:
+    "Her rol için yeni değeri yazın. Değer Portal'da şifreli tutulur; ekranda, Smart'ta ve denetimde yalnız maskeli görünür; onaydan sonra AWX işine iletilir.",
+  bicimEtiketi: { url: 'URL (http, https, ws, wss)', hostport: 'host:port', sir: 'gizli değer' } as Record<
+    string,
+    string
+  >,
+  rolEtiket: (rol: string, bicimAd: string) => `${rol} — ${bicimAd}`,
+  rolEnvler: (envler: string) => `Env: ${envler}`,
+  yerTutucu: { url: 'https://ornek-node.invalid:8545/…', hostport: 'ornek-node.invalid:8333', sir: '' } as Record<
+    string,
+    string
+  >,
+  /** Anahtarlar sunucunun neden kodlarıyla (degerDogrula) BİREBİR — bekçi denetler. */
+  degerHata: {
+    bicim: 'Bu rolün biçimi tanınmadı.',
+    tip: 'Değer metin olmalı.',
+    karakter: 'Yalnız yazdırılabilir ASCII karakterler kullanılabilir (Türkçe harf, sekme, satır sonu yok).',
+    uzun: `En çok ${DEGER_EN_COK} karakter.`,
+    yasak: '`;`, `$(` ve ters tırnak (`) kullanılamaz.',
+    url: 'URL http://, https://, ws:// ya da wss:// (küçük harf) ile başlamalı; boşluk, tırnak, $, <, > ve ters eğik çizgi içeremez.',
+    hostport: 'host:port biçiminde olmalı (port 1–65535).',
+    sir: 'Başta ve sonda boşluk olamaz.',
+  } as Record<string, string>,
+  smartGorunum: (m: string) => `Smart'ta böyle görünecek: ${m}`,
+  bosRolNotu: 'Boş — env değişkeni boş değere yazılır.',
+  bosUyari: (roller: string) =>
+    `${roller} boş bırakıldı: env değişkeni BOŞ değere yazılır, uygulama node'suz kalabilir.`,
+  bosOnayKutusu: 'Boş değerle yazılmasını onaylıyorum (iş birimi onaylı).',
+  talepAcilamadi: 'Talep açılamadı.',
+  talepBaglantiHatasi: 'Talep açılamadı (bağlantı hatası).',
   etkiListe: "Şu deployment'lar yeniden başlatılacak (her biri tek rollout):",
   etkiDurustluk:
     "İş başarılı sayılırsa env yazılmış ve pod'lar hazır demektir; node'a gerçekten bağlandığını uygulama loglarından doğrulayın.",
@@ -97,7 +129,7 @@ export const METIN = {
   gerekceEtiket: 'Gerekçe (10–500 karakter)',
   sayac: (n: number) => `${n}/${GEREKCE_EN_COK}`,
   onayBilgi:
-    "Smart talebi açılır; onaylanınca değişiklik otomatik uygulanır. Onay beklerken mevcut node, seçilen node'un kaydı ya da gruptaki bileşenler değişirse iş hiçbir şey yazmadan durur.",
+    "Smart talebi açılır; onaylanınca değişiklik otomatik uygulanır. Onay beklerken mevcut node ya da gruptaki bileşenler değişirse iş hiçbir şey yazmadan durur.",
   onayTest:
     'Smart talebi açılacağını ve onaydan sonra değişikliğin otomatik uygulanacağını anlıyorum.',
   onayProd: (grupId: string) => `Onaylamak için grup adını yazın: ${grupId}`,
@@ -132,7 +164,7 @@ export const METIN = {
   ankaraDugme: 'Ankara için de talep aç',
   ankaraKapali: 'Bu ortamda node değişikliği şimdilik kapalı.',
   gecmisBaslik: 'Son talepler',
-  gecmisBasliklar: ['Zaman', 'Grup', 'Yeni node', 'Talep eden', 'Smart', 'Durum'] as const,
+  gecmisBasliklar: ['Zaman', 'Grup', 'Yeni değer (maskeli)', 'Talep eden', 'Smart', 'Durum'] as const,
 
   adminKapatDugme: 'Talebi kapat (yönetici)',
   adminKapatBilgi:
@@ -151,7 +183,6 @@ const GERI_ALINDI_NEDEN: Record<string, string> = {
 };
 const BAYAT_NEDEN: Record<string, string> = {
   BAYAT_ESKI_DEGER: 'onay beklerken mevcut node değişmiş',
-  BAYAT_KATALOG: "seçilen node'un kaydı değişmiş",
   BAYAT_KAPSAM: 'gruba bileşen eklenmiş/silinmiş',
 };
 
@@ -244,24 +275,55 @@ export function onayMetniEslesir(yazilan: string, grupId: string): boolean {
   return !!grupId && yazilan.trim() === grupId;
 }
 
-export function adaySecilebilir(a: NodeAday): boolean {
-  return !a.kullanimda && !a.cozulemedi;
+// ── Yeni değer (serbest metin, kullanıcı kararı 2026-11-03) ──────────────────────────
+/** Ekran hata metni ya da null (geçerli; boş değer de geçerli). Kural sunucuyla aynı. */
+export function degerHatasi(deger: string, bicim: string): string | null {
+  const kod = degerDogrula(deger, bicim);
+  return kod ? METIN.degerHata[kod] || kod : null;
 }
 
-/** Rol sırası grubun rol tanımından; tanımda olmayan rol (beklenmez) sona. */
-export function maskeliOzet(maskeli: Record<string, string>, roller: NodeRol[]): string {
-  const sira = roller.map((r) => r.rol);
-  const anahtarlar = [
-    ...sira.filter((r) => r in maskeli),
-    ...Object.keys(maskeli).filter((r) => !sira.includes(r)),
-  ];
-  return anahtarlar.map((r) => `${r}=${maskeli[r]}`).join('; ');
+/** Rol başına maskeli gösterim (Smart'ta ve onay adımında görünecek olan). */
+export function yeniMaskeli(g: NodeGrup, yeni: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(g.roller.map((r) => [r.rol, maskele(yeni[r.rol] ?? '', r.bicim)]));
 }
 
-export function adayEtiketi(a: NodeAday, roller: NodeRol[]): string {
-  const ek = a.kullanimda ? METIN.ekKullanimda : a.cozulemedi ? METIN.ekCozulemedi : '';
-  const oz = maskeliOzet(a.maskeli || {}, roller);
-  return `${a.ad}${oz ? ' — ' + oz : ''}${ek}`;
+/** Boş bırakılan roller (rol sırası grubun tanımından). */
+export function bosRoller(g: NodeGrup, yeni: Record<string, string>): string[] {
+  return g.roller.filter((r) => (yeni[r.rol] ?? '') === '').map((r) => r.rol);
+}
+
+/** "Yeni değer" adımı geçilebilir mi: her rol geçerli ve boş rol varsa ayrıca onaylanmış. */
+export function yeniGecerli(g: NodeGrup, yeni: Record<string, string>, bosOnay: boolean): boolean {
+  if (g.roller.length === 0) return false;
+  if (g.roller.some((r) => degerHatasi(yeni[r.rol] ?? '', r.bicim))) return false;
+  return bosRoller(g, yeni).length === 0 || bosOnay;
+}
+
+async function sha256Hex(s: string): Promise<string> {
+  const veri = new TextEncoder().encode(s);
+  const ozet = await globalThis.crypto.subtle.digest('SHA-256', veri);
+  return Array.from(new Uint8Array(ozet))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+/**
+ * Girilen değerler seçilen bileşenlerde zaten kullanımda mı (sunucu 409 node_ayni_node der)?
+ * `crypto.subtle` yoksa (güvenli olmayan bağlam) null: bilinmiyor, uyarı gösterilmez, sunucunun
+ * yanıtı gösterilir. İstemcide saf-JS sha yazılmaz (tek kaynak sunucu).
+ */
+export async function ayniDegerMi(
+  g: NodeGrup,
+  secim: readonly string[],
+  yeni: Record<string, string>,
+): Promise<boolean | null> {
+  const subtle = globalThis.crypto?.subtle;
+  if (!subtle || typeof subtle.digest !== 'function') return null;
+  const sat = g.envler.filter((e) => e.kaynak === 'literal' && secim.includes(e.deployment));
+  if (sat.length === 0) return false;
+  const sha: Record<string, string> = {};
+  for (const r of g.roller) sha[r.rol] = await sha256Hex(yeni[r.rol] ?? '');
+  return sat.every((e) => !!e.sha && e.sha === sha[e.rol]);
 }
 
 /** Grubun "yeniden başlatılacak" deployment'ları: seçim verildiyse yalnız seçilenler,
@@ -288,12 +350,41 @@ export function bilesenAdi(d: Pick<NodeDep, 'ad' | 'bilesen'>): string {
   return d.bilesen || d.ad;
 }
 
-/** Bileşenin şu anki node'u: katalog adı, yoksa maskeli değer(ler). */
+/** "rol: maskeli; rol: maskeli" (rol sırası grubun tanımından). Kart ve sihirbaz ortak biçimi. */
+export function rolMaskeliListesi(maskeli: Record<string, string>, roller: NodeRol[]): string {
+  const sira = roller.map((r) => r.rol);
+  const anahtarlar = [
+    ...sira.filter((r) => r in maskeli),
+    ...Object.keys(maskeli).filter((r) => !sira.includes(r)),
+  ];
+  return anahtarlar.map((r) => `${r}: ${maskeli[r]}`).join('; ');
+}
+
+/** Bileşenin şu anki node'u: YALNIZ maskeli değer(ler) (kullanıcı kararı 2026-11-03: node
+ *  listesi eşleşmesi/adı ekranda gösterilmez). */
 export function mevcutNodeMetni(d: NodeDep, roller: NodeRol[]): string {
   const m = d.mevcutNode;
   if (!m) return '—';
-  if (m.katalogId) return m.ad || m.katalogId;
-  return `${METIN.katalogdaYok} (${maskeliOzet(m.maskeli || {}, roller)})`;
+  return rolMaskeliListesi(m.maskeli || {}, roller) || '—';
+}
+
+/** Yeni tip kart tablosu "Node değişkeni": bu deployment'ın env adları (benzersiz). */
+export function depEnvAdlari(g: NodeGrup, deployment: string): string {
+  const adlar = Array.from(new Set(g.envler.filter((e) => e.deployment === deployment).map((e) => e.env)));
+  return adlar.length ? adlar.join(', ') : '—';
+}
+
+/** Yeni tip kart özet satırı: tüm bileşenler aynı node'daysa rol: maskeli listesi (ad yok).
+ *  Okunmamış, tutarsız, referanslı / ölçülemeyen grupta, bir rolün değeri yoksa ya da node'a
+ *  bağlı bir bileşenin literal değeri yoksa null (özet "tümü" diyemez; rozet zaten görünür). */
+export function uisOzetMetni(g: NodeGrup): string | null {
+  const m = g.mevcutNode;
+  if (!m || g.tutarsiz || g.referans || g.olculemedi || g.envler.length === 0) return null;
+  const maskeli = m.maskeli || {};
+  if (!g.roller.length || g.roller.some((r) => !maskeli[r.rol])) return null;
+  // mevcutNode === null: sunucu "bu bileşende literal değer yok" dedi (alan yoksa eski yanıt).
+  if (g.deploymentlar.some((d) => d.nodeBagli && d.mevcutNode === null)) return null;
+  return METIN.uisAyniNode(rolMaskeliListesi(maskeli, g.roller));
 }
 
 /** Seçilen bileşenler şu an farklı node'larda mı (rol başına birden çok sha)? */
@@ -305,12 +396,6 @@ export function secimTutarsiz(g: NodeGrup, secim: readonly string[]): boolean {
     roller.get(e.rol)!.add(e.sha || e.maskeli);
   }
   return [...roller.values()].some((s) => s.size > 1);
-}
-
-/** Seçilen bileşenlerin hepsi zaten bu adayda mı (sunucu "aynı node" der)? */
-export function secimAdaydaMi(g: NodeGrup, secim: readonly string[], adayId: string): boolean {
-  const sat = g.envler.filter((e) => e.kaynak === 'literal' && secim.includes(e.deployment));
-  return sat.length > 0 && sat.every((e) => e.katalogId === adayId);
 }
 
 export interface Rozet {
@@ -328,13 +413,6 @@ export function grupRozetleri(g: NodeGrup): Rozet[] {
   if (g.durdurulmus.length > 0) r.push({ metin: METIN.rozet.durdurulmus, ton: 'muted' });
   if (g.envler.some((e) => e.helm === 'evet')) r.push({ metin: METIN.rozet.helm, ton: 'accent' });
   return r;
-}
-
-/** Node satırının katalog rozeti: tüm roller aynı katalog kaydına eşleşiyorsa adı. */
-export function katalogRozeti(g: NodeGrup): string {
-  const m = g.mevcutNode;
-  if (m && m.katalogId) return METIN.katalogda(m.ad || m.katalogId);
-  return METIN.katalogdaYok;
 }
 
 /** Talep numarası metni — sunucudaki shared/cryptoHubNodes.cjs `talepNoMetni` ile AYNI (PS7). */

@@ -1026,14 +1026,12 @@ export default function CryptoHubPage() {
       t: o.tenant,
       s: 'node',
       g: o.grup,
-      ...(o.nodeId ? { n: o.nodeId } : {}),
       es: String(o.esTalepId),
     });
   const esParam = Number(params.get('es'));
   const nodeBaslangic: NodeBaslangic | null = params.get('g')
     ? {
         grup: params.get('g') || '',
-        nodeId: params.get('n'),
         esTalepId: Number.isInteger(esParam) && esParam > 0 ? esParam : null,
       }
     : null;
