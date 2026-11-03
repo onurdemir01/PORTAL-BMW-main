@@ -32,7 +32,7 @@ Portal'a özgüdür ve aynı istemci dosya şemasını yazar.
 | Sonuçlandırıcı (sunucu tarafı) | `server/nginx-loadtest/poller.cjs` |
 | Yük araçları (k6 + wrk arac setleri: sabit arşiv özetleri, hazırlama, geri çekme, etkin set kapısı, sonuçlandırma) | `server/nginx-loadtest/araclar.cjs` |
 | Sonuç dizini okuma / analiz | `server/nginx-loadtest/sonuc.cjs`, `server/nginx-loadtest/analiz.cjs` |
-| Playbook | Ansible deposu `bmw_portal/nginx_loadtest/nginx_loadtest.yml` (+ `files/`: `kos.sh`, `yuk_k6.js`, `cpu_kaydedici.sh`, `on_kontrol.sh`, `durdur.sh`, `wrk_kos.sh`, `yuk_wrk.lua`, `arac_hazirla.sh`; `README.md`); Portal aynası `server/ansible/bmw_portal/nginx_loadtest/` |
+| Playbook | Ansible deposu `bmw_portal/nginx_loadtest/nginx_loadtest.yml` (+ `files/`: `kos.sh`, `yuk_k6.js`, `cpu_kaydedici.sh`, `on_kontrol.sh`, `durdur.sh`, `wrk_kos.sh`, `yuk_wrk.lua`, `arac_hazirla.sh`, `yuk_cpu_kaydedici.sh`; `README.md`); Portal aynası `server/ansible/bmw_portal/nginx_loadtest/` |
 | Tablolar | `nginx_loadtest_senaryolar`, `_kosular`, `_adimlar`, `_kilitleri`, `_araclar` — bkz. [DATABASE.md](DATABASE.md) |
 | Bekçiler | `server/nginx-loadtest/__tests__/` (dogrula, kilit, kapi, poller, sonuc, analiz, araclar) |
 
@@ -198,6 +198,8 @@ install -m 0644 serbest_aglar /etc/portal_yuktesti/serbest_aglar
   Koşu sırasında proxy değişkenleri temizlenir, çerez ve ek başlık gönderilmez, istek HTTP/1.1'dir.
 * **GBNGXT34 kendisi bir TEST internet reverse proxy'sidir.** Yük üretirken kendi trafiği
   etkilenebilir; düşük hızla başlayın, sonuçtaki "DOYMA"yı yük makinesinin de doyması olarak okuyun.
+  2026-11-03'ten beri yük makinesinin CPU'su da ölçülür (§5.0b): boşta CPU %20'nin altına inen adım
+  **YÜK DOYDU** işaretlenir.
   Serbest hedefte bu yüzden her zaman "Yük sunucusu ... bir internet reverse proxy’si" plan uyarısı
   çıkar (§4.3).
 
@@ -293,7 +295,7 @@ kuralları geçmişte kaldı.
    | Hedefe SSH | var (CPU kaydedici + nginx logu) | **yok** (yalnız istemci ölçümü) |
    | Ön kontrol | hedef + yük makinesi | yalnız yük makinesi: izin dosyası, IP yük makinesinde yerel değil, yollar 200, motor ikilisi |
    | Koşu başında | playbook hedefte `ip_yerel`'i **yeniden** ölçer; 1 değilse kaydedici ve yük başlamaz | playbook yük makinesindeki izin dosyasını **yeniden** denetler |
-   | Tavanlar | k6 hız ≤ min(450, ölçülmüş `limit_req` × 0,9), VU ≤ min(199, `limit_conn` − 1); wrk bağlantı ≤ min(199, `limit_conn` − 1), toplam hız ≤ min(450, ölçülmüş `limit_req` × 0,9) | iki motorda **≤ 200 istek/sn** ve **≤ 50 bağlantı / VU** |
+   | Tavanlar (2026-11-03) | k6 hız ≤ **5000**, VU ≤ **1000**; wrk bağlantı ≤ 199, toplam hız ≤ **5000**. Hedefin ölçülmüş `limit_req` / `limit_conn`'u artık **daraltmaz**: aşılırsa plan **uyarısı** (onay ister, engel değil; §4.1) | iki motorda **≤ 200 istek/sn** ve **≤ 50 bağlantı / VU** (değişmedi) |
    | Kilit | `T\|<HOST>` + `L\|<YUK>` (koşuda + `G\|global`) | `G\|global` (**ön kontrol dahil**) + `T\|IP:<ip>` + `L\|<YUK>` |
    | Onay metni | hedef host adı | hedef IP |
    | Analiz | bugünkü (istemci + sunucu) | yalnız istemci; CPU alanları boş; `KALICI` verilmez |
@@ -303,8 +305,8 @@ kuralları geçmişte kaldı.
    | | k6 (varsayılan) | wrk |
    |---|---|---|
    | Model | açık döngü: adım = istek/sn (`hizlar`) | kapalı döngü: adım = bağlantı sayısı (`baglantilar`); her bağlantı yanıtı alınca, bağlantı başına sabit beklemeden sonra yeni istek gönderir |
-   | Ek parametre | `maxvu` 10..199 | `is_parcacigi` 1..16 (en küçük bağlantı sayısını aşamaz ve **her** bağlantı sayısını tam bölmeli; ör. 2 → 2 4 8); en çok 5 bağlantı kademesi, her biri 1..199, tekil |
-   | Hız tavanı | — (adım hızı zaten sınırlı) | `tavan_rps` **sunucuda hesaplanır** (kullanıcı girmez, gönderilen değer yok sayılır): sunucuda min(450, ölçülmüş `limit_req` × 0,9), serbestte 200. Bağlantı başına bekleme `d = ceil(N × 1000 / tavan_rps)` ms, toplam hız **ortalamada** ≤ tavan (anlık kümelenme olabilir, aşağıya bakın) |
+   | Ek parametre | `maxvu` 10..1000 | `is_parcacigi` 1..16 (en küçük bağlantı sayısını aşamaz ve **her** bağlantı sayısını tam bölmeli; ör. 2 → 2 4 8); en çok 5 bağlantı kademesi, her biri 1..199, tekil |
+   | Hız tavanı | — (adım hızı zaten sınırlı) | `tavan_rps` **sunucuda hesaplanır** (kullanıcı girmez, gönderilen değer yok sayılır): sunucuda **5000**, serbestte 200. Bağlantı başına bekleme `d = ceil(N × 1000 / tavan_rps)` ms (N ≥ 1, tavan ≤ 5000 iken en az 1 ms; küçük N'de etkin tavan 5000'in altında kalır: N=2 → 2000/sn), toplam hız **ortalamada** ≤ tavan (anlık kümelenme olabilir, aşağıya bakın) |
    | SNI | açık / kapalı | **yalnız kapalı** (wrk SNI olarak URL'deki IP'yi gönderir, Host başlığına göre seçemez; SNI açık gönderilirse 400) |
    | Erken durma (DUR) | 429 / HTTP2 / k6 hatası / boş özet (kit) | ilk 429 ya da 5xx yanıtta iş parçacığı yük üretmeyi keser; 429, 5xx, 10'dan fazla soket hatası, %1 üstü hata oranı, sayaç tutarsızlığı, wrk hatası ya da boş özette koşu durur |
    | Gecikme | k6 ölçümü | wrk histogramı, **koordineli ihmal (CO) düzeltmeli** |
@@ -328,9 +330,10 @@ kuralları geçmişte kaldı.
    **Form düzeni (sade turu):** üstte yalnız senaryo, hedef (IP + Host başlığı + yük makinesi), yük
    (k6 hızları / wrk bağlantıları) ve ölçüm süresi; tahmini toplam süre büyük yazılır. Üç hazır ayar
    düğmesi alanları doldurur (sonra elle değiştirilebilir, ekran "Özel ayar" der): **Hızlı deneme**
-   (~5 dk, küçük yük, tekrar 1), **Standart** (sunucu varsayılanı) ve **Kapasite** (hedef sınırına
-   kadar beş kademe). Hazır ayarlar `GET /hedefler` `sinirlar`'ına, hedefin ölçülmüş `limit_req` /
-   `limit_conn` tavanına, serbest tavanlara (200 r/s / 50 bağlantı) ve 2700 sn bütçeye kırpılır;
+   (~5 dk, küçük yük: 45 / 90 istek/sn, tekrar 1), **Standart** (sunucu varsayılanı) ve **Kapasite**
+   (Portal üst sınırına kadar beş kademe: sunucu hedefinde 1000 / 2000 / 3000 / 4000 / 5000, VU 1000).
+   Hazır ayarlar `GET /hedefler` `sinirlar`'ına, serbest tavanlara (200 r/s / 50 bağlantı) ve 2700 sn
+   bütçeye kırpılır (hedefin ölçülmüş `limit_req`'i kırpmaz; aşan hız formda ve ön kontrolde uyarılır);
    testte sunucunun kendi `parametreler` doğrulamasından geçtiği sınanır. Tekrar, ısınma, boşluk,
    boşta, kip, sıkıştırma, protokol (HTTP/1.1 / HTTP/2, §5.2), maks VU, iş parçacığı ve SNI kapalı
    **Gelişmiş ayarlar** bölümündedir; her alanın altında etkisini anlatan bir cümle vardır. Gönderilen
@@ -480,8 +483,10 @@ eder. İş hataları **409** (kalıcı) ya da **424** (geçici) döner; 5xx yok.
 | Yük makinesi hedefle aynı / IP yük makinesinin kendi IP'si | `ayni_host` |
 | IP, (seçili ya da sınıflandırılan) hedefin aday listesinde (hostun en son tarama gününün `listen` IP'leri — bir `server` bloğundaki **her** `listen` — + envanter IP'si; geri dönüş / joker değil) | `ip_hedefte_yok` |
 | Host başlığı son taramada **yalnız** üretim / EDU / ortamı bilinmeyen sunucularda tanımlı (iki kipte) | `host_uretim` |
-| Hız ≤ 450 ve ≤ ölçülen `limit_req`'in %90'ı; maxvu ≤ 199 ve ≤ `limit_conn` − 1; wrk bağlantı 1..199 ve ≤ `limit_conn` − 1, en çok 5 kademe, tekil; iş parçacığı 1..16, en küçük bağlantıyı aşmaz, her bağlantıyı tam böler; serbestte hız / tavan ≤ 200, VU / bağlantı ≤ 50 (`serbest hedef tavanı`); süre **40**..300; ısınma 5..60; boşluk 0..120; boşta 30..120; tekrar 1..3; bütçe ≤ 2700 sn | `sinir_asildi` |
-| Ölçülmüş tavan **0** (IP anahtarlı `limit_req` < 2 r/s, ör. `1r/s` / `30r/m`, ya da `limit_conn` ≤ 1): "Hedefin ölçülmüş limit_req değeri 2 r/s'nin altında (ya da limit_conn ≤ 1); bu hedefe yük testi yapılamaz." Ölçüm yoksa (null) global tavan geçerlidir; 0 asla global tavana düşmez. İki motorda. `/hedefler` ve `/ip-sinifi` bu hedefi aynı metinle `uygun: false` gösterir. | `sinir_asildi` |
+| Hız ≤ 5000; maxvu ≤ 1000; wrk bağlantı 1..199, en çok 5 kademe, tekil; iş parçacığı 1..16, en küçük bağlantıyı aşmaz, her bağlantıyı tam böler; serbestte hız / tavan ≤ 200, VU / bağlantı ≤ 50 (`serbest hedef tavanı`); süre **40**..300; ısınma 5..60; boşluk 0..120; boşta 30..120; tekrar 1..3; bütçe ≤ 2700 sn | `sinir_asildi` |
+| Ölçülmüş çok küçük limit (IP anahtarlı `limit_req` < ~1,1 r/s, ör. `1r/s` / `30r/m`, ya da `limit_conn` ≤ 1; eski "sıfır sınır"): 2026-11-03 (B3, K2 "ölçülmüş limit artık sınırlamaz") **engel değil**; aşağıdaki plan uyarısı (onay ister) aynen çıkar. `/hedefler` ve `/ip-sinifi` bu hedefi `uygun: true` gösterir (`hizSiniri` / `vuSiniri` 0 yalnız bilgi). Eskiden 409 `sinir_asildi` idi. | 200 + uyarı |
+| **Plan uyarısı (engel değil, 2026-11-03):** sunucu hedefinde seçilen en büyük k6 hızı ölçülmüş `limit_req`'i ya da en çok VU (k6) / en büyük bağlantı (wrk) ölçülmüş `limit_conn`'u aşarsa (B5: wrk'de **hız uyarısı üretilmez**: `tavan_rps` sunucu hedefinde hep 5000, gerçek hız değil üst sınırdır; uyarı neredeyse her wrk koşusunda çıkıp onay yorgunluğu yapardı; bunun yerine her wrk koşusunda zaten gösterilen sabit wrk uyarısı (`WRK_UYARISI`) tavanın ölçülmüş `limit_req`'e göre düşürülmediğini ve böyle hedefte k6 kullanılmasını söyler): "Seçilen hız (X/sn) hedefin ölçülmüş limit_req değerini (Y r/s) aşıyor; 429 alınırsa koşu durur." (`dogrula.limitUyarilari`; Y tam sayıysa tam, değilse tek ondalık). Eşitlik aşım değil; ölçüm yoksa uyarı yok. Uyarı `plan_uyarilari`'na yazılır, koşuda `uyariOnay` ister; limit ön kontrolden sonra değişirse metin değişir → `on_kontrol_eski`. Estate'teki `limit_req 500 r/s/IP` olan hedefte 500'ün üstündeki her hız ilk saniyede 429 ile durur. Yalnız IP anahtarlı zone'lar sayılır (vhost anahtarlı `$server_name` zone'u, ör. 5000 r/s, uyarıya girmez). | 200 + uyarı |
+| **Yük makinesi uyarısı (ön kontrol, 2026-11-03):** yeni playbook yük makinesinde `port_araligi`, `tcp_tw_reuse`, `tcp_timestamps`, `nproc`, `mem_kb` ölçer (set_stats `yukm_*`). `yeni` kipte en büyük k6 hızı > ⌊port sayısı / 60⌋ ise yerel port uyarısı (B5: **yalnız k6**; wrk'de tavan 5000 gerçek hız olmadığından üretilmez). TIME_WAIT'in hangi tarafta biriktiği **doğrulanmadı** (bkz. §5.0b); hiçbir ayar değiştirilmez. k6'da boş bellek < en çok VU × 8 MB ise bellek uyarısı. Eski playbook alanları göndermez: uyarı yok. | uyarı |
 | wrk + SNI açık ("wrk SNI'yi Host başlığına göre seçemez (IP adresi SNI olarak gider); SNI kutusunu kapatın."), geçersiz `motor` | `gecersiz_istek` (400) |
 | Senaryo yolunda `;` (yol parametresi, ör. `;jsessionid=`) | `gecersiz_istek` (400) |
 | Kilit (§4.4) | `kilit_dolu` |
@@ -746,10 +751,10 @@ olarak yazar; eski worker'lar çıkınca toplam düşer.
 * **Neden kodları** sabit bir listededir (`analiz.cjs` `NEDEN_KALIPLARI`); ekran her kodu düz Türkçe
   cümleye çevirir. Yeni kod eklenirse listeye de eklenir (test fikstür çıktısının her satırını sınar).
 * **Sonuç özeti** (`GET /kosular/:id` → `kosu.sonucOzeti`): adım sayısı, geçerli adım sayısı, toplam
-  istek (yalnız ölçüm fazı; ısınma hariç), en iyi / en kötü p95 (GECERLI + DOYMA adımlardan; hiç yoksa
+  istek (yalnız ölçüm fazı; ısınma hariç), en iyi / en kötü p95 (GECERLI + DOYMA adımlardan, YÜK DOYDU adımlar hariç; hiç yoksa
   tüm adımlardan, `p95Kapsam: 'tum'`), toplam 429 / 5xx, en yüksek hata oranı, `hataVar`, CPU'su
-  ölçülemeyen adım sayısı, `konfDegisti`, reload olayları. Eski koşularda da çalışır (eksik alan
-  null / `[]`).
+  ölçülemeyen adım sayısı, `yukDoyduAdim`, `konfDegisti`, reload olayları. Eski koşularda da çalışır
+  (eksik alan null / `[]`).
 * **Eski koşular (R2 dahil):** reload anları yalnız bu turdan sonra analiz edilen koşularda vardır;
   R2'nin satırları eski analizle yazıldığı için ekranda reload nedeni cümlesi çıkar, "saat …" çıkmaz.
   Negatif değerler API'de null'a çevrilir (DB değişmez).
@@ -758,6 +763,116 @@ olarak yazar; eski worker'lar çıkınca toplam düşer.
   örnekleri ve iki ölçüm içi reload ile tüm zincirden geçirir (analiz → poller → DB satırı → API);
   çıktısı `fixtures/r2-gercek-api.json`'da bayt bayt kilitlidir ve arayüz testi (SD11) aynı dosyayı
   çizer. Fikstür bilerek değişirse `YUK_R2_FIKSTUR_YAZ=1` ile yeniden yazılır.
+
+### 5.0b Yük makinesi CPU'su ve YÜK DOYDU (2026-11-03)
+
+* **Kayıt:** koşu boyunca yük makinesinde `yuk_cpu_kaydedici.sh` (www, salt okunur `/proc/stat`, 1 sn)
+  `yukcpu_R<id>_<host>.csv` + bitişte `.txt` yazar (Ansible README "Yük makinesi CPU kaydı"). Kaydedici
+  başlayamazsa koşu yine çalışır (yalnız ölçülmez). Sonuç okuyucusu (`sonuc.cjs`) dosyayı `yukKesitler`
+  olarak okur (satır tavanı 20000); hedef kesitlerine (`sunucu_*`) karışmaz. Dosya yalnız bilgi amaçlıdır:
+  eksik kolon ya da satır tavanı koşuyu `OKUNAMADI` yapmaz, yalnız o kesit boşalır (`kayit_bozuk`).
+  Kaydedici başlığı `trap`'ten önce yazar (TERM o aralığa düşerse başlıksız CSV kalmaz).
+* **Analiz** (`analiz.cjs`, sunucu ve serbest hedefte): adım başına pencere `zaman.csv`'den (yük
+  makinesi saati; kaydedici aynı makinede, kayma yok) `[bas + ısınma + 3, bit − 2]`; pencere 10 sn'den
+  kısa ya da 2'den az örnek varsa ölçülmedi (null). `yuk_cpu_bosta = 100 − meşgul %`. **< %20** ise adım
+  `DOYMA` (GEÇERSİZ önceliği değişmez), neden `doyma:yuk_cpu_bosta_%<x.x>(<%20)` → ekranda "Yük makinesi
+  doydu (boşta CPU %N): sonuç hedefin değil yük makinesinin sınırını gösterebilir", rozet **YÜK DOYDU**.
+  `ham.yuk_cpu_bosta` ve `ozet.yuk_kesitler` yalnız kayıt varsa yazılır. Neden metni ve ekran kolonu aynı
+  kuralla **tek ondalığa aşağı** yuvarlanır (B6: 19,96 → neden `%19.9`, ekran "%19,9"); "%20" yazıp eşiğin altında
+  demez.
+* **Ölçülemedi notu (B1):** yeni playbook set_stats `kosu.yukm_cpu_basladi` (bool; kaydedici shell'i başladı mı) ve
+  `kosu.yukm_cpu_son_satir` (kaydedici çıktısının `yuk_cpu.out` son satırı, kaydedici durduktan sonra `tail -n 1`;
+  yazdırılabilir ASCII dışı `?`, en çok 200 karakter; boşsa null) yayınlar. Bu alan ya da dizinde `yukcpu_*`
+  dosyası varsa kayıt **beklenir**. Geçerli adımların hiçbirinde ölçüm yoksa koşu uyarısı
+  `yuk_cpu_olculemedi(<neden>[;son=<son satır>])`, neden `kaydedici_baslamadi | kayit_yok | kayit_bozuk |
+  pencerede_ornek_yok` → ekranda koşu notu "Yük makinesi CPU’su ölçülemedi (<neden>; kaydedicinin son çıktısı:
+  “…”)" (`ozet.yuk_cpu_olculemedi`, `ozet.yuk_cpu_son_satir`); yalnız bazılarında yoksa (kaydedici erken bitti)
+  o adımlara `yuk_cpu_olculemedi` uyarısı. Kayıt bekleniyorsa ölçümü olmayan her adımda `ham.yuk_cpu_olculemedi:
+  true` → API `yukCpuOlculemedi`, ekran kolonu o adımda "ölçülemedi". Eski playbook (alan da dosya da yok):
+  hiçbir şey eklenmez, kolon gizli.
+* **Karar (B2):** YÜK DOYDU adım **p95 / gecikme ortalamasından düşülür** (grup p95, en iyi / en kötü p95);
+  hedefin CPU-ms/istek'i (hedef tarafı ölçü) **geçerli kalır**: DOYMA nedenlerinin hepsi yük makinesiyse
+  (`yuk_doyma_yalniz`) adım CPU kümesine girer. Hedef tarafı doyma (dropped / host CPU) varsa CPU kümesine
+  girmez (eskisi gibi). İşaretsiz koşularda hesap birebir eskisi. Bir ortak kademenin p95'i yalnız YÜK DOYDU
+  yüzünden yoksa (geçerli tekrarların hepsi doymuş) kademe sessiz atlanmaz: `p95 @<h>: yük makinesi doydu,
+  karşılaştırılmadı` satırı yazılır ve karar **KALICI olamaz**: zarar varsa `RET` (aynen), yoksa `DOYMA`,
+  neden "Yük makinesi doydu: p95 karşılaştırılamadı; yük makinesini rahatlatın ya da hızı düşürüp yeniden
+  koşun" (CPU'lu ve CPU'suz / serbest yolda aynı).
+* **Ekran:** adım tablolarında "Yük mak. boşta CPU" kolonu ölçülmüş ya da kayıt beklenmiş koşuda görünür
+  (eski koşu tablosu birebir eskisi); kayıt beklenip ölçülemeyen adım "ölçülemedi".
+* **Sınır:** makine geneli boşta oranı wrk'nin iş parçacığı doymasını göremez (8 çekirdekte T=2 ile 2
+  çekirdek dolu olsa bile boşta %75 görünür); k6 (Go, tüm çekirdekler) için sorun yok.
+* **Karışık sürüm:** eski playbook kayıt üretmez → alan null, işaret yok. Yeni playbook + eski Portal:
+  eski okuyucu adı tanınmayan `yukcpu_*` dosyasını atlar (reddetmez; HEAD `sonuc.cjs` `DESENLER`'de `yukcpu_`
+  yok, eşleşmeyen ad `tur`'a girmez); `SHA256SUMS`'ta listeliyse yalnız özetini doğrular. set_stats'taki yeni
+  `kosu.yukm_cpu_basladi` / `kosu.yukm_cpu_son_satir` anahtarlarını eski poller okumaz (yalnız `kos_rc`,
+  `sw_dizin` …). Bozuk / başlıksız / normal dosya olmayan / okunamayan `yukcpu_*` (B7) yeni Portal'da da koşuyu
+  `OKUNAMADI` yapmaz: yalnız yük alanları null + "ölçülemedi" notu (bayt tavanı, `SHA256SUMS` uyuşmazlığı ve
+  `SHA256SUMS`'ta listelenip okunamayan dosya koşunun bütününü bağladığı için yine `OKUNAMADI`; SN31b). Yeni Portal + eski playbook: 450'yi aşan hız eski girdi kapısında ön kontrolde FAIL
+  olur (fail-closed); port uyarısı yok.
+* **Yüksek hız notları (DOĞRULANMADI):** k6 `yeni` kipte `noConnectionReuse` kullanır (Go
+  `DisableKeepAlives`: istemci `Connection: close` gönderir, yanıtı okuyunca kendisi de kapatır). "TIME_WAIT
+  hedefte birikir" **kesin değil** (B4): bağlantıyı kimin önce kapattığı, yani TIME_WAIT'in hedefte mi yük
+  makinesinde mi biriktiği **doğrulanmadı**; pilot koşuda iki tarafta `ss -tan state time-wait` ile ölçülecek. Hedefte birikirse 5000/sn × 60 sn ≈ 300k (`tcp_max_tw_buckets` aşılırsa çekirdek "overflow"
+  der); yük makinesinde birikirse yerel port aralığı / 60 sn (~470/sn) tavan olur (ön kontrol port
+  uyarısı bunun içindir). İlk pilot koşuda (ör. 1000/sn) iki tarafta `ss -tan state time-wait | wc -l`
+  ile ölçülecek. Port tükenirse k6'da hata >
+  %0,1 → GEÇERSİZ, wrk'de soket hatası > 10 → DUR (fail-closed). wrk `SOKET_HATA_ESIGI=10` mutlak
+  sayıdır: 5000/sn × 150 sn'de ~%0,001'e denk gelir (çok sıkı, fail-closed). k6 `preAllocatedVUs`
+  HIZ ≤ 450'de `max(20, HIZ/5)`, üstünde `max(90, HIZ/20)` (5000 → 250), `MAXVU` ile sınırlı.
+
+### 5.0c Gösterim, bellek ve kip doğrulaması (2026-11-03)
+
+Hepsi **bilgi**: geçerlilik, karar ve onay değişmez.
+
+* **Tekrar gösterimi (E1):** tablo ve ayrıntıda "90/sn · 1. tekrar" (eskiden "r1"); uyarı / neden / reload
+  metinlerinde "90/sn adımının 2. tekrarında …" (ham TUR kodu `R<n>_<SEN>_<KIP>_<AE>_<hız>_r<k>` adım listesinde
+  yoksa da çözülür; wrk "8 bağlantı adımının …"). Adım sütununun ipucu: "Her hız, Tekrar sayısı kadar koşulur;
+  tekrarlar arasındaki fark ölçümün tutarlılığını gösterir."
+* **CPU-ms/istek (E2):** iki ondalık + birim, "3,92 ms" (tablo, özet kutusu, grafik ipucu, ayrıntı; "3,919" binlik
+  ayırıcı gibi okunuyordu). Karşılaştırma ekranı küçük farkları gösterdiği için üç ondalıkta kaldı.
+* **İpuçları (E3 / E4):** Kapasite sütunu ve kutusu: "CPU'ya göre tahmini üst sınır: çekirdek × 1000 × 0,8 ÷ CPU-ms
+  (%80 kullanım). Yük testiyle ölçülmedi; yalnız Nginx CPU'su sayıldığı için iyimserdir. En güvenilir değer en yüksek
+  geçerli hızdakidir." Host CPU: "<nproc> çekirdeğin toplamı (%100 = tüm çekirdekler dolu); Nginx + işletim sistemi +
+  diğer süreçler." (nproc koşudan; yoksa "Tüm çekirdeklerin toplamı").
+* **Bellek (E5):** hedefte `cpu_kaydedici.sh` her örnekte worker `VmRSS` toplamını ve `MemTotal` / `MemAvailable`'ı
+  **ayrı dosyaya** yazar: `bellek_R<id>_<host>.csv` (`epoch,nginx_rss_kb,isci_sayi,mem_total_kb,mem_available_kb`;
+  `sunucu_*.csv` şeması değişmez). Yük makinesinde `yukcpu_*.csv`'ye `mem_total_kb,mem_available_kb,arac_rss_kb`
+  eklenir (araç: argv0'ı `<koşu dizini>/arac/` ile başlayan k6 / wrk). Okuyucu: `bellekKesitler` (yalnız bilgi;
+  bozuk / taşan / normal dosya olmayan dosya koşuyu `OKUNAMADI` yapmaz; `SHA256SUMS` yine bağlar). Analiz adım
+  başına (hedef: CPU penceresi; yük makinesi: yük CPU penceresi) `ham.bellek` = nginx RSS ort / en yüksek (MB),
+  hedef bellek kullanımı ve en düşük boş bellek (%), yük makinesi aynısı, araç RSS en yüksek (MB); yalnız ölçüm
+  varsa yazılır. Boş bellek **< %10** → adım uyarısı `bellek_bos_az(hedef|yuk,%x)`. nginx RSS adım
+  ortalamaları zaman sırasıyla **monoton artıp** ilk-son farkı **≥ %20 ve ≥ 50 MB** ise ve koşu sonu örneği son adım
+  ortalamasının %90'ından aşağı inmediyse koşu uyarısı `nginx_bellek_artisi(ilk=..MB,son=..MB,kosu_sonu=..MB)`
+  ("Olası bellek sızıntısı"). Ekran: teknik adım tablosunda "Nginx RSS", "Hedef bellek", "Yük mak. bellek" sütunları
+  (boş bellek < %10 uyarı renginde), "Nginx bellek (en yüksek)" kutusu ve grafiği, satır ayrıntısında ortalama /
+  en yüksek, en düşük boş bellek ve araç RSS. Eski koşu: alan yok → sütun / kutu / grafik yok (tablo birebir eskisi).
+* **Kip doğrulaması (E6):** `GET /kosular/:id` her adıma `kipDogrulama` ekler (`gorunum.cjs`; analiz çıktısı
+  **değişmez**, DB'deki eski adımda da çalışır): istenen / gerçekleşen ve `tamam | uyari | olculmedi`.
+  * Protokol: istemci satırının `protokol` / `protokol_uyumsuz`'u (kolonsuz eski satırda `http2` sayacı); wrk
+    ölçmez.
+  * Bağlantı: `ham.yeniden_baglanti_yuzde`'den (nginx logu `connection_request`): yeni bağlantıdaki istek payı =
+    100 − yeniden kullanım, bağlantı başına istek = 100 / pay. `yeni` → ~%100 ve 1,0; `ka` → pay **> %20** uyarı
+    (`kip_ka_yeni_baglanti_%N`); `yeni` kipte bugünkü %5 uyarısı (`yeni_kipinde_baglanti_yeniden_kullanilmis_%N`)
+    aynen. Serbest hedef: ölçülmedi.
+  * Sıkıştırma: yeni `yuk_k6.js` her **ölçüm** yanıtının `Content-Encoding`'ini sayar (`br`, `gzip`, `deflate`,
+    `zstd`, `yok`, `diger`; `yok_1kb_alti` = kodlamasız ve `Content-Length` < 1024) ve `istemci_<TUR>.json`'un
+    **yeni `kodlama` anahtarına** yazar (istemci CSV'si 32 kolon aynen); okuyucu `istemciKodlama`, analiz
+    `ham.kodlama` (yalnız varsa). `br` / `gzip`: 1 KB üstü yanıtların < %50'si istenen kodlamadaysa
+    `kip_sikistirma_az(istenen=..,%x)`; `identity`: sıkıştırılmış yanıt varsa `kip_sikistirma_beklenmeyen(...)`.
+    1 KB altı pay "beklenen sıkıştırılmamış pay" olarak ayrı gösterilir. wrk / eski k6: ölçülmedi.
+  * Ekran: teknik tabloda durum çipi ("kip ✔" / "kip uyarısı"; biri ölçülmediyse, ör. eski koşuda sıkıştırma, "kip ✔ (kısmi)" ve ipucunda ölçülmeyen; hiçbiri ölçülmediyse ya da eski sunucuda çip yok),
+    satır ayrıntısında "Kip doğrulaması" tablosu ve sapma cümleleri. Kodlar `gorunum.cjs` `KIP_KALIPLARI`'nda;
+    ekran her birini düz cümleye çevirir (SD16).
+* **Karışık sürüm (kanıt AN-KS, 6e33e5a = eski Portal):** (a) yeni playbook + eski Portal: eski `sonuc.cjs`
+  `DESENLER`'de `bellek_` / `yukcpu_` yok (eşleşmeyen ad okunmaz; `SHA256SUMS`'ta listeliyse yalnız özeti
+  doğrulanır), `istemci_*.json` eski okuyucuda `yalniz_ozet` (içeriği okunmaz); test eski `sonuc.cjs` + `analiz.cjs`'i
+  git'ten yükleyip yeni dosyalı dizinle dosyasız dizinin analizini **aynı** bulur. set_stats `istemci_ozet`
+  (playbook JSON'u olduğu gibi taşır) fazladan `kodlama` anahtarıyla gelir; eski poller onu yalnız saklar.
+  (b) eski playbook + yeni Portal: dosya / anahtar yok → bellek "ölçülmedi", sıkıştırma "ölçülmedi"; yeni Portal'ın
+  analizi eski Portal'ınkiyle **aynı** (AN-KS); analiz kilitleri (AN19, AN-H5, AN15, AN20) değişmedi, R2 API
+  fikstürüne (RG2) yalnız görünüm alanları `bellek: null` ve `kipDogrulama` eklendi.
 
 ### 5.1 Serbest hedef ve wrk analizi
 
@@ -797,7 +912,7 @@ Serbest koşuda sunucu verisine dayanan adım uyarıları (`log_satiri_yok:pence
 * motorlar farklıysa `VERI_YOK`: `farkli yuk araci: referans <m>, aday <m>; k6 (acik dongu, istek/sn) ve wrk (kapali dongu, baglanti) sonuclari karsilastirilmaz`;
 * protokoller farklıysa `VERI_YOK`: `farkli protokol: referans HTTP/1.1, aday HTTP/2; ayni protokolle yeniden kosun` (§5.2);
 * iki wrk koşusunun iş parçacığı sayısı farklıysa (ikisi de biliniyorsa) `VERI_YOK`: `farkli is parcacigi sayisi: referans <t>, aday <t>; ayni is parcacigi sayisiyla yeniden kosun`;
-* iki wrk koşusunun hız tavanı (`parametreler.tavan_rps`) farklıysa (ikisi de biliniyorsa; CPU'suz yolda da) `VERI_YOK`: `farkli hiz tavani: referans <a> istek/sn, aday <b> istek/sn; ayni tavanla yeniden kosun`. Aynı bağlantı kademesi farklı tavanla farklı sunulan yük demektir (bekleme `d = ceil(N × 1000 / tavan)`): düşük tavanlı koşunun p95'i düşük çıkar ve sahte `KALICI` / `RET` doğardı. Tavan, hedefin ölçülmüş `limit_req`'i değişince, tarama verisi eksik olunca (450'ye çıkar) ya da sunucu (≤ 450) ile serbest (200) hedef karşılaştırılınca farklılaşır.
+* iki wrk koşusunun hız tavanı (`parametreler.tavan_rps`) farklıysa (ikisi de biliniyorsa; CPU'suz yolda da) `VERI_YOK`: `farkli hiz tavani: referans <a> istek/sn, aday <b> istek/sn; ayni tavanla yeniden kosun`. Aynı bağlantı kademesi farklı tavanla farklı sunulan yük demektir (bekleme `d = ceil(N × 1000 / tavan)`): düşük tavanlı koşunun p95'i düşük çıkar ve sahte `KALICI` / `RET` doğardı. Tavan, sunucu (2026-11-03'ten beri hep 5000; önceki koşular ≤ 450 ya da ölçülmüş `limit_req` × 0,9) ile serbest (200) hedef karşılaştırılınca ya da eski bir wrk koşusu yenisiyle karşılaştırılınca farklılaşır.
 
 Sonra bugünkü sıra: kademe grubu yoksa `VERI_YOK`; adayda hata / 429 / 5xx artışı `RET` ("hata artti");
 yeterli geçerli koşu yoksa `GECERSIZ`. wrk'te metinlerin kademe birimi `baglanti` (`<n> baglanti
@@ -945,7 +1060,8 @@ retlerinde ayrıca `sahipler`).
 | 409 `hedef_uretim` (IP sahibi) | IP'yi bir PROD / EDU / ortamı bilinmeyen kayıt da kullanıyor (nginx olmayan bir sunucu da olabilir); mesaj hangi host olduğunu söyler. Yük testi yapılmaz. |
 | 409 `host_uretim` | Host başlığı son taramada yalnız üretim / EDU / bilinmeyen sunucularda tanımlı. Non-prod bir adla deneyin. |
 | 409 `on_kontrol_eski`: "Hedef IP'nin sınıfı ön kontrolden bu yana değişti" / "Ön kontrolden bu yana yeni uyarı çıktı" | Ön kontrolden sonra envanter, tarama ya da izin listesi değişti (IP bir sunucuya atandı, Host başlığı başka yerde tanımlandı). Ön kontrolü yeniden çalıştırın; yeni uyarıları onay penceresinde görürsünüz. |
-| 409 `on_kontrol_eski`: "Parametreler ön kontrolden bu yana değişti" dağıtımdan hemen sonra | Dağıtımdan önce alınmış (motor'suz) ön kontrol; bir kez yeniden çalıştırın. Hedefin ölçülmüş `limit_req`'i değiştiyse wrk tavanı da değişir — aynı mesaj. |
+| 409 `on_kontrol_eski`: "Parametreler ön kontrolden bu yana değişti" dağıtımdan hemen sonra | Dağıtımdan önce alınmış (motor'suz) ön kontrol; bir kez yeniden çalıştırın. 2026-11-03 dağıtımında wrk tavanı 5000 olduğundan dağıtım öncesi wrk ön kontrolü bir kez bu mesajı verir. |
+| 409 `on_kontrol_eski`: "Ön kontrolden bu yana yeni uyarı çıktı (Seçilen hız …)" | Hedefin ölçülmüş `limit_req` / `limit_conn`'u ön kontrolden sonra değişti (ya da ön kontrol 2026-11-03'ten önce alındı): ön kontrolü yeniden çalıştırıp yeni uyarıyı onaylayın. |
 | Karşılaştırma `VERI_YOK`: "farkli hiz tavani: referans … istek/sn, aday … istek/sn; ayni tavanla yeniden kosun" | İki wrk koşusu farklı tavanla alınmış (limit_req değişikliği, eksik tarama verisi, farklı hedef ya da sunucu ↔ serbest): aynı bağlantı kademesi farklı yük demektir. Referansı ya da adayı aynı tavanla (aynı hedef sınırı / aynı hedef türü) yeniden koşun; koşu ayrıntısındaki parametrelerde `tavan_rps` görünür. |
 | Ön kontrol FAIL: "serbest izin listesi: …" | Yük makinesindeki `/etc/portal_yuktesti/serbest_aglar` yok, sahibi www, grup / diğer yazabiliyor, 16 KB / 64 girdi üstü, geçersiz satır var ya da IP listede değil (§2.2). Dosya Portal listesinin alt kümesi olmalı. |
 | Ön kontrol engeli "hedef IP yük makinesinde yerel ya da ölçülemedi" | Serbest hedef IP yük makinesinin kendi adresi ya da yük makinesi IP'leri okunamadı; başka bir yük makinesi seçin. |
@@ -972,7 +1088,10 @@ retlerinde ayrıca `sahipler`).
 | Koşu `OKUNAMADI` | `/sw/.../nginx_loadtest/<koşu>/` dizinini, `SHA256SUMS`'ı ve AWX'te `nginx_loadtest_result` set_stats'ını kontrol edin (playbook toplama adımı). Düzelttikten sonra ekranda **Sonucu yeniden oku** (`POST /kosular/:id/yeniden-oku`). Yeniden okuma önce AWX işine bakar: iş AWX'ten silinmişse (saklama süresi) koşu "AWX iş #N artık yok" ile yine `OKUNAMADI` kalır. "yayınlanan sonuç bu koşuya ait değil (hedef_turu …)" ise playbook başka bir tür / motor yayınlamış: iş başka bir koşunun. |
 | Koşu uzun süre `FINALIZING` | `/sw` okuması hata veriyor; sonuçlandırıcı en çok 3 kez dener (ekranda "deneme N/3"), sonra son kararı yazar. |
 | Koşu `OKUNAMADI`: "satir tavani asildi" ya da "64'ten fazla farkli TUR" | Koşu dizininde Portal koşusuna benzemeyen veri var (§5 okuyucu tavanları): `/sw` dizinine dışarıdan yazılmış ya da bozulmuş dosya. `bilgi_*.txt`'teki `log=` satırları sayılmaz (hedefte yüzlerce log dosyası olabilir). |
-| Hedef "limit_req 2 r/s'nin altında" diye gri | Hedefte IP anahtarlı çok sıkı bir `limit_req` (ör. giriş sayfası için `1r/s`) ya da `limit_conn 1` uygulanıyor; bu hedefe yük testi yapılamaz (iki motorda). |
+| Adım "YÜK DOYDU" (yük makinesi boşta CPU < %20) | Sonuç hedefin değil yük makinesinin sınırını gösterebilir: hızı düşürün, VU'yu azaltın, `ka` kipini deneyin ya da daha güçlü bir yük makinesi seçin. Bu adım p95 kararına girmez; hedefin CPU-ms/istek'i geçerli kalır. |
+| Karşılaştırma `DOYMA`: "Yük makinesi doydu: p95 karşılaştırılamadı; …" | Ortak bir kademenin bir tarafında tüm geçerli tekrarlarda yük makinesi doydu (`p95 @<h>: yük makinesi doydu, karşılaştırılmadı`); KALICI verilmez. Yük makinesini rahatlatın ya da hızı düşürüp yeniden koşun. |
+| Koşu notu "Yük makinesi CPU’su ölçülemedi (…)" | Kaydedici başlamadı, kayıt yok / bozuk ya da pencerede 2'den az örnek: yük makinesinin doyup doymadığı denetlenemedi. Not kaydedicinin son çıktı satırını gösterir (ör. `HATA: /proc/stat okunamiyor`). |
+| Hedefte çok sıkı `limit_req` (ör. `1r/s`) ya da `limit_conn 1` | 2026-11-03'ten (B3) beri engel değil: plan uyarısı ("Seçilen hız … ölçülmüş limit_req değerini … aşıyor") onaylatılır; 429 alınırsa koşu durur. |
 | "Durdur" iş kuyrukta bekliyor | Template'te "Enable Concurrent Jobs" kapalı. |
 | `ip_hedefte_yok` ama IP doğru | IP hostun en son nginx tarama gününde (Nginx_Audit_Servers `listen`; bir bloktaki **her** `listen` sayılır) ya da `dbo.nginx_inventory.ip`'de olmalı; yalnız `dbo.IPInventory`'de görünen ikincil IP sunucu hedefi olarak kabul edilmez. IP dün bu hostta dinlenip bugünkü taramada yoksa (taşındı) aday değildir. Tarama eskiyse önce taramayı tazeleyin. |
 | Host başlığı uyarısı "server_name'ler arasında yok ya da ölçülemedi" | Ad hedefin `nginx -T` çıktısında yok: joker / regex `server_name` olabilir (beklenen) ya da istek `default_server`'a düşer — ön kontroldeki 200 sonuçlarına bakın; uygunsa onaylayıp başlatın. |

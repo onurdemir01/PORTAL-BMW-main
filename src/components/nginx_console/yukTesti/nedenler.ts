@@ -8,6 +8,8 @@
 // HTTP/2 (2026-11-02, h2_sozlesme.md 5.2): h2_disi(N), protokol_farkli(beklenen=..,olculen=..) nedenleri ve h2 kosu uyarisi
 // (bilgi); `http2` cumlesi DEGISMEZ (yalniz HTTP/1.1 kosusunda uretilir). Reload fazi `olcum_kenari`: olcume degdi ama
 // CPU penceresinin disinda (olcum etkilenmedi).
+// 2026-11-03: bellek uyarilari (bellek_bos_az, nginx_bellek_artisi; bilgi) ve kip dogrulamasi kodlari (gorunum.cjs
+// KIP_KALIPLARI: kip_protokol, kip_ka_yeni_baglanti, kip_sikistirma_az, kip_sikistirma_beklenmeyen).
 import type { NlReloadAni } from '@/api/nginxLoadtestApi';
 import { fmtNumber, fmtTimeSeconds } from '@/utils/datetime';
 
@@ -47,6 +49,7 @@ const NEDEN_KURALLARI: Kural[] = [
   { re: /^istemci_sonucu_yok$/, ton: 'hata', cumle: () => 'Hiçbir adımın sonucu yazılmadı; koşu ölçüm yapamadı.' },
   { re: /^doyma:dropped=(\d+)$/, ton: 'uyari', cumle: (m) => `Yük aracı istenen hızı tutturamadı: ${sayiTr(m[1])} istek zamanında gönderilemedi (dropped); bu adımın kapasite tahmini kullanılmaz.` },
   { re: /^doyma:host_cpu_%([\d.]+)\(>%90\)$/, ton: 'uyari', cumle: (m) => `Hedefin CPU’su bu adımda ortalama %${ondalikTr(m[1])} (> %90); sunucu doydu, kapasite tahmini kullanılmaz.` },
+  { re: /^doyma:yuk_cpu_bosta_%([\d.]+)\(<%20\)$/, ton: 'uyari', cumle: (m) => `Yük makinesi doydu (boşta CPU %${ondalikTr(m[1])}): sonuç hedefin değil yük makinesinin sınırını gösterebilir.` },
 ];
 
 /** Adim ve kosu uyarilari (gecerliligi dusurmez, olcumu sorgulatir): ham.uyarilar ve analiz.uyarilar. */
@@ -80,7 +83,28 @@ const UYARI_KURALLARI: Kural[] = [
   { re: /^tekrar_kosu_ayristirilamadi\(.*\)$/, ton: 'uyari', cumle: () => 'Adım yeniden denenmiş ama sunucu logunda denemeler ayırt edilemedi; sunucu sayımları iki denemeyi birlikte içerebilir.' },
   { re: /^tekrar_kosu:deneme_(\d+)_kullanildi\((\d+)_eski_satir_atildi\)$/, ton: 'bilgi', cumle: (m) => `Adım yeniden denendi; ${m[1]}. deneme kullanıldı, önceki denemenin ${sayiTr(m[2])} log satırı atıldı.` },
   { re: /^cpu_olculemedi\((.+)\)$/, ton: 'uyari', cumle: (m) => CPU_OLCULEMEDI[m[1]] ?? `CPU tüketimi hesaplanamadı (${m[1]}).` },
+  { re: /^yuk_cpu_olculemedi$/, ton: 'uyari', cumle: () => 'Bu adımda yük makinesinin CPU’su ölçülemedi; yük makinesinin doyup doymadığı denetlenemedi.' },
+  // 2026-11-03 bellek (bilgi; gecerlilik degismez).
+  { re: /^bellek_bos_az\((hedef|yuk),%([\d.]+)\)$/, ton: 'bilgi', cumle: (m) => `${m[1] === 'hedef' ? 'Hedef sunucuda' : 'Yük makinesinde'} boş bellek en düşük %${ondalikTr(m[2])} (%10’un altında); bellek baskısı ölçümü etkileyebilir.` },
+  { re: /^nginx_bellek_artisi\(ilk=(\d+)MB,son=(\d+)MB,kosu_sonu=(\d+)MB\)$/, ton: 'bilgi', cumle: (m) => `Olası bellek sızıntısı: nginx worker belleği adımlar boyunca sürekli arttı (${sayiTr(m[1])} MB → ${sayiTr(m[2])} MB) ve koşu sonunda geri inmedi (${sayiTr(m[3])} MB).` },
+  // Kip dogrulamasi (gorunum.cjs kipDogrulama; bilgi).
+  { re: /^kip_protokol\(istenen=(h1|h2),olculen=(h1|h2),uyumsuz=(\d+)\)$/, ton: 'uyari', cumle: (m) => (m[1] === m[2]
+    ? `${PROTOKOL_ADI[m[1]]} istendi ama ${sayiTr(m[3])} yanıt başka bir protokolle geldi.`
+    : `${PROTOKOL_ADI[m[1]]} istendi ama yanıtlar ${PROTOKOL_ADI[m[2]]} ile geldi.`) },
+  { re: /^kip_ka_yeni_baglanti_%(\d+)$/, ton: 'uyari', cumle: (m) => `Keep-alive istendi ama isteklerin %${m[1]}’i yeni bağlantıda gitti; bağlantı yeniden kullanılmıyor (sunucu keepalive_requests / keepalive_timeout?).` },
+  { re: /^kip_sikistirma_az\(istenen=(br|gzip),%([\d.]+)\)$/, ton: 'uyari', cumle: (m) => `${m[1]} istendi ama 1 KB üstü yanıtların yalnız %${ondalikTr(m[2])}’i ${m[1]}; sunucu bu sıkıştırmayı uygulamıyor olabilir.` },
+  { re: /^kip_sikistirma_beklenmeyen\(istenen=identity,%([\d.]+)\)$/, ton: 'uyari', cumle: (m) => `Sıkıştırmasız istendi ama yanıtların %${ondalikTr(m[1])}’i sıkıştırılmış geldi.` },
+  // B1: kosu notu; '<neden>;son=<kaydedicinin son satiri>' (yeni playbook) ya da yalniz '<neden>'.
+  { re: /^yuk_cpu_olculemedi\(([a-z_]+)(?:;son=(.*))?\)$/, ton: 'uyari', cumle: (m) => `Yük makinesi CPU’su ölçülemedi (${YUK_CPU_OLCULEMEDI[m[1]] ?? m[1]}${m[2] ? `; kaydedicinin son çıktısı: “${m[2]}”` : ''}); “yük makinesi doydu” denetimi yapılamadı, sonuç yük makinesinin sınırını gösteriyor olabilir.` },
 ];
+
+/** Kosu uyarisi `yuk_cpu_olculemedi(<neden>)` (analiz.cjs yukOlcumuDenetle) -> duz Turkce neden. */
+export const YUK_CPU_OLCULEMEDI: Record<string, string> = {
+  kaydedici_baslamadi: 'kaydedici başlatılamadı',
+  kayit_yok: 'kayıt dosyası yok',
+  kayit_bozuk: 'kayıt dosyası okunamadı',
+  pencerede_ornek_yok: 'ölçüm penceresinde yeterli örnek yok',
+};
 
 /** Adimin `cpuOlculemedi` kodu -> cumle (CPU-ms/istek ve kapasite "—" iken neden). */
 export const CPU_OLCULEMEDI: Record<string, string> = {

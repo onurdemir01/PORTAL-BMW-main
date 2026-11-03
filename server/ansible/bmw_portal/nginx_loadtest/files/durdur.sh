@@ -5,8 +5,8 @@
 #             1) <kosu_dizini>/*.pid dosyalarindaki pid'ler (pid yeniden kullanilmissa komut satiri tutmaz, dokunulmaz)
 #             2) 'k6 run' surecleri (argv[0] adi k6..., argv[1] 'run') ve wrk surecleri (argv[0] adi wrk..., komut
 #                satirinda ' -s <kosu_dizini>/yuk_wrk.lua'; wrk_kos.sh bu sirayla cagirir)
-#             3) bash <kosu_dizini>/kos.sh | wrk_kos.sh | cpu_kaydedici.sh | on_kontrol.sh (timeout KILL'lenirse yetim
-#                kalmasin)
+#             3) bash <kosu_dizini>/kos.sh | wrk_kos.sh | cpu_kaydedici.sh | yuk_cpu_kaydedici.sh | on_kontrol.sh
+#                (timeout KILL'lenirse yetim kalmasin)
 #             4) argv[0]'i <kosu_dizini>/arac/ altinda olan her surec (kosu dizinine kopyalanan k6 / wrk: 'k6 version',
 #                wrk yukleme sinamasi, takilmis '-v'; 'k6 run' ve wrk yuku 2. maddeyle de eslesir)
 #           Once TERM; 10 sn icinde bitmeyene KILL; 2 sn sonra hala duran KALDI sayilir.
@@ -43,7 +43,7 @@ ADAY="$(printf '%s\n' "$LISTE" | D="$DIZIN/" PIDLER="$PIDLER" BEN="$$" UST="$PPI
     if ($2 ~ /(^|\/)[k]6[^\/]*$/ && $3 == "run") { print p "\tk6"; next }
     if ($2 ~ /(^|\/)[w]rk[^\/]*$/ && index($0, " -s " ENVIRON["D"] "yuk_wrk.lua") > 0) { print p "\twrk"; next }
     if (index($2, ENVIRON["D"] "arac/") == 1) { print p "\tarac"; next }
-    if ($2 ~ /(^|\/)(ba)?sh$/ && ($3 == ENVIRON["D"] "kos.sh" || $3 == ENVIRON["D"] "cpu_kaydedici.sh" || $3 == ENVIRON["D"] "on_kontrol.sh" || $3 == ENVIRON["D"] "wrk_kos.sh")) {
+    if ($2 ~ /(^|\/)(ba)?sh$/ && ($3 == ENVIRON["D"] "kos.sh" || $3 == ENVIRON["D"] "cpu_kaydedici.sh" || $3 == ENVIRON["D"] "yuk_cpu_kaydedici.sh" || $3 == ENVIRON["D"] "on_kontrol.sh" || $3 == ENVIRON["D"] "wrk_kos.sh")) {
       n = split($3, a, "/"); print p "\t" a[n]; next
     }
     if (index(ENVIRON["PIDLER"], " " p " ") > 0) print p "\tkayitli"

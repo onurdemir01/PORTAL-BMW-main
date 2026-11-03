@@ -9,7 +9,9 @@
 //   * worker CPU ms/sn = dtik*1000/clk/dt; arka plan = kosu disi >= 8 sn bloklarin medyani
 //   * GECERSIZ: k6 rc, 429 (her faz), 5xx (olcum), http2, hata > %0.1, log/istemci farki > %2,
 //     kayit:log_dondu, df >= 65, konf ozeti degisti, pencere < 30 sn, reload (pid kumesi/kapanan)
-//   * DOYMA: dropped > 0 ya da host CPU ortalamasi > %90 (GECERSIZ > DOYMA > GECERLI)
+//   * DOYMA: dropped > 0 ya da host CPU ortalamasi > %90 (GECERSIZ > DOYMA > GECERLI); Portal 2026-11-03: yuk
+//     makinesi bosta CPU ortalamasi < %20 (YUK_DOYDU; p95 kararinda kullanilmaz, hedefin CPU-ms/istek ve kapasite
+//     tahmini kumesinde kalir: yuk_doyma_yalniz)
 // Nedenlerdeki sayi bicimleri Python %-bicimiyle birebir (yarim-cifte yuvarlama, -0.0 isareti):
 // testler Python'un ciktisini satir satir karsilastirir (__tests__/fixtures/karsilastir-beklenen.json).
 //
@@ -71,6 +73,16 @@
 //      (HTTP/2.0 yanit sayisi). h2 kosusuna kosu uyarisi: k6 v0.49 her VU'da tek baglantida istekleri
 //      sirayla gonderir, tarayici coklamasi olculmez (MAKUL; sahada olculmedi). karsilastir.py'de protokol
 //      yok: h1 + eski satirla cikti BIREBIR. kararVer: farkli protokol VERI_YOK (motor kuralindan sonra).
+//  13. Bellek (2026-11-03, YALNIZ BILGI; gecerlilik ve karar DEGISMEZ): hedefte bellek_*.csv (kesit anahtari
+//      sunucu_*.csv ile ayni; CPU penceresi [w0, w1]), yuk makinesinde yukcpu_*.csv'nin bellek kolonlari (yuk CPU
+//      penceresi). ham.bellek yalniz olcum varsa (eski playbook: alan YOK). Bos bellek %10 altinda TUR uyarisi
+//      `bellek_bos_az(hedef|yuk,%x)`; nginx RSS (adim ortalamalari, zaman sirasiyla) monoton artip ilk-son farki
+//      >= %20 ve >= 50 MB ise ve kosu sonu ornegi son adim ortalamasinin %90'indan asagi inmediyse kosu uyarisi
+//      `nginx_bellek_artisi(ilk=..MB,son=..MB,kosu_sonu=..MB)` (olasi sizinti).
+//  14. Kip dogrulamasi (2026-11-03, YALNIZ BILGI): analiz yalniz istemci_<TUR>.json `kodlama` sayaclarini ham.kodlama'ya
+//      tasir (yalniz yeni yuk_k6.js; eski kosu: anahtar YOK). Istenen / gerceklesen karsilastirmasi gorunum.cjs
+//      kipDogrulama'dadir (ham.protokol / http2 / yeniden_baglanti_yuzde / kodlama'dan; DB'deki eski adimda da calisir):
+//      analiz ciktisi ve TUR uyarilari eski kosuda BIREBIR.
 // null = olculmedi (hicbir zaman 0 yerine gecmez). Fonksiyonlar saftir: G/C yok, saat yok.
 'use strict';
 
@@ -79,6 +91,16 @@ const LOG_ESIK_GECERSIZ = 0.02;
 const HATA_ESIK = 0.001;
 const DF_ESIK = 65;
 const DOYMA_HOST_CPU = 90.0;
+// 2026-11-03 (K3): yuk makinesi olcum penceresi bosta CPU ortalamasi bunun altindaysa adim DOYMA (YUK_DOYDU):
+// sonuc hedefin degil yuk makinesinin sinirini gosterebilir. Pencere 10 sn'den kisa ya da 2'den az ornek: olculmedi.
+const YUK_BOSTA_ESIK = 20.0;
+const YUK_PENCERE_MIN_SN = 10;
+const YUK_DOYMA_ONEKI = 'doyma:yuk_cpu_bosta_';
+// 2026-11-03 (bellek, bilgi): bos bellek esigi (%), olasi sizinti esikleri (ilk-son farki orani ve MB), kosu sonu orani.
+const BELLEK_BOS_ESIK = 10.0;
+const SIZINTI_ORAN = 0.2;
+const SIZINTI_MB = 50;
+const SIZINTI_GERI_ORAN = 0.9;
 // Sozlesme: yuk_tekrar 1..3. Ek tekrar onerisi bu tavani asmaz.
 const MAX_TEKRAR = 3;
 const ADIM_RE = /^[A-Za-z0-9-]+$/;
@@ -116,7 +138,7 @@ const NEDENLER = Object.freeze([
   { onek: 'reload', anlam: 'Olcum penceresinde reload oldu (worker PID kumesi degisti).', cozum: "Eski worker'lar ('shutting down') bitene kadar bekleyip kosuyu tekrarlayin." },
   { onek: 'hatali_kosu', anlam: "kos.sh / wrk_kos.sh bu TUR'u durdurdu (429 / 5xx / soket / hata orani / http2 / protokol / hata kodu / olcum yok).", cozum: 'Nedeni giderip yeni kosu baslatin.' },
   { onek: 'tamamlanmadi', anlam: 'TUR baslatildi ama istemci sonucu yazilmadi (kosu kesildi ya da durduruldu).', cozum: 'Yeni kosu baslatin.' },
-  { onek: 'doyma:', anlam: 'Istenen hiz tutturulamadi (dropped > 0) ya da hedefin CPU ortalamasi %90 ustunde.', cozum: 'Daha dusuk hizla kosun; kapasite tahmini bu kademede gecerli degil.' },
+  { onek: 'doyma:', anlam: 'Istenen hiz tutturulamadi (dropped > 0), hedefin CPU ortalamasi %90 ustunde ya da yuk makinesi doydu (bosta CPU %20 altinda).', cozum: 'Daha dusuk hizla kosun; kapasite tahmini bu kademede gecerli degil.' },
 ]);
 
 // Analizin urettigi TUM neden / uyari kodlari (sabit liste; arayuz bunlari duz Turkce cumleye esler,
@@ -141,6 +163,7 @@ const NEDEN_KALIPLARI = Object.freeze([
   { kod: 'tamamlanmadi', tur: 'neden', re: /^tamamlanmadi\(istemci_sonucu_yok\)$/ },
   { kod: 'doyma_dropped', tur: 'neden', re: /^doyma:dropped=(\d+)$/ },
   { kod: 'doyma_host_cpu', tur: 'neden', re: /^doyma:host_cpu_%([0-9.]+)\(>%90\)$/ },
+  { kod: 'doyma_yuk_cpu', tur: 'neden', re: /^doyma:yuk_cpu_bosta_%([0-9.]+)\(<%20\)$/ },
   { kod: 'saat_farki', tur: 'uyari', re: /^saat_farki~(-?\d+)s\(sunucu-istemci\)$/ },
   { kod: 'log_satiri_yok', tur: 'uyari', re: /^log_satiri_yok:pencere_istemci_saatinden$/ },
   { kod: 'sunucu_logunda_bu_tur_yok', tur: 'uyari', re: /^sunucu_logunda_bu_tur_yok$/ },
@@ -155,6 +178,10 @@ const NEDEN_KALIPLARI = Object.freeze([
   { kod: 'tekrar_kosu_ayristirilamadi', tur: 'uyari', re: /^tekrar_kosu_ayristirilamadi\(log'da_deneme_kolonu_yok\)$/ },
   { kod: 'tekrar_kosu_deneme', tur: 'uyari', re: /^tekrar_kosu:deneme_(\d+)_kullanildi\((\d+)_eski_satir_atildi\)$/ },
   { kod: 'cpu_olculemedi', tur: 'uyari', re: /^cpu_olculemedi\((reload|sayac_geriledi|net_negatif)\)$/ },
+  { kod: 'yuk_cpu_olculemedi', tur: 'uyari', re: /^yuk_cpu_olculemedi$/ },
+  // 2026-11-03 bellek (bilgi): TUR uyarisi bellek_bos_az, kosu uyarisi nginx_bellek_artisi.
+  { kod: 'bellek_bos_az', tur: 'uyari', re: /^bellek_bos_az\((hedef|yuk),%([0-9.]+)\)$/ },
+  { kod: 'nginx_bellek_artisi', tur: 'uyari', re: /^nginx_bellek_artisi\(ilk=(\d+)MB,son=(\d+)MB,kosu_sonu=(\d+)MB\)$/ },
 ]);
 
 // istemci_<TUR>.csv'den sayi olarak alinan alanlar (karsilastir.py kosu_hesapla ile ayni liste).
@@ -347,6 +374,112 @@ function pencereCpu(ornekler, w0, w1, clk) {
     sys: ((b.s - a.s) * 1000.0) / clk / dt,
     host_ort: hostOrt, host_max: hostMax,
   };
+}
+
+/**
+ * Yuk makinesi bosta CPU ortalamasi (%): pencere [bas + isinma + 3, bit - 2] (zaman.csv, yuk makinesi saati; yuk
+ * kaydedicisi ayni makinede: saat kaymasi yok). Kesit yoksa, pencere < 10 sn ya da 2'den az ornek: null.
+ */
+function yukBostaCpu(yukKesitler, zaman, isinmaSn) {
+  if (!Array.isArray(yukKesitler) || !yukKesitler.length || !zaman) return null;
+  const w0 = zaman[0] + (isinmaSn || 0) + 3;
+  const w1 = zaman[1] - 2;
+  if (!(w1 - w0 >= YUK_PENCERE_MIN_SN)) return null;
+  const kesit = kesitSec(yukKesitler, w0, w1);
+  if (kesit === null) return null;
+  const ic = kesit.ornekler.filter((o) => w0 <= o.t && o.t <= w1);
+  if (ic.length < 2) return null;
+  const a = ic[0];
+  const b = ic[ic.length - 1];
+  if (!(b.tot > a.tot)) return null;
+  const mesgul = (100.0 * (b.busy - a.busy)) / (b.tot - a.tot);
+  return Math.min(100, Math.max(0, 100.0 - mesgul));
+}
+
+const MB = (kb) => kb / 1024;
+const enKucuk = (xs) => (xs.length ? xs.reduce((a, b) => (b < a ? b : a)) : null);
+const enBuyuk = (xs) => (xs.length ? xs.reduce((a, b) => (b > a ? b : a)) : null);
+/** Ornekler -> bos bellek yuzdeleri (MemAvailable / MemTotal; ikisi de olculmus ve MemTotal > 0). */
+const bosYuzdeleri = (ic) => ic.filter((o) => o.mt !== null && o.mt !== undefined && o.mt > 0 && o.ma !== null && o.ma !== undefined)
+  .map((o) => Math.min(100, Math.max(0, (100.0 * o.ma) / o.mt)));
+
+/**
+ * 2026-11-03 (bellek, YALNIZ BILGI). Hedef: `kesitAdi`'nin bellek kesiti, CPU penceresi [w0, w1] (log saati). Yuk
+ * makinesi: yukBostaCpu ile ayni pencere (zaman.csv). Olcum yoksa null (eski playbook). Bos bellek %10 altindaysa
+ * `uyari`ya `bellek_bos_az(<taraf>,%x)` (x tek ondaliga asagi).
+ */
+function bellekOlc(ctx, kesitAdi, w0, w1, zaman, isinmaSn, uyari) {
+  const o = {
+    nginx_rss_ort_mb: null, nginx_rss_max_mb: null, hedef_bellek_yuzde: null, hedef_bos_min_yuzde: null,
+    yuk_bellek_yuzde: null, yuk_bos_min_yuzde: null, arac_rss_max_mb: null,
+  };
+  let olculdu = false;
+  let kesit = null;
+  let t0 = null;
+  if (kesitAdi && w0 !== null && w1 !== null && w1 > w0) {
+    const k = ctx.bellekKesitler.find((x) => x.anahtar === kesitAdi);
+    const ic = k ? k.ornekler.filter((x) => w0 <= x.t && x.t <= w1) : [];
+    const rss = ic.map((x) => x.rss).filter((v) => v !== null && v !== undefined);
+    if (rss.length) {
+      o.nginx_rss_ort_mb = MB(pyToplam(rss) / rss.length);
+      o.nginx_rss_max_mb = MB(enBuyuk(rss));
+      kesit = k.anahtar;
+      t0 = ic[0].t;
+      olculdu = true;
+    }
+    const bos = bosYuzdeleri(ic);
+    if (bos.length) {
+      o.hedef_bos_min_yuzde = enKucuk(bos);
+      o.hedef_bellek_yuzde = 100 - o.hedef_bos_min_yuzde;
+      olculdu = true;
+    }
+  }
+  if (Array.isArray(ctx.yukKesitler) && ctx.yukKesitler.length && zaman) {
+    const y0 = zaman[0] + (isinmaSn || 0) + 3;
+    const y1 = zaman[1] - 2;
+    const k = y1 > y0 ? kesitSec(ctx.yukKesitler, y0, y1) : null;
+    const ic = k ? k.ornekler.filter((x) => y0 <= x.t && x.t <= y1) : [];
+    const bos = bosYuzdeleri(ic);
+    if (bos.length) {
+      o.yuk_bos_min_yuzde = enKucuk(bos);
+      o.yuk_bellek_yuzde = 100 - o.yuk_bos_min_yuzde;
+      olculdu = true;
+    }
+    const ar = ic.map((x) => x.ar).filter((v) => v !== null && v !== undefined && v > 0);
+    if (ar.length) {
+      o.arac_rss_max_mb = MB(enBuyuk(ar));
+      olculdu = true;
+    }
+  }
+  if (!olculdu) return null;
+  if (o.hedef_bos_min_yuzde !== null && o.hedef_bos_min_yuzde < BELLEK_BOS_ESIK) uyari.push(`bellek_bos_az(hedef,%${fx(asagiOndalik(o.hedef_bos_min_yuzde), 1)})`);
+  if (o.yuk_bos_min_yuzde !== null && o.yuk_bos_min_yuzde < BELLEK_BOS_ESIK) uyari.push(`bellek_bos_az(yuk,%${fx(asagiOndalik(o.yuk_bos_min_yuzde), 1)})`);
+  return { ...o, _kesit: kesit, _t0: t0 };
+}
+
+/**
+ * 2026-11-03 (olasi bellek sizintisi, bilgi). Her bellek kesitinde, o kesitten nginx RSS'i olculmus TUR'larin
+ * ortalamalari pencere baslangicina gore siralanir: >= 2 nokta, monoton artan (azalmayan), ilk-son farki >= %20 ve
+ * >= 50 MB, kosu sonu (kesitin son RSS ornegi) son ortalamanin %90'indan asagi inmedi -> kosu uyarisi. Yoksa null.
+ */
+function bellekSizintisi(ctx, hesaplar) {
+  for (const k of ctx.bellekKesitler) {
+    const nokta = hesaplar.map((h) => h.r._bellek)
+      .filter((b) => b && b._kesit === k.anahtar && b.nginx_rss_ort_mb !== null && b._t0 !== null)
+      .sort((a, b) => a._t0 - b._t0)
+      .map((b) => b.nginx_rss_ort_mb);
+    if (nokta.length < 2) continue;
+    if (nokta.some((v, i) => i > 0 && v < nokta[i - 1])) continue;
+    const ilk = nokta[0];
+    const son = nokta[nokta.length - 1];
+    if (!(ilk > 0) || son - ilk < SIZINTI_MB || son - ilk < SIZINTI_ORAN * ilk) continue;
+    const rss = k.ornekler.map((x) => x.rss).filter((v) => v !== null && v !== undefined);
+    if (!rss.length) continue;
+    const kosuSonu = MB(rss[rss.length - 1]);
+    if (kosuSonu < SIZINTI_GERI_ORAN * son) continue;
+    return `nginx_bellek_artisi(ilk=${fd(pyYuvarla(ilk))}MB,son=${fd(pyYuvarla(son))}MB,kosu_sonu=${fd(pyYuvarla(kosuSonu))}MB)`;
+  }
+  return null;
 }
 
 /** Kosu disi (dislama araliklari disi, kapanan worker yok, ayni pid kumesi) >= 8 sn bloklarin medyani. */
@@ -709,6 +842,15 @@ function kosuHesapla(ctx, tur, ist, arkaKesit) {
     }
   }
   if (r.adim.toLowerCase().includes('perf')) uyari.push('perf_ek_yuku(kararda_kullanilmaz)');
+  // 2026-11-03 (K3): yuk makinesi CPU'su (serbest hedefte de; yuk makinesi ayni makine). Kayit yoksa null, isaret yok.
+  r.yuk_cpu_bosta = yukBostaCpu(ctx.yukKesitler, zaman, r.isinma_sn);
+  r.yuk_doydu = r.yuk_cpu_bosta !== null && r.yuk_cpu_bosta < YUK_BOSTA_ESIK;
+  // B2: yalniz yuk makinesi doymussa (hedef tarafi doyma yok) hedefin CPU-ms/istek'i gecerli kalir (grupHesapla).
+  r.yuk_doyma_yalniz = r.yuk_doydu && !doyma;
+  if (r.yuk_doydu) doyma = true;
+  // 2026-11-03 (bilgi): bellek (yalniz olcum varsa; uyarisi TUR uyarisi) ve istemci JSON kodlama sayaclari.
+  r._bellek = bellekOlc(ctx, kesitAdi, w0, w1, zaman, r.isinma_sn, uyari);
+  r._kodlama = ctx.kodlama.get(tur) || null;
   r.durum = gecersiz.length ? 'GECERSIZ' : doyma ? 'DOYMA' : 'GECERLI';
   r.gecersiz_nedeni = gecersiz.join(';');
   r.uyari = uyari.join(';');
@@ -727,19 +869,25 @@ function kosuHesapla(ctx, tur, ist, arkaKesit) {
 /** karsilastir.py `grupla`nin tek grup hesabi. `rs` = ayni (adim, senaryo, kip, ae, hiz) kosulari. */
 function grupHesapla(rs) {
   const gecerli = rs.filter((r) => r.durum !== 'GECERSIZ');
-  const cpuKume = gecerli.filter((r) => r.durum === 'GECERLI' && !String(r.adim).toLowerCase().includes('perf'));
+  // 2026-11-03 (B2): yalniz yuk makinesi doymus adim (hedef tarafi doyma yok) CPU kumesinde KALIR: CPU-ms/istek hedefin
+  // olcusudur. Isaretsiz kosularda yuk_doyma_yalniz hic yok (cikti BIREBIR eskisi).
+  const cpuKume = gecerli.filter((r) => (r.durum === 'GECERLI' || r.yuk_doyma_yalniz === true) && !String(r.adim).toLowerCase().includes('perf'));
+  // 2026-11-03 (K3): yuk makinesi doymus adim (YUK_DOYDU) p95 / gecikme ortalamasina girmez. Isaretsiz kosularda
+  // olcumKume === gecerli (cikti BIREBIR eskisi).
+  const olcumKume = gecerli.some((r) => r.yuk_doydu) ? gecerli.filter((r) => !r.yuk_doydu) : gecerli;
   const o = { n_kosu: rs.length, n_gecerli: gecerli.length };
-  for (const k of GRUP_ORTALAMA) o[k] = ortalama(gecerli.map((r) => r[k]));
+  for (const k of GRUP_ORTALAMA) o[k] = ortalama(olcumKume.map((r) => r[k]));
   const hm = gecerli.map((r) => r.host_cpu_max).filter((x) => x !== null && x !== undefined);
   o.host_cpu_max = hm.length ? hm.reduce((a, b) => pyMax(a, b)) : null;
   for (const k of ['cpu_ms_istek', 'user_ms', 'sys_ms']) o[k] = ortalama(cpuKume.map((r) => r[k]));
   o.gurultu_cpu = gurultu(cpuKume.map((r) => r.cpu_ms_istek));
-  o.gurultu_p95 = gurultu(gecerli.map((r) => r.p95));
+  o.gurultu_p95 = gurultu(olcumKume.map((r) => r.p95));
   o.n_429 = rs.reduce((t, r) => t + (r.n_429 || 0), 0);
   o.n_5xx = rs.reduce((t, r) => t + (r.n_5xx || 0), 0);
   o.hata_max = rs.length ? rs.map((r) => r.hata_orani || 0).reduce((a, b) => pyMax(a, b)) : 0;
   o.gecersizler = rs.filter((r) => r.durum === 'GECERSIZ').map((r) => r.gecersiz_nedeni);
   o.doyma = rs.some((r) => r.durum === 'DOYMA');
+  if (olcumKume !== gecerli) o.yuk_doydu = gecerli.length - olcumKume.length;
   o.kosular = rs;
   if (!gecerli.length) o.durum = `GECERSIZ(${rs.length}/${rs.length})`;
   else if (gecerli.length < rs.length) o.durum = `KISMI(${gecerli.length}/${rs.length} gecerli)`;
@@ -826,6 +974,12 @@ function jsonDizi(x) {
   return [];
 }
 
+/** DOYMA nedenlerinin HEPSI yuk makinesi (doyma:yuk_cpu_bosta_): hedef tarafi doyma yok. */
+function yukDoymaYalniz(nedenler) {
+  const d = nedenler.filter((n) => typeof n === 'string' && n.startsWith('doyma:'));
+  return d.length > 0 && d.every((n) => n.startsWith(YUK_DOYMA_ONEKI));
+}
+
 function al(s, k) {
   if (s[k] !== undefined) return s[k];
   return s[k.replace(/_([a-z0-9])/g, (_m, c) => c.toUpperCase())];
@@ -878,6 +1032,8 @@ function kosulariHazirla(satirlar) {
       sys_ms: sayi(ham.sys_ms),
       n_429: sayi(al(s, 'n_429')),
       n_5xx: sayi(al(s, 'n_5xx')),
+      yuk_doydu: durum === 'DOYMA' && nedenler.some((n) => typeof n === 'string' && n.startsWith(YUK_DOYMA_ONEKI)),
+      yuk_doyma_yalniz: durum === 'DOYMA' && yukDoymaYalniz(nedenler),
     });
   }
   return out;
@@ -932,8 +1088,13 @@ function isParcacigiDegeri(x, ad) {
   return v;
 }
 
-/** Bir ortak kademenin p95 satiri ve zarari (zarar esigi = max(esikZarar, 3 x referans p95 gurultusu)). */
-function p95Satiri(sat, zarar, rg, ag, h, esikZarar) {
+/**
+ * Bir ortak kademenin p95 satiri ve zarari (zarar esigi = max(esikZarar, 3 x referans p95 gurultusu)).
+ * 2026-11-03 (B2): taraflardan birinin p95'i yalniz YUK_DOYDU yuzunden yoksa (gecerli tekrarlarin hepsi yuk
+ * makinesi doymus) kademe SESSIZ atlanmaz: satir yazilir ve kademe `yukAtlanan`a eklenir (cagiran KALICI vermez:
+ * zarar yoksa DOYMA).
+ */
+function p95Satiri(sat, zarar, rg, ag, h, esikZarar, yukAtlanan) {
   const rp = rg.p95;
   const ap = ag.p95;
   if (rp && ap !== null) {
@@ -941,8 +1102,16 @@ function p95Satiri(sat, zarar, rg, ag, h, esikZarar) {
     const ez = pyMax(esikZarar / 100.0, 3 * (rg.gurultu_p95 || 0));
     sat.push(`p95 @${fd(h)}: ref=${fx(rp, 1)} aday=${fx(ap, 1)} degisim=%${fxs(100 * kotu, 1)} (zarar esigi %${fx(100 * ez, 1)})`);
     if (kotu > ez + EPS) zarar.push(`p95 @${fd(h)} %${fxs(100 * kotu, 1)}`);
+    return;
+  }
+  if (((rg.yuk_doydu || 0) > 0 && rg.p95 === null) || ((ag.yuk_doydu || 0) > 0 && ag.p95 === null)) {
+    sat.push(`p95 @${fd(h)}: yük makinesi doydu, karşılaştırılmadı`);
+    if (yukAtlanan) yukAtlanan.push(h);
   }
 }
+
+/** B2: YUK_DOYDU yuzunden p95'i karsilastirilamayan kademe varsa karar KALICI OLAMAZ: zarar yoksa DOYMA (RET degismez). */
+const YUK_DOYDU_KARARI = 'Yük makinesi doydu: p95 karşılaştırılamadı; yük makinesini rahatlatın ya da hızı düşürüp yeniden koşun';
 
 /**
  * CPU kademesinin bayt/istek satiri. Ag maliyeti sunucu logundaki govde baytindan ($body_bytes_sent); yoksa
@@ -986,13 +1155,15 @@ function cpusuzKarar(bitir, b, cpuNotu) {
   const { sat, notlar, ortak, rG, aG, kc, ref, ady, esikZarar, motor, birim } = b;
   if (!ortak.length) return bitir('VERI_YOK', [...sat, `ortak ${birim} kademesi yok`]);
   const zarar = [];
-  for (const h of ortak) p95Satiri(sat, zarar, rG.get(h), aG.get(h), h, esikZarar);
+  const yukAtlanan = [];
+  for (const h of ortak) p95Satiri(sat, zarar, rG.get(h), aG.get(h), h, esikZarar, yukAtlanan);
   const rKc = kc === null ? undefined : rG.get(kc);
   const aKc = kc === null ? undefined : aG.get(kc);
   if (rKc && aKc) baytSatiri(sat, notlar, rKc, aKc, kc, motor);
   bTtfbSatirlari(sat, ref, ady);
   const not = notlar.map((n) => 'not: ' + n);
   if (zarar.length) return bitir('RET', [...sat, 'zarar: ' + zarar.join('; '), ...not]);
+  if (yukAtlanan.length) return bitir('DOYMA', [...sat, YUK_DOYDU_KARARI, ...not]);
   return bitir('NOTR', [...sat, cpuNotu, ...not]);
 }
 
@@ -1102,6 +1273,7 @@ function kararVer(refAdimlar, adayAdimlar, secenek = {}) {
       const doyan = [];
       if (rKc.doyma && rKc.cpu_ms_istek === null) doyan.push(`referans ${refAd}`);
       if (aKc.doyma && aKc.cpu_ms_istek === null) doyan.push(`aday ${adyAd}`);
+      // Yalniz yuk makinesi doymus tekrar CPU kumesinde kalir (B2): buraya hedef tarafi doyma ile gelinir.
       if (doyan.length) {
         return bitir('DOYMA', [...sat, `${fd(kc)} ${birim} kademesinde CPU-ms/istek yok: ${doyan.join(' ve ')} doydu (dropped>0 ya da host CPU>%90); daha dusuk bir kademeyle tekrar kosun`]);
       }
@@ -1120,9 +1292,10 @@ function kararVer(refAdimlar, adayAdimlar, secenek = {}) {
   const cpuKazanc = -oran(aKc.cpu_ms_istek, rKc.cpu_ms_istek);
   sat.push(`CPU-ms/istek @${fd(kc)}: ref=${fx(rKc.cpu_ms_istek, 3)} aday=${fx(aKc.cpu_ms_istek, 3)} kazanc=%${fx(100 * cpuKazanc, 1)} esik=%${fx(100 * esik1, 1)} (gurultu %${fx(100 * gCpu, 1)})`);
   const zarar = [];
+  const yukAtlanan = [];
   let cpuKotuMax = null;
   for (const h of ortak) {
-    p95Satiri(sat, zarar, rG.get(h), aG.get(h), h, esikZarar);
+    p95Satiri(sat, zarar, rG.get(h), aG.get(h), h, esikZarar, yukAtlanan);
     const rc = rG.get(h).cpu_ms_istek;
     const ac = aG.get(h).cpu_ms_istek;
     if (rc && ac !== null) {
@@ -1149,6 +1322,9 @@ function kararVer(refAdimlar, adayAdimlar, secenek = {}) {
   if (zarar.length) {
     karar = 'RET';
     sat.push('zarar: ' + zarar.join('; '));
+  } else if (yukAtlanan.length) {
+    karar = 'DOYMA';
+    sat.push(YUK_DOYDU_KARARI);
   } else if (kosul1 || kosul2) {
     karar = 'KALICI';
     sat.push('kural: ' + (kosul1 ? 'CPU kazanci esigi gecti ve zarar yok' : "p95 kazanci esigi gecti ve CPU %5'ten fazla kotulesmedi"));
@@ -1211,6 +1387,10 @@ function adimHazirla(veri, { serbest = false, motor = 'k6' } = {}) {
   return {
     istemci, hatali, zaman, zamanTum, zamanN,
     kesitler: !serbest && Array.isArray(veri.kesitler) ? veri.kesitler : [],
+    yukKesitler: Array.isArray(veri.yukKesitler) ? veri.yukKesitler : [],
+    // 2026-11-03 (bilgi): hedef bellek kesitleri (serbestte yok sayilir) ve istemci JSON kodlama sayaclari.
+    bellekKesitler: !serbest && Array.isArray(veri.bellekKesitler) ? veri.bellekKesitler : [],
+    kodlama: veri.istemciKodlama instanceof Map ? veri.istemciKodlama : new Map(),
     log: log.turlar,
     olcumKod: log.fazlar.indexOf('olcum'),
     diger: veri.diger instanceof Map ? veri.diger : new Map(),
@@ -1238,6 +1418,13 @@ function sunucuDosyaSayisi(veri) {
 function tamVeyaNull(x) {
   const v = sayi(x);
   return v === null ? null : Math.trunc(v);
+}
+
+/** ham.bellek: ic alanlar (_kesit, _t0) disarida kalir. */
+function bellekHam(b) {
+  const o = {};
+  for (const [k, v] of Object.entries(b)) if (!k.startsWith('_')) o[k] = v;
+  return o;
 }
 
 /** Python `r` -> nginx_loadtest_adimlar satiri (sozlesme 6/7). */
@@ -1298,6 +1485,11 @@ function adimSatiri(r, gecerlilik, nedenler, nproc, logVar, ist, reloadlar = [])
       n_5xx_sunucu: r._s5xx,
       http2: r.http2,
       ...(r.protokol !== null ? { protokol: r.protokol, protokol_uyumsuz: r.protokol_uyumsuz } : {}),
+      ...(r.yuk_cpu_bosta !== null && r.yuk_cpu_bosta !== undefined ? { yuk_cpu_bosta: r.yuk_cpu_bosta } : {}),
+      ...(r.yuk_cpu_olculemedi === true ? { yuk_cpu_olculemedi: true } : {}),
+      // 2026-11-03 (bilgi): bellek ve kodlama yalniz olcum varsa (eski playbook / wrk: anahtar YOK).
+      ...(r._bellek ? { bellek: bellekHam(r._bellek) } : {}),
+      ...(r._kodlama ? { kodlama: { ...r._kodlama } } : {}),
       p95_js: r.p95_js,
       p95_css: r.p95_css,
       p95_html: r.p95_html,
@@ -1313,11 +1505,53 @@ function adimSatiri(r, gecerlilik, nedenler, nproc, logVar, ist, reloadlar = [])
   };
 }
 
+/**
+ * 2026-11-03 (K3): yuk makinesi CPU kaydi BEKLENIYOR mu (yeni playbook: set_stats kosu.yukm_cpu_basladi ya da
+ * dizinde yukcpu_* dosyasi) ve olculemedi mi. Eski kosu / eski playbook (ikisi de yok): null, hicbir sey
+ * eklenmez (cikti BIREBIR eskisi). Gecerli (GECERLI / DOYMA) adimlarin HICBIRINDE olcum yoksa kosu nedeni
+ * doner (kaydedici_baslamadi | kayit_yok | kayit_bozuk | pencerede_ornek_yok); bazilarinda varsa olcumsuz
+ * gecerli adimlara `yuk_cpu_olculemedi` uyarisi eklenir ve null doner. YUK_DOYDU korumasi sessizce dusmez.
+ * B1: bekleniyorsa olcumu olmayan her HATALI disi adima `r.yuk_cpu_olculemedi = true` (ham alani; arayuz o adimin
+ * kolonunda 'olculemedi' yazar). Eski playbook: alan hic yazilmaz.
+ */
+function yukOlcumuDenetle(ctx, hesaplar, yukKaydedici) {
+  const bekleniyor = ctx.yukKesitler.length > 0 || yukKaydedici === 'basladi' || yukKaydedici === 'baslamadi';
+  if (!bekleniyor) return null;
+  const olcumYok = (h) => h.r.yuk_cpu_bosta === null || h.r.yuk_cpu_bosta === undefined;
+  for (const h of hesaplar) if (h.gecerlilik !== 'HATALI' && olcumYok(h)) h.r.yuk_cpu_olculemedi = true;
+  const gecerli = hesaplar.filter((h) => h.gecerlilik === 'GECERLI' || h.gecerlilik === 'DOYMA');
+  if (!gecerli.length) return null;
+  const olcumsuz = gecerli.filter(olcumYok);
+  if (olcumsuz.length === gecerli.length) {
+    if (yukKaydedici === 'baslamadi') return 'kaydedici_baslamadi';
+    if (!ctx.yukKesitler.length) return 'kayit_yok';
+    if (ctx.yukKesitler.every((k) => k.sorun)) return 'kayit_bozuk';
+    return 'pencerede_ornek_yok';
+  }
+  for (const h of olcumsuz) {
+    h.r._uyari.push('yuk_cpu_olculemedi');
+    h.r.uyari = h.r._uyari.join(';');
+  }
+  return null;
+}
+
+/** Kaydedici son satiri: yazdirilabilir ASCII disi '?', en cok 200 karakter, kenar bosluk yok; bos / metin degil: null. */
+function yukSonSatirTemizle(x) {
+  if (typeof x !== 'string') return null;
+  const t = x.replace(/[^ -~]/g, '?').trim().slice(0, 200);
+  return t || null;
+}
+
+/** Tek ondaliga asagi (19.96 -> 19.9; 19.9 -> 19.9: kayan nokta payi 1e-9). */
+const asagiOndalik = (x) => Math.floor(x * 10 + 1e-9) / 10;
+
 /** DOYMA'nin nedeni Python'da nedenlere yazilmaz (yalniz uyari); Portal satirinda acikca gorunsun. */
 function doymaNedenleri(r) {
   const n = [];
   if ((r.dropped || 0) > 0) n.push(`doyma:dropped=${fd(r.dropped)}`);
   if (r.host_cpu_ort !== null && r.host_cpu_ort > DOYMA_HOST_CPU) n.push(`doyma:host_cpu_%${fx(r.host_cpu_ort, 1)}(>%90)`);
+  // B6: tek ondaliga ASAGI yuvarlanir: 19.96 '%20.0(<%20)' yazmasin (metin esikle celismesin; arayuz ayni kural).
+  if (r.yuk_doydu) n.push(`${YUK_DOYMA_ONEKI}%${fx(asagiOndalik(r.yuk_cpu_bosta), 1)}(<%20)`);
   return n;
 }
 
@@ -1365,9 +1599,10 @@ function temizle(x) {
  * @param {object} veri  sonuc.cjs kosuDiziniOku ciktisi
  * @param {{adim: string, hedefTuru?: 'sunucu'|'serbest', motor?: 'k6'|'wrk', protokol?: 'h1'|'h2'}} secenek
  *   adim ornek 'R17'; bu ADIM'a ait olmayan TUR'lar atlanir (uyari). Varsayilanlar 'sunucu' / 'k6' / 'h1'
- *   (bugunku cikti).
+ *   (bugunku cikti). yukKaydedici ('basladi' | 'baslamadi' | null) ve yukSonSatir (kaydedici ciktisinin son satiri,
+ *   yalniz yeni playbook): verilmezse cikti BIREBIR eskisi.
  */
-function kosuAnaliz(veri, { adim, hedefTuru = 'sunucu', motor = 'k6', protokol = 'h1' } = {}) {
+function kosuAnaliz(veri, { adim, hedefTuru = 'sunucu', motor = 'k6', protokol = 'h1', yukKaydedici = null, yukSonSatir = null } = {}) {
   if (!veri || typeof veri !== 'object') throw new TypeError('kosuAnaliz: veri yok');
   if (typeof adim !== 'string' || !ADIM_RE.test(adim)) throw new TypeError('kosuAnaliz: adim gecersiz');
   if (!HEDEF_TURLERI.includes(hedefTuru)) throw new TypeError('kosuAnaliz: hedefTuru gecersiz (sunucu | serbest)');
@@ -1438,6 +1673,13 @@ function kosuAnaliz(veri, { adim, hedefTuru = 'sunucu', motor = 'k6', protokol =
   const pencereler = new Map();
   for (const h of hesaplar) if (h.r._cpu_pencere) pencereler.set(h.r.tur, h.r._cpu_pencere);
   const reloadlar = reloadOlaylari(ctx, pencereler);
+  const yukOlculemedi = yukOlcumuDenetle(ctx, hesaplar, yukKaydedici);
+  // B1: kaydedicinin son satiri (ASCII, 200) olculemedi notuna eklenir: '<neden>;son=<satir>'.
+  const sonSatir = yukSonSatirTemizle(yukSonSatir);
+  if (yukOlculemedi) uyarilar.push(`yuk_cpu_olculemedi(${yukOlculemedi}${sonSatir ? `;son=${sonSatir}` : ''})`);
+  // 2026-11-03 (bilgi): olasi nginx bellek sizintisi (yalniz bellek kaydi varsa).
+  const sizinti = bellekSizintisi(ctx, hesaplar);
+  if (sizinti) uyarilar.push(sizinti);
   const adimlar = hesaplar.map((h) => adimSatiri(h.r, h.gecerlilik, h.nedenler, nproc, logVar, h.ist, reloadlar));
   // wrk TLS surumunu sabitlemez ve oturumu devam ettirebilir: 'yeni' kipi her istekte tam el sikismasi demek degil.
   if (motor === 'wrk' && adimlar.some((a) => a.kip === 'yeni')) uyarilar.push(WRK_TLS_UYARISI);
@@ -1511,6 +1753,24 @@ function kosuAnaliz(veri, { adim, hedefTuru = 'sunucu', motor = 'k6', protokol =
     sha256: veri.sha256 || null,
     okunan_bayt: typeof veri.okunanBayt === 'number' ? veri.okunanBayt : null,
   };
+  if (yukOlculemedi) ozet.yuk_cpu_olculemedi = yukOlculemedi;
+  // 2026-11-03: hedef bellek kesitleri yalniz varsa (eski kosunun ozeti BIREBIR eskisi).
+  if (ctx.bellekKesitler.length) {
+    ozet.bellek_kesitler = ctx.bellekKesitler.map((k) => ({
+      anahtar: k.anahtar, ornek: (k.ornekler || []).length, ...(k.sorun ? { sorun: String(k.sorun).slice(0, 200) } : {}),
+    }));
+  }
+  if (sonSatir) ozet.yuk_cpu_son_satir = sonSatir;
+  // 2026-11-03: yuk makinesi CPU kesitleri yalniz varsa (eski kosunun ozeti BIREBIR eskisi).
+  if (ctx.yukKesitler.length) {
+    ozet.yuk_kesitler = ctx.yukKesitler.map((k) => ({
+      anahtar: k.anahtar,
+      ornek: (k.ornekler || []).length,
+      bilgi_var: k.bilgiVar === true,
+      nproc: sayi(k.bilgi ? k.bilgi.nproc : null),
+      ...(k.sorun ? { sorun: String(k.sorun).slice(0, 200) } : {}),
+    }));
+  }
   return temizle({ gecerlilik, nedenler, uyarilar, adimlar, ozet });
 }
 
@@ -1520,6 +1780,8 @@ module.exports = {
   ayristirma,
   NEDENLER,
   NEDEN_KALIPLARI,
+  YUK_BOSTA_ESIK,
+  BELLEK_BOS_ESIK,
   PROTOKOLLER,
   H2_UYARISI,
   WRK_TLS_UYARISI,

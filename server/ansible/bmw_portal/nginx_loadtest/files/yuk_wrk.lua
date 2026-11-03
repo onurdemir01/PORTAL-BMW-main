@@ -68,7 +68,7 @@ function init(args)
   IS_PARCACIGI = tonumber(ortam('IS_PARCACIGI', '^[1-9][0-9]*$'))
   if IS_PARCACIGI > 16 or BAGLANTI % IS_PARCACIGI ~= 0 then error('yuk_wrk.lua: IS_PARCACIGI 1..16 olmali ve BAGLANTI sayisini tam bolmeli') end
   TAVAN = tonumber(ortam('TAVAN_RPS', '^[1-9][0-9]*$'))
-  if TAVAN > 450 then error('yuk_wrk.lua: TAVAN_RPS 1..450 olmali') end
+  if TAVAN > 5000 then error('yuk_wrk.lua: TAVAN_RPS 1..5000 olmali') end
   local f = io.open(ortam('SENARYO'), 'r')
   if f == nil then error('yuk_wrk.lua: SENARYO okunamadi') end
   for satir in f:lines() do

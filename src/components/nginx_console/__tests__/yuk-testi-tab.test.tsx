@@ -139,8 +139,8 @@ import Karsilastir from '../yukTesti/Karsilastir';
 import OnKontrolPaneli from '../yukTesti/OnKontrolPaneli';
 import Senaryolar from '../yukTesti/Senaryolar';
 import {
-  OKUNAMADI_ACIKLAMASI, SERBEST_CIP_IPUCU, SERBEST_UYARISI, SERBEST_VHOST_YARDIMI, SINIR_SIFIR_METNI, VHOST_LISTEDE_YOK_NOTU, WRK_CIP_IPUCU, WRK_UYARISI,
-  onKontrolDegerlendir,
+  KAPASITE_IPUCU, OKUNAMADI_ACIKLAMASI, SERBEST_CIP_IPUCU, SERBEST_UYARISI, SERBEST_VHOST_YARDIMI, VHOST_LISTEDE_YOK_NOTU, WRK_CIP_IPUCU, WRK_UYARISI,
+  cpuMsMetni, hostCpuIpucu, onKontrolDegerlendir, turCumlesi, turEtiketi,
 } from '../yukTesti/yukTestiOrtak';
 import { adimNormalle, kosuNormalle, onKontrolNormalle } from '@/api/nginxLoadtestApi';
 import { ALAN_ACIKLAMASI } from '../yukTesti/hazirAyarlar';
@@ -475,8 +475,8 @@ describe('Yük Testi — koşu ayrıntısı (2026-10-27)', () => {
     await ayrintiAc();
     const tablo = await screen.findByRole('table', { name: 'Adım sonuçları' });
     const [, s1, s2] = within(tablo).getAllByRole('row');
-    expect(within(s1).getByTitle('R17_K_yeni_br_100_r1').textContent).toBe('r1 · deneme 2');
-    expect(within(s2).getByTitle('R17_K_yeni_br_100_r2').textContent).toBe('r2');
+    expect(within(s1).getByTitle('R17_K_yeni_br_100_r1').textContent).toBe('1. tekrar · deneme 2');
+    expect(within(s2).getByTitle('R17_K_yeni_br_100_r2').textContent).toBe('2. tekrar');
     expect(s1.textContent).toContain('100 / 98');
     expect(within(s1).queryByTitle(/pencere istemci saatinden/)).toBeNull();
     expect(within(s2).getByTitle('sunucu logunda bu adımın satırı yok; pencere istemci saatinden').textContent).toBe('—');
@@ -489,8 +489,8 @@ describe('Yük Testi — koşu ayrıntısı (2026-10-27)', () => {
     expect(within(screen.getByRole('list', { name: 'R17_K_yeni_br_100_r2 uyarıları' })).getByText('(diger_trafik_%50)')).toBeTruthy();
     // Grafik ipuclari tekrar'la (deneme 1 yazilmaz).
     const ipuclari = [...document.querySelectorAll('svg title')].map((t) => t.textContent || '');
-    expect(ipuclari.some((t) => t.startsWith('100/sn · r1 · deneme 2:'))).toBe(true);
-    expect(ipuclari.some((t) => t.startsWith('100/sn · r2:'))).toBe(true);
+    expect(ipuclari.some((t) => t.startsWith('100/sn · 1. tekrar · deneme 2:'))).toBe(true);
+    expect(ipuclari.some((t) => t.startsWith('100/sn · 2. tekrar:'))).toBe(true);
     expect(ipuclari.some((t) => /deneme 1\b/.test(t))).toBe(false);
   });
 
@@ -660,10 +660,12 @@ describe('Yük Testi — hedef IP ve sınıflandırma (2026-10-28)', () => {
 
   it('YT21 host seçici: hedefHost sorguda ve gövdede, IP adaylardan; paylaşılan VIP elle yazılınca ip_belirsiz; uygun:false düğmeyi kapatır', async () => {
     const BELIRSIZ = '10.1.2.4 birden çok nginx sunucusunda tanımlı (GBNGXT10, GBNGXT11); hedef sunucuyu listeden seçin.';
+    // B3'ten beri sunucu olculmus limit icin uygun:false DONMEZ; ekranin genel uygun:false yolu ornek bir nedenle sinanir.
+    const KAPALI_NEDENI = 'Hedef bu koşu için kapalı (örnek sunucu nedeni).';
     api.ipSinifi.mockImplementation(async (ip: string, o: { hedefHost?: string | null } = {}) => {
       // 10.1.2.4 paylasilan VIP: host secici yolunda (hedefHost) sunucu, elle yazilinca belirsiz.
       if (ip === '10.1.2.4') return o.hedefHost === 'GBNGXT10' ? SUNUCU_SINIFI('GBNGXT10', ip) : { ok: false, code: 'ip_belirsiz', message: BELIRSIZ, _httpStatus: 409 };
-      if (ip === '10.3.3.3') return SUNUCU_SINIFI('GBNGXT30', ip, { uygun: false, neden: SINIR_SIFIR_METNI, kod: 'sinir_asildi' });
+      if (ip === '10.3.3.3') return SUNUCU_SINIFI('GBNGXT30', ip, { uygun: false, neden: KAPALI_NEDENI, kod: 'hedef_kapali' });
       // Sunucunun diger uygun:false nedenleri (200): IP hostun aday listesinde degil; hedef kapisi (neden metni yoksa kod metni).
       if (ip === '10.3.3.4') return SUNUCU_SINIFI('GBNGXT30', ip, { uygun: false, neden: "10.3.3.4, GBNGXT30 için bilinen IP'lerden değil (10.3.3.9).", kod: 'ip_hedefte_yok' });
       if (ip === '10.3.3.5') return SUNUCU_SINIFI('GBNGXT31', ip, { uygun: false, neden: null, kod: 'hedef_uretim' });
@@ -692,9 +694,9 @@ describe('Yük Testi — hedef IP ve sınıflandırma (2026-10-28)', () => {
     expect(api.ipSinifi).toHaveBeenLastCalledWith('10.1.2.4', { yukHost: 'GBNGXT34', hedefHost: null });
     expect(okDugmesi()).toBeDisabled();
     expect(screen.getByRole('button', { name: /Koşuyu başlat/ })).toBeDisabled();
-    // 200 ama uygun:false (olculmus sifir sinir) -> neden gorunur, on kontrol kapali.
+    // 200 ama uygun:false -> neden gorunur, on kontrol kapali.
     fireEvent.change(screen.getByLabelText('Hedef IP'), { target: { value: '10.3.3.3' } });
-    expect(await screen.findByText(SINIR_SIFIR_METNI, {}, SINIF_BEKLE)).toBeTruthy();
+    expect(await screen.findByText(KAPALI_NEDENI, {}, SINIF_BEKLE)).toBeTruthy();
     expect(okDugmesi()).toBeDisabled();
     expect(screen.getByText('Hedef IP kullanılamaz — ayrıntı “Hedef ve yük sunucusu” bölümünde.')).toBeTruthy();
     for (const [ip2, metin] of [['10.3.3.4', "10.3.3.4, GBNGXT30 için bilinen IP'lerden değil (10.3.3.9)."], ['10.3.3.5', 'üretim (PROD) sinyali var — yük testi yapılamaz']]) {
@@ -1271,5 +1273,196 @@ describe('Yük Testi — araçlar (tur 4, 2026-11-02)', () => {
     expect(await screen.findByText('Araç seti #5 (k6 v0.49.0 · wrk 4.2.0)')).toBeTruthy();
     fireEvent.click(screen.getByRole('tab', { name: 'Ön kontrol' }));
     expect(await screen.findByText('Araç kopyası (sha256)')).toBeTruthy();
+  });
+});
+
+// 2026-11-03 (K2 / K3): olculmus limit_req formda UYARI (engel degil); yuk makinesi CPU kolonu ve YUK DOYDU rozeti.
+describe('Yük Testi — 5000/sn, limit uyarısı, yük makinesi CPU (YT50–YT52)', () => {
+  it('YT50 hedefin ölçülmüş limit_req’i aşılırsa form uyarır, ön kontrol açık kalır; aşılmazsa uyarı yok', async () => {
+    api.ipSinifi.mockImplementation(async (ip: string) => {
+      const s = varsayilanSinif(ip) as Record<string, unknown>;
+      return s.tur === 'sunucu' ? { ...s, hizSiniri: 270, limitReq: 300, limitConn: 200 } : s;
+    });
+    await yeniKosuAc();
+    fireEvent.change(hostSecici(), { target: { value: 'GBNGXT10' } });
+    fireEvent.click(screen.getByRole('button', { name: '10.1.2.3' }));
+    // Varsayilan hizlar 100 250 400: 400 > 300 -> uyari (sunucu metniyle ayni).
+    const kutu = await screen.findByTestId('yuk-limit-uyarisi', undefined, SINIF_BEKLE);
+    expect(within(kutu).getByText('Seçilen hız (400/sn) hedefin ölçülmüş limit_req değerini (300 r/s) aşıyor; 429 alınırsa koşu durur.')).toBeTruthy();
+    // Daraltma YOK: alan hatasi yok, on kontrol dugmesi acik.
+    expect(screen.queryByText(/Her hız 1–/)).toBeNull();
+    await waitFor(() => expect(okDugmesi()).toBeEnabled(), SINIF_BEKLE);
+    fireEvent.change(screen.getByLabelText('Hızlar (istek/sn)'), { target: { value: '100 250' } });
+    expect(screen.queryByTestId('yuk-limit-uyarisi')).toBeNull();
+    // 5000'e kadar hiz kabul (4 hane); 5001 alan hatasi.
+    fireEvent.change(screen.getByLabelText('Hızlar (istek/sn)'), { target: { value: '1000 5000' } });
+    expect(screen.queryByText('Yalnız sayı yazın, boşlukla ayırın (ör. 100 250 400).')).toBeNull();
+  });
+
+  it('YT51 yük makinesi CPU kolonu ölçülmüş / kayıt beklenmiş koşuda; YÜK DOYDU rozeti ve düz Türkçe neden; ölçülmeyen adım “—”, kayıt beklenip ölçülemeyen “ölçülemedi” (B1)', async () => {
+    const adim = (o: Record<string, unknown>) => adimNormalle({ senaryo: 'K', kip: 'yeni', ae: 'br', gecerlilik: 'GECERLI', gercek_rps: 1000, rps_sunucu: 990, p95: 10, ...o });
+    kosuYukle({ durum: 'DONE', gecerlilik: 'GECERLI', finishedAt: '2026-11-03T08:40:00Z' }, [
+      adim({ tur: 'R17_K_yeni_br_1000_r1', hiz: 1000, ham: { yuk_cpu_bosta: 64.2, uyarilar: [] } }),
+      adim({ tur: 'R17_K_yeni_br_5000_r1', hiz: 5000, gecerlilik: 'DOYMA', nedenler: ['doyma:yuk_cpu_bosta_%12.5(<%20)'], ham: { yuk_cpu_bosta: 12.5, uyarilar: [] } }),
+      adim({ tur: 'R17_K_yeni_br_2000_r1', hiz: 2000, ham: { uyarilar: [] } }),
+      adim({ tur: 'R17_K_yeni_br_3000_r1', hiz: 3000, ham: { uyarilar: ['yuk_cpu_olculemedi'], yuk_cpu_olculemedi: true } }),
+    ]);
+    render(<KosuAyrinti kosuId={17} isAdmin={false} onGeri={vi.fn()} />);
+    const ozet = await screen.findByRole('table', { name: 'Adım sonuçları özeti' });
+    expect(within(ozet).getByText('Yük mak. boşta')).toBeTruthy();
+    await ayrintiAc();
+    const tablo = await screen.findByRole('table', { name: 'Adım sonuçları' });
+    expect(within(tablo).getByText('Yük mak. boşta CPU')).toBeTruthy();
+    // B6: tek ondaliga asagi (sunucu nedeniyle ayni sayi; 19,96 '%20' yazilmaz). B1: kayit beklenip olcum yok -> ölçülemedi.
+    expect(within(tablo).getAllByTestId('yuk-cpu-bosta').map((h) => h.textContent)).toEqual(['%64,2', '—', 'ölçülemedi', '%12,5']);
+    expect(within(tablo).getByText('YÜK DOYDU')).toBeTruthy();
+    expect(within(tablo).getByText('Yük makinesi doydu (boşta CPU %12,5): sonuç hedefin değil yük makinesinin sınırını gösterebilir.')).toBeTruthy();
+  });
+
+  it('YT53 (B1) yeni playbook, hiçbir adımda ölçüm yok: kolon görünür, her adım “ölçülemedi”', async () => {
+    const adim = (o: Record<string, unknown>) => adimNormalle({ senaryo: 'K', kip: 'yeni', ae: 'br', gecerlilik: 'GECERLI', gercek_rps: 100, rps_sunucu: 98, p95: 10, ...o });
+    kosuYukle({ durum: 'DONE', gecerlilik: 'GECERLI', finishedAt: '2026-11-03T08:40:00Z' }, [
+      adim({ tur: 'R17_K_yeni_br_100_r1', hiz: 100, ham: { uyarilar: [], yuk_cpu_olculemedi: true } }),
+      adim({ tur: 'R17_K_yeni_br_200_r1', hiz: 200, ham: { uyarilar: [], yuk_cpu_olculemedi: true } }),
+    ]);
+    render(<KosuAyrinti kosuId={17} isAdmin={false} onGeri={vi.fn()} />);
+    const ozet = await screen.findByRole('table', { name: 'Adım sonuçları özeti' });
+    expect(within(ozet).getByText('Yük mak. boşta')).toBeTruthy();
+    expect(within(ozet).getAllByText('ölçülemedi')).toHaveLength(2);
+    await ayrintiAc();
+    const tablo = await screen.findByRole('table', { name: 'Adım sonuçları' });
+    expect(within(tablo).getAllByTestId('yuk-cpu-bosta').map((h) => h.textContent)).toEqual(['ölçülemedi', 'ölçülemedi']);
+  });
+
+  it('YT52 eski koşu (yük makinesi kaydı yok): kolon ve rozet YOK (tablo birebir eskisi)', async () => {
+    const adim = (o: Record<string, unknown>) => adimNormalle({ senaryo: 'K', kip: 'yeni', ae: 'br', gecerlilik: 'GECERLI', gercek_rps: 100, rps_sunucu: 98, p95: 10, ...o });
+    kosuYukle({ durum: 'DONE', gecerlilik: 'GECERLI', finishedAt: '2026-10-27T08:40:00Z' }, [adim({ tur: 'R17_K_yeni_br_100_r1', hiz: 100, ham: { uyarilar: [] } })]);
+    render(<KosuAyrinti kosuId={17} isAdmin={false} onGeri={vi.fn()} />);
+    const ozet = await screen.findByRole('table', { name: 'Adım sonuçları özeti' });
+    expect(within(ozet).queryByText('Yük mak. boşta')).toBeNull();
+    await ayrintiAc();
+    const tablo = await screen.findByRole('table', { name: 'Adım sonuçları' });
+    expect(within(tablo).queryByText('Yük mak. boşta CPU')).toBeNull();
+    expect(within(tablo).queryByTestId('yuk-cpu-bosta')).toBeNull();
+    expect(screen.queryByText('YÜK DOYDU')).toBeNull();
+  });
+});
+
+// 2026-11-03 gosterim turu (E1-E6). YT60 tekrar ve TUR cumlesi; YT61 CPU-ms "X,XX ms", kapasite / host CPU ipuclari;
+// YT62 bellek sutunlari + "Nginx bellek (en yüksek)" kutusu + grafik, eski kosuda YOK; YT63 kip dogrulamasi blogu ve cipi
+// (sunucunun kipDogrulama'si), eski sunucu (alan yok) blok ve cip YOK.
+describe('Yük Testi — gösterim: tekrar, CPU-ms, bellek, kip doğrulaması (YT60–YT63)', () => {
+  const adim = (o: Record<string, unknown>) => adimNormalle({ senaryo: 'K', kip: 'ka', ae: 'br', gecerlilik: 'GECERLI', gercek_rps: 90, rps_sunucu: 90, p95: 10, ...o });
+  const kip = (o: Record<string, unknown> = {}) => ({
+    protokol: { istenen: 'h1', olculen: 'h1', uyumsuz: 0, durum: 'tamam' },
+    baglanti: { istenen: 'ka', yeniBaglantiYuzde: 2, istekBaglanti: 50, durum: 'tamam' },
+    sikistirma: { istenen: 'br', n: 1000, dagilim: { br: 900, gzip: 0, deflate: 0, zstd: 0, yok: 100, diger: 0 }, yok1kbAlti: 80, kucukYuzde: 8, istenenYuzde: 97.8, durum: 'tamam' },
+    uyarilar: [], durum: 'tamam', ...o,
+  });
+
+  it('YT60 tekrar "1. tekrar", adım uyarısı "90/sn adımının 2. tekrarında: …", sütun ipucu tekrarın anlamı', async () => {
+    kosuYukle({ durum: 'DONE', gecerlilik: 'GECERLI', finishedAt: '2026-11-03T08:40:00Z', analiz: { nproc: 8, cpuTlsliPay: null, uyarilar: ['R17_K_ka_br_90_r2: diger_trafik_%7'], okumaHatasi: null } }, [
+      adim({ tur: 'R17_K_ka_br_90_r1', hiz: 90, ham: { uyarilar: [] } }),
+      adim({ tur: 'R17_K_ka_br_90_r2', hiz: 90, ham: { uyarilar: ['diger_trafik_%7'] } }),
+    ]);
+    render(<KosuAyrinti kosuId={17} isAdmin={false} onGeri={vi.fn()} />);
+    const ozet = await screen.findByRole('table', { name: 'Adım sonuçları özeti' });
+    expect(within(ozet).getAllByRole('row').slice(1).map((r) => within(r).getAllByRole('cell')[0].textContent)).toEqual(['90/sn1. tekrar', '90/sn2. tekrar']);
+    expect(within(ozet).getByText('Adım').closest('th')?.getAttribute('title')).toContain('Her hız, Tekrar sayısı kadar koşulur; tekrarlar arasındaki fark ölçümün tutarlılığını gösterir.');
+    fireEvent.click(screen.getByText(/Adım uyarıları — teknik adım tablosunda/));
+    expect(screen.getByText(/^90\/sn adımının 2\. tekrarında: Ölçüm sırasında hedefe başka trafik de geldi/)).toBeTruthy();
+    // Adim listesinde olmayan TUR'un ham kodu da cozulur.
+    expect(turCumlesi('R17_K_yeni_br_250_r3', [], 'istek/sn')).toBe('250/sn adımının 3. tekrarında');
+    expect(turEtiketi('R17_K_yeni_br_8_r1', [], 'bağlantı')).toBe('8 bağlantı · 1. tekrar');
+    expect(turCumlesi('baska', [], 'istek/sn')).toBe('baska');
+  });
+
+  it('YT61 CPU-ms/istek iki ondalık + birim (tablo, kutu, grafik ipucu); kapasite ve host CPU ipuçları', async () => {
+    expect([cpuMsMetni(3.919), cpuMsMetni(0.5), cpuMsMetni(1234.5), cpuMsMetni(null)]).toEqual(['3,92 ms', '0,50 ms', '1.234,50 ms', '—']);
+    expect(hostCpuIpucu(8)).toBe('8 çekirdeğin toplamı (%100 = tüm çekirdekler dolu); Nginx + işletim sistemi + diğer süreçler.');
+    expect(hostCpuIpucu(null)).toBe('Tüm çekirdeklerin toplamı (%100 = tüm çekirdekler dolu); Nginx + işletim sistemi + diğer süreçler.');
+    kosuYukle({ durum: 'DONE', gecerlilik: 'GECERLI', finishedAt: '2026-11-03T08:40:00Z', analiz: { nproc: 8, cpuTlsliPay: null, uyarilar: [], okumaHatasi: null } }, [
+      adim({ tur: 'R17_K_ka_br_90_r1', hiz: 90, cpu_ms_istek: 3.919, kapasite_rps: 1633, host_cpu_ort: 40, ham: { uyarilar: [] } }),
+    ]);
+    render(<KosuAyrinti kosuId={17} isAdmin={false} onGeri={vi.fn()} />);
+    await ayrintiAc();
+    const tablo = await screen.findByRole('table', { name: 'Adım sonuçları' });
+    expect(within(tablo).getByText('3,92 ms')).toBeTruthy();
+    expect(within(tablo).getByText('Kapasite').getAttribute('title')).toBe(KAPASITE_IPUCU);
+    expect(within(tablo).getByText('Host CPU').getAttribute('title')).toBe(hostCpuIpucu(8));
+    expect(screen.getByText('~1.633 istek/sn').getAttribute('title')).toBe(KAPASITE_IPUCU);
+    expect(screen.getAllByText('3,92 ms').length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByRole('img', { name: /CPU-ms \/ istek: 90 istek\/sn 3,92 ms/ })).toBeTruthy();
+  });
+
+  it('YT62 bellek: tablo sütunları, kutu ve grafik yalnız ölçülmüş koşuda; boş bellek < %10 uyarı renginde; eski koşu birebir', async () => {
+    kosuYukle({ durum: 'DONE', gecerlilik: 'GECERLI', finishedAt: '2026-11-03T08:40:00Z' }, [
+      adim({ tur: 'R17_K_ka_br_90_r1', hiz: 90, ham: { uyarilar: [], bellek: { nginx_rss_ort_mb: 120.4, nginx_rss_max_mb: 130.6, hedef_bellek_yuzde: 61, hedef_bos_min_yuzde: 39, yuk_bellek_yuzde: 92.5, yuk_bos_min_yuzde: 7.5, arac_rss_max_mb: 310 } } }),
+      adim({ tur: 'R17_K_ka_br_180_r1', hiz: 180, ham: { uyarilar: [], bellek: { nginx_rss_ort_mb: 140, nginx_rss_max_mb: 150.2, hedef_bellek_yuzde: 62, hedef_bos_min_yuzde: 38, yuk_bellek_yuzde: 50, yuk_bos_min_yuzde: 50, arac_rss_max_mb: 320 } } }),
+    ]);
+    render(<KosuAyrinti kosuId={17} isAdmin={false} onGeri={vi.fn()} />);
+    await ayrintiAc();
+    const tablo = await screen.findByRole('table', { name: 'Adım sonuçları' });
+    for (const b of ['Nginx RSS', 'Hedef bellek', 'Yük mak. bellek']) expect(within(tablo).getByText(b)).toBeTruthy();
+    expect(within(tablo).getByText('131 MB')).toBeTruthy();
+    const yuk = within(tablo).getByText('%93');
+    expect(yuk.getAttribute('style')).toContain('status-warning-text');
+    const kutu = screen.getAllByText('Nginx bellek (en yüksek)').find((e) => e.tagName === 'DT');
+    expect(kutu?.parentElement?.textContent).toContain('150 MB');
+    expect(kutu?.parentElement?.textContent).toContain('180/sn · 1. tekrar');
+    expect(screen.getByRole('img', { name: /Nginx bellek \(en yüksek\): 90 istek\/sn/ })).toBeTruthy();
+    // Ayrinti satiri: ortalama / en yuksek, bos bellek, arac RSS.
+    fireEvent.click(within(tablo).getByRole('button', { name: 'R17_K_ka_br_90_r1 ayrıntısı' }));
+    expect(screen.getByText('Yük aracı RSS (en yüksek)').parentElement?.textContent).toContain('310 MB');
+  });
+
+  it('YT62b eski koşu (bellek yok): bellek sütunu, kutusu ve grafiği YOK', async () => {
+    kosuYukle({ durum: 'DONE', gecerlilik: 'GECERLI', finishedAt: '2026-10-27T08:40:00Z' }, [adim({ tur: 'R17_K_ka_br_90_r1', hiz: 90, ham: { uyarilar: [] } })]);
+    render(<KosuAyrinti kosuId={17} isAdmin={false} onGeri={vi.fn()} />);
+    await ayrintiAc();
+    const tablo = await screen.findByRole('table', { name: 'Adım sonuçları' });
+    expect(within(tablo).queryByText('Nginx RSS')).toBeNull();
+    expect(screen.queryAllByText('Nginx bellek (en yüksek)')).toHaveLength(0);
+  });
+
+  it('YT63 kip doğrulaması: ayrıntıda istenen / gerçekleşen bloğu, tabloda çip; sapma uyarısı düz cümle; eski sunucu blok yok', async () => {
+    kosuYukle({ durum: 'DONE', gecerlilik: 'GECERLI', finishedAt: '2026-11-03T08:40:00Z' }, [
+      adim({ tur: 'R17_K_ka_br_90_r1', hiz: 90, ham: { uyarilar: [] }, kipDogrulama: kip() }),
+      adim({
+        tur: 'R17_K_ka_br_180_r1', hiz: 180, ham: { uyarilar: [] },
+        kipDogrulama: kip({
+          baglanti: { istenen: 'ka', yeniBaglantiYuzde: 35, istekBaglanti: 2.86, durum: 'uyari' },
+          sikistirma: { istenen: 'br', n: null, dagilim: null, yok1kbAlti: null, kucukYuzde: null, istenenYuzde: null, durum: 'olculmedi' },
+          uyarilar: ['kip_ka_yeni_baglanti_%35'], durum: 'uyari',
+        }),
+      }),
+      adim({ tur: 'R17_K_ka_br_270_r1', hiz: 270, ham: { uyarilar: [] } }),
+      adim({
+        tur: 'R17_K_ka_br_360_r1', hiz: 360, ham: { uyarilar: [] },
+        kipDogrulama: kip({ sikistirma: { istenen: 'br', n: null, dagilim: null, yok1kbAlti: null, kucukYuzde: null, istenenYuzde: null, durum: 'olculmedi' } }),
+      }),
+    ]);
+    render(<KosuAyrinti kosuId={17} isAdmin={false} onGeri={vi.fn()} />);
+    await ayrintiAc();
+    const tablo = await screen.findByRole('table', { name: 'Adım sonuçları' });
+    expect(within(tablo).getByText('kip ✔')).toBeTruthy();
+    expect(within(tablo).getByText('kip uyarısı').getAttribute('title')).toContain('Keep-alive istendi ama isteklerin %35’i yeni bağlantıda gitti');
+    // Eski sunucu (kipDogrulama yok): cip yok.
+    // Eski koşu gibi sıkıştırma ölçülmemişse çip "kısmi" der, ölçülmeyeni ipucunda söyler.
+    expect(within(tablo).getByText('kip ✔ (kısmi)').getAttribute('title')).toBe('Kip doğrulaması: ölçülenler istendiği gibi; ölçülmeyen: sıkıştırma.');
+    expect(within(tablo).getAllByText(/^kip /)).toHaveLength(3);
+    fireEvent.click(within(tablo).getByRole('button', { name: 'R17_K_ka_br_90_r1 ayrıntısı' }));
+    const blok = screen.getByRole('group', { name: 'R17_K_ka_br_90_r1 kip doğrulaması' });
+    expect(blok.textContent).toContain('HTTP/1.1');
+    expect(blok.textContent).toContain('isteklerin %2’i yeni bağlantıda · bağlantı başına 50 istek');
+    expect(blok.textContent).toContain('br %90 · sıkıştırmasız %10 — 1 KB üstü yanıtların %97,8’i br');
+    expect(blok.textContent).toContain('1 KB altı yanıtlar (%8) sıkıştırılmadan gelebilir');
+    fireEvent.click(within(tablo).getByRole('button', { name: 'R17_K_ka_br_180_r1 ayrıntısı' }));
+    const blok2 = screen.getByRole('group', { name: 'R17_K_ka_br_180_r1 kip doğrulaması' });
+    expect(within(blok2).getAllByText('ölçülmedi')).toHaveLength(2);
+    expect(within(blok2).getAllByText('uyarı').length).toBe(1);
+    expect(within(blok2).getByRole('list', { name: 'R17_K_ka_br_180_r1 kip uyarıları' }).textContent).toContain('(kip_ka_yeni_baglanti_%35)');
+    fireEvent.click(within(tablo).getByRole('button', { name: 'R17_K_ka_br_270_r1 ayrıntısı' }));
+    expect(screen.queryByRole('group', { name: 'R17_K_ka_br_270_r1 kip doğrulaması' })).toBeNull();
   });
 });

@@ -23,9 +23,12 @@
 // ve nedeni (cpuOlculemedi) ipucunda.
 // HTTP/2 (2026-11-02, h2_sozlesme.md 5.3): ust bilgide "Protokol" (HTTP/1.1 / HTTP/2; wrk "HTTP/1.1 (wrk)") ve h2 cipi;
 // h2 kosu uyarisi (k6 VU basina tek akis) analiz uyarilarindan ayri, bilgi tonunda; on kontrol paneline protokol gider.
+// 2026-11-03 (E1-E6): tekrar "1. tekrar", adim uyarisi "90/sn adımının 2. tekrarında: ..."; CPU-ms "3,92 ms"; kapasite ve
+// host CPU ipuclari; bellek sutunlari + "Nginx bellek (en yüksek)" kutusu + bellek grafigi (yalniz olculmus kosuda; eski
+// kosu tablosu BIREBIR eskisi); adim ayrintisinda "Kip doğrulaması" (istenen / gerceklesen) ve tabloda kip cipi.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeftIcon, ArrowPathIcon, ChevronDownIcon, ChevronRightIcon, StopCircleIcon } from '@heroicons/react/24/outline';
-import { nginxLoadtestApi, type NlAdim, type NlKosuAyrinti, type NlMotor, type NlProtokol } from '@/api/nginxLoadtestApi';
+import { nginxLoadtestApi, type NlAdim, type NlKipDogrulama, type NlKipDurumu, type NlKosuAyrinti, type NlMotor, type NlProtokol } from '@/api/nginxLoadtestApi';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { toast } from '@/hooks/useToast';
 import { Modal } from '@/components/common/Modal';
@@ -41,9 +44,9 @@ import KosuCiktisi from './KosuCiktisi';
 import OnKontrolPaneli from './OnKontrolPaneli';
 import { Bolum, GecerlilikHapi, KosuDurumHapi, Tanim, TurMotorCipleri, islemEtiketi } from './YukUi';
 import {
-  AE_ETIKETI, AKTIF_DURUMLAR, KIP_ETIKETI, OKUNAMADI_ACIKLAMASI, PROTOKOL_ETIKETI, kosuProtokolu, SONUC_DENEME_SINIRI, adimDegerleri, adimEtiketi, adimGecerliligi, adimSirala, butceSn,
-  durdurBaslatilamadiMetni, gecerlilikBilgisi, hataMetni, hizGrupla, kademeMetni, kalanSurecDurdurulabilir, motorOf, ondalik, seriAdi, sonucOkunuyorMetni,
-  turEtiketi, uyarilariAyir, yenidenOkunabilir, yuzde, type AdimBirimi,
+  AE_ETIKETI, AKTIF_DURUMLAR, KAPASITE_IPUCU, KIP_ETIKETI, OKUNAMADI_ACIKLAMASI, PROTOKOL_ETIKETI, kosuProtokolu, SONUC_DENEME_SINIRI, adimDegerleri, adimEtiketi, adimGecerliligi, adimSirala, bellekKolonuVar,
+  bellekYuzdeMetni, butceSn, cpuMsMetni, durdurBaslatilamadiMetni, enYuksekNginxBellek, gecerlilikBilgisi, hataMetni, hizGrupla, hostCpuIpucu, kademeMetni, kalanSurecDurdurulabilir, mbMetni, motorOf, ondalik, seriAdi, sonucOkunuyorMetni,
+  tekrarIpucu, turCumlesi, turEtiketi, uyarilariAyir, yenidenOkunabilir, yukCpuHucre, yukCpuKolonuVar, yuzde, type AdimBirimi,
 } from './yukTestiOrtak';
 
 type Sekme = 'sonuc' | 'onkontrol' | 'cikti';
@@ -361,6 +364,9 @@ function Sonuclar({ kosu, adimlar, aktif, birim, protokol }: { kosu: NlKosuAyrin
   const cizgi = (f: (x: (typeof gruplar)[number]) => number | null) => (tekSeri ? gruplar.map((x) => ({ x: x.hiz, y: f(x) })) : []);
   const [ayrintiAcik, setAyrintiAcik] = useState(false);
   const ozet = ozetSec(kosu, adimlar);
+  // E5: bellek yalniz olculmus kosuda (eski kosu: kutu ve grafik yok).
+  const bellekVar = bellekKolonuVar(adimlar);
+  const enBellek = enYuksekNginxBellek(adimlar);
   const nedenler = nedenGruplari(kosu, adimlar, kosu.sonucOzeti);
   // Bir adim nedeninin altinda yazilmayan reload olaylari (isinma / bekleme sirasinda ...) kosu duzeyi satirda: kullanici
   // olayi yine gorur, olcumun etkilenmedigi de soylenir.
@@ -403,14 +409,14 @@ function Sonuclar({ kosu, adimlar, aktif, birim, protokol }: { kosu: NlKosuAyrin
           {reloadSatiri && <p className="mt-1.5 wrap-anywhere text-[12px] leading-5" style={{ color: 'var(--text-primary)' }}>{reloadSatiri}</p>}
         </div>
       )}
-      {(adimlar.length > 0 || !aktif) && <OzetTablosu adimlar={adimlar} birim={birim} serbest={serbest} aktif={aktif} />}
+      {(adimlar.length > 0 || !aktif) && <OzetTablosu adimlar={adimlar} birim={birim} serbest={serbest} aktif={aktif} nproc={nproc} />}
       {uyarilar.length > 0 && (
         <UyariKutusu ton="uyari" baslik={`${uyarilar.length} analiz uyarısı`}>
           {ayrik.genel.length > 0 && <ul className="space-y-1">{ayrik.genel.map((u) => <UyariSatiri key={u} metin={u} />)}</ul>}
           {ayrik.adim.length > 0 && (
             <details className={ayrik.genel.length > 0 ? 'mt-1.5' : undefined}>
               <summary className="cursor-pointer">Adım uyarıları — teknik adım tablosunda uyarı çipiyle işaretli</summary>
-              <ul className="mt-1 space-y-1">{ayrik.adim.map((u) => <UyariSatiri key={u} metin={u} etiket={(t) => turEtiketi(t, adimlar, birim)} />)}</ul>
+              <ul className="mt-1 space-y-1">{ayrik.adim.map((u) => <UyariSatiri key={u} metin={u} etiket={(t) => turCumlesi(t, adimlar, birim)} />)}</ul>
             </details>
           )}
         </UyariKutusu>
@@ -420,23 +426,32 @@ function Sonuclar({ kosu, adimlar, aktif, birim, protokol }: { kosu: NlKosuAyrin
           <button type="button" onClick={() => setAyrintiAcik((x) => !x)} aria-expanded={ayrintiAcik} aria-controls={ayrintiId}
             className="inline-flex items-center gap-1.5 rounded text-[12px] font-semibold focus-visible:outline-offset-2!" style={{ color: 'var(--text-primary)' }}>
             {ayrintiAcik ? <ChevronDownIcon className="h-4 w-4" aria-hidden /> : <ChevronRightIcon className="h-4 w-4" aria-hidden />}
-            Ayrıntı <span className="font-normal" style={{ color: 'var(--text-secondary)' }}>— CPU / istek, kapasite, doyma, grafikler ve teknik adım tablosu</span>
+            Ayrıntı <span className="font-normal" style={{ color: 'var(--text-secondary)' }}>— CPU / istek, kapasite, doyma, {bellekVar ? 'bellek, ' : ''}grafikler ve teknik adım tablosu</span>
           </button>
           <div id={ayrintiId} hidden={!ayrintiAcik} className="mt-3 space-y-4">
         <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border @3xl/yuk:grid-cols-4" style={{ borderColor: 'var(--border-subtle)', background: 'var(--border-subtle)' }}>
           <OzetHucre etiket="Geçerli adım" alt="doyma dahil; geçersiz adım hesaba katılmaz">{fmtNumber(nGecerli)} / {fmtNumber(adimlar.length)}</OzetHucre>
           {/* Serbest hedefte CPU kaydedici yok: CPU ve kapasite olculmez ("—"), sifir DEGIL; CPU kademesi de yok. */}
           <OzetHucre etiket={`CPU-ms/istek${!serbest && kademeCpu != null ? ` @ ${kademeMetni(kademeCpu, birim)}` : ''}`}
-            alt={serbest ? SERBEST_SUNUCU_YOK : tlsPay != null ? `TLS payı %${ondalik(tlsPay * 100, 0)}` : 'nginx worker, user+sys, arka plan çıkarılmış'}>{serbest ? '—' : ondalik(gk?.cpuMsIstek, 3)}</OzetHucre>
+            alt={serbest ? SERBEST_SUNUCU_YOK : tlsPay != null ? `TLS payı %${ondalik(tlsPay * 100, 0)}` : 'nginx worker, user+sys, arka plan çıkarılmış'}>{serbest ? '—' : cpuMsMetni(gk?.cpuMsIstek)}</OzetHucre>
           <OzetHucre etiket={`p95${kademeP95 != null ? ` @ ${kademeMetni(kademeP95, birim)}` : ''}`} alt={wrk ? 'istemci (wrk, CO düzeltmeli), geçerli adımların ortalaması' : 'istemci (k6), geçerli adımların ortalaması'}>{gp?.p95 != null ? `${ondalik(gp.p95, 1)} ms` : '—'}</OzetHucre>
-          <OzetHucre etiket="Tahmini kapasite" alt={serbest ? SERBEST_SUNUCU_YOK : nproc != null ? `${fmtNumber(nproc)} çekirdek × 1000 × 0,8 / CPU-ms` : 'çekirdek sayısı × 1000 × 0,8 / CPU-ms'}>{!serbest && gk?.kapasiteRps != null ? `~${fmtNumber(Math.round(gk.kapasiteRps))} istek/sn` : '—'}</OzetHucre>
+          <OzetHucre etiket="Tahmini kapasite" alt={serbest ? SERBEST_SUNUCU_YOK : nproc != null ? `${fmtNumber(nproc)} çekirdek × 1000 × 0,8 / CPU-ms` : 'çekirdek sayısı × 1000 × 0,8 / CPU-ms'}>
+            <span title={serbest ? SERBEST_SUNUCU_YOK : KAPASITE_IPUCU} className="cursor-help">{!serbest && gk?.kapasiteRps != null ? `~${fmtNumber(Math.round(gk.kapasiteRps))} istek/sn` : '—'}</span>
+          </OzetHucre>
+          {bellekVar && (
+            <OzetHucre etiket="Nginx bellek (en yüksek)" alt={enBellek ? `worker RSS toplamı · ${turEtiketi(enBellek.tur, adimlar, birim)}` : 'nginx worker belleği ölçülmedi (yalnız yük makinesi)'}>{mbMetni(enBellek?.mb)}</OzetHucre>
+          )}
         </dl>
         <div className="grid gap-5 @3xl/yuk:grid-cols-2">
           <HizGrafigi baslik="p95 yanıt süresi" birim="ms" noktalar={nokta((a) => a.p95)} cizgi={cizgi((x) => x.p95)} xBirimi={birim} />
-          <HizGrafigi baslik="CPU-ms / istek" birim="ms" basamak={3} noktalar={nokta((a) => (serbest ? null : a.cpuMsIstek))} cizgi={cizgi((x) => (serbest ? null : x.cpuMsIstek))} xBirimi={birim}
+          <HizGrafigi baslik="CPU-ms / istek" birim="ms" basamak={2} bicim={cpuMsMetni} noktalar={nokta((a) => (serbest ? null : a.cpuMsIstek))} cizgi={cizgi((x) => (serbest ? null : x.cpuMsIstek))} xBirimi={birim}
             bos={serbest ? 'Serbest hedef: sunucu ölçümü yok (CPU kaydedici ve nginx logu çalışmaz).' : 'CPU ölçülmedi (sunucu kaydı yok ya da adımlar geçersiz).'} />
+          {bellekVar && (
+            <HizGrafigi baslik="Nginx bellek (en yüksek)" birim="MB" basamak={0} bicim={mbMetni} noktalar={nokta((a) => a.bellek?.nginxRssMaxMb ?? null)} cizgi={[]} xBirimi={birim}
+              bos="Nginx worker belleği ölçülmedi (yalnız yük makinesi belleği var ya da serbest hedef)." />
+          )}
         </div>
-        <AdimTablosu adimlar={adimlar} aktif={aktif} birim={birim} serbest={serbest} />
+        <AdimTablosu adimlar={adimlar} aktif={aktif} birim={birim} serbest={serbest} nproc={nproc} />
           </div>
         </div>
       )}
@@ -458,44 +473,61 @@ function UyariSatiri({ metin, etiket }: { metin: string; etiket?: (tur: string) 
 // ── Adim tablosu ────────────────────────────────────────────────────────────────────
 type AdimKolonu = { anahtar: string; baslik: string; genislik: string; sag?: boolean; ipucu?: string };
 const KOLONLAR: AdimKolonu[] = [
-  { anahtar: 'hiz', baslik: 'Hız', genislik: '6rem', ipucu: 'istek/sn · tekrar' },
+  { anahtar: 'hiz', baslik: 'Hız', genislik: '6rem', ipucu: `istek/sn · tekrar. ${tekrarIpucu('istek/sn')}` },
   { anahtar: 'durum', baslik: 'Durum', genislik: '9rem' },
   { anahtar: 'p95', baslik: 'p95 ms', genislik: '5.5rem', sag: true, ipucu: 'istemci (k6) p95; ayrıntıda p50 / p99' },
   { anahtar: 'hata', baslik: 'Hata', genislik: '5.5rem', sag: true, ipucu: 'http_req_failed oranı' },
   { anahtar: 'kodlar', baslik: '429 · 5xx · drop', genislik: '7.5rem', sag: true, ipucu: '429 ve 5xx yanıt sayısı, düşen iterasyon (dropped)' },
   { anahtar: 'rps', baslik: 'rps ist. / sun.', genislik: '7.5rem', sag: true, ipucu: 'istemcinin gerçekleşen hızı / sunucu logundaki ölçüm satırları' },
-  { anahtar: 'cpu', baslik: 'CPU-ms', genislik: '6rem', sag: true, ipucu: 'istek başına nginx worker CPU (user+sys), arka plan çıkarılmış' },
-  { anahtar: 'host', baslik: 'Host CPU', genislik: '5.5rem', sag: true, ipucu: 'ölçüm penceresinde hedefin ortalama CPU kullanımı' },
-  { anahtar: 'kap', baslik: 'Kapasite', genislik: '6.5rem', sag: true, ipucu: 'çekirdek × 1000 × 0,8 / CPU-ms/istek' },
+  { anahtar: 'cpu', baslik: 'CPU-ms', genislik: '6rem', sag: true, ipucu: 'istek başına nginx worker CPU (user+sys), arka plan çıkarılmış; milisaniye' },
+  { anahtar: 'host', baslik: 'Host CPU', genislik: '5.5rem', sag: true, ipucu: hostCpuIpucu(null) },
+  { anahtar: 'kap', baslik: 'Kapasite', genislik: '6.5rem', sag: true, ipucu: KAPASITE_IPUCU },
+  // 2026-11-03 (K3): yuk makinesinin olcum penceresi bosta CPU'su; %20 altinda adim YUK DOYDU (eski kosu: —).
+  { anahtar: 'yuk', baslik: 'Yük mak. boşta CPU', genislik: '6.5rem', sag: true, ipucu: 'ölçüm penceresinde yük makinesinin boşta CPU ortalaması; %20 altında “yük doydu”: sonuç hedefin değil yük makinesinin sınırını gösterebilir; kayıt beklenip ölçülemeyen adımda “ölçülemedi”' },
+  // 2026-11-03 (E5): bellek; yalniz olculmus kosuda (bellekKolonuVar).
+  { anahtar: 'rss', baslik: 'Nginx RSS', genislik: '6rem', sag: true, ipucu: 'ölçüm penceresinde nginx worker’larının bellek (RSS) toplamının en yükseği; MB' },
+  { anahtar: 'hbel', baslik: 'Hedef bellek', genislik: '5.5rem', sag: true, ipucu: 'ölçüm penceresinde hedefin bellek kullanımı (en yüksek): 1 − MemAvailable / MemTotal' },
+  { anahtar: 'ybel', baslik: 'Yük mak. bellek', genislik: '5.5rem', sag: true, ipucu: 'ölçüm penceresinde yük makinesinin bellek kullanımı (en yüksek): 1 − MemAvailable / MemTotal' },
   { anahtar: 'ac', baslik: '', genislik: '2.5rem' },
 ];
 /** wrk: ilk kolon baglanti sayisi (istek/sn DEGIL), yuzdelikler CO duzeltmeli, dropped olculmez; serbest: sunucu kolonlari bos. */
 const WRK_KOLON: Record<string, Partial<AdimKolonu>> = {
-  hiz: { baslik: 'Bağlantı', ipucu: 'eşzamanlı bağlantı sayısı · tekrar (kapalı döngü; ortalama toplam hız tavanlı)' },
+  hiz: { baslik: 'Bağlantı', ipucu: `eşzamanlı bağlantı sayısı · tekrar (kapalı döngü; ortalama toplam hız tavanlı). ${tekrarIpucu('bağlantı')}` },
   p95: { ipucu: 'istemci (wrk, CO düzeltmeli) p95; ayrıntıda p50 / p99' },
   hata: { ipucu: '2xx / 3xx dışı yanıt ve soket hatası oranı' },
   kodlar: { ipucu: '429 ve 5xx yanıt sayısı; wrk düşen istek (dropped) ölçmez' },
 };
-const SUNUCU_KOLONLARI = new Set(['cpu', 'host', 'kap']);
+const SUNUCU_KOLONLARI = new Set(['cpu', 'host', 'kap', 'rss', 'hbel']);
+const BELLEK_KOLONLARI = new Set(['rss', 'hbel', 'ybel']);
 /** Serbest hedefte sunucu logu yok: rps kolonunun ipucu sunucu logundan soz etmez. */
 const SERBEST_RPS_IPUCU = `istemcinin gerçekleşen hızı / ${SERBEST_SUNUCU_YOK}`;
-const kolonlar = (birim: AdimBirimi, serbest: boolean): AdimKolonu[] => KOLONLAR.map((k) => ({
-  ...k, ...(birim === 'bağlantı' ? WRK_KOLON[k.anahtar] : null), ...(serbest && SUNUCU_KOLONLARI.has(k.anahtar) ? { ipucu: SERBEST_SUNUCU_YOK } : null),
-  ...(serbest && k.anahtar === 'rps' ? { ipucu: SERBEST_RPS_IPUCU } : null),
-}));
+const kolonlar = (birim: AdimBirimi, serbest: boolean, yukCpu: boolean, bellek = false, nproc: number | null = null): AdimKolonu[] => KOLONLAR
+  .filter((k) => (yukCpu || k.anahtar !== 'yuk') && (bellek || !BELLEK_KOLONLARI.has(k.anahtar))).map((k) => ({
+    ...k, ...(k.anahtar === 'host' ? { ipucu: hostCpuIpucu(nproc) } : null), ...(birim === 'bağlantı' ? WRK_KOLON[k.anahtar] : null),
+    ...(serbest && SUNUCU_KOLONLARI.has(k.anahtar) ? { ipucu: SERBEST_SUNUCU_YOK } : null),
+    ...(serbest && k.anahtar === 'rps' ? { ipucu: SERBEST_RPS_IPUCU } : null),
+  }));
 const sayiHucre = 'px-2.5 py-1.5 text-right tabular-nums';
+const UYARI_HUCRE = { color: 'var(--status-warning-text)', fontWeight: 600 } as const;
+/** Bos bellek %10 altinda (analiz bellek_bos_az ile ayni esik): hucre uyari renginde. */
+const bosAz = (x: number | null | undefined) => x != null && x < 10;
+const YUK_DOYDU_IPUCU = 'Yük makinesinin boşta CPU’su %20’nin altında: sonuç hedefin değil yük makinesinin sınırını gösterebilir. Adım “doyma” sayılır ve p95 kararında kullanılmaz; hedefin CPU-ms/istek değeri geçerli kalır.';
 
-function AdimTablosu({ adimlar, aktif, birim, serbest }: { adimlar: NlAdim[]; aktif: boolean; birim: AdimBirimi; serbest: boolean }) {
+function AdimTablosu({ adimlar, aktif, birim, serbest, nproc = null }: { adimlar: NlAdim[]; aktif: boolean; birim: AdimBirimi; serbest: boolean; nproc?: number | null }) {
   const [acik, setAcik] = useState<Set<string>>(new Set());
   const sirali = adimSirala(adimlar);
   const cokSeri = new Set(adimlar.map(seriAdi)).size > 1;
   const degistir = (k: string) => setAcik((s) => { const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n; });
-  const kolonListesi = kolonlar(birim, serbest);
+  // Yuk makinesi CPU kolonu yalniz olculmus adim varsa (eski kosuda tablo BIREBIR eskisi).
+  const yukCpu = yukCpuKolonuVar(adimlar);
+  const bellek = bellekKolonuVar(adimlar);
+  const kolonListesi = kolonlar(birim, serbest, yukCpu, bellek, nproc);
+  const genislik = 56 + (yukCpu ? 6.5 : 0) + (bellek ? 17 : 0);
   return (
     <div>
       <h3 className="mb-1.5 text-[12px] font-semibold" style={{ color: 'var(--text-primary)' }}>Adımlar <span className="font-normal" style={{ color: 'var(--text-secondary)' }}>— her satır bir {birim === 'bağlantı' ? 'bağlantı sayısı' : 'hız'} × tekrar (TUR)</span></h3>
       <div className="overflow-x-auto rounded-lg border" style={{ borderColor: 'var(--border-subtle)' }}>
-        <table className="pf-table-sticky w-full min-w-[56rem] table-fixed border-collapse" aria-label="Adım sonuçları">
+        <table className="pf-table-sticky w-full table-fixed border-collapse" style={{ minWidth: `${genislik}rem` }} aria-label="Adım sonuçları">
           <colgroup>{kolonListesi.map((k) => <col key={k.anahtar} style={{ width: k.genislik }} />)}</colgroup>
           <thead><tr>{kolonListesi.map((k) => (
             <th key={k.anahtar} scope="col" title={k.ipucu} className={`px-2.5 py-1.5 text-[11px] whitespace-nowrap ${k.sag ? 'text-right' : 'text-left'}`}
@@ -524,7 +556,9 @@ function AdimTablosu({ adimlar, aktif, birim, serbest }: { adimlar: NlAdim[]; ak
                     <td className="px-2.5 py-1.5">
                       <div className="flex flex-wrap items-center gap-1">
                         <Hap label={d.etiket} ton={d.ton} />
+                        {a.yukDoydu && <Cip ton="uyari" cerceve title={YUK_DOYDU_IPUCU}>YÜK DOYDU</Cip>}
                         {a.uyarilar.length > 0 && <Cip ton="uyari" cerceve title={a.uyarilar.map((u) => uyariAcikla(u).cumle).join('\n')}>{`${fmtNumber(a.uyarilar.length)} uyarı`}</Cip>}
+                        <KipCipi kip={a.kipDogrulama} />
                       </div>
                       {a.nedenler.length > 0 && <div className="mt-0.5 truncate text-[11px]" style={{ color: d.ton === 'hata' ? 'var(--status-danger-text)' : 'var(--status-warning-text)' }} title={a.nedenler.map((n) => nedenAcikla(n).cumle).join('\n')}>{nedenAcikla(a.nedenler[0]).cumle}{a.nedenler.length > 1 ? ` +${a.nedenler.length - 1}` : ''}</div>}
                     </td>
@@ -536,9 +570,17 @@ function AdimTablosu({ adimlar, aktif, birim, serbest }: { adimlar: NlAdim[]; ak
                       <>{['cpu', 'host', 'kap'].map((s) => <td key={s} className={sayiHucre} style={{ color: 'var(--text-muted)' }} title={SERBEST_SUNUCU_YOK}>—</td>)}</>
                     ) : (
                       <>
-                        <td className={sayiHucre} title={a.cpuOlculemedi ? cpuOlculemediMetni(a.cpuOlculemedi) : undefined}>{ondalik(a.cpuMsIstek, 3)}</td>
+                        <td className={sayiHucre} title={a.cpuOlculemedi ? cpuOlculemediMetni(a.cpuOlculemedi) : undefined}>{cpuMsMetni(a.cpuMsIstek)}</td>
                         <td className={sayiHucre} style={(a.hostCpuOrt ?? 0) > 90 ? { color: 'var(--status-warning-text)', fontWeight: 600 } : undefined}>{a.hostCpuOrt != null ? `%${ondalik(a.hostCpuOrt, 0)}` : '—'}</td>
                         <td className={sayiHucre} title={a.cpuOlculemedi ? cpuOlculemediMetni(a.cpuOlculemedi) : undefined}>{a.kapasiteRps != null ? `~${fmtNumber(Math.round(a.kapasiteRps))}` : '—'}</td>
+                      </>
+                    )}
+                    {yukCpu && <td className={sayiHucre} data-testid="yuk-cpu-bosta" style={a.yukDoydu ? { color: 'var(--status-warning-text)', fontWeight: 600 } : undefined}>{yukCpuHucre(a)}</td>}
+                    {bellek && (
+                      <>
+                        <td className={sayiHucre} style={serbest ? { color: 'var(--text-muted)' } : undefined} title={serbest ? SERBEST_SUNUCU_YOK : undefined}>{serbest || !a.bellek ? '—' : mbMetni(a.bellek.nginxRssMaxMb)}</td>
+                        <td className={sayiHucre} style={serbest ? { color: 'var(--text-muted)' } : bosAz(a.bellek?.hedefBosMinYuzde) ? UYARI_HUCRE : undefined} title={serbest ? SERBEST_SUNUCU_YOK : undefined}>{serbest || !a.bellek ? '—' : bellekYuzdeMetni(a.bellek.hedefBellekYuzde)}</td>
+                        <td className={sayiHucre} style={bosAz(a.bellek?.yukBosMinYuzde) ? UYARI_HUCRE : undefined}>{a.bellek ? bellekYuzdeMetni(a.bellek.yukBellekYuzde) : '—'}</td>
                       </>
                     )}
                     <td className="px-1 py-1.5 text-center">
@@ -559,7 +601,11 @@ function AdimTablosu({ adimlar, aktif, birim, serbest }: { adimlar: NlAdim[]; ak
                           <Tanim etiket="İstek istemci · sunucu">{fmtNumber(a.nIstek)} · {fmtNumber(a.istekSunucu)}</Tanim>
                           <Tanim etiket="Bayt / istek">{a.baytIstek != null ? fmtNumber(Math.round(a.baytIstek)) : '—'}</Tanim>
                           <Tanim etiket="Sıkıştırma">{a.sikistirmaTuru || '—'}</Tanim>
+                          {a.bellek && <Tanim etiket="Nginx RSS ort. · en yüksek">{mbMetni(a.bellek.nginxRssOrtMb)} · {mbMetni(a.bellek.nginxRssMaxMb)}</Tanim>}
+                          {a.bellek && <Tanim etiket="Boş bellek (en düşük) hedef · yük mak.">{bellekYuzdeMetni(a.bellek.hedefBosMinYuzde)} · {bellekYuzdeMetni(a.bellek.yukBosMinYuzde)}</Tanim>}
+                          {a.bellek && <Tanim etiket="Yük aracı RSS (en yüksek)">{mbMetni(a.bellek.aracRssMaxMb)}</Tanim>}
                         </dl>
+                        {a.kipDogrulama && <KipDogrulamasi kip={a.kipDogrulama} tur={a.tur} />}
                         {a.cpuOlculemedi && <p className="mt-2 text-[11px] leading-4" style={{ color: 'var(--status-warning-text)' }}>{cpuOlculemediMetni(a.cpuOlculemedi)}</p>}
                         {a.nedenler.length > 0 && (
                           <ul className="mt-2 list-disc space-y-0.5 pl-4 text-[11px] leading-4" style={{ color: 'var(--text-primary)' }}>
@@ -583,6 +629,72 @@ function AdimTablosu({ adimlar, aktif, birim, serbest }: { adimlar: NlAdim[]; ak
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+// ── Kip dogrulamasi (2026-11-03, E6) ────────────────────────────────────────────────
+const KIP_DURUM_METNI: Record<NlKipDurumu, string> = { tamam: '✔', uyari: 'uyarı', olculmedi: 'ölçülmedi' };
+const KIP_DURUM_TONU: Record<NlKipDurumu, 'basari' | 'uyari' | 'notr'> = { tamam: 'basari', uyari: 'uyari', olculmedi: 'notr' };
+const KODLAMA_ADI: Record<string, string> = { br: 'br', gzip: 'gzip', yok: 'sıkıştırmasız' };
+const AE_KODLAMA_UI: Record<string, string> = { br: 'br', gzip: 'gzip', identity: 'yok' };
+/** Tablo cipi: uyari varsa "kip uyarısı", hepsi tamamsa "kip ✔", tamam / olculmedi karisimiysa "kip ✔ (kısmi)" (or. eski koşu, sıkıştırma ölçülmedi); hicbiri olculmediyse cip yok. */
+function KipCipi({ kip }: { kip: NlKipDogrulama | null }) {
+  if (!kip || kip.durum === 'olculmedi') return null;
+  if (kip.durum === 'uyari') return <Cip ton="uyari" cerceve title={kip.uyarilar.map((u) => uyariAcikla(u).cumle).join('\n')}>kip uyarısı</Cip>;
+  const olculmeyen = ([['protokol', kip.protokol], ['bağlantı', kip.baglanti], ['sıkıştırma', kip.sikistirma]] as const)
+    .filter(([, k]) => k.durum === 'olculmedi').map(([ad]) => ad);
+  if (!olculmeyen.length) return <Cip ton="basari" cerceve title="Kip doğrulaması: istenen protokol, bağlantı ve sıkıştırma gerçekleşti.">kip ✔</Cip>;
+  return <Cip ton="basari" cerceve title={`Kip doğrulaması: ölçülenler istendiği gibi; ölçülmeyen: ${olculmeyen.join(', ')}.`}>kip ✔ (kısmi)</Cip>;
+}
+function KipSatiri({ ad, istenen, gerceklesen, durum }: { ad: string; istenen: string; gerceklesen: string; durum: NlKipDurumu }) {
+  return (
+    <tr className="border-t" style={{ borderColor: 'var(--border-subtle)' }}>
+      <th scope="row" className="px-2 py-1 text-left font-semibold">{ad}</th>
+      <td className="px-2 py-1">{istenen}</td>
+      <td className="px-2 py-1 tabular-nums">{gerceklesen}</td>
+      <td className="px-2 py-1"><Hap label={KIP_DURUM_METNI[durum]} ton={KIP_DURUM_TONU[durum]} /></td>
+    </tr>
+  );
+}
+/** Adim ayrintisi: istenen / gerceklesen (protokol, baglanti, sikistirma) + sapma uyarilari (bilgi; gecerlilik degismez). */
+function KipDogrulamasi({ kip, tur }: { kip: NlKipDogrulama; tur: string }) {
+  const p = kip.protokol;
+  const b = kip.baglanti;
+  const k = kip.sikistirma;
+  const protokolMetni = p.durum === 'olculmedi' ? 'ölçülmedi' : `${p.olculen ? PROTOKOL_ETIKETI[p.olculen] : '?'}${p.uyumsuz ? ` (${fmtNumber(p.uyumsuz)} yanıt farklı)` : ''}`;
+  const baglantiMetni = b.durum === 'olculmedi' ? 'ölçülmedi'
+    : `isteklerin %${ondalik(b.yeniBaglantiYuzde, 1)}’i yeni bağlantıda · bağlantı başına ${b.istekBaglanti != null ? ondalik(b.istekBaglanti, 1) : '—'} istek`;
+  const beklenenBaglanti = b.istenen === 'yeni' ? 'yeni bağlantı (~%100 yeni, 1,0 istek / bağlantı)' : b.istenen === 'ka' ? 'keep-alive (yeni bağlantı payı düşük)' : (b.istenen || '—');
+  const kodlama = k.istenen ? AE_KODLAMA_UI[k.istenen] : null;
+  let sikMetni = 'ölçülmedi';
+  if (k.durum !== 'olculmedi' && k.dagilim && k.n) {
+    const sira = Object.entries(k.dagilim).filter(([, v]) => v > 0).sort((x, y) => y[1] - x[1]);
+    const dag = sira.map(([ad, v]) => `${KODLAMA_ADI[ad] || ad} %${ondalik((100 * v) / (k.n as number), 1)}`).join(' · ');
+    const pay = k.istenenYuzde != null && kodlama && kodlama !== 'yok' ? ` — 1 KB üstü yanıtların %${ondalik(k.istenenYuzde, 1)}’i ${kodlama}` : '';
+    sikMetni = `${dag}${pay}`;
+  }
+  const kucuk = k.kucukYuzde != null && k.kucukYuzde > 0 ? `1 KB altı yanıtlar (%${ondalik(k.kucukYuzde, 1)}) sıkıştırılmadan gelebilir; bu pay beklenen sıkıştırılmamış paydır.` : null;
+  return (
+    <div className="mt-2.5" role="group" aria-label={`${tur} kip doğrulaması`}>
+      <div className="text-[11px] font-semibold leading-4" style={{ color: 'var(--text-primary)' }}>Kip doğrulaması <span className="font-normal" style={{ color: 'var(--text-secondary)' }}>— istenen / gerçekleşen (bilgi; geçerliliği değiştirmez)</span></div>
+      <table className="mt-1 w-full max-w-[52rem] border-collapse text-[11px] leading-4" style={{ color: 'var(--text-primary)' }}>
+        <thead><tr style={{ color: 'var(--text-secondary)' }}>
+          <th scope="col" className="px-2 py-1 text-left font-medium">Ölçü</th><th scope="col" className="px-2 py-1 text-left font-medium">İstenen</th>
+          <th scope="col" className="px-2 py-1 text-left font-medium">Gerçekleşen</th><th scope="col" className="px-2 py-1 text-left font-medium">Durum</th>
+        </tr></thead>
+        <tbody>
+          <KipSatiri ad="Protokol" istenen={PROTOKOL_ETIKETI[p.istenen]} gerceklesen={protokolMetni} durum={p.durum} />
+          <KipSatiri ad="Bağlantı" istenen={beklenenBaglanti} gerceklesen={baglantiMetni} durum={b.durum} />
+          <KipSatiri ad="Sıkıştırma" istenen={k.istenen ? (AE_ETIKETI[k.istenen] || k.istenen) : '—'} gerceklesen={sikMetni} durum={k.durum} />
+        </tbody>
+      </table>
+      {kucuk && <p className="mt-1 text-[11px] leading-4" style={{ color: 'var(--text-secondary)' }}>{kucuk}</p>}
+      {kip.uyarilar.length > 0 && (
+        <ul className="mt-1 list-disc space-y-0.5 pl-4 text-[11px] leading-4" style={{ color: 'var(--status-warning-text)' }} aria-label={`${tur} kip uyarıları`}>
+          {kip.uyarilar.map((u) => <li key={u} className="wrap-anywhere">{uyariAcikla(u).cumle} <span className="font-mono" style={{ color: 'var(--text-secondary)' }}>({u})</span></li>)}
+        </ul>
+      )}
     </div>
   );
 }

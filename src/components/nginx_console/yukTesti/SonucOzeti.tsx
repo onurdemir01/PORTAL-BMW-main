@@ -8,6 +8,8 @@
 // (CPU-ms/istek, kapasite, drop) KosuAyrinti'nin "Ayrıntı" bolumunde. Eski kosuda olmayan deger "—".
 // HTTP/2 (2026-11-02): h2 kosusunun ozet satiri "HTTP/2" cipiyle baslar; reload fazi `olcum_kenari` (olcume degdi, CPU
 // penceresinin disinda) "ölçüm etkilenmedi" der.
+// 2026-11-03 (E1 / E4): tekrar "1. tekrar" (r1 degil), adim sutunu ipucu tekrarin anlamini soyler; reload metninde adim
+// "90/sn adımının 2. tekrarında"; host CPU ipucu kosunun cekirdek sayisiyla.
 import React, { useState } from 'react';
 import { ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 import type { NlAdim, NlKosuAyrinti, NlProtokol, NlReloadAni, NlSonucOzeti } from '@/api/nginxLoadtestApi';
@@ -16,14 +18,19 @@ import { fmtNumber } from '@/utils/datetime';
 import { TH_STIL, TON } from '@/components/server_hub/retirementStil';
 import { Cip, Hap } from '@/components/server_hub/RetirementUi';
 import { kosuNedeniniAyir, nedenAcikla, reloadZamanMetni, type NedenAciklamasi } from './nedenler';
-import { H2_CIP_IPUCU, PROTOKOL_ETIKETI, adimGecerliligi, adimSirala, kademeMetni, ondalik, sonucOzetiHesapla, turEtiketi, yuzde, type AdimBirimi } from './yukTestiOrtak';
+import {
+  H2_CIP_IPUCU, PROTOKOL_ETIKETI, adimGecerliligi, adimSirala, hostCpuIpucu, kademeMetni, ondalik, sonucOzetiHesapla, tekrarIpucu, tekrarMetni, turCumlesi, turEtiketi,
+  yukCpuHucre, yukCpuKolonuVar, yuzde, type AdimBirimi,
+} from './yukTestiOrtak';
 
 // ── Kolonlar ve ipuclari ────────────────────────────────────────────────────────────
 type OzetKolonu = { anahtar: string; baslik: string; genislik: string; sag?: boolean; ipucu: string };
-export function ozetKolonlari(birim: AdimBirimi, serbest: boolean): OzetKolonu[] {
+/** `yukCpu`: adimlardan en az birinde yuk makinesi CPU'su olculmus (2026-11-03 sonrasi kosu); eski kosuda kolon YOK
+ *  (tablo BIREBIR eskisi). */
+export function ozetKolonlari(birim: AdimBirimi, serbest: boolean, yukCpu = false, nproc: number | null = null): OzetKolonu[] {
   const wrk = birim === 'bağlantı';
-  return [
-    { anahtar: 'adim', baslik: 'Adım', genislik: '7rem', ipucu: wrk ? 'Aynı anda açık bağlantı sayısı ve kaçıncı tekrar olduğu (r1, r2).' : 'İstenen hız (saniyedeki istek) ve kaçıncı tekrar olduğu (r1, r2).' },
+  const kolonlar: OzetKolonu[] = [
+    { anahtar: 'adim', baslik: 'Adım', genislik: '7rem', ipucu: `${wrk ? 'Aynı anda açık bağlantı sayısı ve kaçıncı tekrar olduğu (1. tekrar, 2. tekrar).' : 'İstenen hız (saniyedeki istek) ve kaçıncı tekrar olduğu (1. tekrar, 2. tekrar).'} ${tekrarIpucu(birim)}` },
     { anahtar: 'istek', baslik: 'İstek', genislik: '4.5rem', sag: true, ipucu: 'Ölçüm süresince gönderilen istek sayısı (ısınma hariç).' },
     { anahtar: 'rps', baslik: 'Gerçek hız', genislik: '4.5rem', sag: true, ipucu: wrk ? 'Saniyede tamamlanan ortalama istek; kapalı döngüde hızı bağlantı sayısı ve yanıt süresi belirler.' : 'Saniyede gerçekten gönderilen ortalama istek; istenen hızın altındaysa yük aracı ya da hedef yetişemedi.' },
     { anahtar: 'p50', baslik: 'Medyan', genislik: '4.5rem', sag: true, ipucu: 'İsteklerin yarısı bu süreden kısa sürede yanıtlandı (ms, p50): tipik yanıt süresi.' },
@@ -32,9 +39,11 @@ export function ozetKolonlari(birim: AdimBirimi, serbest: boolean): OzetKolonu[]
     { anahtar: 'hata', baslik: 'Hata', genislik: '4.5rem', sag: true, ipucu: wrk ? 'Başarısız isteklerin oranı: 2xx / 3xx dışı yanıt ya da soket hatası.' : 'Başarısız isteklerin oranı: bağlantı hatası, zaman aşımı ya da 4xx / 5xx yanıt.' },
     { anahtar: 'n429', baslik: '429', genislik: '4.5rem', sag: true, ipucu: 'Hız sınırı (limit_req / limit_conn) yüzünden reddedilen istek sayısı; 0 olmalı.' },
     { anahtar: 'n5xx', baslik: '5xx', genislik: '4.5rem', sag: true, ipucu: 'Sunucunun hata (500–599) döndürdüğü istek sayısı; 0 olmalı.' },
-    { anahtar: 'cpu', baslik: 'Host CPU', genislik: '4.5rem', sag: true, ipucu: serbest ? 'Serbest hedefte sunucu ölçülmez.' : 'Ölçüm sırasında hedef sunucunun ortalama CPU kullanımı; %90 üstü sunucunun doyduğunu gösterir.' },
+    { anahtar: 'cpu', baslik: 'Host CPU', genislik: '4.5rem', sag: true, ipucu: serbest ? 'Serbest hedefte sunucu ölçülmez.' : `Ölçüm sırasında hedef sunucunun ortalama CPU kullanımı: ${hostCpuIpucu(nproc)} %90 üstü sunucunun doyduğunu gösterir.` },
+    { anahtar: 'yuk', baslik: 'Yük mak. boşta', genislik: '4.5rem', sag: true, ipucu: 'Ölçüm sırasında yük makinesinin boşta CPU ortalaması; %20 altında “yük doydu”: sonuç hedefin değil yük makinesinin sınırını gösterebilir (kayıt beklenip ölçülemeyen adım: “ölçülemedi”).' },
     { anahtar: 'sonuc', baslik: 'Sonuç', genislik: '6.5rem', ipucu: 'Bu adımın ölçümüne güvenilip güvenilmeyeceği: geçerli, doyma (sınırda), geçersiz ya da hatalı; nedeni üstteki kutuda.' },
   ];
+  return yukCpu ? kolonlar : kolonlar.filter((k) => k.anahtar !== 'yuk');
 }
 
 const sayi = (x: number | null | undefined) => (x == null || !Number.isFinite(x) ? '—' : fmtNumber(x));
@@ -139,7 +148,7 @@ export function NedenListesi({ gruplar, adimlar, birim }: { gruplar: NedenGrubu[
               <p className="wrap-anywhere">{g.aciklama.cumle}</p>
               {g.reloadlar.length > 0 && (
                 <p className="wrap-anywhere" style={{ color: 'var(--text-secondary)' }}>
-                  {`Reload ${g.reloadlar.map((r) => reloadZamanMetni({ ...r, tur: r.tur ? turEtiketi(r.tur, adimlar, birim) : null })).join('; ')}.`}
+                  {`Reload ${g.reloadlar.map((r) => reloadZamanMetni({ ...r, tur: r.tur ? turCumlesi(r.tur, adimlar, birim) : null })).join('; ')}.`}
                 </p>
               )}
               {g.turlar.length > 0 && (
@@ -168,7 +177,7 @@ export function reloadOzetMetni(ozet: NlSonucOzeti, adimlar: NlAdim[], birim: Ad
   // Reload'la dusmus bir adima degen olay icin "olcum etkilenmedi" denmez (evresi ne derse desin).
   const dusen = new Set(adimlar.filter((a) => a.nedenler.some((n) => /^reload\(/.test(n))).map((a) => a.tur));
   const dusurdu = (r: NlSonucOzeti['reloadlar'][number]) => (r.tur !== null && dusen.has(r.tur)) || r.etkilenenTurlar.some((t) => dusen.has(t));
-  const anlar = kalan.map((r) => `${reloadZamanMetni({ ...r, tur: r.tur ? turEtiketi(r.tur, adimlar, birim) : null })}${dusurdu(r) ? '' : OLCUM_DISI_NOTU[r.faz] ?? ''}`);
+  const anlar = kalan.map((r) => `${reloadZamanMetni({ ...r, tur: r.tur ? turCumlesi(r.tur, adimlar, birim) : null })}${dusurdu(r) ? '' : OLCUM_DISI_NOTU[r.faz] ?? ''}`);
   const bas = gosterilen.size ? 'Ayrıca nginx' : 'Koşu sırasında nginx';
   return `${bas} ${fmtNumber(kalan.length)} kez yeniden yüklendi (reload): ${anlar.join('; ')}.`;
 }
@@ -178,9 +187,10 @@ const sayiHucre = 'px-2.5 py-1.5 text-right tabular-nums';
 const KOTU = { color: 'var(--status-danger-text)', fontWeight: 600 } as const;
 const UYARI = { color: 'var(--status-warning-text)', fontWeight: 600 } as const;
 
-export function OzetTablosu({ adimlar, birim, serbest, aktif }: { adimlar: NlAdim[]; birim: AdimBirimi; serbest: boolean; aktif: boolean }) {
+export function OzetTablosu({ adimlar, birim, serbest, aktif, nproc = null }: { adimlar: NlAdim[]; birim: AdimBirimi; serbest: boolean; aktif: boolean; nproc?: number | null }) {
   const [aciklamaAcik, setAciklamaAcik] = useState(false);
-  const kolonlar = ozetKolonlari(birim, serbest);
+  const yukCpu = yukCpuKolonuVar(adimlar);
+  const kolonlar = ozetKolonlari(birim, serbest, yukCpu, nproc);
   const sirali = adimSirala(adimlar);
   const cokSeri = new Set(adimlar.map((a) => [a.senaryo, a.kip, a.ae].join('/'))).size > 1;
   const aciklamaId = 'yuk-ozet-kolonlar';
@@ -190,7 +200,7 @@ export function OzetTablosu({ adimlar, birim, serbest, aktif }: { adimlar: NlAdi
         Adım sonuçları <span className="font-normal" style={{ color: 'var(--text-secondary)' }}>— süreler milisaniye; başlığın üstünde durunca ne anlattığı görünür</span>
       </h3>
       <div className="overflow-x-auto rounded-lg border" style={{ borderColor: 'var(--border-subtle)' }}>
-        <table className="w-full min-w-[46rem] table-fixed border-collapse" aria-label="Adım sonuçları özeti">
+        <table className={`w-full ${yukCpu ? 'min-w-[50.5rem]' : 'min-w-[46rem]'} table-fixed border-collapse`} aria-label="Adım sonuçları özeti">
           <colgroup>{kolonlar.map((k) => <col key={k.anahtar} style={{ width: k.genislik }} />)}</colgroup>
           <thead><tr>{kolonlar.map((k) => (
             <th key={k.anahtar} scope="col" title={k.ipucu} className={`px-2.5 py-1.5 text-[11px] whitespace-nowrap ${k.sag ? 'text-right' : 'text-left'}`} style={TH_STIL}>
@@ -207,7 +217,7 @@ export function OzetTablosu({ adimlar, birim, serbest, aktif }: { adimlar: NlAdi
                 <tr key={`${a.tur}|${i}`} className="border-t" style={{ borderColor: 'var(--border-subtle)' }}>
                   <td className="px-2.5 py-1.5">
                     <div className="truncate font-semibold tabular-nums" title={kademeMetni(a.hiz, birim)}>{kademeMetni(a.hiz, birim)}</div>
-                    <div className="truncate text-[11px]" style={{ color: 'var(--text-secondary)' }} title={a.tur}>{`${a.tekrar != null ? `r${a.tekrar}` : '—'}${cokSeri ? ` · ${[a.senaryo, a.kip, a.ae].join('/')}` : ''}`}</div>
+                    <div className="truncate text-[11px]" style={{ color: 'var(--text-secondary)' }} title={a.tur}>{`${a.tekrar != null ? tekrarMetni(a.tekrar) : '—'}${cokSeri ? ` · ${[a.senaryo, a.kip, a.ae].join('/')}` : ''}`}</div>
                   </td>
                   <td className={sayiHucre}>{sayi(a.nIstek)}</td>
                   <td className={sayiHucre}>{a.gercekRps != null ? `${ondalik(a.gercekRps, 1)}/sn` : '—'}</td>
@@ -220,6 +230,7 @@ export function OzetTablosu({ adimlar, birim, serbest, aktif }: { adimlar: NlAdi
                   <td className={sayiHucre} style={serbest ? { color: 'var(--text-muted)' } : (a.hostCpuOrt ?? 0) > 90 ? UYARI : undefined} title={serbest ? 'Serbest hedefte sunucu ölçülmez.' : undefined}>
                     {!serbest && a.hostCpuOrt != null ? `%${ondalik(a.hostCpuOrt, 0)}` : '—'}
                   </td>
+                  {yukCpu && <td className={sayiHucre} style={a.yukDoydu ? UYARI : undefined}>{yukCpuHucre(a)}</td>}
                   <td className="px-2.5 py-1.5"><Hap label={d.etiket} ton={d.ton} title={ilkNeden || undefined} /></td>
                 </tr>
               );

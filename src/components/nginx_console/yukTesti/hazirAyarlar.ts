@@ -5,13 +5,15 @@
 // tek cumleyle soyleyen aciklamayla. Hazir ayar dugmeleri (Hızlı deneme / Standart / Kapasite) alanlari DOLDURUR, kullanici
 // yine degistirebilir; kanonik govde ve sunucu denetimleri DEGISMEZ (dugme yalniz form metnini yazar).
 //
-// Kurallar (sunucu ile ayni sinirlar; hedefSinirlari'nin daralttigi `sinir`):
-//  - k6 hizlari 1..maxHiz (hedefin olculmus limit_req'i, serbestte 200), wrk baglantilari 1..maxBaglanti (serbestte 50),
+// Kurallar (sunucu ile ayni sinirlar; hedefSinirlari'nin verdigi `sinir`):
+//  - k6 hizlari 1..maxHiz (sunucu hedefinde 5000, serbestte 200; 2026-11-03'ten beri hedefin olculmus limit_req'i
+//    DARALTMAZ, asim formda ve on kontrolde uyaridir), wrk baglantilari 1..maxBaglanti (199, serbestte 50),
 //    her baglanti is parcacigina tam bolunur ve is parcacigi en kucuk baglantiyi asmaz; kademeler tekil ve artan.
 //  - Sureler [sureMin, sureMax], isinma [5, isinmaMax], tekrar [1, maxTekrar], bosta [30, 120], bosluk [0, 120].
 //  - Butce (butceSn) <= maxButceSn: asarsa once tekrar, sonra olcum suresi, en son kademe sayisi azaltilir.
 //  - Standart = sunucunun /hedefler varsayilani (serbestte serbest varsayilani); varsayilan hiz hedef sinirini asarsa
-//    hizlar sinirin %25 / %50 / %85'ine olceklenir. Hizli deneme ~5 dk kucuk yuk, Kapasite sinira kadar 5 kademe.
+//    hizlar sinirin %25 / %50 / %85'ine olceklenir. Hizli deneme ~5 dk kucuk yuk (eski 450 tavaninin %10 / %20'si:
+//    45 / 90; sinir daha kucukse onun), Kapasite sinira kadar 5 kademe (sunucu hedefinde 1000 ... 5000).
 //  - HTTP/2 (h2_sozlesme.md): hazir ayar protokolu DEGISTIRMEZ; h2'de kanonik parametrenin kipi 'ka' (h2 yalniz keep-alive).
 import type { NlMotor, NlParametreler, NlProtokol, NlSinirlar, NlVarsayilanlar } from '@/api/nginxLoadtestApi';
 import { butceSn, sinirlariTamamla } from './yukTestiOrtak';
@@ -21,7 +23,7 @@ export const HAZIR_AYAR_SIRASI: HazirAyarAdi[] = ['hizli', 'standart', 'kapasite
 export const HAZIR_AYAR_ETIKETI: Record<HazirAyarAdi, { ad: string; aciklama: string }> = {
   hizli: { ad: 'Hızlı deneme', aciklama: 'Küçük yükle iki kısa adım, tekrar yok: kurulumun ve senaryonun çalıştığını görmek için (yaklaşık 5 dakika).' },
   standart: { ad: 'Standart', aciklama: 'Üç yük kademesi, her biri iki kez: bir değişikliği öncesi / sonrası karşılaştırmak için önerilen ayar.' },
-  kapasite: { ad: 'Kapasite', aciklama: 'Hedefin izin verdiği üst sınıra kadar beş kademe, her biri iki kez: sunucunun nerede zorlandığını bulmak için.' },
+  kapasite: { ad: 'Kapasite', aciklama: 'Portalın izin verdiği üst sınıra kadar beş kademe (sunucu hedefinde 1000–5000 istek/sn), her biri iki kez: sunucunun nerede zorlandığını bulmak için. Hedefin limit_req değeri daha düşükse ön kontrol uyarır.' },
 };
 
 /** Hazir ayarin doldurdugu form alanlari (metin; form bunlari oldugu gibi yazar). Iki motorun alanlari birlikte:
@@ -41,6 +43,8 @@ const tekilArtan = (xs: number[]) => [...new Set(xs)].sort((a, b) => a - b);
 const oranlardan = (oranlar: number[], tavan: number) => tekilArtan(oranlar.map((o) => guzelSayi(tavan * o, tavan)));
 
 interface Zamanlama { tekrar: number; isinma: number; sure: number; bosluk: number; bosta: number }
+// Hizli deneme kucuk yuk: eski sunucu tavaninin (450) %10 / %20'si; yeni 5000 tavaninda da 45 / 90 kalir (K1, f).
+const HIZLI_TABAN = 450;
 const ZAMANLAMA: Record<Exclude<HazirAyarAdi, 'standart'>, Zamanlama> = {
   hizli: { tekrar: 1, isinma: 10, sure: 40, bosluk: 10, bosta: 30 },
   kapasite: { tekrar: 2, isinma: 30, sure: 120, bosluk: 30, bosta: 60 },
@@ -55,7 +59,7 @@ function zamanKirp(z: Zamanlama, s: Sinir): Zamanlama {
 function k6Hizlari(ad: HazirAyarAdi, s: Sinir, v: { hizlar: number[] }): number[] {
   const tavan = s.maxHiz;
   if (tavan < 1) return [];
-  if (ad === 'hizli') return oranlardan([0.1, 0.2], tavan);
+  if (ad === 'hizli') return oranlardan([0.1, 0.2], Math.min(tavan, HIZLI_TABAN));
   if (ad === 'kapasite') return oranlardan([0.2, 0.4, 0.6, 0.8, 1], tavan);
   const vars = tekilArtan(v.hizlar.filter((x) => Number.isInteger(x) && x >= 1));
   return vars.length && vars.length <= 5 && vars.every((x) => x <= tavan) ? vars : oranlardan([0.25, 0.5, 0.85], tavan);
@@ -97,7 +101,8 @@ function kademeAzalt(xs: number[], n: number): number[] {
 /**
  * Hazir ayarin form degerleri. `sinir`: hedefSinirlari'nin daralttigi sinirlar (hedef / serbest); `varsayilan`: /hedefler
  * varsayilani; `serbest`: serbest hedefte k6 varsayilani serbest varsayilanidir. Donen degerler `parametreHatalari`ndan
- * gecer (testte kilitli); sinir sifirsa (olculmus limit_req < 2 r/s) kademe bos kalir ve form alanin hatasini gosterir.
+ * gecer (testte kilitli); sinir sifirsa kademe bos kalir ve form alanin hatasini gosterir (B3'ten beri olculmus limit
+ * siniri sifirlamaz; yalniz bozuk sinir nesnesi).
  */
 export function hazirAyar(ad: HazirAyarAdi, sinir: NlSinirlar, varsayilan: NlVarsayilanlar, { serbest = false }: { serbest?: boolean } = {}): HazirAyarDegerleri {
   const s = sinirlariTamamla(sinir);
@@ -148,7 +153,7 @@ export function hangiHazirAyar(form: HazirAyarDegerleri, motor: NlMotor, ayarlar
  * gorunur; aralik ve hata ayri satirda (alan hatasi). Serbest hedefte bosluk / bosta metni ayri (CPU olculmez).
  */
 export const ALAN_ACIKLAMASI = {
-  hizlar: 'Saniyede gönderilecek istek sayısı; her sayı ayrı bir adımdır ve hızlar küçükten büyüğe sırayla denenir.',
+  hizlar: 'Saniyede gönderilecek istek sayısı (sunucu hedefinde en çok 5000); her sayı ayrı bir adımdır ve hızlar küçükten büyüğe sırayla denenir. Hedefin ölçülmüş limit_req değerini aşan hız için ön kontrol uyarır (429 alınırsa koşu durur).',
   baglantilar: 'Aynı anda açık tutulacak bağlantı sayısı; her sayı ayrı bir adımdır, her bağlantı yanıtı alınca yeni istek gönderir.',
   sure: 'Her adımın ölçülen bölümü; uzadıkça sonuç daha kararlı olur, koşu da o kadar uzar.',
   tekrar: 'Her adımın kaç kez koşulacağı; 2 ve üstü, iki ölçüm arasındaki farkla sonucun ne kadar güvenilir olduğunu gösterir.',
@@ -157,7 +162,7 @@ export const ALAN_ACIKLAMASI = {
   boslukSerbest: 'İki adım arasındaki bekleme; serbest hedefte CPU ölçülmez, yalnız hedefin dinlenmesi için beklenir.',
   bosta: 'Yük başlamadan önce sunucunun boşta CPU’su bu kadar ölçülür; adımların CPU’sundan bu taban düşülür.',
   bostaSerbest: 'Serbest hedefte CPU kaydedici yok; bu süre beklenmez, yalnız süre bütçesine eklenir.',
-  maxvu: 'k6’nın aynı anda kullanabileceği en çok sanal kullanıcı; hız tutturulamazsa adım “doyma” sayılır, gerekirse artırın.',
+  maxvu: 'k6’nın aynı anda kullanabileceği en çok sanal kullanıcı (en çok 1000); gereken VU ≈ hız × yanıt süresi. Hız tutturulamazsa adım “doyma” sayılır, gerekirse artırın; her VU yük sunucusunda bellek tutar.',
   is_parcacigi: 'wrk’nin bağlantıları paylaştırdığı iş parçacığı sayısı; yükün miktarını değil, yük sunucusunun çekirdek kullanımını değiştirir.',
   kip: 'Yeni bağlantı: her istek yeni TCP + TLS el sıkışması yapar (TLS maliyeti ölçülür); keep-alive: bağlantı açık kalır, yalnız isteğin maliyeti ölçülür.',
   // wrk TLS oturumunu yeniden kullanabilir: analiz wrk'de TLS payini hesaplamaz (WRK_TLS_UYARISI).

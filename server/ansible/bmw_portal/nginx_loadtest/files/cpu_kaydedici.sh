@@ -10,8 +10,10 @@
 # Portal  : el kiti f5_rehber/har_yuk_testi/cpu_kaydedici.sh'in kopyasi. Farklar: (1) UA oneki UA_ONEK; (2) test
 #           satiri YALNIZ bu kaydin ADIM'inin satiriysa sayilir: user-agent=<UA_ONEK>/<ADIM>_... (birlesik bicimde
 #           tirnakli <UA_ONEK>/<ADIM>_...; ADIM awk'a -v ADIM ile gider); baska ADIM'in satiri (or. yetim kalmis
-#           eski bir k6) 'diger' trafiktir. Portal TERM ile durdurur (trap bitir: bilgi_*.txt yazilir); cikti
-#           dosyalari ve bicimleri kitle ayni.
+#           eski bir k6) 'diger' trafiktir. Portal TERM ile durdurur (trap bitir: bilgi_*.txt yazilir); kitin cikti
+#           dosyalari ve bicimleri ayni. (3) 2026-11-03: ek dosya bellek_<TABAN>.csv (epoch,nginx_rss_kb,isci_sayi,
+#           mem_total_kb,mem_available_kb; her ornekte worker VmRSS toplami + /proc/meminfo). sunucu_*.csv semasina
+#           kolon EKLENMEZ: eski Portal ve karsilastir.py bellek_ onekini tanimaz, dosyayi atlar.
 set -u
 export LC_ALL=C
 kullanim() { sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
@@ -41,7 +43,7 @@ case "$OUT_R/" in "$LOG_R"/*) hata "SONUC log dizininin ($LOGDIR) altinda olamaz
 TABAN="${ADIM}_${HOSTK}"; i=2
 while [ -e "$OUT/sunucu_${TABAN}.csv" ]; do TABAN="${ADIM}_${HOSTK}_$i"; i=$((i + 1)); done
 CSV="$OUT/sunucu_${TABAN}.csv"; BILGI="$OUT/bilgi_${TABAN}.txt"; KONF="$OUT/konf_${TABAN}.txt"
-LOGTSV="$OUT/log_${TABAN}.tsv"; DIGER="$OUT/diger_${TABAN}.tsv"
+LOGTSV="$OUT/log_${TABAN}.tsv"; DIGER="$OUT/diger_${TABAN}.tsv"; BELLEK="$OUT/bellek_${TABAN}.csv"
 [ -n "$NOT" ] && printf '%s  %s\n' "$NOT" "($(date '+%F %T'), $HOSTK)" >> "$OUT/NOT.txt"
 
 # --- nginx master ve worker'lar (/proc taramasi; pgrep gerekmez) --------------------------------------------
@@ -91,6 +93,22 @@ ornek_al() {
   printf '%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n' "$t" "$IU" "$IS" "$IN" "$IK" "$IP" "${cu:-0}" "${cn:-0}" \
     "${cs:-0}" "${ci:-0}" "${cw:-0}" "${cq:-0}" "${csq:-0}" "${cst:-0}" >> "$CSV"
   NORNEK=$((NORNEK + 1))
+  bellek_al "$t"
+}
+bellek_al() {   # worker'larin VmRSS toplami (kB, IP listesi) + MemTotal / MemAvailable; okunamayan alan bos (bilgi)
+  local p k v _ rss=0 mt="" ma=""
+  for p in ${IP//+/ }; do
+    [[ "$p" =~ ^[0-9]+$ ]] || continue
+    while read -r k v _; do
+      if [ "$k" = "VmRSS:" ]; then [[ "$v" =~ ^[0-9]+$ ]] && rss=$((rss + v)); break; fi
+    done 2>/dev/null < "$PROC/$p/status"
+  done
+  while read -r k v _; do
+    case "$k" in MemTotal:) mt="$v" ;; MemAvailable:) ma="$v" ;; esac
+    [ -n "$mt" ] && [ -n "$ma" ] && break
+  done 2>/dev/null < "$PROC/meminfo"
+  [[ "$mt" =~ ^[0-9]+$ ]] || mt=""; [[ "$ma" =~ ^[0-9]+$ ]] || ma=""
+  printf '%s,%s,%s,%s,%s\n' "$1" "$rss" "$IN" "$mt" "$ma" >> "$BELLEK"
 }
 simdi() { if [ -n "${EPOCHSECONDS:-}" ]; then echo "$EPOCHSECONDS"; else date +%s; fi; }
 df_yuzde() { df -P "$1" 2>/dev/null | awk 'NR == 2 { sub(/%$/, "", $5); print $5 + 0 }'; }
@@ -134,6 +152,7 @@ done
 [ "${#LOGLAR[@]}" -gt 0 ] || UYARI+=("okunabilir_log_yok:$LOGDIR/*.log")
 
 echo "epoch,isci_utime,isci_stime,isci_sayi,kapanan_sayi,pidler,cpu_user,cpu_nice,cpu_system,cpu_idle,cpu_iowait,cpu_irq,cpu_softirq,cpu_steal" > "$CSV"
+echo "epoch,nginx_rss_kb,isci_sayi,mem_total_kb,mem_available_kb" > "$BELLEK"
 NORNEK=0
 
 log_cikar() {   # yeni baytlardan yalniz test satirlari -> LOGTSV; digerleri yalniz saniye basina adet -> DIGER
@@ -237,7 +256,7 @@ bitir() {
   for x in ${UYARI[@]+"${UYARI[@]}"}; do echo "   UYARI: $x"; done
   for x in ${GECERSIZ[@]+"${GECERSIZ[@]}"}; do echo "   GECERSIZ: $x"; done
   echo "   dosyalar: $CSV"
-  echo "             $LOGTSV  $DIGER  $BILGI  $KONF"
+  echo "             $LOGTSV  $DIGER  $BILGI  $KONF  $BELLEK"
   echo "   Bu dizini (sonuc/$ADIM/) dizustune alin; yuk makinesindeki sonuc/$ADIM/ ile ayni dizinde birlestirin."
   exit 0
 }

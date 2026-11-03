@@ -37,9 +37,11 @@ import { ALAN_ACIKLAMASI, HAZIR_AYAR_SIRASI, hangiHazirAyar, hazirAyar, hazirAya
 import { CPU_OLCULEMEDI, kosuNedeniniAyir, nedenAcikla, nedenleriBol, uyariAcikla } from '../yukTesti/nedenler';
 import { butceSn, hedefSinirlari, parametreHatalari, sonucOzetiHesapla } from '../yukTesti/yukTestiOrtak';
 
+// 2026-11-03 (K1): sunucunun SINIRLAR'i (hiz 5000, VU 1000, wrk baglanti 199, tavan 5000).
 const SINIR: NlSinirlar = {
-  maxHiz: 450, maxTekrar: 3, sureMin: 40, sureMax: 300, isinmaMax: 60, maxVu: 199, maxButceSn: 2700,
+  maxHiz: 5000, maxTekrar: 3, sureMin: 40, sureMax: 300, isinmaMax: 60, maxVu: 1000, maxButceSn: 2700,
   baglantiMin: 1, maxBaglanti: 199, maxBaglantiSayisi: 5, isParcacigiMin: 1, maxIsParcacigi: 16, serbestTavanRps: 200, serbestMaxBaglanti: 50,
+  maxTavanRps: 5000,
 };
 const VARSAYILAN: NlVarsayilanlar = {
   motor: 'k6', hizlar: [100, 250, 400], maxvu: 150, baglantilar: [2, 4, 8], is_parcacigi: 2, tekrar: 2, isinma: 30, sure: 120, bosluk: 30, bosta: 60,
@@ -50,8 +52,10 @@ describe('Yük Testi sade — hazır ayarlar (SD1, SD2)', () => {
   const KUMELER: [string, NlSinirlar, boolean][] = [
     ['genel', SINIR, false],
     ['serbest', hedefSinirlari(SINIR, null, { hedefTuru: 'serbest' }), true],
-    ['daraltilmis hedef (limit_req 120, limit_conn 6)', hedefSinirlari(SINIR, { hizSiniri: 120, vuSiniri: 6 }), false],
-    ['cok dar hedef (limit_req 3, limit_conn 3)', hedefSinirlari(SINIR, { hizSiniri: 3, vuSiniri: 3 }), false],
+    // K2: olculmus limit artik daraltmaz; kucuk sinirli kume (eski sunucu / test) hazir ayar kuralini yine sinar.
+    ['dar sinir (hiz 120, VU / baglanti 6)', { ...SINIR, maxHiz: 120, maxVu: 6, maxBaglanti: 6 }, false],
+    ['cok dar sinir (3 / 3)', { ...SINIR, maxHiz: 3, maxVu: 3, maxBaglanti: 3 }, false],
+    ['olculmus limit daraltmaz (limit_req 120, limit_conn 6)', hedefSinirlari(SINIR, { hizSiniri: 120, vuSiniri: 6 }), false],
     ['dar sure (min 100, butce 1000)', { ...SINIR, sureMin: 100, maxButceSn: 1000 }, false],
   ];
   it('SD1 her küme ve iki motorda sunucu kuralları geçer, bütçe ≤ üst sınır', () => {
@@ -71,7 +75,7 @@ describe('Yük Testi sade — hazır ayarlar (SD1, SD2)', () => {
         }
       }
     }
-    // Hizli deneme: ~5 dk, kucuk yuk (hizin %10 / %20'si), tekrar yok.
+    // Hizli deneme: ~5 dk, kucuk yuk (eski 450 tavaninin %10 / %20'si: 5000 tavaninda da 45 / 90), tekrar yok.
     const hizli = hazirAyar('hizli', SINIR, VARSAYILAN);
     expect(hizli).toMatchObject({ hizlar: '45 90', baglantilar: '2 4', is_parcacigi: '2', tekrar: '1', sure: '40' });
     expect(hazirAyarSuresiSn(hizli, 'k6')).toBe(310);
@@ -81,11 +85,17 @@ describe('Yük Testi sade — hazır ayarlar (SD1, SD2)', () => {
     // Varsayilan hiz hedef sinirini asarsa olceklenir (120: %25 / %50 / %85).
     expect(hazirAyar('standart', KUMELER[2][1], VARSAYILAN).hizlar).toBe('30 60 100');
     // Kapasite: bes kademe, son kademe hedef siniri; VU sinirin tamami.
-    expect(hazirAyar('kapasite', SINIR, VARSAYILAN)).toMatchObject({ hizlar: '90 180 270 360 450', maxvu: '199', baglantilar: '2 4 8 16 32' });
+    expect(hazirAyar('kapasite', SINIR, VARSAYILAN)).toMatchObject({ hizlar: '1000 2000 3000 4000 5000', maxvu: '1000', baglantilar: '2 4 8 16 32' });
+    expect(hazirAyarSuresiSn(hazirAyar('kapasite', SINIR, VARSAYILAN), 'k6')).toBe(60 + 5 * 2 * (30 + 120 + 30 + 20) + 120);
+    // Olculmus limit hazir ayari DARALTMAZ (K2): uyari formda / on kontrolde.
+    expect(hazirAyar('kapasite', hedefSinirlari(SINIR, { hizSiniri: 270, vuSiniri: 99 }), VARSAYILAN)).toMatchObject({ hizlar: '1000 2000 3000 4000 5000', maxvu: '1000' });
+    // Dar sinirda (sinir 450 ve altinda) hizli deneme sinirin %10 / %20'si (eski davranis).
+    expect(hazirAyar('hizli', { ...SINIR, maxHiz: 450 }, VARSAYILAN).hizlar).toBe('45 90');
+    expect(hazirAyar('hizli', { ...SINIR, maxHiz: 120 }, VARSAYILAN).hizlar).toBe('12 25');
     expect(hazirAyar('kapasite', KUMELER[1][1], VARSAYILAN, { serbest: true })).toMatchObject({ hizlar: '40 80 120 160 200', maxvu: '50', baglantilar: '2 4 8 16 32' });
     expect(hazirAyar('kapasite', KUMELER[2][1], VARSAYILAN).baglantilar).toBe('2 4');
     // Butce dar: once tekrar, sonra sure, en son kademe (ortadan) azalir: 4 x 1 x (30+100+30+20) + 60 + 120 = 900.
-    expect(hazirAyar('kapasite', KUMELER[4][1], VARSAYILAN)).toMatchObject({ tekrar: '1', sure: '100', hizlar: '90 180 360 450', baglantilar: '2 4 16 32' });
+    expect(hazirAyar('kapasite', KUMELER[5][1], VARSAYILAN)).toMatchObject({ tekrar: '1', sure: '100', hizlar: '1000 2000 4000 5000', baglantilar: '2 4 16 32' });
   });
 
   it('SD2 varsayılan form Standart; tek alan değişince Özel; ilgisiz motor alanı seçimi bozmaz', () => {
@@ -216,11 +226,11 @@ describe('Yük Testi sade — normalleştirme ve özet (SD5–SD7)', () => {
     expect(sonucOzetiNormalle({})).toBeNull();
     expect(sonucOzetiNormalle({
       adim_sayisi: 6, gecerli_adim_sayisi: 4, toplam_istek: 1000, p95_en_iyi: { deger: '1.3', tur: 'a' }, p95_en_kotu: null, p95_kapsam: 'gecerli',
-      toplam_429: 0, toplam_5xx: 0, en_yuksek_hata_orani: 0, hata_var: false, cpu_olculemeyen_adim: 2, konf_degisti: true,
+      toplam_429: 0, toplam_5xx: 0, en_yuksek_hata_orani: 0, hata_var: false, cpu_olculemeyen_adim: 2, konf_degisti: true, yuk_doydu_adim: 1,
       reloadlar: [{ t: 10, t_once: 8, t_son: 40, tur: 'a', faz: 'olcum', kesit: 'R2_gbngxt33', worker_once: 8, worker_sonra: 8, kapanan_en_cok: 8, etkilenen_turlar: ['a'] }],
     })).toEqual({
       adimSayisi: 6, gecerliAdimSayisi: 4, toplamIstek: 1000, p95EnIyi: { deger: 1.3, tur: 'a' }, p95EnKotu: null, p95Kapsam: 'gecerli',
-      toplam429: 0, toplam5xx: 0, enYuksekHataOrani: 0, hataVar: false, cpuOlculemeyenAdim: 2, konfDegisti: true,
+      toplam429: 0, toplam5xx: 0, enYuksekHataOrani: 0, hataVar: false, cpuOlculemeyenAdim: 2, yukDoyduAdim: 1, konfDegisti: true,
       reloadlar: [{ t: 10, tOnce: 8, tSon: 40, tur: 'a', faz: 'olcum', kesit: 'R2_gbngxt33', workerOnce: 8, workerSonra: 8, kapananEnCok: 8, etkilenenTurlar: ['a'] }],
     });
   });
@@ -394,8 +404,8 @@ describe('Yük Testi sade — koşu ayrıntısı (SD9, SD10)', () => {
     render(<KosuAyrinti kosuId={2} isAdmin={false} onGeri={vi.fn()} />);
     const ozetSatiri = await screen.findByLabelText('Koşu özeti');
     expect(ozetSatiri.textContent).toContain('Gönderilen istek179.936');
-    expect(ozetSatiri.textContent).toContain('En iyi p951,35 ms400/sn · r2');
-    expect(ozetSatiri.textContent).toContain('En kötü p952,13 ms100/sn · r1');
+    expect(ozetSatiri.textContent).toContain('En iyi p951,35 ms400/sn · 2. tekrar');
+    expect(ozetSatiri.textContent).toContain('En kötü p952,13 ms100/sn · 1. tekrar');
     expect(ozetSatiri.textContent).toContain('Hata yok');
     // Ozet tablo: 11 kolon, ipuclari; satir degerleri.
     const tablo = screen.getByRole('table', { name: 'Adım sonuçları özeti' });
@@ -406,8 +416,8 @@ describe('Yük Testi sade — koşu ayrıntısı (SD9, SD10)', () => {
     const satirlar = within(tablo).getAllByRole('row').slice(1);
     expect(satirlar).toHaveLength(6);
     const hucreler = (r: HTMLElement) => within(r).getAllByRole('cell').map((c) => c.textContent);
-    expect(hucreler(satirlar[0])).toEqual(['100/snr1', '12.001', '100/sn', '1,61', '2,13', '2,53', '%0', '0', '0', '%4', 'geçerli']);
-    expect(hucreler(satirlar[1])).toEqual(['100/snr2', '11.996', '100/sn', '1,54', '1,98', '5,2', '%0', '0', '0', '%3', 'geçersiz']);
+    expect(hucreler(satirlar[0])).toEqual(['100/sn1. tekrar', '12.001', '100/sn', '1,61', '2,13', '2,53', '%0', '0', '0', '%4', 'geçerli']);
+    expect(hucreler(satirlar[1])).toEqual(['100/sn2. tekrar', '11.996', '100/sn', '1,54', '1,98', '5,2', '%0', '0', '0', '%3', 'geçersiz']);
     // Kolon aciklamalari acilir liste.
     const aciklamaDugmesi = screen.getByRole('button', { name: 'Sütunlar ne anlatıyor?' });
     expect(document.getElementById('yuk-ozet-kolonlar')).not.toBeVisible();
@@ -419,12 +429,12 @@ describe('Yük Testi sade — koşu ayrıntısı (SD9, SD10)', () => {
     const maddeler = within(nedenler).getAllByRole('listitem');
     expect(maddeler).toHaveLength(2);
     expect(maddeler[0].textContent).toContain('Test sırasında nginx konfigürasyonu değişti; bu adımın sonuçları güvenilir değil');
-    expect(maddeler[0].textContent).toContain('Etkilenen adımlar: 100/sn · r2, 250/sn · r2');
+    expect(maddeler[0].textContent).toContain('Etkilenen adımlar: 100/sn · 2. tekrar, 250/sn · 2. tekrar');
     expect(maddeler[0].textContent).toContain('kod: konf_degisti');
     expect(maddeler[1].textContent).toContain('Test sırasında nginx yeniden yüklendi (reload): worker süreçleri değişti');
-    expect(maddeler[1].textContent).toContain(`Reload saat ${saat(T_RELOAD)} civarında (${saat(T_RELOAD - 2)} – ${saat(T_RELOAD)} arasında), 250/sn · r2 ölçüm sırasında.`);
+    expect(maddeler[1].textContent).toContain(`Reload saat ${saat(T_RELOAD)} civarında (${saat(T_RELOAD - 2)} – ${saat(T_RELOAD)} arasında), 250/sn adımının 2. tekrarında ölçüm sırasında.`);
     expect(screen.queryByText(/^R2_K_ka_identity_100_r2\(/)).toBeNull();
-    expect(screen.getByText(`Ayrıca nginx 1 kez yeniden yüklendi (reload): saat ${saat(T_ISINMA)} civarında, 400/sn · r1 ısınma sırasında (ölçüm etkilenmedi).`)).toBeTruthy();
+    expect(screen.getByText(`Ayrıca nginx 1 kez yeniden yüklendi (reload): saat ${saat(T_ISINMA)} civarında, 400/sn adımının 1. tekrarında ısınma sırasında (ölçüm etkilenmedi).`)).toBeTruthy();
     // Kaydedici uyarisi duz cumle.
     expect(screen.getByText('Kayıt sırasında hedefin nginx konfigürasyonu değişti (özet 0dc6843c → 648462d7); o sırada koşan adımlar geçersiz sayılır.')).toBeTruthy();
     // Ayrinti kapali; acilinca CPU-ms / kapasite: negatif yok, "—" + neden.
@@ -448,11 +458,11 @@ describe('Yük Testi sade — koşu ayrıntısı (SD9, SD10)', () => {
     render(<KosuAyrinti kosuId={7} isAdmin={false} onGeri={vi.fn()} />);
     const tablo = await screen.findByRole('table', { name: 'Adım sonuçları özeti' });
     const [s1] = within(tablo).getAllByRole('row').slice(1);
-    expect(within(s1).getAllByRole('cell').map((c) => c.textContent)).toEqual(['100/snr1', '—', '99,9/sn', '—', '12,5', '—', '—', '—', '—', '—', 'geçerli']);
+    expect(within(s1).getAllByRole('cell').map((c) => c.textContent)).toEqual(['100/sn1. tekrar', '—', '99,9/sn', '—', '12,5', '—', '—', '—', '—', '—', 'geçerli']);
     const ozet = screen.getByLabelText('Koşu özeti');
     expect(ozet.textContent).toContain('Gönderilen istek—');
-    expect(ozet.textContent).toContain('En iyi p9512,5 ms100/sn · r1');
-    expect(ozet.textContent).toContain('En kötü p9530,3 ms250/sn · r1');
+    expect(ozet.textContent).toContain('En iyi p9512,5 ms100/sn · 1. tekrar');
+    expect(ozet.textContent).toContain('En kötü p9530,3 ms250/sn · 1. tekrar');
     expect(screen.queryByRole('list', { name: 'Nedenler' })).toBeNull();
   });
 
@@ -510,6 +520,7 @@ const R2_GERCEK = sunucuCjs('../../../../server/nginx-loadtest/__tests__/fixture
   gecerlilik: string; gecersizNedenleri: string[]; uyarilar: string[]; sonucOzeti: unknown; adimlar: unknown[];
 };
 const { NEDEN_KALIPLARI } = sunucuCjs('../../../../server/nginx-loadtest/analiz.cjs') as { NEDEN_KALIPLARI: { kod: string; tur: 'neden' | 'uyari'; re: RegExp }[] };
+const { KIP_KALIPLARI } = sunucuCjs('../../../../server/nginx-loadtest/gorunum.cjs') as { KIP_KALIPLARI: { kod: string; re: RegExp }[] };
 
 describe('Yük Testi sade — sunucuyla çapraz kontrol (SD11, SD12)', () => {
   it('SD11 gerçek R2 sayıları sunucu zincirinden: özet tablo, iki reload anı, CPU “—” (negatif yok)', async () => {
@@ -523,30 +534,30 @@ describe('Yük Testi sade — sunucuyla çapraz kontrol (SD11, SD12)', () => {
     render(<KosuAyrinti kosuId={2} isAdmin={false} onGeri={vi.fn()} />);
     const ozet = await screen.findByLabelText('Koşu özeti');
     expect(ozet.textContent).toContain('Gönderilen istek179.936');
-    expect(ozet.textContent).toContain('En iyi p951,35 ms400/sn · r2 · geçerli adım yok, tüm adımlardan');
-    expect(ozet.textContent).toContain('En kötü p952,13 ms100/sn · r1 · geçerli adım yok, tüm adımlardan');
+    expect(ozet.textContent).toContain('En iyi p951,35 ms400/sn · 2. tekrar · geçerli adım yok, tüm adımlardan');
+    expect(ozet.textContent).toContain('En kötü p952,13 ms100/sn · 1. tekrar · geçerli adım yok, tüm adımlardan');
     expect(ozet.textContent).toContain('Hata yok');
     const tablo = screen.getByRole('table', { name: 'Adım sonuçları özeti' });
     const satirlar = within(tablo).getAllByRole('row').slice(1);
     const hucreler = (r: HTMLElement) => within(r).getAllByRole('cell').map((c) => c.textContent);
     expect(satirlar.map(hucreler)).toEqual([
-      ['100/snr1', '12.001', '100/sn', '1,61', '2,13', '2,53', '%0', '0', '0', '%4', 'geçersiz'],
-      ['100/snr2', '11.996', '100/sn', '1,54', '1,98', '5,2', '%0', '0', '0', '%4', 'geçersiz'],
-      ['250/snr1', '30.001', '250/sn', '1,25', '1,59', '1,87', '%0', '0', '0', '%4', 'geçersiz'],
-      ['250/snr2', '29.937', '249,5/sn', '1,23', '1,73', '5', '%0', '0', '0', '%4', 'geçersiz'],
-      ['400/snr1', '48.001', '400/sn', '1,03', '1,4', '1,95', '%0', '0', '0', '%4', 'geçersiz'],
-      ['400/snr2', '48.000', '400/sn', '1,03', '1,35', '1,66', '%0', '0', '0', '%4', 'geçersiz'],
+      ['100/sn1. tekrar', '12.001', '100/sn', '1,61', '2,13', '2,53', '%0', '0', '0', '%4', 'geçersiz'],
+      ['100/sn2. tekrar', '11.996', '100/sn', '1,54', '1,98', '5,2', '%0', '0', '0', '%4', 'geçersiz'],
+      ['250/sn1. tekrar', '30.001', '250/sn', '1,25', '1,59', '1,87', '%0', '0', '0', '%4', 'geçersiz'],
+      ['250/sn2. tekrar', '29.937', '249,5/sn', '1,23', '1,73', '5', '%0', '0', '0', '%4', 'geçersiz'],
+      ['400/sn1. tekrar', '48.001', '400/sn', '1,03', '1,4', '1,95', '%0', '0', '0', '%4', 'geçersiz'],
+      ['400/sn2. tekrar', '48.000', '400/sn', '1,03', '1,35', '1,66', '%0', '0', '0', '%4', 'geçersiz'],
     ]);
     const maddeler = within(screen.getByRole('list', { name: 'Nedenler' })).getAllByRole('listitem');
     expect(maddeler).toHaveLength(2);
     expect(maddeler[0].textContent).toContain('Test sırasında nginx konfigürasyonu değişti');
-    expect(maddeler[0].textContent).toContain('Etkilenen adımlar: 100/sn · r1, 100/sn · r2, 250/sn · r1, 250/sn · r2, 400/sn · r1, 400/sn · r2');
+    expect(maddeler[0].textContent).toContain('Etkilenen adımlar: 100/sn · 1. tekrar, 100/sn · 2. tekrar, 250/sn · 1. tekrar, 250/sn · 2. tekrar, 400/sn · 1. tekrar, 400/sn · 2. tekrar');
     const [r1, r2] = sonucOzeti!.reloadlar;
     expect(maddeler[1].textContent).toContain('Test sırasında nginx yeniden yüklendi (reload)');
-    expect(maddeler[1].textContent).toContain(`Reload saat ${saat(r1.t)} civarında (${saat(r1.tOnce!)} – ${saat(r1.t)} arasında), 100/sn · r2 ölçüm sırasında; saat ${saat(r2.t)} civarında (${saat(r2.tOnce!)} – ${saat(r2.t)} arasında), 250/sn · r2 ölçüm sırasında.`);
+    expect(maddeler[1].textContent).toContain(`Reload saat ${saat(r1.t)} civarında (${saat(r1.tOnce!)} – ${saat(r1.t)} arasında), 100/sn adımının 2. tekrarında ölçüm sırasında; saat ${saat(r2.t)} civarında (${saat(r2.tOnce!)} – ${saat(r2.t)} arasında), 250/sn adımının 2. tekrarında ölçüm sırasında.`);
     // Ayni metin sabit saatle (Istanbul): 100_r2 olcumunun 60. sn'si ve 250_r2'ninki.
-    expect(maddeler[1].textContent).toContain('Reload saat 14:54:22 civarında (14:54:21 – 14:54:22 arasında), 100/sn · r2 ölçüm sırasında; saat 15:00:31 civarında');
-    expect(maddeler[1].textContent).toContain('Etkilenen adımlar: 100/sn · r2, 250/sn · r2');
+    expect(maddeler[1].textContent).toContain('Reload saat 14:54:22 civarında (14:54:21 – 14:54:22 arasında), 100/sn adımının 2. tekrarında ölçüm sırasında; saat 15:00:31 civarında');
+    expect(maddeler[1].textContent).toContain('Etkilenen adımlar: 100/sn · 2. tekrar, 250/sn · 2. tekrar');
     // Olcum disi reload yok: ek "... kez yeniden yüklendi" satiri cikmaz.
     expect(screen.queryByText(/kez yeniden yüklendi \(reload\)/)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: /^Ayrıntı/ }));
@@ -555,19 +566,43 @@ describe('Yük Testi sade — sunucuyla çapraz kontrol (SD11, SD12)', () => {
     expect(within(teknik).getAllByTitle(CPU_OLCULEMEDI.reload).length).toBe(4);
   });
 
+  it('SD16 gorunum.cjs KIP_KALIPLARI’ndaki her kip doğrulaması kodu düz cümle (bilinmeyen değil); bellek uyarıları bilgi tonunda', () => {
+    const ORNEK: Record<string, string> = {
+      kip_protokol: 'kip_protokol(istenen=h1,olculen=h2,uyumsuz=0)', kip_ka_yeni_baglanti: 'kip_ka_yeni_baglanti_%35',
+      kip_yeni_yeniden_kullanim: 'yeni_kipinde_baglanti_yeniden_kullanilmis_%12', kip_sikistirma_az: 'kip_sikistirma_az(istenen=br,%22.2)',
+      kip_sikistirma_beklenmeyen: 'kip_sikistirma_beklenmeyen(istenen=identity,%3.0)',
+    };
+    expect(Object.keys(ORNEK).sort()).toEqual(KIP_KALIPLARI.map((k) => k.kod).sort());
+    for (const k of KIP_KALIPLARI) {
+      const ornek = ORNEK[k.kod];
+      expect({ kod: k.kod, uyar: k.re.test(ornek) }).toEqual({ kod: k.kod, uyar: true });
+      const a = uyariAcikla(ornek);
+      expect({ kod: k.kod, bilinmiyor: a.bilinmiyor ?? false, hamDegil: a.cumle !== ornek && /\s/.test(a.cumle) }).toEqual({ kod: k.kod, bilinmiyor: false, hamDegil: true });
+    }
+    expect(uyariAcikla('kip_sikistirma_az(istenen=br,%22.2)').cumle).toBe('br istendi ama 1 KB üstü yanıtların yalnız %22,2’i br; sunucu bu sıkıştırmayı uygulamıyor olabilir.');
+    expect(uyariAcikla('kip_protokol(istenen=h2,olculen=h2,uyumsuz=4)').cumle).toBe('HTTP/2 istendi ama 4 yanıt başka bir protokolle geldi.');
+    expect(uyariAcikla('bellek_bos_az(hedef,%9.9)')).toMatchObject({ ton: 'bilgi', cumle: 'Hedef sunucuda boş bellek en düşük %9,9 (%10’un altında); bellek baskısı ölçümü etkileyebilir.' });
+    expect(uyariAcikla('R17_K_ka_br_90_r2: bellek_bos_az(yuk,%7.5)')).toMatchObject({ tur: 'R17_K_ka_br_90_r2', ton: 'bilgi' });
+    expect(uyariAcikla('nginx_bellek_artisi(ilk=110MB,son=210MB,kosu_sonu=215MB)')).toMatchObject({ ton: 'bilgi', cumle: 'Olası bellek sızıntısı: nginx worker belleği adımlar boyunca sürekli arttı (110 MB → 210 MB) ve koşu sonunda geri inmedi (215 MB).' });
+  });
+
   it('SD12 analiz.cjs NEDEN_KALIPLARI’ndaki her kod ekranda tanınır (örnek sunucu kalıbına uyar, cümle ham kod değil)', () => {
     const ORNEK: Record<string, string> = {
       k6_rc: 'k6_rc=99', wrk_rc: 'wrk_rc=1', 429: '429(istemci=12,sunucu=11)', '5xx': '5xx(istemci=3)', http2: 'http2', hata: 'hata_%0.35(>%0.1)',
       log_istemci_farki: 'log_istemci_farki_%3.4', kayit: 'kayit:log_dondu:access.log', disk: 'disk_%71', konf_degisti: 'konf_degisti',
       pencere_kisa: 'pencere_kisa(12s)', reload: 'reload(worker_pid_degisti)', hatali_kosu: 'hatali_kosu(kos.sh_durdurdu)',
       tamamlanmadi: 'tamamlanmadi(istemci_sonucu_yok)', doyma_dropped: 'doyma:dropped=63', doyma_host_cpu: 'doyma:host_cpu_%93.5(>%90)',
+      doyma_yuk_cpu: 'doyma:yuk_cpu_bosta_%12.5(<%20)',
       saat_farki: 'saat_farki~-14s(sunucu-istemci)', log_satiri_yok: 'log_satiri_yok:pencere_istemci_saatinden', sunucu_logunda_bu_tur_yok: 'sunucu_logunda_bu_tur_yok',
       yeni_kipinde_yeniden_kullanim: 'yeni_kipinde_baglanti_yeniden_kullanilmis_%12', dropped_iterations: 'dropped_iterations=4', sunucu_kaydi_yok: 'sunucu_kaydi_yok',
       pencerede_ornek_yok: 'pencerede_ornek_yok', arka_plan_yok: 'arka_plan_yok(0_kabul)', arka_plan_az: 'arka_plan_az(12s)', diger_trafik: 'diger_trafik_%7',
       perf_ek_yuku: 'perf_ek_yuku(kararda_kullanilmaz)', tekrar_kosu_ayristirilamadi: "tekrar_kosu_ayristirilamadi(log'da_deneme_kolonu_yok)",
       tekrar_kosu_deneme: 'tekrar_kosu:deneme_2_kullanildi(120_eski_satir_atildi)', cpu_olculemedi: 'cpu_olculemedi(sayac_geriledi)',
+      yuk_cpu_olculemedi: 'yuk_cpu_olculemedi',
       // HTTP/2 (h2_sozlesme.md 4.4).
       h2_disi: 'h2_disi(3)', protokol_farkli: 'protokol_farkli(beklenen=h2,olculen=yok)',
+      // 2026-11-03 bellek (bilgi).
+      bellek_bos_az: 'bellek_bos_az(yuk,%7.5)', nginx_bellek_artisi: 'nginx_bellek_artisi(ilk=110MB,son=210MB,kosu_sonu=215MB)',
     };
     expect(Object.keys(ORNEK).sort()).toEqual(NEDEN_KALIPLARI.map((k) => k.kod).sort());
     for (const k of NEDEN_KALIPLARI) {
@@ -579,6 +614,18 @@ describe('Yük Testi sade — sunucuyla çapraz kontrol (SD11, SD12)', () => {
     // cpu_olculemedi'nin uc alt kodu ve eski satirin kodu ayri cumle.
     for (const alt of ['reload', 'sayac_geriledi', 'net_negatif']) expect(uyariAcikla(`cpu_olculemedi(${alt})`).cumle).toBe(CPU_OLCULEMEDI[alt]);
     expect(Object.keys(CPU_OLCULEMEDI).sort()).toEqual(['negatif_deger', 'net_negatif', 'reload', 'sayac_geriledi']);
+    // 2026-11-03: kosu uyarisi yuk_cpu_olculemedi(<neden>) dort nedeni de duz Turkce (analiz.cjs yukOlcumuDenetle).
+    for (const [neden, parca] of [['kaydedici_baslamadi', 'kaydedici başlatılamadı'], ['kayit_yok', 'kayıt dosyası yok'], ['kayit_bozuk', 'kayıt dosyası okunamadı'], ['pencerede_ornek_yok', 'ölçüm penceresinde yeterli örnek yok']]) {
+      const a = uyariAcikla(`yuk_cpu_olculemedi(${neden})`);
+      expect({ neden, bilinmiyor: a.bilinmiyor ?? false, ton: a.ton }).toEqual({ neden, bilinmiyor: false, ton: 'uyari' });
+      expect(a.cumle).toBe(`Yük makinesi CPU’su ölçülemedi (${parca}); “yük makinesi doydu” denetimi yapılamadı, sonuç yük makinesinin sınırını gösteriyor olabilir.`);
+    }
+    // B1: yeni playbook kaydedicinin son satirini ekler ('<neden>;son=<satir>'); satir parantez icerebilir.
+    const s = uyariAcikla('yuk_cpu_olculemedi(kaydedici_baslamadi;son=HATA: /proc/stat okunamiyor (x))');
+    expect([s.bilinmiyor ?? false, s.cumle]).toEqual([false, 'Yük makinesi CPU’su ölçülemedi (kaydedici başlatılamadı; kaydedicinin son çıktısı: “HATA: /proc/stat okunamiyor (x)”); “yük makinesi doydu” denetimi yapılamadı, sonuç yük makinesinin sınırını gösteriyor olabilir.']);
+    // Sunucu bicimi analiz.test.cjs AN-Y9'da kilitli: 'yuk_cpu_olculemedi(<neden>;son=<ASCII, en cok 200>)'.
+    const uzun = uyariAcikla(`yuk_cpu_olculemedi(pencerede_ornek_yok;son=${'x'.repeat(200)})`);
+    expect([uzun.bilinmiyor ?? false, uzun.cumle.includes('ölçüm penceresinde yeterli örnek yok; kaydedicinin son çıktısı: “' + 'x'.repeat(200) + '”')]).toEqual([false, true]);
   });
 
   it('SD13 hazır ayarlar SUNUCUNUN kendi doğrulamasından (dogrula.parametreler, gerçek SINIRLAR / VARSAYILAN) geçer', () => {
@@ -607,7 +654,7 @@ describe('Yük Testi sade — sunucuyla çapraz kontrol (SD11, SD12)', () => {
         }
       }
     }
-    // 6 hedef x 3 ayar x 2 motor; limit_conn 6 ve 3 olan iki hedefte k6 (3 ayar) atlanir.
-    expect(sayac).toBe(6 * 3 * 2 - 2 * 3);
+    // 6 hedef x 3 ayar x 2 motor; K2 (2026-11-03): olculmus limit_conn VU'yu daraltmaz, hicbir k6 ayari atlanmaz.
+    expect(sayac).toBe(6 * 3 * 2);
   });
 });

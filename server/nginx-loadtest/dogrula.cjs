@@ -34,7 +34,9 @@ const crypto = require('node:crypto');
 
 // ── SINIRLAR (kod sabiti; DB ayari DEGIL - bayat DB satiri kod varsayilanini ezmesin) ──
 const SINIRLAR = Object.freeze({
-  maxHiz: 450, // rate_limits.conf: limit_req 500 r/s/IP; pay birakildi (kit: IP_SINIRI)
+  // 2026-11-03 (K1/K2): sunucu hedefinde k6 hiz <= 5000, VU <= 1000, wrk tavani <= 5000. Hedefin olculmus
+  // limit_req / limit_conn'u artik DARALTMAZ; asilirsa plan UYARISI (limitUyarilari, onay ister).
+  maxHiz: 5000, // playbook + yuk_k6.js IP_SINIRI ile ayni
   hizMin: 1,
   maxHizSayisi: 5,
   maxTekrar: 3,
@@ -49,14 +51,15 @@ const SINIRLAR = Object.freeze({
   bostaMin: 30,
   bostaMax: 120,
   maxVuMin: 10,
-  maxVu: 199, // limit_conn 200/IP
+  maxVu: 1000, // playbook + yuk_k6.js MAXVU ust siniri ile ayni
   maxButceSn: 2700, // toplam is suresi en cok 45 dk
   maxSatir: 400,
   maxTsvBayt: 200 * 1024,
   maxYolUzunlugu: 2048,
   // wrk (kapali dongu): adim = baglanti sayisi; is parcacigi her baglanti sayisini tam bolmeli.
   baglantiMin: 1,
-  maxBaglanti: 199, // limit_conn 200/IP (maxVu ile ayni pay)
+  maxBaglanti: 199, // wrk baglanti siniri DEGISMEZ (K1)
+  maxTavanRps: 5000, // wrk toplam hiz tavani (sunucu hedefi; yuk_tavan_rps)
   maxBaglantiSayisi: 5,
   isParcacigiMin: 1,
   maxIsParcacigi: 16,
@@ -109,7 +112,7 @@ const RUN_ID_RE = /^[0-9]{1,10}$/;
 const IPV4_RE = /^(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])(\.(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])){3}$/;
 // RFC 1123 ad: kucuk harf, port YOK, joker YOK, '~' (regex server_name) YOK, bosluk YOK.
 const VHOST_RE = /^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/;
-const HIZLAR_RE = /^[0-9]{1,3}( [0-9]{1,3}){0,4}$/;
+const HIZLAR_RE = /^[0-9]{1,4}( [0-9]{1,4}){0,4}$/;
 const UA_ONEK_RE = /^[a-z][a-z0-9-]{2,30}$/;
 const SHA256_RE = /^[0-9a-f]{64}$/;
 const CIKTI_KOK_RE = /^\/[A-Za-z0-9._/-]{1,200}$/;
@@ -161,12 +164,13 @@ const SON_EPOCH_UST_PAY_SN = 1800;
 // ── SABIT UYARILAR (sunucuda; uyariOnay zorunlu, ekran yalniz gosterir) ───────────────────
 
 const SERBEST_UYARISI = 'Serbest hedef: sunucu tarafı ölçüm (CPU, nginx logu) yapılmaz; sonuçlar yalnız istemci ölçümüdür. Hedefte limit_req olmayabilir: yükün tek freni Portal tavanıdır (en çok 200 istek/sn ve 50 bağlantı). Yük bir yük dengeleyici (LB) üzerinden gidiyorsa nginx isteği (realip yoksa) LB\'nin IP\'sinden görür: IP başına 500 istek/sn ve 200 bağlantı sınırı LB arkasındaki herkesle, vhost başına 5000 istek/sn sınırı tüm istemcilerle paylaşılır; başka kullanıcılar 429 alabilir.';
-const WRK_UYARISI = 'wrk kapalı döngüdür: her bağlantı yanıtı alınca yeni istek gönderir. Portal her isteğe bağlantı başına sabit bekleme ekler; toplam hız ORTALAMADA koşunun tavanını (hedefin ölçülmüş limit_req\'inin %90\'ı, en çok 450; serbest hedefte 200 istek/sn) aşmaz; bağlantılar birlikte başlar, ilk istekler rastgele yayılır ama istekler kümelenebilir. limit_req burst\'ü bağlantı sayısından küçük ya da burst\'süz yollarda 429 alınır ve koşu durur; böyle yollarda k6 kullanın ya da bağlantı sayısını düşük tutun. İlk 429 ya da 5xx yanıtta iş parçacığı yük üretmeyi keser; 429, 5xx, 10\'dan fazla soket hatası ya da %1 üstü hata oranında koşu durur (DUR). Gecikme yüzdelikleri wrk\'nin koordineli ihmal düzeltmesiyle hesaplanır; wrk sonuçları k6 sonuçlarıyla karşılaştırılmaz.';
+const WRK_UYARISI = 'wrk kapalı döngüdür: her bağlantı yanıtı alınca yeni istek gönderir. Portal her isteğe bağlantı başına sabit bekleme ekler; toplam hız ORTALAMADA koşunun tavanını (sunucu hedefinde en çok 5000; serbest hedefte 200 istek/sn) aşmaz; bağlantılar birlikte başlar, ilk istekler rastgele yayılır ama istekler kümelenebilir. limit_req burst\'ü bağlantı sayısından küçük ya da burst\'süz yollarda 429 alınır ve koşu durur; böyle yollarda k6 kullanın ya da bağlantı sayısını düşük tutun. Sunucu hedefinde tavan hedefin ölçülmüş limit_req değerine göre düşürülmez ve bunun için ayrıca uyarı çıkmaz: ölçülmüş limit_req\'i olan hedefte gerçek hız onu aşabilir; böyle hedefte k6 kullanın. İlk 429 ya da 5xx yanıtta iş parçacığı yük üretmeyi keser; 429, 5xx, 10\'dan fazla soket hatası ya da %1 üstü hata oranında koşu durur (DUR). Gecikme yüzdelikleri wrk\'nin koordineli ihmal düzeltmesiyle hesaplanır; wrk sonuçları k6 sonuçlarıyla karşılaştırılmaz.';
 // D7: Host basligi server_name listesinde olmamak ENGEL degil, onay isteyen UYARI.
 const HOST_LISTEDE_YOK_UYARISI = "Host başlığı (vhost) hedefin nginx -T çıktısındaki server_name'ler arasında yok ya da ölçülemedi (joker / regex ad olabilir; değilse istek default_server'a düşer). Ön kontroldeki 200 sonuçlarına bakın.";
 const WRK_SNI_MESAJI = "wrk SNI'yi Host başlığına göre seçemez (IP adresi SNI olarak gider); SNI kutusunu kapatın.";
 
-// Plan uyarilari (yalniz serbest hedef; satirda saklanir, kosu aninda yeniden kurulur).
+// Plan uyarilari (serbest hedefte Host basligi uyarilari, sunucu hedefinde limitUyarilari; satirda saklanir,
+// kosu aninda yeniden kurulur).
 // Host listeleri sirali, ilk 5 (metin deterministik: saklanan liste ile yeniden kurulan karsilastirilir).
 const ilkBesHost = (P) => [...new Set(P)].sort().slice(0, 5).join(', ');
 const HOST_TARAMADA_YOK_UYARISI = (vhost) => `Host başlığı (${vhost}) son nginx taramasında hiçbir sunucunun server_name listesinde yok: hedefin (LB / yönetilmeyen sunucu) bu adı nereye yönlendireceği bilinmiyor.`;
@@ -409,29 +413,21 @@ function butceSn(p) {
   return p.bosta + adimSayisi(p) * p.tekrar * (p.isinma + p.sure + p.bosluk + ADIM_EK_SN) + 120;
 }
 
-// Olculmus tavan 0 (limit_req < 2 r/s ya da limit_conn <= 1): "olcum yok" (null) DEGILDIR. Eskiden
-// 0 global tavana (450 r/s, 199 VU) dusuyordu: en siki zone korkulugu tamamen kaldiriyordu.
-const SIFIR_SINIR_MESAJI = "Hedefin ölçülmüş limit_req değeri 2 r/s'nin altında (ya da limit_conn ≤ 1); bu hedefe yük testi yapılamaz.";
-
-/** rateLimitTavani sonucu bu hedefi yuk testine kapatiyor mu (olculmus 0). */
-function sifirSinir(hizSiniri, vuSiniri) {
-  return hizSiniri === 0 || vuSiniri === 0;
-}
-
 /**
  * Parametreleri denetler ve KANONIK nesneyi dondurur (ayni girdi -> ayni nesne; on kontrol ile
  * kosunun "ayni parametre" kosulu buna dayanir). Tanimsiz alan VARSAYILAN'dan gelir (serbest
  * hedefte hizlar / maxvu VARSAYILAN.serbest'ten).
- * `hizSiniri` / `vuSiniri`: hedefin olculmus rate limitinden daraltilmis tavan (yoksa null; 0 ise
- * hedef yuk testine KAPALI: 409 sinir_asildi).
+ * Hedefin olculmus limit_req / limit_conn'u 2026-11-03'ten beri (K2) parametreleri SINIRLAMAZ: asim limitUyarilari ile
+ * UYARI (onay ister). Olculmus cok kucuk limit (eski "sifir sinir", limit_req < ~1.1 r/s ya da limit_conn <= 1) de
+ * 409 DEGIL, ayni uyari (B3).
  * Kanonik nesneler (ilgisiz anahtar GIRMEZ; motor'suz eski nesne k6 sayilir):
  *   k6  { motor:'k6', hizlar, tekrar, isinma, sure, bosluk, bosta, maxvu, kip, ae, sni, protokol, butceSn }
  *   wrk { motor:'wrk', baglantilar, is_parcacigi, tavan_rps, tekrar, isinma, sure, bosluk, bosta, kip, ae, sni:false, protokol:'h1', butceSn }
  * protokol: yoksa 'h1'; 'h2' yalniz k6 ve kip 'ka' (HTTP/2'de her istege yeni baglanti tarayici davranisi degil).
- * `tavan_rps` girdiden ALINMAZ: sunucu min(450, hizSiniri), serbest min(200, ...). Serbest hedefte
- * iki motorda hiz / tavan <= 200 ve VU / baglanti <= 50.
+ * `tavan_rps` girdiden ALINMAZ: sunucu 5000 (maxTavanRps), serbest 200. Sunucu hedefinde k6 hiz <= 5000, VU <= 1000,
+ * wrk baglanti <= 199; serbest hedefte iki motorda hiz / tavan <= 200 ve VU / baglanti <= 50.
  */
-function parametreler(ham, { sni, hizSiniri = null, vuSiniri = null, hedefTuru = 'sunucu' } = {}) {
+function parametreler(ham, { sni, hedefTuru = 'sunucu' } = {}) {
   const g = ham && typeof ham === 'object' && !Array.isArray(ham) ? ham : null;
   if (!g) return red(400, 'gecersiz_istek', 'parametreler nesnesi gerekli.');
   if (!HEDEF_TURLERI.includes(hedefTuru)) return red(400, 'gecersiz_istek', "hedefTuru 'sunucu' ya da 'serbest' olmalı.");
@@ -477,10 +473,7 @@ function parametreler(ham, { sni, hizSiniri = null, vuSiniri = null, hedefTuru =
   if (typeof sni !== 'boolean') return red(400, 'gecersiz_istek', 'sni true/false olmalı.');
   // wrk SNI olarak URL'deki IP'yi gonderir: Host basligina gore secemez. Gizli donusum YOK.
   if (wrk && sni) return red(400, 'gecersiz_istek', WRK_SNI_MESAJI);
-  if (sifirSinir(hizSiniri, vuSiniri)) return red(409, 'sinir_asildi', SIFIR_SINIR_MESAJI);
 
-  const olculenHiz = Number.isInteger(hizSiniri) && hizSiniri > 0 ? hizSiniri : SINIRLAR.maxHiz;
-  const olculenVu = Number.isInteger(vuSiniri) && vuSiniri > 0 ? vuSiniri : SINIRLAR.maxVu;
   const SERBEST_EKI = ', serbest hedef tavanı';
   const asim = [];
   const aralik = (k, min, max, ad, ek = '') => {
@@ -488,22 +481,22 @@ function parametreler(ham, { sni, hizSiniri = null, vuSiniri = null, hedefTuru =
   };
   let tavanRps = null;
   if (!wrk) {
-    const tavanHiz = Math.min(serbest ? SINIRLAR.serbestTavanRps : SINIRLAR.maxHiz, olculenHiz);
+    const tavanHiz = serbest ? SINIRLAR.serbestTavanRps : SINIRLAR.maxHiz;
     if (hizlar.length > SINIRLAR.maxHizSayisi) asim.push(`en çok ${SINIRLAR.maxHizSayisi} hız`);
     if (new Set(hizlar).size !== hizlar.length) asim.push('aynı hız iki kez');
     for (const h of hizlar) {
       if (h < SINIRLAR.hizMin || h > tavanHiz) {
-        asim.push(`hız ${h} izinli aralıkta değil (1..${tavanHiz}${serbest ? SERBEST_EKI : tavanHiz < SINIRLAR.maxHiz ? ', hedefin ölçülmüş limit_req değerinin %90\'ı' : ''})`);
+        asim.push(`hız ${h} izinli aralıkta değil (1..${tavanHiz}${serbest ? SERBEST_EKI : ''})`);
       }
     }
   } else {
-    const tavanBaglanti = Math.min(serbest ? SINIRLAR.serbestMaxBaglanti : SINIRLAR.maxBaglanti, Number.isInteger(vuSiniri) && vuSiniri > 0 ? vuSiniri : SINIRLAR.maxBaglanti);
-    tavanRps = Math.min(serbest ? SINIRLAR.serbestTavanRps : SINIRLAR.maxHiz, olculenHiz);
+    const tavanBaglanti = serbest ? SINIRLAR.serbestMaxBaglanti : SINIRLAR.maxBaglanti;
+    tavanRps = serbest ? SINIRLAR.serbestTavanRps : SINIRLAR.maxTavanRps;
     if (baglantilar.length > SINIRLAR.maxBaglantiSayisi) asim.push(`en çok ${SINIRLAR.maxBaglantiSayisi} bağlantı kademesi`);
     if (new Set(baglantilar).size !== baglantilar.length) asim.push('aynı bağlantı sayısı iki kez');
     for (const n of baglantilar) {
       if (n < SINIRLAR.baglantiMin || n > tavanBaglanti) {
-        asim.push(`bağlantı ${n} izinli aralıkta değil (1..${tavanBaglanti}${serbest ? SERBEST_EKI : tavanBaglanti < SINIRLAR.maxBaglanti ? ", hedefin ölçülmüş limit_conn değerinin bir eksiği" : ''})`);
+        asim.push(`bağlantı ${n} izinli aralıkta değil (1..${tavanBaglanti}${serbest ? SERBEST_EKI : ''})`);
       }
     }
     if (isParcacigi < SINIRLAR.isParcacigiMin || isParcacigi > SINIRLAR.maxIsParcacigi) {
@@ -522,7 +515,7 @@ function parametreler(ham, { sni, hizSiniri = null, vuSiniri = null, hedefTuru =
   aralik('sure', SINIRLAR.sureMin, SINIRLAR.sureMax, 'süre');
   aralik('bosluk', SINIRLAR.boslukMin, SINIRLAR.boslukMax, 'boşluk');
   aralik('bosta', SINIRLAR.bostaMin, SINIRLAR.bostaMax, 'boşta başlangıç');
-  if (!wrk) aralik('maxvu', SINIRLAR.maxVuMin, Math.min(serbest ? SINIRLAR.serbestMaxBaglanti : SINIRLAR.maxVu, olculenVu), 'maxvu', serbest ? SERBEST_EKI : '');
+  if (!wrk) aralik('maxvu', SINIRLAR.maxVuMin, serbest ? SINIRLAR.serbestMaxBaglanti : SINIRLAR.maxVu, 'maxvu', serbest ? SERBEST_EKI : '');
   const p = wrk
     ? { motor: 'wrk', baglantilar, is_parcacigi: isParcacigi, tavan_rps: tavanRps, ...sayilar, kip, ae, sni: false, protokol: 'h1' }
     : { motor: 'k6', hizlar, ...sayilar, kip, ae, sni, protokol };
@@ -532,6 +525,67 @@ function parametreler(ham, { sni, hizSiniri = null, vuSiniri = null, hedefTuru =
   }
   if (asim.length) return red(409, 'sinir_asildi', `Sınır aşıldı: ${asim.join('; ')}.`, { asimlar: asim });
   return { ok: true, deger: { ...p, butceSn: butceSn(p) } };
+}
+
+/** Olculmus limit degeri metni: tam sayiysa tam, degilse tek ondalik (virgul). Deterministik (saklanan metin karsilastirilir). */
+function limitMetni(y) {
+  const r = Math.round(y * 10) / 10;
+  return Number.isInteger(r) ? String(r) : r.toFixed(1).replace('.', ',');
+}
+
+/**
+ * 2026-11-03 (K2): hedefin olculmus limit_req / limit_conn'u hiz / VU / wrk tavanini DARALTMAZ; asilirsa plan UYARISI
+ * (onay ister, engel degil). `p` kanonik parametreler; olcum yoksa (null) uyari yok. Sira: hiz (yalniz k6, en buyuk
+ * hiz) sonra baglanti (k6 maxvu, wrk en buyuk baglanti). Esitlik asim DEGIL. B5: wrk'de hiz uyarisi YOK: tavan_rps
+ * sunucu hedefinde hep 5000 (gercek hiz degil, ust sinir); her kosuda cikip onay yorgunlugu yapardi.
+ */
+function limitUyarilari(p, { limitReq = null, limitConn = null } = {}) {
+  const u = [];
+  if (!p || typeof p !== 'object') return u;
+  const wrk = p.motor === 'wrk';
+  const req = typeof limitReq === 'number' && Number.isFinite(limitReq) && limitReq > 0 ? limitReq : null;
+  const conn = Number.isInteger(limitConn) && limitConn > 0 ? limitConn : null;
+  if (req !== null && !wrk && Array.isArray(p.hizlar) && p.hizlar.length) {
+    const x = Math.max(...p.hizlar);
+    if (x > req) u.push(`Seçilen hız (${x}/sn) hedefin ölçülmüş limit_req değerini (${limitMetni(req)} r/s) aşıyor; 429 alınırsa koşu durur.`);
+  }
+  if (conn !== null) {
+    if (wrk && Array.isArray(p.baglantilar) && p.baglantilar.length) {
+      const x = Math.max(...p.baglantilar);
+      if (x > conn) u.push(`Seçilen en çok bağlantı (${x}) hedefin ölçülmüş limit_conn değerini (${conn}) aşıyor; fazla bağlantılar reddedilir (429 ya da 503) ve koşu durur.`);
+    } else if (!wrk && Number.isInteger(p.maxvu) && p.maxvu > conn) {
+      u.push(`Seçilen en çok VU (${p.maxvu}) hedefin ölçülmüş limit_conn değerini (${conn}) aşıyor; bu kadar bağlantı aynı anda açılırsa fazlası reddedilir (429 ya da 503) ve koşu durur ya da adım geçersiz sayılır.`);
+    }
+  }
+  return u;
+}
+
+/**
+ * On kontrol (yuk makinesi olcumu, yeni playbook): 'yeni' kipte her istek yeni TCP baglantisi. Istemci once kapatirsa
+ * yerel port TIME_WAIT'te ~60 sn kalir: saniyede ~port_sayisi/60 yeni baglanti. Hiz bunu asiyorsa UYARI (degistirme
+ * yok). Kimin once kapattigi (TIME_WAIT hangi tarafta) dogrulanmadi: pilot kosuda iki tarafta 'ss -tan state
+ * time-wait' ile olculecek. Alan yoksa (eski playbook) uyari yok. B5: port uyarisi YALNIZ k6 (wrk tavan_rps hep 5000:
+ * gercek hiz degil, her kosuda cikardi). k6'da bellek: MAXVU x 8 MB'tan az bos bellek UYARI.
+ */
+function yukMakinesiUyarilari(ok, p) {
+  const u = [];
+  if (!ok || typeof ok !== 'object' || !p || typeof p !== 'object') return u;
+  const wrk = p.motor === 'wrk';
+  const hiz = !wrk && Array.isArray(p.hizlar) && p.hizlar.length ? Math.max(...p.hizlar) : null;
+  const port = SAYI(ok.yukm_port_sayisi);
+  if (p.kip === 'yeni' && hiz !== null && port !== null && port > 0) {
+    const tavan = Math.floor(port / 60);
+    if (hiz > tavan) {
+      const tw = SAYI(ok.yukm_tw_reuse);
+      const ts = SAYI(ok.yukm_tcp_ts);
+      u.push(`Yük makinesinin yerel port aralığı ${port} port (tcp_tw_reuse ${tw === null ? '?' : tw}, tcp_timestamps ${ts === null ? '?' : ts}): "yeni" kipte istemci bağlantıyı önce kapatırsa saniyede yaklaşık ${tavan} yeni bağlantıya yeter; seçilen hız (${hiz}/sn) bunu aşıyor. Bağlantıyı hangi tarafın önce kapattığı (TIME_WAIT'in nerede biriktiği) doğrulanmadı; bağlantı hatası görürseniz hızı düşürün ya da "ka" kipini seçin.`);
+    }
+  }
+  const mem = SAYI(ok.yukm_mem_kb);
+  if (!wrk && Number.isInteger(p.maxvu) && mem !== null && mem < p.maxvu * 8192) {
+    u.push(`Yük makinesinde boş bellek ${Math.floor(mem / 1024)} MB; en çok ${p.maxvu} VU için önerilen en az ${p.maxvu * 8} MB. k6 bellek yetmezliğinden düşebilir; en çok VU'yu azaltın.`);
+  }
+  return u;
 }
 
 function etiket(v) {
@@ -647,8 +701,9 @@ function hizDegeri(rate) {
  * Hedefin olculmus rate limit tavanlari (dbo.Nginx_Audit_Settings satirlarindan).
  * Tek yuk makinesi TEK IP oldugu icin yalniz IP anahtarli zone'lar sayilir. Uygulanan zone
  * bilgisi varsa yalniz uygulananlar; yoksa tanimli olanlar (temkinli taraf). En kucuk deger.
- * Donus: { hizSiniri: int|null (0.9 x limit_req), vuSiniri: int|null (limit_conn - 1) }. null =
- * olcum yok (global tavan); 0 = olculmus ve izin verilebilir hiz/VU yok (hedef KAPALI, sifirSinir).
+ * Donus: { hizSiniri: int|null (0.9 x limit_req), vuSiniri: int|null (limit_conn - 1), limitReq: number|null (en
+ * kucuk ham r/s, kesirli olabilir), limitConn: int|null (ham) }. null = olcum yok. hizSiniri / vuSiniri yalniz bilgi
+ * (ekran); 0 hedefi KAPATMAZ (B3). limitReq / limitConn UYARI icin (limitUyarilari).
  */
 function rateLimitTavani(satirlar = []) {
   const { parseReqZone, parseReqApply, parseConnApply } = require('../nginx-console/ratelimit.cjs');
@@ -682,6 +737,8 @@ function rateLimitTavani(satirlar = []) {
   return {
     hizSiniri: enKucukHiz == null ? null : Math.max(0, Math.floor(enKucukHiz * 0.9)),
     vuSiniri: enKucukConn == null ? null : Math.max(0, enKucukConn - 1),
+    limitReq: enKucukHiz == null ? null : enKucukHiz,
+    limitConn: enKucukConn == null ? null : enKucukConn,
   };
 }
 
@@ -710,8 +767,10 @@ const SAYI = (v) => {
  * yapilmadi > curl h2'siz > hedef ALPN ile h2 sunmuyor > olculemedi (fail-closed). curl h2'siz iken
  * alpn_kaynak 'openssl' (yeni playbook ALPN'i openssl s_client ile olcer) ise curl engeli yok; ALPN
  * sonucu (true / false / olculemedi) ayni sirayla uygulanir. Eski playbook alpn_kaynak gondermez.
+ * `parametreler` (kosu satirinin kanonik parametreleri, istege bagli): verilirse yuk makinesi port / bellek uyarilari
+ * (yukMakinesiUyarilari) sabit uyarilardan once eklenir; verilmezse cikti BIREBIR eskisi.
  */
-function onKontrolDegerlendir(ok, { hedefTuru = 'sunucu', motor = 'k6', aracli = false, aracSha256 = null, protokol = 'h1' } = {}) {
+function onKontrolDegerlendir(ok, { hedefTuru = 'sunucu', motor = 'k6', aracli = false, aracSha256 = null, protokol = 'h1', parametreler: kp = null } = {}) {
   const engeller = [];
   const uyarilar = [];
   if (!ok || typeof ok !== 'object') return { engeller: ['ön kontrol sonucu okunamadı'], uyarilar };
@@ -778,6 +837,8 @@ function onKontrolDegerlendir(ok, { hedefTuru = 'sunucu', motor = 'k6', aracli =
     if (master === null) uyarilar.push('nginx master süreç sayısı ölçülemedi (1 bekleniyor)');
     else if (master !== 1) engeller.push(`nginx master süreç sayısı ${master} (1 bekleniyor; CPU kaydedici bu durumda başlamaz)`);
   }
+  // 2026-11-03: yuk makinesi port / bellek olcumu (yeni playbook; alan yoksa uyari yok). Sabit uyarilardan once.
+  if (kp && typeof kp === 'object') uyarilar.push(...yukMakinesiUyarilari(ok, { ...kp, motor }));
   if (serbest) uyarilar.push(SERBEST_UYARISI);
   if (motor === 'wrk') uyarilar.push(WRK_UYARISI);
   return { engeller, uyarilar };
@@ -1047,7 +1108,7 @@ function ekstraDegiskenleriDenetle(ev, { simdiSn = Math.floor(Date.now() / 1000)
       if (t === null || t < SINIRLAR.isParcacigiMin || t > SINIRLAR.maxIsParcacigi || (b && (t > Math.min(...b) || b.some((n) => n % t !== 0)))) {
         ihlal.push('yuk_is_parcacigi');
       }
-      aralik('yuk_tavan_rps', 1, serbest ? SINIRLAR.serbestTavanRps : SINIRLAR.maxHiz);
+      aralik('yuk_tavan_rps', 1, serbest ? SINIRLAR.serbestTavanRps : SINIRLAR.maxTavanRps);
     }
     aralik('yuk_tekrar', 1, SINIRLAR.maxTekrar);
     if (!KIPLER.has(ev.yuk_kip)) ihlal.push('yuk_kip');
@@ -1415,8 +1476,8 @@ function hedefAyrintisi(k, host) {
   const ipler = adayIpler({ listenler: s ? s.listen : [], envanterIp: n ? n.ip : null });
   // Tarama verisi yoksa (tablo yok ya da host taranmamis) vhost listesi BILINMIYOR: null.
   const vh = s ? vhostlar(s.serverName) : null;
-  const t = k.ayarlar ? rateLimitTavani(k.ayarlar.get(host) || []) : { hizSiniri: null, vuSiniri: null };
-  return { ipler, vhostlar: vh, hizSiniri: t.hizSiniri, vuSiniri: t.vuSiniri };
+  const t = k.ayarlar ? rateLimitTavani(k.ayarlar.get(host) || []) : { hizSiniri: null, vuSiniri: null, limitReq: null, limitConn: null };
+  return { ipler, vhostlar: vh, hizSiniri: t.hizSiniri, vuSiniri: t.vuSiniri, limitReq: t.limitReq, limitConn: t.limitConn };
 }
 
 // ── IP SINIFLANDIRMASI (sozlesme 8.2; SAF, sira BAGLAYICI) ─────────────────────────────────
@@ -1600,7 +1661,6 @@ module.exports = {
   TUR_RE,
   BEYAZ_LISTE,
   NOKTALI_VIRGUL_NEDENI,
-  SIFIR_SINIR_MESAJI,
   red,
   hostNormalle,
   gecerliIpv4,
@@ -1617,8 +1677,10 @@ module.exports = {
   ozetTemizle,
   ADIM_EK_SN,
   butceSn,
-  sifirSinir,
   parametreler,
+  limitMetni,
+  limitUyarilari,
+  yukMakinesiUyarilari,
   etiket,
   uretimIsareti,
   hedefKapisi,

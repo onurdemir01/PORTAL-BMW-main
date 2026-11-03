@@ -26,7 +26,7 @@
 //   YKP15 baslatma yarisi: is numarasi her zaman yazilir; satir bu arada CANCELED olduysa is iptal
 //   YKP16 /yeniden-oku: yalniz Admin, yalniz sonucu okunamamis is numarali kosu; sayac sifir
 //   YKP17 /kosular suzgeci + sayfalama: islem / durum / hedef / onceki / limit, dahaVar, 400
-//   YKP18 kosu ayrintisi: durdurIsi, sonuclandirmaDenemesi; olculmus limit 0 hedefi /hedefler'de kapali
+//   YKP18 kosu ayrintisi: durdurIsi, sonuclandirmaDenemesi; olculmus limit 0 hedefi KAPATMAZ (B3, uyari)
 //   YKP19 bayat kilit: baslatma yolu AWX durumunu iletir; kural bag turune gore birakir / tutar
 //   -- tur 3 (2026-10-28: elle hedef IP sunucu | serbest, wrk motoru, D7) --
 //   YKP20 serbest on kontrol uctan uca: satir (hedef_turu, hedef_host '', motor, plan_uyarilari), extra_vars,
@@ -46,7 +46,7 @@
 //   YKP33 denetim ayrintisi: serbest + wrk kosusu ve uzun mesajli ret saklandigi hal (2000'de kesim) ile
 //         GECERLI JSON, <= 2000; kimlik alanlari birebir; uzun uyari dizileri kisaltilir / atilir (sayi kalir)
 //   -- tur 3 inceleme (2026-10-28) --
-//   YKP34 yarim tarama gunu uctan uca: dunku limit (409 sinir_asildi, wrk tavani, sifir sinir), dunku sahiplik
+//   YKP34 yarim tarama gunu uctan uca: dunku limit (409 sinir_asildi, wrk tavani, limit uyarisi), dunku sahiplik
 //         (409 hedef_uretim), dunku ad (409 host_uretim), dunku hedef satirlari; bugunku varsa bugunku
 //   -- tur 4 (2026-11-02: arac setleri /sw'den) --
 //   YKP40 arac kapisi: set yok -> 409 araclar_hazir_degil, ozet env yok / gecersiz -> araclar_ozet_sabit_yok,
@@ -59,6 +59,7 @@
 //   YKP43 /hedefler.araclar (hazir / ozet degisti / ozet yok / okunamadi, uc 200) ve /kosular/:id aracId + aracSeti; eski satir
 //         (arac_id NULL) BIREBIR (arac engeli yok)
 //   -- sade turu (2026-11-02) --
+//   YKP45 /kosular/:id adim kipDogrulama (kosu satirinin motor / hedef turu / protokolu) ve bellek; eski satir null
 //   YKP44 /kosular/:id kosu.sonucOzeti (toplam istek, p95 en iyi / kotu, konf, reload olaylari) ve adim satirinda
 //         cpuOlculemedi / reloadlar; eski R2 satirinin negatif CPU / kapasitesi null (DB degismez)
 //   -- HTTP/2 secimi (2026-11-02, h2_sozlesme.md 4.2) --
@@ -605,7 +606,7 @@ test('YKP4 on kontrol 409/424 kodlari: AWX\'e gitmez, kilit kalmaz, ret denetlen
     // vhost listede olmamak artik ENGEL degil (D7, YKP29).
     ['IP hedefte yok', () => {}, GOVDE({ hedefIp: '10.0.0.77' }), 409, 'ip_hedefte_yok'],
     ['IP yuk makinesinin', () => {}, GOVDE({ hedefIp: '10.0.0.6' }), 409, 'ayni_host'],
-    ['olculen limit_req asildi', () => {}, GOVDE({ parametreler: { hizlar: [271] } }), 409, 'sinir_asildi'],
+    ['Portal ust siniri asildi (K1: 5000)', () => {}, GOVDE({ parametreler: { hizlar: [5001] } }), 409, 'sinir_asildi'],
     ['butce asildi', () => {}, GOVDE({ parametreler: { hizlar: [10, 20, 30, 40, 50], tekrar: 3, sure: 300 } }), 409, 'sinir_asildi'],
     ['senaryo yok', () => {}, GOVDE({ senaryoId: 99 }), 409, 'senaryo_yok'],
     ['silinmis senaryo', () => { D.senaryolar[0].silindi = 1; }, GOVDE(), 409, 'senaryo_yok'],
@@ -963,8 +964,10 @@ test('YKP12 hedefler: uygunluk ve neden, yuk makineleri, sinirlar', { timeout: 1
   assert.match(h.GBNGXP40.neden, /üretim/);
   assert.equal(h.GBNGXT51.uygun, false, 'EDU hedef uygun gorundu');
   assert.deepEqual(r.body.yukHostlari, [{ host: 'GBNGXT34', env: 'TEST', uygun: true, neden: null }]);
-  assert.equal(r.body.sinirlar.maxHiz, 450);
+  assert.equal(r.body.sinirlar.maxHiz, 5000);
   assert.equal(r.body.sinirlar.maxButceSn, 2700);
+  // K2: ham olculmus degerler (uyari icin) de doner: fikstur rate=300r/s, limit_conn yok.
+  assert.deepEqual([h.GBNGXT33.limitReq, h.GBNGXT33.limitConn], [300, null]);
   assert.deepEqual(r.body.varsayilan.hizlar, [100, 250, 400]);
   D.invHata = new Error('kapali');
   const r2 = await istek('GET', '/hedefler');
@@ -1223,7 +1226,7 @@ test('YKP17 /kosular: islem / durum / hedef suzgeci, onceki sayfalama, dahaVar, 
   assert.deepEqual(ids(r.body), [7, 5, 3, 1]);
 });
 
-test('YKP18 kosu ayrintisi yeni alanlar; olculmus limit 0 hedefi kapatir', { timeout: 10000 }, async () => {
+test('YKP18 kosu ayrintisi yeni alanlar; olculmus limit 0 hedefi kapatmaz (B3)', { timeout: 10000 }, async () => {
   sifirla();
   senaryoEkle();
   const r0 = await istek('POST', '/kosular/on-kontrol', { body: GOVDE() });
@@ -1233,7 +1236,7 @@ test('YKP18 kosu ayrintisi yeni alanlar; olculmus limit 0 hedefi kapatir', { tim
   g = await istek('GET', `/kosular/${r0.body.kosuId}`);
   assert.equal(g.body.kosu.sonuclandirmaDenemesi, 2);
   assert.ok(!JSON.stringify(g.body).includes(D.kosular[0].kilit_id), 'kilit kimligi ekrana sizdi');
-  // 1 r/s zone: tavan 0 -> hedef /hedefler'de kapali (ayni metin), baslatma 409.
+  // B3: 1 r/s zone (eski "sifir sinir") hedefi KAPATMAZ: /hedefler uygun, on kontrol 200 + limit plan uyarisi.
   sifirla();
   senaryoEkle();
   D.ayarlar = [
@@ -1242,11 +1245,28 @@ test('YKP18 kosu ayrintisi yeni alanlar; olculmus limit 0 hedefi kapatir', { tim
   ];
   const h = await istek('GET', '/hedefler');
   const t33 = h.body.hedefler.find((x) => x.host === 'GBNGXT33');
-  assert.deepEqual([t33.uygun, t33.kod, t33.neden, t33.hizSiniri], [false, 'sinir_asildi', dg.SIFIR_SINIR_MESAJI, 0]);
-  assert.ok(t33.ipler.length > 0, 'IP yoklugu limit nedenini maskeledi');
-  const r = await istek('POST', '/kosular/on-kontrol', { body: GOVDE({ parametreler: { hizlar: [1], maxvu: 10 } }) });
-  assert.deepEqual([r.statusCode, r.body.code, r.body.message], [409, 'sinir_asildi', dg.SIFIR_SINIR_MESAJI]);
-  assert.equal(D.launch.length, 0);
+  assert.deepEqual([t33.uygun, t33.kod, t33.neden, t33.hizSiniri, t33.limitReq], [true, null, null, 0, 1]);
+  assert.ok(t33.ipler.length > 0);
+  const r = await istek('POST', '/kosular/on-kontrol', { body: GOVDE({ parametreler: { hizlar: [10], maxvu: 10 } }) });
+  assert.equal(r.statusCode, 200, JSON.stringify(r.body));
+  assert.deepEqual(JSON.parse(D.kosular.find((x) => x.id === r.body.kosuId).plan_uyarilari),
+    ['Seçilen hız (10/sn) hedefin ölçülmüş limit_req değerini (1 r/s) aşıyor; 429 alınırsa koşu durur.']);
+  assert.equal(D.launch.length, 1);
+  // B3 (D09): limit_conn 1 (vuSiniri 0, eski "sifir sinir"in baglanti yarisi) de hedefi KAPATMAZ: uygun + VU uyarisi.
+  sifirla();
+  senaryoEkle();
+  D.ayarlar = [
+    { host: 'GBNGXT33', directive: 'limit_conn_zone', value: '$binary_remote_addr zone=perip:10m' },
+    { host: 'GBNGXT33', directive: 'limit_conn', value: 'perip 1' },
+  ];
+  const hc = await istek('GET', '/hedefler');
+  const c33 = hc.body.hedefler.find((x) => x.host === 'GBNGXT33');
+  assert.deepEqual([c33.uygun, c33.kod, c33.neden, c33.vuSiniri, c33.limitConn, c33.hizSiniri], [true, null, null, 0, 1, null]);
+  const rc = await istek('POST', '/kosular/on-kontrol', { body: GOVDE({ parametreler: { hizlar: [10], maxvu: 10 } }) });
+  assert.equal(rc.statusCode, 200, JSON.stringify(rc.body));
+  assert.deepEqual(JSON.parse(D.kosular.find((x) => x.id === rc.body.kosuId).plan_uyarilari),
+    ['Seçilen en çok VU (10) hedefin ölçülmüş limit_conn değerini (1) aşıyor; bu kadar bağlantı aynı anda açılırsa fazlası reddedilir (429 ya da 503) ve koşu durur ya da adım geçersiz sayılır.']);
+  assert.equal(D.launch.length, 1);
 });
 
 test('YKP19 bayat kilit: baslatma yolu AWX durumunu iletir; kural bag turune gore birakir / tutar', { timeout: 10000 }, async () => {
@@ -1415,16 +1435,18 @@ test('YKP22 elle yazilan IP: siniflar uctan uca, ret denetime yazilir, AWX\'e gi
 test('YKP23 wrk on kontrol: extra_vars bolum 3, tavan sunucuda hesaplanir, wrk + SNI 400', { timeout: 10000 }, async () => {
   sifirla();
   senaryoEkle();
-  // Gonderilen tavan_rps / hizlar yok sayilir: tavan hedefin olculmus limit_req'inin %90'i (300 r/s -> 270).
+  // Gonderilen tavan_rps / hizlar yok sayilir: tavan sunucu hedefinde 5000 (K2: olculen 300 r/s daraltmaz; B5: wrk'de
+  // tavan gercek hiz olmadigi icin limit_req uyarisi YOK).
   let r = await istek('POST', '/kosular/on-kontrol', { body: GOVDE({ parametreler: { motor: 'wrk', tavan_rps: 450, hizlar: [999] } }) });
   assert.equal(r.statusCode, 200, JSON.stringify(r.body));
   const k = D.kosular.find((x) => x.id === r.body.kosuId);
   assert.deepEqual([k.motor, k.hedef_turu], ['wrk', 'sunucu']);
-  assert.deepEqual(JSON.parse(k.parametreler), { motor: 'wrk', baglantilar: [2, 4, 8], is_parcacigi: 2, tavan_rps: 270, tekrar: 2, isinma: 30, sure: 120, bosluk: 30, bosta: 60, kip: 'yeni', ae: 'br', sni: false, protokol: 'h1', butceSn: 1380 });
+  assert.deepEqual(JSON.parse(k.parametreler), { motor: 'wrk', baglantilar: [2, 4, 8], is_parcacigi: 2, tavan_rps: 5000, tekrar: 2, isinma: 30, sure: 120, bosluk: 30, bosta: 60, kip: 'yeni', ae: 'br', sni: false, protokol: 'h1', butceSn: 1380 });
+  assert.ok(!JSON.parse(k.plan_uyarilari || '[]').some((u) => /limit_req/.test(u)), String(k.plan_uyarilari));
   const ev = D.launch[0][2];
   assert.deepEqual(
     [ev.yuk_motor, ev.yuk_hizlar, ev.yuk_maxvu, ev.yuk_baglantilar, ev.yuk_is_parcacigi, ev.yuk_tavan_rps, ev.yuk_sni, ev.yuk_wrk_yolu, ev.yuk_k6_yolu, ev.yuk_hedef_turu, ev.yuk_butce_sn],
-    ['wrk', '', '', '2 4 8', '2', '270', '0', '/yeni-playbook-gerekli/wrk', '/yeni-playbook-gerekli/k6', 'sunucu', '1380'],
+    ['wrk', '', '', '2 4 8', '2', '5000', '0', '/yeni-playbook-gerekli/wrk', '/yeni-playbook-gerekli/k6', 'sunucu', '1380'],
   );
   assert.deepEqual(dg.ekstraDegiskenleriDenetle(ev), []);
   // Tur 4: wrk yolu env'den OKUNMAZ (NGINX_LOADTEST_WRK kalkti): isaret degeri; ikili arac setinden.
@@ -1464,18 +1486,25 @@ test('YKP24 /ip-sinifi: yalniz Admin, yanit sekilleri, uygun:false 200, host sec
   assert.equal(r.statusCode, 200, JSON.stringify(r.body));
   assert.deepEqual(r.body, {
     ok: true, tur: 'sunucu', ip: '10.0.0.9', host: 'GBNGXT33', env: 'TEST', vhostlar: ['api.test.local', 'app.test.local'], vhostVerisi: true,
-    hizSiniri: 270, vuSiniri: null, uygun: true, neden: null, kod: null, kaynaklar: ['dbo.IPInventory', 'tarama'],
+    hizSiniri: 270, vuSiniri: null, limitReq: 300, limitConn: null, uygun: true, neden: null, kod: null, kaynaklar: ['dbo.IPInventory', 'tarama'],
   });
   // Serbest.
   r = await istek('GET', `/ip-sinifi?ip=${SERBEST_IP}&yukHost=GBNGXT34`);
   assert.deepEqual([r.statusCode, r.body], [200, { ok: true, tur: 'serbest', ip: SERBEST_IP, host: null, ag: SERBEST_AG, digerSahipler: [] }]);
-  // uygun:false da 200: olculmus limit 0 ve aday listesinde olmayan IP.
+  // B3: olculmus limit 0 (1 r/s) hedefi kapatmaz (uygun true); aday listesinde olmayan IP uygun:false 200.
   D.ayarlar = [
     { host: 'GBNGXT33', directive: 'limit_req_zone', value: '$binary_remote_addr zone=login:10m rate=1r/s' },
     { host: 'GBNGXT33', directive: 'limit_req', value: 'zone=login burst=5' },
   ];
   r = await istek('GET', '/ip-sinifi?ip=10.0.0.9');
-  assert.deepEqual([r.statusCode, r.body.tur, r.body.uygun, r.body.kod, r.body.neden], [200, 'sunucu', false, 'sinir_asildi', dg.SIFIR_SINIR_MESAJI]);
+  assert.deepEqual([r.statusCode, r.body.tur, r.body.uygun, r.body.kod, r.body.neden, r.body.hizSiniri, r.body.limitReq], [200, 'sunucu', true, null, null, 0, 1]);
+  // B3 (D09): limit_conn 1 (vuSiniri 0) de kapatmaz.
+  D.ayarlar = [
+    { host: 'GBNGXT33', directive: 'limit_conn_zone', value: '$binary_remote_addr zone=perip:10m' },
+    { host: 'GBNGXT33', directive: 'limit_conn', value: 'perip 1' },
+  ];
+  r = await istek('GET', '/ip-sinifi?ip=10.0.0.9');
+  assert.deepEqual([r.statusCode, r.body.tur, r.body.uygun, r.body.kod, r.body.neden, r.body.vuSiniri, r.body.limitConn], [200, 'sunucu', true, null, null, 0, 1]);
   D.ayarlar = null;
   D.ipEnvanteri.push({ host: 'GBNGXT33', ip: '10.0.0.88' });
   r = await istek('GET', '/ip-sinifi?ip=10.0.0.88');
@@ -1608,11 +1637,11 @@ test('YKP27 /karsilastir: kararVer\'e motor / hedef turu / is parcacigi, ozet al
   D.kosular[0].motor = undefined;
   await istek('GET', '/karsilastir?ref=1&aday=2');
   assert.equal(kararCagri.at(-1).s.refMotor, 'wrk');
-  // Hiz tavani (wrk tavan_rps) iki satirin parametrelerinden: sunucu 450 (limit olculmedi) ile limit_req
-  // 100 r/s olculmus hedefin 90'i. Farkli tavan analizde VERI_YOK (analiz AN16).
-  const p450 = dg.parametreler({ motor: 'wrk' }, { sni: false }).deger;
-  const p90 = dg.parametreler({ motor: 'wrk' }, { sni: false, hizSiniri: 90 }).deger;
-  assert.deepEqual([p450.tavan_rps, p90.tavan_rps], [450, 90], 'fikstur: tavanlar');
+  // Hiz tavani (wrk tavan_rps) iki satirin parametrelerinden: eski (2026-11-03 oncesi) satirin 450'si ile limit_req
+  // 100 r/s olculmus hedefin 90'i. Farkli tavan analizde VERI_YOK (analiz AN16). Yeni satirlar hep 5000.
+  const p450 = { ...dg.parametreler({ motor: 'wrk' }, { sni: false }).deger, tavan_rps: 450 };
+  const p90 = { ...dg.parametreler({ motor: 'wrk' }, { sni: false, hizSiniri: 90 }).deger, tavan_rps: 90 };
+  assert.equal(dg.parametreler({ motor: 'wrk' }, { sni: false, hizSiniri: 90 }).deger.tavan_rps, 5000, 'K2: tavan daraltilmaz');
   D.kosular.push(
     { id: 3, islem: 'kosu', durum: 'DONE', etiket: 'C', created_at: new Date(BAS), senaryo_id: 1, hedef_turu: 'sunucu', motor: 'wrk', parametreler: JSON.stringify(p450) },
     { id: 4, islem: 'kosu', durum: 'DONE', etiket: 'D', created_at: new Date(BAS), senaryo_id: 1, hedef_turu: 'sunucu', motor: 'wrk', parametreler: JSON.stringify(p90) },
@@ -1628,7 +1657,7 @@ test('YKP28 /hedefler: serbest (aglar yalniz Admin), motorlar, sinirlar ve varsa
   assert.equal(r.statusCode, 200, JSON.stringify(r.body));
   assert.deepEqual(r.body.serbest, { acik: true, aglar: ['10.20.30.0/24', '10.20.31.15/32'] });
   assert.deepEqual(r.body.motorlar, ['k6', 'wrk']);
-  for (const [a, v] of Object.entries({ baglantiMin: 1, maxBaglanti: 199, maxBaglantiSayisi: 5, isParcacigiMin: 1, maxIsParcacigi: 16, serbestTavanRps: 200, serbestMaxBaglanti: 50, maxHiz: 450 })) {
+  for (const [a, v] of Object.entries({ baglantiMin: 1, maxBaglanti: 199, maxBaglantiSayisi: 5, isParcacigiMin: 1, maxIsParcacigi: 16, serbestTavanRps: 200, serbestMaxBaglanti: 50, maxHiz: 5000, maxVu: 1000, maxTavanRps: 5000 })) {
     assert.equal(r.body.sinirlar[a], v, a);
   }
   assert.deepEqual([r.body.varsayilan.motor, r.body.varsayilan.baglantilar, r.body.varsayilan.is_parcacigi, r.body.varsayilan.serbest, r.body.varsayilan.hizlar], ['k6', [2, 4, 8], 2, { hizlar: [50, 100, 200], maxvu: 50 }, [100, 250, 400]]);
@@ -1838,24 +1867,30 @@ test('YKP34 yarim tarama gunu uctan uca: dunku limit / sahiplik / ad / hedef sat
     senaryoEkle();
     D.ayarlar = ayarlar;
   };
-  // (1) Limit yalniz dunku Settings'te (100 r/s): k6 400 -> 409 sinir_asildi; wrk tavani dunden (90).
+  // (1) Limit yalniz dunku Settings'te (100 r/s): K2 - k6 400 baslar ve plan uyarisi dunku limiti soyler; wrk tavani 5000.
   kur([baskaHostBugun, ...limit('GBNGXT33', '100r/s', DUN)]);
   let r = await istek('POST', '/kosular/on-kontrol', { body: GOVDE({ parametreler: { hizlar: [400] } }) });
-  assert.deepEqual([r.statusCode, r.body.code, r.body.message], [409, 'sinir_asildi', "Sınır aşıldı: hız 400 izinli aralıkta değil (1..90, hedefin ölçülmüş limit_req değerinin %90'ı)."]);
-  assert.equal(D.launch.length, 0);
+  assert.equal(r.statusCode, 200, JSON.stringify(r.body));
+  assert.deepEqual(JSON.parse(D.kosular.find((x) => x.id === r.body.kosuId).plan_uyarilari),
+    ['Seçilen hız (400/sn) hedefin ölçülmüş limit_req değerini (100 r/s) aşıyor; 429 alınırsa koşu durur.'], 'dunku limit uygulanmadi');
+  kur([baskaHostBugun, ...limit('GBNGXT33', '100r/s', DUN)]);
   r = await istek('POST', '/kosular/on-kontrol', { body: GOVDE({ parametreler: { motor: 'wrk' } }) });
   assert.equal(r.statusCode, 200, JSON.stringify(r.body));
-  assert.equal(D.launch[0][2].yuk_tavan_rps, '90', 'wrk tavani dunku limitten hesaplanmadi');
+  assert.equal(D.launch.at(-1)[2].yuk_tavan_rps, '5000');
   const h = (await istek('GET', '/hedefler')).body.hedefler.find((x) => x.host === 'GBNGXT33');
   assert.deepEqual([h.hizSiniri, h.uygun], [90, true]);
-  // Dunku 1 r/s: "bu hedefe yuk testi yapilamaz" reddi atlanmaz.
+  // Dunku 1 r/s: B3'ten beri ret DEGIL; dunku limit uyariya yansir (atlanmaz).
   kur([baskaHostBugun, ...limit('GBNGXT33', '1r/s', DUN)]);
-  r = await istek('POST', '/kosular/on-kontrol', { body: GOVDE({ parametreler: { hizlar: [1], maxvu: 10 } }) });
-  assert.deepEqual([r.statusCode, r.body.code, r.body.message], [409, 'sinir_asildi', dg.SIFIR_SINIR_MESAJI]);
-  // Bugunku Settings satiri varsa bugunku (300 r/s -> 270), dunku 100 r/s KULLANILMAZ.
+  r = await istek('POST', '/kosular/on-kontrol', { body: GOVDE({ parametreler: { hizlar: [10], maxvu: 10 } }) });
+  assert.equal(r.statusCode, 200, JSON.stringify(r.body));
+  assert.deepEqual(JSON.parse(D.kosular.find((x) => x.id === r.body.kosuId).plan_uyarilari),
+    ['Seçilen hız (10/sn) hedefin ölçülmüş limit_req değerini (1 r/s) aşıyor; 429 alınırsa koşu durur.']);
+  // Bugunku Settings satiri varsa bugunku (300 r/s), dunku 100 r/s KULLANILMAZ (uyari bugunku limiti soyler).
   kur([...limit('GBNGXT33', '300r/s', TARAMA_GUNU), ...limit('GBNGXT33', '100r/s', DUN)]);
-  r = await istek('POST', '/kosular/on-kontrol', { body: GOVDE({ parametreler: { motor: 'wrk' } }) });
-  assert.deepEqual([r.statusCode, D.launch[0][2].yuk_tavan_rps], [200, '270'], JSON.stringify(r.body));
+  r = await istek('POST', '/kosular/on-kontrol', { body: GOVDE({ parametreler: { hizlar: [400] } }) });
+  assert.equal(r.statusCode, 200, JSON.stringify(r.body));
+  assert.deepEqual(JSON.parse(D.kosular.find((x) => x.id === r.body.kosuId).plan_uyarilari),
+    ['Seçilen hız (400/sn) hedefin ölçülmüş limit_req değerini (300 r/s) aşıyor; 429 alınırsa koşu durur.']);
   // (2) Sahiplik: PROD nginx'in IP'si yalniz dunku Servers'ta -> 409 hedef_uretim (serbest DEGIL), AWX'e gitmez.
   kur(null);
   process.env.NGINX_LOADTEST_SERBEST_AGLAR = SERBEST_AG;
@@ -2138,6 +2173,27 @@ test('YKP44 sade turu: /kosular/:id sonucOzeti ve adim cpuOlculemedi / reloadlar
   assert.deepEqual([h.body.kosu.sonucOzeti.adimSayisi, h.body.kosu.sonucOzeti.toplamIstek, h.body.kosu.sonucOzeti.konfDegisti, h.body.kosu.sonucOzeti.reloadlar], [0, null, null, []]);
 });
 
+// 2026-11-03 (E5 / E6): /kosular/:id adim satirinda bellek (ham.bellek) ve kipDogrulama; kip dogrulamasi KOSU SATIRININ
+// motor / hedef turu / protokoluyla kurulur (wrk: protokol olculmedi; serbest: baglanti olculmedi; h2 kosu: istenen h2).
+test('YKP45 /kosular/:id kipDogrulama kosu satirinin motor / hedef turu / protokoluyla; bellek camelCase, eski satir null', { timeout: 10000 }, async () => {
+  sifirla();
+  senaryoEkle();
+  const ham = JSON.stringify({ protokol: 'h1', protokol_uyumsuz: 0, yeniden_baglanti_yuzde: 90, uyarilar: [], bellek: { nginx_rss_ort_mb: 100, nginx_rss_max_mb: 110 } });
+  const satir = (id, kosuId, tur) => ({ id, kosu_id: kosuId, tur, senaryo: 'K', kip: 'ka', ae: 'br', hiz: 8, deneme: 1, gecerlilik: 'GECERLI', nedenler: '[]', p95: 2, ham });
+  const kosu = (id, ek) => ({ id, islem: 'kosu', durum: 'DONE', gecerlilik: 'GECERLI', hedef_host: 'GBNGXT33', hedef_ip: '10.0.0.9', created_at: new Date(BAS), senaryo_id: 1, sonuc: null, ...ek });
+  D.kosular.push(kosu(1, {}), kosu(2, { motor: 'wrk', parametreler: JSON.stringify({ motor: 'wrk', baglantilar: [8], kip: 'ka', ae: 'br' }) }), kosu(3, { hedef_turu: 'serbest', hedef_host: null }));
+  D.adimlar.push(satir(1, 1, 'R1_K_ka_br_8_r1'), satir(2, 2, 'R2_K_ka_br_8_r1'), satir(3, 3, 'R3_K_ka_br_8_r1'), { ...satir(4, 1, 'R1_K_ka_br_9_r1'), ham: null });
+  const al = async (id) => (await istek('GET', `/kosular/${id}`, { session: KULLANICI })).body.adimlar;
+  const [k6, eski] = await al(1);
+  assert.deepEqual([k6.kipDogrulama.protokol.durum, k6.kipDogrulama.baglanti.durum, k6.kipDogrulama.baglanti.yeniBaglantiYuzde], ['tamam', 'tamam', 10]);
+  assert.deepEqual(k6.bellek, { nginxRssOrtMb: 100, nginxRssMaxMb: 110, hedefBellekYuzde: null, hedefBosMinYuzde: null, yukBellekYuzde: null, yukBosMinYuzde: null, aracRssMaxMb: null });
+  assert.deepEqual([eski.bellek, eski.kipDogrulama.durum], [null, 'olculmedi'], 'ham yok: olculmedi');
+  const [wrk] = await al(2);
+  assert.deepEqual([wrk.kipDogrulama.protokol.durum, wrk.kipDogrulama.baglanti.durum], ['olculmedi', 'tamam'], 'wrk protokolu olcmez');
+  const [serbest] = await al(3);
+  assert.deepEqual([serbest.kipDogrulama.protokol.durum, serbest.kipDogrulama.baglanti.durum], ['tamam', 'olculmedi'], 'serbest: nginx logu yok');
+});
+
 // -- HTTP/2 secimi (h2_sozlesme.md 4.2) --
 const { _kosuApiForTest: kosuApiH, _protokolOfForTest: protokolOfH, _LISTE_KOLONLARI: LISTE_KOLONLARI_H } = require('../index.cjs');
 const H2_CASE = `CASE WHEN k.parametreler LIKE '%"protokol":"h2"%' THEN 'h2' ELSE 'h1' END AS protokol`;
@@ -2267,4 +2323,51 @@ test('IX-H protokol: /hedefler, on kontrol -> kosu (h2 engeli, eski h1 on kontro
   assert.deepEqual([r.body.ref.protokol, r.body.aday.protokol], ['h1', 'h2']);
   r = await istek('GET', '/karsilastir?ref=2&aday=2');
   assert.deepEqual([kararCagri.at(-1).s.refProtokol, kararCagri.at(-1).s.adayProtokol], ['h2', 'h2']);
+});
+
+// -- 2026-11-03 (K2): olculmus limit_req / limit_conn daraltmaz; asim plan UYARISI (onay ister), limit sonradan
+// degisirse on_kontrol_eski. Yuk makinesi port uyarisi (yeni playbook alanlari) ayrinti ve kosu onayinda.
+test('YKP40 limit uyarisi: on kontrol 200 + plan uyarisi; onaysiz kosu 409 uyari_onayi; limit degisirse on_kontrol_eski; port uyarisi', { timeout: 20000 }, async () => {
+  sifirla();
+  senaryoEkle();
+  // Fikstur rate=300r/s: hiz 1000 (> 300) on kontrolu ENGELLEMEZ.
+  const ok = await onKontrolHazirla({ govde: GOVDE({ parametreler: { hizlar: [100, 1000] } }) });
+  const LIMIT = 'Seçilen hız (1000/sn) hedefin ölçülmüş limit_req değerini (300 r/s) aşıyor; 429 alınırsa koşu durur.';
+  assert.deepEqual(JSON.parse(ok.plan_uyarilari), [LIMIT]);
+  assert.equal(D.launch[0][2].yuk_hizlar, '100 1000');
+  let g = await istek('GET', `/kosular/${ok.id}`);
+  assert.deepEqual(g.body.kosu.onKontrolUyarilari, [LIMIT]);
+  let r = await istek('POST', '/kosular', { body: { onKontrolKosuId: ok.id, confirmText: 'GBNGXT33' } });
+  assert.deepEqual([r.statusCode, r.body.code, r.body.uyarilar], [409, 'uyari_onayi', [LIMIT]]);
+  // Limit on kontrolden sonra dustu (200 r/s): yeni metin saklanmamis -> on_kontrol_eski (guvenli yon).
+  D.ayarlar = [
+    { host: 'GBNGXT33', directive: 'limit_req_zone', value: '$binary_remote_addr zone=r:1m rate=200r/s' },
+    { host: 'GBNGXT33', directive: 'limit_req', value: 'zone=r burst=20 nodelay' },
+  ];
+  r = await istek('POST', '/kosular', { body: { onKontrolKosuId: ok.id, confirmText: 'GBNGXT33', uyariOnay: true } });
+  assert.deepEqual([r.statusCode, r.body.code], [409, 'on_kontrol_eski'], JSON.stringify(r.body));
+  assert.match(r.body.message, /yeni uyarı çıktı \(Seçilen hız \(1000\/sn\) hedefin ölçülmüş limit_req değerini \(200 r\/s\)/);
+  // Ayni limitle onayli kosu baslar.
+  sifirla();
+  senaryoEkle();
+  const ok2 = await onKontrolHazirla({ govde: GOVDE({ parametreler: { hizlar: [100, 1000] } }) });
+  r = await istek('POST', '/kosular', { body: { onKontrolKosuId: ok2.id, confirmText: 'GBNGXT33', uyariOnay: true } });
+  assert.equal(r.statusCode, 200, JSON.stringify(r.body));
+  assert.equal(D.launch.at(-1)[2].yuk_hizlar, '100 1000');
+  // Port uyarisi: yeni playbook alanlari (yukm_port_sayisi) + 'yeni' kip + hiz > port/60 -> ayrinti ve kosu onayinda.
+  sifirla();
+  senaryoEkle();
+  const ok3 = await onKontrolHazirla({ ozet: { ...OK_OZET, yukm_port_sayisi: 28232, yukm_tw_reuse: 2, yukm_tcp_ts: 1, yukm_nproc: 8, yukm_mem_kb: 64 * 1024 * 1024 }, govde: GOVDE({ parametreler: { hizlar: [100, 1000] } }) });
+  g = await istek('GET', `/kosular/${ok3.id}`);
+  assert.equal(g.body.kosu.onKontrolUyarilari.length, 2);
+  assert.equal(g.body.kosu.onKontrolUyarilari[0], LIMIT);
+  assert.match(g.body.kosu.onKontrolUyarilari[1], /^Yük makinesinin yerel port aralığı 28232 port \(tcp_tw_reuse 2, tcp_timestamps 1\).*seçilen hız \(1000\/sn\) bunu aşıyor/);
+  r = await istek('POST', '/kosular', { body: { onKontrolKosuId: ok3.id, confirmText: 'GBNGXT33' } });
+  assert.deepEqual([r.statusCode, r.body.code, r.body.uyarilar], [409, 'uyari_onayi', g.body.kosu.onKontrolUyarilari]);
+  // Olcum yoksa (limit satiri yok) uyari yok: plan_uyarilari NULL.
+  sifirla();
+  senaryoEkle();
+  D.ayarlar = [];
+  const ok4 = await onKontrolHazirla({ govde: GOVDE({ parametreler: { hizlar: [100, 5000], maxvu: 1000 } }) });
+  assert.equal(ok4.plan_uyarilari, null);
 });

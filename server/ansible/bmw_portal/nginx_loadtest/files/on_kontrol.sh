@@ -4,11 +4,12 @@
 #             ortam: HEDEF_IP HOST_BASLIGI [LOGDIR(/web_log) NGINX_PREFIX(/usr/nginx) NGINX_BIN NGINX_ERRLOG PROC_ROOT]
 #           on_kontrol.sh yollar   (yuk makinesinde, www ile)
 #             ortam: HEDEF_IP HOST_BASLIGI SNI(0|1) SENARYO(<tsv>) [UA_ONEK(portal-yuktesti) PARALEL(4) ZAMAN(5) CURL(curl)
-#                    PROTOKOL(h1)]
+#                    PROTOKOL(h1) PROC_ROOT(/proc)]
 # Cikti   : SEKME ayrimli satirlar; son satir SONUC<TAB><OK|FAIL><TAB><mesaj>. '-' = olculemedi.
 #   hedef : ip_yerel 1|0|-, nginx_T ok|fail, server_name_var 1|0|-, master_sayisi <n>, web_log_df <yuzde>|-,
 #           log_dizini_okunur 1|0, log_format_ua 1|0|-, statik_direktif 1|0|-
-#   yollar: ip_yuk_makinesinde 1|0|-, YOL<TAB><status><TAB><http surumu><TAB><content-encoding|-><TAB><content-length 1|0><TAB><yol>
+#   yollar: ip_yuk_makinesinde 1|0|-, yuk makinesi (salt okunur, bilgi): port_araligi <lo> <hi>|-, tcp_tw_reuse <n>|-,
+#           tcp_timestamps <n>|-, nproc <n>|-, mem_kb <MemAvailable>|-; YOL<TAB><status><TAB><http surumu><TAB><content-encoding|-><TAB><content-length 1|0><TAB><yol>
 #           (senaryo sirasiyla), HATA<TAB><status><TAB><yol> (200 olmayan ilk 20), OZET<TAB><toplam><TAB><n200><TAB>
 #           <statik><TAB><dinamik><TAB><sikistirmasiz> (sikistirma yalniz 200 yanitlarda sayilir); protokol h1|h2;
 #           yalniz h2: curl_h2 1|0, yollar_yanitli <n>, yollar_h2 <n>|-, alpn_h2 1|0|-, alpn_kaynak curl|openssl
@@ -152,6 +153,25 @@ hedef() {
   sonuc OK "hedef olculdu"
 }
 
+sys_oku() {   # sys_oku <dosya>: ilk satir, yalniz rakam ve bosluk; okunamazsa -
+  local v=""
+  { IFS= read -r v < "$1"; } 2>/dev/null || :
+  v="$(printf '%s' "$v" | tr -s '\t ' '  ')"; v="${v# }"; v="${v% }"
+  if [[ "$v" =~ ^[0-9]{1,10}( [0-9]{1,10})?$ ]]; then printf '%s' "$v"; else printf -- '-'; fi
+}
+yuk_makinesi_olc() {   # yalniz okuma: yerel port araligi, TIME_WAIT yeniden kullanimi, zaman damgasi, cekirdek, bos bellek
+  local P="${PROC_ROOT:-/proc}" n m
+  printf 'port_araligi\t%s\n' "$(sys_oku "$P/sys/net/ipv4/ip_local_port_range")"
+  printf 'tcp_tw_reuse\t%s\n' "$(sys_oku "$P/sys/net/ipv4/tcp_tw_reuse")"
+  printf 'tcp_timestamps\t%s\n' "$(sys_oku "$P/sys/net/ipv4/tcp_timestamps")"
+  n="$(nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || :)"
+  [[ "$n" =~ ^[0-9]{1,5}$ ]] || n=-
+  printf 'nproc\t%s\n' "$n"
+  m="$(awk '$1 == "MemAvailable:" { print $2; exit }' "$P/meminfo" 2>/dev/null)"
+  [[ "$m" =~ ^[0-9]{1,12}$ ]] || m=-
+  printf 'mem_kb\t%s\n' "$m"
+}
+
 yollar() {
   local bozuk satir n sira=0 ipy
   [[ "${HEDEF_IP:-}" =~ $IP_RE ]] || red "HEDEF_IP gecersiz"
@@ -171,6 +191,7 @@ yollar() {
   ipy="$(ip_yerel_mi "$HEDEF_IP")"
   printf 'ip_yuk_makinesinde\t%s\n' "$ipy"
   printf 'protokol\t%s\n' "$PROTOKOL"
+  yuk_makinesi_olc
   [ "$ipy" = 0 ] || red "hedef IP yuk makinesinde yerel ya da olculemedi ($ipy); istek gonderilmedi" 3
 
   GECICI="$(mktemp -d "${TMPDIR:-/tmp}/onkontrol.XXXXXX")" || red "gecici dizin olusturulamadi"

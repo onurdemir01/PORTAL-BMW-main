@@ -751,3 +751,23 @@ test('PL-H protokol satirdan kosuAnaliz\'e; set_stats protokol yankisi yalniz me
   assert.match(D.son.nedenler[0], /bu koşuya ait değil \(protokol h1\)/);
   assert.equal(D.analizCagri, 0);
 });
+
+test('PL-Y yuk CPU kaydedici durumu set_stats kosu.yukm_cpu_basladi (bool) + yukm_cpu_son_satir -> kosuAnaliz; eski / gecersiz deger: secenek YOK', async () => {
+  for (const [deger, son, bek, bekSon] of [
+    [true, '== yuk_cpu_kaydedici ozeti (R17, y): ornek=1', 'basladi', '== yuk_cpu_kaydedici ozeti (R17, y): ornek=1'],
+    [false, 'HATA: /proc/stat okunamiyor', 'baslamadi', 'HATA: /proc/stat okunamiyor'],
+    [true, null, 'basladi', null], [true, 7, 'basladi', null],
+    [undefined, 'x', null, null], [null, 'x', null, null], ['basladi', 'x', null, null], [1, 'x', null, null], ['true', 'x', null, null],
+  ]) {
+    sifirla();
+    const kosu = { kos_rc: 0, sw_dizin: '/sw/BMW_PORTAL/nginx_loadtest/17' };
+    if (deger !== undefined) kosu.yukm_cpu_basladi = deger;
+    if (son !== undefined) kosu.yukm_cpu_son_satir = son;
+    D.awx.artifacts = { nginx_loadtest_result: STATS({ kosu }) };
+    await pl.kosuyuSonuclandir(KOSU());
+    const s = D.analizSecenek || {};
+    assert.equal(s.yukKaydedici ?? null, bek, String(deger));
+    assert.equal(s.yukSonSatir ?? null, bekSon, String(deger));
+    if (bek === null) assert.ok(!('yukKaydedici' in s) && !('yukSonSatir' in s), `${String(deger)}: eski secenek nesnesi birebir olmali`);
+  }
+});

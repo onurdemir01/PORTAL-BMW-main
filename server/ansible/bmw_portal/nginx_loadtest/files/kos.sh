@@ -8,7 +8,8 @@
 #           KIP(yeni|ka) AE(br|gzip|identity) ISINMA(30s) SURE(120s) BOSLUK(30 sn) K6(k6) MAXVU SNI UA_ONEK
 #           PROTOKOL(h1|h2; h2 yalniz KIP=ka)
 # Portal  : el kiti f5_rehber/har_yuk_testi/kos.sh'in kopyasi. Farklar YALNIZ: UA_ONEK k6'ya gecer, HOST_BASLIGI
-#           varsayilansiz, PROTOKOL (h2: GODEBUG http2client=0 verilmez), LIMIT_MUAF yasak (hep 0), kendi pid'i $SONUC/../kos.pid, TERM (Portal durdur / timeout)
+#           varsayilansiz, PROTOKOL (h2: GODEBUG http2client=0 verilmez), LIMIT_MUAF yasak (hep 0), HIZ en cok 5000
+#           (Portal ust siniri; hedefin limit_req'i Portal'da yalniz UYARI), kendi pid'i $SONUC/../kos.pid, TERM (Portal durdur / timeout)
 #           calisan k6'yi da sonlandirir (k6 ve bosluk beklemesi arka planda + wait: trap ertelenmez).
 set -u
 BURASI="$(cd "$(dirname "$0")" && pwd)"
@@ -32,7 +33,7 @@ HEDEF="${HEDEF:-}"; HEDEF="${HEDEF%/}"
 HOST_BASLIGI="${HOST_BASLIGI:-}"
 UA_ONEK="${UA_ONEK:-portal-yuktesti}"
 [[ "$UA_ONEK" =~ ^[a-z][a-z0-9-]{2,30}$ ]] || hata "UA_ONEK yalniz kucuk harf, rakam ve - (3-31 karakter): '$UA_ONEK'"
-[ "${LIMIT_MUAF:-0}" = 0 ] || hata "LIMIT_MUAF Portal kosusunda desteklenmez (IP basina limit_req 500 r/s; HIZ en fazla 450)"
+[ "${LIMIT_MUAF:-0}" = 0 ] || hata "LIMIT_MUAF Portal kosusunda desteklenmez (HIZ en fazla 5000)"
 SENARYO_DIZIN="${SENARYO_DIZIN:-./senaryo}"
 SONUC="${SONUC:-./sonuc}"
 if [ "$SEN" = B ]; then HIZLAR="${HIZLAR:-10}"; else HIZLAR="${HIZLAR:-100 250 400}"; fi
@@ -61,8 +62,9 @@ if [ "$PROTOKOL" = h2 ] && [ "$KIP" != ka ]; then hata "PROTOKOL=h2 yalniz KIP=k
 [ -n "${HIZLAR//[[:space:]]/}" ] || hata "HIZLAR bos olamaz (ornek: HIZLAR=\"100 250 400\")"
 for h in $HIZLAR; do
   [[ "$h" =~ ^[1-9][0-9]*$ ]] || hata "HIZLAR icinde gecersiz deger: '$h'"
-  if [ "$h" -gt 450 ] && [ "$LIMIT_MUAF" != 1 ]; then
-    hata "HIZ $h > 450: IP basina limit_req 500 r/s; 429 alirsiniz. Yalniz limit_*_dry_run acikken LIMIT_MUAF=1 ile."
+  [ "${#h}" -le 5 ] || hata "HIZ $h > 5000: Portal ust siniri 5000/sn"
+  if [ "$h" -gt 5000 ]; then
+    hata "HIZ $h > 5000: Portal ust siniri 5000/sn (hedefin limit_req'i asilirsa 429 alinir, kosu durur)."
   fi
 done
 

@@ -128,7 +128,7 @@ test('YD4 yuk makinesi: izin listesi, hedeften farkli, non-prod, envanterde', ()
   assert.deepEqual(dg.yukHostlari({ NGINX_LOADTEST_YUK_HOSTLARI: '!!!' }), []);
 });
 
-test('YD5 sinirlar, butce formulu ve rate limit daraltmasi', () => {
+test('YD5 sinirlar, butce formulu ve olculmus rate limit (2026-11-03: daraltma yok, uyari)', () => {
   const ok = dg.parametreler({}, { sni: false });
   assert.equal(ok.ok, true);
   // Tur 3: kanonik k6 nesnesi motor:'k6' tasir (ilgisiz wrk anahtarlari GIRMEZ).
@@ -142,10 +142,13 @@ test('YD5 sinirlar, butce formulu ve rate limit daraltmasi', () => {
     return r;
   };
   for (const p of [
-    { hizlar: [451] }, { hizlar: [0] }, { hizlar: [1, 2, 3, 4, 5, 6] }, { hizlar: [100, 100] }, { tekrar: 4 }, { tekrar: 0 },
+    { hizlar: [5001] }, { hizlar: [0] }, { hizlar: [1, 2, 3, 4, 5, 6] }, { hizlar: [100, 100] }, { tekrar: 4 }, { tekrar: 0 },
     { isinma: 4 }, { isinma: 61 }, { sure: 29 }, { sure: 39 }, { sure: 301 }, { bosluk: 121 }, { bosta: 29 }, { bosta: 121 },
-    { maxvu: 9 }, { maxvu: 200 },
+    { maxvu: 9 }, { maxvu: 1001 },
   ]) assert.equal(asim(p).code, 'sinir_asildi', JSON.stringify(p));
+  // K1: sunucu hedefinde hiz 5000 / maxvu 1000 kabul (butce sabit; 1 hiz x 2 tekrar).
+  assert.equal(dg.parametreler({ hizlar: [1000, 5000], maxvu: 1000 }, { sni: false }).ok, true);
+  assert.deepEqual([dg.SINIRLAR.maxHiz, dg.SINIRLAR.maxVu, dg.SINIRLAR.maxBaglanti, dg.SINIRLAR.maxTavanRps], [5000, 1000, 199, 5000]);
   // Analiz penceresi >= 30 sn ister ([+3, -2] kirpma, 1 sn ornek): olcum suresi en az 40 sn.
   assert.equal(dg.SINIRLAR.sureMin, 40);
   assert.match(asim({ sure: 39 }).message, /süre 39 \(izinli 40\.\.300\)/);
@@ -164,7 +167,7 @@ test('YD5 sinirlar, butce formulu ve rate limit daraltmasi', () => {
   assert.equal(asim({ kip: 'cok' }).status, 400);
   assert.equal(asim({ ae: 'zstd' }).status, 400);
   assert.equal(dg.parametreler({}, {}).status, 400, 'sni boolean degilse gecti');
-  // Rate limit daraltmasi: hiz <= 0.9 x olculen limit_req, maxvu <= limit_conn - 1.
+  // K2: olculmus rate limit DARALTMAZ (hiz 0.9 x limit_req'i, maxvu limit_conn - 1'i asabilir); ham degerler uyari icin.
   const t = dg.rateLimitTavani([
     { directive: 'limit_req_zone', value: '$binary_remote_addr zone=request_limit:20m rate=200r/s' },
     { directive: 'limit_req_zone', value: '$server_name zone=server_limit:50m rate=5000r/s' },
@@ -172,12 +175,12 @@ test('YD5 sinirlar, butce formulu ve rate limit daraltmasi', () => {
     { directive: 'limit_conn_zone', value: '$binary_remote_addr zone=limit_connection_perip:20m' },
     { directive: 'limit_conn', value: 'limit_connection_perip 100' },
   ]);
-  assert.deepEqual(t, { hizSiniri: 180, vuSiniri: 99 });
-  assert.equal(asim({ hizlar: [181] }, t).code, 'sinir_asildi');
-  assert.equal(asim({ maxvu: 100 }, t).code, 'sinir_asildi');
-  assert.equal(dg.parametreler({ hizlar: [180], maxvu: 99 }, { sni: true, ...t }).ok, true);
-  // Olcum yoksa daraltma yok (null); dakika birimi saniyeye cevrilir.
-  assert.deepEqual(dg.rateLimitTavani([]), { hizSiniri: null, vuSiniri: null });
+  assert.deepEqual(t, { hizSiniri: 180, vuSiniri: 99, limitReq: 200, limitConn: 100 });
+  assert.equal(dg.parametreler({ hizlar: [181] }, { sni: false, ...t }).ok, true);
+  assert.equal(dg.parametreler({ maxvu: 100 }, { sni: false, ...t }).ok, true);
+  assert.equal(dg.parametreler({ hizlar: [5000], maxvu: 1000 }, { sni: true, ...t }).ok, true);
+  // Olcum yoksa (null); dakika birimi saniyeye cevrilir.
+  assert.deepEqual(dg.rateLimitTavani([]), { hizSiniri: null, vuSiniri: null, limitReq: null, limitConn: null });
   assert.equal(dg.rateLimitTavani([{ directive: 'limit_req_zone', value: '$binary_remote_addr zone=z:1m rate=600r/m' }]).hizSiniri, 9);
 });
 
@@ -322,7 +325,11 @@ test('YD9 extra_vars son kapisi: yalniz sozlesme anahtarlari, hepsi metin, b64 v
   const ihlal = (ek) => dg.ekstraDegiskenleriDenetle(evOrnek(ek));
   assert.deepEqual(ihlal({ LIMIT_MUAF: '1' }), ['LIMIT_MUAF']);
   assert.deepEqual(ihlal({ http_proxy: 'http://x' }), ['http_proxy']);
-  assert.ok(ihlal({ yuk_hizlar: '100 451' }).includes('yuk_hizlar'));
+  assert.ok(ihlal({ yuk_hizlar: '100 5001' }).includes('yuk_hizlar'));
+  assert.ok(ihlal({ yuk_hizlar: '100 10000' }).includes('yuk_hizlar'));
+  assert.ok(!ihlal({ yuk_hizlar: '1000 5000' }).includes('yuk_hizlar'), 'son kapi 4 haneli hizi (5000) reddetti');
+  assert.ok(ihlal({ yuk_maxvu: '1001' }).includes('yuk_maxvu'));
+  assert.ok(!ihlal({ yuk_maxvu: '1000' }).includes('yuk_maxvu'));
   assert.ok(ihlal({ yuk_yuk_host: 'GBNGXT33' }).includes('yuk_yuk_host'));
   assert.ok(ihlal({ yuk_hedef_ip: '127.0.0.1' }).includes('yuk_hedef_ip'));
   assert.ok(ihlal({ yuk_host_basligi: 'a.b\r\nX: 1' }).includes('yuk_host_basligi'));
@@ -372,7 +379,7 @@ test('YD10 kaynaklariOku: parametreli IN listesi, tablo yoksa veri yok, tarama h
   const k = await dg.kaynaklariOku({ query: veri(true), sql });
   assert.deepEqual([...k.nginx.keys()].sort(), ['GBNGXP40', 'GBNGXT33', 'GBNGXT34']);
   const ay = dg.hedefAyrintisi(k, 'GBNGXT33');
-  assert.deepEqual(ay, { ipler: ['10.0.0.5', '10.0.0.9'], vhostlar: ['app.test.local'], hizSiniri: 90, vuSiniri: null });
+  assert.deepEqual(ay, { ipler: ['10.0.0.5', '10.0.0.9'], vhostlar: ['app.test.local'], hizSiniri: 90, vuSiniri: null, limitReq: 100, limitConn: null });
   // Prod host tarama sorgusuna girmez (/hedefler yolu yalniz non-prod hostlari okur).
   const tarama = sorgular.find((s) => /Nginx_Audit_Servers\s+WHERE/.test(s.q));
   assert.deepEqual(tarama.params.map((p) => p.value).sort(), ['GBNGXT33', 'GBNGXT34']);
@@ -382,7 +389,7 @@ test('YD10 kaynaklariOku: parametreli IN listesi, tablo yoksa veri yok, tarama h
   // Tablo yoksa "veri yok" (null): vhost denetimi atlanir, IP envanterden.
   const k2 = await dg.kaynaklariOku({ query: veri(false), sql, hostlar: ['GBNGXT33'] });
   assert.equal(k2.sunucular, null);
-  assert.deepEqual(dg.hedefAyrintisi(k2, 'GBNGXT33'), { ipler: ['10.0.0.5'], vhostlar: null, hizSiniri: null, vuSiniri: null });
+  assert.deepEqual(dg.hedefAyrintisi(k2, 'GBNGXT33'), { ipler: ['10.0.0.5'], vhostlar: null, hizSiniri: null, vuSiniri: null, limitReq: null, limitConn: null });
   // Tarama sorgusu HATASI 424 (okunamadi != yok).
   await assert.rejects(
     dg.kaynaklariOku({ sql, hostlar: ['GBNGXT33'], query: async (q, p) => (/Nginx_Audit_Servers\s+WHERE/.test(q) ? Promise.reject(new Error('timeout')) : veri(true)(q, p)) }),
@@ -493,31 +500,33 @@ test('YD13 boyut ve satir sayisi siniri satir denetiminden ONCE', () => {
   assert.ok(dg.ekstraDegiskenleriDenetle(evOrnek({ yuk_senaryo_b64: 'A'.repeat(300 * 1024) })).includes('yuk_senaryo_b64'));
 });
 
-test('YD14 olculmus limit 0 hedefi kapatir, global tavana dusmez', () => {
+test('YD14 (B3) olculmus cok kucuk limit (eski sifir sinir) hedefi KAPATMAZ: 409 yok, ayni limit uyarisi', () => {
   const t1 = dg.rateLimitTavani([
     { directive: 'limit_req_zone', value: '$binary_remote_addr zone=login:10m rate=1r/s' },
     { directive: 'limit_req', value: 'zone=login burst=5' },
   ]);
-  assert.deepEqual(t1, { hizSiniri: 0, vuSiniri: null });
+  assert.deepEqual(t1, { hizSiniri: 0, vuSiniri: null, limitReq: 1, limitConn: null });
   const t2 = dg.rateLimitTavani([
     { directive: 'limit_conn_zone', value: '$binary_remote_addr zone=c:10m' },
     { directive: 'limit_conn', value: 'c 1' },
   ]);
-  assert.deepEqual(t2, { hizSiniri: null, vuSiniri: 0 });
+  assert.deepEqual(t2, { hizSiniri: null, vuSiniri: 0, limitReq: null, limitConn: 1 });
   assert.equal(dg.rateLimitTavani([{ directive: 'limit_req_zone', value: '$binary_remote_addr zone=z:1m rate=30r/m' }]).hizSiniri, 0);
-  for (const t of [t1, t2, { hizSiniri: 0, vuSiniri: 0 }]) {
-    const r = dg.parametreler({ hizlar: [10], maxvu: 10 }, { sni: false, ...t });
-    assert.deepEqual([r.ok, r.status, r.code, r.message], [false, 409, 'sinir_asildi', dg.SIFIR_SINIR_MESAJI], JSON.stringify(t));
-    assert.equal(dg.sifirSinir(t.hizSiniri, t.vuSiniri), true);
-  }
-  assert.equal(dg.SIFIR_SINIR_MESAJI, "Hedefin ölçülmüş limit_req değeri 2 r/s'nin altında (ya da limit_conn ≤ 1); bu hedefe yük testi yapılamaz.");
-  // Olcum yok (null) ise global tavan; 2 r/s zone tavani 1'e indirir (monoton).
-  assert.equal(dg.sifirSinir(null, null), false);
-  assert.equal(dg.parametreler({ hizlar: [450] }, { sni: false, hizSiniri: null, vuSiniri: null }).ok, true);
+  // B3 (K2 "olculmus limit artik sinirlamaz"): parametreler limiti hic gormez; 409 YOK. Asim plan uyarisi (onay ister).
+  const p10 = dg.parametreler({ hizlar: [10], maxvu: 10 }, { sni: false });
+  assert.equal(p10.ok, true, JSON.stringify(p10));
+  assert.deepEqual(dg.limitUyarilari(p10.deger, t1), ['Seçilen hız (10/sn) hedefin ölçülmüş limit_req değerini (1 r/s) aşıyor; 429 alınırsa koşu durur.']);
+  assert.deepEqual(dg.limitUyarilari(p10.deger, t2), ['Seçilen en çok VU (10) hedefin ölçülmüş limit_conn değerini (1) aşıyor; bu kadar bağlantı aynı anda açılırsa fazlası reddedilir (429 ya da 503) ve koşu durur ya da adım geçersiz sayılır.']);
+  const w = dg.parametreler({ motor: 'wrk', baglantilar: [2, 4] }, { sni: false });
+  assert.equal(w.ok, true);
+  assert.deepEqual(dg.limitUyarilari(w.deger, t2), ['Seçilen en çok bağlantı (4) hedefin ölçülmüş limit_conn değerini (1) aşıyor; fazla bağlantılar reddedilir (429 ya da 503) ve koşu durur.']);
+  assert.equal(dg.sifirSinir, undefined, 'sifir sinir kapisi kaldirildi');
+  assert.equal(dg.SIFIR_SINIR_MESAJI, undefined);
+  assert.equal(dg.parametreler({ hizlar: [5000] }, { sni: false }).ok, true);
   const t3 = dg.rateLimitTavani([{ directive: 'limit_req_zone', value: '$binary_remote_addr zone=z:1m rate=2r/s' }]);
   assert.equal(t3.hizSiniri, 1);
   assert.equal(dg.parametreler({ hizlar: [1], maxvu: 10 }, { sni: false, ...t3 }).ok, true);
-  assert.equal(dg.parametreler({ hizlar: [2], maxvu: 10 }, { sni: false, ...t3 }).code, 'sinir_asildi');
+  assert.equal(dg.parametreler({ hizlar: [2], maxvu: 10 }, { sni: false, ...t3 }).ok, true);
 });
 
 // ── TUR 3 (2026-10-28) ─────────────────────────────────────────────────────────────────────
@@ -816,14 +825,14 @@ test('YD17 ipSinifla: sahiplik kaynaklari, baglayici sira ve metinler', async ()
 test('YD18 parametreler wrk: kanonik nesne, hesaplanan tavan, her mesaj; k6 serbest tavanlari', () => {
   const w = dg.parametreler({ motor: 'wrk' }, { sni: false });
   assert.equal(w.ok, true);
-  assert.deepEqual(w.deger, { motor: 'wrk', baglantilar: [2, 4, 8], is_parcacigi: 2, tavan_rps: 450, tekrar: 2, isinma: 30, sure: 120, bosluk: 30, bosta: 60, kip: 'yeni', ae: 'br', sni: false, protokol: 'h1', butceSn: 1380 });
+  assert.deepEqual(w.deger, { motor: 'wrk', baglantilar: [2, 4, 8], is_parcacigi: 2, tavan_rps: 5000, tekrar: 2, isinma: 30, sure: 120, bosluk: 30, bosta: 60, kip: 'yeni', ae: 'br', sni: false, protokol: 'h1', butceSn: 1380 });
   assert.deepEqual(Object.keys(w.deger), ['motor', 'baglantilar', 'is_parcacigi', 'tavan_rps', 'tekrar', 'isinma', 'sure', 'bosluk', 'bosta', 'kip', 'ae', 'sni', 'protokol', 'butceSn']);
   // Ayni girdi -> ayni nesne; gonderilen tavan_rps / hizlar / maxvu yok sayilir (kanonik nesneye girmez).
   assert.deepEqual(dg.parametreler({ ...w.deger }, { sni: false }).deger, w.deger);
   assert.deepEqual(dg.parametreler({ motor: 'wrk', tavan_rps: 9999, hizlar: [450], maxvu: 199 }, { sni: false }).deger, w.deger);
-  // Tavan sunucuda min(450, olculen limit_req %90), serbestte 200.
-  assert.equal(dg.parametreler({ motor: 'wrk' }, { sni: false, hizSiniri: 270, vuSiniri: 99 }).deger.tavan_rps, 270);
-  assert.equal(dg.parametreler({ motor: 'wrk' }, { sni: false, hizSiniri: 999 }).deger.tavan_rps, 450);
+  // K2 (2026-11-03): tavan sunucuda HER ZAMAN 5000 (olculen limit_req daraltmaz; asim uyaridir), serbestte 200.
+  assert.equal(dg.parametreler({ motor: 'wrk' }, { sni: false, hizSiniri: 270, vuSiniri: 99 }).deger.tavan_rps, 5000);
+  assert.equal(dg.parametreler({ motor: 'wrk' }, { sni: false, hizSiniri: 999 }).deger.tavan_rps, 5000);
   assert.equal(dg.parametreler({ motor: 'wrk', tavan_rps: 450 }, { sni: false, hedefTuru: 'serbest' }).deger.tavan_rps, 200);
   const m400 = (ham, ek = {}) => {
     const r = dg.parametreler(ham, { sni: false, ...ek });
@@ -847,7 +856,7 @@ test('YD18 parametreler wrk: kanonik nesne, hesaplanan tavan, her mesaj; k6 serb
   assert.deepEqual(asim({ motor: 'wrk', baglantilar: [2, 4, 6, 8, 10, 12] }), ['en çok 5 bağlantı kademesi']);
   assert.deepEqual(asim({ motor: 'wrk', baglantilar: [4, 4] }), ['aynı bağlantı sayısı iki kez']);
   assert.deepEqual(asim({ motor: 'wrk', baglantilar: [2, 200] }), ['bağlantı 200 izinli aralıkta değil (1..199)']);
-  assert.deepEqual(asim({ motor: 'wrk', baglantilar: [2, 4] }, { vuSiniri: 3 }), ['bağlantı 4 izinli aralıkta değil (1..3, hedefin ölçülmüş limit_conn değerinin bir eksiği)']);
+  assert.equal(dg.parametreler({ motor: 'wrk', baglantilar: [2, 4] }, { sni: false, vuSiniri: 3 }).ok, true, 'K2: limit_conn baglantiyi daraltmaz');
   assert.deepEqual(asim({ motor: 'wrk', baglantilar: [2, 52] }, { hedefTuru: 'serbest' }), ['bağlantı 52 izinli aralıkta değil (1..50, serbest hedef tavanı)']);
   assert.equal(dg.parametreler({ motor: 'wrk', baglantilar: [2, 50] }, { sni: false, hedefTuru: 'serbest' }).ok, true);
   assert.deepEqual(asim({ motor: 'wrk', is_parcacigi: 17, baglantilar: [32] }), ['iş parçacığı 17 (izinli 1..16)']);
@@ -856,10 +865,10 @@ test('YD18 parametreler wrk: kanonik nesne, hesaplanan tavan, her mesaj; k6 serb
   assert.deepEqual(asim({ motor: 'wrk', baglantilar: [3, 6, 9], is_parcacigi: 2 }), ['bağlantı 3, iş parçacığı sayısına (2) tam bölünmüyor', 'bağlantı 9, iş parçacığı sayısına (2) tam bölünmüyor']);
   assert.equal(dg.parametreler({ motor: 'wrk', baglantilar: [3, 6, 9], is_parcacigi: 3 }, { sni: false }).ok, true);
   assert.match(dg.parametreler({ motor: 'wrk', baglantilar: [1, 2, 3, 4, 5], is_parcacigi: 1, tekrar: 3, sure: 300, isinma: 60, bosluk: 120 }, { sni: false }).message, /toplam süre \d+ sn > 2700/);
-  // Olculmus sifir sinir iki motorda 409 (global tavana dusmez).
+  // B3: eski "sifir sinir" (hizSiniri / vuSiniri 0) wrk'de de 409 DEGIL (parametreler limiti okumaz).
   for (const t of [{ hizSiniri: 0 }, { vuSiniri: 0 }]) {
     const r = dg.parametreler({ motor: 'wrk' }, { sni: false, ...t });
-    assert.deepEqual([r.status, r.code, r.message], [409, 'sinir_asildi', dg.SIFIR_SINIR_MESAJI], JSON.stringify(t));
+    assert.equal(r.ok, true, JSON.stringify(t));
   }
   // k6 serbest: tanimsiz hizlar / maxvu VARSAYILAN.serbest'ten; tavanlar 200 / 50 ve ek metin.
   assert.deepEqual(dg.parametreler({}, { sni: true, hedefTuru: 'serbest' }).deger, { motor: 'k6', hizlar: [50, 100, 200], tekrar: 2, isinma: 30, sure: 120, bosluk: 30, bosta: 60, maxvu: 50, kip: 'yeni', ae: 'br', sni: true, protokol: 'h1', butceSn: 1380 });
@@ -867,10 +876,10 @@ test('YD18 parametreler wrk: kanonik nesne, hesaplanan tavan, her mesaj; k6 serb
   assert.deepEqual(asim({ maxvu: 51 }, { hedefTuru: 'serbest' }), ['maxvu 51 (izinli 10..50, serbest hedef tavanı)']);
   assert.equal(dg.parametreler({ hizlar: [200], maxvu: 50 }, { sni: false, hedefTuru: 'serbest' }).ok, true);
   // Sunucudaki k6 metinleri tur 2 ile BIREBIR.
-  assert.deepEqual(asim({ hizlar: [451] }), ['hız 451 izinli aralıkta değil (1..450)']);
-  assert.deepEqual(asim({ hizlar: [181] }, { hizSiniri: 180 }), ["hız 181 izinli aralıkta değil (1..180, hedefin ölçülmüş limit_req değerinin %90'ı)"]);
-  assert.deepEqual(asim({ maxvu: 200 }), ['maxvu 200 (izinli 10..199)']);
-  assert.deepEqual(asim({ maxvu: 100 }, { vuSiniri: 99 }), ['maxvu 100 (izinli 10..99)']);
+  assert.deepEqual(asim({ hizlar: [5001] }), ['hız 5001 izinli aralıkta değil (1..5000)']);
+  assert.equal(dg.parametreler({ hizlar: [181] }, { sni: false, hizSiniri: 180 }).ok, true, 'K2: limit_req hizi daraltmaz');
+  assert.deepEqual(asim({ maxvu: 1001 }), ['maxvu 1001 (izinli 10..1000)']);
+  assert.equal(dg.parametreler({ maxvu: 100 }, { sni: false, vuSiniri: 99 }).ok, true, 'K2: limit_conn VU daraltmaz');
   // Sinirlar ve varsayilanlar (kod sabiti).
   assert.deepEqual(
     ['baglantiMin', 'maxBaglanti', 'maxBaglantiSayisi', 'isParcacigiMin', 'maxIsParcacigi', 'serbestMinOnek', 'serbestTavanRps', 'serbestMaxBaglanti', 'isGecerlilikSn', 'ipEnvanteriMaxYasSaat', 'taramaMaxYasGun'].map((x) => dg.SINIRLAR[x]),
@@ -923,7 +932,7 @@ test('YD20 extra_vars tur 3: k6 / wrk x sunucu / serbest, is gecerlilik penceres
   );
   const wu = evKur({ p: dg.parametreler({ motor: 'wrk' }, { sni: false, hizSiniri: 270 }).deger });
   assert.deepEqual(den(wu), []);
-  assert.equal(wu.yuk_tavan_rps, '270');
+  assert.equal(wu.yuk_tavan_rps, '5000');
   const k6s = evKur({ p: dg.parametreler({}, { sni: true, hedefTuru: 'serbest' }).deger, hedefTuru: 'serbest' });
   assert.deepEqual(den(k6s), []);
   assert.deepEqual([k6s.yuk_hizlar, k6s.yuk_maxvu, k6s.yuk_sni], ['50 100 200', '50', '1']);
@@ -974,7 +983,8 @@ test('YD20 extra_vars tur 3: k6 / wrk x sunucu / serbest, is gecerlilik penceres
     [wu, { yuk_is_parcacigi: '4' }, 'yuk_is_parcacigi'],
     [wu, { yuk_baglantilar: '3 6 9', yuk_is_parcacigi: '2' }, 'yuk_is_parcacigi'],
     [wu, { yuk_tavan_rps: '0' }, 'yuk_tavan_rps'],
-    [wu, { yuk_tavan_rps: '451' }, 'yuk_tavan_rps'],
+    [wu, { yuk_tavan_rps: '5001' }, 'yuk_tavan_rps'],
+    [wu, { yuk_tavan_rps: '50000' }, 'yuk_tavan_rps'],
     [ws, { yuk_tavan_rps: '201' }, 'yuk_tavan_rps'],
     [wu, { yuk_butce_sn: '1259' }, 'yuk_butce_sn'],
     [k6, { yuk_butce_sn: '1259' }, 'yuk_butce_sn'],
@@ -1076,7 +1086,7 @@ test('YD21 onKontrolDegerlendir: k6 + sunucu sabit fikstur (D7 haric tur 2 ile b
   assert.equal(dg.WRK_UYARISI.endsWith('wrk sonuçları k6 sonuçlarıyla karşılaştırılmaz.'), true);
   // Arayuz (yukTestiOrtak.ts WRK_UYARISI) ayni metni gosterir: BIREBIR. Tavan ORTALAMA hizi sinirlar
   // (anlik kumelenme olur); burst'u baglanti sayisindan kucuk / burst'suz yolda 429 -> DUR.
-  assert.equal(dg.WRK_UYARISI, 'wrk kapalı döngüdür: her bağlantı yanıtı alınca yeni istek gönderir. Portal her isteğe bağlantı başına sabit bekleme ekler; toplam hız ORTALAMADA koşunun tavanını (hedefin ölçülmüş limit_req\'inin %90\'ı, en çok 450; serbest hedefte 200 istek/sn) aşmaz; bağlantılar birlikte başlar, ilk istekler rastgele yayılır ama istekler kümelenebilir. limit_req burst\'ü bağlantı sayısından küçük ya da burst\'süz yollarda 429 alınır ve koşu durur; böyle yollarda k6 kullanın ya da bağlantı sayısını düşük tutun. İlk 429 ya da 5xx yanıtta iş parçacığı yük üretmeyi keser; 429, 5xx, 10\'dan fazla soket hatası ya da %1 üstü hata oranında koşu durur (DUR). Gecikme yüzdelikleri wrk\'nin koordineli ihmal düzeltmesiyle hesaplanır; wrk sonuçları k6 sonuçlarıyla karşılaştırılmaz.');
+  assert.equal(dg.WRK_UYARISI, 'wrk kapalı döngüdür: her bağlantı yanıtı alınca yeni istek gönderir. Portal her isteğe bağlantı başına sabit bekleme ekler; toplam hız ORTALAMADA koşunun tavanını (sunucu hedefinde en çok 5000; serbest hedefte 200 istek/sn) aşmaz; bağlantılar birlikte başlar, ilk istekler rastgele yayılır ama istekler kümelenebilir. limit_req burst\'ü bağlantı sayısından küçük ya da burst\'süz yollarda 429 alınır ve koşu durur; böyle yollarda k6 kullanın ya da bağlantı sayısını düşük tutun. Sunucu hedefinde tavan hedefin ölçülmüş limit_req değerine göre düşürülmez ve bunun için ayrıca uyarı çıkmaz: ölçülmüş limit_req\'i olan hedefte gerçek hız onu aşabilir; böyle hedefte k6 kullanın. İlk 429 ya da 5xx yanıtta iş parçacığı yük üretmeyi keser; 429, 5xx, 10\'dan fazla soket hatası ya da %1 üstü hata oranında koşu durur (DUR). Gecikme yüzdelikleri wrk\'nin koordineli ihmal düzeltmesiyle hesaplanır; wrk sonuçları k6 sonuçlarıyla karşılaştırılmaz.');
   // Onay metni: sunucuda host, serbestte IP (bos beklenen hicbir metni kabul etmez).
   assert.equal(dg.onayMetniDogru(' 10.20.30.40 ', '10.20.30.40'), true);
   assert.equal(dg.onayMetniDogru('', ''), false);
@@ -1318,12 +1328,15 @@ test('YD26 yarim tarama gunu: sahiplik / adlar son iki gunden, hedef satirlari v
   k = await oku({ ayarlar: [diger, ...limit('GBNGXT33', '100r/s', DUN)] });
   const ay = dg.hedefAyrintisi(k, 'GBNGXT33');
   assert.equal(ay.hizSiniri, 90, 'dunku limit uygulanmadi (global tavana dustu)');
+  assert.equal(ay.limitReq, 100);
+  // K2: limit daraltmaz, plan uyarisi verir (dunku limitle).
   const p = dg.parametreler({ hizlar: [400] }, { sni: false, hizSiniri: ay.hizSiniri, vuSiniri: ay.vuSiniri });
-  assert.deepEqual([p.status, p.code, p.message], [409, 'sinir_asildi', "Sınır aşıldı: hız 400 izinli aralıkta değil (1..90, hedefin ölçülmüş limit_req değerinin %90'ı)."]);
-  assert.equal(dg.parametreler({ motor: 'wrk' }, { sni: false, hizSiniri: ay.hizSiniri, vuSiniri: ay.vuSiniri }).deger.tavan_rps, 90);
-  // Dunku 1 r/s: olculmus limit 0 -> hedef kapali (global tavana DUSMEZ).
+  assert.equal(p.ok, true);
+  assert.deepEqual(dg.limitUyarilari(p.deger, ay), ['Seçilen hız (400/sn) hedefin ölçülmüş limit_req değerini (100 r/s) aşıyor; 429 alınırsa koşu durur.']);
+  assert.equal(dg.parametreler({ motor: 'wrk' }, { sni: false, hizSiniri: ay.hizSiniri, vuSiniri: ay.vuSiniri }).deger.tavan_rps, 5000);
+  // Dunku 1 r/s: hizSiniri 0 (yalniz bilgi; B3 hedefi kapatmaz), limitReq 1 -> plan uyarisi.
   k = await oku({ ayarlar: [diger, ...limit('GBNGXT33', '1r/s', DUN)] });
-  assert.equal(dg.sifirSinir(dg.hedefAyrintisi(k, 'GBNGXT33').hizSiniri, null), true);
+  assert.deepEqual([dg.hedefAyrintisi(k, 'GBNGXT33').hizSiniri, dg.hedefAyrintisi(k, 'GBNGXT33').limitReq], [0, 1]);
   // Bugunku Settings satiri varsa bugunku: limit 300 r/s -> 270; bugun limitsiz (yalniz baska direktif) -> null.
   k = await oku({ ayarlar: [...limit('GBNGXT33', '300r/s', BUGUN), ...limit('GBNGXT33', '100r/s', DUN)] });
   assert.equal(dg.hedefAyrintisi(k, 'GBNGXT33').hizSiniri, 270);
@@ -1594,4 +1607,77 @@ test('DG-H3 onKontrolDegerlendir protokol: h1 cikti birebir; h2 TEK engel (h2 ic
   for (const p of ['h3', null, 'H2']) {
     assert.deepEqual(dg.onKontrolDegerlendir({ ...YD21_TEMIZ }, { protokol: p }), { engeller: ['ön kontrol sonucu okunamadı (protokol tanınmadı)'], uyarilar: [] }, String(p));
   }
+});
+
+// ── 2026-11-03: 5000/sn, limit uyarisi, yuk makinesi olcumu (K1-K3) ──────────────────────────
+
+test('YD30 limitUyarilari: olcum yoksa bos; esitlik asim degil; k6 hiz / VU, wrk yalniz baglanti (B5: tavan uyarisi yok); deterministik Y', () => {
+  const k6 = dg.parametreler({ hizlar: [100, 600], maxvu: 300 }, { sni: false }).deger;
+  assert.deepEqual(dg.limitUyarilari(k6, {}), []);
+  assert.deepEqual(dg.limitUyarilari(k6, { limitReq: null, limitConn: null }), []);
+  assert.deepEqual(dg.limitUyarilari(k6, { limitReq: 600, limitConn: 300 }), [], 'esitlik asim degil');
+  assert.deepEqual(dg.limitUyarilari(k6, { limitReq: 500, limitConn: 200 }), [
+    'Seçilen hız (600/sn) hedefin ölçülmüş limit_req değerini (500 r/s) aşıyor; 429 alınırsa koşu durur.',
+    'Seçilen en çok VU (300) hedefin ölçülmüş limit_conn değerini (200) aşıyor; bu kadar bağlantı aynı anda açılırsa fazlası reddedilir (429 ya da 503) ve koşu durur ya da adım geçersiz sayılır.',
+  ]);
+  // Kesirli r/m: 30r/m = 0,5 r/s (tek ondalik, virgul); 100r/m = 1,7.
+  assert.deepEqual(dg.limitUyarilari(k6, { limitReq: 0.5 }), ['Seçilen hız (600/sn) hedefin ölçülmüş limit_req değerini (0,5 r/s) aşıyor; 429 alınırsa koşu durur.']);
+  assert.equal(dg.limitMetni(100 / 60), '1,7');
+  assert.equal(dg.limitMetni(500), '500');
+  const w = dg.parametreler({ motor: 'wrk', baglantilar: [2, 4, 150] }, { sni: false }).deger;
+  assert.equal(w.tavan_rps, 5000);
+  // B5: wrk tavani (hep 5000) hiz degil ust sinir: limit_req uyarisi URETILMEZ (ne kadar kucuk olursa olsun).
+  assert.deepEqual(dg.limitUyarilari(w, { limitReq: 500, limitConn: 100 }), [
+    'Seçilen en çok bağlantı (150) hedefin ölçülmüş limit_conn değerini (100) aşıyor; fazla bağlantılar reddedilir (429 ya da 503) ve koşu durur.',
+  ]);
+  assert.deepEqual(dg.limitUyarilari(w, { limitReq: 0.5 }), []);
+  assert.deepEqual(dg.limitUyarilari(w, { limitReq: 5000, limitConn: 150 }), []);
+  // rateLimitTavani'nin ham degerleri dogrudan verilebilir (kosuPlani hedefAyrintisi'ni verir).
+  const t = dg.rateLimitTavani([
+    { directive: 'limit_req_zone', value: '$binary_remote_addr zone=r:1m rate=500r/s' },
+    { directive: 'limit_conn_zone', value: '$binary_remote_addr zone=c:1m' },
+    { directive: 'limit_conn', value: 'c 200' },
+  ]);
+  assert.equal(dg.limitUyarilari(k6, t).length, 2);
+  assert.deepEqual(dg.limitUyarilari(null, t), []);
+});
+
+test('YD31 onKontrolDegerlendir + parametreler: yuk makinesi port / bellek uyarisi; alan yoksa ya da parametresiz BIREBIR', () => {
+  const p = dg.parametreler({ hizlar: [1000, 5000], maxvu: 1000 }, { sni: false }).deger;
+  const temel = dg.onKontrolDegerlendir(YD21_TEMIZ, { hedefTuru: 'sunucu', motor: 'k6' });
+  // Eski playbook (alan yok): parametre verilse de cikti ayni.
+  assert.deepEqual(dg.onKontrolDegerlendir(YD21_TEMIZ, { hedefTuru: 'sunucu', motor: 'k6', parametreler: p }), temel);
+  const olcum = { ...YD21_TEMIZ, yukm_port_sayisi: 28232, yukm_tw_reuse: 2, yukm_tcp_ts: 1, yukm_nproc: 8, yukm_mem_kb: 4 * 1024 * 1024 };
+  // Parametresiz: yeni alanlar okunmaz.
+  assert.deepEqual(dg.onKontrolDegerlendir(olcum, { hedefTuru: 'sunucu', motor: 'k6' }), temel);
+  const r = dg.onKontrolDegerlendir(olcum, { hedefTuru: 'sunucu', motor: 'k6', parametreler: p });
+  assert.deepEqual(r.engeller, temel.engeller);
+  assert.deepEqual(r.uyarilar, [...temel.uyarilar,
+    'Yük makinesinin yerel port aralığı 28232 port (tcp_tw_reuse 2, tcp_timestamps 1): "yeni" kipte istemci bağlantıyı önce kapatırsa saniyede yaklaşık 470 yeni bağlantıya yeter; seçilen hız (5000/sn) bunu aşıyor. Bağlantıyı hangi tarafın önce kapattığı (TIME_WAIT\'in nerede biriktiği) doğrulanmadı; bağlantı hatası görürseniz hızı düşürün ya da "ka" kipini seçin.',
+    'Yük makinesinde boş bellek 4096 MB; en çok 1000 VU için önerilen en az 8000 MB. k6 bellek yetmezliğinden düşebilir; en çok VU\'yu azaltın.',
+  ]);
+  // ka kipinde port uyarisi yok; dusuk hizda yok; bellek yeterliyse yok.
+  const ka = dg.parametreler({ hizlar: [5000], maxvu: 100, kip: 'ka' }, { sni: false }).deger;
+  assert.deepEqual(dg.onKontrolDegerlendir(olcum, { motor: 'k6', parametreler: ka }), temel);
+  const dusuk = dg.parametreler({ hizlar: [400], maxvu: 100 }, { sni: false }).deger;
+  assert.deepEqual(dg.onKontrolDegerlendir(olcum, { motor: 'k6', parametreler: dusuk }), temel);
+  // Olculemeyen ('-' / null) alan uyari uretmez.
+  assert.deepEqual(dg.onKontrolDegerlendir({ ...olcum, yukm_port_sayisi: null, yukm_mem_kb: '-' }, { motor: 'k6', parametreler: p }), temel);
+  // B5: wrk'de port uyarisi YOK (tavan 5000 gercek hiz degil), bellek uyarisi yok: cikti parametresizle BIREBIR.
+  const w = dg.parametreler({ motor: 'wrk' }, { sni: false }).deger;
+  const wr = dg.onKontrolDegerlendir({ ...olcum, wrk_var: true, yukm_port_sayisi: 100 }, { motor: 'wrk', parametreler: w });
+  assert.deepEqual(wr, dg.onKontrolDegerlendir({ ...olcum, wrk_var: true, yukm_port_sayisi: 100 }, { motor: 'wrk' }));
+  assert.equal(wr.uyarilar[wr.uyarilar.length - 1], dg.WRK_UYARISI);
+  assert.ok(!wr.uyarilar.some((u) => /port aralığı/.test(u)), wr.uyarilar.join(' | '));
+  assert.deepEqual(dg.yukMakinesiUyarilari({ yukm_port_sayisi: 100, yukm_mem_kb: 1 }, { ...w, motor: 'wrk' }), []);
+});
+
+test('YD32 son kapi ve parametreler: 4 haneli hiz 5000 / maxvu 1000 / wrk tavan 5000 kabul; 5001 / 1001 / 10000 red', () => {
+  assert.equal(dg.parametreler({ hizlar: [5000] }, { sni: false }).ok, true);
+  assert.equal(dg.parametreler({ hizlar: [10000] }, { sni: false }).code, 'sinir_asildi');
+  assert.equal(dg.parametreler({ maxvu: 1000 }, { sni: false }).ok, true);
+  // Serbest tavanlari DEGISMEZ (K1).
+  assert.equal(dg.parametreler({ hizlar: [201] }, { sni: false, hedefTuru: 'serbest' }).code, 'sinir_asildi');
+  assert.equal(dg.parametreler({ maxvu: 51 }, { sni: false, hedefTuru: 'serbest' }).code, 'sinir_asildi');
+  assert.equal(dg.parametreler({ motor: 'wrk', baglantilar: [2, 200] }, { sni: false }).code, 'sinir_asildi', 'wrk baglanti 199 kalir');
 });

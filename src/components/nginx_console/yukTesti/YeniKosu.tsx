@@ -58,7 +58,7 @@ import { Alan, Bolum, GIRDI, KosuDurumHapi, girdiStili } from './YukUi';
 import {
   AE_ETIKETI, AKTIF_DURUMLAR, GIRDIYE_BAGLI_RETLER, KIP_ETIKETI, PROTOKOL_ETIKETI, SERBEST_VHOST_YARDIMI, VHOST_LISTEDE_YOK_NOTU, adimDegerleri, baglantiBeklemesiMs,
   baglantilariAyristir, butceSn, hataMetni, hedefSinirlari, hizlariAyristir, ipGecerli, nedenMetni, onKontrolDegerlendir, onKontrolKalanMs,
-  parametreHatalari, tavanNedeni, tavanRps, vhostGecerli,
+  limitUyarilari, parametreHatalari, tavanNedeni, tavanRps, vhostGecerli,
 } from './yukTestiOrtak';
 
 interface Form {
@@ -92,7 +92,7 @@ type SinifSonucu =
   | { tur: 'ret'; mesaj: string }
   | { tur: 'gecici'; mesaj: string };
 /** Sunucu hedefinin form icin gereken alanlari (/ip-sinifi sunucu yaniti ya da /hedefler satiri). */
-type SunucuHedefi = Pick<NlHedef, 'host' | 'env' | 'vhostlar' | 'vhostVerisi' | 'hizSiniri' | 'vuSiniri'>;
+type SunucuHedefi = Pick<NlHedef, 'host' | 'env' | 'vhostlar' | 'vhostVerisi' | 'hizSiniri' | 'vuSiniri' | 'limitReq' | 'limitConn'>;
 
 export default function YeniKosu({ onBasladi, onSenaryolar, onAraclar }: { onBasladi: (kosuId: number) => void; onSenaryolar: () => void; onAraclar?: () => void }) {
   const [veri, setVeri] = useState<NlHedefler | null>(null);
@@ -232,6 +232,9 @@ export default function YeniKosu({ onBasladi, onSenaryolar, onAraclar }: { onBas
     bosta: tamSayi(form.bosta), kip, ae: form.ae, protokol,
   } : null;
   const pHata = param && sinir ? parametreHatalari(param, sinir) : {};
+  // 2026-11-03 (K2): olculmus limit_req / limit_conn asimi ENGEL degil, UYARI (sunucu ayni metni plan uyarisi yapar ve
+  // ön kontrolde onaylatir). wrk'de hiz tavani sunucunun verdigi deger (sunucu hedefinde 5000).
+  const limitUyari = param && hedefTuru === 'sunucu' ? limitUyarilari(motor === 'wrk' ? { ...param, tavan_rps: tavan } : param, sunucuHedef) : [];
   if (form && motor === 'k6' && hizlar == null) pHata.hizlar = 'Yalnız sayı yazın, boşlukla ayırın (ör. 100 250 400).';
   if (form && motor === 'wrk' && baglantilar == null) pHata.baglantilar = 'Yalnız sayı yazın, boşlukla ayırın (ör. 2 4 8).';
   const fHata: Record<string, string> = {};
@@ -380,10 +383,9 @@ export default function YeniKosu({ onBasladi, onSenaryolar, onAraclar }: { onBas
   const butceOran = butce != null ? Math.min(1, butce / sinir.maxButceSn) : 0;
   const butceTon = butce != null && butce > sinir.maxButceSn ? 'hata' : butceOran > 0.85 ? 'uyari' : 'aksan';
   const dk = Math.floor(sinir.maxButceSn / 60);
-  // wrk tavan satiri: en kucuk baglanti icin bekleme; olculmus sifir sinirda satir yok (alan hatasi soyler).
+  // wrk tavan satiri: en kucuk baglanti icin bekleme. B3: olculmus cok kucuk limit artik sinir degil (uyari).
   const enKucukBaglanti = baglantilar?.length ? Math.min(...baglantilar) : null;
   const bekleme = enKucukBaglanti != null ? baglantiBeklemesiMs(enKucukBaglanti, tavan) : null;
-  const sifirSinir = sinir.maxHiz < 1 || sinir.maxBaglanti < 1;
   const gelismisGorunur = gelismisAcik;
   const gelismisOzeti = [
     `tekrar ${param.tekrar}`, `ısınma ${form.isinma} sn`, `bekleme ${form.bosluk} sn`, `başta ${form.bosta} sn`,
@@ -511,9 +513,9 @@ export default function YeniKosu({ onBasladi, onSenaryolar, onAraclar }: { onBas
                 <div className="grid gap-2 @lg/yuk:grid-cols-3">
                   {HAZIR_AYAR_SIRASI.map((a) => {
                     const secili = seciliAyar === a;
-                    const sn = ayarlar && !sifirSinir ? hazirAyarSuresiSn(ayarlar[a], motor) : null;
+                    const sn = ayarlar ? hazirAyarSuresiSn(ayarlar[a], motor) : null;
                     return (
-                      <button key={a} type="button" onClick={() => hazirUygula(a)} aria-pressed={secili} disabled={!ayarlar || sifirSinir}
+                      <button key={a} type="button" onClick={() => hazirUygula(a)} aria-pressed={secili} disabled={!ayarlar}
                         className="flex min-w-0 flex-col justify-start rounded-lg px-3 py-2 text-left disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-offset-2!"
                         style={secili
                           ? { background: TON.aksan.zemin, boxShadow: `inset 0 0 0 1.5px ${TON.aksan.renk}`, color: 'var(--text-primary)' }
@@ -536,9 +538,16 @@ export default function YeniKosu({ onBasladi, onSenaryolar, onAraclar }: { onBas
                   <input id="yuk-baglantilar" value={form.baglantilar} onChange={(e) => degistir('baglantilar', e.target.value)} autoComplete="off" spellCheck={false} className={`${GIRDI} font-mono tabular-nums`} style={girdiStili(!!pHata.baglantilar)} aria-invalid={!!pHata.baglantilar} />
                 </Alan>
               ) : (
-                <Alan id="yuk-hizlar" etiket="Hızlar (istek/sn)" hata={pHata.hizlar || null} yardim={`${ALAN_ACIKLAMASI.hizlar} Boşlukla ayırın; en çok 5 kademe.`}>
+                <Alan id="yuk-hizlar" etiket="Hızlar (istek/sn)" hata={pHata.hizlar || null} yardim={`${ALAN_ACIKLAMASI.hizlar} Boşlukla ayırın; en çok 5 kademe, her biri 1–${sinir.maxHiz}.`}>
                   <input id="yuk-hizlar" value={hizlarMetni} onChange={(e) => degistir('hizlar', e.target.value)} autoComplete="off" spellCheck={false} className={`${GIRDI} font-mono tabular-nums`} style={girdiStili(!!pHata.hizlar)} aria-invalid={!!pHata.hizlar} />
                 </Alan>
+              )}
+              {limitUyari.length > 0 && (
+                <div className="min-w-0 @lg/yuk:col-span-2" data-testid="yuk-limit-uyarisi">
+                  <UyariKutusu ton="uyari" rol="status" baslik="Seçim hedefin ölçülmüş sınırını aşıyor; ön kontrol bunu onaylatır (engel değil).">
+                    <ul className="list-disc space-y-0.5 pl-4">{limitUyari.map((u) => <li key={u}>{u}</li>)}</ul>
+                  </UyariKutusu>
+                </div>
               )}
               {sayiAlani('sure', 'Ölçüm süresi (sn)', sinir.sureMin, sinir.sureMax, ALAN_ACIKLAMASI.sure)}
               {/* Tahmini toplam sure: buyuk ve formulle (her adim isinma + olcum + bekleme + 20 sn pay). */}
@@ -560,11 +569,9 @@ export default function YeniKosu({ onBasladi, onSenaryolar, onAraclar }: { onBas
               </div>
               {motor === 'wrk' && (
                 <div className="space-y-2 @lg/yuk:col-span-2">
-                  {!sifirSinir && (
-                    <p className="rounded-lg px-3 py-2 text-[12px] leading-5 tabular-nums" style={{ background: 'var(--bg-elevated)', color: 'var(--text-primary)' }} aria-live="polite">
-                      {`Ortalama toplam hız tavanı: ${tavan} istek/sn (bağlantı başına bekleme ≈ ${bekleme ?? '—'} ms; ${tavanNedeni(veri.sinirlar, hedefTuru === 'sunucu' ? sunucuHedef : null, hedefTuru)})`}
-                    </p>
-                  )}
+                  <p className="rounded-lg px-3 py-2 text-[12px] leading-5 tabular-nums" style={{ background: 'var(--bg-elevated)', color: 'var(--text-primary)' }} aria-live="polite">
+                    {`Ortalama toplam hız tavanı: ${tavan} istek/sn (bağlantı başına bekleme ≈ ${bekleme ?? '—'} ms; ${tavanNedeni(veri.sinirlar, hedefTuru === 'sunucu' ? sunucuHedef : null, hedefTuru)})`}
+                  </p>
                   {/* WR2: tavan ORTALAMA hizi sinirlar; anlik hiz kumelenir (Portal limit_req burst'unu okumaz). */}
                   <UyariKutusu ton="uyari" baslik={`wrk kapalı döngüdür; Portal toplam hızı ORTALAMADA ${tavan} istek/sn ile sınırlar. İlk 429 ya da 5xx yanıtta koşu durur (DUR).`}>
                     Bağlantılar birlikte başlar, ilk istekler rastgele yayılır ama istekler kümelenebilir: limit_req burst’ü bağlantı sayısından küçük ya da burst’süz yollarda 429 alınır ve koşu durur. Böyle yollarda k6 kullanın ya da küçük bağlantı sayılarıyla başlayın.

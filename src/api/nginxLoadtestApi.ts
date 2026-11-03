@@ -32,6 +32,9 @@
 // On kontrol ozeti h2'de `protokol`, `curl_h2`, `alpn_h2`, `yollar_yanitli`, `yollar_h2` tasir (camelCase'e cevrilir).
 // 2026-11-03 (AWX 3477866, curl HTTP/2'siz yuk makinesi): `alpn_kaynak` ('curl' | 'openssl'); openssl ise curl engeli yok.
 // Reload fazi `olcum_kenari`: olay olcum penceresine degdi ama CPU penceresinin disinda (olcum etkilenmedi).
+// 2026-11-03 (K1-K3): sunucu hedefinde hiz <= 5000, VU <= 1000, wrk tavani 5000 (`maxTavanRps`); hedefin olculmus
+// limit_req / limit_conn'u (`limitReq` / `limitConn`) DARALTMAZ, asim plan uyarisidir. Yuk makinesi CPU'su: adim
+// `yukCpuBosta` (bosta %, eski kosu null) ve `yukDoydu` (doyma:yuk_cpu_bosta_ nedeni); on kontrol `yukPortSayisi` ...
 import { okJson, safeJson } from './http';
 
 const BASE = '/api/nginx-loadtest';
@@ -52,10 +55,12 @@ export type NlMotor = 'k6' | 'wrk';
 export type NlProtokol = 'h1' | 'h2';
 
 /** `neden` sunucunun mesaji, `kod` makine kodu. `hizSiniri` / `vuSiniri`: o hedefin limit_req / limit_conn'undan
- *  turetilen ust sinir (veri yoksa null); genel sinirlari DARALTIR. `vhostVerisi` false: server_name dokumu yok. */
+ *  turetilen deger (veri yoksa null); 2026-11-03'ten beri DARALTMAZ, yalniz 0 hedefi kapatir. `limitReq` (r/s, kesirli
+ *  olabilir) / `limitConn`: ham olculmus degerler; secilen hiz / VU asarsa ekran ve sunucu UYARIR (eski sunucu: yok).
+ *  `vhostVerisi` false: server_name dokumu yok. */
 export interface NlHedef {
   host: string; env: string | null; ipler: string[]; vhostlar: string[]; uygun: boolean; neden: string | null;
-  kod?: string | null; hizSiniri?: number | null; vuSiniri?: number | null; vhostVerisi?: boolean;
+  kod?: string | null; hizSiniri?: number | null; vuSiniri?: number | null; limitReq?: number | null; limitConn?: number | null; vhostVerisi?: boolean;
 }
 export interface NlYukHost { host: string; env: string | null; uygun: boolean; neden: string | null }
 /** Genel sinirlar (sunucunun SINIRLAR'i). wrk: baglanti kademeleri ve is parcacigi; serbest hedefte iki motorda en cok
@@ -64,6 +69,8 @@ export interface NlSinirlar {
   maxHiz: number; maxTekrar: number; sureMin: number; sureMax: number; isinmaMax: number; maxVu: number; maxButceSn: number;
   baglantiMin: number; maxBaglanti: number; maxBaglantiSayisi: number; isParcacigiMin: number; maxIsParcacigi: number;
   serbestTavanRps: number; serbestMaxBaglanti: number;
+  /** wrk toplam hiz tavani (sunucu hedefi, 2026-11-03: 5000). Eski sunucu vermez: maxHiz. */
+  maxTavanRps?: number;
 }
 /** Sunucu bu alanlari vermezse (tur 3 oncesi) kullanilan degerler: sozlesmenin SINIRLAR sabitleri. */
 export const EK_SINIRLAR = Object.freeze({
@@ -163,6 +170,9 @@ export interface NlOnKontrol {
   /** ALPN'i olcen arac: 'curl' (curl HTTP/2'li, yollar h2 ile) ya da 'openssl' (curl HTTP/2'siz: yollar HTTP/1.1 ile denendi,
    *  ALPN openssl s_client ile tek baglantida). Eski playbook / tanimsiz deger: null (curl h2'siz ise engel, fail-closed). */
   alpnKaynak?: 'curl' | 'openssl' | null;
+  /** 2026-11-03: yuk makinesinin salt okunur olcumu (yeni playbook; eski: null): yerel port sayisi, tcp_tw_reuse,
+   *  tcp_timestamps, cekirdek sayisi, bos bellek (kB). */
+  yukPortSayisi?: number | null; yukTwReuse?: number | null; yukTcpTs?: number | null; yukNproc?: number | null; yukMemKb?: number | null;
 }
 export interface NlKosu {
   id: number; islem: NlIslem; etiket: string | null; adim: string | null;
@@ -219,6 +229,32 @@ export interface NlAdim {
   cpuOlculemedi: string | null;
   /** Bu adimin (isinma + olcum) araligina degen reload olaylari (eski satir: bos). */
   reloadlar: NlReloadAni[];
+  /** 2026-11-03: yuk makinesinin olcum penceresi bosta CPU ortalamasi (%; eski kosu / kayit yok: null). */
+  yukCpuBosta: number | null;
+  /** Yuk makinesi doydu (bosta < %20; nedenlerde `doyma:yuk_cpu_bosta_`): gecerlilik DOYMA, p95 kararina girmez (hedefin
+   *  CPU-ms/istek'i gecerli kalir). */
+  yukDoydu: boolean;
+  /** B1: yeni playbook yuk makinesi CPU kaydi bekliyordu ama bu adimda olcum yok (eski kosu / eski sunucu: false). */
+  yukCpuOlculemedi: boolean;
+  /** 2026-11-03: bellek olcumu (hedef nginx RSS / bos bellek, yuk makinesi bellegi, arac RSS); eski kosu null (olculmedi). */
+  bellek: NlBellek | null;
+  /** 2026-11-03: kip dogrulamasi (istenen / gerceklesen); eski sunucu null (blok gosterilmez). Gecerliligi DEGISTIRMEZ. */
+  kipDogrulama: NlKipDogrulama | null;
+}
+export interface NlBellek {
+  nginxRssOrtMb: number | null; nginxRssMaxMb: number | null; hedefBellekYuzde: number | null; hedefBosMinYuzde: number | null;
+  yukBellekYuzde: number | null; yukBosMinYuzde: number | null; aracRssMaxMb: number | null;
+}
+export type NlKipDurumu = 'tamam' | 'uyari' | 'olculmedi';
+export interface NlKipDogrulama {
+  protokol: { istenen: NlProtokol; olculen: NlProtokol | null; uyumsuz: number | null; durum: NlKipDurumu };
+  baglanti: { istenen: string | null; yeniBaglantiYuzde: number | null; istekBaglanti: number | null; durum: NlKipDurumu };
+  sikistirma: {
+    istenen: string | null; n: number | null; dagilim: Record<string, number> | null; yok1kbAlti: number | null; kucukYuzde: number | null;
+    istenenYuzde: number | null; durum: NlKipDurumu;
+  };
+  uyarilar: string[];
+  durum: NlKipDurumu;
 }
 /** Reload (worker PID kumesi degisimi) ani: epoch saniye; `tOnce` ile `t` arasinda oldu, `tSon`'a dek surdu. */
 export interface NlReloadAni {
@@ -233,6 +269,8 @@ export interface NlSonucOzeti {
   p95EnIyi: { deger: number; tur: string } | null; p95EnKotu: { deger: number; tur: string } | null; p95Kapsam: 'gecerli' | 'tum' | null;
   toplam429: number | null; toplam5xx: number | null; enYuksekHataOrani: number | null; hataVar: boolean;
   cpuOlculemeyenAdim: number; konfDegisti: boolean | null; reloadlar: NlReloadOlayi[];
+  /** YUK_DOYDU isaretli adim sayisi (eski sunucu: 0). */
+  yukDoyduAdim?: number;
 }
 /** Karar tablosu satiri (analiz.cjs tabloYap): ref / aday hiz grubunun ozeti (snake_case; o tarafta kademe yoksa null),
  *  fark_yuzde YUZDE cinsinden (aday / ref - 1) x 100. */
@@ -265,7 +303,7 @@ export interface NlIpSahibi { host: string; env: string | null; nginx: boolean; 
  *  da 200'dur ve ON KONTROLU KAPATIR) ya da izinli agdaki sahipsiz / nginx disi bir IP (serbest hedef). */
 export interface NlIpSinifiSunucu {
   ok: true; tur: 'sunucu'; ip: string; host: string; env: string | null; vhostlar: string[]; vhostVerisi: boolean;
-  hizSiniri: number | null; vuSiniri: number | null; uygun: boolean; neden: string | null; kod: string | null; kaynaklar: string[];
+  hizSiniri: number | null; vuSiniri: number | null; limitReq?: number | null; limitConn?: number | null; uygun: boolean; neden: string | null; kod: string | null; kaynaklar: string[];
 }
 export interface NlIpSinifiSerbest { ok: true; tur: 'serbest'; ip: string; host: null; ag: string; digerSahipler: { host: string; env: string | null }[] }
 export type NlIpSinifi = NlIpSinifiSunucu | NlIpSinifiSerbest;
@@ -349,6 +387,11 @@ export function adimNormalle(x: unknown): NlAdim {
   // ya da reload). Karar ve ortalama bu degerleri kullanmaz.
   a.cpuOlculemedi = metinVeya(alan(r, 'cpuOlculemedi', 'cpu_olculemedi'));
   a.reloadlar = reloadlarNormalle(alan(r, 'reloadlar'));
+  a.yukCpuBosta = sayiVeya(alan(r, 'yukCpuBosta')) ?? sayiVeya(ham.yuk_cpu_bosta);
+  a.yukDoydu = a.nedenler.some((n) => n.startsWith('doyma:yuk_cpu_bosta_'));
+  a.yukCpuOlculemedi = alan(r, 'yukCpuOlculemedi') === true || ham.yuk_cpu_olculemedi === true;
+  a.bellek = bellekNormalle(alan(r, 'bellek') ?? ham.bellek);
+  a.kipDogrulama = kipNormalle(alan(r, 'kipDogrulama'));
   const reloadNedeni = a.nedenler.some((n) => n.startsWith('reload('));
   const kotu = (x: number | null) => x != null && !(x > 0);
   if (reloadNedeni || kotu(a.cpuMsIstek) || kotu(a.kapasiteRps)) {
@@ -357,6 +400,41 @@ export function adimNormalle(x: unknown): NlAdim {
     a.kapasiteRps = null;
   }
   return a;
+}
+/** Bellek: sunucu camelCase (gorunum.cjs) ya da ham.bellek snake_case; hic olcum yoksa null. */
+function bellekNormalle(x: unknown): NlBellek | null {
+  const o = nesne(x);
+  const b: NlBellek = {
+    nginxRssOrtMb: sayiVeya(alan(o, 'nginxRssOrtMb', 'nginx_rss_ort_mb')), nginxRssMaxMb: sayiVeya(alan(o, 'nginxRssMaxMb', 'nginx_rss_max_mb')),
+    hedefBellekYuzde: sayiVeya(alan(o, 'hedefBellekYuzde', 'hedef_bellek_yuzde')), hedefBosMinYuzde: sayiVeya(alan(o, 'hedefBosMinYuzde', 'hedef_bos_min_yuzde')),
+    yukBellekYuzde: sayiVeya(alan(o, 'yukBellekYuzde', 'yuk_bellek_yuzde')), yukBosMinYuzde: sayiVeya(alan(o, 'yukBosMinYuzde', 'yuk_bos_min_yuzde')),
+    aracRssMaxMb: sayiVeya(alan(o, 'aracRssMaxMb', 'arac_rss_max_mb')),
+  };
+  return Object.values(b).some((v) => v != null) ? b : null;
+}
+const KIP_DURUMLARI = new Set(['tamam', 'uyari', 'olculmedi']);
+const kipDurumu = (x: unknown): NlKipDurumu => (KIP_DURUMLARI.has(x as string) ? (x as NlKipDurumu) : 'olculmedi');
+const kipProtokolu = (x: unknown): NlProtokol | null => (x === 'h1' || x === 'h2' ? x : null);
+/** Kip dogrulamasi (gorunum.cjs kipDogrulama): alan yoksa null (eski sunucu). */
+function kipNormalle(x: unknown): NlKipDogrulama | null {
+  if (!x || typeof x !== 'object' || Array.isArray(x)) return null;
+  const o = nesne(x);
+  const p = nesne(o.protokol);
+  const b = nesne(o.baglanti);
+  const k = nesne(o.sikistirma);
+  const dg = nesne(k.dagilim);
+  const dagilim: Record<string, number> = {};
+  for (const [ad, v] of Object.entries(dg)) { const n = sayiVeya(v); if (n != null) dagilim[ad] = n; }
+  return {
+    protokol: { istenen: kipProtokolu(p.istenen) ?? 'h1', olculen: kipProtokolu(p.olculen), uyumsuz: sayiVeya(p.uyumsuz), durum: kipDurumu(p.durum) },
+    baglanti: { istenen: metinVeya(b.istenen), yeniBaglantiYuzde: sayiVeya(b.yeniBaglantiYuzde), istekBaglanti: sayiVeya(b.istekBaglanti), durum: kipDurumu(b.durum) },
+    sikistirma: {
+      istenen: metinVeya(k.istenen), n: sayiVeya(k.n), dagilim: k.dagilim && typeof k.dagilim === 'object' ? dagilim : null, yok1kbAlti: sayiVeya(k.yok1kbAlti),
+      kucukYuzde: sayiVeya(k.kucukYuzde), istenenYuzde: sayiVeya(k.istenenYuzde), durum: kipDurumu(k.durum),
+    },
+    uyarilar: metinDizisi(o.uyarilar),
+    durum: kipDurumu(o.durum),
+  };
 }
 function reloadAniNormalle(x: unknown): NlReloadAni | null {
   const o = nesne(x);
@@ -398,6 +476,7 @@ export function sonucOzetiNormalle(x: unknown): NlSonucOzeti | null {
     enYuksekHataOrani: sayiVeya(alan(o, 'enYuksekHataOrani', 'en_yuksek_hata_orani')),
     hataVar: mantikVeya(alan(o, 'hataVar', 'hata_var')) === true,
     cpuOlculemeyenAdim: sayiVeya(alan(o, 'cpuOlculemeyenAdim', 'cpu_olculemeyen_adim')) ?? 0,
+    yukDoyduAdim: sayiVeya(alan(o, 'yukDoyduAdim', 'yuk_doydu_adim')) ?? 0,
     konfDegisti: mantikVeya(alan(o, 'konfDegisti', 'konf_degisti')),
     reloadlar: (Array.isArray(o.reloadlar) ? o.reloadlar : []).map(reloadOlayiNormalle).filter((r): r is NlReloadOlayi => r != null),
   };
@@ -437,6 +516,9 @@ export function onKontrolNormalle(x: unknown): NlOnKontrol | null {
     curlH2: mantikVeya(alan(ham, 'curlH2', 'curl_h2')), alpnH2: mantikVeya(alan(ham, 'alpnH2', 'alpn_h2')),
     yollarYanitli: sayiVeya(alan(ham, 'yollarYanitli', 'yollar_yanitli')), yollarH2: sayiVeya(alan(ham, 'yollarH2', 'yollar_h2')),
     alpnKaynak: alpnKaynakDegeri(alan(ham, 'alpnKaynak', 'alpn_kaynak')),
+    yukPortSayisi: sayiVeya(alan(ham, 'yukPortSayisi', 'yukm_port_sayisi')), yukTwReuse: sayiVeya(alan(ham, 'yukTwReuse', 'yukm_tw_reuse')),
+    yukTcpTs: sayiVeya(alan(ham, 'yukTcpTs', 'yukm_tcp_ts')), yukNproc: sayiVeya(alan(ham, 'yukNproc', 'yukm_nproc')),
+    yukMemKb: sayiVeya(alan(ham, 'yukMemKb', 'yukm_mem_kb')),
   };
 }
 /** Arac seti satiri (camel ya da snake; eksik alan null, bayrak false). id yoksa null (gecersiz satir listeye girmez). */
@@ -595,7 +677,7 @@ function ipSinifiNormalle(x: Ham): NlIpSinifi | NlIpSinifiRet {
   if (x.tur === 'sunucu' && typeof x.host === 'string' && x.host) {
     return {
       ok: true, tur: 'sunucu', ip, host: x.host, env: metinVeya(x.env), vhostlar: metinDizisi(x.vhostlar), vhostVerisi: x.vhostVerisi === true,
-      hizSiniri: sayiVeya(x.hizSiniri), vuSiniri: sayiVeya(x.vuSiniri), uygun: x.uygun === true, neden: metinVeya(x.neden), kod: metinVeya(x.kod),
+      hizSiniri: sayiVeya(x.hizSiniri), vuSiniri: sayiVeya(x.vuSiniri), limitReq: sayiVeya(x.limitReq), limitConn: sayiVeya(x.limitConn), uygun: x.uygun === true, neden: metinVeya(x.neden), kod: metinVeya(x.kod),
       kaynaklar: metinDizisi(x.kaynaklar),
     };
   }

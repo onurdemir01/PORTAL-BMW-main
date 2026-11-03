@@ -15,6 +15,9 @@ gider. İki motor vardır (`yuk_motor`):
 - **sunucu**: IP bir DEV/TEST/QA nginx sunucusuna ait. Hedefte aynı anda `cpu_kaydedici.sh` worker CPU'sunu ve
   yalnız test isteklerinin access-log satırlarını kaydeder; IP'nin hedefte yerel olduğu ön kontrolde ve koşu
   başında yeniden ölçülür.
+
+İki hedef türünde de koşu boyunca **yük makinesinin** toplam CPU'su `yuk_cpu_kaydedici.sh` ile saniyede bir
+kaydedilir ("Yük makinesi CPU kaydı").
 - **serbest**: IP hiçbir nginx sunucusuna ait değil (LB VIP'i, yönetilmeyen sunucu). Hedefe **bağlanılmaz** (SSH
   yok, kaydedici yok, nginx logu yok); yalnız istemci ölçümü yapılır ve yük makinesindeki izin dosyası
   (`/etc/portal_yuktesti/serbest_aglar`) IP'yi kapsamalıdır.
@@ -28,8 +31,8 @@ dizinine yazılır ("Araç seti (/sw)"). Her ön kontrol ve koşu seçilen motor
 kopyalar, sha256'sını **yalnız Portal'ın verdiği değerle** doğrular, kopyadan çalıştırır ve iş sonunda siler.
 
 Kaynak: el kiti `f5_rehber/har_yuk_testi` (kos.sh, yuk_k6.js, cpu_kaydedici.sh). Kit betikleri kopyalanmış, yalnız
-aşağıda ("Betikler") sayılan Portal farkları eklenmiştir. wrk betikleri (`wrk_kos.sh`, `yuk_wrk.lua`), `on_kontrol.sh`
-ve `durdur.sh` Portal'a özgüdür. Portal tarafı sözleşmesi: Portal `docs/NGINX-YUK-TESTI.md` ve uygulama sözleşmesi.
+aşağıda ("Betikler") sayılan Portal farkları eklenmiştir. wrk betikleri (`wrk_kos.sh`, `yuk_wrk.lua`), `on_kontrol.sh`,
+`yuk_cpu_kaydedici.sh` ve `durdur.sh` Portal'a özgüdür. Portal tarafı sözleşmesi: Portal `docs/NGINX-YUK-TESTI.md` ve uygulama sözleşmesi.
 
 ## Dosyalar
 
@@ -41,17 +44,88 @@ ve `durdur.sh` Portal'a özgüdür. Portal tarafı sözleşmesi: Portal `docs/NG
 | `files/yuk_k6.js` | Kit kopyası: açık döngü (constant-arrival-rate) k6 betiği, istek başına TEK GET. |
 | `files/wrk_kos.sh` | Portal'a özgü: bir ADIM'ın (bağlantı × tekrar) wrk koşularını sırayla çalıştırır (motor `wrk`); dış sözleşmesi (çıkış kodları, `DUR:`/`HATA:` satırları, sonuç dosyaları, `kos.pid`) kos.sh ile aynı. |
 | `files/yuk_wrk.lua` | Portal'a özgü wrk betiği: ağırlıklı yol seçimi, bağlantı başına bekleme ile ortalama hız tavanı, ilk 429 / 5xx'te iş parçacığını durdurma, tam sayılı özet dosyası. |
-| `files/cpu_kaydedici.sh` | Kit kopyası: hedefte saniyede bir worker CPU örneği + yalnız test UA'lı log satırları (yalnız sunucu hedefte). |
+| `files/cpu_kaydedici.sh` | Kit kopyası: hedefte saniyede bir worker CPU örneği + yalnız test UA'lı log satırları (yalnız sunucu hedefte); Portal eki `bellek_*.csv` (worker RSS + MemAvailable, "Bellek ölçümü"). |
+| `files/yuk_cpu_kaydedici.sh` | Portal'a özgü: koşu boyunca **yük makinesinde** (www, dzdo/nginx yok) saniyede bir `/proc/stat` toplam CPU örneği; `sonuc/R<id>/yukcpu_R<id>_<host>.csv` + bitişte `.txt`. |
 | `files/durdur.sh` | Bir koşunun bir sunucuda kalan süreçlerini (pid dosyaları, k6, wrk, koşu dizinindeki araç kopyasından çalışan süreçler, kit ve Portal betikleri) TERM, 10 sn sonra KILL. |
 | `files/arac_hazirla.sh` | Portal'a özgü (araclar kipi, derleme makinesinde www ile): k6 arşivinden yalnız ikiliyi çıkarır, wrk'yi derler, ikisini doğrular (sürüm satırı, kütüphaneler, glibc gereksinimi). Ağa çıkmaz; indirme Play 8'in `get_url` görevlerindedir. |
 
-AWX zip'ine yeni `files/arac_hazirla.sh` de girmelidir (ayrıca sayın): `yt_betik_adlari` her kipte sekiz betiğin
+AWX zip'ine yeni `files/arac_hazirla.sh` ve (2026-11-03) `files/yuk_cpu_kaydedici.sh` de girmelidir (ayrıca sayın): `yt_betik_adlari` her kipte dokuz betiğin
 hepsini denetler; biri eksikse her kip "files/ altindaki betiklerden biri yok (AWX proje kopyasi eksik); hicbir sey
 yapilmadi" ile düşer.
 
 Portal'daki birebir aynası: `server/ansible/bmw_portal/nginx_loadtest/**` (iki kopya **bayt bayt
 aynı**; Portal testi `nginx-loadtest-ayna.test.cjs` sabit sha256 listesiyle ve
 `NGINX_LOADTEST_ANSIBLE_DEPO` verilirse bu depoyla karşılaştırır).
+
+## Yük makinesi CPU kaydı
+
+`files/yuk_cpu_kaydedici.sh` (2026-11-03) koşu boyunca yük makinesinde (www; dzdo, nginx, root YOK; yalnız
+`/proc/stat` okur) saniyede bir toplam CPU örneği alır. `cpu_kaydedici.sh` yeniden kullanılmaz: o nginx master ve
+`/web_log` ister, ürettiği `sunucu_*` / `bilgi_*` adları da eski Portal'da ikinci bir hedef kesiti sayılırdı.
+
+- Dosyalar (yük makinesinde `<koşu dizini>/sonuc/R<id>/`, Play 5 ile toplanır, /sw kopyası ve `SHA256SUMS` dahil):
+  `yukcpu_R<id>_<host>.csv` başlık `epoch,cpu_user,cpu_nice,cpu_system,cpu_idle,cpu_iowait,cpu_irq,cpu_softirq,cpu_steal`
+  (tik; `/proc/stat` ilk `cpu` satırı; `epoch` `EPOCHREALTIME`), bitişte (TERM / INT / `SURE`) `yukcpu_R<id>_<host>.txt`
+  (`surum=1 adim host nproc clk_tck bas_epoch bit_epoch ornek_sayisi`).
+- `yukcpu_` öneki hiçbir eski Portal desenine uymaz: eski Portal dosyayı yok sayar (adı tanınmayan dosyayı reddetmez,
+  atlar). Eski playbook dosyayı üretmez: yeni Portal'da alan boş kalır, işaret yok.
+- set_stats `kosu.yukm_cpu_basladi` (bool): kaydedici başlatma görevi koştuysa `true` (rc 0) ya da `false`, koşmadıysa
+  `null`. `kosu.yukm_cpu_son_satir`: kaydedici çıktısının (`<koşu dizini>/yuk_cpu.out`) son satırı, kaydedici durduktan
+  SONRA `tail -n 1` ile (başlamadıysa da okunur; yazdırılabilir ASCII dışı `?`, en çok 200 karakter; boşsa `null`).
+  Bu alanlar ya da `yukcpu_*` dosyası varsa Portal kaydı **bekler**; ölçülemezse koşu notu "Yük makinesi CPU’su
+  ölçülemedi (<neden>; kaydedicinin son çıktısı: …)" ve adım kolonunda "ölçülemedi" (eski playbook: alan yok, not ve
+  kolon yok). Eski Portal iki anahtarı da okumaz (yok sayar).
+- Başlık satırı `trap`'ten önce yazılır: TERM o aralığa düşerse başlıksız CSV kalmaz (bekçi L4). Portal bozuk /
+  başlıksız / okunamayan dosyada koşuyu OKUNAMADI yapmaz, yalnız bu ölçümü boş sayar ("ölçülemedi").
+- Portal adım başına ölçüm penceresinde (`zaman.csv`'den, ısınma + 3 sn .. bitiş − 2 sn) boşta CPU ortalamasını
+  hesaplar; **%20'nin altında** adım `YUK_DOYDU` işaretlenir (geçerlilik DOYMA; p95 kararında kullanılmaz, hedefin
+  CPU-ms/istek'i geçerli kalır; neden `doyma:yuk_cpu_bosta_%<x>(<%20)`, x tek ondalığa aşağı yuvarlanır). Bir ortak
+  kademenin p95'i bu yüzden karşılaştırılamazsa karşılaştırma KALICI vermez (`DOYMA`; zarar varsa `RET`).
+- wrk bekleme `GECIKME_MS = ceil(N × 1000 / TAVAN_RPS)`: N ≥ 1 ve TAVAN ≤ 5000 iken pay ≥ 0,2, sonuç hep ≥ 1 ms (0
+  olmaz). Etkin tavan N × 1000 / D ≤ TAVAN; küçük N'de 5000'in altında kalır (N=2: D=1 → 2000/sn; N=8: 4000/sn).
+- Sınır: makine geneli boşta oranı wrk'nin iş parçacığı doymasını göremez (8 çekirdekte T=2 ile 2 çekirdek dolu olsa
+  bile boşta %75 görünür). k6 (Go, GOMAXPROCS = nproc) için sorun yok.
+- Ön kontrol (`on_kontrol.sh yollar`) yük makinesinde salt okunur `port_araligi`, `tcp_tw_reuse`, `tcp_timestamps`,
+  `nproc`, `mem_kb` satırlarını da basar; set_stats `on_kontrol` bölümünde `yukm_port_sayisi` (hi − lo + 1),
+  `yukm_tw_reuse`, `yukm_tcp_ts`, `yukm_nproc`, `yukm_mem_kb` (bozuk ya da `-` → null; önek `yukm_`: `yuk_*` adları
+  extra_vars sözleşmesine ayrılmıştır, bekçi L3). Portal `yeni` kipte yüksek k6 hızında yerel port
+  uyarısı verir (yalnız k6: wrk'de `yuk_tavan_rps` hep 5000, gerçek hız değil; uyarı her koşuda çıkardı); hiçbir ayar
+  değiştirilmez. TIME_WAIT'in hangi tarafta biriktiği (k6 `noConnectionReuse`; bağlantıyı kimin önce kapattığı
+  ölçülmedi) **doğrulanmadı**: pilot koşuda iki tarafta `ss -tan state time-wait` ile ölçülecek.
+
+## Bellek ölçümü
+
+2026-11-03. Yalnız bilgi: geçerliliği ve kararı değiştirmez; onay istemez.
+
+- Hedefte `cpu_kaydedici.sh` her örnekte (saniyede bir) worker pid'lerinin `/proc/<pid>/status` `VmRSS` toplamını ve
+  `/proc/meminfo` `MemTotal` / `MemAvailable` değerlerini **ayrı dosyaya** yazar: `bellek_R<id>_<host>.csv`, başlık
+  `epoch,nginx_rss_kb,isci_sayi,mem_total_kb,mem_available_kb` (okunamayan alan boş). `sunucu_*.csv` şemasına kolon
+  EKLENMEZ: eski Portal ve karsilastir.py `bellek_` önekini tanımaz, dosyayı atlar (SHA256SUMS'ta listeli dosyanın
+  yalnız özeti doğrulanır).
+- Yük makinesinde `yuk_cpu_kaydedici.sh` `yukcpu_*.csv`'ye `mem_total_kb,mem_available_kb,arac_rss_kb` kolonlarını
+  ekler (dosya 2026-11-03'te yeni; eski Portal okumaz). `arac_rss_kb`: argv0'ı `ARAC_DIZIN/` (varsayılan
+  `<koşu dizini>/arac`) ile başlayan k6 / wrk sürecinin `VmRSS`'i; pid canlı kaldıkça yeniden aranmaz, yoksa en çok
+  5 sn'de bir `/proc` taranır.
+- Portal adım başına (ölçüm penceresi): nginx RSS ortalama / en yüksek (MB), hedef bellek kullanımı
+  `1 − MemAvailable / MemTotal` (%), yük makinesi bellek kullanımı (%), araç RSS en yüksek (MB). Uyarılar (bilgi):
+  boş bellek %10 altına indi (`bellek_bos_az(hedef|yuk,%x)`); nginx RSS adımlar boyunca monoton arttı, ilk-son farkı
+  ≥ %20 ve ≥ 50 MB, koşu sonunda geri inmedi (son örnek ≥ son adım ortalamasının %90'ı) → "olası bellek sızıntısı"
+  (`nginx_bellek_artisi(...)`). Eski playbook: dosya / kolon yok → "ölçülmedi", hesaplar birebir eskisi.
+
+## Kip doğrulaması
+
+Adım başına istenen / gerçekleşen (yalnız bilgi):
+
+- Protokol: istemci satırının `protokol` / `protokol_uyumsuz` kolonları (yoksa `http2` sayacı); wrk ölçmez.
+- Bağlantı: hedef nginx logunun `connection_request` alanı: yeni bağlantıdaki istek payı (`connection_request == 1`) ve
+  bağlantı başına ortalama istek (istek / yeni bağlantı). `yeni` → ~%100 yeni, 1,0 istek/bağlantı; `ka` → düşük pay.
+  `ka`'da pay > %20 uyarı; `yeni`'de bugünkü %5 yeniden kullanım uyarısı aynen. Serbest hedefte ölçülmez.
+- Sıkıştırma: `yuk_k6.js` her ölçüm yanıtının `Content-Encoding` başlığını sayar (`br`, `gzip`, `deflate`, `zstd`,
+  `yok`, `diger`; `yok_1kb_alti`: kodlamasız ve `Content-Length` < 1024). Sayaçlar `istemci_<TUR>.json`'un yeni
+  `kodlama` anahtarındadır; **istemci CSV'sinin 32 kolonu değişmez** (eski Portal JSON'u okumaz, yalnız SHA256SUMS
+  özetini doğrular; set_stats `istemci_ozet` içinde fazladan anahtar olarak taşınır). `br` / `gzip` istenip 1 KB
+  üstü yanıtların %50'sinden azı o kodlamadaysa, `identity` istenip sıkıştırılmış yanıt varsa uyarı. wrk ve eski
+  k6 betiği: "ölçülmedi".
 
 ## Akış
 
@@ -79,8 +153,8 @@ sonuç play'i Play 10):
    (en çok bosta+90 sn; desen "Tuzaklar"da).
 3. **yuk_makine** (become www):
    - Hazırlık (`on_kontrol`; `kosu`ta serbest hedefte her zaman, sunucu hedefte yalnız kaydedici hazırsa): koşu
-     dizini, betik kopyası (motora göre `kos.sh` + `yuk_k6.js` ya da `wrk_kos.sh` + `yuk_wrk.lua`; ön kontrolde
-     `on_kontrol.sh`), senaryo kopyası (kapı). Ardından **araç kopyası**: seçili motorun ikilisi
+     dizini, betik kopyası (motora göre `kos.sh` + `yuk_k6.js` ya da `wrk_kos.sh` + `yuk_wrk.lua`, ikisinde de
+     `yuk_cpu_kaydedici.sh`; ön kontrolde `on_kontrol.sh`), senaryo kopyası (kapı). Ardından **araç kopyası**: seçili motorun ikilisi
      `<yuk_arac_dizin>/<k6|wrk>`'den `copy remote_src` ile `<koşu dizini>/arac/<k6|wrk>`'ye (dizin ve dosya 0700, www)
      alınır; sha256'sı YALNIZ Portal'ın verdiği `yuk_k6_sha256` / `yuk_wrk_sha256` ile karşılaştırılır (/sw'deki
      `SHA256SUMS` / `manifest.json`'a güvenilmez), sahip ve izinler denetlenir. Doğrulanmayan kopya hiç çalıştırılmadan
@@ -102,10 +176,18 @@ sonuç play'i Play 10):
      YALNIZ izin dosyası IP'yi kapsarken gider; aksi halde hiç istek gönderilmez ve yük makinesi sonucu `FAIL`
      (`hedef IP hedefte yerel degil ya da olculemedi; istek gonderilmedi` ya da `serbest izin listesi: <neden>;
      istek gonderilmedi`).
-   - `kosu` → TEK async görev: `timeout -k 30 <bütçe> env -u LIMIT_MUAF ... bash kos.sh|wrk_kos.sh R<id> <K|B>`
+   - `kosu` → önce yük makinesi CPU kaydedicisi ayrık başlatılır (`setsid nohup timeout -k 30 <bütçe+120> env
+     SURE=<bütçe+60> ARALIK=1 SONUC=<koşu dizini>/sonuc bash yuk_cpu_kaydedici.sh R<id> ... & echo $! > yuk_cpu.pid`;
+     `failed_when: false`: başlamazsa koşu yine çalışır, yalnız yük CPU'su ölçülmez); sonra TEK async görev:
+     `timeout -k 30 <bütçe> env -u LIMIT_MUAF ... bash kos.sh|wrk_kos.sh R<id> <K|B>`
      (`async: bütçe+300`, `poll: 15`); iki betiğe de aynı ortam gider (`HIZLAR`, `BAGLANTILAR`, `IS_PARCACIGI`,
      `TAVAN_RPS`, `MAXVU`, `K6=<koşu dizini>/arac/k6`, `WRK=<koşu dizini>/arac/wrk` ...); her betik kendine ait
-     olmayanları yok sayar.
+     olmayanları yok sayar. Koşu bitince (aynı blok, yeni play AÇILMAZ: bekçi ve Portal aynası play sırasını
+     sayar) yük CPU kaydedicisi Play 4'ün sırasıyla durdurulur: `yuk_cpu.pid` → `/proc/<pid>/cmdline` içinde
+     `<koşu dizini>/yuk_cpu_kaydedici.sh` → `kill -TERM` → `wait_for /proc/<pid> absent` en çok 25 sn (`-k 30`'dan
+     küçük). Ardından (kaydedici başlamadıysa da) `tail -n 1 <koşu dizini>/yuk_cpu.out` → `yt_yk_cpu_son` (ASCII,
+     200; set_stats `kosu.yukm_cpu_son_satir`). Play 3 kurtarma yoluna düşerse kaydedici `SURE` ile kendisi biter;
+     Play 7 (`durdur.sh`) onu da öldürür.
 4. **yuk_hedef** (serbestte atlanır): kaydediciye `kill -TERM <pid>` (pid'in komut satırı koşu dizinini içeriyorsa),
    bitmesi en çok 290 sn beklenir (trap `bitir` `bilgi_*.txt` yazar; sarmalayıcının KILL'i 300 sn'de),
    `log_*.tsv` gzip'lenir.
@@ -194,11 +276,11 @@ Tablo 40 değişken: 34 koşu + 6 yalnız araclar.
 | `yuk_senaryo_tur` | string | on_kontrol, kosu | `K` \| `B` |
 | `yuk_senaryo_b64` | string | on_kontrol, kosu | TSV'nin base64'ü; çözülmüş ≤ 200 KB, 1..400 veri satırı + isteğe bağlı tek `#` başlık |
 | `yuk_senaryo_sha256` | string | on_kontrol, kosu | çözülmüş baytların sha256'sı (64 hex) |
-| `yuk_hizlar` | string | on_kontrol, kosu | k6: `^[0-9]{1,3}( [0-9]{1,3}){0,4}$`, her biri 1..450 (serbest 1..200); wrk: `''` |
-| `yuk_maxvu` | string | on_kontrol, kosu | k6: 10..199 (`limit_conn` 200/IP; serbest 10..50); wrk: `''` |
+| `yuk_hizlar` | string | on_kontrol, kosu | k6: `^[0-9]{1,4}( [0-9]{1,4}){0,4}$`, her biri 1..5000 (serbest 1..200); wrk: `''` |
+| `yuk_maxvu` | string | on_kontrol, kosu | k6: 10..1000 (serbest 10..50); wrk: `''` |
 | `yuk_baglantilar` | string | on_kontrol, kosu | wrk: hızlarla aynı biçim, her biri 1..199 (serbest 1..50), tam sayı olarak tekil; k6: `''` |
 | `yuk_is_parcacigi` | string | on_kontrol, kosu | wrk: 1..16, en küçük bağlantı sayısından büyük değil ve her bağlantı sayısını tam böler; k6: `''` |
-| `yuk_tavan_rps` | string | on_kontrol, kosu | wrk: 1..450 (serbest 1..200); Portal hesaplar (sunucu: hedefin ölçülmüş limit_req tavanı, en çok 450; serbest: 200), kullanıcı girmez; k6: `''` |
+| `yuk_tavan_rps` | string | on_kontrol, kosu | wrk: 1..5000 (serbest 1..200); Portal verir (sunucu: 5000, serbest: 200), kullanıcı girmez; k6: `''` |
 | `yuk_son_epoch` | string | on_kontrol, kosu, araclar | `^[0-9]{10}$`; şimdi ≤ değer ≤ şimdi + 1800 (AWX EE saati; Portal şimdi + 900 gönderir); durdurda denetlenmez |
 | `yuk_tekrar` | string | on_kontrol, kosu | 1..3 |
 | `yuk_kip` | string | on_kontrol, kosu | `yeni` (her istek yeni bağlantı) \| `ka` (keep-alive) |
@@ -272,7 +354,8 @@ Tek yazar localhost, `per_host: false`, `aggregate: false`, `fail`'den ÖNCE ve 
                 protokol ('h1'|'h2'|null), curl_h2 (bool|null), alpn_h2 (bool|null),
                 alpn_kaynak ('curl'|'openssl'|null), yollar_yanitli (int|null), yollar_h2 (int|null) } | null,
   kosu: { kos_rc (int|null), kaydedici_rc (int|null), bas_epoch, bit_epoch,
-          istemci_ozet: [istemci_<TUR>.json içerikleri], dosyalar: [{ad, bayt}], sw_dizin (str|null) } | null,
+          istemci_ozet: [istemci_<TUR>.json içerikleri], dosyalar: [{ad, bayt}], sw_dizin (str|null),
+          yukm_cpu_basladi (bool|null), yukm_cpu_son_satir (str ≤ 200 ASCII|null) } | null,
   durdur: { durdurulan: ["<HOST> <ad> pid <pid> <TERM|KILL|KALDI>"] } | null,
   araclar: { arac_id (int), derleme_host, derleme_rhel, derleme_glibc, derleme_os, k6_surum, k6_surum_satiri,
              k6_sha256, k6_arsiv_sha256, k6_statik (bool|null), wrk_surum, wrk_surum_satiri, wrk_sha256,
@@ -374,7 +457,7 @@ kullanıcı, `delegate_to: GBLABT02`, dizin 0777, dosya 0666; Portal aynı mount
 - yük makinesinden: `istemci_<TUR>.json|csv`, `hatali_istemci_<TUR>.json|csv`, `zaman.csv`, `baslatilan.csv`
   (wrk'nin ara dosyaları `wrk_ara/` sonuç dizininin DIŞINDA kalır, toplanmaz, Play 7 siler)
 - hedeften (yalnız sunucu): `sunucu_R<id>_<host>.csv`, `log_R<id>_<host>.tsv.gz`, `diger_R<id>_<host>.tsv`,
-  `bilgi_R<id>_<host>.txt`, `konf_R<id>_<host>.txt`, `NOT.txt`
+  `bilgi_R<id>_<host>.txt`, `konf_R<id>_<host>.txt`, `NOT.txt`, (2026-11-03) `bellek_R<id>_<host>.csv`
 - `SHA256SUMS` (`sha256sum -c` biçimi; kontrol düğümündeki kopyalardan)
 
 Kök: PROD `/sw/BMW_PORTAL/nginx_loadtest`, DEV `/sw/BMW_PORTAL_DEV/nginx_loadtest` (Portal
@@ -386,9 +469,13 @@ Kök: PROD `/sw/BMW_PORTAL/nginx_loadtest`, DEV `/sw/BMW_PORTAL_DEV/nginx_loadte
 - `yuk_k6.js`: User-Agent öneki `UA_ONEK` (varsayılan `portal-yuktesti`, `^[a-z][a-z0-9-]{2,30}$`);
   `HOST_BASLIGI` zorunlu (GLOMO varsayılanı kaldırıldı, yoksa init'te hata); `PROTOKOL` (`h1` | `h2`, bkz.
   "Protokol"): `http2_kullanildi` eşiği yerine `protokol_uyumsuz` eşiği, setup her kontrol yolunun sürümüne bakar,
-  CSV/JSON'a `protokol` ve `protokol_uyumsuz` eklenir. Diğer eşikler, iptal mantığı ve çıktılar kitle aynı.
+  CSV/JSON'a `protokol` ve `protokol_uyumsuz` eklenir. `HIZ` üst sınırı 5000 (kitte 450), `MAXVU` 1..1000 (kitte
+  1..199): hedefin limit_req / limit_conn'u artık sınır değil, Portal'da UYARI (ön kontrol onayı). Önceden ayrılan VU
+  (`preAllocatedVUs`) HIZ ≤ 450'de kitle aynı (`max(20, HIZ/5)`), üstünde `max(90, HIZ/20)` (5000 → 250; 1000 VU'yu
+  baştan ayırmak bellek ve TUR başı init süresi ister, gerekirse k6 `maxVUs`'a kadar büyütür); ikisi de `MAXVU` ile
+  sınırlı. Diğer eşikler, iptal mantığı ve çıktılar kitle aynı.
 - `kos.sh`: `UA_ONEK` ve `PROTOKOL` k6'ya geçer (GODEBUG `http2client=0` yalnız h1'de); `HOST_BASLIGI` varsayılansız; `LIMIT_MUAF` YASAK (verilirse hata,
-  k6'ya hep `0`); kendi pid'i `$SONUC/../kos.pid`; INT/TERM trap'i çalışan k6'yı (ve boşluk
+  k6'ya hep `0`); `HIZ` en çok 5000 (kitte 450); kendi pid'i `$SONUC/../kos.pid`; INT/TERM trap'i çalışan k6'yı (ve boşluk
   beklemesini) TERM ile sonlandırır — k6 ve `sleep` arka planda + `wait` ile koşar, trap ertelenmez;
   TERM'de adım `hatali_` önekiyle saklanır, `DUR: ... durduruldu (TERM ...)`, çıkış 4. wrk değişkenlerini yok sayar.
 - `cpu_kaydedici.sh`: iki awk eşleşmesinde (`user-agent=<UA>/<ADIM>_` ve tırnaklı `"<UA>/<ADIM>_`)
@@ -399,7 +486,7 @@ Kök: PROD `/sw/BMW_PORTAL/nginx_loadtest`, DEV `/sw/BMW_PORTAL_DEV/nginx_loadte
 - `durdur.sh`: Portal'a özgü. Adaylar: koşu dizinindeki `*.pid`'ler, `k6 run` (`[k]6`), wrk (`$2` adı `[w]rk...`
   VE komut satırında ` -s <kosu_dizini>/yuk_wrk.lua`; wrk_kos.sh wrk'yi bu argüman sırasıyla çağırır), argv[0]'ı
   `<kosu_dizini>/arac/` altında olan her süreç (araç kopyası: `k6 version`, wrk yükleme sınaması, takılmış `-v`; adı
-  `arac`) ve `bash <kosu_dizini>/kos.sh|wrk_kos.sh|cpu_kaydedici.sh|on_kontrol.sh`. Başka koşunun wrk'sine ve araç
+  `arac`) ve `bash <kosu_dizini>/kos.sh|wrk_kos.sh|cpu_kaydedici.sh|yuk_cpu_kaydedici.sh|on_kontrol.sh`. Başka koşunun wrk'sine ve araç
   kopyasına dokunulmaz. Kopyadan çalışan `k6 run` / wrk yükü `<kosu_dizini>/arac/k6|wrk` yoluyla k6 / wrk kuralına da
   uyar.
 - `arac_hazirla.sh` (araclar kipi, Play 8): kullanım `arac_hazirla.sh <dizin>` (`<www ev>/.portal_yuktesti/arac_<id>`),
@@ -417,7 +504,7 @@ Kök: PROD `/sw/BMW_PORTAL/nginx_loadtest`, DEV `/sw/BMW_PORTAL_DEV/nginx_loadte
   `tmp/` çıkışta silinir. Ağ aracı, vekil ataması, işlemciye özgü bayrak ve sistem OpenSSL'i YOK.
 - `wrk_kos.sh` (motor wrk): dış sözleşme kos.sh ile aynı; kullanım `wrk_kos.sh <ADIM> <K|B> [--kuru]`, çıkış 0 /
   2 (girdi ya da ön koşul, yük YOK) / 4 (DUR) / 130. Sıra: girdi denetimi (`BAGLANTILAR` ≤ 199 tekil en çok 5,
-  `IS_PARCACIGI` 1..16 en küçük bağlantıdan büyük değil ve her bağlantıyı böler, `TAVAN_RPS` zorunlu 1..450, `SNI`
+  `IS_PARCACIGI` 1..16 en küçük bağlantıdan büyük değil ve her bağlantıyı böler, `TAVAN_RPS` zorunlu 1..5000, `SNI`
   yalnız 0, `LIMIT_MUAF` yalnız 0, senaryo beyaz listesi) → plan (`--kuru` burada biter; dizin/pid yazılmaz) →
   `HEDEF` (`https://<IPv4>`, yol/port yok) ve `HOST_BASLIGI` → **hedef IP yük makinesinde yerel mi** (yerel ya da
   ölçülemediyse wrk `-v` dahil HİÇ çağrılmaz) → curl → `wrk -v` sürüm satırı (≥ 4) → `yuk_wrk.lua` yükleme
@@ -480,7 +567,8 @@ Biçim: CSV = başlık + TEK veri satırı; sayı `int(v*1000+0.5)/1000` (yuk_k6
 girintili, sayı yuvarlanmamış, null `null`; NaN/sonsuz asla. İkisi de `.tmp` + `mv` (`LC_ALL=C`).
 
 Çıktı adları ve biçimleri (istemci_*, zaman.csv, baslatilan.csv, sunucu_*, log_*, diger_*, bilgi_*,
-konf_*) kitle **aynıdır**; Portal'ın analizi (karsilastir.py portu) bunlara dayanır.
+konf_*) kitle **aynıdır**; Portal'ın analizi (karsilastir.py portu) bunlara dayanır. Portal'a özgü ek dosyalar
+(`yukcpu_*`, `bellek_*`) ve `istemci_<TUR>.json`'daki `kodlama` anahtarı kitte yoktur; kit ve eski Portal onları atlar.
 
 ## Protokol (HTTP/1.1 | HTTP/2)
 
@@ -724,9 +812,11 @@ install -m 0644 serbest_aglar /etc/portal_yuktesti/serbest_aglar
   koruma dar tutulan izin listeleridir.
 - Hedef IP özel aralıkta değil; sunucuda hedefte yerel olduğu (`ip -o -4 addr`), iki türde yük makinesinde yerel
   OLMADIĞI ölçülür (yerelse istek hiç gönderilmez).
-- Tavanlar: k6 hız ≤ 450 (IP başına `limit_req` 500 r/s), VU ≤ 199 (`limit_conn` 200); wrk bağlantı ≤ 199, toplam hız
-  ORTALAMADA ≤ `yuk_tavan_rps` ≤ 450; serbest hedefte iki motorda ≤ 200 istek/sn (wrk'de ortalamada) ve ≤ 50
-  bağlantı/VU (hedefte limit_req olmayabilir: yükün tek freni Portal tavanıdır). Yük bir LB üzerinden gidiyorsa
+- Tavanlar (2026-11-03): sunucu hedefte k6 hız ≤ 5000, VU ≤ 1000; wrk bağlantı ≤ 199, toplam hız ORTALAMADA ≤
+  `yuk_tavan_rps` ≤ 5000; serbest hedefte iki motorda ≤ 200 istek/sn (wrk'de ortalamada) ve ≤ 50 bağlantı/VU (hedefte
+  limit_req olmayabilir: yükün tek freni Portal tavanıdır). Hedefin ölçülmüş limit_req / limit_conn'u playbook'ta
+  okunmaz; Portal'da yalnız UYARIDIR (ön kontrol / plan onayı). Estate'teki `limit_req 500 r/s/IP` olan hedefte 500'ün
+  üstündeki her hız ilk saniyede 429 ile durur (k6 eşiği, wrk DUR). Yük bir LB üzerinden gidiyorsa
   nginx isteği (realip yoksa) LB'nin IP'sinden görür: IP başına 500 r/s ve 200 bağlantı sınırı LB arkasındaki
   herkesle, vhost başına 5000 r/s sınırı tüm istemcilerle paylaşılır. `LIMIT_MUAF` yok; k6 eşikleri 429 ve HTTP/2'de, wrk_kos.sh 429/5xx/soket/hata
   oranında koşuyu keser.
@@ -800,8 +890,9 @@ install -m 0644 serbest_aglar /etc/portal_yuktesti/serbest_aglar
   büyük gövdeli senaryoda yük makinesi darboğaz olabilir (yük makinesi CPU'su kanaryada izlenir).
 - **SIGTERM'de done() yoktur**: Portal durdur / timeout TERM'i wrk'yi özetsiz bitirir (o TUR `hatali_`/DUR); SIGINT
   erken durdurur ve done() çalışır.
-- **`yeni` kipinde geçici port tükenmesi**: her istek yeni TCP bağlantısıdır; yüksek bağlantı / kısa gecikmede yük
-  makinesinde TIME_WAIT birikir (`e_connect` artar, soket DUR'u).
+- **`yeni` kipinde geçici port tükenmesi**: her istek yeni TCP bağlantısıdır; yüksek bağlantı / kısa gecikmede TIME_WAIT
+  birikebilir (`e_connect` artar, soket DUR'u). Hangi tarafta (yük makinesi mi hedef mi) biriktiği doğrulanmadı;
+  pilot koşuda iki tarafta `ss -tan state time-wait` ile ölçülecek.
 - `ps | awk` kendine eşleşir: `durdur.sh` dizini awk'a ORTAM değişkeniyle verir, k6'yı ve wrk'yi alan
   bazında (`$2` adı `[k]6...` ve `$3 == "run"`; `$2` adı `[w]rk...` ve ` -s <kosu_dizini>/yuk_wrk.lua`) tanır; kendi
   pid'ini ve ebeveynini dışlar. Gerçek procps `ps` ile bekçide sınanır (WSL/Linux).

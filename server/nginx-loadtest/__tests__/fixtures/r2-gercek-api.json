@@ -33,6 +33,7 @@
   "enYuksekHataOrani": 0,
   "hataVar": false,
   "cpuOlculemeyenAdim": 2,
+  "yukDoyduAdim": 0,
   "konfDegisti": true,
   "reloadlar": [
    {
@@ -135,7 +136,36 @@
    "srtP95": 36,
    "srtP99": 37,
    "cpuOlculemedi": null,
-   "reloadlar": []
+   "reloadlar": [],
+   "yukCpuBosta": null,
+   "yukCpuOlculemedi": false,
+   "yukDoydu": false,
+   "bellek": null,
+   "kipDogrulama": {
+    "protokol": {
+     "istenen": "h1",
+     "olculen": "h1",
+     "uyumsuz": null,
+     "durum": "tamam"
+    },
+    "baglanti": {
+     "istenen": "ka",
+     "yeniBaglantiYuzde": 20,
+     "istekBaglanti": 5,
+     "durum": "tamam"
+    },
+    "sikistirma": {
+     "istenen": "identity",
+     "n": null,
+     "dagilim": null,
+     "yok1kbAlti": null,
+     "kucukYuzde": null,
+     "istenenYuzde": null,
+     "durum": "olculmedi"
+    },
+    "uyarilar": [],
+    "durum": "tamam"
+   }
   },
   {
    "id": 2,
@@ -226,7 +256,36 @@
      "tur": "R2_K_ka_identity_100_r2",
      "faz": "olcum"
     }
-   ]
+   ],
+   "yukCpuBosta": null,
+   "yukCpuOlculemedi": false,
+   "yukDoydu": false,
+   "bellek": null,
+   "kipDogrulama": {
+    "protokol": {
+     "istenen": "h1",
+     "olculen": "h1",
+     "uyumsuz": null,
+     "durum": "tamam"
+    },
+    "baglanti": {
+     "istenen": "ka",
+     "yeniBaglantiYuzde": 20,
+     "istekBaglanti": 5,
+     "durum": "tamam"
+    },
+    "sikistirma": {
+     "istenen": "identity",
+     "n": null,
+     "dagilim": null,
+     "yok1kbAlti": null,
+     "kucukYuzde": null,
+     "istenenYuzde": null,
+     "durum": "olculmedi"
+    },
+    "uyarilar": [],
+    "durum": "tamam"
+   }
   },
   {
    "id": 3,
@@ -297,7 +356,36 @@
    "srtP95": 36,
    "srtP99": 37,
    "cpuOlculemedi": null,
-   "reloadlar": []
+   "reloadlar": [],
+   "yukCpuBosta": null,
+   "yukCpuOlculemedi": false,
+   "yukDoydu": false,
+   "bellek": null,
+   "kipDogrulama": {
+    "protokol": {
+     "istenen": "h1",
+     "olculen": "h1",
+     "uyumsuz": null,
+     "durum": "tamam"
+    },
+    "baglanti": {
+     "istenen": "ka",
+     "yeniBaglantiYuzde": 20,
+     "istekBaglanti": 5,
+     "durum": "tamam"
+    },
+    "sikistirma": {
+     "istenen": "identity",
+     "n": null,
+     "dagilim": null,
+     "yok1kbAlti": null,
+     "kucukYuzde": null,
+     "istenenYuzde": null,
+     "durum": "olculmedi"
+    },
+    "uyarilar": [],
+    "durum": "tamam"
+   }
   },
   {
    "id": 4,
@@ -388,7 +476,36 @@
      "tur": "R2_K_ka_identity_250_r2",
      "faz": "olcum"
     }
-   ]
+   ],
+   "yukCpuBosta": null,
+   "yukCpuOlculemedi": false,
+   "yukDoydu": false,
+   "bellek": null,
+   "kipDogrulama": {
+    "protokol": {
+     "istenen": "h1",
+     "olculen": "h1",
+     "uyumsuz": null,
+     "durum": "tamam"
+    },
+    "baglanti": {
+     "istenen": "ka",
+     "yeniBaglantiYuzde": 20,
+     "istekBaglanti": 5,
+     "durum": "tamam"
+    },
+    "sikistirma": {
+     "istenen": "identity",
+     "n": null,
+     "dagilim": null,
+     "yok1kbAlti": null,
+     "kucukYuzde": null,
+     "istenenYuzde": null,
+     "durum": "olculmedi"
+    },
+    "uyarilar": [],
+    "durum": "tamam"
+   }
   },
   {
    "id": 5,
@@ -459,7 +576,36 @@
    "srtP95": 36,
    "srtP99": 37,
    "cpuOlculemedi": null,
-   "reloadlar": []
+   "reloadlar": [],
+   "yukCpuBosta": null,
+   "yukCpuOlculemedi": false,
+   "yukDoydu": false,
+   "bellek": null,
+   "kipDogrulama": {
+    "protokol": {
+     "istenen": "h1",
+     "olculen": "h1",
+     "uyumsuz": null,
+     "durum": "tamam"
+    },
+    "baglanti": {
+     "istenen": "ka",
+     "yeniBaglantiYuzde": 20,
+     "istekBaglanti": 5,
+     "durum": "tamam"
+    },
+    "sikistirma": {
+     "istenen": "identity",
+     "n": null,
+     "dagilim": null,
+     "yok1kbAlti": null,
+     "kucukYuzde": null,
+     "istenenYuzde": null,
+     "durum": "olculmedi"
+    },
+    "uyarilar": [],
+    "durum": "tamam"
+   }
   },
   {
    "id": 6,
@@ -530,7 +676,36 @@
    "srtP95": 36,
    "srtP99": 37,
    "cpuOlculemedi": null,
-   "reloadlar": []
+   "reloadlar": [],
+   "yukCpuBosta": null,
+   "yukCpuOlculemedi": false,
+   "yukDoydu": false,
+   "bellek": null,
+   "kipDogrulama": {
+    "protokol": {
+     "istenen": "h1",
+     "olculen": "h1",
+     "uyumsuz": null,
+     "durum": "tamam"
+    },
+    "baglanti": {
+     "istenen": "ka",
+     "yeniBaglantiYuzde": 20,
+     "istekBaglanti": 5,
+     "durum": "tamam"
+    },
+    "sikistirma": {
+     "istenen": "identity",
+     "n": null,
+     "dagilim": null,
+     "yok1kbAlti": null,
+     "kucukYuzde": null,
+     "istenenYuzde": null,
+     "durum": "olculmedi"
+    },
+    "uyarilar": [],
+    "durum": "tamam"
+   }
   }
  ]
 }

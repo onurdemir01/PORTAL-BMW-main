@@ -26,6 +26,8 @@
 //   SN20 faz kodu haritasi 256 adla sinirli (cikti ayni)
 //   SN21 wrk_kos.sh bicimli istemci CSV'si (tur 3, 5.4) serbest kosu dizininden okunur: olculmeyen hucreler ''
 //        kalir ve analizde null olur (asla 0), http2 olculmus 0; JSON eslesi listelenir ve dogrulanir
+//   SN31b yukcpu_* / bellek_* G/C hatasi (akis sahte): kesit sorunlu, kosu okunur; sunucu_*, SHA256SUMS'ta listeli
+//        okunamayan dosya ve yuk dosyasinda bayt tavani OKUNAMADI
 'use strict';
 
 const { test, after } = require('node:test');
@@ -518,4 +520,171 @@ test('SN21 wrk_kos.sh bicimli istemci CSV si serbest kosu dizininden okunur; bos
       ['R70_K_ka_br_4_r1', 4, 'ka', 22812, 190.1, 12.346, 25.512, 40.125, 0, 1534.47, 0, 'STATIK', 1], yer);
     assert.equal(x.gecerlilik, 'GECERLI', `${yer}: ${x.nedenler}`);
   }
+});
+
+// 2026-11-03 (K3): yuk makinesi CPU kaydedicisi dosyalari (yukcpu_*.csv / .txt).
+test('SN30 yukcpu_*.csv okunur ({t, busy, tot}, sirali), .txt bilgi; dosya yoksa []; bozuk baslik / tavan kosuyu OKUNAMADI yapmaz (sorun + bos kesit); SHA256SUMS ile; eski desenlere girmez', async () => {
+  const BAS = 'epoch,cpu_user,cpu_nice,cpu_system,cpu_idle,cpu_iowait,cpu_irq,cpu_softirq,cpu_steal\n';
+  const csv = BAS + '1793620002.5,30,0,10,500,5,1,2,0\n1793620001.25,10,0,5,400,5,1,1,0\nkisa,satir\n1793620003,x,0,0,0,0,0,0,0\n';
+  const txt = 'surum=1\nadim=R1\nhost=ymak01\nnproc=8\nclk_tck=100\nornek_sayisi=2\n';
+  const v = await kosuDiziniOku(yeniDizin({ 'istemci_R1_K_yeni_br_250_r1.csv': ISTEMCI, 'yukcpu_R1_ymak01.csv': csv, 'yukcpu_R1_ymak01.txt': txt }));
+  assert.equal(v.yukKesitler.length, 1);
+  const y = v.yukKesitler[0];
+  assert.deepEqual([y.anahtar, y.dosya, y.bilgiVar, y.bilgi.nproc], ['R1_ymak01', 'yukcpu_R1_ymak01.csv', true, '8']);
+  // busy = user + nice + system + irq + softirq + steal; tot = busy + idle + iowait (sunucu kesitiyle ayni formul).
+  assert.deepEqual(y.ornekler, [{ t: 1793620001.25, busy: 17, tot: 422 }, { t: 1793620002.5, busy: 43, tot: 548 }]);
+  // Hedef kesitlerine (sunucu_*) karismaz; dosya listesinde gorunur.
+  assert.deepEqual(v.kesitler, []);
+  assert.ok(v.dosyalar.some((d) => d.ad === 'yukcpu_R1_ymak01.csv'));
+  // Kayit yoksa bos liste (eski kosu).
+  assert.deepEqual((await kosuDiziniOku(yeniDizin({ 'istemci_R1_K_yeni_br_250_r1.csv': ISTEMCI }))).yukKesitler, []);
+  // Bilgisiz csv okunur (bilgi null).
+  const b = await kosuDiziniOku(yeniDizin({ 'yukcpu_R1_ymak01.csv': csv }));
+  assert.deepEqual([b.yukKesitler[0].bilgiVar, b.yukKesitler[0].bilgi], [false, null]);
+  // Eksik kolon: dosya YALNIZ BILGI -> kosu okunur, kesit bos ve sorun dosya adiyla (analiz 'kayit_bozuk' der).
+  const ek = await kosuDiziniOku(yeniDizin({ 'istemci_R1_K_yeni_br_250_r1.csv': ISTEMCI, 'yukcpu_R1_ymak01.csv': 'epoch,cpu_user\n1,2\n' }));
+  assert.equal(ek.istemci.length, 1);
+  assert.deepEqual(ek.yukKesitler.map((x) => [x.ornekler.length, x.sorun]), [[0, 'yukcpu_R1_ymak01.csv: eksik kolon cpu_nice,cpu_system,cpu_idle,cpu_iowait,cpu_irq,cpu_softirq,cpu_steal']]);
+  // Basliksiz (TERM trap'ten once dusmus eski kaydedici): ilk satir baslik sanilir -> eksik kolon, yine OKUNAMADI degil.
+  const bs = await kosuDiziniOku(yeniDizin({ 'yukcpu_R1_ymak01.csv': '1793620001,10,0,5,400,5,1,1,0\n' }));
+  assert.match(bs.yukKesitler[0].sorun, /^yukcpu_R1_ymak01\.csv: eksik kolon epoch,/);
+  // Saglam dosyada sorun alani YOK (eski bicim birebir).
+  assert.ok(!('sorun' in y));
+  // SHA256SUMS listesinde: ozet tutmali.
+  const d = yeniDizin({ 'yukcpu_R1_ymak01.csv': csv, SHA256SUMS: `${sha(Buffer.from(csv))}  yukcpu_R1_ymak01.csv\n` });
+  assert.deepEqual((await kosuDiziniOku(d)).sha256, { durum: 'dogrulandi', dosya_sayisi: 1 });
+  const bozuk = yeniDizin({ 'yukcpu_R1_ymak01.csv': csv, SHA256SUMS: `${'0'.repeat(64)}  yukcpu_R1_ymak01.csv\n` });
+  await okunamadi(() => kosuDiziniOku(bozuk), /SHA256SUMS tutmuyor: yukcpu_R1_ymak01\.csv/);
+  // Satir tavani 20000.
+  const cok = BAS + Array.from({ length: 20001 }, (_, i) => `${1793620000 + i},1,0,0,1,0,0,0,0`).join('\n') + '\n';
+  const tv = await kosuDiziniOku(yeniDizin({ 'yukcpu_R1_ymak01.csv': cok }));
+  assert.deepEqual(tv.yukKesitler.map((x) => [x.ornekler.length, x.sorun]), [[0, 'yukcpu_R1_ymak01.csv: satir tavani asildi (en cok 20000 satir)']]);
+});
+
+// B7: yuk dosyasi hicbir bicimde kosuyu OKUNAMADI yapmaz: normal dosya olmayan yukcpu_* (dizin), bozuk / tasan .txt
+// (eski bilgiOkuyucu 'uyari=' tavaninda firlatirdi), bos dosya. Hedef dosyasi (sunucu_*) dizinse OKUNAMADI aynen.
+test('SN31 (B7) yukcpu_* dizin / bozuk txt / bos: kosu okunur, yalniz yuk kesiti sorunlu; sunucu_* dizin OKUNAMADI aynen', async () => {
+  const d = yeniDizin({ 'istemci_R1_K_yeni_br_250_r1.csv': ISTEMCI });
+  fs.mkdirSync(path.join(d, 'yukcpu_R1_ymak01.csv'));
+  fs.mkdirSync(path.join(d, 'yukcpu_R1_ymak01.txt'));
+  const v = await kosuDiziniOku(d);
+  assert.equal(v.istemci.length, 1);
+  assert.deepEqual(v.yukKesitler.map((x) => [x.anahtar, x.ornekler.length, x.sorun, x.bilgiVar]), [['R1_ymak01', 0, 'yukcpu_R1_ymak01.csv: normal dosya degil', false]]);
+  const tasan = 'nproc=' + '9'.repeat(400) + '\n' + Array.from({ length: 5000 }, (_, i) => `uyari=u${i}`).join('\n') + '\n'
+    + Array.from({ length: 200 }, (_, i) => `k${'x'.repeat(i % 20)}_${String.fromCharCode(97 + (i % 26))}=1`).join('\n') + '\n' + String.fromCharCode(0, 255) + '=\n';
+  const t = await kosuDiziniOku(yeniDizin({ 'istemci_R1_K_yeni_br_250_r1.csv': ISTEMCI, 'yukcpu_R1_ymak01.csv': '', 'yukcpu_R1_ymak01.txt': tasan }));
+  assert.equal(t.istemci.length, 1);
+  const y = t.yukKesitler[0];
+  assert.deepEqual([y.ornekler.length, y.bilgiVar], [0, true]);
+  assert.ok(Object.keys(y.bilgi).length <= 64, String(Object.keys(y.bilgi).length));
+  assert.equal(y.bilgi.uyari, 'u4999');
+  assert.equal(y.bilgi.nproc.length, 200);
+  // Hedef tarafi: sunucu_* dizinse OKUNAMADI (degismedi).
+  const h = yeniDizin({ 'istemci_R1_K_yeni_br_250_r1.csv': ISTEMCI });
+  fs.mkdirSync(path.join(h, 'sunucu_R1_h.csv'));
+  await okunamadi(() => kosuDiziniOku(h), /sunucu_R1_h\.csv: normal dosya degil/);
+});
+
+// SN31b (B7, D12): yuk / bellek dosyasi okunurken G/C hatasi (EIO; Windows'ta EACCES kurulamadigi icin akis
+// sahtelenir) kosuyu OKUNAMADI yapmaz: yalniz o kesit 'sorun'lu bos. Ayni hata hedef dosyasinda (sunucu_*) OKUNAMADI
+// aynen; SHA256SUMS'ta listeli okunamayan dosya butunluk dogrulanamadigi icin OKUNAMADI; bayt tavani yuk dosyasinda
+// asilsa da OKUNAMADI.
+test('SN31b (B7) yukcpu_* / bellek_* okuma hatasi: kosu okunur, kesit sorunlu; sunucu_*, SHA256SUMS ve bayt tavani OKUNAMADI', async (t) => {
+  const asil = fs.createReadStream;
+  const bozukAd = /(^|[\\/])(yukcpu_R1_ymak01\.(csv|txt)|bellek_R1_h\.csv|sunucu_R1_h\.csv)$/;
+  t.mock.method(fs, 'createReadStream', function (yol, ...geri) {
+    if (bozukAd.test(String(yol))) {
+      const r = new Readable({ read() {} });
+      process.nextTick(() => r.destroy(Object.assign(new Error(`EIO: i/o error, read '${yol}'`), { code: 'EIO' })));
+      return r;
+    }
+    return asil.call(fs, yol, ...geri);
+  });
+  const csv = 'epoch,cpu_user,cpu_nice,cpu_system,cpu_idle,cpu_iowait,cpu_irq,cpu_softirq,cpu_steal\n1793620001,10,0,5,400,5,1,1,0\n';
+  const bel = 'epoch,nginx_rss_kb,isci_sayi,mem_total_kb,mem_available_kb\n1793620001,1024,2,16000000,8000000\n';
+  const v = await kosuDiziniOku(yeniDizin({ 'istemci_R1_K_yeni_br_250_r1.csv': ISTEMCI, 'yukcpu_R1_ymak01.csv': csv, 'yukcpu_R1_ymak01.txt': 'nproc=8\n', 'bellek_R1_h.csv': bel }));
+  assert.equal(v.istemci.length, 1);
+  assert.deepEqual(v.yukKesitler.map((x) => [x.anahtar, x.ornekler.length, x.bilgiVar]), [['R1_ymak01', 0, false]]);
+  assert.match(v.yukKesitler[0].sorun, /^yukcpu_R1_ymak01\.csv: okunamadi \(EIO/);
+  assert.deepEqual(v.bellekKesitler.map((x) => [x.anahtar, x.ornekler.length]), [['R1_h', 0]]);
+  assert.match(v.bellekKesitler[0].sorun, /^bellek_R1_h\.csv: okunamadi \(EIO/);
+  // Hedef dosyasi ayni hatada OKUNAMADI (degismedi).
+  await okunamadi(() => kosuDiziniOku(yeniDizin({ 'istemci_R1_K_yeni_br_250_r1.csv': ISTEMCI, 'sunucu_R1_h.csv': csv })), /sunucu_R1_h\.csv: okunamadi/);
+  // SHA256SUMS'ta listeli yuk dosyasi okunamazsa ozet dogrulanamaz: OKUNAMADI.
+  await okunamadi(() => kosuDiziniOku(yeniDizin({ 'yukcpu_R1_ymak01.csv': csv, SHA256SUMS: `${sha(Buffer.from(csv))}  yukcpu_R1_ymak01.csv\n` })), /yukcpu_R1_ymak01\.csv: okunamadi/);
+  t.mock.restoreAll();
+  // Bayt tavani yuk dosyasinda AKISTA asilir (dosya on boyut olcumunden sonra buyudu): kosunun butununu baglar,
+  // OKUNAMADI (yuk dosyasi istisnasina girmez).
+  const buyuk = Buffer.from(csv + Array.from({ length: 200 }, (_, i) => `${1793620002 + i},1,0,0,1,0,0,0,0`).join('\n') + '\n');
+  t.mock.method(fs, 'createReadStream', function (yol, ...geri) {
+    if (/(^|[\\/])yukcpu_R1_ymak01\.csv$/.test(String(yol))) return Readable.from([buyuk]);
+    return asil.call(fs, yol, ...geri);
+  });
+  await okunamadi(() => kosuDiziniOku(yeniDizin({ 'yukcpu_R1_ymak01.csv': csv }), { maxBayt: 1024 }), /bayt tavanini asti \(1024 bayt; yukcpu_R1_ymak01\.csv okunurken\)/);
+  t.mock.restoreAll();
+});
+
+// 2026-11-03 bellek ve kip dogrulamasi dosyalari (YALNIZ BILGI: hicbiri kosuyu OKUNAMADI yapmaz; SHA256SUMS yine baglar).
+//   SN32 bellek_*.csv -> bellekKesitler {t, rss, n, mt, ma} (bos hucre null, sirali); eksik kolon / tavan / dizin: sorun +
+//        bos kesit; SHA256SUMS uyusmazligi OKUNAMADI aynen
+//   SN33 yukcpu_*.csv bellek kolonlari istege bagli: varsa mt / ma / ar (bos null), yoksa ornek {t, busy, tot} aynen
+//   SN34 istemci_<TUR>.json -> istemciKodlama (yalniz kodlama; tamsayi disi null); bozuk / tasan / kodlamasiz JSON
+//        atlanir; hatali_istemci_*.json okunmaz (yalniz ozet); istemci_*.json dizinse OKUNAMADI aynen (eski kural)
+test('SN32 bellek_*.csv okunur; bozuk / tasan / dizin kosuyu OKUNAMADI yapmaz; SHA256SUMS baglar', async () => {
+  const BAS = 'epoch,nginx_rss_kb,isci_sayi,mem_total_kb,mem_available_kb\n';
+  const csv = BAS + '1793620002.5,2048,2,16000000,\n1793620001.25,1024,2,16000000,8000000\nkisa\nx,1,2,3,4\n';
+  const v = await kosuDiziniOku(yeniDizin({ 'istemci_R1_K_yeni_br_250_r1.csv': ISTEMCI, 'bellek_R1_h.csv': csv }));
+  assert.deepEqual(v.bellekKesitler, [{ anahtar: 'R1_h', dosya: 'bellek_R1_h.csv', ornekler: [
+    { t: 1793620001.25, rss: 1024, n: 2, mt: 16000000, ma: 8000000 }, { t: 1793620002.5, rss: 2048, n: 2, mt: 16000000, ma: null },
+  ] }]);
+  assert.deepEqual(v.kesitler, [], 'hedef CPU kesitlerine karismaz');
+  assert.deepEqual((await kosuDiziniOku(yeniDizin({ 'istemci_R1_K_yeni_br_250_r1.csv': ISTEMCI }))).bellekKesitler, []);
+  const ek = await kosuDiziniOku(yeniDizin({ 'istemci_R1_K_yeni_br_250_r1.csv': ISTEMCI, 'bellek_R1_h.csv': 'epoch,nginx_rss_kb\n1,2\n' }));
+  assert.equal(ek.istemci.length, 1);
+  assert.deepEqual(ek.bellekKesitler.map((x) => [x.ornekler.length, x.sorun]), [[0, 'bellek_R1_h.csv: eksik kolon isci_sayi,mem_total_kb,mem_available_kb']]);
+  const cok = BAS + Array.from({ length: 20001 }, (_, i) => `${1793620000 + i},1,1,1,1`).join('\n') + '\n';
+  const tv = await kosuDiziniOku(yeniDizin({ 'bellek_R1_h.csv': cok }));
+  assert.deepEqual(tv.bellekKesitler.map((x) => [x.ornekler.length, x.sorun]), [[0, 'bellek_R1_h.csv: satir tavani asildi (en cok 20000 satir)']]);
+  const d = yeniDizin({ 'istemci_R1_K_yeni_br_250_r1.csv': ISTEMCI });
+  fs.mkdirSync(path.join(d, 'bellek_R1_h.csv'));
+  const dz = await kosuDiziniOku(d);
+  assert.deepEqual(dz.bellekKesitler.map((x) => [x.anahtar, x.ornekler.length, x.sorun]), [['R1_h', 0, 'bellek_R1_h.csv: normal dosya degil']]);
+  assert.deepEqual((await kosuDiziniOku(yeniDizin({ 'bellek_R1_h.csv': csv, SHA256SUMS: `${sha(Buffer.from(csv))}  bellek_R1_h.csv\n` }))).sha256, { durum: 'dogrulandi', dosya_sayisi: 1 });
+  await okunamadi(() => kosuDiziniOku(yeniDizin({ 'bellek_R1_h.csv': csv, SHA256SUMS: `${'0'.repeat(64)}  bellek_R1_h.csv\n` })), /SHA256SUMS tutmuyor: bellek_R1_h\.csv/);
+});
+
+test('SN33 yukcpu_*.csv bellek kolonlari istege bagli (mt / ma / ar; bos null); kolonsuz dosyada ornek aynen', async () => {
+  const BAS = 'epoch,cpu_user,cpu_nice,cpu_system,cpu_idle,cpu_iowait,cpu_irq,cpu_softirq,cpu_steal,mem_total_kb,mem_available_kb,arac_rss_kb\n';
+  const csv = BAS + '1793620001,10,0,5,400,5,1,1,0,32000000,20000000,300000\n1793620002,30,0,10,500,5,1,2,0,,,\n';
+  const v = await kosuDiziniOku(yeniDizin({ 'yukcpu_R1_ymak01.csv': csv }));
+  assert.deepEqual(v.yukKesitler[0].ornekler, [
+    { t: 1793620001, busy: 17, tot: 422, mt: 32000000, ma: 20000000, ar: 300000 },
+    { t: 1793620002, busy: 43, tot: 548, mt: null, ma: null, ar: null },
+  ]);
+  const eski = 'epoch,cpu_user,cpu_nice,cpu_system,cpu_idle,cpu_iowait,cpu_irq,cpu_softirq,cpu_steal\n1793620001,10,0,5,400,5,1,1,0\n';
+  assert.deepEqual((await kosuDiziniOku(yeniDizin({ 'yukcpu_R1_ymak01.csv': eski }))).yukKesitler[0].ornekler, [{ t: 1793620001, busy: 17, tot: 422 }]);
+});
+
+test('SN34 istemci JSON kodlama okunur (bilgi); bozuk / tasan / kodlamasiz atlanir; hatali_ JSON okunmaz; dizin OKUNAMADI aynen', async () => {
+  const kd = { br: 9, gzip: 0, deflate: 0, zstd: 0, yok: 1, diger: 0, yok_1kb_alti: 1 };
+  const json = (tur, k) => JSON.stringify({ tur, hiz: 250, ...(k === undefined ? {} : { kodlama: k }) }, null, 2) + '\n';
+  const v = await kosuDiziniOku(yeniDizin({
+    'istemci_R1_K_yeni_br_250_r1.csv': ISTEMCI,
+    'istemci_R1_K_yeni_br_250_r1.json': json('R1_K_yeni_br_250_r1', kd),
+    'istemci_R1_K_yeni_br_250_r2.json': json('R1_K_yeni_br_250_r2', { ...kd, br: 1.5, gzip: -1, yok: '3' }),
+    'istemci_R1_K_yeni_br_400_r1.json': json('R1_K_yeni_br_400_r1'),
+    'istemci_R1_K_yeni_br_400_r2.json': '{"tur": "R1_K_yeni_br_400_r2", "kodlama": {',
+    'istemci_R1_K_yeni_br_100_r1.json': json('R1_K_yeni_br_100_r1', kd).replace('"hiz"', `"x": "${'a'.repeat(70000)}", "hiz"`),
+    'hatali_istemci_R1_K_yeni_br_100_r2.json': json('R1_K_yeni_br_100_r2', kd),
+  }));
+  assert.equal(v.istemci.length, 1);
+  assert.deepEqual([...v.istemciKodlama.entries()], [
+    ['R1_K_yeni_br_250_r1', kd],
+    ['R1_K_yeni_br_250_r2', { ...kd, br: null, gzip: null, yok: null }],
+  ]);
+  // Hic JSON yok: bos harita (eski yuk_k6.js da JSON yazar ama kodlamasiz: yine bos).
+  assert.equal((await kosuDiziniOku(yeniDizin({ 'istemci_R1_K_yeni_br_250_r1.csv': ISTEMCI }))).istemciKodlama.size, 0);
+  const d = yeniDizin({ 'istemci_R1_K_yeni_br_250_r1.csv': ISTEMCI });
+  fs.mkdirSync(path.join(d, 'istemci_R1_K_yeni_br_250_r1.json'));
+  await okunamadi(() => kosuDiziniOku(d), /istemci_R1_K_yeni_br_250_r1\.json: normal dosya degil/);
 });

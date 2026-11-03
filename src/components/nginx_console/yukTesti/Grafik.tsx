@@ -47,10 +47,13 @@ function Isaret({ durum, x, y }: { durum: string | null; x: number; y: number })
   return <circle cx={x} cy={y} r={5} fill="var(--accent)" {...halka} />;
 }
 
-export default function HizGrafigi({ baslik, birim, noktalar, cizgi, basamak = 1, bos = 'Ölçülmüş değer yok.', xBirimi = 'istek/sn' }: {
+export default function HizGrafigi({ baslik, birim, noktalar, cizgi, basamak = 1, bos = 'Ölçülmüş değer yok.', xBirimi = 'istek/sn', bicim }: {
   baslik: string; birim: string; noktalar: GrafikNoktasi[]; cizgi: { x: number; y: number | null }[]; basamak?: number; bos?: string;
   xBirimi?: AdimBirimi;
+  /** Ipucu / ozet deger metni (birim dahil; 2026-11-03 CPU-ms "3,92 ms"); yoksa ondalik(y, basamak) + birim. */
+  bicim?: (y: number) => string;
 }) {
+  const degerMetni = (y: number) => (bicim ? bicim(y) : `${ondalik(y, basamak)} ${birim}`);
   const [ref, genislik] = useGenislik();
   const [uzerinde, setUzerinde] = useState<number | null>(null);
   const olcu = noktalar.filter((n) => n.y != null && Number.isFinite(n.y));
@@ -77,10 +80,10 @@ export default function HizGrafigi({ baslik, birim, noktalar, cizgi, basamak = 1
   };
   const yol = cizgi.filter((c) => c.y != null).sort((a, b) => a.x - b.x).map((c, i) => `${i ? 'L' : 'M'}${px(c.x).toFixed(1)} ${py(c.y as number).toFixed(1)}`).join('');
   const ozet = olcu.length
-    ? `${baslik}: ${xler.map((x) => `${x} ${xBirimi} ${cizgi.find((c) => c.x === x)?.y != null ? `${ondalik(cizgi.find((c) => c.x === x)?.y, basamak)} ${birim}` : 'ölçülmedi'}`).join(', ')}`
+    ? `${baslik}: ${xler.map((x) => `${x} ${xBirimi} ${cizgi.find((c) => c.x === x)?.y != null ? degerMetni(cizgi.find((c) => c.x === x)?.y as number) : 'ölçülmedi'}`).join(', ')}`
     : `${baslik}: ${bos}`;
   const u = uzerinde != null ? noktalar[uzerinde] : null;
-  const yIpucu = (n: GrafikNoktasi) => `${n.etiket}: ${n.y == null ? 'ölçülmedi' : `${ondalik(n.y, basamak)} ${birim}`}${n.durum ? ` · ${DURUM_ADI[n.durum] || n.durum}` : ''}`;
+  const yIpucu = (n: GrafikNoktasi) => `${n.etiket}: ${n.y == null ? 'ölçülmedi' : degerMetni(n.y)}${n.durum ? ` · ${DURUM_ADI[n.durum] || n.durum}` : ''}`;
   return (
     <figure className="min-w-0">
       <figcaption className="mb-1.5 flex items-baseline justify-between gap-2">

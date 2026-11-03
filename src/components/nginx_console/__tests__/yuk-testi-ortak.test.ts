@@ -21,17 +21,20 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { adimNormalle, hedeflerNormalle, kosuNormalle, nginxLoadtestApi, onKontrolNormalle, type NlAdim, type NlKosuAyrinti, type NlSinirlar } from '@/api/nginxLoadtestApi';
 import {
   glibcRhel8Ustu, shaKisa,
-  GECERLILIK, HOST_LISTEDE_YOK_UYARISI, OKUNAMADI_ACIKLAMASI, SERBEST_ON_KONTROL_BILGISI, SERBEST_UYARISI, SINIR_SIFIR_METNI, WRK_UYARISI, adimDegerleri, adimEtiketi,
+  GECERLILIK, HOST_LISTEDE_YOK_UYARISI, OKUNAMADI_ACIKLAMASI, SERBEST_ON_KONTROL_BILGISI, SERBEST_UYARISI, WRK_UYARISI, adimDegerleri, adimEtiketi,
   adimSirala, baglantiBeklemesiMs, baglantilariAyristir, butceSn, ciktiBirlestir, durdurBaslatilamadiMetni, hedefEtiketi, hedefSinirlari, hizGrupla, hizlariAyristir,
   ipGecerli, kademeMetni, kalanSurecDurdurulabilir, motorOf, nedenMetni, onKontrolDegerlendir, onKontrolKalanMs, parametreHatalari, sonucOkunuyorMetni, tavanNedeni,
-  tavanRps, uyarilariAyir, yenidenOkunabilir, ON_KONTROL_OMRU_MS,
+  tavanRps, uyarilariAyir, yenidenOkunabilir, ON_KONTROL_OMRU_MS, limitMetni, limitUyarilari, sonucOzetiHesapla, yukCpuHucre, yukCpuKolonuVar, yukCpuMetni, yukDoymaYalniz, yukMakinesiUyarilari,
 } from '../yukTesti/yukTestiOrtak';
+import { createRequire } from 'node:module';
+const sunucuDogrula = createRequire(import.meta.url)('../../../../server/nginx-loadtest/dogrula.cjs');
 
 // sureMin 40 (2026-10-27, analiz-1): analiz penceresi [ilk+3, son-2] ve >= 30 sn ister; 30-36 sn her adimi GECERSIZ yapiyordu.
-// Tur 3 alanlari (wrk + serbest) sunucunun SINIRLAR'iyla ayni.
+// Tur 3 alanlari (wrk + serbest) sunucunun SINIRLAR'iyla ayni. 2026-11-03 (K1): hiz 5000, VU 1000, wrk tavani 5000.
 const S: NlSinirlar = {
-  maxHiz: 450, maxTekrar: 3, sureMin: 40, sureMax: 300, isinmaMax: 60, maxVu: 199, maxButceSn: 2700,
+  maxHiz: 5000, maxTekrar: 3, sureMin: 40, sureMax: 300, isinmaMax: 60, maxVu: 1000, maxButceSn: 2700,
   baglantiMin: 1, maxBaglanti: 199, maxBaglantiSayisi: 5, isParcacigiMin: 1, maxIsParcacigi: 16, serbestTavanRps: 200, serbestMaxBaglanti: 50,
+  maxTavanRps: 5000,
 };
 const P = { motor: 'k6' as const, hizlar: [100, 250, 400], tekrar: 2, isinma: 30, sure: 120, bosluk: 30, bosta: 60, maxvu: 150, kip: 'yeni' as const, ae: 'br' as const };
 /** wrk kanonik parametresi: `hizlar` / `maxvu` YOK (sozlesme 9). */
@@ -43,37 +46,116 @@ describe('Yük Testi — saf yardımcılar', () => {
     expect(butceSn(P)).toBe(60 + 3 * 2 * (30 + 120 + 30 + 20) + 120);
     expect(parametreHatalari(P, S)).toEqual({});
     expect(parametreHatalari({ ...P, tekrar: 3, sure: 300 }, S).butce).toMatch(/üst sınır 45 dk/);
-    expect(parametreHatalari({ ...P, hizlar: [100, 500] }, S).hizlar).toMatch(/1–450/);
+    expect(parametreHatalari({ ...P, hizlar: [100, 5001] }, S).hizlar).toMatch(/1–5000/);
+    expect(parametreHatalari({ ...P, hizlar: [100, 5000], maxvu: 1000 }, S)).toEqual({});
     expect(parametreHatalari({ ...P, hizlar: [100, 100] }, S).hizlar).toMatch(/iki kez/);
     expect(parametreHatalari({ ...P, hizlar: [1, 2, 3, 4, 5, 6] }, S).hizlar).toBeTruthy();
-    expect(parametreHatalari({ ...P, maxvu: 200 }, S).maxvu).toBeTruthy();
+    expect(parametreHatalari({ ...P, maxvu: 1001 }, S).maxvu).toBeTruthy();
     expect(parametreHatalari({ ...P, bosta: 20 }, S).bosta).toBeTruthy();
     // Olcum suresi alt siniri sunucunun sinirlarindan (40): 39 red, 40 kabul.
     expect(parametreHatalari({ ...P, sure: 39 }, S).sure).toBe('40–300 sn');
     expect(parametreHatalari({ ...P, sure: 40 }, S).sure).toBeUndefined();
     expect(hizlariAyristir('100 250,400')).toEqual([100, 250, 400]);
     expect(hizlariAyristir('100 abc')).toBeNull();
-    expect(hizlariAyristir('1000')).toBeNull();
+    // 2026-11-03: 4 hane (5000) kabul, 5 hane red (sunucunun HIZLAR_RE'si {1,4}).
+    expect(hizlariAyristir('1000 5000')).toEqual([1000, 5000]);
+    expect(hizlariAyristir('10000')).toBeNull();
   });
 
-  it('YO2 hedef sınırı daraltır, genişletmez', () => {
-    expect(hedefSinirlari(S, { hizSiniri: 270, vuSiniri: 120 })).toMatchObject({ maxHiz: 270, maxVu: 120 });
-    expect(hedefSinirlari(S, { hizSiniri: 900, vuSiniri: null })).toMatchObject({ maxHiz: 450, maxVu: 199 });
-    expect(hedefSinirlari(S, null)).toMatchObject({ maxHiz: 450, maxVu: 199 });
-    expect(parametreHatalari(P, hedefSinirlari(S, { hizSiniri: 300 })).hizlar).toMatch(/1–300/);
+  it('YO2 (K2, 2026-11-03) hedefin ölçülmüş limiti DARALTMAZ; aşım uyarıdır', () => {
+    expect(hedefSinirlari(S, { hizSiniri: 270, vuSiniri: 120 })).toMatchObject({ maxHiz: 5000, maxVu: 1000, maxBaglanti: 199 });
+    expect(hedefSinirlari(S, { hizSiniri: 900, vuSiniri: null })).toMatchObject({ maxHiz: 5000, maxVu: 1000 });
+    expect(hedefSinirlari(S, null)).toMatchObject({ maxHiz: 5000, maxVu: 1000 });
+    expect(parametreHatalari(P, hedefSinirlari(S, { hizSiniri: 300 })).hizlar).toBeUndefined();
   });
 
-  it('YO2b ölçülmüş limit 0 gerçek sınırdır (genel üst sınıra dönmez); form sunucunun metnini söyler', () => {
-    // 1 r/s'lik limit_req -> hizSiniri 0; limit_conn 1 -> vuSiniri 0. Eskiden 0 "veri yok" sayilip 450 / 199'a donuyordu.
-    const dar = hedefSinirlari(S, { hizSiniri: 0, vuSiniri: 0 });
-    expect(dar).toMatchObject({ maxHiz: 0, maxVu: 0 });
-    const h = parametreHatalari(P, dar);
-    expect(h.hizlar).toBe(SINIR_SIFIR_METNI);
-    expect(h.maxvu).toBe(SINIR_SIFIR_METNI);
-    expect(SINIR_SIFIR_METNI).toBe("Hedefin ölçülmüş limit_req değeri 2 r/s'nin altında (ya da limit_conn ≤ 1); bu hedefe yük testi yapılamaz.");
-    expect(hedefSinirlari(S, { hizSiniri: 0, vuSiniri: null })).toMatchObject({ maxHiz: 0, maxVu: 199 });
-    expect(hedefSinirlari(S, { hizSiniri: null, vuSiniri: undefined })).toMatchObject({ maxHiz: 450, maxVu: 199 });
-    expect(parametreHatalari(P, hedefSinirlari(S, { hizSiniri: 1, vuSiniri: 0 })).hizlar).toMatch(/1–1 istek/);
+  it('YO2c limitUyarilari: sunucu dogrula.limitUyarilari ile BİREBİR (metin, sıra, eşitlik, kesirli değer)', () => {
+    const durumlar: [Record<string, unknown>, Record<string, unknown>][] = [
+      [{ ...P, hizlar: [100, 600], maxvu: 300 }, { limitReq: 500, limitConn: 200 }],
+      [{ ...P, hizlar: [100, 600], maxvu: 300 }, { limitReq: 600, limitConn: 300 }],
+      [{ ...P, hizlar: [100, 600] }, { limitReq: 0.5, limitConn: null }],
+      [{ ...P, hizlar: [5000] }, { limitReq: 100 / 60, limitConn: null }],
+      [{ ...W, baglantilar: [2, 4, 150], tavan_rps: 5000 }, { limitReq: 500, limitConn: 100 }],
+      [{ ...W, tavan_rps: 5000 }, { limitReq: 5000, limitConn: 8 }],
+      [P, { limitReq: null, limitConn: null }],
+      [P, {}],
+    ];
+    for (const [p, h] of durumlar) expect(limitUyarilari(p as never, h as never)).toEqual(sunucuDogrula.limitUyarilari(p, h));
+    expect(limitUyarilari({ ...P, hizlar: [100, 600] }, { limitReq: 500 })).toEqual(['Seçilen hız (600/sn) hedefin ölçülmüş limit_req değerini (500 r/s) aşıyor; 429 alınırsa koşu durur.']);
+    expect(limitUyarilari(P, null)).toEqual([]);
+    // B5: wrk tavani (5000) gercek hiz degil: limit_req uyarisi URETILMEZ, yalniz baglanti uyarisi.
+    expect(limitUyarilari({ ...W, baglantilar: [2, 4, 150], tavan_rps: 5000 }, { limitReq: 500, limitConn: 100 })).toEqual([
+      'Seçilen en çok bağlantı (150) hedefin ölçülmüş limit_conn değerini (100) aşıyor; fazla bağlantılar reddedilir (429 ya da 503) ve koşu durur.',
+    ]);
+    expect(limitUyarilari({ ...W, tavan_rps: 5000 }, { limitReq: 0.5 })).toEqual([]);
+    for (const y of [500, 0.5, 100 / 60, 1.25, 2999.95]) expect(limitMetni(y)).toBe(sunucuDogrula.limitMetni(y));
+  });
+
+  it('YO2e YÜK DOYDU: adım normalleşir (yukCpuBosta / yukDoydu); p95 en iyi / en kötü ve hız grubu p95 ortalamasına girmez; eski satır null', () => {
+    const a = (tur: string, p95: number, nedenler: string[], ham: Record<string, unknown> = {}, gecerlilik = 'DOYMA') => adimNormalle({ tur, hiz: 1000, senaryo: 'K', kip: 'yeni', ae: 'br', gecerlilik, p95, nedenler, ham });
+    const d = a('R9_K_yeni_br_1000_r1', 2, ['doyma:yuk_cpu_bosta_%12.5(<%20)'], { yuk_cpu_bosta: 12.5 });
+    const g = a('R9_K_yeni_br_1000_r2', 9, [], { yuk_cpu_bosta: 60 }, 'GECERLI');
+    const eski = a('R9_K_yeni_br_1000_r3', 5, ['doyma:dropped=3']);
+    expect([d.yukCpuBosta, d.yukDoydu, g.yukCpuBosta, g.yukDoydu, eski.yukCpuBosta, eski.yukDoydu]).toEqual([12.5, true, 60, false, null, false]);
+    const o = sonucOzetiHesapla([d, g, eski]);
+    expect([o.p95EnIyi, o.p95EnKotu, o.yukDoyduAdim]).toEqual([{ deger: 5, tur: 'R9_K_yeni_br_1000_r3' }, { deger: 9, tur: 'R9_K_yeni_br_1000_r2' }, 1]);
+    const [grup] = hizGrupla([d, g]);
+    expect([grup.p95, grup.nGecerli, grup.durum]).toEqual([9, 2, 'DOYMA']);
+    // Isaretsiz kosu: grup p95 ortalamasi BIREBIR eskisi.
+    expect(hizGrupla([g, eski])[0].p95).toBe(7);
+    // B2: yalniz yuk makinesi doymus adim hedefin CPU-ms'ine GIRER; hedef tarafi doyma (dropped) girmez (sunucu ile ayni).
+    const dc = { ...d, cpuMsIstek: 2 };
+    const gc = { ...g, cpuMsIstek: 4 };
+    const ec = { ...eski, cpuMsIstek: 100 };
+    expect(hizGrupla([dc, gc])[0].cpuMsIstek).toBe(3);
+    expect(hizGrupla([gc, ec])[0].cpuMsIstek).toBe(4);
+  });
+
+  it('YO2f (B6) yük makinesi boşta CPU metni tek ondalığa AŞAĞI (sunucu nedeniyle aynı: 19,96 -> %19,9); ölçülmedi —; kayıt beklenip yoksa “ölçülemedi”', () => {
+    expect([19.96, 19.99, 19.9, 20, 12.5, 64.2, 0, 100].map(yukCpuMetni)).toEqual(['%19,9', '%19,9', '%19,9', '%20,0', '%12,5', '%64,2', '%0,0', '%100,0']);
+    expect([null, undefined, Number.NaN].map(yukCpuMetni)).toEqual(['—', '—', '—']);
+    // Sunucu nedeni (analiz.doymaNedenleri) ile ayni sayi: 'doyma:yuk_cpu_bosta_%19.9(<%20)' -> ekran %19,9.
+    expect(yukCpuMetni(19.96).slice(1).replace(',', '.')).toBe('19.9');
+    // B1: hucre ve kolon gorunurlugu.
+    expect(yukCpuHucre({ yukCpuBosta: null, yukCpuOlculemedi: true })).toBe('ölçülemedi');
+    expect(yukCpuHucre({ yukCpuBosta: null, yukCpuOlculemedi: false })).toBe('—');
+    expect(yukCpuHucre({ yukCpuBosta: 30, yukCpuOlculemedi: false })).toBe('%30,0');
+    const a = (x: Partial<NlAdim>) => ({ ...adimNormalle({ tur: 'R1_K_yeni_br_100_r1', gecerlilik: 'GECERLI' }), ...x });
+    expect(yukCpuKolonuVar([a({})])).toBe(false);
+    expect(yukCpuKolonuVar([a({}), a({ yukCpuOlculemedi: true })])).toBe(true);
+    expect(adimNormalle({ tur: 'R1_K_yeni_br_100_r1', ham: { yuk_cpu_olculemedi: true } }).yukCpuOlculemedi).toBe(true);
+    expect(adimNormalle({ tur: 'R1_K_yeni_br_100_r1', yukCpuOlculemedi: true }).yukCpuOlculemedi).toBe(true);
+    expect(adimNormalle({ tur: 'R1_K_yeni_br_100_r1', ham: {} }).yukCpuOlculemedi).toBe(false);
+    // B2: yalniz yuk makinesi doymus adim (hedef tarafi doyma yok).
+    expect(yukDoymaYalniz(a({ gecerlilik: 'DOYMA', nedenler: ['doyma:yuk_cpu_bosta_%10.0(<%20)'] }))).toBe(true);
+    expect(yukDoymaYalniz(a({ gecerlilik: 'DOYMA', nedenler: ['doyma:dropped=3', 'doyma:yuk_cpu_bosta_%10.0(<%20)'] }))).toBe(false);
+    expect(yukDoymaYalniz(a({ gecerlilik: 'GECERLI', nedenler: [] }))).toBe(false);
+  });
+
+  it('YO2d yük makinesi port / bellek uyarısı: sunucu dogrula.yukMakinesiUyarilari ile BİREBİR', () => {
+    const ozet = { yukm_port_sayisi: 28232, yukm_tw_reuse: 2, yukm_tcp_ts: 1, yukm_nproc: 8, yukm_mem_kb: 4 * 1024 * 1024 };
+    const o = onKontrolNormalle(ozet);
+    for (const p of [{ ...P, hizlar: [1000, 5000], maxvu: 1000 }, { ...P, hizlar: [5000], kip: 'ka' as const }, { ...P, hizlar: [400] }, { ...W, tavan_rps: 5000 }]) {
+      expect(yukMakinesiUyarilari(o, p, p.motor)).toEqual(sunucuDogrula.yukMakinesiUyarilari(ozet, p));
+    }
+    expect(yukMakinesiUyarilari(o, { ...P, hizlar: [5000] }, 'k6')[0]).toMatch(/saniyede yaklaşık 470 yeni bağlantıya yeter; seçilen hız \(5000\/sn\) bunu aşıyor/);
+    expect(yukMakinesiUyarilari(onKontrolNormalle({ yollar_toplam: 1 }), { ...P, hizlar: [5000] }, 'k6')).toEqual([]);
+    // B5: wrk'de port uyarisi YOK (tavan 5000 gercek hiz degil).
+    expect(yukMakinesiUyarilari(onKontrolNormalle({ ...ozet, yukm_port_sayisi: 60 }), { ...W, tavan_rps: 5000 }, 'wrk')).toEqual([]);
+  });
+
+  it('YO2b (B3) ölçülmüş çok küçük limit (eski “sıfır sınır”) sınırlamaz: form hatası yok, aynı limit uyarısı (sunucuyla birebir)', () => {
+    // 1 r/s'lik limit_req -> hizSiniri 0; limit_conn 1 -> vuSiniri 0. K2: olculmus limit artik sinirlamaz (409 yok).
+    for (const h of [{ hizSiniri: 0, vuSiniri: 0 }, { hizSiniri: 0, vuSiniri: null }, { hizSiniri: null, vuSiniri: undefined }, { hizSiniri: 1, vuSiniri: 0 }]) {
+      const s = hedefSinirlari(S, h);
+      expect(s).toMatchObject({ maxHiz: 5000, maxVu: 1000, maxBaglanti: 199 });
+      expect(parametreHatalari(P, s)).toEqual({});
+      expect(parametreHatalari(W, s)).toEqual({});
+    }
+    const hedef = { limitReq: 1, limitConn: 1 };
+    expect(limitUyarilari(P, hedef)).toEqual(sunucuDogrula.limitUyarilari(P, hedef));
+    expect(limitUyarilari(P, hedef)).toHaveLength(2);
+    expect(limitUyarilari(W, hedef)).toEqual(sunucuDogrula.limitUyarilari(W, hedef));
   });
 
   it('YO3 artımlı çıktı: ofsetle yerleştirir; ofsetsiz tam metni değiştirir, parçayı ekler', () => {
@@ -168,12 +250,12 @@ describe('Yük Testi — saf yardımcılar', () => {
     const ham = adimNormalle({ tur: 'eski_tur', ham: '{"tekrar":3,"uyarilar":[],"pencere_kaynak":"log"}' });
     expect(ham).toMatchObject({ tekrar: 3, uyarilar: [], pencereKaynak: 'log' });
     expect(adimNormalle({ tur: 'x' })).toMatchObject({ tekrar: null, uyarilar: [], pencereKaynak: null });
-    expect(adimEtiketi({ tekrar: 2, deneme: 1 })).toBe('r2');
-    expect(adimEtiketi({ tekrar: 2, deneme: 3 })).toBe('r2 · deneme 3');
-    expect(adimEtiketi({ tekrar: null, deneme: null })).toBe('r?');
+    expect(adimEtiketi({ tekrar: 2, deneme: 1 })).toBe('2. tekrar');
+    expect(adimEtiketi({ tekrar: 2, deneme: 3 })).toBe('2. tekrar · deneme 3');
+    expect(adimEtiketi({ tekrar: null, deneme: null })).toBe('? tekrar');
     const a = (tur: string, hiz: number, deneme = 1) => adimNormalle({ tur, senaryo: 'K', kip: 'yeni', ae: 'br', hiz, deneme });
     const sirali = adimSirala([a('R1_K_yeni_br_250_r2', 250), a('R1_K_yeni_br_100_r10', 100), a('R1_K_yeni_br_100_r2', 100, 2), a('R1_K_yeni_br_100_r2', 100), a('R1_K_yeni_br_250_r1', 250)]);
-    expect(sirali.map((x) => `${x.hiz}/${adimEtiketi(x)}`)).toEqual(['100/r2', '100/r2 · deneme 2', '100/r10', '250/r1', '250/r2']);
+    expect(sirali.map((x) => `${x.hiz}/${adimEtiketi(x)}`)).toEqual(['100/2. tekrar', '100/2. tekrar · deneme 2', '100/10. tekrar', '250/1. tekrar', '250/2. tekrar']);
   });
 
   it('YO7b koşu uyarıları: katlanan adım uyarıları ("<TUR>: ..." ve özet satırı) ayrı listelenir', () => {
@@ -253,13 +335,12 @@ describe('Yük Testi — saf yardımcılar', () => {
     // wrk'de k6 alanlari (hizlar, maxvu) denetlenmez; k6'da wrk alanlari.
     expect(parametreHatalari(W, S)).not.toHaveProperty('maxvu');
     expect(parametreHatalari(P, S)).not.toHaveProperty('baglantilar');
-    // Hedefin limit_conn'u (vuSiniri) baglantiyi daraltir; serbest hedefte en cok 50.
-    expect(parametreHatalari({ ...W, baglantilar: [2, 4, 128] }, hedefSinirlari(S, { vuSiniri: 99 })).baglantilar).toBe('Her bağlantı 1–99 olmalı.');
+    // K2: hedefin limit_conn'u (vuSiniri) baglantiyi DARALTMAZ (uyari); serbest hedefte en cok 50.
+    expect(parametreHatalari({ ...W, baglantilar: [2, 4, 128] }, hedefSinirlari(S, { vuSiniri: 99 })).baglantilar).toBeUndefined();
     expect(parametreHatalari({ ...W, baglantilar: [2, 52] }, hedefSinirlari(S, null, SERBEST)).baglantilar).toBe('Her bağlantı 1–50 olmalı.');
-    // Olculmus sifir: toplam hiz tavani (hizSiniri) ya da baglanti tavani (vuSiniri) 0 -> sunucunun sinir_asildi metni.
-    expect(parametreHatalari(W, hedefSinirlari(S, { hizSiniri: 0 })).baglantilar).toBe(SINIR_SIFIR_METNI);
-    expect(parametreHatalari(W, hedefSinirlari(S, { vuSiniri: 0 })).baglantilar).toBe(SINIR_SIFIR_METNI);
-    expect(parametreHatalari(W, { ...S, maxHiz: 0 }).baglantilar).toBe(SINIR_SIFIR_METNI);
+    // B3: olculmus "sifir" (hizSiniri / vuSiniri 0) artik sinir degil: wrk'de de form hatasi yok (sunucu 409 vermez).
+    expect(parametreHatalari(W, hedefSinirlari(S, { hizSiniri: 0 })).baglantilar).toBeUndefined();
+    expect(parametreHatalari(W, hedefSinirlari(S, { vuSiniri: 0 })).baglantilar).toBeUndefined();
     // Butce asimi wrk metniyle.
     expect(parametreHatalari({ ...W, baglantilar: [2, 4, 8, 16, 32], tekrar: 3, sure: 300 }, S).butce).toMatch(/üst sınır 45 dk\. Bağlantı kademesi, tekrar ya da süreyi azaltın\.$/);
     // k6 serbest: hiz <= 200, VU <= 50 (sunucudaki "serbest hedef tavanı" eki sunucu metninde).
@@ -344,29 +425,33 @@ describe('Yük Testi — saf yardımcılar', () => {
 
   it('YO18 serbest hedef iki motorda daraltır (200 istek/sn, 50 bağlantı / VU); wrk tavanı ve bekleme', () => {
     expect(hedefSinirlari(S, null, SERBEST)).toMatchObject({ maxHiz: 200, maxVu: 50, maxBaglanti: 50 });
-    // Serbest daraltma genisletmez: hedef siniri daha dar ise o kalir.
-    expect(hedefSinirlari(S, { hizSiniri: 120, vuSiniri: 30 }, SERBEST)).toMatchObject({ maxHiz: 120, maxVu: 30, maxBaglanti: 30 });
-    // Sunucu: limit_conn (vuSiniri) VU'yu ve wrk baglantisini birlikte daraltir.
-    expect(hedefSinirlari(S, { hizSiniri: 270, vuSiniri: 99 })).toMatchObject({ maxHiz: 270, maxVu: 99, maxBaglanti: 99 });
-    expect(hedefSinirlari(S, null)).toMatchObject({ maxHiz: 450, maxVu: 199, maxBaglanti: 199 });
+    // Serbest tavanlari DEGISMEZ (K1); olculmus deger serbestte de daraltmaz (K2; serbestte olcum zaten verilmez).
+    expect(hedefSinirlari(S, { hizSiniri: 120, vuSiniri: 30 }, SERBEST)).toMatchObject({ maxHiz: 200, maxVu: 50, maxBaglanti: 50 });
+    // Sunucu: limit_conn (vuSiniri) VU'yu ve wrk baglantisini DARALTMAZ (K2).
+    expect(hedefSinirlari(S, { hizSiniri: 270, vuSiniri: 99 })).toMatchObject({ maxHiz: 5000, maxVu: 1000, maxBaglanti: 199 });
+    expect(hedefSinirlari(S, null)).toMatchObject({ maxHiz: 5000, maxVu: 1000, maxBaglanti: 199 });
     // Tur 3 alanlari olmayan (eski sunucu) sinir nesnesi sozlesme sabitleriyle tamamlanir.
     const eskiS = { maxHiz: 450, maxTekrar: 3, sureMin: 40, sureMax: 300, isinmaMax: 60, maxVu: 199, maxButceSn: 2700 } as NlSinirlar;
     expect(hedefSinirlari(eskiS, null, SERBEST)).toMatchObject({ maxHiz: 200, maxVu: 50, maxBaglanti: 50, maxIsParcacigi: 16, maxBaglantiSayisi: 5 });
     expect(hedeflerNormalle({ ok: true, sinirlar: eskiS, varsayilan: P }).sinirlar).toMatchObject({ maxBaglanti: 199, serbestTavanRps: 200, serbestMaxBaglanti: 50 });
-    // Tavan (sozlesme 3): sunucu min(450, hizSiniri > 0 ? hizSiniri : 450), serbest 200.
-    expect(tavanRps(S, null, 'sunucu')).toBe(450);
-    expect(tavanRps(S, { hizSiniri: 270 }, 'sunucu')).toBe(270);
-    expect(tavanRps(S, { hizSiniri: 900 }, 'sunucu')).toBe(450);
-    expect(tavanRps(S, { hizSiniri: 0 }, 'sunucu')).toBe(450);
+    // Tavan (sozlesme 3; K2): sunucu hedefinde HER ZAMAN maxTavanRps (5000; eski sunucu: maxHiz), serbest 200.
+    expect(tavanRps(S, null, 'sunucu')).toBe(5000);
+    expect(tavanRps(S, { hizSiniri: 270 }, 'sunucu')).toBe(5000);
+    expect(tavanRps(S, { hizSiniri: 0 }, 'sunucu')).toBe(5000);
     expect(tavanRps(S, { hizSiniri: 270 }, 'serbest')).toBe(200);
-    expect(tavanRps(S, null, null)).toBe(450);
-    expect(tavanNedeni(S, { hizSiniri: 270 }, 'sunucu')).toBe('hedefin ölçülmüş limit_req’inin %90’ı');
+    expect(tavanRps(S, null, null)).toBe(5000);
+    expect(tavanRps(eskiS, null, 'sunucu')).toBe(450);
+    expect(tavanNedeni(S, { hizSiniri: 270 }, 'sunucu')).toBe('genel üst sınır');
     expect(tavanNedeni(S, null, 'sunucu')).toBe('genel üst sınır');
     expect(tavanNedeni(S, null, 'serbest')).toBe('serbest hedef tavanı');
     // yuk_wrk.lua GECIKME_MS = ceil(N * 1000 / tavan).
     expect(baglantiBeklemesiMs(2, 450)).toBe(5);
     expect(baglantiBeklemesiMs(8, 450)).toBe(18);
     expect(baglantiBeklemesiMs(2, 200)).toBe(10);
+    // K1 (e): tavan 5000'de bekleme 1 ms'nin altina dusmez (0 olmaz): N=2 -> 1, N=199 -> 40.
+    expect(baglantiBeklemesiMs(2, 5000)).toBe(1);
+    expect(baglantiBeklemesiMs(1, 5000)).toBe(1);
+    expect(baglantiBeklemesiMs(199, 5000)).toBe(40);
     expect(baglantiBeklemesiMs(2, 0)).toBeNull();
     expect(ipGecerli('10.20.30.40')).toBe(true);
     for (const kotu of ['10.20.30', '010.1.1.1', '10.20.30.256', ' 10.1.1.1', '10.1.1.1/24']) expect(ipGecerli(kotu)).toBe(false);
@@ -388,7 +473,8 @@ describe('Yük Testi — saf yardımcılar', () => {
 
   it('YO20 (WR2) wrk uyarısı: tavan ORTALAMA hızı sınırlar, istekler kümelenebilir, burst’ü küçük / burst’süz yolda 429 -> DUR; “aşamaz” demez', () => {
     expect(WRK_UYARISI.startsWith('wrk kapalı döngüdür: her bağlantı yanıtı alınca yeni istek gönderir.')).toBe(true);
-    expect(WRK_UYARISI).toMatch(/toplam hız ORTALAMADA koşunun tavanını \(hedefin ölçülmüş limit_req'inin %90'ı, en çok 450; serbest hedefte 200 istek\/sn\) aşmaz;/);
+    expect(WRK_UYARISI).toMatch(/toplam hız ORTALAMADA koşunun tavanını \(sunucu hedefinde en çok 5000; serbest hedefte 200 istek\/sn\) aşmaz;/);
+    expect(WRK_UYARISI).toBe(sunucuDogrula.WRK_UYARISI);
     expect(WRK_UYARISI).not.toMatch(/aşamaz/);
     expect(WRK_UYARISI).toContain('bağlantılar birlikte başlar, ilk istekler rastgele yayılır ama istekler kümelenebilir.');
     expect(WRK_UYARISI).toContain("limit_req burst'ü bağlantı sayısından küçük ya da burst'süz yollarda 429 alınır ve koşu durur; böyle yollarda k6 kullanın ya da bağlantı sayısını düşük tutun.");
@@ -450,8 +536,8 @@ describe('Yük Testi — API istemcisi (fetch)', () => {
     const s = await nginxLoadtestApi.ipSinifi('10.1.2.5', { yukHost: 'GBNGXT34', hedefHost: 'GBNGXT10' });
     expect(f.mock.calls[0][0]).toBe('/api/nginx-loadtest/ip-sinifi?ip=10.1.2.5&yukHost=GBNGXT34&hedefHost=GBNGXT10');
     expect(s).toEqual({
-      ok: true, tur: 'sunucu', ip: '10.1.2.5', host: 'GBNGXT10', env: 'TEST', vhostlar: ['a.example'], vhostVerisi: true, hizSiniri: 270, vuSiniri: null, uygun: true,
-      neden: null, kod: null, kaynaklar: ['dbo.nginx_inventory', 'tarama'],
+      ok: true, tur: 'sunucu', ip: '10.1.2.5', host: 'GBNGXT10', env: 'TEST', vhostlar: ['a.example'], vhostVerisi: true, hizSiniri: 270, vuSiniri: null,
+      limitReq: null, limitConn: null, uygun: true, neden: null, kod: null, kaynaklar: ['dbo.nginx_inventory', 'tarama'],
     });
     f.mockResolvedValueOnce(jsonYanit({ ok: true, tur: 'serbest', ip: '10.20.30.40', host: null, ag: '10.20.30.0/24', digerSahipler: [{ host: 'GBAPPT01', env: 'TEST' }, { env: 'TEST' }] }));
     expect(await nginxLoadtestApi.ipSinifi('10.20.30.40', { yukHost: null, hedefHost: null })).toEqual({

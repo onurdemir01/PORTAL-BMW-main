@@ -1,6 +1,7 @@
 // yuk_k6.js - Portal Nginx Hub "Yuk Testi" icin ACIK DONGU yuk testi: sabit varis hizi, her iterasyon TEK istek.
-// Kaynak  : el kiti f5_rehber/har_yuk_testi/yuk_k6.js; Portal farki YALNIZ UA oneki (UA_ONEK), zorunlu
-//           HOST_BASLIGI (varsayilan host YOK) ve PROTOKOL (h2 secimi). Geri kalan her satir kitle ayni (bkz. README "Betikler").
+// Kaynak  : el kiti f5_rehber/har_yuk_testi/yuk_k6.js; Portal farki: UA oneki (UA_ONEK), zorunlu HOST_BASLIGI
+//           (varsayilan host YOK), PROTOKOL (h2 secimi), HIZ ust siniri 5000 ve MAXVU 1..1000 (kitte 450 / 199;
+//           hedefin limit_req / limit_conn'u Portal'da yalniz UYARI), HIZ > 450'de onVU = max(90, HIZ/20) (bkz. README "Betikler").
 // Amac    : nginx ayarlari arasinda istek basina CPU ve yanit suresini adil karsilastirmak (kos.sh cagirir).
 // Kullanim: GODEBUG=http2client=0 k6 run -e HEDEF=https://<nginx_ip> -e HOST_BASLIGI=<vhost> -e SENARYO=<MUTLAK yol>/K.tsv \
 //             -e TUR=R17_K_yeni_br_250_r1 [-e HIZ=250 -e KIP=yeni|ka -e AE=br|gzip|identity -e ISINMA=30s \
@@ -13,7 +14,8 @@
 // DENEME: ayni TUR'un kacinci kosusu (kos.sh verir); DUR'dan sonra tekrar kosulan TUR'un eski log satirlari
 // boylece karsilastir.py'de ayrilir.
 // On kontrol (setup): senaryodaki HER tekil yol cerezsiz 200 donmeli; donmeyen varsa kosu baslamaz.
-// Cikti   : <CIKTI>/istemci_<TUR>.json ve .csv (yalniz secilmis sayilar).
+// Cikti   : <CIKTI>/istemci_<TUR>.json ve .csv (yalniz secilmis sayilar). JSON'da ek `kodlama` (olcum yanitlarinin
+//           Content-Encoding sayilari; CSV'de kolonu YOK).
 /* eslint-disable -- k6 betigi (Node degil; __ENV/open k6 globalleri). Portal aynasinda ESLint bu dosyayi denetlemez. */
 import http from 'k6/http';
 import { Counter } from 'k6/metrics';
@@ -36,7 +38,7 @@ const MAXVU = Number(__ENV.MAXVU || 150);
 const CIKTI = (__ENV.CIKTI || '.').replace(/[\\/]+$/, '');
 const SNI = __ENV.SNI === '1';
 const PROTOKOL = __ENV.PROTOKOL || 'h1';
-const IP_SINIRI = 450; // rate_limits.conf: limit_req 500 r/s/IP (burst 200); pay birakildi
+const IP_SINIRI = 5000; // Portal ust siniri (sunucu hedefi); hedefin limit_req'i asilirsa 429 kosuyu keser
 const AE_DEGER = { br: 'gzip, deflate, br, zstd', gzip: 'gzip', identity: 'identity' };
 const YOL_RE = /^\/[A-Za-z0-9._~!$&'()*+,;=:@%\/-]*$/;
 const TURLER = ['js', 'css', 'html', 'json', 'config'];
@@ -59,10 +61,10 @@ const BEKLENEN = PROTOKOL === 'h2' ? 'HTTP/2.0' : 'HTTP/1.1';
 if (!(AE in AE_DEGER)) throw new Error('AE br, gzip ya da identity olmali');
 if (!(Number.isInteger(HIZ) && HIZ > 0)) throw new Error('HIZ pozitif tam sayi olmali');
 if (HIZ > IP_SINIRI && !LIMIT_MUAF) {
-  throw new Error('HIZ=' + HIZ + ' > ' + IP_SINIRI + ': tek IP 429 alir. Dusurun ya da limit_*_dry_run acikken -e LIMIT_MUAF=1');
+  throw new Error('HIZ=' + HIZ + ' > ' + IP_SINIRI + ': Portal ust siniri. Dusurun ya da limit_*_dry_run acikken -e LIMIT_MUAF=1');
 }
-if (!(Number.isInteger(MAXVU) && MAXVU > 0 && (MAXVU < 200 || LIMIT_MUAF))) {
-  throw new Error('MAXVU 1..199 olmali (limit_conn 200/IP); daha fazlasi yalniz LIMIT_MUAF=1 ile');
+if (!(Number.isInteger(MAXVU) && MAXVU > 0 && (MAXVU <= 1000 || LIMIT_MUAF))) {
+  throw new Error('MAXVU 1..1000 olmali (Portal ust siniri); daha fazlasi yalniz LIMIT_MUAF=1 ile');
 }
 if (!__ENV.SENARYO) throw new Error('SENARYO verilmedi (-e SENARYO=<MUTLAK yol>/K.tsv)');
 const ISINMA_SN = saniye(ISINMA);
@@ -99,8 +101,19 @@ const d5xx = new Counter('durum_5xx');
 const sikDinamik = new Counter('sikistirma_dinamik');
 const sikStatik = new Counter('sikistirma_statik');
 const sikYok = new Counter('sikistirma_yok');
+// 2026-11-03 (kip dogrulamasi): YALNIZ olcum yanitlarinin Content-Encoding dagilimi. Ozet JSON'un `kodlama` anahtarina
+// yazilir; istemci CSV'sinin 32 kolonu DEGISMEZ (eski Portal okuyucusu CSV'yi kolon adiyla okur, JSON'u okumaz).
+// yok_1kb_alti: kodlamasiz ve Content-Length < 1024 (nginx *_min_length altinda: sikistirilmamasi beklenir).
+const KODLAMALAR = ['br', 'gzip', 'deflate', 'zstd'];
+const kodlamaSayac = {};
+for (let i = 0; i < KODLAMALAR.length; i++) kodlamaSayac[KODLAMALAR[i]] = new Counter('kodlama_' + KODLAMALAR[i]);
+kodlamaSayac.yok = new Counter('kodlama_yok');
+kodlamaSayac.diger = new Counter('kodlama_diger');
+const kodlamaYokKucuk = new Counter('kodlama_yok_1kb_alti');
 
-const onVU = Math.min(MAXVU, Math.max(20, Math.ceil(HIZ / 5)));
+// HIZ <= 450: iterasyon basina ~200 ms varsayimi (kit). Ustunde 1000 VU'yu bastan ayirmak yuk makinesinde bellek ve
+// TUR basi init suresi ister; 50 ms varsayimi yeter, gerekirse constant-arrival-rate maxVUs'a kadar buyutur.
+const onVU = Math.min(MAXVU, HIZ <= 450 ? Math.max(20, Math.ceil(HIZ / 5)) : Math.max(90, Math.ceil(HIZ / 20)));
 const senaryolar = {};
 if (ISINMA_SN > 0) {
   senaryolar.isinma = {
@@ -176,7 +189,19 @@ function istek(faz) {
   if (res.proto === 'HTTP/2.0') http2.add(1);
   if (res.status === 429) d429.add(1);
   else if (res.status >= 500) d5xx.add(1);
+  if (faz === 'olcum') kodlamaSay(res);
   return res;
+}
+
+function kodlamaSay(res) {
+  const h = res.headers || {};
+  const ce = String(h['Content-Encoding'] || '').trim().toLowerCase();
+  if (!ce) {
+    kodlamaSayac.yok.add(1);
+    const cl = Number(h['Content-Length']);
+    if (h['Content-Length'] !== undefined && Number.isFinite(cl) && cl < 1024) kodlamaYokKucuk.add(1);
+  } else if (KODLAMALAR.indexOf(ce) >= 0) kodlamaSayac[ce].add(1);
+  else kodlamaSayac.diger.add(1);
 }
 
 export function isinma() { istek('isinma'); }
@@ -279,6 +304,13 @@ export function ozet_hesapla(data) {
   for (let i = 0; i < TURLER.length; i++) o['p95_' + TURLER[i]] = trend('http_req_duration{scenario:olcum,tur:' + TURLER[i] + '}', 'p(95)');
   o.protokol = PROTOKOL;
   o.protokol_uyumsuz = deger('protokol_uyumsuz', 'count') || 0;
+  // KOLONLAR'da YOK: yalniz JSON ozetinde (bkz. kodlamaSay).
+  const kod = {};
+  for (let i = 0; i < KODLAMALAR.length; i++) kod[KODLAMALAR[i]] = deger('kodlama_' + KODLAMALAR[i], 'count') || 0;
+  kod.yok = deger('kodlama_yok', 'count') || 0;
+  kod.diger = deger('kodlama_diger', 'count') || 0;
+  kod.yok_1kb_alti = deger('kodlama_yok_1kb_alti', 'count') || 0;
+  o.kodlama = kod;
   return o;
 }
 

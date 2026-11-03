@@ -90,8 +90,8 @@ for b in $BAGLANTILAR; do
   [ $(( b % IS_PARCACIGI )) -eq 0 ] || hata "BAGLANTI $b, IS_PARCACIGI ($IS_PARCACIGI) sayisina tam bolunmuyor (wrk baglantilari c/t tam bolmeyle dagitir)"
 done
 [ -n "$TAVAN_RPS" ] || hata "TAVAN_RPS verilmedi (toplam istek/sn tavani; varsayilan YOK, Portal hesaplar)"
-{ [[ "$TAVAN_RPS" =~ ^[1-9][0-9]*$ ]] && [ "${#TAVAN_RPS}" -le 3 ] && [ "$TAVAN_RPS" -le 450 ]; } \
-  || hata "TAVAN_RPS 1..450 olmali: '$TAVAN_RPS' (IP basina limit_req 500 r/s)"
+{ [[ "$TAVAN_RPS" =~ ^[1-9][0-9]*$ ]] && [ "${#TAVAN_RPS}" -le 4 ] && [ "$TAVAN_RPS" -le 5000 ]; } \
+  || hata "TAVAN_RPS 1..5000 olmali: '$TAVAN_RPS' (Portal ust siniri; hedefin limit_req'i Portal'da yalniz UYARI)"
 [[ "$TEKRAR" =~ ^[1-9][0-9]*$ ]] || hata "TEKRAR pozitif tam sayi olmali"
 [[ "$KIP" == yeni || "$KIP" == ka ]] || hata "KIP yeni ya da ka olmali"
 [[ "$AE" == br || "$AE" == gzip || "$AE" == identity ]] || hata "AE br, gzip ya da identity olmali"

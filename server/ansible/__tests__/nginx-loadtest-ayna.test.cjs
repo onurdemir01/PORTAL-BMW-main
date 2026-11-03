@@ -46,16 +46,17 @@ const DIR = process.env.NGINX_LOADTEST_AYNA || AYNA;
 
 // Ayna degistiginde: dosyalari Ansible deposuyla ESLE, sonra bu listeyi guncelle (sha256sum).
 const BEKLENEN = {
-  'README.md': '57758f7ea6f158c8eecd50126cc82c73c69da9b9fbc9963f78a4da6b7125cc1e',
+  'README.md': '99e5805f02e3feb523cf4c29c4cf7c6cd233f5abf593964a22ec5bda39287f4b',
   'files/arac_hazirla.sh': 'ef1a342b21bcad90fa0b858769ad41a9a1e788422ee39dac8b174205ea55772b',
-  'files/cpu_kaydedici.sh': 'd9c5bff9ab329d2d48b1bc0383b9c13fcf907e5bda1840ae9a5ceb8bf7495ac8',
-  'files/durdur.sh': '9bb495c5117afba0320b72cb1230f8ccc4fabbfb0ce3c8d9c8f70be88f891b81',
-  'files/kos.sh': 'd6e457573665b94ff9a73768749a5d14b5c15c252778d33cd31300adc01c6275',
-  'files/on_kontrol.sh': '0febfc5b9ddf71ae469c134af37aa59b2aaff1e83ccb0807b005f3e27722d3aa',
-  'files/wrk_kos.sh': 'f61f7c7c61db115b6e2f3a47b1ceb83089d63360009c3c3ce6d104a8b84e9196',
-  'files/yuk_k6.js': 'c9baa255e694f518a11768dc960978a631f2e871b4a71b4df0e57f2b79cc5cbd',
-  'files/yuk_wrk.lua': '2a44afc388007721690e9cce4b736ed0175f128bf6ef1a44b59588f93605e16b',
-  'nginx_loadtest.yml': '806f99fa1cae6e2ef559d14dc21ea9c7985eac22c238d0b81c09334b7ad0320b',
+  'files/cpu_kaydedici.sh': '409515394b1ab1511e79abf306cae5711c2e4bdcdc5756a58b33fe7ada0fee2f',
+  'files/durdur.sh': '1b96fc75230f3d1332db7a0291cea35a8115de5736eaa414508c763d9d329a14',
+  'files/kos.sh': '8ae555b1141c8966bd02a2615b91ea89a92f07fe52a498edea39dfae9bb4a7e7',
+  'files/on_kontrol.sh': '86b62c58b1b14b35a62da3eff5e7562fc377e5e8cb4e9a47896b5b6b9b2304d9',
+  'files/wrk_kos.sh': '5521743c2e0ecf453df6c56a3ff538c796abfdfe0c25ffc782d4ec5f6aee5251',
+  'files/yuk_cpu_kaydedici.sh': '38bc0a4a53948492dfc700d9fe3725ca6da9e26914a0f42a7368193c4bdf660e',
+  'files/yuk_k6.js': '146754891848ee1c2219bb9c76705c6d1e830501cedd59e2e8600c6962a543ec',
+  'files/yuk_wrk.lua': 'a8244133543984dcba697e821de88506098e2c88ceae5c4314faf65057b8c00a',
+  'nginx_loadtest.yml': 'b20d1192afd0b082585b059ff778eb0b6dbc4d09e55912903bf6ece74c85b915',
 };
 
 function tumDosyalar(kok) {

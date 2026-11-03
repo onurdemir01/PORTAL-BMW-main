@@ -60,7 +60,10 @@ const KOLON_ILK = 16;
 // Python gibi yalniz son degeri tutar (bellek buyumez).
 const SATIR_TAVANI = Object.freeze({
   zaman: 2000, baslatilan: 2000, istemci: 100, hatali_istemci: 100, sunucu: 20000, diger: 20000, bilgi_liste: 2000,
+  yuk_cpu: 20000, bellek: 20000,
 });
+// istemci_<TUR>.json (yalniz `kodlama` okunur, bilgi) en cok bu kadar karakter; fazlasi atlanir (kosu OKUNAMADI olmaz).
+const ISTEMCI_JSON_MAX_KAR = 64 * 1024;
 // analiz.cjs ADIM_RE ile ayni (moduller birbirini require etmez).
 const ADIM_RE = /^[A-Za-z0-9-]+$/;
 
@@ -70,12 +73,25 @@ const ORNEK_KOLON = Object.freeze([
   'cpu_system', 'cpu_idle', 'cpu_iowait', 'cpu_irq', 'cpu_softirq', 'cpu_steal',
 ]);
 
+// 2026-11-03: yuk makinesi CPU kaydedicisi (yuk_cpu_kaydedici.sh) yukcpu_*.csv kolonlari. Eski Portal bu adi
+// tanimaz ve ATLAR (reddetmez); eski playbook dosyayi uretmez (yukKesitler bos).
+const YUK_ORNEK_KOLON = Object.freeze([
+  'epoch', 'cpu_user', 'cpu_nice', 'cpu_system', 'cpu_idle', 'cpu_iowait', 'cpu_irq', 'cpu_softirq', 'cpu_steal',
+]);
+// 2026-11-03 (bellek): yukcpu_*.csv'nin ISTEGE BAGLI kolonlari (kB; bos -> null). Baslikta yoksa ornekte alan yok.
+const YUK_BELLEK_KOLON = Object.freeze([['mem_total_kb', 'mt'], ['mem_available_kb', 'ma'], ['arac_rss_kb', 'ar']]);
+// Hedef bellek kaydi (cpu_kaydedici.sh bellek_*.csv). Eski Portal / karsilastir.py bu adi tanimaz ve ATLAR; sunucu_*.csv
+// semasina kolon eklenmedi (eski okuyucu ORNEK_KOLON'u adla okur ama karsilastir.py ve kit ayni kalsin).
+const BELLEK_KOLON = Object.freeze(['epoch', 'nginx_rss_kb', 'isci_sayi', 'mem_total_kb', 'mem_available_kb']);
+
 // Dosya adi -> tur. Sira onemsiz; ilk eslesen kazanir. `hatali_istemci_` once denenir cunku
 // `istemci_` deseni onu YAKALAMAZ (glob gibi bastan baglidir) ama okunurluk icin ayri tutulur.
 const DESENLER = Object.freeze([
   [/^hatali_istemci_.*\.csv$/, 'hatali_istemci'],
   [/^istemci_.*\.csv$/, 'istemci'],
-  [/^(hatali_)?istemci_.*\.json$/, 'yalniz_ozet'],
+  // 2026-11-03: istemci_<TUR>.json'dan YALNIZ `kodlama` (kip dogrulamasi, bilgi) okunur; hatali_ ozeti yine yalniz ozetlenir.
+  [/^istemci_.*\.json$/, 'istemci_ozet'],
+  [/^hatali_istemci_.*\.json$/, 'yalniz_ozet'],
   [/^zaman\.csv$/, 'zaman'],
   [/^baslatilan\.csv$/, 'baslatilan'],
   [/^sunucu_.*\.csv$/, 'sunucu'],
@@ -86,6 +102,9 @@ const DESENLER = Object.freeze([
   [/^diger_.*\.tsv\.gz$/, 'diger_gz'],
   [/^konf_.*\.txt$/, 'konf'],
   [/^NOT\.txt$/, 'not'],
+  [/^yukcpu_.*\.csv$/, 'yuk_cpu'],
+  [/^yukcpu_.*\.txt$/, 'yuk_cpu_bilgi'],
+  [/^bellek_.*\.csv$/, 'bellek'],
   [/^SHA256SUMS$/, 'sha'],
 ]);
 
@@ -421,6 +440,145 @@ function ornekOkuyucu(ad, maxSatir = Infinity) {
 }
 
 /**
+ * Yuk makinesi CPU ornekleri (yukcpu_*.csv): { t, busy, tot } (busy / tot sunucu ornekOkuyucu ile ayni formul).
+ * Dosya YALNIZ BILGI: eksik kolon ya da satir tavani kosuyu OKUNAMADI yapmaz; ornekler bosaltilir ve `sorun`
+ * yazilir (analiz yuk_cpu_olculemedi(kayit_bozuk) der). Kisa ya da sayisal olmayan satir atlanir.
+ */
+function yukOrnekOkuyucu(ad, maxSatir = Infinity) {
+  let bas = null;
+  let idx = null;
+  let bitti = false;
+  let ornekler = [];
+  const o = { sorun: null };
+  const boz = (neden) => {
+    o.sorun = `${ad}: ${neden}`;
+    ornekler = [];
+    bitti = true;
+  };
+  return Object.assign(o, {
+    satir(s) {
+      if (bitti) return;
+      const r = csvAyir(s);
+      if (bas === null) {
+        bas = r;
+        if (!bas.length) {
+          bitti = true;
+          return;
+        }
+        idx = new Map();
+        bas.forEach((k, i) => idx.set(k.trim(), i));
+        const eksik = YUK_ORNEK_KOLON.filter((k) => !idx.has(k));
+        if (eksik.length) boz(`eksik kolon ${eksik.join(',')}`);
+        return;
+      }
+      if (r.length < bas.length) return;
+      const sayilar = [];
+      for (const k of YUK_ORNEK_KOLON.slice(1)) {
+        const x = tamSayi(r[idx.get(k)].trim());
+        if (x === null) return;
+        sayilar.push(x);
+      }
+      const t = ondalik(r[idx.get('epoch')].trim());
+      if (t === null) return;
+      const [user, nice, system, idle, iowait, irq, softirq, steal] = sayilar;
+      const busy = user + nice + system + irq + softirq + steal;
+      if (ornekler.length >= maxSatir) {
+        boz(`satir tavani asildi (en cok ${maxSatir} satir)`);
+        return;
+      }
+      const ornek = { t, busy, tot: busy + idle + iowait };
+      // Bellek kolonlari istege bagli: baslikta varsa alan (bos / bozuk -> null), yoksa alan hic yok (ornek eskisi gibi).
+      for (const [k, a] of YUK_BELLEK_KOLON) if (idx.has(k)) ornek[a] = tamSayi((r[idx.get(k)] || '').trim());
+      ornekler.push(ornek);
+    },
+    bitir: () => ornekler.sort((a, b) => a.t - b.t),
+  });
+}
+
+/**
+ * 2026-11-03: hedef bellek ornekleri (bellek_*.csv): { t, rss, n, mt, ma } (kB; bos alan null). YALNIZ BILGI:
+ * eksik kolon ya da satir tavani kosuyu OKUNAMADI yapmaz (ornekler bosaltilir, `sorun`); epoch'u bozuk satir atlanir.
+ */
+function bellekOkuyucu(ad, maxSatir = Infinity) {
+  let idx = null;
+  let bitti = false;
+  let ornekler = [];
+  const o = { sorun: null };
+  const boz = (neden) => {
+    o.sorun = `${ad}: ${neden}`;
+    ornekler = [];
+    bitti = true;
+  };
+  return Object.assign(o, {
+    satir(s) {
+      if (bitti) return;
+      const r = csvAyir(s);
+      if (idx === null) {
+        if (!r.length) {
+          bitti = true;
+          return;
+        }
+        idx = new Map();
+        r.forEach((k, i) => idx.set(k.trim(), i));
+        const eksik = BELLEK_KOLON.filter((k) => !idx.has(k));
+        if (eksik.length) boz(`eksik kolon ${eksik.join(',')}`);
+        return;
+      }
+      if (r.length < idx.size) return;
+      const t = ondalik(r[idx.get('epoch')].trim());
+      if (t === null) return;
+      if (ornekler.length >= maxSatir) {
+        boz(`satir tavani asildi (en cok ${maxSatir} satir)`);
+        return;
+      }
+      const al = (k) => tamSayi(r[idx.get(k)].trim());
+      ornekler.push({ t, rss: al('nginx_rss_kb'), n: al('isci_sayi'), mt: al('mem_total_kb'), ma: al('mem_available_kb') });
+    },
+    bitir: () => ornekler.sort((a, b) => a.t - b.t),
+  });
+}
+
+/**
+ * 2026-11-03: istemci_<TUR>.json -> { tur, kodlama } ya da null. YALNIZ BILGI, hic firlatmaz: en cok
+ * ISTEMCI_JSON_MAX_KAR karakter; bozuk JSON / tur yok / kodlama yok -> kodlama null. Kodlama alanlari negatif
+ * olmayan tam sayi (aksi null).
+ */
+function istemciOzetOkuyucu() {
+  const parcalar = [];
+  let kar = 0;
+  let tasti = false;
+  return {
+    satir(s) {
+      if (tasti) return;
+      kar += s.length + 1;
+      if (kar > ISTEMCI_JSON_MAX_KAR) {
+        tasti = true;
+        return;
+      }
+      parcalar.push(s);
+    },
+    bitir() {
+      if (tasti) return null;
+      let j;
+      try {
+        j = JSON.parse(parcalar.join('\n'));
+      } catch {
+        return null;
+      }
+      if (!j || typeof j !== 'object' || Array.isArray(j) || typeof j.tur !== 'string' || !j.tur) return null;
+      const k = j.kodlama;
+      if (!k || typeof k !== 'object' || Array.isArray(k)) return { tur: j.tur, kodlama: null };
+      const kodlama = {};
+      for (const a of ['br', 'gzip', 'deflate', 'zstd', 'yok', 'diger', 'yok_1kb_alti']) {
+        const v = k[a];
+        kodlama[a] = typeof v === 'number' && Number.isInteger(v) && v >= 0 ? v : null;
+      }
+      return { tur: j.tur, kodlama };
+    },
+  };
+}
+
+/**
  * karsilastir.py `bilgi_oku`. Liste satirlari (uyari= / gecersiz=) HER BIRI en cok `maxListe` kez;
  * asilinca dosya adiyla OKUNAMADI. log= Python gibi son degeri tutar, sayilmaz (bellek buyumez).
  */
@@ -440,6 +598,26 @@ function bilgiOkuyucu(ad, maxListe = Infinity) {
       }
       if (k === 'uyari' || k === 'gecersiz') b[k].push(v);
       else b[k] = v;
+    },
+    bitir: () => b,
+  };
+}
+
+/**
+ * B7: yukcpu_*.txt (anahtar=deger, YALNIZ BILGI). Hic firlatmaz: en cok 64 anahtar, deger 200 karakter; fazlasi
+ * atlanir. Bozuk dosya kosuyu OKUNAMADI yapmaz.
+ */
+function yukBilgiOkuyucu() {
+  const b = Object.create(null);
+  let n = 0;
+  return {
+    satir(s) {
+      if (!s.includes('=') || s.startsWith('#')) return;
+      const i = s.indexOf('=');
+      const k = s.slice(0, i).trim();
+      if (!/^[a-z_]{1,32}$/.test(k)) return;
+      if (!(k in b) && ++n > 64) return;
+      b[k] = s.slice(i + 1).trim().slice(0, 200);
     },
     bitir: () => b,
   };
@@ -658,6 +836,9 @@ async function dosyaAkit(yol, ad, { gz, isleyici, sayac }) {
  *   istemci / hataliIstemci : [{ dosya, satir }]   (satir = csv sozlugu; dosya adi sirasiyla)
  *   zaman / baslatilan      : [sozluk] | null      (dosya yoksa null)
  *   kesitler   : [{ anahtar, dosya, ornekler: [{t,u,s,n,k,p,busy,tot}], bilgi, bilgiVar }]
+ *   yukKesitler: [{ anahtar, dosya, ornekler: [{t,busy,tot[,mt,ma,ar]}], bilgi, bilgiVar }]  (yuk makinesi CPU + bellek; yoksa [])
+ *   bellekKesitler: [{ anahtar, dosya, ornekler: [{t,rss,n,mt,ma}], sorun? }]  (hedef bellek_*.csv; yoksa [])
+ *   istemciKodlama: Map<tur, {br,gzip,deflate,zstd,yok,diger,yok_1kb_alti}>  (istemci_*.json `kodlama`; yoksa bos)
  *   log        : { fazlar, turlar: Map<tur, LogKaydi> }   (bkz. LogDeposu)
  *   loglar     : [{ dosya, satir, atlanan }]               (okunan log dosyalari)
  *   diger      : Map<epoch_sn, adet>
@@ -696,10 +877,22 @@ async function kosuDiziniOku(dizin, { maxBayt = VARSAYILAN_MAX_BAYT, adim = null
   const uyarilar = [];
   const dosyalar = [];
   const tur = new Map();
+  const yukNormalDegil = [];
+  const bellekNormalDegil = [];
   for (const g of girdiler) {
     const ad = g.name;
     const desen = DESENLER.find(([re]) => re.test(ad));
     if (!g.isFile()) {
+      // B7: yuk makinesi CPU dosyasi YALNIZ BILGI: normal dosya degilse kosu OKUNAMADI olmaz, kesit 'sorun'la bos gecer.
+      if (desen && (desen[1] === 'yuk_cpu' || desen[1] === 'yuk_cpu_bilgi')) {
+        if (desen[1] === 'yuk_cpu') yukNormalDegil.push(ad);
+        continue;
+      }
+      // 2026-11-03: hedef bellek kaydi da YALNIZ BILGI (ayni kural).
+      if (desen && desen[1] === 'bellek') {
+        bellekNormalDegil.push(ad);
+        continue;
+      }
       // Bilinen adli girdi normal dosya degilse (symlink, dizin) veri eksik/supheli: okunmaz.
       if (desen) throw okunamadi(`${ad}: normal dosya degil`);
       continue;
@@ -735,12 +928,15 @@ async function kosuDiziniOku(dizin, { maxBayt = VARSAYILAN_MAX_BAYT, adim = null
   }
 
   const veri = {
-    dizin, okunanBayt: 0, istemci: [], hataliIstemci: [], zaman: null, baslatilan: null, kesitler: [],
-    log: null, loglar: [], diger: new Map(), not: '', konf: [], dosyalar, sha256: null, uyarilar,
+    dizin, okunanBayt: 0, istemci: [], hataliIstemci: [], zaman: null, baslatilan: null, kesitler: [], yukKesitler: [],
+    bellekKesitler: [], istemciKodlama: new Map(), log: null, loglar: [], diger: new Map(), not: '', konf: [], dosyalar, sha256: null, uyarilar,
   };
   const depo = new LogDeposu();
   const bilgiler = new Map();
   const sunucular = [];
+  const yukler = [];
+  const yukBilgiler = new Map();
+  const bellekler = [];
   const ozetler = new Map();
   let shaListe = null;
 
@@ -761,6 +957,18 @@ async function kosuDiziniOku(dizin, { maxBayt = VARSAYILAN_MAX_BAYT, adim = null
         break;
       case 'bilgi':
         isleyici = bilgiOkuyucu(ad, SATIR_TAVANI.bilgi_liste);
+        break;
+      case 'yuk_cpu':
+        isleyici = yukOrnekOkuyucu(ad, SATIR_TAVANI.yuk_cpu);
+        break;
+      case 'yuk_cpu_bilgi':
+        isleyici = yukBilgiOkuyucu(ad);
+        break;
+      case 'bellek':
+        isleyici = bellekOkuyucu(ad, SATIR_TAVANI.bellek);
+        break;
+      case 'istemci_ozet':
+        isleyici = istemciOzetOkuyucu();
         break;
       case 'log':
       case 'log_gz':
@@ -784,7 +992,18 @@ async function kosuDiziniOku(dizin, { maxBayt = VARSAYILAN_MAX_BAYT, adim = null
       default:
         isleyici = null;
     }
-    const s = await dosyaAkit(yol, ad, { gz, isleyici, sayac });
+    let s;
+    try {
+      s = await dosyaAkit(yol, ad, { gz, isleyici, sayac });
+    } catch (e) {
+      // B7: yuk makinesi CPU dosyasi okunamazsa (izin, G/C) yalniz o kesit 'sorun'lu bos gecer; bayt tavani kosunun
+      // butununu bagladigi icin yine OKUNAMADI.
+      if ((t !== 'yuk_cpu' && t !== 'yuk_cpu_bilgi' && t !== 'bellek') || sayac.toplam > sayac.max) throw e;
+      const sorun = String(e && e.message ? e.message : e).slice(0, 200);
+      if (t === 'yuk_cpu') yukler.push({ ad, ornekler: [], sorun });
+      if (t === 'bellek') bellekler.push({ ad, ornekler: [], sorun });
+      continue;
+    }
     ozetler.set(ad, s.sha256);
     if (s.uzun) uyarilar.push(`uzun_satir_atlandi:${ad}(${s.uzun})`);
     if (!isleyici) continue;
@@ -807,6 +1026,18 @@ async function kosuDiziniOku(dizin, { maxBayt = VARSAYILAN_MAX_BAYT, adim = null
         break;
       case 'bilgi':
         bilgiler.set(ad, sonuc);
+        break;
+      case 'yuk_cpu':
+        yukler.push({ ad, ornekler: sonuc, sorun: isleyici.sorun || null });
+        break;
+      case 'yuk_cpu_bilgi':
+        yukBilgiler.set(ad, sonuc);
+        break;
+      case 'bellek':
+        bellekler.push({ ad, ornekler: sonuc, sorun: isleyici.sorun || null });
+        break;
+      case 'istemci_ozet':
+        if (sonuc && sonuc.kodlama) veri.istemciKodlama.set(sonuc.tur, sonuc.kodlama);
         break;
       case 'log':
       case 'log_gz':
@@ -859,6 +1090,16 @@ async function kosuDiziniOku(dizin, { maxBayt = VARSAYILAN_MAX_BAYT, adim = null
     yedek.gecersiz = [];
     veri.kesitler.push({ anahtar, dosya: ad, ornekler, bilgi: bilgi || yedek, bilgiVar: !!bilgi });
   }
+  for (const ad of yukNormalDegil) yukler.push({ ad, ornekler: [], sorun: `${ad}: normal dosya degil` });
+  for (const { ad, ornekler, sorun } of yukler) {
+    const anahtar = ad.slice('yukcpu_'.length, -'.csv'.length);
+    const bilgi = yukBilgiler.get(`yukcpu_${anahtar}.txt`);
+    veri.yukKesitler.push({ anahtar, dosya: ad, ornekler, bilgi: bilgi || null, bilgiVar: !!bilgi, ...(sorun ? { sorun } : {}) });
+  }
+  for (const ad of bellekNormalDegil) bellekler.push({ ad, ornekler: [], sorun: `${ad}: normal dosya degil` });
+  for (const { ad, ornekler, sorun } of bellekler) {
+    veri.bellekKesitler.push({ anahtar: ad.slice('bellek_'.length, -'.csv'.length), dosya: ad, ornekler, ...(sorun ? { sorun } : {}) });
+  }
   veri.log = depo.bitir();
   veri.okunanBayt = sayac.toplam;
   return veri;
@@ -871,6 +1112,8 @@ module.exports = {
   zamanEpoch,
   VARSAYILAN_MAX_BAYT,
   ORNEK_KOLON,
+  YUK_ORNEK_KOLON,
+  BELLEK_KOLON,
   _csvAyirForTest: csvAyir,
   _csvSozlukOkuyucuForTest: csvSozlukOkuyucu,
   _SatirYaziciForTest: SatirYazici,

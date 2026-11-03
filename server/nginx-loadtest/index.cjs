@@ -220,14 +220,15 @@ function kosuApi(r) {
 }
 
 const deve = (k) => k.replace(/_([a-z0-9])/g, (_, c) => c.toUpperCase());
-/** DB adim satiri -> API (camelCase); sade turu: cpuOlculemedi + reloadlar, CPU / kapasite asla <= 0 (gorunum.cjs). */
-function adimApi(r) {
+/** DB adim satiri -> API (camelCase); sade turu: cpuOlculemedi + reloadlar, CPU / kapasite asla <= 0 (gorunum.cjs).
+ *  2026-11-03: `secenek` ({ motor, hedefTuru, protokol }; kosu satirindan) kip dogrulamasina gider (bellek ve kip). */
+function adimApi(r, secenek = {}) {
   const o = {};
   for (const [k, v] of Object.entries(r)) {
     if (k === 'nedenler' || k === 'ham') o[k] = jsonOku(v);
     else o[deve(k)] = v;
   }
-  return gorunum.adimGorunumu(o);
+  return gorunum.adimGorunumu(o, secenek);
 }
 /** kararVer'e giden adim: analiz ciktisiyla AYNI anahtarlar (snake), JSON alanlar cozulmus. */
 function adimAnaliz(r) {
@@ -298,7 +299,8 @@ function ipHedefteYok(hedefIp, hedefHost, ay, ek) {
  * olabilir). `hedefHost` istege bagli (null = yazilan IP siniflandirilir). Sira: kaynaklar ->
  * (hedefHost varsa) hedef kapisi -> ipSinifla -> sunucu: hedef / yuk makinesi kapisi, aday IP
  * savunmasi, vhost listede mi (D7: firlatma yok), sinirlar; serbest: yuk makinesi kapisi, serbest
- * sinirlari -> iki kipte Host basligi uretim kapisi (409 host_uretim) ve plan uyarilari.
+ * sinirlari -> iki kipte Host basligi uretim kapisi (409 host_uretim) ve plan uyarilari. Sunucu hedefinde plan
+ * uyarilarinin basinda olculmus limit_req / limit_conn asimi (dg.limitUyarilari; 2026-11-03'ten beri sinir degil uyari).
  */
 async function kosuPlani({ senaryoId, hedefHost = null, hedefIp, vhost, yukHost, sni, parametrelerHam, etiket }) {
   const sen = await senaryoOku(senaryoId);
@@ -326,6 +328,7 @@ async function kosuPlani({ senaryoId, hedefHost = null, hedefIp, vhost, yukHost,
   let env = null;
   let p;
   let vhostListede = null;
+  let limitler = { limitReq: null, limitConn: null };
   if (sinif.tur === 'sunucu') {
     const host = sinif.host;
     const hk = dg.hedefKapisi(host, { nginxSatiri: k.nginx.get(host) || null, invEnv: k.inv.get(host) });
@@ -338,11 +341,12 @@ async function kosuPlani({ senaryoId, hedefHost = null, hedefIp, vhost, yukHost,
     if (!ay.ipler.includes(hedefIp)) throw ipHedefteYok(hedefIp, host, ay);
     // D7: listede olmayan Host basligi ENGEL degil (joker / regex server_name); denetime yazilir.
     vhostListede = Array.isArray(ay.vhostlar) ? ay.vhostlar.includes(vhost) : null;
-    p = dg.parametreler(parametrelerHam, { sni, hizSiniri: ay.hizSiniri, vuSiniri: ay.vuSiniri, hedefTuru: 'sunucu' });
+    p = dg.parametreler(parametrelerHam, { sni, hedefTuru: 'sunucu' });
+    limitler = { limitReq: ay.limitReq ?? null, limitConn: ay.limitConn ?? null };
   } else {
     const yk = yukKapisi(null);
     if (!yk.ok) throw kapidan(yk);
-    p = dg.parametreler(parametrelerHam, { sni, hizSiniri: null, vuSiniri: null, hedefTuru: 'serbest' });
+    p = dg.parametreler(parametrelerHam, { sni, hedefTuru: 'serbest' });
   }
   if (!p.ok) throw kapidan(p);
   const hb = dg.hostBasligiDegerlendir(vhost, k, { hedefTuru: sinif.tur, yukHost });
@@ -350,7 +354,8 @@ async function kosuPlani({ senaryoId, hedefHost = null, hedefIp, vhost, yukHost,
   return {
     senaryo: { id: Number(sen.id), ad: sen.ad, tur: sen.senaryo_tur, tsv: sen.tsv, sha256: String(sen.sha256).trim() },
     hedefTuru: sinif.tur, hedefHost: sinif.tur === 'sunucu' ? sinif.host : null, hedefIp, vhost, yukHost, etiket: etiket || null, env,
-    parametreler: p.deger, serbestAg: sinif.tur === 'serbest' ? sinif.ag : null, vhostListede, uyarilar: hb.uyarilar,
+    parametreler: p.deger, serbestAg: sinif.tur === 'serbest' ? sinif.ag : null, vhostListede,
+    uyarilar: [...(sinif.tur === 'sunucu' ? dg.limitUyarilari(p.deger, limitler) : []), ...hb.uyarilar],
   };
 }
 
@@ -562,18 +567,16 @@ function yonlendiriciKur() {
       const k = await dg.kaynaklariOku({ query, sql, ekHostlar: izinli });
       const hedefler = [...k.nginx.keys()].sort().map((h) => {
         const kp = dg.hedefKapisi(h, { nginxSatiri: k.nginx.get(h), invEnv: k.inv.get(h) });
-        if (!kp.ok) return { host: h, env: envOfHost(h), ipler: [], vhostlar: [], vhostVerisi: false, uygun: false, neden: kp.message, kod: kp.code, hizSiniri: null, vuSiniri: null };
+        if (!kp.ok) return { host: h, env: envOfHost(h), ipler: [], vhostlar: [], vhostVerisi: false, uygun: false, neden: kp.message, kod: kp.code, hizSiniri: null, vuSiniri: null, limitReq: null, limitConn: null };
         const ay = dg.hedefAyrintisi(k, h);
-        // Olculmus tavan 0 (limit_req < 2 r/s ya da limit_conn <= 1): baslatma yolu 409 sinir_asildi
-        // der; ekran hedefi bastan uygun degil gostersin (ayni metin).
-        const sifir = dg.sifirSinir(ay.hizSiniri, ay.vuSiniri);
+        // B3: olculmus cok kucuk limit (eski "sifir sinir") hedefi KAPATMAZ; asim plan uyarisidir (limitUyarilari).
         const ipYok = ay.ipler.length === 0;
         return {
           host: h, env: kp.env, ipler: ay.ipler, vhostlar: ay.vhostlar || [], vhostVerisi: Array.isArray(ay.vhostlar),
-          uygun: !sifir && !ipYok,
-          neden: sifir ? dg.SIFIR_SINIR_MESAJI : ipYok ? 'Bilinen IP yok (nginx taraması / envanter).' : null,
-          kod: sifir ? 'sinir_asildi' : ipYok ? 'ip_hedefte_yok' : null,
-          hizSiniri: ay.hizSiniri, vuSiniri: ay.vuSiniri,
+          uygun: !ipYok,
+          neden: ipYok ? 'Bilinen IP yok (nginx taraması / envanter).' : null,
+          kod: ipYok ? 'ip_hedefte_yok' : null,
+          hizSiniri: ay.hizSiniri, vuSiniri: ay.vuSiniri, limitReq: ay.limitReq ?? null, limitConn: ay.limitConn ?? null,
         };
       });
       hedefler.sort((a, b) => Number(b.uygun) - Number(a.uygun) || a.host.localeCompare(b.host));
@@ -636,19 +639,18 @@ function yonlendiriciKur() {
       if (!kp.ok) {
         const { envOfHost } = require('../audit/nginx-hosts.cjs');
         return res.json({
-          ok: true, tur: 'sunucu', ip, host: h, env: envOfHost(h), vhostlar: [], vhostVerisi: false, hizSiniri: null, vuSiniri: null,
+          ok: true, tur: 'sunucu', ip, host: h, env: envOfHost(h), vhostlar: [], vhostVerisi: false, hizSiniri: null, vuSiniri: null, limitReq: null, limitConn: null,
           uygun: false, neden: kp.message, kod: kp.code, kaynaklar,
         });
       }
       const ay = dg.hedefAyrintisi(k, h);
-      const sifir = dg.sifirSinir(ay.hizSiniri, ay.vuSiniri);
       const adaySiz = !ay.ipler.includes(ip);
       res.json({
         ok: true, tur: 'sunucu', ip, host: h, env: kp.env, vhostlar: ay.vhostlar || [], vhostVerisi: Array.isArray(ay.vhostlar),
-        hizSiniri: ay.hizSiniri, vuSiniri: ay.vuSiniri,
-        uygun: !sifir && !adaySiz,
-        neden: sifir ? dg.SIFIR_SINIR_MESAJI : adaySiz ? ipHedefteYok(ip, h, ay).message : null,
-        kod: sifir ? 'sinir_asildi' : adaySiz ? 'ip_hedefte_yok' : null,
+        hizSiniri: ay.hizSiniri, vuSiniri: ay.vuSiniri, limitReq: ay.limitReq ?? null, limitConn: ay.limitConn ?? null,
+        uygun: !adaySiz,
+        neden: adaySiz ? ipHedefteYok(ip, h, ay).message : null,
+        kod: adaySiz ? 'ip_hedefte_yok' : null,
         kaynaklar,
       });
     } catch (e) {
@@ -776,7 +778,7 @@ function yonlendiriciKur() {
         throw hata(424, 'db_okunamadi', araclar.MESAJ.okunamadi);
       }
       if (etkinArac && Number(etkinArac.id) !== Number(ok.arac_id)) throw hata(409, 'on_kontrol_eski', araclar.MESAJ.onKontrolEski);
-      const deg = dg.onKontrolDegerlendir(jsonOku(ok.on_kontrol_ozet), { hedefTuru: tur, motor, aracli: true, aracSha256: araclar.motorSha(etkinArac, motor), protokol: protokolOf(ok) });
+      const deg = dg.onKontrolDegerlendir(jsonOku(ok.on_kontrol_ozet), { hedefTuru: tur, motor, aracli: true, aracSha256: araclar.motorSha(etkinArac, motor), protokol: protokolOf(ok), parametreler: jsonOku(ok.parametreler) });
       if (deg.engeller.length) throw hata(409, 'on_kontrol_eski', `Ön kontrol koşuya izin vermiyor: ${deg.engeller.join('; ')}.`, { engeller: deg.engeller });
       // Onaylanacak liste = on kontrolde saklanan plan uyarilari + on kontrol degerlendirmesi (ekranla ayni).
       const sakliPlanUyarilari = metinDizisi(ok.plan_uyarilari);
@@ -914,11 +916,11 @@ function yonlendiriciKur() {
       const aracSeti = aracApi
         ? { id: aracApi.id, k6Surum: aracApi.k6Surum, wrkSurum: aracApi.wrkSurum, k6Sha256: aracApi.k6Sha256, wrkSha256: aracApi.wrkSha256, derlemeHost: aracApi.derlemeHost }
         : null;
-      const deg = okOzet ? dg.onKontrolDegerlendir(okOzet, { hedefTuru: tur, motor, aracli: aracId != null, aracSha256: araclar.motorSha(aracSatiri, motor), protokol: protokolOf(k) }) : null;
+      const deg = okOzet ? dg.onKontrolDegerlendir(okOzet, { hedefTuru: tur, motor, aracli: aracId != null, aracSha256: araclar.motorSha(aracSatiri, motor), protokol: protokolOf(k), parametreler: jsonOku(k.parametreler) }) : null;
       // Izinli ag ekran icin env'den SU AN hesaplanir (DB okumaz); playbook'un esledigi girdi onKontrol.serbest_ag.
       const serbestAg = tur === 'serbest' ? (dg.serbestAgBul(k.hedef_ip, dg.serbestAglar()) || {}).metin || null : null;
       const sonucOzet = jsonOku(k.sonuc);
-      const adimSatirlari = adimlar.map(adimApi);
+      const adimSatirlari = adimlar.map((r) => adimApi(r, { motor, hedefTuru: tur, protokol: protokolOf(k) }));
       const analizOzeti = sonucOzet && sonucOzet.portal_analiz && typeof sonucOzet.portal_analiz === 'object' ? sonucOzet.portal_analiz.ozet : null;
       res.json({
         ok: true,

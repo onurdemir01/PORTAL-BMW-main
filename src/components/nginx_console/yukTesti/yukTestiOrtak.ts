@@ -14,6 +14,12 @@
 // HTTP/2 (2026-11-02, h2_sozlesme.md): protokol h1 | h2 (eski kayit h1). h2 yalniz k6 ve keep-alive; parametreHatalari
 // sunucunun 400 kurallarini aynalar. On kontrol degerlendirmesi (sunucu degerlendirmesi yoksa) h2'de motor maddesinden
 // hemen sonra TEK engel: on kontrol h2 icin yapilmadi > curl h2'siz > hedef ALPN ile h2 sunmuyor > olculemedi.
+// 2026-11-03 (K1-K3): sunucu hedefinde hiz <= 5000, VU <= 1000, wrk tavani 5000; hedefin olculmus limit_req /
+// limit_conn'u DARALTMAZ (hedefSinirlari), asim formda UYARI (limitUyarilari; sunucu metniyle BIREBIR). Yuk makinesi
+// doymus adim (yukDoydu) p95 en iyi / en kotuya girmez; yuk makinesi port / bellek uyarisi on kontrol aynasinda.
+// GOSTERIM (2026-11-03, E1-E5): tekrar "1. tekrar" (r1 degil), metinlerde "90/sn adımının 2. tekrarında" (ham TUR kodu
+// R<n>_..._r<k> da cozulur); CPU-ms/istek iki ondalik + birim ("3,92 ms"; "3,919" binlik gibi okunuyordu); kapasite ve
+// host CPU ipuclari; bellek hucreleri (MB / %; eski kosu "ölçülmedi").
 import type { Ton } from '@/components/server_hub/retirementStil';
 import {
   EK_SINIRLAR, type NlAdim, type NlAdimGecerlilik, type NlDurum, type NlEylem, type NlGecerlilik, type NlHedef, type NlHedefTuru, type NlKarar, type NlKosu,
@@ -71,7 +77,7 @@ export const KARAR: Record<NlKarar, { etiket: string; ton: Ton; aciklama: string
   RET: { etiket: 'RET', ton: 'hata', aciklama: 'Aday bir kademede kötüleşti (CPU, p95, hata ya da 429/5xx) — değişiklik geri alınmalı.' },
   GECERSIZ: { etiket: 'GEÇERSİZ', ton: 'uyari', aciklama: 'Bir tarafta yeterli geçerli koşu yok — karar verilemez; koşuyu yineleyin.' },
   VERI_YOK: { etiket: 'VERİ YOK', ton: 'notr', aciklama: 'Karşılaştırılacak ortak kademe ya da ölçüm yok.' },
-  DOYMA: { etiket: 'DOYMA', ton: 'uyari', aciklama: 'Yük sunucusu ya da hedef doydu (dropped > 0 ya da host CPU > %90) — sonuç sınırda.' },
+  DOYMA: { etiket: 'DOYMA', ton: 'uyari', aciklama: 'Yük sunucusu ya da hedef doydu (dropped > 0, host CPU > %90 ya da yük makinesinin boşta CPU’su < %20) — sonuç sınırda.' },
 };
 export const kararBilgisi = (k: string | null | undefined) => KARAR[k as NlKarar] ?? { etiket: k || '—', ton: 'notr' as Ton, aciklama: '' };
 
@@ -158,7 +164,7 @@ export function butceSn(p: Pick<NlParametreler, 'tekrar' | 'isinma' | 'sure' | '
 }
 const sayiListesi = (metin: string): number[] | null => {
   const parcalar = String(metin || '').trim().split(/[\s,;]+/).filter(Boolean);
-  if (!parcalar.length || parcalar.some((p) => !/^\d{1,3}$/.test(p))) return null;
+  if (!parcalar.length || parcalar.some((p) => !/^\d{1,4}$/.test(p))) return null;
   return parcalar.map(Number);
 };
 /** "100 250 400" / "100,250" -> sayilar; gecersiz parca varsa null. */
@@ -167,8 +173,6 @@ export const hizlariAyristir = (metin: string): number[] | null => sayiListesi(m
 export const baglantilariAyristir = (metin: string): number[] | null => sayiListesi(metin);
 export type ParametreHatalari = Partial<Record<keyof NlParametreler | 'butce', string>>;
 const aralik = (v: number | undefined, a: number, b: number) => Number.isInteger(v) && (v as number) >= a && (v as number) <= b;
-/** Hedefin olculmus limit_req'i 2 r/s altinda (0,9 x limit < 1) ya da limit_conn <= 1: sunucu 409 sinir_asildi ile ayni metni verir. */
-export const SINIR_SIFIR_METNI = "Hedefin ölçülmüş limit_req değeri 2 r/s'nin altında (ya da limit_conn ≤ 1); bu hedefe yük testi yapılamaz.";
 type TamSinirlar = NlSinirlar;
 /** Tur 3 alanlari eksik sinir nesnesi (eski sunucu, test) sozlesme sabitleriyle tamamlanir; verilen deger korunur. */
 export function sinirlariTamamla(s: NlSinirlar): TamSinirlar {
@@ -185,9 +189,7 @@ export function parametreHatalari(p: NlParametreler, sinir: NlSinirlar): Paramet
   const h: ParametreHatalari = {};
   if (motorOf(p) === 'wrk') {
     const b = Array.isArray(p.baglantilar) ? p.baglantilar : [];
-    // Toplam hiz tavani (hizSiniri) ya da baglanti tavani (vuSiniri) olculmus 0: sunucu iki motorda sinir_asildi der.
-    if (s.maxHiz < 1 || s.maxBaglanti < 1) h.baglantilar = SINIR_SIFIR_METNI;
-    else if (!b.length || b.length > s.maxBaglantiSayisi) h.baglantilar = '1 ile 5 arası bağlantı kademesi girin.';
+    if (!b.length || b.length > s.maxBaglantiSayisi) h.baglantilar = '1 ile 5 arası bağlantı kademesi girin.';
     else if (b.some((x) => !aralik(x, s.baglantiMin, s.maxBaglanti))) h.baglantilar = `Her bağlantı 1–${s.maxBaglanti} olmalı.`;
     else if (new Set(b).size !== b.length) h.baglantilar = 'Aynı bağlantı sayısı iki kez yazılmış.';
     const t = p.is_parcacigi;
@@ -197,12 +199,10 @@ export function parametreHatalari(p: NlParametreler, sinir: NlSinirlar): Paramet
     else if (!h.baglantilar && b.some((x) => x % (t as number) !== 0)) h.is_parcacigi = 'Her bağlantı sayısı iş parçacığı sayısına tam bölünmeli.';
   } else {
     const hz = Array.isArray(p.hizlar) ? p.hizlar : [];
-    if (s.maxHiz < 1) h.hizlar = SINIR_SIFIR_METNI;
-    else if (!hz.length || hz.length > 5) h.hizlar = '1 ile 5 arası hız girin (ör. 100 250 400).';
+    if (!hz.length || hz.length > 5) h.hizlar = '1 ile 5 arası hız girin (ör. 100 250 400).';
     else if (hz.some((x) => !aralik(x, 1, s.maxHiz))) h.hizlar = `Her hız 1–${s.maxHiz} istek/sn olmalı.`;
     else if (new Set(hz).size !== hz.length) h.hizlar = 'Aynı hız iki kez yazılmış.';
-    if (s.maxVu < 1) h.maxvu = SINIR_SIFIR_METNI;
-    else if (!aralik(p.maxvu, 10, s.maxVu)) h.maxvu = `10–${s.maxVu}`;
+    if (!aralik(p.maxvu, 10, s.maxVu)) h.maxvu = `10–${s.maxVu}`;
   }
   if (!aralik(p.tekrar, 1, s.maxTekrar)) h.tekrar = `1–${s.maxTekrar}`;
   if (!aralik(p.isinma, 5, s.isinmaMax)) h.isinma = `5–${s.isinmaMax} sn`;
@@ -221,32 +221,79 @@ export function parametreHatalari(p: NlParametreler, sinir: NlSinirlar): Paramet
   return h;
 }
 /**
- * Genel sinirlar, hedefin limit_req / limit_conn'undan gelen sinirla DARALTILIR (genisletilmez): k6 hizi `hizSiniri`,
- * VU ve wrk baglantisi `vuSiniri` ile. Olculmus 0 GERCEK bir sinirdir (bu hedefe yuk yok; sunucu sinir_asildi der),
- * "deger yok" (null) DEGIL: genel ust sinira donmez. Serbest hedefte (limit_req'i bilinmeyen LB / sunucu) iki motorda
- * hiz `serbestTavanRps`, VU ve baglanti `serbestMaxBaglanti` ile daraltilir.
+ * Genel sinirlar. 2026-11-03 (K2): hedefin limit_req / limit_conn'u DARALTMAZ (asim limitUyarilari ile uyari); B3:
+ * olculmus cok kucuk limit (eski "sifir sinir", hizSiniri / vuSiniri 0) de DARALTMAZ, ayni uyari. Serbest hedefte (limit_req'i bilinmeyen LB / sunucu) iki motorda hiz `serbestTavanRps`, VU ve baglanti
+ * `serbestMaxBaglanti` ile daraltilir.
  */
-export function hedefSinirlari(s: NlSinirlar, h: Pick<NlHedef, 'hizSiniri' | 'vuSiniri'> | null | undefined, { hedefTuru = 'sunucu' }: { hedefTuru?: NlHedefTuru | null } = {}): TamSinirlar {
+export function hedefSinirlari(s: NlSinirlar, _h: Pick<NlHedef, 'hizSiniri' | 'vuSiniri'> | null | undefined, { hedefTuru = 'sunucu' }: { hedefTuru?: NlHedefTuru | null } = {}): TamSinirlar {
   const t = sinirlariTamamla(s);
-  const dar = (genel: number, ozel: number | null | undefined) => (ozel != null && Number.isFinite(ozel) && ozel >= 0 ? Math.min(genel, Math.floor(ozel)) : genel);
-  const d = { ...t, maxHiz: dar(t.maxHiz, h?.hizSiniri), maxVu: dar(t.maxVu, h?.vuSiniri), maxBaglanti: dar(t.maxBaglanti, h?.vuSiniri) };
-  if (hedefTuru !== 'serbest') return d;
-  return { ...d, maxHiz: Math.min(d.maxHiz, t.serbestTavanRps), maxVu: Math.min(d.maxVu, t.serbestMaxBaglanti), maxBaglanti: Math.min(d.maxBaglanti, t.serbestMaxBaglanti) };
+  if (hedefTuru !== 'serbest') return t;
+  return { ...t, maxHiz: Math.min(t.maxHiz, t.serbestTavanRps), maxVu: Math.min(t.maxVu, t.serbestMaxBaglanti), maxBaglanti: Math.min(t.maxBaglanti, t.serbestMaxBaglanti) };
 }
 /**
- * wrk toplam hiz tavani (sozlesme 3 `yuk_tavan_rps`; sunucu ayni formulle hesaplar, kullanici girmez): sunucu hedefinde
- * min(genel ust sinir, hizSiniri > 0 ? hizSiniri : genel), serbestte serbest tavani. Ekranda yalniz gosterilir.
+ * wrk toplam hiz tavani (sozlesme 3 `yuk_tavan_rps`; sunucu ayni kuralla verir, kullanici girmez): sunucu hedefinde genel
+ * ust sinir (`maxTavanRps`, 5000; eski sunucu: maxHiz), serbestte serbest tavani. 2026-11-03 (K2): olculmus limit_req
+ * tavani DARALTMAZ. Ekranda yalniz gosterilir.
  */
-export function tavanRps(s: NlSinirlar, h: Pick<NlHedef, 'hizSiniri'> | null | undefined, hedefTuru: NlHedefTuru | null | undefined): number {
+export function tavanRps(s: NlSinirlar, _h: Pick<NlHedef, 'hizSiniri'> | null | undefined, hedefTuru: NlHedefTuru | null | undefined): number {
   const t = sinirlariTamamla(s);
   if (hedefTuru === 'serbest') return Math.min(t.maxHiz, t.serbestTavanRps);
-  const hs = h?.hizSiniri;
-  return Math.min(t.maxHiz, hs != null && Number.isFinite(hs) && hs > 0 ? Math.floor(hs) : t.maxHiz);
+  return typeof t.maxTavanRps === 'number' && Number.isFinite(t.maxTavanRps) ? t.maxTavanRps : t.maxHiz;
 }
 /** Tavanin nereden geldigi (ekran metni). */
-export function tavanNedeni(s: NlSinirlar, h: Pick<NlHedef, 'hizSiniri'> | null | undefined, hedefTuru: NlHedefTuru | null | undefined): string {
-  if (hedefTuru === 'serbest') return 'serbest hedef tavanı';
-  return tavanRps(s, h, hedefTuru) < sinirlariTamamla(s).maxHiz ? 'hedefin ölçülmüş limit_req’inin %90’ı' : 'genel üst sınır';
+export function tavanNedeni(_s: NlSinirlar, _h: Pick<NlHedef, 'hizSiniri'> | null | undefined, hedefTuru: NlHedefTuru | null | undefined): string {
+  return hedefTuru === 'serbest' ? 'serbest hedef tavanı' : 'genel üst sınır';
+}
+/** Olculmus limit metni (sunucu dogrula.limitMetni ile BIREBIR): tam sayiysa tam, degilse tek ondalik, virgul. */
+export function limitMetni(y: number): string {
+  const r = Math.round(y * 10) / 10;
+  return Number.isInteger(r) ? String(r) : r.toFixed(1).replace('.', ',');
+}
+/**
+ * Hedefin olculmus limit_req / limit_conn asimi uyarilari (sunucu dogrula.limitUyarilari ile AYNI metin ve sira; sunucu
+ * kosu planinda yeniden kurar ve onaylatir). Olcum yoksa bos. Esitlik asim degil. Serbest hedefte cagrilmaz. B5: wrk'de
+ * hiz uyarisi yok (tavan_rps hep 5000; gercek hiz degil), yalniz baglanti uyarisi.
+ */
+export function limitUyarilari(p: Partial<NlParametreler> | null | undefined, h: Pick<NlHedef, 'limitReq' | 'limitConn'> | null | undefined): string[] {
+  const u: string[] = [];
+  if (!p || !h) return u;
+  const wrk = p.motor === 'wrk';
+  const req = typeof h.limitReq === 'number' && Number.isFinite(h.limitReq) && h.limitReq > 0 ? h.limitReq : null;
+  const conn = typeof h.limitConn === 'number' && Number.isInteger(h.limitConn) && h.limitConn > 0 ? h.limitConn : null;
+  if (req !== null && !wrk && Array.isArray(p.hizlar) && p.hizlar.length) {
+    const x = Math.max(...p.hizlar);
+    if (x > req) u.push(`Seçilen hız (${x}/sn) hedefin ölçülmüş limit_req değerini (${limitMetni(req)} r/s) aşıyor; 429 alınırsa koşu durur.`);
+  }
+  if (conn !== null) {
+    if (wrk && Array.isArray(p.baglantilar) && p.baglantilar.length) {
+      const x = Math.max(...p.baglantilar);
+      if (x > conn) u.push(`Seçilen en çok bağlantı (${x}) hedefin ölçülmüş limit_conn değerini (${conn}) aşıyor; fazla bağlantılar reddedilir (429 ya da 503) ve koşu durur.`);
+    } else if (!wrk && Number.isInteger(p.maxvu) && (p.maxvu as number) > conn) {
+      u.push(`Seçilen en çok VU (${p.maxvu}) hedefin ölçülmüş limit_conn değerini (${conn}) aşıyor; bu kadar bağlantı aynı anda açılırsa fazlası reddedilir (429 ya da 503) ve koşu durur ya da adım geçersiz sayılır.`);
+    }
+  }
+  return u;
+}
+/** Yuk makinesi port / bellek uyarilari (sunucu dogrula.yukMakinesiUyarilari ile BIREBIR); alan yoksa bos. B5: port uyarisi yalniz k6. */
+export function yukMakinesiUyarilari(o: Partial<NlOnKontrol> | null | undefined, p: Partial<NlParametreler> | null | undefined, motor: NlMotor): string[] {
+  const u: string[] = [];
+  if (!o || !p) return u;
+  const wrk = motor === 'wrk';
+  const hiz = !wrk && Array.isArray(p.hizlar) && p.hizlar.length ? Math.max(...p.hizlar) : null;
+  const port = o.yukPortSayisi ?? null;
+  if (p.kip === 'yeni' && hiz !== null && port !== null && port > 0) {
+    const tavan = Math.floor(port / 60);
+    if (hiz > tavan) {
+      const tw = o.yukTwReuse ?? null;
+      const ts = o.yukTcpTs ?? null;
+      u.push(`Yük makinesinin yerel port aralığı ${port} port (tcp_tw_reuse ${tw === null ? '?' : tw}, tcp_timestamps ${ts === null ? '?' : ts}): "yeni" kipte istemci bağlantıyı önce kapatırsa saniyede yaklaşık ${tavan} yeni bağlantıya yeter; seçilen hız (${hiz}/sn) bunu aşıyor. Bağlantıyı hangi tarafın önce kapattığı (TIME_WAIT'in nerede biriktiği) doğrulanmadı; bağlantı hatası görürseniz hızı düşürün ya da "ka" kipini seçin.`);
+    }
+  }
+  const mem = o.yukMemKb ?? null;
+  if (!wrk && Number.isInteger(p.maxvu) && mem !== null && mem < (p.maxvu as number) * 8192) {
+    u.push(`Yük makinesinde boş bellek ${Math.floor(mem / 1024)} MB; en çok ${p.maxvu} VU için önerilen en az ${(p.maxvu as number) * 8} MB. k6 bellek yetmezliğinden düşebilir; en çok VU'yu azaltın.`);
+  }
+  return u;
 }
 /** Baglanti basina bekleme (ms): yuk_wrk.lua `GECIKME_MS = ceil(N * 1000 / tavan)`. */
 export const baglantiBeklemesiMs = (n: number, tavan: number) => (tavan > 0 && n > 0 ? Math.ceil((n * 1000) / tavan) : null);
@@ -298,7 +345,7 @@ export const HOST_LISTEDE_YOK_UYARISI = "Host başlığı (vhost) hedefin nginx 
 export const SERBEST_UYARISI = 'Serbest hedef: sunucu tarafı ölçüm (CPU, nginx logu) yapılmaz; sonuçlar yalnız istemci ölçümüdür. Hedefte limit_req olmayabilir: yükün tek freni Portal tavanıdır (en çok 200 istek/sn ve 50 bağlantı). Yük bir yük dengeleyici (LB) üzerinden gidiyorsa nginx isteği (realip yoksa) LB\'nin IP\'sinden görür: IP başına 500 istek/sn ve 200 bağlantı sınırı LB arkasındaki herkesle, vhost başına 5000 istek/sn sınırı tüm istemcilerle paylaşılır; başka kullanıcılar 429 alabilir.';
 // Inceleme WR2 (2026-10-28): tavan yalniz ORTALAMA hizi sinirlar (kapali dongu + sabit bekleme istekleri kumeler;
 // Portal burst'u okumaz): metin "aşamaz" demez, burst'u kucuk / burst'suz yolda 429 -> DUR oldugunu soyler.
-export const WRK_UYARISI = 'wrk kapalı döngüdür: her bağlantı yanıtı alınca yeni istek gönderir. Portal her isteğe bağlantı başına sabit bekleme ekler; toplam hız ORTALAMADA koşunun tavanını (hedefin ölçülmüş limit_req\'inin %90\'ı, en çok 450; serbest hedefte 200 istek/sn) aşmaz; bağlantılar birlikte başlar, ilk istekler rastgele yayılır ama istekler kümelenebilir. limit_req burst\'ü bağlantı sayısından küçük ya da burst\'süz yollarda 429 alınır ve koşu durur; böyle yollarda k6 kullanın ya da bağlantı sayısını düşük tutun. İlk 429 ya da 5xx yanıtta iş parçacığı yük üretmeyi keser; 429, 5xx, 10\'dan fazla soket hatası ya da %1 üstü hata oranında koşu durur (DUR). Gecikme yüzdelikleri wrk\'nin koordineli ihmal düzeltmesiyle hesaplanır; wrk sonuçları k6 sonuçlarıyla karşılaştırılmaz.';
+export const WRK_UYARISI = 'wrk kapalı döngüdür: her bağlantı yanıtı alınca yeni istek gönderir. Portal her isteğe bağlantı başına sabit bekleme ekler; toplam hız ORTALAMADA koşunun tavanını (sunucu hedefinde en çok 5000; serbest hedefte 200 istek/sn) aşmaz; bağlantılar birlikte başlar, ilk istekler rastgele yayılır ama istekler kümelenebilir. limit_req burst\'ü bağlantı sayısından küçük ya da burst\'süz yollarda 429 alınır ve koşu durur; böyle yollarda k6 kullanın ya da bağlantı sayısını düşük tutun. Sunucu hedefinde tavan hedefin ölçülmüş limit_req değerine göre düşürülmez ve bunun için ayrıca uyarı çıkmaz: ölçülmüş limit_req\'i olan hedefte gerçek hız onu aşabilir; böyle hedefte k6 kullanın. İlk 429 ya da 5xx yanıtta iş parçacığı yük üretmeyi keser; 429, 5xx, 10\'dan fazla soket hatası ya da %1 üstü hata oranında koşu durur (DUR). Gecikme yüzdelikleri wrk\'nin koordineli ihmal düzeltmesiyle hesaplanır; wrk sonuçları k6 sonuçlarıyla karşılaştırılmaz.';
 export const SERBEST_ON_KONTROL_BILGISI = 'Serbest hedef: hedef sunucu denetlenmedi (SSH yok); yalnız yük sunucusu ve yollar denetlendi.';
 /** "wrk 4.2.0 [epoll] Copyright ..." -> "4.2.0 [epoll] ..." (bilgi satiri "wrk ..." ile baslar; ad iki kez yazilmasin). */
 const wrkSurumu = (s: string) => s.replace(/^wrk\s+/i, '');
@@ -367,6 +414,8 @@ export function onKontrolDegerlendir(k: DegerlendirmeGirdisi | null): OnKontrolD
     // Playbook bunu ENGEL sayar (durum FAIL); sunucu da (onKontrolDegerlendir) - ekran uyari demez.
     if (o.logDiziniOkunur === false) d.engeller.push('Log dizini /web_log okunamıyor — sunucu tarafı istek sayısı ve süreleri ölçülemez.');
   }
+  // 2026-11-03: yuk makinesi port / bellek olcumu (sunucu ile ayni yer: sabit uyarilardan once).
+  d.uyarilar.push(...yukMakinesiUyarilari(o, k.parametreler, motor));
   if (serbest) d.uyarilar.push(SERBEST_UYARISI);
   if (motor === 'wrk') d.uyarilar.push(WRK_UYARISI);
   return d;
@@ -422,8 +471,27 @@ const ortalama = (xs: (number | null)[]) => {
   return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
 };
 export const seriAdi = (a: Pick<NlAdim, 'senaryo' | 'kip' | 'ae'>) => [a.senaryo || '?', a.kip || '?', a.ae || '?'].join('/');
-/** Adim etiketi: tekrar sirasi ("r2"); kos.sh'in yeniden denemesi (deneme > 1) varsa " · deneme N" eklenir. */
-export const adimEtiketi = (a: Pick<NlAdim, 'tekrar' | 'deneme'>) => `r${a.tekrar ?? '?'}${a.deneme != null && a.deneme > 1 ? ` · deneme ${fmtNumber(a.deneme)}` : ''}`;
+/** Tekrar metni: "1. tekrar" (tekrar bilinmiyorsa "? tekrar"). */
+export const tekrarMetni = (n: number | null | undefined) => (n == null ? '? tekrar' : `${fmtNumber(n)}. tekrar`);
+/** Adim etiketi: tekrar sirasi ("2. tekrar"); kos.sh'in yeniden denemesi (deneme > 1) varsa " · deneme N" eklenir. */
+export const adimEtiketi = (a: Pick<NlAdim, 'tekrar' | 'deneme'>) => `${tekrarMetni(a.tekrar)}${a.deneme != null && a.deneme > 1 ? ` · deneme ${fmtNumber(a.deneme)}` : ''}`;
+/** Adim / tekrar sutununun ipucu (E1): her kademe Tekrar sayisi kadar kosulur. */
+export const tekrarIpucu = (birim: AdimBirimi) => `${birim === 'bağlantı' ? 'Her bağlantı sayısı' : 'Her hız'}, Tekrar sayısı kadar koşulur; tekrarlar arasındaki fark ölçümün tutarlılığını gösterir.`;
+/** Ham TUR kodu R<n>_<SEN>_<KIP>_<AE>_<deger>_r<k> -> { hiz, tekrar }; bicim tutmazsa null. */
+const TUR_KODU_RE = /^R\d+_[A-Za-z]+_(?:yeni|ka)_(?:br|gzip|identity)_(\d+)_r(\d+)$/;
+export function turKodunuCoz(tur: string): { hiz: number; tekrar: number } | null {
+  const m = TUR_KODU_RE.exec(String(tur ?? ''));
+  return m ? { hiz: Number(m[1]), tekrar: Number(m[2]) } : null;
+}
+/** Metin icindeki adim: "90/sn adımının 2. tekrarında" (wrk: "8 bağlantı adımının ..."). Adim yoksa ham kod cozulur, o da
+ *  olmazsa TUR adi oldugu gibi. */
+export function turCumlesi(tur: string, adimlar: NlAdim[], birim: AdimBirimi): string {
+  const a = adimlar.find((x) => x.tur === tur);
+  const c = a && a.hiz != null ? { hiz: a.hiz, tekrar: a.tekrar } : turKodunuCoz(tur);
+  if (!c) return tur;
+  const deneme = a && a.deneme != null && a.deneme > 1 ? ` (deneme ${fmtNumber(a.deneme)})` : '';
+  return `${kademeMetni(c.hiz, birim)} adımının ${c.tekrar == null ? '?' : fmtNumber(c.tekrar)}. tekrarında${deneme}`;
+}
 /**
  * Kosu uyarilarini ikiye ayirir: analiz.cjs'in kosu duzeyine katladigi adim uyarilari ("<TUR>: <uyari>" ve
  * "… ve N adım uyarısı daha") adim tablosunda ciple de gorunur; kutuda ayri, katlanmis listelenir.
@@ -446,6 +514,12 @@ export function adimSirala(adimlar: NlAdim[]): NlAdim[] {
   });
 }
 const gecersizMi = (g: string | null) => g === 'GECERSIZ' || g === 'HATALI';
+/** DOYMA nedenlerinin HEPSI yuk makinesi (doyma:yuk_cpu_bosta_): hedef tarafi doyma yok (sunucu analiz.yukDoymaYalniz). */
+export function yukDoymaYalniz(a: NlAdim): boolean {
+  if (a.gecerlilik !== 'DOYMA') return false;
+  const d = a.nedenler.filter((n) => n.startsWith('doyma:'));
+  return d.length > 0 && d.every((n) => n.startsWith('doyma:yuk_cpu_bosta_'));
+}
 /**
  * Adimlari (senaryo, kip, ae, hiz) ile gruplar. Kapasite: `nproc` biliniyorsa nproc x 1000 x 0,8 / ortalama
  * CPU-ms/istek (karsilastir.py), yoksa gecerli adimlarin kapasite_rps ortalamasi.
@@ -462,13 +536,16 @@ export function hizGrupla(adimlar: NlAdim[], nproc?: number | null): HizGrubu[] 
   const out: HizGrubu[] = [];
   for (const [anahtar, rs] of m) {
     const gecerli = rs.filter((r) => !gecersizMi(r.gecerlilik));
-    const cpuKume = gecerli.filter((r) => r.gecerlilik === 'GECERLI');
+    // B2: yalniz yuk makinesi doymus adim (hedef tarafi doyma yok) CPU kumesinde kalir (sunucu grupHesapla ile ayni).
+    const cpuKume = gecerli.filter((r) => r.gecerlilik === 'GECERLI' || yukDoymaYalniz(r));
+    // 2026-11-03: yuk makinesi doymus adim p95 / gecikme ortalamasina girmez (sunucu analiz.cjs grupHesapla ile ayni).
+    const olcumKume = gecerli.some((r) => r.yukDoydu) ? gecerli.filter((r) => !r.yukDoydu) : gecerli;
     const cpu = ortalama(cpuKume.map((r) => r.cpuMsIstek));
     const kap = nproc && cpu ? (nproc * 1000 * 0.8) / cpu : ortalama(cpuKume.map((r) => r.kapasiteRps));
     out.push({
       anahtar, seri: seriAdi(rs[0]), hiz: rs[0].hiz as number, n: rs.length, nGecerli: gecerli.length,
-      p95: ortalama(gecerli.map((r) => r.p95)), hataOrani: ortalama(gecerli.map((r) => r.hataOrani)),
-      hostCpuOrt: ortalama(gecerli.map((r) => r.hostCpuOrt)), gercekRps: ortalama(gecerli.map((r) => r.gercekRps)),
+      p95: ortalama(olcumKume.map((r) => r.p95)), hataOrani: ortalama(olcumKume.map((r) => r.hataOrani)),
+      hostCpuOrt: ortalama(olcumKume.map((r) => r.hostCpuOrt)), gercekRps: ortalama(olcumKume.map((r) => r.gercekRps)),
       cpuMsIstek: cpu, kapasiteRps: kap,
       durum: !gecerli.length ? 'GECERSIZ' : gecerli.length < rs.length ? 'KISMI' : gecerli.some((r) => r.gecerlilik === 'DOYMA') ? 'DOYMA' : 'GECERLI',
     });
@@ -483,6 +560,13 @@ export function ondalik(x: number | null | undefined, basamak = 1): string {
   const k = 10 ** basamak;
   return fmtNumber(Math.round(x * k) / k);
 }
+/** Yuk makinesi bosta CPU % metni: tek ondaliga ASAGI yuvarlanir (sunucu doymaNedenleri ile ayni kural; 19,96 '%20'
+ *  yazip YUK DOYDU rozetiyle celismesin). */
+export const yukCpuMetni = (x: number | null | undefined) => (x == null || !Number.isFinite(x) ? '—' : `%${(Math.floor(x * 10 + 1e-9) / 10).toFixed(1).replace('.', ',')}`);
+/** B1: yuk makinesi CPU kolonu gorunur mu: bir adim olculmus ya da yeni playbook kaydi bekleyip olculememis (eski kosu: hayir). */
+export const yukCpuKolonuVar = (adimlar: NlAdim[]) => adimlar.some((a) => a.yukCpuBosta != null || a.yukCpuOlculemedi === true);
+/** Yuk makinesi CPU hucresi: olcum yoksa ve kayit bekleniyorduysa 'ölçülemedi', yoksa yukCpuMetni. */
+export const yukCpuHucre = (a: Pick<NlAdim, 'yukCpuBosta' | 'yukCpuOlculemedi'>) => (a.yukCpuBosta == null && a.yukCpuOlculemedi === true ? 'ölçülemedi' : yukCpuMetni(a.yukCpuBosta));
 /** Oran (0..1) -> yuzde metni. */
 export const yuzde = (oran: number | null | undefined, basamak = 2) => (oran == null || !Number.isFinite(oran) ? '—' : `%${ondalik(oran * 100, basamak)}`);
 /** Isaretli fark yuzdesi: "+4,2 %" / "−3,1 %". */
@@ -499,14 +583,15 @@ const topla = (xs: (number | null)[]) => {
   return v.length ? v.reduce((a, b) => a + b, 0) : null;
 };
 /**
- * Adimlardan kosu ozeti: toplam istek (olcum fazi, nIstek), en iyi / en kotu p95 (gecerli + doyma adimlardan; hic yoksa
- * tum satirlardan, `p95Kapsam` 'tum'), 429 / 5xx toplamlari, en yuksek hata orani. Reload olaylari ve konf bilgisi
+ * Adimlardan kosu ozeti: toplam istek (olcum fazi, nIstek), en iyi / en kotu p95 (gecerli + doyma adimlardan, yuk
+ * makinesi doymus adim HARIC; hic yoksa tum satirlardan, `p95Kapsam` 'tum'), 429 / 5xx toplamlari, en yuksek hata orani. Reload olaylari ve konf bilgisi
  * yalniz sunucudan gelir (burada bos / null).
  */
 export function sonucOzetiHesapla(adimlar: NlAdim[]): NlSonucOzeti {
   const gecerli = adimlar.filter((a) => gecerliMi(a.gecerlilik));
-  const p95Kume = (gecerli.some((a) => a.p95 != null) ? gecerli : adimlar).filter((a) => a.p95 != null && Number.isFinite(a.p95));
-  const kapsam: NlSonucOzeti['p95Kapsam'] = !p95Kume.length ? null : gecerli.some((a) => a.p95 != null) ? 'gecerli' : 'tum';
+  const p95Gecerli = gecerli.filter((a) => !a.yukDoydu);
+  const p95Kume = (p95Gecerli.some((a) => a.p95 != null) ? p95Gecerli : adimlar).filter((a) => a.p95 != null && Number.isFinite(a.p95));
+  const kapsam: NlSonucOzeti['p95Kapsam'] = !p95Kume.length ? null : p95Gecerli.some((a) => a.p95 != null) ? 'gecerli' : 'tum';
   let iyi: NlAdim | null = null;
   let kotu: NlAdim | null = null;
   for (const a of p95Kume) {
@@ -521,10 +606,37 @@ export function sonucOzetiHesapla(adimlar: NlAdim[]): NlSonucOzeti {
     enYuksekHataOrani: hatalar.length ? Math.max(...hatalar) : null,
     hataVar: adimlar.some((a) => (a.n429 ?? 0) > 0 || (a.n5xx ?? 0) > 0 || (a.hataOrani ?? 0) > 0),
     cpuOlculemeyenAdim: adimlar.filter((a) => a.cpuOlculemedi != null).length, konfDegisti: null, reloadlar: [],
+    yukDoyduAdim: adimlar.filter((a) => a.yukDoydu).length,
   };
 }
-/** TUR adi -> okunur adim etiketi ("250/sn · r2"); adim bulunamazsa TUR adinin kendisi. */
+/** TUR adi -> okunur adim etiketi ("250/sn · 2. tekrar"); adim bulunamazsa ham kod cozulur, o da olmazsa TUR adi. */
 export function turEtiketi(tur: string, adimlar: NlAdim[], birim: AdimBirimi): string {
   const a = adimlar.find((x) => x.tur === tur);
-  return a ? `${kademeMetni(a.hiz, birim)} · ${adimEtiketi(a)}` : tur;
+  if (a) return `${kademeMetni(a.hiz, birim)} · ${adimEtiketi(a)}`;
+  const c = turKodunuCoz(tur);
+  return c ? `${kademeMetni(c.hiz, birim)} · ${tekrarMetni(c.tekrar)}` : tur;
+}
+
+// ── 2026-11-03 gosterim: CPU-ms, kapasite / host CPU ipuclari, bellek ───────────────────
+const IKI_ONDALIK = new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+/** E2: CPU-ms/istek "3,92 ms" (iki ondalik + birim; binlik ayirici gibi okunmaz); olculmedi '—'. */
+export const cpuMsMetni = (x: number | null | undefined) => (x == null || !Number.isFinite(x) ? '—' : `${IKI_ONDALIK.format(x)} ms`);
+/** E3: kapasite sutun / kutu ipucu. */
+export const KAPASITE_IPUCU = 'CPU’ya göre tahmini üst sınır: çekirdek × 1000 × 0,8 ÷ CPU-ms (%80 kullanım). Yük testiyle ölçülmedi; yalnız Nginx CPU’su sayıldığı için iyimserdir. En güvenilir değer en yüksek geçerli hızdakidir.';
+/** E4: host CPU sutun ipucu; cekirdek sayisi kosudan (yoksa genel metin). */
+export const hostCpuIpucu = (nproc: number | null | undefined) => `${nproc != null && nproc > 0 ? `${fmtNumber(nproc)} çekirdeğin toplamı` : 'Tüm çekirdeklerin toplamı'} (%100 = tüm çekirdekler dolu); Nginx + işletim sistemi + diğer süreçler.`;
+/** E5: bellek kolonlari yalniz olculmus adim varsa (eski kosuda tablo BIREBIR eskisi). */
+export const bellekKolonuVar = (adimlar: NlAdim[]) => adimlar.some((a) => a.bellek != null);
+/** MB metni (tam sayi, tr-TR); olculmedi '—'. */
+export const mbMetni = (x: number | null | undefined) => (x == null || !Number.isFinite(x) ? '—' : `${fmtNumber(Math.round(x))} MB`);
+/** Bellek kullanim yuzdesi (tam sayi); olculmedi '—'. */
+export const bellekYuzdeMetni = (x: number | null | undefined) => (x == null || !Number.isFinite(x) ? '—' : `%${fmtNumber(Math.round(x))}`);
+/** Kosunun en yuksek nginx RSS'i (MB) ve hangi adimda; olcum yoksa null. */
+export function enYuksekNginxBellek(adimlar: NlAdim[]): { mb: number; tur: string } | null {
+  let en: { mb: number; tur: string } | null = null;
+  for (const a of adimlar) {
+    const v = a.bellek?.nginxRssMaxMb;
+    if (v != null && Number.isFinite(v) && (!en || v > en.mb)) en = { mb: v, tur: a.tur };
+  }
+  return en;
 }

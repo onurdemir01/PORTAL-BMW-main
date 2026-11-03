@@ -308,7 +308,14 @@ async function kosuKarari(kosu, st, stats, uyusmazlik, { deneme = OKUMA_DENEME_S
   let okumaHatasi = null;
   try {
     const veri = await cModulu('sonuc.cjs').kosuDiziniOku(dizin, { adim: `R${id}` });
-    analiz = analizNormalle(await cModulu('analiz.cjs').kosuAnaliz(veri, { adim: `R${id}`, hedefTuru, motor, protokol }));
+    // 2026-11-03 (B1): yeni playbook kosu.yukm_cpu_basladi (bool) ve kosu.yukm_cpu_son_satir (kaydedici ciktisinin son
+    // satiri) yayinlar; eski playbook: yok -> secenek YOK (analiz BIREBIR eskisi).
+    const yb = kosuBolumu ? kosuBolumu.yukm_cpu_basladi : undefined;
+    const yukKaydedici = yb === true ? 'basladi' : yb === false ? 'baslamadi' : null;
+    const yukSonSatir = yukKaydedici && typeof kosuBolumu.yukm_cpu_son_satir === 'string' ? kosuBolumu.yukm_cpu_son_satir : null;
+    analiz = analizNormalle(await cModulu('analiz.cjs').kosuAnaliz(veri, {
+      adim: `R${id}`, hedefTuru, motor, protokol, ...(yukKaydedici ? { yukKaydedici } : {}), ...(yukSonSatir ? { yukSonSatir } : {}),
+    }));
   } catch (e) {
     okumaHatasi = `sonuç dizini okunamadı/çözümlenemedi: ${maskele(e && e.message).slice(0, 400)}`;
   }

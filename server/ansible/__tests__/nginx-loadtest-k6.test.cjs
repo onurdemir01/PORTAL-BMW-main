@@ -246,8 +246,14 @@ test('K5 handleSummary: CSV kolonlari (Portal analizi ve karsilastir.py ile ayni
 });
 
 test('K6 sinirlar ve girdi dogrulamasi; SNI=1 hosts eslemesi HOST_BASLIGI ile', async () => {
-  await hataVerir({ ...temel(), HIZ: '451' }, /429|LIMIT_MUAF/);
-  await hataVerir({ ...temel(), MAXVU: '200' }, /MAXVU/);
+  await hataVerir({ ...temel(), HIZ: '5001' }, /5000|LIMIT_MUAF/);
+  await hataVerir({ ...temel(), MAXVU: '1001' }, /MAXVU/);
+  // K1 (2026-11-03): HIZ 5000 / MAXVU 1000 kabul; onVU HIZ <= 450'de kit kurali, ustunde max(90, HIZ/20), MAXVU ile sinirli.
+  for (const [hiz, maxvu, bek] of [['250', '150', 50], ['450', '199', 90], ['451', '1000', 90], ['5000', '1000', 250], ['5000', '100', 100]]) {
+    const y = await yukle({ ...temel(), HIZ: hiz, MAXVU: maxvu });
+    assert.equal(y.options.scenarios.olcum.preAllocatedVUs, bek, `onVU HIZ=${hiz} MAXVU=${maxvu}`);
+    assert.equal(y.options.scenarios.olcum.maxVUs, Number(maxvu));
+  }
   await hataVerir({ ...temel(), TUR: 'R17 K' }, /TUR/);
   await hataVerir({ ...temel(), DENEME: '0' }, /DENEME/);
   await hataVerir({ ...temel(), HEDEF: 'https://10.1.2.3/yol' }, /HEDEF/);
@@ -273,7 +279,10 @@ test('K7 ozet_hesapla anahtar sirasi = wrk_kos.sh JSON_ANAHTARLARI (iki motorun 
       setup_data: { sikistirma_turu: 'STATIK' },
     }),
   );
-  assert.deepEqual(bos, jsonAnahtarlari.split(' '), 'ozet_hesapla (bos metrik) anahtar sirasi');
+  // 2026-11-03 (kip dogrulamasi): k6'ya ozgu bilgi anahtari `kodlama` (Content-Encoding sayaclari) SONDA; wrk olcmez,
+  // JSON'unda yok (Portal ikisini de okur: anahtar yoksa 'olculmedi'). Geri kalan sira iki motorda AYNI.
+  assert.equal(bos[bos.length - 1], 'kodlama', 'k6 JSON son anahtari kodlama');
+  assert.deepEqual(bos.slice(0, -1), jsonAnahtarlari.split(' '), 'ozet_hesapla (bos metrik, kodlama haric) anahtar sirasi');
   assert.deepEqual(dolu, bos, 'anahtar sirasi metrik dolulugundan bagimsiz');
   // handleSummary'nin yazdigi JSON da ayni sirada (wrk_kos.sh JSON'u bununla karsilastirilir)
   const cikti = m.handleSummary({ metrics: {} });
@@ -285,7 +294,8 @@ test('K7 ozet_hesapla anahtar sirasi = wrk_kos.sh JSON_ANAHTARLARI (iki motorun 
   const liste = [...String(kolonlar).matchAll(/'([a-z0-9_]+)'/g)].map((x) => x[1]);
   assert.equal(liste.length, 32, 'KOLONLAR 32');
   assert.deepEqual(liste.slice(-2), ['protokol', 'protokol_uyumsuz'], 'son iki kolon protokol, protokol_uyumsuz');
-  assert.deepEqual(bos.slice(-2), ['protokol', 'protokol_uyumsuz'], 'ozet_hesapla son iki anahtar (wrk JSON_ANAHTARLARI sonu ile ayni)');
+  assert.deepEqual(bos.slice(-3, -1), ['protokol', 'protokol_uyumsuz'], 'ozet_hesapla kodlama oncesi son iki anahtar (wrk JSON_ANAHTARLARI sonu ile ayni)');
+  assert.ok(!liste.includes('kodlama'), 'kodlama CSV kolonu DEGIL (32 kolon aynen; eski Portal CSV okuyucusu)');
 });
 
 // ---------------------------------------------------------------- h2 sozlesmesi (A1-A5)
@@ -358,4 +368,42 @@ test('K-H3 PROTOKOL girdisi: h1 | h2, h2 yalniz KIP=ka, yoksa h1', async () => {
   assert.match(cikti.stdout, / protokol=h2 {2}uyumsuz=4/, 'ozet metin satiri protokol ve uyumsuz');
   const csv = Object.entries(cikti).find(([ad]) => ad.endsWith('.csv'))[1].trim().split('\n');
   assert.ok(csv[1].endsWith(',h2,4'), `CSV son iki hucre h2,4: ${csv[1]}`);
+});
+
+// K-KD (2026-11-03, kip dogrulamasi): YALNIZ olcum yanitlarinin Content-Encoding'i sayilir (isinma / setup sayilmaz);
+// br / gzip / deflate / zstd / yok / diger; yok + Content-Length < 1024 ayrica yok_1kb_alti. ozet_hesapla `kodlama`
+// anahtarina yazar, CSV'de kolonu yok (32 kolon, eski Portal okuyucusu).
+test('K-KD olcum yanitlarinin Content-Encoding sayaclari; JSON kodlama, CSV 32 kolon aynen', async () => {
+  const m = await yukle(temel());
+  const asil = sahte.yanit;
+  const yanitlar = [
+    { 'Content-Encoding': 'br' }, { 'Content-Encoding': 'BR ' }, { 'Content-Encoding': 'gzip' }, { 'Content-Encoding': 'deflate' },
+    { 'Content-Encoding': 'zstd' }, { 'Content-Encoding': 'gzip, br' }, {}, { 'Content-Length': '1023' }, { 'Content-Length': '1024' },
+  ];
+  try {
+    for (const h of yanitlar) {
+      sahte.yanit = () => ({ status: 200, proto: 'HTTP/1.1', headers: h });
+      m.olcum();
+    }
+    sahte.yanit = () => ({ status: 200, proto: 'HTTP/1.1', headers: { 'Content-Encoding': 'br' } });
+    m.isinma();
+    m.setup();
+  } finally {
+    sahte.yanit = asil;
+  }
+  const s = sahte.sayaclar;
+  assert.deepEqual(
+    [s.kodlama_br, s.kodlama_gzip, s.kodlama_deflate, s.kodlama_zstd, s.kodlama_yok, s.kodlama_diger, s.kodlama_yok_1kb_alti],
+    [2, 1, 1, 1, 3, 1, 1],
+    'yalniz olcum fazi; buyuk/kucuk harf ve bosluk normallesir; 1 KB alti yalniz Content-Length < 1024',
+  );
+  const metr = (ad, n) => ({ [ad]: { values: { count: n } } });
+  const o = m.ozet_hesapla({ metrics: { ...metr('kodlama_br', 7), ...metr('kodlama_yok', 3), ...metr('kodlama_yok_1kb_alti', 2) } });
+  assert.deepEqual(o.kodlama, { br: 7, gzip: 0, deflate: 0, zstd: 0, yok: 3, diger: 0, yok_1kb_alti: 2 });
+  const cikti = m.handleSummary({ metrics: metr('kodlama_br', 7) });
+  const json = JSON.parse(Object.entries(cikti).find(([ad]) => ad.endsWith('.json'))[1]);
+  assert.equal(json.kodlama.br, 7, 'JSON kodlama');
+  const csv = Object.entries(cikti).find(([ad]) => ad.endsWith('.csv'))[1].trim().split('\n');
+  assert.equal(csv[0].split(',').length, 32, 'CSV baslik 32 kolon');
+  assert.ok(!csv[0].includes('kodlama'), 'CSV kodlama kolonu yok');
 });

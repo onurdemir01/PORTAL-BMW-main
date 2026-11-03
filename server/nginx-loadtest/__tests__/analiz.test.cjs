@@ -1378,3 +1378,459 @@ test('AN-R2 degismez: reload nedeni <=> o TUR\'a yazilmis olcum olayi (kurgu fik
   const t = (await t3Analiz(tasan)).analiz;
   assert.deepEqual(t.ozet.reloadlar.map((o) => [o.tur, o.faz]), [['R59_K_yeni_br_100_r1', 'olcum']]);
 });
+
+// ---------------------------------------------------------------------------------------------
+// 2026-11-03 (K3): yuk makinesi CPU'su (yukcpu_*.csv). Olcum penceresi bosta CPU < %20 -> DOYMA (YUK_DOYDU):
+// neden doyma:yuk_cpu_bosta_%x(<%20), ham.yuk_cpu_bosta; p95 / kapasite kararina girmez. Kayit yoksa alanlar YOK.
+//   AN-Y1 esik: %19,9 DOYMA + neden, %20,0 isaret yok; GECERSIZ onceligi; ham ve ozet alanlari; serbestte de
+//   AN-Y2 kayitsiz kosu: ham'da yuk_cpu_bosta YOK, ozet.yuk_kesitler YOK, cikti kayitli kosunun yuk alanlari disinda ayni
+//   AN-Y3 grup p95 ortalamasi ve kararVer: YUK_DOYDU adim p95'e girmez; DOYMA mesaji yuk makinesini soyler
+// ---------------------------------------------------------------------------------------------
+// B2 karar nedeni (analiz.cjs YUK_DOYDU_KARARI ile BIREBIR; metin burada kilitli).
+const YUK_DOYDU_KARARI = 'Yük makinesi doydu: p95 karşılaştırılamadı; yük makinesini rahatlatın ya da hızı düşürüp yeniden koşun';
+/** zaman.csv'den TUR pencereleri; `bosta(tur)` o TUR'un [bas, bit] icinde saniyelik bosta orani (tik / 1000). */
+function yukCpuEkle(dosyalar, bosta, { adim = null, host = 'ymak01', bilgi = true, olcek = 1, atla = () => false } = {}) {
+  const z = dosyalar.get('zaman.csv').icerik.trim().split('\n').slice(1).map((s) => s.split(','));
+  const ad = adim || z[0][0].split('_')[0];
+  const bas = Math.min(...z.map((x) => Number(x[1]))) - 30;
+  const bit = Math.max(...z.map((x) => Number(x[2]))) + 30;
+  let busy = 0;
+  let idle = 0;
+  const satirlar = ['epoch,cpu_user,cpu_nice,cpu_system,cpu_idle,cpu_iowait,cpu_irq,cpu_softirq,cpu_steal'];
+  for (let t = bas; t <= bit; t++) {
+    const tur = z.find((x) => Number(x[1]) <= t && t < Number(x[2]));
+    // bosta(tur, TUR basindan saniye, TUR bitisine saniye): faza gore farkli deger (isinma / kenar).
+    const b = tur ? bosta(tur[0], t - Number(tur[1]), Number(tur[2]) - t) : 600;
+    idle += Math.round(b * olcek);
+    busy += Math.round((1000 - b) * olcek);
+    if (atla(t, tur ? tur[0] : null)) continue;
+    satirlar.push(`${t}.000100,${busy},0,0,${idle},0,0,0,0`);
+  }
+  const out = new Map(dosyalar);
+  out.set(`yukcpu_${ad}_${host}.csv`, { icerik: satirlar.join('\n') + '\n', py: false, portal: true, log: false });
+  if (bilgi) out.set(`yukcpu_${ad}_${host}.txt`, { icerik: `surum=1\nadim=${ad}\nhost=${host}\nnproc=16\nclk_tck=100\nbas_epoch=${bas}\nbit_epoch=${bit}\nornek_sayisi=${bit - bas + 1}\n`, py: false, portal: true, log: false });
+  return out;
+}
+
+test('AN-Y1 yuk makinesi bosta CPU esigi %20: %19,9 DOYMA + neden, %20,0 isaret yok; GECERSIZ onceligi; serbestte de', async () => {
+  const k = standart('R96', { n429: 1 });
+  const bosta = (tur) => (tur.endsWith('_400_r1') ? 199 : tur.endsWith('_400_r2') ? 200 : tur.endsWith('_250_r1') ? 50 : 600);
+  const { veri, analiz: a } = await t3Analiz(k, { donustur: (d) => yukCpuEkle(d, bosta) });
+  assert.deepEqual(veri.yukKesitler.map((x) => [x.anahtar, x.bilgiVar]), [['R96_ymak01', true]]);
+  const t = turla(a);
+  const d = t.get('R96_K_yeni_br_400_r1');
+  assert.equal(d.gecerlilik, 'DOYMA');
+  assert.deepEqual(d.nedenler, ['doyma:yuk_cpu_bosta_%19.9(<%20)']);
+  assert.ok(Math.abs(d.ham.yuk_cpu_bosta - 19.9) < 1e-9, String(d.ham.yuk_cpu_bosta));
+  // Esitlik (%20,0) isaret degil.
+  const e = t.get('R96_K_yeni_br_400_r2');
+  assert.equal(e.gecerlilik, 'GECERLI');
+  assert.ok(Math.abs(e.ham.yuk_cpu_bosta - 20) < 1e-9);
+  // GECERSIZ onceligi: 429'lu 250_r1 yuk makinesi doysa da GECERSIZ, doyma nedeni yok.
+  const g = t.get('R96_K_yeni_br_250_r1');
+  assert.equal(g.gecerlilik, 'GECERSIZ');
+  assert.ok(!g.nedenler.some((n) => n.startsWith('doyma:')), String(g.nedenler));
+  assert.ok(Math.abs(g.ham.yuk_cpu_bosta - 5) < 1e-9);
+  assert.ok(Math.abs(t.get('R96_K_yeni_br_100_r1').ham.yuk_cpu_bosta - 60) < 1e-9);
+  assert.deepEqual(a.ozet.yuk_kesitler, [{ anahtar: 'R96_ymak01', ornek: veri.yukKesitler[0].ornekler.length, bilgi_var: true, nproc: 16 }]);
+  // Her neden NEDEN_KALIPLARI'ndan (arayuz eslemesi) ve NEDENLER onekinden.
+  assert.ok(NEDEN_KALIPLARI.some((x) => x.kod === 'doyma_yuk_cpu' && x.re.test(d.nedenler[0])));
+  aciklamali(a);
+  // Serbest hedefte de (yuk makinesi ayni makine).
+  const s = await t3Analiz(standart('R97'), { donustur: (dd) => yukCpuEkle(serbestDosyalari(dd), (tur) => (tur.endsWith('_100_r1') ? 100 : 600)), secenek: { hedefTuru: 'serbest' } });
+  const st = turla(s.analiz).get('R97_K_yeni_br_100_r1');
+  assert.deepEqual([st.gecerlilik, st.nedenler], ['DOYMA', ['doyma:yuk_cpu_bosta_%10.0(<%20)']]);
+});
+
+test('AN-Y2 kayitsiz kosu: ham yuk_cpu_bosta YOK, ozet.yuk_kesitler YOK; kayitli kosu yuk alanlari disinda ayni', async () => {
+  const k = standart('R98');
+  const eski = (await t3Analiz(k)).analiz;
+  assert.ok(eski.adimlar.every((x) => !('yuk_cpu_bosta' in x.ham)));
+  assert.ok(!('yuk_kesitler' in eski.ozet));
+  const yeni = (await t3Analiz(k, { donustur: (d) => yukCpuEkle(d, () => 600) })).analiz;
+  const temiz = (an) => {
+    const x = JSON.parse(JSON.stringify(an));
+    for (const s of x.adimlar) delete s.ham.yuk_cpu_bosta;
+    delete x.ozet.yuk_kesitler;
+    x.ozet.okunan_bayt = null;
+    x.ozet.sha256 = null;
+    return x;
+  };
+  assert.deepEqual(temiz(yeni), temiz(eski));
+  // Bilgi dosyasi olmadan da okunur (nproc null); pencere 10 sn'den kisa ise olculmez (null, isaret yok).
+  const bilgisiz = (await t3Analiz(k, { donustur: (d) => yukCpuEkle(d, () => 100, { bilgi: false }) })).analiz;
+  assert.deepEqual(bilgisiz.ozet.yuk_kesitler.map((x) => [x.bilgi_var, x.nproc]), [[false, null]]);
+  assert.ok(bilgisiz.adimlar.every((x) => x.gecerlilik === 'DOYMA'));
+});
+
+test('AN-Y3 grup p95 ve kararVer: YUK_DOYDU adim p95 ortalamasina girmez; DOYMA mesaji yuk makinesini soyler; eski mesaj aynen', async () => {
+  const k = standart('R99', { kosuEk: (h, r) => (h === 250 && r === 1 ? { p95: 500 } : {}) });
+  const { analiz: a } = await t3Analiz(k, { donustur: (d) => yukCpuEkle(d, (tur) => (tur.endsWith('_250_r1') ? 100 : 600)) });
+  const g250 = a.ozet.gruplar.find((x) => x.hiz === 250);
+  assert.equal(g250.p95, 50, 'YUK_DOYDU adimin p95 (500) ortalamaya girdi');
+  assert.equal(g250.yuk_doydu, 1);
+  assert.equal(g250.durum, 'DOYMA');
+  assert.ok(a.ozet.gruplar.filter((x) => x.hiz !== 250).every((x) => !('yuk_doydu' in x)));
+  // B2: CPU-ms/istek hedefin olcusu: yalniz yuk makinesi doymus tekrar CPU ortalamasina GIRER (250_r1 DOYMA ama sayilir).
+  const tek = (await t3Analiz(standart('R99', { kosuEk: (h, r) => (h === 250 && r === 1 ? { p95: 500 } : {}) }), { donustur: (d) => yukCpuEkle(d, () => 600) })).analiz;
+  const g250tek = tek.ozet.gruplar.find((x) => x.hiz === 250);
+  assert.ok(g250.cpu_ms_istek !== null && Math.abs(g250.cpu_ms_istek - g250tek.cpu_ms_istek) < 1e-9, `${g250.cpu_ms_istek} / ${g250tek.cpu_ms_istek}`);
+  // kararVer: aday kademe 250'de iki kosu da yuk makinesinde doydu -> CPU-ms GECERLI (CPU satiri var), p95@250
+  // karsilastirilamaz -> DOYMA (yeni neden metni).
+  const ref = (await t3Analiz(standart('R100'))).analiz.adimlar;
+  const ady = (await t3Analiz(standart('R101'), { donustur: (d) => yukCpuEkle(d, (tur) => (/_250_/.test(tur) ? 100 : 600)) })).analiz.adimlar;
+  const kr = kararVer(ref, ady);
+  assert.equal(kr.karar, 'DOYMA');
+  assert.ok(kr.nedenler.some((n) => /^CPU-ms\/istek @250: ref=/.test(n)), kr.nedenler.join(' | '));
+  assert.ok(kr.nedenler.includes('p95 @250: yük makinesi doydu, karşılaştırılmadı'), kr.nedenler.join(' | '));
+  assert.ok(kr.nedenler.includes(YUK_DOYDU_KARARI), kr.nedenler.join(' | '));
+  // Hedef tarafi doyma (dropped) CPU kumesine girmez: eski mesaj BIREBIR.
+  const kd = kararVer(ref, (await t3Analiz(standart('R102', { kosuEk: (h) => (h === 250 ? { dropped: 50 } : {}) }))).analiz.adimlar);
+  assert.equal(kd.karar, 'DOYMA');
+  assert.equal(kd.nedenler.at(-1), '250 istek/sn kademesinde CPU-ms/istek yok: aday R102 doydu (dropped>0 ya da host CPU>%90); daha dusuk bir kademeyle tekrar kosun');
+});
+
+// 2026-11-03 dogrulayici TUR 1 duzeltmeleri:
+//   AN-Y4 pencere ISINMAYI ve son 2 sn'yi dislar (P17 korlugu): isinma / kenar bosta 0, olcum fazi %60 -> tam %60
+//   AN-Y5 'olculemedi' notu: yeni playbook (yukKaydedici ya da dosya) + olcum yok -> kosu uyarisi ve ozet nedeni;
+//         kismen olculmus -> adim uyarisi; eski kosu -> hicbiri; bozuk dosya kosuyu OKUNAMADI yapmaz
+//   AN-Y6 kademenin tum tekrarlari YUK_DOYDU -> p95 sessiz atlanmaz: satir + not, KALICI YOK (DOYMA/ RET aynen)
+//   AN-Y7 neden metni asagi yuvarlanir: %19,96 -> '%19.9(<%20)' (esikle celismez)
+test('AN-Y4 yuk CPU penceresi isinma + 3 sn ve bitis - 2 sn disinda: isinma / kenar ornekleri ortalamaya girmez', async () => {
+  const k = standart('R110');
+  const isinma = (await t3Analiz(k)).analiz.adimlar[0].ham.isinma_sn;
+  assert.ok(isinma >= 2, `kurgu isinmasi ${isinma}: test anlamsiz`);
+  const bosta = (_tur, ofsBas, ofsBit) => (ofsBas < isinma + 4 || ofsBit < 3 ? 0 : 600);
+  const { analiz: a } = await t3Analiz(k, { donustur: (d) => yukCpuEkle(d, bosta) });
+  for (const x of a.adimlar) {
+    assert.ok(Math.abs(x.ham.yuk_cpu_bosta - 60) < 1e-9, `${x.tur}: ${x.ham.yuk_cpu_bosta} (isinma ya da kenar pencereye girdi)`);
+    assert.equal(x.gecerlilik, 'GECERLI', x.tur);
+  }
+});
+
+test('AN-Y5 yuk kaydi beklenip olculemedi: kosu uyarisi + ozet nedeni; kismi olcumde adim uyarisi; eski kosu birebir; bozuk dosya OKUNAMADI degil', async () => {
+  const k = standart('R111');
+  const eski = (await t3Analiz(k)).analiz;
+  const yukUyari = (an) => an.uyarilar.filter((u) => /yuk_cpu_olculemedi/.test(u));
+  // Eski playbook (alan yok, dosya yok): hicbir sey eklenmez.
+  assert.deepEqual(yukUyari(eski), []);
+  assert.ok(!('yuk_cpu_olculemedi' in eski.ozet));
+  for (const [secenek, donustur, neden] of [
+    [{ yukKaydedici: 'basladi' }, (d) => d, 'kayit_yok'],
+    [{ yukKaydedici: 'baslamadi' }, (d) => d, 'kaydedici_baslamadi'],
+    [{}, (d) => yukCpuEkle(d, () => 600, { atla: () => true }), 'pencerede_ornek_yok'],
+    [{ yukKaydedici: 'basladi' }, (d) => new Map([...d, ['yukcpu_R111_ymak01.csv', { icerik: '1800000000,1,0,0,1,0,0,0,0\n', py: false, portal: true, log: false }]]), 'kayit_bozuk'],
+  ]) {
+    const { veri, analiz: a } = await t3Analiz(k, { donustur, secenek });
+    assert.deepEqual(yukUyari(a), [`yuk_cpu_olculemedi(${neden})`], neden);
+    assert.equal(a.ozet.yuk_cpu_olculemedi, neden);
+    // Tek kosu uyarisi: adimlara tek tek yazilmaz (gurultu yok); gecerlilik degismez.
+    assert.ok(a.adimlar.every((x) => !x.ham.uyarilar.includes('yuk_cpu_olculemedi')), neden);
+    assert.deepEqual(a.adimlar.map((x) => x.gecerlilik), eski.adimlar.map((x) => x.gecerlilik), neden);
+    if (neden === 'kayit_bozuk') assert.match(veri.yukKesitler[0].sorun, /eksik kolon/);
+  }
+  // Kismi: bir TUR'un ornekleri yok -> yalniz o adima uyari, kosu uyarisi yok.
+  const hedefTur = eski.adimlar[0].tur;
+  const { analiz: kis } = await t3Analiz(k, { donustur: (d) => yukCpuEkle(d, () => 600, { atla: (_t, tur) => tur === hedefTur }), secenek: { yukKaydedici: 'basladi' } });
+  assert.deepEqual(yukUyari(kis).filter((u) => !u.startsWith(`${hedefTur}: `)), []);
+  const t = turla(kis);
+  assert.ok(t.get(hedefTur).ham.uyarilar.includes('yuk_cpu_olculemedi'));
+  assert.ok(!('yuk_cpu_bosta' in t.get(hedefTur).ham));
+  assert.ok(kis.adimlar.filter((x) => x.tur !== hedefTur).every((x) => !x.ham.uyarilar.includes('yuk_cpu_olculemedi')));
+  assert.ok(NEDEN_KALIPLARI.some((x) => x.kod === 'yuk_cpu_olculemedi' && x.tur === 'uyari' && x.re.test('yuk_cpu_olculemedi')));
+  aciklamali(kis);
+});
+
+test('AN-Y6 (B2) kademenin tum tekrarlari YUK_DOYDU: satir + karar DOYMA (KALICI asla); baska kademede zarar RET; referans tarafinda da; serbest yolda da', async () => {
+  const ref = (await t3Analiz(standart('R112'))).analiz.adimlar;
+  const adayK = () => standart('R113', { ru: 12, p95_400: 500 });
+  const kontrol = kararVer(ref, (await t3Analiz(adayK())).analiz.adimlar);
+  assert.equal(kontrol.karar, 'RET');
+  // Ayni aday, 400'de yuk makinesi doymus: p95@400 karsilastirilamaz -> DOYMA.
+  const yukAdy = (await t3Analiz(adayK(), { donustur: (d) => yukCpuEkle(d, (tur) => (/_400_/.test(tur) ? 100 : 600)) })).analiz.adimlar;
+  const kr = kararVer(ref, yukAdy);
+  assert.equal(kr.karar, 'DOYMA', kr.nedenler.join(' | '));
+  assert.ok(kr.nedenler.includes('p95 @400: yük makinesi doydu, karşılaştırılmadı'), kr.nedenler.join(' | '));
+  assert.ok(kr.nedenler.includes(YUK_DOYDU_KARARI), kr.nedenler.join(' | '));
+  // Isaretsiz kosuda bu satirlar YOK.
+  assert.ok(!kontrol.nedenler.some((n) => /ük makinesi doydu/.test(n)));
+  // Baska kademede (250) gercek zarar: RET degismez (satir yine yazilir).
+  const zararAdy = (await t3Analiz(standart('R119', { ru: 12, kosuEk: (h) => (h === 250 ? { p95: 500 } : {}) }), { donustur: (d) => yukCpuEkle(d, (tur) => (/_400_/.test(tur) ? 100 : 600)) })).analiz.adimlar;
+  const krz = kararVer(ref, zararAdy);
+  assert.equal(krz.karar, 'RET', krz.nedenler.join(' | '));
+  assert.ok(krz.nedenler.includes('p95 @400: yük makinesi doydu, karşılaştırılmadı'), krz.nedenler.join(' | '));
+  // Referans tarafi doymussa da: yuk kaydi olmadan bu kurgu KALICI (CPU kazanci) -> yuk ile DOYMA.
+  const ady115 = (await t3Analiz(standart('R115', { ru: 12 }))).analiz.adimlar;
+  assert.equal(kararVer((await t3Analiz(standart('R114'))).analiz.adimlar, ady115).karar, 'KALICI', 'kurgu anlamsiz: yuk kaydi olmadan KALICI olmali');
+  const yukRef = (await t3Analiz(standart('R114'), { donustur: (d) => yukCpuEkle(d, (tur) => (/_400_/.test(tur) ? 100 : 600)) })).analiz.adimlar;
+  const kr2 = kararVer(yukRef, ady115);
+  assert.equal(kr2.karar, 'DOYMA', kr2.nedenler.join(' | '));
+  assert.ok(kr2.nedenler.includes('p95 @400: yük makinesi doydu, karşılaştırılmadı'), kr2.nedenler.join(' | '));
+  // CPU'suz (serbest) yol: DOYMA (NOTR degil).
+  const sr = (await t3Analiz(standart('R116'), { donustur: (d) => serbestDosyalari(d), secenek: { hedefTuru: 'serbest' } })).analiz.adimlar;
+  const sa = (await t3Analiz(standart('R117'), { donustur: (d) => yukCpuEkle(serbestDosyalari(d), (tur) => (/_400_/.test(tur) ? 100 : 600)), secenek: { hedefTuru: 'serbest' } })).analiz.adimlar;
+  const kr3 = kararVer(sr, sa, { refHedefTuru: 'serbest', adayHedefTuru: 'serbest' });
+  assert.equal(kr3.karar, 'DOYMA', kr3.nedenler.join(' | '));
+  assert.ok(kr3.nedenler.includes(YUK_DOYDU_KARARI), kr3.nedenler.join(' | '));
+});
+
+// B2 probe (dogrulayici scratchpad probe_p95.test.cjs): p95 gerilemesi yuk-doymus en ust kademede. Eskiden kademe sessiz
+// atlanip KALICI cikabiliyordu; artik RET ya da DOYMA, KALICI asla. dropped'li (hedef tarafi) DOYMA kiyasi eskisi gibi RET.
+test('AN-Y8 probe: yuk makinesi doymus en ust kademede p95 gerilemesi KALICI vermez (RET ya da DOYMA)', async () => {
+  const ref = (await t3Analiz(standart('R200'))).analiz.adimlar;
+  const adayK = () => standart('R201', { ru: 12, p95_400: 500 });
+  const yuk = kararVer(ref, (await t3Analiz(adayK(), { donustur: (d) => yukCpuEkle(d, (tur) => (/_400_/.test(tur) ? 100 : 600)) })).analiz.adimlar);
+  assert.ok(['RET', 'DOYMA'].includes(yuk.karar), `${yuk.karar}: ${yuk.nedenler.join(' | ')}`);
+  assert.ok(yuk.nedenler.includes('p95 @400: yük makinesi doydu, karşılaştırılmadı'), yuk.nedenler.join(' | '));
+  const drop = kararVer(ref, (await t3Analiz(standart('R202', { ru: 12, p95_400: 500, kosuEk: (h) => (h === 400 ? { dropped: 50 } : {}) }))).analiz.adimlar);
+  assert.equal(drop.karar, 'RET', drop.nedenler.join(' | '));
+});
+
+// B1: yeni playbook kaydedici son satiri olculemedi notuna eklenir (ASCII, 200); kayit beklenip olcumu olmayan her
+// HATALI disi adimda ham.yuk_cpu_olculemedi true. Eski playbook (secenek / dosya yok): alan da not da YOK.
+test('AN-Y9 (B1) olculemedi: son satir notta ve ozette; adim ham.yuk_cpu_olculemedi; eski kosu birebir', async () => {
+  const k = standart('R120');
+  const eski = (await t3Analiz(k)).analiz;
+  assert.ok(eski.adimlar.every((x) => !('yuk_cpu_olculemedi' in x.ham)));
+  assert.ok(!('yuk_cpu_son_satir' in eski.ozet));
+  // Son satir verilse bile eski playbook (yukKaydedici yok, dosya yok): hicbir sey eklenmez.
+  const sadeceSon = (await t3Analiz(k, { secenek: { yukSonSatir: 'HATA: x' } })).analiz;
+  assert.deepEqual(JSON.parse(JSON.stringify(sadeceSon.adimlar)), JSON.parse(JSON.stringify(eski.adimlar)));
+  assert.deepEqual(sadeceSon.uyarilar, eski.uyarilar);
+  const son = 'HATA: /proc/stat okunamiyor ç' + 'x'.repeat(300);
+  const { analiz: a } = await t3Analiz(k, { secenek: { yukKaydedici: 'baslamadi', yukSonSatir: son } });
+  const bek = ('HATA: /proc/stat okunamiyor ?' + 'x'.repeat(300)).slice(0, 200);
+  assert.deepEqual(a.uyarilar.filter((u) => u.startsWith('yuk_cpu_olculemedi')), [`yuk_cpu_olculemedi(kaydedici_baslamadi;son=${bek})`]);
+  assert.equal(a.ozet.yuk_cpu_son_satir, bek);
+  assert.ok(a.adimlar.every((x) => x.ham.yuk_cpu_olculemedi === true), 'kayit beklenip olcum yok: her adim olculemedi');
+  // Son satir yoksa eski bicim (parantez icinde yalniz neden).
+  const { analiz: b } = await t3Analiz(k, { secenek: { yukKaydedici: 'basladi' } });
+  assert.deepEqual(b.uyarilar.filter((u) => u.startsWith('yuk_cpu_olculemedi')), ['yuk_cpu_olculemedi(kayit_yok)']);
+  // Kismi: yalniz olcumu olmayan adim isaretli; olculen adimda alan YOK.
+  const hedefTur = eski.adimlar[0].tur;
+  const { analiz: kis } = await t3Analiz(k, { donustur: (d) => yukCpuEkle(d, () => 600, { atla: (_t, tur) => tur === hedefTur }), secenek: { yukKaydedici: 'basladi' } });
+  const t = turla(kis);
+  assert.equal(t.get(hedefTur).ham.yuk_cpu_olculemedi, true);
+  assert.ok(kis.adimlar.filter((x) => x.tur !== hedefTur).every((x) => !('yuk_cpu_olculemedi' in x.ham)));
+});
+
+test('AN-Y7 YUK_DOYDU neden metni asagi yuvarlanir: %19,96 -> %19.9(<%20); %19,99 de %19.9', async () => {
+  const k = standart('R118');
+  const bosta = (tur) => (tur.endsWith('_400_r1') ? 199.6 : tur.endsWith('_400_r2') ? 199.9 : 600);
+  const { analiz: a } = await t3Analiz(k, { donustur: (d) => yukCpuEkle(d, bosta, { olcek: 10 }) });
+  const t = turla(a);
+  for (const [tur, ham] of [['R118_K_yeni_br_400_r1', 19.96], ['R118_K_yeni_br_400_r2', 19.99]]) {
+    const x = t.get(tur);
+    assert.ok(Math.abs(x.ham.yuk_cpu_bosta - ham) < 1e-9, `${tur}: ${x.ham.yuk_cpu_bosta}`);
+    assert.deepEqual([x.gecerlilik, x.nedenler], ['DOYMA', ['doyma:yuk_cpu_bosta_%19.9(<%20)']], tur);
+  }
+});
+
+// ---------------------------------------------------------------------------------------------
+// 2026-11-03 bellek olcumu ve kip dogrulamasi girdisi (analiz.cjs PORTAL FARKLARI 13 / 14)
+//   AN-B1 hedef bellek_*.csv + yukcpu bellek kolonlari -> ham.bellek (MB / %); kayitsiz kosu: ham.bellek YOK, ozet
+//         bellek_kesitler YOK, geri kalan cikti BIREBIR; serbestte hedef bellegi yok sayilir
+//   AN-B2 bos bellek %10 altinda TUR uyarisi bellek_bos_az(hedef|yuk,%x); %10 esitlik uyari degil; gecerlilik DEGISMEZ
+//   AN-B3 olasi sizinti: monoton artis + >= %20 + >= 50 MB + kosu sonu geri inmedi -> kosu uyarisi; her kosul tek tek
+//         bozulunca uyari yok
+//   AN-K1 istemci_<TUR>.json kodlama -> ham.kodlama (yalniz varsa); bozuk JSON kosuyu OKUNAMADI yapmaz; analiz ciktisi
+//         kodlama anahtari disinda BIREBIR
+//   AN-KS karisik surum: 6e33e5a (eski Portal) sonuc.cjs + analiz.cjs yeni playbook dosyalarini (bellek_*, yukcpu_* yeni
+//         kolonlar, istemci JSON kodlama, SHA256SUMS'ta listeli) REDDETMEZ ve ciktisi dosyalarsiz dizinle ayni; yeni Portal
+//         eski playbook dizininde eski Portal'la ayni analiz (ozet.sha256 / okunan_bayt haric)
+// ---------------------------------------------------------------------------------------------
+
+/** Hedef bellek kaydi: sunucu_*.csv'nin ornek zamanlariyla bellek_<anahtar>.csv; `rss(t, i)` kB, son ornek `son`. */
+function bellekEkle(dosyalar, rss, { mt = 16000000, ma = () => 8000000, son = null } = {}) {
+  const ad = [...dosyalar.keys()].find((x) => /^sunucu_.*\.csv$/.test(x));
+  const anahtar = ad.slice('sunucu_'.length, -'.csv'.length);
+  const ts = dosyalar.get(ad).icerik.trim().split('\n').slice(1).map((s) => Number(s.split(',')[0]));
+  const satirlar = ['epoch,nginx_rss_kb,isci_sayi,mem_total_kb,mem_available_kb'];
+  ts.forEach((t, i) => satirlar.push(`${t},${i === ts.length - 1 && son !== null ? son : Math.round(rss(t, i, ts.length))},2,${mt},${ma(t)}`));
+  const out = new Map(dosyalar);
+  out.set(`bellek_${anahtar}.csv`, { icerik: satirlar.join('\n') + '\n', py: false, portal: true, log: false });
+  return out;
+}
+/** yukcpu_*.csv'ye mem_total_kb, mem_available_kb, arac_rss_kb kolonlari (yukCpuEkle'den sonra). */
+function yukBellekEkle(dosyalar, { mt = 32000000, ma = () => 20000000, ar = () => 500000 } = {}) {
+  const out = new Map(dosyalar);
+  for (const [ad, f] of dosyalar) {
+    if (!/^yukcpu_.*\.csv$/.test(ad)) continue;
+    const [bas, ...gov] = f.icerik.trim().split('\n');
+    const yeni = [`${bas},mem_total_kb,mem_available_kb,arac_rss_kb`, ...gov.map((s) => {
+      const t = Number(s.split(',')[0]);
+      return `${s},${mt},${ma(t)},${ar(t)}`;
+    })];
+    out.set(ad, { ...f, icerik: yeni.join('\n') + '\n' });
+  }
+  return out;
+}
+/** Her istemci_<TUR>.csv icin istemci_<TUR>.json (yeni yuk_k6.js: kodlama anahtari; `kodlama(tur)` null ise anahtar yok). */
+function kodlamaEkle(dosyalar, kodlama) {
+  const out = new Map(dosyalar);
+  for (const ad of dosyalar.keys()) {
+    const m = /^istemci_(.+)\.csv$/.exec(ad);
+    if (!m) continue;
+    const k = kodlama(m[1]);
+    out.set(`istemci_${m[1]}.json`, { icerik: JSON.stringify({ tur: m[1], hiz: 1, ...(k ? { kodlama: k } : {}) }, null, 2) + '\n', py: false, portal: true, log: false });
+  }
+  return out;
+}
+const yeniAlanlarsiz = (an) => {
+  const x = JSON.parse(JSON.stringify(an));
+  for (const s of x.adimlar) {
+    delete s.ham.bellek;
+    delete s.ham.kodlama;
+    s.ham.uyarilar = s.ham.uyarilar.filter((u) => !u.startsWith('bellek_bos_az('));
+  }
+  x.uyarilar = x.uyarilar.filter((u) => !/(^|: )(bellek_bos_az\(|nginx_bellek_artisi\()/.test(u));
+  delete x.ozet.bellek_kesitler;
+  x.ozet.okunan_bayt = null;
+  x.ozet.sha256 = null;
+  return x;
+};
+
+test('AN-B1 bellek: ham.bellek hedef (CPU penceresi) + yuk makinesi (yuk penceresi); kayitsiz kosu birebir; serbestte hedef yok sayilir', async () => {
+  const k = standart('R120');
+  const eski = (await t3Analiz(k)).analiz;
+  assert.ok(eski.adimlar.every((x) => !('bellek' in x.ham) && !('kodlama' in x.ham)));
+  assert.ok(!('bellek_kesitler' in eski.ozet));
+  const { veri, analiz: a } = await t3Analiz(k, {
+    donustur: (d) => yukBellekEkle(yukCpuEkle(bellekEkle(d, () => 200 * 1024, { ma: () => 4000000 }), () => 600), { ar: () => 300 * 1024 }),
+  });
+  assert.deepEqual(veri.bellekKesitler.map((x) => [x.anahtar, x.ornekler.length > 100, 'sorun' in x]), [['R120_test', true, false]]);
+  assert.deepEqual(a.ozet.bellek_kesitler.map((x) => x.anahtar), ['R120_test']);
+  for (const s of a.adimlar) {
+    assert.deepEqual(s.ham.bellek, {
+      nginx_rss_ort_mb: 200, nginx_rss_max_mb: 200, hedef_bellek_yuzde: 75, hedef_bos_min_yuzde: 25,
+      yuk_bellek_yuzde: 37.5, yuk_bos_min_yuzde: 62.5, arac_rss_max_mb: 300,
+    }, s.tur);
+  }
+  // Bellek alanlari disinda (gecerlilik, nedenler, CPU, karar girdileri) ayni.
+  const yukYok = (an) => {
+    const x = yeniAlanlarsiz(an);
+    for (const s of x.adimlar) delete s.ham.yuk_cpu_bosta;
+    delete x.ozet.yuk_kesitler;
+    return x;
+  };
+  assert.deepEqual(yukYok(a), yukYok(eski));
+  // Yalniz yuk makinesi bellegi (hedef dosyasi yok): hedef alanlari null, yuk alanlari dolu.
+  const y = (await t3Analiz(k, { donustur: (d) => yukBellekEkle(yukCpuEkle(d, () => 600)) })).analiz;
+  assert.deepEqual([y.adimlar[0].ham.bellek.nginx_rss_ort_mb, y.adimlar[0].ham.bellek.yuk_bos_min_yuzde, y.adimlar[0].ham.bellek.arac_rss_max_mb], [null, 62.5, 500000 / 1024]);
+  // Bos hucreli bellek kolonlari (meminfo okunamadi): olcum yok -> ham.bellek YOK.
+  const bos = (await t3Analiz(k, { donustur: (d) => yukBellekEkle(yukCpuEkle(d, () => 600), { mt: '', ma: () => '', ar: () => '' }) })).analiz;
+  assert.ok(bos.adimlar.every((x) => !('bellek' in x.ham)));
+  // Serbest hedef: dizinde hedef bellek dosyasi olsa da yok sayilir (sunucu dosyalari gibi).
+  const sk = standart('R121');
+  const sr = (await t3Analiz(sk, { donustur: (d) => bellekEkle(d, () => 1024), secenek: { hedefTuru: 'serbest' } })).analiz;
+  assert.ok(sr.adimlar.every((x) => !('bellek' in x.ham)) && !('bellek_kesitler' in sr.ozet));
+});
+
+test('AN-B2 bos bellek %10 altinda TUR uyarisi (hedef / yuk), %10 esitlik uyari degil; gecerlilik degismez', async () => {
+  const k = standart('R122');
+  const az = (await t3Analiz(k, { donustur: (d) => yukBellekEkle(yukCpuEkle(bellekEkle(d, () => 1024, { ma: () => 1599999 }), () => 600), { ma: () => 3000000 }) })).analiz;
+  for (const s of az.adimlar) {
+    assert.ok(s.ham.uyarilar.includes('bellek_bos_az(hedef,%9.9)'), `${s.tur}: ${s.ham.uyarilar}`);
+    assert.ok(s.ham.uyarilar.includes('bellek_bos_az(yuk,%9.3)'), `${s.tur}: ${s.ham.uyarilar}`);
+    assert.ok(NEDEN_KALIPLARI.some((x) => x.kod === 'bellek_bos_az' && x.tur === 'uyari' && x.re.test('bellek_bos_az(hedef,%9.9)')));
+  }
+  assert.ok(az.uyarilar.some((u) => /^R122_K_yeni_br_100_r1: bellek_bos_az\(hedef,%9\.9\)$/.test(u)), 'kosu duzeyine katlanir');
+  const esit = (await t3Analiz(k, { donustur: (d) => bellekEkle(d, () => 1024, { ma: () => 1600000 }) })).analiz;
+  assert.ok(esit.adimlar.every((s) => !s.ham.uyarilar.some((u) => u.startsWith('bellek_bos_az('))));
+  const eski = (await t3Analiz(k)).analiz;
+  assert.deepEqual(az.adimlar.map((s) => [s.gecerlilik, s.nedenler]), eski.adimlar.map((s) => [s.gecerlilik, s.nedenler]));
+  assert.equal(az.gecerlilik, eski.gecerlilik);
+});
+
+test('AN-B3 olasi bellek sizintisi: monoton + %20 + 50 MB + kosu sonu inmedi; her kosul bozulunca yok', async () => {
+  const k = standart('R123');
+  const t0 = 1800000000;
+  // 100 MB'tan baslayip saniyede ~0,2 MB artar (623 sn'lik kayitta adim ortalamalari ~90 MB artar).
+  const artan = (t) => 100 * 1024 + (t - t0) * 200;
+  const sizinti = (a) => a.uyarilar.find((u) => u.startsWith('nginx_bellek_artisi('));
+  const var_ = (await t3Analiz(k, { donustur: (d) => bellekEkle(d, artan) })).analiz;
+  const u = sizinti(var_);
+  assert.ok(u, var_.uyarilar.join(' | '));
+  const m = /^nginx_bellek_artisi\(ilk=(\d+)MB,son=(\d+)MB,kosu_sonu=(\d+)MB\)$/.exec(u);
+  assert.ok(m && Number(m[2]) - Number(m[1]) >= 50 && Number(m[3]) >= Number(m[2]), u);
+  assert.ok(NEDEN_KALIPLARI.some((x) => x.kod === 'nginx_bellek_artisi' && x.re.test(u)));
+  assert.ok(!var_.adimlar.some((s) => s.ham.uyarilar.some((x) => x.startsWith('nginx_bellek_artisi'))), 'adim uyarisi degil');
+  // Kosu sonu geri indi (son ornek ilk degere dondu): uyari yok.
+  assert.equal(sizinti((await t3Analiz(k, { donustur: (d) => bellekEkle(d, artan, { son: 100 * 1024 }) })).analiz), undefined);
+  // Artis 50 MB'tan az (saniyede ~0,05 MB: ~22 MB).
+  assert.equal(sizinti((await t3Analiz(k, { donustur: (d) => bellekEkle(d, (t) => 100 * 1024 + (t - t0) * 50) })).analiz), undefined);
+  // Oran %20'den az (2 GB taban + ayni ~90 MB artis).
+  assert.equal(sizinti((await t3Analiz(k, { donustur: (d) => bellekEkle(d, (t) => 2048 * 1024 + (t - t0) * 200) })).analiz), undefined);
+  // Monoton degil: kaydin orta ucte birinde RSS 150 MB duser (son adimlar ve kosu sonu yine yuksek).
+  const dalgali = (x, i, n) => artan(x) - (i > n / 3 && i < (2 * n) / 3 ? 150 * 1024 : 0);
+  const d3 = (await t3Analiz(k, { donustur: (d) => bellekEkle(d, dalgali) })).analiz;
+  const noktalar = d3.adimlar.map((s) => s.ham.bellek.nginx_rss_ort_mb);
+  assert.ok(noktalar.some((v, i) => i > 0 && v < noktalar[i - 1]), `kurgu monoton olmamali: ${noktalar.join(',')}`);
+  assert.equal(sizinti(d3), undefined, noktalar.join(','));
+  // Kayitsiz kosu: uyari yok (cikti birebir eskisi; AN-B1).
+  assert.equal(sizinti((await t3Analiz(k)).analiz), undefined);
+});
+
+test('AN-K1 istemci JSON kodlama -> ham.kodlama; bozuk / kodlamasiz JSON: anahtar yok, OKUNAMADI degil; geri kalan birebir', async () => {
+  const k = standart('R124');
+  const kd = { br: 900, gzip: 0, deflate: 0, zstd: 0, yok: 100, diger: 0, yok_1kb_alti: 80 };
+  const a = (await t3Analiz(k, { donustur: (d) => kodlamaEkle(d, () => kd) })).analiz;
+  assert.ok(a.adimlar.length > 0 && a.adimlar.every((s) => JSON.stringify(s.ham.kodlama) === JSON.stringify(kd)), JSON.stringify(a.adimlar[0].ham));
+  const eski = (await t3Analiz(k)).analiz;
+  assert.deepEqual(yeniAlanlarsiz(a), yeniAlanlarsiz(eski));
+  // Eski yuk_k6.js JSON'u (kodlama yok) ve bozuk JSON: anahtar yok.
+  const kodsuz = (await t3Analiz(k, { donustur: (d) => kodlamaEkle(d, () => null) })).analiz;
+  assert.ok(kodsuz.adimlar.every((s) => !('kodlama' in s.ham)));
+  const bozuk = (await t3Analiz(k, {
+    donustur: (d) => {
+      const out = kodlamaEkle(d, () => kd);
+      for (const [ad, f] of out) if (/^istemci_.*_100_r1\.json$/.test(ad)) out.set(ad, { ...f, icerik: '{"tur": "x", "kodlama": {' });
+      return out;
+    },
+  })).analiz;
+  const t = turla(bozuk);
+  assert.ok(!('kodlama' in t.get('R124_K_yeni_br_100_r1').ham));
+  assert.ok('kodlama' in t.get('R124_K_yeni_br_100_r2').ham);
+  // Negatif / ondalik sayac null olur (gorunum 0 sayar).
+  const tuhaf = (await t3Analiz(k, { donustur: (d) => kodlamaEkle(d, () => ({ ...kd, br: -1, gzip: 1.5 })) })).analiz;
+  assert.deepEqual([tuhaf.adimlar[0].ham.kodlama.br, tuhaf.adimlar[0].ham.kodlama.gzip], [null, null]);
+});
+
+test('AN-KS karisik surum: eski Portal (6e33e5a) yeni dosyalari reddetmez, ciktisi ayni; yeni Portal eski dizinde eskiyle ayni', async (t) => {
+  const { execFileSync } = require('node:child_process');
+  const kok = path.join(__dirname, '..', '..', '..');
+  const eskiDizin = path.join(KOK, 'eski-portal');
+  try {
+    fs.mkdirSync(eskiDizin, { recursive: true });
+    for (const ad of ['sonuc.cjs', 'analiz.cjs']) {
+      fs.writeFileSync(path.join(eskiDizin, ad), execFileSync('git', ['show', `6e33e5a:server/nginx-loadtest/${ad}`], { cwd: kok }));
+    }
+  } catch (e) {
+    t.skip(`6e33e5a okunamadi (git yok ya da sig klon): ${e.message}`);
+    return;
+  }
+  const eskiSonuc = require(path.join(eskiDizin, 'sonuc.cjs'));
+  const eskiAnaliz = require(path.join(eskiDizin, 'analiz.cjs'));
+  // HEAD (eski) okuyucusunda yeni adlar YOK: bellek_ / yukcpu_ desenleri ve istemci JSON'u okunmaz (yalniz ozetlenir).
+  const kaynak = fs.readFileSync(path.join(eskiDizin, 'sonuc.cjs'), 'utf8');
+  assert.ok(!/bellek_|yukcpu_/.test(kaynak), 'eski okuyucu bellek_ / yukcpu_ desenini taniyor olmamali');
+  assert.match(kaynak, /\[\/\^\(hatali_\)\?istemci_\.\*\\\.json\$\/, 'yalniz_ozet'\]/);
+  const k = standart('R125');
+  const yeniPlaybook = (d) => kodlamaEkle(yukBellekEkle(yukCpuEkle(bellekEkle(d, (x) => 100 * 1024 + (x - 1800000000) * 100), () => 600)), () => ({ br: 9, gzip: 0, deflate: 0, zstd: 0, yok: 1, diger: 0, yok_1kb_alti: 1 }));
+  const yaz = (ad, donustur) => portalDuzeniYaz(path.join(KOK, `ks-${ad}`), donustur(k.dosyalar({})));
+  const dYeni = yaz('yeni', yeniPlaybook);
+  const dEski = yaz('eski', (d) => d);
+  const sums = fs.readFileSync(path.join(dYeni, 'SHA256SUMS'), 'utf8');
+  for (const ad of ['bellek_R125_test.csv', 'yukcpu_R125_ymak01.csv', 'istemci_R125_K_yeni_br_100_r1.json']) assert.ok(sums.includes(`  ${ad}\n`), `${ad} SHA256SUMS'ta`);
+  const vY = await eskiSonuc.kosuDiziniOku(dYeni, { adim: 'R125' });
+  const vE = await eskiSonuc.kosuDiziniOku(dEski, { adim: 'R125' });
+  assert.equal(vY.sha256.durum, 'dogrulandi');
+  assert.ok(vY.sha256.dosya_sayisi > vE.sha256.dosya_sayisi);
+  const temiz = (an) => ({ ...an, ozet: { ...an.ozet, okunan_bayt: null, sha256: null } });
+  const aY = eskiAnaliz.kosuAnaliz(vY, { adim: 'R125' });
+  const aE = eskiAnaliz.kosuAnaliz(vE, { adim: 'R125' });
+  assert.deepEqual(temiz(aY), temiz(aE), 'eski Portal: yeni dosyalarla analiz ayni');
+  // (b) yeni Portal + eski playbook dizini: eski Portal'in analiziyle ayni (bellek / kodlama / yuk alanlari yok).
+  const nE = kosuAnaliz(await sonuc.kosuDiziniOku(dEski, { adim: 'R125' }), { adim: 'R125' });
+  assert.deepEqual(temiz(nE), temiz(aE), 'yeni Portal eski playbook dizininde eski ciktiyi uretir');
+});

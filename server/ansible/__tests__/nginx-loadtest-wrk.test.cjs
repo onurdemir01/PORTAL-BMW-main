@@ -20,7 +20,7 @@
 //   (i) delay(): her donus GECIKME_MS ya da GECIKME_MS + math.random(0, GECIKME_MS - 1) (alt sinir D, ust 2D - 1:
 //       ortalama tavan kaniti), jitter yalniz is parcacigi sayaciyla (ILK_KALAN = BAGLANTI / IS_PARCACIGI, init'te;
 //       wrk baglantilari birlikte acar, sabit bekleme fazlari kumeli kalir); GECIKME_MS = math.ceil(BAGLANTI * 1000 /
-//       TAVAN); init IS_PARCACIGI'ni ortamdan 1..16 ve BAGLANTI'yi bolen deger olarak dogrular; wrk_kos.sh wrk ortamina
+//       TAVAN) (BAGLANTI >= 1, TAVAN 1..5000: pay >= 0,2, en az 1 ms, 0 olmaz); init IS_PARCACIGI'ni ortamdan 1..16 ve BAGLANTI'yi bolen deger olarak dogrular; wrk_kos.sh wrk ortamina
 //       TAVAN_RPS ve IS_PARCACIGI verir (-t ayni degisken); playbook async argv'sinde "TAVAN_RPS={{ yuk_tavan_rps }}".
 //       Jitter is parcacigina ozgu (2026-10-28 AV1): init'te birebir '  math.randomseed(os.time() + (tonumber(id) or 0) *
 //       7919)', dosyada baska randomseed yok, setup'ta '  thread:set('id', #threads)' (wrk is parcaciklarinin init()'i
@@ -166,6 +166,10 @@ test('NA6 (a)-(e), (h), (i) yuk_wrk.lua ust duzeyi, sabitler, basliklar, durma, 
   );
   const init = luaGovde(lua, 'init');
   assert.match(init, /GECIKME_MS = math\.ceil\(BAGLANTI \* 1000 \/ TAVAN\)/, 'bekleme ceil(BAGLANTI * 1000 / TAVAN)');
+  // K1 (e): TAVAN 1..5000 ve BAGLANTI 1..199 iken bekleme hep >= 1 ms (ceil(N * 1000 / T) >= ceil(0,2)).
+  for (let n = 1; n <= 199; n++) for (const t of [1, 450, 4999, 5000]) assert.ok(Math.ceil((n * 1000) / t) >= 1, `D(${n}, ${t})`);
+  assert.match(init, /if TAVAN > 5000 then error\('yuk_wrk\.lua: TAVAN_RPS 1\.\.5000 olmali'\) end/, 'TAVAN_RPS ust siniri 5000 (K1)');
+  assert.match(init, /if BAGLANTI > 199 then error/, 'BAGLANTI ust siniri 199 kalir (K1)');
   assert.deepEqual(
     [...lua.matchAll(/^\s*GECIKME_MS\s*=(?!=)\s*(.*)$/gm)].map((m) => m[1]),
     ['math.ceil(BAGLANTI * 1000 / TAVAN)'],
