@@ -24,6 +24,9 @@
 # Dosyalar: sonuc/<ADIM>/istemci_<TUR>.csv|json (yuk_k6.js ile AYNI kolonlar ve JSON anahtar sirasi; olculmeyen alan bos /
 #           null, asla 0), zaman.csv, baslatilan.csv. Ara dosyalar $SONUC/../wrk_ara/ (sonuc/<ADIM>/ DISINDA; Portal
 #           toplamaz): ozet_<faz>_<TUR>.tsv (Lua done() -> 21 satir anahtar<TAB>tamsayi), wrk_<faz>_<TUR>.out.
+#           2026-11-03 (bant genisligi, bilgi): JSON'da ag_alinan_bayt (olcum fazinda wrk'nin okudugu bayt = ozet 'bayt';
+#           wrk'nin 'Transfer/sec' satiri bayt / sure), ag_sure_sn (ozet sure_us / 10^6), ag_gonderilen_bayt null (wrk
+#           gonderilen bayti saymaz). CSV kolonlari DEGISMEZ.
 set -u
 export LC_ALL=C
 BURASI="$(cd "$(dirname "$0")" && pwd)"
@@ -31,7 +34,7 @@ kullanim() { sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
 hata() { echo "HATA: $*" >&2; exit 2; }
 
 KOLONLAR="tur,adim,senaryo,kip,ae,hiz,n_olcum,rps_gercek,p50,p95,p99,ttfb_p95,tls_p95,connect_p95,hata_orani,n_429,n_5xx,dropped,http2,bayt_istek,p95_js,p95_css,p95_html,p95_json,p95_config,p95_buyuk,sikistirma_turu,isinma_sn,sure_sn,deneme,protokol,protokol_uyumsuz"
-JSON_ANAHTARLARI="tur adim senaryo kip ae hiz n_olcum rps_gercek p50 p95 p99 ttfb_p95 tls_p95 connect_p95 hata_orani n_429 n_5xx dropped http2 bayt_istek p95_buyuk sikistirma_turu isinma_sn sure_sn deneme p95_js p95_css p95_html p95_json p95_config protokol protokol_uyumsuz"
+JSON_ANAHTARLARI="tur adim senaryo kip ae hiz n_olcum rps_gercek p50 p95 p99 ttfb_p95 tls_p95 connect_p95 hata_orani n_429 n_5xx dropped http2 bayt_istek p95_buyuk sikistirma_turu isinma_sn sure_sn deneme p95_js p95_css p95_html p95_json p95_config protokol protokol_uyumsuz ag_alinan_bayt ag_gonderilen_bayt ag_sure_sn"
 OZET_ANAHTARLARI="surum istek bayt sure_us e_connect e_read e_write e_timeout e_status s1xx s2xx s3xx s429 s4xx s5xx sdiger lat_max_us p50_us p95_us p99_us is_parcacigi"
 WRK_ZAMAN_ASIMI=10s
 SOKET_HATA_ESIGI=10
@@ -349,6 +352,7 @@ yaz_istemci() {   # yaz_istemci <I degerleri|""> <O degerleri|"">: istemci_<TUR>
       NUM["n_5xx"] = ov["s5xx"]
       NUM["http2"] = 0; STR["protokol"] = "h1"; NUM["protokol_uyumsuz"] = 0
       if (ovar && ov["istek"] > 0) NUM["bayt_istek"] = ov["bayt"] / ov["istek"]
+      if (ovar && ov["sure_us"] > 0) { NUM["ag_alinan_bayt"] = ov["bayt"]; NUM["ag_sure_sn"] = ov["sure_us"] / 1000000 }
       NUM["isinma_sn"] = isinma + 0; NUM["sure_sn"] = sure + 0; NUM["deneme"] = deneme + 0
       nj = split(jsonlar, J, " ")
       printf "{\n" > json

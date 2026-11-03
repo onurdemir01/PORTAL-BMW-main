@@ -12,6 +12,11 @@
 //                        (ham.protokol / http2 / yeniden_baglanti_yuzde; sikistirma yalniz ham.kodlama varsa).
 //   sonucOzeti(adimlar, analizOzeti) : kosu duzeyi ozet satiri (toplam istek, en iyi / en kotu p95, 429,
 //                        5xx, hata orani, CPU'su olculemeyen adim, konf degisimi, reload olaylari).
+//   2026-11-03 (bant genisligi / bellek ayrisimi, bilgi): adimGorunumu ayrica `ag` (ham.ag camelCase; eski kosu null) ve
+//                        `bellekDetay` (ham.bellek_detay + kurala dayali `nedenler`; eski kosu null) ekler. sonucOzeti(adimlar,
+//                        analizOzeti, kosuUyarilari) ayrica `agBosta` (ozet.ag_bosta) ve `bellekSizinti` (adimlar boyunca
+//                        Anon kurali + analizin nginx_bellek_artisi uyarisi birlesik) verir. Kurallar GORUNUM katmanindadir:
+//                        analiz ciktisi ve DB degismez; esikler BELLEK_NEDEN_ESIKLERI.
 // Sozlesme: scratchpad sade_sozlesme.md 1-2 (arayuz bu adlari okur). Eksik alan null / [] (eski kosular).
 'use strict';
 
@@ -75,6 +80,152 @@ function bellekGorunumu(b) {
     yukBellekYuzde: sonlu(b.yuk_bellek_yuzde), yukBosMinYuzde: sonlu(b.yuk_bos_min_yuzde), aracRssMaxMb: sonlu(b.arac_rss_max_mb),
   };
   return Object.values(o).some((v) => v !== null) ? o : null;
+}
+
+/** 2026-11-03: ham.ag NIC tarafi -> camelCase; olcum yoksa null. */
+function nicGorunumu(n) {
+  if (!n || typeof n !== 'object' || Array.isArray(n)) return null;
+  const o = {
+    rxOrtBps: sonlu(n.rx_ort_bps), txOrtBps: sonlu(n.tx_ort_bps), rxMaxBps: sonlu(n.rx_max_bps), txMaxBps: sonlu(n.tx_max_bps),
+    hizMbps: sonlu(n.hiz_mbps), kullanimMaxYuzde: sonlu(n.kullanim_max_yuzde),
+    arayuz: typeof n.arayuz === 'string' ? n.arayuz.slice(0, 32) : null, secim: typeof n.secim === 'string' ? n.secim.slice(0, 80) : null,
+  };
+  return o.rxOrtBps !== null || o.txOrtBps !== null ? o : null;
+}
+
+/** 2026-11-03: ham.ag -> { testAlinanBps, testGonderilenBps, hedef, yuk }; hic olcum yoksa null (eski kosu). */
+function agGorunumu(a) {
+  if (!a || typeof a !== 'object' || Array.isArray(a)) return null;
+  const o = { testAlinanBps: sonlu(a.test_alinan_bps), testGonderilenBps: sonlu(a.test_gonderilen_bps), hedef: nicGorunumu(a.hedef), yuk: nicGorunumu(a.yuk) };
+  return o.testAlinanBps !== null || o.testGonderilenBps !== null || o.hedef || o.yuk ? o : null;
+}
+
+/**
+ * Bellek ayrisimi kural esikleri (MB; oran). Anon artisi: son - taban >= ANON_MB; dinlenmede inis payi >= INIS_ORAN ->
+ * tampon. Shmem / File artisi >= SHMEM_MB / FILE_MB. Sizinti: dinlenme Anon'lari azalmadan artar, toplam artis >= SIZINTI_MB
+ * ve >= SIZINTI_ORAN x ilk, her adimda dinlenme >= KALICI_ORAN x son, baglanti ortalamasi en cok / en az <= BAGLANTI_ORAN.
+ */
+const BELLEK_NEDEN_ESIKLERI = Object.freeze({
+  ANON_MB: 5, INIS_ORAN: 0.5, SHMEM_MB: 2, SHMEM_INIS_MB: 1, FILE_MB: 2, SIZINTI_MB: 10, SIZINTI_ORAN: 0.1, KALICI_ORAN: 0.9,
+  BAGLANTI_ORAN: 1.5,
+});
+const E = BELLEK_NEDEN_ESIKLERI;
+
+function noktaGorunumu(x) {
+  if (!x || typeof x !== 'object' || Array.isArray(x)) return null;
+  return {
+    t: sonlu(x.t), anonMb: sonlu(x.anon_mb), shmemMb: sonlu(x.shmem_mb), fileMb: sonlu(x.file_mb), pssMb: sonlu(x.pss_mb),
+    baglanti: sonlu(x.baglanti),
+  };
+}
+/** 2026-11-04: nokta ile son arasinda worker kumesi degisti mi (analiz *_isci_degisti; true / false / olculmedi null). */
+const evetHayir = (x) => (x === true || x === false ? x : null);
+const fark = (a, b) => (a !== null && a !== undefined && b !== null && b !== undefined ? a - b : null);
+
+/**
+ * Bir adimin olasi bellek nedenleri (kod listesi; arayuz nedenler.ts ile cumleye cevirir). Veri yetmezse bos liste.
+ *  reload: pencerede 'shutting down' worker; tampon: Anon tabandan >= 5 MB artti ve dinlenmede artisin en az yarisi indi
+ *  (baglanti tabandan fazla); anon_kalici: Anon artti ama dinlenmede inmedi (tek basina sizinti degil; kosu kurali karar
+ *  verir); paylasilan: Shmem tabandan >= 2 MB artti, dinlenmede inmedi (plato); dosya: File tabandan >= 2 MB artti;
+ *  artis_yok: olculdu (Anon artisi < ANON_MB), esik ustu artis yok.
+ *  2026-11-04 (inceleme B2 / B5): anon_artti_dinlenme_yok: Anon >= ANON_MB artti ama dinlenme olculmedi (bosluk < 3 sn /
+ *  kayit erken durdu; 'artis_yok' DEGIL); isci_degisti: taban ya da dinlenme ile son arasinda worker kumesi degisti (reload /
+ *  yeniden dogus). Taban degistiyse Anon / Shmem / File kurallari kurulmaz; dinlenme degistiyse dinlenme yok sayilir.
+ */
+function bellekNedenleri(d) {
+  const n = [];
+  if (!d) return n;
+  if ((d.kapananMax ?? 0) > 0) n.push('reload');
+  const { taban, son } = d;
+  if (!taban || !son) return n;
+  if (d.tabanIsciDegisti === true) {
+    n.push('isci_degisti');
+    return n;
+  }
+  const dinlenme = d.dinlenmeIsciDegisti === true ? null : d.dinlenme;
+  if (d.dinlenme && d.dinlenmeIsciDegisti === true) n.push('isci_degisti');
+  const anon = fark(son.anonMb, taban.anonMb);
+  if (anon !== null && anon >= E.ANON_MB) {
+    const inis = dinlenme ? fark(son.anonMb, dinlenme.anonMb) : null;
+    const bag = d.baglantiOrt === null || taban.baglanti === null || d.baglantiOrt > taban.baglanti;
+    if (inis !== null && inis >= E.INIS_ORAN * anon && bag) n.push('tampon');
+    else if (inis !== null) n.push('anon_kalici');
+    else n.push('anon_artti_dinlenme_yok');
+  }
+  const sh = fark(son.shmemMb, taban.shmemMb);
+  if (sh !== null && sh >= E.SHMEM_MB) {
+    const inis = dinlenme ? fark(son.shmemMb, dinlenme.shmemMb) : null;
+    if (inis === null || inis < E.SHMEM_INIS_MB) n.push('paylasilan');
+  }
+  const fi = fark(son.fileMb, taban.fileMb);
+  if (fi !== null && fi >= E.FILE_MB) n.push('dosya');
+  if (!n.length && anon !== null && anon < E.ANON_MB) n.push('artis_yok');
+  return n;
+}
+
+/** 2026-11-03: ham.bellek_detay -> camelCase + nedenler; eski kosu null. */
+function bellekDetayGorunumu(b) {
+  if (!b || typeof b !== 'object' || Array.isArray(b)) return null;
+  const d = {
+    t0: sonlu(b.t0), anonOrtMb: sonlu(b.anon_ort_mb), pssOrtMb: sonlu(b.pss_ort_mb), baglantiOrt: sonlu(b.baglanti_ort),
+    baglantiMax: sonlu(b.baglanti_max), isciMax: sonlu(b.isci_max), kapananMax: sonlu(b.kapanan_max),
+    taban: noktaGorunumu(b.taban), son: noktaGorunumu(b.son), dinlenme: noktaGorunumu(b.dinlenme), dinlenmeSn: sonlu(b.dinlenme_sn),
+    tabanIsciDegisti: evetHayir(b.taban_isci_degisti), dinlenmeIsciDegisti: evetHayir(b.dinlenme_isci_degisti),
+  };
+  if (!d.son) return null;
+  return { ...d, nedenler: bellekNedenleri(d) };
+}
+
+/**
+ * 2026-11-03 (bilgi): kosu duzeyi olasi sizinti. Anon kurali (BELLEK_NEDEN_ESIKLERI) + analizin nginx_bellek_artisi uyarisi:
+ *  durum 'olasi_sizinti' (kaynak 'anon': Anon kurali tuttu; 'rss': yalniz RSS uyarisi var ve Anon olcumu yok),
+ *  'rss_artisi_anon_degil' (RSS uyarisi var ve Anon gercekten iniyor: HER adimda dinlenme olculdu ve her dinlenme Anon'u
+ *  <= ilk taban + ANON_MB), 'belirsiz' (2026-11-04, inceleme B1: RSS uyarisi var, Anon kurali karar veremedi; `neden`:
+ *  dinlenme_yok (bir adimda dinlenme yok / worker degisti), taban_yok, baglanti_degisti (rampa: en cok / en az > BAGLANTI_ORAN),
+ *  anon_inmedi), aksi null.
+ */
+function bellekSizinti(adimlar, kosuUyarilari) {
+  const rss = (Array.isArray(kosuUyarilari) ? kosuUyarilari : []).find((u) => typeof u === 'string' && u.startsWith('nginx_bellek_artisi(')) || null;
+  const d = adimlar.map((a) => a.bellekDetay).filter((x) => x && x.t0 !== null && x.son && x.son.anonMb !== null).sort((x, y) => x.t0 - y.t0);
+  const anonVar = d.length > 0;
+  let anon = false;
+  const din = d.filter((x) => x.dinlenme && x.dinlenme.anonMb !== null && x.dinlenmeIsciDegisti !== true);
+  const tumu = anonVar && din.length === d.length;
+  const bag = din.map((x) => x.baglantiOrt).filter((x) => x !== null && x > 0);
+  const sabit = bag.length < 2 || Math.max(...bag) / Math.min(...bag) <= E.BAGLANTI_ORAN;
+  const t0 = anonVar && d[0].taban && d[0].tabanIsciDegisti !== true ? d[0].taban.anonMb : null;
+  if (din.length >= 2 && tumu) {
+    const v = din.map((x) => x.dinlenme.anonMb);
+    const artan = v.every((x, i) => i === 0 || x >= v[i - 1]);
+    const ilk = t0 !== null ? t0 : v[0];
+    const toplam = v[v.length - 1] - ilk;
+    const kalici = din.every((x) => x.dinlenme.anonMb >= E.KALICI_ORAN * x.son.anonMb);
+    anon = artan && kalici && sabit && toplam >= E.SIZINTI_MB && toplam >= E.SIZINTI_ORAN * ilk;
+  }
+  if (anon) return { durum: 'olasi_sizinti', kaynak: 'anon', rssUyarisi: rss };
+  if (rss && !anonVar) return { durum: 'olasi_sizinti', kaynak: 'rss', rssUyarisi: rss };
+  if (!rss) return null;
+  let neden = null;
+  if (!tumu) neden = 'dinlenme_yok';
+  else if (t0 === null) neden = 'taban_yok';
+  else if (!din.every((x) => x.dinlenme.anonMb <= t0 + E.ANON_MB)) neden = sabit ? 'anon_inmedi' : 'baglanti_degisti';
+  if (neden) return { durum: 'belirsiz', kaynak: 'anon', rssUyarisi: rss, neden };
+  return { durum: 'rss_artisi_anon_degil', kaynak: 'anon', rssUyarisi: rss };
+}
+
+/** 2026-11-03: ozet.ag_bosta -> camelCase; yoksa null. */
+function agBostaGorunumu(x) {
+  if (!x || typeof x !== 'object' || Array.isArray(x)) return null;
+  const taraf = (t) => {
+    if (!t || typeof t !== 'object') return null;
+    const o = {
+      rxBps: sonlu(t.rx_bps), txBps: sonlu(t.tx_bps), sn: sonlu(t.sn), hizMbps: sonlu(t.hiz_mbps),
+      arayuz: typeof t.arayuz === 'string' ? t.arayuz.slice(0, 32) : null, secim: typeof t.secim === 'string' ? t.secim.slice(0, 80) : null,
+    };
+    return o.rxBps !== null || o.txBps !== null ? o : null;
+  };
+  const o = { hedef: taraf(x.hedef), yuk: taraf(x.yuk) };
+  return o.hedef || o.yuk ? o : null;
 }
 
 /**
@@ -179,6 +330,9 @@ function adimGorunumu(a, secenek = {}) {
     // 2026-11-03 (bilgi): bellek (eski kosu null) ve kip dogrulamasi (istenen / gerceklesen).
     bellek: bellekGorunumu(ham && ham.bellek),
     kipDogrulama: kipDogrulama(a, secenek),
+    // 2026-11-03 (bilgi): bant genisligi ve bellek ayrisimi (eski kosu null).
+    ag: agGorunumu(ham && ham.ag),
+    bellekDetay: bellekDetayGorunumu(ham && ham.bellek_detay),
   };
 }
 
@@ -196,7 +350,7 @@ function topla(adimlar, alan) {
  * p95 en iyi / en kotu GECERLI + DOYMA adimlardan (yuk makinesi doymus adim HARIC, 2026-11-03); hic yoksa p95'i olan
  * tum satirlardan (p95Kapsam 'tum'). yukDoyduAdim: YUK_DOYDU isaretli adim sayisi.
  */
-function sonucOzeti(adimlar, analizOzeti) {
+function sonucOzeti(adimlar, analizOzeti, kosuUyarilari = []) {
   const liste = Array.isArray(adimlar) ? adimlar : [];
   const gecerli = liste.filter((a) => a.gecerlilik === 'GECERLI' || a.gecerlilik === 'DOYMA');
   const p95li = (xs) => xs.filter((a) => sonlu(a.p95) !== null);
@@ -239,7 +393,13 @@ function sonucOzeti(adimlar, analizOzeti) {
     yukDoyduAdim: liste.filter(yukDoyduMu).length,
     konfDegisti: kesitler ? kesitler.some((k) => k && k.konf_degisti === true) : null,
     reloadlar: reloadlar.slice(0, MAX_RELOAD),
+    // 2026-11-03 (bilgi): bosta NIC tabani ve olasi bellek sizintisi (eski kosu null).
+    agBosta: agBostaGorunumu(oz && oz.ag_bosta),
+    bellekSizinti: bellekSizinti(liste, kosuUyarilari),
   };
 }
 
-module.exports = { adimGorunumu, sonucOzeti, kipDogrulama, bellekGorunumu, RELOAD_NEDENI, KIP_KALIPLARI };
+module.exports = {
+  adimGorunumu, sonucOzeti, kipDogrulama, bellekGorunumu, agGorunumu, bellekDetayGorunumu, bellekNedenleri, bellekSizinti,
+  BELLEK_NEDEN_ESIKLERI, RELOAD_NEDENI, KIP_KALIPLARI,
+};

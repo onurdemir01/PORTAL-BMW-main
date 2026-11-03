@@ -458,7 +458,7 @@
 
             - name: --- [Task] Kaydedici ayrik baslatilir (setsid nohup timeout; pid dosyasi) ---
               ansible.builtin.shell:
-                cmd: "setsid nohup timeout -k 300 {{ (yuk_butce_sn | int) + 120 }} env SURE={{ (yuk_butce_sn | int) + 60 }} BOSTA_BAS={{ yuk_bosta_bas_sn | int }} UA_ONEK={{ yuk_ua_onek | quote }} SONUC={{ yt_dizin | quote }} bash {{ (yt_dizin ~ '/cpu_kaydedici.sh') | quote }} R{{ yuk_run_id | int }} 'portal run {{ yuk_run_id | int }}' > {{ (yt_dizin ~ '/kaydedici.out') | quote }} 2>&1 < /dev/null & echo $! > {{ (yt_dizin ~ '/kaydedici.pid') | quote }}"
+                cmd: "setsid nohup timeout -k 300 {{ (yuk_butce_sn | int) + 120 }} env SURE={{ (yuk_butce_sn | int) + 60 }} BOSTA_BAS={{ yuk_bosta_bas_sn | int }} HEDEF_IP={{ yuk_hedef_ip | quote }} UA_ONEK={{ yuk_ua_onek | quote }} SONUC={{ yt_dizin | quote }} bash {{ (yt_dizin ~ '/cpu_kaydedici.sh') | quote }} R{{ yuk_run_id | int }} 'portal run {{ yuk_run_id | int }}' > {{ (yt_dizin ~ '/kaydedici.out') | quote }} 2>&1 < /dev/null & echo $! > {{ (yt_dizin ~ '/kaydedici.pid') | quote }}"
                 chdir: "{{ yt_dizin }}"
               changed_when: false
 
@@ -949,7 +949,7 @@
           block:
             - name: --- [Task] Yuk makinesi CPU kaydedici ayrik baslatilir (bilgi; baslamazsa kosu yine calisir) ---
               ansible.builtin.shell:
-                cmd: "setsid nohup timeout -k 30 {{ (yuk_butce_sn | int) + 120 }} env SURE={{ (yuk_butce_sn | int) + 60 }} ARALIK=1 SONUC={{ (yt_dizin ~ '/sonuc') | quote }} bash {{ (yt_dizin ~ '/yuk_cpu_kaydedici.sh') | quote }} R{{ yuk_run_id | int }} > {{ (yt_dizin ~ '/yuk_cpu.out') | quote }} 2>&1 < /dev/null & echo $! > {{ (yt_dizin ~ '/yuk_cpu.pid') | quote }}"
+                cmd: "setsid nohup timeout -k 30 {{ (yuk_butce_sn | int) + 120 }} env SURE={{ (yuk_butce_sn | int) + 60 }} ARALIK=1 HEDEF_IP={{ yuk_hedef_ip | quote }} SONUC={{ (yt_dizin ~ '/sonuc') | quote }} bash {{ (yt_dizin ~ '/yuk_cpu_kaydedici.sh') | quote }} R{{ yuk_run_id | int }} > {{ (yt_dizin ~ '/yuk_cpu.out') | quote }} 2>&1 < /dev/null & echo $! > {{ (yt_dizin ~ '/yuk_cpu.pid') | quote }}"
                 chdir: "{{ yt_dizin }}"
               register: yt_yk_cpu_run
               changed_when: false

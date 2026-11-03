@@ -87,6 +87,8 @@ const UYARI_KURALLARI: Kural[] = [
   // 2026-11-03 bellek (bilgi; gecerlilik degismez).
   { re: /^bellek_bos_az\((hedef|yuk),%([\d.]+)\)$/, ton: 'bilgi', cumle: (m) => `${m[1] === 'hedef' ? 'Hedef sunucuda' : 'Yük makinesinde'} boş bellek en düşük %${ondalikTr(m[2])} (%10’un altında); bellek baskısı ölçümü etkileyebilir.` },
   { re: /^nginx_bellek_artisi\(ilk=(\d+)MB,son=(\d+)MB,kosu_sonu=(\d+)MB\)$/, ton: 'bilgi', cumle: (m) => `Olası bellek sızıntısı: nginx worker belleği adımlar boyunca sürekli arttı (${sayiTr(m[1])} MB → ${sayiTr(m[2])} MB) ve koşu sonunda geri inmedi (${sayiTr(m[3])} MB).` },
+  // 2026-11-03 bant genisligi (bilgi; gecerlilik degismez).
+  { re: /^ag_kullanim_yuksek\((hedef|yuk),%([\d.]+)\)$/, ton: 'bilgi', cumle: (m) => `${m[1] === 'hedef' ? 'Hedef sunucunun' : 'Yük makinesinin'} ağ arayüzü en yüksek %${ondalikTr(m[2])} dolu (%70’in üstünde); ölçülen yanıt süresi ağ sınırını da içerebilir.` },
   // Kip dogrulamasi (gorunum.cjs kipDogrulama; bilgi).
   { re: /^kip_protokol\(istenen=(h1|h2),olculen=(h1|h2),uyumsuz=(\d+)\)$/, ton: 'uyari', cumle: (m) => (m[1] === m[2]
     ? `${PROTOKOL_ADI[m[1]]} istendi ama ${sayiTr(m[3])} yanıt başka bir protokolle geldi.`

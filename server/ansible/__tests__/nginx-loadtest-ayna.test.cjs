@@ -46,17 +46,17 @@ const DIR = process.env.NGINX_LOADTEST_AYNA || AYNA;
 
 // Ayna degistiginde: dosyalari Ansible deposuyla ESLE, sonra bu listeyi guncelle (sha256sum).
 const BEKLENEN = {
-  'README.md': '99e5805f02e3feb523cf4c29c4cf7c6cd233f5abf593964a22ec5bda39287f4b',
+  'README.md': '48c68a268bdbda3522bb00c930ec8c0e7d22ef9ac61e6aca5903ed1530537290',
   'files/arac_hazirla.sh': 'ef1a342b21bcad90fa0b858769ad41a9a1e788422ee39dac8b174205ea55772b',
-  'files/cpu_kaydedici.sh': '409515394b1ab1511e79abf306cae5711c2e4bdcdc5756a58b33fe7ada0fee2f',
+  'files/cpu_kaydedici.sh': '4986b83511035f2ffc989cac727b5cb2184114fd1abdc08a94c30106f5b5f32d',
   'files/durdur.sh': '1b96fc75230f3d1332db7a0291cea35a8115de5736eaa414508c763d9d329a14',
   'files/kos.sh': '8ae555b1141c8966bd02a2615b91ea89a92f07fe52a498edea39dfae9bb4a7e7',
   'files/on_kontrol.sh': '86b62c58b1b14b35a62da3eff5e7562fc377e5e8cb4e9a47896b5b6b9b2304d9',
-  'files/wrk_kos.sh': '5521743c2e0ecf453df6c56a3ff538c796abfdfe0c25ffc782d4ec5f6aee5251',
-  'files/yuk_cpu_kaydedici.sh': '38bc0a4a53948492dfc700d9fe3725ca6da9e26914a0f42a7368193c4bdf660e',
-  'files/yuk_k6.js': '146754891848ee1c2219bb9c76705c6d1e830501cedd59e2e8600c6962a543ec',
+  'files/wrk_kos.sh': '04aa87da9f790f4010abb7557a4ff8171b00b9dde3cc5fc8219f3cc387dd88d2',
+  'files/yuk_cpu_kaydedici.sh': '69f1815c509ae38220203f9d7bcc4913df7eeba7eda073060a53220f824cbc27',
+  'files/yuk_k6.js': 'fcaf5d1c5c4dd05a84696304aef6d8259ce90b52bcea02f773ae44902b99756b',
   'files/yuk_wrk.lua': 'a8244133543984dcba697e821de88506098e2c88ceae5c4314faf65057b8c00a',
-  'nginx_loadtest.yml': 'b20d1192afd0b082585b059ff778eb0b6dbc4d09e55912903bf6ece74c85b915',
+  'nginx_loadtest.yml': '477a23cb0ffb9e07d0b1bd210e4854371554f24bd337b92bf8a4657d053b475e',
 };
 
 function tumDosyalar(kok) {

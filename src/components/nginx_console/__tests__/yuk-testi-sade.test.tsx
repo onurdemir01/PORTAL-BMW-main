@@ -603,6 +603,8 @@ describe('Yük Testi sade — sunucuyla çapraz kontrol (SD11, SD12)', () => {
       h2_disi: 'h2_disi(3)', protokol_farkli: 'protokol_farkli(beklenen=h2,olculen=yok)',
       // 2026-11-03 bellek (bilgi).
       bellek_bos_az: 'bellek_bos_az(yuk,%7.5)', nginx_bellek_artisi: 'nginx_bellek_artisi(ilk=110MB,son=210MB,kosu_sonu=215MB)',
+      // 2026-11-03 bant genisligi (bilgi).
+      ag_kullanim_yuksek: 'ag_kullanim_yuksek(hedef,%82.4)',
     };
     expect(Object.keys(ORNEK).sort()).toEqual(NEDEN_KALIPLARI.map((k) => k.kod).sort());
     for (const k of NEDEN_KALIPLARI) {

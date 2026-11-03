@@ -26,9 +26,13 @@
 // 2026-11-03 (E1-E6): tekrar "1. tekrar", adim uyarisi "90/sn adımının 2. tekrarında: ..."; CPU-ms "3,92 ms"; kapasite ve
 // host CPU ipuclari; bellek sutunlari + "Nginx bellek (en yüksek)" kutusu + bellek grafigi (yalniz olculmus kosuda; eski
 // kosu tablosu BIREBIR eskisi); adim ayrintisinda "Kip doğrulaması" (istenen / gerceklesen) ve tabloda kip cipi.
+// 2026-11-03 (bant genisligi / bellek ayrisimi, bilgi): test trafigi kolonlari (alinan / gonderilen), "Test trafiği (en
+// yüksek)" ve "Boşta NIC" kutulari, test trafigi grafigi (Mbps / hiz), adim ayrintisinda iki makinenin NIC ort. / en yuksek
+// + kullanim %, "Bellek ayrışımı" mini tablosu (Anon / Shmem / File / PSS / baglanti; taban / son / dinlenme) + olasi neden,
+// kosu duzeyi olasi sizinti kutusu. Eski kosu: kolon / kutu / grafik yok (tablo BIREBIR eskisi).
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeftIcon, ArrowPathIcon, ChevronDownIcon, ChevronRightIcon, StopCircleIcon } from '@heroicons/react/24/outline';
-import { nginxLoadtestApi, type NlAdim, type NlKipDogrulama, type NlKipDurumu, type NlKosuAyrinti, type NlMotor, type NlProtokol } from '@/api/nginxLoadtestApi';
+import { nginxLoadtestApi, type NlAdim, type NlAg, type NlBellekDetay, type NlBellekNoktasi, type NlKipDogrulama, type NlKipDurumu, type NlKosuAyrinti, type NlMotor, type NlNic, type NlProtokol } from '@/api/nginxLoadtestApi';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { toast } from '@/hooks/useToast';
 import { Modal } from '@/components/common/Modal';
@@ -47,6 +51,8 @@ import {
   AE_ETIKETI, AKTIF_DURUMLAR, KAPASITE_IPUCU, KIP_ETIKETI, OKUNAMADI_ACIKLAMASI, PROTOKOL_ETIKETI, kosuProtokolu, SONUC_DENEME_SINIRI, adimDegerleri, adimEtiketi, adimGecerliligi, adimSirala, bellekKolonuVar,
   bellekYuzdeMetni, butceSn, cpuMsMetni, durdurBaslatilamadiMetni, enYuksekNginxBellek, gecerlilikBilgisi, hataMetni, hizGrupla, hostCpuIpucu, kademeMetni, kalanSurecDurdurulabilir, mbMetni, motorOf, ondalik, seriAdi, sonucOkunuyorMetni,
   tekrarIpucu, turCumlesi, turEtiketi, uyarilariAyir, yenidenOkunabilir, yukCpuHucre, yukCpuKolonuVar, yuzde, type AdimBirimi,
+  AG_KULLANIM_ESIK, BAGLANTI_IPUCU, BELLEK_NEDEN_METNI, BELLEK_PSS_IPUCU, NIC_IPUCU, TEST_TRAFIGI_IPUCU, agKolonuVar, bantMetni, bellekDetayVar, bellekSizintiMetni,
+  enYuksekTestTrafigi, nicSecimMetni,
 } from './yukTestiOrtak';
 
 type Sekme = 'sonuc' | 'onkontrol' | 'cikti';
@@ -367,6 +373,16 @@ function Sonuclar({ kosu, adimlar, aktif, birim, protokol }: { kosu: NlKosuAyrin
   // E5: bellek yalniz olculmus kosuda (eski kosu: kutu ve grafik yok).
   const bellekVar = bellekKolonuVar(adimlar);
   const enBellek = enYuksekNginxBellek(adimlar);
+  // 2026-11-03 (bilgi): bant genisligi ve bellek ayrisimi yalniz olculmus kosuda.
+  const agVar = agKolonuVar(adimlar);
+  const enAg = enYuksekTestTrafigi(adimlar);
+  const bosta = kosu.sonucOzeti?.agBosta ?? null;
+  const sizinti = bellekSizintiMetni(kosu.sonucOzeti?.bellekSizinti);
+  // Test trafigi grafigi: ayni hizdaki tekrarlarin ortalamasi (Mbps) cizgi.
+  const agCizgi = [...new Set(sirali.map((a) => a.hiz as number))].map((h) => {
+    const v = sirali.filter((a) => a.hiz === h && a.ag?.testAlinanBps != null).map((a) => (a.ag?.testAlinanBps as number) / 1e6);
+    return { x: h, y: v.length ? v.reduce((t, x) => t + x, 0) / v.length : null };
+  });
   const nedenler = nedenGruplari(kosu, adimlar, kosu.sonucOzeti);
   // Bir adim nedeninin altinda yazilmayan reload olaylari (isinma / bekleme sirasinda ...) kosu duzeyi satirda: kullanici
   // olayi yine gorur, olcumun etkilenmedigi de soylenir.
@@ -426,7 +442,7 @@ function Sonuclar({ kosu, adimlar, aktif, birim, protokol }: { kosu: NlKosuAyrin
           <button type="button" onClick={() => setAyrintiAcik((x) => !x)} aria-expanded={ayrintiAcik} aria-controls={ayrintiId}
             className="inline-flex items-center gap-1.5 rounded text-[12px] font-semibold focus-visible:outline-offset-2!" style={{ color: 'var(--text-primary)' }}>
             {ayrintiAcik ? <ChevronDownIcon className="h-4 w-4" aria-hidden /> : <ChevronRightIcon className="h-4 w-4" aria-hidden />}
-            Ayrıntı <span className="font-normal" style={{ color: 'var(--text-secondary)' }}>— CPU / istek, kapasite, doyma, {bellekVar ? 'bellek, ' : ''}grafikler ve teknik adım tablosu</span>
+            Ayrıntı <span className="font-normal" style={{ color: 'var(--text-secondary)' }}>— CPU / istek, kapasite, doyma, {bellekVar ? 'bellek, ' : ''}{agVar ? 'bant genişliği, ' : ''}grafikler ve teknik adım tablosu</span>
           </button>
           <div id={ayrintiId} hidden={!ayrintiAcik} className="mt-3 space-y-4">
         <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border @3xl/yuk:grid-cols-4" style={{ borderColor: 'var(--border-subtle)', background: 'var(--border-subtle)' }}>
@@ -441,7 +457,18 @@ function Sonuclar({ kosu, adimlar, aktif, birim, protokol }: { kosu: NlKosuAyrin
           {bellekVar && (
             <OzetHucre etiket="Nginx bellek (en yüksek)" alt={enBellek ? `worker RSS toplamı · ${turEtiketi(enBellek.tur, adimlar, birim)}` : 'nginx worker belleği ölçülmedi (yalnız yük makinesi)'}>{mbMetni(enBellek?.mb)}</OzetHucre>
           )}
+          {agVar && (
+            <OzetHucre etiket="Test trafiği (en yüksek)" alt={enAg ? `alınan, ölçüm fazı ortalaması · ${turEtiketi(enAg.tur, adimlar, birim)}` : 'test trafiği ölçülmedi (yalnız arayüz sayaçları)'}>
+              <span title={TEST_TRAFIGI_IPUCU} className="cursor-help">{bantMetni(enAg?.bps)}</span>
+            </OzetHucre>
+          )}
+          {agVar && (
+            <OzetHucre etiket="Boşta NIC (hedef)" alt={bosta?.hedef ? `ilk adımdan önce ${fmtNumber(Math.round(bosta.hedef.sn ?? 0))} sn · gelen / giden` : 'boşta taban ölçülmedi'}>
+              <span title={NIC_IPUCU} className="cursor-help">{bosta?.hedef ? `${bantMetni(bosta.hedef.rxBps)} / ${bantMetni(bosta.hedef.txBps)}` : '—'}</span>
+            </OzetHucre>
+          )}
         </dl>
+        {sizinti && <UyariKutusu ton={sizinti.ton} rol="status" baslik={sizinti.metin} />}
         <div className="grid gap-5 @3xl/yuk:grid-cols-2">
           <HizGrafigi baslik="p95 yanıt süresi" birim="ms" noktalar={nokta((a) => a.p95)} cizgi={cizgi((x) => x.p95)} xBirimi={birim} />
           <HizGrafigi baslik="CPU-ms / istek" birim="ms" basamak={2} bicim={cpuMsMetni} noktalar={nokta((a) => (serbest ? null : a.cpuMsIstek))} cizgi={cizgi((x) => (serbest ? null : x.cpuMsIstek))} xBirimi={birim}
@@ -449,6 +476,11 @@ function Sonuclar({ kosu, adimlar, aktif, birim, protokol }: { kosu: NlKosuAyrin
           {bellekVar && (
             <HizGrafigi baslik="Nginx bellek (en yüksek)" birim="MB" basamak={0} bicim={mbMetni} noktalar={nokta((a) => a.bellek?.nginxRssMaxMb ?? null)} cizgi={[]} xBirimi={birim}
               bos="Nginx worker belleği ölçülmedi (yalnız yük makinesi belleği var ya da serbest hedef)." />
+          )}
+          {agVar && (
+            <HizGrafigi baslik="Test trafiği (alınan)" birim="Mbps" basamak={1} bicim={(x) => bantMetni(x == null ? null : x * 1e6)}
+              noktalar={nokta((a) => (a.ag?.testAlinanBps != null ? a.ag.testAlinanBps / 1e6 : null))} cizgi={agCizgi} xBirimi={birim}
+              bos="Test trafiği ölçülmedi (eski yük betiği)." />
           )}
         </div>
         <AdimTablosu adimlar={adimlar} aktif={aktif} birim={birim} serbest={serbest} nproc={nproc} />
@@ -488,6 +520,9 @@ const KOLONLAR: AdimKolonu[] = [
   { anahtar: 'rss', baslik: 'Nginx RSS', genislik: '6rem', sag: true, ipucu: 'ölçüm penceresinde nginx worker’larının bellek (RSS) toplamının en yükseği; MB' },
   { anahtar: 'hbel', baslik: 'Hedef bellek', genislik: '5.5rem', sag: true, ipucu: 'ölçüm penceresinde hedefin bellek kullanımı (en yüksek): 1 − MemAvailable / MemTotal' },
   { anahtar: 'ybel', baslik: 'Yük mak. bellek', genislik: '5.5rem', sag: true, ipucu: 'ölçüm penceresinde yük makinesinin bellek kullanımı (en yüksek): 1 − MemAvailable / MemTotal' },
+  // 2026-11-03: bant genisligi (test trafigi); yalniz olculmus kosuda (agKolonuVar).
+  { anahtar: 'agal', baslik: 'Test alınan', genislik: '6rem', sag: true, ipucu: TEST_TRAFIGI_IPUCU },
+  { anahtar: 'aggo', baslik: 'Test gönderilen', genislik: '6rem', sag: true, ipucu: TEST_TRAFIGI_IPUCU },
   { anahtar: 'ac', baslik: '', genislik: '2.5rem' },
 ];
 /** wrk: ilk kolon baglanti sayisi (istek/sn DEGIL), yuzdelikler CO duzeltmeli, dropped olculmez; serbest: sunucu kolonlari bos. */
@@ -499,10 +534,11 @@ const WRK_KOLON: Record<string, Partial<AdimKolonu>> = {
 };
 const SUNUCU_KOLONLARI = new Set(['cpu', 'host', 'kap', 'rss', 'hbel']);
 const BELLEK_KOLONLARI = new Set(['rss', 'hbel', 'ybel']);
+const AG_KOLONLARI = new Set(['agal', 'aggo']);
 /** Serbest hedefte sunucu logu yok: rps kolonunun ipucu sunucu logundan soz etmez. */
 const SERBEST_RPS_IPUCU = `istemcinin gerçekleşen hızı / ${SERBEST_SUNUCU_YOK}`;
-const kolonlar = (birim: AdimBirimi, serbest: boolean, yukCpu: boolean, bellek = false, nproc: number | null = null): AdimKolonu[] => KOLONLAR
-  .filter((k) => (yukCpu || k.anahtar !== 'yuk') && (bellek || !BELLEK_KOLONLARI.has(k.anahtar))).map((k) => ({
+const kolonlar = (birim: AdimBirimi, serbest: boolean, yukCpu: boolean, bellek = false, nproc: number | null = null, ag = false): AdimKolonu[] => KOLONLAR
+  .filter((k) => (yukCpu || k.anahtar !== 'yuk') && (bellek || !BELLEK_KOLONLARI.has(k.anahtar)) && (ag || !AG_KOLONLARI.has(k.anahtar))).map((k) => ({
     ...k, ...(k.anahtar === 'host' ? { ipucu: hostCpuIpucu(nproc) } : null), ...(birim === 'bağlantı' ? WRK_KOLON[k.anahtar] : null),
     ...(serbest && SUNUCU_KOLONLARI.has(k.anahtar) ? { ipucu: SERBEST_SUNUCU_YOK } : null),
     ...(serbest && k.anahtar === 'rps' ? { ipucu: SERBEST_RPS_IPUCU } : null),
@@ -521,8 +557,9 @@ function AdimTablosu({ adimlar, aktif, birim, serbest, nproc = null }: { adimlar
   // Yuk makinesi CPU kolonu yalniz olculmus adim varsa (eski kosuda tablo BIREBIR eskisi).
   const yukCpu = yukCpuKolonuVar(adimlar);
   const bellek = bellekKolonuVar(adimlar);
-  const kolonListesi = kolonlar(birim, serbest, yukCpu, bellek, nproc);
-  const genislik = 56 + (yukCpu ? 6.5 : 0) + (bellek ? 17 : 0);
+  const ag = agKolonuVar(adimlar);
+  const kolonListesi = kolonlar(birim, serbest, yukCpu, bellek, nproc, ag);
+  const genislik = 56 + (yukCpu ? 6.5 : 0) + (bellek ? 17 : 0) + (ag ? 12 : 0);
   return (
     <div>
       <h3 className="mb-1.5 text-[12px] font-semibold" style={{ color: 'var(--text-primary)' }}>Adımlar <span className="font-normal" style={{ color: 'var(--text-secondary)' }}>— her satır bir {birim === 'bağlantı' ? 'bağlantı sayısı' : 'hız'} × tekrar (TUR)</span></h3>
@@ -583,6 +620,12 @@ function AdimTablosu({ adimlar, aktif, birim, serbest, nproc = null }: { adimlar
                         <td className={sayiHucre} style={bosAz(a.bellek?.yukBosMinYuzde) ? UYARI_HUCRE : undefined}>{a.bellek ? bellekYuzdeMetni(a.bellek.yukBellekYuzde) : '—'}</td>
                       </>
                     )}
+                    {ag && (
+                      <>
+                        <td className={sayiHucre} data-testid="ag-alinan">{bantMetni(a.ag?.testAlinanBps)}</td>
+                        <td className={sayiHucre} data-testid="ag-gonderilen" title={a.ag && a.ag.testAlinanBps != null && a.ag.testGonderilenBps == null ? 'ölçülmedi (wrk gönderilen baytı saymaz)' : undefined}>{bantMetni(a.ag?.testGonderilenBps)}</td>
+                      </>
+                    )}
                     <td className="px-1 py-1.5 text-center">
                       <button type="button" onClick={() => degistir(k)} aria-expanded={ac} aria-label={`${a.tur} ayrıntısı`} className="rounded p-0.5 focus-visible:outline-offset-2!" style={{ color: 'var(--text-secondary)' }}>
                         {ac ? <ChevronDownIcon className="h-4 w-4" aria-hidden /> : <ChevronRightIcon className="h-4 w-4" aria-hidden />}
@@ -605,6 +648,8 @@ function AdimTablosu({ adimlar, aktif, birim, serbest, nproc = null }: { adimlar
                           {a.bellek && <Tanim etiket="Boş bellek (en düşük) hedef · yük mak.">{bellekYuzdeMetni(a.bellek.hedefBosMinYuzde)} · {bellekYuzdeMetni(a.bellek.yukBosMinYuzde)}</Tanim>}
                           {a.bellek && <Tanim etiket="Yük aracı RSS (en yüksek)">{mbMetni(a.bellek.aracRssMaxMb)}</Tanim>}
                         </dl>
+                        {a.ag && <AgAyrintisi ag={a.ag} tur={a.tur} />}
+                        {a.bellekDetay && <BellekAyrisimi d={a.bellekDetay} tur={a.tur} />}
                         {a.kipDogrulama && <KipDogrulamasi kip={a.kipDogrulama} tur={a.tur} />}
                         {a.cpuOlculemedi && <p className="mt-2 text-[11px] leading-4" style={{ color: 'var(--status-warning-text)' }}>{cpuOlculemediMetni(a.cpuOlculemedi)}</p>}
                         {a.nedenler.length > 0 && (
@@ -629,6 +674,82 @@ function AdimTablosu({ adimlar, aktif, birim, serbest, nproc = null }: { adimlar
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+// ── Bant genisligi ve bellek ayrisimi (2026-11-03, bilgi) ───────────────────────────
+function nicMetni(n: NlNic | null): { ort: string; enCok: string; kullanim: string | null; uyari: boolean } | null {
+  if (!n) return null;
+  const k = n.kullanimMaxYuzde;
+  return {
+    ort: `${bantMetni(n.rxOrtBps)} / ${bantMetni(n.txOrtBps)}`,
+    enCok: `${bantMetni(n.rxMaxBps)} / ${bantMetni(n.txMaxBps)}`,
+    kullanim: k != null && n.hizMbps != null ? `%${ondalik(k, 1)} (${bantMetni(n.hizMbps * 1e6)} arayüz)` : null,
+    uyari: k != null && k > AG_KULLANIM_ESIK,
+  };
+}
+/** Adim ayrintisi: test trafigi + iki makinenin NIC'i (gelen / giden; ort. ve en yuksek). */
+function AgAyrintisi({ ag, tur }: { ag: NlAg; tur: string }) {
+  const satirlar: [string, NlNic | null][] = [['Hedef', ag.hedef], ['Yük makinesi', ag.yuk]];
+  return (
+    <div className="mt-2.5" role="group" aria-label={`${tur} bant genişliği`}>
+      <div className="text-[11px] font-semibold leading-4" style={{ color: 'var(--text-primary)' }}>Bant genişliği <span className="font-normal" style={{ color: 'var(--text-secondary)' }}>— bilgi; geçerliliği değiştirmez</span></div>
+      <dl className="mt-1 grid grid-cols-2 gap-x-4 gap-y-2 @2xl/yuk:grid-cols-4">
+        <Tanim etiket="Test trafiği alınan · gönderilen" title={TEST_TRAFIGI_IPUCU}>{bantMetni(ag.testAlinanBps)} · {bantMetni(ag.testGonderilenBps)}</Tanim>
+        {satirlar.map(([ad, n]) => {
+          const m = nicMetni(n);
+          return (
+            <React.Fragment key={ad}>
+              <Tanim etiket={`${ad} NIC gelen / giden (ort.)`} title={n ? `${n.arayuz ?? '?'}: ${nicSecimMetni(n.secim)}. ${NIC_IPUCU}` : NIC_IPUCU}>{m ? m.ort : 'ölçülmedi'}</Tanim>
+              <Tanim etiket={`${ad} NIC en yüksek · kullanım`}>
+                <span style={m?.uyari ? UYARI_HUCRE : undefined}>{m ? `${m.enCok}${m.kullanim ? ` · ${m.kullanim}` : ''}` : '—'}</span>
+              </Tanim>
+            </React.Fragment>
+          );
+        })}
+      </dl>
+    </div>
+  );
+}
+const noktaHucre = (n: NlBellekNoktasi | null, f: (n: NlBellekNoktasi) => number | null, mb = true) => {
+  const v = n ? f(n) : null;
+  return v == null ? '—' : mb ? mbMetni(v) : fmtNumber(Math.round(v));
+};
+/** Adim ayrintisi: Anon / Shmem / File / PSS / baglanti (taban -> son -> dinlenme) + kurala dayali olasi neden. */
+function BellekAyrisimi({ d, tur }: { d: NlBellekDetay; tur: string }) {
+  const satirlar: [string, string, (n: NlBellekNoktasi) => number | null, boolean][] = [
+    ['PSS (ana ölçü)', BELLEK_PSS_IPUCU, (n) => n.pssMb, true],
+    ['Anon', 'süreçlere özel yığın: istek / bağlantı tamponları, sıkıştırma çalışma alanı', (n) => n.anonMb, true],
+    ['Shmem', 'paylaşılan bölgeler: ssl_session_cache, limit_req / limit_conn, cache keys_zone', (n) => n.shmemMb, true],
+    ['File', 'eşlenen dosyalar: ikili, modüller, açık dosya önbelleği', (n) => n.fileMb, true],
+    ['Bağlantı', BAGLANTI_IPUCU, (n) => n.baglanti, false],
+  ];
+  return (
+    <div className="mt-2.5" role="group" aria-label={`${tur} bellek ayrışımı`}>
+      <div className="text-[11px] font-semibold leading-4" style={{ color: 'var(--text-primary)' }}>Bellek ayrışımı <span className="font-normal" style={{ color: 'var(--text-secondary)' }}>— nginx worker toplamı; taban (adımdan önce) → son (ölçüm sonu) → dinlenme{d.dinlenmeSn != null ? ` (+${fmtNumber(Math.round(d.dinlenmeSn))} sn)` : ''}</span></div>
+      <table className="mt-1 w-full max-w-[40rem] border-collapse text-[11px] leading-4" style={{ color: 'var(--text-primary)' }}>
+        <thead><tr style={{ color: 'var(--text-secondary)' }}>
+          <th scope="col" className="px-2 py-1 text-left font-medium">Ölçü</th><th scope="col" className="px-2 py-1 text-right font-medium">Taban</th>
+          <th scope="col" className="px-2 py-1 text-right font-medium">Son</th><th scope="col" className="px-2 py-1 text-right font-medium">Dinlenme</th>
+        </tr></thead>
+        <tbody>
+          {satirlar.map(([ad, ipucu, f, mb]) => (
+            <tr key={ad} className="border-t" style={{ borderColor: 'var(--border-subtle)' }}>
+              <th scope="row" className="px-2 py-1 text-left font-semibold" title={ipucu}>{ad}</th>
+              <td className="px-2 py-1 text-right tabular-nums">{noktaHucre(d.taban, f, mb)}</td>
+              <td className="px-2 py-1 text-right tabular-nums">{noktaHucre(d.son, f, mb)}</td>
+              <td className="px-2 py-1 text-right tabular-nums">{noktaHucre(d.dinlenme, f, mb)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {(d.kapananMax ?? 0) > 0 && <p className="mt-1 text-[11px] leading-4" style={{ color: 'var(--status-warning-text)' }}>{`Pencerede en çok ${fmtNumber(d.kapananMax)} “shutting down” worker.`}</p>}
+      {d.nedenler.length > 0 && (
+        <ul className="mt-1 list-disc space-y-0.5 pl-4 text-[11px] leading-4" style={{ color: 'var(--text-primary)' }} aria-label={`${tur} olası bellek nedenleri`}>
+          {d.nedenler.map((n) => <li key={n} className="wrap-anywhere">{`Olası neden: ${BELLEK_NEDEN_METNI[n] ?? n}`}</li>)}
+        </ul>
+      )}
     </div>
   );
 }

@@ -240,6 +240,27 @@ export interface NlAdim {
   bellek: NlBellek | null;
   /** 2026-11-03: kip dogrulamasi (istenen / gerceklesen); eski sunucu null (blok gosterilmez). Gecerliligi DEGISTIRMEZ. */
   kipDogrulama: NlKipDogrulama | null;
+  /** 2026-11-03: bant genisligi (test trafigi + iki makinenin NIC'i, bit/sn); eski kosu null (olculmedi). Bilgi. */
+  ag: NlAg | null;
+  /** 2026-11-03: bellek ayrisimi (Anon / Shmem / File / PSS, baglanti; taban / son / dinlenme) + olasi neden kodlari; eski kosu null. */
+  bellekDetay: NlBellekDetay | null;
+}
+export interface NlNic {
+  rxOrtBps: number | null; txOrtBps: number | null; rxMaxBps: number | null; txMaxBps: number | null; hizMbps: number | null;
+  kullanimMaxYuzde: number | null; arayuz: string | null; secim: string | null;
+}
+export interface NlAg { testAlinanBps: number | null; testGonderilenBps: number | null; hedef: NlNic | null; yuk: NlNic | null }
+export interface NlBellekNoktasi { t: number | null; anonMb: number | null; shmemMb: number | null; fileMb: number | null; pssMb: number | null; baglanti: number | null }
+export interface NlBellekDetay {
+  t0: number | null; anonOrtMb: number | null; pssOrtMb: number | null; baglantiOrt: number | null; baglantiMax: number | null;
+  isciMax: number | null; kapananMax: number | null; taban: NlBellekNoktasi | null; son: NlBellekNoktasi | null;
+  dinlenme: NlBellekNoktasi | null; dinlenmeSn: number | null; nedenler: string[];
+}
+export interface NlAgBostaTarafi { rxBps: number | null; txBps: number | null; sn: number | null; hizMbps: number | null; arayuz: string | null; secim: string | null }
+export interface NlBellekSizinti {
+  durum: 'olasi_sizinti' | 'rss_artisi_anon_degil' | 'belirsiz'; kaynak: 'anon' | 'rss' | null; rssUyarisi: string | null;
+  /** 2026-11-04: yalniz 'belirsiz' (dinlenme_yok | taban_yok | baglanti_degisti | anon_inmedi). */
+  neden?: string | null;
 }
 export interface NlBellek {
   nginxRssOrtMb: number | null; nginxRssMaxMb: number | null; hedefBellekYuzde: number | null; hedefBosMinYuzde: number | null;
@@ -271,6 +292,10 @@ export interface NlSonucOzeti {
   cpuOlculemeyenAdim: number; konfDegisti: boolean | null; reloadlar: NlReloadOlayi[];
   /** YUK_DOYDU isaretli adim sayisi (eski sunucu: 0). */
   yukDoyduAdim?: number;
+  /** 2026-11-03: bosta NIC tabani (ilk adimdan once); eski kosu / sunucu: alan yok ya da null. */
+  agBosta?: { hedef: NlAgBostaTarafi | null; yuk: NlAgBostaTarafi | null } | null;
+  /** 2026-11-03: kosu duzeyi olasi bellek sizintisi (Anon kurali + RSS uyarisi birlesik); yoksa null. */
+  bellekSizinti?: NlBellekSizinti | null;
 }
 /** Karar tablosu satiri (analiz.cjs tabloYap): ref / aday hiz grubunun ozeti (snake_case; o tarafta kademe yoksa null),
  *  fark_yuzde YUZDE cinsinden (aday / ref - 1) x 100. */
@@ -392,6 +417,8 @@ export function adimNormalle(x: unknown): NlAdim {
   a.yukCpuOlculemedi = alan(r, 'yukCpuOlculemedi') === true || ham.yuk_cpu_olculemedi === true;
   a.bellek = bellekNormalle(alan(r, 'bellek') ?? ham.bellek);
   a.kipDogrulama = kipNormalle(alan(r, 'kipDogrulama'));
+  a.ag = agNormalle(alan(r, 'ag'));
+  a.bellekDetay = bellekDetayNormalle(alan(r, 'bellekDetay'));
   const reloadNedeni = a.nedenler.some((n) => n.startsWith('reload('));
   const kotu = (x: number | null) => x != null && !(x > 0);
   if (reloadNedeni || kotu(a.cpuMsIstek) || kotu(a.kapasiteRps)) {
@@ -400,6 +427,59 @@ export function adimNormalle(x: unknown): NlAdim {
     a.kapasiteRps = null;
   }
   return a;
+}
+const metinYa = (x: unknown) => (typeof x === 'string' && x ? x : null);
+function nicNormalle(x: unknown): NlNic | null {
+  const o = jsonNesne(x);
+  if (!o) return null;
+  const n: NlNic = {
+    rxOrtBps: sayiVeya(o.rxOrtBps), txOrtBps: sayiVeya(o.txOrtBps), rxMaxBps: sayiVeya(o.rxMaxBps), txMaxBps: sayiVeya(o.txMaxBps),
+    hizMbps: sayiVeya(o.hizMbps), kullanimMaxYuzde: sayiVeya(o.kullanimMaxYuzde), arayuz: metinYa(o.arayuz), secim: metinYa(o.secim),
+  };
+  return n.rxOrtBps != null || n.txOrtBps != null ? n : null;
+}
+/** Bant genisligi (gorunum.cjs agGorunumu, camelCase); alan yoksa / olcum yoksa null (eski kosu ya da sunucu). */
+function agNormalle(x: unknown): NlAg | null {
+  const o = jsonNesne(x);
+  if (!o) return null;
+  const a: NlAg = { testAlinanBps: sayiVeya(o.testAlinanBps), testGonderilenBps: sayiVeya(o.testGonderilenBps), hedef: nicNormalle(o.hedef), yuk: nicNormalle(o.yuk) };
+  return a.testAlinanBps != null || a.testGonderilenBps != null || a.hedef || a.yuk ? a : null;
+}
+function noktaNormalle(x: unknown): NlBellekNoktasi | null {
+  const o = jsonNesne(x);
+  if (!o) return null;
+  return { t: sayiVeya(o.t), anonMb: sayiVeya(o.anonMb), shmemMb: sayiVeya(o.shmemMb), fileMb: sayiVeya(o.fileMb), pssMb: sayiVeya(o.pssMb), baglanti: sayiVeya(o.baglanti) };
+}
+/** Bellek ayrisimi (gorunum.cjs bellekDetayGorunumu); son noktasi yoksa null. */
+function bellekDetayNormalle(x: unknown): NlBellekDetay | null {
+  const o = jsonNesne(x);
+  if (!o) return null;
+  const son = noktaNormalle(o.son);
+  if (!son) return null;
+  return {
+    t0: sayiVeya(o.t0), anonOrtMb: sayiVeya(o.anonOrtMb), pssOrtMb: sayiVeya(o.pssOrtMb), baglantiOrt: sayiVeya(o.baglantiOrt),
+    baglantiMax: sayiVeya(o.baglantiMax), isciMax: sayiVeya(o.isciMax), kapananMax: sayiVeya(o.kapananMax), taban: noktaNormalle(o.taban), son,
+    dinlenme: noktaNormalle(o.dinlenme), dinlenmeSn: sayiVeya(o.dinlenmeSn), nedenler: metinDizisi(o.nedenler),
+  };
+}
+function agBostaNormalle(x: unknown): NlSonucOzeti['agBosta'] {
+  const o = jsonNesne(x);
+  if (!o) return null;
+  const taraf = (v: unknown): NlAgBostaTarafi | null => {
+    const t = jsonNesne(v);
+    if (!t) return null;
+    const r = { rxBps: sayiVeya(t.rxBps), txBps: sayiVeya(t.txBps), sn: sayiVeya(t.sn), hizMbps: sayiVeya(t.hizMbps), arayuz: metinYa(t.arayuz), secim: metinYa(t.secim) };
+    return r.rxBps != null || r.txBps != null ? r : null;
+  };
+  const b = { hedef: taraf(o.hedef), yuk: taraf(o.yuk) };
+  return b.hedef || b.yuk ? b : null;
+}
+function bellekSizintiNormalle(x: unknown): NlBellekSizinti | null {
+  const o = jsonNesne(x);
+  if (!o || (o.durum !== 'olasi_sizinti' && o.durum !== 'rss_artisi_anon_degil' && o.durum !== 'belirsiz')) return null;
+  const s: NlBellekSizinti = { durum: o.durum, kaynak: o.kaynak === 'anon' || o.kaynak === 'rss' ? o.kaynak : null, rssUyarisi: metinYa(o.rssUyarisi) };
+  if (o.durum === 'belirsiz') s.neden = metinYa(o.neden);
+  return s;
 }
 /** Bellek: sunucu camelCase (gorunum.cjs) ya da ham.bellek snake_case; hic olcum yoksa null. */
 function bellekNormalle(x: unknown): NlBellek | null {
@@ -479,6 +559,9 @@ export function sonucOzetiNormalle(x: unknown): NlSonucOzeti | null {
     yukDoyduAdim: sayiVeya(alan(o, 'yukDoyduAdim', 'yuk_doydu_adim')) ?? 0,
     konfDegisti: mantikVeya(alan(o, 'konfDegisti', 'konf_degisti')),
     reloadlar: (Array.isArray(o.reloadlar) ? o.reloadlar : []).map(reloadOlayiNormalle).filter((r): r is NlReloadOlayi => r != null),
+    // 2026-11-03 (bilgi): yalniz sunucu verdiyse (eski sunucu yaniti: anahtar yok).
+    ...('agBosta' in o ? { agBosta: agBostaNormalle(o.agBosta) } : {}),
+    ...('bellekSizinti' in o ? { bellekSizinti: bellekSizintiNormalle(o.bellekSizinti) } : {}),
   };
 }
 /** GET /kosular/:id `durdurIsi` ({ awxServerId, awxJobId }; durdur yanitindaki `jobId` de kabul) -> is numarasi yoksa null. */

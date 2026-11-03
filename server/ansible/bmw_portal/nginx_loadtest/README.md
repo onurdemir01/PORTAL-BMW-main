@@ -44,8 +44,8 @@ aşağıda ("Betikler") sayılan Portal farkları eklenmiştir. wrk betikleri (`
 | `files/yuk_k6.js` | Kit kopyası: açık döngü (constant-arrival-rate) k6 betiği, istek başına TEK GET. |
 | `files/wrk_kos.sh` | Portal'a özgü: bir ADIM'ın (bağlantı × tekrar) wrk koşularını sırayla çalıştırır (motor `wrk`); dış sözleşmesi (çıkış kodları, `DUR:`/`HATA:` satırları, sonuç dosyaları, `kos.pid`) kos.sh ile aynı. |
 | `files/yuk_wrk.lua` | Portal'a özgü wrk betiği: ağırlıklı yol seçimi, bağlantı başına bekleme ile ortalama hız tavanı, ilk 429 / 5xx'te iş parçacığını durdurma, tam sayılı özet dosyası. |
-| `files/cpu_kaydedici.sh` | Kit kopyası: hedefte saniyede bir worker CPU örneği + yalnız test UA'lı log satırları (yalnız sunucu hedefte); Portal eki `bellek_*.csv` (worker RSS + MemAvailable, "Bellek ölçümü"). |
-| `files/yuk_cpu_kaydedici.sh` | Portal'a özgü: koşu boyunca **yük makinesinde** (www, dzdo/nginx yok) saniyede bir `/proc/stat` toplam CPU örneği; `sonuc/R<id>/yukcpu_R<id>_<host>.csv` + bitişte `.txt`. |
+| `files/cpu_kaydedici.sh` | Kit kopyası: hedefte saniyede bir worker CPU örneği + yalnız test UA'lı log satırları (yalnız sunucu hedefte); Portal eki `bellek_*.csv` (worker RSS + MemAvailable, "Bellek ölçümü"), `ag_*.csv` / `ag_*.txt` (NIC, "Bant genişliği") ve `bdetay_*.csv` (Anon / Shmem / File / PSS + bağlantı, "Bellek artışı nasıl okunur"). |
+| `files/yuk_cpu_kaydedici.sh` | Portal'a özgü: koşu boyunca **yük makinesinde** (www, dzdo/nginx yok) saniyede bir `/proc/stat` toplam CPU örneği; `sonuc/R<id>/yukcpu_R<id>_<host>.csv` + bitişte `.txt`; 2026-11-03 `ag_R<id>_<host>.csv` / `.txt` (hedefe giden arayüzün NIC sayaçları). |
 | `files/durdur.sh` | Bir koşunun bir sunucuda kalan süreçlerini (pid dosyaları, k6, wrk, koşu dizinindeki araç kopyasından çalışan süreçler, kit ve Portal betikleri) TERM, 10 sn sonra KILL. |
 | `files/arac_hazirla.sh` | Portal'a özgü (araclar kipi, derleme makinesinde www ile): k6 arşivinden yalnız ikiliyi çıkarır, wrk'yi derler, ikisini doğrular (sürüm satırı, kütüphaneler, glibc gereksinimi). Ağa çıkmaz; indirme Play 8'in `get_url` görevlerindedir. |
 
@@ -111,6 +111,76 @@ aynı**; Portal testi `nginx-loadtest-ayna.test.cjs` sabit sha256 listesiyle ve
   boş bellek %10 altına indi (`bellek_bos_az(hedef|yuk,%x)`); nginx RSS adımlar boyunca monoton arttı, ilk-son farkı
   ≥ %20 ve ≥ 50 MB, koşu sonunda geri inmedi (son örnek ≥ son adım ortalamasının %90'ı) → "olası bellek sızıntısı"
   (`nginx_bellek_artisi(...)`). Eski playbook: dosya / kolon yok → "ölçülmedi", hesaplar birebir eskisi.
+
+## Bant genişliği
+
+2026-11-03. Yalnız bilgi: geçerliliği ve kararı değiştirmez. Birim ondalık (10^6): ekranda ≥ 1 Gbps "1,23 Gbps", ≥ 1 Mbps
+"12,4 Mbps", altı "850 kbps".
+
+- **Test trafiği** (yük makinesinin gözünden, ölçüm fazı): `yuk_k6.js` k6'nın `data_received{scenario:olcum}` /
+  `data_sent{scenario:olcum}` sayaçlarını `istemci_<TUR>.json`'un yeni `ag_alinan_bayt` / `ag_gonderilen_bayt`
+  anahtarlarına, ölçüm süresini `ag_sure_sn`'ye yazar (`kodlama`'dan hemen önce; ölçülmezse `null`, asla 0). `wrk_kos.sh`
+  `ag_alinan_bayt` = wrk özetinin `bayt`'ı (wrk'nin `Transfer/sec` satırı bayt / süre), `ag_sure_sn` = `sure_us` / 10^6;
+  wrk gönderilen baytı saymaz (`ag_gonderilen_bayt` `null`). Portal: ortalama bit/sn = bayt × 8 / süre. İstemci CSV'sinin
+  32 kolonu değişmez.
+- **NIC** (iki makine, saniyede bir, `/proc/net/dev` kümülatif sayaç): `ag_R<id>_<host>.csv`, başlık
+  `epoch,arayuz,rx_bayt,tx_bayt` + `ag_R<id>_<host>.txt` (`rol=hedef|yuk`, `secim`, `arayuz`, `hiz_mbps`). Arayüz: hedefte
+  `HEDEF_IP`'nin atalı olduğu (`ip -o -4 addr`; vlan `x@y` → `x`), yük makinesinde `ip route get <HEDEF_IP>` → `dev`.
+  Bulunamazsa ya da IP `lo` üzerindeyse (DSR) lo dışı her arayüz (en çok 32) satır satır yazılır ve `secim=lo_disi_toplam(<neden>)`
+  kaydedilir; `/proc/net/dev` okunamazsa csv yok, `secim=olculemedi(net_dev_okunamadi)`. Sayaç sarması Portal'da: geri
+  giden 32 bit sayaç (+2^32), 2^63 üstü 64 bit sayaç; aksi "sıfırlandı" (o aralık 0 sayılır, özette `sifirlama`).
+  `/sys/class/net/<if>/speed` > 0 ise `hiz_mbps`; Portal yön başına en yüksek / hız = kullanım %, > %70 adım uyarısı
+  `ag_kullanim_yuksek(hedef|yuk,%x)`. `HEDEF_IP` Play 2 / Play 3 kaydedici satırından gelir (`yuk_hedef_ip`).
+- 2026-11-04 (inceleme): "en yüksek" ≥ 5 sn kayan pencereden (ardışık örnek değil). Örnek epoch'u bash 5'te
+  `EPOCHREALTIME` ile zaten kesirliydi; bash < 5'te (RHEL 7/8) artık `date +%s.%N` (aynı tek fork; `%N` yoksa tam saniye):
+  tam saniyede ardışık fark 1 sn sayılıp gerçekte 1,4 sn olabiliyor, tepe ve kullanım % şişiyordu. Kaydedici bitişte ag
+  txt'ye `kaydedici_cpu_ms` (kendi + çocuk süreç CPU'su, `/proc/$$/stat`) ve `kaydedici_sure_sn` ekler: kaydedicinin
+  hedefe maliyeti gerçek koşuda ölçülür (`ozet.ag_kesitler`). Hedef boşta tabanı hedef saatinde kurulur (ilk adımın saat
+  farkı kestirimiyle; kestirim yoksa hedef tabanı verilmez).
+- **Boşta taban**: hedef kaydedicisinin ilk boş örnekleri (ilk adımdan önce, ≥ 5 sn) ayrı gösterilir. Hedef aynı zamanda
+  internet RP ise (ör. GBNGXT34) arayüz toplamı test dışı trafiği de içerir: NIC değeri − boşta taban ≈ test payı; test
+  trafiği satırı yalnız testi sayar.
+- Karışık sürüm: `ag_` öneki hiçbir eski Portal / karsilastir.py desenine uymaz (eski okuyucu yalnız SHA256SUMS özetini
+  doğrular); eski playbook: dosya / JSON anahtarı yok → "ölçülmedi", kolon gizli, analiz birebir eskisi.
+
+Örnek: 2500 istek/sn, ortalama yanıt 6 KB (br) → test trafiği alınan ≈ 2500 × 6 × 1024 × 8 ≈ 123 Mbps, gönderilen
+≈ 2500 × 350 B × 8 ≈ 7 Mbps; 10 Gbps arayüzde kullanım ~%1,2. 1 Gbps arayüzde 5000 istek/sn × 20 KB ≈ 819 Mbps → %82,
+uyarı: ölçülen p95 ağı da içerir.
+
+## Bellek artışı nasıl okunur
+
+2026-11-03. Yalnız bilgi. Hedefte `cpu_kaydedici.sh` her örnekte ayrı dosyaya yazar: `bdetay_R<id>_<host>.csv`, başlık
+`epoch,isci_sayi,kapanan_sayi,anon_kb,shmem_kb,file_kb,pss_kb,master_rss_kb,master_pss_kb,baglanti`:
+
+- worker toplamları `/proc/<pid>/status` `RssAnon` / `RssShmem` / `RssFile` (çekirdek 4.5+; RHEL 7'de satır yok → boş),
+  `/proc/<pid>/smaps_rollup` `Pss` (4.14+; bir worker'da okunamazsa boş: kısmi toplam yazılmaz); master ayrı (`VmRSS`,
+  `Pss`; master root ise `smaps_rollup` www'ye kapalı → boş); `kapanan_sayi` "shutting down" worker; `baglanti` =
+  `ss -Htn state established src <HEDEF_IP>:<HEDEF_PORT>` satırı (`-H` yoksa `-tn` + başlık atlanır; ss yoksa boş).
+  `bellek_*.csv` / `sunucu_*.csv` şeması değişmez; `bdetay_` öneki eski okuyucuya görünmez.
+- **RSS her worker'da paylaşılanı yeniden sayar**: 8 worker aynı 100 MB `ssl_session_cache` / `keys_zone` bölgesine
+  dokunursa RSS toplamı 800 MB görünür. Ana ölçü **PSS** (paylaşılan sayfa, paylaşan süreç sayısına bölünür); PSS yoksa
+  RSS. Anon = sürece özel yığın (istek / bağlantı tamponları, Lua, brotli/gzip çalışma alanı); Shmem = paylaşılan bellek
+  bölgeleri; File = eşlenen dosyalar (ikili, modüller, `open_file_cache` / `sendfile` sayfaları).
+- Portal adım başına üç nokta: **taban** (adım başlamadan hemen önce), **son** (ölçüm penceresi sonu), **dinlenme**
+  (adımlar arası bekleme bitmeden son örnek, ≥ 3 sn). "Olası neden" kuralları ekranda (analiz değil):
+  Anon taban→son ≥ 5 MB artıp dinlenmede artışın ≥ yarısı iniyor ve bağlantı yükte fazla → bağlantı / istek tamponları
+  (yük kaynaklı, normal); Shmem ≥ 2 MB artıp dinlenmede inmiyor (plato) → paylaşılan bellek bölgeleri
+  (`ssl_session_cache`, `limit_req` / `limit_conn`, cache `keys_zone`) ilk kez doluyor, sızıntı değil; File ≥ 2 MB →
+  eşlenen dosyalar / açık dosya önbelleği; `kapanan_sayi` > 0 → reload: eski ve yeni worker aynı anda (RSS çift sayılır).
+  Koşu düzeyi: dinlenme Anon'ları adım adım azalmadan artıyor (toplam ≥ 10 MB ve ≥ %10), her adımda dinlenme ≥ %90 × son,
+  bağlantı ortalaması en çok / en az ≤ 1,5 → "olası sızıntı; aynı koşuyu tekrarlayın". Bugünkü `nginx_bellek_artisi`
+  (RSS kuralı) Anon ölçümü yoksa aynı uyarıyı verir. 2026-11-04: "RSS artışı Anon kaynaklı değil" YALNIZ her adımda
+  dinlenme ölçülüp her dinlenme Anon'u ilk taban + 5 MB'ı aşmıyorsa; aksi "kaynağı belirsiz" (dinlenme yok, taban yok,
+  bağlantı sayısı değişti (1000/2500/5000 rampası), Anon inmedi). Anon ≥ 5 MB artıp dinlenme ölçülmediyse "Belirgin artış
+  yok" DEĞİL "dinlenme ölçülmedi"; taban / dinlenme ile son arasında worker kümesi değiştiyse (reload, yeniden doğuş) o
+  noktayla karşılaştırma yapılmaz. İnternet RP'de (GBNGXT34) bağlantı sayısı üretim bağlantılarını da içerir.
+- Brotli / gzip yüksek seviye (`brotli_comp_level` 9-11, `gzip_comp_level` 9) istek başına geçici Anon ayırır (brotli
+  pencere + hash tabloları yanıt başına MB mertebesi); eşzamanlı sıkıştırılan yanıt sayısıyla artar ve glibc arenaları
+  hemen geri vermeyebilir: dinlenmede kısmen iner. Seviye 4-6 ile aynı koşu Anon artışını karşılaştırmanın yoludur.
+
+Örnek (2 adım): taban Anon 40 MB → son 95 MB → dinlenme 48 MB, bağlantı 4 → 900 → 6: tampon (normal). Shmem 10 → 74 MB
+→ 74 MB: `ssl_session_cache shared:SSL:64m` doluyor (bir kez). Anon dinlenme 48 → 61 → 77 MB, bağlantı ~900 sabit:
+olası sızıntı, aynı koşuyu tekrarlayın.
 
 ## Kip doğrulaması
 

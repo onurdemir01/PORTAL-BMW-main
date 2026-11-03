@@ -147,7 +147,7 @@ test('NA9 (f) wrk_kos.sh: yalniz h1, istemci dosyasinda protokol h1 / protokol_u
   assert.ok(hata > 0 && hata < w.indexOf('"$WRK" -v'), 'PROTOKOL denetimi wrk cagrisindan ONCE');
   assert.ok(w.includes('NUM["http2"] = 0; STR["protokol"] = "h1"; NUM["protokol_uyumsuz"] = 0'));
   assert.match(w, /^KOLONLAR="[^"]*,deneme,protokol,protokol_uyumsuz"$/m);
-  assert.match(w, /^JSON_ANAHTARLARI="[^"]* p95_config protokol protokol_uyumsuz"$/m);
+  assert.match(w, /^JSON_ANAHTARLARI="[^"]* p95_config protokol protokol_uyumsuz ag_alinan_bayt ag_gonderilen_bayt ag_sure_sn"$/m);
 });
 
 const bashVar = spawnSync(BASH, ['-c', 'echo ok'], { encoding: 'utf8' }).stdout === 'ok\n';

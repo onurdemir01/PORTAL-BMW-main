@@ -94,6 +94,8 @@ test('GR3 sonucOzeti: toplam istek, p95 en iyi / en kotu, 429 / 5xx / hata, konf
     cpuOlculemeyenAdim: 3,
     yukDoyduAdim: 0,
     konfDegisti: true,
+    agBosta: null,
+    bellekSizinti: null,
     reloadlar: [
       { t: 10, tOnce: 9, tSon: 12, tur: 'R2_K_ka_identity_100_r2', faz: 'olcum', kesit: 'R2_gbngxt33', workerOnce: 8, workerSonra: 8, kapananEnCok: 0, etkilenenTurlar: ['R2_K_ka_identity_100_r2'] },
       { t: 20, tOnce: 19, tSon: 25, tur: 'R2_K_ka_identity_250_r2', faz: 'olcum', kesit: 'R2_gbngxt33', workerOnce: 8, workerSonra: 16, kapananEnCok: 8, etkilenenTurlar: ['R2_K_ka_identity_250_r2'] },
@@ -120,6 +122,7 @@ test('GR4 bos / eski kosu: adim ve analiz ozeti yok -> null / 0 / [] (cokmez)', 
   const bos = {
     adimSayisi: 0, gecerliAdimSayisi: 0, toplamIstek: null, p95EnIyi: null, p95EnKotu: null, p95Kapsam: null, toplam429: null,
     toplam5xx: null, enYuksekHataOrani: null, hataVar: false, cpuOlculemeyenAdim: 0, yukDoyduAdim: 0, konfDegisti: null, reloadlar: [],
+    agBosta: null, bellekSizinti: null,
   };
   assert.deepEqual(sonucOzeti([], null), bos);
   assert.deepEqual(sonucOzeti(undefined, undefined), bos);

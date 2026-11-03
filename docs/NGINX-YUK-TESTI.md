@@ -969,6 +969,116 @@ Hepsi **bilgi**: geçerlilik, karar ve onay değişmez.
   analizi eski Portal'ınkiyle **aynı** (AN-KS); analiz kilitleri (AN19, AN-H5, AN15, AN20) değişmedi, R2 API
   fikstürüne (RG2) yalnız görünüm alanları `bellek: null` ve `kipDogrulama` eklendi.
 
+### 5.0d Bant genişliği (2026-11-03)
+
+**Bilgi**: geçerlilik, karar ve onay değişmez. Birim ondalık (10^6, `bantMetni`): ≥ 1 Gbps "1,23 Gbps" (iki ondalık),
+≥ 1 Mbps "12,4 Mbps" (bir ondalık), altı "850 kbps" (tam sayı), 0 < x < 500 bps "<1 kbps"; Türkçe virgül.
+
+* **Test trafiği** (yük makinesinin gözünden, ölçüm fazı): yeni `yuk_k6.js` `data_received{scenario:olcum}` /
+  `data_sent{scenario:olcum}` sayaçlarını (yeni `data_sent` eşiği alt metriği özete çıkarır) `istemci_<TUR>.json`'un
+  `ag_alinan_bayt` / `ag_gonderilen_bayt` anahtarlarına, ölçüm süresini `ag_sure_sn`'ye yazar (`protokol_uyumsuz` ile
+  `kodlama` arasında; ölçülmezse `null`). `wrk_kos.sh`: `ag_alinan_bayt` = wrk özetinin `bayt`'ı (wrk'nin
+  `Transfer/sec` satırı = bayt / süre; Lua betiği değişmedi), `ag_sure_sn` = `sure_us` / 10^6, `ag_gonderilen_bayt`
+  `null` (wrk gönderileni saymaz; ekran "ölçülmedi (wrk gönderilen baytı saymaz)"). **İstemci CSV'si 32 kolon aynen**;
+  iki motorun JSON anahtar sırası aynı (K7, bekçi L7 `JSON_ANAHTARLARI`). Okuyucu `istemciAg` (yalnız anahtar varsa),
+  analiz `ham.ag.test_alinan_bps` / `test_gonderilen_bps` = bayt × 8 / süre.
+* **NIC** (iki makine, saniyede bir, `/proc/net/dev` kümülatif): `ag_R<id>_<host>.csv` (`epoch,arayuz,rx_bayt,tx_bayt`)
+  + `ag_R<id>_<host>.txt` (`rol=hedef|yuk`, `secim`, `arayuz`, `hiz_mbps`). Arayüz: hedefte `HEDEF_IP`'nin atalı
+  olduğu (`ip -o -4 addr`; vlan `x@y` → `x`), yük makinesinde `ip route get <HEDEF_IP>` → `dev` (Play 2 / Play 3
+  kaydedici satırları `HEDEF_IP={{ yuk_hedef_ip }}` verir). Bulunamazsa / IP `lo`'da (DSR) lo dışı her arayüz (en çok
+  32) satır satır ve `secim=lo_disi_toplam(<neden>)`; `/proc/net/dev` okunamazsa csv yok, `secim=olculemedi(...)`.
+  Okuyucu (`agKesitler`) satır tutmaz: arayüz başına son değer + örnek anına kümülatif TOPLAM; sayaç geri giderse
+  `fark + 2^32 < 2^31` ise 32 bit sarma, önceki ≥ 2^63 ise 64 bit sarma, aksi "sıfırlandı" (o aralık 0, özette
+  `sifirlama`). Bozuk / taşan / normal dosya olmayan dosya koşuyu `OKUNAMADI` yapmaz (`sorun`).
+* **Analiz** (`ham.ag`, yalnız ölçüm varsa): hedef NIC CPU penceresinde [w0, w1] (log saati; kesit anahtarı
+  `sunucu_*` ile aynı), yük NIC yük CPU penceresinde: gelen / giden ortalama (uç farkı / süre) ve en yüksek (ardışık
+  örnek); `hiz_mbps` > 0 ise kullanım % = yön başına en yüksek / hız; **> %70** adım uyarısı
+  `ag_kullanim_yuksek(hedef|yuk,%x)` (bilgi; "ölçülen yanıt süresi ağ sınırını da içerebilir"). Özet `ag_kesitler`
+  (rol, arayüz, seçim, hız, sarma, sıfırlama) ve `ag_bosta` (ilk adımdan ≥ 2 sn önceye kadar, ≥ 5 sn: boşta taban).
+  Serbest hedefte hedef NIC yok sayılır.
+* **GBNGXT34 gibi internet RP hedefleri**: arayüz sayacı makinenin TÜM trafiğini sayar; NIC − boşta taban ≈ test payı.
+  Ekran ipucu bunu söyler (`NIC_IPUCU`); "Test trafiği" satırı yalnız testi sayar.
+* **Ekran**: teknik tabloda "Test alınan" / "Test gönderilen" kolonları, "Test trafiği (en yüksek)" ve
+  "Boşta NIC (hedef)" kutuları, "Test trafiği (alınan)" grafiği (Mbps / hız; tekrar ortalaması çizgi), satır
+  ayrıntısında "Bant genişliği" (test trafiği; hedef ve yük makinesi NIC gelen / giden ort. ve en yüksek, kullanım;
+  > %70 uyarı renginde). Eski koşu: alan yok → kolon / kutu / grafik / blok yok.
+
+Örnek: 2500 istek/sn × 6 KB ortalama yanıt (br) ≈ 2500 × 6144 × 8 ≈ **123 Mbps** alınan, 2500 × ~350 B istek ≈
+**7 Mbps** gönderilen; 10 Gbps arayüzde ~%1,2. 1 Gbps arayüzde 5000 istek/sn × 20 KB ≈ 819 Mbps → %82: uyarı.
+
+### 5.0e Bellek artışı nasıl okunur (2026-11-03)
+
+**Bilgi.** Soru: "her testte bellek artışının olası sebebini nasıl anlarız?"
+
+* **Kayıt** (hedef, `cpu_kaydedici.sh`, ayrı dosya `bdetay_R<id>_<host>.csv`:
+  `epoch,isci_sayi,kapanan_sayi,anon_kb,shmem_kb,file_kb,pss_kb,master_rss_kb,master_pss_kb,baglanti`): worker
+  toplamları `/proc/<pid>/status` `RssAnon` / `RssShmem` / `RssFile` (RHEL 7 çekirdeğinde satır yok → boş),
+  `smaps_rollup` `Pss` (bir worker'da okunamazsa boş; kısmi toplam yazılmaz), master ayrı (root master'ın `Pss`'i www'ye
+  kapalı → boş), "shutting down" worker sayısı, `ss -Htn state established src <HEDEF_IP>:443` (ss `-H` bilmiyorsa
+  `-tn` + başlık atlanır; ss yoksa boş). `bellek_*.csv` / `sunucu_*.csv` şeması değişmez.
+* **Ana ölçü PSS**: RSS toplamı paylaşılan sayfaları her worker'da yeniden sayar (8 worker × 100 MB `ssl_session_cache`
+  = 800 MB görünür); PSS paylaşılanı süreç sayısına böler. Anon = sürece özel (istek / bağlantı tamponları, sıkıştırma
+  çalışma alanı), Shmem = paylaşılan bölgeler, File = eşlenen dosyalar.
+* **Analiz** (`ham.bellek_detay`, yalnız kayıt varsa): pencere ortalamaları (Anon, PSS, bağlantı) + üç nokta:
+  **taban** (adım başlamadan hemen önce), **son** (ölçüm penceresi sonu), **dinlenme** (adımlar arası bekleme bitmeden
+  son örnek, ≥ 3 sn; `dinlenme_sn`). Hedef saati − yük makinesi saati log penceresinden kestirilir (|fark| > 60 sn:
+  taban / dinlenme yok).
+* **Olası neden** (görünüm katmanı, `gorunum.cjs` `bellekNedenleri`; analiz ve DB değişmez, eşikler
+  `BELLEK_NEDEN_ESIKLERI`): `tampon` Anon taban→son ≥ 5 MB ve dinlenmede artışın ≥ yarısı iner, bağlantı yükte fazla
+  → "bağlantı / istek tamponları (yük kaynaklı, normal)"; `anon_kalici` Anon arttı, dinlenmede inmedi; `paylasilan`
+  Shmem ≥ 2 MB artıp dinlenmede < 1 MB iner (plato) → "ssl_session_cache, limit_req / limit_conn, cache keys_zone ilk
+  kez doluyor; sızıntı değil"; `dosya` File ≥ 2 MB → "eşlenen dosyalar / açık dosya önbelleği"; `reload` "shutting
+  down" > 0 → "eski ve yeni worker aynı anda"; `artis_yok`.
+* **Koşu düzeyi** (`bellekSizinti`, `sonucOzeti.bellekSizinti`): dinlenme Anon'ları zaman sırasıyla azalmadan artar,
+  toplam ≥ 10 MB ve ≥ %10, her adımda dinlenme ≥ %90 × son, bağlantı ortalaması en çok / en az ≤ 1,5 →
+  `olasi_sizinti` (kaynak `anon`): "Olası sızıntı … Aynı koşuyu tekrarlayın." Analizin `nginx_bellek_artisi` (RSS)
+  uyarısı ile birleşik: Anon ölçümü yoksa aynı durum (kaynak `rss`); Anon ölçülüp kural tutmuyorsa
+  `rss_artisi_anon_degil` ("RSS artışı Anon kaynaklı değil; sızıntı olasılığı düşük").
+* **Brotli / gzip**: yüksek seviye (`brotli_comp_level` 9-11, `gzip_comp_level` 9) yanıt başına geçici Anon ayırır
+  (brotli pencere + hash tabloları MB mertebesi); eşzamanlı sıkıştırılan yanıt sayısıyla artar, glibc arenaları hemen
+  geri vermeyebilir → dinlenmede kısmen iner (`tampon` / `anon_kalici`). Aynı koşuyu seviye 4-6 ile tekrarlamak ayırt
+  eder.
+* **Ekran**: satır ayrıntısında "Bellek ayrışımı" mini tablosu (PSS, Anon, Shmem, File, Bağlantı × taban / son /
+  dinlenme) + "Olası neden" cümleleri; Ayrıntı bölümünde koşu düzeyi sızıntı kutusu. Eski koşu: blok yok.
+
+Örnek: taban Anon 40 MB → son 95 MB → dinlenme 48 MB, bağlantı 4 → 900 → 6: `tampon`. Shmem 10 → 74 → 74 MB (ilk
+adım): `paylasilan` (`ssl_session_cache shared:SSL:64m` bir kez doluyor). Dinlenme Anon 48 → 61 → 77 MB, bağlantı
+~900 sabit: `olasi_sizinti`.
+
+### 5.0f İnceleme düzeltmeleri (2026-11-04)
+
+İki düşmanca incelemenin (B1-B9 + 33 yeşil mutasyon) kapanışı. Analiz çıktısı eski koşuda **bayt bayt aynı** (AB5);
+değişen yalnız yeni (bilgi) alanlar.
+
+* **B1** `bellekSizinti`: `rss_artisi_anon_degil` yalnız her adımda dinlenme ölçülüp her dinlenme Anon'u ≤ ilk taban +
+  `ANON_MB` (5 MB) ise. Aksi RSS uyarısı varken yeni durum `belirsiz` + `neden` (`dinlenme_yok` | `taban_yok` |
+  `baglanti_degisti` | `anon_inmedi`); ekran (uyarı tonu): "RSS adımlar boyunca arttı; kaynağı belirsiz (…): sızıntı ne
+  doğrulandı ne dışlandı". 1000/2500/5000 rampasında bağlantı ×5 değiştiği için Anon kuralı karar veremez →
+  `baglanti_degisti`.
+* **B2** `bellekNedenleri`: Anon ≥ 5 MB arttı ama dinlenme yok → `anon_artti_dinlenme_yok` ("tampon mu kalıcı mı
+  ayrılamadı"); `artis_yok` yalnız Anon artışı < 5 MB.
+* **B3** NIC "en yüksek" ≥ 5 sn kayan pencereden (`AG_TEPE_SN`; pencere daha kısaysa ortalama). Kaydedicilerde bash < 5
+  için örnek epoch'u `date +%s.%N` (bash 5 `EPOCHREALTIME` ile zaten kesirliydi; aynı tek fork).
+* **B4** (ölçülmedi, ölçüm eklendi): kaydedici bitişte ag txt'ye `kaydedici_cpu_ms` / `kaydedici_sure_sn` yazar →
+  `ozet.ag_kesitler[].kaydedici_cpu_ms`. Örnek sıklığı DEĞİŞMEDİ (karar: önce gerçek koşuda ölç; ss / `smaps_rollup`
+  5 sn'ye çekmek taban / dinlenme noktalarını boşaltırdı).
+* **B5** `ham.bellek_detay.taban_isci_degisti` / `dinlenme_isci_degisti` (true / false / null): o nokta ile son arasında
+  `sunucu_*` örneklerinde pid kümesi değişti ya da "shutting down" worker var (ya da noktanın kendi `kapanan_sayi` > 0).
+  Taban değiştiyse yalnız `isci_degisti`; dinlenme değiştiyse dinlenme yok sayılır (`isci_degisti` + kalan kurallar).
+* **B6** boşta NIC tabanı: hedef kesiti hedef saatinde (ilk adımın saat farkı kestirimi `ofs`; `null` → hedef tabanı
+  yok), yük kesiti yük saatinde. k6 setup ön kontrol trafiği pencerede kalabilir (MAKUL; birkaç istek).
+* **B7** (karar: kabul) 32 bit sarma sezgisi: sayaç sıfırlanması ancak önceki değer 2^31-2^32 arasındayken ve yeni değer
+  < önceki − 2^31 iken sarma sanılır; arayüz koşu sırasında yeniden kurulmadıkça olmaz, özet `sarma` / `sifirlama`
+  sayaçlarını gösterir.
+* **B8** bellek ayrışımı "Bağlantı" satırı ipucu (`BAGLANTI_IPUCU`): internet RP'de üretim bağlantıları da sayılır.
+* **B9** `bantMetni` birimi yuvarlamadan sonra seçer: 999.600 bps "1,0 Mbps", 999,96 Mbps "1,00 Gbps".
+
+**Karışık sürüm (AB5, 125f5ea = eski Portal):** yeni playbook + eski Portal: `ag_` / `bdetay_` hiçbir eski desene
+uymaz (SHA256SUMS'ta listeli: yalnız özet), JSON `ag_*` anahtarları okunmaz → analiz dosyasız dizinle aynı. Eski
+playbook + yeni Portal: dosya / anahtar yok → "ölçülmedi"; yeni Portal'ın analizi eski Portal'ınkiyle **bayt bayt aynı**
+(JSON.stringify karşılaştırması). R2 API fikstürüne (RG2) yalnız görünüm alanları `ag: null`, `bellekDetay: null`,
+`agBosta: null`, `bellekSizinti: null` eklendi.
+
 ### 5.1 Serbest hedef ve wrk analizi
 
 Analiz koşunun türünü ve motorunu **koşu satırından** alır (set_stats yankısından değil).

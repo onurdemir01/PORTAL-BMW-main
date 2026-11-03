@@ -1212,7 +1212,7 @@ function yonlendiriciKur() {
           onKontrolYasSn: k.islem === 'on_kontrol' && k.yas_sn != null ? Number(k.yas_sn) : null,
           gecersizNedenleri: jsonOku(k.gecersiz_nedenleri) || [],
           sonucOzet,
-          sonucOzeti: gorunum.sonucOzeti(adimSatirlari, analizOzeti),
+          sonucOzeti: gorunum.sonucOzeti(adimSatirlari, analizOzeti, sonucOzet && sonucOzet.portal_analiz ? sonucOzet.portal_analiz.uyarilar : []),
           swDizin: k.sw_dizin ?? null,
           iptalEden: k.iptal_eden ?? null,
           finalizedAt: iso(k.finalized_at),

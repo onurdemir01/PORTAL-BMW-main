@@ -64,7 +64,9 @@
      "R2_K_ka_identity_250_r2"
     ]
    }
-  ]
+  ],
+  "agBosta": null,
+  "bellekSizinti": null
  },
  "adimlar": [
   {
@@ -165,7 +167,9 @@
     },
     "uyarilar": [],
     "durum": "tamam"
-   }
+   },
+   "ag": null,
+   "bellekDetay": null
   },
   {
    "id": 2,
@@ -285,7 +289,9 @@
     },
     "uyarilar": [],
     "durum": "tamam"
-   }
+   },
+   "ag": null,
+   "bellekDetay": null
   },
   {
    "id": 3,
@@ -385,7 +391,9 @@
     },
     "uyarilar": [],
     "durum": "tamam"
-   }
+   },
+   "ag": null,
+   "bellekDetay": null
   },
   {
    "id": 4,
@@ -505,7 +513,9 @@
     },
     "uyarilar": [],
     "durum": "tamam"
-   }
+   },
+   "ag": null,
+   "bellekDetay": null
   },
   {
    "id": 5,
@@ -605,7 +615,9 @@
     },
     "uyarilar": [],
     "durum": "tamam"
-   }
+   },
+   "ag": null,
+   "bellekDetay": null
   },
   {
    "id": 6,
@@ -705,7 +717,9 @@
     },
     "uyarilar": [],
     "durum": "tamam"
-   }
+   },
+   "ag": null,
+   "bellekDetay": null
   }
  ]
 }

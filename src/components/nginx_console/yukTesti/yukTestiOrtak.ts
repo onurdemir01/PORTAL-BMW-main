@@ -640,3 +640,88 @@ export function enYuksekNginxBellek(adimlar: NlAdim[]): { mb: number; tur: strin
   }
   return en;
 }
+
+// ── 2026-11-03 gosterim: bant genisligi ve bellek ayrisimi (YALNIZ BILGI) ──────────────────
+const BIR_ONDALIK = new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+/** Bit/sn -> ondalik (10^6) birim: >= 1 Gbps "1,23 Gbps", >= 1 Mbps "12,4 Mbps", alti "850 kbps"; 0 < x < 500 bps "<1 kbps"; olculmedi '—'.
+ *  2026-11-04 (inceleme B9): birim YUVARLAMADAN SONRA secilir (999.600 bps "1,0 Mbps", 999,96 Mbps "1,00 Gbps"; "1.000 kbps" yok). */
+export function bantMetni(bps: number | null | undefined): string {
+  if (bps == null || !Number.isFinite(bps) || bps < 0) return '—';
+  if (bps > 0 && bps < 500) return '<1 kbps';
+  const k = Math.round(bps / 1e3);
+  if (k < 1000) return `${fmtNumber(k)} kbps`;
+  const m = Math.round(bps / 1e5) / 10;
+  if (m < 1000) return `${BIR_ONDALIK.format(m)} Mbps`;
+  return `${IKI_ONDALIK.format(bps / 1e9)} Gbps`;
+}
+/** Bant genisligi kolonu / kutusu yalniz olculmus adim varsa (eski kosu: kolon gizli, tablo BIREBIR eskisi). */
+export const agKolonuVar = (adimlar: NlAdim[]) => adimlar.some((a) => a.ag != null);
+/** Bellek ayrisimi blogu yalniz olculmus adim varsa. */
+export const bellekDetayVar = (adimlar: NlAdim[]) => adimlar.some((a) => a.bellekDetay != null);
+/** Arayuz kullanim uyari esigi (analiz.cjs AG_KULLANIM_ESIK ile ayni). */
+export const AG_KULLANIM_ESIK = 70;
+/** Test trafigi ipucu (tablo / grafik). */
+export const TEST_TRAFIGI_IPUCU = 'Yük makinesinin gözünden ölçüm fazının ortalaması: alınan (yanıtlar) / gönderilen (istekler); bayt × 8 ÷ süre. wrk gönderileni saymaz.';
+/** NIC ipucu: hedef internet RP ise arayuz toplami test disi trafigi icerir. */
+export const NIC_IPUCU = 'Arayüz sayacı (/proc/net/dev) bu makinenin TÜM trafiğini sayar: hedef aynı zamanda internet RP ise (ör. GBNGXT34) test dışı trafik de içerir; boşta taban (ilk adımdan önce) ile karşılaştırın.';
+/** 2026-11-04 (inceleme B8): baglanti satiri ipucu; internet RP'de test disi baglantilar da sayilir. */
+export const BAGLANTI_IPUCU = 'hedef IP:443 ESTABLISHED bağlantı sayısı. Hedef aynı zamanda internet RP ise (ör. GBNGXT34) üretim bağlantıları da sayılır: sızıntı kuralının “bağlantı sabit” koşulu etkilenebilir.';
+/** Kosunun en yuksek test trafigi (alinan, bit/sn) ve hangi adimda; olcum yoksa null. */
+export function enYuksekTestTrafigi(adimlar: NlAdim[]): { bps: number; tur: string } | null {
+  let en: { bps: number; tur: string } | null = null;
+  for (const a of adimlar) {
+    const v = a.ag?.testAlinanBps ?? null;
+    if (v != null && Number.isFinite(v) && (!en || v > en.bps)) en = { bps: v, tur: a.tur };
+  }
+  return en;
+}
+/** NIC secim kodu (ag_*.txt secim=) -> kisa Turkce aciklama. */
+export function nicSecimMetni(secim: string | null | undefined): string {
+  if (!secim) return 'arayüz bilinmiyor';
+  if (secim === 'hedef_ip') return 'hedef IP’nin arayüzü';
+  if (secim === 'ip_route') return 'hedefe giden yolun arayüzü';
+  const m = /^lo_disi_toplam\(([a-z_]+)\)$/.exec(secim);
+  if (m) {
+    const neden: Record<string, string> = {
+      hedef_ip_yok: 'hedef IP verilmedi', ip_komutu_yok: 'ip komutu yok', arayuz_bulunamadi: 'arayüz bulunamadı',
+      hedef_ip_lo_uzerinde: 'hedef IP lo üzerinde (DSR)', arayuz_net_dev_de_yok: 'arayüz sayaçta yok',
+    };
+    return `lo dışı tüm arayüzlerin toplamı (${neden[m[1]] ?? m[1]}); test dışı trafik de içerir`;
+  }
+  return secim;
+}
+/** Bellek ayrisimi neden kodu -> cumle (gorunum.cjs bellekNedenleri). */
+export const BELLEK_NEDEN_METNI: Record<string, string> = {
+  tampon: 'Bağlantı / istek tamponları (yük kaynaklı, normal): Anon yükte arttı, dinlenmede geri indi.',
+  anon_kalici: 'Anon yükte arttı ama dinlenmede inmedi; tek başına sızıntı değil, adımlar boyunca sürerse koşu uyarısına bakın.',
+  paylasilan: 'Paylaşılan bellek bölgeleri (ssl_session_cache, limit_req / limit_conn, cache keys_zone) ilk kez doluyor; plato, sızıntı değil.',
+  dosya: 'Eşlenen dosyalar / açık dosya önbelleği (File) arttı.',
+  reload: 'Reload: eski ve yeni worker aynı anda (shutting down); RSS çift sayılır.',
+  artis_yok: 'Belirgin artış yok.',
+  anon_artti_dinlenme_yok: 'Anon yükte arttı; dinlenme ölçülmedi (adımlar arası boşluk kısa ya da kayıt erken durdu): tampon mu kalıcı mı ayrılamadı.',
+  isci_degisti: 'Worker süreçleri taban / dinlenme ile ölçüm sonu arasında değişti (reload ya da yeniden doğuş): o noktayla karşılaştırma yapılmadı.',
+};
+/** bellekSizinti 'belirsiz' nedeni -> cumle parcasi (gorunum.cjs). */
+const SIZINTI_BELIRSIZ_NEDENI: Record<string, string> = {
+  dinlenme_yok: 'bir adımda dinlenme ölçülmedi',
+  taban_yok: 'ilk adımın tabanı ölçülmedi',
+  baglanti_degisti: 'bağlantı sayısı adımlar arasında değişti (rampa)',
+  anon_inmedi: 'Anon dinlenmede tabana inmedi ama sürekli artış da yok',
+};
+/** Kosu duzeyi sizinti metni (gorunum.cjs bellekSizinti); yoksa null. */
+export function bellekSizintiMetni(s: { durum: string; kaynak: string | null; neden?: string | null } | null | undefined): { ton: 'uyari' | 'bilgi'; metin: string } | null {
+  if (!s) return null;
+  if (s.durum === 'olasi_sizinti') {
+    return { ton: 'uyari', metin: s.kaynak === 'anon'
+      ? 'Olası sızıntı: worker Anon belleği adımlar boyunca sürekli arttı, bağlantı sayısı sabitken dinlenmede inmedi. Aynı koşuyu tekrarlayın.'
+      : 'Olası sızıntı: nginx RSS adımlar boyunca arttı ve geri inmedi (Anon ölçümü yok: paylaşılan / dosya ayrımı yapılamadı). Aynı koşuyu tekrarlayın.' };
+  }
+  if (s.durum === 'rss_artisi_anon_degil') return { ton: 'bilgi', metin: 'RSS artışı Anon kaynaklı değil (paylaşılan bölge / eşlenen dosya); dinlenmede Anon iniyor: sızıntı olasılığı düşük.' };
+  if (s.durum === 'belirsiz') {
+    const n = (s.neden && SIZINTI_BELIRSIZ_NEDENI[s.neden]) || 'Anon kuralı değerlendirilemedi';
+    return { ton: 'uyari', metin: `RSS adımlar boyunca arttı; kaynağı belirsiz (${n}): sızıntı ne doğrulandı ne dışlandı. Aynı koşuyu sabit bağlantıyla tekrarlayın.` };
+  }
+  return null;
+}
+/** Ana bellek olcusu: PSS (paylasilani bolustur), yoksa RSS bilesenleri toplami. */
+export const BELLEK_PSS_IPUCU = 'RSS toplamı paylaşılan sayfaları her worker’da yeniden sayar (8 worker × 100 MB paylaşılan = 800 MB görünür); PSS paylaşılanı süreç sayısına böler: ana ölçü PSS (yoksa RSS).';

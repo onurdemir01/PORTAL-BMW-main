@@ -142,7 +142,9 @@ import {
   KAPASITE_IPUCU, OKUNAMADI_ACIKLAMASI, SERBEST_CIP_IPUCU, SERBEST_UYARISI, SERBEST_VHOST_YARDIMI, VHOST_LISTEDE_YOK_NOTU, WRK_CIP_IPUCU, WRK_UYARISI,
   cpuMsMetni, hostCpuIpucu, onKontrolDegerlendir, turCumlesi, turEtiketi,
 } from '../yukTesti/yukTestiOrtak';
-import { adimNormalle, kosuNormalle, onKontrolNormalle } from '@/api/nginxLoadtestApi';
+import { adimNormalle, kosuNormalle, onKontrolNormalle, sonucOzetiNormalle } from '@/api/nginxLoadtestApi';
+import { BAGLANTI_IPUCU, BELLEK_NEDEN_METNI, NIC_IPUCU, TEST_TRAFIGI_IPUCU, bantMetni, bellekSizintiMetni, nicSecimMetni } from '../yukTesti/yukTestiOrtak';
+import { uyariAcikla } from '../yukTesti/nedenler';
 import { ALAN_ACIKLAMASI } from '../yukTesti/hazirAyarlar';
 
 function ayrinti(o: Partial<NlKosuAyrinti> = {}): NlKosuAyrinti {
@@ -1464,5 +1466,156 @@ describe('Yük Testi — gösterim: tekrar, CPU-ms, bellek, kip doğrulaması (Y
     expect(within(blok2).getByRole('list', { name: 'R17_K_ka_br_180_r1 kip uyarıları' }).textContent).toContain('(kip_ka_yeni_baglanti_%35)');
     fireEvent.click(within(tablo).getByRole('button', { name: 'R17_K_ka_br_270_r1 ayrıntısı' }));
     expect(screen.queryByRole('group', { name: 'R17_K_ka_br_270_r1 kip doğrulaması' })).toBeNull();
+  });
+});
+
+// 2026-11-03 bant genisligi ve bellek ayrisimi (bilgi):
+//   YT64 bantMetni ondalik birim (Gbps iki, Mbps bir ondalik, kbps tam sayi; Turkce virgul); nicSecimMetni
+//   YT65 olculmus kosu: "Test alınan / gönderilen" kolonlari, "Test trafiği (en yüksek)" ve "Boşta NIC (hedef)" kutulari,
+//        test trafigi grafigi; ayrintida iki makine NIC ort. / en yuksek + kullanim (> %70 uyari rengi), bellek ayrisimi
+//        mini tablosu + olasi neden cumlesi; kosu duzeyi olasi sizinti kutusu
+//   YT66 eski kosu: kolon, kutu, grafik, bant / bellek bloklari YOK (adimNormalle ag / bellekDetay null)
+describe('Yük Testi — bant genişliği ve bellek ayrışımı (YT64–YT66)', () => {
+  const adim = (o: Record<string, unknown>) => adimNormalle({ senaryo: 'K', kip: 'ka', ae: 'br', gecerlilik: 'GECERLI', gercek_rps: 90, rps_sunucu: 90, p95: 10, ...o });
+  const nic = (o: Record<string, unknown> = {}) => ({ rxOrtBps: 8e6, txOrtBps: 123.4e6, rxMaxBps: 9e6, txMaxBps: 130e6, hizMbps: 1000, kullanimMaxYuzde: 13, arayuz: 'bond0', secim: 'hedef_ip', ...o });
+  const nokta = (anonMb: number, shmemMb: number, baglanti: number) => ({ t: 1, anonMb, shmemMb, fileMb: 20, pssMb: anonMb + shmemMb / 8, baglanti });
+  const bd = (o: Record<string, unknown> = {}) => ({
+    t0: 1, anonOrtMb: 90, pssOrtMb: 99, baglantiOrt: 900, baglantiMax: 950, isciMax: 8, kapananMax: 0,
+    taban: nokta(40, 10, 4), son: nokta(95, 74, 900), dinlenme: nokta(48, 74, 6), dinlenmeSn: 19, nedenler: ['tampon', 'paylasilan'], ...o,
+  });
+
+  it('YT64 bantMetni: 1,23 Gbps / 12,4 Mbps / 850 kbps / <1 kbps / —; NIC secim metni', () => {
+    expect([bantMetni(1.234e9), bantMetni(12.44e6), bantMetni(1e6), bantMetni(850e3), bantMetni(999.4e3), bantMetni(120), bantMetni(0), bantMetni(null), bantMetni(-1)])
+      .toEqual(['1,23 Gbps', '12,4 Mbps', '1,0 Mbps', '850 kbps', '999 kbps', '<1 kbps', '0 kbps', '—', '—']);
+    expect(nicSecimMetni('hedef_ip')).toBe('hedef IP’nin arayüzü');
+    expect(nicSecimMetni('lo_disi_toplam(hedef_ip_lo_uzerinde)')).toBe('lo dışı tüm arayüzlerin toplamı (hedef IP lo üzerinde (DSR)); test dışı trafik de içerir');
+    expect(nicSecimMetni(null)).toBe('arayüz bilinmiyor');
+  });
+
+  it('YT65 ölçülmüş koşu: kolonlar, kutular, grafik, NIC ve bellek ayrışımı, sızıntı kutusu', async () => {
+    const sonucOzeti = sonucOzetiNormalle({
+      adimSayisi: 2, gecerliAdimSayisi: 2, toplamIstek: 100, reloadlar: [],
+      agBosta: { hedef: { rxBps: 850e3, txBps: 2.5e6, sn: 58, hizMbps: 1000, arayuz: 'bond0', secim: 'hedef_ip' }, yuk: null },
+      bellekSizinti: { durum: 'olasi_sizinti', kaynak: 'anon', rssUyarisi: null },
+    });
+    kosuYukle({ durum: 'DONE', gecerlilik: 'GECERLI', finishedAt: '2026-11-03T08:40:00Z', sonucOzeti }, [
+      adim({ tur: 'R17_K_ka_br_90_r1', hiz: 90, ham: { uyarilar: [] }, ag: { testAlinanBps: 12.44e6, testGonderilenBps: 850e3, hedef: nic(), yuk: nic({ kullanimMaxYuzde: 82.4, hizMbps: 100, secim: 'ip_route', arayuz: 'eth0' }) }, bellekDetay: bd() }),
+      adim({ tur: 'R17_K_ka_br_180_r1', hiz: 180, ham: { uyarilar: [] }, ag: { testAlinanBps: 1.234e9, testGonderilenBps: null, hedef: null, yuk: null }, bellekDetay: null }),
+    ]);
+    render(<KosuAyrinti kosuId={17} isAdmin={false} onGeri={vi.fn()} />);
+    await ayrintiAc();
+    const tablo = await screen.findByRole('table', { name: 'Adım sonuçları' });
+    expect(within(tablo).getByText('Test alınan').getAttribute('title')).toBe(TEST_TRAFIGI_IPUCU);
+    expect(within(tablo).getByText('Test gönderilen')).toBeTruthy();
+    expect(within(tablo).getAllByTestId('ag-alinan').map((e) => e.textContent)).toEqual(['12,4 Mbps', '1,23 Gbps']);
+    expect(within(tablo).getAllByTestId('ag-gonderilen').map((e) => e.textContent)).toEqual(['850 kbps', '—']);
+    expect(within(tablo).getAllByTestId('ag-gonderilen')[1].getAttribute('title')).toBe('ölçülmedi (wrk gönderilen baytı saymaz)');
+    const kutu = screen.getAllByText('Test trafiği (en yüksek)').find((e) => e.tagName === 'DT');
+    expect(kutu?.parentElement?.textContent).toContain('1,23 Gbps');
+    expect(kutu?.parentElement?.textContent).toContain('180/sn · 1. tekrar');
+    const bos = screen.getAllByText('Boşta NIC (hedef)').find((e) => e.tagName === 'DT');
+    expect(bos?.parentElement?.textContent).toContain('850 kbps / 2,5 Mbps');
+    expect(screen.getByText('850 kbps / 2,5 Mbps').getAttribute('title')).toBe(NIC_IPUCU);
+    expect(screen.getByRole('img', { name: /Test trafiği \(alınan\): 90 istek\/sn 12,4 Mbps/ })).toBeTruthy();
+    expect(screen.getByText(/^Olası sızıntı: worker Anon belleği adımlar boyunca sürekli arttı/)).toBeTruthy();
+    fireEvent.click(within(tablo).getByRole('button', { name: 'R17_K_ka_br_90_r1 ayrıntısı' }));
+    const ag = screen.getByRole('group', { name: 'R17_K_ka_br_90_r1 bant genişliği' });
+    expect(within(ag).getByText('Hedef NIC gelen / giden (ort.)').parentElement?.textContent).toContain('8,0 Mbps / 123,4 Mbps');
+    const yukEnCok = within(ag).getByText('Yük makinesi NIC en yüksek · kullanım').parentElement as HTMLElement;
+    expect(yukEnCok.textContent).toContain('9,0 Mbps / 130,0 Mbps · %82,4 (100,0 Mbps arayüz)');
+    expect(within(yukEnCok).getByText(/%82,4/).getAttribute('style')).toContain('status-warning-text');
+    const bel = screen.getByRole('group', { name: 'R17_K_ka_br_90_r1 bellek ayrışımı' });
+    const satir = within(bel).getByText('Anon').closest('tr') as HTMLElement;
+    expect(within(satir).getAllByRole('cell').map((c) => c.textContent)).toEqual(['40 MB', '95 MB', '48 MB']);
+    expect(within(within(bel).getByText('Bağlantı').closest('tr') as HTMLElement).getAllByRole('cell').map((c) => c.textContent)).toEqual(['4', '900', '6']);
+    expect(within(bel).getByText(/dinlenme \(\+19 sn\)/)).toBeTruthy();
+    const nedenler = within(bel).getByRole('list', { name: 'R17_K_ka_br_90_r1 olası bellek nedenleri' });
+    expect(nedenler.textContent).toContain(BELLEK_NEDEN_METNI.tampon);
+    expect(nedenler.textContent).toContain(BELLEK_NEDEN_METNI.paylasilan);
+    // Olcumu olmayan adim: bellek ayrisimi blogu yok, NIC "ölçülmedi".
+    fireEvent.click(within(tablo).getByRole('button', { name: 'R17_K_ka_br_180_r1 ayrıntısı' }));
+    expect(screen.queryByRole('group', { name: 'R17_K_ka_br_180_r1 bellek ayrışımı' })).toBeNull();
+    expect(within(screen.getByRole('group', { name: 'R17_K_ka_br_180_r1 bant genişliği' })).getByText('Hedef NIC gelen / giden (ort.)').parentElement?.textContent).toContain('ölçülmedi');
+  });
+
+  it('YT66 eski koşu: bant / bellek ayrışımı kolonu, kutusu, grafiği ve blokları YOK', async () => {
+    const eski = adim({ tur: 'R17_K_ka_br_90_r1', hiz: 90, ham: { uyarilar: [] } });
+    expect([eski.ag, eski.bellekDetay]).toEqual([null, null]);
+    expect(sonucOzetiNormalle({ adimSayisi: 1 })).not.toHaveProperty('agBosta');
+    kosuYukle({ durum: 'DONE', gecerlilik: 'GECERLI', finishedAt: '2026-10-27T08:40:00Z' }, [eski]);
+    render(<KosuAyrinti kosuId={17} isAdmin={false} onGeri={vi.fn()} />);
+    await ayrintiAc();
+    const tablo = await screen.findByRole('table', { name: 'Adım sonuçları' });
+    expect(within(tablo).queryByText('Test alınan')).toBeNull();
+    expect(screen.queryAllByText('Test trafiği (en yüksek)')).toHaveLength(0);
+    expect(screen.queryAllByText('Boşta NIC (hedef)')).toHaveLength(0);
+    expect(screen.queryByRole('img', { name: /Test trafiği/ })).toBeNull();
+    fireEvent.click(within(tablo).getByRole('button', { name: 'R17_K_ka_br_90_r1 ayrıntısı' }));
+    expect(screen.queryByRole('group', { name: /bant genişliği|bellek ayrışımı/ })).toBeNull();
+  });
+});
+
+// 2026-11-04 inceleme bulgulari (B1, B2, B5, B8, B9) ve mutasyon kor noktalari (U01, U12, U13, U16, U20-U25):
+//   YT67 bantMetni birim sinirlari yuvarlamadan sonra; sizinti metinleri (belirsiz nedenleri, rss_artisi_anon_degil);
+//        yeni neden cumleleri; normalleyiciler (hepsi null ag, son'suz bellekDetay, gecersiz kaynak, belirsiz neden);
+//        ag_kullanim_yuksek cumlesi hedef / yuk
+//   YT68 ekran: "RSS artışı Anon kaynaklı değil" kutusu, kullanim tam %70 uyari rengi YOK, grafik nokta ipucu Mbps'ten,
+//        "shutting down" satiri, Bağlantı satiri ipucu (internet RP)
+describe('Yük Testi — inceleme düzeltmeleri: bant / bellek (YT67–YT68)', () => {
+  const adim = (o: Record<string, unknown>) => adimNormalle({ senaryo: 'K', kip: 'ka', ae: 'br', gecerlilik: 'GECERLI', gercek_rps: 90, rps_sunucu: 90, p95: 10, ...o });
+  const nic = (o: Record<string, unknown> = {}) => ({ rxOrtBps: 8e6, txOrtBps: 123.4e6, rxMaxBps: 9e6, txMaxBps: 130e6, hizMbps: 1000, kullanimMaxYuzde: 13, arayuz: 'bond0', secim: 'hedef_ip', ...o });
+  const nokta = (anonMb: number, shmemMb: number, baglanti: number) => ({ t: 1, anonMb, shmemMb, fileMb: 20, pssMb: anonMb + shmemMb / 8, baglanti });
+
+  it('YT67 bantMetni sınırları, sızıntı metinleri, neden cümleleri, normalleyiciler', () => {
+    expect([bantMetni(1e9), bantMetni(999.96e6), bantMetni(999.6e3), bantMetni(999.4e3), bantMetni(999.94e6), bantMetni(500)])
+      .toEqual(['1,00 Gbps', '1,00 Gbps', '1,0 Mbps', '999 kbps', '999,9 Mbps', '1 kbps']);
+    expect(bellekSizintiMetni({ durum: 'rss_artisi_anon_degil', kaynak: 'anon' })).toEqual({ ton: 'bilgi', metin: expect.stringMatching(/^RSS artışı Anon kaynaklı değil/) });
+    const b = bellekSizintiMetni({ durum: 'belirsiz', kaynak: 'anon', neden: 'baglanti_degisti' });
+    expect(b?.ton).toBe('uyari');
+    expect(b?.metin).toContain('kaynağı belirsiz (bağlantı sayısı adımlar arasında değişti (rampa))');
+    expect(b?.metin).not.toContain('sızıntı olasılığı düşük');
+    expect(bellekSizintiMetni({ durum: 'belirsiz', kaynak: 'anon', neden: 'dinlenme_yok' })?.metin).toContain('bir adımda dinlenme ölçülmedi');
+    expect(bellekSizintiMetni({ durum: 'belirsiz', kaynak: 'anon', neden: 'yeni_kod' })?.metin).toContain('Anon kuralı değerlendirilemedi');
+    expect(bellekSizintiMetni({ durum: 'x', kaynak: null })).toBeNull();
+    expect(BELLEK_NEDEN_METNI.anon_artti_dinlenme_yok).toMatch(/dinlenme ölçülmedi/);
+    expect(BELLEK_NEDEN_METNI.isci_degisti).toMatch(/Worker süreçleri/);
+    expect(BELLEK_NEDEN_METNI.artis_yok).toBe('Belirgin artış yok.');
+    // normalleyiciler
+    expect(adim({ tur: 'R1_K_ka_br_90_r1', ham: { uyarilar: [] }, ag: { testAlinanBps: null, testGonderilenBps: null, hedef: null, yuk: null } }).ag).toBeNull();
+    expect(adim({ tur: 'R1_K_ka_br_90_r1', ham: { uyarilar: [] }, bellekDetay: { t0: 1, taban: nokta(1, 1, 1) } }).bellekDetay).toBeNull();
+    expect(sonucOzetiNormalle({ adimSayisi: 1, bellekSizinti: { durum: 'olasi_sizinti', kaynak: 'x', rssUyarisi: null } }).bellekSizinti).toEqual({ durum: 'olasi_sizinti', kaynak: null, rssUyarisi: null });
+    expect(sonucOzetiNormalle({ adimSayisi: 1, bellekSizinti: { durum: 'belirsiz', kaynak: 'anon', rssUyarisi: 'r', neden: 'taban_yok' } }).bellekSizinti).toEqual({ durum: 'belirsiz', kaynak: 'anon', rssUyarisi: 'r', neden: 'taban_yok' });
+    expect(sonucOzetiNormalle({ adimSayisi: 1, bellekSizinti: { durum: 'rss_artisi_anon_degil', kaynak: 'anon', rssUyarisi: null, neden: 'x' } }).bellekSizinti).not.toHaveProperty('neden');
+    expect(sonucOzetiNormalle({ adimSayisi: 1, bellekSizinti: { durum: 'bilinmeyen', kaynak: 'anon' } }).bellekSizinti).toBeNull();
+    expect(uyariAcikla('ag_kullanim_yuksek(yuk,%82.4)').cumle).toMatch(/^Yük makinesinin ağ arayüzü en yüksek %82,4/);
+    expect(uyariAcikla('ag_kullanim_yuksek(hedef,%71.0)').cumle).toMatch(/^Hedef sunucunun ağ arayüzü en yüksek %71/);
+  });
+
+  it('YT68 ekran: Anon kaynaklı değil kutusu, %70 rengi, grafik ipucu, shutting down, Bağlantı ipucu', async () => {
+    const sonucOzeti = sonucOzetiNormalle({
+      adimSayisi: 1, gecerliAdimSayisi: 1, toplamIstek: 100, reloadlar: [],
+      bellekSizinti: { durum: 'rss_artisi_anon_degil', kaynak: 'anon', rssUyarisi: null },
+    });
+    const bd = {
+      t0: 1, anonOrtMb: 90, pssOrtMb: 99, baglantiOrt: 900, baglantiMax: 950, isciMax: 8, kapananMax: 2,
+      taban: nokta(40, 10, 4), son: nokta(95, 74, 900), dinlenme: nokta(48, 74, 6), dinlenmeSn: 19, nedenler: ['reload'],
+    };
+    kosuYukle({ durum: 'DONE', gecerlilik: 'GECERLI', finishedAt: '2026-11-04T08:40:00Z', sonucOzeti }, [
+      adim({ tur: 'R18_K_ka_br_90_r1', hiz: 90, ham: { uyarilar: [] }, ag: { testAlinanBps: 12.44e6, testGonderilenBps: 850e3, hedef: nic({ kullanimMaxYuzde: 70 }), yuk: null }, bellekDetay: bd }),
+    ]);
+    render(<KosuAyrinti kosuId={18} isAdmin={false} onGeri={vi.fn()} />);
+    await ayrintiAc();
+    expect(screen.getByText(/^RSS artışı Anon kaynaklı değil/)).toBeTruthy();
+    const grafik = screen.getByRole('img', { name: /Test trafiği \(alınan\)/ });
+    expect([...grafik.querySelectorAll('title')].map((e) => e.textContent).join('|')).toContain('12,4 Mbps');
+    const tablo = await screen.findByRole('table', { name: 'Adım sonuçları' });
+    fireEvent.click(within(tablo).getByRole('button', { name: 'R18_K_ka_br_90_r1 ayrıntısı' }));
+    const ag = screen.getByRole('group', { name: 'R18_K_ka_br_90_r1 bant genişliği' });
+    const hedefEnCok = within(ag).getByText('Hedef NIC en yüksek · kullanım').parentElement as HTMLElement;
+    expect(within(hedefEnCok).getByText(/%70 \(1,00 Gbps arayüz\)/).getAttribute('style') ?? '').not.toContain('status-warning-text');
+    const bel = screen.getByRole('group', { name: 'R18_K_ka_br_90_r1 bellek ayrışımı' });
+    expect(within(bel).getByText('Pencerede en çok 2 “shutting down” worker.')).toBeTruthy();
+    expect(within(bel).getByText('Bağlantı').getAttribute('title')).toBe(BAGLANTI_IPUCU);
+    expect(BAGLANTI_IPUCU).toMatch(/internet RP/);
   });
 });

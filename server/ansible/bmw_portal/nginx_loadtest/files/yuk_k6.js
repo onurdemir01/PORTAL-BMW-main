@@ -15,7 +15,8 @@
 // boylece karsilastir.py'de ayrilir.
 // On kontrol (setup): senaryodaki HER tekil yol cerezsiz 200 donmeli; donmeyen varsa kosu baslamaz.
 // Cikti   : <CIKTI>/istemci_<TUR>.json ve .csv (yalniz secilmis sayilar). JSON'da ek `kodlama` (olcum yanitlarinin
-//           Content-Encoding sayilari; CSV'de kolonu YOK).
+//           Content-Encoding sayilari; CSV'de kolonu YOK). 2026-11-03 (bant genisligi, bilgi): JSON'da ek ag_alinan_bayt /
+//           ag_gonderilen_bayt (olcum fazi data_received / data_sent) ve ag_sure_sn (olcum suresi); CSV'de kolonu YOK.
 /* eslint-disable -- k6 betigi (Node degil; __ENV/open k6 globalleri). Portal aynasinda ESLint bu dosyayi denetlemez. */
 import http from 'k6/http';
 import { Counter } from 'k6/metrics';
@@ -140,6 +141,7 @@ const esikler = {
   'http_req_failed{scenario:olcum}': ['rate>=0'],
   'http_reqs{scenario:olcum}': ['count>=0'],
   'data_received{scenario:olcum}': ['count>=0'],
+  'data_sent{scenario:olcum}': ['count>=0'],
   'http_req_duration{scenario:olcum,boyut:buyuk}': ['max>=0'],
 };
 for (let i = 0; i < TURLER.length; i++) esikler['http_req_duration{scenario:olcum,tur:' + TURLER[i] + '}'] = ['max>=0'];
@@ -304,6 +306,10 @@ export function ozet_hesapla(data) {
   for (let i = 0; i < TURLER.length; i++) o['p95_' + TURLER[i]] = trend('http_req_duration{scenario:olcum,tur:' + TURLER[i] + '}', 'p(95)');
   o.protokol = PROTOKOL;
   o.protokol_uyumsuz = deger('protokol_uyumsuz', 'count') || 0;
+  // 2026-11-03 (bant genisligi, bilgi): KOLONLAR'da YOK; olcum fazinin baytlari (olculmeyen null, asla 0 yerine).
+  o.ag_alinan_bayt = bayt;
+  o.ag_gonderilen_bayt = deger('data_sent{scenario:olcum}', 'count');
+  o.ag_sure_sn = SURE_SN;
   // KOLONLAR'da YOK: yalniz JSON ozetinde (bkz. kodlamaSay).
   const kod = {};
   for (let i = 0; i < KODLAMALAR.length; i++) kod[KODLAMALAR[i]] = deger('kodlama_' + KODLAMALAR[i], 'count') || 0;

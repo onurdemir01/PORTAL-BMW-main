@@ -83,6 +83,17 @@
 //      tasir (yalniz yeni yuk_k6.js; eski kosu: anahtar YOK). Istenen / gerceklesen karsilastirmasi gorunum.cjs
 //      kipDogrulama'dadir (ham.protokol / http2 / yeniden_baglanti_yuzde / kodlama'dan; DB'deki eski adimda da calisir):
 //      analiz ciktisi ve TUR uyarilari eski kosuda BIREBIR.
+//  15. Bant genisligi (2026-11-03, YALNIZ BILGI; gecerlilik ve karar DEGISMEZ): ham.ag yalniz olcum varsa (eski kosu: anahtar
+//      YOK). Test trafigi istemci_<TUR>.json ag_alinan_bayt / ag_gonderilen_bayt / ag_sure_sn'den (bit/sn; yuk makinesinin
+//      gozunden alinan / gonderilen). NIC: hedefte ag_<kesit>.csv (rol=hedef; CPU penceresi [w0, w1]), yuk makinesinde
+//      rol=yuk kesiti (yukBostaCpu penceresi). Ortalama = pencere ucu farki / sure, en yuksek = ardisik ornek farki. Arayuz
+//      hizi (ag_*.txt hiz_mbps) biliniyorsa kullanim % (yon basina en yuksek); > %70 TUR uyarisi
+//      `ag_kullanim_yuksek(hedef|yuk,%x)`. Bosta NIC tabani ozet.ag_bosta (ilk adimdan once; hedef internet RP ise arayuz
+//      toplami test disi trafigi de icerir).
+//  16. Bellek ayrisimi (2026-11-03, YALNIZ BILGI): hedef bdetay_<kesit>.csv'den ham.bellek_detay: pencere ortalamalari
+//      (Anon, Pss, baglanti), uc noktalar taban (adim basindan hemen once), son (pencere sonu), dinlenme (adimdan sonraki
+//      bosluk bitmeden son ornek; >= 3 sn). Saat farki log penceresinden kestirilir (|fark| > 60 sn: taban / dinlenme yok).
+//      "Olasi neden" kurallari gorunum.cjs'dedir (analiz ciktisi eski kosuda BIREBIR).
 // null = olculmedi (hicbir zaman 0 yerine gecmez). Fonksiyonlar saftir: G/C yok, saat yok.
 'use strict';
 
@@ -101,6 +112,15 @@ const BELLEK_BOS_ESIK = 10.0;
 const SIZINTI_ORAN = 0.2;
 const SIZINTI_MB = 50;
 const SIZINTI_GERI_ORAN = 0.9;
+// 2026-11-03 (bant genisligi, bilgi): arayuz kullanim uyari esigi (%) ve bosta taban icin en kisa sure (sn).
+const AG_KULLANIM_ESIK = 70.0;
+const AG_BOSTA_MIN_SN = 5;
+// 2026-11-03 (bellek ayrisimi, bilgi): dinlenme noktasi icin en kisa bosluk (sn) ve saat farki tavani (sn).
+const DINLENME_MIN_SN = 3;
+const SAAT_FARKI_TAVAN = 60;
+// 2026-11-04 (inceleme B3): NIC en yuksek hizi en az bu kadar sn'lik kayan pencereden (tam saniyelik epoch'ta ardisik ornek
+// farki 1 sn sayilip gercekte 1,4 sn olabilir: tepe ve kullanim % sisiyordu).
+const AG_TEPE_SN = 5;
 // Sozlesme: yuk_tekrar 1..3. Ek tekrar onerisi bu tavani asmaz.
 const MAX_TEKRAR = 3;
 const ADIM_RE = /^[A-Za-z0-9-]+$/;
@@ -182,6 +202,8 @@ const NEDEN_KALIPLARI = Object.freeze([
   // 2026-11-03 bellek (bilgi): TUR uyarisi bellek_bos_az, kosu uyarisi nginx_bellek_artisi.
   { kod: 'bellek_bos_az', tur: 'uyari', re: /^bellek_bos_az\((hedef|yuk),%([0-9.]+)\)$/ },
   { kod: 'nginx_bellek_artisi', tur: 'uyari', re: /^nginx_bellek_artisi\(ilk=(\d+)MB,son=(\d+)MB,kosu_sonu=(\d+)MB\)$/ },
+  // 2026-11-03 bant genisligi (bilgi): TUR uyarisi.
+  { kod: 'ag_kullanim_yuksek', tur: 'uyari', re: /^ag_kullanim_yuksek\((hedef|yuk),%([0-9.]+)\)$/ },
 ]);
 
 // istemci_<TUR>.csv'den sayi olarak alinan alanlar (karsilastir.py kosu_hesapla ile ayni liste).
@@ -482,6 +504,183 @@ function bellekSizintisi(ctx, hesaplar) {
   return null;
 }
 
+/**
+ * 2026-11-03 (bant genisligi). Kumulatif { t, rx, tx } ornekleri, pencere [a, b] -> { rx_ort_bps, tx_ort_bps, rx_max_bps,
+ * tx_max_bps, sn } (bit/sn). 2'den az ornek ya da sure 0: null. En yuksek (2026-11-04): her ornek icin en az AG_TEPE_SN
+ * geriye giden en yakin ornekle fark (kayan pencere); pencere AG_TEPE_SN'den kisaysa null (cagiran ortalamayi kullanir).
+ */
+function nicPencere(ornekler, a, b) {
+  const ic = ornekler.filter((o) => a <= o.t && o.t <= b);
+  if (ic.length < 2) return null;
+  const x = ic[0];
+  const y = ic[ic.length - 1];
+  const dt = y.t - x.t;
+  if (!(dt > 0)) return null;
+  let rxMax = null;
+  let txMax = null;
+  let j = 0;
+  for (let i = 1; i < ic.length; i++) {
+    while (j + 1 < i && ic[i].t - ic[j + 1].t >= AG_TEPE_SN) j++;
+    const d = ic[i].t - ic[j].t;
+    if (!(d >= AG_TEPE_SN)) continue;
+    const r = ((ic[i].rx - ic[j].rx) * 8) / d;
+    const t = ((ic[i].tx - ic[j].tx) * 8) / d;
+    rxMax = rxMax === null ? r : Math.max(rxMax, r);
+    txMax = txMax === null ? t : Math.max(txMax, t);
+  }
+  return { rx_ort_bps: ((y.rx - x.rx) * 8) / dt, tx_ort_bps: ((y.tx - x.tx) * 8) / dt, rx_max_bps: rxMax, tx_max_bps: txMax, sn: dt };
+}
+
+/** ag kesitinin bilgi alanlari (ag_*.txt): arayuz, secim, hiz_mbps (> 0 sayi ya da null). */
+function agKesitBilgisi(k) {
+  const b = k && k.bilgi ? k.bilgi : {};
+  const hiz = sayi(b.hiz_mbps);
+  return {
+    arayuz: typeof b.arayuz === 'string' && b.arayuz ? b.arayuz.slice(0, 32) : null,
+    secim: typeof b.secim === 'string' && b.secim ? b.secim.slice(0, 80) : null,
+    hiz_mbps: hiz !== null && hiz > 0 ? hiz : null,
+  };
+}
+
+/** 2026-11-04 (inceleme B4): kaydedicinin kendi CPU maliyeti (ag_*.txt bitiste; >= 0 sayi ya da null). */
+function kaydediciSayi(k, ad) {
+  const v = sayi(k && k.bilgi ? k.bilgi[ad] : null);
+  return v !== null && v >= 0 ? v : null;
+}
+
+/** NIC olcumu + arayuz bilgisi + kullanim % (yon basina en yuksek / hiz). */
+function nicOlc(k, a, b) {
+  const p = k ? nicPencere(k.ornekler, a, b) : null;
+  if (!p) return null;
+  const bilgi = agKesitBilgisi(k);
+  const enCok = Math.max(p.rx_max_bps ?? p.rx_ort_bps, p.tx_max_bps ?? p.tx_ort_bps);
+  const kullanim = bilgi.hiz_mbps ? (100.0 * enCok) / (bilgi.hiz_mbps * 1e6) : null;
+  return { ...p, ...bilgi, kullanim_max_yuzde: kullanim };
+}
+
+/**
+ * 2026-11-03 (bant genisligi, YALNIZ BILGI). Test trafigi (istemci JSON) + hedef NIC (kesitAdi'nin ag kesiti, [w0, w1]) + yuk
+ * makinesi NIC (rol=yuk, yukBostaCpu penceresi). Hicbiri yoksa null (eski kosu). Kullanim > %70: `uyari`ya ag_kullanim_yuksek.
+ */
+function agOlc(ctx, tur, kesitAdi, w0, w1, zaman, isinmaSn, uyari) {
+  const o = { test_alinan_bps: null, test_gonderilen_bps: null, hedef: null, yuk: null };
+  const ia = ctx.istemciAg.get(tur);
+  if (ia && ia.sure !== null && ia.sure > 0) {
+    if (ia.alinan !== null) o.test_alinan_bps = (ia.alinan * 8) / ia.sure;
+    if (ia.gonderilen !== null) o.test_gonderilen_bps = (ia.gonderilen * 8) / ia.sure;
+  }
+  if (kesitAdi && w0 !== null && w1 !== null && w1 > w0) {
+    o.hedef = nicOlc(ctx.agHedef.find((k) => k.anahtar === kesitAdi), w0, w1);
+  }
+  if (ctx.agYuk.length && zaman) {
+    const y0 = zaman[0] + (isinmaSn || 0) + 3;
+    const y1 = zaman[1] - 2;
+    if (y1 > y0) o.yuk = nicOlc(kesitSec(ctx.agYuk, y0, y1), y0, y1);
+  }
+  if (o.test_alinan_bps === null && o.test_gonderilen_bps === null && !o.hedef && !o.yuk) return null;
+  for (const taraf of ['hedef', 'yuk']) {
+    const v = o[taraf] ? o[taraf].kullanim_max_yuzde : null;
+    if (v !== null && v > AG_KULLANIM_ESIK) uyari.push(`ag_kullanim_yuksek(${taraf},%${fx(asagiOndalik(v), 1)})`);
+  }
+  return o;
+}
+
+/** bdetay ornegi -> nokta (MB; adet). */
+function bdNokta(x) {
+  if (!x) return null;
+  const mb = (v) => (v === null || v === undefined ? null : MB(v));
+  return { t: x.t, anon_mb: mb(x.an), shmem_mb: mb(x.sh), file_mb: mb(x.fi), pss_mb: mb(x.pss), baglanti: x.bg ?? null };
+}
+const ortVeyaNull = (xs) => (xs.length ? pyToplam(xs) / xs.length : null);
+const dolu = (ic, a) => ic.map((x) => x[a]).filter((v) => v !== null && v !== undefined);
+
+/**
+ * 2026-11-03 (bellek ayrisimi, YALNIZ BILGI). kesitAdi'nin bdetay kesiti; pencere [w0, w1] (log saati). `ofs` = hedef saati -
+ * yuk makinesi saati (kestirim; null: taban / dinlenme kurulmaz). Taban: adim baslangicindan (zaman.csv bas + ofs) once son
+ * ornek. Dinlenme: adim bitisinden (bit + ofs) en az DINLENME_MIN_SN sonra ve sonraki adim baslamadan once son ornek.
+ */
+/**
+ * 2026-11-04 (inceleme B5): hedef sunucu_ kesitinde [a, b] (hedef saati) arasinda worker kumesi degisti mi: 'shutting down'
+ * worker (k > 0) ya da pid kumesi farkli ornek. Kesit / ornek yoksa null (olculmedi).
+ */
+function isciDegisti(ctx, kesitAdi, a, b) {
+  const k = ctx.kesitler.find((x) => x.anahtar === kesitAdi);
+  if (!k) return null;
+  const lo = Math.min(a, b) - 0.5;
+  const hi = Math.max(a, b) + 0.5;
+  const ic = k.ornekler.filter((o) => lo <= o.t && o.t <= hi);
+  if (!ic.length) return null;
+  return ic.some((o) => o.k > 0 || o.p !== ic[0].p);
+}
+
+function bdetayOlc(ctx, kesitAdi, w0, w1, zaman, ofs) {
+  if (!kesitAdi || w0 === null || w1 === null || !(w1 > w0)) return null;
+  const k = ctx.bdetayKesitler.find((x) => x.anahtar === kesitAdi);
+  if (!k || !k.ornekler.length) return null;
+  const ic = k.ornekler.filter((x) => w0 <= x.t && x.t <= w1);
+  if (!ic.length) return null;
+  const bg = dolu(ic, 'bg');
+  const o = {
+    t0: ic[0].t,
+    anon_ort_mb: ortVeyaNull(dolu(ic, 'an').map(MB)),
+    pss_ort_mb: ortVeyaNull(dolu(ic, 'pss').map(MB)),
+    baglanti_ort: ortVeyaNull(bg),
+    baglanti_max: enBuyuk(bg),
+    isci_max: enBuyuk(dolu(ic, 'n')),
+    kapanan_max: enBuyuk(dolu(ic, 'k')),
+    taban: null,
+    son: bdNokta(ic[ic.length - 1]),
+    dinlenme: null,
+    dinlenme_sn: null,
+    taban_isci_degisti: null,
+    dinlenme_isci_degisti: null,
+  };
+  if (zaman && ofs !== null) {
+    const bas = zaman[0] + ofs;
+    const bit = zaman[1] + ofs;
+    let taban = null;
+    for (const x of k.ornekler) if (x.t <= bas) taban = x;
+    o.taban = bdNokta(taban);
+    if (taban) {
+      const td = isciDegisti(ctx, kesitAdi, taban.t, o.son.t);
+      o.taban_isci_degisti = (taban.k ?? 0) > 0 || td === true ? true : td;
+    }
+    let sonraki = null;
+    for (const z of ctx.zamanTum) if (z[1] > zaman[1] && (sonraki === null || z[1] < sonraki)) sonraki = z[1];
+    let din = null;
+    for (const x of k.ornekler) {
+      if (x.t < bit + DINLENME_MIN_SN) continue;
+      if (sonraki !== null && x.t >= sonraki + ofs) break;
+      din = x;
+    }
+    if (din) {
+      o.dinlenme = bdNokta(din);
+      o.dinlenme_sn = din.t - bit;
+      const dd = isciDegisti(ctx, kesitAdi, o.son.t, din.t);
+      o.dinlenme_isci_degisti = (din.k ?? 0) > 0 || dd === true ? true : dd;
+    }
+  }
+  return o;
+}
+
+/**
+ * 2026-11-03 (bant genisligi, bilgi): bosta NIC tabani (ilk adim baslamadan once; >= AG_BOSTA_MIN_SN). Kesit yoksa null.
+ * 2026-11-04 (inceleme B6): hedef kesiti hedef saatinde: sinir ilkBas + ofs (ilk adimin saat farki kestirimi); ofs null ise
+ * hedef tabani verilmez (saat farki bilinmeden pencere ilk adimin yukune tasabilir). Yuk kesiti yuk makinesi saatinde.
+ */
+function agBosta(ctx, ilkBas, ofs = null) {
+  if (ilkBas === null) return null;
+  const olc = (k, kay) => {
+    if (!k || kay === null) return null;
+    const p = nicPencere(k.ornekler, -Infinity, ilkBas + kay - 2);
+    if (!p || p.sn < AG_BOSTA_MIN_SN) return null;
+    return { rx_bps: p.rx_ort_bps, tx_bps: p.tx_ort_bps, sn: p.sn, ...agKesitBilgisi(k) };
+  };
+  const enUzun = (ks) => ks.reduce((a, k) => (a && a.ornekler.length >= k.ornekler.length ? a : k), null);
+  const o = { hedef: olc(enUzun(ctx.agHedef), ofs), yuk: olc(enUzun(ctx.agYuk), 0) };
+  return o.hedef || o.yuk ? o : null;
+}
+
 /** Kosu disi (dislama araliklari disi, kapanan worker yok, ayni pid kumesi) >= 8 sn bloklarin medyani. */
 function arkaPlan(ornekler, dislama, clk) {
   const disarida = (o) => o.k === 0 && !dislama.some(([a, b]) => a <= o.t && o.t <= b);
@@ -678,6 +877,8 @@ function kosuHesapla(ctx, tur, ist, arkaKesit) {
   let w0 = null;
   let w1 = null;
   let kaynak;
+  // 2026-11-03 (bellek ayrisimi, bilgi): hedef saati - yuk makinesi saati kestirimi (log penceresi; istemci saati: 0).
+  let saatFarki = null;
   if (olcum.length >= 10) {
     let mn = Infinity;
     let mx = -Infinity;
@@ -692,6 +893,7 @@ function kosuHesapla(ctx, tur, ist, arkaKesit) {
     if (zaman && r.isinma_sn !== null) {
       const fark = mn - (zaman[0] + r.isinma_sn);
       if (Math.abs(fark - 2) > 10) uyari.push(`saat_farki~${fd(pyYuvarla(fark))}s(sunucu-istemci)`);
+      if (Math.abs(fark - 2) <= SAAT_FARKI_TAVAN) saatFarki = fark - 2;
     }
   } else if (zaman && !ctx.serbest) {
     const isinma = r.isinma_sn || 30;
@@ -699,6 +901,7 @@ function kosuHesapla(ctx, tur, ist, arkaKesit) {
     w1 = zaman[1] - 5;
     kaynak = 'istemci_saati';
     uyari.push('log_satiri_yok:pencere_istemci_saatinden');
+    saatFarki = 0;
   } else {
     // Ne log ne zaman satiri var ya da serbest hedef (sunucu olcumu yok): pencere kurulmaz.
     kaynak = '-';
@@ -851,6 +1054,10 @@ function kosuHesapla(ctx, tur, ist, arkaKesit) {
   // 2026-11-03 (bilgi): bellek (yalniz olcum varsa; uyarisi TUR uyarisi) ve istemci JSON kodlama sayaclari.
   r._bellek = bellekOlc(ctx, kesitAdi, w0, w1, zaman, r.isinma_sn, uyari);
   r._kodlama = ctx.kodlama.get(tur) || null;
+  // 2026-11-03 (bilgi): bant genisligi (uyarisi TUR uyarisi) ve bellek ayrisimi (yalniz olcum varsa).
+  r._ag = agOlc(ctx, tur, kesitAdi, w0, w1, zaman, r.isinma_sn, uyari);
+  r._bdetay = bdetayOlc(ctx, kesitAdi, w0, w1, zaman, saatFarki);
+  r._saatFarki = saatFarki;
   r.durum = gecersiz.length ? 'GECERSIZ' : doyma ? 'DOYMA' : 'GECERLI';
   r.gecersiz_nedeni = gecersiz.join(';');
   r.uyari = uyari.join(';');
@@ -1391,6 +1598,12 @@ function adimHazirla(veri, { serbest = false, motor = 'k6' } = {}) {
     // 2026-11-03 (bilgi): hedef bellek kesitleri (serbestte yok sayilir) ve istemci JSON kodlama sayaclari.
     bellekKesitler: !serbest && Array.isArray(veri.bellekKesitler) ? veri.bellekKesitler : [],
     kodlama: veri.istemciKodlama instanceof Map ? veri.istemciKodlama : new Map(),
+    // 2026-11-03 (bilgi): bant genisligi (hedef NIC serbestte yok sayilir; rol ag_*.txt'den) ve bellek ayrisimi.
+    istemciAg: veri.istemciAg instanceof Map ? veri.istemciAg : new Map(),
+    agHedef: !serbest && Array.isArray(veri.agKesitler) ? veri.agKesitler.filter((k) => k && k.bilgi && k.bilgi.rol === 'hedef') : [],
+    agYuk: Array.isArray(veri.agKesitler) ? veri.agKesitler.filter((k) => k && k.bilgi && k.bilgi.rol === 'yuk') : [],
+    agKesitler: Array.isArray(veri.agKesitler) ? veri.agKesitler : [],
+    bdetayKesitler: !serbest && Array.isArray(veri.bdetayKesitler) ? veri.bdetayKesitler : [],
     log: log.turlar,
     olcumKod: log.fazlar.indexOf('olcum'),
     diger: veri.diger instanceof Map ? veri.diger : new Map(),
@@ -1490,6 +1703,8 @@ function adimSatiri(r, gecerlilik, nedenler, nproc, logVar, ist, reloadlar = [])
       // 2026-11-03 (bilgi): bellek ve kodlama yalniz olcum varsa (eski playbook / wrk: anahtar YOK).
       ...(r._bellek ? { bellek: bellekHam(r._bellek) } : {}),
       ...(r._kodlama ? { kodlama: { ...r._kodlama } } : {}),
+      ...(r._ag ? { ag: r._ag } : {}),
+      ...(r._bdetay ? { bellek_detay: r._bdetay } : {}),
       p95_js: r.p95_js,
       p95_css: r.p95_css,
       p95_html: r.p95_html,
@@ -1761,6 +1976,25 @@ function kosuAnaliz(veri, { adim, hedefTuru = 'sunucu', motor = 'k6', protokol =
     }));
   }
   if (sonSatir) ozet.yuk_cpu_son_satir = sonSatir;
+  // 2026-11-03 (bilgi): ag ve bellek ayrisimi kesitleri yalniz varsa (eski kosunun ozeti BIREBIR eskisi).
+  if (ctx.agKesitler.length) {
+    ozet.ag_kesitler = ctx.agKesitler.map((k) => ({
+      anahtar: k.anahtar, rol: k.bilgi && (k.bilgi.rol === 'hedef' || k.bilgi.rol === 'yuk') ? k.bilgi.rol : null,
+      ornek: (k.ornekler || []).length, ...agKesitBilgisi(k), arayuz_sayisi: k.arayuzSayisi || 0, sarma: k.sarma || 0,
+      kaydedici_cpu_ms: kaydediciSayi(k, 'kaydedici_cpu_ms'), kaydedici_sure_sn: kaydediciSayi(k, 'kaydedici_sure_sn'),
+      sifirlama: k.sifirlama || 0, ...(k.sorun ? { sorun: String(k.sorun).slice(0, 200) } : {}),
+    }));
+    const baslar = ctx.zamanTum.map((z) => z[1]).concat((veri.baslatilan || []).map((x) => sayi(x.bas_epoch)).filter((v) => v !== null));
+    const ilkTur = ctx.zamanTum.length ? ctx.zamanTum.reduce((a, z) => (z[1] < a[1] ? z : a))[0] : null;
+    const ilkH = hesaplar.find((h) => h.r.tur === ilkTur);
+    const bosta = agBosta(ctx, baslar.length ? enKucuk(baslar) : null, ilkH && ilkH.r._saatFarki !== undefined ? ilkH.r._saatFarki : null);
+    if (bosta) ozet.ag_bosta = bosta;
+  }
+  if (ctx.bdetayKesitler.length) {
+    ozet.bdetay_kesitler = ctx.bdetayKesitler.map((k) => ({
+      anahtar: k.anahtar, ornek: (k.ornekler || []).length, ...(k.sorun ? { sorun: String(k.sorun).slice(0, 200) } : {}),
+    }));
+  }
   // 2026-11-03: yuk makinesi CPU kesitleri yalniz varsa (eski kosunun ozeti BIREBIR eskisi).
   if (ctx.yukKesitler.length) {
     ozet.yuk_kesitler = ctx.yukKesitler.map((k) => ({
@@ -1782,6 +2016,7 @@ module.exports = {
   NEDEN_KALIPLARI,
   YUK_BOSTA_ESIK,
   BELLEK_BOS_ESIK,
+  AG_KULLANIM_ESIK,
   PROTOKOLLER,
   H2_UYARISI,
   WRK_TLS_UYARISI,
@@ -1789,4 +2024,6 @@ module.exports = {
   _pyForTest: { sayi, pyToplam, pyMax, esikGecti, yuzdelik, medyan, ortalama, gurultu, oran, pyYuvarla, fx, fxs, fd },
   _kosulariHazirlaForTest: kosulariHazirla,
   _adimUyarilariniKatForTest: adimUyarilariniKat,
+  // 2026-11-04: bant genisligi / bellek ayrisimi ic islevleri (yalniz test; elle kurulan ctx ile).
+  _agBellekForTest: { nicPencere, nicOlc, agOlc, agBosta, bdetayOlc, isciDegisti, agKesitBilgisi, AG_TEPE_SN },
 };

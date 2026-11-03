@@ -12,6 +12,8 @@
 //   log_<ADIM>_<host>.tsv.gz     cpu_kaydedici.sh: YALNIZ test isteklerinin log satirlari (gzip)
 //   diger_<ADIM>_<host>.tsv      cpu_kaydedici.sh: test disi istek sayisi / saniye
 //   konf_*.txt, NOT.txt, istemci_*.json, SHA256SUMS
+//   ag_<ADIM>_<host>.csv|txt     2026-11-03 (bilgi): iki makinenin NIC sayaclari (/proc/net/dev; txt rol=hedef|yuk)
+//   bdetay_<ADIM>_<host>.csv     2026-11-03 (bilgi): hedef nginx worker Anon / Shmem / File / Pss + baglanti sayisi
 // Hepsi istege bagli: eksik dosya analizde "olculmedi" (null) ya da GECERSIZ nedeni olur, okuma
 // hatasi OLMAZ. karsilastir.py'nin glob/sirasi korunur (ad sirasina gore, buyuk-kucuk harf duyarli).
 // Serbest hedef kosusunda (kaydedici yok) dizinde yalniz yuk makinesinin dosyalari olur (istemci_*,
@@ -61,6 +63,8 @@ const KOLON_ILK = 16;
 const SATIR_TAVANI = Object.freeze({
   zaman: 2000, baslatilan: 2000, istemci: 100, hatali_istemci: 100, sunucu: 20000, diger: 20000, bilgi_liste: 2000,
   yuk_cpu: 20000, bellek: 20000,
+  // 2026-11-03: ag = SATIR (arayuz x ornek; satirlar tutulmaz, yalniz ornek basina toplam), ag_ornek = farkli ornek anlari.
+  ag: 1000000, ag_ornek: 20000, bdetay: 20000,
 });
 // istemci_<TUR>.json (yalniz `kodlama` okunur, bilgi) en cok bu kadar karakter; fazlasi atlanir (kosu OKUNAMADI olmaz).
 const ISTEMCI_JSON_MAX_KAR = 64 * 1024;
@@ -83,6 +87,15 @@ const YUK_BELLEK_KOLON = Object.freeze([['mem_total_kb', 'mt'], ['mem_available_
 // Hedef bellek kaydi (cpu_kaydedici.sh bellek_*.csv). Eski Portal / karsilastir.py bu adi tanimaz ve ATLAR; sunucu_*.csv
 // semasina kolon eklenmedi (eski okuyucu ORNEK_KOLON'u adla okur ama karsilastir.py ve kit ayni kalsin).
 const BELLEK_KOLON = Object.freeze(['epoch', 'nginx_rss_kb', 'isci_sayi', 'mem_total_kb', 'mem_available_kb']);
+// 2026-11-03 (bant genisligi / bellek ayrisimi, YALNIZ BILGI). Eski Portal / karsilastir.py ag_ / bdetay_ oneklerini tanimaz.
+const AG_KOLON = Object.freeze(['epoch', 'arayuz', 'rx_bayt', 'tx_bayt']);
+const BDETAY_KOLON = Object.freeze([
+  'epoch', 'isci_sayi', 'kapanan_sayi', 'anon_kb', 'shmem_kb', 'file_kb', 'pss_kb', 'master_rss_kb', 'master_pss_kb', 'baglanti',
+]);
+const AG_ARAYUZ_RE = /^[A-Za-z0-9._-]{1,32}$/;
+const IKI32 = 2 ** 32;
+const IKI63 = 2 ** 63;
+const IKI64 = 2 ** 64;
 
 // Dosya adi -> tur. Sira onemsiz; ilk eslesen kazanir. `hatali_istemci_` once denenir cunku
 // `istemci_` deseni onu YAKALAMAZ (glob gibi bastan baglidir) ama okunurluk icin ayri tutulur.
@@ -105,6 +118,9 @@ const DESENLER = Object.freeze([
   [/^yukcpu_.*\.csv$/, 'yuk_cpu'],
   [/^yukcpu_.*\.txt$/, 'yuk_cpu_bilgi'],
   [/^bellek_.*\.csv$/, 'bellek'],
+  [/^ag_.*\.csv$/, 'ag'],
+  [/^ag_.*\.txt$/, 'ag_bilgi'],
+  [/^bdetay_.*\.csv$/, 'bdetay'],
   [/^SHA256SUMS$/, 'sha'],
 ]);
 
@@ -539,6 +555,145 @@ function bellekOkuyucu(ad, maxSatir = Infinity) {
 }
 
 /**
+ * 2026-11-03 (bant genisligi, bilgi): bir arayuz sayacinin iki ornek arasi farki. Geri giderse: once < 2^32 ve fark + 2^32
+ * < 2^31 ise 32 bit sarma (+2^32); once >= 2^63 ise 64 bit sarma; aksi sayac sifirlandi (arayuz yeniden kuruldu): 0 ve
+ * `sifirlama` sayilir (o aralik eksik olcer). Sayilar 2^53 ustunde hassasiyet yitirir (bilgi icin yeterli).
+ */
+function sayacFarki(once, simdi, o) {
+  const d = simdi - once;
+  if (d >= 0) return d;
+  if (once < IKI32 && d + IKI32 >= 0 && d + IKI32 < IKI32 / 2) {
+    o.sarma++;
+    return d + IKI32;
+  }
+  if (once >= IKI63) {
+    o.sarma++;
+    return IKI64 - once + simdi;
+  }
+  o.sifirlama++;
+  return 0;
+}
+
+/**
+ * 2026-11-03: ag_*.csv (epoch,arayuz,rx_bayt,tx_bayt; kumulatif). Satirlar tutulmaz: arayuz basina son deger, ornek anina
+ * (ayni epoch) kumulatif TOPLAM { t, rx, tx } (bayt; ilk ornek 0, sarma / sifirlama ele alinmis). YALNIZ BILGI: eksik kolon /
+ * tavan kosuyu OKUNAMADI yapmaz (`sorun`). Bozuk satir ve geri giden epoch atlanir.
+ */
+function agOkuyucu(ad, maxSatir = Infinity, maxOrnek = Infinity) {
+  let idx = null;
+  let bitti = false;
+  let ornekler = [];
+  let satirSay = 0;
+  const son = new Map();
+  let rx = 0;
+  let tx = 0;
+  const o = { sorun: null, arayuzler: new Set(), sarma: 0, sifirlama: 0 };
+  const boz = (neden) => {
+    o.sorun = `${ad}: ${neden}`;
+    ornekler = [];
+    bitti = true;
+  };
+  return Object.assign(o, {
+    satir(s) {
+      if (bitti) return;
+      const r = csvAyir(s);
+      if (idx === null) {
+        if (!r.length) {
+          bitti = true;
+          return;
+        }
+        idx = new Map();
+        r.forEach((k, i) => idx.set(k.trim(), i));
+        const eksik = AG_KOLON.filter((k) => !idx.has(k));
+        if (eksik.length) boz(`eksik kolon ${eksik.join(',')}`);
+        return;
+      }
+      if (++satirSay > maxSatir) {
+        boz(`satir tavani asildi (en cok ${maxSatir} satir)`);
+        return;
+      }
+      if (r.length < idx.size) return;
+      const t = ondalik(r[idx.get('epoch')].trim());
+      const ar = r[idx.get('arayuz')].trim();
+      const yr = tamSayi(r[idx.get('rx_bayt')].trim());
+      const yt = tamSayi(r[idx.get('tx_bayt')].trim());
+      if (t === null || !AG_ARAYUZ_RE.test(ar) || yr === null || yt === null || yr < 0 || yt < 0) return;
+      const sonOrnek = ornekler.length ? ornekler[ornekler.length - 1] : null;
+      if (sonOrnek && t < sonOrnek.t) return;
+      const once = son.get(ar);
+      if (once) {
+        rx += sayacFarki(once.rx, yr, o);
+        tx += sayacFarki(once.tx, yt, o);
+      } else if (!o.arayuzler.has(ar)) {
+        if (o.arayuzler.size >= 64) return;
+        o.arayuzler.add(ar);
+      }
+      son.set(ar, { rx: yr, tx: yt });
+      if (sonOrnek && sonOrnek.t === t) {
+        sonOrnek.rx = rx;
+        sonOrnek.tx = tx;
+        return;
+      }
+      if (ornekler.length >= maxOrnek) {
+        boz(`ornek tavani asildi (en cok ${maxOrnek} ornek)`);
+        return;
+      }
+      ornekler.push({ t, rx, tx });
+    },
+    bitir: () => ornekler,
+  });
+}
+
+/**
+ * 2026-11-03: bdetay_*.csv -> { t, n, k, an, sh, fi, pss, mr, mp, bg } (kB / adet; bos -> null). YALNIZ BILGI (bellekOkuyucu
+ * kurali): eksik kolon / tavan kosuyu OKUNAMADI yapmaz; epoch'u bozuk satir atlanir.
+ */
+function bdetayOkuyucu(ad, maxSatir = Infinity) {
+  let idx = null;
+  let bitti = false;
+  let ornekler = [];
+  const o = { sorun: null };
+  const boz = (neden) => {
+    o.sorun = `${ad}: ${neden}`;
+    ornekler = [];
+    bitti = true;
+  };
+  return Object.assign(o, {
+    satir(s) {
+      if (bitti) return;
+      const r = csvAyir(s);
+      if (idx === null) {
+        if (!r.length) {
+          bitti = true;
+          return;
+        }
+        idx = new Map();
+        r.forEach((k, i) => idx.set(k.trim(), i));
+        const eksik = BDETAY_KOLON.filter((k) => !idx.has(k));
+        if (eksik.length) boz(`eksik kolon ${eksik.join(',')}`);
+        return;
+      }
+      if (r.length < idx.size) return;
+      const t = ondalik(r[idx.get('epoch')].trim());
+      if (t === null) return;
+      if (ornekler.length >= maxSatir) {
+        boz(`satir tavani asildi (en cok ${maxSatir} satir)`);
+        return;
+      }
+      const al = (k) => {
+        const v = tamSayi(r[idx.get(k)].trim());
+        return v !== null && v >= 0 ? v : null;
+      };
+      ornekler.push({
+        t, n: al('isci_sayi'), k: al('kapanan_sayi'), an: al('anon_kb'), sh: al('shmem_kb'), fi: al('file_kb'), pss: al('pss_kb'),
+        mr: al('master_rss_kb'), mp: al('master_pss_kb'), bg: al('baglanti'),
+      });
+    },
+    bitir: () => ornekler.sort((a, b) => a.t - b.t),
+  });
+}
+
+/**
  * 2026-11-03: istemci_<TUR>.json -> { tur, kodlama } ya da null. YALNIZ BILGI, hic firlatmaz: en cok
  * ISTEMCI_JSON_MAX_KAR karakter; bozuk JSON / tur yok / kodlama yok -> kodlama null. Kodlama alanlari negatif
  * olmayan tam sayi (aksi null).
@@ -566,14 +721,20 @@ function istemciOzetOkuyucu() {
         return null;
       }
       if (!j || typeof j !== 'object' || Array.isArray(j) || typeof j.tur !== 'string' || !j.tur) return null;
+      // 2026-11-03 (bant genisligi, bilgi): ag_* anahtarlari yalniz yeni yuk_k6.js / wrk_kos.sh'te; yoksa ag YOK.
+      let ag = null;
+      if (['ag_alinan_bayt', 'ag_gonderilen_bayt', 'ag_sure_sn'].some((a) => a in j)) {
+        const nn = (v) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : null);
+        ag = { alinan: nn(j.ag_alinan_bayt), gonderilen: nn(j.ag_gonderilen_bayt), sure: nn(j.ag_sure_sn) };
+      }
       const k = j.kodlama;
-      if (!k || typeof k !== 'object' || Array.isArray(k)) return { tur: j.tur, kodlama: null };
+      if (!k || typeof k !== 'object' || Array.isArray(k)) return { tur: j.tur, kodlama: null, ...(ag ? { ag } : {}) };
       const kodlama = {};
       for (const a of ['br', 'gzip', 'deflate', 'zstd', 'yok', 'diger', 'yok_1kb_alti']) {
         const v = k[a];
         kodlama[a] = typeof v === 'number' && Number.isInteger(v) && v >= 0 ? v : null;
       }
-      return { tur: j.tur, kodlama };
+      return { tur: j.tur, kodlama, ...(ag ? { ag } : {}) };
     },
   };
 }
@@ -839,6 +1000,10 @@ async function dosyaAkit(yol, ad, { gz, isleyici, sayac }) {
  *   yukKesitler: [{ anahtar, dosya, ornekler: [{t,busy,tot[,mt,ma,ar]}], bilgi, bilgiVar }]  (yuk makinesi CPU + bellek; yoksa [])
  *   bellekKesitler: [{ anahtar, dosya, ornekler: [{t,rss,n,mt,ma}], sorun? }]  (hedef bellek_*.csv; yoksa [])
  *   istemciKodlama: Map<tur, {br,gzip,deflate,zstd,yok,diger,yok_1kb_alti}>  (istemci_*.json `kodlama`; yoksa bos)
+ *   istemciAg  : Map<tur, {alinan, gonderilen, sure}>  (istemci_*.json ag_*; yoksa bos)
+ *   agKesitler : [{ anahtar, dosya, ornekler: [{t,rx,tx}], bilgi, bilgiVar, arayuzSayisi, sarma, sifirlama, sorun? }]
+ *                (ag_*.csv / ag_*.txt; csv yoksa ornekler [] ve sorun; yoksa [])
+ *   bdetayKesitler: [{ anahtar, dosya, ornekler: [{t,n,k,an,sh,fi,pss,mr,mp,bg}], sorun? }]  (hedef bdetay_*.csv; yoksa [])
  *   log        : { fazlar, turlar: Map<tur, LogKaydi> }   (bkz. LogDeposu)
  *   loglar     : [{ dosya, satir, atlanan }]               (okunan log dosyalari)
  *   diger      : Map<epoch_sn, adet>
@@ -879,6 +1044,7 @@ async function kosuDiziniOku(dizin, { maxBayt = VARSAYILAN_MAX_BAYT, adim = null
   const tur = new Map();
   const yukNormalDegil = [];
   const bellekNormalDegil = [];
+  const bilgiNormalDegil = [];
   for (const g of girdiler) {
     const ad = g.name;
     const desen = DESENLER.find(([re]) => re.test(ad));
@@ -891,6 +1057,11 @@ async function kosuDiziniOku(dizin, { maxBayt = VARSAYILAN_MAX_BAYT, adim = null
       // 2026-11-03: hedef bellek kaydi da YALNIZ BILGI (ayni kural).
       if (desen && desen[1] === 'bellek') {
         bellekNormalDegil.push(ad);
+        continue;
+      }
+      // 2026-11-03: ag / bdetay da YALNIZ BILGI (ayni kural).
+      if (desen && (desen[1] === 'ag' || desen[1] === 'ag_bilgi' || desen[1] === 'bdetay')) {
+        if (desen[1] !== 'ag_bilgi') bilgiNormalDegil.push([desen[1], ad]);
         continue;
       }
       // Bilinen adli girdi normal dosya degilse (symlink, dizin) veri eksik/supheli: okunmaz.
@@ -929,7 +1100,7 @@ async function kosuDiziniOku(dizin, { maxBayt = VARSAYILAN_MAX_BAYT, adim = null
 
   const veri = {
     dizin, okunanBayt: 0, istemci: [], hataliIstemci: [], zaman: null, baslatilan: null, kesitler: [], yukKesitler: [],
-    bellekKesitler: [], istemciKodlama: new Map(), log: null, loglar: [], diger: new Map(), not: '', konf: [], dosyalar, sha256: null, uyarilar,
+    bellekKesitler: [], istemciKodlama: new Map(), istemciAg: new Map(), agKesitler: [], bdetayKesitler: [], log: null, loglar: [], diger: new Map(), not: '', konf: [], dosyalar, sha256: null, uyarilar,
   };
   const depo = new LogDeposu();
   const bilgiler = new Map();
@@ -937,6 +1108,9 @@ async function kosuDiziniOku(dizin, { maxBayt = VARSAYILAN_MAX_BAYT, adim = null
   const yukler = [];
   const yukBilgiler = new Map();
   const bellekler = [];
+  const aglar = [];
+  const agBilgiler = new Map();
+  const bdetaylar = [];
   const ozetler = new Map();
   let shaListe = null;
 
@@ -966,6 +1140,15 @@ async function kosuDiziniOku(dizin, { maxBayt = VARSAYILAN_MAX_BAYT, adim = null
         break;
       case 'bellek':
         isleyici = bellekOkuyucu(ad, SATIR_TAVANI.bellek);
+        break;
+      case 'ag':
+        isleyici = agOkuyucu(ad, SATIR_TAVANI.ag, SATIR_TAVANI.ag_ornek);
+        break;
+      case 'ag_bilgi':
+        isleyici = yukBilgiOkuyucu();
+        break;
+      case 'bdetay':
+        isleyici = bdetayOkuyucu(ad, SATIR_TAVANI.bdetay);
         break;
       case 'istemci_ozet':
         isleyici = istemciOzetOkuyucu();
@@ -998,10 +1181,12 @@ async function kosuDiziniOku(dizin, { maxBayt = VARSAYILAN_MAX_BAYT, adim = null
     } catch (e) {
       // B7: yuk makinesi CPU dosyasi okunamazsa (izin, G/C) yalniz o kesit 'sorun'lu bos gecer; bayt tavani kosunun
       // butununu bagladigi icin yine OKUNAMADI.
-      if ((t !== 'yuk_cpu' && t !== 'yuk_cpu_bilgi' && t !== 'bellek') || sayac.toplam > sayac.max) throw e;
+      if (!['yuk_cpu', 'yuk_cpu_bilgi', 'bellek', 'ag', 'ag_bilgi', 'bdetay'].includes(t) || sayac.toplam > sayac.max) throw e;
       const sorun = String(e && e.message ? e.message : e).slice(0, 200);
       if (t === 'yuk_cpu') yukler.push({ ad, ornekler: [], sorun });
       if (t === 'bellek') bellekler.push({ ad, ornekler: [], sorun });
+      if (t === 'ag') aglar.push({ ad, ornekler: [], arayuzSayisi: 0, sarma: 0, sifirlama: 0, sorun });
+      if (t === 'bdetay') bdetaylar.push({ ad, ornekler: [], sorun });
       continue;
     }
     ozetler.set(ad, s.sha256);
@@ -1036,8 +1221,21 @@ async function kosuDiziniOku(dizin, { maxBayt = VARSAYILAN_MAX_BAYT, adim = null
       case 'bellek':
         bellekler.push({ ad, ornekler: sonuc, sorun: isleyici.sorun || null });
         break;
+      case 'ag':
+        aglar.push({
+          ad, ornekler: sonuc, arayuzSayisi: isleyici.arayuzler.size, sarma: isleyici.sarma, sifirlama: isleyici.sifirlama,
+          sorun: isleyici.sorun || null,
+        });
+        break;
+      case 'ag_bilgi':
+        agBilgiler.set(ad, sonuc);
+        break;
+      case 'bdetay':
+        bdetaylar.push({ ad, ornekler: sonuc, sorun: isleyici.sorun || null });
+        break;
       case 'istemci_ozet':
         if (sonuc && sonuc.kodlama) veri.istemciKodlama.set(sonuc.tur, sonuc.kodlama);
+        if (sonuc && sonuc.ag) veri.istemciAg.set(sonuc.tur, sonuc.ag);
         break;
       case 'log':
       case 'log_gz':
@@ -1100,6 +1298,27 @@ async function kosuDiziniOku(dizin, { maxBayt = VARSAYILAN_MAX_BAYT, adim = null
   for (const { ad, ornekler, sorun } of bellekler) {
     veri.bellekKesitler.push({ anahtar: ad.slice('bellek_'.length, -'.csv'.length), dosya: ad, ornekler, ...(sorun ? { sorun } : {}) });
   }
+  // 2026-11-03 (bilgi): ag kesitleri (csv ya da txt'den biri yeterli; txt'siz csv'de rol bilinmez) ve bdetay kesitleri.
+  for (const [tur_, ad] of bilgiNormalDegil) {
+    if (tur_ === 'ag') aglar.push({ ad, ornekler: [], arayuzSayisi: 0, sarma: 0, sifirlama: 0, sorun: `${ad}: normal dosya degil` });
+    else bdetaylar.push({ ad, ornekler: [], sorun: `${ad}: normal dosya degil` });
+  }
+  const agAnahtarlar = new Set([
+    ...aglar.map((x) => x.ad.slice('ag_'.length, -'.csv'.length)),
+    ...[...agBilgiler.keys()].map((ad) => ad.slice('ag_'.length, -'.txt'.length)),
+  ]);
+  for (const anahtar of [...agAnahtarlar].sort()) {
+    const c = aglar.find((x) => x.ad === `ag_${anahtar}.csv`);
+    const bilgi = agBilgiler.get(`ag_${anahtar}.txt`) || null;
+    const sorun = c ? c.sorun : `ag_${anahtar}.csv yok`;
+    veri.agKesitler.push({
+      anahtar, dosya: c ? c.ad : null, ornekler: c ? c.ornekler : [], bilgi, bilgiVar: !!bilgi,
+      arayuzSayisi: c ? c.arayuzSayisi : 0, sarma: c ? c.sarma : 0, sifirlama: c ? c.sifirlama : 0, ...(sorun ? { sorun } : {}),
+    });
+  }
+  for (const { ad, ornekler, sorun } of bdetaylar) {
+    veri.bdetayKesitler.push({ anahtar: ad.slice('bdetay_'.length, -'.csv'.length), dosya: ad, ornekler, ...(sorun ? { sorun } : {}) });
+  }
   veri.log = depo.bitir();
   veri.okunanBayt = sayac.toplam;
   return veri;
@@ -1114,6 +1333,9 @@ module.exports = {
   ORNEK_KOLON,
   YUK_ORNEK_KOLON,
   BELLEK_KOLON,
+  AG_KOLON,
+  BDETAY_KOLON,
+  _sayacFarkiForTest: sayacFarki,
   _csvAyirForTest: csvAyir,
   _csvSozlukOkuyucuForTest: csvSozlukOkuyucu,
   _SatirYaziciForTest: SatirYazici,

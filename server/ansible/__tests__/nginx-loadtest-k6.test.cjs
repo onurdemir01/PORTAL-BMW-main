@@ -294,7 +294,9 @@ test('K7 ozet_hesapla anahtar sirasi = wrk_kos.sh JSON_ANAHTARLARI (iki motorun 
   const liste = [...String(kolonlar).matchAll(/'([a-z0-9_]+)'/g)].map((x) => x[1]);
   assert.equal(liste.length, 32, 'KOLONLAR 32');
   assert.deepEqual(liste.slice(-2), ['protokol', 'protokol_uyumsuz'], 'son iki kolon protokol, protokol_uyumsuz');
-  assert.deepEqual(bos.slice(-3, -1), ['protokol', 'protokol_uyumsuz'], 'ozet_hesapla kodlama oncesi son iki anahtar (wrk JSON_ANAHTARLARI sonu ile ayni)');
+  // 2026-11-03 (bant genisligi): protokol_uyumsuz'dan sonra ag_alinan_bayt / ag_gonderilen_bayt / ag_sure_sn (CSV'de YOK), sonra kodlama.
+  assert.deepEqual(bos.slice(-6, -1), ['protokol', 'protokol_uyumsuz', 'ag_alinan_bayt', 'ag_gonderilen_bayt', 'ag_sure_sn'], 'ozet_hesapla kodlama oncesi son bes anahtar (wrk JSON_ANAHTARLARI sonu ile ayni)');
+  assert.ok(!liste.some((k) => k.startsWith('ag_')), 'ag_ CSV kolonu DEGIL (32 kolon aynen)');
   assert.ok(!liste.includes('kodlama'), 'kodlama CSV kolonu DEGIL (32 kolon aynen; eski Portal CSV okuyucusu)');
 });
 
