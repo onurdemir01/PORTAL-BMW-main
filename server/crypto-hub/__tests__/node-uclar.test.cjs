@@ -675,6 +675,26 @@ test('N16 iptal yarisi: PENDING bilet iptal edilemezse satir ve kilit acik kalir
     assert.equal(r2.kapandi_at, null, 'AWX isi suren talep kapatildi (kilit birakilirdi)');
   }));
 
+test('N16b onaylanmis veya okunamayan Smart biletinde Admin kilidi acamaz', () =>
+  ile(async (h) => {
+    h.okumaVer();
+    const b = await talepAc(h);
+    const row = h.d.rows.find((x) => x.id === b.talepId);
+    const ticket = h.d.smartTickets.find((x) => x.id === b.ticketId);
+    const yol = `/node-change/${b.talepId}/kapat`;
+
+    ticket.status = 'APPROVED';
+    let res = await h.istek('POST', yol, K.admin, { gerekce: 'Smart onaylandi, kilit guvenle acilamaz' });
+    assert.equal(res.status, 409, JSON.stringify(res.body));
+    assert.equal(row.kapandi_at, null, 'onaylanmis fakat AWX numarasi yazilmamis talep kapatildi');
+
+    ticket.status = 'PENDING';
+    h.d.storeOkunamaz = true;
+    res = await h.istek('POST', yol, K.admin, { gerekce: 'Smart okunamiyor, kilit guvenle acilamaz' });
+    assert.equal(res.status, 503, JSON.stringify(res.body));
+    assert.equal(row.kapandi_at, null, 'Smart sahipligi okunamayan talep kapatildi');
+  }));
+
 test('N6c PS6 Ankara talebi Istanbul bagini SUNUCUDA kurar (istemci esTalepId gondermese de)', () =>
   ile(async (h) => {
     const N = require('../../../shared/cryptoHubNodes.cjs');
