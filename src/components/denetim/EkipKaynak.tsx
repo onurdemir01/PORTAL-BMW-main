@@ -12,7 +12,8 @@ const ETIKET: Record<string, string> = {
   SI51_YAZILIM: 'CMDB Code Repository kaydı — Yazılım Geliştirme Sorumlusu',
   ARK997_AGILE: 'CMDB ARK Application kaydı — Agile Takım',
   ARK997_YAZILIM: 'CMDB ARK Application kaydı — Yazılım Geliştirme Sorumlusu',
-  NAMESPACE: 'Namespace sahibi — uygulama için CMDB’de sorumlu bulunamadı',
+  NAMESPACE:
+    'Namespace sahibi — uygulama düzeyinde sahip bulunamadı ya da aranmadı (CMDB’de yalnız ARK cluster’larında aranır)',
 };
 
 /** Kaynak kodunun okunur açıklaması ('' = bilinmiyor). */

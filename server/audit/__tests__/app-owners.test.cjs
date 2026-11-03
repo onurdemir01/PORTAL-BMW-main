@@ -23,6 +23,8 @@
 //   AO15 namespace tablosu GECICI okunamaz, uygulama tablosu okunur: kendi sahibi olmayan uygulama
 //        "veri yok" (veriYokNs), "bilinmiyor" (unknownNs) degil; sonuc onbellege girmez. Tablo YOK
 //        (Invalid object name) kalici: onbellege girer.
+//   AO16 lookup_status ARK_DISI (2026-11-03, Ansible kural 2: ARK disi cluster CMDB'ye hic gitmez):
+//        durum suzulmez, yalniz kaynak belirleyicidir; ARK satiri ARK disi kopyasini yener.
 'use strict';
 
 const { test } = require('node:test');
@@ -345,4 +347,24 @@ test('AO15 namespace tablosu gecici okunamaz: veri yok (bilinmiyor degil), onbel
   } finally {
     _resetCache();
   }
+});
+
+test('AO16 ARK_DISI satiri namespace yedegi gibi okunur; ayni ns/app ARK satiri kazanir', () => {
+  const disi = A('muh-prod', 'app', {
+    cluster: 'gbocpdev9',
+    owner_group_name: 'GT-NS-PROD',
+    kaynak: 'NAMESPACE',
+    lookup_status: 'ARK_DISI',
+    lookup_message: 'ARK disi cluster: uygulama duzeyi sahip aranmaz',
+  });
+  const ark = A('muh-prod', 'app', { cluster: 'gbocpprod1', owner_group_name: 'GERCEK', kaynak: 'SI51_AGILE' });
+  for (const sira of [[disi, ark], [ark, disi]]) {
+    const r = ownersForApp(sahipler(sira), 'app', ['muh-prod']);
+    assert.deepEqual([r.groups, r.kaynaklar, r.nsSahibi], [['GERCEK'], ['SI51_AGILE'], []]);
+  }
+  const yalniz = ownersForApp(sahipler([disi]), 'app', ['muh-prod']);
+  assert.deepEqual([yalniz.groups, yalniz.kaynaklar, yalniz.nsSahibi], [['GT-NS-PROD'], ['NAMESPACE'], ['muh-prod']]);
+  const yok = A('sahipsiz-prod', 'app', { cluster: 'gbocpdev9', kaynak: 'YOK', lookup_status: 'ARK_DISI' });
+  const y = ownersForApp(sahipler([yok]), 'app', ['sahipsiz-prod']);
+  assert.deepEqual([y.groups, y.unknownNs], [[], ['sahipsiz-prod']]);
 });

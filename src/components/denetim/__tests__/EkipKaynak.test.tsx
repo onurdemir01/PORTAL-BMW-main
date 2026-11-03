@@ -32,7 +32,9 @@ describe('Ekip kaynağı', () => {
     expect(app.getAttribute('title')).toContain('CMDB Code Repository kaydı — Agile Takım');
     expect(app.parentElement?.textContent).not.toContain('namespace sahibi');
     const ns = screen.getByText('GT-NS-TEST');
-    expect(ns.getAttribute('title')).toContain('Namespace sahibi — uygulama için CMDB’de sorumlu bulunamadı');
+    expect(ns.getAttribute('title')).toContain('Namespace sahibi — uygulama düzeyinde sahip bulunamadı ya da aranmadı');
+    // ARK disi cluster'larda uygulama duzeyi sahip hic aranmaz (lookup_status ARK_DISI): metin bunu soylemeli.
+    expect(ns.getAttribute('title')).toContain('yalnız ARK cluster’larında aranır');
     expect(ns.parentElement?.textContent).toContain('(namespace sahibi)');
     expect(screen.getAllByText('(namespace sahibi)')).toHaveLength(1);
   });
