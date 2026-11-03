@@ -439,6 +439,101 @@ sn = 23 dk.
 başlar, son ölçüm saniyesinden 2 sn önce biter ve CPU örnekleri 1 sn aralıklıdır; pencere en az
 30 sn olmalıdır. 30..36 sn'lik ölçüm her adımı `GECERSIZ` (`pencere_kisa`) yapıyordu.
 
+### Gece kuyruğu (2026-11-03)
+
+Gece boyunca ardı ardına koşu: girdiğiniz bütün koşular sırayla, aralarında sunucu "dinlenerek",
+sabaha kadar biter. Kuyruk **sunucuda** yürür (`server/nginx-loadtest/kuyruk.cjs`); ekranı, tarayıcıyı
+ya da bilgisayarı kapatabilirsiniz. Portal yeniden başlarsa kuyruk kaldığı yerden devam eder ve süren
+koşuyu ikinci kez başlatmaz; yeni süreç eski sürecin kirası dolana kadar (**en çok ≈ 10 dk**) bekler,
+sonra devralır (süren koşu bu arada AWX'te sürer, yalnız izleme gecikir).
+
+**Kuyruğu kurmak (yatmadan önce)**
+
+1. **Yeni koşu** formunda ayarları seçin (hazır ayarlar dahil). Plan kutusundaki **Kuyruk etiketi**ne
+   bu koşuda neyi değiştirdiğinizi yazın — zorunlu, en çok 100 karakter, satır sonu / kontrol
+   karakteri olmadan. Örnek: `A1 temel`,
+   `A3 brotli seviye 4`, `A4 gzip 6`. Etiket koşunun etiketine `[K<kuyruk no>] A3 brotli seviye 4`
+   olarak yazılır; sabah koşu listesinde neyin neyle koştuğu buradan okunur.
+2. **Kuyruğa ekle**'ye basın. Form açık kalır: bir alanı değiştirip yeni etiketle yeniden ekleyin
+   (ör. 12–16 öğe). Mevcut **Koşuyu başlat…** akışı aynen durur. Formda bu ayarlarla bitmiş bir ön
+   kontrol varsa onun uyarıları da kuyruğa taşınır (onaylamanız için).
+3. **Gece kuyruğu** sekmesinde taslak listelenir: sırayı ↑ / ↓ ile değiştirin, istemediğinizi
+   **Çıkar**ın. Sonra:
+   - **Koşular arası bekleme**: varsayılan 5 dk (1–30). Önceki koşu bitip **kilidi bırakıldıktan
+     sonra** sayılır (iptal / hatada kilit, uzaktaki yük bitene kadar tutulur; bekleme o zaman başlar).
+   - **Başlangıç**: *Hemen* ya da bir saat. Seçilen saat **en çok 10 dk önce** geçtiyse kuyruk hemen
+     başlar (`00:00` seçip 00:03'te oluşturmak: hemen, 24 saat sonra değil). Daha önce geçmişse ertesi
+     güne kayar; ekran bunu "Başlangıç yarın 00:00 (23 sa 45 dk sonra)" diye yazar ve 12 saatten uzaksa
+     uyarır. Kuyruk listesi ve ayrıntısı bugün olmayan saati "yarın …" diye gösterir.
+   - **En geç bitiş** (isteğe bağlı, ör. `07:00`): sıradaki öğenin tahmini süresi (ön kontrol ≈ 5 dk
+     + koşunun bütçesi, formdaki "Tahmini toplam süre" üst sınırı) bu saati aşacaksa öğe başlamaz,
+     **ATLANDI** "süre yetmedi" olur; sonrakiler aynı kurala göre denenir (daha kısa olan sığabilir).
+   - **Onay**: hedef sunucu adını (serbest hedefte hedef IP'yi) **bir kez** birebir yazın; gece her
+     koşu bu onayla başlar. Bir kuyruk tek hedefe yük basar (öğeler farklı hedefteyse oluşturulmaz).
+     Aynı hedefte **aktif** (bekleyen / çalışan / dinlenen) bir kuyruk varsa yenisi kurulmaz
+     (409 `kuyruk_var`): dinlenme kuyruk başına sayıldığından iki kuyruk dinlenmesiz ard arda yük basardı.
+     Öğe eklemek için o kuyruğu İptal edip hepsini tek kuyrukta yeniden kurun.
+4. **Kuyruğu oluştur**. Öğelerde uyarı varsa sunucu **uyarı türlerini** listeler (ör.
+   `U3fa2c1d0e7 /web_log %70 dolu …`); her birini okuyup işaretleyin ve yeniden basın. Tür, sayıları
+   ayıklanmış uyarı metnidir: `/web_log %70 dolu` onaylandıysa gece `/web_log %81 dolu` aynı türdür ve
+   koşu başlar; gece **yeni bir tür** çıkarsa o öğe **ATLANDI** "yeni uyarı: …" olur, kuyruk devam eder.
+
+**Gece ne olur (her öğe için)**
+
+1. Kuyruğu oluşturanın yetkisi, sınıflandırma, PROD / EDU, yük makinesi ve girdi kapıları **yeniden**
+   uygulanır (kuyruk oluşturulduğu anki karar kullanılmaz). Düşen öğe **ATLANDI** (nedeni yazılır).
+2. Ön kontrol otomatik çalışır (yük üretmez). Engel varsa ya da ön kontrol başarısızsa **ATLANDI**.
+3. Koşu başlar (mevcut koşu kapısı, ayarlar ön kontrolden). Aynı hedefte elle başlatılmış bir iş
+   varsa öğe **bekler** (mevcut kilit; Not sütununda "bekliyor: …"). Bekleme 15 dakikayı aşar ve ön
+   kontrol eskirse ön kontrol yeniden çalışır.
+4. Koşu bitince: başarılı → **BITTI**; FAILED / OKUNAMADI / Durdur (CANCELED) → **HATALI**. Her
+   iki durumda kuyruk **DINLENME**'ye geçer ve bekleme sonrası sıradaki öğe başlar. Yük üretmemiş
+   (koşusu başlamamış) atlamadan sonra dinlenme yoktur.
+
+Durumlar — kuyruk: `BEKLIYOR` (başlangıç saati gelmedi), `CALISIYOR`, `DINLENME`, `BITTI`, `IPTAL`,
+`HATALI` (yürütücü 120 kez, 15 sn turlarla ~30 dk, üst üste hata verdi; kısa Portal DB kesintisi kuyruğu durdurmaz; bekleyen öğeler atlanır). Öğe: `BEKLIYOR`,
+`CALISIYOR`, `BITTI`, `ATLANDI`, `HATALI`, `IPTAL`.
+
+**Geçici hata (kısa AWX / DB kesintisi)**: öğe **HATALI olmaz**, sıradakine de geçilmez: aynı öğe
+1, 2, 4, 8, 15 dk arayla yeniden denenir (Not sütununda "geçici hata (n/6) …; yeniden deneme … sonra"),
+6. başarısız denemede **HATALI** (≈ 30 dk) ve kuyruk sıradakiyle devam eder. AWX şablonu doğrulanamadı /
+launch 4xx gibi işin **kesin başlamadığı** hatalarda (koşu satırı FAILED, kilit bırakıldı) da böyledir:
+öğedeki numara silinir, yeniden denenir. İş AWX'te **başlamış olabilirse** (ağ hatası / zaman aşımı:
+`belirsiz`, ya da AWX iş numarası döndü) öğe **HATALI** olur ve kuyruk DINLENME'ye geçer; bekleme,
+kilit (TTL ile) bırakılınca sayılır.
+
+**Ayrıntı ekranı**: öğeler, durum, koşu ve ön kontrol bağlantısı, ATLANDI / HATALI nedeni, her bekleyen
+öğe için tahmini başlangıç–bitiş (kilit beklemesi hariç; en geç bitişi aşabilecekse işaretli),
+"Sıradaki 4 dk 12 sn sonra" sayacı ve tahmini bitiş saati.
+
+**İptal**: kuyruğun **İptal** düğmesi sonraki öğeleri başlatmaz (bekleyenler `IPTAL`). Süren koşu
+**durmaz** — onu koşu ayrıntısındaki **Durdur** ile ayrıca durdurun (ekran süren koşuyu söyler). Ön
+kontrolü süren öğe, ön kontrol bitince koşu başlatmadan `IPTAL` olur; iptal öğe başlatılırken gelirse
+de öğe `BEKLIYOR`'a dönmez, sonraki turda `IPTAL` kapanır. Kuyruk `HATALI` olduğunda süren öğe de
+izlenmeye devam eder ve kapanır (yetim `CALISIYOR` kalmaz). Başlamamış bir öğe kuyruktan
+**Çıkar**ılabilir ya da sırası değiştirilebilir.
+
+**Örnek gece** (bekleme 5 dk, başlangıç 00:00, en geç bitiş 07:00, 14 öğe × ≈ 23 dk Standart):
+00:00 `A1 temel` ön kontrol → 00:05 koşu → 00:28 bitti, kilit bırakıldı → 00:33 `A2 brotli 4` … Her
+öğe ≈ 28 dk + 5 dk bekleme ≈ 33 dk; 07:00'ye kadar ≈ 12 öğe sığar, son ikisi sabah "süre yetmedi"
+olarak görünür. 14'ün hepsi için Hızlı deneme / kısa ölçüm seçin ya da en geç bitişi kaldırın.
+
+**Yetki (sınır)**: her öğeden önce kuyruğu oluşturan kullanıcının rol değişikliği (Admin › Roller,
+etkin kayıt Admin değilse) denetlenir. AD grubundan çıkarılma oturumsuz ölçülemez; gece fark edilmez.
+
+**Yarış güvenliği** (birden çok Portal süreci): kuyruğu tek süreç işler (DB kirası `kira_id`, 600 sn;
+süreç ölürse başkası devralır). Öğe koşullu UPDATE ile alınır; kuyruk başına tek çalışan öğeyi ayrıca
+filtreli tekil indeks `UX_nlko_calisan` zorlar. Ön kontrol / koşu numarası AWX işi başlatılmadan
+**önce** öğeye yazılır; yazım tutmazsa iş başlatılmaz. Numarası yazılmamış "çalışıyor" öğe hiç
+başlamamıştır ve yeniden başlatmada güvenle yeniden denenir.
+
+**Devreye alma**: yeni tablolar `nginx_loadtest_kuyruk`, `nginx_loadtest_kuyruk_ogeler` ve indeksler
+`IX_nlko_kuyruk`, `UX_nlko_calisan` Portal açılışında `server/db/mssql-setup.cjs` ile **kendiliğinden**
+oluşur (Portal DB; elle SQL gerekmez). Öğe tablosunun `sonraki_deneme_at` (geri çekilme) sütunu yeni
+kurulumda CREATE TABLE'da; tablo ilk sürümle kurulduysa açılıştaki sütun göçü
+(`ALTER TABLE nginx_loadtest_kuyruk_ogeler ADD sonraki_deneme_at DATETIME2 NULL`) ekler. Yürütücü `NGINX_LOADTEST_KUYRUK_SN` (varsayılan 15 sn, 5–120)
+aralıkla çalışır.
+
 ---
 
 ## 4. Korkuluklar (sunucu tarafı)
@@ -1037,6 +1132,11 @@ retlerinde ayrıca `sahipler`).
 | `GET /karsilastir?ref=&aday=&esikCpu=&esikP95=` | okuma | karar, nedenler, tablo, kademe, kombinasyon; `ref` / `aday` özetinde `motor`, `hedefTuru`, `protokol` (farklıysa karar `VERI_YOK`, §5.2) |
 | `GET /araclar` | okuma | `{ ok, etkin, calisan, gecmis (en çok 10, id azalan), ayar: { derlemeHostlari, varsayilanDerlemeHost, k6Surum, wrkSurum: '4.2.0', proxyTanimli, proxy (yalnız Admin'e dolu), proxyHatasi, k6ArsivSha256, wrkKaynakSha256 (env sabitleri ya da null), ozetEksikleri (['<ENV> tanımlı değil' \| '<ENV> 64 hex değil']), isSuresiSn (2400) }, kapi: { kod, mesaj } }` (`kapi` = `/hedefler` `araclar.kod` / `mesaj`). Araç seti: `{ id, durum, derlemeHost, k6Surum, wrkSurum, k6Sha256, wrkSha256, k6ArsivSha256, wrkKaynakSha256, ozetlerGuncel, geriCekildi, geriCeken, geriCekmeAt, calismaYasSn, swDizin (yalnız DONE), derlemeRhel, derlemeGlibc, wrkGlibcGerekli, wrkOpenssl, wrkLuajit, hata, awxServerId, awxJobId, awxUrl, createdBy, createdAt, startedAt, finishedAt }` |
 | `POST /araclar` | Admin | `{ derlemeHost? }` (yoksa listenin ilki) → `{ aracId, jobId, awxServerId }`. 400 `gecersiz_istek` (geçersiz ad), 409 `derleme_host_izinsiz`, 409 `arac_proxy_gecersiz`, 409 `arac_ozet_sabit_yok` (iki arşiv özeti env'i zorunlu; iş, kilit, kayıt yok), 409 `sablon_yok`, 409 `kilit_dolu` ("Başka bir araç hazırlama işi sürüyor ..."), 409 `sinir_asildi` (son kapı), 424 `db_okunamadi` / `awx_okunamadi`. Extra vars: `yuk_islem='araclar'` + 9 alan (README); `yuk_k6_arsiv_sha256` / `yuk_wrk_kaynak_sha256` her zaman 64 küçük hex; `limit` boş |
+| `GET /kuyruklar`, `GET /kuyruklar/:id` | okuma | gece kuyrukları (en yeni 50); ayrıntı `{ kuyruk: { …, tahminiBitis, siradakiKalanSn, sunucuZamani }, ogeler: [{ id, sira, etiket, durum, asama, onKontrolKosuId, kosuId, neden, butceSn, uyariTurleri, tahminiBaslangic, tahminiBitis, sureYetmeyebilir, ayar }] }` |
+| `POST /kuyruklar` | Admin | `{ beklemeDk (1–30, varsayılan 5), baslangic (ISO \| null = hemen), enGecBitis (ISO \| null), confirmText, onaylananTurler?, ogeler: [{ etiket (zorunlu, ≤ 100), govde (ön kontrol gövdesi, etiketsiz), onKontrolKosuId? }] }` → `{ id }`. 400 `gecersiz_istek`, 409 `hedef_farkli` (`oge`), `onay_metni`, `uyari_onayi` (`uyariTurleri: [{ kod, ornek, ogeler }]`), kapı kodları (mesaj `Öğe n: …`, `oge`), 424 `db_okunamadi`. Denetim `nginx_loadtest_kuyruk_olustur` |
+| `POST /kuyruklar/:id/iptal` | Admin | sonraki öğeler başlamaz → `{ suren: { ogeId, etiket, kosuId, onKontrolKosuId } \| null }` (süren koşu durdurulmaz). 409 `kuyruk_bitti`. Denetim `nginx_loadtest_kuyruk_iptal` |
+| `PUT /kuyruklar/:id/sira` | Admin | `{ sira: [ogeId…] }` = bekleyen öğelerin tam listesi; 409 `sira_eski` |
+| `POST /kuyruklar/:id/ogeler/:ogeId/cikar` | Admin | bekleyen öğe `IPTAL` olur; 409 `oge_basladi` |
 | `POST /araclar/:id/geri-cek` | Admin | gövde yok → `{ ok, arac, kapi: { hazir, aracId, kod, mesaj } }` (yeni etkin set ya da neden). Denetim `nginx_loadtest_araclar_geri_cek`. 400 `gecersiz_istek`, 409 `arac_yok`, `arac_geri_cekilemez` (DONE değil), `zaten_geri_cekildi`, 424 `db_okunamadi`. Eski `POST /araclar/:id/onayla` kalktı |
 
 ---

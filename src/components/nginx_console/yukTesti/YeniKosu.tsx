@@ -36,6 +36,9 @@
 // yok) secim kapali ve gonderilen h1. h2 secilince kip 'ka' yapilir ve 'yeni' secenegi kapanir (h1'e donunce kip degismez).
 // Govdede parametreler.protokol HER ZAMAN dolu; imza protokolu icerir (degisince on kontrol eskir). Sunucunun protokol
 // 400'leri (gecersiz_istek) alan hatasi olarak gorunur.
+// GECE KUYRUGU (2026-11-03): Plan kutusunda "Kuyruk etiketi" (zorunlu, en cok 100) + "Kuyruğa ekle": formun o anki
+// govdesi (etiketsiz) taslak kuyruga gider; formda bu ayarlarla bitmis on kontrol varsa numarasi da (uyari turleri
+// kuyruk olusturulurken onaya gelir). "Koşuyu başlat…" AYNEN kalir.
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowPathIcon, BoltIcon, ChevronDownIcon, ChevronRightIcon, ClipboardDocumentCheckIcon, ServerStackIcon, WrenchScrewdriverIcon } from '@heroicons/react/24/outline';
 import {
@@ -55,6 +58,7 @@ import {
   ALAN_ACIKLAMASI, HAZIR_AYAR_ETIKETI, HAZIR_AYAR_SIRASI, hangiHazirAyar, hazirAyar, hazirAyarSuresiSn, type HazirAyarAdi, type HazirAyarDegerleri,
 } from './hazirAyarlar';
 import { Alan, Bolum, GIRDI, KosuDurumHapi, girdiStili } from './YukUi';
+import { ETIKET_MAX as KUYRUK_ETIKET_MAX, yeniYerelId, type TaslakOge } from './kuyrukTaslak';
 import {
   AE_ETIKETI, AKTIF_DURUMLAR, GIRDIYE_BAGLI_RETLER, KIP_ETIKETI, PROTOKOL_ETIKETI, SERBEST_VHOST_YARDIMI, VHOST_LISTEDE_YOK_NOTU, adimDegerleri, baglantiBeklemesiMs,
   baglantilariAyristir, butceSn, hataMetni, hedefSinirlari, hizlariAyristir, ipGecerli, nedenMetni, onKontrolDegerlendir, onKontrolKalanMs,
@@ -94,7 +98,12 @@ type SinifSonucu =
 /** Sunucu hedefinin form icin gereken alanlari (/ip-sinifi sunucu yaniti ya da /hedefler satiri). */
 type SunucuHedefi = Pick<NlHedef, 'host' | 'env' | 'vhostlar' | 'vhostVerisi' | 'hizSiniri' | 'vuSiniri' | 'limitReq' | 'limitConn'>;
 
-export default function YeniKosu({ onBasladi, onSenaryolar, onAraclar }: { onBasladi: (kosuId: number) => void; onSenaryolar: () => void; onAraclar?: () => void }) {
+export default function YeniKosu({ onBasladi, onSenaryolar, onAraclar, onKuyrugaEkle, kuyrukOgeSayisi = 0 }: {
+  onBasladi: (kosuId: number) => void; onSenaryolar: () => void; onAraclar?: () => void;
+  /** Gece kuyrugu taslagina ekler (verilmezse dugme cizilmez). */
+  onKuyrugaEkle?: (o: TaslakOge) => void; kuyrukOgeSayisi?: number;
+}) {
+  const [kuyrukEtiket, setKuyrukEtiket] = useState('');
   const [veri, setVeri] = useState<NlHedefler | null>(null);
   const [senaryolar, setSenaryolar] = useState<NlSenaryo[] | null>(null);
   const [yukHata, setYukHata] = useState('');
@@ -300,6 +309,25 @@ export default function YeniKosu({ onBasladi, onSenaryolar, onAraclar }: { onBas
       if (!h) return { ...f, hedefHost: '' };
       return { ...f, hedefHost: h.host, hedefIp: h.ipler.includes(f.hedefIp) ? f.hedefIp : h.ipler.length === 1 ? h.ipler[0] : '' };
     });
+  }
+
+  // Gece kuyrugu: onay hedefi (sunucu adi / serbestte IP) siniftan; etiket zorunlu.
+  const kuyrukHedefi = hedefTuru === 'serbest' ? ip : sunucuHost;
+  const kuyrukEtiketi = kuyrukEtiket.trim();
+  const kuyrukEtiketHata = kuyrukEtiketi.length > KUYRUK_ETIKET_MAX ? `En çok ${KUYRUK_ETIKET_MAX} karakter.` : null;
+  const kuyrugaEklenir = !!govde && araclarHazir && !sinifEngeli && !girdiReddi && !!kuyrukHedefi && !!kuyrukEtiketi && !kuyrukEtiketHata;
+  function kuyrugaEkle() {
+    if (!onKuyrugaEkle || !kuyrugaEklenir || !govde || !param) return;
+    const { etiket: _e, ...g } = govde as typeof govde & { etiket?: string };
+    void _e;
+    const yuk = param.motor === 'wrk' ? `${(param.baglantilar ?? []).join(' ')} bağlantı` : `${(param.hizlar ?? []).join(' ')} istek/sn`;
+    const ozet = [param.motor, yuk, ...(param.protokol === 'h2' ? [PROTOKOL_ETIKETI.h2] : []), KIP_ETIKETI[param.kip], AE_ETIKETI[param.ae], butce != null ? `≈ ${sureMetni(butce)}` : ''].filter(Boolean).join(' · ');
+    onKuyrugaEkle({
+      yerelId: yeniYerelId(), etiket: kuyrukEtiketi, govde: g, hedef: kuyrukHedefi,
+      onKontrolKosuId: ok && okBitti && !formDegisti && !okEski ? ok.kosuId : null, ozet, butceSn: butce,
+    });
+    toast.success(`Kuyruğa eklendi: ${kuyrukEtiketi} (taslakta ${kuyrukOgeSayisi + 1} öğe).`);
+    setKuyrukEtiket('');
   }
 
   async function onKontrolBaslat() {
@@ -670,6 +698,17 @@ export default function YeniKosu({ onBasladi, onSenaryolar, onAraclar }: { onBas
                 <BoltIcon className="h-3.5 w-3.5" aria-hidden /> Koşuyu başlat…
               </button>
               {neden && <p className="text-[11px] leading-4" style={{ color: 'var(--text-secondary)' }}>{neden}</p>}
+              {onKuyrugaEkle && (
+                <div className="space-y-1.5 border-t pt-2" style={{ borderColor: 'var(--border-subtle)' }}>
+                  <Alan id="yuk-kuyruk-etiket" etiket="Kuyruk etiketi (zorunlu)" hata={kuyrukEtiketHata} yardim="Bu koşuda ne değiştirdiniz? Ör. “A3 brotli seviye 4”. Koşu etiketine yazılır.">
+                    <input id="yuk-kuyruk-etiket" value={kuyrukEtiket} maxLength={KUYRUK_ETIKET_MAX + 20} onChange={(e) => setKuyrukEtiket(e.target.value)} autoComplete="off" className={GIRDI} style={girdiStili(!!kuyrukEtiketHata)} />
+                  </Alan>
+                  <button type="button" onClick={kuyrugaEkle} disabled={!kuyrugaEklenir} className={`${SM_BTN} h-8 w-full justify-center`} style={smBtn()}
+                    title="Ayarları gece kuyruğu taslağına ekler; ön kontrol gece her koşudan önce otomatik çalışır.">
+                    Kuyruğa ekle{kuyrukOgeSayisi > 0 ? ` (taslakta ${kuyrukOgeSayisi})` : ''}
+                  </button>
+                </div>
+              )}
               {okBitti && kalanMs != null && kalanMs > 0 && !formDegisti && !okEski && (
                 <p className="text-[11px] leading-4 tabular-nums" style={{ color: kalanMs < 120000 ? 'var(--status-warning-text)' : 'var(--text-secondary)' }}>Ön kontrol {sureMetni(kalanMs / 1000)} daha geçerli.</p>
               )}

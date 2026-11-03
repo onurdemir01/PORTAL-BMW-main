@@ -1985,6 +1985,68 @@ const TABLES = [
         geri_cekme_at             DATETIME2 NULL
       )`,
   },
+  {
+    // Yuk Testi GECE KUYRUGU (2026-11-03, server/nginx-loadtest/kuyruk.cjs): ardisik kosular, aralarinda dinlenme.
+    // durum: BEKLIYOR | CALISIYOR | DINLENME | BITTI | IPTAL | HATALI. hazir = 0 iken (olusturma yarim) yurutucu
+    // gormez. kira_id / kira_bitis: kuyrugu isleyen Portal sureci (kosullu UPDATE; surec olurse kira dolar,
+    // baskasi devralir). onay_hedefi: olusturulurken yazilarak onaylanan hedef (sunucu adi ya da serbestte IP).
+    // onaylanan_turler: onaylanan uyari TURLERI (JSON [{kod, ornek}]). Satir silinmez (kucuk tablo).
+    name: 'nginx_loadtest_kuyruk',
+    sql: `
+      CREATE TABLE nginx_loadtest_kuyruk (
+        id                INT IDENTITY(1,1) PRIMARY KEY,
+        ad                NVARCHAR(120) NULL,
+        durum             NVARCHAR(20) NOT NULL,
+        bekleme_dk        INT NOT NULL DEFAULT 5,
+        baslangic_at      DATETIME2 NULL,
+        en_gec_bitis      DATETIME2 NULL,
+        onay_hedefi       NVARCHAR(64) NOT NULL,
+        hedef_turu        NVARCHAR(10) NOT NULL DEFAULT 'sunucu',
+        onaylanan_turler  NVARCHAR(MAX) NULL,
+        created_by        NVARCHAR(100) NULL,
+        created_at        DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        iptal_eden        NVARCHAR(100) NULL,
+        iptal_at          DATETIME2 NULL,
+        dinlenme_kosu_id  INT NULL,
+        dinlenme_bitis    DATETIME2 NULL,
+        hata_sayisi       INT NOT NULL DEFAULT 0,
+        son_hata          NVARCHAR(1000) NULL,
+        bitis_at          DATETIME2 NULL,
+        kira_id           NVARCHAR(64) NULL,
+        kira_bitis        DATETIME2 NULL,
+        hazir             BIT NOT NULL DEFAULT 0
+      )`,
+  },
+  {
+    // Gece kuyrugu ogeleri: govde = on kontrol govdesi (kanonik parametreler); etiket zorunlu, kosu etiketine
+    // "[K<kuyruk>] <etiket>" olarak yazilir. durum: BEKLIYOR | CALISIYOR | BITTI | ATLANDI | HATALI | IPTAL;
+    // asama: on_kontrol | kosu. on_kontrol_kosu_id / kosu_id AWX launch'tan ONCE yazilir (kosullu UPDATE,
+    // deneme_id + kira): numarasi olmayan CALISIYOR oge hic baslamamistir. Kuyruk basina tek CALISIYOR oge:
+    // UX_nlko_calisan (filtreli tekil indeks). sonraki_deneme_at: gecici hatadan sonra geri cekilme (bu ana kadar
+    // yeniden denenmez).
+    name: 'nginx_loadtest_kuyruk_ogeler',
+    sql: `
+      CREATE TABLE nginx_loadtest_kuyruk_ogeler (
+        id                  INT IDENTITY(1,1) PRIMARY KEY,
+        kuyruk_id           INT NOT NULL,
+        sira                INT NOT NULL,
+        etiket              NVARCHAR(120) NOT NULL,
+        govde               NVARCHAR(MAX) NOT NULL,
+        butce_sn            INT NULL,
+        uyari_turleri       NVARCHAR(MAX) NULL,
+        durum               NVARCHAR(20) NOT NULL,
+        asama               NVARCHAR(12) NULL,
+        deneme_id           NVARCHAR(64) NULL,
+        on_kontrol_kosu_id  INT NULL,
+        kosu_id             INT NULL,
+        neden               NVARCHAR(1000) NULL,
+        deneme              INT NOT NULL DEFAULT 0,
+        baslama_at          DATETIME2 NULL,
+        bitis_at            DATETIME2 NULL,
+        created_at          DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        sonraki_deneme_at   DATETIME2 NULL
+      )`,
+  },
 ];
 
 // LogX v2 EAR-klasor-son-eki → ortam etiketi varsayilan seed'i (admin ekranindan duzenlenebilir).
@@ -4152,6 +4214,13 @@ async function setupTables() {
     { table: 'portal_sessions', col: 'created_at', sql: `ALTER TABLE portal_sessions ADD created_at DATETIME2 NULL` },
     { table: 'portal_sessions', col: 'last_seen_at', sql: `ALTER TABLE portal_sessions ADD last_seen_at DATETIME2 NULL` },
     {
+      // Yuk Testi gece kuyrugu (2026-11-03): gecici hata geri cekilmesi. Tablo ilk surumle kurulduysa eklenir
+      // (NULL'a izin veren sutun = yalniz meta veri islemi).
+      table: 'nginx_loadtest_kuyruk_ogeler',
+      col: 'sonraki_deneme_at',
+      sql: `ALTER TABLE nginx_loadtest_kuyruk_ogeler ADD sonraki_deneme_at DATETIME2 NULL`,
+    },
+    {
       // SPA Tasima Plani (2026-09-26): ekibin BEYANI - uygulama kullanimda mi?
       // Olcum (access log) ayri durur; bu alan ekibin dedigi seydir.
       table: 'nginx_migration_tracking',
@@ -5035,6 +5104,8 @@ async function setupTables() {
     { name: 'IX_nla_kosu', table: 'nginx_loadtest_adimlar', cols: 'kosu_id' },
     // Yuk Testi arac setleri (tur 4): poller is numarasiyla okur.
     { name: 'IX_nlarac_job', table: 'nginx_loadtest_araclar', cols: 'awx_server_id, awx_job_id' },
+    // Gece kuyrugu: ogeler kuyruga ve siraya gore okunur.
+    { name: 'IX_nlko_kuyruk', table: 'nginx_loadtest_kuyruk_ogeler', cols: 'kuyruk_id, sira' },
   ];
   for (const { name, table, cols } of indexes) {
     try {
@@ -5072,6 +5143,27 @@ async function setupTables() {
     }
   } catch (err) {
     console.warn('[DB] Index olusturulamadi (UX_chnc_acik):', err.message);
+  }
+
+  // -- Yuk Testi gece kuyrugu: kuyruk basina TEK calisan oge (FILTRELI TEKIL, 2026-11-03) --
+  // Yurutucunun kosullu sahiplenmesine (kira + NOT EXISTS) ek savunma: iki surec ayni anda sahiplenirse ikincisi
+  // UNIQUE ihlali alir ve geri cekilir (server/nginx-loadtest/kuyruk.cjs).
+  try {
+    const exists = await pool
+      .request()
+      .query(
+        `SELECT 1 FROM sys.indexes WHERE name = 'UX_nlko_calisan' AND object_id = OBJECT_ID('nginx_loadtest_kuyruk_ogeler')`,
+      );
+    if (!exists.recordset.length) {
+      await pool
+        .request()
+        .query(
+          `CREATE UNIQUE INDEX UX_nlko_calisan ON nginx_loadtest_kuyruk_ogeler (kuyruk_id) WHERE durum = 'CALISIYOR'`,
+        );
+      console.log('[DB] Index olusturuldu: UX_nlko_calisan (filtreli tekil)');
+    }
+  } catch (err) {
+    console.warn('[DB] Index olusturulamadi (UX_nlko_calisan):', err.message);
   }
 
   // ── OCP katalogu ilk kurulumu — EN SONDA ────────────────────────────────────

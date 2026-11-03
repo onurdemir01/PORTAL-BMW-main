@@ -41,6 +41,10 @@
 // Kosu, on kontrolun arac_id'si NULL (arac oncesi) ya da etkin set degilse 409 on_kontrol_eski.
 // Admin bir DONE seti geri cekebilir (POST /araclar/:id/geri-cek).
 //
+// GECE KUYRUGU (2026-11-03, kuyruk.cjs): /kuyruklar uclari; yurutucu on kontrol ve kosuyu BU dosyanin kapilarindan
+// gecirir (kosuyuBaslat + kosuyuOnKontroldenBaslat; uyari karari tur kodlariyla). Kosu numarasi AWX'ten ONCE kuyruk
+// ogesine yazilir (kosuKaydedildi kancasi).
+//
 // SONUC OZETI (sade turu, 2026-11-02): GET /kosular/:id adim satirlarina cpuOlculemedi + reloadlar ekler,
 // CPU-ms/istek ve kapasiteyi asla <= 0 dondurmez (eski satirda da; DB degismez) ve kosu.sonucOzeti
 // (toplam istek, en iyi / en kotu p95, 429 / 5xx / hata, konf degisimi, reload anlari) verir (gorunum.cjs).
@@ -54,6 +58,7 @@ const baslat = require('./baslat.cjs');
 const poller = require('./poller.cjs');
 const araclar = require('./araclar.cjs');
 const gorunum = require('./gorunum.cjs');
+const kuyruk = require('./kuyruk.cjs');
 const { adminOkumaKapisi, isAdmin } = require('../auth/admin-okuma-kapisi.cjs');
 
 const TERMINAL = new Set(['successful', 'failed', 'error', 'canceled']);
@@ -77,6 +82,8 @@ const ADMIN_DISI_OKUMA = Object.freeze([
   /^\/kosular\/\d+\/?$/,
   /^\/karsilastir\/?$/,
   /^\/araclar\/?$/,
+  /^\/kuyruklar\/?$/,
+  /^\/kuyruklar\/\d+\/?$/,
 ]);
 
 const db = () => require('../db/index.cjs');
@@ -123,7 +130,7 @@ function hataYaniti(req, res, e, eylem, hedef) {
   const code = (e && e.code) || (status === 424 ? 'beklenmeyen' : 'gecersiz_istek');
   if (!(e && Number.isInteger(e.status))) console.warn('[NginxYukTesti] beklenmeyen hata:', maskele(e && e.message));
   const body = { ok: false, code, message: maskele((e && e.message) || 'Beklenmeyen hata.') };
-  for (const k of ['uyarilar', 'engeller', 'asimlar', 'hatalar', 'kilit', 'env', 'iptal', 'iptalHatasi', 'durdurHatasi', 'sahipler']) if (e && e[k] !== undefined) body[k] = e[k];
+  for (const k of ['uyarilar', 'engeller', 'asimlar', 'hatalar', 'kilit', 'env', 'iptal', 'iptalHatasi', 'durdurHatasi', 'sahipler', 'uyariTurleri', 'oge', 'suren', 'kuyrukId']) if (e && e[k] !== undefined) body[k] = e[k];
   // Reddedilen baslatma denemesi de denetime yazilir (uretim hedefi, izinsiz yuk makinesi ...).
   if (eylem && DENETLENEN_RET.has(status)) {
     try {
@@ -373,7 +380,7 @@ async function kosuBasarisiz(kosuId, adim, sonuc, jobId = null, awxServerId = nu
  * Kilit -> satir (QUEUED) -> son kapi -> AWX -> kilidi ise bagla -> RUNNING.
  * Sablon kilitten ONCE cozulur: template yoksa ne kilit ne satir olusur.
  */
-async function kosuyuBaslat(req, { islem, plan, onKontrolKosuId = null, onaylananUyarilar = [], beklenenAracId = null }) {
+async function kosuyuBaslat(req, { islem, plan, onKontrolKosuId = null, onaylananUyarilar = [], beklenenAracId = null, kosuKaydedildi = null }) {
   const user = kullanici(req);
   const kullaniciAdi = String(user.username || 'unknown').slice(0, 100);
   const sablon = await baslat.sablonuCoz();
@@ -429,6 +436,17 @@ async function kosuyuBaslat(req, { islem, plan, onKontrolKosuId = null, onaylana
     throw hata(424, 'db_okunamadi', `Koşu kaydı yazılamadı; iş başlatılmadı: ${maskele(e && e.message)}`);
   }
   const adim = `R${kosuId}`;
+  // Gece kuyrugu (kuyruk.cjs): kosu numarasi AWX'e gitmeden ONCE kuyruk ogesine yazilir. Kosullu yazim tutmazsa
+  // (kuyruk iptal / kira baska surecte) is BASLATILMAZ: kilit birakilir, satir FAILED.
+  if (kosuKaydedildi) {
+    try {
+      await kosuKaydedildi(kosuId);
+    } catch (e) {
+      await kilitleriBirak(anahtarlar, lockId);
+      await kosuBasarisiz(kosuId, adim, { hata: `kuyruk öğesine yazılamadı: ${maskele(e && e.message).slice(0, 500)}` });
+      throw Object.assign(hata(409, 'kuyruk_yazilamadi', `Kuyruk öğesine yazılamadı; iş başlatılmadı: ${maskele(e && e.message)}`), { kosuYazilamadi: kosuId });
+    }
+  }
   const kok = dg.ciktiKok();
   const simdiSn = Math.floor(Date.now() / 1000);
   const ev = dg.ekstraDegiskenler({
@@ -506,6 +524,310 @@ async function kosuyuBaslat(req, { islem, plan, onKontrolKosuId = null, onaylana
     }
   }
   return { kosuId, jobId: is.jobId, awxServerId: is.awxServerId };
+}
+
+/**
+ * On kontrolden kosu: POST /kosular ve gece kuyrugu AYNI kapidan gecer (sahip, DONE/OK, 15 dk, onay metni, arac seti,
+ * engel, uyari karari, plan YENIDEN, sinif / parametre degismemis). `uyariKarari(uyarilar)` onaylanmamis uyaride
+ * firlatir; `yer.ok` hata yolunda denetim icin on kontrol satirini tasir.
+ */
+async function kosuyuOnKontroldenBaslat(req, { okId, confirmText, uyariKarari, kosuKaydedildi = null, yer = null }) {
+  if (!okId) throw hata(400, 'gecersiz_istek', 'onKontrolKosuId gerekli (önce ön kontrolü çalıştırın).');
+  const ok = await kosuOku(okId);
+  if (yer) yer.ok = ok;
+  if (!ok || ok.islem !== 'on_kontrol') throw hata(409, 'on_kontrol_eski', 'Ön kontrol bulunamadı; önce ön kontrolü çalıştırın.');
+  if (!ayniKullanici(ok.created_by, kullanici(req).username)) {
+    throw hata(409, 'on_kontrol_eski', 'Bu ön kontrol size ait değil; koşudan önce kendi ön kontrolünüzü çalıştırın.');
+  }
+  if (ok.durum !== 'DONE') throw hata(409, 'on_kontrol_eski', `Ön kontrol "${ok.durum}" durumunda; tamamlanmış (DONE) bir ön kontrol gerekli.`);
+  const okSonuc = jsonOku(ok.sonuc);
+  if (!okSonuc || String(okSonuc.durum || '').toUpperCase() !== 'OK') throw hata(409, 'on_kontrol_eski', 'Ön kontrol sonucu OK değil; yeniden çalıştırın.');
+  const yas = ok.yas_sn == null ? null : Number(ok.yas_sn);
+  if (yas == null || !Number.isFinite(yas) || yas > ON_KONTROL_MAX_YAS_SN || yas < -60) {
+    throw hata(409, 'on_kontrol_eski', `Ön kontrol ${yas == null ? 'zamanı okunamadı' : `${Math.round(yas / 60)} dk önce bitti`}; en çok 15 dk önceki ön kontrol kabul edilir.`);
+  }
+  // Tur ve motor SATIRDAN (set_stats yankisindan degil); eski satir: DB varsayilani sunucu / k6.
+  const tur = ok.hedef_turu || 'sunucu';
+  const motor = motorOf(ok);
+  if (tur === 'serbest' ? !dg.onayMetniDogru(confirmText, ok.hedef_ip) : !dg.onayMetniDogru(confirmText, ok.hedef_host)) {
+    throw hata(409, 'onay_metni', tur === 'serbest'
+      ? `Onay için hedef IP'yi (${ok.hedef_ip}) birebir yazın.`
+      : `Onay için hedef sunucu adını (${ok.hedef_host}) birebir yazın.`);
+  }
+  // Tur 4: on kontrol etkin arac setiyle yapilmis olmali (degerlendirmeden ONCE). Set yoksa karar
+  // kosuyuBaslat'taki arac kapisinda (sablondan sonra, kilitten once) verilir.
+  if (ok.arac_id == null) throw hata(409, 'on_kontrol_eski', araclar.MESAJ.onKontrolAracsiz);
+  let etkinArac;
+  try {
+    etkinArac = (await araclar.aracDurumu(db())).etkin;
+  } catch {
+    throw hata(424, 'db_okunamadi', araclar.MESAJ.okunamadi);
+  }
+  if (etkinArac && Number(etkinArac.id) !== Number(ok.arac_id)) throw hata(409, 'on_kontrol_eski', araclar.MESAJ.onKontrolEski);
+  const deg = dg.onKontrolDegerlendir(jsonOku(ok.on_kontrol_ozet), { hedefTuru: tur, motor, aracli: true, aracSha256: araclar.motorSha(etkinArac, motor), protokol: protokolOf(ok), parametreler: jsonOku(ok.parametreler) });
+  if (deg.engeller.length) throw hata(409, 'on_kontrol_eski', `Ön kontrol koşuya izin vermiyor: ${deg.engeller.join('; ')}.`, { engeller: deg.engeller });
+  // Onaylanacak liste = on kontrolde saklanan plan uyarilari + on kontrol degerlendirmesi (ekranla ayni).
+  const sakliPlanUyarilari = metinDizisi(ok.plan_uyarilari);
+  const uyarilar = [...sakliPlanUyarilari, ...deg.uyarilar];
+  // HTTP: kutu isaretli mi; gece kuyrugu: uyari TURLERI kuyrukta onaylanmis mi (kuyruk.cjs). Karar cagiranin.
+  uyariKarari(uyarilar);
+  // Parametreler ISTEMCIDEN DEGIL on kontrol satirindan; yeniden olculur ve ayni kalmali.
+  const sakli = jsonOku(ok.parametreler) || {};
+  const plan = await kosuPlani({
+    senaryoId: Number(ok.senaryo_id), hedefHost: tur === 'serbest' ? null : ok.hedef_host, hedefIp: ok.hedef_ip, vhost: ok.vhost, yukHost: ok.yuk_host,
+    sni: sakli.sni, parametrelerHam: sakli, etiket: ok.etiket,
+  });
+  if (plan.hedefTuru !== tur || (plan.hedefHost || '') !== (ok.hedef_host || '')) {
+    throw hata(409, 'on_kontrol_eski', "Hedef IP'nin sınıfı ön kontrolden bu yana değişti; ön kontrolü yeniden çalıştırın.");
+  }
+  // Onaylanmamis uyari gecmez: yeniden kurulan planin saklanmayan uyarisi varsa on kontrol eskidir.
+  const yeniUyari = plan.uyarilar.find((u) => !sakliPlanUyarilari.includes(u));
+  if (yeniUyari) throw hata(409, 'on_kontrol_eski', `Ön kontrolden bu yana yeni uyarı çıktı (${yeniUyari}); ön kontrolü yeniden çalıştırın.`);
+  // Protokolsuz (HTTP/2 seciminden once saklanmis) on kontrol h1 sayilir: dagitim oncesi on kontrol gecerli kalir.
+  if (kararliJson(plan.parametreler) !== kararliJson({ ...sakli, protokol: sakli.protokol ?? 'h1' })) {
+    throw hata(409, 'on_kontrol_eski', 'Parametreler ön kontrolden bu yana değişti; ön kontrolü yeniden çalıştırın.');
+  }
+  return kosuyuBaslat(req, { islem: 'kosu', plan, onKontrolKosuId: okId, onaylananUyarilar: uyarilar, beklenenAracId: Number(ok.arac_id), kosuKaydedildi });
+}
+
+// -- GECE KUYRUGU (kuyruk.cjs) ---------------------------------------------------------------
+
+/** Kuyruk yurutucusunun istegi: kuyrugu olusturan kullanici adina (denetim ve AWX atfi onun adiyla). */
+function kuyrukIstegi(kullaniciAdi) {
+  return { session: { user: { username: String(kullaniciAdi || 'unknown'), role: 'Admin', authSource: 'kuyruk' } }, sessionID: null, ip: null, body: {} };
+}
+
+/**
+ * Kuyrugu olusturanin yetkisi her ogeden once: rol degisikligi (user_role_overrides, etkin) Admin degilse duser.
+ * LDAP grubundan cikarilma oturumsuz olculemez (bkz. belge, "Gece kuyrugu"). DB hatasi FIRLATILIR (gecici).
+ */
+async function kuyrukYetkisi(kullaniciAdi) {
+  const ad = String(kullaniciAdi || '').trim().toLowerCase();
+  if (!ad) return { ok: false, neden: 'kuyruğu oluşturan kullanıcı bilinmiyor' };
+  const { rows } = await db().query(`SELECT role FROM user_role_overrides WHERE LOWER(username) = $1 AND is_active = 1`, [ad]);
+  const rol = rows && rows[0] ? rows[0].role : null;
+  if (rol != null && rol !== 'Admin') return { ok: false, neden: `${ad} kullanıcısının rolü artık ${String(rol).slice(0, 30)} (Admin değil)` };
+  return { ok: true };
+}
+
+/** Yurutucunun index.cjs'ten kullandigi islemler (mevcut kapilar; kuyruk kendi kapisi yazmaz). */
+const kuyrukIslem = {
+  yetkiVarMi: kuyrukYetkisi,
+  plan: (g) => kosuPlani(g),
+  kosuOku: (id) => kosuOku(id),
+  onKontrolBaslat: (kullaniciAdi, plan, kosuKaydedildi) => kosuyuBaslat(kuyrukIstegi(kullaniciAdi), { islem: 'on_kontrol', plan, kosuKaydedildi }),
+  kosuBaslat: (kullaniciAdi, { okId, confirmText, onaylananTurler, kosuKaydedildi }) => kosuyuOnKontroldenBaslat(kuyrukIstegi(kullaniciAdi), {
+    okId, confirmText, kosuKaydedildi, uyariKarari: kuyruk.uyariKarariOf(onaylananTurler),
+  }),
+};
+
+/** Ogeye bagli on kontrolun uyarilari (olusturmada onaya gelir). Sahip, DONE, ayni hedef sart. */
+async function ogeOnKontrolUyarilari(okId, kullaniciAdi, onayHedefi, no) {
+  const ok = await kosuOku(okId);
+  if (!ok || ok.islem !== 'on_kontrol') throw hata(409, 'on_kontrol_eski', `Öğe ${no}: ön kontrol #${okId} bulunamadı.`, { oge: no });
+  if (!ayniKullanici(ok.created_by, kullaniciAdi)) throw hata(409, 'on_kontrol_eski', `Öğe ${no}: ön kontrol #${okId} size ait değil.`, { oge: no });
+  if (ok.durum !== 'DONE') throw hata(409, 'on_kontrol_eski', `Öğe ${no}: ön kontrol #${okId} "${ok.durum}" durumunda.`, { oge: no });
+  const tur = ok.hedef_turu || 'sunucu';
+  if ((tur === 'serbest' ? ok.hedef_ip : ok.hedef_host) !== onayHedefi) throw hata(409, 'hedef_farkli', `Öğe ${no}: ön kontrol #${okId} başka bir hedefin.`, { oge: no });
+  const deg = dg.onKontrolDegerlendir(jsonOku(ok.on_kontrol_ozet), {
+    hedefTuru: tur, motor: motorOf(ok), aracli: ok.arac_id != null, aracSha256: null, protokol: protokolOf(ok), parametreler: jsonOku(ok.parametreler),
+  });
+  return [...metinDizisi(ok.plan_uyarilari), ...deg.uyarilar];
+}
+
+function ogeNo(e, no) {
+  if (e && typeof e.message === 'string' && !/^Öğe \d+:/.test(e.message)) e.message = `Öğe ${no}: ${e.message}`;
+  return Object.assign(e, { oge: no });
+}
+
+async function kuyrukOkuApi(id) {
+  const { rows } = await dbOku((d) => d.query(kuyruk.SQL.kuyrukOku, [id]));
+  const k = rows[0];
+  if (!k) return null;
+  const { rows: ogeler } = await dbOku((d) => d.query(kuyruk.SQL.ogeListe, [id]));
+  const z = kuyruk.zamanlama(k, ogeler);
+  return {
+    kuyruk: { ...kuyruk.kuyrukApi(k), tahminiBitis: z.tahminiBitis, siradakiKalanSn: z.siradakiKalanSn, sunucuZamani: new Date().toISOString() },
+    ogeler: ogeler.map((o) => ({ ...kuyruk.ogeApi(o), ...(z.ogeler.get(Number(o.id)) || {}) })),
+  };
+}
+
+function kuyrukUclari(router) {
+  router.get('/kuyruklar', async (req, res) => {
+    try {
+      const { rows } = await dbOku((d) => d.query(kuyruk.SQL.kuyrukListe));
+      res.json({ ok: true, kuyruklar: rows.map(kuyruk.kuyrukApi) });
+    } catch (e) {
+      hataYaniti(req, res, e);
+    }
+  });
+
+  router.get('/kuyruklar/:id', async (req, res) => {
+    try {
+      const id = sayi(req.params.id);
+      if (!id) throw hata(400, 'gecersiz_istek', 'Geçersiz kuyruk numarası.');
+      const r = await kuyrukOkuApi(id);
+      if (!r) throw hata(409, 'kuyruk_yok', 'Kuyruk bulunamadı.');
+      res.json({ ok: true, ...r });
+    } catch (e) {
+      hataYaniti(req, res, e);
+    }
+  });
+
+  // Olusturma: her oge mevcut on kontrol govdesiyle dogrulanir ve plan kapilarindan GECER (gece YENIDEN gececek);
+  // tum ogeler TEK hedefe (onay metni bir kez); uyari turleri (plan + ogeye bagli on kontrol) tek tek onaylanir
+  // (409 uyari_onayi + uyariTurleri; istemci onaylananTurler ile yeniden gonderir).
+  router.post('/kuyruklar', async (req, res) => {
+    let hedefBilgi = null;
+    try {
+      adminSart(req);
+      const g = kuyruk.kuyrukGovdesi(req.body);
+      const kullaniciAdi = String(kullanici(req).username || 'unknown').slice(0, 100);
+      const ogeler = [];
+      const turHaritasi = new Map();
+      let onayHedefi = null;
+      let hedefTuru = null;
+      for (const [i, o] of g.ogeler.entries()) {
+        const no = i + 1;
+        let og;
+        let plan;
+        try {
+          og = onKontrolGovdesi({ ...o.govde, etiket: undefined });
+          plan = await kosuPlani({ ...og, etiket: null });
+        } catch (e) {
+          throw ogeNo(e, no);
+        }
+        const hedef = kuyruk.onayHedefiOf(plan);
+        if (onayHedefi == null) {
+          onayHedefi = hedef;
+          hedefTuru = plan.hedefTuru;
+          hedefBilgi = { host: plan.hedefHost, ip: plan.hedefIp };
+        } else if (hedef !== onayHedefi) {
+          throw hata(409, 'hedef_farkli', `Öğe ${no}: hedef (${hedef}) kuyruğun hedefinden (${onayHedefi}) farklı; bir kuyruk tek hedefe yük basar.`, { oge: no });
+        }
+        const metinler = [...plan.uyarilar];
+        if (o.onKontrolKosuId) metinler.push(...await ogeOnKontrolUyarilari(o.onKontrolKosuId, kullaniciAdi, onayHedefi, no));
+        const turler = kuyruk.uyariTurleri(metinler);
+        for (const t of turler) {
+          const x = turHaritasi.get(t.kod) || { ...t, ogeler: [] };
+          x.ogeler.push(no);
+          turHaritasi.set(t.kod, x);
+        }
+        ogeler.push({
+          etiket: o.etiket, butceSn: Number(plan.parametreler.butceSn) || null, turler,
+          govde: { senaryoId: og.senaryoId, hedefHost: og.hedefHost, hedefIp: og.hedefIp, vhost: og.vhost, yukHost: og.yukHost, sni: og.sni, parametreler: plan.parametreler },
+        });
+      }
+      if (!dg.onayMetniDogru(g.confirmText, onayHedefi)) {
+        throw hata(409, 'onay_metni', hedefTuru === 'serbest' ? `Onay için hedef IP'yi (${onayHedefi}) birebir yazın.` : `Onay için hedef sunucu adını (${onayHedefi}) birebir yazın.`);
+      }
+      // Ayni hedefe ikinci aktif kuyruk: dinlenme kuyruk basina sayildigindan iki kuyruk dinlenmesiz ard arda basardi.
+      const ayni = (await dbOku((d) => d.query(kuyruk.SQL.ayniHedefAktif, [onayHedefi]))).rows[0];
+      if (ayni) {
+        throw hata(409, 'kuyruk_var', `${onayHedefi} için kuyruk #${ayni.id} zaten aktif; bitmesini bekleyin ya da o kuyruğu İptal edin.`, { kuyrukId: Number(ayni.id) });
+      }
+      const turler = [...turHaritasi.values()];
+      if (turler.some((t) => !g.onaylananTurler.includes(t.kod))) {
+        throw hata(409, 'uyari_onayi', 'Kuyruğun uyarı türlerini okuyup tek tek onaylayın: gece yalnız bu türler kabul edilir, yeni bir tür çıkan öğe atlanır.', { uyariTurleri: turler });
+      }
+      const onayli = turler.map(({ kod, ornek }) => ({ kod, ornek }));
+      let id;
+      try {
+        const ins = await db().query(kuyruk.SQL.kuyrukEkle, [g.ad, g.beklemeDk, g.baslangic, g.enGecBitis, onayHedefi, hedefTuru, JSON.stringify(onayli), kullaniciAdi]);
+        id = Number(ins.rows && ins.rows[0] && ins.rows[0].id);
+        if (!(id > 0)) throw new Error('kuyruk numarası dönmedi');
+      } catch (e) {
+        throw hata(424, 'db_okunamadi', `Kuyruk yazılamadı: ${maskele(e && e.message)}`);
+      }
+      try {
+        for (const [i, o] of ogeler.entries()) {
+          await db().query(kuyruk.SQL.ogeEkle, [id, i + 1, o.etiket, JSON.stringify(o.govde), o.butceSn, JSON.stringify(o.turler)]);
+        }
+        const h = await db().query(kuyruk.SQL.kuyrukHazir, [id]);
+        if (!h.rowCount) throw new Error('kuyruk hazır işaretlenemedi');
+      } catch (e) {
+        // Yarim kuyruk (hazir = 0) yurutucuye HIC gorunmez; HATALI olarak kapatilir.
+        await db().query(kuyruk.SQL.kuyrukYarim, [id, `oluşturma yarım kaldı: ${maskele(e && e.message).slice(0, 400)}`]).catch(() => {});
+        throw hata(424, 'db_okunamadi', `Kuyruk öğeleri yazılamadı; kuyruk başlatılmadı: ${maskele(e && e.message)}`);
+      }
+      try {
+        require('../audit/index.cjs').auditPortal(req, 'nginx_loadtest_kuyruk_olustur', {
+          targetHost: hedefBilgi.host || null, targetIp: hedefBilgi.ip || null,
+          detail: baslat.denetimAyrintisi({ id, ogeSayisi: ogeler.length, beklemeDk: g.beklemeDk, baslangic: iso(g.baslangic), enGecBitis: iso(g.enGecBitis), onaylananTurler: onayli.map((t) => t.kod), etiketler: ogeler.map((o) => o.etiket) }),
+        });
+      } catch {
+        /* best-effort */
+      }
+      res.json({ ok: true, id });
+    } catch (e) {
+      hataYaniti(req, res, e, 'nginx_loadtest_kuyruk_olustur', hedefBilgi);
+    }
+  });
+
+  // Iptal: sonraki ogeler baslamaz. Suren kosu DURDURULMAZ (yanitta `suren`; mevcut Durdur ile).
+  router.post('/kuyruklar/:id/iptal', async (req, res) => {
+    try {
+      adminSart(req);
+      const id = sayi(req.params.id);
+      if (!id) throw hata(400, 'gecersiz_istek', 'Geçersiz kuyruk numarası.');
+      const kim = String(kullanici(req).username || 'unknown').slice(0, 100);
+      const r = await dbOku((d) => d.query(kuyruk.SQL.kuyrukIptal, [id, kim]));
+      if (!r.rowCount) throw hata(409, 'kuyruk_bitti', 'Kuyruk zaten bitmiş ya da iptal edilmiş.');
+      await dbOku((d) => d.query(kuyruk.SQL.ogelerIptal, [id, `kuyruk iptal edildi (${kim})`]));
+      const { rows } = await dbOku((d) => d.query(kuyruk.SQL.calisanOge, [id]));
+      const c = rows[0];
+      const suren = c ? { ogeId: Number(c.id), etiket: c.etiket, kosuId: c.kosu_id == null ? null : Number(c.kosu_id), onKontrolKosuId: c.on_kontrol_kosu_id == null ? null : Number(c.on_kontrol_kosu_id) } : null;
+      try {
+        require('../audit/index.cjs').auditPortal(req, 'nginx_loadtest_kuyruk_iptal', { detail: baslat.denetimAyrintisi({ id, suren }) });
+      } catch {
+        /* best-effort */
+      }
+      res.json({ ok: true, suren });
+    } catch (e) {
+      hataYaniti(req, res, e);
+    }
+  });
+
+  // Sira: yalniz BEKLIYOR ogeler; liste kuyrugun BEKLIYOR ogelerinin TAM permutasyonu olmali (bu arada baslayan
+  // varsa 409; ekran yeniden okur).
+  router.put('/kuyruklar/:id/sira', async (req, res) => {
+    try {
+      adminSart(req);
+      const id = sayi(req.params.id);
+      if (!id) throw hata(400, 'gecersiz_istek', 'Geçersiz kuyruk numarası.');
+      const b = req.body && typeof req.body === 'object' ? req.body : {};
+      const liste = Array.isArray(b.sira) ? b.sira.map(sayi) : null;
+      if (!liste || !liste.length || liste.some((x) => !x) || new Set(liste).size !== liste.length || liste.length > kuyruk.MAX_OGE) {
+        throw hata(400, 'gecersiz_istek', 'sira: bekleyen öğe numaralarının listesi olmalı.');
+      }
+      const { rows } = await dbOku((d) => d.query(kuyruk.SQL.ogeListe, [id]));
+      const bekleyen = rows.filter((o) => o.durum === 'BEKLIYOR').map((o) => Number(o.id));
+      if (bekleyen.length !== liste.length || bekleyen.some((x) => !liste.includes(x))) {
+        throw hata(409, 'sira_eski', 'Bekleyen öğeler değişti (biri başlamış ya da çıkarılmış olabilir); listeyi yenileyip yeniden deneyin.');
+      }
+      const taban = Number(((await dbOku((d) => d.query(kuyruk.SIRA_TABAN_SQL, [id]))).rows[0] || {}).m) || 0;
+      const r = await dbOku((d) => d.query(kuyruk.siraSql(liste.length), [id, ...liste, taban]));
+      if (r.rowCount !== liste.length) throw hata(409, 'sira_eski', 'Bir öğe bu arada başladı; listeyi yenileyip yeniden deneyin.');
+      res.json({ ok: true });
+    } catch (e) {
+      hataYaniti(req, res, e);
+    }
+  });
+
+  router.post('/kuyruklar/:id/ogeler/:ogeId/cikar', async (req, res) => {
+    try {
+      adminSart(req);
+      const id = sayi(req.params.id);
+      const ogeId = sayi(req.params.ogeId);
+      if (!id || !ogeId) throw hata(400, 'gecersiz_istek', 'Geçersiz kuyruk / öğe numarası.');
+      const kim = String(kullanici(req).username || 'unknown').slice(0, 100);
+      const r = await dbOku((d) => d.query(kuyruk.SQL.ogeCikar, [id, ogeId, `kuyruktan çıkarıldı (${kim})`]));
+      if (!r.rowCount) throw hata(409, 'oge_basladi', 'Yalnız başlamamış (bekleyen) öğe çıkarılabilir.');
+      res.json({ ok: true });
+    } catch (e) {
+      hataYaniti(req, res, e);
+    }
+  });
 }
 
 // ── UCLAR ─────────────────────────────────────────────────────────────────────────────────
@@ -742,72 +1064,24 @@ function yonlendiriciKur() {
   });
 
   router.post('/kosular', async (req, res) => {
-    let ok = null;
+    const yer = { ok: null };
     try {
       adminSart(req);
       const b = req.body && typeof req.body === 'object' ? req.body : {};
-      const okId = sayi(b.onKontrolKosuId);
-      if (!okId) throw hata(400, 'gecersiz_istek', 'onKontrolKosuId gerekli (önce ön kontrolü çalıştırın).');
-      ok = await kosuOku(okId);
-      if (!ok || ok.islem !== 'on_kontrol') throw hata(409, 'on_kontrol_eski', 'Ön kontrol bulunamadı; önce ön kontrolü çalıştırın.');
-      if (!ayniKullanici(ok.created_by, kullanici(req).username)) {
-        throw hata(409, 'on_kontrol_eski', 'Bu ön kontrol size ait değil; koşudan önce kendi ön kontrolünüzü çalıştırın.');
-      }
-      if (ok.durum !== 'DONE') throw hata(409, 'on_kontrol_eski', `Ön kontrol "${ok.durum}" durumunda; tamamlanmış (DONE) bir ön kontrol gerekli.`);
-      const okSonuc = jsonOku(ok.sonuc);
-      if (!okSonuc || String(okSonuc.durum || '').toUpperCase() !== 'OK') throw hata(409, 'on_kontrol_eski', 'Ön kontrol sonucu OK değil; yeniden çalıştırın.');
-      const yas = ok.yas_sn == null ? null : Number(ok.yas_sn);
-      if (yas == null || !Number.isFinite(yas) || yas > ON_KONTROL_MAX_YAS_SN || yas < -60) {
-        throw hata(409, 'on_kontrol_eski', `Ön kontrol ${yas == null ? 'zamanı okunamadı' : `${Math.round(yas / 60)} dk önce bitti`}; en çok 15 dk önceki ön kontrol kabul edilir.`);
-      }
-      // Tur ve motor SATIRDAN (set_stats yankisindan degil); eski satir: DB varsayilani sunucu / k6.
-      const tur = ok.hedef_turu || 'sunucu';
-      const motor = motorOf(ok);
-      if (tur === 'serbest' ? !dg.onayMetniDogru(b.confirmText, ok.hedef_ip) : !dg.onayMetniDogru(b.confirmText, ok.hedef_host)) {
-        throw hata(409, 'onay_metni', tur === 'serbest'
-          ? `Onay için hedef IP'yi (${ok.hedef_ip}) birebir yazın.`
-          : `Onay için hedef sunucu adını (${ok.hedef_host}) birebir yazın.`);
-      }
-      // Tur 4: on kontrol etkin arac setiyle yapilmis olmali (degerlendirmeden ONCE). Set yoksa karar
-      // kosuyuBaslat'taki arac kapisinda (sablondan sonra, kilitten once) verilir.
-      if (ok.arac_id == null) throw hata(409, 'on_kontrol_eski', araclar.MESAJ.onKontrolAracsiz);
-      let etkinArac;
-      try {
-        etkinArac = (await araclar.aracDurumu(db())).etkin;
-      } catch {
-        throw hata(424, 'db_okunamadi', araclar.MESAJ.okunamadi);
-      }
-      if (etkinArac && Number(etkinArac.id) !== Number(ok.arac_id)) throw hata(409, 'on_kontrol_eski', araclar.MESAJ.onKontrolEski);
-      const deg = dg.onKontrolDegerlendir(jsonOku(ok.on_kontrol_ozet), { hedefTuru: tur, motor, aracli: true, aracSha256: araclar.motorSha(etkinArac, motor), protokol: protokolOf(ok), parametreler: jsonOku(ok.parametreler) });
-      if (deg.engeller.length) throw hata(409, 'on_kontrol_eski', `Ön kontrol koşuya izin vermiyor: ${deg.engeller.join('; ')}.`, { engeller: deg.engeller });
-      // Onaylanacak liste = on kontrolde saklanan plan uyarilari + on kontrol degerlendirmesi (ekranla ayni).
-      const sakliPlanUyarilari = metinDizisi(ok.plan_uyarilari);
-      const uyarilar = [...sakliPlanUyarilari, ...deg.uyarilar];
-      if (uyarilar.length && b.uyariOnay !== true) {
-        throw hata(409, 'uyari_onayi', 'Ön kontrol uyarılarını okuyup açıkça onaylamanız gerekiyor.', { uyarilar });
-      }
-      // Parametreler ISTEMCIDEN DEGIL on kontrol satirindan; yeniden olculur ve ayni kalmali.
-      const sakli = jsonOku(ok.parametreler) || {};
-      const plan = await kosuPlani({
-        senaryoId: Number(ok.senaryo_id), hedefHost: tur === 'serbest' ? null : ok.hedef_host, hedefIp: ok.hedef_ip, vhost: ok.vhost, yukHost: ok.yuk_host,
-        sni: sakli.sni, parametrelerHam: sakli, etiket: ok.etiket,
+      const r = await kosuyuOnKontroldenBaslat(req, {
+        okId: sayi(b.onKontrolKosuId), confirmText: b.confirmText, yer,
+        uyariKarari: (uyarilar) => {
+          if (uyarilar.length && b.uyariOnay !== true) throw hata(409, 'uyari_onayi', 'Ön kontrol uyarılarını okuyup açıkça onaylamanız gerekiyor.', { uyarilar });
+        },
       });
-      if (plan.hedefTuru !== tur || (plan.hedefHost || '') !== (ok.hedef_host || '')) {
-        throw hata(409, 'on_kontrol_eski', "Hedef IP'nin sınıfı ön kontrolden bu yana değişti; ön kontrolü yeniden çalıştırın.");
-      }
-      // Onaylanmamis uyari gecmez: yeniden kurulan planin saklanmayan uyarisi varsa on kontrol eskidir.
-      const yeniUyari = plan.uyarilar.find((u) => !sakliPlanUyarilari.includes(u));
-      if (yeniUyari) throw hata(409, 'on_kontrol_eski', `Ön kontrolden bu yana yeni uyarı çıktı (${yeniUyari}); ön kontrolü yeniden çalıştırın.`);
-      // Protokolsuz (HTTP/2 seciminden once saklanmis) on kontrol h1 sayilir: dagitim oncesi on kontrol gecerli kalir.
-      if (kararliJson(plan.parametreler) !== kararliJson({ ...sakli, protokol: sakli.protokol ?? 'h1' })) {
-        throw hata(409, 'on_kontrol_eski', 'Parametreler ön kontrolden bu yana değişti; ön kontrolü yeniden çalıştırın.');
-      }
-      const r = await kosuyuBaslat(req, { islem: 'kosu', plan, onKontrolKosuId: okId, onaylananUyarilar: uyarilar, beklenenAracId: Number(ok.arac_id) });
       res.json({ ok: true, ...r });
     } catch (e) {
+      const ok = yer.ok;
       hataYaniti(req, res, e, 'nginx_loadtest_baslat', ok ? { host: ok.hedef_host, ip: ok.hedef_ip, kosuId: e && e.kosuId } : null);
     }
   });
+
+  kuyrukUclari(router);
 
   // Liste: islem / durum / hedef suzgeci ve `onceki` (id < onceki) ile sayfalama. Gecersiz deger
   // sessizce yok sayilmaz (yanlis listeyi "tamami" diye gostermek yerine 400). limit + 1 satir
@@ -1245,6 +1519,7 @@ function yonlendiriciKur() {
 function initNginxLoadtest(app) {
   app.use('/api/nginx-loadtest', yonlendiriciKur());
   poller.startPoller();
+  kuyruk.startKuyruk(kuyrukIslem);
 }
 
 module.exports = {
@@ -1258,4 +1533,6 @@ module.exports = {
   _kosuApiForTest: kosuApi,
   _protokolOfForTest: protokolOf,
   _LISTE_KOLONLARI: LISTE_KOLONLARI,
+  _kuyrukIslemForTest: kuyrukIslem,
+  _kuyrukYetkisiForTest: kuyrukYetkisi,
 };

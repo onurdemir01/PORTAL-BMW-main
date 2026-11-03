@@ -702,6 +702,37 @@ function karsilastirmaNormalle(x: NlKarsilastirma & { tablo?: unknown[] }): NlKa
   };
 }
 
+// ── GECE KUYRUGU (2026-11-03, server/nginx-loadtest/kuyruk.cjs) ───────────────────────────────────────
+// Ardisik kosular, aralarinda dinlenme (kosu kilidi birakildiktan SONRA bekleme_dk). Sunucuda yurur; ekran yalniz
+// gosterir. Olusturma iki adim: 409 `uyari_onayi` + `uyariTurleri` -> kullanici turleri tek tek onaylar ->
+// `onaylananTurler` ile yeniden gonderilir. Gece YENI tur cikan oge ATLANDI.
+export type NlKuyrukDurum = 'BEKLIYOR' | 'CALISIYOR' | 'DINLENME' | 'BITTI' | 'IPTAL' | 'HATALI';
+export type NlKuyrukOgeDurum = 'BEKLIYOR' | 'CALISIYOR' | 'BITTI' | 'ATLANDI' | 'HATALI' | 'IPTAL';
+export interface NlUyariTuru { kod: string; ornek: string; ogeler?: number[] }
+export interface NlKuyruk {
+  id: number; ad: string | null; durum: NlKuyrukDurum; beklemeDk: number; baslangicAt: string | null; enGecBitis: string | null;
+  onayHedefi: string; hedefTuru: NlHedefTuru; onaylananTurler: NlUyariTuru[]; createdBy: string | null; createdAt: string | null;
+  iptalEden: string | null; iptalAt: string | null; bitisAt: string | null; sonHata: string | null; dinlenmeKosuId: number | null;
+  dinlenmeBitis: string | null; ogeSayisi: number | null; bitenSayisi: number | null;
+  /** Yalniz ayrinti: tahmini bitis (kilit beklemesi haric), siradakine kalan saniye (dinlenme / baslangic), sunucu saati. */
+  tahminiBitis?: string | null; siradakiKalanSn?: number | null; sunucuZamani?: string;
+}
+export interface NlKuyrukOge {
+  id: number; sira: number; etiket: string; durum: NlKuyrukOgeDurum; asama: 'on_kontrol' | 'kosu' | null;
+  onKontrolKosuId: number | null; kosuId: number | null; neden: string | null; butceSn: number | null; uyariTurleri: NlUyariTuru[];
+  baslamaAt: string | null; bitisAt: string | null; tahminiBaslangic?: string; tahminiBitis?: string; sureYetmeyebilir?: boolean;
+  ayar: { senaryoId: number | null; hedefIp: string | null; hedefHost: string | null; vhost: string | null; yukHost: string | null; parametreler: NlParametreler | null };
+}
+/** On kontrol govdesi (etiketsiz); etiket ogenin kendi alani. */
+export interface NlKuyrukGovde {
+  senaryoId: number; hedefHost: string | null; hedefIp: string; vhost: string; yukHost: string; sni: boolean; parametreler: NlParametreler;
+}
+export interface NlYeniKuyruk {
+  ad?: string; beklemeDk: number; baslangic: string | null; enGecBitis: string | null; confirmText: string; onaylananTurler?: string[];
+  ogeler: { etiket: string; govde: NlKuyrukGovde; onKontrolKosuId?: number | null }[];
+}
+export interface NlKuyrukEylem extends NlEylem { uyariTurleri?: NlUyariTuru[]; oge?: number; suren?: { ogeId: number; etiket: string; kosuId: number | null; onKontrolKosuId: number | null } | null }
+
 export const nginxLoadtestApi = {
   hedefler: async (): Promise<NlHedefler> => hedeflerNormalle(await okJson<unknown>(await fetch(`${BASE}/hedefler`))),
   senaryolar: (): Promise<{ ok: true; senaryolar: NlSenaryo[] }> => fetch(`${BASE}/senaryolar`).then((r) => okJson(r)),
@@ -763,4 +794,15 @@ export const nginxLoadtestApi = {
   araclariHazirla: (body: { derlemeHost: string }): Promise<NlEylem> => fetch(`${BASE}/araclar`, json(body)).then(safeJson),
   /** Admin. DONE bir seti geri ceker; 409 arac_yok / arac_geri_cekilemez / zaten_geri_cekildi; 424 db_okunamadi. */
   aracGeriCek: (id: number): Promise<NlEylem> => fetch(`${BASE}/araclar/${id}/geri-cek`, json({})).then(safeJson),
+  /** Gece kuyruklari (okuma Admin disina acik), en yeni once. */
+  kuyruklar: (): Promise<{ ok: true; kuyruklar: NlKuyruk[] }> => fetch(`${BASE}/kuyruklar`).then((r) => okJson(r)),
+  kuyruk: (id: number): Promise<{ ok: true; kuyruk: NlKuyruk; ogeler: NlKuyrukOge[] }> => fetch(`${BASE}/kuyruklar/${id}`).then((r) => okJson(r)),
+  /** Admin. 409 uyari_onayi (uyariTurleri) / onay_metni / hedef_farkli (oge) / kapi kodlari (oge); 400 gecersiz_istek. */
+  kuyrukOlustur: (body: NlYeniKuyruk): Promise<NlKuyrukEylem> => fetch(`${BASE}/kuyruklar`, json(body)).then(safeJson),
+  /** Admin. Sonraki ogeler baslamaz; suren kosu DURDURULMAZ (`suren`). 409 kuyruk_bitti. */
+  kuyrukIptal: (id: number): Promise<NlKuyrukEylem> => fetch(`${BASE}/kuyruklar/${id}/iptal`, json({})).then(safeJson),
+  /** Admin. `sira`: bekleyen ogelerin TAM listesi, yeni sirayla. 409 sira_eski. */
+  kuyrukSira: (id: number, sira: number[]): Promise<NlKuyrukEylem> => fetch(`${BASE}/kuyruklar/${id}/sira`, json({ sira }, 'PUT')).then(safeJson),
+  /** Admin. Bekleyen ogeyi kuyruktan cikarir (IPTAL). 409 oge_basladi. */
+  kuyrukOgeCikar: (id: number, ogeId: number): Promise<NlKuyrukEylem> => fetch(`${BASE}/kuyruklar/${id}/ogeler/${ogeId}/cikar`, json({})).then(safeJson),
 };

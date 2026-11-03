@@ -13,19 +13,24 @@
 // serbest hedef, yalniz istemci olcumu); yuk araci k6 (acik dongu) ya da wrk (kapali dongu, hiz tavanli).
 // Tur 4 (2026-11-02): "Araçlar" alt gorunumu (herkese okunur; hazirlama ve kaynak onayi yalniz Admin): k6 + wrk bir kez
 // /sw'ye hazirlanir, her on kontrol / kosu kopyayi sha256 ile dogrulayip kullanir ve siler.
+// Gece kuyrugu (2026-11-03): "Gece kuyruğu" alt gorunumu (okuma herkese, olusturma / iptal / sira Admin). Taslak bu
+// bilesende tutulur (localStorage kolaylik); "Yeni koşu" formu "Kuyruğa ekle" ile taslaga ekler.
 import React, { useState } from 'react';
-import { BeakerIcon, ChartBarSquareIcon, DocumentTextIcon, PlayCircleIcon, ArrowsRightLeftIcon, WrenchScrewdriverIcon } from '@heroicons/react/24/outline';
+import { BeakerIcon, ChartBarSquareIcon, DocumentTextIcon, PlayCircleIcon, ArrowsRightLeftIcon, WrenchScrewdriverIcon, MoonIcon } from '@heroicons/react/24/outline';
 import KosuListesi from './yukTesti/KosuListesi';
 import KosuAyrinti from './yukTesti/KosuAyrinti';
 import YeniKosu from './yukTesti/YeniKosu';
 import Senaryolar from './yukTesti/Senaryolar';
 import Karsilastir from './yukTesti/Karsilastir';
 import Araclar from './yukTesti/Araclar';
+import GeceKuyrugu from './yukTesti/GeceKuyrugu';
+import { taslakOku, taslakYaz, type TaslakOge } from './yukTesti/kuyrukTaslak';
 
-type Gorunum = 'kosular' | 'yeni' | 'senaryolar' | 'karsilastir' | 'araclar';
+type Gorunum = 'kosular' | 'yeni' | 'kuyruk' | 'senaryolar' | 'karsilastir' | 'araclar';
 const GORUNUMLER: { id: Gorunum; ad: string; ikon: React.ComponentType<React.SVGProps<SVGSVGElement>>; yalnizAdmin?: boolean }[] = [
   { id: 'kosular', ad: 'Koşular', ikon: ChartBarSquareIcon },
   { id: 'yeni', ad: 'Yeni koşu', ikon: PlayCircleIcon, yalnizAdmin: true },
+  { id: 'kuyruk', ad: 'Gece kuyruğu', ikon: MoonIcon },
   { id: 'senaryolar', ad: 'Senaryolar', ikon: DocumentTextIcon },
   { id: 'karsilastir', ad: 'Karşılaştır', ikon: ArrowsRightLeftIcon },
   { id: 'araclar', ad: 'Araçlar', ikon: WrenchScrewdriverIcon },
@@ -34,6 +39,8 @@ const GORUNUMLER: { id: Gorunum; ad: string; ikon: React.ComponentType<React.SVG
 export function YukTestiTab({ isAdmin }: { isAdmin: boolean }) {
   const [gorunum, setGorunum] = useState<Gorunum>('kosular');
   const [kosuId, setKosuId] = useState<number | null>(null);
+  const [taslak, setTaslakDurum] = useState<TaslakOge[]>(() => taslakOku());
+  const setTaslak = (t: TaslakOge[]) => { setTaslakDurum(t); taslakYaz(t); };
   const gorunur = GORUNUMLER.filter((g) => isAdmin || !g.yalnizAdmin);
   const etkin: Gorunum = gorunur.some((g) => g.id === gorunum) ? gorunum : 'kosular';
   // Alt sekmeye tiklamak ayrintiyi da kapatir: ayrintidayken "Koşular"a basan kullanici listeyi bekler.
@@ -70,7 +77,13 @@ export function YukTestiTab({ isAdmin }: { isAdmin: boolean }) {
       {etkin === 'kosular' && (kosuId != null
         ? <KosuAyrinti key={kosuId} kosuId={kosuId} isAdmin={isAdmin} onGeri={() => setKosuId(null)} />
         : <KosuListesi onAc={setKosuId} />)}
-      {etkin === 'yeni' && isAdmin && <YeniKosu onBasladi={(id) => { setGorunum('kosular'); setKosuId(id); }} onSenaryolar={() => git('senaryolar')} onAraclar={() => git('araclar')} />}
+      {etkin === 'yeni' && isAdmin && (
+        <YeniKosu onBasladi={(id) => { setGorunum('kosular'); setKosuId(id); }} onSenaryolar={() => git('senaryolar')} onAraclar={() => git('araclar')}
+          onKuyrugaEkle={(o) => setTaslak([...taslak, o])} kuyrukOgeSayisi={taslak.length} />
+      )}
+      {etkin === 'kuyruk' && (
+        <GeceKuyrugu isAdmin={isAdmin} taslak={taslak} setTaslak={setTaslak} onKosuAc={(id) => { setGorunum('kosular'); setKosuId(id); }} onYeniKosu={isAdmin ? () => git('yeni') : undefined} />
+      )}
       {etkin === 'senaryolar' && <Senaryolar isAdmin={isAdmin} />}
       {etkin === 'karsilastir' && <Karsilastir />}
       {etkin === 'araclar' && <Araclar isAdmin={isAdmin} />}

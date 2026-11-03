@@ -79,6 +79,7 @@ function sahte(rel, exports) {
   require.cache[p] = { id: p, filename: p, loaded: true, exports };
 }
 const { aracSatiri, aracSorgusu, ozetEnvKur, SHA_K6, SHA_WRK } = require('./arac-sahte-tablo.cjs');
+const { kuyrukSorgusu } = require('./kuyruk-sahte-tablo.cjs');
 // C'nin modulleri: poller.cModulu once require.cache'e bakar (dosya olmasa da sahte calisir).
 function sahteC(ad, exports) {
   const p = path.join(__dirname, '..', ad);
@@ -138,6 +139,12 @@ function sifirla() {
     araclar: [aracSatiri()],
     aracDbHata: null,
     aracSorgular: [],
+    // Gece kuyrugu (2026-11-03): sahte tablolar (kuyruk-sahte-tablo.cjs) ve rol gecersiz kilmalari.
+    kuyruk: [],
+    ogeler: [],
+    kuyrukSorgular: [],
+    kuyrukHata: null,
+    roller: {},
   });
   // Serbest hedef / wrk env'leri her testte temiz (test kendisi kurar).
   for (const k of ['NGINX_LOADTEST_SERBEST_AGLAR', 'NGINX_LOADTEST_SERBEST_YASAK', 'NGINX_LOADTEST_WRK', 'NGINX_LOADTEST_K6', 'NGINX_LOADTEST_DIR']) delete process.env[k];
@@ -243,6 +250,11 @@ sahte('../../db/index.cjs', {
     if (k) return k;
     const a = aracSorgusu(D, q, params);
     if (a) return a;
+    const kq = kuyrukSorgusu(D, q, params);
+    if (kq) return kq;
+    if (/^SELECT role FROM user_role_overrides WHERE LOWER\(username\) = \$1 AND is_active = 1$/.test(q)) {
+      return { rows: D.roller[params[0]] ? [{ role: D.roller[params[0]] }] : [] };
+    }
     if (/^SELECT id, ad, aciklama, vhost, senaryo_tur, tsv, sha256, yol_sayisi, ozet, kaynak, created_by, created_at, silindi FROM nginx_loadtest_senaryolar WHERE id = \$1$/.test(q)) {
       return { rows: D.senaryolar.filter((x) => x.id === params[0]) };
     }
@@ -515,6 +527,7 @@ test('YKP1 kapilar: oturum, Admin, sayfa/sekme gorunurlugu (davranis)', { timeou
     ['POST', '/senaryolar', {}], ['DELETE', '/senaryolar/1'], ['POST', '/kosular/on-kontrol', GOVDE()], ['POST', '/kosular', { onKontrolKosuId: 1 }],
     ['POST', '/kosular/1/durdur', {}], ['GET', '/kosular/1/durum'], ['PUT', '/senaryolar/1', {}], ['POST', '/kosular/1/yeniden-oku', {}],
     ['GET', '/ip-sinifi?ip=10.0.0.9'], ['POST', '/araclar', { derlemeHost: 'GBLABT02' }], ['POST', '/araclar/5/geri-cek', {}],
+    ['POST', '/kuyruklar', {}], ['POST', '/kuyruklar/1/iptal', {}], ['PUT', '/kuyruklar/1/sira', { sira: [1] }], ['POST', '/kuyruklar/1/ogeler/1/cikar', {}],
   ];
   for (const [m, u, b] of yazanlar) {
     D.sorgular = [];
@@ -525,7 +538,7 @@ test('YKP1 kapilar: oturum, Admin, sayfa/sekme gorunurlugu (davranis)', { timeou
     assert.equal(D.envSorgular.length, 0, `${m} ${u}: uc envanteri okudu`);
   }
   assert.equal(D.launch.length, 0);
-  for (const u of ['/hedefler', '/senaryolar', '/senaryolar/1', '/kosular', '/kosular/101', '/karsilastir?ref=1&aday=2', '/araclar']) {
+  for (const u of ['/hedefler', '/senaryolar', '/senaryolar/1', '/kosular', '/kosular/101', '/karsilastir?ref=1&aday=2', '/araclar', '/kuyruklar', '/kuyruklar/1']) {
     const r = await istek('GET', u, { session: KULLANICI });
     assert.notEqual(r.statusCode, 403, `salt okunur ${u} Admin olmayana kapali`);
     assert.notEqual(r.statusCode, 401, u);
@@ -536,7 +549,8 @@ test('YKP1 kapilar: oturum, Admin, sayfa/sekme gorunurlugu (davranis)', { timeou
   }
   // Isleyici de Admin ister (kapi atlansa bile): dogrudan isleyici kontrolu kaynakta.
   const kod = fs.readFileSync(IDX_YOL, 'utf8');
-  for (const uc of ["router.post('/senaryolar'", "router.delete('/senaryolar/:id'", "router.post('/kosular/on-kontrol'", "router.post('/kosular'", "router.get('/kosular/:id/durum'", "router.post('/kosular/:id/durdur'", "router.post('/kosular/:id/yeniden-oku'", "router.get('/ip-sinifi'", "router.post('/araclar'", "router.post('/araclar/:id/geri-cek'"]) {
+  for (const uc of ["router.post('/senaryolar'", "router.delete('/senaryolar/:id'", "router.post('/kosular/on-kontrol'", "router.post('/kosular'", "router.get('/kosular/:id/durum'", "router.post('/kosular/:id/durdur'", "router.post('/kosular/:id/yeniden-oku'", "router.get('/ip-sinifi'", "router.post('/araclar'", "router.post('/araclar/:id/geri-cek'",
+    "router.post('/kuyruklar'", "router.post('/kuyruklar/:id/iptal'", "router.put('/kuyruklar/:id/sira'", "router.post('/kuyruklar/:id/ogeler/:ogeId/cikar'"]) {
     const i = kod.indexOf(uc);
     assert.ok(i > 0, uc);
     assert.match(kod.slice(i, i + 400), /adminSart\(req\)/, `${uc} isleyicide Admin denetlemiyor`);
@@ -557,9 +571,9 @@ test('YKP2 kapi sirasi, nginxRed haric listesi, ADMIN_DISI_OKUMA', () => {
   const haric = servis.match(/haric:\s*\[([^\]]*)\]/);
   assert.ok(haric, 'nginxRedCevirici haric listesi okunamadi');
   assert.doesNotMatch(haric[1], /nginx-loadtest/, 'yuk testi router\'i haric: 403/404 govdeleri HTML\'e doner');
-  const ornek = ['/hedefler', '/senaryolar', '/senaryolar/12', '/kosular', '/kosular/12', '/karsilastir', '/araclar'];
+  const ornek = ['/hedefler', '/senaryolar', '/senaryolar/12', '/kosular', '/kosular/12', '/karsilastir', '/araclar', '/kuyruklar', '/kuyruklar/3'];
   for (const re of yt._ADMIN_DISI_OKUMA) assert.ok(ornek.some((o) => re.test(o)), `ornegi olmayan desen: ${re}`);
-  for (const yasak of ['/kosular/12/durum', '/kosular/12/durdur', '/kosular/on-kontrol', '/senaryolar/12/sil', '/kosular/12/yeniden-oku', '/ip-sinifi', '/araclar/5/geri-cek', '/araclar/5']) {
+  for (const yasak of ['/kosular/12/durum', '/kosular/12/durdur', '/kosular/on-kontrol', '/senaryolar/12/sil', '/kosular/12/yeniden-oku', '/ip-sinifi', '/araclar/5/geri-cek', '/araclar/5', '/kuyruklar/3/iptal', '/kuyruklar/3/sira', '/kuyruklar/3/ogeler/1/cikar']) {
     assert.ok(!yt._ADMIN_DISI_OKUMA.some((re) => re.test(yasak)), `${yasak} Admin olmayana acik`);
   }
 });
@@ -2370,4 +2384,247 @@ test('YKP40 limit uyarisi: on kontrol 200 + plan uyarisi; onaysiz kosu 409 uyari
   D.ayarlar = [];
   const ok4 = await onKontrolHazirla({ govde: GOVDE({ parametreler: { hizlar: [100, 5000], maxvu: 1000 } }) });
   assert.equal(ok4.plan_uyarilari, null);
+});
+
+// -- GECE KUYRUGU (2026-11-03) ---------------------------------------------------------------
+//   YKP60 POST /kuyruklar: etiket zorunlu (400), tek hedef (409 hedef_farkli), onay metni, uyari TURLERI onayi
+//         (409 uyari_onayi + uyariTurleri: plan uyarisi + ogeye bagli on kontrolun uyarisi), kayit (kanonik govde,
+//         hazir = 1, onaylanan turler), denetim; liste / ayrinti Admin olmayana okunur
+//   YKP61 yurutucu GERCEK kapilarla: on kontrol ve kosu index.cjs'ten; numara AWX launch'tan ONCE ogede; kosu etiketi
+//         [K<id>] <etiket>; onay metni kuyruktan; yeni uyari turu -> ATLANDI (kosu yok); ayni hedefte elle is -> bekler
+//   YKP62 kosuKaydedildi kancasi tutmazsa is BASLAMAZ: launch yok, kilitler birakilir, satir FAILED
+//   YKP63 yetki: rol gecersiz kilmasi Admin degilse duser; DB hatasi firlatilir (gecici)
+//   YKP64 iptal / sira / cikar uclari
+//   YKP65 initNginxLoadtest yurutucuyu baslatir   YKP66 AWX kesintisi gercek kapilarla: kesin red gecici, belirsiz HATALI
+//   (YKP60 ayrica: ayni hedefe ikinci aktif kuyruk 409 kuyruk_var; kontrol karakterli etiket 400)
+const kuyruk = require('../kuyruk.cjs');
+const kuyrukTur = () => kuyruk.tick({ db: require('../../db/index.cjs'), islem: yt._kuyrukIslemForTest, kira: 'P1' });
+/** Poller on kontrolu sonuclandirmis gibi (onKontrolHazirla ile ayni alanlar). */
+function okBitir(k, ozet = OK_OZET) {
+  Object.assign(k, { durum: 'DONE', finished_at: D.simdi - 60000, sonuc: JSON.stringify({ durum: 'OK', run_id: String(k.id), islem: 'on_kontrol', on_kontrol: ozet }), on_kontrol_ozet: JSON.stringify(ozet) });
+  for (const kl of D.kilitler.values()) kl.held = 0;
+}
+const KGOVDE = (ek = {}) => {
+  const { etiket, ...g } = GOVDE(ek);
+  return g;
+};
+
+test('YKP60 POST /kuyruklar: dogrulama, tek hedef, onay metni, uyari turleri, kayit', { timeout: 20000 }, async () => {
+  sifirla();
+  senaryoEkle();
+  process.env.NGINX_LOADTEST_SERBEST_AGLAR = SERBEST_AG;
+  let r = await istek('POST', '/kuyruklar', { body: { confirmText: 'GBNGXT33', ogeler: [{ etiket: '', govde: KGOVDE() }] } });
+  assert.deepEqual([r.statusCode, r.body.code], [400, 'gecersiz_istek']);
+  assert.match(r.body.message, /etiket zorunlu/);
+  r = await istek('POST', '/kuyruklar', { body: { confirmText: 'GBNGXT33', ogeler: [{ etiket: 'A1', govde: KGOVDE() }, { etiket: 'A2', govde: (({ etiket, ...g }) => g)(SGOVDE()) }] } });
+  assert.deepEqual([r.statusCode, r.body.code, r.body.oge], [409, 'hedef_farkli', 2], JSON.stringify(r.body));
+  r = await istek('POST', '/kuyruklar', { body: { confirmText: 'gbngxt3', ogeler: [{ etiket: 'A1', govde: KGOVDE() }] } });
+  assert.deepEqual([r.statusCode, r.body.code], [409, 'onay_metni']);
+  // Plan uyarisi (limit_req 300 r/s asimi) + ogeye bagli on kontrolun uyarisi (/web_log %70): turler onaya gelir.
+  const ok = await onKontrolHazirla({ ozet: { ...OK_OZET, web_log_df: 70 } });
+  const ogeler = [
+    { etiket: 'A1 temel', govde: KGOVDE({ parametreler: { hizlar: [100, 400] } }), onKontrolKosuId: ok.id },
+    { etiket: 'A2 brotli 4', govde: KGOVDE({ parametreler: { hizlar: [100, 450] } }) },
+  ];
+  r = await istek('POST', '/kuyruklar', { body: { confirmText: 'GBNGXT33', beklemeDk: 3, ogeler } });
+  assert.deepEqual([r.statusCode, r.body.code], [409, 'uyari_onayi'], JSON.stringify(r.body));
+  assert.equal(D.kuyruk.length, 0, 'onaysiz kuyruk yazildi');
+  const turler = r.body.uyariTurleri;
+  assert.equal(turler.length, 2, JSON.stringify(turler));
+  assert.match(turler[0].ornek, /limit_req/);
+  assert.deepEqual(turler[0].ogeler, [1, 2], 'ayni tur iki ogede tek satir olmali');
+  assert.match(turler[1].ornek, /\/web_log %70 dolu/);
+  assert.deepEqual(turler[1].ogeler, [1]);
+  r = await istek('POST', '/kuyruklar', { body: { confirmText: 'GBNGXT33', beklemeDk: 3, ogeler, onaylananTurler: [turler[0].kod] } });
+  assert.deepEqual([r.statusCode, r.body.code], [409, 'uyari_onayi'], 'eksik onay gecti');
+  r = await istek('POST', '/kuyruklar', { body: { confirmText: 'GBNGXT33', beklemeDk: 3, ogeler, onaylananTurler: turler.map((t) => t.kod) } });
+  assert.equal(r.statusCode, 200, JSON.stringify(r.body));
+  const k = D.kuyruk[0];
+  assert.deepEqual([k.id, k.hazir, k.bekleme_dk, k.onay_hedefi, k.hedef_turu, k.created_by, k.durum], [r.body.id, 1, 3, 'GBNGXT33', 'sunucu', 'onur', 'BEKLIYOR']);
+  assert.deepEqual(JSON.parse(k.onaylanan_turler).map((t) => t.kod), turler.map((t) => t.kod));
+  assert.equal(D.ogeler.length, 2);
+  const g0 = JSON.parse(D.ogeler[0].govde);
+  assert.equal(g0.parametreler.butceSn, D.ogeler[0].butce_sn, 'kanonik parametre / butce yazilmadi');
+  assert.equal(g0.etiket, undefined);
+  assert.deepEqual(D.ogeler.map((o) => [o.sira, o.etiket, o.durum]), [[1, 'A1 temel', 'BEKLIYOR'], [2, 'A2 brotli 4', 'BEKLIYOR']]);
+  assert.equal(D.launch.length, 1, 'kuyruk olusturma AWX isi baslatti');
+  assert.ok(D.denetim.some((d) => d.eylem === 'nginx_loadtest_kuyruk_olustur' && d.result !== 'fail'));
+  // Ayni hedefe ikinci aktif kuyruk: 409 kuyruk_var (dinlenmesiz ard arda yuk olmasin); biten kuyruk engellemez.
+  const ikinci = await istek('POST', '/kuyruklar', { body: { confirmText: 'GBNGXT33', beklemeDk: 3, ogeler, onaylananTurler: turler.map((t) => t.kod) } });
+  assert.deepEqual([ikinci.statusCode, ikinci.body.code, ikinci.body.kuyrukId], [409, 'kuyruk_var', k.id], JSON.stringify(ikinci.body));
+  assert.match(ikinci.body.message, /GBNGXT33 için kuyruk #1 zaten aktif/);
+  assert.equal(D.kuyruk.length, 1);
+  // Kontrol karakterli etiket 400 (kosu etiketi / denetim kaydina yazilir).
+  const kk = await istek('POST', '/kuyruklar', { body: { confirmText: 'GBNGXT33', ogeler: [{ etiket: 'A1\nB', govde: KGOVDE() }] } });
+  assert.deepEqual([kk.statusCode, kk.body.code], [400, 'gecersiz_istek']);
+  // Okuma Admin disina acik.
+  const l = await istek('GET', '/kuyruklar', { session: KULLANICI });
+  assert.deepEqual([l.statusCode, l.body.kuyruklar.length, l.body.kuyruklar[0].ogeSayisi], [200, 1, 2]);
+  const a = await istek('GET', `/kuyruklar/${k.id}`, { session: KULLANICI });
+  assert.equal(a.statusCode, 200);
+  assert.equal(a.body.ogeler[0].etiket, 'A1 temel');
+  assert.ok(a.body.ogeler[1].tahminiBaslangic, 'tahmini baslangic yok');
+  assert.ok(a.body.kuyruk.tahminiBitis);
+});
+
+test('YKP61 yurutucu gercek kapilarla: numara launch oncesi, etiket, onay, yeni uyari ATLANDI, ayni hedef kilidi', { timeout: 20000 }, async () => {
+  sifirla();
+  senaryoEkle();
+  let r = await istek('POST', '/kuyruklar', { body: { confirmText: 'GBNGXT33', ogeler: [{ etiket: 'A1', govde: KGOVDE() }, { etiket: 'A2', govde: KGOVDE() }] } });
+  assert.equal(r.statusCode, 200, JSON.stringify(r.body));
+  const kid = r.body.id;
+  const launchAni = [];
+  D.launchKanca = async (a) => {
+    const ev = a[2];
+    launchAni.push({ islem: ev.yuk_islem || ev.islem || null, ogeler: D.ogeler.map((o) => ({ ok: o.on_kontrol_kosu_id, kosu: o.kosu_id })) });
+  };
+  await kuyrukTur();
+  assert.equal(D.launch.length, 1, JSON.stringify(D.ogeler));
+  const okSatir = D.kosular.at(-1);
+  assert.deepEqual([okSatir.islem, okSatir.etiket, okSatir.created_by], ['on_kontrol', `[K${kid}] A1`, 'onur']);
+  assert.equal(launchAni[0].ogeler[0].ok, okSatir.id, 'on kontrol numarasi launch ANINDA ogede degildi');
+  assert.equal(D.ogeler[0].durum, 'CALISIYOR');
+  okBitir(okSatir);
+  await kuyrukTur();
+  assert.equal(D.launch.length, 2);
+  const kosuSatir = D.kosular.at(-1);
+  assert.deepEqual([kosuSatir.islem, kosuSatir.on_kontrol_kosu_id, kosuSatir.etiket], ['kosu', okSatir.id, `[K${kid}] A1`]);
+  assert.equal(launchAni[1].ogeler[0].kosu, kosuSatir.id, 'kosu numarasi launch ANINDA ogede degildi');
+  assert.ok([...D.kilitler.keys()].includes('G|global'));
+  // Kosu bitti, kilitler birakildi, dinlenme dolunca A2: on kontrolde YENI uyari turu (/web_log %70) -> ATLANDI.
+  Object.assign(kosuSatir, { durum: 'DONE', finished_at: D.simdi });
+  for (const kl of D.kilitler.values()) kl.held = 0;
+  await kuyrukTur();
+  assert.equal(D.ogeler[0].durum, 'BITTI');
+  D.simdi += 5 * 60000;
+  await kuyrukTur();
+  assert.equal(D.launch.length, 3);
+  okBitir(D.kosular.at(-1), { ...OK_OZET, web_log_df: 70 });
+  await kuyrukTur();
+  assert.equal(D.ogeler[1].durum, 'ATLANDI');
+  assert.match(D.ogeler[1].neden, /^yeni uyarı: U[0-9a-f]{10} \/web_log %70 dolu/);
+  assert.equal(D.launch.length, 3, 'onaylanmamis uyariyla kosu baslatildi');
+  assert.equal(D.kuyruk[0].durum, 'BITTI');
+  // Ayni hedefte elle baslatilmis is (on kontrol T + L kilidi): kuyruk bekler, is baslatmaz.
+  sifirla();
+  senaryoEkle();
+  r = await istek('POST', '/kuyruklar', { body: { confirmText: 'GBNGXT33', ogeler: [{ etiket: 'A1', govde: KGOVDE() }] } });
+  const elle = await istek('POST', '/kosular/on-kontrol', { body: GOVDE() });
+  assert.equal(elle.statusCode, 200);
+  await kuyrukTur();
+  assert.equal(D.launch.length, 1, 'elle is surerken kuyruk is baslatti');
+  assert.equal(D.ogeler[0].durum, 'BEKLIYOR');
+  assert.match(D.ogeler[0].neden, /^bekliyor: GBNGXT33 üzerinde başka bir iş var/);
+  assert.equal(D.kosular.length, 1, 'kilit dolu iken satir yazildi');
+  for (const kl of D.kilitler.values()) kl.held = 0;
+  await kuyrukTur();
+  assert.equal(D.launch.length, 2);
+});
+
+test('YKP62 kosuKaydedildi kancasi tutmazsa is baslamaz: launch yok, kilit birakilir, satir FAILED', { timeout: 10000 }, async () => {
+  sifirla();
+  senaryoEkle();
+  const plan = await yt._kosuPlaniForTest({ senaryoId: 1, hedefHost: 'GBNGXT33', hedefIp: '10.0.0.9', vhost: 'app.test.local', yukHost: 'GBNGXT34', sni: false, parametrelerHam: { hizlar: [100] }, etiket: '[K1] A1' });
+  await assert.rejects(yt._kuyrukIslemForTest.onKontrolBaslat('onur', plan, async () => { throw new Error('kira baska surecte'); }), (e) => e.code === 'kuyruk_yazilamadi' && e.kosuId === undefined);
+  assert.equal(D.launch.length, 0, 'kanca tutmadi ama is baslatildi');
+  assert.equal(D.kosular[0].durum, 'FAILED');
+  assert.match(D.kosular[0].sonuc, /kuyruk öğesine yazılamadı/);
+  assert.ok([...D.kilitler.values()].every((k) => !k.held), 'kilit birakilmadi');
+});
+
+test('YKP63 yetki: rol gecersiz kilmasi Admin degilse duser; DB hatasi firlatilir', async () => {
+  sifirla();
+  assert.deepEqual(await yt._kuyrukYetkisiForTest('Onur'), { ok: true });
+  D.roller = { onur: 'User' };
+  const y = await yt._kuyrukYetkisiForTest('Onur');
+  assert.equal(y.ok, false);
+  assert.match(y.neden, /onur kullanıcısının rolü artık User/);
+  D.roller = { onur: 'Admin' };
+  assert.equal((await yt._kuyrukYetkisiForTest('onur')).ok, true);
+  assert.equal((await yt._kuyrukYetkisiForTest('')).ok, false);
+});
+
+test('YKP64 iptal, sira, cikar uclari', { timeout: 20000 }, async () => {
+  sifirla();
+  senaryoEkle();
+  const ogeler = ['A1', 'A2', 'A3'].map((e) => ({ etiket: e, govde: KGOVDE() }));
+  let r = await istek('POST', '/kuyruklar', { body: { confirmText: 'GBNGXT33', ogeler } });
+  const kid = r.body.id;
+  await kuyrukTur();
+  // Sira: yalniz bekleyenlerin tam listesi; calisan oge listede ise 409.
+  r = await istek('PUT', `/kuyruklar/${kid}/sira`, { body: { sira: [1, 3, 2] } });
+  assert.deepEqual([r.statusCode, r.body.code], [409, 'sira_eski']);
+  // Eksik liste (bekleyenlerin tam permutasyonu degil) da 409; sira degismez.
+  r = await istek('PUT', `/kuyruklar/${kid}/sira`, { body: { sira: [3] } });
+  assert.deepEqual([r.statusCode, r.body.code], [409, 'sira_eski']);
+  assert.deepEqual(D.ogeler.map((o) => o.sira), [1, 2, 3]);
+  r = await istek('PUT', `/kuyruklar/${kid}/sira`, { body: { sira: [3, 2] } });
+  assert.equal(r.statusCode, 200, JSON.stringify(r.body));
+  const det = await istek('GET', `/kuyruklar/${kid}`);
+  assert.deepEqual(det.body.ogeler.map((o) => o.etiket), ['A1', 'A3', 'A2']);
+  r = await istek('POST', `/kuyruklar/${kid}/ogeler/1/cikar`);
+  assert.deepEqual([r.statusCode, r.body.code], [409, 'oge_basladi']);
+  r = await istek('POST', `/kuyruklar/${kid}/ogeler/2/cikar`);
+  assert.equal(r.statusCode, 200);
+  assert.equal(D.ogeler[1].durum, 'IPTAL');
+  // Iptal: suren oge yanitta (Durdur ile ayrica durdurulur); bekleyen IPTAL.
+  r = await istek('POST', `/kuyruklar/${kid}/iptal`);
+  assert.equal(r.statusCode, 200);
+  assert.deepEqual([r.body.suren.ogeId, r.body.suren.onKontrolKosuId], [1, D.kosular[0].id]);
+  assert.equal(D.ogeler[2].durum, 'IPTAL');
+  assert.equal(D.kuyruk[0].durum, 'IPTAL');
+  r = await istek('POST', `/kuyruklar/${kid}/iptal`);
+  assert.deepEqual([r.statusCode, r.body.code], [409, 'kuyruk_bitti']);
+  assert.ok(D.denetim.some((d) => d.eylem === 'nginx_loadtest_kuyruk_iptal'));
+});
+
+test('YKP65 initNginxLoadtest kuyruk yurutucusunu kuyrukIslem ile baslatir', () => {
+  const pollerMod = require('../poller.cjs');
+  const eskiK = kuyruk.startKuyruk;
+  const eskiP = pollerMod.startPoller;
+  const cagri = [];
+  kuyruk.startKuyruk = (islem) => cagri.push(islem);
+  pollerMod.startPoller = () => {};
+  try {
+    const kullanilan = [];
+    yt.initNginxLoadtest({ use: (yol) => kullanilan.push(yol) });
+    assert.deepEqual(kullanilan, ['/api/nginx-loadtest']);
+    assert.equal(cagri.length, 1, 'kuyruk yurutucusu baslatilmadi');
+    assert.equal(cagri[0], yt._kuyrukIslemForTest);
+  } finally {
+    kuyruk.startKuyruk = eskiK;
+    pollerMod.startPoller = eskiP;
+  }
+});
+
+test('YKP66 gercek kapilarla AWX kesintisi: is kesin baslamadiysa oge HATALI olmaz (geri cekilme); belirsizse HATALI', { timeout: 20000 }, async () => {
+  sifirla();
+  senaryoEkle();
+  let r = await istek('POST', '/kuyruklar', { body: { confirmText: 'GBNGXT33', ogeler: [{ etiket: 'A1', govde: KGOVDE() }, { etiket: 'A2', govde: KGOVDE() }] } });
+  assert.equal(r.statusCode, 200, JSON.stringify(r.body));
+  // AWX launch 4xx (kesin red): kosuyuBaslat satir + numara yazdi, sonra 424 belirsiz:false (kilit birakildi, satir FAILED).
+  D.launchHata = Object.assign(new Error('AWX 400 bad request'), { status: 400 });
+  await kuyrukTur();
+  assert.deepEqual([D.ogeler[0].durum, D.ogeler[0].deneme, D.ogeler[0].on_kontrol_kosu_id], ['BEKLIYOR', 1, null], JSON.stringify(D.ogeler[0]));
+  assert.match(D.ogeler[0].neden, /^geçici hata \(1\/6\): AWX işi başlatılamadı/);
+  assert.equal(D.ogeler[1].durum, 'BEKLIYOR', 'kisa AWX kesintisinde siradaki ogeye gecildi');
+  assert.deepEqual(D.kosular.map((k) => k.durum), ['FAILED']);
+  assert.ok([...D.kilitler.values()].every((k) => !k.held), 'kesin red sonrasi kilit birakilmadi');
+  D.launchHata = null;
+  await kuyrukTur();
+  assert.equal(D.kosular.length, 1, 'geri cekilme dolmadan yeniden denendi');
+  D.simdi += 60000;
+  await kuyrukTur();
+  assert.deepEqual([D.launch.length, D.kosular[1].durum], [2, 'RUNNING'], 'geri cekilme sonrasi ayni oge yeniden baslamadi');
+  assert.equal(D.ogeler[0].on_kontrol_kosu_id, D.kosular[1].id);
+  // Belirsiz (ag hatasi: is baslamis olabilir, kilit TTL'de): oge HATALI; siradaki kilit acilana dek bekler.
+  sifirla();
+  senaryoEkle();
+  r = await istek('POST', '/kuyruklar', { body: { confirmText: 'GBNGXT33', ogeler: [{ etiket: 'A1', govde: KGOVDE() }, { etiket: 'A2', govde: KGOVDE() }] } });
+  D.launchHata = new Error('socket hang up');
+  await kuyrukTur();
+  assert.equal(D.ogeler[0].durum, 'HATALI');
+  assert.match(D.ogeler[0].neden, /^ön kontrol başlatılamadı: AWX işi başlatılamadı/);
+  assert.equal(D.ogeler[1].durum, 'BEKLIYOR');
+  assert.match(D.ogeler[1].neden || '', /^bekliyor: /, 'belirsiz isin kilidi tutulmadi');
 });
