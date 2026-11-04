@@ -199,12 +199,16 @@ def zip_merkez_giris_sayisi(tam):
         veri = os.read(fd, kuyruk)
     finally:
         os.close(fd)
-    yer = veri.rfind(b'PK\x05\x06')
-    if yer < 0 or yer + 22 > len(veri):
-        return None
-    _, disk, merkez_disk, disk_giris, toplam, merkez_boyut, _, yorum = struct.unpack_from('<4s4H2LH', veri, yer)
-    if yer + 22 + yorum > len(veri):
-        return None
+    yer = len(veri)
+    while True:
+        yer = veri.rfind(b'PK\x05\x06', 0, yer)
+        if yer < 0:
+            return None
+        if yer + 22 <= len(veri):
+            alanlar = struct.unpack_from('<4s4H2LH', veri, yer)
+            if yer + 22 + alanlar[7] == len(veri):
+                break
+    _, disk, merkez_disk, disk_giris, toplam, merkez_boyut, _, _ = alanlar
     if disk or merkez_disk or disk_giris != toplam or toplam == 0xffff or merkez_boyut == 0xffffffff:
         return -1
     return toplam
