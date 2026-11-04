@@ -178,6 +178,8 @@ uyarı: ölçülen p95 ağı da içerir.
 - Brotli / gzip yüksek seviye (`brotli_comp_level` 9-11, `gzip_comp_level` 9) istek başına geçici Anon ayırır (brotli
   pencere + hash tabloları yanıt başına MB mertebesi); eşzamanlı sıkıştırılan yanıt sayısıyla artar ve glibc arenaları
   hemen geri vermeyebilir: dinlenmede kısmen iner. Seviye 4-6 ile aynı koşu Anon artışını karşılaştırmanın yoludur.
+  Sunucu ayarlı brotli static koşuda bu etki yük başlamadan da görülebilir: `.br`'yi ölçülen worker'ların kendisi üretir ("Tuzaklar"),
+  taban Anon seviyeye göre şişmiş başlayabilir.
 
 Örnek (2 adım): taban Anon 40 MB → son 95 MB → dinlenme 48 MB, bağlantı 4 → 900 → 6: tampon (normal). Shmem 10 → 74 MB
 → 74 MB: `ssl_session_cache shared:SSL:64m` doluyor (bir kez). Anon dinlenme 48 → 61 → 77 MB, bağlantı ~900 sabit:
@@ -212,20 +214,23 @@ kaynağı yanında duran dosyalar içindir (`x.js` varken `x.js.gz` / `x.js.br`;
 
 - **uygula** (Play 2; ön kontrolde `on_kontrol.sh hedef`'ten, koşuda koşu kapısından ve kaydedici başlamadan ÖNCE): eski
   yedek varsa önce geri alır (`yarim_kalan 1`; başka koşunun yedeğini devralır, hedef kilidi bu işte). Yazma izni ya da
-  beklenen satır yoksa, dizin yoksa, static'te dizin ya da bir alt dizini yazılamıyorsa (static kapalıyken UYARI), brotli
-  static'te `curl` ya da geçici nginx konfu reddediliyorsa hiçbir şey değişmeden FAIL. `<www ev>/.portal_yuktesti/hazirlik/` (koşu dizini
+  beklenen satır yoksa, dizin yoksa, static'te dizin ya da bir alt dizini yazılamıyorsa (static kapalıyken UYARI), static'te
+  `curl` yoksa, brotli static'te boş port bulunamıyorsa ya da `default.conf`'ta eski üretici bloğu varsa (`yuk_ae` / static fark etmez) hiçbir şey değişmeden FAIL. `<www ev>/.portal_yuktesti/hazirlik/` (koşu dizini
   DIŞINDA, 0700: koşu dizini silinse de yedek kalır) altına 3 dosyanın yedeği, özgün ve uygulanan sha256'ları, koşu no
   tek `mv -T` ile yayınlanır; sonra dosyalar yazılır, `nginx -t`, `nginx -T` ile doğrulama, reload,
-  `worker process is shutting down` süzülene dek en çok 90 sn bekleme (bitmezse UYARI, devam). `nginx -t` düşerse dosyalar
+  `worker process is shutting down` süzülene dek en çok 90 sn bekleme (bitmezse UYARI, devam). Brotli static'te `default.conf`'a
+  üretici bloğu da eklenir (aşağıda **.br yöntemi**) ve reload sonrası porta 20 sn'ye dek (`BR_PORT_BEKLE`, saatle ölçülür: çok vhost
+  ve sertifikalı hostta reload saniyeler sürer) bağlanılır: `-s reload` rc 0 bind'i kanıtlamaz; yanıt yoksa konf geri alınır (reload ile), FAIL. `nginx -t` düşerse dosyalar
   geri, FAIL (metinde hata satırı; ör. `brotli_static` modülü yoksa `unknown directive`). `-T`'de istenen seviye ya da
   `default.conf` http2 durumu görünmüyorsa da (dosya include edilmiyor) reload edilmeden geri, FAIL. Başka dosyada
   seçilen `*_comp_level`, `http2 on` ya da `listen ... http2` varsa UYARI (ayar etkisiz olabilir). `-T` çıktısı basılmaz.
-- **dosyalar** (yalnız koşu, ayar açıkken static kapalıyken de): önce yukarıdaki silme, sonra static koşuda üretim. İlgili tür
+- **dosyalar** (yalnız koşu, ayar açıkken static kapalıyken de): brotli static'te önce port / seviye denetimi (uyuşmazlıkta dizine
+  dokunulmaz), sonra yukarıdaki silme, sonra static koşuda üretim. İlgili tür
   HER KOŞUDA yeniden üretilir (eksik / eski kontrolü yok: başka seviyeden kalan dosya ölçümü bozar, mtime seviyeyi görmez).
   Hiç olmayıp YENİ oluşturulanlar manifest'e yazılır (üretimden önce: yarıda kalan da silinsin); önceden duran bir `.gz` /
   `.br` yeniden üretilse de manifest'e GİRMEZ, `geri_al`'dan sonra yeni seviyeyle yerinde kalır. Static koşuda 0 dosya, her
   koşuda dizin yoksa FAIL. Dosya seviyesi kullanıcının seçtiği seviyedir (kullanıcı kuralı 2026-11-04, `-9` / `11` sabiti
-  yok): `.gz` `gzip -<seviye> -n -k -f`, `.br` geçici nginx'te `brotli_comp_level <seviye>`; seviye boşsa (`yuk_ae` `identity` +
+  yok): `.gz` `gzip -<seviye> -n -k -f`, `.br` üretici blokta `brotli_comp_level <seviye>`; seviye boşsa (`yuk_ae` `identity` +
   `gzip_static`) `gzip -9`. Kanıt `<koşu dizini>/R<id>/hazirlik_R<id>_<host>.txt`.
 - **kanit** (yalnız koşu; `dosyalar` ve reload'dan sonra, koşu kapısı ve kaydediciden ÖNCE; FAIL'de kaydedici ve yük BAŞLAMAZ,
   Play 7 geri alır): `brotli on` açık kaldığı için `.br` bulunamazsa nginx sessizce anlık sıkıştırmaya düşer, koşu "static" diye
@@ -264,16 +269,45 @@ gösterir; başlatamazsa kilidi tutar ve Durdur düğmesini açık bırakır. Ay
 `hazirlik_yedek 1` yayınlar: Portal engel sayar, o ön kontrolün Play 7'si yedeği devralıp geri alır. Sunucu ayarlı koşuda
 bütçe tavanı 1800 sn'dir (girdi kapısı): `uygula` 300 + `dosyalar` 600 + async payı 300 AWX'in 3600 sn sınırını aşmasın.
 
-**.br yöntemi**: sunucuda `brotli` ikilisi yok. Hedefte aynı nginx ikilisiyle GEÇİCİ, ayrıcalıksız bir örnek açılır
-(dzdo yok; `<yedek>/br_gecici` altında kendi konfu, `-p` / `-c` / `-e`, pid, temp yolları; `127.0.0.1` üzerinde boş yüksek
-port, bind hatasında 5 denemeye dek başka port; `/usr/nginx/modules/ngx_http_brotli_filter_module.so` varsa `load_module`;
-`root` = dizin; `brotli on; brotli_comp_level <seviye>; brotli_types *; brotli_min_length 0; gzip off; access_log off`). Her dosya
-`curl -H 'Accept-Encoding: br'` ile (arka planda + `wait`: TERM trap'i `curl`'ü beklemesin) alınıp `<ad>.br.hazirlik_tmp`'ye
-yazılır; yanıt 200 değilse, `Content-Encoding: br`
-yoksa ya da gövde boşsa FAIL; `touch -r` ile kaynağın mtime'ı verilip `.br` adına atomik taşınır. Boş kaynak dosya
-(nginx'te gövde yok, sıkıştırılamaz) atlanır. Örnek her yolda trap ile kapanır; KILL'e karşı `timeout 600` altında koşar,
-`geri_al` da `br_gecici/nginx.pid`'den kalanı kapatır (argv'si tutmayan pid'e dokunmaz).
-`curl` ya da modül yoksa açık mesajla FAIL.
+**.br yöntemi**: sunucuda `brotli` ikilisi yok. İkinci bir nginx örneği de açılmaz: NGINX Plus lisanssız başlamaz
+(AWX 3483307, `[emerg] License file is required`; lisans `nginx.conf`'taki `mgmt { license_token ...; }` içinde) ve ikinci örnek
+lisans / kullanım raporu açısından istenmez. Bu yüzden `yuk_ae` `br` + static iken `uygula`, `default.conf`'un SONUNA işaretli
+bir server bloğu ekler; `.br`'yi çalışan nginx üretir:
+
+```nginx
+# portal_yuktesti br uretici
+server {
+    listen 127.0.0.1:<port>;
+    root <dizin>;
+    access_log off;
+    gzip off;
+    gzip_static off;
+    brotli on;
+    brotli_comp_level <seviye>;
+    brotli_types *;
+    brotli_min_length 0;
+    brotli_static off;
+    location / { }
+}
+```
+
+Port 20000-60000 arasında, `/proc/net/tcp` ve `tcp6`'da görünmeyen bir porttur; `br_port` / `br_seviye` olarak yedek `meta`'sında
+saklanır. `brotli_static off` şarttır: http düzeyindeki `on` önceki `.br`'yi okur, seçilen seviye üretilmezdi. Blok ön kontrolde de
+eklenir (`nginx -t`, reload ve bağlantı erken doğrulanır; `.gz` / `.br` dosyaları yalnız koşuda). `default.conf` zaten yedekli
+olduğundan yeni dosya, ek reload ve ayrı kapatma yoktur: blok `geri_al`'a dek durur (yalnız `127.0.0.1`, trafik yok), `geri_al`
+özgün `default.conf`'la birlikte kaldırır. Modül yoksa `nginx -t` düşer (`unknown directive`), `uygula` FAIL. `-T` doğrulaması
+işaretten dosya sonuna kadarını saymaz (blok seviyesi "başka dosyada" UYARI'sı üretmez; etkin seviye `brotli.conf`'tan okunur), blokta
+`http2` satırı yoktur. `geri_al` başkasının değiştirdiği `default.conf`'a dokunmadıysa blok kalır: sonraki her `uygula` ikinci blok
+eklemez, "eski blok" diye FAIL verir, elle silinmelidir. Bu denetim bilerek `yuk_ae` ve static'ten bağımsızdır: kalan blok gzip ve
+static kapalı koşuları da durdurur, unutulmuş bir dinleyici `default.conf`'ta fark edilmeden kalmasın.
+
+`dosyalar` her dosyayı `curl -H 'Accept-Encoding: br'` ile bu porttan (arka planda + `wait`: TERM trap'i `curl`'ü beklemesin)
+alıp `<ad>.br.hazirlik_tmp`'ye yazar; bağlanamazsa, yanıt 200 değilse, `Content-Encoding: br` yoksa ya da gövde boşsa FAIL;
+`touch -r` ile kaynağın mtime'ı verilip `.br` adına atomik taşınır. Boş kaynak dosya (nginx'te gövde yok, sıkıştırılamaz)
+atlanır. Yedekte port yoksa ya da blok seviyesi istenen seviye değilse FAIL; bu denetim silmeden önce koşar, `.gz` / `.br`'ye
+dokunulmaz (silinen dosya `geri_al` ile geri gelmez).
+
+Sıkıştırma çalışan worker'da yapılır: iki yan etki "Tuzaklar"da (**`.br` üretimi canlı worker'da**, **brotli static koşuda taban Anon**).
 
 Kanıt dosyası (`anahtar<TAB>değer`, Portal `hazirlik_*.txt`): `http2` (`acik` \| `kapali`), `ae`, `seviye`, `static`
 (`acik` \| `kapali` \| `karisik`), `dizin` (bu beşi `uygula`'nın diskteki konftan OKUDUĞU değerdir, istenen değil: `uygula`'daki
@@ -986,7 +1020,7 @@ install -m 0644 serbest_aglar /etc/portal_yuktesti/serbest_aglar
 | on_kontrol.sh hedef / yollar | `timeout -k 10 120` / `timeout -k 10 600` (≤400 yol × 5 sn / 4 paralel); koşu kapısı `timeout -k 10 120` |
 | wrk_kos.sh | yükleme sınaması `timeout -k 5 30`; TUR başına 200 kapısı ≤ 180 sn (bütçe formülünde yok, Portal'ın adım payına girer) |
 | durdur.sh | TERM → 10 sn → KILL; dış `timeout -k 10 90` |
-| hazirlik.sh | `uygula` `timeout -k 10 300` (reload sonrası ≤ 90 sn bekleme; yarım yedek varsa bir kez daha), `dosyalar` `timeout -k 10 600` (Portal kuyruğu static koşuya +180 sn pay ayırır), `kanit` `timeout -k 10 120` (3 örnek, örnek başına `curl --max-time 15`), `geri_al` `timeout -k 10 240`; geçici nginx `timeout -k 5 600` |
+| hazirlik.sh | `uygula` `timeout -k 10 300` (reload sonrası ≤ 90 sn bekleme; yarım yedek varsa bir kez daha), `dosyalar` `timeout -k 10 600` (Portal kuyruğu static koşuya +180 sn pay ayırır), `kanit` `timeout -k 10 120` (3 örnek, örnek başına `curl --max-time 15`), `geri_al` `timeout -k 10 240` |
 | araclar (Play 8) | get_url `timeout` 120 / 300 / 300 sn; `arac_hazirla.sh` `timeout -k 30 1800` (wrk + paketli OpenSSL/LuaJIT derlemesi birkaç dakika) |
 
 ## Güvenlik: tehdit modeli ve katmanlar
@@ -1175,7 +1209,20 @@ install -m 0644 serbest_aglar /etc/portal_yuktesti/serbest_aglar
   değiştirmiş" sayılırdı ve tek yedek silinirdi. Bu yüzden yazım `yaz<i>` işareti ve sha256 denetimiyle yapılır.
 - **Ön planda `curl` TERM'i bekletir**: bash trap'i ön plandaki komut bitene dek çalışmaz; durdur.sh 10 sn sonra KILL atar, temizlik
   atlanır. `curl` arka planda koşar, `wait` edilir.
-- **flock fd'si çocuklara geçer**: geçici nginx ve `curl` `9>&-` ile başlar; yoksa `timeout` altındaki nginx kilidi 600 sn tutardı.
+- **flock fd'si çocuklara geçer**: `curl` `9>&-` ile başlar; yoksa KILL'den sonra yetim kalan `curl` bitene dek kilit dolu kalırdı.
+- **NGINX Plus ikinci örnek açmaz**: aynı ikiliyle ayrı konf `[emerg] License file is required` ile düşer (AWX 3483307, GBNGXT33);
+  `.br` çalışan nginx'e eklenen `127.0.0.1` bloğundan üretilir.
+- **`nginx -t` bind denemez, `-s reload` rc 0 döner**: dolu porttaki blok ikisinden de geçer, hata yalnız error log'a düşer; `uygula`
+  porta bağlanarak doğrular. 20 sn'yi aşan reload bind olmuş olsa da aynı FAIL'i verir (güvenli: konf geri alınır; metin iki olasılığı da yazar).
+- **`.br` üretimi canlı worker'da** (ölçülmedi, koddan): ngx_brotli sıkıştırmayı worker'ın olay döngüsünde eşzamanlı yapar. `dosyalar`
+  sırasında seviye 9-11'de büyük bir JS dosyası sıkıştırılırken aynı worker'daki diğer bağlantılar bekler. Hedef aynı zamanda üretim
+  trafiği alıyorsa (internet RP, GBNGXT34) etki gerçek bağlantılara değer: yüksek seviyeli brotli static koşusu trafiğin az olduğu saate
+  alınmalı. Betik bunun için UYARI vermez, seviyeyi de sınırlamaz.
+- **Brotli static koşuda taban Anon** (ölçülmedi, koddan): sıra `uygula` (reload) → `dosyalar` → `kanit` → kaydedici; `.br`'yi üreten
+  worker'lar ölçülen worker'ların kendisidir ve "Bellek artışı nasıl okunur"daki gibi çalışma alanını hemen geri vermeyebilir. `.gz`
+  dışarıda `gzip` ile üretildiği için gzip static'te bu etki yoktur: bellek değerleri brotli static ile gzip static arasında
+  karşılaştırılmamalı, brotli static koşular kendi aralarında aynı seviyeyle karşılaştırılmalı. `dosyalar` sonrasına worker tazeleyen ek reload
+  konulmadı. Bellek ekranı yalnız bilgidir: geçerlilik ve karar etkilenmez.
 - **CRLF kopya betiğin yanında**: `/tmp`'deki kopya `durdur.sh` eşleşmesine girmez; `<betik>.lf` kullanılır, `durdur.sh` `hazirlik.sh.lf`'yi tanır.
 - **Kanıt canlı durumu ölçmez**: `uygula` diskteki konfu okur; `-s reload` rc 0 yeni konfun yüklendiğini kanıtlamaz. http2 için ön
   kontrolün ALPN ölçümü, sıkıştırma için kip doğrulaması canlı kanıttır.
@@ -1260,8 +1307,8 @@ k6 / sunucu hedef (ilk kurulum):
    `alpn_kaynak openssl`, `yollar_h2 -`, OZET bugünkü h1 ön kontrolüyle aynı; h2'li vhost'ta `alpn_h2 1` (engel yok),
    h2'siz vhost'ta `alpn_h2 0` ve openssl metinli engel; `openssl version` ve SNI=0 / SNI=1 ikisi de not edilir.
 
-9. Sunucu ayarı (TEST hedef, bir kez): ön kontrol `ayar 1` + brotli static: `curl` ve geçici nginx konfu geçer mi (`ngx_http_brotli_filter_module.so`
-   www ile yüklenebiliyor mu, nginx ikilisi www ile çalışıyor mu); iş bitince üç konf dosyası sha256 ile aynı ve
+9. Sunucu ayarı (TEST hedef, bir kez): ön kontrol `ayar 1` + brotli static: `default.conf`'taki üretici bloğu `nginx -t` ve reload'dan geçiyor mu, porta bağlanılıyor mu,
+   `brotli_static` server düzeyinde kabul ediliyor mu; iş bitince üç konf dosyası sha256 ile aynı ve
    `<www ev>/.portal_yuktesti/hazirlik` yok. 1 adımlık brotli static koşusu: `.br` dosyaları seçilen seviyeyle üretildi, `curl --compressed`
    gerçek sıkıştırılmış içerik döndü, `kanit` gerçek nginx'te `Content-Length` ile geçti (h1 ve h2 birer koşu), `hazirlik_R<id>_<host>.txt` `/sw`'de, iş bitince manifest silindi. `dzdo` kuralı `-t`,
    `-T`, `-s reload` için geçerli mi; www `conf.d/default.conf`, `conf/gzip.conf`, `conf/brotli.conf` ve dizine yazabiliyor mu.

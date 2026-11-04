@@ -563,6 +563,9 @@ Akış:
 2. Yalnız koşuda `hazirlik.sh dosyalar`: dizin istenen duruma getirilir. Static istenmiyorsa kaynağı yanında
    duran `.gz` / `.br` silinir; gzip static koşusunda `.br`, brotli static koşusunda `.gz` silinir; sonra
    eksik ya da kaynaktan eski dosyalar üretilir. Silinen dosyalar geri getirilmez (türetilmiş dosya).
+   `.br` çalışan nginx'te üretilir: seviye 9–11'de bu sırada aynı worker'daki bağlantılar bekleyebilir (hedef
+   üretim trafiği de alıyorsa, ör. internet RP, koşuyu trafiğin az olduğu saate alın) ve bellek ekranında taban
+   Anon şişmiş başlayabilir; brotli static ile gzip static belleğini karşılaştırmayın (playbook README "Tuzaklar").
 3. Koşu bitince (ön kontrol, koşu ve durdurma işinde; kaydedici durduktan sonra) `hazirlik.sh geri_al`:
    bu koşunun yeni ürettiği dosyalar silinir, konfigürasyon yedekten döner, reload. Dosya başkası tarafından
    değiştirildiyse dokunulmaz, özgün kopya `~www/.portal_yuktesti/hazirlik_dokunulmadi_<koşu>/` altına alınır

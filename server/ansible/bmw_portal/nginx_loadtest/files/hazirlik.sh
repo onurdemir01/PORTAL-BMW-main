@@ -18,7 +18,7 @@
 #             (on_kontrol / kosu) icindir; uygula da devralir.
 # Ortam   : PROTOKOL(h1|h2) AE(br|gzip|identity) SEVIYE('' ya da rakam) STATIK(0|1) DIZIN KOSU_ID UST(<www ev>/.portal_yuktesti)
 #           SONUC(kosu dizini; kanit <SONUC>/R<id>/) [NGINX_PREFIX(/usr/nginx) NGINX_BIN NGINX_ERRLOG(/web_log/error.log)
-#           UYGULAMA_KOK(/usr/nginx/applications) RELOAD_BEKLE(90) BR_OMUR(600) BR_MODUL KILIT_BEKLE(60)]. geri_al UST, KOSU_ID
+#           UYGULAMA_KOK(/usr/nginx/applications) RELOAD_BEKLE(90) KILIT_BEKLE(60) BR_PORT_BEKLE(20) TCP_TABLO(/proc/net/tcp)]. geri_al UST, KOSU_ID
 #           ve DEVRAL(0|1) ister. kanit ek olarak HEDEF_IP, HOST_BASLIGI ve <SONUC>/senaryo.tsv ister.
 # Kilit   : uc kip <UST>/hazirlik.lock uzerinde flock ile siralanir (flock yoksa UYARI, devam); Portal kilidine tek basina
 #           guvenilmez. Baska kosunun yedegine bakan geri_al kilit BEKLEMEZ (dokunmayacagi seyi beklemesin).
@@ -26,8 +26,10 @@
 #           gzip_static; <prefix>/conf/brotli.conf brotli_comp_level ve brotli_static. Seviye yalniz secilen sikistirmanin
 #           konfunda degisir. static: ae=br -> brotli_static on; ae=gzip|identity -> gzip_static on; digerleri off.
 #           Satir yoksa comp_level satirinin ardina eklenir. Dosyalar yerinde yazilir (sahip / izin korunur).
-# .br     : sunucuda brotli ikilisi yok. Ayni nginx ikilisiyle gecici, ayricaliksiz ornek (127.0.0.1, bos yuksek port) acilir;
-#           her dosya 'Accept-Encoding: br' ile alinir. Ornek trap ile kapanir, KILL'e karsi 'timeout BR_OMUR' altinda kosar.
+# .br     : sunucuda brotli ikilisi yok; NGINX Plus ikinci ornegi lisanssiz acmaz ve ikinci ornek lisans / kullanim raporu acisindan
+#           istenmez. ae=br + static iken uygula default.conf'un sonuna isaretli, yalniz 127.0.0.1'de dinleyen bir server blogu
+#           ekler (bos yuksek port meta'da); her dosya bu porttan 'Accept-Encoding: br' ile alinir. Blok geri_al'a dek durur:
+#           default.conf yedekli, yeni dosya ve ek reload yok.
 # Cikti   : anahtar<TAB>deger satirlari, UYARI<TAB>metin; son satir SONUC<TAB><OK|FAIL><TAB><metin>. nginx -T ciktisi BASILMAZ.
 # Cikis   : 0 tamam, 1 FAIL, 2 girdi hatasi.
 # Betik CRLF ile gelmisse (zip tasimasi) LF kopyasiyla yeniden baslar; bu satirin sonundaki # CR'yi yutar. Kopya betigin yaninda
@@ -42,19 +44,20 @@ PREFIX="${NGINX_PREFIX:-/usr/nginx}"
 BIN="${NGINX_BIN:-$PREFIX/sbin/nginx}"
 ERRLOG="${NGINX_ERRLOG:-/web_log/error.log}"
 UYG_KOK="${UYGULAMA_KOK:-/usr/nginx/applications}"
-BR_MODUL="${BR_MODUL:-$PREFIX/modules/ngx_http_brotli_filter_module.so}"
 RELOAD_BEKLE="${RELOAD_BEKLE:-90}"
-BR_OMUR="${BR_OMUR:-600}"
 KILIT_BEKLE="${KILIT_BEKLE:-60}"
+BR_PORT_BEKLE="${BR_PORT_BEKLE:-20}"
+TCP_TABLO="${TCP_TABLO:-/proc/net/tcp}"
 UST="${UST:-}"
 YEDEK="$UST/hazirlik"
 KONF=("" "$PREFIX/conf.d/default.conf" "$PREFIX/conf/gzip.conf" "$PREFIX/conf/brotli.conf")
 RE_HTTP2='^[[:space:]]*#*[[:space:]]*http2[[:space:]]+on[[:space:]]*;[[:space:]]*(#.*)?$'
 RE_GZ_SEVIYE='^[[:space:]]*gzip_comp_level[[:space:]]+[0-9]+[[:space:]]*;'
 RE_BR_SEVIYE='^[[:space:]]*brotli_comp_level[[:space:]]+[0-9]+[[:space:]]*;'
+BR_ISARET='# portal_yuktesti br uretici'
 SURE0="$SECONDS"
 
-BR_PID=""; CURL_PID=""; BR_DIZIN=""; ISLENEN=""; GECICI=""
+CURL_PID=""; ISLENEN=""; GECICI=""; BR_PORT=""
 UYARI_N=0
 
 sonuc() { printf 'SONUC\t%s\t%s\n' "$1" "$(temiz "$2" | cut -c1-300)"; }
@@ -78,13 +81,7 @@ temizle() {
     wait "$CURL_PID" 2>/dev/null
     CURL_PID=""
   fi
-  if [ -n "$BR_PID" ]; then
-    kill -TERM "$BR_PID" 2>/dev/null
-    wait "$BR_PID" 2>/dev/null
-    BR_PID=""
-  fi
   [ -n "$ISLENEN" ] && rm -f -- "$ISLENEN"
-  [ -n "$BR_DIZIN" ] && rm -rf -- "$BR_DIZIN"
   [ -n "$GECICI" ] && rm -rf -- "$GECICI"
   [ -n "${HAZIRLIK_LF:-}" ] && rm -f -- "$HAZIRLIK_LF"
 }
@@ -120,7 +117,7 @@ worker_bekle() {
   done
 }
 
-# kilit_al: kipler arasi flock. Fd 9 cocuklara miras kalir: uzun yasayan cocuklarda (gecici nginx, curl) kapatilir. flock yoksa
+# kilit_al: kipler arasi flock. Fd 9 cocuklara miras kalir: uzun yasayan cocukta (curl) kapatilir. flock yoksa
 # UYARI satiri, devam (yalniz Portal kilidi kalir); sayaca girmez: her geri alma 'uyari' olmasin.
 kilit_al() {
   if ! command -v flock > /dev/null 2>&1; then
@@ -153,16 +150,6 @@ ozgun_sakla() {
   KORUNAN="$d"
 }
 
-# br_artik_kapat: KILL ile olen dosyalar kipinin gecici nginx'i BR_OMUR dolana dek yasardi. Pid yalniz argv'sinde br_gecici varsa
-# kapatilir (pid yeniden kullanilmis olabilir).
-br_artik_kapat() {
-  local p
-  p="$(head -c 32 "$YEDEK/br_gecici/nginx.pid" 2>/dev/null | tr -cd '0-9')"
-  [ -n "$p" ] || return 0
-  if tr '\0' ' ' < "/proc/$p/cmdline" 2>/dev/null | grep -q "$YEDEK/br_gecici/"; then kill -TERM "$p" 2>/dev/null; fi
-  return 0
-}
-
 # geri_al_is: GERI_DURUM yok|baska|ok|uyari|hata, GERI_METIN. SONUC satiri basmaz (uygula da cagirir, DEVRAL_IS=1 ile).
 geri_al_is() {
   local i k cur oz uy dizin yeniden=0 yuklenen=0 dokunulmayan=0 silinen=0 p o sahip
@@ -176,7 +163,6 @@ geri_al_is() {
     GERI_DURUM=baska; GERI_METIN="yedek baska kosunun (R${sahip:-?}), dokunulmadi"
     return 0
   fi
-  br_artik_kapat
   dizin="$(meta dizin)"
   if [ -f "$YEDEK/manifest" ] && [ -n "$dizin" ]; then
     while IFS= read -r -d '' p; do
@@ -285,30 +271,47 @@ dizin_yazma_denetle() {
   uyari "dizine yazma izni yok: $y; .gz / .br varsa silinemez"
 }
 
-# br_konf_yaz <dizin> <port>: gecici nginx konfu. Yollar elle verilir: derleme varsayilanlari ayricaliksiz acilamaz.
-br_konf_yaz() {
-  local d="$1" port="$2"
-  {
-    [ -f "$BR_MODUL" ] && printf 'load_module %s;\n' "$BR_MODUL"
-    printf 'worker_processes 1;\ndaemon off;\nmaster_process off;\npid %s/nginx.pid;\nerror_log %s/error.log;\n' "$d" "$d"
-    printf 'events { worker_connections 64; }\nhttp {\n  default_type application/octet-stream;\n  access_log off;\n'
-    printf '  client_body_temp_path %s/t_body;\n  proxy_temp_path %s/t_proxy;\n  fastcgi_temp_path %s/t_fcgi;\n' "$d" "$d" "$d"
-    printf '  uwsgi_temp_path %s/t_uwsgi;\n  scgi_temp_path %s/t_scgi;\n' "$d" "$d"
-    printf '  gzip off;\n  brotli on;\n  brotli_comp_level %s;\n  brotli_types *;\n  brotli_min_length 0;\n' "$SEVIYE"
-    printf '  server {\n    listen 127.0.0.1:%s;\n    root %s;\n    location / { }\n  }\n}\n' "$port" "$DIZIN"
-  } > "$d/nginx.conf"
+# bos_port_bul: 20000-60000 arasi, TCP tablolarinda (her durum, IPv4 + IPv6) gorunmeyen port; BR_PORT'a yazar. nginx -t bind denemez;
+# araya giren dinleyici olursa reload bind edemez, br_port_bekle yakalar.
+bos_port_bul() {
+  local h i=0 p
+  local -A dolu=()
+  [ -r "$TCP_TABLO" ] || kir "$TCP_TABLO okunamadi: bos port secilemez; hicbir sey degismedi"
+  while IFS= read -r h; do
+    [ -n "$h" ] && dolu["$h"]=1
+  done < <(cat "$TCP_TABLO" "${TCP_TABLO}6" 2>/dev/null | awk '$2 ~ /:[0-9A-Fa-f]+$/ { split($2, a, ":"); print toupper(a[2]) }')
+  p=$(((RANDOM * 32768 + RANDOM) % 40001))
+  while [ "$i" -lt 200 ]; do
+    BR_PORT=$((20000 + (p + i) % 40001))
+    printf -v h '%04X' "$BR_PORT"
+    [ -z "${dolu[$h]:-}" ] && return 0
+    i=$((i + 1))
+  done
+  kir "20000-60000 arasinda bos port bulunamadi (200 deneme); hicbir sey degismedi"
 }
 
-# br_on_denetim <dizin>: curl ve modul (gecici konfun -t'si, ayricaliksiz). uygula'da da kosar: on kontrol sorunu gecelik
-# kuyruktan once gorsun.
-br_on_denetim() {
-  local d="$1"
-  command -v curl > /dev/null 2>&1 || kir "curl yok: .br uretilemez"
-  [ -x "$BIN" ] || kir "nginx ikilisi www ile calistirilamiyor: $BIN (.br uretilemez)"
-  br_konf_yaz "$d" 65000
-  if ! "$BIN" -p "$d/" -c "$d/nginx.conf" -e "$d/error.log" -t > "$d/t.out" 2>&1 < /dev/null; then
-    kir "gecici nginx konfu reddedildi (brotli modulu yok ya da yuklenemiyor, $BR_MODUL): $(hata_satiri "$d/t.out")"
-  fi
+# br_blok_ekle <dosya>: .br uretici server blogu; isaretten dosya sonuna dek bizim. brotli_static off sart: yoksa http duzeyindeki on
+# onceki .br'yi okur, secilen seviye uretilmezdi. Blokta http2 satiri yok: http2_duzenle ve uygulanan_oku etkilenmez.
+br_blok_ekle() {
+  [ -z "$(tail -c 1 "$1")" ] || printf '\n' >> "$1" || return 1
+  {
+    printf '%s\nserver {\n    listen 127.0.0.1:%s;\n    root %s;\n    access_log off;\n' "$BR_ISARET" "$BR_PORT" "$DIZIN"
+    printf '    gzip off;\n    gzip_static off;\n    brotli on;\n    brotli_comp_level %s;\n' "$SEVIYE"
+    printf '    brotli_types *;\n    brotli_min_length 0;\n    brotli_static off;\n    location / { }\n}\n'
+  } >> "$1"
+}
+
+# br_port_bekle: reload rc 0 bind'i kanitlamaz (master eski konfla kalir, hata yalniz error log'a duser). Herhangi bir HTTP yaniti
+# yeter (kok 403 / 404 donebilir). uygula'da kosar: sorun gecelik kuyruktan once gorulsun. Pencere saatle olculur (deneme sayisiyla
+# degil, takilan curl uzatmaz) ve genis: cok vhost / sertifikali hostta reload saniyeler surer, kisa pencere yanlis FAIL uretirdi.
+br_port_bekle() {
+  local son=$((SECONDS + BR_PORT_BEKLE)) kod
+  while :; do
+    kod="$(curl -q -s --noproxy '*' --max-time 2 -o /dev/null -w '%{http_code}' "http://127.0.0.1:$BR_PORT/" 2>/dev/null 9>&-)"
+    [ -n "$kod" ] && [ "$kod" != 000 ] && return 0
+    [ "$SECONDS" -lt "$son" ] || return 1
+    sleep 0.2
+  done
 }
 
 # awk: satir sonundaki CR korunur; son satirda yeni satir yoksa eklenir (yedek baytlari birebir saklar).
@@ -340,7 +343,8 @@ sikistirma_duzenle() {   # sikistirma_duzenle <kaynak> <hedef> <gzip|brotli> <se
 }
 
 # konf_dogrula <-T dosyasi>: duzenlenen direktif etkin konfta gorunuyor mu; baska dosyada ayni direktif UYARI. Cikis 1: etkin konf
-# istenen degil (T_METIN). -T ciktisi yalniz gecici dosyada aranir, BASILMAZ.
+# istenen degil (T_METIN). -T ciktisi yalniz gecici dosyada aranir, BASILMAZ. Uretici blogu (isaretten dosya sonuna) sayilmaz: etkin
+# seviye brotli.conf'tan okunur, blok seviye satiri kendi "baska dosyada" UYARI'sini uretmesin.
 konf_dogrula() {
   local t="$1" sev_ad="" yan satir tur a b gorulen=0 farkli=0 h2=0
   [ "$AE" = gzip ] && sev_ad=gzip_comp_level
@@ -351,9 +355,12 @@ konf_dogrula() {
     return 0
   fi
   yan="$t.ozet"
-  awk -v df="${KONF[1]}" -v gf="${KONF[2]}" -v bf="${KONF[3]}" '
-    /^# configuration file / { f = $4; sub(/:[ \t\r]*$/, "", f); next }
-    { s = $0; sub(/\r$/, "", s); sub(/#.*/, "", s)
+  awk -v df="${KONF[1]}" -v gf="${KONF[2]}" -v bf="${KONF[3]}" -v isaret="$BR_ISARET" '
+    /^# configuration file / { f = $4; sub(/:[ \t\r]*$/, "", f); uretici = 0; next }
+    { s = $0; sub(/\r$/, "", s)
+      if (index(s, isaret) == 1) uretici = 1
+      if (uretici) next
+      sub(/#.*/, "", s)
       if (s ~ /^[ \t]*(gzip|brotli)_comp_level[ \t]+[0-9]+[ \t]*;/) {
         split(s, p, /[ \t;]+/); i = (p[1] == "") ? 2 : 1
         if ((p[i] == "gzip_comp_level" && f == gf) || (p[i] == "brotli_comp_level" && f == bf)) print "seviye\t" p[i] "\t" p[i + 1]
@@ -428,6 +435,7 @@ uygula() {
   dizin_yazma_denetle
   if [ "$STATIK" = 1 ]; then
     command -v curl > /dev/null 2>&1 || kir "curl yok: disk kaniti alinamaz; hicbir sey degismedi"
+    [ "$AE" = br ] && bos_port_bul
   fi
   for i in 1 2 3; do
     k="${KONF[$i]}"
@@ -438,6 +446,11 @@ uygula() {
   grep -Eq "$RE_HTTP2" "${KONF[1]}" || kir "beklenen satir yok: ${KONF[1]} icinde 'http2 on;' (acik ya da yorumlu); hicbir sey degismedi"
   grep -Eq "$RE_GZ_SEVIYE" "${KONF[2]}" || kir "beklenen satir yok: ${KONF[2]} icinde gzip_comp_level; hicbir sey degismedi"
   grep -Eq "$RE_BR_SEVIYE" "${KONF[3]}" || kir "beklenen satir yok: ${KONF[3]} icinde brotli_comp_level; hicbir sey degismedi"
+  # geri_al baskasinin degistirdigi default.conf'a dokunmaz; kalan blok elle silinmeden ikincisi eklenmez. Denetim bilerek ae / static'ten
+  # bagimsiz: kalan blok gzip ve static kapali kosuyu da durdurur, dinleyici fark edilmeden default.conf'ta kalmasin.
+  if grep -q "^$BR_ISARET" "${KONF[1]}"; then
+    kir "${KONF[1]} icinde eski '$BR_ISARET' blogu var (yedek yok): elle silinmeli; hicbir sey degismedi"
+  fi
 
   [ "$PROTOKOL" = h2 ] && h2mod=acik
   if [ "$STATIK" = 1 ]; then
@@ -450,16 +463,15 @@ uygula() {
   rm -rf -- "$UST"/.hazirlik_yeni.*
   GECICI="$UST/.hazirlik_yeni.$$"
   ( umask 077; mkdir "$GECICI" ) || kir "yedek dizini olusturulamadi: $GECICI"
-  if [ "$AE" = br ] && [ "$STATIK" = 1 ]; then
-    mkdir "$GECICI/br"
-    br_on_denetim "$GECICI/br"
-    rm -rf -- "$GECICI/br"
-  fi
   printf 'kosu\t%s\ndizin\t%s\n' "$KOSU_ID" "$DIZIN" > "$GECICI/meta" || kir "yedek yazilamadi"
   for i in 1 2 3; do
     cp -p -- "${KONF[$i]}" "$GECICI/o$i" || kir "yedek alinamadi: ${KONF[$i]}"
   done
   http2_duzenle "$GECICI/o1" "$GECICI/u1" "$h2mod" || kir "default.conf duzenlenemedi; hicbir sey degismedi"
+  if [ -n "$BR_PORT" ]; then
+    br_blok_ekle "$GECICI/u1" || kir "default.conf duzenlenemedi; hicbir sey degismedi"
+    printf 'br_port\t%s\nbr_seviye\t%s\n' "$BR_PORT" "$SEVIYE" >> "$GECICI/meta" || kir "yedek yazilamadi"
+  fi
   sikistirma_duzenle "$GECICI/o2" "$GECICI/u2" gzip "$sv_gz" "$st_gz" || kir "gzip.conf duzenlenemedi; hicbir sey degismedi"
   sikistirma_duzenle "$GECICI/o3" "$GECICI/u3" brotli "$sv_br" "$st_br" || kir "brotli.conf duzenlenemedi; hicbir sey degismedi"
   for i in 1 2 3; do
@@ -498,6 +510,10 @@ uygula() {
     kir "reload basarisiz, dosyalar geri alindi: $t"
   fi
   worker_bekle
+  if [ -n "$BR_PORT" ] && ! br_port_bekle; then
+    geri_al_is || kir "uretici porta ($BR_PORT) baglanilamadi ve geri donulemedi, yedek korundu: $GERI_METIN"
+    kir "uretici porta ($BR_PORT) baglanilamadi ($BR_PORT_BEKLE sn: reload bind edemedi ya da yeni worker'lar gec kalkti); konf geri alindi"
+  fi
   uygulanan_oku
   printf 'http2\t%s\nae\t%s\nseviye\t%s\nstatic\t%s\ndizin\t%s\n' "$UG_HTTP2" "$AE" "$UG_SEVIYE" "$UG_STATIK" "$DIZIN" | tee -a "$YEDEK/kanit"
   printf 'sure_uygula_sn\t%d\n' "$((SECONDS - SURE0))" | tee -a "$YEDEK/kanit"
@@ -516,50 +532,26 @@ url_kodla() {   # yol parcalarini yuzde kodlar ('/' kalir); bayt bayt (LC_ALL=C)
   printf '%s' "$o"
 }
 
-# br_baslat: BR_DIZIN'de gecici nginx, bos port denemeyle (bind hatasi sonraki porta gecer; yaris yok). Ayricaliksiz, dzdo YOK.
-br_baslat() {
-  local deneme=0 port i kod
-  BR_DIZIN="$YEDEK/br_gecici"
-  rm -rf -- "$BR_DIZIN"
-  ( umask 077; mkdir "$BR_DIZIN" ) || kir "gecici nginx dizini olusturulamadi: $BR_DIZIN"
-  br_on_denetim "$BR_DIZIN"
-  while [ "$deneme" -lt 5 ]; do
-    deneme=$((deneme + 1))
-    port=$((20000 + (RANDOM * 32768 + RANDOM) % 40000))
-    br_konf_yaz "$BR_DIZIN" "$port"
-    timeout -k 5 "$BR_OMUR" "$BIN" -p "$BR_DIZIN/" -c "$BR_DIZIN/nginx.conf" -e "$BR_DIZIN/error.log" < /dev/null > "$BR_DIZIN/out" 2>&1 9>&- &
-    BR_PID=$!
-    i=0
-    while [ "$i" -lt 50 ]; do
-      kod="$(curl -q -s --noproxy '*' --max-time 2 -o /dev/null -w '%{http_code}' "http://127.0.0.1:$port/" 2>/dev/null)"
-      if [ -n "$kod" ] && [ "$kod" != 000 ]; then
-        BR_PORT="$port"
-        return 0
-      fi
-      kill -0 "$BR_PID" 2>/dev/null || break
-      sleep 0.2
-      i=$((i + 1))
-    done
-    kill -TERM "$BR_PID" 2>/dev/null
-    wait "$BR_PID" 2>/dev/null
-    BR_PID=""
-    grep -qi 'address already in use' "$BR_DIZIN/error.log" "$BR_DIZIN/out" 2>/dev/null || break
-  done
-  kir "gecici nginx baslatilamadi (.br uretilemez): $(hata_satiri "$BR_DIZIN/error.log")"
+# br_port_oku: uygula'nin meta'ya yazdigi port. Blok seviyesi uygula'dan gelir; ortamdaki baska seviye .br'ye yanlis etiket olurdu.
+br_port_oku() {
+  command -v curl > /dev/null 2>&1 || kir "curl yok: .br uretilemez"
+  BR_PORT="$(meta br_port)"
+  [[ "$BR_PORT" =~ ^[0-9]{5}$ ]] || kir "yedekte uretici portu yok: uygula ae=br + static ile calismamis"
+  [ "$(meta br_seviye)" = "$SEVIYE" ] || kir "uretici blogu seviyesi $(meta br_seviye), istenen $SEVIYE"
 }
 
-br_uret() {   # br_uret <kaynak> <.br>: dusen her yolda kir (trap ornegi kapatir, gecici dosyayi siler)
-  local src="$1" out="$2" yol kod h="$BR_DIZIN/basliklar"
+br_uret() {   # br_uret <kaynak> <.br>: dusen her yolda kir (trap gecici dosyayi siler)
+  local src="$1" out="$2" yol kod h="$YEDEK/br_basliklar"
   yol="$(url_kodla "${src#"$DIZIN"/}")"
   ISLENEN="$out.hazirlik_tmp"
   # Arka planda + wait: on planda curl bitene dek TERM trap'i calismaz, durdur.sh 10 sn sonra KILL atar ve temizlik atlanirdi.
   curl -q -sS --noproxy '*' --path-as-is --max-time 300 -H 'Accept-Encoding: br' -D "$h" -o "$ISLENEN" -w '%{http_code}' \
-    "http://127.0.0.1:$BR_PORT/$yol" > "$BR_DIZIN/kod" 2>"$BR_DIZIN/curl.err" 9>&- &
+    "http://127.0.0.1:$BR_PORT/$yol" > "$YEDEK/br_kod" 2>"$YEDEK/br_curl.err" 9>&- &
   CURL_PID=$!
-  wait "$CURL_PID" || { CURL_PID=""; kir "curl basarisiz: $src: $(head -n 1 "$BR_DIZIN/curl.err" 2>/dev/null)"; }
+  wait "$CURL_PID" || { CURL_PID=""; kir "curl basarisiz: $src: $(head -n 1 "$YEDEK/br_curl.err" 2>/dev/null)"; }
   CURL_PID=""
-  kod="$(cat "$BR_DIZIN/kod" 2>/dev/null)"
-  [ "$kod" = 200 ] || kir "gecici nginx $kod dondu: $src"
+  kod="$(cat "$YEDEK/br_kod" 2>/dev/null)"
+  [ "$kod" = 200 ] || kir "uretici port $kod dondu: $src"
   tr -d '\r' < "$h" | awk 'tolower($0) ~ /^content-encoding:[ \t]*br[ \t]*$/ { b = 1 } END { exit b ? 0 : 1 }' \
     || kir "yanitta Content-Encoding: br yok (brotli sikistirmadi): $src"
   [ -s "$ISLENEN" ] || kir "bos yanit: $src"
@@ -578,7 +570,7 @@ kanit_yolu() {
 }
 
 dosyalar() {
-  local src e hedef="" out liste gz_u=0 br_u=0 gz_s=0 br_s=0 atlanan=0 n=0 ozel=0 kanit gerekli=0 dosya_seviye=""
+  local src e hedef="" out liste gz_u=0 br_u=0 gz_s=0 br_s=0 atlanan=0 n=0 ozel=0 kanit dosya_seviye=""
   girdi
   [ -d "$YEDEK" ] && [ -f "$YEDEK/meta" ] || kir "yedek yok: once uygula calismali"
   kilit_al || kir "baska bir hazirlik islemi suruyor ($KILIT_BEKLE sn beklendi)"
@@ -586,7 +578,8 @@ dosyalar() {
   [ "$(meta dizin)" = "$DIZIN" ] || kir "yedekteki dizin farkli: $(meta dizin)"
   dizin_denetle
   if [ "$STATIK" = 1 ]; then
-    if [ "$AE" = br ]; then hedef=br; else hedef=gz; fi
+    # Port / seviye denetimi silmeden ONCE: uyusmazlikta FAIL dizine dokunmamis olsun (silinen .gz geri_al ile geri gelmez).
+    if [ "$AE" = br ]; then hedef=br; br_port_oku; else hedef=gz; fi
     dosya_seviye="${SEVIYE:-9}"   # identity + gzip_static: seviye secilmez, en kucuk dosya
   fi
   find "$DIZIN" -type f -name '*.hazirlik_tmp' -delete 2>/dev/null
@@ -625,13 +618,10 @@ dosyalar() {
         if [ ! -e "$out" ]; then
           printf '%s\0' "$out" >> "$YEDEK/manifest" || kir "manifest yazilamadi"
         fi
-        printf '%s\0' "$src" >> "$YEDEK/uret"; gerekli=$((gerekli + 1))
+        printf '%s\0' "$src" >> "$YEDEK/uret"
       fi
     done < "$liste"
     [ "$ozel" -gt 0 ] && uyari "$ozel .$hedef yolu symlink ya da duzenli dosya degil; atlandi"
-    if [ "$hedef" = br ] && [ "$gerekli" -gt 0 ]; then
-      br_baslat
-    fi
     while IFS= read -r -d '' src; do
       if [ "$hedef" = gz ]; then
         gzip "-$dosya_seviye" -n -k -f -- "$src" || kir "gzip basarisiz: $src"
@@ -643,11 +633,6 @@ dosyalar() {
     done < "$YEDEK/uret"
   fi
 
-  if [ -n "$BR_PID" ]; then
-    kill -TERM "$BR_PID" 2>/dev/null
-    wait "$BR_PID" 2>/dev/null
-    BR_PID=""
-  fi
   kanit="$(kanit_yolu)"
   mkdir -p "${kanit%/*}" || kir "sonuc dizini olusturulamadi: ${kanit%/*}"
   {
