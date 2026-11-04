@@ -44,6 +44,7 @@ import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import RebootKontroluTab from './RebootKontroluTab';
 import RetirementTab from './RetirementTab';
 import KurallarTab from './KurallarTab';
+import EarEnvanterTab from './EarEnvanterTab';
 import { useSunucuLimiti, LimitNotu, sunucuAdlari, limitAsildi } from './sunucuLimiti';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
 
@@ -1423,7 +1424,7 @@ function SevPill({ s, n }: { s: ShSeverity; n?: number }) {
 // ── Sayfa ────────────────────────────────────────────────────────────────────────────
 export default function ServerHubPage() {
   // Sekmeler: Sunucular (tarama raporu) | Retirement (uygulama emeklilik akisi, 2026-09-21)
-  const [tab, setTab] = useState<'hosts' | 'findings' | 'readiness' | 'reboot' | 'retirement' | 'kurallar'>('hosts');
+  const [tab, setTab] = useState<'hosts' | 'findings' | 'readiness' | 'reboot' | 'retirement' | 'envanter' | 'kurallar'>('hosts');
   // Kartlardan bulgu detayina gecis (kullanici, 2026-09-22): kart -> Bulgular sekmesi + hazir suzgec
   const [findingsFilter, setFindingsFilter] = useState<{
     area?: string;
@@ -1454,7 +1455,9 @@ export default function ServerHubPage() {
           <p className="text-sm mt-0.5 max-w-4xl" style={{ color: 'var(--text-muted)' }}>
             {tab === 'hosts'
               ? 'Reboot sonrası her şey doğru açılacak mı, sunucularda atıl bir şey var mı? Günlük tarama: init script referans uyumu, JBoss 7/8 JVM’leri (auto-start, kapalı, restart-required), RHA/IHS/Nginx syntax ve vhost yükü (hc.html/hc.jsp hariç), boşta IP, sshd sınırları.'
-              : tab === 'kurallar'
+              : tab === 'envanter'
+                ? '/vhosting (JBoss 7) ve /vhosting8 (JBoss 8) altındaki EAR/WAR uygulamaları: Spring / log4j sürümleri, JSP / TLD sayıları, tanımlayıcılar, eşlenik sunucu farkları ve dosya ağacı. Tarama salt okunurdur; haftalık ya da elle.'
+                : tab === 'kurallar'
                 ? 'Hangi maddeler taranıyor, hangi çıktı kritik / uyarı / bilgi / sorun yok sayılıyor; seviyeleri ve tek seferde girilebilecek sunucu sayısını buradan değiştirin.'
                 : 'Uygulama retirement: Smart silme kaydı → tüm ortam/site keşfi → STOP (auto-start kapat, durdur, paketi .old) → seçilen tarihte silme → IP/LB/DNS kayıtları.'}
           </p>
@@ -1467,6 +1470,7 @@ export default function ServerHubPage() {
               { id: 'readiness', label: 'Açılış Hazırlığı' },
               { id: 'reboot', label: 'Reboot Kontrolü' },
               { id: 'retirement', label: 'Retirement' },
+              { id: 'envanter', label: 'Uygulama Envanteri' },
               { id: 'kurallar', label: 'Kurallar & Limitler' },
             ] as const
           ).map((t) => (
@@ -1489,6 +1493,7 @@ export default function ServerHubPage() {
       {tab === 'readiness' && <ReadinessTab />}
       {tab === 'reboot' && <RebootKontroluTab />}
       {tab === 'retirement' && <RetirementTab />}
+      {tab === 'envanter' && <EarEnvanterTab />}
       {tab === 'kurallar' && <KurallarTab />}
     </div>
   );
