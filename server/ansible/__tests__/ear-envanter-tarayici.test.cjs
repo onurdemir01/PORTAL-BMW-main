@@ -377,9 +377,9 @@ test(
     zipYaz(icEar, [['IC.war', icWar]]);
     const ic = sureProbe(icEar, 'ic');
     assert.equal(ic.durum, 'KISMI_ZAMAN');
-    assert.equal(ic.war, 'KISMI_ZAMAN');
-    assert.equal(ic.giris, 1, 'sure dolduktan sonra ic WAR girdileri islendi');
-    assert.equal(ic.cagri, 2, 'ic WAR dongusu sureyi yeniden olcmedi');
+    assert.equal(ic.war, null);
+    assert.equal(ic.giris, 0, 'preflight sonrasi dolan surede ZipFile acildi');
+    assert.equal(ic.cagri, 2, 'preflight sonrasi sure yeniden olculmedi');
 
     // ZIP yorumu icindeki sahte bos EOCD son imza olarak gorunebilir. Merkez offset/boyut
     // gercek EOCD konumuyla uyusmuyorsa dolu arsiv bos/TAM sayilmaz.
@@ -420,6 +420,104 @@ test(
     assert.equal(ssu.durum, 'KISMI_SINIR');
     assert.equal(ssu.giris, 0, 'sahte EOCD sayaci ZipFile materializasyonunu atlatti');
     assert.equal(sayacSonuc.durum, 'KISMI');
+
+    const probe = (kod, girdi) => {
+      const r = spawnSync(PY.komut, [...PY.on, '-c', kod], { input: JSON.stringify(girdi) });
+      assert.equal(r.status, 0, String(r.stderr));
+      return JSON.parse(String(r.stdout));
+    };
+
+    // Preflight ve ZipFile ayni acik inode'u kullanmali. Preflight sonrasi path atomik
+    // degisse bile yeni/sinirsiz arsiv materialize edilmemeli.
+    const eski = path.join(kok, 'race', 'DEGISEN.ear');
+    const yeni = path.join(kok, 'race', 'YENI.ear');
+    zipYaz(eski, [['classes/Eski.class', 'x']]);
+    zipYaz(yeni, Array.from({ length: 150 }, (_, i) => [`classes/Y${i}.class`, 'x']));
+    const race = probe([
+      'import importlib.util, json, os, sys',
+      'g=json.loads(sys.stdin.read())',
+      's=importlib.util.spec_from_file_location("ear_tara_probe", g["betik"])',
+      'm=importlib.util.module_from_spec(s); s.loader.exec_module(m)',
+      'm.KIP="TAM"; m.SINIR_UYGULAMA=100; m.HOST={"giris":0,"zaman_doldu":False}',
+      'asil=m.zip_merkez_giris_sayisi',
+      'def degistir(kaynak, tavan):',
+      ' sonuc=asil(kaynak, tavan)',
+      ' os.replace(g["yeni"], g["eski"])',
+      ' return sonuc',
+      'm.zip_merkez_giris_sayisi=degistir',
+      'u=m.yeni_uygulama("/probe", "DEGISEN.ear", "ARSIV")',
+      'm.bitir(u, *m.arsiv_uygulama(u, g["eski"]))',
+      'print(json.dumps({"durum":u["durum"],"giris":u["giris"]}))',
+    ].join('\n'), { betik: BETIK, eski, yeni });
+    assert.deepEqual(race, { durum: 'TAM', giris: 1 });
+
+    // Direct ve nested WAR limit ustundeyse ZipFile ikinci kez acilmadan on kapida durur.
+    const nestedWar = path.join(kok, 'sure', 'NESTED-BIG.war');
+    zipYaz(nestedWar, Array.from({ length: 150 }, (_, i) => [`WEB-INF/classes/N${i}.class`, 'x']));
+    const nestedEar = path.join(kok, 'sure', 'NESTED-BIG.ear');
+    zipYaz(nestedEar, [['NESTED-BIG.war', nestedWar]]);
+    const warProbe = probe([
+      'import importlib.util, io, json, sys',
+      'g=json.loads(sys.stdin.read())',
+      's=importlib.util.spec_from_file_location("ear_tara_probe", g["betik"])',
+      'm=importlib.util.module_from_spec(s); s.loader.exec_module(m)',
+      'm.KIP="TAM"; m.SINIR_UYGULAMA=100; m.HOST={"giris":0,"zaman_doldu":False}',
+      'asil=m.zipfile.ZipFile',
+      'def bekci(kaynak, *a, **kw):',
+      ' if isinstance(kaynak, io.BytesIO): raise AssertionError("nested WAR materialized")',
+      ' return asil(kaynak, *a, **kw)',
+      'm.zipfile.ZipFile=bekci',
+      'u=m.yeni_uygulama("/probe", "IC.ear", "ARSIV")',
+      'm.bitir(u, *m.arsiv_uygulama(u, g["ear"]))',
+      'print(json.dumps({"durum":u["durum"],"giris":u["giris"],"war":u["warlar"][0]["durum"]}))',
+    ].join('\n'), { betik: BETIK, ear: nestedEar });
+    assert.deepEqual(warProbe, { durum: 'KISMI_SINIR', giris: 1, war: 'KISMI_SINIR' });
+
+    const directWar = path.join(kok, 'sure', 'DIRECT-BIG.war');
+    zipYaz(directWar, Array.from({ length: 150 }, (_, i) => [`WEB-INF/classes/D${i}.class`, 'x']));
+    const directProbe = probe([
+      'import importlib.util, json, sys',
+      'g=json.loads(sys.stdin.read())',
+      's=importlib.util.spec_from_file_location("ear_tara_probe", g["betik"])',
+      'm=importlib.util.module_from_spec(s); s.loader.exec_module(m)',
+      'm.KIP="TAM"; m.SINIR_UYGULAMA=100; m.HOST={"giris":0,"zaman_doldu":False}',
+      'def bekci(*a, **kw): raise AssertionError("direct WAR materialized")',
+      'm.zipfile.ZipFile=bekci',
+      'u=m.yeni_uygulama("/probe", "A.ear", "ACIK")',
+      'm.paketli_war(u, g["war"], "DIRECT-BIG.war", m.Iz())',
+      'print(json.dumps({"durum":u["durum"],"giris":u["giris"],"war":u["warlar"][0]["durum"]}))',
+    ].join('\n'), { betik: BETIK, war: directWar });
+    assert.deepEqual(directProbe, { durum: 'KISMI_SINIR', giris: 0, war: 'KISMI_SINIR' });
+
+    const timeWar = path.join(kok, 'sure', 'DIRECT-TIME.war');
+    zipYaz(timeWar, [['WEB-INF/a.class', 'x'], ['WEB-INF/b.class', 'x']]);
+    const timeProbe = probe([
+      'import importlib.util, json, sys',
+      'g=json.loads(sys.stdin.read())',
+      's=importlib.util.spec_from_file_location("ear_tara_probe", g["betik"])',
+      'm=importlib.util.module_from_spec(s); s.loader.exec_module(m)',
+      'm.KIP="TAM"; m.HOST={"giris":0,"zaman_doldu":False}',
+      'm.sure_doldu=lambda: True',
+      'def bekci(*a, **kw): raise AssertionError("time-expired WAR materialized")',
+      'm.zipfile.ZipFile=bekci',
+      'u=m.yeni_uygulama("/probe", "A.ear", "ACIK")',
+      'm.paketli_war(u, g["war"], "DIRECT-TIME.war", m.Iz())',
+      'print(json.dumps({"durum":u["durum"],"giris":u["giris"],"war":u["warlar"][0]["durum"]}))',
+    ].join('\n'), { betik: BETIK, war: timeWar });
+    assert.deepEqual(timeProbe, { durum: 'KISMI_ZAMAN', giris: 0, war: 'KISMI_ZAMAN' });
+
+    // Per-entry ZIP64 extra da klasik EOCD sayaclari normal gorunse bile reddedilir.
+    const zip64 = path.join(kok, 'arsiv', 'ZIP64.ear');
+    const zip64Yaz = spawnSync(PY.komut, [...PY.on, '-c', [
+      'import sys, zipfile',
+      'with zipfile.ZipFile(sys.argv[1], "w") as z:',
+      ' with z.open("classes/Z.class", "w", force_zip64=True) as f: f.write(b"x")',
+    ].join('\n'), zip64]);
+    assert.equal(zip64Yaz.status, 0, String(zip64Yaz.stderr));
+    const zip64Sonuc = tara([path.dirname(zip64)], { EAR_KIP: 'TAM', EAR_SINIR_UYGULAMA: '100' });
+    const zu = uyg(zip64Sonuc, 'ZIP64.ear');
+    assert.equal(zu.durum, 'KISMI_SINIR');
+    assert.equal(zu.giris, 0);
   },
 );
 
@@ -558,7 +656,7 @@ test(
 const AST_DENETIM = `
 import ast, json, sys
 IZIN = {
-    'os': {'O_RDONLY', 'SEEK_CUR', 'SEEK_SET', 'close', 'environ', 'fstat', 'getuid', 'lseek', 'lstat', 'open', 'path', 'read', 'readlink', 'scandir'},
+    'os': {'O_RDONLY', 'SEEK_CUR', 'SEEK_END', 'SEEK_SET', 'close', 'environ', 'fdopen', 'fstat', 'getuid', 'lseek', 'lstat', 'open', 'path', 'read', 'readlink', 'scandir'},
     'os.path': {'isdir', 'isfile', 'join', 'realpath'},
     'sys': {'stdout', 'version'},
     'socket': {'gethostname'},
