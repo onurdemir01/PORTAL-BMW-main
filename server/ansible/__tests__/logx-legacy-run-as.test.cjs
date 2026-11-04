@@ -349,8 +349,107 @@ function yorumlayiciYoklamasi(f) {
   assert.equal(g.length, 2, f + ": pre_tasks'ta yoklama disinda gorev (" + g.length + ')');
 }
 
-test('yorumlayici yoklamasi: tek, sabit metinli, salt okur `raw` (kesif ve transfer)', () => {
-  for (const f of DOSYALAR) yorumlayiciYoklamasi(f);
+test('yorumlayici yoklamasi: kesifte tek, sabit metinli, salt okur `raw`', () => {
+  yorumlayiciYoklamasi('logx_legacy_discovery.yml');
+});
+
+test('transfer yorumlayicisi: PATH yerine trusted sistem yollarini iki kimlikte dogrular', () => {
+  const f = 'logx_legacy_transfer.yml';
+  const t = metin(f);
+  for (const yasak of ['shell', 'script'])
+    assert.equal([...t.matchAll(modulAnahtari(yasak))].length, 0, f + ': ' + yasak + ' modulu');
+
+  const kaynak = playler(t).filter((p) => !yerel(p));
+  assert.equal(kaynak.length, 2, 'transfer kaynak play sayisi');
+  const probePlay = kaynak.find((p) => [...p.metin.matchAll(modulAnahtari('raw'))].length > 0);
+  assert.ok(probePlay, 'yorumlayici probe play bulunamadi');
+  const pre = (probePlay.metin.match(/^ {2}pre_tasks:\n([\s\S]*?)^ {2}tasks:$/m) || [])[1];
+  assert.ok(pre, 'transfer raw pre_tasks disinda');
+  const gs = gorevler('-\n' + pre);
+  const rawlar = gs.filter((g) => [...g.matchAll(modulAnahtari('raw'))].length > 0);
+  assert.equal(rawlar.length, 2, 'baglanan ve okuma kullanicisi icin iki raw probe olmali');
+
+  const kayitlar = rawlar.map((g) => (g.match(/^\s+register: (\w+)$/m) || [])[1]);
+  assert.deepEqual(kayitlar, ['logx_python_baglanti_probe', 'logx_python_okuma_probe']);
+  assert.ok(!yukseltir(rawlar[0]), 'baglanan kullanici probe yetki yukseltmemeli');
+  assert.ok(wasIle(rawlar[1]), 'ikinci probe log okuma kullanicisiyla kosmali');
+  assert.match(
+    rawlar[1],
+    /^\s+ignore_errors: true$/m,
+    'dzdo/become hazirlik hatasi artifact uretilmeden isi keser',
+  );
+
+  for (const raw of rawlar) {
+    const govde = raw.slice(raw.indexOf('ansible.builtin.raw: |'));
+    assert.ok(!/\{\{|\{%|\{#/.test(govde), 'raw metnine Jinja/dis girdi yerlesiyor');
+    assert.ok(!/command -v|\/usr\/local|\$PATH|\bpython\b(?!3)/.test(govde), 'PATH veya trusted olmayan aday kullaniliyor');
+    assert.match(govde, /for py in \/usr\/bin\/python3\.14 .* \/usr\/bin\/python3\.8 \/usr\/bin\/python3;/, 'literal allowlist eksik');
+    assert.ok(!/\[0-9\]|\*/.test(govde.split('do\n', 1)[0]), 'allowlist glob kullaniyor');
+    assert.match(
+      govde,
+      /real=\$\(\/usr\/bin\/readlink -f "\$py" 2>\/dev\/null\) \|\| continue\n\s+case "\$real" in \/usr\/bin\/\*\|\/bin\/\*\) ;; \*\) continue ;; esac/,
+      'symlink hedefi trusted dizine sinirlanmiyor',
+    );
+    assert.match(
+      govde,
+      /owner=\$\(\/usr\/bin\/stat -Lc '%u' "\$py" 2>\/dev\/null\) \|\| continue\n\s+mode=.*\n\s+\[ "\$owner" = 0 \] \|\| continue/,
+      'aday sahibinin root oldugu karar kapisinda kullanilmiyor',
+    );
+    assert.match(
+      govde,
+      /mode=\$\(\/usr\/bin\/stat -Lc '%a' "\$py" 2>\/dev\/null\) \|\| continue\n\s+\[ "\$owner" = 0 \] \|\| continue\n\s+case "\$mode" in \*\[2367\]\[0-7\]\|\*\[0-7\]\[2367\]\) continue ;; esac/,
+      'grup/diger yazma biti adayi reddetmiyor',
+    );
+    assert.match(govde, /sys\.version_info < \(3,8\)/, 'Python 3.8 alt siniri yok');
+    const izinliPySatirlariCikmis = govde
+      .split('\n')
+      .filter(
+        (satir) =>
+          !/^\s*\[ -x "\$py" \] \|\| continue$/.test(satir) &&
+          !/^\s*real=\$\(\/usr\/bin\/readlink -f "\$py" 2>\/dev\/null\) \|\| continue$/.test(satir) &&
+          !/^\s*(owner|mode)=\$\(\/usr\/bin\/stat -Lc '[%][ua]' "\$py" 2>\/dev\/null\) \|\| continue$/.test(satir) &&
+          !/^\s*ver=\$\("\$py" -c 'import sys;.*' 2>\/dev\/null\) \|\| continue$/.test(satir) &&
+          !/^\s*printf '%s:%s\\n' "\$ver" "\$py"$/.test(satir),
+      )
+      .join('\n');
+    assert.ok(!/\$py\b/.test(izinliPySatirlariCikmis), 'aday yolu izinli probe disinda kullaniliyor');
+    assert.match(raw, /^\s+changed_when: false$/m);
+    assert.match(raw, /^\s+failed_when: false$/m);
+  }
+
+  const ortak = gs.find((g) => /logx_python_ortak_adaylar:/.test(g));
+  assert.ok(ortak, 'iki kimligin ortak aday hesabi yok');
+  assert.match(ortak, /logx_python_baglanti_probe\.stdout_lines/);
+  assert.match(ortak, /intersect\(logx_python_okuma_probe\.stdout_lines/);
+  assert.match(ortak, /sort\(reverse=true\)/, 'en yuksek ortak Python secilmiyor');
+  const secim = gs.find((g) => /ansible_python_interpreter:/.test(g));
+  assert.ok(secim, 'ortak adaydan interpreter secimi yok');
+  assert.match(secim, /logx_python_ortak_adaylar \| first/);
+  assert.match(secim, /split\(':', 1\)\[1\]/);
+});
+
+test('transfer yorumlayicisi: ortak modern Python yoksa acik artifact ile fail-closed', () => {
+  const t = metin('logx_legacy_transfer.yml');
+  const pre = (playler(t).find((p) => !yerel(p) && /pre_tasks:/.test(p.metin)).metin.match(
+    /^ {2}pre_tasks:\n([\s\S]*?)^ {2}tasks:$/m,
+  ) || [])[1];
+  const gs = gorevler('-\n' + pre);
+  const sonuc = gs.find((g) => /host_logx_result:/.test(g));
+  assert.ok(sonuc, 'yorumlayici yoklugunda host sonucu yazilmiyor');
+  assert.match(sonuc, /modern_python_bulunamadi/g);
+  assert.match(sonuc, /'overall_status': 'failed'/);
+  assert.match(sonuc, /'status': 'error'/);
+  assert.match(sonuc, /^\s+when: \(logx_python_ortak_adaylar \| length\) == 0$/m);
+  const bitir = gs.find((g) => /ansible\.builtin\.meta: end_host/.test(g));
+  assert.ok(bitir, 'uygun interpreter yokken Python isteyen gorevlere devam ediliyor');
+  assert.match(bitir, /^\s+when: \(logx_python_ortak_adaylar \| length\) == 0$/m);
+
+  const birlestir = playler(t).find((p) => /Coklu-host per-host ZIP'leri/.test(p.ad));
+  assert.ok(birlestir, 'coklu-host birlestirme play bulunamadi');
+  const birlestirPre = (birlestir.metin.match(/^ {2}pre_tasks:\n([\s\S]*?)^ {2}tasks:$/m) || [])[1];
+  assert.ok(birlestirPre, 'birlestirme play interpreter kapisini yeniden uygulamiyor');
+  assert.match(birlestirPre, /ansible\.builtin\.meta: end_host/);
+  assert.match(birlestirPre, /logx_python_ortak_adaylar \| default\(\[\]\) \| length/);
 });
 
 test('gecici alan on kontrolu YAN ETKISIZ: yalniz stat ve argv`li df; kabuk yok', () => {

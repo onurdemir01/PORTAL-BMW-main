@@ -97,38 +97,116 @@
     was_tmp_archive: "{{ was_tmp_dir }}/{{ was_tmp_zip }}"
 
   pre_tasks:
-    - name: "En uygun modern Python interpreter'i bul"
+    - name: "Trusted modern Python adaylarini baglanan kullaniciyla dogrula"
       ansible.builtin.raw: |
-        best=""
-        best_ver=""
-
-        candidates="$(command -v python3 2>/dev/null || true) $(command -v python 2>/dev/null || true) $(find /usr/bin /usr/local/bin -maxdepth 1 \( -type f -o -type l \) -name 'python3*' -print 2>/dev/null)"
-
-        for py in $candidates; do
+        for py in /usr/bin/python3.14 /usr/bin/python3.13 /usr/bin/python3.12 /usr/bin/python3.11 /usr/bin/python3.10 /usr/bin/python3.9 /usr/bin/python3.8 /usr/bin/python3; do
           [ -x "$py" ] || continue
+          real=$(/usr/bin/readlink -f "$py" 2>/dev/null) || continue
+          case "$real" in /usr/bin/*|/bin/*) ;; *) continue ;; esac
+          owner=$(/usr/bin/stat -Lc '%u' "$py" 2>/dev/null) || continue
+          mode=$(/usr/bin/stat -Lc '%a' "$py" 2>/dev/null) || continue
+          [ "$owner" = 0 ] || continue
+          case "$mode" in *[2367][0-7]|*[0-7][2367]) continue ;; esac
 
           ver=$("$py" -c 'import sys; sys.exit(1) if sys.version_info < (3,8) else None; print("%03d%03d%03d" % sys.version_info[:3])' 2>/dev/null) || continue
 
           case "$ver" in
             *[!0-9]*|'') continue ;;
           esac
-
-          if [ -z "$best_ver" ] || [ "$ver" -gt "$best_ver" ]; then
-            best="$py"
-            best_ver="$ver"
-          fi
+          printf '%s:%s\n' "$ver" "$py"
         done
-
-        [ -n "$best" ] && printf '%s\n' "$best"
         exit 0
-      register: logx_python_probe
+      register: logx_python_baglanti_probe
       changed_when: false
       failed_when: false
 
-    - name: "Modern Python bulunduysa Ansible interpreter olarak kullan"
+    - name: "Trusted modern Python adaylarini okuma kullanicisiyla dogrula"
+      become: true
+      become_user: "{{ logx_legacy_user | default('was') }}"
+      become_method: dzdo
+      ansible.builtin.raw: |
+        for py in /usr/bin/python3.14 /usr/bin/python3.13 /usr/bin/python3.12 /usr/bin/python3.11 /usr/bin/python3.10 /usr/bin/python3.9 /usr/bin/python3.8 /usr/bin/python3; do
+          [ -x "$py" ] || continue
+          real=$(/usr/bin/readlink -f "$py" 2>/dev/null) || continue
+          case "$real" in /usr/bin/*|/bin/*) ;; *) continue ;; esac
+          owner=$(/usr/bin/stat -Lc '%u' "$py" 2>/dev/null) || continue
+          mode=$(/usr/bin/stat -Lc '%a' "$py" 2>/dev/null) || continue
+          [ "$owner" = 0 ] || continue
+          case "$mode" in *[2367][0-7]|*[0-7][2367]) continue ;; esac
+
+          ver=$("$py" -c 'import sys; sys.exit(1) if sys.version_info < (3,8) else None; print("%03d%03d%03d" % sys.version_info[:3])' 2>/dev/null) || continue
+
+          case "$ver" in
+            *[!0-9]*|'') continue ;;
+          esac
+          printf '%s:%s\n' "$ver" "$py"
+        done
+        exit 0
+      register: logx_python_okuma_probe
+      changed_when: false
+      failed_when: false
+      ignore_errors: true
+
+    - name: "Iki kimlikte calisan trusted modern Python adaylarini belirle"
       ansible.builtin.set_fact:
-        ansible_python_interpreter: "{{ logx_python_probe.stdout_lines | first | trim }}"
-      when: (logx_python_probe.stdout_lines | default([]) | length) > 0
+        logx_python_ortak_adaylar: >-
+          {{
+            logx_python_baglanti_probe.stdout_lines
+            | default([])
+            | intersect(logx_python_okuma_probe.stdout_lines | default([]))
+            | sort(reverse=true)
+          }}
+      changed_when: false
+
+    - name: "En yeni ortak modern Python'i Ansible interpreter olarak kullan"
+      ansible.builtin.set_fact:
+        ansible_python_interpreter: >-
+          {{ (logx_python_ortak_adaylar | first).split(':', 1)[1] }}
+      when: (logx_python_ortak_adaylar | length) > 0
+      changed_when: false
+
+    - name: "Modern Python bulunamadi sonucunu kaydet"
+      ansible.builtin.set_fact:
+        host_blocked_reason: >-
+          modern_python_bulunamadi: /usr/bin altinda Python >= 3.8 hem baglanan
+          kullanici hem {{ logx_legacy_user | default('was') }} ile calismalidir.
+        host_logx_result: >-
+          {{
+            {
+              'overall_status': 'failed',
+              'staged_path': '',
+              'filename': archive_name,
+              'size_bytes': 0,
+              'is_fallback': false,
+              'per_file_status': [],
+              'tmp_dir': '',
+              'tmp_adaylar': [],
+              'error': (
+                'modern_python_bulunamadi: /usr/bin altinda Python >= 3.8 hem baglanan '
+                ~ 'kullanici hem ' ~ (logx_legacy_user | default('was')) ~ ' ile calismalidir.'
+              ),
+            }
+            if (single_host | bool)
+            else {
+              'host': inventory_hostname | upper,
+              'status': 'error',
+              'error': (
+                'modern_python_bulunamadi: /usr/bin altinda Python >= 3.8 hem baglanan '
+                ~ 'kullanici hem ' ~ (logx_legacy_user | default('was')) ~ ' ile calismalidir.'
+              ),
+              'part_filename': '',
+              'size_bytes': 0,
+              'per_file_status': [],
+              'tmp_dir': '',
+              'tmp_adaylar': [],
+            }
+          }}
+      when: (logx_python_ortak_adaylar | length) == 0
+      changed_when: false
+
+    - name: "Modern Python yoksa bu hostun transferini bitir"
+      ansible.builtin.meta: end_host
+      when: (logx_python_ortak_adaylar | length) == 0
 
   tasks:
     - block:
@@ -1037,6 +1115,11 @@
     source_hosts: "{{ selected_files | map(attribute='host') | unique | list }}"
     parts_dir: "{{ staging_dir }}/{{ archive_name | regex_replace('[.]zip$', '') }}__parts"
     staging_archive_path: "{{ staging_dir }}/{{ archive_name }}"
+
+  pre_tasks:
+    - name: "Modern Python bulunamayan hostu birlestirme adaylarindan cikar"
+      ansible.builtin.meta: end_host
+      when: (logx_python_ortak_adaylar | default([]) | length) == 0
 
   tasks:
     - name: "Mevcut per-host parca ZIP'lerini bul (coklu-host)"
