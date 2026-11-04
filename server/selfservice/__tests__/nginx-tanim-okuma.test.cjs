@@ -138,17 +138,61 @@ test('NT4 okuyucu: olculemedi / yok / var, kolon yedegi, dogrulama', async () =>
   const q = s.sorgular.find((x) => x.q.includes('location_path'));
   assert.ok(q.params.some((p) => p.name === 'e' && p.value === 'TEST') && q.params.some((p) => p.name === 's' && p.value === 'WEBFORMS'));
   assert.ok(!q.q.includes('WEBFORMS') && !q.q.includes("'TEST'"), 'ortam / servis sorguya metin olarak gomuldu');
-  // kind kolonu yok: kolonsuz sorguya duser
+  // Eski semada opsiyonel kolon yok: yalniz SQL Server 207 ile kolonsuz sorguya duser.
   s = sahteSql((q2) => {
     if (q2.includes('MAX(scan_date)')) return { recordset: [{ d: '2026-10-19' }] };
-    if (q2.includes('kind')) throw new Error("Invalid column name 'kind'");
+    if (q2.includes('kind')) throw Object.assign(new Error("Invalid column name 'kind'."), { code: 'EREQUEST', number: 207 });
     return { recordset: [R('GBNGXT33', '/a/', 'a-app-v1', 'kart-test')] };
   });
   r = await ok.nginxTanimlari({ env: 'test', service: 'glomo' }, { mssql: s.mssql, groups: GROUPS });
   assert.deepEqual([r.durum, r.satirlar.length], ['var', 1]);
+  assert.equal(s.sorgular.length, 3, 'dogrulanmis eski sema hatasi kolonsuz sorguya dusmedi');
   for (const [env, service] of [['', 'glomo'], ['prod', ''], ["prod'; drop", 'glomo'], ['prod', 'gl omo']]) {
     const g = await ok.nginxTanimlari({ env, service }, { mssql: s.mssql, groups: GROUPS });
     assert.deepEqual([g.ok, g.status], [false, 400], `${env}/${service}`);
+  }
+});
+
+test('NT4b kolon yedegi baglanti, yetki veya ilgisiz sema hatasini gizlemez', async () => {
+  const hatalar = [
+    Object.assign(new Error('request timeout'), { code: 'ETIMEOUT' }),
+    Object.assign(new Error('login failed'), { code: 'ELOGIN' }),
+    Object.assign(new Error('socket closed'), { code: 'ESOCKET' }),
+    Object.assign(new Error('SELECT permission denied'), { code: 'EREQUEST', number: 229 }),
+    Object.assign(new Error("Invalid column name 'service_typo'."), { code: 'EREQUEST', number: 207 }),
+    new Error("Invalid column name 'kind'."),
+    Object.assign(new Error('request timeout'), {
+      code: 'ETIMEOUT',
+      originalError: { info: { number: 207, message: "Invalid column name 'kind'." } },
+    }),
+  ];
+  for (const hata of hatalar) {
+    const s = sahteSql((q) => {
+      if (q.includes('MAX(scan_date)')) return { recordset: [{ d: '2026-10-19' }] };
+      throw hata;
+    });
+    const r = await ok.nginxTanimlari({ env: 'test', service: 'glomo' }, { mssql: s.mssql, groups: GROUPS });
+    assert.equal(r.durum, 'olculemedi', `${hata.code || 'metadata-yok'} hatasi gizlendi`);
+    assert.match(r.sebep, new RegExp(hata.message.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    assert.equal(s.sorgular.length, 2, `${hata.code || 'metadata-yok'} icin kolonsuz sorgu calisti`);
+  }
+});
+
+test('NT4c target_url ve ic ice mssql SQL207 hatasi eski sema yedegini acar', async () => {
+  for (const hata of [
+    Object.assign(new Error("Invalid column name 'target_url'."), { code: 'EREQUEST', number: 207 }),
+    Object.assign(new Error('Invalid column'), {
+      code: 'EREQUEST',
+      originalError: { info: { number: 207, message: "Invalid column name 'kind'." } },
+    }),
+  ]) {
+    const s = sahteSql((q) => {
+      if (q.includes('MAX(scan_date)')) return { recordset: [{ d: '2026-10-19' }] };
+      if (q.includes('kind')) throw hata;
+      return { recordset: [R('GBNGXT33', '/a/', 'a-app-v1', 'kart-test')] };
+    });
+    const r = await ok.nginxTanimlari({ env: 'test', service: 'glomo' }, { mssql: s.mssql, groups: GROUPS });
+    assert.deepEqual([r.durum, r.satirlar.length, s.sorgular.length], ['var', 1, 3]);
   }
 });
 
