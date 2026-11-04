@@ -1970,8 +1970,9 @@ async function talepAc(req, { nodeYetkisi, kullanici, onizleme }) {
     if (yerelIptal) {
       await kapat('HATA', 'SMART_BAGLAMA', bosSonuc({ hata: 'Smart bileti Portal talebine bağlanamadı; bilet iptal edildi.' }));
     }
+    // 424: kurumsal nginx 5xx govdesini HTML ile degistirir; kullanici Smart numarasini gormeli.
     return {
-      status: 500,
+      status: 424,
       body: {
         ok: false,
         blocked: 'smart_ticket_link_failed',

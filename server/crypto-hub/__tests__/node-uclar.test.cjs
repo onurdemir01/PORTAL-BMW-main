@@ -230,7 +230,7 @@ test('N8c Smart bileti satira baglanamazsa basari uydurmaz ve PENDING bileti ipt
     h.okumaVer();
     h.d.baglamaNoop = true;
     const r = await h.istek('POST', '/node-change', K.nodecu, GOVDE());
-    assert.equal(r.status, 500, JSON.stringify(r.body));
+    assert.equal(r.status, 424, JSON.stringify(r.body));
     assert.equal(r.body.blocked, 'smart_ticket_link_failed');
     assert.equal(h.d.smartTickets[0].status, 'CANCELLED');
     assert.equal(h.d.rows[0].durum, 'HATA');
