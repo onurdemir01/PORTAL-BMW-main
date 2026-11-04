@@ -64,6 +64,9 @@ const PLAYBOOKS = {
   // BAYT BAYT ayni (nginx-loadtest-ayna.test.cjs).
   nginxLoadtest: 'nginx_loadtest/nginx_loadtest.yml',
   telnetOpenshift: 'telnet_openshift/telnet_openshift.yaml',
+  // Server Hub > Uygulama Envanteri (2026-11-04): /vhosting + /vhosting8 EAR/WAR, SALT OKUNUR.
+  // Hedefe tek `raw` (python3 -B - + heredoc); sonuc GBLABT02 uzerinden /sw'ye. AWX'e limit GITMEZ.
+  earEnvanter: 'ear_envanter/ear_envanter.yml',
 };
 
 /** ScaleX AWX paketi — klasor olarak kopyalanir (tek dosya degil). */
