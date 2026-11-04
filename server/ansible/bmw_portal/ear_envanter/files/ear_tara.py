@@ -187,8 +187,8 @@ def zip_zaman(dt):
         return 0
 
 
-def zip_merkez_giris_sayisi(tam):
-    """ZIP'i acmadan EOCD'den merkez dizini giris sayisini okur; ZIP64/multi-disk fail-closed."""
+def zip_merkez_giris_sayisi(tam, tavan):
+    """ZIP'i acmadan merkez dizin basliklarini sayar; ZIP64/multi-disk/tutarsizlik fail-closed."""
     fd = os.open(tam, os.O_RDONLY)
     try:
         boyut = os.fstat(fd).st_size
@@ -197,21 +197,49 @@ def zip_merkez_giris_sayisi(tam):
         kuyruk = min(boyut, 65557)  # EOCD 22 bayt + en cok 65535 bayt yorum.
         os.lseek(fd, boyut - kuyruk, os.SEEK_SET)
         veri = os.read(fd, kuyruk)
+        if len(veri) != kuyruk:
+            return -1
+        yer = len(veri)
+        while True:
+            yer = veri.rfind(b'PK\x05\x06', 0, yer)
+            if yer < 0:
+                return None
+            if yer + 22 <= len(veri):
+                alanlar = struct.unpack_from('<4s4H2LH', veri, yer)
+                if yer + 22 + alanlar[7] == len(veri):
+                    break
+        _, disk, merkez_disk, disk_giris, toplam, merkez_boyut, merkez_ofset, _ = alanlar
+        mutlak_eocd = boyut - kuyruk + yer
+        if (disk or merkez_disk or disk_giris != toplam or toplam == 0xffff or
+                merkez_boyut == 0xffffffff or merkez_ofset == 0xffffffff or
+                merkez_ofset + merkez_boyut != mutlak_eocd):
+            return -1
+        if toplam > tavan:
+            return toplam
+
+        # EOCD sayaci dusuk yazilmis olsa bile ZipFile'a gecmeden gercek merkez
+        # basliklarini tavan+1'e kadar say. Sabit 46 bayt disinda veri okunmaz.
+        os.lseek(fd, merkez_ofset, os.SEEK_SET)
+        kalan = merkez_boyut
+        gercek = 0
+        while kalan:
+            if kalan < 46:
+                return -1
+            baslik = os.read(fd, 46)
+            if len(baslik) != 46 or baslik[:4] != b'PK\x01\x02':
+                return -1
+            ad_boyut, ek_boyut, yorum_boyut = struct.unpack_from('<HHH', baslik, 28)
+            atla = ad_boyut + ek_boyut + yorum_boyut
+            if 46 + atla > kalan:
+                return -1
+            os.lseek(fd, atla, os.SEEK_CUR)
+            kalan -= 46 + atla
+            gercek += 1
+            if gercek > tavan:
+                return gercek
+        return gercek if gercek == toplam else -1
     finally:
         os.close(fd)
-    yer = len(veri)
-    while True:
-        yer = veri.rfind(b'PK\x05\x06', 0, yer)
-        if yer < 0:
-            return None
-        if yer + 22 <= len(veri):
-            alanlar = struct.unpack_from('<4s4H2LH', veri, yer)
-            if yer + 22 + alanlar[7] == len(veri):
-                break
-    _, disk, merkez_disk, disk_giris, toplam, merkez_boyut, _, _ = alanlar
-    if disk or merkez_disk or disk_giris != toplam or toplam == 0xffff or merkez_boyut == 0xffffffff:
-        return -1
-    return toplam
 
 
 def arsiv_war_isle(u, war, girisler, on_ek, yapi):
@@ -340,8 +368,8 @@ def arsiv_uygulama(u, tam):
     """'.ear' arsiv dosyasi: merkez dizin; ic WAR'lar yalniz TAM kipte ve boyut sinirinin altinda acilir."""
     yapi, kutuphane = Iz(), Iz()
     try:
-        merkez_giris = zip_merkez_giris_sayisi(tam)
         kalan = min(SINIR_UYGULAMA - u['giris'], SINIR_HOST - HOST['giris'])
+        merkez_giris = zip_merkez_giris_sayisi(tam, max(0, kalan))
         if merkez_giris is not None and (merkez_giris < 0 or merkez_giris > max(0, kalan)):
             uyar(u, 'arsiv merkez dizini giris siniri', 'KISMI_SINIR')
             return yapi, kutuphane

@@ -380,6 +380,46 @@ test(
     assert.equal(ic.war, 'KISMI_ZAMAN');
     assert.equal(ic.giris, 1, 'sure dolduktan sonra ic WAR girdileri islendi');
     assert.equal(ic.cagri, 2, 'ic WAR dongusu sureyi yeniden olcmedi');
+
+    // ZIP yorumu icindeki sahte bos EOCD son imza olarak gorunebilir. Merkez offset/boyut
+    // gercek EOCD konumuyla uyusmuyorsa dolu arsiv bos/TAM sayilmaz.
+    const sahte = path.join(kok, 'arsiv', 'SAHTE-EOCD.ear');
+    zipYaz(sahte, Array.from({ length: 150 }, (_, i) => [`classes/S${i}.class`, 'x']));
+    const yorum = spawnSync(PY.komut, [...PY.on, '-c', [
+      'import sys, zipfile',
+      'with zipfile.ZipFile(sys.argv[1], "a") as z:',
+      ' z.comment = b"PK\\x05\\x06" + b"\\x00" * 18',
+    ].join('\n'), sahte]);
+    assert.equal(yorum.status, 0, String(yorum.stderr));
+    const sahteSonuc = tara([path.dirname(sahte)], { EAR_KIP: 'TAM', EAR_SINIR_UYGULAMA: '100' });
+    const su = uyg(sahteSonuc, 'SAHTE-EOCD.ear');
+    assert.equal(su.durum, 'KISMI_SINIR');
+    assert.equal(su.giris, 0);
+    assert.equal(sahteSonuc.durum, 'KISMI');
+
+    // EOCD'deki ilan edilen sayi dusurulurse de gercek merkez basliklari tavan+1'e
+    // kadar sayilmali; aksi halde ZipFile 150 kaydi sinirdan once materialize eder.
+    const sayacSahte = path.join(kok, 'arsiv', 'SAYAC-SAHTE.ear');
+    zipYaz(sayacSahte, Array.from({ length: 150 }, (_, i) => [`classes/F${i}.class`, 'x']));
+    const sayacYama = spawnSync(PY.komut, [...PY.on, '-c', [
+      'import struct, sys',
+      'p=sys.argv[1]',
+      'with open(p, "r+b") as f:',
+      ' data=f.read()',
+      ' yer=data.rfind(b"PK\\x05\\x06")',
+      ' assert yer >= 0',
+      ' y=bytearray(data)',
+      ' struct.pack_into("<HH", y, yer + 8, 1, 1)',
+      ' f.seek(0); f.write(y); f.truncate()',
+    ].join('\n'), sayacSahte]);
+    assert.equal(sayacYama.status, 0, String(sayacYama.stderr));
+    const sayacSonuc = tara([path.dirname(sayacSahte)], {
+      EAR_KIP: 'TAM', EAR_SINIR_UYGULAMA: '100',
+    });
+    const ssu = uyg(sayacSonuc, 'SAYAC-SAHTE.ear');
+    assert.equal(ssu.durum, 'KISMI_SINIR');
+    assert.equal(ssu.giris, 0, 'sahte EOCD sayaci ZipFile materializasyonunu atlatti');
+    assert.equal(sayacSonuc.durum, 'KISMI');
   },
 );
 
@@ -518,7 +558,7 @@ test(
 const AST_DENETIM = `
 import ast, json, sys
 IZIN = {
-    'os': {'O_RDONLY', 'SEEK_SET', 'close', 'environ', 'fstat', 'getuid', 'lseek', 'lstat', 'open', 'path', 'read', 'readlink', 'scandir'},
+    'os': {'O_RDONLY', 'SEEK_CUR', 'SEEK_SET', 'close', 'environ', 'fstat', 'getuid', 'lseek', 'lstat', 'open', 'path', 'read', 'readlink', 'scandir'},
     'os.path': {'isdir', 'isfile', 'join', 'realpath'},
     'sys': {'stdout', 'version'},
     'socket': {'gethostname'},
