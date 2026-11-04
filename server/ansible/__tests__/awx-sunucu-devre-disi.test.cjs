@@ -131,6 +131,49 @@ test('AD6 runner: kapali sunucu listede yok, env den dirilmez, devre disi der, s
   assert.deepEqual(runner.getServers().map((s) => s.id), [], 'kapatilan sunucu env den dirildi');
 });
 
+test('AD6b disable sonrasi DB reload duserse eski cache ve env sunucuyu diriltmez', async () => {
+  process.env.AWX_1_URL = 'https://maestro1.reload.test';
+  process.env.AWX_1_TOKEN = 'reload-env-token-1';
+  let hata = false;
+  const satirlar = [
+    { server_no: 1, name: 'maestro', url: process.env.AWX_1_URL, enabled: true, token: 'reload-db-token-1' },
+    { server_no: 2, name: 'maestro2', url: 'https://maestro2.reload.test', enabled: true, token: 'reload-db-token-2' },
+  ];
+  const dbYol = require.resolve('../../db/index.cjs');
+  require.cache[dbYol].exports = {
+    query: async () => {
+      if (hata) throw new Error('reload SELECT failed');
+      return { rows: satirlar };
+    },
+  };
+  const runner = require('../runner.cjs');
+  assert.equal(await runner._loadAwxServers(), true);
+  assert.deepEqual(runner.getServers().map((s) => s.id), [1, 2]);
+
+  runner._awxSunucuDurumuBellekteUygula(1, false, satirlar[0]);
+  hata = true;
+  assert.equal(await runner._loadAwxServers(), false, 'reload hata fixture i calismadi');
+  assert.deepEqual(runner.getServers().map((s) => s.id), [2], 'devre disi sunucu eski cache/env ile dirildi');
+  assert.equal(runner.getServerById(1), null);
+  assert.match(runner._sunucuYokHatasi(1).message, /devre dışı/);
+  assert.equal(runner.redactSecrets('x reload-db-token-1 reload-env-token-1'), 'x *** ***');
+
+  // Cache tamamen bosalirsa ayni controller legacy AWX_URL uzerinden id=0 olarak da dirilemez.
+  process.env.AWX_URL = `${satirlar[0].url.replace('.test', '.test:443')}/`;
+  delete process.env.AWX_2_URL;
+  satirlar.splice(1, 1);
+  hata = false;
+  assert.equal(await runner._loadAwxServers(), true);
+  assert.deepEqual(runner.getServers().map((s) => s.id), [1]);
+  runner._awxSunucuDurumuBellekteUygula(1, false, satirlar[0]);
+  hata = true;
+  assert.equal(await runner._loadAwxServers(), false);
+  assert.deepEqual(runner.getServers(), [], 'devre disi controller legacy AWX_URL ile id=0 olarak dirildi');
+  process.env.AWX_URL = satirlar[0].url.replace('.test', '.test:8443');
+  assert.deepEqual(runner.getServers().map((s) => s.id), [0], 'farkli porttaki legacy controller yanlislikla kapatildi');
+  delete process.env.AWX_URL;
+});
+
 test('AD7 uclar', () => {
   const s = fs.readFileSync(path.join(__dirname, '..', 'runner.cjs'), 'utf8');
   assert.match(s, /app\.get\('\/api\/ansible\/awx-servers\/yonetim', requireAuth, requireAdmin,/);
@@ -148,7 +191,8 @@ test('AD7 uclar', () => {
     'son etkin sunucu kosulu yok ya da reddetmiyor',
   );
   assert.match(b, /if \(!ozet\.kapatilabilir\) \{\s*return res\.status\(409\)/);
-  assert.match(b.slice(guncelle), /_serverTokenCaches\.delete\(no\)[\s\S]*await loadAwxServers\(\)/);
+  assert.match(b.slice(guncelle), /_serverTokenCaches\.delete\(no\)[\s\S]*awxSunucuDurumuBellekteUygula\(no, enabled, satir\)[\s\S]*await loadAwxServers\(\)/);
+  assert.match(b.slice(guncelle), /if \(enabled && !yuklendi\) \{\s*return res\.status\(503\)/, 'basarisiz etkinlestirme basari donuyor');
   assert.doesNotMatch(b, /DELETE FROM ansible_awx_servers/);
   const y = s.indexOf("app.get('/api/ansible/awx-servers/yonetim'");
   assert.doesNotMatch(s.slice(y, y + 900), /token|password|client_secret/, 'liste ucu sir kolonu okuyor');
