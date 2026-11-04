@@ -984,6 +984,192 @@ const TABLES = [
       )`,
   },
   {
+    // Server Hub > Uygulama Envanteri (2026-11-04): /vhosting + /vhosting8 EAR/WAR taramasi. KOSU = bir
+    // tarama (filo ya da secili); hedefler PARTI'lere bolunup sirayla AWX'e gider. Ayni anda tek
+    // CALISIYOR kosu (server/server-hub/ear-envanter-poller.cjs). zamanlayici_anahtari haftalik kosunun
+    // ikinci kez acilmasini engeller. Sayimlar: tam / kismi (veri var, eksik) / kok_yok / basarisiz (veri yok).
+    name: 'ear_envanter_kosulari',
+    sql: `
+      CREATE TABLE ear_envanter_kosulari (
+        id                    INT IDENTITY(1,1) PRIMARY KEY,
+        kip                   NVARCHAR(8)    NOT NULL,
+        kaynak                NVARCHAR(16)   NOT NULL,
+        kapsam                NVARCHAR(16)   NOT NULL,
+        durum                 NVARCHAR(16)   NOT NULL,
+        beklenen              INT NOT NULL DEFAULT 0,
+        tam                   INT NOT NULL DEFAULT 0,
+        kismi                 INT NOT NULL DEFAULT 0,
+        kok_yok               INT NOT NULL DEFAULT 0,
+        basarisiz             INT NOT NULL DEFAULT 0,
+        parti_sayisi          INT NOT NULL DEFAULT 0,
+        parametreler          NVARCHAR(MAX)  NULL,
+        baslatan              NVARCHAR(128)  NOT NULL,
+        hata                  NVARCHAR(1000) NULL,
+        zamanlayici_anahtari  NVARCHAR(32)   NULL,
+        created_at            DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        finished_at           DATETIME2 NULL
+      )`,
+  },
+  {
+    // Kosunun partileri: hostlar JSON dizi [{host, ortam}]. BEKLIYOR -> CALISIYOR -> ALINIYOR -> BITTI.
+    name: 'ear_envanter_partileri',
+    sql: `
+      CREATE TABLE ear_envanter_partileri (
+        id                 INT IDENTITY(1,1) PRIMARY KEY,
+        kosu_id            INT NOT NULL,
+        parti_no           INT NOT NULL,
+        hostlar            NVARCHAR(MAX) NOT NULL,
+        host_sayisi        INT NOT NULL,
+        durum              NVARCHAR(16) NOT NULL,
+        awx_server_id      INT NULL,
+        awx_job_id         INT NULL,
+        awx_durum          NVARCHAR(16) NULL,
+        baslatma_denemesi  INT NOT NULL DEFAULT 0,
+        alim_denemesi      INT NOT NULL DEFAULT 0,
+        alim_at            DATETIME2 NULL,
+        hata               NVARCHAR(1000) NULL,
+        started_at         DATETIME2 NULL,
+        finished_at        DATETIME2 NULL,
+        CONSTRAINT UQ_eep_kosu_parti UNIQUE (kosu_id, parti_no)
+      )`,
+  },
+  {
+    // Kosu basina host sonucu. veri_var: tarayici paketi okundu (KOK_YOK da bir cevaptir). Agac
+    // satirlari DB'ye yazilmaz: /sw'deki ham dosyadan okunur (saklama suresi boyunca).
+    name: 'ear_envanter_hostlari',
+    sql: `
+      CREATE TABLE ear_envanter_hostlari (
+        id               INT IDENTITY(1,1) PRIMARY KEY,
+        kosu_id          INT NOT NULL,
+        parti_no         INT NOT NULL,
+        host             NVARCHAR(64)   NOT NULL,
+        ortam            NVARCHAR(128)  NULL,
+        durum            NVARCHAR(24)   NOT NULL,
+        playbook_durum   NVARCHAR(24)   NULL,
+        veri_var         BIT NOT NULL DEFAULT 0,
+        uygulama_sayisi  INT NOT NULL DEFAULT 0,
+        war_sayisi       INT NOT NULL DEFAULT 0,
+        giris            INT NULL,
+        sure_sn          FLOAT NULL,
+        python           NVARCHAR(32)   NULL,
+        kullanici        NVARCHAR(64)   NULL,
+        kokler           NVARCHAR(1000) NULL,
+        uyarilar         NVARCHAR(MAX)  NULL,
+        hata             NVARCHAR(1000) NULL,
+        ham_bayt         INT NULL,
+        taranma_utc      DATETIME2 NULL,
+        bildirilen_host  NVARCHAR(128)  NULL,
+        alindi_at        DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        CONSTRAINT UQ_eeh_kosu_host UNIQUE (kosu_id, host)
+      )`,
+  },
+  {
+    // Uygulama (EAR) satiri. Anahtar (kosu_id, host, uyg_no); jboss kokten ('7' /vhosting, '8' /vhosting8).
+    // Teknoloji kolonlari WAR'lardan birlestirilir (ayni adda farkli surumler ', ' ile).
+    name: 'ear_envanter_uygulamalari',
+    sql: `
+      CREATE TABLE ear_envanter_uygulamalari (
+        id                    INT IDENTITY(1,1) PRIMARY KEY,
+        kosu_id               INT NOT NULL,
+        host                  NVARCHAR(64)  NOT NULL,
+        uyg_no                INT NOT NULL,
+        kip                   NVARCHAR(8)   NOT NULL,
+        kok                   NVARCHAR(128) NOT NULL,
+        jboss                 NVARCHAR(4)   NOT NULL,
+        ad                    NVARCHAR(256) NOT NULL,
+        bicim                 NVARCHAR(16)  NOT NULL,
+        durum                 NVARCHAR(24)  NOT NULL,
+        bag_hedefi            NVARCHAR(400) NULL,
+        giris                 INT NULL,
+        jsp                   INT NULL,
+        tld                   INT NULL,
+        jar                   INT NULL,
+        class_sayisi          INT NULL,
+        application_xml       BIT NULL,
+        ear_kutuphane_seti    CHAR(32) NULL,
+        ear_kutuphane_sayisi  INT NULL,
+        war_sayisi            INT NULL,
+        yapi_izi              VARCHAR(32) NULL,
+        kutuphane_izi         VARCHAR(32) NULL,
+        spring_boot           NVARCHAR(100) NULL,
+        spring_framework      NVARCHAR(100) NULL,
+        log4j                 NVARCHAR(100) NULL,
+        servlet               NVARCHAR(16)  NULL,
+        uyari_sayisi          INT NULL,
+        uyarilar              NVARCHAR(MAX) NULL
+      )`,
+  },
+  {
+    // WAR satiri (acik dizin, paketli .war ya da .ear arsivinin icinde). kutuphane_seti -> setler tablosu.
+    name: 'ear_envanter_warlari',
+    sql: `
+      CREATE TABLE ear_envanter_warlari (
+        id                          INT IDENTITY(1,1) PRIMARY KEY,
+        kosu_id                     INT NOT NULL,
+        host                        NVARCHAR(64)  NOT NULL,
+        uyg_no                      INT NOT NULL,
+        war_no                      INT NOT NULL,
+        yol                         NVARCHAR(400) NULL,
+        ad                          NVARCHAR(256) NULL,
+        bicim                       NVARCHAR(16)  NULL,
+        durum                       NVARCHAR(24)  NULL,
+        jsp                         INT NULL,
+        tld                         INT NULL,
+        jar                         INT NULL,
+        class_sayisi                INT NULL,
+        tld_dizini                  BIT NULL,
+        web_xml                     BIT NULL,
+        web_varyantlari             NVARCHAR(400) NULL,
+        jboss_web_xml               BIT NULL,
+        jboss_deployment_structure  BIT NULL,
+        kutuphane_seti              CHAR(32) NULL,
+        kutuphane_sayisi            INT NULL,
+        spring_boot                 NVARCHAR(64) NULL,
+        spring_framework            NVARCHAR(64) NULL,
+        spring_security             NVARCHAR(64) NULL,
+        log4j                       NVARCHAR(64) NULL,
+        logback                     NVARCHAR(64) NULL,
+        jackson                     NVARCHAR(64) NULL,
+        thymeleaf                   NVARCHAR(64) NULL,
+        struts                      NVARCHAR(64) NULL,
+        servlet                     NVARCHAR(16) NULL
+      )`,
+  },
+  {
+    // Kutuphane listesi parmak iziyle BIR KEZ (eslenik sunucularda ayni liste yuzlerce kez tekrarlanir).
+    name: 'ear_envanter_kutuphane_setleri',
+    sql: `
+      CREATE TABLE ear_envanter_kutuphane_setleri (
+        iz          CHAR(32) NOT NULL PRIMARY KEY,
+        sayi        INT NOT NULL,
+        created_at  DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+      )`,
+  },
+  {
+    name: 'ear_envanter_set_kutuphaneleri',
+    sql: `
+      CREATE TABLE ear_envanter_set_kutuphaneleri (
+        iz     CHAR(32) NOT NULL,
+        sira   INT NOT NULL,
+        ad     NVARCHAR(200) NOT NULL,
+        surum  NVARCHAR(100) NOT NULL,
+        boyut  BIGINT NULL,
+        CONSTRAINT PK_eesk PRIMARY KEY (iz, sira)
+      )`,
+  },
+  {
+    // Uygulama Envanteri ayarlari (zamanlayici, parti, kimlik, kokler, saklama); yalniz varsayilandan
+    // farkli olan satir tutulur (server/server-hub/ear-envanter-ayar.cjs).
+    name: 'ear_envanter_ayarlar',
+    sql: `
+      CREATE TABLE ear_envanter_ayarlar (
+        anahtar     NVARCHAR(64)  NOT NULL PRIMARY KEY,
+        deger       NVARCHAR(400) NOT NULL,
+        updated_by  NVARCHAR(128) NOT NULL,
+        updated_at  DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+      )`,
+  },
+  {
     // Uygulama Retirement (2026-09-21, kullanici talebi): ekibin elle surecinin (Smart silme kaydi ->
     // stop -> secilen tarihte silme -> IP/LB/DNS kayitlari) Portal'da takibi. Kayit = uygulama (tum
     // ortamlar/siteler); silme tarihi kaydi acan secer, bos ise stop + delete_after_days (45).
@@ -3452,6 +3638,17 @@ const PLAYBOOK_REGISTRY_SEED = [
     env_var_name: 'REBOOT_CHECK_TEMPLATE_ID',
   },
   {
+    // Server Hub > Uygulama Envanteri (2026-11-04): /vhosting + /vhosting8 EAR/WAR, SALT OKUNUR.
+    key_name: 'server_hub_ear_envanter',
+    display_name: 'Server Hub — Uygulama Envanteri',
+    category: 'system',
+    handler: 'server_hub_ear_envanter',
+    description:
+      'bmw_portal/ear_envanter/ear_envanter.yml — hedeflerde tek raw gorevi (python3 -B -, tirnakli heredoc; dosya kopyalanmaz, hicbir sey yazilmaz) ile EAR/WAR, JSP/TLD/JAR sayilari, Spring/log4j surumleri ve (TAM kip) dosya agaci; sonuc /sw (EAR_ENVANTER_DIR) uzerinden Portal DB\'ye alinir. Portal hedefleri partilere boler (hedefler, ear_kip, ear_kosu_no, ear_parti_no, ear_dizin, ear_okuma_kullanicisi, ear_kokler). Variables prompt-on-launch ACIK olmali; Forks 50. Yalniz Admin.',
+    playbook_path: null,
+    env_var_name: 'EAR_ENVANTER_TEMPLATE_ID',
+  },
+  {
     key_name: 'server_hub_fix',
     display_name: 'Server Hub — Duzelt',
     category: 'system',
@@ -5106,6 +5303,17 @@ async function setupTables() {
     { name: 'IX_nlarac_job', table: 'nginx_loadtest_araclar', cols: 'awx_server_id, awx_job_id' },
     // Gece kuyrugu: ogeler kuyruga ve siraya gore okunur.
     { name: 'IX_nlko_kuyruk', table: 'nginx_loadtest_kuyruk_ogeler', cols: 'kuyruk_id, sira' },
+    // Uygulama Envanteri: "son durum" host basina MAX(kosu_id); listeler (kosu, host) ile birlesir.
+    { name: 'IX_eek_durum', table: 'ear_envanter_kosulari', cols: 'durum, id' },
+    { name: 'IX_eek_zaman', table: 'ear_envanter_kosulari', cols: 'zamanlayici_anahtari' },
+    { name: 'IX_eep_durum', table: 'ear_envanter_partileri', cols: 'durum, kosu_id' },
+    { name: 'IX_eeh_host', table: 'ear_envanter_hostlari', cols: 'host, veri_var, kosu_id' },
+    { name: 'IX_eeu_kosu_host', table: 'ear_envanter_uygulamalari', cols: 'kosu_id, host, uyg_no' },
+    { name: 'IX_eeu_host_kosu', table: 'ear_envanter_uygulamalari', cols: 'host, kosu_id' },
+    { name: 'IX_eeu_ad', table: 'ear_envanter_uygulamalari', cols: 'ad' },
+    { name: 'IX_eew_kosu_host', table: 'ear_envanter_warlari', cols: 'kosu_id, host, uyg_no' },
+    { name: 'IX_eew_set', table: 'ear_envanter_warlari', cols: 'kutuphane_seti' },
+    { name: 'IX_eesk_ad', table: 'ear_envanter_set_kutuphaneleri', cols: 'ad, surum' },
   ];
   for (const { name, table, cols } of indexes) {
     try {

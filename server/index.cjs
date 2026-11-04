@@ -170,6 +170,13 @@ async function main() {
       optional: true,
     },
     {
+      // Server Hub > Uygulama Envanteri (2026-11-04): kosu yurutucusu (parti baslatma, /sw alimi,
+      // haftalik zamanlayici, saklama). Uclar serverHub router'inda; launch oradan verilir.
+      name: 'earEnvanter',
+      init: () => require('./server-hub/ear-envanter-poller.cjs').startPoller(),
+      optional: true,
+    },
+    {
       name: 'cryptoHub',
       init: () => require('./crypto-hub/index.cjs').initCryptoHub(app),
       optional: true,

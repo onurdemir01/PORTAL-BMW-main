@@ -1,0 +1,507 @@
+// server/server-hub/ear-envanter-alim.cjs - Uygulama Envanteri: /sw ham dosyasi -> DB (2026-11-04).
+//
+// ear_envanter.yml her host icin <EAR_ENVANTER_DIR>/kosu-<id>/raw/<HOST>.out yazar: isaretler arasinda
+// zlib + base64 JSON (ear_tara.py, sema 1). Bu modul:
+//   1. dosyayi SINIRLI okur (boyut once stat ile; acilmis JSON zlib maxOutputLength ile sinirli),
+//   2. semayi dogrular ve kayitlari duzler (her metin kirpilir; agac satirlari DB'ye YAZILMAZ),
+//   3. kutuphane listelerinden teknoloji kolonlarini cikarir (Spring Boot / Framework, log4j ...),
+//   4. host basina TEK transaction ile yazar (yeniden alim ayni host satirlarini silip yeniden yazar).
+//
+// KUTUPHANE SETLERI: ayni uygulamanin eslenik sunuculardaki WAR'lari ayni kutuphane listesini tasir.
+// Liste her WAR satirina yazilsa haftalik filo kosusu yuzlerce MB olurdu; liste parmak iziyle
+// (sha256, 32 hex) BIR KEZ yazilir, WAR satiri yalniz izi tasir.
+//
+// BELLEK (OOM sinifi, 2026-09): ham dosya ve acilmis JSON ayri sinirli; buyuk metinden alt dizi
+// (V8 sliced string) tutulmaz, base64 dogrudan Buffer dilimi uzerinden cozulur. Agac satirlari
+// alimdan sonra birakilir.
+'use strict';
+
+const crypto = require('node:crypto');
+const fs = require('node:fs');
+const path = require('node:path');
+const zlib = require('node:zlib');
+
+const BASLA = Buffer.from('@@EAR_ENVANTER_BASLA@@');
+const BITTI = Buffer.from('@@EAR_ENVANTER_BITTI@@');
+const HAM_SINIR = 48 * 1024 * 1024;
+const JSON_SINIR = 64 * 1024 * 1024;
+const SINIR_UYGULAMA = 2000;
+const SINIR_WAR = 200;
+const SINIR_KUTUPHANE = 2000;
+const VARSAYILAN_DIZIN = '/sw/BMW_PORTAL/ear_envanter';
+const HOST_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$/;
+
+// Host durumlari. veri_var: tarayici paketi okundu (KOK_YOK da bir cevaptir: o sunucuda uygulama yok).
+const HOST_DURUMLARI = Object.freeze([
+  'TAM',
+  'KISMI',
+  'KOK_YOK',
+  'ZAMAN_ASIMI',
+  'PYTHON_YOK',
+  'KIMLIK_GECISI_YOK',
+  'ULASILAMADI',
+  'YAZILAMADI',
+  'HATA',
+  'SONUC_YOK',
+  'OKUNAMADI',
+]);
+
+function kodluHata(kod, mesaj) {
+  return Object.assign(new Error(mesaj), { kod });
+}
+
+const M = (v, n) => String(v == null ? '' : v).slice(0, n);
+const S = (v) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.max(0, Math.min(Math.trunc(n), 2147483647)) : 0;
+};
+const B = (v) => (v === true ? 1 : 0);
+
+/**
+ * Cikti koku. Env (Admin > Sistem, EAR_ENVANTER_DIR) HER KULLANIMDA okunur; gecersizse varsayilan.
+ * Mutlak, '..' yok, en az iki seviye (kok '/' ya da '/sw' silinecek dizin olarak secilemesin).
+ */
+function earDizin(env = process.env) {
+  const s = String(env.EAR_ENVANTER_DIR || '')
+    .trim()
+    .replace(/\/+$/, '');
+  if (!s) return VARSAYILAN_DIZIN;
+  const parcalar = s.split('/');
+  if (!/^\/[A-Za-z0-9_][A-Za-z0-9._/-]*$/.test(s) || parcalar.includes('..') || parcalar.length < 3)
+    return VARSAYILAN_DIZIN;
+  return s;
+}
+
+function hamDosyaYolu(dizin, kosuId, host) {
+  if (!Number.isInteger(Number(kosuId)) || !HOST_RE.test(String(host)))
+    throw kodluHata('GECERSIZ', 'geçersiz koşu / host');
+  return path.join(dizin, `kosu-${Number(kosuId)}`, 'raw', `${String(host).toUpperCase()}.out`);
+}
+
+/** Dosyayi sinirli okur: once stat; sinir asilirsa okumaz. */
+async function hamOku(yol) {
+  let st;
+  try {
+    st = await fs.promises.stat(yol);
+  } catch (e) {
+    throw kodluHata(
+      e.code === 'ENOENT' ? 'DOSYA_YOK' : 'OKUNAMADI',
+      `ham dosya okunamadı (${e.code || e.message})`,
+    );
+  }
+  if (!st.isFile()) throw kodluHata('OKUNAMADI', 'ham dosya düz dosya değil');
+  if (st.size > HAM_SINIR)
+    throw kodluHata(
+      'COK_BUYUK',
+      `ham dosya ${Math.round(st.size / 1048576)} MB (sınır ${HAM_SINIR / 1048576} MB)`,
+    );
+  try {
+    return await fs.promises.readFile(yol);
+  } catch (e) {
+    throw kodluHata('OKUNAMADI', `ham dosya okunamadı (${e.code || e.message})`);
+  }
+}
+
+/** Ham cikti (Buffer) -> tarayici yuku. Isaret yok / bozuk / sinir asimi / sema disi -> kodlu hata. */
+function paketCoz(buf) {
+  const a = buf.indexOf(BASLA);
+  const b = a < 0 ? -1 : buf.indexOf(BITTI, a + BASLA.length);
+  if (a < 0 || b < 0) throw kodluHata('PAKET_YOK', 'tarayıcı paketi yok (işaretler bulunamadı)');
+  // Base64 cozucu bosluk / satir sonunu yok sayar; latin1 kopyasi ASCII'dir ve hemen birakilir.
+  const z = Buffer.from(buf.subarray(a + BASLA.length, b).toString('latin1'), 'base64');
+  let ham;
+  try {
+    ham = zlib.inflateSync(z, { maxOutputLength: JSON_SINIR });
+  } catch (e) {
+    if (e && (e.code === 'ERR_BUFFER_TOO_LARGE' || /larger than/i.test(e.message)))
+      throw kodluHata('COK_BUYUK', `açılmış paket ${JSON_SINIR / 1048576} MB sınırını aştı`);
+    throw kodluHata('BOZUK', `paket açılamadı (${e.code || e.message})`);
+  }
+  let p;
+  try {
+    p = JSON.parse(ham.toString('utf8'));
+  } catch {
+    throw kodluHata('BOZUK', 'paket JSON değil');
+  }
+  if (!p || typeof p !== 'object' || p.sema !== 1 || !Array.isArray(p.uygulamalar))
+    throw kodluHata('SEMA', `beklenmeyen paket şeması (${p && p.sema})`);
+  return p;
+}
+
+/** '/vhosting8' -> '8', '/vhosting' -> '7', digeri '?'. Koke gore JBoss nesli (pilot: ayni EAR iki kokte). */
+function jbossOf(kok) {
+  const s = String(kok || '').replace(/\/+$/, '');
+  if (/\/vhosting8$/.test(s)) return '8';
+  if (/\/vhosting$/.test(s)) return '7';
+  return '?';
+}
+
+const anaSurum = (v) => {
+  const m = /^(\d+)/.exec(String(v || ''));
+  return m ? Number(m[1]) : null;
+};
+
+/**
+ * Kutuphane listesi [[ad, surum, boyut], ...] -> teknoloji kolonlari. Ayni adda birden cok jar
+ * (cakisan surumler) varsa surumler ', ' ile birlesir: ekran bunu GIZLEMEZ.
+ * servlet: jakarta.* / javax.* jar'i, yoksa Spring nesli (Boot 3+ / Framework 6+ jakarta).
+ */
+function teknoloji(liste) {
+  const surumler = new Map();
+  let jakarta = false;
+  let javax = false;
+  for (const k of Array.isArray(liste) ? liste : []) {
+    const ad = String((k && k[0]) || '').toLowerCase();
+    const surum = String((k && k[1]) || '');
+    if (ad.startsWith('jakarta.')) jakarta = true;
+    if (ad.startsWith('javax.')) javax = true;
+    if (!surumler.has(ad)) surumler.set(ad, new Set());
+    if (surum) surumler.get(ad).add(surum);
+  }
+  const al = (...adlar) => {
+    const out = new Set();
+    for (const a of adlar) for (const s of surumler.get(a) || []) out.add(s);
+    return M([...out].sort().join(', '), 64) || null;
+  };
+  const boot = al('spring-boot');
+  const fw = al('spring-core');
+  if (!jakarta && !javax) {
+    const b = anaSurum(boot);
+    const f = anaSurum(fw);
+    if ((b != null && b >= 3) || (f != null && f >= 6)) jakarta = true;
+    else if ((b != null && b < 3) || (f != null && f < 6)) javax = true;
+  }
+  return {
+    spring_boot: boot,
+    spring_framework: fw,
+    spring_security: al('spring-security-core'),
+    log4j: al('log4j-core', 'log4j'),
+    logback: al('logback-classic', 'logback-core'),
+    jackson: al('jackson-databind'),
+    thymeleaf: al('thymeleaf'),
+    struts: al('struts2-core', 'struts-core', 'struts'),
+    servlet: jakarta && javax ? 'karisik' : jakarta ? 'jakarta' : javax ? 'javax' : null,
+  };
+}
+
+/** Kutuphane listesi -> { iz, satirlar } (sirali, kirpilmis). Bos liste -> null. */
+function kutuphaneSeti(liste) {
+  const satirlar = (Array.isArray(liste) ? liste : [])
+    .slice(0, SINIR_KUTUPHANE)
+    .map((k) => [M(k && k[0], 200), M(k && k[1], 100), S(k && k[2])])
+    .sort((x, y) =>
+      x[0] < y[0] ? -1 : x[0] > y[0] ? 1 : x[1] < y[1] ? -1 : x[1] > y[1] ? 1 : x[2] - y[2],
+    );
+  if (!satirlar.length) return null;
+  const iz = crypto
+    .createHash('sha256')
+    .update(JSON.stringify(satirlar))
+    .digest('hex')
+    .slice(0, 32);
+  return { iz, satirlar };
+}
+
+const birlesik = (degerler, n) => {
+  const s = new Set();
+  for (const v of degerler) if (v) for (const p of String(v).split(', ')) s.add(p);
+  return M([...s].sort().join(', '), n) || null;
+};
+
+/**
+ * Tarayici yuku -> DB'ye yazilacak duz kayitlar. Agac satirlari (satirlar) ALINMAZ.
+ * @returns {{ host: object, uygulamalar: object[], warlar: object[], setler: Map<string, Array<[string, string, number]>> }}
+ */
+function hostKaydi(p, { host, kip, partiNo, ortam, playbookDurum, hamBayt }) {
+  const setler = new Map();
+  const setEkle = (liste) => {
+    const s = kutuphaneSeti(liste);
+    if (!s) return null;
+    if (!setler.has(s.iz)) setler.set(s.iz, s.satirlar);
+    return s.iz;
+  };
+  const uygulamalar = [];
+  const warlar = [];
+  const kaynak = p.uygulamalar.slice(0, SINIR_UYGULAMA);
+  kaynak.forEach((u, i) => {
+    const wlist = (Array.isArray(u.warlar) ? u.warlar : []).slice(0, SINIR_WAR);
+    const wtek = wlist.map((w, j) => {
+      const t = teknoloji(w.kutuphaneler);
+      const kutuphaneSayisi = Array.isArray(w.kutuphaneler) ? w.kutuphaneler.length : 0;
+      const satir = {
+        uyg_no: i,
+        war_no: j,
+        yol: M(w.yol, 400),
+        ad: M(w.ad, 256),
+        bicim: M(w.bicim, 16),
+        durum: M(w.durum, 24),
+        jsp: S(w.jsp),
+        tld: S(w.tld),
+        jar: S(w.jar),
+        class_sayisi: S(w.class),
+        tld_dizini: B(w.tld_dizini),
+        web_xml: B(w.web_xml),
+        web_varyantlari:
+          M((Array.isArray(w.web_varyantlari) ? w.web_varyantlari : []).join(','), 400) || null,
+        jboss_web_xml: B(w.jboss_web_xml),
+        jboss_deployment_structure: B(w.jboss_deployment_structure),
+        kutuphane_seti: setEkle(w.kutuphaneler),
+        kutuphane_sayisi: S(kutuphaneSayisi),
+        ...t,
+      };
+      warlar.push(satir);
+      return satir;
+    });
+    const earLib = Array.isArray(u.ear_kutuphaneleri) ? u.ear_kutuphaneleri : [];
+    const earTek = teknoloji(earLib);
+    uygulamalar.push({
+      uyg_no: i,
+      kip: M(kip, 8),
+      kok: M(u.kok, 128),
+      jboss: jbossOf(u.kok),
+      ad: M(u.ad, 256),
+      bicim: M(u.bicim, 16),
+      durum: M(u.durum, 24),
+      bag_hedefi: M(u.bag_hedefi, 400) || null,
+      giris: S(u.giris),
+      jsp: S(u.jsp),
+      tld: S(u.tld),
+      jar: S(u.jar),
+      class_sayisi: S(u.class),
+      application_xml: B(u.application_xml),
+      ear_kutuphane_seti: setEkle(earLib),
+      ear_kutuphane_sayisi: S(earLib.length),
+      war_sayisi: wtek.length,
+      yapi_izi: M(u.yapi_izi, 32) || null,
+      kutuphane_izi: M(u.kutuphane_izi, 32) || null,
+      spring_boot: birlesik([earTek.spring_boot, ...wtek.map((w) => w.spring_boot)], 100),
+      spring_framework: birlesik(
+        [earTek.spring_framework, ...wtek.map((w) => w.spring_framework)],
+        100,
+      ),
+      log4j: birlesik([earTek.log4j, ...wtek.map((w) => w.log4j)], 100),
+      servlet: birlesik([earTek.servlet, ...wtek.map((w) => w.servlet)], 16),
+      uyari_sayisi: S(u.uyari_sayisi),
+      uyarilar: M(
+        JSON.stringify(
+          (Array.isArray(u.uyarilar) ? u.uyarilar : []).slice(0, 20).map((x) => M(x, 300)),
+        ),
+        8000,
+      ),
+    });
+  });
+  const uyarilar = (Array.isArray(p.uyarilar) ? p.uyarilar : []).slice(0, 50).map((x) => M(x, 300));
+  if (p.uygulamalar.length > kaynak.length)
+    uyarilar.push(`uygulama sayısı ${p.uygulamalar.length}; ilk ${SINIR_UYGULAMA} alındı`);
+  const durum = HOST_DURUMLARI.includes(p.durum) ? p.durum : 'KISMI';
+  return {
+    host: {
+      parti_no: S(partiNo),
+      ortam: M(ortam, 128) || null,
+      durum: p.uygulamalar.length > kaynak.length && durum === 'TAM' ? 'KISMI' : durum,
+      playbook_durum: M(playbookDurum, 24) || null,
+      veri_var: 1,
+      uygulama_sayisi: uygulamalar.length,
+      war_sayisi: warlar.length,
+      giris: S(p.giris),
+      sure_sn: Number.isFinite(Number(p.sure_sn)) ? Number(p.sure_sn) : null,
+      python: M(p.python, 32) || null,
+      kullanici: M(p.kullanici, 64) || null,
+      kokler: M(JSON.stringify(Array.isArray(p.kokler) ? p.kokler.slice(0, 8) : []), 1000),
+      uyarilar: M(JSON.stringify(uyarilar), 16000),
+      hata: null,
+      ham_bayt: S(hamBayt),
+      // 'Z' atilir: DATETIME2 donusumu bicim kuralina takilmasin (deger zaten UTC).
+      taranma_utc: /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/.test(String(p.baslangic_utc || ''))
+        ? p.baslangic_utc.slice(0, 19)
+        : null,
+      bildirilen_host: M(p.host, 128) || null,
+    },
+    uygulamalar,
+    warlar,
+    setler,
+    host_adi: host,
+  };
+}
+
+/** Paket okunamayan host icin tek satir (uygulama yok, veri_var 0). */
+function bosHostKaydi({ partiNo, ortam, durum, playbookDurum, hata, hamBayt }) {
+  return {
+    host: {
+      parti_no: S(partiNo),
+      ortam: M(ortam, 128) || null,
+      durum: HOST_DURUMLARI.includes(durum) ? durum : 'HATA',
+      playbook_durum: M(playbookDurum, 24) || null,
+      veri_var: 0,
+      uygulama_sayisi: 0,
+      war_sayisi: 0,
+      giris: null,
+      sure_sn: null,
+      python: null,
+      kullanici: null,
+      kokler: null,
+      uyarilar: null,
+      hata: M(hata, 1000) || null,
+      ham_bayt: hamBayt == null ? null : S(hamBayt),
+      taranma_utc: null,
+      bildirilen_host: null,
+    },
+    uygulamalar: [],
+    warlar: [],
+    setler: new Map(),
+  };
+}
+
+const HOST_KOLONLAR = [
+  'parti_no INT',
+  'ortam NVARCHAR(128)',
+  'durum NVARCHAR(24)',
+  'playbook_durum NVARCHAR(24)',
+  'veri_var BIT',
+  'uygulama_sayisi INT',
+  'war_sayisi INT',
+  'giris INT',
+  'sure_sn FLOAT',
+  'python NVARCHAR(32)',
+  'kullanici NVARCHAR(64)',
+  'kokler NVARCHAR(1000)',
+  'uyarilar NVARCHAR(MAX)',
+  'hata NVARCHAR(1000)',
+  'ham_bayt INT',
+  'taranma_utc DATETIME2',
+  'bildirilen_host NVARCHAR(128)',
+];
+const UYG_KOLONLAR = [
+  'uyg_no INT',
+  'kip NVARCHAR(8)',
+  'kok NVARCHAR(128)',
+  'jboss NVARCHAR(4)',
+  'ad NVARCHAR(256)',
+  'bicim NVARCHAR(16)',
+  'durum NVARCHAR(24)',
+  'bag_hedefi NVARCHAR(400)',
+  'giris INT',
+  'jsp INT',
+  'tld INT',
+  'jar INT',
+  'class_sayisi INT',
+  'application_xml BIT',
+  'ear_kutuphane_seti CHAR(32)',
+  'ear_kutuphane_sayisi INT',
+  'war_sayisi INT',
+  'yapi_izi VARCHAR(32)',
+  'kutuphane_izi VARCHAR(32)',
+  'spring_boot NVARCHAR(100)',
+  'spring_framework NVARCHAR(100)',
+  'log4j NVARCHAR(100)',
+  'servlet NVARCHAR(16)',
+  'uyari_sayisi INT',
+  'uyarilar NVARCHAR(MAX)',
+];
+const WAR_KOLONLAR = [
+  'uyg_no INT',
+  'war_no INT',
+  'yol NVARCHAR(400)',
+  'ad NVARCHAR(256)',
+  'bicim NVARCHAR(16)',
+  'durum NVARCHAR(24)',
+  'jsp INT',
+  'tld INT',
+  'jar INT',
+  'class_sayisi INT',
+  'tld_dizini BIT',
+  'web_xml BIT',
+  'web_varyantlari NVARCHAR(400)',
+  'jboss_web_xml BIT',
+  'jboss_deployment_structure BIT',
+  'kutuphane_seti CHAR(32)',
+  'kutuphane_sayisi INT',
+  'spring_boot NVARCHAR(64)',
+  'spring_framework NVARCHAR(64)',
+  'spring_security NVARCHAR(64)',
+  'log4j NVARCHAR(64)',
+  'logback NVARCHAR(64)',
+  'jackson NVARCHAR(64)',
+  'thymeleaf NVARCHAR(64)',
+  'struts NVARCHAR(64)',
+  'servlet NVARCHAR(16)',
+];
+const ad = (k) => k.split(' ')[0];
+
+// Host basina TEK batch: eski satirlar silinir, yenileri OPENJSON ile kume halinde yazilir. Yeni
+// kutuphane setleri NOT EXISTS + HOLDLOCK ile eklenir; satirlari yalniz BU transaction'in ekledigi
+// setler icin yazilir (iki surec ayni seti ayni anda gorurse ikincisi satir eklemez).
+const HOST_YAZ_SQL = `SET XACT_ABORT ON;
+BEGIN TRAN;
+DELETE FROM ear_envanter_warlari WHERE kosu_id = $1 AND host = $2;
+DELETE FROM ear_envanter_uygulamalari WHERE kosu_id = $1 AND host = $2;
+DELETE FROM ear_envanter_hostlari WHERE kosu_id = $1 AND host = $2;
+INSERT INTO ear_envanter_hostlari (kosu_id, host, ${HOST_KOLONLAR.map(ad).join(', ')})
+  SELECT $1, $2, j.* FROM OPENJSON($3) WITH (${HOST_KOLONLAR.join(', ')}) j;
+INSERT INTO ear_envanter_uygulamalari (kosu_id, host, ${UYG_KOLONLAR.map(ad).join(', ')})
+  SELECT $1, $2, j.* FROM OPENJSON($4) WITH (${UYG_KOLONLAR.join(', ')}) j;
+INSERT INTO ear_envanter_warlari (kosu_id, host, ${WAR_KOLONLAR.map(ad).join(', ')})
+  SELECT $1, $2, j.* FROM OPENJSON($5) WITH (${WAR_KOLONLAR.join(', ')}) j;
+DECLARE @yeni TABLE (iz CHAR(32) PRIMARY KEY);
+INSERT INTO ear_envanter_kutuphane_setleri (iz, sayi)
+  OUTPUT inserted.iz INTO @yeni
+  SELECT s.iz, s.sayi FROM OPENJSON($6) WITH (iz CHAR(32), sayi INT) s
+   WHERE NOT EXISTS (SELECT 1 FROM ear_envanter_kutuphane_setleri x WITH (UPDLOCK, HOLDLOCK) WHERE x.iz = s.iz);
+INSERT INTO ear_envanter_set_kutuphaneleri (iz, sira, ad, surum, boyut)
+  SELECT k.iz, k.sira, k.ad, k.surum, k.boyut
+    FROM OPENJSON($7) WITH (iz CHAR(32), sira INT, ad NVARCHAR(200), surum NVARCHAR(100), boyut BIGINT) k
+    JOIN @yeni y ON y.iz = k.iz;
+COMMIT;`;
+
+/**
+ * Kaydi DB'ye yazar. Yalniz DB'de olmayan setlerin satirlari gonderilir (onceden sorulur);
+ * yarisi HOST_YAZ_SQL'in kendi kosulu cozer.
+ */
+async function hostuYaz(dbx, kosuId, host, kayit) {
+  const izler = [...kayit.setler.keys()];
+  let eksik = izler;
+  if (izler.length) {
+    const { rows } = await dbx.query(
+      `SELECT iz FROM ear_envanter_kutuphane_setleri WHERE iz IN (SELECT value FROM OPENJSON($1))`,
+      [JSON.stringify(izler)],
+    );
+    const var_ = new Set((rows || []).map((r) => String(r.iz).trim()));
+    eksik = izler.filter((iz) => !var_.has(iz));
+  }
+  const setSatirlari = [];
+  for (const iz of eksik)
+    kayit.setler
+      .get(iz)
+      .forEach(([a, s, b], sira) => setSatirlari.push({ iz, sira, ad: a, surum: s, boyut: b }));
+  await dbx.query(HOST_YAZ_SQL, [
+    Number(kosuId),
+    String(host),
+    JSON.stringify([kayit.host]),
+    JSON.stringify(kayit.uygulamalar),
+    JSON.stringify(kayit.warlar),
+    JSON.stringify(eksik.map((iz) => ({ iz, sayi: kayit.setler.get(iz).length }))),
+    JSON.stringify(setSatirlari),
+  ]);
+  return { uygulama: kayit.uygulamalar.length, war: kayit.warlar.length, yeniSet: eksik.length };
+}
+
+module.exports = {
+  BASLA,
+  BITTI,
+  HAM_SINIR,
+  JSON_SINIR,
+  HOST_RE,
+  HOST_DURUMLARI,
+  VARSAYILAN_DIZIN,
+  HOST_YAZ_SQL,
+  kodluHata,
+  earDizin,
+  hamDosyaYolu,
+  hamOku,
+  paketCoz,
+  jbossOf,
+  teknoloji,
+  kutuphaneSeti,
+  hostKaydi,
+  bosHostKaydi,
+  hostuYaz,
+};

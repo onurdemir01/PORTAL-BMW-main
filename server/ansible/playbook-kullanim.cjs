@@ -48,6 +48,7 @@ const KULLANIM = Object.freeze({
   server_hub_scan: 'Server Hub (tarama) ve App Retirement',
   server_hub_fix: 'Server Hub (düzeltme) ve App Retirement',
   reboot_check: 'Server Hub > Reboot Kontrolü',
+  server_hub_ear_envanter: 'Server Hub > Uygulama Envanteri',
   app_retirement_stop: 'App Retirement (durdurma)',
   app_retirement_delete: 'App Retirement (silme)',
   app_retirement_rollback: 'App Retirement (geri alma)',

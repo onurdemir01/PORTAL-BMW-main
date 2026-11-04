@@ -115,6 +115,8 @@ const BEKLENEN_PLAYBOOK = Object.freeze({
   reboot_check: 'reboot_check.yml',
   // Nginx Hub Yuk Testi: yanlis sablon baska bir isi yuk testi degiskenleriyle kosturmasin.
   nginx_loadtest_run: 'nginx_loadtest.yml',
+  // Server Hub > Uygulama Envanteri: salt okunur tarama; yanlis sablon baska isi hedefler listesiyle kosturmasin.
+  server_hub_ear_envanter: 'ear_envanter.yml',
 });
 /** Playbook Kayitlari anahtarina gore sablonun playbook'unu dogrular. */
 function assertRegistryPlaybook(serverId, templateId, key) {

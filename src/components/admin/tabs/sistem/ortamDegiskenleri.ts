@@ -170,6 +170,16 @@ export const ENV_VARS: EnvVarMeta[] = [
     tur: 'sayi',
   },
   {
+    key: 'EAR_ENVANTER_DIR',
+    label: 'Uygulama Envanteri Çıktı Dizini',
+    group: 'Ansible (AWX)',
+    description:
+      "Server Hub › Uygulama Envanteri taramasının sunucu başına sonuç dosyalarını yazdığı paylaşılan dizin (playbook'a ear_dizin olarak gider). Portal bu dizini okuyabilmeli; AWX işi /sw'ye yazıcı sunucu üzerinden yazar. Boş = /sw/BMW_PORTAL/ear_envanter. Kayıt anında geçerlidir.",
+    required: false,
+    example: '/sw/BMW_PORTAL/ear_envanter',
+    usedIn: 'server/server-hub/ear-envanter-alim.cjs',
+  },
+  {
     key: 'TEAMS_LONGJOB_WEBHOOK_URL',
     label: 'Uzun İş Bildirimi Webhook URL',
     group: 'Uzun iş bildirimi (Teams)',
