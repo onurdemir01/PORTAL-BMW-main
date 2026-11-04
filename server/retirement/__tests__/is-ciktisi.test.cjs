@@ -422,13 +422,16 @@ test('RC17 maske: ek anahtarlar, tirnakli / kacisli / bosluklu degerler, Basic v
   const sirli = [
     ['ansible_become_pass=GZ01 x', 'GZ01'], ['"ansible_become_pass": "GZ02"', 'GZ02'], ["'ansible_ssh_pass': 'GZ03'", 'GZ03'],
     ['client_secret=GZ04', 'GZ04'], ['"api_key": "GZ05"', 'GZ05'], ['{"token": "GZ06"}', 'GZ06'], ['X-Auth-Token: GZ07', 'GZ07'],
-    ['Authorization: Basic R1owOA==', 'R1owOA=='], ['https://kullanici:GZ09@awx.test/api', 'GZ09'],
+    ['Authorization: Basic R1owOA==', 'R1owOA=='], ['Authorization: ApiKey GZ08', 'GZ08'],
+    ['Authorization: AWS4-HMAC-SHA256 Credential=GZ081, SignedHeaders=host', 'GZ081'], ['{"Authorization":"GZ082"}', 'GZ082'],
+    ['{"http.Authorization":"GZ083"}', 'GZ083'], ['https://kullanici:GZ09@awx.test/api', 'GZ09'],
     ['"password": "Giz\\"liGZ10"', 'liGZ10'], ['"password": "it\'s GZ11"', 'GZ11'], ['password: "a GZ12"', 'GZ12'], ["cmd -password 'a GZ13' -x", 'GZ13'],
     ['--password=GZ14', 'GZ14'],
   ];
   for (const [g, s] of sirli) assert.ok(!M.maskele(g).includes(s), `${g} -> ${M.maskele(g)}`);
   for (const z of ['All assertions passed', 'bypass: yes', 'passed=3', 'GBJBOT01 : ok=3 changed=0 unreachable=0 failed=1', 'msg: Token expired', 'url: https://awx.test/api/v2/'])
     assert.equal(M.maskele(z), z, `zararsiz metin degisti: ${z}`);
+  assert.equal(M.maskele('NotAuthorization: public telemetry'), 'NotAuthorization: public telemetry');
 });
 
 test('RC18 olay islemesi bitmeden is bitmis sayilmaz: artimli okuma, onbellek silinmez, arsiv yok; bitince arsivlenir', async () => {
@@ -509,9 +512,33 @@ test("RC22 SOZLESME: sunucunun 409 mesajlari istemcinin kaliciMesaj'inda cumle t
 test('RC23 eski job-status result / fixResult maskeli; is gecmisi is numarasi indeksi tanimli', () => {
   const js = dilim(IDX, "router.get('/:id/targets/:tid/job-status", '// ── POLLER');
   assert.match(js, /result: maskeleDerin\(result\), fixResult: maskeleDerin\(fixResult\)/);
-  const d = M.maskeleDerin({ line: 'PLAN\tpassword=GZ1', blok: ['ProxyPass / https://u:GZ2@h/', 'ok'], n: 3, yok: null });
-  assert.ok(!JSON.stringify(d).includes('GZ1') && !JSON.stringify(d).includes('GZ2'));
-  assert.deepEqual([d.n, d.yok, d.blok[1]], [3, null, 'ok']);
+  const d = M.maskeleDerin({
+    line: 'PLAN\tpassword=GZ1',
+    blok: ['ProxyPass / https://u:GZ2@h/', { token: 'GZ3', normal: 'ok' }],
+    password: 'GZ4',
+    nested: {
+      api_key: 'GZ5', credential: { deger: 'GZ6' }, Authorization: 'ApiKey GZ7',
+      client_secret: 'GZ8', auth_token: 'GZ9', nullable: { password: null, api_key: null, Authorization: null },
+      password_hash: 'GZ15', token_value: 'GZ16', 'http.Authorization': 'GZ17',
+      token_count: 17, password_rotation_days: 30, credential_status: 'active', secret_detected: false,
+      yok: null,
+    },
+    n: 3,
+    yok: null,
+  });
+  for (const sir of ['GZ1', 'GZ2', 'GZ3', 'GZ4', 'GZ5', 'GZ6', 'GZ7', 'GZ8', 'GZ9', 'GZ15', 'GZ16', 'GZ17']) assert.ok(!JSON.stringify(d).includes(sir), `maskelenmemis sir: ${sir}`);
+  assert.deepEqual(
+    [d.n, d.yok, d.blok[1].normal, d.nested.yok, d.nested.nullable.password, d.nested.nullable.api_key, d.nested.nullable.Authorization],
+    [3, null, 'ok', null, null, null, null],
+  );
+  assert.deepEqual(
+    [d.blok[1].token, d.password, d.nested.api_key, d.nested.credential, d.nested.Authorization, d.nested.client_secret, d.nested.auth_token, d.nested.password_hash, d.nested.token_value, d.nested['http.Authorization']],
+    ['***', '***', '***', '***', '***', '***', '***', '***', '***', '***'],
+  );
+  assert.deepEqual(
+    [d.nested.token_count, d.nested.password_rotation_days, d.nested.credential_status, d.nested.secret_detected],
+    [17, 30, 'active', false],
+  );
   const SETUP = fs.readFileSync(path.join(__dirname, '..', '..', 'db', 'mssql-setup.cjs'), 'utf8');
   assert.match(SETUP, /\{ name: 'IX_ajh_job', table: 'ansible_job_history', cols: 'job_id, awx_server_id' \}/, 'ansible_job_history indekssiz (her kayit ekrani tam tarama)');
 });
