@@ -1,0 +1,20 @@
+{
+  "v": 4,
+  "createdOnFiles": { "v": 1, "at": "2026-11-04T09:40:00Z" },
+  "lists": "css",
+  "title": "BMW Portal",
+  "cover": "kapak",
+  "order": ["kapak", "harita", "buzdagi", "kapilar", "sihirbazlar", "yuktesti", "hublar", "denetim", "admin", "kalite"],
+  "sections": {
+    "s1": { "description": "Ne? Portal ve ekibin haritası", "start": "kapak" },
+    "s2": { "description": "Nasıl? Bir tıkın arkası ve tek onay katmanı", "start": "buzdagi" },
+    "s3": { "description": "Neler? Self Servis, Yük Testi, Hub'lar, Denetim", "start": "sihirbazlar" },
+    "s4": { "description": "Yönetim ve güvence: kod değil ayar, testler", "start": "admin" }
+  },
+  "faces": {
+    "space-grotesk": { "family": "Space Grotesk", "href": "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400..700&display=swap" },
+    "ibm-plex-sans": { "family": "IBM Plex Sans", "href": "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" },
+    "ibm-plex-mono": { "family": "IBM Plex Mono", "href": "https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap" }
+  },
+  "designSystems": []
+}
