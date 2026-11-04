@@ -27,7 +27,7 @@ export function eksenAdimlari(enBuyuk: number): number[] {
   return out;
 }
 
-function useGenislik(varsayilan = 420) {
+export function useGenislik(varsayilan = 420) {
   const ref = useRef<HTMLDivElement>(null);
   const [w, setW] = useState(varsayilan);
   useLayoutEffect(() => {

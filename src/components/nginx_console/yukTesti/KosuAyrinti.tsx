@@ -30,9 +30,12 @@
 // yüksek)" ve "Boşta NIC" kutulari, test trafigi grafigi (Mbps / hiz), adim ayrintisinda iki makinenin NIC ort. / en yuksek
 // + kullanim %, "Bellek ayrışımı" mini tablosu (Anon / Shmem / File / PSS / baglanti; taban / son / dinlenme) + olasi neden,
 // kosu duzeyi olasi sizinti kutusu. Eski kosu: kolon / kutu / grafik yok (tablo BIREBIR eskisi).
+// 2026-11-04: Admin'e baslikta etiketin yaninda kalem (EtiketDuzenle; PUT /kosular/:id/etiket), kayit ayrintiyi yerinde gunceller.
+// 2026-11-04 (kosu silme): Admin'e ya da kaydi baslatan kisiye "Sil" (tehlike tonu; suren iste kapali) -> KosuSilOnayi (kosu
+// numarasi yazilir) -> onSilindi (liste yeniden okunur). Kayit bulunamazsa (409 / 404 kosu_yok) "silinmiş olabilir" denir.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeftIcon, ArrowPathIcon, ChevronDownIcon, ChevronRightIcon, StopCircleIcon } from '@heroicons/react/24/outline';
-import { nginxLoadtestApi, type NlAdim, type NlAg, type NlBellekDetay, type NlBellekNoktasi, type NlKipDogrulama, type NlKipDurumu, type NlKosuAyrinti, type NlMotor, type NlNic, type NlProtokol } from '@/api/nginxLoadtestApi';
+import { ArrowLeftIcon, ArrowPathIcon, ChevronDownIcon, ChevronRightIcon, StopCircleIcon, TrashIcon } from '@heroicons/react/24/outline';
+import { nginxLoadtestApi, type NlSilinen, type NlAdim, type NlAg, type NlBellekDetay, type NlBellekNoktasi, type NlKipDogrulama, type NlKipDurumu, type NlKosuAyrinti, type NlMotor, type NlNic, type NlProtokol } from '@/api/nginxLoadtestApi';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { toast } from '@/hooks/useToast';
 import { Modal } from '@/components/common/Modal';
@@ -45,6 +48,8 @@ import HizGrafigi from './Grafik';
 import { H2_UYARI_KODU_RE, cpuOlculemediMetni, nedenAcikla, uyariAcikla } from './nedenler';
 import { KosuOzetSatiri, NedenListesi, OzetTablosu, nedenGruplari, ozetSec, reloadOzetMetni } from './SonucOzeti';
 import KosuCiktisi from './KosuCiktisi';
+import EtiketDuzenle from './EtiketDuzenle';
+import KosuSilOnayi from './KosuSilOnayi';
 import OnKontrolPaneli from './OnKontrolPaneli';
 import { Bolum, GecerlilikHapi, KosuDurumHapi, Tanim, TurMotorCipleri, islemEtiketi } from './YukUi';
 import {
@@ -52,7 +57,7 @@ import {
   bellekYuzdeMetni, butceSn, cpuMsMetni, durdurBaslatilamadiMetni, enYuksekNginxBellek, gecerlilikBilgisi, hataMetni, hizGrupla, hostCpuIpucu, kademeMetni, kalanSurecDurdurulabilir, mbMetni, motorOf, ondalik, seriAdi, sonucOkunuyorMetni,
   tekrarIpucu, turCumlesi, turEtiketi, uyarilariAyir, yenidenOkunabilir, yukCpuHucre, yukCpuKolonuVar, yuzde, type AdimBirimi,
   AG_KULLANIM_ESIK, BAGLANTI_IPUCU, BELLEK_NEDEN_METNI, BELLEK_PSS_IPUCU, NIC_IPUCU, TEST_TRAFIGI_IPUCU, agKolonuVar, bantMetni, bellekDetayVar, bellekSizintiMetni,
-  enYuksekTestTrafigi, nicSecimMetni,
+  enYuksekTestTrafigi, nicSecimMetni, kosuSahibiMi,
 } from './yukTestiOrtak';
 
 type Sekme = 'sonuc' | 'onkontrol' | 'cikti';
@@ -64,9 +69,15 @@ const SERBEST_SUNUCU_YOK = 'serbest hedef: sunucu ölçümü yok';
 /** Kosunun motoru: satirdaki deger (normallestirilmis), yoksa kanonik parametreden (eski kayit k6). */
 const kosuMotoru = (k: Pick<NlKosuAyrinti, 'motor' | 'parametreler'>): NlMotor => (k.motor === 'wrk' || k.motor === 'k6' ? k.motor : motorOf(k.parametreler));
 
-export default function KosuAyrinti({ kosuId, isAdmin, onGeri }: { kosuId: number; isAdmin: boolean; onGeri: () => void }) {
+export default function KosuAyrinti({ kosuId, isAdmin, onGeri, kullaniciAdi = null, onSilindi }: {
+  kosuId: number; isAdmin: boolean; onGeri: () => void; kullaniciAdi?: string | null;
+  /** Kayit silindi: cagiran listeye doner (liste yeniden okunur). */
+  onSilindi?: (silinen: NlSilinen[]) => void;
+}) {
   const [veri, setVeri] = useState<{ kosu: NlKosuAyrinti; adimlar: NlAdim[] } | null>(null);
   const [hata, setHata] = useState('');
+  const [bulunamadi, setBulunamadi] = useState(false);
+  const [silSor, setSilSor] = useState(false);
   const [sekme, setSekme] = useState<Sekme | null>(null);
   const [durdurSor, setDurdurSor] = useState(false);
   const [durduruluyor, setDurduruluyor] = useState(false);
@@ -81,8 +92,10 @@ export default function KosuAyrinti({ kosuId, isAdmin, onGeri }: { kosuId: numbe
       const r = await nginxLoadtestApi.kosu(kosuId);
       setVeri({ kosu: r.kosu, adimlar: r.adimlar });
       setHata('');
+      setBulunamadi(false);
     } catch (e) {
       setHata(e instanceof Error ? e.message : String(e));
+      setBulunamadi(!!e && typeof e === 'object' && (e as { code?: string }).code === 'kosu_yok');
     }
   }, [kosuId]);
   useAsyncEffect(async (alive) => { if (alive()) await yukle(); }, [yukle]);
@@ -166,7 +179,8 @@ export default function KosuAyrinti({ kosuId, isAdmin, onGeri }: { kosuId: numbe
     return (
       <div className="space-y-3">
         <button type="button" onClick={onGeri} className={LINK} style={{ color: 'var(--accent)' }}><ArrowLeftIcon className="h-3.5 w-3.5" aria-hidden /> Koşular</button>
-        {hata ? <UyariKutusu ton="hata" rol="alert" baslik={`Koşu #${kosuId} okunamadı`} eylem={<button type="button" onClick={() => void yukle()} className={TBL_BTN} style={smBtn()}>Yeniden dene</button>}>{hata}</UyariKutusu>
+        {hata && bulunamadi ? <UyariKutusu ton="uyari" rol="alert" baslik={`Koşu #${kosuId} bulunamadı`}>Bu kayıt silinmiş olabilir (elle ya da saklama süresi dolduğu için). Sunucudaki ham ölçüm dosyaları silinmez.</UyariKutusu>
+          : hata ? <UyariKutusu ton="hata" rol="alert" baslik={`Koşu #${kosuId} okunamadı`} eylem={<button type="button" onClick={() => void yukle()} className={TBL_BTN} style={smBtn()}>Yeniden dene</button>}>{hata}</UyariKutusu>
           : <div className="skeleton h-40 rounded-xl" aria-busy="true"><span className="sr-only">Koşu yükleniyor…</span></div>}
       </div>
     );
@@ -227,7 +241,12 @@ export default function KosuAyrinti({ kosuId, isAdmin, onGeri }: { kosuId: numbe
                   : `“Durdur” kipindeki AWX işi: iki sunucudaki ${motor} ve CPU kaydedicisini sonlandırır; başarıyla bitince kilitler bırakılır.`}>{`Durdurma işi AWX #${kosu.durdurIsi.awxJobId}`}</Cip>
               )}
             </div>
-            {kosu.etiket && <p className="mt-0.5 truncate text-[12px]" style={{ color: 'var(--text-secondary)' }} title={kosu.etiket}>{kosu.etiket}</p>}
+            {(kosu.etiket || isAdmin) && (
+              <div className="mt-0.5 flex min-w-0 items-center gap-1 text-[12px]" style={{ color: 'var(--text-secondary)' }}>
+                {kosu.etiket ? <span className="truncate" title={kosu.etiket}>{kosu.etiket}</span> : <span style={{ color: 'var(--text-muted)' }}>etiketsiz</span>}
+                {isAdmin && <EtiketDuzenle kosuId={kosu.id} etiket={kosu.etiket} onKaydedildi={(e) => setVeri((v) => (v ? { ...v, kosu: { ...v.kosu, etiket: e } } : v))} />}
+              </div>
+            )}
             {kosu.aracSeti && (
               <p className="mt-0.5 truncate text-[11px]" style={{ color: 'var(--text-secondary)' }}
                 title={`Derleme ${kosu.aracSeti.derlemeHost || '?'} · k6 sha256 ${kosu.aracSeti.k6Sha256 || '—'} · wrk sha256 ${kosu.aracSeti.wrkSha256 || '—'}`}>
@@ -243,6 +262,12 @@ export default function KosuAyrinti({ kosuId, isAdmin, onGeri }: { kosuId: numbe
             )}
             {isAdmin && (aktif || kalanDurdur) && (
               <button type="button" onClick={() => setDurdurSor(true)} className={SM_BTN} style={aktif ? BTN_TEHLIKE : BTN_UYARI}><StopCircleIcon className="h-3.5 w-3.5" aria-hidden /> {durdurDugmesi}</button>
+            )}
+            {kosuSahibiMi(kosu, isAdmin, kullaniciAdi) && (
+              <button type="button" onClick={() => setSilSor(true)} disabled={aktif} className={SM_BTN} style={BTN_TEHLIKE}
+                title={aktif ? 'Süren iş silinemez; bitmesini bekleyin ya da önce Durdur’u kullanın.' : 'Kaydı ve adım sonuçlarını Portal’dan siler (ham ölçüm dosyaları durur)'}>
+                <TrashIcon className="h-3.5 w-3.5" aria-hidden /> Sil
+              </button>
             )}
           </div>
         </div>
@@ -310,6 +335,15 @@ export default function KosuAyrinti({ kosuId, isAdmin, onGeri }: { kosuId: numbe
           )}
         </div>
       </section>
+
+      {silSor && (
+        <KosuSilOnayi kosular={[kosu]} toplu={false} onKapat={() => setSilSor(false)}
+          onSilindi={(silinen) => {
+            setSilSor(false);
+            toast.success(`${islemEtiketi(kosu.islem)} #${kosu.id} silindi. Sunucudaki ham ölçüm dosyaları durur.`);
+            (onSilindi || (() => onGeri()))(silinen);
+          }} />
+      )}
 
       <Modal open={durdurSor} onClose={() => { if (!durduruluyor) setDurdurSor(false); }}
         title={aktif ? `${islemEtiketi(kosu.islem)} #${kosu.id} durdurulsun mu?` : `Koşu #${kosu.id}: kalan süreçler durdurulsun mu?`} size="md" dismissOnBackdrop={false}

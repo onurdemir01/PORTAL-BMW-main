@@ -248,7 +248,7 @@ export default function NginxConsolePage() {
       {tab === 'rvpsecim' && canSee('tab:nginx:rvpsecim') && <RvpSecimTab />}
       {tab === 'cis' && canSee('tab:nginx:cis') && <CisTab isAdmin={isAdmin} onOpenHost={(h) => go('config', h)} />}
       {tab === 'ratelimit' && canSee('tab:nginx:ratelimit') && <RateLimitTab />}
-      {tab === 'yuktesti' && canSee('tab:nginx:yuktesti') && <YukTestiTab isAdmin={isAdmin} />}
+      {tab === 'yuktesti' && canSee('tab:nginx:yuktesti') && <YukTestiTab isAdmin={isAdmin} kullaniciAdi={user?.username ?? null} />}
       {tab === 'spadiscovery' && (canSee('tab:nginx:spadiscovery') || canSee('tab:nginx:spa')) && (
         <NginxSpaBirlesik
           kesifGorunur={canSee('tab:nginx:spadiscovery')}

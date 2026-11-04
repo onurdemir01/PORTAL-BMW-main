@@ -35,7 +35,13 @@
 // 2026-11-03 (K1-K3): sunucu hedefinde hiz <= 5000, VU <= 1000, wrk tavani 5000 (`maxTavanRps`); hedefin olculmus
 // limit_req / limit_conn'u (`limitReq` / `limitConn`) DARALTMAZ, asim plan uyarisidir. Yuk makinesi CPU'su: adim
 // `yukCpuBosta` (bosta %, eski kosu null) ve `yukDoydu` (doyma:yuk_cpu_bosta_ nedeni); on kontrol `yukPortSayisi` ...
-import { okJson, safeJson } from './http';
+// KOSU SILME (2026-11-04, kullanici: "istedigim yuk testi sonuclarini kaldirabilmek istiyorum"): DELETE /kosular/:id
+// (confirmText = kosu numarasi) ve POST /kosular/sil (en cok 50; confirmText = secilen sayi). Kosuyu baslatan kisi ya da
+// Admin. Hepsi ya da hic: silinemeyen varsa 409 + `silinemeyenler` (nedenleriyle), hicbir sey silinmez. Yalniz Portal
+// kayitlari (kosu + adim satirlari); /sw'deki ham olcum dosyalari durur. 403 / 404 nginxRed ile FIRLATILIR (safeJson).
+// Kuyruk ayrintisinda silinmis kosu `kosuSilindi` / `onKontrolSilindi`; coklu karsilastirmada 409 (kosu_yok /
+// kosu_uygun_degil) ayri listeler tasir: `eksik` (bulunamayan), `onKontrol` (on kontrol kaydi), `bitmemis` (suren kosu).
+import { okJson, safeJson, type ApiError } from './http';
 
 const BASE = '/api/nginx-loadtest';
 const json = (body: unknown, method = 'POST'): RequestInit => ({ method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -785,6 +791,112 @@ function karsilastirmaNormalle(x: NlKarsilastirma & { tablo?: unknown[] }): NlKa
   };
 }
 
+// ── COKLU KARSILASTIRMA (2026-11-04, server/nginx-loadtest/coklu.cjs) ──────────────────────────────────────
+// GET /karsilastir-coklu?ref=&kosular= (ref dahil en cok 16 kosu). Her aday ref'e karsi kararVer; hiz basina ozet ve
+// ref'e gore fark. `durum`: iyi / kotu = kararVer'in gurultu x3 / esik kurali asildi (renkli), gurultu_ici = kural var ama
+// asilmadi, renklendirilmez = o olcunun kurali yok (p99, host CPU, kapasite, bant, bellek), yok = bir taraf olculmedi.
+export type NlFarkDurumu = 'iyi' | 'kotu' | 'gurultu_ici' | 'renklendirilmez' | 'yok';
+export interface NlFark { yuzde: number | null; durum: NlFarkDurumu; esikYuzde: number | null; gurultuBilinmiyor: boolean }
+export type NlCokluOlcu = 'p95' | 'p99' | 'cpuMsIstek' | 'hostCpu' | 'hata' | 'kapasite' | 'bantBps' | 'bellekMb';
+export const COKLU_OLCULER: readonly NlCokluOlcu[] = ['p95', 'p99', 'cpuMsIstek', 'hostCpu', 'hata', 'kapasite', 'bantBps', 'bellekMb'];
+export interface NlCokluHiz {
+  hiz: number; p95: number | null; p99: number | null; cpuMsIstek: number | null; hostCpu: number | null; hata: number | null;
+  kapasite: number | null; bantBps: number | null; bellekMb: number | null; bellekKaynak: 'pss' | 'rss' | null;
+  kip: 'tamam' | 'uyari' | 'olculmedi'; gecerlilik: string; tekrar: number | null; gecerliTekrar: number | null;
+  gurultuCpu: number | null; gurultuP95: number | null;
+  /** Yalniz aday: ref'e gore fark (olcu basina). */
+  fark?: Partial<Record<NlCokluOlcu, NlFark>>;
+}
+export interface NlCokluKosu {
+  id: number; etiket: string | null; createdAt: string | null; createdBy: string | null; durum: string | null; gecerlilik: string | null;
+  motor: NlMotor; protokol: NlProtokol; hedefTuru: NlHedefTuru; hedefHost: string | null; hedefIp: string | null; vhost: string | null;
+  senaryoId: number | null; senaryoAd: string | null;
+}
+export type NlKademeFarki = NlFark & { hiz: number; ref: number | null; aday: number | null };
+export interface NlCokluAday extends NlCokluKosu {
+  karar: NlKarar; kararNedenleri: string[]; kademe: { cpu: number | null; p95: number | null } | null; hizlar: NlCokluHiz[];
+  kademeFarki: { cpu: NlKademeFarki | null; p95: NlKademeFarki | null; bant: NlKademeFarki | null; bellek: NlKademeFarki | null; hata: NlKademeFarki | null };
+}
+export interface NlCokluUyumsuz extends NlCokluKosu { nedenler: { kod: string; metin: string }[]; karar: NlKarar | null }
+export interface NlCokluKarsilastirma {
+  ok: true; ref: NlCokluKosu & { hizlar: NlCokluHiz[] }; adaylar: NlCokluAday[]; karsilastirilamaz: NlCokluUyumsuz[];
+  esikler: { esikCpu: number; esikP95: number; esikZarar: number };
+}
+const FARK_DURUMLARI = new Set<NlFarkDurumu>(['iyi', 'kotu', 'gurultu_ici', 'renklendirilmez', 'yok']);
+const metinYada = (v: unknown): string | null => (typeof v === 'string' && v !== '' ? v : null);
+function farkNormalle(x: unknown): NlFark {
+  const o = nesne(x);
+  return {
+    yuzde: sayiVeya(o.yuzde), durum: FARK_DURUMLARI.has(o.durum as NlFarkDurumu) ? (o.durum as NlFarkDurumu) : 'yok',
+    esikYuzde: sayiVeya(o.esikYuzde), gurultuBilinmiyor: o.gurultuBilinmiyor === true,
+  };
+}
+function cokluHizNormalle(x: unknown): NlCokluHiz {
+  const o = nesne(x);
+  const kip = o.kip === 'tamam' || o.kip === 'uyari' ? o.kip : 'olculmedi';
+  const h: NlCokluHiz = {
+    hiz: sayiVeya(o.hiz) ?? 0, p95: sayiVeya(o.p95), p99: sayiVeya(o.p99), cpuMsIstek: sayiVeya(o.cpuMsIstek), hostCpu: sayiVeya(o.hostCpu),
+    hata: sayiVeya(o.hata), kapasite: sayiVeya(o.kapasite), bantBps: sayiVeya(o.bantBps), bellekMb: sayiVeya(o.bellekMb),
+    bellekKaynak: o.bellekKaynak === 'pss' || o.bellekKaynak === 'rss' ? o.bellekKaynak : null, kip, gecerlilik: metinYada(o.gecerlilik) ?? '',
+    tekrar: sayiVeya(o.tekrar), gecerliTekrar: sayiVeya(o.gecerliTekrar), gurultuCpu: sayiVeya(o.gurultuCpu), gurultuP95: sayiVeya(o.gurultuP95),
+  };
+  if (o.fark && typeof o.fark === 'object') {
+    const f = nesne(o.fark);
+    h.fark = Object.fromEntries(COKLU_OLCULER.filter((k) => f[k] !== undefined).map((k) => [k, farkNormalle(f[k])]));
+  }
+  return h;
+}
+function cokluKosuNormalle(x: unknown): NlCokluKosu {
+  const o = nesne(x);
+  return {
+    id: sayiVeya(o.id) ?? 0, etiket: metinYada(o.etiket), createdAt: metinYada(o.createdAt), createdBy: metinYada(o.createdBy), durum: metinYada(o.durum),
+    gecerlilik: metinYada(o.gecerlilik), motor: o.motor === 'wrk' ? 'wrk' : 'k6', protokol: o.protokol === 'h2' ? 'h2' : 'h1',
+    hedefTuru: o.hedefTuru === 'serbest' ? 'serbest' : 'sunucu', hedefHost: metinYada(o.hedefHost), hedefIp: metinYada(o.hedefIp), vhost: metinYada(o.vhost),
+    senaryoId: sayiVeya(o.senaryoId), senaryoAd: metinYada(o.senaryoAd),
+  };
+}
+const hizlarNormalle = (x: unknown) => (Array.isArray(x) ? x.map(cokluHizNormalle) : []);
+function kademeFarkiNormalle(x: unknown): NlKademeFarki | null {
+  if (!x || typeof x !== 'object') return null;
+  const o = nesne(x);
+  const h = sayiVeya(o.hiz);
+  return h == null ? null : { ...farkNormalle(o), hiz: h, ref: sayiVeya(o.ref), aday: sayiVeya(o.aday) };
+}
+const metinListesi = (x: unknown) => (Array.isArray(x) ? x.filter((v): v is string => typeof v === 'string') : []);
+export function cokluNormalle(x: unknown): NlCokluKarsilastirma {
+  const o = nesne(x);
+  const e = nesne(o.esikler);
+  return {
+    ok: true,
+    ref: { ...cokluKosuNormalle(o.ref), hizlar: hizlarNormalle(nesne(o.ref).hizlar) },
+    adaylar: (Array.isArray(o.adaylar) ? o.adaylar : []).map((a) => {
+      const r = nesne(a);
+      const kf = nesne(r.kademeFarki);
+      const kd = nesne(r.kademe);
+      return {
+        ...cokluKosuNormalle(a), karar: (metinYada(r.karar) ?? 'VERI_YOK') as NlKarar, kararNedenleri: metinListesi(r.kararNedenleri),
+        kademe: r.kademe ? { cpu: sayiVeya(kd.cpu), p95: sayiVeya(kd.p95) } : null, hizlar: hizlarNormalle(r.hizlar),
+        kademeFarki: { cpu: kademeFarkiNormalle(kf.cpu), p95: kademeFarkiNormalle(kf.p95), bant: kademeFarkiNormalle(kf.bant), bellek: kademeFarkiNormalle(kf.bellek), hata: kademeFarkiNormalle(kf.hata) },
+      };
+    }),
+    karsilastirilamaz: (Array.isArray(o.karsilastirilamaz) ? o.karsilastirilamaz : []).map((a) => {
+      const r = nesne(a);
+      return {
+        ...cokluKosuNormalle(a), karar: (metinYada(r.karar) as NlKarar | null) ?? null,
+        nedenler: (Array.isArray(r.nedenler) ? r.nedenler : []).map((n) => ({ kod: metinYada(nesne(n).kod) ?? '', metin: metinYada(nesne(n).metin) ?? '' })),
+      };
+    }),
+    esikler: { esikCpu: sayiVeya(e.esikCpu) ?? 10, esikP95: sayiVeya(e.esikP95) ?? 10, esikZarar: sayiVeya(e.esikZarar) ?? 5 },
+  };
+}
+
+// ── KOSU SILME (2026-11-04) ───────────────────────────────────────────────────────────────────────────
+export const SIL_MAX_TOPLU = 50;
+export interface NlSilinen { id: number; islem: NlIslem; etiket: string | null; hedefHost: string | null; hedefIp: string | null; hedefTuru: NlHedefTuru }
+/** Silinemeyen kayit: kod kosu_yok | kosu_suruyor | kosu_kilitli | kuyruga_bagli | on_kontrol_bagli | islem_desteklenmiyor. */
+export interface NlSilEngeli { id: number; kod: string; metin: string; kuyrukId?: number | null; bagliKosuId?: number | null }
+export interface NlSilYaniti extends NlEylem { sayi?: number; silinen?: NlSilinen[]; silinemeyenler?: NlSilEngeli[]; yetkisiz?: number[] }
+
 // ── GECE KUYRUGU (2026-11-03, server/nginx-loadtest/kuyruk.cjs) ───────────────────────────────────────
 // Ardisik kosular, aralarinda dinlenme (kosu kilidi birakildiktan SONRA bekleme_dk). Sunucuda yurur; ekran yalniz
 // gosterir. Olusturma iki adim: 409 `uyari_onayi` + `uyariTurleri` -> kullanici turleri tek tek onaylar ->
@@ -804,6 +916,8 @@ export interface NlKuyrukOge {
   id: number; sira: number; etiket: string; durum: NlKuyrukOgeDurum; asama: 'on_kontrol' | 'kosu' | null;
   onKontrolKosuId: number | null; kosuId: number | null; neden: string | null; butceSn: number | null; uyariTurleri: NlUyariTuru[];
   baslamaAt: string | null; bitisAt: string | null; tahminiBaslangic?: string; tahminiBitis?: string; sureYetmeyebilir?: boolean;
+  /** 2026-11-04: oge numarasi kalir, kosu / on kontrol satiri silinmisse true (sunucu okuyamadiysa alan yok). */
+  kosuSilindi?: boolean; onKontrolSilindi?: boolean;
   ayar: { senaryoId: number | null; hedefIp: string | null; hedefHost: string | null; vhost: string | null; yukHost: string | null; parametreler: NlParametreler | null };
 }
 /** On kontrol govdesi (etiketsiz); etiket ogenin kendi alani. */
@@ -871,6 +985,37 @@ export const nginxLoadtestApi = {
     if (o.esikP95 != null) q.set('esikP95', String(o.esikP95));
     return karsilastirmaNormalle(await okJson<NlKarsilastirma>(await fetch(`${BASE}/karsilastir?${q}`)));
   },
+  /** Coklu karsilastirma (2026-11-04): ref + en cok 15 aday. 400 (16 siniri / gecersiz numara), 409 kosu_yok / kosu_uygun_degil
+   * (`eksik` / `onKontrol` / `bitmemis` hataya tasinir). */
+  karsilastirCoklu: async (o: { ref: number; kosular: number[]; esikCpu?: number; esikP95?: number }): Promise<NlCokluKarsilastirma> => {
+    const q = new URLSearchParams({ ref: String(o.ref), kosular: o.kosular.join(',') });
+    if (o.esikCpu != null) q.set('esikCpu', String(o.esikCpu));
+    if (o.esikP95 != null) q.set('esikP95', String(o.esikP95));
+    const res = await fetch(`${BASE}/karsilastir-coklu?${q}`);
+    // 409 govdesindeki uc liste (bulunamayan, on kontrol, bitmemis) hataya tasinir: ekran onlari secimden cikarir ve
+    // her biri icin ayri metin gosterir.
+    const kopya = typeof res.clone === 'function' ? res.clone() : null;
+    try {
+      return cokluNormalle(await okJson<unknown>(res));
+    } catch (e) {
+      const code = e && typeof e === 'object' ? (e as ApiError).code : undefined;
+      if (kopya && (code === 'kosu_yok' || code === 'kosu_uygun_degil')) {
+        const b = nesne(await kopya.json().catch(() => null));
+        const liste = (v: unknown) => (Array.isArray(v) ? v : []).map(Number).filter((n) => Number.isInteger(n) && n > 0);
+        for (const k of ['eksik', 'onKontrol', 'bitmemis'] as const) {
+          const l = liste(b[k]);
+          if (l.length) Object.assign(e as object, { [k]: l });
+        }
+      }
+      throw e;
+    }
+  },
+  /** Admin. Kosu etiketini degistirir (bos = kaldir); 400 uzunluk / kontrol karakteri, 409 kosu_yok. Denetime yazilir. */
+  etiketDegistir: (id: number, etiket: string): Promise<NlEylem & { etiket?: string | null }> => fetch(`${BASE}/kosular/${id}/etiket`, json({ etiket }, 'PUT')).then(safeJson),
+  /** Kosu ya da on kontrol kaydini siler (baslatan kisi ya da Admin). confirmText = kosu numarasi. 404 / 403 firlatilir. */
+  kosuSil: (id: number, confirmText: string): Promise<NlSilYaniti> => fetch(`${BASE}/kosular/${id}`, json({ confirmText }, 'DELETE')).then(safeJson),
+  /** Toplu silme (en cok 50; hepsi ya da hic). confirmText = secilen sayi. */
+  kosulariSil: (kosular: number[], confirmText: string): Promise<NlSilYaniti> => fetch(`${BASE}/kosular/sil`, json({ kosular, confirmText })).then(safeJson),
   /** Arac setleri (okuma Admin disina acik; `ayar.proxy` yalniz Admin'e dolu). */
   araclar: async (): Promise<NlAraclar> => araclarNormalle(await okJson<unknown>(await fetch(`${BASE}/araclar`))),
   /** Admin. 409 derleme_host_izinsiz / arac_proxy_gecersiz / arac_ozet_sabit_yok / kilit_dolu / sinir_asildi; 424 db_okunamadi. */

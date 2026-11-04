@@ -48,6 +48,15 @@
 // SONUC OZETI (sade turu, 2026-11-02): GET /kosular/:id adim satirlarina cpuOlculemedi + reloadlar ekler,
 // CPU-ms/istek ve kapasiteyi asla <= 0 dondurmez (eski satirda da; DB degismez) ve kosu.sonucOzeti
 // (toplam istek, en iyi / en kotu p95, 429 / 5xx / hata, konf degisimi, reload anlari) verir (gorunum.cjs).
+//
+// COKLU KARSILASTIRMA (2026-11-04, coklu.cjs): GET /karsilastir-coklu (ref + en cok 15 aday, her aday ref'e karsi
+// kararVer; hiz basina ozet ve gurultu kurali) ve PUT /kosular/:id/etiket (Admin; denetimli). /karsilastir AYNEN.
+//
+// KOSU SILME (2026-11-04, sil.cjs): DELETE /kosular/:id (onay = kosu numarasi) ve POST /kosular/sil (toplu, en cok 50;
+// onay = secilen sayi). Kosuyu baslatan kisi ya da Admin: bu iki uc adminOkumaKapisi'ndan SAHIP_SILME ile gecer (gorunurluk
+// ve sekme kapisi yine uygulanir), sahiplik isleyicide. Suren / kilitli / bekleyen-calisan kuyruk ogesine bagli / dinlenen
+// kuyrugun / dayanan kosusu olan on kontrol silinmez (409, nedenleriyle). Hepsi ya da hic (tek islem, kosullu DELETE).
+// /sw'deki ham olcum dosyalarina dokunulmaz. Denetim nginx_loadtest_kosu_sil.
 'use strict';
 
 const crypto = require('node:crypto');
@@ -59,6 +68,8 @@ const poller = require('./poller.cjs');
 const araclar = require('./araclar.cjs');
 const gorunum = require('./gorunum.cjs');
 const kuyruk = require('./kuyruk.cjs');
+const coklu = require('./coklu.cjs');
+const sil = require('./sil.cjs');
 const { adminOkumaKapisi, isAdmin } = require('../auth/admin-okuma-kapisi.cjs');
 
 const TERMINAL = new Set(['successful', 'failed', 'error', 'canceled']);
@@ -70,6 +81,9 @@ const SEKME = 'tab:nginx:yuktesti';
 const BASLATMA_PENCERESI_SN = 120;
 // Tutulan kosu kilidinin ek suresi (butce + bu kadar); poller ile ayni.
 const KILIT_EK_SN = 180;
+// Etiket duzenleme (PUT /kosular/:id/etiket): C0 / DEL / C1 kontrol karakteri ve satir / paragraf ayirici yok.
+// eslint-disable-next-line no-control-regex
+const ETIKET_YASAK = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/;
 const LISTE_ISLEMLERI = new Set(['kosu', 'on_kontrol']);
 const LISTE_DURUMLARI = new Set(['QUEUED', 'RUNNING', 'FINALIZING', 'DONE', 'FAILED', 'CANCELED', 'OKUNAMADI']);
 
@@ -81,9 +95,16 @@ const ADMIN_DISI_OKUMA = Object.freeze([
   /^\/kosular\/?$/,
   /^\/kosular\/\d+\/?$/,
   /^\/karsilastir\/?$/,
+  /^\/karsilastir-coklu\/?$/,
   /^\/araclar\/?$/,
   /^\/kuyruklar\/?$/,
   /^\/kuyruklar\/\d+\/?$/,
+]);
+
+/** Admin olmayanin gecebildigi YAZAN uclar (kosu silme): sahiplik isleyicide (kosuyu baslatan kisi), yoksa 403. */
+const SAHIP_SILME = Object.freeze([
+  { method: 'DELETE', yol: /^\/kosular\/\d+\/?$/ },
+  { method: 'POST', yol: /^\/kosular\/sil\/?$/ },
 ]);
 
 const db = () => require('../db/index.cjs');
@@ -99,9 +120,11 @@ function kapidan(r) {
   return hata(status, code, message, ek);
 }
 
+// Kayit numaralari INT kolon (mssql.Int): 2147483647'yi asan numara 400 olur (yoksa parametre tasip 424 olurdu).
+const KAYIT_NO_MAX = 2147483647;
 const sayi = (v) => {
   const n = dg.tamSayi(v);
-  return n !== null && n > 0 ? n : null;
+  return n !== null && n > 0 && n <= KAYIT_NO_MAX ? n : null;
 };
 const iso = (v) => (v == null || v === '' ? null : v instanceof Date ? v.toISOString() : String(v));
 function jsonOku(s) {
@@ -121,6 +144,9 @@ function kararliJson(v) {
 const kullanici = (req) => (req.session && req.session.user) || {};
 const ayniKullanici = (a, b) => String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase() && String(a || '').trim() !== '';
 
+// Denetime yazilan RET kodlari: 409 / 424 (islem denendi, durum engelledi / okunamadi). 400 (girdi / onay metni; DB'ye
+// gidilmez) ve 404 (kayit yok) YAZILMAZ; Admin olmayanin yazan uca 403'u adminOkumaKapisi'nda (isleyiciye gelinmez)
+// yazilmaz. Kosu silmenin sahiplik 403'u isleyicide ACIKCA yazilir (kosulariSil). Belge: NGINX-YUK-TESTI.md "Denetim".
 const DENETLENEN_RET = new Set([409, 424]);
 
 /** Tek hata yaniti. Beklenmeyen hata da 424: 500 govdesi kurumsal gecitte HTML'e doner. */
@@ -130,7 +156,7 @@ function hataYaniti(req, res, e, eylem, hedef) {
   const code = (e && e.code) || (status === 424 ? 'beklenmeyen' : 'gecersiz_istek');
   if (!(e && Number.isInteger(e.status))) console.warn('[NginxYukTesti] beklenmeyen hata:', maskele(e && e.message));
   const body = { ok: false, code, message: maskele((e && e.message) || 'Beklenmeyen hata.') };
-  for (const k of ['uyarilar', 'engeller', 'asimlar', 'hatalar', 'kilit', 'env', 'iptal', 'iptalHatasi', 'durdurHatasi', 'sahipler', 'uyariTurleri', 'oge', 'suren', 'kuyrukId']) if (e && e[k] !== undefined) body[k] = e[k];
+  for (const k of ['uyarilar', 'engeller', 'asimlar', 'hatalar', 'kilit', 'env', 'iptal', 'iptalHatasi', 'durdurHatasi', 'sahipler', 'uyariTurleri', 'oge', 'suren', 'kuyrukId', 'eksik', 'onKontrol', 'bitmemis', 'silinemeyenler', 'yetkisiz']) if (e && e[k] !== undefined) body[k] = e[k];
   // Reddedilen baslatma denemesi de denetime yazilir (uretim hedefi, izinsiz yuk makinesi ...).
   if (eylem && DENETLENEN_RET.has(status)) {
     try {
@@ -257,6 +283,11 @@ const LISTE_KOLONLARI = `k.id, k.senaryo_id, k.on_kontrol_kosu_id, k.islem, k.et
   k.yuk_host, k.durum, k.awx_server_id, k.awx_job_id, k.gecerlilik, k.created_by, k.created_at, k.started_at,
   k.finished_at, k.hedef_turu, k.motor, s.ad AS senaryo_ad,
   CASE WHEN k.parametreler LIKE '%"protokol":"h2"%' THEN 'h2' ELSE 'h1' END AS protokol`;
+
+// Coklu karsilastirma (2026-11-04): buyuk JSON kolonlari (sonuc, on kontrol ozeti) TASINMAZ; parametreler (motor /
+// protokol / is parcacigi / tavan) gerekli. En cok 16 satir, tek sorgu (IN listesi parametreli).
+const COKLU_KOLONLARI = `k.id, k.senaryo_id, k.islem, k.etiket, k.hedef_host, k.hedef_ip, k.vhost, k.parametreler, k.durum, k.gecerlilik,
+  k.created_by, k.created_at, k.hedef_turu, k.motor, s.ad AS senaryo_ad`;
 
 /** Satirin motoru: liste kopyasi (kosular.motor), yoksa kanonik parametreler.motor, yoksa k6 (eski satir). */
 function motorOf(x) {
@@ -423,16 +454,25 @@ async function kosuyuBaslat(req, { islem, plan, onKontrolKosuId = null, onaylana
     // kilit_id: Durdur kosunun kilitlerini (ise bagli olmasalar da) bu kimlikle durdur isine baglar.
     // Serbest satirda hedef_host '' (NULL'a cevrilmez); motor parametreler.motor'un liste kopyasi;
     // plan_uyarilari bos ise NULL (ekran ve kosu onayi ayni listeyi gorur).
+    // 2026-11-04 (silme yarisi): kosu, dayandigi on kontrol satiri HALA VARSA yazilir. On kontrol okunduktan sonra
+    // (plan / arac kontrolu uzun surer) silinirse INSERT 0 satir yazar: kopuk on_kontrol_kosu_id kalmaz. UPDLOCK +
+    // HOLDLOCK: silme islemi bu satiri bu INSERT bitene dek alamaz (sonra bagli kosuyu gorur ve 409 on_kontrol_bagli).
     const ins = await db().query(
       `INSERT INTO nginx_loadtest_kosular (senaryo_id, on_kontrol_kosu_id, islem, etiket, hedef_host, hedef_ip, vhost, yuk_host, parametreler, durum, created_by, kilit_id, hedef_turu, motor, plan_uyarilari, arac_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'QUEUED', $10, $11, $12, $13, $14, $15) RETURNING id`,
+       OUTPUT INSERTED.id
+       SELECT $1, $2, $3, $4, $5, $6, $7, $8, $9, 'QUEUED', $10, $11, $12, $13, $14, $15
+        WHERE $2 IS NULL OR EXISTS (SELECT 1 FROM nginx_loadtest_kosular o WITH (UPDLOCK, HOLDLOCK) WHERE o.id = $2 AND o.islem = 'on_kontrol')`,
       [plan.senaryo.id, onKontrolKosuId, islem, plan.etiket, plan.hedefHost || '', plan.hedefIp, plan.vhost, plan.yukHost, JSON.stringify(plan.parametreler), kullaniciAdi, lockId,
         hedefTuru, motor, planUyarilari.length ? JSON.stringify(planUyarilari) : null, aracId],
     );
     kosuId = Number(ins.rows && ins.rows[0] && ins.rows[0].id);
-    if (!(kosuId > 0)) throw new Error('koşu numarası dönmedi');
+    if (!(kosuId > 0)) {
+      if (onKontrolKosuId != null && ins.rows && !ins.rows.length) throw Object.assign(new Error('on kontrol silindi'), { onKontrolSilindi: true });
+      throw new Error('koşu numarası dönmedi');
+    }
   } catch (e) {
     await kilitleriBirak(anahtarlar, lockId);
+    if (e && e.onKontrolSilindi) throw hata(409, 'on_kontrol_eski', `Ön kontrol #${onKontrolKosuId} bu arada silindi; iş başlatılmadı. Ön kontrolü yeniden çalıştırın.`);
     throw hata(424, 'db_okunamadi', `Koşu kaydı yazılamadı; iş başlatılmadı: ${maskele(e && e.message)}`);
   }
   const adim = `R${kosuId}`;
@@ -640,15 +680,34 @@ function ogeNo(e, no) {
   return Object.assign(e, { oge: no });
 }
 
+/** Verilen kosu numaralarindan Portal DB'de DURANLAR (Set); okunamazsa null (gosterim eksik kalir, hata degil). */
+async function mevcutKosular(idler) {
+  const ids = [...new Set(idler.filter((v) => v != null).map(Number).filter((n) => Number.isInteger(n) && n > 0))];
+  if (!ids.length) return new Set();
+  try {
+    const { rows } = await db().query(`SELECT /*SIL:mevcut*/ id FROM nginx_loadtest_kosular WHERE id IN (${ids.map((_, i) => `$${i + 1}`).join(', ')})`, ids);
+    return new Set((rows || []).map((r) => Number(r.id)));
+  } catch (e) {
+    console.warn('[NginxYukTesti] kuyruk kosulari okunamadi (silindi bilgisi yok):', maskele(e && e.message));
+    return null;
+  }
+}
+
 async function kuyrukOkuApi(id) {
   const { rows } = await dbOku((d) => d.query(kuyruk.SQL.kuyrukOku, [id]));
   const k = rows[0];
   if (!k) return null;
   const { rows: ogeler } = await dbOku((d) => d.query(kuyruk.SQL.ogeListe, [id]));
   const z = kuyruk.zamanlama(k, ogeler);
+  const mevcut = await mevcutKosular(ogeler.flatMap((o) => [o.kosu_id, o.on_kontrol_kosu_id]));
   return {
     kuyruk: { ...kuyruk.kuyrukApi(k), tahminiBitis: z.tahminiBitis, siradakiKalanSn: z.siradakiKalanSn, sunucuZamani: new Date().toISOString() },
-    ogeler: ogeler.map((o) => ({ ...kuyruk.ogeApi(o), ...(z.ogeler.get(Number(o.id)) || {}) })),
+    ogeler: ogeler.map((o) => ({
+      ...kuyruk.ogeApi(o),
+      ...(z.ogeler.get(Number(o.id)) || {}),
+      // Kosu silme (2026-11-04): bitmis ogenin numarasi kalir; satiri silinmisse ekran "silindi" gosterir. Okunamazsa alan yok.
+      ...(mevcut ? { kosuSilindi: o.kosu_id != null && !mevcut.has(Number(o.kosu_id)), onKontrolSilindi: o.on_kontrol_kosu_id != null && !mevcut.has(Number(o.on_kontrol_kosu_id)) } : {}),
+    })),
   };
 }
 
@@ -865,13 +924,16 @@ function yonlendiriciKur() {
   // SALT OKUNUR ERISIM: sekmesi acilan Admin olmayan kullanici sonuclari OKUR; baslatma, durdurma,
   // senaryo yazma ve canli is ciktisi (/durum) Admin'de kalir.
   let gorunurlukKapisi = false;
-  router.use(
-    adminOkumaKapisi({
-      okuma: ADMIN_DISI_OKUMA,
-      mesaj: 'Yük testi işlemleri yalnız Admin.',
-      hazir: () => gorunurlukKapisi,
-    }),
-  );
+  const okumaKapisi = adminOkumaKapisi({
+    okuma: ADMIN_DISI_OKUMA,
+    mesaj: 'Yük testi işlemleri yalnız Admin.',
+    hazir: () => gorunurlukKapisi,
+  });
+  // Kosu silme: kosuyu baslatan kisi de silebilir (Admin olmasa da); yalniz bu iki uc, gorunurluk motoru kuruluysa.
+  router.use((req, res, next) => {
+    if (!isAdmin(req) && gorunurlukKapisi && SAHIP_SILME.some((u) => u.method === req.method && u.yol.test(req.path))) return next();
+    return okumaKapisi(req, res, next);
+  });
   try {
     const { requireVisiblePrefix, requireVisible } = require('../auth/visibility.cjs');
     router.use(requireVisiblePrefix('NginxConsole'));
@@ -1511,6 +1573,211 @@ function yonlendiriciKur() {
     } catch (e) {
       hataYaniti(req, res, e);
     }
+  });
+
+  // Coklu karsilastirma (2026-11-04, coklu.cjs): ?ref=<id>&kosular=<id,...> (ref dahil en cok 16 kosu; ref listede yoksa
+  // eklenir). Yetki /karsilastir ile ayni (ADMIN_DISI_OKUMA). Kosu ve adim satirlari IKI sorguda (IN listesi parametreli).
+  // 400: eksik / gecersiz numara (INT ustu dahil), 16 siniri, ref disinda aday yok, esik; 409 kosu_yok (bulunamayan var) ya da
+  // kosu_uygun_degil (yalniz on kontrol / bitmemis): ayri listeler `eksik`, `onKontrol`, `bitmemis`.
+  router.get('/karsilastir-coklu', async (req, res) => {
+    try {
+      const q = req.query || {};
+      if (typeof q.ref !== 'string' || typeof q.kosular !== 'string') throw hata(400, 'gecersiz_istek', 'ref ve kosular (virgülle ayrılmış koşu numaraları) gerekli.');
+      const ref = sayi(q.ref);
+      if (!ref || !/^\d+$/.test(q.ref.trim())) throw hata(400, 'gecersiz_istek', 'ref pozitif bir koşu numarası olmalı.');
+      const parcalar = q.kosular.split(',').map((x) => x.trim()).filter((x) => x !== '');
+      if (parcalar.length > 64) throw hata(400, 'gecersiz_istek', `En çok ${coklu.MAX_KOSU} koşu karşılaştırılır.`);
+      const idler = [];
+      for (const x of parcalar) {
+        const n = /^\d{1,10}$/.test(x) ? sayi(x) : null;
+        if (!n) throw hata(400, 'gecersiz_istek', `Geçersiz koşu numarası: ${x.slice(0, 20)}`);
+        if (!idler.includes(n)) idler.push(n);
+      }
+      const hepsi = idler.includes(ref) ? idler : [ref, ...idler];
+      if (hepsi.length > coklu.MAX_KOSU) throw hata(400, 'gecersiz_istek', `En çok ${coklu.MAX_KOSU} koşu karşılaştırılır (referans dahil); ${hepsi.length} seçildi.`);
+      if (hepsi.length < 2) throw hata(400, 'gecersiz_istek', 'Referansın yanında en az bir koşu seçin.');
+      const esik = (v, ad) => {
+        if (v === undefined || v === '') return undefined;
+        const n = Number(v);
+        if (typeof v !== 'string' || !Number.isFinite(n) || n <= 0 || n > 100) throw hata(400, 'gecersiz_istek', `${ad} 0..100 arasında olmalı.`);
+        return n;
+      };
+      const esikCpu = esik(q.esikCpu, 'esikCpu');
+      const esikP95 = esik(q.esikP95, 'esikP95');
+      const yer = hepsi.map((_, i) => `$${i + 1}`).join(', ');
+      const { rows: kosuSatirlari } = await dbOku((d) => d.query(
+        `SELECT ${COKLU_KOLONLARI} FROM nginx_loadtest_kosular k LEFT JOIN nginx_loadtest_senaryolar s ON s.id = k.senaryo_id WHERE k.id IN (${yer})`,
+        hepsi,
+      ));
+      const byId = new Map(kosuSatirlari.map((r) => [Number(r.id), r]));
+      // Uc ayri liste (ekran ayri metin gosterir): bulunamayan (silinmis olabilir), on kontrol kaydi, bitmemis kosu
+      // (QUEUED / RUNNING / FINALIZING: adimlari yarim). FAILED / CANCELED / OKUNAMADI kosu karsilastirilir (adimi varsa).
+      const eksik = hepsi.filter((id) => !byId.has(id));
+      const onKontrol = hepsi.filter((id) => byId.has(id) && byId.get(id).islem !== 'kosu');
+      const bitmemis = hepsi.filter((id) => byId.has(id) && byId.get(id).islem === 'kosu' && AKTIF.has(byId.get(id).durum));
+      if (eksik.length || onKontrol.length || bitmemis.length) {
+        const no = (l) => l.map((x) => `#${x}`).join(', ');
+        const parca = [];
+        if (eksik.length) parca.push(`bulunamadı (silinmiş olabilir): ${no(eksik)}`);
+        if (onKontrol.length) parca.push(`ön kontrol kaydı (karşılaştırılmaz): ${no(onKontrol)}`);
+        if (bitmemis.length) parca.push(`henüz bitmedi: ${no(bitmemis)}`);
+        throw hata(409, eksik.length ? 'kosu_yok' : 'kosu_uygun_degil', `Karşılaştırılamayan koşu numarası — ${parca.join('; ')}.`, { eksik, onKontrol, bitmemis });
+      }
+      const { rows: adimSatirlari } = await dbOku((d) => d.query(
+        `SELECT * FROM nginx_loadtest_adimlar WHERE kosu_id IN (${yer}) ORDER BY kosu_id ASC, id ASC`,
+        hepsi,
+      ));
+      const adimlarOf = new Map(hepsi.map((id) => [id, []]));
+      for (const a of adimSatirlari) {
+        const l = adimlarOf.get(Number(a.kosu_id));
+        if (l) l.push(a);
+      }
+      const kosuOf = (id) => {
+        const r = byId.get(id);
+        const motor = motorOf(r);
+        const protokol = protokolOf(r);
+        const tur = r.hedef_turu || 'sunucu';
+        const ad = adimlarOf.get(id);
+        return {
+          meta: coklu.kosuMeta(r, { motor, protokol, parametreler: jsonOku(r.parametreler) }),
+          analizAdimlari: ad.map(adimAnaliz),
+          gorunumAdimlari: ad.map((x) => adimApi(x, { motor, hedefTuru: tur, protokol })),
+        };
+      };
+      let sonuc;
+      try {
+        sonuc = coklu.cokluKarsilastir({
+          ref: kosuOf(ref), adaylar: hepsi.filter((id) => id !== ref).map(kosuOf), analiz: poller.cModulu('analiz.cjs'),
+          esikler: { ...(esikCpu !== undefined ? { esikCpu } : {}), ...(esikP95 !== undefined ? { esikP95 } : {}) },
+        });
+      } catch (e) {
+        throw hata(424, 'analiz_okunamadi', `Karşılaştırma hesaplanamadı: ${maskele(e && e.message)}`);
+      }
+      res.json({ ok: true, ...sonuc });
+    } catch (e) {
+      hataYaniti(req, res, e);
+    }
+  });
+
+  // Kosu etiketi sonradan (2026-11-04): yalniz Admin (yazan uc; adminOkumaKapisi Admin olmayani zaten durdurur). Girdi
+  // kapisi: metin, trim, en cok 120 karakter (kolon NVARCHAR(120)), kontrol karakteri yok; bos = etiketi kaldir (NULL).
+  // Denetim: nginx_loadtest_etiket (eski / yeni). Kuyruk kosusunun "[K<n>] " oneki kullanicinin elindedir (zorlanmaz).
+  router.put('/kosular/:id/etiket', async (req, res) => {
+    let k = null;
+    try {
+      adminSart(req);
+      const id = sayi(req.params.id);
+      if (!id || !/^\d+$/.test(String(req.params.id))) throw hata(400, 'gecersiz_istek', 'Geçersiz koşu numarası.');
+      const b = req.body && typeof req.body === 'object' ? req.body : {};
+      if (b.etiket !== null && typeof b.etiket !== 'string') throw hata(400, 'gecersiz_istek', 'etiket metin (ya da null) olmalı.');
+      const yeni = b.etiket === null ? '' : b.etiket.trim();
+      if (Array.from(yeni).length > 120) throw hata(400, 'gecersiz_istek', 'Etiket en çok 120 karakter olabilir.');
+      if (ETIKET_YASAK.test(yeni)) throw hata(400, 'gecersiz_istek', 'Etiket satır sonu / kontrol karakteri içeremez.');
+      k = await kosuOku(id);
+      if (!k) throw hata(409, 'kosu_yok', 'Koşu bulunamadı.');
+      const deger = yeni || null;
+      const r = await dbOku((d) => d.query(`UPDATE nginx_loadtest_kosular SET etiket = $2 WHERE id = $1`, [id, deger]));
+      if (!r.rowCount) throw hata(409, 'kosu_yok', 'Koşu bulunamadı.');
+      try {
+        require('../audit/index.cjs').auditPortal(req, 'nginx_loadtest_etiket', {
+          targetHost: k.hedef_host || null, targetIp: k.hedef_ip || null,
+          detail: baslat.denetimAyrintisi({ kosuId: id, eski: k.etiket ?? null, yeni: deger }),
+        });
+      } catch {
+        /* best-effort */
+      }
+      res.json({ ok: true, id, etiket: deger });
+    } catch (e) {
+      hataYaniti(req, res, e, 'nginx_loadtest_etiket', k ? { host: k.hedef_host, ip: k.hedef_ip, kosuId: k.id } : null);
+    }
+  });
+
+  // -- KOSU SILME (2026-11-04, sil.cjs) ------------------------------------------------------
+  // DELETE /kosular/:id { confirmText: '<numara>' } ve POST /kosular/sil { kosular: [id], confirmText: '<sayi>' }.
+  // Sira: girdi + onay metni (400, DB'ye gidilmez) -> satirlar (424) -> bulunamayan (tekli 404) -> sahiplik (403,
+  // denetimli) -> engeller (409, nedenleriyle) -> tek islemde kosullu DELETE (hepsi ya da hic) -> denetim.
+  const SIL_ANAHTARLARI = [...baslat.DENETIM_ANAHTARLARI, 'kosuIdleri', 'yetkisiz', 'sayi', 'toplu'];
+  async function kosulariSil(req, res, ids, toplu) {
+    let satirlar = [];
+    try {
+      const oku = async () => (await dbOku((d) => d.query(sil.okumaSql(ids.length), ids))).rows || [];
+      satirlar = await oku();
+      const bulunan = new Set(satirlar.map((r) => Number(r.id)));
+      if (!toplu && !bulunan.has(ids[0])) throw hata(404, 'kosu_yok', `Koşu #${ids[0]} bulunamadı (silinmiş olabilir).`);
+      const yetkisiz = isAdmin(req) ? [] : satirlar.filter((r) => !ayniKullanici(r.created_by, kullanici(req).username));
+      if (yetkisiz.length) {
+        const liste = yetkisiz.map((r) => `#${r.id}${r.created_by ? ` (${r.created_by})` : ''}`).join(', ');
+        try {
+          require('../audit/index.cjs').auditPortal(req, 'nginx_loadtest_kosu_sil', {
+            result: 'fail',
+            detail: baslat.denetimAyrintisi({ code: 'yetki_yok', toplu, kosuIdleri: ids, yetkisiz: yetkisiz.map((r) => Number(r.id)) }, { anahtarlar: SIL_ANAHTARLARI }),
+          });
+        } catch {
+          /* best-effort */
+        }
+        throw hata(403, 'yetki_yok', `Yalnız koşuyu başlatan kişi ya da Admin silebilir: ${liste}. Hiçbir kayıt silinmedi.`, { yetkisiz: yetkisiz.map((r) => Number(r.id)) });
+      }
+      const engelHatasi = (e) => hata(409, toplu ? 'silinemez' : e[0].kod,
+        toplu ? `${e.length} kayıt silinemiyor; hiçbir kayıt silinmedi (hepsi ya da hiçbiri). ${e.map((x) => x.metin).join(' ')}` : e[0].metin,
+        { silinemeyenler: e });
+      const engel = sil.engeller(ids, satirlar);
+      if (engel.length) throw engelHatasi(engel);
+      let silinen;
+      try {
+        // Yeniden deneme YOK: COMMIT'ten sonra kopan baglantida ikinci calisma 0 satir bulup silinmis kaydi "kosu_yok"
+        // diye raporlardi (silme de denetime yazilmazdi). Hata 424 (denetimli) olur, metin "silinmis olabilir" der.
+        silinen = (await db().query(sil.silmeSql(ids.length), [...ids, ids.length], { tekrar: false })).rows || [];
+      } catch (e) {
+        throw hata(424, 'db_okunamadi', `Kayıtlar silinemedi (Portal veritabanı): ${maskele(e && e.message)}. Silme tek işlemdir; tamamlanmadıysa hiçbir kayıt silinmez. Bağlantı işlem sırasında koptuysa silinmiş olabilir: listeyi yenileyip kontrol edin.`);
+      }
+      if (silinen.length !== ids.length) {
+        // Islem kosulu tutmadi (bu arada baslayan / kilitlenen / kuyruga baglanan): hicbir sey silinmedi.
+        satirlar = await oku();
+        const yeni = sil.engeller(ids, satirlar);
+        if (yeni.length) throw engelHatasi(yeni);
+        throw hata(409, 'eszamanli_degisti', 'Kayıtlar bu arada değişti; hiçbir kayıt silinmedi. Listeyi yenileyip tekrar deneyin.');
+      }
+      const sirali = ids.map((id) => silinen.find((r) => Number(r.id) === id)).filter(Boolean);
+      const hostlar = [...new Set(sirali.map((r) => r.hedef_host || null))];
+      const ipler = [...new Set(sirali.map((r) => r.hedef_ip || null))];
+      try {
+        require('../audit/index.cjs').auditPortal(req, 'nginx_loadtest_kosu_sil', {
+          targetHost: hostlar.length === 1 ? hostlar[0] : null,
+          targetIp: ipler.length === 1 ? ipler[0] : null,
+          detail: baslat.denetimAyrintisi({ toplu, sayi: sirali.length, kosuIdleri: sirali.map((r) => Number(r.id)), kosular: sirali.map(sil.denetimMetni) }, { anahtarlar: SIL_ANAHTARLARI }),
+        });
+      } catch {
+        /* best-effort */
+      }
+      res.json({ ok: true, sayi: sirali.length, silinen: sirali.map(sil.silinenApi) });
+    } catch (e) {
+      const ilk = satirlar.find((r) => Number(r.id) === ids[0]);
+      hataYaniti(req, res, e, 'nginx_loadtest_kosu_sil', ilk ? { host: ilk.hedef_host, ip: ilk.hedef_ip, kosuId: toplu ? null : Number(ilk.id) } : null);
+    }
+  }
+
+  router.delete('/kosular/:id', async (req, res) => {
+    const ham = String(req.params.id);
+    const id = /^\d+$/.test(ham) ? sayi(ham) : null;
+    if (!id) return hataYaniti(req, res, hata(400, 'gecersiz_istek', 'Geçersiz koşu numarası.'));
+    const b = req.body && typeof req.body === 'object' ? req.body : {};
+    if (!sil.onayDogru(b.confirmText, id)) return hataYaniti(req, res, hata(400, 'onay_metni', `Onay için koşu numarasını (${id}) yazın.`));
+    return kosulariSil(req, res, [id], false);
+  });
+
+  router.post('/kosular/sil', async (req, res) => {
+    const b = req.body && typeof req.body === 'object' ? req.body : {};
+    const liste = b.kosular;
+    if (!Array.isArray(liste) || !liste.length) return hataYaniti(req, res, hata(400, 'gecersiz_istek', 'kosular: silinecek koşu numaraları (dizi) gerekli.'));
+    if (liste.length > sil.MAX_TOPLU) return hataYaniti(req, res, hata(400, 'gecersiz_istek', `Bir seferde en çok ${sil.MAX_TOPLU} kayıt silinebilir.`));
+    const ids = liste.map((v) => (typeof v === 'number' || (typeof v === 'string' && /^\d+$/.test(v)) ? sayi(v) : null));
+    if (ids.some((v) => !v)) return hataYaniti(req, res, hata(400, 'gecersiz_istek', 'Geçersiz koşu numarası.'));
+    if (new Set(ids).size !== ids.length) return hataYaniti(req, res, hata(400, 'gecersiz_istek', 'Aynı koşu numarası iki kez verilmiş.'));
+    // Toplu onay = secilen SAYI (tekli onaydaki "#12" bicimi burada kabul edilmez).
+    if (typeof b.confirmText !== 'string' || b.confirmText.trim() !== String(ids.length)) {
+      return hataYaniti(req, res, hata(400, 'onay_metni', `Onay için seçilen kayıt sayısını (${ids.length}) yazın.`));
+    }
+    return kosulariSil(req, res, ids, true);
   });
 
   return router;

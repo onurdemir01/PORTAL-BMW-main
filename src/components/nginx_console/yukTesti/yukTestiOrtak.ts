@@ -308,6 +308,13 @@ export const SERBEST_VHOST_YARDIMI = 'Serbest hedefte server_name listesi yok; i
 // ── Hedef etiketi ve cipler ─────────────────────────────────────────────────────────
 /** Liste / karsilastirma etiketi: sunucu hedefinde host adi, serbestte IP (`hedefHost ?? hedefIp`). */
 export const hedefEtiketi = (k: Pick<NlKosu, 'hedefHost' | 'hedefIp'>) => k.hedefHost || k.hedefIp || '';
+/** Kosu silme (2026-11-04): kaydi silebilir mi - Admin ya da baslatan kisi (ad buyuk / kucuk harf ve bosluk duyarsiz;
+ *  sunucu ayni kurali uygular, ekran yalniz dugmeyi gizler). */
+export function kosuSahibiMi(k: Pick<NlKosu, 'createdBy'>, isAdmin: boolean, kullaniciAdi?: string | null): boolean {
+  if (isAdmin) return true;
+  const a = (kullaniciAdi || '').trim().toLowerCase();
+  return !!a && (k.createdBy || '').trim().toLowerCase() === a;
+}
 export const SERBEST_CIP_IPUCU = 'Serbest hedef: yalnız istemci ölçümü (CPU ve nginx logu yok)';
 export const H2_CIP_IPUCU = 'HTTP/2 koşusu: yalnız HTTP/2 koşularıyla karşılaştırılır';
 export const WRK_CIP_IPUCU = 'Kapalı döngü: hız sütunu bağlantı sayısıdır; gecikme CO düzeltmeli; TLS 1.2’ye sabit değildir ve oturum devamı olabilir (TLS payı hesaplanmaz)';

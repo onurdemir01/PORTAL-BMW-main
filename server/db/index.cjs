@@ -127,14 +127,16 @@ async function _execQuery(pgSql, params) {
   return { rows, rowCount };
 }
 
-async function query(pgSql, params = []) {
+// opts.tekrar === false: gecici baglanti hatasinda YENIDEN CALISTIRMA (idempotent olmayan islem; ornegin COMMIT'ten
+// sonra kopan bir silme ikinci calismada 0 satir bulur ve sonucu yanlis raporlardi). Varsayilan: bir kez yeniden dener.
+async function query(pgSql, params = [], opts = {}) {
   try {
     return await _execQuery(pgSql, params);
   } catch (err) {
     // Single retry for transient connection drop (ECONNCLOSED, ECONNRESET, etc.)
     const isTransient = err.code === 'ECONNCLOSED' || err.code === 'ECONNRESET' ||
       err.message?.includes('Connection not yet open') || err.message?.includes('pool');
-    if (isTransient) {
+    if (isTransient && !(opts && opts.tekrar === false)) {
       console.warn('[db] Transient connection error, retrying once:', err.message);
       await new Promise(r => setTimeout(r, 300));
       return _execQuery(pgSql, params);

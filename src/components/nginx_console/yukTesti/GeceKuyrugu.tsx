@@ -6,7 +6,9 @@
 // (1–30 dk, kosu kilidi birakildiktan SONRA), baslangic (hemen / saat), istege bagli en gec bitis, hedef adi bir
 // kez yazilarak onay ve sunucunun dondurdugu uyari TURLERININ tek tek onayi. Gece yeni tur cikan oge ATLANIR.
 // Kuyruk "İptal": sonraki ogeler baslamaz; suren kosu DURMAZ (kosu ayrintisindaki Durdur ile ayrica).
-// `onKarsilastir`: ileride "Hepsini karşılaştır" icin biten kosularin numaralari; verilmezse dugme cizilmez.
+// `onKarsilastir`: "Hepsini karşılaştır" (2026-11-04 bagli: Çoklu karşılaştırma, ref = ilk biten oge); biten kosularin
+// numaralari kuyruk sirasiyla; verilmezse dugme cizilmez. Kosu silme (2026-11-04): silinmis kosu / on kontrol "(silindi)"
+// diye baglantisiz gosterilir (sunucunun kosuSilindi / onKontrolSilindi alani) ve karsilastirmaya gitmez.
 import React, { useCallback, useEffect, useState } from 'react';
 import { ArrowDownIcon, ArrowLeftIcon, ArrowPathIcon, ArrowUpIcon, MoonIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { nginxLoadtestApi, type NlKuyruk, type NlKuyrukOge, type NlUyariTuru } from '@/api/nginxLoadtestApi';
@@ -30,7 +32,7 @@ export interface GeceKuyruguProps {
   setTaslak: (t: TaslakOge[]) => void;
   onKosuAc: (kosuId: number) => void;
   onYeniKosu?: () => void;
-  /** Ileride "Hepsini karşılaştır": kuyruktaki biten kosularin numaralari (sirayla). Verilmezse dugme yok. */
+  /** "Hepsini karşılaştır": kuyruktaki biten kosularin numaralari (sirayla; ilki referans). Verilmezse dugme yok. */
   onKarsilastir?: (kosuIdleri: number[]) => void;
 }
 
@@ -219,6 +221,8 @@ function YeniKuyruk({ taslak, setTaslak, onYeniKosu, onOlustu }: { taslak: Tasla
   );
 }
 
+const SILINDI_IPUCU = 'Bu kayıt Portal’dan silindi; kuyruk öğesi ve numarası kalır. Sunucudaki ham ölçüm dosyaları silinmez.';
+
 function KuyrukAyrinti({ id, isAdmin, onKosuAc, onKarsilastir, onGeri }: { id: number; isAdmin: boolean; onKosuAc: (kosuId: number) => void; onKarsilastir?: (k: number[]) => void; onGeri: () => void }) {
   const [veri, setVeri] = useState<{ kuyruk: NlKuyruk; ogeler: NlKuyrukOge[]; alindi: number } | null>(null);
   const [hata, setHata] = useState('');
@@ -264,7 +268,8 @@ function KuyrukAyrinti({ id, isAdmin, onKosuAc, onKarsilastir, onGeri }: { id: n
   const aktif = AKTIF.has(k.durum);
   const kalan = k.siradakiKalanSn != null ? k.siradakiKalanSn - (simdi - veri.alindi) / 1000 : null;
   const bekleyenler = ogeler.filter((o) => o.durum === 'BEKLIYOR');
-  const bitenKosular = ogeler.filter((o) => o.kosuId != null && o.durum === 'BITTI').map((o) => o.kosuId as number);
+  // Silinmis kosu (2026-11-04: oge numarasi kalir) karsilastirmaya gitmez.
+  const bitenKosular = ogeler.filter((o) => o.kosuId != null && o.durum === 'BITTI' && !o.kosuSilindi).map((o) => o.kosuId as number);
   const calisan = ogeler.find((o) => o.durum === 'CALISIYOR');
   const siraDegistir = (oId: number, yon: -1 | 1) => {
     const i = bekleyenler.findIndex((o) => o.id === oId);
@@ -319,8 +324,12 @@ function KuyrukAyrinti({ id, isAdmin, onKosuAc, onKarsilastir, onGeri }: { id: n
                     <td className="py-1.5 pr-2 font-medium" style={{ color: 'var(--text-primary)' }}>{o.etiket}</td>
                     <td className="py-1.5 pr-2"><DurumHap durum={o.durum} oge /></td>
                     <td className="py-1.5 pr-2">
-                      {o.kosuId != null && <button type="button" className={LINK} style={{ color: 'var(--accent)' }} onClick={() => onKosuAc(o.kosuId as number)}>{`#${o.kosuId}`}</button>}
-                      {o.onKontrolKosuId != null && <button type="button" className={`${LINK} ml-2`} style={{ color: 'var(--text-secondary)' }} onClick={() => onKosuAc(o.onKontrolKosuId as number)}>{`ön kontrol #${o.onKontrolKosuId}`}</button>}
+                      {o.kosuId != null && (o.kosuSilindi
+                        ? <span className="tabular-nums" style={{ color: 'var(--text-muted)' }} title={SILINDI_IPUCU}>{`#${o.kosuId} (silindi)`}</span>
+                        : <button type="button" className={LINK} style={{ color: 'var(--accent)' }} onClick={() => onKosuAc(o.kosuId as number)}>{`#${o.kosuId}`}</button>)}
+                      {o.onKontrolKosuId != null && (o.onKontrolSilindi
+                        ? <span className="ml-2 tabular-nums" style={{ color: 'var(--text-muted)' }} title={SILINDI_IPUCU}>{`ön kontrol #${o.onKontrolKosuId} (silindi)`}</span>
+                        : <button type="button" className={`${LINK} ml-2`} style={{ color: 'var(--text-secondary)' }} onClick={() => onKosuAc(o.onKontrolKosuId as number)}>{`ön kontrol #${o.onKontrolKosuId}`}</button>)}
                     </td>
                     <td className="py-1.5 pr-2 tabular-nums" style={{ color: o.sureYetmeyebilir ? 'var(--status-warning-text)' : 'var(--text-secondary)' }}>
                       {o.tahminiBaslangic ? `${saatMetni(o.tahminiBaslangic)}–${saatMetni(o.tahminiBitis)}${o.sureYetmeyebilir ? ' (süre yetmeyebilir)' : ''}` : o.bitisAt ? `bitti ${saatMetni(o.bitisAt)}` : '—'}

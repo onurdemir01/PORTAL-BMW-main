@@ -1259,3 +1259,14 @@ h1, h2, h3, h4 { line-height: var(--breath-tight); letter-spacing: -0.011em; }
   100% { transform: rotate(360deg) scale(1); opacity: 0.85; }
 }
 @media (prefers-reduced-motion: reduce) { .portal-loading-logo { animation: none; } }
+
+/* Yuk Testi > Coklu karsilastirma grafigi (2026-11-04): 8 kategorik ton (dataviz referans paleti, light #ffffff ve dark
+   #292929 yuzeyinde validate_palette.js ile gecti); 9-16. kosu ayni tonlari kesikli cizgiyle kullanir (ikincil kodlama). */
+:root {
+  --yt-seri-1: #2a78d6; --yt-seri-2: #eb6834; --yt-seri-3: #1baf7a; --yt-seri-4: #eda100;
+  --yt-seri-5: #e87ba4; --yt-seri-6: #008300; --yt-seri-7: #6250d6; --yt-seri-8: #e34948;
+}
+:root[data-theme="dark"] {
+  --yt-seri-1: #3987e5; --yt-seri-2: #d95926; --yt-seri-3: #199e70; --yt-seri-4: #c98500;
+  --yt-seri-5: #d55181; --yt-seri-6: #008300; --yt-seri-7: #9085e9; --yt-seri-8: #e66767;
+}

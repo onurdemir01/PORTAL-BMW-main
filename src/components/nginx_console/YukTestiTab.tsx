@@ -15,29 +15,58 @@
 // /sw'ye hazirlanir, her on kontrol / kosu kopyayi sha256 ile dogrulayip kullanir ve siler.
 // Gece kuyrugu (2026-11-03): "Gece kuyruğu" alt gorunumu (okuma herkese, olusturma / iptal / sira Admin). Taslak bu
 // bilesende tutulur (localStorage kolaylik); "Yeni koşu" formu "Kuyruğa ekle" ile taslaga ekler.
+// Coklu karsilastirma (2026-11-04): "Çoklu karşılaştırma" alt gorunumu (herkese okunur). Acik alt gorunum `yt=coklu` ile
+// URL'de (secim de: ref / kosular / olcu / sira; paylasilabilir, yenilenince korunur). Gece kuyrugu ayrintisindaki
+// "Hepsini karşılaştır" o kuyrugun BITTI ogelerinin kosularini acar, referans ilk oge. Koşular listesi ve ayrintida Admin'e
+// etiket kalemi.
+// Kosu silme (2026-11-04): ayrintida "Sil", listede coklu secim + "Seçilenleri sil" (Admin ya da kaydi baslatan kisi;
+// `kullaniciAdi` yalniz dugmeyi gostermek icin, karar sunucuda). Silinen kosu coklu karsilastirma adresinde kalmissa
+// o ekran "silinmiş koşu çıkarıldı" der; gece kuyrugu ayrintisi "silindi" gosterir.
 import React, { useState } from 'react';
-import { BeakerIcon, ChartBarSquareIcon, DocumentTextIcon, PlayCircleIcon, ArrowsRightLeftIcon, WrenchScrewdriverIcon, MoonIcon } from '@heroicons/react/24/outline';
+import { useSearchParams } from 'react-router-dom';
+import { BeakerIcon, ChartBarSquareIcon, DocumentTextIcon, PlayCircleIcon, ArrowsRightLeftIcon, WrenchScrewdriverIcon, MoonIcon, Squares2X2Icon } from '@heroicons/react/24/outline';
 import KosuListesi from './yukTesti/KosuListesi';
 import KosuAyrinti from './yukTesti/KosuAyrinti';
 import YeniKosu from './yukTesti/YeniKosu';
 import Senaryolar from './yukTesti/Senaryolar';
 import Karsilastir from './yukTesti/Karsilastir';
+import CokluKarsilastir, { type KuyrukNotu } from './yukTesti/CokluKarsilastir';
+import { MAX_COKLU, urlDurumuOku, urlDurumuYaz } from './yukTesti/cokluKarsilastirma';
 import Araclar from './yukTesti/Araclar';
 import GeceKuyrugu from './yukTesti/GeceKuyrugu';
 import { taslakOku, taslakYaz, type TaslakOge } from './yukTesti/kuyrukTaslak';
 
-type Gorunum = 'kosular' | 'yeni' | 'kuyruk' | 'senaryolar' | 'karsilastir' | 'araclar';
+type Gorunum = 'kosular' | 'yeni' | 'kuyruk' | 'senaryolar' | 'karsilastir' | 'coklu' | 'araclar';
 const GORUNUMLER: { id: Gorunum; ad: string; ikon: React.ComponentType<React.SVGProps<SVGSVGElement>>; yalnizAdmin?: boolean }[] = [
   { id: 'kosular', ad: 'Koşular', ikon: ChartBarSquareIcon },
   { id: 'yeni', ad: 'Yeni koşu', ikon: PlayCircleIcon, yalnizAdmin: true },
   { id: 'kuyruk', ad: 'Gece kuyruğu', ikon: MoonIcon },
   { id: 'senaryolar', ad: 'Senaryolar', ikon: DocumentTextIcon },
   { id: 'karsilastir', ad: 'Karşılaştır', ikon: ArrowsRightLeftIcon },
+  { id: 'coklu', ad: 'Çoklu karşılaştırma', ikon: Squares2X2Icon },
   { id: 'araclar', ad: 'Araçlar', ikon: WrenchScrewdriverIcon },
 ];
 
-export function YukTestiTab({ isAdmin }: { isAdmin: boolean }) {
-  const [gorunum, setGorunum] = useState<Gorunum>('kosular');
+export function YukTestiTab({ isAdmin, kullaniciAdi = null }: { isAdmin: boolean; kullaniciAdi?: string | null }) {
+  const [sp, setSp] = useSearchParams();
+  // Paylasilan / yenilenen coklu karsilastirma baglantisi dogrudan o gorunumde acilir.
+  const [gorunum, setGorunumDurum] = useState<Gorunum>(() => (sp.get('yt') === 'coklu' ? 'coklu' : 'kosular'));
+  // "Hepsini karşılaştır" 16'dan fazla biten koşu getirdiyse disarida kalanlar (ekran soyler; sessizce dusmez).
+  const [kuyrukNotu, setKuyrukNotu] = useState<KuyrukNotu | null>(null);
+  const setGorunum = (g: Gorunum) => {
+    setGorunumDurum(g);
+    if (g !== 'coklu') setKuyrukNotu(null);
+    // Coklu disina cikinca yt kalkar (secim parametreleri kalir: geri donuste ayni secim).
+    if (g !== 'coklu' && sp.get('yt') === 'coklu') setSp((o) => { const n = new URLSearchParams(o); n.delete('yt'); return n; }, { replace: true });
+    if (g === 'coklu' && sp.get('yt') !== 'coklu') setSp((o) => urlDurumuYaz(o, urlDurumuOku(o)), { replace: true });
+  };
+  const cokluAc = (kosular: number[]) => {
+    const alinan = kosular.slice(0, MAX_COKLU);
+    setKuyrukNotu(kosular.length > MAX_COKLU ? { alinan: alinan.length, disarida: kosular.slice(MAX_COKLU) } : null);
+    setSp((o) => urlDurumuYaz(o, { ...urlDurumuOku(o), kosular: alinan, ref: alinan[0] ?? null }), { replace: false });
+    setGorunumDurum('coklu');
+    setKosuId(null);
+  };
   const [kosuId, setKosuId] = useState<number | null>(null);
   const [taslak, setTaslakDurum] = useState<TaslakOge[]>(() => taslakOku());
   const setTaslak = (t: TaslakOge[]) => { setTaslakDurum(t); taslakYaz(t); };
@@ -75,17 +104,18 @@ export function YukTestiTab({ isAdmin }: { isAdmin: boolean }) {
       </div>
 
       {etkin === 'kosular' && (kosuId != null
-        ? <KosuAyrinti key={kosuId} kosuId={kosuId} isAdmin={isAdmin} onGeri={() => setKosuId(null)} />
-        : <KosuListesi onAc={setKosuId} />)}
+        ? <KosuAyrinti key={kosuId} kosuId={kosuId} isAdmin={isAdmin} kullaniciAdi={kullaniciAdi} onGeri={() => setKosuId(null)} onSilindi={() => setKosuId(null)} />
+        : <KosuListesi onAc={setKosuId} isAdmin={isAdmin} kullaniciAdi={kullaniciAdi} />)}
       {etkin === 'yeni' && isAdmin && (
         <YeniKosu onBasladi={(id) => { setGorunum('kosular'); setKosuId(id); }} onSenaryolar={() => git('senaryolar')} onAraclar={() => git('araclar')}
           onKuyrugaEkle={(o) => setTaslak([...taslak, o])} kuyrukOgeSayisi={taslak.length} />
       )}
       {etkin === 'kuyruk' && (
-        <GeceKuyrugu isAdmin={isAdmin} taslak={taslak} setTaslak={setTaslak} onKosuAc={(id) => { setGorunum('kosular'); setKosuId(id); }} onYeniKosu={isAdmin ? () => git('yeni') : undefined} />
+        <GeceKuyrugu isAdmin={isAdmin} taslak={taslak} setTaslak={setTaslak} onKosuAc={(id) => { setGorunum('kosular'); setKosuId(id); }} onYeniKosu={isAdmin ? () => git('yeni') : undefined} onKarsilastir={cokluAc} />
       )}
       {etkin === 'senaryolar' && <Senaryolar isAdmin={isAdmin} />}
       {etkin === 'karsilastir' && <Karsilastir />}
+      {etkin === 'coklu' && <CokluKarsilastir kuyrukNotu={kuyrukNotu} onKuyrukNotuKapat={() => setKuyrukNotu(null)} />}
       {etkin === 'araclar' && <Araclar isAdmin={isAdmin} />}
     </div>
   );

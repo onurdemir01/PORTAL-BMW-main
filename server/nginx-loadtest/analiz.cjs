@@ -94,6 +94,9 @@
 //      (Anon, Pss, baglanti), uc noktalar taban (adim basindan hemen once), son (pencere sonu), dinlenme (adimdan sonraki
 //      bosluk bitmeden son ornek; >= 3 sn). Saat farki log penceresinden kestirilir (|fark| > 60 sn: taban / dinlenme yok).
 //      "Olasi neden" kurallari gorunum.cjs'dedir (analiz ciktisi eski kosuda BIREBIR).
+//  17. Coklu karsilastirma (2026-11-04, coklu.cjs): kararVer'in gurultu x3 / esik kurali tek fonksiyonda (gurultuEsigi);
+//      hizOzeti (kararVer ile ayni gruplar) ve farkDurumu (hucre basina AYNI kural: CPU-ms, p95, hata; digerleri
+//      renklendirilmez) disari acildi. kararVer ciktisi BIREBIR (Python fikstur testleri).
 // null = olculmedi (hicbir zaman 0 yerine gecmez). Fonksiyonlar saftir: G/C yok, saat yok.
 'use strict';
 
@@ -1296,6 +1299,14 @@ function isParcacigiDegeri(x, ad) {
 }
 
 /**
+ * kararVer'in gurultu kurali (TEK kaynak; 2026-11-04 coklu karsilastirma da bunu kullanir): esik = max(esik% / 100,
+ * 3 x referans gurultusu); gurultu bilinmiyorsa (tek tekrar) 0 kabul edilir. Python: max(esik / 100.0, 3 * g).
+ */
+function gurultuEsigi(esikYuzde, gurultuRef) {
+  return pyMax(esikYuzde / 100.0, 3 * (gurultuRef || 0));
+}
+
+/**
  * Bir ortak kademenin p95 satiri ve zarari (zarar esigi = max(esikZarar, 3 x referans p95 gurultusu)).
  * 2026-11-03 (B2): taraflardan birinin p95'i yalniz YUK_DOYDU yuzunden yoksa (gecerli tekrarlarin hepsi yuk
  * makinesi doymus) kademe SESSIZ atlanmaz: satir yazilir ve kademe `yukAtlanan`a eklenir (cagiran KALICI vermez:
@@ -1306,7 +1317,7 @@ function p95Satiri(sat, zarar, rg, ag, h, esikZarar, yukAtlanan) {
   const ap = ag.p95;
   if (rp && ap !== null) {
     const kotu = oran(ap, rp);
-    const ez = pyMax(esikZarar / 100.0, 3 * (rg.gurultu_p95 || 0));
+    const ez = gurultuEsigi(esikZarar, rg.gurultu_p95);
     sat.push(`p95 @${fd(h)}: ref=${fx(rp, 1)} aday=${fx(ap, 1)} degisim=%${fxs(100 * kotu, 1)} (zarar esigi %${fx(100 * ez, 1)})`);
     if (kotu > ez + EPS) zarar.push(`p95 @${fd(h)} %${fxs(100 * kotu, 1)}`);
     return;
@@ -1495,7 +1506,7 @@ function kararVer(refAdimlar, adayAdimlar, secenek = {}) {
     notlar.push('referansta tek tekrar: gurultu bilinmiyor (0 kabul)');
     gCpu = 0.0;
   }
-  const esik1 = pyMax(esikCpu / 100.0, 3 * gCpu);
+  const esik1 = gurultuEsigi(esikCpu, gCpu);
   const cpuKazanc = -oran(aKc.cpu_ms_istek, rKc.cpu_ms_istek);
   sat.push(`CPU-ms/istek @${fd(kc)}: ref=${fx(rKc.cpu_ms_istek, 3)} aday=${fx(aKc.cpu_ms_istek, 3)} kazanc=%${fx(100 * cpuKazanc, 1)} esik=%${fx(100 * esik1, 1)} (gurultu %${fx(100 * gCpu, 1)})`);
   const zarar = [];
@@ -1510,14 +1521,14 @@ function kararVer(refAdimlar, adayAdimlar, secenek = {}) {
       cpuKotuMax = cpuKotuMax === null ? v : pyMax(cpuKotuMax, v);
     }
   }
-  const ezCpu = pyMax(esikZarar / 100.0, 3 * gCpu);
+  const ezCpu = gurultuEsigi(esikZarar, gCpu);
   if (-cpuKazanc > ezCpu + EPS) zarar.push(`CPU-ms/istek @${fd(kc)} %${fxs(-100 * cpuKazanc, 1)}`);
   const kosul1 = esikGecti(cpuKazanc, esik1) && !zarar.length;
   let kosul2 = false;
   const rKp = kp === null ? undefined : rG.get(kp);
   const aKp = kp === null ? undefined : aG.get(kp);
   if (rKp && aKp && rKp.p95 && aKp.p95 !== null) {
-    const esik2 = pyMax(esikP95 / 100.0, 3 * (rKp.gurultu_p95 || 0));
+    const esik2 = gurultuEsigi(esikP95, rKp.gurultu_p95);
     const p95Kazanc = -oran(aKp.p95, rKp.p95);
     kosul2 = esikGecti(p95Kazanc, esik2) && (cpuKotuMax === null || cpuKotuMax <= 0.05 + EPS);
     sat.push(`p95 kazanci @${fd(kp)}: %${fx(100 * p95Kazanc, 1)} esik=%${fx(100 * esik2, 1)}`);
@@ -1539,6 +1550,77 @@ function kararVer(refAdimlar, adayAdimlar, secenek = {}) {
     karar = 'NOTR';
   }
   return bitir(karar, [...sat, ...notlar.map((n) => 'not: ' + n)]);
+}
+
+/**
+ * 2026-11-04 coklu karsilastirma: bir kosunun adim satirlarindan (DB ya da analiz ciktisi) senaryo/kip/ae birlesimindeki
+ * hiz gruplari (kararVer ile AYNI grupHesapla: ortalama, gurultu, n_kosu, hata_max ...). `kombo` verilmezse kosunun kendi
+ * varsayilani (komboSec(k, k): K/yeni/br varsa o).
+ * @returns {{ kombo: {senaryo: string, kip: string, ae: string}, gruplar: Map<number, object> }}
+ */
+function hizOzeti(adimlar, kombo = null) {
+  const k = kosulariHazirla(adimlar);
+  const kb = kombo || komboSec(k, k);
+  return { kombo: kb, gruplar: hizGruplari(k, kb) };
+}
+
+/** farkDurumu'nun renklendirdigi olculer: yalniz kararVer'de kurali olanlar. */
+const FARK_KURALLI = Object.freeze(['cpu_ms_istek', 'p95', 'hata_orani']);
+
+/**
+ * 2026-11-04 coklu karsilastirma: ayni hizdaki iki grubun (ref, aday; hizOzeti gruplari) bir olcudeki farki ve farkin
+ * gurultu disi olup olmadigi. YENI KURAL YOK, kararVer'in kurallari hucre basina:
+ *  - cpu_ms_istek: iyi = kazanc >= max(esikCpu, 3 x ref gurultu_cpu) (kosul1), kotu = artis > max(esikZarar, 3 x
+ *    gurultu_cpu) (zarar); ref <= 0 ya da aday yok -> 'yok'.
+ *  - p95: kotu = artis > max(esikZarar, 3 x gurultu_p95) (p95Satiri zarari), iyi = kazanc >= max(esikP95, 3 x gurultu_p95)
+ *    (kosul2'nin esigi); ref p95 yok / 0 ya da aday yok -> 'yok'.
+ *  - hata_orani: kotu = aday en yuksek hata > ref en yuksek hata + %0.1 ya da adayda 429 / 5xx (hata artti RET kurali:
+ *    istemci sayaclari n_429 / n_5xx YA DA tekrarlardan birinin gecersiz_nedeni'nde sunucu tarafi '429(' / '5xx(' -
+ *    kararVer ile birebir); aksi 'gurultu_ici' (kararVer'de hata iyilesmesi kurali yok: iyi rengi verilmez).
+ *  - diger olculer: 'renklendirilmez' (kararVer'de kurali yok).
+ * yuzde = (aday / ref - 1) x 100 (ref 0 / yok ise null). Gurultu bilinmiyorsa (tek tekrar) kararVer gibi 0 kabul edilir.
+ * @returns {{ yuzde: number|null, durum: 'iyi'|'kotu'|'gurultu_ici'|'renklendirilmez'|'yok', esikYuzde: number|null,
+ *   gurultuBilinmiyor: boolean }}
+ */
+function farkDurumu(olcu, rg, ag, secenek = {}) {
+  const s = secenek || {};
+  const esikCpu = secenekSayi(s.esikCpu, 10);
+  const esikP95 = secenekSayi(s.esikP95, 10);
+  const esikZarar = secenekSayi(s.esikZarar, 5);
+  const alan = olcu === 'hata_orani' ? 'hata_max' : olcu;
+  const r = rg ? sayi(rg[alan]) : null;
+  const a = ag ? sayi(ag[alan]) : null;
+  const v = oran(a, r);
+  const sonuc = (durum, esik = null, gurultuBilinmiyor = false) => ({ yuzde: v === null ? null : 100 * v, durum, esikYuzde: esik === null ? null : 100 * esik, gurultuBilinmiyor });
+  if (!rg || !ag) return sonuc('yok');
+  if (olcu === 'cpu_ms_istek') {
+    if (!r || r <= 0 || a === null) return sonuc('yok');
+    const g = rg.gurultu_cpu;
+    const kazanc = -v;
+    const esik = gurultuEsigi(esikCpu, g);
+    if (-kazanc > gurultuEsigi(esikZarar, g) + EPS) return sonuc('kotu', gurultuEsigi(esikZarar, g), g === null || g === undefined);
+    if (esikGecti(kazanc, esik)) return sonuc('iyi', esik, g === null || g === undefined);
+    return sonuc('gurultu_ici', esik, g === null || g === undefined);
+  }
+  if (olcu === 'p95') {
+    if (!r || a === null) return sonuc('yok');
+    const g = rg.gurultu_p95;
+    const ez = gurultuEsigi(esikZarar, g);
+    if (v > ez + EPS) return sonuc('kotu', ez, g === null || g === undefined);
+    const esik = gurultuEsigi(esikP95, g);
+    if (esikGecti(-v, esik)) return sonuc('iyi', esik, g === null || g === undefined);
+    return sonuc('gurultu_ici', esik, g === null || g === undefined);
+  }
+  if (olcu === 'hata_orani') {
+    if (r === null && a === null) return sonuc('yok');
+    // kararVer gibi: sunucu tarafi 429 / 5xx (istemci sayaci 0 olsa da) gecersiz_nedeni'nde gorunur.
+    const nedenler = Array.isArray(ag.kosular) ? ag.kosular.map((k) => k && k.gecersiz_nedeni) : (ag.gecersizler || []);
+    const sunucuHata = nedenler.some((n) => typeof n === 'string' && (n.includes('429(') || n.includes('5xx(')));
+    const kotu = (ag.n_429 || 0) > 0 || (ag.n_5xx || 0) > 0 || sunucuHata || (a || 0) > (r || 0) + HATA_ESIK + EPS;
+    return sonuc(kotu ? 'kotu' : 'gurultu_ici', HATA_ESIK);
+  }
+  if (r === null || a === null) return sonuc('yok');
+  return sonuc('renklendirilmez');
 }
 
 /**
@@ -2012,6 +2094,12 @@ module.exports = {
   kosuAnaliz,
   kararVer,
   ayristirma,
+  // 2026-11-04 coklu karsilastirma (coklu.cjs): kararVer'in gruplari ve hucre basina gurultu kurali.
+  hizOzeti,
+  farkDurumu,
+  gurultuEsigi,
+  FARK_KURALLI,
+  HATA_ESIK,
   NEDENLER,
   NEDEN_KALIPLARI,
   YUK_BOSTA_ESIK,

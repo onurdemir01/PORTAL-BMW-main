@@ -32,9 +32,10 @@ Portal'a özgüdür ve aynı istemci dosya şemasını yazar.
 | Sonuçlandırıcı (sunucu tarafı) | `server/nginx-loadtest/poller.cjs` |
 | Yük araçları (k6 + wrk arac setleri: sabit arşiv özetleri, hazırlama, geri çekme, etkin set kapısı, sonuçlandırma) | `server/nginx-loadtest/araclar.cjs` |
 | Sonuç dizini okuma / analiz | `server/nginx-loadtest/sonuc.cjs`, `server/nginx-loadtest/analiz.cjs` |
+| Koşu silme (kurallar, SQL, engel metinleri) | `server/nginx-loadtest/sil.cjs` (uçlar `index.cjs`), ekran `yukTesti/KosuSilOnayi.tsx` |
 | Playbook | Ansible deposu `bmw_portal/nginx_loadtest/nginx_loadtest.yml` (+ `files/`: `kos.sh`, `yuk_k6.js`, `cpu_kaydedici.sh`, `on_kontrol.sh`, `durdur.sh`, `wrk_kos.sh`, `yuk_wrk.lua`, `arac_hazirla.sh`, `yuk_cpu_kaydedici.sh`; `README.md`); Portal aynası `server/ansible/bmw_portal/nginx_loadtest/` |
 | Tablolar | `nginx_loadtest_senaryolar`, `_kosular`, `_adimlar`, `_kilitleri`, `_araclar` — bkz. [DATABASE.md](DATABASE.md) |
-| Bekçiler | `server/nginx-loadtest/__tests__/` (dogrula, kilit, kapi, poller, sonuc, analiz, araclar) |
+| Bekçiler | `server/nginx-loadtest/__tests__/` (dogrula, kilit, kapi, poller, sonuc, analiz, araclar, coklu, sil) |
 
 ---
 
@@ -232,7 +233,8 @@ Sekme `tab:nginx:yuktesti` **varsayılan kapalıdır**. Admin › Nginx Hub Eri�
 ya da AD grubuna açılır. Admin olmayan kullanıcı yalnız **sonuçları okur** (hedefler, senaryolar,
 koşular, karşılaştırma, araç setleri — vekil adresi hariç). Araç hazırlama ve araç setini geri çekme **yalnız
 Admin**. Senaryo yazma/silme, IP sınıflandırması (`/ip-sinifi`), ön kontrol, koşu,
-durdurma ve canlı iş çıktısı **yalnız Admin**. Serbest izin listesindeki ağlar `/hedefler`'de yalnız
+durdurma ve canlı iş çıktısı **yalnız Admin**. **Koşu silme** (2026-11-04) istisnadır: kaydı başlatan kişi
+(Admin olmasa da) kendi kaydını, Admin her kaydı siler (bkz. "Koşu silme"). Serbest izin listesindeki ağlar `/hedefler`'de yalnız
 Admin'e gösterilir (diğerleri yalnız açık / kapalı bilgisini görür).
 
 ### 2.5 Teslim sırası
@@ -533,6 +535,144 @@ oluşur (Portal DB; elle SQL gerekmez). Öğe tablosunun `sonraki_deneme_at` (ge
 kurulumda CREATE TABLE'da; tablo ilk sürümle kurulduysa açılıştaki sütun göçü
 (`ALTER TABLE nginx_loadtest_kuyruk_ogeler ADD sonraki_deneme_at DATETIME2 NULL`) ekler. Yürütücü `NGINX_LOADTEST_KUYRUK_SN` (varsayılan 15 sn, 5–120)
 aralıkla çalışır.
+
+### Çoklu karşılaştırma (2026-11-04)
+
+Kullanıcı: "ardı ardına 12-16 test koşacağım, hepsini tek sayfada karşılaştırmak istiyorum". İki koşulu
+**Karşılaştır** aynen kalır; **Çoklu karşılaştırma** alt görünümü bir referansa karşı en çok 15 adayı (referans
+dahil **16 koşu**) tek sayfada gösterir. Okuma herkese açık (Karşılaştır ile aynı yetki).
+
+* **Seçim**: bitmiş koşular (son 200), hedef / "bu tarihten sonra" / etiket araması süzgeci, en çok 16 kutu
+  (16'da yeni kutu kapanır). Referans seçili koşulardan biri (radyo düğmesi); varsayılan **en eski** koşu, referans
+  seçimden çıkarılırsa kalanların en eskisi. Seçim adres çubuğundadır:
+  `?tab=yuktesti&yt=coklu&ref=<id>&kosular=<id,id,...>&olcu=<ölçü>&sira=<sıra>` — bağlantı paylaşılabilir, sayfa
+  yenilenince korunur. Adresteki bilinmeyen ölçü (`olcu=` ölçü listesinde yoksa; `toString` gibi nesne adları dahil)
+  **p95** sayılır. **Gece kuyruğu** ayrıntısındaki "Hepsini karşılaştır" o kuyruğun BİTTİ öğelerinin koşularını
+  (kuyruk sırasıyla, en çok 16; HATALI / İPTAL / ATLANDI öğe ve silinmiş koşu gitmez; en az 2 koşu yoksa düğme kapalı)
+  açar; referans **ilk öğe**. 16'dan fazla biten koşu varsa ilk 16'sı açılır ve ekran "Gece kuyruğundan ilk 16 koşu
+  alındı; n koşu dışarıda kaldı" der (dışarıda kalan numaralarla; sessizce düşmez).
+* **Hesap sunucuda** (`GET /karsilastir-coklu`, `server/nginx-loadtest/coklu.cjs`): her aday referansa karşı
+  `analiz.kararVer` ile (iki koşulu ekranla aynı eşikler 10 / 10 / 5 ve aynı motor / protokol / hedef türü / iş
+  parçacığı / tavan argümanları) → karar, gerekçe, kademe. Her koşunun hız başına özeti kararVer'in **aynı
+  gruplarından** (`analiz.hizOzeti`): p95, p99, CPU-ms/istek, sunucu CPU, en yüksek hata oranı, tekrar / geçerli
+  tekrar; görünüm satırlarından kapasite (yalnız GEÇERLİ adımlar), test trafiği (alınan, yeni ağ alanları), Nginx
+  belleği (PSS ortalaması; PSS yoksa RSS ortalaması), kip doğrulaması. Eski koşuda ölçülmeyen değer **boş** (asla 0).
+* **Renk kuralı** (`analiz.farkDurumu`; yeni kural yok, kararVer'in kuralı hücre başına; gürültü eşiği tek
+  fonksiyonda: `gurultuEsigi` = max(eşik %, 3 × referans gürültüsü), tek tekrarda gürültü 0 kabul):
+  * **İstek başına CPU**: yeşil = azalış ≥ max(CPU eşiği %10, 3 × gürültü); kırmızı = artış > max(%5, 3 × gürültü).
+  * **Yanıt süresi (p95)**: yeşil = azalış ≥ max(p95 eşiği %10, 3 × gürültü); kırmızı = artış > max(%5, 3 × gürültü).
+  * **Hata oranı**: kırmızı = aday en yüksek hata > referans + %0,1 ya da 429 / 5xx (kararın "hata arttı" RET
+    kuralı birebir: istemci sayaçları **ya da** sunucu tarafı 429 / 5xx, yani tekrarlardan birinin geçersizlik
+    nedeninde `429(` / `5xx(`; istemci sayacı 0 olsa da); iyileşme kuralı yok, renklendirilmez.
+  * **p99, sunucu CPU, kapasite, test trafiği, bellek**: kararda kuralı yok → **renklendirilmez** (yalnız % fark,
+    soluk). PSS ile RSS arasında % fark verilmez.
+* **Karşılaştırılamaz** grubu: referansa göre farklı hedef türü, hedef (host ya da IP), yük aracı (k6 / wrk),
+  protokol, wrk hız tavanı ya da iş parçacığı (bunlar için kararVer **çağrılmaz**) ve kararı VERİ YOK olanlar,
+  nedenleriyle.
+* **Ekran**: (1) seçici; (2) **Özet** — satır = koşu, etiket ön planda, karar çipi, **düz cümle**, karar
+  kademesindeki CPU / p95 / test trafiği / bellek farkı (CPU: CPU kademesi; diğerleri p95 kademesi); sıralama CPU
+  iyileşmesi, p95 iyileşmesi, etiket, tarih (ölçülmeyen sona); referans satırı işaretli ve hep üstte; (3) **Hız × koşu**
+  matrisi — ölçü seçici, hücrede değer + % fark, yalnız gürültü dışı farklar renkli, ilk sütun sabit, tablo kendi
+  kabında yatay kayar; (4) **Grafik** — seçili ölçü × hız, koşu başına çizgi, referans kalın; 8 ton (index.css
+  `--yt-seri-*`, açık / koyu yüzeyde renk körlüğü denetiminden geçti), 9. adaydan sonra aynı tonlar kesikli; lejantta
+  tıklayınca vurgulanır (diğerleri soluk), üzerine gelince geçici vurgu; (5) **CSV indir** — özet + seçili ölçü
+  matrisi, Türkçe başlıklar, `;` ayırıcı, ondalık virgül, UTF-8 BOM (Excel); `=`, `+`, `-`, `@` ile başlayan
+  metin hücresi tek tırnakla korunur.
+* **Etiket sonradan düzenlenir**: Koşular listesi ve ayrıntıda Admin'e kalem simgesi → `PUT /kosular/:id/etiket`
+  (en çok 120 karakter, kontrol karakteri / satır sonu yok; boş = etiketi kaldır). Denetim
+  `nginx_loadtest_etiket` (eski / yeni). Kuyruk koşusunun `[K<n>] ` öneki kullanıcının elindedir.
+
+#### Çoklu karşılaştırma nasıl okunur
+
+Örnek: gece kuyruğu K3, referans **[K3] A1 temel** (brotli 6), adaylar brotli seviyesi ve gzip denemeleri. Özet:
+
+| Koşu | Karar | Ne oldu? | İstek başına CPU | p95 |
+|---|---|---|---|---|
+| [K3] A1 temel | REFERANS | Diğer koşular buna göre karşılaştırılır. | | |
+| [K3] A3 brotli 4 | KALICI | Referansa göre CPU %12 daha az, p95 değişmedi (gürültü içinde) → kalıcı iyileşme | **−12 %** (yeşil) | +0,4 % (soluk) |
+| [K3] A5 brotli 8 | RET | Referansa göre CPU %7 daha fazla, p95 %14 daha yüksek → kötüleşme, değişikliği geri alın | **+7 %** (kırmızı) | **+14 %** (kırmızı) |
+| [K3] A4 gzip 6 | NÖTR | Referansa göre CPU değişmedi (gürültü içinde), p95 değişmedi (gürültü içinde) → anlamlı fark yok | −4 % (soluk) | −2 % (soluk) |
+
+1. **Önce karar çipi ve cümle**: KALICI = eşiği aşan kazanç ve hiçbir kademede zarar yok; RET = bir kademede
+   gürültü dışı kötüleşme; NÖTR = farklar gürültü içinde. Cümle karar kademesindeki iki ana ölçüyü söyler.
+2. **Soluk fark "yok" demek değil**: "−4 %" soluksa o fark referansın kendi tekrarları arasındaki oynamanın
+   (gürültü × 3) ya da eşiğin içindedir; tek başına iyileşme sayılmaz. İpucu (üzerine gelin) eşiği yazar
+   (ör. "eşik %10"); "referansta tek tekrar: gürültü bilinmiyor" görürseniz referansı tekrar=2 ile yeniden koşun.
+3. **Matriste kademeleri gezin**: bir aday düşük hızda iyi, yüksek hızda kötü olabilir (ör. brotli 8 CPU'yu 2500/sn'de
+   yakar). Ölçü seçiciyle p99 ve sunucu CPU'ya bakın: bunlar renklenmez, yalnız bağlam verir.
+4. **Grafikte biçim**: referans kalın koyu çizgi; birbirine yapışık çizgiler fark yok demektir. Lejantta bir koşuya
+   tıklayıp öne alın.
+5. **Karşılaştırılamaz** grubundaki koşu (ör. "Yük aracı farklı (referans k6, bu koşu wrk)") ayrı referansla, kendi
+   türünden koşularla karşılaştırılmalıdır.
+6. Paylaşmak için adres çubuğundaki bağlantıyı kopyalayın; Excel'e almak için "CSV indir" (seçili ölçünün matrisi
+   özetin altına eklenir).
+
+### Koşu silme (2026-11-04)
+
+Kullanıcı: "istediğim yük testi sonuçlarını kaldırabilmek istiyorum". Koşu ve ön kontrol kayıtları Portal'dan silinebilir.
+
+* **Kim**: kaydı başlatan kişi ya da Admin. Admin olmayan kullanıcı yalnız kendi kayıtlarını siler (ad büyük / küçük harf
+  ve baştaki / sondaki boşluk duyarsız). Başkasının kaydı **403** `yetki_yok` döner ve hiçbir kayıt silinmez; ret denetime
+  yazılır. Admin dışındaki yazma kapısı yalnız bu iki uç için açılır (`index.cjs` `SAHIP_SILME`); sekme ve görünürlük
+  kapısı yine uygulanır, diğer yazan uçlar Admin'de kalır.
+* **Nereden**:
+  * **Koşu ayrıntısı**: **Sil** düğmesi (kırmızı). Onay için **koşu numarası** yazılır (`12` ya da `#12`).
+  * **Koşular listesi**: satır başındaki kutularla seçim (en çok **50**; başlıktaki kutu görünen silinebilir kayıtları
+    seçer), ardından **Seçilenleri sil**. Onay için **seçilen sayı** yazılır.
+  * İki pencerede de yapıştırma kapalıdır ve kapatma düğmesi **İptal**'dir. Sunucu aynı onay metnini ister (yanlışsa 400
+    `onay_metni`, veritabanı okunmaz).
+* **Ne silinir**: Portal DB'deki kayıt (`nginx_loadtest_kosular`, `islem` = `kosu` ya da `on_kontrol`) ve adım
+  sonuçları (`nginx_loadtest_adimlar`). Sunucudaki **ham ölçüm dosyalarına** (`/sw/BMW_PORTAL/nginx_loadtest/<koşu>/`)
+  **dokunulmaz**. Ekran bunu onay penceresinde ve silindi bildiriminde söyler; gerekirse dosyaları oradan ayrıca silin.
+  Tablolarda FK yoktur. Koşu numarasına bağlı diğer satırlar aşağıdaki kurallarla korunur.
+* **Silinemeyenler** (409, nedenleriyle):
+
+  | Kod | Durum | Ne yapılmalı |
+  |---|---|---|
+  | `kosu_suruyor` | `QUEUED` / `RUNNING` / `FINALIZING` | Bitmesini bekleyin ya da önce **Durdur**'u kullanın. |
+  | `kosu_kilitli` | İptal / hata sonrası kilit hâlâ tutuluyor (uzaktaki yük sürüyor olabilir) | Kilit bırakılınca silinir (§4.4; gece kuyruğunun dinlenme kuralıyla aynı). |
+  | `kuyruga_bagli` | Gece kuyruğunda `BEKLIYOR` / `CALISIYOR` bir öğeye bağlı (koşu ya da ön kontrol) | "Önce kuyruktan çıkarın": öğeyi **Çıkar**ın ya da kuyruğu **İptal** edin. |
+  | `kuyruga_bagli` | Kuyruk bu koşudan sonra `DINLENME`'de | Dinlenme bitince ya da kuyruk İptal edilince silinir. |
+  | `on_kontrol_bagli` | Bu ön kontrole dayanan koşu duruyor | Önce koşuyu silin ya da ikisini birlikte seçin. |
+  | `kosu_yok` | Kayıt yok (toplu silmede; tekli silmede **404**) | Liste yenilenir. |
+
+* **Bitmiş kuyruk öğesi**: koşusu silinebilir. Öğe satırı ve koşu numarası **kalır** (NULL'lanmaz). Bunun nedeni şu:
+  kuyruk yürütücüsü "numarası olmayan çalışıyor öğe hiç başlamamıştır" kuralına dayanır ve numara silmek bu anlamı
+  bozardı. Kuyruk ayrıntısı silinmiş kaydı bağlantısız `#12 (silindi)` olarak gösterir (sunucu `kosuSilindi` /
+  `onKontrolSilindi`). "Hepsini karşılaştır" silinmiş koşuyu göndermez.
+* **Hepsi ya da hiçbiri**: toplu silmede kayıtlardan biri silinemezse **hiçbiri silinmez**. Yanıt 409 `silinemez` olur
+  ve silinemeyenler nedenleriyle listelenir. Pencerede **Silinemeyenleri seçimden çıkar** düğmesi vardır: onları seçimden
+  çıkarıp kalanları yeniden onaylayabilirsiniz.
+* **Eşzamanlılık**: silme tek batch'tir (`SET XACT_ABORT ON`, `BEGIN TRAN`). Satırlar `UPDLOCK, HOLDLOCK` ile yukarıdaki
+  koşullar **yeniden** denetlenerek seçilir; seçilen sayı istenen sayıya eşit değilse hiçbir şey silinmez (koşullu DELETE).
+  Okuma ile silme arasında koşu başlar, kilitlenir ya da kuyruğa bağlanırsa yanıt 409 olur (yeniden okunan nedenle ya da
+  `eszamanli_degisti`). Bu sırada poller, Durdur ve "yeniden oku" aynı satırı güncelleyemez; işlem bitince onların koşullu
+  UPDATE'leri 0 satır bulur.
+* **Çoklu karşılaştırma**: adresteki (`kosular=` / `ref=`) bir koşu silinmişse sunucu 409 `kosu_yok` + `eksik` döner.
+  Ekran o numaraları seçimden ve adresten çıkarır (referans gittiyse kalanların en eskisi referans olur) ve
+  "Silinmiş koşu çıkarıldı: #…" bilgisini gösterir. Aynı yanıtta ön kontrol kaydı (`onKontrol`) ve bitmemiş koşu
+  (`bitmemis`: QUEUED / RUNNING / FINALIZING) **ayrı** listededir; ekran onları da çıkarır ama "silinmiş" demez
+  ("Ön kontrol kaydı çıkarıldı" / "Bitmemiş koşu çıkarıldı"). Yalnız ön kontrol / bitmemiş varsa kod `kosu_uygun_degil`.
+  FAILED / CANCELED / OKUNAMADI koşu (adımı varsa) karşılaştırılır. Silinmiş bir koşunun ayrıntısı açılırsa "Koşu #n
+  bulunamadı — silinmiş olabilir" yazar.
+* **Ön kontrol silinirken ondan koşu başlatılırsa** (2026-11-04 inceleme): koşu satırı, dayandığı ön kontrol satırı hâlâ
+  varsa yazılır (`INSERT … SELECT … WHERE EXISTS`, ön kontrol satırı `UPDLOCK, HOLDLOCK` ile). Ön kontrol başlatma
+  okumasından sonra silindiyse koşu yazılmaz: 409 `on_kontrol_eski` "Ön kontrol #n bu arada silindi", iş başlatılmaz,
+  kilitler bırakılır, ret denetimde. Kopuk `on_kontrol_kosu_id`'li koşu oluşmaz.
+* **Yeniden deneme yok**: silme işlemi (tek batch) bağlantı kopmasında **yeniden çalıştırılmaz** (`db.query(…, { tekrar:
+  false })`). Eskiden COMMIT'ten sonra kopan bağlantıda ikinci çalışma 0 satır bulur, kayıt silinmiş olduğu halde 409
+  `kosu_yok` dönerdi ve silme denetime yazılmazdı. Şimdi 424 `db_okunamadi` (denetimde `fail`) ve metin "bağlantı işlem
+  sırasında koptuysa silinmiş olabilir: listeyi yenileyip kontrol edin" der.
+* **Denetim**: `nginx_loadtest_kosu_sil`. Kim ve ne zaman denetim satırının kendisindedir. `detail` alanı
+  `{ toplu, sayi, kosuIdleri, kosular: ["#12 kosu GBNGXT33 [K3] A1 temel", …] }` biçimindedir; `kosuIdleri` kısaltılmaz.
+  Tek hedefte `targetHost` / `targetIp` dolar. Retler `result: 'fail'` ile yazılır: **403** `yetki_yok` (başkasının
+  kaydı; işleyicide açıkça), **409** ve **424**. **Yazılmayanlar**: 400 (geçersiz numara / onay metni; veritabanı hiç
+  okunmaz) ve tekli silmede 404 (kayıt yok). Etiket ucunda (`nginx_loadtest_etiket`) yalnız 409 / 424 yazılır; 400 ve
+  Admin olmayanın 403'ü (ara katman `adminOkumaKapisi` verir, işleyiciye gelinmez) yazılmaz. Sır yoktur; etiket
+  kullanıcının yazdığı metindir.
+* **Devreye alma**: şema değişikliği yok (yeni tablo / kolon / indeks yok); elle SQL gerekmez. 2026-11-04 inceleme
+  düzeltmesi `server/db/index.cjs` `query`'ye isteğe bağlı üçüncü argüman ekler (`{ tekrar: false }`); diğer çağrılar
+  aynen (bir kez yeniden dener).
 
 ---
 
@@ -1240,9 +1380,13 @@ retlerinde ayrıca `sahipler`).
 | `POST /kosular/:id/durdur` | Admin | AWX iptali + (koşu) `durdur` kipi. Başarı: `{ ok, iptal, iptalHatasi, durdurIsi: { jobId, awxServerId } \| null, durdurHatasi: null }`. 409 `baslatiliyor`, 409 `kosu_bitti`, 424 `durdur_baslatilamadi` (gövdede `iptal`, `iptalHatasi`, `durdurHatasi`; metin motor ve türe göre), 424 `awx_okunamadi` (ön kontrol iptal edilemedi) |
 | `POST /kosular/:id/yeniden-oku` | Admin | sonucu okunamamış koşuyu yeniden sonuçlandırır → `{ ok: true }`; değilse 409 `yeniden_okunamaz` |
 | `GET /karsilastir?ref=&aday=&esikCpu=&esikP95=` | okuma | karar, nedenler, tablo, kademe, kombinasyon; `ref` / `aday` özetinde `motor`, `hedefTuru`, `protokol` (farklıysa karar `VERI_YOK`, §5.2) |
+| `GET /karsilastir-coklu?ref=&kosular=&esikCpu=&esikP95=` | okuma | 2026-11-04: `kosular` virgülle koşu numaraları; referans dahil en çok **16** koşu (ref listede yoksa eklenir, tekrarlar tekil). → `{ ref: { …koşu, kombinasyon, hizlar }, adaylar: [{ …koşu, karar, kararNedenleri, kademe, kombinasyon, hizlar: [{ hiz, p95, p99, cpuMsIstek, hostCpu, hata, kapasite, bantBps, bellekMb, bellekKaynak: 'pss' \| 'rss' \| null, kip, gecerlilik, tekrar, gecerliTekrar, gurultuCpu, gurultuP95, fark: { <ölçü>: { yuzde, durum: 'iyi' \| 'kotu' \| 'gurultu_ici' \| 'renklendirilmez' \| 'yok', esikYuzde, gurultuBilinmiyor } } }], kademeFarki: { cpu, p95, bant, bellek, hata } }], karsilastirilamaz: [{ …koşu, nedenler: [{ kod: 'hedef_turu' \| 'hedef' \| 'motor' \| 'protokol' \| 'tavan' \| 'is_parcacigi' \| 'veri_yok' \| 'hesaplanamadi', metin }], karar }], olculer, esikler }`. Koşu ve adım satırları **iki sorguda** (`IN ($1..$n)` parametreli; koşu satırında büyük JSON kolonları taşınmaz; adım satırı `ham` dahil tümüyle okunur, bkz. aşağıdaki not). 400 `gecersiz_istek` (eksik / geçersiz numara: metin numara en çok 9 hane, 16'yı aşan, yalnız referans, eşik), 409 `kosu_yok` (bulunamayan var) ya da `kosu_uygun_degil` (yalnız ön kontrol / bitmemiş) + ayrı listeler `eksik: [id]` (bulunamayan), `onKontrol: [id]` (ön kontrol kaydı), `bitmemis: [id]` (QUEUED / RUNNING / FINALIZING), 424 `db_okunamadi` / `analiz_okunamadi`. Not (2026-11-04 inceleme, bilgi): en kötü durumda 16 koşu × 100 adım × `ham` (≤ 32 KB) ≈ 51 MB tek istekte belleğe gelir ve önbellek yoktur; bugünkü koşular (adım başı birkaç KB, 10–40 adım) için değiştirilmedi |
+| `DELETE /kosular/:id` | başlatan kişi ya da Admin | 2026-11-04: `{ confirmText: '<koşu no>' }` (`12` ya da `#12`) → `{ ok, sayi: 1, silinen: [{ id, islem, etiket, hedefHost, hedefIp, hedefTuru }] }`. Kayıt + adım satırları silinir; `/sw` dosyaları durur. 400 `gecersiz_istek` / `onay_metni` (DB okunmaz; 2147483647'yi aşan numara da 400), 403 `yetki_yok` (başkasının kaydı; `yetkisiz`), 404 `kosu_yok`, 409 `kosu_suruyor` / `kosu_kilitli` / `kuyruga_bagli` / `on_kontrol_bagli` / `eszamanli_degisti` (+ `silinemeyenler: [{ id, kod, metin, kuyrukId?, bagliKosuId? }]`), 424 `db_okunamadi` (silme batch'i bağlantı kopmasında yeniden denenmez). Denetim `nginx_loadtest_kosu_sil` (403 / 409 / 424 `fail`; 400 / 404 yazılmaz) |
+| `POST /kosular/sil` | başlatan kişi ya da Admin | 2026-11-04: `{ kosular: [id…] (1–50, tekrarsız), confirmText: '<sayı>' }` → `{ ok, sayi, silinen: […] }` (istek sırasıyla). **Hepsi ya da hiçbiri**: biri silinemezse 409 `silinemez` + `silinemeyenler` (bulunamayan `kosu_yok` dahil), hiçbir kayıt silinmez. 400 / 403 / 424 tekli uçla aynı |
+| `PUT /kosular/:id/etiket` | Admin | 2026-11-04: `{ etiket: string \| null }` → `{ ok, id, etiket }` (trim; boş / null = `NULL`). 400 `gecersiz_istek` (metin değil, > 120 karakter, kontrol karakteri / satır sonu / U+2028-9), 409 `kosu_yok`. Denetim `nginx_loadtest_etiket` (`{ kosuId, eski, yeni }`; ret de yazılır) |
 | `GET /araclar` | okuma | `{ ok, etkin, calisan, gecmis (en çok 10, id azalan), ayar: { derlemeHostlari, varsayilanDerlemeHost, k6Surum, wrkSurum: '4.2.0', proxyTanimli, proxy (yalnız Admin'e dolu), proxyHatasi, k6ArsivSha256, wrkKaynakSha256 (env sabitleri ya da null), ozetEksikleri (['<ENV> tanımlı değil' \| '<ENV> 64 hex değil']), isSuresiSn (2400) }, kapi: { kod, mesaj } }` (`kapi` = `/hedefler` `araclar.kod` / `mesaj`). Araç seti: `{ id, durum, derlemeHost, k6Surum, wrkSurum, k6Sha256, wrkSha256, k6ArsivSha256, wrkKaynakSha256, ozetlerGuncel, geriCekildi, geriCeken, geriCekmeAt, calismaYasSn, swDizin (yalnız DONE), derlemeRhel, derlemeGlibc, wrkGlibcGerekli, wrkOpenssl, wrkLuajit, hata, awxServerId, awxJobId, awxUrl, createdBy, createdAt, startedAt, finishedAt }` |
 | `POST /araclar` | Admin | `{ derlemeHost? }` (yoksa listenin ilki) → `{ aracId, jobId, awxServerId }`. 400 `gecersiz_istek` (geçersiz ad), 409 `derleme_host_izinsiz`, 409 `arac_proxy_gecersiz`, 409 `arac_ozet_sabit_yok` (iki arşiv özeti env'i zorunlu; iş, kilit, kayıt yok), 409 `sablon_yok`, 409 `kilit_dolu` ("Başka bir araç hazırlama işi sürüyor ..."), 409 `sinir_asildi` (son kapı), 424 `db_okunamadi` / `awx_okunamadi`. Extra vars: `yuk_islem='araclar'` + 9 alan (README); `yuk_k6_arsiv_sha256` / `yuk_wrk_kaynak_sha256` her zaman 64 küçük hex; `limit` boş |
-| `GET /kuyruklar`, `GET /kuyruklar/:id` | okuma | gece kuyrukları (en yeni 50); ayrıntı `{ kuyruk: { …, tahminiBitis, siradakiKalanSn, sunucuZamani }, ogeler: [{ id, sira, etiket, durum, asama, onKontrolKosuId, kosuId, neden, butceSn, uyariTurleri, tahminiBaslangic, tahminiBitis, sureYetmeyebilir, ayar }] }` |
+| `GET /kuyruklar`, `GET /kuyruklar/:id` | okuma | gece kuyrukları (en yeni 50); ayrıntı `{ kuyruk: { …, tahminiBitis, siradakiKalanSn, sunucuZamani }, ogeler: [{ id, sira, etiket, durum, asama, onKontrolKosuId, kosuId, neden, butceSn, uyariTurleri, tahminiBaslangic, tahminiBitis, sureYetmeyebilir, ayar, kosuSilindi, onKontrolSilindi }] }` (2026-11-04: silinmiş kayıt `true`; kayıtlar okunamazsa iki alan yok) |
 | `POST /kuyruklar` | Admin | `{ beklemeDk (1–30, varsayılan 5), baslangic (ISO \| null = hemen), enGecBitis (ISO \| null), confirmText, onaylananTurler?, ogeler: [{ etiket (zorunlu, ≤ 100), govde (ön kontrol gövdesi, etiketsiz), onKontrolKosuId? }] }` → `{ id }`. 400 `gecersiz_istek`, 409 `hedef_farkli` (`oge`), `onay_metni`, `uyari_onayi` (`uyariTurleri: [{ kod, ornek, ogeler }]`), kapı kodları (mesaj `Öğe n: …`, `oge`), 424 `db_okunamadi`. Denetim `nginx_loadtest_kuyruk_olustur` |
 | `POST /kuyruklar/:id/iptal` | Admin | sonraki öğeler başlamaz → `{ suren: { ogeId, etiket, kosuId, onKontrolKosuId } \| null }` (süren koşu durdurulmaz). 409 `kuyruk_bitti`. Denetim `nginx_loadtest_kuyruk_iptal` |
 | `PUT /kuyruklar/:id/sira` | Admin | `{ sira: [ogeId…] }` = bekleyen öğelerin tam listesi; 409 `sira_eski` |

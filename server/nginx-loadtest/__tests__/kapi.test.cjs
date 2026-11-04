@@ -66,6 +66,9 @@
 //   IX-H /hedefler protokoller + varsayilan; on kontrol h2 (kanonik + yuk_protokol); kosu: h2 olculemedi / ALPN yok
 //        409, h2 kanitli 200, h1 kosusu h2 alanlarini okumaz, protokolsuz (dagitim oncesi) h1 on kontrol gecer;
 //        liste CASE ifadesi + kosuApi; ayrinti; karsilastir refProtokol / adayProtokol + ozetler
+//   -- kosu silme incelemesi (2026-11-04) --
+//   YKP67 on kontrol okunduktan sonra (plan / arac kontrolu sirasinda) silinirse kosu INSERT'i 0 satir yazar: 409
+//         on_kontrol_eski, kopuk on_kontrol_kosu_id'li satir yok, AWX yok, kilitler birakilir, ret denetimde
 'use strict';
 
 const { test } = require('node:test');
@@ -145,6 +148,7 @@ function sifirla() {
     kuyrukSorgular: [],
     kuyrukHata: null,
     roller: {},
+    kosuInsertOncesi: null,
   });
   // Serbest hedef / wrk env'leri her testte temiz (test kendisi kurar).
   for (const k of ['NGINX_LOADTEST_SERBEST_AGLAR', 'NGINX_LOADTEST_SERBEST_YASAK', 'NGINX_LOADTEST_WRK', 'NGINX_LOADTEST_K6', 'NGINX_LOADTEST_DIR']) delete process.env[k];
@@ -276,8 +280,13 @@ sahte('../../db/index.cjs', {
     if (/^SELECT TOP \(\$1\)/.test(q)) {
       return { rows: D.kosular.filter(listeSuz(q, params)).sort((a, b) => b.id - a.id).slice(0, params[0]).map(kosuSatiri) };
     }
-    if (/^INSERT INTO nginx_loadtest_kosular \(senaryo_id, on_kontrol_kosu_id, islem, etiket, hedef_host, hedef_ip, vhost, yuk_host, parametreler, durum, created_by, kilit_id, hedef_turu, motor, plan_uyarilari, arac_id\) VALUES \(\$1, \$2, \$3, \$4, \$5, \$6, \$7, \$8, \$9, 'QUEUED', \$10, \$11, \$12, \$13, \$14, \$15\) RETURNING id$/.test(q)) {
+    if (/^INSERT INTO nginx_loadtest_kosular \(senaryo_id, on_kontrol_kosu_id, islem, etiket, hedef_host, hedef_ip, vhost, yuk_host, parametreler, durum, created_by, kilit_id, hedef_turu, motor, plan_uyarilari, arac_id\) OUTPUT INSERTED\.id SELECT \$1, \$2, \$3, \$4, \$5, \$6, \$7, \$8, \$9, 'QUEUED', \$10, \$11, \$12, \$13, \$14, \$15( WHERE .*)?$/.test(q)) {
       const [senaryo_id, on_kontrol_kosu_id, islem, etiket, hedef_host, hedef_ip, vhost, yuk_host, parametreler, created_by, kilit_id, hedef_turu, motor, plan_uyarilari, arac_id] = params;
+      // 2026-11-04 silme yarisi: INSERT'ten hemen once (on kontrol okunduktan sonra) calisan kanca; kosul SQL'e duyarli
+      // (WHERE metni yoksa uygulanmaz: SQL'den silinirse test kirmiziya doner).
+      if (D.kosuInsertOncesi) { const f = D.kosuInsertOncesi; D.kosuInsertOncesi = null; f(); }
+      if (q.endsWith(" WHERE $2 IS NULL OR EXISTS (SELECT 1 FROM nginx_loadtest_kosular o WITH (UPDLOCK, HOLDLOCK) WHERE o.id = $2 AND o.islem = 'on_kontrol')")
+        && on_kontrol_kosu_id != null && !D.kosular.some((x) => x.id === on_kontrol_kosu_id && x.islem === 'on_kontrol')) return { rows: [], rowCount: 0 };
       const id = 100 + D.kosular.length + 1;
       D.kosular.push({
         id, senaryo_id, on_kontrol_kosu_id, islem, etiket, hedef_host, hedef_ip, vhost, yuk_host, parametreler, created_by, kilit_id, hedef_turu, motor, plan_uyarilari, arac_id,
@@ -528,6 +537,7 @@ test('YKP1 kapilar: oturum, Admin, sayfa/sekme gorunurlugu (davranis)', { timeou
     ['POST', '/kosular/1/durdur', {}], ['GET', '/kosular/1/durum'], ['PUT', '/senaryolar/1', {}], ['POST', '/kosular/1/yeniden-oku', {}],
     ['GET', '/ip-sinifi?ip=10.0.0.9'], ['POST', '/araclar', { derlemeHost: 'GBLABT02' }], ['POST', '/araclar/5/geri-cek', {}],
     ['POST', '/kuyruklar', {}], ['POST', '/kuyruklar/1/iptal', {}], ['PUT', '/kuyruklar/1/sira', { sira: [1] }], ['POST', '/kuyruklar/1/ogeler/1/cikar', {}],
+    ['PUT', '/kosular/1/etiket', { etiket: 'x' }],
   ];
   for (const [m, u, b] of yazanlar) {
     D.sorgular = [];
@@ -538,7 +548,7 @@ test('YKP1 kapilar: oturum, Admin, sayfa/sekme gorunurlugu (davranis)', { timeou
     assert.equal(D.envSorgular.length, 0, `${m} ${u}: uc envanteri okudu`);
   }
   assert.equal(D.launch.length, 0);
-  for (const u of ['/hedefler', '/senaryolar', '/senaryolar/1', '/kosular', '/kosular/101', '/karsilastir?ref=1&aday=2', '/araclar', '/kuyruklar', '/kuyruklar/1']) {
+  for (const u of ['/hedefler', '/senaryolar', '/senaryolar/1', '/kosular', '/kosular/101', '/karsilastir?ref=1&aday=2', '/karsilastir-coklu?ref=1&kosular=2', '/araclar', '/kuyruklar', '/kuyruklar/1']) {
     const r = await istek('GET', u, { session: KULLANICI });
     assert.notEqual(r.statusCode, 403, `salt okunur ${u} Admin olmayana kapali`);
     assert.notEqual(r.statusCode, 401, u);
@@ -550,7 +560,8 @@ test('YKP1 kapilar: oturum, Admin, sayfa/sekme gorunurlugu (davranis)', { timeou
   // Isleyici de Admin ister (kapi atlansa bile): dogrudan isleyici kontrolu kaynakta.
   const kod = fs.readFileSync(IDX_YOL, 'utf8');
   for (const uc of ["router.post('/senaryolar'", "router.delete('/senaryolar/:id'", "router.post('/kosular/on-kontrol'", "router.post('/kosular'", "router.get('/kosular/:id/durum'", "router.post('/kosular/:id/durdur'", "router.post('/kosular/:id/yeniden-oku'", "router.get('/ip-sinifi'", "router.post('/araclar'", "router.post('/araclar/:id/geri-cek'",
-    "router.post('/kuyruklar'", "router.post('/kuyruklar/:id/iptal'", "router.put('/kuyruklar/:id/sira'", "router.post('/kuyruklar/:id/ogeler/:ogeId/cikar'"]) {
+    "router.post('/kuyruklar'", "router.post('/kuyruklar/:id/iptal'", "router.put('/kuyruklar/:id/sira'", "router.post('/kuyruklar/:id/ogeler/:ogeId/cikar'",
+    "router.put('/kosular/:id/etiket'"]) {
     const i = kod.indexOf(uc);
     assert.ok(i > 0, uc);
     assert.match(kod.slice(i, i + 400), /adminSart\(req\)/, `${uc} isleyicide Admin denetlemiyor`);
@@ -571,9 +582,9 @@ test('YKP2 kapi sirasi, nginxRed haric listesi, ADMIN_DISI_OKUMA', () => {
   const haric = servis.match(/haric:\s*\[([^\]]*)\]/);
   assert.ok(haric, 'nginxRedCevirici haric listesi okunamadi');
   assert.doesNotMatch(haric[1], /nginx-loadtest/, 'yuk testi router\'i haric: 403/404 govdeleri HTML\'e doner');
-  const ornek = ['/hedefler', '/senaryolar', '/senaryolar/12', '/kosular', '/kosular/12', '/karsilastir', '/araclar', '/kuyruklar', '/kuyruklar/3'];
+  const ornek = ['/hedefler', '/senaryolar', '/senaryolar/12', '/kosular', '/kosular/12', '/karsilastir', '/karsilastir-coklu', '/araclar', '/kuyruklar', '/kuyruklar/3'];
   for (const re of yt._ADMIN_DISI_OKUMA) assert.ok(ornek.some((o) => re.test(o)), `ornegi olmayan desen: ${re}`);
-  for (const yasak of ['/kosular/12/durum', '/kosular/12/durdur', '/kosular/on-kontrol', '/senaryolar/12/sil', '/kosular/12/yeniden-oku', '/ip-sinifi', '/araclar/5/geri-cek', '/araclar/5', '/kuyruklar/3/iptal', '/kuyruklar/3/sira', '/kuyruklar/3/ogeler/1/cikar']) {
+  for (const yasak of ['/kosular/12/durum', '/kosular/12/durdur', '/kosular/on-kontrol', '/senaryolar/12/sil', '/kosular/12/yeniden-oku', '/ip-sinifi', '/araclar/5/geri-cek', '/araclar/5', '/kuyruklar/3/iptal', '/kuyruklar/3/sira', '/kuyruklar/3/ogeler/1/cikar', '/kosular/12/etiket']) {
     assert.ok(!yt._ADMIN_DISI_OKUMA.some((re) => re.test(yasak)), `${yasak} Admin olmayana acik`);
   }
 });
@@ -2627,4 +2638,30 @@ test('YKP66 gercek kapilarla AWX kesintisi: is kesin baslamadiysa oge HATALI olm
   assert.match(D.ogeler[0].neden, /^ön kontrol başlatılamadı: AWX işi başlatılamadı/);
   assert.equal(D.ogeler[1].durum, 'BEKLIYOR');
   assert.match(D.ogeler[1].neden || '', /^bekliyor: /, 'belirsiz isin kilidi tutulmadi');
+});
+
+test('YKP67 silme yarisi: on kontrol INSERT oncesi silinirse kosu yazilmaz (409 on_kontrol_eski), kilit birakilir', { timeout: 20000 }, async () => {
+  sifirla();
+  senaryoEkle();
+  const ok = await onKontrolHazirla();
+  const satirOnce = D.kosular.length;
+  const launchOnce = D.launch.length;
+  // On kontrol okundu, plan yeniden kuruldu; tam INSERT'ten once baska bir oturum on kontrolu siler.
+  D.kosuInsertOncesi = () => { D.kosular = D.kosular.filter((x) => x.id !== ok.id); };
+  let r = await istek('POST', '/kosular', { body: { onKontrolKosuId: ok.id, confirmText: 'GBNGXT33' } });
+  assert.deepEqual([r.statusCode, r.body.code], [409, 'on_kontrol_eski'], JSON.stringify(r.body));
+  assert.match(r.body.message, new RegExp(`Ön kontrol #${ok.id} bu arada silindi`));
+  assert.equal(D.kosular.length, satirOnce - 1, 'kosu satiri yazilmadi');
+  assert.ok(!D.kosular.some((x) => x.on_kontrol_kosu_id === ok.id), 'kopuk on_kontrol_kosu_id yok');
+  assert.equal(D.launch.length, launchOnce, 'AWX baslatilmadi');
+  assert.deepEqual([...D.kilitler.values()].filter((k) => k.held).map((k) => k.lock_key), [], 'kilitler birakildi');
+  const d = D.denetim.at(-1);
+  assert.deepEqual([d.result, JSON.parse(d.detail).code], ['fail', 'on_kontrol_eski']);
+  // On kontrol duruyorsa ayni yol kosuyu yazar (kosul yalniz silineni durdurur).
+  sifirla();
+  senaryoEkle();
+  const ok2 = await onKontrolHazirla();
+  r = await istek('POST', '/kosular', { body: { onKontrolKosuId: ok2.id, confirmText: 'GBNGXT33' } });
+  assert.equal(r.statusCode, 200, JSON.stringify(r.body));
+  assert.equal(D.kosular.find((x) => x.id === r.body.kosuId).on_kontrol_kosu_id, ok2.id);
 });
