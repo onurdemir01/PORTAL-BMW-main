@@ -377,7 +377,8 @@ function ozetTemizle(v, derinlik = 0) {
 }
 
 /** POST /senaryolar govdesi. Donus: { ok:true, deger:{...} } | red(...) */
-function senaryoGovdesi(b) {
+/** Senaryonun duzenlenebilir bilgileri (olusturma ve PUT ortak): bos aciklama / vhost NULL. */
+function senaryoBilgisi(b) {
   const g = b && typeof b === 'object' ? b : {};
   const ad = kisaMetin(g.ad, 120);
   if (!ad) return red(400, 'gecersiz_istek', 'Senaryo adı gerekli (en çok 120 karakter).');
@@ -388,6 +389,13 @@ function senaryoGovdesi(b) {
     vhost = String(g.vhost).trim().toLowerCase();
     if (!gecerliVhost(vhost)) return red(400, 'gecersiz_istek', 'vhost geçerli bir ad değil (port, joker, regex yok).');
   }
+  return { ok: true, deger: { ad, aciklama: aciklama || null, vhost } };
+}
+
+function senaryoGovdesi(b) {
+  const g = b && typeof b === 'object' ? b : {};
+  const bilgi = senaryoBilgisi(g);
+  if (!bilgi.ok) return bilgi;
   if (!SENARYO_TURLERI.has(g.senaryoTur)) return red(400, 'gecersiz_istek', "senaryoTur 'K' ya da 'B' olmalı.");
   if (!KAYNAKLAR.has(g.kaynak)) return red(400, 'gecersiz_istek', "kaynak 'har' ya da 'liste' olmalı.");
   const s = senaryoSatirlari(g.satirlar);
@@ -400,7 +408,7 @@ function senaryoGovdesi(b) {
   if (ozetJson && ozetJson.length > 32 * 1024) return red(409, 'sinir_asildi', 'Özet çok büyük (en çok 32 KB).');
   return {
     ok: true,
-    deger: { ad, aciklama: aciklama || null, vhost, senaryoTur: g.senaryoTur, kaynak: g.kaynak, tsv: s.tsv, sha256: s.sha256, yolSayisi: s.yolSayisi, ozet: ozetJson },
+    deger: { ...bilgi.deger, senaryoTur: g.senaryoTur, kaynak: g.kaynak, tsv: s.tsv, sha256: s.sha256, yolSayisi: s.yolSayisi, ozet: ozetJson },
   };
 }
 
@@ -1760,6 +1768,7 @@ module.exports = {
   agirlikBicim,
   senaryoSatirlari,
   senaryoGovdesi,
+  senaryoBilgisi,
   ozetTemizle,
   ADIM_EK_SN,
   butceSn,

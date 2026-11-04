@@ -34,7 +34,7 @@ Portal'a özgüdür ve aynı istemci dosya şemasını yazar.
 | Sonuç dizini okuma / analiz | `server/nginx-loadtest/sonuc.cjs`, `server/nginx-loadtest/analiz.cjs` |
 | Koşu silme (kurallar, SQL, engel metinleri) | `server/nginx-loadtest/sil.cjs` (uçlar `index.cjs`), ekran `yukTesti/KosuSilOnayi.tsx` |
 | Playbook | Ansible deposu `bmw_portal/nginx_loadtest/nginx_loadtest.yml` (+ `files/`: `kos.sh`, `yuk_k6.js`, `cpu_kaydedici.sh`, `on_kontrol.sh`, `durdur.sh`, `wrk_kos.sh`, `yuk_wrk.lua`, `arac_hazirla.sh`, `yuk_cpu_kaydedici.sh`; `README.md`); Portal aynası `server/ansible/bmw_portal/nginx_loadtest/` |
-| Tablolar | `nginx_loadtest_senaryolar`, `_kosular`, `_adimlar`, `_kilitleri`, `_araclar` — bkz. [DATABASE.md](DATABASE.md) |
+| Tablolar | `nginx_loadtest_senaryolar`, `_kosular`, `_adimlar`, `_kilitleri`, `_araclar`, `_kuyruk`, `_kuyruk_ogeler`, `_sablonlar` — bkz. [DATABASE.md](DATABASE.md) |
 | Bekçiler | `server/nginx-loadtest/__tests__/` (dogrula, kilit, kapi, poller, sonuc, analiz, araclar, coklu, sil) |
 
 ---
@@ -520,7 +520,7 @@ kilit (TTL ile) bırakılınca sayılır.
 kontrolü süren öğe, ön kontrol bitince koşu başlatmadan `IPTAL` olur; iptal öğe başlatılırken gelirse
 de öğe `BEKLIYOR`'a dönmez, sonraki turda `IPTAL` kapanır. Kuyruk `HATALI` olduğunda süren öğe de
 izlenmeye devam eder ve kapanır (yetim `CALISIYOR` kalmaz). Başlamamış bir öğe kuyruktan
-**Çıkar**ılabilir ya da sırası değiştirilebilir.
+**Çıkar**ılabilir, sırası değiştirilebilir ya da **Düzenle**nebilir. Durdurmadan ara vermek için **Duraklat** (aşağıda).
 
 **Örnek gece** (bekleme 5 dk, başlangıç 00:00, en geç bitiş 07:00, 14 öğe × ≈ 23 dk Standart):
 00:00 `A1 temel` ön kontrol → 00:05 koşu → 00:28 bitti, kilit bırakıldı → 00:33 `A2 brotli 4` … Her
@@ -542,6 +542,97 @@ oluşur (Portal DB; elle SQL gerekmez). Öğe tablosunun `sonraki_deneme_at` (ge
 kurulumda CREATE TABLE'da; tablo ilk sürümle kurulduysa açılıştaki sütun göçü
 (`ALTER TABLE nginx_loadtest_kuyruk_ogeler ADD sonraki_deneme_at DATETIME2 NULL`) ekler. Yürütücü `NGINX_LOADTEST_KUYRUK_SN` (varsayılan 15 sn, 5–120)
 aralıkla çalışır.
+
+### Kuyruğu duraklatma (2026-11-04)
+
+Gece koşusunun ortasında sunucuda elle iş yapıp kaldığı yerden devam etmek için: kuyruk ayrıntısındaki **Duraklat**
+(yalnız Admin). Yeni bir durum yoktur: `nginx_loadtest_kuyruk.duraklat_at` bayraktır, kuyruk `CALISIYOR` /
+`DINLENME` / `BEKLIYOR` görünmeye devam eder; ekran "Duraklatıldı" hapını bayraktan gösterir. Bayrak Portal DB'dedir;
+Portal yeniden başlasa da duraklatma sürer.
+
+Düğme iki seçenek sunar (çalışan öğe yoksa tek onay):
+
+| Seçenek | Ne olur |
+| --- | --- |
+| **Süren koşu bitsin, sonra dur** | Koşu normal biter, sonucu geçerlidir; dinlenme de sayılır. Sıradaki öğe başlamaz. |
+| **Süren koşuyu şimdi durdur** | Koşuda **Durdur** ile aynı iş çalışır (AWX iptali + durdurma işi; hedefteki konfigürasyon yedekten döner). Durdurulan koşu **sayılmaz**: öğe `HATALI` olmaz, numaraları silinir, devamda **baştan** koşulur. Eski koşu kaydı `CANCELED` kalır. Çalışan koşu yoksa ön kontrol durdurulur. |
+
+**Sunucuya ne zaman dokunulur?** Ekrandaki metne bakın:
+
+* *Duraklatılıyor* — süren iş ya da geri alma bitmedi; **sunucuya dokunmayın**. Çalışan öğe varken, kuyruk kilidin
+  bırakılmasını beklerken (`DINLENME`, sayaç başlamamış), hedef kilidi doluyken (kuyruğun izlemediği iş de olabilir:
+  atlanan ayarlı ön kontrolün geri alması) ya da geri alma sonucu beklenirken bu metin çıkar. Durdurulan ön kontrolde
+  öğe, kilit bırakılana kadar `CALISIYOR` kalır; ayarlı ön kontrolün geri alması bitmeden ekran "Duraklatıldı" demez.
+  Hedef durumu okunamazsa da bu metin çıkar.
+* *Geri alma gerekli* — iş bitti ama hedefin son sunucu ayarlı işinin geri alması başarısız ya da sonuçsuz: kilit bu
+  durumda da bırakılır, konfigürasyon değişmiş kalmış olabilir. Ekrandaki **Koşuyu aç** ile **Sunucu ayarını geri al**.
+* *Duraklatıldı* — iş yok, sunucuda işlem yapabilirsiniz. Dinlenme sayacı bu sırada dolabilir; kuyruk yine başlamaz.
+
+Bu ayrımı sunucu verir (`hedefMesgul`, `geriAlmaSorunu`, `calisanVar`; ayrıntı ve liste aynı). "Son iş" hedefin
+parametresinde `sunucuAyar` olan son koşu ya da ön kontrol kaydıdır.
+
+**Devam et** bayrağı kaldırır, sıradaki öğe **ön kontrolden** başlar: duraklatma saatler sürebilir, ön kontrol 15 dk
+geçerlidir ve sunucuda yapılan iş sonucunu değiştirmiş olabilir. Bu yüzden duraklatma sırasında biten ön kontrolün
+sonucu (DONE, FAILED ya da CANCELED) kullanılmaz; öğe "kuyruk duraklatıldı; devamda ön kontrol yeniden çalışacak"
+nedeniyle `BEKLIYOR`'a döner. Durdurulan iş ya da bitmiş ama öğesi kapanmamış ön kontrol varken Devam 409
+`duraklatma_suruyor` döner ("Koşu durduruluyor; durunca yeniden deneyin"): aksi halde bayraksız kapanış öğeyi `HATALI` /
+`ATLANDI` yapardı. Durdurulan koşu **Durdur basılmış ve DONE olmayan** koşudur: AWX iptali tutmayıp iş `FAILED` bitse de
+öğe baştan koşulur.
+
+* **Durdurma hatası duraklatmayı geri almaz.** `durdurHatasi` ekranda uyarı olarak görünür; koşuyu açıp **Durdur**'u
+  yeniden deneyin. Koşu o sırada bittiyse durdurulacak şey yoktur, hata sayılmaz.
+* **Sıradaki öğe yoksa** kuyruk duraklatılmış olsa da normal `BITTI` olur. **İptal** duraklatılmışken çalışır; bu
+  durumda durdurulan koşu bugünkü gibi `HATALI` kapanır.
+* **En geç bitiş** duraklatmada da işler: uzun bekleyiş sonraki öğeleri "süre yetmedi" ile atlatabilir. Duraklatılmış
+  kuyrukta tahminler ve "Sıradaki" sayacı gösterilmez (devam saati bilinmez).
+* **Yarış**: bayrak öğe başlatılırken gelirse numara yazımı (`okKaydet` / `kosuKaydet`) tutmaz, iş AWX'e gitmez ve öğe
+  mevcut "numarasız çalışıyor" kurtarma yoluyla geri alınır. Geri alma yolları bayrağa bakmaz; öğe yetim kalmaz.
+
+### Bekleyen öğeyi ve senaryoyu düzenleme (2026-11-04)
+
+**Taslak ya da bekleyen kuyruk öğesi**: satırdaki **Düzenle** Yeni koşu formunu öğenin değerleriyle açar; **Değişikliği
+kaydet** yerinde yazar (sıra korunur), **İptal** dokunmadan döner. Silip yeniden oluşturmak gerekmez.
+
+Kuyruktaki öğe için kurallar (`PUT /kuyruklar/:id/ogeler/:ogeId`):
+
+* Yalnız **başlamamış** öğe: `BEKLIYOR`, ön kontrol ve koşu numarası yok; değilse 409 `oge_basladi`. Duraklatılmış
+  kuyrukta da düzenlenir: gece sunucuda iş yapıp sonraki öğeleri uyarlamanın yolu budur.
+* Etiket ve gövde **oluşturmadaki kapılardan** geçer (biçim + plan). Hedef kuyruğun onaylanan hedefi olmak zorundadır
+  (409 `hedef_farkli`): onay metni bir kez yazıldı, başka hedefe çevrilemez.
+* Kuyrukta onaylı olmayan plan uyarısı türü çıkarsa 409 `uyari_onayi`: türler onay kutularıyla gelir, onaylananlar
+  kuyruğun listesine **eklenir**. Ön kontrol uyarıları gece yine denetlenir.
+* Yürütücü aynı anda öğeyi planlıyorsa eski gövdeyle başlamaz ve eski gövdenin kapı kararıyla atlanmaz: sahiplenme ve
+  `ATLANDI` yazımı `govde` ve `etiket` değişmemiş olmasını ister, tutmazsa sonraki tur yeni değerle karar verir.
+* Geçici hata sayacı ve geri çekilme sıfırlanır: eski ayarın denemeleri yeni ayara sayılmaz.
+
+**Senaryo**: Senaryolar satırındaki **Düzenle** (Admin) yalnız ad, açıklama, vhost değiştirir. Yol içeriği (`tsv`,
+`sha256`) **değişmez**: geçmiş koşular ve Durdur aynı içeriğe bağlıdır. Yolları değiştirmek için yeni senaryo oluşturun.
+
+### Kayıtlı test ve toplu ekleme (2026-11-04)
+
+**Kayıtlı test**: Yeni koşu formunun üstündeki şerit (yalnız Admin). Formun bütün değerleri (senaryo, hedef ve yük
+sunucusu, Host başlığı, SNI, parametreler, sunucu ayarı) ad ile saklanır; **Yükle** formu doldurur, **Farklı kaydet**,
+**Güncelle**, **Sil** (onaylı). Saklanan kayıt:
+
+* **HAR içermez**: HAR Portal'a hiç gitmez; kayıt `senaryoId`'ye bağlıdır. Senaryo silinmişse form uyarır.
+* **Kapı değildir**: kayıtta yalnız biçim denetlenir (`onKontrolGovdesi`, en çok 16 KB). Hedefin uygunluğu kuyruk ve
+  koşu kapılarında ölçülür.
+* Etiket saklanmaz. Ad silinmemişlerde tekildir (409 `sablon_var`; eşzamanlı kayıt `UX_nls_ad` ile yakalanır). Silme
+  yumuşaktır, ad yeniden kullanılabilir.
+
+**Toplu ekleme**: Plan kutusunun altında. Form geçerli, motor k6, hedef sunucu ve **Sunucuyu koşu öncesi ayarla** açık iken seçilen
+protokol × sıkıştırma × static bileşimlerini tek düğmeyle taslağa ekler: 3 protokol (HTTP/2, HTTP/1.1 keep-alive,
+HTTP/1.1 yeni bağlantı) × 5 sıkıştırma (Brotli 6 ve 4, Gzip 6 ve 4, Sıkıştırmasız) × static açık / kapalı = 30 öğe.
+Etiketler kendiliğinden yazılır (`HTTP/2 · Brotli 6 · static açık`), sıra protokol, sıkıştırma, static. Kuyruk sınırı
+30 kalır: taslak + yeni öğe bunu aşarsa düğme kapalıdır. Önizleme öğe sayısını ve tahmini süreyi gösterir. Her öğe
+sonra tek tek **Düzenle**nebilir. **Önce ön kontrolü çalıştırın**: formun bitmiş ön kontrolü her öğeye bağlanır, uyarı
+türleri kuyruk oluşturulurken onaya gelir (sunucu ölçümü her öğenin kendi ayarıyla değerlendirir: `yeni` kip port
+uyarısı gibi). Ön kontrol yoksa ekran uyarır; gece aynı uyarı çıkarsa öğeler "yeni uyarı" ile atlanır. Sıkıştırmaya ya
+da protokole özgü, form ön kontrolünde ölçülmeyen uyarılar yine gece çıkabilir.
+
+**Devreye alma**: `nginx_loadtest_kuyruk.duraklat_at` / `duraklatan` sütunları (kurulu ortamda açılıştaki sütun göçü),
+`nginx_loadtest_sablonlar` tablosu ve `UX_nls_ad` indeksi Portal açılışında `server/db/mssql-setup.cjs` ile
+**kendiliğinden** oluşur (Portal DB; elle SQL gerekmez). AWX ve Ansible tarafı değişmez.
 
 ### Koşu öncesi sunucu ayarı (2026-11-04)
 
@@ -1515,6 +1606,7 @@ retlerinde ayrıca `sahipler`).
 | `GET /ip-sinifi?ip=&yukHost=&hedefHost=` | Admin | yazılan IP'nin sınıfı; DB'ye ve denetime **yazmaz**. `ip` zorunlu, iki host isteğe bağlı (verilmiş ama geçersizse 400; `yukHost` yoksa `ayni_host` denetimi atlanır). Sunucu: `{ ok, tur: 'sunucu', ip, host, env, vhostlar, vhostVerisi, hizSiniri, vuSiniri, uygun, neden, kod, kaynaklar }` (`uygun: false` da 200'dür: ön kontrol yapılamaz); serbest: `{ ok, tur: 'serbest', ip, host: null, ag, digerSahipler: [{ host, env }] }`; ret: §4.1 kodları (400 / 409 / 424) + `sahipler` |
 | `GET /senaryolar`, `GET /senaryolar/:id` | okuma | `:id` TSV'yi ve özeti de döner |
 | `POST /senaryolar`, `DELETE /senaryolar/:id` | Admin | silme yumuşaktır |
+| `PUT /senaryolar/:id` | Admin | 2026-11-04: `{ ad, aciklama, vhost }` → `{ ok }`; boş açıklama / vhost `NULL`, `tsv` / `sha256` değişmez, diğer alanlar yok sayılır. 400 `gecersiz_istek`, 409 `senaryo_yok`. Denetim `nginx_loadtest_senaryo_guncelle` |
 | `POST /kosular/on-kontrol` | Admin | `{ senaryoId, hedefHost?, hedefIp, vhost, yukHost, sni, parametreler, etiket? }` → `{ kosuId, jobId, awxServerId }`. `hedefHost` isteğe bağlı (`undefined` / `null` / `''` = yazılan IP sınıflandırılır). `parametreler.motor` `'k6'` (varsayılan) ya da `'wrk'`; k6: `hizlar`, `maxvu`; wrk: `baglantilar`, `is_parcacigi`; ortak `tekrar`, `isinma`, `sure`, `bosluk`, `bosta`, `kip`, `ae`, `protokol` (`'h1'` varsayılan \| `'h2'` yalnız k6 + `kip: 'ka'`; aksi 400). `tavan_rps` gönderilse de yok sayılır (sunucu hesaplar). |
 | `POST /kosular` | Admin | `{ onKontrolKosuId, confirmText, uyariOnay }` — `confirmText` sunucu hedefinde host adı, serbest hedefte hedef IP |
 | `GET /kosular?islem=&durum=&hedef=&ip=&hedefTuru=&motor=&onceki=&limit=` | okuma | `islem` ∈ `kosu`, `on_kontrol`; `durum` ∈ `QUEUED`, `RUNNING`, `FINALIZING`, `DONE`, `FAILED`, `CANCELED`, `OKUNAMADI`; `hedef` = sunucu adı; `ip` = hedef IPv4; `hedefTuru` ∈ `sunucu`, `serbest`; `motor` ∈ `k6`, `wrk`; `onceki` = koşu no (yalnız `id < onceki`, "daha eski" sayfası); `limit` 1..200 (varsayılan 50). Sıra `id` azalan. Yanıtta `dahaVar` (limit + 1 satır çekilir). Satırlarda `hedefTuru`, `motor`, `protokol` (`h1` \| `h2`; eski satır `h1`), `hedefHost` (serbestte `null`). Geçersiz değer (ya da tekrarlanan parametre) → 400 `gecersiz_istek` |
@@ -1535,6 +1627,12 @@ retlerinde ayrıca `sahipler`).
 | `POST /kuyruklar/:id/iptal` | Admin | sonraki öğeler başlamaz → `{ suren: { ogeId, etiket, kosuId, onKontrolKosuId } \| null }` (süren koşu durdurulmaz). 409 `kuyruk_bitti`. Denetim `nginx_loadtest_kuyruk_iptal` |
 | `PUT /kuyruklar/:id/sira` | Admin | `{ sira: [ogeId…] }` = bekleyen öğelerin tam listesi; 409 `sira_eski` |
 | `POST /kuyruklar/:id/ogeler/:ogeId/cikar` | Admin | bekleyen öğe `IPTAL` olur; 409 `oge_basladi` |
+| `POST /kuyruklar/:id/duraklat` | Admin | 2026-11-04: `{ surenDurdur?: boolean }` → `{ suren: { ogeId, etiket, kosuId, onKontrolKosuId } \| null, durduruldu, durdurHatasi: string \| null }`. `surenDurdur`: çalışan koşu (yoksa ön kontrol) Durdur mantığıyla durdurulur; hata duraklatmayı geri almaz, biten iş hata değildir. 400 `gecersiz_istek`, 409 `kuyruk_duraklatilamaz` (aktif değil ya da zaten duraklatılmış). Denetim `nginx_loadtest_kuyruk_duraklat` |
+| `POST /kuyruklar/:id/devam` | Admin | 2026-11-04: gövde yok → `{ ok }`. 409 `kuyruk_yok`, `kuyruk_duraklatilmamis`, `duraklatma_suruyor` (izlenen iş durduruluyor ya da CANCELED ama öğe kapanmadı). Denetim `nginx_loadtest_kuyruk_devam` |
+| `PUT /kuyruklar/:id/ogeler/:ogeId` | Admin | 2026-11-04: `{ etiket, govde, onaylananTurler? }` → `{ ok }`. Etiket ve gövde kuralları `POST /kuyruklar` ile aynı. 400 `gecersiz_istek`, 409 `kuyruk_yok`, `kuyruk_bitti`, `hedef_farkli`, `uyari_onayi` (+ `uyariTurleri`: kuyrukta onaylı olmayanlar), `oge_basladi`, `kuyruk_degisti` (uyarı onayı eşzamanlı değişti; öğe yazıldı, yeniden kaydedin), plan kapısı kodları. Denetim `nginx_loadtest_kuyruk_oge_guncelle` |
+| `GET /sablonlar` | Admin | 2026-11-04: `{ sablonlar: [{ id, ad, govde, createdBy, createdAt, updatedBy, updatedAt }] }` (ada göre, en çok 200). `ADMIN_DISI_OKUMA`'da yok |
+| `POST /sablonlar`, `PUT /sablonlar/:id` | Admin | 2026-11-04: `{ ad (1–120), govde (on kontrol gövdesi, etiketsiz, ≤ 16 KB) }` → `{ ok, id }` / `{ ok }`. 400 `gecersiz_istek`, 409 `sablon_var`, `sablon_yok`, 424 `db_okunamadi`. Denetim `nginx_loadtest_sablon_ekle` / `_guncelle` |
+| `DELETE /sablonlar/:id` | Admin | 2026-11-04: yumuşak silme → `{ ok }`. 409 `sablon_yok`. Denetim `nginx_loadtest_sablon_sil` |
 | `POST /araclar/:id/geri-cek` | Admin | gövde yok → `{ ok, arac, kapi: { hazir, aracId, kod, mesaj } }` (yeni etkin set ya da neden). Denetim `nginx_loadtest_araclar_geri_cek`. 400 `gecersiz_istek`, 409 `arac_yok`, `arac_geri_cekilemez` (DONE değil), `zaten_geri_cekildi`, 424 `db_okunamadi`. Eski `POST /araclar/:id/onayla` kalktı |
 
 ---

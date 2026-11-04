@@ -22,6 +22,17 @@
 //   KQ12 iptal ile geri alma yarisi (yetim BEKLIYOR yok); bitmis kuyruk iptal edilmez
 //   KQ13 sira sutunu   KQ14 ikinci sure kapisi (plan butcesi)   KQ15 kirasiz surec yazmaz   KQ16 etiket kontrol karakteri
 //   KQ17 static sunucu ayari: sure kapilari (plan ve kosu oncesi) dosya uretimi payini (180 sn) sayar
+//   -- duraklat / duzenleme (2026-11-04) --
+//   KQ18 kapilar: BEKLIYOR kuyruk ve siradaki baslamaz, siradaki yoksa BITTI, duraklat / devam kosullari
+//   KQ19 on kontrol sonucu kullanilmaz (DONE / FAILED / CANCELED), kilit birakilana kadar oge CALISIYOR, devamda yeniden
+//   KQ20 suren kosu normal biter, DINLENME sayilir, kapida durur   KQ21 durdurulan kosu HATALI olmaz, bastan
+//   KQ22 yarislar: sahiplenme / kanca / kosu asamasi arasinda is baslamaz, numarasiz kurtarma geri alir, cift baslatma yok
+//   KQ23 duraklatilmisken IPTAL   KQ24 zamanlama ve API alanlari   KQ25 duzenleme yarisi (eski plan baslamaz)
+//   KQ26 SQL sozlesmesi ve sema   KQ27 ortak etiket kurali
+//   KQ28 durdurulan kosunun iki yazimi arasinda kesinti: dinlenme kaybolmaz, oge yetim kalmaz (once DINLENME, sonra oge)
+//   KQ29 Durdur basilmis FAILED kosu da bastan (AWX iptali tutmadi); Durdur basilmamis FAILED ve DONE bugunku gibi
+//   KQ30 kapi kararlari govdeye bagli: plan / yetki yapilirken duzenlenen oge eski kararla ATLANDI olmaz
+//   KQ31 duzenleme gecici hata sayacini ve geri cekilmeyi sifirlar
 'use strict';
 
 const { test } = require('node:test');
@@ -386,7 +397,7 @@ test('KQ6 yeniden baslatma ve birden cok surec: cift baslatma yok', async () => 
   // e) ikinci calisan oge: NOT EXISTS reddeder; indeks de (NOT EXISTS'i gecen yaris) UNIQUE ihlali -> 'dur'.
   sifirla();
   id = kuyrukKur(D, { kuyruk: { durum: 'CALISIYOR', kira_id: 'P1', kira_bitis: BAS + DK }, ogeler: [{ etiket: 'A1', durum: 'CALISIYOR', asama: 'on_kontrol', on_kontrol_kosu_id: 5 }, { etiket: 'A2' }] });
-  const r = await db.query(kuyruk.SQL.ogeSahiplen, [2, 't', 'P1']);
+  const r = await db.query(kuyruk.SQL.ogeSahiplen, [2, 't', 'P1', oge(2).govde, oge(2).etiket]);
   assert.equal(r.rowCount, 0, 'ikinci oge sahiplenildi');
   assert.equal(oge(2).durum, 'BEKLIYOR');
 });
@@ -544,8 +555,8 @@ test('KQ9 on kontrol kilit beklenirken eskidi: yeniden on kontrol', async () => 
 test('KQ10 SQL sozlesmesi: kosullu yazimlar', () => {
   const S = kuyruk.SQL;
   const t = (q) => q.replace(/\s+/g, ' ');
-  assert.match(t(S.ogeSahiplen), /WHERE id = \$1 AND durum = 'BEKLIYOR' AND on_kontrol_kosu_id IS NULL AND kosu_id IS NULL AND EXISTS \(SELECT 1 FROM nginx_loadtest_kuyruk q WHERE q\.id = nginx_loadtest_kuyruk_ogeler\.kuyruk_id AND q\.durum = 'CALISIYOR' AND q\.kira_id = \$3\) AND NOT EXISTS \(SELECT 1 FROM nginx_loadtest_kuyruk_ogeler o2 WHERE o2\.kuyruk_id = nginx_loadtest_kuyruk_ogeler\.kuyruk_id AND o2\.durum = 'CALISIYOR'\)/);
-  for (const ad of ['okKaydet', 'kosuKaydet']) assert.match(t(S[ad]), /WHERE id = \$1 AND deneme_id = \$3 AND durum = 'CALISIYOR' AND asama = '(on_kontrol|kosu)' AND (on_kontrol_kosu_id|kosu_id) IS NULL AND EXISTS \(.*q\.durum = 'CALISIYOR' AND q\.kira_id = \$4\)/, ad);
+  assert.match(t(S.ogeSahiplen), /WHERE id = \$1 AND durum = 'BEKLIYOR' AND on_kontrol_kosu_id IS NULL AND kosu_id IS NULL AND EXISTS \(SELECT 1 FROM nginx_loadtest_kuyruk q WHERE q\.id = nginx_loadtest_kuyruk_ogeler\.kuyruk_id AND q\.durum = 'CALISIYOR' AND q\.duraklat_at IS NULL AND q\.kira_id = \$3\) AND NOT EXISTS \(SELECT 1 FROM nginx_loadtest_kuyruk_ogeler o2 WHERE o2\.kuyruk_id = nginx_loadtest_kuyruk_ogeler\.kuyruk_id AND o2\.durum = 'CALISIYOR'\)/);
+  for (const ad of ['okKaydet', 'kosuKaydet']) assert.match(t(S[ad]), /WHERE id = \$1 AND deneme_id = \$3 AND durum = 'CALISIYOR' AND asama = '(on_kontrol|kosu)' AND (on_kontrol_kosu_id|kosu_id) IS NULL AND EXISTS \(.*q\.durum = 'CALISIYOR' AND q\.duraklat_at IS NULL AND q\.kira_id = \$4\)/, ad);
   assert.match(t(S.kiraAl), /WHERE id = \$1 AND \(kira_id IS NULL OR kira_id = \$2 OR kira_bitis IS NULL OR kira_bitis < GETUTCDATE\(\)\)/);
   assert.match(t(S.dinlenmeBaslat), /AND durum = 'DINLENME' AND dinlenme_bitis IS NULL$/);
   assert.match(t(S.dinlenmeBitti), /dinlenme_bitis <= GETUTCDATE\(\)$/);
@@ -560,7 +571,7 @@ test('KQ10 SQL sozlesmesi: kosullu yazimlar', () => {
   assert.match(t(S.aktifKuyruklar), /q\.durum IN \('BEKLIYOR', 'CALISIYOR', 'DINLENME'\) OR \(q\.durum IN \('IPTAL', 'HATALI'\) AND EXISTS \(SELECT 1 FROM nginx_loadtest_kuyruk_ogeler o WHERE o\.kuyruk_id = q\.id AND o\.durum = 'CALISIYOR'\)\)/);
   assert.match(t(S.dinlenmeBaslat), /SET dinlenme_bitis = DATEADD\(MINUTE, bekleme_dk, GETUTCDATE\(\)\)/);
   assert.match(t(S.kuyrukIptal), /WHERE id = \$1 AND durum IN \('BEKLIYOR', 'CALISIYOR', 'DINLENME'\)$/);
-  assert.match(t(S.kosuAsamasi), /on_kontrol_kosu_id = \$2 AND kosu_id IS NULL AND EXISTS \(.*q\.durum = 'CALISIYOR' AND q\.kira_id = \$4\)$/);
+  assert.match(t(S.kosuAsamasi), /on_kontrol_kosu_id = \$2 AND kosu_id IS NULL AND EXISTS \(.*q\.durum = 'CALISIYOR' AND q\.duraklat_at IS NULL AND q\.kira_id = \$4\)$/);
   // BEKLIYOR'a geri alma yalniz kuyruk CALISIYOR iken (iptal yarisinda yetim oge yok).
   for (const ad of ['ogeGeriAl', 'kosuGeriAl', 'onKontrolYenile', 'okSifirla', 'kosuSifirla']) {
     assert.match(t(S[ad]), /AND EXISTS \(SELECT 1 FROM nginx_loadtest_kuyruk q WHERE q\.id = nginx_loadtest_kuyruk_ogeler\.kuyruk_id AND q\.durum = 'CALISIYOR'\)$/, ad);
@@ -736,4 +747,461 @@ test('KQ17 static sunucu ayari: sure kapilari dosya uretimi payini sayar', async
   await tur(I);
   assert.equal(oge(1).durum, 'ATLANDI');
   assert.match(oge(1).neden, /^süre yetmedi: tahmini 8 dk/);
+});
+
+// -- DURAKLAT / DUZENLEME (2026-11-04) --------------------------------------------------------
+const duraklat = (id, kim = 'onur') => db.query(kuyruk.SQL.kuyrukDuraklat, [id, kim]);
+const devam = (id) => db.query(kuyruk.SQL.kuyrukDevam, [id]);
+
+test('KQ18 duraklat kapilari: BEKLIYOR kuyruk baslamaz, siradaki baslamaz, siradaki yoksa BITTI; devamda baslar', async () => {
+  // a) Baslangic saati gelmis BEKLIYOR kuyruk.
+  sifirla();
+  let I = sahteIslem();
+  let id = kuyrukKur(D, { ogeler: [{ etiket: 'A1' }] });
+  await duraklat(id);
+  await tur(I);
+  assert.equal(kq(id).durum, 'BEKLIYOR', 'duraklatilmis kuyruk basladi');
+  assert.equal(I.cagri.length, 0);
+  await devam(id);
+  await tur(I);
+  assert.equal(kq(id).durum, 'CALISIYOR');
+  assert.deepEqual(I.launch, [['on_kontrol', 101]]);
+  // b) CALISIYOR, calisan oge yok: siradaki kapida bekler; plan / yetki de cagrilmaz.
+  sifirla();
+  I = sahteIslem();
+  id = kuyrukKur(D, { kuyruk: { durum: 'CALISIYOR' }, ogeler: [{ etiket: 'A1' }, { etiket: 'A2' }] });
+  await duraklat(id);
+  await tur(I);
+  await tur(I);
+  assert.deepEqual([kq(id).durum, oge(1).durum, I.cagri.length, I.launch.length], ['CALISIYOR', 'BEKLIYOR', 0, 0]);
+  assert.deepEqual((await db.query(kuyruk.SQL.aktifKuyruklar)).rows, [{ id }], 'duraklatilmis kuyruk izlenmiyor');
+  // c) Siradaki oge yok: duraklatilmis olsa da kuyruk normal BITTI olur (bekleyecek bir sey yok).
+  sifirla();
+  I = sahteIslem();
+  id = kuyrukKur(D, { kuyruk: { durum: 'CALISIYOR' }, ogeler: [{ etiket: 'A1', durum: 'BITTI' }] });
+  await duraklat(id);
+  await tur(I);
+  assert.equal(kq(id).durum, 'BITTI');
+  // d) Duraklatma ve devam kosullari.
+  sifirla();
+  id = kuyrukKur(D, { kuyruk: { durum: 'DINLENME' }, ogeler: [] });
+  assert.equal((await duraklat(id, 'ayse')).rowCount, 1);
+  assert.equal(kq(id).duraklatan, 'ayse');
+  assert.equal((await duraklat(id)).rowCount, 0, 'ikinci duraklatma tuttu');
+  assert.equal(kq(id).duraklatan, 'ayse');
+  assert.equal((await devam(id)).rowCount, 1);
+  assert.deepEqual([kq(id).duraklat_at, kq(id).duraklatan], [null, null]);
+  assert.equal((await devam(id)).rowCount, 0, 'duraklatilmamis kuyrukta devam tuttu');
+  for (const durum of ['BITTI', 'IPTAL', 'HATALI']) {
+    const b = kuyrukKur(D, { kuyruk: { durum }, ogeler: [] });
+    assert.equal((await duraklat(b)).rowCount, 0, `${durum} duraklatildi`);
+    kq(b).duraklat_at = BAS;
+    assert.equal((await devam(b)).rowCount, 0, `${durum} devam etti`);
+  }
+  const yarim = kuyrukKur(D, { kuyruk: { hazir: 0 }, ogeler: [] });
+  assert.equal((await duraklat(yarim)).rowCount, 0, 'yarim kuyruk duraklatildi');
+});
+
+test('KQ19 duraklat + on kontrol: sonuc kullanilmaz, oge BEKLIYOR, kosu yok; kilit birakilana kadar oge CALISIYOR; devamda yeniden', async () => {
+  for (const durum of ['DONE', 'FAILED', 'CANCELED']) {
+    sifirla();
+    const I = sahteIslem();
+    const id = kuyrukKur(D, { ogeler: [{ etiket: 'A1' }, { etiket: 'A2' }] });
+    await tur(I);
+    await duraklat(id);
+    await tur(I);
+    assert.equal(oge(1).durum, 'CALISIYOR', 'suren on kontrol izlenmeli');
+    // Sunucu ayarli on kontrolde durdurma isi geri alirken kilit tutulur: oge kapanmaz, ekran "sunucuya dokunmayin" der.
+    D.kilitler.set('T|GBNGXT33', { lock_id: 'L101', held: 1, locked_until: D.simdi + 20 * DK, awx_job_id: 901 });
+    bitir(101, durum);
+    await tur(I);
+    assert.deepEqual([oge(1).durum, oge(1).on_kontrol_kosu_id], ['CALISIYOR', 101], `${durum}: kilit tutulurken oge birakildi`);
+    D.kilitler.get('T|GBNGXT33').held = 0;
+    await tur(I);
+    assert.deepEqual([oge(1).durum, oge(1).asama, oge(1).deneme_id, oge(1).on_kontrol_kosu_id, oge(1).neden, oge(1).deneme], ['BEKLIYOR', null, null, null, 'kuyruk duraklatıldı; devamda ön kontrol yeniden çalışacak', 0], durum);
+    assert.ok(!I.cagri.some((c) => c[0] === 'kosu'), `${durum}: duraklatilmisken kosu baslatildi`);
+    assert.equal(I.launch.length, 1, durum);
+    assert.equal(oge(2).durum, 'BEKLIYOR');
+    await tur(I);
+    assert.equal(I.launch.length, 1, 'kapida durmadi');
+    await devam(id);
+    await tur(I);
+    assert.deepEqual(I.launch.at(-1), ['on_kontrol', 102], `${durum}: devamda on kontrol yeniden calismadi`);
+    assert.deepEqual([oge(1).durum, oge(1).on_kontrol_kosu_id, oge(1).neden], ['CALISIYOR', 102, null]);
+    bitir(102);
+    await tur(I);
+    assert.deepEqual(I.launch.at(-1), ['kosu', 103]);
+  }
+});
+
+test('KQ20 duraklat + suren kosu: normal biter, DINLENME sayilir, sonra kapida durur; FAILED / OKUNAMADI bugunku gibi', async () => {
+  for (const [durum, oDurum] of [['DONE', 'BITTI'], ['FAILED', 'HATALI'], ['OKUNAMADI', 'HATALI']]) {
+    sifirla();
+    const I = sahteIslem();
+    const id = kuyrukKur(D, { kuyruk: { bekleme_dk: 2 }, ogeler: [{ etiket: 'A1' }, { etiket: 'A2' }] });
+    await tur(I);
+    bitir(101);
+    await tur(I);
+    await duraklat(id);
+    await tur(I);
+    assert.equal(oge(1).durum, 'CALISIYOR');
+    bitir(102, durum);
+    await tur(I);
+    assert.equal(oge(1).durum, oDurum, durum);
+    assert.equal(kq(id).durum, 'DINLENME');
+    assert.equal(kq(id).dinlenme_bitis, D.simdi + 2 * DK, 'duraklatilmisken dinlenme sayilmadi');
+    D.simdi += 2 * DK;
+    await tur(I);
+    assert.equal(kq(id).durum, 'CALISIYOR', 'dinlenme bitince CALISIYOR olmali');
+    assert.equal(I.launch.length, 2, 'kapida durmadi');
+    assert.equal(oge(2).durum, 'BEKLIYOR');
+    await devam(id);
+    await tur(I);
+    assert.deepEqual(I.launch.at(-1), ['on_kontrol', 103]);
+  }
+});
+
+test('KQ21 duraklatmada durdurulan kosu: oge HATALI olmaz, bastan kosulur; DINLENME kilit birakilana kadar bekler', async () => {
+  sifirla();
+  const I = sahteIslem();
+  const id = kuyrukKur(D, { kuyruk: { bekleme_dk: 2 }, ogeler: [{ etiket: 'A1', neden: 'eski' }, { etiket: 'A2' }] });
+  await tur(I);
+  bitir(101);
+  await tur(I);
+  await duraklat(id);
+  D.kilitler.set('T|GBNGXT33', { lock_id: 'L102', held: 1, locked_until: D.simdi + 20 * DK, awx_job_id: 901 });
+  bitir(102, 'CANCELED');
+  await tur(I);
+  assert.deepEqual(
+    [oge(1).durum, oge(1).asama, oge(1).deneme_id, oge(1).kosu_id, oge(1).on_kontrol_kosu_id, oge(1).baslama_at, oge(1).bitis_at, oge(1).neden],
+    ['BEKLIYOR', null, null, null, null, null, null, 'koşu #102 duraklatmada durduruldu; devamda baştan koşulacak'],
+  );
+  assert.deepEqual([kq(id).durum, kq(id).dinlenme_kosu_id, kq(id).dinlenme_bitis], ['DINLENME', 102, null], 'kilit birakilmadan dinlenme sayildi');
+  D.simdi += 5 * DK;
+  await tur(I);
+  assert.equal(kq(id).dinlenme_bitis, null, 'kilit tutulurken dinlenme basladi');
+  D.kilitler.get('T|GBNGXT33').held = 0;
+  await tur(I);
+  assert.equal(kq(id).dinlenme_bitis, D.simdi + 2 * DK);
+  D.simdi += 2 * DK;
+  await tur(I);
+  assert.deepEqual([kq(id).durum, I.launch.length], ['CALISIYOR', 2], 'kapida durmadi');
+  await devam(id);
+  await tur(I);
+  // Ayni oge bastan: yeni on kontrol, sonra yeni kosu; sira korunur.
+  assert.deepEqual(I.launch.at(-1), ['on_kontrol', 103]);
+  assert.deepEqual([oge(1).durum, oge(1).on_kontrol_kosu_id, oge(1).kosu_id, oge(2).durum], ['CALISIYOR', 103, null, 'BEKLIYOR']);
+  assert.equal(oge(1).baslama_at, D.simdi, 'baslama saati yenilenmedi');
+  bitir(103);
+  await tur(I);
+  assert.deepEqual(I.launch.at(-1), ['kosu', 104]);
+  bitir(104);
+  await tur(I);
+  assert.equal(oge(1).durum, 'BITTI');
+  // Duraklatilmamis kuyrukta Durdur bugunku gibi HATALI (KQ4); kosu numarasi degismis oge tutmaz.
+  sifirla();
+  const I2 = sahteIslem();
+  kuyrukKur(D, { ogeler: [{ etiket: 'A1' }] });
+  await tur(I2);
+  bitir(101);
+  await tur(I2);
+  assert.equal((await db.query(kuyruk.SQL.kosuYenidenSirala, [1, 999, 'x'])).rowCount, 0, 'baska kosu numarasiyla oge sifirlandi');
+  assert.equal(oge(1).durum, 'CALISIYOR');
+});
+
+test('KQ22 duraklatma yarislari: sahiplenme / kanca / kosu asamasi arasinda is baslamaz, kurtarma yolu ogeyi geri alir, cift baslatma yok', async () => {
+  // a) Plan yapilirken duraklatildi: ogeSahiplen tutmaz.
+  sifirla();
+  let I = sahteIslem();
+  let id = kuyrukKur(D, { kuyruk: { durum: 'CALISIYOR' }, ogeler: [{ etiket: 'A1' }] });
+  let plan = I.plan;
+  I.plan = async (g) => { await duraklat(id); return plan(g); };
+  await tur(I);
+  assert.deepEqual([oge(1).durum, I.launch.length, D.kosular.length], ['BEKLIYOR', 0, 0]);
+  // b) Sahiplenme ile on kontrol kancasi arasinda: okKaydet tutmaz, is BASLATILMAZ; numarasiz oge geri alinir.
+  sifirla();
+  I = sahteIslem();
+  id = kuyrukKur(D, { kuyruk: { durum: 'CALISIYOR' }, ogeler: [{ etiket: 'A1' }, { etiket: 'A2' }] });
+  I.oncesiKanca = async () => duraklat(id);
+  await tur(I);
+  assert.deepEqual([I.launch.length, kosu(101).durum, oge(1).durum, oge(1).on_kontrol_kosu_id], [0, 'FAILED', 'CALISIYOR', null], 'duraklatilan kuyrukta is baslatildi');
+  I.oncesiKanca = null;
+  await tur(I);
+  assert.deepEqual([oge(1).durum, oge(1).asama, oge(1).deneme_id, oge(1).deneme, I.launch.length], ['BEKLIYOR', null, null, 0, 0], 'numarasiz oge geri alinmadi');
+  await devam(id);
+  await tur(I);
+  assert.deepEqual(I.launch, [['on_kontrol', 102]], 'devamda tek kez baslamali');
+  // c) Kosu kapisindan once (yetki denetlenirken): kosuAsamasi tutmaz; sonraki tur on kontrolu birakir.
+  sifirla();
+  I = sahteIslem();
+  id = kuyrukKur(D, { ogeler: [{ etiket: 'A1' }] });
+  await tur(I);
+  bitir(101);
+  const yetki = I.yetkiVarMi;
+  I.yetkiVarMi = async (u) => { await duraklat(id); return yetki(u); };
+  await tur(I);
+  assert.deepEqual([oge(1).durum, oge(1).asama, I.launch.length], ['CALISIYOR', 'on_kontrol', 1], 'kosu asamasina gecti');
+  I.yetkiVarMi = yetki;
+  await tur(I);
+  assert.equal(oge(1).durum, 'BEKLIYOR');
+  assert.ok(!I.cagri.some((c) => c[0] === 'kosu'), 'duraklatilmisken kosu kapisi cagrildi');
+  // d) kosuAsamasi ile kosu kancasi arasinda: kosuKaydet tutmaz, is BASLATILMAZ; kosuGeriAl sonra on kontrol birakilir.
+  sifirla();
+  I = sahteIslem();
+  id = kuyrukKur(D, { ogeler: [{ etiket: 'A1' }] });
+  await tur(I);
+  bitir(101);
+  I.oncesiKanca = async () => duraklat(id);
+  await tur(I);
+  assert.deepEqual([I.launch.length, kosu(102).durum, oge(1).asama, oge(1).kosu_id], [1, 'FAILED', 'kosu', null], 'kancayi gecti');
+  I.oncesiKanca = null;
+  await tur(I);
+  assert.deepEqual([oge(1).durum, oge(1).asama, oge(1).on_kontrol_kosu_id, oge(1).kosu_id], ['BEKLIYOR', null, null, null], 'numarasiz kosu asamasi kurtarilmadi');
+  assert.equal(I.launch.length, 1);
+  await devam(id);
+  await tur(I);
+  assert.deepEqual(I.launch.at(-1), ['on_kontrol', 103]);
+  // e) Duraklatilmisken surec degisti (kira dustu): yeni surec kuralin aynisini uygular.
+  sifirla();
+  I = sahteIslem();
+  id = kuyrukKur(D, { kuyruk: { durum: 'CALISIYOR', kira_id: 'P0', kira_bitis: BAS - 1000, duraklat_at: BAS - DK, duraklatan: 'onur' }, ogeler: [{ etiket: 'A1', durum: 'CALISIYOR', asama: 'on_kontrol', deneme_id: 'eski' }] });
+  await tur(I);
+  assert.deepEqual([oge(1).durum, I.launch.length], ['BEKLIYOR', 0], 'yeni surec duraklatilmis kuyrukta is baslatti');
+});
+
+test('KQ23 duraklatilmisken IPTAL calisir: on kontrol sonrasi kosu yok, CANCELED kosu HATALI, kuyruk kapanir', async () => {
+  const iptal = async (id) => {
+    await db.query(kuyruk.SQL.kuyrukIptal, [id, 'onur']);
+    await db.query(kuyruk.SQL.ogelerIptal, [id, 'kuyruk iptal edildi (onur)']);
+  };
+  sifirla();
+  let I = sahteIslem();
+  let id = kuyrukKur(D, { ogeler: [{ etiket: 'A1' }, { etiket: 'A2' }] });
+  await tur(I);
+  await duraklat(id);
+  await iptal(id);
+  assert.equal(kq(id).durum, 'IPTAL');
+  bitir(101);
+  await tur(I);
+  assert.deepEqual(D.ogeler.map((o) => o.durum), ['IPTAL', 'IPTAL']);
+  assert.match(oge(1).neden, /kuyruk iptal edildi; ön kontrol #101 sonrası/);
+  assert.deepEqual((await db.query(kuyruk.SQL.aktifKuyruklar)).rows, []);
+  // Kosu CANCELED: kuyruk IPTAL iken yeniden siralama tutmaz; bugunku HATALI.
+  sifirla();
+  I = sahteIslem();
+  id = kuyrukKur(D, { ogeler: [{ etiket: 'A1' }] });
+  await tur(I);
+  bitir(101);
+  await tur(I);
+  await duraklat(id);
+  await iptal(id);
+  bitir(102, 'CANCELED');
+  await tur(I);
+  assert.deepEqual([oge(1).durum, kq(id).durum], ['HATALI', 'IPTAL']);
+  assert.match(oge(1).neden, /^koşu #102 durduruldu \(CANCELED\)$/);
+  // Yaris: kuyruk okunduktan sonra iptal edildi; yeniden siralama tutmaz, oge sonraki turda kapanir (yetim BEKLIYOR yok).
+  sifirla();
+  id = kuyrukKur(D, { kuyruk: { durum: 'IPTAL' }, ogeler: [{ etiket: 'A1', durum: 'CALISIYOR', asama: 'kosu', kosu_id: 7 }] });
+  assert.equal((await db.query(kuyruk.SQL.kosuYenidenSirala, [1, 7, 'x'])).rowCount, 0, 'iptal edilen kuyrukta oge BEKLIYOR oldu');
+});
+
+test('KQ24 duraklatmada zamanlama ve API: bekleyene tahmin yok, tahmini bitis yok; suren ogenin tahmini kalir', () => {
+  const ogeler = [{ id: 1, durum: 'CALISIYOR', butce_sn: 600, baslama_at: new Date(BAS) }, { id: 2, durum: 'BEKLIYOR', butce_sn: 600 }];
+  const kq0 = { durum: 'CALISIYOR', bekleme_dk: 5 };
+  assert.equal(kuyruk.zamanlama(kq0, ogeler, BAS).ogeler.size, 2);
+  const z = kuyruk.zamanlama({ ...kq0, duraklat_at: new Date(BAS) }, ogeler, BAS);
+  assert.deepEqual([z.ogeler.has(1), z.ogeler.has(2), z.tahminiBitis, z.siradakiKalanSn], [true, false, null, null]);
+  const zd = kuyruk.zamanlama({ durum: 'DINLENME', bekleme_dk: 5, dinlenme_bitis: new Date(BAS + 60000), dinlenme_kalan_sn: 60, duraklat_at: new Date(BAS) }, [ogeler[1]], BAS);
+  assert.deepEqual([zd.ogeler.size, zd.tahminiBitis, zd.siradakiKalanSn], [0, null, null]);
+  const a = kuyruk.kuyrukApi({ id: 1, durum: 'CALISIYOR', bekleme_dk: 5, duraklat_at: new Date(BAS), duraklatan: 'onur' });
+  assert.deepEqual([a.duraklatAt, a.duraklatan], [new Date(BAS).toISOString(), 'onur']);
+  const b = kuyruk.kuyrukApi({ id: 1, durum: 'CALISIYOR', bekleme_dk: 5 });
+  assert.deepEqual([b.duraklatAt, b.duraklatan], [null, null]);
+  assert.equal(kuyruk.ogeApi({ id: 1, sira: 1, etiket: 'a', durum: 'BEKLIYOR', govde: JSON.stringify({ sni: true }) }).ayar.sni, true);
+  assert.equal(kuyruk.ogeApi({ id: 1, sira: 1, etiket: 'a', durum: 'BEKLIYOR', govde: '{}' }).ayar.sni, false);
+});
+
+test('KQ25 oge duzenleme yarisi: plan yapilirken duzenlenirse eski govdeyle is baslamaz, sonraki tur yeni degerle baslar', async () => {
+  sifirla();
+  const I = sahteIslem();
+  kuyrukKur(D, { kuyruk: { durum: 'CALISIYOR' }, ogeler: [{ etiket: 'A1' }] });
+  const eski = oge(1).govde;
+  const yeniGovde = eski.replace('[100]', '[250]');
+  const plan = I.plan;
+  I.plan = async (g) => {
+    I.plan = plan;
+    const r = await db.query(kuyruk.SQL.ogeGuncelle, [1, 1, 'A1 yeni', yeniGovde, 300, '[]']);
+    assert.equal(r.rowCount, 1);
+    return plan(g);
+  };
+  await tur(I);
+  assert.deepEqual([oge(1).durum, I.launch.length], ['BEKLIYOR', 0], 'eski plan ile is baslatildi');
+  await tur(I);
+  assert.deepEqual(I.launch, [['on_kontrol', 101]]);
+  assert.ok(I.cagri.some((c) => c[0] === 'onKontrol' && c[1] === '[K1] A1 yeni'), 'yeni etiketle baslamadi');
+  // Baslamis oge duzenlenemez; numarasi geri donmus (BEKLIYOR + numara) durum da tutmaz.
+  assert.equal((await db.query(kuyruk.SQL.ogeGuncelle, [1, 1, 'x', '{}', 1, '[]'])).rowCount, 0, 'baslamis oge duzenlendi');
+  assert.equal(oge(1).etiket, 'A1 yeni');
+  sifirla();
+  kuyrukKur(D, { kuyruk: { durum: 'CALISIYOR' }, ogeler: [{ etiket: 'A1', on_kontrol_kosu_id: 5 }, { etiket: 'A2', kosu_id: 6 }, { etiket: 'A3' }] });
+  assert.equal((await db.query(kuyruk.SQL.ogeGuncelle, [1, 1, 'x', '{}', 1, '[]'])).rowCount, 0);
+  assert.equal((await db.query(kuyruk.SQL.ogeGuncelle, [1, 2, 'x', '{}', 1, '[]'])).rowCount, 0);
+  assert.equal((await db.query(kuyruk.SQL.ogeGuncelle, [9, 3, 'x', '{}', 1, '[]'])).rowCount, 0, 'baska kuyrugun ogesi duzenlendi');
+  assert.equal((await db.query(kuyruk.SQL.ogeGuncelle, [1, 3, 'x', '{}', 1, '[]'])).rowCount, 1);
+});
+
+test('KQ26 SQL sozlesmesi: duraklat, duzenleme, sema', () => {
+  const S = kuyruk.SQL;
+  const t = (q) => q.replace(/\s+/g, ' ');
+  assert.match(t(S.kuyrukBasla), /kira_id = \$2 AND duraklat_at IS NULL AND \(baslangic_at/);
+  for (const ad of ['ogeSahiplen', 'okKaydet', 'kosuAsamasi', 'kosuKaydet']) assert.match(t(S[ad]), /q\.duraklat_at IS NULL/, `${ad} duraklatmayi denetlemiyor`);
+  // Kurtarma / geri alma yollari duraklatmadan ETKILENMEZ (yoksa oge CALISIYOR kalirdi).
+  for (const ad of ['ogeGeriAl', 'kosuGeriAl', 'onKontrolYenile', 'okSifirla', 'kosuSifirla', 'kosuYenidenSirala']) assert.doesNotMatch(t(S[ad]), /duraklat_at/, ad);
+  assert.match(t(S.ogeSahiplen), /AND govde = \$4 AND etiket = \$5$/);
+  assert.match(t(S.kuyrukDuraklat), /WHERE id = \$1 AND hazir = 1 AND durum IN \('BEKLIYOR', 'CALISIYOR', 'DINLENME'\) AND duraklat_at IS NULL$/);
+  assert.match(t(S.kuyrukDevam), /SET duraklat_at = NULL, duraklatan = NULL WHERE id = \$1 AND durum IN \('BEKLIYOR', 'CALISIYOR', 'DINLENME'\) AND duraklat_at IS NOT NULL$/);
+  assert.match(t(S.kosuYenidenSirala), /SET durum = 'BEKLIYOR', asama = NULL, deneme_id = NULL, kosu_id = NULL, on_kontrol_kosu_id = NULL, baslama_at = NULL, neden = \$3 WHERE/);
+  assert.match(t(S.kosuYenidenSirala), /WHERE id = \$1 AND durum = 'CALISIYOR' AND asama = 'kosu' AND kosu_id = \$2 AND EXISTS \(SELECT 1 FROM nginx_loadtest_kuyruk q WHERE q\.id = nginx_loadtest_kuyruk_ogeler\.kuyruk_id AND q\.durum IN \('CALISIYOR', 'DINLENME'\)\)$/);
+  assert.match(t(S.ogeGuncelle), /SET etiket = \$3, govde = \$4, butce_sn = \$5, uyari_turleri = \$6, neden = NULL, deneme = 0, sonraki_deneme_at = NULL WHERE id = \$2 AND kuyruk_id = \$1 AND durum = 'BEKLIYOR' AND on_kontrol_kosu_id IS NULL AND kosu_id IS NULL$/);
+  assert.match(t(S.kuyrukTurlerEkle), /COALESCE\(onaylanan_turler, ''\) = \$3$/);
+  const sablon = require('../sablon.cjs');
+  for (const [ad, q] of Object.entries(sablon.SQL)) assert.match(q.trimStart(), /^(SELECT|UPDATE|INSERT) \/\*KQ:\w+\*\//, ad);
+  assert.match(require('../../db/index.cjs')._adaptSql(sablon.SQL.ekle), /OUTPUT INSERTED\.id VALUES/);
+  const kur = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', '..', 'db', 'mssql-setup.cjs'), 'utf8');
+  assert.match(kur, /CREATE TABLE nginx_loadtest_kuyruk \([^`]*duraklat_at\s+DATETIME2 NULL,\s+duraklatan\s+NVARCHAR\(100\) NULL/);
+  assert.match(kur, /table: 'nginx_loadtest_kuyruk', col: 'duraklat_at', sql: `ALTER TABLE nginx_loadtest_kuyruk ADD duraklat_at DATETIME2 NULL`/);
+  assert.match(kur, /table: 'nginx_loadtest_kuyruk', col: 'duraklatan', sql: `ALTER TABLE nginx_loadtest_kuyruk ADD duraklatan NVARCHAR\(100\) NULL`/);
+  assert.match(kur, /name: 'nginx_loadtest_sablonlar',\s+sql: .\s+CREATE TABLE nginx_loadtest_sablonlar \(/);
+  assert.match(kur, /CREATE TABLE nginx_loadtest_sablonlar \([^`]*ad\s+NVARCHAR\(120\) NOT NULL[^`]*govde\s+NVARCHAR\(MAX\) NOT NULL[^`]*silindi\s+BIT NOT NULL DEFAULT 0/);
+  assert.match(kur, /CREATE UNIQUE INDEX UX_nls_ad ON nginx_loadtest_sablonlar \(ad\) WHERE silindi = 0/);
+});
+
+test('KQ27 ortak etiket kurali: duzenleme de olusturmayla ayni, kod suzgeci', () => {
+  assert.equal(kuyruk.ogeEtiketi(' A3 ', 'Öğe: '), 'A3');
+  assert.throws(() => kuyruk.ogeEtiketi('  ', 'Öğe: '), (e) => e.status === 400 && /^Öğe: etiket zorunlu/.test(e.message));
+  assert.throws(() => kuyruk.ogeEtiketi(5, 'Öğe: '), /etiket zorunlu/);
+  assert.throws(() => kuyruk.ogeEtiketi('x'.repeat(101), 'Öğe: '), /en çok 100/);
+  assert.equal(kuyruk.ogeEtiketi('ç'.repeat(100), ''), 'ç'.repeat(100));
+  assert.throws(() => kuyruk.ogeEtiketi('a\nb', ''), /kontrol karakteri/);
+  assert.deepEqual(kuyruk.turKodlari(['U0123456789', 'U0123456789', 'kotu', 3]), ['U0123456789']);
+  assert.deepEqual(kuyruk.turKodlari('U0123456789'), []);
+});
+
+test('KQ28 durdurulan kosunun iki yazimi: arada kesinti dinlenmeyi kaybetmez, sonraki tur tamamlar; iptal araya girerse oge HATALI', async () => {
+  const kur = async () => {
+    sifirla();
+    const I = sahteIslem();
+    const id = kuyrukKur(D, { kuyruk: { bekleme_dk: 2 }, ogeler: [{ etiket: 'A1' }, { etiket: 'A2' }] });
+    await tur(I);
+    bitir(101);
+    await tur(I);
+    await duraklat(id);
+    D.kilitler.set('T|GBNGXT33', { lock_id: 'L102', held: 1, locked_until: D.simdi + 20 * DK, awx_job_id: 901 });
+    bitir(102, 'CANCELED');
+    return { I, id };
+  };
+  for (const ad of ['dinlenmeyeGec', 'kosuYenidenSirala']) {
+    const { I, id } = await kur();
+    D.kuyrukHata = { ad, hata: new Error('db kesinti') };
+    await tur(I);
+    assert.equal(oge(1).durum, 'CALISIYOR', `${ad} kesintisinde oge dinlenmesiz geri alindi`);
+    assert.equal(kq(id).hata_sayisi, 1);
+    await tur(I);
+    assert.deepEqual(
+      [oge(1).durum, oge(1).kosu_id, kq(id).durum, kq(id).dinlenme_kosu_id, kq(id).dinlenme_bitis],
+      ['BEKLIYOR', null, 'DINLENME', 102, null],
+      `${ad} kesintisinden sonra tamamlanmadi`,
+    );
+    assert.equal(D.kuyrukSorgular.filter((x) => x.ad === 'dinlenmeyeGec' && x.params[1] === 102).length, ad === 'dinlenmeyeGec' ? 2 : 1, 'dinlenme ikinci kez kuruldu');
+  }
+  // Kuyruk DINLENME'de, oge yazilamadi, bu sirada IPTAL: oge bastan kosulmaz, HATALI kapanir (yetim BEKLIYOR yok).
+  const { I, id } = await kur();
+  D.kuyrukHata = { ad: 'kosuYenidenSirala', hata: new Error('db kesinti') };
+  await tur(I);
+  await db.query(kuyruk.SQL.kuyrukIptal, [id, 'ali']);
+  await tur(I);
+  assert.deepEqual([oge(1).durum, kq(id).durum], ['HATALI', 'IPTAL']);
+});
+
+test('KQ29 Durdur basilmis FAILED kosu da bastan kosulur; Durdur basilmamis FAILED ve Durdur basilip DONE bugunku gibi', async () => {
+  const kur = async () => {
+    sifirla();
+    const I = sahteIslem();
+    const id = kuyrukKur(D, { ogeler: [{ etiket: 'A1' }, { etiket: 'A2' }] });
+    await tur(I);
+    bitir(101);
+    await tur(I);
+    await duraklat(id);
+    return { I, id };
+  };
+  let { I, id } = await kur();
+  bitir(102, 'FAILED', { iptal_eden: 'onur' });
+  await tur(I);
+  assert.deepEqual([oge(1).durum, oge(1).kosu_id, kq(id).durum], ['BEKLIYOR', null, 'DINLENME'], 'durdurulan kosu sessizce HATALI oldu');
+  assert.match(oge(1).neden, /duraklatmada durduruldu/);
+  ({ I, id } = await kur());
+  bitir(102, 'FAILED');
+  await tur(I);
+  assert.equal(oge(1).durum, 'HATALI', 'kendiliginden FAILED kosu yeniden kosulmamali');
+  ({ I, id } = await kur());
+  bitir(102, 'DONE', { iptal_eden: 'onur' });
+  await tur(I);
+  assert.equal(oge(1).durum, 'BITTI', 'durdurulamadan biten kosunun sonucu gecerli');
+  // Duraklatilmamis kuyrukta Durdur basilmis FAILED bugunku gibi HATALI.
+  ({ I, id } = await kur());
+  await devam(id);
+  bitir(102, 'FAILED', { iptal_eden: 'onur' });
+  await tur(I);
+  assert.equal(oge(1).durum, 'HATALI');
+  assert.equal(kuyruk.kosuDurduruldu({ durum: 'RUNNING', iptal_eden: 'onur' }), true);
+  assert.equal(kuyruk.kosuDurduruldu({ durum: 'RUNNING', iptal_eden: null }), false);
+});
+
+test('KQ30 kapi kararlari govdeye bagli: karar verilirken duzenlenen oge ATLANDI olmaz, sonraki tur yeni degerle baslar', async () => {
+  const yeniGovde = JSON.stringify({ senaryoId: 2, hedefHost: 'GBNGXT33', hedefIp: '10.0.0.9', vhost: 'app.test.local', yukHost: 'GBNGXT34', sni: false, parametreler: { hizlar: [100] } });
+  const duzenle = (id) => db.query(kuyruk.SQL.ogeGuncelle, [id, 1, 'A1 duzeltildi', yeniGovde, 100, '[]']);
+  // a) Eski govdenin plani kapidan donuyor.
+  sifirla();
+  let I = sahteIslem();
+  let id = kuyrukKur(D, { ogeler: [{ etiket: 'A1' }] });
+  const asilPlan = I.plan;
+  I.plan = async () => {
+    await duzenle(id);
+    throw Object.assign(new Error('eski ayar kapidan gecmedi'), { status: 409, code: 'host_uretim' });
+  };
+  await tur(I);
+  assert.deepEqual([oge(1).durum, oge(1).etiket, oge(1).neden], ['BEKLIYOR', 'A1 duzeltildi', null], 'duzeltilen oge eski kararla atlandi');
+  I.plan = asilPlan;
+  await tur(I);
+  assert.deepEqual([oge(1).durum, I.launch.at(-1)], ['CALISIYOR', ['on_kontrol', 101]]);
+  assert.equal(kosu(101).etiket, '[K1] A1 duzeltildi');
+  // b) Yetki karari da ayni yazimdan.
+  sifirla();
+  I = sahteIslem();
+  id = kuyrukKur(D, { ogeler: [{ etiket: 'A1' }] });
+  I.yetkiVarMi = async () => {
+    await duzenle(id);
+    return { ok: false, neden: 'rol degisti' };
+  };
+  await tur(I);
+  assert.equal(oge(1).durum, 'BEKLIYOR');
+  // c) Arada duzenlenmeyen oge eskisi gibi atlanir.
+  I.yetkiVarMi = async () => ({ ok: false, neden: 'rol degisti' });
+  await tur(I);
+  assert.deepEqual([oge(1).durum, oge(1).neden], ['ATLANDI', 'yetki: rol degisti']);
+  assert.equal(oge(1).bitis_at, D.simdi);
+});
+
+test('KQ31 duzenleme gecici hata sayacini ve geri cekilmeyi sifirlar: oge hemen denenir, ilk hata 1/6', async () => {
+  sifirla();
+  const I = sahteIslem();
+  const id = kuyrukKur(D, { ogeler: [{ etiket: 'A1', deneme: 5, sonraki_deneme_at: D.simdi + 15 * DK, neden: 'geçici hata (5/6)' }] });
+  await tur(I);
+  assert.equal(I.launch.length, 0, 'geri cekilmede oge baslamamali');
+  await db.query(kuyruk.SQL.ogeGuncelle, [id, 1, 'A1 yeni', '{"senaryoId":2,"hedefIp":"10.0.0.9"}', 100, '[]']);
+  assert.deepEqual([oge(1).deneme, oge(1).sonraki_deneme_at, oge(1).neden], [0, null, null]);
+  I.okHata.push(Object.assign(new Error('AWX yok'), { status: 424 }));
+  await tur(I);
+  assert.deepEqual([oge(1).durum, oge(1).deneme], ['BEKLIYOR', 1], 'eski denemeler yeni ayara sayildi');
+  assert.match(oge(1).neden, /geçici hata \(1\/6\)/);
 });

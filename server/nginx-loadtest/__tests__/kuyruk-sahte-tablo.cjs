@@ -20,6 +20,7 @@ function kuyrukSatiri(D, r) {
     baslangic_at: r.baslangic_at == null ? null : new Date(r.baslangic_at),
     en_gec_bitis: r.en_gec_bitis == null ? null : new Date(r.en_gec_bitis),
     dinlenme_bitis: r.dinlenme_bitis == null ? null : new Date(r.dinlenme_bitis),
+    duraklat_at: r.duraklat_at == null ? null : new Date(r.duraklat_at),
   };
 }
 
@@ -51,6 +52,7 @@ function kuyrukTablolariKur(D) {
   if (!D.kuyruk) D.kuyruk = [];
   if (!D.ogeler) D.ogeler = [];
   if (!D.kuyrukSorgular) D.kuyrukSorgular = [];
+  if (!D.sablonlar) D.sablonlar = [];
 }
 
 /** Kuyruk sorgusu degilse null. `D.kuyrukHata` = { ad, hata } verilen etiketteki ILK sorguda hata atar. */
@@ -75,6 +77,9 @@ function kuyrukSorgusu(D, sql, params = []) {
     // ${KUYRUK_BIZDE}: kuyruk CALISIYOR ve kira bizde - metinde varsa uygulanir.
     const k = K(o.kuyruk_id);
     if (var_(q, "q.durum = 'CALISIYOR'") && !(k && k.durum === 'CALISIYOR')) return false;
+    const yuruyen = inListesi(q, 'q.durum');
+    if (yuruyen && !(k && yuruyen.includes(k.durum))) return false;
+    if (var_(q, 'q.duraklat_at IS NULL') && !(k && k.duraklat_at == null)) return false;
     if (var_(q, 'q.kira_id = ') && !(k && k.kira_id === kira)) return false;
     return true;
   };
@@ -101,7 +106,7 @@ function kuyrukSorgusu(D, sql, params = []) {
       return { rows: D.kuyruk.filter((r) => r.id === Number(params[0])).map((r) => kuyrukSatiri(D, r)) };
     case 'kuyrukBasla': {
       const r = K(params[0]);
-      const ok = r && r.durum === 'BEKLIYOR' && r.hazir === 1 && (!var_(q, 'kira_id = $2') || r.kira_id === params[1])
+      const ok = r && r.durum === 'BEKLIYOR' && r.hazir === 1 && (!var_(q, 'kira_id = $2') || r.kira_id === params[1]) && (!var_(q, 'duraklat_at IS NULL') || r.duraklat_at == null)
         && (r.baslangic_at == null || r.baslangic_at <= D.simdi);
       if (ok) r.durum = 'CALISIYOR';
       return bir(ok);
@@ -126,6 +131,13 @@ function kuyrukSorgusu(D, sql, params = []) {
       if (ok) Object.assign(o, { durum: yeni, neden, deneme_id: null, bitis_at: D.simdi });
       return bir(ok);
     }
+    case 'ogeAtla': {
+      const [id, neden, govde, etiket] = params;
+      const o = O(id);
+      const ok = o && o.durum === 'BEKLIYOR' && (!var_(q, 'govde = $3') || o.govde === govde) && (!var_(q, 'etiket = $4') || o.etiket === etiket);
+      if (ok) Object.assign(o, { durum: 'ATLANDI', neden, deneme_id: null, bitis_at: D.simdi });
+      return bir(ok);
+    }
     case 'ogeNeden': {
       const [id, neden, artis, durum] = params;
       const o = O(id);
@@ -134,9 +146,10 @@ function kuyrukSorgusu(D, sql, params = []) {
       return bir(ok);
     }
     case 'ogeSahiplen': {
-      const [id, token, kira] = params;
+      const [id, token, kira, govde, etiket] = params;
       const o = O(id);
-      let ok = o && (!var_(q, "durum = 'BEKLIYOR'") || o.durum === 'BEKLIYOR') && o.on_kontrol_kosu_id == null && o.kosu_id == null && kuyrukBizde(o, kira);
+      let ok = o && (!var_(q, "durum = 'BEKLIYOR'") || o.durum === 'BEKLIYOR') && o.on_kontrol_kosu_id == null && o.kosu_id == null && kuyrukBizde(o, kira)
+        && (!var_(q, 'govde = $4') || o.govde === govde) && (!var_(q, 'etiket = $5') || o.etiket === etiket);
       const baskaCalisan = o && D.ogeler.some((x) => x.kuyruk_id === o.kuyruk_id && x.durum === 'CALISIYOR' && x.id !== o.id);
       if (ok && baskaCalisan && var_(q, "o2.durum = 'CALISIYOR'")) ok = false;
       // UX_nlko_calisan (filtreli tekil indeks): NOT EXISTS'i gecse de ikinci calisan oge yazilamaz.
@@ -181,6 +194,70 @@ function kuyrukSorgusu(D, sql, params = []) {
       const ok = o && o.durum === 'CALISIYOR' && o.asama === 'on_kontrol' && o.on_kontrol_kosu_id === okId && o.kosu_id == null && kuyrukBizde(o);
       if (ok) Object.assign(o, { durum: 'BEKLIYOR', asama: null, deneme_id: null, on_kontrol_kosu_id: null, neden });
       return bir(ok);
+    }
+    case 'kosuYenidenSirala': {
+      const [id, kosuId, neden] = params;
+      const o = O(id);
+      const ok = o && o.durum === 'CALISIYOR' && o.asama === 'kosu' && (!var_(q, 'kosu_id = $2') || o.kosu_id === kosuId) && kuyrukBizde(o);
+      if (ok) Object.assign(o, { durum: 'BEKLIYOR', asama: null, deneme_id: null, kosu_id: null, on_kontrol_kosu_id: null, baslama_at: null, neden });
+      return bir(ok);
+    }
+    case 'kuyrukDuraklat': {
+      const r = K(params[0]);
+      const durumlar = inListesi(q, 'durum') || [];
+      const ok = r && (!var_(q, 'hazir = 1') || r.hazir === 1) && durumlar.includes(r.durum) && (!var_(q, 'duraklat_at IS NULL') || r.duraklat_at == null);
+      if (ok) Object.assign(r, { duraklat_at: D.simdi, duraklatan: params[1] });
+      return bir(ok);
+    }
+    case 'kuyrukDevam': {
+      const r = K(params[0]);
+      const durumlar = inListesi(q, 'durum') || [];
+      const ok = r && durumlar.includes(r.durum) && (!var_(q, 'duraklat_at IS NOT NULL') || r.duraklat_at != null);
+      if (ok) Object.assign(r, { duraklat_at: null, duraklatan: null });
+      return bir(ok);
+    }
+    case 'ogeGuncelle': {
+      const [kuyrukId, id, etiket, govde, butce_sn, uyari_turleri] = params;
+      const o = O(id);
+      const ok = o && (!var_(q, 'kuyruk_id = $1') || o.kuyruk_id === Number(kuyrukId)) && (!var_(q, "durum = 'BEKLIYOR'") || o.durum === 'BEKLIYOR')
+        && (!var_(q, 'on_kontrol_kosu_id IS NULL') || o.on_kontrol_kosu_id == null) && (!var_(q, 'kosu_id IS NULL') || o.kosu_id == null);
+      if (ok) Object.assign(o, { etiket, govde, butce_sn, uyari_turleri, neden: null, ...(var_(q, 'deneme = 0') ? { deneme: 0 } : {}), ...(var_(q, 'sonraki_deneme_at = NULL') ? { sonraki_deneme_at: null } : {}) });
+      return bir(ok);
+    }
+    case 'kuyrukTurlerEkle': {
+      const r = K(params[0]);
+      const durumlar = inListesi(q, 'durum') || [];
+      const ok = r && durumlar.includes(r.durum) && (!var_(q, "COALESCE(onaylanan_turler, '') = $3") || (r.onaylanan_turler ?? '') === params[2]);
+      if (ok) r.onaylanan_turler = params[1];
+      return bir(ok);
+    }
+    case 'sablonListe':
+      return { rows: D.sablonlar.filter((s) => !var_(q, 'silindi = 0') || !s.silindi).sort((a, b) => a.ad.localeCompare(b.ad)).slice(0, 200) };
+    case 'sablonAdVar': {
+      // D.sablonAdKacir: on kontrolu gecen eszamanli kayit (yalniz bir kez, indeks yakalar).
+      if (D.sablonAdKacir) { D.sablonAdKacir = false; return { rows: [] }; }
+      const [adi, haric] = params;
+      return { rows: D.sablonlar.filter((s) => s.ad === adi && !s.silindi && (haric == null || !var_(q, 'id <> $2') || s.id !== Number(haric))).slice(0, 1).map((s) => ({ id: s.id })) };
+    }
+    case 'sablonEkle': {
+      const [adi, govde, kim] = params;
+      // UX_nls_ad: filtreli tekil indeks (D.indeksVar === false: kurulumda olusturulamamis).
+      if (D.indeksVar !== false && D.sablonlar.some((s) => s.ad === adi && !s.silindi)) throw Object.assign(new Error("Cannot insert duplicate key row in object with unique index 'UX_nls_ad'"), { number: 2601 });
+      const id = D.sablonlar.length + 1;
+      D.sablonlar.push({ id, ad: adi, govde, created_by: kim, created_at: new Date(D.simdi), updated_by: kim, updated_at: new Date(D.simdi), silindi: 0 });
+      return { rows: [{ id }], rowCount: 1 };
+    }
+    case 'sablonGuncelle': {
+      const [id, adi, govde, kim] = params;
+      const s = D.sablonlar.find((x) => x.id === Number(id) && (!var_(q, 'silindi = 0') || !x.silindi));
+      if (s && D.sablonlar.some((x) => x !== s && x.ad === adi && !x.silindi)) throw Object.assign(new Error("Cannot insert duplicate key row in object with unique index 'UX_nls_ad'"), { number: 2601 });
+      if (s) Object.assign(s, { ad: adi, govde, updated_by: kim, updated_at: new Date(D.simdi) });
+      return bir(!!s);
+    }
+    case 'sablonSil': {
+      const s = D.sablonlar.find((x) => x.id === Number(params[0]) && (!var_(q, 'silindi = 0') || !x.silindi));
+      if (s) Object.assign(s, { silindi: 1, updated_by: params[1], updated_at: new Date(D.simdi) });
+      return bir(!!s);
     }
     case 'okSifirla':
     case 'kosuSifirla': {
@@ -233,6 +310,14 @@ function kuyrukSorgusu(D, sql, params = []) {
         && (t(r) >= D.simdi || (var_(q, 'OR awx_job_id IS NOT NULL') && r.awx_job_id != null))).length;
       return { rows: [{ n }], rowCount: 1 };
     }
+    case 'hedefKilitli': {
+      const t = (r) => (typeof r.locked_until === 'number' ? r.locked_until : r.locked_until == null ? null : new Date(r.locked_until).getTime());
+      const r = D.kilitler ? D.kilitler.get(params[0]) : null;
+      const n = r && r.held && t(r) != null && t(r) >= D.simdi - 12 * 3600000 && (t(r) >= D.simdi || r.awx_job_id != null) ? 1 : 0;
+      return { rows: [{ n }], rowCount: 1 };
+    }
+    case 'sonAyarliKosu':
+      return { rows: (D.kosular || []).filter((k) => k.hedef_host === params[0] && String(k.parametreler).includes('"sunucuAyar":{')).sort((a, b) => b.id - a.id).slice(0, 1).map((k) => ({ id: k.id })) };
     case 'hataSay': {
       const r = K(params[0]);
       if (r) Object.assign(r, { hata_sayisi: r.hata_sayisi + 1, son_hata: params[1] });
@@ -267,7 +352,7 @@ function kuyrukSorgusu(D, sql, params = []) {
       D.kuyruk.push({
         id, ad: adi, durum: 'BEKLIYOR', bekleme_dk, baslangic_at: baslangic == null ? null : new Date(baslangic).getTime(), en_gec_bitis: bitis == null ? null : new Date(bitis).getTime(),
         onay_hedefi, hedef_turu, onaylanan_turler, created_by, created_at: new Date(D.simdi), iptal_eden: null, iptal_at: null, dinlenme_kosu_id: null, dinlenme_bitis: null,
-        hata_sayisi: 0, son_hata: null, bitis_at: null, kira_id: null, kira_bitis: null, hazir: 0,
+        hata_sayisi: 0, son_hata: null, bitis_at: null, kira_id: null, kira_bitis: null, hazir: 0, duraklat_at: null, duraklatan: null,
       });
       return { rows: [{ id }], rowCount: 1 };
     }
@@ -345,7 +430,7 @@ function kuyrukKur(D, { kuyruk = {}, ogeler = [] } = {}) {
   D.kuyruk.push({
     id, ad: null, durum: 'BEKLIYOR', bekleme_dk: 5, baslangic_at: D.simdi, en_gec_bitis: null, onay_hedefi: 'GBNGXT33', hedef_turu: 'sunucu',
     onaylanan_turler: '[]', created_by: 'onur', created_at: new Date(D.simdi), iptal_eden: null, iptal_at: null, dinlenme_kosu_id: null, dinlenme_bitis: null,
-    hata_sayisi: 0, son_hata: null, bitis_at: null, kira_id: null, kira_bitis: null, hazir: 1, ...kuyruk,
+    hata_sayisi: 0, son_hata: null, bitis_at: null, kira_id: null, kira_bitis: null, hazir: 1, duraklat_at: null, duraklatan: null, ...kuyruk,
   });
   ogeler.forEach((o, i) => {
     D.ogeler.push({

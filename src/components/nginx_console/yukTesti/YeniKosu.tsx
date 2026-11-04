@@ -43,11 +43,17 @@
 // ayarla" kutusu (yalniz sunucu hedefinde; serbestte cizilmez ve govdeye girmez). Seviye br 1-11 / gzip 1-9 (identity'de
 // gizli), static kutusu, dizin (kutu acikken HER ZAMAN zorunlu; son deger localStorage'da). Kutu acikken h2 secimi
 // /hedefler protokoller'inde h2 olmasa da serbest: sunucu h2'yi kosu oncesi acar. parametreler.sunucuAyar imzaya girer.
+// DUZENLEME (2026-11-04; kullanici: "kaydolan bir senaryoyu modifiye edemiyorum"): `duzenlenen` verilirse form o ogenin
+// govdesiyle dolar (formGovdeden; YukTestiTab `key` ile yeniden kurar), ustte "“etiket” düzenleniyor", Plan kutusunda "Kuyruğa
+// ekle" yerine "Değişikliği kaydet" ve "İptal". Taslakta yerinde degisir; kuyrukta PUT gider, 409 uyari_onayi turleri onay
+// kutulariyla sorulur. Toplu ekleme duzenlemede cizilmez.
+// KAYITLI TEST (2026-11-04): ustte "Kayıtlı test" seridi (KayitliTest.tsx) formu ayni yoldan doldurur; kaydin senaryosu listede
+// yoksa "1 · Senaryo" soyler. TOPLU EKLEME: Plan kutusunun altinda MatrisEkle (matris.ts), `onKuyrugaTopluEkle` ile.
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowPathIcon, BoltIcon, ChevronDownIcon, ChevronRightIcon, ClipboardDocumentCheckIcon, ServerStackIcon, WrenchScrewdriverIcon } from '@heroicons/react/24/outline';
 import {
-  hedeflerNormalle, nginxLoadtestApi, type NlAe, type NlHedef, type NlHedefler, type NlHedefTuru, type NlIpSinifi, type NlKip, type NlKosuAyrinti,
-  type NlMotor, type NlParametreler, type NlProtokol, type NlSenaryo, type NlSunucuAyar, type NlVarsayilanlar,
+  hedeflerNormalle, nginxLoadtestApi, type NlAe, type NlHedef, type NlHedefler, type NlHedefTuru, type NlIpSinifi, type NlKip, type NlKosuAyrinti, type NlKuyrukGovde,
+  type NlMotor, type NlParametreler, type NlProtokol, type NlSenaryo, type NlSunucuAyar, type NlUyariTuru,
 } from '@/api/nginxLoadtestApi';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { toast } from '@/hooks/useToast';
@@ -56,40 +62,23 @@ import { LINK, SM_BTN, TBL_BTN, TON, smBtn } from '@/components/server_hub/retir
 import { UyariKutusu } from '@/components/server_hub/RetirementUi';
 import { sureMetni } from '@/components/server_hub/retirementCikti';
 import BaslatOnayi, { type BaslatOnayiDegeri } from './BaslatOnayi';
+import { etiketsizGovde, formBaslangic, formGovdeden, type Form } from './formGovde';
+import KayitliTest from './KayitliTest';
 import KosuCiktisi from './KosuCiktisi';
+import MatrisEkle from './MatrisEkle';
+import { ogeOzeti } from './matris';
 import OnKontrolPaneli from './OnKontrolPaneli';
 import {
   ALAN_ACIKLAMASI, HAZIR_AYAR_ETIKETI, HAZIR_AYAR_SIRASI, hangiHazirAyar, hazirAyar, hazirAyarSuresiSn, type HazirAyarAdi, type HazirAyarDegerleri,
 } from './hazirAyarlar';
-import { Alan, Bolum, GIRDI, KosuDurumHapi, SunucuAyarUyarilari, girdiStili } from './YukUi';
-import { ETIKET_MAX as KUYRUK_ETIKET_MAX, yeniYerelId, type TaslakOge } from './kuyrukTaslak';
+import { Alan, Bolum, GIRDI, KosuDurumHapi, SunucuAyarUyarilari, UyariTuruOnayi, girdiStili } from './YukUi';
+import { ETIKET_MAX as KUYRUK_ETIKET_MAX, yeniYerelId, type DuzenlenenOge, type TaslakOge } from './kuyrukTaslak';
 import {
   AE_ETIKETI, AKTIF_DURUMLAR, GIRDIYE_BAGLI_RETLER, KIP_ETIKETI, PROTOKOL_ETIKETI, SERBEST_VHOST_YARDIMI, VHOST_LISTEDE_YOK_NOTU, adimDegerleri, baglantiBeklemesiMs,
-  SRV_SEVIYE_MAX, baglantilariAyristir, butceSn, butceTavani, hataMetni, hazirlikPayiSn, hedefSinirlari, hizlariAyristir, ipGecerli, nedenMetni, onKontrolDegerlendir, onKontrolKalanMs,
-  limitUyarilari, parametreHatalari, parametreSunucuAyari, srvDizinGecerli, srvDizinOku, srvDizinYaz, sunucuAyarHatalari, tavanNedeni, tavanRps, vhostGecerli,
+  SRV_SEVIYE_MAX, baglantilariAyristir, butceSn, butceTavani, hataMetni, hedefSinirlari, hizlariAyristir, ipGecerli, nedenMetni, onKontrolDegerlendir, onKontrolKalanMs,
+  limitUyarilari, parametreHatalari, parametreSunucuAyari, srvDizinGecerli, srvDizinYaz, sunucuAyarHatalari, tavanNedeni, tavanRps, vhostGecerli,
 } from './yukTestiOrtak';
 
-interface Form {
-  senaryoId: string; hedefHost: string; hedefIp: string; yukHost: string; sni: boolean; motor: NlMotor;
-  /** null: kullanici yazmadi -> onerilen (senaryonun vhost'u ya da sunucunun tek server_name'i). */
-  vhost: string | null;
-  /** null: kullanici degistirmedi -> hedef turunun varsayilani (serbestte 50 100 200 / 50). */
-  hizlar: string | null; maxvu: string | null;
-  baglantilar: string; is_parcacigi: string;
-  tekrar: string; isinma: string; sure: string; bosluk: string; bosta: string; kip: NlKip; ae: NlAe; etiket: string;
-  /** Kullanicinin secimi; gonderilen deger wrk'de ya da sunucu h2 kabul etmiyorsa h1 (bkz. `protokol`). */
-  protokol: NlProtokol;
-  /** Sunucuyu kosu oncesi ayarla (yalniz sunucu hedefinde etkili); seviye / dizin metin girdisi. */
-  srvAyar: boolean; srvSeviye: string; srvStatic: boolean; srvDizin: string;
-}
-const formBaslangic = (v: NlVarsayilanlar, yukHost = '', h2Acik = false): Form => ({
-  senaryoId: '', hedefHost: '', hedefIp: '', vhost: null, yukHost, sni: false, motor: v.motor === 'wrk' ? 'wrk' : 'k6',
-  hizlar: null, maxvu: null, baglantilar: v.baglantilar.join(' '), is_parcacigi: String(v.is_parcacigi),
-  tekrar: String(v.tekrar), isinma: String(v.isinma), sure: String(v.sure), bosluk: String(v.bosluk),
-  bosta: String(v.bosta), kip: h2Acik && v.protokol === 'h2' ? 'ka' : v.kip, ae: v.ae, etiket: '',
-  protokol: h2Acik && v.protokol === 'h2' ? 'h2' : 'h1',
-  srvAyar: false, srvSeviye: '', srvStatic: false, srvDizin: srvDizinOku(),
-});
 const tamSayi = (s: string) => (/^\s*\d+\s*$/.test(s) ? Number(s) : NaN);
 /** Siniflandirma istegi yazma bitince (her tusta degil). */
 const SINIF_GECIKME_MS = 400;
@@ -105,12 +94,19 @@ type SinifSonucu =
 /** Sunucu hedefinin form icin gereken alanlari (/ip-sinifi sunucu yaniti ya da /hedefler satiri). */
 type SunucuHedefi = Pick<NlHedef, 'host' | 'env' | 'vhostlar' | 'vhostVerisi' | 'hizSiniri' | 'vuSiniri' | 'limitReq' | 'limitConn'>;
 
-export default function YeniKosu({ onBasladi, onSenaryolar, onAraclar, onKuyrugaEkle, kuyrukOgeSayisi = 0 }: {
+export default function YeniKosu({ onBasladi, onSenaryolar, onAraclar, onKuyrugaEkle, onKuyrugaTopluEkle, kuyrukOgeSayisi = 0, duzenlenen = null, onTaslakGuncelle, onDuzenlemeBitti }: {
   onBasladi: (kosuId: number) => void; onSenaryolar: () => void; onAraclar?: () => void;
   /** Gece kuyrugu taslagina ekler (verilmezse dugme cizilmez). */
   onKuyrugaEkle?: (o: TaslakOge) => void; kuyrukOgeSayisi?: number;
+  /** Toplu ekleme: ogeleri tek seferde taslaga ekler (verilmezse bolum cizilmez). */
+  onKuyrugaTopluEkle?: (ogeler: TaslakOge[]) => void;
+  /** Duzenlenen oge; form bununla bir kez dolar (degisince bilesen `key` ile yeniden kurulur). */
+  duzenlenen?: DuzenlenenOge | null;
+  onTaslakGuncelle?: (yerelId: string, d: Pick<TaslakOge, 'etiket' | 'govde' | 'hedef' | 'ozet' | 'butceSn'>) => void;
+  /** Kaydetme ya da iptal sonrasi donus. */
+  onDuzenlemeBitti?: () => void;
 }) {
-  const [kuyrukEtiket, setKuyrukEtiket] = useState('');
+  const [kuyrukEtiket, setKuyrukEtiket] = useState(duzenlenen?.etiket ?? '');
   const [veri, setVeri] = useState<NlHedefler | null>(null);
   const [senaryolar, setSenaryolar] = useState<NlSenaryo[] | null>(null);
   const [yukHata, setYukHata] = useState('');
@@ -132,7 +128,13 @@ export default function YeniKosu({ onBasladi, onSenaryolar, onAraclar, onKuyruga
   // IP siniflandirmasi: sonuc hangi istek anahtari icin (anahtar degisince eski sonuc gosterilmez: "sınıflandırılıyor").
   const [sinif, setSinif] = useState<{ anahtar: string; sonuc: SinifSonucu } | null>(null);
   const [sinifDeneme, setSinifDeneme] = useState(0);
-  const [gelismisAcik, setGelismisAcik] = useState(false);
+  // Duzenlenen ogenin gelismis ayarlari gorunur gelir (sunucu ayari, protokol ...).
+  const [gelismisAcik, setGelismisAcik] = useState(!!duzenlenen);
+  // Kuyruk ogesi kaydi: sunucunun istedigi uyari turleri o anki form imzasi icindir (form degisince yeniden sorulur).
+  const [duzTurler, setDuzTurler] = useState<{ imza: string; turler: NlUyariTuru[] } | null>(null);
+  const [duzOnayli, setDuzOnayli] = useState<Set<string>>(new Set());
+  const [duzHata, setDuzHata] = useState('');
+  const [duzMesgul, setDuzMesgul] = useState(false);
   const [protokolRet, setProtokolRet] = useState<{ anahtar: string; mesaj: string } | null>(null);
   const busyRef = useRef(false);
 
@@ -151,7 +153,8 @@ export default function YeniKosu({ onBasladi, onSenaryolar, onAraclar, onKuyruga
   // Form ilk veriyle kurulur (render sirasinda; effect'te setState yok).
   if (veri && !form) {
     const yuk = veri.yukHostlari.filter((y) => y.uygun);
-    setForm(formBaslangic(veri.varsayilan, yuk.length === 1 ? yuk[0].host : '', !!veri.protokoller?.includes('h2')));
+    const bos = formBaslangic(veri.varsayilan, yuk.length === 1 ? yuk[0].host : '', !!veri.protokoller?.includes('h2'));
+    setForm(duzenlenen ? formGovdeden(bos, duzenlenen.govde) : bos);
   }
 
   const okKayitOku = useCallback(async (id: number) => {
@@ -334,19 +337,56 @@ export default function YeniKosu({ onBasladi, onSenaryolar, onAraclar, onKuyruga
   const kuyrukHedefi = hedefTuru === 'serbest' ? ip : sunucuHost;
   const kuyrukEtiketi = kuyrukEtiket.trim();
   const kuyrukEtiketHata = kuyrukEtiketi.length > KUYRUK_ETIKET_MAX ? `En çok ${KUYRUK_ETIKET_MAX} karakter.` : null;
-  const kuyrugaEklenir = !!govde && araclarHazir && !sinifEngeli && !girdiReddi && !!kuyrukHedefi && !!kuyrukEtiketi && !kuyrukEtiketHata;
+  const etiketsiz: NlKuyrukGovde | null = govde ? etiketsizGovde(govde) : null;
+  // Form kuyruga alinabilir (etiket haric): toplu ekleme etiketi kendi yazar.
+  // Kayitli test: elle IP'de hedef turu bilinmeden srvAktif false, govdede sunucuAyar yok; "Güncelle" onu sessizce silerdi.
+  const sablonKaydedilir = !sinifSuruyor && !!hedefTuru;
+  const kuyrugaHazir = !!etiketsiz && araclarHazir && !sinifEngeli && !girdiReddi && !!kuyrukHedefi;
+  const kuyrugaEklenir = kuyrugaHazir && !!kuyrukEtiketi && !kuyrukEtiketHata;
+  // Bu form ayarlariyla bitmis on kontrol: uyari turleri kuyruk olusturulurken onaya gelsin diye ogeye baglanir.
+  const bitmisOk = ok && okBitti && !formDegisti && !okEski ? ok.kosuId : null;
   function kuyrugaEkle() {
-    if (!onKuyrugaEkle || !kuyrugaEklenir || !govde || !param) return;
-    const { etiket: _e, ...g } = govde as typeof govde & { etiket?: string };
-    void _e;
-    const yuk = param.motor === 'wrk' ? `${(param.baglantilar ?? []).join(' ')} bağlantı` : `${(param.hizlar ?? []).join(' ')} istek/sn`;
-    const ozet = [param.motor, yuk, ...(param.protokol === 'h2' ? [PROTOKOL_ETIKETI.h2] : []), KIP_ETIKETI[param.kip], AE_ETIKETI[param.ae], parametreSunucuAyari(param), butce != null ? `≈ ${sureMetni(butce)}` : ''].filter(Boolean).join(' · ');
+    if (!onKuyrugaEkle || !kuyrugaEklenir || !etiketsiz || !param) return;
     onKuyrugaEkle({
-      yerelId: yeniYerelId(), etiket: kuyrukEtiketi, govde: g, hedef: kuyrukHedefi,
-      onKontrolKosuId: ok && okBitti && !formDegisti && !okEski ? ok.kosuId : null, ozet, butceSn: butce != null ? butce + hazirlikPayiSn(param) : null,
+      yerelId: yeniYerelId(), etiket: kuyrukEtiketi, govde: etiketsiz, hedef: kuyrukHedefi,
+      onKontrolKosuId: bitmisOk, ...ogeOzeti(param),
     });
     toast.success(`Kuyruğa eklendi: ${kuyrukEtiketi} (taslakta ${kuyrukOgeSayisi + 1} öğe).`);
     setKuyrukEtiket('');
+  }
+
+  // Duzenleme: uyari turleri yalniz sorulan imza icin gecerli.
+  const duzGuncelTurler = duzTurler && duzTurler.imza === imza ? duzTurler.turler : null;
+  const duzKaydedilir = kuyrugaEklenir && !duzMesgul && (!duzGuncelTurler || duzGuncelTurler.every((t) => duzOnayli.has(t.kod)));
+  async function degisikligiKaydet() {
+    if (!duzenlenen || !duzKaydedilir || !etiketsiz || !param) return;
+    if (duzenlenen.tur === 'taslak') {
+      onTaslakGuncelle?.(duzenlenen.yerelId, { etiket: kuyrukEtiketi, govde: etiketsiz, hedef: kuyrukHedefi, ...ogeOzeti(param) });
+      toast.success(`Taslak öğesi güncellendi: ${kuyrukEtiketi}.`);
+      onDuzenlemeBitti?.();
+      return;
+    }
+    setDuzMesgul(true);
+    setDuzHata('');
+    try {
+      const onaylanan = (duzGuncelTurler ?? []).map((t) => t.kod);
+      const r = await nginxLoadtestApi.kuyrukOgeGuncelle(duzenlenen.kuyrukId, duzenlenen.ogeId, { etiket: kuyrukEtiketi, govde: etiketsiz, ...(onaylanan.length ? { onaylananTurler: onaylanan } : {}) });
+      if (r.ok) {
+        toast.success(`Kuyruk öğesi güncellendi: ${kuyrukEtiketi}.`);
+        onDuzenlemeBitti?.();
+        return;
+      }
+      if (r.code === 'uyari_onayi') {
+        setDuzTurler({ imza, turler: Array.isArray(r.uyariTurleri) ? r.uyariTurleri : [] });
+        setDuzHata('Sunucu yeni uyarı türlerinin onaylanmasını istiyor — her birini okuyup işaretleyin.');
+        return;
+      }
+      setDuzHata(hataMetni(r, 'Öğe güncellenemedi.'));
+    } catch (e) {
+      setDuzHata(e instanceof Error ? e.message : String(e));
+    } finally {
+      setDuzMesgul(false);
+    }
   }
 
   async function onKontrolBaslat() {
@@ -477,6 +517,12 @@ export default function YeniKosu({ onBasladi, onSenaryolar, onAraclar, onKuyruga
 
   return (
     <div className="space-y-4">
+      {duzenlenen && (
+        <UyariKutusu ton="bilgi" rol="status" baslik={`“${duzenlenen.etiket}” düzenleniyor`}>
+          {duzenlenen.tur === 'kuyruk' ? `Kuyruk #${duzenlenen.kuyrukId} öğesi: ayarları değiştirip Plan kutusundan kaydedin; hedef kuyruğunkiyle aynı kalmalı.` : 'Taslak öğesi: ayarları değiştirip Plan kutusundan kaydedin; sırası korunur.'}
+        </UyariKutusu>
+      )}
+      <KayitliTest govde={sablonKaydedilir ? etiketsiz : null} kapaliNedeni={etiketsiz && !sablonKaydedilir ? 'Hedef türü belirlenmeden kaydedilemez: sunucu ayarı forma yansımıyor ve kayıttan düşerdi. IP sınıflandırması bitince yeniden deneyin.' : null} onYukle={(g) => { setForm((f) => (f ? formGovdeden(f, g) : f)); setProtokolRet(null); }} />
       {!araclarHazir && (
         <UyariKutusu ton="hata" rol="alert" baslik="Yük araçları hazır değil"
           eylem={onAraclar ? <button type="button" onClick={onAraclar} className={TBL_BTN} style={smBtn(true)}><WrenchScrewdriverIcon className="h-3.5 w-3.5" aria-hidden /> Araçlar</button> : undefined}>
@@ -486,6 +532,9 @@ export default function YeniKosu({ onBasladi, onSenaryolar, onAraclar, onKuyruga
       <div className="grid items-start gap-4 @4xl/yuk:grid-cols-[minmax(0,1fr)_19rem]">
         <div className="min-w-0 space-y-4">
           <Bolum baslik="1 · Senaryo" aciklama="Yük testinin gönderdiği yollar ve ağırlıkları. Senaryo HAR’dan ya da yol listesinden “Senaryolar” bölümünde oluşturulur.">
+            {!!form.senaryoId && !senaryo && (
+              <div className="mb-3"><UyariKutusu ton="uyari" rol="alert" baslik={`Kayıtlı ayarların senaryosu (#${form.senaryoId}) listede yok; silinmiş olabilir.`}>Listeden başka bir senaryo seçin ya da HAR’dan yeniden oluşturun.</UyariKutusu></div>
+            )}
             {senaryolar.length === 0 ? (
               <UyariKutusu ton="bilgi" baslik="Henüz senaryo yok." eylem={<button type="button" onClick={onSenaryolar} className={TBL_BTN} style={smBtn(true)}>Senaryo oluştur</button>}>Önce bir HAR dosyasından ya da yol listesinden senaryo oluşturun.</UyariKutusu>
             ) : (
@@ -744,15 +793,26 @@ export default function YeniKosu({ onBasladi, onSenaryolar, onAraclar, onKuyruga
                 <BoltIcon className="h-3.5 w-3.5" aria-hidden /> Koşuyu başlat…
               </button>
               {neden && <p className="text-[11px] leading-4" style={{ color: 'var(--text-secondary)' }}>{neden}</p>}
-              {onKuyrugaEkle && (
+              {(onKuyrugaEkle || duzenlenen) && (
                 <div className="space-y-1.5 border-t pt-2" style={{ borderColor: 'var(--border-subtle)' }}>
                   <Alan id="yuk-kuyruk-etiket" etiket="Kuyruk etiketi (zorunlu)" hata={kuyrukEtiketHata} yardim="Bu koşuda ne değiştirdiniz? Ör. “A3 brotli seviye 4”. Koşu etiketine yazılır.">
                     <input id="yuk-kuyruk-etiket" value={kuyrukEtiket} maxLength={KUYRUK_ETIKET_MAX + 20} onChange={(e) => setKuyrukEtiket(e.target.value)} autoComplete="off" className={GIRDI} style={girdiStili(!!kuyrukEtiketHata)} />
                   </Alan>
-                  <button type="button" onClick={kuyrugaEkle} disabled={!kuyrugaEklenir} className={`${SM_BTN} h-8 w-full justify-center`} style={smBtn()}
-                    title="Ayarları gece kuyruğu taslağına ekler; ön kontrol gece her koşudan önce otomatik çalışır.">
-                    Kuyruğa ekle{kuyrukOgeSayisi > 0 ? ` (taslakta ${kuyrukOgeSayisi})` : ''}
-                  </button>
+                  {duzenlenen ? (
+                    <>
+                      {duzGuncelTurler && duzGuncelTurler.length > 0 && <UyariTuruOnayi baslik="Yeni uyarı türleri — gece bunlar da kabul edilir" turler={duzGuncelTurler} onayli={duzOnayli} onDegisti={setDuzOnayli} />}
+                      {duzHata && <UyariKutusu ton={duzGuncelTurler ? 'uyari' : 'hata'} rol="alert" baslik={duzHata} />}
+                      <div className="flex gap-2">
+                        <button type="button" onClick={() => void degisikligiKaydet()} disabled={!duzKaydedilir} className={`${SM_BTN} h-8 flex-1 justify-center`} style={smBtn(duzKaydedilir)}>Değişikliği kaydet</button>
+                        <button type="button" onClick={() => onDuzenlemeBitti?.()} disabled={duzMesgul} className={`${SM_BTN} h-8 justify-center`} style={smBtn()}>İptal</button>
+                      </div>
+                    </>
+                  ) : (
+                    <button type="button" onClick={kuyrugaEkle} disabled={!kuyrugaEklenir} className={`${SM_BTN} h-8 w-full justify-center`} style={smBtn()}
+                      title="Ayarları gece kuyruğu taslağına ekler; ön kontrol gece her koşudan önce otomatik çalışır.">
+                      Kuyruğa ekle{kuyrukOgeSayisi > 0 ? ` (taslakta ${kuyrukOgeSayisi})` : ''}
+                    </button>
+                  )}
                 </div>
               )}
               {okBitti && kalanMs != null && kalanMs > 0 && !formDegisti && !okEski && (
@@ -760,6 +820,10 @@ export default function YeniKosu({ onBasladi, onSenaryolar, onAraclar, onKuyruga
               )}
             </div>
           </Bolum>
+          {onKuyrugaEkle && onKuyrugaTopluEkle && !duzenlenen && (
+            <MatrisEkle govde={kuyrugaHazir ? etiketsiz : null} motor={motor} hedefTuru={hedefTuru} srvAyarli={srvAktif} hedef={kuyrukHedefi} taslakSayisi={kuyrukOgeSayisi} onKontrolKosuId={bitmisOk}
+              onEkle={(l) => { onKuyrugaTopluEkle(l); toast.success(`Taslağa ${l.length} öğe eklendi (taslakta ${kuyrukOgeSayisi + l.length} öğe).`); }} />
+          )}
           {islemHata && <UyariKutusu ton="hata" rol="alert" baslik="Ön kontrol başlatılamadı">{islemHata}</UyariKutusu>}
         </aside>
       </div>

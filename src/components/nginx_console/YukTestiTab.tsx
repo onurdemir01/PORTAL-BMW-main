@@ -23,6 +23,8 @@
 // `kullaniciAdi` yalniz dugmeyi gostermek icin, karar sunucuda). Silinen kosu coklu karsilastirma adresinde kalmissa
 // o ekran "silinmiş koşu çıkarıldı" der; gece kuyrugu ayrintisi "silindi" gosterir.
 // Toplu rapor (2026-11-04): "Toplu rapor" alt gorunumu (herkese okunur); `yt=rapor` + kuyruk= ya da kosular= ile URL'de.
+// Duzenleme (2026-11-04): `duzenlenen` taslak ya da bekleyen kuyruk ogesini "Yeni koşu" formunda acar; kaydetme / iptal Gece
+// kuyrugu gorunumune doner (kuyruk ogesinde `acikKuyruk` ile ayni ayrintiya). Alt sekmeye tiklamak duzenlemeyi birakir.
 import React, { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { BeakerIcon, ChartBarSquareIcon, DocumentTextIcon, PlayCircleIcon, ArrowsRightLeftIcon, WrenchScrewdriverIcon, MoonIcon, Squares2X2Icon, TableCellsIcon } from '@heroicons/react/24/outline';
@@ -37,7 +39,7 @@ import TopluRapor from './yukTesti/TopluRapor';
 import { urlDurumuOku as raporUrlOku, urlDurumuYaz as raporUrlYaz, type RaporUrl } from './yukTesti/topluRaporOrtak';
 import Araclar from './yukTesti/Araclar';
 import GeceKuyrugu from './yukTesti/GeceKuyrugu';
-import { taslakOku, taslakYaz, type TaslakOge } from './yukTesti/kuyrukTaslak';
+import { taslakGuncelle, taslakOku, taslakYaz, type DuzenlenenOge, type TaslakOge } from './yukTesti/kuyrukTaslak';
 
 type Gorunum = 'kosular' | 'yeni' | 'kuyruk' | 'senaryolar' | 'karsilastir' | 'coklu' | 'rapor' | 'araclar';
 const GORUNUMLER: { id: Gorunum; ad: string; ikon: React.ComponentType<React.SVGProps<SVGSVGElement>>; yalnizAdmin?: boolean }[] = [
@@ -82,10 +84,18 @@ export function YukTestiTab({ isAdmin, kullaniciAdi = null }: { isAdmin: boolean
   const [kosuId, setKosuId] = useState<number | null>(null);
   const [taslak, setTaslakDurum] = useState<TaslakOge[]>(() => taslakOku());
   const setTaslak = (t: TaslakOge[]) => { setTaslakDurum(t); taslakYaz(t); };
+  const [duzenlenen, setDuzenlenen] = useState<DuzenlenenOge | null>(null);
+  const [acikKuyruk, setAcikKuyruk] = useState<number | null>(null);
   const gorunur = GORUNUMLER.filter((g) => isAdmin || !g.yalnizAdmin);
   const etkin: Gorunum = gorunur.some((g) => g.id === gorunum) ? gorunum : 'kosular';
   // Alt sekmeye tiklamak ayrintiyi da kapatir: ayrintidayken "Koşular"a basan kullanici listeyi bekler.
-  const git = (g: Gorunum) => { setGorunum(g); setKosuId(null); };
+  const git = (g: Gorunum) => { setGorunum(g); setKosuId(null); setDuzenlenen(null); setAcikKuyruk(null); };
+  const duzenle = (d: DuzenlenenOge) => { setDuzenlenen(d); setGorunum('yeni'); };
+  const duzenlemeBitti = () => {
+    setAcikKuyruk(duzenlenen?.tur === 'kuyruk' ? duzenlenen.kuyrukId : null);
+    setDuzenlenen(null);
+    setGorunum('kuyruk');
+  };
 
   return (
     <div className="@container/yuk space-y-4" data-yuk-testi>
@@ -119,11 +129,14 @@ export function YukTestiTab({ isAdmin, kullaniciAdi = null }: { isAdmin: boolean
         ? <KosuAyrinti key={kosuId} kosuId={kosuId} isAdmin={isAdmin} kullaniciAdi={kullaniciAdi} onGeri={() => setKosuId(null)} onSilindi={() => setKosuId(null)} />
         : <KosuListesi onAc={setKosuId} isAdmin={isAdmin} kullaniciAdi={kullaniciAdi} onTopluRapor={(kosular) => raporAc({ kuyruk: null, kosular })} />)}
       {etkin === 'yeni' && isAdmin && (
-        <YeniKosu onBasladi={(id) => { setGorunum('kosular'); setKosuId(id); }} onSenaryolar={() => git('senaryolar')} onAraclar={() => git('araclar')}
-          onKuyrugaEkle={(o) => setTaslak([...taslak, o])} kuyrukOgeSayisi={taslak.length} />
+        <YeniKosu key={duzenlenen ? (duzenlenen.tur === 'taslak' ? `t-${duzenlenen.yerelId}` : `k-${duzenlenen.ogeId}`) : 'yeni'}
+          onBasladi={(id) => { setDuzenlenen(null); setGorunum('kosular'); setKosuId(id); }} onSenaryolar={() => git('senaryolar')} onAraclar={() => git('araclar')}
+          onKuyrugaEkle={(o) => setTaslak([...taslak, o])} onKuyrugaTopluEkle={(l) => setTaslak([...taslak, ...l])} kuyrukOgeSayisi={taslak.length}
+          duzenlenen={duzenlenen} onTaslakGuncelle={(id, d) => setTaslak(taslakGuncelle(taslak, id, d))} onDuzenlemeBitti={duzenlemeBitti} />
       )}
       {etkin === 'kuyruk' && (
-        <GeceKuyrugu isAdmin={isAdmin} taslak={taslak} setTaslak={setTaslak} onKosuAc={(id) => { setGorunum('kosular'); setKosuId(id); }} onYeniKosu={isAdmin ? () => git('yeni') : undefined} onKarsilastir={cokluAc} onTopluRapor={(kuyruk) => raporAc({ kuyruk, kosular: [] })} />
+        <GeceKuyrugu isAdmin={isAdmin} taslak={taslak} setTaslak={setTaslak} onKosuAc={(id) => { setGorunum('kosular'); setKosuId(id); }} onYeniKosu={isAdmin ? () => git('yeni') : undefined} onKarsilastir={cokluAc} onTopluRapor={(kuyruk) => raporAc({ kuyruk, kosular: [] })}
+          onDuzenle={isAdmin ? duzenle : undefined} baslangicKuyruk={acikKuyruk} />
       )}
       {etkin === 'senaryolar' && <Senaryolar isAdmin={isAdmin} />}
       {etkin === 'karsilastir' && <Karsilastir />}

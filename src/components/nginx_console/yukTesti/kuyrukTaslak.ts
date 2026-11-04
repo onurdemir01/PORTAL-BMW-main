@@ -3,7 +3,8 @@
 // Taslak (henuz olusturulmamis kuyruk) yalniz bu tarayicida: "Yeni koşu" formundan "Kuyruğa ekle" ile birikir,
 // "Gece kuyruğu" bolumunde siralanir ve "Kuyruğu oluştur" ile sunucuya gider. localStorage yalniz kolaylik:
 // okunamazsa / yazilamazsa taslak bellekte kalir (sunucuya giden her sey olusturma isteginde).
-import type { NlKuyrukDurum, NlKuyrukGovde, NlKuyrukOgeDurum } from '@/api/nginxLoadtestApi';
+// 2026-11-04: duzenleme (taslak ya da bekleyen kuyruk ogesi "Yeni koşu" formunda acilir) ve duraklatma turetimi.
+import type { NlKuyruk, NlKuyrukDurum, NlKuyrukGovde, NlKuyrukOge, NlKuyrukOgeDurum } from '@/api/nginxLoadtestApi';
 import type { Ton } from '@/components/server_hub/retirementStil';
 import { fmtTime } from '@/utils/datetime';
 
@@ -23,6 +24,16 @@ export interface TaslakOge {
 export const TASLAK_ANAHTARI = 'nginx-yuk-testi:kuyruk-taslagi';
 export const ETIKET_MAX = 100;
 export const BEKLEME_VARSAYILAN_DK = 5;
+/** Kuyruktaki en cok oge (kuyruk.cjs MAX_OGE ile ayni). */
+export const MAX_OGE = 30;
+/** Oge basina on kontrol payi (sn; tahmin icin). */
+export const ON_KONTROL_PAY_SN = 300;
+export const KUYRUK_AKTIF: ReadonlySet<string> = new Set(['BEKLIYOR', 'CALISIYOR', 'DINLENME']);
+
+/** "Yeni koşu" formunda duzenlenen oge. Taslakta yerinde degisir; kuyrukta PUT gider. */
+export type DuzenlenenOge =
+  | { tur: 'taslak'; yerelId: string; etiket: string; govde: NlKuyrukGovde }
+  | { tur: 'kuyruk'; kuyrukId: number; ogeId: number; etiket: string; govde: NlKuyrukGovde };
 
 let _sayac = 0;
 /** Taslak ogesinin yerel kimligi (yalniz liste anahtari). */
@@ -48,6 +59,48 @@ export function taslakYaz(t: TaslakOge[]) {
     /* kolaylik: yazilamazsa bellekte kalir */
   }
 }
+
+/** Taslak ogesini yerinde degistirir (sira korunur). Bitmis on kontrol eski ayarlara aitti: numarasi dusar. */
+export function taslakGuncelle(t: TaslakOge[], yerelId: string, d: Pick<TaslakOge, 'etiket' | 'govde' | 'hedef' | 'ozet' | 'butceSn'>): TaslakOge[] {
+  return t.map((o) => (o.yerelId === yerelId ? { ...o, ...d, onKontrolKosuId: null } : o));
+}
+
+/** Tahmini toplam sure (sn): her oge on kontrol + kosu ust siniri, aralarda bekleme. */
+export function taslakToplamSn(ogeler: Pick<TaslakOge, 'butceSn'>[], beklemeDk: number): number {
+  return ogeler.reduce((t, o) => t + ON_KONTROL_PAY_SN + (o.butceSn || 0), 0) + Math.max(0, ogeler.length - 1) * beklemeDk * 60;
+}
+
+/** Bekleyen kuyruk ogesinin govdesi (`ayar`dan); eksik alan varsa null (duzenleme acilmaz). */
+export function ogeGovdesi(o: Pick<NlKuyrukOge, 'ayar'>): NlKuyrukGovde | null {
+  const a = o.ayar;
+  if (a?.senaryoId == null || !a.hedefIp || !a.vhost || !a.yukHost || !a.parametreler) return null;
+  return { senaryoId: a.senaryoId, hedefHost: a.hedefHost ?? null, hedefIp: a.hedefIp, vhost: a.vhost, yukHost: a.yukHost, sni: a.sni === true, parametreler: a.parametreler };
+}
+
+/** Sunucunun ogeGuncelle kosulu: bekliyor ve hic baslamamis. */
+export const ogeDuzenlenir = (o: Pick<NlKuyrukOge, 'durum' | 'onKontrolKosuId' | 'kosuId'>) => o.durum === 'BEKLIYOR' && o.onKontrolKosuId == null && o.kosuId == null;
+
+export type DuraklatmaDurumu = null | 'bekliyor' | 'geri_alma' | 'duraklatildi';
+/**
+ * Aktif ve duraklatilmis kuyrugun gercek hali. 'bekliyor': oge calisiyor, dinlenme kilidin birakilmasini bekliyor ya da sunucu
+ * hedefi mesgul diyor (hedefteki gecici ayar henuz geri alinmamis olabilir; sunucuya dokunulmaz). 'geri_alma': is bitti ama
+ * sunucu ayari geri alinamadi (kilit yine de birakilir). 'duraklatildi': sunucu bos. Listede `ogeler` bos, `calisanVar` sunucudan.
+ */
+export function duraklatmaDurumu(k: Pick<NlKuyruk, 'durum' | 'duraklatAt' | 'dinlenmeBitis' | 'calisanVar' | 'hedefMesgul' | 'geriAlmaSorunu'>, ogeler: Pick<NlKuyrukOge, 'durum'>[]): DuraklatmaDurumu {
+  if (!k.duraklatAt || !KUYRUK_AKTIF.has(k.durum)) return null;
+  if (k.calisanVar || k.hedefMesgul || ogeler.some((o) => o.durum === 'CALISIYOR') || (k.durum === 'DINLENME' && k.dinlenmeBitis == null)) return 'bekliyor';
+  return k.geriAlmaSorunu ? 'geri_alma' : 'duraklatildi';
+}
+export const DURAKLATMA_METNI: Record<NonNullable<DuraklatmaDurumu>, string> = {
+  bekliyor: 'Duraklatılıyor: süren iş bitip sunucu ayarları geri alınınca durur; sunucuya henüz dokunmayın.',
+  geri_alma: 'Sunucu ayarı geri alınamadı: hedefteki nginx ayarı değişmiş kalmış olabilir. Koşuyu açıp “Sunucu ayarını geri al”ı çalıştırın.',
+  duraklatildi: 'Duraklatıldı: sunucuda işlem yapabilirsiniz. Devam edince sıradaki öğe ön kontrolden başlar.',
+};
+export const DURAKLATMA_HAPI: Record<NonNullable<DuraklatmaDurumu>, { etiket: string; ton: Ton }> = {
+  bekliyor: { etiket: 'Duraklatılıyor', ton: 'uyari' },
+  geri_alma: { etiket: 'Geri alma gerekli', ton: 'hata' },
+  duraklatildi: { etiket: 'Duraklatıldı', ton: 'uyari' },
+};
 
 /** Dizide bir ogeyi yukari / asagi tasir (sinirda degismez). */
 export function tasi<T>(dizi: T[], i: number, yon: -1 | 1): T[] {

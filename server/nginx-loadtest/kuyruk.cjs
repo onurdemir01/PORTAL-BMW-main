@@ -34,6 +34,21 @@
 // uretimi payi (HAZIRLIK_PAY_SN; oge butce_sn'si bu payi icerir). En gec bitis
 // verilmisse ve simdi + tahmin onu asiyorsa oge ATLANDI "sure yetmedi".
 // SAAT: karsilastirmalar DB saatiyle (GETUTCDATE / DATEDIFF), surec saatiyle degil.
+//
+// DURAKLAT (2026-11-04): kullanici gece kosusu sirasinda sunucuda elle is yapip devam etmek ister. Yeni durum DEGERI
+// YOK: duraklat_at durumdan bagimsiz bayraktir (BEKLIYOR / CALISIYOR / DINLENME uzerine biner; IPTAL calisir).
+//   * Baslama kapilari: KUYRUK_BIZDE ve kuyrukBasla duraklat_at IS NULL ister. Bayrak sahiplenme ile kanca arasina
+//     duserse yazim tutmaz, is BASLATILMAZ ve mevcut numarasiz kurtarma yolu ogeyi geri alir (cift baslatma yok).
+//   * Suren kosu bitince normal kapanir ve DINLENME sayilir; bekleme bitince kuyruk siradaki ogeyi baslatmadan durur.
+//     Siradaki oge yoksa kuyruk normal BITTI olur.
+//   * On kontrol sonucu kullanilmaz (15 dk gecerli; duraklatma saatler surebilir): kilidi birakilinca oge BEKLIYOR'a
+//     doner, devamda on kontrol yeniden calisir. Kilit beklenir: sunucu ayarli on kontrolde kilit geri alma bitene
+//     kadar tutulur, oge CALISIYOR kaldikca ekran "sunucuya dokunmayin" der.
+//   * Durdurulan kosu (CANCELED; AWX iptali tutmadiysa FAILED + iptal_eden) oge HATALI OLMAZ: once kuyruk DINLENME'ye gecer,
+//     sonra oge bastan kosulmak uzere BEKLIYOR'a doner (arada kesilirse sonraki tur ikinci yazimi yapar; dinlenme atlanmaz).
+//     DINLENME kilit birakilana kadar bekler (Durdur'un geri almasi bitmeden kuyruk "duraklatildi" demez).
+//   * Ekranin "sunucuya dokunabilirsiniz" karari yalniz kuyruga bakmaz: index.cjs duraklatmaBilgisi hedef kilidini ve hedefin son
+//     sunucu ayarli isinin geri alma sonucunu da verir (kilit geri alma basarisiz olsa da birakilir).
 'use strict';
 
 const crypto = require('node:crypto');
@@ -61,6 +76,7 @@ const ADIM_SINIRI = 6;
 const BASLANGIC_MAX_SAAT = 24;
 const BITIS_MAX_SAAT = 36;
 const AKTIF_KOSU = new Set(['QUEUED', 'RUNNING', 'FINALIZING']);
+const AKTIF_KUYRUK = new Set(['BEKLIYOR', 'CALISIYOR', 'DINLENME']);
 // dogrula.cjs KONTROL_KARAKTERI ile ayni sinif (etiket / ad).
 // eslint-disable-next-line no-control-regex
 const KONTROL_KARAKTERI = /[\u0000-\u001f\u007f]/;
@@ -132,6 +148,21 @@ function zaman(v, ad) {
   return new Date(t);
 }
 
+/** Oge etiketi kurallari (olusturma ve duzenleme ortak): kirpilmis, zorunlu, en cok ETIKET_MAX, kontrol karakteri yok. */
+function ogeEtiketi(v, onEk) {
+  const etiket = typeof v === 'string' ? v.trim() : '';
+  if (!etiket) throw hata(400, 'gecersiz_istek', `${onEk}etiket zorunlu (ne değiştirdiğinizi yazın, ör. "A3 brotli seviye 4").`);
+  if (Array.from(etiket).length > ETIKET_MAX) throw hata(400, 'gecersiz_istek', `${onEk}etiket en çok ${ETIKET_MAX} karakter.`);
+  // Kosu etiketi ve denetim kaydina yazilir: tekli kosunun etiket kapisi (dogrula.cjs KONTROL_KARAKTERI) ile ayni.
+  if (KONTROL_KARAKTERI.test(etiket)) throw hata(400, 'gecersiz_istek', `${onEk}etiket satır sonu / kontrol karakteri içeremez.`);
+  return etiket;
+}
+
+/** Istemcinin onayladigi uyari turu kodlari: bicimi tutanlar, tekil. */
+function turKodlari(v) {
+  return Array.isArray(v) ? [...new Set(v.filter((k) => typeof k === 'string' && /^U[0-9a-f]{10}$/.test(k)))] : [];
+}
+
 /**
  * POST /kuyruklar govdesi. Oge govdeleri (on kontrol govdesi) burada YALNIZ bicim olarak alinir;
  * kapilari cagiran (index.cjs) kosuPlani ile uygular. `simdiMs` testte sabit.
@@ -161,11 +192,7 @@ function kuyrukGovdesi(b, { simdiMs = Date.now() } = {}) {
   if (g.ogeler.length > MAX_OGE) throw hata(400, 'gecersiz_istek', `Kuyrukta en çok ${MAX_OGE} öğe olabilir.`);
   const ogeler = g.ogeler.map((o, i) => {
     const x = o && typeof o === 'object' && !Array.isArray(o) ? o : {};
-    const etiket = typeof x.etiket === 'string' ? x.etiket.trim() : '';
-    if (!etiket) throw hata(400, 'gecersiz_istek', `Öğe ${i + 1}: etiket zorunlu (ne değiştirdiğinizi yazın, ör. "A3 brotli seviye 4").`);
-    if (Array.from(etiket).length > ETIKET_MAX) throw hata(400, 'gecersiz_istek', `Öğe ${i + 1}: etiket en çok ${ETIKET_MAX} karakter.`);
-    // Kosu etiketi ve denetim kaydina yazilir: tekli kosunun etiket kapisi (dogrula.cjs KONTROL_KARAKTERI) ile ayni.
-    if (KONTROL_KARAKTERI.test(etiket)) throw hata(400, 'gecersiz_istek', `Öğe ${i + 1}: etiket satır sonu / kontrol karakteri içeremez.`);
+    const etiket = ogeEtiketi(x.etiket, `Öğe ${i + 1}: `);
     if (!x.govde || typeof x.govde !== 'object' || Array.isArray(x.govde)) throw hata(400, 'gecersiz_istek', `Öğe ${i + 1}: ayarlar (govde) eksik.`);
     let onKontrolKosuId = null;
     if (x.onKontrolKosuId !== undefined && x.onKontrolKosuId !== null) {
@@ -174,7 +201,7 @@ function kuyrukGovdesi(b, { simdiMs = Date.now() } = {}) {
     }
     return { etiket, govde: x.govde, onKontrolKosuId };
   });
-  const onaylananTurler = Array.isArray(g.onaylananTurler) ? [...new Set(g.onaylananTurler.filter((k) => typeof k === 'string' && /^U[0-9a-f]{10}$/.test(k)))] : [];
+  const onaylananTurler = turKodlari(g.onaylananTurler);
   return { ad: ad || null, beklemeDk, baslangic, enGecBitis, confirmText: g.confirmText, onaylananTurler, ogeler };
 }
 
@@ -194,17 +221,20 @@ function kosuEtiketi(kuyrukId, etiket) {
 
 const KUYRUK_KOLONLARI = `id, ad, durum, bekleme_dk, baslangic_at, en_gec_bitis, onay_hedefi, hedef_turu, onaylanan_turler,
   created_by, created_at, iptal_eden, iptal_at, dinlenme_kosu_id, dinlenme_bitis, hata_sayisi, son_hata, bitis_at, hazir,
+  duraklat_at, duraklatan,
   DATEDIFF(SECOND, GETUTCDATE(), baslangic_at) AS baslangic_kalan_sn,
   DATEDIFF(SECOND, GETUTCDATE(), en_gec_bitis) AS bitis_kalan_sn,
   DATEDIFF(SECOND, GETUTCDATE(), dinlenme_bitis) AS dinlenme_kalan_sn`;
 const OGE_KOLONLARI = `id, kuyruk_id, sira, etiket, govde, butce_sn, uyari_turleri, durum, asama, deneme_id, on_kontrol_kosu_id,
   kosu_id, neden, deneme, baslama_at, bitis_at, created_at, sonraki_deneme_at,
   DATEDIFF(SECOND, GETUTCDATE(), sonraki_deneme_at) AS deneme_kalan_sn`;
-// Kuyruk CALISIYOR ve kira BIZDE: oge yazimlarinin ortak kosulu ($K = kira parametresi).
-const KUYRUK_BIZDE = (p) => `EXISTS (SELECT 1 FROM nginx_loadtest_kuyruk q WHERE q.id = nginx_loadtest_kuyruk_ogeler.kuyruk_id AND q.durum = 'CALISIYOR' AND q.kira_id = ${p})`;
+// Kuyruk CALISIYOR, duraklatilmamis ve kira BIZDE: yeni is baslatan yazimlarin ortak kosulu ($K = kira parametresi).
+const KUYRUK_BIZDE = (p) => `EXISTS (SELECT 1 FROM nginx_loadtest_kuyruk q WHERE q.id = nginx_loadtest_kuyruk_ogeler.kuyruk_id AND q.durum = 'CALISIYOR' AND q.duraklat_at IS NULL AND q.kira_id = ${p})`;
 // Yalniz kuyruk CALISIYOR (kirasiz): BEKLIYOR'a geri alma bununla. Kuyruk iptal / HATALI olduysa geri alma TUTMAZ;
 // oge CALISIYOR kalir ve sonraki tur (aktifKuyruklar IPTAL / HATALI + calisan oge) onu IPTAL kapatir (yetim yok).
 const KUYRUK_CALISIYOR = `EXISTS (SELECT 1 FROM nginx_loadtest_kuyruk q WHERE q.id = nginx_loadtest_kuyruk_ogeler.kuyruk_id AND q.durum = 'CALISIYOR')`;
+// Duraklatmada durdurulan kosu: kuyruk once DINLENME'ye gecer, oge sonra geri alinir. IPTAL / HATALI kuyrukta yine tutmaz.
+const KUYRUK_YURUYOR = `EXISTS (SELECT 1 FROM nginx_loadtest_kuyruk q WHERE q.id = nginx_loadtest_kuyruk_ogeler.kuyruk_id AND q.durum IN ('CALISIYOR', 'DINLENME'))`;
 
 const SQL = Object.freeze({
   aktifKuyruklar: `SELECT /*KQ:aktifKuyruklar*/ TOP 20 q.id FROM nginx_loadtest_kuyruk q
@@ -215,7 +245,7 @@ const SQL = Object.freeze({
      WHERE id = $1 AND (kira_id IS NULL OR kira_id = $2 OR kira_bitis IS NULL OR kira_bitis < GETUTCDATE())`,
   kuyrukOku: `SELECT /*KQ:kuyrukOku*/ ${KUYRUK_KOLONLARI} FROM nginx_loadtest_kuyruk WHERE id = $1`,
   kuyrukBasla: `UPDATE /*KQ:kuyrukBasla*/ nginx_loadtest_kuyruk SET durum = 'CALISIYOR'
-     WHERE id = $1 AND durum = 'BEKLIYOR' AND hazir = 1 AND kira_id = $2 AND (baslangic_at IS NULL OR baslangic_at <= GETUTCDATE())`,
+     WHERE id = $1 AND durum = 'BEKLIYOR' AND hazir = 1 AND kira_id = $2 AND duraklat_at IS NULL AND (baslangic_at IS NULL OR baslangic_at <= GETUTCDATE())`,
   calisanOge: `SELECT /*KQ:calisanOge*/ TOP 1 ${OGE_KOLONLARI} FROM nginx_loadtest_kuyruk_ogeler WHERE kuyruk_id = $1 AND durum = 'CALISIYOR' ORDER BY sira ASC, id ASC`,
   siradakiOge: `SELECT /*KQ:siradakiOge*/ TOP 1 ${OGE_KOLONLARI} FROM nginx_loadtest_kuyruk_ogeler WHERE kuyruk_id = $1 AND durum = 'BEKLIYOR' ORDER BY sira ASC, id ASC`,
   kuyrukBitti: `UPDATE /*KQ:kuyrukBitti*/ nginx_loadtest_kuyruk SET durum = 'BITTI', bitis_at = GETUTCDATE()
@@ -224,11 +254,16 @@ const SQL = Object.freeze({
   // Oge kapanisi: beklenen durumdan (BEKLIYOR ya da CALISIYOR) terminal duruma, tek seferlik.
   ogeKapat: `UPDATE /*KQ:ogeKapat*/ nginx_loadtest_kuyruk_ogeler SET durum = $3, neden = $4, deneme_id = NULL, bitis_at = GETUTCDATE()
      WHERE id = $1 AND durum = $2`,
+  // BEKLIYOR oge kapidan donunce: karar okunan govdeyle verildi; arada duzenlendiyse tutmaz, sonraki tur yeni degerle karar verir.
+  ogeAtla: `UPDATE /*KQ:ogeAtla*/ nginx_loadtest_kuyruk_ogeler SET durum = 'ATLANDI', neden = $2, deneme_id = NULL, bitis_at = GETUTCDATE()
+     WHERE id = $1 AND durum = 'BEKLIYOR' AND govde = $3 AND etiket = $4`,
   ogeNeden: `UPDATE /*KQ:ogeNeden*/ nginx_loadtest_kuyruk_ogeler SET neden = $2, deneme = deneme + $3 WHERE id = $1 AND durum = $4`,
+  // govde / etiket: plan bu degerlerle yapildi; arada duzenlendiyse sahiplenme tutmaz, sonraki tur yeni degerle baslar.
   ogeSahiplen: `UPDATE /*KQ:ogeSahiplen*/ nginx_loadtest_kuyruk_ogeler
      SET durum = 'CALISIYOR', asama = 'on_kontrol', deneme_id = $2, baslama_at = COALESCE(baslama_at, GETUTCDATE()), neden = NULL
      WHERE id = $1 AND durum = 'BEKLIYOR' AND on_kontrol_kosu_id IS NULL AND kosu_id IS NULL AND ${KUYRUK_BIZDE('$3')}
-       AND NOT EXISTS (SELECT 1 FROM nginx_loadtest_kuyruk_ogeler o2 WHERE o2.kuyruk_id = nginx_loadtest_kuyruk_ogeler.kuyruk_id AND o2.durum = 'CALISIYOR')`,
+       AND NOT EXISTS (SELECT 1 FROM nginx_loadtest_kuyruk_ogeler o2 WHERE o2.kuyruk_id = nginx_loadtest_kuyruk_ogeler.kuyruk_id AND o2.durum = 'CALISIYOR')
+       AND govde = $4 AND etiket = $5`,
   okKaydet: `UPDATE /*KQ:okKaydet*/ nginx_loadtest_kuyruk_ogeler SET on_kontrol_kosu_id = $2
      WHERE id = $1 AND deneme_id = $3 AND durum = 'CALISIYOR' AND asama = 'on_kontrol' AND on_kontrol_kosu_id IS NULL AND ${KUYRUK_BIZDE('$4')}`,
   // Numarasiz sahiplenmeyi geri alir (is AWX'e GITMEDI). $2 NULL: yeniden baslatma kurtarmasi (her deneme_id).
@@ -256,6 +291,11 @@ const SQL = Object.freeze({
   onKontrolYenile: `UPDATE /*KQ:onKontrolYenile*/ nginx_loadtest_kuyruk_ogeler SET durum = 'BEKLIYOR', asama = NULL, deneme_id = NULL, on_kontrol_kosu_id = NULL, neden = $3
      WHERE id = $1 AND durum = 'CALISIYOR' AND asama = 'on_kontrol' AND on_kontrol_kosu_id = $2 AND kosu_id IS NULL
        AND ${KUYRUK_CALISIYOR}`,
+  // Duraklatmada durdurulan kosu: oge bastan kosulmak uzere BEKLIYOR'a doner (HATALI degil, numaralar silinir).
+  kosuYenidenSirala: `UPDATE /*KQ:kosuYenidenSirala*/ nginx_loadtest_kuyruk_ogeler
+     SET durum = 'BEKLIYOR', asama = NULL, deneme_id = NULL, kosu_id = NULL, on_kontrol_kosu_id = NULL, baslama_at = NULL, neden = $3
+     WHERE id = $1 AND durum = 'CALISIYOR' AND asama = 'kosu' AND kosu_id = $2
+       AND ${KUYRUK_YURUYOR}`,
   dinlenmeyeGec: `UPDATE /*KQ:dinlenmeyeGec*/ nginx_loadtest_kuyruk SET durum = 'DINLENME', dinlenme_kosu_id = $2, dinlenme_bitis = NULL
      WHERE id = $1 AND durum = 'CALISIYOR'`,
   dinlenmeBaslat: `UPDATE /*KQ:dinlenmeBaslat*/ nginx_loadtest_kuyruk SET dinlenme_bitis = DATEADD(MINUTE, bekleme_dk, GETUTCDATE())
@@ -267,6 +307,14 @@ const SQL = Object.freeze({
   kilitTutuluyor: `SELECT /*KQ:kilitTutuluyor*/ COUNT(1) AS n FROM nginx_loadtest_kilitleri
      WHERE lock_id = $1 AND held = 1 AND locked_until IS NOT NULL AND locked_until >= DATEADD(HOUR, -12, GETUTCDATE())
        AND (locked_until >= GETUTCDATE() OR awx_job_id IS NOT NULL)`,
+  // Hedefin kilidi dolu mu (kilitTutuluyor ile ayni kosul, is kimligi yerine anahtarla): kuyrugun o an izlemedigi is de
+  // (atlanan ayarli on kontrolun geri almasi) hedefe dokunuyor olabilir.
+  hedefKilitli: `SELECT /*KQ:hedefKilitli*/ COUNT(1) AS n FROM nginx_loadtest_kilitleri
+     WHERE lock_key = $1 AND held = 1 AND locked_until IS NOT NULL AND locked_until >= DATEADD(HOUR, -12, GETUTCDATE())
+       AND (locked_until >= GETUTCDATE() OR awx_job_id IS NOT NULL)`,
+  // Hedefin son sunucu ayarli isi: konfun son hali bu isin geri alma sonucuna bagli (poller.cjs ile ayni LIKE).
+  sonAyarliKosu: `SELECT /*KQ:sonAyarliKosu*/ TOP 1 id FROM nginx_loadtest_kosular
+     WHERE hedef_host = $1 AND parametreler LIKE '%"sunucuAyar":{%' ORDER BY id DESC`,
   hataSay: `UPDATE /*KQ:hataSay*/ nginx_loadtest_kuyruk SET hata_sayisi = hata_sayisi + 1, son_hata = $2 WHERE id = $1`,
   hataSifirla: `UPDATE /*KQ:hataSifirla*/ nginx_loadtest_kuyruk SET hata_sayisi = 0 WHERE id = $1 AND hata_sayisi <> 0`,
   kuyrukHatali: `UPDATE /*KQ:kuyrukHatali*/ nginx_loadtest_kuyruk SET durum = 'HATALI', bitis_at = GETUTCDATE()
@@ -294,6 +342,16 @@ const SQL = Object.freeze({
      WHERE kuyruk_id = $1 AND durum = 'BEKLIYOR'`,
   ogeCikar: `UPDATE /*KQ:ogeCikar*/ nginx_loadtest_kuyruk_ogeler SET durum = 'IPTAL', neden = $3, bitis_at = GETUTCDATE()
      WHERE id = $2 AND kuyruk_id = $1 AND durum = 'BEKLIYOR'`,
+  kuyrukDuraklat: `UPDATE /*KQ:kuyrukDuraklat*/ nginx_loadtest_kuyruk SET duraklat_at = GETUTCDATE(), duraklatan = $2
+     WHERE id = $1 AND hazir = 1 AND durum IN ('BEKLIYOR', 'CALISIYOR', 'DINLENME') AND duraklat_at IS NULL`,
+  kuyrukDevam: `UPDATE /*KQ:kuyrukDevam*/ nginx_loadtest_kuyruk SET duraklat_at = NULL, duraklatan = NULL
+     WHERE id = $1 AND durum IN ('BEKLIYOR', 'CALISIYOR', 'DINLENME') AND duraklat_at IS NOT NULL`,
+  // Yalniz baslamamis oge: yurutucu sahiplendiyse tutmaz. Gecici hata sayaci ve geri cekilme eski ayara aitti.
+  ogeGuncelle: `UPDATE /*KQ:ogeGuncelle*/ nginx_loadtest_kuyruk_ogeler SET etiket = $3, govde = $4, butce_sn = $5, uyari_turleri = $6, neden = NULL, deneme = 0, sonraki_deneme_at = NULL
+     WHERE id = $2 AND kuyruk_id = $1 AND durum = 'BEKLIYOR' AND on_kontrol_kosu_id IS NULL AND kosu_id IS NULL`,
+  // Onaylanan turler CAS ($3 = okunan metin): iki eszamanli duzenleme birbirinin onayini ezmesin.
+  kuyrukTurlerEkle: `UPDATE /*KQ:kuyrukTurlerEkle*/ nginx_loadtest_kuyruk SET onaylanan_turler = $2
+     WHERE id = $1 AND durum IN ('BEKLIYOR', 'CALISIYOR', 'DINLENME') AND COALESCE(onaylanan_turler, '') = $3`,
 });
 
 /** Siralama: tek UPDATE (CASE) - yalniz hala BEKLIYOR olanlar; sira degerleri kuyrugun en buyugunun ustunden. */
@@ -408,6 +466,8 @@ async function kuyrukAdimi(ctx, k) {
     if (r.rowCount) console.log(`[NginxYukTesti kuyruk] kuyruk ${k.id} bitti`);
     return 'dur';
   }
+  // Duraklatildi: siradaki baslamaz (DINLENME bitmisse de burada durur).
+  if (k.duraklat_at != null) return 'dur';
   return ogeBaslat(ctx, k, next);
 }
 
@@ -416,6 +476,14 @@ async function ogeKapat(db, oge, beklenen, yeni, neden) {
   // Log ASCII: neden (Turkce metin) satirda, logda yalniz durum.
   if (r.rowCount) console.log(`[NginxYukTesti kuyruk] oge ${oge.id} (kuyruk ${oge.kuyruk_id}) ${yeni}`);
   return r.rowCount > 0;
+}
+
+/** BEKLIYOR ogeyi kapi kararindan ATLANDI yapar; karar okunan govdeyle verildi, arada duzenlendiyse tutmaz. */
+async function ogeAtla(db, oge, neden) {
+  const r = await db.query(SQL.ogeAtla, [oge.id, kisa(neden), oge.govde, oge.etiket]);
+  if (!r.rowCount) return 'dur';
+  console.log(`[NginxYukTesti kuyruk] oge ${oge.id} (kuyruk ${oge.kuyruk_id}) ATLANDI`);
+  return 'devam';
 }
 
 /** Sure kapisi: en gec bitis verilmisse ve kalan sure tahmine yetmiyorsa neden metni, yetiyorsa null. */
@@ -464,29 +532,29 @@ async function ogeBaslat(ctx, k, oge) {
     }
   })();
   if (yetki.e) return geciciHata(ctx, oge, yetki.e, null);
-  if (yetki.neden) return (await ogeKapat(db, oge, 'BEKLIYOR', 'ATLANDI', yetki.neden)) ? 'devam' : 'dur';
+  if (yetki.neden) return ogeAtla(db, oge, yetki.neden);
   const butce = sayiOf(oge.butce_sn) ?? 0;
   const yetmez = sureYetmiyor(k, ON_KONTROL_PAY_SN + butce);
-  if (yetmez) return (await ogeKapat(db, oge, 'BEKLIYOR', 'ATLANDI', yetmez)) ? 'devam' : 'dur';
+  if (yetmez) return ogeAtla(db, oge, yetmez);
   let plan;
   try {
     plan = await islem.plan(ogePlanGirdisi(k, oge));
   } catch (e) {
     const s = hataSinifi(e);
-    if (s === 'atla' || s === 'hatali') return (await ogeKapat(db, oge, 'BEKLIYOR', 'ATLANDI', `kapı: ${kisa(e && e.message)}`)) ? 'devam' : 'dur';
+    if (s === 'atla' || s === 'hatali') return ogeAtla(db, oge, `kapı: ${kisa(e && e.message)}`);
     return geciciHata(ctx, oge, e, null);
   }
   if (onayHedefiOf(plan) !== k.onay_hedefi) {
-    return (await ogeKapat(db, oge, 'BEKLIYOR', 'ATLANDI', `hedef değişti: onaylanan ${k.onay_hedefi}, şimdi ${onayHedefiOf(plan) || '?'}`)) ? 'devam' : 'dur';
+    return ogeAtla(db, oge, `hedef değişti: onaylanan ${k.onay_hedefi}, şimdi ${onayHedefiOf(plan) || '?'}`);
   }
   // Kosu butcesi yeniden olculdu (varsayilan degismis olabilir): sure kapisi bu degerle de.
   const planButce = Number(plan.parametreler && plan.parametreler.butceSn);
   const yetmez2 = sureYetmiyor(k, ON_KONTROL_PAY_SN + (planButce ? planButce + hazirlikPayiSn(plan.parametreler) : butce));
-  if (yetmez2) return (await ogeKapat(db, oge, 'BEKLIYOR', 'ATLANDI', yetmez2)) ? 'devam' : 'dur';
+  if (yetmez2) return ogeAtla(db, oge, yetmez2);
   const token = crypto.randomUUID();
   let al;
   try {
-    al = await db.query(SQL.ogeSahiplen, [oge.id, token, kira]);
+    al = await db.query(SQL.ogeSahiplen, [oge.id, token, kira, oge.govde, oge.etiket]);
   } catch (e) {
     // UX_nlko_calisan: baska surec ayni kuyrukta bir ogeyi az once sahiplendi.
     if (/2627|2601|duplicate|UNIQUE/i.test(String(e && (e.number ?? '')) + String(e && e.message))) return 'dur';
@@ -519,6 +587,15 @@ async function ogeBaslat(ctx, k, oge) {
   }
 }
 
+/** Kuyruk yuruyor ama duraklatilmis mi (IPTAL / HATALI kuyrukta bayrak ise yaramaz: mevcut kapanis yollari). */
+const duraklatildi = (k) => k.durum === 'CALISIYOR' && k.duraklat_at != null;
+
+/**
+ * Kosu kullanici durdurmasiyla mi bitiyor? CANCELED; ya da Durdur basilmis ve DONE degil (AWX iptali tutmadi, durdurma isi yuku
+ * oldurdu: is 'failed' biter, satir FAILED; surerken de true). Sonucu sayilmaz: duraklatmada oge bastan kosulur.
+ */
+const kosuDurduruldu = (x) => x.durum === 'CANCELED' || (!!x.iptal_eden && x.durum !== 'DONE');
+
 /** CALISIYOR ogeyi bir adim ilerletir. */
 async function ogeIlerlet(ctx, k, oge) {
   const { db, islem, kira } = ctx;
@@ -537,6 +614,13 @@ async function ogeIlerlet(ctx, k, oge) {
     const kosu = await islem.kosuOku(kosuId);
     if (!kosu) return (await ogeKapat(db, oge, 'CALISIYOR', 'HATALI', `koşu #${kosuId} bulunamadı`)) ? sonrasi(ctx, k, kosuId) : 'dur';
     if (AKTIF_KOSU.has(kosu.durum)) return 'dur';
+    if (k.duraklat_at != null && AKTIF_KUYRUK.has(k.durum) && kosuDurduruldu(kosu)) {
+      // Once DINLENME: tersi sirada ikinci yazim kaybolursa oge BEKLIYOR, dinlenme hic yok ve ekran geri alma surerken "Duraklatildi"
+      // derdi. Bu sirada kesilirse oge CALISIYOR kalir, sonraki tur (kuyruk DINLENME) buraya doner ve yalniz ogeyi yazar.
+      if (k.durum === 'CALISIYOR' && !(await db.query(SQL.dinlenmeyeGec, [k.id, kosuId])).rowCount) return 'dur';
+      const r = await db.query(SQL.kosuYenidenSirala, [oge.id, kosuId, `koşu #${kosuId} duraklatmada durduruldu; devamda baştan koşulacak`]);
+      return r.rowCount ? 'devam' : 'dur';
+    }
     const tamam = kosu.durum === 'DONE';
     const neden = tamam ? null : kosu.durum === 'CANCELED' ? `koşu #${kosuId} durduruldu (CANCELED)` : `koşu #${kosuId} ${kosu.durum}`;
     if (!(await ogeKapat(db, oge, 'CALISIYOR', tamam ? 'BITTI' : 'HATALI', neden))) return 'dur';
@@ -546,6 +630,12 @@ async function ogeIlerlet(ctx, k, oge) {
   const ok = await islem.kosuOku(okId);
   if (!ok) return (await ogeKapat(db, oge, 'CALISIYOR', 'ATLANDI', `ön kontrol #${okId} bulunamadı`)) ? 'devam' : 'dur';
   if (AKTIF_KOSU.has(ok.durum)) return 'dur';
+  if (duraklatildi(k)) {
+    // Kilit tutuluyorsa (durdurma isi sunucu ayarini geri aliyor olabilir) oge CALISIYOR kalir: ekran "bekliyor" der.
+    if (await kosuKilitliMi(db, okId)) return 'dur';
+    const r = await db.query(SQL.onKontrolYenile, [oge.id, okId, 'kuyruk duraklatıldı; devamda ön kontrol yeniden çalışacak']);
+    return r.rowCount ? 'devam' : 'dur';
+  }
   if (ok.durum !== 'DONE') {
     const s = jsonOku(ok.sonuc, {}) || {};
     return (await ogeKapat(db, oge, 'CALISIYOR', 'ATLANDI', `ön kontrol #${okId} ${ok.durum}${s.hata ? `: ${s.hata}` : ''}`)) ? 'devam' : 'dur';
@@ -613,6 +703,11 @@ async function sonrasi(ctx, k, kosuId) {
   if (kosuId == null || k.durum !== 'CALISIYOR') return 'devam';
   const r = await ctx.db.query(SQL.dinlenmeyeGec, [k.id, kosuId]);
   return r.rowCount ? 'devam' : 'dur';
+}
+
+/** Kuyrugun hedef kilidi anahtari (kilit.cjs kilitAnahtarlari ile ayni). */
+function hedefKilitAnahtari(k) {
+  return k.hedef_turu === 'serbest' ? `T|IP:${k.onay_hedefi}` : `T|${String(k.onay_hedefi).trim().toUpperCase()}`;
 }
 
 /**
@@ -725,6 +820,8 @@ function kuyrukApi(r) {
     sonHata: r.son_hata ?? null,
     dinlenmeKosuId: r.dinlenme_kosu_id == null ? null : Number(r.dinlenme_kosu_id),
     dinlenmeBitis: iso(r.dinlenme_bitis),
+    duraklatAt: iso(r.duraklat_at),
+    duraklatan: r.duraklatan ?? null,
     ogeSayisi: r.oge_sayisi == null ? null : Number(r.oge_sayisi),
     bitenSayisi: r.biten_sayisi == null ? null : Number(r.biten_sayisi),
   };
@@ -745,14 +842,15 @@ function ogeApi(r) {
     uyariTurleri: turlerApi(r.uyari_turleri),
     baslamaAt: iso(r.baslama_at),
     bitisAt: iso(r.bitis_at),
-    ayar: { senaryoId: g.senaryoId ?? null, hedefIp: g.hedefIp ?? null, hedefHost: g.hedefHost ?? null, vhost: g.vhost ?? null, yukHost: g.yukHost ?? null, parametreler: g.parametreler ?? null },
+    ayar: { senaryoId: g.senaryoId ?? null, hedefIp: g.hedefIp ?? null, hedefHost: g.hedefHost ?? null, vhost: g.vhost ?? null, yukHost: g.yukHost ?? null, sni: g.sni === true, parametreler: g.parametreler ?? null },
   };
 }
 
 /**
  * Tahmini zamanlama (gosterim): her bekleyen oge icin baslangic / bitis ve "siradaki ... sonra". Sunucu
  * saatiyle; DB'nin kalan saniyeleri (baslangic_kalan_sn, dinlenme_kalan_sn) kullanilir. Kilit beklemesi
- * BILINMEZ (tahmine girmez).
+ * BILINMEZ (tahmine girmez). Duraklatilmis kuyrukta devam saati bilinmez: bekleyen ogeye tahmin, siradaki sayaci ve
+ * tahmini bitis yok (suren oge kendi tahminini tasir).
  */
 function zamanlama(k, ogeler, simdiMs = Date.now()) {
   const bekleme = Number(k.bekleme_dk || BEKLEME_VARSAYILAN_DK) * 60;
@@ -780,7 +878,8 @@ function zamanlama(k, ogeler, simdiMs = Date.now()) {
     yukVar = true;
   }
   const bitisMs = k.en_gec_bitis ? new Date(k.en_gec_bitis).getTime() : null;
-  const aktif = ['BEKLIYOR', 'CALISIYOR', 'DINLENME'].includes(k.durum);
+  const aktif = AKTIF_KUYRUK.has(k.durum);
+  if (k.duraklat_at != null) return { ogeler: out, tahminiBitis: null, siradakiKalanSn: null };
   for (const o of ogeler) {
     if (o.durum !== 'BEKLIYOR' || !aktif) continue;
     if (yukVar) t += bekleme;
@@ -821,9 +920,14 @@ module.exports = {
   yeniTurler,
   uyariKarariOf,
   kuyrukGovdesi,
+  ogeEtiketi,
+  turKodlari,
+  AKTIF_KUYRUK,
   kosuEtiketi,
   hataSinifi,
   onayHedefiOf,
+  kosuDurduruldu,
+  hedefKilitAnahtari,
   kuyrukIsle,
   tick,
   tickSaniye,

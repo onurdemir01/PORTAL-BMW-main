@@ -5,8 +5,10 @@
 //     baslik / cerez / govde Portal'a GITMEZ - yalniz yol satirlari ve sayisal OZET gider.
 //   - Yol listesi: satir basina bir yol; ayni kurallar (beyaz liste, ? # yok, kisisel veri suphesi).
 // Kaydetmeden once onizleme (OZET sayilari + satirlar) ve Portal kapisi (400 satir, 200 KB, // ve .. yok).
+// Duzenleme (2026-11-04, Admin; kullanici: "silip tekrar olusturmam gerekti"): yalniz ad, aciklama, vhost. Yollar ve
+// sha256 degismez: gecmis kosular ayni icerige bagli.
 import React, { useCallback, useMemo, useRef, useState } from 'react';
-import { ArrowUpTrayIcon, DocumentMagnifyingGlassIcon, PlusIcon, TrashIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { ArrowUpTrayIcon, DocumentMagnifyingGlassIcon, PencilSquareIcon, PlusIcon, TrashIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { nginxLoadtestApi, type NlSenaryo, type NlSenaryoAyrinti } from '@/api/nginxLoadtestApi';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { toast } from '@/hooks/useToast';
@@ -27,7 +29,7 @@ const LISTE_KOLONLARI: Kolon[] = [
   { anahtar: 'ad', baslik: 'Senaryo' },
   { anahtar: 'tur', baslik: 'Tür · yol', genislik: '6.5rem' },
   { anahtar: 'vhost', baslik: 'Vhost', genislik: '30%' },
-  { anahtar: 'eylem', baslik: '', genislik: '8rem' },
+  { anahtar: 'eylem', baslik: '', genislik: '11rem' },
 ];
 const SATIR_KOLONLARI: Kolon[] = [
   { anahtar: 'agirlik', baslik: 'Ağırlık', genislik: '5rem' },
@@ -45,6 +47,7 @@ export default function Senaryolar({ isAdmin, onDegisti }: { isAdmin: boolean; o
   const [yeniAcik, setYeniAcik] = useState(false);
   const [onizle, setOnizle] = useState<{ id: number; veri: NlSenaryoAyrinti | null; hata: string } | null>(null);
   const [silinecek, setSilinecek] = useState<NlSenaryo | null>(null);
+  const [duzenlenecek, setDuzenlenecek] = useState<NlSenaryo | null>(null);
   const [siliniyor, setSiliniyor] = useState(false);
   const busyRef = useRef(false);
 
@@ -120,6 +123,7 @@ export default function Senaryolar({ isAdmin, onDegisti }: { isAdmin: boolean; o
                   <td className="px-2.5 py-2">
                     <div className="flex flex-wrap justify-end gap-1.5">
                       <button type="button" onClick={() => void onizlemeAc(s.id)} className={TBL_BTN} style={smBtn()} aria-label={`${s.ad} önizle`}><DocumentMagnifyingGlassIcon className="h-3.5 w-3.5" aria-hidden /> Önizle</button>
+                      {isAdmin && <button type="button" onClick={() => setDuzenlenecek(s)} className={TBL_BTN} style={smBtn()} aria-label={`${s.ad} düzenle`}><PencilSquareIcon className="h-3.5 w-3.5" aria-hidden /> Düzenle</button>}
                       {isAdmin && <button type="button" onClick={() => setSilinecek(s)} className={TBL_BTN} style={{ ...smBtn(), color: 'var(--status-danger-text)', borderColor: 'var(--status-danger)' }} aria-label={`${s.ad} sil`}><TrashIcon className="h-3.5 w-3.5" aria-hidden /></button>}
                     </div>
                   </td>
@@ -137,6 +141,8 @@ export default function Senaryolar({ isAdmin, onDegisti }: { isAdmin: boolean; o
             : <SatirTablosu satirlar={tsvSatirlari(onizle.veri.tsv)} sinir={EN_COK_SATIR} />}
       </Modal>
 
+      {duzenlenecek && <SenaryoDuzenle key={duzenlenecek.id} senaryo={duzenlenecek} onKapat={() => setDuzenlenecek(null)} onKaydedildi={() => { setDuzenlenecek(null); void yukle(); onDegisti?.(); }} />}
+
       <Modal open={!!silinecek} onClose={() => { if (!siliniyor) setSilinecek(null); }} title="Senaryo silinsin mi?" size="sm" dismissOnBackdrop={false}
         footer={<div className="flex w-full justify-end gap-2">
           <button type="button" className={SM_BTN} style={smBtn()} disabled={siliniyor} onClick={() => setSilinecek(null)}>İptal</button>
@@ -147,6 +153,55 @@ export default function Senaryolar({ isAdmin, onDegisti }: { isAdmin: boolean; o
         </p>
       </Modal>
     </div>
+  );
+}
+
+/** Ad, aciklama, vhost duzenleme penceresi. Kurallar senaryoGovdesi ile ayni; bos aciklama / vhost sunucuda NULL olur. */
+function SenaryoDuzenle({ senaryo, onKapat, onKaydedildi }: { senaryo: NlSenaryo; onKapat: () => void; onKaydedildi: () => void }) {
+  const [ad, setAd] = useState(senaryo.ad);
+  const [aciklama, setAciklama] = useState(senaryo.aciklama ?? '');
+  const [vhost, setVhost] = useState(senaryo.vhost ?? '');
+  const [mesgul, setMesgul] = useState(false);
+  const [hataMsg, setHataMsg] = useState('');
+  const adTamam = ad.trim().length > 0 && ad.trim().length <= 120;
+  const vhostTamam = !vhost || vhostGecerli(vhost);
+  const kaydedilir = adTamam && vhostTamam && aciklama.trim().length <= 500 && !mesgul;
+  // Ad "kaydet" degil: YTE-6 bekcisi HAR govdesini ilk `async function kaydet()`ten keser, o YeniSenaryo'nun.
+  async function bilgiKaydet() {
+    if (!kaydedilir) return;
+    setMesgul(true);
+    setHataMsg('');
+    try {
+      const r = await nginxLoadtestApi.senaryoGuncelle(senaryo.id, { ad: ad.trim(), aciklama: aciklama.trim(), vhost });
+      if (!r.ok) { setHataMsg(hataMetni(r, 'Senaryo güncellenemedi.')); return; }
+      toast.success(`“${ad.trim()}” güncellendi.`);
+      onKaydedildi();
+    } catch (e) {
+      setHataMsg(e instanceof Error ? e.message : String(e));
+    } finally {
+      setMesgul(false);
+    }
+  }
+  return (
+    <Modal open onClose={() => { if (!mesgul) onKapat(); }} title="Senaryoyu düzenle" size="md" dismissOnBackdrop={false}
+      footer={<div className="flex w-full justify-end gap-2">
+        <button type="button" className={SM_BTN} style={smBtn()} disabled={mesgul} onClick={onKapat}>İptal</button>
+        <button type="button" className={SM_BTN} style={smBtn(true)} disabled={!kaydedilir} onClick={() => void bilgiKaydet()}>{mesgul ? 'Kaydediliyor…' : 'Kaydet'}</button>
+      </div>}>
+      <div className="space-y-3">
+        <Alan id="sen-duz-ad" etiket="Ad" hata={adTamam ? null : 'Ad gerekli (en çok 120 karakter).'}>
+          <input id="sen-duz-ad" value={ad} onChange={(e) => setAd(e.target.value)} maxLength={140} autoComplete="off" className={GIRDI} style={girdiStili(!adTamam)} />
+        </Alan>
+        <Alan id="sen-duz-aciklama" etiket="Açıklama (isteğe bağlı)" hata={aciklama.trim().length > 500 ? 'En çok 500 karakter.' : null}>
+          <input id="sen-duz-aciklama" value={aciklama} onChange={(e) => setAciklama(e.target.value)} maxLength={520} autoComplete="off" className={GIRDI} style={girdiStili()} />
+        </Alan>
+        <Alan id="sen-duz-vhost" etiket="Vhost (isteğe bağlı)" hata={vhostTamam ? null : 'Küçük harf ad yazın (port, joker yok).'}>
+          <input id="sen-duz-vhost" value={vhost} onChange={(e) => setVhost(e.target.value.trim().toLowerCase())} autoComplete="off" spellCheck={false} className={GIRDI} style={girdiStili(!vhostTamam)} />
+        </Alan>
+        <p className="text-[11px] leading-4" style={{ color: 'var(--text-secondary)' }}>Yollar ve ağırlıklar burada değişmez: geçmiş koşular bu içeriğe bağlıdır. İçerik değişecekse yeni senaryo oluşturun.</p>
+        {hataMsg && <UyariKutusu ton="hata" rol="alert" baslik="Kaydedilemedi">{hataMsg}</UyariKutusu>}
+      </div>
+    </Modal>
   );
 }
 

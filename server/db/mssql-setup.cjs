@@ -2176,7 +2176,8 @@ const TABLES = [
     // durum: BEKLIYOR | CALISIYOR | DINLENME | BITTI | IPTAL | HATALI. hazir = 0 iken (olusturma yarim) yurutucu
     // gormez. kira_id / kira_bitis: kuyrugu isleyen Portal sureci (kosullu UPDATE; surec olurse kira dolar,
     // baskasi devralir). onay_hedefi: olusturulurken yazilarak onaylanan hedef (sunucu adi ya da serbestte IP).
-    // onaylanan_turler: onaylanan uyari TURLERI (JSON [{kod, ornek}]). Satir silinmez (kucuk tablo).
+    // onaylanan_turler: onaylanan uyari TURLERI (JSON [{kod, ornek}]). Satir silinmez (kucuk tablo). duraklat_at /
+    // duraklatan: duraklatma bayragi (2026-11-04; durumdan bagimsiz, dolu iken yeni is baslamaz).
     name: 'nginx_loadtest_kuyruk',
     sql: `
       CREATE TABLE nginx_loadtest_kuyruk (
@@ -2200,7 +2201,9 @@ const TABLES = [
         bitis_at          DATETIME2 NULL,
         kira_id           NVARCHAR(64) NULL,
         kira_bitis        DATETIME2 NULL,
-        hazir             BIT NOT NULL DEFAULT 0
+        hazir             BIT NOT NULL DEFAULT 0,
+        duraklat_at       DATETIME2 NULL,
+        duraklatan        NVARCHAR(100) NULL
       )`,
   },
   {
@@ -2231,6 +2234,22 @@ const TABLES = [
         bitis_at            DATETIME2 NULL,
         created_at          DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
         sonraki_deneme_at   DATETIME2 NULL
+      )`,
+  },
+  {
+    // Yuk Testi KAYITLI TEST (2026-11-04, server/nginx-loadtest/sablon.cjs): Yeni kosu formunun on kontrol govdesi
+    // (etiketsiz). HAR icermez, senaryoId'ye baglidir. Yumusak silme; ad silinmemislerde tekil (UX_nls_ad).
+    name: 'nginx_loadtest_sablonlar',
+    sql: `
+      CREATE TABLE nginx_loadtest_sablonlar (
+        id          INT IDENTITY(1,1) PRIMARY KEY,
+        ad          NVARCHAR(120) NOT NULL,
+        govde       NVARCHAR(MAX) NOT NULL,
+        created_by  NVARCHAR(100) NULL,
+        created_at  DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        updated_by  NVARCHAR(100) NULL,
+        updated_at  DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        silindi     BIT NOT NULL DEFAULT 0
       )`,
   },
 ];
@@ -4417,6 +4436,10 @@ async function setupTables() {
       col: 'sonraki_deneme_at',
       sql: `ALTER TABLE nginx_loadtest_kuyruk_ogeler ADD sonraki_deneme_at DATETIME2 NULL`,
     },
+    // Yuk Testi kuyruk duraklatma (2026-11-04): gece kuyrugu tablosu kurulu ortamlarda eklenir (NULL'a izin veren
+    // sutun = yalniz meta veri islemi).
+    { table: 'nginx_loadtest_kuyruk', col: 'duraklat_at', sql: `ALTER TABLE nginx_loadtest_kuyruk ADD duraklat_at DATETIME2 NULL` },
+    { table: 'nginx_loadtest_kuyruk', col: 'duraklatan', sql: `ALTER TABLE nginx_loadtest_kuyruk ADD duraklatan NVARCHAR(100) NULL` },
     {
       // SPA Tasima Plani (2026-09-26): ekibin BEYANI - uygulama kullanimda mi?
       // Olcum (access log) ayri durur; bu alan ekibin dedigi seydir.
@@ -5372,6 +5395,24 @@ async function setupTables() {
     }
   } catch (err) {
     console.warn('[DB] Index olusturulamadi (UX_nlko_calisan):', err.message);
+  }
+
+  // -- Yuk Testi kayitli test: ad silinmemislerde tekil (FILTRELI TEKIL, 2026-11-04) --
+  // Uc adi once sorar; eszamanli iki kayitta ikincisi UNIQUE ihlali alir ve 409 sablon_var doner (sablon.cjs).
+  try {
+    const exists = await pool
+      .request()
+      .query(
+        `SELECT 1 FROM sys.indexes WHERE name = 'UX_nls_ad' AND object_id = OBJECT_ID('nginx_loadtest_sablonlar')`,
+      );
+    if (!exists.recordset.length) {
+      await pool
+        .request()
+        .query(`CREATE UNIQUE INDEX UX_nls_ad ON nginx_loadtest_sablonlar (ad) WHERE silindi = 0`);
+      console.log('[DB] Index olusturuldu: UX_nls_ad (filtreli tekil)');
+    }
+  } catch (err) {
+    console.warn('[DB] Index olusturulamadi (UX_nls_ad):', err.message);
   }
 
   // ── OCP katalogu ilk kurulumu — EN SONDA ────────────────────────────────────

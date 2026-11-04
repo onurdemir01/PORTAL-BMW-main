@@ -52,6 +52,10 @@
 // COKLU KARSILASTIRMA (2026-11-04, coklu.cjs): GET /karsilastir-coklu (ref + en cok 15 aday, her aday ref'e karsi
 // kararVer; hiz basina ozet ve gurultu kurali) ve PUT /kosular/:id/etiket (Admin; denetimli). /karsilastir AYNEN.
 //
+// DURAKLAT / DUZENLEME / KAYITLI TEST (2026-11-04): POST /kuyruklar/:id/duraklat ve /devam (bayrak, kuyruk.cjs "DURAKLAT";
+// suren is kosuyuDurdur ile, /kosular/:id/durdur ile ayni kod), PUT /kuyruklar/:id/ogeler/:ogeId (baslamamis oge, plan
+// kapilari + onayli hedef), PUT /senaryolar/:id (yalniz ad / aciklama / vhost), /sablonlar (sablon.cjs; hepsi Admin).
+//
 // TOPLU RAPOR (2026-11-04, rapor.cjs): GET /rapor?kuyruk=<id> ya da ?kosular=1,2,.. (en cok 100; okuma yetkisi
 // /karsilastir-coklu ile ayni). Satir = kosu x hiz; yazilamayan kosu 409 degil, yanitta `atlananlar`.
 //
@@ -74,6 +78,7 @@ const kuyruk = require('./kuyruk.cjs');
 const coklu = require('./coklu.cjs');
 const rapor = require('./rapor.cjs');
 const sil = require('./sil.cjs');
+const sablon = require('./sablon.cjs');
 const { adminOkumaKapisi, isAdmin } = require('../auth/admin-okuma-kapisi.cjs');
 
 const TERMINAL = new Set(['successful', 'failed', 'error', 'canceled']);
@@ -690,6 +695,104 @@ async function durdurIsiBaslat(req, k, ayrinti = {}) {
   return { jobId: is.jobId, awxServerId: is.awxServerId };
 }
 
+/**
+ * Kosuyu durdurur: AWX iptali + (gerekirse) durdur kipi is, kilitlerin ona baglanmasi. POST /kosular/:id/durdur ve kuyruk
+ * duraklatma ortak. Hata FIRLATIR; `yer.k` okunan satir (cagiran ret denetimine hedef yazar). Donus: yanit alanlari.
+ */
+async function kosuyuDurdur(req, id, yer = {}) {
+  const k = await kosuOku(id);
+  yer.k = k;
+  if (!k) throw hata(409, 'kosu_yok', 'Koşu bulunamadı.');
+  // Tamamlanmis kosuda yalniz geri alinamamis sunucu ayari icin (Play 7 kosmadi ya da hata verdi).
+  if (k.durum === 'DONE' && sunucuAyariOf(k)?.geriAlma?.durum !== 'hata') throw hata(409, 'kosu_bitti', 'Koşu tamamlanmış; durdurulacak bir şey yok.');
+  const sid = k.awx_server_id == null ? null : Number(k.awx_server_id);
+  const jid = k.awx_job_id == null ? null : Number(k.awx_job_id);
+  // Baslatma suruyor (is numarasi henuz yazilmadi): durdur satiri CANCELED yapar, sonra donen is
+  // takipsiz kalirdi. Pencere icinde reddet; daha eski yarim satir eskisi gibi kapanir.
+  if (k.durum === 'QUEUED' && !(jid > 0)) {
+    const yas = k.olusma_yas_sn == null ? NaN : Number(k.olusma_yas_sn);
+    if (!Number.isFinite(yas) || yas < BASLATMA_PENCERESI_SN) {
+      throw hata(409, 'baslatiliyor', 'Koşu başlatılıyor; birkaç saniye sonra yeniden deneyin.');
+    }
+  }
+  const kim = String(kullanici(req).username || 'unknown').slice(0, 100);
+  durdurSuren.add(id);
+  try {
+    const sonuc = { iptal: null, iptalHatasi: null, durdurIsi: null, durdurHatasi: null };
+    const runner = require('../ansible/runner.cjs');
+    // Durdurmada siniflandirma YENIDEN YAPILMAZ: tur ve motor satirdan (eski satir: sunucu / k6; durdurIsiBaslat da satirdan).
+    const tur = k.hedef_turu || 'sunucu';
+    const motor = motorOf(k);
+    if (sid != null && jid > 0) {
+      try {
+        sonuc.iptal = await runner.cancelJobOnServer(sid, jid);
+      } catch (e) {
+        sonuc.iptalHatasi = maskele(e && e.message).slice(0, 500);
+      }
+    }
+    const iptalOldu = !!(sonuc.iptal && (sonuc.iptal.canceled || sonuc.iptal.alreadyTerminal));
+    // AWX iptali uzaktaki async gorevi ve ayrik k6'yi DURDURMAZ: durdur kipindeki playbook kosu
+    // dizinindeki pid'leri ve dizine bagli k6'yi sonlandirir. Ortam kapisi BURADA YOK: durdurmak
+    // her zaman serbest (CANCELED / FAILED kosuda da: kalan surec temizligi).
+    // Sunucu ayarli on kontrol da durdurma isi ister: AWX iptali temizlik play'ini kosturmaz ve hedefteki konf
+    // degistirilmis kalirdi (geri alma durdur kipinde hedefteki yedege gore calisir).
+    const srvOnKontrol = k.islem === 'on_kontrol' && !!(jsonOku(k.parametreler) || {}).sunucuAyar;
+    if (k.islem === 'kosu' || srvOnKontrol) {
+      try {
+        sonuc.durdurIsi = await durdurIsiBaslat(req, k, { iptal: sonuc.iptal, iptalHatasi: sonuc.iptalHatasi });
+      } catch (e) {
+        sonuc.durdurHatasi = maskele(e && e.message).slice(0, 500);
+      }
+    }
+    await dbOku((d) => d.query(`UPDATE nginx_loadtest_kosular SET iptal_eden = $2 WHERE id = $1`, [id, kim]));
+    // Hic AWX isi olmayan (baslatmasi yarim kalmis) satir dogrudan kapanir.
+    if (sid == null || !(jid > 0)) {
+      await dbOku((d) => d.query(
+        `UPDATE nginx_loadtest_kosular SET durum = 'CANCELED', finalized_at = GETUTCDATE(), finished_at = COALESCE(finished_at, GETUTCDATE())
+          WHERE id = $1 AND durum = 'QUEUED' AND awx_job_id IS NULL`, [id]));
+    }
+    if (sonuc.durdurIsi) {
+      const d = sonuc.durdurIsi;
+      // Kosunun kilitleri durdur isine baglanir: is basariyla biterse (iki sunucu da "kalan surec
+      // yok") supurme hemen birakir, aksi halde TTL (en az butce + 180 sn). Iptal BASARISIZSA kosu
+      // isi hala calisiyor olabilir: kilit o ise bagli kalir (durdur isinin basarisi birakmasin).
+      if (k.kilit_id && (iptalOldu || sid == null || !(jid > 0))) {
+        try {
+          await kilit.durdurIsineBagla(db(), k.kilit_id, { awxServerId: d.awxServerId, awxJobId: d.jobId, uzatSn: poller.butceSnOf(k) + KILIT_EK_SN });
+        } catch (e) {
+          console.warn(`[NginxYukTesti] kosu ${id} kilitleri durdur isine baglanamadi (TTL ile dusecek):`, maskele(e && e.message));
+        }
+      }
+    }
+    // Kosu: durdurma isi yoksa uzaktaki yuk surebilir; iptal basarili olsa da BASARI DEGIL. Metin
+    // motor ve ture gore (k6 + sunucu tur 2 ile birebir; serbestte hedefte kaydedici yok).
+    if ((k.islem === 'kosu' || srvOnKontrol) && !sonuc.durdurIsi) {
+      const uzaktaki = srvOnKontrol ? 'konfigürasyon değişikliği' : tur === 'serbest' ? motor : `${motor} / kaydedici`;
+      throw hata(424, 'durdur_baslatilamadi',
+        `AWX işi ${iptalOldu ? 'iptal edildi' : 'iptal edilemedi'}, ancak durdurma işi başlatılamadı: ${sonuc.durdurHatasi}. Uzaktaki ${uzaktaki} sürüyor olabilir; Durdur'u yeniden deneyin. Kilitler koşunun süre sınırına kadar tutulur.`,
+        { iptal: sonuc.iptal, iptalHatasi: sonuc.iptalHatasi, durdurHatasi: sonuc.durdurHatasi });
+    }
+    if (!iptalOldu && !sonuc.durdurIsi && sid != null && jid > 0) {
+      throw hata(424, 'awx_okunamadi', `Durdurulamadı: ${[sonuc.iptalHatasi, sonuc.durdurHatasi].filter(Boolean).join(' / ') || 'AWX yanıt vermedi'}`);
+    }
+    // Durdur isi baslatildiysa denetimi isBaslat yazdi; yoksa (on kontrol / is numarasiz satir) burada.
+    if (!sonuc.durdurIsi) {
+      try {
+        require('../audit/index.cjs').auditPortal(req, 'nginx_loadtest_durdur', {
+          result: sonuc.iptal && sonuc.iptal.canceled ? 'ok' : 'fail',
+          targetHost: k.hedef_host || null, targetIp: k.hedef_ip,
+          detail: baslat.denetimAyrintisi({ kosuId: id, ...sonuc }),
+        });
+      } catch {
+        /* best-effort */
+      }
+    }
+    return sonuc;
+  } finally {
+    durdurSuren.delete(id);
+  }
+}
+
 /** Poller: temizlik play'i kosmadan biten sunucu ayarli is. Satir taze okunur; durdurma isi varsa ya da Durdur suruyorsa null. */
 async function otoDurdur(satir) {
   const id = Number(satir.id);
@@ -736,8 +839,11 @@ const kuyrukIslem = {
   }),
 };
 
-/** Ogeye bagli on kontrolun uyarilari (olusturmada onaya gelir). Sahip, DONE, ayni hedef sart. */
-async function ogeOnKontrolUyarilari(okId, kullaniciAdi, onayHedefi, no) {
+/**
+ * Ogeye bagli on kontrolun uyarilari (olusturmada onaya gelir). Sahip, DONE, ayni hedef sart. Olcum on kontrolden, degerlendirme
+ * OGENIN parametreleriyle: toplu eklemede tek on kontrol farkli kip / protokollu ogelere baglanir (kip 'yeni' port uyarisi).
+ */
+async function ogeOnKontrolUyarilari(okId, kullaniciAdi, onayHedefi, no, parametreler) {
   const ok = await kosuOku(okId);
   if (!ok || ok.islem !== 'on_kontrol') throw hata(409, 'on_kontrol_eski', `Öğe ${no}: ön kontrol #${okId} bulunamadı.`, { oge: no });
   if (!ayniKullanici(ok.created_by, kullaniciAdi)) throw hata(409, 'on_kontrol_eski', `Öğe ${no}: ön kontrol #${okId} size ait değil.`, { oge: no });
@@ -745,9 +851,17 @@ async function ogeOnKontrolUyarilari(okId, kullaniciAdi, onayHedefi, no) {
   const tur = ok.hedef_turu || 'sunucu';
   if ((tur === 'serbest' ? ok.hedef_ip : ok.hedef_host) !== onayHedefi) throw hata(409, 'hedef_farkli', `Öğe ${no}: ön kontrol #${okId} başka bir hedefin.`, { oge: no });
   const deg = dg.onKontrolDegerlendir(jsonOku(ok.on_kontrol_ozet), {
-    hedefTuru: tur, motor: motorOf(ok), aracli: ok.arac_id != null, aracSha256: null, protokol: protokolOf(ok), parametreler: jsonOku(ok.parametreler),
+    hedefTuru: tur, motor: motorOf(ok), aracli: ok.arac_id != null, aracSha256: null, protokol: protokolOf(ok), parametreler,
   });
   return [...metinDizisi(ok.plan_uyarilari), ...deg.uyarilar];
+}
+
+/** Ogenin saklanan bicimi (olusturma ve duzenleme ortak): kanonik govde ve butce (hazirlik payi dahil). */
+function ogeKaydi(og, plan) {
+  return {
+    butceSn: (Number(plan.parametreler.butceSn) + kuyruk.hazirlikPayiSn(plan.parametreler)) || null,
+    govde: { senaryoId: og.senaryoId, hedefHost: og.hedefHost, hedefIp: og.hedefIp, vhost: og.vhost, yukHost: og.yukHost, sni: og.sni, parametreler: plan.parametreler },
+  };
 }
 
 function ogeNo(e, no) {
@@ -768,6 +882,33 @@ async function mevcutKosular(idler) {
   }
 }
 
+/**
+ * Duraklatilmis kuyrugun ekran bilgisi (yalniz aktif + bayrakli kuyruk; digerine bos). Ekranin "sunucuda islem yapabilirsiniz"
+ * demesi icin kuyrugun durumu yetmez: `hedefMesgul` hedef kilidi dolu ya da geri alma sonucu bekleniyor (kuyrugun izlemedigi is
+ * de olabilir), `geriAlmaSorunu` hedefin son sunucu ayarli isi geri alinamadi (kilit bu durumda da birakilir). Okunamazsa mesgul
+ * sayilir: bilinmeyen hali "dokunabilirsiniz" diye gostermek yanlis yondedir. `calisanVar`: liste ogeleri tasimaz.
+ */
+async function duraklatmaBilgisi(k) {
+  if (k.duraklat_at == null || !kuyruk.AKTIF_KUYRUK.has(k.durum)) return {};
+  try {
+    const calisanVar = !!(await dbOku((d) => d.query(kuyruk.SQL.calisanOge, [k.id]))).rows[0];
+    const { rows: kr } = await dbOku((d) => d.query(kuyruk.SQL.hedefKilitli, [kuyruk.hedefKilitAnahtari(k)]));
+    let hedefMesgul = Number(kr[0] && kr[0].n) > 0;
+    let geriAlmaSorunu = null;
+    const sonId = k.hedef_turu === 'serbest' ? null : (await dbOku((d) => d.query(kuyruk.SQL.sonAyarliKosu, [k.onay_hedefi]))).rows[0]?.id;
+    const son = sonId == null ? null : await kosuOku(Number(sonId));
+    if (son) {
+      const ga = sunucuAyariOf(son)?.geriAlma;
+      if (AKTIF.has(son.durum) || ga?.durum === 'bekliyor') hedefMesgul = true;
+      else if (ga?.durum === 'hata') geriAlmaSorunu = { kosuId: Number(son.id), metin: ga.metin };
+    }
+    return { calisanVar, hedefMesgul, geriAlmaSorunu };
+  } catch (e) {
+    console.warn(`[NginxYukTesti kuyruk] kuyruk ${k.id} hedef durumu okunamadi (mesgul sayildi):`, maskele(e && e.message));
+    return { calisanVar: false, hedefMesgul: true, geriAlmaSorunu: null };
+  }
+}
+
 async function kuyrukOkuApi(id) {
   const { rows } = await dbOku((d) => d.query(kuyruk.SQL.kuyrukOku, [id]));
   const k = rows[0];
@@ -776,7 +917,7 @@ async function kuyrukOkuApi(id) {
   const z = kuyruk.zamanlama(k, ogeler);
   const mevcut = await mevcutKosular(ogeler.flatMap((o) => [o.kosu_id, o.on_kontrol_kosu_id]));
   return {
-    kuyruk: { ...kuyruk.kuyrukApi(k), tahminiBitis: z.tahminiBitis, siradakiKalanSn: z.siradakiKalanSn, sunucuZamani: new Date().toISOString() },
+    kuyruk: { ...kuyruk.kuyrukApi(k), ...await duraklatmaBilgisi(k), tahminiBitis: z.tahminiBitis, siradakiKalanSn: z.siradakiKalanSn, sunucuZamani: new Date().toISOString() },
     ogeler: ogeler.map((o) => ({
       ...kuyruk.ogeApi(o),
       ...(z.ogeler.get(Number(o.id)) || {}),
@@ -990,6 +1131,28 @@ function yonlendiriciKur() {
     }
   });
 
+  // Yalniz ad / aciklama / vhost. tsv ve sha256 DEGISMEZ: gecmis kosular ayni icerige bagli, durdurma da onu okur.
+  router.put('/senaryolar/:id', async (req, res) => {
+    try {
+      adminSart(req);
+      const id = sayi(req.params.id);
+      if (!id) throw hata(400, 'gecersiz_istek', 'Geçersiz senaryo numarası.');
+      const v = dg.senaryoBilgisi(req.body);
+      if (!v.ok) throw kapidan(v);
+      const s = v.deger;
+      const r = await dbOku((d) => d.query(`UPDATE nginx_loadtest_senaryolar SET ad = $2, aciklama = $3, vhost = $4 WHERE id = $1 AND silindi = 0`, [id, s.ad, s.aciklama, s.vhost]));
+      if (!r.rowCount) throw hata(409, 'senaryo_yok', 'Senaryo bulunamadı ya da silinmiş.');
+      try {
+        require('../audit/index.cjs').auditPortal(req, 'nginx_loadtest_senaryo_guncelle', { detail: baslat.denetimAyrintisi({ id, ad: s.ad, vhost: s.vhost }) });
+      } catch {
+        /* best-effort */
+      }
+      res.json({ ok: true });
+    } catch (e) {
+      hataYaniti(req, res, e, 'nginx_loadtest_senaryo_guncelle');
+    }
+  });
+
   router.delete('/senaryolar/:id', async (req, res) => {
     try {
       adminSart(req);
@@ -1041,6 +1204,7 @@ function yonlendiriciKur() {
   });
 
   kuyrukUclari(router);
+  sablonUclari(router);
 
   // Liste: islem / durum / hedef suzgeci ve `onceki` (id < onceki) ile sayfalama. Gecersiz deger
   // sessizce yok sayilmaz (yanlis listeyi "tamami" diye gostermek yerine 400). limit + 1 satir
@@ -1245,103 +1409,15 @@ function yonlendiriciKur() {
   });
 
   router.post('/kosular/:id/durdur', async (req, res) => {
-    let k = null;
-    let kosuId = null;
+    const yer = { k: null };
     try {
       adminSart(req);
       const id = sayi(req.params.id);
       if (!id) throw hata(400, 'gecersiz_istek', 'Geçersiz koşu numarası.');
-      k = await kosuOku(id);
-      if (!k) throw hata(409, 'kosu_yok', 'Koşu bulunamadı.');
-      // Tamamlanmis kosuda yalniz geri alinamamis sunucu ayari icin (Play 7 kosmadi ya da hata verdi).
-      if (k.durum === 'DONE' && sunucuAyariOf(k)?.geriAlma?.durum !== 'hata') throw hata(409, 'kosu_bitti', 'Koşu tamamlanmış; durdurulacak bir şey yok.');
-      const sid = k.awx_server_id == null ? null : Number(k.awx_server_id);
-      const jid = k.awx_job_id == null ? null : Number(k.awx_job_id);
-      // Baslatma suruyor (is numarasi henuz yazilmadi): durdur satiri CANCELED yapar, sonra donen is
-      // takipsiz kalirdi. Pencere icinde reddet; daha eski yarim satir eskisi gibi kapanir.
-      if (k.durum === 'QUEUED' && !(jid > 0)) {
-        const yas = k.olusma_yas_sn == null ? NaN : Number(k.olusma_yas_sn);
-        if (!Number.isFinite(yas) || yas < BASLATMA_PENCERESI_SN) {
-          throw hata(409, 'baslatiliyor', 'Koşu başlatılıyor; birkaç saniye sonra yeniden deneyin.');
-        }
-      }
-      const kim = String(kullanici(req).username || 'unknown').slice(0, 100);
-      durdurSuren.add(id);
-      kosuId = id;
-      const sonuc = { iptal: null, iptalHatasi: null, durdurIsi: null, durdurHatasi: null };
-      const runner = require('../ansible/runner.cjs');
-      // Durdurmada siniflandirma YENIDEN YAPILMAZ: tur ve motor satirdan (eski satir: sunucu / k6; durdurIsiBaslat da satirdan).
-      const tur = k.hedef_turu || 'sunucu';
-      const motor = motorOf(k);
-      if (sid != null && jid > 0) {
-        try {
-          sonuc.iptal = await runner.cancelJobOnServer(sid, jid);
-        } catch (e) {
-          sonuc.iptalHatasi = maskele(e && e.message).slice(0, 500);
-        }
-      }
-      const iptalOldu = !!(sonuc.iptal && (sonuc.iptal.canceled || sonuc.iptal.alreadyTerminal));
-      // AWX iptali uzaktaki async gorevi ve ayrik k6'yi DURDURMAZ: durdur kipindeki playbook kosu
-      // dizinindeki pid'leri ve dizine bagli k6'yi sonlandirir. Ortam kapisi BURADA YOK: durdurmak
-      // her zaman serbest (CANCELED / FAILED kosuda da: kalan surec temizligi).
-      // Sunucu ayarli on kontrol da durdurma isi ister: AWX iptali temizlik play'ini kosturmaz ve hedefteki konf
-      // degistirilmis kalirdi (geri alma durdur kipinde hedefteki yedege gore calisir).
-      const srvOnKontrol = k.islem === 'on_kontrol' && !!(jsonOku(k.parametreler) || {}).sunucuAyar;
-      if (k.islem === 'kosu' || srvOnKontrol) {
-        try {
-          sonuc.durdurIsi = await durdurIsiBaslat(req, k, { iptal: sonuc.iptal, iptalHatasi: sonuc.iptalHatasi });
-        } catch (e) {
-          sonuc.durdurHatasi = maskele(e && e.message).slice(0, 500);
-        }
-      }
-      await dbOku((d) => d.query(`UPDATE nginx_loadtest_kosular SET iptal_eden = $2 WHERE id = $1`, [id, kim]));
-      // Hic AWX isi olmayan (baslatmasi yarim kalmis) satir dogrudan kapanir.
-      if (sid == null || !(jid > 0)) {
-        await dbOku((d) => d.query(
-          `UPDATE nginx_loadtest_kosular SET durum = 'CANCELED', finalized_at = GETUTCDATE(), finished_at = COALESCE(finished_at, GETUTCDATE())
-            WHERE id = $1 AND durum = 'QUEUED' AND awx_job_id IS NULL`, [id]));
-      }
-      if (sonuc.durdurIsi) {
-        const d = sonuc.durdurIsi;
-        // Kosunun kilitleri durdur isine baglanir: is basariyla biterse (iki sunucu da "kalan surec
-        // yok") supurme hemen birakir, aksi halde TTL (en az butce + 180 sn). Iptal BASARISIZSA kosu
-        // isi hala calisiyor olabilir: kilit o ise bagli kalir (durdur isinin basarisi birakmasin).
-        if (k.kilit_id && (iptalOldu || sid == null || !(jid > 0))) {
-          try {
-            await kilit.durdurIsineBagla(db(), k.kilit_id, { awxServerId: d.awxServerId, awxJobId: d.jobId, uzatSn: poller.butceSnOf(k) + KILIT_EK_SN });
-          } catch (e) {
-            console.warn(`[NginxYukTesti] kosu ${id} kilitleri durdur isine baglanamadi (TTL ile dusecek):`, maskele(e && e.message));
-          }
-        }
-      }
-      // Kosu: durdurma isi yoksa uzaktaki yuk surebilir; iptal basarili olsa da BASARI DEGIL. Metin
-      // motor ve ture gore (k6 + sunucu tur 2 ile birebir; serbestte hedefte kaydedici yok).
-      if ((k.islem === 'kosu' || srvOnKontrol) && !sonuc.durdurIsi) {
-        const uzaktaki = srvOnKontrol ? 'konfigürasyon değişikliği' : tur === 'serbest' ? motor : `${motor} / kaydedici`;
-        throw hata(424, 'durdur_baslatilamadi',
-          `AWX işi ${iptalOldu ? 'iptal edildi' : 'iptal edilemedi'}, ancak durdurma işi başlatılamadı: ${sonuc.durdurHatasi}. Uzaktaki ${uzaktaki} sürüyor olabilir; Durdur'u yeniden deneyin. Kilitler koşunun süre sınırına kadar tutulur.`,
-          { iptal: sonuc.iptal, iptalHatasi: sonuc.iptalHatasi, durdurHatasi: sonuc.durdurHatasi });
-      }
-      if (!iptalOldu && !sonuc.durdurIsi && sid != null && jid > 0) {
-        throw hata(424, 'awx_okunamadi', `Durdurulamadı: ${[sonuc.iptalHatasi, sonuc.durdurHatasi].filter(Boolean).join(' / ') || 'AWX yanıt vermedi'}`);
-      }
-      // Durdur isi baslatildiysa denetimi isBaslat yazdi; yoksa (on kontrol / is numarasiz satir) burada.
-      if (!sonuc.durdurIsi) {
-        try {
-          require('../audit/index.cjs').auditPortal(req, 'nginx_loadtest_durdur', {
-            result: sonuc.iptal && sonuc.iptal.canceled ? 'ok' : 'fail',
-            targetHost: k.hedef_host || null, targetIp: k.hedef_ip,
-            detail: baslat.denetimAyrintisi({ kosuId: id, ...sonuc }),
-          });
-        } catch {
-          /* best-effort */
-        }
-      }
-      res.json({ ok: true, ...sonuc });
+      res.json({ ok: true, ...await kosuyuDurdur(req, id, yer) });
     } catch (e) {
+      const k = yer.k;
       hataYaniti(req, res, e, 'nginx_loadtest_durdur', k ? { host: k.hedef_host, ip: k.hedef_ip, kosuId: k.id } : null);
-    } finally {
-      if (kosuId !== null) durdurSuren.delete(kosuId);
     }
   });
 
@@ -1758,12 +1834,17 @@ function yonlendiriciKur() {
   return router;
 }
 
+/** Calisan oge satiri -> yanittaki `suren` alani. */
+function surenOf(c) {
+  return c ? { ogeId: Number(c.id), etiket: c.etiket, kosuId: c.kosu_id == null ? null : Number(c.kosu_id), onKontrolKosuId: c.on_kontrol_kosu_id == null ? null : Number(c.on_kontrol_kosu_id) } : null;
+}
+
 // Kuyruk uclari (2026-11-04 tasima): KIMLIK KAPISININ ALTINDA tanimli; RO1 bekcisi satir sirasina bakar.
 function kuyrukUclari(router) {
   router.get('/kuyruklar', async (req, res) => {
     try {
       const { rows } = await dbOku((d) => d.query(kuyruk.SQL.kuyrukListe));
-      res.json({ ok: true, kuyruklar: rows.map(kuyruk.kuyrukApi) });
+      res.json({ ok: true, kuyruklar: await Promise.all(rows.map(async (k) => ({ ...kuyruk.kuyrukApi(k), ...await duraklatmaBilgisi(k) }))) });
     } catch (e) {
       hataYaniti(req, res, e);
     }
@@ -1813,17 +1894,14 @@ function kuyrukUclari(router) {
           throw hata(409, 'hedef_farkli', `Öğe ${no}: hedef (${hedef}) kuyruğun hedefinden (${onayHedefi}) farklı; bir kuyruk tek hedefe yük basar.`, { oge: no });
         }
         const metinler = [...plan.uyarilar];
-        if (o.onKontrolKosuId) metinler.push(...await ogeOnKontrolUyarilari(o.onKontrolKosuId, kullaniciAdi, onayHedefi, no));
+        if (o.onKontrolKosuId) metinler.push(...await ogeOnKontrolUyarilari(o.onKontrolKosuId, kullaniciAdi, onayHedefi, no, plan.parametreler));
         const turler = kuyruk.uyariTurleri(metinler);
         for (const t of turler) {
           const x = turHaritasi.get(t.kod) || { ...t, ogeler: [] };
           x.ogeler.push(no);
           turHaritasi.set(t.kod, x);
         }
-        ogeler.push({
-          etiket: o.etiket, butceSn: (Number(plan.parametreler.butceSn) + kuyruk.hazirlikPayiSn(plan.parametreler)) || null, turler,
-          govde: { senaryoId: og.senaryoId, hedefHost: og.hedefHost, hedefIp: og.hedefIp, vhost: og.vhost, yukHost: og.yukHost, sni: og.sni, parametreler: plan.parametreler },
-        });
+        ogeler.push({ etiket: o.etiket, turler, ...ogeKaydi(og, plan) });
       }
       if (!dg.onayMetniDogru(g.confirmText, onayHedefi)) {
         throw hata(409, 'onay_metni', hedefTuru === 'serbest' ? `Onay için hedef IP'yi (${onayHedefi}) birebir yazın.` : `Onay için hedef sunucu adını (${onayHedefi}) birebir yazın.`);
@@ -1882,8 +1960,7 @@ function kuyrukUclari(router) {
       if (!r.rowCount) throw hata(409, 'kuyruk_bitti', 'Kuyruk zaten bitmiş ya da iptal edilmiş.');
       await dbOku((d) => d.query(kuyruk.SQL.ogelerIptal, [id, `kuyruk iptal edildi (${kim})`]));
       const { rows } = await dbOku((d) => d.query(kuyruk.SQL.calisanOge, [id]));
-      const c = rows[0];
-      const suren = c ? { ogeId: Number(c.id), etiket: c.etiket, kosuId: c.kosu_id == null ? null : Number(c.kosu_id), onKontrolKosuId: c.on_kontrol_kosu_id == null ? null : Number(c.on_kontrol_kosu_id) } : null;
+      const suren = surenOf(rows[0]);
       try {
         require('../audit/index.cjs').auditPortal(req, 'nginx_loadtest_kuyruk_iptal', { detail: baslat.denetimAyrintisi({ id, suren }) });
       } catch {
@@ -1892,6 +1969,125 @@ function kuyrukUclari(router) {
       res.json({ ok: true, suren });
     } catch (e) {
       hataYaniti(req, res, e);
+    }
+  });
+
+  // Duraklat: sonraki oge baslamaz (bayrak, kuyruk.cjs "DURAKLAT"). surenDurdur: calisan kosu (yoksa on kontrol) mevcut
+  // Durdur mantigiyla durdurulur; durdurma hatasi duraklatmayi GERI ALMAZ, yanitta durdurHatasi doner.
+  router.post('/kuyruklar/:id/duraklat', async (req, res) => {
+    try {
+      adminSart(req);
+      const id = sayi(req.params.id);
+      if (!id) throw hata(400, 'gecersiz_istek', 'Geçersiz kuyruk numarası.');
+      const b = req.body && typeof req.body === 'object' ? req.body : {};
+      if (b.surenDurdur !== undefined && typeof b.surenDurdur !== 'boolean') throw hata(400, 'gecersiz_istek', 'surenDurdur true/false olmalı.');
+      const kim = String(kullanici(req).username || 'unknown').slice(0, 100);
+      const r = await dbOku((d) => d.query(kuyruk.SQL.kuyrukDuraklat, [id, kim]));
+      if (!r.rowCount) throw hata(409, 'kuyruk_duraklatilamaz', 'Kuyruk bitmiş ya da zaten duraklatılmış.');
+      const { rows } = await dbOku((d) => d.query(kuyruk.SQL.calisanOge, [id]));
+      const suren = surenOf(rows[0]);
+      let durduruldu = false;
+      let durdurHatasi = null;
+      const durdurulacak = b.surenDurdur === true && suren ? suren.kosuId ?? suren.onKontrolKosuId : null;
+      if (durdurulacak != null) {
+        try {
+          await kosuyuDurdur(req, durdurulacak);
+          durduruldu = true;
+        } catch (e) {
+          // Bu arada bitmis is: durdurulacak bir sey kalmadi, hata degil.
+          if (!(e && e.code === 'kosu_bitti')) durdurHatasi = maskele((e && e.message) || 'Durdurulamadı.').slice(0, 500);
+        }
+      }
+      try {
+        require('../audit/index.cjs').auditPortal(req, 'nginx_loadtest_kuyruk_duraklat', { detail: baslat.denetimAyrintisi({ id, surenDurdur: b.surenDurdur === true, suren, durduruldu, durdurHatasi }) });
+      } catch {
+        /* best-effort */
+      }
+      res.json({ ok: true, suren, durduruldu, durdurHatasi });
+    } catch (e) {
+      hataYaniti(req, res, e, 'nginx_loadtest_kuyruk_duraklat');
+    }
+  });
+
+  // Devam: bayrak kalkar. Durdurulan is henuz kapanmadiysa 409: bayraksiz kapanis ogeyi HATALI / ATLANDI yapardi. Ayni sey
+  // kosuyuDurdur'un iptal_eden yazmadan onceki penceresi (durdurSuren; tek surec) ve bitmis ama ogesi kapanmamis on kontrol icin
+  // gecerli (sonucu kullanilmaz sozu: FAILED bayraksiz ATLANDI olurdu, ayarli on kontrolde kilit geri alma boyunca beklenir).
+  router.post('/kuyruklar/:id/devam', async (req, res) => {
+    try {
+      adminSart(req);
+      const id = sayi(req.params.id);
+      if (!id) throw hata(400, 'gecersiz_istek', 'Geçersiz kuyruk numarası.');
+      const k = (await dbOku((d) => d.query(kuyruk.SQL.kuyrukOku, [id]))).rows[0];
+      if (!k) throw hata(409, 'kuyruk_yok', 'Kuyruk bulunamadı.');
+      const duraklatilmamis = () => hata(409, 'kuyruk_duraklatilmamis', 'Kuyruk duraklatılmış değil.');
+      if (k.duraklat_at == null || !kuyruk.AKTIF_KUYRUK.has(k.durum)) throw duraklatilmamis();
+      const c = (await dbOku((d) => d.query(kuyruk.SQL.calisanOge, [id]))).rows[0];
+      const suren = surenOf(c);
+      const izlenen = suren ? suren.kosuId ?? suren.onKontrolKosuId : null;
+      if (izlenen != null) {
+        const x = await kosuOku(izlenen);
+        const okKapaniyor = !!x && suren.kosuId == null && !AKTIF.has(x.durum);
+        if (durdurSuren.has(izlenen) || okKapaniyor || (x && kuyruk.kosuDurduruldu(x))) throw hata(409, 'duraklatma_suruyor', 'Koşu durduruluyor; durunca yeniden deneyin.');
+      }
+      const r = await dbOku((d) => d.query(kuyruk.SQL.kuyrukDevam, [id]));
+      if (!r.rowCount) throw duraklatilmamis();
+      try {
+        require('../audit/index.cjs').auditPortal(req, 'nginx_loadtest_kuyruk_devam', { detail: baslat.denetimAyrintisi({ id, duraklatan: k.duraklatan ?? null }) });
+      } catch {
+        /* best-effort */
+      }
+      res.json({ ok: true });
+    } catch (e) {
+      hataYaniti(req, res, e, 'nginx_loadtest_kuyruk_devam');
+    }
+  });
+
+  // Oge duzenleme: yalniz baslamamis oge; olusturmadaki bicim + plan kapilarindan gecer, hedef kuyrugun onayli hedefi
+  // olmak zorunda (onay metni bir kez yazildi). Kuyrukta onayli olmayan plan uyarisi turu acikca onaylanir.
+  router.put('/kuyruklar/:id/ogeler/:ogeId', async (req, res) => {
+    let hedefBilgi = null;
+    try {
+      adminSart(req);
+      const id = sayi(req.params.id);
+      const ogeId = sayi(req.params.ogeId);
+      if (!id || !ogeId) throw hata(400, 'gecersiz_istek', 'Geçersiz kuyruk / öğe numarası.');
+      const b = req.body && typeof req.body === 'object' ? req.body : {};
+      const etiket = kuyruk.ogeEtiketi(b.etiket, 'Öğe: ');
+      if (!b.govde || typeof b.govde !== 'object' || Array.isArray(b.govde)) throw hata(400, 'gecersiz_istek', 'Öğe: ayarlar (govde) eksik.');
+      const og = onKontrolGovdesi({ ...b.govde, etiket: undefined });
+      const k = (await dbOku((d) => d.query(kuyruk.SQL.kuyrukOku, [id]))).rows[0];
+      if (!k) throw hata(409, 'kuyruk_yok', 'Kuyruk bulunamadı.');
+      if (!kuyruk.AKTIF_KUYRUK.has(k.durum)) throw hata(409, 'kuyruk_bitti', 'Kuyruk bitmiş ya da iptal edilmiş; öğesi düzenlenemez.');
+      const plan = await kosuPlani({ ...og, etiket: null });
+      hedefBilgi = { host: plan.hedefHost, ip: plan.hedefIp };
+      const hedef = kuyruk.onayHedefiOf(plan);
+      if (hedef !== k.onay_hedefi) throw hata(409, 'hedef_farkli', `Hedef (${hedef}) kuyruğun hedefinden (${k.onay_hedefi}) farklı; bir kuyruk tek hedefe yük basar.`);
+      const onayli = kuyruk.kuyrukApi(k).onaylananTurler;
+      const turler = kuyruk.uyariTurleri(plan.uyarilar);
+      const yeni = turler.filter((t) => !onayli.some((o) => o.kod === t.kod));
+      const istemciOnayi = kuyruk.turKodlari(b.onaylananTurler);
+      if (yeni.some((t) => !istemciOnayi.includes(t.kod))) {
+        throw hata(409, 'uyari_onayi', 'Düzenlenen öğenin yeni uyarı türlerini okuyup tek tek onaylayın: gece yalnız onaylı türler kabul edilir.', { uyariTurleri: yeni });
+      }
+      const { govde, butceSn } = ogeKaydi(og, plan);
+      const r = await dbOku((d) => d.query(kuyruk.SQL.ogeGuncelle, [id, ogeId, etiket, JSON.stringify(govde), butceSn, JSON.stringify(turler)]));
+      if (!r.rowCount) throw hata(409, 'oge_basladi', 'Yalnız başlamamış (bekleyen) öğe düzenlenebilir.');
+      // Sira bilincli: once oge. Onay yazilamazsa oge gece "yeni uyari" ile ATLANDI olur (fail-closed); istek yeniden denenebilir.
+      if (yeni.length) {
+        const t = await dbOku((d) => d.query(kuyruk.SQL.kuyrukTurlerEkle, [id, JSON.stringify([...onayli, ...yeni]), k.onaylanan_turler ?? '']));
+        if (!t.rowCount) throw hata(409, 'kuyruk_degisti', 'Kuyruk bu arada değişti; uyarı onayı yazılmadı, yeniden kaydedin.');
+      }
+      try {
+        require('../audit/index.cjs').auditPortal(req, 'nginx_loadtest_kuyruk_oge_guncelle', {
+          targetHost: plan.hedefHost || null, targetIp: plan.hedefIp || null,
+          detail: baslat.denetimAyrintisi({ id, ogeId, etiket, onaylananTurler: yeni.map((x) => x.kod) }),
+        });
+      } catch {
+        /* best-effort */
+      }
+      res.json({ ok: true });
+    } catch (e) {
+      hataYaniti(req, res, e, 'nginx_loadtest_kuyruk_oge_guncelle', hedefBilgi);
     }
   });
 
@@ -1933,6 +2129,85 @@ function kuyrukUclari(router) {
       res.json({ ok: true });
     } catch (e) {
       hataYaniti(req, res, e);
+    }
+  });
+}
+
+// Kayitli test uclari (2026-11-04, sablon.cjs): KIMLIK KAPISININ ALTINDA; hepsi Admin (ADMIN_DISI_OKUMA'da YOK).
+function sablonUclari(router) {
+  const kim = (req) => String(kullanici(req).username || 'unknown').slice(0, 100);
+  const adBos = async (ad, haricId) => {
+    const { rows } = await dbOku((d) => d.query(sablon.SQL.adVar, [ad, haricId]));
+    if (rows[0]) throw hata(409, 'sablon_var', `"${ad}" adında kayıtlı test zaten var.`);
+  };
+  // Yazim: dbOku tekil ihlalini 424'e cevirirdi; UX_nls_ad burada 409 olur.
+  const yaz = async (ad, fn) => {
+    try {
+      return await fn(db());
+    } catch (e) {
+      if (sablon.tekilIhlali(e)) throw hata(409, 'sablon_var', `"${ad}" adında kayıtlı test zaten var.`);
+      throw hata(424, 'db_okunamadi', `Kayıtlı test yazılamadı: ${maskele(e && e.message)}`);
+    }
+  };
+  const denetim = (req, eylem, ayrinti) => {
+    try {
+      require('../audit/index.cjs').auditPortal(req, eylem, { detail: baslat.denetimAyrintisi(ayrinti) });
+    } catch {
+      /* best-effort */
+    }
+  };
+
+  router.get('/sablonlar', async (req, res) => {
+    try {
+      adminSart(req);
+      const { rows } = await dbOku((d) => d.query(sablon.SQL.liste));
+      res.json({ ok: true, sablonlar: rows.map(sablon.sablonApi) });
+    } catch (e) {
+      hataYaniti(req, res, e);
+    }
+  });
+
+  router.post('/sablonlar', async (req, res) => {
+    try {
+      adminSart(req);
+      const s = sablon.sablonGovdesi(req.body, onKontrolGovdesi);
+      await adBos(s.ad, null);
+      const { rows } = await yaz(s.ad, (d) => d.query(sablon.SQL.ekle, [s.ad, s.govdeJson, kim(req)]));
+      const id = Number(rows[0] && rows[0].id);
+      denetim(req, 'nginx_loadtest_sablon_ekle', { id, ad: s.ad, senaryoId: s.govde.senaryoId });
+      res.json({ ok: true, id });
+    } catch (e) {
+      hataYaniti(req, res, e, 'nginx_loadtest_sablon_ekle');
+    }
+  });
+
+  router.put('/sablonlar/:id', async (req, res) => {
+    try {
+      adminSart(req);
+      const id = sayi(req.params.id);
+      if (!id) throw hata(400, 'gecersiz_istek', 'Geçersiz kayıtlı test numarası.');
+      const s = sablon.sablonGovdesi(req.body, onKontrolGovdesi);
+      await adBos(s.ad, id);
+      const r = await yaz(s.ad, (d) => d.query(sablon.SQL.guncelle, [id, s.ad, s.govdeJson, kim(req)]));
+      if (!r.rowCount) throw hata(409, 'sablon_yok', 'Kayıtlı test bulunamadı (silinmiş olabilir).');
+      denetim(req, 'nginx_loadtest_sablon_guncelle', { id, ad: s.ad, senaryoId: s.govde.senaryoId });
+      res.json({ ok: true });
+    } catch (e) {
+      hataYaniti(req, res, e, 'nginx_loadtest_sablon_guncelle');
+    }
+  });
+
+  router.delete('/sablonlar/:id', async (req, res) => {
+    try {
+      adminSart(req);
+      const id = sayi(req.params.id);
+      if (!id) throw hata(400, 'gecersiz_istek', 'Geçersiz kayıtlı test numarası.');
+      const r = await dbOku((d) => d.query(sablon.SQL.sil, [id, kim(req)]));
+      if (!r.rowCount) throw hata(409, 'sablon_yok', 'Kayıtlı test bulunamadı ya da zaten silinmiş.');
+      denetim(req, 'nginx_loadtest_sablon_sil', { id });
+      res.json({ ok: true });
+    } catch (e) {
+      hataYaniti(req, res, e, 'nginx_loadtest_sablon_sil');
     }
   });
 }

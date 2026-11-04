@@ -4,7 +4,7 @@
 // (metin her zaman `metin` alanindan; koyu temada AA). Hub'in yerel smBtn'i ('#fff') KULLANILMAZ.
 import React from 'react';
 import { ExclamationTriangleIcon } from '@heroicons/react/24/outline';
-import type { NlHedefTuru, NlMotor, NlProtokol, NlSunucuAyari } from '@/api/nginxLoadtestApi';
+import type { NlHedefTuru, NlMotor, NlProtokol, NlSunucuAyari, NlUyariTuru } from '@/api/nginxLoadtestApi';
 import { Cip, Hap, UyariKutusu } from '@/components/server_hub/RetirementUi';
 import { H2_CIP_IPUCU, SERBEST_CIP_IPUCU, WRK_CIP_IPUCU, gecerlilikBilgisi, kosuDurumu, ISLEM_ETIKETI } from './yukTestiOrtak';
 
@@ -36,6 +36,21 @@ export function SunucuAyarUyarilari({ ayar }: { ayar: NlSunucuAyari }) {
         </UyariKutusu>
       )}
     </div>
+  );
+}
+
+/** Sunucunun istedigi uyari turleri: her biri okunup tek tek isaretlenir (kuyruk olusturma ve oge duzenleme). */
+export function UyariTuruOnayi({ baslik, turler, onayli, onDegisti }: { baslik: string; turler: NlUyariTuru[]; onayli: Set<string>; onDegisti: (s: Set<string>) => void }) {
+  return (
+    <fieldset className="space-y-1.5 rounded-lg px-3 py-2.5" style={{ background: 'var(--bg-elevated)' }}>
+      <legend className="text-[12px] font-semibold" style={{ color: 'var(--text-primary)' }}>{baslik}</legend>
+      {turler.map((t) => (
+        <label key={t.kod} className="flex items-start gap-2 text-[12px] leading-5" style={{ color: 'var(--text-primary)' }}>
+          <input type="checkbox" className="mt-1" checked={onayli.has(t.kod)} onChange={(e) => { const n = new Set(onayli); if (e.target.checked) n.add(t.kod); else n.delete(t.kod); onDegisti(n); }} />
+          <span className="min-w-0"><span className="font-mono text-[11px]" style={{ color: 'var(--text-secondary)' }}>{t.kod}</span>{` ${t.ornek}`}{t.ogeler?.length ? <span style={{ color: 'var(--text-secondary)' }}>{` (öğe ${t.ogeler.join(', ')})`}</span> : null}</span>
+        </label>
+      ))}
+    </fieldset>
   );
 }
 

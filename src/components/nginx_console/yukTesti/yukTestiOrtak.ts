@@ -122,6 +122,12 @@ const NEDEN: Record<string, string> = {
   ip_yasak_listesi_gecersiz: 'yasak listesi (NGINX_LOADTEST_SERBEST_YASAK) okunamadı — yük testi kapalı',
   host_uretim: 'Host başlığı yalnız üretim sunucularında tanımlı',
   envanter_bayat: 'envanter / tarama bayat — yükleyici işlerini kontrol edin',
+  // Gece kuyrugu duraklat / duzenle, kayitli test (2026-11-04). `sablon_yok` yukarida AWX sablonu; kayitli test `sablon_var`.
+  kuyruk_duraklatilamaz: 'kuyruk duraklatılamaz: bitmiş ya da zaten duraklatılmış',
+  duraklatma_suruyor: 'koşu durduruluyor; durunca yeniden deneyin',
+  hedef_farkli: 'kuyruk tek hedefe yük basar; öğenin hedefi kuyruğunkiyle aynı olmalı',
+  oge_basladi: 'öğe başlamış; artık değiştirilemez',
+  sablon_var: 'bu adla kayıtlı bir test var',
 };
 export const nedenMetni = (kod: string | null | undefined) => (kod ? NEDEN[kod] ?? kod : '');
 /**

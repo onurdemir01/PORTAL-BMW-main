@@ -10,22 +10,29 @@
 // numaralari kuyruk sirasiyla; verilmezse dugme cizilmez. Kosu silme (2026-11-04): silinmis kosu / on kontrol "(silindi)"
 // diye baglantisiz gosterilir (sunucunun kosuSilindi / onKontrolSilindi alani) ve karsilastirmaya gitmez.
 // `onTopluRapor` (2026-11-04): kuyrugun tum kosulari tek rapor; en az bir kosusu olan kuyrukta acik.
+// DURAKLAT (2026-11-04, kullanici: "senaryonun herhangi bir aninda durdurma ... sunucuda birkac islem ... sonra devam"):
+// Duraklat kucuk pencereden: suren kosu bitsin ya da simdi durdurulsun (durdurulan kosu devamda bastan kosulur). Durum degeri
+// degismez; `duraklatAt` + ogeler + sunucunun hedef bilgisi ekranin metnini secer (duraklatmaDurumu): is surerken "sunucuya henuz
+// dokunmayin", sunucu ayari geri alinamadiysa "Sunucu ayarini geri al". Liste satiri da ayni turetimi kullanir.
+// DUZENLE (2026-11-04): taslak ve hic baslamamis bekleyen kuyruk ogesi `onDuzenle` ile "Yeni koşu" formunda acilir;
+// `baslangicKuyruk`: duzenlemeden donuste o kuyrugun ayrintisi acik gelir.
 import React, { useCallback, useEffect, useState } from 'react';
 import { ArrowDownIcon, ArrowLeftIcon, ArrowPathIcon, ArrowUpIcon, MoonIcon, XMarkIcon } from '@heroicons/react/24/outline';
-import { nginxLoadtestApi, type NlKuyruk, type NlKuyrukOge, type NlUyariTuru } from '@/api/nginxLoadtestApi';
+import { nginxLoadtestApi, type NlKuyruk, type NlKuyrukEylem, type NlKuyrukOge, type NlUyariTuru } from '@/api/nginxLoadtestApi';
 import { toast } from '@/hooks/useToast';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
+import { Modal } from '@/components/common/Modal';
 import { LINK, SM_BTN, TBL_BTN, smBtn } from '@/components/server_hub/retirementStil';
 import { Hap, UyariKutusu } from '@/components/server_hub/RetirementUi';
 import { sureMetni } from '@/components/server_hub/retirementCikti';
-import { Alan, Bolum, GIRDI, girdiStili } from './YukUi';
+import { Alan, Bolum, GIRDI, UyariTuruOnayi, girdiStili } from './YukUi';
 import { hataMetni } from './yukTestiOrtak';
 import {
-  BEKLEME_VARSAYILAN_DK, KUYRUK_DURUMU, OGE_DURUMU, baslangicSecimi, gunFarki, gunSaatMetni, kalanMetni, saatMetni, sonrakiSaat, tasi, type TaslakOge,
+  BEKLEME_VARSAYILAN_DK, DURAKLATMA_HAPI, DURAKLATMA_METNI, KUYRUK_AKTIF, KUYRUK_DURUMU, OGE_DURUMU, baslangicSecimi, duraklatmaDurumu, gunFarki, gunSaatMetni, kalanMetni, ogeDuzenlenir, ogeGovdesi, saatMetni,
+  sonrakiSaat, taslakToplamSn, tasi, type DuzenlenenOge, type TaslakOge,
 } from './kuyrukTaslak';
 
 const YOKLAMA_MS = 10000;
-const AKTIF = new Set(['BEKLIYOR', 'CALISIYOR', 'DINLENME']);
 
 export interface GeceKuyruguProps {
   isAdmin: boolean;
@@ -37,12 +44,16 @@ export interface GeceKuyruguProps {
   onKarsilastir?: (kosuIdleri: number[]) => void;
   /** "Toplu rapor": kuyruk numarasi. Verilmezse dugme yok. */
   onTopluRapor?: (kuyrukId: number) => void;
+  /** Taslak ya da bekleyen kuyruk ogesini "Yeni koşu" formunda acar. Verilmezse dugme yok. */
+  onDuzenle?: (d: DuzenlenenOge) => void;
+  /** Acilista gosterilecek kuyruk ayrintisi (duzenlemeden donus). */
+  baslangicKuyruk?: number | null;
 }
 
-export default function GeceKuyrugu({ isAdmin, taslak, setTaslak, onKosuAc, onYeniKosu, onKarsilastir, onTopluRapor }: GeceKuyruguProps) {
+export default function GeceKuyrugu({ isAdmin, taslak, setTaslak, onKosuAc, onYeniKosu, onKarsilastir, onTopluRapor, onDuzenle, baslangicKuyruk = null }: GeceKuyruguProps) {
   const [liste, setListe] = useState<NlKuyruk[] | null>(null);
   const [hata, setHata] = useState('');
-  const [secili, setSecili] = useState<number | null>(null);
+  const [secili, setSecili] = useState<number | null>(baslangicKuyruk);
   const yukle = useCallback(async () => {
     try {
       setListe((await nginxLoadtestApi.kuyruklar()).kuyruklar || []);
@@ -54,11 +65,11 @@ export default function GeceKuyrugu({ isAdmin, taslak, setTaslak, onKosuAc, onYe
   useAsyncEffect(async (alive) => { if (alive()) await yukle(); }, [yukle]);
 
   if (secili != null) {
-    return <KuyrukAyrinti key={secili} id={secili} isAdmin={isAdmin} onKosuAc={onKosuAc} onKarsilastir={onKarsilastir} onTopluRapor={onTopluRapor} onGeri={() => { setSecili(null); void yukle(); }} />;
+    return <KuyrukAyrinti key={secili} id={secili} isAdmin={isAdmin} onKosuAc={onKosuAc} onKarsilastir={onKarsilastir} onTopluRapor={onTopluRapor} onDuzenle={onDuzenle} onGeri={() => { setSecili(null); void yukle(); }} />;
   }
   return (
     <div className="space-y-4" data-gece-kuyrugu>
-      {isAdmin && <YeniKuyruk taslak={taslak} setTaslak={setTaslak} onYeniKosu={onYeniKosu} onOlustu={(id) => { setSecili(id); }} />}
+      {isAdmin && <YeniKuyruk taslak={taslak} setTaslak={setTaslak} onYeniKosu={onYeniKosu} onDuzenle={onDuzenle} onOlustu={(id) => { setSecili(id); }} />}
       <Bolum baslik="Kuyruklar" aciklama="Sunucuda yürür: ekranı kapatsanız da koşular sırayla başlar. Portal yeniden başlarsa kuyruk kaldığı yerden devam eder.">
         {hata ? (
           <UyariKutusu ton="hata" rol="alert" baslik="Kuyruklar okunamadı" eylem={<button type="button" onClick={() => void yukle()} className={TBL_BTN} style={smBtn()}>Yeniden dene</button>}>{hata}</UyariKutusu>
@@ -68,15 +79,19 @@ export default function GeceKuyrugu({ isAdmin, taslak, setTaslak, onKosuAc, onYe
           <p className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>Henüz kuyruk yok.</p>
         ) : (
           <ul className="divide-y" style={{ borderColor: 'var(--border-subtle)' }}>
-            {liste.map((k) => (
+            {liste.map((k) => {
+              const duraklatma = duraklatmaDurumu(k, []);
+              return (
               <li key={k.id} className="flex flex-wrap items-center gap-2 py-2 text-[12px]">
                 <button type="button" onClick={() => setSecili(k.id)} className={`${LINK} text-[12px]`} style={{ color: 'var(--accent)' }}>{`Kuyruk #${k.id}${k.ad ? ` · ${k.ad}` : ''}`}</button>
                 <DurumHap durum={k.durum} />
+                {duraklatma && <Hap label={DURAKLATMA_HAPI[duraklatma].etiket} ton={DURAKLATMA_HAPI[duraklatma].ton} title={DURAKLATMA_METNI[duraklatma]} />}
                 <span className="font-mono" style={{ color: 'var(--text-primary)' }}>{k.onayHedefi}</span>
                 <span className="tabular-nums" style={{ color: 'var(--text-secondary)' }}>{`${k.bitenSayisi ?? 0}/${k.ogeSayisi ?? 0} öğe · bekleme ${k.beklemeDk} dk · başlangıç ${gunSaatMetni(k.baslangicAt)}${k.enGecBitis ? ` · en geç ${gunSaatMetni(k.enGecBitis)}` : ''}`}</span>
                 <span className="ml-auto" style={{ color: 'var(--text-muted)' }}>{k.createdBy || ''}</span>
               </li>
-            ))}
+              );
+            })}
           </ul>
         )}
       </Bolum>
@@ -90,7 +105,7 @@ function DurumHap({ durum, oge = false }: { durum: string; oge?: boolean }) {
 }
 
 /** Taslak + olusturma formu (yalniz Admin). */
-function YeniKuyruk({ taslak, setTaslak, onYeniKosu, onOlustu }: { taslak: TaslakOge[]; setTaslak: (t: TaslakOge[]) => void; onYeniKosu?: () => void; onOlustu: (id: number) => void }) {
+function YeniKuyruk({ taslak, setTaslak, onYeniKosu, onDuzenle, onOlustu }: { taslak: TaslakOge[]; setTaslak: (t: TaslakOge[]) => void; onYeniKosu?: () => void; onDuzenle?: (d: DuzenlenenOge) => void; onOlustu: (id: number) => void }) {
   const [bekleme, setBekleme] = useState(String(BEKLEME_VARSAYILAN_DK));
   const [hemen, setHemen] = useState(true);
   const [basSaat, setBasSaat] = useState('00:00');
@@ -114,7 +129,7 @@ function YeniKuyruk({ taslak, setTaslak, onYeniKosu, onOlustu }: { taslak: Tasla
   const basMetni = hemen ? 'hemen'
     : secim?.tur === 'gecti' ? `hemen (${basSaat} ${secim.dkOnce} dk önce geçti)`
       : baslangic ? `${gunFarki(baslangic, simdi) === 1 ? 'yarın ' : ''}${saatMetni(baslangic.toISOString())} (${kalanMetni(basKalanSn)} sonra)` : '—';
-  const toplamSn = taslak.reduce((t, o) => t + 300 + (o.butceSn || 0), 0) + Math.max(0, taslak.length - 1) * (Number.isFinite(dk) ? dk : 5) * 60;
+  const toplamSn = taslakToplamSn(taslak, Number.isFinite(dk) ? dk : BEKLEME_VARSAYILAN_DK);
   const turlerTamam = !turler || turler.every((t) => onayli.has(t.kod));
   const hazir = taslak.length > 0 && !!hedef && !beklemeHata && (hemen || !!secim) && (!bitisAcik || !!bitis) && onay.trim() === hedef && turlerTamam && !mesgul;
 
@@ -162,6 +177,7 @@ function YeniKuyruk({ taslak, setTaslak, onYeniKosu, onOlustu }: { taslak: Tasla
                 <span className="min-w-0 font-medium" style={{ color: 'var(--text-primary)' }}>{o.etiket}</span>
                 <span className="min-w-0 truncate" style={{ color: 'var(--text-secondary)' }} title={o.ozet}>{o.ozet}</span>
                 <span className="ml-auto flex gap-1">
+                  {onDuzenle && <button type="button" className={TBL_BTN} style={smBtn()} onClick={() => onDuzenle({ tur: 'taslak', yerelId: o.yerelId, etiket: o.etiket, govde: o.govde })} aria-label={`${o.etiket} düzenle`}>Düzenle</button>}
                   <button type="button" className={TBL_BTN} style={smBtn()} disabled={i === 0} onClick={() => setTaslak(tasi(taslak, i, -1))} aria-label={`${o.etiket} yukarı`}><ArrowUpIcon className="h-3.5 w-3.5" aria-hidden /></button>
                   <button type="button" className={TBL_BTN} style={smBtn()} disabled={i === taslak.length - 1} onClick={() => setTaslak(tasi(taslak, i, 1))} aria-label={`${o.etiket} aşağı`}><ArrowDownIcon className="h-3.5 w-3.5" aria-hidden /></button>
                   <button type="button" className={TBL_BTN} style={smBtn()} onClick={() => { setTaslak(taslak.filter((x) => x.yerelId !== o.yerelId)); setTurler(null); }} aria-label={`${o.etiket} çıkar`}><XMarkIcon className="h-3.5 w-3.5" aria-hidden /> Çıkar</button>
@@ -197,17 +213,7 @@ function YeniKuyruk({ taslak, setTaslak, onYeniKosu, onOlustu }: { taslak: Tasla
           {baslangic && basKalanSn > 12 * 3600 && (
             <UyariKutusu ton="uyari" rol="alert" baslik={`Kuyruk ${basMetni} başlar.`}>Bu gece hemen başlatmak istiyorsanız “Hemen”i seçin.</UyariKutusu>
           )}
-          {turler && turler.length > 0 && (
-            <fieldset className="space-y-1.5 rounded-lg px-3 py-2.5" style={{ background: 'var(--bg-elevated)' }}>
-              <legend className="text-[12px] font-semibold" style={{ color: 'var(--text-primary)' }}>Uyarı türleri — gece yalnız bunlar kabul edilir</legend>
-              {turler.map((t) => (
-                <label key={t.kod} className="flex items-start gap-2 text-[12px] leading-5" style={{ color: 'var(--text-primary)' }}>
-                  <input type="checkbox" className="mt-1" checked={onayli.has(t.kod)} onChange={(e) => setOnayli((s) => { const n = new Set(s); if (e.target.checked) n.add(t.kod); else n.delete(t.kod); return n; })} />
-                  <span className="min-w-0"><span className="font-mono text-[11px]" style={{ color: 'var(--text-secondary)' }}>{t.kod}</span>{` ${t.ornek}`}{t.ogeler?.length ? <span style={{ color: 'var(--text-secondary)' }}>{` (öğe ${t.ogeler.join(', ')})`}</span> : null}</span>
-                </label>
-              ))}
-            </fieldset>
-          )}
+          {turler && turler.length > 0 && <UyariTuruOnayi baslik="Uyarı türleri — gece yalnız bunlar kabul edilir" turler={turler} onayli={onayli} onDegisti={setOnayli} />}
           <Alan id="kuyruk-onay" etiket={hedef ? `Onay: hedef ${hedef.includes('.') && /^\d/.test(hedef) ? 'IP’sini' : 'sunucu adını'} birebir yazın (${hedef})` : 'Onay'} yardim="Bir kez yazılır; gece her koşu bu onayla başlar.">
             <input id="kuyruk-onay" value={onay} onChange={(e) => setOnay(e.target.value)} autoComplete="off" spellCheck={false} className={`${GIRDI} font-mono`} style={girdiStili()} />
           </Alan>
@@ -226,12 +232,16 @@ function YeniKuyruk({ taslak, setTaslak, onYeniKosu, onOlustu }: { taslak: Tasla
 
 const SILINDI_IPUCU = 'Bu kayıt Portal’dan silindi; kuyruk öğesi ve numarası kalır. Sunucudaki ham ölçüm dosyaları silinmez.';
 
-function KuyrukAyrinti({ id, isAdmin, onKosuAc, onKarsilastir, onTopluRapor, onGeri }: { id: number; isAdmin: boolean; onKosuAc: (kosuId: number) => void; onKarsilastir?: (k: number[]) => void; onTopluRapor?: (kuyrukId: number) => void; onGeri: () => void }) {
+function KuyrukAyrinti({ id, isAdmin, onKosuAc, onKarsilastir, onTopluRapor, onDuzenle, onGeri }: { id: number; isAdmin: boolean; onKosuAc: (kosuId: number) => void; onKarsilastir?: (k: number[]) => void; onTopluRapor?: (kuyrukId: number) => void; onDuzenle?: (d: DuzenlenenOge) => void; onGeri: () => void }) {
   const [veri, setVeri] = useState<{ kuyruk: NlKuyruk; ogeler: NlKuyrukOge[]; alindi: number } | null>(null);
   const [hata, setHata] = useState('');
   const [simdi, setSimdi] = useState(() => Date.now());
   const [mesgul, setMesgul] = useState(false);
   const [iptalNotu, setIptalNotu] = useState<string | null>(null);
+  const [duraklatAcik, setDuraklatAcik] = useState(false);
+  const [surenDurdur, setSurenDurdur] = useState(false);
+  // Durdurma basarisiz: kuyruk yine duraklatildi; suren is elle durdurulur.
+  const [durdurHata, setDurdurHata] = useState<{ metin: string; kosuId: number | null } | null>(null);
   const oku = useCallback(async () => {
     try {
       const r = await nginxLoadtestApi.kuyruk(id);
@@ -248,7 +258,7 @@ function KuyrukAyrinti({ id, isAdmin, onKosuAc, onKarsilastir, onTopluRapor, onG
     return () => { window.clearInterval(z); window.clearInterval(s); };
   }, [oku]);
 
-  async function eylem(fn: () => Promise<{ ok: boolean; code?: string; message?: string }>, basari: string) {
+  async function eylem(fn: () => Promise<NlKuyrukEylem>, basari: string) {
     if (mesgul) return null;
     setMesgul(true);
     try {
@@ -268,12 +278,24 @@ function KuyrukAyrinti({ id, isAdmin, onKosuAc, onKarsilastir, onTopluRapor, onG
   if (hata && !veri) return <UyariKutusu ton="hata" rol="alert" baslik="Kuyruk okunamadı" eylem={<button type="button" onClick={() => void oku()} className={TBL_BTN} style={smBtn()}>Yeniden dene</button>}>{hata}</UyariKutusu>;
   if (!veri) return <div className="skeleton h-40 rounded-xl" aria-busy="true"><span className="sr-only">Yükleniyor…</span></div>;
   const { kuyruk: k, ogeler } = veri;
-  const aktif = AKTIF.has(k.durum);
+  const aktif = KUYRUK_AKTIF.has(k.durum);
+  const duraklatma = duraklatmaDurumu(k, ogeler);
   const kalan = k.siradakiKalanSn != null ? k.siradakiKalanSn - (simdi - veri.alindi) / 1000 : null;
   const bekleyenler = ogeler.filter((o) => o.durum === 'BEKLIYOR');
   // Silinmis kosu (2026-11-04: oge numarasi kalir) karsilastirmaya gitmez.
   const bitenKosular = ogeler.filter((o) => o.kosuId != null && o.durum === 'BITTI' && !o.kosuSilindi).map((o) => o.kosuId as number);
   const calisan = ogeler.find((o) => o.durum === 'CALISIYOR');
+  async function duraklat() {
+    const durdur = !!calisan && surenDurdur;
+    const r = await eylem(() => nginxLoadtestApi.kuyrukDuraklat(k.id, durdur), `Kuyruk #${k.id} duraklatma isteği kaydedildi.`);
+    setDuraklatAcik(false);
+    setSurenDurdur(false);
+    if (r?.ok && r.durdurHatasi) setDurdurHata({ metin: r.durdurHatasi, kosuId: r.suren?.kosuId ?? r.suren?.onKontrolKosuId ?? null });
+  }
+  async function devam() {
+    const r = await eylem(() => nginxLoadtestApi.kuyrukDevam(k.id), `Kuyruk #${k.id} devam ediyor.`);
+    if (r?.ok) setDurdurHata(null);
+  }
   const siraDegistir = (oId: number, yon: -1 | 1) => {
     const i = bekleyenler.findIndex((o) => o.id === oId);
     const yeni = tasi(bekleyenler.map((o) => o.id), i, yon);
@@ -283,23 +305,32 @@ function KuyrukAyrinti({ id, isAdmin, onKosuAc, onKarsilastir, onTopluRapor, onG
   return (
     <div className="space-y-4">
       <button type="button" onClick={onGeri} className={`${LINK} text-[12px]`} style={{ color: 'var(--accent)' }}><ArrowLeftIcon className="h-3.5 w-3.5" aria-hidden /> Kuyruklar</button>
-      <Bolum baslik={<span className="flex flex-wrap items-center gap-2">{`Gece kuyruğu #${k.id}`}<DurumHap durum={k.durum} /></span>}
+      <Bolum baslik={<span className="flex flex-wrap items-center gap-2">{`Gece kuyruğu #${k.id}`}<DurumHap durum={k.durum} />{duraklatma && <Hap label={DURAKLATMA_HAPI[duraklatma].etiket} ton={DURAKLATMA_HAPI[duraklatma].ton} />}</span>}
         aciklama={`Hedef ${k.onayHedefi} · bekleme ${k.beklemeDk} dk · başlangıç ${gunSaatMetni(k.baslangicAt)}${k.enGecBitis ? ` · en geç bitiş ${gunSaatMetni(k.enGecBitis)}` : ''} · ${k.createdBy || ''}`}
         eylem={(
           <>
             {onKarsilastir && <button type="button" className={TBL_BTN} style={smBtn()} disabled={bitenKosular.length < 2} onClick={() => onKarsilastir(bitenKosular)}>Hepsini karşılaştır</button>}
             {onTopluRapor && <button type="button" className={TBL_BTN} style={smBtn()} disabled={!ogeler.some((o) => o.kosuId != null && !o.kosuSilindi)} onClick={() => onTopluRapor(k.id)}>Toplu rapor</button>}
+            {isAdmin && aktif && !k.duraklatAt && <button type="button" className={TBL_BTN} style={smBtn()} disabled={mesgul} onClick={() => { setSurenDurdur(false); setDuraklatAcik(true); }}>Duraklat</button>}
+            {isAdmin && aktif && !!k.duraklatAt && <button type="button" className={TBL_BTN} style={smBtn(true)} disabled={mesgul} onClick={() => void devam()}>Devam et</button>}
             {isAdmin && aktif && (
               <button type="button" className={TBL_BTN} style={smBtn()} disabled={mesgul} onClick={() => void (async () => {
                 const r = await eylem(() => nginxLoadtestApi.kuyrukIptal(k.id), `Kuyruk #${k.id} iptal edildi; sonraki öğeler başlamayacak.`);
-                const s = r && 'suren' in r ? (r as { suren?: { kosuId: number | null; onKontrolKosuId: number | null; etiket: string } | null }).suren : null;
+                const s = r?.suren;
                 if (s) setIptalNotu(`“${s.etiket}” sürüyor ve durdurulmadı${s.kosuId != null ? ` (koşu #${s.kosuId})` : ''}. Durdurmak için koşu ayrıntısındaki Durdur’u kullanın.`);
               })()}>İptal</button>
             )}
           </>
         )}>
         <div className="space-y-3">
-          {aktif && (
+          {duraklatma && (
+            <UyariKutusu ton={duraklatma === 'geri_alma' ? 'hata' : duraklatma === 'bekliyor' ? 'uyari' : 'bilgi'} rol={duraklatma === 'geri_alma' ? 'alert' : 'status'} baslik={DURAKLATMA_METNI[duraklatma]}
+              eylem={duraklatma === 'geri_alma' && k.geriAlmaSorunu ? <button type="button" className={TBL_BTN} style={smBtn(true)} onClick={() => onKosuAc((k.geriAlmaSorunu as { kosuId: number }).kosuId)}>{`Koşuyu aç (#${k.geriAlmaSorunu.kosuId})`}</button> : undefined}>
+              {duraklatma === 'geri_alma' && k.geriAlmaSorunu?.metin}
+            </UyariKutusu>
+          )}
+          {durdurHata && <UyariKutusu ton="hata" rol="alert" baslik="Süren iş durdurulamadı; kuyruk yine duraklatıldı." eylem={durdurHata.kosuId != null ? <button type="button" className={TBL_BTN} style={smBtn(true)} onClick={() => onKosuAc(durdurHata.kosuId as number)}>Koşuyu aç</button> : undefined}>{durdurHata.metin}</UyariKutusu>}
+          {aktif && !duraklatma && (
             <p className="text-[12px] tabular-nums" style={{ color: 'var(--text-primary)' }} aria-live="polite">
               {k.durum === 'DINLENME' && k.dinlenmeBitis == null ? `Dinlenme: önceki koşunun kilidi bırakılınca ${k.beklemeDk} dk sayılacak.`
                 : kalan != null && kalan > 0 ? `Sıradaki ${kalanMetni(kalan)} sonra.`
@@ -342,6 +373,7 @@ function KuyrukAyrinti({ id, isAdmin, onKosuAc, onKarsilastir, onTopluRapor, onG
                     <td className="py-1.5 whitespace-nowrap">
                       {isAdmin && aktif && o.durum === 'BEKLIYOR' && (
                         <span className="flex gap-1">
+                          {onDuzenle && ogeDuzenlenir(o) && ogeGovdesi(o) && <button type="button" className={TBL_BTN} style={smBtn()} disabled={mesgul} onClick={() => onDuzenle({ tur: 'kuyruk', kuyrukId: k.id, ogeId: o.id, etiket: o.etiket, govde: ogeGovdesi(o) as NonNullable<ReturnType<typeof ogeGovdesi>> })} aria-label={`${o.etiket} düzenle`}>Düzenle</button>}
                           <button type="button" className={TBL_BTN} style={smBtn()} disabled={mesgul || bekleyenler[0]?.id === o.id} onClick={() => siraDegistir(o.id, -1)} aria-label={`${o.etiket} yukarı`}><ArrowUpIcon className="h-3.5 w-3.5" aria-hidden /></button>
                           <button type="button" className={TBL_BTN} style={smBtn()} disabled={mesgul || bekleyenler.at(-1)?.id === o.id} onClick={() => siraDegistir(o.id, 1)} aria-label={`${o.etiket} aşağı`}><ArrowDownIcon className="h-3.5 w-3.5" aria-hidden /></button>
                           <button type="button" className={TBL_BTN} style={smBtn()} disabled={mesgul} onClick={() => void eylem(() => nginxLoadtestApi.kuyrukOgeCikar(k.id, o.id), `“${o.etiket}” kuyruktan çıkarıldı.`)}>Çıkar</button>
@@ -355,6 +387,27 @@ function KuyrukAyrinti({ id, isAdmin, onKosuAc, onKarsilastir, onTopluRapor, onG
           </div>
         </div>
       </Bolum>
+      <Modal open={duraklatAcik} onClose={() => { if (!mesgul) setDuraklatAcik(false); }} title="Kuyruk duraklatılsın mı?" size="sm" dismissOnBackdrop={false}
+        footer={<div className="flex w-full justify-end gap-2">
+          <button type="button" className={SM_BTN} style={smBtn()} disabled={mesgul} onClick={() => setDuraklatAcik(false)}>İptal</button>
+          <button type="button" className={SM_BTN} style={smBtn(true)} disabled={mesgul} onClick={() => void duraklat()}>Duraklat</button>
+        </div>}>
+        {calisan ? (
+          <fieldset className="space-y-2 text-[13px] leading-5" style={{ color: 'var(--text-primary)' }}>
+            <legend className="mb-1">{`“${calisan.etiket}” sürüyor.`}</legend>
+            <label className="flex items-start gap-2">
+              <input type="radio" name="kuyruk-duraklat" className="mt-1" checked={!surenDurdur} onChange={() => setSurenDurdur(false)} />
+              <span>Süren koşu bitsin, sonra dur</span>
+            </label>
+            <label className="flex items-start gap-2">
+              <input type="radio" name="kuyruk-duraklat" className="mt-1" checked={surenDurdur} onChange={() => setSurenDurdur(true)} />
+              <span>Süren koşuyu şimdi durdur<span className="block text-[12px]" style={{ color: 'var(--text-secondary)' }}>Durdurulan koşu devamda baştan koşulur; sonucu kullanılmaz.</span></span>
+            </label>
+          </fieldset>
+        ) : (
+          <p className="text-[13px] leading-5" style={{ color: 'var(--text-primary)' }}>Sıradaki öğe başlamaz; kuyruk “Devam et”e basılana kadar bekler.</p>
+        )}
+      </Modal>
     </div>
   );
 }

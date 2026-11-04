@@ -41,6 +41,10 @@
 // kayitlari (kosu + adim satirlari); /sw'deki ham olcum dosyalari durur. 403 / 404 nginxRed ile FIRLATILIR (safeJson).
 // Kuyruk ayrintisinda silinmis kosu `kosuSilindi` / `onKontrolSilindi`; coklu karsilastirmada 409 (kosu_yok /
 // kosu_uygun_degil) ayri listeler tasir: `eksik` (bulunamayan), `onKontrol` (on kontrol kaydi), `bitmemis` (suren kosu).
+// DURAKLAT / DUZENLE / KAYITLI TEST (2026-11-04, kullanici: gece kosusunu ortasinda durdurup sunucuda is yapmak; kayitli
+// senaryoyu silmeden degistirmek; testi onden kaydedip hizli girmek): POST /kuyruklar/:id/duraklat ve /devam (yeni durum
+// degeri YOK; `duraklatAt` durumdan bagimsiz bayrak); PUT /kuyruklar/:id/ogeler/:ogeId (bekleyen oge); PUT /senaryolar/:id
+// (yalniz ad, aciklama, vhost: tsv / sha256 degismez); /sablonlar (Admin; HAR icermez, senaryoId'ye baglidir).
 import { okJson, safeJson, type ApiError } from './http';
 
 const BASE = '/api/nginx-loadtest';
@@ -160,6 +164,8 @@ export interface NlSenaryo {
   sha256: string; kaynak: 'har' | 'liste'; createdBy: string | null; createdAt: string | null;
 }
 export interface NlSenaryoAyrinti extends NlSenaryo { tsv: string; ozet: unknown }
+/** PUT /senaryolar/:id: yalniz bu uc alan (bos aciklama / vhost NULL olur); yollar ve sha256 degismez. */
+export interface NlSenaryoGuncelle { ad: string; aciklama: string; vhost: string }
 export interface NlYeniSenaryo {
   ad: string; aciklama?: string; vhost?: string; senaryoTur: 'K' | 'B'; kaynak: 'har' | 'liste';
   satirlar: { agirlik: number; har: number; tur: string; boyut: string; yol: string }[]; ozet?: unknown;
@@ -954,6 +960,13 @@ export interface NlKuyruk {
   dinlenmeBitis: string | null; ogeSayisi: number | null; bitenSayisi: number | null;
   /** Yalniz ayrinti: tahmini bitis (kilit beklemesi haric), siradakine kalan saniye (dinlenme / baslangic), sunucu saati. */
   tahminiBitis?: string | null; siradakiKalanSn?: number | null; sunucuZamani?: string;
+  /** Doluysa kuyruk duraklatildi (durum degismez; DINLENME sayilmaya devam eder, sonraki oge kapida durur). */
+  duraklatAt?: string | null; duraklatan?: string | null;
+  /**
+   * Yalniz aktif + duraklatilmis kuyrukta (liste ve ayrinti). `hedefMesgul`: hedef kilidi dolu, geri alma sonucu bekleniyor ya da
+   * okunamadi. `geriAlmaSorunu`: hedefin son sunucu ayarli isi geri alinamadi. `calisanVar`: liste ogeleri tasimaz.
+   */
+  calisanVar?: boolean; hedefMesgul?: boolean; geriAlmaSorunu?: { kosuId: number; metin: string | null } | null;
 }
 export interface NlKuyrukOge {
   id: number; sira: number; etiket: string; durum: NlKuyrukOgeDurum; asama: 'on_kontrol' | 'kosu' | null;
@@ -961,7 +974,7 @@ export interface NlKuyrukOge {
   baslamaAt: string | null; bitisAt: string | null; tahminiBaslangic?: string; tahminiBitis?: string; sureYetmeyebilir?: boolean;
   /** 2026-11-04: oge numarasi kalir, kosu / on kontrol satiri silinmisse true (sunucu okuyamadiysa alan yok). */
   kosuSilindi?: boolean; onKontrolSilindi?: boolean;
-  ayar: { senaryoId: number | null; hedefIp: string | null; hedefHost: string | null; vhost: string | null; yukHost: string | null; parametreler: NlParametreler | null };
+  ayar: { senaryoId: number | null; hedefIp: string | null; hedefHost: string | null; vhost: string | null; yukHost: string | null; sni?: boolean; parametreler: NlParametreler | null };
 }
 /** On kontrol govdesi (etiketsiz); etiket ogenin kendi alani. */
 export interface NlKuyrukGovde {
@@ -971,7 +984,11 @@ export interface NlYeniKuyruk {
   ad?: string; beklemeDk: number; baslangic: string | null; enGecBitis: string | null; confirmText: string; onaylananTurler?: string[];
   ogeler: { etiket: string; govde: NlKuyrukGovde; onKontrolKosuId?: number | null }[];
 }
-export interface NlKuyrukEylem extends NlEylem { uyariTurleri?: NlUyariTuru[]; oge?: number; suren?: { ogeId: number; etiket: string; kosuId: number | null; onKontrolKosuId: number | null } | null }
+export interface NlKuyrukEylem extends NlEylem { uyariTurleri?: NlUyariTuru[]; oge?: number; suren?: { ogeId: number; etiket: string; kosuId: number | null; onKontrolKosuId: number | null } | null; durduruldu?: boolean }
+/** Kayitli test: formun etiketsiz on kontrol govdesi. HAR icermez; `senaryoId`ye baglidir (HAR Portal'a gitmez). */
+export interface NlSablon {
+  id: number; ad: string; govde: NlKuyrukGovde; createdBy: string | null; createdAt: string | null; updatedBy: string | null; updatedAt: string | null;
+}
 
 export const nginxLoadtestApi = {
   hedefler: async (): Promise<NlHedefler> => hedeflerNormalle(await okJson<unknown>(await fetch(`${BASE}/hedefler`))),
@@ -979,6 +996,8 @@ export const nginxLoadtestApi = {
   senaryo: (id: number): Promise<{ ok: true; senaryo: NlSenaryoAyrinti }> => fetch(`${BASE}/senaryolar/${id}`).then((r) => okJson(r)),
   senaryoKaydet: (body: NlYeniSenaryo): Promise<NlEylem> => fetch(`${BASE}/senaryolar`, json(body)).then(safeJson),
   senaryoSil: (id: number): Promise<NlEylem> => fetch(`${BASE}/senaryolar/${id}`, { method: 'DELETE' }).then(safeJson),
+  /** Admin. Ad, aciklama, vhost; 400 gecersiz_istek, 409 senaryo_yok (silinmis). */
+  senaryoGuncelle: (id: number, body: NlSenaryoGuncelle): Promise<NlEylem> => fetch(`${BASE}/senaryolar/${id}`, json(body, 'PUT')).then(safeJson),
   /** `hedefHost` null: yazilan IP sunucuda siniflanir (sunucu ya da serbest); host secildiyse o host (paylasilan VIP). */
   onKontrol: (body: {
     senaryoId: number; hedefHost: string | null; hedefIp: string; vhost: string; yukHost: string; sni: boolean; parametreler: NlParametreler; etiket?: string;
@@ -1082,4 +1101,17 @@ export const nginxLoadtestApi = {
   kuyrukSira: (id: number, sira: number[]): Promise<NlKuyrukEylem> => fetch(`${BASE}/kuyruklar/${id}/sira`, json({ sira }, 'PUT')).then(safeJson),
   /** Admin. Bekleyen ogeyi kuyruktan cikarir (IPTAL). 409 oge_basladi. */
   kuyrukOgeCikar: (id: number, ogeId: number): Promise<NlKuyrukEylem> => fetch(`${BASE}/kuyruklar/${id}/ogeler/${ogeId}/cikar`, json({})).then(safeJson),
+  /** Admin. Bekleyen ogeyi degistirir. 409 hedef_farkli / uyari_onayi (uyariTurleri) / oge_basladi; 400 gecersiz_istek. */
+  kuyrukOgeGuncelle: (id: number, ogeId: number, body: { etiket: string; govde: NlKuyrukGovde; onaylananTurler?: string[] }): Promise<NlKuyrukEylem> =>
+    fetch(`${BASE}/kuyruklar/${id}/ogeler/${ogeId}`, json(body, 'PUT')).then(safeJson),
+  /** Admin. `surenDurdur`: calisan is durdurulur (kosu devamda bastan kosulur); durdurma hatasi `durdurHatasi`, duraklatma geri alinmaz. 409 kuyruk_duraklatilamaz. */
+  kuyrukDuraklat: (id: number, surenDurdur: boolean): Promise<NlKuyrukEylem> => fetch(`${BASE}/kuyruklar/${id}/duraklat`, json({ surenDurdur })).then(safeJson),
+  /** Admin. 409 duraklatma_suruyor (kosu hala durduruluyor; durunca yeniden denenir). */
+  kuyrukDevam: (id: number): Promise<NlKuyrukEylem> => fetch(`${BASE}/kuyruklar/${id}/devam`, json({})).then(safeJson),
+  /** Kayitli testler (okuma da Admin). En cok 200, silinmemisler. */
+  sablonlar: (): Promise<{ ok: true; sablonlar: NlSablon[] }> => fetch(`${BASE}/sablonlar`).then((r) => okJson(r)),
+  /** Admin. 409 sablon_var (ad tekil); 400 gecersiz_istek. */
+  sablonEkle: (body: { ad: string; govde: NlKuyrukGovde }): Promise<NlEylem> => fetch(`${BASE}/sablonlar`, json(body)).then(safeJson),
+  sablonGuncelle: (id: number, body: { ad: string; govde: NlKuyrukGovde }): Promise<NlEylem> => fetch(`${BASE}/sablonlar/${id}`, json(body, 'PUT')).then(safeJson),
+  sablonSil: (id: number): Promise<NlEylem> => fetch(`${BASE}/sablonlar/${id}`, { method: 'DELETE' }).then(safeJson),
 };
