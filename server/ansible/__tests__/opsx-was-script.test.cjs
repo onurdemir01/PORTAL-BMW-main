@@ -36,17 +36,22 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-const { BASH, posixYol } = require('./fixtures/kabuk.cjs');
+const { BASH, BASH_SURUM, posixYol } = require('./fixtures/kabuk.cjs');
 
 const DIR = process.env.OPSX_WAS_DIR || path.join(__dirname, '..', 'bmw_portal', 'opsx_was');
 const BETIK = path.join(DIR, 'files', 'opsx_was.sh');
 
 // `timeout` node'un gozuyle degil betigin kabugunun gozuyle olculur (Windows'ta ayni adli
 // baska bir komut var).
-const KABUK_VAR = spawnSync(BASH, ['-c', 'timeout 1 true && sleep 0'], { stdio: 'ignore' }).status === 0;
+const TIMEOUT_VAR = spawnSync(BASH, ['-c', 'timeout 1 true && sleep 0'], { stdio: 'ignore' }).status === 0;
+// Betik uretimde RHEL 8/9 bash'inde (4.4 / 5.1) kosar ve bash 4 ister (mapfile). macOS'un 3.2'si
+// uretimi temsil etmez: orada kirmizi, betigin degil kabugun sucu olurdu.
+const KABUK_VAR = TIMEOUT_VAR && BASH_SURUM >= 4;
 const SKIP = KABUK_VAR
   ? false
-  : 'bash/timeout bulunamadi (Git Bash gerekir) - WAS betik davranis bekcileri KOSMADI';
+  : !TIMEOUT_VAR
+    ? 'bash/timeout bulunamadi (Git Bash gerekir) - WAS betik davranis bekcileri KOSMADI'
+    : `bash ${BASH_SURUM} bulundu, betik bash 4+ ister (uretim RHEL 8/9: 4.4 / 5.1) - WAS betik davranis bekcileri KOSMADI. macOS: brew install bash`;
 
 const SOAP_GIZLI = 'KzosKw0gizliSOAP';
 const SOAP_KULLANICI = 'srv_gizli_kullanici';

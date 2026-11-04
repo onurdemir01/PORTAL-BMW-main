@@ -223,9 +223,11 @@ test('G23: tablo bos-durumlari ortak bilesenden', () => {
 
 // ── G29: metin ──────────────────────────────────────────────────────────────
 test('G29: ayni eylem icin tek fiil ("Vazgeç" kalmadi)', () => {
-  const bad = SRC_FILES.filter((f) => /Vazgeç/.test(stripComments(fs.readFileSync(f, 'utf8')))).map(
-    (f) => path.relative(ROOT, f),
-  );
+  // Test dosyalari HARIC: "Vazgec dugmesi YOK" diyen olumsuz dogrulamalar kelimeyi tasir ve
+  // bekciyi yanlis sebeple kirmizi tutuyordu (2026-11-04, Yuk Testi testleri).
+  const bad = SRC_FILES.filter((f) => !f.split(path.sep).includes('__tests__'))
+    .filter((f) => /Vazgeç/.test(stripComments(fs.readFileSync(f, 'utf8'))))
+    .map((f) => path.relative(ROOT, f));
   assert.deepEqual(bad, [], `"İptal" ile ayni eylem: ${bad.join(', ')}`);
 });
 

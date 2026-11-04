@@ -202,7 +202,7 @@ export default function CokluKarsilastir({ kuyrukNotu = null, onKuyrukNotuKapat 
                   <li key={id} className="flex items-center gap-1 rounded-lg px-2 py-1 text-[12px]" style={{ background: ref ? TON.aksan.zemin : 'var(--bg-elevated)', boxShadow: ref ? `inset 0 0 0 1px ${TON.aksan.kenar}` : undefined, color: 'var(--text-primary)' }}>
                     <label className="flex items-center gap-1" title="Referans yap">
                       <input type="radio" name="coklu-ref" checked={ref} onChange={() => yaz({ ref: id })} aria-label={`${ad} referans`} />
-                      <span className="max-w-[14rem] truncate font-medium">{ad}</span>
+                      <span className="max-w-[14rem] truncate font-medium" title={ad}>{ad}</span>
                     </label>
                     {ref && <span className="text-[11px] font-semibold" style={{ color: TON.aksan.metin }}>referans</span>}
                     <button type="button" onClick={() => degistir(id, false)} aria-label={`${ad} seçimden çıkar`} className="rounded" style={{ color: 'var(--text-secondary)' }}><XMarkIcon className="h-3.5 w-3.5" aria-hidden /></button>
@@ -228,7 +228,7 @@ export default function CokluKarsilastir({ kuyrukNotu = null, onKuyrukNotuKapat 
                       <input type="checkbox" checked={isaretli} disabled={!isaretli && doldu} onChange={(e) => degistir(k.id, e.target.checked)} aria-label={`${kosuEtiketi(k)} seç`} />
                       <span className="min-w-0 flex-1 truncate font-medium">{k.etiket || <span style={{ color: 'var(--text-muted)' }}>etiketsiz</span>}</span>
                       <span className="font-mono tabular-nums" style={{ color: 'var(--text-secondary)' }}>#{k.id}</span>
-                      <span className="hidden truncate font-mono @lg/yuk:inline" style={{ color: 'var(--text-secondary)' }}>{hedefEtiketi(k)}</span>
+                      <span className="hidden truncate font-mono @lg/yuk:inline" style={{ color: 'var(--text-secondary)' }} title={hedefEtiketi(k)}>{hedefEtiketi(k)}</span>
                       <span className="tabular-nums" style={{ color: 'var(--text-muted)' }} title={fmtDateTime(k.createdAt)}>{fmtDate(k.createdAt)}</span>
                     </label>
                   </li>

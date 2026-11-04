@@ -37,8 +37,27 @@ const WINDOWS = process.platform === 'win32';
  * Windows'ta hic yok. O yuzden EBEVEYNIN native PATH'inde bir kez aranir.
  * Windows disinda eski davranis: PATH'ten cozulen `bash`.
  */
+/** bash'in ana surumu (BASH_VERSINFO[0]); calismazsa 0. */
+function bashSurumu(bash) {
+  const r = spawnSync(bash, ['-c', 'echo "${BASH_VERSINFO[0]}"'], { encoding: 'utf8' });
+  return r.status === 0 ? Number(String(r.stdout).trim()) || 0 : 0;
+}
+
+/**
+ * Windows disi: betikler uretimde RHEL 8/9'da (bash 4.4 / 5.1) kosar. macOS'un /bin/bash'i 3.2
+ * (mapfile vb. yok) ve PATH'te one cikarsa bekciler betigin degil kabugun yuzunden kirmizi
+ * doner (2026-11-04: OpsX WAS S1/S2/S3/S8/S9). Sira: KABUK_TEST_BASH, Homebrew yollari, PATH;
+ * ilk bash >= 4 secilir. Hicbiri yoksa PATH'teki bash kalir ve BASH_SURUM onu soyler.
+ * Linux'ta Homebrew yolu yoktur: eski davranis ('bash').
+ */
 function bashBul() {
-  if (!WINDOWS) return 'bash';
+  if (!WINDOWS) {
+    const adaylar = [process.env.KABUK_TEST_BASH, '/opt/homebrew/bin/bash', '/usr/local/bin/bash'].filter(Boolean);
+    for (const aday of adaylar) {
+      if (fs.existsSync(aday) && bashSurumu(aday) >= 4) return aday;
+    }
+    return 'bash';
+  }
   for (const d of (process.env.PATH || '').split(path.delimiter)) {
     if (!d) continue;
     for (const ad of ['bash.exe', 'bash']) {
@@ -54,6 +73,7 @@ function bashBul() {
 }
 
 const BASH = bashBul();
+const BASH_SURUM = bashSurumu(BASH);
 
 const HAS_CYGPATH =
   WINDOWS && spawnSync('cygpath', ['-u', 'C:\\'], { stdio: 'ignore' }).status === 0;
@@ -124,4 +144,4 @@ function bekle(saniye) {
   Atomics.wait(paylasimli, 0, 0, Math.round(saniye * 1000));
 }
 
-module.exports = { WINDOWS, BASH, posixYol, posixListe, kabukPath, PS_ARGV_KOMUTU, bekle };
+module.exports = { WINDOWS, BASH, BASH_SURUM, posixYol, posixListe, kabukPath, PS_ARGV_KOMUTU, bekle };
