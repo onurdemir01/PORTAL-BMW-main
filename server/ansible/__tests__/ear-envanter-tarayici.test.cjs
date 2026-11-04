@@ -7,7 +7,7 @@
 //   ET2  acilmis EAR icindeki PAKETLI .war: merkez dizinden listelenir, WAR sayilir
 //   ET3  .ear ARSIVI: OZET'te ic WAR acilmaz -> ARSIV_ACILMADI, host KISMI; TAM'da acilir -> TAM
 //   ET4  giris siniri: uygulama + WAR KISMI_SINIR, host KISMI (kesik tarama ASLA TAM degil);
-//        paketli WAR'in merkez dizini sinirda kesilirse de WAR KISMI_SINIR
+//        paketli WAR ve dis EAR merkez dizini sinirda kesilirse de KISMI_SINIR
 //   ET5  kok yok -> KOK_YOK; tek kok yoksa ve gerisi temizse TAM
 //   ET6  izin reddi -> uygulama + WAR KISMI_IZIN, host KISMI
 //   ET7  kokteki bag tek adim izlenir (BAG); uygulama icindeki bag/dongu izlenmez; kokun kendisini
@@ -307,6 +307,42 @@ test(
     assert.equal(p.warlar[0].bicim, 'ARSIV');
     assert.equal(p.warlar[0].durum, 'KISMI_SINIR', 'kesik paketli WAR TAM gorunmemeli');
     assert.equal(p.durum, 'KISMI_SINIR');
+
+    // Dis .ear merkez dizini de ayni uygulama sinirina uyar; onceki kod tum infolist'i gezip TAM diyordu.
+    zipYaz(
+      path.join(kok, 'arsiv', 'ARSIVBUYUK.ear'),
+      Array.from({ length: 150 }, (_, i) => [`classes/C${i}.class`, 'x']),
+    );
+    const arsiv = tara([path.join(kok, 'arsiv')], {
+      EAR_KIP: 'TAM',
+      EAR_SINIR_UYGULAMA: '100',
+    });
+    const au = uyg(arsiv, 'ARSIVBUYUK.ear');
+    assert.equal(au.durum, 'KISMI_SINIR');
+    assert.equal(au.giris, 100);
+    assert.equal(au.satirlar.length, 100, 'TAM cikti uygulama sinirini asti');
+    assert.equal(arsiv.durum, 'KISMI');
+
+    // Host toplam siniri da dis arsiv dongusunde her giristen once uygulanir.
+    zipYaz(
+      path.join(kok, 'host', 'HOSTBUYUK.ear'),
+      Array.from({ length: 1100 }, (_, i) => [`classes/H${i}.class`, 'x']),
+    );
+    const host = tara([path.join(kok, 'host')], {
+      EAR_KIP: 'OZET',
+      EAR_SINIR_UYGULAMA: '500000',
+      EAR_SINIR_HOST: '1000',
+    });
+    const hu = uyg(host, 'HOSTBUYUK.ear');
+    assert.equal(hu.durum, 'KISMI_SINIR');
+    assert.equal(hu.giris, 1000);
+    assert.equal(host.giris, 1000);
+    assert.equal(host.durum, 'KISMI');
+
+    // Sure butcesini 10 saniye bekletmeden kaynak kapisini da koru: dis EAR dongusunun
+    // icinde sure ve iki giris siniri birlikte bulunmali.
+    const arsivFonksiyonu = /def arsiv_uygulama\(u, tam\):([\s\S]*?)\ndef bitir\(/.exec(KAYNAK)?.[1] || '';
+    assert.match(arsivFonksiyonu, /for i in sorted\([\s\S]*?if sure_doldu\(\):[\s\S]*?u\['giris'\] >= SINIR_UYGULAMA or HOST\['giris'\] >= SINIR_HOST/);
   },
 );
 

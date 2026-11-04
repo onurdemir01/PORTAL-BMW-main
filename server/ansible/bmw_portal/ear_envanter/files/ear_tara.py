@@ -314,6 +314,12 @@ def arsiv_uygulama(u, tam):
                 rel = i.filename.rstrip('/')
                 if not rel:
                     continue
+                if sure_doldu():
+                    uyar(u, 'sure butcesi doldu', 'KISMI_ZAMAN')
+                    break
+                if u['giris'] >= SINIR_UYGULAMA or HOST['giris'] >= SINIR_HOST:
+                    uyar(u, 'giris siniri', 'KISMI_SINIR')
+                    break
                 tip = 'D' if i.filename.endswith('/') else 'Z'
                 u['giris'] += 1
                 HOST['giris'] += 1
