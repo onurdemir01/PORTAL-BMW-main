@@ -149,6 +149,7 @@ function yeniDurum() {
     nextTicket: 500,
     smartHata: null,
     storeHata: null,
+    baglamaNoop: false,
     jobs: new Map(),
     nextJob: 3000,
     components: [],
@@ -225,6 +226,7 @@ function dbSorgu(d, sqlText, p) {
     return ok([], n);
   }
   if (/^UPDATE crypto_hub_node_changes SET durum = 'BEKLIYOR', smart_ticket_id = \$1, external_ticket_id = \$2/.test(s)) {
+    if (d.baglamaNoop) return ok([], 0);
     let n = 0;
     for (const r of d.rows) {
       if (r.id !== Number(p[2]) || r.kapandi_at != null) continue;

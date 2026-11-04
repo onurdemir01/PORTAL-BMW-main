@@ -1557,28 +1557,38 @@ function initCryptoHubNode(router, deps) {
         message: `AWX işi #${row.awx_job_id} başlamış; talep iş sonucu okununca ya da süre dolunca kendiliğinden kapanır.`,
       });
     }
+    // ACILIYOR satiri ile Smart biletinin DB'ye baglanmasi arasinda kisa bir pencere vardir.
+    // Bu sirada kilidi acmak, dis bilet olustuktan sonra ayni gruba ikinci isi sokabilir.
+    if (row.smart_ticket_id == null) {
+      return res.status(409).json({ ok: false, message: 'Smart kaydı henüz talebe bağlanmadı; talep kapatılmadı.' });
+    }
     let smart = null;
-    if (row.smart_ticket_id != null) {
-      const store = require('../smart/store.cjs');
-      try {
-        const t = await store.getTicket(Number(row.smart_ticket_id));
-        smart = { status: t ? t.status : null, yerelIptal: false };
-        if (t && t.status === 'PENDING') {
-          smart.yerelIptal = !!(await store.cancelTicket(
-            Number(row.smart_ticket_id),
-            ben.username || '',
-            true,
-            kirp(`Crypto Hub node talebi yonetici tarafindan kapatildi: ${gerekce}`, 1000),
-            ben.username || 'admin',
-          ));
-        }
-      } catch (e) {
-        smart = { status: null, yerelIptal: false, hata: kirp(e.message, 200) };
+    const store = require('../smart/store.cjs');
+    try {
+      const t = await store.getTicket(Number(row.smart_ticket_id));
+      if (!t) {
+        return res.status(503).json({ ok: false, message: 'Smart kaydı okunamadı; talep kapatılmadı. Lütfen tekrar deneyin.' });
       }
-      // PENDING bilet iptal edilemediyse (poller onayi yakalamis olabilir) kapatma: is kosabilir.
-      if (smart.status === 'PENDING' && !smart.yerelIptal) {
-        return res.status(409).json({ ok: false, message: 'Smart kaydı iptal edilemedi; talep kapatılmadı. Lütfen tekrar deneyin.' });
+      smart = { status: t.status, yerelIptal: false };
+      // Yalniz henuz sahiplenilmemis PENDING bilet atomik olarak iptal edilebilir.
+      // APPROVED/LAUNCHING/LAUNCHED gibi bir durumda AWX numarasi satira yazilmamis olsa
+      // bile poller isi baslatmak uzere olabilir; kilidi acmak ikinci isi yaristirir.
+      if (t.status !== 'PENDING') {
+        return res.status(409).json({ ok: false, message: 'Smart kaydı artık beklemede değil; talep kapatılmadı.' });
       }
+      smart.yerelIptal = !!(await store.cancelTicket(
+        Number(row.smart_ticket_id),
+        ben.username || '',
+        true,
+        kirp(`Crypto Hub node talebi yonetici tarafindan kapatildi: ${gerekce}`, 1000),
+        ben.username || 'admin',
+      ));
+    } catch (e) {
+      return res.status(503).json({ ok: false, message: 'Smart kaydı okunamadı; talep kapatılmadı. Lütfen tekrar deneyin.' });
+    }
+    // PENDING bilet iptal edilemediyse (poller onayi yakalamis olabilir) kapatma: is kosabilir.
+    if (!smart.yerelIptal) {
+      return res.status(409).json({ ok: false, message: 'Smart kaydı iptal edilemedi; talep kapatılmadı. Lütfen tekrar deneyin.' });
     }
     const kim = ben.username || 'admin';
     let kapatti = false;
@@ -1936,15 +1946,47 @@ async function talepAc(req, { nodeYetkisi, kullanici, onizleme }) {
     };
   }
   // 14
+  let baglandi = false;
   try {
-    await db.query(
+    const bag = await db.query(
       `UPDATE crypto_hub_node_changes SET durum = 'BEKLIYOR', smart_ticket_id = $1, external_ticket_id = $2, updated_at = SYSUTCDATETIME() WHERE id = $3 AND kapandi_at IS NULL`,
       [Number(opened.ticketId), String(opened.externalTicketId), talepId],
     );
+    baglandi = !!bag && bag.rowCount === 1;
   } catch (e) {
-    // Bilet ACIK ve smart_tickets'ta duruyor: satir ACILIYOR kalir, tarama 10 dk sonra
-    // bileti pending_launch_json'dan bulup sahiplenir (biletiBul).
     console.warn('[CryptoHub] node talebi bilete baglanamadi:', talepId, e.message);
+  }
+  if (!baglandi) {
+    // Dis bilet acildi fakat Portal satirina baglanamadi. Basari uydurma; mumkunse PENDING
+    // bileti iptal et. Iptal yarisi varsa ACILIYOR satiri kilidi korur ve tarama bileti
+    // pending_launch_json icindeki talep numarasiyla sahiplenir.
+    let yerelIptal = false;
+    try {
+      yerelIptal = !!(await require('../smart/store.cjs').cancelTicket(
+        Number(opened.ticketId),
+        username,
+        true,
+        'Crypto Hub node talebi Portal kaydina baglanamadi; is baslatilmaz.',
+        username,
+      ));
+    } catch {
+      yerelIptal = false;
+    }
+    if (yerelIptal) {
+      await kapat('HATA', 'SMART_BAGLAMA', bosSonuc({ hata: 'Smart bileti Portal talebine bağlanamadı; bilet iptal edildi.' }));
+    }
+    // 424: kurumsal nginx 5xx govdesini HTML ile degistirir; kullanici Smart numarasini gormeli.
+    return {
+      status: 424,
+      body: {
+        ok: false,
+        blocked: 'smart_ticket_link_failed',
+        externalTicketId: opened.externalTicketId,
+        message: yerelIptal
+          ? 'Smart bileti talebe bağlanamadı ve iptal edildi. Lütfen yeniden deneyin.'
+          : `Smart bileti talebe bağlanamadı. Smart #${opened.externalTicketId} kaydını kontrol edin.`,
+      },
+    };
   }
   // 15
   try {

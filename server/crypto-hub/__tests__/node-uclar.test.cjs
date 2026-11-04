@@ -290,6 +290,18 @@ test('N8 openSmartTicket argumanlari birebir; preflight + prefill bilet ONCESI',
     assert.equal(m.CLUSTER, 'metaco_das');
   }));
 
+test('N8c Smart bileti satira baglanamazsa basari uydurmaz ve PENDING bileti iptal eder', () =>
+  ile(async (h) => {
+    h.okumaVer();
+    h.d.baglamaNoop = true;
+    const r = await h.istek('POST', '/node-change', K.nodecu, GOVDE());
+    assert.equal(r.status, 424, JSON.stringify(r.body));
+    assert.equal(r.body.blocked, 'smart_ticket_link_failed');
+    assert.equal(h.d.smartTickets[0].status, 'CANCELLED');
+    assert.equal(h.d.rows[0].durum, 'HATA');
+    assert.equal(h.d.rows[0].sonuc_kod, 'SMART_BAGLAMA');
+  }));
+
 test('N8b preflight hatasi: bilet acilmaz, satir HATA', () =>
   ile(async (h) => {
     h.okumaVer();
@@ -841,6 +853,32 @@ test('N16 iptal yarisi: PENDING bilet iptal edilemezse satir ve kilit acik kalir
     assert.equal(res.status, 409, JSON.stringify(res.body));
     assert.match(res.body.message, /AWX işi #5151/);
     assert.equal(r2.kapandi_at, null, 'AWX isi suren talep kapatildi (kilit birakilirdi)');
+  }));
+
+test('N16b onaylanmis veya okunamayan Smart biletinde Admin kilidi acamaz', () =>
+  ile(async (h) => {
+    h.okumaVer();
+    const b = await talepAc(h);
+    const row = h.d.rows.find((x) => x.id === b.talepId);
+    const ticket = h.d.smartTickets.find((x) => x.id === b.ticketId);
+    const yol = `/node-change/${b.talepId}/kapat`;
+
+    const aciliyor = { ...row, id: h.d.nextId++, kilit: 'aciliyor-kilit', durum: 'ACILIYOR', smart_ticket_id: null, external_ticket_id: null, kapandi_at: null };
+    h.d.rows.push(aciliyor);
+    let res = await h.istek('POST', `/node-change/${aciliyor.id}/kapat`, K.admin, { gerekce: 'Smart bileti henuz baglanmadi, kilit acilamaz' });
+    assert.equal(res.status, 409, JSON.stringify(res.body));
+    assert.equal(aciliyor.kapandi_at, null, 'ACILIYOR ticketsiz satir kapatildi');
+
+    ticket.status = 'APPROVED';
+    res = await h.istek('POST', yol, K.admin, { gerekce: 'Smart onaylandi, kilit guvenle acilamaz' });
+    assert.equal(res.status, 409, JSON.stringify(res.body));
+    assert.equal(row.kapandi_at, null, 'onaylanmis fakat AWX numarasi yazilmamis talep kapatildi');
+
+    ticket.status = 'PENDING';
+    h.d.storeOkunamaz = true;
+    res = await h.istek('POST', yol, K.admin, { gerekce: 'Smart okunamiyor, kilit guvenle acilamaz' });
+    assert.equal(res.status, 503, JSON.stringify(res.body));
+    assert.equal(row.kapandi_at, null, 'Smart sahipligi okunamayan talep kapatildi');
   }));
 
 test('N6c PS6 Ankara talebi Istanbul bagini SUNUCUDA kurar (istemci esTalepId gondermese de)', () =>
