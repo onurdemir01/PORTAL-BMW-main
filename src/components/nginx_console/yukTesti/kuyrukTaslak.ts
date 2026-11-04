@@ -5,6 +5,7 @@
 // okunamazsa / yazilamazsa taslak bellekte kalir (sunucuya giden her sey olusturma isteginde).
 import type { NlKuyrukDurum, NlKuyrukGovde, NlKuyrukOgeDurum } from '@/api/nginxLoadtestApi';
 import type { Ton } from '@/components/server_hub/retirementStil';
+import { fmtTime } from '@/utils/datetime';
 
 export interface TaslakOge {
   yerelId: string;
@@ -135,8 +136,7 @@ export function kalanMetni(sn: number): string {
   return `${s} sn`;
 }
 
+// Ortak bicimlendirici (G19): bos / gecersiz deger "—", saat dilimi Portal'inki.
 export function saatMetni(iso: string | null | undefined): string {
-  if (!iso) return '—';
-  const t = new Date(iso);
-  return Number.isFinite(t.getTime()) ? t.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) : '—';
+  return fmtTime(iso);
 }

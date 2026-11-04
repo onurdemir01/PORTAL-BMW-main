@@ -30,8 +30,9 @@ test('YTE-1 sayfa: Tab birlesimi, TABS, HUB_TABS, kaynak notu ve gorunurluk kapi
   const tabs = page.split('\n').find((s) => s.startsWith('const TABS: readonly Tab[] = ['));
   assert.ok(tabs && tabs.includes("'yuktesti'"), 'TABS dizisinde yuktesti yok (?tab=yuktesti baglantisi Dashboard\'a duser)');
   assert.ok(blok(page, 'const HUB_TABS = [', '] as const;', 'HUB_TABS').includes("{ id: 'yuktesti', label: 'Yük Testi', icon: "), 'HUB_TABS kaydi yok');
+  // Onek eslesmesi: kapi + isAdmin sart; sonradan eklenen prop'lar (kullaniciAdi, 2026-11) bekciyi bozmasin.
   assert.ok(
-    page.includes("{tab === 'yuktesti' && canSee('tab:nginx:yuktesti') && <YukTestiTab isAdmin={isAdmin} />}"),
+    page.includes("{tab === 'yuktesti' && canSee('tab:nginx:yuktesti') && <YukTestiTab isAdmin={isAdmin}"),
     'sekme icerigi gorunurluk kapisindan gecmiyor ya da isAdmin verilmiyor',
   );
   assert.ok(blok(page, 'const SOURCE_OF: Record<Tab, SourceKey> = {', '};', 'SOURCE_OF').includes("yuktesti: 'yuktesti'"), 'SOURCE_OF kaydi yok ya da baska kaynaga bagli');
@@ -74,7 +75,12 @@ test('YTE-4 Admin > Nginx Hub Erişimi etiketi', () => {
 test('YTE-5 Admin olmayan icin is baslatan / silen dugme cizilmez', () => {
   const tab = oku(...NGINX, 'YukTestiTab.tsx');
   assert.ok(tab.includes("{ id: 'yeni', ad: 'Yeni koşu', ikon: PlayCircleIcon, yalnizAdmin: true }"), "'Yeni koşu' yalniz Admin isaretli degil");
-  assert.ok(tab.includes("{etkin === 'yeni' && isAdmin && <YeniKosu"), "'Yeni koşu' govdesi isAdmin kapisindan gecmiyor");
+  // Govde tek satirda (`&& <YeniKosu`) ya da parantezli blokta (`&& (` ... `<YeniKosu` ... `)}`) olabilir.
+  const yeniKapi = "{etkin === 'yeni' && isAdmin && ";
+  const yi = tab.indexOf(yeniKapi);
+  const yeniGovde = yi < 0 ? '' : tab.slice(yi + yeniKapi.length, tab.indexOf(')}', yi) < 0 ? undefined : tab.indexOf(')}', yi));
+  assert.ok(yeniGovde.startsWith('<YeniKosu') || (yeniGovde.startsWith('(') && yeniGovde.includes('<YeniKosu')), "'Yeni koşu' govdesi isAdmin kapisindan gecmiyor");
+  assert.equal(tab.split('<YeniKosu').length - 1, 1, "'Yeni koşu' govdesi ikinci (kapisiz) bir yerde ciziliyor");
   const ayr = oku(...NGINX, 'yukTesti', 'KosuAyrinti.tsx');
   // Durdur / "Kalan süreçleri durdur" ve "Sonucu yeniden oku" (2026-10-27) ayni Admin kapisindan; baska yerde cizilmez.
   assert.ok(ayr.includes('{isAdmin && (aktif || kalanDurdur) && ('), 'Durdur dugmesi isAdmin kapisindan gecmiyor');

@@ -786,184 +786,6 @@ async function kuyrukOkuApi(id) {
   };
 }
 
-function kuyrukUclari(router) {
-  router.get('/kuyruklar', async (req, res) => {
-    try {
-      const { rows } = await dbOku((d) => d.query(kuyruk.SQL.kuyrukListe));
-      res.json({ ok: true, kuyruklar: rows.map(kuyruk.kuyrukApi) });
-    } catch (e) {
-      hataYaniti(req, res, e);
-    }
-  });
-
-  router.get('/kuyruklar/:id', async (req, res) => {
-    try {
-      const id = sayi(req.params.id);
-      if (!id) throw hata(400, 'gecersiz_istek', 'Geçersiz kuyruk numarası.');
-      const r = await kuyrukOkuApi(id);
-      if (!r) throw hata(409, 'kuyruk_yok', 'Kuyruk bulunamadı.');
-      res.json({ ok: true, ...r });
-    } catch (e) {
-      hataYaniti(req, res, e);
-    }
-  });
-
-  // Olusturma: her oge mevcut on kontrol govdesiyle dogrulanir ve plan kapilarindan GECER (gece YENIDEN gececek);
-  // tum ogeler TEK hedefe (onay metni bir kez); uyari turleri (plan + ogeye bagli on kontrol) tek tek onaylanir
-  // (409 uyari_onayi + uyariTurleri; istemci onaylananTurler ile yeniden gonderir).
-  router.post('/kuyruklar', async (req, res) => {
-    let hedefBilgi = null;
-    try {
-      adminSart(req);
-      const g = kuyruk.kuyrukGovdesi(req.body);
-      const kullaniciAdi = String(kullanici(req).username || 'unknown').slice(0, 100);
-      const ogeler = [];
-      const turHaritasi = new Map();
-      let onayHedefi = null;
-      let hedefTuru = null;
-      for (const [i, o] of g.ogeler.entries()) {
-        const no = i + 1;
-        let og;
-        let plan;
-        try {
-          og = onKontrolGovdesi({ ...o.govde, etiket: undefined });
-          plan = await kosuPlani({ ...og, etiket: null });
-        } catch (e) {
-          throw ogeNo(e, no);
-        }
-        const hedef = kuyruk.onayHedefiOf(plan);
-        if (onayHedefi == null) {
-          onayHedefi = hedef;
-          hedefTuru = plan.hedefTuru;
-          hedefBilgi = { host: plan.hedefHost, ip: plan.hedefIp };
-        } else if (hedef !== onayHedefi) {
-          throw hata(409, 'hedef_farkli', `Öğe ${no}: hedef (${hedef}) kuyruğun hedefinden (${onayHedefi}) farklı; bir kuyruk tek hedefe yük basar.`, { oge: no });
-        }
-        const metinler = [...plan.uyarilar];
-        if (o.onKontrolKosuId) metinler.push(...await ogeOnKontrolUyarilari(o.onKontrolKosuId, kullaniciAdi, onayHedefi, no));
-        const turler = kuyruk.uyariTurleri(metinler);
-        for (const t of turler) {
-          const x = turHaritasi.get(t.kod) || { ...t, ogeler: [] };
-          x.ogeler.push(no);
-          turHaritasi.set(t.kod, x);
-        }
-        ogeler.push({
-          etiket: o.etiket, butceSn: (Number(plan.parametreler.butceSn) + kuyruk.hazirlikPayiSn(plan.parametreler)) || null, turler,
-          govde: { senaryoId: og.senaryoId, hedefHost: og.hedefHost, hedefIp: og.hedefIp, vhost: og.vhost, yukHost: og.yukHost, sni: og.sni, parametreler: plan.parametreler },
-        });
-      }
-      if (!dg.onayMetniDogru(g.confirmText, onayHedefi)) {
-        throw hata(409, 'onay_metni', hedefTuru === 'serbest' ? `Onay için hedef IP'yi (${onayHedefi}) birebir yazın.` : `Onay için hedef sunucu adını (${onayHedefi}) birebir yazın.`);
-      }
-      // Ayni hedefe ikinci aktif kuyruk: dinlenme kuyruk basina sayildigindan iki kuyruk dinlenmesiz ard arda basardi.
-      const ayni = (await dbOku((d) => d.query(kuyruk.SQL.ayniHedefAktif, [onayHedefi]))).rows[0];
-      if (ayni) {
-        throw hata(409, 'kuyruk_var', `${onayHedefi} için kuyruk #${ayni.id} zaten aktif; bitmesini bekleyin ya da o kuyruğu İptal edin.`, { kuyrukId: Number(ayni.id) });
-      }
-      const turler = [...turHaritasi.values()];
-      if (turler.some((t) => !g.onaylananTurler.includes(t.kod))) {
-        throw hata(409, 'uyari_onayi', 'Kuyruğun uyarı türlerini okuyup tek tek onaylayın: gece yalnız bu türler kabul edilir, yeni bir tür çıkan öğe atlanır.', { uyariTurleri: turler });
-      }
-      const onayli = turler.map(({ kod, ornek }) => ({ kod, ornek }));
-      let id;
-      try {
-        const ins = await db().query(kuyruk.SQL.kuyrukEkle, [g.ad, g.beklemeDk, g.baslangic, g.enGecBitis, onayHedefi, hedefTuru, JSON.stringify(onayli), kullaniciAdi]);
-        id = Number(ins.rows && ins.rows[0] && ins.rows[0].id);
-        if (!(id > 0)) throw new Error('kuyruk numarası dönmedi');
-      } catch (e) {
-        throw hata(424, 'db_okunamadi', `Kuyruk yazılamadı: ${maskele(e && e.message)}`);
-      }
-      try {
-        for (const [i, o] of ogeler.entries()) {
-          await db().query(kuyruk.SQL.ogeEkle, [id, i + 1, o.etiket, JSON.stringify(o.govde), o.butceSn, JSON.stringify(o.turler)]);
-        }
-        const h = await db().query(kuyruk.SQL.kuyrukHazir, [id]);
-        if (!h.rowCount) throw new Error('kuyruk hazır işaretlenemedi');
-      } catch (e) {
-        // Yarim kuyruk (hazir = 0) yurutucuye HIC gorunmez; HATALI olarak kapatilir.
-        await db().query(kuyruk.SQL.kuyrukYarim, [id, `oluşturma yarım kaldı: ${maskele(e && e.message).slice(0, 400)}`]).catch(() => {});
-        throw hata(424, 'db_okunamadi', `Kuyruk öğeleri yazılamadı; kuyruk başlatılmadı: ${maskele(e && e.message)}`);
-      }
-      try {
-        require('../audit/index.cjs').auditPortal(req, 'nginx_loadtest_kuyruk_olustur', {
-          targetHost: hedefBilgi.host || null, targetIp: hedefBilgi.ip || null,
-          detail: baslat.denetimAyrintisi({ id, ogeSayisi: ogeler.length, beklemeDk: g.beklemeDk, baslangic: iso(g.baslangic), enGecBitis: iso(g.enGecBitis), onaylananTurler: onayli.map((t) => t.kod), etiketler: ogeler.map((o) => o.etiket) }),
-        });
-      } catch {
-        /* best-effort */
-      }
-      res.json({ ok: true, id });
-    } catch (e) {
-      hataYaniti(req, res, e, 'nginx_loadtest_kuyruk_olustur', hedefBilgi);
-    }
-  });
-
-  // Iptal: sonraki ogeler baslamaz. Suren kosu DURDURULMAZ (yanitta `suren`; mevcut Durdur ile).
-  router.post('/kuyruklar/:id/iptal', async (req, res) => {
-    try {
-      adminSart(req);
-      const id = sayi(req.params.id);
-      if (!id) throw hata(400, 'gecersiz_istek', 'Geçersiz kuyruk numarası.');
-      const kim = String(kullanici(req).username || 'unknown').slice(0, 100);
-      const r = await dbOku((d) => d.query(kuyruk.SQL.kuyrukIptal, [id, kim]));
-      if (!r.rowCount) throw hata(409, 'kuyruk_bitti', 'Kuyruk zaten bitmiş ya da iptal edilmiş.');
-      await dbOku((d) => d.query(kuyruk.SQL.ogelerIptal, [id, `kuyruk iptal edildi (${kim})`]));
-      const { rows } = await dbOku((d) => d.query(kuyruk.SQL.calisanOge, [id]));
-      const c = rows[0];
-      const suren = c ? { ogeId: Number(c.id), etiket: c.etiket, kosuId: c.kosu_id == null ? null : Number(c.kosu_id), onKontrolKosuId: c.on_kontrol_kosu_id == null ? null : Number(c.on_kontrol_kosu_id) } : null;
-      try {
-        require('../audit/index.cjs').auditPortal(req, 'nginx_loadtest_kuyruk_iptal', { detail: baslat.denetimAyrintisi({ id, suren }) });
-      } catch {
-        /* best-effort */
-      }
-      res.json({ ok: true, suren });
-    } catch (e) {
-      hataYaniti(req, res, e);
-    }
-  });
-
-  // Sira: yalniz BEKLIYOR ogeler; liste kuyrugun BEKLIYOR ogelerinin TAM permutasyonu olmali (bu arada baslayan
-  // varsa 409; ekran yeniden okur).
-  router.put('/kuyruklar/:id/sira', async (req, res) => {
-    try {
-      adminSart(req);
-      const id = sayi(req.params.id);
-      if (!id) throw hata(400, 'gecersiz_istek', 'Geçersiz kuyruk numarası.');
-      const b = req.body && typeof req.body === 'object' ? req.body : {};
-      const liste = Array.isArray(b.sira) ? b.sira.map(sayi) : null;
-      if (!liste || !liste.length || liste.some((x) => !x) || new Set(liste).size !== liste.length || liste.length > kuyruk.MAX_OGE) {
-        throw hata(400, 'gecersiz_istek', 'sira: bekleyen öğe numaralarının listesi olmalı.');
-      }
-      const { rows } = await dbOku((d) => d.query(kuyruk.SQL.ogeListe, [id]));
-      const bekleyen = rows.filter((o) => o.durum === 'BEKLIYOR').map((o) => Number(o.id));
-      if (bekleyen.length !== liste.length || bekleyen.some((x) => !liste.includes(x))) {
-        throw hata(409, 'sira_eski', 'Bekleyen öğeler değişti (biri başlamış ya da çıkarılmış olabilir); listeyi yenileyip yeniden deneyin.');
-      }
-      const taban = Number(((await dbOku((d) => d.query(kuyruk.SIRA_TABAN_SQL, [id]))).rows[0] || {}).m) || 0;
-      const r = await dbOku((d) => d.query(kuyruk.siraSql(liste.length), [id, ...liste, taban]));
-      if (r.rowCount !== liste.length) throw hata(409, 'sira_eski', 'Bir öğe bu arada başladı; listeyi yenileyip yeniden deneyin.');
-      res.json({ ok: true });
-    } catch (e) {
-      hataYaniti(req, res, e);
-    }
-  });
-
-  router.post('/kuyruklar/:id/ogeler/:ogeId/cikar', async (req, res) => {
-    try {
-      adminSart(req);
-      const id = sayi(req.params.id);
-      const ogeId = sayi(req.params.ogeId);
-      if (!id || !ogeId) throw hata(400, 'gecersiz_istek', 'Geçersiz kuyruk / öğe numarası.');
-      const kim = String(kullanici(req).username || 'unknown').slice(0, 100);
-      const r = await dbOku((d) => d.query(kuyruk.SQL.ogeCikar, [id, ogeId, `kuyruktan çıkarıldı (${kim})`]));
-      if (!r.rowCount) throw hata(409, 'oge_basladi', 'Yalnız başlamamış (bekleyen) öğe çıkarılabilir.');
-      res.json({ ok: true });
-    } catch (e) {
-      hataYaniti(req, res, e);
-    }
-  });
-}
-
 // ── UCLAR ─────────────────────────────────────────────────────────────────────────────────
 
 function adminSart(req) {
@@ -1934,6 +1756,185 @@ function yonlendiriciKur() {
   });
 
   return router;
+}
+
+// Kuyruk uclari (2026-11-04 tasima): KIMLIK KAPISININ ALTINDA tanimli; RO1 bekcisi satir sirasina bakar.
+function kuyrukUclari(router) {
+  router.get('/kuyruklar', async (req, res) => {
+    try {
+      const { rows } = await dbOku((d) => d.query(kuyruk.SQL.kuyrukListe));
+      res.json({ ok: true, kuyruklar: rows.map(kuyruk.kuyrukApi) });
+    } catch (e) {
+      hataYaniti(req, res, e);
+    }
+  });
+
+  router.get('/kuyruklar/:id', async (req, res) => {
+    try {
+      const id = sayi(req.params.id);
+      if (!id) throw hata(400, 'gecersiz_istek', 'Geçersiz kuyruk numarası.');
+      const r = await kuyrukOkuApi(id);
+      if (!r) throw hata(409, 'kuyruk_yok', 'Kuyruk bulunamadı.');
+      res.json({ ok: true, ...r });
+    } catch (e) {
+      hataYaniti(req, res, e);
+    }
+  });
+
+  // Olusturma: her oge mevcut on kontrol govdesiyle dogrulanir ve plan kapilarindan GECER (gece YENIDEN gececek);
+  // tum ogeler TEK hedefe (onay metni bir kez); uyari turleri (plan + ogeye bagli on kontrol) tek tek onaylanir
+  // (409 uyari_onayi + uyariTurleri; istemci onaylananTurler ile yeniden gonderir).
+  router.post('/kuyruklar', async (req, res) => {
+    let hedefBilgi = null;
+    try {
+      adminSart(req);
+      const g = kuyruk.kuyrukGovdesi(req.body);
+      const kullaniciAdi = String(kullanici(req).username || 'unknown').slice(0, 100);
+      const ogeler = [];
+      const turHaritasi = new Map();
+      let onayHedefi = null;
+      let hedefTuru = null;
+      for (const [i, o] of g.ogeler.entries()) {
+        const no = i + 1;
+        let og;
+        let plan;
+        try {
+          og = onKontrolGovdesi({ ...o.govde, etiket: undefined });
+          plan = await kosuPlani({ ...og, etiket: null });
+        } catch (e) {
+          throw ogeNo(e, no);
+        }
+        const hedef = kuyruk.onayHedefiOf(plan);
+        if (onayHedefi == null) {
+          onayHedefi = hedef;
+          hedefTuru = plan.hedefTuru;
+          hedefBilgi = { host: plan.hedefHost, ip: plan.hedefIp };
+        } else if (hedef !== onayHedefi) {
+          throw hata(409, 'hedef_farkli', `Öğe ${no}: hedef (${hedef}) kuyruğun hedefinden (${onayHedefi}) farklı; bir kuyruk tek hedefe yük basar.`, { oge: no });
+        }
+        const metinler = [...plan.uyarilar];
+        if (o.onKontrolKosuId) metinler.push(...await ogeOnKontrolUyarilari(o.onKontrolKosuId, kullaniciAdi, onayHedefi, no));
+        const turler = kuyruk.uyariTurleri(metinler);
+        for (const t of turler) {
+          const x = turHaritasi.get(t.kod) || { ...t, ogeler: [] };
+          x.ogeler.push(no);
+          turHaritasi.set(t.kod, x);
+        }
+        ogeler.push({
+          etiket: o.etiket, butceSn: (Number(plan.parametreler.butceSn) + kuyruk.hazirlikPayiSn(plan.parametreler)) || null, turler,
+          govde: { senaryoId: og.senaryoId, hedefHost: og.hedefHost, hedefIp: og.hedefIp, vhost: og.vhost, yukHost: og.yukHost, sni: og.sni, parametreler: plan.parametreler },
+        });
+      }
+      if (!dg.onayMetniDogru(g.confirmText, onayHedefi)) {
+        throw hata(409, 'onay_metni', hedefTuru === 'serbest' ? `Onay için hedef IP'yi (${onayHedefi}) birebir yazın.` : `Onay için hedef sunucu adını (${onayHedefi}) birebir yazın.`);
+      }
+      // Ayni hedefe ikinci aktif kuyruk: dinlenme kuyruk basina sayildigindan iki kuyruk dinlenmesiz ard arda basardi.
+      const ayni = (await dbOku((d) => d.query(kuyruk.SQL.ayniHedefAktif, [onayHedefi]))).rows[0];
+      if (ayni) {
+        throw hata(409, 'kuyruk_var', `${onayHedefi} için kuyruk #${ayni.id} zaten aktif; bitmesini bekleyin ya da o kuyruğu İptal edin.`, { kuyrukId: Number(ayni.id) });
+      }
+      const turler = [...turHaritasi.values()];
+      if (turler.some((t) => !g.onaylananTurler.includes(t.kod))) {
+        throw hata(409, 'uyari_onayi', 'Kuyruğun uyarı türlerini okuyup tek tek onaylayın: gece yalnız bu türler kabul edilir, yeni bir tür çıkan öğe atlanır.', { uyariTurleri: turler });
+      }
+      const onayli = turler.map(({ kod, ornek }) => ({ kod, ornek }));
+      let id;
+      try {
+        const ins = await db().query(kuyruk.SQL.kuyrukEkle, [g.ad, g.beklemeDk, g.baslangic, g.enGecBitis, onayHedefi, hedefTuru, JSON.stringify(onayli), kullaniciAdi]);
+        id = Number(ins.rows && ins.rows[0] && ins.rows[0].id);
+        if (!(id > 0)) throw new Error('kuyruk numarası dönmedi');
+      } catch (e) {
+        throw hata(424, 'db_okunamadi', `Kuyruk yazılamadı: ${maskele(e && e.message)}`);
+      }
+      try {
+        for (const [i, o] of ogeler.entries()) {
+          await db().query(kuyruk.SQL.ogeEkle, [id, i + 1, o.etiket, JSON.stringify(o.govde), o.butceSn, JSON.stringify(o.turler)]);
+        }
+        const h = await db().query(kuyruk.SQL.kuyrukHazir, [id]);
+        if (!h.rowCount) throw new Error('kuyruk hazır işaretlenemedi');
+      } catch (e) {
+        // Yarim kuyruk (hazir = 0) yurutucuye HIC gorunmez; HATALI olarak kapatilir.
+        await db().query(kuyruk.SQL.kuyrukYarim, [id, `oluşturma yarım kaldı: ${maskele(e && e.message).slice(0, 400)}`]).catch(() => {});
+        throw hata(424, 'db_okunamadi', `Kuyruk öğeleri yazılamadı; kuyruk başlatılmadı: ${maskele(e && e.message)}`);
+      }
+      try {
+        require('../audit/index.cjs').auditPortal(req, 'nginx_loadtest_kuyruk_olustur', {
+          targetHost: hedefBilgi.host || null, targetIp: hedefBilgi.ip || null,
+          detail: baslat.denetimAyrintisi({ id, ogeSayisi: ogeler.length, beklemeDk: g.beklemeDk, baslangic: iso(g.baslangic), enGecBitis: iso(g.enGecBitis), onaylananTurler: onayli.map((t) => t.kod), etiketler: ogeler.map((o) => o.etiket) }),
+        });
+      } catch {
+        /* best-effort */
+      }
+      res.json({ ok: true, id });
+    } catch (e) {
+      hataYaniti(req, res, e, 'nginx_loadtest_kuyruk_olustur', hedefBilgi);
+    }
+  });
+
+  // Iptal: sonraki ogeler baslamaz. Suren kosu DURDURULMAZ (yanitta `suren`; mevcut Durdur ile).
+  router.post('/kuyruklar/:id/iptal', async (req, res) => {
+    try {
+      adminSart(req);
+      const id = sayi(req.params.id);
+      if (!id) throw hata(400, 'gecersiz_istek', 'Geçersiz kuyruk numarası.');
+      const kim = String(kullanici(req).username || 'unknown').slice(0, 100);
+      const r = await dbOku((d) => d.query(kuyruk.SQL.kuyrukIptal, [id, kim]));
+      if (!r.rowCount) throw hata(409, 'kuyruk_bitti', 'Kuyruk zaten bitmiş ya da iptal edilmiş.');
+      await dbOku((d) => d.query(kuyruk.SQL.ogelerIptal, [id, `kuyruk iptal edildi (${kim})`]));
+      const { rows } = await dbOku((d) => d.query(kuyruk.SQL.calisanOge, [id]));
+      const c = rows[0];
+      const suren = c ? { ogeId: Number(c.id), etiket: c.etiket, kosuId: c.kosu_id == null ? null : Number(c.kosu_id), onKontrolKosuId: c.on_kontrol_kosu_id == null ? null : Number(c.on_kontrol_kosu_id) } : null;
+      try {
+        require('../audit/index.cjs').auditPortal(req, 'nginx_loadtest_kuyruk_iptal', { detail: baslat.denetimAyrintisi({ id, suren }) });
+      } catch {
+        /* best-effort */
+      }
+      res.json({ ok: true, suren });
+    } catch (e) {
+      hataYaniti(req, res, e);
+    }
+  });
+
+  // Sira: yalniz BEKLIYOR ogeler; liste kuyrugun BEKLIYOR ogelerinin TAM permutasyonu olmali (bu arada baslayan
+  // varsa 409; ekran yeniden okur).
+  router.put('/kuyruklar/:id/sira', async (req, res) => {
+    try {
+      adminSart(req);
+      const id = sayi(req.params.id);
+      if (!id) throw hata(400, 'gecersiz_istek', 'Geçersiz kuyruk numarası.');
+      const b = req.body && typeof req.body === 'object' ? req.body : {};
+      const liste = Array.isArray(b.sira) ? b.sira.map(sayi) : null;
+      if (!liste || !liste.length || liste.some((x) => !x) || new Set(liste).size !== liste.length || liste.length > kuyruk.MAX_OGE) {
+        throw hata(400, 'gecersiz_istek', 'sira: bekleyen öğe numaralarının listesi olmalı.');
+      }
+      const { rows } = await dbOku((d) => d.query(kuyruk.SQL.ogeListe, [id]));
+      const bekleyen = rows.filter((o) => o.durum === 'BEKLIYOR').map((o) => Number(o.id));
+      if (bekleyen.length !== liste.length || bekleyen.some((x) => !liste.includes(x))) {
+        throw hata(409, 'sira_eski', 'Bekleyen öğeler değişti (biri başlamış ya da çıkarılmış olabilir); listeyi yenileyip yeniden deneyin.');
+      }
+      const taban = Number(((await dbOku((d) => d.query(kuyruk.SIRA_TABAN_SQL, [id]))).rows[0] || {}).m) || 0;
+      const r = await dbOku((d) => d.query(kuyruk.siraSql(liste.length), [id, ...liste, taban]));
+      if (r.rowCount !== liste.length) throw hata(409, 'sira_eski', 'Bir öğe bu arada başladı; listeyi yenileyip yeniden deneyin.');
+      res.json({ ok: true });
+    } catch (e) {
+      hataYaniti(req, res, e);
+    }
+  });
+
+  router.post('/kuyruklar/:id/ogeler/:ogeId/cikar', async (req, res) => {
+    try {
+      adminSart(req);
+      const id = sayi(req.params.id);
+      const ogeId = sayi(req.params.ogeId);
+      if (!id || !ogeId) throw hata(400, 'gecersiz_istek', 'Geçersiz kuyruk / öğe numarası.');
+      const kim = String(kullanici(req).username || 'unknown').slice(0, 100);
+      const r = await dbOku((d) => d.query(kuyruk.SQL.ogeCikar, [id, ogeId, `kuyruktan çıkarıldı (${kim})`]));
+      if (!r.rowCount) throw hata(409, 'oge_basladi', 'Yalnız başlamamış (bekleyen) öğe çıkarılabilir.');
+      res.json({ ok: true });
+    } catch (e) {
+      hataYaniti(req, res, e);
+    }
+  });
 }
 
 function initNginxLoadtest(app) {
