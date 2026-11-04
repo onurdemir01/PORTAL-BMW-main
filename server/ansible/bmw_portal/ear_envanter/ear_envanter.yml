@@ -1,0 +1,163 @@
+---
+# ear_envanter.yml — Portal > Server Hub > Uygulama Envanteri: /vhosting ve /vhosting8 altindaki
+# EAR/WAR uygulamalarini SALT OKUNUR tarar (teknoloji, surum, JSP/TLD/JAR sayilari, istenirse
+# ls -lrtiR benzeri agac). Sonuc host basina tek dosya olarak GBLABT02 uzerinden /sw'ye yazilir;
+# Portal ayni mount'u okuyup DB'ye alir. Ayrinti: README.md.
+#
+# extra_vars (Portal gonderir):
+#   hedefler:              ["APPSRV01", "APPSRV02"]  (zorunlu; bir PARTI, en cok ear_parti_siniri)
+#   ear_kip:               OZET | TAM               (OZET: dosya basina stat yok; TAM: + agac)
+#   ear_kosu_no:           12                       (Portal kosu numarasi; dizin adi)
+#   ear_parti_no:          3                        (Portal parti numarasi)
+#   ear_dizin:             /sw/BMW_PORTAL/ear_envanter
+#   ear_okuma_kullanicisi: was                      (dzdo ile; bos -> become YOK)
+#   ear_kokler:            "/vhosting:/vhosting8"
+#   ear_sure:              300   (betik ici yumusak butce, sn)
+#   ear_zaman_asimi:       600   (Ansible gorev zaman asimi, sn: kesin sinir)
+#   ear_sinir_uygulama:    25000 / ear_sinir_host: 200000 / ear_arsiv_mb: 64
+#   requester:             kullanici adi (gunluk)
+#
+# HEDEFTE NE CALISIR: tek `raw` gorevi. Yorumlayici aranir (python3, yoksa RHEL 8
+# platform-python), betik files/ear_tara.py ACIK METIN olarak heredoc ile stdin'den verilir
+# (`python3 -B -`): hedefe dosya kopyalanmaz, modul gonderilmez, bytecode yazilmaz.
+# Betik dosya icerigi okumaz (yalniz zip arsivlerinin merkez dizini), hicbir sey yazmaz/silmez.
+#
+# NEDEN add_host: AWX `limit` yalniz template'te "prompt on launch" aciksa calisir - host secimi
+# playbook icinde yapilir (nginx_console_fetch ile ayni desen).
+# NEDEN GBLABT02: /sw mount orada; hedeflerde /sw yok. throttle 6: sshd MaxSessions (10).
+# AWX template: Variables "prompt on launch" ACIK, Forks 50.
+
+- name: "--- [Play] Girdi, hedefler ve cikti dizini ---"
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - name: "--- [Task] Girdi dogrulama ---"
+      ansible.builtin.assert:
+        that:
+          - hedefler is defined
+          - hedefler is sequence
+          - hedefler is not string
+          - (hedefler | length) > 0
+          - (hedefler | length) <= (ear_parti_siniri | default(100) | int)
+          - (hedefler | select('match', '^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$') | list | length) == (hedefler | length)
+          - (ear_kip | default('OZET')) in ['OZET', 'TAM']
+          - (ear_kosu_no | default('') | string) is match('^[0-9]{1,9}$')
+          - (ear_parti_no | default('') | string) is match('^[0-9]{1,6}$')
+          - (ear_okuma_kullanicisi | default('was') | string) is match('^([a-z_][a-z0-9_-]{0,31})?$')
+          - (ear_kokler | default('/vhosting:/vhosting8')) is match('^(/[A-Za-z0-9._/-]+)(:/[A-Za-z0-9._/-]+)*$')
+          - (ear_dizin | default('/sw/BMW_PORTAL/ear_envanter')) is match('^/[A-Za-z0-9_][A-Za-z0-9._/-]*$')
+          - "'..' not in (ear_dizin | default('/sw/BMW_PORTAL/ear_envanter'))"
+        fail_msg: "Gecersiz girdi: hedefler / ear_kip / ear_kosu_no / ear_parti_no / ear_okuma_kullanicisi / ear_kokler / ear_dizin"
+
+    - name: "--- [Task] Hedefleri ekle ---"
+      ansible.builtin.add_host:
+        name: "{{ item | upper }}"
+        groups: ear_hedefler
+      loop: "{{ hedefler }}"
+      changed_when: false
+
+    - name: "--- [Task] Cikti dizini (GBLABT02) ---"
+      ansible.builtin.file:
+        path: "{{ ear_dizin | default('/sw/BMW_PORTAL/ear_envanter') }}/kosu-{{ ear_kosu_no }}/raw"
+        state: directory
+        mode: '0775'
+      delegate_to: "{{ ear_yazici_host | default('GBLABT02') }}"
+
+- name: "--- [Play] Salt okunur tarama ---"
+  hosts: ear_hedefler
+  gather_facts: no
+  ignore_unreachable: true
+  strategy: free
+  vars:
+    ear_okuyan: "{{ ear_okuma_kullanicisi | default('was') }}"
+    ear_cikti_dosyasi: "{{ ear_dizin | default('/sw/BMW_PORTAL/ear_envanter') }}/kosu-{{ ear_kosu_no }}/raw/{{ inventory_hostname | upper }}.out"
+  tasks:
+    # TUZAK 3 (playbook-jinja-traps): tum hostlar dusse de toplayici play'e ulasilmali; yoksa
+    # set_stats HIC yayinlanmaz. Kopya no_log altinda (icerik AWX olayina yazilmasin) oldugu icin
+    # sebep sansurlenir; durum asamadan cikarilir: paket alindiysa YAZILAMADI, degilse HATA.
+    - name: "--- [Block] Tarama ---"
+      block:
+        - name: "--- [Task] Tara (salt okunur; hedefe dosya yazilmaz) ---"
+          become: "{{ (ear_okuyan | length) > 0 }}"
+          become_method: dzdo
+          become_user: "{{ ear_okuyan if (ear_okuyan | length) > 0 else omit }}"
+          ansible.builtin.raw: |
+            P=""; for c in python3 /usr/libexec/platform-python; do command -v "$c" >/dev/null 2>&1 && { P="$c"; break; }; done
+            [ -n "$P" ] || { echo "@@EAR_PYTHON_YOK@@"; exit 0; }
+            EAR_KIP={{ ear_kip | default('OZET') | quote }} EAR_KOKLER={{ ear_kokler | default('/vhosting:/vhosting8') | quote }} EAR_SURE={{ ear_sure | default(300) | int }} EAR_SINIR_UYGULAMA={{ ear_sinir_uygulama | default(25000) | int }} EAR_SINIR_HOST={{ ear_sinir_host | default(200000) | int }} EAR_ARSIV_MB={{ ear_arsiv_mb | default(64) | int }} LC_ALL=C PYTHONIOENCODING=utf-8:surrogateescape "$P" -B - <<'EAR_TARA_SON'
+            {{ lookup('ansible.builtin.file', 'files/ear_tara.py') }}
+            EAR_TARA_SON
+          register: ear_tarama
+          timeout: "{{ ear_zaman_asimi | default(600) | int }}"
+          changed_when: false
+          failed_when: false
+          no_log: true
+
+        - name: "--- [Task] Sonucu siniflandir ---"
+          ansible.builtin.set_fact:
+            ear_ozet:
+              host: "{{ inventory_hostname | upper }}"
+              paket: "{{ '@@EAR_ENVANTER_BITTI@@' in (ear_tarama.stdout | default('')) }}"
+              durum: >-
+                {{ 'ULASILAMADI' if (ear_tarama.unreachable | default(false) | bool)
+                   else 'SONUC' if '@@EAR_ENVANTER_BITTI@@' in (ear_tarama.stdout | default(''))
+                   else 'PYTHON_YOK' if '@@EAR_PYTHON_YOK@@' in (ear_tarama.stdout | default(''))
+                   else 'ZAMAN_ASIMI' if ('timed out' in (ear_tarama.msg | default('') | lower) or 'timeout' in (ear_tarama.msg | default('') | lower))
+                   else 'KIMLIK_GECISI_YOK' if ('dzdo' in ((ear_tarama.msg | default('')) ~ (ear_tarama.stderr | default('')) ~ (ear_tarama.module_stderr | default(''))) | lower)
+                   else 'HATA' }}
+              rc: "{{ ear_tarama.rc | default(-1) }}"
+              bayt: "{{ ear_tarama.stdout | default('') | length }}"
+              hata: "{{ ((ear_tarama.msg | default('')) ~ ' ' ~ (ear_tarama.stderr | default(''))) | trim | truncate(300, true, '') }}"
+          no_log: true
+
+        - name: "--- [Task] /sw'ye yaz (GBLABT02 uzerinden) ---"
+          ansible.builtin.copy:
+            content: "{{ ear_tarama.stdout }}"
+            dest: "{{ ear_cikti_dosyasi }}"
+            mode: '0644'
+          delegate_to: "{{ ear_yazici_host | default('GBLABT02') }}"
+          throttle: 6
+          when: ear_ozet.paket | bool
+          no_log: true
+      rescue:
+        - name: "--- [Task] Hata kaydi ---"
+          ansible.builtin.set_fact:
+            ear_ozet:
+              host: "{{ inventory_hostname | upper }}"
+              paket: false
+              durum: "{{ 'YAZILAMADI' if (ear_ozet is defined and (ear_ozet.paket | default(false) | bool)) else 'HATA' }}"
+              rc: -1
+              bayt: 0
+              hata: "{{ (ansible_failed_result.msg | default('tarama sirasinda hata')) | truncate(300, true, '') }}"
+
+- name: "--- [Play] Toplayici ---"
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    # Ulasilamayan host'ta ear_ozet HIC yok -> ULASILAMADI.
+    - name: "--- [Task] Sonuc listesi ---"
+      ansible.builtin.set_fact:
+        ear_sonuclar: >-
+          {{ (ear_sonuclar | default([])) + [ hostvars[item].ear_ozet | default({
+               'host': item | upper, 'paket': false, 'durum': 'ULASILAMADI', 'rc': -1, 'bayt': 0, 'hata': 'unreachable' }) ] }}
+      loop: "{{ groups['ear_hedefler'] | default([]) }}"
+      loop_control:
+        label: "{{ item }}"
+
+    - name: "--- [Task] set_stats ---"
+      ansible.builtin.set_stats:
+        data:
+          ear_envanter_result:
+            kosu_no: "{{ ear_kosu_no | int }}"
+            parti_no: "{{ ear_parti_no | int }}"
+            kip: "{{ ear_kip | default('OZET') }}"
+            # Portal bekledigi surumle karsilastirir: uyusmazsa "AWX'teki kopya eski" der.
+            playbook_surum: 1
+            beklenen: "{{ hedefler | length }}"
+            sonuc_alinan: "{{ ear_sonuclar | default([]) | selectattr('paket') | list | length }}"
+            hostlar: "{{ ear_sonuclar | default([]) }}"
+
+    - name: "--- [Task] Hic sonuc yoksa basarisiz ---"
+      ansible.builtin.fail:
+        msg: "Hicbir sunucudan envanter alinamadi. Sonuclar: {{ ear_sonuclar | default([]) | map(attribute='durum') | list }}"
+      when: (ear_sonuclar | default([]) | selectattr('paket') | list | length) == 0
