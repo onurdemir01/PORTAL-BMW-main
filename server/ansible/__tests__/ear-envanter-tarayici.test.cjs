@@ -393,7 +393,7 @@ test(
     assert.equal(yorum.status, 0, String(yorum.stderr));
     const sahteSonuc = tara([path.dirname(sahte)], { EAR_KIP: 'TAM', EAR_SINIR_UYGULAMA: '100' });
     const su = uyg(sahteSonuc, 'SAHTE-EOCD.ear');
-    assert.equal(su.durum, 'KISMI_SINIR');
+    assert.equal(su.durum, 'ARSIV_ACILMADI');
     assert.equal(su.giris, 0);
     assert.equal(sahteSonuc.durum, 'KISMI');
 
@@ -516,8 +516,24 @@ test(
     assert.equal(zip64Yaz.status, 0, String(zip64Yaz.stderr));
     const zip64Sonuc = tara([path.dirname(zip64)], { EAR_KIP: 'TAM', EAR_SINIR_UYGULAMA: '100' });
     const zu = uyg(zip64Sonuc, 'ZIP64.ear');
-    assert.equal(zu.durum, 'KISMI_SINIR');
+    assert.equal(zu.durum, 'ARSIV_ACILMADI');
     assert.equal(zu.giris, 0);
+
+    // Bozuk outer/direct/nested arsiv, kaynak siniri gibi degil ARSIV_ACILMADI raporlanir.
+    const bozukKok = path.join(kok, 'bozuk');
+    fs.mkdirSync(path.join(bozukKok, 'DIRECT.ear'), { recursive: true });
+    fs.writeFileSync(path.join(bozukKok, 'BAD.ear'), 'not-a-zip');
+    fs.writeFileSync(path.join(bozukKok, 'DIRECT.ear', 'BAD.war'), 'not-a-zip');
+    const nestedBad = path.join(kok, 'bozuk', 'NESTED.ear');
+    zipYaz(nestedBad, [['BAD.war', 'not-a-zip']]);
+    const bozuk = tara([bozukKok], { EAR_KIP: 'TAM' });
+    assert.equal(uyg(bozuk, 'BAD.ear').durum, 'ARSIV_ACILMADI');
+    const directBad = uyg(bozuk, 'DIRECT.ear');
+    assert.equal(directBad.durum, 'ARSIV_ACILMADI');
+    assert.equal(directBad.warlar[0].durum, 'ARSIV_ACILMADI');
+    const nestedBadU = uyg(bozuk, 'NESTED.ear');
+    assert.equal(nestedBadU.durum, 'ARSIV_ACILMADI');
+    assert.equal(nestedBadU.warlar[0].durum, 'ARSIV_ACILMADI');
   },
 );
 

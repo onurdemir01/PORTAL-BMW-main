@@ -254,7 +254,9 @@ def zip_girisleri(kaynak, tavan):
     merkez_giris = zip_merkez_giris_sayisi(kaynak, max(0, tavan))
     if merkez_giris == -2:
         return None, 'KISMI_ZAMAN'
-    if merkez_giris is None or merkez_giris < 0 or merkez_giris > max(0, tavan):
+    if merkez_giris is None or merkez_giris < 0:
+        return None, 'ARSIV_ACILMADI'
+    if merkez_giris > max(0, tavan):
         return None, 'KISMI_SINIR'
     if sure_doldu():
         return None, 'KISMI_ZAMAN'
@@ -404,7 +406,10 @@ def arsiv_uygulama(u, tam):
             if merkez_giris == -2 or sure_doldu():
                 uyar(u, 'sure butcesi doldu', 'KISMI_ZAMAN')
                 return yapi, kutuphane
-            if merkez_giris is None or merkez_giris < 0 or merkez_giris > max(0, kalan):
+            if merkez_giris is None or merkez_giris < 0:
+                uyar(u, 'arsiv merkez dizini gecersiz', 'ARSIV_ACILMADI')
+                return yapi, kutuphane
+            if merkez_giris > max(0, kalan):
                 uyar(u, 'arsiv merkez dizini giris siniri', 'KISMI_SINIR')
                 return yapi, kutuphane
             akis.seek(0, os.SEEK_SET)
