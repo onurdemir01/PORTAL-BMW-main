@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
 # ear_tara.py - BMW Portal > Server Hub > Uygulama Envanteri: SALT OKUNUR EAR/WAR tarayicisi.
 #
-# Hedefte Ansible `raw` ile `python3 -B -` olarak STDIN'den calisir: hedefe dosya yazilmaz,
+# Hedefte Ansible 'raw' ile 'python3 -B -' olarak STDIN'den calisir: hedefe dosya yazilmaz,
 # bytecode birakilmaz, yalniz stdout'a tek blok basilir. Yalniz stdlib; Python 3.6+
 # (RHEL 8 platform-python 3.6, RHEL 9 3.9).
 #
 # YAPMADIKLARI: dosya icerigi okumaz (yalniz zip arsivlerinin MERKEZ DIZINI, salt okunur), dosya
 # yazmaz / silmez / izin degistirmez, uygulama ICINDE sembolik bag izlemez (yalniz kokteki
-# `APP.ear -> surum dizini` bagi tek adim izlenir ve kayda yazilir), NSS sorgusu yapmaz
+# 'APP.ear -> surum dizini' bagi tek adim izlenir ve kayda yazilir), NSS sorgusu yapmaz
 # (uid/gid sayisal).
 #
 # KIPLER: OZET - dosya basina stat YOK (scandir ad + tip), yalniz kutuphane jar'larinin boyutu;
@@ -125,7 +125,7 @@ def uyar(u, metin, durum=None):
 
 
 def say(u, war, ad, war_rel, tip, boyut):
-    """Dosya adina gore sayim ve teknoloji tespiti. `ad` OZGUN harflerle (surum metni korunur),
+    """Dosya adina gore sayim ve teknoloji tespiti. 'ad' OZGUN harflerle (surum metni korunur),
     war_rel WAR kokune goreli yol (kucuk harf, yalniz yol karsilastirmasi icin)."""
     ad_kucuk = ad.lower()
     if tip == 'D':
@@ -305,7 +305,7 @@ def acik_uygulama(u, tam):
 
 
 def arsiv_uygulama(u, tam):
-    """`.ear` arsiv dosyasi: merkez dizin; ic WAR'lar yalniz TAM kipte ve boyut sinirinin altinda acilir."""
+    """'.ear' arsiv dosyasi: merkez dizin; ic WAR'lar yalniz TAM kipte ve boyut sinirinin altinda acilir."""
     yapi, kutuphane = Iz(), Iz()
     try:
         with zipfile.ZipFile(tam, 'r') as z:

@@ -6,16 +6,20 @@
 //        web.<ortam>.xml varyantlari; surum metni OZGUN harflerle (3.1.5.RELEASE)
 //   ET2  acilmis EAR icindeki PAKETLI .war: merkez dizinden listelenir, WAR sayilir
 //   ET3  .ear ARSIVI: OZET'te ic WAR acilmaz -> ARSIV_ACILMADI, host KISMI; TAM'da acilir -> TAM
-//   ET4  giris siniri: uygulama + WAR KISMI_SINIR, host KISMI (kesik tarama ASLA TAM degil)
+//   ET4  giris siniri: uygulama + WAR KISMI_SINIR, host KISMI (kesik tarama ASLA TAM degil);
+//        paketli WAR'in merkez dizini sinirda kesilirse de WAR KISMI_SINIR
 //   ET5  kok yok -> KOK_YOK; tek kok yoksa ve gerisi temizse TAM
 //   ET6  izin reddi -> uygulama + WAR KISMI_IZIN, host KISMI
 //   ET7  kokteki bag tek adim izlenir (BAG); uygulama icindeki bag/dongu izlenmez; kokun kendisini
 //        gosteren bag reddedilir
 //   ET8  SALT OKUNUR: tarama oncesi/sonrasi mod, boyut, mtime, inode, ctime, icerik ayni; yeni dosya yok
-//   ET9  kaynak: Python 3.6 sozdizimi, Jinja isareti / heredoc sonu yok, yazan / silen cagri yok
+//   ET9  kaynak: Python 3.6 sozdizimi, Jinja isareti / heredoc sonu / ters tirnak / $( yok,
+//        yazan / silen cagri yok
 //   ET10 TAM satirlari ve izler: satir sayisi = giris; log degisimi yapi izini bozmaz, sinif ekleme
 //        bozar; jar surumu kutuphane izini degistirir
 //   ET11 insan kipi Turkce dosya adini kirmadan basar
+//   ET12 kaynak AST: modul nitelikleri IZIN listesinde (yasak listesi yeni cagriyi kacirir),
+//        zipfile.ZipFile yalniz 'r' kipinde, yazma yalniz stdout'a
 'use strict';
 
 const { test } = require('node:test');
@@ -289,6 +293,20 @@ test(
       'sinir uygulama basina; komsu uygulama etkilenmez',
     );
     assert.equal(yuk.durum, 'KISMI', 'eksik uygulama varken host TAM gorunmemeli');
+
+    // Paketli WAR ayni kurala uyar: merkez dizin sinirda kesilirse WAR TAM kalmaz.
+    zipYaz(
+      path.join(kok, 'vhosting8', 'PAKETBUYUK.ear', 'PAKETBUYUK.war'),
+      Array.from({ length: 150 }, (_, i) => [`WEB-INF/classes/C${i}.class`, 'x']),
+    );
+    const yuk8 = tara([path.join(kok, 'vhosting8')], {
+      EAR_KIP: 'OZET',
+      EAR_SINIR_UYGULAMA: '100',
+    });
+    const p = uyg(yuk8, 'PAKETBUYUK.ear');
+    assert.equal(p.warlar[0].bicim, 'ARSIV');
+    assert.equal(p.warlar[0].durum, 'KISMI_SINIR', 'kesik paketli WAR TAM gorunmemeli');
+    assert.equal(p.durum, 'KISMI_SINIR');
   },
 );
 
@@ -414,7 +432,90 @@ test(
       yazanlar.length > 0 && yazanlar.every((s) => /sys\.stdout\.(buffer\.)?write\(/.test(s)),
       `stdout disinda yazma: ${yazanlar.join(' | ')}`,
     );
-    assert.match(kod, /zipfile\.ZipFile\([^)]*'r'\)/, 'arsivler yalniz okuma kipinde acilmali');
+    // Tirnaksiz heredoc'a donulse bile hedef kabukta komut calismasin (mutasyonda ters tirnakli
+    // yorum gercekten bir dosya yaratti).
+    for (const kotu of ['`', '$('])
+      assert.ok(!KAYNAK.includes(kotu), `betikte '${kotu}' var (kabuk yerine koyma)`);
+  },
+);
+
+// ET9'un metin listesi bir YASAK listesi: listede olmayan her yazan cagri (pathlib, os.symlink,
+// ZipFile(..., 'a') ...) gecerdi. Bu yuzden AST ile IZIN listesi: modul nitelikleri yalniz
+// asagidakiler. Yeni bir nitelik gerekiyorsa once salt okunur oldugunu dogrula, sonra ekle.
+const AST_DENETIM = `
+import ast, json, sys
+IZIN = {
+    'os': {'environ', 'getuid', 'lstat', 'path', 'readlink', 'scandir'},
+    'os.path': {'isdir', 'isfile', 'join', 'realpath'},
+    'sys': {'stdout', 'version'},
+    'socket': {'gethostname'},
+    'zipfile': {'ZipFile', 'BadZipFile'},
+    'io': {'BytesIO'},
+    'time': {'gmtime', 'mktime', 'monotonic', 'strftime'},
+    'hashlib': {'sha256'},
+    'base64': {'b64encode'},
+    'zlib': {'compress'},
+    'json': {'dumps'},
+    're': {'I', 'compile'},
+    'stat': {'filemode'},
+}
+IZINLI_FROM = {'collections': {'deque'}}
+YASAK_AD = {'open', '__import__', 'eval', 'exec', 'compile', 'getattr', 'setattr', 'globals', 'vars'}
+YASAK_NITELIK = {'write_text', 'write_bytes', 'touch', 'mkdir', 'makedirs', 'unlink', 'rmdir',
+                 'symlink_to', 'chmod', 'chown', 'extract', 'extractall', 'writestr', 'truncate'}
+
+def nokta(n):
+    if isinstance(n, ast.Name):
+        return n.id
+    if isinstance(n, ast.Attribute):
+        on = nokta(n.value)
+        return on + '.' + n.attr if on else None
+    return None
+
+def sabit(n):
+    return getattr(n, 'value', getattr(n, 's', None))
+
+agac = ast.parse(sys.stdin.read())
+ihlal, zip_sayisi, nitelik_sayisi = [], 0, 0
+for n in ast.walk(agac):
+    if isinstance(n, ast.Import):
+        ihlal += ['import ' + a.name for a in n.names if a.name not in IZIN]
+    elif isinstance(n, ast.ImportFrom):
+        ihlal += ['from %s import %s' % (n.module, a.name) for a in n.names
+                  if a.name not in IZINLI_FROM.get(n.module, set())]
+    elif isinstance(n, ast.Attribute):
+        on = nokta(n.value)
+        if on in IZIN:
+            nitelik_sayisi += 1
+            if n.attr not in IZIN[on]:
+                ihlal.append(on + '.' + n.attr)
+        if n.attr in YASAK_NITELIK:
+            ihlal.append('.' + n.attr)
+        if n.attr == 'write' and nokta(n.value) not in ('sys.stdout', 'sys.stdout.buffer'):
+            ihlal.append(str(nokta(n.value)) + '.write')
+    elif isinstance(n, ast.Call):
+        if isinstance(n.func, ast.Name) and n.func.id in YASAK_AD:
+            ihlal.append(n.func.id + '()')
+        if nokta(n.func) == 'zipfile.ZipFile':
+            zip_sayisi += 1
+            kip = [sabit(n.args[1])] if len(n.args) > 1 else []
+            kip += [sabit(k.value) for k in n.keywords if k.arg == 'mode']
+            if kip != ['r']:
+                ihlal.append('zipfile.ZipFile kip=%r' % (kip,))
+print(json.dumps({'ihlal': ihlal, 'zip': zip_sayisi, 'nitelik': nitelik_sayisi}))
+`;
+
+test(
+  'ET12 kaynak AST: modul nitelikleri izin listesinde; arsivler yalniz r kipinde',
+  { skip: SKIP },
+  () => {
+    const r = spawnSync(PY.komut, [...PY.on, '-c', AST_DENETIM], { input: KAYNAK });
+    assert.equal(r.status, 0, String(r.stderr).slice(-400));
+    const s = JSON.parse(String(r.stdout));
+    // Korluk: denetci hicbir sey gormezse (ornegin ayristirma degisirse) yesil kalmasin.
+    assert.ok(s.zip >= 2, `ZipFile cagrisi bulunamadi (${s.zip}); denetim kor`);
+    assert.ok(s.nitelik >= 20, `modul niteligi bulunamadi (${s.nitelik}); denetim kor`);
+    assert.deepEqual(s.ihlal, [], `salt okunur betikte izin disi kullanim: ${s.ihlal.join(', ')}`);
   },
 );
 
