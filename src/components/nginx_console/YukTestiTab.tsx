@@ -22,9 +22,10 @@
 // Kosu silme (2026-11-04): ayrintida "Sil", listede coklu secim + "Seçilenleri sil" (Admin ya da kaydi baslatan kisi;
 // `kullaniciAdi` yalniz dugmeyi gostermek icin, karar sunucuda). Silinen kosu coklu karsilastirma adresinde kalmissa
 // o ekran "silinmiş koşu çıkarıldı" der; gece kuyrugu ayrintisi "silindi" gosterir.
+// Toplu rapor (2026-11-04): "Toplu rapor" alt gorunumu (herkese okunur); `yt=rapor` + kuyruk= ya da kosular= ile URL'de.
 import React, { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { BeakerIcon, ChartBarSquareIcon, DocumentTextIcon, PlayCircleIcon, ArrowsRightLeftIcon, WrenchScrewdriverIcon, MoonIcon, Squares2X2Icon } from '@heroicons/react/24/outline';
+import { BeakerIcon, ChartBarSquareIcon, DocumentTextIcon, PlayCircleIcon, ArrowsRightLeftIcon, WrenchScrewdriverIcon, MoonIcon, Squares2X2Icon, TableCellsIcon } from '@heroicons/react/24/outline';
 import KosuListesi from './yukTesti/KosuListesi';
 import KosuAyrinti from './yukTesti/KosuAyrinti';
 import YeniKosu from './yukTesti/YeniKosu';
@@ -32,11 +33,13 @@ import Senaryolar from './yukTesti/Senaryolar';
 import Karsilastir from './yukTesti/Karsilastir';
 import CokluKarsilastir, { type KuyrukNotu } from './yukTesti/CokluKarsilastir';
 import { MAX_COKLU, urlDurumuOku, urlDurumuYaz } from './yukTesti/cokluKarsilastirma';
+import TopluRapor from './yukTesti/TopluRapor';
+import { urlDurumuOku as raporUrlOku, urlDurumuYaz as raporUrlYaz, type RaporUrl } from './yukTesti/topluRaporOrtak';
 import Araclar from './yukTesti/Araclar';
 import GeceKuyrugu from './yukTesti/GeceKuyrugu';
 import { taslakOku, taslakYaz, type TaslakOge } from './yukTesti/kuyrukTaslak';
 
-type Gorunum = 'kosular' | 'yeni' | 'kuyruk' | 'senaryolar' | 'karsilastir' | 'coklu' | 'araclar';
+type Gorunum = 'kosular' | 'yeni' | 'kuyruk' | 'senaryolar' | 'karsilastir' | 'coklu' | 'rapor' | 'araclar';
 const GORUNUMLER: { id: Gorunum; ad: string; ikon: React.ComponentType<React.SVGProps<SVGSVGElement>>; yalnizAdmin?: boolean }[] = [
   { id: 'kosular', ad: 'Koşular', ikon: ChartBarSquareIcon },
   { id: 'yeni', ad: 'Yeni koşu', ikon: PlayCircleIcon, yalnizAdmin: true },
@@ -44,13 +47,14 @@ const GORUNUMLER: { id: Gorunum; ad: string; ikon: React.ComponentType<React.SVG
   { id: 'senaryolar', ad: 'Senaryolar', ikon: DocumentTextIcon },
   { id: 'karsilastir', ad: 'Karşılaştır', ikon: ArrowsRightLeftIcon },
   { id: 'coklu', ad: 'Çoklu karşılaştırma', ikon: Squares2X2Icon },
+  { id: 'rapor', ad: 'Toplu rapor', ikon: TableCellsIcon },
   { id: 'araclar', ad: 'Araçlar', ikon: WrenchScrewdriverIcon },
 ];
 
 export function YukTestiTab({ isAdmin, kullaniciAdi = null }: { isAdmin: boolean; kullaniciAdi?: string | null }) {
   const [sp, setSp] = useSearchParams();
   // Paylasilan / yenilenen coklu karsilastirma baglantisi dogrudan o gorunumde acilir.
-  const [gorunum, setGorunumDurum] = useState<Gorunum>(() => (sp.get('yt') === 'coklu' ? 'coklu' : 'kosular'));
+  const [gorunum, setGorunumDurum] = useState<Gorunum>(() => (sp.get('yt') === 'coklu' ? 'coklu' : sp.get('yt') === 'rapor' ? 'rapor' : 'kosular'));
   // "Hepsini karşılaştır" 16'dan fazla biten koşu getirdiyse disarida kalanlar (ekran soyler; sessizce dusmez).
   const [kuyrukNotu, setKuyrukNotu] = useState<KuyrukNotu | null>(null);
   const setGorunum = (g: Gorunum) => {
@@ -59,6 +63,14 @@ export function YukTestiTab({ isAdmin, kullaniciAdi = null }: { isAdmin: boolean
     // Coklu disina cikinca yt kalkar (secim parametreleri kalir: geri donuste ayni secim).
     if (g !== 'coklu' && sp.get('yt') === 'coklu') setSp((o) => { const n = new URLSearchParams(o); n.delete('yt'); return n; }, { replace: true });
     if (g === 'coklu' && sp.get('yt') !== 'coklu') setSp((o) => urlDurumuYaz(o, urlDurumuOku(o)), { replace: true });
+    // Rapor disina cikinca yt ve kuyruk kalkar (kosular kalir: coklu ile ortak secim).
+    if (g !== 'rapor' && g !== 'coklu' && sp.get('yt') === 'rapor') setSp((o) => { const n = new URLSearchParams(o); n.delete('yt'); n.delete('kuyruk'); return n; }, { replace: true });
+    if (g === 'rapor' && sp.get('yt') !== 'rapor') setSp((o) => raporUrlYaz(o, raporUrlOku(o)), { replace: true });
+  };
+  const raporAc = (d: RaporUrl) => {
+    setSp((o) => raporUrlYaz(o, d), { replace: false });
+    setGorunumDurum('rapor');
+    setKosuId(null);
   };
   const cokluAc = (kosular: number[]) => {
     const alinan = kosular.slice(0, MAX_COKLU);
@@ -105,17 +117,18 @@ export function YukTestiTab({ isAdmin, kullaniciAdi = null }: { isAdmin: boolean
 
       {etkin === 'kosular' && (kosuId != null
         ? <KosuAyrinti key={kosuId} kosuId={kosuId} isAdmin={isAdmin} kullaniciAdi={kullaniciAdi} onGeri={() => setKosuId(null)} onSilindi={() => setKosuId(null)} />
-        : <KosuListesi onAc={setKosuId} isAdmin={isAdmin} kullaniciAdi={kullaniciAdi} />)}
+        : <KosuListesi onAc={setKosuId} isAdmin={isAdmin} kullaniciAdi={kullaniciAdi} onTopluRapor={(kosular) => raporAc({ kuyruk: null, kosular })} />)}
       {etkin === 'yeni' && isAdmin && (
         <YeniKosu onBasladi={(id) => { setGorunum('kosular'); setKosuId(id); }} onSenaryolar={() => git('senaryolar')} onAraclar={() => git('araclar')}
           onKuyrugaEkle={(o) => setTaslak([...taslak, o])} kuyrukOgeSayisi={taslak.length} />
       )}
       {etkin === 'kuyruk' && (
-        <GeceKuyrugu isAdmin={isAdmin} taslak={taslak} setTaslak={setTaslak} onKosuAc={(id) => { setGorunum('kosular'); setKosuId(id); }} onYeniKosu={isAdmin ? () => git('yeni') : undefined} onKarsilastir={cokluAc} />
+        <GeceKuyrugu isAdmin={isAdmin} taslak={taslak} setTaslak={setTaslak} onKosuAc={(id) => { setGorunum('kosular'); setKosuId(id); }} onYeniKosu={isAdmin ? () => git('yeni') : undefined} onKarsilastir={cokluAc} onTopluRapor={(kuyruk) => raporAc({ kuyruk, kosular: [] })} />
       )}
       {etkin === 'senaryolar' && <Senaryolar isAdmin={isAdmin} />}
       {etkin === 'karsilastir' && <Karsilastir />}
       {etkin === 'coklu' && <CokluKarsilastir kuyrukNotu={kuyrukNotu} onKuyrukNotuKapat={() => setKuyrukNotu(null)} />}
+      {etkin === 'rapor' && <TopluRapor />}
       {etkin === 'araclar' && <Araclar isAdmin={isAdmin} />}
     </div>
   );

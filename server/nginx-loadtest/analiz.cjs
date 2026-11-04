@@ -94,6 +94,10 @@
 //      (Anon, Pss, baglanti), uc noktalar taban (adim basindan hemen once), son (pencere sonu), dinlenme (adimdan sonraki
 //      bosluk bitmeden son ornek; >= 3 sn). Saat farki log penceresinden kestirilir (|fark| > 60 sn: taban / dinlenme yok).
 //      "Olasi neden" kurallari gorunum.cjs'dedir (analiz ciktisi eski kosuda BIREBIR).
+//  18. Sunucu ayari kaniti (2026-11-04, sunucuAyarKaniti; kosuAnaliz secenekleri sunucuAyar + ae): hazirlik_<ADIM>_*.txt
+//      yoksa ya da http2 / ae / seviye / static / dizin istenenle uyusmuyorsa (static kosuda disk_kanit=ok ve dosya_seviye
+//      da) kosu GECERSIZ, neden
+//      'sunucu_ayari_kanitsiz(...)'; ozet.sunucu_ayar. Secenek verilmezse cikti BIREBIR eskisi.
 //  17. Coklu karsilastirma (2026-11-04, coklu.cjs): kararVer'in gurultu x3 / esik kurali tek fonksiyonda (gurultuEsigi);
 //      hizOzeti (kararVer ile ayni gruplar) ve farkDurumu (hucre basina AYNI kural: CPU-ms, p95, hata; digerleri
 //      renklendirilmez) disari acildi. kararVer ciktisi BIREBIR (Python fikstur testleri).
@@ -161,6 +165,7 @@ const NEDENLER = Object.freeze([
   { onek: 'reload', anlam: 'Olcum penceresinde reload oldu (worker PID kumesi degisti).', cozum: "Eski worker'lar ('shutting down') bitene kadar bekleyip kosuyu tekrarlayin." },
   { onek: 'hatali_kosu', anlam: "kos.sh / wrk_kos.sh bu TUR'u durdurdu (429 / 5xx / soket / hata orani / http2 / protokol / hata kodu / olcum yok).", cozum: 'Nedeni giderip yeni kosu baslatin.' },
   { onek: 'tamamlanmadi', anlam: 'TUR baslatildi ama istemci sonucu yazilmadi (kosu kesildi ya da durduruldu).', cozum: 'Yeni kosu baslatin.' },
+  { onek: 'sunucu_ayari_kanitsiz', anlam: 'Kosu oncesi sunucu ayari istendi ama hazirlik kaniti yok ya da istenenle uyusmuyor.', cozum: 'Ansible deposunu (hazirlik.sh) guncelleyin; is ciktisina bakip kosuyu tekrarlayin.' },
   { onek: 'doyma:', anlam: 'Istenen hiz tutturulamadi (dropped > 0), hedefin CPU ortalamasi %90 ustunde ya da yuk makinesi doydu (bosta CPU %20 altinda).', cozum: 'Daha dusuk hizla kosun; kapasite tahmini bu kademede gecerli degil.' },
 ]);
 
@@ -184,6 +189,7 @@ const NEDEN_KALIPLARI = Object.freeze([
   { kod: 'reload', tur: 'neden', re: /^reload\(worker_pid_degisti\)$/ },
   { kod: 'hatali_kosu', tur: 'neden', re: /^hatali_kosu\(kos\.sh_durdurdu\)$/ },
   { kod: 'tamamlanmadi', tur: 'neden', re: /^tamamlanmadi\(istemci_sonucu_yok\)$/ },
+  { kod: 'sunucu_ayari_kanitsiz', tur: 'neden', re: /^sunucu_ayari_kanitsiz\(([a-z0-9_,]+)\)$/ },
   { kod: 'doyma_dropped', tur: 'neden', re: /^doyma:dropped=(\d+)$/ },
   { kod: 'doyma_host_cpu', tur: 'neden', re: /^doyma:host_cpu_%([0-9.]+)\(>%90\)$/ },
   { kod: 'doyma_yuk_cpu', tur: 'neden', re: /^doyma:yuk_cpu_bosta_%([0-9.]+)\(<%20\)$/ },
@@ -1886,6 +1892,66 @@ function temizle(x) {
   return x;
 }
 
+// hazirlik.sh kaniti: acik / kapali degerleri (betik 'acik'|'kapali' ya da 1|0 yazabilir; bilinmeyen deger kanit degildir).
+const KANIT_ACIK = new Set(['1', 'acik', 'on', 'true', 'evet']);
+const KANIT_KAPALI = new Set(['0', 'kapali', 'off', 'false', 'hayir', 'yorum']);
+const kanitBool = (v) => {
+  const m = String(v ?? '').trim().toLowerCase();
+  return KANIT_ACIK.has(m) ? true : KANIT_KAPALI.has(m) ? false : null;
+};
+const kanitTam = (v) => (/^[0-9]{1,9}$/.test(String(v ?? '').trim()) ? Number(v) : null);
+/** hazirlik.sh `${SEVIYE:-9}`: seviye secilmeyen static kosu (identity + gzip_static) .gz'yi bununla uretir. */
+const STATIK_VARSAYILAN_SEVIYE = 9;
+
+/**
+ * Sunucu ayarli kosunun kaniti (hazirlik_<ADIM>_*.txt) istenenle ayni mi? null: kosuda sunucu ayari yok (cikti BIREBIR
+ * eskisi). Eski playbook + yeni Portal ayari UYGULAMADAN kosar: kanit yoksa ya da uyusmuyorsa olcum yanlis ayarin
+ * olcumudur, kosu GECERSIZ. Static kosuda diskten sunulma (disk_kanit=ok) ve dosyalarin seviyesi (dosya_seviye = secilen,
+ * seviyesiz identity'de STATIK_VARSAYILAN_SEVIYE) da kanittir: eski hazirlik.sh dosyayi sabit seviyeyle uretir, ikisini yazmaz.
+ * Donus: { durum: 'uyumlu'|'kanitsiz', sapmalar, http2, ae, seviye, static, dizin, gz_uretilen, br_uretilen, atlanan,
+ * dosya_seviye, disk_kanit, uyarilar, dosya }.
+ */
+function sunucuAyarKaniti(veri, { adim, sunucuAyar, protokol, ae }) {
+  if (!sunucuAyar) return null;
+  const k = (Array.isArray(veri.hazirliklar) ? veri.hazirliklar : []).find((x) => x && String(x.anahtar).startsWith(`${adim}_`));
+  if (!k || !k.bilgi) return { durum: 'kanitsiz', sapmalar: ['yok'], uyarilar: [] };
+  const b = k.bilgi;
+  const seviye = kanitTam(b.seviye);
+  const gz = kanitTam(b.gz_uretilen);
+  const br = kanitTam(b.br_uretilen);
+  const atlanan = kanitTam(b.atlanan);
+  const statik = kanitBool(b.static);
+  const sapmalar = [];
+  if (kanitBool(b.http2) !== (protokol === 'h2')) sapmalar.push('http2');
+  if (b.ae !== ae) sapmalar.push('ae');
+  if (sunucuAyar.seviye == null ? String(b.seviye ?? '').trim() !== '' : seviye !== sunucuAyar.seviye) sapmalar.push('seviye');
+  if (statik !== sunucuAyar.static) sapmalar.push('static');
+  if (b.dizin !== sunucuAyar.dizin) sapmalar.push('dizin');
+  // Static kosu dosyasiz olmaz (betik 0 dosyada FAIL der); sayilar okunabiliyorsa ayrica denetlenir.
+  const dosya = (ae === 'br' ? br : gz) === null || atlanan === null ? null : (ae === 'br' ? br : gz) + atlanan;
+  if (sunucuAyar.static && dosya === 0) sapmalar.push('dosya');
+  const dosyaSeviye = kanitTam(b.dosya_seviye);
+  const diskKanit = String(b.disk_kanit ?? '').trim().slice(0, 16);
+  if (sunucuAyar.static && diskKanit !== 'ok') sapmalar.push('disk_kanit');
+  if (sunucuAyar.static && dosyaSeviye !== (sunucuAyar.seviye ?? STATIK_VARSAYILAN_SEVIYE)) sapmalar.push('dosya_seviye');
+  return {
+    durum: sapmalar.length ? 'kanitsiz' : 'uyumlu',
+    sapmalar,
+    http2: kanitBool(b.http2),
+    ae: String(b.ae ?? '').slice(0, 16),
+    seviye,
+    static: statik,
+    dizin: String(b.dizin ?? '').slice(0, 300),
+    gz_uretilen: gz,
+    br_uretilen: br,
+    atlanan,
+    dosya_seviye: dosyaSeviye,
+    disk_kanit: diskKanit || null,
+    uyarilar: (Array.isArray(b.uyarilar) ? b.uyarilar : []).slice(0, 20).map((u) => String(u).slice(0, 300)),
+    dosya: k.dosya,
+  };
+}
+
 /**
  * Bir kosu dizininin (tek ADIM) analizi. Kosu `uyarilar`i: okuma uyarilari, kesit/kayit uyarilari
  * (serbest hedefte yerine yok sayilan sunucu dosyasi + sunucu_olcumu_yok), wrk TLS payi uyarisi,
@@ -1897,9 +1963,10 @@ function temizle(x) {
  * @param {{adim: string, hedefTuru?: 'sunucu'|'serbest', motor?: 'k6'|'wrk', protokol?: 'h1'|'h2'}} secenek
  *   adim ornek 'R17'; bu ADIM'a ait olmayan TUR'lar atlanir (uyari). Varsayilanlar 'sunucu' / 'k6' / 'h1'
  *   (bugunku cikti). yukKaydedici ('basladi' | 'baslamadi' | null) ve yukSonSatir (kaydedici ciktisinin son satiri,
- *   yalniz yeni playbook): verilmezse cikti BIREBIR eskisi.
+ *   yalniz yeni playbook): verilmezse cikti BIREBIR eskisi. sunucuAyar (parametreler.sunucuAyar) ve ae (parametreler.ae)
+ *   verilirse hazirlik kaniti denetlenir (sunucuAyarKaniti): yok / uyumsuz -> kosu GECERSIZ, neden sunucu_ayari_kanitsiz.
  */
-function kosuAnaliz(veri, { adim, hedefTuru = 'sunucu', motor = 'k6', protokol = 'h1', yukKaydedici = null, yukSonSatir = null } = {}) {
+function kosuAnaliz(veri, { adim, hedefTuru = 'sunucu', motor = 'k6', protokol = 'h1', yukKaydedici = null, yukSonSatir = null, sunucuAyar = null, ae = null } = {}) {
   if (!veri || typeof veri !== 'object') throw new TypeError('kosuAnaliz: veri yok');
   if (typeof adim !== 'string' || !ADIM_RE.test(adim)) throw new TypeError('kosuAnaliz: adim gecersiz');
   if (!HEDEF_TURLERI.includes(hedefTuru)) throw new TypeError('kosuAnaliz: hedefTuru gecersiz (sunucu | serbest)');
@@ -2017,6 +2084,11 @@ function kosuAnaliz(veri, { adim, hedefTuru = 'sunucu', motor = 'k6', protokol =
       if (a.gecerlilik === 'GECERSIZ' || a.gecerlilik === 'HATALI') nedenler.push(`${a.tur}(${a.nedenler.join(';')})`);
     }
   }
+  const srvKanit = sunucuAyarKaniti(veri, { adim, sunucuAyar, protokol, ae });
+  if (srvKanit && srvKanit.durum === 'kanitsiz') {
+    gecerlilik = 'GECERSIZ';
+    nedenler.unshift(`sunucu_ayari_kanitsiz(${srvKanit.sapmalar.join(',')})`);
+  }
   const ozet = {
     adim,
     nproc,
@@ -2051,6 +2123,8 @@ function kosuAnaliz(veri, { adim, hedefTuru = 'sunucu', motor = 'k6', protokol =
     okunan_bayt: typeof veri.okunanBayt === 'number' ? veri.okunanBayt : null,
   };
   if (yukOlculemedi) ozet.yuk_cpu_olculemedi = yukOlculemedi;
+  // 2026-11-04: yalniz sunucu ayarli kosuda (eski kosunun ozeti BIREBIR eskisi).
+  if (srvKanit) ozet.sunucu_ayar = srvKanit;
   // 2026-11-03: hedef bellek kesitleri yalniz varsa (eski kosunun ozeti BIREBIR eskisi).
   if (ctx.bellekKesitler.length) {
     ozet.bellek_kesitler = ctx.bellekKesitler.map((k) => ({

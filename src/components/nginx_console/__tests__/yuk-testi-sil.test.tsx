@@ -6,7 +6,7 @@
 // SI3 ayrinti: sunucu 409 (silinemeyenler) -> pencere acik kalir, nedenler listelenir, onSilindi yok; bulunamayan kayit
 //     "silinmiş olabilir"
 // SI4 liste: coklu secim + "Seçilenleri sil" (secilen sayi yazilir) -> satirlar listeden kalkar, basari bildirimi; suren ve
-//     baskasinin satiri secilemez; Admin olmayan ve kendi kaydi yoksa secim kutusu yok
+//     baskasinin bitmis kosusu yalniz toplu rapor icin secilir, silinmez; rapor girisi yoksa secim silme yetkisine bagli
 // SI5 liste: toplu 409 (hepsi ya da hic) -> nedenler, "Silinemeyenleri seçimden çıkar", liste degismez
 // SI6 liste: "hepsini seç" en cok 50; 50'de diger kutular kapali
 // SI7 coklu karsilastirma: adreste silinmis kosu -> secimden ve adresten cikar, "Silinmiş koşu çıkarıldı" bilgisi
@@ -36,6 +36,7 @@ vi.mock('@/hooks/useToast', () => ({ toast }));
 
 import { YukTestiTab } from '../YukTestiTab';
 import KosuAyrinti from '../yukTesti/KosuAyrinti';
+import KosuListesi from '../yukTesti/KosuListesi';
 
 function kosu(id: number, o: Partial<NlKosu> = {}): NlKosu {
   return {
@@ -181,18 +182,44 @@ describe('Yük Testi — koşu silme', () => {
     expect(toast.success).toHaveBeenCalledWith(expect.stringMatching(/2 kayıt silindi/));
     expect(screen.queryByText(/seçili/)).toBeNull();
     unmount();
-    // Admin olmayan: yalniz kendi (bitmis) satiri secilebilir.
+    // Admin olmayan: baskasinin bitmis kosusu toplu rapor icin secilir, silinmez (rapor herkese okunur).
     api.kosular.mockResolvedValue({ ok: true, kosular: [kosu(1, { createdBy: 'veli' }), kosu(2)], dahaVar: false });
     const r2 = render(<YukTestiTab isAdmin={false} kullaniciAdi="veli" />);
     expect(await screen.findByRole('checkbox', { name: 'Kayıt 1 seç' })).toBeEnabled();
-    expect(screen.getByRole('checkbox', { name: 'Kayıt 2 seç' })).toBeDisabled();
-    expect(screen.getByRole('checkbox', { name: 'Kayıt 2 seç' }).getAttribute('title')).toMatch(/Yalnız kaydı başlatan kişi ya da Admin/);
+    const baska = screen.getByRole('checkbox', { name: 'Kayıt 2 seç' });
+    expect(baska).toBeEnabled();
+    expect(baska.getAttribute('title')).toMatch(/Toplu rapor için seçilir/);
+    fireEvent.click(baska);
+    expect(screen.getByRole('button', { name: 'Toplu rapor' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Seçilenleri sil/ })).toBeDisabled();
+    // Karisik secimde silme yalniz silinebilen kaydi sorar; digeri secimde kalir.
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Kayıt 1 seç' }));
+    fireEvent.click(screen.getByRole('button', { name: /Seçilenleri sil/ }));
+    const karisik = await screen.findByRole('dialog');
+    expect(within(karisik).getAllByRole('listitem').map((li) => li.textContent?.slice(0, 2))).toEqual(['#1']);
+    api.kosulariSil.mockResolvedValue({ ok: true, sayi: 1, silinen: [{ id: 1 }] });
+    fireEvent.change(onayGirdisi(), { target: { value: '1' } });
+    fireEvent.click(within(karisik).getByRole('button', { name: /kaydı sil/ }));
+    await waitFor(() => expect(api.kosulariSil).toHaveBeenLastCalledWith([1], '1'));
+    expect(await screen.findByText('1 seçili')).toBeTruthy();
+    expect(screen.getByRole('checkbox', { name: 'Kayıt 2 seç' })).toBeChecked();
     r2.unmount();
-    // Admin olmayan ve kendi kaydi yok: secim kutusu ve dugme hic yok.
-    render(<YukTestiTab isAdmin={false} kullaniciAdi="ayse" />);
+    // Admin olmayan ve kendi kaydi yok: silme dugmesi yok, secim yalniz rapor icin.
+    const r3 = render(<YukTestiTab isAdmin={false} kullaniciAdi="ayse" />);
+    expect(await screen.findByRole('checkbox', { name: 'Kayıt 2 seç' })).toBeEnabled();
+    expect(screen.queryByRole('button', { name: /Seçilenleri sil/ })).toBeNull();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Kayıt 2 seç' }));
+    expect(screen.getByRole('button', { name: 'Toplu rapor' })).toBeTruthy();
+    r3.unmount();
+    // Suren is ve on kontrol rapor icin de secilmez; rapor girisi yoksa (liste tek basina) secim silme yetkisine bagli kalir.
+    api.kosular.mockResolvedValue({ ok: true, kosular: [kosu(2), kosu(5, { durum: 'RUNNING' }), kosu(6, { islem: 'on_kontrol' })], dahaVar: false });
+    const r4 = render(<YukTestiTab isAdmin={false} kullaniciAdi="ayse" />);
+    expect(await screen.findByRole('checkbox', { name: 'Kayıt 5 seç' })).toBeDisabled();
+    expect(screen.getByRole('checkbox', { name: 'Kayıt 6 seç' })).toBeDisabled();
+    r4.unmount();
+    render(<KosuListesi onAc={vi.fn()} kullaniciAdi="ayse" />);
     await screen.findByRole('button', { name: 'Koşu 2 ayrıntısı' });
     expect(screen.queryByRole('checkbox')).toBeNull();
-    expect(screen.queryByRole('button', { name: /Seçilenleri sil/ })).toBeNull();
   });
 
   it('SI5 liste: toplu ret (hepsi ya da hiç) nedenleriyle; silinemeyenleri seçimden çıkar', async () => {
@@ -221,7 +248,7 @@ describe('Yük Testi — koşu silme', () => {
   it('SI6 liste: görünenleri seç en çok 50', async () => {
     api.kosular.mockResolvedValue({ ok: true, kosular: Array.from({ length: 52 }, (_, i) => kosu(i + 1)), dahaVar: false });
     render(<YukTestiTab isAdmin />);
-    fireEvent.click(await screen.findByRole('checkbox', { name: 'Görünen silinebilir kayıtların hepsini seç' }));
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Görünen seçilebilir kayıtların hepsini seç' }));
     expect(screen.getByText('50 seçili (en çok 50)')).toBeTruthy();
     expect(screen.getByRole('checkbox', { name: 'Kayıt 51 seç' })).toBeDisabled();
     expect(screen.getByRole('checkbox', { name: 'Kayıt 52 seç' })).toBeDisabled();

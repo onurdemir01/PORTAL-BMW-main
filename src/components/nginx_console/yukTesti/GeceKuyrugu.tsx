@@ -9,6 +9,7 @@
 // `onKarsilastir`: "Hepsini karşılaştır" (2026-11-04 bagli: Çoklu karşılaştırma, ref = ilk biten oge); biten kosularin
 // numaralari kuyruk sirasiyla; verilmezse dugme cizilmez. Kosu silme (2026-11-04): silinmis kosu / on kontrol "(silindi)"
 // diye baglantisiz gosterilir (sunucunun kosuSilindi / onKontrolSilindi alani) ve karsilastirmaya gitmez.
+// `onTopluRapor` (2026-11-04): kuyrugun tum kosulari tek rapor; en az bir kosusu olan kuyrukta acik.
 import React, { useCallback, useEffect, useState } from 'react';
 import { ArrowDownIcon, ArrowLeftIcon, ArrowPathIcon, ArrowUpIcon, MoonIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { nginxLoadtestApi, type NlKuyruk, type NlKuyrukOge, type NlUyariTuru } from '@/api/nginxLoadtestApi';
@@ -34,9 +35,11 @@ export interface GeceKuyruguProps {
   onYeniKosu?: () => void;
   /** "Hepsini karşılaştır": kuyruktaki biten kosularin numaralari (sirayla; ilki referans). Verilmezse dugme yok. */
   onKarsilastir?: (kosuIdleri: number[]) => void;
+  /** "Toplu rapor": kuyruk numarasi. Verilmezse dugme yok. */
+  onTopluRapor?: (kuyrukId: number) => void;
 }
 
-export default function GeceKuyrugu({ isAdmin, taslak, setTaslak, onKosuAc, onYeniKosu, onKarsilastir }: GeceKuyruguProps) {
+export default function GeceKuyrugu({ isAdmin, taslak, setTaslak, onKosuAc, onYeniKosu, onKarsilastir, onTopluRapor }: GeceKuyruguProps) {
   const [liste, setListe] = useState<NlKuyruk[] | null>(null);
   const [hata, setHata] = useState('');
   const [secili, setSecili] = useState<number | null>(null);
@@ -51,7 +54,7 @@ export default function GeceKuyrugu({ isAdmin, taslak, setTaslak, onKosuAc, onYe
   useAsyncEffect(async (alive) => { if (alive()) await yukle(); }, [yukle]);
 
   if (secili != null) {
-    return <KuyrukAyrinti key={secili} id={secili} isAdmin={isAdmin} onKosuAc={onKosuAc} onKarsilastir={onKarsilastir} onGeri={() => { setSecili(null); void yukle(); }} />;
+    return <KuyrukAyrinti key={secili} id={secili} isAdmin={isAdmin} onKosuAc={onKosuAc} onKarsilastir={onKarsilastir} onTopluRapor={onTopluRapor} onGeri={() => { setSecili(null); void yukle(); }} />;
   }
   return (
     <div className="space-y-4" data-gece-kuyrugu>
@@ -223,7 +226,7 @@ function YeniKuyruk({ taslak, setTaslak, onYeniKosu, onOlustu }: { taslak: Tasla
 
 const SILINDI_IPUCU = 'Bu kayıt Portal’dan silindi; kuyruk öğesi ve numarası kalır. Sunucudaki ham ölçüm dosyaları silinmez.';
 
-function KuyrukAyrinti({ id, isAdmin, onKosuAc, onKarsilastir, onGeri }: { id: number; isAdmin: boolean; onKosuAc: (kosuId: number) => void; onKarsilastir?: (k: number[]) => void; onGeri: () => void }) {
+function KuyrukAyrinti({ id, isAdmin, onKosuAc, onKarsilastir, onTopluRapor, onGeri }: { id: number; isAdmin: boolean; onKosuAc: (kosuId: number) => void; onKarsilastir?: (k: number[]) => void; onTopluRapor?: (kuyrukId: number) => void; onGeri: () => void }) {
   const [veri, setVeri] = useState<{ kuyruk: NlKuyruk; ogeler: NlKuyrukOge[]; alindi: number } | null>(null);
   const [hata, setHata] = useState('');
   const [simdi, setSimdi] = useState(() => Date.now());
@@ -285,6 +288,7 @@ function KuyrukAyrinti({ id, isAdmin, onKosuAc, onKarsilastir, onGeri }: { id: n
         eylem={(
           <>
             {onKarsilastir && <button type="button" className={TBL_BTN} style={smBtn()} disabled={bitenKosular.length < 2} onClick={() => onKarsilastir(bitenKosular)}>Hepsini karşılaştır</button>}
+            {onTopluRapor && <button type="button" className={TBL_BTN} style={smBtn()} disabled={!ogeler.some((o) => o.kosuId != null && !o.kosuSilindi)} onClick={() => onTopluRapor(k.id)}>Toplu rapor</button>}
             {isAdmin && aktif && (
               <button type="button" className={TBL_BTN} style={smBtn()} disabled={mesgul} onClick={() => void (async () => {
                 const r = await eylem(() => nginxLoadtestApi.kuyrukIptal(k.id), `Kuyruk #${k.id} iptal edildi; sonraki öğeler başlamayacak.`);

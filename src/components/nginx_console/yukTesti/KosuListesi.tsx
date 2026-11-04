@@ -9,8 +9,10 @@
 // 2026-11-04: Admin'e etiketin yaninda kalem (EtiketDuzenle; PUT /kosular/:id/etiket), kayit satiri yerinde gunceller.
 // 2026-11-04 (kosu silme): coklu secim kutusu (yalniz silinebilen satirda: Admin ya da kaydi baslatan kisi, suren is degil;
 // en cok 50) + "Seçilenleri sil" -> KosuSilOnayi (secilen sayi yazilir). Silinen satirlar listeden kalkar; hepsi ya da hic.
+// 2026-11-04 (toplu rapor): secim varken "Toplu rapor" secili kayitlari numara sirasiyla rapora goturur. Rapor herkese okunur:
+// bitmis her kosu silme yetkisi olmadan da secilir; "Seçilenleri sil" secimin yalniz silinebilen kisminda calisir.
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowPathIcon, TrashIcon } from '@heroicons/react/24/outline';
+import { ArrowPathIcon, TableCellsIcon, TrashIcon } from '@heroicons/react/24/outline';
 import { SIL_MAX_TOPLU, nginxLoadtestApi, type NlKosu } from '@/api/nginxLoadtestApi';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { toast } from '@/hooks/useToast';
@@ -36,7 +38,7 @@ const KOLONLAR: Kolon[] = [
 /** Sayfa boyu (sunucu tavani 200). */
 const SAYFA = 200;
 
-export default function KosuListesi({ onAc, yenileAnahtari = 0, isAdmin = false, kullaniciAdi = null }: { onAc: (id: number) => void; yenileAnahtari?: number; isAdmin?: boolean; kullaniciAdi?: string | null }) {
+export default function KosuListesi({ onAc, yenileAnahtari = 0, isAdmin = false, kullaniciAdi = null, onTopluRapor }: { onAc: (id: number) => void; yenileAnahtari?: number; isAdmin?: boolean; kullaniciAdi?: string | null; onTopluRapor?: (kosular: number[]) => void }) {
   const [kosular, setKosular] = useState<NlKosu[] | null>(null);
   const [hata, setHata] = useState('');
   const [yukleniyor, setYukleniyor] = useState(false);
@@ -106,9 +108,12 @@ export default function KosuListesi({ onAc, yenileAnahtari = 0, isAdmin = false,
   const [silSor, setSilSor] = useState(false);
   const sahip = (k: NlKosu) => kosuSahibiMi(k, isAdmin, kullaniciAdi);
   const silinebilir = (k: NlKosu) => sahip(k) && !AKTIF_DURUMLAR.has(k.durum);
-  const secimAcik = isAdmin || (kosular || []).some(sahip);
+  const raporSecilebilir = (k: NlKosu) => !!onTopluRapor && k.islem === 'kosu' && !AKTIF_DURUMLAR.has(k.durum);
+  const secilebilir = (k: NlKosu) => silinebilir(k) || raporSecilebilir(k);
+  const silmeAcik = isAdmin || (kosular || []).some(sahip);
+  const secimAcik = silmeAcik || (kosular || []).some(raporSecilebilir);
   const doldu = secim.length >= SIL_MAX_TOPLU;
-  const gorunenSecilebilir = liste.filter(silinebilir);
+  const gorunenSecilebilir = liste.filter(secilebilir);
   const hepsiSecili = gorunenSecilebilir.length > 0 && gorunenSecilebilir.every((k) => secim.includes(k.id));
   const sec = (id: number, ekle: boolean) => setSecim((s) => (ekle ? (s.includes(id) || s.length >= SIL_MAX_TOPLU ? s : [...s, id]) : s.filter((x) => x !== id)));
   const gorunenleriSec = (ekle: boolean) => setSecim((s) => {
@@ -118,9 +123,13 @@ export default function KosuListesi({ onAc, yenileAnahtari = 0, isAdmin = false,
     return yeni;
   });
   const byId = new Map((kosular || []).map((k) => [k.id, k]));
-  const silinecekler = secim.map((id) => byId.get(id)).filter((k): k is NlKosu => !!k);
+  const silinecekler = secim.map((id) => byId.get(id)).filter((k): k is NlKosu => !!k && silinebilir(k));
   const kolonlar: Kolon[] = secimAcik ? [{ anahtar: 'sec', baslik: '', genislik: '2.25rem' }, ...KOLONLAR] : KOLONLAR;
-  const secimNedeni = (k: NlKosu) => (!sahip(k) ? 'Yalnız kaydı başlatan kişi ya da Admin silebilir.' : AKTIF_DURUMLAR.has(k.durum) ? 'Süren iş silinemez.' : doldu ? `En çok ${SIL_MAX_TOPLU} kayıt seçilebilir.` : undefined);
+  const secimNedeni = (k: NlKosu) => {
+    if (!secilebilir(k)) return !sahip(k) ? 'Yalnız kaydı başlatan kişi ya da Admin silebilir.' : 'Süren iş silinemez.';
+    if (doldu) return `En çok ${SIL_MAX_TOPLU} kayıt seçilebilir.`;
+    return silinebilir(k) ? undefined : 'Toplu rapor için seçilir; silmeyi yalnız kaydı başlatan kişi ya da Admin yapabilir.';
+  };
 
   return (
     <div className="space-y-3">
@@ -141,9 +150,14 @@ export default function KosuListesi({ onAc, yenileAnahtari = 0, isAdmin = false,
             <>
               <span className="tabular-nums" role="status">{`${fmtNumber(secim.length)} seçili${doldu ? ` (en çok ${SIL_MAX_TOPLU})` : ''}`}</span>
               <button type="button" onClick={() => setSecim([])} className={TBL_BTN} style={smBtn()}>Seçimi temizle</button>
+              {onTopluRapor && (
+                <button type="button" onClick={() => onTopluRapor([...secim].sort((a, b) => a - b))} className={TBL_BTN} style={smBtn()}>
+                  <TableCellsIcon className="h-3.5 w-3.5" aria-hidden /> Toplu rapor
+                </button>
+              )}
             </>
           )}
-          {secimAcik && (
+          {silmeAcik && (
             <button type="button" onClick={() => setSilSor(true)} disabled={!silinecekler.length} className={TBL_BTN} style={BTN_TEHLIKE} title="Seçilen koşu / ön kontrol kayıtlarını Portal’dan siler (ham ölçüm dosyaları durur)">
               <TrashIcon className="h-3.5 w-3.5" aria-hidden /> Seçilenleri sil
             </button>
@@ -155,8 +169,8 @@ export default function KosuListesi({ onAc, yenileAnahtari = 0, isAdmin = false,
       <div className="overflow-x-auto rounded-lg border" style={{ borderColor: 'var(--border-subtle)' }}>
         <table className="pf-table-sticky w-full min-w-[34rem] table-fixed border-collapse" aria-label="Yük testi koşuları">
           <TabloIskelet kolonlar={kolonlar} secimBasligi={secimAcik ? (
-            <input type="checkbox" aria-label="Görünen silinebilir kayıtların hepsini seç" checked={hepsiSecili} disabled={!gorunenSecilebilir.length}
-              onChange={(e) => gorunenleriSec(e.target.checked)} title={`Görünen silinebilir kayıtları seçer (en çok ${SIL_MAX_TOPLU})`} />
+            <input type="checkbox" aria-label="Görünen seçilebilir kayıtların hepsini seç" checked={hepsiSecili} disabled={!gorunenSecilebilir.length}
+              onChange={(e) => gorunenleriSec(e.target.checked)} title={`Görünen seçilebilir kayıtları seçer (en çok ${SIL_MAX_TOPLU})`} />
           ) : undefined} />
           <tbody className="text-[12px]" style={{ color: 'var(--text-primary)' }}>
             {kosular == null && !hata ? (
@@ -168,7 +182,7 @@ export default function KosuListesi({ onAc, yenileAnahtari = 0, isAdmin = false,
               <tr key={k.id} className="cursor-pointer border-t align-top" style={{ borderColor: 'var(--border-subtle)' }} onClick={() => onAc(k.id)}>
                 {secimAcik && (
                   <td className="px-2.5 py-2" onClick={(e) => e.stopPropagation()}>
-                    <input type="checkbox" aria-label={`Kayıt ${k.id} seç`} checked={secim.includes(k.id)} disabled={!silinebilir(k) || (doldu && !secim.includes(k.id))}
+                    <input type="checkbox" aria-label={`Kayıt ${k.id} seç`} checked={secim.includes(k.id)} disabled={!secilebilir(k) || (doldu && !secim.includes(k.id))}
                       title={secim.includes(k.id) ? undefined : secimNedeni(k)} onChange={(e) => sec(k.id, e.target.checked)} />
                   </td>
                 )}
@@ -223,7 +237,7 @@ export default function KosuListesi({ onAc, yenileAnahtari = 0, isAdmin = false,
           onSilindi={(silinen) => {
             const gid = new Set(silinen.length ? silinen.map((x) => x.id) : silinecekler.map((k) => k.id));
             setKosular((l) => (l || []).filter((k) => !gid.has(k.id)));
-            setSecim([]);
+            setSecim((s) => s.filter((x) => !gid.has(x)));
             setSilSor(false);
             toast.success(`${fmtNumber(gid.size)} kayıt silindi. Sunucudaki ham ölçüm dosyaları durur.`);
           }} />

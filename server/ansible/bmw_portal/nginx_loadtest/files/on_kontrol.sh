@@ -1,13 +1,14 @@
 #!/bin/bash
 # on_kontrol.sh - Portal Nginx Hub "Yuk Testi" on kontrolu. YUK URETMEZ, hicbir dosyaya/konfigurasyona yazmaz.
 # Kullanim: on_kontrol.sh hedef    (hedef nginx sunucusunda, www ile)
-#             ortam: HEDEF_IP HOST_BASLIGI [LOGDIR(/web_log) NGINX_PREFIX(/usr/nginx) NGINX_BIN NGINX_ERRLOG PROC_ROOT]
+#             ortam: HEDEF_IP HOST_BASLIGI [UST LOGDIR(/web_log) NGINX_PREFIX(/usr/nginx) NGINX_BIN NGINX_ERRLOG PROC_ROOT]
 #           on_kontrol.sh yollar   (yuk makinesinde, www ile)
 #             ortam: HEDEF_IP HOST_BASLIGI SNI(0|1) SENARYO(<tsv>) [UA_ONEK(portal-yuktesti) PARALEL(4) ZAMAN(5) CURL(curl)
 #                    PROTOKOL(h1) PROC_ROOT(/proc)]
 # Cikti   : SEKME ayrimli satirlar; son satir SONUC<TAB><OK|FAIL><TAB><mesaj>. '-' = olculemedi.
 #   hedef : ip_yerel 1|0|-, nginx_T ok|fail, server_name_var 1|0|-, master_sayisi <n>, web_log_df <yuzde>|-,
-#           log_dizini_okunur 1|0, log_format_ua 1|0|-, statik_direktif 1|0|-
+#           log_dizini_okunur 1|0, log_format_ua 1|0|-, statik_direktif 1|0|-, hazirlik_yedek 1|0|- (<UST>/hazirlik var mi: geri
+#           alinmamis sunucu ayari; UST verilmezse -)
 #   yollar: ip_yuk_makinesinde 1|0|-, yuk makinesi (salt okunur, bilgi): port_araligi <lo> <hi>|-, tcp_tw_reuse <n>|-,
 #           tcp_timestamps <n>|-, nproc <n>|-, mem_kb <MemAvailable>|-; YOL<TAB><status><TAB><http surumu><TAB><content-encoding|-><TAB><content-length 1|0><TAB><yol>
 #           (senaryo sirasiyla), HATA<TAB><status><TAB><yol> (200 olmayan ilk 20), OZET<TAB><toplam><TAB><n200><TAB>
@@ -150,6 +151,10 @@ hedef() {
     done
   fi
   printf 'log_dizini_okunur\t%d\n' "$okunur"
+  if [ -z "${UST:-}" ]; then printf 'hazirlik_yedek\t-\n'
+  elif [ -e "$UST/hazirlik" ]; then printf 'hazirlik_yedek\t1\n'
+  else printf 'hazirlik_yedek\t0\n'
+  fi
   sonuc OK "hedef olculdu"
 }
 

@@ -16,6 +16,9 @@
 //      "Hepsini karşılaştır" kapali
 // CO12 409 listeleri ayri metinle: on kontrol / bitmemis kosu "silinmiş" denmeden cikarilir; baska kodda liste yok sayilir
 // CO13 API: 409 kosu_uygun_degil / kosu_yok listeleri hataya tasinir
+// -- tek tabloda karsilastirma 2026-11-04 --
+// CO14 Fark metni: parcalar, yalniz referanstan farkli olan isaretli, static yok, eski kosu; normallestirme (dizin gecmez)
+// CO15 sayfa notlari ve CSV fark kolonlari; ekranda vurgu ve notlar, ayni ayarda not yok
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import React from 'react';
 import { screen, fireEvent, waitFor, within } from '@testing-library/react';
@@ -23,7 +26,7 @@ import { useLocation } from 'react-router-dom';
 import { render } from '@/test/test-utils';
 import type { NlCokluAday, NlCokluHiz, NlCokluKarsilastirma, NlFark, NlKosu, NlKuyruk, NlKuyrukOge } from '@/api/nginxLoadtestApi';
 import { cokluNormalle } from '@/api/nginxLoadtestApi';
-import { csvMetinHucre, csvMetni, csvTarih, cumle, farkYuzdeMetni, hucreTonu, seriStili, sirala, urlDurumuOku, urlDurumuYaz } from '../yukTesti/cokluKarsilastirma';
+import { csvMetinHucre, csvMetni, csvTarih, cumle, farkParcalari, farkYuzdeMetni, hucreTonu, karsilastirmaNotlari, seriStili, sirala, urlDurumuOku, urlDurumuYaz } from '../yukTesti/cokluKarsilastirma';
 import { etiketHatasi } from '../yukTesti/EtiketDuzenle';
 
 const api = vi.hoisted(() => ({
@@ -153,11 +156,11 @@ describe('Yük Testi — çoklu karşılaştırma', () => {
     const metin = csvMetni(VERI, 'p95', sirala(VERI.adaylar, 'cpu'));
     expect(metin.charCodeAt(0)).toBe(0xfeff);
     const satirlar = metin.slice(1).split(String.fromCharCode(13, 10));
-    expect(satirlar[0]).toBe('Koşu;Etiket;Rol;Tarih;Karar;Açıklama;CPU kademesi;CPU-ms/istek farkı %;p95 kademesi;p95 farkı %;Test trafiği farkı %;Bellek farkı %');
-    expect(satirlar[1]).toBe(`#1;[K3] A1;Referans;${csvTarih('2026-11-03T21:00:00Z')};;;;;;;;`);
+    expect(satirlar[0]).toBe('Koşu;Etiket;Rol;Tarih;Karar;Açıklama;CPU kademesi;CPU-ms/istek farkı %;p95 kademesi;p95 farkı %;Test trafiği farkı %;Bellek farkı %;Fark;Protokol;Keepalive;Sıkıştırma;Seviye;Static;Referanstan farklı');
+    expect(satirlar[1]).toBe(`#1;[K3] A1;Referans;${csvTarih('2026-11-03T21:00:00Z')};;;;;;;;;HTTP/1.1;HTTP/1.1;;;;;`);
     expect(csvTarih('2026-11-03T21:00:00Z')).toMatch(/^2026-11-0[34] \d\d:00$/);
     expect([csvTarih(null), csvTarih('gecersiz')]).toEqual(['', '']);
-    expect(satirlar[2]).toBe(`#2;[K3] A2;Aday;${csvTarih('2026-11-03T22:00:00Z')};KALICI;Referansa göre CPU %12 daha az, p95 değişmedi (gürültü içinde) → kalıcı iyileşme;250;-12;250;0,4;;`);
+    expect(satirlar[2]).toBe(`#2;[K3] A2;Aday;${csvTarih('2026-11-03T22:00:00Z')};KALICI;Referansa göre CPU %12 daha az, p95 değişmedi (gürültü içinde) → kalıcı iyileşme;250;-12;250;0,4;;;HTTP/1.1;HTTP/1.1;;;;;`);
     // Formul enjeksiyonu: '=' ile baslayan etiket tek tirnakla, tirnak iceren hucre tirnaklanir.
     expect(satirlar.find((s) => s.startsWith('#4;'))).toContain(`;"'=HYPERLINK(""x"")";`);
     expect(satirlar.find((s) => s.startsWith('#5;'))).toContain('Karşılaştırılamaz');
@@ -390,5 +393,69 @@ describe('Yük Testi — çoklu karşılaştırma', () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+
+  const H2: Partial<NlCokluAday> = { protokol: 'h2', kip: 'ka', ae: 'gzip', sunucuAyar: { seviye: 4, static: true } };
+  const REF: Partial<NlCokluAday> = { protokol: 'h1', kip: 'yeni', ae: 'br', sunucuAyar: { seviye: 6, static: false } };
+  const metin = (l: { metin: string }[]) => l.map((p) => p.metin).join(' · ');
+
+  it('CO14 Fark metni ve normalleştirme', () => {
+    const ref = aday(1, REF);
+    const a = aday(2, H2);
+    const p = farkParcalari(a, ref);
+    expect(metin(p)).toBe('HTTP/2 · keepalive · gzip 4 · static');
+    expect(p.map((x) => x.farkli)).toEqual([true, true, true, true]);
+    expect(metin(farkParcalari(ref, ref))).toBe('HTTP/1.1 · keepalive yok · brotli 6');
+    expect(farkParcalari(ref, ref).some((x) => x.farkli)).toBe(false);
+    // Yalniz seviye farki sikistirma parcasini isaretler.
+    const s4 = farkParcalari(aday(3, { ...REF, sunucuAyar: { seviye: 4, static: false } }), ref);
+    expect(s4.filter((x) => x.farkli).map((x) => x.metin)).toEqual(['brotli 4']);
+    // Referans static, aday degil: "static yok" farkli.
+    const sy = farkParcalari(ref, a).find((x) => x.tur === 'static');
+    expect([sy?.metin, sy?.farkli]).toEqual(['static yok', true]);
+    // Sikistirmasiz seviyesiz; eski kosu (kip / ae yok) fark sayilmaz.
+    expect(metin(farkParcalari(aday(4, { ae: 'identity', kip: 'ka' }), ref))).toBe('HTTP/1.1 · keepalive · sıkıştırmasız');
+    expect(farkParcalari(aday(5), ref)).toEqual([{ tur: 'protokol', metin: 'HTTP/1.1', farkli: false }]);
+    expect(farkParcalari(ref, aday(5)).filter((x) => x.farkli)).toEqual([]);
+    // Bilinmeyen sunucu ayari fark sayilmaz: referans eski ("brotli") ile "brotli 6" ayni; referans icin "static yok" varsayilmaz.
+    const eski = aday(6, { kip: 'yeni', ae: 'br', sunucuAyar: null });
+    const bilinen = aday(7, { kip: 'yeni', ae: 'br', sunucuAyar: { seviye: 6, static: true } });
+    expect(farkParcalari(bilinen, eski).filter((x) => x.farkli)).toEqual([]);
+    expect(metin(farkParcalari(bilinen, eski))).toBe('HTTP/1.1 · keepalive yok · brotli 6 · static');
+    expect(farkParcalari(eski, bilinen).filter((x) => x.farkli)).toEqual([]);
+    expect(metin(farkParcalari(eski, bilinen))).toBe('HTTP/1.1 · keepalive yok · brotli');
+    // Sikistirma turu farki sunucu ayari bilinmese de farktir.
+    expect(farkParcalari(aday(8, { ae: 'gzip', sunucuAyar: null }), bilinen).find((x) => x.tur === 'sikistirma')?.farkli).toBe(true);
+    const n = cokluNormalle({ ref: { id: 1, kip: 'ka', ae: 'br', sunucuAyar: { seviye: 6, static: true, dizin: '/x' } }, adaylar: [{ id: 2, kip: 'x', ae: 'y', sunucuAyar: 'z' }], karsilastirilamaz: [] });
+    expect([n.ref.kip, n.ref.ae, n.ref.sunucuAyar]).toEqual(['ka', 'br', { seviye: 6, static: true }]);
+    expect([n.adaylar[0].kip, n.adaylar[0].ae, n.adaylar[0].sunucuAyar]).toEqual([null, null, null]);
+  });
+
+  it('CO15 sayfa notları, CSV fark kolonları, ekranda vurgu', async () => {
+    const FARKLI = 'Farklı protokol / sıkıştırma karşılaştırılıyor; karar yalnız referansa göredir.';
+    const ref = { ...aday(1, REF), hizlar: [hiz(100), hiz(250)] };
+    expect(karsilastirmaNotlari({ ref, adaylar: [aday(2, REF)] })).toEqual([]);
+    expect(karsilastirmaNotlari({ ref, adaylar: [aday(2, H2)] })).toEqual([FARKLI]);
+    const tek = karsilastirmaNotlari({ ref, adaylar: [aday(2, { ...REF, hizlar: [hiz(100, { tekrar: 1 })] })] });
+    expect(tek).toHaveLength(1);
+    expect(tek[0]).toMatch(/gürültü ölçülmedi: yüzde birkaçlık fark kesin değildir/);
+    const v: NlCokluKarsilastirma = { ...VERI, ref, adaylar: [aday(2, H2)], karsilastirilamaz: [{ ...aday(5, H2), nedenler: [{ kod: 'motor', metin: 'x' }], karar: null }] };
+    const st = csvMetni(v, 'p95').slice(1).split(String.fromCharCode(13, 10));
+    expect(st[1].endsWith(';HTTP/1.1 · keepalive yok · brotli 6;HTTP/1.1;hayır;brotli;6;hayır;')).toBe(true);
+    expect(st[2].endsWith(';HTTP/2 · keepalive · gzip 4 · static;HTTP/2;evet;gzip;4;evet;HTTP/2, keepalive, gzip 4, static')).toBe(true);
+    expect(st[3].split(';')).toHaveLength(st[0].split(';').length);
+    api.karsilastirCoklu.mockResolvedValue(v);
+    render(<YukTestiTab isAdmin={false} />, { initialEntries: ['/nginx?tab=yuktesti&yt=coklu&ref=1&kosular=1,2,5'] });
+    expect(await screen.findByText(FARKLI)).toBeTruthy();
+    const tablo = screen.getByRole('table', { name: 'Özet karşılaştırma' });
+    expect(within(tablo).getByRole('columnheader', { name: 'Fark' })).toBeTruthy();
+    const refSatir = tablo.querySelector('[data-ref-satiri]') as HTMLElement;
+    expect(refSatir.querySelector('[data-kosu-farki]')?.textContent).toBe('HTTP/1.1 · keepalive yok · brotli 6');
+    expect(refSatir.querySelector('[data-farkli]')).toBeNull();
+    const satir = tablo.querySelector('[data-aday="2"]') as HTMLElement;
+    expect(satir.querySelector('[data-kosu-farki]')?.textContent).toBe('HTTP/2 · keepalive · gzip 4 · static');
+    expect(satir.querySelectorAll('[data-farkli]')).toHaveLength(4);
+    expect(document.querySelector('[data-matris="2"] [data-kosu-farki]')?.textContent).toBe('HTTP/2 · keepalive · gzip 4 · static');
+    expect(document.querySelector('[data-karsilastirilamaz] [data-kosu-farki]')).toBeTruthy();
   });
 });

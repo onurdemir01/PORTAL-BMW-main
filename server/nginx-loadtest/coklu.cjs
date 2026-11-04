@@ -2,15 +2,21 @@
 //
 // Kullanici: "ardi ardina 12-16 test kosacagim, hepsini tek sayfada karsilastirmak istiyorum". Iki kosulu /karsilastir
 // AYNEN kalir; bu modul GET /karsilastir-coklu'nun SAF hesabidir (DB yok, saat yok):
-//   * Her aday icin ref'e karsi analiz.kararVer (ayni esikler; ayni motor / protokol / hedef turu / is parcacigi / tavan
-//     secenekleri) -> karar, nedenler, kademe, kombinasyon.
+//   * Her aday icin ref'e karsi analiz.kararVer (ayni esikler; ayni motor / hedef turu / is parcacigi / tavan secenekleri)
+//     -> karar, nedenler, kademe, kombinasyon.
+//   * Tek tabloda protokol / kip / ae karsilastirmasi (2026-11-04): kullanici HTTP/2 ile HTTP/1.1'i, keepalive'li ile
+//     keepalive'sizi, brotli ile gzip'i AYNI tabloda istiyor. Farkli protokol uyumsuzluk DEGIL: kararVer'e ref protokolu iki
+//     taraf icin gecilir. Ortak kombo yoksa aday KENDI kombosunda okunur (hizOzeti), adimlari ref'in kip / ae degerine
+//     etiketlenmis KOPYA olarak kararVer'e verilir (kaynak degismez); ekOlculer / hizSatirlari adayin kendi kombosuyla okur.
+//     Ortak kombo varsa eskisi gibi kararVer secer. kararVer'in ilk satiri ref'in etiketini yazar: duzeltilir (ilkNeden).
 //   * Her kosu icin hiz basina ozet: kararVer'in gruplari (analiz.hizOzeti: p95, p99, CPU-ms/istek, host CPU, en yuksek
 //     hata, tekrar / gecerli tekrar, gurultu) + gorunum satirlarindan kapasite, test trafigi (alinan bit/sn; yeni ag
 //     alanlari), bellek (PSS ortalamasi, yoksa nginx RSS ortalamasi), kip durumu. Olculmeyen deger null (eski kosu).
 //   * Ref'e gore % fark ve gurultu disi mi: analiz.farkDurumu (kararVer'in gurultu x3 / esik kurali; kurali olmayan olcu
-//     'renklendirilmez'). Aday satiri ref'i KENDI kararinin kombinasyonuyla okur (ayni senaryo/kip/ae).
-//   * Uyumsuz kosular (farkli hedef turu / hedef / motor / protokol / wrk tavani / wrk is parcacigi, kararVer VERI_YOK ya da
-//     hesaplanamadi) `karsilastirilamaz` grubunda, neden koduyla; kararVer bu kosular icin cagrilmaz (VERI_YOK haric).
+//     'renklendirilmez'). Aday satiri ref'i KENDI kararinin kombinasyonuyla okur.
+//   * Uyumsuz kosular (farkli hedef turu / hedef / motor / senaryo (senaryo_id ya da K/B: farkli HAR) / wrk tavani / wrk is
+//     parcacigi, kararVer VERI_YOK ya da hesaplanamadi) `karsilastirilamaz` grubunda, neden koduyla; kararVer bu kosular
+//     icin cagrilmaz (VERI_YOK haric).
 // Girdi kosu nesnesi: { meta: kosuMeta(...), analizAdimlari (snake, adimAnaliz), gorunumAdimlari (camel, adimApi) }.
 'use strict';
 
@@ -32,6 +38,13 @@ const ortalama = (xs) => {
   return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
 };
 const komboAnahtari = (k) => `${k.senaryo}|${k.kip}|${k.ae}`;
+const metinYoksaNull = (x) => (typeof x === 'string' && x !== '' ? x : null);
+
+/** parametreler.sunucuAyar'in ekranda gereken kismi (dizin tasinmaz); yoksa null. */
+function sunucuAyarOzeti(sa) {
+  if (!sa || typeof sa !== 'object') return null;
+  return { seviye: sonlu(sa.seviye), static: sa.static === true };
+}
 
 /** Kosu satiri (DB, snake) + cozulmus alanlar -> karsilastirma meta'si. */
 function kosuMeta(r, { motor, protokol, parametreler }) {
@@ -53,10 +66,15 @@ function kosuMeta(r, { motor, protokol, parametreler }) {
     senaryoAd: r.senaryo_ad ?? null,
     isParcacigi: sonlu(p.is_parcacigi),
     tavanRps: sonlu(p.tavan_rps),
+    kip: metinYoksaNull(p.kip),
+    ae: metinYoksaNull(p.ae),
+    sunucuAyar: sunucuAyarOzeti(p.sunucuAyar),
   };
 }
 
 const hedefOf = (m) => m.hedefHost || m.hedefIp || '';
+
+const senaryoNedeni = (r, a) => ({ kod: 'senaryo', metin: `Senaryo farklı (referans ${r}, bu koşu ${a}): farklı HAR / istek listesi karşılaştırılmaz.` });
 
 /** Ref'e gore uyumsuzluk nedenleri (bos dizi: karsilastirilabilir). Kod sabit; metin ekranda aynen. */
 function uyumsuzluk(ref, m) {
@@ -64,11 +82,44 @@ function uyumsuzluk(ref, m) {
   if (ref.hedefTuru !== m.hedefTuru) n.push({ kod: 'hedef_turu', metin: `Hedef türü farklı (referans ${TUR_ADI[ref.hedefTuru] || ref.hedefTuru}, bu koşu ${TUR_ADI[m.hedefTuru] || m.hedefTuru}).` });
   if (hedefOf(ref) !== hedefOf(m)) n.push({ kod: 'hedef', metin: `Hedef farklı (referans ${hedefOf(ref) || '—'}, bu koşu ${hedefOf(m) || '—'}).` });
   if (ref.motor !== m.motor) n.push({ kod: 'motor', metin: `Yük aracı farklı (referans ${ref.motor}, bu koşu ${m.motor}); k6 istek/sn, wrk bağlantı sayar.` });
-  if (ref.protokol !== m.protokol) n.push({ kod: 'protokol', metin: `Protokol farklı (referans ${PROTOKOL_ADI[ref.protokol]}, bu koşu ${PROTOKOL_ADI[m.protokol]}).` });
+  // Bilinmeyen (null) taraf karsilastirilmaz. Protokol / kip / ae farki uyumsuzluk DEGIL: amac zaten onlari kiyaslamak.
+  if (ref.senaryoId !== null && m.senaryoId !== null && ref.senaryoId !== m.senaryoId) n.push(senaryoNedeni(ref.senaryoAd || `#${ref.senaryoId}`, m.senaryoAd || `#${m.senaryoId}`));
   if (ref.motor === 'wrk' && m.motor === 'wrk') {
     if (ref.tavanRps !== null && m.tavanRps !== null && ref.tavanRps !== m.tavanRps) n.push({ kod: 'tavan', metin: `Hız tavanı farklı (referans ${ref.tavanRps}, bu koşu ${m.tavanRps} istek/sn): aynı bağlantı kademesi farklı yük demektir.` });
     if (ref.isParcacigi !== null && m.isParcacigi !== null && ref.isParcacigi !== m.isParcacigi) n.push({ kod: 'is_parcacigi', metin: `İş parçacığı sayısı farklı (referans ${ref.isParcacigi}, bu koşu ${m.isParcacigi}).` });
   }
+  return n;
+}
+
+/** Bir kosunun adim satirlarindaki kombolar (hizOzeti'nin kabul ettigi durumda gruplari olanlar). */
+function kombolar(analiz, adimlar) {
+  const m = new Map();
+  for (const r of adimlar) {
+    if (!r) continue;
+    const k = { senaryo: String(r.senaryo || ''), kip: String(r.kip || ''), ae: String(r.ae || '') };
+    if (!m.has(komboAnahtari(k))) m.set(komboAnahtari(k), k);
+  }
+  return [...m.values()].filter((k) => analiz.hizOzeti(adimlar, k).gruplar.size > 0);
+}
+
+/** Aday adimlarinin yalniz kendi kombosu, ref'in kip / ae etiketiyle: KOPYA (kaynak degismez). */
+function refEtiketli(adimlar, kendi, refKombo) {
+  return adimlar
+    .filter((r) => r && String(r.senaryo || '') === kendi.senaryo && String(r.kip || '') === kendi.kip && String(r.ae || '') === kendi.ae)
+    .map((r) => ({ ...r, kip: refKombo.kip, ae: refKombo.ae }));
+}
+
+/** kararVer'in ilk satiri tek kombo yazar; farkli kosularda kullaniciya gercek degerler gider. */
+function ilkNeden(nedenler, refKombo, adayKombo, refProtokol, adayProtokol) {
+  const n = [...(nedenler || [])];
+  if (!n.length) return n;
+  const parca = [];
+  if (refKombo.kip !== adayKombo.kip || refKombo.ae !== adayKombo.ae) {
+    n[0] = n[0].replace(/ kip=\S* ae=\S*$/, '');
+    parca.push(`referans kip=${refKombo.kip} ae=${refKombo.ae}, aday kip=${adayKombo.kip} ae=${adayKombo.ae}`);
+  }
+  if (refProtokol !== adayProtokol) parca.push(`referans ${PROTOKOL_ADI[refProtokol]}, aday ${PROTOKOL_ADI[adayProtokol]}`);
+  if (parca.length) n[0] = `${n[0]} (${parca.join('; ')})`;
   return n;
 }
 
@@ -160,8 +211,11 @@ function cokluKarsilastir({ ref, adaylar, analiz, esikler = {} }) {
     return refKombolar.get(k);
   };
   const kendi = refSatirlari(refOzet.kombo);
+  const refKomboListesi = kombolar(analiz, ref.analizAdimlari);
+  // Eski satirda parametreler.kip / ae yoksa kosunun gercek kombosu.
+  const kipAe = (m, k) => ({ ...m, kip: m.kip ?? k.kip, ae: m.ae ?? k.ae });
   const refCikti = {
-    ...ref.meta,
+    ...kipAe(ref.meta, refOzet.kombo),
     kombinasyon: refOzet.kombo,
     hizlar: [...kendi.values()].map((s) => s.deger),
   };
@@ -170,17 +224,24 @@ function cokluKarsilastir({ ref, adaylar, analiz, esikler = {} }) {
   for (const a of adaylar) {
     const m = a.meta;
     const u = uyumsuzluk(ref.meta, m);
+    const adayOzet = analiz.hizOzeti(a.analizAdimlari);
+    // Ortak kombo varsa kararVer eskisi gibi secer; yoksa aday kendi kombosuyla, ref'in etiketiyle kiyaslanir.
+    const ortakVar = refKomboListesi.some((x) => analiz.hizOzeti(a.analizAdimlari, x).gruplar.size > 0);
+    const etiketle = !ortakVar && adayOzet.gruplar.size > 0 && refOzet.gruplar.size > 0;
+    if (etiketle && adayOzet.kombo.senaryo !== refOzet.kombo.senaryo && !u.some((x) => x.kod === 'senaryo')) {
+      u.push(senaryoNedeni(refOzet.kombo.senaryo, adayOzet.kombo.senaryo));
+    }
     if (u.length) {
       karsilastirilamaz.push({ ...m, nedenler: u, karar: null, kararNedenleri: [] });
       continue;
     }
     let k;
     try {
-      k = analiz.kararVer(ref.analizAdimlari, a.analizAdimlari, {
+      k = analiz.kararVer(ref.analizAdimlari, etiketle ? refEtiketli(a.analizAdimlari, adayOzet.kombo, refOzet.kombo) : a.analizAdimlari, {
         ...e,
         refMotor: ref.meta.motor, adayMotor: m.motor, refHedefTuru: ref.meta.hedefTuru, adayHedefTuru: m.hedefTuru,
         refIsParcacigi: ref.meta.isParcacigi, adayIsParcacigi: m.isParcacigi, refTavanRps: ref.meta.tavanRps, adayTavanRps: m.tavanRps,
-        refProtokol: ref.meta.protokol, adayProtokol: m.protokol,
+        refProtokol: ref.meta.protokol, adayProtokol: ref.meta.protokol,
       });
     } catch (err) {
       karsilastirilamaz.push({ ...m, nedenler: [{ kod: 'hesaplanamadi', metin: `Karşılaştırma hesaplanamadı: ${String((err && err.message) || err).slice(0, 200)}` }], karar: null, kararNedenleri: [] });
@@ -192,17 +253,19 @@ function cokluKarsilastir({ ref, adaylar, analiz, esikler = {} }) {
       continue;
     }
     const kombo = k.kombinasyon || refOzet.kombo;
+    const adayKombo = etiketle ? adayOzet.kombo : kombo;
     const rS = refSatirlari(kombo);
-    const aS = hizSatirlari(analiz, a, kombo);
+    const aS = hizSatirlari(analiz, a, adayKombo);
     const satirlar = [...aS.entries()].map(([hiz, s]) => ({
       hiz, deger: s.deger, ref: rS.has(hiz) ? rS.get(hiz).deger : null, fark: farklar(analiz, rS.get(hiz), s, e),
     }));
     kiyas.push({
-      ...m,
+      ...kipAe(m, adayKombo),
       karar: k.karar,
-      kararNedenleri: k.nedenler || [],
+      kararNedenleri: ilkNeden(k.nedenler, kombo, adayKombo, ref.meta.protokol, m.protokol),
       kademe: k.kademe || null,
-      kombinasyon: kombo,
+      kombinasyon: adayKombo,
+      refKombinasyon: kombo,
       hizlar: satirlar.map((s) => ({ ...s.deger, fark: s.fark })),
       kademeFarki: kademeFarki(satirlar, k.kademe),
     });

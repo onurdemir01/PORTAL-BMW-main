@@ -53,6 +53,9 @@ const SINIRLAR = Object.freeze({
   maxVuMin: 10,
   maxVu: 1000, // playbook + yuk_k6.js MAXVU ust siniri ile ayni
   maxButceSn: 2700, // toplam is suresi en cok 45 dk
+  // Sunucu ayarli kosu: uygula (300) + dosyalar (600) yuk async'ine (butce + 300) eklenir; 2700'de toplam AWX 3600 sn sinirini
+  // asar, is kesilirse Play 7 (geri alma) kosmaz. Playbook girdi kapisinda ayni tavan.
+  maxButceSnSunucuAyar: 1800,
   maxSatir: 400,
   maxTsvBayt: 200 * 1024,
   maxYolUzunlugu: 2048,
@@ -100,6 +103,9 @@ const HEDEF_TURLERI = Object.freeze(['sunucu', 'serbest']);
 const IZINLI_ORTAM = new Set(['DEV', 'TEST', 'QA']);
 const KIPLER = new Set(['yeni', 'ka']);
 const AE_DEGERLERI = new Set(['br', 'gzip', 'identity']);
+// 2026-11-04 sunucu ayari: sikistirma seviyesinin ust siniri (gzip_comp_level 1-9, brotli_comp_level 1-11).
+const SRV_SEVIYE_MAX = Object.freeze({ br: 11, gzip: 9 });
+const SRV_SEVIYE_RE = /^[1-9][0-9]?$/;
 const TURLER = new Set(['js', 'css', 'json', 'html', 'config', 'img', 'font', 'diger']);
 const BOYUTLAR = new Set(['kucuk', 'orta', 'buyuk']);
 const SENARYO_TURLERI = new Set(['K', 'B']);
@@ -125,6 +131,8 @@ const TUR_RE = /^[A-Za-z0-9_-]{1,120}$/;
 const BEYAZ_LISTE = /^\/[A-Za-z0-9._~!$&'()*+,;=:@%/-]*$/;
 // har_senaryo.py kisisel_veri_suphesi ile ayni uc desen (sunucu ayni kurali YENIDEN uygular:
 // tarayicidaki suzgec atlanmis olabilir).
+// Sunucu ayari dizini: yalniz uygulama koku altinda (silme ve .gz / .br uretimi burada calisir). Playbook kapisi ile ayni.
+const SRV_DIZIN_RE = /^\/usr\/nginx\/applications\/[A-Za-z0-9._-]+(\/[A-Za-z0-9._-]+)*$/;
 const RAKAM_SEGMENT = /^\d{6,}$/;
 // E-posta: har_senaryo.py'nin `[^/@]+@[A-Za-z0-9-]*[A-Za-z][A-Za-z0-9-]*(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}$`
 // ifadesi bastan sabitsiz oldugu icin uzun '@'li parcada polinom geri izliyordu (2 KB yol ~0.5 sn,
@@ -413,6 +421,38 @@ function butceSn(p) {
   return p.bosta + adimSayisi(p) * p.tekrar * (p.isinma + p.sure + p.bosluk + ADIM_EK_SN) + 120;
 }
 
+/** Sunucu ayari dizini kurali (girdi ve son kapi ortak): uygulama koku altinda, '..' yok. */
+function srvDizinGecerli(v) {
+  return typeof v === 'string' && SRV_DIZIN_RE.test(v) && !v.includes('..');
+}
+
+/**
+ * parametreler.sunucuAyar -> { ok, deger: null | { seviye: number|null, static: boolean, dizin: string } }.
+ * Kosu oncesi hedefte http2 / comp_level / static / .gz .br durumu kurulur; yalniz sunucu hedefinde. Seviye ae'ye bagli:
+ * br 1-11, gzip 1-9 (zorunlu), identity'de YOK. Dizin HER ZAMAN zorunlu: static kapali kosuda da .gz / .br silinir.
+ */
+function sunucuAyarKanonik(ham, { serbest, ae }) {
+  if (ham === undefined || ham === null) return { ok: true, deger: null };
+  if (typeof ham !== 'object' || Array.isArray(ham)) return red(400, 'gecersiz_istek', 'sunucuAyar nesne olmalı.');
+  if (serbest) return red(400, 'gecersiz_istek', 'Sunucuyu koşu öncesi ayarlama yalnız sunucu hedefinde seçilebilir; serbest hedefe bağlanılmaz.');
+  let seviye = null;
+  const seviyeVar = ham.seviye !== undefined && ham.seviye !== null && ham.seviye !== '';
+  if (ae === 'identity') {
+    if (seviyeVar) return red(400, 'gecersiz_istek', 'Sıkıştırmasız (identity) koşuda sıkıştırma seviyesi seçilmez.');
+  } else {
+    const ust = SRV_SEVIYE_MAX[ae];
+    seviye = seviyeVar ? tamSayi(ham.seviye) : null;
+    if (seviye === null || seviye < 1 || seviye > ust) {
+      return red(400, 'gecersiz_istek', `Sıkıştırma seviyesi ${ae === 'br' ? 'brotli' : 'gzip'} için 1–${ust} arası olmalı.`);
+    }
+  }
+  if (ham.static !== undefined && typeof ham.static !== 'boolean') return red(400, 'gecersiz_istek', 'sunucuAyar.static true/false olmalı.');
+  if (!srvDizinGecerli(ham.dizin)) {
+    return red(400, 'gecersiz_istek', 'Dizin /usr/nginx/applications/ altında olmalı (yalnız harf, rakam, . _ - ve /; ".." yok).');
+  }
+  return { ok: true, deger: { seviye, static: ham.static === true, dizin: ham.dizin } };
+}
+
 /**
  * Parametreleri denetler ve KANONIK nesneyi dondurur (ayni girdi -> ayni nesne; on kontrol ile
  * kosunun "ayni parametre" kosulu buna dayanir). Tanimsiz alan VARSAYILAN'dan gelir (serbest
@@ -421,9 +461,10 @@ function butceSn(p) {
  * UYARI (onay ister). Olculmus cok kucuk limit (eski "sifir sinir", limit_req < ~1.1 r/s ya da limit_conn <= 1) de
  * 409 DEGIL, ayni uyari (B3).
  * Kanonik nesneler (ilgisiz anahtar GIRMEZ; motor'suz eski nesne k6 sayilir):
- *   k6  { motor:'k6', hizlar, tekrar, isinma, sure, bosluk, bosta, maxvu, kip, ae, sni, protokol, butceSn }
- *   wrk { motor:'wrk', baglantilar, is_parcacigi, tavan_rps, tekrar, isinma, sure, bosluk, bosta, kip, ae, sni:false, protokol:'h1', butceSn }
+ *   k6  { motor:'k6', hizlar, tekrar, isinma, sure, bosluk, bosta, maxvu, kip, ae, sni, protokol, sunucuAyar, butceSn }
+ *   wrk { motor:'wrk', baglantilar, is_parcacigi, tavan_rps, tekrar, isinma, sure, bosluk, bosta, kip, ae, sni:false, protokol:'h1', sunucuAyar, butceSn }
  * protokol: yoksa 'h1'; 'h2' yalniz k6 ve kip 'ka' (HTTP/2'de her istege yeni baglanti tarayici davranisi degil).
+ * sunucuAyar: null | { seviye, static, dizin } (bkz. sunucuAyarKanonik); kanonik nesnede oldugu icin on kontrol imzasina girer.
  * `tavan_rps` girdiden ALINMAZ: sunucu 5000 (maxTavanRps), serbest 200. Sunucu hedefinde k6 hiz <= 5000, VU <= 1000,
  * wrk baglanti <= 199; serbest hedefte iki motorda hiz / tavan <= 200 ve VU / baglanti <= 50.
  */
@@ -470,6 +511,9 @@ function parametreler(ham, { sni, hedefTuru = 'sunucu' } = {}) {
   if (protokol === 'h2' && kip !== 'ka') {
     return red(400, 'gecersiz_istek', 'HTTP/2 yalnız keep-alive (ka) bağlantı kipiyle koşulur; HTTP/2’de her isteğe yeni bağlantı tarayıcı davranışı değildir.');
   }
+  const sa = sunucuAyarKanonik(g.sunucuAyar, { serbest, ae });
+  if (!sa.ok) return sa;
+  const sunucuAyar = sa.deger;
   if (typeof sni !== 'boolean') return red(400, 'gecersiz_istek', 'sni true/false olmalı.');
   // wrk SNI olarak URL'deki IP'yi gonderir: Host basligina gore secemez. Gizli donusum YOK.
   if (wrk && sni) return red(400, 'gecersiz_istek', WRK_SNI_MESAJI);
@@ -517,11 +561,12 @@ function parametreler(ham, { sni, hedefTuru = 'sunucu' } = {}) {
   aralik('bosta', SINIRLAR.bostaMin, SINIRLAR.bostaMax, 'boşta başlangıç');
   if (!wrk) aralik('maxvu', SINIRLAR.maxVuMin, serbest ? SINIRLAR.serbestMaxBaglanti : SINIRLAR.maxVu, 'maxvu', serbest ? SERBEST_EKI : '');
   const p = wrk
-    ? { motor: 'wrk', baglantilar, is_parcacigi: isParcacigi, tavan_rps: tavanRps, ...sayilar, kip, ae, sni: false, protokol: 'h1' }
-    : { motor: 'k6', hizlar, ...sayilar, kip, ae, sni, protokol };
+    ? { motor: 'wrk', baglantilar, is_parcacigi: isParcacigi, tavan_rps: tavanRps, ...sayilar, kip, ae, sni: false, protokol: 'h1', sunucuAyar }
+    : { motor: 'k6', hizlar, ...sayilar, kip, ae, sni, protokol, sunucuAyar };
   if (!asim.length) {
     const b = butceSn(p);
-    if (b > SINIRLAR.maxButceSn) asim.push(`toplam süre ${b} sn > ${SINIRLAR.maxButceSn} sn (hız/tekrar/süre azaltın)`);
+    const tavan = sunucuAyar ? SINIRLAR.maxButceSnSunucuAyar : SINIRLAR.maxButceSn;
+    if (b > tavan) asim.push(`toplam süre ${b} sn > ${tavan} sn${sunucuAyar ? ' (sunucu ayarlı koşu)' : ''} (hız/tekrar/süre azaltın)`);
   }
   if (asim.length) return red(409, 'sinir_asildi', `Sınır aşıldı: ${asim.join('; ')}.`, { asimlar: asim });
   return { ok: true, deger: { ...p, butceSn: butceSn(p) } };
@@ -769,6 +814,9 @@ const SAYI = (v) => {
  * sonucu (true / false / olculemedi) ayni sirayla uygulanir. Eski playbook alpn_kaynak gondermez.
  * `parametreler` (kosu satirinin kanonik parametreleri, istege bagli): verilirse yuk makinesi port / bellek uyarilari
  * (yukMakinesiUyarilari) sabit uyarilardan once eklenir; verilmezse cikti BIREBIR eskisi.
+ * Sunucu ayari (2026-11-04): ayarli kosuda on kontrol srv_hazirlik 'ok' yayinlamadiysa ENGEL (eski playbook ayari uygulamaz;
+ * yuk basildiktan sonra GECERSIZ olup gece kuyrugunu bosa harcamasin). Ayarsiz kosuda hedefte kalmis yedek
+ * (hazirlik_yedek true) ENGEL: degismis konf olculurdu; on kontrolun temizlik play'i onu geri alir, yeniden calistirilir.
  */
 function onKontrolDegerlendir(ok, { hedefTuru = 'sunucu', motor = 'k6', aracli = false, aracSha256 = null, protokol = 'h1', parametreler: kp = null } = {}) {
   const engeller = [];
@@ -810,6 +858,12 @@ function onKontrolDegerlendir(ok, { hedefTuru = 'sunucu', motor = 'k6', aracli =
   }
   // CPU kaydedici /web_log'u okuyamazsa sunucu tarafi olcum yok: playbook bunu ENGEL sayar.
   if (!serbest && HAYIR(ok.log_dizini_okunur)) engeller.push('log dizini /web_log okunamıyor');
+  if (!serbest && kp && kp.sunucuAyar && ok.srv_hazirlik !== 'ok') {
+    engeller.push(ok.srv_hazirlik === 'fail' ? 'sunucu ayarı uygulanamadı (iş çıktısına bakın)' : 'sunucu ayarı ön kontrolde doğrulanmadı (playbook sunucu ayarını desteklemiyor olabilir; Ansible deposunu güncelleyin)');
+  }
+  if (!serbest && !(kp && kp.sunucuAyar) && ok.hazirlik_yedek === true) {
+    engeller.push('hedefte önceki bir koşudan geri alınmamış sunucu ayarı vardı (değişmiş konfigürasyon ölçülürdü); bu ön kontrol geri almayı denedi, ön kontrolü yeniden çalıştırın');
+  }
   // Tur 4: arac setiyle baslatilan satir (arac_id dolu). Eski satir (aracli false) BIREBIR eskisi gibi.
   if (aracli) {
     const aracHata = typeof ok.arac_hata === 'string' && ok.arac_hata.trim() ? ok.arac_hata.trim() : '';
@@ -826,7 +880,8 @@ function onKontrolDegerlendir(ok, { hedefTuru = 'sunucu', motor = 'k6', aracli =
   else if (iki === null) uyarilar.push('200 dönen yol sayısı ölçülemedi');
   else if (iki < toplam) uyarilar.push(`${toplam - iki}/${toplam} yol 200 dönmedi`);
   const statik = SAYI(ok.sikistirma && ok.sikistirma.statik);
-  if (statik > 0) uyarilar.push(`hedefte ön-sıkıştırılmış dosyalar var (${statik} yol)`);
+  // Sunucu ayarli kosuda dizinin durumu kosu oncesi kurulur: bu uyari gece kuyrugunda "yeni uyari" diye ogeyi atlatmasin.
+  if (statik > 0 && !(kp && kp.sunucuAyar)) uyarilar.push(`hedefte ön-sıkıştırılmış dosyalar var (${statik} yol)`);
   if (!serbest) {
     const df = SAYI(ok.web_log_df);
     if (df === null) uyarilar.push('/web_log doluluğu ölçülemedi');
@@ -977,7 +1032,8 @@ function kosuDizini(kok, kosuId) {
 
 // Sozlesme bolum 3: gonderilen TUM anahtarlar (fazlasi ve eksigi son kapida reddedilir). Tur 2'nin
 // 23 anahtari aynen, ardindan tur 3'un 7 anahtari, ardindan tur 4'un 3 arac anahtari (33; sira
-// playbook README tablosuyla ayni), ardindan HTTP/2 secimi yuk_protokol (34).
+// playbook README tablosuyla ayni), ardindan HTTP/2 secimi yuk_protokol (34), ardindan kosu oncesi sunucu ayari
+// yuk_srv_* (38).
 const EKSTRA_ANAHTARLAR = Object.freeze([
   'yuk_islem', 'yuk_run_id', 'yuk_hedef_host', 'yuk_yuk_host', 'yuk_hedef_ip', 'yuk_host_basligi', 'yuk_sni',
   'yuk_senaryo_tur', 'yuk_senaryo_b64', 'yuk_senaryo_sha256', 'yuk_hizlar', 'yuk_tekrar', 'yuk_kip', 'yuk_ae',
@@ -986,6 +1042,7 @@ const EKSTRA_ANAHTARLAR = Object.freeze([
   'yuk_hedef_turu', 'yuk_motor', 'yuk_baglantilar', 'yuk_is_parcacigi', 'yuk_wrk_yolu', 'yuk_tavan_rps', 'yuk_son_epoch',
   'yuk_arac_dizin', 'yuk_k6_sha256', 'yuk_wrk_sha256',
   'yuk_protokol',
+  'yuk_srv_ayar', 'yuk_srv_seviye', 'yuk_srv_static', 'yuk_srv_dizin',
 ]);
 
 /**
@@ -996,10 +1053,13 @@ const EKSTRA_ANAHTARLAR = Object.freeze([
  * Tur 4: `arac` = etkin arac seti { dizin, k6Sha256, wrkSha256 } (on kontrol / kosu); null (durdur)
  * -> uc alan ''. yuk_k6_yolu / yuk_wrk_yolu her kipte SABIT isaret degeri.
  * yuk_protokol HER ZAMAN gonderilir: 'h2' yalniz p.protokol === 'h2' iken, aksi (eski satir, durdur) 'h1'.
+ * yuk_srv_* HER ZAMAN gonderilir: ayar yalniz on kontrol / kosuda '1' (playbook baska islemde reddeder; durdur kipinde
+ * geri alma hedefteki yedege gore calisir, degiskene bakmaz). ayar '0' iken seviye / dizin '' ve static '0'.
  */
 function ekstraDegiskenler({ islem, kosuId, hedefHost, yukHost, hedefIp, vhost, senaryo, p, ua = UA_ONEK, kok, hedefTuru = 'sunucu', arac = null, simdiSn = Math.floor(Date.now() / 1000) }) {
   const wrkMi = p.motor === 'wrk';
   const liste = (v) => (Array.isArray(v) ? v.join(' ') : '');
+  const srv = islem !== 'durdur' && p.sunucuAyar ? p.sunucuAyar : null;
   return {
     yuk_islem: islem,
     yuk_run_id: String(kosuId),
@@ -1035,6 +1095,10 @@ function ekstraDegiskenler({ islem, kosuId, hedefHost, yukHost, hedefIp, vhost, 
     yuk_k6_sha256: arac ? String(arac.k6Sha256 ?? '') : '',
     yuk_wrk_sha256: arac ? String(arac.wrkSha256 ?? '') : '',
     yuk_protokol: p.protokol === 'h2' ? 'h2' : 'h1',
+    yuk_srv_ayar: srv ? '1' : '0',
+    yuk_srv_seviye: srv && srv.seviye != null ? String(srv.seviye) : '',
+    yuk_srv_static: srv && srv.static ? '1' : '0',
+    yuk_srv_dizin: srv ? String(srv.dizin) : '',
   };
 }
 
@@ -1058,6 +1122,14 @@ function ekstraDegiskenleriDenetle(ev, { simdiSn = Math.floor(Date.now() / 1000)
   if (!ISLEMLER.has(ev.yuk_islem)) ihlal.push('yuk_islem');
   if (!metin('yuk_run_id') || !RUN_ID_RE.test(ev.yuk_run_id)) ihlal.push('yuk_run_id');
   const durdur = ev.yuk_islem === 'durdur';
+  // Sunucu ayari yalniz on kontrol / kosuda '1': durdur kipinde de playbook kapisi '1'i reddeder.
+  if (ev.yuk_srv_ayar !== undefined && ev.yuk_srv_ayar !== '0' && (ev.yuk_srv_ayar !== '1' || durdur)) ihlal.push('yuk_srv_ayar');
+  // Playbook 'ayar 0 iken seviye, static, dizin bos' kuralini durdurda da uygular (eski Portal: anahtar yok, gecer).
+  if (durdur && ev.yuk_srv_ayar === '0') {
+    if (ev.yuk_srv_seviye !== '') ihlal.push('yuk_srv_seviye');
+    if (ev.yuk_srv_static !== '0') ihlal.push('yuk_srv_static');
+    if (ev.yuk_srv_dizin !== '') ihlal.push('yuk_srv_dizin');
+  }
   // Yalniz durdur kipinde YOKSA sunucu sayilir (eski Portal'in durdurmasi); eksik anahtar yine asagida.
   const tur = ev.yuk_hedef_turu === undefined && durdur ? 'sunucu' : ev.yuk_hedef_turu;
   if (!HEDEF_TURLERI.includes(tur)) ihlal.push('yuk_hedef_turu');
@@ -1117,6 +1189,19 @@ function ekstraDegiskenleriDenetle(ev, { simdiSn = Math.floor(Date.now() / 1000)
     if (!PROTOKOLLER.includes(ev.yuk_protokol) || (wrk && ev.yuk_protokol !== 'h1') || (ev.yuk_protokol === 'h2' && ev.yuk_kip !== 'ka')) {
       ihlal.push('yuk_protokol');
     }
+    // Sunucu ayari: ayar 1 yalniz sunucu hedefinde; seviye ae'ye bagli; dizin ayar 1 iken HER ZAMAN zorunlu (silme icin).
+    if (ev.yuk_srv_ayar === '1') {
+      if (serbest) ihlal.push('yuk_srv_ayar');
+      const ust = SRV_SEVIYE_MAX[ev.yuk_ae];
+      const seviye = metin('yuk_srv_seviye') && SRV_SEVIYE_RE.test(ev.yuk_srv_seviye) ? Number(ev.yuk_srv_seviye) : null;
+      if (ust ? seviye === null || seviye > ust : ev.yuk_srv_seviye !== '') ihlal.push('yuk_srv_seviye');
+      if (ev.yuk_srv_static !== '0' && ev.yuk_srv_static !== '1') ihlal.push('yuk_srv_static');
+      if (!srvDizinGecerli(ev.yuk_srv_dizin)) ihlal.push('yuk_srv_dizin');
+    } else if (ev.yuk_srv_ayar === '0') {
+      if (ev.yuk_srv_seviye !== '') ihlal.push('yuk_srv_seviye');
+      if (ev.yuk_srv_static !== '0') ihlal.push('yuk_srv_static');
+      if (ev.yuk_srv_dizin !== '') ihlal.push('yuk_srv_dizin');
+    }
     aralik('yuk_isinma_sn', SINIRLAR.isinmaMin, SINIRLAR.isinmaMax);
     aralik('yuk_sure_sn', SINIRLAR.sureMin, SINIRLAR.sureMax);
     aralik('yuk_bosluk_sn', SINIRLAR.boslukMin, SINIRLAR.boslukMax);
@@ -1124,11 +1209,12 @@ function ekstraDegiskenleriDenetle(ev, { simdiSn = Math.floor(Date.now() / 1000)
     // Is gecerlilik suresi: simdi <= deger <= simdi + 1800 (Portal simdi + 900 gonderir).
     const epoch = metin('yuk_son_epoch') && EPOCH_RE.test(ev.yuk_son_epoch) ? Number(ev.yuk_son_epoch) : null;
     if (epoch === null || epoch < simdiSn || epoch > simdiSn + SON_EPOCH_UST_PAY_SN) ihlal.push('yuk_son_epoch');
-    // Butce: <= 2700 ve >= bosta + adim_sayisi * tekrar * (isinma + sure + bosluk) + 120 (ek paysiz formul).
+    // Butce: <= 2700 (sunucu ayarli 1800) ve >= bosta + adim_sayisi * tekrar * (isinma + sure + bosluk) + 120 (ek paysiz formul).
     const butce = sayi('yuk_butce_sn');
     const adimlar = metin(wrk ? 'yuk_baglantilar' : 'yuk_hizlar') ? ev[wrk ? 'yuk_baglantilar' : 'yuk_hizlar'].split(' ').length : NaN;
     const altSinir = Number(ev.yuk_bosta_bas_sn) + adimlar * Number(ev.yuk_tekrar) * (Number(ev.yuk_isinma_sn) + Number(ev.yuk_sure_sn) + Number(ev.yuk_bosluk_sn)) + 120;
-    if (butce === null || butce < 1 || butce > SINIRLAR.maxButceSn || !(butce >= altSinir)) ihlal.push('yuk_butce_sn');
+    const butceTavani = ev.yuk_srv_ayar === '1' ? SINIRLAR.maxButceSnSunucuAyar : SINIRLAR.maxButceSn;
+    if (butce === null || butce < 1 || butce > butceTavani || !(butce >= altSinir)) ihlal.push('yuk_butce_sn');
     // Tur 4: eski yol degiskenleri yalniz isaret degeri; arac dizini <yuk_cikti_kok>/araclar/<id>.
     if (ev.yuk_k6_yolu !== ESKI_K6_ISARETI) ihlal.push('yuk_k6_yolu');
     if (ev.yuk_wrk_yolu !== ESKI_WRK_ISARETI) ihlal.push('yuk_wrk_yolu');
@@ -1702,6 +1788,7 @@ module.exports = {
   agIcinde,
   serbestAgBul,
   EKSTRA_ANAHTARLAR,
+  SRV_SEVIYE_MAX,
   ekstraDegiskenler,
   ekstraDegiskenleriDenetle,
   gecmisIcinMaskele,

@@ -39,11 +39,15 @@
 // GECE KUYRUGU (2026-11-03): Plan kutusunda "Kuyruk etiketi" (zorunlu, en cok 100) + "Kuyruğa ekle": formun o anki
 // govdesi (etiketsiz) taslak kuyruga gider; formda bu ayarlarla bitmis on kontrol varsa numarasi da (uyari turleri
 // kuyruk olusturulurken onaya gelir). "Koşuyu başlat…" AYNEN kalir.
+// SUNUCU AYARI (2026-11-04; kullanici: gece 30 senaryo, elle konf degistirmeden): Gelişmiş ayarlar'da "Sunucuyu koşu öncesi
+// ayarla" kutusu (yalniz sunucu hedefinde; serbestte cizilmez ve govdeye girmez). Seviye br 1-11 / gzip 1-9 (identity'de
+// gizli), static kutusu, dizin (kutu acikken HER ZAMAN zorunlu; son deger localStorage'da). Kutu acikken h2 secimi
+// /hedefler protokoller'inde h2 olmasa da serbest: sunucu h2'yi kosu oncesi acar. parametreler.sunucuAyar imzaya girer.
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowPathIcon, BoltIcon, ChevronDownIcon, ChevronRightIcon, ClipboardDocumentCheckIcon, ServerStackIcon, WrenchScrewdriverIcon } from '@heroicons/react/24/outline';
 import {
   hedeflerNormalle, nginxLoadtestApi, type NlAe, type NlHedef, type NlHedefler, type NlHedefTuru, type NlIpSinifi, type NlKip, type NlKosuAyrinti,
-  type NlMotor, type NlParametreler, type NlProtokol, type NlSenaryo, type NlVarsayilanlar,
+  type NlMotor, type NlParametreler, type NlProtokol, type NlSenaryo, type NlSunucuAyar, type NlVarsayilanlar,
 } from '@/api/nginxLoadtestApi';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { toast } from '@/hooks/useToast';
@@ -57,12 +61,12 @@ import OnKontrolPaneli from './OnKontrolPaneli';
 import {
   ALAN_ACIKLAMASI, HAZIR_AYAR_ETIKETI, HAZIR_AYAR_SIRASI, hangiHazirAyar, hazirAyar, hazirAyarSuresiSn, type HazirAyarAdi, type HazirAyarDegerleri,
 } from './hazirAyarlar';
-import { Alan, Bolum, GIRDI, KosuDurumHapi, girdiStili } from './YukUi';
+import { Alan, Bolum, GIRDI, KosuDurumHapi, SunucuAyarUyarilari, girdiStili } from './YukUi';
 import { ETIKET_MAX as KUYRUK_ETIKET_MAX, yeniYerelId, type TaslakOge } from './kuyrukTaslak';
 import {
   AE_ETIKETI, AKTIF_DURUMLAR, GIRDIYE_BAGLI_RETLER, KIP_ETIKETI, PROTOKOL_ETIKETI, SERBEST_VHOST_YARDIMI, VHOST_LISTEDE_YOK_NOTU, adimDegerleri, baglantiBeklemesiMs,
-  baglantilariAyristir, butceSn, hataMetni, hedefSinirlari, hizlariAyristir, ipGecerli, nedenMetni, onKontrolDegerlendir, onKontrolKalanMs,
-  limitUyarilari, parametreHatalari, tavanNedeni, tavanRps, vhostGecerli,
+  SRV_SEVIYE_MAX, baglantilariAyristir, butceSn, butceTavani, hataMetni, hazirlikPayiSn, hedefSinirlari, hizlariAyristir, ipGecerli, nedenMetni, onKontrolDegerlendir, onKontrolKalanMs,
+  limitUyarilari, parametreHatalari, parametreSunucuAyari, srvDizinGecerli, srvDizinOku, srvDizinYaz, sunucuAyarHatalari, tavanNedeni, tavanRps, vhostGecerli,
 } from './yukTestiOrtak';
 
 interface Form {
@@ -75,6 +79,8 @@ interface Form {
   tekrar: string; isinma: string; sure: string; bosluk: string; bosta: string; kip: NlKip; ae: NlAe; etiket: string;
   /** Kullanicinin secimi; gonderilen deger wrk'de ya da sunucu h2 kabul etmiyorsa h1 (bkz. `protokol`). */
   protokol: NlProtokol;
+  /** Sunucuyu kosu oncesi ayarla (yalniz sunucu hedefinde etkili); seviye / dizin metin girdisi. */
+  srvAyar: boolean; srvSeviye: string; srvStatic: boolean; srvDizin: string;
 }
 const formBaslangic = (v: NlVarsayilanlar, yukHost = '', h2Acik = false): Form => ({
   senaryoId: '', hedefHost: '', hedefIp: '', vhost: null, yukHost, sni: false, motor: v.motor === 'wrk' ? 'wrk' : 'k6',
@@ -82,6 +88,7 @@ const formBaslangic = (v: NlVarsayilanlar, yukHost = '', h2Acik = false): Form =
   tekrar: String(v.tekrar), isinma: String(v.isinma), sure: String(v.sure), bosluk: String(v.bosluk),
   bosta: String(v.bosta), kip: h2Acik && v.protokol === 'h2' ? 'ka' : v.kip, ae: v.ae, etiket: '',
   protokol: h2Acik && v.protokol === 'h2' ? 'h2' : 'h1',
+  srvAyar: false, srvSeviye: '', srvStatic: false, srvDizin: srvDizinOku(),
 });
 const tamSayi = (s: string) => (/^\s*\d+\s*$/.test(s) ? Number(s) : NaN);
 /** Siniflandirma istegi yazma bitince (her tusta degil). */
@@ -224,7 +231,9 @@ export default function YeniKosu({ onBasladi, onSenaryolar, onAraclar, onKuyruga
   const sniEtkin = motor !== 'wrk';
   // HTTP/2 yalniz k6 ve yalniz sunucu kabul ediyorsa; aksi halde gonderilen h1 (secim kapali). h2'de kip 'ka'.
   const h2Acik = !!veri?.protokoller?.includes('h2');
-  const protokolSecilebilir = motor === 'k6' && h2Acik;
+  // Kutu acikken sunucu h2'yi kosu oncesi acar: secim /hedefler protokoller'inden bagimsiz serbest.
+  const srvAktif = hedefTuru === 'sunucu' && !!form?.srvAyar;
+  const protokolSecilebilir = motor === 'k6' && (h2Acik || srvAktif);
   const protokol: NlProtokol = protokolSecilebilir && form?.protokol === 'h2' ? 'h2' : 'h1';
   const kip: NlKip = protokol === 'h2' ? 'ka' : form?.kip ?? 'yeni';
   // Sunucunun protokol reddi (400 gecersiz_istek, HTTP/2 metni) ayni motor / protokol / kip secimiyle alan hatasi kalir.
@@ -232,13 +241,16 @@ export default function YeniKosu({ onBasladi, onSenaryolar, onAraclar, onKuyruga
   const protokolRetMetni = protokolRet && protokolRet.anahtar === protokolAnahtari ? protokolRet.mesaj : null;
   const hizlar = hizlariAyristir(hizlarMetni);
   const baglantilar = form ? baglantilariAyristir(form.baglantilar) : null;
+  const sunucuAyar: NlSunucuAyar | null = form && srvAktif
+    ? { seviye: form.ae === 'identity' ? null : tamSayi(form.srvSeviye), static: form.srvStatic, dizin: form.srvDizin.trim() } : null;
+  const srvHata = form && srvAktif ? sunucuAyarHatalari(form.ae, form.srvSeviye, form.srvDizin) : {};
   const param: NlParametreler | null = form ? {
     motor,
     ...(motor === 'wrk'
       ? { baglantilar: baglantilar ?? [], is_parcacigi: tamSayi(form.is_parcacigi) }
       : { hizlar: hizlar ?? [], maxvu: tamSayi(maxvuMetni) }),
     tekrar: tamSayi(form.tekrar), isinma: tamSayi(form.isinma), sure: tamSayi(form.sure), bosluk: tamSayi(form.bosluk),
-    bosta: tamSayi(form.bosta), kip, ae: form.ae, protokol,
+    bosta: tamSayi(form.bosta), kip, ae: form.ae, protokol, ...(sunucuAyar ? { sunucuAyar } : {}),
   } : null;
   const pHata = param && sinir ? parametreHatalari(param, sinir) : {};
   // 2026-11-03 (K2): olculmus limit_req / limit_conn asimi ENGEL degil, UYARI (sunucu ayni metni plan uyarisi yapar ve
@@ -264,12 +276,14 @@ export default function YeniKosu({ onBasladi, onSenaryolar, onAraclar, onKuyruga
     else if (!yuk.uygun) fHata.yuk = nedenMetni(yuk.neden) || 'Bu sunucu yük üretemez.';
     else if (sunucuHost && yuk.host === sunucuHost) fHata.yuk = nedenMetni('ayni_host');
     if (form.etiket.length > 120) fHata.etiket = 'En çok 120 karakter.';
+    if (srvHata.seviye) fHata.srvSeviye = srvHata.seviye;
+    if (srvHata.dizin) fHata.srvDizin = srvHata.dizin;
   }
   // Gelismis alanlardaki hata sayisi: bolum kapaliyken de soylenir. Hata bolumu ACAR ve acik birakir: hata duzelince
   // kendiliginden kapansa odaktaki alan gizlenir, odak sayfaya duser (inceleme bulgusu 2). Render sirasinda kosullu
   // setState (React'in "onceki degere gore durum ayarla" kalibi): effect'teki gibi bir kare kapali cizilmez.
   const gelismisHatalari = [...(['tekrar', 'isinma', 'bosluk', 'bosta', 'kip', 'ae', 'protokol'] as const), ...(motor === 'wrk' ? ['is_parcacigi'] as const : ['maxvu'] as const)]
-    .filter((k) => !!pHata[k]).length + (fHata.etiket ? 1 : 0) + (protokolRetMetni ? 1 : 0);
+    .filter((k) => !!pHata[k]).length + (fHata.etiket ? 1 : 0) + (fHata.srvSeviye ? 1 : 0) + (fHata.srvDizin ? 1 : 0) + (protokolRetMetni ? 1 : 0);
   if (gelismisHatalari > 0 && !gelismisAcik) setGelismisAcik(true);
   const gecerli = !!form && !!param && !Object.keys(pHata).length && !Object.keys(fHata).length;
   // Siniflandirma kapisi: surerken, kalici retle ve `uygun:false` sunucu hedefinde on kontrol kapali; 424 kapatmaz.
@@ -300,6 +314,11 @@ export default function YeniKosu({ onBasladi, onSenaryolar, onAraclar, onKuyruga
   const seciliAyar = ayarlar && formAyari ? hangiHazirAyar(formAyari, motor, ayarlar) : null;
 
   const degistir = <K extends keyof Form>(k: K, v: Form[K]) => setForm((f) => (f ? { ...f, [k]: v } : f));
+  // Son gecerli dizin hatirlanir (tus basina degil, gecerli olunca).
+  const srvDizinMetni = form?.srvDizin.trim() ?? '';
+  useEffect(() => {
+    if (srvAktif && srvDizinGecerli(srvDizinMetni)) srvDizinYaz(srvDizinMetni);
+  }, [srvAktif, srvDizinMetni]);
   const hazirUygula = (ad: HazirAyarAdi) => { if (ayarlar) setForm((f) => (f ? { ...f, ...ayarlar[ad] } : f)); };
   function hedefSec(host: string) {
     const h = veri?.hedefler.find((x) => x.host === host) ?? null;
@@ -321,10 +340,10 @@ export default function YeniKosu({ onBasladi, onSenaryolar, onAraclar, onKuyruga
     const { etiket: _e, ...g } = govde as typeof govde & { etiket?: string };
     void _e;
     const yuk = param.motor === 'wrk' ? `${(param.baglantilar ?? []).join(' ')} bağlantı` : `${(param.hizlar ?? []).join(' ')} istek/sn`;
-    const ozet = [param.motor, yuk, ...(param.protokol === 'h2' ? [PROTOKOL_ETIKETI.h2] : []), KIP_ETIKETI[param.kip], AE_ETIKETI[param.ae], butce != null ? `≈ ${sureMetni(butce)}` : ''].filter(Boolean).join(' · ');
+    const ozet = [param.motor, yuk, ...(param.protokol === 'h2' ? [PROTOKOL_ETIKETI.h2] : []), KIP_ETIKETI[param.kip], AE_ETIKETI[param.ae], parametreSunucuAyari(param), butce != null ? `≈ ${sureMetni(butce)}` : ''].filter(Boolean).join(' · ');
     onKuyrugaEkle({
       yerelId: yeniYerelId(), etiket: kuyrukEtiketi, govde: g, hedef: kuyrukHedefi,
-      onKontrolKosuId: ok && okBitti && !formDegisti && !okEski ? ok.kosuId : null, ozet, butceSn: butce,
+      onKontrolKosuId: ok && okBitti && !formDegisti && !okEski ? ok.kosuId : null, ozet, butceSn: butce != null ? butce + hazirlikPayiSn(param) : null,
     });
     toast.success(`Kuyruğa eklendi: ${kuyrukEtiketi} (taslakta ${kuyrukOgeSayisi + 1} öğe).`);
     setKuyrukEtiket('');
@@ -408,9 +427,10 @@ export default function YeniKosu({ onBasladi, onSenaryolar, onAraclar, onKuyruga
   );
   const adim = adimDegerleri(param);
   const adimSayisi = adim.degerler.length && Number.isInteger(param.tekrar) ? adim.degerler.length * param.tekrar : null;
-  const butceOran = butce != null ? Math.min(1, butce / sinir.maxButceSn) : 0;
-  const butceTon = butce != null && butce > sinir.maxButceSn ? 'hata' : butceOran > 0.85 ? 'uyari' : 'aksan';
-  const dk = Math.floor(sinir.maxButceSn / 60);
+  const tavanSn = butceTavani(sinir, !!sunucuAyar);
+  const butceOran = butce != null ? Math.min(1, butce / tavanSn) : 0;
+  const butceTon = butce != null && butce > tavanSn ? 'hata' : butceOran > 0.85 ? 'uyari' : 'aksan';
+  const dk = Math.floor(tavanSn / 60);
   // wrk tavan satiri: en kucuk baglanti icin bekleme. B3: olculmus cok kucuk limit artik sinir degil (uyari).
   const enKucukBaglanti = baglantilar?.length ? Math.min(...baglantilar) : null;
   const bekleme = enKucukBaglanti != null ? baglantiBeklemesiMs(enKucukBaglanti, tavan) : null;
@@ -418,7 +438,7 @@ export default function YeniKosu({ onBasladi, onSenaryolar, onAraclar, onKuyruga
   const gelismisOzeti = [
     `tekrar ${param.tekrar}`, `ısınma ${form.isinma} sn`, `bekleme ${form.bosluk} sn`, `başta ${form.bosta} sn`,
     motor === 'wrk' ? `${form.is_parcacigi} iş parçacığı` : `en çok ${maxvuMetni} VU`, ...(protokol === 'h2' ? [PROTOKOL_ETIKETI.h2] : []), KIP_ETIKETI[kip], AE_ETIKETI[form.ae],
-    ...(sniEtkin && form.sni ? ['SNI'] : []),
+    ...(sniEtkin && form.sni ? ['SNI'] : []), ...(sunucuAyar ? [parametreSunucuAyari(param)] : []),
   ].join(' · ');
   // On kontrol bu formu artik kapsamiyor (form degisti / sunucu eski dedi / 15 dk doldu).
   const okGecersiz = formDegisti || !!okEski || (kalanMs != null && kalanMs <= 0);
@@ -586,7 +606,7 @@ export default function YeniKosu({ onBasladi, onSenaryolar, onAraclar, onKuyruga
                     {butce != null && Number.isFinite(butce) ? `≈ ${sureMetni(butce)}` : '—'}
                   </span>
                 </div>
-                <div className="mt-1.5 h-1.5 rounded-full" style={{ background: 'var(--bg-surface)' }} role="meter" aria-label="Tahmini süre / üst sınır" aria-valuemin={0} aria-valuemax={sinir.maxButceSn} aria-valuenow={butce != null && Number.isFinite(butce) ? butce : 0}>
+                <div className="mt-1.5 h-1.5 rounded-full" style={{ background: 'var(--bg-surface)' }} role="meter" aria-label="Tahmini süre / üst sınır" aria-valuemin={0} aria-valuemax={tavanSn} aria-valuenow={butce != null && Number.isFinite(butce) ? butce : 0}>
                   <div className="h-full rounded-full" style={{ width: `${Math.round((Number.isFinite(butceOran) ? butceOran : 0) * 100)}%`, background: TON[butceTon].renk }} />
                 </div>
                 <p className="mt-1 text-[11px] leading-4 tabular-nums" style={{ color: pHata.butce ? 'var(--status-danger-text)' : 'var(--text-secondary)' }}>
@@ -633,7 +653,7 @@ export default function YeniKosu({ onBasladi, onSenaryolar, onAraclar, onKuyruga
                     )}
                   {/* HTTP/2: yalniz k6; wrk ya da h2'yi kabul etmeyen sunucuda kapali ve HTTP/1.1 gosterir. */}
                   <Alan id="yuk-protokol" etiket="Protokol" hata={pHata.protokol || protokolRetMetni}
-                    yardim={motor === 'wrk' ? ALAN_ACIKLAMASI.protokolWrk : !h2Acik ? ALAN_ACIKLAMASI.protokolYok : ALAN_ACIKLAMASI.protokol}>
+                    yardim={motor === 'wrk' ? ALAN_ACIKLAMASI.protokolWrk : !h2Acik && !srvAktif ? ALAN_ACIKLAMASI.protokolYok : ALAN_ACIKLAMASI.protokol}>
                     <select id="yuk-protokol" value={protokol} disabled={!protokolSecilebilir} className={GIRDI} style={girdiStili(!!(pHata.protokol || protokolRetMetni))}
                       onChange={(e) => {
                         const v: NlProtokol = e.target.value === 'h2' ? 'h2' : 'h1';
@@ -658,6 +678,32 @@ export default function YeniKosu({ onBasladi, onSenaryolar, onAraclar, onKuyruga
                     <input type="checkbox" className="mt-0.5 accent-[var(--accent)]" checked={sniEtkin && form.sni} disabled={!sniEtkin} onChange={(e) => degistir('sni', e.target.checked)} />
                     <span>SNI ile bağlan <span style={{ color: 'var(--text-secondary)' }}>{`— ${sniEtkin ? ALAN_ACIKLAMASI.sni : ALAN_ACIKLAMASI.sniWrk}`}</span></span>
                   </label>
+                  {hedefTuru === 'sunucu' && (
+                    <div className="min-w-0 space-y-3 @lg/yuk:col-span-2 @3xl/yuk:col-span-3">
+                      <label className="flex cursor-pointer items-start gap-2 text-[12px]" style={{ color: 'var(--text-primary)' }}>
+                        <input id="yuk-srv-ayar" type="checkbox" className="mt-0.5 accent-[var(--accent)]" checked={form.srvAyar} onChange={(e) => degistir('srvAyar', e.target.checked)} />
+                        <span>Sunucuyu koşu öncesi ayarla <span style={{ color: 'var(--text-secondary)' }}>{`— ${ALAN_ACIKLAMASI.sunucuAyar}`}</span></span>
+                      </label>
+                      {form.srvAyar && (
+                        <div className="grid gap-3 @lg/yuk:grid-cols-2">
+                          {form.ae !== 'identity' && (
+                            <Alan id="yuk-srv-seviye" etiket={`${form.ae === 'br' ? 'Brotli' : 'Gzip'} seviyesi (1–${SRV_SEVIYE_MAX[form.ae]})`} hata={fHata.srvSeviye || null} yardim={ALAN_ACIKLAMASI.srvSeviye}>
+                              <input id="yuk-srv-seviye" type="number" inputMode="numeric" min={1} max={SRV_SEVIYE_MAX[form.ae]} value={form.srvSeviye} onChange={(e) => degistir('srvSeviye', e.target.value)}
+                                className={`${GIRDI} tabular-nums`} style={girdiStili(!!fHata.srvSeviye)} aria-invalid={!!fHata.srvSeviye} />
+                            </Alan>
+                          )}
+                          <Alan id="yuk-srv-dizin" etiket="Uygulama dizini" hata={fHata.srvDizin || null} yardim={ALAN_ACIKLAMASI.srvDizin}>
+                            <input id="yuk-srv-dizin" value={form.srvDizin} onChange={(e) => degistir('srvDizin', e.target.value)} placeholder="/usr/nginx/applications/uygulama" autoComplete="off" spellCheck={false}
+                              className={`${GIRDI} font-mono`} style={girdiStili(!!fHata.srvDizin)} aria-invalid={!!fHata.srvDizin} />
+                          </Alan>
+                          <label className="flex cursor-pointer items-start gap-2 text-[12px] @lg/yuk:col-span-2" style={{ color: 'var(--text-primary)' }}>
+                            <input id="yuk-srv-static" type="checkbox" className="mt-0.5 accent-[var(--accent)]" checked={form.srvStatic} onChange={(e) => degistir('srvStatic', e.target.checked)} />
+                            <span>static (önceden sıkıştırılmış dosya) <span style={{ color: 'var(--text-secondary)' }}>{`— ${ALAN_ACIKLAMASI.srvStatic}`}</span></span>
+                          </label>
+                        </div>
+                      )}
+                    </div>
+                  )}
                   <Alan id="yuk-etiket" etiket="Etiket (isteğe bağlı)" className="@lg/yuk:col-span-2 @3xl/yuk:col-span-3" hata={fHata.etiket || null} yardim={ALAN_ACIKLAMASI.etiket}>
                     <input id="yuk-etiket" value={form.etiket} maxLength={120} onChange={(e) => degistir('etiket', e.target.value)} autoComplete="off" className={GIRDI} style={girdiStili(!!fHata.etiket)} />
                   </Alan>
@@ -678,7 +724,7 @@ export default function YeniKosu({ onBasladi, onSenaryolar, onAraclar, onKuyruga
             <div className="text-[12px] leading-5" style={{ color: 'var(--text-primary)' }}>
               <div className="flex items-baseline justify-between gap-2"><span style={{ color: 'var(--text-secondary)' }}>Adım</span><b className="tabular-nums">{adimSayisi != null ? `${fmtNumber(adimSayisi)} (${adim.degerler.length} ${motor === 'wrk' ? 'bağlantı kademesi' : 'hız'} × ${param.tekrar})` : '—'}</b></div>
               <div className="flex items-baseline justify-between gap-2"><span style={{ color: 'var(--text-secondary)' }}>Tahmini süre</span><b className="tabular-nums">{butce != null && Number.isFinite(butce) ? `≈ ${sureMetni(butce)}` : '—'}</b></div>
-              <div className="mt-1.5 h-1.5 rounded-full" style={{ background: 'var(--bg-elevated)' }} role="meter" aria-label="Süre bütçesi" aria-valuemin={0} aria-valuemax={sinir.maxButceSn} aria-valuenow={butce != null && Number.isFinite(butce) ? butce : 0}>
+              <div className="mt-1.5 h-1.5 rounded-full" style={{ background: 'var(--bg-elevated)' }} role="meter" aria-label="Süre bütçesi" aria-valuemin={0} aria-valuemax={tavanSn} aria-valuenow={butce != null && Number.isFinite(butce) ? butce : 0}>
                 <div className="h-full rounded-full" style={{ width: `${Math.round((Number.isFinite(butceOran) ? butceOran : 0) * 100)}%`, background: TON[butceTon].renk }} />
               </div>
               <p className="mt-1 text-[11px]" style={{ color: pHata.butce ? 'var(--status-danger-text)' : 'var(--text-muted)' }}>{pHata.butce || `Üst sınır ${dk} dk; iş bu süreyi aşarsa kendini durdurur.`}</p>
@@ -723,6 +769,7 @@ export default function YeniKosu({ onBasladi, onSenaryolar, onAraclar, onKuyruga
           aciklama={formDegisti ? 'Form bu ön kontrolden sonra değişti: sonuç yeni değerleri kapsamıyor.' : 'Yük üretilmez. Sonuç geldiğinde engeller ve onay isteyen uyarılar burada listelenir.'}
           govdeSinifi="p-4 space-y-4">
           {okKayit && !AKTIF_DURUMLAR.has(okKayit.durum) && <OnKontrolPaneli kosu={okKayit} />}
+          {okKayit?.sunucuAyari && <SunucuAyarUyarilari ayar={okKayit.sunucuAyari} />}
           {okEski && <UyariKutusu ton="uyari" rol="alert" baslik={okEski} />}
           <KosuCiktisi key={ok.kosuId} kosuId={ok.kosuId} etiket={`Ön kontrol #${ok.kosuId}`} awxJobId={ok.jobId} basladi={okKayit?.startedAt || okKayit?.createdAt} onBitti={() => void okKayitOku(ok.kosuId)} yukseklik="min(20rem, calc(100dvh - 24rem))" />
         </Bolum>

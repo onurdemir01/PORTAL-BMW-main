@@ -6,7 +6,9 @@
 //     (gürültü içinde) → kalıcı iyileşme").
 //   * hucreTonu: YALNIZ gurultu disi farklar renkli (iyi -> basari, kotu -> hata); gurultu ici / kurali yok / olculmedi soluk.
 //   * sirala: CPU iyilesmesi, p95, etiket, tarih (olculmeyen sona); ref her zaman ustte (cagiran ekler).
-//   * csvMetni: ozet + secili olcu matrisi; Turkce basliklar, ';' ayirici, ondalik virgul, UTF-8 BOM (Excel); hucre
+//   * farkParcalari: satirin "Fark" metni (HTTP/2 · keepalive · brotli 6 · static), referanstan farkli parcalar isaretli;
+//     karsilastirmaNotlari: farkli ayar / tek tekrar sayfa notlari.
+//   * csvMetni: ozet (fark kolonlari dahil) + secili olcu matrisi; Turkce basliklar, ';' ayirici, ondalik virgul, UTF-8 BOM (Excel); hucre
 //     '=', '+', '-', '@' ile basliyorsa metin alanlari tek tirnakla korunur (CSV formul enjeksiyonu).
 //   * urlDurumuOku / urlDurumuYaz: secim URL'de (?tab=yuktesti&yt=coklu&ref=&kosular=&olcu=&sira=); en cok 16 kosu.
 //   * seriStili: 16 kosu icin ayirt edilebilir cizgi (8 ton x duz / kesikli; ref kalin ve koyu).
@@ -40,6 +42,40 @@ export const OLCU_SIRASI: NlCokluOlcu[] = ['p95', 'p99', 'cpuMsIstek', 'hostCpu'
 
 /** Kosu adi: etiket on planda, yoksa numara. */
 export const kosuEtiketi = (k: Pick<NlCokluKosu, 'id' | 'etiket'>) => (k.etiket && k.etiket.trim() ? k.etiket : `#${k.id}`);
+
+// ── Fark metni (tek tabloda protokol / keepalive / sikistirma) ───────────────────────
+export type FarkKosu = Pick<NlCokluKosu, 'protokol' | 'kip' | 'ae' | 'sunucuAyar'>;
+export interface FarkParca { tur: 'protokol' | 'kip' | 'sikistirma' | 'static'; metin: string; farkli: boolean }
+const PROTOKOL_METNI: Record<string, string> = { h1: 'HTTP/1.1', h2: 'HTTP/2' };
+const KIP_METNI: Record<string, string> = { ka: 'keepalive', yeni: 'keepalive yok' };
+const AE_METNI: Record<string, string> = { br: 'brotli', gzip: 'gzip', identity: 'sıkıştırmasız' };
+function sikistirmaMetni(k: FarkKosu): string | null {
+  if (!k.ae) return null;
+  const seviye = k.sunucuAyar?.seviye;
+  return seviye == null ? AE_METNI[k.ae] : `${AE_METNI[k.ae]} ${seviye}`;
+}
+
+/** Kosunun parcalari ve referanstan farkli olanlari. Bilinmeyen (eski kosu) parca yazilmaz, fark sayilmaz. */
+export function farkParcalari(k: FarkKosu, ref: FarkKosu): FarkParca[] {
+  const o: FarkParca[] = [{ tur: 'protokol', metin: PROTOKOL_METNI[k.protokol], farkli: k.protokol !== ref.protokol }];
+  if (k.kip) o.push({ tur: 'kip', metin: KIP_METNI[k.kip], farkli: !!ref.kip && k.kip !== ref.kip });
+  // Sunucu ayari iki kosuda da biliniyorsa seviye / static kiyaslanir; biri eskiyse (sunucuAyar yok) bilinmiyor demektir.
+  const ayarBilinir = !!k.sunucuAyar && !!ref.sunucuAyar;
+  const s = sikistirmaMetni(k);
+  if (s) o.push({ tur: 'sikistirma', metin: s, farkli: !!ref.ae && (k.ae !== ref.ae || (ayarBilinir && k.sunucuAyar?.seviye !== ref.sunucuAyar?.seviye)) });
+  const st = k.sunucuAyar?.static === true;
+  const rst = ref.sunucuAyar?.static === true;
+  if (st || (rst && k.sunucuAyar)) o.push({ tur: 'static', metin: st ? 'static' : 'static yok', farkli: ayarBilinir && st !== rst });
+  return o;
+}
+
+/** Sayfa notlari: farkli ayarlar karsilastiriliyorsa ve tek tekrarli kosu varsa (gurultu olculmedi). */
+export function karsilastirmaNotlari(v: Pick<NlCokluKarsilastirma, 'ref' | 'adaylar'>): string[] {
+  const n: string[] = [];
+  if (v.adaylar.some((a) => farkParcalari(a, v.ref).some((p) => p.farkli))) n.push('Farklı protokol / sıkıştırma karşılaştırılıyor; karar yalnız referansa göredir.');
+  if ([v.ref, ...v.adaylar].some((k) => k.hizlar.some((h) => h.tekrar === 1))) n.push('Tek tekrarlı koşularda gürültü ölçülmedi: yüzde birkaçlık fark kesin değildir.');
+  return n;
+}
 
 /** Yalniz gurultu disi farklar renkli; digerleri soluk (null). */
 export function hucreTonu(f: NlFark | null | undefined): Extract<Ton, 'basari' | 'hata'> | null {
@@ -127,18 +163,30 @@ export function csvTarih(s: string | null): string {
   return `${d.getFullYear()}-${iki(d.getMonth() + 1)}-${iki(d.getDate())} ${iki(d.getHours())}:${iki(d.getMinutes())}`;
 }
 
+/** Fark kolonlari: Fark, Protokol, Keepalive, Sıkıştırma, Seviye, Static, Referanstan farklı. */
+function csvFark(k: FarkKosu, ref: FarkKosu): string[] {
+  const p = farkParcalari(k, ref);
+  const evetHayir = (x: boolean | null) => (x == null ? '' : x ? 'evet' : 'hayır');
+  return [
+    csvMetinHucre(p.map((x) => x.metin).join(' · ')), PROTOKOL_METNI[k.protokol], evetHayir(k.kip ? k.kip === 'ka' : null), k.ae ? AE_METNI[k.ae] : '',
+    k.sunucuAyar?.seviye != null ? String(k.sunucuAyar.seviye) : '', evetHayir(k.sunucuAyar ? k.sunucuAyar.static : null),
+    csvMetinHucre(p.filter((x) => x.farkli).map((x) => x.metin).join(', ')),
+  ];
+}
+
 /** Ozet + secili olcu matrisi (siralanmis adaylarla). */
 export function csvMetni(v: NlCokluKarsilastirma, olcu: NlCokluOlcu, adaylar: NlCokluAday[] = v.adaylar): string {
   const o = OLCU_TANIM[olcu];
   const st: string[][] = [];
-  st.push(['Koşu', 'Etiket', 'Rol', 'Tarih', 'Karar', 'Açıklama', 'CPU kademesi', 'CPU-ms/istek farkı %', 'p95 kademesi', 'p95 farkı %', 'Test trafiği farkı %', 'Bellek farkı %']);
-  st.push([`#${v.ref.id}`, csvMetinHucre(v.ref.etiket), 'Referans', csvTarih(v.ref.createdAt), '', '', '', '', '', '', '', '']);
+  st.push(['Koşu', 'Etiket', 'Rol', 'Tarih', 'Karar', 'Açıklama', 'CPU kademesi', 'CPU-ms/istek farkı %', 'p95 kademesi', 'p95 farkı %', 'Test trafiği farkı %', 'Bellek farkı %',
+    'Fark', 'Protokol', 'Keepalive', 'Sıkıştırma', 'Seviye', 'Static', 'Referanstan farklı']);
+  st.push([`#${v.ref.id}`, csvMetinHucre(v.ref.etiket), 'Referans', csvTarih(v.ref.createdAt), '', '', '', '', '', '', '', '', ...csvFark(v.ref, v.ref)]);
   for (const a of adaylar) {
     const kf = a.kademeFarki;
     st.push([`#${a.id}`, csvMetinHucre(a.etiket), 'Aday', csvTarih(a.createdAt), csvMetinHucre(kararBilgisi(a.karar).etiket), csvMetinHucre(cumle(a)),
-      kf.cpu ? String(kf.cpu.hiz) : '', csvSayi(kf.cpu?.yuzde, 1), kf.p95 ? String(kf.p95.hiz) : '', csvSayi(kf.p95?.yuzde, 1), csvSayi(kf.bant?.yuzde, 1), csvSayi(kf.bellek?.yuzde, 1)]);
+      kf.cpu ? String(kf.cpu.hiz) : '', csvSayi(kf.cpu?.yuzde, 1), kf.p95 ? String(kf.p95.hiz) : '', csvSayi(kf.p95?.yuzde, 1), csvSayi(kf.bant?.yuzde, 1), csvSayi(kf.bellek?.yuzde, 1), ...csvFark(a, v.ref)]);
   }
-  for (const k of v.karsilastirilamaz) st.push([`#${k.id}`, csvMetinHucre(k.etiket), 'Karşılaştırılamaz', csvTarih(k.createdAt), '', csvMetinHucre(k.nedenler.map((n) => n.metin).join(' ')), '', '', '', '', '', '']);
+  for (const k of v.karsilastirilamaz) st.push([`#${k.id}`, csvMetinHucre(k.etiket), 'Karşılaştırılamaz', csvTarih(k.createdAt), '', csvMetinHucre(k.nedenler.map((n) => n.metin).join(' ')), '', '', '', '', '', '', ...csvFark(k, v.ref)]);
   st.push([]);
   const birim = olcu === 'hata' ? 'oran' : olcu === 'bantBps' ? 'bit/sn' : o.birim;
   st.push([csvMetinHucre(`${o.ad} (${birim})`)]);

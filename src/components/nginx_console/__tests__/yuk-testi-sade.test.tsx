@@ -600,7 +600,7 @@ describe('Yük Testi sade — sunucuyla çapraz kontrol (SD11, SD12)', () => {
       tekrar_kosu_deneme: 'tekrar_kosu:deneme_2_kullanildi(120_eski_satir_atildi)', cpu_olculemedi: 'cpu_olculemedi(sayac_geriledi)',
       yuk_cpu_olculemedi: 'yuk_cpu_olculemedi',
       // HTTP/2 (h2_sozlesme.md 4.4).
-      h2_disi: 'h2_disi(3)', protokol_farkli: 'protokol_farkli(beklenen=h2,olculen=yok)',
+      h2_disi: 'h2_disi(3)', sunucu_ayari_kanitsiz: 'sunucu_ayari_kanitsiz(yok)', protokol_farkli: 'protokol_farkli(beklenen=h2,olculen=yok)',
       // 2026-11-03 bellek (bilgi).
       bellek_bos_az: 'bellek_bos_az(yuk,%7.5)', nginx_bellek_artisi: 'nginx_bellek_artisi(ilk=110MB,son=210MB,kosu_sonu=215MB)',
       // 2026-11-03 bant genisligi (bilgi).

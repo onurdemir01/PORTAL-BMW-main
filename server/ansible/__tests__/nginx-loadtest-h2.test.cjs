@@ -54,9 +54,12 @@ test('NA9 (b) argv: kosu (AE sonrasi) ve yollar (UA_ONEK sonrasi) gorevlerinde T
   const yml = oku('nginx_loadtest.yml');
   const s = yml.split('\n').map((x) => x.trim());
   const yerler = s.map((x, i) => (x === ARGV ? i : -1)).filter((i) => i >= 0);
-  assert.equal(yerler.length, 2, `iki gorevde tam ${ARGV}: ${yerler}`);
+  // 2026-11-04: hazirlik.sh uygula, dosyalar ve kanit da protokolu alir (ucu 'env'den hemen sonra, betik adi 8-11 satir sonra).
+  assert.equal(yerler.length, 5, `bes gorevde tam ${ARGV}: ${yerler}`);
   const onceki = yerler.map((i) => s[i - 1]).sort();
-  assert.deepEqual(onceki, ['- "AE={{ yuk_ae }}"', '- "UA_ONEK={{ yuk_ua_onek }}"'].sort());
+  assert.deepEqual(onceki, ['- "AE={{ yuk_ae }}"', '- "UA_ONEK={{ yuk_ua_onek }}"', '- env', '- env', '- env'].sort());
+  const hazirlik = yerler.filter((i) => s[i - 1] === '- env').map((i) => s.slice(i, i + 12).find((x) => x.endsWith('/hazirlik.sh"')));
+  assert.deepEqual(hazirlik, Array(3).fill('- "{{ yt_dizin }}/hazirlik.sh"'), 'env ile baslayan PROTOKOL yalniz hazirlik.sh gorevlerinde');
   const yollar = yerler.find((i) => s[i - 1] === '- "UA_ONEK={{ yuk_ua_onek }}"');
   assert.equal(s[yollar + 2], '- "{{ yt_dizin }}/on_kontrol.sh"', 'UA_ONEK + PROTOKOL yollar gorevinde (on_kontrol.sh)');
   assert.ok(s.includes('- name: --- [Task] Senaryodaki her tekil yol icin TEK istek (h1 ya da h2; cerezsiz, vekilsiz) ---'));

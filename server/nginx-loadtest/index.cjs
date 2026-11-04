@@ -52,6 +52,9 @@
 // COKLU KARSILASTIRMA (2026-11-04, coklu.cjs): GET /karsilastir-coklu (ref + en cok 15 aday, her aday ref'e karsi
 // kararVer; hiz basina ozet ve gurultu kurali) ve PUT /kosular/:id/etiket (Admin; denetimli). /karsilastir AYNEN.
 //
+// TOPLU RAPOR (2026-11-04, rapor.cjs): GET /rapor?kuyruk=<id> ya da ?kosular=1,2,.. (en cok 100; okuma yetkisi
+// /karsilastir-coklu ile ayni). Satir = kosu x hiz; yazilamayan kosu 409 degil, yanitta `atlananlar`.
+//
 // KOSU SILME (2026-11-04, sil.cjs): DELETE /kosular/:id (onay = kosu numarasi) ve POST /kosular/sil (toplu, en cok 50;
 // onay = secilen sayi). Kosuyu baslatan kisi ya da Admin: bu iki uc adminOkumaKapisi'ndan SAHIP_SILME ile gecer (gorunurluk
 // ve sekme kapisi yine uygulanir), sahiplik isleyicide. Suren / kilitli / bekleyen-calisan kuyruk ogesine bagli / dinlenen
@@ -69,6 +72,7 @@ const araclar = require('./araclar.cjs');
 const gorunum = require('./gorunum.cjs');
 const kuyruk = require('./kuyruk.cjs');
 const coklu = require('./coklu.cjs');
+const rapor = require('./rapor.cjs');
 const sil = require('./sil.cjs');
 const { adminOkumaKapisi, isAdmin } = require('../auth/admin-okuma-kapisi.cjs');
 
@@ -96,6 +100,7 @@ const ADMIN_DISI_OKUMA = Object.freeze([
   /^\/kosular\/\d+\/?$/,
   /^\/karsilastir\/?$/,
   /^\/karsilastir-coklu\/?$/,
+  /^\/rapor\/?$/,
   /^\/araclar\/?$/,
   /^\/kuyruklar\/?$/,
   /^\/kuyruklar\/\d+\/?$/,
@@ -289,6 +294,10 @@ const LISTE_KOLONLARI = `k.id, k.senaryo_id, k.on_kontrol_kosu_id, k.islem, k.et
 const COKLU_KOLONLARI = `k.id, k.senaryo_id, k.islem, k.etiket, k.hedef_host, k.hedef_ip, k.vhost, k.parametreler, k.durum, k.gecerlilik,
   k.created_by, k.created_at, k.hedef_turu, k.motor, s.ad AS senaryo_ad`;
 
+// Toplu rapor (2026-11-04): coklu kolonlari + sure ve gecersizlik. `sonuc` yalniz burada: hazirlik kaniti ve olasi sizinti
+// (portal_analiz) baska yerde yok; on kontrol ozeti tasinmaz. Kosu basina bir kez cozulur.
+const RAPOR_KOLONLARI = `${COKLU_KOLONLARI}, k.started_at, k.finished_at, k.gecersiz_nedenleri, k.sonuc`;
+
 /** Satirin motoru: liste kopyasi (kosular.motor), yoksa kanonik parametreler.motor, yoksa k6 (eski satir). */
 function motorOf(x) {
   return (x && x.motor) || (jsonOku(x && x.parametreler) || {}).motor || 'k6';
@@ -304,6 +313,13 @@ function protokolOf(x) {
 function metinDizisi(v) {
   const d = jsonOku(v);
   return Array.isArray(d) ? d.filter((s) => typeof s === 'string') : [];
+}
+
+/** Kosu ayrintisi ve Durdur kapisi AYNI hesabi gorsun: satirin durumu, AWX isi var mi, durdurma isi. */
+function sunucuAyariOf(k, sonucOzet = jsonOku(k.sonuc), analizOzeti = sonucOzet && sonucOzet.portal_analiz && typeof sonucOzet.portal_analiz === 'object' ? sonucOzet.portal_analiz.ozet : null) {
+  return gorunum.sunucuAyari(jsonOku(k.parametreler), sonucOzet, analizOzeti, {
+    terminal: !AKTIF.has(k.durum), isVar: k.awx_job_id != null, durdurIs: k.durdur_awx_job_id ?? null,
+  });
 }
 
 async function kosuOku(id) {
@@ -427,6 +443,8 @@ async function kosuyuBaslat(req, { islem, plan, onKontrolKosuId = null, onaylana
   // Kilit aciklamasi (kilit_dolu mesajinda target_desc): k6 + sunucu metni tur 2 ile BIREBIR.
   const hedefMetni = plan.hedefHost || `${plan.hedefIp} (serbest)`;
   const planUyarilari = Array.isArray(plan.uyarilar) ? plan.uyarilar : [];
+  // Sunucu ayarli on kontrol iptalde kilidi birakmaz (kilit.bagliIsKarari): hedef degismis kalmis olabilir.
+  const bagTuru = poller.bagTuruOf({ islem, parametreler: plan.parametreler });
   let alinan;
   try {
     alinan = await kilit.acquireLocks(db(), anahtarlar, {
@@ -523,7 +541,7 @@ async function kosuyuBaslat(req, { islem, plan, onKontrolKosuId = null, onaylana
     if (e && e.jobId != null) {
       // AWX degiskenleri yuttu, is baslatildi ve iptali denendi: kilit O ISE baglanir, is
       // terminale ulasinca supurme kurala gore birakir / tutar (iptal edilemediyse yuk kilitli kalir).
-      await kilit.bindLocks(db(), anahtarlar, lockId, { awxServerId: e.awxServerId, awxJobId: e.jobId, bagTuru: islem }).catch(() => {});
+      await kilit.bindLocks(db(), anahtarlar, lockId, { awxServerId: e.awxServerId, awxJobId: e.jobId, bagTuru }).catch(() => {});
     } else if (!(e && e.belirsiz)) {
       await kilitleriBirak(anahtarlar, lockId);
     }
@@ -532,7 +550,7 @@ async function kosuyuBaslat(req, { islem, plan, onKontrolKosuId = null, onaylana
     throw Object.assign(e, { kosuId });
   }
   try {
-    await kilit.bindLocks(db(), anahtarlar, lockId, { awxServerId: is.awxServerId, awxJobId: is.jobId, bagTuru: islem });
+    await kilit.bindLocks(db(), anahtarlar, lockId, { awxServerId: is.awxServerId, awxJobId: is.jobId, bagTuru });
   } catch (e) {
     // Kilit tam TTL ile alindi; baglanamamasi yalniz erken birakmayi geciktirir.
     console.warn('[NginxYukTesti] kilit isle baglanamadi (TTL ile dusecek):', maskele(e && e.message));
@@ -624,10 +642,67 @@ async function kosuyuOnKontroldenBaslat(req, { okId, confirmText, uyariKarari, k
   const yeniUyari = plan.uyarilar.find((u) => !sakliPlanUyarilari.includes(u));
   if (yeniUyari) throw hata(409, 'on_kontrol_eski', `Ön kontrolden bu yana yeni uyarı çıktı (${yeniUyari}); ön kontrolü yeniden çalıştırın.`);
   // Protokolsuz (HTTP/2 seciminden once saklanmis) on kontrol h1 sayilir: dagitim oncesi on kontrol gecerli kalir.
-  if (kararliJson(plan.parametreler) !== kararliJson({ ...sakli, protokol: sakli.protokol ?? 'h1' })) {
+  // Ayni kural sunucuAyar icin: alani olmayan eski on kontrol null sayilir. Sunucu ayari degisirse on kontrol eskir.
+  if (kararliJson(plan.parametreler) !== kararliJson({ ...sakli, protokol: sakli.protokol ?? 'h1', sunucuAyar: sakli.sunucuAyar ?? null })) {
     throw hata(409, 'on_kontrol_eski', 'Parametreler ön kontrolden bu yana değişti; ön kontrolü yeniden çalıştırın.');
   }
   return kosuyuBaslat(req, { islem: 'kosu', plan, onKontrolKosuId: okId, onaylananUyarilar: uyarilar, beklenenAracId: Number(ok.arac_id), kosuKaydedildi });
+}
+
+// -- DURDURMA ISI ----------------------------------------------------------------------------
+
+// Ayni kosu icin iki durdurma isi baslamasin: Durdur ucu iptalden sonra is baslatirken poller iptali gorup otomatik durdurma
+// baslatabilirdi. Tek surec icin yeter; ikinci is zararsizdir (geri_al yedek yoksa no-op).
+const durdurSuren = new Set();
+
+/** Durdur kipindeki isi baslatir ve satira yazar; onceki durdurma isinin geri alma sonucu temizlenir. Hata FIRLATIR. */
+async function durdurIsiBaslat(req, k, ayrinti = {}) {
+  const id = Number(k.id);
+  const tur = k.hedef_turu || 'sunucu';
+  const motor = motorOf(k);
+  const sen = await senaryoOku(Number(k.senaryo_id));
+  const p = jsonOku(k.parametreler);
+  if (!sen || !p) throw hata(409, 'senaryo_yok', 'Koşunun senaryosu ya da parametreleri okunamadı.');
+  const simdiSn = Math.floor(Date.now() / 1000);
+  const ev = dg.ekstraDegiskenler({
+    islem: 'durdur', kosuId: id, hedefHost: k.hedef_host, yukHost: k.yuk_host, hedefIp: k.hedef_ip, vhost: k.vhost,
+    senaryo: { tur: sen.senaryo_tur, tsv: sen.tsv, sha256: String(sen.sha256).trim() }, p: { ...p, motor }, kok: dg.ciktiKok(),
+    hedefTuru: tur, arac: null, simdiSn,
+  });
+  const ihlal = dg.ekstraDegiskenleriDenetle(ev, { simdiSn });
+  if (ihlal.length) throw hata(409, 'sinir_asildi', `Durdurma değişkenleri son denetimi geçemedi: ${ihlal.join(', ')}.`);
+  const is = await baslat.isBaslat(req, {
+    sablon: await baslat.sablonuCoz(),
+    extraVars: ev,
+    sablonAdi: `Nginx Yük Testi: durdur R${id} ${k.hedef_host || k.hedef_ip}`,
+    denetim: {
+      eylem: 'nginx_loadtest_durdur', targetHost: k.hedef_host || null, targetIp: k.hedef_ip,
+      ayrinti: { kosuId: id, hedefTuru: tur, motor, ...ayrinti },
+    },
+  });
+  await birKezTekrarla('durdur isi', () => db().query(
+    `UPDATE nginx_loadtest_kosular SET durdur_awx_server_id = $2, durdur_awx_job_id = $3 WHERE id = $1`, [id, is.awxServerId, is.jobId]));
+  const s = jsonOku(k.sonuc);
+  if (s && typeof s === 'object' && s.durdur_geri_alma) {
+    const { durdur_geri_alma: _, ...kalan } = s;
+    await birKezTekrarla('durdur sonucu', () => db().query(`UPDATE nginx_loadtest_kosular SET sonuc = $2 WHERE id = $1`, [id, JSON.stringify(kalan)]));
+  }
+  return { jobId: is.jobId, awxServerId: is.awxServerId };
+}
+
+/** Poller: temizlik play'i kosmadan biten sunucu ayarli is. Satir taze okunur; durdurma isi varsa ya da Durdur suruyorsa null. */
+async function otoDurdur(satir) {
+  const id = Number(satir.id);
+  if (durdurSuren.has(id)) return null;
+  durdurSuren.add(id);
+  try {
+    const k = await kosuOku(id);
+    if (!k || k.durdur_awx_job_id != null) return null;
+    console.warn(`[NginxYukTesti] kosu ${id}: geri alma sonucu yok, otomatik durdurma isi baslatiliyor`);
+    return await durdurIsiBaslat(kuyrukIstegi(k.created_by), k, { otomatik: true });
+  } finally {
+    durdurSuren.delete(id);
+  }
 }
 
 // -- GECE KUYRUGU (kuyruk.cjs) ---------------------------------------------------------------
@@ -773,7 +848,7 @@ function kuyrukUclari(router) {
           turHaritasi.set(t.kod, x);
         }
         ogeler.push({
-          etiket: o.etiket, butceSn: Number(plan.parametreler.butceSn) || null, turler,
+          etiket: o.etiket, butceSn: (Number(plan.parametreler.butceSn) + kuyruk.hazirlikPayiSn(plan.parametreler)) || null, turler,
           govde: { senaryoId: og.senaryoId, hedefHost: og.hedefHost, hedefIp: og.hedefIp, vhost: og.vhost, yukHost: og.yukHost, sni: og.sni, parametreler: plan.parametreler },
         });
       }
@@ -1275,6 +1350,7 @@ function yonlendiriciKur() {
           gecersizNedenleri: jsonOku(k.gecersiz_nedenleri) || [],
           sonucOzet,
           sonucOzeti: gorunum.sonucOzeti(adimSatirlari, analizOzeti, sonucOzet && sonucOzet.portal_analiz ? sonucOzet.portal_analiz.uyarilar : []),
+          sunucuAyari: sunucuAyariOf(k, sonucOzet, analizOzeti),
           swDizin: k.sw_dizin ?? null,
           iptalEden: k.iptal_eden ?? null,
           finalizedAt: iso(k.finalized_at),
@@ -1348,13 +1424,15 @@ function yonlendiriciKur() {
 
   router.post('/kosular/:id/durdur', async (req, res) => {
     let k = null;
+    let kosuId = null;
     try {
       adminSart(req);
       const id = sayi(req.params.id);
       if (!id) throw hata(400, 'gecersiz_istek', 'Geçersiz koşu numarası.');
       k = await kosuOku(id);
       if (!k) throw hata(409, 'kosu_yok', 'Koşu bulunamadı.');
-      if (k.durum === 'DONE') throw hata(409, 'kosu_bitti', 'Koşu tamamlanmış; durdurulacak bir şey yok.');
+      // Tamamlanmis kosuda yalniz geri alinamamis sunucu ayari icin (Play 7 kosmadi ya da hata verdi).
+      if (k.durum === 'DONE' && sunucuAyariOf(k)?.geriAlma?.durum !== 'hata') throw hata(409, 'kosu_bitti', 'Koşu tamamlanmış; durdurulacak bir şey yok.');
       const sid = k.awx_server_id == null ? null : Number(k.awx_server_id);
       const jid = k.awx_job_id == null ? null : Number(k.awx_job_id);
       // Baslatma suruyor (is numarasi henuz yazilmadi): durdur satiri CANCELED yapar, sonra donen is
@@ -1366,9 +1444,11 @@ function yonlendiriciKur() {
         }
       }
       const kim = String(kullanici(req).username || 'unknown').slice(0, 100);
+      durdurSuren.add(id);
+      kosuId = id;
       const sonuc = { iptal: null, iptalHatasi: null, durdurIsi: null, durdurHatasi: null };
       const runner = require('../ansible/runner.cjs');
-      // Durdurmada siniflandirma YENIDEN YAPILMAZ: tur ve motor satirdan (eski satir: sunucu / k6).
+      // Durdurmada siniflandirma YENIDEN YAPILMAZ: tur ve motor satirdan (eski satir: sunucu / k6; durdurIsiBaslat da satirdan).
       const tur = k.hedef_turu || 'sunucu';
       const motor = motorOf(k);
       if (sid != null && jid > 0) {
@@ -1382,29 +1462,12 @@ function yonlendiriciKur() {
       // AWX iptali uzaktaki async gorevi ve ayrik k6'yi DURDURMAZ: durdur kipindeki playbook kosu
       // dizinindeki pid'leri ve dizine bagli k6'yi sonlandirir. Ortam kapisi BURADA YOK: durdurmak
       // her zaman serbest (CANCELED / FAILED kosuda da: kalan surec temizligi).
-      if (k.islem === 'kosu') {
+      // Sunucu ayarli on kontrol da durdurma isi ister: AWX iptali temizlik play'ini kosturmaz ve hedefteki konf
+      // degistirilmis kalirdi (geri alma durdur kipinde hedefteki yedege gore calisir).
+      const srvOnKontrol = k.islem === 'on_kontrol' && !!(jsonOku(k.parametreler) || {}).sunucuAyar;
+      if (k.islem === 'kosu' || srvOnKontrol) {
         try {
-          const sen = await senaryoOku(Number(k.senaryo_id));
-          const p = jsonOku(k.parametreler);
-          if (!sen || !p) throw hata(409, 'senaryo_yok', 'Koşunun senaryosu ya da parametreleri okunamadı.');
-          const simdiSn = Math.floor(Date.now() / 1000);
-          const ev = dg.ekstraDegiskenler({
-            islem: 'durdur', kosuId: id, hedefHost: k.hedef_host, yukHost: k.yuk_host, hedefIp: k.hedef_ip, vhost: k.vhost,
-            senaryo: { tur: sen.senaryo_tur, tsv: sen.tsv, sha256: String(sen.sha256).trim() }, p: { ...p, motor }, kok: dg.ciktiKok(),
-            hedefTuru: tur, arac: null, simdiSn,
-          });
-          const ihlal = dg.ekstraDegiskenleriDenetle(ev, { simdiSn });
-          if (ihlal.length) throw hata(409, 'sinir_asildi', `Durdurma değişkenleri son denetimi geçemedi: ${ihlal.join(', ')}.`);
-          const is = await baslat.isBaslat(req, {
-            sablon: await baslat.sablonuCoz(),
-            extraVars: ev,
-            sablonAdi: `Nginx Yük Testi: durdur R${id} ${k.hedef_host || k.hedef_ip}`,
-            denetim: {
-              eylem: 'nginx_loadtest_durdur', targetHost: k.hedef_host || null, targetIp: k.hedef_ip,
-              ayrinti: { kosuId: id, hedefTuru: tur, motor, iptal: sonuc.iptal, iptalHatasi: sonuc.iptalHatasi },
-            },
-          });
-          sonuc.durdurIsi = { jobId: is.jobId, awxServerId: is.awxServerId };
+          sonuc.durdurIsi = await durdurIsiBaslat(req, k, { iptal: sonuc.iptal, iptalHatasi: sonuc.iptalHatasi });
         } catch (e) {
           sonuc.durdurHatasi = maskele(e && e.message).slice(0, 500);
         }
@@ -1418,8 +1481,6 @@ function yonlendiriciKur() {
       }
       if (sonuc.durdurIsi) {
         const d = sonuc.durdurIsi;
-        await birKezTekrarla('durdur isi', () => db().query(
-          `UPDATE nginx_loadtest_kosular SET durdur_awx_server_id = $2, durdur_awx_job_id = $3 WHERE id = $1`, [id, d.awxServerId, d.jobId]));
         // Kosunun kilitleri durdur isine baglanir: is basariyla biterse (iki sunucu da "kalan surec
         // yok") supurme hemen birakir, aksi halde TTL (en az butce + 180 sn). Iptal BASARISIZSA kosu
         // isi hala calisiyor olabilir: kilit o ise bagli kalir (durdur isinin basarisi birakmasin).
@@ -1433,8 +1494,8 @@ function yonlendiriciKur() {
       }
       // Kosu: durdurma isi yoksa uzaktaki yuk surebilir; iptal basarili olsa da BASARI DEGIL. Metin
       // motor ve ture gore (k6 + sunucu tur 2 ile birebir; serbestte hedefte kaydedici yok).
-      if (k.islem === 'kosu' && !sonuc.durdurIsi) {
-        const uzaktaki = tur === 'serbest' ? motor : `${motor} / kaydedici`;
+      if ((k.islem === 'kosu' || srvOnKontrol) && !sonuc.durdurIsi) {
+        const uzaktaki = srvOnKontrol ? 'konfigürasyon değişikliği' : tur === 'serbest' ? motor : `${motor} / kaydedici`;
         throw hata(424, 'durdur_baslatilamadi',
           `AWX işi ${iptalOldu ? 'iptal edildi' : 'iptal edilemedi'}, ancak durdurma işi başlatılamadı: ${sonuc.durdurHatasi}. Uzaktaki ${uzaktaki} sürüyor olabilir; Durdur'u yeniden deneyin. Kilitler koşunun süre sınırına kadar tutulur.`,
           { iptal: sonuc.iptal, iptalHatasi: sonuc.iptalHatasi, durdurHatasi: sonuc.durdurHatasi });
@@ -1457,6 +1518,8 @@ function yonlendiriciKur() {
       res.json({ ok: true, ...sonuc });
     } catch (e) {
       hataYaniti(req, res, e, 'nginx_loadtest_durdur', k ? { host: k.hedef_host, ip: k.hedef_ip, kosuId: k.id } : null);
+    } finally {
+      if (kosuId !== null) durdurSuren.delete(kosuId);
     }
   });
 
@@ -1659,6 +1722,96 @@ function yonlendiriciKur() {
     }
   });
 
+  // Toplu rapor (2026-11-04, rapor.cjs): ?kuyruk=<id> (kuyruk sirasiyla) ya da ?kosular=<id,...> (verilen sirayla; en cok 100).
+  // Yetki /karsilastir-coklu ile ayni (ADMIN_DISI_OKUMA). Kosu ve adim satirlari IKI sorguda (IN listesi parametreli). Yazilamayan
+  // kosu istegi dusurmez: `atlananlar` (neden: bulunamadi, on_kontrol, bitmemis, olcum_yok, hesaplanamadi, kosu_baslamadi).
+  router.get('/rapor', async (req, res) => {
+    try {
+      const q = req.query || {};
+      const kuyrukVar = q.kuyruk !== undefined;
+      if (kuyrukVar === (q.kosular !== undefined)) throw hata(400, 'gecersiz_istek', 'kuyruk ya da kosular (yalnız biri) gerekli.');
+      const atlananlar = [];
+      const idler = [];
+      const etiketler = new Map();
+      if (kuyrukVar) {
+        const kuyrukId = typeof q.kuyruk === 'string' && /^\d{1,10}$/.test(q.kuyruk.trim()) ? sayi(q.kuyruk) : null;
+        if (!kuyrukId) throw hata(400, 'gecersiz_istek', 'Geçersiz kuyruk numarası.');
+        const { rows } = await dbOku((d) => d.query(
+          `SELECT id, etiket, durum, kosu_id FROM nginx_loadtest_kuyruk_ogeler WHERE kuyruk_id = $1 ORDER BY sira ASC, id ASC`,
+          [kuyrukId],
+        ));
+        if (!rows.length) throw hata(409, 'kuyruk_yok', 'Kuyruk bulunamadı.');
+        for (const o of rows) {
+          const n = o.kosu_id == null ? null : Number(o.kosu_id);
+          if (n === null) atlananlar.push({ kosuId: null, etiket: o.etiket ?? null, neden: 'kosu_baslamadi', durum: o.durum ?? null });
+          else if (!idler.includes(n)) {
+            idler.push(n);
+            etiketler.set(n, o.etiket ?? null);
+          }
+        }
+      } else {
+        if (typeof q.kosular !== 'string') throw hata(400, 'gecersiz_istek', 'kosular virgülle ayrılmış koşu numaraları olmalı.');
+        const parcalar = q.kosular.split(',').map((x) => x.trim()).filter((x) => x !== '');
+        if (parcalar.length > rapor.MAX_KOSU * 4) throw hata(400, 'gecersiz_istek', `En çok ${rapor.MAX_KOSU} koşu raporlanır.`);
+        for (const x of parcalar) {
+          const n = /^\d{1,10}$/.test(x) ? sayi(x) : null;
+          if (!n) throw hata(400, 'gecersiz_istek', `Geçersiz koşu numarası: ${x.slice(0, 20)}`);
+          if (!idler.includes(n)) idler.push(n);
+        }
+        if (!idler.length) throw hata(400, 'gecersiz_istek', 'En az bir koşu numarası verin.');
+      }
+      if (idler.length > rapor.MAX_KOSU) throw hata(400, 'gecersiz_istek', `En çok ${rapor.MAX_KOSU} koşu raporlanır; ${idler.length} seçildi.`);
+      if (!idler.length) return res.json({ ok: true, satirlar: [], atlananlar });
+      const yer = idler.map((_, i) => `$${i + 1}`).join(', ');
+      const { rows: kosuSatirlari } = await dbOku((d) => d.query(
+        `SELECT ${RAPOR_KOLONLARI} FROM nginx_loadtest_kosular k LEFT JOIN nginx_loadtest_senaryolar s ON s.id = k.senaryo_id WHERE k.id IN (${yer})`,
+        idler,
+      ));
+      const byId = new Map(kosuSatirlari.map((r) => [Number(r.id), r]));
+      const uygun = [];
+      for (const id of idler) {
+        const r = byId.get(id);
+        const neden = !r ? 'bulunamadi' : r.islem !== 'kosu' ? 'on_kontrol' : AKTIF.has(r.durum) ? 'bitmemis' : null;
+        if (neden) atlananlar.push({ kosuId: id, etiket: r ? r.etiket ?? null : etiketler.get(id) ?? null, neden, durum: r ? r.durum : null });
+        else uygun.push(id);
+      }
+      if (!uygun.length) return res.json({ ok: true, satirlar: [], atlananlar });
+      const yer2 = uygun.map((_, i) => `$${i + 1}`).join(', ');
+      const { rows: adimSatirlari } = await dbOku((d) => d.query(
+        `SELECT * FROM nginx_loadtest_adimlar WHERE kosu_id IN (${yer2}) ORDER BY kosu_id ASC, id ASC`,
+        uygun,
+      ));
+      const adimlarOf = new Map(uygun.map((id) => [id, []]));
+      for (const a of adimSatirlari) {
+        const l = adimlarOf.get(Number(a.kosu_id));
+        if (l) l.push(a);
+      }
+      const kosular = uygun.map((id) => {
+        const r = byId.get(id);
+        const motor = motorOf(r);
+        const protokol = protokolOf(r);
+        const parametreler = jsonOku(r.parametreler);
+        const pa = (jsonOku(r.sonuc) || {}).portal_analiz;
+        const ad = adimlarOf.get(id);
+        return {
+          meta: coklu.kosuMeta(r, { motor, protokol, parametreler }),
+          parametreler,
+          analizAdimlari: ad.map(adimAnaliz),
+          gorunumAdimlari: ad.map((x) => adimApi(x, { motor, hedefTuru: r.hedef_turu || 'sunucu', protokol })),
+          analizOzeti: pa && typeof pa === 'object' ? pa.ozet : null,
+          kosuUyarilari: pa && typeof pa === 'object' ? pa.uyarilar : [],
+          gecersizNedenleri: jsonOku(r.gecersiz_nedenleri) || [],
+          startedAt: iso(r.started_at),
+          finishedAt: iso(r.finished_at),
+        };
+      });
+      const sonuc = rapor.raporKur({ kosular, analiz: poller.cModulu('analiz.cjs'), gorunum });
+      res.json({ ok: true, satirlar: sonuc.satirlar, atlananlar: [...atlananlar, ...sonuc.atlananlar] });
+    } catch (e) {
+      hataYaniti(req, res, e);
+    }
+  });
+
   // Kosu etiketi sonradan (2026-11-04): yalniz Admin (yazan uc; adminOkumaKapisi Admin olmayani zaten durdurur). Girdi
   // kapisi: metin, trim, en cok 120 karakter (kolon NVARCHAR(120)), kontrol karakteri yok; bos = etiketi kaldir (NULL).
   // Denetim: nginx_loadtest_etiket (eski / yeni). Kuyruk kosusunun "[K<n>] " oneki kullanicinin elindedir (zorlanmaz).
@@ -1785,6 +1938,7 @@ function yonlendiriciKur() {
 
 function initNginxLoadtest(app) {
   app.use('/api/nginx-loadtest', yonlendiriciKur());
+  poller.otoDurdurKur(otoDurdur);
   poller.startPoller();
   kuyruk.startKuyruk(kuyrukIslem);
 }
@@ -1801,5 +1955,7 @@ module.exports = {
   _protokolOfForTest: protokolOf,
   _LISTE_KOLONLARI: LISTE_KOLONLARI,
   _kuyrukIslemForTest: kuyrukIslem,
+  _otoDurdurForTest: otoDurdur,
+  _durdurSurenForTest: durdurSuren,
   _kuyrukYetkisiForTest: kuyrukYetkisi,
 };

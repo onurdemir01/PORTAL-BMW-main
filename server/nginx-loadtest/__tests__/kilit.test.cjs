@@ -242,16 +242,19 @@ test('YK7 satir silinmez; deger SQL metnine gomulmez', async () => {
 
 test('YK9 bagliIsKarari: bag turu x AWX durumu', () => {
   const beklenen = {
-    successful: { on_kontrol: 'birak', null: 'birak', kosu: 'birak', durdur: 'birak' },
-    failed: { on_kontrol: 'birak', null: 'birak', kosu: 'birak', durdur: 'tut' },
-    canceled: { on_kontrol: 'birak', null: 'birak', kosu: 'tut', durdur: 'tut' },
-    error: { on_kontrol: 'birak', null: 'birak', kosu: 'tut', durdur: 'tut' },
+    successful: { on_kontrol: 'birak', null: 'birak', kosu: 'birak', durdur: 'birak', onk_srv: 'birak' },
+    failed: { on_kontrol: 'birak', null: 'birak', kosu: 'birak', durdur: 'tut', onk_srv: 'birak' },
+    canceled: { on_kontrol: 'birak', null: 'birak', kosu: 'tut', durdur: 'tut', onk_srv: 'tut' },
+    error: { on_kontrol: 'birak', null: 'birak', kosu: 'tut', durdur: 'tut', onk_srv: 'tut' },
   };
   for (const [durum, sutun] of Object.entries(beklenen)) {
     for (const [tur, karar] of Object.entries(sutun)) {
       assert.equal(kl.bagliIsKarari(tur === 'null' ? null : tur, durum), karar, `${tur} + ${durum}`);
     }
   }
+  // Kolon NVARCHAR(12): sunucu ayarli on kontrolun bag turu sigmali. Sira kosu ile ayni (durdur'dan gevsek).
+  assert.ok('onk_srv'.length <= 12);
+  assert.equal(kl.BAG_SIRASI('onk_srv'), kl.BAG_SIRASI('kosu'));
   // Bos metin NULL gibi; bilinmeyen bag turu EN SIKI sutun (durdur).
   assert.equal(kl.bagliIsKarari('', 'canceled'), 'birak');
   assert.equal(kl.bagliIsKarari('bilinmeyen', 'failed'), 'tut');

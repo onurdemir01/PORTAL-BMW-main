@@ -11,7 +11,8 @@
 //      digerleri soluk; tabular-nums; tablo kendi kabinda yatay kayar, ilk sutun sabit.
 //   4) Grafik (CokluGrafik): secili olcu x hiz, kosu basina cizgi, ref kalin; lejant tiklayinca vurgu.
 //   5) "CSV indir" (istemcide): ozet + secili olcu matrisi; ';' ayirici, UTF-8 BOM.
-// Karsilastirilamayan kosular (farkli hedef / motor / protokol / tavan / veri yok) ayri grupta, nedeniyle.
+// Karsilastirilamayan kosular (farkli hedef / motor / senaryo / tavan / veri yok) ayri grupta, nedeniyle. Farkli protokol /
+// keepalive / sikistirma AYNI tabloda: her satirda "Fark" metni (referanstan farkli parca vurgulu) ve sayfa notlari.
 // Kosu silme (2026-11-04): adresteki numaralardan biri silinmisse sunucu 409 kosu_yok + `eksik` der; ekran onlari secimden
 // ve adresten cikarir (referans gittiyse kalanlarin en eskisi) ve "Silinmiş koşu çıkarıldı: #.." bilgisini gosterir.
 // Ayni yanitta on kontrol kaydi (`onKontrol`) ve bitmemis kosu (`bitmemis`) ayri listededir: onlar da cikarilir ama
@@ -28,8 +29,8 @@ import { Alan, Bolum, GIRDI, girdiStili } from './YukUi';
 import { hedefEtiketi, kademeMetni, kararBilgisi, type AdimBirimi } from './yukTestiOrtak';
 import CokluGrafik, { type CokluSeri } from './CokluGrafik';
 import {
-  MAX_COKLU, OLCU_SIRASI, OLCU_TANIM, SIRALAMALAR, csvMetni, cumle, farkYuzdeMetni, hizBul, hizlarBirlesimi, hucreTonu, kosuEtiketi, sirala, urlDurumuOku,
-  urlDurumuYaz, type CokluSiralama, type CokluUrl,
+  MAX_COKLU, OLCU_SIRASI, OLCU_TANIM, SIRALAMALAR, csvMetni, cumle, farkParcalari, farkYuzdeMetni, hizBul, hizlarBirlesimi, hucreTonu, karsilastirmaNotlari, kosuEtiketi,
+  sirala, urlDurumuOku, urlDurumuYaz, type CokluSiralama, type CokluUrl, type FarkKosu,
 } from './cokluKarsilastirma';
 
 const SOLUK = 'var(--text-muted)';
@@ -267,10 +268,11 @@ export default function CokluKarsilastir({ kuyrukNotu = null, onKuyrukNotuKapat 
                 {bekliyor && <ArrowPathIcon className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-label="Hesaplanıyor" />}
               </>
             )} govdeSinifi="p-0">
+            {karsilastirmaNotlari(veri).map((n) => <p key={n} data-coklu-not className="border-b px-4 py-2 text-[12px]" style={{ borderColor: 'var(--border-subtle)', color: 'var(--status-warning-text)' }}>{n}</p>)}
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[56rem] border-collapse text-[12px]" aria-label="Özet karşılaştırma">
+              <table className="w-full min-w-[66rem] border-collapse text-[12px]" aria-label="Özet karşılaştırma">
                 <thead><tr>
-                  {['Koşu', 'Karar', 'Ne oldu?'].map((b) => <th key={b} scope="col" className="px-3 py-1.5 text-left text-[11px]" style={TH_STIL}>{b}</th>)}
+                  {['Koşu', 'Fark', 'Karar', 'Ne oldu?'].map((b) => <th key={b} scope="col" className="px-3 py-1.5 text-left text-[11px]" style={TH_STIL}>{b}</th>)}
                   <th scope="col" className="px-3 py-1.5 text-right text-[11px]" style={TH_STIL} title={OLCU_TANIM.cpuMsIstek.ipucu}>İstek başına CPU</th>
                   <th scope="col" className="px-3 py-1.5 text-right text-[11px]" style={TH_STIL} title={OLCU_TANIM.p95.ipucu}>Yanıt süresi (p95)</th>
                   <th scope="col" className="px-3 py-1.5 text-right text-[11px]" style={TH_STIL} title={OLCU_TANIM.bantBps.ipucu}>Test trafiği</th>
@@ -279,11 +281,12 @@ export default function CokluKarsilastir({ kuyrukNotu = null, onKuyrukNotuKapat 
                 <tbody style={{ color: 'var(--text-primary)' }}>
                   <tr className="border-t align-top" data-ref-satiri style={{ borderColor: 'var(--border-subtle)', background: TON.aksan.zemin }}>
                     <td className="px-3 py-2"><KosuHucre k={veri.ref} /></td>
+                    <td className="px-3 py-2"><KosuFarki k={veri.ref} referans={veri.ref} /></td>
                     <td className="px-3 py-2"><Hap label="REFERANS" ton="aksan" /></td>
                     <td className="px-3 py-2" style={{ color: 'var(--text-secondary)' }}>Diğer koşular buna göre karşılaştırılır.</td>
                     <td colSpan={4} />
                   </tr>
-                  {sirali.map((a) => <OzetSatiri key={a.id} a={a} birim={birim} />)}
+                  {sirali.map((a) => <OzetSatiri key={a.id} a={a} birim={birim} referans={veri.ref} />)}
                 </tbody>
               </table>
             </div>
@@ -294,6 +297,7 @@ export default function CokluKarsilastir({ kuyrukNotu = null, onKuyrukNotuKapat 
                   {veri.karsilastirilamaz.map((k) => (
                     <li key={k.id} className="flex flex-wrap gap-x-2" style={{ color: 'var(--text-secondary)' }}>
                       <span className="font-medium" style={{ color: 'var(--text-primary)' }}>{kosuEtiketi(k)}</span><span className="font-mono">#{k.id}</span>
+                      <KosuFarki k={k} referans={veri.ref} />
                       <span>{k.nedenler.map((n) => n.metin).join(' ')}</span>
                     </li>
                   ))}
@@ -317,8 +321,8 @@ export default function CokluKarsilastir({ kuyrukNotu = null, onKuyrukNotuKapat 
                   {hizlar.map((h) => <th key={h} scope="col" className="px-3 py-1.5 text-right text-[11px] tabular-nums" style={TH_STIL}>{kademeMetni(h, birim)}</th>)}
                 </tr></thead>
                 <tbody style={{ color: 'var(--text-primary)' }}>
-                  <MatrisSatiri ad={kosuEtiketi(veri.ref)} id={veri.ref.id} hizlar={hizlar} veri={veri.ref.hizlar} olcu={olcu} referans />
-                  {sirali.map((a) => <MatrisSatiri key={a.id} ad={kosuEtiketi(a)} id={a.id} hizlar={hizlar} veri={a.hizlar} olcu={olcu} />)}
+                  <MatrisSatiri ad={kosuEtiketi(veri.ref)} id={veri.ref.id} hizlar={hizlar} veri={veri.ref.hizlar} olcu={olcu} fark={<KosuFarki k={veri.ref} referans={veri.ref} />} referans />
+                  {sirali.map((a) => <MatrisSatiri key={a.id} ad={kosuEtiketi(a)} id={a.id} hizlar={hizlar} veri={a.hizlar} olcu={olcu} fark={<KosuFarki k={a} referans={veri.ref} />} />)}
                 </tbody>
               </table>
             </div>
@@ -342,7 +346,21 @@ function KosuHucre({ k }: { k: { id: number; etiket: string | null; createdAt: s
   );
 }
 
-function OzetSatiri({ a, birim }: { a: NlCokluAday; birim: AdimBirimi }) {
+/** "Fark" metni: HTTP/2 · keepalive · brotli 6 · static; referanstan farkli parca vurgulu. */
+function KosuFarki({ k, referans }: { k: FarkKosu; referans: FarkKosu }) {
+  return (
+    <span className="text-[11px]" data-kosu-farki style={{ color: 'var(--text-secondary)' }}>
+      {farkParcalari(k, referans).map((p, i) => (
+        <React.Fragment key={p.tur}>
+          {i > 0 && ' · '}
+          <span data-farkli={p.farkli ? p.tur : undefined} style={p.farkli ? { color: TON.aksan.metin, fontWeight: 600 } : undefined}>{p.metin}</span>
+        </React.Fragment>
+      ))}
+    </span>
+  );
+}
+
+function OzetSatiri({ a, birim, referans }: { a: NlCokluAday; birim: AdimBirimi; referans: FarkKosu }) {
   const kb = kararBilgisi(a.karar);
   const kf = a.kademeFarki;
   const hucre = (x: typeof kf.cpu, o: NlCokluOlcu) => {
@@ -357,6 +375,7 @@ function OzetSatiri({ a, birim }: { a: NlCokluAday; birim: AdimBirimi }) {
   return (
     <tr className="border-t align-top" style={{ borderColor: 'var(--border-subtle)' }} data-aday={a.id}>
       <td className="px-3 py-2"><KosuHucre k={a} /></td>
+      <td className="px-3 py-2"><KosuFarki k={a} referans={referans} /></td>
       <td className="px-3 py-2"><Hap label={kb.etiket} ton={kb.ton} title={kb.aciklama} /></td>
       <td className="px-3 py-2" data-cumle title={a.kararNedenleri.join('\n')}>{cumle(a)}</td>
       {hucre(kf.cpu, 'cpuMsIstek')}
@@ -367,13 +386,14 @@ function OzetSatiri({ a, birim }: { a: NlCokluAday; birim: AdimBirimi }) {
   );
 }
 
-function MatrisSatiri({ ad, id, hizlar, veri, olcu, referans = false }: { ad: string; id: number; hizlar: number[]; veri: NlCokluHiz[]; olcu: NlCokluOlcu; referans?: boolean }) {
+function MatrisSatiri({ ad, id, hizlar, veri, olcu, fark, referans = false }: { ad: string; id: number; hizlar: number[]; veri: NlCokluHiz[]; olcu: NlCokluOlcu; fark: React.ReactNode; referans?: boolean }) {
   const t = OLCU_TANIM[olcu];
   return (
     <tr className="border-t align-top" style={{ borderColor: 'var(--border-subtle)' }} data-matris={id}>
       <th scope="row" className="sticky left-0 z-[1] px-3 py-1.5 text-left font-medium" style={{ background: referans ? 'var(--bg-elevated)' : 'var(--bg-surface)', minWidth: '14rem' }}>
         <span className="block max-w-[16rem] truncate" title={ad}>{ad}</span>
         <span className="text-[11px] font-normal tabular-nums" style={{ color: 'var(--text-muted)' }}>{`#${id}${referans ? ' · referans' : ''}`}</span>
+        <span className="block font-normal">{fark}</span>
       </th>
       {hizlar.map((h) => {
         const x = hizBul(veri, h);

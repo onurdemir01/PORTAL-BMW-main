@@ -27,6 +27,11 @@
 //   YPL20 tick arac sonuclandirmasini (araclar.cjs) her turda cagirir; arac hatasi kosuyu durdurmaz
 //   -- HTTP/2 secimi (2026-11-02) --
 //   PL-H protokol satirdan kosuAnaliz'e; set_stats protokol yankisi yalniz metinse karsilastirilir (yok / null kabul)
+//   -- sunucu ayari (2026-11-04) --
+//   YPL21 temizlik play'i kosmadan biten sunucu ayarli is: otomatik durdurma, kilit ona baglanir; baslamazsa kilit TUTULUR
+//   YPL22 durdurma isi varsa ikinci is baslamaz, kilide dokunulmaz; ayarsiz is ve sonucu olan is eskisi gibi
+//   YPL23 sunucu ayarli on kontrol iptali kilidi birakmaz (onk_srv), ayarsiz on kontrol birakir
+//   YPL24 durdurma isinin sonucu sonuc.durdur_geri_alma'ya yazilir; suren is, AWX okunamayan is ve is yoksa
 'use strict';
 
 const { test } = require('node:test');
@@ -57,6 +62,9 @@ function sifirla(ek = {}) {
     adimSil: 0,
     kilitBirak: [],
     kilitCoz: [],
+    kilitBagla: [],
+    durdurSatirlari: [],
+    durdurYazilan: [],
     awx: { status: 'successful', playbook: 'nginx_loadtest.yml', artifacts: {}, finished: '2026-10-27T10:30:00Z', eventProcessingFinished: true },
     awxHata: null,
     cikti: 'PLAY [x]\nansible_password=gizli ok\n',
@@ -93,6 +101,18 @@ sahte('../../db/index.cjs', {
       if (!/WHERE awx_server_id = \$1 AND awx_job_id = \$2 AND held = 1$/.test(q)) throw new Error(`cozme kosulu bozuk: ${q}`);
       D.kilitCoz.push(params);
       return { rows: [], rowCount: 3 };
+    }
+    if (/^UPDATE nginx_loadtest_kilitleri SET awx_server_id = \$2, awx_job_id = \$3, bag_turu = 'durdur'/.test(q)) {
+      D.kilitBagla.push(params);
+      return { rows: [], rowCount: 3 };
+    }
+    if (/^SELECT TOP 20 id, islem, sonuc, parametreler, hedef_turu, motor, durdur_awx_server_id, durdur_awx_job_id FROM nginx_loadtest_kosular/.test(q)) {
+      if (!/durdur_awx_job_id IS NOT NULL AND durum NOT IN/.test(q) || !/parametreler LIKE '%"sunucuAyar":\{%'/.test(q) || !/sonuc NOT LIKE '%"durdur_geri_alma"%'/.test(q)) throw new Error(`durdurma sorgusu bozuk: ${q}`);
+      return { rows: D.durdurSatirlari };
+    }
+    if (/^UPDATE nginx_loadtest_kosular SET sonuc = \$2 WHERE id = \$1 AND durdur_awx_job_id = \$3$/.test(q)) {
+      D.durdurYazilan.push(params);
+      return { rows: [], rowCount: 1 };
     }
     if (/^SELECT TOP 50 awx_server_id, awx_job_id, bag_turu FROM nginx_loadtest_kilitleri/.test(q)) return { rows: D.bekleyenKilit };
     if (/^SELECT 1 AS x FROM ansible_job_output/.test(q)) return { rows: D.arsivVar ? [{ x: 1 }] : [] };
@@ -615,7 +635,7 @@ test('YPL18 tick ve tetikle sonuclandirmanin istedigi kolonlari okur', async () 
     assert.match(pl.SONUCLANDIRMA_KOLONLARI, new RegExp(`\\b${k}\\b`), k);
   }
   // Tur 3 kolonlari kilit_id'den sonra, DATEDIFF'ten once.
-  assert.match(pl.SONUCLANDIRMA_KOLONLARI.replace(/\s+/g, ' '), /kilit_id, hedef_turu, motor, DATEDIFF\(/);
+  assert.match(pl.SONUCLANDIRMA_KOLONLARI.replace(/\s+/g, ' '), /kilit_id, hedef_turu, motor, durdur_awx_job_id, DATEDIFF\(/);
   assert.match(pl.SONUCLANDIRMA_KOLONLARI.replace(/\s+/g, ' '), /DATEDIFF\(SECOND, COALESCE\(started_at, created_at\), GETUTCDATE\(\)\) AS calisma_yas_sn/);
   // tick satiri oldugu gibi gecirir: eski satirdaki 404 "is yok" olur.
   sifirla({ awxHata: Object.assign(new Error('not found'), { status: 404 }), aktif: [KOSU({ calisma_yas_sn: 99999 })] });
@@ -752,6 +772,18 @@ test('PL-H protokol satirdan kosuAnaliz\'e; set_stats protokol yankisi yalniz me
   assert.equal(D.analizCagri, 0);
 });
 
+test('PL-SA parametreler.sunucuAyar ve ae kosuAnaliz\'e gider; ayarsiz satirda secenek YOK', async () => {
+  const sunucuAyar = { seviye: 6, static: true, dizin: '/usr/nginx/applications/a' };
+  sifirla();
+  D.awx.artifacts = { nginx_loadtest_result: STATS() };
+  await pl.kosuyuSonuclandir(KOSU({ parametreler: JSON.stringify({ hizlar: [100], ae: 'br', sunucuAyar, butceSn: BUTCE }) }));
+  assert.deepEqual(D.analizSecenek, { adim: 'R17', hedefTuru: 'sunucu', motor: 'k6', protokol: 'h1', sunucuAyar, ae: 'br' });
+  sifirla();
+  D.awx.artifacts = { nginx_loadtest_result: STATS() };
+  await pl.kosuyuSonuclandir(KOSU({ parametreler: JSON.stringify({ hizlar: [100], ae: 'br', sunucuAyar: null, butceSn: BUTCE }) }));
+  assert.deepEqual(D.analizSecenek, { adim: 'R17', hedefTuru: 'sunucu', motor: 'k6', protokol: 'h1' });
+});
+
 test('PL-Y yuk CPU kaydedici durumu set_stats kosu.yukm_cpu_basladi (bool) + yukm_cpu_son_satir -> kosuAnaliz; eski / gecersiz deger: secenek YOK', async () => {
   for (const [deger, son, bek, bekSon] of [
     [true, '== yuk_cpu_kaydedici ozeti (R17, y): ornek=1', 'basladi', '== yuk_cpu_kaydedici ozeti (R17, y): ornek=1'],
@@ -770,4 +802,133 @@ test('PL-Y yuk CPU kaydedici durumu set_stats kosu.yukm_cpu_basladi (bool) + yuk
     assert.equal(s.yukSonSatir ?? null, bekSon, String(deger));
     if (bek === null) assert.ok(!('yukKaydedici' in s) && !('yukSonSatir' in s), `${String(deger)}: eski secenek nesnesi birebir olmali`);
   }
+});
+
+const SRV_PARAM = JSON.stringify({ hizlar: [100], butceSn: BUTCE, sunucuAyar: { seviye: 6, static: false, dizin: '/usr/nginx/applications/a' } });
+const SRV_KOSU = (ek = {}) => KOSU({ parametreler: SRV_PARAM, kilit_id: 'k-1', ...ek });
+
+test('YPL21 geri alma sonucu yok: otomatik durdurma, kilit ona baglanir; baslamazsa kilit tutulur', async () => {
+  // AWX zaman asimi: failed, set_stats yok.
+  sifirla();
+  D.awx = { ...D.awx, status: 'failed', artifacts: {} };
+  const cagri = [];
+  pl.otoDurdurKur(async (k) => {
+    cagri.push(k.id);
+    return { jobId: 777, awxServerId: 3 };
+  });
+  assert.equal(pl.geriAlmaBilinmiyor(SRV_KOSU(), null), true);
+  await pl.kosuyuSonuclandir(SRV_KOSU());
+  assert.deepEqual(cagri, [17]);
+  assert.equal(D.kilitBagla.length, 1);
+  assert.deepEqual(D.kilitBagla[0].slice(0, 3), ['k-1', 3, 777]);
+  assert.equal(D.kilitBagla[0][3], BUTCE + 180, 'kilit butce + 180 sn tutulur');
+  assert.deepEqual([D.kilitBirak.length, D.kilitCoz.length], [0, 0], 'kilit birakilmamali');
+  // Hook hata atar: is sonuclanir, kilit isten cozulur ama DOLU kalir.
+  sifirla();
+  D.awx = { ...D.awx, status: 'error', artifacts: {} };
+  pl.otoDurdurKur(async () => {
+    throw new Error('AWX 503 password=gizli');
+  });
+  const o = await pl.kosuyuSonuclandir(SRV_KOSU());
+  assert.equal(o.terminal, true);
+  assert.deepEqual([D.kilitBirak.length, D.kilitBagla.length, D.kilitCoz.length], [0, 0, 1]);
+  assert.equal(D.kilitCoz[0][2], BUTCE + 180);
+  // Hook null (Durdur suruyor) ya da hic kurulmamis: kilit yine birakilmaz.
+  for (const fn of [async () => null, null]) {
+    sifirla();
+    D.awx = { ...D.awx, status: 'failed', artifacts: {} };
+    pl.otoDurdurKur(fn);
+    await pl.kosuyuSonuclandir(SRV_KOSU({ id: 18 }));
+    assert.deepEqual([D.kilitBirak.length, D.kilitCoz.length], [0, 1]);
+  }
+  // Set_stats var ama sunucu_ayar yok (eski playbook) ya da geri_alma bos: yine bilinmiyor.
+  assert.equal(pl.geriAlmaBilinmiyor(SRV_KOSU(), { sunucu_ayar: null }), true);
+  assert.equal(pl.geriAlmaBilinmiyor(SRV_KOSU(), { sunucu_ayar: { geri_alma: ' ' } }), true);
+  pl.otoDurdurKur(null);
+});
+
+test('YPL22 durdurma isi varsa ikinci is yok; ayarsiz is ve sonucu olan is eskisi gibi', async () => {
+  let n = 0;
+  pl.otoDurdurKur(async () => {
+    n += 1;
+    return { jobId: 777, awxServerId: 3 };
+  });
+  sifirla();
+  D.awx = { ...D.awx, status: 'failed', artifacts: {} };
+  await pl.kosuyuSonuclandir(SRV_KOSU({ durdur_awx_job_id: 700 }));
+  assert.equal(n, 0, 'Durdur zaten is baslatmis');
+  assert.deepEqual([D.kilitBirak.length, D.kilitCoz.length, D.kilitBagla.length], [0, 0, 0], 'kilit durdurma isine bagli kalir');
+  // Ayarsiz is: eski davranis.
+  sifirla();
+  D.awx = { ...D.awx, status: 'failed', artifacts: {} };
+  await pl.kosuyuSonuclandir(KOSU());
+  assert.equal(n, 0);
+  assert.equal(D.kilitBirak.length, 1);
+  // Play 7 kostu, sonuc 'hata': otomatik is yok (Durdur dugmesi acik), kilit kurala gore.
+  sifirla();
+  D.awx = { ...D.awx, status: 'failed', artifacts: { nginx_loadtest_result: STATS({ durum: 'FAIL', sunucu_ayar: { geri_alma: 'hata', geri_alma_metin: 'x' } }) } };
+  await pl.kosuyuSonuclandir(SRV_KOSU());
+  assert.equal(n, 0);
+  assert.equal(D.kilitBirak.length, 1);
+  pl.otoDurdurKur(null);
+});
+
+test('YPL23 sunucu ayarli on kontrol iptali kilidi birakmaz', async () => {
+  assert.equal(pl.bagTuruOf(SRV_KOSU({ islem: 'on_kontrol' })), 'onk_srv');
+  assert.equal(pl.bagTuruOf(KOSU({ islem: 'on_kontrol' })), 'on_kontrol');
+  assert.equal(pl.bagTuruOf(SRV_KOSU()), 'kosu');
+  assert.equal(pl.bagTuruOf({ islem: 'on_kontrol', parametreler: { sunucuAyar: { seviye: 6 } } }), 'onk_srv', 'plan nesnesi de kabul');
+  // Geri alma sonucu olan iptal: kural onk_srv ile 'tut' der (ayarsiz on kontrol 'birak').
+  sifirla();
+  D.awx = { ...D.awx, status: 'canceled', artifacts: { nginx_loadtest_result: STATS({ islem: 'on_kontrol', kosu: null, sunucu_ayar: { geri_alma: 'ok' } }) } };
+  await pl.kosuyuSonuclandir(SRV_KOSU({ islem: 'on_kontrol' }));
+  assert.deepEqual([D.kilitBirak.length, D.kilitCoz.length], [0, 1]);
+  sifirla();
+  D.awx = { ...D.awx, status: 'canceled', artifacts: {} };
+  await pl.kosuyuSonuclandir(KOSU({ islem: 'on_kontrol' }));
+  assert.deepEqual([D.kilitBirak.length, D.kilitCoz.length], [1, 0]);
+});
+
+test('YPL24 durdurma isinin sonucu sonuc.durdur_geri_alma alanina yazilir', async () => {
+  const SATIR = (ek = {}) => ({ id: 17, islem: 'kosu', sonuc: JSON.stringify({ durum: 'OK', x: 1 }), parametreler: SRV_PARAM, hedef_turu: 'sunucu', motor: 'k6', durdur_awx_server_id: 3, durdur_awx_job_id: 777, ...ek });
+  const DSTATS = (ek = {}) => STATS({ islem: 'durdur', kosu: null, ...ek });
+  const kos = async (artifacts, status = 'successful', ek = {}) => {
+    sifirla({ durdurSatirlari: [SATIR(ek)] });
+    D.awx = { ...D.awx, status, artifacts };
+    await pl.durdurSonuclari();
+    return D.durdurYazilan[0];
+  };
+  let y = await kos({ nginx_loadtest_result: DSTATS({ sunucu_ayar: { geri_alma: 'ok', geri_alma_metin: '3 konf geri yuklendi' } }) });
+  assert.deepEqual(y.slice(0, 1).concat(y.slice(2)), [17, 777]);
+  assert.deepEqual(JSON.parse(y[1]), { durum: 'OK', x: 1, durdur_geri_alma: { is: 777, durum: 'ok', metin: '3 konf geri yuklendi' } }, 'eski sonuc korunur');
+  y = await kos({ nginx_loadtest_result: DSTATS({ sunucu_ayar: { geri_alma: 'hata', geri_alma_metin: 'nginx -t' } }) }, 'failed');
+  assert.equal(JSON.parse(y[1]).durdur_geri_alma.durum, 'hata');
+  // Yedek yoktu (sunucu_ayar null): temizlenecek bir sey kalmamis.
+  y = await kos({ nginx_loadtest_result: DSTATS({ sunucu_ayar: null }) });
+  assert.equal(JSON.parse(y[1]).durdur_geri_alma.durum, 'ok');
+  // Is sonucsuz dustu: 'ok' DEGIL. Sonuc null satir da yazilir.
+  y = await kos({}, 'failed', { sonuc: null });
+  assert.deepEqual(Object.keys(JSON.parse(y[1])), ['durdur_geri_alma']);
+  assert.equal(JSON.parse(y[1]).durdur_geri_alma.durum, 'hata');
+  // Baska isin set_stats'i kullanilmaz.
+  y = await kos({ nginx_loadtest_result: DSTATS({ run_id: '99', sunucu_ayar: { geri_alma: 'ok' } }) });
+  assert.equal(JSON.parse(y[1]).durdur_geri_alma.durum, 'hata');
+  // Suren is, olaylari islenmemis is: yazilmaz.
+  assert.equal(await kos({}, 'running'), undefined);
+  sifirla({ durdurSatirlari: [SATIR()] });
+  D.awx = { ...D.awx, status: 'successful', eventProcessingFinished: false };
+  await pl.durdurSonuclari();
+  assert.equal(D.durdurYazilan.length, 0);
+  // AWX okunamadi: satir degismez; is AWX'te yok: 'hata'.
+  sifirla({ durdurSatirlari: [SATIR()], awxHata: Object.assign(new Error('503'), { status: 503 }) });
+  await pl.durdurSonuclari();
+  assert.equal(D.durdurYazilan.length, 0);
+  sifirla({ durdurSatirlari: [SATIR()], awxHata: Object.assign(new Error('yok'), { status: 404 }) });
+  await pl.durdurSonuclari();
+  assert.equal(JSON.parse(D.durdurYazilan[0][1]).durdur_geri_alma.durum, 'hata');
+  // tick bunu cagirir; hatasi turu durdurmaz.
+  sifirla({ durdurSatirlari: [SATIR()] });
+  D.awx = { ...D.awx, status: 'successful', artifacts: { nginx_loadtest_result: DSTATS({ sunucu_ayar: { geri_alma: 'uyari' } }) } };
+  await pl.tick();
+  assert.equal(JSON.parse(D.durdurYazilan[0][1]).durdur_geri_alma.durum, 'uyari');
 });

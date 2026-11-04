@@ -132,8 +132,8 @@ test('YD5 sinirlar, butce formulu ve olculmus rate limit (2026-11-03: daraltma y
   const ok = dg.parametreler({}, { sni: false });
   assert.equal(ok.ok, true);
   // Tur 3: kanonik k6 nesnesi motor:'k6' tasir (ilgisiz wrk anahtarlari GIRMEZ).
-  assert.deepEqual(ok.deger, { motor: 'k6', hizlar: [100, 250, 400], tekrar: 2, isinma: 30, sure: 120, bosluk: 30, bosta: 60, maxvu: 150, kip: 'yeni', ae: 'br', sni: false, protokol: 'h1', butceSn: 60 + 3 * 2 * (30 + 120 + 30 + 20) + 120 });
-  assert.deepEqual(Object.keys(ok.deger), ['motor', 'hizlar', 'tekrar', 'isinma', 'sure', 'bosluk', 'bosta', 'maxvu', 'kip', 'ae', 'sni', 'protokol', 'butceSn']);
+  assert.deepEqual(ok.deger, { motor: 'k6', hizlar: [100, 250, 400], tekrar: 2, isinma: 30, sure: 120, bosluk: 30, bosta: 60, maxvu: 150, kip: 'yeni', ae: 'br', sni: false, protokol: 'h1', sunucuAyar: null, butceSn: 60 + 3 * 2 * (30 + 120 + 30 + 20) + 120 });
+  assert.deepEqual(Object.keys(ok.deger), ['motor', 'hizlar', 'tekrar', 'isinma', 'sure', 'bosluk', 'bosta', 'maxvu', 'kip', 'ae', 'sni', 'protokol', 'sunucuAyar', 'butceSn']);
   // Ayni girdi -> ayni nesne (on kontrol / kosu "ayni parametre" kosulu buna dayanir).
   assert.deepEqual(dg.parametreler({ ...ok.deger }, { sni: false }).deger, ok.deger);
   const asim = (p, ek) => {
@@ -307,7 +307,7 @@ test('YD9 extra_vars son kapisi: yalniz sozlesme anahtarlari, hepsi metin, b64 v
   assert.deepEqual(dg.ekstraDegiskenleriDenetle(ev), []);
   assert.deepEqual(Object.keys(ev).sort(), [...dg.EKSTRA_ANAHTARLAR].sort());
   // Tur 4: 33 anahtar - tur 2'nin 23'u aynen, tur 3'un 7'si, ardindan tur 4'un 3 arac anahtari; HTTP/2 secimi yuk_protokol (34).
-  assert.equal(dg.EKSTRA_ANAHTARLAR.length, 34);
+  assert.equal(dg.EKSTRA_ANAHTARLAR.length, 38);
   assert.deepEqual(dg.EKSTRA_ANAHTARLAR.slice(0, 23), [
     'yuk_islem', 'yuk_run_id', 'yuk_hedef_host', 'yuk_yuk_host', 'yuk_hedef_ip', 'yuk_host_basligi', 'yuk_sni',
     'yuk_senaryo_tur', 'yuk_senaryo_b64', 'yuk_senaryo_sha256', 'yuk_hizlar', 'yuk_tekrar', 'yuk_kip', 'yuk_ae',
@@ -315,7 +315,7 @@ test('YD9 extra_vars son kapisi: yalniz sozlesme anahtarlari, hepsi metin, b64 v
     'yuk_ua_onek', 'yuk_cikti_kok',
   ]);
   assert.deepEqual(dg.EKSTRA_ANAHTARLAR.slice(23, 30), ['yuk_hedef_turu', 'yuk_motor', 'yuk_baglantilar', 'yuk_is_parcacigi', 'yuk_wrk_yolu', 'yuk_tavan_rps', 'yuk_son_epoch']);
-  assert.deepEqual(dg.EKSTRA_ANAHTARLAR.slice(30), ['yuk_arac_dizin', 'yuk_k6_sha256', 'yuk_wrk_sha256', 'yuk_protokol']);
+  assert.deepEqual(dg.EKSTRA_ANAHTARLAR.slice(30), ['yuk_arac_dizin', 'yuk_k6_sha256', 'yuk_wrk_sha256', 'yuk_protokol', 'yuk_srv_ayar', 'yuk_srv_seviye', 'yuk_srv_static', 'yuk_srv_dizin']);
   assert.deepEqual([ev.yuk_hedef_turu, ev.yuk_motor, ev.yuk_baglantilar, ev.yuk_is_parcacigi, ev.yuk_tavan_rps, ev.yuk_wrk_yolu], ['sunucu', 'k6', '', '', '', '/yeni-playbook-gerekli/wrk']);
   for (const [k, v] of Object.entries(ev)) assert.equal(typeof v, 'string', k);
   assert.equal(ev.yuk_hizlar, '100 250 400');
@@ -825,8 +825,8 @@ test('YD17 ipSinifla: sahiplik kaynaklari, baglayici sira ve metinler', async ()
 test('YD18 parametreler wrk: kanonik nesne, hesaplanan tavan, her mesaj; k6 serbest tavanlari', () => {
   const w = dg.parametreler({ motor: 'wrk' }, { sni: false });
   assert.equal(w.ok, true);
-  assert.deepEqual(w.deger, { motor: 'wrk', baglantilar: [2, 4, 8], is_parcacigi: 2, tavan_rps: 5000, tekrar: 2, isinma: 30, sure: 120, bosluk: 30, bosta: 60, kip: 'yeni', ae: 'br', sni: false, protokol: 'h1', butceSn: 1380 });
-  assert.deepEqual(Object.keys(w.deger), ['motor', 'baglantilar', 'is_parcacigi', 'tavan_rps', 'tekrar', 'isinma', 'sure', 'bosluk', 'bosta', 'kip', 'ae', 'sni', 'protokol', 'butceSn']);
+  assert.deepEqual(w.deger, { motor: 'wrk', baglantilar: [2, 4, 8], is_parcacigi: 2, tavan_rps: 5000, tekrar: 2, isinma: 30, sure: 120, bosluk: 30, bosta: 60, kip: 'yeni', ae: 'br', sni: false, protokol: 'h1', sunucuAyar: null, butceSn: 1380 });
+  assert.deepEqual(Object.keys(w.deger), ['motor', 'baglantilar', 'is_parcacigi', 'tavan_rps', 'tekrar', 'isinma', 'sure', 'bosluk', 'bosta', 'kip', 'ae', 'sni', 'protokol', 'sunucuAyar', 'butceSn']);
   // Ayni girdi -> ayni nesne; gonderilen tavan_rps / hizlar / maxvu yok sayilir (kanonik nesneye girmez).
   assert.deepEqual(dg.parametreler({ ...w.deger }, { sni: false }).deger, w.deger);
   assert.deepEqual(dg.parametreler({ motor: 'wrk', tavan_rps: 9999, hizlar: [450], maxvu: 199 }, { sni: false }).deger, w.deger);
@@ -871,7 +871,7 @@ test('YD18 parametreler wrk: kanonik nesne, hesaplanan tavan, her mesaj; k6 serb
     assert.equal(r.ok, true, JSON.stringify(t));
   }
   // k6 serbest: tanimsiz hizlar / maxvu VARSAYILAN.serbest'ten; tavanlar 200 / 50 ve ek metin.
-  assert.deepEqual(dg.parametreler({}, { sni: true, hedefTuru: 'serbest' }).deger, { motor: 'k6', hizlar: [50, 100, 200], tekrar: 2, isinma: 30, sure: 120, bosluk: 30, bosta: 60, maxvu: 50, kip: 'yeni', ae: 'br', sni: true, protokol: 'h1', butceSn: 1380 });
+  assert.deepEqual(dg.parametreler({}, { sni: true, hedefTuru: 'serbest' }).deger, { motor: 'k6', hizlar: [50, 100, 200], tekrar: 2, isinma: 30, sure: 120, bosluk: 30, bosta: 60, maxvu: 50, kip: 'yeni', ae: 'br', sni: true, protokol: 'h1', sunucuAyar: null, butceSn: 1380 });
   assert.deepEqual(asim({ hizlar: [201] }, { hedefTuru: 'serbest' }), ['hız 201 izinli aralıkta değil (1..200, serbest hedef tavanı)']);
   assert.deepEqual(asim({ maxvu: 51 }, { hedefTuru: 'serbest' }), ['maxvu 51 (izinli 10..50, serbest hedef tavanı)']);
   assert.equal(dg.parametreler({ hizlar: [200], maxvu: 50 }, { sni: false, hedefTuru: 'serbest' }).ok, true);
@@ -917,7 +917,7 @@ test('YD20 extra_vars tur 3: k6 / wrk x sunucu / serbest, is gecerlilik penceres
   const den = (ev, simdiSn = SIMDI) => dg.ekstraDegiskenleriDenetle(ev, { simdiSn });
   const k6 = evKur();
   assert.deepEqual(den(k6), []);
-  assert.equal(Object.keys(k6).length, 34);
+  assert.equal(Object.keys(k6).length, 38);
   assert.deepEqual(Object.keys(k6), [...dg.EKSTRA_ANAHTARLAR]);
   assert.deepEqual(
     [k6.yuk_hedef_turu, k6.yuk_hedef_host, k6.yuk_motor, k6.yuk_hizlar, k6.yuk_maxvu, k6.yuk_baglantilar, k6.yuk_is_parcacigi, k6.yuk_tavan_rps, k6.yuk_son_epoch, k6.yuk_wrk_yolu, k6.yuk_k6_yolu],
@@ -1395,7 +1395,7 @@ test('YD26b host_uretim kume kurallari: P iki gunun birlesimi, S = P + N (bayat 
 
 test('YD40 extra_vars tur 4: arac dizini + iki sha, isaret yollari, durdurda bos, son kapi kurallari', () => {
   const den = (ev, simdiSn = SIMDI) => dg.ekstraDegiskenleriDenetle(ev, { simdiSn });
-  assert.equal(dg.EKSTRA_ANAHTARLAR.length, 34);
+  assert.equal(dg.EKSTRA_ANAHTARLAR.length, 38);
   for (const [ad, p] of [['k6', dg.parametreler({}, { sni: false }).deger], ['wrk', dg.parametreler({ motor: 'wrk' }, { sni: false, hizSiniri: 270 }).deger]]) {
     const ev = evKur({ p });
     assert.deepEqual(den(ev), [], ad);
@@ -1492,8 +1492,8 @@ test('DG-H1 parametreler protokol: varsayilan h1, h2 + ka kabul, gecersiz / wrk 
   const k6 = dg.parametreler({}, { sni: false }).deger;
   const wrk = dg.parametreler({ motor: 'wrk' }, { sni: false }).deger;
   assert.deepEqual([k6.protokol, wrk.protokol], ['h1', 'h1']);
-  assert.deepEqual(Object.keys(k6).slice(-3), ['sni', 'protokol', 'butceSn']);
-  assert.deepEqual(Object.keys(wrk).slice(-3), ['sni', 'protokol', 'butceSn']);
+  assert.deepEqual(Object.keys(k6).slice(-4), ['sni', 'protokol', 'sunucuAyar', 'butceSn']);
+  assert.deepEqual(Object.keys(wrk).slice(-4), ['sni', 'protokol', 'sunucuAyar', 'butceSn']);
   assert.deepEqual(dg.parametreler({ protokol: 'h1' }, { sni: false }).deger, k6, 'acik h1 = varsayilan');
   assert.deepEqual(dg.parametreler({ motor: 'wrk', protokol: 'h1' }, { sni: false }).deger, wrk);
   // h2 + ka kabul; butce formulu protokolden bagimsiz.
@@ -1520,7 +1520,7 @@ test('DG-H1 parametreler protokol: varsayilan h1, h2 + ka kabul, gecersiz / wrk 
 
 test('DG-H2 extra_vars yuk_protokol: 34. anahtar, her zaman metin; son kapi ihlalleri; durdurda h1', () => {
   const den = (ev) => dg.ekstraDegiskenleriDenetle(ev, { simdiSn: SIMDI });
-  assert.equal(dg.EKSTRA_ANAHTARLAR.length, 34);
+  assert.equal(dg.EKSTRA_ANAHTARLAR.length, 38);
   assert.equal(dg.EKSTRA_ANAHTARLAR[33], 'yuk_protokol');
   const h1 = evKur();
   assert.equal(h1.yuk_protokol, 'h1');

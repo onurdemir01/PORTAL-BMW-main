@@ -399,7 +399,58 @@ function sonucOzeti(adimlar, analizOzeti, kosuUyarilari = []) {
   };
 }
 
+const GERI_ALMA_DURUMLARI = new Set(['ok', 'uyari', 'hata']);
+const GERI_ALMA_SONUCU_YOK = 'Geri alma sonucu yok: iş temizlik adımına ulaşmadan bitmiş (AWX zaman aşımı, iptal ya da hata) ve hedefteki nginx ayarı değişmiş kalmış olabilir. Durdur ile geri alın.';
+
+/**
+ * Kosu ayrintisinin "Sunucu ayari" satiri (yalniz parametreler.sunucuAyar dolu kosu; yoksa null). Istenen kanonik
+ * parametreden; kanit analizin ozetinden (ozet.sunucu_ayar, on kontrolde yok); geri alma set_stats'tan (sunucu_ayar.geri_alma:
+ * 'ok' | 'uyari' | 'hata', metni geri_alma_metin). Bilinmeyen geri alma durumu 'hata' sayilir (sessizce yutulmaz).
+ * `satir` ({ terminal, isVar, durdurIs }): is AWX'e gitti ve bitti ama geri alma sonucu yoksa 'hata' (Play 7 kosmamis olabilir);
+ * durdurma isi sonucu bekleniyorsa 'bekliyor'. Durdurma isinin sonucu (sonuc.durdur_geri_alma, poller yazar; `is` satirdaki is)
+ * ana isin sonucunun ONUNE gecer. `uyarilar`: on kontrolde de gorunsun diye kanit + set_stats uyarilari.
+ */
+function sunucuAyari(p, sonucOzet, analizOzeti, satir = {}) {
+  const sa = p && typeof p === 'object' ? p.sunucuAyar : null;
+  if (!sa || typeof sa !== 'object') return null;
+  const nesne = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : null);
+  const k = nesne(nesne(analizOzeti) && analizOzeti.sunucu_ayar);
+  const st = nesne(nesne(sonucOzet) && sonucOzet.sunucu_ayar);
+  const ga = st && typeof st.geri_alma === 'string' ? st.geri_alma.trim().toLowerCase() : '';
+  const metin = st && typeof st.geri_alma_metin === 'string' ? st.geri_alma_metin.slice(0, 500) : null;
+  const dgr = nesne(nesne(sonucOzet) && sonucOzet.durdur_geri_alma);
+  const durdurIs = satir.durdurIs == null ? null : Number(satir.durdurIs);
+  let geriAlma = ga ? { durum: GERI_ALMA_DURUMLARI.has(ga) ? ga : 'hata', metin } : null;
+  if (dgr && (durdurIs === null || Number(dgr.is) === durdurIs)) {
+    geriAlma = { durum: GERI_ALMA_DURUMLARI.has(dgr.durum) ? dgr.durum : 'hata', metin: typeof dgr.metin === 'string' ? dgr.metin.slice(0, 500) : null };
+  } else if (satir.terminal && durdurIs !== null && (!geriAlma || geriAlma.durum === 'hata')) {
+    geriAlma = { durum: 'bekliyor', metin: `Geri alma durdurma işinde (AWX #${durdurIs}); sonucu bekleniyor.` };
+  } else if (satir.terminal && satir.isVar && !geriAlma) {
+    geriAlma = { durum: 'hata', metin: GERI_ALMA_SONUCU_YOK };
+  }
+  const liste = (v) => (Array.isArray(v) ? v.map((x) => String(x).slice(0, 300)) : []);
+  const uyarilar = [...new Set([...liste(k && k.uyarilar), ...liste(st && st.uyarilar)])].slice(0, 20);
+  return {
+    http2: p.protokol === 'h2',
+    ae: p.ae ?? null,
+    seviye: sonlu(sa.seviye),
+    static: sa.static === true,
+    dizin: typeof sa.dizin === 'string' ? sa.dizin : null,
+    kanit: k ? {
+      durum: k.durum === 'uyumlu' ? 'uyumlu' : 'kanitsiz',
+      sapmalar: Array.isArray(k.sapmalar) ? k.sapmalar.map(String).slice(0, 10) : [],
+      gzUretilen: sonlu(k.gz_uretilen),
+      brUretilen: sonlu(k.br_uretilen),
+      atlanan: sonlu(k.atlanan),
+      uyarilar: Array.isArray(k.uyarilar) ? k.uyarilar.map(String).slice(0, 20) : [],
+    } : null,
+    geriAlma,
+    uyarilar,
+  };
+}
+
 module.exports = {
+  sunucuAyari,
   adimGorunumu, sonucOzeti, kipDogrulama, bellekGorunumu, agGorunumu, bellekDetayGorunumu, bellekNedenleri, bellekSizinti,
   BELLEK_NEDEN_ESIKLERI, RELOAD_NEDENI, KIP_KALIPLARI,
 };

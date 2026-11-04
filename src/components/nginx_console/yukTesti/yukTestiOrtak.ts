@@ -23,7 +23,7 @@
 import type { Ton } from '@/components/server_hub/retirementStil';
 import {
   EK_SINIRLAR, type NlAdim, type NlAdimGecerlilik, type NlDurum, type NlEylem, type NlGecerlilik, type NlHedef, type NlHedefTuru, type NlKarar, type NlKosu,
-  type NlKosuAyrinti, type NlMotor, type NlOnKontrol, type NlParametreler, type NlProtokol, type NlSinirlar, type NlSonucOzeti,
+  type NlKosuAyrinti, type NlMotor, type NlOnKontrol, type NlParametreler, type NlProtokol, type NlSinirlar, type NlSonucOzeti, type NlAe, type NlSunucuAyari,
 } from '@/api/nginxLoadtestApi';
 import { fmtNumber } from '@/utils/datetime';
 
@@ -52,8 +52,10 @@ export const SONUC_DENEME_SINIRI = 3;
 export const sonucOkunuyorMetni = (deneme: number) => `Sonuç okunuyor${deneme >= 1 ? ` (deneme ${fmtNumber(deneme)}/${SONUC_DENEME_SINIRI})` : ''}`;
 /** Admin'in "Sonucu yeniden oku" dugmesi (POST /kosular/:id/yeniden-oku) yalniz bu kayitlarda. */
 export const yenidenOkunabilir = (k: Pick<NlKosu, 'islem' | 'durum' | 'gecerlilik'>) => k.islem === 'kosu' && (k.durum === 'OKUNAMADI' || k.gecerlilik === 'OKUNAMADI');
-/** "Kalan süreçleri durdur": AWX iptali uzak k6 / kaydediciyi durdurmaz; iptal edilmis KOSUDA durdur kipi yeniden calistirilabilir. */
-export const kalanSurecDurdurulabilir = (k: Pick<NlKosu, 'islem' | 'durum'>) => k.islem === 'kosu' && k.durum === 'CANCELED';
+/** Geri alinamamis ya da geri alma sonucu olmayan sunucu ayari: is bitse de Durdur acik kalir (ozellikle ayarli on kontrol). */
+export const sunucuAyariGeriAlinmamis = (k: { sunucuAyari?: NlSunucuAyari | null }) => k.sunucuAyari?.geriAlma?.durum === 'hata';
+/** "Kalan süreçleri durdur": AWX iptali uzak k6 / kaydediciyi durdurmaz; iptal edilmis KOSUDA durdur kipi yeniden calistirilabilir. Sunucu ayari geri alinamamissa her bitmis satirda. */
+export const kalanSurecDurdurulabilir = (k: Pick<NlKosu, 'islem' | 'durum'> & { sunucuAyari?: NlSunucuAyari | null }) => (k.islem === 'kosu' && k.durum === 'CANCELED') || sunucuAyariGeriAlinmamis(k);
 /** Kosunun durdurma isi baslamadi: sunucunun 424 durdur_baslatilamadi metniyle ayni kalip (mesaj gelmezse yedek).
  *  k6 + sunucu metni BIREBIR eskisi; serbestte kaydedici yoktur (hedefe baglanilmaz), wrk'de arac adi wrk. */
 export function durdurBaslatilamadiMetni(r: Pick<NlEylem, 'iptal' | 'durdurHatasi'>, { hedefTuru = 'sunucu', motor = 'k6' }: { hedefTuru?: NlHedefTuru; motor?: NlMotor } = {}): string {
@@ -171,6 +173,66 @@ const sayiListesi = (metin: string): number[] | null => {
 export const hizlariAyristir = (metin: string): number[] | null => sayiListesi(metin);
 /** "2 4 8" / "2,4,8" -> baglanti sayilari; gecersiz parca varsa null. */
 export const baglantilariAyristir = (metin: string): number[] | null => sayiListesi(metin);
+// ── Kosu oncesi sunucu ayari (sunucu dogrula.cjs sunucuAyarKanonik ile ayni kurallar) ──────────────
+/** Sikistirma seviyesi ust siniri (gzip_comp_level 1-9, brotli_comp_level 1-11). */
+export const SRV_SEVIYE_MAX: Record<'br' | 'gzip', number> = { br: 11, gzip: 9 };
+const SRV_DIZIN_RE = /^\/usr\/nginx\/applications\/[A-Za-z0-9._-]+(\/[A-Za-z0-9._-]+)*$/;
+export const srvDizinGecerli = (v: string) => SRV_DIZIN_RE.test(v) && !v.includes('..');
+/** Static kosuda dosya uretimi payi (sn): kuyruk tahminine eklenir (kuyruk.cjs HAZIRLIK_PAY_SN ile ayni). */
+export const HAZIRLIK_PAY_SN = 180;
+export const hazirlikPayiSn = (p: Pick<NlParametreler, 'sunucuAyar'> | null | undefined) => (p?.sunucuAyar?.static ? HAZIRLIK_PAY_SN : 0);
+/** Sunucu ayarli kosunun bütce tavani (dogrula.cjs SINIRLAR.maxButceSnSunucuAyar); eski sunucu alani gondermez. */
+export const SRV_BUTCE_TAVANI_SN = 1800;
+export const butceTavani = (s: Pick<NlSinirlar, 'maxButceSn' | 'maxButceSnSunucuAyar'>, sunucuAyarli: boolean) => (sunucuAyarli ? Math.min(s.maxButceSn, s.maxButceSnSunucuAyar ?? SRV_BUTCE_TAVANI_SN) : s.maxButceSn);
+/** Son dizin yalniz kolaylik: okunamazsa / yazilamazsa alan bos gelir. */
+export const SRV_DIZIN_ANAHTARI = 'nginx-yuk-testi:sunucu-ayar-dizin';
+export function srvDizinOku(): string {
+  try {
+    return window.localStorage.getItem(SRV_DIZIN_ANAHTARI) || '';
+  } catch {
+    return '';
+  }
+}
+export function srvDizinYaz(v: string) {
+  try {
+    window.localStorage.setItem(SRV_DIZIN_ANAHTARI, v);
+  } catch {
+    /* kolaylik */
+  }
+}
+/** Form alanlarinin hatasi (metin girdi: seviye ve dizin); ae identity iken seviye yok. */
+export function sunucuAyarHatalari(ae: NlAe, seviye: string, dizin: string): { seviye?: string; dizin?: string } {
+  const h: { seviye?: string; dizin?: string } = {};
+  if (ae !== 'identity') {
+    const ust = SRV_SEVIYE_MAX[ae];
+    const n = /^\s*\d{1,2}\s*$/.test(seviye) ? Number(seviye) : NaN;
+    if (!(n >= 1 && n <= ust)) h.seviye = `${ae === 'br' ? 'Brotli' : 'Gzip'} seviyesi 1–${ust} olmalı.`;
+  }
+  if (!dizin.trim()) h.dizin = 'Dizini yazın (static kapalıyken de gerekir: .gz / .br dosyaları bu dizinde silinir).';
+  else if (!srvDizinGecerli(dizin.trim())) h.dizin = 'Dizin /usr/nginx/applications/ altında olmalı (yalnız harf, rakam, . _ - ve /; “..” yok).';
+  return h;
+}
+/** Istenen sunucu ayari metni: "HTTP/2 açık · brotli 6 · static"; `dosya` verilirse sonuna "· 120 .br". */
+export function sunucuAyarMetni(a: { http2: boolean; ae: NlAe | null; seviye: number | null; static: boolean }, dosya: number | null = null): string {
+  const uzanti = a.ae === 'br' ? '.br' : '.gz';
+  return [
+    `HTTP/2 ${a.http2 ? 'açık' : 'kapalı'}`,
+    a.ae === 'br' ? `brotli ${a.seviye ?? '?'}` : a.ae === 'gzip' ? `gzip ${a.seviye ?? '?'}` : 'sıkıştırmasız',
+    ...(a.static ? ['static'] : []),
+    ...(a.static && dosya != null ? [`${fmtNumber(dosya)} ${uzanti}`] : []),
+  ].join(' · ');
+}
+/** Kosu ayrintisi satiri: sayi = bu kosuda uretilen + zaten guncel olan (atlanan) dosya; kanit yoksa sayi yok. */
+export function sunucuAyariSatiri(a: NlSunucuAyari): string {
+  const k = a.kanit;
+  const uretilen = k ? (a.ae === 'br' ? k.brUretilen : k.gzUretilen) : null;
+  return sunucuAyarMetni(a, uretilen == null ? null : uretilen + (k?.atlanan ?? 0));
+}
+/** Parametrelerden ozet (form, kuyruk, baslat onayi); ayarsizsa ''. */
+export function parametreSunucuAyari(p: Pick<NlParametreler, 'protokol' | 'ae' | 'sunucuAyar'>): string {
+  const a = p.sunucuAyar;
+  return a ? `sunucu ayarı: ${sunucuAyarMetni({ http2: p.protokol === 'h2', ae: p.ae, seviye: a.seviye, static: a.static })}` : '';
+}
 export type ParametreHatalari = Partial<Record<keyof NlParametreler | 'butce', string>>;
 const aralik = (v: number | undefined, a: number, b: number) => Number.isInteger(v) && (v as number) >= a && (v as number) <= b;
 type TamSinirlar = NlSinirlar;
@@ -215,8 +277,9 @@ export function parametreHatalari(p: NlParametreler, sinir: NlSinirlar): Paramet
   if (p.protokol !== undefined && p.protokol !== 'h1' && p.protokol !== 'h2') h.protokol = "protokol 'h1' ya da 'h2' olmalı.";
   else if (p.protokol === 'h2' && motorOf(p) === 'wrk') h.protokol = 'HTTP/2 yalnız k6 ile seçilebilir; wrk yalnız HTTP/1.1 konuşur.';
   else if (p.protokol === 'h2' && p.kip !== 'ka') h.kip = 'HTTP/2 yalnız keep-alive (ka) bağlantı kipiyle koşulur.';
-  if (!Object.keys(h).length && butceSn(p) > s.maxButceSn) {
-    h.butce = `Toplam süre ${Math.ceil(butceSn(p) / 60)} dk; üst sınır ${Math.floor(s.maxButceSn / 60)} dk. ${motorOf(p) === 'wrk' ? 'Bağlantı kademesi' : 'Hız'}, tekrar ya da süreyi azaltın.`;
+  const tavan = butceTavani(s, !!p.sunucuAyar);
+  if (!Object.keys(h).length && butceSn(p) > tavan) {
+    h.butce = `Toplam süre ${Math.ceil(butceSn(p) / 60)} dk; üst sınır ${Math.floor(tavan / 60)} dk${p.sunucuAyar ? ' (sunucu ayarlı koşu)' : ''}. ${motorOf(p) === 'wrk' ? 'Bağlantı kademesi' : 'Hız'}, tekrar ya da süreyi azaltın.`;
   }
   return h;
 }

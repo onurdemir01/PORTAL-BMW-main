@@ -30,7 +30,8 @@
 // silinir, oge GERI_CEKILME_SN kadar bekler (1, 2, 4, 8, 15 dk) ve ayni oge yeniden denenir; GECICI_DENEME_SINIRI
 // (6) denemede HATALI. Is AWX'te baslamis olabilirse (belirsiz / is numarali) oge HATALI ve dinlenme.
 //
-// SURE: tahmini sure = on kontrol payi + kosunun butcesi (parametreler.butceSn, ust sinir). En gec bitis
+// SURE: tahmini sure = on kontrol payi + kosunun butcesi (parametreler.butceSn, ust sinir) + static kosuda dosya
+// uretimi payi (HAZIRLIK_PAY_SN; oge butce_sn'si bu payi icerir). En gec bitis
 // verilmisse ve simdi + tahmin onu asiyorsa oge ATLANDI "sure yetmedi".
 // SAAT: karsilastirmalar DB saatiyle (GETUTCDATE / DATEDIFF), surec saatiyle degil.
 'use strict';
@@ -46,6 +47,8 @@ const MAX_OGE = 30;
 const ETIKET_MAX = 100;
 // On kontrol isi (yuk yok) icin sure payi: tahmini sure = bu + butceSn.
 const ON_KONTROL_PAY_SN = 300;
+// Static kosuda kosu oncesi .gz / .br uretimi suresi (tahmine eklenir; kosunun butcesi yuk_butce_sn DEGISMEZ).
+const HAZIRLIK_PAY_SN = 180;
 // On kontrol en cok 15 dk gecerli (index.cjs ON_KONTROL_MAX_YAS_SN); kosu kilit beklerken eskirse yeniden.
 const ON_KONTROL_TAZE_SN = 15 * 60 - 60;
 // Gecici hata (AWX / DB kisa kesinti): deneme sayaci; denemeler arasi geri cekilme (sn) - 6 deneme ~30 dk yayilir.
@@ -173,6 +176,11 @@ function kuyrukGovdesi(b, { simdiMs = Date.now() } = {}) {
   });
   const onaylananTurler = Array.isArray(g.onaylananTurler) ? [...new Set(g.onaylananTurler.filter((k) => typeof k === 'string' && /^U[0-9a-f]{10}$/.test(k)))] : [];
   return { ad: ad || null, beklemeDk, baslangic, enGecBitis, confirmText: g.confirmText, onaylananTurler, ogeler };
+}
+
+/** Kosu oncesi dosya uretimi payi: yalniz static sunucu ayarinda (parametreler kanonik nesne). */
+function hazirlikPayiSn(p) {
+  return p && p.sunucuAyar && p.sunucuAyar.static ? HAZIRLIK_PAY_SN : 0;
 }
 
 /** Kosu satirina yazilan etiket: "[K<kuyruk>] <oge etiketi>" (en cok 120 karakter). */
@@ -472,7 +480,8 @@ async function ogeBaslat(ctx, k, oge) {
     return (await ogeKapat(db, oge, 'BEKLIYOR', 'ATLANDI', `hedef değişti: onaylanan ${k.onay_hedefi}, şimdi ${onayHedefiOf(plan) || '?'}`)) ? 'devam' : 'dur';
   }
   // Kosu butcesi yeniden olculdu (varsayilan degismis olabilir): sure kapisi bu degerle de.
-  const yetmez2 = sureYetmiyor(k, ON_KONTROL_PAY_SN + (Number(plan.parametreler && plan.parametreler.butceSn) || butce));
+  const planButce = Number(plan.parametreler && plan.parametreler.butceSn);
+  const yetmez2 = sureYetmiyor(k, ON_KONTROL_PAY_SN + (planButce ? planButce + hazirlikPayiSn(plan.parametreler) : butce));
   if (yetmez2) return (await ogeKapat(db, oge, 'BEKLIYOR', 'ATLANDI', yetmez2)) ? 'devam' : 'dur';
   const token = crypto.randomUUID();
   let al;
@@ -553,8 +562,8 @@ async function ogeIlerlet(ctx, k, oge) {
     return geciciHata(ctx, oge, e, null);
   }
   if (yetkiNeden) return (await ogeKapat(db, oge, 'CALISIYOR', 'ATLANDI', yetkiNeden)) ? 'devam' : 'dur';
-  const butce = (jsonOku(ok.parametreler, {}) || {}).butceSn;
-  const yetmez = sureYetmiyor(k, Number(butce) || sayiOf(oge.butce_sn) || 0);
+  const okParam = jsonOku(ok.parametreler, {}) || {};
+  const yetmez = sureYetmiyor(k, Number(okParam.butceSn) ? Number(okParam.butceSn) + hazirlikPayiSn(okParam) : sayiOf(oge.butce_sn) || 0);
   if (yetmez) return (await ogeKapat(db, oge, 'CALISIYOR', 'ATLANDI', yetmez)) ? 'devam' : 'dur';
   const yas = sayiOf(ok.yas_sn);
   if (yas === null || yas > ON_KONTROL_TAZE_SN) {
@@ -796,6 +805,8 @@ module.exports = {
   MAX_OGE,
   ETIKET_MAX,
   ON_KONTROL_PAY_SN,
+  HAZIRLIK_PAY_SN,
+  hazirlikPayiSn,
   ON_KONTROL_TAZE_SN,
   GECICI_DENEME_SINIRI,
   GERI_CEKILME_SN,

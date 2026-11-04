@@ -4,9 +4,40 @@
 // (metin her zaman `metin` alanindan; koyu temada AA). Hub'in yerel smBtn'i ('#fff') KULLANILMAZ.
 import React from 'react';
 import { ExclamationTriangleIcon } from '@heroicons/react/24/outline';
-import type { NlHedefTuru, NlMotor, NlProtokol } from '@/api/nginxLoadtestApi';
-import { Cip, Hap } from '@/components/server_hub/RetirementUi';
+import type { NlHedefTuru, NlMotor, NlProtokol, NlSunucuAyari } from '@/api/nginxLoadtestApi';
+import { Cip, Hap, UyariKutusu } from '@/components/server_hub/RetirementUi';
 import { H2_CIP_IPUCU, SERBEST_CIP_IPUCU, WRK_CIP_IPUCU, gecerlilikBilgisi, kosuDurumu, ISLEM_ETIKETI } from './yukTestiOrtak';
+
+/** Sunucu ayarinin gorunur uyarilari: geri alma uyari / hata ve hazirlik betiginin uyarilari (ok ise hic bir sey cizilmez). */
+export function SunucuAyarUyarilari({ ayar }: { ayar: NlSunucuAyari }) {
+  const ga = ayar.geriAlma;
+  const betik = ayar.uyarilar ?? ayar.kanit?.uyarilar ?? [];
+  if ((!ga || ga.durum === 'ok') && !betik.length) return null;
+  return (
+    <div className="space-y-2">
+      {ga && ga.durum === 'hata' && (
+        <UyariKutusu ton="hata" rol="alert" baslik="Sunucu ayarı geri alınamadı">
+          <p className="wrap-anywhere">{ga.metin || 'Hedefteki nginx konfigürasyonu koşu öncesi durumuna dönmemiş olabilir; elle kontrol edin.'}</p>
+        </UyariKutusu>
+      )}
+      {ga && ga.durum === 'uyari' && (
+        <UyariKutusu ton="uyari" baslik="Sunucu ayarı geri alınırken uyarı">
+          <p className="wrap-anywhere">{ga.metin || 'Konfigürasyon dosyası başkası tarafından değiştirilmiş olabilir; dokunulmadı.'}</p>
+        </UyariKutusu>
+      )}
+      {ga && ga.durum === 'bekliyor' && (
+        <UyariKutusu ton="uyari" baslik="Sunucu ayarı geri alınıyor">
+          <p className="wrap-anywhere">{ga.metin || 'Geri alma durdurma işinde; sonucu bekleniyor.'}</p>
+        </UyariKutusu>
+      )}
+      {betik.length > 0 && (
+        <UyariKutusu ton="uyari" baslik="Sunucu ayarı uyarıları">
+          <ul className="list-disc space-y-0.5 pl-4">{betik.map((u) => <li key={u} className="wrap-anywhere">{u}</li>)}</ul>
+        </UyariKutusu>
+      )}
+    </div>
+  );
+}
 
 /** Metin / sayi girdisi ve secim kutusu: token renkli; hata varsa tehlike kenari. GIRDI 32px ve tam genislik;
  *  baska boy / genislik isteyen yer GIRDI_TABAN + kendi h-* w-* siniflarini kullanir (iki h-* / w-* carpismasin). */

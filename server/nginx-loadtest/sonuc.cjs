@@ -14,6 +14,8 @@
 //   konf_*.txt, NOT.txt, istemci_*.json, SHA256SUMS
 //   ag_<ADIM>_<host>.csv|txt     2026-11-03 (bilgi): iki makinenin NIC sayaclari (/proc/net/dev; txt rol=hedef|yuk)
 //   bdetay_<ADIM>_<host>.csv     2026-11-03 (bilgi): hedef nginx worker Anon / Shmem / File / Pss + baglanti sayisi
+//   hazirlik_<ADIM>_<host>.txt   2026-11-04: hazirlik.sh kaniti (http2, ae, seviye, static, dizin, gz_uretilen, br_uretilen,
+//                                atlanan, dosya_seviye, disk_kanit, uyarilar, sureler); sunucu ayarli kosu bunsuz GECERSIZ (analiz.cjs)
 // Hepsi istege bagli: eksik dosya analizde "olculmedi" (null) ya da GECERSIZ nedeni olur, okuma
 // hatasi OLMAZ. karsilastir.py'nin glob/sirasi korunur (ad sirasina gore, buyuk-kucuk harf duyarli).
 // Serbest hedef kosusunda (kaydedici yok) dizinde yalniz yuk makinesinin dosyalari olur (istemci_*,
@@ -121,6 +123,7 @@ const DESENLER = Object.freeze([
   [/^ag_.*\.csv$/, 'ag'],
   [/^ag_.*\.txt$/, 'ag_bilgi'],
   [/^bdetay_.*\.csv$/, 'bdetay'],
+  [/^hazirlik_.*\.txt$/, 'hazirlik'],
   [/^SHA256SUMS$/, 'sha'],
 ]);
 
@@ -785,6 +788,33 @@ function yukBilgiOkuyucu() {
 }
 
 /**
+ * hazirlik_*.txt: anahtar<TAB>deger ya da anahtar=deger (kalan satirlar atlanir). Hic firlatmaz: en cok 64 anahtar, deger
+ * 500 karakter. `uyari` satirlari ve `uyarilar` birlikte `uyarilar` listesine (en cok 20) toplanir.
+ */
+function hazirlikOkuyucu() {
+  const b = Object.create(null);
+  const uyarilar = [];
+  let n = 0;
+  return {
+    satir(s) {
+      const m = /^([a-z0-9_]{1,32})[\t=](.*)$/.exec(s);
+      if (!m) return;
+      const v = m[2].trim().slice(0, 500);
+      if (m[1] === 'uyari' || m[1] === 'uyarilar') {
+        if (v && uyarilar.length < 20) uyarilar.push(v);
+        return;
+      }
+      if (!(m[1] in b) && ++n > 64) return;
+      b[m[1]] = v;
+    },
+    bitir: () => {
+      b.uyarilar = uyarilar;
+      return b;
+    },
+  };
+}
+
+/**
  * karsilastir.py `diger_oku`: saniye -> test disi istek adedi (birden cok dosya toplanir). `maxAnahtar`:
  * ortak haritadaki farkli saniye tavani; asilinca o an okunan dosyanin adiyla OKUNAMADI.
  */
@@ -1004,6 +1034,7 @@ async function dosyaAkit(yol, ad, { gz, isleyici, sayac }) {
  *   agKesitler : [{ anahtar, dosya, ornekler: [{t,rx,tx}], bilgi, bilgiVar, arayuzSayisi, sarma, sifirlama, sorun? }]
  *                (ag_*.csv / ag_*.txt; csv yoksa ornekler [] ve sorun; yoksa [])
  *   bdetayKesitler: [{ anahtar, dosya, ornekler: [{t,n,k,an,sh,fi,pss,mr,mp,bg}], sorun? }]  (hedef bdetay_*.csv; yoksa [])
+ *   hazirliklar: [{ anahtar, dosya, bilgi }]  (hazirlik_*.txt; bilgi: anahtar -> metin ve uyarilar[]; yoksa [])
  *   log        : { fazlar, turlar: Map<tur, LogKaydi> }   (bkz. LogDeposu)
  *   loglar     : [{ dosya, satir, atlanan }]               (okunan log dosyalari)
  *   diger      : Map<epoch_sn, adet>
@@ -1100,7 +1131,7 @@ async function kosuDiziniOku(dizin, { maxBayt = VARSAYILAN_MAX_BAYT, adim = null
 
   const veri = {
     dizin, okunanBayt: 0, istemci: [], hataliIstemci: [], zaman: null, baslatilan: null, kesitler: [], yukKesitler: [],
-    bellekKesitler: [], istemciKodlama: new Map(), istemciAg: new Map(), agKesitler: [], bdetayKesitler: [], log: null, loglar: [], diger: new Map(), not: '', konf: [], dosyalar, sha256: null, uyarilar,
+    bellekKesitler: [], istemciKodlama: new Map(), istemciAg: new Map(), agKesitler: [], bdetayKesitler: [], hazirliklar: [], log: null, loglar: [], diger: new Map(), not: '', konf: [], dosyalar, sha256: null, uyarilar,
   };
   const depo = new LogDeposu();
   const bilgiler = new Map();
@@ -1149,6 +1180,9 @@ async function kosuDiziniOku(dizin, { maxBayt = VARSAYILAN_MAX_BAYT, adim = null
         break;
       case 'bdetay':
         isleyici = bdetayOkuyucu(ad, SATIR_TAVANI.bdetay);
+        break;
+      case 'hazirlik':
+        isleyici = hazirlikOkuyucu();
         break;
       case 'istemci_ozet':
         isleyici = istemciOzetOkuyucu();
@@ -1232,6 +1266,9 @@ async function kosuDiziniOku(dizin, { maxBayt = VARSAYILAN_MAX_BAYT, adim = null
         break;
       case 'bdetay':
         bdetaylar.push({ ad, ornekler: sonuc, sorun: isleyici.sorun || null });
+        break;
+      case 'hazirlik':
+        veri.hazirliklar.push({ anahtar: ad.slice('hazirlik_'.length, -'.txt'.length), dosya: ad, bilgi: sonuc });
         break;
       case 'istemci_ozet':
         if (sonuc && sonuc.kodlama) veri.istemciKodlama.set(sonuc.tur, sonuc.kodlama);

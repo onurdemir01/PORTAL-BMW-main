@@ -316,6 +316,11 @@ sahte('../../db/index.cjs', {
       if (r) Object.assign(r, { durum: 'FAILED', adim: params[1], sonuc: params[2], awx_server_id: params[3], awx_job_id: params[4] });
       return { rows: [], rowCount: r ? 1 : 0 };
     }
+    if (/^UPDATE nginx_loadtest_kosular SET sonuc = \$2 WHERE id = \$1$/.test(q)) {
+      const r = D.kosular.find((x) => x.id === params[0]);
+      if (r) r.sonuc = params[1];
+      return { rows: [], rowCount: r ? 1 : 0 };
+    }
     if (/^UPDATE nginx_loadtest_kosular SET iptal_eden = \$2 WHERE id = \$1$/.test(q)) {
       const r = D.kosular.find((x) => x.id === params[0]);
       if (r) r.iptal_eden = params[1];
@@ -523,6 +528,8 @@ async function onKontrolHazirla({ ozet = OK_OZET, yasDk = 5, sahip = 'onur', dur
   const k = D.kosular.find((x) => x.id === r.body.kosuId);
   // Tur 4: wrk satirinda yuk makinesi wrk kopyasini dogrular (sha256 = setin wrk'si).
   if (k.motor === 'wrk' && ozet.arac_sha256 === SHA_K6) ozet = { ...ozet, arac_sha256: SHA_WRK };
+  // Sunucu ayarli on kontrol: playbook 'uygula' sonucunu yayinlar (yoksa kosu baslamaz).
+  if (JSON.parse(k.parametreler).sunucuAyar && !('srv_hazirlik' in ozet)) ozet = { ...ozet, srv_hazirlik: 'ok' };
   Object.assign(k, { durum, created_by: sahip, finished_at: D.simdi - yasDk * 60000, sonuc: JSON.stringify({ durum: sonucDurum, run_id: String(k.id), islem: 'on_kontrol', on_kontrol: ozet }), on_kontrol_ozet: JSON.stringify(ozet) });
   for (const kl of D.kilitler.values()) kl.held = 0; // poller birakmis gibi
   return k;
@@ -548,7 +555,7 @@ test('YKP1 kapilar: oturum, Admin, sayfa/sekme gorunurlugu (davranis)', { timeou
     assert.equal(D.envSorgular.length, 0, `${m} ${u}: uc envanteri okudu`);
   }
   assert.equal(D.launch.length, 0);
-  for (const u of ['/hedefler', '/senaryolar', '/senaryolar/1', '/kosular', '/kosular/101', '/karsilastir?ref=1&aday=2', '/karsilastir-coklu?ref=1&kosular=2', '/araclar', '/kuyruklar', '/kuyruklar/1']) {
+  for (const u of ['/hedefler', '/senaryolar', '/senaryolar/1', '/kosular', '/kosular/101', '/karsilastir?ref=1&aday=2', '/karsilastir-coklu?ref=1&kosular=2', '/rapor?kosular=1', '/araclar', '/kuyruklar', '/kuyruklar/1']) {
     const r = await istek('GET', u, { session: KULLANICI });
     assert.notEqual(r.statusCode, 403, `salt okunur ${u} Admin olmayana kapali`);
     assert.notEqual(r.statusCode, 401, u);
@@ -582,7 +589,7 @@ test('YKP2 kapi sirasi, nginxRed haric listesi, ADMIN_DISI_OKUMA', () => {
   const haric = servis.match(/haric:\s*\[([^\]]*)\]/);
   assert.ok(haric, 'nginxRedCevirici haric listesi okunamadi');
   assert.doesNotMatch(haric[1], /nginx-loadtest/, 'yuk testi router\'i haric: 403/404 govdeleri HTML\'e doner');
-  const ornek = ['/hedefler', '/senaryolar', '/senaryolar/12', '/kosular', '/kosular/12', '/karsilastir', '/karsilastir-coklu', '/araclar', '/kuyruklar', '/kuyruklar/3'];
+  const ornek = ['/hedefler', '/senaryolar', '/senaryolar/12', '/kosular', '/kosular/12', '/karsilastir', '/karsilastir-coklu', '/rapor', '/araclar', '/kuyruklar', '/kuyruklar/3'];
   for (const re of yt._ADMIN_DISI_OKUMA) assert.ok(ornek.some((o) => re.test(o)), `ornegi olmayan desen: ${re}`);
   for (const yasak of ['/kosular/12/durum', '/kosular/12/durdur', '/kosular/on-kontrol', '/senaryolar/12/sil', '/kosular/12/yeniden-oku', '/ip-sinifi', '/araclar/5/geri-cek', '/araclar/5', '/kuyruklar/3/iptal', '/kuyruklar/3/sira', '/kuyruklar/3/ogeler/1/cikar', '/kosular/12/etiket']) {
     assert.ok(!yt._ADMIN_DISI_OKUMA.some((re) => re.test(yasak)), `${yasak} Admin olmayana acik`);
@@ -600,7 +607,7 @@ test('YKP3 kimlikler istemciden alinmaz (baslatma, durum, durdurma)', { timeout:
   const [sid, tid, ev, limit] = D.launch[0];
   assert.deepEqual([sid, tid, limit], [3, 44, ''], 'sunucu/template kayittan, limit bos degil');
   assert.deepEqual(Object.keys(ev).sort(), [...dg.EKSTRA_ANAHTARLAR].sort(), 'govdedeki fazlalik extra_vars\'a sizdi');
-  assert.equal(Object.keys(ev).length, 34);
+  assert.equal(Object.keys(ev).length, 38);
   assert.equal(ev.yuk_hedef_host, 'GBNGXT33');
   assert.equal(ev.yuk_islem, 'on_kontrol');
   assert.equal(ev.yuk_run_id, String(r.body.kosuId));
@@ -776,7 +783,7 @@ test('YKP5 basarili on kontrol: satir, kilitler, gecmis, denetim', { timeout: 10
   assert.equal(r.statusCode, 200);
   const k = D.kosular.find((x) => x.id === r.body.kosuId);
   assert.deepEqual([k.durum, k.adim, k.awx_server_id, k.awx_job_id, k.islem, k.sw_dizin], ['RUNNING', `R${k.id}`, 3, 900, 'on_kontrol', null]);
-  assert.deepEqual(JSON.parse(k.parametreler), { motor: 'k6', hizlar: [100, 250], tekrar: 2, isinma: 30, sure: 120, bosluk: 30, bosta: 60, maxvu: 150, kip: 'yeni', ae: 'br', sni: true, protokol: 'h1', butceSn: 60 + 2 * 2 * (30 + 120 + 30 + 20) + 120 });
+  assert.deepEqual(JSON.parse(k.parametreler), { motor: 'k6', hizlar: [100, 250], tekrar: 2, isinma: 30, sure: 120, bosluk: 30, bosta: 60, maxvu: 150, kip: 'yeni', ae: 'br', sni: true, protokol: 'h1', sunucuAyar: null, butceSn: 60 + 2 * 2 * (30 + 120 + 30 + 20) + 120 });
   // Tur 3 kolonlari: k6 + sunucu satiri; plan uyarisi yok (NULL).
   assert.deepEqual([k.hedef_turu, k.motor, k.hedef_host, k.plan_uyarilari], ['sunucu', 'k6', 'GBNGXT33', null]);
   assert.equal(D.launch[0][2].yuk_sni, '1');
@@ -1329,7 +1336,7 @@ test('YKP20 serbest on kontrol uctan uca: siniflandirma, satir, extra_vars, G + 
   assert.deepEqual([k.hedef_turu, k.hedef_host, k.hedef_ip, k.motor, k.islem, k.vhost], ['serbest', '', SERBEST_IP, 'k6', 'on_kontrol', 'app.test.local']);
   // GBNGXT34 internet RP: serbest plan uyarisi satirda (onay isteyecek).
   assert.deepEqual(JSON.parse(k.plan_uyarilari), [RP_UYARISI()]);
-  assert.deepEqual(JSON.parse(k.parametreler), { motor: 'k6', hizlar: [50, 100, 200], tekrar: 2, isinma: 30, sure: 120, bosluk: 30, bosta: 60, maxvu: 50, kip: 'yeni', ae: 'br', sni: false, protokol: 'h1', butceSn: 1380 });
+  assert.deepEqual(JSON.parse(k.parametreler), { motor: 'k6', hizlar: [50, 100, 200], tekrar: 2, isinma: 30, sure: 120, bosluk: 30, bosta: 60, maxvu: 50, kip: 'yeni', ae: 'br', sni: false, protokol: 'h1', sunucuAyar: null, butceSn: 1380 });
   const ev = D.launch[0][2];
   assert.deepEqual([ev.yuk_hedef_turu, ev.yuk_hedef_host, ev.yuk_hedef_ip, ev.yuk_motor, ev.yuk_hizlar, ev.yuk_maxvu, ev.yuk_islem], ['serbest', '', SERBEST_IP, 'k6', '50 100 200', '50', 'on_kontrol']);
   assert.deepEqual(dg.ekstraDegiskenleriDenetle(ev), []);
@@ -1466,7 +1473,7 @@ test('YKP23 wrk on kontrol: extra_vars bolum 3, tavan sunucuda hesaplanir, wrk +
   assert.equal(r.statusCode, 200, JSON.stringify(r.body));
   const k = D.kosular.find((x) => x.id === r.body.kosuId);
   assert.deepEqual([k.motor, k.hedef_turu], ['wrk', 'sunucu']);
-  assert.deepEqual(JSON.parse(k.parametreler), { motor: 'wrk', baglantilar: [2, 4, 8], is_parcacigi: 2, tavan_rps: 5000, tekrar: 2, isinma: 30, sure: 120, bosluk: 30, bosta: 60, kip: 'yeni', ae: 'br', sni: false, protokol: 'h1', butceSn: 1380 });
+  assert.deepEqual(JSON.parse(k.parametreler), { motor: 'wrk', baglantilar: [2, 4, 8], is_parcacigi: 2, tavan_rps: 5000, tekrar: 2, isinma: 30, sure: 120, bosluk: 30, bosta: 60, kip: 'yeni', ae: 'br', sni: false, protokol: 'h1', sunucuAyar: null, butceSn: 1380 });
   assert.ok(!JSON.parse(k.plan_uyarilari || '[]').some((u) => /limit_req/.test(u)), String(k.plan_uyarilari));
   const ev = D.launch[0][2];
   assert.deepEqual(
@@ -2015,7 +2022,7 @@ test('YKP41 extra_vars arac alanlari = etkin set; INSERT arac_id; durdurda uc al
   assert.deepEqual([ev.yuk_arac_dizin, ev.yuk_k6_sha256, ev.yuk_wrk_sha256, ev.yuk_k6_yolu, ev.yuk_wrk_yolu],
     ['/sw/BMW_PORTAL/nginx_loadtest/araclar/5', SHA_K6, SHA_WRK, dg.ESKI_K6_ISARETI, dg.ESKI_WRK_ISARETI]);
   assert.deepEqual([dg.ESKI_K6_ISARETI, dg.ESKI_WRK_ISARETI], ['/yeni-playbook-gerekli/k6', '/yeni-playbook-gerekli/wrk']);
-  assert.equal(Object.keys(ev).length, 34);
+  assert.equal(Object.keys(ev).length, 38);
   assert.deepEqual(dg.ekstraDegiskenleriDenetle(ev), []);
   const k = D.kosular.find((x) => x.id === r.body.kosuId);
   assert.equal(k.arac_id, 5, 'on kontrol satirina arac_id yazilmadi');
@@ -2036,7 +2043,7 @@ test('YKP41 extra_vars arac alanlari = etkin set; INSERT arac_id; durdurda uc al
   assert.equal(d.statusCode, 200, JSON.stringify(d.body));
   const dev = D.launch.at(-1)[2];
   assert.deepEqual([dev.yuk_islem, dev.yuk_arac_dizin, dev.yuk_k6_sha256, dev.yuk_wrk_sha256, dev.yuk_k6_yolu, dev.yuk_wrk_yolu], ['durdur', '', '', '', dg.ESKI_K6_ISARETI, dg.ESKI_WRK_ISARETI]);
-  assert.equal(Object.keys(dev).length, 34);
+  assert.equal(Object.keys(dev).length, 38);
   assert.equal(dev.yuk_protokol, 'h1', 'durdur eski satirdan h1');
 });
 
@@ -2664,4 +2671,216 @@ test('YKP67 silme yarisi: on kontrol INSERT oncesi silinirse kosu yazilmaz (409 
   r = await istek('POST', '/kosular', { body: { onKontrolKosuId: ok2.id, confirmText: 'GBNGXT33' } });
   assert.equal(r.statusCode, 200, JSON.stringify(r.body));
   assert.equal(D.kosular.find((x) => x.id === r.body.kosuId).on_kontrol_kosu_id, ok2.id);
+});
+
+const SRV_DIZIN = '/usr/nginx/applications/glomo';
+const SRV_GOVDE = (sunucuAyar = { seviye: 6, static: true, dizin: SRV_DIZIN }, ek = {}) => GOVDE({ parametreler: { hizlar: [100, 250], ae: 'br', sunucuAyar, ...ek } });
+
+test('YKP70 sunucu ayari uctan uca: on kontrol ve kosu yuk_srv_*, satirda kanonik, eski on kontrol null sayilir, serbest 400', { timeout: 20000 }, async () => {
+  sifirla();
+  senaryoEkle();
+  const ok = await onKontrolHazirla({ govde: SRV_GOVDE() });
+  const srv = (ev) => [ev.yuk_srv_ayar, ev.yuk_srv_seviye, ev.yuk_srv_static, ev.yuk_srv_dizin];
+  assert.deepEqual(srv(D.launch.at(-1)[2]), ['1', '6', '1', SRV_DIZIN]);
+  assert.deepEqual(JSON.parse(ok.parametreler).sunucuAyar, { seviye: 6, static: true, dizin: SRV_DIZIN });
+  let r = await istek('POST', '/kosular', { body: { onKontrolKosuId: ok.id, confirmText: 'GBNGXT33' } });
+  assert.equal(r.statusCode, 200, JSON.stringify(r.body));
+  assert.deepEqual(srv(D.launch.at(-1)[2]), ['1', '6', '1', SRV_DIZIN]);
+  assert.equal(JSON.parse(D.kosular.find((x) => x.id === r.body.kosuId).parametreler).sunucuAyar.seviye, 6);
+  // Ayrinti: ayarli kosuda sunucuAyari dolu; ayarsiz kosuda null.
+  const a = await istek('GET', `/kosular/${r.body.kosuId}`);
+  assert.deepEqual([a.body.kosu.sunucuAyari.seviye, a.body.kosu.sunucuAyari.dizin, a.body.kosu.sunucuAyari.kanit], [6, SRV_DIZIN, null]);
+
+  // sunucuAyar alani olmayan (dagitim oncesi) on kontrol eskimez.
+  sifirla();
+  senaryoEkle();
+  const eski = await onKontrolHazirla();
+  const p = JSON.parse(eski.parametreler);
+  delete p.sunucuAyar;
+  eski.parametreler = JSON.stringify(p);
+  r = await istek('POST', '/kosular', { body: { onKontrolKosuId: eski.id, confirmText: 'GBNGXT33' } });
+  assert.equal(r.statusCode, 200, JSON.stringify(r.body));
+  assert.deepEqual(srv(D.launch.at(-1)[2]), ['0', '', '0', '']);
+  assert.equal((await istek('GET', `/kosular/${r.body.kosuId}`)).body.kosu.sunucuAyari, null);
+
+  // Serbest hedefte sunucu ayari 400; gecersiz seviye 400, is baslamaz.
+  sifirla();
+  senaryoEkle();
+  process.env.NGINX_LOADTEST_SERBEST_AGLAR = SERBEST_AG;
+  r = await istek('POST', '/kosular/on-kontrol', { body: SGOVDE({ parametreler: { sunucuAyar: { seviye: 6, dizin: SRV_DIZIN } } }) });
+  assert.deepEqual([r.statusCode, r.body.code], [400, 'gecersiz_istek'], JSON.stringify(r.body));
+  r = await istek('POST', '/kosular/on-kontrol', { body: SRV_GOVDE({ seviye: 12, dizin: SRV_DIZIN }) });
+  assert.deepEqual([r.statusCode, r.body.code], [400, 'gecersiz_istek'], JSON.stringify(r.body));
+  assert.equal(D.launch.length, 0);
+  delete process.env.NGINX_LOADTEST_SERBEST_AGLAR;
+});
+
+test('YKP71 durdur: kosuda yuk_srv_ayar 0; sunucu ayarli on kontrol de durdurma isi baslatir, ayarsiz on kontrol baslatmaz', { timeout: 20000 }, async () => {
+  sifirla();
+  senaryoEkle();
+  const ok = await onKontrolHazirla({ govde: SRV_GOVDE() });
+  let r = await istek('POST', '/kosular', { body: { onKontrolKosuId: ok.id, confirmText: 'GBNGXT33' } });
+  const kosuId = r.body.kosuId;
+  r = await istek('POST', `/kosular/${kosuId}/durdur`, { body: {} });
+  assert.equal(r.statusCode, 200, JSON.stringify(r.body));
+  let ev = D.launch.at(-1)[2];
+  assert.deepEqual([ev.yuk_islem, ev.yuk_srv_ayar, ev.yuk_srv_dizin], ['durdur', '0', '']);
+
+  // Suren on kontrol (uygula yapmis olabilir): iptal temizlik play'ini kosturmaz, durdur isi konfu geri alir.
+  sifirla();
+  senaryoEkle();
+  r = await istek('POST', '/kosular/on-kontrol', { body: SRV_GOVDE() });
+  const n = D.launch.length;
+  r = await istek('POST', `/kosular/${r.body.kosuId}/durdur`, { body: {} });
+  assert.equal(r.statusCode, 200, JSON.stringify(r.body));
+  assert.equal(D.launch.length, n + 1, 'durdurma isi baslamadi');
+  ev = D.launch.at(-1)[2];
+  assert.deepEqual([ev.yuk_islem, ev.yuk_srv_ayar], ['durdur', '0']);
+  assert.ok(r.body.durdurIsi && r.body.durdurIsi.jobId);
+
+  sifirla();
+  senaryoEkle();
+  r = await istek('POST', '/kosular/on-kontrol', { body: GOVDE() });
+  const m = D.launch.length;
+  r = await istek('POST', `/kosular/${r.body.kosuId}/durdur`, { body: {} });
+  assert.equal(r.statusCode, 200, JSON.stringify(r.body));
+  assert.equal(D.launch.length, m, 'ayarsiz on kontrolde durdur isi yok (eski davranis)');
+  assert.equal(r.body.durdurIsi, null);
+});
+
+test('YKP73 kosu baslatma: ayarli on kontrolde srv_hazirlik ok sart (eski playbook gece kuyrugunu bosa harcamasin); kalmis yedek engel', { timeout: 20000 }, async () => {
+  const dene = async (ozetEk, govde) => {
+    sifirla();
+    senaryoEkle();
+    const ok = await onKontrolHazirla({ ozet: { ...OK_OZET, ...ozetEk }, govde });
+    const n = D.launch.length;
+    const r = await istek('POST', '/kosular', { body: { onKontrolKosuId: ok.id, confirmText: 'GBNGXT33' } });
+    return { r, yeni: D.launch.length - n };
+  };
+  let { r, yeni } = await dene({ srv_hazirlik: null }, SRV_GOVDE());
+  assert.deepEqual([r.statusCode, r.body.code, yeni], [409, 'on_kontrol_eski', 0], JSON.stringify(r.body));
+  assert.match(r.body.engeller.join(' '), /Ansible deposunu güncelleyin/);
+  ({ r, yeni } = await dene({ srv_hazirlik: 'fail' }, SRV_GOVDE()));
+  assert.deepEqual([r.statusCode, yeni], [409, 0]);
+  ({ r, yeni } = await dene({ srv_hazirlik: 'ok' }, SRV_GOVDE()));
+  assert.deepEqual([r.statusCode, yeni], [200, 1], JSON.stringify(r.body));
+  ({ r, yeni } = await dene({ hazirlik_yedek: true }, GOVDE()));
+  assert.deepEqual([r.statusCode, r.body.code, yeni], [409, 'on_kontrol_eski', 0], JSON.stringify(r.body));
+  assert.match(r.body.engeller.join(' '), /geri alınmamış sunucu ayarı/);
+  ({ r, yeni } = await dene({ hazirlik_yedek: false }, GOVDE()));
+  assert.deepEqual([r.statusCode, yeni], [200, 1], JSON.stringify(r.body));
+});
+
+test('YKP74 sunucu ayarli on kontrol: durdurma isi baslamazsa 424 (ok:true degil), kilit bag turu onk_srv', { timeout: 20000 }, async () => {
+  sifirla();
+  senaryoEkle();
+  let r = await istek('POST', '/kosular/on-kontrol', { body: SRV_GOVDE() });
+  const id = r.body.kosuId;
+  for (const v of D.kilitler.values()) assert.equal(v.bag_turu, 'onk_srv');
+  D.launchHata = Object.assign(new Error('AWX 503'), { status: 503 });
+  r = await istek('POST', `/kosular/${id}/durdur`, { body: {} });
+  assert.deepEqual([r.statusCode, r.body.code], [424, 'durdur_baslatilamadi'], JSON.stringify(r.body));
+  assert.match(r.body.message, /konfigürasyon değişikliği sürüyor olabilir/);
+  // Ayarsiz on kontrol: bag turu eskisi gibi.
+  sifirla();
+  senaryoEkle();
+  r = await istek('POST', '/kosular/on-kontrol', { body: GOVDE() });
+  for (const v of D.kilitler.values()) assert.equal(v.bag_turu, 'on_kontrol');
+});
+
+test('YKP75 Durdur kapisi: DONE kosuda yalniz geri alinamamis sunucu ayari icin; onceki sonuc temizlenir', { timeout: 20000 }, async () => {
+  sifirla();
+  senaryoEkle();
+  const ok = await onKontrolHazirla({ govde: SRV_GOVDE() });
+  const b = await istek('POST', '/kosular', { body: { onKontrolKosuId: ok.id, confirmText: 'GBNGXT33' } });
+  const k = D.kosular.find((x) => x.id === b.body.kosuId);
+  const durdur = () => istek('POST', `/kosular/${k.id}/durdur`, { body: {} });
+  // Geri alma ok / uyari: is yok.
+  for (const ga of ['ok', 'uyari']) {
+    Object.assign(k, { durum: 'DONE', sonuc: JSON.stringify({ sunucu_ayar: { geri_alma: ga } }) });
+    const r = await durdur();
+    assert.deepEqual([r.statusCode, r.body.code], [409, 'kosu_bitti'], ga);
+  }
+  // Ayarsiz DONE kosu: eski davranis (YKP9). Geri alma hata: durdurma isi, ayar 0 ile.
+  Object.assign(k, { sonuc: JSON.stringify({ sunucu_ayar: { geri_alma: 'hata', geri_alma_metin: 'x' }, durdur_geri_alma: { is: 1, durum: 'hata' } }), durdur_awx_job_id: 1, durdur_awx_server_id: 3 });
+  // Durdurma isi 1 hata ile bitmisti: yeniden denenebilir, eski sonuc silinir.
+  let r = await durdur();
+  assert.equal(r.statusCode, 200, JSON.stringify(r.body));
+  const ev = D.launch.at(-1)[2];
+  assert.deepEqual([ev.yuk_islem, ev.yuk_srv_ayar, ev.yuk_srv_dizin], ['durdur', '0', '']);
+  assert.equal(k.durdur_awx_job_id, r.body.durdurIsi.jobId);
+  assert.equal('durdur_geri_alma' in JSON.parse(k.sonuc), false, 'yeni is eski sonucu devralmamali');
+  // Sonuc hic yok (Play 7 kosmadi): ayrinti kirmizi, Durdur acik.
+  Object.assign(k, { durum: 'DONE', sonuc: JSON.stringify({ durum: 'OK' }), durdur_awx_job_id: null });
+  const a = await istek('GET', `/kosular/${k.id}`);
+  assert.equal(a.body.kosu.sunucuAyari.geriAlma.durum, 'hata');
+  r = await durdur();
+  assert.equal(r.statusCode, 200, JSON.stringify(r.body));
+  // Durdurma isi suruyor: ayrinti bekliyor, DONE kosuda yeni is yok.
+  Object.assign(k, { durum: 'DONE', sonuc: JSON.stringify({ durum: 'OK' }) });
+  assert.equal((await istek('GET', `/kosular/${k.id}`)).body.kosu.sunucuAyari.geriAlma.durum, 'bekliyor');
+  r = await durdur();
+  assert.deepEqual([r.statusCode, r.body.code], [409, 'kosu_bitti']);
+});
+
+test('YKP76 otomatik durdurma: satir taze okunur, is baslar ve yazilir; is varsa ya da Durdur suruyorsa baslamaz', { timeout: 20000 }, async () => {
+  sifirla();
+  senaryoEkle();
+  const ok = await onKontrolHazirla({ govde: SRV_GOVDE() });
+  const b = await istek('POST', '/kosular', { body: { onKontrolKosuId: ok.id, confirmText: 'GBNGXT33' } });
+  const k = D.kosular.find((x) => x.id === b.body.kosuId);
+  const n = D.launch.length;
+  k.durum = 'FINALIZING';
+  // Durdur ucu ayni kosuda suruyor: poller ikinci is baslatmaz.
+  yt._durdurSurenForTest.add(k.id);
+  assert.equal(await yt._otoDurdurForTest({ id: k.id }), null);
+  assert.equal(D.launch.length, n, 'Durdur surerken otomatik is baslamamali');
+  yt._durdurSurenForTest.delete(k.id);
+  const is = await yt._otoDurdurForTest({ id: k.id });
+  assert.ok(is && is.jobId > 0);
+  assert.equal(D.launch.length, n + 1);
+  assert.deepEqual([D.launch.at(-1)[2].yuk_islem, D.launch.at(-1)[2].yuk_run_id], ['durdur', String(k.id)]);
+  assert.equal(k.durdur_awx_job_id, is.jobId);
+  assert.equal(await yt._otoDurdurForTest({ id: k.id }), null, 'ikinci is yok');
+  assert.equal(D.launch.length, n + 1);
+  assert.equal(await yt._otoDurdurForTest({ id: 99999 }), null, 'satir yok');
+  // AWX hatasi firlatilir (poller kilidi tutar).
+  k.durdur_awx_job_id = null;
+  D.launchHata = Object.assign(new Error('AWX 503'), { status: 503 });
+  await assert.rejects(() => yt._otoDurdurForTest({ id: k.id }), /AWX/);
+  assert.equal(await (async () => {
+    D.launchHata = null;
+    return (await yt._otoDurdurForTest({ id: k.id })).jobId > 0;
+  })(), true, 'hata sonrasi yeniden denenebilir');
+});
+
+test('YKP77 kuyruk olusturma: bagli ayarli on kontrolde on-sikistirilmis dosya uyarisi onaya gelmez', { timeout: 20000 }, async () => {
+  const uyariSor = async (govde) => {
+    sifirla();
+    senaryoEkle();
+    const ok = await onKontrolHazirla({ ozet: { ...OK_OZET, sikistirma: { statik: 3, dinamik: 0, sikistirmasiz: 0 } }, govde });
+    const r = await istek('POST', '/kuyruklar', { body: { confirmText: 'GBNGXT33', onaylananTurler: [], ogeler: [{ etiket: 'A1', govde: { ...KGOVDE(), parametreler: govde.parametreler }, onKontrolKosuId: ok.id }] } });
+    return { r, metin: JSON.stringify(r.body) };
+  };
+  const ayarli = await uyariSor(SRV_GOVDE());
+  assert.doesNotMatch(ayarli.metin, /ön-sıkıştırılmış/, ayarli.metin);
+  const ayarsiz = await uyariSor(KGOVDE({ parametreler: { hizlar: [100, 250] } }));
+  assert.match(ayarsiz.metin, /ön-sıkıştırılmış/, ayarsiz.metin);
+});
+
+test('YKP72 kuyruk: static ogenin butce_sn kaydi +180 sn, kosu butcesi (yuk_butce_sn) degismez; govdeden sunucuAyar tasinir', { timeout: 20000 }, async () => {
+  sifirla();
+  senaryoEkle();
+  const g = { ...KGOVDE(), parametreler: { hizlar: [100, 250], ae: 'br', sunucuAyar: { seviye: 6, static: true, dizin: SRV_DIZIN } } };
+  const g2 = { ...KGOVDE(), parametreler: { hizlar: [100, 250], ae: 'gzip', sunucuAyar: { seviye: 9, dizin: SRV_DIZIN } } };
+  const r = await istek('POST', '/kuyruklar', { body: { confirmText: 'GBNGXT33', ogeler: [{ etiket: 'A1', govde: g }, { etiket: 'A2', govde: g2 }] } });
+  assert.equal(r.statusCode, 200, JSON.stringify(r.body));
+  const b1 = dg.parametreler(g.parametreler, { sni: false }).deger.butceSn;
+  assert.deepEqual([D.ogeler[0].butce_sn, D.ogeler[1].butce_sn], [b1 + 180, b1]);
+  await kuyrukTur();
+  const ev = D.launch.at(-1)[2];
+  assert.deepEqual([ev.yuk_islem, ev.yuk_srv_ayar, ev.yuk_srv_seviye, ev.yuk_srv_static, ev.yuk_butce_sn], ['on_kontrol', '1', '6', '1', String(b1)]);
+  // Gecersiz sunucu ayari kuyruk olusturmada reddedilir (oge numarasiyla).
+  const kotu = await istek('POST', '/kuyruklar', { body: { confirmText: 'GBNGXT33', ogeler: [{ etiket: 'A1', govde: { ...g2, parametreler: { ...g2.parametreler, sunucuAyar: { seviye: 10, dizin: SRV_DIZIN } } } }] } });
+  assert.deepEqual([kotu.statusCode, kotu.body.code, kotu.body.oge], [400, 'gecersiz_istek', 1], JSON.stringify(kotu.body));
 });

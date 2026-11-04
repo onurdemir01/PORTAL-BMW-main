@@ -4,7 +4,8 @@
 //   CK1 analiz.farkDurumu: kararVer'in gurultu x3 / esik kurali hucre basina (CPU-ms iyi / kotu / gurultu ici, p95, hata
 //       artisi, kurali olmayan olcu 'renklendirilmez', eksik taraf 'yok'); gurultuEsigi = max(esik, 3 x gurultu)
 //   CK2 cokluKarsilastir: aday basina kararVer (KALICI / NOTR), hiz basina ozet, gurultu ici / disi farklar, kademe farki
-//   CK3 uyumsuz grup: hedef turu / hedef / motor / protokol / wrk tavani / is parcacigi ve VERI_YOK, neden koduyla;
+//   CK3 uyumsuz grup: hedef turu / hedef / motor / wrk tavani / is parcacigi ve VERI_YOK, neden koduyla (protokol farki
+//       artik kiyas grubunda: CK11);
 //       uyumsuz aday icin kararVer CAGRILMAZ
 //   CK4 eski kosu: bant / bellek / kip alanlari null / 'olculmedi'; PSS yoksa RSS; PSS ile RSS arasi yuzde verilmez
 // ROUTER (gercek index.cjs; db / kimlik / gorunurluk / denetim sahte):
@@ -19,6 +20,12 @@
 //   CK9 kademeFarki: p95 / bant / bellek / hata p95 kademesinden, CPU CPU kademesinden (kademeler farkliyken)
 //   CK10 router: 10 haneli / INT ustu numara 400 (DB yok); 409 listeleri ayri: eksik (bulunamayan) / onKontrol / bitmemis (QUEUED /
 //       RUNNING / FINALIZING); yalniz on kontrol / bitmemis -> kosu_uygun_degil; FAILED kosu karsilastirilir
+// -- tek tabloda karsilastirma 2026-11-04 --
+//   CK11 h1 ref + h2 aday kiyas grubunda; ref protokolu iki taraf icin gecer; iki kosulu kararVer protokol farkinda hala VERI_YOK
+//   CK12 ka vs yeni, br vs gzip vs identity kiyas grubunda; fark adayin KENDI kombosundaki hiz degerlerinden; kaynak adimlar
+//        degismez; ilk neden gercek kip / ae degerlerini yazar; meta kip / ae / sunucuAyar (dizin yok)
+//   CK13 senaryo K/B ya da senaryo_id farki 'senaryo' koduyla karsilastirilamaz, kararVer cagrilmaz; bilinmeyen id gecer
+//   CK14 ortak kombo varsa kararVer'in secimi korunur (etiketleme yok); router uctan uca h2 + gzip aday
 'use strict';
 
 const { test } = require('node:test');
@@ -145,7 +152,6 @@ test('CK3 uyumsuz grup: neden kodlari, VERI_YOK; uyumsuz aday icin kararVer cagr
   const ref = kosu(1, dortAdim(1, [1, 1, 1, 1]));
   const adaylar = [
     kosu(2, dortAdim(2, [1, 1, 1, 1]), { motor: 'wrk' }),
-    kosu(3, dortAdim(3, [1, 1, 1, 1]), { protokol: 'h2' }),
     kosu(4, dortAdim(4, [1, 1, 1, 1]), { hedef_host: 'GBNGXT34' }),
     kosu(5, dortAdim(5, [1, 1, 1, 1]), { hedef_turu: 'serbest', hedef_host: '', hedef_ip: '10.0.0.9' }),
     kosu(6, [adim(6, 999, 1)]),
@@ -156,10 +162,10 @@ test('CK3 uyumsuz grup: neden kodlari, VERI_YOK; uyumsuz aday icin kararVer cagr
   const r = coklu.cokluKarsilastir({ ref, adaylar, analiz: izli });
   assert.deepEqual(r.adaylar.map((a) => a.id), [7]);
   const kod = Object.fromEntries(r.karsilastirilamaz.map((k) => [k.id, k.nedenler.map((n) => n.kod)]));
-  assert.deepEqual(kod, { 2: ['motor'], 3: ['protokol'], 4: ['hedef'], 5: ['hedef_turu', 'hedef'], 6: ['veri_yok'] });
+  assert.deepEqual(kod, { 2: ['motor'], 4: ['hedef'], 5: ['hedef_turu', 'hedef'], 6: ['veri_yok'] });
   assert.match(r.karsilastirilamaz.find((k) => k.id === 6).nedenler[0].metin, /^Karşılaştırılacak ortak ölçüm yok \(/);
   assert.equal(r.karsilastirilamaz.find((k) => k.id === 6).karar, 'VERI_YOK');
-  // Uyumsuz (2-5) icin kararVer cagrilmadi; 6 (VERI_YOK) ve 7 icin cagrildi, secenekler satirdan.
+  // Uyumsuz (2, 4, 5) icin kararVer cagrilmadi; 6 (VERI_YOK) ve 7 icin cagrildi, secenekler satirdan.
   assert.equal(cagri.length, 2);
   assert.deepEqual(cagri[0], {
     refMotor: 'k6', adayMotor: 'k6', refHedefTuru: 'sunucu', adayHedefTuru: 'sunucu', refIsParcacigi: null, adayIsParcacigi: null,
@@ -416,4 +422,102 @@ test('CK10 router: INT ustu numara 400; 409 listeleri ayri (eksik / onKontrol / 
   r = await istek('GET', '/karsilastir-coklu?ref=1&kosular=40,41');
   assert.equal(r.statusCode, 200, JSON.stringify(r.body));
   assert.deepEqual(r.body.adaylar.map((a) => a.id), [40, 41]);
+});
+
+/** Adim listesini baska kip / ae ile yazar (kosunun gercek kombosu). */
+const kombolu = (adimlar, kip, ae) => adimlar.map((x) => ({ ...x, kip, ae, tur: `R${x.kosu_id}_K_${kip}_${ae}_${x.hiz}_r${x.deneme}` }));
+
+test('CK11 protokol: h1 ref + h2 aday kiyas grubunda, karar ve fark dogru; kararVer varsayilani degismedi', () => {
+  const ref = kosu(1, kombolu(dortAdim(1, [1, 1, 1, 1], [20, 20, 30, 30]), 'ka', 'br'), { protokol: 'h1' });
+  const h2 = kosu(2, kombolu(dortAdim(2, [0.7, 0.7, 0.7, 0.7], [20, 20, 30, 30]), 'ka', 'br'), { protokol: 'h2' });
+  const cagri = [];
+  const izli = { ...analiz, kararVer: (...a) => { cagri.push(a[2]); return analiz.kararVer(...a); } };
+  const r = coklu.cokluKarsilastir({ ref, adaylar: [h2], analiz: izli });
+  assert.deepEqual(r.karsilastirilamaz, []);
+  assert.deepEqual(r.adaylar.map((a) => [a.id, a.karar, a.protokol]), [[2, 'KALICI', 'h2']]);
+  assert.deepEqual([cagri[0].refProtokol, cagri[0].adayProtokol], ['h1', 'h1']);
+  assert.equal(Math.round(r.adaylar[0].kademeFarki.cpu.yuzde), -30);
+  assert.equal(r.adaylar[0].kademeFarki.cpu.durum, 'iyi');
+  assert.match(r.adaylar[0].kararNedenleri[0], /kip=ka ae=br \(referans HTTP\/1\.1, aday HTTP\/2\)$/);
+  // Tersi de: h2 ref + h1 aday.
+  const t = coklu.cokluKarsilastir({ ref: h2, adaylar: [ref], analiz });
+  assert.deepEqual(t.adaylar.map((a) => a.karar), ['RET']);
+  // Iki kosulu kural AYNEN: kararVer protokol farkinda VERI_YOK.
+  const k = analiz.kararVer(ref.analizAdimlari, h2.analizAdimlari, { refProtokol: 'h1', adayProtokol: 'h2' });
+  assert.equal(k.karar, 'VERI_YOK');
+  assert.match(k.nedenler.join(' '), /farkli protokol: referans HTTP\/1\.1, aday HTTP\/2; ayni protokolle yeniden kosun/);
+});
+
+test('CK12 kip / ae: ka vs yeni, br vs gzip vs identity kendi kombosundan okunur; kaynak degismez; ilk neden gercek', () => {
+  const YENI = { ag: { test_alinan_bps: 1e8 }, bellek_detay: { t0: 1, pss_ort_mb: 50, anon_ort_mb: 30, son: { t: 2, anon_mb: 31 } } };
+  const refAdim = kombolu(dortAdim(1, [1, 1, 1, 1], [20, 20, 40, 40], { ham: YENI }), 'yeni', 'br');
+  const ref = kosu(1, refAdim, { parametreler: { kip: 'yeni', ae: 'br', sunucuAyar: { seviye: 6, static: true, dizin: '/usr/nginx/applications/x' } } });
+  const ka = kosu(2, kombolu(dortAdim(2, [0.5, 0.5, 0.5, 0.5], [10, 10, 20, 20], { ham: { ...YENI, ag: { test_alinan_bps: 2e8 } } }), 'ka', 'br'), { parametreler: { kip: 'ka', ae: 'br' } });
+  const gzip = kosu(3, kombolu(dortAdim(3, [1.2, 1.2, 1.2, 1.2], [20, 20, 40, 40], { ham: YENI }), 'yeni', 'gzip'), { parametreler: { kip: 'yeni', ae: 'gzip', sunucuAyar: { seviye: 4, static: false, dizin: '/usr/nginx/applications/x' } } });
+  const ident = kosu(4, kombolu(dortAdim(4, [0.9, 0.9, 0.9, 0.9], [22, 22, 44, 44], { ham: YENI }), 'yeni', 'identity'));
+  const once = JSON.stringify([ka.analizAdimlari, gzip.analizAdimlari, ident.analizAdimlari]);
+  const r = coklu.cokluKarsilastir({ ref, adaylar: [ka, gzip, ident], analiz });
+  assert.equal(JSON.stringify([ka.analizAdimlari, gzip.analizAdimlari, ident.analizAdimlari]), once, 'kaynak adimlar degismez');
+  assert.deepEqual(r.karsilastirilamaz, []);
+  assert.deepEqual(r.adaylar.map((a) => [a.id, a.karar]), [[2, 'KALICI'], [3, 'RET'], [4, 'RET']]);
+  const [a2, a3, a4] = r.adaylar;
+  // Degerler adayin KENDI kombosundan; ref degeri ref'in kombosundan.
+  assert.deepEqual(a2.hizlar.map((h) => [h.hiz, h.cpuMsIstek, h.p95, h.bantBps]), [[100, 0.5, 10, 2e8], [200, 0.5, 20, 2e8]]);
+  assert.deepEqual([a2.kademeFarki.cpu.ref, a2.kademeFarki.cpu.aday, Math.round(a2.kademeFarki.cpu.yuzde)], [1, 0.5, -50]);
+  assert.deepEqual([a2.kademeFarki.p95.ref, a2.kademeFarki.p95.aday, Math.round(a2.kademeFarki.p95.yuzde)], [40, 20, -50]);
+  assert.equal(Math.round(a2.kademeFarki.bant.yuzde), 100, 'bant: ekOlculer adayin kombosuyla');
+  assert.equal(a3.kademeFarki.cpu.aday, 1.2);
+  assert.equal(a4.kademeFarki.p95.aday, 44);
+  assert.equal(a3.kademeFarki.bellek.aday, 50);
+  assert.deepEqual(a3.kombinasyon, { senaryo: 'K', kip: 'yeni', ae: 'gzip' });
+  assert.deepEqual(a3.refKombinasyon, { senaryo: 'K', kip: 'yeni', ae: 'br' });
+  // Ilk neden ref'in etiketini aday diye yazmaz.
+  assert.match(a2.kararNedenleri[0], /senaryo=K \(referans kip=yeni ae=br, aday kip=ka ae=br\)$/);
+  assert.doesNotMatch(a3.kararNedenleri[0], /senaryo=K kip=yeni ae=br/);
+  // Meta: Fark metninin alanlari; dizin tasinmaz; eski kosuda kip / ae kombodan.
+  assert.deepEqual([r.ref.kip, r.ref.ae, r.ref.sunucuAyar], ['yeni', 'br', { seviye: 6, static: true }]);
+  assert.deepEqual([a3.kip, a3.ae, a3.sunucuAyar], ['yeni', 'gzip', { seviye: 4, static: false }]);
+  assert.deepEqual([a4.kip, a4.ae, a4.sunucuAyar], ['yeni', 'identity', null]);
+  assert.ok(!JSON.stringify(r).includes('/usr/nginx/applications'));
+  // Tek tekrar: gurultu bilinmiyor isareti karsilastirmada da gelir (tek hiz, tek deneme).
+  const t = coklu.cokluKarsilastir({ ref: kosu(5, [adim(5, 100, 1, { cpu: 1 })]), adaylar: [kosu(6, kombolu([adim(6, 100, 1, { cpu: 0.97 })], 'ka', 'gzip'))], analiz });
+  assert.deepEqual([t.adaylar[0].karar, t.adaylar[0].hizlar[0].tekrar, t.adaylar[0].hizlar[0].fark.cpuMsIstek.gurultuBilinmiyor], ['NOTR', 1, true]);
+});
+
+test('CK13 senaryo: K/B ya da senaryo_id farki karsilastirilamaz, kararVer cagrilmaz; bilinmeyen id karsilastirilir', () => {
+  const ref = kosu(1, dortAdim(1, [1, 1, 1, 1]), { senaryo_id: 7, senaryo_ad: 'Ana HAR' });
+  const b = kosu(2, dortAdim(2, [1, 1, 1, 1]).map((x) => ({ ...x, senaryo: 'B' })), { senaryo_id: 7 });
+  const baskaHar = kosu(3, dortAdim(3, [1, 1, 1, 1]), { senaryo_id: 8, senaryo_ad: 'Yeni HAR' });
+  const baskaHarVeB = kosu(4, dortAdim(4, [1, 1, 1, 1]).map((x) => ({ ...x, senaryo: 'B', kip: 'ka' })), { senaryo_id: 8 });
+  const bilinmeyen = kosu(5, dortAdim(5, [1, 1, 1, 1]));
+  const cagri = [];
+  const izli = { ...analiz, kararVer: (...a) => { cagri.push(a[2]); return analiz.kararVer(...a); } };
+  const r = coklu.cokluKarsilastir({ ref, adaylar: [b, baskaHar, baskaHarVeB, bilinmeyen], analiz: izli });
+  assert.deepEqual(r.karsilastirilamaz.map((k) => [k.id, k.nedenler.map((n) => n.kod)]), [[2, ['senaryo']], [3, ['senaryo']], [4, ['senaryo']]]);
+  assert.match(r.karsilastirilamaz[0].nedenler[0].metin, /^Senaryo farklı \(referans K, bu koşu B\)/);
+  assert.match(r.karsilastirilamaz[1].nedenler[0].metin, /^Senaryo farklı \(referans Ana HAR, bu koşu Yeni HAR\)/);
+  assert.deepEqual(r.adaylar.map((a) => a.id), [5]);
+  assert.equal(cagri.length, 1);
+});
+
+test('CK14 ortak kombo kararVer secimiyle kalir; router uctan uca h2 + gzip aday', { timeout: 10000 }, async () => {
+  // Ref iki kombo (br, gzip), aday yalniz gzip: ortak gzip kiyaslanir, br'ye etiketlenmez (eski davranis).
+  const refAdim = [...kombolu(dortAdim(1, [1, 1, 1, 1]), 'ka', 'br'), ...kombolu(dortAdim(1, [2, 2, 2, 2]), 'ka', 'gzip')];
+  const r = coklu.cokluKarsilastir({ ref: kosu(1, refAdim), adaylar: [kosu(2, kombolu(dortAdim(2, [2, 2, 2, 2]), 'ka', 'gzip'))], analiz });
+  assert.deepEqual([r.adaylar[0].karar, r.adaylar[0].kombinasyon.ae, r.adaylar[0].kademeFarki.cpu.ref], ['NOTR', 'gzip', 2]);
+  // Aday iki kombo, ortak yok: kendi kombosu (hizOzeti varsayilani) okunur, oteki kombo karismaz.
+  const iki = kosu(3, [...kombolu(dortAdim(3, [3, 3, 3, 3]), 'yeni', 'gzip'), ...kombolu(dortAdim(3, [9, 9, 9, 9]), 'yeni', 'identity')]);
+  const r2 = coklu.cokluKarsilastir({ ref: kosu(4, kombolu(dortAdim(4, [3, 3, 3, 3]), 'ka', 'br')), adaylar: [iki], analiz });
+  assert.deepEqual([r2.adaylar[0].kademeFarki.cpu.aday, r2.adaylar[0].karar, r2.adaylar[0].hizlar[0].tekrar], [3, 'NOTR', 2]);
+  sifirla();
+  D.kosular.push(kosuSatiri(1, { parametreler: JSON.stringify({ protokol: 'h1', kip: 'yeni', ae: 'br', sunucuAyar: { seviye: 6, static: false, dizin: '/usr/nginx/applications/x' } }) }));
+  D.kosular.push(kosuSatiri(2, { parametreler: JSON.stringify({ protokol: 'h2', kip: 'ka', ae: 'gzip', sunucuAyar: { seviye: 4, static: true, dizin: '/usr/nginx/applications/x' } }) }));
+  D.adimlar.push(...dortAdim(1, [1, 1, 1, 1]), ...kombolu(dortAdim(2, [0.8, 0.8, 0.8, 0.8]), 'ka', 'gzip'));
+  const x = await istek('GET', '/karsilastir-coklu?ref=1&kosular=2');
+  assert.equal(x.statusCode, 200, JSON.stringify(x.body));
+  assert.deepEqual(x.body.karsilastirilamaz, []);
+  const a = x.body.adaylar[0];
+  assert.deepEqual([a.protokol, a.kip, a.ae, a.sunucuAyar, a.karar], ['h2', 'ka', 'gzip', { seviye: 4, static: true }, 'KALICI']);
+  assert.equal(a.kademeFarki.cpu.aday, 0.8);
+  assert.ok(!JSON.stringify(x.body).includes('/usr/nginx/applications'));
 });

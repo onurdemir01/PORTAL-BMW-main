@@ -47,9 +47,10 @@ aşağıda ("Betikler") sayılan Portal farkları eklenmiştir. wrk betikleri (`
 | `files/cpu_kaydedici.sh` | Kit kopyası: hedefte saniyede bir worker CPU örneği + yalnız test UA'lı log satırları (yalnız sunucu hedefte); Portal eki `bellek_*.csv` (worker RSS + MemAvailable, "Bellek ölçümü"), `ag_*.csv` / `ag_*.txt` (NIC, "Bant genişliği") ve `bdetay_*.csv` (Anon / Shmem / File / PSS + bağlantı, "Bellek artışı nasıl okunur"). |
 | `files/yuk_cpu_kaydedici.sh` | Portal'a özgü: koşu boyunca **yük makinesinde** (www, dzdo/nginx yok) saniyede bir `/proc/stat` toplam CPU örneği; `sonuc/R<id>/yukcpu_R<id>_<host>.csv` + bitişte `.txt`; 2026-11-03 `ag_R<id>_<host>.csv` / `.txt` (hedefe giden arayüzün NIC sayaçları). |
 | `files/durdur.sh` | Bir koşunun bir sunucuda kalan süreçlerini (pid dosyaları, k6, wrk, koşu dizinindeki araç kopyasından çalışan süreçler, kit ve Portal betikleri) TERM, 10 sn sonra KILL. |
+| `files/hazirlik.sh` | Portal'a özgü (2026-11-04; hedefte www ile): koşu öncesi nginx ayarı. `uygula` (yedek, `http2 on;`, `comp_level`, `*_static`, `nginx -t`, reload), `dosyalar` (`.gz` / `.br` silme ve üretme, kanıt), `kanit` (dosyaların gerçekten diskten sunulduğu) ve `geri_al` ("Sunucu ayarı (koşu öncesi)"). |
 | `files/arac_hazirla.sh` | Portal'a özgü (araclar kipi, derleme makinesinde www ile): k6 arşivinden yalnız ikiliyi çıkarır, wrk'yi derler, ikisini doğrular (sürüm satırı, kütüphaneler, glibc gereksinimi). Ağa çıkmaz; indirme Play 8'in `get_url` görevlerindedir. |
 
-AWX zip'ine yeni `files/arac_hazirla.sh` ve (2026-11-03) `files/yuk_cpu_kaydedici.sh` de girmelidir (ayrıca sayın): `yt_betik_adlari` her kipte dokuz betiğin
+AWX zip'ine yeni `files/arac_hazirla.sh`, (2026-11-03) `files/yuk_cpu_kaydedici.sh` ve (2026-11-04) `files/hazirlik.sh` de girmelidir (ayrıca sayın): `yt_betik_adlari` her kipte on betiğin
 hepsini denetler; biri eksikse her kip "files/ altindaki betiklerden biri yok (AWX proje kopyasi eksik); hicbir sey
 yapilmadi" ile düşer.
 
@@ -182,6 +183,108 @@ uyarı: ölçülen p95 ağı da içerir.
 → 74 MB: `ssl_session_cache shared:SSL:64m` doluyor (bir kez). Anon dinlenme 48 → 61 → 77 MB, bağlantı ~900 sabit:
 olası sızıntı, aynı koşuyu tekrarlayın.
 
+## Sunucu ayarı (koşu öncesi)
+
+Gece kuyruğundaki senaryolar elle sunucu ayarı değiştirmeden koşsun diye: `yuk_srv_ayar` `1` iken hedefteki nginx koşudan
+hemen önce istenen duruma getirilir, iş bitince geri alınır. Yalnız sunucu hedefte ve `on_kontrol` / `kosu` kipinde;
+`0` (eski Portal dahil) iken hiçbir şey değişmez. Hedef non-prod (girdi kapısı ad kuralı).
+
+Ne değişir:
+
+| Dosya | Değişiklik |
+|---|---|
+| `/usr/nginx/conf.d/default.conf` | `http2 on;` satırı: `yuk_protokol` `h2` iken açık, `h1` iken yorumlu (seçim protokolden türetilir). Satır (açık ya da yorumlu) yoksa FAIL |
+| `/usr/nginx/conf/gzip.conf` | `yuk_ae` `gzip` iken `gzip_comp_level <seviye>`; static açık ve `yuk_ae` `gzip` \| `identity` iken `gzip_static on`, değilse `gzip_static off` |
+| `/usr/nginx/conf/brotli.conf` | `yuk_ae` `br` iken `brotli_comp_level <seviye>`; static açık ve `yuk_ae` `br` iken `brotli_static on`, değilse `brotli_static off` |
+
+`*_static` satırı yoksa `*_comp_level` satırının ardına eklenir, varsa değiştirilir; bu yüzden iki `comp_level` satırı da
+her koşuda gerekir. Seviye yalnız seçilen sıkıştırmanın konfunda değişir. `identity` seviye almaz. No-Keepalive
+(`yuk_kip` `yeni`) ve istemci sıkıştırması (`yuk_ae`) zaten vardı. Dosyalar yerinde yazılır (sahip / izin korunur).
+
+Dizin (`yuk_srv_dizin`) ayar açıkken **her zaman** zorunludur, static kapalıyken de: her koşu öncesi dizin istenen duruma
+getirilir. Kullanıcı kuralı (2026-11-04): `.gz` yalnız gzip static koşusunda, `.br` yalnız brotli static koşusunda durur.
+Static istenmiyorsa ikisi de silinir; gzip static koşusunda `.br`, brotli static koşusunda `.gz` silinir. Silme yalnız
+kaynağı yanında duran dosyalar içindir (`x.js` varken `x.js.gz` / `x.js.br`; `*.js *.css *.svg *.txt`): kaynağı olmayan
+`.gz` / `.br`'ye dokunulmaz, dizin dışına çıkılmaz, symlink izlenmez ve silinmez. Silinenler `geri_al` ile GERİ GETİRİLMEZ
+(türetilmiş dosya).
+
+`hazirlik.sh` kipleri:
+
+- **uygula** (Play 2; ön kontrolde `on_kontrol.sh hedef`'ten, koşuda koşu kapısından ve kaydedici başlamadan ÖNCE): eski
+  yedek varsa önce geri alır (`yarim_kalan 1`; başka koşunun yedeğini devralır, hedef kilidi bu işte). Yazma izni ya da
+  beklenen satır yoksa, dizin yoksa, static'te dizin ya da bir alt dizini yazılamıyorsa (static kapalıyken UYARI), brotli
+  static'te `curl` ya da geçici nginx konfu reddediliyorsa hiçbir şey değişmeden FAIL. `<www ev>/.portal_yuktesti/hazirlik/` (koşu dizini
+  DIŞINDA, 0700: koşu dizini silinse de yedek kalır) altına 3 dosyanın yedeği, özgün ve uygulanan sha256'ları, koşu no
+  tek `mv -T` ile yayınlanır; sonra dosyalar yazılır, `nginx -t`, `nginx -T` ile doğrulama, reload,
+  `worker process is shutting down` süzülene dek en çok 90 sn bekleme (bitmezse UYARI, devam). `nginx -t` düşerse dosyalar
+  geri, FAIL (metinde hata satırı; ör. `brotli_static` modülü yoksa `unknown directive`). `-T`'de istenen seviye ya da
+  `default.conf` http2 durumu görünmüyorsa da (dosya include edilmiyor) reload edilmeden geri, FAIL. Başka dosyada
+  seçilen `*_comp_level`, `http2 on` ya da `listen ... http2` varsa UYARI (ayar etkisiz olabilir). `-T` çıktısı basılmaz.
+- **dosyalar** (yalnız koşu, ayar açıkken static kapalıyken de): önce yukarıdaki silme, sonra static koşuda üretim. İlgili tür
+  HER KOŞUDA yeniden üretilir (eksik / eski kontrolü yok: başka seviyeden kalan dosya ölçümü bozar, mtime seviyeyi görmez).
+  Hiç olmayıp YENİ oluşturulanlar manifest'e yazılır (üretimden önce: yarıda kalan da silinsin); önceden duran bir `.gz` /
+  `.br` yeniden üretilse de manifest'e GİRMEZ, `geri_al`'dan sonra yeni seviyeyle yerinde kalır. Static koşuda 0 dosya, her
+  koşuda dizin yoksa FAIL. Dosya seviyesi kullanıcının seçtiği seviyedir (kullanıcı kuralı 2026-11-04, `-9` / `11` sabiti
+  yok): `.gz` `gzip -<seviye> -n -k -f`, `.br` geçici nginx'te `brotli_comp_level <seviye>`; seviye boşsa (`yuk_ae` `identity` +
+  `gzip_static`) `gzip -9`. Kanıt `<koşu dizini>/R<id>/hazirlik_R<id>_<host>.txt`.
+- **kanit** (yalnız koşu; `dosyalar` ve reload'dan sonra, koşu kapısı ve kaydediciden ÖNCE; FAIL'de kaydedici ve yük BAŞLAMAZ,
+  Play 7 geri alır): `brotli on` açık kaldığı için `.br` bulunamazsa nginx sessizce anlık sıkıştırmaya düşer, koşu "static" diye
+  dinamik ölçerdi. Play 2 senaryoyu `<koşu dizini>/senaryo.tsv`'ye yazar. Static koşuda senaryodaki `.js .css .svg .txt` yollarının
+  (son kolon, sorgu yok, yüzde kodu açılır, `..` / denetim karakteri atlanır) her biri için URL yolunun son parçaları kısaltılarak
+  dizin altında dosya aranır (`/a/b/x.js` -> `<dizin>/a/b/x.js`, `<dizin>/b/x.js`, `<dizin>/x.js`; boş dosya ve symlink örnek
+  olmaz), bulunanlardan en büyük 3 örnek `curl -sk -o /dev/null -D - --resolve <host>:443:<ip> -H 'Accept-Encoding: br|gzip'
+  https://<host><yol>` ile istenir (`-q`, vekilsiz, 15 sn; `yuk_ae` `br` ise `br`, `gzip` ve `identity` + `gzip_static` ise
+  `gzip`). Başarı: 200 + istenen `Content-Encoding` + `Content-Length` var ve diskteki `.br` / `.gz` boyutuna eşit (HTTP/1.1 ve
+  HTTP/2; başlık adı büyük / küçük harf duyarsız). Aksi FAIL, metinde beklenen / gelen. Hiç örnek yoksa FAIL (`HAR yollari bu
+  dizinden sunulmuyor, dizini kontrol edin`); `curl` yoksa FAIL (static koşunun `uygula`'sı da denetler: ön kontrol görsün).
+  Static kapalıysa istek yok, `disk_kanit yok`, OK.
+- **geri_al** (Play 7 `always`, hedefte): manifest'teki dosyaları siler (gzip_static açık üretimde yeni sürüm deploy edilince
+  bayat `.gz` sunulmasın diye şart); konf dosyası hâlâ bizim yazdığımız sha256 ise yedeği yazar, değilse DOKUNMAZ, özgün
+  kopyayı `<www ev>/.portal_yuktesti/hazirlik_dokunulmadi_<koşu>/` altına alır (son 5 koşu tutulur) ve UYARI basar (başkası
+  değiştirmiş); `nginx -t`, reload, yedek dizini silinir. `-t` / reload düşerse yedek KORUNUR, durum `hata` (sonraki `uygula`
+  ya da Durdur yeniden dener). Yedek yoksa no-op OK. Her konf yazımı sha256 ile doğrulanır; yazım yarıda kaldıysa `yaz<i>`
+  işareti kalır ve sonraki deneme dosyayı "başkası değiştirmiş" saymadan yeniden yazar (disk dolu).
+  **Sahiplik**: `KOSU_ID` yedekteki koşudan farklıysa ve `DEVRAL=1` değilse hiç dokunmaz (`geri_al_durum baska`, Play 7 `ok`).
+  Portal Durdur'u kilitsizdir: eski bir koşunun Durdur'u süren koşunun konfunu geri alıp koşuyu yakmamalı. `DEVRAL=1` yalnız
+  hedef kilidini tutan iş içindir (Play 7 `on_kontrol` / `kosu`); `durdur` kipi `0` gönderir.
+
+Üç kip `<www ev>/.portal_yuktesti/hazirlik.lock` üzerinde `flock` ile sıralanır (en çok 60 sn; dolu ise FAIL, yedek durur;
+`flock` yoksa UYARI, devam). Başka koşunun yedeğine bakan `geri_al` kilit beklemez.
+
+Geri alma Play 7'de koşu, ön kontrol ve durdur için her yolda (`always`: ana blok düşse de) çalışır; karar yedeğin
+varlığına ve sahibine göre verilir, `yuk_srv_ayar` değerine göre değil (Durdur `0` gönderir ama koşunun yedeğini geri alır). Kaydedici
+(Play 4) ve `durdur.sh` DURDUKTAN sonra koşar: `konf_degisti` ve reload ölçüme girmez. Betik koşu dizininde olmayabilir
+(durdur), bu yüzden `<www ev>/.portal_yuktesti/hazirlik_geri_<id>.sh`'e kopyalanır (sha1, sahip = yedek dizini sahibi,
+düzenli dosya, grup/diğer yazamaz) ve iş sonunda silinir. Sonuç `sunucu_ayar.geri_alma`: `ok` | `uyari` | `hata`. `hata`
+koşunun durumunu bozmaz (Portal ayrıntıda uyarı gösterir); ön kontrol ve durdurda job'u düşürür (Durdur yeniden denenebilir).
+
+**Play 7 hiç koşmazsa** (AWX zaman aşımı, AWX'ten iptal, `error`, kontrol düğümü ölürse) yedek hedefte kalır ve set_stats
+yayınlanmaz. Portal `sunucu_ayar.geri_alma` görmeyince otomatik `durdur` işi başlatır, kilidi ona bağlar, sonucu ayrıntıda
+gösterir; başlatamazsa kilidi tutar ve Durdur düğmesini açık bırakır. Ayarsız bir sonraki işte `on_kontrol.sh hedef`
+`hazirlik_yedek 1` yayınlar: Portal engel sayar, o ön kontrolün Play 7'si yedeği devralıp geri alır. Sunucu ayarlı koşuda
+bütçe tavanı 1800 sn'dir (girdi kapısı): `uygula` 300 + `dosyalar` 600 + async payı 300 AWX'in 3600 sn sınırını aşmasın.
+
+**.br yöntemi**: sunucuda `brotli` ikilisi yok. Hedefte aynı nginx ikilisiyle GEÇİCİ, ayrıcalıksız bir örnek açılır
+(dzdo yok; `<yedek>/br_gecici` altında kendi konfu, `-p` / `-c` / `-e`, pid, temp yolları; `127.0.0.1` üzerinde boş yüksek
+port, bind hatasında 5 denemeye dek başka port; `/usr/nginx/modules/ngx_http_brotli_filter_module.so` varsa `load_module`;
+`root` = dizin; `brotli on; brotli_comp_level <seviye>; brotli_types *; brotli_min_length 0; gzip off; access_log off`). Her dosya
+`curl -H 'Accept-Encoding: br'` ile (arka planda + `wait`: TERM trap'i `curl`'ü beklemesin) alınıp `<ad>.br.hazirlik_tmp`'ye
+yazılır; yanıt 200 değilse, `Content-Encoding: br`
+yoksa ya da gövde boşsa FAIL; `touch -r` ile kaynağın mtime'ı verilip `.br` adına atomik taşınır. Boş kaynak dosya
+(nginx'te gövde yok, sıkıştırılamaz) atlanır. Örnek her yolda trap ile kapanır; KILL'e karşı `timeout 600` altında koşar,
+`geri_al` da `br_gecici/nginx.pid`'den kalanı kapatır (argv'si tutmayan pid'e dokunmaz).
+`curl` ya da modül yoksa açık mesajla FAIL.
+
+Kanıt dosyası (`anahtar<TAB>değer`, Portal `hazirlik_*.txt`): `http2` (`acik` \| `kapali`), `ae`, `seviye`, `static`
+(`acik` \| `kapali` \| `karisik`), `dizin` (bu beşi `uygula`'nın diskteki konftan OKUDUĞU değerdir, istenen değil: `uygula`'daki
+bir hata Portal'a "uyumlu" dedirtmesin), `kaynak_dosya`, `gz_uretilen`, `br_uretilen`, `gz_silinen`, `br_silinen`, `atlanan`
+(boş kaynak ya da symlink), `dosya_seviye` (dosyaların üretildiği seviye; static kapalıysa boş), `sure_dosyalar_sn`, `sure_uygula_sn`,
+her uyarı için bir `uyari` satırı; `kanit`'ten `disk_kanit` (`ok` \| `yok`; FAIL'de ve static kapalıyken `yok`), `disk_ornek` (doğrulanan
+örnek sayısı), `disk_yol` (ilk örnek).
+Koşu sonunda sonuç dosyalarıyla `/sw`'ye gider. Portal: `parametreler.sunucuAyar` dolu koşuda kanıt yoksa ya da istenenle
+uyuşmuyorsa koşu GEÇERSİZ (`sunucu_ayari_kanitsiz`). Static koşuda `disk_kanit` `ok` değilse ya da `dosya_seviye` seçilen
+seviye (seviyesiz sıkıştırmasız koşuda 9) değilse de öyle: eski `hazirlik.sh` bu iki satırı yazmaz.
+
 ## Kip doğrulaması
 
 Adım başına istenen / gerçekleşen (yalnız bilgi):
@@ -202,20 +305,22 @@ Adım başına istenen / gerçekleşen (yalnız bilgi):
 Play sırası (strateji **linear**; `strategy: free`, `poll: 0`/`async_status` YOK; tur 4'te Play 8 ve Play 9 eklendi,
 sonuç play'i Play 10):
 
-1. **localhost — girdi kapısı** (`block`/`rescue`): altı `assert`, sırayla: (1) araclar dışı her kip: işlem, koşu
+1. **localhost — girdi kapısı** (`block`/`rescue`): yedi `assert`, sırayla: (1) araclar dışı her kip: işlem, koşu
    kimliği, hedef türü, hedef ve yük makinesi; (2) yalnız araclar: derleme makinesi, k6 / wrk sürümleri, vekil, /sw
    kökü; (3) yalnız araclar: iki arşiv özeti (`yuk_k6_arsiv_sha256`, `yuk_wrk_kaynak_sha256`) ZORUNLU 64 küçük hex —
    boş ya da eksikse `araclar girdileri gecersiz (arsiv ozetleri sabit degil): Portal'da NGINX_LOADTEST_K6_ARSIV_SHA256
    ve NGINX_LOADTEST_WRK_KAYNAK_SHA256 ...` ile hiçbir şey indirilmez ("Arşiv özetlerini sabitleme"); (4)
    on_kontrol/kosu: araç değişkenleri (`yuk_arac_dizin`, iki sha256, iki işaret yolu; parametre assert'inden ÖNCE: eski
-   Portal ilk bu iletiyi görür); (5) on_kontrol/kosu: parametreler, motor, sınırlar, bütçe; (6) durdur dışı her kip:
+   Portal ilk bu iletiyi görür); (5) on_kontrol/kosu: parametreler, motor, sınırlar, bütçe; (6) araclar dışı her kip:
+   sunucu ayarı (`yuk_srv_*`; `1` yalnız sunucu hedefte ve on_kontrol/kosu); (7) durdur dışı her kip:
    iş geçerlilik süresi `yuk_son_epoch`; senaryo base64'ten çözülür, **her satırı** yeniden
    denetlenir, sha256 karşılaştırılır (araclar ve durdur'da senaryo yok); betiklerin kaynak sha1'leri alınır; yük
    makinesi `yuk_makine` grubuna `add_host` ile eklenir; hedef `yuk_hedef` grubuna **yalnız sunucu hedefte** eklenir;
    araclar kipinde YALNIZ derleme makinesi `yuk_derleme` grubuna eklenir ve kontrol düğümünde geçici araç toplama dizini
    açılır (AWX `limit` KULLANILMAZ). Reddedilirse hiçbir hosta bağlanılmaz.
-2. **yuk_hedef** (become www; serbestte host yok, play "no hosts matched" ile atlanır): `on_kontrol` →
-   `on_kontrol.sh hedef`; `kosu` → koşu dizini, `cpu_kaydedici.sh` + `on_kontrol.sh` kopyası (kapı), önce **koşu
+2. **yuk_hedef** (become www; serbestte host yok, play "no hosts matched" ile atlanır): `yuk_srv_ayar` `1` ise önce
+   `hazirlik.sh uygula` (koşuda ardından `dosyalar` ve `kanit`; FAIL'de kaydedici ve yük BAŞLAMAZ, ön kontrolde engel; "Sunucu ayarı
+   (koşu öncesi)"); `on_kontrol` → `on_kontrol.sh hedef`; `kosu` → koşu dizini, `cpu_kaydedici.sh` + `on_kontrol.sh` kopyası (kapı), önce **koşu
    kapısı**: `on_kontrol.sh hedef` yeniden koşar (yük üretmez) ve `ip_yerel` `1` değilse kaydedici ve yük BAŞLAMAZ
    (`hedef <H>: kosu kapisi: ...`; Portal dışı başlatma, paylaşılan VIP'in ön kontrolden sonra başka hosta geçmesi);
    sonra kaydedici **ayrık** başlatılır (`setsid nohup timeout -k 300 <bütçe+120> env SURE=<bütçe+60> ... & echo $! >
@@ -356,11 +461,15 @@ Tablo 40 değişken: 34 koşu + 6 yalnız araclar.
 | `yuk_kip` | string | on_kontrol, kosu | `yeni` (her istek yeni bağlantı) \| `ka` (keep-alive) |
 | `yuk_protokol` | string | on_kontrol, kosu | `h1` (HTTP/1.1) \| `h2` (HTTP/2); YOKSA `h1` (eski Portal); `h2` yalnız motor `k6` ve `yuk_kip` `ka` ile; durdurda denetlenmez. 34. koşu değişkeni (bkz. "Protokol") |
 | `yuk_ae` | string | on_kontrol, kosu | `br` \| `gzip` \| `identity` |
+| `yuk_srv_ayar` | string | on_kontrol, kosu | `0` \| `1`; YOKSA `0` (eski Portal). `1` yalnız `yuk_hedef_turu` `sunucu` ve on_kontrol \| kosu; durdur ve serbest hedefte red. 35. koşu değişkeni ("Sunucu ayarı (koşu öncesi)") |
+| `yuk_srv_seviye` | string | on_kontrol, kosu | `''` ya da rakam: `br` 1..11, `gzip` 1..9; `identity` ve ayar `0` iken `''`; ayar `1` ve `br` / `gzip` iken zorunlu |
+| `yuk_srv_static` | string | on_kontrol, kosu | `0` \| `1`; ayar `0` iken `0` |
+| `yuk_srv_dizin` | string | on_kontrol, kosu | `''` ya da `^/usr/nginx/applications/[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$`, `..` yok; ayar `1` iken HER ZAMAN zorunlu (static kapalı da: silme için), ayar `0` iken `''` |
 | `yuk_isinma_sn` | string | on_kontrol, kosu | 5..60 |
 | `yuk_sure_sn` | string | on_kontrol, kosu | 30..300 |
 | `yuk_bosluk_sn` | string | on_kontrol, kosu | 0..120 |
 | `yuk_bosta_bas_sn` | string | on_kontrol, kosu | 30..120 (kaydedicinin yük öncesi boşta örneği; serbestte kaydedici yok, yalnız bütçeye girer) |
-| `yuk_butce_sn` | string | on_kontrol, kosu | ≤ 2700 ve ≥ `bosta + adım_sayısı × tekrar × (isinma + sure + bosluk) + 120` (adım sayısı: k6'da hız, wrk'de bağlantı sayısı) |
+| `yuk_butce_sn` | string | on_kontrol, kosu | ≤ 2700 (`yuk_srv_ayar` `1` iken ≤ 1800) ve ≥ `bosta + adım_sayısı × tekrar × (isinma + sure + bosluk) + 120` (adım sayısı: k6'da hız, wrk'de bağlantı sayısı) |
 | `yuk_k6_yolu` | string | on_kontrol, kosu | SABİT işaret `/yeni-playbook-gerekli/k6` (tur 4; ikili artık koşu dizinindeki araç kopyasıdır). Eski playbook bu yolu kabul eder ama bulamaz: yeni Portal + eski playbook ön kontrolü "k6 yok ya da calistirilamiyor" ile düşer, eski `/home/www/bin` ikilisi SESSİZCE kullanılmaz |
 | `yuk_wrk_yolu` | string | on_kontrol, kosu | SABİT işaret `/yeni-playbook-gerekli/wrk` (aynı gerekçe) |
 | `yuk_arac_dizin` | string | on_kontrol, kosu | Etkin araç setinin /sw dizini: `^/sw/BMW_PORTAL(_DEV)?(/...)+/araclar/[0-9]{1,10}$`, `..` yok, `<yuk_cikti_kok>/araclar/` ile başlar; durdurda `''` (denetlenmez) |
@@ -393,6 +502,8 @@ ayrıca sayılır), sonra Portal, sonra Admin "Araçları hazırla"; arada ön k
 | Yeni Portal + eski playbook, araclar | Eski 1. assert `yuk_islem`'i reddeder; set_stats `islem: araclar` yankısıyla gelir, Portal "Ansible deposu güncel değil" der |
 | Eski Portal (`alpn_kaynak`'ı tanımaz) + yeni playbook, h2 ön kontrol, curl HTTP/2'siz yük makinesi | Betik artık reddetmez (yollar HTTP/1.1, ALPN openssl ile); eski Portal `curl_h2 false`'u engel sayar ve koşuyu bugünkü gibi başlatmaz (fail-closed). curl HTTP/2'li makinede davranış aynı |
 | Yeni Portal + eski playbook, h2 ön kontrol, curl HTTP/2'siz yük makinesi | Eski betik istek atmadan `SONUC FAIL` verir, `alpn_kaynak` gelmez; Portal bugünkü "curl HTTP/2 desteklemiyor" engelini gösterir |
+| Eski Portal (`yuk_srv_*` yok) + yeni playbook | `default('0')` / `default('')`: ayar kapalı, bugünkü davranış; `sunucu_ayar: null` |
+| Yeni Portal (sunucu ayarı) + eski playbook | Eski playbook `yuk_srv_*`'ı tanımaz, ayarı UYGULAMADAN koşar; `on_kontrol.srv_hazirlik` gelmez, Portal koşuyu BAŞLATMAZ (ön kontrol engeli: yük basılmaz, gece kuyruğu boşa gitmez); eski ön kontrolden koşu başlamış olsa `hazirlik_*.txt` gelmez, GEÇERSİZ (`sunucu_ayari_kanitsiz`): sessiz yanlış ölçüm olmaz |
 | Eski Portal + yeni playbook, ön kontrol / koşu | Araç assert'i (2. assert'ten önce) reddeder; hiçbir host eklenmez |
 | Durdur (her iki pencere) | Çalışır (araç değişkenleri durdurda denetlenmez) |
 | Zip'te `files/arac_hazirla.sh` eksik | Her kip "betiklerden biri yok" ile düşer |
@@ -413,8 +524,12 @@ Tek yazar localhost, `per_host: false`, `aggregate: false`, `fail`'den ÖNCE ve 
 ```
 { surum: 2, run_id, islem, hedef_turu: 'sunucu'|'serbest'|null, motor: 'k6'|'wrk'|null, protokol: 'h1'|'h2'|null,
   durum: 'OK'|'FAIL'|'DUR', hata: <≤300 karakter|null>,
+  sunucu_ayar: null | { istendi (bool), hazirlik: 'ok'|'fail'|null, hazirlik_metin (str|null), gz_uretilen, br_uretilen,
+                gz_silinen, br_silinen, atlanan (int|null; yalnız koşu), uyarilar ([str]), geri_alma: 'ok'|'uyari'|'hata',
+                geri_alma_metin (str) },
   on_kontrol: { ip_yerel (bool|null), server_name_var (bool|null), master_sayisi (int|null), web_log_df (int|null),
                 log_dizini_okunur (bool|null), log_format_ua (bool|null), statik_direktif (bool|null),
+                hazirlik_yedek (bool|null; hedefte geri alınmamış yedek), srv_hazirlik ('ok'|'fail'|null; `uygula` sonucu),
                 ip_yuk_makinesinde (bool|null), serbest_ag (str|null),
                 k6_var (bool|null), k6_surum (str|null), k6_sha256 (str|null),
                 wrk_var (bool|null), wrk_calisiyor (bool|null), wrk_surum (str|null), wrk_sha256 (str|null),
@@ -444,6 +559,12 @@ tamamlanmadi (erisilemedi ya da dustu)`, `/sw yayini: <...>` (`arac dizini zaten
 
 - `hedef_turu` / `motor`: geçerli girdinin yankısı (geçersiz ya da yoksa, ör. girdi reddi ya da eski Portal'ın
   durdurması, `null`). Portal yankıyı yalnız metinse koşu satırıyla karşılaştırır.
+- `sunucu_ayar`: sunucu hedefte `yuk_srv_ayar` `1` ise ya da Play 7 bir yedek geri aldıysa dolu (durdur: `istendi false`);
+  aksi `null` (rescue'daki yedek sonuçta da). Play 7 koşmadıysa `geri_alma` `hata`. Ön kontrolde `hazirlik` `fail` ise
+  `sunucu ayari: <metin>` engeli. `geri_alma` `hata` ön kontrol ve durdurda `sunucu ayari geri alinamadi <H>: <metin>` ile
+  job'u düşürür, koşuda düşürmez. `geri_al_durum baska` (yedek başka koşunun) `ok` yayınlanır, metin sahibini söyler.
+- `on_kontrol.srv_hazirlik`: Portal sunucu ayarlı koşuyu yalnız `ok` ise başlatır (eski playbook yayınlamaz). `on_kontrol.hazirlik_yedek`
+  `true` ve ön kontrol ayarsızsa Portal engel sayar (değişmiş konf ölçülürdü).
 - `protokol`: `yuk_protokol | default('h1')` yankısı (yoksa `h1`, geçersizse `null`; rescue'daki yedek sonuçta da).
   Eski playbook bu anahtarı hiç yazmaz; Portal yalnız metinse satırın protokolüyle karşılaştırır.
 - on_kontrol `protokol` / `curl_h2` / `alpn_h2` / `alpn_kaynak` / `yollar_yanitli` / `yollar_h2`: `on_kontrol.sh
@@ -515,6 +636,8 @@ bozmasın), bağ türü `araclar`: `successful`/`failed` bitince bırakılır, `
   "kalan süreç yok" derse `successful` biter (aksi halde `durum: FAIL` ve job düşer).
 - `kosu` işi `canceled`/`error` biterse, ya da `durdur` işi `failed`/`canceled`/`error` biterse kilit
   DOLU kalır ve yalnız süresiyle (koşunun süre sınırı + 180 sn) düşer: uzakta süreç kalmış olabilir.
+- Sunucu ayarlı ön kontrol bağ türü `onk_srv`: `canceled`/`error` bitince kilit tutulur (koşu sütunu), temizlik play'i koşmadıysa
+  hedef değişmiş kalmış olabilir. Portal geri alma sonucu görmezse otomatik durdurma işi başlatır ve kilidi ona bağlar.
 - Portal "Durdur": koşan `kosu` işini iptal eder ve bu playbook'u `durdur` kipiyle başlatır; koşunun
   kilitleri durdurma işine bağlanır. Durdurma işi başlatılamazsa Portal hata döner ve kilitler süre
   sınırına kadar tutulur; Durdur yeniden denenebilir (`durdur.sh` idempotent: kalan yoksa `OK 0`).
@@ -702,7 +825,7 @@ Tarayıcılar çoğunlukla HTTP/2 kullanır; `yuk_protokol` `h2` seçilirse k6 h
 | Limit — Prompt on launch | kapalı (Portal `limit` göndermez; hedef add_host ile) |
 | Execute / Admin rolü | **yalnız Portal servis hesabı**: extra_vars her değişkenden önce gelir (bkz. "Güvenlik"); şablonu AWX'te başlatabilen biri playbook kapılarını da ezebilir |
 | Concurrent jobs (allow_simultaneous) | **AÇIK**: `durdur` kipi aynı şablonla, koşan `kosu` işi hâlâ canlıyken (AWX iptali 403 dönebilir) başlayabilmeli; kapalıysa durdurma işi koşunun bitmesini bekler. Eşzamanlı koşuları Portal kilitleri (hedef, yük makinesi, global) engeller |
-| Timeout | **3600 sn**. Sınırlı beklemeler: koşu kapısı ≤ 130 + kaydedici hazırlığı ≤ 210 + koşu ≤ 2745 (bütçe ≤ 2700 + `-k 30` + poll 15) + kaydedici durdurma ≤ 290 + durdur.sh ≤ 100 = ≤ 3475 sn, üstüne toplama/kopya/temizlik görevleri: **en kötü durum ~3600 sn, sınırda**. Bu yalnız bu beklemelerin HEPSİ aynı koşuda tavana vurursa olur; o zaman AWX işi 3600. sn'de keser: set_stats yayınlanmaz (Portal FAILED + AWX açıklaması gösterir), Play 7 temizliği koşmaz, uzak süreçler kendi `timeout`'larıyla biter. Normal koşuda bütçeye ek süre birkaç dakikadır. Portal kilit TTL'si 75 dk bundan uzun |
+| Timeout | **3600 sn**. Sınırlı beklemeler: koşu kapısı ≤ 130 + kaydedici hazırlığı ≤ 210 + koşu ≤ 2745 (bütçe ≤ 2700 + `-k 30` + poll 15) + kaydedici durdurma ≤ 290 + durdur.sh ≤ 100 = ≤ 3475 sn, üstüne toplama/kopya/temizlik görevleri: **en kötü durum ~3600 sn, sınırda** (sunucu ayarlı koşuda `hazirlik.sh` ≤ 310 + 610 + 130 + 250 sn daha, bu yüzden bütçe tavanı 1800: 3475 - 900 + 1300 = 3875 yalnız her bekleme birden tavana vurursa aşılır, o zaman yedek kalır ve Portal otomatik durdurma işiyle geri alır). Bu yalnız bu beklemelerin HEPSİ aynı koşuda tavana vurursa olur; o zaman AWX işi 3600. sn'de keser: set_stats yayınlanmaz (Portal FAILED + AWX açıklaması gösterir), Play 7 temizliği koşmaz, uzak süreçler kendi `timeout`'larıyla biter. Normal koşuda bütçeye ek süre birkaç dakikadır. Portal kilit TTL'si 75 dk bundan uzun |
 | Forks | varsayılan (en çok iki uzak host) |
 | Uzun iş otomatik iptali | listeye EKLENMEZ: AWX iptali uzak async koşuyu durdurmaz; Portal "Durdur" bu playbook'u `durdur` kipiyle koşturur |
 
@@ -855,7 +978,7 @@ install -m 0644 serbest_aglar /etc/portal_yuktesti/serbest_aglar
 
 | | Değer |
 |---|---|
-| `yuk_butce_sn` (Portal hesaplar) | `bosta + adım_sayısı × tekrar × (isinma + sure + bosluk) + 120`, ≤ 2700 (Portal adım başına 20 sn pay ekler) |
+| `yuk_butce_sn` (Portal hesaplar) | `bosta + adım_sayısı × tekrar × (isinma + sure + bosluk) + 120`, ≤ 2700, sunucu ayarlı koşuda ≤ 1800 (Portal adım başına 20 sn pay ekler) |
 | koşu betiği dış sınırı | `timeout -k 30 <bütçe>` (async `bütçe + 300`, poll 15) |
 | kaydedici (sunucu) | `SURE=<bütçe+60>` (kendi biter) ve `timeout -k 300 <bütçe+120>` |
 | kaydedici hazır bekleme | `bosta + 90` sn |
@@ -863,6 +986,7 @@ install -m 0644 serbest_aglar /etc/portal_yuktesti/serbest_aglar
 | on_kontrol.sh hedef / yollar | `timeout -k 10 120` / `timeout -k 10 600` (≤400 yol × 5 sn / 4 paralel); koşu kapısı `timeout -k 10 120` |
 | wrk_kos.sh | yükleme sınaması `timeout -k 5 30`; TUR başına 200 kapısı ≤ 180 sn (bütçe formülünde yok, Portal'ın adım payına girer) |
 | durdur.sh | TERM → 10 sn → KILL; dış `timeout -k 10 90` |
+| hazirlik.sh | `uygula` `timeout -k 10 300` (reload sonrası ≤ 90 sn bekleme; yarım yedek varsa bir kez daha), `dosyalar` `timeout -k 10 600` (Portal kuyruğu static koşuya +180 sn pay ayırır), `kanit` `timeout -k 10 120` (3 örnek, örnek başına `curl --max-time 15`), `geri_al` `timeout -k 10 240`; geçici nginx `timeout -k 5 600` |
 | araclar (Play 8) | get_url `timeout` 120 / 300 / 300 sn; `arac_hazirla.sh` `timeout -k 30 1800` (wrk + paketli OpenSSL/LuaJIT derlemesi birkaç dakika) |
 
 ## Güvenlik: tehdit modeli ve katmanlar
@@ -1029,6 +1153,35 @@ install -m 0644 serbest_aglar /etc/portal_yuktesti/serbest_aglar
   OpenSSL'i bilinçli olarak bağlanmaz (RHEL 8 / 9 arasında taşınabilirlik).
 - **`mv -T` boş hedefin üzerine yazar**: dolu hedefte reddeder, boş `<id>/` dizinine ise taşır; asıl kapı mv'den önceki
   `stat` (`arac dizini zaten var`) ve sonraki geri okumadır (sha256 Portal değeriyle).
+- **`*_static` satırı modül ister**: static kapalı koşuda da `brotli_static off;` yazılır; `ngx_http_brotli_static_module`
+  yüklü olmayan sunucuda `nginx -t` `unknown directive` ile düşer ve dosyalar geri alınır (koşu başlamaz).
+- **Yedek kalırsa sonraki ayarsız koşu kirli ölçer**: AWX Play 7'den önce keserse sunucu ayarlı kalır. Sonraki `uygula` ya da
+  Durdur geri alır; ama `yuk_srv_ayar` `0` olan koşu başta bakmaz, geri alma ancak onun Play 7'sinde olur.
+- **Bayat `.gz` / `.br`**: `gzip_static` kaynağa bakmadan `.gz`'i sunar ve mtime seviyeyi görmez: seviye 9'dan kalan dosya seviye 1
+  koşusunu sessizce bozardı. Bu yüzden yeni üretilenler `geri_al`'da silinir (manifest) ve `dosyalar` ilgili türü her koşuda yeniden
+  üretir (static koşu süresi her seferinde üretim kadar uzar; yüksek brotli seviyesi `timeout 600`'e yaklaşabilir).
+- **`.br` sessizce anlık sıkıştırmaya düşer**: `brotli on` açıkken `.br` bulunamazsa ya da istek başka `location` / `root`'a giderse
+  yanıt yine `Content-Encoding: br` taşır; farkı yalnız `Content-Length` gösterir (anlık sıkıştırmada yok ya da farklı). Bu yüzden
+  `kanit` boyutu diskle karşılaştırır, başlığa güvenmez. Sonek araması URL önekini bilmez: `/x/a.js`, dizindeki başka bir `a.js`'e
+  eşleşirse boyutlar tutmaz ve FAIL olur; metindeki yol ve boyutlar bunu gösterir.
+- **`nginx -T` reload'dan önce**: `-T` diskteki konfu okur; doğrulama reload'dan önce yapılır, dosya include edilmiyorsa
+  sunucuya hiç yüklenmeden geri alınır.
+- **Kapanan worker**: reload'tan hemen sonra eski worker henüz `shutting down` değildir; `worker_bekle` önce 1 sn bekler.
+  `ps | awk` deseni `[n]ginx`: awk'ın argüman metni ps'te görünür.
+- **`mkdir -m` Git Bash'te düşer**: `hazirlik.sh` `umask 077` ile açar (aynı sonuç, araya pencere girmez).
+- **Eski koşunun Durdur'u**: Durdur kilit almaz. `geri_al` `KOSU_ID` tutmazsa dokunmaz; yoksa geceden kalan bir satıra basmak süren
+  koşunun ortasında reload yapardı. Yedeği yalnız `uygula` ve hedef kilidini tutan iş (`DEVRAL=1`) devralır.
+- **`cat > dosya` yarım yazabilir**: disk dolunca `cat` birkaç bayt yazıp düşer; özet tutmayan dosya ikinci `geri_al`'da "başkası
+  değiştirmiş" sayılırdı ve tek yedek silinirdi. Bu yüzden yazım `yaz<i>` işareti ve sha256 denetimiyle yapılır.
+- **Ön planda `curl` TERM'i bekletir**: bash trap'i ön plandaki komut bitene dek çalışmaz; durdur.sh 10 sn sonra KILL atar, temizlik
+  atlanır. `curl` arka planda koşar, `wait` edilir.
+- **flock fd'si çocuklara geçer**: geçici nginx ve `curl` `9>&-` ile başlar; yoksa `timeout` altındaki nginx kilidi 600 sn tutardı.
+- **CRLF kopya betiğin yanında**: `/tmp`'deki kopya `durdur.sh` eşleşmesine girmez; `<betik>.lf` kullanılır, `durdur.sh` `hazirlik.sh.lf`'yi tanır.
+- **Kanıt canlı durumu ölçmez**: `uygula` diskteki konfu okur; `-s reload` rc 0 yeni konfun yüklendiğini kanıtlamaz. http2 için ön
+  kontrolün ALPN ölçümü, sıkıştırma için kip doğrulaması canlı kanıttır.
+- **Sunucu geneli**: seviye ve static tüm uygulamaları, `http2` `default.conf`'taki server bloklarını etkiler; Portal'da "başka ekip
+  kullanıyor" kapısı yok. 30 senaryoluk kuyruk en az 120 reload yapar (her öğede ön kontrol ve koşu, ikişer), her biri 90 sn'ye
+  kadar bekleyebilir; bu pay kuyruk tahminine girmez.
 - **AWX iptali temizliği atlar**: iptal edilen ön kontrol / koşuda Play 7, iptal edilen araclar işinde Play 8'in
   `always`'i koşmaz; kalan `<id>/arac` ve `arac_<id>` dizinleri 1 gün sonra bir sonraki ön kontrol / koşu / araclar
   işi tarafından süpürülür (yalnız bu alt dizinler; korunan koşu sonuçlarına dokunulmaz).
@@ -1040,7 +1193,7 @@ install -m 0644 serbest_aglar /etc/portal_yuktesti/serbest_aglar
   ortamı yalnız Play 8'in üç get_url görevinde, `validate_certs: false` yok, Play 3 / 8'de `/tmp` yok), L2 yapı
   (10 play sırası, rescue, delegate/unreachable, Play 2 / 3 / 8'de getent register + hemen ardından `is unreachable`
   fail'i, localhost play'lerinde korumasız işlem / hedef türü / motor adı yok, kaydedici süreleri ve hazır deseni,
-  set_stats), L3 girdi sözleşmesi (34 koşu + 10 araclar değişkeni; README tablosu 40; `yuk_proxy` ve eski yol
+  set_stats), L3 girdi sözleşmesi (38 koşu + 10 araclar değişkeni; README tablosu 44; `yuk_proxy` ve eski yol
   değişkenleri yalnız izinli yerlerde; tek async görev iki betiğin ortamını taşır, K6 / WRK araç kopyası), L4 betik
   başvuruları, L5 girdi kapısı (dört kip × motor birleşimi, eski Portal'ın durdurmaları, §4'ün ihlal durumlarının
   hepsi), L6 sonuç derlemesi ve play'ler (serbest/wrk dalları, patlayan hedef hostvars'ı ile serbest, D7, Play 2 koşu
@@ -1055,9 +1208,9 @@ install -m 0644 serbest_aglar /etc/portal_yuktesti/serbest_aglar
   parçacığına özgü tohum: init'te `math.randomseed(os.time() + (tonumber(id) or 0) * 7919)`, setup'ta
   `thread:set('id', #threads)`, başka randomseed yok; isteğe bağlı Lua yorumlayıcısıyla mantık, iki iş parçacığının
   ilk `N / T` jitter dizisi farklı), L12 (isteğe bağlı) Portal `dogrula.cjs` ve `araclar.cjs`'nin ürettiği
-  extra_vars'ın girdi kapısından geçmesi (anahtar sıraları, işaret yolları), L13 `arac_hazirla.sh` / `durdur.sh` metni. `kosul()` Ansible'ın iki koşul yolunu da sınar (derleme + bool sonuç). Mutasyon kopyaları:
+  extra_vars'ın girdi kapısından geçmesi (anahtar sıraları, işaret yolları), L13 `arac_hazirla.sh` / `durdur.sh` metni. Sunucu ayarı: L5 `l5_srv` (1800 bütçe tavanı dahil), L6 `l6_srv` (Play 2 sırası uygula -> dosyalar -> kanit, Play 7 `always`, `KOSU_ID` / `DEVRAL`, `baska`, Play 10 `sunucu_ayar`, `srv_hazirlik`, `hazirlik_yedek`), L7 `hazirlik` = `bmw_nginx/tests/check_nginx_loadtest_hazirlik.sh` (sahte dzdo / nginx / curl / ps, gerçek gzip; tek başına da koşar; `HAZIRLIK_SENARYO=<regex>`, mutasyon kopyası `HAZIRLIK_BETIK`; Git Bash'te izin biti, symlink ve CR iddiaları atlanır, WSL'de koşar). KÖR: gerçek nginx + ngx_brotli, gerçek dzdo kuralı (kanarya). `kosul()` Ansible'ın iki koşul yolunu da sınar (derleme + bool sonuç). Mutasyon kopyaları:
   `NGINX_LOADTEST_YML`, `NGINX_LOADTEST_FILES`, `NGINX_LOADTEST_README`; yalnız bazı bölümler:
-  `NGINX_LOADTEST_ONLY='L[1-79]'`; kabuk testinden yalnız biri: `NGINX_LOADTEST_KABUK=wrk|durdur|...`; Portal
+  `NGINX_LOADTEST_ONLY='L[1-79]'`; kabuk testinden yalnız biri: `NGINX_LOADTEST_KABUK=wrk|durdur|hazirlik|...`; Portal
   deposu: `NGINX_LOADTEST_PORTAL_DEPO` (L10, L12); Lua: `NGINX_LOADTEST_LUA` (yorumlayıcı ya da sarmalayıcı;
   kurulumsuz yol: bir LuaJIT `lua51.dll`'ini ctypes ile yükleyen `.cmd`) ya da PATH'te `luajit`/`lua5.1`/`lua`.
   Gerçek procps `ps` için WSL/Linux:
@@ -1077,7 +1230,7 @@ install -m 0644 serbest_aglar /etc/portal_yuktesti/serbest_aglar
   tırnaklı küçük harf tanımlayıcı olan tablo satırı YALNIZ `yuk_*` değişkenleri içindir (özet anahtarları, istemci
   eşlemesi ve set_stats alanları ters tırnaksız tablo ya da kod bloğu).
 - Portal: `server/ansible/__tests__/nginx-loadtest-ayna.test.cjs` (ayna + kayıt; NA5 delegate ve Play 2 / 3 getent
-  erişilemezlik fail'i; NA7 Portal `EKSTRA_ANAHTARLAR` + `ARAC_EKSTRA_ANAHTARLAR` = bu README'nin değişken tablosu, 40),
+  erişilemezlik fail'i; NA7 Portal `EKSTRA_ANAHTARLAR` + `ARAC_EKSTRA_ANAHTARLAR` = bu README'nin değişken tablosu, 44),
   `nginx-loadtest-arac.test.cjs` (NA8: vekil ortamı yalnız Play 8 get_url'lerinde, TLS doğrulaması, Play 3 araç kopyası,
   `/tmp` yok, Play 7 `arac/` silmesi, Play 9 `mv -T` / 0644 / SHA256SUMS / manifest, `arac_hazirla.sh` metni, 10 play), `nginx-loadtest-wrk.test.cjs`
   (NA6: yuk_wrk.lua / wrk_kos.sh / durdur.sh / playbook metin kuralları; (i) tohum satırları, (m) ret nedeni kesmesi ve
@@ -1106,6 +1259,12 @@ k6 / sunucu hedef (ilk kurulum):
    curl'ü HTTP/2'siz yük makinesinde (GBNGXT34: `curl --version`'da `HTTP2` yok) aynı iki vhost: `curl_h2 0`,
    `alpn_kaynak openssl`, `yollar_h2 -`, OZET bugünkü h1 ön kontrolüyle aynı; h2'li vhost'ta `alpn_h2 1` (engel yok),
    h2'siz vhost'ta `alpn_h2 0` ve openssl metinli engel; `openssl version` ve SNI=0 / SNI=1 ikisi de not edilir.
+
+9. Sunucu ayarı (TEST hedef, bir kez): ön kontrol `ayar 1` + brotli static: `curl` ve geçici nginx konfu geçer mi (`ngx_http_brotli_filter_module.so`
+   www ile yüklenebiliyor mu, nginx ikilisi www ile çalışıyor mu); iş bitince üç konf dosyası sha256 ile aynı ve
+   `<www ev>/.portal_yuktesti/hazirlik` yok. 1 adımlık brotli static koşusu: `.br` dosyaları seçilen seviyeyle üretildi, `curl --compressed`
+   gerçek sıkıştırılmış içerik döndü, `kanit` gerçek nginx'te `Content-Length` ile geçti (h1 ve h2 birer koşu), `hazirlik_R<id>_<host>.txt` `/sw`'de, iş bitince manifest silindi. `dzdo` kuralı `-t`,
+   `-T`, `-s reload` için geçerli mi; www `conf.d/default.conf`, `conf/gzip.conf`, `conf/brotli.conf` ve dizine yazabiliyor mu.
 
 wrk ve serbest hedef:
 

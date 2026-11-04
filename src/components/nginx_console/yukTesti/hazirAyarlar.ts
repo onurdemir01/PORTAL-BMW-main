@@ -175,5 +175,10 @@ export const ALAN_ACIKLAMASI = {
   protokol: 'Tarayıcılar çoğunlukla HTTP/2 kullanır; HTTP/2 sunucunun CPU’sunu ve yanıt süresini HTTP/1.1’den farklı etkiler, bu yüzden sonuçlar yalnız aynı protokolle koşulan koşularla karşılaştırılır.',
   protokolWrk: 'wrk yalnız HTTP/1.1 konuşur; HTTP/2 için yük aracı olarak k6’yı seçin.',
   protokolYok: 'Sunucu bu sürümde HTTP/2 koşusunu kabul etmiyor.',
+  sunucuAyar: 'Koşudan önce hedefteki nginx ayarlanır: HTTP/2 seçilen protokole göre açılır ya da kapatılır, seçilen sıkıştırmanın seviyesi yazılır, nginx yeniden yüklenir. Koşu bitince ayarlar geri alınır. Ayar sunucu geneli içindir: o sunucuyu kullanan diğer uygulamalar da etkilenir. Üst süre sınırı 30 dakikaya düşer.',
+  sunucuAyarSerbest: 'Serbest hedefe bağlanılmadığı için sunucu ayarlanamaz.',
+  srvSeviye: 'Yalnız seçilen sıkıştırmanın konfigürasyonunda değişir.',
+  srvStatic: 'Açıkken dosyalar koşudan önce sıkıştırılır ve gzip_static / brotli_static açılır; ön kontrolde dosya üretilmez.',
+  srvDizin: 'Örn. /usr/nginx/applications/uygulama. Static kapalıyken bu dizindeki .gz / .br dosyaları silinir (yalnız kaynağı yanında duranlar); silinenler geri getirilmez.',
   kipH2: 'HTTP/2 yalnız keep-alive ile koşulur: tarayıcılar HTTP/2’de bağlantıyı açık tutar, her isteğe yeni bağlantı açmaz.',
 } as const;

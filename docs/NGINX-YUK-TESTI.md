@@ -267,6 +267,12 @@ Ara dönem (fail-closed):
 * Dağıtımdan önce alınmış (≤ 15 dk) OK ön kontrolle koşu 409 `on_kontrol_eski` "Yük araçları ön
   kontrolden bu yana yeniden hazırlandı; ön kontrolü yeniden çalıştırın." (beklenen).
 
+Koşu öncesi sunucu ayarı (2026-11-04): yeni dosya `files/hazirlik.sh` zip listesinde **ayrıca** sayılmalı.
+Playbook yeni, Portal eski: `yuk_srv_*` `default('0')` / `default('')` ile düşer, koşular eskisi gibi.
+Portal yeni, playbook eski: kutu kapalıyken değişiklik yok; kutu açık koşu başlamaz (ön kontrol `srv_hazirlik`
+yayınlamadı, engel: yük basılmaz, gece kuyruğu boşa gitmez). Eski ön kontrolden başlamış koşu kanıtsız kaldığı için
+GEÇERSİZ `sunucu_ayari_kanitsiz(yok)` olur (fail-closed; sessiz yanlış ölçüm yok). Önce zip, sonra Portal.
+
 Önceki turlar: tur 3'te Portal önce, sonra zip (`wrk_kos.sh`, `yuk_wrk.lua`); tur 2 ve 3 ara dönem
 kuralları geçmişte kaldı.
 
@@ -386,9 +392,10 @@ kuralları geçmişte kaldı.
     * Durdurma işi başlarsa iş numarası koşuya yazılır (`durdurIsi`) ve koşunun kilitleri o işe
       bağlanır; iş başarıyla biterse (sunucu hedefinde iki sunucu, serbestte yük makinesi "kalan
       süreç yok" derse) kilitler hemen bırakılır.
-    * Ön kontrolde durdurma işi yoktur; yalnız AWX işi iptal edilir (`durdurIsi: null`).
+    * Sunucu ayarsız ön kontrolde durdurma işi yoktur; yalnız AWX işi iptal edilir (`durdurIsi: null`).
+      Sunucu ayarlı ön kontrolde koşudaki gibi vardır (hedefin konfu geri alınır).
     * `CANCELED` / `FAILED` koşuya yeniden Durdur serbesttir (kalan süreç temizliği); `DONE` koşu
-      409 `kosu_bitti`.
+      409 `kosu_bitti`, yalnız geri alınamamış sunucu ayarı varsa kabul edilir.
 
 ### Araçlar
 
@@ -536,6 +543,94 @@ kurulumda CREATE TABLE'da; tablo ilk sürümle kurulduysa açılıştaki sütun 
 (`ALTER TABLE nginx_loadtest_kuyruk_ogeler ADD sonraki_deneme_at DATETIME2 NULL`) ekler. Yürütücü `NGINX_LOADTEST_KUYRUK_SN` (varsayılan 15 sn, 5–120)
 aralıkla çalışır.
 
+### Koşu öncesi sunucu ayarı (2026-11-04)
+
+Gece kuyruğundaki senaryolar için hedefteki nginx elle değiştirilmesin diye: Yeni koşu › Gelişmiş
+ayarlar › **Sunucuyu koşu öncesi ayarla**. Kutu yalnız sunucu hedefinde görünür; serbest hedefe
+bağlanılmadığı için orada yoktur ve sunucu da 400 döner. Kutu kapalıyken her şey eskisi gibidir.
+
+| Alan | Kural |
+| --- | --- |
+| HTTP/2 | Ayrı alan yok: **Protokol**'den türer (`h2` → `default.conf`'ta `http2 on;` açık, `h1` → satır yorumlu). Kutu açıkken HTTP/2 seçimi hedefin bugünkü durumundan bağımsız serbesttir; ön kontrol ALPN'i ayar uygulandıktan sonra ölçer. |
+| Seviye | Yalnız seçilen sıkıştırmanın konfigürasyonunda değişir: brotli 1–11, gzip 1–9 (10 geçersiz); sıkıştırmasızda alan gizli ve seviye yok. |
+| static | Açıkken `brotli` koşusunda `brotli_static on` + `.br`, `gzip` ve sıkıştırmasız koşuda `gzip_static on` + `.gz`. Kapalıyken ikisi de `off`. |
+| Uygulama dizini | `/usr/nginx/applications/…` altında, `..` yok. Kutu açıkken **her zaman** zorunlu: static kapalı koşuda bu dizindeki `.gz` / `.br` silinir. Son geçerli değer tarayıcıda hatırlanır. |
+
+Akış:
+
+1. Ön kontrol ve koşuda hedefte `hazirlik.sh uygula` çalışır: üç dosya yedeklenir, düzenlenir, `nginx -t`
+   ve reload. Başarısızsa kaydedici ve yük **başlamaz**, ön kontrol FAILED olur (gece kuyruğunda öğe ATLANDI).
+2. Yalnız koşuda `hazirlik.sh dosyalar`: dizin istenen duruma getirilir. Static istenmiyorsa kaynağı yanında
+   duran `.gz` / `.br` silinir; gzip static koşusunda `.br`, brotli static koşusunda `.gz` silinir; sonra
+   eksik ya da kaynaktan eski dosyalar üretilir. Silinen dosyalar geri getirilmez (türetilmiş dosya).
+3. Koşu bitince (ön kontrol, koşu ve durdurma işinde; kaydedici durduktan sonra) `hazirlik.sh geri_al`:
+   bu koşunun yeni ürettiği dosyalar silinir, konfigürasyon yedekten döner, reload. Dosya başkası tarafından
+   değiştirildiyse dokunulmaz, özgün kopya `~www/.portal_yuktesti/hazirlik_dokunulmadi_<koşu>/` altına alınır
+   ve uyarı çıkar.
+
+Ön kontrol de durdurulursa AWX iptali temizlik play'ini koşturmaz: sunucu ayarlı ön kontrolün Durdur'u bu
+yüzden (koşudaki gibi) ayrı bir durdurma işi başlatır. Durdurma işinde `yuk_srv_ayar` her zaman `0`'dır;
+geri alma hedefteki yedeğe bakar. Kilit bağ türü `onk_srv`: iptal edilen ayarlı ön kontrolün kilidi bırakılmaz.
+
+Geri alma güvenceleri:
+
+* **Yedek koşuya aittir.** Durdur kilit almaz; eski bir satırdaki Durdur, hedefte başka koşunun yedeği varsa ona
+  dokunmaz (`geri_al_durum baska`). Yedeği yalnız yeni `uygula` ve hedef kilidini tutan iş devralır. Üç kip hedefte
+  `flock` ile de sıralanır.
+* **Temizlik koşmadıysa** (AWX zaman aşımı, AWX ekranından iptal, `error`): set_stats'ta geri alma sonucu yoktur.
+  Poller otomatik durdurma işi başlatır, kilidi ona bağlar; başlatamazsa kilit tutulur. Sonuç
+  `sonuc.durdur_geri_alma`'ya yazılır, ayrıntıda görünür.
+* **Geri alınamadıysa** ayrıntıda kırmızı kutu ve her bitmiş satırda (DONE, FAILED, ön kontrol dahil)
+  **Sunucu ayarını geri al** düğmesi vardır. DONE koşuda Durdur yalnız bu durumda kabul edilir.
+* **Bütçe tavanı** sunucu ayarlı koşuda 30 dk'dır (1800 sn): hazırlık süreleri eklenince AWX'in 3600 sn sınırı
+  aşılmasın, temizlik koşabilsin.
+* **Eski playbook** ayarlı koşuda baştan yakalanır: ön kontrol `srv_hazirlik: ok` yayınlamadıysa koşu başlamaz.
+* **Ayarsız koşu kalmış yedeği görür**: `hazirlik_yedek` ön kontrolde engeldir; o ön kontrol yedeği geri almayı
+  dener, yeniden çalıştırmak yeter.
+
+Sonuç ve ekran:
+
+* `parametreler.sunucuAyar` (`null` ya da `{ seviye, static, dizin }`) kanonik nesnededir: değişince ön
+  kontrol eskir. Alanı olmayan eski ön kontrol `null` sayılır.
+* Sonuç dizinine `hazirlik_R<id>_<host>.txt` kanıtı yazılır. Sunucu ayarlı koşuda kanıt yoksa ya da istenenle
+  uyuşmuyorsa koşu **GEÇERSİZ**, neden `sunucu_ayari_kanitsiz(yok)` ya da `sunucu_ayari_kanitsiz(http2,seviye)`:
+  eski playbook + yeni Portal ayarı uygulamadan koşar ve sessizce yanlış ölçüm vermemelidir. Yeni bir koşu
+  başlatılmadan Ansible deposunun yeni sürümü AWX'e gitmiş olmalı (§2.5).
+* Koşu ayrıntısı: `Sunucu ayarı: HTTP/2 açık · brotli 6 · static · 120 .br` (sayı = bu koşuda üretilen +
+  zaten güncel olan dosya). Geri alma `hata` / `uyari` / `bekliyor` ise ve hazırlık betiği uyarı yazdıysa (ör.
+  başka dosyada `gzip_comp_level` var, ayar etkisiz olabilir) kutu görünür; uyarılar ön kontrol ekranında da çıkar.
+* Kanıttaki `http2`, `seviye`, `static` diskteki konftan okunan değerdir, istenen değil. `reload` sonrası canlı
+  durumu kanıtlamaz: http2 için ön kontrolün ALPN ölçümü, sıkıştırma için kip doğrulaması canlı kanıttır.
+* Seviye ve static sunucu genelidir: o sunucudaki diğer uygulamalar da etkilenir. 30 senaryo en az 120 reload
+  yapar, her biri eski worker için 90 sn'ye kadar bekleyebilir; bu süre kuyruk tahminine girmez.
+* Sunucu ayarlı koşuda ön kontrolün "ön-sıkıştırılmış dosyalar var" uyarısı çıkmaz: dizin koşu öncesi zaten
+  kurulur; aksi halde önceki static koşudan kalan dosyalar kuyruk öğesini "yeni uyarı" ile atlatırdı.
+* Gece kuyruğu süre tahmini: static koşuya +180 sn (dosya üretimi). Koşunun bütçesi (`yuk_butce_sn`) değişmez.
+
+Portal'ın gönderdiği değişkenler (`EKSTRA_ANAHTARLAR` sonu, `yuk_protokol`'den sonra; hepsi metin):
+
+| Değişken | Değer |
+| --- | --- |
+| `yuk_srv_ayar` | `'0'` \| `'1'`. `'1'` yalnız sunucu hedefinde, ön kontrol ve koşuda. |
+| `yuk_srv_seviye` | `''` ya da rakam (br 1–11, gzip 1–9; identity ve ayar 0 iken `''`). |
+| `yuk_srv_static` | `'0'` \| `'1'` (ayar 0 iken `'0'`). |
+| `yuk_srv_dizin` | `''` ya da `/usr/nginx/applications/…` (ayar 1 iken her zaman dolu; ayar 0 iken `''`). |
+| `yuk_butce_sn` | Ayar 1 iken en çok 1800, değilse 2700 (`SINIRLAR.maxButceSnSunucuAyar`, playbook kapısı aynı). |
+
+Senaryoların form karşılığı (gruplar; No-Keepalive = Bağlantı "yeni bağlantı", sıkıştırma = Accept-Encoding):
+
+| Grup | Protokol | Bağlantı | Sıkıştırma | Seviye | static |
+| --- | --- | --- | --- | --- | --- |
+| 1. HTTP/2 dinamik brotli | HTTP/2 | keep-alive | brotli | 1–11, her koşu için bir değer | kapalı |
+| 2. HTTP/2 dinamik gzip | HTTP/2 | keep-alive | gzip | 1–9 | kapalı |
+| 3. HTTP/1.1 keep-alive dinamik | HTTP/1.1 | keep-alive | brotli ya da gzip | ilgili aralık | kapalı |
+| 4. HTTP/1.1 No-Keepalive dinamik | HTTP/1.1 | yeni bağlantı | brotli ya da gzip | ilgili aralık | kapalı |
+| 5. static | HTTP/2 ya da HTTP/1.1 | protokole uygun | brotli (`.br`) ya da gzip (`.gz`) | ilgili aralık | açık |
+| 6. sıkıştırmasız | HTTP/2 ya da HTTP/1.1 | protokole uygun | sıkıştırmasız | yok | kapalı |
+
+HTTP/2 yalnız keep-alive ile koşulur (§5.2): HTTP/2 + No-Keepalive yoktur. Her grupta "Uygulama dizini"
+aynıdır; bir kez yazınca form hatırlar. Kuyruk etiketine değişen şeyi yazın (ör. "A3 brotli seviye 4").
+
 ### Çoklu karşılaştırma (2026-11-04)
 
 Kullanıcı: "ardı ardına 12-16 test koşacağım, hepsini tek sayfada karşılaştırmak istiyorum". İki koşulu
@@ -552,7 +647,7 @@ dahil **16 koşu**) tek sayfada gösterir. Okuma herkese açık (Karşılaştır
   açar; referans **ilk öğe**. 16'dan fazla biten koşu varsa ilk 16'sı açılır ve ekran "Gece kuyruğundan ilk 16 koşu
   alındı; n koşu dışarıda kaldı" der (dışarıda kalan numaralarla; sessizce düşmez).
 * **Hesap sunucuda** (`GET /karsilastir-coklu`, `server/nginx-loadtest/coklu.cjs`): her aday referansa karşı
-  `analiz.kararVer` ile (iki koşulu ekranla aynı eşikler 10 / 10 / 5 ve aynı motor / protokol / hedef türü / iş
+  `analiz.kararVer` ile (iki koşulu ekranla aynı eşikler 10 / 10 / 5 ve aynı motor / hedef türü / iş
   parçacığı / tavan argümanları) → karar, gerekçe, kademe. Her koşunun hız başına özeti kararVer'in **aynı
   gruplarından** (`analiz.hizOzeti`): p95, p99, CPU-ms/istek, sunucu CPU, en yüksek hata oranı, tekrar / geçerli
   tekrar; görünüm satırlarından kapasite (yalnız GEÇERLİ adımlar), test trafiği (alınan, yeni ağ alanları), Nginx
@@ -566,16 +661,28 @@ dahil **16 koşu**) tek sayfada gösterir. Okuma herkese açık (Karşılaştır
     nedeninde `429(` / `5xx(`; istemci sayacı 0 olsa da); iyileşme kuralı yok, renklendirilmez.
   * **p99, sunucu CPU, kapasite, test trafiği, bellek**: kararda kuralı yok → **renklendirilmez** (yalnız % fark,
     soluk). PSS ile RSS arasında % fark verilmez.
+* **Tek tabloda protokol / keepalive / sıkıştırma**: HTTP/2 ile HTTP/1.1, keepalive'lı ile keepalive'sız, brotli ile
+  gzip ile sıkıştırmasız **aynı tabloda** karşılaştırılır. Yalnız bu yolda: her koşu kendi senaryo / kip / ae
+  kombosundan okunur (ortak kombo varsa kararVer'in seçtiği kullanılır); aday adımları referansın kip / ae değerine
+  etiketlenmiş **kopya** olarak kararVer'e verilir ve iki taraf için referans protokolü geçilir, hız satırları ve ek
+  ölçüler adayın kendi kombosundan gelir. Kararın ilk gerekçe satırı iki tarafın gerçek değerlerini yazar
+  ("referans kip=yeni ae=br, aday kip=ka ae=gzip"). kararVer'in varsayılan davranışı, **Karşılaştır** ve
+  `GET /karsilastir` değişmedi: orada farklı protokol hâlâ VERİ YOK'tur. Her satırda **Fark** metni
+  (`HTTP/2 · keepalive · brotli 6 · static`; `keepalive yok`, `sıkıştırmasız`, referans static iken `static yok`)
+  bulunur, referanstan farklı parçalar vurguludur; seviye ve static koşu öncesi sunucu ayarından gelir, ayar
+  istenmemişse yazılmaz. Sayfa notları: farklı ayar varsa "Farklı protokol / sıkıştırma karşılaştırılıyor; karar yalnız
+  referansa göredir."; tekrar = 1 koşu varsa gürültü ölçülmediği, yüzde birkaçlık farkın kesin olmadığı.
 * **Karşılaştırılamaz** grubu: referansa göre farklı hedef türü, hedef (host ya da IP), yük aracı (k6 / wrk),
-  protokol, wrk hız tavanı ya da iş parçacığı (bunlar için kararVer **çağrılmaz**) ve kararı VERİ YOK olanlar,
-  nedenleriyle.
+  senaryo (`senaryo` kodu: `senaryo_id` ya da K / B farkı, yani farklı HAR), wrk hız tavanı ya da iş parçacığı (bunlar
+  için kararVer **çağrılmaz**) ve kararı VERİ YOK olanlar, nedenleriyle.
 * **Ekran**: (1) seçici; (2) **Özet** — satır = koşu, etiket ön planda, karar çipi, **düz cümle**, karar
   kademesindeki CPU / p95 / test trafiği / bellek farkı (CPU: CPU kademesi; diğerleri p95 kademesi); sıralama CPU
   iyileşmesi, p95 iyileşmesi, etiket, tarih (ölçülmeyen sona); referans satırı işaretli ve hep üstte; (3) **Hız × koşu**
   matrisi — ölçü seçici, hücrede değer + % fark, yalnız gürültü dışı farklar renkli, ilk sütun sabit, tablo kendi
   kabında yatay kayar; (4) **Grafik** — seçili ölçü × hız, koşu başına çizgi, referans kalın; 8 ton (index.css
   `--yt-seri-*`, açık / koyu yüzeyde renk körlüğü denetiminden geçti), 9. adaydan sonra aynı tonlar kesikli; lejantta
-  tıklayınca vurgulanır (diğerleri soluk), üzerine gelince geçici vurgu; (5) **CSV indir** — özet + seçili ölçü
+  tıklayınca vurgulanır (diğerleri soluk), üzerine gelince geçici vurgu; (5) **CSV indir** — özet (fark kolonları
+  dahil: Fark, Protokol, Keepalive, Sıkıştırma, Seviye, Static, Referanstan farklı) + seçili ölçü
   matrisi, Türkçe başlıklar, `;` ayırıcı, ondalık virgül, UTF-8 BOM (Excel); `=`, `+`, `-`, `@` ile başlayan
   metin hücresi tek tırnakla korunur.
 * **Etiket sonradan düzenlenir**: Koşular listesi ve ayrıntıda Admin'e kalem simgesi → `PUT /kosular/:id/etiket`
@@ -606,6 +713,38 @@ dahil **16 koşu**) tek sayfada gösterir. Okuma herkese açık (Karşılaştır
    türünden koşularla karşılaştırılmalıdır.
 6. Paylaşmak için adres çubuğundaki bağlantıyı kopyalayın; Excel'e almak için "CSV indir" (seçili ölçünün matrisi
    özetin altına eklenir).
+
+### Toplu rapor (2026-11-04)
+
+Kuyruktaki 30 koşuyu tek tabloda görmek ve Excel'e almak için. Karar vermez; ölçülmüş değerleri koşu × hız satırına
+dizer (`GET /rapor`, `server/nginx-loadtest/rapor.cjs`). Yeni ölçü üretmez.
+
+* **Giriş**: Gece kuyruğu ayrıntısında "Toplu rapor" (kuyruğun tüm koşuları, sırayla), Koşular listesinde kayıt
+  seçiliyken "Toplu rapor" (numara sırasıyla; silme yetkisi gerekmez, bitmiş her koşu seçilir) ya da alt sekme. Adres paylaşılabilir:
+  `?tab=yuktesti&yt=rapor&kuyruk=<id>` ya da `kosular=1,2,…` (en çok 100).
+* **Satır**: koşu × hız; kombo koşunun kendi senaryo / kip / ae'si. Bitmemiş, bulunamayan, ön kontrol, ölçümü olmayan
+  koşu ve koşusu başlamamış kuyruk öğesi rapora yazılmaz, tablonun altında nedeniyle listelenir.
+* **Tekrar > 1**: ölçüler (p50, p95, CPU %, bant …) tekrarların ortalaması; küme Çoklu karşılaştırma ile aynıdır (geçerli
+  adımlar, yük makinesi doymuş adım hariç). Sayaçlar (toplam istek, 429, 5xx, atılan) tekrarların **toplamı**, NIC en
+  yüksek tekrarların en yükseği. "Tekrar" kolonu geçerli / toplam tekrarı yazar.
+* **Geçersiz adım**: hiç geçerli adımı olmayan satırda ölçülmüş değer gizlenmez, "Geçerlilik" geçersiz yazar; adım
+  geçerli olsa bile koşu geneli neden (`sunucu_ayari_kanitsiz` gibi) satırı geçersiz yapar.
+* **Kolonlar** (sırayla): koşu no, etiket, hız, protokol, keepalive, accept-encoding, brotli seviye, gzip seviye, gzip
+  static seviye, gzip static, brotli static seviye, brotli static, toplam istek, medyan (p50), p95, p99, CPU %, bant; sonra
+  tarih, süre, durum, geçerlilik, tekrar, gerçekleşen istek/sn, uyarı / geçersizlik nedenleri, kip doğrulaması, TTFB p95,
+  TLS p95, connect p95, sunucu p95, hata oranı, 429, 5xx, atılan istek, CPU-ms/istek, kapasite, nginx bellek, bellek
+  artışı, olası neden, test trafiği gönderilen, NIC ortalama, NIC en yüksek, istek başına bayt, yük makinesi CPU (boşta),
+  yük makinesi bellek, yük doydu, gz / br üretilen dosya, diskten sunulma kanıtı.
+* **Anlamlar**: CPU % hedef host CPU ortalaması (ölçüm penceresi); bant yük makinesinin aldığı test trafiği; NIC hedefin
+  gönderim (tx) tarafı ve arayüzdeki test dışı trafiği de içerir; süre koşunun tamamı; bellek artışı worker Anon'u (ölçüm
+  sonu − taban). Seviye ve static alanları `parametreler.sunucuAyar` ve hazırlık kanıtından gelir (kanıt önce); sunucu ayarı
+  olmayan koşuda `-`. Static seviye kanıttaki `dosya_seviye`dir: dosyalar her koşuda seçilen seviyeyle yeniden üretilir,
+  seviye seçilmeyen sıkıştırmasız koşuda 9. Static koşuda `disk_kanit=ok` ve `dosya_seviye` tutmazsa koşu GEÇERSİZ
+  (`sunucu_ayari_kanitsiz(disk_kanit,dosya_seviye)`: AWX'teki `hazirlik.sh` eski demektir). Ölçülmeyen değer ekranda `—`, CSV'de boş.
+* **Ekran**: ilk kolon sabit, tablo kendi kabında kayar. Hız süzgeci veriden gelir. "Sütunlar" seçimi tarayıcıda hatırlanır
+  ("Temel" ilk 18 kolon).
+* **CSV indir**: görünen kolon ve satırlar; UTF-8 BOM, `;`, ondalık virgül (Excel'de açılır). Bant ve NIC sayı olarak Mbps,
+  birim başlıkta. Etiket ve neden gibi metinler formül enjeksiyonuna karşı korunur.
 
 ### Koşu silme (2026-11-04)
 
@@ -749,7 +888,7 @@ bilinen sahipleri `sahipler: [{ host, env, nginx, kaynaklar }]` (en çok 10) dö
 
 Diğerleri: AWX sunucu / iş numarası **istemciden alınmaz** (koşu satırından okunur); `LIMIT_MUAF` ve
 proxy değişkenleri koşu kiplerinde hiç gönderilmez (son kapı fazladan ve eksik anahtarı reddeder: her
-ön kontrol / koşu / durdurma işi tam 34 değişkenle (34. `yuk_protokol`, §5.2), araç hazırlama işi tam 10 değişkenle gider — vekil
+ön kontrol / koşu / durdurma işi tam 38 değişkenle (34. `yuk_protokol`, §5.2; 35-38 `yuk_srv_*`, "Koşu öncesi sunucu ayarı"), araç hazırlama işi tam 10 değişkenle gider — vekil
 `yuk_proxy` yalnız onda; playbook kurallarının aynası); iş geçmişine senaryo gövdesi yerine boyut izi
 (`<n b64>`) yazılır; iş çıktısı ve set_stats her yanıtta maskelenir; her başlatma, durdurma, yeniden
 okuma ve reddedilen deneme `nginx_loadtest_*` eylemiyle `targetHost` (serbestte boş) / `targetIp`
@@ -870,7 +1009,7 @@ kuralı kullanır):
 |---|---|---|---|---|
 | `successful` | bırak | bırak | bırak | bırak |
 | `failed` | bırak | bırak (playbook temizledi) | bırak | **tut** (kalan süreç olabilir) |
-| `canceled`, `error` | bırak | **tut** | **tut** (uzakta `timeout -k 30 1800` ile biten derleme sürebilir) | **tut** |
+| `canceled`, `error` | bırak (sunucu ayarlı ön kontrol `onk_srv`: **tut**) | **tut** | **tut** (uzakta `timeout -k 30 1800` ile biten derleme sürebilir) | **tut** |
 | bitmemiş / okunamadı | tutulur (değişmez) | | | |
 
 * **tut**: kilit dolu kalır ama işten çözülür (AWX sunucu/iş numarası silinir); yalnız süre
@@ -1255,7 +1394,7 @@ Serbest koşuda sunucu verisine dayanan adım uyarıları (`log_satiri_yok:pence
 **Karşılaştırma (kararVer)** — ilk satır (`referans=.. aday=.. senaryo=.. kip=.. ae=..`) değişmez; hemen ardından:
 
 * motorlar farklıysa `VERI_YOK`: `farkli yuk araci: referans <m>, aday <m>; k6 (acik dongu, istek/sn) ve wrk (kapali dongu, baglanti) sonuclari karsilastirilmaz`;
-* protokoller farklıysa `VERI_YOK`: `farkli protokol: referans HTTP/1.1, aday HTTP/2; ayni protokolle yeniden kosun` (§5.2);
+* protokoller farklıysa `VERI_YOK`: `farkli protokol: referans HTTP/1.1, aday HTTP/2; ayni protokolle yeniden kosun` (§5.2; iki koşulu **Karşılaştır**; **Çoklu karşılaştırma** farklı protokolü aynı tabloda karşılaştırır, "Çoklu karşılaştırma" bölümü);
 * iki wrk koşusunun iş parçacığı sayısı farklıysa (ikisi de biliniyorsa) `VERI_YOK`: `farkli is parcacigi sayisi: referans <t>, aday <t>; ayni is parcacigi sayisiyla yeniden kosun`;
 * iki wrk koşusunun hız tavanı (`parametreler.tavan_rps`) farklıysa (ikisi de biliniyorsa; CPU'suz yolda da) `VERI_YOK`: `farkli hiz tavani: referans <a> istek/sn, aday <b> istek/sn; ayni tavanla yeniden kosun`. Aynı bağlantı kademesi farklı tavanla farklı sunulan yük demektir (bekleme `d = ceil(N × 1000 / tavan)`): düşük tavanlı koşunun p95'i düşük çıkar ve sahte `KALICI` / `RET` doğardı. Tavan, sunucu (2026-11-03'ten beri hep 5000; önceki koşular ≤ 450 ya da ölçülmüş `limit_req` × 0,9) ile serbest (200) hedef karşılaştırılınca ya da eski bir wrk koşusu yenisiyle karşılaştırılınca farklılaşır.
 
@@ -1338,7 +1477,8 @@ Protokol). Varsayılan ve alanı olmayan **eski koşular HTTP/1.1**'dir; davran�
   zamanlı akış ölçülmez. HTTP/2 koşusuna bu yüzden koşu uyarısı yazılır:
   `h2_vu_basina_tek_akis(tarayici_coklamasi_olculmez)`. İlk gerçek HTTP/2 koşusunda nginx
   `connection_request` (adım `ham.yeniden_baglanti_yuzde`) ile doğrulanmalıdır (≈ 100 beklenir).
-  CPU-ms/istek ve p95 yalnız **aynı protokolle** koşulmuş koşularla karşılaştırılır.
+  İki koşulu **Karşılaştır**'da CPU-ms/istek ve p95 yalnız **aynı protokolle** koşulmuş koşularla karşılaştırılır;
+  **Çoklu karşılaştırma** HTTP/1.1 ile HTTP/2'yi aynı tabloda gösterir, karar yalnız referansa göredir.
 * **Çalışma anı denetimi:** k6 `setup()` her kontrol yolunun protokolünü beklenenle (`HTTP/1.1` |
   `HTTP/2.0`) karşılaştırır; ölçüm / ısınma isteklerinde beklenen dışı yanıt `protokol_uyumsuz` sayacını
   artırır ve koşuyu keser (`kos.sh` DUR).
@@ -1350,8 +1490,8 @@ Protokol). Varsayılan ve alanı olmayan **eski koşular HTTP/1.1**'dir; davran�
   kuralla (`http2 > 0` → `http2`) değerlendirilir. Adım `ham`'ında `protokol` / `protokol_uyumsuz` yalnız
   kolon varsa bulunur (eski koşuların analiz çıktısı değişmedi). TUR adı değişmedi (protokol koşu
   düzeyinde sabittir).
-* **Karşılaştırma:** farklı protokol `VERI_YOK` ("aynı protokolle yeniden koşun"; motor kuralından hemen
-  sonra, wrk iş parçacığı / tavan kurallarından önce).
+* **Karşılaştırma:** iki koşulu ekranda farklı protokol `VERI_YOK` ("aynı protokolle yeniden koşun"; motor kuralından
+  hemen sonra, wrk iş parçacığı / tavan kurallarından önce); Çoklu karşılaştırma bu kuralı kullanmaz.
 
 | Neden | Anlamı |
 |---|---|
@@ -1380,7 +1520,8 @@ retlerinde ayrıca `sahipler`).
 | `POST /kosular/:id/durdur` | Admin | AWX iptali + (koşu) `durdur` kipi. Başarı: `{ ok, iptal, iptalHatasi, durdurIsi: { jobId, awxServerId } \| null, durdurHatasi: null }`. 409 `baslatiliyor`, 409 `kosu_bitti`, 424 `durdur_baslatilamadi` (gövdede `iptal`, `iptalHatasi`, `durdurHatasi`; metin motor ve türe göre), 424 `awx_okunamadi` (ön kontrol iptal edilemedi) |
 | `POST /kosular/:id/yeniden-oku` | Admin | sonucu okunamamış koşuyu yeniden sonuçlandırır → `{ ok: true }`; değilse 409 `yeniden_okunamaz` |
 | `GET /karsilastir?ref=&aday=&esikCpu=&esikP95=` | okuma | karar, nedenler, tablo, kademe, kombinasyon; `ref` / `aday` özetinde `motor`, `hedefTuru`, `protokol` (farklıysa karar `VERI_YOK`, §5.2) |
-| `GET /karsilastir-coklu?ref=&kosular=&esikCpu=&esikP95=` | okuma | 2026-11-04: `kosular` virgülle koşu numaraları; referans dahil en çok **16** koşu (ref listede yoksa eklenir, tekrarlar tekil). → `{ ref: { …koşu, kombinasyon, hizlar }, adaylar: [{ …koşu, karar, kararNedenleri, kademe, kombinasyon, hizlar: [{ hiz, p95, p99, cpuMsIstek, hostCpu, hata, kapasite, bantBps, bellekMb, bellekKaynak: 'pss' \| 'rss' \| null, kip, gecerlilik, tekrar, gecerliTekrar, gurultuCpu, gurultuP95, fark: { <ölçü>: { yuzde, durum: 'iyi' \| 'kotu' \| 'gurultu_ici' \| 'renklendirilmez' \| 'yok', esikYuzde, gurultuBilinmiyor } } }], kademeFarki: { cpu, p95, bant, bellek, hata } }], karsilastirilamaz: [{ …koşu, nedenler: [{ kod: 'hedef_turu' \| 'hedef' \| 'motor' \| 'protokol' \| 'tavan' \| 'is_parcacigi' \| 'veri_yok' \| 'hesaplanamadi', metin }], karar }], olculer, esikler }`. Koşu ve adım satırları **iki sorguda** (`IN ($1..$n)` parametreli; koşu satırında büyük JSON kolonları taşınmaz; adım satırı `ham` dahil tümüyle okunur, bkz. aşağıdaki not). 400 `gecersiz_istek` (eksik / geçersiz numara: metin numara en çok 9 hane, 16'yı aşan, yalnız referans, eşik), 409 `kosu_yok` (bulunamayan var) ya da `kosu_uygun_degil` (yalnız ön kontrol / bitmemiş) + ayrı listeler `eksik: [id]` (bulunamayan), `onKontrol: [id]` (ön kontrol kaydı), `bitmemis: [id]` (QUEUED / RUNNING / FINALIZING), 424 `db_okunamadi` / `analiz_okunamadi`. Not (2026-11-04 inceleme, bilgi): en kötü durumda 16 koşu × 100 adım × `ham` (≤ 32 KB) ≈ 51 MB tek istekte belleğe gelir ve önbellek yoktur; bugünkü koşular (adım başı birkaç KB, 10–40 adım) için değiştirilmedi |
+| `GET /karsilastir-coklu?ref=&kosular=&esikCpu=&esikP95=` | okuma | 2026-11-04: koşu özetinde `protokol`, `kip`, `ae`, `sunucuAyar: { seviye, static } \| null` (dizin taşınmaz); `kosular` virgülle koşu numaraları; referans dahil en çok **16** koşu (ref listede yoksa eklenir, tekrarlar tekil). → `{ ref: { …koşu, kombinasyon, hizlar }, adaylar: [{ …koşu, karar, kararNedenleri, kademe, kombinasyon (adayın kendi kombosu), refKombinasyon, hizlar: [{ hiz, p95, p99, cpuMsIstek, hostCpu, hata, kapasite, bantBps, bellekMb, bellekKaynak: 'pss' \| 'rss' \| null, kip, gecerlilik, tekrar, gecerliTekrar, gurultuCpu, gurultuP95, fark: { <ölçü>: { yuzde, durum: 'iyi' \| 'kotu' \| 'gurultu_ici' \| 'renklendirilmez' \| 'yok', esikYuzde, gurultuBilinmiyor } } }], kademeFarki: { cpu, p95, bant, bellek, hata } }], karsilastirilamaz: [{ …koşu, nedenler: [{ kod: 'hedef_turu' \| 'hedef' \| 'motor' \| 'senaryo' \| 'tavan' \| 'is_parcacigi' \| 'veri_yok' \| 'hesaplanamadi', metin }], karar }], olculer, esikler }`. Koşu ve adım satırları **iki sorguda** (`IN ($1..$n)` parametreli; koşu satırında büyük JSON kolonları taşınmaz; adım satırı `ham` dahil tümüyle okunur, bkz. aşağıdaki not). 400 `gecersiz_istek` (eksik / geçersiz numara: metin numara en çok 9 hane, 16'yı aşan, yalnız referans, eşik), 409 `kosu_yok` (bulunamayan var) ya da `kosu_uygun_degil` (yalnız ön kontrol / bitmemiş) + ayrı listeler `eksik: [id]` (bulunamayan), `onKontrol: [id]` (ön kontrol kaydı), `bitmemis: [id]` (QUEUED / RUNNING / FINALIZING), 424 `db_okunamadi` / `analiz_okunamadi`. Not (2026-11-04 inceleme, bilgi): en kötü durumda 16 koşu × 100 adım × `ham` (≤ 32 KB) ≈ 51 MB tek istekte belleğe gelir ve önbellek yoktur; bugünkü koşular (adım başı birkaç KB, 10–40 adım) için değiştirilmedi |
+| `GET /rapor?kuyruk=` ya da `?kosular=` | okuma | 2026-11-04: yalnız biri; `kosular` virgülle, tekil en çok **100** koşu (verilen sıra), `kuyruk` kuyruk sırasıyla. → `{ satirlar: [{ kosuNo, etiket, hiz, protokol, kip, ae, brotliSeviye, gzipSeviye, gzipStatikSeviye, gzipStatik, brotliStatikSeviye, brotliStatik, toplamIstek, p50, p95, p99, hostCpu, bantBps, tarih, sureSn, durum, gecerlilik, tekrar, gecerliTekrar, … }], atlananlar: [{ kosuId, etiket, neden: 'bulunamadi' \| 'on_kontrol' \| 'bitmemis' \| 'olcum_yok' \| 'hesaplanamadi' \| 'kosu_baslamadi', durum }] }`. Ölçülmeyen `null`; sunucu ayarı olmayan koşuda seviye / static alanları `'-'`. Koşu ve adım satırları iki sorguda (`IN` parametreli); koşu satırı `sonuc`'u da okur (hazırlık kanıtı, olası sızıntı), ön kontrol özeti taşınmaz. 400 `gecersiz_istek`, 409 `kuyruk_yok`, 424 `db_okunamadi` |
 | `DELETE /kosular/:id` | başlatan kişi ya da Admin | 2026-11-04: `{ confirmText: '<koşu no>' }` (`12` ya da `#12`) → `{ ok, sayi: 1, silinen: [{ id, islem, etiket, hedefHost, hedefIp, hedefTuru }] }`. Kayıt + adım satırları silinir; `/sw` dosyaları durur. 400 `gecersiz_istek` / `onay_metni` (DB okunmaz; 2147483647'yi aşan numara da 400), 403 `yetki_yok` (başkasının kaydı; `yetkisiz`), 404 `kosu_yok`, 409 `kosu_suruyor` / `kosu_kilitli` / `kuyruga_bagli` / `on_kontrol_bagli` / `eszamanli_degisti` (+ `silinemeyenler: [{ id, kod, metin, kuyrukId?, bagliKosuId? }]`), 424 `db_okunamadi` (silme batch'i bağlantı kopmasında yeniden denenmez). Denetim `nginx_loadtest_kosu_sil` (403 / 409 / 424 `fail`; 400 / 404 yazılmaz) |
 | `POST /kosular/sil` | başlatan kişi ya da Admin | 2026-11-04: `{ kosular: [id…] (1–50, tekrarsız), confirmText: '<sayı>' }` → `{ ok, sayi, silinen: […] }` (istek sırasıyla). **Hepsi ya da hiçbiri**: biri silinemezse 409 `silinemez` + `silinemeyenler` (bulunamayan `kosu_yok` dahil), hiçbir kayıt silinmez. 400 / 403 / 424 tekli uçla aynı |
 | `PUT /kosular/:id/etiket` | Admin | 2026-11-04: `{ etiket: string \| null }` → `{ ok, id, etiket }` (trim; boş / null = `NULL`). 400 `gecersiz_istek` (metin değil, > 120 karakter, kontrol karakteri / satır sonu / U+2028-9), 409 `kosu_yok`. Denetim `nginx_loadtest_etiket` (`{ kosuId, eski, yeni }`; ret de yazılır) |

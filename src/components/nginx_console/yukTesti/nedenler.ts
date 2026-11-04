@@ -31,6 +31,9 @@ export const H2_UYARI_CUMLESI = 'HTTP/2 koşusu: k6 her sanal kullanıcıda tek 
 /** Adim gecersizlik / doyma / hatali nedenleri (adim.nedenler; kosu gecersizNedenleri'nin icindekiler). */
 const NEDEN_KURALLARI: Kural[] = [
   { re: /^reload\(worker_pid_degisti\)$/, ton: 'hata', cumle: () => 'Test sırasında nginx yeniden yüklendi (reload): worker süreçleri değişti; bu adımın CPU ölçümü ve sonuçları güvenilir değil.' },
+  { re: /^sunucu_ayari_kanitsiz\(([a-z0-9_,]+)\)$/, ton: 'hata', cumle: (m) => (m[1] === 'yok'
+    ? 'Koşu öncesi sunucu ayarı istendi ama hazırlık kanıtı yok: ayar uygulanmamış olabilir (Ansible deposu eski olabilir); bu koşunun ölçümü geçerli sayılmaz.'
+    : `Hazırlık kanıtı istenen sunucu ayarıyla uyuşmuyor (${m[1].split(',').join(', ')}); bu koşunun ölçümü geçerli sayılmaz.`) },
   { re: /^konf_degisti$/, ton: 'hata', cumle: () => 'Test sırasında nginx konfigürasyonu değişti; bu adımın sonuçları güvenilir değil (değişikliğin anı bilinmez: kaydedici konfigürasyonu yalnız başta ve sonda karşılaştırır). Deney süresince o sunucuya konfigürasyon dağıtılmamalı.' },
   { re: /^(k6|wrk)_rc=(.+)$/, ton: 'hata', cumle: (m) => `${m[1]} hata koduyla (${m[2]}) bitti; bu adımın ölçümü tamamlanmadı.` },
   { re: /^429\(istemci=(\d+)(?:,sunucu=(\d+))?\)$/, ton: 'hata', cumle: (m) => `Hedef ${sayiTr(m[1])} isteği 429 ile reddetti (hız sınırı: limit_req / limit_conn${m[2] != null ? `; sunucu logunda ${sayiTr(m[2])}` : ''}); ölçüm sınıra takıldı, hızı düşürün.` },

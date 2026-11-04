@@ -9,7 +9,8 @@
 // DURDUR (2026-10-27 inceleme): AWX iptali uzaktaki async k6'yi ve ayrik kaydediciyi DURDURMAZ; kosuda asil
 // durdurma "durdur" kipindeki AWX isidir. O is baslatilamazsa sunucu 424 durdur_baslatilamadi der: ekran bunu
 // KALICI hata kutusunda gosterir (basari bildirimi YOK). Iptal edilmis kosuda Admin "Kalan süreçleri durdur" ile
-// ayni ucu yeniden cagirabilir. Ön kontrolde durdur isi yoktur: yalniz "AWX işi iptal ediliyor".
+// ayni ucu yeniden cagirabilir. Sunucu ayarsiz ön kontrolde durdur isi yoktur (yalniz "AWX işi iptal ediliyor"); sunucu ayarli ön
+// kontrolde vardir, hedefin konfunu geri alir. Sunucu ayari geri alinamamis bitmis satirda da dugme acik kalir.
 //
 // TUR 3 (2026-10-28): adim degerleri ve birimleri `adimDegerleri` ile (wrk: baglanti; kayitta `hizlar` yok). Serbest
 // hedefte sunucu olcumu yoktur (CPU, kapasite, sunucu rps "—"); durdurma yalniz yuk sunucusundaki araci sonlandirir
@@ -51,13 +52,14 @@ import KosuCiktisi from './KosuCiktisi';
 import EtiketDuzenle from './EtiketDuzenle';
 import KosuSilOnayi from './KosuSilOnayi';
 import OnKontrolPaneli from './OnKontrolPaneli';
-import { Bolum, GecerlilikHapi, KosuDurumHapi, Tanim, TurMotorCipleri, islemEtiketi } from './YukUi';
+import { Bolum, GecerlilikHapi, KosuDurumHapi, SunucuAyarUyarilari, Tanim, TurMotorCipleri, islemEtiketi } from './YukUi';
 import {
   AE_ETIKETI, AKTIF_DURUMLAR, KAPASITE_IPUCU, KIP_ETIKETI, OKUNAMADI_ACIKLAMASI, PROTOKOL_ETIKETI, kosuProtokolu, SONUC_DENEME_SINIRI, adimDegerleri, adimEtiketi, adimGecerliligi, adimSirala, bellekKolonuVar,
-  bellekYuzdeMetni, butceSn, cpuMsMetni, durdurBaslatilamadiMetni, enYuksekNginxBellek, gecerlilikBilgisi, hataMetni, hizGrupla, hostCpuIpucu, kademeMetni, kalanSurecDurdurulabilir, mbMetni, motorOf, ondalik, seriAdi, sonucOkunuyorMetni,
+  bellekYuzdeMetni, sunucuAyariGeriAlinmamis, butceSn, cpuMsMetni, durdurBaslatilamadiMetni, enYuksekNginxBellek, gecerlilikBilgisi, hataMetni, hizGrupla, hostCpuIpucu, kademeMetni, kalanSurecDurdurulabilir, mbMetni, motorOf, ondalik, seriAdi, sonucOkunuyorMetni,
   tekrarIpucu, turCumlesi, turEtiketi, uyarilariAyir, yenidenOkunabilir, yukCpuHucre, yukCpuKolonuVar, yuzde, type AdimBirimi,
   AG_KULLANIM_ESIK, BAGLANTI_IPUCU, BELLEK_NEDEN_METNI, BELLEK_PSS_IPUCU, NIC_IPUCU, TEST_TRAFIGI_IPUCU, agKolonuVar, bantMetni, bellekDetayVar, bellekSizintiMetni,
   enYuksekTestTrafigi, nicSecimMetni, kosuSahibiMi,
+  sunucuAyariSatiri,
 } from './yukTestiOrtak';
 
 type Sekme = 'sonuc' | 'onkontrol' | 'cikti';
@@ -111,7 +113,8 @@ export default function KosuAyrinti({ kosuId, isAdmin, onGeri, kullaniciAdi = nu
     const islem = veri.kosu.islem;
     // Serbest hedefte kaydedici yok (hedefe baglanilmaz); arac adi motorla. k6 + sunucu metinleri BIREBIR eskisi.
     const tur = { hedefTuru: veri.kosu.hedefTuru === 'serbest' ? 'serbest' as const : 'sunucu' as const, motor: kosuMotoru(veri.kosu) };
-    const durdurulan = tur.hedefTuru === 'serbest' ? tur.motor : `${tur.motor} ve kaydedici`;
+    const srvOnKontrol = islem === 'on_kontrol' && !!veri.kosu.sunucuAyari;
+    const durdurulan = srvOnKontrol ? 'sunucu ayarı geri alınıp iş' : tur.hedefTuru === 'serbest' ? tur.motor : `${tur.motor} ve kaydedici`;
     busyRef.current = true;
     setDurduruluyor(true);
     try {
@@ -132,7 +135,7 @@ export default function KosuAyrinti({ kosuId, isAdmin, onGeri, kullaniciAdi = nu
         return;
       }
       setDurdurSor(false);
-      if (islem === 'kosu') {
+      if (islem === 'kosu' || srvOnKontrol) {
         // Sunucu durdur isi baslamadan 200 donmez (424); eski sunucuya karsi yine de basari denmez.
         if (!r.durdurIsi) {
           setDurdurHata(durdurBaslatilamadiMetni(r, tur));
@@ -188,6 +191,7 @@ export default function KosuAyrinti({ kosuId, isAdmin, onGeri, kullaniciAdi = nu
 
   const { kosu, adimlar } = veri;
   const kalanDurdur = kalanSurecDurdurulabilir(kosu);
+  const srvGeriAlinmamis = sunucuAyariGeriAlinmamis(kosu);
   const yenidenOku = yenidenOkunabilir(kosu);
   const sekmeler: Sekme[] = [
     ...(kosu.islem === 'kosu' ? ['sonuc' as const] : []),
@@ -207,7 +211,7 @@ export default function KosuAyrinti({ kosuId, isAdmin, onGeri, kullaniciAdi = nu
   const p = kosu.parametreler;
   const sure = kosu.startedAt && kosu.finishedAt ? (Date.parse(kosu.finishedAt) - Date.parse(kosu.startedAt)) / 1000 : null;
   const panelId = `yuk-kosu-panel-${kosu.id}`;
-  const durdurDugmesi = aktif ? 'Durdur' : 'Kalan süreçleri durdur';
+  const durdurDugmesi = aktif ? 'Durdur' : srvGeriAlinmamis ? 'Sunucu ayarını geri al' : 'Kalan süreçleri durdur';
   const serbest = kosu.hedefTuru === 'serbest';
   const motor = kosuMotoru(kosu);
   // wrk her zaman HTTP/1.1 konusur (satir ne derse desin).
@@ -292,6 +296,7 @@ export default function KosuAyrinti({ kosuId, isAdmin, onGeri, kullaniciAdi = nu
           <Tanim etiket="Süreler" title={p ? `ısınma ${p.isinma} sn, ölçüm ${p.sure} sn, bekleme ${p.bosluk} sn, boşta ölçüm ${p.bosta} sn` : ''}>{p ? `${p.isinma} + ${p.sure} sn · ara ${p.bosluk} sn` : '—'}</Tanim>
           <Tanim etiket="Protokol">{motor === 'wrk' ? `${PROTOKOL_ETIKETI.h1} (wrk)` : PROTOKOL_ETIKETI[protokol]}</Tanim>
           <Tanim etiket={ad.motor === 'wrk' ? 'Bağlantı kipi · sıkıştırma' : 'Bağlantı · sıkıştırma'}>{p ? `${KIP_ETIKETI[p.kip] || p.kip} · ${AE_ETIKETI[p.ae] || p.ae}` : '—'}</Tanim>
+          {kosu.sunucuAyari && <Tanim etiket="Sunucu ayarı" title={kosu.sunucuAyari.dizin || ''}>{sunucuAyariSatiri(kosu.sunucuAyari)}</Tanim>}
           <Tanim etiket="Başlatan" title={kosu.createdBy || ''}>{kosu.createdBy || '—'}</Tanim>
           <Tanim etiket="Başladı" title={fmtDateTime(kosu.startedAt || kosu.createdAt)}>{fmtDateTime(kosu.startedAt || kosu.createdAt)}</Tanim>
           <Tanim etiket={aktif ? 'Tahmini süre' : 'Süre'}>
@@ -299,6 +304,7 @@ export default function KosuAyrinti({ kosuId, isAdmin, onGeri, kullaniciAdi = nu
             {kosu.awxJobId != null && <span className="font-mono" style={{ color: 'var(--text-secondary)' }}> · AWX #{kosu.awxJobId}</span>}
           </Tanim>
         </dl>
+        {kosu.sunucuAyari && <SunucuAyarUyarilari ayar={kosu.sunucuAyari} />}
       </Bolum>
 
       {durdurHata && (
@@ -346,14 +352,18 @@ export default function KosuAyrinti({ kosuId, isAdmin, onGeri, kullaniciAdi = nu
       )}
 
       <Modal open={durdurSor} onClose={() => { if (!durduruluyor) setDurdurSor(false); }}
-        title={aktif ? `${islemEtiketi(kosu.islem)} #${kosu.id} durdurulsun mu?` : `Koşu #${kosu.id}: kalan süreçler durdurulsun mu?`} size="md" dismissOnBackdrop={false}
+        title={aktif ? `${islemEtiketi(kosu.islem)} #${kosu.id} durdurulsun mu?` : srvGeriAlinmamis ? `${islemEtiketi(kosu.islem)} #${kosu.id}: sunucu ayarı geri alınsın mı?` : `Koşu #${kosu.id}: kalan süreçler durdurulsun mu?`} size="md" dismissOnBackdrop={false}
         footer={<div className="flex w-full justify-end gap-2">
           <button type="button" className={SM_BTN} style={smBtn()} disabled={durduruluyor} onClick={() => setDurdurSor(false)}>İptal</button>
           <button type="button" className={SM_BTN} style={BTN_TEHLIKE} disabled={durduruluyor} onClick={() => void durdur()}><StopCircleIcon className="h-3.5 w-3.5" aria-hidden /> {durduruluyor ? 'Durduruluyor…' : durdurDugmesi}</button>
         </div>}>
-        {kosu.islem === 'on_kontrol' ? (
+        {srvGeriAlinmamis && !aktif ? (
           <p className="text-[13px] leading-5" style={{ color: 'var(--text-primary)' }}>
-            Ön kontrolün AWX işi iptal edilir; yarıda kalan ön kontrolün sonucu kullanılamaz.
+            “Durdur” kipinde ayrı bir iş <span className="font-mono">{kosu.hedefHost}</span> üzerinde kalan süreçleri sonlandırır ve bu işin nginx ayarını geri alır. Hedefte başka bir koşunun yedeği varsa ona dokunulmaz.
+          </p>
+        ) : kosu.islem === 'on_kontrol' ? (
+          <p className="text-[13px] leading-5" style={{ color: 'var(--text-primary)' }}>
+            Ön kontrolün AWX işi iptal edilir; yarıda kalan ön kontrolün sonucu kullanılamaz.{kosu.sunucuAyari ? ' “Durdur” kipinde ayrı bir iş hedefteki nginx ayarını geri alır.' : ''}
           </p>
         ) : aktif ? (
           <p className="text-[13px] leading-5" style={{ color: 'var(--text-primary)' }}>

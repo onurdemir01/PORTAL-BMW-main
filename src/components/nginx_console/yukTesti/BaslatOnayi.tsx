@@ -19,7 +19,7 @@ import { fmtNumber } from '@/utils/datetime';
 import { SM_BTN, smBtn } from '@/components/server_hub/retirementStil';
 import { Cip, UyariKutusu } from '@/components/server_hub/RetirementUi';
 import { sureMetni } from '@/components/server_hub/retirementCikti';
-import { AE_ETIKETI, KIP_ETIKETI, PROTOKOL_ETIKETI, SERBEST_CIP_IPUCU, adimDegerleri, butceSn, protokolOf } from './yukTestiOrtak';
+import { AE_ETIKETI, KIP_ETIKETI, PROTOKOL_ETIKETI, SERBEST_CIP_IPUCU, adimDegerleri, butceSn, parametreSunucuAyari, protokolOf } from './yukTestiOrtak';
 import { GIRDI_TABAN, girdiStili } from './YukUi';
 
 export interface BaslatOnayiDegeri { confirmText: string; uyariOnay: boolean }
@@ -28,7 +28,8 @@ export interface BaslatOnayiDegeri { confirmText: string; uyariOnay: boolean }
 export function yukMetni(p: NonNullable<NlKosuAyrinti['parametreler']>): string {
   const { motor, degerler } = adimDegerleri(p);
   const adim = degerler.length * p.tekrar;
-  const kipAe = `${KIP_ETIKETI[p.kip] || p.kip} · ${AE_ETIKETI[p.ae] || p.ae}`;
+  const srv = parametreSunucuAyari(p);
+  const kipAe = `${KIP_ETIKETI[p.kip] || p.kip} · ${AE_ETIKETI[p.ae] || p.ae}${srv ? ` · ${srv}` : ''}`;
   if (motor === 'wrk') {
     return `wrk · ${degerler.join(' · ')} bağlantı × ${p.tekrar} tekrar = ${fmtNumber(adim)} adım · ${p.is_parcacigi ?? '—'} iş parçacığı · ortalama ≤ ${p.tavan_rps ?? '—'} istek/sn · ${kipAe}`;
   }

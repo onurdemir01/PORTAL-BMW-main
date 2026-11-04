@@ -28,6 +28,9 @@
 // okunmaz, satir OKUNAMADI olur. Admin "yeniden oku" ucuyla sayaci sifirlayabilir.
 // TUR 4 (arac setleri): tick her turda araclar.araclariSonuclandir()'i da cagirir; arac isinin
 // hatasi kosu sonuclandirmasini DURDURMAZ (ayri try). Arac isi de OLAY_BEKLEME_SN kuralini kullanir.
+// SUNUCU AYARI (2026-11-04): temizlik play'i (Play 7) kosmadan biten iste (AWX zaman asimi, iptal, hata; set_stats yok) hedefin konfu
+// degismis kalir ve geri alma sonucu gelmez. geriAlmaBilinmiyor ise otoDurdurKur ile verilen islem durdurma isi baslatir; kilit o
+// ise baglanir, baslamazsa TUTULUR. durdurSonuclari her turda bu islerin sonucunu sonuc.durdur_geri_alma'ya yazar.
 'use strict';
 
 const path = require('node:path');
@@ -62,12 +65,17 @@ const OLAY_EKSIK_NEDENI = 'AWX olay işlemesi tamamlanmadı; arşivlenen çıkt�
 const SW_YOK_NEDENI = "yük başlamadı ya da sonuçlar /sw'ye kopyalanmadı (playbook sw_dizin bildirmedi)";
 // tick ve tetikle AYNI kolonlari okur (sonuclandirma butceyi, satir yasini, deneme sayisini, hedef
 // turunu ve motoru ister).
-const SONUCLANDIRMA_KOLONLARI = `id, islem, durum, awx_server_id, awx_job_id, parametreler, started_at, created_at, sonuclandirma_denemesi, kilit_id, hedef_turu, motor,
+const SONUCLANDIRMA_KOLONLARI = `id, islem, durum, awx_server_id, awx_job_id, parametreler, started_at, created_at, sonuclandirma_denemesi, kilit_id, hedef_turu, motor, durdur_awx_job_id,
        DATEDIFF(SECOND, COALESCE(started_at, created_at), GETUTCDATE()) AS calisma_yas_sn`;
 
 let _timer = null;
 let _ticking = false;
 const _suren = new Set();
+// index.cjs verir: (kosu) => { jobId, awxServerId } | null (baslatmazsa null; hata firlatabilir). Dongusel require olmasin diye.
+let _otoDurdur = null;
+function otoDurdurKur(fn) {
+  _otoDurdur = fn;
+}
 
 const db = () => require('../db/index.cjs');
 const runner = () => require('../ansible/runner.cjs');
@@ -124,6 +132,20 @@ function butceSnOf(kosu) {
   const p = parametrelerOf(kosu);
   const b = p ? Number(p.butceSn) : NaN;
   return Number.isInteger(b) && b > 0 && b <= VARSAYILAN_BUTCE_SN ? b : VARSAYILAN_BUTCE_SN;
+}
+
+/** Sunucu ayarli isin geri alma sonucu YOK mu (Play 7 kosmamis olabilir)? Ayarsiz satirda false. */
+function geriAlmaBilinmiyor(kosu, stats) {
+  const p = parametrelerOf(kosu);
+  if (!p || !p.sunucuAyar) return false;
+  const sa = stats && stats.sunucu_ayar;
+  return !(sa && typeof sa === 'object' && typeof sa.geri_alma === 'string' && sa.geri_alma.trim());
+}
+
+/** Satirin kilit bag turu: sunucu ayarli on kontrol 'onk_srv' (iptalde kilit birakilmaz); kosuyuBaslat ile ayni kural. */
+function bagTuruOf(kosu) {
+  const p = parametrelerOf(kosu);
+  return kosu.islem === 'on_kontrol' && p && p.sunucuAyar ? 'onk_srv' : kosu.islem;
 }
 
 /** Satirin protokolu (parametreler.protokol); alani olmayan eski satir h1. */
@@ -313,8 +335,11 @@ async function kosuKarari(kosu, st, stats, uyusmazlik, { deneme = OKUMA_DENEME_S
     const yb = kosuBolumu ? kosuBolumu.yukm_cpu_basladi : undefined;
     const yukKaydedici = yb === true ? 'basladi' : yb === false ? 'baslamadi' : null;
     const yukSonSatir = yukKaydedici && typeof kosuBolumu.yukm_cpu_son_satir === 'string' ? kosuBolumu.yukm_cpu_son_satir : null;
+    // 2026-11-04: sunucu ayarli kosuda hazirlik kaniti denetlenir; ayarsiz satirda secenek YOK (analiz BIREBIR eskisi).
+    const param = parametrelerOf(kosu);
+    const srv = param && param.sunucuAyar ? { sunucuAyar: param.sunucuAyar, ae: param.ae } : {};
     analiz = analizNormalle(await cModulu('analiz.cjs').kosuAnaliz(veri, {
-      adim: `R${id}`, hedefTuru, motor, protokol, ...(yukKaydedici ? { yukKaydedici } : {}), ...(yukSonSatir ? { yukSonSatir } : {}),
+      adim: `R${id}`, hedefTuru, motor, protokol, ...(yukKaydedici ? { yukKaydedici } : {}), ...(yukSonSatir ? { yukSonSatir } : {}), ...srv,
     }));
   } catch (e) {
     okumaHatasi = `sonuç dizini okunamadı/çözümlenemedi: ${maskele(e && e.message).slice(0, 400)}`;
@@ -362,9 +387,24 @@ async function sonYaz(kosu, st, k) {
  * isten cozulur ve kosu kilidi en az butce + 180 sn daha tutulur (uzak k6 / kaydedici).
  */
 async function isinKilitleri(kosu, st, sid, jid) {
-  const karar = kilit().bagliIsKarari(kosu.islem, st.status);
+  const karar = kilit().bagliIsKarari(bagTuruOf(kosu), st.status);
   if (karar === 'birak') return kilit().releaseLocksForJob(db(), sid, jid, st.finished || null);
   return kilit().isinKilitleriniCoz(db(), sid, jid, kosu.islem === 'kosu' ? butceSnOf(kosu) + KILIT_EK_SN : null);
+}
+
+/**
+ * Geri alma sonucu olmayan is: durdurma isi baslatilir, kosunun kilitleri ona baglanir (basariyla bitince birakilir). Baslamazsa
+ * (AWX yok, hook yok) kilit TUTULUR: hedef degismis olabilir, yeni is once yedegi gormeli; Durdur dugmesi acik kalir.
+ */
+async function geriAlmaTemizligi(kosu, sid, jid) {
+  let is = null;
+  try {
+    if (_otoDurdur) is = await _otoDurdur(kosu);
+  } catch (e) {
+    console.warn(`[NginxYukTesti poller] kosu ${kosu.id} icin otomatik durdurma baslatilamadi:`, maskele(e && e.message));
+  }
+  if (is && kosu.kilit_id) return kilit().durdurIsineBagla(db(), kosu.kilit_id, { awxServerId: is.awxServerId, awxJobId: is.jobId, uzatSn: butceSnOf(kosu) + KILIT_EK_SN });
+  return kilit().isinKilitleriniCoz(db(), sid, jid, butceSnOf(kosu) + KILIT_EK_SN);
 }
 
 /**
@@ -417,12 +457,14 @@ async function kosuyuSonuclandir(kosu) {
     if (!al.rowCount) return { terminal: true, atlandi: true };
     // Sayac okunamazsa (adaptor OUTPUT dondurmediyse) tek deneme + son karar: eski davranis.
     const deneme = TAM(al.rows && al.rows[0] && al.rows[0].sonuclandirma_denemesi) ?? OKUMA_DENEME_SINIRI;
+    const { stats, uyusmazlik } = statsNormalle(require('../scalex/result.cjs').extractStatsKey(st.artifacts, STATS_ANAHTARI), kosu);
     try {
-      await isinKilitleri(kosu, st, sid, jid);
+      if (!geriAlmaBilinmiyor(kosu, stats)) await isinKilitleri(kosu, st, sid, jid);
+      else if (kosu.durdur_awx_job_id == null) await geriAlmaTemizligi(kosu, sid, jid);
+      // Durdurma isi zaten var (Durdur ya da onceki deneme): kilit ona bagli, burada dokunulmaz.
     } catch (e) {
       console.warn(`[NginxYukTesti poller] kosu ${id} kilidi birakilamadi/cozulemedi (supurme/TTL halleder):`, maskele(e && e.message));
     }
-    const { stats, uyusmazlik } = statsNormalle(require('../scalex/result.cjs').extractStatsKey(st.artifacts, STATS_ANAHTARI), kosu);
     if (!st.missing) {
       try {
         await ciktiArsivle(sid, jid);
@@ -455,6 +497,53 @@ async function kosuyuSonuclandir(kosu) {
   } finally {
     _suren.delete(id);
   }
+}
+
+/**
+ * Sunucu ayarli satirin durdurma isi bittiyse geri alma sonucu sonuc.durdur_geri_alma'ya yazilir ({ is, durum, metin }; ekran ve Durdur
+ * kapisi bunu okur). Is sunucu_ayar yayinlamadan basariyla bittiyse yedek yoktu ('ok'). Is sonucsuz bittiyse ya da AWX'te yoksa 'hata'.
+ * AWX okunamazsa satir degismez (sonraki tur). Yeni Durdur alani temizler, yeni is yeniden okunur.
+ */
+async function durdurSonuclari() {
+  const { rows } = await db().query(
+    `SELECT TOP 20 id, islem, sonuc, parametreler, hedef_turu, motor, durdur_awx_server_id, durdur_awx_job_id FROM nginx_loadtest_kosular
+      WHERE durdur_awx_job_id IS NOT NULL AND durum NOT IN ('QUEUED', 'RUNNING', 'FINALIZING')
+        AND parametreler LIKE '%"sunucuAyar":{%' AND (sonuc IS NULL OR sonuc NOT LIKE '%"durdur_geri_alma"%')
+      ORDER BY id DESC`,
+  );
+  let yazilan = 0;
+  for (const k of rows || []) {
+    const sid = Number(k.durdur_awx_server_id);
+    const jid = Number(k.durdur_awx_job_id);
+    let st;
+    try {
+      st = await runner().getJobStatusOnServer(sid, jid);
+    } catch (e) {
+      if (!(e && Number(e.status) === 404 && e.code !== 'awx_server_missing')) continue;
+      st = { status: 'error', missing: true, artifacts: {} };
+    }
+    if (!TERMINAL.has(st.status) || st.eventProcessingFinished === false) continue;
+    const { stats } = statsNormalle(require('../scalex/result.cjs').extractStatsKey(st.artifacts, STATS_ANAHTARI), { ...k, islem: 'durdur' });
+    const sa = stats && stats.sunucu_ayar && typeof stats.sunucu_ayar === 'object' ? stats.sunucu_ayar : null;
+    let durdurGeriAlma;
+    if (sa && typeof sa.geri_alma === 'string' && sa.geri_alma.trim()) {
+      durdurGeriAlma = { is: jid, durum: sa.geri_alma.trim().toLowerCase(), metin: typeof sa.geri_alma_metin === 'string' ? sa.geri_alma_metin.slice(0, 500) : null };
+    } else if (stats && st.status === 'successful') {
+      durdurGeriAlma = { is: jid, durum: 'ok', metin: 'Durdurma işi hedefte geri alınacak yedek bulmadı.' };
+    } else {
+      durdurGeriAlma = { is: jid, durum: 'hata', metin: `Durdurma işi AWX #${jid} geri alma sonucu üretmedi (${st.status}); hedefi elle kontrol edin ya da Durdur'u yeniden deneyin.` };
+    }
+    let eski = null;
+    try {
+      eski = typeof k.sonuc === 'string' ? JSON.parse(k.sonuc) : k.sonuc;
+    } catch {
+      eski = null;
+    }
+    const yeni = JSON.stringify({ ...(eski && typeof eski === 'object' && !Array.isArray(eski) ? eski : {}), durdur_geri_alma: durdurGeriAlma });
+    const u = await db().query(`UPDATE nginx_loadtest_kosular SET sonuc = $2 WHERE id = $1 AND durdur_awx_job_id = $3`, [Number(k.id), yeni, jid]);
+    yazilan += u.rowCount || 0;
+  }
+  return yazilan;
 }
 
 /** Baslatmasi yarim kalmis satirlar (INSERT oldu, is numarasi hic yazilmadi). Kilitleri TTL birakir. */
@@ -507,6 +596,9 @@ async function tick() {
       console.warn(`[NginxYukTesti poller] kosu ${k.id} durumu okunamadi:`, maskele(e && e.message));
     }
   }
+  await durdurSonuclari().catch((e) => {
+    console.warn('[NginxYukTesti poller] durdurma sonuclari okunamadi:', maskele(e && e.message));
+  });
   // Arac hazirlama isleri (tur 4): ayri tablo, ayri karar; hata yalniz uyari.
   const arac = await require('./araclar.cjs').araclariSonuclandir().catch((e) => {
     console.warn('[NginxYukTesti poller] arac sonuclandirmasi:', maskele(e && e.message));
@@ -571,6 +663,10 @@ module.exports = {
   kosuBasarili,
   kosuKarari,
   kosuyuSonuclandir,
+  otoDurdurKur,
+  geriAlmaBilinmiyor,
+  bagTuruOf,
+  durdurSonuclari,
   bayatKuyruk,
   ciktiArsivle,
   kilitSupur,
@@ -582,5 +678,6 @@ module.exports = {
     _timer = null;
     _ticking = false;
     _suren.clear();
+    _otoDurdur = null;
   },
 };

@@ -18,7 +18,7 @@
 //
 // IS BITTI != YUK BITTI (2026-10-27 tur 2): AWX iptali (canceled) ya da hatasi (error) uzaktaki
 // async kos.sh/k6'yi ve ayrik CPU kaydediciyi DURDURMAZ. Kilit bu yuzden bagli isin TURUNE
-// (bag_turu: on_kontrol | kosu | durdur) ve AWX durumuna gore birakilir ya da TUTULUR
+// (bag_turu: on_kontrol | onk_srv | kosu | durdur) ve AWX durumuna gore birakilir ya da TUTULUR
 // (bagliIsKarari). Tutulan kilit isten cozulur (awx_* = NULL) ve yalniz TTL ile duser; Durdur
 // isi basarili biterse (iki sunucu da "kalan surec yok") kilit hemen birakilir.
 'use strict';
@@ -82,10 +82,13 @@ async function ensureLockRow(db, key) {
  * Bagli isin TURU + AWX'in TERMINAL durumu -> 'birak' | 'tut'. TEK saf kural; poller
  * sonuclandirmasi, kilit supurmesi ve acquireLocks'un bayat-kilit kontrolu bunu kullanir.
  *
- *   AWX durumu        | on_kontrol / NULL | kosu, araclar | durdur
- *   successful        | birak             | birak         | birak
- *   failed            | birak             | birak         | tut
- *   canceled, error   | birak             | tut           | tut
+ *   AWX durumu        | on_kontrol / NULL | kosu, araclar, onk_srv | durdur
+ *   successful        | birak             | birak                  | birak
+ *   failed            | birak             | birak                  | tut
+ *   canceled, error   | birak             | tut                    | tut
+ *
+ * onk_srv (2026-11-04): sunucu ayarli on kontrol. Iptalde hedefin konfu degismis kalabilir ve temizlik play'i kosmaz: kilit
+ * birakilirsa durdurma isine baglanmadan once baska is hedefe girerdi.
  *
  * araclar (tur 4): iptal edilen / hatali iste uzakta `timeout -k 30 1800` ile biten derleme surebilir;
  * kilit TTL ile duser.
@@ -96,7 +99,7 @@ async function ensureLockRow(db, key) {
  */
 function bagliIsKarari(bagTuru, awxStatus) {
   const s = String(awxStatus ?? '').trim().toLowerCase();
-  const t = bagTuru == null || bagTuru === '' || bagTuru === 'on_kontrol' ? 'on_kontrol' : bagTuru === 'kosu' || bagTuru === 'araclar' ? 'kosu' : 'durdur';
+  const t = bagTuru == null || bagTuru === '' || bagTuru === 'on_kontrol' ? 'on_kontrol' : bagTuru === 'kosu' || bagTuru === 'araclar' || bagTuru === 'onk_srv' ? 'kosu' : 'durdur';
   if (s === 'successful') return 'birak';
   if (s === 'failed') return t === 'durdur' ? 'tut' : 'birak';
   if (s === 'canceled' || s === 'error') return t === 'on_kontrol' ? 'birak' : 'tut';
@@ -272,7 +275,7 @@ async function durdurIsineBagla(db, kilitId, { awxServerId, awxJobId, uzatSn }) 
 
 // Ayni ise bagli kilitlerin bag turu normalde tektir (bindLocks hepsine ayni degeri yazar); yine de
 // farkli gelirse EN SIKI olan alinir (durdur > kosu > on_kontrol/NULL/araclar).
-const BAG_SIRASI = (t) => (t == null || t === '' || t === 'on_kontrol' || t === 'araclar' ? 0 : t === 'kosu' ? 1 : 2);
+const BAG_SIRASI = (t) => (t == null || t === '' || t === 'on_kontrol' || t === 'araclar' ? 0 : t === 'kosu' || t === 'onk_srv' ? 1 : 2);
 
 /** Bir ise bagli DOLU kilitlerin isleri (poller supurmesi). Kosu satiri yazilamamis olsa da birakilsin. */
 async function bekleyenKilitIsleri(db, limit = 20) {

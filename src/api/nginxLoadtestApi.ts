@@ -72,7 +72,7 @@ export interface NlYukHost { host: string; env: string | null; uygun: boolean; n
 /** Genel sinirlar (sunucunun SINIRLAR'i). wrk: baglanti kademeleri ve is parcacigi; serbest hedefte iki motorda en cok
  *  `serbestTavanRps` istek/sn ve `serbestMaxBaglanti` baglanti / VU. */
 export interface NlSinirlar {
-  maxHiz: number; maxTekrar: number; sureMin: number; sureMax: number; isinmaMax: number; maxVu: number; maxButceSn: number;
+  maxHiz: number; maxTekrar: number; sureMin: number; sureMax: number; isinmaMax: number; maxVu: number; maxButceSn: number; maxButceSnSunucuAyar?: number;
   baglantiMin: number; maxBaglanti: number; maxBaglantiSayisi: number; isParcacigiMin: number; maxIsParcacigi: number;
   serbestTavanRps: number; serbestMaxBaglanti: number;
   /** wrk toplam hiz tavani (sunucu hedefi, 2026-11-03: 5000). Eski sunucu vermez: maxHiz. */
@@ -94,6 +94,19 @@ export interface NlParametreler {
   tekrar: number; isinma: number; sure: number; bosluk: number; bosta: number; kip: NlKip; ae: NlAe;
   /** Yoksa h1 (eski kayit). h2 yalniz k6 ve kip 'ka'. */
   protokol?: NlProtokol;
+  /** Kosu oncesi hedef nginx ayari (yalniz sunucu hedefi); yoksa / null ayar yok (eski kayit). */
+  sunucuAyar?: NlSunucuAyar | null;
+}
+/** Kosu oncesi sunucu ayari: seviye ae'ye bagli (br 1-11, gzip 1-9, identity null); dizin HER ZAMAN zorunlu. */
+export interface NlSunucuAyar { seviye: number | null; static: boolean; dizin: string }
+/** Koşu ayrintisindaki sunucu ayari: istenen, hazirlik kaniti (on kontrolde null) ve geri alma durumu. */
+export interface NlSunucuAyari {
+  http2: boolean; ae: NlAe | null; seviye: number | null; static: boolean; dizin: string | null;
+  kanit: { durum: 'uyumlu' | 'kanitsiz'; sapmalar: string[]; gzUretilen: number | null; brUretilen: number | null; atlanan: number | null; uyarilar: string[] } | null;
+  /** bekliyor: geri alma durdurma isinde, sonucu gelmedi. hata: geri alinamadi ya da sonucu yok (Durdur acik). */
+  geriAlma: { durum: 'ok' | 'uyari' | 'hata' | 'bekliyor'; metin: string | null } | null;
+  /** Kanit + set_stats uyarilari (on kontrolde de dolu). */
+  uyarilar?: string[];
 }
 /** /hedefler varsayilanlari: iki motorun alanlari birlikte; serbest hedefte k6 hiz ve VU varsayilani ayri. */
 export interface NlVarsayilanlar {
@@ -207,6 +220,8 @@ export interface NlKosuAyrinti extends NlKosu {
   isDurumu: string | null; isHatasi: string | null;
   /** Portal analizi (sonucOzet.portal_analiz): cekirdek sayisi, TLS payi, uyarilar ya da okuma hatasi. */
   analiz: { nproc: number | null; cpuTlsliPay: number | null; uyarilar: string[]; okumaHatasi: string | null };
+  /** Kosu oncesi sunucu ayari; ayarsiz kosuda (ve eski sunucuda) yok / null. */
+  sunucuAyari?: NlSunucuAyari | null;
   /** Bu kosu icin baslatilan "durdur" kipindeki AWX isi (kilitler o is basariyla bitince birakilir); yoksa null. */
   durdurIsi: { awxServerId: number | null; awxJobId: number } | null;
   /** Poller'in sonucu okuma denemesi (FINALIZING'de "deneme N/3"); alan yoksa 0. */
@@ -811,6 +826,8 @@ export interface NlCokluKosu {
   id: number; etiket: string | null; createdAt: string | null; createdBy: string | null; durum: string | null; gecerlilik: string | null;
   motor: NlMotor; protokol: NlProtokol; hedefTuru: NlHedefTuru; hedefHost: string | null; hedefIp: string | null; vhost: string | null;
   senaryoId: number | null; senaryoAd: string | null;
+  /** "Fark" metni (parametreler; eski kosuda kip / ae kombodan). sunucuAyar null = kosu oncesi ayar istenmedi. */
+  kip?: 'yeni' | 'ka' | null; ae?: 'br' | 'gzip' | 'identity' | null; sunucuAyar?: { seviye: number | null; static: boolean } | null;
 }
 export type NlKademeFarki = NlFark & { hiz: number; ref: number | null; aday: number | null };
 export interface NlCokluAday extends NlCokluKosu {
@@ -853,6 +870,9 @@ function cokluKosuNormalle(x: unknown): NlCokluKosu {
     gecerlilik: metinYada(o.gecerlilik), motor: o.motor === 'wrk' ? 'wrk' : 'k6', protokol: o.protokol === 'h2' ? 'h2' : 'h1',
     hedefTuru: o.hedefTuru === 'serbest' ? 'serbest' : 'sunucu', hedefHost: metinYada(o.hedefHost), hedefIp: metinYada(o.hedefIp), vhost: metinYada(o.vhost),
     senaryoId: sayiVeya(o.senaryoId), senaryoAd: metinYada(o.senaryoAd),
+    kip: o.kip === 'yeni' || o.kip === 'ka' ? o.kip : null,
+    ae: o.ae === 'br' || o.ae === 'gzip' || o.ae === 'identity' ? o.ae : null,
+    sunucuAyar: o.sunucuAyar && typeof o.sunucuAyar === 'object' ? { seviye: sayiVeya(nesne(o.sunucuAyar).seviye), static: nesne(o.sunucuAyar).static === true } : null,
   };
 }
 const hizlarNormalle = (x: unknown) => (Array.isArray(x) ? x.map(cokluHizNormalle) : []);
@@ -889,6 +909,29 @@ export function cokluNormalle(x: unknown): NlCokluKarsilastirma {
     esikler: { esikCpu: sayiVeya(e.esikCpu) ?? 10, esikP95: sayiVeya(e.esikP95) ?? 10, esikZarar: sayiVeya(e.esikZarar) ?? 5 },
   };
 }
+
+// ── TOPLU RAPOR (2026-11-04) ─────────────────────────────────────────────────────────────────────────
+// GET /rapor?kuyruk= ya da ?kosular= (en cok 100). Satir = kosu x hiz. Olculmeyen null; sunucu ayari olmayan kosuda seviye /
+// static alanlari '-'. Yazilamayan kosu 409 degil `atlananlar`da.
+export const RAPOR_MAX_KOSU = 100;
+export type NlRaporYok = '-';
+export interface NlRaporSatir {
+  kosuNo: number; etiket: string | null; hiz: number; protokol: NlProtokol; kip: string; ae: string;
+  brotliSeviye: number | NlRaporYok; gzipSeviye: number | NlRaporYok; gzipStatikSeviye: number | NlRaporYok; gzipStatik: boolean | NlRaporYok;
+  brotliStatikSeviye: number | NlRaporYok; brotliStatik: boolean | NlRaporYok;
+  toplamIstek: number | null; p50: number | null; p95: number | null; p99: number | null; hostCpu: number | null; bantBps: number | null;
+  tarih: string | null; sureSn: number | null; durum: string | null; gecerlilik: string | null; tekrar: number; gecerliTekrar: number;
+  gercekRps: number | null; nedenler: string[]; uyarilar: string[]; kosuNedenleri: string[]; kipDogrulama: 'tamam' | 'uyari' | 'olculmedi';
+  ttfbP95: number | null; tlsP95: number | null; connectP95: number | null; sunucuP95: number | null; hataOrani: number | null;
+  n429: number | null; n5xx: number | null; atilan: number | null; cpuMsIstek: number | null; kapasite: number | null;
+  bellekMb: number | null; bellekKaynak: 'pss' | 'rss' | null; bellekArtisiMb: number | null; bellekNedenleri: string[];
+  bellekSizinti: { durum: string; kaynak: string | null; neden?: string | null } | null;
+  testGonderilenBps: number | null; nicOrtBps: number | null; nicMaxBps: number | null; baytIstek: number | null;
+  yukCpuBosta: number | null; yukBellekYuzde: number | null; yukDoydu: boolean; gzUretilen: number | null; brUretilen: number | null; diskKanit: string | null;
+}
+export type NlRaporAtlamaNedeni = 'bulunamadi' | 'on_kontrol' | 'bitmemis' | 'olcum_yok' | 'hesaplanamadi' | 'kosu_baslamadi';
+export interface NlRaporAtlanan { kosuId: number | null; etiket: string | null; neden: NlRaporAtlamaNedeni; durum: string | null }
+export interface NlRapor { ok: true; satirlar: NlRaporSatir[]; atlananlar: NlRaporAtlanan[] }
 
 // ── KOSU SILME (2026-11-04) ───────────────────────────────────────────────────────────────────────────
 export const SIL_MAX_TOPLU = 50;
@@ -1009,6 +1052,12 @@ export const nginxLoadtestApi = {
       }
       throw e;
     }
+  },
+  /** Toplu rapor (2026-11-04): kuyruk ya da kosular (yalniz biri; en cok 100). 400 sinir / numara, 409 kuyruk_yok. */
+  rapor: async (o: { kuyruk: number } | { kosular: number[] }): Promise<NlRapor> => {
+    const q = new URLSearchParams('kuyruk' in o ? { kuyruk: String(o.kuyruk) } : { kosular: o.kosular.join(',') });
+    const r = await okJson<NlRapor>(await fetch(`${BASE}/rapor?${q}`));
+    return { ...r, satirlar: Array.isArray(r.satirlar) ? r.satirlar : [], atlananlar: Array.isArray(r.atlananlar) ? r.atlananlar : [] };
   },
   /** Admin. Kosu etiketini degistirir (bos = kaldir); 400 uzunluk / kontrol karakteri, 409 kosu_yok. Denetime yazilir. */
   etiketDegistir: (id: number, etiket: string): Promise<NlEylem & { etiket?: string | null }> => fetch(`${BASE}/kosular/${id}/etiket`, json({ etiket }, 'PUT')).then(safeJson),

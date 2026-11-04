@@ -21,6 +21,7 @@
 //   KQ11 uyari turu, govde dogrulama, zamanlama, kuyruk HATALI (KUYRUK_HATA_SINIRI=120 ardisik hata, ~30 dk)
 //   KQ12 iptal ile geri alma yarisi (yetim BEKLIYOR yok); bitmis kuyruk iptal edilmez
 //   KQ13 sira sutunu   KQ14 ikinci sure kapisi (plan butcesi)   KQ15 kirasiz surec yazmaz   KQ16 etiket kontrol karakteri
+//   KQ17 static sunucu ayari: sure kapilari (plan ve kosu oncesi) dosya uretimi payini (180 sn) sayar
 'use strict';
 
 const { test } = require('node:test');
@@ -47,7 +48,7 @@ const db = {
 /** Sahte islem: index.cjs ile ayni sira (satir -> kanca -> launch). */
 function sahteIslem() {
   const I = {
-    launch: [], cagri: [], yetki: { ok: true }, planHata: null, okHata: [], kosuHata: [], uyarilar: [], butce: 600, hedef: 'GBNGXT33', oncesiKanca: null,
+    launch: [], cagri: [], yetki: { ok: true }, sunucuAyar: null, planHata: null, okHata: [], kosuHata: [], uyarilar: [], butce: 600, hedef: 'GBNGXT33', oncesiKanca: null,
     // launchHata: satir + kanca SONRASI (gercek kosuyuBaslat gibi) hata; kosuId eklenir, satir FAILED. okOncesi: on kontrol hatasindan once.
     launchHata: [], okOncesi: null,
     yetkiVarMi: async (u) => {
@@ -58,7 +59,7 @@ function sahteIslem() {
     plan: async (g) => {
       I.cagri.push(['plan', g.etiket]);
       if (I.planHata) throw I.planHata;
-      return { hedefTuru: 'sunucu', hedefHost: I.hedef, hedefIp: g.hedefIp, parametreler: { butceSn: I.butce }, uyarilar: [], etiket: g.etiket };
+      return { hedefTuru: 'sunucu', hedefHost: I.hedef, hedefIp: g.hedefIp, parametreler: { butceSn: I.butce, sunucuAyar: I.sunucuAyar }, uyarilar: [], etiket: g.etiket };
     },
     kosuOku: async (id) => {
       const k = D.kosular.find((x) => x.id === id);
@@ -79,7 +80,7 @@ function sahteIslem() {
   };
   async function baslat(islem, u, etiket, kanca) {
     const id = 100 + D.kosular.length + 1;
-    D.kosular.push({ id, islem, etiket, durum: 'QUEUED', created_by: u, kilit_id: `L${id}`, parametreler: JSON.stringify({ butceSn: I.butce }), finished_at: null });
+    D.kosular.push({ id, islem, etiket, durum: 'QUEUED', created_by: u, kilit_id: `L${id}`, parametreler: JSON.stringify({ butceSn: I.butce, sunucuAyar: I.sunucuAyar }), finished_at: null });
     if (I.oncesiKanca) await I.oncesiKanca(id);
     try {
       await kanca(id);
@@ -702,4 +703,37 @@ test('KQ16 kuyruk etiketi / adi kontrol karakteri tasiyamaz', () => {
   }
   assert.throws(() => kuyruk.kuyrukGovdesi({ ad: 'gece\u0007x', ogeler: [{ etiket: 'a', govde }] }, { simdiMs: BAS }), /Kuyruk adı/);
   assert.equal(kuyruk.kuyrukGovdesi({ ogeler: [{ etiket: 'A3 brotli 4 – ç', govde }] }, { simdiMs: BAS }).ogeler[0].etiket, 'A3 brotli 4 – ç');
+});
+
+test('KQ17 static sunucu ayari: sure kapilari dosya uretimi payini sayar', async () => {
+  // Plan kapisi: kalan 10 dk = 300 pay + 300 butce sigar; static +180 sigmaz.
+  sifirla();
+  let I = sahteIslem();
+  kuyrukKur(D, { kuyruk: { en_gec_bitis: BAS + 10 * DK }, ogeler: [{ etiket: 'A1', butce_sn: 100 }] });
+  I.butce = 300;
+  I.sunucuAyar = { seviye: 6, static: true, dizin: '/usr/nginx/applications/a' };
+  await tur(I);
+  assert.equal(oge(1).durum, 'ATLANDI');
+  assert.match(oge(1).neden, /^süre yetmedi: tahmini 13 dk/);
+  // Static kapali: pay yok, ayni butce sigar.
+  sifirla();
+  I = sahteIslem();
+  kuyrukKur(D, { kuyruk: { en_gec_bitis: BAS + 10 * DK }, ogeler: [{ etiket: 'A1', butce_sn: 100 }] });
+  I.butce = 300;
+  I.sunucuAyar = { seviye: 6, static: false, dizin: '/usr/nginx/applications/a' };
+  await tur(I);
+  assert.equal(oge(1).durum, 'CALISIYOR');
+  // Kosu oncesi kapi: kalan 7 dk; butce 300 sigar, static +180 sigmaz.
+  sifirla();
+  I = sahteIslem();
+  kuyrukKur(D, { kuyruk: { en_gec_bitis: BAS + 15 * DK }, ogeler: [{ etiket: 'A1', butce_sn: 100 }] });
+  I.butce = 300;
+  I.sunucuAyar = { seviye: 6, static: true, dizin: '/usr/nginx/applications/a' };
+  await tur(I);
+  assert.equal(oge(1).durum, 'CALISIYOR');
+  D.simdi += 8 * DK;
+  bitir(101);
+  await tur(I);
+  assert.equal(oge(1).durum, 'ATLANDI');
+  assert.match(oge(1).neden, /^süre yetmedi: tahmini 8 dk/);
 });
