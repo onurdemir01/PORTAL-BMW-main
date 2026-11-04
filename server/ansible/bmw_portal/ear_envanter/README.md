@@ -73,7 +73,8 @@ Eksik ya da kesik tarama **hiçbir katmanda TAM görünmez**.
 - Variables **prompt on launch AÇIK**. Kapalıysa `hedefler` sessizce yutulur.
 - **Forks 50.**
 - Makine kimliği hedeflere ve GBLABT02'ye bağlanabilmeli; `dzdo` ile `was` geçişi izinli olmalı (LogX Legacy ile aynı).
-- Template ID: Admin › Sistem › `EAR_ENVANTER_TEMPLATE_ID`; Playbook Kayıtları › `server_hub_ear_envanter`.
+- Template ID: Admin › Playbook Kayıtları › `server_hub_ear_envanter` satırı (ya da sunucu ortamında `EAR_ENVANTER_TEMPLATE_ID`).
+- Portal tarafı: Server Hub › Uygulama Envanteri. Haftalık tarama varsayılan olarak **kapalı**; 1-5 sunucuyla elle pilot yapıldıktan sonra Admin açar.
 
 ## Elle pilot (tek host, insan okunur, salt okunur)
 

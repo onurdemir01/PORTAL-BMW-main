@@ -202,6 +202,8 @@ const SYSTEM_CONFIG_KEYS = [
   'CSRF_ORIGIN_CHECK',
   'PORTAL_FRAME_ANCESTORS',
   'PORTAL_HSTS_MAX_AGE',
+  // Server Hub > Uygulama Envanteri ciktisi (/sw; playbook'a ear_dizin olarak gider). Her kullanimda okunur.
+  'EAR_ENVANTER_DIR',
 ];
 
 // RESTART GEREKTIRMEYEN anahtarlar. Portalin cogu modulu env'i boot'ta okuyup
@@ -233,6 +235,7 @@ const HOT_RELOADABLE_KEYS = [
   'CSRF_ORIGIN_CHECK',
   'PORTAL_FRAME_ANCESTORS',
   'PORTAL_HSTS_MAX_AGE',
+  'EAR_ENVANTER_DIR',
 ];
 
 const LOAD_TIMEOUT_MS = 8000; // olu DB boot'u sonsuza dek bloklamasin

@@ -1,0 +1,468 @@
+// server/server-hub/__tests__/ear-envanter-poller.test.cjs - Uygulama Envanteri kosu yurutucusu.
+//
+//   EPO1  hedefler: tekil, BUYUK harf, gecersiz ad dislanir ve sayilir, ortamlar birlesir
+//   EPO2  partiler: boyut 1..100, son parti kalan kadar
+//   EPO3  SOZLESME: extraVars anahtarlari playbook basliginda belgeli ve playbook'un assert regex'lerini gecer
+//   EPO4  set_stats baska kosu / partiye aitse kullanilmaz; 2.16 metin sayilari kabul
+//   EPO5  host sonucu: dosya -> veri; dosya yok + playbook "paket yazdim" -> OKUNAMADI; PYTHON_YOK
+//         korunur; hic sonuc yok -> SONUC_YOK (nedeniyle); bozuk dosya -> OKUNAMADI
+//   EPO6  kosu sonucu: eksik ya da gelmeyen host varken TAMAMLANDI yok; hic veri -> BASARISIZ
+//   EPO7  parti baslatma: CAS tutmazsa AWX'e gidilmez; yapilandirma hatasi kosuyu durdurur;
+//         gecici hata yeniden denenir, 3. denemede parti HATA ve hostlari SONUC_YOK
+//   EPO8  alim: her beklenen host bir satir alir (veri, PYTHON_YOK, SONUC_YOK); yazilamayan veri
+//         partiyi kilitlemez (OKUNAMADI); parti BITTI yalniz ALINIYOR'dan
+//   EPO9  zamanlayici: kapali -> yok; template yoksa kosu ACILMAZ; varsa haftanin anahtariyla acilir
+//   EPO10 sozde istek: AWX'e giden kimlik hic bos degil; zamanlayici gercek bir kisi adi tasimaz
+//   EPO11 kosu acma: calisan kosu varsa 409 (zamanlayicida sessiz null); ilk parti istek icinde baslar
+'use strict';
+
+const { test, beforeEach, afterEach } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+
+const F = require('./fixtures/ear-envanter.cjs');
+
+const REG_YOLU = path.join(__dirname, '..', '..', 'ansible', 'playbook-registry.cjs');
+const INV_YOLU = path.join(__dirname, '..', '..', 'inventory', 'mssql.cjs');
+const RUNNER_YOLU = path.join(__dirname, '..', '..', 'ansible', 'runner.cjs');
+const PLAYBOOK = path.join(
+  __dirname,
+  '..',
+  '..',
+  'ansible',
+  'bmw_portal',
+  'ear_envanter',
+  'ear_envanter.yml',
+);
+
+const sahteModul = (yol, exports) => {
+  require.cache[yol] = { id: yol, filename: yol, loaded: true, exports };
+};
+
+let poller;
+let alim;
+// Ayar modulunun 30 sn'lik onbellegi testler arasinda tasinmasin: moduller her adimda tazelenir.
+function yenidenYukle() {
+  for (const k of Object.keys(require.cache))
+    if (/ear-envanter-(poller|ayar|alim|saklama)\.cjs$/.test(k)) delete require.cache[k];
+  poller = require('../ear-envanter-poller.cjs');
+  alim = require('../ear-envanter-alim.cjs');
+}
+beforeEach(yenidenYukle);
+afterEach(() => {
+  poller._durdurForTest();
+  F.dbKaldir();
+  for (const y of [REG_YOLU, INV_YOLU, RUNNER_YOLU]) delete require.cache[y];
+});
+
+const kosu = (ek = {}) => ({
+  id: 41,
+  kip: 'TAM',
+  kaynak: 'ELLE',
+  kapsam: 'SECILI',
+  durum: 'CALISIYOR',
+  baslatan: 'ayse',
+  parametreler: JSON.stringify({
+    kokler: '/vhosting:/vhosting8',
+    okuma_kullanicisi: 'was',
+    dizin: '/sw/ORNEK/ear',
+  }),
+  ...ek,
+});
+const parti = (ek = {}) => ({
+  id: 7,
+  kosu_id: 41,
+  parti_no: 3,
+  hostlar: JSON.stringify([
+    { host: 'APPSRV01', ortam: 'PROD' },
+    { host: 'APPSRV02', ortam: 'PROD' },
+  ]),
+  host_sayisi: 2,
+  durum: 'BEKLIYOR',
+  baslatma_denemesi: 0,
+  alim_denemesi: 0,
+  ...ek,
+});
+
+test('EPO1 hedefleri duzle', () => {
+  const r = poller.hedefleriDuzle([
+    { host: 'appsrv01', ortam: 'PROD' },
+    { host: 'APPSRV01', ortam: 'DR' },
+    { host: 'bad host', ortam: 'X' },
+    { host: '', ortam: 'X' },
+    { host: 'appsrv02' },
+  ]);
+  assert.deepEqual(r.hedefler, [
+    { host: 'APPSRV01', ortam: 'DR,PROD' },
+    { host: 'APPSRV02', ortam: '' },
+  ]);
+  assert.equal(r.gecersiz, 1);
+});
+
+test('EPO2 partilere bol', () => {
+  const h = Array.from({ length: 230 }, (_, i) => ({ host: `H${i}` }));
+  assert.deepEqual(
+    poller.partilereBol(h, 100).map((p) => p.host_sayisi),
+    [100, 100, 30],
+  );
+  assert.deepEqual(
+    poller.partilereBol(h, 500).map((p) => p.host_sayisi),
+    [100, 100, 30],
+    'ust sinir 100',
+  );
+  assert.deepEqual(
+    poller.partilereBol(h.slice(0, 3), 2).map((p) => [p.parti_no, p.host_sayisi]),
+    [
+      [1, 2],
+      [2, 1],
+    ],
+  );
+});
+
+test('EPO3 SOZLESME: extraVars playbook basligi ve assert regexleri', () => {
+  const yml = fs.readFileSync(PLAYBOOK, 'utf8');
+  const belgeli = new Set([...yml.matchAll(/^#\s{1,4}([a-z_]+):\s/gm)].map((m) => m[1]));
+  const ev = poller.extraVarsOf(kosu(), parti());
+  for (const k of Object.keys(ev))
+    assert.ok(belgeli.has(k), `${k} playbook basliginda belgeli degil`);
+  const regexler = [
+    ...yml.matchAll(/\((\w+) \| default\([^)]*\)(?: \| string)?\) is match\('([^']+)'\)/g),
+  ];
+  assert.ok(regexler.length >= 5, 'assert regexleri okunamadi (kor)');
+  for (const [, ad, re] of regexler) {
+    if (!(ad in ev)) continue;
+    assert.match(String(ev[ad]), new RegExp(re), `${ad}=${ev[ad]} playbook assert'ini gecmez`);
+  }
+  assert.deepEqual(ev.hedefler, ['APPSRV01', 'APPSRV02']);
+  assert.ok(ev.hedefler.every((h) => /^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$/.test(h)));
+  assert.equal(typeof ev.ear_kosu_no, 'string');
+});
+
+test('EPO4 set_stats eslesmesi', () => {
+  const ok = poller.statsHaritasi(
+    {
+      kosu_no: '41',
+      parti_no: '3',
+      hostlar: [{ host: 'appsrv01', durum: 'SONUC', paket: 'True' }],
+    },
+    kosu(),
+    parti(),
+  );
+  assert.equal(ok.uyusmazlik, null);
+  assert.equal(ok.harita.get('APPSRV01').durum, 'SONUC');
+  const yanlis = poller.statsHaritasi(
+    { kosu_no: 40, parti_no: 3, hostlar: [{ host: 'APPSRV01' }] },
+    kosu(),
+    parti(),
+  );
+  assert.equal(yanlis.harita.size, 0);
+  assert.match(yanlis.uyusmazlik, /başka bir koşuya ait/);
+});
+
+test('EPO5 host sonucu kaynaklari', async () => {
+  const d = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'ear-pol-')));
+  fs.mkdirSync(path.join(d, 'kosu-41', 'raw'), { recursive: true });
+  fs.writeFileSync(path.join(d, 'kosu-41', 'raw', 'APPSRV01.out'), F.paketYap(F.ornekYuk()));
+  fs.writeFileSync(path.join(d, 'kosu-41', 'raw', 'APPSRV03.out'), 'yarim cikti');
+  const k = kosu();
+  const p = parti();
+  const al = (host, stats, isNotu) =>
+    poller.hostuAl(k, p, { host, ortam: 'PROD' }, stats, d, isNotu);
+  const veri = await al('APPSRV01', { durum: 'SONUC', paket: true });
+  assert.equal(veri.host.veri_var, 1);
+  assert.equal(veri.host.playbook_durum, 'SONUC');
+  assert.equal((await al('APPSRV02', { durum: 'SONUC', paket: 'True' })).host.durum, 'OKUNAMADI');
+  assert.equal(
+    (await al('APPSRV02', { durum: 'PYTHON_YOK', paket: false })).host.durum,
+    'PYTHON_YOK',
+  );
+  const yok = await al('APPSRV02', null, 'AWX işi failed');
+  assert.equal(yok.host.durum, 'SONUC_YOK');
+  assert.equal(yok.host.veri_var, 0);
+  assert.match(yok.host.hata, /AWX işi failed/);
+  assert.equal((await al('APPSRV03', null)).host.durum, 'OKUNAMADI');
+});
+
+test('EPO6 kosu sonucu', () => {
+  const s = (tam, kokYok, kismi, basarisiz) => poller.kosuSonucu({ tam, kokYok, kismi, basarisiz });
+  assert.equal(s(10, 2, 0, 0), 'TAMAMLANDI');
+  assert.equal(s(10, 0, 1, 0), 'KISMI');
+  assert.equal(s(10, 0, 0, 1), 'KISMI', 'gelmeyen host varken TAMAMLANDI olmaz');
+  assert.equal(s(0, 0, 0, 5), 'BASARISIZ');
+  assert.equal(s(0, 3, 0, 0), 'TAMAMLANDI');
+});
+
+function partiDb({ cas = 1, ek = [] } = {}) {
+  return F.sahteDb([
+    [
+      /SELECT TOP 1 \* FROM ear_envanter_partileri WHERE kosu_id = \$1 AND durum = 'BEKLIYOR'/,
+      () => ({ rows: [parti()] }),
+    ],
+    [
+      /SET durum = 'CALISIYOR', baslatma_denemesi = baslatma_denemesi \+ 1/,
+      () => ({ rowCount: cas }),
+    ],
+    ...ek,
+  ]);
+}
+
+test('EPO7 parti baslatma kurallari', async () => {
+  // CAS tutmadi: AWX'e gidilmez.
+  let cagri = 0;
+  poller.kur({ launch: async () => (cagri += 1) });
+  F.dbKur(partiDb({ cas: 0 }));
+  assert.deepEqual(await poller.siradakiPartiyiBaslat(kosu()), { bekliyor: true });
+  assert.equal(cagri, 0);
+
+  // Basari: is numarasi yazilir, extraVars dogru.
+  let gelen;
+  poller.kur({
+    launch: async (req, key, ad, ev) => (
+      (gelen = { req, key, ev }),
+      { jobId: 900, awxServerId: 2, status: 'pending' }
+    ),
+  });
+  const db1 = partiDb();
+  F.dbKur(db1);
+  assert.deepEqual(await poller.siradakiPartiyiBaslat(kosu()), { partiNo: 3, jobId: 900 });
+  assert.equal(gelen.key, 'server_hub_ear_envanter');
+  assert.equal(gelen.req.session.user.username, 'ayse');
+  assert.ok(
+    db1.cagrilar.some(
+      (c) => /SET awx_server_id = \$2, awx_job_id = \$3/.test(c.sql) && c.params[2] === 900,
+    ),
+  );
+
+  // Yapilandirma hatasi (template yok): kosu BASARISIZ, istek sahibine hata.
+  poller.kur({
+    launch: async () => {
+      throw Object.assign(new Error('template yok'), { status: 501 });
+    },
+  });
+  const db2 = partiDb({
+    ek: [
+      [
+        /FROM ear_envanter_kosulari k LEFT JOIN ear_envanter_hostlari/,
+        () => ({ rows: [{ beklenen: 2 }] }),
+      ],
+    ],
+  });
+  F.dbKur(db2);
+  await assert.rejects(
+    poller.siradakiPartiyiBaslat(kosu(), { session: { user: { username: 'ayse' } } }),
+    /template yok/,
+  );
+  const bitir = db2.cagrilar.find((c) =>
+    /UPDATE ear_envanter_kosulari\s+SET durum = \$2/.test(c.sql),
+  );
+  assert.equal(bitir.params[1], 'BASARISIZ');
+  assert.ok(
+    db2.cagrilar.some((c) => /SET durum = 'IPTAL'.*durum = 'BEKLIYOR'/s.test(c.sql)),
+    'bekleyen partiler iptal edilmedi',
+  );
+
+  // Gecici hata: yeniden denenecek (BEKLIYOR), elle istekte bile FIRLATILMAZ.
+  poller.kur({
+    launch: async () => {
+      throw Object.assign(new Error('AWX zaman asimi'), { status: 424 });
+    },
+  });
+  const db3 = partiDb();
+  F.dbKur(db3);
+  const r3 = await poller.siradakiPartiyiBaslat(kosu(), {
+    session: { user: { username: 'ayse' } },
+  });
+  assert.equal(r3.yenidenDenenecek, true);
+  assert.equal(
+    db3.cagrilar.find((c) => /SET durum = \$2, hata = \$3/.test(c.sql)).params[1],
+    'BEKLIYOR',
+  );
+
+  // Ucuncu deneme: parti HATA, hostlari SONUC_YOK satiri alir.
+  const db4 = F.sahteDb([
+    [
+      /SELECT TOP 1 \* FROM ear_envanter_partileri/,
+      () => ({ rows: [parti({ baslatma_denemesi: 2 })] }),
+    ],
+    [/SET durum = 'CALISIYOR'/, () => ({ rowCount: 1 })],
+  ]);
+  F.dbKur(db4);
+  const r4 = await poller.siradakiPartiyiBaslat(kosu());
+  assert.equal(r4.yenidenDenenecek, false);
+  assert.equal(
+    db4.cagrilar.find((c) => /SET durum = \$2, hata = \$3/.test(c.sql)).params[1],
+    'HATA',
+  );
+  const yazilan = db4.cagrilar
+    .filter((c) => c.sql === alim.HOST_YAZ_SQL)
+    .map((c) => [c.params[1], JSON.parse(c.params[2])[0].durum]);
+  assert.deepEqual(yazilan, [
+    ['APPSRV01', 'SONUC_YOK'],
+    ['APPSRV02', 'SONUC_YOK'],
+  ]);
+});
+
+test('EPO8 parti alimi', async () => {
+  const d = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'ear-alim2-')));
+  fs.mkdirSync(path.join(d, 'kosu-41', 'raw'), { recursive: true });
+  fs.writeFileSync(path.join(d, 'kosu-41', 'raw', 'APPSRV01.out'), F.paketYap(F.ornekYuk()));
+  const k = kosu({ parametreler: JSON.stringify({ dizin: d }) });
+  const p = parti({
+    durum: 'ALINIYOR',
+    hostlar: JSON.stringify([{ host: 'APPSRV01' }, { host: 'APPSRV02' }, { host: 'APPSRV03' }]),
+  });
+  let ilkYazim = true;
+  const db = F.sahteDb([
+    [
+      /^SET XACT_ABORT ON;\nBEGIN TRAN;\nDELETE FROM ear_envanter_warlari/,
+      (params) => {
+        // Verili hostun ilk yazimi patlar (ornegin beklenmeyen veri); bos satir yazimi gecer.
+        if (params[1] === 'APPSRV01' && ilkYazim) {
+          ilkYazim = false;
+          throw new Error('String or binary data would be truncated');
+        }
+        return { rowCount: 1 };
+      },
+    ],
+    [/SET durum = 'BITTI'/, () => ({ rowCount: 1 })],
+  ]);
+  F.dbKur(db);
+  const st = {
+    status: 'failed',
+    jobExplanation: '',
+    artifacts: {
+      ear_envanter_result: {
+        kosu_no: 41,
+        parti_no: 3,
+        hostlar: [{ host: 'APPSRV02', durum: 'PYTHON_YOK', paket: false }],
+      },
+    },
+  };
+  const r = await poller.partiyiAl(k, p, st);
+  assert.equal(r.toplam, 3);
+  const yazilan = db.cagrilar
+    .filter((c) => c.sql === alim.HOST_YAZ_SQL)
+    .map((c) => [c.params[1], JSON.parse(c.params[2])[0].durum]);
+  assert.deepEqual(yazilan, [
+    ['APPSRV01', 'TAM'],
+    ['APPSRV01', 'OKUNAMADI'],
+    ['APPSRV02', 'PYTHON_YOK'],
+    ['APPSRV03', 'SONUC_YOK'],
+  ]);
+  const bitti = db.cagrilar.find((c) => /SET durum = 'BITTI'/.test(c.sql));
+  assert.match(bitti.sql, /WHERE id = \$1 AND durum = 'ALINIYOR'/);
+  assert.match(bitti.params[2], /AWX işi failed/);
+});
+
+test('EPO9 zamanlayici', async () => {
+  const ayarDb = (rows) =>
+    F.sahteDb([
+      [/FROM ear_envanter_ayarlar/, () => ({ rows })],
+      [/INSERT INTO ear_envanter_kosulari/, () => ({ rows: [{ id: 77 }] })],
+    ]);
+  const pazar = new Date('2026-11-07T23:30:00Z'); // TR: Pazar 02:30
+  F.dbKur(ayarDb([]));
+  assert.equal(await poller.zamanlayiciyiKontrolEt(pazar), null, 'varsayilan KAPALI');
+
+  yenidenYukle();
+  F.dbKur(ayarDb([{ anahtar: 'zamanlayici', deger: 'ACIK' }]));
+  sahteModul(REG_YOLU, {
+    getByKey: async () => ({ enabled: true }),
+    getEffectiveTemplateId: () => null,
+  });
+  assert.deepEqual(await poller.zamanlayiciyiKontrolEt(pazar), { atlandi: 'template_yok' });
+
+  yenidenYukle();
+  const db = ayarDb([{ anahtar: 'zamanlayici', deger: 'ACIK' }]);
+  F.dbKur(db);
+  sahteModul(REG_YOLU, {
+    getByKey: async () => ({ enabled: true }),
+    getEffectiveTemplateId: () => 55,
+  });
+  sahteModul(INV_YOLU, {
+    query: async () => ({
+      recordset: [
+        { host: 'appsrv01', env: 'PROD' },
+        { host: 'appsrv02', env: 'PROD' },
+      ],
+    }),
+  });
+  const k = await poller.zamanlayiciyiKontrolEt(pazar);
+  assert.equal(k.id, 77);
+  const ins = db.cagrilar.find((c) => /INSERT INTO ear_envanter_kosulari/.test(c.sql));
+  assert.equal(ins.params[1], 'ZAMANLAYICI');
+  assert.equal(ins.params[2], 'FILO');
+  assert.equal(ins.params[7], 'H-2026-11-08', 'anahtar TR tarihiyle');
+  assert.equal(ins.opts.tekrar, false, 'kosu acma yeniden denenmemeli');
+});
+
+test('EPO10 sozde istek', () => {
+  const z = poller.sozdeIstek(
+    kosu({ kaynak: 'ZAMANLAYICI', baslatan: 'ear-envanter-zamanlayici' }),
+  );
+  assert.equal(z.session.user.username, 'ear-envanter-zamanlayici');
+  assert.equal(z.session.user.role, 'system');
+  const e = poller.sozdeIstek(kosu({ baslatan: '' }));
+  assert.equal(e.session.user.username, 'unknown');
+  assert.ok(e.session && e.session.user, 'launch req.session.user ister');
+});
+
+test('EPO11 kosu acma', async () => {
+  sahteModul(INV_YOLU, { query: async () => ({ recordset: [] }) });
+  F.dbKur(F.sahteDb([[/INSERT INTO ear_envanter_kosulari/, () => ({ rows: [{ id: null }] })]]));
+  await assert.rejects(
+    poller.kosuOlustur({ kip: 'TAM', hedefler: [{ host: 'APPSRV01' }], baslatan: 'ayse' }),
+    (e) => e.status === 409,
+  );
+  assert.equal(
+    await poller.kosuOlustur({
+      kip: 'TAM',
+      hedefler: [{ host: 'APPSRV01' }],
+      baslatan: 'x',
+      zamanlayiciAnahtari: 'H-2026-11-08',
+    }),
+    null,
+  );
+  await assert.rejects(
+    poller.kosuOlustur({ kip: 'HIZLI', hedefler: [{ host: 'A1' }] }),
+    (e) => e.status === 400,
+  );
+  await assert.rejects(
+    poller.kosuOlustur({ kip: 'TAM', hedefler: [{ host: 'kotu ad' }] }),
+    (e) => e.status === 400,
+  );
+  await assert.rejects(
+    poller.kosuOlustur({ kip: 'OZET', hedefler: null }),
+    (e) => e.status === 422,
+    'bos filo',
+  );
+
+  let baslatildi = null;
+  poller.kur({
+    launch: async (req, key, ad, ev) => ((baslatildi = ev), { jobId: 5, awxServerId: 0 }),
+  });
+  const db = F.sahteDb([
+    [/INSERT INTO ear_envanter_kosulari/, () => ({ rows: [{ id: 41 }] })],
+    [/SELECT \* FROM ear_envanter_kosulari WHERE id = \$1/, () => ({ rows: [kosu()] })],
+    [/SELECT TOP 1 \* FROM ear_envanter_partileri/, () => ({ rows: [parti({ parti_no: 1 })] })],
+    [/SET durum = 'CALISIYOR'/, () => ({ rowCount: 1 })],
+  ]);
+  F.dbKur(db);
+  const r = await poller.kosuOlustur({
+    kip: 'TAM',
+    hedefler: [{ host: 'appsrv01' }, { host: 'appsrv02' }],
+    baslatan: 'ayse',
+    req: { session: { user: { username: 'ayse' } } },
+  });
+  assert.equal(r.id, 41);
+  assert.deepEqual(r.ilkParti, { partiNo: 1, jobId: 5 });
+  assert.deepEqual(baslatildi.hedefler, ['APPSRV01', 'APPSRV02']);
+  const ins = db.cagrilar.find((c) => /INSERT INTO ear_envanter_kosulari/.test(c.sql));
+  assert.equal(ins.params[2], 'SECILI');
+  assert.match(
+    poller.KOSU_OLUSTUR_SQL,
+    /WITH \(UPDLOCK, HOLDLOCK\)\s+WHERE durum = 'CALISIYOR' OR \(\$8 IS NOT NULL AND zamanlayici_anahtari = \$8\)/,
+  );
+});

@@ -783,6 +783,12 @@ function initServerHub(app) {
   // Reboot Kontrolu (2026-10-08): once/sonra goruntu + otomatik duzeltme (reboot-check.cjs).
   require('./reboot-check.cjs').mount(router, { launch, HOST_RE, limit: ayarlar.limit });
 
+  // Uygulama Envanteri (2026-11-04): /vhosting + /vhosting8 EAR/WAR, SALT OKUNUR tarama (ear-envanter.cjs).
+  require('./ear-envanter.cjs').mount(router, {
+    launch,
+    audit: (req, detail) => require('../audit/index.cjs').auditPortal(req, 'server_hub', { detail: JSON.stringify(detail) }),
+  });
+
   // ── KURALLAR & LIMITLER (2026-10-20) ───────────────────────────────────────────────
   // Kullanici: "hangi maddeler taraniyor ve hangi maddelerin hangi ciktilari kritik, uyari, bilgi ve
   // sorun yok olarak algilaniyor? ... istedigimde bunlarin kritiklik seviyesini degistirebilmek
