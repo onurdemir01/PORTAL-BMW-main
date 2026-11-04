@@ -26,6 +26,7 @@ import os
 import re
 import socket
 import stat
+import struct
 import sys
 import time
 import zipfile
@@ -186,9 +187,36 @@ def zip_zaman(dt):
         return 0
 
 
+def zip_merkez_giris_sayisi(tam):
+    """ZIP'i acmadan EOCD'den merkez dizini giris sayisini okur; ZIP64/multi-disk fail-closed."""
+    fd = os.open(tam, os.O_RDONLY)
+    try:
+        boyut = os.fstat(fd).st_size
+        if boyut < 22:
+            return None
+        kuyruk = min(boyut, 65557)  # EOCD 22 bayt + en cok 65535 bayt yorum.
+        os.lseek(fd, boyut - kuyruk, os.SEEK_SET)
+        veri = os.read(fd, kuyruk)
+    finally:
+        os.close(fd)
+    yer = veri.rfind(b'PK\x05\x06')
+    if yer < 0 or yer + 22 > len(veri):
+        return None
+    _, disk, merkez_disk, disk_giris, toplam, merkez_boyut, _, yorum = struct.unpack_from('<4s4H2LH', veri, yer)
+    if yer + 22 + yorum > len(veri):
+        return None
+    if disk or merkez_disk or disk_giris != toplam or toplam == 0xffff or merkez_boyut == 0xffffffff:
+        return -1
+    return toplam
+
+
 def arsiv_war_isle(u, war, girisler, on_ek, yapi):
     """Paketli WAR'in merkez dizinini WAR kaydina ve (TAM) agac satirlarina isler."""
     for ad, boyut, dt in sorted(girisler):
+        if sure_doldu():
+            war['durum'] = 'KISMI_ZAMAN'
+            uyar(u, 'sure butcesi doldu: ' + war['yol'], 'KISMI_ZAMAN')
+            return
         if u['giris'] >= SINIR_UYGULAMA or HOST['giris'] >= SINIR_HOST:
             war['durum'] = 'KISMI_SINIR'
             uyar(u, 'giris siniri: ' + war['yol'], 'KISMI_SINIR')
@@ -308,15 +336,20 @@ def arsiv_uygulama(u, tam):
     """'.ear' arsiv dosyasi: merkez dizin; ic WAR'lar yalniz TAM kipte ve boyut sinirinin altinda acilir."""
     yapi, kutuphane = Iz(), Iz()
     try:
+        merkez_giris = zip_merkez_giris_sayisi(tam)
+        kalan = min(SINIR_UYGULAMA - u['giris'], SINIR_HOST - HOST['giris'])
+        if merkez_giris is not None and (merkez_giris < 0 or merkez_giris > max(0, kalan)):
+            uyar(u, 'arsiv merkez dizini giris siniri', 'KISMI_SINIR')
+            return yapi, kutuphane
         with zipfile.ZipFile(tam, 'r') as z:
             girisler = z.infolist()
             for i in sorted(girisler, key=lambda x: x.filename):
-                rel = i.filename.rstrip('/')
-                if not rel:
-                    continue
                 if sure_doldu():
                     uyar(u, 'sure butcesi doldu', 'KISMI_ZAMAN')
                     break
+                rel = i.filename.rstrip('/')
+                if not rel:
+                    continue
                 if u['giris'] >= SINIR_UYGULAMA or HOST['giris'] >= SINIR_HOST:
                     uyar(u, 'giris siniri', 'KISMI_SINIR')
                     break

@@ -319,8 +319,8 @@ test(
     });
     const au = uyg(arsiv, 'ARSIVBUYUK.ear');
     assert.equal(au.durum, 'KISMI_SINIR');
-    assert.equal(au.giris, 100);
-    assert.equal(au.satirlar.length, 100, 'TAM cikti uygulama sinirini asti');
+    assert.equal(au.giris, 0, 'limit ustu merkez dizini ZipFile ile materialize edildi');
+    assert.equal(au.satirlar.length, 0, 'limit ustu merkez dizini TAM cikti uretti');
     assert.equal(arsiv.durum, 'KISMI');
 
     // Host toplam siniri da dis arsiv dongusunde her giristen once uygulanir.
@@ -335,14 +335,51 @@ test(
     });
     const hu = uyg(host, 'HOSTBUYUK.ear');
     assert.equal(hu.durum, 'KISMI_SINIR');
-    assert.equal(hu.giris, 1000);
-    assert.equal(host.giris, 1000);
+    assert.equal(hu.giris, 0, 'host limitini asan merkez dizini on kapida durmadi');
+    assert.equal(host.giris, 0);
     assert.equal(host.durum, 'KISMI');
 
     // Sure butcesini 10 saniye bekletmeden kaynak kapisini da koru: dis EAR dongusunun
     // icinde sure ve iki giris siniri birlikte bulunmali.
     const arsivFonksiyonu = /def arsiv_uygulama\(u, tam\):([\s\S]*?)\ndef bitir\(/.exec(KAYNAK)?.[1] || '';
     assert.match(arsivFonksiyonu, /for i in sorted\([\s\S]*?if sure_doldu\(\):[\s\S]*?u\['giris'\] >= SINIR_UYGULAMA or HOST\['giris'\] >= SINIR_HOST/);
+
+    const sureProbe = (ear, kip) => {
+      const kod = [
+        'import importlib.util, json, sys',
+        'g=json.loads(sys.stdin.read())',
+        's=importlib.util.spec_from_file_location("ear_tara_probe", g["betik"])',
+        'm=importlib.util.module_from_spec(s); s.loader.exec_module(m)',
+        'm.KIP="TAM"; m.HOST={"giris":0,"zaman_doldu":False}',
+        'n=[0]',
+        'def doldu():',
+        ' n[0]+=1',
+        ' return True if g["kip"]=="kok" else n[0]>1',
+        'm.sure_doldu=doldu',
+        'u=m.yeni_uygulama("/probe", "A.ear", "ARSIV")',
+        'm.bitir(u, *m.arsiv_uygulama(u, g["ear"]))',
+        'print(json.dumps({"durum":u["durum"],"giris":u["giris"],"uyarilar":u["uyarilar"],"war":u["warlar"][0]["durum"] if u["warlar"] else None,"cagri":n[0]}))',
+      ].join('\n');
+      const r = spawnSync(PY.komut, [...PY.on, '-c', kod], {
+        input: JSON.stringify({ betik: BETIK, ear, kip }),
+      });
+      assert.equal(r.status, 0, String(r.stderr));
+      return JSON.parse(String(r.stdout));
+    };
+    const kokEar = path.join(kok, 'sure', 'KOK.ear');
+    zipYaz(kokEar, [['/', 'x']]);
+    assert.deepEqual(sureProbe(kokEar, 'kok'), {
+      durum: 'KISMI_ZAMAN', giris: 0, uyarilar: ['sure butcesi doldu'], war: null, cagri: 1,
+    });
+    const icWar = path.join(kok, 'sure', 'IC.war');
+    zipYaz(icWar, [['WEB-INF/a.class', 'x'], ['WEB-INF/b.class', 'x'], ['WEB-INF/c.class', 'x']]);
+    const icEar = path.join(kok, 'sure', 'IC.ear');
+    zipYaz(icEar, [['IC.war', icWar]]);
+    const ic = sureProbe(icEar, 'ic');
+    assert.equal(ic.durum, 'KISMI_ZAMAN');
+    assert.equal(ic.war, 'KISMI_ZAMAN');
+    assert.equal(ic.giris, 1, 'sure dolduktan sonra ic WAR girdileri islendi');
+    assert.equal(ic.cagri, 2, 'ic WAR dongusu sureyi yeniden olcmedi');
   },
 );
 
@@ -445,7 +482,6 @@ test(
       .filter((s) => !/^\s*#/.test(s))
       .join('\n');
     for (const kotu of [
-      'open(',
       'os.remove',
       'os.unlink',
       'os.rename',
@@ -463,6 +499,7 @@ test(
     ]) {
       assert.ok(!kod.includes(kotu), `salt okunur betikte yasak cagri: ${kotu}`);
     }
+    assert.ok(!/(^|[^\w.])open\(/m.test(kod), 'salt okunur betikte builtin open var');
     const yazanlar = kod.split('\n').filter((s) => s.includes('.write('));
     assert.ok(
       yazanlar.length > 0 && yazanlar.every((s) => /sys\.stdout\.(buffer\.)?write\(/.test(s)),
@@ -481,7 +518,7 @@ test(
 const AST_DENETIM = `
 import ast, json, sys
 IZIN = {
-    'os': {'environ', 'getuid', 'lstat', 'path', 'readlink', 'scandir'},
+    'os': {'O_RDONLY', 'SEEK_SET', 'close', 'environ', 'fstat', 'getuid', 'lseek', 'lstat', 'open', 'path', 'read', 'readlink', 'scandir'},
     'os.path': {'isdir', 'isfile', 'join', 'realpath'},
     'sys': {'stdout', 'version'},
     'socket': {'gethostname'},
@@ -494,6 +531,7 @@ IZIN = {
     'json': {'dumps'},
     're': {'I', 'compile'},
     'stat': {'filemode'},
+    'struct': {'unpack_from'},
 }
 IZINLI_FROM = {'collections': {'deque'}}
 YASAK_AD = {'open', '__import__', 'eval', 'exec', 'compile', 'getattr', 'setattr', 'globals', 'vars'}
