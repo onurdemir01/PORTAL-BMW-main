@@ -9,6 +9,7 @@
 //   EU5 uygulama listesi: kısmi durum yeşil değil; satır ayrıntıyı açar (WAR, kütüphane, kopyalar)
 //   EU6 ayarlar: planı açmak onay ister; kaydet yalnız değişen alanları planYaz ile tek istekte gönderir
 //   EU7 Server Hub sekme kaydı (kaynak)
+//   EU9 tablo seçiminden "Seçili sunucuları tara": çalışan koşu varken pencere açılmaz
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, fireEvent, waitFor, within, act } from '@testing-library/react';
 import { render } from '@/test/test-utils';
@@ -264,6 +265,18 @@ describe('Uygulama Envanteri sekmesi', () => {
       'href',
       '/api/server-hub/ear/agac/7/APPSRV01/0?bicim=txt',
     );
+  });
+
+  it('EU9 seçimle tarama çalışan koşu varken açılmaz', async () => {
+    const aktif = { id: 12, kip: 'OZET', kaynak: 'ELLE', kapsam: 'FILO', durum: 'CALISIYOR', beklenen: 2, tam: 0, kismi: 0, kok_yok: 0, basarisiz: 0, parti_sayisi: 1, baslatan: 'ayse', hata: null, created_at: '2026-11-04T10:00:00Z', finished_at: null, alinan: 0, partiler: [] };
+    m.ozet.mockResolvedValue(ozet({ aktif } as Partial<EarOzet>));
+    render(<EarEnvanterTab />);
+    await screen.findAllByText('APPSRV02');
+    fireEvent.click(screen.getByLabelText('seç: 7-APPSRV01-0'));
+    fireEvent.click(screen.getByRole('button', { name: /Seçili sunucuları tara/ }));
+    expect(screen.queryByRole('dialog', { name: /Şimdi tara/ })).toBeNull();
+    expect(screen.queryByLabelText('Sunucu listesi')).toBeNull();
+    m.ozet.mockResolvedValue(ozet());
   });
 
   it('EU6 planı açmak onay ister; yalnız değişen alanlar gider', async () => {

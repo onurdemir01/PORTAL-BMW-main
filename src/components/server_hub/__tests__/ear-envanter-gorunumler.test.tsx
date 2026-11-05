@@ -10,6 +10,7 @@
 //   EG4 dosya farkı: iki TAM kopya seçilir; hesaplanamadıysa NEDEN yazılır; liste sayılarıyla
 //   EG5 Uygulamalar: varsayılan kolonlar sade, fazlası kolon seçicide; süzgeç ve CSV bağlantısı aynı süzgeci taşır
 //   EG6 Koşular: plan anahtarı "plan 1" olarak okunur
+//   EG7 aynı sunucudaki iki uygulama seçilince sunucu taramaya BİR kez gider
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { render } from '@/test/test-utils';
@@ -323,6 +324,35 @@ describe('EG5 Uygulamalar', () => {
     expect(csv.getAttribute('href')).toBe(
       `/api/server-hub/ear/disa-aktar/uygulamalar.csv?f=${encodeURIComponent(f).replace(/%20/g, '+')}`,
     );
+  });
+});
+
+describe('EG7 Uygulamalar seçimi', () => {
+  it('aynı sunucudaki iki uygulama sunucuyu bir kez taratır', async () => {
+    const u = (uyg_no: number, host: string) => ({
+      kosu_id: 7,
+      host,
+      ortam: 'PROD',
+      uyg_no,
+      kip: 'TAM',
+      kok: '/vhosting8',
+      jboss: '8',
+      ad: `A${uyg_no}.ear`,
+      bicim: 'ACIK',
+      durum: 'TAM',
+      taranma_utc: null,
+    });
+    m.uygulamalar.mockResolvedValue({
+      ok: true,
+      satirlar: [u(0, 'APPSRV01'), u(1, 'APPSRV01'), u(2, 'APPSRV02')],
+      toplam: 3,
+    });
+    const tara = vi.fn();
+    render(<UygulamalarGorunum onAc={vi.fn()} onTara={tara} />);
+    await screen.findByText('A0.ear');
+    fireEvent.click(screen.getByLabelText('sayfadakilerin hepsini seç'));
+    fireEvent.click(screen.getByRole('button', { name: /Seçili sunucuları tara \(2\)/ }));
+    expect(tara).toHaveBeenCalledWith(['APPSRV01', 'APPSRV02']);
   });
 });
 

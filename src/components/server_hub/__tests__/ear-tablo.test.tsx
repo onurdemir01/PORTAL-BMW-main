@@ -2,7 +2,7 @@
 //
 //   ET1 sıralama: artan → azalan → kapalı; aria-sort; sunucuya s gider
 //   ET2 seçim süzgeci: değer listesi ÖTEKİ süzgeçlerle istenir (kendisi hariç); çoklu seçim + "(boş)" → f; çip ve
-//       tek tıkla kaldırma
+//       tek tıkla kaldırma; süzgeç değişince sayfa başa döner; açılır listede kolonun kendi süzgeci yok
 //   ET3 sayı süzgecinde en az ve en çok birlikte; metin içerir; evet / hayır
 //   ET4 kolon seçici: gizle / göster / varsayılana dön; localStorage'da kalır; depolama atarsa yine çalışır
 //   ET5 sayfalama: kesin sayaç, sonraki / son sayfa, sayfa boyu değişince başa döner ve kalır
@@ -141,6 +141,9 @@ describe('EarTablo', () => {
     }));
     tablo({ degerler });
     await screen.findByText('A1');
+    // Süzgeç değişince sayfa başa döner (2. sayfadan başlanır).
+    fireEvent.click(screen.getByRole('button', { name: 'Sonraki' }));
+    await waitFor(() => expect(istekler.at(-1)!.offset).toBe(100));
     fireEvent.click(screen.getByRole('button', { name: 'Sayı süz' }));
     fireEvent.change(screen.getByLabelText('Sayı en az'), { target: { value: '3' } });
     fireEvent.click(screen.getByRole('button', { name: 'Uygula' }));
@@ -161,6 +164,14 @@ describe('EarTablo', () => {
     );
     expect(istekler.at(-1)!.offset).toBe(0);
     expect(screen.getByText('A1, (boş)')).toBeInTheDocument();
+    // Değer listesi kolonun KENDİ süzgecini taşımaz (seçili değerler listede kalsın).
+    fireEvent.click(screen.getByRole('button', { name: 'Ad süz' }));
+    const p2 = await screen.findByRole('dialog', { name: 'Ad süzgeci' });
+    await waitFor(() =>
+      expect(degerler).toHaveBeenLastCalledWith('ad', '', [{ k: 'sayi', op: 'min', v: 3 }], ''),
+    );
+    expect(within(p2).getByLabelText('Ad: A1')).toBeChecked();
+    fireEvent.click(within(p2).getByRole('button', { name: 'Uygula' }));
     fireEvent.click(screen.getByRole('button', { name: 'Ad süzgecini kaldır' }));
     await waitFor(() => expect(istekler.at(-1)!.f).toEqual([{ k: 'sayi', op: 'min', v: 3 }]));
     fireEvent.click(screen.getByText('tümünü temizle'));
