@@ -9,7 +9,8 @@
 //     set_stats ozeti; hedef agaci DEGISMEZ
 // EP6 LIMIT KIPI (AWX'ten elle, hedefler yok): sunucular Limit'ten, cikti awx-<is>/raw, FQDN envanter
 //     adi kisa BUYUK harf olur, set_stats kaynak AWX
-// EP7 Limit BOS ve hedefler yok: is ilk play'de durur, hicbir sey taranmaz / yazilmaz
+// EP7 Limit BOS ve hedefler yok: is ilk play'de durur, hicbir sey taranmaz / yazilmaz; Limit var ama
+//     awx_job_id yok (AWX disi): acik mesajla durur
 // EP8 TUZAK: Portal kipi + dolu Limit -> localhost play'leri atlanir, is hicbir sey yapmadan biter
 //     (Portal bu yuzden Limit alani dolu sablonla baslatmaz; davranis degisirse bu test haber verir)
 'use strict';
@@ -429,6 +430,12 @@ test(
     assert.equal(ozetOku(r), null, 'set_stats yayinlanmamali');
     assert.ok(!fs.existsSync(cikti), "hicbir sey /sw'ye yazilmamali");
     assert.ok(!/TASK \[--- \[Task\] Tara/.test(r.stdout), 'tarama gorevi calismamali');
+
+    // AWX disinda Limit ile kosulup is numarasi verilmezse: acik mesajla durur, dizin acilmaz.
+    const r2 = oynat(inv, ['-l', 'HOSTA'], { ear_okuma_kullanicisi: '', ear_dizin: cikti });
+    assert.notEqual(r2.status, 0, 'awx_job_id yokken is basarili bitmemeli');
+    assert.match(r2.stdout, /Gecersiz girdi \(Limit kipi\): awx_job_id/);
+    assert.ok(!fs.existsSync(cikti), "awx_job_id yokken /sw'de dizin acilmamali");
   },
 );
 
