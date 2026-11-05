@@ -67,14 +67,65 @@ Eksik ya da kesik tarama **hiçbir katmanda TAM görünmez**.
 - **AWX `set_stats`:** `ear_envanter_result` = `{kosu_no, parti_no, kip, playbook_surum, beklenen, sonuc_alinan, hostlar[{host, paket, durum, rc, bayt, hata}]}`.
 - Ansible 2.16'da bu sayılar metin olarak gelir; Portal sayıya çevirir.
 
-## AWX template
+## AWX template (adım adım)
 
-- Proje: bu ağaç (`bmw_portal/ear_envanter/ear_envanter.yml`).
-- Variables **prompt on launch AÇIK**. Kapalıysa `hedefler` sessizce yutulur.
-- **Forks 50.**
-- Makine kimliği hedeflere ve GBLABT02'ye bağlanabilmeli; `dzdo` ile `was` geçişi izinli olmalı (LogX Legacy ile aynı).
-- Template ID: Admin › Playbook Kayıtları › `server_hub_ear_envanter` satırı (ya da sunucu ortamında `EAR_ENVANTER_TEMPLATE_ID`).
-- Portal tarafı: Server Hub › Uygulama Envanteri. Haftalık tarama varsayılan olarak **kapalı**; 1-5 sunucuyla elle pilot yapıldıktan sonra Admin açar.
+### 1. Dosyaları AWX projesine kopyala
+
+1. `server/ansible/bmw_portal/` klasörünü AWX projesindeki `bmw_portal/` klasörüne birebir kopyala (derinlik aynı kalmalı; bkz. `docs/AWX-KOPYALAMA-HARITASI.md`). Bu iş için gereken iki dosya:
+   - `bmw_portal/ear_envanter/ear_envanter.yml`
+   - `bmw_portal/ear_envanter/files/ear_tara.py`: playbook'un yanındaki `files/` alt klasöründe olmalı, yoksa betik bulunamaz.
+2. AWX › Resources › Projects › proje › **Sync**. Sync yapılmazsa yeni playbook seçim listesinde çıkmaz.
+
+### 2. Şablonu oluştur
+
+AWX › Resources › Templates › Add › **Add job template**
+
+| Alan | Değer |
+|---|---|
+| Name | Örneğin `BMW Portal - EAR Envanter` (ad serbest) |
+| Job type | `Run` |
+| Inventory | JBoss/WAS sunucu adlarını ve GBLABT02'yi çözebilen envanter (LogX Legacy / OpsX WAS'ın kullandığı) |
+| Project | `bmw_portal` ağacının bulunduğu proje |
+| Playbook | `bmw_portal/ear_envanter/ear_envanter.yml`. Portal adın `ear_envanter.yml` olduğunu denetler; başka bir playbook seçilirse iş başlatılmaz (409). |
+| Execution environment | Diğer `bmw_portal` şablonlarıyla aynı. Yalnız `ansible.builtin` modülleri kullanılıyor, ek koleksiyon gerekmez. |
+| Credentials | LogX Legacy / OpsX WAS'ın makine credential'ı (dzdo ile `was`'a geçebilen) |
+| Variables | Boş; **Prompt on launch AÇIK**. Kapalıysa AWX, Portal'ın gönderdiği `hedefler` listesini sessizce yok sayar; Portal başlatmadan önce sınar ve işi başlatmaz. |
+| Limit | Boş; Prompt on launch **kapalı** (Portal `limit` göndermez; hedefler `add_host` ile eklenir) |
+| Forks | **50** |
+| Verbosity | `0 (Normal)` |
+| Timeout | **3600** sn. ÖZET partisi en çok 100 sunucu; Forks 50 ile iki dalga × sunucu başına en çok 600 sn (`ear_zaman_asimi`) + `/sw` kopyası. |
+| Privilege Escalation | **Kapalı.** `dzdo → was` geçişini playbook yalnız tarama görevinde kendisi yapar. Açılırsa GBLABT02'deki dizin ve kopya adımları da kimlik değiştirir. |
+| Concurrent jobs | **Kapalı.** Portal partileri zaten sırayla başlatır. |
+
+**Save**'e bas. Template ID adres çubuğundaki URL'dedir: `.../templates/job_template/<ID>/details`.
+
+### 3. Yetki ve zamanlama
+
+- **Execute yetkisi yalnız Portal'ın AWX'e bağlandığı servis hesabında olsun.** extra_vars her değişkenin önüne geçer; şablonu AWX'ten elle başlatabilen biri `ear_okuma_kullanicisi`'nı ya da `ear_yazici_host`'u değiştirebilir.
+- **AWX'te bu şablona Schedule ekleme.** Haftalık tarama Portal'ın kendi zamanlayıcısıdır. AWX'ten `hedefler` olmadan başlayan iş ilk play'deki girdi doğrulamasında düşer.
+
+### 4. Portal'a bağla
+
+1. Admin › Playbook Kayıtları › `server_hub_ear_envanter` satırına Template ID'yi gir ve kaydet. Sunucu ortamında `EAR_ENVANTER_TEMPLATE_ID` de kullanılabilir.
+2. Server Hub › Uygulama Envanteri sekmesinde "AWX template'i tanımlı değil" uyarısı kalkmalı ve **Şimdi tara** düğmesi açılmalı.
+
+### 5. Pilot
+
+1. **Şimdi tara** penceresinde "Seçili sunucular"ı seç, 1–5 sunucu gir, kip olarak **TAM**'ı seç.
+2. AWX iş çıktısında tarama adımı `censored` görünür. Bu normal (`no_log`): betik ve çıktı AWX olay tablosuna yazılmaz.
+3. Dosyalar GBLABT02 üzerinde `/sw/BMW_PORTAL/ear_envanter/kosu-<no>/raw/<HOST>.out` altına yazılır. Bu yüzden:
+   - Bağlanan kullanıcı GBLABT02'de bu klasöre yazabilmeli.
+   - Portal aynı yolu okuyabilmeli (`EAR_ENVANTER_DIR`).
+
+| Ekranda görülen | Anlamı |
+|---|---|
+| "yanlış şablon" (409) | Template ID başka bir playbook'a ait |
+| `"Prompt on launch" (Variables) kapalı` | 2. adımdaki Variables › Prompt on launch kapalı |
+| Sunucu `KIMLIK_GECISI_YOK` | O sunucuda `dzdo -u was` izni yok |
+| Sunucu `PYTHON_YOK` | Sunucuda `python3` ya da `/usr/libexec/platform-python` yok |
+| Sunucu `ULASILAMADI` | SSH bağlantısı kurulamadı ya da envanter adı çözemedi |
+
+Sonuçlar doğruysa Uygulama Envanteri › Ayarlar'dan haftalık taramayı aç. Varsayılan **kapalı**dır; açılınca Pazar 02:00 (TR), TAM kip.
 
 ## Elle pilot (tek host, insan okunur, salt okunur)
 
