@@ -19,7 +19,8 @@
 //        bozar; jar surumu kutuphane izini degistirir
 //   ET11 insan kipi Turkce dosya adini kirmadan basar
 //   ET12 kaynak AST: modul nitelikleri IZIN listesinde (yasak listesi yeni cagriyi kacirir),
-//        zipfile.ZipFile yalniz 'r' kipinde, yazma yalniz stdout'a
+//        zipfile.ZipFile yalniz 'r' kipinde, os.open yalniz os.O_RDONLY, os.fdopen yalniz 'rb',
+//        yazma yalniz stdout'a
 'use strict';
 
 const { test } = require('node:test');
@@ -356,11 +357,14 @@ test(
         ' n[0]+=1',
         ' return True if g["kip"]=="kok" else n[0]>1',
         'm.sure_doldu=doldu',
+        'def yasak(*a, **kw): raise AssertionError("sure dolduktan sonra ZipFile acildi")',
+        'm.zipfile.ZipFile=yasak',
         'u=m.yeni_uygulama("/probe", "A.ear", "ARSIV")',
         'm.bitir(u, *m.arsiv_uygulama(u, g["ear"]))',
         'print(json.dumps({"durum":u["durum"],"giris":u["giris"],"uyarilar":u["uyarilar"],"war":u["warlar"][0]["durum"] if u["warlar"] else None,"cagri":n[0]}))',
       ].join('\n');
-      const r = spawnSync(PY.komut, [...PY.on, '-c', kod], {
+      // -B: betigi import eden sonda AWX'e aynen kopyalanan agaca __pycache__ birakmasin.
+      const r = spawnSync(PY.komut, [...PY.on, '-B', '-c', kod], {
         input: JSON.stringify({ betik: BETIK, ear, kip }),
       });
       assert.equal(r.status, 0, String(r.stderr));
@@ -422,7 +426,7 @@ test(
     assert.equal(sayacSonuc.durum, 'KISMI');
 
     const probe = (kod, girdi) => {
-      const r = spawnSync(PY.komut, [...PY.on, '-c', kod], { input: JSON.stringify(girdi) });
+      const r = spawnSync(PY.komut, [...PY.on, '-B', '-c', kod], { input: JSON.stringify(girdi) });
       assert.equal(r.status, 0, String(r.stderr));
       return JSON.parse(String(r.stdout));
     };
@@ -672,7 +676,7 @@ test(
 const AST_DENETIM = `
 import ast, json, sys
 IZIN = {
-    'os': {'O_RDONLY', 'SEEK_CUR', 'SEEK_END', 'SEEK_SET', 'close', 'environ', 'fdopen', 'fstat', 'getuid', 'lseek', 'lstat', 'open', 'path', 'read', 'readlink', 'scandir'},
+    'os': {'O_RDONLY', 'SEEK_END', 'SEEK_SET', 'environ', 'fdopen', 'getuid', 'lstat', 'open', 'path', 'readlink', 'scandir'},
     'os.path': {'isdir', 'isfile', 'join', 'realpath'},
     'sys': {'stdout', 'version'},
     'socket': {'gethostname'},
@@ -704,7 +708,10 @@ def sabit(n):
     return getattr(n, 'value', getattr(n, 's', None))
 
 agac = ast.parse(sys.stdin.read())
-ihlal, zip_sayisi, nitelik_sayisi = [], 0, 0
+ihlal, zip_sayisi, nitelik_sayisi, ac_sayisi = [], 0, 0, 0
+# os.open bayragi serbest kalirsa (O_TRUNC = 512, yazma+olustur+kesme = 577) izin listesi
+# bunu gormez; os.open / os.fdopen yalniz dogrudan cagri olarak ve sabit okuma kipiyle gecer.
+cagrilar = set(id(c.func) for c in ast.walk(agac) if isinstance(c, ast.Call))
 for n in ast.walk(agac):
     if isinstance(n, ast.Import):
         ihlal += ['import ' + a.name for a in n.names if a.name not in IZIN]
@@ -719,6 +726,8 @@ for n in ast.walk(agac):
                 ihlal.append(on + '.' + n.attr)
         if n.attr in YASAK_NITELIK:
             ihlal.append('.' + n.attr)
+        if nokta(n) in ('os.open', 'os.fdopen') and id(n) not in cagrilar:
+            ihlal.append(nokta(n) + ' cagri disinda')
         if n.attr == 'write' and nokta(n.value) not in ('sys.stdout', 'sys.stdout.buffer'):
             ihlal.append(str(nokta(n.value)) + '.write')
     elif isinstance(n, ast.Call):
@@ -730,7 +739,14 @@ for n in ast.walk(agac):
             kip += [sabit(k.value) for k in n.keywords if k.arg == 'mode']
             if kip != ['r']:
                 ihlal.append('zipfile.ZipFile kip=%r' % (kip,))
-print(json.dumps({'ihlal': ihlal, 'zip': zip_sayisi, 'nitelik': nitelik_sayisi}))
+        if nokta(n.func) == 'os.open':
+            ac_sayisi += 1
+            if len(n.args) != 2 or n.keywords or nokta(n.args[1]) != 'os.O_RDONLY':
+                ihlal.append('os.open yalniz (yol, os.O_RDONLY)')
+        if nokta(n.func) == 'os.fdopen':
+            if len(n.args) != 2 or n.keywords or sabit(n.args[1]) != 'rb':
+                ihlal.append("os.fdopen yalniz (fd, 'rb')")
+print(json.dumps({'ihlal': ihlal, 'zip': zip_sayisi, 'nitelik': nitelik_sayisi, 'ac': ac_sayisi}))
 `;
 
 test(
@@ -743,6 +759,7 @@ test(
     // Korluk: denetci hicbir sey gormezse (ornegin ayristirma degisirse) yesil kalmasin.
     assert.ok(s.zip >= 2, `ZipFile cagrisi bulunamadi (${s.zip}); denetim kor`);
     assert.ok(s.nitelik >= 20, `modul niteligi bulunamadi (${s.nitelik}); denetim kor`);
+    assert.ok(s.ac >= 2, `os.open cagrisi bulunamadi (${s.ac}); bayrak denetimi kor`);
     assert.deepEqual(s.ihlal, [], `salt okunur betikte izin disi kullanim: ${s.ihlal.join(', ')}`);
   },
 );
