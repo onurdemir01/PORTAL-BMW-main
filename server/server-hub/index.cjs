@@ -118,8 +118,27 @@ const FIX_ACTIONS = new Set([
 
 // Son degerlendirme onbellegi (tum filo icin 7 tablo okumak 1-2 sn; ekran her acilista yeniden
 // okumasin). 60 sn; ?fresh=1 ve is bitisleri atlar.
+//
+// HIZ (2026-11-05, kullanici: "her tikladigimda bir seyler yukluyor"):
+//   - 60 sn - 15 dk arasi BAYAT deger HEMEN doner, arkada tek bir tazeleme baslar (ekran beklemez).
+//   - TEK UCUS: ayni anda gelen istekler (overview + findings + ayrinti) tek okumayi paylasir.
+//   - NESIL: onbellek her silindiginde (is bitti / seviye degisti) artar; silmeden ONCE baslamis okuma
+//     onbellege yazilmaz ve fresh istek ona katilmaz ("is bitti -> sonraki okuma taze" korunur).
+//   - fresh=true (duzeltme / auto-start / Yenile) hep taze okur.
+//   - sys.columns her TAM okumada yeniden okunur (onbelleklenmez): gecici sema hatasi hemen KAPALI'ya
+//     doner (C3); tam okuma zaten dakikada en cok bir kez.
 let _cache = { at: 0, value: null };
 const CACHE_MS = 60 * 1000;
+const BAYAT_MS = 15 * 60 * 1000;
+const YAVAS_MS = 2000;
+let _nesil = 0;
+let _ucus = null; // { nesil, p }
+let _sonOlcum = { db: 0, assess: 0 };
+
+function onbellekSil() {
+  _cache = { at: 0, value: null };
+  _nesil += 1;
+}
 
 async function loadLatest() {
   const { query } = require('../inventory/mssql.cjs');
@@ -258,7 +277,8 @@ async function loadJvmAgir(host) {
   if (!agir.length) return new Map();
   const rows = await query(
     `SELECT t.[gen], t.[jvm], ${agir.map((c) => `t.[${c}]`).join(', ')} FROM dbo.Server_Hub_Jvms t
-     JOIN (SELECT host, MAX(scan_date) AS d FROM dbo.Server_Hub_Hosts GROUP BY host) m
+     JOIN (SELECT host, MAX(scan_date) AS d FROM dbo.Server_Hub_Hosts
+            WHERE host = @h OR host LIKE @h + '.%' GROUP BY host) m
        ON m.host = t.host AND m.d = t.scan_date
      WHERE t.host = @h OR t.host LIKE @h + '.%'`,
     [{ name: 'h', type: sql.NVarChar(64), value: host }],
@@ -270,24 +290,73 @@ async function loadJvmAgir(host) {
   return out;
 }
 
-async function getAssessment(fresh) {
-  if (!fresh && _cache.value && Date.now() - _cache.at < CACHE_MS) return _cache.value;
-  const { tableMissing, data } = await loadLatest();
-  // Seviye degisiklikleri bulgu uretilirken uygulanir; ayarlar okunamazsa varsayilanlar (ekran soyler).
-  const ayar = await ayarlar.oku();
-  const value = tableMissing
-    ? { tableMissing: true, hosts: [], summary: null, latestScan: null }
-    : { tableMissing: false, ...assess(data, { seviyeler: ayar.seviyeler }) };
-  value.ayar = {
-    okunamadi: ayar.okunamadi === true,
-    seviyeDegisen: Object.keys(ayar.seviyeler).length,
-  };
-  // SEMA BILINMIYOR (C3) sonucu onbellege ALINMAZ: gecici hata 60 sn boyunca "kapali" /
-  // "geri alma serbest" gostermesin; bir sonraki istek kolonlari yeniden okur. Onceki
-  // (saglam) onbellek de silinir - ekran ayni dakika icinde iki farkli gercek gostermesin.
-  if (value.schemaUnknown) _cache = { at: 0, value: null };
-  else _cache = { at: Date.now(), value };
-  return value;
+/** Tam okuma + degerlendirme (tek ucus; nesil eskiyse sonuc onbellege yazilmaz). */
+function hesapla() {
+  if (_ucus && _ucus.nesil === _nesil) return _ucus.p;
+  const nesil = _nesil;
+  const p = (async () => {
+    const t0 = Date.now();
+    const { tableMissing, data } = await loadLatest();
+    const t1 = Date.now();
+    // Seviye degisiklikleri bulgu uretilirken uygulanir; ayarlar okunamazsa varsayilanlar (ekran soyler).
+    const ayar = await ayarlar.oku();
+    const value = tableMissing
+      ? { tableMissing: true, hosts: [], summary: null, latestScan: null }
+      : { tableMissing: false, ...assess(data, { seviyeler: ayar.seviyeler }) };
+    value.ayar = {
+      okunamadi: ayar.okunamadi === true,
+      seviyeDegisen: Object.keys(ayar.seviyeler).length,
+    };
+    _sonOlcum = { db: t1 - t0, assess: Date.now() - t1 };
+    if (Date.now() - t0 > YAVAS_MS)
+      console.log(
+        `[ServerHub] degerlendirme ${Date.now() - t0} ms (db ${_sonOlcum.db}, assess ${_sonOlcum.assess})`,
+      );
+    // SEMA BILINMIYOR (C3) sonucu onbellege ALINMAZ: gecici hata 60 sn boyunca "kapali" /
+    // "geri alma serbest" gostermesin; bir sonraki istek kolonlari yeniden okur. Onceki
+    // (saglam) onbellek de silinir - ekran ayni dakika icinde iki farkli gercek gostermesin.
+    if (value.schemaUnknown) _cache = { at: 0, value: null };
+    else if (nesil === _nesil) _cache = { at: Date.now(), value };
+    return value;
+  })();
+  _ucus = { nesil, p };
+  p.then(
+    () => {
+      if (_ucus && _ucus.p === p) _ucus = null;
+    },
+    () => {
+      if (_ucus && _ucus.p === p) _ucus = null;
+    },
+  );
+  return p;
+}
+
+/**
+ * Degerlendirme. olcum (istege bagli) doldurulur: { kaynak: onbellek | bayat | taze, db, assess }.
+ * 60 sn icinde onbellek; 15 dk'ya kadar BAYAT deger hemen doner ve arkada tazelenir; daha eskisi,
+ * silinmis onbellek ya da fresh=true tam okumayi bekler.
+ */
+async function getAssessment(fresh, olcum) {
+  const yas = Date.now() - _cache.at;
+  if (!fresh && _cache.value && yas < CACHE_MS) {
+    if (olcum) Object.assign(olcum, { kaynak: 'onbellek' });
+    return _cache.value;
+  }
+  if (!fresh && _cache.value && yas < BAYAT_MS) {
+    hesapla().catch((e) => console.warn('[ServerHub] arka plan tazelemesi dustu:', e && e.message));
+    if (olcum) Object.assign(olcum, { kaynak: 'bayat' });
+    return _cache.value;
+  }
+  const v = await hesapla();
+  if (olcum) Object.assign(olcum, { kaynak: 'taze', ..._sonOlcum });
+  return v;
+}
+
+/** Server-Timing basligi (DevTools > Network > Timing): kaynak ve sureler. */
+function sureBasligi(res, o) {
+  const parca = [`sh;desc="${o.kaynak || 'taze'}"`];
+  if (o.kaynak === 'taze') parca.push(`db;dur=${Number(o.db) || 0}`, `assess;dur=${Number(o.assess) || 0}`);
+  res.set('Server-Timing', parca.join(', '));
 }
 
 /** /overview rollback alani (EK-1). Sema bilinmiyorsa v3 sayimi yapilamaz: geri alma YOK. */
@@ -495,7 +564,9 @@ function initServerHub(app) {
 
   router.get('/overview', async (req, res) => {
     try {
-      const a = await getAssessment(req.query.fresh === '1');
+      const olcum = {};
+      const a = await getAssessment(req.query.fresh === '1', olcum);
+      sureBasligi(res, olcum);
       if (a.tableMissing)
         return res.json({
           ok: true,
@@ -528,11 +599,27 @@ function initServerHub(app) {
     }
   });
 
+  // Yalniz taranmis sunucu adlari (Reboot Kontrolu "taranmis mi" isaretini bundan cizer): tum filo
+  // degerlendirmesini istemciye indirmez. /overview ile AYNI kume (taramadan dusenler haric).
+  router.get('/host-adlari', async (req, res) => {
+    try {
+      const a = await getAssessment(false);
+      res.json({
+        ok: true,
+        hosts: a.tableMissing ? [] : a.hosts.filter((h) => !h.taramadanDustu).map((h) => h.host),
+      });
+    } catch (err) {
+      res.status(500).json({ ok: false, message: err.message || 'Sunucu listesi alınamadı.' });
+    }
+  });
+
   // Bulgular (2026-09-22): "init/apache sozdizimi sorunlarini toplu liste olarak nasil gorurum?"
   // Tum sunucularin bulgulari tek listede; istemci suzer (alan/kod/onem/urun), CSV verir.
   router.get('/findings', async (req, res) => {
     try {
-      const a = await getAssessment(req.query.fresh === '1');
+      const olcum = {};
+      const a = await getAssessment(req.query.fresh === '1', olcum);
+      sureBasligi(res, olcum);
       if (a.tableMissing)
         return res.json({ ok: true, tableMissing: true, findings: [], latestScan: null });
       res.json({
@@ -555,7 +642,9 @@ function initServerHub(app) {
     if (!HOST_RE.test(host))
       return res.status(400).json({ ok: false, message: 'Geçersiz sunucu adı.' });
     try {
-      const a = await getAssessment(req.query.fresh === '1');
+      const olcum = {};
+      const a = await getAssessment(req.query.fresh === '1', olcum);
+      sureBasligi(res, olcum);
       const h = a.hosts.find((x) => x.host === host);
       if (!h)
         return res.status(400).json({ ok: false, message: `${host} için tarama verisi yok.` });
@@ -798,9 +887,7 @@ function initServerHub(app) {
   kuralMount(router, {
     ayarlar,
     getAssessment: (fresh) => getAssessment(fresh === true),
-    onbellekSil: () => {
-      _cache = { at: 0, value: null };
-    },
+    onbellekSil,
     audit: (req, detail) => {
       try {
         require('../audit/index.cjs').auditPortal(req, 'server_hub', { detail: JSON.stringify(detail) });
@@ -829,7 +916,7 @@ function initServerHub(app) {
           extractStatsKey(statusInfo.artifacts, 'server_hub_fix_result') ||
           extractStatsKey(statusInfo.artifacts, 'server_hub_scan_result') ||
           null;
-        _cache = { at: 0, value: null }; // tarama/duzeltme bitti -> sonraki okuma taze
+        onbellekSil(); // tarama/duzeltme bitti -> sonraki okuma taze (suren eski okuma da yazilmaz)
       }
       res.json({ ok: true, status: statusInfo.status, output: outputInfo.output || '', result });
     } catch (err) {
@@ -849,6 +936,16 @@ module.exports = {
   hostRow,
   hostDetail,
   loadLatest,
+  loadJvmAgir,
+  getAssessment,
+  onbellekSil,
   SH_KOLONLAR,
   JVM_AGIR_KOLONLAR,
+  CACHE_MS,
+  BAYAT_MS,
+  _onbellekSifirlaForTest: () => {
+    _cache = { at: 0, value: null };
+    _nesil = 0;
+    _ucus = null;
+  },
 };

@@ -33,17 +33,27 @@ vi.mock('@/api/rebootCheckApi', () => ({
   },
 }));
 vi.mock('@/api/serverHubApi', () => ({
-  serverHubApi: { overview: vi.fn(async () => ({ ok: true, hosts: [{ host: 'GBJBOP18' }] })), jobStatus: vi.fn() },
+  // Sekme yalniz sunucu adlarini ister (2026-11-05 hiz): tum filo degerlendirmesini (/overview) indirmez.
+  serverHubApi: {
+    hostAdlari: vi.fn(async () => ({ ok: true, hosts: ['GBJBOP18'] })),
+    overview: vi.fn(async () => {
+      throw new Error('Reboot Kontrolu /overview istememeli');
+    }),
+    jobStatus: vi.fn(),
+  },
 }));
 vi.mock('@/contexts/JobTrackerContext', () => ({ useJobTracker: () => ({ addJob: vi.fn() }) }));
 
 import RebootKontroluTab from '../RebootKontroluTab';
+import { serverHubApi } from '@/api/serverHubApi';
 
 describe('Reboot Kontrolü sekmesi', () => {
   it('RT1 kayıt açılır: önce ürünleri, sorunsuz/fark kaldı rozetleri, JVM satırı ve reboot doğrulaması görünür', async () => {
     render(<RebootKontroluTab />);
     fireEvent.click(await screen.findByText('#3'));
     expect(await screen.findByText('2 ürün kaydedildi')).toBeTruthy();
+    expect(serverHubApi.hostAdlari).toHaveBeenCalled();
+    expect(serverHubApi.overview).not.toHaveBeenCalled();
     expect(screen.getByText('Sorunsuz')).toBeTruthy();
     expect(screen.getByText('1 fark kaldı')).toBeTruthy();
     expect(screen.getByText('1 / 2 sunucu sorunsuz')).toBeTruthy();

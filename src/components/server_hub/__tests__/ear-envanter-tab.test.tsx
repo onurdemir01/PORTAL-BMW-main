@@ -449,6 +449,7 @@ describe('EU7 sekme kaydı', () => {
   it('Server Hub sekmesi', () => {
     const src = fs.readFileSync(path.join(__dirname, '..', 'ServerHubPage.tsx'), 'utf8');
     expect(src).toMatch(/\{ id: 'envanter', label: 'Uygulama Envanteri' \}/);
-    expect(src).toMatch(/\{tab === 'envanter' && <EarEnvanterTab \/>\}/);
+    // Sekme ziyaret edilince kurulur ve acik kalir (SekmeKabi; 2026-11-05 hiz).
+    expect(src).toMatch(/acilan\.has\('envanter'\) && \(\s*<SekmeKabi id="envanter" etkin=\{tab\}>\s*<EarEnvanterTab \/>/);
   });
 });
