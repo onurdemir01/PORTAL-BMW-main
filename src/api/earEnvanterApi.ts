@@ -28,6 +28,8 @@ export interface EarOrtamSayisi {
 export type EarKosuDurum = 'CALISIYOR' | 'TAMAMLANDI' | 'KISMI' | 'BASARISIZ' | 'IPTAL';
 
 export interface EarKosu {
+  /** Plan koşusunun anahtarı: P1-…, P2-… (eski haftalık: H-…). */
+  zamanlayici_anahtari?: string | null;
   id: number;
   kip: EarKip;
   kaynak: 'ELLE' | 'ZAMANLAYICI' | 'AWX';
@@ -111,7 +113,84 @@ export interface EarUygulama {
   yapi_izi: string | null;
   kutuphane_izi: string | null;
   uyari_sayisi: number | null;
+  /** JSON dizi (ilk 20 uyarı). */
+  uyarilar?: string | null;
   taranma_utc: string | null;
+  // Sunucunun eklediği alanlar (WAR'lardan ve eşlenik analizinden).
+  war_adlari?: string;
+  spring_security?: string | null;
+  logback?: string | null;
+  jackson?: string | null;
+  thymeleaf?: string | null;
+  struts?: string | null;
+  eslenik_ortam_ici?: EarKarar | null;
+  eslenik_ortamlar_arasi?: EarKarar | null;
+  eslenik_nesil?: EarKarar | null;
+}
+
+/** WAR listesi satırı (/ear/warlar). */
+export interface EarWarSatiri {
+  kosu_id: number;
+  host: string;
+  ortam: string | null;
+  jboss: string;
+  kok: string;
+  uygulama: string;
+  uyg_no: number;
+  war_no: number;
+  yol: string | null;
+  ad: string | null;
+  bicim: string | null;
+  durum: string | null;
+  jsp: number | null;
+  tld: number | null;
+  tld_dizini: boolean | null;
+  jar: number | null;
+  class_sayisi: number | null;
+  web_xml: boolean | null;
+  web_varyantlari: string | null;
+  jboss_web_xml: boolean | null;
+  jboss_deployment_structure: boolean | null;
+  spring_boot: string | null;
+  spring_framework: string | null;
+  spring_security: string | null;
+  log4j: string | null;
+  logback: string | null;
+  jackson: string | null;
+  thymeleaf: string | null;
+  struts: string | null;
+  servlet: string | null;
+  kutuphane_sayisi: number | null;
+}
+
+/** Ortamlar arası eşlenik grubu. */
+export interface EarOrtamlarArasi {
+  uygulama: string;
+  jboss: string;
+  karar: EarKarar;
+  kutuphane: EarKutuphaneSonucu;
+  yapi: EarYapiSonucu;
+  ortam_sayisi: number;
+  host_sayisi: number;
+  kopya_sayisi: number;
+  ortamlar: { ortam: string; hostlar: string[]; harfler: string[]; eksik: number }[];
+  farkli_ortamlar: string[];
+  eksik: string[];
+  kipler: EarKip[];
+  tarih_farki_gun: number;
+  tarih_bilinmeyen: number;
+  degiskenler: EarDegisken[];
+}
+
+/** Yapı farkı (iki TAM kopyanın dosya farkı). */
+export interface EarYapiFarki {
+  ok: boolean;
+  hesaplanamadi?: string;
+  ayni?: boolean;
+  yalnizA?: string[];
+  yalnizB?: string[];
+  tipFarkli?: { yol: string; a: string; b: string }[];
+  boyutFarkli?: { yol: string; a: number | string; b: number | string }[];
 }
 
 export interface EarKutuphane {
@@ -324,6 +403,32 @@ export interface EarUygulamaSuzgec {
   kosu?: number;
   limit?: number;
   offset?: number;
+  /** Sütun süzgeçleri (JSON dizi). */
+  f?: string;
+  /** Sıralama "kolon:asc|desc". */
+  s?: string;
+}
+/** Tablo isteği: sayfa + sütun süzgeci + sıralama + genel arama. */
+export interface EarTabloIstegi {
+  f?: string;
+  s?: string;
+  q?: string;
+  limit?: number;
+  offset?: number;
+  kosu?: number;
+}
+export interface EarEslenikIstegi {
+  tur: EarEslenikTuru;
+  q?: string;
+  ortam?: string;
+  karar?: string;
+  kutuphane?: string;
+  yapi?: string;
+  jboss?: string;
+  tarihFarki?: number;
+  tarihFarkiMax?: number;
+  limit?: number;
+  offset?: number;
 }
 
 const post = (body: unknown): RequestInit => ({
@@ -387,14 +492,30 @@ export const earApi = {
     jboss: string,
     ek: { tur?: EarEslenikTuru; host?: string; limit?: number; offset?: number } = {},
   ) => al<EarEslenikFarki>(`${BASE}/eslenik${sorguDizgisi({ ad, ortam, jboss, ...ek })}`),
-  kutuphaneler: (q = '') =>
-    al<{ ok: boolean; kutuphaneler: EarKutuphaneSatiri[] }>(
-      `${BASE}/kutuphaneler${sorguDizgisi({ q })}`,
+  kutuphaneler: (p: EarTabloIstegi = {}) =>
+    al<{ ok: boolean; kutuphaneler: EarKutuphaneSatiri[]; toplam: number }>(
+      `${BASE}/kutuphaneler${sorguDizgisi({ ...p })}`,
     ),
-  kutuphane: (ad: string, surum: string) =>
-    al<{ ok: boolean; kullananlar: EarKullanan[] }>(
-      `${BASE}/kutuphane${sorguDizgisi({ ad, surum })}`,
+  kutuphane: (ad: string, surum: string, sayfa: { limit?: number; offset?: number } = {}) =>
+    al<{ ok: boolean; kullananlar: EarKullanan[]; toplam: number }>(
+      `${BASE}/kutuphane${sorguDizgisi({ ad, surum, ...sayfa })}`,
     ),
+  warlar: (p: EarTabloIstegi) =>
+    al<{ ok: boolean; satirlar: EarWarSatiri[]; toplam: number }>(
+      `${BASE}/warlar${sorguDizgisi({ ...p })}`,
+    ),
+  /** Açılır liste: ilk 200 değer + sayı; öteki süzgeçlere göre daralır. */
+  degerler: (gorunum: 'uygulamalar' | 'warlar' | 'kutuphaneler', kolon: string, p: { ara?: string; f?: string; q?: string }) =>
+    al<{ ok: boolean; degerler: { deger: string | null; sayi: number }[]; farkli: number }>(
+      `${BASE}/degerler/${yol(gorunum)}/${yol(kolon)}${sorguDizgisi({ ...p })}`,
+    ),
+  eslenikListesi: <T = EarEslenik>(p: EarEslenikIstegi) =>
+    al<{ ok: boolean; satirlar: T[]; toplam: number; sayilar: Record<string, number> }>(
+      `${BASE}/eslenikler${sorguDizgisi({ ...p })}`,
+    ),
+  /** a, b: "koşu:sunucu:uygulama". */
+  yapiFarki: (a: string, b: string) =>
+    al<EarYapiFarki>(`${BASE}/yapi-farki${sorguDizgisi({ a, b })}`),
   hostlar: () => al<{ ok: boolean; hostlar: EarHost[] }>(`${BASE}/hostlar`),
   ayarYaz: (anahtar: string, deger: string) =>
     al<{ ok: boolean; anahtar: string; eski: string; yeni: string }>(
@@ -421,7 +542,8 @@ export type EarGorunum = 'uygulamalar' | 'warlar' | 'kutuphaneler' | 'sunucular'
 
 /** İndirme bağlantıları (GET; tarayıcı indirir). */
 export const earIndir = {
-  csv: (g: EarGorunum, kosu?: number) => `${BASE}/disa-aktar/${g}.csv${sorguDizgisi({ kosu })}`,
+  csv: (g: EarGorunum, p: Record<string, string | number | undefined> | number = {}) =>
+    `${BASE}/disa-aktar/${g}.csv${sorguDizgisi(typeof p === 'number' ? { kosu: p } : p)}`,
   zip: (kosu?: number, host?: string) => `${BASE}/disa-aktar-zip${sorguDizgisi({ kosu, host })}`,
   agacTxt: (kosu: number, host: string, uyg: number) =>
     `${BASE}/agac/${yol(kosu)}/${yol(host)}/${yol(uyg)}?bicim=txt`,

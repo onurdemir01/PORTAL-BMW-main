@@ -172,9 +172,20 @@ export function hostListesiAyristir(metin: string): { hostlar: string[]; gecersi
   };
 }
 
-/** Koşunun kaynağı: haftalık zamanlayıcı, AWX'ten Limit ile elle başlatılan iş ya da Portal'dan elle. */
-export const kaynakEtiketi = (k: string | null | undefined) =>
-  k === 'ZAMANLAYICI' ? 'haftalık' : k === 'AWX' ? 'AWX (Limit)' : 'elle';
+/**
+ * Koşunun kaynağı: otomatik plan (P1 / P2; eski tek haftalık plan "haftalık"), AWX'ten Limit ile elle
+ * başlatılan iş ya da Portal'dan elle.
+ */
+export const kaynakEtiketi = (k: string | null | undefined, anahtar?: string | null) =>
+  k === 'ZAMANLAYICI'
+    ? /^P1-/.test(anahtar || '')
+      ? 'plan 1'
+      : /^P2-/.test(anahtar || '')
+        ? 'plan 2'
+        : 'haftalık'
+    : k === 'AWX'
+      ? 'AWX (Limit)'
+      : 'elle';
 
 /** Kısa parmak izi gösterimi. */
 export const kisaIz = (s: string | null | undefined) => (s ? String(s).trim().slice(0, 8) : '—');

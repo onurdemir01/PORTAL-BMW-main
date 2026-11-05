@@ -248,10 +248,12 @@ describe('Uygulama Envanteri sekmesi', () => {
       ],
     });
     render(<EarEnvanterTab />);
-    const kismi = await screen.findByText('kısmi · sınır');
+    await screen.findAllByText('APPSRV02');
+    const tablo = screen.getByRole('table');
+    const kismi = within(tablo).getByText('kısmi · sınır');
     expect(kismi.closest('[data-ton]')).toHaveAttribute('data-ton', 'uyari');
-    expect(screen.getAllByText('tam')[0].closest('[data-ton]')).toHaveAttribute('data-ton', 'iyi');
-    fireEvent.click(screen.getAllByRole('button', { name: 'ORNEKPANEL.ear' })[0]);
+    expect(within(tablo).getAllByText('tam')[0].closest('[data-ton]')).toHaveAttribute('data-ton', 'iyi');
+    fireEvent.click(within(tablo).getAllByText('ORNEKPANEL.ear')[0]);
     await waitFor(() => expect(m.uygulama).toHaveBeenCalledWith(7, 'APPSRV01', 0));
     const pencere = await screen.findByRole('dialog');
     expect(within(pencere).getByText(/WAR'lar \(1\)/)).toBeInTheDocument();
