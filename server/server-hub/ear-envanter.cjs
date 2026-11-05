@@ -13,15 +13,20 @@
 // GET  /ear/kosu/:id                   kosu + partiler + hostlar
 // POST /ear/kosu                       { kip, kapsam: FILO | SECILI, hostlar } elle tarama
 // POST /ear/kosu/:id/iptal
-// GET  /ear/uygulamalar                ?q&ortam&jboss&durum&servlet&kosu&limit&offset
+// GET  /ear/uygulamalar                ?q&f&s&kosu&limit&offset (+ eski: ortam jboss durum servlet)
+// GET  /ear/warlar                     ?q&f&s&kosu&limit&offset
+// GET  /ear/degerler/:gorunum/:kolon   ?ara&q&f&kosu  (acilir liste: ilk 200 deger + sayi + farkli)
 // GET  /ear/uygulama/:kosu/:host/:uyg  WAR'lar, kutuphaneler, ayni adli kopyalar
 // GET  /ear/agac/:kosu/:host/:uyg      ?bicim=json|txt  (ham dosyadan; yalniz TAM ve saklama suresinde)
-// GET  /ear/eslenikler                 ?ortam&tumu=1
-// GET  /ear/eslenik                    ?ad&ortam&jboss  (kutuphane farki)
-// GET  /ear/kutuphaneler               ?q
-// GET  /ear/kutuphane                  ?ad&surum (kullanan uygulamalar)
+// GET  /ear/eslenikler                 ?tur&q&ortam&karar&kutuphane&yapi&jboss&tarihFarki&limit&offset
+// GET  /ear/eslenik                    ?tur&ad&ortam&jboss&host&limit&offset  (kutuphane farki)
+// GET  /ear/yapi-farki                 ?a=kosu:host:uyg&b=kosu:host:uyg  (iki TAM kopyanin dosya farki)
+// GET  /ear/kutuphaneler               ?q&f&s&limit&offset
+// GET  /ear/kutuphane                  ?ad&surum&limit&offset (kullanan uygulamalar)
 // GET  /ear/hostlar
-// GET  /ear/disa-aktar/:gorunum.csv    uygulamalar | warlar | kutuphaneler | sunucular | eslenikler
+// GET  /ear/disa-aktar/:gorunum.csv    uygulamalar | warlar | kutuphaneler (?q&f&s; AKIS) | sunucular |
+//                                      eslenikler (?tur ve eslenik suzgecleri)
+// Liste uclari TOPLAM sayiyi da dondurur; hicbir liste sessizce kesilmez (2026-11-05).
 // GET  /ear/disa-aktar-zip             ?kosu  (filo) | ?host&kosu (tek sunucu: tree.txt + inventory.json)
 // PUT  /ear/ayar/:anahtar              { deger }
 'use strict';
@@ -31,8 +36,11 @@ const ayar = require('./ear-envanter-ayar.cjs');
 const poller = require('./ear-envanter-poller.cjs');
 const sorgu = require('./ear-envanter-sorgu.cjs');
 const rapor = require('./ear-envanter-rapor.cjs');
+const eslenikMotoru = require('./ear-envanter-eslenik.cjs');
 
 const GORUNUMLER = new Set(['uygulamalar', 'warlar', 'kutuphaneler', 'sunucular', 'eslenikler']);
+const AKAN = new Set(['uygulamalar', 'warlar', 'kutuphaneler']);
+const ESLENIK_TURLERI = new Set(['ORTAM_ICI', 'ORTAMLAR_ARASI', 'NESIL', 'ORTAM_YOK']);
 const AGIR_SINIR = 2;
 const SECILI_SINIR = 1000;
 let _agir = 0;
@@ -138,6 +146,45 @@ async function hostYuku(kosuId, host) {
   } catch (e) {
     throw hata(422, `Ham dosya çözülemedi: ${e.message}`, 'ham_bozuk');
   }
+}
+
+/** "kosu:host:uyg" -> { kosu, host, uyg } */
+function kopyaParam(v) {
+  const m = /^(\d{1,9}):([^:]{1,64}):(\d{1,6})$/.exec(String(v || ''));
+  if (!m) throw hata(400, 'Kopya "koşu:sunucu:uygulama" biçiminde olmalı.', 'gecersiz_param');
+  return { kosu: Number(m[1]), host: hostParam(m[2]), uyg: Number(m[3]) };
+}
+
+const eslenikTuru = (v) => {
+  const t = String(v || '').toUpperCase();
+  return ESLENIK_TURLERI.has(t) ? t : null;
+};
+
+/** Istek -> eslenik listesi suzgeci (degerler kirpilir; bilinmeyen tur eski cagri sayilir). */
+function eslenikSuzgeci(q) {
+  const M = (v, n) => String(v == null ? '' : v).slice(0, n);
+  return {
+    kosu: q.kosu,
+    tur: eslenikTuru(q.tur),
+    tumu: q.tumu === '1',
+    q: M(q.q, 100),
+    ortam: M(q.ortam, 2000),
+    karar: M(q.karar, 300),
+    kutuphane: M(q.kutuphane, 300),
+    yapi: M(q.yapi, 300),
+    jboss: M(q.jboss, 2),
+    tarihFarki: q.tarihFarki,
+    limit: q.limit,
+    offset: q.offset,
+  };
+}
+
+const eskiParametreler = (q) => ({ ortam: q.ortam, jboss: q.jboss, durum: q.durum, servlet: q.servlet });
+
+/** WAR satiri istemciye kutuphane set izi olmadan gider (ic anahtar). */
+function setsiz(r) {
+  const { kutuphane_seti: _iz, ...x } = r;
+  return x;
 }
 
 function indir(res, ad, tur, govde) {
@@ -282,8 +329,43 @@ function mount(router, { launch, audit } = {}) {
         jboss: q.jboss,
         durum: q.durum,
         servlet: q.servlet,
+        f: q.f,
+        s: q.s,
         limit: q.limit || 100,
         offset: q.offset,
+      });
+      res.json({ ok: true, ...r });
+    } catch (e) {
+      hataYaniti(res, e);
+    }
+  });
+
+  router.get('/ear/warlar', async (req, res) => {
+    try {
+      const q = req.query;
+      const r = await sorgu.warlar({
+        kosu: q.kosu,
+        q: q.q,
+        f: q.f,
+        s: q.s,
+        limit: q.limit || 100,
+        offset: q.offset,
+      });
+      res.json({ ok: true, satirlar: r.satirlar.map(setsiz), toplam: r.toplam });
+    } catch (e) {
+      hataYaniti(res, e);
+    }
+  });
+
+  router.get('/ear/degerler/:gorunum/:kolon', async (req, res) => {
+    try {
+      const r = await sorgu.degerler({
+        gorunum: String(req.params.gorunum || ''),
+        kolon: String(req.params.kolon || ''),
+        kosu: req.query.kosu,
+        q: req.query.q,
+        f: req.query.f,
+        ara: req.query.ara,
       });
       res.json({ ok: true, ...r });
     } catch (e) {
@@ -351,14 +433,7 @@ function mount(router, { launch, audit } = {}) {
 
   router.get('/ear/eslenikler', async (req, res) => {
     try {
-      res.json({
-        ok: true,
-        ...(await sorgu.eslenikler({
-          kosu: req.query.kosu,
-          ortam: req.query.ortam,
-          tumu: req.query.tumu === '1',
-        })),
-      });
+      res.json({ ok: true, ...(await sorgu.eslenikler(eslenikSuzgeci(req.query))) });
     } catch (e) {
       hataYaniti(res, e);
     }
@@ -368,14 +443,56 @@ function mount(router, { launch, audit } = {}) {
     try {
       const ad = String(req.query.ad || '').slice(0, 256);
       if (!ad) throw hata(400, 'Uygulama adı gerekli.', 'gecersiz_param');
+      const tur = eslenikTuru(req.query.tur) || 'ORTAM_ICI';
       res.json({
         ok: true,
         ...(await sorgu.eslenikFarki({
           kosu: req.query.kosu,
+          tur,
           ad,
           ortam: String(req.query.ortam || ''),
           jboss: String(req.query.jboss || ''),
+          host: req.query.host ? hostParam(req.query.host) : '',
+          limit: req.query.limit,
+          offset: req.query.offset,
         })),
+      });
+    } catch (e) {
+      hataYaniti(res, e);
+    }
+  });
+
+  // Iki TAM kopyanin dosya farki. Agactan yeniden hesaplanan yapi izi tarayicinin iziyle TUTMAZSA fark
+  // gosterilmez (yaniltici liste yerine neden yazilir).
+  router.get('/ear/yapi-farki', async (req, res) => {
+    try {
+      const a = kopyaParam(req.query.a);
+      const b = kopyaParam(req.query.b);
+      const sonuc = await agirIs(async () => {
+        const oku = async (k) => {
+          const { yuk } = await hostYuku(k.kosu, k.host);
+          const u = (yuk.uygulamalar || [])[k.uyg];
+          if (!u) throw hata(409, `${k.host}: uygulama ham dosyada yok.`, 'uygulama_yok');
+          return { ...k, u, kip: yuk.kip };
+        };
+        return [await oku(a), await oku(b)];
+      });
+      const neden = (x) =>
+        x.kip !== 'TAM'
+          ? `${x.host}: ÖZET taramada dosya ağacı tutulmaz; TAM tarama gerekir.`
+          : x.u.durum !== 'TAM'
+            ? `${x.host}: tarama eksik (${x.u.durum}); dosya farkı güvenilir olmaz.`
+            : eslenikMotoru.yapiIzi(x.u.satirlar) !== String(x.u.yapi_izi || '')
+              ? `${x.host}: ağaç satırları tarayıcının yapı iziyle tutmuyor; fark hesaplanamadı.`
+              : null;
+      const engel = neden(sonuc[0]) || neden(sonuc[1]);
+      if (engel) return res.json({ ok: true, hesaplanamadi: engel });
+      res.json({
+        ok: true,
+        a: { host: a.host, kosu: a.kosu, yapi_izi: sonuc[0].u.yapi_izi },
+        b: { host: b.host, kosu: b.kosu, yapi_izi: sonuc[1].u.yapi_izi },
+        ayni: sonuc[0].u.yapi_izi === sonuc[1].u.yapi_izi,
+        ...eslenikMotoru.yapiFarki(sonuc[0].u.satirlar, sonuc[1].u.satirlar),
       });
     } catch (e) {
       hataYaniti(res, e);
@@ -384,10 +501,15 @@ function mount(router, { launch, audit } = {}) {
 
   router.get('/ear/kutuphaneler', async (req, res) => {
     try {
-      res.json({
-        ok: true,
-        kutuphaneler: await sorgu.kutuphaneler({ kosu: req.query.kosu, q: req.query.q }),
+      const r = await sorgu.kutuphaneler({
+        kosu: req.query.kosu,
+        q: req.query.q,
+        f: req.query.f,
+        s: req.query.s,
+        limit: req.query.limit,
+        offset: req.query.offset,
       });
+      res.json({ ok: true, kutuphaneler: r.satirlar, toplam: r.toplam });
     } catch (e) {
       hataYaniti(res, e);
     }
@@ -397,14 +519,14 @@ function mount(router, { launch, audit } = {}) {
     try {
       const ad = String(req.query.ad || '');
       if (!ad) throw hata(400, 'Kütüphane adı gerekli.', 'gecersiz_param');
-      res.json({
-        ok: true,
-        kullananlar: await sorgu.kutuphaneKullananlar({
-          kosu: req.query.kosu,
-          ad,
-          surum: req.query.surum,
-        }),
+      const r = await sorgu.kutuphaneKullananlar({
+        kosu: req.query.kosu,
+        ad,
+        surum: req.query.surum,
+        limit: req.query.limit,
+        offset: req.query.offset,
       });
+      res.json({ ok: true, kullananlar: r.satirlar, toplam: r.toplam });
     } catch (e) {
       hataYaniti(res, e);
     }
@@ -418,25 +540,79 @@ function mount(router, { launch, audit } = {}) {
     }
   });
 
-  async function gorunumSatirlari(gorunum, kosu) {
-    if (gorunum === 'uygulamalar') return (await sorgu.uygulamalar({ kosu })).satirlar;
-    if (gorunum === 'warlar') return sorgu.warlar({ kosu });
-    if (gorunum === 'kutuphaneler') return sorgu.kutuphaneler({ kosu });
-    if (gorunum === 'sunucular') return sorgu.hostlar({ kosu });
-    return (await sorgu.eslenikler({ kosu })).gruplar;
+  // AKIS: uygulamalar / warlar / kutuphaneler parca parca (5000) okunur ve yazilir; ekrandaki suzgec ve
+  // siralama aynen uygulanir. Eksik kalirsa (veri akista degisti) baglanti HATA ile kesilir.
+  async function akit(req, res, gorunum) {
+    const q = req.query;
+    const ortak = { kosu: q.kosu, q: q.q, f: q.f, s: q.s };
+    const fn = { uygulamalar: sorgu.uygulamalar, warlar: sorgu.warlar, kutuphaneler: sorgu.kutuphaneler }[gorunum];
+    // Ilk parca yazilmadan once dogrulanir: gecersiz suzgec 400 ile doner (baslik henuz gitmedi).
+    const ilk = await fn({ ...ortak, ...(gorunum === 'uygulamalar' ? eskiParametreler(q) : {}), limit: 1, offset: 0 });
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="ear-envanter_${gorunum}_${damga()}.csv"`);
+    res.setHeader('Cache-Control', 'no-store');
+    // Istemci baglantiyi kapatirsa 'drain' hic gelmez: 'close' bekleyen yazmayi reddeder (sizinti yok).
+    const yaz = (metin) =>
+      new Promise((coz, red) => {
+        if (res.destroyed) return red(new Error('istemci baglantiyi kapatti'));
+        if (res.write(metin)) return coz();
+        const temizle = () => {
+          res.off('drain', bosaldi);
+          res.off('close', kapandi);
+        };
+        const bosaldi = () => {
+          temizle();
+          coz();
+        };
+        const kapandi = () => {
+          temizle();
+          red(new Error('istemci baglantiyi kapatti'));
+        };
+        res.once('drain', bosaldi);
+        res.once('close', kapandi);
+        return undefined;
+      });
+    try {
+      const n = await rapor.csvAkisi(yaz, rapor.KOLONLAR[gorunum], async (offset, adet) => {
+        const r = await fn({
+          ...ortak,
+          ...(gorunum === 'uygulamalar' ? eskiParametreler(q) : {}),
+          limit: adet,
+          offset,
+        });
+        return { satirlar: r.satirlar, toplam: r.toplam };
+      });
+      denetim(req, { islem: 'csv', gorunum, satir: n, beklenen: ilk.toplam });
+      res.end();
+    } catch (e) {
+      console.warn('[EarEnvanter] csv akisi kesildi:', gorunum, e && e.message);
+      res.destroy(e);
+    }
+  }
+
+  async function gorunumSatirlari(gorunum, q) {
+    if (gorunum === 'sunucular') return sorgu.hostlar({ kosu: q.kosu });
+    const r = await sorgu.eslenikler({ ...eslenikSuzgeci(q), tur: eslenikTuru(q.tur) || 'ORTAM_ICI', limit: null });
+    return r.satirlar;
   }
 
   router.get('/ear/disa-aktar/:dosya', async (req, res) => {
     try {
       const m = /^([a-z]+)\.csv$/.exec(String(req.params.dosya || ''));
       if (!m || !GORUNUMLER.has(m[1])) throw hata(400, 'Bilinmeyen görünüm.', 'gecersiz_gorunum');
-      const satirlar = await gorunumSatirlari(m[1], req.query.kosu);
-      denetim(req, { islem: 'csv', gorunum: m[1], satir: satirlar.length });
+      if (AKAN.has(m[1])) return await akit(req, res, m[1]);
+      const satirlar = await gorunumSatirlari(m[1], req.query);
+      const tur = eslenikTuru(req.query.tur) || 'ORTAM_ICI';
+      const kolonAdi =
+        m[1] !== 'eslenikler'
+          ? m[1]
+          : { ORTAM_ICI: 'eslenikler', ORTAMLAR_ARASI: 'eslenikler_ortamlar_arasi', NESIL: 'eslenikler_nesil', ORTAM_YOK: 'eslenikler_ortam_yok' }[tur];
+      denetim(req, { islem: 'csv', gorunum: m[1], tur: m[1] === 'eslenikler' ? tur : undefined, satir: satirlar.length });
       indir(
         res,
-        `ear-envanter_${m[1]}_${damga()}.csv`,
+        `ear-envanter_${m[1] === 'eslenikler' ? kolonAdi : m[1]}_${damga()}.csv`,
         'text/csv; charset=utf-8',
-        rapor.csv(rapor.KOLONLAR[m[1]], satirlar),
+        rapor.csv(rapor.KOLONLAR[kolonAdi], satirlar),
       );
     } catch (e) {
       hataYaniti(res, e);
@@ -454,8 +630,9 @@ function mount(router, { launch, audit } = {}) {
         if (!kosu) throw hata(400, "Sunucu ZIP'i için koşu numarası gerekli.", 'gecersiz_kosu');
         girisler = await agirIs(async () => {
           const { yuk } = await hostYuku(kosu, host);
-          const uyg = (await sorgu.uygulamalar({ kosu })).satirlar.filter((r) => r.host === host);
-          const war = (await sorgu.warlar({ kosu })).filter((r) => r.host === host);
+          const tek = JSON.stringify([{ k: 'host', op: 'esit', v: host }]);
+          const uyg = (await sorgu.uygulamalar({ kosu, f: tek })).satirlar;
+          const war = (await sorgu.warlar({ kosu, f: tek })).satirlar.map(setsiz);
           const sunucu = (await sorgu.hostlar({ kosu })).find((r) => r.host === host) || null;
           return rapor.hostZipGirisleri({
             host,
@@ -472,10 +649,10 @@ function mount(router, { launch, audit } = {}) {
         girisler = await agirIs(async () =>
           rapor.filoZipGirisleri({
             uygulamalar: (await sorgu.uygulamalar({ kosu })).satirlar,
-            warlar: await sorgu.warlar({ kosu }),
-            kutuphaneler: await sorgu.kutuphaneler({ kosu }),
+            warlar: (await sorgu.warlar({ kosu })).satirlar.map(setsiz),
+            kutuphaneler: (await sorgu.kutuphaneler({ kosu })).satirlar,
             sunucular: await sorgu.hostlar({ kosu }),
-            eslenikler: (await sorgu.eslenikler({ kosu })).gruplar,
+            eslenik: await eslenikMotoru.analiz({ kosu }),
           }),
         );
         ad = `ear-envanter_${kosu ? `kosu${kosu}` : 'son'}_${damga()}.zip`;

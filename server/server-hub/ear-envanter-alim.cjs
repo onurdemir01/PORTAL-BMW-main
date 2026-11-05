@@ -209,21 +209,33 @@ function teknoloji(liste) {
   };
 }
 
-/** Kutuphane listesi -> { iz, satirlar } (sirali, kirpilmis). Bos liste -> null. */
+const izOf = (v) => crypto.createHash('sha256').update(JSON.stringify(v)).digest('hex').slice(0, 32);
+
+/**
+ * SURUM IZI (2026-11-05): ayni setin BOYUTSUZ izi ([ad, surum] listesi, ayni sirayla). Iki kopyanin
+ * kutuphane izleri farkli ama surum izleri ayniysa fark yalniz jar boyutundadir (ayni surum, farkli
+ * dosya). DB'deki eski setler icin eslenik analizi bunu set satirlarindan (sira ile) yeniden hesaplar.
+ */
+function surumIzi(satirlar) {
+  return izOf((satirlar || []).map((k) => [k[0], k[1]]));
+}
+
+/** Kutuphane listesi -> { iz, surumIzi, satirlar, kesildi } (sirali, kirpilmis). Bos liste -> null. */
 function kutuphaneSeti(liste) {
-  const satirlar = (Array.isArray(liste) ? liste : [])
+  const ham = Array.isArray(liste) ? liste : [];
+  const satirlar = ham
     .slice(0, SINIR_KUTUPHANE)
     .map((k) => [M(k && k[0], 200), M(k && k[1], 100), S(k && k[2])])
     .sort((x, y) =>
       x[0] < y[0] ? -1 : x[0] > y[0] ? 1 : x[1] < y[1] ? -1 : x[1] > y[1] ? 1 : x[2] - y[2],
     );
   if (!satirlar.length) return null;
-  const iz = crypto
-    .createHash('sha256')
-    .update(JSON.stringify(satirlar))
-    .digest('hex')
-    .slice(0, 32);
-  return { iz, satirlar };
+  return {
+    iz: izOf(satirlar),
+    surumIzi: surumIzi(satirlar),
+    satirlar,
+    kesildi: ham.length > SINIR_KUTUPHANE,
+  };
 }
 
 const birlesik = (degerler, n) => {
@@ -238,27 +250,39 @@ const birlesik = (degerler, n) => {
  */
 function hostKaydi(p, { host, kip, partiNo, ortam, playbookDurum, hamBayt }) {
   const setler = new Map();
-  const setEkle = (liste) => {
+  // SESSIZ KESILME YOK (2026-11-05): sinirdan fazlasi alinmaz ama uygulama KISMI_SINIR olur ve
+  // uyarisi yazilir; eksik liste eslenik karsilastirmasinda "ayni" ya da "farkli" sayilmaz.
+  let kesilen = null;
+  const setEkle = (liste, yer) => {
     const s = kutuphaneSeti(liste);
     if (!s) return null;
+    if (s.kesildi && kesilen) kesilen.push(`${yer}: kütüphane sayısı ${liste.length}; ilk ${SINIR_KUTUPHANE} alındı`);
     if (!setler.has(s.iz)) setler.set(s.iz, s.satirlar);
     return s.iz;
   };
   const uygulamalar = [];
   const warlar = [];
   const kaynak = p.uygulamalar.slice(0, SINIR_UYGULAMA);
+  let eksikUygulama = false;
   kaynak.forEach((u, i) => {
-    const wlist = (Array.isArray(u.warlar) ? u.warlar : []).slice(0, SINIR_WAR);
+    kesilen = [];
+    const tumWar = Array.isArray(u.warlar) ? u.warlar : [];
+    if (tumWar.length > SINIR_WAR)
+      kesilen.push(`WAR sayısı ${tumWar.length}; ilk ${SINIR_WAR} alındı`);
+    const wlist = tumWar.slice(0, SINIR_WAR);
     const wtek = wlist.map((w, j) => {
       const t = teknoloji(w.kutuphaneler);
       const kutuphaneSayisi = Array.isArray(w.kutuphaneler) ? w.kutuphaneler.length : 0;
+      const once = kesilen.length;
+      const kutuphaneSetiIz = setEkle(w.kutuphaneler, M(w.yol || w.ad, 200));
+      const warDurum = M(w.durum, 24);
       const satir = {
         uyg_no: i,
         war_no: j,
         yol: M(w.yol, 400),
         ad: M(w.ad, 256),
         bicim: M(w.bicim, 16),
-        durum: M(w.durum, 24),
+        durum: kesilen.length > once && warDurum === 'TAM' ? 'KISMI_SINIR' : warDurum,
         jsp: S(w.jsp),
         tld: S(w.tld),
         jar: S(w.jar),
@@ -269,7 +293,7 @@ function hostKaydi(p, { host, kip, partiNo, ortam, playbookDurum, hamBayt }) {
           M((Array.isArray(w.web_varyantlari) ? w.web_varyantlari : []).join(','), 400) || null,
         jboss_web_xml: B(w.jboss_web_xml),
         jboss_deployment_structure: B(w.jboss_deployment_structure),
-        kutuphane_seti: setEkle(w.kutuphaneler),
+        kutuphane_seti: kutuphaneSetiIz,
         kutuphane_sayisi: S(kutuphaneSayisi),
         ...t,
       };
@@ -278,6 +302,14 @@ function hostKaydi(p, { host, kip, partiNo, ortam, playbookDurum, hamBayt }) {
     });
     const earLib = Array.isArray(u.ear_kutuphaneleri) ? u.ear_kutuphaneleri : [];
     const earTek = teknoloji(earLib);
+    const earSet = setEkle(earLib, 'EAR lib');
+    const uygDurum = M(u.durum, 24);
+    const durumU = kesilen.length && uygDurum === 'TAM' ? 'KISMI_SINIR' : uygDurum;
+    if (durumU !== 'TAM') eksikUygulama = true;
+    const uyariListesi = [
+      ...kesilen,
+      ...(Array.isArray(u.uyarilar) ? u.uyarilar : []),
+    ];
     uygulamalar.push({
       uyg_no: i,
       kip: M(kip, 8),
@@ -285,7 +317,7 @@ function hostKaydi(p, { host, kip, partiNo, ortam, playbookDurum, hamBayt }) {
       jboss: jbossOf(u.kok),
       ad: M(u.ad, 256),
       bicim: M(u.bicim, 16),
-      durum: M(u.durum, 24),
+      durum: durumU,
       bag_hedefi: M(u.bag_hedefi, 400) || null,
       giris: S(u.giris),
       jsp: S(u.jsp),
@@ -293,9 +325,10 @@ function hostKaydi(p, { host, kip, partiNo, ortam, playbookDurum, hamBayt }) {
       jar: S(u.jar),
       class_sayisi: S(u.class),
       application_xml: B(u.application_xml),
-      ear_kutuphane_seti: setEkle(earLib),
+      ear_kutuphane_seti: earSet,
       ear_kutuphane_sayisi: S(earLib.length),
-      war_sayisi: wtek.length,
+      // GERCEK sayi: alinan WAR satiri sinirdaysa uyarida yazar.
+      war_sayisi: tumWar.length,
       yapi_izi: M(u.yapi_izi, 32) || null,
       kutuphane_izi: M(u.kutuphane_izi, 32) || null,
       spring_boot: birlesik([earTek.spring_boot, ...wtek.map((w) => w.spring_boot)], 100),
@@ -305,24 +338,21 @@ function hostKaydi(p, { host, kip, partiNo, ortam, playbookDurum, hamBayt }) {
       ),
       log4j: birlesik([earTek.log4j, ...wtek.map((w) => w.log4j)], 100),
       servlet: birlesik([earTek.servlet, ...wtek.map((w) => w.servlet)], 16),
-      uyari_sayisi: S(u.uyari_sayisi),
-      uyarilar: M(
-        JSON.stringify(
-          (Array.isArray(u.uyarilar) ? u.uyarilar : []).slice(0, 20).map((x) => M(x, 300)),
-        ),
-        8000,
-      ),
+      uyari_sayisi: S(u.uyari_sayisi) + kesilen.length,
+      uyarilar: M(JSON.stringify(uyariListesi.slice(0, 20).map((x) => M(x, 300))), 8000),
     });
   });
+  kesilen = null;
   const uyarilar = (Array.isArray(p.uyarilar) ? p.uyarilar : []).slice(0, 50).map((x) => M(x, 300));
   if (p.uygulamalar.length > kaynak.length)
     uyarilar.push(`uygulama sayısı ${p.uygulamalar.length}; ilk ${SINIR_UYGULAMA} alındı`);
   const durum = HOST_DURUMLARI.includes(p.durum) ? p.durum : 'KISMI';
+  const eksikHost = p.uygulamalar.length > kaynak.length || eksikUygulama;
   return {
     host: {
       parti_no: S(partiNo),
       ortam: M(ortam, 128) || null,
-      durum: p.uygulamalar.length > kaynak.length && durum === 'TAM' ? 'KISMI' : durum,
+      durum: eksikHost && durum === 'TAM' ? 'KISMI' : durum,
       playbook_durum: M(playbookDurum, 24) || null,
       veri_var: 1,
       uygulama_sayisi: uygulamalar.length,
@@ -467,9 +497,9 @@ INSERT INTO ear_envanter_uygulamalari (kosu_id, host, ${UYG_KOLONLAR.map(ad).joi
 INSERT INTO ear_envanter_warlari (kosu_id, host, ${WAR_KOLONLAR.map(ad).join(', ')})
   SELECT $1, $2, j.* FROM OPENJSON($5) WITH (${WAR_KOLONLAR.join(', ')}) j;
 DECLARE @yeni TABLE (iz CHAR(32) PRIMARY KEY);
-INSERT INTO ear_envanter_kutuphane_setleri (iz, sayi)
+INSERT INTO ear_envanter_kutuphane_setleri (iz, sayi, surum_izi)
   OUTPUT inserted.iz INTO @yeni
-  SELECT s.iz, s.sayi FROM OPENJSON($6) WITH (iz CHAR(32), sayi INT) s
+  SELECT s.iz, s.sayi, s.surum_izi FROM OPENJSON($6) WITH (iz CHAR(32), sayi INT, surum_izi CHAR(32)) s
    WHERE NOT EXISTS (SELECT 1 FROM ear_envanter_kutuphane_setleri x WITH (UPDLOCK, HOLDLOCK) WHERE x.iz = s.iz);
 INSERT INTO ear_envanter_set_kutuphaneleri (iz, sira, ad, surum, boyut)
   SELECT k.iz, k.sira, k.ad, k.surum, k.boyut
@@ -503,7 +533,13 @@ async function hostuYaz(dbx, kosuId, host, kayit) {
     JSON.stringify([kayit.host]),
     JSON.stringify(kayit.uygulamalar),
     JSON.stringify(kayit.warlar),
-    JSON.stringify(eksik.map((iz) => ({ iz, sayi: kayit.setler.get(iz).length }))),
+    JSON.stringify(
+      eksik.map((iz) => ({
+        iz,
+        sayi: kayit.setler.get(iz).length,
+        surum_izi: surumIzi(kayit.setler.get(iz)),
+      })),
+    ),
     JSON.stringify(setSatirlari),
   ]);
   return { uygulama: kayit.uygulamalar.length, war: kayit.warlar.length, yeniSet: eksik.length };
@@ -528,6 +564,9 @@ module.exports = {
   jbossOf,
   teknoloji,
   kutuphaneSeti,
+  surumIzi,
+  SINIR_WAR,
+  SINIR_KUTUPHANE,
   hostKaydi,
   bosHostKaydi,
   hostuYaz,
