@@ -72,10 +72,35 @@ function earDizin(env = process.env) {
   return s;
 }
 
-function hamDosyaYolu(dizin, kosuId, host) {
-  if (!Number.isInteger(Number(kosuId)) || !HOST_RE.test(String(host)))
-    throw kodluHata('GECERSIZ', 'geçersiz koşu / host');
-  return path.join(dizin, `kosu-${Number(kosuId)}`, 'raw', `${String(host).toUpperCase()}.out`);
+// Kosunun /sw alt dizini: Portal'in kosusu kosu-<id>; AWX'ten (Limit ile) alinan kosu awx-<AWX is no>.
+const ALT_DIZIN_RE = /^(kosu|awx)-\d{1,9}$/;
+
+/** Kosu satirindan alt dizin. AWX kosusunun is numarasi parametrelerde; yoksa yol KURULMAZ. */
+function kosuAltDizini(kosu) {
+  if (kosu && kosu.kaynak === 'AWX') {
+    let p = {};
+    try {
+      p = typeof kosu.parametreler === 'string' ? JSON.parse(kosu.parametreler) : kosu.parametreler;
+    } catch {
+      p = {};
+    }
+    const n = Number(p && p.awx_job_id);
+    if (!Number.isInteger(n) || n <= 0) throw kodluHata('GECERSIZ', 'AWX koşusunun iş numarası yok');
+    return `awx-${n}`;
+  }
+  return `kosu-${Number(kosu && kosu.id)}`;
+}
+
+/** kosu: Portal kosu numarasi ya da kosuAltDizini() sonucu (kosu-<n> / awx-<n>). */
+function hamDosyaYolu(dizin, kosu, host) {
+  const alt =
+    typeof kosu === 'string' && ALT_DIZIN_RE.test(kosu)
+      ? kosu
+      : Number.isInteger(Number(kosu))
+        ? `kosu-${Number(kosu)}`
+        : null;
+  if (!alt || !HOST_RE.test(String(host))) throw kodluHata('GECERSIZ', 'geçersiz koşu / host');
+  return path.join(dizin, alt, 'raw', `${String(host).toUpperCase()}.out`);
 }
 
 /** Dosyayi sinirli okur: once stat; sinir asilirsa okumaz. */
@@ -495,6 +520,8 @@ module.exports = {
   HOST_YAZ_SQL,
   kodluHata,
   earDizin,
+  ALT_DIZIN_RE,
+  kosuAltDizini,
   hamDosyaYolu,
   hamOku,
   paketCoz,

@@ -17,6 +17,10 @@
 //
 // ZAMANLAYICI: haftalik (ear-envanter-ayar.cjs). Ayni haftanin ikinci kosusunu
 // kosulari.zamanlayici_anahtari engeller; kosu acma kosulu tek ifadede (UPDLOCK + HOLDLOCK).
+//
+// AWX KOSUSU (2026-11-05): AWX'ten Limit ile elle baslatilan is ear-envanter-awx.cjs ile tek partili
+// kosu (kaynak AWX) olarak acilir; alimi burada, ayni yoldan. set_stats eslesmesi AWX is numarasiyla,
+// ham dosyalar awx-<is>/raw altinda.
 'use strict';
 
 const alim = require('./ear-envanter-alim.cjs');
@@ -283,6 +287,8 @@ async function siradakiPartiyiBaslat(kosu, req = null) {
   const deneme = Number(parti.baslatma_denemesi || 0) + 1;
   let sonuc;
   try {
+    // Sablonun Limit'i doluyken is hicbir sey taramadan "successful" biter (EP8): baslatma.
+    await require('./ear-envanter-awx.cjs').limitDenetimi();
     sonuc = await _launch(
       req || sozdeIstek(kosu),
       REGISTRY_KEY,
@@ -332,11 +338,17 @@ async function siradakiPartiyiBaslat(kosu, req = null) {
 
 // ── PARTI ALIMI ─────────────────────────────────────────────────────────────────────────────────
 
-/** set_stats -> host basina playbook siniflamasi. Baska kosuya / partiye aitse kullanilmaz. */
+/** set_stats -> host basina playbook siniflamasi. Baska kosuya / partiye / AWX isine aitse kullanilmaz. */
 function statsHaritasi(stats, kosu, parti) {
   const harita = new Map();
   if (!stats || typeof stats !== 'object') return { harita, uyusmazlik: null };
-  if (
+  if (kosu.kaynak === 'AWX') {
+    if (String(stats.kaynak) !== 'AWX' || Number(stats.awx_job_id) !== Number(parti.awx_job_id))
+      return {
+        harita,
+        uyusmazlik: `set_stats başka bir AWX işine ait (${M(stats.awx_job_id, 12)})`,
+      };
+  } else if (
     Number(stats.kosu_no) !== Number(kosu.id) ||
     Number(stats.parti_no) !== Number(parti.parti_no)
   )
@@ -354,10 +366,9 @@ function statsHaritasi(stats, kosu, parti) {
 /** Hostun sonucu: ham dosya varsa ONDAN; yoksa playbook siniflamasi; o da yoksa SONUC_YOK. */
 async function hostuAl(kosu, parti, hedef, statsHost, dizin, isNotu) {
   const playbookDurum = statsHost ? M(statsHost.durum, 24) : null;
-  const yol = alim.hamDosyaYolu(dizin, kosu.id, hedef.host);
   let buf = null;
   try {
-    buf = await alim.hamOku(yol);
+    buf = await alim.hamOku(alim.hamDosyaYolu(dizin, alim.kosuAltDizini(kosu), hedef.host));
   } catch (e) {
     if (e.kod !== 'DOSYA_YOK')
       return alim.bosHostKaydi({
@@ -725,6 +736,10 @@ async function tick(simdi = new Date()) {
   await zamanlayiciyiKontrolEt(simdi).catch((e) =>
     console.warn('[EarEnvanter] zamanlayici:', maskele(e && e.message)),
   );
+  // AWX'ten elle baslatilan bitmis isler kosu olarak acilir; asagidaki tur ayni anda alir.
+  await require('./ear-envanter-awx.cjs')
+    .awxIsleriniAl({ simdi: simdi.getTime() })
+    .catch((e) => console.warn('[EarEnvanter] AWX isleri:', maskele(e && e.message)));
   const { rows } = await db().query(
     `SELECT TOP 5 * FROM ear_envanter_kosulari k
       WHERE k.durum = 'CALISIYOR'

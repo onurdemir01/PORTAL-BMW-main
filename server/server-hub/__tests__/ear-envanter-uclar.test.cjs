@@ -10,6 +10,7 @@
 //        kok sembolik bagsa hicbir sey silinmez; DB okunamazsa hicbir sey silinmez
 //   EU6  SAKLAMA DB: son N FILO kosusu sayilir (secili / pilot kosulari filo kosusunu sildirmez),
 //        silme parcali (TOP)
+//   EU7  SAKLAMA /sw awx-<is>: kosusu korunan kalir, korunmayan silinir; henuz alinmamis is 7 gun kalir
 'use strict';
 
 const { test, afterEach } = require('node:test');
@@ -175,6 +176,35 @@ test('EU5 /sw saklamasi', async () => {
   );
   await assert.rejects(saklama.hamSaklama(1, { dizin }));
   assert.ok(fs.existsSync(path.join(dizin, 'kosu-3')));
+});
+
+test('EU7 /sw saklamasi: AWX dizinleri', async () => {
+  const saklama = require('../ear-envanter-saklama.cjs');
+  const kok = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'ear-sak-awx-')));
+  const dizin = path.join(kok, 'BMW', 'ear');
+  for (const n of ['awx-500', 'awx-501', 'awx-502', 'awx-503', 'awx-x'])
+    fs.mkdirSync(path.join(dizin, n, 'raw'), { recursive: true });
+  const eski = new Date(Date.now() - 30 * 86400000);
+  fs.utimesSync(path.join(dizin, 'awx-503'), eski, eski);
+  F.dbKur(
+    F.sahteDb([
+      [/SELECT id, kip, durum FROM ear_envanter_kosulari/, () => ({ rows: [{ id: 7 }] })],
+      [/SELECT id FROM ear_envanter_kosulari/, () => ({ rows: [{ id: 7 }, { id: 8 }] })],
+      [
+        /SELECT p\.awx_job_id, p\.kosu_id FROM ear_envanter_partileri p/,
+        () => ({
+          rows: [
+            { awx_job_id: 500, kosu_id: 7 },
+            { awx_job_id: 501, kosu_id: 8 },
+          ],
+        }),
+      ],
+    ]),
+  );
+  const r = await saklama.hamSaklama(3, { dizin });
+  // 500: korunan kosu 7; 501: kosu 8 korunmuyor; 502: alinmamis, yeni; 503: alinmamis, 30 gunluk.
+  assert.deepEqual(r.silinen.sort(), ['awx-501', 'awx-503']);
+  assert.deepEqual(fs.readdirSync(dizin).sort(), ['awx-500', 'awx-502', 'awx-x']);
 });
 
 test('EU6 DB saklamasi', async () => {

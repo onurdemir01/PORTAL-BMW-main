@@ -13,6 +13,7 @@
 //   EA7  earDizin: bos / goreli / '..' / '/' / '/sw' -> varsayilan (silme koku olarak secilemez)
 //   EA8  hamOku: sinir ustu dosya OKUNMADAN reddedilir; yok -> DOSYA_YOK
 //   EA9  SEMA SOZLESMESI: alimin OPENJSON WITH kolonlari mssql-setup DDL'inde ayni adla var
+//   EA10 AWX kosusunun alt dizini awx-<is> (parametrelerdeki is no); hamDosyaYolu disari cikamaz
 'use strict';
 
 const { test } = require('node:test');
@@ -286,6 +287,29 @@ test('EA7 earDizin silme koku olamaz', () => {
     (e) => e.kod === 'GECERSIZ',
   );
   assert.equal(alim.hamDosyaYolu('/sw/a/b', 12, 'appsrv01'), '/sw/a/b/kosu-12/raw/APPSRV01.out');
+});
+
+test('EA10 AWX kosusunun alt dizini awx-<is>; yol disari cikamaz', () => {
+  assert.equal(alim.kosuAltDizini({ id: 12, kaynak: 'ELLE' }), 'kosu-12');
+  assert.equal(alim.kosuAltDizini({ id: 12, kaynak: 'ZAMANLAYICI' }), 'kosu-12');
+  const awx = { id: 12, kaynak: 'AWX', parametreler: JSON.stringify({ awx_job_id: 777 }) };
+  assert.equal(alim.kosuAltDizini(awx), 'awx-777');
+  assert.equal(
+    alim.hamDosyaYolu('/sw/a/b', alim.kosuAltDizini(awx), 'appsrv01'),
+    '/sw/a/b/awx-777/raw/APPSRV01.out',
+  );
+  for (const p of ['{}', '{"awx_job_id":"1/../x"}', 'bozuk', '{"awx_job_id":0}'])
+    assert.throws(
+      () => alim.kosuAltDizini({ id: 12, kaynak: 'AWX', parametreler: p }),
+      (e) => e.kod === 'GECERSIZ',
+      p,
+    );
+  for (const kotu of ['awx-', 'awx-1/../x', '../kosu-1', 'kosu-1x', 'baska-1'])
+    assert.throws(
+      () => alim.hamDosyaYolu('/sw/a/b', kotu, 'APPSRV01'),
+      (e) => e.kod === 'GECERSIZ',
+      kotu,
+    );
 });
 
 test('EA8 hamOku boyut kapisi', async () => {

@@ -10,22 +10,32 @@ Bu Ansible playbook'u Linux sunuculardaki `/vhosting` ve `/vhosting8` klasörler
 - **Salt okunurdur:** Uygulamaları değiştirmez veya silmez.
 - Taramayı hedef sunucuda `dzdo -u was` ile yapar.
 
+İki şekilde başlatılır:
+
+| Kim başlatır | Sunucular nereden gelir | Sonuç |
+|---|---|---|
+| Portal (**Şimdi tara** ya da haftalık tarama) | Portal gönderir (`hedefler`) | Portal'da görünür |
+| Sen, AWX ekranından | AWX'in **Limit** alanına yazdıkların | Birkaç dakika içinde Portal'da da görünür |
+
 ## 2. AWX bilgileri
+
+Gerçek adlar ve ID'ler bu public repoda tutulmaz; yer tutucuların yerine kendi değerlerini koy.
 
 | Ayar | Değer |
 |---|---|
-| AWX | `https://maestro2` |
-| Project | `ANSIBLE_6203` — ID `252` |
-| Inventory | `Linux 6203 - Dynamic Inventory` — ID `125` |
-| Job Template | `BMW Portal - EAR Envanter` — ID `2376` |
-| Credential | `application_was_credentials` — ID `21` |
+| AWX | `https://<AWX_ADRESI>` |
+| Project | `<PROJE_ADI>` — ID `<PROJE_ID>` |
+| Inventory | `<ENVANTER_ADI>` — ID `<ENVANTER_ID>` |
+| Job Template | `BMW Portal - EAR Envanter` — ID `<TEMPLATE_ID>` |
+| Credential | `<CREDENTIAL_ADI>` (dzdo ile `was`'a geçebilen) |
 | Playbook | `bmw_portal/ear_envanter/ear_envanter.yml` |
+| Variables | Boş; **Prompt on launch açık** |
+| Limit | **Boş**; **Prompt on launch açık** |
 | Forks | `30` |
 | Timeout | `3600` saniye |
+| Privilege Escalation | Kapalı |
 
-**Şablon zaten oluşturuldu ve credential bağlandı. Yeniden oluşturman gerekmez.**
-
-AWX şablonu: https://maestro2/#/templates/job_template/2376/details
+**Şablonun Limit alanını boş bırak.** Limit'e şablonda kalıcı bir değer (`all` bile) yazılırsa Portal'ın başlattığı taramalar hiçbir sunucuyu taramadan biter. Portal bu yüzden Limit'i dolu şablonla taramayı başlatmaz ve uyarır. Sunucuları her seferinde **Launch** ekranında yaz.
 
 ## 3. Gerekli dosyalar
 
@@ -36,24 +46,24 @@ bmw_portal/ear_envanter/ear_envanter.yml
 bmw_portal/ear_envanter/files/ear_tara.py
 ```
 
-Dosyaları Git'e gönderdikten sonra AWX'te **Projects > ANSIBLE_6203 > Sync** yap. Bilgisayarındaki yerel dosyalar tek başına yeterli değildir.
+Dosyaları Git'e gönderdikten sonra AWX'te **Projects > `<PROJE_ADI>` > Sync** yap. Bilgisayarındaki yerel dosyalar tek başına yeterli değildir.
 
 ## 4. En kolay test: AWX ekranından
 
 1. AWX'te **Templates > BMW Portal - EAR Envanter** şablonunu aç.
 2. **Launch** seç.
-3. **Variables** alanına şunu yaz (sunucu adını değiştir):
+3. **Limit** alanına taranacak sunucuları virgülle yaz: `SUNUCU1,SUNUCU2`
+4. **Variables** alanına bir şey yazma. Ayrıntılı tarama istersen yalnız şunu yaz:
 
 ```yaml
-hedefler: [SUNUCU_ADI]
-ear_kip: OZET
-ear_kosu_no: 999999
-ear_parti_no: 1
+ear_kip: TAM
 ```
 
-4. İşi başlat ve **Jobs** ekranından sonucu kontrol et.
+5. İşi başlat ve **Jobs** ekranından sonucu kontrol et.
 
-> `hedefler` bir listedir: Köşeli parantezleri silme. Hedef sunucu Inventory 125'te bulunmalıdır.
+> Sunucu adı envanterde göründüğü gibi yazılmalı. **Limit boşsa iş "Sunucu secilmedi" diyerek durur**; tüm envanter taranmaz.
+>
+> İş bittikten birkaç dakika sonra Portal'da **Server Hub > Uygulama Envanteri > Koşular** listesinde **AWX (Limit)** kaynağıyla görünür.
 
 ## 5. İstersen PowerShell ile test et
 
@@ -62,9 +72,11 @@ Komutlar **PowerShell** içindir, CMD komutu değildir. AWX token'ını ekrana v
 ### Bağlan
 
 ```powershell
-$AWX = "https://maestro2/api/v2"
+$AWX = "https://<AWX_ADRESI>/api/v2"
 $TOKEN = Read-Host "AWX Token"
 ```
+
+AAP 2.5 kullanılıyorsa adres `https://<AWX_ADRESI>/api/controller/v2` olur.
 
 ### Test dosyasını oluştur
 
@@ -76,11 +88,9 @@ Dosyanın içine yapıştır ve `SUNUCU_ADI` kısmını değiştir:
 
 ```json
 {
+  "limit": "SUNUCU_ADI",
   "extra_vars": {
-    "hedefler": ["SUNUCU_ADI"],
-    "ear_kip": "OZET",
-    "ear_kosu_no": 999999,
-    "ear_parti_no": 1
+    "ear_kip": "OZET"
   }
 }
 ```
@@ -94,10 +104,10 @@ Get-Content .\deneme.json | Set-Content .\deneme-temiz.json -Encoding Ascii
 ### Taramayı başlat
 
 ```powershell
-curl.exe -sS -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" --data-binary "@deneme-temiz.json" "$AWX/job_templates/2376/launch/"
+curl.exe -sS -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" --data-binary "@deneme-temiz.json" "$AWX/job_templates/<TEMPLATE_ID>/launch/"
 ```
 
-Gelen yanıttaki `job` numarasını AWX **Jobs** ekranında aç.
+Gelen yanıttaki `job` numarasını AWX **Jobs** ekranında aç. Yanıttaki `ignored_fields` içinde `limit` görünüyorsa şablonda Limit › Prompt on launch kapalıdır.
 
 İşin durumunu komutla görmek istersen `JOB_ID`'yi değiştir:
 
@@ -116,17 +126,20 @@ Remove-Variable TOKEN
 Çıktılar GBLABT02 üzerinde tutulur:
 
 ```text
-/sw/BMW_PORTAL/ear_envanter/kosu-999999/raw/SUNUCU_ADI.out
+Portal'ın başlattığı tarama:  /sw/BMW_PORTAL/ear_envanter/kosu-<KOSU_NO>/raw/SUNUCU_ADI.out
+AWX'ten Limit ile başlatılan: /sw/BMW_PORTAL/ear_envanter/awx-<AWX_IS_NO>/raw/SUNUCU_ADI.out
 ```
 
-Portal üzerinden başlatılan normal taramalarda `999999` yerine gerçek koşu numarası kullanılır. Çıktı `.out` dosyası sıkıştırılmış/veri kodlanmış içeriktir; düz metin rapor değildir.
+Dosya adı sunucunun kısa adıdır, büyük harfle (`sunucu1.alan.adi` → `SUNUCU1.out`). Çıktı `.out` dosyası sıkıştırılmış/veri kodlanmış içeriktir; düz metin rapor değildir. Okunur hali Portal'dadır.
 
 ## 7. Sık görülen hatalar
 
 | Hata | Kontrol et |
 |---|---|
+| `Sunucu secilmedi: AWX'te Limit alanina ...` | Launch ekranında Limit'e sunucu yaz. |
+| Portal: `AWX şablonunun ... Limit alanı dolu` | Şablonun Limit alanını boşalt; sunucuyu Launch ekranında yaz. |
 | `Playbook not found` | Dosyalar Git'te mi? Project Sync yapıldı mı? |
-| `UNREACHABLE` / `ULASILAMADI` | Sunucu Inventory 125'te mi, SSH erişimi var mı? |
+| `UNREACHABLE` / `ULASILAMADI` | Sunucu envanterde mi, SSH erişimi var mı? |
 | `KIMLIK_GECISI_YOK` | Credential ile `dzdo -u was` yetkisi var mı? |
 | `PYTHON_YOK` | Sunucuda Python 3 var mı? |
 | `Prompt on launch` hatası | Şablonda Variables > Prompt on launch açık mı? |
@@ -134,8 +147,8 @@ Portal üzerinden başlatılan normal taramalarda `999999` yerine gerçek koşu 
 
 ## 8. Portal bağlantısı
 
-Portal yönetiminde **Admin > Playbook Kayıtları > `server_hub_ear_envanter`** kaydına Template ID olarak **`2376`** gir.
+Portal yönetiminde **Admin > Playbook Kayıtları > `server_hub_ear_envanter`** kaydına Template ID olarak `<TEMPLATE_ID>` gir.
 
 Ardından **Server Hub > Uygulama Envanteri > Şimdi tara** üzerinden tarama başlatılabilir.
 
-**Not:** AWX şablonuna Survey veya AWX Schedule ekleme. Variables > Prompt on launch açık, Privilege Escalation kapalı olmalı. Otomatik haftalık tarama gerekiyorsa Portal'ın kendi ayarlarından açılır.
+**Not:** AWX şablonuna Survey veya AWX Schedule ekleme. Variables ve Limit > Prompt on launch açık, Limit alanı boş, Privilege Escalation kapalı olmalı. Otomatik haftalık tarama gerekiyorsa Portal'ın kendi ayarlarından açılır.

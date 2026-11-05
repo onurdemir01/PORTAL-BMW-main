@@ -8,6 +8,8 @@
 // (saklama_ham, varsayilan 3) KALIR. Agac goruntuleyici ve sunucu ZIP'i ham dosyayi okur; OZET'in
 // ham dosyasi alimdan sonra gereksizdir. DB okunamazsa HICBIR SEY silinmez (fail-closed). DB'de
 // karsiligi olmayan dizin ancak 7 gunden eskiyse silinir.
+// AWX'ten elle baslatilan isin dizini `awx-<is no>` (2026-11-05): ayni kural, kosu numarasi
+// partileri.awx_job_id uzerinden bulunur. Henuz alinmamis is (AWX alimi 7 gun geriye bakar) 7 gun korunur.
 'use strict';
 
 const fs = require('node:fs');
@@ -18,6 +20,7 @@ const ayar = require('./ear-envanter-ayar.cjs');
 const PARCA = 20000;
 const YETIM_GUN = 7;
 const KOSU_DIZINI = /^kosu-(\d{1,9})$/;
+const AWX_DIZINI = /^awx-(\d{1,9})$/;
 const db = () => require('../db/index.cjs');
 
 async function parcaliSil(tablo, kosul, params) {
@@ -87,9 +90,16 @@ async function hamKorunan(n) {
          OR k.id IN (SELECT TOP (${Math.max(1, Math.min(10, Number(n) || 3))}) id FROM ear_envanter_kosulari WHERE kip = 'TAM' ORDER BY id DESC)`,
   );
   const tum = await db().query(`SELECT id FROM ear_envanter_kosulari`);
+  const awx = await db().query(
+    `SELECT p.awx_job_id, p.kosu_id FROM ear_envanter_partileri p
+       JOIN ear_envanter_kosulari k ON k.id = p.kosu_id
+      WHERE k.kaynak = 'AWX' AND p.awx_job_id IS NOT NULL`,
+  );
   return {
     korunan: new Set((rows || []).map((r) => Number(r.id))),
     bilinen: new Set((tum.rows || []).map((r) => Number(r.id))),
+    // AWX is no -> kosu no
+    awxKosu: new Map((awx.rows || []).map((r) => [Number(r.awx_job_id), Number(r.kosu_id)])),
   };
 }
 
@@ -111,12 +121,15 @@ async function hamSaklama(n, { dizin = alim.earDizin(), simdi = Date.now() } = {
     sonuc.atlanan.push(`dizin sembolik bağ (${gercek}); silme yapılmadı`);
     return sonuc;
   }
-  const { korunan, bilinen } = await hamKorunan(n);
+  const { korunan, bilinen, awxKosu } = await hamKorunan(n);
   const girisler = await fs.promises.readdir(dizin, { withFileTypes: true });
   for (const g of girisler) {
+    if (!g.isDirectory()) continue;
     const m = KOSU_DIZINI.exec(g.name);
-    if (!m || !g.isDirectory()) continue;
-    const id = Number(m[1]);
+    const a = m ? null : AWX_DIZINI.exec(g.name);
+    if (!m && !a) continue;
+    // awx-<is>: kosusu yoksa (henuz alinmadi) NaN -> bilinmeyen, 7 gun korunur.
+    const id = m ? Number(m[1]) : awxKosu.has(Number(a[1])) ? awxKosu.get(Number(a[1])) : NaN;
     if (korunan.has(id)) {
       sonuc.korunan += 1;
       continue;
@@ -152,4 +165,13 @@ async function saklama() {
   return { db: dbSonuc, ham };
 }
 
-module.exports = { saklama, dbSaklama, dbSiniri, hamSaklama, hamKorunan, KOSU_DIZINI, PARCA };
+module.exports = {
+  saklama,
+  dbSaklama,
+  dbSiniri,
+  hamSaklama,
+  hamKorunan,
+  KOSU_DIZINI,
+  AWX_DIZINI,
+  PARCA,
+};

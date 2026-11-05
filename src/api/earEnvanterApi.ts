@@ -14,7 +14,7 @@ export type EarKosuDurum = 'CALISIYOR' | 'TAMAMLANDI' | 'KISMI' | 'BASARISIZ' | 
 export interface EarKosu {
   id: number;
   kip: EarKip;
-  kaynak: 'ELLE' | 'ZAMANLAYICI';
+  kaynak: 'ELLE' | 'ZAMANLAYICI' | 'AWX';
   kapsam: EarKapsam;
   durum: EarKosuDurum;
   beklenen: number;
