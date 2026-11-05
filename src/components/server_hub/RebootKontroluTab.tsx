@@ -15,6 +15,7 @@ import { fmtDateTime } from '@/utils/datetime';
 import { toast } from '@/hooks/useToast';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { useSunucuLimiti, LimitNotu, limitAsildi } from './sunucuLimiti';
+import { useSekmeGorunur } from './sekmeGorunurlugu';
 import { DURUM, bilgiAyristir, goruntuAyristir, islemAyristir, onceOzeti, rebootOldu, sunucuListesi, urunTablosu, type Durum, type IslemSatiri } from './rebootKontrolu';
 
 const TERMINAL = new Set(['successful', 'failed', 'error', 'canceled']);
@@ -244,6 +245,7 @@ export default function RebootKontroluTab() {
   const [busy, setBusy] = useState(false);
   const [onay, setOnay] = useState(false);
   const [bilinen, setBilinen] = useState<Set<string> | null>(null);
+  const gorunur = useSekmeGorunur();
   const seciliId = useRef<number | null>(null);
 
   const yukle = useCallback(async () => {
@@ -263,14 +265,15 @@ export default function RebootKontroluTab() {
   }, []);
   useAsyncEffect(async (alive) => { if (alive()) await yukle(); }, [yukle]);
   useEffect(() => {
-    serverHubApi.overview().then((o) => { if (o.ok) setBilinen(new Set((o.hosts || []).map((h: { host: string }) => h.host))); }).catch(() => {});
+    // Yalniz sunucu adlari: tum filo degerlendirmesini (/overview) indirmez.
+    serverHubApi.hostAdlari().then((o) => { if (o.ok) setBilinen(new Set(o.hosts)); }).catch(() => {});
   }, []);
   // Koşan kayıt açıksa 10 sn'de bir tazele (sunucu AWX sonucunu okuyup kayda yazar).
   useEffect(() => {
-    if (!secili || !/_kosuyor$/.test(secili.durum)) return;
+    if (!secili || !/_kosuyor$/.test(secili.durum) || !gorunur) return;
     const t = window.setInterval(() => { ac(secili.id); yukle(); }, 5000);
     return () => window.clearInterval(t);
-  }, [secili, ac, yukle]);
+  }, [secili, ac, yukle, gorunur]);
 
   const izle = (baslik: string, serverId: number | undefined, jobId: number | null | undefined, id: number) => {
     if (!jobId) return;

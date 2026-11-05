@@ -211,6 +211,7 @@ function VhostBloklar({ liste }: { liste?: VhostPlanDurumu[] }) {
   );
 }
 import { toast } from '@/hooks/useToast';
+import { useSekmeGorunur } from './sekmeGorunurlugu';
 
 // SM_BTN / smBtn retirementStil.ts'e tasindi (smBtn(true) metni --text-on-accent).
 const TERMINAL = new Set(['successful', 'failed', 'error', 'canceled']);
@@ -952,13 +953,15 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
   // CANLI TAZELEME (2026-10-09): suren is ya da bekleyen/suren vhost isi varken 4 sn'de bir /canli
   // (o uc bekleyen vhost islerini de baslatir ve sonuclarini okur). Is yokken istek atilmaz.
   const canliGerek = !!rec && rec.targets.some((t) => hedefTazelenmeli(t, rec.deleteNowAt));
+  // Gizli Server Hub sekmesinde /canli yoklamasi yok (sekme kapaliyken de yoktu; o uc is de baslatir).
+  const gorunur = useSekmeGorunur();
   useEffect(() => {
-    if (!canliGerek) return;
+    if (!canliGerek || !gorunur) return;
     const z = window.setInterval(() => {
       retirementApi.canli(id).then((r) => { if (r.ok && r.record) { setRec(r.record); setKuyruk({ zamanlayici: r.zamanlayici, isler: r.isler }); } }).catch(() => {});
     }, 4000);
     return () => window.clearInterval(z);
-  }, [canliGerek, id]);
+  }, [canliGerek, id, gorunur]);
 
   // TEK DUGMELI AKIS (2026-10-08): "Retirement'i baslat" on kontrolu baslatir; on kontrol
   // BASARIYLA bitince onay penceresi KENDILIGINDEN acilir (2. adim). Yalniz bu oturumda
@@ -980,7 +983,8 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
   };
   useEffect(() => {
     const tids = onayBekleyen.current;
-    if (!rec || !tids) return;
+    // Gizli sekmede pencere acilmaz (baska sekmenin ustune cikardi); gorunur olunca acilir.
+    if (!rec || !tids || !gorunur) return;
     const ts = tids.map((tid) => rec.targets.find((x) => x.id === tid)).filter((x): x is RtTarget => !!x);
     if (!ts.length || ts.some((t) => t.status === 'planning')) return;
     onayBekleyen.current = null;
@@ -991,7 +995,7 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
     if (hazir.length) stopSor(hazir);
     // stopSor her render'da yeniden tanimlaniyor; tetik YALNIZ kayit degisimi.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rec]);
+  }, [rec, gorunur]);
 
   // VHOST PLAN ISLERI: STOP on kontrolu VE web yeniden deneme onizlemesi ayni izleyiciyi kullanir.
   const vhostPlanIzle = (t: RtTarget, vp: RtLaunch['vhostPlan'] | undefined) => {

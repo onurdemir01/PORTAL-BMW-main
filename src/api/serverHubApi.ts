@@ -415,6 +415,9 @@ const json = (body: unknown) => ({
 
 
 export const serverHubApi = {
+  /** Taranmis sunucu adlari (filo degerlendirmesini indirmeden). */
+  hostAdlari: (): Promise<{ ok: boolean; hosts: string[]; message?: string }> =>
+    fetch(`${BASE}/host-adlari`).then(safeJson),
   overview: (fresh = false): Promise<ShOverview> =>
     fetch(`${BASE}/overview${fresh ? '?fresh=1' : ''}`).then(safeJson),
   findings: (fresh = false): Promise<ShFindingsResult> =>

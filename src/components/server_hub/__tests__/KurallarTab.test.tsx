@@ -201,7 +201,8 @@ describe('KT7 girdi ekranlarında tek seferde sunucu sayısı', () => {
     expect(rk).toMatch(/<LimitNotu limit=\{rebootLimiti\} sayi=\{hosts\.length\} \/>/);
     expect(rk).not.toMatch(/hosts\.length > 50/);
     expect(sh).toMatch(/\{ id: 'kurallar', label: 'Kurallar & Limitler' \}/);
-    expect(sh).toMatch(/\{tab === 'kurallar' && <KurallarTab \/>\}/);
+    // Sekme ziyaret edilince kurulur ve acik kalir (SekmeKabi; 2026-11-05 hiz).
+    expect(sh).toMatch(/acilan\.has\('kurallar'\) && \(\s*<SekmeKabi id="kurallar" etkin=\{tab\}>\s*<KurallarTab \/>/);
     // sınır aşılınca düğme kilitli (sunucu da reddeder; ekran önceden söyler)
     expect(sh).toMatch(/disabled=\{busy \|\| !metin\.trim\(\) \|\| limitAsildi\(hazirlikLimiti, girilen\)\}/);
     expect(sh).toMatch(/const girilen = sunucuAdlari\(metin\)\.length;/);

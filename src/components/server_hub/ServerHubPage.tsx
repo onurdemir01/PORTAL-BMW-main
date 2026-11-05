@@ -4,7 +4,7 @@
 // Nginx Hub gibi ama RAPOR gibi gozuksun: once genel durum bar ve yuvarlak grafiklerle".
 // Veri: gunluk server_hub_scan (dbo.Server_Hub_*), degerlendirme sunucuda (server/server-hub/assess.cjs).
 // Sunucu satiri -> "Simdi tara" (reboot oncesi tek sunucu) ve "Duzelt" (once PLAN, sonra onay).
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ServerStackIcon,
   ArrowPathIcon,
@@ -47,6 +47,8 @@ import KurallarTab from './KurallarTab';
 import EarEnvanterTab from './EarEnvanterTab';
 import { useSunucuLimiti, LimitNotu, sunucuAdlari, limitAsildi } from './sunucuLimiti';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
+import { SekmeKabi, useSekmeGorunur } from './sekmeGorunurlugu';
+import * as shOnbellek from './shOnbellek';
 
 const SM_BTN =
   'inline-flex items-center gap-1 h-7 px-2.5 text-[11px] font-medium leading-none rounded-lg border whitespace-nowrap disabled:opacity-40';
@@ -1421,10 +1423,64 @@ function SevPill({ s, n }: { s: ShSeverity; n?: number }) {
   );
 }
 
+type SekmeId = 'hosts' | 'findings' | 'readiness' | 'reboot' | 'retirement' | 'envanter' | 'kurallar';
+// Buyuk listelerde ilk cizimde bu kadar satir; "daha fazla / tumu" ile acilir (sayac ve CSV hep TUM kume).
+const CIZIM_SINIRI = 300;
+
+/** Liste altinda "N / M gosteriliyor · 300 daha · tumu" (yalniz kesilmis listede). */
+function DahaFazla({
+  gosterilen,
+  toplam,
+  onDaha,
+  onTumu,
+}: {
+  gosterilen: number;
+  toplam: number;
+  onDaha: () => void;
+  onTumu: () => void;
+}) {
+  if (gosterilen >= toplam) return null;
+  return (
+    <div className="flex items-center gap-2 px-3 py-2 text-[11px]" style={{ color: 'var(--text-muted)' }}>
+      {nf(gosterilen)} / {nf(toplam)} gösteriliyor ·
+      <button type="button" className="underline" onClick={onDaha}>
+        {nf(Math.min(CIZIM_SINIRI, toplam - gosterilen))} daha
+      </button>
+      ·
+      <button type="button" className="underline" onClick={onTumu}>
+        tümü
+      </button>
+    </div>
+  );
+}
+
+/**
+ * Cizim siniri: suzgec degisince (anahtar) CIZIM_SINIRI'na doner. Effect'te setState yok: sinir anahtarla
+ * birlikte tutulur, anahtar degisince eski deger gecersiz sayilir.
+ */
+function useCizimSiniri(anahtar: string) {
+  const [d, setD] = useState({ anahtar, n: CIZIM_SINIRI });
+  const n = d.anahtar === anahtar ? d.n : CIZIM_SINIRI;
+  return {
+    n,
+    daha: () => setD({ anahtar, n: n + CIZIM_SINIRI }),
+    tumu: () => setD({ anahtar, n: Number.POSITIVE_INFINITY }),
+  };
+}
+
 // ── Sayfa ────────────────────────────────────────────────────────────────────────────
 export default function ServerHubPage() {
   // Sekmeler: Sunucular (tarama raporu) | Retirement (uygulama emeklilik akisi, 2026-09-21)
-  const [tab, setTab] = useState<'hosts' | 'findings' | 'readiness' | 'reboot' | 'retirement' | 'envanter' | 'kurallar'>('hosts');
+  const [tab, setTab] = useState<SekmeId>('hosts');
+  // HIZ (2026-11-05): ziyaret edilen sekme sokulmez, gizlenir (veri / suzgec / kaydirma kalir; yeniden
+  // indirme yok). Gizli sekme yoklama yapmaz ve pencere acmaz (useSekmeGorunur).
+  const [acilan, setAcilan] = useState<Set<SekmeId>>(() => new Set<SekmeId>(['hosts']));
+  const sekmeAc = (id: SekmeId) => {
+    setTab(id);
+    setAcilan((s) => (s.has(id) ? s : new Set(s).add(id)));
+  };
+  // Karttan Bulgular'a gecis: sekme acik kaldigi icin hazir suzgec yeni bir kurulumla uygulanir.
+  const [bulguNo, setBulguNo] = useState(0);
   // Kartlardan bulgu detayina gecis (kullanici, 2026-09-22): kart -> Bulgular sekmesi + hazir suzgec
   const [findingsFilter, setFindingsFilter] = useState<{
     area?: string;
@@ -1434,7 +1490,8 @@ export default function ServerHubPage() {
   } | null>(null);
   const goFindings = (f: { area?: string; code?: string; product?: string; envGroup?: string }) => {
     setFindingsFilter(f);
-    setTab('findings');
+    setBulguNo((n) => n + 1);
+    sekmeAc('findings');
   };
   return (
     <div className="space-y-4">
@@ -1476,7 +1533,7 @@ export default function ServerHubPage() {
           ).map((t) => (
             <button
               key={t.id}
-              onClick={() => setTab(t.id)}
+              onClick={() => sekmeAc(t.id)}
               className={`px-3 py-1.5 text-xs font-medium rounded-md ${tab === t.id ? 'shadow-sm' : ''}`}
               style={{
                 background: tab === t.id ? 'var(--bg-surface)' : 'transparent',
@@ -1488,13 +1545,41 @@ export default function ServerHubPage() {
           ))}
         </div>
       </div>
-      {tab === 'hosts' && <HostsTab onGoFindings={goFindings} />}
-      {tab === 'findings' && <FindingsTab initial={findingsFilter} />}
-      {tab === 'readiness' && <ReadinessTab />}
-      {tab === 'reboot' && <RebootKontroluTab />}
-      {tab === 'retirement' && <RetirementTab />}
-      {tab === 'envanter' && <EarEnvanterTab />}
-      {tab === 'kurallar' && <KurallarTab />}
+      {acilan.has('hosts') && (
+        <SekmeKabi id="hosts" etkin={tab}>
+          <HostsTab onGoFindings={goFindings} />
+        </SekmeKabi>
+      )}
+      {acilan.has('findings') && (
+        <SekmeKabi id="findings" etkin={tab}>
+          <FindingsTab key={bulguNo} initial={findingsFilter} />
+        </SekmeKabi>
+      )}
+      {acilan.has('readiness') && (
+        <SekmeKabi id="readiness" etkin={tab}>
+          <ReadinessTab />
+        </SekmeKabi>
+      )}
+      {acilan.has('reboot') && (
+        <SekmeKabi id="reboot" etkin={tab}>
+          <RebootKontroluTab />
+        </SekmeKabi>
+      )}
+      {acilan.has('retirement') && (
+        <SekmeKabi id="retirement" etkin={tab}>
+          <RetirementTab />
+        </SekmeKabi>
+      )}
+      {acilan.has('envanter') && (
+        <SekmeKabi id="envanter" etkin={tab}>
+          <EarEnvanterTab />
+        </SekmeKabi>
+      )}
+      {acilan.has('kurallar') && (
+        <SekmeKabi id="kurallar" etkin={tab}>
+          <KurallarTab />
+        </SekmeKabi>
+      )}
     </div>
   );
 }
@@ -1507,8 +1592,10 @@ function HostsTab({
   const { addJob } = useJobTracker();
   // Tek seferde taranabilecek sunucu (2026-10-20): Admin Kurallar & Limitler'den degistirir.
   const taraLimiti = useSunucuLimiti('tara');
-  const [data, setData] = useState<ShOverviewV3 | null>(null);
-  const [loading, setLoading] = useState(true);
+  const gorunur = useSekmeGorunur();
+  // Sayfaya donuste son yanit hemen gorunur (logo yok); eskiyse arkada sessizce tazelenir.
+  const [data, setData] = useState<ShOverviewV3 | null>(() => shOnbellek.oku<ShOverviewV3>('overview'));
+  const [loading, setLoading] = useState(() => !shOnbellek.oku('overview'));
   const [err, setErr] = useState('');
   // Son tarama isinin yukleyici sonucu (D1-U04/U09): toast gecicidir, bant kalici.
   const [yukleme, setYukleme] = useState<{ baslik: string; satirlar: string[]; sorun: boolean } | null>(
@@ -1528,6 +1615,7 @@ function HostsTab({
       const r = await serverHubApi.overview(fresh);
       if (r.ok) {
         setData(r as ShOverviewV3);
+        shOnbellek.yaz('overview', r);
         setErr('');
       } else setErr(r.message || 'Veri alınamadı.');
     } catch (e: unknown) {
@@ -1536,9 +1624,9 @@ function HostsTab({
       setLoading(false);
     }
   }, []);
-  useEffect(() => {
-    load();
-  }, [load]);
+  useAsyncEffect(async () => {
+    if (gorunur && shOnbellek.yas('overview') > shOnbellek.TAZE_MS) await load();
+  }, [gorunur, load]);
 
   function trackJob(
     title: string,
@@ -1595,8 +1683,10 @@ function HostsTab({
     for (const h of data?.hosts || []) h.products.forEach((p) => s.add(p));
     return [...s].sort();
   }, [data]);
+  // Yazarken kutu takilmaz: suzme ertelenmis degerle (React 19), cizim siniri suzgec degisince 300'e doner.
+  const qErtelenmis = useDeferredValue(q);
   const rows = useMemo(() => {
-    const needle = q.trim().toUpperCase();
+    const needle = qErtelenmis.trim().toUpperCase();
     return (data?.hosts || []).filter(
       (h) =>
         (h.hostClass || 'genel') === cls &&
@@ -1604,7 +1694,14 @@ function HostsTab({
         (product === 'all' || h.products.includes(product)) &&
         (!needle || h.host.includes(needle) || (h.topFinding || '').toUpperCase().includes(needle)),
     );
-  }, [data, q, sev, product, cls]);
+  }, [data, qErtelenmis, sev, product, cls]);
+  const sinir = useCizimSiniri(JSON.stringify([qErtelenmis, sev, product, cls]));
+  // Satir dugmesi icin KARARLI geri cagri: memo satirlar sunucu acilinca yeniden cizilmez.
+  const taraRef = useRef<(hosts: string[]) => void>(() => {});
+  useEffect(() => {
+    taraRef.current = (hosts) => void scanNow(hosts);
+  });
+  const satirTara = useCallback((host: string) => taraRef.current([host]), []);
   const clsCounts = useMemo(() => {
     const all = data?.hosts || [];
     return {
@@ -1631,6 +1728,8 @@ function HostsTab({
   const s = data.summary;
   // C3: sema okunamadiysa olculemeyen sayaclarin sebebi hidepid DEGIL sema (kart basliklari).
   const sema = data.schemaUnknown === true;
+  // Liste hucresinin sebebi de bu bayraktan (satir bileseni metni hazir alir).
+  const olcumMetni = olcumSebebi(sema);
 
   return (
     <div className="space-y-4">
@@ -2399,12 +2498,61 @@ function HostsTab({
                 }
               />
             ) : (
-              rows.map((h) => (
-                <tr
+              rows
+                .slice(0, sinir.n)
+                .map((h) => (
+                  <SunucuSatiri
+                    key={h.host}
+                    h={h}
+                    olcumMetni={olcumMetni}
+                    mesgul={busy != null}
+                    onAc={setOpenHost}
+                    onTara={satirTara}
+                  />
+                ))
+            )}
+          </tbody>
+        </table>
+        <DahaFazla gosterilen={Math.min(rows.length, sinir.n)} toplam={rows.length} onDaha={sinir.daha} onTumu={sinir.tumu} />
+      </div>
+
+      {openHost && (
+        <HostModal
+          host={openHost}
+          onClose={() => setOpenHost(null)}
+          onScan={() => scanNow([openHost])}
+          trackJob={trackJob}
+          reload={() => load(true)}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Sunucu tablosunun tek satiri. memo: sunucu acmak / mesgul durumu degismedikce satirlar yeniden
+ * cizilmez (binlerce satirda tiklama gecikmesinin nedeni buydu).
+ */
+const SunucuSatiri = memo(function SunucuSatiri({
+  h,
+  olcumMetni,
+  mesgul,
+  onAc,
+  onTara,
+}: {
+  h: ShHostRowV3;
+  /** Olculemeyen JVM'in sebebi (HostsTab sema bayragindan hesaplar). */
+  olcumMetni: string;
+  mesgul: boolean;
+  onAc: (host: string) => void;
+  onTara: (host: string) => void;
+}) {
+  return (
+    <tr
                   key={h.host}
                   className="border-t cursor-pointer hover:bg-[var(--bg-elevated)]"
                   style={{ borderColor: 'var(--border-subtle)' }}
-                  onClick={() => setOpenHost(h.host)}
+                  onClick={() => onAc(h.host)}
                 >
                   <td className="px-3 py-1.5 font-mono font-semibold">{h.host}</td>
                   <td className="px-3 py-1.5">
@@ -2426,7 +2574,7 @@ function HostsTab({
                     className="px-3 py-1.5 text-right tabular-nums"
                     title={
                       (h.jvmsUnmeasured || 0) > 0
-                        ? `çalışan/toplam · ? ${h.jvmsUnmeasured} = çalışma durumu ölçülemeyen JVM (${olcumSebebi(sema)}) — kapalı sayılmadı`
+                        ? `çalışan/toplam · ? ${h.jvmsUnmeasured} = çalışma durumu ölçülemeyen JVM (${olcumMetni}) — kapalı sayılmadı`
                         : undefined
                     }
                   >
@@ -2454,8 +2602,8 @@ function HostsTab({
                   </td>
                   <td className="px-3 py-1.5" onClick={(e) => e.stopPropagation()}>
                     <button
-                      disabled={busy != null}
-                      onClick={() => scanNow([h.host])}
+                      disabled={mesgul}
+                      onClick={() => onTara(h.host)}
                       className={SM_BTN}
                       style={smBtn()}
                       title="Reboot öncesi şimdi tara (geceden beri değişiklik olmuş olabilir)"
@@ -2464,24 +2612,9 @@ function HostsTab({
                     </button>
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {openHost && (
-        <HostModal
-          host={openHost}
-          onClose={() => setOpenHost(null)}
-          onScan={() => scanNow([openHost])}
-          trackJob={trackJob}
-          reload={() => load(true)}
-        />
-      )}
-    </div>
+              
   );
-}
+});
 
 function HostModal({
   host,
@@ -3395,8 +3528,10 @@ export function FindingsTab({
 }: {
   initial?: { area?: string; code?: string; product?: string; envGroup?: string } | null;
 }) {
-  const [data, setData] = useState<ShFindingsResult | null>(null);
-  const [loading, setLoading] = useState(true);
+  const gorunur = useSekmeGorunur();
+  // Sayfaya / sekmeye donuste son yanit hemen gorunur; eskiyse arkada sessizce tazelenir.
+  const [data, setData] = useState<ShFindingsResult | null>(() => shOnbellek.oku<ShFindingsResult>('findings'));
+  const [loading, setLoading] = useState(() => !shOnbellek.oku('findings'));
   const [q, setQ] = useState('');
   const [area, setArea] = useState<string>(initial?.area || 'all');
   const [code, setCode] = useState<string>(initial?.code || 'all');
@@ -3447,8 +3582,10 @@ export function FindingsTab({
     setLoading(true);
     try {
       const r = await serverHubApi.findings(fresh);
-      if (r.ok) setData(r);
-      else toast.error(r.message || 'Bulgular alınamadı.');
+      if (r.ok) {
+        setData(r);
+        shOnbellek.yaz('findings', r);
+      } else toast.error(r.message || 'Bulgular alınamadı.');
     } catch (e) {
       toast.error(e instanceof Error ? e.message : String(e));
     } finally {
@@ -3456,8 +3593,8 @@ export function FindingsTab({
     }
   }, []);
   useAsyncEffect(async () => {
-    await load();
-  }, [load]);
+    if (gorunur && shOnbellek.yas('findings') > shOnbellek.TAZE_MS) await load();
+  }, [gorunur, load]);
   const all = data?.findings || [];
   const codes = useMemo(
     () =>
@@ -3465,8 +3602,10 @@ export function FindingsTab({
     [all, area],
   );
   const products = useMemo(() => [...new Set(all.flatMap((f) => f.products))].sort(), [all]);
+  // Yazarken kutu takilmaz: suzme ertelenmis degerle.
+  const qErtelenmis = useDeferredValue(q);
   const rows = useMemo(() => {
-    const n = q.trim().toLowerCase();
+    const n = qErtelenmis.trim().toLowerCase();
     return all.filter(
       (f) =>
         (area === 'all' || f.area === area) &&
@@ -3477,7 +3616,8 @@ export function FindingsTab({
         (fCls === 'all' || (f.hostClass || 'genel') === fCls) &&
         (!n || f.host.toLowerCase().includes(n) || f.text.toLowerCase().includes(n)),
     );
-  }, [all, q, area, code, sev, product, envGroup, fCls]);
+  }, [all, qErtelenmis, area, code, sev, product, envGroup, fCls]);
+  const sinir = useCizimSiniri(JSON.stringify([qErtelenmis, area, code, sev, product, envGroup, fCls]));
   const byCode = useMemo(() => {
     const m = new Map<string, number>();
     for (const f of rows) m.set(f.code, (m.get(f.code) || 0) + 1);
@@ -3676,7 +3816,7 @@ export function FindingsTab({
             </tr>
           </thead>
           <tbody>
-            {rows.slice(0, 2000).map((f, i) => (
+            {rows.slice(0, sinir.n).map((f, i) => (
               <tr
                 key={f.host + f.code + i}
                 className="border-t"
@@ -3750,11 +3890,7 @@ export function FindingsTab({
             )}
           </tbody>
         </table>
-        {rows.length > 2000 && (
-          <div className="px-3 py-2 text-[11px]" style={{ color: 'var(--text-muted)' }}>
-            İlk 2.000 satır gösteriliyor; tamamı CSV'de.
-          </div>
-        )}
+        <DahaFazla gosterilen={Math.min(rows.length, sinir.n)} toplam={rows.length} onDaha={sinir.daha} onTumu={sinir.tumu} />
       </div>
     </div>
   );

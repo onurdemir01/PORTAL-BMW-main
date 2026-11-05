@@ -28,6 +28,7 @@ import {
   DurumSozlugu,
 } from './EarEnvanterGorunumler';
 import EarEnvanterDetay from './EarEnvanterDetay';
+import { useSekmeGorunur } from './sekmeGorunurlugu';
 import { KapsamSecici, PlanlarGorunum, kapsamAyristir, type KapsamDegeri } from './EarEnvanterPlan';
 
 type Gorunum = 'uygulamalar' | 'warlar' | 'eslenikler' | 'kutuphaneler' | 'sunucular' | 'kosular' | 'ayarlar';
@@ -375,11 +376,13 @@ export default function EarEnvanterTab() {
     [tazele],
   );
   const aktifId = ozet && ozet.aktif ? ozet.aktif.id : null;
+  // Gizli Server Hub sekmesinde yoklama yok (sekme kapaliyken de yoktu).
+  const gorunur = useSekmeGorunur();
   useEffect(() => {
-    if (aktifId == null) return undefined;
+    if (aktifId == null || !gorunur) return undefined;
     const t = setInterval(() => setTazele((n) => n + 1), YOKLAMA_MS);
     return () => clearInterval(t);
-  }, [aktifId]);
+  }, [aktifId, gorunur]);
   const yenile = () => setTazele((n) => n + 1);
   // Tablo satır seçiminden "Seçili sunucuları tara": "Şimdi tara" düğmesiyle aynı kapılar.
   const taraIle = (hostlar: string[]) => {
