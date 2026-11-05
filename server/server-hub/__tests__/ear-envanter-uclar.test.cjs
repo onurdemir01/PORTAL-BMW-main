@@ -321,6 +321,20 @@ test('EU9 CSV akisi eksiksiz, suzgec gider, degisirse kesilir', async () => {
       fetch(`${kok}/ear/disa-aktar/uygulamalar.csv`).then((x) => x.text()),
       'degisen veride indirme hata ile biter',
     );
+    // Toplam akista degisip GERI donerse son sayim tutar; arada veri degismistir: yine kesilmeli.
+    toplam = 12000;
+    n = 0;
+    db.mod.query = async (sql, params) => {
+      if (/OVER\(\) AS toplam\s+FROM ear_envanter_uygulamalari/.test(sql)) {
+        n += 1;
+        toplam = n === 3 ? 11000 : 12000;
+      }
+      return asil(sql, params);
+    };
+    await assert.rejects(
+      fetch(`${kok}/ear/disa-aktar/uygulamalar.csv`).then((x) => x.text()),
+      'gecici degisim de yakalanir',
+    );
   });
 });
 

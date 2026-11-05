@@ -233,7 +233,10 @@ test('EE10 JBoss 7 <-> 8', () => {
     kopya('H2', { jboss: '8', warlar: { 'ODEME.war': [['spring-core', '6.1.0', 5]] } }),
     kopya('H3', { jboss: '7' }),
     kopya('H3', { jboss: '8', durum: 'KISMI_SINIR' }),
+    kopya('H4', { jboss: '8' }),
+    kopya('H5', { jboss: '7' }),
   ]);
+  assert.ok(!a.nesil.some((x) => x.host === 'H4' || x.host === 'H5'), 'tek nesil NESIL degil');
   assert.deepEqual(
     a.nesil.map((x) => [x.host, x.karar, x.ayni_kutuphane]),
     [
