@@ -38,7 +38,7 @@ const runner = () => require('../runner.cjs');
 
 test('RE1 listTemplateJobsOnServer', async () => {
   awx.cevap = (req) =>
-    /\/job_templates\/2376\/jobs\/\?/.test(req.url)
+    /\/job_templates\/4242\/jobs\/\?/.test(req.url)
       ? {
           durum: 200,
           govde: {
@@ -52,7 +52,7 @@ test('RE1 listTemplateJobsOnServer', async () => {
           },
         }
       : { durum: 404, govde: { detail: 'yok' } };
-  const r = await runner().listTemplateJobsOnServer(1, 2376, {
+  const r = await runner().listTemplateJobsOnServer(1, 4242, {
     finishedAfter: '2026-10-29T12:00:00.000Z',
     pageSize: 50,
   });
@@ -63,7 +63,7 @@ test('RE1 listTemplateJobsOnServer', async () => {
   const son = awx.istekler.at(-1);
   assert.equal(son.method, 'GET');
   const u = new URL(son.url, 'http://x');
-  assert.equal(u.pathname, '/api/v2/job_templates/2376/jobs/');
+  assert.equal(u.pathname, '/api/v2/job_templates/4242/jobs/');
   assert.equal(u.searchParams.get('order_by'), '-id');
   assert.equal(u.searchParams.get('page_size'), '50');
   assert.equal(u.searchParams.get('status__in'), 'successful,failed,error,canceled');
@@ -76,9 +76,9 @@ test('RE1 listTemplateJobsOnServer', async () => {
 
   process.env.AWX_1_API_BASE = '/api/controller/v2';
   try {
-    await runner().listTemplateJobsOnServer(1, 2376);
+    await runner().listTemplateJobsOnServer(1, 4242);
     assert.ok(
-      awx.istekler.at(-1).url.startsWith('/api/controller/v2/job_templates/2376/jobs/?'),
+      awx.istekler.at(-1).url.startsWith('/api/controller/v2/job_templates/4242/jobs/?'),
       awx.istekler.at(-1).url,
     );
   } finally {
@@ -87,18 +87,18 @@ test('RE1 listTemplateJobsOnServer', async () => {
 });
 
 test('RE2 getTemplateDefaultLimitOnServer', async () => {
-  let govde = { id: 2376, name: 'BMW Portal - EAR Envanter', limit: 'all' };
+  let govde = { id: 4242, name: 'BMW Portal - EAR Envanter', limit: 'all' };
   let durum = 200;
   awx.cevap = () => ({ durum, govde });
-  assert.equal(await runner().getTemplateDefaultLimitOnServer(1, 2376), 'all');
-  assert.equal(awx.istekler.at(-1).url, '/api/v2/job_templates/2376/');
-  govde = { id: 2376, limit: '' };
-  assert.equal(await runner().getTemplateDefaultLimitOnServer(1, 2376), '');
-  govde = { id: 2376 };
-  assert.equal(await runner().getTemplateDefaultLimitOnServer(1, 2376), undefined);
-  govde = { id: 2376, limit: 5 };
-  assert.equal(await runner().getTemplateDefaultLimitOnServer(1, 2376), undefined);
+  assert.equal(await runner().getTemplateDefaultLimitOnServer(1, 4242), 'all');
+  assert.equal(awx.istekler.at(-1).url, '/api/v2/job_templates/4242/');
+  govde = { id: 4242, limit: '' };
+  assert.equal(await runner().getTemplateDefaultLimitOnServer(1, 4242), '');
+  govde = { id: 4242 };
+  assert.equal(await runner().getTemplateDefaultLimitOnServer(1, 4242), undefined);
+  govde = { id: 4242, limit: 5 };
+  assert.equal(await runner().getTemplateDefaultLimitOnServer(1, 4242), undefined);
   durum = 403;
   govde = { detail: 'yetki yok' };
-  await assert.rejects(runner().getTemplateDefaultLimitOnServer(1, 2376));
+  await assert.rejects(runner().getTemplateDefaultLimitOnServer(1, 4242));
 });

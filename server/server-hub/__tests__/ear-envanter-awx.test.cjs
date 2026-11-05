@@ -45,7 +45,7 @@ afterEach(() => {
   for (const y of [REG_YOLU, INV_YOLU, RUNNER_YOLU]) delete require.cache[y];
 });
 
-const sablonVar = (templateId = 2376, awxServerId = 2) =>
+const sablonVar = (templateId = 4242, awxServerId = 2) =>
   sahteModul(REG_YOLU, {
     getByKey: async () => ({ enabled: true, awxServerId }),
     getEffectiveTemplateId: () => templateId,
@@ -85,15 +85,15 @@ test('EAX1 sablon yoksa AWX cagrilmaz; 2 dk kisitlamasi', async () => {
 });
 
 test('EAX2 is secimi ve kosu acma', async () => {
-  sablonVar(2376, 2);
+  sablonVar(4242, 2);
   const detay = [];
   const listeArg = [];
   const isler = {
     905: null, // Portal'in kendi isi: detay hic okunmamali
-    904: { status: 'failed', templateId: 2376, artifacts: {} },
+    904: { status: 'failed', templateId: 4242, artifacts: {} },
     903: {
       status: 'successful',
-      templateId: 2376,
+      templateId: 4242,
       artifacts: { ear_envanter_result: awxStats({ kaynak: 'PORTAL', awx_job_id: '903' }) },
     },
     902: {
@@ -103,7 +103,7 @@ test('EAX2 is secimi ve kosu acma', async () => {
     },
     901: {
       status: 'successful',
-      templateId: 2376,
+      templateId: 4242,
       launchedBy: 'ayse',
       artifacts: { ear_envanter_result: awxStats() },
     },
@@ -118,7 +118,7 @@ test('EAX2 is secimi ve kosu acma', async () => {
     getJobStatusOnServer: async (sid, id) => {
       detay.push([sid, id]);
       if (id === 900 && okunamaz) throw new Error('AWX zaman asimi');
-      if (id === 900) return { status: 'failed', templateId: 2376, artifacts: {} };
+      if (id === 900) return { status: 'failed', templateId: 4242, artifacts: {} };
       return { jobId: id, ...isler[id] };
     },
   });
@@ -135,7 +135,7 @@ test('EAX2 is secimi ve kosu acma', async () => {
   const r = await awx.awxIsleriniAl({ simdi });
   assert.deepEqual(r, { alinan: [88] });
   assert.equal(listeArg[0][0], 2);
-  assert.equal(listeArg[0][1], 2376);
+  assert.equal(listeArg[0][1], 4242);
   assert.equal(listeArg[0][2].finishedAfter, '2026-10-29T12:00:00.000Z', '7 gun geriye');
   assert.ok(!detay.some(([, id]) => id === 905), "Portal'in kendi isinin detayi okunmamali");
   const ins = db.cagrilar.filter((c) => c.sql === awx.AWX_KOSU_SQL);
@@ -260,7 +260,7 @@ test('EAX5 limitDenetimi', async () => {
     redactSecrets: (s) => s,
     getTemplateDefaultLimitOnServer: async (sid, tid) => {
       okuma += 1;
-      assert.deepEqual([sid, tid], [2, 2376]);
+      assert.deepEqual([sid, tid], [2, 4242]);
       if (ayar instanceof Error) throw ayar;
       return ayar;
     },
