@@ -124,6 +124,10 @@ test('EY4 zaman dogruluk tablosu (TR)', () => {
   // AY capasi ayin ilk Pazarindan sonra: o ay atlanir, aralik capa ayindan sayilir (Kas + 2 = Oca).
   const capaAy = plan('p2', { p2_baslangic: '2026-11-05' });
   assert.equal(tr(a.sonrakiZamanlamalar(capaAy, new Date('2026-11-05T00:00:00Z'), 1)[0]), '2027-01-03 03:00');
+  assert.equal(a.sonZamanlama(capaAy, new Date('2026-11-06T00:00:00Z')), null, 'baslangictan onceki ornek sayilmaz');
+  // Baslangictan bir gun onceki ornek 24 saatlik telafiye dusup ilk gun tarama ACMAMALI.
+  const ertesi = { ...a.varsayilanlar(), p2_acik: 'ACIK', p2_aralik: '1', p2_baslangic: '2026-11-02' };
+  assert.deepEqual(a.bekleyenZamanlama(ertesi, new Date('2026-11-01T21:30:00Z')), [], '1 Kas 03:00 baslangic oncesi');
   // Telafi 24 saat; anahtar TR tarihiyle
   const d = { ...a.varsayilanlar(), p1_acik: 'ACIK' };
   assert.deepEqual(a.bekleyenZamanlama(d, new Date('2026-11-07T23:30:00Z')).map((x) => x.anahtar), ['P1-2026-11-08']);
@@ -213,6 +217,7 @@ test('EY7 eski haftalik plan tasinir', async () => {
   ]);
   F.dbKur(db);
   const o = await a.oku(true);
+  assert.equal(o.okunamadi, false);
   assert.deepEqual(
     ['acik', 'birim', 'aralik', 'gun', 'saat', 'kip'].map((k) => o.deger[`p1_${k}`]),
     ['ACIK', 'HAFTA', '1', '3', '21:15', 'TAM'],
@@ -228,17 +233,20 @@ test('EY7 eski haftalik plan tasinir', async () => {
 
   a = ayarYukle();
   satirlar = [{ anahtar: 'kip', deger: 'OZET' }, { anahtar: 'saat', deger: '04:00' }];
+  let eklenen = null;
   db = F.sahteDb([
     [/SELECT anahtar, deger/, () => ({ rows: satirlar })],
     [/DELETE FROM ear_envanter_ayarlar WHERE anahtar IN/, (params) => {
       const sil = new Set(JSON.parse(params[0]));
-      satirlar = satirlar.filter((r) => !sil.has(r.anahtar));
-      assert.deepEqual(JSON.parse(params[1]), [], 'kapali eski plan tasinmaz');
+      eklenen = JSON.parse(params[1]);
+      satirlar = [...satirlar.filter((r) => !sil.has(r.anahtar)), ...eklenen];
       return {};
     }],
   ]);
   F.dbKur(db);
   const k = await a.oku(true);
+  assert.equal(k.okunamadi, false);
+  assert.deepEqual(eklenen, [], 'kapali eski plan tasinmaz');
   assert.equal(k.deger.p1_acik, 'KAPALI');
   assert.equal(k.deger.p1_kip, 'OZET');
   assert.deepEqual(satirlar, []);

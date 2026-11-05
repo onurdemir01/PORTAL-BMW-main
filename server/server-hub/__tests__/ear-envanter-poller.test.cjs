@@ -434,7 +434,12 @@ test('EPO15 kapsam cozucu', async () => {
   F.dbKur(
     F.sahteDb([
       [/WITH son AS \(SELECT host, MAX\(kosu_id\) AS kosu_id FROM ear_envanter_hostlari GROUP BY host\)/, () => ({
-        rows: [{ host: 'APPSRV01' }, { host: 'APPSRV03' }],
+        rows: [
+          { host: 'APPSRV01', durum: 'TAM' },
+          { host: 'APPSRV02', durum: 'ULASILAMADI' },
+          { host: 'APPSRV03', durum: 'KOK_YOK' },
+          { host: 'APPSRV04', durum: 'KISMI' },
+        ],
       })],
       [/INSERT INTO ear_envanter_kosulari/, () => ({ rows: [{ id: 5 }] })],
     ]),

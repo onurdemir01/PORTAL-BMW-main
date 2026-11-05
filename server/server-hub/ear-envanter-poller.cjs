@@ -118,6 +118,8 @@ async function filoHedefleri() {
  * kullanir. SORUNLU: filodaki sunuculardan son denemesi TAM ya da KOK_YOK olmayanlar ve hic taranmamislar
  * (filodan cikmis sunucu taranmaz). ORTAM: sunucunun envanter ortamlarindan biri (normalize) listede.
  */
+const SORUN_DEGIL = Object.freeze(['TAM', 'KOK_YOK']);
+
 async function kapsamHedefleri(kapsam, hostlar) {
   if (kapsam === 'SECILI') return hedefleriDuzle(hostlar);
   const filo = await filoHedefleri();
@@ -136,10 +138,14 @@ async function kapsamHedefleri(kapsam, hostlar) {
   if (kapsam === 'SORUNLU') {
     const { rows } = await db().query(
       `WITH son AS (SELECT host, MAX(kosu_id) AS kosu_id FROM ear_envanter_hostlari GROUP BY host)
-       SELECT h.host FROM ear_envanter_hostlari h JOIN son ON son.host = h.host AND son.kosu_id = h.kosu_id
-        WHERE h.durum IN ('TAM', 'KOK_YOK')`,
+       SELECT h.host, h.durum FROM ear_envanter_hostlari h JOIN son ON son.host = h.host AND son.kosu_id = h.kosu_id`,
     );
-    const iyi = new Set((rows || []).map((r) => String(r.host).toUpperCase()));
+    // KOK_YOK bir cevaptir (o sunucuda uygulama yok): sorun sayilmaz.
+    const iyi = new Set(
+      (rows || [])
+        .filter((r) => SORUN_DEGIL.includes(String(r.durum)))
+        .map((r) => String(r.host).toUpperCase()),
+    );
     return { hedefler: filo.hedefler.filter((h) => !iyi.has(h.host)), gecersiz: filo.gecersiz };
   }
   throw hata(400, 'Kapsam FILO, SORUNLU, ORTAM ya da SECILI olmalı.', 'gecersiz_kapsam');
