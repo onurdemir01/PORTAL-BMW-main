@@ -5,7 +5,7 @@
 # Portal ayni mount'u okuyup DB'ye alir. Ayrinti: README.md.
 #
 # extra_vars (Portal gonderir):
-#   hedefler:              ["APPSRV01", "APPSRV02"]  (zorunlu; bir PARTI, en cok ear_parti_siniri)
+#   hedefler:              ["APPSRV01", "APPSRV02"]  (Portal kipi; bir PARTI, en cok ear_parti_siniri)
 #   ear_kip:               OZET | TAM               (OZET: dosya basina stat yok; TAM: + agac)
 #   ear_kosu_no:           12                       (Portal kosu numarasi; dizin adi)
 #   ear_parti_no:          3                        (Portal parti numarasi)
@@ -22,15 +22,30 @@
 # (`python3 -B -`): hedefe dosya kopyalanmaz, modul gonderilmez, bytecode yazilmaz.
 # Betik dosya icerigi okumaz (yalniz zip arsivlerinin merkez dizini), hicbir sey yazmaz/silmez.
 #
-# NEDEN add_host: AWX `limit` yalniz template'te "prompt on launch" aciksa calisir - host secimi
-# playbook icinde yapilir (nginx_console_fetch ile ayni desen).
+# IKI KIP (2026-11-05):
+#   PORTAL KIPI: `hedefler` verilir (Portal her zaman verir). Hedefler add_host ile eklenir (AWX
+#     `limit` yalniz template'te "prompt on launch" aciksa calisir; nginx_console_fetch deseni).
+#     Cikti <ear_dizin>/kosu-<ear_kosu_no>/raw.
+#   LIMIT KIPI: AWX'ten elle; `hedefler` YOK, sunucular AWX Limit alanindan (envanter host'lari).
+#     Limit bossa is ilk play'de durur: tum envanter taranmaz. Cikti
+#     <ear_dizin>/awx-<awx_job_id>/raw (awx_job_id'yi AWX verir); Portal bu isleri bulup yeni kosu
+#     olarak alir. Dosya / host adi envanter adinin kisa hali (alan adi atilir), BUYUK harf.
+# TUZAK: Limit DOLUYKEN `hosts: localhost` play'leri atlanir (Ansible limit'i localhost'a da
+# uygular; `all` yazilsa bile). Portal kipinde Limit dolu olursa is hicbir sey taramadan
+# "successful" biter; Portal bu yuzden Limit alani dolu sablonla baslatmaz.
 # NEDEN GBLABT02: /sw mount orada; hedeflerde /sw yok. throttle 6: sshd MaxSessions (10).
-# AWX template: Variables "prompt on launch" ACIK, Forks 50.
+# AWX template: Variables "prompt on launch" ACIK, Limit BOS ("prompt on launch" ACIK), Forks 50.
 
 - name: "--- [Play] Girdi, hedefler ve cikti dizini ---"
   hosts: localhost
   gather_facts: no
   tasks:
+    # Limit dolu olsaydi bu play hic calismazdi; buraya hedefler'siz gelmek Limit'in BOS oldugu demek.
+    - name: "--- [Task] Sunucu secimi ---"
+      ansible.builtin.fail:
+        msg: "Sunucu secilmedi: AWX'te Limit alanina taranacak sunucu adlarini yaz. Limit bosken tum envanter TARANMAZ."
+      when: hedefler is not defined
+
     - name: "--- [Task] Girdi dogrulama ---"
       ansible.builtin.assert:
         that:
@@ -63,14 +78,44 @@
         mode: '0775'
       delegate_to: "{{ ear_yazici_host | default('GBLABT02') }}"
 
+# Portal kipinde localhost'ta tum gorevler atlanir; Limit kipinde run_once ile tek kez.
+- name: "--- [Play] Limit kipi: girdi ve cikti dizini ---"
+  hosts: "{{ 'localhost' if hedefler is defined else 'all' }}"
+  gather_facts: no
+  tasks:
+    - name: "--- [Task] Limit kipi girdi dogrulama ---"
+      ansible.builtin.assert:
+        that:
+          - (awx_job_id | default('') | string) is match('^[0-9]{1,9}$')
+          - (ear_kip | default('OZET')) in ['OZET', 'TAM']
+          - (ear_okuma_kullanicisi | default('was') | string) is match('^([a-z_][a-z0-9_-]{0,31})?$')
+          - (ear_kokler | default('/vhosting:/vhosting8')) is match('^(/[A-Za-z0-9._/-]+)(:/[A-Za-z0-9._/-]+)*$')
+          - (ear_dizin | default('/sw/BMW_PORTAL/ear_envanter')) is match('^/[A-Za-z0-9_][A-Za-z0-9._/-]*$')
+          - "'..' not in (ear_dizin | default('/sw/BMW_PORTAL/ear_envanter'))"
+        fail_msg: "Gecersiz girdi (Limit kipi): awx_job_id (AWX disinda elle ver) / ear_kip / ear_okuma_kullanicisi / ear_kokler / ear_dizin"
+      run_once: true
+      when: hedefler is not defined
+
+    - name: "--- [Task] Cikti dizini (Limit kipi, GBLABT02) ---"
+      ansible.builtin.file:
+        path: "{{ ear_dizin | default('/sw/BMW_PORTAL/ear_envanter') }}/awx-{{ awx_job_id }}/raw"
+        state: directory
+        mode: '0775'
+      delegate_to: "{{ ear_yazici_host | default('GBLABT02') }}"
+      run_once: true
+      when: hedefler is not defined
+
 - name: "--- [Play] Salt okunur tarama ---"
-  hosts: ear_hedefler
+  hosts: "{{ 'ear_hedefler' if hedefler is defined else 'all' }}"
   gather_facts: no
   ignore_unreachable: true
   strategy: free
   vars:
     ear_okuyan: "{{ ear_okuma_kullanicisi | default('was') }}"
-    ear_cikti_dosyasi: "{{ ear_dizin | default('/sw/BMW_PORTAL/ear_envanter') }}/kosu-{{ ear_kosu_no }}/raw/{{ inventory_hostname | upper }}.out"
+    ear_alt_dizin: "{{ ('kosu-' ~ ear_kosu_no) if hedefler is defined else ('awx-' ~ awx_job_id) }}"
+    # Limit kipinde envanter adi FQDN olabilir: Portal (MWAppsInventory) kisa adi BUYUK harf bilir.
+    ear_host_adi: "{{ (inventory_hostname if hedefler is defined else (inventory_hostname.split('.')[0] if inventory_hostname is match('[A-Za-z]') else inventory_hostname)) | regex_replace('[^A-Za-z0-9._-]', '_') | upper }}"
+    ear_cikti_dosyasi: "{{ ear_dizin | default('/sw/BMW_PORTAL/ear_envanter') }}/{{ ear_alt_dizin }}/raw/{{ ear_host_adi }}.out"
   tasks:
     # TUZAK 3 (playbook-jinja-traps): tum hostlar dusse de toplayici play'e ulasilmali; yoksa
     # set_stats HIC yayinlanmaz. Kopya no_log altinda (icerik AWX olayina yazilmasin) oldugu icin
@@ -96,7 +141,7 @@
         - name: "--- [Task] Sonucu siniflandir ---"
           ansible.builtin.set_fact:
             ear_ozet:
-              host: "{{ inventory_hostname | upper }}"
+              host: "{{ ear_host_adi }}"
               paket: "{{ '@@EAR_ENVANTER_BITTI@@' in (ear_tarama.stdout | default('')) }}"
               durum: >-
                 {{ 'ULASILAMADI' if (ear_tarama.unreachable | default(false) | bool)
@@ -123,41 +168,51 @@
         - name: "--- [Task] Hata kaydi ---"
           ansible.builtin.set_fact:
             ear_ozet:
-              host: "{{ inventory_hostname | upper }}"
+              host: "{{ ear_host_adi }}"
               paket: false
               durum: "{{ 'YAZILAMADI' if (ear_ozet is defined and (ear_ozet.paket | default(false) | bool)) else 'HATA' }}"
               rc: -1
               bayt: 0
               hata: "{{ (ansible_failed_result.msg | default('tarama sirasinda hata')) | truncate(300, true, '') }}"
 
+# Limit kipinde localhost play'i atlanir: toplayici limit'teki hostlarda run_once ile kosar.
 - name: "--- [Play] Toplayici ---"
-  hosts: localhost
+  hosts: "{{ 'localhost' if hedefler is defined else 'all' }}"
   gather_facts: no
+  vars:
+    ear_toplanan: "{{ (groups['ear_hedefler'] | default([])) if hedefler is defined else ansible_play_hosts_all }}"
   tasks:
     # Ulasilamayan host'ta ear_ozet HIC yok -> ULASILAMADI.
     - name: "--- [Task] Sonuc listesi ---"
       ansible.builtin.set_fact:
         ear_sonuclar: >-
           {{ (ear_sonuclar | default([])) + [ hostvars[item].ear_ozet | default({
-               'host': item | upper, 'paket': false, 'durum': 'ULASILAMADI', 'rc': -1, 'bayt': 0, 'hata': 'unreachable' }) ] }}
-      loop: "{{ groups['ear_hedefler'] | default([]) }}"
+               'host': ((item if hedefler is defined else (item.split('.')[0] if item is match('[A-Za-z]') else item)) | regex_replace('[^A-Za-z0-9._-]', '_') | upper),
+               'paket': false, 'durum': 'ULASILAMADI', 'rc': -1, 'bayt': 0, 'hata': 'unreachable' }) ] }}
+      loop: "{{ ear_toplanan }}"
       loop_control:
         label: "{{ item }}"
+      run_once: true
 
     - name: "--- [Task] set_stats ---"
       ansible.builtin.set_stats:
         data:
           ear_envanter_result:
-            kosu_no: "{{ ear_kosu_no | int }}"
-            parti_no: "{{ ear_parti_no | int }}"
+            kosu_no: "{{ ear_kosu_no | default(0) | int }}"
+            parti_no: "{{ ear_parti_no | default(0) | int }}"
             kip: "{{ ear_kip | default('OZET') }}"
-            # Portal bekledigi surumle karsilastirir: uyusmazsa "AWX'teki kopya eski" der.
-            playbook_surum: 1
-            beklenen: "{{ hedefler | length }}"
+            # 2: Limit kipi. Portal AWX'ten elle baslatilan isi yalniz kaynak AWX ise alir.
+            playbook_surum: 2
+            kaynak: "{{ 'PORTAL' if hedefler is defined else 'AWX' }}"
+            awx_job_id: "{{ awx_job_id | default(0) | int }}"
+            limit: "{{ ansible_limit | default('') }}"
+            beklenen: "{{ (hedefler | length) if hedefler is defined else (ear_toplanan | length) }}"
             sonuc_alinan: "{{ ear_sonuclar | default([]) | selectattr('paket') | list | length }}"
             hostlar: "{{ ear_sonuclar | default([]) }}"
+      run_once: true
 
     - name: "--- [Task] Hic sonuc yoksa basarisiz ---"
       ansible.builtin.fail:
         msg: "Hicbir sunucudan envanter alinamadi. Sonuclar: {{ ear_sonuclar | default([]) | map(attribute='durum') | list }}"
       when: (ear_sonuclar | default([]) | selectattr('paket') | list | length) == 0
+      run_once: true
