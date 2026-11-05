@@ -9,6 +9,7 @@
 //   EAX4  alim: AWX kosusu ham dosyayi awx-<is>/raw'dan okur; set_stats AWX is numarasiyla eslesir
 //   EAX5  limitDenetimi: sablon Limit'i doluysa 409; bos / olculemedi / sablon yok -> engellemez
 //   EAX6  Portal kipi: sablon Limit'i doluyken parti BASLATILMAZ, kosu nedeniyle BASARISIZ kapanir
+//   EAX7  poller turu AWX islerini alir (2 dk'da bir); AWX hatasi turu dusurmez
 'use strict';
 
 const { test, beforeEach, afterEach } = require('node:test');
@@ -326,4 +327,27 @@ test('EAX6 Portal kipi: sablon Limit dolu iken parti baslatilmaz', async () => {
   );
   assert.equal(bitir.params[1], 'BASARISIZ');
   assert.match(bitir.params[6], /Limit alanı dolu/);
+});
+
+test('EAX7 poller turu AWX islerini alir; AWX hatasi turu dusurmez', async (t) => {
+  t.mock.method(console, 'warn', () => {});
+  sablonVar();
+  let liste = 0;
+  let patla = false;
+  sahteModul(RUNNER_YOLU, {
+    redactSecrets: (s) => s,
+    listTemplateJobsOnServer: async () => {
+      liste += 1;
+      if (patla) throw new Error('AWX yok');
+      return [];
+    },
+  });
+  F.dbKur(F.sahteDb([[/FROM ear_envanter_ayarlar/, () => ({ rows: [] })]]));
+  await poller.tick(new Date('2026-11-05T12:00:00Z'));
+  assert.equal(liste, 1, 'tur AWX islerini sormadi');
+  await poller.tick(new Date('2026-11-05T12:00:30Z'));
+  assert.equal(liste, 1, '2 dk dolmadan yeniden sorulmamali');
+  patla = true;
+  await poller.tick(new Date('2026-11-05T12:03:00Z'));
+  assert.equal(liste, 2);
 });
