@@ -10,9 +10,12 @@
 //   HZ7 /overview /findings /host Server-Timing tasir (onbellek | bayat | taze + sureler)
 //   HZ8 /host-adlari: /overview ile ayni kume (taramadan dusen haric); Admin olmayana 403
 //   HZ9 tek sunucu JVM agir sorgusu MAX(scan_date) alt sorgusunu da o sunucuyla daraltir
+// Her test 10 sn, her HTTP istegi 5 sn ile sinirli: bozuk onbellek suiti kilitlemez, kirmizi yapar.
 'use strict';
 
-const { test, beforeEach, afterEach } = require('node:test');
+const { test: nodeTest, beforeEach, afterEach } = require('node:test');
+// KILITLENMEZ: onbellek kodu bozulursa test zaman asimiyla KIRMIZI olur, suit (ve CI) beklemede kalmaz.
+const test = (ad, fn) => nodeTest(ad, { timeout: 10000 }, fn);
 const assert = require('node:assert/strict');
 const Module = require('node:module');
 
@@ -234,11 +237,11 @@ async function httpIle(fn, rol = 'Admin') {
 test('HZ7 Server-Timing', async () => {
   Date.now = asilNow;
   await httpIle(async (kok) => {
-    const a = await fetch(`${kok}/overview`);
+    const a = await fetch(`${kok}/overview`, { signal: AbortSignal.timeout(5000) });
     assert.match(a.headers.get('server-timing'), /^sh;desc="taze", db;dur=\d+, assess;dur=\d+$/);
-    const b = await fetch(`${kok}/findings`);
+    const b = await fetch(`${kok}/findings`, { signal: AbortSignal.timeout(5000) });
     assert.equal(b.headers.get('server-timing'), 'sh;desc="onbellek"');
-    const c = await fetch(`${kok}/host/APPSRV01`);
+    const c = await fetch(`${kok}/host/APPSRV01`, { signal: AbortSignal.timeout(5000) });
     assert.equal(c.status, 200);
     assert.equal(c.headers.get('server-timing'), 'sh;desc="onbellek"');
   });
@@ -247,8 +250,10 @@ test('HZ7 Server-Timing', async () => {
 test('HZ8 /host-adlari', async () => {
   Date.now = asilNow;
   await httpIle(async (kok) => {
-    const r = await (await fetch(`${kok}/host-adlari`)).json();
-    const o = await (await fetch(`${kok}/overview`)).json();
+    const r = await (
+      await fetch(`${kok}/host-adlari`, { signal: AbortSignal.timeout(5000) })
+    ).json();
+    const o = await (await fetch(`${kok}/overview`, { signal: AbortSignal.timeout(5000) })).json();
     assert.deepEqual(r.hosts, ['APPSRV01'], 'taramadan dusen haric');
     assert.deepEqual(
       r.hosts,
@@ -257,7 +262,10 @@ test('HZ8 /host-adlari', async () => {
     );
   });
   await httpIle(async (kok) => {
-    assert.equal((await fetch(`${kok}/host-adlari`)).status, 403);
+    assert.equal(
+      (await fetch(`${kok}/host-adlari`, { signal: AbortSignal.timeout(5000) })).status,
+      403,
+    );
   }, 'User');
 });
 
