@@ -26,6 +26,7 @@ import os
 import re
 import socket
 import stat
+import struct
 import sys
 import time
 import zipfile
@@ -173,12 +174,6 @@ def satir_stat(tam_yol, rel, tip):
     return [rel, tip, stat.filemode(st.st_mode), st.st_uid, st.st_gid, st.st_size, int(st.st_mtime), st.st_ino, hedef]
 
 
-def zip_girisleri(kaynak):
-    """Yalniz merkez dizin: (ad, boyut, zaman) listesi. Icerik acilmaz."""
-    with zipfile.ZipFile(kaynak, 'r') as z:
-        return [(i.filename, i.file_size, i.date_time) for i in z.infolist()]
-
-
 def zip_zaman(dt):
     try:
         return int(time.mktime(dt + (0, 0, -1)))
@@ -186,9 +181,97 @@ def zip_zaman(dt):
         return 0
 
 
+def zip_merkez_giris_sayisi(kaynak, tavan):
+    """ZIP'i acmadan merkez dizin basliklarini sayar; ZIP64/multi-disk/tutarsizlik fail-closed."""
+    kaynak.seek(0, os.SEEK_END)
+    boyut = kaynak.tell()
+    if boyut < 22:
+        return None
+    kuyruk = min(boyut, 65557)  # EOCD 22 bayt + en cok 65535 bayt yorum.
+    kaynak.seek(boyut - kuyruk, os.SEEK_SET)
+    veri = kaynak.read(kuyruk)
+    if len(veri) != kuyruk:
+        return -1
+    yer = len(veri)
+    while True:
+        yer = veri.rfind(b'PK\x05\x06', 0, yer)
+        if yer < 0:
+            return None
+        if yer + 22 <= len(veri):
+            alanlar = struct.unpack_from('<4s4H2LH', veri, yer)
+            if yer + 22 + alanlar[7] == len(veri):
+                break
+    _, disk, merkez_disk, disk_giris, toplam, merkez_boyut, merkez_ofset, _ = alanlar
+    mutlak_eocd = boyut - kuyruk + yer
+    if (disk or merkez_disk or disk_giris != toplam or toplam == 0xffff or
+            merkez_boyut == 0xffffffff or merkez_ofset == 0xffffffff or
+            merkez_ofset + merkez_boyut != mutlak_eocd):
+        return -1
+    if toplam > tavan:
+        return toplam
+
+    # EOCD sayaci dusuk yazilmis olsa bile ZipFile'a gecmeden gercek merkez
+    # basliklarini tavan+1'e kadar say. ZIP64 extra alani fail-closed reddedilir.
+    kaynak.seek(merkez_ofset, os.SEEK_SET)
+    kalan = merkez_boyut
+    gercek = 0
+    while kalan:
+        if sure_doldu():
+            return -2
+        if kalan < 46:
+            return -1
+        baslik = kaynak.read(46)
+        if len(baslik) != 46 or baslik[:4] != b'PK\x01\x02':
+            return -1
+        if struct.unpack_from('<H', baslik, 6)[0] == 45:  # ZIP64 icin gereken surum.
+            return -1
+        ad_boyut, ek_boyut, yorum_boyut = struct.unpack_from('<HHH', baslik, 28)
+        atla = ad_boyut + ek_boyut + yorum_boyut
+        if 46 + atla > kalan:
+            return -1
+        degisken = kaynak.read(atla)
+        if len(degisken) != atla:
+            return -1
+        ek = degisken[ad_boyut:ad_boyut + ek_boyut]
+        ek_yer = 0
+        while ek_yer < len(ek):
+            if ek_yer + 4 > len(ek):
+                return -1
+            ek_kimlik, ek_uzunluk = struct.unpack_from('<HH', ek, ek_yer)
+            ek_yer += 4
+            if ek_yer + ek_uzunluk > len(ek) or ek_kimlik == 0x0001:
+                return -1
+            ek_yer += ek_uzunluk
+        kalan -= 46 + atla
+        gercek += 1
+        if gercek > tavan:
+            return gercek
+    return gercek if gercek == toplam else -1
+
+
+def zip_girisleri(kaynak, tavan):
+    """Ayni salt-okunur akista sinirli preflight sonrasi merkez dizini listeler."""
+    merkez_giris = zip_merkez_giris_sayisi(kaynak, max(0, tavan))
+    if merkez_giris == -2:
+        return None, 'KISMI_ZAMAN'
+    if merkez_giris is None or merkez_giris < 0:
+        return None, 'ARSIV_ACILMADI'
+    if merkez_giris > max(0, tavan):
+        return None, 'KISMI_SINIR'
+    if sure_doldu():
+        return None, 'KISMI_ZAMAN'
+    kaynak.seek(0, os.SEEK_SET)
+    with zipfile.ZipFile(kaynak, 'r') as z:
+        return [(i.filename, i.file_size, i.date_time) for i in z.infolist()], None
+
+
 def arsiv_war_isle(u, war, girisler, on_ek, yapi):
     """Paketli WAR'in merkez dizinini WAR kaydina ve (TAM) agac satirlarina isler."""
     for ad, boyut, dt in sorted(girisler):
+        if sure_doldu():
+            war['durum'] = 'KISMI_ZAMAN'
+            uyar(u, 'sure butcesi doldu: ' + war['yol'], 'KISMI_ZAMAN')
+            return
         if u['giris'] >= SINIR_UYGULAMA or HOST['giris'] >= SINIR_HOST:
             war['durum'] = 'KISMI_SINIR'
             uyar(u, 'giris siniri: ' + war['yol'], 'KISMI_SINIR')
@@ -211,7 +294,15 @@ def paketli_war(u, tam_yol, rel, yapi):
     war = yeni_war(rel, 'ARSIV')
     u['warlar'].append(war)
     try:
-        arsiv_war_isle(u, war, zip_girisleri(tam_yol), rel, yapi)
+        fd = os.open(tam_yol, os.O_RDONLY)
+        with os.fdopen(fd, 'rb') as akis:
+            kalan = min(SINIR_UYGULAMA - u['giris'], SINIR_HOST - HOST['giris'])
+            girisler, durum = zip_girisleri(akis, kalan)
+        if durum:
+            war['durum'] = durum
+            uyar(u, 'arsiv on kapisi: ' + rel, durum)
+            return
+        arsiv_war_isle(u, war, girisler, rel, yapi)
     except (zipfile.BadZipFile, OSError, RuntimeError) as e:
         war['durum'] = 'ARSIV_ACILMADI'
         uyar(u, 'arsiv okunamadi ' + rel + ': ' + str(e), 'ARSIV_ACILMADI')
@@ -308,39 +399,64 @@ def arsiv_uygulama(u, tam):
     """'.ear' arsiv dosyasi: merkez dizin; ic WAR'lar yalniz TAM kipte ve boyut sinirinin altinda acilir."""
     yapi, kutuphane = Iz(), Iz()
     try:
-        with zipfile.ZipFile(tam, 'r') as z:
-            girisler = z.infolist()
-            for i in sorted(girisler, key=lambda x: x.filename):
-                rel = i.filename.rstrip('/')
-                if not rel:
-                    continue
-                tip = 'D' if i.filename.endswith('/') else 'Z'
-                u['giris'] += 1
-                HOST['giris'] += 1
-                if not ucucu(rel):
-                    yapi.ekle(rel, tip)
-                if KIP == 'TAM':
-                    u['satirlar'].append([rel, tip, '', '', '', i.file_size, zip_zaman(i.date_time), '', ''])
-                ad_kucuk = rel.rsplit('/', 1)[-1].lower()
-                say(u, None, rel.rsplit('/', 1)[-1], '', tip, i.file_size)
-                if rel.lower() == 'meta-inf/application.xml':
-                    u['application_xml'] = True
-                if tip == 'Z' and rel.lower().startswith('lib/') and rel.count('/') == 1 and ad_kucuk.endswith('.jar'):
-                    kad, ksurum = jar_ayir(rel.rsplit('/', 1)[-1])
-                    u['ear_kutuphaneleri'].append([kad, ksurum, i.file_size])
-                if tip == 'Z' and ad_kucuk.endswith('.war'):
-                    war = yeni_war(rel, 'ARSIV_ICINDE')
-                    u['warlar'].append(war)
-                    if KIP != 'TAM' or i.file_size > ARSIV_BAYT:
-                        war['durum'] = 'ARSIV_ACILMADI'
-                        uyar(u, 'ic arsiv acilmadi (' + KIP + ', ' + str(i.file_size) + ' bayt): ' + rel, 'ARSIV_ACILMADI')
+        kalan = min(SINIR_UYGULAMA - u['giris'], SINIR_HOST - HOST['giris'])
+        fd = os.open(tam, os.O_RDONLY)
+        with os.fdopen(fd, 'rb') as akis:
+            merkez_giris = zip_merkez_giris_sayisi(akis, max(0, kalan))
+            if merkez_giris == -2 or sure_doldu():
+                uyar(u, 'sure butcesi doldu', 'KISMI_ZAMAN')
+                return yapi, kutuphane
+            if merkez_giris is None or merkez_giris < 0:
+                uyar(u, 'arsiv merkez dizini gecersiz', 'ARSIV_ACILMADI')
+                return yapi, kutuphane
+            if merkez_giris > max(0, kalan):
+                uyar(u, 'arsiv merkez dizini giris siniri', 'KISMI_SINIR')
+                return yapi, kutuphane
+            akis.seek(0, os.SEEK_SET)
+            with zipfile.ZipFile(akis, 'r') as z:
+                girisler = z.infolist()
+                for i in sorted(girisler, key=lambda x: x.filename):
+                    if sure_doldu():
+                        uyar(u, 'sure butcesi doldu', 'KISMI_ZAMAN')
+                        break
+                    rel = i.filename.rstrip('/')
+                    if not rel:
                         continue
-                    try:
-                        ic = zip_girisleri(io.BytesIO(z.read(i)))
-                        arsiv_war_isle(u, war, ic, rel, yapi)
-                    except (zipfile.BadZipFile, OSError, RuntimeError, MemoryError) as e:
-                        war['durum'] = 'ARSIV_ACILMADI'
-                        uyar(u, 'ic arsiv okunamadi ' + rel + ': ' + e.__class__.__name__, 'ARSIV_ACILMADI')
+                    if u['giris'] >= SINIR_UYGULAMA or HOST['giris'] >= SINIR_HOST:
+                        uyar(u, 'giris siniri', 'KISMI_SINIR')
+                        break
+                    tip = 'D' if i.filename.endswith('/') else 'Z'
+                    u['giris'] += 1
+                    HOST['giris'] += 1
+                    if not ucucu(rel):
+                        yapi.ekle(rel, tip)
+                    if KIP == 'TAM':
+                        u['satirlar'].append([rel, tip, '', '', '', i.file_size, zip_zaman(i.date_time), '', ''])
+                    ad_kucuk = rel.rsplit('/', 1)[-1].lower()
+                    say(u, None, rel.rsplit('/', 1)[-1], '', tip, i.file_size)
+                    if rel.lower() == 'meta-inf/application.xml':
+                        u['application_xml'] = True
+                    if tip == 'Z' and rel.lower().startswith('lib/') and rel.count('/') == 1 and ad_kucuk.endswith('.jar'):
+                        kad, ksurum = jar_ayir(rel.rsplit('/', 1)[-1])
+                        u['ear_kutuphaneleri'].append([kad, ksurum, i.file_size])
+                    if tip == 'Z' and ad_kucuk.endswith('.war'):
+                        war = yeni_war(rel, 'ARSIV_ICINDE')
+                        u['warlar'].append(war)
+                        if KIP != 'TAM' or i.file_size > ARSIV_BAYT:
+                            war['durum'] = 'ARSIV_ACILMADI'
+                            uyar(u, 'ic arsiv acilmadi (' + KIP + ', ' + str(i.file_size) + ' bayt): ' + rel, 'ARSIV_ACILMADI')
+                            continue
+                        try:
+                            kalan = min(SINIR_UYGULAMA - u['giris'], SINIR_HOST - HOST['giris'])
+                            ic, durum = zip_girisleri(io.BytesIO(z.read(i)), kalan)
+                            if durum:
+                                war['durum'] = durum
+                                uyar(u, 'ic arsiv on kapisi: ' + rel, durum)
+                                continue
+                            arsiv_war_isle(u, war, ic, rel, yapi)
+                        except (zipfile.BadZipFile, OSError, RuntimeError, MemoryError) as e:
+                            war['durum'] = 'ARSIV_ACILMADI'
+                            uyar(u, 'ic arsiv okunamadi ' + rel + ': ' + e.__class__.__name__, 'ARSIV_ACILMADI')
     except (zipfile.BadZipFile, OSError, RuntimeError) as e:
         uyar(u, 'arsiv okunamadi: ' + e.__class__.__name__, 'ARSIV_ACILMADI')
     return yapi, kutuphane

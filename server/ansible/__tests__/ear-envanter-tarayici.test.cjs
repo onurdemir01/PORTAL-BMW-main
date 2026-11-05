@@ -7,7 +7,7 @@
 //   ET2  acilmis EAR icindeki PAKETLI .war: merkez dizinden listelenir, WAR sayilir
 //   ET3  .ear ARSIVI: OZET'te ic WAR acilmaz -> ARSIV_ACILMADI, host KISMI; TAM'da acilir -> TAM
 //   ET4  giris siniri: uygulama + WAR KISMI_SINIR, host KISMI (kesik tarama ASLA TAM degil);
-//        paketli WAR'in merkez dizini sinirda kesilirse de WAR KISMI_SINIR
+//        paketli WAR ve dis EAR merkez dizini sinirda kesilirse de KISMI_SINIR
 //   ET5  kok yok -> KOK_YOK; tek kok yoksa ve gerisi temizse TAM
 //   ET6  izin reddi -> uygulama + WAR KISMI_IZIN, host KISMI
 //   ET7  kokteki bag tek adim izlenir (BAG); uygulama icindeki bag/dongu izlenmez; kokun kendisini
@@ -307,6 +307,233 @@ test(
     assert.equal(p.warlar[0].bicim, 'ARSIV');
     assert.equal(p.warlar[0].durum, 'KISMI_SINIR', 'kesik paketli WAR TAM gorunmemeli');
     assert.equal(p.durum, 'KISMI_SINIR');
+
+    // Dis .ear merkez dizini de ayni uygulama sinirina uyar; onceki kod tum infolist'i gezip TAM diyordu.
+    zipYaz(
+      path.join(kok, 'arsiv', 'ARSIVBUYUK.ear'),
+      Array.from({ length: 150 }, (_, i) => [`classes/C${i}.class`, 'x']),
+    );
+    const arsiv = tara([path.join(kok, 'arsiv')], {
+      EAR_KIP: 'TAM',
+      EAR_SINIR_UYGULAMA: '100',
+    });
+    const au = uyg(arsiv, 'ARSIVBUYUK.ear');
+    assert.equal(au.durum, 'KISMI_SINIR');
+    assert.equal(au.giris, 0, 'limit ustu merkez dizini ZipFile ile materialize edildi');
+    assert.equal(au.satirlar.length, 0, 'limit ustu merkez dizini TAM cikti uretti');
+    assert.equal(arsiv.durum, 'KISMI');
+
+    // Host toplam siniri da dis arsiv dongusunde her giristen once uygulanir.
+    zipYaz(
+      path.join(kok, 'host', 'HOSTBUYUK.ear'),
+      Array.from({ length: 1100 }, (_, i) => [`classes/H${i}.class`, 'x']),
+    );
+    const host = tara([path.join(kok, 'host')], {
+      EAR_KIP: 'OZET',
+      EAR_SINIR_UYGULAMA: '500000',
+      EAR_SINIR_HOST: '1000',
+    });
+    const hu = uyg(host, 'HOSTBUYUK.ear');
+    assert.equal(hu.durum, 'KISMI_SINIR');
+    assert.equal(hu.giris, 0, 'host limitini asan merkez dizini on kapida durmadi');
+    assert.equal(host.giris, 0);
+    assert.equal(host.durum, 'KISMI');
+
+    // Sure butcesini 10 saniye bekletmeden kaynak kapisini da koru: dis EAR dongusunun
+    // icinde sure ve iki giris siniri birlikte bulunmali.
+    const arsivFonksiyonu = /def arsiv_uygulama\(u, tam\):([\s\S]*?)\ndef bitir\(/.exec(KAYNAK)?.[1] || '';
+    assert.match(arsivFonksiyonu, /for i in sorted\([\s\S]*?if sure_doldu\(\):[\s\S]*?u\['giris'\] >= SINIR_UYGULAMA or HOST\['giris'\] >= SINIR_HOST/);
+
+    const sureProbe = (ear, kip) => {
+      const kod = [
+        'import importlib.util, json, sys',
+        'g=json.loads(sys.stdin.read())',
+        's=importlib.util.spec_from_file_location("ear_tara_probe", g["betik"])',
+        'm=importlib.util.module_from_spec(s); s.loader.exec_module(m)',
+        'm.KIP="TAM"; m.HOST={"giris":0,"zaman_doldu":False}',
+        'n=[0]',
+        'def doldu():',
+        ' n[0]+=1',
+        ' return True if g["kip"]=="kok" else n[0]>1',
+        'm.sure_doldu=doldu',
+        'u=m.yeni_uygulama("/probe", "A.ear", "ARSIV")',
+        'm.bitir(u, *m.arsiv_uygulama(u, g["ear"]))',
+        'print(json.dumps({"durum":u["durum"],"giris":u["giris"],"uyarilar":u["uyarilar"],"war":u["warlar"][0]["durum"] if u["warlar"] else None,"cagri":n[0]}))',
+      ].join('\n');
+      const r = spawnSync(PY.komut, [...PY.on, '-c', kod], {
+        input: JSON.stringify({ betik: BETIK, ear, kip }),
+      });
+      assert.equal(r.status, 0, String(r.stderr));
+      return JSON.parse(String(r.stdout));
+    };
+    const kokEar = path.join(kok, 'sure', 'KOK.ear');
+    zipYaz(kokEar, [['/', 'x']]);
+    assert.deepEqual(sureProbe(kokEar, 'kok'), {
+      durum: 'KISMI_ZAMAN', giris: 0, uyarilar: ['sure butcesi doldu'], war: null, cagri: 1,
+    });
+    const icWar = path.join(kok, 'sure', 'IC.war');
+    zipYaz(icWar, [['WEB-INF/a.class', 'x'], ['WEB-INF/b.class', 'x'], ['WEB-INF/c.class', 'x']]);
+    const icEar = path.join(kok, 'sure', 'IC.ear');
+    zipYaz(icEar, [['IC.war', icWar]]);
+    const ic = sureProbe(icEar, 'ic');
+    assert.equal(ic.durum, 'KISMI_ZAMAN');
+    assert.equal(ic.war, null);
+    assert.equal(ic.giris, 0, 'preflight sonrasi dolan surede ZipFile acildi');
+    assert.equal(ic.cagri, 2, 'preflight sonrasi sure yeniden olculmedi');
+
+    // ZIP yorumu icindeki sahte bos EOCD son imza olarak gorunebilir. Merkez offset/boyut
+    // gercek EOCD konumuyla uyusmuyorsa dolu arsiv bos/TAM sayilmaz.
+    const sahte = path.join(kok, 'arsiv', 'SAHTE-EOCD.ear');
+    zipYaz(sahte, Array.from({ length: 150 }, (_, i) => [`classes/S${i}.class`, 'x']));
+    const yorum = spawnSync(PY.komut, [...PY.on, '-c', [
+      'import sys, zipfile',
+      'with zipfile.ZipFile(sys.argv[1], "a") as z:',
+      ' z.comment = b"PK\\x05\\x06" + b"\\x00" * 18',
+    ].join('\n'), sahte]);
+    assert.equal(yorum.status, 0, String(yorum.stderr));
+    const sahteSonuc = tara([path.dirname(sahte)], { EAR_KIP: 'TAM', EAR_SINIR_UYGULAMA: '100' });
+    const su = uyg(sahteSonuc, 'SAHTE-EOCD.ear');
+    assert.equal(su.durum, 'ARSIV_ACILMADI');
+    assert.equal(su.giris, 0);
+    assert.equal(sahteSonuc.durum, 'KISMI');
+
+    // EOCD'deki ilan edilen sayi dusurulurse de gercek merkez basliklari tavan+1'e
+    // kadar sayilmali; aksi halde ZipFile 150 kaydi sinirdan once materialize eder.
+    const sayacSahte = path.join(kok, 'arsiv', 'SAYAC-SAHTE.ear');
+    zipYaz(sayacSahte, Array.from({ length: 150 }, (_, i) => [`classes/F${i}.class`, 'x']));
+    const sayacYama = spawnSync(PY.komut, [...PY.on, '-c', [
+      'import struct, sys',
+      'p=sys.argv[1]',
+      'with open(p, "r+b") as f:',
+      ' data=f.read()',
+      ' yer=data.rfind(b"PK\\x05\\x06")',
+      ' assert yer >= 0',
+      ' y=bytearray(data)',
+      ' struct.pack_into("<HH", y, yer + 8, 1, 1)',
+      ' f.seek(0); f.write(y); f.truncate()',
+    ].join('\n'), sayacSahte]);
+    assert.equal(sayacYama.status, 0, String(sayacYama.stderr));
+    const sayacSonuc = tara([path.dirname(sayacSahte)], {
+      EAR_KIP: 'TAM', EAR_SINIR_UYGULAMA: '100',
+    });
+    const ssu = uyg(sayacSonuc, 'SAYAC-SAHTE.ear');
+    assert.equal(ssu.durum, 'KISMI_SINIR');
+    assert.equal(ssu.giris, 0, 'sahte EOCD sayaci ZipFile materializasyonunu atlatti');
+    assert.equal(sayacSonuc.durum, 'KISMI');
+
+    const probe = (kod, girdi) => {
+      const r = spawnSync(PY.komut, [...PY.on, '-c', kod], { input: JSON.stringify(girdi) });
+      assert.equal(r.status, 0, String(r.stderr));
+      return JSON.parse(String(r.stdout));
+    };
+
+    // Preflight ve ZipFile ayni acik inode'u kullanmali. Preflight sonrasi path atomik
+    // degisse bile yeni/sinirsiz arsiv materialize edilmemeli.
+    const eski = path.join(kok, 'race', 'DEGISEN.ear');
+    const yeni = path.join(kok, 'race', 'YENI.ear');
+    zipYaz(eski, [['classes/Eski.class', 'x']]);
+    zipYaz(yeni, Array.from({ length: 150 }, (_, i) => [`classes/Y${i}.class`, 'x']));
+    const race = probe([
+      'import importlib.util, json, os, sys',
+      'g=json.loads(sys.stdin.read())',
+      's=importlib.util.spec_from_file_location("ear_tara_probe", g["betik"])',
+      'm=importlib.util.module_from_spec(s); s.loader.exec_module(m)',
+      'm.KIP="TAM"; m.SINIR_UYGULAMA=100; m.HOST={"giris":0,"zaman_doldu":False}',
+      'asil=m.zip_merkez_giris_sayisi',
+      'def degistir(kaynak, tavan):',
+      ' sonuc=asil(kaynak, tavan)',
+      ' os.replace(g["yeni"], g["eski"])',
+      ' return sonuc',
+      'm.zip_merkez_giris_sayisi=degistir',
+      'u=m.yeni_uygulama("/probe", "DEGISEN.ear", "ARSIV")',
+      'm.bitir(u, *m.arsiv_uygulama(u, g["eski"]))',
+      'print(json.dumps({"durum":u["durum"],"giris":u["giris"]}))',
+    ].join('\n'), { betik: BETIK, eski, yeni });
+    assert.deepEqual(race, { durum: 'TAM', giris: 1 });
+
+    // Direct ve nested WAR limit ustundeyse ZipFile ikinci kez acilmadan on kapida durur.
+    const nestedWar = path.join(kok, 'sure', 'NESTED-BIG.war');
+    zipYaz(nestedWar, Array.from({ length: 150 }, (_, i) => [`WEB-INF/classes/N${i}.class`, 'x']));
+    const nestedEar = path.join(kok, 'sure', 'NESTED-BIG.ear');
+    zipYaz(nestedEar, [['NESTED-BIG.war', nestedWar]]);
+    const warProbe = probe([
+      'import importlib.util, io, json, sys',
+      'g=json.loads(sys.stdin.read())',
+      's=importlib.util.spec_from_file_location("ear_tara_probe", g["betik"])',
+      'm=importlib.util.module_from_spec(s); s.loader.exec_module(m)',
+      'm.KIP="TAM"; m.SINIR_UYGULAMA=100; m.HOST={"giris":0,"zaman_doldu":False}',
+      'asil=m.zipfile.ZipFile',
+      'def bekci(kaynak, *a, **kw):',
+      ' if isinstance(kaynak, io.BytesIO): raise AssertionError("nested WAR materialized")',
+      ' return asil(kaynak, *a, **kw)',
+      'm.zipfile.ZipFile=bekci',
+      'u=m.yeni_uygulama("/probe", "IC.ear", "ARSIV")',
+      'm.bitir(u, *m.arsiv_uygulama(u, g["ear"]))',
+      'print(json.dumps({"durum":u["durum"],"giris":u["giris"],"war":u["warlar"][0]["durum"]}))',
+    ].join('\n'), { betik: BETIK, ear: nestedEar });
+    assert.deepEqual(warProbe, { durum: 'KISMI_SINIR', giris: 1, war: 'KISMI_SINIR' });
+
+    const directWar = path.join(kok, 'sure', 'DIRECT-BIG.war');
+    zipYaz(directWar, Array.from({ length: 150 }, (_, i) => [`WEB-INF/classes/D${i}.class`, 'x']));
+    const directProbe = probe([
+      'import importlib.util, json, sys',
+      'g=json.loads(sys.stdin.read())',
+      's=importlib.util.spec_from_file_location("ear_tara_probe", g["betik"])',
+      'm=importlib.util.module_from_spec(s); s.loader.exec_module(m)',
+      'm.KIP="TAM"; m.SINIR_UYGULAMA=100; m.HOST={"giris":0,"zaman_doldu":False}',
+      'def bekci(*a, **kw): raise AssertionError("direct WAR materialized")',
+      'm.zipfile.ZipFile=bekci',
+      'u=m.yeni_uygulama("/probe", "A.ear", "ACIK")',
+      'm.paketli_war(u, g["war"], "DIRECT-BIG.war", m.Iz())',
+      'print(json.dumps({"durum":u["durum"],"giris":u["giris"],"war":u["warlar"][0]["durum"]}))',
+    ].join('\n'), { betik: BETIK, war: directWar });
+    assert.deepEqual(directProbe, { durum: 'KISMI_SINIR', giris: 0, war: 'KISMI_SINIR' });
+
+    const timeWar = path.join(kok, 'sure', 'DIRECT-TIME.war');
+    zipYaz(timeWar, [['WEB-INF/a.class', 'x'], ['WEB-INF/b.class', 'x']]);
+    const timeProbe = probe([
+      'import importlib.util, json, sys',
+      'g=json.loads(sys.stdin.read())',
+      's=importlib.util.spec_from_file_location("ear_tara_probe", g["betik"])',
+      'm=importlib.util.module_from_spec(s); s.loader.exec_module(m)',
+      'm.KIP="TAM"; m.HOST={"giris":0,"zaman_doldu":False}',
+      'm.sure_doldu=lambda: True',
+      'def bekci(*a, **kw): raise AssertionError("time-expired WAR materialized")',
+      'm.zipfile.ZipFile=bekci',
+      'u=m.yeni_uygulama("/probe", "A.ear", "ACIK")',
+      'm.paketli_war(u, g["war"], "DIRECT-TIME.war", m.Iz())',
+      'print(json.dumps({"durum":u["durum"],"giris":u["giris"],"war":u["warlar"][0]["durum"]}))',
+    ].join('\n'), { betik: BETIK, war: timeWar });
+    assert.deepEqual(timeProbe, { durum: 'KISMI_ZAMAN', giris: 0, war: 'KISMI_ZAMAN' });
+
+    // Per-entry ZIP64 extra da klasik EOCD sayaclari normal gorunse bile reddedilir.
+    const zip64 = path.join(kok, 'arsiv', 'ZIP64.ear');
+    const zip64Yaz = spawnSync(PY.komut, [...PY.on, '-c', [
+      'import sys, zipfile',
+      'with zipfile.ZipFile(sys.argv[1], "w") as z:',
+      ' with z.open("classes/Z.class", "w", force_zip64=True) as f: f.write(b"x")',
+    ].join('\n'), zip64]);
+    assert.equal(zip64Yaz.status, 0, String(zip64Yaz.stderr));
+    const zip64Sonuc = tara([path.dirname(zip64)], { EAR_KIP: 'TAM', EAR_SINIR_UYGULAMA: '100' });
+    const zu = uyg(zip64Sonuc, 'ZIP64.ear');
+    assert.equal(zu.durum, 'ARSIV_ACILMADI');
+    assert.equal(zu.giris, 0);
+
+    // Bozuk outer/direct/nested arsiv, kaynak siniri gibi degil ARSIV_ACILMADI raporlanir.
+    const bozukKok = path.join(kok, 'bozuk');
+    fs.mkdirSync(path.join(bozukKok, 'DIRECT.ear'), { recursive: true });
+    fs.writeFileSync(path.join(bozukKok, 'BAD.ear'), 'not-a-zip');
+    fs.writeFileSync(path.join(bozukKok, 'DIRECT.ear', 'BAD.war'), 'not-a-zip');
+    const nestedBad = path.join(kok, 'bozuk', 'NESTED.ear');
+    zipYaz(nestedBad, [['BAD.war', 'not-a-zip']]);
+    const bozuk = tara([bozukKok], { EAR_KIP: 'TAM' });
+    assert.equal(uyg(bozuk, 'BAD.ear').durum, 'ARSIV_ACILMADI');
+    const directBad = uyg(bozuk, 'DIRECT.ear');
+    assert.equal(directBad.durum, 'ARSIV_ACILMADI');
+    assert.equal(directBad.warlar[0].durum, 'ARSIV_ACILMADI');
+    const nestedBadU = uyg(bozuk, 'NESTED.ear');
+    assert.equal(nestedBadU.durum, 'ARSIV_ACILMADI');
+    assert.equal(nestedBadU.warlar[0].durum, 'ARSIV_ACILMADI');
   },
 );
 
@@ -409,7 +636,6 @@ test(
       .filter((s) => !/^\s*#/.test(s))
       .join('\n');
     for (const kotu of [
-      'open(',
       'os.remove',
       'os.unlink',
       'os.rename',
@@ -427,6 +653,7 @@ test(
     ]) {
       assert.ok(!kod.includes(kotu), `salt okunur betikte yasak cagri: ${kotu}`);
     }
+    assert.ok(!/(^|[^\w.])open\(/m.test(kod), 'salt okunur betikte builtin open var');
     const yazanlar = kod.split('\n').filter((s) => s.includes('.write('));
     assert.ok(
       yazanlar.length > 0 && yazanlar.every((s) => /sys\.stdout\.(buffer\.)?write\(/.test(s)),
@@ -445,7 +672,7 @@ test(
 const AST_DENETIM = `
 import ast, json, sys
 IZIN = {
-    'os': {'environ', 'getuid', 'lstat', 'path', 'readlink', 'scandir'},
+    'os': {'O_RDONLY', 'SEEK_CUR', 'SEEK_END', 'SEEK_SET', 'close', 'environ', 'fdopen', 'fstat', 'getuid', 'lseek', 'lstat', 'open', 'path', 'read', 'readlink', 'scandir'},
     'os.path': {'isdir', 'isfile', 'join', 'realpath'},
     'sys': {'stdout', 'version'},
     'socket': {'gethostname'},
@@ -458,6 +685,7 @@ IZIN = {
     'json': {'dumps'},
     're': {'I', 'compile'},
     'stat': {'filemode'},
+    'struct': {'unpack_from'},
 }
 IZINLI_FROM = {'collections': {'deque'}}
 YASAK_AD = {'open', '__import__', 'eval', 'exec', 'compile', 'getattr', 'setattr', 'globals', 'vars'}
