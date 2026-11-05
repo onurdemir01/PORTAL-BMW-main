@@ -1456,7 +1456,7 @@ export default function ServerHubPage() {
             {tab === 'hosts'
               ? 'Reboot sonrası her şey doğru açılacak mı, sunucularda atıl bir şey var mı? Günlük tarama: init script referans uyumu, JBoss 7/8 JVM’leri (auto-start, kapalı, restart-required), RHA/IHS/Nginx syntax ve vhost yükü (hc.html/hc.jsp hariç), boşta IP, sshd sınırları.'
               : tab === 'envanter'
-                ? '/vhosting (JBoss 7) ve /vhosting8 (JBoss 8) altındaki EAR/WAR uygulamaları: Spring / log4j sürümleri, JSP / TLD sayıları, tanımlayıcılar, eşlenik sunucu farkları ve dosya ağacı. Tarama salt okunurdur; haftalık ya da elle.'
+                ? '/vhosting (JBoss 7) ve /vhosting8 (JBoss 8) altındaki EAR/WAR uygulamaları: Spring / log4j sürümleri, JSP / TLD sayıları, tanımlayıcılar, eşlenik sunucu farkları ve dosya ağacı. Tarama salt okunurdur; otomatik planla (haftada / ayda bir) ya da elle.'
                 : tab === 'kurallar'
                 ? 'Hangi maddeler taranıyor, hangi çıktı kritik / uyarı / bilgi / sorun yok sayılıyor; seviyeleri ve tek seferde girilebilecek sunucu sayısını buradan değiştirin.'
                 : 'Uygulama retirement: Smart silme kaydı → tüm ortam/site keşfi → STOP (auto-start kapat, durdur, paketi .old) → seçilen tarihte silme → IP/LB/DNS kayıtları.'}

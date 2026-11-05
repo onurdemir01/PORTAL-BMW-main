@@ -190,6 +190,7 @@ function eslenikSuzgeci(q) {
     yapi: M(q.yapi, 300),
     jboss: M(q.jboss, 2),
     tarihFarki: q.tarihFarki,
+    tarihFarkiMax: q.tarihFarkiMax,
     limit: q.limit,
     offset: q.offset,
   };

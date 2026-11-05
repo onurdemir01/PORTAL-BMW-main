@@ -8,6 +8,7 @@
 //   ES11 sunucu satiri: neden ve playbook metni hep dolu
 //   ES12 acilir liste degerleri: kendi suzgeci haric, WAR teknolojisi uygulama basina, eslenik analizden
 //   ES13 eslenik listesi: tur, birebir ortam, sayfa + toplam; eski cagri bicimi
+//   ES14 tarih farki alt / ust siniri birlikte; kosu listesi plan anahtarini tasir (plan 1 / plan 2 etiketi)
 'use strict';
 
 const { test, afterEach } = require('node:test');
@@ -200,4 +201,26 @@ test('ES13 eslenik listesi', async () => {
   assert.deepEqual(yok.satirlar[0].hostlar, ['X1']);
   const k = await sorgu.eslenikler({ tur: 'ORTAM_ICI', karar: 'AYNI' });
   assert.deepEqual(k.satirlar.map((g) => g.ortam), ['PROD']);
+});
+
+test('ES14 tarih farki araligi ve plan anahtari', async () => {
+  const satir = (host, taranma) => ({
+    kosu_id: 1, host, ortam: 'PROD', uyg_no: 0, kok: '/vhosting8', jboss: '8', ad: 'A.ear', durum: 'TAM', kip: 'TAM',
+    yapi_izi: 'y', ear_kutuphane_seti: null, bag_hedefi: null, taranma_utc: taranma,
+  });
+  const db = F.sahteDb([
+    [/SELECT COUNT\(\*\) AS n, MAX\(id\) AS m/, () => ({ rows: [{ n: 2, m: 3 }] })],
+    [/SELECT u\.kosu_id, u\.host, h\.ortam, u\.uyg_no, u\.kok/, () => ({
+      rows: [satir('P1', '2026-10-01T00:00:00'), satir('P2', '2026-11-01T00:00:00')],
+    })],
+    [/FROM ear_envanter_kosulari k ORDER BY id DESC/, () => ({ rows: [] })],
+  ]);
+  F.dbKur(db);
+  const say = async (o) => (await sorgu.eslenikler({ tur: 'ORTAM_ICI', ...o })).toplam;
+  assert.equal(await say({ tarihFarki: 7 }), 1);
+  assert.equal(await say({ tarihFarki: 7, tarihFarkiMax: 30 }), 0, '31 gun > 30');
+  assert.equal(await say({ tarihFarkiMax: 31 }), 1);
+  assert.equal(await say({ tarihFarkiMax: '' }), 1, 'bos ust sinir yok sayilir');
+  await sorgu.kosular(10);
+  assert.match(db.cagrilar.at(-1).sql, /zamanlayici_anahtari/);
 });

@@ -372,7 +372,7 @@ async function setSatirlari(izler) {
  * Eslenik listesi (sunucuda suzulur, sayfalanir). tur: ORTAM_ICI | ORTAMLAR_ARASI | NESIL | ORTAM_YOK.
  * Eski cagri (tur yok) { gruplar, ikiNesil } dondurur; ortam suzgeci BIREBIR (normalize).
  */
-async function eslenikler({ kosu, ortam, tumu = false, tur, q, karar, kutuphane, yapi, jboss, tarihFarki, limit, offset } = {}) {
+async function eslenikler({ kosu, ortam, tumu = false, tur, q, karar, kutuphane, yapi, jboss, tarihFarki, tarihFarkiMax, limit, offset } = {}) {
   const a = await eslenik().analiz({ kosu });
   const liste = (v) =>
     String(v || '')
@@ -385,6 +385,7 @@ async function eslenikler({ kosu, ortam, tumu = false, tur, q, karar, kutuphane,
   const yap = liste(yapi);
   const qd = String(q || '').trim().toLowerCase();
   const tfg = Number(tarihFarki);
+  const tfm = tarihFarkiMax === '' || tarihFarkiMax == null ? NaN : Number(tarihFarkiMax);
   const uygun = (g) =>
     (tumu || g.karar !== 'TEK') &&
     (!ortamlar.length ||
@@ -394,6 +395,7 @@ async function eslenikler({ kosu, ortam, tumu = false, tur, q, karar, kutuphane,
     (!yap.length || yap.includes(String(g.yapi))) &&
     (!['7', '8', '?'].includes(jboss) || g.jboss === jboss) &&
     (!(tfg > 0) || (g.tarih_farki_gun || 0) >= tfg) &&
+    (!Number.isFinite(tfm) || (g.tarih_farki_gun || 0) <= tfm) &&
     (!qd ||
       String(g.uygulama).toLowerCase().includes(qd) ||
       (g.hostlar || [g.host]).some((h) => String(h).toLowerCase().includes(qd)));
@@ -427,7 +429,7 @@ async function eslenikFarki({ kosu, tur, ad, ortam, jboss, host, limit, offset }
 async function kosular(limit = 20) {
   const { rows } = await db().query(
     `SELECT TOP (${Math.max(1, Math.min(100, Number(limit) || 20))}) id, kip, kaynak, kapsam, durum, beklenen, tam, kismi, kok_yok,
-            basarisiz, parti_sayisi, baslatan, hata, created_at, finished_at,
+            basarisiz, parti_sayisi, baslatan, hata, created_at, finished_at, zamanlayici_anahtari,
             (SELECT COUNT(*) FROM ear_envanter_hostlari h WHERE h.kosu_id = k.id) AS alinan
        FROM ear_envanter_kosulari k ORDER BY id DESC`,
   );

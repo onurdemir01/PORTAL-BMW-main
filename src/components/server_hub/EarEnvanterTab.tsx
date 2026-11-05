@@ -20,17 +20,20 @@ import { kosuDurumu, partiDurumu, partiIlerleme, hostListesiAyristir } from './e
 import { Rozet, Kart, IndirBag, BTN, btnStil, GIRDI, girdiStil } from './EarEnvanterUi';
 import {
   UygulamalarGorunum,
+  WarlarGorunum,
   EsleniklerGorunum,
   KutuphanelerGorunum,
   SunucularGorunum,
   KosularGorunum,
+  DurumSozlugu,
 } from './EarEnvanterGorunumler';
 import EarEnvanterDetay from './EarEnvanterDetay';
 import { KapsamSecici, PlanlarGorunum, kapsamAyristir, type KapsamDegeri } from './EarEnvanterPlan';
 
-type Gorunum = 'uygulamalar' | 'eslenikler' | 'kutuphaneler' | 'sunucular' | 'kosular' | 'ayarlar';
+type Gorunum = 'uygulamalar' | 'warlar' | 'eslenikler' | 'kutuphaneler' | 'sunucular' | 'kosular' | 'ayarlar';
 const GORUNUMLER: { id: Gorunum; etiket: string }[] = [
   { id: 'uygulamalar', etiket: 'Uygulamalar' },
+  { id: 'warlar', etiket: "WAR'lar" },
   { id: 'eslenikler', etiket: 'Eşlenikler' },
   { id: 'kutuphaneler', etiket: 'Kütüphaneler' },
   { id: 'sunucular', etiket: 'Sunucular' },
@@ -353,7 +356,8 @@ export default function EarEnvanterTab() {
   const [hata, setHata] = useState('');
   const [tazele, setTazele] = useState(0);
   const [gorunum, setGorunum] = useState<Gorunum>('uygulamalar');
-  const [taraAcik, setTaraAcik] = useState(false);
+  // false: kapalı; true: boş açılır; dizi: satır seçiminden gelen sunucularla açılır.
+  const [taraAcik, setTaraAcik] = useState<boolean | string[]>(false);
   const [iptalAcik, setIptalAcik] = useState(false);
   const [iptalMesgul, setIptalMesgul] = useState(false);
   const [detay, setDetay] = useState<{ kosu: number; host: string; uyg: number } | null>(null);
@@ -377,6 +381,13 @@ export default function EarEnvanterTab() {
     return () => clearInterval(t);
   }, [aktifId]);
   const yenile = () => setTazele((n) => n + 1);
+  // Tablo satır seçiminden "Seçili sunucuları tara": "Şimdi tara" düğmesiyle aynı kapılar.
+  const taraIle = (hostlar: string[]) => {
+    if (!ozet) return;
+    if (ozet.aktif) return void toast.error('Çalışan bir tarama var; bitmesini bekleyin ya da iptal edin.');
+    if (!ozet.template.tanimli) return void toast.error("AWX template'i tanımlı değil; tarama başlatılamaz.");
+    setTaraAcik(hostlar);
+  };
   const iptalEt = async () => {
     if (!ozet || !ozet.aktif) return;
     setIptalMesgul(true);
@@ -564,17 +575,27 @@ export default function EarEnvanterTab() {
           </button>
         ))}
       </div>
+      {gorunum !== 'ayarlar' && <DurumSozlugu />}
       {gorunum === 'uygulamalar' && (
-        <UygulamalarGorunum onAc={(kosu, host, uyg) => setDetay({ kosu, host, uyg })} />
+        <UygulamalarGorunum onAc={(kosu, host, uyg) => setDetay({ kosu, host, uyg })} onTara={taraIle} />
+      )}
+      {gorunum === 'warlar' && (
+        <WarlarGorunum onAc={(kosu, host, uyg) => setDetay({ kosu, host, uyg })} onTara={taraIle} />
       )}
       {gorunum === 'eslenikler' && <EsleniklerGorunum />}
       {gorunum === 'kutuphaneler' && (
         <KutuphanelerGorunum onAc={(kosu, host, uyg) => setDetay({ kosu, host, uyg })} />
       )}
-      {gorunum === 'sunucular' && <SunucularGorunum />}
-      {gorunum === 'kosular' && <KosularGorunum tazeleme={tazele} />}
+      {gorunum === 'sunucular' && <SunucularGorunum onTara={taraIle} />}
+      {gorunum === 'kosular' && <KosularGorunum tazeleme={tazele} onTara={taraIle} />}
       {gorunum === 'ayarlar' && <AyarlarGorunum ozet={ozet} onKaydedildi={yenile} />}
-      {taraAcik && <TaraPenceresi onClose={() => setTaraAcik(false)} onBasladi={yenile} />}
+      {taraAcik && (
+        <TaraPenceresi
+          onClose={() => setTaraAcik(false)}
+          onBasladi={yenile}
+          baslangicListesi={Array.isArray(taraAcik) ? taraAcik : undefined}
+        />
+      )}
       {detay && <EarEnvanterDetay hedef={detay} onClose={() => setDetay(null)} />}
       {iptalAcik && aktif && (
         <Modal
