@@ -16,6 +16,8 @@ import {
   type EarEslenik,
   type EarIkiNesil,
   type EarEslenikFarki,
+  type EarFarkSatiri,
+  type EarOrtamYok,
   type EarKutuphaneSatiri,
   type EarKullanan,
   type EarHost,
@@ -33,8 +35,8 @@ import {
   kosuDurumu,
   kararDurumu,
   partiDurumu,
-  kisaIz,
   veriYasiGun,
+  boyutMetni,
   kaynakEtiketi,
 } from './earEnvanter';
 import {
@@ -283,13 +285,27 @@ export function UygulamalarGorunum({ onAc }: { onAc: DetayAc }) {
 }
 
 // ── ESLENIKLER ──────────────────────────────────────────────────────────────────────────────────
+const FARK_ETIKETI: Record<EarFarkSatiri['kategori'], string> = {
+  WAR: 'WAR yalnız bazılarında',
+  EKSIK: 'yalnız bazılarında var',
+  SURUM: 'sürüm farklı',
+  BOYUT: 'aynı sürüm, boyut farklı',
+};
+
+/** [[sürüm, boyut], ...] -> "6.1.0 (1.2 MB)"; null -> "yok". */
+function surumMetni(v: [string, number | null][] | null, kategori: EarFarkSatiri['kategori']): string {
+  if (v == null) return 'yok';
+  if (kategori === 'WAR') return 'var';
+  return v.map(([s, b]) => (kategori === 'BOYUT' ? `${s} (${boyutMetni(b)})` : s)).join(', ');
+}
+
 function EslenikFarki({ g }: { g: EarEslenik }) {
   const [f, setF] = useState<EarEslenikFarki | null>(null);
   const [hata, setHata] = useState('');
   useAsyncEffect(
     async (alive) => {
       try {
-        const r = await earApi.eslenik(g.uygulama, g.ortam, g.jboss);
+        const r = await earApi.eslenik(g.uygulama, g.ortam, g.jboss, { limit: 2000 });
         if (alive()) setF(r);
       } catch (e) {
         if (alive()) setHata(e instanceof Error ? e.message : String(e));
@@ -304,37 +320,63 @@ function EslenikFarki({ g }: { g: EarEslenik }) {
       <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
         {f.kopyalar
           .map(
-            (k) => `${k.host} (${uygulamaDurumu(k.durum).etiket}, ${k.kutuphane_sayisi} kütüphane)`,
+            (k) =>
+              `${k.host}${k.degisken ? ` [${k.degisken}]` : ''} (${uygulamaDurumu(k.durum).etiket}, ${k.kip === 'TAM' ? 'TAM' : 'ÖZET'})`,
           )
           .join(' · ')}
       </div>
-      {f.farklar.length === 0 ? (
+      {f.toplam === 0 ? (
         <div className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-          Kütüphane listeleri aynı.
+          {g.kutuphane === 'KARSILASTIRILAMADI'
+            ? 'Kütüphaneler karşılaştırılmadı: kopyalardan biri tam taranmadı.'
+            : 'Kütüphane listeleri birebir aynı (ad, sürüm ve dosya boyutu).'}
         </div>
       ) : (
-        <table className={TABLO}>
-          <thead>
-            <tr>
-              {['Kütüphane (WAR:ad@sürüm)', 'Olan', 'Olmayan'].map((b) => (
-                <th key={b} className={TH} style={thStil}>
-                  {b}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {f.farklar.map((x) => (
-              <tr key={x.kutuphane} className="border-t" style={{ borderColor: 'var(--border)' }}>
-                <td className={TD}>
-                  <Kirp v={x.kutuphane} en="max-w-[28rem]" mono />
-                </td>
-                <td className={TD}>{x.olan.join(', ')}</td>
-                <td className={TD}>{x.olmayan.join(', ')}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <>
+          <div className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>
+            {fmtNumber(f.toplam)} fark ·{' '}
+            {(Object.keys(FARK_ETIKETI) as EarFarkSatiri['kategori'][])
+              .filter((k) => f.sayilar[k])
+              .map((k) => `${FARK_ETIKETI[k]}: ${f.sayilar[k]}`)
+              .join(' · ')}
+            {f.farklar.length < f.toplam && ` · ilk ${fmtNumber(f.farklar.length)} gösteriliyor; tamamı CSV'de`}
+          </div>
+          <div className="overflow-x-auto">
+            <table className={TABLO}>
+              <thead>
+                <tr>
+                  {['Fark', 'Yer', 'Kütüphane', ...f.kopyalar.map((k) => k.host)].map((b, i) => (
+                    <th key={`${b}-${i}`} className={TH} style={thStil}>
+                      {b}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {f.farklar.map((x) => (
+                  <tr
+                    key={`${x.kategori}|${x.konum}|${x.kutuphane}`}
+                    className="border-t"
+                    style={{ borderColor: 'var(--border)' }}
+                  >
+                    <td className={TD}>{FARK_ETIKETI[x.kategori]}</td>
+                    <td className={TD}>
+                      <Kirp v={x.konum || 'EAR lib/'} en="max-w-[12rem]" mono />
+                    </td>
+                    <td className={TD}>
+                      <Kirp v={x.kutuphane || '—'} en="max-w-[14rem]" mono />
+                    </td>
+                    {f.kopyalar.map((k) => (
+                      <td key={k.anahtar} className={TD}>
+                        <Kirp v={surumMetni(x.degerler[k.anahtar] ?? null, x.kategori)} en="max-w-[10rem]" />
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
     </div>
   );
@@ -344,7 +386,11 @@ export function EsleniklerGorunum() {
   const [ortam, setOrtam] = useState('');
   const [taslak, setTaslak] = useState('');
   const [tumu, setTumu] = useState(false);
-  const [veri, setVeri] = useState<{ gruplar: EarEslenik[]; ikiNesil: EarIkiNesil[] } | null>(null);
+  const [veri, setVeri] = useState<{
+    gruplar: EarEslenik[];
+    ikiNesil: EarIkiNesil[];
+    ortamYok: EarOrtamYok[];
+  } | null>(null);
   const [hata, setHata] = useState('');
   const [acik, setAcik] = useState<string | null>(null);
   const [tazele, setTazele] = useState(0);
@@ -353,7 +399,7 @@ export function EsleniklerGorunum() {
       setHata('');
       try {
         const r = await earApi.eslenikler(ortam, tumu);
-        if (alive()) setVeri({ gruplar: r.gruplar, ikiNesil: r.ikiNesil });
+        if (alive()) setVeri({ gruplar: r.gruplar, ikiNesil: r.ikiNesil, ortamYok: r.ortamYok || [] });
       } catch (e) {
         if (alive()) setHata(e instanceof Error ? e.message : String(e));
       }
@@ -364,8 +410,9 @@ export function EsleniklerGorunum() {
   return (
     <div className="space-y-2">
       <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-        Aynı uygulama, aynı ortam ve aynı JBoss neslinde birden çok sunucuda. Kopyalardan biri bile
-        tam taranmadıysa karşılaştırma yapılmaz: eksik veri "aynı" sayılmaz.
+        Aynı uygulama, aynı ortam ve aynı JBoss neslinde birden çok sunucuda. Kütüphane ve yapı ayrı
+        karşılaştırılır; kopyalardan biri bile tam taranmadıysa karşılaştırma yapılmaz. Ortamı
+        envanterde boş olan sunucular karşılaştırılmaz, aşağıda ayrı listelenir.
       </p>
       <form
         className="flex flex-wrap items-center gap-2"
@@ -376,8 +423,8 @@ export function EsleniklerGorunum() {
       >
         <input
           aria-label="Ortam"
-          placeholder="ortam"
-          className={`${GIRDI} w-32`}
+          placeholder="ortam (tam ad, ör. PROD)"
+          className={`${GIRDI} w-44`}
           style={girdiStil}
           value={taslak}
           onChange={(e) => setTaslak(e.target.value)}
@@ -421,7 +468,7 @@ export function EsleniklerGorunum() {
                     'JBoss',
                     'Sonuç',
                     'Sunucular',
-                    'Gruplar (yapı/kütüphane izi)',
+                    'Değişkenler',
                   ].map((b, i) => (
                     <th key={i} className={TH} style={thStil}>
                       {b}
@@ -461,6 +508,20 @@ export function EsleniklerGorunum() {
                           <td className={TD}>{g.jboss}</td>
                           <td className={TD}>
                             <Rozet d={kararDurumu(g.karar)} kucuk />
+                            {g.tarih_farki_gun > 1 && (
+                              <span
+                                className="ml-1 text-[10px]"
+                                style={{
+                                  color:
+                                    g.tarih_farki_gun > 7
+                                      ? 'var(--status-warning-text)'
+                                      : 'var(--text-muted)',
+                                }}
+                                title="Kopyalar farklı tarihlerde tarandı; karar yine verildi."
+                              >
+                                {g.tarih_farki_gun} gün tarama farkı
+                              </span>
+                            )}
                           </td>
                           <td className={TD}>
                             <Kirp
@@ -470,11 +531,8 @@ export function EsleniklerGorunum() {
                           </td>
                           <td className={TD}>
                             <Kirp
-                              v={g.gruplar
-                                .map(
-                                  (x) =>
-                                    `${x.iz.split('/').map(kisaIz).join('/')} → ${x.hostlar.join(',')}`,
-                                )
+                              v={(g.degiskenler || [])
+                                .map((x) => `${x.harf}: ${x.hostlar.join(',')}`)
                                 .join(' | ')}
                               en="max-w-[22rem]"
                               mono
@@ -507,6 +565,24 @@ export function EsleniklerGorunum() {
               </tbody>
             </table>
           </div>
+          {veri.ortamYok.length > 0 && (
+            <div className="space-y-1">
+              <h3 className="text-xs font-semibold">
+                Ortam bilinmiyor: karşılaştırılmadı ({veri.ortamYok.length})
+              </h3>
+              <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                Bu sunucuların ortamı envanterde boş. Farklı ortamlar karışmasın diye
+                karşılaştırılmadı; ortam girilince kendiliğinden eşlenir.
+              </p>
+              <div className="text-[11px] font-mono" style={{ color: 'var(--text-secondary)' }}>
+                {veri.ortamYok.map((x) => (
+                  <div key={`${x.uygulama}|${x.jboss}`}>
+                    {x.uygulama} (JBoss {x.jboss}): {x.hostlar.join(', ')}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           {veri.ikiNesil.length > 0 && (
             <div className="space-y-1">
               <h3 className="text-xs font-semibold">
@@ -539,20 +615,7 @@ export function EsleniklerGorunum() {
                         </td>
                         <td className={TD}>{x.ortam}</td>
                         <td className={TD}>
-                          <Rozet
-                            kucuk
-                            d={
-                              x.ayni_kutuphane === null
-                                ? kararDurumu('EKSIK_TARAMA')
-                                : x.ayni_kutuphane
-                                  ? {
-                                      etiket: 'aynı',
-                                      ton: 'bilgi',
-                                      aciklama: 'İki nesildeki kopyanın kütüphaneleri aynı.',
-                                    }
-                                  : kararDurumu('FARKLI_KUTUPHANE')
-                            }
-                          />
+                          <Rozet kucuk d={kararDurumu(x.karar)} />
                         </td>
                       </tr>
                     ))}
@@ -808,7 +871,9 @@ export function SunucularGorunum({ hostlar: verilen }: { hostlar?: EarHost[] }) 
                       <td className={TD}>
                         <Rozet d={hostDurumu(h.durum)} kucuk />
                       </td>
-                      <td className={TD}>{h.playbook_durum || '—'}</td>
+                      <td className={TD} title={h.playbook_durum || ''}>
+                        {h.playbook_etiket || h.playbook_durum || '—'}
+                      </td>
                       <td className={TD}>{h.veri_var ? say(h.uygulama_sayisi) : '—'}</td>
                       <td className={TD}>{h.veri_var ? say(h.war_sayisi) : '—'}</td>
                       <td className={TD}>{h.sure_sn == null ? '—' : h.sure_sn.toFixed(1)}</td>
@@ -828,7 +893,7 @@ export function SunucularGorunum({ hostlar: verilen }: { hostlar?: EarHost[] }) 
                         )}
                       </td>
                       <td className={TD}>
-                        <Kirp v={h.hata} en="max-w-[22rem]" />
+                        <Kirp v={h.neden || h.hata} en="max-w-[26rem]" />
                       </td>
                     </tr>
                   );

@@ -12,6 +12,11 @@
 //        silme parcali (TOP)
 //   EU7  SAKLAMA /sw awx-<is>: kosusu korunan kalir, korunmayan silinir; henuz alinmamis is 7 gun kalir
 //   EU8  AGAC: AWX'ten alinan kosunun ham dosyasi awx-<is>/raw'dan okunur (ayni numarali kosu-<n> degil)
+//   EU9  CSV AKISI: 12.000 satir 5000'lik parcalarla EKSIKSIZ gelir; suzgec / siralama aynen gider;
+//        gecersiz suzgec baslik gitmeden 400; veri akista degisirse baglanti kesilir (yarim dosya yok)
+//   EU10 /ear/warlar set izini istemciye vermez; /ear/degerler gecersiz kolonu 400 ile reddeder
+//   EU11 /ear/yapi-farki: parametre bicimi; OZET kopyada fark yerine neden
+//   EU12 eslenik uclari: tur ve suzgec parametreleri motora gider; bilinmeyen grup 409
 'use strict';
 
 const { test, afterEach } = require('node:test');
@@ -269,4 +274,103 @@ test('EU6 DB saklamasi', async () => {
   const r2 = await saklama.dbSaklama(12);
   assert.equal(r2.sinir, null);
   assert.ok(!db2.cagrilar.some((c) => /FROM ear_envanter_kosulari WHERE id </.test(c.sql)));
+});
+
+test('EU9 CSV akisi eksiksiz, suzgec gider, degisirse kesilir', async () => {
+  const E = require('../ear-envanter-eslenik.cjs');
+  E._sifirlaForTest();
+  let toplam = 12000;
+  const db = F.sahteDb([
+    [/SELECT COUNT\(\*\) AS n, MAX\(id\) AS m/, () => ({ rows: [{ n: 0, m: 0 }] })],
+    [/COUNT\(\*\) OVER\(\) AS toplam\s+FROM ear_envanter_uygulamalari/, (params) => {
+      const [off, lim] = params.slice(-2);
+      const n = Math.max(0, Math.min(lim, toplam - off));
+      return { rows: Array.from({ length: n }, (_, i) => ({ host: `H${off + i}`, ad: 'A.ear', kosu_id: 1, uyg_no: off + i, toplam })) };
+    }],
+  ]);
+  F.dbKur(db);
+  await sunucu(async (kok) => {
+    const f = encodeURIComponent(JSON.stringify([{ k: 'jboss', op: 'esit', v: '8' }]));
+    const r = await fetch(`${kok}/ear/disa-aktar/uygulamalar.csv?f=${f}&s=jsp:desc`);
+    assert.equal(r.status, 200);
+    const bayt = Buffer.from(await r.arrayBuffer());
+    assert.deepEqual([...bayt.subarray(0, 3)], [0xef, 0xbb, 0xbf], 'UTF-8 BOM');
+    const metin = bayt.subarray(3).toString('utf8');
+    const satirlar = metin.trim().split('\r\n');
+    assert.equal(satirlar.length, 12001, 'baslik + 12000 satir');
+    assert.ok(metin.startsWith('sunucu;'));
+    assert.ok(satirlar[1].startsWith('H0;') && satirlar.at(-1).startsWith('H11999;'));
+    assert.equal(new Set(satirlar.slice(1).map((x) => x.split(';')[0])).size, 12000, 'tekrar yok');
+    const sorgular = db.cagrilar.filter((c) => /OVER\(\) AS toplam\s+FROM ear_envanter_uygulamalari/.test(c.sql));
+    assert.deepEqual(sorgular.map((c) => c.params.slice(-2)), [[0, 1], [0, 5000], [5000, 5000], [10000, 5000]]);
+    for (const c of sorgular) {
+      assert.match(c.sql, /u\.jboss = \$\d+/, 'ekrandaki suzgec CSV ye de uygulanir');
+      assert.match(c.sql, /ORDER BY u\.jsp DESC/);
+    }
+    const kotu = await fetch(`${kok}/ear/disa-aktar/uygulamalar.csv?f=${encodeURIComponent('[{"k":"yok","op":"esit","v":"a"}]')}`);
+    assert.equal(kotu.status, 400, 'gecersiz suzgec baslik gitmeden reddedilir');
+    // Akis sirasinda toplam degisir: yarim dosya "tam" sanilmasin, baglanti kesilsin.
+    let n = 0;
+    const asil = db.mod.query;
+    db.mod.query = async (sql, params) => {
+      const r2 = await asil(sql, params);
+      if (/OVER\(\) AS toplam\s+FROM ear_envanter_uygulamalari/.test(sql) && ++n === 3) toplam = 11000;
+      return r2;
+    };
+    await assert.rejects(
+      fetch(`${kok}/ear/disa-aktar/uygulamalar.csv`).then((x) => x.text()),
+      'degisen veride indirme hata ile biter',
+    );
+  });
+});
+
+test('EU10 warlar set izi vermez; degerler kolonu dogrular', async () => {
+  const db = F.sahteDb([
+    [/FROM ear_envanter_warlari w\s+JOIN son/, () => ({ rows: [{ host: 'H1', ad: 'A.war', kutuphane_seti: 'abc', toplam: 1 }] })],
+  ]);
+  F.dbKur(db);
+  await sunucu(async (kok) => {
+    const r = await (await fetch(`${kok}/ear/warlar`)).json();
+    assert.equal(r.toplam, 1);
+    assert.ok(!('kutuphane_seti' in r.satirlar[0]));
+    assert.equal((await fetch(`${kok}/ear/degerler/uygulamalar/jsp`)).status, 400);
+    assert.equal((await fetch(`${kok}/ear/degerler/yok/host`)).status, 400);
+  });
+});
+
+test('EU11 yapi farki parametresi ve OZET kopya', async () => {
+  const poller = require('../ear-envanter-poller.cjs');
+  const alim = require('../ear-envanter-alim.cjs');
+  const asilOku = poller.kosuOku;
+  const asilHam = alim.hamOku;
+  poller.kosuOku = async (id) => ({ id, kaynak: 'PORTAL', parametreler: '{}' });
+  alim.hamOku = async () =>
+    F.paketYap({ ...F.ornekYuk(), kip: 'OZET', uygulamalar: [{ ...F.ornekUygulama(), satirlar: [] }] });
+  try {
+    await sunucu(async (kok) => {
+      assert.equal((await fetch(`${kok}/ear/yapi-farki?a=1:H1&b=2:H2:0`)).status, 400);
+      assert.equal((await fetch(`${kok}/ear/yapi-farki?a=1:H1;x:0&b=2:H2:0`)).status, 400);
+      const r = await (await fetch(`${kok}/ear/yapi-farki?a=1:APPSRV01:0&b=2:APPSRV02:0`)).json();
+      assert.match(r.hesaplanamadi, /ÖZET taramada dosya ağacı tutulmaz/);
+    });
+  } finally {
+    poller.kosuOku = asilOku;
+    alim.hamOku = asilHam;
+  }
+});
+
+test('EU12 eslenik uclari', async () => {
+  require('../ear-envanter-eslenik.cjs')._sifirlaForTest();
+  const db = F.sahteDb([[/SELECT COUNT\(\*\) AS n, MAX\(id\) AS m/, () => ({ rows: [{ n: 0, m: 0 }] })]]);
+  F.dbKur(db);
+  await sunucu(async (kok) => {
+    const r = await (await fetch(`${kok}/ear/eslenikler?tur=ortamlar_arasi&karar=FARKLI_KUTUPHANE&limit=10`)).json();
+    assert.deepEqual([r.ok, r.toplam, r.satirlar], [true, 0, []]);
+    assert.equal((await fetch(`${kok}/ear/eslenik?tur=ORTAM_ICI&ad=A.ear&ortam=PROD&jboss=8`)).status, 409);
+    assert.equal((await fetch(`${kok}/ear/eslenik?ad=`)).status, 400);
+    assert.equal((await fetch(`${kok}/ear/eslenik?tur=NESIL&ad=A.ear&host=k%C3%B6t%C3%BC`)).status, 400);
+    const csv = await fetch(`${kok}/ear/disa-aktar/eslenikler.csv?tur=ORTAMLAR_ARASI`);
+    assert.equal(csv.status, 200);
+    assert.match(csv.headers.get('content-disposition'), /eslenikler_ortamlar_arasi_/);
+  });
 });

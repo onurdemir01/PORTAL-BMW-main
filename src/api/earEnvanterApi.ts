@@ -176,27 +176,83 @@ export interface EarAgac {
 }
 
 export type EarKarar =
-  'AYNI' | 'FARKLI_KUTUPHANE' | 'FARKLI_YAPI' | 'EKSIK_TARAMA' | 'KARSILASTIRILAMAZ' | 'TEK';
+  | 'AYNI'
+  | 'FARKLI_KUTUPHANE'
+  | 'AYNI_SURUM_FARKLI_DOSYA'
+  | 'FARKLI_YAPI'
+  | 'EKSIK_TARAMA'
+  | 'TEK';
+/** Kütüphane ve yapı ayrı sonuçlardır; karar ikisinin en kötüsüdür. */
+export type EarKutuphaneSonucu = 'AYNI' | 'FARKLI' | 'AYNI_SURUM_FARKLI_DOSYA' | 'KARSILASTIRILAMADI';
+export type EarYapiSonucu = 'AYNI' | 'FARKLI' | 'KARSILASTIRILAMADI';
+export type EarEslenikTuru = 'ORTAM_ICI' | 'ORTAMLAR_ARASI' | 'NESIL' | 'ORTAM_YOK';
+export interface EarDegisken {
+  harf: string;
+  hostlar: string[];
+  kopya_sayisi: number;
+}
 export interface EarEslenik {
   uygulama: string;
   ortam: string;
   jboss: string;
   karar: EarKarar;
+  kutuphane: EarKutuphaneSonucu | null;
+  yapi: EarYapiSonucu | null;
   host_sayisi: number;
+  kopya_sayisi: number;
   hostlar: string[];
   eksik: string[];
+  kipler: EarKip[];
+  tarih_farki_gun: number;
+  tarih_bilinmeyen: number;
+  degiskenler: EarDegisken[];
+  /** Eski alan: değişken harfi -> sunucular. */
   gruplar: { iz: string; hostlar: string[] }[];
 }
 export interface EarIkiNesil {
   host: string;
   uygulama: string;
   ortam: string;
+  karar: EarKarar;
+  kutuphane: EarKutuphaneSonucu;
+  yapi: EarYapiSonucu;
   ayni_kutuphane: boolean | null;
+}
+export interface EarOrtamYok {
+  uygulama: string;
+  jboss: string;
+  host_sayisi: number;
+  kopya_sayisi: number;
+  hostlar: string[];
+}
+export type EarFarkKategorisi = 'WAR' | 'EKSIK' | 'SURUM' | 'BOYUT';
+export interface EarFarkSatiri {
+  kategori: EarFarkKategorisi;
+  /** WAR yolu; '' = EAR'ın kendi lib/'i. */
+  konum: string;
+  kutuphane: string;
+  /** Kopya anahtarı (host|kök|ad) -> [[sürüm, boyut], ...]; null = yok; WAR satırında [] = var. */
+  degerler: Record<string, [string, number | null][] | null>;
+}
+export interface EarEslenikKopyasi {
+  anahtar: string;
+  host: string;
+  ortam: string;
+  kok: string;
+  jboss: string;
+  durum: string;
+  kip: EarKip;
+  taranma_utc: string | null;
+  kosu_id: number;
+  uyg_no: number;
+  degisken: string | null;
 }
 export interface EarEslenikFarki {
   ok: boolean;
-  kopyalar: { host: string; durum: string; kip: EarKip; kutuphane_sayisi: number }[];
-  farklar: { kutuphane: string; olan: string[]; olmayan: string[] }[];
+  kopyalar: EarEslenikKopyasi[];
+  farklar: EarFarkSatiri[];
+  toplam: number;
+  sayilar: Record<EarFarkKategorisi, number>;
 }
 
 export interface EarKutuphaneSatiri {
@@ -224,6 +280,11 @@ export interface EarHost {
   ortam: string | null;
   durum: string;
   playbook_durum: string | null;
+  /** Okunur playbook sonucu ("sonuç geldi", "ulaşılamadı" …). */
+  playbook_etiket: string;
+  /** Hiç boş kalmayan neden metni (tam taramada "başarılı · N uygulama tam tarandı"). */
+  neden: string;
+  eksik_uygulama: number;
   veri_var: boolean;
   uygulama_sayisi: number;
   war_sayisi: number;
@@ -300,11 +361,15 @@ export const earApi = {
   agac: (kosu: number, host: string, uyg: number) =>
     al<EarAgac>(`${BASE}/agac/${yol(kosu)}/${yol(host)}/${yol(uyg)}`),
   eslenikler: (ortam = '', tumu = false) =>
-    al<{ ok: boolean; gruplar: EarEslenik[]; ikiNesil: EarIkiNesil[] }>(
+    al<{ ok: boolean; gruplar: EarEslenik[]; ikiNesil: EarIkiNesil[]; ortamYok: EarOrtamYok[] }>(
       `${BASE}/eslenikler${sorguDizgisi({ ortam, tumu: tumu ? 1 : '' })}`,
     ),
-  eslenik: (ad: string, ortam: string, jboss: string) =>
-    al<EarEslenikFarki>(`${BASE}/eslenik${sorguDizgisi({ ad, ortam, jboss })}`),
+  eslenik: (
+    ad: string,
+    ortam: string,
+    jboss: string,
+    ek: { tur?: EarEslenikTuru; host?: string; limit?: number; offset?: number } = {},
+  ) => al<EarEslenikFarki>(`${BASE}/eslenik${sorguDizgisi({ ad, ortam, jboss, ...ek })}`),
   kutuphaneler: (q = '') =>
     al<{ ok: boolean; kutuphaneler: EarKutuphaneSatiri[] }>(
       `${BASE}/kutuphaneler${sorguDizgisi({ q })}`,
