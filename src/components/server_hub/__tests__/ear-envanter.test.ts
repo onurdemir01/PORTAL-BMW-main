@@ -18,6 +18,7 @@ import {
   partiIlerleme,
   boyutMetni,
   kisaIz,
+  kaynakEtiketi,
 } from '@/components/server_hub/earEnvanter';
 import { sorguDizgisi, earIndir, type EarAgacSatiri, type EarParti } from '@/api/earEnvanterApi';
 
@@ -112,5 +113,12 @@ describe('EE4 yardımcılar', () => {
     );
     expect(earIndir.csv('warlar')).toBe('/api/server-hub/ear/disa-aktar/warlar.csv');
     expect(earIndir.agacTxt(5, 'A B', 2)).toBe('/api/server-hub/ear/agac/5/A%20B/2?bicim=txt');
+  });
+
+  it('koşu kaynağı: AWX\'ten Limit ile başlatılan iş ayrı görünür', () => {
+    expect(kaynakEtiketi('ZAMANLAYICI')).toBe('haftalık');
+    expect(kaynakEtiketi('AWX')).toBe('AWX (Limit)');
+    expect(kaynakEtiketi('ELLE')).toBe('elle');
+    expect(kaynakEtiketi(undefined)).toBe('elle');
   });
 });

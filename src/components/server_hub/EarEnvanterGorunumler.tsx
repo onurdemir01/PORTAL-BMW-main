@@ -35,6 +35,7 @@ import {
   partiDurumu,
   kisaIz,
   veriYasiGun,
+  kaynakEtiketi,
 } from './earEnvanter';
 import {
   Rozet,
@@ -962,7 +963,7 @@ export function KosularGorunum({ tazeleme }: { tazeleme: number }) {
                     </td>
                     <td className={TD}>{k.id}</td>
                     <td className={TD}>{k.kip === 'TAM' ? 'TAM' : 'ÖZET'}</td>
-                    <td className={TD}>{k.kaynak === 'ZAMANLAYICI' ? 'haftalık' : 'elle'}</td>
+                    <td className={TD}>{kaynakEtiketi(k.kaynak)}</td>
                     <td className={TD}>{k.kapsam === 'FILO' ? 'filo' : 'seçili'}</td>
                     <td className={TD} title={k.hata || ''}>
                       <Rozet d={kosuDurumu(k.durum)} kucuk />

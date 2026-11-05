@@ -123,7 +123,7 @@ async function hostYuku(kosuId, host) {
   }
   let buf;
   try {
-    buf = await alim.hamOku(alim.hamDosyaYolu(dizin, kosuId, host));
+    buf = await alim.hamOku(alim.hamDosyaYolu(dizin, alim.kosuAltDizini(k), host));
   } catch (e) {
     if (e.kod === 'DOSYA_YOK')
       throw hata(

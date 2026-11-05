@@ -6021,6 +6021,48 @@ async function getTemplateLaunchSettingsOnServer(serverId, templateId) {
 }
 
 /**
+ * Sablonun VARSAYILAN Limit'i (2026-11-05, EAR envanter): dolu Limit localhost play'lerini
+ * atlatir; Portal o sablonla baslatmaz. Alan yoksa / metin degilse undefined (olculemedi).
+ * Hata FIRLATIR (cagiran fail-open karar verir).
+ * @returns {Promise<string|undefined>}
+ */
+async function getTemplateDefaultLimitOnServer(serverId, templateId) {
+  const server = getServerById(serverId);
+  if (!server) throw sunucuYokHatasi(serverId);
+  const id = Number(templateId);
+  if (!Number.isInteger(id) || id <= 0) throw Object.assign(new Error('Geçersiz template ID.'), { status: 400 });
+  const token = await getTokenForServer(server);
+  const t = await awxRequestToServer(server, token, 'GET', `/api/v2/job_templates/${id}/`);
+  if (!t || typeof t !== 'object') throw new Error('AWX template yanıtı nesne değil.');
+  return typeof t.limit === 'string' ? t.limit : undefined;
+}
+
+/**
+ * Bir job template'in BITMIS isleri, yeniden eskiye; `finishedAfter` (ISO) sonrasi, en cok
+ * `pageSize`. EAR envanter (2026-11-05): AWX'ten Limit ile elle baslatilan isleri Portal'a
+ * almak icin. Hata FIRLATIR (cagiran sonraki turda yeniden dener).
+ * @returns {Promise<Array<{ id: number, status: string, finished: (string|null) }>>}
+ */
+async function listTemplateJobsOnServer(serverId, templateId, { finishedAfter = null, pageSize = 50 } = {}) {
+  const server = getServerById(serverId);
+  if (!server) throw sunucuYokHatasi(serverId);
+  const id = Number(templateId);
+  if (!Number.isInteger(id) || id <= 0) throw Object.assign(new Error('Geçersiz template ID.'), { status: 400 });
+  const q = new URLSearchParams({
+    order_by: '-id',
+    page_size: String(Math.max(1, Math.min(200, Number(pageSize) || 50))),
+    status__in: 'successful,failed,error,canceled',
+  });
+  if (finishedAfter) q.set('finished__gt', String(finishedAfter));
+  const token = await getTokenForServer(server);
+  const data = await awxRequestToServer(server, token, 'GET', `/api/v2/job_templates/${id}/jobs/?${q}`);
+  const liste = data && Array.isArray(data.results) ? data.results : [];
+  return liste
+    .filter((j) => j && Number.isInteger(j.id) && j.id > 0)
+    .map((j) => ({ id: j.id, status: String(j.status || ''), finished: j.finished || null }));
+}
+
+/**
  * Template ozeti: ad, playbook, "Prompt on launch > Variables" (2026-10-14, LogX).
  * TEK template okunur (GET /api/v2/job_templates/<id>/). LogX her baslatmada playbook
  * eslesmesi ve Prompt on launch icin TUM template listesini (sayfa sayfa) IKI KEZ
@@ -6188,6 +6230,9 @@ module.exports = {
   // ayarlari + survey okuyucusu; ikisi de hatayi FIRLATIR (cagiran "olculemedi" der).
   getTemplateLaunchSettingsOnServer,
   getTemplateSummaryOnServer,
+  // EAR envanter (2026-11-05): sablonun varsayilan Limit'i ve AWX'ten elle baslatilan bitmis isler.
+  getTemplateDefaultLimitOnServer,
+  listTemplateJobsOnServer,
   getSurveySpecOnServer,
   // OpsX production onay akisi (2026-10-06): bilet acilmadan ONCE zorunlu survey
   // varsayilanlarini doldurur; onay sonrasi replay yolu bunu yapmaz.
