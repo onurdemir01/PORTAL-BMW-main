@@ -158,6 +158,9 @@ test('ER5 ZIP gercek araclarla acilir', { skip: PY ? false : 'python3 yok' }, ()
       assert.deepEqual(Object.keys(icerik).sort(), [
         'BENIOKU.txt',
         'eslenikler.csv',
+        'eslenikler_jboss7_8.csv',
+        'eslenikler_ortam_bilinmiyor.csv',
+        'eslenikler_ortamlar_arasi.csv',
         'kutuphaneler.csv',
         'sunucular.csv',
         'uygulamalar.csv',

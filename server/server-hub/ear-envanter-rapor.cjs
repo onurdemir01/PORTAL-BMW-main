@@ -29,7 +29,48 @@ function csv(kolonlar, satirlar) {
   return `${BOM}${out.join('\r\n')}\r\n`;
 }
 
+const csvSatiri = (kolonlar, r) => `${kolonlar.map(([, f]) => csvHucre(f(r))).join(';')}\r\n`;
+
+/**
+ * CSV AKISI (2026-11-05): tum kume parca parca okunur ve yazilir; bellekte buyuk metin birikmez.
+ * parcaGetir(offset, adet) -> { satirlar, toplam }. EKSIKSIZLIK: toplam parcalar arasinda degisirse ya
+ * da yazilan satir toplamla tutmazsa (veri akis sirasinda degisti) akis HATA ile kesilir; tarayici
+ * indirmeyi "basarisiz" gosterir, yarim dosya tam sanilmaz.
+ */
+async function csvAkisi(yaz, kolonlar, parcaGetir, { parca = 5000 } = {}) {
+  await yaz(`${BOM}${kolonlar.map(([b]) => csvHucre(b)).join(';')}\r\n`);
+  let offset = 0;
+  let beklenen = null;
+  for (;;) {
+    const { satirlar, toplam } = await parcaGetir(offset, parca);
+    if (beklenen == null) beklenen = toplam;
+    else if (satirlar.length && toplam !== beklenen)
+      throw Object.assign(new Error('Veri dışa aktarım sırasında değişti; yeniden indirin.'), {
+        code: 'veri_degisti',
+      });
+    if (satirlar.length) await yaz(satirlar.map((r) => csvSatiri(kolonlar, r)).join(''));
+    offset += satirlar.length;
+    if (satirlar.length < parca) break;
+  }
+  if (offset !== (beklenen || 0))
+    throw Object.assign(new Error(`Dışa aktarım eksik kaldı (${offset}/${beklenen}).`), {
+      code: 'eksik_aktarim',
+    });
+  return offset;
+}
+
 const al = (k) => (r) => r[k];
+function jsonListe(v) {
+  if (Array.isArray(v)) return v.map(String);
+  try {
+    const x = JSON.parse(String(v || '[]'));
+    return Array.isArray(x) ? x.map(String) : [];
+  } catch {
+    return [];
+  }
+}
+const degiskenMetni = (r) =>
+  (r.degiskenler || []).map((d) => `${d.harf}=${(d.hostlar || []).join(',')}`).join(' | ');
 const evet = (k) => (r) =>
   r[k] === true || r[k] === 1 ? 'evet' : r[k] === false || r[k] === 0 ? 'hayır' : '';
 const tarih = (k) => (r) =>
@@ -59,7 +100,18 @@ const KOLONLAR = Object.freeze({
     ['yapi_izi', al('yapi_izi')],
     ['kutuphane_izi', al('kutuphane_izi')],
     ['uyari_sayisi', al('uyari_sayisi')],
+    ['uyarilar', (r) => jsonListe(r.uyarilar).join(' | ')],
     ['bag_hedefi', al('bag_hedefi')],
+    ['ear_kutuphane_sayisi', al('ear_kutuphane_sayisi')],
+    ['war_adlari', al('war_adlari')],
+    ['spring_security', al('spring_security')],
+    ['logback', al('logback')],
+    ['jackson', al('jackson')],
+    ['thymeleaf', al('thymeleaf')],
+    ['struts', al('struts')],
+    ['eslenik_ortam_ici', al('eslenik_ortam_ici')],
+    ['eslenik_ortamlar_arasi', al('eslenik_ortamlar_arasi')],
+    ['eslenik_nesil', al('eslenik_nesil')],
     ['kosu', al('kosu_id')],
     ['taranma_utc', tarih('taranma_utc')],
   ],
@@ -105,7 +157,10 @@ const KOLONLAR = Object.freeze({
     ['sunucu', al('host')],
     ['ortam', al('ortam')],
     ['durum', al('durum')],
+    ['neden', al('neden')],
+    ['playbook', al('playbook_etiket')],
     ['playbook_durum', al('playbook_durum')],
+    ['eksik_uygulama', al('eksik_uygulama')],
     ['uygulama_sayisi', al('uygulama_sayisi')],
     ['war_sayisi', al('war_sayisi')],
     ['giris', al('giris')],
@@ -122,10 +177,42 @@ const KOLONLAR = Object.freeze({
     ['ortam', al('ortam')],
     ['jboss', al('jboss')],
     ['karar', al('karar')],
+    ['kutuphane', al('kutuphane')],
+    ['yapi', al('yapi')],
     ['sunucu_sayisi', al('host_sayisi')],
-    ['sunucular', (r) => r.hostlar.join(' ')],
-    ['gruplar', (r) => r.gruplar.map((g) => `${g.iz}=${g.hostlar.join(',')}`).join(' | ')],
-    ['eksik', (r) => r.eksik.join(' ')],
+    ['sunucular', (r) => (r.hostlar || []).join(' ')],
+    ['degiskenler', degiskenMetni],
+    ['tarih_farki_gun', al('tarih_farki_gun')],
+    ['eksik', (r) => (r.eksik || []).join(' ')],
+  ],
+  eslenikler_ortamlar_arasi: [
+    ['uygulama', al('uygulama')],
+    ['jboss', al('jboss')],
+    ['karar', al('karar')],
+    ['kutuphane', al('kutuphane')],
+    ['yapi', al('yapi')],
+    ['ortam_sayisi', al('ortam_sayisi')],
+    ['ortamlar', (r) => (r.ortamlar || []).map((o) => `${o.ortam}=${o.harfler.join('+')}`).join(' ')],
+    ['farkli_ortamlar', (r) => (r.farkli_ortamlar || []).join(' ')],
+    ['degiskenler', degiskenMetni],
+    ['tarih_farki_gun', al('tarih_farki_gun')],
+    ['eksik', (r) => (r.eksik || []).join(' ')],
+  ],
+  eslenikler_nesil: [
+    ['sunucu', al('host')],
+    ['uygulama', al('uygulama')],
+    ['ortam', al('ortam')],
+    ['karar', al('karar')],
+    ['kutuphane', al('kutuphane')],
+    ['yapi', al('yapi')],
+    ['tarih_farki_gun', al('tarih_farki_gun')],
+  ],
+  eslenikler_ortam_yok: [
+    ['uygulama', al('uygulama')],
+    ['jboss', al('jboss')],
+    ['sunucu_sayisi', al('host_sayisi')],
+    ['kopya_sayisi', al('kopya_sayisi')],
+    ['sunucular', (r) => (r.hostlar || []).join(' ')],
   ],
 });
 
@@ -203,22 +290,36 @@ DURUMLAR
   SONUC_YOK        sunucudan sonuc gelmedi; OKUNAMADI sonuc dosyasi okunamadi
   Eksik tarama hicbir dosyada "TAM" gorunmez.
 
-ESLENIKLER (karar)
-  AYNI / FARKLI_KUTUPHANE / FARKLI_YAPI / EKSIK_TARAMA (karsilastirilmadi) / KARSILASTIRILAMAZ (farkli kip)
+ESLENIKLER
+  eslenikler.csv                  ayni uygulama, ayni ortam, ayni JBoss nesli, en az iki sunucu
+  eslenikler_ortamlar_arasi.csv   ayni uygulama, ayni nesil, farkli ortamlar (harf = kutuphane degiskeni)
+  eslenikler_jboss7_8.csv         ayni sunucuda ayni EAR hem /vhosting hem /vhosting8 altinda
+  eslenikler_ortam_bilinmiyor.csv envanterde ortami bos sunucular: karsilastirilmadi
+  karar: AYNI / FARKLI_KUTUPHANE (jar ya da surum farki) / AYNI_SURUM_FARKLI_DOSYA (ayni surum,
+         farkli boyut) / FARKLI_YAPI (dosya yapisi farkli) / EKSIK_TARAMA (bir kopya tam taranmadi:
+         karsilastirilmadi)
+  kutuphane ve yapi sutunlari ayri sonuclardir; karar ikisinin en kotusudur.
 
 tree.txt: ls -lrtiR benzeri (inode mod uid gid boyut mtime ad); yalniz TAM kipte ve saklama suresindeki
 kosularda vardir. inventory.json: uygulamanin tum alanlari (yapay zeka analizi icin).
 `;
 
-/** Filo ZIP'i: bes CSV + BENIOKU. */
-function filoZipGirisleri({ uygulamalar, warlar, kutuphaneler, sunucular, eslenikler }) {
+/** Filo ZIP'i: CSV'ler + BENIOKU. eslenik: eslenik motorunun analizi (dort liste). */
+function filoZipGirisleri({ uygulamalar, warlar, kutuphaneler, sunucular, eslenikler, eslenik }) {
+  const e = eslenik || { ortamIci: eslenikler || [], ortamlarArasi: [], nesil: [], ortamYok: [] };
   return [
     { ad: 'BENIOKU.txt', veri: BENIOKU },
     { ad: 'uygulamalar.csv', veri: csv(KOLONLAR.uygulamalar, uygulamalar) },
     { ad: 'warlar.csv', veri: csv(KOLONLAR.warlar, warlar) },
     { ad: 'kutuphaneler.csv', veri: csv(KOLONLAR.kutuphaneler, kutuphaneler) },
     { ad: 'sunucular.csv', veri: csv(KOLONLAR.sunucular, sunucular) },
-    { ad: 'eslenikler.csv', veri: csv(KOLONLAR.eslenikler, eslenikler) },
+    { ad: 'eslenikler.csv', veri: csv(KOLONLAR.eslenikler, e.ortamIci) },
+    {
+      ad: 'eslenikler_ortamlar_arasi.csv',
+      veri: csv(KOLONLAR.eslenikler_ortamlar_arasi, e.ortamlarArasi),
+    },
+    { ad: 'eslenikler_jboss7_8.csv', veri: csv(KOLONLAR.eslenikler_nesil, e.nesil) },
+    { ad: 'eslenikler_ortam_bilinmiyor.csv', veri: csv(KOLONLAR.eslenikler_ortam_yok, e.ortamYok) },
   ];
 }
 
@@ -263,6 +364,7 @@ module.exports = {
   BENIOKU,
   csvHucre,
   csv,
+  csvAkisi,
   agacMetni,
   guvenliParca,
   inventoryJson,

@@ -1142,6 +1142,7 @@ const TABLES = [
       CREATE TABLE ear_envanter_kutuphane_setleri (
         iz          CHAR(32) NOT NULL PRIMARY KEY,
         sayi        INT NOT NULL,
+        surum_izi   CHAR(32) NULL,
         created_at  DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
       )`,
   },
@@ -4440,6 +4441,13 @@ async function setupTables() {
     // sutun = yalniz meta veri islemi).
     { table: 'nginx_loadtest_kuyruk', col: 'duraklat_at', sql: `ALTER TABLE nginx_loadtest_kuyruk ADD duraklat_at DATETIME2 NULL` },
     { table: 'nginx_loadtest_kuyruk', col: 'duraklatan', sql: `ALTER TABLE nginx_loadtest_kuyruk ADD duraklatan NVARCHAR(100) NULL` },
+    {
+      // Uygulama Envanteri (2026-11-05): kutuphane setinin BOYUTSUZ izi ("ayni surum, farkli dosya" karari).
+      // Eski setlerde NULL kalir; eslenik analizi set satirlarindan hesaplayip yazar.
+      table: 'ear_envanter_kutuphane_setleri',
+      col: 'surum_izi',
+      sql: `ALTER TABLE ear_envanter_kutuphane_setleri ADD surum_izi CHAR(32) NULL`,
+    },
     {
       // SPA Tasima Plani (2026-09-26): ekibin BEYANI - uygulama kullanimda mi?
       // Olcum (access log) ayri durur; bu alan ekibin dedigi seydir.

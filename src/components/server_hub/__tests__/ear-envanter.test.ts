@@ -50,7 +50,9 @@ describe('EE1 durum dili', () => {
     expect(hostDurumu('SONUC_YOK').ton).toBe('kotu');
     expect(kosuDurumu('KISMI').ton).toBe('uyari');
     expect(kararDurumu('EKSIK_TARAMA').ton).not.toBe('iyi');
-    expect(kararDurumu('KARSILASTIRILAMAZ').ton).toBe('notr');
+    // Ayni surum, farkli dosya: yesil degil (fark var), kirmizi degil (surum ayni).
+    expect(kararDurumu('AYNI_SURUM_FARKLI_DOSYA').ton).toBe('uyari');
+    expect(kararDurumu('FARKLI_KUTUPHANE').ton).toBe('kotu');
   });
   it('bilinmeyen durum nötr', () => {
     expect(uygulamaDurumu('YENI_BIR_DURUM')).toMatchObject({

@@ -121,6 +121,11 @@ const KARAR: Record<string, DurumBilgisi> = {
     ton: 'kotu',
     aciklama: 'En az bir kopyada jar ya da sürüm farklı.',
   },
+  AYNI_SURUM_FARKLI_DOSYA: {
+    etiket: 'aynı sürüm, farklı dosya',
+    ton: 'uyari',
+    aciklama: 'Jar adları ve sürümleri aynı, en az bir jar dosyasının boyutu farklı (yeniden derlenmiş olabilir).',
+  },
   FARKLI_YAPI: {
     etiket: 'yapı farklı',
     ton: 'uyari',
@@ -130,11 +135,6 @@ const KARAR: Record<string, DurumBilgisi> = {
     etiket: 'karşılaştırılamadı',
     ton: 'uyari',
     aciklama: 'Kopyalardan biri tam taranmadı; eksik veri "aynı" sayılmaz.',
-  },
-  KARSILASTIRILAMAZ: {
-    etiket: 'kip farklı',
-    ton: 'notr',
-    aciklama: 'Kopyalar farklı kipte tarandı (ÖZET / TAM).',
   },
   TEK: { etiket: 'tek kopya', ton: 'notr', aciklama: 'Bu ortam ve nesilde tek sunucuda.' },
 };

@@ -14,6 +14,8 @@
 //   EA8  hamOku: sinir ustu dosya OKUNMADAN reddedilir; yok -> DOSYA_YOK
 //   EA9  SEMA SOZLESMESI: alimin OPENJSON WITH kolonlari mssql-setup DDL'inde ayni adla var
 //   EA10 AWX kosusunun alt dizini awx-<is> (parametrelerdeki is no); hamDosyaYolu disari cikamaz
+//   EA11 SESSIZ KESILME YOK: 201 WAR / 2001 kutuphane -> uygulama KISMI_SINIR + uyari, host KISMI,
+//        war_sayisi GERCEK sayi; set satiri surum izini (boyutsuz) tasir
 'use strict';
 
 const { test } = require('node:test');
@@ -372,4 +374,42 @@ test('EA9 SEMA SOZLESMESI: OPENJSON WITH kolonlari DDL ile ayni', () => {
       assert.equal(tip, d.get(ad), `${t}.${ad}: WITH ${tip}, DDL ${d.get(ad)}`);
     }
   }
+});
+
+test('EA11 kesilme isaretlenir; surum izi yazilir', async () => {
+  const cok = Array.from({ length: alim.SINIR_WAR + 1 }, (_, i) => F.ornekWar({ yol: `W${i}.war`, ad: `W${i}.war` }));
+  const k = alim.hostKaydi(
+    F.ornekYuk({ uygulamalar: [F.ornekUygulama({ warlar: cok })] }),
+    { host: 'APPSRV01', kip: 'TAM', partiNo: 1 },
+  );
+  const u = k.uygulamalar[0];
+  assert.equal(u.durum, 'KISMI_SINIR');
+  assert.equal(u.war_sayisi, alim.SINIR_WAR + 1, 'gercek WAR sayisi');
+  assert.equal(k.warlar.length, alim.SINIR_WAR);
+  assert.match(JSON.parse(u.uyarilar)[0], /WAR sayısı 201; ilk 200 alındı/);
+  assert.equal(k.host.durum, 'KISMI', 'eksik uygulamali host TAM gorunmez');
+
+  const libler = Array.from({ length: alim.SINIR_KUTUPHANE + 1 }, (_, i) => [`lib${i}`, '1.0', 10]);
+  const k2 = alim.hostKaydi(
+    F.ornekYuk({ uygulamalar: [F.ornekUygulama({ warlar: [F.ornekWar({ kutuphaneler: libler })] })] }),
+    { host: 'APPSRV01', kip: 'TAM', partiNo: 1 },
+  );
+  assert.equal(k2.warlar[0].durum, 'KISMI_SINIR');
+  assert.equal(k2.warlar[0].kutuphane_sayisi, alim.SINIR_KUTUPHANE + 1, 'gercek kutuphane sayisi');
+  assert.equal(k2.uygulamalar[0].durum, 'KISMI_SINIR');
+  assert.match(JSON.parse(k2.uygulamalar[0].uyarilar)[0], /kütüphane sayısı 2001; ilk 2000 alındı/);
+  const tamK = alim.hostKaydi(F.ornekYuk(), { host: 'APPSRV01', kip: 'TAM', partiNo: 1 });
+  assert.equal(tamK.uygulamalar[0].durum, 'TAM', 'sinir altinda durum degismez');
+
+  const a = alim.kutuphaneSeti([['x', '1', 5], ['y', '2', 7]]);
+  const b = alim.kutuphaneSeti([['y', '2', 8], ['x', '1', 5]]);
+  assert.notEqual(a.iz, b.iz, 'boyut izi degistirir');
+  assert.equal(a.surumIzi, b.surumIzi, 'surum izi boyuttan bagimsiz');
+  assert.notEqual(a.surumIzi, alim.kutuphaneSeti([['x', '1', 5], ['y', '3', 7]]).surumIzi);
+  const db = F.sahteDb([]);
+  await alim.hostuYaz(db.mod, 7, 'APPSRV01', tamK);
+  const yaz = db.cagrilar.find((c) => c.sql === alim.HOST_YAZ_SQL);
+  const setler = JSON.parse(yaz.params[5]);
+  assert.ok(setler.length && setler.every((x) => /^[0-9a-f]{32}$/.test(x.surum_izi)));
+  assert.match(alim.HOST_YAZ_SQL, /INSERT INTO ear_envanter_kutuphane_setleri \(iz, sayi, surum_izi\)/);
 });
