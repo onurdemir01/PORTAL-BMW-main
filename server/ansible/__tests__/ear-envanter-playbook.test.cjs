@@ -7,6 +7,12 @@
 // EP4 raw komutu kabukta: python yoksa @@EAR_PYTHON_YOK@@; varsa paket isaretleri (heredoc saglam)
 // EP5 GERCEK ansible-playbook: yerel hedefler, ulasilamayan host ULASILAMADI, /sw dosyalari,
 //     set_stats ozeti; hedef agaci DEGISMEZ
+// EP6 LIMIT KIPI (AWX'ten elle, hedefler yok): sunucular Limit'ten, cikti awx-<is>/raw, FQDN envanter
+//     adi kisa BUYUK harf olur, set_stats kaynak AWX
+// EP7 Limit BOS ve hedefler yok: is ilk play'de durur, hicbir sey taranmaz / yazilmaz; Limit var ama
+//     awx_job_id yok (AWX disi): acik mesajla durur
+// EP8 TUZAK: Portal kipi + dolu Limit -> localhost play'leri atlanir, is hicbir sey yapmadan biter
+//     (Portal bu yuzden Limit alani dolu sablonla baslatmaz; davranis degisirse bu test haber verir)
 'use strict';
 
 const { test } = require('node:test');
@@ -66,6 +72,9 @@ test('EP1 basliktaki extra_vars listesi kullanilanlarla ayni', () => {
     'ear_envanter_result',
     'ear_yazici_host',
     'ear_parti_siniri',
+    'ear_alt_dizin',
+    'ear_host_adi',
+    'ear_toplanan',
   ])
     kullanilan.delete(ic);
   const belgesiz = [...kullanilan].filter((v) => !belgeli.has(v));
@@ -102,9 +111,18 @@ test(
   { skip: !PYY && 'PyYAML bulunamadi' },
   () => {
     const plays = yamlOku();
-    assert.equal(plays.length, 3);
-    const [hazirlik, tarama, toplayici] = plays;
+    assert.equal(plays.length, 4);
+    const [hazirlik, limitHazirlik, tarama, toplayici] = plays;
     assert.equal(hazirlik.hosts, 'localhost');
+    // Limit dolu iken localhost play'i atlanir; hedefler'siz buraya gelmek Limit'in bos oldugu demek.
+    const secim = hazirlik.tasks[0];
+    assert.ok(secim['ansible.builtin.fail'], 'ilk gorev sunucu secimi (Limit bos) olmali');
+    assert.equal(secim.when, 'hedefler is not defined');
+    assert.equal(limitHazirlik.hosts, "{{ 'localhost' if hedefler is defined else 'all' }}");
+    for (const g of limitHazirlik.tasks) {
+      assert.equal(g.run_once, true, `${g.name}: Limit kipinde tek kez`);
+      assert.equal(g.when, 'hedefler is not defined', `${g.name}: Portal kipinde atlanmali`);
+    }
     const assertGorev = hazirlik.tasks.find((t) => t['ansible.builtin.assert']);
     assert.ok(assertGorev, 'girdi dogrulamasi yok');
     assert.ok(
@@ -118,7 +136,7 @@ test(
       "add_host yok (AWX limit'e guvenilmez)",
     );
 
-    assert.equal(tarama.hosts, 'ear_hedefler');
+    assert.equal(tarama.hosts, "{{ 'ear_hedefler' if hedefler is defined else 'all' }}");
     assert.equal(tarama.ignore_unreachable, true);
     const modul = (t) => Object.keys(t).find((k) => k.startsWith('ansible.builtin.'));
     // TUZAK 3: tek block + rescue; tum hostlar dusse de toplayici play'e ulasilir.
@@ -148,7 +166,8 @@ test(
     assert.equal(copy.throttle, 6, 'sshd MaxSessions: en cok 6 eszamanli');
     assert.equal(copy.no_log, true);
 
-    assert.equal(toplayici.hosts, 'localhost');
+    assert.equal(toplayici.hosts, "{{ 'localhost' if hedefler is defined else 'all' }}");
+    for (const g of toplayici.tasks) assert.equal(g.run_once, true, `${g.name}: run_once yok`);
     const stats = toplayici.tasks.find((t) => t['ansible.builtin.set_stats'])[
       'ansible.builtin.set_stats'
     ].data.ear_envanter_result;
@@ -157,6 +176,9 @@ test(
       'parti_no',
       'kip',
       'playbook_surum',
+      'kaynak',
+      'awx_job_id',
+      'limit',
       'beklenen',
       'sonuc_alinan',
       'hostlar',
@@ -289,7 +311,8 @@ test(
     const ozet = JSON.parse(run.slice(run.indexOf('{'))).ear_envanter_result;
     assert.equal(Number(ozet.beklenen), 3);
     assert.equal(Number(ozet.sonuc_alinan), 2);
-    assert.equal(Number(ozet.playbook_surum), 1);
+    assert.equal(Number(ozet.playbook_surum), 2);
+    assert.equal(ozet.kaynak, 'PORTAL');
     const durum = Object.fromEntries(ozet.hostlar.map((h) => [h.host, h.durum]));
     assert.deepEqual(durum, { HOSTA: 'SONUC', HOSTB: 'SONUC', HOSTX: 'ULASILAMADI' });
     const ham = fs.readFileSync(path.join(cikti, 'kosu-5', 'raw', 'HOSTA.out'), 'utf8');
@@ -315,5 +338,125 @@ test(
       !r.stdout.includes('spring-boot-4.0.8'),
       'tarama ciktisi AWX olay akisina sizdi (no_log)',
     );
+  },
+);
+
+/**
+ * EP6-EP8 icin: yerel envanter (HOSTA dolu, HOSTB kok yok, hostc FQDN, HOSTX ulasilamaz).
+ * `localhostYok`: AWX envanteri gibi localhost satiri YOK (Ansible ortuk localhost kullanir).
+ */
+function limitOrtami(onEk, { localhostYok = false } = {}) {
+  const kok = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), onEk)));
+  const a = path.join(kok, 'hostA', 'vhosting8', 'APP.ear', 'APP.war', 'WEB-INF');
+  fs.mkdirSync(path.join(a, 'lib'), { recursive: true });
+  fs.writeFileSync(path.join(a, 'web.xml'), '<web-app/>');
+  fs.mkdirSync(path.join(kok, 'hostB'), { recursive: true });
+  const py = ansiblePythonu() || 'python3';
+  const inv = path.join(kok, 'envanter.ini');
+  const kokler = (h) => `ear_kokler=${kok}/${h}/vhosting:${kok}/${h}/vhosting8`;
+  fs.writeFileSync(
+    inv,
+    [
+      localhostYok ? '' : `localhost ansible_connection=local ansible_python_interpreter=${py}`,
+      `GBLABT02 ansible_connection=local ansible_python_interpreter=${py}`,
+      `HOSTA ansible_connection=local ${kokler('hostA')}`,
+      `HOSTB ansible_connection=local ${kokler('hostB')}`,
+      `hostc.ornek.local ansible_connection=local ${kokler('hostA')}`,
+      `HOSTD ansible_connection=local ${kokler('hostA')}`,
+      "HOSTX ansible_host=192.0.2.1 ansible_connection=ssh ansible_ssh_common_args='-o ConnectTimeout=2'",
+      '',
+    ].join('\n'),
+  );
+  return { kok, inv, cikti: path.join(kok, 'sw', 'ear_envanter') };
+}
+
+function oynat(inv, ek, ev) {
+  return spawnSync('ansible-playbook', ['-i', inv, PLAYBOOK, ...ek, '-e', JSON.stringify(ev)], {
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      ANSIBLE_SHOW_CUSTOM_STATS: 'True',
+      ANSIBLE_HOST_KEY_CHECKING: 'False',
+      ANSIBLE_STDOUT_CALLBACK: 'default',
+      ANSIBLE_NOCOLOR: '1',
+    },
+    timeout: 120000,
+  });
+}
+
+function ozetOku(r) {
+  const run = r.stdout.split('\n').find((s) => s.includes('RUN: {'));
+  return run ? JSON.parse(run.slice(run.indexOf('{'))).ear_envanter_result : null;
+}
+
+test(
+  'EP6 Limit kipi: sunucular Limit alanindan, cikti awx-<is>, FQDN kisa ad, kaynak AWX',
+  { skip: !HAS_ANSIBLE && 'ansible-playbook yok' },
+  () => {
+    const { inv, cikti } = limitOrtami('ear-ep6-', { localhostYok: true });
+    const r = oynat(inv, ['-l', 'HOSTA,HOSTB,hostc.ornek.local,HOSTX'], {
+      awx_job_id: 777,
+      ear_kip: 'OZET',
+      ear_okuma_kullanicisi: '',
+      ear_dizin: cikti,
+    });
+    assert.equal(r.status, 0, `kod ${r.status}\n${r.stdout.slice(-1500)}\n${r.stderr.slice(-800)}`);
+    const ozet = ozetOku(r);
+    assert.ok(ozet, 'CUSTOM STATS satiri yok');
+    assert.equal(ozet.kaynak, 'AWX');
+    assert.equal(Number(ozet.awx_job_id), 777);
+    assert.equal(Number(ozet.kosu_no), 0);
+    assert.equal(Number(ozet.playbook_surum), 2);
+    assert.equal(ozet.limit, 'HOSTA,HOSTB,hostc.ornek.local,HOSTX');
+    assert.equal(Number(ozet.beklenen), 4, 'beklenen = Limit\'teki host sayisi');
+    assert.equal(Number(ozet.sonuc_alinan), 3);
+    const durum = Object.fromEntries(ozet.hostlar.map((h) => [h.host, h.durum]));
+    assert.deepEqual(durum, { HOSTA: 'SONUC', HOSTB: 'SONUC', HOSTC: 'SONUC', HOSTX: 'ULASILAMADI' });
+    const raw = path.join(cikti, 'awx-777', 'raw');
+    assert.deepEqual(fs.readdirSync(raw).sort(), ['HOSTA.out', 'HOSTB.out', 'HOSTC.out']);
+    assert.ok(!fs.existsSync(path.join(raw, 'HOSTD.out')), "Limit disindaki host taranmamali");
+    assert.ok(!fs.existsSync(path.join(cikti, 'kosu-0')), 'Limit kipinde kosu-<n> dizini acilmaz');
+  },
+);
+
+test(
+  'EP7 Limit bos ve hedefler yok: is ilk play\'de durur, hicbir sey taranmaz',
+  { skip: !HAS_ANSIBLE && 'ansible-playbook yok' },
+  () => {
+    const { inv, cikti } = limitOrtami('ear-ep7-');
+    const r = oynat(inv, [], { awx_job_id: 778, ear_okuma_kullanicisi: '', ear_dizin: cikti });
+    assert.notEqual(r.status, 0, 'Limit bosken is basarili bitmemeli');
+    assert.match(r.stdout, /Sunucu secilmedi: AWX'te Limit alanina/);
+    assert.equal(ozetOku(r), null, 'set_stats yayinlanmamali');
+    assert.ok(!fs.existsSync(cikti), "hicbir sey /sw'ye yazilmamali");
+    assert.ok(!/TASK \[--- \[Task\] Tara/.test(r.stdout), 'tarama gorevi calismamali');
+
+    // AWX disinda Limit ile kosulup is numarasi verilmezse: acik mesajla durur, dizin acilmaz.
+    const r2 = oynat(inv, ['-l', 'HOSTA'], { ear_okuma_kullanicisi: '', ear_dizin: cikti });
+    assert.notEqual(r2.status, 0, 'awx_job_id yokken is basarili bitmemeli');
+    assert.match(r2.stdout, /Gecersiz girdi \(Limit kipi\): awx_job_id/);
+    assert.ok(!fs.existsSync(cikti), "awx_job_id yokken /sw'de dizin acilmamali");
+  },
+);
+
+test(
+  'EP8 TUZAK: Portal kipi + dolu Limit -> localhost play\'leri atlanir, is hicbir sey yapmadan biter',
+  { skip: !HAS_ANSIBLE && 'ansible-playbook yok' },
+  () => {
+    // AWX envanterinde localhost satiri yoktur: ortuk localhost `all` ile de eslesmez.
+    const { inv, cikti } = limitOrtami('ear-ep8-', { localhostYok: true });
+    for (const limit of ['all', 'HOSTA']) {
+      const r = oynat(inv, ['-l', limit], {
+        hedefler: ['HOSTA'],
+        ear_kosu_no: 9,
+        ear_parti_no: 1,
+        ear_okuma_kullanicisi: '',
+        ear_dizin: cikti,
+      });
+      // Bu davranis Portal'in Limit dolu sablonu reddetmesinin SEBEBI: is "basarili" ama bos.
+      assert.equal(r.status, 0, `${limit}: ${r.stdout.slice(-800)}`);
+      assert.equal(ozetOku(r), null, `${limit}: set_stats yayinlandi`);
+      assert.ok(!fs.existsSync(cikti), `${limit}: /sw'ye yazildi`);
+    }
   },
 );
