@@ -26,6 +26,38 @@ export interface IpCheckResult {
   matches: IpCheckMatch[];
 }
 
+export interface LbIpKayit {
+  host: string;
+  ip: string;
+  neden: "sunucu" | "u_eslenigi" | "web_eslenigi" | "dijital_kanal_web";
+}
+
+export interface LbIpSonuc {
+  sunucu: string;
+  bulundu: boolean;
+  eslenikler: string[];
+  kayitlar: LbIpKayit[];
+}
+
+export interface LbIpUyari {
+  sunucu: string;
+  uygulama: string;
+  aciklama: string;
+}
+
+export interface ServerIpCheckResult {
+  ok: true;
+  sonuclar: LbIpSonuc[];
+  ipler: string[];
+  uyarilar: LbIpUyari[];
+  veriTarihi: string | null;
+  veriBayat: boolean;
+  dijitalKanalOkundu: boolean;
+  gecersiz: string[];
+  truncated?: number;
+  maxItems?: number;
+}
+
 export interface OpenshiftCheckRow {
   namespace: string;
   application: string;
@@ -89,6 +121,16 @@ export const selfServiceApi = {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ips }),
+    });
+    return json(r);
+  },
+
+  // "Check" sekmesi — sunucu listesinden LB IP'leri (bkz. server/selfservice/lb-ip-kurallari.cjs).
+  async serverIpCheck(servers: string[]): Promise<ServerIpCheckResult> {
+    const r = await fetch(`${BASE}/server-ip-check`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ servers }),
     });
     return json(r);
   },

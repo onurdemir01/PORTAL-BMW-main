@@ -29,8 +29,9 @@ test('sinir tek yerde tanimli (iki ucta ayrisamaz)', () => {
 test('kesilen girdi sayisi YANITTA doner — her iki ucta da', () => {
   assert.match(SRC, /truncated: ipsTruncated,/);
   assert.match(SRC, /truncated: itemsTruncated,/);
+  assert.match(SRC, /truncated: serversTruncated,/);
   const maxItems = (SRC.match(/maxItems: MAX_CHECK_ITEMS,/g) || []).length;
-  assert.equal(maxItems, 2, 'iki uc de sinirin ne oldugunu soylemeli');
+  assert.equal(maxItems, 3, 'her uc sinirin ne oldugunu soylemeli');
 });
 
 test('sinir MSSQL parametre tavaninin ALTINDA', () => {
@@ -58,8 +59,8 @@ test('arayuz kesmeyi GORUNUR kiliyor', () => {
 test('mutasyonlar admin kapisindan geciyor, salt-okunur sorgular MUAF', () => {
   // /ip-check ve /openshift-check POST ama gercek bir MUTASYON DEGIL — muafiyet
   // BILINCLI. Muafiyetin yanlislikla baska uclara genislemesine karsi bekci.
-  const m = SRC.match(/if \(req\.path === "([^"]+)" \|\| req\.path === "([^"]+)"\) return next\(\);/);
+  const m = SRC.match(/if \(req\.path === "([^"]+)" \|\| req\.path === "([^"]+)" \|\| req\.path === "([^"]+)"\) return next\(\);/);
   assert.ok(m, 'admin-gate muafiyeti bulunamadi');
-  assert.deepEqual([m[1], m[2]].sort(), ['/ip-check', '/openshift-check']);
+  assert.deepEqual([m[1], m[2], m[3]].sort(), ['/ip-check', '/openshift-check', '/server-ip-check']);
   assert.match(SRC, /return requireAdmin\(req, res, next\);/);
 });

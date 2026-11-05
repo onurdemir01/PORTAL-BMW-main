@@ -22,7 +22,7 @@ function initSelfService(app) {
   // (asagida route TANIMI o middleware'lerden SONRA).
   router.use((req, res, next) => {
     if (req.method === "GET") return next();
-    if (req.path === "/ip-check" || req.path === "/openshift-check") return next();
+    if (req.path === "/ip-check" || req.path === "/server-ip-check" || req.path === "/openshift-check") return next();
     return requireAdmin(req, res, next);
   });
   // Tum mutasyonlar portal_audit_logs'a yazilir (bkz. server/audit/index.cjs) — /ip-check
@@ -100,6 +100,48 @@ function initSelfService(app) {
         totalFound: results.filter((r) => r.found).length,
         // Degerlendirilmeyen girdi sayisi — 0 degilse arayuz UYARIR (bkz. yukaridaki not).
         truncated: ipsTruncated,
+        maxItems: MAX_CHECK_ITEMS,
+      });
+    } catch (err) {
+      res.status(500).json({ ok: false, message: err.message || "Sorgulama başarısız." });
+    }
+  });
+
+  // POST /server-ip-check — Check sekmesi: sunucu listesinden LB'de kullanilacak IP'ler. LB Suspend
+  // Exclude List AWX isinin kurallari (bkz. lb-ip-kurallari.cjs); ayni veri dbo.IPInventory'de.
+  // Tablonun tamami okunur: betik alt metin eslestirir, IN listesi bunu karsilamaz.
+  router.post("/server-ip-check", async (req, res) => {
+    try {
+      const raw = req.body?.servers;
+      if (!Array.isArray(raw) || raw.length === 0) {
+        return res.status(400).json({ ok: false, message: "En az bir sunucu adı girilmeli." });
+      }
+      const { lbIpCoz, girdiyiAyikla, dijitalKanalOku, veriDurumu } = require("./lb-ip-kurallari.cjs");
+      const { sunucular, gecersiz } = girdiyiAyikla(raw);
+      const serversTruncated = Math.max(0, sunucular.length - MAX_CHECK_ITEMS);
+      if (serversTruncated > 0) sunucular.length = MAX_CHECK_ITEMS;
+      if (sunucular.length === 0) {
+        return res.status(400).json({ ok: false, message: "Geçerli bir sunucu adı bulunamadı." });
+      }
+
+      const { query } = require("../inventory/mssql.cjs");
+      const [tablo, dijitalKanal] = await Promise.all([
+        query("SELECT host, ip, last_seen_at FROM dbo.IPInventory"),
+        dijitalKanalOku(),
+      ]);
+      const kayitlar = tablo.recordset || [];
+      // Bos tablo "hicbir sunucu bulunamadi" diye okunmasin.
+      if (kayitlar.length === 0) {
+        return res.status(503).json({ ok: false, message: "IP envanteri boş; sonuç üretilemedi." });
+      }
+
+      res.json({
+        ok: true,
+        ...lbIpCoz({ sunucular, kayitlar, dijitalKanalMetni: dijitalKanal.metin }),
+        ...veriDurumu(kayitlar),
+        dijitalKanalOkundu: dijitalKanal.ok,
+        gecersiz,
+        truncated: serversTruncated,
         maxItems: MAX_CHECK_ITEMS,
       });
     } catch (err) {
