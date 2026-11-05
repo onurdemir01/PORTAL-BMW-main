@@ -253,11 +253,11 @@ test("EAX4 AWX kosusunun alimi awx-<is>/raw'dan", async () => {
 });
 
 test('EAX5 limitDenetimi', async () => {
-  let ayar = { limit: 'all' };
+  let ayar = 'all';
   let okuma = 0;
   sahteModul(RUNNER_YOLU, {
     redactSecrets: (s) => s,
-    getTemplateLaunchSettingsOnServer: async (sid, tid) => {
+    getTemplateDefaultLimitOnServer: async (sid, tid) => {
       okuma += 1;
       assert.deepEqual([sid, tid], [2, 2376]);
       if (ayar instanceof Error) throw ayar;
@@ -271,8 +271,7 @@ test('EAX5 limitDenetimi', async () => {
     assert.match(e.message, /Limit alanı dolu \("all"\)/);
     return true;
   });
-  for (ayar of [{ limit: '' }, { limit: '   ' }, {}, new Error('AWX yok')])
-    await awx.limitDenetimi();
+  for (ayar of ['', '   ', undefined, new Error('AWX yok')]) await awx.limitDenetimi();
   assert.equal(okuma, 5);
 
   sahteModul(REG_YOLU, { getByKey: async () => null, getEffectiveTemplateId: () => null });
@@ -285,7 +284,7 @@ test('EAX6 Portal kipi: sablon Limit dolu iken parti baslatilmaz', async () => {
   sablonVar();
   sahteModul(RUNNER_YOLU, {
     redactSecrets: (s) => s,
-    getTemplateLaunchSettingsOnServer: async () => ({ limit: 'HOSTA' }),
+    getTemplateDefaultLimitOnServer: async () => 'HOSTA',
   });
   let cagri = 0;
   poller.kur({

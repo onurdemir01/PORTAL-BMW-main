@@ -56,13 +56,13 @@ async function sablonBul() {
 async function limitDenetimi() {
   const s = await sablonBul().catch(() => null);
   if (!s) return;
-  let ayarlar;
+  let ham;
   try {
-    ayarlar = await runner().getTemplateLaunchSettingsOnServer(s.serverId, s.templateId);
+    ham = await runner().getTemplateDefaultLimitOnServer(s.serverId, s.templateId);
   } catch {
     return;
   }
-  const limit = typeof (ayarlar && ayarlar.limit) === 'string' ? ayarlar.limit.trim() : '';
+  const limit = typeof ham === 'string' ? ham.trim() : '';
   if (limit)
     throw hata(
       409,

@@ -11,6 +11,7 @@
 //   EU6  SAKLAMA DB: son N FILO kosusu sayilir (secili / pilot kosulari filo kosusunu sildirmez),
 //        silme parcali (TOP)
 //   EU7  SAKLAMA /sw awx-<is>: kosusu korunan kalir, korunmayan silinir; henuz alinmamis is 7 gun kalir
+//   EU8  AGAC: AWX'ten alinan kosunun ham dosyasi awx-<is>/raw'dan okunur (ayni numarali kosu-<n> degil)
 'use strict';
 
 const { test, afterEach } = require('node:test');
@@ -205,6 +206,36 @@ test('EU7 /sw saklamasi: AWX dizinleri', async () => {
   // 500: korunan kosu 7; 501: kosu 8 korunmuyor; 502: alinmamis, yeni; 503: alinmamis, 30 gunluk.
   assert.deepEqual(r.silinen.sort(), ['awx-501', 'awx-503']);
   assert.deepEqual(fs.readdirSync(dizin).sort(), ['awx-500', 'awx-502', 'awx-x']);
+});
+
+test('EU8 agac AWX kosusunda awx-<is>/raw okunur', async () => {
+  const d = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'ear-agac-awx-')));
+  fs.mkdirSync(path.join(d, 'awx-901', 'raw'), { recursive: true });
+  fs.writeFileSync(path.join(d, 'awx-901', 'raw', 'APPSRV01.out'), F.paketYap(F.ornekYuk()));
+  // Ayni numarali Portal kosusu dizini: okunursa uygulama yok -> 409.
+  fs.mkdirSync(path.join(d, 'kosu-88', 'raw'), { recursive: true });
+  fs.writeFileSync(
+    path.join(d, 'kosu-88', 'raw', 'APPSRV01.out'),
+    F.paketYap(F.ornekYuk({ uygulamalar: [] })),
+  );
+  const poller = require('../ear-envanter-poller.cjs');
+  const asil = poller.kosuOku;
+  poller.kosuOku = async (id) => ({
+    id: Number(id),
+    kaynak: 'AWX',
+    parametreler: JSON.stringify({ dizin: d, awx_job_id: 901 }),
+  });
+  try {
+    await sunucu(async (kok) => {
+      const r = await fetch(`${kok}/ear/agac/88/APPSRV01/0`);
+      assert.equal(r.status, 200, await r.clone().text());
+      const j = await r.json();
+      assert.equal(j.uygulama.ad, 'ORNEKPANEL.ear');
+      assert.equal(j.satirlar.length, 2);
+    });
+  } finally {
+    poller.kosuOku = asil;
+  }
 });
 
 test('EU6 DB saklamasi', async () => {

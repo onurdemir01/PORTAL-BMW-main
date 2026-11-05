@@ -6017,10 +6017,24 @@ async function getTemplateLaunchSettingsOnServer(serverId, templateId) {
     // SECILEN HOST YERINE tum envanterde kosardi - "toplu islem sakin olmasin" kuralinin
     // tam ihlali. Bu bayrak olculur ve tutmazsa istek REDDEDILIR (fail-closed).
     askLimitOnLaunch: flag(t.ask_limit_on_launch),
-    // Sablonun VARSAYILAN Limit'i (2026-11-05, EAR envanter): dolu Limit localhost play'lerini
-    // atlatir; Portal o sablonla baslatmaz. Alan yoksa / metin degilse undefined (olculemedi).
-    limit: typeof t.limit === 'string' ? t.limit : undefined,
   };
+}
+
+/**
+ * Sablonun VARSAYILAN Limit'i (2026-11-05, EAR envanter): dolu Limit localhost play'lerini
+ * atlatir; Portal o sablonla baslatmaz. Alan yoksa / metin degilse undefined (olculemedi).
+ * Hata FIRLATIR (cagiran fail-open karar verir).
+ * @returns {Promise<string|undefined>}
+ */
+async function getTemplateDefaultLimitOnServer(serverId, templateId) {
+  const server = getServerById(serverId);
+  if (!server) throw sunucuYokHatasi(serverId);
+  const id = Number(templateId);
+  if (!Number.isInteger(id) || id <= 0) throw Object.assign(new Error('Geçersiz template ID.'), { status: 400 });
+  const token = await getTokenForServer(server);
+  const t = await awxRequestToServer(server, token, 'GET', `/api/v2/job_templates/${id}/`);
+  if (!t || typeof t !== 'object') throw new Error('AWX template yanıtı nesne değil.');
+  return typeof t.limit === 'string' ? t.limit : undefined;
 }
 
 /**
@@ -6216,7 +6230,8 @@ module.exports = {
   // ayarlari + survey okuyucusu; ikisi de hatayi FIRLATIR (cagiran "olculemedi" der).
   getTemplateLaunchSettingsOnServer,
   getTemplateSummaryOnServer,
-  // EAR envanter (2026-11-05): AWX'ten elle baslatilan bitmis isler.
+  // EAR envanter (2026-11-05): sablonun varsayilan Limit'i ve AWX'ten elle baslatilan bitmis isler.
+  getTemplateDefaultLimitOnServer,
   listTemplateJobsOnServer,
   getSurveySpecOnServer,
   // OpsX production onay akisi (2026-10-06): bilet acilmadan ONCE zorunlu survey
