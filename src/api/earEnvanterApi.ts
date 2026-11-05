@@ -8,7 +8,23 @@ import { okJson } from './http';
 const BASE = '/api/server-hub/ear';
 
 export type EarKip = 'OZET' | 'TAM';
-export type EarKapsam = 'FILO' | 'SECILI';
+export type EarKapsam = 'FILO' | 'SECILI' | 'ORTAM' | 'SORUNLU';
+
+/** Otomatik tarama planı (P1 / P2). kapsam: FILO | SORUNLU | ORTAM:A,B */
+export interface EarPlan {
+  ad: 'P1' | 'P2';
+  acik: boolean;
+  kip: EarKip;
+  kapsam: string;
+  metin: string;
+  /** Sonraki 3 çalışma (UTC ISO); plan kapalıysa boş. */
+  sonraki: string[];
+}
+export type EarPlanAlani = 'acik' | 'birim' | 'aralik' | 'gun' | 'sira' | 'saat' | 'kip' | 'kapsam' | 'baslangic';
+export interface EarOrtamSayisi {
+  ortam: string;
+  sunucu: number;
+}
 export type EarKosuDurum = 'CALISIYOR' | 'TAMAMLANDI' | 'KISMI' | 'BASARISIZ' | 'IPTAL';
 
 export interface EarKosu {
@@ -60,6 +76,7 @@ export interface EarOzet {
     tanimlar: EarAyarTanim[];
   };
   zamanlayici: { acik: boolean; metin: string; sonraki: string | null };
+  planlar: EarPlan[];
   template: { anahtar: string; tanimli: boolean };
   dizin: string;
   aktif: (EarKosu & { partiler: EarParti[] }) | null;
@@ -284,7 +301,7 @@ export const earApi = {
       partiler: EarParti[];
       hostlar: EarHost[];
     }>(`${BASE}/kosu/${yol(id)}`),
-  tara: (p: { kip: EarKip; kapsam: EarKapsam; hostlar?: string }) =>
+  tara: (p: { kip: EarKip; kapsam: EarKapsam; hostlar?: string; ortamlar?: string[] }) =>
     al<{ ok: boolean; id: number; beklenen: number; partiSayisi: number; ilkParti: unknown }>(
       `${BASE}/kosu`,
       post(p),
@@ -318,6 +335,20 @@ export const earApi = {
     al<{ ok: boolean; anahtar: string; eski: string; yeni: string }>(
       `${BASE}/ayar/${yol(anahtar)}`,
       put({ deger }),
+    ),
+  /** Bir planın alanları tek seferde (biri geçersizse hiçbiri yazılmaz). */
+  planYaz: (plan: 'p1' | 'p2', alanlar: Partial<Record<EarPlanAlani, string>>) =>
+    al<{
+      ok: boolean;
+      plan: string;
+      degisen: { anahtar: string; eski: string; yeni: string }[];
+      planlar: EarPlan[];
+    }>(`${BASE}/plan/${yol(plan)}`, put(alanlar)),
+  ortamlar: () => al<{ ok: boolean; ortamlar: EarOrtamSayisi[] }>(`${BASE}/ortamlar`),
+  /** Başlatmadan önce kaç sunucu / parti (koşu açmaz). */
+  kapsamOnizleme: (kapsam: Exclude<EarKapsam, 'SECILI'>, ortamlar: string[], kip: EarKip) =>
+    al<{ ok: boolean; kapsam: string; sunucu: number; parti: number; ornek: string[] }>(
+      `${BASE}/kapsam-onizleme${sorguDizgisi({ kapsam, ortamlar: ortamlar.join(','), kip })}`,
     ),
 };
 

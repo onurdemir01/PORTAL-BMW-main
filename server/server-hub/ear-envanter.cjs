@@ -11,7 +11,10 @@
 // GET  /ear/ozet                       son kosu, calisan kosu ve partileri, zamanlayici, ayarlar, sayilar
 // GET  /ear/kosular                    son kosular
 // GET  /ear/kosu/:id                   kosu + partiler + hostlar
-// POST /ear/kosu                       { kip, kapsam: FILO | SECILI, hostlar } elle tarama
+// POST /ear/kosu                       { kip, kapsam: FILO | SECILI | ORTAM | SORUNLU, hostlar, ortamlar }
+// GET  /ear/ortamlar                   filodaki ortamlar + sunucu sayisi (acilir liste)
+// GET  /ear/kapsam-onizleme            ?kapsam&ortamlar&kip  -> { sunucu, parti, ornek } (kosu acmaz)
+// PUT  /ear/plan/:plan                 p1 | p2: { acik, birim, aralik, gun, sira, saat, kip, kapsam, baslangic }
 // POST /ear/kosu/:id/iptal
 // GET  /ear/uygulamalar                ?q&ortam&jboss&durum&servlet&kosu&limit&offset
 // GET  /ear/uygulama/:kosu/:host/:uyg  WAR'lar, kutuphaneler, ayni adli kopyalar
@@ -72,6 +75,19 @@ function hostParam(v) {
     .toUpperCase();
   if (!alim.HOST_RE.test(h)) throw hata(400, 'Geçersiz sunucu adı.', 'gecersiz_host');
   return h;
+}
+
+/** Istek kapsami -> FILO | SECILI | SORUNLU | ORTAM:A,B (ortamlar dizi ya da virgullu metin). */
+function kapsamParam(kapsam, ortamlarHam) {
+  const k = String(kapsam || '').toUpperCase();
+  if (k === 'FILO' || k === 'SECILI' || k === 'SORUNLU') return k;
+  if (k === 'ORTAM') {
+    const l = Array.isArray(ortamlarHam) ? ortamlarHam : String(ortamlarHam || '').split(',');
+    const d = ayar.kapsamDogrula(`ORTAM:${l.map((x) => String(x || '')).join(',')}`);
+    if (!d) throw hata(400, 'Ortam listesi geçersiz (1-20 ortam).', 'gecersiz_kapsam');
+    return d;
+  }
+  throw hata(400, 'Kapsam FILO, SECILI, ORTAM ya da SORUNLU olmalı.', 'gecersiz_kapsam');
 }
 
 /** Elle liste: metin (satir / bosluk / virgul ayracli) ya da dizi. */
@@ -177,7 +193,11 @@ function mount(router, { launch, audit } = {}) {
         sorgu.sayilar().catch(() => null),
       ]);
       const aktif = kosular.find((k) => k.durum === 'CALISIYOR') || null;
-      const sonraki = ayar.sonrakiZamanlama(a.deger);
+      const planlar = ayar.planOzeti(a.deger);
+      const sonraki = planlar
+        .filter((p) => p.acik && p.sonraki.length)
+        .map((p) => p.sonraki[0])
+        .sort()[0];
       const aktifDetay = aktif ? await sorgu.kosuDetay(aktif.id, { hostlarla: false }) : null;
       res.json({
         ok: true,
@@ -192,11 +212,13 @@ function mount(router, { launch, audit } = {}) {
             varsayilan: t.varsayilan,
           })),
         },
+        // Eski ozet alani: planlardan biri aciksa acik; en yakin calisma.
         zamanlayici: {
-          acik: a.deger.zamanlayici === 'ACIK',
-          metin: ayar.zamanlamaMetni(a.deger),
-          sonraki: sonraki ? sonraki.toISOString() : null,
+          acik: planlar.some((p) => p.acik),
+          metin: planlar.filter((p) => p.acik).map((p) => `${p.ad}: ${p.metin}`).join(' | ') || 'planlar kapalı',
+          sonraki: sonraki || null,
         },
+        planlar,
         template,
         dizin: alim.earDizin(),
         aktif: aktifDetay
@@ -235,14 +257,14 @@ function mount(router, { launch, audit } = {}) {
       const b = req.body || {};
       const kip = String(b.kip || '').toUpperCase();
       // Kapsam ACIK yazilir: bos liste asla "filo" anlamina gelmez (yanlislikla 1000+ sunucu taranmasin).
-      if (!['FILO', 'SECILI'].includes(b.kapsam))
-        throw hata(400, 'Kapsam FILO ya da SECILI olmalı.', 'gecersiz_kapsam');
-      const secili = b.kapsam === 'SECILI' ? hostListesi(b.hostlar) : null;
+      const kapsam = kapsamParam(b.kapsam, b.ortamlar);
+      const secili = kapsam === 'SECILI' ? hostListesi(b.hostlar) : null;
       if (secili && !secili.length) throw hata(400, 'Sunucu listesi boş.', 'hedef_yok');
       const u = kullanici(req);
       const k = await poller.kosuOlustur({
         kip,
         hedefler: secili,
+        kapsam: secili ? null : kapsam,
         kaynak: 'ELLE',
         baslatan: u.username,
         req,
@@ -251,10 +273,40 @@ function mount(router, { launch, audit } = {}) {
         islem: 'kosu',
         kosu: k.id,
         kip,
-        kapsam: secili ? 'SECILI' : 'FILO',
+        kapsam,
         hostSayisi: k.beklenen,
       });
       res.json({ ok: true, ...k });
+    } catch (e) {
+      hataYaniti(res, e);
+    }
+  });
+
+  router.get('/ear/ortamlar', async (req, res) => {
+    try {
+      res.json({ ok: true, ortamlar: await poller.ortamlar() });
+    } catch (e) {
+      hataYaniti(res, e);
+    }
+  });
+
+  router.get('/ear/kapsam-onizleme', async (req, res) => {
+    try {
+      const kapsam = kapsamParam(req.query.kapsam, req.query.ortamlar);
+      if (kapsam === 'SECILI') throw hata(400, 'Seçili liste için önizleme gerekmez.', 'gecersiz_kapsam');
+      const kip = String(req.query.kip || 'OZET').toUpperCase() === 'TAM' ? 'TAM' : 'OZET';
+      res.json({ ok: true, kapsam, ...(await poller.kapsamOnizleme(kapsam, kip)) });
+    } catch (e) {
+      hataYaniti(res, e);
+    }
+  });
+
+  router.put('/ear/plan/:plan', async (req, res) => {
+    try {
+      const r = await ayar.planYaz(req.params.plan, req.body || {}, kullanici(req).username);
+      denetim(req, { islem: 'plan', ...r });
+      const a = await ayar.oku();
+      res.json({ ok: true, ...r, planlar: ayar.planOzeti(a.deger) });
     } catch (e) {
       hataYaniti(res, e);
     }

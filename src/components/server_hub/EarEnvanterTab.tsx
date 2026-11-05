@@ -26,6 +26,7 @@ import {
   KosularGorunum,
 } from './EarEnvanterGorunumler';
 import EarEnvanterDetay from './EarEnvanterDetay';
+import { KapsamSecici, PlanlarGorunum, kapsamAyristir, type KapsamDegeri } from './EarEnvanterPlan';
 
 type Gorunum = 'uygulamalar' | 'eslenikler' | 'kutuphaneler' | 'sunucular' | 'kosular' | 'ayarlar';
 const GORUNUMLER: { id: Gorunum; etiket: string }[] = [
@@ -37,27 +38,52 @@ const GORUNUMLER: { id: Gorunum; etiket: string }[] = [
   { id: 'ayarlar', etiket: 'Ayarlar' },
 ];
 const YOKLAMA_MS = 15000;
-const GUNLER = ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'];
 const hataMetni = (e: unknown) => (e instanceof Error ? e.message : String(e));
+const kapsamAyristirTur = (kapsam: EarKapsam, ortamlar: string[]): KapsamDegeri =>
+  kapsam === 'ORTAM' ? { tur: 'ORTAM', ortamlar } : kapsamAyristir(kapsam);
 
 // ── ŞİMDİ TARA ──────────────────────────────────────────────────────────────────────────────────
 export function TaraPenceresi({
   onClose,
   onBasladi,
+  baslangicListesi,
 }: {
   onClose: () => void;
   onBasladi: () => void;
+  /** Satır seçiminden gelen sunucular: pencere seçili listeyle açılır. */
+  baslangicListesi?: string[];
 }) {
   const [kip, setKip] = useState<EarKip>('TAM');
   const [kapsam, setKapsam] = useState<EarKapsam>('SECILI');
-  const [metin, setMetin] = useState('');
+  const [ortamlar, setOrtamlar] = useState<string[]>([]);
+  const [metin, setMetin] = useState(baslangicListesi ? baslangicListesi.join('\n') : '');
   const [filoOnay, setFiloOnay] = useState(false);
   const [hata, setHata] = useState('');
   const [mesgul, setMesgul] = useState(false);
+  // Seçili liste dışındaki kapsamlarda başlatmadan önce kaç sunucu / parti olacağı (koşu açmaz).
+  const [onizleme, setOnizleme] = useState<{ anahtar: string; sunucu: number; parti: number; hata?: string } | null>(null);
   // Çift tıklama iki AWX işi açmasın: state render'da yakalanır, ref anında (double-submit bekçisi deseni).
   const busyRef = useRef(false);
   const { hostlar, gecersiz } = hostListesiAyristir(metin);
-  const hazir = kapsam === 'FILO' ? filoOnay : hostlar.length > 0 && gecersiz.length === 0;
+  const ortamKey = [...ortamlar].sort().join(',');
+  const onizlemeAnahtari = `${kapsam}|${ortamKey}|${kip}`;
+  useAsyncEffect(
+    async (alive) => {
+      if (kapsam === 'SECILI' || (kapsam === 'ORTAM' && !ortamKey)) return;
+      try {
+        const r = await earApi.kapsamOnizleme(kapsam, ortamKey ? ortamKey.split(',') : [], kip);
+        if (alive()) setOnizleme({ anahtar: onizlemeAnahtari, sunucu: r.sunucu, parti: r.parti });
+      } catch (e) {
+        if (alive()) setOnizleme({ anahtar: onizlemeAnahtari, sunucu: 0, parti: 0, hata: hataMetni(e) });
+      }
+    },
+    [kapsam, ortamKey, kip, onizlemeAnahtari],
+  );
+  const gecerliOnizleme = onizleme && onizleme.anahtar === onizlemeAnahtari ? onizleme : null;
+  const hazir =
+    kapsam === 'SECILI'
+      ? hostlar.length > 0 && gecersiz.length === 0
+      : filoOnay && !!gecerliOnizleme && !gecerliOnizleme.hata && gecerliOnizleme.sunucu > 0;
   const baslat = async () => {
     if (busyRef.current || !hazir) return;
     busyRef.current = true;
@@ -68,6 +94,7 @@ export function TaraPenceresi({
         kip,
         kapsam,
         ...(kapsam === 'SECILI' ? { hostlar: hostlar.join(' ') } : {}),
+        ...(kapsam === 'ORTAM' ? { ortamlar } : {}),
       });
       toast.success(
         `Tarama #${r.id} başladı: ${fmtNumber(r.beklenen)} sunucu, ${fmtNumber(r.partiSayisi)} parti.`,
@@ -133,24 +160,32 @@ export function TaraPenceresi({
         </fieldset>
         <fieldset className="space-y-1">
           <legend className="font-semibold">Kapsam</legend>
-          <label className="flex items-center gap-2">
+          <label className="flex items-start gap-2 text-xs">
             <input
               type="radio"
               name="ear-kapsam"
               checked={kapsam === 'SECILI'}
-              onChange={() => setKapsam('SECILI')}
+              onChange={() => {
+                setKapsam('SECILI');
+                setFiloOnay(false);
+              }}
             />
-            Seçili sunucular
+            <span>
+              <b>Seçili sunucular</b>
+              <span style={{ color: 'var(--text-muted)' }}> — aşağıya yazdığınız sunucular.</span>
+            </span>
           </label>
-          <label className="flex items-center gap-2">
-            <input
-              type="radio"
-              name="ear-kapsam"
-              checked={kapsam === 'FILO'}
-              onChange={() => setKapsam('FILO')}
-            />
-            Tüm filo (JBoss uygulama envanterindeki bütün sunucular)
-          </label>
+          <KapsamSecici
+            ad="Şimdi tara"
+            deger={kapsam === 'SECILI' ? { tur: 'FILO', ortamlar } : (kapsamAyristirTur(kapsam, ortamlar) as KapsamDegeri)}
+            onChange={(k) => {
+              setKapsam(k.tur);
+              setOrtamlar(k.ortamlar);
+              setFiloOnay(false);
+            }}
+            secimYok={kapsam === 'SECILI'}
+            radioAdi="ear-kapsam"
+          />
         </fieldset>
         {kapsam === 'SECILI' ? (
           <div className="space-y-1">
@@ -171,20 +206,33 @@ export function TaraPenceresi({
             </div>
           </div>
         ) : (
-          <label
-            className="flex items-start gap-2 rounded-lg border px-3 py-2"
-            style={{ borderColor: 'var(--status-warning)', background: 'var(--status-warning-bg)' }}
-          >
-            <input
-              type="checkbox"
-              checked={filoOnay}
-              onChange={(e) => setFiloOnay(e.target.checked)}
-            />
-            <span style={{ color: 'var(--text-primary)' }}>
-              Bütün filo partilere bölünüp sırayla taranacak (bin+ sunucuda saatler sürebilir). İlk
-              kez çalıştırıyorsanız önce 1–5 sunucuyla deneyin. Onaylıyorum.
-            </span>
-          </label>
+          <>
+            <div aria-live="polite" style={{ color: 'var(--text-secondary)' }}>
+              {kapsam === 'ORTAM' && !ortamKey
+                ? 'En az bir ortam seçin.'
+                : !gecerliOnizleme
+                  ? 'Kapsam hesaplanıyor…'
+                  : gecerliOnizleme.hata
+                    ? `Kapsam okunamadı: ${gecerliOnizleme.hata}`
+                    : gecerliOnizleme.sunucu === 0
+                      ? 'Bu kapsamda taranacak sunucu yok.'
+                      : `${fmtNumber(gecerliOnizleme.sunucu)} sunucu · ${fmtNumber(gecerliOnizleme.parti)} parti`}
+            </div>
+            <label
+              className="flex items-start gap-2 rounded-lg border px-3 py-2"
+              style={{ borderColor: 'var(--status-warning)', background: 'var(--status-warning-bg)' }}
+            >
+              <input
+                type="checkbox"
+                checked={filoOnay}
+                onChange={(e) => setFiloOnay(e.target.checked)}
+              />
+              <span style={{ color: 'var(--text-primary)' }}>
+                Kapsamdaki sunucular partilere bölünüp sırayla taranacak (bin+ sunucuda saatler sürebilir). İlk
+                kez çalıştırıyorsanız önce 1–5 sunucuyla deneyin. Onaylıyorum.
+              </span>
+            </label>
+          </>
         )}
         {hata && <LoadError title="Tarama başlatılamadı" message={hata} compact />}
       </div>
@@ -212,7 +260,6 @@ function AyarSatiri({
 }) {
   const [taslak, setTaslak] = useState(deger);
   const [mesgul, setMesgul] = useState(false);
-  const [onay, setOnay] = useState(false);
   const kaydet = async () => {
     setMesgul(true);
     try {
@@ -223,54 +270,21 @@ function AyarSatiri({
       toast.error(hataMetni(e));
     } finally {
       setMesgul(false);
-      setOnay(false);
     }
   };
-  const iste = () =>
-    anahtar === 'zamanlayici' && taslak === 'ACIK' && deger !== 'ACIK' ? setOnay(true) : kaydet();
-  const secim = (secenekler: [string, string][]) => (
-    <select
-      aria-label={ad}
-      className={GIRDI}
-      style={girdiStil}
-      value={taslak}
-      disabled={kilitli}
-      onChange={(e) => setTaslak(e.target.value)}
-    >
-      {secenekler.map(([v, e]) => (
-        <option key={v} value={v}>
-          {e}
-        </option>
-      ))}
-    </select>
-  );
-  const denetim =
-    anahtar === 'zamanlayici' ? (
-      secim([
-        ['KAPALI', 'kapalı'],
-        ['ACIK', 'açık'],
-      ])
-    ) : anahtar === 'gun' ? (
-      secim(GUNLER.map((g, i) => [String(i), g]))
-    ) : anahtar === 'kip' ? (
-      secim([
-        ['TAM', 'TAM'],
-        ['OZET', 'ÖZET'],
-      ])
-    ) : (
-      <input
-        aria-label={ad}
-        className={`${GIRDI} w-48`}
-        style={girdiStil}
-        value={taslak}
-        disabled={kilitli}
-        onChange={(e) => setTaslak(e.target.value)}
-      />
-    );
   return (
     <tr className="border-t" style={{ borderColor: 'var(--border)' }}>
       <td className="px-2 py-1.5 text-xs">{ad}</td>
-      <td className="px-2 py-1.5">{denetim}</td>
+      <td className="px-2 py-1.5">
+        <input
+          aria-label={ad}
+          className={`${GIRDI} w-48`}
+          style={girdiStil}
+          value={taslak}
+          disabled={kilitli}
+          onChange={(e) => setTaslak(e.target.value)}
+        />
+      </td>
       <td className="px-2 py-1.5 text-[11px]" style={{ color: 'var(--text-muted)' }}>
         varsayılan: {varsayilan === '' ? '(boş)' : varsayilan}
         {kayit &&
@@ -283,44 +297,10 @@ function AyarSatiri({
           className={BTN}
           style={btnStil(true)}
           disabled={kilitli || mesgul || taslak === deger}
-          onClick={iste}
+          onClick={kaydet}
         >
           Kaydet
         </button>
-        {onay && (
-          <Modal
-            open
-            onClose={() => setOnay(false)}
-            size="sm"
-            title="Haftalık filo taraması açılsın mı?"
-            footer={
-              <>
-                <button
-                  type="button"
-                  className={BTN}
-                  style={btnStil(true)}
-                  disabled={mesgul}
-                  onClick={kaydet}
-                >
-                  Aç
-                </button>
-                <button
-                  type="button"
-                  className={BTN}
-                  style={btnStil()}
-                  onClick={() => setOnay(false)}
-                >
-                  İptal
-                </button>
-              </>
-            }
-          >
-            <p className="text-xs">
-              Her hafta seçilen gün ve saatte JBoss envanterindeki bütün sunucular taranır (salt
-              okunur). Elle pilot taramayı yaptıysanız açın.
-            </p>
-          </Modal>
-        )}
       </td>
     </tr>
   );
@@ -337,10 +317,12 @@ function AyarlarGorunum({ ozet, onKaydedildi }: { ozet: EarOzet; onKaydedildi: (
           compact
         />
       )}
+      <PlanlarGorunum ozet={ozet} onKaydedildi={onKaydedildi} />
+      <h3 className="text-xs font-semibold pt-1">Diğer ayarlar</h3>
       <div className="overflow-x-auto rounded-lg border" style={{ borderColor: 'var(--border)' }}>
         <table className="w-full">
           <tbody>
-            {a.tanimlar.map((t) => (
+            {a.tanimlar.filter((t) => !/^p[12]_/.test(t.anahtar)).map((t) => (
               <AyarSatiri
                 // Kaydedilen deger degisince satir yeniden kurulur (taslak sifirlanir; effect'te setState yok).
                 key={`${t.anahtar}=${a.deger[t.anahtar] ?? t.varsayilan}`}
@@ -434,7 +416,7 @@ export default function EarEnvanterTab() {
         >
           AWX template'i tanımlı değil: Admin › Playbook Kayıtları ›{' '}
           <span className="font-mono">{template.anahtar}</span> satırına Template ID girilmeden
-          tarama başlamaz (haftalık tarama da açılmaz). Template'te Variables için prompt on launch
+          tarama başlamaz (otomatik planlar da çalışmaz). Template'te Variables için prompt on launch
           açık, Forks 50 olmalı.
         </div>
       )}
@@ -465,13 +447,16 @@ export default function EarEnvanterTab() {
           }
         />
         <Kart
-          baslik="Haftalık tarama"
+          baslik="Otomatik tarama"
           deger={zamanlayici.acik ? 'açık' : 'kapalı'}
           ton={zamanlayici.acik ? undefined : 'notr'}
           alt={
             zamanlayici.acik
-              ? `${zamanlayici.metin}${zamanlayici.sonraki ? ` · sonraki ${fmtDateTime(zamanlayici.sonraki)}` : ''}`
-              : 'Ayarlar sekmesinden açılır'
+              ? (ozet.planlar || [])
+                  .filter((p) => p.acik)
+                  .map((p) => `${p.ad}: ${p.metin}${p.sonraki[0] ? ` · sonraki ${fmtDateTime(p.sonraki[0])}` : ''}`)
+                  .join(' | ')
+              : 'Ayarlar › Planlar'
           }
         />
         <div className="ml-auto flex items-start gap-1">
