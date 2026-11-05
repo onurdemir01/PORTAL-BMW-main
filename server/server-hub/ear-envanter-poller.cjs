@@ -113,6 +113,73 @@ async function filoHedefleri() {
   return hedefleriDuzle((r.recordset || []).map((x) => ({ host: x.host, ortam: x.env })));
 }
 
+/**
+ * KAPSAM (2026-11-05): FILO | SORUNLU | ORTAM:A,B | SECILI (liste). Planlar ve elle tarama ayni cozucuyu
+ * kullanir. SORUNLU: filodaki sunuculardan son denemesi TAM ya da KOK_YOK olmayanlar ve hic taranmamislar
+ * (filodan cikmis sunucu taranmaz). ORTAM: sunucunun envanter ortamlarindan biri (normalize) listede.
+ */
+const SORUN_DEGIL = Object.freeze(['TAM', 'KOK_YOK']);
+
+async function kapsamHedefleri(kapsam, hostlar) {
+  if (kapsam === 'SECILI') return hedefleriDuzle(hostlar);
+  const filo = await filoHedefleri();
+  if (kapsam === 'FILO') return filo;
+  if (String(kapsam).startsWith('ORTAM:')) {
+    const istenen = new Set(String(kapsam).slice(6).split(','));
+    return {
+      hedefler: filo.hedefler.filter((h) =>
+        String(h.ortam || '')
+          .split(',')
+          .some((o) => istenen.has(o.trim().toUpperCase())),
+      ),
+      gecersiz: filo.gecersiz,
+    };
+  }
+  if (kapsam === 'SORUNLU') {
+    const { rows } = await db().query(
+      `WITH son AS (SELECT host, MAX(kosu_id) AS kosu_id FROM ear_envanter_hostlari GROUP BY host)
+       SELECT h.host, h.durum FROM ear_envanter_hostlari h JOIN son ON son.host = h.host AND son.kosu_id = h.kosu_id`,
+    );
+    // KOK_YOK bir cevaptir (o sunucuda uygulama yok): sorun sayilmaz.
+    const iyi = new Set(
+      (rows || [])
+        .filter((r) => SORUN_DEGIL.includes(String(r.durum)))
+        .map((r) => String(r.host).toUpperCase()),
+    );
+    return { hedefler: filo.hedefler.filter((h) => !iyi.has(h.host)), gecersiz: filo.gecersiz };
+  }
+  throw hata(400, 'Kapsam FILO, SORUNLU, ORTAM ya da SECILI olmalı.', 'gecersiz_kapsam');
+}
+
+/** Filodaki ortamlar ve sunucu sayilari (acilir liste; MWAppsInventory SALT OKUNUR). */
+async function ortamlar() {
+  const { hedefler } = await filoHedefleri();
+  const sayi = new Map();
+  for (const h of hedefler)
+    for (const o of new Set(
+      String(h.ortam || '')
+        .split(',')
+        .map((x) => x.trim().toUpperCase())
+        .filter(Boolean),
+    ))
+      sayi.set(o, (sayi.get(o) || 0) + 1);
+  return [...sayi.entries()]
+    .map(([ortam, sunucu]) => ({ ortam, sunucu }))
+    .sort((a, b) => b.sunucu - a.sunucu || (a.ortam < b.ortam ? -1 : 1));
+}
+
+/** Baslatmadan once: kac sunucu, kac parti (kosu acmaz). */
+async function kapsamOnizleme(kapsam, kip) {
+  const a = (await ayar.oku()).deger;
+  const { hedefler } = await kapsamHedefleri(kapsam, []);
+  const n = Math.max(1, Math.min(100, Number(kip === 'TAM' ? a.parti_tam : a.parti_ozet) || 50));
+  return {
+    sunucu: hedefler.length,
+    parti: Math.ceil(hedefler.length / n),
+    ornek: hedefler.slice(0, 10).map((h) => h.host),
+  };
+}
+
 /** [{host, ortam}] -> tekil, BUYUK harf, sirali; ayni hostun ortamlari ',' ile birlesir. */
 function hedefleriDuzle(liste) {
   const harita = new Map();
@@ -156,7 +223,8 @@ BEGIN TRAN;
 INSERT INTO ear_envanter_kosulari (kip, kaynak, kapsam, durum, beklenen, parti_sayisi, parametreler, baslatan, zamanlayici_anahtari)
   SELECT $1, $2, $3, 'CALISIYOR', $4, $5, $6, $7, $8
    WHERE NOT EXISTS (SELECT 1 FROM ear_envanter_kosulari WITH (UPDLOCK, HOLDLOCK)
-                      WHERE durum = 'CALISIYOR' OR ($8 IS NOT NULL AND zamanlayici_anahtari = $8));
+                      WHERE durum = 'CALISIYOR' OR ($8 IS NOT NULL AND zamanlayici_anahtari = $8)
+                         OR ($10 IS NOT NULL AND zamanlayici_anahtari IN (SELECT value FROM OPENJSON($10))));
 IF @@ROWCOUNT = 1
 BEGIN
   SET @id = SCOPE_IDENTITY();
@@ -174,25 +242,34 @@ SELECT @id AS id;`;
 async function kosuOlustur({
   kip,
   hedefler = null,
+  kapsam = null,
   kaynak = 'ELLE',
   baslatan,
   zamanlayiciAnahtari = null,
+  esAnahtarlar = [],
   req = null,
 }) {
   if (!['OZET', 'TAM'].includes(kip)) throw hata(400, 'Kip OZET ya da TAM olmalı.', 'gecersiz_kip');
   const a = (await ayar.oku()).deger;
-  let liste;
-  let gecersiz = 0;
-  if (hedefler == null) {
-    ({ hedefler: liste, gecersiz } = await filoHedefleri());
-    if (liste.length > FILO_SINIRI)
-      throw hata(422, `Filo ${liste.length} sunucu; sınır ${FILO_SINIRI}.`, 'filo_siniri');
-  } else {
-    ({ hedefler: liste, gecersiz } = hedefleriDuzle(hedefler));
-    if (gecersiz) throw hata(400, `${gecersiz} geçersiz sunucu adı.`, 'gecersiz_host');
-  }
+  // Liste verildiyse SECILI; yoksa kapsam (verilmezse FILO: eski cagri).
+  const k = hedefler != null ? 'SECILI' : ayar.kapsamDogrula(kapsam || 'FILO');
+  if (!k) throw hata(400, 'Kapsam geçersiz.', 'gecersiz_kapsam');
+  const cozulen = await kapsamHedefleri(k, hedefler);
+  const liste = cozulen.hedefler;
+  const gecersiz = cozulen.gecersiz || 0;
+  if (k === 'SECILI' && gecersiz) throw hata(400, `${gecersiz} geçersiz sunucu adı.`, 'gecersiz_host');
+  if (liste.length > FILO_SINIRI)
+    throw hata(422, `Kapsam ${liste.length} sunucu; sınır ${FILO_SINIRI}.`, 'filo_siniri');
   if (!liste.length)
-    throw hata(422, 'Taranacak sunucu yok (envanter boş ya da liste boş).', 'hedef_yok');
+    throw hata(
+      422,
+      k === 'SORUNLU'
+        ? 'Sorunlu sunucu yok: hepsinin son taraması tam (ya da kök yok).'
+        : k.startsWith('ORTAM:')
+          ? `Seçilen ortamlarda sunucu yok (${k.slice(6)}).`
+          : 'Taranacak sunucu yok (envanter boş ya da liste boş).',
+      'hedef_yok',
+    );
   const partiler = partilereBol(liste, kip === 'TAM' ? a.parti_tam : a.parti_ozet);
   const p = {
     kokler: a.kokler,
@@ -200,13 +277,14 @@ async function kosuOlustur({
     dizin: alim.earDizin(),
     parti_boyutu: partiler[0].host_sayisi,
     gecersiz_host: gecersiz,
+    ...(k.startsWith('ORTAM:') ? { ortamlar: k.slice(6).split(',') } : {}),
   };
   const r = await db().query(
     KOSU_OLUSTUR_SQL,
     [
       kip,
       kaynak,
-      hedefler == null ? 'FILO' : 'SECILI',
+      k.startsWith('ORTAM:') ? 'ORTAM' : k,
       liste.length,
       partiler.length,
       JSON.stringify(p),
@@ -219,6 +297,7 @@ async function kosuOlustur({
           host_sayisi: x.host_sayisi,
         })),
       ),
+      esAnahtarlar && esAnahtarlar.length ? JSON.stringify(esAnahtarlar) : null,
     ],
     { tekrar: false },
   );
@@ -704,32 +783,60 @@ async function kosuyuIlerlet(kosu) {
   }
 }
 
-/** Haftalik zaman geldiyse filo kosusu acar (template tanimli degilse acmaz: bos kosu birikmesin). */
+// Ayni plan orneginde ayni bildirimi her turda yeniden yazma; basarisiz ornegi 10 dk bekle.
+const _bildirilen = new Set();
+const _bekle = new Map();
+const BEKLEME_MS = 10 * 60 * 1000;
+function birKez(anahtar, metin) {
+  if (_bildirilen.has(anahtar)) return;
+  if (_bildirilen.size > 500) _bildirilen.clear();
+  _bildirilen.add(anahtar);
+  console.log(metin);
+}
+
+/**
+ * Planin zamani geldiyse kosu acar (template tanimli degilse acmaz: bos kosu birikmesin). Ayni anda tek
+ * kosu: TAM once; OZET ornegi onu kapsayan TAM ile birlesmisse acilmaz. Donus: acilan kosu | null |
+ * { atlandi } | { hata }.
+ */
 async function zamanlayiciyiKontrolEt(simdi = new Date()) {
   const a = await ayar.oku();
   if (a.okunamadi) return null;
-  const z = ayar.bekleyenZamanlama(a.deger, simdi);
-  if (!z) return null;
+  const adaylar = ayar.bekleyenZamanlama(a.deger, simdi);
+  if (!adaylar.length) return null;
   const reg = require('../ansible/playbook-registry.cjs');
   const row = await reg.getByKey(REGISTRY_KEY).catch(() => null);
   if (!row || row.enabled === false || !reg.getEffectiveTemplateId(row))
     return { atlandi: 'template_yok' };
-  try {
-    const k = await kosuOlustur({
-      kip: a.deger.kip,
-      kaynak: 'ZAMANLAYICI',
-      baslatan: 'ear-envanter-zamanlayici',
-      zamanlayiciAnahtari: z.anahtar,
-    });
-    if (k)
-      console.log(
-        `[EarEnvanter] haftalik kosu ${k.id} acildi (${z.anahtar}, ${k.beklenen} sunucu)`,
-      );
-    return k;
-  } catch (e) {
-    console.warn('[EarEnvanter] haftalik kosu acilamadi:', maskele(e && e.message));
-    return { hata: M(e && e.message, 200) };
+  let son = null;
+  for (const z of adaylar) {
+    if (z.birlesti) {
+      birKez(z.anahtar, `[EarEnvanter] ${z.anahtar} OZET ornegi ${z.birlesti} TAM taramasiyla birlesti`);
+      son = son || { atlandi: 'tam_ile_birlesti', anahtar: z.anahtar };
+      continue;
+    }
+    const bekle = _bekle.get(z.anahtar);
+    if (bekle && simdi.getTime() < bekle) continue;
+    try {
+      const k = await kosuOlustur({
+        kip: z.plan.kip,
+        kapsam: z.plan.kapsam,
+        kaynak: 'ZAMANLAYICI',
+        baslatan: 'ear-envanter-zamanlayici',
+        zamanlayiciAnahtari: z.anahtar,
+        esAnahtarlar: z.esAnahtarlar,
+      });
+      if (k) {
+        console.log(`[EarEnvanter] plan kosusu ${k.id} acildi (${z.anahtar}, ${k.beklenen} sunucu)`);
+        return k;
+      }
+    } catch (e) {
+      _bekle.set(z.anahtar, simdi.getTime() + BEKLEME_MS);
+      console.warn(`[EarEnvanter] plan kosusu acilamadi (${z.anahtar}):`, maskele(e && e.message));
+      son = { hata: M(e && e.message, 200), anahtar: z.anahtar };
+    }
   }
+  return son;
 }
 
 async function tick(simdi = new Date()) {
@@ -803,6 +910,9 @@ module.exports = {
   kosuIptal,
   kosuyuIlerlet,
   zamanlayiciyiKontrolEt,
+  kapsamHedefleri,
+  ortamlar,
+  kapsamOnizleme,
   tick,
   startPoller,
   _durdurForTest: () => {
@@ -811,5 +921,7 @@ module.exports = {
     _ticking = false;
     _launch = null;
     _sonSaklama = 0;
+    _bildirilen.clear();
+    _bekle.clear();
   },
 };

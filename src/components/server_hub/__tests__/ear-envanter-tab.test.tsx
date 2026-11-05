@@ -4,9 +4,10 @@
 //   EU2 özet okunamazsa "okunamadı" (boş durum DEĞİL) ve tekrar dene
 //   EU3 çalışan koşu: ilerleme, partiler, AWX iş no; İptal onaydan sonra API'ye gider
 //   EU4 Şimdi tara: geçersiz ad varken Başlat kapalı; seçili liste API'ye kapsam SECILI ile gider;
-//       filo onay kutusu olmadan başlamaz; çift tık TEK istek
+//       filo onay kutusu ve kapsam önizlemesi olmadan başlamaz; çift tık TEK istek; ORTAM seçimi ortam
+//       listesiyle gider; boş kapsamda (0 sunucu) başlamaz
 //   EU5 uygulama listesi: kısmi durum yeşil değil; satır ayrıntıyı açar (WAR, kütüphane, kopyalar)
-//   EU6 ayarlar: haftalık taramayı açmak onay ister; kaydet API'ye anahtar + değer gider
+//   EU6 ayarlar: planı açmak onay ister; kaydet yalnız değişen alanları planYaz ile tek istekte gönderir
 //   EU7 Server Hub sekme kaydı (kaynak)
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, fireEvent, waitFor, within, act } from '@testing-library/react';
@@ -25,6 +26,9 @@ const m = vi.hoisted(() => ({
   uygulamalar: vi.fn(),
   uygulama: vi.fn(),
   ayarYaz: vi.fn(),
+  planYaz: vi.fn(),
+  ortamlar: vi.fn(),
+  kapsamOnizleme: vi.fn(),
   kosular: vi.fn(),
   hostlar: vi.fn(),
 }));
@@ -37,16 +41,32 @@ function ozet(o: Partial<EarOzet> = {}): EarOzet {
   return {
     ok: true,
     ayarlar: {
-      deger: { zamanlayici: 'KAPALI', gun: '0', saat: '02:00', kip: 'TAM', parti_tam: '50' },
+      deger: {
+        p1_acik: 'KAPALI',
+        p1_birim: 'HAFTA',
+        p1_aralik: '4',
+        p1_gun: '0',
+        p1_sira: 'ILK',
+        p1_saat: '02:00',
+        p1_kip: 'OZET',
+        p1_kapsam: 'FILO',
+        p1_baslangic: '2026-01-01',
+        parti_tam: '50',
+      },
       kayitlar: {},
       okunamadi: false,
       hata: '',
       tanimlar: [
-        { anahtar: 'zamanlayici', ad: 'Haftalık tarama', varsayilan: 'KAPALI' },
+        { anahtar: 'p1_acik', ad: 'Plan 1: açık', varsayilan: 'KAPALI' },
+        { anahtar: 'p1_aralik', ad: 'Plan 1: her N birimde bir', varsayilan: '4' },
         { anahtar: 'parti_tam', ad: 'TAM parti boyutu', varsayilan: '50' },
       ],
     },
-    zamanlayici: { acik: false, metin: 'Pazar 02:00 (TR), TAM kip', sonraki: null },
+    zamanlayici: { acik: false, metin: 'planlar kapalı', sonraki: null },
+    planlar: [
+      { ad: 'P1', acik: false, kip: 'OZET', kapsam: 'FILO', metin: 'Her 4 haftada bir · Pazar 02:00 (TR) · ÖZET · tüm filo', sonraki: [] },
+      { ad: 'P2', acik: false, kip: 'TAM', kapsam: 'FILO', metin: 'Her 2 ayda bir · ayın ilk Pazarı 03:00 (TR) · TAM · tüm filo', sonraki: [] },
+    ],
     template: { anahtar: 'server_hub_ear_envanter', tanimli: true },
     dizin: '/sw/ORNEK/ear',
     aktif: null,
@@ -244,18 +264,45 @@ describe('Uygulama Envanteri sekmesi', () => {
     );
   });
 
-  it('EU6 haftalık taramayı açmak onay ister', async () => {
+  it('EU6 planı açmak onay ister; yalnız değişen alanlar gider', async () => {
     m.ozet.mockResolvedValue(ozet());
-    m.ayarYaz.mockResolvedValue({ ok: true, anahtar: 'zamanlayici', eski: 'KAPALI', yeni: 'ACIK' });
+    m.planYaz.mockResolvedValue({ ok: true, plan: 'p1', degisen: [], planlar: [] });
     render(<EarEnvanterTab />);
     fireEvent.click(await screen.findByRole('button', { name: 'Ayarlar' }));
-    fireEvent.change(screen.getByLabelText('Haftalık tarama'), { target: { value: 'ACIK' } });
-    const satir = screen.getByLabelText('Haftalık tarama').closest('tr') as HTMLElement;
-    fireEvent.click(within(satir).getByRole('button', { name: 'Kaydet' }));
-    expect(m.ayarYaz).not.toHaveBeenCalled();
+    const kart = screen.getByRole('region', { name: 'Plan 1' });
+    expect(within(kart).getByText(/Her 4 haftada bir · Pazar 02:00/)).toBeInTheDocument();
+    expect(within(kart).getByText(/plan kapalı/)).toBeInTheDocument();
+    fireEvent.change(within(kart).getByLabelText('Plan 1 durum'), { target: { value: 'ACIK' } });
+    fireEvent.change(within(kart).getByLabelText('Plan 1 aralık'), { target: { value: '2' } });
+    fireEvent.click(within(kart).getByRole('button', { name: 'Kaydet' }));
+    expect(m.planYaz).not.toHaveBeenCalled();
     const pencere = await screen.findByRole('dialog');
     fireEvent.click(within(pencere).getByRole('button', { name: 'Aç' }));
-    await waitFor(() => expect(m.ayarYaz).toHaveBeenCalledWith('zamanlayici', 'ACIK'));
+    await waitFor(() => expect(m.planYaz).toHaveBeenCalledWith('p1', { acik: 'ACIK', aralik: '2' }));
+    // Plan alanları genel tabloda tekrar görünmez.
+    expect(screen.queryByText('Plan 1: açık')).toBeNull();
+    expect(screen.getByText('TAM parti boyutu')).toBeInTheDocument();
+  });
+
+  it('EU6 ORTAM kapsamında ortam seçilmeden kaydedilmez; ay biriminde ayın kaçıncı günü sorulur', async () => {
+    m.ozet.mockResolvedValue(ozet());
+    m.ortamlar.mockResolvedValue({ ok: true, ortamlar: [{ ortam: 'PROD', sunucu: 40 }, { ortam: 'TEST', sunucu: 12 }] });
+    m.planYaz.mockResolvedValue({ ok: true, plan: 'p1', degisen: [], planlar: [] });
+    render(<EarEnvanterTab />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Ayarlar' }));
+    const kart = screen.getByRole('region', { name: 'Plan 1' });
+    expect(within(kart).queryByLabelText('Plan 1 sıra')).toBeNull();
+    fireEvent.change(within(kart).getByLabelText('Plan 1 birim'), { target: { value: 'AY' } });
+    expect(within(kart).getByLabelText('Plan 1 sıra')).toBeInTheDocument();
+    fireEvent.click(within(kart).getByLabelText(/Ortam seç/));
+    const kaydet = within(kart).getByRole('button', { name: 'Kaydet' });
+    expect(kaydet).toBeDisabled();
+    fireEvent.click(await within(kart).findByLabelText('Plan 1 ortam TEST'));
+    expect(kaydet).not.toBeDisabled();
+    fireEvent.click(kaydet);
+    await waitFor(() =>
+      expect(m.planYaz).toHaveBeenCalledWith('p1', { birim: 'AY', kapsam: 'ORTAM:TEST' }),
+    );
   });
 });
 
@@ -291,15 +338,50 @@ describe('EU4 Şimdi tara', () => {
 
     m.tara.mockReset();
     m.tara.mockResolvedValue({ ok: true, id: 4, beklenen: 900, partiSayisi: 18 });
+    m.kapsamOnizleme.mockResolvedValue({ ok: true, kapsam: 'FILO', sunucu: 900, parti: 18, ornek: [] });
     render(<TaraPenceresi onClose={vi.fn()} onBasladi={vi.fn()} />);
     const pencereler = screen.getAllByRole('dialog');
     const p = pencereler[pencereler.length - 1];
     fireEvent.click(within(p).getByLabelText(/Tüm filo/));
     const b2 = within(p).getByRole('button', { name: /Başlat/ });
     expect(b2).toBeDisabled();
+    expect(await within(p).findByText('900 sunucu · 18 parti')).toBeInTheDocument();
+    expect(b2).toBeDisabled();
     fireEvent.click(within(p).getByRole('checkbox'));
     fireEvent.click(b2);
     await waitFor(() => expect(m.tara).toHaveBeenCalledWith({ kip: 'TAM', kapsam: 'FILO' }));
+    expect(m.kapsamOnizleme).toHaveBeenCalledWith('FILO', [], 'TAM');
+  });
+
+  it('ortam ve yalnız sorunlular', async () => {
+    m.tara.mockReset();
+    m.tara.mockResolvedValue({ ok: true, id: 5, beklenen: 12, partiSayisi: 1 });
+    m.ortamlar.mockResolvedValue({ ok: true, ortamlar: [{ ortam: 'PROD', sunucu: 40 }, { ortam: 'TEST', sunucu: 12 }] });
+    m.kapsamOnizleme.mockImplementation(async (k: string, o: string[]) =>
+      k === 'SORUNLU'
+        ? { ok: true, kapsam: k, sunucu: 0, parti: 0, ornek: [] }
+        : { ok: true, kapsam: `ORTAM:${o.join(',')}`, sunucu: 12, parti: 1, ornek: [] },
+    );
+    render(<TaraPenceresi onClose={vi.fn()} onBasladi={vi.fn()} />);
+    fireEvent.click(screen.getByLabelText(/Yalnız sorunlular/));
+    expect(await screen.findByText('Bu kapsamda taranacak sunucu yok.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('checkbox'));
+    expect(screen.getByRole('button', { name: /Başlat/ })).toBeDisabled();
+    fireEvent.click(screen.getByLabelText(/Ortam seç/));
+    expect(await screen.findByText('En az bir ortam seçin.', { selector: 'div[aria-live]' })).toBeInTheDocument();
+    fireEvent.click(await screen.findByLabelText('Şimdi tara ortam TEST'));
+    expect(await screen.findByText('12 sunucu · 1 parti')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('checkbox', { name: /Onaylıyorum/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Başlat/ }));
+    await waitFor(() =>
+      expect(m.tara).toHaveBeenCalledWith({ kip: 'TAM', kapsam: 'ORTAM', ortamlar: ['TEST'] }),
+    );
+  });
+
+  it('satır seçiminden gelen liste hazır açılır', () => {
+    render(<TaraPenceresi onClose={vi.fn()} onBasladi={vi.fn()} baslangicListesi={['APPSRV01', 'APPSRV02']} />);
+    expect(screen.getByLabelText('Sunucu listesi')).toHaveValue('APPSRV01\nAPPSRV02');
+    expect(screen.getByText('2 sunucu')).toBeInTheDocument();
   });
 });
 
