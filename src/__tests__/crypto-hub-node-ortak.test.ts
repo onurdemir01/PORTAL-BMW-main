@@ -12,6 +12,7 @@ import { describe, it, expect } from 'vitest';
 import {
   METIN,
   baslangicSekmesi,
+  navSekmeleri,
   bosRoller,
   degerHatasi,
   degistirDurumu,
@@ -66,6 +67,11 @@ describe('O1 sekmeler', () => {
   it('Wyden: node sekmesi yok (node-only işareti gelse bile)', () => {
     expect(sekmeListesi('wyden', false).map(([id]) => id)).not.toContain('node');
     expect(sekmeListesi('wyden', true).map(([id]) => id)).not.toContain('node');
+  });
+  it('node görünümü sekme çubuğunda değil', () => {
+    expect(navSekmeleri(sekmeListesi('metaco', false)).map(([id]) => id)).toEqual(['durum', 'podlar', 'surumler', 'configmap']);
+    expect(navSekmeleri(sekmeListesi('metaco', true))).toEqual([]);
+    expect(navSekmeleri(sekmeListesi('wyden', false))).toEqual(sekmeListesi('wyden', false));
   });
   it('başlangıç sekmesi URL `s`ten; listede yoksa ilk sekme', () => {
     expect(baslangicSekmesi('node', sekmeListesi('metaco', false))).toBe('node');

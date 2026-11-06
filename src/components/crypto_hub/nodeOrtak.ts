@@ -26,6 +26,10 @@ export const ACIK_DURUMLAR: readonly NodeTalepDurumu[] = ['ACILIYOR', 'BEKLIYOR'
 
 export const METIN = {
   sekme: 'Indexer / Node',
+  islemKart: {
+    baslik: 'Indexer / Node değişimi',
+    ipucu: "Indexer'ların bağlı olduğu node'u Smart onayıyla değiştirir",
+  },
   baslik: 'Indexer / Node bağlantıları',
   etiket: {
     kiraci: 'Kiracı',
@@ -455,7 +459,7 @@ export function kalanSure(
 // ── Sekmeler (CryptoHubPage) ─────────────────────────────────────────────────────────
 export type CryptoSekme = 'durum' | 'podlar' | 'surumler' | 'configmap' | 'node';
 
-/** Hangi sekmeler görünür: node sekmesi yalnız Metaco'da; node-only kullanıcıda YALNIZ o. */
+/** Hangi görünümler açılabilir: node yalnız Metaco'da; node-only kullanıcıda YALNIZ o. */
 export function sekmeListesi(app: string, nodeOnly: boolean): [CryptoSekme, string][] {
   const temel: [CryptoSekme, string][] = [
     ['durum', 'Durum'],
@@ -466,6 +470,11 @@ export function sekmeListesi(app: string, nodeOnly: boolean): [CryptoSekme, stri
   if (app !== 'metaco') return temel;
   if (nodeOnly) return [['node', METIN.sekme]];
   return [...temel, ['node', METIN.sekme]];
+}
+
+/** Sekme çubuğu: node görünümü çubukta değil, İşlemler bölümündeki karttan açılır. */
+export function navSekmeleri(liste: [CryptoSekme, string][]): [CryptoSekme, string][] {
+  return liste.filter(([id]) => id !== 'node');
 }
 
 /** URL'deki `s` ile başlangıç sekmesi: listede yoksa ilk sekme. */

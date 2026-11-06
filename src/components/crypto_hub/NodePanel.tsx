@@ -1,4 +1,4 @@
-// src/components/crypto_hub/NodePanel.tsx — Crypto Hub > "Indexer / Node" sekmesi (2026-11-02).
+// src/components/crypto_hub/NodePanel.tsx — Crypto Hub > İşlemler > "Indexer / Node" görünümü (2026-11-02).
 //
 // Kullanıcı: Metaco indexer'larının node bağlantısı Portal'dan, Smart onayıyla değiştirilsin;
 // eski tip zincirler de değiştirilebilsin; İstanbul ve Ankara ayrı talep; yalnız yetkisi olan

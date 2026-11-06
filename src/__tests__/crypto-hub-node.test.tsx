@@ -1,7 +1,7 @@
 // src/__tests__/crypto-hub-node.test.tsx — Crypto Hub > "Indexer / Node" ekranı (2026-11-02).
 //
 //   U1 liste: gruplar, rozetler, bekleyen bant, kapalı "Değiştir" + title; yalnız-okuma kullanıcı;
-//      node-only kullanıcıda YALNIZ "Indexer / Node" sekmesi ve /overview ÇAĞRILMAZ (D5)
+//      node-only kullanıcıda YALNIZ İşlemler'deki node kartı ve /overview ÇAĞRILMAZ (D5)
 //   U2 sihirbaz: rol başına değer kutusu (sır password, autocomplete/spellcheck kapalı), anlık biçim
 //      doğrulaması, maskeli önizleme, boş rol uyarısı + onay kutusu, aynı-değer uyarısı; tutarsızlık
 //      onayı; gerekçe sınırı; production ad yazdırma; "İptal"; sunucu reddinde doğru adıma dönüş;
@@ -12,7 +12,7 @@
 //   U4 yapı: her tablo overflow-x-auto içinde; yeni dosyalarda sabit renk yok
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createHash } from 'node:crypto';
-import { render, screen, fireEvent, waitFor, within, cleanup } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor, within, cleanup } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -311,12 +311,14 @@ describe('U1 liste', () => {
     expect(screen.getAllByText('Henüz okunmadı').length).toBeGreaterThan(0);
   });
 
-  function sayfa(env: Record<string, unknown>, url: string) {
+  const STOP = { key: 'stop', label: 'Durdur', hint: 'x', writes: true };
+
+  function sayfa(env: Record<string, unknown>, url: string, app = 'metaco', actions: unknown[] = []) {
     m.tenants.mockResolvedValue({
       ok: true,
       apps: [
         {
-          app: 'metaco',
+          app,
           label: 'Metaco',
           domains: [
             {
@@ -340,7 +342,7 @@ describe('U1 liste', () => {
         },
       ],
     });
-    m.actions.mockResolvedValue({ ok: true, actions: [] });
+    m.actions.mockResolvedValue({ ok: true, actions });
     m.overview.mockResolvedValue({ ok: true, components: [], summary: { total: 0, running: 0, stopped: 0, degraded: 0 } });
     m.nodes.mockResolvedValue(yanit());
     return render(
@@ -352,19 +354,46 @@ describe('U1 liste', () => {
   const navDugmeleri = () =>
     Array.from(document.querySelectorAll('nav button')).map((b) => b.textContent?.trim());
 
-  it('node-only kullanıcı: YALNIZ Indexer / Node sekmesi, /overview çağrılmaz, tarama düğmesi yok', async () => {
-    sayfa({ nodeOnly: true, nodeOpen: true }, '/crypto-hub?t=metaco_das_test');
+  const nodeKarti = () => screen.getByRole('button', { name: /Indexer \/ Node değişimi/ });
+
+  it('node-only kullanıcı: YALNIZ node kartı, sekme çubuğu yok, /overview çağrılmaz, tarama düğmesi yok', async () => {
+    sayfa({ nodeOnly: true, nodeOpen: true }, '/crypto-hub?t=metaco_das_test', 'metaco', [STOP]);
     expect(await screen.findByText('Indexer / Node bağlantıları')).toBeTruthy();
-    expect(navDugmeleri()).toEqual(['Indexer / Node']);
+    await waitFor(() => expect(m.actions).toHaveBeenCalled());
+    await act(async () => {});
+    expect(document.querySelector('nav')).toBeNull();
+    expect(screen.queryByText('Durdur')).toBeNull();
+    expect(nodeKarti().getAttribute('aria-pressed')).toBe('true');
     expect(m.overview).not.toHaveBeenCalled();
     expect(screen.queryByText(/Taramayı/)).toBeNull();
   });
 
-  it('Metaco kullanıcısı ?s=node: beş sekme, node sekmesi açık, overview de yüklenir', async () => {
+  it('Metaco kullanıcısı ?s=node: dört sekme, node kartı açık, overview de yüklenir', async () => {
     sayfa({}, '/crypto-hub?t=metaco_das_test&s=node');
     expect(await screen.findByText('Indexer / Node bağlantıları')).toBeTruthy();
-    expect(navDugmeleri()).toEqual(['Durum', 'Podlar', 'Sürümler', 'Config Map', 'Indexer / Node']);
+    expect(navDugmeleri()).toEqual(['Durum', 'Podlar', 'Sürümler', 'Config Map']);
+    expect(nodeKarti().getAttribute('aria-pressed')).toBe('true');
     await waitFor(() => expect(m.overview).toHaveBeenCalled());
+  });
+
+  it('Wyden: işlem kartları durur, node kartı yok', async () => {
+    sayfa({}, '/crypto-hub?t=metaco_das_test', 'wyden', [STOP]);
+    expect(await screen.findByText('Durdur')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Indexer \/ Node değişimi/ })).toBeNull();
+  });
+
+  it('Metaco kullanıcısı: İşlemler kartı node görünümünü açar, sekme geri döndürür', async () => {
+    sayfa({}, '/crypto-hub?t=metaco_das_test');
+    await waitFor(() => expect(m.overview).toHaveBeenCalled());
+    const kart = await screen.findByRole('button', { name: /Indexer \/ Node değişimi/ });
+    expect(kart.getAttribute('aria-pressed')).toBe('false');
+    expect(screen.queryByText('Indexer / Node bağlantıları')).toBeNull();
+    fireEvent.click(kart);
+    expect(await screen.findByText('Indexer / Node bağlantıları')).toBeTruthy();
+    expect(nodeKarti().getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(screen.getByRole('button', { name: 'Durum' }));
+    await waitFor(() => expect(screen.queryByText('Indexer / Node bağlantıları')).toBeNull());
+    expect(nodeKarti().getAttribute('aria-pressed')).toBe('false');
   });
 });
 

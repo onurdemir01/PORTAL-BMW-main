@@ -29,6 +29,7 @@ import {
   PowerIcon,
   BoltIcon,
   DocumentTextIcon,
+  ServerStackIcon,
 } from '@heroicons/react/24/outline';
 import {
   cryptoHubApi,
@@ -45,7 +46,7 @@ import { ValuesModal } from './ValuesModal';
 import { ValuesCompare } from './ValuesCompare';
 import { ConfigMapsPanel } from './ConfigMapsPanel';
 import { NodePanel, type NodeBaslangic } from './NodePanel';
-import { baslangicSekmesi, sekmeListesi, type CryptoSekme } from './nodeOrtak';
+import { baslangicSekmesi, METIN, navSekmeleri, sekmeListesi, type CryptoSekme } from './nodeOrtak';
 import type { NodeEsTalepOnerisi } from '@/api/cryptoHubApi';
 import { Modal } from '@/components/common/Modal';
 import { useJobTracker } from '@/contexts/JobTrackerContext';
@@ -883,6 +884,73 @@ function SurumTab({
   );
 }
 
+/** Islemler bolumundeki kart. `aktif`: kart bir plan penceresi degil, sayfada acik bir gorunum. */
+function IslemKarti({
+  Icon,
+  tone,
+  label,
+  hint,
+  writes,
+  aktif,
+  onClick,
+}: {
+  Icon: React.ComponentType<{ className?: string }>;
+  tone: string;
+  label: string;
+  hint: string;
+  writes?: boolean;
+  aktif?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={aktif === undefined ? undefined : aktif}
+      className="group relative text-left rounded-xl border p-4 pt-5 transition-shadow hover:shadow-md focus:outline-none focus-visible:ring-2"
+      style={{
+        borderColor: aktif ? 'var(--accent)' : 'var(--border-subtle)',
+        background: aktif ? 'var(--accent-bg)' : 'var(--bg-surface)',
+      }}
+    >
+      {/* ust serit: islemin rengi karta uzaktan bakinca da okunsun */}
+      <span className="absolute inset-x-0 top-0 h-1 rounded-t-xl" style={{ background: tone }} />
+      <span className="flex items-center gap-3">
+        <span
+          className="h-11 w-11 rounded-xl inline-flex items-center justify-center shrink-0"
+          style={{ background: 'var(--bg-elevated)', color: tone }}
+        >
+          <Icon className="h-6 w-6" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-[15px] font-semibold" style={{ color: 'var(--text-primary)' }}>
+            {label}
+          </span>
+          <span className="block text-[12px] mt-0.5" style={{ color: 'var(--text-secondary)' }}>
+            {hint}
+          </span>
+        </span>
+        <ChevronRightIcon
+          className="h-5 w-5 shrink-0 transition-transform group-hover:translate-x-0.5"
+          style={{ color: 'var(--text-muted)' }}
+        />
+      </span>
+      {writes && (
+        <span
+          className="inline-flex items-center gap-1 mt-3 px-2 py-0.5 rounded-md text-[11px] font-semibold"
+          style={{
+            color: 'var(--status-danger)',
+            background: 'var(--status-danger-bg)',
+            border: '1px solid var(--status-danger)',
+          }}
+        >
+          <ExclamationTriangleIcon className="h-3.5 w-3.5" /> Ortamda değişiklik yapar
+        </span>
+      )}
+    </button>
+  );
+}
+
 // ── Sayfa ─────────────────────────────────────────────────────────────────────────────
 export default function CryptoHubPage() {
   const { addJob } = useJobTracker();
@@ -993,9 +1061,11 @@ export default function CryptoHubPage() {
   }, [tenantKey, apps]);
 
   // NODE-ONLY: kullanici bu ortami yalniz "Indexer / Node" yetkisiyle goruyor; /overview
-  // (app:metaco kapisi) CAGRILMAZ, nav'da yalniz o sekme durur.
+  // (app:metaco kapisi) CAGRILMAZ; Islemler'de yalniz node karti durur, sekme cubugu yok.
   const nodeOnly = scope?.env.nodeOnly === true;
   const sekmeler = useMemo(() => sekmeListesi(scope?.app || '', nodeOnly), [scope?.app, nodeOnly]);
+  const navSekmeler = useMemo(() => navSekmeleri(sekmeler), [sekmeler]);
+  const nodeVar = sekmeler.length !== navSekmeler.length;
 
   // URL'de gecerli bir kiraci varsa verisi yuklenir; kullanici menuden geri dondugunde
   // (t parametresi kalkinca) ekran temizlenir.
@@ -1123,7 +1193,7 @@ export default function CryptoHubPage() {
           kaybolmuyor - accent kenarli baslik, her islem icin renkli buyuk kart, ustunde ince
           bir renk seridi. Yazan islemler ayrica etiketli. Hicbiri dogrudan calismaz: once
           uygulanacak komutlari gosteren on onay penceresi acilir. */}
-      {!nodeOnly && !data?.notConfigured && actions.length > 0 && (
+      {!data?.notConfigured && (nodeVar || (!nodeOnly && actions.length > 0)) && (
         <section
           className="rounded-2xl border-2 overflow-hidden"
           style={{ borderColor: 'var(--accent)', background: 'var(--bg-surface)' }}
@@ -1146,7 +1216,7 @@ export default function CryptoHubPage() {
             </span>
           </div>
           <div className="grid sm:grid-cols-3 gap-3 p-3">
-            {actions.map((a) => {
+            {!nodeOnly && actions.map((a) => {
               const Icon =
                 a.key === 'upgrade'
                   ? ArrowUpCircleIcon
@@ -1160,59 +1230,28 @@ export default function CryptoHubPage() {
                     ? 'var(--status-danger)'
                     : 'var(--status-success)';
               return (
-                <button
+                <IslemKarti
                   key={a.key}
-                  type="button"
+                  Icon={Icon}
+                  tone={tone}
+                  label={a.label}
+                  hint={a.hint}
+                  writes={a.writes}
                   onClick={() => setPlanFor(a)}
-                  className="group relative text-left rounded-xl border p-4 pt-5 transition-shadow hover:shadow-md focus:outline-none focus-visible:ring-2"
-                  style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}
-                >
-                  {/* ust serit: islemin rengi karta uzaktan bakinca da okunsun */}
-                  <span
-                    className="absolute inset-x-0 top-0 h-1 rounded-t-xl"
-                    style={{ background: tone }}
-                  />
-                  <span className="flex items-center gap-3">
-                    <span
-                      className="h-11 w-11 rounded-xl inline-flex items-center justify-center shrink-0"
-                      style={{ background: 'var(--bg-elevated)', color: tone }}
-                    >
-                      <Icon className="h-6 w-6" />
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span
-                        className="block text-[15px] font-semibold"
-                        style={{ color: 'var(--text-primary)' }}
-                      >
-                        {a.label}
-                      </span>
-                      <span
-                        className="block text-[12px] mt-0.5"
-                        style={{ color: 'var(--text-secondary)' }}
-                      >
-                        {a.hint}
-                      </span>
-                    </span>
-                    <ChevronRightIcon
-                      className="h-5 w-5 shrink-0 transition-transform group-hover:translate-x-0.5"
-                      style={{ color: 'var(--text-muted)' }}
-                    />
-                  </span>
-                  {a.writes && (
-                    <span
-                      className="inline-flex items-center gap-1 mt-3 px-2 py-0.5 rounded-md text-[11px] font-semibold"
-                      style={{
-                        color: 'var(--status-danger)',
-                        background: 'var(--status-danger-bg)',
-                        border: '1px solid var(--status-danger)',
-                      }}
-                    >
-                      <ExclamationTriangleIcon className="h-3.5 w-3.5" /> Ortamda değişiklik yapar
-                    </span>
-                  )}
-                </button>
+                />
               );
             })}
+            {nodeVar && (
+              <IslemKarti
+                Icon={ServerStackIcon}
+                tone="var(--accent)"
+                label={METIN.islemKart.baslik}
+                hint={METIN.islemKart.ipucu}
+                writes
+                aktif={tab === 'node'}
+                onClick={() => sekmeSec('node')}
+              />
+            )}
           </div>
         </section>
       )}
@@ -1320,11 +1359,12 @@ export default function CryptoHubPage() {
 
       {!data?.notConfigured && (
         <>
+          {navSekmeler.length > 0 && (
           <nav
             className="flex items-center gap-1 border-b"
             style={{ borderColor: 'var(--border-subtle)' }}
           >
-            {sekmeler.map(([id, label]) => (
+            {navSekmeler.map(([id, label]) => (
               <button
                 key={id}
                 type="button"
@@ -1348,6 +1388,7 @@ export default function CryptoHubPage() {
               </button>
             ))}
           </nav>
+          )}
 
           {tab === 'node' ? (
             <NodePanel
