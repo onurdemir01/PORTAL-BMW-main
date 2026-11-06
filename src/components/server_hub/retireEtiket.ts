@@ -101,6 +101,45 @@ export function etiketSuz(etiketler: ShRetireEtiketHer[], s: EtiketSuzgeci): ShR
   );
 }
 
+/**
+ * Hızlı süzgeç (özet düğmeleri): sütun süzgeçlerinden ÖNCE uygulanır. Varsayılan 'acik' yanlış alarmları
+ * gizler; 'hepsi' ve 'yanlis' onları gösterir.
+ */
+export type HizliSuzgec =
+  'acik' | 'kesin' | 'supheli' | 'bekleyen' | 'hazir' | 'dusen' | 'yanlis' | 'hepsi';
+export const HIZLI_SUZGECLER: { id: HizliSuzgec; etiket: string }[] = [
+  { id: 'acik', etiket: 'açık (yanlış alarm hariç)' },
+  { id: 'kesin', etiket: 'kesin' },
+  { id: 'supheli', etiket: 'şüpheli' },
+  { id: 'bekleyen', etiket: 'kontrol bekleyen' },
+  { id: 'hazir', etiket: 'Retirement’a hazır' },
+  { id: 'dusen', etiket: 'kesinden şüpheliye inen' },
+  { id: 'yanlis', etiket: 'yanlış alarm' },
+  { id: 'hepsi', etiket: 'hepsi' },
+];
+export function hizliSuz<T extends ShRetireEtiketHer>(etiketler: T[], h: HizliSuzgec): T[] {
+  const acik = (e: T) => e.durum !== 'YANLIS_ALARM';
+  const f: Record<HizliSuzgec, (e: T) => boolean> = {
+    acik,
+    kesin: (e) => acik(e) && e.seviye === 'KESIN',
+    supheli: (e) => acik(e) && e.seviye === 'SUPHELI',
+    bekleyen: (e) => e.durum === 'BEKLIYOR' || e.durum === 'VERI_DEGISTI',
+    hazir: (e) => e.retirementHazir,
+    dusen: (e) => acik(e) && e.hamSeviye === 'KESIN' && e.seviye !== 'KESIN',
+    yanlis: (e) => e.durum === 'YANLIS_ALARM',
+    hepsi: () => true,
+  };
+  return etiketler.filter(f[h] || acik);
+}
+
+/** Zincir özeti (sütun süzgeci): kanıt tam / kesinden indi / şüpheli + neden. */
+export function zincirDurumu(
+  e: Pick<ShRetireEtiketHer, 'seviye' | 'hamSeviye' | 'nedenler'>,
+): 'TAM' | 'DUSTU' | 'NEDENLI' {
+  if (e.hamSeviye === 'KESIN' && e.seviye !== 'KESIN') return 'DUSTU';
+  return e.nedenler.length ? 'NEDENLI' : 'TAM';
+}
+
 /** Bu sunucuyu kopyaları arasında taşıyan etiketler. */
 export const hostEtiketleri = (etiketler: ShRetireEtiketHer[] | null | undefined, host: string) =>
   (etiketler || []).filter((e) => e.hostlar.includes(host));
