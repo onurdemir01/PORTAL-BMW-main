@@ -565,6 +565,8 @@ export interface NodeBekleyen {
   username: string;
   createdAt: string;
   durum: NodeTalepDurumu;
+  /** Smart onayı geldi, iş OCO penceresini bekliyor */
+  pencereBekliyor?: boolean;
 }
 
 export interface NodeGrup {
@@ -616,6 +618,11 @@ export interface NodeTalepOzet {
   awxServerId: number | null;
   awxJobId: number | null;
   esTalepId: number | null;
+  ocoNo?: string | null;
+  ocoPencereBas?: string | null;
+  ocoPencereSon?: string | null;
+  /** Smart onayı geldi, iş OCO penceresini bekliyor (yalnız /nodes listesi) */
+  pencereBekliyor?: boolean;
   createdAt: string;
   kapandiAt: string | null;
 }
@@ -636,6 +643,8 @@ export interface CryptoNodesResponse {
   smartMod?: NodeSmartMod;
   /** null = ayar eksik ya da okunamadı */
   smartKaynak?: NodeSmartKaynak | null;
+  /** Bu kiracıda talep OCO numarası ister mi. Ekran metnidir; karar sunucuda talep anında verilir */
+  ocoGerekli?: boolean;
   tenant?: {
     key: string;
     label: string;
@@ -678,6 +687,14 @@ export interface NodeChangeResult {
   externalTicketId?: string | null;
   talepId?: number;
   onayZamanAsimiDk?: number;
+  /** OCO'lu talep: pencere özeti */
+  oco?: {
+    ocoNumber: string;
+    windowStartIso: string;
+    windowEndIso: string;
+    sonBaslamaIso: string;
+    bekleyecek: boolean;
+  };
   /** true = Smart kapalı test kiracısı: bilet yok, iş başladı */
   onaysiz?: boolean;
   jobId?: number;
@@ -713,6 +730,8 @@ export interface NodeSonuc {
   rollback: { deployment: string; durum: string }[];
   yedek: string[];
   hatalar: { stage: string; message: string }[];
+  /** Bilet durumuyla kapanan talep (iş koşmadı) */
+  smart?: { status: string; stateName?: string | null; hata?: string | null; onayGeldi?: boolean } | null;
 }
 
 export interface NodeChangeDetail {
@@ -724,9 +743,12 @@ export interface NodeChangeDetail {
   smart?: {
     status: string;
     statusName: string | null;
-    /** onay son tarihi (açılış + 1440 dk) */
+    /** bu andan sonra zaman aşımı: açılış + 1440 dk, OCO'lu talepte son başlama saati */
     sonTarih: string | null;
     hata: string | null;
+    approvedAt?: string | null;
+    /** Smart onayı geldi, iş OCO penceresini bekliyor */
+    pencereBekliyor?: boolean;
   } | null;
   esTalepOnerisi?: NodeEsTalepOnerisi | null;
   blocked?: string;
@@ -774,6 +796,8 @@ export interface NodeChangeBody {
   bilesenler?: string[];
   /** kullanıcı onaysız başlatma metnini gördü. Kapıyı açmaz; sunucu kararına uymazsa istek durur */
   onaysizKabul?: boolean;
+  /** OCO zorunluysa numara; sunucu pencereyi yeniden okur */
+  ocoNumber?: string;
 }
 
 export interface NodeKapatResult {
@@ -798,7 +822,7 @@ export interface NodeSmartOnizleme {
 /** GET/PUT /smart-config. Token değeri hiçbir zaman dönmez. */
 export interface CryptoSmartAyarYaniti {
   ok: boolean;
-  smart?: { enabled: boolean; flowKey: string; metadataFields: string; integrationKeySet: boolean };
+  smart?: { enabled: boolean; ocoTest?: boolean; flowKey: string; metadataFields: string; integrationKeySet: boolean };
   kaynak?: NodeSmartKaynak | null;
   durum?: 'kendi' | 'opsx' | 'testte_kapali' | 'eksik' | 'token_cozulemedi';
   opsxFlowKey?: string;
@@ -811,6 +835,8 @@ export interface CryptoSmartAyarYaniti {
 export interface CryptoSmartAyarGovde {
   /** yalnız kullanıcı değiştirdiyse gönderilir: bayat pencere başka yöneticinin kararını ezmesin */
   enabled?: boolean;
+  /** yalnız kullanıcı değiştirdiyse gönderilir */
+  ocoTest?: boolean;
   flowKey: string;
   metadataFields: string;
   /** boş = değiştirme */

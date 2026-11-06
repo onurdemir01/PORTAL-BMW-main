@@ -9,6 +9,10 @@
 //     onaysiz KOSMAZ; admin atlama yolu da yok.
 //   * Tek istisna (D7): Crypto Hub ayarindan Smart kapatilmis TEST kiracisi. Is onaysiz baslar
 //     (dogrudanBaslat), denetime yazilir. Production kiracida bu ayar etkisizdir.
+//   * OCO (D8): production kiracida her zaman, test kiracida ayar acikken talep OCO numarasi ister
+//     (ocoKapisi). Bilet pencere acilana dek PENDING bekler, is pencerede baslar. AWX schedule
+//     KULLANILMAZ; numara extra_vars'a konmaz, plan_sha ve Ansible degismez. Pencereye kadar sifreli
+//     deger kolonda, grup kilidi acik kalir; ust sinir ufuk + acik pencere beklemesi (ocoSonBaslamaMs).
 //   * Kiraci + kilit basina TEK acik talep: DB filtreli tekil indeksi (UX_chnc_acik) zorlar;
 //     indeks yoksa talep acilmaz (fail-closed).
 //
@@ -86,6 +90,20 @@ const METIN = Object.freeze({
   smartDegisti: 'Smart ayarı bu sırada değişti; iş başlatılmadı. Talebi yeniden açın.',
   smartModDegisti:
     'Smart onay ayarı siz ekrandayken değişti; hiçbir şey başlatılmadı. Güncel metni okuyup yeniden onaylayın.',
+  ocoGerekli: 'Bu talep için OCO numarası gerekli.',
+  ocoKolonYok: 'OCO alanları veritabanında doğrulanamadı — talep açılmadı. Yöneticinize başvurun.',
+  ocoGecersiz: 'OCO penceresi okunamadı — talep açılmadı.',
+  ocoKisa: `OCO penceresi ${N.OCO_SON_PAY_DK} dakikadan kısa; iş pencere içinde tamamlanamaz. Yeni bir OCO kaydı ile deneyin.`,
+  ocoSonPay: (saat) =>
+    `Son başlama saati (${saat}) geçti; iş pencere bitmeden tamamlanamaz. Yeni bir OCO kaydı ile deneyin.`,
+  ocoUfuk: (bas) =>
+    `OCO penceresi (${bas}) ${N.OCO_UFUK_GUN} günden ileride. Pencereye en çok ${N.OCO_UFUK_GUN} gün kala talep açın.`,
+  ocoBekleKapali: (bas) =>
+    `OCO penceresi henüz açılmadı (${bas}). Smart onayı kapalıyken iş bekletilemez; pencere açılınca tekrar açın.`,
+  ocoDegisti: 'OCO ayarı bu sırada değişti; iş başlatılmadı. Talebi yeniden açın.',
+  ocoPaketEksik: 'OCO penceresi talepte eksik; iş başlatılmadı. Yeni talep açın.',
+  ocoAcilmadi: 'OCO penceresi açılmadı; iş başlatılmadı.',
+  ocoSonGecti: 'Son başlama saati geçti; iş başlatılmadı. Yeni talep açın.',
   indeksYok: 'Talep kilidi (veritabanı tekil indeksi) doğrulanamadı — talep açılmadı.',
   yetimBilet: (no) =>
     `Smart talebi AÇILDI (kayıt no: ${no}) ancak Portal kaydı yazılamadı. Onaylansa da iş başlamaz — Smart'ta reddettirin.`,
@@ -98,6 +116,8 @@ const METIN = Object.freeze({
   templateYok: `AWX job template'i tanımlı değil: Admin › Playbook Kayıtları › "${OPS_KEY}" satırına Template ID girilmeli.`,
   talepAcildi: (no) =>
     `Smart talebi açıldı (kayıt no: ${no}). Onay 24 saat içinde gelirse değişiklik otomatik uygulanır; bu ekranda beklemeniz gerekmez.`,
+  talepAcildiOco: (no, son) =>
+    `Smart talebi açıldı (kayıt no: ${no}). Onay gelirse iş OCO penceresinde otomatik başlar; en geç ${son}. Bu ekranda beklemeniz gerekmez.`,
   onaysizBasladi: (job) => `Smart onayı kapalı (test ortamı): iş onaysız başlatıldı (AWX #${job}).`,
   dogrudanHazirlik: (m) => `İş başlatılmadı: ${m}`,
   dogrudanHata: (m) => `AWX işi başlatılamadı: ${m}`,
@@ -726,7 +746,7 @@ const tekSatir = (s) =>
  * sablondaki dropdown eslemeleri (Production_9 gibi) bozulmaz. Ek anahtarlar yalniz
  * `| default(...)` ile kullanilabilir.
  */
-function ozetKur({ tenant, plani, gerekce, username, esTalep, kaynak = 'opsx' }) {
+function ozetKur({ tenant, plani, gerekce, username, esTalep, kaynak = 'opsx', oco = null }) {
   const lok = N.lokasyon(tenant);
   const g = plani.grup;
   const turAd = g.tur === 'uis' ? 'Yeni tip' : 'Eski tip';
@@ -773,6 +793,12 @@ function ozetKur({ tenant, plani, gerekce, username, esTalep, kaynak = 'opsx' })
     satirlar.push("Not: seçilen bileşenler şu an farklı node'lara bağlı; talep hepsini tek node'a topluyor (kullanıcı onayladı).");
   }
   if (esTalep) satirlar.push(`İstanbul talebi: ${N.talepNoMetni(esTalep.externalTicketId, esTalep.id)}`);
+  const ocoPencere = oco ? `${oco.windowStartText} – ${oco.windowEndText}` : '';
+  if (oco) {
+    satirlar.push(
+      `OCO: ${oco.ocoNumber} (pencere ${ocoPencere}, son başlama ${oco.sonBaslamaText}). Onay pencereden önce gelirse iş pencere açılınca başlar; son başlamaya kadar başlamazsa iş hiç başlamaz.`,
+    );
+  }
   satirlar.push(
     'Onay sonrası Portal otomatik uygular; onay beklerken gruptaki herhangi bir node değeri değişirse iş yazmadan durur.',
   );
@@ -797,6 +823,8 @@ function ozetKur({ tenant, plani, gerekce, username, esTalep, kaynak = 'opsx' })
     bilesenler: secilenler.join(', '),
     degismeyenler: secilmeyenler.join(', '),
     esTalep: esTalep ? String(esTalep.externalTicketId || '') : '',
+    ocoNo: oco ? oco.ocoNumber : '',
+    ocoPencere,
   };
 }
 
@@ -892,6 +920,7 @@ async function taslakOnizle(raw, ben = {}) {
 const NODE_OKUMA = new Map();
 const OKUMA_ISLERI = new Map();
 let _indeks = { at: 0, ok: false };
+let _ocoKolon = { at: 0, ok: false };
 
 function okumaKaydet(tenantKey, parsed, at, meta = {}) {
   const eski = NODE_OKUMA.get(tenantKey);
@@ -911,6 +940,7 @@ function _sifirla() {
   NODE_OKUMA.clear();
   OKUMA_ISLERI.clear();
   _indeks = { at: 0, ok: false };
+  _ocoKolon = { at: 0, ok: false };
 }
 
 /** Tekil indeks kapisi (sozlesme 7.3): yalniz OLUMLU sonuc 10 dk onbelleklenir. */
@@ -930,10 +960,37 @@ async function indeksVarMi(db, simdi = Date.now()) {
   return ok;
 }
 
+/**
+ * OCO kolonlari (D8). Setup'taki ALTER hatasi yalniz log'a duser, yani kolonlarin varligi kurulumdan
+ * kanitlanamaz. Yalniz OLUMLU sonuc 10 dk onbelleklenir. Okuma hatasi "kolon yok" DEGILDIR: kolon
+ * sonradan silinmez, son olumlu sonuc korunur; hic olumlu sonuc yoksa null doner.
+ * @returns {Promise<boolean|null>} null = bilinmiyor
+ */
+async function ocoKolonOku(db, simdi = Date.now()) {
+  if (_ocoKolon.ok && simdi - _ocoKolon.at < 10 * 60 * 1000) return true;
+  try {
+    const r = await db.query(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA IN ('dbo', SCHEMA_NAME()) AND ((TABLE_NAME = 'crypto_hub_node_changes' AND COLUMN_NAME IN ('oco_no', 'oco_pencere_bas', 'oco_pencere_son')) OR (TABLE_NAME = 'smart_tickets' AND COLUMN_NAME = 'approved_at'))`,
+    );
+    const ok = new Set(((r && r.rows) || []).map((x) => x.COLUMN_NAME)).size === 4;
+    _ocoKolon = { at: simdi, ok };
+    return ok;
+  } catch (e) {
+    console.warn('[CryptoHub] OCO kolonlari okunamadi:', e.message);
+    return _ocoKolon.ok ? true : null;
+  }
+}
+
+/** Talep kapisi: bilinmiyor da hayirdir (fail-closed). */
+const ocoKolonlariVarMi = async (db, simdi) => (await ocoKolonOku(db, simdi)) === true;
+
 // ── DB ───────────────────────────────────────────────────────────────────────────────
 // Genel listeler yeni_deger_secret'i ASLA secmez (yalniz launch kancasi okur; bekci N19).
 const SUTUNLAR =
-  'id, tenant_key, grup, kilit, lokasyon, eski_ozet, yeni_ozet, hedefler, plan_sha, gerekce, username, durum, smart_ticket_id, external_ticket_id, awx_server_id, awx_job_id, sonuc_kod, sonuc_json, es_talep_id, created_at, updated_at, kapandi_at';
+  'id, tenant_key, grup, kilit, lokasyon, eski_ozet, yeni_ozet, hedefler, plan_sha, gerekce, username, durum, smart_ticket_id, external_ticket_id, awx_server_id, awx_job_id, sonuc_kod, sonuc_json, es_talep_id, created_at, updated_at, kapandi_at, oco_no, oco_pencere_bas, oco_pencere_son';
+// Kolonlar yoksa OCO'suz akis bozulmasin: okumalar sutunlar() ile bu listeye duser.
+const SUTUNLAR_OCOSUZ = SUTUNLAR.replace(', oco_no, oco_pencere_bas, oco_pencere_son', '');
+const sutunlar = async (db) => ((await ocoKolonOku(db)) === true ? SUTUNLAR : SUTUNLAR_OCOSUZ);
 
 const ACIK_DURUMLAR = ['ACILIYOR', 'BEKLIYOR', 'CALISIYOR'];
 const KAPALI_DURUMLAR = [
@@ -981,6 +1038,9 @@ function talepOzeti(r) {
     sonucKod: r.sonuc_kod || null,
     sonuc,
     esTalepId: r.es_talep_id == null ? null : Number(r.es_talep_id),
+    ocoNo: r.oco_no || null,
+    ocoPencereBas: tarih(r.oco_pencere_bas),
+    ocoPencereSon: tarih(r.oco_pencere_son),
     createdAt: tarih(r.created_at),
     kapandiAt: tarih(r.kapandi_at),
   };
@@ -1150,7 +1210,29 @@ async function satiriIlerlet(db, row, yol = 'tarama', simdi = Date.now()) {
   // yapilandirilmamis -> hic TIMEOUT olmayan PENDING, AWX kalici hata) satir OLCULEMEDI / TAKILDI
   // kapanir. BASARI SAYILMAZ: ekran "durum bilinmiyor, mevcut node'lari okuyun" der. Bilet hala
   // PENDING ise yerelde iptal edilir: poller sonradan onay gorse de isi BASLATMAZ.
-  const takildi = yasDk > (dogrudan ? DOGRUDAN_TAKILDI_DK : N.TAKILDI_DK);
+  // Pencereli talepte bilet pencere boyunca PENDING bekler: sinir son baslamadan sayilir (normal
+  // pencerede pencere sonu + 90 dk).
+  const pencereSinirDk =
+    (N.ocoSonBaslamaMs({
+      basMs: zamanMs(row.oco_pencere_bas),
+      sonMs: zamanMs(row.oco_pencere_son),
+      talepMs: zamanMs(row.created_at),
+    }) +
+      (N.OCO_SON_PAY_DK + N.OCO_TAKILDI_PAY_DK) * 60000 -
+      zamanMs(row.created_at)) /
+    60000;
+  const sinirAsildi =
+    yasDk >
+    (dogrudan
+      ? DOGRUDAN_TAKILDI_DK
+      : Number.isFinite(pencereSinirDk)
+        ? Math.max(N.TAKILDI_DK, pencereSinirDk)
+        : N.TAKILDI_DK);
+  // Kolon bu okumada gelmediyse pencere bilinmiyor: sema okunamamis olabilir. "Kolon yok" kesinlesmeden
+  // karar verilmez; gecici bir hata onayli talebi pencereden gunler once kapatirdi. Sonraki tur bakar.
+  const pencereBilinmiyor =
+    sinirAsildi && !dogrudan && !('oco_pencere_son' in row) && (await ocoKolonOku(db)) !== false;
+  const takildi = sinirAsildi && !pencereBilinmiyor;
   const takildiKapat = async (neden, t) => {
     let iptal = false;
     if (t && t.status === 'PENDING') {
@@ -1200,15 +1282,20 @@ async function satiriIlerlet(db, row, yol = 'tarama', simdi = Date.now()) {
           durum: BILET_DURUM[t.status],
           kod: t.status,
           json: bosSonuc({
-            smart: { status: t.status, stateName: t.smartStateName || null, hata: kirp(t.errorMessage || '', 500) || null },
+            smart: {
+              status: t.status,
+              stateName: t.smartStateName || null,
+              hata: kirp(t.errorMessage || '', 500) || null,
+              ...(t.approvedAt ? { onayGeldi: true } : {}),
+            },
           }),
         },
         denetim,
       );
       return 'kapandi';
     }
-    // PENDING / LAUNCHING / SCHEDULED (node akisi OCO'ya girmez ama poller bu durumu yazabilir) /
-    // LAUNCHED-ama-job-yok: henuz is yok. Sinir asilmadiysa sonraki tur yeniden bakar.
+    // PENDING / LAUNCHING / SCHEDULED (node bileti schedule dalina girmez ama poller bu durumu
+    // yazabilir) / LAUNCHED-ama-job-yok: henuz is yok. Sinir asilmadiysa sonraki tur yeniden bakar.
     if (t.status !== 'LAUNCHED' || t.awxJobId == null) {
       return takildi ? takildiKapat(`bilet_${String(t.status || '').toLowerCase() || 'bilinmiyor'}`, t) : null;
     }
@@ -1236,7 +1323,7 @@ async function satiriIlerlet(db, row, yol = 'tarama', simdi = Date.now()) {
 async function nodeSonuclariniTara() {
   const db = require('../db/index.cjs');
   const r = await db.query(
-    `SELECT ${SUTUNLAR} FROM crypto_hub_node_changes WHERE kapandi_at IS NULL`,
+    `SELECT ${await sutunlar(db)} FROM crypto_hub_node_changes WHERE kapandi_at IS NULL`,
   );
   let n = 0;
   for (const row of (r && r.rows) || []) {
@@ -1330,26 +1417,34 @@ function initCryptoHubNode(router, deps) {
 
   async function acikTalepler(tenantKey) {
     const db = require('../db/index.cjs');
+    const sut = await sutunlar(db);
     const [acik, son] = await Promise.all([
-      db.query(`SELECT ${SUTUNLAR} FROM crypto_hub_node_changes WHERE tenant_key = $1 AND kapandi_at IS NULL`, [
+      db.query(`SELECT ${sut} FROM crypto_hub_node_changes WHERE tenant_key = $1 AND kapandi_at IS NULL`, [
         tenantKey,
       ]),
       db.query(
-        `SELECT TOP 20 ${SUTUNLAR} FROM crypto_hub_node_changes WHERE tenant_key = $1 ORDER BY created_at DESC, id DESC`,
+        `SELECT TOP 20 ${sut} FROM crypto_hub_node_changes WHERE tenant_key = $1 ORDER BY created_at DESC, id DESC`,
         [tenantKey],
       ),
     ]);
     const bekleyenler = new Map();
+    const onaylilar = new Set();
     for (const r of (acik && acik.rows) || []) {
+      const pencereBekliyor = await pencereBekleyenMi(r);
+      if (pencereBekliyor) onaylilar.add(Number(r.id));
       bekleyenler.set(r.kilit, {
         talepId: Number(r.id),
         externalTicketId: r.external_ticket_id || null,
         username: r.username,
         createdAt: tarih(r.created_at),
         durum: r.durum,
+        pencereBekliyor,
       });
     }
-    return { bekleyenler, gecmis: ((son && son.rows) || []).map(talepOzeti) };
+    const gecmis = ((son && son.rows) || [])
+      .map(talepOzeti)
+      .map((x) => ({ ...x, pencereBekliyor: onaylilar.has(x.talepId) }));
+    return { bekleyenler, gecmis };
   }
 
   router.get('/nodes', async (req, res) => {
@@ -1392,10 +1487,13 @@ function initCryptoHubNode(router, deps) {
     // Yalniz ekran metinleri icin: gercek karar talep aninda yeniden okunur.
     let smartMod = 'onay';
     let smartKaynak = null;
+    // Okunamazsa ekran alani gosterir (fail-closed); talep zaten 503 alir.
+    let ocoGerekli = true;
     try {
       const k = await SA.cryptoSmartCoz(tenant);
       smartMod = k.mod;
       smartKaynak = k.kaynak;
+      ocoGerekli = k.ocoGerekli;
     } catch (e) {
       console.warn('[CryptoHub] Smart ayari okunamadi:', e.message);
     }
@@ -1403,6 +1501,7 @@ function initCryptoHubNode(router, deps) {
       ok: true,
       smartMod,
       smartKaynak,
+      ocoGerekli,
       tenant: {
         key: tenant.key,
         label: `${tenant.appLabel} ${tenant.domainLabel} ${tenant.envLabel}`,
@@ -1555,8 +1654,9 @@ function initCryptoHubNode(router, deps) {
     if (!Number.isInteger(id) || id <= 0) return cevap(res, hata(400, 'node_girdi', METIN.girdi('talep no')));
     const db = require('../db/index.cjs');
     let row;
+    const sut = await sutunlar(db);
     try {
-      const r = await db.query(`SELECT ${SUTUNLAR} FROM crypto_hub_node_changes WHERE id = $1`, [id]);
+      const r = await db.query(`SELECT ${sut} FROM crypto_hub_node_changes WHERE id = $1`, [id]);
       row = r && r.rows && r.rows[0];
     } catch (e) {
       return res.status(503).json({ ok: false, message: 'Talep okunamadı, lütfen tekrar deneyin.' });
@@ -1568,7 +1668,7 @@ function initCryptoHubNode(router, deps) {
     if (!row.kapandi_at) {
       try {
         if (await satiriIlerlet(db, row, 'ekran')) {
-          const r2 = await db.query(`SELECT ${SUTUNLAR} FROM crypto_hub_node_changes WHERE id = $1`, [id]);
+          const r2 = await db.query(`SELECT ${sut} FROM crypto_hub_node_changes WHERE id = $1`, [id]);
           if (r2 && r2.rows && r2.rows[0]) row = r2.rows[0];
         }
       } catch (e) {
@@ -1580,12 +1680,15 @@ function initCryptoHubNode(router, deps) {
       try {
         const t = await require('../smart/store.cjs').getTicket(Number(row.smart_ticket_id));
         if (t) {
-          const c = zamanMs(t.createdAt);
+          // Poller'in TIMEOUT yazacagi an: tek kaynak deadline.cjs.
+          const { deadline } = require('../smart/deadline.cjs').talepSonTarihi(t, require('../smart/config.cjs').getConfig());
           smart = {
             status: t.status,
             statusName: t.smartStateName || null,
-            sonTarih: Number.isFinite(c) ? new Date(c + N.ONAY_DK * 60000).toISOString() : null,
+            sonTarih: deadline ? deadline.toISOString() : null,
             hata: t.errorMessage || null,
+            approvedAt: tarih(t.approvedAt),
+            pencereBekliyor: onayliBekliyor(t),
           };
         }
       } catch {
@@ -1623,8 +1726,9 @@ function initCryptoHubNode(router, deps) {
     }
     const db = require('../db/index.cjs');
     let row;
+    const sut = await sutunlar(db);
     try {
-      const r = await db.query(`SELECT ${SUTUNLAR} FROM crypto_hub_node_changes WHERE id = $1`, [id]);
+      const r = await db.query(`SELECT ${sut} FROM crypto_hub_node_changes WHERE id = $1`, [id]);
       row = r && r.rows && r.rows[0];
     } catch {
       return res.status(503).json({ ok: false, message: 'Talep okunamadı, lütfen tekrar deneyin.' });
@@ -1701,13 +1805,26 @@ function initCryptoHubNode(router, deps) {
     }
     let son = row;
     try {
-      const r2 = await db.query(`SELECT ${SUTUNLAR} FROM crypto_hub_node_changes WHERE id = $1`, [id]);
+      const r2 = await db.query(`SELECT ${sut} FROM crypto_hub_node_changes WHERE id = $1`, [id]);
       if (r2 && r2.rows && r2.rows[0]) son = r2.rows[0];
     } catch {
       /* eski satir doner */
     }
     res.json({ ok: true, talep: talepOzeti(son), smart });
   });
+}
+
+/** Onay gelmis, is henuz sahiplenilmemis bilet. */
+const onayliBekliyor = (t) => !!t && t.status === 'PENDING' && !!t.approvedAt;
+
+/** Liste satiri icin: yalniz OCO'lu acik satirda bilet okunur. Okunamazsa "onay bekliyor" kalir. */
+async function pencereBekleyenMi(r) {
+  if (!r.oco_no || r.smart_ticket_id == null || r.durum !== 'BEKLIYOR') return false;
+  try {
+    return onayliBekliyor(await require('../smart/store.cjs').getTicket(Number(r.smart_ticket_id)));
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -1728,8 +1845,64 @@ function esOnerisi(tenant, grupId, talepId) {
 }
 
 /**
+ * OCO kapisi (D8). Satir yazilmadan ve Smart'a gidilmeden once calisir; onizlemede calismaz.
+ * Karar ocoPencereKarari'nda; red metinleri burada.
+ * @returns {Promise<{ok: true, oco: object}|{ok: false, status: number, blocked: string, message: string, ek: object}>}
+ */
+async function ocoKapisi({ db, ocoNumber, smartMod, simdi = new Date() }) {
+  const red = (status, blocked, message, ek = { ocoRequired: true }) => ({ ...hata(status, blocked, message), ek });
+  if (!(await ocoKolonlariVarMi(db))) return red(503, 'node_oco_kolon_yok', METIN.ocoKolonYok, {});
+  const numara = String(ocoNumber == null ? '' : ocoNumber).trim();
+  if (!numara) return red(400, 'node_oco_gerekli', METIN.ocoGerekli);
+  const okunan = await require('../oco/pencere-oku.cjs').ocoPenceresiOku(numara, { now: simdi });
+  if (!okunan.ok) return red(okunan.status, 'node_oco_okunamadi', okunan.message);
+  const w = okunan.pencere;
+  const { fmt } = require('../oco/window.cjs');
+  const { kod, sonBaslamaMs } = N.ocoPencereKarari({
+    basMs: w.windowStart.getTime(),
+    sonMs: w.windowEnd.getTime(),
+    simdiMs: simdi.getTime(),
+    smartKapali: smartMod === 'kapali',
+  });
+  const sonBaslamaText = fmt(new Date(sonBaslamaMs));
+  if (kod === 'gecersiz') return red(400, 'node_oco_gecersiz', METIN.ocoGecersiz);
+  if (kod === 'gecti') return red(400, 'node_oco_gecti', w.message, { ocoExpired: true });
+  if (kod === 'kisa') return red(400, 'node_oco_kisa', METIN.ocoKisa);
+  if (kod === 'son_pay') return red(400, 'node_oco_son_baslama', METIN.ocoSonPay(sonBaslamaText));
+  if (kod === 'ufuk') return red(400, 'node_oco_ufuk', METIN.ocoUfuk(w.windowStartText));
+  if (kod === 'bekle_kapali') return red(400, 'node_oco_pencere_bekleniyor', METIN.ocoBekleKapali(w.windowStartText));
+  return {
+    ok: true,
+    oco: {
+      ocoNumber: okunan.ocoNumber,
+      windowStart: w.windowStart,
+      windowEnd: w.windowEnd,
+      windowStartText: w.windowStartText,
+      windowEndText: w.windowEndText,
+      sonBaslamaMs,
+      sonBaslamaText,
+      bekleyecek: kod === 'bekle',
+    },
+  };
+}
+
+/** Denetim alanlari; OCO'suz talepte bos (denetim satiri degismez). */
+function ocoDenetim(oco) {
+  if (!oco) return {};
+  return {
+    ocoNo: oco.ocoNumber,
+    pencere: {
+      bas: oco.windowStart.toISOString(),
+      son: oco.windowEnd.toISOString(),
+      sonBaslama: new Date(oco.sonBaslamaMs).toISOString(),
+    },
+  };
+}
+
+/**
  * POST /node-change (ve onizleme). Sira sozlesme 9.1 ile BIREBIR. Govde: {tenant, grup, yeni,
- * bosOnay?, gerekce, bilesenler?, tutarsizlikOnay?, onayMetni?, esTalepId?, onaysizKabul?}.
+ * bosOnay?, gerekce, bilesenler?, tutarsizlikOnay?, onayMetni?, esTalepId?, onaysizKabul?,
+ * ocoNumber?}.
  * Onizleme deger ALMAZ.
  * @returns {Promise<{status:number, body:object}>}
  */
@@ -1737,7 +1910,13 @@ async function talepAc(req, { nodeYetkisi, kullanici, onizleme }) {
   const body = (req && req.body) || {};
   const red = (h) => ({
     status: h.status,
-    body: { ok: false, blocked: h.blocked, message: h.message, ...(h.rol ? { rol: h.rol, neden: h.neden } : {}) },
+    body: {
+      ok: false,
+      blocked: h.blocked,
+      message: h.message,
+      ...(h.rol ? { rol: h.rol, neden: h.neden } : {}),
+      ...(h.ek || {}),
+    },
   });
   // 1
   const tenant = tenantOf(body.tenant);
@@ -1825,7 +2004,7 @@ async function talepAc(req, { nodeYetkisi, kullanici, onizleme }) {
     }
     let r = null;
     try {
-      r = await db.query(`SELECT ${SUTUNLAR} FROM crypto_hub_node_changes WHERE id = $1`, [esId]);
+      r = await db.query(`SELECT ${SUTUNLAR_OCOSUZ} FROM crypto_hub_node_changes WHERE id = $1`, [esId]);
     } catch {
       return { status: 503, body: { ok: false, message: 'İstanbul talebi okunamadı, lütfen tekrar deneyin.' } };
     }
@@ -1892,6 +2071,14 @@ async function talepAc(req, { nodeYetkisi, kullanici, onizleme }) {
     }
   }
 
+  // 8a - OCO kapisi (D8)
+  let oco = null;
+  if (karar.ocoGerekli) {
+    const k = await ocoKapisi({ db, ocoNumber: body.ocoNumber, smartMod });
+    if (!k.ok) return red(k);
+    oco = k.oco;
+  }
+
   // 8b - sifreleme anahtari kapisi (sozlesme 4.2/5): production'da anahtar yoksa satir yazilmaz,
   // Smart acilmaz (fail-closed). Dev/test'te encryptSecretValue anahtarsiz duz doner (mevcut
   // yardimci davranisi). Deger YALNIZ bu kolonda; pending_launch_json'da yer tutucu ''.
@@ -1911,8 +2098,9 @@ async function talepAc(req, { nodeYetkisi, kullanici, onizleme }) {
   // 9 - kilit: filtreli tekil indeks
   let talepId;
   try {
+    // OCO kolonlari yalniz OCO'lu talepte yazilir: OCO'suz INSERT eski semada da calisir.
     const r = await db.query(
-      `INSERT INTO crypto_hub_node_changes (tenant_key, grup, kilit, lokasyon, eski_ozet, yeni_ozet, hedefler, plan_sha, gerekce, username, durum, es_talep_id, yeni_deger_secret, sonuc_kod) OUTPUT INSERTED.id VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'ACILIYOR', $11, $12, $13)`,
+      `INSERT INTO crypto_hub_node_changes (tenant_key, grup, kilit, lokasyon, eski_ozet, yeni_ozet, hedefler, plan_sha, gerekce, username, durum, es_talep_id, yeni_deger_secret, sonuc_kod${oco ? ', oco_no, oco_pencere_bas, oco_pencere_son' : ''}) OUTPUT INSERTED.id VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'ACILIYOR', $11, $12, $13${oco ? ', $14, $15, $16' : ''})`,
       [
         tenant.key,
         grupId,
@@ -1927,6 +2115,7 @@ async function talepAc(req, { nodeYetkisi, kullanici, onizleme }) {
         esTalep ? esTalep.id : null,
         yeniSifreli,
         dogrudan ? ONAYSIZ_KOD : null,
+        ...(oco ? [oco.ocoNumber, oco.windowStart, oco.windowEnd] : []),
       ],
     );
     talepId = Number(r && r.rows && r.rows[0] && r.rows[0].id);
@@ -1988,12 +2177,12 @@ async function talepAc(req, { nodeYetkisi, kullanici, onizleme }) {
   tamExtraVars = { ...tamExtraVars, crypto_hub_node_yeni_b64: '' };
   if (dogrudan) {
     return dogrudanBaslat({
-      req, db, tenant, grupId, plani, gerekce, username, talepId, esTalep, serverId, templateId, tamExtraVars, kapat,
+      req, db, tenant, grupId, plani, gerekce, username, talepId, esTalep, serverId, templateId, tamExtraVars, kapat, oco,
     });
   }
   // 12
   const sablonVarsayilan = await sablonVarsayilaniOku();
-  const ozet = ozetKur({ tenant, plani, gerekce, username, esTalep, kaynak: smartKaynak });
+  const ozet = ozetKur({ tenant, plani, gerekce, username, esTalep, kaynak: smartKaynak, oco });
   // 13
   let opened;
   try {
@@ -2016,8 +2205,17 @@ async function talepAc(req, { nodeYetkisi, kullanici, onizleme }) {
       // launchOncesi: runner poller geri cagrisindaki TEK kanca (launchOncesiDegerEkle).
       // overrides: {} bekleyen paketteki smartApproval'i ezer: cozulmus token pending_launch_json'a
       // (duz metin) yazilmaz. Token yalniz createTicket'e gider; poller overrides.smartApproval okumaz.
+      // Pencereli bilette onayZamanAsimiDk VERILMEZ: sure kurali son baslamadan once TIMEOUT yazardi.
       pendingLaunchExtras: {
-        onayZamanAsimiDk: N.ONAY_DK,
+        ...(oco
+          ? {
+              ocoNumber: oco.ocoNumber,
+              ocoWindowStartIso: oco.windowStart.toISOString(),
+              ocoWindowEndIso: oco.windowEnd.toISOString(),
+              sonBaslamaIso: new Date(oco.sonBaslamaMs).toISOString(),
+              pencereBekle: true,
+            }
+          : { onayZamanAsimiDk: N.ONAY_DK }),
         yutmaKorumasi: true,
         launchOncesi: 'crypto_hub_node',
         overrides: {},
@@ -2117,6 +2315,7 @@ async function talepAc(req, { nodeYetkisi, kullanici, onizleme }) {
         ticketId: opened.ticketId,
         externalTicketId: opened.externalTicketId,
         esTalepId: esTalep ? esTalep.id : null,
+        ...ocoDenetim(oco),
       }),
     });
   } catch {
@@ -2129,8 +2328,18 @@ async function talepAc(req, { nodeYetkisi, kullanici, onizleme }) {
     ticketId: opened.ticketId,
     externalTicketId: opened.externalTicketId,
     talepId,
-    onayZamanAsimiDk: N.ONAY_DK,
-    message: METIN.talepAcildi(opened.externalTicketId),
+    ...(oco
+      ? {
+          oco: {
+            ocoNumber: oco.ocoNumber,
+            windowStartIso: oco.windowStart.toISOString(),
+            windowEndIso: oco.windowEnd.toISOString(),
+            sonBaslamaIso: new Date(oco.sonBaslamaMs).toISOString(),
+            bekleyecek: oco.bekleyecek,
+          },
+          message: METIN.talepAcildiOco(opened.externalTicketId, oco.sonBaslamaText),
+        }
+      : { onayZamanAsimiDk: N.ONAY_DK, message: METIN.talepAcildi(opened.externalTicketId) }),
   };
   const oneri = esOnerisi(tenant, grupId, talepId);
   if (oneri) out.esTalepOnerisi = oneri;
@@ -2157,7 +2366,7 @@ function kesinRet(e) {
  * @returns {Promise<{status: number, body: object}>}
  */
 async function dogrudanBaslat({
-  req, db, tenant, grupId, plani, gerekce, username, talepId, esTalep, serverId, templateId, tamExtraVars, kapat,
+  req, db, tenant, grupId, plani, gerekce, username, talepId, esTalep, serverId, templateId, tamExtraVars, kapat, oco = null,
 }) {
   const ret = (status, blocked, message) => ({ status, body: { ok: false, blocked, message, talepId } });
   // (a) Preflight/prefill suresince ayar degismis olabilir; kiraci yine sabit listeden.
@@ -2171,6 +2380,15 @@ async function dogrudanBaslat({
   if (!SA.smartKapaliMi(tenantOf(tenant.key), blob)) {
     await kapat('HATA', 'DOGRUDAN_AYAR', bosSonuc({ hata: METIN.smartDegisti }));
     return ret(409, 'crypto_node_smart_degisti', METIN.smartDegisti);
+  }
+  // Ayar bu arada OCO'yu acmis ya da preflight son baslamayi gecirmis olabilir.
+  if (!oco && SA.ocoGerekliMi(tenantOf(tenant.key), blob)) {
+    await kapat('HATA', 'DOGRUDAN_AYAR', bosSonuc({ hata: METIN.ocoDegisti }));
+    return ret(409, 'crypto_node_smart_degisti', METIN.ocoDegisti);
+  }
+  if (oco && Date.now() > oco.sonBaslamaMs) {
+    await kapat('HATA', 'DOGRUDAN_AYAR', bosSonuc({ hata: METIN.ocoSonPay(oco.sonBaslamaText) }));
+    return ret(409, 'node_oco_son_baslama', METIN.ocoSonPay(oco.sonBaslamaText));
   }
   // (b) Plan / zarf / sha denetimleri poller yoluyla ayni kanca.
   let hazir;
@@ -2208,6 +2426,7 @@ async function dogrudanBaslat({
         yeniOzet: plani.yeniOzet,
         yeniSha: plani.newSha,
         gerekce,
+        ...ocoDenetim(oco),
       }),
     });
   } catch {
@@ -2296,6 +2515,7 @@ async function dogrudanBaslat({
         onaysiz: true,
         awxJobId: jobId,
         esTalepId: esTalep ? esTalep.id : null,
+        ...ocoDenetim(oco),
       }),
     });
   } catch {
@@ -2408,6 +2628,32 @@ async function launchOncesiDegerEkle(ticket, { db } = {}) {
   };
 }
 
+/**
+ * Poller geri cagrisinda kancadan ONCE: pencereli bilet yalniz acik pencerede ve son baslamaya kadar
+ * baslar. 'schedule' sonucu da rettir; poller pencereyi bekler, AWX schedule kurulmaz. Pencere alani
+ * olmayan bilet (OCO'suz talep) gecer. Throw eden bilet ERROR olur, is baslamaz.
+ * @param {object} pl pendingLaunch
+ * @param {Date} [simdi]
+ */
+function launchPenceresiDenetle(pl, simdi = new Date()) {
+  const { ocoWindowStartIso, ocoWindowEndIso, sonBaslamaIso, pencereBekle } = pl || {};
+  if (!ocoWindowStartIso && !ocoWindowEndIso) return;
+  if (!ocoWindowStartIso || !ocoWindowEndIso || pencereBekle !== true) {
+    throw new Error(METIN.ocoPaketEksik);
+  }
+  const plan = require('../oco/window.cjs').nextRunAt({
+    windowStart: new Date(ocoWindowStartIso),
+    windowEnd: new Date(ocoWindowEndIso),
+    now: simdi,
+  });
+  if (plan.mode === 'none') throw new Error(plan.reason);
+  if (plan.mode !== 'now') throw new Error(METIN.ocoAcilmadi);
+  const son = new Date(sonBaslamaIso).getTime();
+  if (!Number.isFinite(son) || simdi.getTime() > son) {
+    throw new Error(METIN.ocoSonGecti);
+  }
+}
+
 /** Hata metninden bilinen degerleri cikarir (Python `temizle` aynasi): uzun olan once. */
 function gizliTemizle(metin, gizliler) {
   let s = String(metin == null ? '' : metin);
@@ -2435,6 +2681,9 @@ module.exports = {
   okumaKarari,
   okumaKaydet,
   indeksVarMi,
+  ocoKolonlariVarMi,
+  ocoKapisi,
+  launchPenceresiDenetle,
   talepOzeti,
   talepKapat,
   isSonucu,

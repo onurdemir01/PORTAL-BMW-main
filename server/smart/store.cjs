@@ -21,6 +21,8 @@ function rowToTicket(r) {
     errorMessage: r.error_message,
     cancelNote: r.cancel_note ?? null,
     cancelledBy: r.cancelled_by ?? null,
+    // Onay gelmis ama pencere bekleniyor (Crypto Hub D8). Bilet PENDING kalir; alan yalniz izdir.
+    approvedAt: r.approved_at ?? null,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
     resolvedAt: r.resolved_at,
@@ -142,6 +144,19 @@ async function claimForLaunch(id) {
   return rows[0] ? rowToTicket(rows[0]) : null;
 }
 
+// ONAY GELDI, PENCERE BEKLENIYOR (2026-11-06, Crypto Hub D8). Durum PENDING kalir ki iptal CAS'i ve
+// poller'in sure kontrolu aynen calissin; onay ani yalniz bir kez yazilir.
+async function markApproved(id, smartStateName) {
+  const { rows } = await db.query(
+    `UPDATE smart_tickets
+       SET approved_at = GETUTCDATE(), smart_state_name = $2, updated_at = GETUTCDATE()
+     OUTPUT INSERTED.id
+     WHERE id = $1 AND status = 'PENDING' AND approved_at IS NULL`,
+    [id, smartStateName || null]
+  );
+  return rows.length > 0;
+}
+
 // KOSULLU durum yazimi. `expected` verilirse yalnizca bilet O DURUMDAYKEN yazar ve
 // yazip yazmadigini DONDURUR. Kosulsuz `UPDATE ... WHERE id=$1` iptal/zaman asimi gibi
 // arada olusan sonuclari sessizce eziyordu.
@@ -190,4 +205,4 @@ async function findByOcoRecordIds(ids) {
   return out;
 }
 
-module.exports = { createTicket, getTicket, listPending, listByUsername, listAll, statusSummary, cancelTicket, claimForLaunch, markState, findByOcoRecordIds };
+module.exports = { createTicket, getTicket, listPending, listByUsername, listAll, statusSummary, cancelTicket, claimForLaunch, markApproved, markState, findByOcoRecordIds };

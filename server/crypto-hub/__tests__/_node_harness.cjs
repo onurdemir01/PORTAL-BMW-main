@@ -20,6 +20,7 @@ const KOK = path.join(__dirname, '..', '..');
 const yol = (p) => require.resolve(path.join(KOK, p));
 const REAL_REDACT = require('../../ansible/runner.cjs').redactExtraVarsForHistory;
 const GERCEK_OPSX_CFG = require('../../opsx/config.cjs');
+const GERCEK_OCO = require('../../oco/client.cjs');
 
 const hex = (s) => crypto.createHash('sha256').update(String(s)).digest('hex');
 const SIR = 'SIRSIR123';
@@ -161,6 +162,17 @@ function yeniDurum() {
     casKayip: false,
     // Sahiplenme UPDATE'inden hemen once calisir: kanca ile CAS arasindaki yarisi benzetir.
     casOncesi: null,
+    // OCO: {basMs, sonMs} kaydi; null = tarih tasimayan kayit. ocoHata servis hatasi benzetir.
+    oco: null,
+    ocoHata: null,
+    ocoCagri: [],
+    ocoKolon: true,
+    // Kismi sema: bu kolonlar INFORMATION_SCHEMA yanitindan cikar.
+    ocoKolonEksik: [],
+    // Sayi kadar INFORMATION_SCHEMA okumasi duser (Infinity: kalici); sema kilidi / zaman asimi benzetir.
+    ocoKolonHata: 0,
+    // Poller yolu: Smart'in donecegi durum.
+    smartDurum: { completed: false, rejected: false, stateName: 'Onay Bekliyor' },
     // portal_config_blobs 'crypto-hub:smart' satiri; null = satir yok.
     cryptoSmart: null,
     cryptoSmartBozuk: false,
@@ -182,7 +194,19 @@ function yeniDurum() {
 const SUTUN_SIRASI = [
   'tenant_key', 'grup', 'kilit', 'lokasyon', 'eski_ozet', 'yeni_ozet',
   'hedefler', 'plan_sha', 'gerekce', 'username', 'es_talep_id', 'yeni_deger_secret', 'sonuc_kod',
+  'oco_no', 'oco_pencere_bas', 'oco_pencere_son',
 ];
+
+const OCO_KOLONLAR = ['oco_no', 'oco_pencere_bas', 'oco_pencere_son'];
+/** Gercek SQL gibi: secilmeyen kolon satirda yoktur, secilen bos kolon null gelir. */
+function izdusum(s, r) {
+  const y = { ...r };
+  for (const k of OCO_KOLONLAR) {
+    if (s.includes(k)) y[k] = r[k] === undefined ? null : r[k];
+    else delete y[k];
+  }
+  return y;
+}
 
 function dbSorgu(d, sqlText, p) {
   const s = String(sqlText).replace(/\s+/g, ' ').trim();
@@ -206,6 +230,19 @@ function dbSorgu(d, sqlText, p) {
   }
   if (/FROM sys\.indexes WHERE name = 'UX_chnc_acik'/.test(s)) {
     return ok(d.indeks && /is_unique = 1/.test(s) && /has_filter = 1/.test(s) ? [{ v: 1 }] : []);
+  }
+  if (/FROM INFORMATION_SCHEMA\.COLUMNS/.test(s)) {
+    if (d.ocoKolonHata > 0) {
+      d.ocoKolonHata -= 1;
+      return Promise.reject(new Error('Timeout: Request failed to complete in 15000ms'));
+    }
+    return ok(
+      d.ocoKolon
+        ? [...OCO_KOLONLAR, 'approved_at']
+            .filter((k) => s.includes(`'${k}'`) && !d.ocoKolonEksik.includes(k))
+            .map((COLUMN_NAME) => ({ COLUMN_NAME }))
+        : [],
+    );
   }
   if (/^INSERT INTO ansible_job_history/.test(s)) {
     d.history.push({ username: p[0], awx_server_id: p[1], template_id: p[2], template_name: p[3], job_id: p[4], status: p[5], params: p[6] });
@@ -293,6 +330,10 @@ function dbSorgu(d, sqlText, p) {
       .sort((a, b) => b.id - a.id)[0];
     return ok(r ? [{ id: r.id, external_ticket_id: r.external_ticket_id }] : []);
   }
+  // Eski sema: kolon yokken adini anan sorgu MSSQL gibi duser.
+  if (!d.ocoKolon && /\boco_(no|pencere_bas|pencere_son)\b/.test(s)) {
+    return Promise.reject(new Error("Invalid column name 'oco_no'."));
+  }
   if (/^SELECT TOP 1 id, external_ticket_id FROM crypto_hub_node_changes WHERE tenant_key = \$1 AND kilit = \$2 AND kapandi_at IS NULL/.test(s)) {
     const r = d.rows.find((x) => x.tenant_key === p[0] && x.kilit === p[1] && x.kapandi_at == null);
     return ok(r ? [{ ...r }] : []);
@@ -310,10 +351,10 @@ function dbSorgu(d, sqlText, p) {
   }
   if (/FROM crypto_hub_node_changes WHERE id = \$1$/.test(s)) {
     const r = d.rows.find((x) => x.id === Number(p[0]));
-    return ok(r ? [{ ...r }] : []);
+    return ok(r ? [izdusum(s, r)] : []);
   }
   if (/FROM crypto_hub_node_changes WHERE tenant_key = \$1 AND kapandi_at IS NULL$/.test(s)) {
-    return ok(d.rows.filter((x) => x.tenant_key === p[0] && x.kapandi_at == null).map((x) => ({ ...x })));
+    return ok(d.rows.filter((x) => x.tenant_key === p[0] && x.kapandi_at == null).map((x) => izdusum(s, x)));
   }
   if (/^SELECT TOP 20 .* FROM crypto_hub_node_changes WHERE tenant_key = \$1 ORDER BY/.test(s)) {
     return ok(
@@ -321,11 +362,11 @@ function dbSorgu(d, sqlText, p) {
         .filter((x) => x.tenant_key === p[0])
         .sort((a, b) => b.id - a.id)
         .slice(0, 20)
-        .map((x) => ({ ...x })),
+        .map((x) => izdusum(s, x)),
     );
   }
   if (/FROM crypto_hub_node_changes WHERE kapandi_at IS NULL$/.test(s)) {
-    return ok(d.rows.filter((x) => x.kapandi_at == null).map((x) => ({ ...x })));
+    return ok(d.rows.filter((x) => x.kapandi_at == null).map((x) => izdusum(s, x)));
   }
   return ok([], 0);
 }
@@ -446,6 +487,10 @@ async function kur(o = {}) {
         d.smartCreated.push({ flowKey, username, metadata, integrationKey, ticketId });
         return { ticketId };
       },
+      async checkTicketStatus() {
+        if (d.smartDurumHata) throw new Error(d.smartDurumHata);
+        return d.smartDurum;
+      },
     },
     'smart/store.cjs': {
       async createTicket({ externalTicketId, username, awxServerId, awxTemplateId, flowKey, pendingLaunch }) {
@@ -486,10 +531,63 @@ async function kur(o = {}) {
           awxServerId: t.awx_server_id,
           awxJobId: t.awx_job_id,
           errorMessage: t.error || null,
+          approvedAt: t.approved_at || null,
           createdAt: t.created_at,
           pendingLaunch: JSON.parse(t.pending_launch_json),
         };
       },
+      // Poller yolu: gercek smart/poller.cjs bu dort yordamla bileti ilerletir.
+      async listPending() {
+        return d.smartTickets
+          .filter((t) => t.status === 'PENDING')
+          .map((t) => ({
+            id: t.id,
+            externalTicketId: t.external_ticket_id,
+            awxServerId: t.awx_server_id,
+            awxTemplateId: t.awx_template_id,
+            status: t.status,
+            smartStateName: t.state || null,
+            approvedAt: t.approved_at || null,
+            createdAt: t.created_at,
+            pendingLaunch: JSON.parse(t.pending_launch_json),
+          }));
+      },
+      async markApproved(id, stateName) {
+        const t = d.smartTickets.find((x) => x.id === Number(id) && x.status === 'PENDING' && !x.approved_at);
+        if (!t) return false;
+        t.approved_at = new Date();
+        t.state = stateName || null;
+        return true;
+      },
+      async claimForLaunch(id) {
+        const t = d.smartTickets.find((x) => x.id === Number(id) && x.status === 'PENDING');
+        if (!t) return null;
+        t.status = 'LAUNCHING';
+        return { id: t.id };
+      },
+      async markState(id, { status, smartStateName, awxJobId, errorMessage, expected }) {
+        const t = d.smartTickets.find((x) => x.id === Number(id));
+        if (!t || (expected && ![].concat(expected).includes(t.status))) return false;
+        Object.assign(t, { status, state: smartStateName || null, awx_job_id: awxJobId || null, error: errorMessage || null });
+        return true;
+      },
+    },
+    'oco/client.cjs': {
+      async getChangeOrder(numara) {
+        d.sira.push('oco');
+        d.ocoCagri.push(numara);
+        if (d.ocoHata) throw d.ocoHata;
+        const tarih = (ms) => `/Date(${ms}+0300)/`;
+        return {
+          payload: {
+            GetChangeOrderByWfInstanceIdResult: {
+              Result: d.oco ? { PlannedStartDate: tarih(d.oco.basMs), PlannedEndDate: tarih(d.oco.sonMs) } : {},
+            },
+          },
+          result: {},
+        };
+      },
+      httpStatus: GERCEK_OCO.httpStatus,
     },
     'opsx/config.cjs': {
       getConfig: async () => d.opsxCfg,
@@ -523,7 +621,7 @@ async function kur(o = {}) {
     require.cache[r] = { id: r, filename: r, loaded: true, exports: exp };
   }
   // GERCEK olup sahteleri kullanmasi gerekenler taze yuklenir.
-  const taze = ['crypto-hub/index.cjs', 'crypto-hub/resources.cjs', 'crypto-hub/node.cjs', 'crypto-hub/smart-ayar.cjs', 'opsx/prod-approval.cjs', 'smart/metadata.cjs'].map(yol);
+  const taze = ['crypto-hub/index.cjs', 'crypto-hub/resources.cjs', 'crypto-hub/node.cjs', 'crypto-hub/smart-ayar.cjs', 'opsx/prod-approval.cjs', 'smart/metadata.cjs', 'smart/poller.cjs'].map(yol);
   const tazeOnceki = new Map(taze.map((r) => [r, require.cache[r]]));
   for (const r of taze) delete require.cache[r];
   const mod = require('../index.cjs');
@@ -617,7 +715,34 @@ async function kur(o = {}) {
     return NODE.launchOncesiDegerEkle({ id: t.id, pendingLaunch: JSON.parse(t.pending_launch_json) });
   }
 
-  return { d, istek, okumaVer, bitir, kapat, kanca, mod, NODE, SA, RES };
+  /** Gercek poller'in bir turu. Geri cagri runner'daki sirayi izler: pencere karari, kanca, launch. */
+  async function pollerTuru() {
+    const poller = require('../../smart/poller.cjs');
+    const eski = {};
+    for (const k of ['SMART_API_URL', 'SMART_API_USERNAME', 'SMART_API_PASSWORD']) {
+      eski[k] = process.env[k];
+      process.env[k] = 'test';
+    }
+    poller.startPoller(async (ticket) => {
+      NODE.launchPenceresiDenetle(ticket.pendingLaunch);
+      const k = await NODE.launchOncesiDegerEkle(ticket);
+      const jobId = d.nextJob++;
+      d.jobs.set(jobId, { status: 'running', artifacts: {} });
+      d.ssLaunches.push({ serverId: ticket.awxServerId, templateId: ticket.awxTemplateId, extraVars: k.extraVars, jobId });
+      return { jobId };
+    });
+    poller.stopPoller();
+    try {
+      await poller.tick();
+    } finally {
+      for (const [k, v] of Object.entries(eski)) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+    }
+  }
+
+  return { d, istek, okumaVer, bitir, kapat, kanca, pollerTuru, mod, NODE, SA, RES };
 }
 
 const K = {
@@ -629,6 +754,9 @@ const K = {
 };
 
 /** Talep govdesi: `yeni` verilmezse grubun YENI_GOVDE degerleri. */
+/** Simdiden dakika olarak OCO penceresi. */
+const ocoPencere = (basDk, sonDk) => ({ basMs: Date.now() + basDk * 60000, sonMs: Date.now() + sonDk * 60000 });
+
 const GOVDE = (o = {}) => {
   const grup = o.grup || G_EVM;
   return {
@@ -641,5 +769,5 @@ const GOVDE = (o = {}) => {
 };
 
 module.exports = {
-  kur, satirlar, hex, SIR, T, G_EVM, G_BTC, G_LTC, G_DOT, D, SHA, VAL, YENI, YENI_GOVDE, URL_A, URL_B, K, GOVDE, dbSorgu, yeniDurum,
+  kur, satirlar, hex, SIR, T, G_EVM, G_BTC, G_LTC, G_DOT, D, SHA, VAL, YENI, YENI_GOVDE, URL_A, URL_B, K, GOVDE, ocoPencere, dbSorgu, yeniDurum,
 };

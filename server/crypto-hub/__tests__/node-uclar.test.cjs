@@ -113,7 +113,8 @@ test('N6b prod kiracida ad yazdirma (prod acik benzetimi)', () =>
     N.nodeAcikMi = (t) => !!t && t.app === 'metaco';
     try {
       h.okumaVer({}, Date.now(), 'metaco_das_prod');
-      const g = GOVDE({ tenant: 'metaco_das_prod' });
+      h.d.oco = H.ocoPencere(-10, 120);
+      const g = GOVDE({ tenant: 'metaco_das_prod', ocoNumber: '22502813' });
       let r = await h.istek('POST', '/node-change', K.nodecu, { ...g, onayMetni: 'yanlis' });
       assert.equal(r.status, 400);
       assert.equal(r.body.blocked, 'node_onay_metni');
@@ -889,7 +890,8 @@ test('N6c PS6 Ankara talebi Istanbul bagini SUNUCUDA kurar (istemci esTalepId go
     N.nodeAcikMi = (t) => !!t && t.app === 'metaco';
     try {
       h.okumaVer({}, Date.now(), 'metaco_das_prod');
-      const g = GOVDE({ tenant: 'metaco_das_prod', onayMetni: G_EVM });
+      h.d.oco = H.ocoPencere(-10, 120);
+      const g = GOVDE({ tenant: 'metaco_das_prod', onayMetni: G_EVM, ocoNumber: '22502813' });
       const ist = (await h.istek('POST', '/node-change', K.nodecu, g)).body;
       assert.equal(ist.ok, true, JSON.stringify(ist));
       h.okumaVer({}, Date.now(), 'metaco_das_prod_ank');
@@ -900,7 +902,7 @@ test('N6c PS6 Ankara talebi Istanbul bagini SUNUCUDA kurar (istemci esTalepId go
       assert.equal(ank.es_talep_id, ist.talepId, 'Ankara talebi Istanbul talebine baglanmadi');
       assert.match(h.d.smartCreated[1].metadata.ACIKLAMA, new RegExp(`İstanbul talebi: Smart #${ist.externalTicketId}`));
       // Istanbul kiracisinda ve baska grupta bag kurulmaz.
-      const b2 = await h.istek('POST', '/node-change', K.nodecu, GOVDE({ tenant: 'metaco_das_prod', grup: G_BTC, onayMetni: G_BTC }));
+      const b2 = await h.istek('POST', '/node-change', K.nodecu, GOVDE({ tenant: 'metaco_das_prod', grup: G_BTC, onayMetni: G_BTC, ocoNumber: '22502813' }));
       assert.equal(h.d.rows.find((x) => x.id === b2.body.talepId).es_talep_id, null);
     } finally {
       N.nodeAcikMi = once;

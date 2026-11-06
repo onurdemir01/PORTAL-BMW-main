@@ -3538,9 +3538,13 @@ function initAnsibleRunner(app) {
       let launchExtraVars = extraVars;
       let gizliler = [];
       let nodeMod = null;
-      if (ticket.pendingLaunch && ticket.pendingLaunch.launchOncesi === 'crypto_hub_node') {
-        if (ocoWindowStartIso || ocoWindowEndIso) throw new Error('Crypto Hub node talebi OCO penceresiyle baslatilamaz.');
+      // Crypto Hub bileti asagidaki AWX schedule dalina GIRMEZ: schedule extraVars'i yer tutucuyla
+      // kaldirirdi, launchExtraVars ise degeri AWX schedule'a yazardi. Pencere karari kancadan once:
+      // pencere disinda sifreli deger hic cozulmez.
+      const cryptoBilet = !!ticket.pendingLaunch && ticket.pendingLaunch.launchOncesi === 'crypto_hub_node';
+      if (cryptoBilet) {
         nodeMod = require('../crypto-hub/node.cjs');
+        nodeMod.launchPenceresiDenetle(ticket.pendingLaunch);
         ({ extraVars: launchExtraVars, gizliler } = await nodeMod.launchOncesiDegerEkle(ticket));
       }
 
@@ -3548,7 +3552,7 @@ function initAnsibleRunner(app) {
       // aciliyor (15:00), onay da o sirada geliyor. Onay geldiginde pencere HENUZ ACILMADIYSA
       // is AWX'te o ana zamanlanir — personelin gece tekrar gelmesi gerekmez. Onay kapisi
       // ZATEN GECILDIGI icin AWX-native zamanlama guvenlidir.
-      if (ocoWindowStartIso && ocoWindowEndIso) {
+      if (!cryptoBilet && ocoWindowStartIso && ocoWindowEndIso) {
         const ocoWindow = require('../oco/window.cjs');
         const plan = ocoWindow.nextRunAt({ windowStart: new Date(ocoWindowStartIso), windowEnd: new Date(ocoWindowEndIso) });
         if (plan.mode === 'none') throw new Error(plan.reason);
@@ -4967,6 +4971,9 @@ function initAnsibleRunner(app) {
           endText: w.endText,
           windowStartText: w.windowStartText,
           windowEndText: w.windowEndText,
+          // Crypto Hub sihirbazi pencere kuralini ekranda ayni fonksiyonla hesaplar.
+          windowStartIso: w.windowStart.toISOString(),
+          windowEndIso: w.windowEnd.toISOString(),
           equal: w.equal,
           phase: w.phase,
           canRunNow: w.canRunNow,
@@ -5304,6 +5311,7 @@ function initAnsibleRunner(app) {
           id: t.id,
           status: t.status,
           smartStateName: t.smartStateName,
+          approvedAt: t.approvedAt ?? null,
           templateName: t.pendingLaunch?.templateName || null,
           jobId: t.awxJobId,
           errorMessage: t.errorMessage,
@@ -5397,6 +5405,7 @@ function initAnsibleRunner(app) {
           username: t.username,
           status: t.status,
           smartStateName: t.smartStateName,
+          approvedAt: t.approvedAt ?? null,
           flowKey: t.flowKey,
           templateName: t.pendingLaunch?.templateName || null,
           // Admin "hangi parametrelerle acilmis" sorusunu da bu ekrandan yanitlayabilsin;

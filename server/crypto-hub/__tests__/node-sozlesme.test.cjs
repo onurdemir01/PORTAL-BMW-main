@@ -173,15 +173,18 @@ test("CHN13 runner poller kancasi: launchOncesi === 'crypto_hub_node' performSsL
   assert.ok(son > bas);
   const dilim = src.slice(bas, son);
   const kanca = dilim.indexOf("ticket.pendingLaunch.launchOncesi === 'crypto_hub_node'");
+  const pencere = dilim.indexOf('nodeMod.launchPenceresiDenetle(ticket.pendingLaunch)');
   const ekle = dilim.indexOf('launchOncesiDegerEkle(');
-  const oco = dilim.indexOf('if (ocoWindowStartIso && ocoWindowEndIso)');
+  // D8: crypto bileti schedule dalina hic girmez; pencere karari degeri cozmeden once verilir.
+  const oco = dilim.indexOf('if (!cryptoBilet && ocoWindowStartIso && ocoWindowEndIso)');
   const launch = dilim.lastIndexOf('performSsLaunch(');
   assert.ok(kanca > 0, 'kanca kosulu yok');
-  assert.ok(ekle > kanca, 'launchOncesiDegerEkle kancadan sonra cagrilmiyor');
-  assert.ok(oco > ekle, 'kanca OCO dalindan ONCE olmali (OCO ile birlikte reddedilir)');
+  assert.ok(pencere > kanca, 'pencere karari kanca kosulunun icinde degil');
+  assert.ok(ekle > pencere, 'pencere karari degeri cozmeden ONCE verilmeli');
+  assert.ok(oco > ekle, 'schedule dali cryptoBilet ile kapali degil ya da kancadan once');
+  assert.equal(dilim.indexOf('createOcoAwxSchedule(') > oco, true, 'createOcoAwxSchedule kapali dalin disina cikti');
   assert.ok(launch > ekle, 'kanca performSsLaunch tan once degil');
   assert.match(dilim.slice(launch, launch + 400), /extraVars: launchExtraVars,/, 'launch kancanin extra_vars ini kullanmiyor');
-  assert.match(dilim, /OCO penceresiyle baslatilamaz/);
   assert.match(dilim, /nodeMod\.gizliTemizle\(e\.message, gizliler\)/, 'launch hatasi gizliTemizle den gecmiyor');
   // AWX 4xx log satiri da gizlileri bilsin (awxRequestToServer opts.gizliler, JO12).
   assert.match(dilim.slice(launch, launch + 500), /\n\s*gizliler,\n/, 'kanca gizlileri performSsLaunch a vermiyor');

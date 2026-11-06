@@ -15,12 +15,16 @@
 //     zaten calismamali.
 //   * SMART_TICKET_TIMEOUT_MINUTES ortam degiskeni verilmisse o sure (2026-10-15: yalniz
 //     OCO penceresi OLMAYAN talepte; pencereli talepte pencere sonu esastir, bkz. deadline.cjs).
+//
+// PENCERE BEKLEME (2026-11-06, Crypto Hub D8): `pendingLaunch.pencereBekle` tasiyan bilet pencere
+// acilmadan onaylanirsa sahiplenilmez; onay ani yazilir, bilet PENDING kalir, pencere acilinca sonraki
+// turda sahiplenilir. Sure kontrolu yine basta: son baslama gecince TIMEOUT.
 'use strict';
 
 const store = require('./store.cjs');
 const client = require('./client.cjs');
 const { getConfig, isConfigured } = require('./config.cjs');
-const { talepSonTarihi } = require('./deadline.cjs');
+const { talepSonTarihi, pencereBekliyorMu } = require('./deadline.cjs');
 
 let _timer = null;
 let _onApproved = null; // (ticket) => Promise<{ jobId }> — runner.cjs'in gercek AWX launch fonksiyonu
@@ -59,6 +63,15 @@ async function syncOcoRecord(ticket, outcome) {
   }
 }
 
+// Bu metin ekranda gorunur. approved_at bos olmasi "onay gelmedi" demek degildir: sure kontrolu Smart
+// sorgusundan once calisir, Portal ya da Smart API kapaliyken verilen onay hic okunmamis olabilir.
+function sonBaslamaTimeoutMetni(ticket, deadline) {
+  const saat = require('../oco/window.cjs').fmt(deadline);
+  return ticket.approvedAt
+    ? `Smart onayı alınmıştı ancak iş son başlama saatine (${saat}) kadar başlatılamadı; iş tetiklenmedi. Yeni talep açın.`
+    : `Son başlama saatine (${saat}) kadar Portal Smart onayı görmedi; iş tetiklenmedi. Onay bu sırada verilmiş olabilir, Smart'taki kaydı kontrol edin. Kayıt açık kalabilir, sonradan onaylansa da iş başlamaz; yeni talep açın.`;
+}
+
 async function tick() {
   if (!isConfigured()) return;
   if (_ticking) {
@@ -95,7 +108,7 @@ async function _tickBody() {
     // NEDEN (2026-10-15): kural deadline.cjs'e TEK KAYNAK olarak tasindi - ekrandaki
     // "Zaman asimina kalan" sayaci ayni fonksiyondan beslenir, iki hesap ayrisamaz.
     const ageMinutes = (Date.now() - new Date(ticket.createdAt).getTime()) / 60000;
-    const { timeoutMinutes, deadlineKaynak } = talepSonTarihi(ticket, cfg); // null = sinirsiz
+    const { timeoutMinutes, deadlineKaynak, deadline } = talepSonTarihi(ticket, cfg); // null = sinirsiz
     const winEndIso = ticket?.pendingLaunch?.ocoWindowEndIso;
     // NEDEN mesaj kaynaga gore (2026-10-15): eskiden `winEndIso` doluysa "pencere kapandi"
     // deniyordu - sinir genel sinirdan gelse bile. Okunamayan pencere tarihinde ise
@@ -108,11 +121,16 @@ async function _tickBody() {
     // BASLAMAZ (talep artik PENDING degil, poller bir daha bakmaz) - yeniden talep acmali.
     const islemKurali = deadlineKaynak === 'islem';
     if (timeoutMinutes != null && ageMinutes > timeoutMinutes) {
+      const sonBaslamaMesaji = pencereKapandi && ticket?.pendingLaunch?.pencereBekle === true
+        ? sonBaslamaTimeoutMetni(ticket, deadline)
+        : null;
       await store
         .markState(ticket.id, {
           status: 'TIMEOUT',
           smartStateName: ticket.smartStateName,
-          errorMessage: pencereKapandi
+          errorMessage: sonBaslamaMesaji
+            ? sonBaslamaMesaji
+            : pencereKapandi
             ? `Kesinti penceresi (${new Date(winEndIso).toISOString()}) kapandi, Smart onayi gelmedi - is tetiklenmedi.`
             : islemKurali
               ? `Production islemleri icin onay suresi ${Math.round(timeoutMinutes)} dakikadir; bu surede Smart onayi gelmedi - is tetiklenmedi. Smart'taki kayit acik kalabilir, sonradan onaylansa da is BASLAMAZ; islemi yeniden baslatip yeni talep acin.`
@@ -162,6 +180,14 @@ async function _tickBody() {
     if (status.completed) {
       if (typeof _onApproved !== 'function') {
         console.warn(`[Smart] ticket #${ticket.id} onaylandi ama launch callback tanimli degil.`);
+        continue;
+      }
+      if (pencereBekliyorMu(ticket)) {
+        if (!ticket.approvedAt) {
+          await store
+            .markApproved(ticket.id, status.stateName)
+            .catch((e) => console.warn(`[Smart] ticket #${ticket.id} onay ani yazilamadi:`, e.message));
+        }
         continue;
       }
       // SAHIPLEN, SONRA TETIKLE. `checkTicketStatus` ag uzerinde bekledi; bu arada

@@ -651,6 +651,8 @@ export interface AdminSmartTicket {
   username: string;
   status: string;
   smartStateName?: string | null;
+  /** Onay geldi, iş OCO penceresini bekliyor (bilet PENDING kalır) */
+  approvedAt?: string | null;
   flowKey?: string | null;
   templateName?: string | null;
   /**
@@ -702,6 +704,8 @@ export interface SmartTicketSummary {
   id: number;
   status: string;
   smartStateName?: string | null;
+  /** Onay geldi, iş OCO penceresini bekliyor (bilet PENDING kalır) */
+  approvedAt?: string | null;
   templateName?: string | null;
   jobId?: number | null;
   errorMessage?: string | null;
@@ -906,6 +910,8 @@ export interface OcoWindowInfo {
   endText: string;
   windowStartText: string;
   windowEndText: string;
+  windowStartIso?: string;
+  windowEndIso?: string;
   equal: boolean;
   phase: 'before' | 'inside' | 'expired';
   canRunNow?: boolean;

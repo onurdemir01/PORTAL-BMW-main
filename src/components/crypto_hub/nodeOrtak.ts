@@ -5,7 +5,7 @@
 // Bu dosyada React yok — bileşenler ve testler aynı fonksiyonları kullanır. Değer doğrulama ve
 // maskeleme sunucuyla AYNI modülden (shared/cryptoHubNodes.cjs): ekran "geçerli" deyip sunucu
 // reddetmesin.
-import { degerDogrula, maskele, DEGER_EN_COK } from '../../../shared/cryptoHubNodes.cjs';
+import { degerDogrula, maskele, ocoPencereKarari, DEGER_EN_COK, OCO_SON_PAY_DK, OCO_UFUK_GUN } from '../../../shared/cryptoHubNodes.cjs';
 import type {
   NodeBekleyen,
   NodeDep,
@@ -15,6 +15,7 @@ import type {
   NodeTalepDurumu,
   NodeTalepOzet,
 } from '@/api/cryptoHubApi';
+import type { OcoWindowInfo } from '@/api/ansibleApi';
 import { fmtDateTime } from '@/utils/datetime';
 
 export const BILESENLER = ['adapter', 'api', 'indexer', 'processor'] as const;
@@ -164,6 +165,8 @@ export const METIN = {
   takipBaslik: 'Talep takibi',
   talepAcildi: (no: string) =>
     `Smart talebi açıldı (kayıt no: ${no}). Onay 24 saat içinde gelirse değişiklik otomatik uygulanır; bu ekranda beklemeniz gerekmez.`,
+  talepAcildiOco: (no: string, son: string) =>
+    `Smart talebi açıldı (kayıt no: ${no}). Onay gelirse iş OCO penceresinde otomatik başlar; en geç ${son}. Bu ekranda beklemeniz gerekmez.`,
   onayBekliyor: (statusName: string) => `Onay bekliyor (${statusName})`,
   sonTarih: (kalan: string) => `Son tarih: ${kalan}`,
   uygulaniyor: 'Uygulanıyor…',
@@ -184,6 +187,36 @@ export const METIN = {
   ankaraKapali: 'Bu ortamda node değişikliği şimdilik kapalı.',
   gecmisBaslik: 'Son talepler',
   gecmisBasliklar: ['Zaman', 'Grup', 'Yeni değer (maskeli)', 'Talep eden', 'Smart', 'Durum'] as const,
+
+  /** OCO penceresi (D8) */
+  oco: {
+    etiket: 'OCO numarası',
+    zorunluNot: 'Bu talep OCO penceresinde çalışır. Numarayı yazıp doğrulayın.',
+    dogrula: 'Doğrula',
+    dogrulaniyor: 'Doğrulanıyor…',
+    dogrulanamadi: 'OCO doğrulanamadı.',
+    baglantiHatasi: 'OCO doğrulanamadı (bağlantı hatası).',
+    pencere: (bas: string, son: string) => `Pencere: ${bas} – ${son}`,
+    sonBaslama: (son: string) => `Son başlama: ${son}`,
+    bekleSmart: 'Onay gelse de pencere açılınca başlar',
+    acikSmart: 'Pencere açık: onay son başlama saatine kadar gelirse iş hemen başlar.',
+    acikOnaysiz: 'Pencere açık: iş hemen başlar.',
+    engel: {
+      gecersiz: 'OCO penceresi okunamadı; talep açılamaz.',
+      gecti: 'OCO penceresi kapandı. Yeni bir OCO kaydı ile deneyin.',
+      kisa: `OCO penceresi ${OCO_SON_PAY_DK} dakikadan kısa; iş pencere içinde tamamlanamaz. Yeni bir OCO kaydı ile deneyin.`,
+      son_pay: 'Son başlama saati geçti; iş pencere bitmeden tamamlanamaz. Yeni bir OCO kaydı ile deneyin.',
+      ufuk: `OCO penceresi ${OCO_UFUK_GUN} günden ileride. Pencereye en çok ${OCO_UFUK_GUN} gün kala talep açın.`,
+      bekle_kapali: 'OCO penceresi henüz açılmadı. Smart onayı kapalıyken iş bekletilemez; pencere açılınca tekrar açın.',
+    } as Record<string, string>,
+    onayliBekliyor: 'Onaylandı, pencere bekleniyor',
+    bekleyen: (no: string, kullanici: string, zaman: string) =>
+      `Onaylandı, pencere bekleniyor: ${no} — ${kullanici}, ${zaman}`,
+    takip: (no: string, bas: string, son: string) => `OCO ${no} · Pencere: ${bas} – ${son}`,
+    zamanAsimi:
+      "Son başlama saatine kadar Portal Smart onayı görmedi; iş başlamadı. Onay bu sırada verilmiş olabilir, Smart'taki kaydı kontrol edin. Kayıt açık kalabilir, sonradan onaylansa da iş başlamaz. Yeni talep açın.",
+    zamanAsimiOnayli: 'Smart onayı alınmıştı ancak iş son başlama saatine kadar başlatılamadı; iş başlamadı. Yeni talep açın.',
+  },
 
   adminKapatDugme: 'Talebi kapat (yönetici)',
   adminKapatBilgi:
@@ -222,6 +255,8 @@ export const METIN = {
     kapaliUyari:
       'KAPALI. Test ortamlarında node değişiklikleri onaysız ve Smart\'ta kayıtsız çalışır; her çalıştırma denetime yazılır.',
     kapatOnay: 'Test ortamlarında node değişikliklerinin onaysız çalışacağını anlıyorum.',
+    ocoTest: 'Test ortamlarında OCO iste',
+    ocoNot: "Production'da OCO zorunludur.",
     flowKey: 'Smart Flow Key',
     flowYerTutucu: 'ör. CRYPTO_HUB_NODE_FLOW',
     alanlariGetir: 'Alanları Getir',
@@ -306,6 +341,7 @@ export function sonucMetni(
   durum: NodeTalepDurumu,
   kod: string | null | undefined,
   sonuc?: NodeSonuc | null,
+  ocoPencereli = false,
 ): string | null {
   const k = (kod || '').trim();
   switch (durum) {
@@ -326,6 +362,7 @@ export function sonucMetni(
     case 'REDDEDILDI':
       return "Smart'ta reddedildi.";
     case 'ZAMAN_ASIMI':
+      if (ocoPencereli) return sonuc?.smart?.onayGeldi ? METIN.oco.zamanAsimiOnayli : METIN.oco.zamanAsimi;
       return 'Onay 24 saat içinde gelmedi; talep kapandı.';
     case 'IPTAL':
       if (k === 'ADMIN_KAPATTI') return "Yönetici tarafından kapatıldı. Mevcut node'ları okuyun.";
@@ -498,7 +535,29 @@ export function smartNo(externalTicketId: string | null | undefined, talepId?: n
 export function bekleyenMetni(b: NodeBekleyen): string {
   const no = smartNo(b.externalTicketId, b.talepId);
   const biletsizKosuyor = b.durum === 'CALISIYOR' && !String(b.externalTicketId ?? '').trim();
-  return (biletsizKosuyor ? METIN.uygulanan : METIN.bekleyen)(no, b.username, fmtDateTime(b.createdAt));
+  const metin = b.pencereBekliyor ? METIN.oco.bekleyen : biletsizKosuyor ? METIN.uygulanan : METIN.bekleyen;
+  return metin(no, b.username, fmtDateTime(b.createdAt));
+}
+
+/** OCO doğrulama yanıtının ekran kararı: kural sunucuyla aynı fonksiyon. Sunucu talep anında yeniden karar verir. */
+export function ocoDurumu(
+  o: Pick<OcoWindowInfo, 'windowStartIso' | 'windowEndIso'>,
+  smartKapali: boolean,
+  simdiMs: number,
+): { gecerli: boolean; bekleyecek: boolean; engel: string | null; sonBaslama: string } {
+  const { kod, sonBaslamaMs } = ocoPencereKarari({
+    basMs: Date.parse(o.windowStartIso ?? ''),
+    sonMs: Date.parse(o.windowEndIso ?? ''),
+    simdiMs,
+    smartKapali,
+  });
+  const gecerli = kod === 'bekle' || kod === 'acik';
+  return {
+    gecerli,
+    bekleyecek: kod === 'bekle',
+    engel: gecerli ? null : METIN.oco.engel[kod] || METIN.oco.engel.gecersiz,
+    sonBaslama: Number.isFinite(sonBaslamaMs) ? fmtDateTime(sonBaslamaMs) : '—',
+  };
 }
 
 /** Ankara önerisi yalnız İstanbul DAS prod talebinden sonra (D4); GAR'da Ankara yok. */

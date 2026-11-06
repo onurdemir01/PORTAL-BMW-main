@@ -1520,6 +1520,8 @@ const TABLES = [
         cancelled_by        NVARCHAR(200) NULL,
         cancel_note         NVARCHAR(1000) NULL,
         error_message       NVARCHAR(MAX) NULL,
+        -- Onay gelmis ama OCO penceresi bekleniyor (Crypto Hub D8); durum PENDING kalir.
+        approved_at         DATETIME2 NULL,
         created_at          DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
         updated_at          DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
         resolved_at         DATETIME2 NULL
@@ -2019,6 +2021,9 @@ const TABLES = [
         sonuc_json          NVARCHAR(MAX)  NULL,
         yeni_deger_secret   NVARCHAR(MAX)  NULL,
         es_talep_id         INT            NULL,
+        oco_no              NVARCHAR(32)   NULL,
+        oco_pencere_bas     DATETIME2      NULL,
+        oco_pencere_son     DATETIME2      NULL,
         created_at          DATETIME2      NOT NULL DEFAULT SYSUTCDATETIME(),
         updated_at          DATETIME2      NOT NULL DEFAULT SYSUTCDATETIME(),
         kapandi_at          DATETIME2      NULL
@@ -5259,6 +5264,28 @@ async function setupTables() {
       table: 'crypto_hub_node_changes',
       col: 'yeni_deger_secret',
       sql: 'ALTER TABLE crypto_hub_node_changes ADD yeni_deger_secret NVARCHAR(MAX) NULL',
+    },
+    // Crypto Hub OCO penceresi (2026-11-06, D8). Eklenemezse OCO'lu talep node.cjs kapisinda
+    // reddedilir; OCO'suz akis eski kolon listesiyle calisir.
+    {
+      table: 'crypto_hub_node_changes',
+      col: 'oco_no',
+      sql: 'ALTER TABLE crypto_hub_node_changes ADD oco_no NVARCHAR(32) NULL',
+    },
+    {
+      table: 'crypto_hub_node_changes',
+      col: 'oco_pencere_bas',
+      sql: 'ALTER TABLE crypto_hub_node_changes ADD oco_pencere_bas DATETIME2 NULL',
+    },
+    {
+      table: 'crypto_hub_node_changes',
+      col: 'oco_pencere_son',
+      sql: 'ALTER TABLE crypto_hub_node_changes ADD oco_pencere_son DATETIME2 NULL',
+    },
+    {
+      table: 'smart_tickets',
+      col: 'approved_at',
+      sql: 'ALTER TABLE smart_tickets ADD approved_at DATETIME2 NULL',
     },
   ];
 

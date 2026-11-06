@@ -458,3 +458,23 @@ test('DL12 all (admin) ucu: her talepte deadline/deadlineKaynak, kokte serverNow
   assert.deepEqual([r2.govde.tickets[0].deadline, r2.govde.tickets[0].deadlineKaynak], [iso(T0 + 60 * DK), 'genel']);
   assert.deepEqual([r2.govde.tickets[1].deadline, r2.govde.tickets[1].deadlineKaynak], [null, null]);
 });
+
+test('D8 sonBaslamaIso oco sinirinin yerine gecer; okunamazsa pencere sonuna duser; yoksa degismez', () => {
+  const { talepSonTarihi: t, pencereBekliyorMu } = require('../deadline.cjs');
+  const createdAt = '2026-11-06T10:00:00.000Z';
+  const son = '2026-11-08T10:00:00.000Z';
+  const baslama = '2026-11-08T09:30:00.000Z';
+  const a = t({ createdAt, pendingLaunch: { ocoWindowEndIso: son, sonBaslamaIso: baslama } }, {});
+  assert.equal(a.deadlineKaynak, 'oco');
+  assert.equal(a.deadline.toISOString(), baslama);
+  const b = t({ createdAt, pendingLaunch: { ocoWindowEndIso: son, sonBaslamaIso: 'bozuk' } }, {});
+  assert.equal(b.deadline.toISOString(), son, 'bozuk son baslama sinirsiza dustu');
+  const c = t({ createdAt, pendingLaunch: { ocoWindowEndIso: son } }, {});
+  assert.equal(c.deadline.toISOString(), son);
+  const bas = '2026-11-07T10:00:00.000Z';
+  const pl = { pencereBekle: true, ocoWindowStartIso: bas };
+  assert.equal(pencereBekliyorMu({ pendingLaunch: pl }, Date.parse(bas) - 1), true);
+  assert.equal(pencereBekliyorMu({ pendingLaunch: pl }, Date.parse(bas)), false);
+  assert.equal(pencereBekliyorMu({ pendingLaunch: { ocoWindowStartIso: bas } }, 0), false, 'bayraksiz bilet bekletildi');
+  assert.equal(pencereBekliyorMu({ pendingLaunch: { pencereBekle: true, ocoWindowStartIso: 'x' } }, 0), false);
+});

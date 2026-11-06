@@ -1,7 +1,8 @@
 // src/components/crypto_hub/NodeDegisiklikModal.tsx — Indexer / Node değişikliği sihirbazı (2026-11-02).
 //
 // Beş adım: Mevcut → Yeni node → Etki → Gerekçe → Onay → "Talep aç" (Smart bileti). Smart'ın kapalı
-// olduğu test kiracısında son adım işin onaysız başlayacağını söyler. Kullanıcı kararı 2026-11-03: node listesi YOK; kullanıcı grubun her rolü için
+// olduğu test kiracısında son adım işin onaysız başlayacağını söyler. OCO zorunluysa (D8) Gerekçe adımı
+// numarayı doğrulatır; pencere kararı ekran metnidir, sunucu talep anında yeniden okur. Kullanıcı kararı 2026-11-03: node listesi YOK; kullanıcı grubun her rolü için
 // yeni değeri kendisi yazar (iş birimi onaylı). Değer YALNIZ bu bileşenin state'inde durur: URL'ye,
 // tarayıcı deposuna, console'a, hata metnine ya da `title` niteliğine girmez; ekranda yalnız
 // maskeli hâli görünür. Biçim kuralı sunucuyla aynı modülden (shared/cryptoHubNodes.cjs). Bir rol
@@ -22,6 +23,7 @@ import {
   type NodeGrup,
   type NodeSmartMod,
 } from '@/api/cryptoHubApi';
+import { ansibleApi, type OcoWindowInfo } from '@/api/ansibleApi';
 import { maskele } from '../../../shared/cryptoHubNodes.cjs';
 import {
   METIN,
@@ -33,6 +35,7 @@ import {
   etkilenenDeploymentlar,
   gerekceGecerli,
   mevcutNodeMetni,
+  ocoDurumu,
   onayMetniEslesir,
   rolMaskeliListesi,
   secilebilirler,
@@ -48,6 +51,17 @@ type Kiraci = NonNullable<CryptoNodesResponse['tenant']>;
 const YENI_ADIM_KODLARI = ['node_ayni_node', 'node_deger_bicim', 'node_bos_onay'];
 /** Sunucunun kararı ekrandaki metne uymadı: mod yeniden okunur, kullanıcı güncel metni onaylar. */
 const SMART_DEGISTI_KODLARI = ['crypto_node_smart_mod_degisti', 'crypto_node_smart_degisti'];
+/** Sunucu OCO'yu reddetti: Gerekçe adımına dönülür, numara yeniden doğrulanır. */
+const OCO_ADIM_KODLARI = [
+  'node_oco_gerekli',
+  'node_oco_okunamadi',
+  'node_oco_gecersiz',
+  'node_oco_gecti',
+  'node_oco_kisa',
+  'node_oco_son_baslama',
+  'node_oco_ufuk',
+  'node_oco_pencere_bekleniyor',
+];
 
 const GIRDI_STIL: React.CSSProperties = {
   borderColor: 'var(--border)',
@@ -84,6 +98,7 @@ export function NodeDegisiklikModal({
   onOkumaGerekli,
   esTalepId,
   smartMod = 'onay',
+  ocoGerekli = false,
   onSmartDegisti,
 }: {
   tenant: Kiraci;
@@ -99,6 +114,8 @@ export function NodeDegisiklikModal({
   esTalepId?: number | null;
   /** 'kapali' ekran metnidir; karar sunucuda talep anında verilir */
   smartMod?: NodeSmartMod;
+  /** ekran metnidir; karar sunucuda talep anında verilir. Production'da her zaman zorunlu */
+  ocoGerekli?: boolean;
   /** sunucu "Smart ayarı değişti" dediyse üst bileşen smartMod'u yeniden okur */
   onSmartDegisti?: () => void;
 }) {
@@ -114,6 +131,12 @@ export function NodeDegisiklikModal({
   const [bilesenSecim, setBilesenSecim] = useState<string[] | null>(null);
   const [tutarsizOnay, setTutarsizOnay] = useState(false);
   const [gerekce, setGerekce] = useState('');
+  const [ocoNo, setOcoNo] = useState('');
+  const [ocoBilgi, setOcoBilgi] = useState<OcoWindowInfo | null>(null);
+  const [ocoHata, setOcoHata] = useState('');
+  const [ocoDogruluyor, setOcoDogruluyor] = useState(false);
+  // Numara değiştiyse uçuştaki eski doğrulamanın sonucu yazılmaz.
+  const ocoSira = useRef(0);
   // Kutu onaylandığı andaki metne bağlıdır (smartMod): metin değişirse onay kendiliğinden düşer.
   const [onayKutusuMod, setOnayKutusuMod] = useState<NodeSmartMod | null>(null);
   const onayKutusu = onayKutusuMod === smartMod;
@@ -127,6 +150,14 @@ export function NodeDegisiklikModal({
 
   const prod = tenant.production;
   const onaysiz = smartMod === 'kapali' && !prod;
+  const ocoZorunlu = ocoGerekli || prod;
+  const ocoKarar = ocoBilgi ? ocoDurumu(ocoBilgi, onaysiz, Date.now()) : null;
+  const ocoTamam = !ocoZorunlu || !!ocoKarar?.gecerli;
+  const ocoBilgiMetni = ocoKarar?.bekleyecek
+    ? METIN.oco.bekleSmart
+    : onaysiz
+      ? METIN.oco.acikOnaysiz
+      : METIN.oco.acikSmart;
   const bekle = okunuyor || !grup || grup.okumaBekleniyor;
   const bilesenOf = (dep: string) =>
     grup?.deploymentlar.find((d) => d.ad === dep)?.bilesen || dep;
@@ -162,10 +193,41 @@ export function NodeDegisiklikModal({
     if (adim === 0) return secim.length > 0;
     if (adim === 1) return yeniGecerli(grup, yeni, bosOnay) && ayni !== true;
     if (adim === 2) return !tutarsizSecim || tutarsizOnay;
-    if (adim === 3) return gerekceGecerli(gerekce);
+    if (adim === 3) return gerekceGecerli(gerekce) && ocoTamam;
     if (adim === 4) return prod ? onayMetniEslesir(onayYazi, grup.id) : onayKutusu;
     return true;
   })();
+
+  function ocoDegistir(v: string) {
+    ocoSira.current += 1;
+    setOcoNo(v);
+    setOcoBilgi(null);
+    setOcoHata('');
+    setHata('');
+    setOcoDogruluyor(false);
+  }
+
+  async function ocoDogrula() {
+    const no = ocoNo.trim();
+    if (!no || ocoDogruluyor) return;
+    const sira = ++ocoSira.current;
+    setOcoDogruluyor(true);
+    setOcoBilgi(null);
+    setOcoHata('');
+    setHata('');
+    try {
+      const r = await ansibleApi.ocoValidate(no);
+      if (sira !== ocoSira.current) return;
+      if (r.ok && r.oco) setOcoBilgi(r.oco);
+      else setOcoHata(r.message || METIN.oco.dogrulanamadi);
+    } catch (e: unknown) {
+      if (sira !== ocoSira.current) return;
+      const i = (e && typeof e === 'object' ? e : {}) as { gatewayUnavailable?: boolean; nginxRed?: boolean };
+      setOcoHata((i.gatewayUnavailable || i.nginxRed) && e instanceof Error ? e.message : METIN.oco.baglantiHatasi);
+    } finally {
+      if (sira === ocoSira.current) setOcoDogruluyor(false);
+    }
+  }
 
   async function talepAc() {
     if (!grup || gonderRef.current) return;
@@ -184,6 +246,7 @@ export function NodeDegisiklikModal({
         ...(prod ? { onayMetni: onayYazi.trim() } : {}),
         ...(esTalepId ? { esTalepId } : {}),
         ...(onaysiz ? { onaysizKabul: true } : {}),
+        ...(ocoZorunlu ? { ocoNumber: ocoNo.trim() } : {}),
       });
       // Belirsiz launch: iş başlamış olabilir, satır açık. Sihirbazda kalmak ikinci denemeye iterdi.
       if (r.ok || (r.blocked === 'crypto_node_dogrudan_belirsiz' && r.talepId != null)) {
@@ -199,6 +262,11 @@ export function NodeDegisiklikModal({
       } else if (r.blocked && YENI_ADIM_KODLARI.includes(r.blocked)) {
         setAdim(1);
       } else if (r.blocked && SMART_DEGISTI_KODLARI.includes(r.blocked)) {
+        onSmartDegisti?.();
+      } else if (r.blocked && OCO_ADIM_KODLARI.includes(r.blocked)) {
+        // Ayar sihirbaz açıkken değişmiş olabilir: ocoGerekli de yeniden okunur.
+        setOcoBilgi(null);
+        setAdim(3);
         onSmartDegisti?.();
       }
     } catch (e: unknown) {
@@ -486,12 +554,66 @@ export function NodeDegisiklikModal({
             >
               {METIN.sayac(gerekce.trim().length)}
             </div>
+            {ocoZorunlu && (
+              <div className="space-y-1.5 pt-2 min-w-0">
+                <label htmlFor="node-oco" className="block font-medium" style={{ color: 'var(--text-primary)' }}>
+                  {METIN.oco.etiket}
+                </label>
+                <p id="node-oco-not" className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>
+                  {METIN.oco.zorunluNot}
+                </p>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <input
+                    id="node-oco"
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="off"
+                    className="flex-1 min-w-0 text-[13px] rounded-lg border px-2 py-1.5"
+                    style={GIRDI_STIL}
+                    aria-describedby="node-oco-not"
+                    value={ocoNo}
+                    onChange={(e) => ocoDegistir(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    disabled={!ocoNo.trim() || ocoDogruluyor}
+                    onClick={() => void ocoDogrula()}
+                  >
+                    {ocoDogruluyor ? METIN.oco.dogrulaniyor : METIN.oco.dogrula}
+                  </button>
+                </div>
+                {ocoHata && <Bilgi ton="danger">{ocoHata}</Bilgi>}
+                {ocoBilgi && ocoKarar && (
+                  <div className="space-y-1.5">
+                    <div className="text-[12px] break-words" style={{ color: 'var(--text-secondary)' }}>
+                      {ocoBilgi.subject ? <div>{ocoBilgi.subject}</div> : null}
+                      <div>{METIN.oco.pencere(ocoBilgi.windowStartText, ocoBilgi.windowEndText)}</div>
+                      <div>{METIN.oco.sonBaslama(ocoKarar.sonBaslama)}</div>
+                    </div>
+                    {ocoKarar.engel ? (
+                      <Bilgi ton="danger">{ocoKarar.engel}</Bilgi>
+                    ) : (
+                      <Bilgi ton={ocoKarar.bekleyecek ? 'warn' : 'info'}>{ocoBilgiMetni}</Bilgi>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
         {grup && !bekle && adim === 4 && (
           <div className="space-y-2" style={{ color: 'var(--text-primary)' }}>
             {onaysiz ? <Bilgi ton="warn">{METIN.onaysiz.onayBilgi}</Bilgi> : <Bilgi ton="info">{METIN.onayBilgi}</Bilgi>}
+            {ocoZorunlu && ocoBilgi && ocoKarar && (
+              <div className="break-words" style={{ color: 'var(--text-secondary)' }}>
+                {METIN.oco.etiket}: {ocoBilgi.ocoNumber} ·{' '}
+                {METIN.oco.pencere(ocoBilgi.windowStartText, ocoBilgi.windowEndText)} ·{' '}
+                {METIN.oco.sonBaslama(ocoKarar.sonBaslama)}
+                {ocoKarar.bekleyecek ? ` · ${METIN.oco.bekleSmart}` : ''}
+              </div>
+            )}
             <div className="break-all" style={{ color: 'var(--text-secondary)' }}>
               {METIN.yeniNodeEtiket}: {rolMaskeliListesi(yeniMaskeli(grup, yeni), grup.roller)}
             </div>

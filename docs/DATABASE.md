@@ -145,6 +145,11 @@ karistirmaz.
 Hepsi "son tarama" mantigiyla okunur (`MAX(scan_date)`); yukleyici sifir satirda veritabanina
 dokunmaz ve ayni gun tekrar kosulursa yalniz o gunun satirlarini yeniler.
 
+Portal DB (boot'ta kurulur): 2026-11-06 `crypto_hub_node_changes.oco_no` / `oco_pencere_bas` /
+`oco_pencere_son` ve `smart_tickets.approved_at` (CREATE + `alters`, NULL). Node talebinin OCO penceresi
+ve "onay geldi, pencere bekleniyor" izi. Kolon eksikse OCO'lu talep 503 alir, OCO'suz akis calisir
+(bkz. docs/CRYPTO-HUB.md 10.4, 10.10).
+
 ## Diger
 
 | Tablo | Amac |

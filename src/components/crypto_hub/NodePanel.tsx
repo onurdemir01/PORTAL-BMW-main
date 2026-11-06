@@ -722,7 +722,14 @@ export function NodePanel({
                     </button>
                   </td>
                   <td className="px-3 py-2">
-                    <NodeRozet ton={durumTonu(h.durum)}>{DURUM_ETIKETI[h.durum] || h.durum}</NodeRozet>
+                    <NodeRozet ton={durumTonu(h.durum)}>
+                      {h.pencereBekliyor ? METIN.oco.onayliBekliyor : DURUM_ETIKETI[h.durum] || h.durum}
+                    </NodeRozet>
+                    {h.ocoNo && (
+                      <div className="mt-1 text-[11px] break-words" style={{ color: 'var(--text-muted)' }}>
+                        {METIN.oco.takip(h.ocoNo, fmtDateTime(h.ocoPencereBas), fmtDateTime(h.ocoPencereSon))}
+                      </div>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -742,6 +749,7 @@ export function NodePanel({
           onOkumaGerekli={() => void okumaBaslat()}
           esTalepId={sihirbaz.esTalepId}
           smartMod={data.smartMod}
+          ocoGerekli={data.ocoGerekli}
           onSmartDegisti={() => void yukle()}
           onAcildi={(r) => {
             const gid = sihirbaz.grupId;

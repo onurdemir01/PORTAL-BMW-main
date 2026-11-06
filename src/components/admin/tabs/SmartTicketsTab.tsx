@@ -375,6 +375,9 @@ export default function SmartTicketsTab() {
                               {t.smartStateName}
                             </div>
                           )}
+                          {t.status === 'PENDING' && t.approvedAt && (
+                            <div className="text-[10px] text-gray-400 mt-0.5">Onaylandı, pencere bekleniyor</div>
+                          )}
                         </td>
                         <td className="px-3 py-2 text-xs text-gray-600 whitespace-nowrap">
                           {fmt(t.resolvedAt)}

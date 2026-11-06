@@ -41,6 +41,7 @@ const CryptoHubSmartModal: React.FC<Props> = ({ open, onClose, onKaydedildi }) =
   const [yukleniyor, setYukleniyor] = useState(false);
   const [hata, setHata] = useState('');
   const [enabled, setEnabled] = useState(true);
+  const [ocoTest, setOcoTest] = useState(false);
   const [flowKey, setFlowKey] = useState('');
   const [metadataFields, setMetadataFields] = useState('');
   const [integrationKey, setIntegrationKey] = useState('');
@@ -64,6 +65,7 @@ const CryptoHubSmartModal: React.FC<Props> = ({ open, onClose, onKaydedildi }) =
       if (!r.ok || !r.smart) throw new Error(r.message || M.okunamadi);
       setMeta(r);
       setEnabled(r.smart.enabled);
+      setOcoTest(r.smart.ocoTest === true);
       setFlowKey(r.smart.flowKey);
       setMetadataFields(r.smart.metadataFields);
       setIntegrationKey('');
@@ -142,6 +144,7 @@ const CryptoHubSmartModal: React.FC<Props> = ({ open, onClose, onKaydedildi }) =
         // Dokunulmadıysa gönderilmez: bayat pencere başka yöneticinin kararını ezip Smart'ı onaysız
         // kapatamasın. Kapatma her zaman yukarıdaki kapatOnay kapısından geçer.
         ...(enabled !== meta?.smart?.enabled ? { enabled } : {}),
+        ...(ocoTest !== (meta?.smart?.ocoTest === true) ? { ocoTest } : {}),
         flowKey: flowKey.trim(),
         metadataFields,
         // Boş = "değiştirmedim"; sunucu mevcut değeri korur.
@@ -243,6 +246,18 @@ const CryptoHubSmartModal: React.FC<Props> = ({ open, onClose, onKaydedildi }) =
                   )}
                 </div>
               )}
+            </div>
+
+            <div className="rounded-xl border p-3" style={{ borderColor: 'var(--border)' }}>
+              <label className="flex items-center justify-between gap-3 cursor-pointer">
+                <span className="text-xs font-semibold" style={ikincil}>
+                  {M.ocoTest}
+                </span>
+                <input type="checkbox" checked={ocoTest} onChange={(e) => setOcoTest(e.target.checked)} />
+              </label>
+              <p className="text-[11px] mt-1.5" style={soluk}>
+                {M.ocoNot}
+              </p>
             </div>
 
             <div>

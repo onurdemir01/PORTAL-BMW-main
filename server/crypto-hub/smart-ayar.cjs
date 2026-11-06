@@ -1,6 +1,7 @@
 // server/crypto-hub/smart-ayar.cjs - Crypto Hub node talebinin kendi Smart ayari.
 //
-// portal_config_blobs 'crypto-hub:smart' satiri: {enabled, flowKey, metadataFields, integrationKey}.
+// portal_config_blobs 'crypto-hub:smart' satiri: {enabled, flowKey, metadataFields, integrationKey,
+// ocoTest}.
 // OpsX'in smart.<plat> bolumune konmaz: normalizeSmart bilinmeyen platformu kayitta siler.
 //
 // OKUMA ONBELLEKSIZ ve okuma hatasi "satir yok" ile KARISMAZ: satir yoksa bos blok OpsX'e duser;
@@ -13,10 +14,14 @@
 //
 // enabled:false YALNIZ test kiracisinda etkilidir (smartKapaliMi). OpsX'in enabled'i burada
 // hic okunmaz: OpsX'te Smart kapatmak Crypto Hub'i onaysiz ACMAZ.
+//
+// ocoTest (D8): test kiracilarinda OCO numarasi istensin mi; production'da OCO her zaman zorunludur
+// (ocoGerekliMi). ocoCheck.environments kullanilmaz: env/ortam anahtarina bakar, node extra_vars'inda
+// bu anahtarlar yok ve prod_ank'i production saymaz.
 'use strict';
 
 const BLOB_NAME = 'crypto-hub:smart';
-const BOS_BLOK = Object.freeze({ enabled: true, flowKey: '', metadataFields: '', integrationKey: '' });
+const BOS_BLOK = Object.freeze({ enabled: true, flowKey: '', metadataFields: '', integrationKey: '', ocoTest: false });
 
 const db = () => require('../db/index.cjs');
 const opsxCfg = () => require('../opsx/config.cjs');
@@ -53,6 +58,8 @@ async function oku() {
     flowKey: metinOf(ham.flowKey).trim(),
     metadataFields: metinOf(ham.metadataFields),
     integrationKey: metinOf(ham.integrationKey),
+    // Yalniz gercek true acar: bozuk bir deger varsayilana (kapali) duser.
+    ocoTest: ham.ocoTest === true,
   };
 }
 
@@ -78,18 +85,31 @@ function smartKapaliMi(tenant, blob) {
 }
 
 /**
+ * Tek saf karar: bu kiracida node talebi OCO ister mi? Kiraci kurali smartKapaliMi'nin aynasi, yonu
+ * ters: production ya da uretim etiketli kiraci, blob ne derse desin her zaman true (fail-closed).
+ */
+function ocoGerekliMi(tenant, blob) {
+  if (!tenant || tenant.production !== false) return true;
+  const { uretimEtiketi } = require('../opsx/prod-approval.cjs');
+  if (uretimEtiketi(tenant.key) || uretimEtiketi(tenant.env) || uretimEtiketi(tenant.cluster)) return true;
+  return !!blob && blob.ocoTest === true;
+}
+
+/**
  * Talep aninda kullanilacak Smart karari. Okuma / token cozme hatasi firlatir (cagiran 503).
- * @returns {Promise<{mod: 'onay'|'kapali', kaynak: 'crypto'|'opsx'|null, yarim: boolean,
- *   sa: {flowKey: string, metadataFields: string, integrationKey: string}|null}>}
+ * @returns {Promise<{mod: 'onay'|'kapali', ocoGerekli: boolean, kaynak: 'crypto'|'opsx'|null,
+ *   yarim: boolean, sa: {flowKey: string, metadataFields: string, integrationKey: string}|null}>}
  */
 async function cryptoSmartCoz(tenant) {
   const blob = await oku();
   const mod = smartKapaliMi(tenant, blob) ? 'kapali' : 'onay';
+  const ocoGerekli = ocoGerekliMi(tenant, blob);
   const durum = blokDurumu(blob);
-  if (durum === 'yarim') return { mod, kaynak: null, yarim: true, sa: null };
+  if (durum === 'yarim') return { mod, ocoGerekli, kaynak: null, yarim: true, sa: null };
   if (durum === 'dolu') {
     return {
       mod,
+      ocoGerekli,
       kaynak: 'crypto',
       yarim: false,
       sa: {
@@ -105,7 +125,7 @@ async function cryptoSmartCoz(tenant) {
   } catch {
     sa = null;
   }
-  return { mod, kaynak: 'opsx', yarim: false, sa };
+  return { mod, ocoGerekli, kaynak: 'opsx', yarim: false, sa };
 }
 
 async function yaz(blob) {
@@ -132,6 +152,7 @@ async function kaydet(govde) {
   const sonraki = { ...onceki };
   const reddedilen = [];
   if (typeof g.enabled === 'boolean') sonraki.enabled = g.enabled;
+  if (typeof g.ocoTest === 'boolean') sonraki.ocoTest = g.ocoTest;
   if (typeof g.flowKey === 'string') {
     const v = g.flowKey.trim();
     if (v !== '' && !SMART_KEY_RE.test(v)) reddedilen.push('flowKey');
@@ -192,6 +213,7 @@ async function ekranOzeti() {
   return {
     smart: {
       enabled: blob.enabled !== false,
+      ocoTest: blob.ocoTest === true,
       flowKey: blob.flowKey,
       metadataFields: blob.metadataFields,
       integrationKeySet: Boolean(blob.integrationKey),
@@ -211,10 +233,11 @@ function denetimYaz(req, action, detail) {
   }
 }
 
-/** Kaydin denetim ozeti: token degeri yok; enabled onceki -> yeni acikca yazilir. */
+/** Kaydin denetim ozeti: token degeri yok; enabled ve ocoTest onceki -> yeni acikca yazilir. */
 function kayitDetayi(onceki, sonraki) {
   return {
     enabled: { onceki: onceki.enabled, yeni: sonraki.enabled },
+    ocoTest: { onceki: onceki.ocoTest, yeni: sonraki.ocoTest },
     flowKey: sonraki.flowKey,
     flowKeyDegisti: onceki.flowKey !== sonraki.flowKey,
     sablonDegisti: onceki.metadataFields !== sonraki.metadataFields,
@@ -292,6 +315,7 @@ module.exports = {
   sablonDoluMu,
   blokDurumu,
   smartKapaliMi,
+  ocoGerekliMi,
   cryptoSmartCoz,
   initCryptoHubSmartAyar,
 };

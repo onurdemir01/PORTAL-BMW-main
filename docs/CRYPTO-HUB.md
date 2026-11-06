@@ -247,7 +247,7 @@ Servis hesabının ilgili namespace'te en az şu yetkileri olmalı:
 1. **Konfigürasyon** — Helm values / env var / ConfigMap; önce fark, sonra onay, yedek + geri alma
 2. **Upgrade'in çalıştırılması** — plan zaten üretiliyor; yazan playbook bağlanınca onay
    düğmesi açılır (`runnable` bayrağı)
-3. **Prod'da yazan her işlem** OCO penceresi + Smart onayına bağlanacak
+3. **Prod'da yazan her işlem** OCO penceresi + Smart onayına bağlanacak (node değişikliği bağlandı, D8)
 
 ---
 
@@ -271,6 +271,7 @@ Kod `server/crypto-hub/node.cjs`, ayar `server/crypto-hub/smart-ayar.cjs`, sabit
 | D4 | İstanbul ve Ankara ayrı talep | Her kiracı ayrı talep, ayrı bilet. `metaco_das_prod` talebinden sonra yanıttaki `esTalepOnerisi` Ankara'yı önerir (değer taşımaz; Ankara değerini kullanıcı yeniden yazar); Ankara talebi `esTalepId` taşır. İstemci göndermezse (sihirbaz kapatılıp yeniden açıldı) sunucu, İstanbul'da aynı grup için son 7 günde açılmış, reddedilmemiş ve başka Ankara talebine bağlanmamış talebe **kendisi** bağlar. |
 | D6 | Bileşenlerin aynı node'da olup olmadığı bilinmiyor (2026-11-02) | Sihirbaz node taşıyan bileşenleri **işaretli** getirir (varsayılan birlikte); kullanıcı işareti kaldırıp alt küme seçebilir; seçilenler arasında hepsi ya da hiçbiri. Her bileşenin şu anki node'u yanında. Bileşenler farklı node'lardaysa "Bileşenler farklı node'lara bağlı" notu; **seçilenler** farklı node'lardaysa (tek node'a toplama) ek onay. Smart kaydı değişecek ve değişmeyecek bileşenleri ayrı satırlarda yazar. Tek deployment'lı gruplarda (eski tip) seçim gösterilmez. |
 | D7 | Crypto Hub'ın kendi Smart ayarı (2026-11-06) | Sağ üstte yalnız Admin'e görünen "Smart Onayı" penceresi; `portal_config_blobs` `crypto-hub:smart` satırı, her okuma DB'den. **Blok kuralı:** flow + şablon ikisi boş → OpsX OpenShift bloğunun tamamı; ikisi dolu → Crypto bloğu (token Crypto'nun, yoksa sistem token'ı, OpsX'in değil); yarım → PUT 400, talep 503. Yalnız yorum içeren şablon boş sayılır. Ayar okunamazsa talep 503 alır, OpsX'e **düşmez**. **Kapatma:** `enabled:false` yalnız `tenant.production === false` kiracıda ve etiket savunmasıyla etkilidir (`smartKapaliMi`); kaynak yalnız `tenantOf` sabit listesidir, gövde ve `NODE_ENV` okunmaz. Production kiracıda bu satır hiç etkili olmaz. OpsX'in `enabled`'ı burada okunmaz. Kapalı test kiracısında iş onaysız başlar (10.2 adım 2b), denetime yazılır. `admin-smart-atla` bağlanmaz. **Ekranın gördüğü mod:** sihirbaz onaysız metni gösterdiyse gövdede `onaysizKabul: true` gider. Bu alan kararı VERMEZ (`smartKapaliMi` gövdeyi görmez), yalnız durdurur: sunucunun kararına uymuyorsa iki yönde de **409 `crypto_node_smart_mod_degisti`**, satır yazılmaz, bilet ve iş başlamaz. |
+| D8 | Node değişikliğinde OCO (2026-11-06) | **Karar:** `ocoGerekliMi(tenant, blob)`. Production ya da üretim etiketli kiracıda (`tenant.production !== false` dahil) her zaman zorunlu; test kiracıda yalnız `crypto-hub:smart` satırındaki `ocoTest === true` iken. Varsayılan kapalı: `OCO_API_URL` tek servis, test için ayrı OCO yok. `ocoCheck.environments` kullanılmaz (`env`/`ortam` anahtarına bakar, node `extra_vars`'ında yok, `prod_ank`'i production saymaz). Ayar okunamazsa talep 503. **Pencere:** bilet `PENDING` kalır, iş pencerede başlar (10.10); AWX schedule kullanılmaz, numara `extra_vars`'a konmaz, `plan_sha` ve Ansible değişmez. Ufuk `OCO_UFUK_GUN=7`; son başlama pencere sonu − `OCO_SON_PAY_DK=30`, ama pencere açıldıktan sonra en çok `OCO_ACIK_BEKLEME_DK=1440` (uzun OCO'da bilet ve kilit pencere sonuna kadar sürmez). |
 | D5 | Yalnız yetkili kullanıcı | Yeni öğe `cryptohub:node:degistir` (Admin › Crypto Hub Erişimi › "node"). Tek başına yalnız Indexer / Node sekmesini açar. `app:metaco` tek başına talep **açtırmaz**, yalnız görüntületir. |
 
 ### 10.2 Akış
@@ -290,7 +291,7 @@ Kod `server/crypto-hub/node.cjs`, ayar `server/crypto-hub/smart-ayar.cjs`, sabit
    (seçilenler) / tutarsızlık (seçilenler) / prod'da grup adı) → Smart ayarı (D7; okunamazsa
    **503 `crypto_node_smart_okunamadi`**, yarımsa **503 `crypto_node_smart_yarim`**; ortak
    `nginxRedCevirici` bu POST'ları istemciye 424 + `upstreamStatus: 503` + `nginxRed` olarak iletir,
-   `safeJson` fırlatır, sihirbaz sunucunun metnini gösterir) → ekranın gördüğü mod (D7) → template → **tekil indeks kapısı** → **şifreleme anahtarı kapısı (prod)** → satır `ACILIYOR`
+   `safeJson` fırlatır, sihirbaz sunucunun metnini gösterir) → ekranın gördüğü mod (D7) → template → **tekil indeks kapısı** → **OCO kapısı (D8, 10.10; önizlemede çalışmaz)** → **şifreleme anahtarı kapısı (prod)** → satır `ACILIYOR`
    (değer `yeni_deger_secret`'ta şifreli) → preflight + survey ön doldurma → template değişkenleri (şablon bağlamı;
    OpsX bloğunda OpsX OpenShift template'i, kendi blokta `crypto_hub_ops`) → bilet (`pending_launch_json`'da yer tutucu
    `crypto_hub_node_yeni_b64: ''`) → satır `BEKLIYOR`.
@@ -308,12 +309,13 @@ Kod `server/crypto-hub/node.cjs`, ayar `server/crypto-hub/smart-ayar.cjs`, sabit
    durdurmayı söyler. Job yoksa satır 90 dk sonra `OLCULEMEDI/TAKILDI` kapanır; job varsa AWX sonucu okunur. Önizleme bu
    modda da Smart yolunda kalır. `/ops` node işlerini yine tanımaz.
 3. **Onay**: Smart poller → runner poller geri çağrısında **tek kanca**
-   `pendingLaunch.launchOncesi === 'crypto_hub_node'` → `launchOncesiDegerEkle` (şifreli kolonu
+   `pendingLaunch.launchOncesi === 'crypto_hub_node'` → pencere kararı `launchPenceresiDenetle` (D8) →
+   `launchOncesiDegerEkle` (şifreli kolonu
    çözer; talep no, kiracı/grup, bilet, `plan_sha` ve değerlerin sha256'sı `new_sha` ile
    tutmazsa iş başlamaz) → `performSsLaunch(extraVars: launchExtraVars)`. Kanca başka bilet
-   türünde çalışmaz, OCO penceresiyle birlikte gelirse reddeder; launch hatası metni
+   türünde çalışmaz, Crypto bileti AWX schedule dalına hiç girmez; launch hatası metni
    `gizliTemizle`'den geçer (değer `smart_tickets.error_message`'a düşmez). Onay süresi
-   **1440 dk** (`pendingLaunch.onayZamanAsimiDk`), `yutmaKorumasi: true`.
+   **1440 dk** (`pendingLaunch.onayZamanAsimiDk`; OCO'lu talepte verilmez, son tarih son başlama saatidir), `yutmaKorumasi: true`.
 4. **Sonuç**: 5 dk'lık arka plan taraması ve `GET /node-change/:id` satırı ilerletir. Smart
    `REJECTED/TIMEOUT/CANCELLED/ERROR` → `REDDEDILDI/ZAMAN_ASIMI/IPTAL/HATA`. İş bitince
    `crypto_hub_ops_result` içindeki `NODESUM` → `BASARILI/GERI_ALINDI/BAYAT/BASARISIZ`.
@@ -322,7 +324,8 @@ Kod `server/crypto-hub/node.cjs`, ayar `server/crypto-hub/smart-ayar.cjs`, sabit
    **NODESUM yoksa ya da başka talebe aitse `OLCULEMEDI`** (başarı uydurulmaz). Kapatma tek
    kezdir (`kapandi_at IS NULL` CAS); sonuç denetimi (`crypto_hub_node_change_result`) bir kez,
    talep sahibi adına yazılır.
-5. **Takılan talep**: bilete bağlanmış açık satır `ONAY_DK + 30 + 60` dk'yı (`TAKILDI_DK`) aşar ve
+5. **Takılan talep**: bilete bağlanmış açık satır `ONAY_DK + 30 + 60` dk'yı (`TAKILDI_DK`; OCO'lu
+   talepte en az son başlama + 120 dk; normal pencerede bu pencere sonu + 90 dk'dır) aşar ve
    iş sonucu hâlâ okunamıyorsa (bilet `LAUNCHING`'de takılı, `LAUNCHED` ama job yok, `SCHEDULED`,
    Smart yapılandırılmamış ve hiç `TIMEOUT` olmayan `PENDING`, AWX kalıcı hata) satır
    **`OLCULEMEDI/TAKILDI`** kapanır — başarı sayılmaz, ekran "durum bilinmiyor, mevcut node'ları
@@ -379,6 +382,10 @@ Eşlik bekçisi `node-birim.test.cjs` N5c GERÇEK `opsxProductionKapisi`'ni koş
 olduğunu (adıyla yazılı istisnalar hariç) ve `uretimSebebi` / `talepEden` değerlerinin aynı
 olduğunu doğrular. OpsX'e yeni bir anahtar eklenirse bekçi kırmızı olur.
 
+**OCO (D8):** OCO'lu talepte `opsx.aciklama`'ya numara, pencere ve son başlama satırı eklenir.
+`opsx.ocoNo` ve `opsx.ocoPencere` şablonda kullanılabilir; önizlemede ve OCO'suz talepte boştur, o
+yüzden `{{ opsx.ocoNo | default('') }}` biçiminde yazılır.
+
 **Bilet metni karışmaz (PS5):** `opsx.aciklama`'nın ilk satırı `Crypto Hub Indexer/Node Change —
 NODE DEĞİŞİKLİĞİ (rollout/restart değil; OpsX OpenShift onay akışı ortak kullanılır)`; ardından
 "Değişecek bileşenler" ve "Değişmeyecek bileşenler" satırları. JOBTYPE gibi dropdown alanları
@@ -424,6 +431,14 @@ hâli; iş AWX'e verildiği tarama turunda (`CALISIYOR` UPDATE'i) ve her kapanı
 `sonuc_json` yalnız maskeli. Eski kurulumdaki `yeni_node_id` / `yeni_node_ad` kolonları
 düşürülmez (yıkıcı göç yok), `yeni_node_id` nullable yapılır; kod onları okumaz/yazmaz, yeni
 kurulumda hiç yoktur.
+
+**OCO kolonları (2026-11-06, D8):** `oco_no NVARCHAR(32)`, `oco_pencere_bas DATETIME2`,
+`oco_pencere_son DATETIME2` (hepsi NULL) ve `smart_tickets.approved_at DATETIME2 NULL`. CREATE ve
+`alters` ile idempotent eklenir. Setup'taki ALTER hatası yalnız log'a düştüğü için kolonların varlığı
+kurulumdan kanıtlanamaz: talep anında `INFORMATION_SCHEMA.COLUMNS` okunur (olumlu sonuç 10 dk
+önbellekte). Kolon eksikse OCO'lu talep **503 `node_oco_kolon_yok`** alır, satır yazılmaz. OCO'suz
+akış bozulmaz: okumalar `sutunlar()` ile eski kolon listesine düşer, OCO'suz INSERT bu kolonları
+hiç adlandırmaz.
 
 **Devreye alma:** Portal ve Ansible ZIP birlikte gider. Öncesinde Portal DB'de
 `SELECT id FROM crypto_hub_node_changes WHERE kapandi_at IS NULL` boş dönmeli; açık talep varsa
@@ -543,3 +558,81 @@ kaynağı adı **kesin** tanımlıyor — referans), `belirsiz` (envFrom kaynağ
 `yok`. Grubun değişkenini taşımayan kaptaki envFrom (ör. processor'daki genel ConfigMap) grubu
 kilitlemez. Yeni değer bastion'a task ortamıyla değil, playbook'un stdin'den yazdığı 0600
 dosyayla gider (`NODE_YENI_DOSYA`; betik okur okumaz siler; Ansible README "Yeni değer").
+
+### 10.10 OCO penceresi (D8, 2026-11-06)
+
+**Talep anı** (`ocoKapisi`; satır yazılmadan ve Smart'a gidilmeden önce, önizleme dışında). Karar
+`shared/cryptoHubNodes.cjs` `ocoPencereKarari`'dadır; sihirbaz aynı fonksiyonla metin gösterir, sunucu
+OCO'yu talep anında yeniden okur.
+
+| Durum | Sonuç |
+|---|---|
+| Numara yok | 400 `node_oco_gerekli`, `ocoRequired: true` |
+| OCO okunamadı, tarih yok, aralık bozuk | `ocoClient.httpStatus` kodu, `node_oco_okunamadi` |
+| Pencere kapandı | 400 `node_oco_gecti`, `ocoExpired: true` |
+| Pencere 30 dk'dan kısa | 400 `node_oco_kisa` (son başlama pencere başından önce kalırdı) |
+| Son başlama geçti | 400 `node_oco_son_baslama` |
+| Başlangıç 7 günden uzak | 400 `node_oco_ufuk` |
+| Kolon yok ya da kolon okuması doğrulanamadı | 503 `node_oco_kolon_yok` |
+
+**Durum matrisi**
+
+| Smart | OCO | Pencere açılmadı | Pencere açık | Kapandı |
+|---|---|---|---|---|
+| Açık | Gerekli | Bilet; onay gelse de pencereye kadar bekler | Bilet; onay gelince son başlamaya kadar çalışır | 400 |
+| Kapalı (test) | Gerekli | 400 `node_oco_pencere_bekleniyor`: pencere açılınca tekrar açın | Doğrudan başlar, denetime yazılır | 400 |
+| Açık / kapalı (test) | Gerekmiyor | Bugünkü akış; numara gelse de okunmaz | Aynı | Aynı |
+| Production | Sabit zorunlu | Bilet; bekler | Bilet | 400 |
+
+**Paket:** `pendingLaunch` şunları taşır: `ocoNumber`, `ocoWindowStartIso`, `ocoWindowEndIso`,
+`sonBaslamaIso`, `pencereBekle: true`. `onayZamanAsimiDk` verilmez. `talepSonTarihi` (`deadline.cjs`)
+`sonBaslamaIso` varsa onu `oco` sınırı alır; ekran sayacı, `smart.sonTarih` ve poller'ın `TIMEOUT` anı
+aynıdır.
+
+**Onay:** Poller sıralaması değişmedi; süre kontrolü başta. `status.completed` iken pencere
+açılmadıysa `smart_tickets.approved_at` bir kez yazılır, claim yapılmaz, bilet `PENDING` kalır. Pencere
+açılınca sonraki turda claim. `pencereBekle` taşımayan bilet bu dala girmez. Runner geri çağrısı
+`launchPenceresiDenetle` ile yeniden karar verir: `schedule` ya da `none` sonucu, son başlamanın geçmiş
+olması ve yarım paket `throw` eder, bilet `ERROR` olur. Karar kancadan önce olduğu için pencere dışında
+şifreli değer çözülmez. Crypto bileti `createOcoAwxSchedule`'a ulaşamaz: schedule `extraVars`'ı yer
+tutucuyla kaldırırdı, `launchExtraVars` ise değeri AWX schedule'a yazardı.
+
+**Son başlama:** `ocoSonBaslamaMs` = `min(pencere sonu − 30 dk, max(pencere başı, talep anı) + 24 saat)`.
+OCO penceresinin uzunluğunun üst sınırı yoktur; bu tavan olmadan 60 günlük bir OCO'da bilet her turda
+Smart'a sorulur, grup kilitli kalır, değer kolonda durur. Tavan OCO'suz talebin 24 saatlik onay süresidir.
+Normal pencerede (24 saatten kısa) sonuç pencere sonu − 30 dk'dır. Uzun pencerede süresi dolan talep
+aynı OCO ile yeniden açılabilir.
+
+**Takip:** `satiriIlerlet` üst sınırı `max(TAKILDI_DK, son başlama + 120 dk)`; normal pencerede bu pencere
+sonu + 90 dk'dır. Sınır hesabı satırdaki pencere kolonlarına dayanır: satır bu kolonlar olmadan okunduysa
+ve kolonların yokluğu kesinleşmediyse (`ocoKolonOku` `false` dönmediyse) o tur `TAKILDI` kararı verilmez.
+`INFORMATION_SCHEMA` okuma hatası "kolon yok" değildir; son olumlu sonuç korunur, talep kapısı ise
+sonuç bilinmiyorsa 503 verir. Ekran onaylı bekleyen talepte "Onaylandı, pencere bekleniyor" der (Node
+ekranı, Smart Talepleri, Taleplerim). Onaylanmış ama başlatılamamış talebin `ZAMAN_ASIMI` metni "onay
+gelmedi" demez (`sonuc.smart.onayGeldi`). `approved_at` boşsa metin "Portal onay görmedi" der, "gelmedi"
+demez: süre kontrolü Smart sorgusundan önce çalışır, Portal ya da Smart API kapalıyken verilen onay
+okunmamış olabilir.
+
+**Değer ve kilit ömrü:** Şifreli değer pencere açılana kadar `yeni_deger_secret`'ta kalır, grup kilidi
+(`UX_chnc_acik`) bu süre boyunca tutulur; ikinci talep 409 alır. Bilet en geç son başlamada kapanır: en
+uzun bekleme 7 gün ufuk + 24 saat tavandır. `LAUNCHING`'de takılan satır için bunun üstüne 2 saat eklenir
+(satır TAKILDI ile kapanınca değer silinir). OCO'suz talepte sınır 25,5 saattir.
+Uzun beklemede `plan_sha` ve `expect` değişmez; grup bu arada değiştiyse iş `BAYAT` durur, hiçbir şey
+yazmaz.
+
+**Bilinçli kabul edilen hata modları**
+
+- **İptal edilmiş OCO kontrol edilmez.** Kapı yalnız tarihlere bakar; `OcoStatus` okunmaz. Tarihi uyan
+  iptal edilmiş numara geçer.
+- **Pencere saatinde OCO yeniden okunmaz.** OCO kaydırılırsa Portal talep anındaki pencereyle çalışır.
+  Numara değiştirilemez: iptal + yeni talep.
+- **Smart API o an kapalıysa** durum okunamaz, tur atlanır; son başlamaya kadar düzelmezse bilet
+  `TIMEOUT` olur, iş başlamaz. Bu sırada verilmiş onay Portal'a ulaşmamış olabilir; metin bunu söyler.
+- **Portal pencere boyunca kapalıysa** dönüşte son başlama geçmişse `TIMEOUT`; geçmemişse ilk turda
+  başlar.
+- **Smart'taki kayıt** `TIMEOUT` sonrası açık kalabilir (kapatma API'si yok); sonradan onaylansa da iş
+  başlamaz, mesaj bunu söyler.
+- **AWX hatası:** bilet `ERROR`, satır `HATA`, yeniden deneme yok; pencere açıksa kullanıcı yeni talep
+  açar.
+- **Launch sırasında çökme:** bilet `LAUNCHING`'de kalır; satır genişletilmiş TAKILDI ile `OLCULEMEDI`
+  kapanır.

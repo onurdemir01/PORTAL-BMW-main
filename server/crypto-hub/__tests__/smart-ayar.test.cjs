@@ -285,7 +285,8 @@ test('SA8b production kiraci acik benzetiminde enabled:false yine bilet acar, is
     try {
       h.d.cryptoSmart = { enabled: false, flowKey: '', metadataFields: '' };
       h.okumaVer({}, Date.now(), 'metaco_das_prod');
-      const r = await h.istek('POST', '/node-change', K.nodecu, GOVDE({ tenant: 'metaco_das_prod', onayMetni: G_EVM }));
+      h.d.oco = H.ocoPencere(-10, 120);
+      const r = await h.istek('POST', '/node-change', K.nodecu, GOVDE({ tenant: 'metaco_das_prod', onayMetni: G_EVM, ocoNumber: '22502813' }));
       assert.equal(r.status, 200, JSON.stringify(r.body));
       assert.equal(r.body.pendingApproval, true);
       assert.equal(h.d.smartCreated.length, 1, 'production kiracida bilet acilmadi');

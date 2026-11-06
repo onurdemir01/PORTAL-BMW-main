@@ -84,6 +84,54 @@ const TAKILDI_DK = ONAY_DK + 30 + 60;
 // Ankara talebi Istanbul'a bu sure icinde acilmis ayni grup talebine SUNUCUDA baglanir (PS6).
 const ES_TALEP_GUN = 7;
 
+// OCO penceresi (D8). Ufuk pencere acilana kadarki bekleyisi sinirlar; pay betik butcesidir (30 dk):
+// daha gec baslayan is pencere disina tasar. Takildi payi pencere sonundan sonra satirin acik
+// kalacagi sure (betik butcesi + pay). Pencere uzunlugunun ust siniri yok: acik pencerede bekleyis
+// OCO'suz talebin onay suresiyle sinirlanir, yoksa uzun OCO'da bilet, grup kilidi ve sifreli deger
+// pencere sonuna kadar surerdi.
+const OCO_UFUK_GUN = 7;
+const OCO_SON_PAY_DK = 30;
+const OCO_TAKILDI_PAY_DK = 90;
+const OCO_ACIK_BEKLEME_DK = ONAY_DK;
+
+/**
+ * Isin en gec baslayabilecegi an: pencere sonu - pay, ama pencere acildiktan (ya da acikken talep
+ * geldikten) sonra en cok OCO_ACIK_BEKLEME_DK.
+ * @param {{basMs: number, sonMs: number, talepMs: number}} o
+ * @returns {number}
+ */
+function ocoSonBaslamaMs({ basMs, sonMs, talepMs }) {
+  return Math.min(sonMs - OCO_SON_PAY_DK * 60000, Math.max(basMs, talepMs) + OCO_ACIK_BEKLEME_DK * 60000);
+}
+
+/**
+ * Tek saf kural; sunucu talep aninda, sihirbaz ekran metni icin ayni fonksiyonu cagirir.
+ * @param {{basMs: number, sonMs: number, simdiMs: number, smartKapali: boolean}} o
+ * @returns {{kod: 'gecersiz'|'gecti'|'kisa'|'son_pay'|'ufuk'|'bekle_kapali'|'bekle'|'acik', sonBaslamaMs: number}}
+ *   'bekle' ve 'acik' disindaki her kod rettir.
+ */
+function ocoPencereKarari({ basMs, sonMs, simdiMs, smartKapali }) {
+  const sonBaslamaMs = ocoSonBaslamaMs({ basMs, sonMs, talepMs: simdiMs });
+  if (!Number.isFinite(basMs) || !Number.isFinite(sonMs) || !Number.isFinite(simdiMs)) {
+    return { kod: 'gecersiz', sonBaslamaMs };
+  }
+  const kod =
+    simdiMs > sonMs
+      ? 'gecti'
+      : sonMs - OCO_SON_PAY_DK * 60000 <= basMs
+        ? 'kisa'
+        : simdiMs > sonBaslamaMs
+          ? 'son_pay'
+          : basMs - simdiMs > OCO_UFUK_GUN * 86400000
+            ? 'ufuk'
+            : simdiMs < basMs
+              ? smartKapali
+                ? 'bekle_kapali'
+                : 'bekle'
+              : 'acik';
+  return { kod, sonBaslamaMs };
+}
+
 // -- Yeni deger dogrulama ve maskeleme (sozlesme bolum 3) --------------------------------
 // Kaynak metinler Python crypto_hub_node.py ile BIREBIR (CHN12). `\s` YOK: JS ve Python'in
 // bosluk kumesi farkli; ASCII on kontrolunden sonra yalniz ASCII siniflari kalir. Hex kacis:
@@ -191,6 +239,12 @@ module.exports = {
   YASAK_ENV_RE,
   TAKILDI_DK,
   ES_TALEP_GUN,
+  OCO_UFUK_GUN,
+  OCO_SON_PAY_DK,
+  OCO_TAKILDI_PAY_DK,
+  OCO_ACIK_BEKLEME_DK,
+  ocoSonBaslamaMs,
+  ocoPencereKarari,
   talepNoMetni,
   DEGER_EN_COK,
   BOS_MASKE,

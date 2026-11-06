@@ -282,10 +282,17 @@ export default function RequestsSidePanel() {
   };
 
   const pendingCount = tickets.filter((t) => t.status === 'PENDING').length;
-  // Genel zaman asimi (SMART_TICKET_TIMEOUT_MINUTES) ya da islem kurali (OpsX production 15 dk,
-  // 2026-10-15) olan bekleyen talep varken "Süre sınırı yok" cumlesi yanlis olur.
+  // Onaylanmis, pencere bekleyen bilet (Crypto Hub D8) artik Smart'ta beklemiyor: ayri sayilir.
+  const pencereBekleyenCount = tickets.filter((t) => t.status === 'PENDING' && t.approvedAt).length;
+  const onayBekleyenCount = pendingCount - pencereBekleyenCount;
+  // Zaman asimi olan bekleyen talep varken "Süre sınırı yok" cumlesi yanlis olur: genel sinir
+  // (SMART_TICKET_TIMEOUT_MINUTES), islem kurali (OpsX production 15 dk, 2026-10-15) ya da OCO
+  // penceresi. Pencereli Crypto bileti pencere sonundan once dolar; sure kartta gorunur.
   const genelSureVar = tickets.some(
-    (t) => t.status === 'PENDING' && (t.deadlineKaynak === 'genel' || t.deadlineKaynak === 'islem'),
+    (t) =>
+      t.status === 'PENDING' &&
+      !t.approvedAt &&
+      (t.deadlineKaynak === 'genel' || t.deadlineKaynak === 'islem' || t.deadlineKaynak === 'oco'),
   );
 
   if (collapsed) {
@@ -330,10 +337,10 @@ export default function RequestsSidePanel() {
               <div className="min-w-0">
                 <div className="font-bold text-sm flex items-center gap-1.5">
                   Taleplerim
-                  {pendingCount > 0 && (
+                  {onayBekleyenCount > 0 && (
                     <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
                       <span className="w-1.5 h-1.5 rounded-full bg-amber-500 motion-safe:animate-pulse" aria-hidden="true" />
-                      {pendingCount} onay bekliyor
+                      {onayBekleyenCount} onay bekliyor
                     </span>
                   )}
                 </div>
@@ -358,19 +365,24 @@ export default function RequestsSidePanel() {
                 yaziliyor - artik sure siniri da yok, talep onaylanana kadar bekliyor. */}
             {!loading && !err && pendingCount > 0 && (
               <div className="mb-3 space-y-2">
-                <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] text-amber-900">
-                  <b>{pendingCount} talebiniz Smart’ta bekliyor.</b> Onaylar tamamlanınca talep
-                  <b> “Kapama Onayı”</b> adımına düşer; orada <b>TAMAMLA</b>’ya basılmadan iş
-                  <b> başlamaz</b>.{' '}
-                  {genelSureVar ? (
-                    <>Süre sınırı var: kalan süre her talebin kartında görünür; dolarsa iş başlamaz.</>
-                  ) : (
-                    <>
-                      Süre sınırı yok; OCO kaydından açılan talepler en geç
-                      <b> kesinti penceresinin sonuna</b> kadar tamamlanabilir.
-                    </>
-                  )}
-                </div>
+                {onayBekleyenCount > 0 && (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] text-amber-900">
+                    <b>{onayBekleyenCount} talebiniz Smart’ta bekliyor.</b> Onaylar tamamlanınca talep
+                    <b> “Kapama Onayı”</b> adımına düşer; orada <b>TAMAMLA</b>’ya basılmadan iş
+                    <b> başlamaz</b>.{' '}
+                    {genelSureVar ? (
+                      <>Süre sınırı var: kalan süre her talebin kartında görünür; dolarsa iş başlamaz.</>
+                    ) : (
+                      <>Süre sınırı yok; talep onaylanana ya da reddedilene kadar bekler.</>
+                    )}
+                  </div>
+                )}
+                {pencereBekleyenCount > 0 && (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] text-amber-900">
+                    <b>{pencereBekleyenCount} talebiniz onaylandı, pencere bekleniyor.</b> İş OCO penceresi
+                    açılınca kendiliğinden başlar; kalan süre talebin kartında görünür, dolarsa iş başlamaz.
+                  </div>
+                )}
               </div>
             )}
 
@@ -427,6 +439,7 @@ export default function RequestsSidePanel() {
                           {formatDate(t.createdAt)}
                           {t.externalTicketId ? ` · Smart #${t.externalTicketId}` : ''}
                           {t.smartStateName ? ` · ${t.smartStateName}` : ''}
+                          {t.status === 'PENDING' && t.approvedAt ? ' · Onaylandı, pencere bekleniyor' : ''}
                           {t.jobId ? ` · Job #${t.jobId}` : ''}
                         </div>
                         {t.status === 'PENDING' && kapamaOnayinda(t.smartStateName) && (

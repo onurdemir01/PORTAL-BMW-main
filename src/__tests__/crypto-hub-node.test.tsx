@@ -13,6 +13,8 @@
 //   U7 Smart kapalı test yolu: sihirbaz ve takip metinleri, çift gönderim, belirsiz launch, bayat mod
 //   U8 Smart Onayı penceresi: yalnız Admin (Picker dahil), kaynak göstergesi, kapatma onayı, token,
 //      önizleme, kayıt sonrası /nodes yenileme, bayat pencere
+//   U9 OCO (D8): Gerekçe adımında zorunlu alan, doğrulama, pencere özeti, engel metinleri, sunucu reddinde
+//      adıma dönüş; takipte "Onaylandı, pencere bekleniyor"; Smart penceresinde "Test ortamlarında OCO iste"
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createHash } from 'node:crypto';
 import { act, render, screen, fireEvent, waitFor, within, cleanup } from '@testing-library/react';
@@ -24,6 +26,7 @@ import type {
   NodeDep,
   NodeEnv,
   NodeGrup,
+  NodeSonuc,
   NodeTalepOzet,
 } from '@/api/cryptoHubApi';
 
@@ -39,6 +42,7 @@ const m = vi.hoisted(() => ({
   smartAyarKaydet: vi.fn(),
   smartAyarOnizle: vi.fn(),
   flowMeta: vi.fn(),
+  ocoValidate: vi.fn(),
   tenants: vi.fn(),
   actions: vi.fn(),
   overview: vi.fn(),
@@ -73,12 +77,14 @@ vi.mock('@/contexts/JobTrackerContext', () => ({ useJobTracker: () => ({ addJob:
 vi.mock('@/contexts/AuthContext', () => ({
   useAuth: () => ({ user: { username: 'ali', role: kimlik.rol } }),
 }));
-vi.mock('@/api/ansibleApi', () => ({ ansibleApi: { smartFlowMetadata: m.flowMeta } }));
+vi.mock('@/api/ansibleApi', () => ({ ansibleApi: { smartFlowMetadata: m.flowMeta, ocoValidate: m.ocoValidate } }));
 
 import { NodePanel } from '@/components/crypto_hub/NodePanel';
 import { NodeTakip } from '@/components/crypto_hub/NodeTakip';
 import CryptoHubPage from '@/components/crypto_hub/CryptoHubPage';
 import CryptoHubSmartModal from '@/components/crypto_hub/CryptoHubSmartModal';
+import { METIN, bekleyenMetni, sonucMetni } from '@/components/crypto_hub/nodeOrtak';
+import { fmtDateTime } from '@/utils/datetime';
 
 const UIS = 'uis:evm-ethereum-mainnet';
 const DOT = 'eski:polkadot-assethub';
@@ -419,6 +425,32 @@ async function sihirbazAc(r: CryptoNodesResponse, id = UIS) {
   fireEvent.click(degistir(id));
 }
 
+const OCO_NO = '22502813';
+const iso = (dk: number) => new Date(Date.now() + dk * 60000).toISOString();
+/** OCO doğrulama yanıtı; dakikalar şimdiden. */
+const ocoYanit = (basDk: number, sonDk: number) => ({
+  ok: true,
+  oco: {
+    ocoNumber: OCO_NO,
+    subject: 'Node geçişi',
+    startText: '06.11.2026 18:00:00',
+    endText: '06.11.2026 22:00:00',
+    windowStartText: '06.11.2026 18:00:00',
+    windowEndText: '06.11.2026 22:00:00',
+    windowStartIso: iso(basDk),
+    windowEndIso: iso(sonDk),
+    equal: false,
+    phase: basDk > 0 ? 'before' : 'inside',
+  },
+});
+/** Gerekçe adımında numarayı yazıp doğrular. */
+async function ocoGir(y = ocoYanit(-10, 240)) {
+  m.ocoValidate.mockResolvedValue(y);
+  fireEvent.change(screen.getByLabelText('OCO numarası'), { target: { value: OCO_NO } });
+  fireEvent.click(screen.getByRole('button', { name: 'Doğrula' }));
+  await screen.findByText(/^Pencere: /);
+}
+
 /** "Yeni node" adımında rolün kutusuna yazar. */
 const yaz = (etiket: string, deger: string) =>
   fireEvent.change(screen.getByLabelText(etiket), { target: { value: deger } });
@@ -594,6 +626,8 @@ describe('U2 sihirbaz', () => {
     fireEvent.change(screen.getByLabelText('Gerekçe (10–500 karakter)'), {
       target: { value: 'Planlı sağlayıcı geçişi' },
     });
+    expect(btn('İleri').disabled, 'production OCO olmadan ilerledi').toBe(true);
+    await ocoGir();
     fireEvent.click(btn('İleri'));
     const yazi = screen.getByLabelText(`Onaylamak için grup adını yazın: ${UIS}`);
     fireEvent.change(yazi, { target: { value: 'evm-ethereum-mainnet' } });
@@ -604,7 +638,12 @@ describe('U2 sihirbaz', () => {
     expect(btn('Talep aç').disabled).toBe(false);
     fireEvent.click(btn('Talep aç'));
     await waitFor(() => expect(m.change).toHaveBeenCalledTimes(1));
-    expect(m.change.mock.calls[0][0]).toMatchObject({ tenant: 'metaco_das_prod', onayMetni: UIS, yeni: { rpc: YENI } });
+    expect(m.change.mock.calls[0][0]).toMatchObject({
+      tenant: 'metaco_das_prod',
+      onayMetni: UIS,
+      yeni: { rpc: YENI },
+      ocoNumber: OCO_NO,
+    });
   });
 
   async function sonaKadar(r: CryptoNodesResponse) {
@@ -888,6 +927,7 @@ describe('U3 takip', () => {
     fireEvent.change(screen.getByLabelText('Gerekçe (10–500 karakter)'), {
       target: { value: 'İstanbul ile aynı geçiş' },
     });
+    await ocoGir();
     fireEvent.click(btn('İleri'));
     fireEvent.change(screen.getByLabelText(`Onaylamak için grup adını yazın: ${UIS}`), {
       target: { value: UIS },
@@ -928,6 +968,7 @@ describe('U3 takip', () => {
     fireEvent.click(btn('İleri'));
     fireEvent.click(btn('İleri'));
     fireEvent.change(screen.getByLabelText('Gerekçe (10–500 karakter)'), { target: { value: 'İstanbul ile aynı geçiş' } });
+    await ocoGir();
     fireEvent.click(btn('İleri'));
     fireEvent.change(screen.getByLabelText(`Onaylamak için grup adını yazın: ${UIS}`), { target: { value: UIS } });
     fireEvent.click(btn('Talep aç'));
@@ -1258,6 +1299,7 @@ describe('U4 yapı', () => {
       'esTalepId',
       'bilesenler',
       'onaysizKabul',
+      'ocoNumber',
     ]);
     const onizle = /smartOnizle: \(body: \{([^}]*)\}\)/.exec(api);
     expect(onizle, 'smartOnizle imzası bulunamadı').toBeTruthy();
@@ -1277,6 +1319,7 @@ describe('U7 Smart kapalı test yolu', () => {
     fireEvent.click(btn('İleri'));
     fireEvent.click(btn('İleri'));
     fireEvent.change(screen.getByLabelText('Gerekçe (10–500 karakter)'), { target: { value: 'Test ortamı denemesi' } });
+    if (r.tenant?.production) await ocoGir();
     fireEvent.click(btn('İleri'));
   }
 
@@ -1403,6 +1446,296 @@ describe('U7 Smart kapalı test yolu', () => {
     await screen.findByText('Indexer / Node bağlantıları');
     fireEvent.click(screen.getAllByRole('button', { name: 'Smart önizleme' })[0]);
     expect(await screen.findByText(/^Crypto Hub Smart şablonu bu talep için/)).toBeTruthy();
+  });
+});
+
+// ── U9 ───────────────────────────────────────────────────────────────────────────────
+describe('U9 OCO', () => {
+  async function gerekceAdimi(r: CryptoNodesResponse) {
+    await sihirbazAc(r);
+    fireEvent.click(btn('İleri'));
+    yaz(RPC_ETIKET, YENI);
+    await waitFor(() => expect(btn('İleri').disabled).toBe(false));
+    fireEvent.click(btn('İleri'));
+    fireEvent.click(btn('İleri'));
+    fireEvent.change(screen.getByLabelText('Gerekçe (10–500 karakter)'), { target: { value: 'Test ortamı denemesi' } });
+  }
+
+  it('OCO gerekmiyorsa alan görünmez, numara gönderilmez', async () => {
+    m.change.mockResolvedValue({ ok: true, ticketId: 1, externalTicketId: 'SR-1', talepId: 1 });
+    await gerekceAdimi(yanit());
+    expect(screen.queryByLabelText('OCO numarası')).toBeNull();
+    expect(btn('İleri').disabled).toBe(false);
+    fireEvent.click(btn('İleri'));
+    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(btn('Talep aç'));
+    await waitFor(() => expect(m.change).toHaveBeenCalledTimes(1));
+    expect('ocoNumber' in m.change.mock.calls[0][0]).toBe(false);
+  });
+
+  it('zorunluysa doğrulanmadan ilerlemez; numara değişince doğrulama düşer', async () => {
+    await gerekceAdimi(yanit({ ocoGerekli: true }));
+    expect(btn('İleri').disabled).toBe(true);
+    expect(btn('Doğrula').disabled).toBe(true);
+    await ocoGir();
+    expect(m.ocoValidate).toHaveBeenCalledWith(OCO_NO);
+    expect(screen.getByText('Pencere: 06.11.2026 18:00:00 – 06.11.2026 22:00:00')).toBeTruthy();
+    expect(screen.getByText(/^Son başlama: /)).toBeTruthy();
+    expect(btn('İleri').disabled).toBe(false);
+    fireEvent.change(screen.getByLabelText('OCO numarası'), { target: { value: '1' } });
+    expect(btn('İleri').disabled).toBe(true);
+    expect(screen.queryByText(/^Pencere: /)).toBeNull();
+  });
+
+  it('before + Smart açık: "Onay gelse de pencere açılınca başlar", talep açılabilir', async () => {
+    m.change.mockResolvedValue({ ok: true, ticketId: 1, externalTicketId: 'SR-1', talepId: 1 });
+    await gerekceAdimi(yanit({ ocoGerekli: true }));
+    await ocoGir(ocoYanit(120, 360));
+    expect(screen.getByText('Onay gelse de pencere açılınca başlar')).toBeTruthy();
+    expect(btn('İleri').disabled).toBe(false);
+    fireEvent.click(btn('İleri'));
+    expect(screen.getByText(/Onay gelse de pencere açılınca başlar/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(btn('Talep aç'));
+    await waitFor(() => expect(m.change).toHaveBeenCalledTimes(1));
+    expect(m.change.mock.calls[0][0].ocoNumber).toBe(OCO_NO);
+  });
+
+  it('before + Smart kapalı: engel metni, ilerlemez', async () => {
+    await gerekceAdimi(yanit({ ocoGerekli: true, smartMod: 'kapali' }));
+    await ocoGir(ocoYanit(120, 360));
+    expect(screen.getByText(/Smart onayı kapalıyken iş bekletilemez; pencere açılınca tekrar açın/)).toBeTruthy();
+    expect(btn('İleri').disabled).toBe(true);
+  });
+
+  it('inside + Smart kapalı: iş hemen başlar metni, ilerler', async () => {
+    await gerekceAdimi(yanit({ ocoGerekli: true, smartMod: 'kapali' }));
+    await ocoGir(ocoYanit(-10, 240));
+    expect(screen.getByText('Pencere açık: iş hemen başlar.')).toBeTruthy();
+    expect(btn('İleri').disabled).toBe(false);
+  });
+
+  it.each([
+    ['kapanmış', -300, -60, /OCO penceresi kapandı/],
+    ['ufuk dışı', 8 * 1440, 8 * 1440 + 240, /7 günden ileride/],
+    ['son başlama geçti', -60, 20, /Son başlama saati geçti/],
+    ['kısa pencere', 60, 80, /30 dakikadan kısa/],
+  ])('%s pencere: engel metni, ilerlemez', async (_ad, bas, son, metin) => {
+    await gerekceAdimi(yanit({ ocoGerekli: true }));
+    await ocoGir(ocoYanit(bas, son));
+    expect(screen.getByText(metin)).toBeTruthy();
+    expect(btn('İleri').disabled).toBe(true);
+  });
+
+  it('doğrulama hatası metni gösterilir, ilerlemez', async () => {
+    await gerekceAdimi(yanit({ ocoGerekli: true }));
+    m.ocoValidate.mockResolvedValue({ ok: false, message: 'OCO 1 bulunamadı.' });
+    fireEvent.change(screen.getByLabelText('OCO numarası'), { target: { value: '1' } });
+    fireEvent.click(btn('Doğrula'));
+    expect(await screen.findByText('OCO 1 bulunamadı.')).toBeTruthy();
+    expect(btn('İleri').disabled).toBe(true);
+  });
+
+  it('sunucu OCO reddi: Gerekçe adımına döner, doğrulama düşer, /nodes yeniden okunur', async () => {
+    m.change.mockResolvedValue({ ok: false, blocked: 'node_oco_son_baslama', message: 'Son başlama saati geçti.' });
+    await gerekceAdimi(yanit({ ocoGerekli: true }));
+    await ocoGir();
+    fireEvent.click(btn('İleri'));
+    fireEvent.click(screen.getByRole('checkbox'));
+    const once = m.nodes.mock.calls.length;
+    fireEvent.click(btn('Talep aç'));
+    expect(await screen.findByLabelText('OCO numarası')).toBeTruthy();
+    expect(screen.getByText('Son başlama saati geçti.')).toBeTruthy();
+    expect(btn('İleri').disabled).toBe(true);
+    await waitFor(() => expect(m.nodes.mock.calls.length).toBeGreaterThan(once));
+  });
+
+  it.each([
+    'node_oco_gerekli',
+    'node_oco_okunamadi',
+    'node_oco_gecersiz',
+    'node_oco_gecti',
+    'node_oco_kisa',
+    'node_oco_son_baslama',
+    'node_oco_ufuk',
+    'node_oco_pencere_bekleniyor',
+  ])('%s: Gerekçe adımına döner, doğrulama düşer', async (blocked) => {
+    m.change.mockResolvedValue({ ok: false, blocked, message: 'Sunucu reddi.' });
+    await gerekceAdimi(yanit({ ocoGerekli: true }));
+    await ocoGir();
+    fireEvent.click(btn('İleri'));
+    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(btn('Talep aç'));
+    expect(await screen.findByLabelText('OCO numarası')).toBeTruthy();
+    expect(screen.queryByText(/^Pencere: /)).toBeNull();
+    expect(btn('İleri').disabled).toBe(true);
+  });
+
+  it('sunucu reddinin bandı numara değişince ve yeni doğrulamada kalkar', async () => {
+    m.change.mockResolvedValue({ ok: false, blocked: 'node_oco_son_baslama', message: 'Son başlama saati geçti.' });
+    await gerekceAdimi(yanit({ ocoGerekli: true }));
+    await ocoGir();
+    fireEvent.click(btn('İleri'));
+    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(btn('Talep aç'));
+    await screen.findByText('Son başlama saati geçti.');
+    await ocoGir();
+    expect(screen.queryByText('Son başlama saati geçti.')).toBeNull();
+    fireEvent.click(btn('İleri'));
+    fireEvent.click(btn('Talep aç'));
+    await screen.findByText('Son başlama saati geçti.');
+    fireEvent.change(screen.getByLabelText('OCO numarası'), { target: { value: '1' } });
+    expect(screen.queryByText('Son başlama saati geçti.')).toBeNull();
+  });
+
+  it('numara değişince uçuştaki eski doğrulamanın sonucu yazılmaz (başarı ve hata)', async () => {
+    await gerekceAdimi(yanit({ ocoGerekli: true }));
+    let coz: (v: unknown) => void = () => {};
+    m.ocoValidate.mockReturnValueOnce(new Promise((r) => { coz = r; }));
+    fireEvent.change(screen.getByLabelText('OCO numarası'), { target: { value: OCO_NO } });
+    fireEvent.click(btn('Doğrula'));
+    fireEvent.change(screen.getByLabelText('OCO numarası'), { target: { value: '99' } });
+    await act(async () => { coz(ocoYanit(-10, 240)); });
+    expect(screen.queryByText(/^Pencere: /)).toBeNull();
+    expect(btn('İleri').disabled).toBe(true);
+    let red: (e: unknown) => void = () => {};
+    m.ocoValidate.mockReturnValueOnce(new Promise((_, r) => { red = r; }));
+    fireEvent.click(btn('Doğrula'));
+    fireEvent.change(screen.getByLabelText('OCO numarası'), { target: { value: '100' } });
+    await act(async () => { red(new Error('eski')); });
+    expect(screen.queryByText(METIN.oco.baglantiHatasi)).toBeNull();
+    expect(btn('Doğrula').disabled).toBe(false);
+  });
+
+  it('doğrulama istisnası: geçit metni aynen, diğer hata gövdesi gösterilmez', async () => {
+    await gerekceAdimi(yanit({ ocoGerekli: true }));
+    m.ocoValidate.mockRejectedValueOnce(Object.assign(new Error('Portal yeniden başlıyor.'), { gatewayUnavailable: true }));
+    fireEvent.change(screen.getByLabelText('OCO numarası'), { target: { value: '1' } });
+    fireEvent.click(btn('Doğrula'));
+    expect(await screen.findByText('Portal yeniden başlıyor.')).toBeTruthy();
+    m.ocoValidate.mockRejectedValueOnce(Object.assign(new Error('Ayar eksik.'), { nginxRed: true }));
+    fireEvent.click(btn('Doğrula'));
+    expect(await screen.findByText('Ayar eksik.')).toBeTruthy();
+    m.ocoValidate.mockRejectedValueOnce(new Error('<html>ham yanit</html>'));
+    fireEvent.click(btn('Doğrula'));
+    expect(await screen.findByText(METIN.oco.baglantiHatasi)).toBeTruthy();
+    expect(screen.queryByText(/ham yanit/)).toBeNull();
+  });
+
+  it('uzun pencere: son başlama pencere sonu değil, açıldıktan sonraki onay süresi', async () => {
+    await gerekceAdimi(yanit({ ocoGerekli: true }));
+    await ocoGir(ocoYanit(-30 * 1440, 365 * 1440));
+    const beklenen = fmtDateTime(Date.now() + 1440 * 60000).slice(0, 10);
+    expect(screen.getByText(/^Son başlama: /).textContent).toContain(beklenen);
+  });
+
+  it('geçmiş tablosu: onaylı bekleyen rozet ve OCO satırı; OCO suz satırda yok', async () => {
+    m.nodes.mockResolvedValue(
+      yanit({
+        gecmis: [
+          talep({ talepId: 1, pencereBekliyor: true, ocoNo: OCO_NO, ocoPencereBas: iso(60), ocoPencereSon: iso(300) }),
+          talep({ talepId: 2, externalTicketId: 'SR-556' }),
+        ],
+      }),
+    );
+    render(<NodePanel tenantKey="metaco_das_test" />);
+    await screen.findByText('Indexer / Node bağlantıları');
+    const satir = (no: string) => screen.getByText(new RegExp(no)).closest('tr') as HTMLElement;
+    expect(within(satir('SR-555')).getByText('Onaylandı, pencere bekleniyor')).toBeTruthy();
+    expect(within(satir('SR-555')).getByText(new RegExp(`^OCO ${OCO_NO} · Pencere: `))).toBeTruthy();
+    expect(within(satir('SR-556')).queryByText('Onaylandı, pencere bekleniyor')).toBeNull();
+    expect(within(satir('SR-556')).queryByText(/^OCO /)).toBeNull();
+  });
+
+  it('takip: pencereli ZAMAN_ASIMI ekranda "24 saat" demez', async () => {
+    m.changeDetail.mockResolvedValue({
+      ok: true,
+      talep: talep({ durum: 'ZAMAN_ASIMI', sonucKod: 'TIMEOUT', kapandiAt: iso(-1), ocoNo: OCO_NO, ocoPencereBas: iso(-60), ocoPencereSon: iso(-1) }),
+      smart: null,
+    });
+    render(<NodeTakip tenantKey="metaco_das_test" talepId={42} onKapat={vi.fn()} aralikMs={1000} />);
+    expect(await screen.findByText(METIN.oco.zamanAsimi)).toBeTruthy();
+    expect(screen.queryByText(/24 saat/)).toBeNull();
+  });
+
+  it('takip: OCO lu talep açıldı metni "24 saat" demez, son başlamayı söyler; OCO suz metin aynı', () => {
+    const acildi = { ok: true, ticketId: 9, externalTicketId: 'SR-9', talepId: 7 };
+    const son = iso(270);
+    const { unmount } = render(
+      <NodeTakip
+        tenantKey="metaco_das_test"
+        talepId={7}
+        yeniAcildi={{ ...acildi, oco: { ocoNumber: OCO_NO, windowStartIso: iso(60), windowEndIso: iso(300), sonBaslamaIso: son, bekleyecek: true } }}
+        onKapat={vi.fn()}
+      />,
+    );
+    expect(screen.getByText(METIN.talepAcildiOco('SR-9', fmtDateTime(son)))).toBeTruthy();
+    expect(screen.queryByText(/24 saat/)).toBeNull();
+    unmount();
+    render(<NodeTakip tenantKey="metaco_das_test" talepId={7} yeniAcildi={acildi} onKapat={vi.fn()} />);
+    expect(screen.getByText(/24 saat/)).toBeTruthy();
+  });
+
+  it('takip: onaylı bekleyen talep "Onaylandı, pencere bekleniyor", OCO ve pencere görünür', async () => {
+    m.changeDetail.mockResolvedValue({
+      ok: true,
+      talep: {
+        talepId: 7, grup: UIS, lokasyon: 'İstanbul', eskiOzet: null, yeniOzet: null, hedefler: [], username: 'u',
+        durum: 'BEKLIYOR', sonucKod: null, smartTicketId: 9, externalTicketId: 'SR-9', awxServerId: null, awxJobId: null,
+        esTalepId: null, createdAt: iso(-5), kapandiAt: null, ocoNo: OCO_NO, ocoPencereBas: iso(60), ocoPencereSon: iso(300),
+      },
+      smart: { status: 'PENDING', statusName: 'Tamamlandi', sonTarih: iso(270), hata: null, approvedAt: iso(-1), pencereBekliyor: true },
+    });
+    render(<NodeTakip tenantKey="metaco_das_test" talepId={7} onKapat={vi.fn()} aralikMs={1000} />);
+    expect((await screen.findAllByText('Onaylandı, pencere bekleniyor')).length).toBeGreaterThan(0);
+    expect(screen.getByText(new RegExp(`^OCO ${OCO_NO} · Pencere: `))).toBeTruthy();
+    expect(screen.queryByText(/Onay bekliyor/)).toBeNull();
+  });
+
+  it('kapanış metinleri: pencereli ZAMAN_ASIMI "24 saat" demez, onay geldiyse doğrusunu söyler', () => {
+    const smart = (onayGeldi?: boolean) =>
+      ({ sum: null, degisiklikler: [], rollout: [], verify: [], rollback: [], yedek: [], hatalar: [], smart: { status: 'TIMEOUT', onayGeldi } }) as NodeSonuc;
+    expect(sonucMetni('ZAMAN_ASIMI', 'TIMEOUT', smart())).toMatch(/24 saat/);
+    const yok = sonucMetni('ZAMAN_ASIMI', 'TIMEOUT', smart(), true);
+    expect(yok).toMatch(/Portal Smart onayı görmedi/);
+    expect(yok).toMatch(/Onay bu sırada verilmiş olabilir/);
+    expect(yok).not.toMatch(/onayı gelmedi/);
+    expect(yok).not.toMatch(/24 saat/);
+    const var_ = sonucMetni('ZAMAN_ASIMI', 'TIMEOUT', smart(true), true);
+    expect(var_).toMatch(/Smart onayı alınmıştı/);
+    expect(var_).not.toMatch(/onayı gelmedi/);
+  });
+
+  it('bekleyen bandı ve talep açıldı metni pencereye göre', () => {
+    expect(
+      bekleyenMetni({ talepId: 1, externalTicketId: 'SR-1', username: 'u', createdAt: iso(0), durum: 'BEKLIYOR', pencereBekliyor: true }),
+    ).toMatch(/^Onaylandı, pencere bekleniyor: Smart #SR-1/);
+    expect(METIN.talepAcildiOco('1', 'x')).not.toMatch(/24 saat/);
+  });
+
+  it('Smart penceresi: anahtar ve production notu; dokunulmazsa gönderilmez, değişince gider', async () => {
+    const ayar = (ocoTest: boolean) => ({
+      ok: true,
+      smart: { enabled: true, ocoTest, flowKey: '', metadataFields: '', integrationKeySet: false },
+      kaynak: 'opsx',
+      durum: 'opsx',
+      opsxFlowKey: 'F',
+      sifrelemeVar: true,
+    });
+    m.smartAyar.mockResolvedValue(ayar(false));
+    m.smartAyarKaydet.mockResolvedValue(ayar(false));
+    render(<CryptoHubSmartModal open onClose={vi.fn()} />);
+    await screen.findByText('Test ortamlarında OCO iste');
+    expect(screen.getByText("Production'da OCO zorunludur.")).toBeTruthy();
+    fireEvent.click(btn('Kaydet'));
+    await waitFor(() => expect(m.smartAyarKaydet).toHaveBeenCalledTimes(1));
+    expect('ocoTest' in m.smartAyarKaydet.mock.calls[0][0]).toBe(false);
+    await screen.findByText('Test ortamlarında OCO iste');
+    fireEvent.click(screen.getByLabelText('Test ortamlarında OCO iste'));
+    fireEvent.click(btn('Kaydet'));
+    await waitFor(() => expect(m.smartAyarKaydet).toHaveBeenCalledTimes(2));
+    expect(m.smartAyarKaydet.mock.calls[1][0].ocoTest).toBe(true);
+    expect(document.body.textContent).not.toMatch(/OCO.{0,40}sonraki adım/i);
   });
 });
 

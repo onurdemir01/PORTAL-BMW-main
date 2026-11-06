@@ -160,10 +160,14 @@ export function NodeTakip({
   const kalan = sonDurum?.deadline
     ? kalanSure(sonDurum.deadline, sonDurum.serverNow, sonDurumAlindiMs, simdi)
     : kalanSure(smart?.sonTarih, null, null, simdi);
+  const pencereBekliyor = durum === 'BEKLIYOR' && !!smart?.pencereBekliyor;
+  const ocoNo = talep?.ocoNo ?? yeniAcildi?.oco?.ocoNumber ?? null;
+  const ocoBas = talep?.ocoPencereBas ?? yeniAcildi?.oco?.windowStartIso ?? null;
+  const ocoSon = talep?.ocoPencereSon ?? yeniAcildi?.oco?.windowEndIso ?? null;
   const oneri = yeniAcildi?.esTalepOnerisi ?? detay?.esTalepOnerisi ?? null;
   const sonucVeri = detay?.sonuc ?? talep?.sonuc ?? null;
   const satirlar = sonucSatirlari(sonucVeri);
-  const sonuc = talep && kapali ? sonucMetni(talep.durum, talep.sonucKod, sonucVeri) : null;
+  const sonuc = talep && kapali ? sonucMetni(talep.durum, talep.sonucKod, sonucVeri, !!talep.ocoNo) : null;
 
   async function adminKapat() {
     if (kapatiliyor || !gerekceGecerli(kapatGerekce)) return;
@@ -202,8 +206,13 @@ export function NodeTakip({
               {fmtDateTime(talep.createdAt)}
             </div>
           )}
+          {ocoNo && (
+            <div className="text-[11px] break-words" style={{ color: 'var(--text-muted)' }}>
+              {METIN.oco.takip(ocoNo, fmtDateTime(ocoBas), fmtDateTime(ocoSon))}
+            </div>
+          )}
         </div>
-        <NodeRozet ton={durumTonu(durum)}>{DURUM_ETIKETI[durum]}</NodeRozet>
+        <NodeRozet ton={durumTonu(durum)}>{pencereBekliyor ? METIN.oco.onayliBekliyor : DURUM_ETIKETI[durum]}</NodeRozet>
         <button
           type="button"
           className={NODE_BTN}
@@ -220,7 +229,9 @@ export function NodeTakip({
         <p className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>
           {yeniAcildi.onaysiz
             ? METIN.onaysiz.basladi(yeniAcildi.jobId ?? '?')
-            : METIN.talepAcildi(yeniAcildi.externalTicketId || no)}
+            : yeniAcildi.oco
+              ? METIN.talepAcildiOco(yeniAcildi.externalTicketId || no, fmtDateTime(yeniAcildi.oco.sonBaslamaIso))
+              : METIN.talepAcildi(yeniAcildi.externalTicketId || no)}
         </p>
       )}
       {yeniAcildi && !yeniAcildi.ok && yeniAcildi.message && !kapali && (
@@ -285,7 +296,7 @@ export function NodeTakip({
           {durum === 'ACILIYOR' && <div>{METIN.aciliyor}</div>}
           {durum === 'BEKLIYOR' && !basladi && (
             <div>
-              {METIN.onayBekliyor(durumAdi)}
+              {pencereBekliyor ? METIN.oco.onayliBekliyor : METIN.onayBekliyor(durumAdi)}
               {kalan && (
                 <span className="ml-2" style={{ color: 'var(--text-muted)' }}>
                   {METIN.sonTarih(kalan)}

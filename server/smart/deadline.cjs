@@ -24,6 +24,9 @@
 //     YERINE gecer (genel daha uzun ya da sinirsiz olsa bile - kural zaten "en gec bu kadar"
 //     demektir). OCO penceresiyle birlikteyse ERKEN olan gecerlidir: pencere kapandiktan sonra is
 //     zaten calismaz, kural dolduktan sonra da calismamali. Gecersiz/0/negatif deger YOK SAYILIR.
+//   * SON BASLAMA (2026-11-06, Crypto Hub D8): `pendingLaunch.sonBaslamaIso` verilmisse 'oco' siniri
+//     pencere sonu yerine odur: is pencere sonuna kadar bitmeli, o saatten sonra baslamamali. Tarih
+//     okunamazsa pencere sonuna duser. Bu alani tasimayan biletin davranisi degismez.
 'use strict';
 
 // Son tarih yalnizca bu durumlarda anlamli: talep hala onay bekliyor ya da onay gelmis,
@@ -32,7 +35,7 @@
 const SURELI_DURUMLAR = new Set(['PENDING', 'LAUNCHING']);
 
 /**
- * @param {{ createdAt: string|Date, pendingLaunch?: { ocoWindowEndIso?: string|null, onayZamanAsimiDk?: number|null } }} ticket
+ * @param {{ createdAt: string|Date, pendingLaunch?: { ocoWindowEndIso?: string|null, sonBaslamaIso?: string|null, onayZamanAsimiDk?: number|null } }} ticket
  * @param {{ ticketTimeoutMinutes?: number|null }} cfg  getConfig() ciktisi
  * @returns {{ deadline: Date|null, deadlineKaynak: 'oco'|'genel'|'islem'|null, timeoutMinutes: number|null }}
  *   timeoutMinutes: poller'in `yas > timeoutMinutes` karsilastirmasinda kullandigi deger
@@ -45,14 +48,15 @@ function talepSonTarihi(ticket, cfg) {
   let deadlineKaynak = genel != null ? 'genel' : null;
   let pencereSonuMs = null;
 
-  const winEndIso = ticket?.pendingLaunch?.ocoWindowEndIso;
-  if (winEndIso) {
-    const until = new Date(winEndIso).getTime();
+  for (const iso of [ticket?.pendingLaunch?.sonBaslamaIso, ticket?.pendingLaunch?.ocoWindowEndIso]) {
+    if (!iso) continue;
+    const until = new Date(iso).getTime();
     const allowed = (until - createdMs) / 60000;
     if (Number.isFinite(allowed)) {
       timeoutMinutes = allowed;
       deadlineKaynak = 'oco';
       pencereSonuMs = until;
+      break;
     }
   }
 
@@ -90,4 +94,16 @@ function talepSonTarihiAlanlari(ticket, cfg) {
   return { deadline: deadline ? deadline.toISOString() : null, deadlineKaynak };
 }
 
-module.exports = { talepSonTarihi, talepSonTarihiAlanlari, SURELI_DURUMLAR };
+/**
+ * Onay gelse bile sahiplenilmemesi gereken bilet mi? Yalniz `pencereBekle` tasiyan bilet ve pencere
+ * henuz acilmadiysa true. Okunamayan baslangic false doner: bilet sahiplenilir, runner'daki pencere
+ * denetimi isi reddeder.
+ */
+function pencereBekliyorMu(ticket, simdiMs = Date.now()) {
+  const pl = ticket?.pendingLaunch;
+  if (!pl || pl.pencereBekle !== true) return false;
+  const bas = new Date(pl.ocoWindowStartIso).getTime();
+  return Number.isFinite(bas) && simdiMs < bas;
+}
+
+module.exports = { talepSonTarihi, talepSonTarihiAlanlari, pencereBekliyorMu, SURELI_DURUMLAR };
