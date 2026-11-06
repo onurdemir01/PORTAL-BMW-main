@@ -13,6 +13,7 @@
 //   RA5 Bulgular: sunucuya tıklayınca panel satırın altında açılır / kapanır; Retirement etiketleri görünümü
 //   RA6 Kurallar: etiket seviyesi gerekçesiz kaydedilmez; yok sayma listesi kaydı
 //   RA7 Retirement: etiketten gelen öneri kayıt formunu uygulama adı ve notla açar, keşif başlar
+//   RA8 Faz 2: zincir kartında deployment satırı (kontrol kapalı / JVM kapalı / yok / FAILED / ölçülemedi)
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { render } from '@/test/test-utils';
@@ -64,6 +65,7 @@ import {
   zincirKartlari,
   earDurumMetni,
   bulgudanJvm,
+  deploymentMetni,
 } from '@/components/server_hub/retireEtiket';
 
 const APP = 'GBCJAP01';
@@ -758,5 +760,70 @@ describe('RA7 Retirement öneri', () => {
     );
     await waitFor(() => expect(rt.discover).toHaveBeenCalledWith('oldapp'));
     expect(screen.getByLabelText('Not')).toHaveValue('Server Hub etiketi: ayse doğruladı');
+  });
+});
+
+describe('RA8 Faz 2 deployment satırı', () => {
+  const dep = (jvmler: unknown[]) =>
+    HOST({ ear: { ...HOST().ear!, deployment: { kesik: false, jvmler } } as ShHostDetail['ear'] });
+  const J = (o: object = {}) => ({
+    name: 'yerel',
+    gen: 7,
+    running: true,
+    runningKnown: true,
+    ...o,
+  });
+  const D = (ad: string, durum: string, deploymentlar: unknown = null) => ({
+    nesil: '7',
+    ad,
+    durum,
+    rc: 0,
+    hata: null,
+    deploymentlar,
+  });
+  it('durumlar ve tonlar; yeşil yok', () => {
+    expect(deploymentMetni(HOST(), J())).toEqual({
+      metin: expect.stringMatching(/kontrol kapalı/),
+      ton: 'notr',
+    });
+    expect(deploymentMetni(dep([]), J({ running: false })).metin).toMatch(/JVM kapalı/);
+    expect(deploymentMetni(dep([]), J()).metin).toMatch(/ölçülmedi/);
+    expect(deploymentMetni(dep([D('yerel', 'OK', [])]), J())).toEqual({
+      metin: 'hiçbir deployment yok',
+      ton: 'kotu',
+    });
+    expect(
+      deploymentMetni(
+        dep([
+          D('yerel', 'OK', [
+            { ad: 'A.ear', calisma_adi: 'A.ear', etkin: true, durum: 'OK' },
+            { ad: 'B.ear', calisma_adi: null, etkin: false, durum: 'FAILED' },
+          ]),
+        ]),
+        J(),
+      ),
+    ).toEqual({ metin: 'A.ear OK · B.ear FAILED (devre dışı)', ton: 'kotu' });
+    expect(deploymentMetni(dep([D('yerel', 'CLI_YOK')]), J())).toEqual({
+      metin: 'ölçülemedi (CLI_YOK)',
+      ton: 'uyari',
+    });
+    expect(
+      deploymentMetni(dep([{ ...D('yerel', 'OK', []), nesil: '8' }]), J()).metin,
+      'nesil ayrimi',
+    ).toMatch(/ölçülmedi/);
+  });
+  it('panelde JVM kartında görünür', async () => {
+    m.host.mockResolvedValue({
+      ok: true,
+      host: dep([
+        D('yerel', 'OK', [{ ad: 'YEREL.ear', calisma_adi: 'YEREL.ear', etkin: true, durum: 'OK' }]),
+      ]),
+    });
+    render(<SunucuPaneli host={APP} retire={sonuc([])} onEtiketDegisti={vi.fn()} />);
+    const satirlar = await screen.findAllByTestId('deployment-satiri');
+    expect(satirlar.map((x) => x.textContent)).toEqual([
+      'Deployment (JBoss CLI): JVM kapalı — deployment okunmaz',
+      'Deployment (JBoss CLI): YEREL.ear OK',
+    ]);
   });
 });

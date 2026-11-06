@@ -418,6 +418,58 @@ const MADDELER = [
       { kod: null, kosul: 'EAR en az bir JVM’e bağlı.', seviye: 'ok' },
     ],
   },
+  // FAZ 2 (2026-11-06; kullanici: "JVM ayakta ancak deployment'i incelesin"): Uygulama Envanteri
+  // ayari "Deployment kontrolu" ACIK iken calisan her JVM'de JBoss CLI okumasi. Kapaliyken bulgu YOK.
+  {
+    id: 'ear-deployment',
+    alan: 'ear',
+    ad: 'Deployment durumu (JBoss CLI)',
+    neTaranir:
+      'Çalışan her JVM’de read-children-resources(child-type=deployment): deployment var mı, durumu (OK / FAILED) ve etkin mi. Uygulama Envanteri ayarı “Deployment kontrolü” açıkken.',
+    ciktilar: [
+      {
+        kod: 'DEPLOY_YOK',
+        kosul: 'JVM ayakta ama üzerinde hiçbir deployment yok — boşta çalışan JVM.',
+        seviye: 'danger',
+        dogrulama: {
+          neden: 'JBoss CLI çalışan JVM’in deployment listesini boş döndü.',
+          eksik: 'Uygulama yeniden dağıtılıyor olabilir (deploy sırasında liste kısa süre boştur); JVM bilerek boş bırakılmış olabilir.',
+          kontrol: DEPLOYMENT_KONTROL,
+        },
+      },
+      {
+        kod: 'DEPLOY_FAILED',
+        kosul: 'Deployment durumu FAILED — uygulama JVM’de çalışmıyor.',
+        seviye: 'danger',
+        dogrulama: {
+          neden: 'Deployment’ın çalışma zamanı durumu FAILED (sunucu logunda hata nedeni).',
+          eksik: 'Tarama anında yeniden başlatma sürüyor olabilir.',
+          kontrol: [...DEPLOYMENT_KONTROL, 'tail -200 /vhosting/<EAR>/../logs/server.log   # ya da JVM’in server.log’u'],
+        },
+      },
+      {
+        kod: 'DEPLOY_KAPALI',
+        kosul: 'Deployment tanımlı ama devre dışı (enabled=false).',
+        seviye: 'warning',
+        dogrulama: {
+          neden: 'Deployment etkin değil: JVM onu yüklemiyor.',
+          eksik: 'Bilerek kapatılmış (geçici bakım) olabilir.',
+          kontrol: DEPLOYMENT_KONTROL,
+        },
+      },
+      {
+        kod: 'DEPLOY_OLCULEMEDI',
+        kosul: 'Deployment durumu ölçülemedi (CLI yok, yanıt vermedi, zaman aşımı) — “deployment yok” sayılmaz.',
+        seviye: 'info',
+        dogrulama: {
+          neden: 'JBoss CLI bulunamadı, bağlanamadı, süre aşıldı ya da çıktı okunamadı.',
+          eksik: 'Kurulum standart yolların dışında olabilir; host controller kapalı olabilir.',
+          kontrol: [CLI7('ls host=master'), CLI8('ls host=primary')],
+        },
+      },
+      { kod: null, kosul: 'Çalışan JVM’lerin deployment’ları OK ve etkin (ya da kontrol kapalı).', seviye: 'ok' },
+    ],
+  },
 ];
 
 /** kod -> { seviye (varsayilan), madde, alan, kosul, dogrulama } */
@@ -484,6 +536,18 @@ const ETIKET_KURALLARI = [
     varsayilan: 'SUPHELI',
     dogrulama: null,
     kod: 'EAR_JVM_YOK',
+  },
+  {
+    kural: 'R6',
+    tur: 'JVM',
+    ad: 'Deployment adı diskteki EAR’la uyuşmuyor',
+    kosul: 'Çalışan JVM’deki bir deployment’ın adı /vhosting(8) altındaki hiçbir EAR’la eşleşmiyor (Faz 2).',
+    varsayilan: 'SUPHELI',
+    dogrulama: {
+      neden: 'JVM diskte karşılığı olmayan bir içerik çalıştırıyor: eski / yönetilen içerik ya da elle dağıtılmış paket olabilir.',
+      eksik: 'Deployment doğrudan .war olarak ya da /vhosting dışından dağıtılmış olabilir (o zaman yanlış alarm).',
+      kontrol: [...DEPLOYMENT_KONTROL, "grep -n '<deployment ' /usr/jboss/AppServer/domain/configuration/domain.xml"],
+    },
   },
 ].map((k) => ({ ...k, dogrulama: k.dogrulama || KODLAR.get(k.kod).dogrulama }));
 

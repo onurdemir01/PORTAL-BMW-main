@@ -15,9 +15,15 @@
 #   ear_sure:              300   (betik ici yumusak butce, sn)
 #   ear_zaman_asimi:       600   (Ansible gorev zaman asimi, sn: kesin sinir)
 #   ear_sinir_uygulama:    25000 / ear_sinir_host: 200000 / ear_arsiv_mb: 64
+#   ear_deployment_kontrol: false (FAZ 2: calisan JVM'lerin deployment durumu, JBoss CLI; Admin acar)
+#   ear_dep_zaman:         15    (CLI cagrisi basina sn) / ear_dep_sure: 180 (host butcesi, sn)
 #   requester:             kullanici adi (gunluk)
 #
-# HEDEFTE NE CALISIR: tek `raw` gorevi. Yorumlayici aranir (python3, yoksa RHEL 8
+# FAZ 2 (2026-11-06, istege bagli): ikinci `raw` files/deployment_oku.sh'i `bash -s` ile calistirir
+# (yalniz ps + JBoss CLI read-children-resources; salt okunur). Ciktisi ayni ham dosyaya tarama
+# paketinden SONRA eklenir. ear_deployment_kontrol verilmezse calismaz (her calisan JVM bir CLI sureci).
+#
+# HEDEFTE NE CALISIR: tek `raw` gorevi (Faz 2 aciksa ikinci, salt okunur `raw`). Yorumlayici aranir (python3, yoksa RHEL 8
 # platform-python), betik files/ear_tara.py ACIK METIN olarak heredoc ile stdin'den verilir
 # (`python3 -B -`): hedefe dosya kopyalanmaz, modul gonderilmez, bytecode yazilmaz.
 # Betik dosya icerigi okumaz (yalniz zip arsivlerinin merkez dizini), hicbir sey yazmaz/silmez.
@@ -155,9 +161,28 @@
               hata: "{{ ((ear_tarama.msg | default('')) ~ ' ' ~ (ear_tarama.stderr | default(''))) | trim | truncate(300, true, '') }}"
           no_log: true
 
+        # FAZ 2: yalniz istenirse ve tarama paketi alindiysa. Atlanirsa ear_deployment.stdout yok.
+        - name: "--- [Task] Deployment durumu (Faz 2; salt okunur JBoss CLI) ---"
+          become: "{{ (ear_okuyan | length) > 0 }}"
+          become_method: dzdo
+          become_user: "{{ ear_okuyan if (ear_okuyan | length) > 0 else omit }}"
+          ansible.builtin.raw: |
+            command -v bash >/dev/null 2>&1 || { printf '@@EAR_DEPLOYMENT_BASLA@@\n@@JVM@@ - - BASH_YOK\n@@EAR_DEPLOYMENT_BITTI@@\n'; exit 0; }
+            EAR_DEP_ZAMAN={{ ear_dep_zaman | default(15) | int }} EAR_DEP_SURE={{ ear_dep_sure | default(180) | int }} LC_ALL=C bash -s <<'EAR_DEPLOYMENT_SON'
+            {{ lookup('ansible.builtin.file', 'files/deployment_oku.sh') }}
+            EAR_DEPLOYMENT_SON
+          register: ear_deployment
+          timeout: "{{ (ear_dep_sure | default(180) | int) + 60 }}"
+          changed_when: false
+          failed_when: false
+          no_log: true
+          when:
+            - ear_deployment_kontrol | default(false) | bool
+            - ear_ozet.paket | bool
+
         - name: "--- [Task] /sw'ye yaz (GBLABT02 uzerinden) ---"
           ansible.builtin.copy:
-            content: "{{ ear_tarama.stdout }}"
+            content: "{{ ear_tarama.stdout }}{{ ear_deployment.stdout | default('') }}"
             dest: "{{ ear_cikti_dosyasi }}"
             mode: '0644'
           delegate_to: "{{ ear_yazici_host | default('GBLABT02') }}"

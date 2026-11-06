@@ -127,6 +127,13 @@ const AYARLAR = Object.freeze({
       /^([a-z_][a-z0-9_-]{0,31})?$/.test(String(v).trim()) ? String(v).trim() : null,
   },
   kokler: { ad: 'Taranan kökler', varsayilan: '/vhosting:/vhosting8', dogrula: kokDogrula },
+  // FAZ 2 (2026-11-06): calisan her JVM icin JBoss CLI read-children-resources(deployment). Varsayilan
+  // KAPALI: her JVM bir CLI (Java) sureci baslatir; once tek sunucuda pilot, sonra Admin acar.
+  deployment_kontrolu: {
+    ad: 'Deployment kontrolü (Faz 2, JBoss CLI)',
+    varsayilan: 'KAPALI',
+    dogrula: secenek(['ACIK', 'KAPALI']),
+  },
   // DB: son N FILO kosusu (ve onlardan yeni secili kosular). /sw: son N TAM kosusunun ham dosyalari
   // (agac goruntuleyici ve ZIP bunlari okur).
   saklama_kosu: { ad: "DB'de tutulan filo koşusu", varsayilan: '12', dogrula: tamSayi(2, 52) },

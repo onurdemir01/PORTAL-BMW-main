@@ -274,6 +274,8 @@ async function kosuOlustur({
   const p = {
     kokler: a.kokler,
     okuma_kullanicisi: a.okuma_kullanicisi,
+    // Faz 2: kosu basladigi andaki ayar (sonradan degisse de partiler ayni davranir).
+    deployment_kontrolu: a.deployment_kontrolu,
     dizin: alim.earDizin(),
     parti_boyutu: partiler[0].host_sayisi,
     gecersiz_host: gecersiz,
@@ -338,6 +340,8 @@ function extraVarsOf(kosu, parti) {
     ear_dizin: p.dizin || alim.earDizin(),
     ear_okuma_kullanicisi: p.okuma_kullanicisi == null ? 'was' : p.okuma_kullanicisi,
     ear_kokler: p.kokler || '/vhosting:/vhosting8',
+    // Faz 2 yalniz aciksa gonderilir (kapaliyken extra_vars eskisiyle birebir).
+    ...(p.deployment_kontrolu === 'ACIK' ? { ear_deployment_kontrol: true } : {}),
   };
 }
 
@@ -487,6 +491,7 @@ async function hostuAl(kosu, parti, hedef, statsHost, dizin, isNotu) {
       ortam: hedef.ortam,
       playbookDurum,
       hamBayt: buf.length,
+      deployment: alim.deploymentCoz(buf),
     });
   } catch (e) {
     return alim.bosHostKaydi({

@@ -15,6 +15,13 @@ Bu Ansible playbook'u Linux sunuculardaki `/vhosting` ve `/vhosting8` klasörler
   - 5 MB'tan büyük ya da `DOCTYPE`/`ENTITY` içeren dosya okunmaz.
   - Okunamayan dosya "JVM yok" sayılmaz; Portal'da "okunamadı" ve nedeni görünür.
 - `/vhosting` ve `/vhosting8` altında `.ear` ile bitmeyen girdileri de listeler (`APP.ear.bak`, `ESKI.war`, eski klasörler gibi). Bunlar retire şüphesi olarak değerlendirilir.
+- **Deployment kontrolü (Faz 2, isteğe bağlı, varsayılan KAPALI):** çalışan her JVM için JBoss CLI ile yalnız okuma komutu çalıştırır:
+  `read-children-resources(child-type=deployment,include-runtime=true,recursive=false)`.
+  - JBoss 7: `jboss-cli.sh`, `--controller=$HOSTNAME`, `host=master`. JBoss 8: `jboss-cli8.sh`, `--controller=$HOSTNAME:9998`, `host=primary`.
+  - Çalışan JVM'ler `ps`'teki `-D[Server:<ad>]` süreçlerinden bulunur. CLI çağrısı başına 15 sn, sunucu başına toplam 180 sn sınırı vardır.
+  - Sonuç Server Hub'da “deployment yok”, “FAILED”, “devre dışı” bulguları ve “deployment adı diskteki EAR'la uyuşmuyor” etiketi olarak görünür.
+  - Her çalışan JVM için bir CLI (Java) süreci başlatır. Önce tek sunucuda pilot yapın.
+  - Portal'dan açmak için: **Uygulama Envanteri › Ayarlar › Deployment kontrolü = ACIK**. AWX'ten elle: Variables alanına `ear_deployment_kontrol: true`.
 
 İki şekilde başlatılır:
 
@@ -45,16 +52,19 @@ Gerçek adlar ve ID'ler bu public repoda tutulmaz; yer tutucuların yerine kendi
 
 ## 3. Gerekli dosyalar
 
-Git projesinin `master` dalında şu iki dosya bulunmalı:
+Git projesinin `master` dalında şu dosyalar bulunmalı:
 
 ```text
 bmw_portal/ear_envanter/ear_envanter.yml
 bmw_portal/ear_envanter/files/ear_tara.py
+bmw_portal/ear_envanter/files/deployment_oku.sh
 ```
 
 Dosyaları Git'e gönderdikten sonra AWX'te **Projects > `<PROJE_ADI>` > Sync** yap. Bilgisayarındaki yerel dosyalar tek başına yeterli değildir.
 
 > `ear_tara.py` değiştiğinde (örneğin JBoss yapılandırma okuması eklendiğinde) yalnız bu dosyayı kopyalayıp **Sync** yapman yeter. Playbook değişmediyse onu yeniden kopyalaman gerekmez.
+
+> Faz 2 (deployment kontrolü) için üç dosya birlikte kopyalanmalı: `ear_envanter.yml`, `files/ear_tara.py` ve yeni `files/deployment_oku.sh`.
 
 ## 4. En kolay test: AWX ekranından
 

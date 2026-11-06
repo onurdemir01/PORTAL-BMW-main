@@ -609,6 +609,11 @@ const KOD_ETIKET: Record<string, string> = {
   KOK_EAR_DISI: '/vhosting kökünde .ear ile bitmeyen girdi — retire şüphesi',
   EAR_JVM_YOK: "EAR diskte var ama domain.xml / host.xml onu hiçbir JVM'e bağlamıyor",
   EAR_XML_OLCULEMEDI: 'JBoss yapılandırması okunamadı — EAR ↔ JVM eşlemesi yapılamadı ("JVM yok" sayılmaz)',
+  // Faz 2 (2026-11-06): calisan JVM'lerin deployment durumu (JBoss CLI; Uygulama Envanteri ayari).
+  DEPLOY_YOK: 'JVM ayakta ama üzerinde hiçbir deployment yok — boşta çalışan JVM',
+  DEPLOY_FAILED: 'deployment durumu FAILED — uygulama JVM’de çalışmıyor',
+  DEPLOY_KAPALI: 'deployment tanımlı ama devre dışı (enabled=false)',
+  DEPLOY_OLCULEMEDI: 'deployment durumu ölçülemedi (JBoss CLI) — "deployment yok" sayılmadı',
   PRODUCT_NOT_IN_INVENTORY: 'taramada bulunan ürün envanterde (dbo.Inventory) yok',
   SSH_SESSIONS_NEAR: 'sshd açık oturum sayısı MaxSessions sınırına yakın (mux_client_request_session riski)',
   SSH_MAXSESSIONS_LOW: 'sshd MaxSessions düşük (10 ya da altı, varsayılan) — Ansible delegate/forks ile tıkanabilir',

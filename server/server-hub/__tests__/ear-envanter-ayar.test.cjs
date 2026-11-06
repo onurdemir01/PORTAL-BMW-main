@@ -41,6 +41,10 @@ test('EY1 varsayilanlar', () => {
   assert.equal(d.parti_ozet, '100');
   assert.equal(d.parti_tam, '50');
   assert.equal(d.kokler, '/vhosting:/vhosting8');
+  // Faz 2 varsayilan KAPALI: her calisan JVM bir CLI (Java) sureci baslatir; pilotsuz acilmasin.
+  assert.equal(d.deployment_kontrolu, 'KAPALI');
+  assert.equal(a.AYARLAR.deployment_kontrolu.dogrula('ACIK'), 'ACIK');
+  assert.equal(a.AYARLAR.deployment_kontrolu.dogrula('EVET'), null);
   for (const k of ['zamanlayici', 'gun', 'saat', 'kip']) assert.ok(!(k in d), `eski anahtar ${k}`);
   assert.deepEqual(a.planOzeti(d).map((p) => p.sonraki), [[], []], 'kapali plan sonraki zaman vermez');
 });

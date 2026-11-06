@@ -21,6 +21,8 @@
 //        retirement'a hazir; kayitlar okunamadi -> BILINMIYOR; imza istek sayisiyla degismez, durumla degisir
 //   RE8  ear-hub-verisi: son kosu, JSON ayristirma, bozuk JSON null, DB hatasi okunamadi
 //   RE9  katalog: her etiket kurali ve retire ile ilgili kod uc parcali dogrulama tasir
+//   RE12 FAZ 2: deployment bulgulari (YOK / FAILED / KAPALI / OLCULEMEDI), R6 (ad diskteki EAR'la
+//        uyusmuyor) calisan JVM'de dusurulmez; kontrol kapaliyken (null) hicbiri yok
 //   RE11 HIZ: 2000 sunucu / ~16 bin aday 1,5 sn altinda (filo bir kez indekslenir; eski konu basina
 //        tarama 4,6 sn idi); ozet liste kopya tasimaz ama kopya sayisi tam
 //   RE10 uclar (GERCEK initServerHub): GET /retire-etiketleri; PUT /retire-kontrol 400 / 409 (etiket yok,
@@ -668,6 +670,7 @@ test('RE6 Admin kural seviyesi: KAPALI etiket uretmez, SUPHELI -> KESIN; gecersi
     R3: 'SUPHELI',
     R4: 'SUPHELI',
     R5: 'SUPHELI',
+    R6: 'SUPHELI',
   });
   assert.deepEqual(a.kokYoksay, ['a', 'b']);
   assert.deepEqual(
@@ -739,6 +742,11 @@ test('RE8 ear-hub-verisi: son kosu, JSON, bozuk JSON null, DB hatasi okunamadi',
         girdiler: [{ kok: '/vhosting', ad: 'X.bak', tip: 'F' }],
         kesilen: 1,
       }),
+      deployment_ozeti: JSON.stringify({
+        surum: 1,
+        kesik: false,
+        jvmler: [{ nesil: '7', ad: 'J', durum: 'OK', deploymentlar: [] }],
+      }),
     },
     {
       host: 'GBCJAP02',
@@ -788,6 +796,11 @@ test('RE8 ear-hub-verisi: son kosu, JSON, bozuk JSON null, DB hatasi okunamadi',
   assert.deepEqual(a.uygulamalar[0].xml, { durum: 'JVM_YOK', neden: 'TANIM_YOK' });
   assert.equal(b.taranma, '2026-11-04T01:00:00.000Z', 'DATETIME2 metni UTC okunmali');
   assert.equal(b.kokGirdileri, null, 'bozuk JSON olculmedi sayilmali');
+  assert.deepEqual(a.deployment, {
+    kesik: false,
+    jvmler: [{ nesil: '7', ad: 'J', durum: 'OK', deploymentlar: [] }],
+  });
+  assert.equal(b.deployment, null, 'deployment_ozeti yoksa olculmedi');
   assert.equal(b.uygulamalar[0].warSayisi, null);
   assert.equal(v.hostlar.length, 2, 'host satiri olmayan uygulama alinmaz');
   DB.earDus = true;
@@ -827,6 +840,7 @@ test('RE9 katalog: her etiket kurali ve retire ile ilgili kod uc parcali dogrula
       ['R3', 'SUPHELI'],
       ['R4', 'SUPHELI'],
       ['R5', 'SUPHELI'],
+      ['R6', 'SUPHELI'],
     ],
   );
   // Faz 2'nin deployment komutu elle kontrol olarak simdiden verilir (JBoss 7 ve 8).
@@ -947,6 +961,7 @@ test('RE10 uclar: etiket listesi, manuel kontrol (400 / 409 / 424 / 200), kural 
         ['R3', 'SUPHELI'],
         ['R4', 'SUPHELI'],
         ['R5', 'SUPHELI'],
+        ['R6', 'SUPHELI'],
       ],
     );
     const jvm = r.body.etiketler.find((e) => e.tur === 'JVM');
@@ -1162,4 +1177,61 @@ test('RE11 hiz: buyuk filo bir kez indekslenir; ozet kopya tasimaz, sayisi tam',
     [oz.kopyalar, oz.kopyaSayisi, oz.hostlar.length, oz.imza],
     [undefined, 500, 500, yedek.imza],
   );
+});
+
+test('RE12 Faz 2: deployment bulgulari ve R6; kontrol kapaliyken hicbiri', () => {
+  const dj = (ad, durum, deploymentlar = null) => ({
+    nesil: '7',
+    ad,
+    durum,
+    rc: 0,
+    hata: null,
+    deploymentlar,
+  });
+  const d = r1Veri();
+  d.jvms.push(J3(APP, 'calisan', CALISAN), J3(APP, 'bos', CALISAN));
+  const ear = (deployment) => ({
+    okunamadi: false,
+    hostlar: [{ ...earHost(APP, [U7('ODEME.ear')]), deployment }],
+  });
+  d.ear = ear({
+    kesik: false,
+    jvmler: [
+      dj('calisan', 'OK', [
+        { ad: 'ODEME.ear', calisma_adi: 'ODEME.ear', etkin: true, durum: 'OK' },
+        { ad: 'ESKI.ear', calisma_adi: 'ESKI.ear', etkin: false, durum: 'FAILED' },
+      ]),
+      dj('bos', 'OK', []),
+      dj('kayip', 'CLI_YOK'),
+      dj('yavas', 'ZAMAN_ASIMI'),
+    ],
+  });
+  const r = A(d);
+  const kod = (c) => bul(r, APP, c);
+  assert.equal(kod('DEPLOY_YOK').length, 1);
+  assert.match(kod('DEPLOY_YOK')[0].text, /JBoss7 bos ayakta ama üzerinde hiçbir deployment yok/);
+  assert.equal(kod('DEPLOY_YOK')[0].severity, 'danger');
+  assert.match(kod('DEPLOY_FAILED')[0].text, /JBoss7 calisan: deployment FAILED — ESKI\.ear/);
+  assert.match(kod('DEPLOY_KAPALI')[0].text, /devre dışı deployment — ESKI\.ear/);
+  assert.equal(kod('DEPLOY_OLCULEMEDI').length, 1, 'olculemeyenler tek bulgu');
+  assert.match(kod('DEPLOY_OLCULEMEDI')[0].text, /kayip \(CLI_YOK\), yavas \(ZAMAN_ASIMI\)/);
+  assert.equal(sunucu(r, APP).ear.deployment.jvmler.length, 4, 'panel icin ayrintida tasinir');
+  const r6 = sunucu(r, APP).retireAdaylari.filter((a) => a.kural === 'R6');
+  assert.deepEqual(
+    r6.map((a) => [a.ad, a.deployment]),
+    [['calisan', ['ESKI.ear']]],
+    'diskte olan ODEME.ear R6 degil',
+  );
+  // R6 calisan JVM hakkindadir: Admin KESIN yapsa da "calisiyor" diye dusmez.
+  const e6 = etiketle({ hosts: r.hosts, kurallar: { R6: 'KESIN' } }).etiketler.find((e) =>
+    e.kurallar.includes('R6'),
+  );
+  assert.deepEqual([e6.anahtar, e6.seviye, e6.nedenler], ['JVM|CALISAN|PROD|7', 'KESIN', []]);
+  // Kontrol kapali (null): deployment bulgusu ve R6 yok.
+  const k = r1Veri();
+  k.ear = ear(null);
+  const rk = A(k);
+  assert.ok(!sunucu(rk, APP).findings.some((f) => /^DEPLOY_/.test(f.code)));
+  assert.ok(!sunucu(rk, APP).retireAdaylari.some((a) => a.kural === 'R6'));
+  assert.equal(sunucu(rk, APP).ear.deployment, null);
 });

@@ -142,6 +142,14 @@ test('EPO3 SOZLESME: extraVars playbook basligi ve assert regexleri', () => {
   assert.deepEqual(ev.hedefler, ['APPSRV01', 'APPSRV02']);
   assert.ok(ev.hedefler.every((h) => /^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$/.test(h)));
   assert.equal(typeof ev.ear_kosu_no, 'string');
+  // FAZ 2: deployment kontrolu yalniz kosu parametresi ACIK iken gonderilir (kapaliyken eskisiyle birebir).
+  assert.ok(!('ear_deployment_kontrol' in ev), 'kapali kosuda Faz 2 degiskeni gitti');
+  const acik = poller.extraVarsOf(
+    kosu({ parametreler: JSON.stringify({ kokler: '/vhosting', okuma_kullanicisi: 'was', deployment_kontrolu: 'ACIK' }) }),
+    parti(),
+  );
+  assert.equal(acik.ear_deployment_kontrol, true);
+  assert.ok(belgeli.has('ear_deployment_kontrol'), 'Faz 2 degiskeni playbook basliginda belgeli degil');
 });
 
 test('EPO4 set_stats eslesmesi', () => {
