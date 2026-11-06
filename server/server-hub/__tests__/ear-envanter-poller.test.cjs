@@ -371,6 +371,7 @@ test('EPO7b launch-iptal yarisi ve job-ID yazim hatasi fail-closed uzlasir', asy
   const sonuc = await baslat;
   assert.equal(sonuc.sahiplikKaybi, true);
   assert.equal(sonuc.awxIptal, true);
+  assert.equal(sonuc.uzlasmaKaydi, true);
   assert.deepEqual(iptaller, [[2, 900]]);
   assert.deepEqual([kayit.serverId, kayit.jobId], [2, 900]);
   assert.match(kayit.hata, /sahipliği kaybedildi.*iptali istendi/);
@@ -401,6 +402,7 @@ test('EPO7b launch-iptal yarisi ve job-ID yazim hatasi fail-closed uzlasir', asy
   const r2 = await poller.siradakiPartiyiBaslat(kosu());
   assert.equal(r2.sahiplikKaybi, true);
   assert.equal(r2.awxIptal, true);
+  assert.equal(r2.uzlasmaKaydi, true);
   assert.deepEqual(iptaller2, [[3, 901]]);
   assert.deepEqual(kurtarma.slice(1, 4), [3, 901, 'pending']);
   assert.match(kurtarma[4], /job kimliği normal yoldan yazılamadı.*iptali istendi/);
@@ -408,6 +410,67 @@ test('EPO7b launch-iptal yarisi ve job-ID yazim hatasi fail-closed uzlasir', asy
     !db2.cagrilar.some((c) => /SET durum = \$2, hata = \$3/.test(c.sql)),
     'launch sonrasi persistence hatasi parti claimini BEKLIYOR yapti',
   );
+
+  // Timeout commit SONRASI geldiyse ayni job zaten kayitlidir. Cancel da duserse hata notu
+  // ayni controller-local kimlige yazilmali; `awx_job_id IS NULL` korlugu notu yutmamali.
+  yenidenYukle();
+  sahteModul(RUNNER_YOLU, {
+    cancelJobOnServer: async () => { throw new Error('AWX cancel timeout'); },
+    redactSecrets: (s) => s,
+  });
+  poller.kur({ launch: async () => ({ jobId: 902, awxServerId: 4, status: 'pending' }) });
+  let kaliciJob = null;
+  let kaliciHata = null;
+  const db3 = partiDb({
+    ek: [
+      [
+        /UPDATE p\s+SET awx_server_id/,
+        () => {
+          kaliciJob = { serverId: 4, jobId: 902 };
+          throw new Error('timeout after commit');
+        },
+      ],
+      [
+        /COALESCE\(awx_server_id, 0\) = \$2 AND awx_job_id = \$3/,
+        (p) => {
+          if (kaliciJob.serverId !== p[1] || kaliciJob.jobId !== p[2]) return { rowCount: 0 };
+          kaliciHata = p[4];
+          return { rowCount: 1 };
+        },
+      ],
+    ],
+  });
+  F.dbKur(db3);
+  const r3 = await poller.siradakiPartiyiBaslat(kosu());
+  assert.equal(r3.awxIptal, false);
+  assert.equal(r3.uzlasmaKaydi, true);
+  assert.deepEqual(kaliciJob, { serverId: 4, jobId: 902 });
+  assert.match(kaliciHata, /timeout after commit.*AWX iptali başarısız: AWX cancel timeout/);
+
+  // Satirda farkli job varsa kimligini ezme; rowCount=0'i yutma ve collision notunu ayri yaz.
+  yenidenYukle();
+  sahteModul(RUNNER_YOLU, {
+    cancelJobOnServer: async () => { throw new Error('cancel reddedildi'); },
+    redactSecrets: (s) => s,
+  });
+  poller.kur({ launch: async () => ({ jobId: 903, awxServerId: 5, status: 'pending' }) });
+  const mevcut = { serverId: 8, jobId: 999 };
+  let cakismaNotu = null;
+  const db4 = partiDb({
+    ek: [
+      [/UPDATE p\s+SET awx_server_id/, () => { throw new Error('write belirsiz'); }],
+      [/COALESCE\(awx_server_id, 0\) = \$2 AND awx_job_id = \$3/, () => ({ rowCount: 0 })],
+      [
+        /UPDATE ear_envanter_partileri SET hata = \$2 WHERE id = \$1/,
+        (p) => ((cakismaNotu = p[1]), { rowCount: 1 }),
+      ],
+    ],
+  });
+  F.dbKur(db4);
+  const r4 = await poller.siradakiPartiyiBaslat(kosu());
+  assert.equal(r4.uzlasmaKaydi, true);
+  assert.deepEqual(mevcut, { serverId: 8, jobId: 999 }, 'farkli controller-local job ezildi');
+  assert.match(cakismaNotu, /farklı AWX job kimliği bulundu, mevcut kimlik ezilmedi/);
 });
 
 test('EPO8 parti alimi', async () => {

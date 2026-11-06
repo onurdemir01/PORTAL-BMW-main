@@ -450,25 +450,42 @@ async function launchSonucunuBagla(kosu, parti, sonuc) {
   const neden = yazimHatasi
     ? `AWX işi başladı; job kimliği normal yoldan yazılamadı: ${M(maskele(yazimHatasi.message), 500)}`
     : 'AWX işi başladıktan sonra koşu/parti sahipliği kaybedildi';
-  const uzlasma = jobId == null
+  let uzlasma = jobId == null
     ? `${neden}; AWX job kimliği yok, iptal doğrulanamadı`
     : iptalEdildi
       ? `${neden}; AWX iptali istendi`
       : `${neden}; AWX iptali başarısız: ${M(maskele(iptalHatasi && iptalHatasi.message), 300) || 'bilinmeyen hata'}`;
+  let uzlasmaKaydi = false;
   try {
-    await db().query(
+    const kurtarma = await db().query(
       `UPDATE ear_envanter_partileri
           SET awx_server_id = $2, awx_job_id = $3, awx_durum = $4, hata = $5
-        WHERE id = $1 AND awx_job_id IS NULL`,
+        WHERE id = $1
+          AND (awx_job_id IS NULL OR (COALESCE(awx_server_id, 0) = $2 AND awx_job_id = $3))`,
       [parti.id, awxServerId, jobId, awxDurum, M(uzlasma, 1000)],
       { tekrar: false },
     );
+    uzlasmaKaydi = kurtarma.rowCount === 1;
+    if (!uzlasmaKaydi) {
+      uzlasma = `${uzlasma}; farklı AWX job kimliği bulundu, mevcut kimlik ezilmedi`;
+      const cakisma = await db().query(
+        `UPDATE ear_envanter_partileri SET hata = $2 WHERE id = $1`,
+        [parti.id, M(uzlasma, 1000)],
+        { tekrar: false },
+      );
+      uzlasmaKaydi = cakisma.rowCount === 1;
+    }
   } catch (e) {
     console.error('[EarEnvanter] launch uzlasma kaydi yazilamadi:', maskele(e && e.message));
   }
+  console.error(
+    `[EarEnvanter] kosu ${kosu.id} parti ${parti.parti_no} launch uzlasmasi${uzlasmaKaydi ? '' : ' KAYDEDILEMEDI'}:`,
+    uzlasma,
+  );
   return {
     sahiplikKaybi: true,
     awxIptal: iptalEdildi,
+    uzlasmaKaydi,
     hata: M(uzlasma, 1000),
   };
 }
