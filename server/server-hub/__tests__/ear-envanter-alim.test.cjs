@@ -16,6 +16,9 @@
 //   EA10 AWX kosusunun alt dizini awx-<is> (parametrelerdeki is no); hamDosyaYolu disari cikamaz
 //   EA11 SESSIZ KESILME YOK: 201 WAR / 2001 kutuphane -> uygulama KISMI_SINIR + uyari, host KISMI,
 //        war_sayisi GERCEK sayi; set satiri surum izini (boyutsuz) tasir
+//   EA12 TARAYICI SURUM 2: kok girdileri, XML ozeti ve EAR -> JVM eslemesi JSON kolonlara duzlenir;
+//        alan yoksa (eski tarayici) NULL = olculmedi; bilinmeyen durum OLCULEMEDI; yalniz bilinen
+//        alanlar secilir (fazladan alan DB'ye gitmez); sinirlar uygulanir, kesilme yazilir
 'use strict';
 
 const { test } = require('node:test');
@@ -64,6 +67,18 @@ test(
     dosya(path.join(war, 'WEB-INF', 'lib', 'thymeleaf-3.1.5.RELEASE.jar'), 800);
     dosya(path.join(war, 'index.jsp'));
     dosya(path.join(kok, 'vhosting8', 'ORNEKPANEL.ear', 'META-INF', 'application.xml'));
+    dosya(path.join(kok, 'vhosting8', 'ORNEKPANEL.ear.old'), 77);
+    const yap = path.join(kok, 'usr', 'jboss8', 'AppServer', 'domain', 'configuration');
+    fs.mkdirSync(yap, { recursive: true });
+    fs.writeFileSync(
+      path.join(yap, 'domain.xml'),
+      `<domain xmlns="urn:jboss:domain:20.0"><deployments><deployment name="ORNEKPANEL.ear" runtime-name="ORNEKPANEL.ear"><fs-exploded path="${kok}/vhosting8/ORNEKPANEL.ear"/></deployment></deployments>` +
+        '<server-groups><server-group name="g1" profile="full"><deployments><deployment name="ORNEKPANEL.ear" runtime-name="ORNEKPANEL.ear"/></deployments></server-group></server-groups></domain>',
+    );
+    fs.writeFileSync(
+      path.join(yap, 'host.xml'),
+      '<host name="primary" xmlns="urn:jboss:domain:20.0"><servers><server name="ORNEKPANEL_JVM" group="g1" auto-start="false"/></servers></host>',
+    );
     const r = spawnSync(PY, ['-B', '-'], {
       input: fs.readFileSync(TARAYICI),
       env: {
@@ -72,6 +87,7 @@ test(
         PYTHONIOENCODING: 'utf-8:surrogateescape',
         EAR_KIP: 'TAM',
         EAR_KOKLER: `${kok}/vhosting:${kok}/vhosting8`,
+        EAR_JBOSS: `${kok}/usr/jboss/AppServer:${kok}/usr/jboss8/AppServer`,
       },
       maxBuffer: 16 * 1024 * 1024,
     });
@@ -104,6 +120,30 @@ test(
     assert.equal(k.setler.get(w.kutuphane_seti).length, 3);
     assert.match(String(k.host.taranma_utc), /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d$/);
     assert.ok(!('satirlar' in u), 'agac satirlari DB kaydina girmemeli');
+    // Surum 2 alanlari (alan adi kaymasi burada yakalanir).
+    const x = JSON.parse(u.xml_eslesme);
+    assert.equal(x.durum, 'VAR');
+    assert.deepEqual(
+      x.jvmler.map((j) => [j.ad, j.grup, j.auto_start]),
+      [['ORNEKPANEL_JVM', 'g1', false]],
+    );
+    assert.equal(x.deploymentlar[0].yontem, 'YOL');
+    const kg = JSON.parse(k.host.kok_girdileri);
+    assert.deepEqual(
+      kg.girdiler.map((g) => [g.ad, g.tip, g.boyut]),
+      [['ORNEKPANEL.ear.old', 'F', 77]],
+    );
+    assert.equal(kg.kesilen, 0);
+    const xo = JSON.parse(k.host.xml_ozeti);
+    assert.deepEqual(
+      xo.map((z) => [z.nesil, z.domain, z.host]),
+      [
+        ['7', 'YOK', 'YOK'],
+        ['8', 'OKUNDU', 'OKUNDU'],
+      ],
+    );
+    assert.equal(xo[1].sunucular[0].ad, 'ORNEKPANEL_JVM');
+    assert.equal(xo[1].host_adi, 'primary');
   },
 );
 
@@ -412,4 +452,112 @@ test('EA11 kesilme isaretlenir; surum izi yazilir', async () => {
   const setler = JSON.parse(yaz.params[5]);
   assert.ok(setler.length && setler.every((x) => /^[0-9a-f]{32}$/.test(x.surum_izi)));
   assert.match(alim.HOST_YAZ_SQL, /INSERT INTO ear_envanter_kutuphane_setleri \(iz, sayi, surum_izi\)/);
+});
+
+test('EA12 surum 2 alanlari: kok girdileri, XML ozeti, EAR -> JVM eslemesi', () => {
+  const p = { sema: 1, durum: 'TAM', kokler: [], uyarilar: [], uygulamalar: [] };
+  const kayit = (ek, uygEk = {}) =>
+    alim.hostKaydi(
+      {
+        ...p,
+        ...ek,
+        uygulamalar: [{ kok: '/vhosting', ad: 'A.ear', bicim: 'ACIK', durum: 'TAM', warlar: [], ...uygEk }],
+      },
+      { host: 'APPSRV01', kip: 'OZET', partiNo: 1, ortam: 'PROD', playbookDurum: 'SONUC', hamBayt: 10 },
+    );
+
+  // Eski tarayici: alanlar yok -> NULL (olculmedi), bos liste DEGIL.
+  const eski = kayit({});
+  assert.equal(eski.host.kok_girdileri, null);
+  assert.equal(eski.host.xml_ozeti, null);
+  assert.equal(eski.uygulamalar[0].xml_eslesme, null);
+  assert.equal(alim.bosHostKaydi({ partiNo: 1, durum: 'HATA' }).host.xml_ozeti, null);
+
+  // Bos ama olculmus: [] -> JSON (yok demek), null degil.
+  const bos = kayit({ kok_girdileri: [], kok_girdisi_kesilen: 0, yapilandirma: [] });
+  assert.deepEqual(JSON.parse(bos.host.kok_girdileri), { girdiler: [], kesilen: 0 });
+  assert.deepEqual(JSON.parse(bos.host.xml_ozeti), []);
+
+  // Yalniz bilinen alanlar; bilinmeyen durum / tip guvenli degere duser.
+  const k = kayit(
+    {
+      kok_girdileri: [
+        { kok: '/vhosting', ad: 'X.ear.bak', tip: 'F', boyut: 12, mtime: 1700000000, hedef: '', fazla: 'SIZMA' },
+        { kok: '/vhosting', ad: 'Y', tip: 'Q', boyut: 'abc', mtime: -5 },
+      ],
+      kok_girdisi_kesilen: 3,
+      yapilandirma: [
+        {
+          kurulum: '/usr/jboss/AppServer',
+          nesil: '7',
+          domain: 'OKUNDU',
+          host: 'TUHAF',
+          sunucular: [{ ad: 'J1', grup: 'g', auto_start: false, parola: 'SIZMA' }, { ad: 'J2', grup: 'g' }],
+          gruplar: [{ ad: 'g', deploymentlar: [{ ad: 'A.ear', acik: false }] }],
+          deploymentlar: [{ ad: 'A.ear', tur: 'ACIK', yol: '/vhosting/A.ear', sha1: 'SIZMA' }],
+          ozellikler: { sifre: 'SIZMA' },
+        },
+      ],
+    },
+    {
+      xml_eslesme: {
+        durum: 'VAR',
+        deploymentlar: [{ kurulum: '/usr/jboss/AppServer', ad: 'A.ear', tur: 'ACIK', yol: '/vhosting/A.ear', yontem: 'YOL', gruplar: [{ ad: 'g', acik: false }] }],
+        jvmler: [{ ad: 'J1', grup: 'g', auto_start: false, deployment_acik: false, kurulum: '/usr/jboss/AppServer', gizli: 'SIZMA' }],
+      },
+    },
+  );
+  for (const v of [k.host.kok_girdileri, k.host.xml_ozeti, k.uygulamalar[0].xml_eslesme])
+    assert.ok(!v.includes('SIZMA'), `bilinmeyen alan DB'ye gitti: ${v.slice(0, 200)}`);
+  const kg = JSON.parse(k.host.kok_girdileri);
+  assert.deepEqual(kg.girdiler[1], { kok: '/vhosting', ad: 'Y', tip: '?', boyut: null, mtime: 0, hedef: null });
+  assert.equal(kg.kesilen, 3);
+  const xo = JSON.parse(k.host.xml_ozeti)[0];
+  assert.equal(xo.host, 'HATA', 'bilinmeyen XML durumu HATA');
+  assert.deepEqual(xo.sunucular.map((x) => x.auto_start), [false, true], 'auto_start yalniz false ise kapali');
+  assert.equal(xo.gruplar[0].deploymentlar[0].acik, false);
+  const x = JSON.parse(k.uygulamalar[0].xml_eslesme);
+  assert.deepEqual([x.jvmler[0].auto_start, x.jvmler[0].deployment_acik], [false, false]);
+
+  const tuhaf = kayit({}, { xml_eslesme: { durum: 'BELKI', jvmler: [{ ad: 'J' }] } });
+  assert.equal(JSON.parse(tuhaf.uygulamalar[0].xml_eslesme).durum, 'OLCULEMEDI', 'bilinmeyen eslesme durumu VAR sayilmaz');
+
+  // Sinirlar: 600 kok girdisi -> 500 alinir, kesilen = tarayicinin + fazlasi.
+  const cok = kayit({
+    kok_girdileri: Array.from({ length: 600 }, (_, i) => ({ kok: '/vhosting', ad: `d${i}`, tip: 'F' })),
+    kok_girdisi_kesilen: 7,
+  });
+  const c = JSON.parse(cok.host.kok_girdileri);
+  assert.equal(c.girdiler.length, alim.SINIR_KOK_GIRDI);
+  assert.equal(c.kesilen, 107);
+  const xcok = kayit({
+    yapilandirma: [{ kurulum: '/k', nesil: '8', domain: 'OKUNDU', host: 'OKUNDU', sunucular: Array.from({ length: 301 }, (_, i) => ({ ad: `J${i}`, grup: 'g' })) }],
+  });
+  const xc = JSON.parse(xcok.host.xml_ozeti)[0];
+  assert.equal(xc.sunucular.length, 300);
+  assert.equal(xc.kesildi, true, 'sinir ustu sunucu listesi kesildi olarak isaretlenmeli');
+
+  // SESSIZ KAYIP YOK: hostKaydi'nin urettigi her alan OPENJSON WITH listesinde (yoksa SQL onu
+  // sessizce atar) ve WITH'teki her alan kayitta (yoksa NULL yazilir).
+  const withAdlari = (tablo) => {
+    const m = new RegExp(`INSERT INTO ${tablo} \\(kosu_id, host, ([^)]*)\\)`).exec(alim.HOST_YAZ_SQL);
+    assert.ok(m, `${tablo} INSERT yok`);
+    return m[1].split(',').map((x) => x.trim()).sort();
+  };
+  assert.deepEqual(Object.keys(k.host).sort(), withAdlari('ear_envanter_hostlari'));
+  assert.deepEqual(Object.keys(k.uygulamalar[0]).sort(), withAdlari('ear_envanter_uygulamalari'));
+  assert.deepEqual(Object.keys(alim.bosHostKaydi({ partiNo: 1, durum: 'HATA' }).host).sort(), withAdlari('ear_envanter_hostlari'));
+
+  // KURULU ORTAM: yeni kolonlarin ALTER adimi var (CREATE TABLE yalniz yeni kurulumda calisir).
+  const kurulum = fs.readFileSync(path.join(__dirname, '..', '..', 'db', 'mssql-setup.cjs'), 'utf8');
+  for (const [t, c] of [
+    ['ear_envanter_hostlari', 'kok_girdileri'],
+    ['ear_envanter_hostlari', 'xml_ozeti'],
+    ['ear_envanter_uygulamalari', 'xml_eslesme'],
+  ])
+    assert.ok(
+      kurulum.includes(`ALTER TABLE ${t} ADD ${c} NVARCHAR(MAX) NULL`) &&
+        new RegExp(`table: '${t}',\\s*col: '${c}'`).test(kurulum),
+      `${t}.${c} icin ALTER adimi yok: kurulu ortamda alim INSERT'i duser`,
+    );
 });

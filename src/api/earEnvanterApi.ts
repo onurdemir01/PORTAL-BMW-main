@@ -86,6 +86,22 @@ export interface EarOzet {
   sayilar: { host: number; uygulama: number; eksikUygulama: number; war: number } | null;
 }
 
+/** Diskteki EAR -> domain.xml deployment -> server-group -> host.xml JVM (tarayıcı sürüm 2). */
+export interface EarXmlEslesme {
+  durum: 'VAR' | 'JVM_YOK' | 'OLCULEMEDI';
+  /** JVM_YOK: TANIM_YOK | GRUPTA_YOK | SUNUCU_YOK; OLCULEMEDI: okunamayan dosya ve nedeni. */
+  neden: string | null;
+  deploymentlar: {
+    kurulum: string;
+    ad: string;
+    tur: 'ACIK' | 'ARSIV' | 'YONETILEN';
+    yol: string;
+    yontem: 'YOL' | 'AD';
+    gruplar: { ad: string; acik: boolean }[];
+  }[];
+  jvmler: { ad: string; grup: string; auto_start: boolean; deployment_acik: boolean; kurulum: string }[];
+}
+
 export interface EarUygulama {
   kosu_id: number;
   host: string;
@@ -115,6 +131,8 @@ export interface EarUygulama {
   uyari_sayisi: number | null;
   /** JSON dizi (ilk 20 uyarı). */
   uyarilar?: string | null;
+  /** JSON EarXmlEslesme (tarayıcı sürüm 2); null = ölçülmedi (eski tarayıcı). */
+  xml_eslesme?: string | null;
   taranma_utc: string | null;
   // Sunucunun eklediği alanlar (WAR'lardan ve eşlenik analizinden).
   war_adlari?: string;

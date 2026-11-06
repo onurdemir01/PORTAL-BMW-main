@@ -21,6 +21,13 @@
 //   ET12 kaynak AST: modul nitelikleri IZIN listesinde (yasak listesi yeni cagriyi kacirir),
 //        zipfile.ZipFile yalniz 'r' kipinde, os.open yalniz os.O_RDONLY, os.fdopen yalniz 'rb',
 //        yazma yalniz stdout'a
+//   ET13 JBoss XML eslemesi: diskteki EAR -> domain.xml deployment (yol / ad) -> server-group ->
+//        host.xml JVM + auto-start; JBoss 7 ve 8, alternatif jboss/ yolu, namespace'ten bagimsiz;
+//        ad eslesmesi nesil asmaz; TANIM_YOK / GRUPTA_YOK / SUNUCU_YOK ayrimi
+//   ET14 XML guvenligi ve olculemedi: DOCTYPE / ENTITY reddi, 5 MB sinir, bozuk XML, FIFO, izin
+//        reddi; okunamayan yapilandirma ASLA 'JVM yok' degil; parola / ozellik degeri pakete girmez
+//   ET15 kokteki .ear disi girdiler: ad, tip, boyut, mtime, bag hedefi; .ear haric; 500 siniri
+//        sayilir ve kesilme yazilir
 'use strict';
 
 const { test } = require('node:test');
@@ -121,6 +128,8 @@ function tara(kokler, ortam = {}) {
       ...ortam,
     },
     maxBuffer: 64 * 1024 * 1024,
+    // Bekleyen okuma (FIFO / aygit) testi kilitlemesin: sure dolarsa status null -> KIRMIZI.
+    timeout: 120000,
   });
   assert.equal(r.status, 0, `tarayici kod ${r.status}: ${String(r.stderr).slice(0, 500)}`);
   const s = String(r.stdout);
@@ -602,6 +611,56 @@ test(
   },
 );
 
+// --- JBoss yapilandirma fiksturleri (ET8, ET13-ET15) ---
+const NS = 'urn:jboss:domain:1.7';
+const xmlKac = (v) => String(v).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+/** [{ ad, calisma, yol, goreli, grup | gruplar, acik }] -> domain.xml (yol yoksa yonetilen icerik). */
+function domainXml(deploymentlar, { ekGruplar = [], ek = '' } = {}) {
+  const d = deploymentlar
+    .map(
+      (x) =>
+        `  <deployment name="${xmlKac(x.ad)}" runtime-name="${xmlKac(x.calisma || x.ad)}">` +
+        (x.yol
+          ? `<fs-${x.arsiv ? 'archive' : 'exploded'} path="${xmlKac(x.yol)}"${x.goreli ? ` relative-to="${x.goreli}"` : ''}/>`
+          : '<content sha1="0123456789abcdef"/>') +
+        '</deployment>',
+    )
+    .join('\n');
+  const gruplar = new Map(ekGruplar.map((g) => [g, []]));
+  for (const x of deploymentlar)
+    for (const g of x.gruplar || (x.grup ? [x.grup] : [])) {
+      if (!gruplar.has(g)) gruplar.set(g, []);
+      gruplar.get(g).push(x);
+    }
+  const sg = [...gruplar]
+    .map(
+      ([g, xs]) =>
+        `  <server-group name="${g}" profile="full"><jvm name="default"/><deployments>` +
+        xs.map((x) => `<deployment name="${xmlKac(x.ad)}" runtime-name="${xmlKac(x.ad)}"${x.acik === false ? ' enabled="false"' : ''}/>`).join('') +
+        '</deployments></server-group>',
+    )
+    .join('\n');
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<domain xmlns="${NS}">\n${ek}<deployments>\n${d}\n</deployments>\n<server-groups>\n${sg}\n</server-groups>\n</domain>\n`;
+}
+/** [{ ad, grup, auto }] -> host.xml; auto undefined -> nitelik YOK (JBoss varsayilani true). */
+function hostXml(sunucular, hostAdi = 'master') {
+  const s = sunucular
+    .map((x) => `  <server name="${x.ad}" group="${x.grup}"${x.auto === undefined ? '' : ` auto-start="${x.auto}"`}><jvm name="default"/></server>`)
+    .join('\n');
+  return `<?xml version="1.0"?>\n<host name="${hostAdi}" xmlns="${NS}">\n<servers>\n${s}\n</servers>\n</host>\n`;
+}
+/** <kok>/usr/<jboss|jboss8>/AppServer[/jboss]/domain/configuration altina yazar. */
+function jbossYaz(kok, nesil, { domain, host, alt = 'domain/configuration' }) {
+  const dizin = path.join(kok, 'usr', nesil, 'AppServer', ...alt.split('/'));
+  fs.mkdirSync(dizin, { recursive: true });
+  if (domain != null) fs.writeFileSync(path.join(dizin, 'domain.xml'), domain);
+  if (host != null) fs.writeFileSync(path.join(dizin, 'host.xml'), host);
+  return dizin;
+}
+const jbossKokleri = (kok) =>
+  [path.join(kok, 'usr', 'jboss', 'AppServer'), path.join(kok, 'usr', 'jboss8', 'AppServer')].join(':');
+const kokler2 = (kok) => [path.join(kok, 'vhosting'), path.join(kok, 'vhosting8')];
+
 test(
   'ET8 SALT OKUNUR: tarama agacta hicbir sey degistirmez, dosya birakmaz',
   { skip: SKIP },
@@ -611,9 +670,18 @@ test(
     zipYaz(path.join(kok, 'vhosting8', 'PAKETLI.ear', 'PAKETLI.war'), [
       ['WEB-INF/web.xml', '<w/>'],
     ]);
+    dosya(path.join(kok, 'vhosting8', 'ESKI.ear.bak'), 10);
+    jbossYaz(kok, 'jboss8', {
+      domain: domainXml([{ ad: 'ORNEKPANEL.ear', yol: path.join(kok, 'vhosting8', 'ORNEKPANEL.ear'), grup: 'g1' }]),
+      host: hostXml([{ ad: 'JVM1', grup: 'g1' }]),
+    });
+    const jb = { EAR_JBOSS: jbossKokleri(kok) };
     const once = goruntu(kok);
-    tara([path.join(kok, 'vhosting'), path.join(kok, 'vhosting8')], { EAR_KIP: 'TAM' });
-    tara([path.join(kok, 'vhosting'), path.join(kok, 'vhosting8')], { EAR_KIP: 'OZET' });
+    const y = tara([path.join(kok, 'vhosting'), path.join(kok, 'vhosting8')], { EAR_KIP: 'TAM', ...jb });
+    tara([path.join(kok, 'vhosting'), path.join(kok, 'vhosting8')], { EAR_KIP: 'OZET', ...jb });
+    // Korluk: XML gercekten okunmadiysa salt okunur kaniti XML'i kapsamaz.
+    assert.equal(uyg(y, 'ORNEKPANEL.ear').xml_eslesme.durum, 'VAR');
+    assert.equal(y.kok_girdileri.length, 1);
     const sonra = goruntu(kok);
     assert.deepEqual(
       Object.keys(sonra).sort(),
@@ -677,7 +745,7 @@ const AST_DENETIM = `
 import ast, json, sys
 IZIN = {
     'os': {'O_RDONLY', 'SEEK_END', 'SEEK_SET', 'environ', 'fdopen', 'getuid', 'lstat', 'open', 'path', 'readlink', 'scandir'},
-    'os.path': {'isdir', 'isfile', 'join', 'realpath'},
+    'os.path': {'isdir', 'isfile', 'join', 'normpath', 'realpath'},
     'sys': {'stdout', 'version'},
     'socket': {'gethostname'},
     'zipfile': {'ZipFile', 'BadZipFile'},
@@ -688,10 +756,12 @@ IZIN = {
     'zlib': {'compress'},
     'json': {'dumps'},
     're': {'I', 'compile'},
-    'stat': {'filemode'},
+    'stat': {'filemode', 'S_ISDIR', 'S_ISLNK', 'S_ISREG'},
     'struct': {'unpack_from'},
+    # Yalniz ayristirma: ElementTree.parse / iterparse dosya acar (yol izin denetimini atlar).
+    'ElementTree': {'fromstring', 'ParseError'},
 }
-IZINLI_FROM = {'collections': {'deque'}}
+IZINLI_FROM = {'collections': {'deque'}, 'xml.etree': {'ElementTree'}}
 YASAK_AD = {'open', '__import__', 'eval', 'exec', 'compile', 'getattr', 'setattr', 'globals', 'vars'}
 YASAK_NITELIK = {'write_text', 'write_bytes', 'touch', 'mkdir', 'makedirs', 'unlink', 'rmdir',
                  'symlink_to', 'chmod', 'chown', 'extract', 'extractall', 'writestr', 'truncate'}
@@ -805,4 +875,203 @@ test('ET11 insan kipi Turkce dosya adini kirmadan basar', { skip: SKIP }, () => 
   const metin = tara([path.join(kok, 'vhosting')], { EAR_CIKTI: 'insan' });
   assert.match(metin, /durum=TAM/);
   assert.ok(metin.includes('ÖDEME.ear'), metin.slice(0, 300));
+});
+
+test(
+  'ET13 JBoss XML eslemesi: EAR -> deployment -> server-group -> JVM; nesil, yol ve ad ayrimi',
+  { skip: SKIP },
+  () => {
+    const kok = geciciKok('et13');
+    const v7 = path.join(kok, 'vhosting');
+    const v8 = path.join(kok, 'vhosting8');
+    for (const ad of ['YOLLU.ear', 'ADLI.ear', 'TANIMSIZ.ear', 'GRUPSUZ.ear', 'SUNUCUSUZ.ear', 'IKI.ear'])
+      dosya(path.join(v7, ad, 'META-INF', 'application.xml'), 10);
+    dosya(path.join(v8, 'IKI.ear', 'META-INF', 'application.xml'), 10);
+    dosya(path.join(v8, 'SEKIZ.ear', 'META-INF', 'application.xml'), 10);
+    const surum = path.join(kok, 'releases', 'BAGLI-2.0.ear');
+    dosya(path.join(surum, 'META-INF', 'application.xml'), 10);
+    fs.symlinkSync(surum, path.join(v7, 'BAGLI.ear'));
+    jbossYaz(kok, 'jboss', {
+      domain: domainXml([
+        // fs-exploded yolu ile, adi FARKLI (deployment adi diskteki adla ayni olmak zorunda degil)
+        { ad: 'yollu-uygulama', yol: path.join(v7, 'YOLLU.ear'), gruplar: ['g-yollu'] },
+        // yonetilen icerik: yalniz ad eslesmesi (calisma adi)
+        { ad: 'adli-v3', calisma: 'ADLI.ear', gruplar: ['g-adli', 'g-adli-2'] },
+        { ad: 'GRUPSUZ.ear' },
+        { ad: 'SUNUCUSUZ.ear', grup: 'g-bos' },
+        { ad: 'IKI.ear', grup: 'g-iki' },
+        // bag hedefinin yolu ile
+        { ad: 'bagli', yol: surum, grup: 'g-bagli', acik: false },
+        // goreli yol yol eslesmesine girmez
+        { ad: 'goreli', yol: path.join(v7, 'TANIMSIZ.ear'), goreli: 'jboss.home.dir' },
+      ]),
+      host: hostXml([
+        { ad: 'YOLLU_JVM', grup: 'g-yollu', auto: 'false' },
+        { ad: 'ADLI_JVM1', grup: 'g-adli' },
+        { ad: 'ADLI_JVM2', grup: 'g-adli-2', auto: 'TRUE' },
+        { ad: 'IKI_JVM7', grup: 'g-iki' },
+        { ad: 'BAGLI_JVM', grup: 'g-bagli' },
+      ]),
+    });
+    jbossYaz(kok, 'jboss8', {
+      alt: 'jboss/domain/configuration',
+      domain: domainXml([{ ad: 'IKI.ear', grup: 'g8' }, { ad: 'SEKIZ.ear', grup: 'g8' }]),
+      host: hostXml([{ ad: 'IKI_JVM8', grup: 'g8' }], 'primary'),
+    });
+    const yuk = tara(kokler2(kok), { EAR_JBOSS: jbossKokleri(kok) });
+    const x = (ad, k = v7) => yuk.uygulamalar.find((u) => u.ad === ad && u.kok === k).xml_eslesme;
+    const jv = (e) => e.jvmler.map((j) => [j.ad, j.auto_start]);
+
+    assert.equal(x('YOLLU.ear').durum, 'VAR');
+    assert.equal(x('YOLLU.ear').deploymentlar[0].yontem, 'YOL');
+    assert.equal(x('YOLLU.ear').deploymentlar[0].tur, 'ACIK');
+    assert.deepEqual(jv(x('YOLLU.ear')), [['YOLLU_JVM', false]], 'auto-start="false" okunmali');
+
+    assert.equal(x('ADLI.ear').deploymentlar[0].yontem, 'AD');
+    assert.equal(x('ADLI.ear').deploymentlar[0].tur, 'YONETILEN');
+    assert.deepEqual(jv(x('ADLI.ear')), [['ADLI_JVM1', true], ['ADLI_JVM2', true]], 'nitelik yok -> true; TRUE -> true');
+
+    assert.deepEqual(
+      { d: x('TANIMSIZ.ear').durum, n: x('TANIMSIZ.ear').neden },
+      { d: 'JVM_YOK', n: 'TANIM_YOK' },
+      'goreli (relative-to) yol mutlak yol gibi eslesmemeli',
+    );
+    assert.equal(x('GRUPSUZ.ear').neden, 'GRUPTA_YOK');
+    assert.equal(x('SUNUCUSUZ.ear').neden, 'SUNUCU_YOK');
+
+    // Ayni ad iki kokte: ad eslesmesi nesil ASMAZ.
+    assert.deepEqual(jv(x('IKI.ear')), [['IKI_JVM7', true]]);
+    assert.deepEqual(jv(x('IKI.ear', v8)), [['IKI_JVM8', true]]);
+    assert.equal(x('SEKIZ.ear', v8).durum, 'VAR', 'alternatif jboss/domain/configuration yolu okunmali');
+
+    const b = x('BAGLI.ear');
+    assert.equal(b.deploymentlar[0].yontem, 'YOL', 'bag hedefinin yolu eslesmeli');
+    assert.equal(b.jvmler[0].deployment_acik, false, 'enabled="false" tasinmali');
+
+    const k7 = yuk.yapilandirma.find((k) => k.nesil === '7');
+    const k8 = yuk.yapilandirma.find((k) => k.nesil === '8');
+    assert.deepEqual([k7.domain, k7.host, k7.host_adi], ['OKUNDU', 'OKUNDU', 'master']);
+    assert.deepEqual([k8.domain, k8.host, k8.host_adi], ['OKUNDU', 'OKUNDU', 'primary']);
+    assert.ok(k8.dizin.endsWith('/jboss/domain/configuration'));
+    assert.equal(k7.sunucular.length, 5);
+    assert.equal(yuk.durum, 'TAM', 'XML eslemesi host tarama durumunu degistirmez');
+  },
+);
+
+test(
+  'ET14 XML guvenligi: DOCTYPE/ENTITY, 5 MB, bozuk, FIFO, izin; okunamayan yapilandirma JVM_YOK sayilmaz; sir sizmaz',
+  { skip: SKIP },
+  () => {
+    const durumu = (domain, host = hostXml([{ ad: 'J', grup: 'g' }]), hazirla) => {
+      const kok = geciciKok('et14');
+      dosya(path.join(kok, 'vhosting', 'A.ear', 'META-INF', 'application.xml'), 10);
+      const dizin = jbossYaz(kok, 'jboss', { domain, host });
+      if (hazirla) hazirla(dizin);
+      const yuk = tara([path.join(kok, 'vhosting')], { EAR_JBOSS: path.join(kok, 'usr', 'jboss', 'AppServer') });
+      return { k: yuk.yapilandirma[0], x: yuk.uygulamalar[0].xml_eslesme, yuk };
+    };
+    const iyi = domainXml([{ ad: 'A.ear', grup: 'g' }]);
+    assert.equal(durumu(iyi).x.durum, 'VAR', 'kontrol: temiz yapilandirma eslesir');
+
+    for (const [ad, metin] of [
+      ['DOCTYPE', '<?xml version="1.0"?><!DOCTYPE domain [<!ENTITY a "aaaa">]>' + iyi.replace(/^<\?xml[^>]*>/, '')],
+      ['kucuk harf doctype', '<!doctype domain>' + iyi.replace(/^<\?xml[^>]*>/, '')],
+      ['yalniz ENTITY', iyi.replace('<deployments>', '<!ENTITY x "y"><deployments>')],
+    ]) {
+      const r = durumu(metin);
+      assert.equal(r.k.domain, 'REDDEDILDI', ad);
+      assert.equal(r.x.durum, 'OLCULEMEDI', `${ad}: reddedilen domain.xml JVM_YOK sayilmamali`);
+      assert.match(r.x.neden, /domain\.xml REDDEDILDI/);
+    }
+    const buyuk = durumu(iyi.replace('</domain>', '<!--' + 'x'.repeat(5 * 1024 * 1024) + '--></domain>'));
+    assert.equal(buyuk.k.domain, 'BUYUK');
+    assert.equal(buyuk.x.durum, 'OLCULEMEDI');
+    assert.equal(durumu('<domain><deployments>').k.domain, 'BOZUK');
+    // domain.xml YOK + host.xml VAR: dizin secilir ama tanim okunamaz -> olculemedi.
+    const domainsiz = durumu(null);
+    assert.deepEqual([domainsiz.k.domain, domainsiz.k.host], ['YOK', 'OKUNDU']);
+    assert.equal(domainsiz.x.durum, 'OLCULEMEDI');
+
+    const fifo = durumu(null, undefined, (dizin) => {
+      const r = spawnSync('mkfifo', [path.join(dizin, 'domain.xml')]);
+      assert.equal(r.status, 0, 'mkfifo');
+    });
+    assert.equal(fifo.k.domain, 'DOSYA_DEGIL', 'FIFO acilmamali (okuma bekler)');
+    assert.equal(fifo.x.durum, 'OLCULEMEDI');
+
+    // Tanim bulundu ama host.xml okunamadi -> JVM cozulemez -> olculemedi (SUNUCU_YOK DEGIL).
+    const hostBozuk = durumu(iyi, '<host><servers>');
+    assert.equal(hostBozuk.k.host, 'BOZUK');
+    assert.equal(hostBozuk.x.durum, 'OLCULEMEDI');
+    assert.match(hostBozuk.x.neden, /host\.xml BOZUK/);
+    // Tanim YOK ise host.xml'e gerek yok: domain.xml tek basina TANIM_YOK der.
+    const tanimsiz = durumu(domainXml([{ ad: 'BASKA.ear', grup: 'g' }]), '<host><servers>');
+    assert.deepEqual([tanimsiz.x.durum, tanimsiz.x.neden], ['JVM_YOK', 'TANIM_YOK']);
+
+    // Kurulum hic yok -> olculemedi.
+    const kok = geciciKok('et14yok');
+    dosya(path.join(kok, 'vhosting', 'A.ear', 'META-INF', 'application.xml'), 10);
+    const yok = tara([path.join(kok, 'vhosting')], { EAR_JBOSS: path.join(kok, 'usr', 'jboss', 'AppServer') });
+    assert.equal(yok.yapilandirma[0].domain, 'YOK');
+    assert.equal(yok.uygulamalar[0].xml_eslesme.durum, 'OLCULEMEDI');
+
+    // Sir sizmaz: yalniz ad / yol / grup / auto-start alinir.
+    const sirli = durumu(
+      domainXml([{ ad: 'A.ear', grup: 'g' }], {
+        ek: '<system-properties><property name="db.sifre" value="GIZLI_DEGER_1"/></system-properties>\n' +
+          '<profiles><profile name="p"><datasource><password>GIZLI_DEGER_2</password></datasource></profile></profiles>\n',
+      }),
+      hostXml([{ ad: 'J', grup: 'g' }]).replace('<servers>', '<management><secret value="GIZLI_DEGER_3"/></management><servers>'),
+    );
+    assert.equal(sirli.x.durum, 'VAR');
+    assert.ok(!JSON.stringify(sirli.yuk).includes('GIZLI_DEGER'), 'yapilandirma degeri pakete girdi');
+    assert.ok(!JSON.stringify(sirli.yuk).includes('db.sifre'), 'ozellik adi pakete girdi');
+  },
+);
+
+test(
+  'ET14b izin reddi: okunamayan yapilandirma IZIN, uygulama OLCULEMEDI',
+  { skip: SKIP || (ROOT && 'root izin reddini gormez') },
+  () => {
+    const kok = geciciKok('et14b');
+    dosya(path.join(kok, 'vhosting', 'A.ear', 'META-INF', 'application.xml'), 10);
+    const dizin = jbossYaz(kok, 'jboss', { domain: domainXml([{ ad: 'A.ear', grup: 'g' }]), host: hostXml([{ ad: 'J', grup: 'g' }]) });
+    fs.chmodSync(path.join(dizin, 'domain.xml'), 0);
+    try {
+      const yuk = tara([path.join(kok, 'vhosting')], { EAR_JBOSS: path.join(kok, 'usr', 'jboss', 'AppServer') });
+      assert.equal(yuk.yapilandirma[0].domain, 'IZIN');
+      assert.equal(yuk.uygulamalar[0].xml_eslesme.durum, 'OLCULEMEDI');
+      assert.match(yuk.uygulamalar[0].xml_eslesme.neden, /domain\.xml IZIN/);
+    } finally {
+      fs.chmodSync(path.join(dizin, 'domain.xml'), 0o644);
+    }
+  },
+);
+
+test('ET15 kokteki .ear disi girdiler: tip, boyut, mtime, bag; .ear haric; sinir sayilir', { skip: SKIP }, () => {
+  const kok = geciciKok('et15');
+  const v = path.join(kok, 'vhosting');
+  dosya(path.join(v, 'UYG.ear', 'META-INF', 'application.xml'), 10);
+  dosya(path.join(v, 'ARSIV.EAR'), 30); // buyuk harf uzanti da EAR
+  dosya(path.join(v, 'UYG.ear.bak'), 1234);
+  dosya(path.join(v, 'ESKI.war'), 99);
+  fs.mkdirSync(path.join(v, 'scripts'));
+  fs.symlinkSync('UYG.ear', path.join(v, 'onceki'));
+  const yuk = tara([v], { EAR_JBOSS: path.join(kok, 'yok') });
+  const g = Object.fromEntries(yuk.kok_girdileri.map((x) => [x.ad, x]));
+  assert.deepEqual(Object.keys(g).sort(), ['ESKI.war', 'UYG.ear.bak', 'onceki', 'scripts']);
+  assert.deepEqual([g['UYG.ear.bak'].tip, g['UYG.ear.bak'].boyut, g['UYG.ear.bak'].kok], ['F', 1234, v]);
+  assert.equal(g['UYG.ear.bak'].mtime, Math.floor(T.getTime() / 1000));
+  assert.equal(g.scripts.tip, 'D');
+  assert.deepEqual([g.onceki.tip, g.onceki.hedef], ['L', 'UYG.ear']);
+  assert.equal(yuk.kok_girdisi_kesilen, 0);
+  assert.equal(yuk.uygulamalar.length, 2, 'kok girdileri uygulama sayilmaz');
+
+  const cok = geciciKok('et15b');
+  const vc = path.join(cok, 'vhosting');
+  fs.mkdirSync(vc);
+  for (let i = 0; i < 505; i++) fs.writeFileSync(path.join(vc, `d${String(i).padStart(3, '0')}.txt`), '');
+  const y2 = tara([vc], { EAR_JBOSS: path.join(cok, 'yok') });
+  assert.equal(y2.kok_girdileri.length, 500);
+  assert.equal(y2.kok_girdisi_kesilen, 5, 'kesilen girdi sayilmali (sessiz kesilme yok)');
 });

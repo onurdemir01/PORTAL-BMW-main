@@ -20,7 +20,15 @@ import {
   type EarKutuphane,
   type EarWar,
 } from '@/api/earEnvanterApi';
-import { uygulamaDurumu, kisaIz, boyutMetni, agacSuz } from './earEnvanter';
+import {
+  uygulamaDurumu,
+  kisaIz,
+  boyutMetni,
+  agacSuz,
+  xmlEslesmeOku,
+  jbossDurumu,
+  xmlNedenMetni,
+} from './earEnvanter';
 import {
   Rozet,
   Kirp,
@@ -48,6 +56,56 @@ export function pencereAraligi(ust: number, adet: number): [number, number] {
   const u = Math.min(Math.max(0, ust), Math.max(0, adet * SATIR_YUKSEKLIK - PENCERE_YUKSEKLIK));
   const bas = Math.max(0, Math.floor(u / SATIR_YUKSEKLIK) - PAY);
   return [bas, Math.min(adet, Math.ceil((u + PENCERE_YUKSEKLIK) / SATIR_YUKSEKLIK) + PAY)];
+}
+
+/** JBoss eşlemesi: bu EAR hangi deployment / server-group / JVM'e bağlı; okunamadıysa nedeni. */
+export function JbossEslesmesi({ ham }: { ham: string | null | undefined }) {
+  const x = xmlEslesmeOku(ham);
+  const d = jbossDurumu(x);
+  return (
+    <section className="space-y-1.5" data-testid="jboss-eslesmesi">
+      <h3 className="text-xs font-semibold flex items-center gap-2">
+        JBoss eşlemesi <Rozet d={d} kucuk />
+      </h3>
+      <div className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>
+        {x && x.durum === 'OLCULEMEDI' ? xmlNedenMetni(x.neden) : d.aciklama}
+      </div>
+      {x && x.jvmler.length > 0 && (
+        <table className={TABLO}>
+          <thead>
+            <tr>
+              {['JVM', 'server-group', 'auto-start', 'deployment'].map((h) => (
+                <th key={h} className={TH} style={thStil}>
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {x.jvmler.map((j) => (
+              <tr key={`${j.kurulum}|${j.ad}`}>
+                <td className={`${TD} font-mono`}>{j.ad}</td>
+                <td className={`${TD} font-mono`}>{j.grup}</td>
+                <td className={TD}>{j.auto_start ? 'açık' : 'kapalı'}</td>
+                <td className={TD}>{j.deployment_acik ? 'etkin' : 'devre dışı'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {x && x.deploymentlar.length > 0 && (
+        <div className="text-[11px] space-y-0.5" style={{ color: 'var(--text-muted)' }}>
+          {x.deploymentlar.map((dp) => (
+            <div key={`${dp.kurulum}|${dp.ad}`} className="font-mono">
+              {dp.ad} · {dp.tur === 'YONETILEN' ? 'yönetilen içerik' : dp.yol} ·{' '}
+              {dp.yontem === 'YOL' ? 'yol eşleşti' : 'ad eşleşti'}
+              {dp.gruplar.length > 0 ? ` · ${dp.gruplar.map((g) => g.ad).join(', ')}` : ' · server-group yok'}
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
 }
 
 function KutuphaneListesi({ l }: { l: EarKutuphane[] }) {
@@ -322,6 +380,7 @@ export default function EarEnvanterDetay({
               ))}
             </div>
           )}
+          <JbossEslesmesi ham={u.xml_eslesme} />
           <section className="space-y-2">
             <h3 className="text-xs font-semibold">WAR'lar ({d.warlar.length})</h3>
             {d.warlar.length === 0 ? (

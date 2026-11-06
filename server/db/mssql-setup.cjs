@@ -1059,6 +1059,8 @@ const TABLES = [
         ham_bayt         INT NULL,
         taranma_utc      DATETIME2 NULL,
         bildirilen_host  NVARCHAR(128)  NULL,
+        kok_girdileri    NVARCHAR(MAX)  NULL,
+        xml_ozeti        NVARCHAR(MAX)  NULL,
         alindi_at        DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
         CONSTRAINT UQ_eeh_kosu_host UNIQUE (kosu_id, host)
       )`,
@@ -1096,7 +1098,8 @@ const TABLES = [
         log4j                 NVARCHAR(100) NULL,
         servlet               NVARCHAR(16)  NULL,
         uyari_sayisi          INT NULL,
-        uyarilar              NVARCHAR(MAX) NULL
+        uyarilar              NVARCHAR(MAX) NULL,
+        xml_eslesme           NVARCHAR(MAX) NULL
       )`,
   },
   {
@@ -4447,6 +4450,15 @@ async function setupTables() {
       table: 'ear_envanter_kutuphane_setleri',
       col: 'surum_izi',
       sql: `ALTER TABLE ear_envanter_kutuphane_setleri ADD surum_izi CHAR(32) NULL`,
+    },
+    // Uygulama Envanteri tarayici surum 2 (2026-11-06): kokteki .ear disi girdiler, JBoss domain.xml /
+    // host.xml ozeti ve EAR -> JVM eslemesi (JSON). Eski satirlarda NULL = olculmedi.
+    { table: 'ear_envanter_hostlari', col: 'kok_girdileri', sql: `ALTER TABLE ear_envanter_hostlari ADD kok_girdileri NVARCHAR(MAX) NULL` },
+    { table: 'ear_envanter_hostlari', col: 'xml_ozeti', sql: `ALTER TABLE ear_envanter_hostlari ADD xml_ozeti NVARCHAR(MAX) NULL` },
+    {
+      table: 'ear_envanter_uygulamalari',
+      col: 'xml_eslesme',
+      sql: `ALTER TABLE ear_envanter_uygulamalari ADD xml_eslesme NVARCHAR(MAX) NULL`,
     },
     {
       // SPA Tasima Plani (2026-09-26): ekibin BEYANI - uygulama kullanimda mi?

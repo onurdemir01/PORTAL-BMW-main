@@ -9,6 +9,12 @@ Bu Ansible playbook'u Linux sunuculardaki `/vhosting` ve `/vhosting8` klasörler
 - `OZET` hızlı tarama yapar; `TAM` ayrıntılı dosya ağacını da toplar.
 - **Salt okunurdur:** Uygulamaları değiştirmez veya silmez.
 - Taramayı hedef sunucuda `dzdo -u was` ile yapar.
+- JBoss `domain.xml` ve `host.xml` dosyalarını okur (yalnız okuma). Her EAR'ın hangi JVM'e bağlı olduğunu ve o JVM'in auto-start ayarını çıkarır.
+  - Bakılan yollar: `/usr/jboss/AppServer`, `/usr/jboss8/AppServer` ve bunların altındaki `jboss/` dizini.
+  - Yalnız deployment, server-group ve JVM adları ile auto-start alınır. Parola, datasource gibi değerler alınmaz.
+  - 5 MB'tan büyük ya da `DOCTYPE`/`ENTITY` içeren dosya okunmaz.
+  - Okunamayan dosya "JVM yok" sayılmaz; Portal'da "okunamadı" ve nedeni görünür.
+- `/vhosting` ve `/vhosting8` altında `.ear` ile bitmeyen girdileri de listeler (`APP.ear.bak`, `ESKI.war`, eski klasörler gibi). Bunlar retire şüphesi olarak değerlendirilir.
 
 İki şekilde başlatılır:
 
@@ -47,6 +53,8 @@ bmw_portal/ear_envanter/files/ear_tara.py
 ```
 
 Dosyaları Git'e gönderdikten sonra AWX'te **Projects > `<PROJE_ADI>` > Sync** yap. Bilgisayarındaki yerel dosyalar tek başına yeterli değildir.
+
+> `ear_tara.py` değiştiğinde (örneğin JBoss yapılandırma okuması eklendiğinde) yalnız bu dosyayı kopyalayıp **Sync** yapman yeter. Playbook değişmediyse onu yeniden kopyalaman gerekmez.
 
 ## 4. En kolay test: AWX ekranından
 
