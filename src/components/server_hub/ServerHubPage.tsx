@@ -34,6 +34,8 @@ import {
   type ShStaleFleet,
   type ShRollback,
   type ShUnattributed,
+  type ShRetireSonuc,
+  type ShFix,
 } from '@/api/serverHubApi';
 import { useJobTracker } from '@/contexts/JobTrackerContext';
 import { Modal } from '@/components/common/Modal';
@@ -49,6 +51,8 @@ import { useSunucuLimiti, LimitNotu, sunucuAdlari, limitAsildi } from './sunucuL
 import { LoadingLogo } from '@/components/common/LoadingLogo';
 import { SekmeKabi, useSekmeGorunur } from './sekmeGorunurlugu';
 import * as shOnbellek from './shOnbellek';
+import RetireEtiketleriGorunum from './RetireEtiketleri';
+import SunucuPaneli from './SunucuPaneli';
 
 const SM_BTN =
   'inline-flex items-center gap-1 h-7 px-2.5 text-[11px] font-medium leading-none rounded-lg border whitespace-nowrap disabled:opacity-40';
@@ -1495,6 +1499,13 @@ export default function ServerHubPage() {
     product?: string;
     envGroup?: string;
   } | null>(null);
+  // RETIREMENT ETIKETINDEN KAYIT (2026-11-06): KESIN + DOGRULANDI etiket Retirement sekmesinde kayit
+  // formunu uygulama adi ve kontrol notuyla acar (kayit acmak yine kullanicinin onayidir).
+  const [retireOneri, setRetireOneri] = useState<{ uygulama: string; not: string; no: number } | null>(null);
+  const retirementAc = (uygulama: string, not: string) => {
+    setRetireOneri((o) => ({ uygulama, not, no: (o ? o.no : 0) + 1 }));
+    sekmeAc('retirement');
+  };
   const goFindings = (f: { area?: string; code?: string; product?: string; envGroup?: string }) => {
     setFindingsFilter(f);
     setBulguNo((n) => n + 1);
@@ -1559,7 +1570,7 @@ export default function ServerHubPage() {
       )}
       {acilan.has('findings') && (
         <SekmeKabi id="findings" etkin={tab}>
-          <FindingsTab key={bulguNo} initial={findingsFilter} />
+          <FindingsTab key={bulguNo} initial={findingsFilter} onRetirementAc={retirementAc} />
         </SekmeKabi>
       )}
       {acilan.has('readiness') && (
@@ -1574,7 +1585,7 @@ export default function ServerHubPage() {
       )}
       {acilan.has('retirement') && (
         <SekmeKabi id="retirement" etkin={tab}>
-          <RetirementTab />
+          <RetirementTab oneri={retireOneri} />
         </SekmeKabi>
       )}
       {acilan.has('envanter') && (
@@ -3533,8 +3544,11 @@ const AREA_TR: Record<string, string> = {
 };
 export function FindingsTab({
   initial,
+  onRetirementAc,
 }: {
   initial?: { area?: string; code?: string; product?: string; envGroup?: string } | null;
+  /** KESIN + DOGRULANDI retirement etiketinden Retirement sekmesinde kayit acar (2026-11-06). */
+  onRetirementAc?: (uygulama: string, not: string) => void;
 }) {
   const gorunur = useSekmeGorunur();
   // Sayfaya / sekmeye donuste son yanit hemen gorunur; eskiyse arkada sessizce tazelenir.
@@ -3547,6 +3561,28 @@ export function FindingsTab({
   const [product, setProduct] = useState<string>(initial?.product || 'all');
   const [envGroup, setEnvGroup] = useState<string>(initial?.envGroup || 'all');
   const [fCls, setFCls] = useState<'genel' | 'ozel' | 'all'>('genel');
+  // RETIREMENT ETIKETLERI (2026-11-06, kullanici: "retiere etiketi ayri olsun bulgular ayri olsun"):
+  // ayri gorunum; sunucuya tiklayinca acilan panel de ayni veriyi kullanir. Yalniz gerekince indirilir.
+  const [gorunum, setGorunum] = useState<'bulgular' | 'etiketler'>('bulgular');
+  const [acikSatir, setAcikSatir] = useState<string | null>(null);
+  const [retire, setRetire] = useState<ShRetireSonuc | null>(null);
+  const [retireYuk, setRetireYuk] = useState(false);
+  const retireYukle = useCallback(async (fresh = false) => {
+    setRetireYuk(true);
+    try {
+      const r = await serverHubApi.retireEtiketleri(fresh);
+      if (r.ok) setRetire(r);
+      else toast.error(r.message || 'Retirement etiketleri alınamadı.');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    } finally {
+      setRetireYuk(false);
+    }
+  }, []);
+  const retireGerek = gorunum === 'etiketler' || acikSatir !== null;
+  useAsyncEffect(async () => {
+    if (gorunur && retireGerek && !retire) await retireYukle();
+  }, [gorunur, retireGerek, retire, retireYukle]);
   // SATIR BAZINDA AUTO-START (kullanici, 2026-10-01). Dugme once yalniz sunucu detayinin
   // JVM sekmesindeydi; auto-start sorunlarina BAKILAN yer ise burasi - her bulgu icin
   // sunucuyu acip JVM sekmesine gecmek gereksiz bir tur attiriyordu.
@@ -3554,7 +3590,7 @@ export function FindingsTab({
   // TOPLU ISLEM YOK (kullanici: "cok tehlikeli"): her satir kendi onayini ister, her tiklama
   // TEK (host, jvm) hedefler.
   const [asBusy, setAsBusy] = useState<string | null>(null);
-  const autoStartDuzelt = async (f: ShFindingRow) => {
+  const autoStartDuzelt = async (f: { host: string; fix?: ShFix | null }) => {
     const fix = f.fix;
     if (!fix || !fix.jvm || fix.gen == null) return;
     const ac = fix.action === 'jboss_autostart_on';
@@ -3673,6 +3709,34 @@ export function FindingsTab({
       <BayatFiloBandi sf={data?.staleFleet} />
       <TaramadanDusenBandi td={data?.taramadanDusen} />
       <SemaBandi su={data?.schemaUnknown} />
+      <div className="flex items-center gap-1" role="tablist" aria-label="Bulgular görünümü">
+        {(
+          [
+            ['bulgular', 'Bulgular'],
+            ['etiketler', `Retirement etiketleri${retire ? ` (${fmtNumber(retire.ozet.toplam)})` : ''}`],
+          ] as const
+        ).map(([id, ad]) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            aria-selected={gorunum === id}
+            onClick={() => setGorunum(id)}
+            className="px-3 py-1.5 text-xs font-medium rounded-lg border"
+            style={{
+              borderColor: gorunum === id ? 'var(--accent)' : 'var(--border-subtle)',
+              background: gorunum === id ? 'var(--bg-elevated)' : 'var(--bg-surface)',
+              color: gorunum === id ? 'var(--text-primary)' : 'var(--text-secondary)',
+            }}
+          >
+            {ad}
+          </button>
+        ))}
+      </div>
+      {gorunum === 'etiketler' ? (
+        <RetireEtiketleriGorunum veri={retire} yukleniyor={retireYuk} onYenile={retireYukle} onRetirementAc={onRetirementAc} />
+      ) : (
+      <>
       <div className="flex flex-wrap items-center gap-2">
         <input
           value={q}
@@ -3805,7 +3869,8 @@ export function FindingsTab({
       )}
       <div
         className="overflow-x-auto rounded-xl border"
-        style={{ borderColor: 'var(--border-subtle)' }}
+        // Sunucu paneli bu kabin GORUNEN genisligine sigar (100cqw): genis tabloda yana tasmasin.
+        style={{ borderColor: 'var(--border-subtle)', containerType: 'inline-size' }}
       >
         <table className="w-full text-xs">
           <thead>
@@ -3824,13 +3889,27 @@ export function FindingsTab({
             </tr>
           </thead>
           <tbody>
-            {rows.slice(0, sinir.n).map((f, i) => (
+            {rows.slice(0, sinir.n).map((f, i) => {
+              const satirAnahtari = `${f.host}|${f.code}|${i}`;
+              const acik = acikSatir === satirAnahtari;
+              return (
+              <React.Fragment key={f.host + f.code + i}>
               <tr
-                key={f.host + f.code + i}
                 className="border-t"
-                style={{ borderColor: 'var(--border-subtle)' }}
+                style={{ borderColor: 'var(--border-subtle)', background: acik ? 'var(--bg-elevated)' : undefined }}
               >
-                <td className="px-3 py-1.5 font-mono font-semibold">{f.host}</td>
+                <td className="px-3 py-1.5 font-mono font-semibold">
+                  {/* SUNUCU PANELI (2026-11-06): tiklayinca satirin altinda acilir-kapanir. */}
+                  <button
+                    type="button"
+                    onClick={() => setAcikSatir(acik ? null : satirAnahtari)}
+                    aria-expanded={acik}
+                    title={acik ? 'Ayrıntıyı kapat' : 'Sunucu ayrıntısı: ne yapmalı, zincir, etiketler'}
+                    className="underline decoration-dotted whitespace-nowrap"
+                  >
+                    {acik ? '▾' : '▸'} {f.host}
+                  </button>
+                </td>
                 <td className="px-3 py-1.5 text-[11px]" style={{ color: 'var(--text-muted)' }}>
                   {f.env || f.envGroup || '—'}
                 </td>
@@ -3886,7 +3965,25 @@ export function FindingsTab({
                   )}
                 </td>
               </tr>
-            ))}
+              {acik && (
+                <tr>
+                  <td colSpan={8} className="px-3 py-3" style={{ background: 'var(--bg-base, var(--bg-surface))' }}>
+                    <div className="sticky left-3" style={{ width: 'calc(100cqw - 1.5rem)' }}>
+                    <SunucuPaneli
+                      host={f.host}
+                      retire={retire}
+                      onEtiketDegisti={() => retireYukle(false)}
+                      onRetirementAc={onRetirementAc}
+                      onAutoStart={autoStartDuzelt}
+                      asBusy={asBusy}
+                    />
+                    </div>
+                  </td>
+                </tr>
+              )}
+              </React.Fragment>
+              );
+            })}
             {!loading && rows.length === 0 && (
               <TableEmptyRow
                 colSpan={8}
@@ -3900,6 +3997,8 @@ export function FindingsTab({
         </table>
         <DahaFazla gosterilen={Math.min(rows.length, sinir.n)} toplam={rows.length} onDaha={sinir.daha} onTumu={sinir.tumu} />
       </div>
+      </>
+      )}
     </div>
   );
 }

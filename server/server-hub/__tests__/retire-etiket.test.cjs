@@ -1024,6 +1024,9 @@ test('RE10 uclar: etiket listesi, manuel kontrol (400 / 409 / 424 / 200), kural 
       'kontrol: bulgu var',
     );
     assert.equal(h.body.host.ear.durum, 'VAR');
+    // Sunucu paneli dogrulama metnini ayrintidan okur (katalogdan; tek kaynak).
+    const kd = h.body.host.findings.find((f) => f.code === 'KOK_EAR_DISI');
+    assert.ok(kd.dogrulama && kd.dogrulama.kontrol.length > 0, 'ayrintida dogrulama yok');
     assert.ok(Array.isArray(h.body.host.retireAdaylari));
     p = await put(`${kok}/kurallar/kok-yoksay`, { liste: ['../etc'], aciklama: 'deneme' });
     assert.equal(p.status, 400);
