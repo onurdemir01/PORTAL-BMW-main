@@ -14,6 +14,8 @@ const { assess, flattenFindings, parseTargets, hedefUserinfoSil } = require('./a
 const { maskText, maskJvmArgs, maskJvmArgDiff } = require('./mask.cjs');
 // Admin ayarlari (2026-10-20): bulgu seviyesi degisiklikleri + tek seferde sunucu sayisi.
 const ayarlar = require('./ayarlar.cjs');
+// Uygulama Envanteri'nin son durumu (2026-11-06): EAR bulgulari ve retirement etiketleri.
+const { earSonDurum } = require('./ear-hub-verisi.cjs');
 
 // ── KOLON LISTELERI (sozlesme v3 P9) ───────────────────────────────────────────────
 // Yildizli (tum kolon) SELECT YOK. Her tablo icin BEKLENEN kolonlar (sozlesme kayit_tipleri + DDL) ile
@@ -53,6 +55,10 @@ const SH_KOLONLAR = Object.freeze({
   'dbo.Server_Hub_Sshd': ['host', 'scan_date', 'max_sessions', 'max_startups', 'active_sessions'],
 });
 const JVM_AGIR_KOLONLAR = Object.freeze(['jvm_args', 'configured_jvm_args', 'jvm_arg_diff']);
+// PARAMETRE FARKI ISARETI (2026-11-06, JVM_PARAM_FARKI): agir jvm_arg_diff metni filoya INMEZ; SQL
+// Server'da tek sayiya indirgenir. 0 fark yok, 1 fark var, 2 olculemedi ('reason=...' = tarayici
+// karsilastiramadi; maskJvmArgDiff ile ayni bicim). Kolon semada yoksa ifade eklenmez.
+const ARG_FARK_IFADE = `CASE WHEN t.[jvm_arg_diff] IS NULL OR LTRIM(RTRIM(t.[jvm_arg_diff])) = '' THEN 0 WHEN t.[jvm_arg_diff] LIKE 'reason=%' OR t.[jvm_arg_diff] LIKE 'partial; reason=%' THEN 2 ELSE 1 END AS [jvm_arg_fark]`;
 // sys.columns OKUNAMAZSA yalniz eski semanin kolonlari secilir - bunlar her zaman var.
 // KAPALI KALIR (C3): SQL Server'da yetkisiz sys.columns hata atmaz (satirlari suzer); bu
 // dal pratikte GECICI hatada (zaman asimi, kilitlenme, baglanti) calisir. O zaman
@@ -147,11 +153,11 @@ async function loadLatest() {
   const kol = await shKolonlari(query);
   // her sunucunun SON taramasi (gun): Hosts tablosundaki max scan_date. Kolonlar acikca
   // (sys.columns ile kesisim); [koseli] ad: 'file' SQL Server'da ayrilmis sozcuk.
-  const q = (table) => {
+  const q = (table, ek = []) => {
     const cols = secilecekKolonlar(table, kol, SH_KOLONLAR[table]);
     if (!cols.length) return Promise.resolve([]);
     return query(
-      `SELECT ${cols.map((c) => `t.[${c}]`).join(', ')} FROM ${table} t
+      `SELECT ${[...cols.map((c) => `t.[${c}]`), ...ek].join(', ')} FROM ${table} t
        JOIN (SELECT host, MAX(scan_date) AS d FROM dbo.Server_Hub_Hosts GROUP BY host) m
          ON m.host = t.host AND m.d = t.scan_date`,
     ).then((r) => r.recordset || []);
@@ -226,7 +232,10 @@ async function loadLatest() {
     q('dbo.Server_Hub_Hosts'),
     q('dbo.Server_Hub_Init'),
     q('dbo.Server_Hub_Jboss'),
-    q('dbo.Server_Hub_Jvms'),
+    q(
+      'dbo.Server_Hub_Jvms',
+      kol.ok && (kol.cols.get('dbo.server_hub_jvms') || new Set()).has('jvm_arg_diff') ? [ARG_FARK_IFADE] : [],
+    ),
     q('dbo.Server_Hub_Web'),
     q('dbo.Server_Hub_Vhosts'),
     q('dbo.Server_Hub_Ips'),
@@ -296,17 +305,22 @@ function hesapla() {
   const nesil = _nesil;
   const p = (async () => {
     const t0 = Date.now();
-    const { tableMissing, data } = await loadLatest();
+    // Uygulama Envanteri (Portal DB) paralel okunur; okunamazsa { okunamadi } doner, degerlendirme dusmez.
+    const [{ tableMissing, data }, ear] = await Promise.all([loadLatest(), earSonDurum()]);
     const t1 = Date.now();
     // Seviye degisiklikleri bulgu uretilirken uygulanir; ayarlar okunamazsa varsayilanlar (ekran soyler).
     const ayar = await ayarlar.oku();
     const value = tableMissing
       ? { tableMissing: true, hosts: [], summary: null, latestScan: null }
-      : { tableMissing: false, ...assess(data, { seviyeler: ayar.seviyeler }) };
+      : {
+          tableMissing: false,
+          ...assess({ ...data, ear }, { seviyeler: ayar.seviyeler, kokYoksay: ayar.kokYoksay }),
+        };
     value.ayar = {
       okunamadi: ayar.okunamadi === true,
       seviyeDegisen: Object.keys(ayar.seviyeler).length,
     };
+    value.ear = { okunamadi: ear.okunamadi === true, hata: ear.hata || '', hostSayisi: ear.hostlar.length };
     _sonOlcum = { db: t1 - t0, assess: Date.now() - t1 };
     if (Date.now() - t0 > YAVAS_MS)
       console.log(
@@ -481,6 +495,10 @@ function hostDetail(h, agir) {
     }),
     ips: h.ips,
     sshd: h.sshd,
+    // Uygulama Envanteri (EAR) durumu ve bu sunucunun retirement adaylari (2026-11-06): sunucu
+    // paneli zinciri (JVM -> EAR -> web -> trafik) ve etiketleri bundan cizer.
+    ear: h.ear || null,
+    retireAdaylari: h.retireAdaylari || [],
   };
 }
 
@@ -897,6 +915,20 @@ function initServerHub(app) {
     },
   });
 
+  // ── RETIREMENT ETIKETLERI (2026-11-06) ── bulgudan AYRI; Admin kural seviyesi + manuel kontrol.
+  require('./retire-uclar.cjs').mount(router, {
+    ayarlar,
+    getAssessment: (fresh) => getAssessment(fresh === true),
+    kontrol: require('./retire-kontrol.cjs'),
+    audit: (req, detail) => {
+      try {
+        require('../audit/index.cjs').auditPortal(req, 'server_hub', { detail: JSON.stringify(detail) });
+      } catch {
+        /* best-effort */
+      }
+    },
+  });
+
   router.get('/job-status/:serverId/:jobId', async (req, res) => {
     const serverId = Number(req.params.serverId);
     const jobId = Number(req.params.jobId);
@@ -941,6 +973,7 @@ module.exports = {
   onbellekSil,
   SH_KOLONLAR,
   JVM_AGIR_KOLONLAR,
+  ARG_FARK_IFADE,
   CACHE_MS,
   BAYAT_MS,
   _onbellekSifirlaForTest: () => {

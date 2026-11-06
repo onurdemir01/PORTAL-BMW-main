@@ -12,9 +12,32 @@
 // eski bir DB satiri onu sessizce ezmesin).
 // OKUNAMAZSA varsayilanlar uygulanir ve bu GIZLENMEZ (okunamadi=true; ekran soyler).
 // Server Hub router'i zaten yalniz Admin'e acik; yazma uclari oradadir.
+//
+// RETIREMENT (2026-11-06): 'etiket:<KURAL>' (KESIN / SUPHELI / KAPALI) ve 'liste:kok_yoksay' (kokte
+// yok sayilan girdi adlari, siralanmis ve virgulle). Ikisinde de GEREKCE zorunlu: etiket bir silme
+// kararinin girdisidir.
 'use strict';
 
-const { KODLAR, SEVIYELER } = require('./kural-katalogu.cjs');
+const {
+  KODLAR,
+  SEVIYELER,
+  ETIKET_KURALLARI,
+  ETIKET_SEVIYELERI,
+  KOK_YOKSAY_VARSAYILAN,
+} = require('./kural-katalogu.cjs');
+
+const KURAL = new Map(ETIKET_KURALLARI.map((k) => [k.kural, k]));
+const YOKSAY_AD_RE = /^[A-Za-z0-9._+@-][A-Za-z0-9._+@ -]{0,63}$/;
+const YOKSAY_SINIR = 50;
+/** Ad listesi -> tekil, sirali dizi; gecersiz ad varsa null. */
+function yoksayNormal(liste) {
+  const adlar = (Array.isArray(liste) ? liste : String(liste == null ? '' : liste).split(','))
+    .map((x) => String(x).trim())
+    .filter(Boolean);
+  if (adlar.some((x) => !YOKSAY_AD_RE.test(x) || x === '.' || x === '..')) return null;
+  return [...new Set(adlar)].sort();
+}
+const YOKSAY_VARSAYILAN_METIN = yoksayNormal(KOK_YOKSAY_VARSAYILAN).join(',');
 
 /**
  * Sunucu sayisi limitleri. ust: Admin'in verebilecegi en buyuk deger (gerekce aciklamada).
@@ -53,6 +76,8 @@ function varsayilanlar() {
   return {
     seviyeler: {},
     limitler: Object.fromEntries(Object.entries(LIMITLER).map(([k, v]) => [k, v.varsayilan])),
+    etiketler: Object.fromEntries(ETIKET_KURALLARI.map((k) => [k.kural, k.varsayilan])),
+    kokYoksay: yoksayNormal(KOK_YOKSAY_VARSAYILAN),
     kayitlar: {},
     okunamadi: false,
     hata: '',
@@ -76,6 +101,16 @@ function satirlardan(rows) {
       const n = Number(deger);
       if (!LIMITLER[ad] || !Number.isInteger(n) || n < 1 || n > LIMITLER[ad].ust) continue;
       out.limitler[ad] = n;
+      out.kayitlar[anahtar] = meta;
+    } else if (anahtar.startsWith('etiket:')) {
+      const kural = anahtar.slice('etiket:'.length);
+      if (!KURAL.has(kural) || !ETIKET_SEVIYELERI.includes(deger)) continue;
+      out.etiketler[kural] = deger;
+      out.kayitlar[anahtar] = meta;
+    } else if (anahtar === 'liste:kok_yoksay') {
+      const l = yoksayNormal(deger);
+      if (!l || l.length > YOKSAY_SINIR) continue;
+      out.kokYoksay = l;
       out.kayitlar[anahtar] = meta;
     }
   }
@@ -175,6 +210,25 @@ async function limitYaz({ ad, deger, aciklama, kim }) {
   return yaz(`limit:${a}`, n, L.varsayilan, aciklama, kim);
 }
 
+async function etiketYaz({ kural, seviye, aciklama, kim }) {
+  const k = T(kural);
+  const s = T(seviye);
+  if (!KURAL.has(k)) throw hata(400, `Bilinmeyen etiket kuralı: ${k || '(boş)'}`);
+  if (!ETIKET_SEVIYELERI.includes(s)) throw hata(400, `Geçersiz etiket: ${s || '(boş)'} (KESIN / SUPHELI / KAPALI)`);
+  if (T(aciklama).length < 3) throw hata(400, 'Gerekçe zorunlu: etiket bir retire kararının girdisidir.');
+  return yaz(`etiket:${k}`, s, KURAL.get(k).varsayilan, aciklama, kim);
+}
+
+async function kokYoksayYaz({ liste, aciklama, kim }) {
+  const l = yoksayNormal(liste);
+  if (!l) throw hata(400, 'Geçersiz ad: yalnız harf, rakam, . _ + @ - ve boşluk; en çok 64 karakter; "." ve ".." olmaz.');
+  if (l.length > YOKSAY_SINIR) throw hata(400, `Yok sayma listesi en çok ${YOKSAY_SINIR} ad olabilir (gelen: ${l.length}).`);
+  // server_hub_ayarlar.deger NVARCHAR(256): sessiz kirpma olmasin.
+  if (l.join(',').length > 256) throw hata(400, `Yok sayma listesi virgüllerle birlikte en çok 256 karakter olabilir (gelen: ${l.join(',').length}).`);
+  if (T(aciklama).length < 3) throw hata(400, 'Gerekçe zorunlu: yok sayılan girdi bulgu ve etiket üretmez.');
+  return yaz('liste:kok_yoksay', l.join(','), YOKSAY_VARSAYILAN_METIN, aciklama, kim);
+}
+
 async function gecmis(n = 100) {
   const { rows } = await db().query(
     `SELECT TOP ${Math.max(1, Math.min(500, Number(n) || 100))} anahtar, eski, yeni, aciklama, degistiren, zaman
@@ -190,4 +244,16 @@ async function gecmis(n = 100) {
   }));
 }
 
-module.exports = { LIMITLER, oku, limit, seviyeYaz, limitYaz, gecmis, onbellekSil, satirlardan };
+module.exports = {
+  LIMITLER,
+  oku,
+  limit,
+  seviyeYaz,
+  limitYaz,
+  etiketYaz,
+  kokYoksayYaz,
+  yoksayNormal,
+  gecmis,
+  onbellekSil,
+  satirlardan,
+};

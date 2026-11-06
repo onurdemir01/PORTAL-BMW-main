@@ -5,12 +5,15 @@
 // GET  /limitler                 tek seferde girilebilecek sunucu sayilari (sekmelerin girdi alani)
 // PUT  /kurallar/seviye/:kod     { seviye, aciklama }  ('ok' = sorun yok; varsayilana donus satiri siler)
 // PUT  /kurallar/limit/:ad       { deger, aciklama }
+// PUT  /kurallar/etiket/:kural   { seviye: KESIN | SUPHELI | KAPALI, aciklama (zorunlu) }   (2026-11-06)
+// PUT  /kurallar/kok-yoksay      { liste: [ad, ...], aciklama (zorunlu) }                  (2026-11-06)
 // Yazma sonrasi degerlendirme onbellegi silinir: sunucu durumu ve sayaclar hemen yeni seviyeyle.
 // Sayim OLCULEMEDIYSE (tablo yok / degerlendirme dustu) sayilar null doner, 0 DEGIL.
 'use strict';
 
-const { MADDELER, ALANLAR } = require('./kural-katalogu.cjs');
+const { MADDELER, ALANLAR, KOK_YOKSAY_VARSAYILAN } = require('./kural-katalogu.cjs');
 const { LIMITLER } = require('./ayarlar.cjs');
+const { kurallarListesi } = require('./retire-uclar.cjs');
 
 /** Son degerlendirmeden kod -> { bulgu, sunucu }. Taramadan dusen sunucu sayilmaz. */
 function sayimlar(a) {
@@ -52,6 +55,8 @@ function kurallarYaniti(ayar, a, gecmis) {
         return {
           kod: c.kod,
           kosul: c.kosul,
+          // neden / eksik olabilir / nasil kontrol edilir (yalniz retire ile ilgili ciktilarda)
+          dogrulama: c.dogrulama || null,
           varsayilan: c.seviye,
           gecerli: ayar.seviyeler[c.kod] || c.seviye,
           degistiren: k ? k.updatedBy : null,
@@ -63,6 +68,18 @@ function kurallarYaniti(ayar, a, gecmis) {
       }),
     })),
     limitler: limitListesi(ayar),
+    // Retirement etiket kurallari ve kokte yok sayilan girdiler (2026-11-06; Admin degistirir).
+    etiketKurallari: kurallarListesi(ayar),
+    kokYoksay: (() => {
+      const k = meta('liste:kok_yoksay');
+      return {
+        gecerli: ayar.kokYoksay || [...KOK_YOKSAY_VARSAYILAN].sort(),
+        varsayilan: [...KOK_YOKSAY_VARSAYILAN].sort(),
+        degistiren: k ? k.updatedBy : null,
+        zaman: k ? k.updatedAt : null,
+        not: k ? k.aciklama : '',
+      };
+    })(),
     // null = gecmis OKUNAMADI (bos liste ile ayni sey degil)
     gecmis,
   };
@@ -133,6 +150,38 @@ function mount(router, { ayarlar, getAssessment, onbellekSil, audit }) {
         kim: kim(req),
       });
       if (!r.degismedi) audit(req, { op: 'limit_degistir', ad: String(req.params.ad), eski: r.eski, yeni: r.yeni });
+      res.json({ ok: true, ...r });
+    } catch (err) {
+      res.status(err.status || 500).json({ ok: false, message: err.message });
+    }
+  });
+
+  // Etiket seviyesi istek aninda uygulanir (retire-uclar etiketle() her istekte hesaplar).
+  router.put('/kurallar/etiket/:kural', async (req, res) => {
+    try {
+      const r = await ayarlar.etiketYaz({
+        kural: req.params.kural,
+        seviye: req.body && req.body.seviye,
+        aciklama: req.body && req.body.aciklama,
+        kim: kim(req),
+      });
+      if (!r.degismedi) audit(req, { op: 'etiket_degistir', kural: String(req.params.kural), eski: r.eski, yeni: r.yeni });
+      res.json({ ok: true, ...r });
+    } catch (err) {
+      res.status(err.status || 500).json({ ok: false, message: err.message });
+    }
+  });
+
+  // Yok sayma listesi bulgu URETIMINI degistirir: degerlendirme onbellegi silinir.
+  router.put('/kurallar/kok-yoksay', async (req, res) => {
+    try {
+      const r = await ayarlar.kokYoksayYaz({
+        liste: req.body && req.body.liste,
+        aciklama: req.body && req.body.aciklama,
+        kim: kim(req),
+      });
+      onbellekSil();
+      if (!r.degismedi) audit(req, { op: 'kok_yoksay_degistir', eski: r.eski, yeni: r.yeni });
       res.json({ ok: true, ...r });
     } catch (err) {
       res.status(err.status || 500).json({ ok: false, message: err.message });

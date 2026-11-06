@@ -31,8 +31,16 @@
 const { webHostAdaylari, matchWebForApp } = require('../audit/web-app.cjs');
 const { siteOf } = require('../retirement/discover.cjs');
 const { maskText, maskJvmArgs, maskJvmArgDiff } = require('./mask.cjs');
+const { KOK_YOKSAY_VARSAYILAN } = require('./kural-katalogu.cjs');
 
 const SEV = { ok: 0, info: 1, warning: 2, danger: 3 };
+
+/**
+ * UYGULAMA (EAR) VERISI (2026-11-06): Uygulama Envanteri'nin son taramasi (data.ear,
+ * ear-hub-verisi.cjs). Plan 1 dort haftada bir OZET tarar; bundan eski veri bulgu ve etiket
+ * URETMEZ (eski "WAR yok" bugune tasinmasin), ekranda "N gun once" yazar.
+ */
+const EAR_VERI_MAX_GUN = 35;
 
 /**
  * TAZELIK (sozlesme v3 P1 + EK-2). fresh(h) =
@@ -347,6 +355,9 @@ function assess(data, opts = {}) {
       matchKind: null,
     };
     if (r.jvm_arg_status !== undefined) j.jvmArgStatus = nz(r.jvm_arg_status);
+    // PARAMETRE FARKI (2026-11-06): filo sorgusu agir jvm_arg_diff metnini DEGIL yalniz hafif
+    // isaretini getirir (index.cjs ARG_FARK_IFADE): 0 fark yok, 1 fark var, 2 olculemedi ('reason=').
+    if (r.jvm_arg_fark !== undefined) j.argFark = r.jvm_arg_fark == null ? null : Number(r.jvm_arg_fark);
     if (r.jvm_args_src !== undefined) j.jvmArgsSrc = nz(r.jvm_args_src);
     // AGIR KOLONLAR yalniz tek sunucu ayrintisinda gelir; geldiyse beyaz liste maskesi.
     if (r.jvm_args !== undefined) j.jvmArgs = maskJvmArgs(nz(r.jvm_args));
@@ -533,6 +544,7 @@ function assess(data, opts = {}) {
         : 'unknown';
       if (hit) {
         hit.domain = a.domain || hit.domain || '';
+        hit.tier = a.tier;
         hit.invStatus = a.status || null;
         hit.invAutoStart = invAuto;
         hit.invJvmCount = a.jvmCount;
@@ -574,6 +586,7 @@ function assess(data, opts = {}) {
           name: a.app,
           group: '',
           domain: a.domain || '',
+          tier: a.tier,
           running: invRunning,
           runningSrc: null,
           runningKnown: true,
@@ -1262,9 +1275,17 @@ function assess(data, opts = {}) {
   // 'ok' (sorun yok) bulgusu listede kalir ama sayilmaz ve sunucu durumunu etkilemez.
   const seviyeler = (opts && opts.seviyeler) || {};
   const seviyeOf = (code, severity) => (SEV[seviyeler[code]] != null ? seviyeler[code] : severity);
+  // Kokte yok sayilan girdiler (Admin, ayarlar.cjs 'liste:kok_yoksay'); buyuk / kucuk harf duyarsiz.
+  const kokYoksay = new Set(((opts && opts.kokYoksay) || KOK_YOKSAY_VARSAYILAN).map(L));
+  const earVeri = (data && data.ear) || null;
+  const earByHost = new Map();
+  for (const x of (earVeri && earVeri.hostlar) || []) earByHost.set(U(shortHost(x.host)), x);
   const hosts = [];
   for (const h of byHost.values()) {
     const F = h.findings;
+    // RETIREMENT ADAYLARI bulgudan AYRI (kullanici: "retiere etiketi ayri olsun bulgular ayri olsun"):
+    // kural kimligi + konu; etiketin kendisi (KESIN / SUPHELI, eslenik kopyalar) retire-etiket.cjs'te.
+    h.retireAdaylari = [];
     const add = (severity, area, code, text, fix, ek) => {
       const s = seviyeOf(code, severity);
       F.push({
@@ -1482,13 +1503,23 @@ function assess(data, opts = {}) {
         );
       if ((j.mismatch || []).length)
         add('info', 'jvm', 'INV_MISMATCH', `${id}: ${j.mismatch.join('; ')}`);
+      // KRITIK (kullanici 2026-11-06: "jvm kapali auto start acik ise kritik").
       if (rk && !j.running && j.autoStart === 'true')
         add(
-          'warning',
+          'danger',
           'jvm',
           'STOPPED_AUTOSTART_ON',
           `${id} kapalı ama auto-start AÇIK — reboot'ta açılacak`,
           fixOff,
+        );
+      // KRITIK (kullanici: "JVM ayakta ancak parametrelerde degisiklik varsa kritik"). Olculemeyen
+      // fark (2) bulgu degildir; ayrinti sunucu sayfasinda maskeli jvm_arg_diff'te.
+      if (rk && j.running && j.argFark === 1)
+        add(
+          'danger',
+          'jvm',
+          'JVM_PARAM_FARKI',
+          `${id} çalışıyor ama yapılandırılan JVM parametreleri çalışan süreçtekinden FARKLI — bir sonraki restart'ta davranış değişir`,
         );
       if (
         j.running &&
@@ -1544,6 +1575,20 @@ function assess(data, opts = {}) {
             .join(', ')}${j.vhosts.length > 2 ? ' +' + (j.vhosts.length - 2) : ''}]`
         : '';
       const durmus = rk && !j.running;
+      // ETIKET ADAYLARI: R1 kapali + auto-start acik + trafik yok; R2 kapali + auto-start kapali +
+      // trafik var (IHS acik). Engel (bayat / esleme / olculemeyen katman) adayi dusurmez: etiket
+      // motoru KESIN'i SUPHELI'ye indirir ve nedenini yazar.
+      if (durmus && ((j.autoStart === 'true' && ts === 'NO_RECENT_TRAFFIC') || (j.autoStart === 'false' && ts === 'ACTIVE'))) {
+        const engel = ts === 'NO_RECENT_TRAFFIC' ? retireEngeli(h, j) : null;
+        h.retireAdaylari.push({
+          kural: ts === 'NO_RECENT_TRAFFIC' ? 'R1' : 'R2',
+          tur: 'JVM',
+          ad: j.name,
+          host: h.host,
+          gen: j.gen,
+          engel: engel ? engel.metin : null,
+        });
+      }
       if (durmus && ts === 'NO_RECENT_TRAFFIC') {
         // jboss_retire YALNIZ v2 kaniti tamken (tazelik + gateHosts + tierMeasured + esleme
         // turu + v2 trafik + atfedilemeyen proxy yok). Aksi halde bulgu KALIR, eylem
@@ -1612,6 +1657,85 @@ function assess(data, opts = {}) {
             null,
             { unattributed: atf.slice(0, 20).map(atfDisa) },
           );
+      }
+    }
+    // ── UYGULAMA (EAR) (2026-11-06) ── Uygulama Envanteri'nin son taramasi. Veri yoksa, okunamadiysa
+    // ya da EAR_VERI_MAX_GUN'den eskiyse bulgu ve etiket URETILMEZ; h.ear nedenini tasir (ekran soyler).
+    const ear = earByHost.get(h.host) || null;
+    const earYas = ear && ear.taranma ? Math.floor((now - Date.parse(ear.taranma)) / GUN_MS) : null;
+    h.ear = !earVeri || earVeri.okunamadi
+      ? { durum: 'OKUNAMADI' }
+      : !ear
+        ? { durum: 'YOK' }
+        : {
+            durum: earYas == null || earYas > EAR_VERI_MAX_GUN ? 'ESKI' : 'VAR',
+            taranma: ear.taranma,
+            yasGun: earYas,
+            kosuId: ear.kosuId,
+            uygulamalar: ear.uygulamalar.map((u) => ({ kok: u.kok, ad: u.ad, jboss: u.jboss, durum: u.durum, warSayisi: u.warSayisi, xml: u.xml })),
+          };
+    if (h.ear.durum === 'VAR') {
+      const olcmeyen = new Map();
+      for (const u of ear.uygulamalar) {
+        const yer = `${u.kok}/${u.ad}`;
+        const konu = { kok: u.kok, ad: u.ad, jboss: u.jboss };
+        // KISMI taranan EAR'da WAR'lar eksik olabilir: "WAR yok" yalniz TAM taramada.
+        if (u.durum === 'TAM' && u.warSayisi === 0) {
+          add('warning', 'ear', 'EAR_WAR_YOK', `${yer}: EAR içinde WAR yok — çalıştıracak web modülü yok, silinebilir olabilir`, null, { ear: konu });
+          h.retireAdaylari.push({ kural: 'R3', tur: 'EAR', ad: u.ad, host: h.host, kok: u.kok });
+        }
+        const x = u.xml;
+        if (x && x.durum === 'JVM_YOK') {
+          const dep = (x.deploymentlar || []).map((d) => d.ad).filter(Boolean);
+          const gruplar = [...new Set((x.deploymentlar || []).flatMap((d) => (d.gruplar || []).map((g) => g.ad)))];
+          const metin =
+            x.neden === 'GRUPTA_YOK'
+              ? `deployment tanımlı (${dep.slice(0, 3).join(', ') || '?'}) ama hiçbir server-group'a atanmamış`
+              : x.neden === 'SUNUCU_YOK'
+                ? `atandığı server-group'un (${gruplar.slice(0, 3).join(', ') || '?'}) bu sunucuda JVM'i yok (host.xml)`
+                : `domain.xml'de deployment tanımı yok — diskte duruyor ama hiçbir JVM'e yüklenmiyor`;
+          add('warning', 'ear', 'EAR_JVM_YOK', `${yer}: ${metin}`, null, { ear: { ...konu, neden: x.neden || 'TANIM_YOK' } });
+          h.retireAdaylari.push({ kural: 'R5', tur: 'EAR', ad: u.ad, host: h.host, kok: u.kok, neden: x.neden || 'TANIM_YOK' });
+        } else if (x && x.durum === 'OLCULEMEDI') {
+          const k = x.neden || 'neden bilinmiyor';
+          if (!olcmeyen.has(k)) olcmeyen.set(k, []);
+          olcmeyen.get(k).push(u.ad);
+        }
+      }
+      // Ayni nedenle okunamayan EAR'lar tek bulgu (ayni domain.xml her EAR icin ayni sebeple okunamaz).
+      for (const [neden, adlar] of olcmeyen)
+        add(
+          'info',
+          'ear',
+          'EAR_XML_OLCULEMEDI',
+          `JBoss yapılandırması okunamadı (${neden}) — ${adlar.length} EAR'ın JVM eşlemesi yapılamadı ("JVM yok" sayılmaz): ${adlar.slice(0, 5).join(', ')}${adlar.length > 5 ? ' +' + (adlar.length - 5) : ''}`,
+          null,
+          { ear: { neden, uygulamalar: adlar.slice(0, 50) } },
+        );
+      if (ear.kokGirdileri) {
+        const kokBasina = new Map();
+        for (const g of ear.kokGirdileri.girdiler) {
+          if (!g || !g.ad || kokYoksay.has(L(g.ad))) continue;
+          if (!kokBasina.has(g.kok)) kokBasina.set(g.kok, []);
+          kokBasina.get(g.kok).push(g);
+        }
+        const kesik = ear.kokGirdileri.kesilen > 0 ? ` (liste kesik: ${ear.kokGirdileri.kesilen} girdi daha)` : '';
+        for (const [kok, gl] of kokBasina) {
+          const TIP = { D: 'dizin', F: 'dosya', L: 'bağ' };
+          add(
+            'info',
+            'ear',
+            'KOK_EAR_DISI',
+            `${kok} altında .ear ile bitmeyen ${gl.length} girdi: ${gl
+              .slice(0, 5)
+              .map((g) => `${g.ad} (${TIP[g.tip] || '?'}${g.hedef ? ' → ' + g.hedef : ''})`)
+              .join(', ')}${gl.length > 5 ? ' +' + (gl.length - 5) : ''}${kesik}`,
+            null,
+            { ear: { kok, girdiler: gl.slice(0, 100) } },
+          );
+          for (const g of gl)
+            h.retireAdaylari.push({ kural: 'R4', tur: 'GIRDI', ad: g.ad, host: h.host, kok, tip: g.tip, hedef: g.hedef || null });
+        }
       }
     }
     // URUN KAPSAMI (kullanici, 2026-09-24): envanter (dbo.Inventory) ne diyor, tarama ne gordu.
@@ -2307,6 +2431,7 @@ function flattenFindings(hosts) {
 }
 
 module.exports = {
+  EAR_VERI_MAX_GUN,
   jbKalinti,
   assess,
   parseTargets,

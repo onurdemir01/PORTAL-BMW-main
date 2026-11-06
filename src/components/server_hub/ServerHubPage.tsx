@@ -105,6 +105,7 @@ const AREA: Record<string, string> = {
   ip: 'IP',
   ssh: 'SSH',
   scan: 'Tarama',
+  ear: 'Uygulama (EAR)',
 };
 
 // ── Sozlesme v3, dalga 1: "OLCULEMEDI" ILE "YOK / KAPALI / 0" AYRI ──────────────────────
@@ -598,6 +599,12 @@ const KOD_ETIKET: Record<string, string> = {
   STOPPED: 'JVM kapalı, auto-start kapalı; web katmanı eşlenemedi — trafiği bilinmiyor, retire önerilmez',
   NOT_RUNNING: 'web sunucusu çalışmıyor (süreç listesinde görülmedi) ama vhost tanımları var',
   VHOST_IDLE: "JVM'e eşlenmemiş vhost'a 7 gündür istek yok (access log okundu)",
+  // Retirement kurallari (2026-11-06). EAR alani Uygulama Envanteri'nin son taramasindan gelir.
+  JVM_PARAM_FARKI: "JVM çalışıyor ama yapılandırılan parametreler çalışan süreçtekinden farklı — restart'ta değişir",
+  EAR_WAR_YOK: 'EAR içinde WAR yok — çalıştıracak web modülü yok, silinebilir olabilir',
+  KOK_EAR_DISI: '/vhosting kökünde .ear ile bitmeyen girdi — retire şüphesi',
+  EAR_JVM_YOK: "EAR diskte var ama domain.xml / host.xml onu hiçbir JVM'e bağlamıyor",
+  EAR_XML_OLCULEMEDI: 'JBoss yapılandırması okunamadı — EAR ↔ JVM eşlemesi yapılamadı ("JVM yok" sayılmaz)',
   PRODUCT_NOT_IN_INVENTORY: 'taramada bulunan ürün envanterde (dbo.Inventory) yok',
   SSH_SESSIONS_NEAR: 'sshd açık oturum sayısı MaxSessions sınırına yakın (mux_client_request_session riski)',
   SSH_MAXSESSIONS_LOW: 'sshd MaxSessions düşük (10 ya da altı, varsayılan) — Ansible delegate/forks ile tıkanabilir',
@@ -3522,6 +3529,7 @@ const AREA_TR: Record<string, string> = {
   ip: 'IP',
   ssh: 'SSH',
   scan: 'Tarama',
+  ear: 'Uygulama (EAR)',
 };
 export function FindingsTab({
   initial,

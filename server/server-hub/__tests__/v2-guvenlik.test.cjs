@@ -1607,7 +1607,7 @@ const ESKI_SATIRLAR = {
 
 test('D1-C11 + P9: v3 semada kolonlar acik listede; yildizli SELECT yok; filo Jvms sorgusunda jvm_args ailesi yok; SPEC kolonlari DDL alt kumesi', async () => {
   for (const [t, n] of Object.entries(SAYILAR)) assert.equal(V3_SEMA[t].length, n, `${t} kolon sayisi sozlesmeyle uyusmuyor`);
-  const { loadLatest, SH_KOLONLAR, JVM_AGIR_KOLONLAR } = require('../index.cjs');
+  const { loadLatest, SH_KOLONLAR, JVM_AGIR_KOLONLAR, ARG_FARK_IFADE } = require('../index.cjs');
   for (const [t, cols] of Object.entries(SH_KOLONLAR))
     for (const c of cols) assert.ok(V3_SEMA[t.slice(4)].includes(c), `SPEC kolonu DDL'de yok (yazim?): ${t}.${c}`);
   const kayit = [];
@@ -1621,7 +1621,11 @@ test('D1-C11 + P9: v3 semada kolonlar acik listede; yildizli SELECT yok; filo Jv
   assert.equal(veri.length, 8);
   for (const s of veri) assert.ok(!/\bt\.\*/.test(s), `yildizli SELECT: ${s.slice(0, 60)}`);
   const jvmSql = veri.find((s) => /FROM dbo\.Server_Hub_Jvms t\b/.test(s));
-  for (const c of JVM_AGIR_KOLONLAR) assert.ok(!jvmSql.includes(`[${c}]`), `filo sorgusunda agir kolon: ${c}`);
+  // JVM_PARAM_FARKI (2026-11-06): agir jvm_arg_diff METNI secilmez; yalniz SQL'de tek sayiya
+  // indirgenen isaret (ARG_FARK_IFADE) var. Isaret cikarilinca agir kolon kalmamali.
+  assert.ok(jvmSql.includes(ARG_FARK_IFADE), 'v3 semada parametre farki isareti secilmedi');
+  const isaretsiz = jvmSql.replace(ARG_FARK_IFADE, '');
+  for (const c of JVM_AGIR_KOLONLAR) assert.ok(!isaretsiz.includes(`[${c}]`), `filo sorgusunda agir kolon: ${c}`);
   assert.ok(jvmSql.includes('[running_src]') && jvmSql.includes('[cfg_src]'));
   assert.ok(veri.find((s) => /Server_Hub_Init t\b/.test(s)).includes('t.[file]'), "'file' koseli yazilmali");
   assert.equal(data.hosts[0].scan_ver, '2.1');
