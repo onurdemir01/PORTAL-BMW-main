@@ -616,6 +616,34 @@ test('RE5b zincir nedenleri: her dal ayri (calisma olculemedi, trafik, esleme, e
   ]);
 });
 
+test('RE5c EAR kopyasi: bagli JVM calisiyorsa (Admin KESIN yapsa da) SUPHELI ve neden', () => {
+  const d = r1Veri();
+  d.jvms.push(J3(APP, 'calisan', CALISAN));
+  d.ear = {
+    okunamadi: false,
+    hostlar: [
+      earHost(APP, [
+        U7('BOS.ear', {
+          warSayisi: 0,
+          xml: { durum: 'VAR', jvmler: [{ ad: 'calisan' }, { ad: 'yok_jvm' }] },
+        }),
+      ]),
+    ],
+  };
+  const e = etiketle({ hosts: A(d).hosts, kurallar: { R3: 'KESIN' } }).etiketler.find(
+    (x) => x.tur === 'EAR',
+  );
+  assert.deepEqual(
+    e.kopyalar[0].jvmler.map((j) => [j.ad, j.calisiyor]),
+    [
+      ['calisan', true],
+      ['yok_jvm', null],
+    ],
+  );
+  assert.equal(e.seviye, 'SUPHELI');
+  assert.ok(e.nedenler.includes(`${APP}: çalışan JVM'e bağlı (calisan)`), e.nedenler.join(' | '));
+});
+
 test('RE6 Admin kural seviyesi: KAPALI etiket uretmez, SUPHELI -> KESIN; gecersiz satir yok sayilir', () => {
   const hosts = A(r1Veri()).hosts;
   assert.equal(etiketle({ hosts, kurallar: { R1: 'KAPALI' } }).etiketler.length, 0);
