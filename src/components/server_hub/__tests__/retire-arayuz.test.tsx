@@ -18,10 +18,14 @@ import { screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { render } from '@/test/test-utils';
 import type { ShHostDetail, ShRetireEtiket, ShRetireSonuc, ShKurallar } from '@/api/serverHubApi';
 
+// Liste ucu OZET doner (kopyalar yok); ayrinti ucu tam etiketi buradan verir.
+const TAM = new Map<string, ShRetireEtiket>();
+
 const m = vi.hoisted(() => ({
   findings: vi.fn(),
   host: vi.fn(),
   retireEtiketleri: vi.fn(),
+  retireEtiketAyrinti: vi.fn(),
   retireKontrol: vi.fn(),
   jvmAutoStart: vi.fn(),
   kurallar: vi.fn(),
@@ -167,7 +171,11 @@ const GIRDI = etiket({
 const sonuc = (etiketler: ShRetireEtiket[], o: Partial<ShRetireSonuc> = {}): ShRetireSonuc => ({
   ok: true,
   kurallar: KURALLAR,
-  etiketler,
+  etiketler: etiketler.map((e) => {
+    TAM.set(e.anahtar, e);
+    const { kopyalar, ...oz } = e;
+    return { ...oz, kopyaSayisi: kopyalar.length };
+  }),
   ozet: {
     toplam: etiketler.length,
     kesin: 1,
@@ -308,6 +316,12 @@ beforeEach(() => {
   toastM.success.mockReset();
   toastM.error.mockReset();
   shOnbellek._sifirlaForTest();
+  TAM.clear();
+  m.retireEtiketAyrinti.mockImplementation(async (anahtar: string) =>
+    TAM.has(anahtar)
+      ? { ok: true, etiket: TAM.get(anahtar) }
+      : { ok: false, message: 'etiket yok', _httpStatus: 409 },
+  );
 });
 
 describe('RA1 yardımcılar', () => {
@@ -446,6 +460,28 @@ describe('RA2 etiket listesi', () => {
   });
 });
 
+describe('RA2b özet liste + ayrıntı', () => {
+  it('liste kopya taşımaz; açılan satır ayrıntıyı çeker; etiket yoksa (409) liste yenilenir', async () => {
+    const onY = vi.fn();
+    const v = sonuc([etiket()]);
+    expect(v.etiketler[0]).not.toHaveProperty('kopyalar');
+    expect(v.etiketler[0].kopyaSayisi).toBe(1);
+    const { unmount } = render(
+      <RetireEtiketleriGorunum veri={v} yukleniyor={false} onYenile={onY} />,
+    );
+    fireEvent.click(screen.getByText('oldapp (JBoss 7)'));
+    const d = await screen.findByTestId('etiket-ayrinti');
+    expect(await within(d).findByText(/oldapp\.bmw\.local/)).toBeInTheDocument();
+    expect(m.retireEtiketAyrinti).toHaveBeenCalledWith('JVM|OLDAPP|PROD|7');
+    unmount();
+    TAM.clear();
+    render(<RetireEtiketleriGorunum veri={v} yukleniyor={false} onYenile={onY} />);
+    fireEvent.click(screen.getByText('oldapp (JBoss 7)'));
+    expect(await screen.findByText('Eşlenik kopyalar okunamadı')).toBeInTheDocument();
+    expect(onY).toHaveBeenCalledWith(false);
+  });
+});
+
 describe('RA3 manuel kontrol', () => {
   it('not zorunlu; imza gider; başarıda yenilenir', async () => {
     const onD = vi.fn();
@@ -556,6 +592,15 @@ describe('RA4 sunucu paneli', () => {
     expect(
       within(screen.getByTestId('bolum-etiketler')).getByText('oldapp (JBoss 7)'),
     ).toBeInTheDocument();
+    // Kapali etiket ayrinti indirmez; acilinca bir kez indirir.
+    expect(m.retireEtiketAyrinti).not.toHaveBeenCalled();
+    const et = screen
+      .getByTestId('bolum-etiketler')
+      .querySelector('details details') as HTMLDetailsElement;
+    et.open = true;
+    fireEvent(et, new Event('toggle'));
+    await waitFor(() => expect(m.retireEtiketAyrinti).toHaveBeenCalledTimes(1));
+    expect(await within(et).findByTestId('etiket-ayrinti')).toBeInTheDocument();
   });
   it('eski EAR verisi söylenir; okunamazsa LoadError', async () => {
     m.host.mockResolvedValueOnce({

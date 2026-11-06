@@ -507,6 +507,10 @@ export interface ShRetireEtiket {
   durum: ShKontrolDurum;
   retirementHazir: boolean;
 }
+/** Liste ogesi: kopyalar (zincir) TASINMAZ, sayisi tasinir; ayrinti retireEtiketAyrinti ile tam gelir. */
+export type ShRetireEtiketOzet = Omit<ShRetireEtiket, 'kopyalar'> & { kopyaSayisi: number; kopyalar?: undefined };
+/** Ozet ya da tam etiket (yardimcilar ikisiyle de calisir). */
+export type ShRetireEtiketHer = ShRetireEtiketOzet | ShRetireEtiket;
 export interface ShRetireSonuc {
   ok: boolean;
   message?: string;
@@ -516,7 +520,7 @@ export interface ShRetireSonuc {
   kontrolOkunamadi?: boolean;
   ayarOkunamadi?: boolean;
   kurallar: ShEtiketKurali[];
-  etiketler: ShRetireEtiket[];
+  etiketler: ShRetireEtiketOzet[];
   ozet: {
     toplam: number;
     kesin: number;
@@ -623,6 +627,10 @@ export const serverHubApi = {
   // RETIREMENT ETIKETLERI (2026-11-06)
   retireEtiketleri: (fresh = false): Promise<ShRetireSonuc> =>
     fetch(`${BASE}/retire-etiketleri${fresh ? '?fresh=1' : ''}`).then(safeJson),
+  retireEtiketAyrinti: (
+    anahtar: string,
+  ): Promise<{ ok: boolean; etiket?: ShRetireEtiket; message?: string; _httpStatus?: number }> =>
+    fetch(`${BASE}/retire-etiketleri/ayrinti?anahtar=${encodeURIComponent(anahtar)}`).then(safeJson),
   retireKontrol: (p: {
     anahtar: string;
     sonuc: 'DOGRULANDI' | 'YANLIS_ALARM' | 'GERI_AL';

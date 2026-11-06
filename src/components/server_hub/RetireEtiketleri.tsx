@@ -16,11 +16,15 @@ import {
   serverHubApi,
   type ShEtiketKurali,
   type ShRetireEtiket,
+  type ShRetireEtiketHer,
+  type ShRetireEtiketOzet,
   type ShRetireSonuc,
 } from '@/api/serverHubApi';
 import { toast } from '@/hooks/useToast';
 import { fmtDateTime, fmtNumber } from '@/utils/datetime';
 import { TableEmptyRow } from '@/components/common/EmptyState';
+import LoadError from '@/components/common/LoadError';
+import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import {
   BOS_SUZGEC,
   ETIKET_SEVIYE,
@@ -132,7 +136,7 @@ export function KomutSatiri({ komut }: { komut: string }) {
  * Manuel kontrol: doğrulandı / yanlış alarm + not (zorunlu). Kanıt değiştiyse (409) çağırana haber
  * verir; ekran listeyi yenileyip kullanıcıya yeniden sorar.
  */
-export function KontrolFormu({ e, onDegisti }: { e: ShRetireEtiket; onDegisti: () => void }) {
+export function KontrolFormu({ e, onDegisti }: { e: ShRetireEtiketHer; onDegisti: () => void }) {
   const [sonuc, setSonuc] = useState<'DOGRULANDI' | 'YANLIS_ALARM'>('DOGRULANDI');
   const [not, setNot] = useState('');
   const [mesgul, setMesgul] = useState(false);
@@ -277,7 +281,7 @@ function KopyaTablosu({ e }: { e: ShRetireEtiket }) {
               className="border-t"
               style={{ borderColor: 'var(--border-subtle)' }}
             >
-              <td className={`${td} font-mono font-semibold`}>
+              <td className={`${td} font-mono text-[11px] font-semibold`}>
                 {c.host}
                 {c.taze === false && (
                   <div
@@ -306,7 +310,7 @@ function KopyaTablosu({ e }: { e: ShRetireEtiket }) {
                       </span>
                     ) : (
                       (c.web || []).map((w) => (
-                        <div key={`${w.host}|${w.vhost}`} className="font-mono">
+                        <div key={`${w.host}|${w.vhost}`} className="font-mono text-[11px]">
                           {w.host === c.host ? 'aynı sunucu' : w.host} / {w.vhost || '?'} →{' '}
                           <b>{w.trafik || '?'}</b>
                           {w.istek7g != null && w.istek7g >= 0
@@ -377,14 +381,38 @@ export function EtiketAyrinti({
   onDegisti,
   onRetirementAc,
 }: {
-  e: ShRetireEtiket;
+  e: ShRetireEtiketHer;
   kurallar: ShEtiketKurali[];
   onDegisti: () => void;
   onRetirementAc?: (uygulama: string, not: string) => void;
 }) {
+  // Liste ozet tasir (kopyalar yok): zincir acilinca ayrinti ucundan EKSIKSIZ gelir. Kanit (imza)
+  // degisince yeniden istenir; etiket artik yoksa (409) liste yenilenir.
+  const [tam, setTam] = useState<ShRetireEtiket | null>(e.kopyalar ? (e as ShRetireEtiket) : null);
+  const [ayrintiHata, setAyrintiHata] = useState('');
+  const [tazele, setTazele] = useState(0);
+  useAsyncEffect(
+    async (alive) => {
+      if (e.kopyalar) return;
+      try {
+        const r = await serverHubApi.retireEtiketAyrinti(e.anahtar);
+        if (!alive()) return;
+        if (r.ok && r.etiket) {
+          setTam(r.etiket);
+          setAyrintiHata('');
+        } else {
+          setAyrintiHata(r.message || 'Etiket ayrıntısı alınamadı.');
+          if (r._httpStatus === 409) onDegisti();
+        }
+      } catch (err) {
+        if (alive()) setAyrintiHata(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [e.anahtar, e.imza, tazele],
+  );
   const kAd = new Map(kurallar.map((k) => [k.kural, k]));
   const uyg = retirementUygulamasi(e);
-  const log = e.kopyalar.flatMap((c) => c.web || []).find((w) => w.log)?.log || null;
+  const log = (tam?.kopyalar || []).flatMap((c) => c.web || []).find((w) => w.log)?.log || null;
   const yer = {
     JVM: e.tur === 'JVM' ? e.ad : null,
     EAR: e.tur === 'EAR' ? e.ad : null,
@@ -420,7 +448,21 @@ export function EtiketAyrinti({
           ℹ {n}
         </div>
       ))}
-      <KopyaTablosu e={e} />
+      {tam ? (
+        <KopyaTablosu e={tam} />
+      ) : ayrintiHata ? (
+        <LoadError
+          title="Eşlenik kopyalar okunamadı"
+          message={ayrintiHata}
+          onRetry={() => setTazele((n) => n + 1)}
+          compact
+        />
+      ) : (
+        <div style={{ color: 'var(--text-muted)' }}>
+          {fmtNumber(e.kopyalar ? e.kopyalar.length : (e as ShRetireEtiketOzet).kopyaSayisi)}{' '}
+          eşlenik kopya yükleniyor…
+        </div>
+      )}
       {e.kurallar.map((r) => {
         const k = kAd.get(r);
         if (!k || !k.dogrulama) return null;
@@ -690,7 +732,7 @@ export default function RetireEtiketleriGorunum({
                       <EtiketRozeti b={ETIKET_SEVIYE[e.seviye]} />
                     </td>
                     <td className="px-3 py-1.5">
-                      <div className="font-mono font-semibold">{konuMetni(e)}</div>
+                      <div className="font-mono text-[12px] font-semibold">{konuMetni(e)}</div>
                       <div className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
                         {TUR_ETIKET[e.tur]}
                         {e.tier.length ? ` · tier ${e.tier.join('/')}` : ''}

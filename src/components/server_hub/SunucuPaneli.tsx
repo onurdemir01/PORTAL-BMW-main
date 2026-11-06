@@ -7,9 +7,11 @@
 import React, { useMemo, useState } from 'react';
 import {
   serverHubApi,
+  type ShEtiketKurali,
   type ShFinding,
   type ShFix,
   type ShHostDetail,
+  type ShRetireEtiketHer,
   type ShRetireSonuc,
   type ShSeverity,
 } from '@/api/serverHubApi';
@@ -55,6 +57,47 @@ function Bolum({
         {baslik}
       </summary>
       <div className="px-3 pb-3 pt-1 space-y-2 text-xs">{children}</div>
+    </details>
+  );
+}
+
+/** Etiket satiri: ayrinti (eslenik kopyalar) YALNIZ acilinca cizilir ve indirilir. */
+function AcilirEtiket({
+  e,
+  kurallar,
+  onDegisti,
+  onRetirementAc,
+}: {
+  e: ShRetireEtiketHer;
+  kurallar: ShEtiketKurali[];
+  onDegisti: () => void;
+  onRetirementAc?: (uygulama: string, not: string) => void;
+}) {
+  const [acik, setAcik] = useState(false);
+  return (
+    <details
+      className="rounded border px-2 py-1"
+      style={{ borderColor: 'var(--border-subtle)' }}
+      onToggle={(x) => setAcik((x.currentTarget as HTMLDetailsElement).open)}
+    >
+      <summary className="cursor-pointer flex flex-wrap items-center gap-2">
+        <EtiketRozeti b={ETIKET_SEVIYE[e.seviye]} kucuk />
+        <span className="font-mono text-[11px]">{konuMetni(e)}</span>
+        <span style={{ color: 'var(--text-muted)' }}>
+          {e.ortam} · {e.hostlar.length} sunucu
+        </span>
+        <EtiketRozeti b={KONTROL_DURUM[e.durum]} kucuk />
+      </summary>
+      {acik && (
+        <div className="mt-2">
+          <EtiketAyrinti
+            e={e}
+            kurallar={kurallar}
+            onDegisti={onDegisti}
+            onRetirementAc={onRetirementAc}
+          />
+        </div>
+      )}
     </details>
   );
 }
@@ -320,28 +363,13 @@ export default function SunucuPaneli({
         {!retire && <div style={{ color: 'var(--text-muted)' }}>Etiketler yükleniyor…</div>}
         {retire && etiketler.length === 0 && <div>Bu sunucuda retirement etiketi yok.</div>}
         {etiketler.map((e) => (
-          <details
+          <AcilirEtiket
             key={e.anahtar}
-            className="rounded border px-2 py-1"
-            style={{ borderColor: 'var(--border-subtle)' }}
-          >
-            <summary className="cursor-pointer flex flex-wrap items-center gap-2">
-              <EtiketRozeti b={ETIKET_SEVIYE[e.seviye]} kucuk />
-              <span className="font-mono text-[11px]">{konuMetni(e)}</span>
-              <span style={{ color: 'var(--text-muted)' }}>
-                {e.ortam} · {e.hostlar.length} sunucu
-              </span>
-              <EtiketRozeti b={KONTROL_DURUM[e.durum]} kucuk />
-            </summary>
-            <div className="mt-2">
-              <EtiketAyrinti
-                e={e}
-                kurallar={retire?.kurallar || []}
-                onDegisti={onEtiketDegisti}
-                onRetirementAc={onRetirementAc}
-              />
-            </div>
-          </details>
+            e={e}
+            kurallar={retire?.kurallar || []}
+            onDegisti={onEtiketDegisti}
+            onRetirementAc={onRetirementAc}
+          />
         ))}
       </Bolum>
 

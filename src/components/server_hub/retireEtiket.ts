@@ -7,7 +7,7 @@ import type {
   ShEtiketTur,
   ShHostDetail,
   ShKontrolDurum,
-  ShRetireEtiket,
+  ShRetireEtiketHer,
   ShJvm,
 } from '@/api/serverHubApi';
 
@@ -58,7 +58,9 @@ export const TUR_ETIKET: Record<ShEtiketTur, string> = {
 };
 
 /** Etiketin okunur konusu: "oldapp (JBoss 7)", "BOS.ear (/vhosting)", "/vhosting/ESKI.war". */
-export function konuMetni(e: Pick<ShRetireEtiket, 'tur' | 'ad' | 'gen' | 'nesil' | 'kok'>): string {
+export function konuMetni(
+  e: Pick<ShRetireEtiketHer, 'tur' | 'ad' | 'gen' | 'nesil' | 'kok'>,
+): string {
   if (e.tur === 'JVM') return `${e.ad}${e.gen ? ` (JBoss ${e.gen})` : ''}`;
   if (e.tur === 'EAR') return `${e.ad}${e.nesil && e.nesil !== '?' ? ` (JBoss ${e.nesil})` : ''}`;
   return `${e.kok || ''}/${e.ad}`;
@@ -80,7 +82,7 @@ export const BOS_SUZGEC: EtiketSuzgeci = {
   ortam: 'all',
 };
 
-export function etiketSuz(etiketler: ShRetireEtiket[], s: EtiketSuzgeci): ShRetireEtiket[] {
+export function etiketSuz(etiketler: ShRetireEtiketHer[], s: EtiketSuzgeci): ShRetireEtiketHer[] {
   const n = s.q.trim().toLowerCase();
   return etiketler.filter(
     (e) =>
@@ -100,14 +102,14 @@ export function etiketSuz(etiketler: ShRetireEtiket[], s: EtiketSuzgeci): ShReti
 }
 
 /** Bu sunucuyu kopyaları arasında taşıyan etiketler. */
-export const hostEtiketleri = (etiketler: ShRetireEtiket[] | null | undefined, host: string) =>
+export const hostEtiketleri = (etiketler: ShRetireEtiketHer[] | null | undefined, host: string) =>
   (etiketler || []).filter((e) => e.hostlar.includes(host));
 
 /**
  * Retirement akışına gidecek uygulama adı: JVM adı; EAR için .ear'sız ad. Kök girdisi Retirement
  * konusu değildir (elle temizlenir): null. Yalnız KESİN + DOĞRULANDI etikette çağrılır.
  */
-export function retirementUygulamasi(e: Pick<ShRetireEtiket, 'tur' | 'ad'>): string | null {
+export function retirementUygulamasi(e: Pick<ShRetireEtiketHer, 'tur' | 'ad'>): string | null {
   if (e.tur === 'JVM') return e.ad;
   if (e.tur === 'EAR') return e.ad.replace(/\.ear$/i, '');
   return null;
@@ -145,7 +147,7 @@ export function dogrulamaAdimlari(
     ear?: { ad?: string; girdiler?: { ad: string }[] } | null;
     text?: string;
   }[],
-  etiketler: ShRetireEtiket[],
+  etiketler: ShRetireEtiketHer[],
   kurallar: { kural: string; ad: string; dogrulama: ShDogrulama | null }[],
   jvmAdi: (metin: string) => string | null = () => null,
 ): DogrulamaAdimi[] {
@@ -174,7 +176,8 @@ export function dogrulamaAdimlari(
     for (const r of e.kurallar) {
       const k = kAd.get(r);
       if (!k) continue;
-      const log = e.kopyalar.flatMap((c) => c.web || []).find((w) => w.log)?.log || null;
+      // Ozet etikette kopya yok: log bilinmiyorsa yer tutucu kalir (uydurulmaz).
+      const log = (e.kopyalar || []).flatMap((c) => c.web || []).find((w) => w.log)?.log || null;
       ekle(`${r} · ${k.ad}`, k.dogrulama, {
         JVM: e.tur === 'JVM' ? e.ad : null,
         EAR: e.tur === 'EAR' ? e.ad : null,
