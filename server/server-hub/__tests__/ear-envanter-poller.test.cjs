@@ -8,7 +8,8 @@
 //         korunur; hic sonuc yok -> SONUC_YOK (nedeniyle); bozuk dosya -> OKUNAMADI
 //   EPO6  kosu sonucu: eksik ya da gelmeyen host varken TAMAMLANDI yok; hic veri -> BASARISIZ
 //   EPO7  parti baslatma: CAS tutmazsa AWX'e gidilmez; yapilandirma hatasi kosuyu durdurur;
-//         gecici hata yeniden denenir, 3. denemede parti HATA ve hostlari SONUC_YOK
+//         gecici hata yeniden denenir, 3. denemede parti HATA ve hostlari SONUC_YOK;
+//         launch sirasinda iptal/persistence hatasi dis AWX isini iptal edip kimligini kaydeder
 //   EPO8  alim: her beklenen host bir satir alir (veri, PYTHON_YOK, SONUC_YOK); yazilamayan veri
 //         partiyi kilitlemez (OKUNAMADI); parti BITTI yalniz ALINIYOR'dan
 //   EPO9  zamanlayici (iki plan): kapali -> yok; template yoksa kosu ACILMAZ; plan anahtari P1-<TR tarihi>,
@@ -217,6 +218,7 @@ function partiDb({ cas = 1, ek = [] } = {}) {
       () => ({ rowCount: cas }),
     ],
     ...ek,
+    [/UPDATE p\s+SET awx_server_id/, () => ({ rowCount: 1 })],
   ]);
 }
 
@@ -314,6 +316,98 @@ test('EPO7 parti baslatma kurallari', async () => {
     ['APPSRV01', 'SONUC_YOK'],
     ['APPSRV02', 'SONUC_YOK'],
   ]);
+});
+
+test('EPO7b launch-iptal yarisi ve job-ID yazim hatasi fail-closed uzlasir', async () => {
+  let parent = 'CALISIYOR';
+  let partiDurum = 'BEKLIYOR';
+  let kayit = null;
+  let launchCoz;
+  const launchBekle = new Promise((resolve) => {
+    launchCoz = resolve;
+  });
+  const launchGirdi = new Promise((resolve) => {
+    poller.kur({
+      launch: async () => {
+        resolve();
+        return launchBekle;
+      },
+    });
+  });
+  const iptaller = [];
+  sahteModul(RUNNER_YOLU, {
+    cancelJobOnServer: async (serverId, jobId) => iptaller.push([serverId, jobId]),
+    redactSecrets: (s) => s,
+  });
+  const db = F.sahteDb([
+    [/SELECT TOP 1 \* FROM ear_envanter_partileri/, () => ({ rows: [parti({ durum: partiDurum })] })],
+    [
+      /SET durum = 'CALISIYOR', baslatma_denemesi/,
+      () => ((partiDurum = 'CALISIYOR'), { rowCount: 1 }),
+    ],
+    [/SELECT \* FROM ear_envanter_kosulari WHERE id/, () => ({ rows: [kosu({ durum: parent })] })],
+    [/FROM ear_envanter_kosulari k LEFT JOIN ear_envanter_hostlari/, () => ({ rows: [{ beklenen: 2 }] })],
+    [/SET durum = 'IPTAL'.*durum = 'BEKLIYOR'/s, () => ({ rowCount: 0 })],
+    [
+      /UPDATE ear_envanter_kosulari\s+SET durum = \$2/,
+      () => ((parent = 'IPTAL'), { rowCount: 1 }),
+    ],
+    [/SELECT awx_server_id, awx_job_id FROM ear_envanter_partileri/, () => ({ rows: [] })],
+    [
+      /UPDATE p\s+SET awx_server_id/,
+      () => ({ rowCount: parent === 'CALISIYOR' && partiDurum === 'CALISIYOR' ? 1 : 0 }),
+    ],
+    [
+      /SET awx_server_id = \$2, awx_job_id = \$3, awx_durum = \$4, hata = \$5/,
+      (p) => ((kayit = { serverId: p[1], jobId: p[2], hata: p[4] }), { rowCount: 1 }),
+    ],
+  ]);
+  F.dbKur(db);
+  const baslat = poller.siradakiPartiyiBaslat(kosu());
+  await launchGirdi;
+  const iptal = await poller.kosuIptal(41, 'admin');
+  assert.deepEqual(iptal.awxIptal, [], 'job ID henuz yokken Admin iptali dis isi goremez');
+  launchCoz({ jobId: 900, awxServerId: 2, status: 'pending' });
+  const sonuc = await baslat;
+  assert.equal(sonuc.sahiplikKaybi, true);
+  assert.equal(sonuc.awxIptal, true);
+  assert.deepEqual(iptaller, [[2, 900]]);
+  assert.deepEqual([kayit.serverId, kayit.jobId], [2, 900]);
+  assert.match(kayit.hata, /sahipliği kaybedildi.*iptali istendi/);
+  const cas = db.cagrilar.find((c) => /UPDATE p\s+SET awx_server_id/.test(c.sql));
+  assert.match(cas.sql, /p\.durum = 'CALISIYOR'/);
+  assert.match(cas.sql, /k\.id = \$5 AND k\.durum = 'CALISIYOR'/);
+
+  // Normal job-ID yazimi throw ederse yeniden BEKLIYOR'a donup duplicate launch yapma:
+  // dis isi iptal et ve ikinci dar yazimla job kimligi + belirsizlik notunu koru.
+  yenidenYukle();
+  const iptaller2 = [];
+  sahteModul(RUNNER_YOLU, {
+    cancelJobOnServer: async (serverId, jobId) => iptaller2.push([serverId, jobId]),
+    redactSecrets: (s) => s,
+  });
+  poller.kur({ launch: async () => ({ jobId: 901, awxServerId: 3, status: 'pending' }) });
+  let kurtarma = null;
+  const db2 = partiDb({
+    ek: [
+      [/UPDATE p\s+SET awx_server_id/, () => { throw new Error('DB write timeout'); }],
+      [
+        /SET awx_server_id = \$2, awx_job_id = \$3, awx_durum = \$4, hata = \$5/,
+        (p) => ((kurtarma = p), { rowCount: 1 }),
+      ],
+    ],
+  });
+  F.dbKur(db2);
+  const r2 = await poller.siradakiPartiyiBaslat(kosu());
+  assert.equal(r2.sahiplikKaybi, true);
+  assert.equal(r2.awxIptal, true);
+  assert.deepEqual(iptaller2, [[3, 901]]);
+  assert.deepEqual(kurtarma.slice(1, 4), [3, 901, 'pending']);
+  assert.match(kurtarma[4], /job kimliği normal yoldan yazılamadı.*iptali istendi/);
+  assert.ok(
+    !db2.cagrilar.some((c) => /SET durum = \$2, hata = \$3/.test(c.sql)),
+    'launch sonrasi persistence hatasi parti claimini BEKLIYOR yapti',
+  );
 });
 
 test('EPO8 parti alimi', async () => {
@@ -520,6 +614,7 @@ test('EPO11 kosu acma', async () => {
     [/SELECT \* FROM ear_envanter_kosulari WHERE id = \$1/, () => ({ rows: [kosu()] })],
     [/SELECT TOP 1 \* FROM ear_envanter_partileri/, () => ({ rows: [parti({ parti_no: 1 })] })],
     [/SET durum = 'CALISIYOR'/, () => ({ rowCount: 1 })],
+    [/UPDATE p\s+SET awx_server_id/, () => ({ rowCount: 1 })],
   ]);
   F.dbKur(db);
   const r = await poller.kosuOlustur({
