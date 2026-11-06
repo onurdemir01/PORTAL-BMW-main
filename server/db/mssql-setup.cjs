@@ -984,6 +984,36 @@ const TABLES = [
       )`,
   },
   {
+    // Server Hub retirement etiketlerinin MANUEL KONTROLU (2026-11-06; retire-kontrol.cjs). Anahtar
+    // etiketin konusu (tur|ad|ortam|nesil-ya-da-kok); imza o anki kanitin izi: kanit degisirse kayit
+    // "veri degisti" olur. sonuc DOGRULANDI | YANLIS_ALARM. Geri alma satiri siler (gecmiste kalir).
+    name: 'server_hub_retire_kontrol',
+    sql: `
+      CREATE TABLE server_hub_retire_kontrol (
+        anahtar       NVARCHAR(400) NOT NULL PRIMARY KEY,
+        sonuc         NVARCHAR(16)  NOT NULL,
+        aciklama      NVARCHAR(1000) NOT NULL,
+        imza          CHAR(32)      NOT NULL,
+        seviye        NVARCHAR(8)   NULL,
+        isaretleyen   NVARCHAR(128) NOT NULL,
+        isaretlendi   DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+      )`,
+  },
+  {
+    name: 'server_hub_retire_kontrol_gecmisi',
+    sql: `
+      CREATE TABLE server_hub_retire_kontrol_gecmisi (
+        id            INT IDENTITY(1,1) PRIMARY KEY,
+        anahtar       NVARCHAR(400) NOT NULL,
+        sonuc         NVARCHAR(16)  NOT NULL,
+        aciklama      NVARCHAR(1000) NULL,
+        imza          CHAR(32)      NULL,
+        seviye        NVARCHAR(8)   NULL,
+        isaretleyen   NVARCHAR(128) NOT NULL,
+        zaman         DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+      )`,
+  },
+  {
     // Server Hub > Uygulama Envanteri (2026-11-04): /vhosting + /vhosting8 EAR/WAR taramasi. KOSU = bir
     // tarama (filo ya da secili); hedefler PARTI'lere bolunup sirayla AWX'e gider. Ayni anda tek
     // CALISIYOR kosu (server/server-hub/ear-envanter-poller.cjs). zamanlayici_anahtari haftalik kosunun

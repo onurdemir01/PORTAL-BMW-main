@@ -14,6 +14,15 @@
 // Seviye degisikligi (ayarlar.cjs) yalniz bulgunun SEVIYESINI degistirir: sunucu durumu, sayaclar,
 // siralama. Acilis Hazirligi ve ozet kartlari (reboot riski, retire adayi ...) KODA bakar; seviye
 // degisse de onlar degismez.
+//
+// DOGRULAMA (2026-11-06, kullanici: "dogrulama icin ne yapilabilir ne eksik olabilir ne nasil kontrol
+// edilsin gibi seyleri de eklesin bulgulara"): retire ile ilgili ciktilarda `dogrulama` uc parca
+// tasir: neden (bulgu neye dayaniyor), eksik (taramanin goremeyecegi ne olabilir), kontrol (elle
+// bakilacak komutlar; <JVM>, <EAR>, <GIRDI>, <ACCESS_LOG> yer tutucu).
+//
+// RETIREMENT ETIKETLERI (ETIKET_KURALLARI) bulgudan AYRIDIR: bulgu "ne goruldu", etiket "retire
+// edilebilir mi" sorusudur. Hangi kuralin KESIN / SUPHELI / KAPALI oldugunu Admin degistirir
+// (ayarlar.cjs 'etiket:<KURAL>'); varsayilanlar burada.
 'use strict';
 
 const SEVIYELER = ['danger', 'warning', 'info', 'ok'];
@@ -27,7 +36,24 @@ const ALANLAR = {
   web: 'Web sunucu',
   ip: 'IP',
   ssh: 'SSH',
+  ear: 'Uygulama (EAR)',
 };
+
+// Ortak elle kontrol komutlari (JBoss 7: host=master, controller $HOSTNAME; JBoss 8: host=primary,
+// controller $HOSTNAME:9998).
+const CLI7 = (komut) => `jboss-cli.sh --connect --controller=$HOSTNAME --command="${komut}"`;
+const CLI8 = (komut) => `jboss-cli8.sh --connect --controller=$HOSTNAME:9998 --command="${komut}"`;
+const DEPLOYMENT_KONTROL = [
+  CLI7('/host=master/server=<JVM>:read-children-resources(child-type=deployment,include-runtime=true,recursive=false)'),
+  CLI8('/host=primary/server=<JVM>:read-children-resources(child-type=deployment,include-runtime=true,recursive=false)'),
+];
+const DURUM_KONTROL = [CLI7('ls host=master/server-config=<JVM>'), CLI8('ls host=primary/server-config=<JVM>')];
+const TRAFIK_KONTROL = [
+  "ls -lrt <ACCESS_LOG>*   # rotasyonla kac gunluk log var",
+  "zgrep -h -v -E 'hc\\.(jsp|html)' <ACCESS_LOG>* | tail -5   # hc disi son istekler",
+];
+const TRAFIK_EKSIK =
+  'Ayda / ceyrekte bir calisan is (batch, rapor); web katmani disindan dogrudan JVM portuna gelen istek; MQ, zamanlayici ya da EJB ile tetiklenen uygulama; 7 gunden eski log rotasyonu; DR / yedek sitedeki kopya.';
 
 const MADDELER = [
   {
@@ -157,7 +183,16 @@ const MADDELER = [
     neTaranir: 'JVM’in şu anki çalışma durumu ile auto-start ayarı uyumlu mu: reboot sonrası aynı durum geri gelir mi.',
     ciktilar: [
       { kod: 'REBOOT_RISK', kosul: 'JVM çalışıyor ama auto-start kapalı — reboot sonrası açılmaz.', seviye: 'danger' },
-      { kod: 'STOPPED_AUTOSTART_ON', kosul: 'JVM kapalı ama auto-start açık — reboot’ta açılır.', seviye: 'warning' },
+      {
+        kod: 'STOPPED_AUTOSTART_ON',
+        kosul: 'JVM kapalı ama auto-start açık — reboot’ta açılır.',
+        seviye: 'danger',
+        dogrulama: {
+          neden: 'Tarama JVM sürecini görmedi (kapalı) ama tanımda auto-start açık: reboot sonrası kendiliğinden açılır.',
+          eksik: 'JVM bilerek kapatılmış ve yeniden açılmaması gerekiyor olabilir (retire bekleyen uygulama); ya da tarama anında yeniden başlatılıyordu.',
+          kontrol: [...DURUM_KONTROL, 'ps -ef | grep -- "-D\\[Server:<JVM>\\]"   # süreç gerçekten yok mu'],
+        },
+      },
       { kod: 'AUTOSTART_UNKNOWN', kosul: 'JVM çalışıyor, auto-start okunamadı (CLI / envanter) — “kapalı” sayılmaz.', seviye: 'info' },
       { kod: null, kosul: 'Çalışıyor + auto-start açık ya da kapalı + auto-start kapalı.', seviye: 'ok' },
     ],
@@ -183,15 +218,65 @@ const MADDELER = [
     ],
   },
   {
+    id: 'jvm-parametre',
+    alan: 'jvm',
+    ad: 'JVM parametreleri (yapılandırma ↔ çalışan süreç)',
+    neTaranir: 'Çalışan JVM sürecinin parametreleri ile tanımdaki (host.xml / CLI jvm-options) parametreler aynı mı.',
+    ciktilar: [
+      {
+        kod: 'JVM_PARAM_FARKI',
+        kosul: 'JVM çalışıyor ama yapılandırılan parametreler çalışan süreçtekinden farklı — bir sonraki restart’ta davranış değişir.',
+        seviye: 'danger',
+        dogrulama: {
+          neden: 'Taramanın jvm_arg_diff alanı en az bir parametrede “running” ile “configured” değerini farklı buldu.',
+          eksik: 'Değişiklik bilerek yapılmış ve restart planlanmış olabilir; parametre başlatma betiğinden (start.sh) ekleniyor olabilir.',
+          kontrol: [
+            CLI7('/host=master/server-config=<JVM>/jvm=<JVM>:read-resource'),
+            'ps -ef | grep -- "-D\\[Server:<JVM>\\]" | tr " " "\\n" | grep -- "^-"   # çalışan parametreler',
+            'Server Hub > sunucu > JVM satırı > parametre farkı (maskeli ayrıntı)',
+          ],
+        },
+      },
+      { kod: null, kosul: 'Parametreler aynı ya da fark ölçülemedi.', seviye: 'ok' },
+    ],
+  },
+  {
     id: 'jvm-yuk',
     alan: 'jvm',
     ad: 'JVM yükü (web katmanı trafiği)',
     neTaranir: 'JVM’e giden web katmanı access log istekleri, son 7 gün (hc.jsp / hc.html hariç).',
     ciktilar: [
-      { kod: 'RETIRE_CANDIDATE', kosul: 'JVM kapalı ve 7 gündür istek yok — retire adayı.', seviye: 'warning' },
-      { kod: 'NO_LOAD', kosul: 'JVM çalışıyor ama 7 gündür istek yok.', seviye: 'warning' },
+      {
+        kod: 'RETIRE_CANDIDATE',
+        kosul: 'JVM kapalı ve 7 gündür istek yok — retire adayı.',
+        seviye: 'warning',
+        dogrulama: {
+          neden: 'JVM süreci yok ve eşlenen web katmanı vhost’larının access log’unda son 7 günde (hc.jsp / hc.html hariç) istek yok.',
+          eksik: TRAFIK_EKSIK,
+          kontrol: [...DURUM_KONTROL, ...TRAFIK_KONTROL, 'CMDB / uygulama sahibi: uygulama kapatıldı mı, taşındı mı'],
+        },
+      },
+      {
+        kod: 'NO_LOAD',
+        kosul: 'JVM çalışıyor ama 7 gündür istek yok.',
+        seviye: 'warning',
+        dogrulama: {
+          neden: 'JVM çalışıyor, eşlenen vhost’larda son 7 günde istek yok.',
+          eksik: TRAFIK_EKSIK,
+          kontrol: [...DEPLOYMENT_KONTROL, ...TRAFIK_KONTROL],
+        },
+      },
       { kod: 'TRAFFIC_UNATTRIBUTED', kosul: 'Web katmanında hiçbir JVM’e atfedilemeyen proxy trafiği var — retire önerilmez.', seviye: 'warning' },
-      { kod: 'TRAFFIC_UNVERIFIED', kosul: 'JVM kapalı, trafik doğrulanamadı (log okunamadı ya da web sunucusu ölçülemedi).', seviye: 'info' },
+      {
+        kod: 'TRAFFIC_UNVERIFIED',
+        kosul: 'JVM kapalı, trafik doğrulanamadı (log okunamadı ya da web sunucusu ölçülemedi).',
+        seviye: 'info',
+        dogrulama: {
+          neden: 'Eşlenen access log okunamadı ya da web sunucusu ölçülemedi: “istek yok” iddiası kurulmadı.',
+          eksik: 'Log başka kullanıcıya ait (izin), web sunucusu taranmadı, vhost başka bir sunucuda.',
+          kontrol: TRAFIK_KONTROL,
+        },
+      },
       { kod: 'STOPPED', kosul: 'JVM kapalı, auto-start kapalı, web katmanı eşlenemedi.', seviye: 'info' },
       { kod: null, kosul: 'JVM istek alıyor.', seviye: 'ok' },
     ],
@@ -249,12 +334,169 @@ const MADDELER = [
       { kod: null, kosul: 'MaxSessions 10’dan büyük ve sınırdan uzak.', seviye: 'ok' },
     ],
   },
+  // ── Uygulama (EAR) alani (2026-11-06): veri Server Hub taramasindan DEGIL, Uygulama Envanteri'nin
+  // (ear_tara.py) son taramasindan gelir. Veri yoksa ya da EAR_VERI_MAX_GUN'den eskiyse bulgu YOK.
+  {
+    id: 'ear-war',
+    alan: 'ear',
+    ad: 'EAR içeriği (WAR)',
+    neTaranir: '/vhosting ve /vhosting8 altındaki her EAR’ın içinde WAR (web modülü) var mı (Uygulama Envanteri taraması).',
+    ciktilar: [
+      {
+        kod: 'EAR_WAR_YOK',
+        kosul: 'EAR tam tarandı ve içinde hiç WAR yok — çalıştıracak web modülü yok, silinebilir olabilir.',
+        seviye: 'warning',
+        dogrulama: {
+          neden: 'Uygulama Envanteri EAR’ı eksiksiz taradı (durum TAM) ve içinde .war bulmadı.',
+          eksik: 'Yalnız EJB / MDB / zamanlayıcı içeren EAR’lar bilerek WAR taşımaz; modül EAR dışında (paylaşılan dizinde) olabilir.',
+          kontrol: [
+            'ls -la /vhosting/<EAR> /vhosting8/<EAR>',
+            'cat /vhosting/<EAR>/META-INF/application.xml   # <module> listesi (web / ejb / java)',
+            "unzip -l /vhosting/<EAR> | grep -i -E '\\.(war|jar)$'   # .ear arşiviyse",
+          ],
+        },
+      },
+      { kod: null, kosul: 'EAR en az bir WAR taşıyor ya da tam taranmadı.', seviye: 'ok' },
+    ],
+  },
+  {
+    id: 'ear-kok',
+    alan: 'ear',
+    ad: 'Kökteki EAR dışı girdiler',
+    neTaranir: '/vhosting ve /vhosting8 kökünde .ear ile bitmeyen dosya / dizin / bağ (yok sayma listesi hariç).',
+    ciktilar: [
+      {
+        kod: 'KOK_EAR_DISI',
+        kosul: 'Kökte .ear ile bitmeyen girdi var (APP.ear.bak, ESKI.war, eski dizin …) — retire şüphesi.',
+        seviye: 'info',
+        dogrulama: {
+          neden: 'Uygulama dağıtım kökünde JBoss’un yüklemediği adla girdi var: yedek, eski sürüm ya da elle bırakılmış dosya olabilir.',
+          eksik: 'Girdi bir betik, paylaşılan kütüphane ya da yapılandırma dizini olabilir (o zaman yok sayma listesine eklenmeli).',
+          kontrol: [
+            'ls -la /vhosting/<GIRDI>',
+            'grep -rl "<GIRDI>" /usr/jboss/AppServer/domain/configuration /vhosting/scripts 2>/dev/null   # kullanan var mı',
+            'crontab -l -u was | grep "<GIRDI>"',
+          ],
+        },
+      },
+      { kod: null, kosul: 'Kökte yalnız .ear ve yok sayılan girdiler var.', seviye: 'ok' },
+    ],
+  },
+  {
+    id: 'ear-jvm',
+    alan: 'ear',
+    ad: 'EAR ↔ JVM eşlemesi (domain.xml / host.xml)',
+    neTaranir: 'Diskteki her EAR domain.xml’de bir deployment olarak tanımlı mı, bir server-group’a atanmış mı ve o grubun bu sunucuda JVM’i var mı (host.xml).',
+    ciktilar: [
+      {
+        kod: 'EAR_JVM_YOK',
+        kosul: 'EAR diskte var ama domain.xml / host.xml onu hiçbir JVM’e bağlamıyor.',
+        seviye: 'warning',
+        dogrulama: {
+          neden: 'Yapılandırma okundu ve EAR için deployment tanımı, server-group ataması ya da bu sunucuda JVM bulunmadı.',
+          eksik: 'Deployment adı diskteki dosya adından farklı ve yol göreli (relative-to) tanımlı olabilir; EAR başka bir JBoss kurulumundan yükleniyor olabilir.',
+          kontrol: [
+            "grep -n '<deployment ' /usr/jboss/AppServer/domain/configuration/domain.xml",
+            "grep -n '<server ' /usr/jboss/AppServer/domain/configuration/host.xml",
+            CLI7(':read-children-names(child-type=deployment)'),
+          ],
+        },
+      },
+      {
+        kod: 'EAR_XML_OLCULEMEDI',
+        kosul: 'JBoss yapılandırması okunamadı — EAR’ların JVM eşlemesi yapılamadı (“JVM yok” sayılmaz).',
+        seviye: 'info',
+        dogrulama: {
+          neden: 'domain.xml / host.xml yok, okunamadı (izin), 5 MB üstü ya da DOCTYPE / ENTITY içerdiği için okunmadı.',
+          eksik: 'Kurulum standart yolların dışında olabilir (/usr/jboss*/AppServer[/jboss]).',
+          kontrol: [
+            'ls -la /usr/jboss/AppServer/domain/configuration /usr/jboss8/AppServer/domain/configuration',
+            "dzdo -u was head -c 300 /usr/jboss/AppServer/domain/configuration/domain.xml",
+          ],
+        },
+      },
+      { kod: null, kosul: 'EAR en az bir JVM’e bağlı.', seviye: 'ok' },
+    ],
+  },
 ];
 
-/** kod -> { seviye (varsayilan), madde, alan, kosul } */
+/** kod -> { seviye (varsayilan), madde, alan, kosul, dogrulama } */
 const KODLAR = new Map();
 for (const m of MADDELER)
   for (const c of m.ciktilar)
-    if (c.kod) KODLAR.set(c.kod, { seviye: c.seviye, madde: m.id, alan: m.alan, kosul: c.kosul });
+    if (c.kod)
+      KODLAR.set(c.kod, { seviye: c.seviye, madde: m.id, alan: m.alan, kosul: c.kosul, dogrulama: c.dogrulama || null });
 
-module.exports = { MADDELER, KODLAR, SEVIYELER, ALANLAR };
+// ── RETIREMENT ETIKET KURALLARI (2026-11-06) ────────────────────────────────────────────────
+// Kullanici: "Kesin olarak retire edilecek teknoloji de retirement tagi olsun supheli olan da";
+// "retiere etiketi ayri olsun bulgular ayri olsun retiere etiketi koyma kismi vs de admin tarafindan
+// editlenebilir olsun". tur: etiketin konusu (JVM: uygulama/JVM adi, EAR: diskteki EAR, GIRDI:
+// kokteki .ear disi girdi); konu + ortam basina TEK etiket, eslenik kopyalar birlikte degerlendirilir.
+const ETIKET_SEVIYELERI = ['KESIN', 'SUPHELI', 'KAPALI'];
+const ETIKET_KURALLARI = [
+  {
+    kural: 'R1',
+    tur: 'JVM',
+    ad: 'Kapalı + auto-start açık + trafik yok',
+    kosul: 'JVM kapalı, auto-start açık ve web katmanında 7 gündür istek yok.',
+    varsayilan: 'KESIN',
+    dogrulama: {
+      neden: 'Uygulama ayakta değil, reboot’ta açılacak şekilde bırakılmış ve kimse istek göndermiyor.',
+      eksik: TRAFIK_EKSIK,
+      kontrol: [...DURUM_KONTROL, ...TRAFIK_KONTROL, 'CMDB / uygulama sahibi onayı'],
+    },
+  },
+  {
+    kural: 'R2',
+    tur: 'JVM',
+    ad: 'Kapalı + auto-start kapalı + trafik var',
+    kosul: 'JVM kapalı, auto-start kapalı ama web katmanına (IHS) istek gelmeye devam ediyor.',
+    varsayilan: 'SUPHELI',
+    dogrulama: {
+      neden: 'Uygulama bilerek kapatılmış görünüyor ama web katmanı hâlâ istek alıyor: istemciler hata alıyor olabilir.',
+      eksik: 'İstekler yalnız izleme / tarayıcı botu olabilir; vhost başka bir JVM’e de yönlendiriyor olabilir.',
+      kontrol: [...TRAFIK_KONTROL, 'Vhost’un proxy hedeflerini kontrol et: başka JVM’e de gidiyor mu'],
+    },
+  },
+  {
+    kural: 'R3',
+    tur: 'EAR',
+    ad: 'EAR var, WAR yok',
+    kosul: 'EAR tam tarandı ve içinde hiç WAR yok.',
+    varsayilan: 'SUPHELI',
+    dogrulama: null, // EAR_WAR_YOK ile ayni
+    kod: 'EAR_WAR_YOK',
+  },
+  {
+    kural: 'R4',
+    tur: 'GIRDI',
+    ad: 'Kökte .ear ile bitmeyen girdi',
+    kosul: '/vhosting veya /vhosting8 kökünde .ear ile bitmeyen girdi (yok sayma listesi hariç).',
+    varsayilan: 'SUPHELI',
+    dogrulama: null,
+    kod: 'KOK_EAR_DISI',
+  },
+  {
+    kural: 'R5',
+    tur: 'EAR',
+    ad: 'EAR diskte var, JVM yok',
+    kosul: 'EAR diskte var ama domain.xml / host.xml onu hiçbir JVM’e bağlamıyor.',
+    varsayilan: 'SUPHELI',
+    dogrulama: null,
+    kod: 'EAR_JVM_YOK',
+  },
+].map((k) => ({ ...k, dogrulama: k.dogrulama || KODLAR.get(k.kod).dogrulama }));
+
+// Kokte yok sayilan girdiler (Admin degistirir: 'liste:kok_yoksay'). scripts: start.sh
+// /vhosting/scripts/initialize'i kullaniyor.
+const KOK_YOKSAY_VARSAYILAN = ['lost+found', 'log', 'logs', 'scripts', 'temp', 'tmp'];
+
+module.exports = {
+  MADDELER,
+  KODLAR,
+  SEVIYELER,
+  ALANLAR,
+  ETIKET_SEVIYELERI,
+  ETIKET_KURALLARI,
+  KOK_YOKSAY_VARSAYILAN,
+};
