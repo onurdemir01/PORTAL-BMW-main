@@ -1091,6 +1091,7 @@ const TABLES = [
         bildirilen_host  NVARCHAR(128)  NULL,
         kok_girdileri    NVARCHAR(MAX)  NULL,
         xml_ozeti        NVARCHAR(MAX)  NULL,
+        deployment_ozeti NVARCHAR(MAX)  NULL,
         alindi_at        DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
         CONSTRAINT UQ_eeh_kosu_host UNIQUE (kosu_id, host)
       )`,
@@ -4485,6 +4486,12 @@ async function setupTables() {
     // host.xml ozeti ve EAR -> JVM eslemesi (JSON). Eski satirlarda NULL = olculmedi.
     { table: 'ear_envanter_hostlari', col: 'kok_girdileri', sql: `ALTER TABLE ear_envanter_hostlari ADD kok_girdileri NVARCHAR(MAX) NULL` },
     { table: 'ear_envanter_hostlari', col: 'xml_ozeti', sql: `ALTER TABLE ear_envanter_hostlari ADD xml_ozeti NVARCHAR(MAX) NULL` },
+    // Faz 2 (2026-11-06): calisan JVM'lerin deployment durumu (JBoss CLI; istege bagli). NULL = olculmedi.
+    {
+      table: 'ear_envanter_hostlari',
+      col: 'deployment_ozeti',
+      sql: `ALTER TABLE ear_envanter_hostlari ADD deployment_ozeti NVARCHAR(MAX) NULL`,
+    },
     {
       table: 'ear_envanter_uygulamalari',
       col: 'xml_eslesme',

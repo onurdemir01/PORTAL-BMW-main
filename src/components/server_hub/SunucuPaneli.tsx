@@ -25,6 +25,7 @@ import {
   ETIKET_SEVIYE,
   KONTROL_DURUM,
   bulgudanJvm,
+  deploymentMetni,
   dogrulamaAdimlari,
   earDurumMetni,
   hostEtiketleri,
@@ -285,6 +286,21 @@ export default function SunucuPaneli({
                     .map((u) => `${u.kok}/${u.ad} (${u.warSayisi ?? '?'} WAR, ${u.durum})`)
                     .join(' · ')}
             </div>
+            {(() => {
+              const dm = deploymentMetni(d, j);
+              const renk = {
+                kotu: 'var(--status-danger-text)',
+                uyari: 'var(--status-warning-text)',
+                notr: 'var(--text-muted)',
+                bilgi: 'var(--text-primary)',
+              }[dm.ton];
+              return (
+                <div data-testid="deployment-satiri">
+                  <span style={{ color: 'var(--text-muted)' }}>Deployment (JBoss CLI): </span>
+                  <span style={{ color: renk }}>{dm.metin}</span>
+                </div>
+              );
+            })()}
             <div>
               <span style={{ color: 'var(--text-muted)' }}>
                 Web (

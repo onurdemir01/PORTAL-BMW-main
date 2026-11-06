@@ -11,6 +11,11 @@
 // host.xml ozeti (host.xml_ozeti) ve uygulama basina EAR -> JVM eslemesi (uygulama.xml_eslesme).
 // Eski tarayicinin paketinde bu alanlar yoktur: kolon NULL = OLCULMEDI ("yok" DEGIL).
 //
+// FAZ 2 (2026-11-06): ayni ham dosyada, tarayici paketinden SONRA istege bagli deployment blogu
+// (files/deployment_oku.sh; ear_deployment_kontrol). Calisan JVM basina JBoss CLI
+// read-children-resources(child-type=deployment) ciktisi (DMR metni) -> host.deployment_ozeti. Blok
+// yoksa NULL = olculmedi (kontrol kapali ya da eski playbook).
+//
 // KUTUPHANE SETLERI: ayni uygulamanin eslenik sunuculardaki WAR'lari ayni kutuphane listesini tasir.
 // Liste her WAR satirina yazilsa haftalik filo kosusu yuzlerce MB olurdu; liste parmak iziyle
 // (sha256, 32 hex) BIR KEZ yazilir, WAR satiri yalniz izi tasir.
@@ -36,6 +41,21 @@ const SINIR_KOK_GIRDI = 500;
 const SINIR_XML_KAYIT = 300;
 const XML_DURUMLARI = Object.freeze(['OKUNDU', 'YOK', 'IZIN', 'DOSYA_DEGIL', 'BUYUK', 'REDDEDILDI', 'BOZUK', 'HATA']);
 const ESLESME_DURUMLARI = Object.freeze(['VAR', 'JVM_YOK', 'OLCULEMEDI']);
+const DEP_BASLA = Buffer.from('@@EAR_DEPLOYMENT_BASLA@@');
+const DEP_BITTI = Buffer.from('@@EAR_DEPLOYMENT_BITTI@@');
+// OK: CLI okundu; digerleri olculemedi. AYRISTIRILAMADI: CLI cevap verdi ama metin DMR degil.
+const DEP_JVM_DURUMLARI = Object.freeze([
+  'OK',
+  'CLI_YOK',
+  'ZAMAN_ASIMI',
+  'HATA',
+  'GECERSIZ_AD',
+  'BUTCE_DOLDU',
+  'BASH_YOK',
+  'AYRISTIRILAMADI',
+]);
+const SINIR_DEP_JVM = 200;
+const SINIR_DEP = 200;
 const VARSAYILAN_DIZIN = '/sw/BMW_PORTAL/ear_envanter';
 const HOST_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$/;
 
@@ -351,6 +371,162 @@ function xmlEslesme(u) {
   });
 }
 
+/**
+ * JBoss DMR metni (CLI ciktisi) -> JS degeri. Sinirli: derinlik 64, metin 256 KB. Desteklenen:
+ * { "a" => v }, [ ... ], ("a" => v), "metin", 12 / 12L / -1.5, true / false / undefined, bytes {..}
+ * (null), expression "..", big decimal / big integer N; bilinmeyen ciplak sozcuk metin olur.
+ * Gecersiz metin -> hata firlatir (cagiran AYRISTIRILAMADI der).
+ */
+function dmrAyristir(metin) {
+  const s = String(metin).slice(0, 256 * 1024);
+  let i = s.indexOf('{');
+  if (i < 0) throw new Error('DMR nesnesi yok');
+  const bosluk = () => {
+    while (i < s.length && /[\s,]/.test(s[i])) i += 1;
+  };
+  const deger = (derinlik) => {
+    if (derinlik > 64) throw new Error('DMR cok derin');
+    bosluk();
+    const c = s[i];
+    if (c === '{' || c === '[') {
+      const nesne = c === '{';
+      const kapa = nesne ? '}' : ']';
+      i += 1;
+      const out = nesne ? {} : [];
+      for (;;) {
+        bosluk();
+        if (i >= s.length) throw new Error('DMR kapanmadi');
+        if (s[i] === kapa) {
+          i += 1;
+          return out;
+        }
+        if (nesne) {
+          const k = deger(derinlik + 1);
+          bosluk();
+          if (s.slice(i, i + 2) !== '=>') throw new Error('DMR => bekleniyordu');
+          i += 2;
+          out[String(k)] = deger(derinlik + 1);
+        } else out.push(deger(derinlik + 1));
+      }
+    }
+    if (c === '(') {
+      i += 1;
+      const k = deger(derinlik + 1);
+      bosluk();
+      if (s.slice(i, i + 2) !== '=>') throw new Error('DMR => bekleniyordu');
+      i += 2;
+      const v = deger(derinlik + 1);
+      bosluk();
+      if (s[i] !== ')') throw new Error('DMR ) bekleniyordu');
+      i += 1;
+      return { [String(k)]: v };
+    }
+    if (c === '"') {
+      let out = '';
+      i += 1;
+      while (i < s.length && s[i] !== '"') {
+        if (s[i] === '\\' && i + 1 < s.length) i += 1;
+        out += s[i];
+        i += 1;
+      }
+      if (i >= s.length) throw new Error('DMR metni kapanmadi');
+      i += 1;
+      return out;
+    }
+    const kalan = s.slice(i, i + 64);
+    let m = /^bytes\s*\{/.exec(kalan);
+    if (m) {
+      const son = s.indexOf('}', i);
+      if (son < 0) throw new Error('DMR bytes kapanmadi');
+      i = son + 1;
+      return null;
+    }
+    m = /^expression\s+/.exec(kalan);
+    if (m) {
+      i += m[0].length;
+      return deger(derinlik + 1);
+    }
+    m = /^big (?:decimal|integer)\s+/.exec(kalan);
+    if (m) i += m[0].length;
+    m = /^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?L?/.exec(s.slice(i, i + 64));
+    if (m) {
+      i += m[0].length;
+      return Number(m[0].replace(/L$/, ''));
+    }
+    m = /^[A-Za-z_][\w.$-]*/.exec(kalan);
+    if (m) {
+      i += m[0].length;
+      return m[0] === 'true' ? true : m[0] === 'false' ? false : m[0] === 'undefined' ? null : m[0];
+    }
+    throw new Error(`DMR beklenmeyen karakter: ${JSON.stringify(c)}`);
+  };
+  return deger(0);
+}
+
+/**
+ * Ham dosyadaki deployment blogu -> { surum, kesik, jvmler: [{ nesil, ad, durum, rc, hata,
+ * deploymentlar: [{ ad, calisma_adi, etkin, durum }] | null }] }. Blok yoksa null (olculmedi).
+ */
+function deploymentCoz(buf) {
+  const a = buf.indexOf(DEP_BASLA);
+  if (a < 0) return null;
+  const b = buf.indexOf(DEP_BITTI, a + DEP_BASLA.length);
+  const metin = buf.subarray(a + DEP_BASLA.length, b < 0 ? buf.length : b).toString('utf8');
+  const out = { surum: null, kesik: b < 0, jvmler: [] };
+  let son = null;
+  let govde = [];
+  const kapat = () => {
+    if (!son) return;
+    if (son.durum === 'OK') {
+      try {
+        const v = dmrAyristir(govde.join('\n'));
+        if (v && v.outcome === 'success' && v.result && typeof v.result === 'object' && !Array.isArray(v.result)) {
+          const liste = Object.entries(v.result);
+          son.deploymentlar = liste.slice(0, SINIR_DEP).map(([k, d]) => {
+            const r = d && typeof d === 'object' ? d : {};
+            return {
+              ad: M(r.name || k, 256),
+              calisma_adi: M(r['runtime-name'] || '', 256) || null,
+              etkin: r.enabled === false ? false : r.enabled === true ? true : null,
+              durum: r.status == null ? null : M(r.status, 32),
+            };
+          });
+          if (liste.length > SINIR_DEP) out.kesik = true;
+        } else {
+          son.durum = 'HATA';
+          son.hata = M((v && v['failure-description']) || 'CLI basarisiz', 300);
+        }
+      } catch (e) {
+        son.durum = 'AYRISTIRILAMADI';
+        son.hata = M(e.message, 300);
+      }
+    } else if (son.durum === 'HATA') son.hata = M(govde.join(' ').replace(/\s+/g, ' ').trim(), 300) || null;
+    if (out.jvmler.length < SINIR_DEP_JVM) out.jvmler.push(son);
+    else out.kesik = true;
+    son = null;
+    govde = [];
+  };
+  for (const satir of metin.split('\n')) {
+    const t = satir.replace(/\r$/, '');
+    let m;
+    if ((m = /^surum=(\d+)$/.exec(t)) && !son) out.surum = Number(m[1]);
+    else if ((m = /^@@JVM@@ (\S+) (\S+) (\S+)(?: (-?\d+))?$/.exec(t))) {
+      kapat();
+      son = {
+        nesil: D(m[1], ['7', '8'], '?'),
+        ad: M(m[2], 128),
+        durum: D(m[3], DEP_JVM_DURUMLARI, 'HATA'),
+        rc: m[4] == null ? null : Number(m[4]),
+        hata: null,
+        deploymentlar: null,
+      };
+    } else if (t === '@@JVM_SON@@') kapat();
+    else if (son) govde.push(t);
+  }
+  kapat();
+  return out;
+}
+
 const birlesik = (degerler, n) => {
   const s = new Set();
   for (const v of degerler) if (v) for (const p of String(v).split(', ')) s.add(p);
@@ -361,7 +537,7 @@ const birlesik = (degerler, n) => {
  * Tarayici yuku -> DB'ye yazilacak duz kayitlar. Agac satirlari (satirlar) ALINMAZ.
  * @returns {{ host: object, uygulamalar: object[], warlar: object[], setler: Map<string, Array<[string, string, number]>> }}
  */
-function hostKaydi(p, { host, kip, partiNo, ortam, playbookDurum, hamBayt }) {
+function hostKaydi(p, { host, kip, partiNo, ortam, playbookDurum, hamBayt, deployment = null }) {
   const setler = new Map();
   // SESSIZ KESILME YOK (2026-11-05): sinirdan fazlasi alinmaz ama uygulama KISMI_SINIR olur ve
   // uyarisi yazilir; eksik liste eslenik karsilastirmasinda "ayni" ya da "farkli" sayilmaz.
@@ -486,6 +662,7 @@ function hostKaydi(p, { host, kip, partiNo, ortam, playbookDurum, hamBayt }) {
       bildirilen_host: M(p.host, 128) || null,
       kok_girdileri: kokGirdileri(p),
       xml_ozeti: xmlOzeti(p),
+      deployment_ozeti: deployment ? JSON.stringify(deployment) : null,
     },
     uygulamalar,
     warlar,
@@ -517,6 +694,7 @@ function bosHostKaydi({ partiNo, ortam, durum, playbookDurum, hata, hamBayt }) {
       bildirilen_host: null,
       kok_girdileri: null,
       xml_ozeti: null,
+      deployment_ozeti: null,
     },
     uygulamalar: [],
     warlar: [],
@@ -544,6 +722,7 @@ const HOST_KOLONLAR = [
   'bildirilen_host NVARCHAR(128)',
   'kok_girdileri NVARCHAR(MAX)',
   'xml_ozeti NVARCHAR(MAX)',
+  'deployment_ozeti NVARCHAR(MAX)',
 ];
 const UYG_KOLONLAR = [
   'uyg_no INT',
@@ -694,6 +873,9 @@ module.exports = {
   kokGirdileri,
   xmlOzeti,
   xmlEslesme,
+  dmrAyristir,
+  deploymentCoz,
+  DEP_JVM_DURUMLARI,
   hostKaydi,
   bosHostKaydi,
   hostuYaz,

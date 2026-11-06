@@ -19,6 +19,8 @@
 //   EA12 TARAYICI SURUM 2: kok girdileri, XML ozeti ve EAR -> JVM eslemesi JSON kolonlara duzlenir;
 //        alan yoksa (eski tarayici) NULL = olculmedi; bilinmeyen durum OLCULEMEDI; yalniz bilinen
 //        alanlar secilir (fazladan alan DB'ye gitmez); sinirlar uygulanir, kesilme yazilir
+//   EA13 FAZ 2: deployment blogu (JBoss CLI DMR ciktisi) -> deployment_ozeti; blok yoksa NULL; failed
+//        outcome HATA; DMR olmayan metin AYRISTIRILAMADI; kesik blok isaretlenir; bilinmeyen durum HATA
 'use strict';
 
 const { test } = require('node:test');
@@ -554,10 +556,68 @@ test('EA12 surum 2 alanlari: kok girdileri, XML ozeti, EAR -> JVM eslemesi', () 
     ['ear_envanter_hostlari', 'kok_girdileri'],
     ['ear_envanter_hostlari', 'xml_ozeti'],
     ['ear_envanter_uygulamalari', 'xml_eslesme'],
+    ['ear_envanter_hostlari', 'deployment_ozeti'],
   ])
     assert.ok(
       kurulum.includes(`ALTER TABLE ${t} ADD ${c} NVARCHAR(MAX) NULL`) &&
         new RegExp(`table: '${t}',\\s*col: '${c}'`).test(kurulum),
       `${t}.${c} icin ALTER adimi yok: kurulu ortamda alim INSERT'i duser`,
     );
+});
+
+test('EA13 Faz 2 deployment blogu: DMR, olculemeyen durumlar, kesik blok, hostKaydi', () => {
+  const D = (ic) => Buffer.from(`ONCEKI\n@@EAR_DEPLOYMENT_BASLA@@\nsurum=1\n${ic}`);
+  assert.equal(alim.deploymentCoz(Buffer.from('@@EAR_ENVANTER_BITTI@@\n')), null, 'blok yok = olculmedi');
+  const ok = alim.deploymentCoz(
+    D(`@@JVM@@ 7 A OK 0
+{
+    "outcome" => "success",
+    "result" => {"X.ear" => {
+        "enabled" => false,
+        "name" => "X.ear",
+        "runtime-name" => "X-rt.ear",
+        "status" => "FAILED",
+        "persistent" => true,
+        "properties" => [("k" => "v")],
+        "expr" => expression "\${a:b}",
+        "big" => big decimal 1.50
+    }}
+}
+@@JVM_SON@@
+@@JVM@@ 7 B OK 0
+{"outcome" => "failed", "failure-description" => "WFLYCTL0216: Management resource not found"}
+@@JVM_SON@@
+@@JVM@@ 8 C OK 0
+bu DMR degil
+@@JVM_SON@@
+@@JVM@@ 8 D TUHAF_DURUM
+@@JVM@@ - - BASH_YOK
+@@EAR_DEPLOYMENT_BITTI@@
+`),
+  );
+  const j = Object.fromEntries(ok.jvmler.map((x) => [x.ad, x]));
+  assert.deepEqual(j.A.deploymentlar, [{ ad: 'X.ear', calisma_adi: 'X-rt.ear', etkin: false, durum: 'FAILED' }]);
+  assert.deepEqual([j.B.durum, j.B.deploymentlar], ['HATA', null]);
+  assert.match(j.B.hata, /WFLYCTL0216/);
+  assert.deepEqual([j.C.durum, j.C.deploymentlar], ['AYRISTIRILAMADI', null]);
+  assert.equal(j.D.durum, 'HATA', 'bilinmeyen durum OK sayilmaz');
+  assert.equal(j['-'].durum, 'BASH_YOK');
+  assert.equal(ok.kesik, false);
+  const kesik = alim.deploymentCoz(D('@@JVM@@ 7 A CLI_YOK\n'));
+  assert.deepEqual([kesik.kesik, kesik.jvmler[0].durum], [true, 'CLI_YOK']);
+  // DMR: tirnak icinde kacis, L sayi, undefined, bytes.
+  assert.deepEqual(alim.dmrAyristir('{"a" => "x\\"y", "n" => 12L, "u" => undefined, "b" => bytes { 0x01 }, "t" => true}'), {
+    a: 'x"y',
+    n: 12,
+    u: null,
+    b: null,
+    t: true,
+  });
+  assert.throws(() => alim.dmrAyristir('{"a" => '), /DMR/);
+  assert.throws(() => alim.dmrAyristir('{'.repeat(80) + '}'.repeat(80)), /derin/);
+  // hostKaydi: verilirse JSON, verilmezse NULL (olculmedi).
+  const p = { sema: 1, durum: 'TAM', kokler: [], uyarilar: [], uygulamalar: [] };
+  const o = { host: 'H', kip: 'OZET', partiNo: 1, ortam: 'PROD', playbookDurum: 'SONUC', hamBayt: 1 };
+  assert.equal(alim.hostKaydi(p, o).host.deployment_ozeti, null);
+  assert.deepEqual(JSON.parse(alim.hostKaydi(p, { ...o, deployment: ok }).host.deployment_ozeti).jvmler.length, 5);
 });

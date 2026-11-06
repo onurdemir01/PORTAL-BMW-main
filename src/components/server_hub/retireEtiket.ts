@@ -226,6 +226,41 @@ export function zincirKartlari(h: ShHostDetail): {
   return { kartlar, bagsizEarlar: uyg.filter((u) => !kullanilan.has(`${u.kok}/${u.ad}`)) };
 }
 
+type DepJvm = NonNullable<NonNullable<ShHostDetail['ear']>['deployment']>['jvmler'][number];
+/**
+ * Faz 2: JVM'in deployment satiri (JBoss CLI). ton: kotu (yok / FAILED), uyari (devre disi /
+ * olculemedi), notr (kontrol kapali / JVM kapali), iyi DEGIL (yesil yalniz dogrulama). Metin kisa.
+ */
+export function deploymentMetni(
+  h: ShHostDetail,
+  j: { name: string; gen: number; running: boolean; runningKnown?: boolean | null },
+): { metin: string; ton: 'kotu' | 'uyari' | 'notr' | 'bilgi' } {
+  const dep = h.ear && h.ear.durum === 'VAR' ? h.ear.deployment : null;
+  if (!dep)
+    return {
+      metin: 'kontrol kapalı (Uygulama Envanteri ayarı “Deployment kontrolü”)',
+      ton: 'notr',
+    };
+  if (j.runningKnown === false || !j.running)
+    return { metin: 'JVM kapalı — deployment okunmaz', ton: 'notr' };
+  const x: DepJvm | undefined = dep.jvmler.find(
+    (d) => d.ad.toLowerCase() === String(j.name).toLowerCase() && Number(d.nesil) === Number(j.gen),
+  );
+  if (!x) return { metin: 'ölçülmedi (tarama anında çalışmıyordu)', ton: 'uyari' };
+  if (x.durum !== 'OK')
+    return { metin: `ölçülemedi (${x.durum}${x.hata ? `: ${x.hata}` : ''})`, ton: 'uyari' };
+  const l = x.deploymentlar || [];
+  if (!l.length) return { metin: 'hiçbir deployment yok', ton: 'kotu' };
+  const kotu = l.some((d) => d.durum === 'FAILED');
+  const uyari = l.some((d) => d.etkin === false);
+  return {
+    metin: l
+      .map((d) => `${d.ad} ${d.durum || '?'}${d.etkin === false ? ' (devre dışı)' : ''}`)
+      .join(' · '),
+    ton: kotu ? 'kotu' : uyari ? 'uyari' : 'bilgi',
+  };
+}
+
 /** Uygulama Envanteri durumunun okunur metni (EAR bulgusu yoksa NEDEN yok). */
 export function earDurumMetni(e: ShHostDetail['ear'] | null | undefined): string {
   if (!e || e.durum === 'OKUNAMADI')

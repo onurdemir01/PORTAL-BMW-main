@@ -164,9 +164,12 @@ function kopyalariTopla(konu, ix) {
 function zincirNedenleri(konu, kopyalar, kurallar) {
   const n = [];
   if (konu.tur === 'JVM') {
+    // R1 / R2 "JVM kapali" iddiasidir: calisan / olculemeyen kopya onu bozar. R6 (Faz 2) calisan JVM
+    // hakkindadir; orada calismak beklenen durumdur.
+    const kapaliIddiasi = kurallar.includes('R1') || kurallar.includes('R2');
     for (const k of kopyalar) {
-      if (k.calisiyor === null) n.push(`${k.host}: çalışma durumu ölçülemedi`);
-      else if (k.calisiyor) n.push(`${k.host}: eşlenik kopya çalışıyor`);
+      if (kapaliIddiasi && k.calisiyor === null) n.push(`${k.host}: çalışma durumu ölçülemedi`);
+      else if (kapaliIddiasi && k.calisiyor) n.push(`${k.host}: eşlenik kopya çalışıyor`);
       if (!k.taze) n.push(`${k.host}: tarama bayat (${k.taramaTarihi || '?'})`);
     }
     // R1 trafik yok iddiasidir: her kopyanin web katmani olculmus ve bos olmali.

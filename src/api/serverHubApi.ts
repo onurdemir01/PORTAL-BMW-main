@@ -177,6 +177,19 @@ export interface ShEarDurumu {
     warSayisi: number | null;
     xml: { durum: 'VAR' | 'JVM_YOK' | 'OLCULEMEDI'; neden?: string | null; jvmler?: { ad: string; grup?: string; auto_start?: boolean }[] } | null;
   }[];
+  /** Faz 2: calisan JVM'lerin deployment durumu (JBoss CLI). null = kontrol kapali / olculmedi. */
+  deployment?: {
+    kesik: boolean;
+    jvmler: {
+      nesil: string;
+      ad: string;
+      /** OK | CLI_YOK | ZAMAN_ASIMI | HATA | GECERSIZ_AD | BUTCE_DOLDU | BASH_YOK | AYRISTIRILAMADI */
+      durum: string;
+      rc: number | null;
+      hata: string | null;
+      deploymentlar: { ad: string; calisma_adi: string | null; etkin: boolean | null; durum: string | null }[] | null;
+    }[];
+  } | null;
 }
 export interface ShHostDetail extends Omit<ShHostRow, 'jvms' | 'vhosts'> {
   /** Uygulama Envanteri durumu ve retirement adaylari (2026-11-06). */

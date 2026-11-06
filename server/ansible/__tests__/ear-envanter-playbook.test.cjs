@@ -13,6 +13,8 @@
 //     awx_job_id yok (AWX disi): acik mesajla durur
 // EP8 TUZAK: Portal kipi + dolu Limit -> localhost play'leri atlanir, is hicbir sey yapmadan biter
 //     (Portal bu yuzden Limit alani dolu sablonla baslatmaz; davranis degisirse bu test haber verir)
+// EP9 FAZ 2 GERCEK ansible-playbook (ear_deployment_kontrol=true): deployment blogu ayni dosyada tarama
+//     paketinden SONRA; alim ikisini de okur; set_stats ozeti degismez; kapaliyken blok YOK
 'use strict';
 
 const { test } = require('node:test');
@@ -75,6 +77,7 @@ test('EP1 basliktaki extra_vars listesi kullanilanlarla ayni', () => {
     'ear_alt_dizin',
     'ear_host_adi',
     'ear_toplanan',
+    'ear_deployment',
   ])
     kullanilan.delete(ic);
   const belgesiz = [...kullanilan].filter((v) => !belgeli.has(v));
@@ -145,6 +148,7 @@ test(
     assert.deepEqual(blok.block.map(modul), [
       'ansible.builtin.raw',
       'ansible.builtin.set_fact',
+      'ansible.builtin.raw',
       'ansible.builtin.copy',
     ]);
     assert.deepEqual(
@@ -153,11 +157,19 @@ test(
       'rescue yalniz durum yazar',
     );
     assert.match(blok.rescue[0]['ansible.builtin.set_fact'].ear_ozet.durum, /YAZILAMADI/);
-    const [raw, , copy] = blok.block;
-    assert.equal(raw.no_log, true);
-    assert.equal(raw.failed_when, false);
-    assert.equal(raw.changed_when, false);
-    assert.ok(raw.timeout, 'kesin zaman asimi yok');
+    const [raw, , dep, copy] = blok.block;
+    for (const g of [raw, dep]) {
+      assert.equal(g.no_log, true, `${g.name}: no_log`);
+      assert.equal(g.failed_when, false, `${g.name}: failed_when`);
+      assert.equal(g.changed_when, false, `${g.name}: changed_when`);
+      assert.ok(g.timeout, `${g.name}: kesin zaman asimi yok`);
+      assert.equal(g.become_method, 'dzdo', `${g.name}: dzdo`);
+    }
+    // FAZ 2 varsayilan KAPALI ve yalniz paket alindiysa; cikti ayni dosyaya tarama paketinden SONRA.
+    assert.deepEqual(dep.when, ['ear_deployment_kontrol | default(false) | bool', 'ear_ozet.paket | bool']);
+    assert.match(dep['ansible.builtin.raw'], /bash -s <<'EAR_DEPLOYMENT_SON'\n/, 'heredoc tirnakli olmali');
+    assert.match(dep['ansible.builtin.raw'], /\{\{ lookup\('ansible\.builtin\.file', 'files\/deployment_oku\.sh'\) \}\}\nEAR_DEPLOYMENT_SON/);
+    assert.equal(copy['ansible.builtin.copy'].content, "{{ ear_tarama.stdout }}{{ ear_deployment.stdout | default('') }}");
     assert.match(
       String(copy.delegate_to),
       /GBLABT02/,
@@ -458,5 +470,45 @@ test(
       assert.equal(ozetOku(r), null, `${limit}: set_stats yayinlandi`);
       assert.ok(!fs.existsSync(cikti), `${limit}: /sw'ye yazildi`);
     }
+  },
+);
+
+test(
+  'EP9 Faz 2: ear_deployment_kontrol=true -> deployment blogu ayni dosyada, paketten sonra; alim okur',
+  { skip: !HAS_ANSIBLE && 'ansible-playbook yok' },
+  () => {
+    const alim = require('../../server-hub/ear-envanter-alim.cjs');
+    const { inv, cikti } = limitOrtami('ear-ep9-');
+    const ev = {
+      hedefler: ['hosta', 'hostb'],
+      ear_kip: 'OZET',
+      ear_kosu_no: 9,
+      ear_parti_no: 1,
+      ear_okuma_kullanicisi: '',
+      ear_dizin: cikti,
+      ear_deployment_kontrol: true,
+      ear_dep_sure: 30,
+    };
+    const r = oynat(inv, [], ev);
+    assert.equal(r.status, 0, `ansible-playbook kod ${r.status}\n${r.stdout.slice(-1500)}\n${r.stderr.slice(-800)}`);
+    const ozet = ozetOku(r);
+    assert.equal(Number(ozet.sonuc_alinan), 2);
+    const buf = fs.readFileSync(path.join(cikti, 'kosu-9', 'raw', 'HOSTA.out'));
+    const p = buf.indexOf('@@EAR_ENVANTER_BITTI@@');
+    const d = buf.indexOf('@@EAR_DEPLOYMENT_BASLA@@');
+    assert.ok(p > 0 && d > p, 'deployment blogu tarama paketinden SONRA olmali');
+    assert.deepEqual(
+      alim.paketCoz(buf).uygulamalar.map((u) => u.ad),
+      ['APP.ear'],
+      'tarama paketi deployment blogundan etkilenmeden okunmali',
+    );
+    const dep = alim.deploymentCoz(buf);
+    assert.equal(dep.surum, 1);
+    assert.equal(dep.kesik, false, 'blok BITTI ile kapanmali');
+    // Kapali (varsayilan): blok yok.
+    const r2 = oynat(inv, [], { ...ev, ear_kosu_no: 10, ear_deployment_kontrol: false });
+    assert.equal(r2.status, 0);
+    const buf2 = fs.readFileSync(path.join(cikti, 'kosu-10', 'raw', 'HOSTA.out'));
+    assert.equal(alim.deploymentCoz(buf2), null, 'kapaliyken deployment blogu yazildi');
   },
 );

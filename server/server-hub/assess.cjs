@@ -1673,6 +1673,8 @@ function assess(data, opts = {}) {
             yasGun: earYas,
             kosuId: ear.kosuId,
             uygulamalar: ear.uygulamalar.map((u) => ({ kok: u.kok, ad: u.ad, jboss: u.jboss, durum: u.durum, warSayisi: u.warSayisi, xml: u.xml })),
+            // Faz 2: null = deployment kontrolu kapali / olculmedi.
+            deployment: ear.deployment || null,
           };
     if (h.ear.durum === 'VAR') {
       const olcmeyen = new Map();
@@ -1712,6 +1714,50 @@ function assess(data, opts = {}) {
           null,
           { ear: { neden, uygulamalar: adlar.slice(0, 50) } },
         );
+      // FAZ 2: calisan JVM'lerin deployment durumu (JBoss CLI). Kontrol kapaliysa (null) bulgu YOK.
+      const dep = ear.deployment;
+      if (dep && Array.isArray(dep.jvmler)) {
+        const diskEar = new Set(ear.uygulamalar.map((u) => U(u.ad)));
+        const olcmeyen = [];
+        const adlar = (l) => `${l.slice(0, 5).map((d) => d.ad).join(', ')}${l.length > 5 ? ' +' + (l.length - 5) : ''}`;
+        for (const dj of dep.jvmler) {
+          const id = `JBoss${dj.nesil} ${dj.ad}`;
+          const konu = { deployment: { jvm: dj.ad, nesil: dj.nesil } };
+          if (dj.durum !== 'OK') {
+            olcmeyen.push(`${dj.ad} (${dj.durum})`);
+            continue;
+          }
+          const dl = Array.isArray(dj.deploymentlar) ? dj.deploymentlar : [];
+          if (!dl.length) {
+            add('danger', 'ear', 'DEPLOY_YOK', `${id} ayakta ama üzerinde hiçbir deployment yok — boşta çalışan JVM`, null, konu);
+            continue;
+          }
+          const failed = dl.filter((d) => d.durum === 'FAILED');
+          if (failed.length) add('danger', 'ear', 'DEPLOY_FAILED', `${id}: deployment FAILED — ${adlar(failed)}`, null, konu);
+          const kapali = dl.filter((d) => d.etkin === false);
+          if (kapali.length) add('warning', 'ear', 'DEPLOY_KAPALI', `${id}: devre dışı deployment — ${adlar(kapali)}`, null, konu);
+          const uyusmayan = dl.filter((d) => !diskEar.has(U(d.ad)) && !diskEar.has(U(d.calisma_adi)));
+          if (uyusmayan.length)
+            h.retireAdaylari.push({
+              kural: 'R6',
+              tur: 'JVM',
+              ad: dj.ad,
+              host: h.host,
+              gen: Number(dj.nesil) || 0,
+              engel: null,
+              deployment: uyusmayan.slice(0, 10).map((d) => d.ad),
+            });
+        }
+        if (olcmeyen.length)
+          add(
+            'info',
+            'ear',
+            'DEPLOY_OLCULEMEDI',
+            `Deployment durumu ölçülemedi (JBoss CLI) — "deployment yok" sayılmaz: ${olcmeyen.slice(0, 5).join(', ')}${olcmeyen.length > 5 ? ' +' + (olcmeyen.length - 5) : ''}`,
+            null,
+            { deployment: { jvmler: olcmeyen.slice(0, 50) } },
+          );
+      }
       if (ear.kokGirdileri) {
         const kokBasina = new Map();
         for (const g of ear.kokGirdileri.girdiler) {

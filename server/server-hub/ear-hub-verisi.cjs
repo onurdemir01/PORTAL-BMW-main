@@ -41,7 +41,7 @@ async function earSonDurum() {
   try {
     const h = await db().query(
       `WITH ${SON}
-       SELECT h.host, h.kosu_id, h.taranma_utc, h.durum, h.kok_girdileri
+       SELECT h.host, h.kosu_id, h.taranma_utc, h.durum, h.kok_girdileri, h.deployment_ozeti
          FROM ear_envanter_hostlari h JOIN son ON son.host = h.host AND son.kosu_id = h.kosu_id`,
     );
     const u = await db().query(
@@ -65,6 +65,11 @@ async function earSonDurum() {
           kg && Array.isArray(kg.girdiler)
             ? { girdiler: kg.girdiler, kesilen: Number(kg.kesilen) || 0 }
             : null,
+        // Faz 2: calisan JVM'lerin deployment durumu; null = olculmedi (kontrol kapali / eski kosu).
+        deployment: (() => {
+          const d = jsonOku(r.deployment_ozeti);
+          return d && Array.isArray(d.jvmler) ? { kesik: d.kesik === true, jvmler: d.jvmler } : null;
+        })(),
         uygulamalar: [],
       });
     }
