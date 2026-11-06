@@ -67,9 +67,12 @@ export async function safeJson(res: Response): Promise<any> {
         (typeof b.message === 'string' && b.message.trim()) ||
         (typeof b.error === 'string' && b.error.trim()) ||
         `İstek reddedildi (HTTP ${asil}).`;
+      // nginxRed + blocked: metin sunucunun kendi reddidir; ekran onu HTML önizlemesinden ayırabilsin.
       throw Object.assign(new Error(mesaj), {
         status: asil,
+        nginxRed: true,
         ...(typeof b.code === 'string' ? { code: b.code } : {}),
+        ...(typeof b.blocked === 'string' ? { blocked: b.blocked } : {}),
       });
     }
     return Object.assign(body, { _httpStatus: res.status });

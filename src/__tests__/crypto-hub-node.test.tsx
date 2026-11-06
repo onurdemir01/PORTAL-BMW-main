@@ -10,6 +10,9 @@
 //      yalnız metaco_das_prod'da, kapalıysa düğme kapalı; Ankara bağlantısı sihirbazı aynı grupla
 //      açar ve esTalepId gönderir (D4)
 //   U4 yapı: her tablo overflow-x-auto içinde; yeni dosyalarda sabit renk yok
+//   U7 Smart kapalı test yolu: sihirbaz ve takip metinleri, çift gönderim, belirsiz launch, bayat mod
+//   U8 Smart Onayı penceresi: yalnız Admin (Picker dahil), kaynak göstergesi, kapatma onayı, token,
+//      önizleme, kayıt sonrası /nodes yenileme, bayat pencere
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createHash } from 'node:crypto';
 import { act, render, screen, fireEvent, waitFor, within, cleanup } from '@testing-library/react';
@@ -24,6 +27,7 @@ import type {
   NodeTalepOzet,
 } from '@/api/cryptoHubApi';
 
+const kimlik = vi.hoisted(() => ({ rol: 'User' }));
 const m = vi.hoisted(() => ({
   nodes: vi.fn(),
   read: vi.fn(),
@@ -31,6 +35,10 @@ const m = vi.hoisted(() => ({
   change: vi.fn(),
   changeDetail: vi.fn(),
   smartOnizle: vi.fn(),
+  smartAyar: vi.fn(),
+  smartAyarKaydet: vi.fn(),
+  smartAyarOnizle: vi.fn(),
+  flowMeta: vi.fn(),
   tenants: vi.fn(),
   actions: vi.fn(),
   overview: vi.fn(),
@@ -44,6 +52,9 @@ vi.mock('@/api/cryptoHubApi', () => ({
     change: m.change,
     changeDetail: m.changeDetail,
     smartOnizle: m.smartOnizle,
+    smartAyar: m.smartAyar,
+    smartAyarKaydet: m.smartAyarKaydet,
+    smartAyarOnizle: m.smartAyarOnizle,
   },
   cryptoHubApi: {
     tenants: m.tenants,
@@ -60,12 +71,14 @@ vi.mock('@/components/opsx/useOnaySonrasiTakip', () => ({
 }));
 vi.mock('@/contexts/JobTrackerContext', () => ({ useJobTracker: () => ({ addJob: vi.fn() }) }));
 vi.mock('@/contexts/AuthContext', () => ({
-  useAuth: () => ({ user: { username: 'ali', role: 'User' } }),
+  useAuth: () => ({ user: { username: 'ali', role: kimlik.rol } }),
 }));
+vi.mock('@/api/ansibleApi', () => ({ ansibleApi: { smartFlowMetadata: m.flowMeta } }));
 
 import { NodePanel } from '@/components/crypto_hub/NodePanel';
 import { NodeTakip } from '@/components/crypto_hub/NodeTakip';
 import CryptoHubPage from '@/components/crypto_hub/CryptoHubPage';
+import CryptoHubSmartModal from '@/components/crypto_hub/CryptoHubSmartModal';
 
 const UIS = 'uis:evm-ethereum-mainnet';
 const DOT = 'eski:polkadot-assethub';
@@ -629,6 +642,15 @@ describe('U2 sihirbaz', () => {
     expect(document.body.textContent).not.toContain(YENI);
   });
 
+  it('sunucunun çevrilmiş reddi (nginxRed) mesajıyla görünür; bağlantı hatası denmez', async () => {
+    const mesaj = 'Crypto Hub Smart ayarı eksik: yönetici düzeltmeli.';
+    m.change.mockRejectedValueOnce(Object.assign(new Error(mesaj), { status: 503, nginxRed: true }));
+    await sonaKadar(yanit());
+    expect(await screen.findByText(mesaj)).toBeTruthy();
+    expect(screen.queryByText('Talep açılamadı (bağlantı hatası).')).toBeNull();
+    expect(screen.getByText('Node değişikliği — evm-ethereum-mainnet')).toBeTruthy();
+  });
+
   it.each([
     ['node_deger_bicim', { rol: 'rpc', neden: 'url', message: 'Geçersiz değer (rpc): url.' }, /^rpc: URL http:\/\//],
     ['node_ayni_node', { message: 'Girilen değer seçilen bileşenlerde zaten kullanımda — değişiklik yok.' }, /zaten kullanımda/],
@@ -1184,7 +1206,7 @@ describe('U6 görünüm', () => {
 // ── U4 ───────────────────────────────────────────────────────────────────────────────
 describe('U4 yapı', () => {
   const DIR = path.join(__dirname, '..', 'components', 'crypto_hub');
-  const DOSYALAR = ['NodePanel.tsx', 'NodeDegisiklikModal.tsx', 'NodeTakip.tsx', 'nodeOrtak.ts'];
+  const DOSYALAR = ['NodePanel.tsx', 'NodeDegisiklikModal.tsx', 'NodeTakip.tsx', 'nodeOrtak.ts', 'CryptoHubSmartModal.tsx'];
   const oku = (f: string) => fs.readFileSync(path.join(DIR, f), 'utf8');
 
   it('her <table> bir overflow-x-auto sarmalayıcısının içinde (1280/1440 px yatay taşma yok)', () => {
@@ -1235,9 +1257,372 @@ describe('U4 yapı', () => {
       'onayMetni',
       'esTalepId',
       'bilesenler',
+      'onaysizKabul',
     ]);
     const onizle = /smartOnizle: \(body: \{([^}]*)\}\)/.exec(api);
     expect(onizle, 'smartOnizle imzası bulunamadı').toBeTruthy();
     expect(onizle![1]).not.toMatch(/nodeId|yeni/);
+  });
+});
+
+// ── U7 ───────────────────────────────────────────────────────────────────────────────
+describe('U7 Smart kapalı test yolu', () => {
+  const ONAYSIZ_KUTU = 'Smart onayı olmadan işin hemen başlayacağını anlıyorum.';
+  const SMART_KUTU = 'Smart talebi açılacağını ve onaydan sonra değişikliğin otomatik uygulanacağını anlıyorum.';
+  async function sonAdim(r: CryptoNodesResponse) {
+    await sihirbazAc(r);
+    fireEvent.click(btn('İleri'));
+    yaz(RPC_ETIKET, YENI);
+    await waitFor(() => expect(btn('İleri').disabled).toBe(false));
+    fireEvent.click(btn('İleri'));
+    fireEvent.click(btn('İleri'));
+    fireEvent.change(screen.getByLabelText('Gerekçe (10–500 karakter)'), { target: { value: 'Test ortamı denemesi' } });
+    fireEvent.click(btn('İleri'));
+  }
+
+  it('kapalıyken "Talep aç" yerine onaysız başlatma metni ve uyarı; takip CALISIYOR\'dan başlar', async () => {
+    m.change.mockResolvedValue({ ok: true, pendingApproval: false, onaysiz: true, talepId: 7, jobId: 3001, awxServerId: 1 });
+    m.changeDetail.mockReturnValue(new Promise(() => {}));
+    await sonAdim(yanit({ smartMod: 'kapali', smartKaynak: 'opsx' }));
+    expect(screen.getByText(/test ortamında kapalı: node değişiklikleri onaysız başlar/)).toBeTruthy();
+    expect(screen.getByText(/talep açılmaz, iş onaysız ve hemen başlar/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Talep aç' })).toBeNull();
+    expect(screen.queryByText(/Smart talebi açılır/)).toBeNull();
+    expect(btn('İşi onaysız başlat').disabled).toBe(true);
+    fireEvent.click(screen.getByLabelText(ONAYSIZ_KUTU));
+    fireEvent.click(btn('İşi onaysız başlat'));
+    expect(await screen.findByText(/İş onaysız başlatıldı \(AWX #3001\)/)).toBeTruthy();
+    expect(screen.getByText('Uygulanıyor…')).toBeTruthy();
+    expect(screen.queryByText(/Smart talebi açıldı/)).toBeNull();
+    expect(screen.queryByText(/Onay bekliyor/)).toBeNull();
+    expect(m.takip.mock.calls.every((c) => c[0] == null)).toBe(true);
+  });
+
+  it('kapalıyken hiçbir ara metin Smart demez: maskeli görünüm, koşan talep bandı', async () => {
+    await sihirbazAc(yanit({ smartMod: 'kapali' }));
+    fireEvent.click(btn('İleri'));
+    yaz(RPC_ETIKET, YENI);
+    expect(await screen.findByText(`Ekranda ve denetimde böyle görünecek: ${YENI_MASKE}`)).toBeTruthy();
+    expect(screen.queryByText(/Smart'ta böyle görünecek/)).toBeNull();
+    expect(screen.queryByText(/Smart'ta ve denetimde/)).toBeNull();
+    cleanup();
+    await sihirbazAc(yanit());
+    fireEvent.click(btn('İleri'));
+    yaz(RPC_ETIKET, YENI);
+    expect(await screen.findByText(`Smart'ta böyle görünecek: ${YENI_MASKE}`)).toBeTruthy();
+    cleanup();
+    m.nodes.mockResolvedValue(
+      yanit({
+        smartMod: 'kapali',
+        gruplar: [
+          uisGrup({
+            degistirilebilir: false,
+            bekleyen: { talepId: 7, externalTicketId: null, username: 'ali', createdAt: '2026-11-02T08:00:00Z', durum: 'CALISIYOR' },
+          }),
+        ],
+      }),
+    );
+    render(<NodePanel tenantKey="metaco_das_test" takipAralikMs={20} />);
+    expect(await screen.findByText(/^Uygulanan değişiklik: Portal #7 — ali, /)).toBeTruthy();
+    expect(screen.queryByText(/Onay bekleyen değişiklik/)).toBeNull();
+  });
+
+  it('gövde onaysizKabul yalnız kapalı metin gösterildiyse taşır', async () => {
+    m.change.mockResolvedValue({ ok: false, message: 'dur' });
+    await sonAdim(yanit({ smartMod: 'kapali' }));
+    fireEvent.click(screen.getByLabelText(ONAYSIZ_KUTU));
+    fireEvent.click(btn('İşi onaysız başlat'));
+    await waitFor(() => expect(m.change).toHaveBeenCalledTimes(1));
+    expect(m.change.mock.calls[0][0].onaysizKabul).toBe(true);
+    cleanup();
+    m.change.mockClear();
+    await sonAdim(yanit());
+    fireEvent.click(screen.getByLabelText(SMART_KUTU));
+    fireEvent.click(btn('Talep aç'));
+    await waitFor(() => expect(m.change).toHaveBeenCalledTimes(1));
+    expect('onaysizKabul' in m.change.mock.calls[0][0]).toBe(false);
+  });
+
+  it.each(['crypto_node_smart_mod_degisti', 'crypto_node_smart_degisti'])(
+    '%s: mod yeniden okunur, onay düşer, düğme güncel metne döner, sihirbaz açık kalır',
+    async (blocked) => {
+      const mesaj = 'Smart onay ayarı siz ekrandayken değişti.';
+      m.change.mockResolvedValue({ ok: false, blocked, message: mesaj });
+      await sonAdim(yanit());
+      m.nodes.mockResolvedValue(yanit({ smartMod: 'kapali' }));
+      fireEvent.click(screen.getByLabelText(SMART_KUTU));
+      fireEvent.click(btn('Talep aç'));
+      expect(await screen.findByText(mesaj)).toBeTruthy();
+      await waitFor(() => expect(btn('İşi onaysız başlat').disabled).toBe(true));
+      expect((screen.getByLabelText(ONAYSIZ_KUTU) as HTMLInputElement).checked).toBe(false);
+      expect(screen.getByText(/talep açılmaz, iş onaysız ve hemen başlar/)).toBeTruthy();
+      expect(m.change).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('çift tıklama tek istek', async () => {
+    let bitir: (v: unknown) => void = () => {};
+    m.change.mockReturnValue(new Promise((r) => (bitir = r)));
+    await sonAdim(yanit({ smartMod: 'kapali' }));
+    fireEvent.click(screen.getByLabelText(ONAYSIZ_KUTU));
+    const d = btn('İşi onaysız başlat');
+    // Tek act: state yazılmadan ikinci tıklama gelir, disabled'a değil ref kapısına çarpar.
+    await act(async () => {
+      d.click();
+      d.click();
+    });
+    await waitFor(() => expect(m.change).toHaveBeenCalledTimes(1));
+    expect(btn('İş başlatılıyor…').disabled).toBe(true);
+    await act(async () => {
+      bitir({ ok: false, message: 'hata' });
+    });
+    expect(m.change).toHaveBeenCalledTimes(1);
+  });
+
+  it('belirsiz launch: sihirbaz kapanır, takip açılır, mesaj görünür', async () => {
+    const mesaj = 'AWX yanıtı alınamadı; iş başlamış olabilir.';
+    m.change.mockResolvedValue({ ok: false, blocked: 'crypto_node_dogrudan_belirsiz', talepId: 9, message: mesaj });
+    m.changeDetail.mockReturnValue(new Promise(() => {}));
+    await sonAdim(yanit({ smartMod: 'kapali' }));
+    fireEvent.click(screen.getByLabelText(ONAYSIZ_KUTU));
+    fireEvent.click(btn('İşi onaysız başlat'));
+    expect(await screen.findByText(mesaj)).toBeTruthy();
+    expect(screen.queryByText('Node değişikliği — evm-ethereum-mainnet')).toBeNull();
+    expect(screen.getByText('Uygulanıyor…')).toBeTruthy();
+  });
+
+  it('production kiracıda smartMod kapalı gelse de ekran Smart metnini korur', async () => {
+    await sonAdim(yanit({ smartMod: 'kapali' }, { production: true }));
+    expect(screen.queryByText(/talep açılmaz, iş onaysız/)).toBeNull();
+    expect(btn('Talep aç')).toBeTruthy();
+  });
+
+  it('Smart önizleme alt başlığı kaynağa bağlı', async () => {
+    m.nodes.mockResolvedValue(yanit({ smartKaynak: 'crypto', yetki: { okuma: true, talep: true, admin: true } }));
+    render(<NodePanel tenantKey="metaco_das_test" takipAralikMs={20} />);
+    await screen.findByText('Indexer / Node bağlantıları');
+    fireEvent.click(screen.getAllByRole('button', { name: 'Smart önizleme' })[0]);
+    expect(await screen.findByText(/^Crypto Hub Smart şablonu bu talep için/)).toBeTruthy();
+  });
+});
+
+// ── U8 ───────────────────────────────────────────────────────────────────────────────
+describe('U8 Smart Onayı penceresi', () => {
+  const ayar = (ek = {}, smart = {}) => ({
+    ok: true,
+    smart: { enabled: true, flowKey: '', metadataFields: '', integrationKeySet: false, ...smart },
+    kaynak: 'opsx',
+    durum: 'opsx',
+    opsxFlowKey: 'FLOW_OPENSHIFT',
+    sifrelemeVar: true,
+    ...ek,
+  });
+  const ac = async (r = ayar(), onKaydedildi = vi.fn()) => {
+    m.smartAyar.mockResolvedValue(r);
+    render(<CryptoHubSmartModal open onClose={vi.fn()} onKaydedildi={onKaydedildi} />);
+    await screen.findByText('Smart onayı istensin');
+    return onKaydedildi;
+  };
+
+  afterEach(() => {
+    kimlik.rol = 'User';
+  });
+
+  async function sayfa(env: Record<string, unknown>, url = '/crypto-hub?t=metaco_das_test', bekle: string | RegExp = 'Ortamı değiştir') {
+    m.tenants.mockResolvedValue({
+      ok: true,
+      apps: [
+        {
+          app: 'metaco',
+          label: 'Metaco',
+          domains: [{ domain: 'das', label: 'DAS', envs: [{ key: 'metaco_das_test', env: 'test', label: 'Test', production: false, ready: true, open: true, cluster: 'c', namespace: 'n', ...env }] }],
+        },
+      ],
+    });
+    m.actions.mockResolvedValue({ ok: true, actions: [] });
+    m.overview.mockResolvedValue({ ok: true, components: [], versions: [] });
+    m.nodes.mockResolvedValue(yanit());
+    render(
+      <MemoryRouter initialEntries={[url]}>
+        <CryptoHubPage />
+      </MemoryRouter>,
+    );
+    await screen.findByText(bekle);
+  }
+
+  it('Picker ekranında da düğme ve pencere var; User görmez', async () => {
+    await sayfa({}, '/crypto-hub', /^Hangi uygulamada/);
+    expect(screen.queryByRole('button', { name: 'Smart Onayı' })).toBeNull();
+    cleanup();
+    kimlik.rol = 'Admin';
+    await sayfa({}, '/crypto-hub', /^Hangi uygulamada/);
+    expect(screen.queryByText('Ortamı değiştir')).toBeNull();
+    m.smartAyar.mockResolvedValue(ayar());
+    fireEvent.click(btn('Smart Onayı'));
+    expect(await screen.findByText('Smart onayı istensin')).toBeTruthy();
+  });
+
+  it('kayıt sonrası NodePanel /nodes yeniden okur: sihirbaz bayat metinle kalmaz', async () => {
+    kimlik.rol = 'Admin';
+    await sayfa({ nodeOpen: true }, '/crypto-hub?t=metaco_das_test&s=node', 'Indexer / Node bağlantıları');
+    const once = m.nodes.mock.calls.length;
+    expect(screen.queryByText(/test ortamında kapalı: node değişiklikleri onaysız başlar/)).toBeNull();
+    m.smartAyar.mockResolvedValue(ayar());
+    m.smartAyarKaydet.mockResolvedValue(ayar());
+    m.nodes.mockResolvedValue(yanit({ smartMod: 'kapali' }));
+    fireEvent.click(btn('Smart Onayı'));
+    await screen.findByText('Smart onayı istensin');
+    fireEvent.click(btn('Kaydet'));
+    await waitFor(() => expect(m.nodes.mock.calls.length).toBeGreaterThan(once));
+    expect(await screen.findByText(/test ortamında kapalı: node değişiklikleri onaysız başlar/)).toBeTruthy();
+  });
+
+  it('düğme yalnız Admin\'de; node-only kullanıcıda ve User\'da yok', async () => {
+    await sayfa({});
+    expect(screen.queryByRole('button', { name: 'Smart Onayı' })).toBeNull();
+    cleanup();
+    kimlik.rol = 'Admin';
+    await sayfa({ nodeOnly: true });
+    expect(screen.queryByRole('button', { name: 'Smart Onayı' })).toBeNull();
+    cleanup();
+    await sayfa({});
+    m.smartAyar.mockResolvedValue(ayar());
+    fireEvent.click(btn('Smart Onayı'));
+    expect(await screen.findByText('Smart onayı istensin')).toBeTruthy();
+  });
+
+  it('kaynak ve dört durum görünür; token ekrana gelmez', async () => {
+    await ac();
+    expect(screen.getByText(/Şu an OpsX OpenShift ayarı kullanılıyor \(Flow Key: FLOW_OPENSHIFT\)/)).toBeTruthy();
+    cleanup();
+    await ac(ayar({ kaynak: 'crypto', durum: 'kendi' }, { flowKey: 'F', metadataFields: 'A: b', integrationKeySet: true }));
+    expect(screen.getByText('Durum: Crypto Hub kendi Smart ayarıyla çalışıyor.')).toBeTruthy();
+    const t = screen.getByLabelText('Entegrasyon Anahtarı (opsiyonel)') as HTMLInputElement;
+    expect(t.type).toBe('password');
+    expect(t.value).toBe('');
+    expect(t.placeholder).toBe('Tanımlı — değiştirmek için yeni değeri yazın');
+    cleanup();
+    await ac(ayar({ durum: 'testte_kapali' }, { enabled: false }));
+    expect(screen.getByText('Durum: test ortamlarında Smart kapalı.')).toBeTruthy();
+    cleanup();
+    await ac(ayar({ durum: 'eksik', kaynak: null, opsxFlowKey: '' }));
+    expect(screen.getByText('Durum: eksik — talep açılamaz.')).toBeTruthy();
+    expect(screen.getByText('Kullanılabilir bir Smart ayarı yok.')).toBeTruthy();
+  });
+
+  it('kapatma açık onay ister; yalnız test ortamı notu görünür', async () => {
+    m.smartAyarKaydet.mockResolvedValue(ayar({ durum: 'testte_kapali' }, { enabled: false }));
+    const kaydedildi = await ac();
+    expect(screen.getByText("Yalnız test ortamlarında geçerli; production'da Smart zorunludur.")).toBeTruthy();
+    expect(btn('Kaydet').disabled).toBe(false);
+    fireEvent.click(screen.getByLabelText('Smart onayı istensin'));
+    expect(btn('Kaydet').disabled).toBe(true);
+    fireEvent.click(btn('Kaydet'));
+    expect(m.smartAyarKaydet).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByLabelText('Test ortamlarında node değişikliklerinin onaysız çalışacağını anlıyorum.'));
+    const d = btn('Kaydet');
+    expect(d.disabled).toBe(false);
+    // Tek act: state yazılmadan ikinci tıklama gelir, disabled'a değil ref kapısına çarpar.
+    await act(async () => {
+      d.click();
+      d.click();
+    });
+    await waitFor(() => expect(m.smartAyarKaydet).toHaveBeenCalledTimes(1));
+    expect(m.smartAyarKaydet.mock.calls[0][0]).toEqual({ enabled: false, flowKey: '', metadataFields: '', integrationKey: '' });
+    await waitFor(() => expect(kaydedildi).toHaveBeenCalledTimes(1));
+  });
+
+  it('bayat pencere: dokunulmayan enabled gövdeye girmez, başkasının kararı ezilmez', async () => {
+    m.smartAyarKaydet.mockResolvedValue(ayar());
+    await ac(ayar({ durum: 'testte_kapali' }, { enabled: false }));
+    fireEvent.change(screen.getByLabelText('Metadata Şablonu'), { target: { value: 'A: b' } });
+    fireEvent.click(btn('Kaydet'));
+    await waitFor(() => expect(m.smartAyarKaydet).toHaveBeenCalledTimes(1));
+    expect(m.smartAyarKaydet.mock.calls[0][0]).not.toHaveProperty('enabled');
+    cleanup();
+    m.smartAyarKaydet.mockClear();
+    await ac(ayar({ durum: 'testte_kapali' }, { enabled: false }));
+    fireEvent.click(screen.getByLabelText('Smart onayı istensin'));
+    fireEvent.click(btn('Kaydet'));
+    await waitFor(() => expect(m.smartAyarKaydet).toHaveBeenCalledTimes(1));
+    expect(m.smartAyarKaydet.mock.calls[0][0].enabled).toBe(true);
+  });
+
+  it('kapatma onayı kayıttan sonra düşer; sonraki kapatma yeniden onay ister', async () => {
+    m.smartAyarKaydet.mockResolvedValue(ayar());
+    await ac();
+    fireEvent.click(screen.getByLabelText('Smart onayı istensin'));
+    fireEvent.click(screen.getByLabelText('Test ortamlarında node değişikliklerinin onaysız çalışacağını anlıyorum.'));
+    fireEvent.click(btn('Kaydet'));
+    await waitFor(() => expect(m.smartAyar).toHaveBeenCalledTimes(2));
+    await screen.findByText('Smart onayı istensin');
+    await waitFor(() => expect(btn('Kaydet').disabled).toBe(false));
+    fireEvent.click(screen.getByLabelText('Smart onayı istensin'));
+    expect(btn('Kaydet').disabled).toBe(true);
+  });
+
+  it('token: anahtarsız sunucuda kapalı; kayıttan sonra alan temizlenir, yeniden gönderilmez', async () => {
+    await ac(ayar({ sifrelemeVar: false }));
+    expect((screen.getByLabelText('Entegrasyon Anahtarı (opsiyonel)') as HTMLInputElement).disabled).toBe(true);
+    expect(screen.getByText('Değer şifreleme anahtarı tanımlı değil; entegrasyon anahtarı kaydedilemez.')).toBeTruthy();
+    cleanup();
+    m.smartAyar.mockClear();
+    m.smartAyarKaydet.mockResolvedValue(ayar());
+    await ac();
+    const alan = () => screen.getByLabelText('Entegrasyon Anahtarı (opsiyonel)') as HTMLInputElement;
+    expect(alan().disabled).toBe(false);
+    fireEvent.change(alan(), { target: { value: 'GIZLI-TOKEN' } });
+    fireEvent.click(btn('Kaydet'));
+    await waitFor(() => expect(m.smartAyarKaydet).toHaveBeenCalledTimes(1));
+    expect(m.smartAyarKaydet.mock.calls[0][0].integrationKey).toBe('GIZLI-TOKEN');
+    await waitFor(() => expect(m.smartAyar).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(alan().value).toBe(''));
+    fireEvent.click(btn('Kaydet'));
+    await waitFor(() => expect(m.smartAyarKaydet).toHaveBeenCalledTimes(2));
+    expect(m.smartAyarKaydet.mock.calls[1][0].integrationKey).toBe('');
+  });
+
+  it('Flow Key değişince kayıtlı anahtarın silineceği söylenir; yeni anahtar yazılınca uyarı kalkar', async () => {
+    await ac(ayar({ kaynak: 'crypto', durum: 'kendi' }, { flowKey: 'F', metadataFields: 'A: b', integrationKeySet: true }));
+    expect(screen.queryByText(/Flow Key değişti/)).toBeNull();
+    fireEvent.change(screen.getByLabelText('Smart Flow Key'), { target: { value: 'YENI' } });
+    expect(screen.getByText(/Flow Key değişti: kayıtlı anahtar bu kayıtla silinir/)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Entegrasyon Anahtarı (opsiyonel)'), { target: { value: 'T' } });
+    expect(screen.queryByText(/Flow Key değişti/)).toBeNull();
+  });
+
+  it('çözülemeyen token durumu açıkça söylenir', async () => {
+    await ac(ayar({ kaynak: 'crypto', durum: 'token_cozulemedi' }, { flowKey: 'F', metadataFields: 'A: b', integrationKeySet: true }));
+    expect(screen.getByText(/kayıtlı entegrasyon anahtarı çözülemedi — talep açılamaz/)).toBeTruthy();
+  });
+
+  it('okunamayan ayar kaydedilemez; sunucu reddi görünür', async () => {
+    m.smartAyar.mockResolvedValue({ ok: false, message: 'Crypto Hub Smart ayarı okunamadı, lütfen tekrar deneyin.' });
+    render(<CryptoHubSmartModal open onClose={vi.fn()} />);
+    expect(await screen.findByRole('alert')).toBeTruthy();
+    expect(btn('Kaydet').disabled).toBe(true);
+    cleanup();
+    m.smartAyarKaydet.mockResolvedValue({ ok: false, blocked: 'crypto_smart_yarim', message: 'Flow Key ile metadata şablonu birlikte dolu' });
+    await ac();
+    fireEvent.change(screen.getByLabelText('Smart Flow Key'), { target: { value: 'F' } });
+    fireEvent.click(btn('Kaydet'));
+    expect(await screen.findByText('Flow Key ile metadata şablonu birlikte dolu')).toBeTruthy();
+  });
+
+  it('Alanları Getir + Otomatik Doldur ortak kodla; Önizle taslağı sunucuya gönderir', async () => {
+    m.flowMeta.mockResolvedValue({ ok: true, fields: [{ ElementName: 'KONU', Type: 'text', Label: 'Konu' }] });
+    m.smartAyarOnizle.mockResolvedValue({ ok: true, metadata: { KONU: 'metaco_das_test' } });
+    await ac();
+    expect(btn('Alanları Getir').disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText('Smart Flow Key'), { target: { value: 'FLOW_CRYPTO' } });
+    fireEvent.click(btn('Alanları Getir'));
+    await waitFor(() => expect(m.flowMeta).toHaveBeenCalledWith('FLOW_CRYPTO'));
+    await waitFor(() => expect(btn('Otomatik Doldur').disabled).toBe(false));
+    fireEvent.click(btn('Otomatik Doldur'));
+    const s = screen.getByLabelText('Metadata Şablonu') as HTMLTextAreaElement;
+    expect(s.value).toContain('KONU');
+    fireEvent.click(btn('Önizle'));
+    await waitFor(() => expect(m.smartAyarOnizle).toHaveBeenCalledWith(s.value));
+    expect(await screen.findByText('metaco_das_test')).toBeTruthy();
   });
 });

@@ -18,6 +18,7 @@ import { useSearchParams } from 'react-router-dom';
 import {
   ArrowPathIcon,
   ChevronRightIcon,
+  Cog6ToothIcon,
   ExclamationTriangleIcon,
   InformationCircleIcon,
   CheckCircleIcon,
@@ -46,10 +47,12 @@ import { ValuesModal } from './ValuesModal';
 import { ValuesCompare } from './ValuesCompare';
 import { ConfigMapsPanel } from './ConfigMapsPanel';
 import { NodePanel, type NodeBaslangic } from './NodePanel';
+import CryptoHubSmartModal from './CryptoHubSmartModal';
 import { baslangicSekmesi, METIN, navSekmeleri, sekmeListesi, type CryptoSekme } from './nodeOrtak';
 import type { NodeEsTalepOnerisi } from '@/api/cryptoHubApi';
 import { Modal } from '@/components/common/Modal';
 import { useJobTracker } from '@/contexts/JobTrackerContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { TableEmptyRow } from '@/components/common/EmptyState';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
@@ -111,7 +114,16 @@ function Pill({
 }
 
 // ── Secim: uygulama -> domain -> ortam ────────────────────────────────────────────────
-function Picker({ apps, onPick }: { apps: CryptoApp[]; onPick: (env: CryptoEnvOption) => void }) {
+function Picker({
+  apps,
+  onPick,
+  sagUst,
+}: {
+  apps: CryptoApp[];
+  onPick: (env: CryptoEnvOption) => void;
+  /** Başlığın sağ üstü (yönetici düğmesi) */
+  sagUst?: React.ReactNode;
+}) {
   const [app, setApp] = useState<CryptoApp | null>(apps.length === 1 ? apps[0] : null);
   const [domain, setDomain] = useState<string | null>(null);
   const dom =
@@ -270,6 +282,7 @@ function Picker({ apps, onPick }: { apps: CryptoApp[]; onPick: (env: CryptoEnvOp
 
   return (
     <div className="max-w-5xl mx-auto py-10 space-y-8">
+      {sagUst && <div className="flex justify-end -mb-6">{sagUst}</div>}
       <header className="text-center space-y-2">
         <h1
           className="text-3xl font-semibold inline-flex items-center gap-3"
@@ -954,6 +967,12 @@ function IslemKarti({
 // ── Sayfa ─────────────────────────────────────────────────────────────────────────────
 export default function CryptoHubPage() {
   const { addJob } = useJobTracker();
+  // Düğmeyi gizlemek güvenlik sınırı değildir: /smart-config uçları ayrıca requireAdmin ister.
+  const { user } = useAuth();
+  const admin = user?.role === 'Admin';
+  const [smartAyarAcik, setSmartAyarAcik] = useState(false);
+  // Kayıt sonrası NodePanel smartMod'u yeniden okusun: sihirbaz eski metni göstermesin.
+  const [smartSurum, setSmartSurum] = useState(0);
   const [apps, setApps] = useState<CryptoApp[] | null>(null);
   // SECIM URL'DE TUTULUR (?t=<kiraci>). Bilesen durumunda tutuldugunda yan menudeki
   // "Crypto Hub" baglantisi ayni rotaya gittigi icin sayfa secim ekranina DONMUYORDU;
@@ -1106,6 +1125,25 @@ export default function CryptoHubPage() {
       }
     : null;
 
+  const smartDugme = admin ? (
+    <button
+      type="button"
+      className={SM_BTN}
+      style={btnStyle()}
+      title={METIN.smartAyar.dugmeIpucu}
+      onClick={() => setSmartAyarAcik(true)}
+    >
+      <Cog6ToothIcon className="h-3.5 w-3.5" /> {METIN.smartAyar.dugme}
+    </button>
+  ) : null;
+  const smartPencere = admin ? (
+    <CryptoHubSmartModal
+      open={smartAyarAcik}
+      onClose={() => setSmartAyarAcik(false)}
+      onKaydedildi={() => setSmartSurum((n) => n + 1)}
+    />
+  ) : null;
+
   if (err && !apps)
     return (
       <div
@@ -1136,7 +1174,8 @@ export default function CryptoHubPage() {
             <span>Bağlantıdaki ortam ({tenantKey}) katalogda yok — aşağıdan seçebilirsiniz.</span>
           </div>
         )}
-        <Picker apps={apps} onPick={pick} />
+        <Picker apps={apps} onPick={pick} sagUst={smartDugme} />
+        {smartPencere}
       </>
     );
   }
@@ -1187,7 +1226,9 @@ export default function CryptoHubPage() {
         <button type="button" className={SM_BTN} style={btnStyle()} onClick={() => setParams({})}>
           Ortamı değiştir
         </button>
+        {!nodeOnly && smartDugme}
       </div>
+      {smartPencere}
 
       {/* ISLEMLER (2026-09-26, kullanici: "bu menu kendini gostersin"): panel artik sayfada
           kaybolmuyor - accent kenarli baslik, her islem icin renkli buyuk kart, ustunde ince
@@ -1395,6 +1436,7 @@ export default function CryptoHubPage() {
               key={scope.env.key}
               tenantKey={scope.env.key}
               nodeAcik={scope.env.nodeOpen !== false}
+              smartSurum={smartSurum}
               baslangic={nodeBaslangic}
               onBaslangicTuketildi={() =>
                 setParams({ t: scope.env.key, s: 'node' }, { replace: true })

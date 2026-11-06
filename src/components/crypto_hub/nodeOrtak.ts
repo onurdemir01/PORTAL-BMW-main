@@ -28,7 +28,7 @@ export const METIN = {
   sekme: 'Indexer / Node',
   islemKart: {
     baslik: 'Indexer / Node değişimi',
-    ipucu: "Indexer'ların bağlı olduğu node'u Smart onayıyla değiştirir",
+    ipucu: "Indexer'ların bağlı olduğu node'u değiştirir; production'da Smart onayı zorunludur",
   },
   baslik: 'Indexer / Node bağlantıları',
   etiket: {
@@ -70,6 +70,8 @@ export const METIN = {
   /** `no` = smartNo(...) ("Smart #SM-1" ya da "Portal #12") — sunucunun metniyle aynı (PS7) */
   bekleyen: (no: string, kullanici: string, zaman: string) =>
     `Onay bekleyen değişiklik: ${no} — ${kullanici}, ${zaman}`,
+  /** Bileti olmayan koşan talep (Smart kapalı test yolu): beklenen bir onay yok. */
+  uygulanan: (no: string, kullanici: string, zaman: string) => `Uygulanan değişiklik: ${no} — ${kullanici}, ${zaman}`,
   envFromVar: 'envFrom var (node değişkeni tanımlamıyor)',
   envFromOlculemedi: 'envFrom kaynağı okunamadı',
   secimBaslik: 'Değişecek bileşenler',
@@ -93,6 +95,8 @@ export const METIN = {
   yeniBaslik: 'Yeni node değerleri',
   yeniAciklama:
     "Her rol için yeni değeri yazın. Değer Portal'da şifreli tutulur; ekranda, Smart'ta ve denetimde yalnız maskeli görünür; onaydan sonra AWX işine iletilir.",
+  yeniAciklamaOnaysiz:
+    "Her rol için yeni değeri yazın. Değer Portal'da şifreli tutulur; ekranda ve denetimde yalnız maskeli görünür; iş başlarken AWX'e iletilir.",
   bicimEtiketi: { url: 'URL (http, https, ws, wss)', hostport: 'host:port', sir: 'gizli değer' } as Record<
     string,
     string
@@ -137,6 +141,17 @@ export const METIN = {
   onayTest:
     'Smart talebi açılacağını ve onaydan sonra değişikliğin otomatik uygulanacağını anlıyorum.',
   onayProd: (grupId: string) => `Onaylamak için grup adını yazın: ${grupId}`,
+  /** Smart'ın kapalı olduğu test kiracısı: bilet açılmaz, iş hemen başlar. */
+  onaysiz: {
+    bant: 'Smart onayı bu test ortamında kapalı: node değişiklikleri onaysız başlar ve denetime yazılır.',
+    onayBilgi:
+      'Smart onayı bu test ortamında kapalı: talep açılmaz, iş onaysız ve hemen başlar. İşlem denetime yazılır. Mevcut node ya da gruptaki bileşenler bu arada değiştiyse iş hiçbir şey yazmadan durur.',
+    onayKutusu: 'Smart onayı olmadan işin hemen başlayacağını anlıyorum.',
+    dugme: 'İşi onaysız başlat',
+    gonderiliyor: 'İş başlatılıyor…',
+    basladi: (job: number | string) => `İş onaysız başlatıldı (AWX #${job}). Sonuç bu ekrana düşer.`,
+    gorunum: (m: string) => `Ekranda ve denetimde böyle görünecek: ${m}`,
+  },
   dugme: {
     iptal: 'İptal',
     geri: 'Geri',
@@ -176,6 +191,60 @@ export const METIN = {
   adminKapatGerekce: 'Kapatma gerekçesi (10–500 karakter)',
   adminKapatOnay: 'Kapat',
   adminKapatiliyor: 'Kapatılıyor…',
+
+  /** Node değişikliği Smart penceresi (yalnız yönetici) */
+  smartAyar: {
+    dugme: 'Smart Onayı',
+    dugmeIpucu: 'Crypto Hub Smart onayı yapılandırması (yalnızca yöneticiler)',
+    baslik: 'Crypto Hub · Smart Onayı Yapılandırması',
+    altBaslik: 'Yalnızca yöneticiler. Indexer / Node değişikliği talepleri bu ayarla Smart\'a düşer.',
+    yukleniyor: 'Yükleniyor…',
+    okunamadi: 'Yapılandırma okunamadı.',
+    kaydet: 'Kaydet',
+    kaydediliyor: 'Kaydediliyor…',
+    kaydedildi: 'Smart onay yapılandırması kaydedildi.',
+    kaydedilemedi: 'Kaydedilemedi.',
+    durum: {
+      kendi: 'Durum: Crypto Hub kendi Smart ayarıyla çalışıyor.',
+      opsx: 'Durum: OpsX OpenShift ayarıyla çalışıyor.',
+      testte_kapali: 'Durum: test ortamlarında Smart kapalı.',
+      eksik: 'Durum: eksik — talep açılamaz.',
+      token_cozulemedi:
+        "Durum: kayıtlı entegrasyon anahtarı çözülemedi — talep açılamaz. Anahtarı yeniden girin ya da Flow Key'i silin.",
+    },
+    kaynakKendi: 'Şu an Crypto Hub kendi ayarı kullanılıyor.',
+    kaynakOpsx: 'Şu an OpsX OpenShift ayarı kullanılıyor',
+    kaynakYok: 'Kullanılabilir bir Smart ayarı yok.',
+    blokKurali:
+      "Flow Key ile metadata şablonu birlikte dolu ya da birlikte boş olmalı. İkisi de boşsa OpsX OpenShift ayarının tamamı kullanılır; alan alan karıştırılmaz.",
+    acKapa: 'Smart onayı istensin',
+    acKapaNot: "Yalnız test ortamlarında geçerli; production'da Smart zorunludur.",
+    kapaliUyari:
+      'KAPALI. Test ortamlarında node değişiklikleri onaysız ve Smart\'ta kayıtsız çalışır; her çalıştırma denetime yazılır.',
+    kapatOnay: 'Test ortamlarında node değişikliklerinin onaysız çalışacağını anlıyorum.',
+    flowKey: 'Smart Flow Key',
+    flowYerTutucu: 'ör. CRYPTO_HUB_NODE_FLOW',
+    alanlariGetir: 'Alanları Getir',
+    sorgulaniyor: 'Sorgulanıyor…',
+    alanHata: 'Smart alanları okunamadı.',
+    alanNot: 'Alanları Getir sistem anahtarıyla sorgular; flow kendi anahtarıyla yayınlandıysa sonuç gelmeyebilir.',
+    sablon: 'Metadata Şablonu',
+    otomatikDoldur: 'Otomatik Doldur',
+    sablonNot:
+      'Her satıra bir tane, ElementName: değer. Değerler {{opsx.*}} ve {{extraVars.*}} ile yazılır. # ile başlayan satırlar yok sayılır; yalnız yorum içeren şablon boş sayılır.',
+    onizle: 'Önizle',
+    onizleniyor: 'Render ediliyor…',
+    onizlemeHata: 'Önizleme yapılamadı.',
+    onizlemeNot: "Örnek bir talep gerçek şablon yoluyla render edilir; Smart'a gönderilmez, kaydedilmez.",
+    token: 'Entegrasyon Anahtarı (opsiyonel)',
+    tokenTanimli: 'Tanımlı — değiştirmek için yeni değeri yazın',
+    tokenBos: 'Boşsa sistem geneli varsayılan kullanılır',
+    tokenNot:
+      'Şifreli saklanır, ekrana getirilmez. Boş bırakırsanız değişmez; Flow Key silinir ya da değişirse anahtar da silinir. OpsX\'in anahtarı kullanılmaz.',
+    tokenSilinir:
+      'Flow Key değişti: kayıtlı anahtar bu kayıtla silinir. Yeni flow kendi anahtarıyla çalışıyorsa buraya girin; boş kalırsa sistem geneli anahtar kullanılır.',
+    tokenSifrelemeYok: 'Değer şifreleme anahtarı tanımlı değil; entegrasyon anahtarı kaydedilemez.',
+  },
 } as const;
 
 // ── Sonuç metinleri (9.2 "Takip") ────────────────────────────────────────────────────
@@ -427,7 +496,9 @@ export function smartNo(externalTicketId: string | null | undefined, talepId?: n
 }
 
 export function bekleyenMetni(b: NodeBekleyen): string {
-  return METIN.bekleyen(smartNo(b.externalTicketId, b.talepId), b.username, fmtDateTime(b.createdAt));
+  const no = smartNo(b.externalTicketId, b.talepId);
+  const biletsizKosuyor = b.durum === 'CALISIYOR' && !String(b.externalTicketId ?? '').trim();
+  return (biletsizKosuyor ? METIN.uygulanan : METIN.bekleyen)(no, b.username, fmtDateTime(b.createdAt));
 }
 
 /** Ankara önerisi yalnız İstanbul DAS prod talebinden sonra (D4); GAR'da Ankara yok. */

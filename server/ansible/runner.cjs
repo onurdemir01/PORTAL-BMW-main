@@ -54,6 +54,8 @@ let _awxServersCache = null; // null → DB henuz yuklenmedi
 // maskelenmeye devam eder (eski isin ciktisinda gecebilir).
 let _awxDevreDisi = new Map(); // server_no -> { name, url }
 let _awxDevreDisiSirlar = [];
+// initAnsibleRunner icindeki performSsLaunch'a modul duzeyi kopru (bkz. performSsLaunchOnServer).
+let _ssLaunch = null;
 
 // DB UPDATE basarili olduktan sonra reload duserse kapatilan sunucu eski cache'te calisir
 // kalmamali. Etkinlestirme ise tam satir/sir bilgisi okunmadan yerelde uydurulmaz.
@@ -496,8 +498,13 @@ function awxRequestToServer(server, token, method, pathname, body = null, opts =
             );
           } else resolve(json);
         } catch {
+          // httpStatus, status DEGIL: JSON olmayan yanit bugune dek status'suz; cagiranlarin esleme
+          // davranisi degismesin.
           reject(
-            new Error(`AWX yanıtı JSON değil (${res.statusCode}): ${maskRequestSecrets(gizliSil(data), token).slice(0, 200)}`),
+            Object.assign(
+              new Error(`AWX yanıtı JSON değil (${res.statusCode}): ${maskRequestSecrets(gizliSil(data), token).slice(0, 200)}`),
+              { httpStatus: res.statusCode },
+            ),
           );
         }
       });
@@ -1987,6 +1994,19 @@ function redactExtraVarsForHistory(extraVars, specFields, overrides) {
   return redacted;
 }
 
+/**
+ * Crypto Hub node talebinin Smart kapali (yalniz test) yolu: poller ile AYNI launch govdesi
+ * (gizliler, yutma korumasi, redakte gecmis). Runner baslatilmadiysa hicbir sey denenmez.
+ */
+async function performSsLaunchOnServer(serverId, templateId, args) {
+  if (typeof _ssLaunch !== 'function') {
+    throw Object.assign(new Error('AWX başlatıcısı hazır değil.'), { status: 503, code: 'ss_launch_hazir_degil' });
+  }
+  const server = getServerById(serverId);
+  if (!server) throw sunucuYokHatasi(serverId);
+  return _ssLaunch(server, templateId, args);
+}
+
 function initAnsibleRunner(app) {
   // Tum /api/ansible mutasyonlari (launch, SS item/customization, OCP cluster CRUD)
   // portal_audit_logs'a yazilir — bkz. server/audit/index.cjs (secret'lar redakte edilir).
@@ -3319,7 +3339,10 @@ function initAnsibleRunner(app) {
       gizliler = [],
     },
   ) {
-    const token = await getTokenForServer(server);
+    // postOncesi: launch POST'u gitmedi, is kesin baslamadi (Crypto Hub dogrudan yolu kilidi birakir).
+    const token = await getTokenForServer(server).catch((e) => {
+      throw Object.assign(e, { postOncesi: true });
+    });
     // KIM TETIKLEDI (2026-09-15 duzeltmesi): Smart onayi SONRA geldiginde isi poller
     // baslatir ve `req` yoktur; onceden atif DEFAULT_REQUESTER'a (Onur Demir) dusuyordu -
     // kullanici kendi actigi iste baskasinin adini gordu (rate_limit_change,
@@ -3378,7 +3401,7 @@ function initAnsibleRunner(app) {
             `AWX şablonunda "Prompt on launch > Variables" kapalı: ${yutulan.length} değişken yok sayıldı; ` +
               `iş #${jobId} ${iptalEdildi ? 'iptal edildi' : 'İPTAL EDİLEMEDİ — AWX ekranından durdurun'}.`,
           ),
-          { status: 409, code: 'awx_prompt_on_launch_disabled' },
+          { status: 409, code: 'awx_prompt_on_launch_disabled', jobId, iptalEdildi },
         );
       }
     }
@@ -3417,6 +3440,7 @@ function initAnsibleRunner(app) {
 
     return { jobId, status: data.status || 'pending' };
   }
+  _ssLaunch = performSsLaunch;
 
   // AWX'te NATIVE bir schedule olusturur: is, kesinti saatinde AWX tarafindan
   // tetiklenir; Portal'in o anda ayakta olmasi GEREKMEZ.
@@ -6254,4 +6278,6 @@ module.exports = {
   withRequesterVars,
   // Saf yardimci — gecmis kaydi redaksiyonu; Crypto Hub da ayni kurali uygular (K-3).
   redactExtraVarsForHistory,
+  // Crypto Hub node talebi, Smart kapali test yolu (poller ile ayni launch govdesi).
+  performSsLaunchOnServer,
 };

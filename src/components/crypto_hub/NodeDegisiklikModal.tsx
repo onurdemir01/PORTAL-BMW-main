@@ -1,7 +1,7 @@
 // src/components/crypto_hub/NodeDegisiklikModal.tsx — Indexer / Node değişikliği sihirbazı (2026-11-02).
 //
-// Beş adım: Mevcut → Yeni node → Etki → Gerekçe → Onay → "Talep aç" (Smart bileti; OpsX
-// OpenShift flow'u). Kullanıcı kararı 2026-11-03: node listesi YOK; kullanıcı grubun her rolü için
+// Beş adım: Mevcut → Yeni node → Etki → Gerekçe → Onay → "Talep aç" (Smart bileti). Smart'ın kapalı
+// olduğu test kiracısında son adım işin onaysız başlayacağını söyler. Kullanıcı kararı 2026-11-03: node listesi YOK; kullanıcı grubun her rolü için
 // yeni değeri kendisi yazar (iş birimi onaylı). Değer YALNIZ bu bileşenin state'inde durur: URL'ye,
 // tarayıcı deposuna, console'a, hata metnine ya da `title` niteliğine girmez; ekranda yalnız
 // maskeli hâli görünür. Biçim kuralı sunucuyla aynı modülden (shared/cryptoHubNodes.cjs). Bir rol
@@ -20,6 +20,7 @@ import {
   type CryptoNodesResponse,
   type NodeChangeResult,
   type NodeGrup,
+  type NodeSmartMod,
 } from '@/api/cryptoHubApi';
 import { maskele } from '../../../shared/cryptoHubNodes.cjs';
 import {
@@ -45,6 +46,8 @@ type Kiraci = NonNullable<CryptoNodesResponse['tenant']>;
 
 /** Sunucu bu kodlarla reddederse kullanıcı "Yeni node" adımına döner. */
 const YENI_ADIM_KODLARI = ['node_ayni_node', 'node_deger_bicim', 'node_bos_onay'];
+/** Sunucunun kararı ekrandaki metne uymadı: mod yeniden okunur, kullanıcı güncel metni onaylar. */
+const SMART_DEGISTI_KODLARI = ['crypto_node_smart_mod_degisti', 'crypto_node_smart_degisti'];
 
 const GIRDI_STIL: React.CSSProperties = {
   borderColor: 'var(--border)',
@@ -80,6 +83,8 @@ export function NodeDegisiklikModal({
   onAcildi,
   onOkumaGerekli,
   esTalepId,
+  smartMod = 'onay',
+  onSmartDegisti,
 }: {
   tenant: Kiraci;
   grupId: string;
@@ -92,6 +97,10 @@ export function NodeDegisiklikModal({
   onOkumaGerekli: () => void;
   /** Ankara talebi: İstanbul talebinin numarası (değer taşınmaz; kullanıcı yeniden yazar) */
   esTalepId?: number | null;
+  /** 'kapali' ekran metnidir; karar sunucuda talep anında verilir */
+  smartMod?: NodeSmartMod;
+  /** sunucu "Smart ayarı değişti" dediyse üst bileşen smartMod'u yeniden okur */
+  onSmartDegisti?: () => void;
 }) {
   const [adim, setAdim] = useState(0);
   // rol -> yazılan değer. Yalnız burada; kırpılmaz (sır sessizce değişmesin).
@@ -105,7 +114,9 @@ export function NodeDegisiklikModal({
   const [bilesenSecim, setBilesenSecim] = useState<string[] | null>(null);
   const [tutarsizOnay, setTutarsizOnay] = useState(false);
   const [gerekce, setGerekce] = useState('');
-  const [onayKutusu, setOnayKutusu] = useState(false);
+  // Kutu onaylandığı andaki metne bağlıdır (smartMod): metin değişirse onay kendiliğinden düşer.
+  const [onayKutusuMod, setOnayKutusuMod] = useState<NodeSmartMod | null>(null);
+  const onayKutusu = onayKutusuMod === smartMod;
   const [onayYazi, setOnayYazi] = useState('');
   const [gonderiyor, setGonderiyor] = useState(false);
   const [hata, setHata] = useState('');
@@ -115,6 +126,7 @@ export function NodeDegisiklikModal({
   const ayniSira = useRef(0);
 
   const prod = tenant.production;
+  const onaysiz = smartMod === 'kapali' && !prod;
   const bekle = okunuyor || !grup || grup.okumaBekleniyor;
   const bilesenOf = (dep: string) =>
     grup?.deploymentlar.find((d) => d.ad === dep)?.bilesen || dep;
@@ -171,8 +183,10 @@ export function NodeDegisiklikModal({
         tutarsizlikOnay: tutarsizSecim ? tutarsizOnay : false,
         ...(prod ? { onayMetni: onayYazi.trim() } : {}),
         ...(esTalepId ? { esTalepId } : {}),
+        ...(onaysiz ? { onaysizKabul: true } : {}),
       });
-      if (r.ok) {
+      // Belirsiz launch: iş başlamış olabilir, satır açık. Sihirbazda kalmak ikinci denemeye iterdi.
+      if (r.ok || (r.blocked === 'crypto_node_dogrudan_belirsiz' && r.talepId != null)) {
         setYeni({});
         onAcildi(r);
         return;
@@ -184,12 +198,15 @@ export function NodeDegisiklikModal({
         onOkumaGerekli();
       } else if (r.blocked && YENI_ADIM_KODLARI.includes(r.blocked)) {
         setAdim(1);
+      } else if (r.blocked && SMART_DEGISTI_KODLARI.includes(r.blocked)) {
+        onSmartDegisti?.();
       }
     } catch (e: unknown) {
-      // Geçit (Portal yeniden başlıyor) metni sabit ve bilgilendiricidir: aynen gösterilir. Diğer
-      // hatalar yanıt gövdesi önizlemesi taşıyabilir; değer taşıyabilecek metin gösterilmez.
-      const gecit = !!e && typeof e === 'object' && (e as { gatewayUnavailable?: boolean }).gatewayUnavailable;
-      setHata(gecit && e instanceof Error ? e.message : METIN.talepBaglantiHatasi);
+      // Geçit (Portal yeniden başlıyor) ve sunucunun çevrilmiş reddi (nginxRed: ayar eksik, yetki
+      // yok; safeJson fırlatır) metni aynen gösterilir. Diğer hatalar yanıt gövdesi önizlemesi
+      // taşıyabilir; değer taşıyabilecek metin gösterilmez.
+      const i = (e && typeof e === 'object' ? e : {}) as { gatewayUnavailable?: boolean; nginxRed?: boolean };
+      setHata((i.gatewayUnavailable || i.nginxRed) && e instanceof Error ? e.message : METIN.talepBaglantiHatasi);
     } finally {
       gonderRef.current = false;
       setGonderiyor(false);
@@ -215,7 +232,13 @@ export function NodeDegisiklikModal({
           disabled={!ileriAcik || gonderiyor}
           onClick={() => void talepAc()}
         >
-          {gonderiyor ? METIN.dugme.gonderiliyor : METIN.dugme.talepAc}
+          {onaysiz
+            ? gonderiyor
+              ? METIN.onaysiz.gonderiliyor
+              : METIN.onaysiz.dugme
+            : gonderiyor
+              ? METIN.dugme.gonderiliyor
+              : METIN.dugme.talepAc}
         </button>
       )}
       {adim > 0 && (
@@ -341,7 +364,7 @@ export function NodeDegisiklikModal({
                 {METIN.yeniBaslik}
               </div>
               <p className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>
-                {METIN.yeniAciklama}
+                {onaysiz ? METIN.yeniAciklamaOnaysiz : METIN.yeniAciklama}
               </p>
             </div>
             {grup.roller.map((r) => {
@@ -383,7 +406,7 @@ export function NodeDegisiklikModal({
                     </div>
                   ) : deger !== '' ? (
                     <div id={`${id}-durum`} className="text-[12px] break-all" style={{ color: 'var(--text-muted)' }}>
-                      {METIN.smartGorunum(maskele(deger, r.bicim))}
+                      {(onaysiz ? METIN.onaysiz.gorunum : METIN.smartGorunum)(maskele(deger, r.bicim))}
                     </div>
                   ) : (
                     <div id={`${id}-durum`} className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
@@ -468,7 +491,7 @@ export function NodeDegisiklikModal({
 
         {grup && !bekle && adim === 4 && (
           <div className="space-y-2" style={{ color: 'var(--text-primary)' }}>
-            <Bilgi ton="info">{METIN.onayBilgi}</Bilgi>
+            {onaysiz ? <Bilgi ton="warn">{METIN.onaysiz.onayBilgi}</Bilgi> : <Bilgi ton="info">{METIN.onayBilgi}</Bilgi>}
             <div className="break-all" style={{ color: 'var(--text-secondary)' }}>
               {METIN.yeniNodeEtiket}: {rolMaskeliListesi(yeniMaskeli(grup, yeni), grup.roller)}
             </div>
@@ -496,9 +519,9 @@ export function NodeDegisiklikModal({
                   type="checkbox"
                   className="mt-0.5"
                   checked={onayKutusu}
-                  onChange={(e) => setOnayKutusu(e.target.checked)}
+                  onChange={(e) => setOnayKutusuMod(e.target.checked ? smartMod : null)}
                 />
-                <span>{METIN.onayTest}</span>
+                <span>{onaysiz ? METIN.onaysiz.onayKutusu : METIN.onayTest}</span>
               </label>
             )}
           </div>

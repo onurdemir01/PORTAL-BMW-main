@@ -295,10 +295,13 @@ function GrupKarti({
 function SmartOnizlemeModal({
   tenantKey,
   g,
+  kaynak,
   onKapat,
 }: {
   tenantKey: string;
   g: NodeGrup;
+  /** /nodes yanıtından; önizleme yanıtı gelince o geçerli olur */
+  kaynak?: 'crypto' | 'opsx' | null;
   onKapat: () => void;
 }) {
   const [sonuc, setSonuc] = useState<NodeSmartOnizleme | null>(null);
@@ -318,7 +321,7 @@ function SmartOnizlemeModal({
       open
       size="xl"
       title={`${METIN.smartOnizle} — ${g.baslik}`}
-      subtitle="OpsX OpenShift Smart şablonu bu talep için nasıl doldurulur (Smart'a gönderilmez)"
+      subtitle={`${(sonuc?.kaynak ?? kaynak) === 'crypto' ? 'Crypto Hub' : 'OpsX OpenShift'} Smart şablonu bu talep için nasıl doldurulur (Smart'a gönderilmez)`}
       onClose={onKapat}
       footer={
         <div className="flex items-center gap-2">
@@ -388,10 +391,13 @@ export function NodePanel({
   onAnkara,
   okumaAralikMs = 4000,
   takipAralikMs,
+  smartSurum = 0,
 }: {
   tenantKey: string;
   /** /tenants `nodeOpen`: false ise istek atılmaz (sunucu da 403 döner) */
   nodeAcik?: boolean;
+  /** Smart ayarı kaydedilince artar: /nodes yeniden okunur */
+  smartSurum?: number;
   /** Ankara önerisinden gelindiyse: sihirbaz bu grupla açılır */
   baslangic?: NodeBaslangic | null;
   onBaslangicTuketildi?: () => void;
@@ -491,7 +497,7 @@ export function NodePanel({
       if (!nodeAcik || !alive()) return;
       await yukle();
     },
-    [tenantKey, nodeAcik],
+    [tenantKey, nodeAcik, smartSurum],
   );
 
   // Okuma işi: bitene dek aralıkla sorulur.
@@ -623,6 +629,7 @@ export function NodePanel({
 
       {t && !t.nodeAcik && <Bant ton="warn">{METIN.prodKapali}</Bant>}
       {!yetki.talep && <Bant ton="info">{METIN.yetkiYok}</Bant>}
+      {data.smartMod === 'kapali' && t?.nodeAcik && <Bant ton="warn">{METIN.onaysiz.bant}</Bant>}
       {data.tarama?.eski && (
         <Bant ton="warn">
           {METIN.taramaEski(data.tarama.scanDate ? fmtDateTime(data.tarama.scanDate) : '—')}
@@ -734,6 +741,8 @@ export function NodePanel({
           onKapat={() => setSihirbaz(null)}
           onOkumaGerekli={() => void okumaBaslat()}
           esTalepId={sihirbaz.esTalepId}
+          smartMod={data.smartMod}
+          onSmartDegisti={() => void yukle()}
           onAcildi={(r) => {
             const gid = sihirbaz.grupId;
             setEsBag((x) => {
@@ -748,7 +757,14 @@ export function NodePanel({
         />
       )}
 
-      {onizle && <SmartOnizlemeModal tenantKey={tenantKey} g={onizle} onKapat={() => setOnizle(null)} />}
+      {onizle && (
+        <SmartOnizlemeModal
+          tenantKey={tenantKey}
+          g={onizle}
+          kaynak={data.smartKaynak}
+          onKapat={() => setOnizle(null)}
+        />
+      )}
     </div>
   );
 }

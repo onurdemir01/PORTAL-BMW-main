@@ -19,6 +19,7 @@ if (!process.env.ENV_OVERRIDES_ENCRYPTION_KEY) {
 const KOK = path.join(__dirname, '..', '..');
 const yol = (p) => require.resolve(path.join(KOK, p));
 const REAL_REDACT = require('../../ansible/runner.cjs').redactExtraVarsForHistory;
+const GERCEK_OPSX_CFG = require('../../opsx/config.cjs');
 
 const hex = (s) => crypto.createHash('sha256').update(String(s)).digest('hex');
 const SIR = 'SIRSIR123';
@@ -154,6 +155,15 @@ function yeniDurum() {
     nextJob: 3000,
     components: [],
     preflightHata: null,
+    // Dogrudan yol: performSsLaunchOnServer cagrilari ve hata benzetimi.
+    ssLaunches: [],
+    ssHata: null,
+    casKayip: false,
+    // Sahiplenme UPDATE'inden hemen once calisir: kanca ile CAS arasindaki yarisi benzetir.
+    casOncesi: null,
+    // portal_config_blobs 'crypto-hub:smart' satiri; null = satir yok.
+    cryptoSmart: null,
+    cryptoSmartBozuk: false,
     opsxCfg: {
       smart: {
         openshift: {
@@ -171,7 +181,7 @@ function yeniDurum() {
 
 const SUTUN_SIRASI = [
   'tenant_key', 'grup', 'kilit', 'lokasyon', 'eski_ozet', 'yeni_ozet',
-  'hedefler', 'plan_sha', 'gerekce', 'username', 'es_talep_id', 'yeni_deger_secret',
+  'hedefler', 'plan_sha', 'gerekce', 'username', 'es_talep_id', 'yeni_deger_secret', 'sonuc_kod',
 ];
 
 function dbSorgu(d, sqlText, p) {
@@ -180,6 +190,20 @@ function dbSorgu(d, sqlText, p) {
   (d.dbParams = d.dbParams || []).push(p);
   if (d.dbBozuk) return Promise.reject(new Error('db erisilemez'));
   const ok = (rows, rowCount) => Promise.resolve({ rows, rowCount: rowCount == null ? rows.length : rowCount });
+  if (/portal_config_blobs/.test(s) && p[p.length - 1] !== 'crypto-hub:smart' && p[0] !== 'crypto-hub:smart') return ok([], 0);
+  if (/^SELECT data FROM portal_config_blobs/.test(s)) {
+    if (d.cryptoSmartBozuk) return Promise.reject(new Error('blob okunamadi'));
+    return ok(d.cryptoSmart == null ? [] : [{ data: typeof d.cryptoSmart === 'string' ? d.cryptoSmart : JSON.stringify(d.cryptoSmart) }]);
+  }
+  if (/^UPDATE portal_config_blobs SET data = \$1/.test(s)) {
+    if (d.cryptoSmart == null) return ok([], 0);
+    d.cryptoSmart = JSON.parse(p[0]);
+    return ok([], 1);
+  }
+  if (/^INSERT INTO portal_config_blobs/.test(s)) {
+    d.cryptoSmart = JSON.parse(p[1]);
+    return ok([], 1);
+  }
   if (/FROM sys\.indexes WHERE name = 'UX_chnc_acik'/.test(s)) {
     return ok(d.indeks && /is_unique = 1/.test(s) && /has_filter = 1/.test(s) ? [{ v: 1 }] : []);
   }
@@ -204,7 +228,6 @@ function dbSorgu(d, sqlText, p) {
       external_ticket_id: null,
       awx_server_id: null,
       awx_job_id: null,
-      sonuc_kod: null,
       sonuc_json: null,
       created_at: new Date(),
       updated_at: new Date(),
@@ -239,6 +262,19 @@ function dbSorgu(d, sqlText, p) {
   if (/^UPDATE crypto_hub_node_changes SET durum = 'BEKLIYOR', external_ticket_id = \$1/.test(s)) {
     const r = d.rows.find((x) => x.id === Number(p[1]) && x.kapandi_at == null);
     if (r) Object.assign(r, { durum: 'BEKLIYOR', external_ticket_id: p[0] });
+    return ok([], r ? 1 : 0);
+  }
+  // Dogrudan yolun sahiplenmesi: kosullar SQL metninden okunur (gevserse sahte DB de gevser).
+  if (/^UPDATE crypto_hub_node_changes SET durum = 'CALISIYOR', yeni_deger_secret = NULL/.test(s)) {
+    if (d.casKayip) return ok([], 0);
+    if (d.casOncesi) d.casOncesi();
+    const r = d.rows.find(
+      (x) =>
+        x.id === Number(p[0]) &&
+        (!/AND durum = 'ACILIYOR'/.test(s) || x.durum === 'ACILIYOR') &&
+        (!/AND kapandi_at IS NULL/.test(s) || x.kapandi_at == null),
+    );
+    if (r) Object.assign(r, { durum: 'CALISIYOR', yeni_deger_secret: null });
     return ok([], r ? 1 : 0);
   }
   if (/^UPDATE crypto_hub_node_changes SET durum = 'CALISIYOR'/.test(s)) {
@@ -295,7 +331,7 @@ function dbSorgu(d, sqlText, p) {
 }
 
 // ── Kurulum ──────────────────────────────────────────────────────────────────────────
-async function kur() {
+async function kur(o = {}) {
   const d = yeniDurum();
   const gercekGates = (() => {
     const p = yol('ansible/change-gates.cjs');
@@ -313,6 +349,12 @@ async function kur() {
         const h = req.headers['x-test-user'];
         if (!h) return res.status(401).json({ ok: false });
         req.session = { user: JSON.parse(h) };
+        next();
+      },
+      requireAdmin(req, res, next) {
+        if (!(req.session && req.session.user && req.session.user.role === 'Admin')) {
+          return res.status(403).json({ ok: false });
+        }
         next();
       },
     },
@@ -337,6 +379,7 @@ async function kur() {
       async assertTemplateAcceptsExtraVars(serverId, templateId, ev, o) {
         d.sira.push('preflight');
         d.preflight.push({ serverId, templateId, ev: { ...ev }, o });
+        if (d.preflightKanca) d.preflightKanca();
         if (d.preflightHata) throw Object.assign(new Error(d.preflightHata), { status: 409 });
       },
     },
@@ -348,6 +391,24 @@ async function kur() {
         const jobId = d.nextJob++;
         d.launches.push({ serverId, templateId, extraVars: { ...extraVars }, limit, user, jobId });
         d.jobs.set(jobId, { status: 'running', artifacts: {} });
+        return { jobId, status: 'pending' };
+      },
+      // Kopru: gercek govde AWX ister; gecmis yazimi gercek redaksiyonla benzetilir.
+      async performSsLaunchOnServer(serverId, templateId, args) {
+        d.sira.push('launch:ss');
+        d.ssLaunches.push({ serverId, templateId, ...args, extraVars: { ...args.extraVars } });
+        if (d.ssHata) throw d.ssHata;
+        const jobId = d.nextJob++;
+        d.jobs.set(jobId, { status: 'running', artifacts: {} });
+        d.history.push({
+          username: args.username,
+          awx_server_id: serverId,
+          template_id: templateId,
+          template_name: args.templateName,
+          job_id: jobId,
+          status: 'pending',
+          params: JSON.stringify(REAL_REDACT(args.extraVars, args.specFields, args.overrides)),
+        });
         return { jobId, status: 'pending' };
       },
       async getJobStatusOnServer(serverId, jobId) {
@@ -432,7 +493,10 @@ async function kur() {
     },
     'opsx/config.cjs': {
       getConfig: async () => d.opsxCfg,
-      parseExtraVarLines: require('../../opsx/config.cjs').parseExtraVarLines,
+      parseExtraVarLines: GERCEK_OPSX_CFG.parseExtraVarLines,
+      SMART_KEY_RE: GERCEK_OPSX_CFG.SMART_KEY_RE,
+      SMART_TOKEN_RE: GERCEK_OPSX_CFG.SMART_TOKEN_RE,
+      SMART_METADATA_MAX: GERCEK_OPSX_CFG.SMART_METADATA_MAX,
     },
     'opsx/index.cjs': { extractStatsKey: (a, k) => (a && a[k]) || null },
     'audit/index.cjs': {
@@ -451,6 +515,7 @@ async function kur() {
     'db/index.cjs': { query: (q, p) => dbSorgu(d, q, p || []) },
   };
 
+  if (o.adminYok) delete sahte['auth/index.cjs'].requireAdmin;
   const onceki = new Map();
   for (const [p, exp] of Object.entries(sahte)) {
     const r = yol(p);
@@ -458,11 +523,12 @@ async function kur() {
     require.cache[r] = { id: r, filename: r, loaded: true, exports: exp };
   }
   // GERCEK olup sahteleri kullanmasi gerekenler taze yuklenir.
-  const taze = ['crypto-hub/index.cjs', 'crypto-hub/resources.cjs', 'crypto-hub/node.cjs', 'opsx/prod-approval.cjs', 'smart/metadata.cjs'].map(yol);
+  const taze = ['crypto-hub/index.cjs', 'crypto-hub/resources.cjs', 'crypto-hub/node.cjs', 'crypto-hub/smart-ayar.cjs', 'opsx/prod-approval.cjs', 'smart/metadata.cjs'].map(yol);
   const tazeOnceki = new Map(taze.map((r) => [r, require.cache[r]]));
   for (const r of taze) delete require.cache[r];
   const mod = require('../index.cjs');
   const NODE = require('../node.cjs');
+  const SA = require('../smart-ayar.cjs');
   const RES = require('../resources.cjs');
   RES._sifirla();
   NODE._sifirla();
@@ -551,7 +617,7 @@ async function kur() {
     return NODE.launchOncesiDegerEkle({ id: t.id, pendingLaunch: JSON.parse(t.pending_launch_json) });
   }
 
-  return { d, istek, okumaVer, bitir, kapat, kanca, mod, NODE, RES };
+  return { d, istek, okumaVer, bitir, kapat, kanca, mod, NODE, SA, RES };
 }
 
 const K = {

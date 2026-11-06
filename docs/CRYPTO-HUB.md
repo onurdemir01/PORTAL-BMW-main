@@ -255,20 +255,22 @@ Servis hesabının ilgili namespace'te en az şu yetkileri olmalı:
 
 Metaco kiracılarında node'a bağlı her **grubun** (yeni tip `uis:<zincirAğ>` ya da eski tip
 `eski:<ad>`) şu anki node'u maskeli gösterilir. Yetkili kullanıcı grubun her rolü için yeni
-değeri yazıp gerekçe girer, Portal **OpsX OpenShift'in Smart flow'unda** bilet açar; onaydan
-sonra mevcut Smart poller'ı `crypto_hub_ops` template'ini `crypto_hub_action=node_change` ile
+değeri yazıp gerekçe girer, Portal **Smart bileti** açar (Crypto Hub'ın kendi ayarı ya da OpsX
+OpenShift flow'u, D7); onaydan sonra mevcut Smart poller'ı `crypto_hub_ops` template'ini `crypto_hub_action=node_change` ile
 başlatır (değer launch anında tek bir kancayla eklenir, 10.5).
-Kod `server/crypto-hub/node.cjs`, sabitler `shared/cryptoHubNodes.cjs`.
+Kod `server/crypto-hub/node.cjs`, ayar `server/crypto-hub/smart-ayar.cjs`, sabitler
+`shared/cryptoHubNodes.cjs`.
 
 ### 10.1 Kullanıcı kararları
 
 | # | Karar | Uygulama |
 |---|---|---|
-| D1 | Yeni Smart flow açılmaz; OpsX OpenShift'in kategorisi (konsolide flow) kullanılır | `smartApprovalFor('openshift')`: flow key, metadata şablonu ve integration key OpsX'ten gelir. Yeni ayar yok. OpsX'te Smart kapatılmış olsa (`enabled:false`) bile node talebi onaysız **koşmaz**; admin atlama yolu da yok. |
+| D1 | Crypto Hub ayarı boşsa OpsX OpenShift'in kategorisi (konsolide flow) kullanılır (D7 ile genişledi) | `smartApprovalFor('openshift')`: flow key, metadata şablonu ve integration key OpsX'ten gelir. OpsX'te Smart kapatılmış olsa (`enabled:false`) bile node talebi onaysız **koşmaz**; admin atlama yolu da yok. |
 | D2 | Node değeri serbest metin (2026-11-03; iş birimi onaylı) | Node listesi **yok** (iki depodan da kalktı). Kullanıcı sihirbazda rol başına yeni değeri yazar (uis: `rpc`; eski tip rollere göre, ör. solana `rpc`+`ws`, btc `p2p`+`rpc`, polkadot `url`+`auth`). Portal değeri Python ile **aynı** kurallarla doğrular (`shared/cryptoHubNodes.cjs` `degerDogrula`, 10.5), DB'de yalnız şifreli tutar, ekranda / Smart'ta / denetimde yalnız maskeli değer + sha256 gösterir. Bir rol **boş** bırakılabilir: env boş değere yazılır; sihirbaz açık uyarı ve ayrı onay kutusu ister (`bosOnay`). |
 | D3 | Eski tip de değiştirilebilir | 11 eski grup (10.7) + yeni tip `uis-*` grupları tek kuralla (10.9: adapter/api `NODE_ADDR`, indexer `NODE_URI_<ZA>` yoksa `NODE_ADDR`, processor yok). |
 | D4 | İstanbul ve Ankara ayrı talep | Her kiracı ayrı talep, ayrı bilet. `metaco_das_prod` talebinden sonra yanıttaki `esTalepOnerisi` Ankara'yı önerir (değer taşımaz; Ankara değerini kullanıcı yeniden yazar); Ankara talebi `esTalepId` taşır. İstemci göndermezse (sihirbaz kapatılıp yeniden açıldı) sunucu, İstanbul'da aynı grup için son 7 günde açılmış, reddedilmemiş ve başka Ankara talebine bağlanmamış talebe **kendisi** bağlar. |
 | D6 | Bileşenlerin aynı node'da olup olmadığı bilinmiyor (2026-11-02) | Sihirbaz node taşıyan bileşenleri **işaretli** getirir (varsayılan birlikte); kullanıcı işareti kaldırıp alt küme seçebilir; seçilenler arasında hepsi ya da hiçbiri. Her bileşenin şu anki node'u yanında. Bileşenler farklı node'lardaysa "Bileşenler farklı node'lara bağlı" notu; **seçilenler** farklı node'lardaysa (tek node'a toplama) ek onay. Smart kaydı değişecek ve değişmeyecek bileşenleri ayrı satırlarda yazar. Tek deployment'lı gruplarda (eski tip) seçim gösterilmez. |
+| D7 | Crypto Hub'ın kendi Smart ayarı (2026-11-06) | Sağ üstte yalnız Admin'e görünen "Smart Onayı" penceresi; `portal_config_blobs` `crypto-hub:smart` satırı, her okuma DB'den. **Blok kuralı:** flow + şablon ikisi boş → OpsX OpenShift bloğunun tamamı; ikisi dolu → Crypto bloğu (token Crypto'nun, yoksa sistem token'ı, OpsX'in değil); yarım → PUT 400, talep 503. Yalnız yorum içeren şablon boş sayılır. Ayar okunamazsa talep 503 alır, OpsX'e **düşmez**. **Kapatma:** `enabled:false` yalnız `tenant.production === false` kiracıda ve etiket savunmasıyla etkilidir (`smartKapaliMi`); kaynak yalnız `tenantOf` sabit listesidir, gövde ve `NODE_ENV` okunmaz. Production kiracıda bu satır hiç etkili olmaz. OpsX'in `enabled`'ı burada okunmaz. Kapalı test kiracısında iş onaysız başlar (10.2 adım 2b), denetime yazılır. `admin-smart-atla` bağlanmaz. **Ekranın gördüğü mod:** sihirbaz onaysız metni gösterdiyse gövdede `onaysizKabul: true` gider. Bu alan kararı VERMEZ (`smartKapaliMi` gövdeyi görmez), yalnız durdurur: sunucunun kararına uymuyorsa iki yönde de **409 `crypto_node_smart_mod_degisti`**, satır yazılmaz, bilet ve iş başlamaz. |
 | D5 | Yalnız yetkili kullanıcı | Yeni öğe `cryptohub:node:degistir` (Admin › Crypto Hub Erişimi › "node"). Tek başına yalnız Indexer / Node sekmesini açar. `app:metaco` tek başına talep **açtırmaz**, yalnız görüntületir. |
 
 ### 10.2 Akış
@@ -285,11 +287,26 @@ Kod `server/crypto-hub/node.cjs`, sabitler `shared/cryptoHubNodes.cjs`.
    literal satırlarını taşır (seçilmeyen bileşen onay beklerken değişirse iş yazmadan durur).
    Sıra: yetki → kiracı açık mı → girdi → okuma taze mi → grup planı (değişken yok / ölçülemedi /
    referans / GitOps / araç / bileşen seçimi / değer şekli / değer biçimi / boş onayı / aynı değer
-   (seçilenler) / tutarsızlık (seçilenler) / prod'da grup adı) → OpsX Smart ayarı →
-   template → **tekil indeks kapısı** → **şifreleme anahtarı kapısı (prod)** → satır `ACILIYOR`
-   (değer `yeni_deger_secret`'ta şifreli) → preflight + survey ön doldurma → OpsX OpenShift
-   template değişkenleri (şablon bağlamı) → bilet (`pending_launch_json`'da yer tutucu
+   (seçilenler) / tutarsızlık (seçilenler) / prod'da grup adı) → Smart ayarı (D7; okunamazsa
+   **503 `crypto_node_smart_okunamadi`**, yarımsa **503 `crypto_node_smart_yarim`**; ortak
+   `nginxRedCevirici` bu POST'ları istemciye 424 + `upstreamStatus: 503` + `nginxRed` olarak iletir,
+   `safeJson` fırlatır, sihirbaz sunucunun metnini gösterir) → ekranın gördüğü mod (D7) → template → **tekil indeks kapısı** → **şifreleme anahtarı kapısı (prod)** → satır `ACILIYOR`
+   (değer `yeni_deger_secret`'ta şifreli) → preflight + survey ön doldurma → template değişkenleri (şablon bağlamı;
+   OpsX bloğunda OpsX OpenShift template'i, kendi blokta `crypto_hub_ops`) → bilet (`pending_launch_json`'da yer tutucu
    `crypto_hub_node_yeni_b64: ''`) → satır `BEKLIYOR`.
+2b. **Smart kapalı test kiracısı (D7)**: satır `ACILIYOR` + `sonuc_kod='ONAYSIZ'` yazılır, preflight
+   ve ön doldurma aynıdır; sonra `dogrudanBaslat`: ayar yeniden okunur → `launchOncesiDegerEkle`
+   (`id:null`; plan/zarf/sha denetimleri ve gizliler) → CAS `ACILIYOR → CALISIYOR` +
+   `yeni_deger_secret = NULL` (`rowCount !== 1` ise iş başlamaz) → denetim
+   `crypto_hub_node_onaysiz_calisti` (AWX'ten **önce**) → `performSsLaunchOnServer` (poller ile aynı
+   gövde, `yutmaKorumasi: true`, gizliler, `specFields` password) → job bağı → denetim
+   `crypto_hub_node_change_talep` (`ticketId: null`). Yanıt `{ok, pendingApproval:false, onaysiz:true,
+   talepId, jobId, awxServerId}`. İş kesin başlamadıysa (AWX 4xx, JSON olmayan vekil 4xx, bağlantı
+   kurulamadı, token alınamadı) satır `HATA/DOGRUDAN_HATA`, 409. Zaman aşımı / 5xx / kopan bağlantı:
+   iş başlamış olabilir; satır `CALISIYOR` açık kalır, kilit korunur, yanıt **424**. AWX değişkenleri
+   yuttu ve iş iptal edilemediyse job numarası satıra bağlanır, yanıt yine 424 ama metin işi AWX'ten
+   durdurmayı söyler. Job yoksa satır 90 dk sonra `OLCULEMEDI/TAKILDI` kapanır; job varsa AWX sonucu okunur. Önizleme bu
+   modda da Smart yolunda kalır. `/ops` node işlerini yine tanımaz.
 3. **Onay**: Smart poller → runner poller geri çağrısında **tek kanca**
    `pendingLaunch.launchOncesi === 'crypto_hub_node'` → `launchOncesiDegerEkle` (şifreli kolonu
    çözer; talep no, kiracı/grup, bilet, `plan_sha` ve değerlerin sha256'sı `new_sha` ile
@@ -328,8 +345,20 @@ Kod `server/crypto-hub/node.cjs`, sabitler `shared/cryptoHubNodes.cjs`.
 
 ### 10.3 Smart şablonu (admin)
 
-OpsX ekranı › **Smart Onayı** › OpenShift şablonu artık Crypto node taleplerini de taşır.
-Crypto bağlamı OpsX ile **aynı adları aynı sözlükle** doldurur. Bu yüzden mevcut dropdown
+İki yer vardır (D7). **Crypto Hub › Smart Onayı** penceresinde Flow Key + şablon doluysa o
+kullanılır: Alanları Getir, Otomatik Doldur ve Önizle (`POST /smart-config/onizle`, gerçek
+`cryptoNodeMetadata`, örnek talep, Smart'a gitmez) burada çalışır. Şablon yine aşağıdaki `opsx.*`
+bağlamıyla yazılır; `extraVars.*` `crypto_hub_ops` template'inden gelir, OpsX sabit ek değişkenleri ve
+anahtar adları karışmaz; bilet metnindeki "OpsX OpenShift onay akışı ortak kullanılır" ibaresi
+yazılmaz. Entegrasyon anahtarı `encryptSecretValue` ile saklanır, API'de yalnız
+`integrationKeySet` döner; şifreleme anahtarı yoksa kaydı reddedilir. Boş bırakılırsa sistem
+token'ı kullanılır (OpsX'inki değil). Flow Key silinir ya da değişirse kayıtlı anahtar da silinir
+(flow'lar ayrı anahtarla yayınlanabilir). Çözülen token yalnız `createTicket`'e gider,
+`pending_launch_json`'a yazılmaz (`pendingLaunchExtras.overrides: {}`). Çözülemeyen token ekranda
+`token_cozulemedi` durumudur, talep 503 alır. Alanları Getir sistem anahtarıyla sorgular.
+
+İkisi de boşsa OpsX ekranı › **Smart Onayı** › OpenShift şablonu Crypto node taleplerini de taşır.
+Aşağıdaki tablo bu düşüşü anlatır. Crypto bağlamı OpsX ile **aynı adları aynı sözlükle** doldurur. Bu yüzden mevcut dropdown
 eşlemeleri (ör. `{% if opsx.ortam == 'prod' %}Production_9{% else %}…{% endif %}`) aynen çalışır:
 
 | Bağlam | OpsX OpenShift | Crypto node |
@@ -383,7 +412,9 @@ bileşenler kesilmeden, yeni değer yalnız maskeli görünmeli.
 
 Tablo `crypto_hub_node_changes` (bkz. `server/db/mssql-setup.cjs`). Durumlar: açık `ACILIYOR
 BEKLIYOR CALISIYOR`; kapalı `BASARILI GERI_ALINDI BAYAT BASARISIZ OLCULEMEDI REDDEDILDI
-ZAMAN_ASIMI IPTAL HATA`. Satır silinmez.
+ZAMAN_ASIMI IPTAL HATA`. Satır silinmez. D7 doğrudan yolu yeni kolon istemez: açık satırda
+`sonuc_kod = 'ONAYSIZ'` işaretidir (kapanışta gerçek kodla ezilir); `smart_ticket_id` boş `CALISIYOR`
+satırı başka yolla oluşmaz.
 
 **Kolonlar (2026-11-03):** `yeni_deger_secret NVARCHAR(MAX) NULL` = girilen değerin
 (`crypto_hub_node_yeni_b64` metni) `encryptSecretValue` (AES-256-GCM, `enc:v1:`) ile şifreli
@@ -413,7 +444,8 @@ bilet `BEKLIYOR` kalır (ikinci talep açılmasın diye) ve 24 sa sonra `HATA/YE
 ### 10.5 Değer kuralı (sızıntı en aza)
 
 **Değerin bulunduğu yerler** (başka yer yok): istek gövdesi → `crypto_hub_node_changes.yeni_deger_secret`
-(şifreli; iş başlayınca / kapanınca NULL) → onay sonrası launch kancası → AWX `extra_vars`
+(şifreli; iş başlayınca / kapanınca NULL) → launch kancası (onay sonrası ya da D7 doğrudan yolu; bu
+yolda kolon AWX çağrısından **önce** NULL olur, değer yalnız bellekte durur) → AWX `extra_vars`
 (`crypto_hub_node_yeni_b64`) ve **AWX iş kaydı**. AWX iş kaydı `extra_vars`'ı (base64 değer
 dahil) gösterir — kullanıcı bunu kabul etti. Sonraki adım (zorunlu değil): template anketine
 `crypto_hub_node_yeni_b64` için password sorusu eklenirse AWX değeri `$encrypted$` saklar. Soru
@@ -421,9 +453,12 @@ zorunlu olmamalı, varsayılanı olmamalı, en çok uzunluğu en az 16384 olmal�
 `prefillSurveyDefaultsOnServer` sonrasında yer tutucu yine `''` yapılır (zorunlu + varsayılanlı bir
 soru onu `$encrypted$` ile doldursa kanca her talebi reddederdi). AWX 4xx gövdesi değeri yansıtsa
 da `awxRequestToServer` kancanın gizlilerini (`opts.gizliler`) log satırında, hata metninde ve
-`e.body`'de maskeler; poller'ın `error_message`'ı ayrıca `gizliTemizle`'den geçer.
+`e.body`'de maskeler; poller'ın `error_message`'ı ayrıca `gizliTemizle`'den geçer. Doğrudan yol aynı
+`performSsLaunch` gövdesini kullanır; `launchJobOnServer` (gizliler taşımaz) ve `gecmisIcin` (kısa
+değeri geçmişe düz yazar) bu yolda **kullanılmaz**.
 
-**Değerin bulunmadığı yerler:** `smart_tickets.pending_launch_json` (yer tutucu `''`),
+**Değerin bulunmadığı yerler:** `smart_tickets.pending_launch_json` (yer tutucu `''`; Smart
+entegrasyon anahtarı da burada yok),
 `ansible_job_history.params` ve launch denetimi (`specFields` password satırı → `***gizli***`),
 bilet ayrıntı ekranları, Portal denetimi (`crypto_hub_node_change_talep` yalnız `yeniOzet`
 maskeli + `yeniSha` sha256 + `bosRoller` yazar; crypto-hub router'ında `auditMutations` yok,

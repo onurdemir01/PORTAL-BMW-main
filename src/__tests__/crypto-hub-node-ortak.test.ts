@@ -334,6 +334,42 @@ describe('O9 PS7 talep numarası sunucuyla aynı biçimde', () => {
     expect(b).toMatch(/^Onay bekleyen değişiklik: Portal #12 — ali, /);
     expect(b).not.toMatch(/Smart #Portal/);
   });
+
+  it('biletsiz koşan talep onay bekliyor demez; biletli ya da açılan talep metni değişmez', async () => {
+    const { bekleyenMetni, METIN } = await import('@/components/crypto_hub/nodeOrtak');
+    const t = { talepId: 12, username: 'ali', createdAt: '2026-11-02T08:00:00Z' };
+    expect(bekleyenMetni({ ...t, externalTicketId: null, durum: 'CALISIYOR' })).toMatch(/^Uygulanan değişiklik: Portal #12 — ali, /);
+    expect(bekleyenMetni({ ...t, externalTicketId: 'SM-1', durum: 'CALISIYOR' })).toMatch(/^Onay bekleyen değişiklik: Smart #SM-1/);
+    expect(METIN.islemKart.ipucu).not.toMatch(/Smart onayıyla değiştirir/);
+    expect(METIN.islemKart.ipucu).toMatch(/production'da Smart onayı zorunludur/);
+  });
+
+  it('safeJson çevrilmiş reddi fırlatırken nginxRed + blocked taşır (gerçek ara katman gövdesi)', async () => {
+    const { safeJson } = await import('@/api/http');
+    const { nginxRedCevirici } = await import('../../server/util/nginx-red.cjs');
+    let govde: unknown;
+    let kod = 0;
+    const res = {
+      statusCode: 503,
+      status(s: number) {
+        kod = s;
+        return this;
+      },
+      json(x: unknown) {
+        govde = x;
+      },
+    };
+    nginxRedCevirici({ onek: 'portal', eylem5xx: true })({ method: 'POST', path: '/crypto-hub/node-change' }, res, () => {});
+    res.json({ ok: false, blocked: 'crypto_node_smart_yarim', message: 'Ayar eksik.' });
+    expect(kod).toBe(424);
+    const yanit = new Response(JSON.stringify(govde), { status: kod, headers: { 'Content-Type': 'application/json' } });
+    await expect(safeJson(yanit)).rejects.toMatchObject({
+      message: 'Ayar eksik.',
+      status: 503,
+      nginxRed: true,
+      blocked: 'crypto_node_smart_yarim',
+    });
+  });
 });
 
 describe('O10 sonuç metinleri: TAKILDI, yönetici kapatması, istisna sonrası geri alma', () => {

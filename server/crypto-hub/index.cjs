@@ -799,7 +799,14 @@ async function uygulamaSonuclariniTara() {
 }
 
 function initCryptoHub(app) {
-  const { requireAuth } = require('../auth/index.cjs');
+  const authMod = require('../auth/index.cjs');
+  const { requireAuth } = authMod;
+  // Auth modulu admin kapisi vermezse Smart ayari KAPALI kalir; requireAuth'a baglamak her oturumlu
+  // kullaniciya acardi.
+  const requireAdmin =
+    typeof authMod.requireAdmin === 'function'
+      ? authMod.requireAdmin
+      : (_req, res) => res.status(403).json({ ok: false, message: 'Auth modülü yok.' });
   const router = express.Router();
 
   // Sonuc taramasi (varsayilan 5 dk). CRYPTO_HUB_SONUC_TARAMA_SN=0 kapatir (testler). Zamanlayici
@@ -1822,6 +1829,9 @@ function initCryptoHub(app) {
     loadTenant,
     gecmisIcin,
   });
+
+  // Smart ayari (D7): GET/PUT /smart-config, POST /smart-config/onizle. Yalniz Admin.
+  require('./smart-ayar.cjs').initCryptoHubSmartAyar(router, { requireAdmin });
 
   app.use('/api/crypto-hub', router);
   console.log('[CryptoHub] module mounted at /api/crypto-hub');

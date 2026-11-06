@@ -2,19 +2,21 @@
 //
 // Baglayici sozlesme: scratchpad/cryptohub/sozlesme.md (bolum 3, 4, 7, 8). Ozet:
 //   * node_env_get (salt okunur) dogrudan AWX'e gider; cikti maskeli deger + sha256.
-//   * node_change ASLA dogrudan baslatilmaz: OpsX OpenShift'in Smart flow'unda bilet acilir
-//     (kullanici karari D1: yeni flow YOK, konsolide OpsX flow'u), onaydan sonra MEVCUT poller
-//     (performSsLaunch) isi baslatir. /ops bu islemleri TANIMAZ (index.cjs OPS'ta yoklar).
-//   * Smart ayari OpsX'ten okunur (smartApprovalFor('openshift')). OpsX'te Smart kapatilmis
-//     olsa bile (enabled:false) node talebi onaysiz KOSMAZ; admin atlama yolu da yok.
+//   * node_change Smart bileti ile baslar, onaydan sonra MEVCUT poller (performSsLaunch) isi
+//     baslatir. /ops bu islemleri TANIMAZ (index.cjs OPS'ta yoklar).
+//   * Smart ayari smart-ayar.cjs cozer: Crypto Hub'in kendi blogu doluysa o, ikisi de bossa OpsX
+//     OpenShift blogu (D7). OpsX'te Smart kapatilmis olsa bile (enabled:false) node talebi
+//     onaysiz KOSMAZ; admin atlama yolu da yok.
+//   * Tek istisna (D7): Crypto Hub ayarindan Smart kapatilmis TEST kiracisi. Is onaysiz baslar
+//     (dogrudanBaslat), denetime yazilir. Production kiracida bu ayar etkisizdir.
 //   * Kiraci + kilit basina TEK acik talep: DB filtreli tekil indeksi (UX_chnc_acik) zorlar;
 //     indeks yoksa talep acilmaz (fail-closed).
 //
 // DEGER KURALI (sozlesme 2026-11-03 bolum 4): node listesi YOK; kullanici yeni degeri rol basina
 // serbest metin yazar (is birimi onayli). Deger Portal'da YALNIZ su yerlerde bulunur: istek
 // govdesi -> crypto_hub_node_changes.yeni_deger_secret (encryptSecretValue, AES-256-GCM; is AWX'e
-// verilince / talep kapaninca NULL) -> onay sonrasi launch kancasi (launchOncesiDegerEkle) ->
-// AWX extra_vars. pending_launch_json'da yer tutucu '' durur; is gecmisi / denetim specFields
+// verilince / talep kapaninca NULL) -> launch kancasi (launchOncesiDegerEkle; onay sonrasi ya da
+// dogrudan yol) -> AWX extra_vars. pending_launch_json'da yer tutucu '' durur; is gecmisi / denetim specFields
 // password satiriyla '***gizli***' gorur. Ekran, Smart, denetim ve loglar yalniz maskeli deger +
 // sha256 tasir. Betigin maskeli alanlari burada bir kez daha suzulur (maskeGuvenli).
 'use strict';
@@ -22,6 +24,7 @@
 const crypto = require('node:crypto');
 const { tenantOf } = require('../../shared/cryptoHubTenants.cjs');
 const N = require('../../shared/cryptoHubNodes.cjs');
+const SA = require('./smart-ayar.cjs');
 
 const OPS_KEY = 'crypto_hub_ops';
 const OPSX_OPENSHIFT_KEY = 'opsx_openshift_operation';
@@ -30,6 +33,10 @@ const HEX64 = /^[0-9a-f]{64}$/;
 const B64_AZAMI = 8192;
 const OKUMA_IS_MS = 10 * 60 * 1000;
 const ACILIS_DK = 10;
+// Dogrudan yolda onay beklemesi yok: betik butcesi (30 dk) + pay.
+const DOGRUDAN_TAKILDI_DK = 90;
+// Acik satirda dogrudan yolun isareti; kapanista talepKapat gercek sonuc koduyla ezer.
+const ONAYSIZ_KOD = 'ONAYSIZ';
 
 // Hangi islem okur / yazar. index.cjs bunu yeniden ihrac eder (SB2: OPS + NODE_OPS ==
 // playbook ch_islemler == betik izin satiri). OPS sozlugune EKLENMEZ: /ops bunlari reddeder.
@@ -73,17 +80,35 @@ const METIN = Object.freeze({
   gerekce: 'Gerekçe 10–500 karakter olmalı.',
   smartYok:
     'Node değişikliği Smart onayından geçer, ancak OpsX OpenShift için Smart Flow Key tanımlı değil. Yönetici, OpsX ekranının sağ üstündeki "Smart Onayı" penceresinden OpenShift değerini girmeli. Talep açılmadı.',
+  smartOkunamadi: 'Crypto Hub Smart ayarı okunamadı — talep açılmadı. Lütfen tekrar deneyin.',
+  smartYarim:
+    'Crypto Hub Smart ayarı eksik: Flow Key ile metadata şablonu birlikte dolu ya da birlikte boş olmalı. Yönetici, Crypto Hub ekranının sağ üstündeki "Smart Onayı" penceresinden düzeltmeli. Talep açılmadı.',
+  smartDegisti: 'Smart ayarı bu sırada değişti; iş başlatılmadı. Talebi yeniden açın.',
+  smartModDegisti:
+    'Smart onay ayarı siz ekrandayken değişti; hiçbir şey başlatılmadı. Güncel metni okuyup yeniden onaylayın.',
   indeksYok: 'Talep kilidi (veritabanı tekil indeksi) doğrulanamadı — talep açılmadı.',
   yetimBilet: (no) =>
     `Smart talebi AÇILDI (kayıt no: ${no}) ancak Portal kaydı yazılamadı. Onaylansa da iş başlamaz — Smart'ta reddettirin.`,
   smartHata: (m) => `Smart talebi açılamadı: ${m}`,
   sablonBos: 'OpsX OpenShift Smart şablonu boş — ElementName eşlemesi olmadan bilet açılamaz.',
+  sablonBosCrypto: 'Crypto Hub Smart şablonu boş — ElementName eşlemesi olmadan bilet açılamaz.',
   sablonEk:
     " Şablon Crypto node talebini de taşır; OpsX'e özgü alanları `| default(...)` ile yazın.",
   aileYok: 'Bu zincir ailesi için izin listesi tanımlı değil',
   templateYok: `AWX job template'i tanımlı değil: Admin › Playbook Kayıtları › "${OPS_KEY}" satırına Template ID girilmeli.`,
   talepAcildi: (no) =>
     `Smart talebi açıldı (kayıt no: ${no}). Onay 24 saat içinde gelirse değişiklik otomatik uygulanır; bu ekranda beklemeniz gerekmez.`,
+  onaysizBasladi: (job) => `Smart onayı kapalı (test ortamı): iş onaysız başlatıldı (AWX #${job}).`,
+  dogrudanHazirlik: (m) => `İş başlatılmadı: ${m}`,
+  dogrudanHata: (m) => `AWX işi başlatılamadı: ${m}`,
+  dogrudanBelirsiz: (no) =>
+    `AWX yanıtı alınamadı; iş başlamış olabilir. Talep Portal #${no} açık kaldı, sonuç süresi dolunca kendiliğinden kapanır. Mevcut node'ları okuyun.`,
+  dogrudanIptalEdilemedi: (job, no) =>
+    `AWX değişkenleri yok saydı ve iş #${job} iptal edilemedi; AWX ekranından durdurun. Talep Portal #${no} açık kaldı, sonucu okununca kapanır.`,
+  awxOturum: "AWX oturumu açılamadı; iş AWX'e gönderilmedi.",
+  dogrudanKesildi: 'Smart onayı kapalıydı; iş başlatılmadan açılış yarıda kaldı.',
+  dogrudanKapatilmaz:
+    'Bu talep Smart onayı olmadan başlatıldı; iş sonucu okununca ya da süre dolunca kendiliğinden kapanır.',
 });
 
 const kirp = (s, n) => {
@@ -701,7 +726,7 @@ const tekSatir = (s) =>
  * sablondaki dropdown eslemeleri (Production_9 gibi) bozulmaz. Ek anahtarlar yalniz
  * `| default(...)` ile kullanilabilir.
  */
-function ozetKur({ tenant, plani, gerekce, username, esTalep }) {
+function ozetKur({ tenant, plani, gerekce, username, esTalep, kaynak = 'opsx' }) {
   const lok = N.lokasyon(tenant);
   const g = plani.grup;
   const turAd = g.tur === 'uis' ? 'Yeni tip' : 'Eski tip';
@@ -724,10 +749,10 @@ function ozetKur({ tenant, plani, gerekce, username, esTalep }) {
   const ESKI_ON = ' | Eski: ';
   const pay = ISLEM_SINIRI - onek.length - zorunlu.length - ESKI_ON.length;
   const islem = onek + zorunlu + (pay >= 12 ? ESKI_ON + kirp(tekSatir(plani.eskiOzet), pay) : '');
-  // PS5: konsolide OpsX OpenShift flow'u kullanilir; bilet metni bunun bir NODE DEGISIKLIGI
-  // oldugunu ilk satirda soyler (sablon alanlari - or. JOBTYPE - OpsX degerlerini tasir).
+  // PS5: bilet metni bunun bir NODE DEGISIKLIGI oldugunu ilk satirda soyler. OpsX blogunda sablon
+  // alanlari (or. JOBTYPE) OpsX degerlerini tasir, o yuzden ortak akis ayrica soylenir.
   const satirlar = [
-    'Crypto Hub Indexer/Node Change — NODE DEĞİŞİKLİĞİ (rollout/restart değil; OpsX OpenShift onay akışı ortak kullanılır)',
+    `Crypto Hub Indexer/Node Change — NODE DEĞİŞİKLİĞİ (rollout/restart değil${kaynak === 'opsx' ? '; OpsX OpenShift onay akışı ortak kullanılır' : ''})`,
     `Kiracı: ${tenant.key} (${tenant.appLabel} · ${tenant.domainLabel} · ${tenant.envLabel})`,
     `Lokasyon: ${lok}`,
     `Cluster / Namespace: ${tenant.cluster} / ${tenant.namespace}`,
@@ -784,11 +809,13 @@ function ozetKur({ tenant, plani, gerekce, username, esTalep }) {
  * email (sabitlerde yoksa oturumdan) + oc_environment + oc_cluster/oc_input + choise:true.
  * BILINCLI istisnalar: openshift_operations (bu bir rollout DEGIL - kullanan sablon 400 verir) ve
  * target_cluster (OpsX'te de istege bagli; sablon `| default` ile yazilmali).
- * @param {{ocClusterKey?: string, ocInputKey?: string, staticVars?: object}} [anahtarlar]
+ * Bos sayimi SA.sablonDoluMu ile: yalniz yorum iceren sablon bos metadata ile bilet acardi.
+ * @param {{ocClusterKey?: string, ocInputKey?: string, staticVars?: object, kaynak?: string}} [anahtarlar]
  */
 function cryptoNodeMetadata(raw, ctx, ozet, sablonVarsayilan, anahtarlar = {}) {
-  if (!String(raw || '').trim()) {
-    throw Object.assign(new Error(METIN.sablonBos), {
+  const kendi = anahtarlar.kaynak === 'crypto';
+  if (!SA.sablonDoluMu(raw)) {
+    throw Object.assign(new Error(kendi ? METIN.sablonBosCrypto : METIN.sablonBos), {
       status: 400,
       blocked: 'crypto_node_smart_sablon',
     });
@@ -814,11 +841,51 @@ function cryptoNodeMetadata(raw, ctx, ozet, sablonVarsayilan, anahtarlar = {}) {
       opsx: ozet,
     });
   } catch (e) {
-    throw Object.assign(new Error(`${e.message}${METIN.sablonEk}`), {
+    throw Object.assign(new Error(`${e.message}${kendi ? '' : METIN.sablonEk}`), {
       status: 400,
       blocked: 'crypto_node_smart_sablon',
     });
   }
+}
+
+/** Template degisken varsayilanlari. Okunamazsa {}: sablon `| default` ile yazilmis olabilir. */
+async function sablonVarsayilanOku(anahtar) {
+  try {
+    const reg = require('../ansible/playbook-registry.cjs');
+    const row = await reg.getByKey(anahtar).catch(() => null);
+    const tid = row && row.enabled !== false ? reg.getEffectiveTemplateId(row) : null;
+    if (!tid) return {};
+    return (await require('../ansible/runner.cjs').getTemplateVariableDefaultsOnServer(Number(row.awxServerId), tid)) || {};
+  } catch (e) {
+    console.warn('[CryptoHub] template degiskenleri okunamadi:', anahtar, e.message);
+    return {};
+  }
+}
+
+// Smart penceresindeki taslak onizleme icin ornek talep: gercek bir plan ya da kiraci bilgisi degil.
+const ORNEK_PLAN = Object.freeze({
+  grup: Object.freeze({ id: 'uis:ornek-zincir', tur: 'uis', baslik: 'ornek-zincir' }),
+  hedefler: Object.freeze(['hmz-harmonize-uis-indexer-ornek-zincir']),
+  secilenler: Object.freeze(['indexer']),
+  secilmeyenler: Object.freeze([]),
+  bosRoller: Object.freeze([]),
+  eskiOzet: 'rpc=https://eski-node.invalid/****',
+  yeniOzet: 'rpc=https://yeni-node.invalid/****',
+  tutarsizToplama: false,
+});
+
+/** Kaydedilmemis sablon, gercek talep yoluyla render edilir (Smart'a gitmez). Hata firlatir. */
+async function taslakOnizle(raw, ben = {}) {
+  const tenant = tenantOf('metaco_das_test');
+  const username = ben.username || 'ornek.kullanici';
+  const ozet = ozetKur({ tenant, plani: ORNEK_PLAN, gerekce: 'Örnek gerekçe (önizleme)', username, esTalep: null, kaynak: 'crypto' });
+  return cryptoNodeMetadata(
+    raw,
+    { username, email: ben.mail || '', templateName: `Crypto Hub: node_change @ ${tenant.key}`, templateId: 0 },
+    ozet,
+    await sablonVarsayilanOku(OPS_KEY),
+    { kaynak: 'crypto' },
+  );
 }
 
 // ── Bellek: son okuma + suren okuma isleri ──────────────────────────────────────────
@@ -1034,9 +1101,10 @@ async function satiriIlerlet(db, row, yol = 'tarama', simdi = Date.now()) {
   const denetim = { username: row.username, tenant: row.tenant_key, grup: row.grup, yol };
   if (row.durum === 'ACILIYOR') {
     if (!(yasDk > ACILIS_DK)) return null;
+    const onaysiz = row.sonuc_kod === ONAYSIZ_KOD;
     let b = null;
     try {
-      b = await biletiBul(db, row.id);
+      b = onaysiz ? null : await biletiBul(db, row.id);
     } catch {
       return null;
     }
@@ -1054,14 +1122,18 @@ async function satiriIlerlet(db, row, yol = 'tarama', simdi = Date.now()) {
         durum: 'HATA',
         kod: 'ACILIS_KESILDI',
         json: bosSonuc({
-          not: "Smart'ta kayıt açılmış olabilir; Portal kaydı olmadığı için onaylansa da iş başlamaz.",
+          not: onaysiz
+            ? METIN.dogrudanKesildi
+            : "Smart'ta kayıt açılmış olabilir; Portal kaydı olmadığı için onaylansa da iş başlamaz.",
         }),
       },
       denetim,
     );
     return 'kapandi';
   }
-  if (row.smart_ticket_id == null) {
+  // Bileti olmayan CALISIYOR satiri Smart kapali dogrudan yoldur: asagida AWX sonucuyla kapanir.
+  const dogrudan = row.smart_ticket_id == null && row.durum === 'CALISIYOR';
+  if (row.smart_ticket_id == null && !dogrudan) {
     if (row.durum === 'BEKLIYOR' && yasDk > N.ONAY_DK) {
       await talepKapat(
         db,
@@ -1078,7 +1150,7 @@ async function satiriIlerlet(db, row, yol = 'tarama', simdi = Date.now()) {
   // yapilandirilmamis -> hic TIMEOUT olmayan PENDING, AWX kalici hata) satir OLCULEMEDI / TAKILDI
   // kapanir. BASARI SAYILMAZ: ekran "durum bilinmiyor, mevcut node'lari okuyun" der. Bilet hala
   // PENDING ise yerelde iptal edilir: poller sonradan onay gorse de isi BASLATMAZ.
-  const takildi = yasDk > N.TAKILDI_DK;
+  const takildi = yasDk > (dogrudan ? DOGRUDAN_TAKILDI_DK : N.TAKILDI_DK);
   const takildiKapat = async (neden, t) => {
     let iptal = false;
     if (t && t.status === 'PENDING') {
@@ -1111,6 +1183,7 @@ async function satiriIlerlet(db, row, yol = 'tarama', simdi = Date.now()) {
   };
   let serverId = row.awx_server_id == null ? null : Number(row.awx_server_id);
   let jobId = row.awx_job_id == null ? null : Number(row.awx_job_id);
+  if (jobId == null && dogrudan) return takildi ? takildiKapat('dogrudan_job_yok', null) : null;
   if (jobId == null) {
     let t = null;
     try {
@@ -1316,8 +1389,20 @@ function initCryptoHubNode(router, deps) {
       : taramadanGruplar(tenant, veri && veri.components, opts);
     const scanDate = veri && veri.scannedAt ? tarih(veri.scannedAt) : null;
     const esKey = N.esKiraciOf(tenant.key);
+    // Yalniz ekran metinleri icin: gercek karar talep aninda yeniden okunur.
+    let smartMod = 'onay';
+    let smartKaynak = null;
+    try {
+      const k = await SA.cryptoSmartCoz(tenant);
+      smartMod = k.mod;
+      smartKaynak = k.kaynak;
+    } catch (e) {
+      console.warn('[CryptoHub] Smart ayari okunamadi:', e.message);
+    }
     res.json({
       ok: true,
+      smartMod,
+      smartKaynak,
       tenant: {
         key: tenant.key,
         label: `${tenant.appLabel} ${tenant.domainLabel} ${tenant.envLabel}`,
@@ -1560,7 +1645,11 @@ function initCryptoHubNode(router, deps) {
     // ACILIYOR satiri ile Smart biletinin DB'ye baglanmasi arasinda kisa bir pencere vardir.
     // Bu sirada kilidi acmak, dis bilet olustuktan sonra ayni gruba ikinci isi sokabilir.
     if (row.smart_ticket_id == null) {
-      return res.status(409).json({ ok: false, message: 'Smart kaydı henüz talebe bağlanmadı; talep kapatılmadı.' });
+      const onaysiz = row.durum === 'CALISIYOR' || row.sonuc_kod === ONAYSIZ_KOD;
+      return res.status(409).json({
+        ok: false,
+        message: onaysiz ? METIN.dogrudanKapatilmaz : 'Smart kaydı henüz talebe bağlanmadı; talep kapatılmadı.',
+      });
     }
     let smart = null;
     const store = require('../smart/store.cjs');
@@ -1640,7 +1729,8 @@ function esOnerisi(tenant, grupId, talepId) {
 
 /**
  * POST /node-change (ve onizleme). Sira sozlesme 9.1 ile BIREBIR. Govde: {tenant, grup, yeni,
- * bosOnay?, gerekce, bilesenler?, tutarsizlikOnay?, onayMetni?, esTalepId?}. Onizleme deger ALMAZ.
+ * bosOnay?, gerekce, bilesenler?, tutarsizlikOnay?, onayMetni?, esTalepId?, onaysizKabul?}.
+ * Onizleme deger ALMAZ.
  * @returns {Promise<{status:number, body:object}>}
  */
 async function talepAc(req, { nodeYetkisi, kullanici, onizleme }) {
@@ -1694,14 +1784,24 @@ async function talepAc(req, { nodeYetkisi, kullanici, onizleme }) {
     }
   }
   // 6
-  const { smartApprovalFor } = require('../opsx/prod-approval.cjs');
-  let sa = null;
+  // Okuma hatasi OpsX'e DUSMEZ (bilet yanlis onaycilara giderdi): 503.
+  let karar;
   try {
-    sa = await smartApprovalFor('openshift');
-  } catch {
-    sa = null;
+    karar = await SA.cryptoSmartCoz(tenant);
+  } catch (e) {
+    console.warn('[CryptoHub] Smart ayari okunamadi:', e.message);
+    return red(hata(503, 'crypto_node_smart_okunamadi', METIN.smartOkunamadi));
   }
-  if (!sa) return red(hata(503, 'crypto_node_smart_yok', METIN.smartYok));
+  if (karar.yarim) return red(hata(503, 'crypto_node_smart_yarim', METIN.smartYarim));
+  const { sa, kaynak: smartKaynak, mod: smartMod } = karar;
+  // Onizleme kapali modda da Smart yolunda kalir: "acilinca bilet boyle olur" gosterir.
+  const dogrudan = smartMod === 'kapali' && !onizleme;
+  // onaysizKabul karari VERMEZ (smartKapaliMi govdeyi gormez), yalniz durdurur: kullanicinin onayladigi
+  // metin sunucunun kararina uymuyorsa hicbir sey yazilmaz. Bayat sihirbaz onaysiz is baslatamasin.
+  if (!onizleme && (body.onaysizKabul === true) !== dogrudan) {
+    return red(hata(409, 'crypto_node_smart_mod_degisti', METIN.smartModDegisti));
+  }
+  if (!sa && !dogrudan) return red(hata(503, 'crypto_node_smart_yok', METIN.smartYok));
   // 7
   const reg = require('../ansible/playbook-registry.cjs');
   const regRow = await reg.getByKey(OPS_KEY).catch(() => null);
@@ -1753,33 +1853,27 @@ async function talepAc(req, { nodeYetkisi, kullanici, onizleme }) {
     }
   }
 
-  // Sablon baglami: OpsX OpenShift template'inin degiskenleri + OpsX anahtar adlari.
+  // Sablon baglami. OpsX blogunda OpenShift template'inin degiskenleri + OpsX anahtar adlari; kendi
+  // blokta crypto_hub_ops template'i ve varsayilan anahtar adlari (OpsX degerleri kendi flow'a karismaz).
   const runner = require('../ansible/runner.cjs');
-  const sablonVarsayilaniOku = async () => {
+  const kendiBlok = smartKaynak === 'crypto';
+  const sablonVarsayilaniOku = () => sablonVarsayilanOku(kendiBlok ? OPS_KEY : OPSX_OPENSHIFT_KEY);
+  let anahtarlar = { kaynak: smartKaynak };
+  if (!kendiBlok && !dogrudan) {
     try {
-      const row = await reg.getByKey(OPSX_OPENSHIFT_KEY).catch(() => null);
-      const tid = row && row.enabled !== false ? reg.getEffectiveTemplateId(row) : null;
-      if (!tid) return {};
-      return (await runner.getTemplateVariableDefaultsOnServer(Number(row.awxServerId), tid)) || {};
-    } catch (e) {
-      console.warn('[CryptoHub] OpsX OpenShift template degiskenleri okunamadi:', e.message);
-      return {};
+      const cfgMod = require('../opsx/config.cjs');
+      const cfg = await cfgMod.getConfig();
+      anahtarlar = { ...anahtarlar, ...((cfg && cfg.openshift) || {}) };
+      // OpsX ile ayni sabit ek degiskenler (opsx/index.cjs parseExtraVarLines(cfg.extraVars)).
+      anahtarlar.staticVars =
+        typeof cfgMod.parseExtraVarLines === 'function' ? cfgMod.parseExtraVarLines(anahtarlar.extraVars).vars : {};
+    } catch {
+      anahtarlar = { kaynak: smartKaynak };
     }
-  };
-  let anahtarlar = {};
-  try {
-    const cfgMod = require('../opsx/config.cjs');
-    const cfg = await cfgMod.getConfig();
-    anahtarlar = { ...((cfg && cfg.openshift) || {}) };
-    // OpsX ile ayni sabit ek degiskenler (opsx/index.cjs parseExtraVarLines(cfg.extraVars)).
-    anahtarlar.staticVars =
-      typeof cfgMod.parseExtraVarLines === 'function' ? cfgMod.parseExtraVarLines(anahtarlar.extraVars).vars : {};
-  } catch {
-    anahtarlar = {};
   }
 
   if (onizleme) {
-    const ozet = ozetKur({ tenant, plani, gerekce: gerekce || '(önizleme)', username, esTalep });
+    const ozet = ozetKur({ tenant, plani, gerekce: gerekce || '(önizleme)', username, esTalep, kaynak: smartKaynak });
     const sablonVarsayilan = await sablonVarsayilaniOku();
     try {
       const metadata = cryptoNodeMetadata(
@@ -1789,9 +1883,12 @@ async function talepAc(req, { nodeYetkisi, kullanici, onizleme }) {
         sablonVarsayilan,
         anahtarlar,
       );
-      return { status: 200, body: { ok: true, flowKey: sa.flowKey, metadata } };
+      return { status: 200, body: { ok: true, flowKey: sa.flowKey, kaynak: smartKaynak, smartMod, metadata } };
     } catch (e) {
-      return { status: 200, body: { ok: true, flowKey: sa.flowKey, metadata: null, hata: e.message } };
+      return {
+        status: 200,
+        body: { ok: true, flowKey: sa.flowKey, kaynak: smartKaynak, smartMod, metadata: null, hata: e.message },
+      };
     }
   }
 
@@ -1815,7 +1912,7 @@ async function talepAc(req, { nodeYetkisi, kullanici, onizleme }) {
   let talepId;
   try {
     const r = await db.query(
-      `INSERT INTO crypto_hub_node_changes (tenant_key, grup, kilit, lokasyon, eski_ozet, yeni_ozet, hedefler, plan_sha, gerekce, username, durum, es_talep_id, yeni_deger_secret) OUTPUT INSERTED.id VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'ACILIYOR', $11, $12)`,
+      `INSERT INTO crypto_hub_node_changes (tenant_key, grup, kilit, lokasyon, eski_ozet, yeni_ozet, hedefler, plan_sha, gerekce, username, durum, es_talep_id, yeni_deger_secret, sonuc_kod) OUTPUT INSERTED.id VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'ACILIYOR', $11, $12, $13)`,
       [
         tenant.key,
         grupId,
@@ -1829,6 +1926,7 @@ async function talepAc(req, { nodeYetkisi, kullanici, onizleme }) {
         username,
         esTalep ? esTalep.id : null,
         yeniSifreli,
+        dogrudan ? ONAYSIZ_KOD : null,
       ],
     );
     talepId = Number(r && r.rows && r.rows[0] && r.rows[0].id);
@@ -1888,9 +1986,14 @@ async function talepAc(req, { nodeYetkisi, kullanici, onizleme }) {
   // Yer tutucu KORUNUR: ankette crypto_hub_node_yeni_b64 icin zorunlu + varsayilanli bir soru
   // varsa prefill '' yerine '$encrypted$' koyar; kanca o zaman her talebi reddederdi.
   tamExtraVars = { ...tamExtraVars, crypto_hub_node_yeni_b64: '' };
+  if (dogrudan) {
+    return dogrudanBaslat({
+      req, db, tenant, grupId, plani, gerekce, username, talepId, esTalep, serverId, templateId, tamExtraVars, kapat,
+    });
+  }
   // 12
   const sablonVarsayilan = await sablonVarsayilaniOku();
-  const ozet = ozetKur({ tenant, plani, gerekce, username, esTalep });
+  const ozet = ozetKur({ tenant, plani, gerekce, username, esTalep, kaynak: smartKaynak });
   // 13
   let opened;
   try {
@@ -1911,7 +2014,14 @@ async function talepAc(req, { nodeYetkisi, kullanici, onizleme }) {
       auditAction: 'crypto_hub_node_change_ticket_open',
       req,
       // launchOncesi: runner poller geri cagrisindaki TEK kanca (launchOncesiDegerEkle).
-      pendingLaunchExtras: { onayZamanAsimiDk: N.ONAY_DK, yutmaKorumasi: true, launchOncesi: 'crypto_hub_node' },
+      // overrides: {} bekleyen paketteki smartApproval'i ezer: cozulmus token pending_launch_json'a
+      // (duz metin) yazilmaz. Token yalniz createTicket'e gider; poller overrides.smartApproval okumaz.
+      pendingLaunchExtras: {
+        onayZamanAsimiDk: N.ONAY_DK,
+        yutmaKorumasi: true,
+        launchOncesi: 'crypto_hub_node',
+        overrides: {},
+      },
     });
   } catch (e) {
     if (e && e.blocked === 'crypto_node_smart_sablon') {
@@ -2027,14 +2137,194 @@ async function talepAc(req, { nodeYetkisi, kullanici, onizleme }) {
   return { status: 200, body: out };
 }
 
+// Baglanti kurulamadi: istek AWX'e hic ulasmadi. ETIMEDOUT / ECONNRESET burada YOK, is baslamis olabilir.
+const BAGLANTI_YOK = new Set(['ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN', 'EHOSTUNREACH', 'ENETUNREACH']);
+
+/** Is kesin baslamadi mi? Yalniz o zaman kilit birakilir; suphede satir acik kalir. */
+function kesinRet(e) {
+  if (e && (e.code === 'ss_launch_hazir_degil' || e.postOncesi === true || BAGLANTI_YOK.has(e.code))) return true;
+  // Yutma korumasi: is acildi; iptal edilemediyse kosuyor olabilir.
+  if (e && e.code === 'awx_prompt_on_launch_disabled') return e.iptalEdildi !== false;
+  // httpStatus: JSON olmayan (vekil HTML) yanit; status tasimaz.
+  const st = Number(e && (e.status ?? e.httpStatus));
+  return st >= 400 && st < 500 && st !== 408;
+}
+
+/**
+ * Smart kapali TEST kiracisi: talepAc'in prefill sonrasi dali. Sira bilincli: deger hazirlanmadan
+ * satir sahiplenilmez, sahiplenmeden baslatilmaz, denetim baslatmadan once yazilir. Deger
+ * sahiplenmede kolondan silinir; bundan sonra yalniz bellekte ve AWX extra_vars'ta durur.
+ * @returns {Promise<{status: number, body: object}>}
+ */
+async function dogrudanBaslat({
+  req, db, tenant, grupId, plani, gerekce, username, talepId, esTalep, serverId, templateId, tamExtraVars, kapat,
+}) {
+  const ret = (status, blocked, message) => ({ status, body: { ok: false, blocked, message, talepId } });
+  // (a) Preflight/prefill suresince ayar degismis olabilir; kiraci yine sabit listeden.
+  let blob;
+  try {
+    blob = await SA.oku();
+  } catch {
+    await kapat('HATA', 'DOGRUDAN_AYAR', bosSonuc({ hata: METIN.smartOkunamadi }));
+    return ret(503, 'crypto_node_smart_okunamadi', METIN.smartOkunamadi);
+  }
+  if (!SA.smartKapaliMi(tenantOf(tenant.key), blob)) {
+    await kapat('HATA', 'DOGRUDAN_AYAR', bosSonuc({ hata: METIN.smartDegisti }));
+    return ret(409, 'crypto_node_smart_degisti', METIN.smartDegisti);
+  }
+  // (b) Plan / zarf / sha denetimleri poller yoluyla ayni kanca.
+  let hazir;
+  try {
+    hazir = await launchOncesiDegerEkle({ id: null, pendingLaunch: { extraVars: tamExtraVars } }, { db });
+  } catch (e) {
+    const m = kirp(e && e.message, 500);
+    await kapat('HATA', 'DOGRUDAN_HAZIRLIK', bosSonuc({ hata: m }));
+    return ret(409, 'crypto_node_dogrudan_hazirlik', METIN.dogrudanHazirlik(m));
+  }
+  // (c) CAS: tarama satiri bu arada kapattiysa is baslamaz.
+  let sahiplendi = false;
+  try {
+    const r = await db.query(
+      `UPDATE crypto_hub_node_changes SET durum = 'CALISIYOR', yeni_deger_secret = NULL, updated_at = SYSUTCDATETIME() WHERE id = $1 AND durum = 'ACILIYOR' AND kapandi_at IS NULL`,
+      [talepId],
+    );
+    sahiplendi = !!r && r.rowCount === 1;
+  } catch (e) {
+    console.warn('[CryptoHub] node talebi sahiplenilemedi:', talepId, e.message);
+    await kapat('HATA', 'DOGRUDAN_SAHIPLENME', bosSonuc({ hata: 'Talep satırı güncellenemedi.' }));
+    return ret(503, 'crypto_node_dogrudan_sahiplenme', 'Talep satırı güncellenemedi — iş başlatılmadı.');
+  }
+  if (!sahiplendi) return ret(409, 'crypto_node_dogrudan_sahiplenme', 'Talep bu arada kapandı — iş başlatılmadı.');
+  // (d) Denetim AWX'ten ONCE: is sonrasi cokme onaysiz kosuyu izsiz birakmasin.
+  try {
+    require('../audit/index.cjs').auditPortal(req, 'crypto_hub_node_onaysiz_calisti', {
+      detail: JSON.stringify({
+        tenant: tenant.key,
+        lokasyon: N.lokasyon(tenant),
+        grup: grupId,
+        talepId,
+        hedefler: plani.hedefler,
+        eskiOzet: plani.eskiOzet,
+        yeniOzet: plani.yeniOzet,
+        yeniSha: plani.newSha,
+        gerekce,
+      }),
+    });
+  } catch {
+    /* denetim yazilamadi - auditPortal zaten fire-and-forget */
+  }
+  const jobBagla = async (jobId) => {
+    try {
+      await db.query(
+        `UPDATE crypto_hub_node_changes SET durum = 'CALISIYOR', awx_server_id = $1, awx_job_id = $2, updated_at = SYSUTCDATETIME(), yeni_deger_secret = NULL WHERE id = $3 AND kapandi_at IS NULL`,
+        [serverId, jobId, talepId],
+      );
+    } catch (e) {
+      // Satir CALISIYOR + job yok kalir: kilit korunur, 90 dk sonra TAKILDI kapanir.
+      console.warn('[CryptoHub] node isi talebe baglanamadi:', talepId, e.message);
+    }
+    require('./resources.cjs').isKaydet(serverId, jobId, { username, tenantKey: tenant.key, action: 'node_change' });
+  };
+  // (e) launchJobOnServer ve gecmisIcin KULLANILMAZ: biri gizliler tasimaz, oteki degeri
+  // gecmise duz yazar. performSsLaunch ikisini de cozer (specFields password -> '***gizli***').
+  let sonuc;
+  try {
+    sonuc = await require('../ansible/runner.cjs').performSsLaunchOnServer(serverId, Number(templateId), {
+      detail: { ask_limit_on_launch: false },
+      extraVars: hazir.extraVars,
+      resolvedLaunchOptions: {},
+      specFields: [{ variable: 'crypto_hub_node_yeni_b64', type: 'password' }],
+      overrides: {},
+      username,
+      templateName: `Crypto Hub: node_change @ ${tenant.key}`,
+      req,
+      yutmaKorumasi: true,
+      gizliler: hazir.gizliler,
+    });
+  } catch (e) {
+    // Token ucu hatasi sunucu yanitindan parca tasir: kullaniciya ve sonuc_json'a sabit metin.
+    const m = e && e.postOncesi === true ? METIN.awxOturum : gizliTemizle(e && e.message, hazir.gizliler);
+    if (kesinRet(e)) {
+      await kapat('HATA', 'DOGRUDAN_HATA', bosSonuc({ hata: m }));
+      return ret(409, 'crypto_node_dogrudan_hata', METIN.dogrudanHata(m));
+    }
+    // Yutma korumasi iptal edemedi: is KOSUYOR ve numarasi belli. Baglanmazsa sonucu hic okunmaz,
+    // kilit 90 dk sonra is surerken acilirdi.
+    const kosan = e && e.code === 'awx_prompt_on_launch_disabled' ? Number(e.jobId) : 0;
+    if (Number.isInteger(kosan) && kosan > 0) {
+      await jobBagla(kosan);
+      return {
+        status: 424,
+        body: {
+          ok: false,
+          blocked: 'crypto_node_dogrudan_belirsiz',
+          message: METIN.dogrudanIptalEdilemedi(kosan, talepId),
+          talepId,
+          jobId: kosan,
+          awxServerId: serverId,
+        },
+      };
+    }
+    // Is baslamis olabilir: satir CALISIYOR kalir, kilit korunur; 90 dk sonra TAKILDI kapanir.
+    console.warn('[CryptoHub] node isi belirsiz:', talepId, m);
+    return ret(424, 'crypto_node_dogrudan_belirsiz', METIN.dogrudanBelirsiz(talepId));
+  }
+  const jobId = sonuc && sonuc.jobId != null ? Number(sonuc.jobId) : null;
+  if (!Number.isInteger(jobId) || jobId <= 0) {
+    return ret(424, 'crypto_node_dogrudan_belirsiz', METIN.dogrudanBelirsiz(talepId));
+  }
+  // (f)
+  await jobBagla(jobId);
+  // (g)
+  try {
+    require('../audit/index.cjs').auditPortal(req, 'crypto_hub_node_change_talep', {
+      detail: JSON.stringify({
+        tenant: tenant.key,
+        lokasyon: N.lokasyon(tenant),
+        grup: grupId,
+        hedefler: plani.hedefler,
+        bilesenler: plani.secilenler,
+        degismeyenler: plani.secilmeyenler,
+        eskiOzet: plani.eskiOzet,
+        yeniOzet: plani.yeniOzet,
+        yeniSha: plani.newSha,
+        bosRoller: plani.bosRoller,
+        gerekce,
+        talepId,
+        ticketId: null,
+        externalTicketId: null,
+        onaysiz: true,
+        awxJobId: jobId,
+        esTalepId: esTalep ? esTalep.id : null,
+      }),
+    });
+  } catch {
+    /* denetim yazilamadi - is yine de basladi */
+  }
+  // (h)
+  const out = {
+    ok: true,
+    pendingApproval: false,
+    onaysiz: true,
+    talepId,
+    jobId,
+    awxServerId: serverId,
+    message: METIN.onaysizBasladi(jobId),
+  };
+  const oneri = esOnerisi(tenant, grupId, talepId);
+  if (oneri) out.esTalepOnerisi = oneri;
+  return { status: 200, body: out };
+}
+
 // ── Launch oncesi kanca (sozlesme 4.3) ──────────────────────────────────────────────
 // runner.cjs poller geri cagrisi YALNIZ `pendingLaunch.launchOncesi === 'crypto_hub_node'` iken
-// cagirir. Bekleyen paketteki yer tutucu '' yerine sifreli kolondaki degeri koyar; paketin
+// cagirir; dogrudanBaslat da ayni denetimler icin buradan gecer. Bekleyen paketteki yer tutucu '' yerine sifreli kolondaki degeri koyar; paketin
 // kendisi DEGISMEZ (kopya doner). Her ret ASCII bir neden tasir, DEGER ICERMEZ.
 const B64_RE = /^[A-Za-z0-9+/]+={0,2}$/;
 
 /**
- * @param {{id: number, pendingLaunch: {extraVars: object}}} ticket  smart_tickets kaydi
+ * @param {{id: number|null, pendingLaunch: {extraVars: object}}} ticket  smart_tickets kaydi ya da
+ *   dogrudan yolun id:null sahte kaydi
  * @param {{db?: {query: Function}}} [o]
  * @returns {Promise<{extraVars: object, gizliler: string[]}>}
  */
@@ -2141,6 +2431,7 @@ module.exports = {
   nodeExtraVars,
   ozetKur,
   cryptoNodeMetadata,
+  taslakOnizle,
   okumaKarari,
   okumaKaydet,
   indeksVarMi,
@@ -2158,5 +2449,8 @@ module.exports = {
   OKUMA_ISLERI,
   KAPALI_DURUMLAR,
   ACIK_DURUMLAR,
+  DOGRUDAN_TAKILDI_DK,
+  ONAYSIZ_KOD,
+  kesinRet,
   _sifirla,
 };

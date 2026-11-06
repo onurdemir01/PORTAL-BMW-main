@@ -80,7 +80,8 @@ test('N6 /node-change kapilari (yetki, prod, bayat, Smart yok, indeks yok, gerek
     assert.equal(r.body.blocked, 'node_okuma_bayat', 'eksik okumayla talep acildi');
     h.NODE.NODE_OKUMA.clear();
     h.okumaVer();
-    // Smart yok -> 503; OpsX'te Smart KAPALI (enabled:false) olsa bile onaysiz kosmaz.
+    // Smart yok -> 503; OpsX'te Smart KAPALI (enabled:false) olsa bile onaysiz kosmaz. Kapatma
+    // yalniz Crypto Hub'in kendi ayarindan ve test kiracisinda (smart-ayar.test.cjs).
     const flow = h.d.opsxCfg.smart.openshift.flowKey;
     h.d.opsxCfg.smart.openshift = { ...h.d.opsxCfg.smart.openshift, flowKey: '', enabled: false };
     const envOnce = process.env.OPSX_SMART_FLOW_KEY_OPENSHIFT;
@@ -257,7 +258,7 @@ test('N8 openSmartTicket argumanlari birebir; preflight + prefill bilet ONCESI',
     assert.deepEqual(a.detail, { ask_limit_on_launch: false });
     assert.deepEqual(a.resolvedLaunchOptions, {});
     assert.deepEqual(a.specFields, [{ variable: 'crypto_hub_node_yeni_b64', type: 'password' }]);
-    assert.deepEqual(a.pendingLaunchExtras, { onayZamanAsimiDk: 1440, yutmaKorumasi: true, launchOncesi: 'crypto_hub_node' });
+    assert.deepEqual(a.pendingLaunchExtras, { onayZamanAsimiDk: 1440, yutmaKorumasi: true, launchOncesi: 'crypto_hub_node', overrides: {} });
     assert.equal(a.extraVars.crypto_hub_node_yeni_b64, '', 'bekleyen pakette deger var');
     assert.ok(!('crypto_hub_node_id' in a.extraVars));
     assert.ok('crypto_hub_node_yeni_b64' in h.d.preflight[0].ev, 'preflight yeni_b64 anahtarini gormedi');
@@ -477,7 +478,7 @@ test('N10 erisim: node-only kullanici yalniz node uclari; /tenants isaretleri; i
     assert.equal(r.status, 403, 'node-only kullanici /ops rollout calistirdi');
     r = await h.istek('GET', `/overview?tenant=${T}`, K.nodecu);
     assert.equal(r.status, 403);
-    // /ops node islemlerini TANIMAZ (Smart'siz node_change yolu yok) - metaco yetkilisi icin de.
+    // /ops node islemlerini TANIMAZ - metaco yetkilisi icin de.
     for (const action of ['node_change', 'node_env_get']) {
       r = await h.istek('POST', '/ops', K.metacocu, { tenant: T, action, targets: ['deployment/x'], confirmed: true });
       assert.equal(r.status, 400, `/ops ${action} kabul etti`);

@@ -618,7 +618,10 @@ test('N5c PS3 OpsX esligi: gercek opsxProductionKapisi baglaminin anahtarlari no
   const yakala = [];
   const sablonVar = { job_type: 'run' };
   const sabit = { ek_sabit: 'v1', email: '' };
-  const metaSahte = { buildSmartMetadata: (raw, ctx) => (yakala.push(ctx), { X: 'y' }) };
+  const metaSahte = {
+    parseSimpleYaml: require('../../smart/metadata.cjs').parseSimpleYaml,
+    buildSmartMetadata: (raw, ctx) => (yakala.push(ctx), { X: 'y' }),
+  };
   const opsxCtx = await sahteyle(
     {
       'opsx/config.cjs': {

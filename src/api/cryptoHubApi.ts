@@ -625,10 +625,17 @@ export interface NodeOkumaAraclari {
   patchFile: NodeAracDurumu;
 }
 
+/** Sunucu kararı: 'kapali' yalnız test kiracısında, Crypto Hub ayarından Smart kapatılmışsa. */
+export type NodeSmartMod = 'onay' | 'kapali';
+export type NodeSmartKaynak = 'crypto' | 'opsx';
+
 export interface CryptoNodesResponse {
   ok: boolean;
   blocked?: string;
   message?: string;
+  smartMod?: NodeSmartMod;
+  /** null = ayar eksik ya da okunamadı */
+  smartKaynak?: NodeSmartKaynak | null;
   tenant?: {
     key: string;
     label: string;
@@ -671,6 +678,10 @@ export interface NodeChangeResult {
   externalTicketId?: string | null;
   talepId?: number;
   onayZamanAsimiDk?: number;
+  /** true = Smart kapalı test kiracısı: bilet yok, iş başladı */
+  onaysiz?: boolean;
+  jobId?: number;
+  awxServerId?: number;
   esTalepOnerisi?: NodeEsTalepOnerisi | null;
   blocked?: string;
   message?: string;
@@ -761,6 +772,8 @@ export interface NodeChangeBody {
   esTalepId?: number;
   /** değişecek bileşenlerin deployment adları (yoksa node taşıyan hepsi) */
   bilesenler?: string[];
+  /** kullanıcı onaysız başlatma metnini gördü. Kapıyı açmaz; sunucu kararına uymazsa istek durur */
+  onaysizKabul?: boolean;
 }
 
 export interface NodeKapatResult {
@@ -774,10 +787,34 @@ export interface NodeKapatResult {
 export interface NodeSmartOnizleme {
   ok: boolean;
   flowKey?: string;
+  kaynak?: NodeSmartKaynak;
+  smartMod?: NodeSmartMod;
   metadata?: Record<string, string>;
   hata?: string;
   blocked?: string;
   message?: string;
+}
+
+/** GET/PUT /smart-config. Token değeri hiçbir zaman dönmez. */
+export interface CryptoSmartAyarYaniti {
+  ok: boolean;
+  smart?: { enabled: boolean; flowKey: string; metadataFields: string; integrationKeySet: boolean };
+  kaynak?: NodeSmartKaynak | null;
+  durum?: 'kendi' | 'opsx' | 'testte_kapali' | 'eksik' | 'token_cozulemedi';
+  opsxFlowKey?: string;
+  sifrelemeVar?: boolean;
+  blocked?: string;
+  message?: string;
+  reddedilen?: string[];
+}
+
+export interface CryptoSmartAyarGovde {
+  /** yalnız kullanıcı değiştirdiyse gönderilir: bayat pencere başka yöneticinin kararını ezmesin */
+  enabled?: boolean;
+  flowKey: string;
+  metadataFields: string;
+  /** boş = değiştirme */
+  integrationKey: string;
 }
 
 const postJson = (url: string, body: unknown) =>
@@ -797,18 +834,32 @@ export const cryptoNodeApi = {
   readStatus: (awxServerId: number, jobId: number): Promise<NodeReadStatus> =>
     fetch(`${BASE}/node-read/${awxServerId}/${jobId}`).then(safeJson),
 
-  /** Smart talebi açar; onaydan sonra Portal işi kendisi başlatır. */
+  /** Smart talebi açar; onaydan sonra Portal işi kendisi başlatır. Smart kapalı test kiracısında iş hemen başlar. */
   change: (body: NodeChangeBody): Promise<NodeChangeResult> =>
     postJson(`${BASE}/node-change`, body),
 
   changeDetail: (talepId: number): Promise<NodeChangeDetail> =>
     fetch(`${BASE}/node-change/${talepId}`).then(safeJson),
 
-  /** Yalnız Admin: OpsX OpenShift Smart şablonunun bu talep için render'ı. Smart'a GİTMEZ. */
+  /** Yalnız Admin: geçerli Smart şablonunun bu talep için render'ı. Smart'a GİTMEZ. */
   smartOnizle: (body: { tenant: string; grup: string; bilesenler?: string[] }): Promise<NodeSmartOnizleme> =>
     postJson(`${BASE}/node-smart-onizle`, body),
 
   /** Yalnız Admin: takılı açık talebi gerekçeyle kapatır (denetime yazılır). */
   kapat: (talepId: number, gerekce: string): Promise<NodeKapatResult> =>
     postJson(`${BASE}/node-change/${talepId}/kapat`, { gerekce }),
+
+  /** Yalnız Admin: Crypto Hub Smart ayarı. */
+  smartAyar: (): Promise<CryptoSmartAyarYaniti> => fetch(`${BASE}/smart-config`).then(safeJson),
+
+  smartAyarKaydet: (smart: CryptoSmartAyarGovde): Promise<CryptoSmartAyarYaniti> =>
+    fetch(`${BASE}/smart-config`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ smart }),
+    }).then(safeJson),
+
+  /** Yalnız Admin: kaydedilmemiş şablon, gerçek talep yoluyla render edilir. Smart'a GİTMEZ. */
+  smartAyarOnizle: (metadataFields: string): Promise<NodeSmartOnizleme> =>
+    postJson(`${BASE}/smart-config/onizle`, { metadataFields }),
 };

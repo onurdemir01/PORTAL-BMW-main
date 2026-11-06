@@ -1,5 +1,6 @@
 // src/components/crypto_hub/NodeTakip.tsx — Crypto Hub > Indexer / Node: talep takibi (2026-11-02).
 //
+// Smart kapalı test kiracısında bilet yoktur: yalnız 2. kaynak izlenir, takip "Uygulanıyor"dan başlar.
 // Talep açıldıktan sonra iki kaynak izlenir:
 //   1) Smart onayı: OpsX'in ortak kancası (useOnaySonrasiTakip) — Smart durum adı AYNEN ve
 //      son tarih sayacı. Kanca OpsX'te kalır, buradan yalnız içe aktarılır.
@@ -99,7 +100,9 @@ export function NodeTakip({
   const [simdi, setSimdi] = useState(() => Date.now());
 
   const talep = detay?.talep || null;
-  const durum = talep?.durum || (yeniAcildi?.ok ? 'BEKLIYOR' : 'ACILIYOR');
+  // Smart kapalı yolda bilet yok: takip CALISIYOR'dan başlar. Belirsiz launch da satırı orada bırakır.
+  const onaysiz = !!yeniAcildi?.onaysiz || yeniAcildi?.blocked === 'crypto_node_dogrudan_belirsiz';
+  const durum = talep?.durum || (onaysiz ? 'CALISIYOR' : yeniAcildi?.ok ? 'BEKLIYOR' : 'ACILIYOR');
   const kapali = talep ? !acikMi(talep.durum) || !!talep.kapandiAt : false;
 
   // Portal talep satırı: kapanana dek aralıkla sorulur. Geçici ağ hatası takibi DURDURMAZ.
@@ -215,7 +218,14 @@ export function NodeTakip({
 
       {yeniAcildi?.ok && !kapali && (
         <p className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>
-          {METIN.talepAcildi(yeniAcildi.externalTicketId || no)}
+          {yeniAcildi.onaysiz
+            ? METIN.onaysiz.basladi(yeniAcildi.jobId ?? '?')
+            : METIN.talepAcildi(yeniAcildi.externalTicketId || no)}
+        </p>
+      )}
+      {yeniAcildi && !yeniAcildi.ok && yeniAcildi.message && !kapali && (
+        <p className="text-[12px]" style={{ color: 'var(--status-warning)' }}>
+          {yeniAcildi.message}
         </p>
       )}
 

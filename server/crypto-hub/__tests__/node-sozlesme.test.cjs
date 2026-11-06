@@ -353,7 +353,7 @@ test('N15 DB: tablo, filtreli tekil indeks ayri blokta, genel indeksler, yetki o
   assert.match(NODE_SRC, /name = 'UX_chnc_acik' AND is_unique = 1 AND has_filter = 1/);
 });
 
-test('N12b /ops node islemlerini tanimaz (Smart\'siz node_change yolu yok)', () => {
+test('N12b /ops node islemlerini tanimaz (Smart kapali test yolu da yalniz /node-change uzerinden)', () => {
   const { normalizeOps, OPS, NODE_OPS } = require('../index.cjs');
   for (const a of Object.keys(NODE_OPS)) {
     assert.equal(OPS[a], undefined);
@@ -446,4 +446,30 @@ test('N16 node uclari index.cjs router\'inda kimlik + gorunurluk kapisinin ARKAS
   assert.ok(node > gor, 'node uclari kapilardan ONCE baglaniyor');
   const nodeSrc = oku(KOK, 'server', 'crypto-hub', 'node.cjs');
   assert.ok(!/express\.Router\(|\bapp\.(get|post|use)\(/.test(nodeSrc), 'node.cjs kendi router/app baglantisini kuruyor');
+});
+
+test('N20 dogrudan yol sozlesmesi: yalniz kopru, gecmisIcin yok; smart-config uclari kapilardan sonra', () => {
+  const src = oku(KOK, 'server', 'crypto-hub', 'node.cjs');
+  const bas = src.indexOf('async function dogrudanBaslat(');
+  const son = src.indexOf('// ── Launch oncesi kanca');
+  assert.ok(bas > 0 && son > bas, 'dogrudanBaslat bulunamadi');
+  const govde = src.slice(bas, son);
+  assert.match(govde, /performSsLaunchOnServer\(/);
+  assert.doesNotMatch(govde.replace(/^\s*\/\/.*$/gm, ''), /launchJobOnServer|gecmisIcin/, 'degeri gizlemeyen yol kullanildi');
+  assert.match(govde, /yutmaKorumasi: true/);
+  const index = oku(KOK, 'server', 'crypto-hub', 'index.cjs');
+  const auth = index.indexOf('router.use(requireAuth)');
+  const gor = index.indexOf("requireVisible('CryptoHub')");
+  const ayar = index.indexOf('initCryptoHubSmartAyar(router');
+  assert.ok(auth > 0 && gor > auth && ayar > gor, 'smart-config uclari kapilardan once baglaniyor');
+  // Fallback requireAuth'a baglanmamali: her oturumlu kullanici ayari degistirirdi.
+  assert.match(index, /typeof authMod\.requireAdmin === 'function'[\s\S]{0,120}res\.status\(403\)/);
+});
+
+test('N21 runner koprusu poller ile ayni govdeye baglanir', () => {
+  const src = oku(KOK, 'server', 'ansible', 'runner.cjs');
+  assert.match(src, /_ssLaunch = performSsLaunch;/);
+  assert.match(src, /async function performSsLaunchOnServer\(serverId, templateId, args\)/);
+  assert.match(src, /code: 'ss_launch_hazir_degil'/);
+  assert.match(src, /code: 'awx_prompt_on_launch_disabled', jobId, iptalEdildi/);
 });

@@ -47,6 +47,12 @@ async function kur(secenek = {}) {
         req.session = { user: JSON.parse(h) };
         next();
       },
+      requireAdmin(req, res, next) {
+        if (!(req.session && req.session.user && req.session.user.role === 'Admin')) {
+          return res.status(403).json({ ok: false });
+        }
+        next();
+      },
     },
     'server/auth/visibility.cjs': {
       requireVisible: () => (_req, _res, next) => next(),

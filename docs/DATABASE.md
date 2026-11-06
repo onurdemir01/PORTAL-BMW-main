@@ -32,7 +32,7 @@ Baglanti: `PORTAL_DB_*` env'leri (bos alanlar `MSSQL_*`'e duser) —
 | `duty_roster` | duty-roster.json — `UNIQUE(duty_date, email)` | duty-roster/index.cjs |
 | `inventory_saved_queries` | inventory-saved-queries.json | inventory/index.cjs |
 | `inventory_table_aliases` / `inventory_visible_tables` | (zaten DB) | inventory/index.cjs |
-| `portal_config_blobs` | Eski blob aynasi — yalnizca goc kaynagi, artik guncellenmez | db/config-mirror.cjs |
+| `portal_config_blobs` | Eski blob aynasi goc kaynagi; ayrica canli ayar satirlari: `opsx:params`, `retirement:scc`, `crypto-hub:smart` (Crypto Hub node Smart ayari; token sifreli, onbelleksiz okunur) | db/config-mirror.cjs, opsx/config.cjs, crypto-hub/smart-ayar.cjs |
 
 ## Gorevler (KALDIRILDI)
 

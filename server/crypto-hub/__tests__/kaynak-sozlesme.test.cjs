@@ -62,8 +62,7 @@ test('SB1 Portal OPS == ekran WRITES == API tip birligi (okur/yazar ayni)', () =
 
 test('SB2 Portal OPS + NODE_OPS == playbook ch_islemler == betik case listesi (Ansible deposu varsa)', (t) => {
   // Indexer / Node (2026-11-02): node_env_get / node_change OPS'ta DEGIL (/ops onlari reddeder,
-  // node_change yalniz Smart onayindan sonra poller ile kosar) ama playbook ve betik listesinde
-  // VAR. Karsilastirma birlesimle yapilir; iki kume ayrik olmali.
+  // node_change yalniz /node-change kapilarindan gecer) ama playbook ve betik listesinde VAR. Karsilastirma birlesimle yapilir; iki kume ayrik olmali.
   for (const a of Object.keys(NODE_OPS)) assert.ok(!OPS[a], `${a} OPS'a eklenmis - /ops Smart'siz kostururdu`);
   if (!ansibleVar()) return t.skip('Ansible deposu bu makinede yok (CRYPTO_HUB_ANSIBLE_ROOT)');
   const yml = kodsuz(oku(CH, 'crypto_hub_ops.yml'));
