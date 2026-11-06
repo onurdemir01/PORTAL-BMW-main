@@ -77,49 +77,79 @@ function jvmKopyasi(h, j, adaylar) {
   };
 }
 
-/** Konu -> kopyalar (ayni ortamdaki TUM kopyalar; aday olmayan kopya da zincire girer). */
-function kopyalariTopla(konu, hostlar, adayIndeksi) {
-  const { tur, ortam } = konu;
-  const out = [];
+/** EAR kopyasi; bagli JVM'lerin calisma durumu ayni sunucunun Server Hub verisinden. */
+function earKopyasi(h, u, adaylar, jvmAdIndeksi) {
+  const ear = h.ear;
+  return {
+    host: h.host,
+    kok: u.kok,
+    durum: u.durum,
+    warSayisi: u.warSayisi,
+    xml: u.xml ? u.xml.durum : null,
+    xmlNeden: u.xml ? u.xml.neden || null : null,
+    jvmler: ((u.xml && u.xml.jvmler) || []).map((x) => {
+      const sj = jvmAdIndeksi.get(`${h.host}|${L(x.ad)}`);
+      return {
+        ad: x.ad,
+        autoStart: x.auto_start !== false,
+        calisiyor: !sj ? null : sj.runningKnown === false ? null : !!sj.running,
+      };
+    }),
+    taranma: ear.taranma || null,
+    kurallar: adaylar.map((a) => a.kural).sort(),
+  };
+}
+
+/**
+ * HIZ (2026-11-06 inceleme: 2000 sunucu / 16 bin adayda 4,6 sn): filo BIR KEZ indekslenir; konu
+ * basina tum filo gezilmez. jvm: ortam|ad -> [{h, j}] (tum nesiller; nesil konuda suzulur),
+ * ear: ortam|AD|nesil -> [{h, u}], jvmAd: host|ad -> j, aday: anahtar -> host -> [aday], host: ad -> h.
+ */
+function indeksle(hostlar, adaylarOf) {
+  const ekle = (m, k, v) => {
+    if (!m.has(k)) m.set(k, []);
+    m.get(k).push(v);
+  };
+  const ix = { jvm: new Map(), ear: new Map(), jvmAd: new Map(), aday: new Map(), host: new Map() };
   for (const h of hostlar) {
-    if (h.env !== ortam) continue;
-    const ada = (adayIndeksi.get(h.host) || []).filter((a) => anahtarOf(a, ortam) === konu.anahtar);
-    if (tur === 'JVM') {
-      for (const j of h.jvms || [])
-        if (L(j.name) === L(konu.ad) && (Number(j.gen) || 0) === konu.gen)
-          out.push(jvmKopyasi(h, j, ada));
-    } else if (tur === 'EAR') {
-      const ear = h.ear && h.ear.durum === 'VAR' ? h.ear : null;
-      for (const u of (ear && ear.uygulamalar) || [])
-        if (U(u.ad) === U(konu.ad) && nesilOfKok(u.kok) === konu.nesil)
-          out.push({
-            host: h.host,
-            kok: u.kok,
-            durum: u.durum,
-            warSayisi: u.warSayisi,
-            xml: u.xml ? u.xml.durum : null,
-            xmlNeden: u.xml ? u.xml.neden || null : null,
-            jvmler: ((u.xml && u.xml.jvmler) || []).map((x) => {
-              const sj = (h.jvms || []).find((j) => L(j.name) === L(x.ad));
-              return {
-                ad: x.ad,
-                autoStart: x.auto_start !== false,
-                calisiyor: !sj ? null : sj.runningKnown === false ? null : !!sj.running,
-              };
-            }),
-            taranma: ear.taranma || null,
-            kurallar: ada.map((a) => a.kural).sort(),
-          });
-    } else {
-      const ear = h.ear && h.ear.durum === 'VAR' ? h.ear : null;
-      if (!ear) continue;
-      for (const a of ada)
+    ix.host.set(h.host, h);
+    for (const j of h.jvms || []) {
+      ekle(ix.jvm, `${h.env}|${L(j.name)}`, { h, j });
+      if (!ix.jvmAd.has(`${h.host}|${L(j.name)}`)) ix.jvmAd.set(`${h.host}|${L(j.name)}`, j);
+    }
+    if (h.ear && h.ear.durum === 'VAR')
+      for (const u of h.ear.uygulamalar || [])
+        ekle(ix.ear, `${h.env}|${U(u.ad)}|${nesilOfKok(u.kok)}`, { h, u });
+    for (const a of adaylarOf(h)) {
+      const k = anahtarOf(a, h.env);
+      if (!ix.aday.has(k)) ix.aday.set(k, new Map());
+      ekle(ix.aday.get(k), h.host, a);
+    }
+  }
+  return ix;
+}
+
+/** Konu -> kopyalar (ayni ortamdaki TUM kopyalar; aday olmayan kopya da zincire girer). */
+function kopyalariTopla(konu, ix) {
+  const ada = ix.aday.get(konu.anahtar) || new Map();
+  const adaOf = (host) => ada.get(host) || [];
+  const out = [];
+  if (konu.tur === 'JVM') {
+    for (const { h, j } of ix.jvm.get(`${konu.ortam}|${L(konu.ad)}`) || [])
+      if ((Number(j.gen) || 0) === konu.gen) out.push(jvmKopyasi(h, j, adaOf(h.host)));
+  } else if (konu.tur === 'EAR') {
+    for (const { h, u } of ix.ear.get(`${konu.ortam}|${U(konu.ad)}|${konu.nesil}`) || [])
+      out.push(earKopyasi(h, u, adaOf(h.host), ix.jvmAd));
+  } else {
+    for (const [host, liste] of ada) {
+      const h = ix.host.get(host);
+      for (const a of liste)
         out.push({
-          host: h.host,
+          host,
           kok: a.kok,
           tip: a.tip || '?',
           hedef: a.hedef || null,
-          taranma: ear.taranma || null,
+          taranma: (h && h.ear && h.ear.taranma) || null,
           kurallar: [a.kural],
         });
     }
@@ -189,14 +219,13 @@ function kanitImzasi(konu, kopyalar, kurallar) {
 function etiketle({ hosts, kurallar = {}, kontroller = new Map() }) {
   const seviyeOf = (kural) => kurallar[kural] || (KURAL.get(kural) || {}).varsayilan || 'KAPALI';
   const hostlar = (hosts || []).filter((h) => !h.taramadanDustu);
-  const adayIndeksi = new Map();
   const konular = new Map();
+  // Yalniz etkin (KAPALI olmayan) kurallarin adaylari.
+  const adaylarOf = (h) =>
+    (h.retireAdaylari || []).filter((a) => KURAL.has(a.kural) && seviyeOf(a.kural) !== 'KAPALI');
+  const ix = indeksle(hostlar, adaylarOf);
   for (const h of hostlar) {
-    const ada = (h.retireAdaylari || []).filter(
-      (a) => KURAL.has(a.kural) && seviyeOf(a.kural) !== 'KAPALI',
-    );
-    adayIndeksi.set(h.host, ada);
-    for (const a of ada) {
+    for (const a of adaylarOf(h)) {
       const anahtar = anahtarOf(a, h.env);
       if (!konular.has(anahtar))
         konular.set(anahtar, {
@@ -216,24 +245,15 @@ function etiketle({ hosts, kurallar = {}, kontroller = new Map() }) {
   for (const konu of konular.values()) {
     const kl = [...konu.kurallar].sort();
     const ham = kl.reduce((m, k) => (SIRA[seviyeOf(k)] > SIRA[m] ? seviyeOf(k) : m), 'KAPALI');
-    const kopyalar = kopyalariTopla(konu, hostlar, adayIndeksi);
+    const kopyalar = kopyalariTopla(konu, ix);
     const nedenler = zincirNedenleri(konu, kopyalar, kl);
     const seviye = ham === 'KESIN' && nedenler.length ? 'SUPHELI' : ham;
     // Diger nesildeki kopya (JVM): tasinma isareti, etiketi dusurmez.
     const notlar = [];
     if (konu.tur === 'JVM')
-      for (const h of hostlar)
-        if (h.env === konu.ortam)
-          for (const j of h.jvms || [])
-            if (
-              L(j.name) === L(konu.ad) &&
-              (Number(j.gen) || 0) !== konu.gen &&
-              j.running &&
-              j.runningKnown !== false
-            )
-              notlar.push(
-                `${h.host}: JBoss ${j.gen} kopyası çalışıyor — uygulama taşınmış olabilir`,
-              );
+      for (const { h, j } of ix.jvm.get(`${konu.ortam}|${L(konu.ad)}`) || [])
+        if ((Number(j.gen) || 0) !== konu.gen && j.running && j.runningKnown !== false)
+          notlar.push(`${h.host}: JBoss ${j.gen} kopyası çalışıyor — uygulama taşınmış olabilir`);
     const imza = kanitImzasi(konu, kopyalar, kl);
     const kayit = kontroller ? kontroller.get(konu.anahtar) || null : null;
     const durum = !kontroller
@@ -288,4 +308,14 @@ function etiketle({ hosts, kurallar = {}, kontroller = new Map() }) {
   };
 }
 
-module.exports = { etiketle, anahtarOf, kanitImzasi, zincirNedenleri, nesilOfKok };
+/**
+ * Liste yaniti icin ozet: kopyalar (zincirin tum halkalari) DUSULUR, sayisi kalir. Buyuk filoda
+ * liste yaniti 12,8 MB'a cikiyordu (2026-11-06 inceleme); kopyalar etiket acilinca ayrinti ucundan
+ * EKSIKSIZ gelir. Hicbir alan kesilmez: ya tam etiket ya ozet + sayi.
+ */
+function ozetle(e) {
+  const { kopyalar, ...geri } = e;
+  return { ...geri, kopyaSayisi: kopyalar.length };
+}
+
+module.exports = { etiketle, ozetle, anahtarOf, kanitImzasi, zincirNedenleri, nesilOfKok };
