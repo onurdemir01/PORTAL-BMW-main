@@ -28,7 +28,7 @@
 //   RE13 CAPRAZ (2026-11-06): auto-start uyumsuzlugu R7 / R8 adayi; kopya (R9), ortam kalintisi (R10),
 //        OpenShift (R11), Retirement celiskisi (R12) bulgu + aday; etikette Retirement baglami; R8 KESIN
 //        iken calisan kopya dusurur, R7 dusurmez; okunamayan kaynak / bayat sunucu / eski EAR -> YOK
-//   RE10 uclar (GERCEK initServerHub): GET /retire-etiketleri (capraz kaynak durumu dahil); PUT /retire-kontrol 400 / 409 (etiket yok,
+//   RE10 uclar (GERCEK initServerHub): GET /retire-etiketleri (capraz kaynak durumu dahil), Uygulama 360 kapisi; PUT /retire-kontrol 400 / 409 (etiket yok,
 //        imza eski) / 424 (kayitlar okunamadi) / 200 + gecmis + denetim; PUT /kurallar/etiket gerekce
 //        zorunlu; PUT /kurallar/kok-yoksay gecersiz ad / 256 karakter -> 400, gecerli liste bulguyu kaldirir
 'use strict';
@@ -973,6 +973,15 @@ test('RE10 uclar: etiket listesi, manuel kontrol (400 / 409 / 424 / 200), kural 
   await httpIle(async (kok) => {
     const yasak = await fetch(`${kok}/retire-etiketleri`, { headers: { 'x-rol': 'Operator' } });
     assert.equal(yasak.status, 403, 'Admin olmayan etiketleri gordu');
+    // Uygulama 360 (2026-11-07) ayni kapinin arkasinda; etiket ve kopya ayni degerlendirmeden.
+    for (const p of ['/uygulamalar-360', '/uygulama-360/oldapp'])
+      assert.equal((await fetch(`${kok}${p}`, { headers: { 'x-rol': 'Operator' } })).status, 403, p);
+    const u360 = await fetch(`${kok}/uygulamalar-360?fresh=1`).then(J);
+    assert.equal(u360.status, 200, JSON.stringify(u360.body));
+    const old = u360.body.uygulamalar.find((u) => u.anahtar === 'OLDAPP');
+    assert.deepEqual([old.etiket.seviye, old.kapali, old.autostartUyumsuz], ['KESIN', 1, 1]);
+    const u360a = await fetch(`${kok}/uygulama-360/oldapp`).then(J);
+    assert.deepEqual([u360a.status, u360a.body.uygulama.kopyalar.length], [200, 1]);
     let r = await fetch(`${kok}/retire-etiketleri?fresh=1`).then(J);
     assert.equal(r.status, 200, JSON.stringify(r.body));
     assert.equal(r.body.kontrolOkunamadi, false);
@@ -1340,6 +1349,14 @@ test('RE13 capraz: R7 / R8 adaylari; kopya, ortam kalintisi, OpenShift, Retireme
   assert.equal(kal.length, 1);
   assert.match(kal[0].text, /^JBoss7 legacy-T \(TEST\) çalışıyor ama legacy prod'da çalışmıyor — prod'da kopyası yok/);
   assert.equal(bul(r, APP, 'KOPYA_TUTARSIZ').length, 0, 'calisan kopya sapan degil');
+  // Uygulama 360 capraz sonucu JVM'den okur (j.capraz); sonucu olmayan JVM'de alan yok.
+  const jv = (h, ad) => sunucu(r, h).jvms.find((j) => j.name === ad);
+  assert.deepEqual(
+    [!!jv(APP2, 'pay').capraz.kopya, jv(APP2, 'pay').capraz.celiski.length, !!jv(APP2, 'pay').capraz.ocp],
+    [true, 1, true],
+  );
+  assert.equal(jv(TEST_APP, 'legacy-T').capraz.kalinti.neden, 'PROD_YOK');
+  assert.equal(jv(APP, 'batch').capraz.ocp.aday, false);
   // Etiket: tek konu, iki kopya, Retirement baglami; ozet de baglami tasir.
   const et = etiketle({ hosts: r.hosts });
   const pay = et.etiketler.find((e) => e.anahtar === 'JVM|PAY|PROD|7');

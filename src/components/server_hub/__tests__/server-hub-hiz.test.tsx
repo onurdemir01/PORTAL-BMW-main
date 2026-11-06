@@ -108,6 +108,8 @@ describe('Server Hub hızı', () => {
     }
   });
 
+  // 700 satir cizer (tek basina ~1,5 sn); amac sure degil 300 satirlik sinir. Paralel suit yukunde 5 sn'lik
+  // varsayilan pay asiliyordu (2026-11-07): acik zaman asimi.
   it('SH3 çizim sınırı', async () => {
     m.overview.mockResolvedValue(overview(700));
     render(<ServerHubPage />);
@@ -124,7 +126,7 @@ describe('Server Hub hızı', () => {
     expect(screen.queryByText(/gösteriliyor/)).toBeNull();
     fireEvent.change(screen.getByPlaceholderText(/sunucu/i), { target: { value: 'APPSRV0' } });
     await waitFor(() => expect(screen.getByText(/300 \/ 700 gösteriliyor/)).toBeInTheDocument());
-  });
+  }, 20000);
 });
 
 describe('SH4 gizli sekmede yoklama yok', () => {
