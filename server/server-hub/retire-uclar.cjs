@@ -1,7 +1,8 @@
 // server/server-hub/retire-uclar.cjs - Server Hub > Retirement etiketleri uclari (2026-11-06).
 //
-// GET  /retire-etiketleri            etiketler (KESIN / SUPHELI), eslenik kopyalar, zincir nedenleri,
-//                                    manuel kontrol durumu, kural seviyeleri; ?fresh=1 tazeler
+// GET  /retire-etiketleri            etiketler (KESIN / SUPHELI) OZET: zincir nedenleri, sunucular, kopya
+//                                    sayisi, manuel kontrol durumu, kural seviyeleri; ?fresh=1 tazeler
+// GET  /retire-etiketleri/ayrinti    ?anahtar= : tek etiket, eslenik kopyalarin TAMAMI (zincir)
 // PUT  /retire-kontrol               { anahtar, sonuc: DOGRULANDI | YANLIS_ALARM | GERI_AL, aciklama, imza }
 // GET  /retire-kontrol/gecmis        ?anahtar=  (bos: tum gecmis)
 // Router zaten yalniz Admin ve gorunurluk kapisinin arkasinda (index.cjs). Kontrol yalniz GUNCEL
@@ -10,7 +11,7 @@
 'use strict';
 
 const { ETIKET_KURALLARI } = require('./kural-katalogu.cjs');
-const { etiketle } = require('./retire-etiket.cjs');
+const { etiketle, ozetle } = require('./retire-etiket.cjs');
 
 function kurallarListesi(ayar) {
   return ETIKET_KURALLARI.map((k) => {
@@ -57,7 +58,9 @@ function mount(router, { getAssessment, ayarlar, kontrol, audit }) {
         kontrolOkunamadi: kontroller === null,
         ayarOkunamadi: ayar.okunamadi === true,
         kurallar: kurallarListesi(ayar),
-        ...sonuc,
+        ozet: sonuc.ozet,
+        // Liste kopyalari tasimaz (buyuk filoda MB'lar); acilan etiket ayrinti ucundan tam gelir.
+        etiketler: sonuc.etiketler.map(ozetle),
       });
     } catch (err) {
       res
@@ -66,19 +69,11 @@ function mount(router, { getAssessment, ayarlar, kontrol, audit }) {
     }
   });
 
-  router.put('/retire-kontrol', async (req, res) => {
-    const b = req.body || {};
+  router.get('/retire-etiketleri/ayrinti', async (req, res) => {
     try {
-      const { kontroller, sonuc } = await hesap(false);
-      if (kontroller === null)
-        return res
-          .status(424)
-          .json({
-            ok: false,
-            message:
-              'Manuel kontrol kayıtları okunamadı; şimdi yazılamaz. Biraz sonra yeniden deneyin.',
-          });
-      const e = sonuc.etiketler.find((x) => x.anahtar === String(b.anahtar || ''));
+      const anahtar = String(req.query.anahtar || '').slice(0, 400);
+      const { sonuc } = await hesap(false);
+      const e = sonuc.etiketler.find((x) => x.anahtar === anahtar);
       if (!e)
         return res
           .status(409)
@@ -86,6 +81,28 @@ function mount(router, { getAssessment, ayarlar, kontrol, audit }) {
             ok: false,
             message: 'Bu etiket artık yok (son taramada koşul kalktı). Listeyi yenileyin.',
           });
+      res.json({ ok: true, etiket: e });
+    } catch (err) {
+      res.status(500).json({ ok: false, message: err.message || 'Etiket ayrıntısı alınamadı.' });
+    }
+  });
+
+  router.put('/retire-kontrol', async (req, res) => {
+    const b = req.body || {};
+    try {
+      const { kontroller, sonuc } = await hesap(false);
+      if (kontroller === null)
+        return res.status(424).json({
+          ok: false,
+          message:
+            'Manuel kontrol kayıtları okunamadı; şimdi yazılamaz. Biraz sonra yeniden deneyin.',
+        });
+      const e = sonuc.etiketler.find((x) => x.anahtar === String(b.anahtar || ''));
+      if (!e)
+        return res.status(409).json({
+          ok: false,
+          message: 'Bu etiket artık yok (son taramada koşul kalktı). Listeyi yenileyin.',
+        });
       if (e.imza !== String(b.imza || ''))
         return res.status(409).json({
           ok: false,

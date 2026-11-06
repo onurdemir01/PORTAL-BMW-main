@@ -21,6 +21,8 @@
 //        retirement'a hazir; kayitlar okunamadi -> BILINMIYOR; imza istek sayisiyla degismez, durumla degisir
 //   RE8  ear-hub-verisi: son kosu, JSON ayristirma, bozuk JSON null, DB hatasi okunamadi
 //   RE9  katalog: her etiket kurali ve retire ile ilgili kod uc parcali dogrulama tasir
+//   RE11 HIZ: 2000 sunucu / ~16 bin aday 1,5 sn altinda (filo bir kez indekslenir; eski konu basina
+//        tarama 4,6 sn idi); ozet liste kopya tasimaz ama kopya sayisi tam
 //   RE10 uclar (GERCEK initServerHub): GET /retire-etiketleri; PUT /retire-kontrol 400 / 409 (etiket yok,
 //        imza eski) / 424 (kayitlar okunamadi) / 200 + gecmis + denetim; PUT /kurallar/etiket gerekce
 //        zorunlu; PUT /kurallar/kok-yoksay gecersiz ad / 256 karakter -> 400, gecerli liste bulguyu kaldirir
@@ -614,6 +616,34 @@ test('RE5b zincir nedenleri: her dal ayri (calisma olculemedi, trafik, esleme, e
   ]);
 });
 
+test('RE5c EAR kopyasi: bagli JVM calisiyorsa (Admin KESIN yapsa da) SUPHELI ve neden', () => {
+  const d = r1Veri();
+  d.jvms.push(J3(APP, 'calisan', CALISAN));
+  d.ear = {
+    okunamadi: false,
+    hostlar: [
+      earHost(APP, [
+        U7('BOS.ear', {
+          warSayisi: 0,
+          xml: { durum: 'VAR', jvmler: [{ ad: 'calisan' }, { ad: 'yok_jvm' }] },
+        }),
+      ]),
+    ],
+  };
+  const e = etiketle({ hosts: A(d).hosts, kurallar: { R3: 'KESIN' } }).etiketler.find(
+    (x) => x.tur === 'EAR',
+  );
+  assert.deepEqual(
+    e.kopyalar[0].jvmler.map((j) => [j.ad, j.calisiyor]),
+    [
+      ['calisan', true],
+      ['yok_jvm', null],
+    ],
+  );
+  assert.equal(e.seviye, 'SUPHELI');
+  assert.ok(e.nedenler.includes(`${APP}: çalışan JVM'e bağlı (calisan)`), e.nedenler.join(' | '));
+});
+
 test('RE6 Admin kural seviyesi: KAPALI etiket uretmez, SUPHELI -> KESIN; gecersiz satir yok sayilir', () => {
   const hosts = A(r1Veri()).hosts;
   assert.equal(etiketle({ hosts, kurallar: { R1: 'KAPALI' } }).etiketler.length, 0);
@@ -923,6 +953,22 @@ test('RE10 uclar: etiket listesi, manuel kontrol (400 / 409 / 424 / 200), kural 
     const girdi = r.body.etiketler.find((e) => e.tur === 'GIRDI');
     assert.deepEqual([jvm.seviye, jvm.durum], ['KESIN', 'BEKLIYOR']);
     assert.deepEqual([girdi.ad, girdi.seviye], ['ESKI.war', 'SUPHELI']);
+    // Liste OZET: kopyalar yok, sayisi var; ayrinti ucu kopyalarin tamamini verir (eksik kalmaz).
+    assert.equal(jvm.kopyalar, undefined, 'liste kopyalari tasidi (buyuk filoda MB)');
+    assert.equal(jvm.kopyaSayisi, 1);
+    const ay = await fetch(
+      `${kok}/retire-etiketleri/ayrinti?anahtar=${encodeURIComponent(jvm.anahtar)}`,
+    ).then(J);
+    assert.equal(ay.status, 200);
+    assert.equal(ay.body.etiket.kopyalar.length, jvm.kopyaSayisi);
+    assert.equal(ay.body.etiket.kopyalar[0].web[0].host, WEB, 'ayrinti zinciri tasimali');
+    assert.equal(ay.body.etiket.imza, jvm.imza);
+    const ag = await fetch(
+      `${kok}/retire-etiketleri/ayrinti?anahtar=${encodeURIComponent(girdi.anahtar)}`,
+    ).then(J);
+    assert.ok(ag.body.etiket.kopyalar[0].taranma, 'kok girdisi kopyasi tarama tarihini tasimali');
+    const yok = await fetch(`${kok}/retire-etiketleri/ayrinti?anahtar=YOK`).then(J);
+    assert.equal(yok.status, 409);
 
     // Girdi dogrulama ve guncellik kapilari
     let p = await put(`${kok}/retire-kontrol`, {
@@ -1050,4 +1096,70 @@ test('RE10 uclar: etiket listesi, manuel kontrol (400 / 409 / 424 / 200), kural 
     k = await fetch(`${kok}/kurallar`).then(J);
     assert.deepEqual(k.body.kokYoksay.gecerli, ['ESKI.war', 'scripts']);
   });
+});
+
+test('RE11 hiz: buyuk filo bir kez indekslenir; ozet kopya tasimaz, sayisi tam', () => {
+  const { ozetle } = require('../retire-etiket.cjs');
+  const hosts = [];
+  for (let i = 0; i < 2000; i++) {
+    const host = `GBXXAP${String(i).padStart(4, '0')}`;
+    const env = ['PROD', 'TEST', 'QA', 'DEV'][i % 4];
+    const jvms = Array.from({ length: 12 }, (_, k) => ({
+      gen: 7,
+      name: `app${(i * 7 + k) % 900}`,
+      running: k % 3 !== 0,
+      runningKnown: true,
+      autoStart: 'true',
+      trafficState: 'NO_RECENT_TRAFFIC',
+      mapping: 'WEB_APP',
+      vhosts: [
+        {
+          host: 'W',
+          v: { serverName: 's', trafficState: 'NO_RECENT_TRAFFIC', req7d: 0 },
+          kind: 'WEB_APP',
+        },
+      ],
+    }));
+    const uyg = Array.from({ length: 20 }, (_, k) => ({
+      kok: '/vhosting',
+      ad: `E${(i + k) % 700}.ear`,
+      jboss: '7',
+      durum: 'TAM',
+      warSayisi: k % 9 ? 1 : 0,
+      xml: { durum: k % 11 ? 'VAR' : 'JVM_YOK', neden: 'TANIM_YOK', jvmler: [{ ad: `app${k}` }] },
+    }));
+    const ad = [];
+    jvms.forEach((j, k) => {
+      if (!j.running && (i + k) % 20 === 0)
+        ad.push({ kural: 'R1', tur: 'JVM', ad: j.name, host, gen: 7, engel: null });
+    });
+    uyg.forEach((u) => {
+      if (u.warSayisi === 0) ad.push({ kural: 'R3', tur: 'EAR', ad: u.ad, host, kok: u.kok });
+      if (u.xml.durum === 'JVM_YOK')
+        ad.push({ kural: 'R5', tur: 'EAR', ad: u.ad, host, kok: u.kok });
+    });
+    for (let g = 0; g < 3; g++)
+      ad.push({ kural: 'R4', tur: 'GIRDI', ad: `yedek${g}`, host, kok: '/vhosting', tip: 'D' });
+    hosts.push({
+      host,
+      env,
+      fresh: true,
+      scanDate: '2026-11-06',
+      jvms,
+      retireAdaylari: ad,
+      ear: { durum: 'VAR', taranma: '2026-11-06T00:00:00Z', uygulamalar: uyg },
+    });
+  }
+  const t0 = Date.now();
+  const r = etiketle({ hosts });
+  const ms = Date.now() - t0;
+  assert.ok(r.etiketler.length > 2500, `senaryo kurulamadi (${r.etiketler.length})`);
+  assert.ok(ms < 1500, `etiket motoru yavas: ${ms} ms (konu basina filo taramasi geri mi geldi?)`);
+  const yedek = r.etiketler.find((e) => e.anahtar === 'GIRDI|yedek0|PROD|/vhosting');
+  assert.equal(yedek.kopyalar.length, 500, 'eslenik kopyalarin tamami');
+  const oz = ozetle(yedek);
+  assert.deepEqual(
+    [oz.kopyalar, oz.kopyaSayisi, oz.hostlar.length, oz.imza],
+    [undefined, 500, 500, yedek.imza],
+  );
 });
