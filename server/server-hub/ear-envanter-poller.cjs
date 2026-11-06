@@ -467,7 +467,7 @@ async function launchSonucunuBagla(kosu, parti, sonuc) {
     );
     uzlasmaKaydi = kurtarma.rowCount === 1;
     if (!uzlasmaKaydi) {
-      uzlasma = `${uzlasma}; farklı AWX job kimliği bulundu, mevcut kimlik ezilmedi`;
+      uzlasma = `${uzlasma}; yeni AWX işi ${awxServerId}/${jobId == null ? 'bilinmiyor' : jobId}; farklı AWX job kimliği bulundu, mevcut kimlik ezilmedi`;
       const cakisma = await db().query(
         `UPDATE ear_envanter_partileri SET hata = $2 WHERE id = $1`,
         [parti.id, M(uzlasma, 1000)],

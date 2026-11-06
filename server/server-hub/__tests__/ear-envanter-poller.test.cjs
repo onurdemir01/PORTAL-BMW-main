@@ -470,6 +470,7 @@ test('EPO7b launch-iptal yarisi ve job-ID yazim hatasi fail-closed uzlasir', asy
   const r4 = await poller.siradakiPartiyiBaslat(kosu());
   assert.equal(r4.uzlasmaKaydi, true);
   assert.deepEqual(mevcut, { serverId: 8, jobId: 999 }, 'farkli controller-local job ezildi');
+  assert.match(cakismaNotu, /yeni AWX işi 5\/903/);
   assert.match(cakismaNotu, /farklı AWX job kimliği bulundu, mevcut kimlik ezilmedi/);
 });
 
