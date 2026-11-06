@@ -32,6 +32,8 @@ const { webHostAdaylari, matchWebForApp } = require('../audit/web-app.cjs');
 const { siteOf } = require('../retirement/discover.cjs');
 const { maskText, maskJvmArgs, maskJvmArgDiff } = require('./mask.cjs');
 const { KOK_YOKSAY_VARSAYILAN } = require('./kural-katalogu.cjs');
+// Capraz kontroller (2026-11-06): kopyalar, ortamlar, OpenShift ve Retirement kaydi (capraz.cjs).
+const { caprazAnaliz, kopyaMetni, kalintiMetni, ocpMetni, celiskiMetni } = require('./capraz.cjs');
 
 const SEV = { ok: 0, info: 1, warning: 2, danger: 3 };
 
@@ -1280,6 +1282,23 @@ function assess(data, opts = {}) {
   const earVeri = (data && data.ear) || null;
   const earByHost = new Map();
   for (const x of (earVeri && earVeri.hostlar) || []) earByHost.set(U(shortHost(x.host)), x);
+  // CAPRAZ KONTROLLER bulgu dongusunden ONCE: sunucu basina dongu bulgulari eklerken durumu ve
+  // sayaclari da kapatir; capraz bulgu oraya kendi sunucusunda girer. Ortam, tazelik, calisma ve
+  // trafik bu noktada hesaplanmis. Envanter (taranmamis sunucular dahil) "prod'da kopyasi var mi"
+  // sorusuna girer. EAR verisi henuz h.ear'a yazilmadi: celiski kontrolu earByHost'tan, h.ear ile AYNI
+  // tazelik kuraliyla (EAR_VERI_MAX_GUN) okur.
+  const earTaze = (e) => {
+    const yas = e && e.taranma ? Math.floor((now - Date.parse(e.taranma)) / GUN_MS) : null;
+    return yas != null && yas <= EAR_VERI_MAX_GUN;
+  };
+  const capraz = caprazAnaliz([...byHost.values()], {
+    capraz: (data && data.capraz) || null,
+    envanter: [...appsByHost.values()].flat(),
+    earOf: (host) => {
+      const e = earByHost.get(U(host));
+      return e && earTaze(e) ? e : null;
+    },
+  });
   const hosts = [];
   for (const h of byHost.values()) {
     const F = h.findings;
@@ -1481,7 +1500,9 @@ function assess(data, opts = {}) {
             ? `${id} çalışma durumu ÖLÇÜLEMEDİ (Server Hub şeması okunamadı: running_src seçilemedi) — kapalı sayılmaz, eylem önerilmez`
             : `${id} çalışma durumu ÖLÇÜLEMEDİ (süreç görünmüyor: hidepid / ps körlüğü) — kapalı sayılmaz, eylem önerilmez`,
         );
-      if (rk && j.running && j.autoStart === 'false')
+      // AUTO-START UYUMSUZLUGU retirement supheleridir (kullanici 2026-11-06: "auto-start false uygulama
+      // ayakta ise ya da tam tersi ise bunlar da risktir, retirement icin suphedir"): R7 / R8 adayi.
+      if (rk && j.running && j.autoStart === 'false') {
         add(
           'danger',
           'jvm',
@@ -1489,6 +1510,8 @@ function assess(data, opts = {}) {
           `${id} çalışıyor ama auto-start KAPALI — reboot sonrası açılmaz`,
           fixOn,
         );
+        h.retireAdaylari.push({ kural: 'R7', tur: 'JVM', ad: j.name, host: h.host, gen: j.gen, engel: null });
+      }
       // NEDEN BILINMIYOR (kullanici, 2026-09-28: "1930 bilinmiyor durumunda raporlamissin,
       // nedir bunlar? neyi bilinmiyor olarak algiliyorsun"). Uc ayri durum ayni kelimeyle
       // gosteriliyordu; hangisinin agir bastigi rapordan okunamiyordu.
@@ -1504,7 +1527,7 @@ function assess(data, opts = {}) {
       if ((j.mismatch || []).length)
         add('info', 'jvm', 'INV_MISMATCH', `${id}: ${j.mismatch.join('; ')}`);
       // KRITIK (kullanici 2026-11-06: "jvm kapali auto start acik ise kritik").
-      if (rk && !j.running && j.autoStart === 'true')
+      if (rk && !j.running && j.autoStart === 'true') {
         add(
           'danger',
           'jvm',
@@ -1512,6 +1535,52 @@ function assess(data, opts = {}) {
           `${id} kapalı ama auto-start AÇIK — reboot'ta açılacak`,
           fixOff,
         );
+        h.retireAdaylari.push({ kural: 'R8', tur: 'JVM', ad: j.name, host: h.host, gen: j.gen, engel: null });
+      }
+      // ── CAPRAZ KONTROLLER (capraz.cjs): her biri hem bulgu hem etiket adayi (R9-R12). ──
+      const cx = capraz.jvm(h.host, j);
+      if (cx && cx.retirement.length) j.retirement = cx.retirement;
+      const jAday = (kural) =>
+        h.retireAdaylari.push({ kural, tur: 'JVM', ad: j.name, host: h.host, gen: j.gen, engel: null });
+      if (cx && cx.kopya) {
+        add(
+          'warning',
+          'capraz',
+          'KOPYA_TUTARSIZ',
+          `${id}: aynı ortamdaki kopyalarla tutarsız — ${kopyaMetni(j, cx.kopya)}`,
+          null,
+          { capraz: { tur: 'kopya', ...cx.kopya } },
+        );
+        jAday('R9');
+      }
+      if (cx && cx.kalinti) {
+        add(
+          'warning',
+          'capraz',
+          'ORTAM_KALINTISI',
+          `${id} (${h.env}) çalışıyor ama ${cx.kalinti.taban} prod'da çalışmıyor — ${kalintiMetni(cx.kalinti)}`,
+          null,
+          { capraz: { tur: 'kalinti', ...cx.kalinti } },
+        );
+        jAday('R10');
+      }
+      if (cx && cx.ocp) {
+        add('info', 'capraz', 'OCP_KOPYASI', `${id}: ${ocpMetni(cx.ocp)}`, null, {
+          capraz: { tur: 'ocp', ...cx.ocp },
+        });
+        if (cx.ocp.aday) jAday('R11');
+      }
+      if (cx && cx.celiski.length) {
+        add(
+          'danger',
+          'capraz',
+          'RETIRE_KAYDI_CELISKI',
+          `${id}: ${cx.celiski.map(celiskiMetni).join('; ')}`,
+          null,
+          { capraz: { tur: 'celiski', kayitlar: cx.celiski } },
+        );
+        jAday('R12');
+      }
       // KRITIK (kullanici: "JVM ayakta ancak parametrelerde degisiklik varsa kritik"). Olculemeyen
       // fark (2) bulgu degildir; ayrinti sunucu sayfasinda maskeli jvm_arg_diff'te.
       if (rk && j.running && j.argFark === 1)
@@ -1676,6 +1745,19 @@ function assess(data, opts = {}) {
             // Faz 2: null = deployment kontrolu kapali / olculmedi.
             deployment: ear.deployment || null,
           };
+    // Retirement'la kapatilmis hedefin JVM'i taramada yok ama paketi ozgun adiyla diskte (capraz.cjs;
+    // yalniz taze Uygulama Envanteri verisiyle): EAR konusu.
+    for (const c of capraz.host(h.host)) {
+      add(
+        'danger',
+        'capraz',
+        'RETIRE_KAYDI_CELISKI',
+        `${c.kok}/${c.paket}: ${celiskiMetni({ ...c, nedenler: ['paket'] })}`,
+        null,
+        { capraz: { tur: 'celiski', kayitlar: [c] }, ear: { kok: c.kok, ad: c.paket } },
+      );
+      h.retireAdaylari.push({ kural: 'R12', tur: 'EAR', ad: c.paket, host: h.host, kok: c.kok });
+    }
     if (h.ear.durum === 'VAR') {
       const olcmeyen = new Map();
       for (const u of ear.uygulamalar) {

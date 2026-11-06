@@ -10,11 +10,13 @@
 //   ET7 yerel süzgeç anlamı sunucudakiyle aynı (in + boş, içerir büyük/küçük harf, gün, eksik, min/max boşta yok)
 //   ET8 yerel kip: arama anında; değer listesi satırlardan, öteki süzgeçlere göre
 //   ET9 okunamadı → tekrar dene (boş liste gösterilmez)
+//   ET10 çok değerli kolon (dizi): öğelerden biri uyarsa satır uyar, boş dizi boş değerdir; düz hâl " + "
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { render } from '@/test/test-utils';
 import {
   EarTablo,
+  duzDeger,
   formulGuvenli,
   yerelUyar,
   suzgecMetni,
@@ -288,6 +290,22 @@ describe('EarTablo', () => {
     expect(yerelUyar(null, { k: 'x', op: 'gun', v: 7 }, simdi)).toBe(false);
     expect(yerelUyar(1, { k: 'x', op: 'evet' })).toBe(true);
     expect(yerelUyar(null, { k: 'x', op: 'hayir' })).toBe(true);
+  });
+
+  it('ET10 çok değerli kolon: öğelerden biri uyarsa satır uyar; boş dizi boş değerdir', () => {
+    const l = ['R1 · a', 'R8 · b'];
+    expect(yerelUyar(l, { k: 'x', op: 'in', v: ['R8 · b'] })).toBe(true);
+    expect(yerelUyar(l, { k: 'x', op: 'in', v: ['R9 · c'] })).toBe(false);
+    expect(yerelUyar(l, { k: 'x', op: 'in', v: [null] })).toBe(false);
+    expect(yerelUyar([], { k: 'x', op: 'in', v: [null] })).toBe(true);
+    expect(yerelUyar(l, { k: 'x', op: 'icerir', v: 'r8' })).toBe(true);
+    expect(yerelUyar(l, { k: 'x', op: 'bos' })).toBe(false);
+    expect(yerelUyar([], { k: 'x', op: 'bos' })).toBe(true);
+    expect(yerelUyar(l, { k: 'x', op: 'dolu' })).toBe(true);
+    expect(yerelUyar([], { k: 'x', op: 'dolu' })).toBe(false);
+    expect(duzDeger(l)).toBe('R1 · a + R8 · b');
+    expect(duzDeger([])).toBe(null);
+    expect(duzDeger('tek')).toBe('tek');
   });
 
   it('ET8 yerel kip', async () => {

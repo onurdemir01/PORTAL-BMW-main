@@ -16,6 +16,8 @@ const { maskText, maskJvmArgs, maskJvmArgDiff } = require('./mask.cjs');
 const ayarlar = require('./ayarlar.cjs');
 // Uygulama Envanteri'nin son durumu (2026-11-06): EAR bulgulari ve retirement etiketleri.
 const { earSonDurum } = require('./ear-hub-verisi.cjs');
+// Capraz kontrol verisi (2026-11-06): OpenShift envanteri, Dynatrace kullanimi, Retirement kayitlari.
+const { caprazVeri, caprazDurumu } = require('./capraz-veri.cjs');
 const { KODLAR } = require('./kural-katalogu.cjs');
 
 // ── KOLON LISTELERI (sozlesme v3 P9) ───────────────────────────────────────────────
@@ -306,8 +308,13 @@ function hesapla() {
   const nesil = _nesil;
   const p = (async () => {
     const t0 = Date.now();
-    // Uygulama Envanteri (Portal DB) paralel okunur; okunamazsa { okunamadi } doner, degerlendirme dusmez.
-    const [{ tableMissing, data }, ear] = await Promise.all([loadLatest(), earSonDurum()]);
+    // Uygulama Envanteri (Portal DB) ve capraz kontrol kaynaklari paralel okunur; okunamazsa
+    // { okunamadi } doner, degerlendirme dusmez (o kaynaga dayanan bulgu uretilmez).
+    const [{ tableMissing, data }, ear, capraz] = await Promise.all([
+      loadLatest(),
+      earSonDurum(),
+      caprazVeri(),
+    ]);
     const t1 = Date.now();
     // Seviye degisiklikleri bulgu uretilirken uygulanir; ayarlar okunamazsa varsayilanlar (ekran soyler).
     const ayar = await ayarlar.oku();
@@ -315,13 +322,14 @@ function hesapla() {
       ? { tableMissing: true, hosts: [], summary: null, latestScan: null }
       : {
           tableMissing: false,
-          ...assess({ ...data, ear }, { seviyeler: ayar.seviyeler, kokYoksay: ayar.kokYoksay }),
+          ...assess({ ...data, ear, capraz }, { seviyeler: ayar.seviyeler, kokYoksay: ayar.kokYoksay }),
         };
     value.ayar = {
       okunamadi: ayar.okunamadi === true,
       seviyeDegisen: Object.keys(ayar.seviyeler).length,
     };
     value.ear = { okunamadi: ear.okunamadi === true, hata: ear.hata || '', hostSayisi: ear.hostlar.length };
+    value.capraz = caprazDurumu(capraz);
     _sonOlcum = { db: t1 - t0, assess: Date.now() - t1 };
     if (Date.now() - t0 > YAVAS_MS)
       console.log(

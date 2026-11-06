@@ -55,6 +55,8 @@ function mount(router, { getAssessment, ayarlar, kontrol, audit }) {
         latestScan: a.latestScan || null,
         // Uygulama Envanteri okunamadiysa EAR / GIRDI etiketleri YOKTUR; bu "temiz" demek degil.
         ear: a.ear || null,
+        // Capraz kaynaklar (OpenShift / Dynatrace / Retirement) okunamadiysa R9-R12'nin bir kismi YOK.
+        capraz: a.capraz || null,
         kontrolOkunamadi: kontroller === null,
         ayarOkunamadi: ayar.okunamadi === true,
         kurallar: kurallarListesi(ayar),

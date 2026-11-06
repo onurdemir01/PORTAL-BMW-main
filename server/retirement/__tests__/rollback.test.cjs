@@ -35,6 +35,12 @@ const TAB_SRC = fs.readFileSync(
   path.join(__dirname, '..', '..', '..', 'src', 'components', 'server_hub', 'RetirementTab.tsx'),
   'utf8',
 );
+// Hedef durum sozlugu (2026-11-06) ortak dosyada: Retirement listesi ve Server Hub etiketlerindeki Retirement
+// baglami ayni etiketleri kullanir.
+const STIL_SRC = fs.readFileSync(
+  path.join(__dirname, '..', '..', '..', 'src', 'components', 'server_hub', 'retirementStil.ts'),
+  'utf8',
+);
 
 function dbKur(okumalar, { claimTutar = true } = {}) {
   const yazilan = [];
@@ -190,10 +196,14 @@ test('GA10 vhost geri acma YAPILMAYANI basari saymaz; ekran durumlari eksiksiz',
   assert.match(w, /restore_manual/, 'template yoksa durum isaretlenmiyor');
   assert.match(w, /ELLE geri açılmalı/, 'elle yapilmasi gerektigi yazili degil');
 
-  // Ekran: her hedef durumu bir etikete sahip olmali (eksikse ekranda BOS gorunur)
+  // Ekran: her hedef durumu bir etikete sahip olmali (eksikse ekranda BOS gorunur). Sozluk HEDEF_DURUM'da;
+  // Retirement listesi onu kullanmali (yerel bir kopya zamanla ayrisir).
+  const sozluk = STIL_SRC.slice(STIL_SRC.indexOf('export const HEDEF_DURUM'), STIL_SRC.indexOf('\n};', STIL_SRC.indexOf('export const HEDEF_DURUM')));
+  assert.ok(sozluk.length > 0, 'HEDEF_DURUM bulunamadi');
   for (const d of ['rolling_back', 'active', 'rollback_failed', 'deleting', 'deleted', 'stop_scheduled']) {
-    assert.ok(new RegExp(`${d}: \\{ label:`).test(TAB_SRC), `${d} durumunun ekran etiketi yok`);
+    assert.ok(new RegExp(`${d}: \\{ label:`).test(sozluk), `${d} durumunun ekran etiketi yok`);
   }
+  assert.match(TAB_SRC, /const TSTATUS = HEDEF_DURUM;/, 'Retirement listesi ortak sozlugu kullanmiyor');
   assert.match(TAB_SRC, /Geri aktif et/, 'geri alma dugmesi yok');
   assert.match(TAB_SRC, /Zamanlanmış silme devre dışı kalır|Zamanlanmış silme devre dışı/, 'onay penceresi silmenin iptal oldugunu soylemiyor');
 });

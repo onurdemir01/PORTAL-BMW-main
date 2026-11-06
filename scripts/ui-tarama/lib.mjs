@@ -113,7 +113,10 @@ export const DENETIM = `(() => {
   const gorunur = (e) => { const r = e.getBoundingClientRect(); const cs = getComputedStyle(e); return r.width > 0 && r.height > 0 && cs.visibility !== 'hidden' && cs.display !== 'none' && r.bottom > 0 && r.top < innerHeight * 3; };
   const tanim = (e) => (e.tagName.toLowerCase() + '.' + String(e.className && e.className.baseVal !== undefined ? e.className.baseVal : e.className).trim().split(/\\s+/).slice(0, 5).join('.')).slice(0, 110) + ' «' + (e.textContent || '').trim().replace(/\\s+/g, ' ').slice(0, 36) + '»';
   const ad = (e) => (e.getAttribute('aria-label') || e.getAttribute('title') || e.textContent || '').trim() || (e.getAttribute('aria-labelledby') ? 'x' : '') || (e.querySelector('img[alt]:not([alt=""]),svg[aria-label],svg title') ? 'x' : '');
-  const lum = (c) => { const m = c.match(/[\\d.]+/g); if (!m) return null; const [r, g, b] = m.slice(0, 3).map((v) => { v = v / 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }); return { l: 0.2126 * r + 0.7152 * g + 0.0722 * b, a: m.length > 3 ? parseFloat(m[3]) : 1 }; };
+  // rgb() / rgba() 0-255; color(srgb ...) 0-1 (color-mix sonucu boyle hesaplanir). Eskiden ikisi de 255'e
+  // bolunuyordu: color-mix metni siyah okunuyor, acik temada her zaman "gecer", koyuda yanlis alarm veriyordu.
+  // Baska renk uzayi (oklab, lch ...) okunmaz: null, yanlis sayi uretilmez.
+  const lum = (c) => { const srgb = /^color\\(srgb /.test(c); if (!srgb && !/^rgba?\\(/.test(c)) return null; const m = c.match(/[\\d.]+/g); if (!m) return null; const [r, g, b] = m.slice(0, 3).map((v) => { v = srgb ? parseFloat(v) : v / 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }); return { l: 0.2126 * r + 0.7152 * g + 0.0722 * b, a: m.length > 3 ? parseFloat(m[3]) : 1 }; };
   const zemin = (e) => { for (let x = e; x; x = x.parentElement) { const cs = getComputedStyle(x); if (cs.backgroundImage && cs.backgroundImage !== 'none') return null; const b = lum(cs.backgroundColor); if (b && b.a > 0.6) return b.l; } const b = lum(getComputedStyle(document.body).backgroundColor); return b ? b.l : 1; };
   const out = {};
   const de = document.documentElement;

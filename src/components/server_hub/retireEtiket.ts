@@ -106,7 +106,20 @@ export function etiketSuz(etiketler: ShRetireEtiketHer[], s: EtiketSuzgeci): ShR
  * gizler; 'hepsi' ve 'yanlis' onları gösterir.
  */
 export type HizliSuzgec =
-  'acik' | 'kesin' | 'supheli' | 'bekleyen' | 'hazir' | 'dusen' | 'yanlis' | 'hepsi';
+  | 'acik'
+  | 'kesin'
+  | 'supheli'
+  | 'bekleyen'
+  | 'hazir'
+  | 'dusen'
+  | 'autostart'
+  | 'capraz'
+  | 'retirementte'
+  | 'yanlis'
+  | 'hepsi';
+/** R7 / R8: auto-start ile calisma durumu uyusmuyor. R9-R12: capraz kontrol (kopya, ortam, OpenShift, Retirement). */
+const AUTOSTART_KURALLARI = new Set(['R7', 'R8']);
+const CAPRAZ_KURALLARI = new Set(['R9', 'R10', 'R11', 'R12']);
 export const HIZLI_SUZGECLER: { id: HizliSuzgec; etiket: string }[] = [
   { id: 'acik', etiket: 'açık (yanlış alarm hariç)' },
   { id: 'kesin', etiket: 'kesin' },
@@ -114,6 +127,9 @@ export const HIZLI_SUZGECLER: { id: HizliSuzgec; etiket: string }[] = [
   { id: 'bekleyen', etiket: 'kontrol bekleyen' },
   { id: 'hazir', etiket: 'Retirement’a hazır' },
   { id: 'dusen', etiket: 'kesinden şüpheliye inen' },
+  { id: 'autostart', etiket: 'auto-start uyumsuz (R7/R8)' },
+  { id: 'capraz', etiket: 'çapraz kontrol (R9–R12)' },
+  { id: 'retirementte', etiket: 'Retirement kaydı var' },
   { id: 'yanlis', etiket: 'yanlış alarm' },
   { id: 'hepsi', etiket: 'hepsi' },
 ];
@@ -126,6 +142,9 @@ export function hizliSuz<T extends ShRetireEtiketHer>(etiketler: T[], h: HizliSu
     bekleyen: (e) => e.durum === 'BEKLIYOR' || e.durum === 'VERI_DEGISTI',
     hazir: (e) => e.retirementHazir,
     dusen: (e) => acik(e) && e.hamSeviye === 'KESIN' && e.seviye !== 'KESIN',
+    autostart: (e) => acik(e) && e.kurallar.some((k) => AUTOSTART_KURALLARI.has(k)),
+    capraz: (e) => acik(e) && e.kurallar.some((k) => CAPRAZ_KURALLARI.has(k)),
+    retirementte: (e) => (e.retirement || []).length > 0,
     yanlis: (e) => e.durum === 'YANLIS_ALARM',
     hepsi: () => true,
   };

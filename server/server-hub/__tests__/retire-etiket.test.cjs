@@ -25,7 +25,10 @@
 //        uyusmuyor) calisan JVM'de dusurulmez; kontrol kapaliyken (null) hicbiri yok
 //   RE11 HIZ: 2000 sunucu / ~16 bin aday 1,5 sn altinda (filo bir kez indekslenir; eski konu basina
 //        tarama 4,6 sn idi); ozet liste kopya tasimaz ama kopya sayisi tam
-//   RE10 uclar (GERCEK initServerHub): GET /retire-etiketleri; PUT /retire-kontrol 400 / 409 (etiket yok,
+//   RE13 CAPRAZ (2026-11-06): auto-start uyumsuzlugu R7 / R8 adayi; kopya (R9), ortam kalintisi (R10),
+//        OpenShift (R11), Retirement celiskisi (R12) bulgu + aday; etikette Retirement baglami; R8 KESIN
+//        iken calisan kopya dusurur, R7 dusurmez; okunamayan kaynak / bayat sunucu / eski EAR -> YOK
+//   RE10 uclar (GERCEK initServerHub): GET /retire-etiketleri (capraz kaynak durumu dahil); PUT /retire-kontrol 400 / 409 (etiket yok,
 //        imza eski) / 424 (kayitlar okunamadi) / 200 + gecmis + denetim; PUT /kurallar/etiket gerekce
 //        zorunlu; PUT /kurallar/kok-yoksay gecersiz ad / 256 karakter -> 400, gecerli liste bulguyu kaldirir
 'use strict';
@@ -427,11 +430,14 @@ test('RE3 EAR verisi eski / okunamadi / yok: bulgu ve aday yok, nedeni h.ear tas
 
 test('RE4 adaylar bulgudan ayri: R1 / R2; calisan JVM aday degil; engelli R1 yine aday', () => {
   const r = A(r1Veri());
-  assert.deepEqual(sunucu(r, APP).retireAdaylari, [
-    { kural: 'R1', tur: 'JVM', ad: 'oldapp', host: APP, gen: 7, engel: null },
-  ]);
+  // Kapali + auto-start acik JVM R8 adayidir da (2026-11-06); R1 onun trafiksiz, guclu hali.
+  assert.deepEqual(
+    sunucu(r, APP).retireAdaylari.filter((a) => a.kural === 'R1'),
+    [{ kural: 'R1', tur: 'JVM', ad: 'oldapp', host: APP, gen: 7, engel: null }],
+  );
+  assert.deepEqual(sunucu(r, APP).retireAdaylari.map((a) => a.kural).sort(), ['R1', 'R8']);
   assert.ok(
-    !sunucu(r, APP).findings.some((f) => /^R\d$/.test(f.code)),
+    !sunucu(r, APP).findings.some((f) => /^R\d+$/.test(f.code)),
     'etiket bulgu listesine girdi',
   );
   const r2v = r1Veri();
@@ -446,7 +452,7 @@ test('RE4 adaylar bulgudan ayri: R1 / R2; calisan JVM aday degil; engelli R1 yin
   assert.deepEqual(sunucu(A(cal), APP).retireAdaylari, []);
   const engelli = r1Veri();
   engelli.vhosts = [V3(WEB, 'legacy.bmw.local', { aliases: 'oldapp.bmw.local' })];
-  const ad = sunucu(A(engelli), APP).retireAdaylari;
+  const ad = sunucu(A(engelli), APP).retireAdaylari.filter((a) => a.kural === 'R1');
   assert.equal(ad.length, 1);
   assert.match(ad[0].engel, /eşleme türü ALIAS/);
 });
@@ -457,7 +463,7 @@ test('RE5 etiket motoru: KESIN, eslenik kopya / trafik / engel / bayat -> SUPHEL
   const e = tek.etiketler[0];
   assert.deepEqual(
     [e.anahtar, e.seviye, e.kurallar, e.nedenler],
-    [`JVM|OLDAPP|PROD|7`, 'KESIN', ['R1'], []],
+    [`JVM|OLDAPP|PROD|7`, 'KESIN', ['R1', 'R8'], []],
   );
   assert.equal(e.kopyalar[0].web[0].host, WEB, 'zincir: JVM -> web sunucusu');
   assert.equal(e.kopyalar[0].web[0].trafik, 'NO_RECENT_TRAFFIC');
@@ -648,7 +654,13 @@ test('RE5c EAR kopyasi: bagli JVM calisiyorsa (Admin KESIN yapsa da) SUPHELI ve 
 
 test('RE6 Admin kural seviyesi: KAPALI etiket uretmez, SUPHELI -> KESIN; gecersiz satir yok sayilir', () => {
   const hosts = A(r1Veri()).hosts;
-  assert.equal(etiketle({ hosts, kurallar: { R1: 'KAPALI' } }).etiketler.length, 0);
+  // Kurallar bagimsiz: R1 kapatilinca ayni JVM R8 (kapali + auto-start acik) ile SUPHELI kalir.
+  const yalnizR1 = etiketle({ hosts, kurallar: { R1: 'KAPALI' } }).etiketler;
+  assert.deepEqual(
+    yalnizR1.map((e) => [e.kurallar, e.seviye]),
+    [[['R8'], 'SUPHELI']],
+  );
+  assert.equal(etiketle({ hosts, kurallar: { R1: 'KAPALI', R8: 'KAPALI' } }).etiketler.length, 0);
   const d = r1Veri();
   d.ear = { okunamadi: false, hostlar: [earHost(APP, [U7('BOS.ear', { warSayisi: 0 })])] };
   const h2 = A(d).hosts;
@@ -661,7 +673,7 @@ test('RE6 Admin kural seviyesi: KAPALI etiket uretmez, SUPHELI -> KESIN; gecersi
   const a = ayarlar.satirlardan([
     { anahtar: 'etiket:R2', deger: 'KESIN' },
     { anahtar: 'etiket:R1', deger: 'BELKI' },
-    { anahtar: 'etiket:R9', deger: 'KESIN' },
+    { anahtar: 'etiket:R99', deger: 'KESIN' },
     { anahtar: 'liste:kok_yoksay', deger: 'b,a,a' },
   ]);
   assert.deepEqual(a.etiketler, {
@@ -671,6 +683,12 @@ test('RE6 Admin kural seviyesi: KAPALI etiket uretmez, SUPHELI -> KESIN; gecersi
     R4: 'SUPHELI',
     R5: 'SUPHELI',
     R6: 'SUPHELI',
+    R7: 'SUPHELI',
+    R8: 'SUPHELI',
+    R9: 'SUPHELI',
+    R10: 'SUPHELI',
+    R11: 'SUPHELI',
+    R12: 'SUPHELI',
   });
   assert.deepEqual(a.kokYoksay, ['a', 'b']);
   assert.deepEqual(
@@ -841,6 +859,12 @@ test('RE9 katalog: her etiket kurali ve retire ile ilgili kod uc parcali dogrula
       ['R4', 'SUPHELI'],
       ['R5', 'SUPHELI'],
       ['R6', 'SUPHELI'],
+      ['R7', 'SUPHELI'],
+      ['R8', 'SUPHELI'],
+      ['R9', 'SUPHELI'],
+      ['R10', 'SUPHELI'],
+      ['R11', 'SUPHELI'],
+      ['R12', 'SUPHELI'],
     ],
   );
   // Faz 2'nin deployment komutu elle kontrol olarak simdiden verilir (JBoss 7 ve 8).
@@ -953,6 +977,11 @@ test('RE10 uclar: etiket listesi, manuel kontrol (400 / 409 / 424 / 200), kural 
     assert.equal(r.status, 200, JSON.stringify(r.body));
     assert.equal(r.body.kontrolOkunamadi, false);
     assert.equal(r.body.ear.okunamadi, false);
+    // Capraz kaynaklar: sahte envanter bos doner (okundu), sahte Portal DB Retirement sorgusunu bilmez.
+    assert.deepEqual(
+      [r.body.capraz.ocp.okunamadi, r.body.capraz.kullanim.okunamadi, r.body.capraz.retirement.okunamadi],
+      [false, false, true],
+    );
     assert.deepEqual(
       r.body.kurallar.map((k) => [k.kural, k.gecerli]),
       [
@@ -962,6 +991,12 @@ test('RE10 uclar: etiket listesi, manuel kontrol (400 / 409 / 424 / 200), kural 
         ['R4', 'SUPHELI'],
         ['R5', 'SUPHELI'],
         ['R6', 'SUPHELI'],
+        ['R7', 'SUPHELI'],
+        ['R8', 'SUPHELI'],
+        ['R9', 'SUPHELI'],
+        ['R10', 'SUPHELI'],
+        ['R11', 'SUPHELI'],
+        ['R12', 'SUPHELI'],
       ],
     );
     const jvm = r.body.etiketler.find((e) => e.tur === 'JVM');
@@ -1061,7 +1096,7 @@ test('RE10 uclar: etiket listesi, manuel kontrol (400 / 409 / 424 / 200), kural 
     // Kural seviyesi: gerekce zorunlu; R4 KAPALI -> girdi etiketi kalkar (bulgu kalir).
     p = await put(`${kok}/kurallar/etiket/R4`, { seviye: 'KAPALI', aciklama: '' });
     assert.equal(p.status, 400);
-    p = await put(`${kok}/kurallar/etiket/R9`, { seviye: 'KAPALI', aciklama: 'deneme' });
+    p = await put(`${kok}/kurallar/etiket/R99`, { seviye: 'KAPALI', aciklama: 'deneme' });
     assert.equal(p.status, 400);
     p = await put(`${kok}/kurallar/etiket/R4`, {
       seviye: 'KAPALI',
@@ -1234,4 +1269,127 @@ test('RE12 Faz 2: deployment bulgulari ve R6; kontrol kapaliyken hicbiri', () =>
   assert.ok(!sunucu(rk, APP).findings.some((f) => /^DEPLOY_/.test(f.code)));
   assert.ok(!sunucu(rk, APP).retireAdaylari.some((a) => a.kural === 'R6'));
   assert.equal(sunucu(rk, APP).ear.deployment, null);
+});
+
+test('RE13 capraz: R7 / R8 adaylari; kopya, ortam kalintisi, OpenShift, Retirement celiskisi; baglam', () => {
+  const { ocpIndeksi } = require('../capraz-veri.cjs');
+  const { olcumIndeksi } = require('../../nginx-console/spa-discovery.cjs');
+  const { ozetle } = require('../retire-etiket.cjs');
+  const sirala = (l) => [...l].sort((a, b) => Number(a.slice(1)) - Number(b.slice(1)));
+  const kur = (r, h, ad) =>
+    sirala(sunucu(r, h).retireAdaylari.filter((a) => a.ad === ad).map((a) => a.kural));
+  const capraz = () => ({
+    ocp: {
+      okunamadi: false,
+      indeks: ocpIndeksi([
+        { cluster: 'gbocpprod1', namespace: 'pay-prod', application: 'pay' },
+        { cluster: 'gbocpprod1', namespace: 'batch-prod', application: 'batch' },
+      ]),
+    },
+    kullanim: {
+      okunamadi: false,
+      indeks: olcumIndeksi([
+        { cluster: 'gbocpprod1', namespace: 'pay-prod', app: 'pay', scan_date: '2026-11-05', window_days: 7, req_total: 50, services_total: 1, measured: 1 },
+        { cluster: 'gbocpprod1', namespace: 'batch-prod', app: 'batch', scan_date: '2026-11-05', window_days: 7, req_total: 0, services_total: 1, measured: 1 },
+      ]),
+    },
+    retirement: {
+      okunamadi: false,
+      hedefler: [
+        { hedef: 9, kayit: 4, host: APP2, uygulama: 'pay', gen: 7, yol: '/vhosting/pay.ear', durum: 'stopped', kayitDurum: 'stopped', durduruldu: '2026-10-20' },
+      ],
+    },
+  });
+  const veri = () => ({
+    hosts: [H3(APP, { products: 'JBOSS7' }), H3(APP2, { products: 'JBOSS7' }), H3(TEST_APP, { products: 'JBOSS7' })],
+    init: [],
+    jboss: [],
+    jvms: [
+      J3(APP, 'pay', CALISAN),
+      J3(APP, 'batch', { ...CALISAN, auto_start: 'false' }),
+      J3(APP2, 'pay', { auto_start: 'true' }),
+      J3(TEST_APP, 'legacy-T', CALISAN),
+    ],
+    web: [],
+    vhosts: [],
+    ips: [],
+    sshd: [],
+    capraz: capraz(),
+  });
+  const r = A(veri());
+  // Auto-start uyumsuzlugu: bulgu ayni, ustune etiket adayi.
+  assert.equal(bul(r, APP, 'REBOOT_RISK').length, 1);
+  // batch OpenShift'te de var ama orada istek yok ve JBoss canli: bulgu var, R11 adayi YOK.
+  assert.deepEqual(kur(r, APP, 'batch'), ['R7']);
+  assert.match(bul(r, APP, 'OCP_KOPYASI').map((f) => f.text).join(' | '), /JBoss7 batch: OpenShift'te de var: batch-prod/);
+  assert.deepEqual(kur(r, APP2, 'pay'), ['R8', 'R9', 'R11', 'R12']);
+  assert.deepEqual(kur(r, APP, 'pay'), ['R11'], 'canli kopya: OpenShift istek aliyor');
+  assert.deepEqual(kur(r, TEST_APP, 'legacy-T'), ['R10']);
+  // Bulgular: alan 'capraz', katalog seviyesi, okunur kanit.
+  const kopya = bul(r, APP2, 'KOPYA_TUTARSIZ');
+  assert.deepEqual([kopya.length, kopya[0].severity, kopya[0].area], [1, 'warning', 'capraz']);
+  assert.match(kopya[0].text, new RegExp(`öteki kopyalar: ${APP} \\(çalışıyor, auto-start açık\\)`));
+  assert.equal(kopya[0].capraz.tur, 'kopya');
+  const cel = bul(r, APP2, 'RETIRE_KAYDI_CELISKI');
+  assert.deepEqual([cel.length, cel[0].severity], [1, 'danger']);
+  assert.match(cel[0].text, /JBoss7 pay: Retirement #4 hedefi STOP edildi \(2026-10-20\) ama auto-start AÇIK/);
+  const ocp = bul(r, APP2, 'OCP_KOPYASI');
+  assert.deepEqual([ocp.length, ocp[0].severity], [1, 'info']);
+  assert.match(ocp[0].text, /pay-prod @ gbocpprod1 — Dynatrace 7 gün: 50 istek — JBoss kopyası boşta/);
+  const kal = bul(r, TEST_APP, 'ORTAM_KALINTISI');
+  assert.equal(kal.length, 1);
+  assert.match(kal[0].text, /^JBoss7 legacy-T \(TEST\) çalışıyor ama legacy prod'da çalışmıyor — prod'da kopyası yok/);
+  assert.equal(bul(r, APP, 'KOPYA_TUTARSIZ').length, 0, 'calisan kopya sapan degil');
+  // Etiket: tek konu, iki kopya, Retirement baglami; ozet de baglami tasir.
+  const et = etiketle({ hosts: r.hosts });
+  const pay = et.etiketler.find((e) => e.anahtar === 'JVM|PAY|PROD|7');
+  assert.deepEqual([pay.kurallar, pay.seviye, pay.hostlar], [['R8', 'R9', 'R11', 'R12'], 'SUPHELI', [APP, APP2]]);
+  assert.deepEqual(pay.retirement, [{ kayit: 4, hedef: 9, durum: 'stopped', host: APP2 }]);
+  assert.deepEqual(ozetle(pay).retirement, pay.retirement);
+  assert.deepEqual(et.etiketler.find((e) => e.anahtar === 'JVM|BATCH|PROD|7').retirement, []);
+  // R8 "kapali" iddiasidir: Admin KESIN yapsa da calisan kopya dusurur. R7 calisan JVM hakkinda: dusmez.
+  const kesin = etiketle({ hosts: r.hosts, kurallar: { R7: 'KESIN', R8: 'KESIN' } }).etiketler;
+  const p8 = kesin.find((e) => e.anahtar === 'JVM|PAY|PROD|7');
+  assert.deepEqual([p8.hamSeviye, p8.seviye], ['KESIN', 'SUPHELI']);
+  assert.ok(p8.nedenler.includes(`${APP}: eşlenik kopya çalışıyor`), p8.nedenler.join(' | '));
+  assert.equal(kesin.find((e) => e.anahtar === 'JVM|BATCH|PROD|7').seviye, 'KESIN');
+
+  // Okunamayan kaynak (ya da hic gelmeyen): OpenShift ve Retirement bulgusu YOK; ic kontroller kalir.
+  for (const c of [
+    { ocp: { okunamadi: true }, kullanim: { okunamadi: true }, retirement: { okunamadi: true } },
+    undefined,
+  ]) {
+    const d = veri();
+    d.capraz = c;
+    const ro = A(d);
+    for (const h of [APP, APP2])
+      for (const kod of ['OCP_KOPYASI', 'RETIRE_KAYDI_CELISKI']) assert.equal(bul(ro, h, kod).length, 0, `${h} ${kod}`);
+    assert.equal(bul(ro, APP2, 'KOPYA_TUTARSIZ').length, 1);
+    assert.equal(bul(ro, TEST_APP, 'ORTAM_KALINTISI').length, 1);
+    assert.equal(sunucu(ro, APP2).jvms.find((j) => j.name === 'pay').retirement, undefined);
+  }
+  // Bayat sunucu: capraz karar vermez.
+  const b = veri();
+  b.hosts[1] = H3(APP2, { products: 'JBOSS7', scan_date: '2026-11-01' });
+  b.jvms[2] = { ...b.jvms[2], scan_date: '2026-11-01' };
+  const rb = A(b);
+  for (const kod of ['KOPYA_TUTARSIZ', 'OCP_KOPYASI', 'RETIRE_KAYDI_CELISKI']) assert.equal(bul(rb, APP2, kod).length, 0, kod);
+
+  // JVM taramada yok, paket ozgun adiyla diskte (taze Uygulama Envanteri): sunucu duzeyi + EAR adayi.
+  const e = veri();
+  e.capraz.retirement.hedefler = [
+    { hedef: 3, kayit: 2, host: APP, uygulama: 'old', gen: 7, yol: '/vhosting/old.ear', durum: 'deleted', kayitDurum: 'deleted', durduruldu: null },
+  ];
+  e.ear = { okunamadi: false, hostlar: [earHost(APP, [U7('old.ear', { xml: { durum: 'VAR', jvmler: [{ ad: 'pay', auto_start: true }] } })])] };
+  const re = A(e);
+  const ec = bul(re, APP, 'RETIRE_KAYDI_CELISKI');
+  assert.equal(ec.length, 1);
+  assert.equal(ec[0].text, '/vhosting/old.ear: Retirement #2 hedefi silindi ama paket özgün adıyla diskte (old.ear)');
+  assert.deepEqual(
+    sunucu(re, APP).retireAdaylari.filter((a) => a.kural === 'R12'),
+    [{ kural: 'R12', tur: 'EAR', ad: 'old.ear', host: APP, kok: '/vhosting' }],
+  );
+  // Eski Uygulama Envanteri (35 gun ustu) paket iddiasi kurmaz.
+  e.ear = { okunamadi: false, hostlar: [earHost(APP, [U7('old.ear')], null, 40)] };
+  assert.equal(bul(A(e), APP, 'RETIRE_KAYDI_CELISKI').length, 0);
 });

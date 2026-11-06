@@ -37,6 +37,7 @@ const ALANLAR = {
   ip: 'IP',
   ssh: 'SSH',
   ear: 'Uygulama (EAR)',
+  capraz: 'Çapraz kontrol',
 };
 
 // Ortak elle kontrol komutlari (JBoss 7: host=master, controller $HOSTNAME; JBoss 8: host=primary,
@@ -470,6 +471,71 @@ const MADDELER = [
       { kod: null, kosul: 'Çalışan JVM’lerin deployment’ları OK ve etkin (ya da kontrol kapalı).', seviye: 'ok' },
     ],
   },
+  // CAPRAZ KONTROL (2026-11-06; kullanici: "portal genelindeki butun verilerden al incele carp
+  // karsilastir"): ayni uygulamanin oteki kopyalari ve ortamlari (Server Hub + MWAppsInventory),
+  // OpenShift envanteri + Dynatrace ve Retirement kayitlari (capraz.cjs). Kaynak okunamazsa bulgu YOK.
+  {
+    id: 'capraz',
+    alan: 'capraz',
+    ad: 'Kopyalar, ortamlar, OpenShift ve Retirement kaydı',
+    neTaranir:
+      'Aynı uygulamanın aynı ortamdaki öteki kopyaları, öteki ortamları (<APP>-D/-T/-Q), OpenShift envanterindeki karşılığı (Dynatrace isteğiyle) ve Retirement kaydı taramayla karşılaştırılır. Bayat ya da ölçülemeyen kopya karar vermez.',
+    ciktilar: [
+      {
+        kod: 'KOPYA_TUTARSIZ',
+        kosul: 'Aynı ortamda aynı JVM’in kopyalarından biri kapalı ya da auto-start’ı öteki kopyalardan farklı.',
+        seviye: 'warning',
+        dogrulama: {
+          neden: 'Eşlenik kopyalar aynı davranmalı: biri kapalıysa ya da reboot’ta farklı davranacaksa ya bu kopya bırakılmış (retire ediliyor) ya da bir arıza / unutulmuş ayar var.',
+          eksik: 'Aktif / pasif (DR) kurgusunda bir kopyanın kapalı durması beklenen olabilir; kopyalardan biri bakımda olabilir.',
+          kontrol: [...DURUM_KONTROL, 'Öteki kopyaların sunucusunda aynı komutu çalıştır; uygulama sahibine aktif / pasif mi diye sor'],
+        },
+      },
+      {
+        kod: 'ORTAM_KALINTISI',
+        kosul: 'Uygulama prod’da çalışmıyor (kopyası yok, hepsi kapalı ya da Retirement ile durdurulmuş) ama DEV / TEST / QA kopyası çalışıyor.',
+        seviye: 'warning',
+        dogrulama: {
+          neden: 'Prod’da yaşamayan bir uygulamanın test kopyası genelde unutulmuş kalıntıdır; prod OpenShift’e taşındıysa JBoss test kopyası da gereksizdir.',
+          eksik: 'Uygulama henüz prod’a çıkmamış (geliştirme sürüyor) ya da yalnız test ortamında kullanılan bir araç olabilir; prod kopyası Server Hub’ın taramadığı bir sunucuda olabilir.',
+          kontrol: [
+            ...DURUM_KONTROL,
+            'Uygulama Envanteri ve Denetim > Uygulama Ortamları’nda taban adı ara',
+            'CMDB / uygulama sahibi: uygulama hâlâ geliştiriliyor mu',
+          ],
+        },
+      },
+      {
+        kod: 'OCP_KOPYASI',
+        kosul: 'Aynı taban ad OpenShift envanterinde aynı ortamda (namespace son eki) var; Dynatrace isteği yazılır.',
+        seviye: 'info',
+        dogrulama: {
+          neden: 'Uygulama OpenShift’e taşınmış olabilir: JBoss kopyası kapalı ya da trafiksizken OpenShift kopyası istek alıyorsa JBoss tarafı retire adayıdır.',
+          eksik: 'Ad eşleşmesi yalnız normalize adla (küçük harf, ayırıcılar atılır) yapılır; aynı adlı farklı uygulama olabilir. Geçiş sürüyorsa iki taraf bir süre birlikte çalışır.',
+          kontrol: [
+            'oc get deploy,dc -n <NAMESPACE>   # uygulama gerçekten orada mı',
+            'Nginx Hub > SPA Keşfi / Dynatrace: OpenShift kopyasının isteği',
+            ...TRAFIK_KONTROL,
+          ],
+        },
+      },
+      {
+        kod: 'RETIRE_KAYDI_CELISKI',
+        kosul: 'Retirement hedefi STOP edildi ya da silindi ama JVM çalışıyor, auto-start açık ya da paket özgün adıyla diskte.',
+        seviye: 'danger',
+        dogrulama: {
+          neden: 'STOP adımı auto-start’ı kapatır, JVM’i durdurur ve paketi .<smart>.old yapar; tarama bunun tersini görüyor: uygulama elle geri açılmış ya da adım yarım kalmış.',
+          eksik: 'Geri alma (rollback) Retirement dışında elle yapılmış olabilir; kayıt güncellenmemiş olabilir.',
+          kontrol: [
+            ...DURUM_KONTROL,
+            'ls -la /vhosting /vhosting8 | grep -i <EAR>   # özgün ad mı, .old mu',
+            'Retirement > kayıt: hedefin iş geçmişi ve son AWX işi',
+          ],
+        },
+      },
+      { kod: null, kosul: 'Kopyalar ve ortamlar tutarlı; Retirement kaydıyla çelişki yok (ya da kaynak okunamadı: bulgu üretilmez).', seviye: 'ok' },
+    ],
+  },
 ];
 
 /** kod -> { seviye (varsayilan), madde, alan, kosul, dogrulama } */
@@ -548,6 +614,67 @@ const ETIKET_KURALLARI = [
       eksik: 'Deployment doğrudan .war olarak ya da /vhosting dışından dağıtılmış olabilir (o zaman yanlış alarm).',
       kontrol: [...DEPLOYMENT_KONTROL, "grep -n '<deployment ' /usr/jboss/AppServer/domain/configuration/domain.xml"],
     },
+  },
+  // R7-R12 (2026-11-06; kullanici: auto-start ile calisma durumu uyusmuyorsa "bunlar da risktir,
+  // retirement icin suphedir"; anket: kopyalar / ortamlar tutarsiz, OpenShift'e tasinmis + Retirement
+  // kaydi). Hepsi varsayilan SUPHELI: kanit dolayli, karar elle kontrolle verilir.
+  {
+    kural: 'R7',
+    tur: 'JVM',
+    ad: 'Çalışıyor + auto-start kapalı',
+    kosul: 'JVM çalışıyor ama auto-start kapalı: reboot’ta açılmayacak şekilde bırakılmış.',
+    varsayilan: 'SUPHELI',
+    dogrulama: {
+      neden: 'Auto-start’ın kapatılması çoğu zaman uygulamayı bırakmanın ilk adımıdır; JVM hâlâ ayakta çünkü kimse durdurmadı.',
+      eksik: 'Auto-start bilerek kapalı tutuluyor olabilir (elle açılan uygulama, bakım); auto-start ayarı yanlışlıkla kapanmış olabilir (o zaman risk, retire değil).',
+      kontrol: [...DURUM_KONTROL, ...TRAFIK_KONTROL, 'Uygulama sahibine sor: reboot sonrası açılması gerekiyor mu'],
+    },
+    kod: 'REBOOT_RISK',
+  },
+  {
+    kural: 'R8',
+    tur: 'JVM',
+    ad: 'Kapalı + auto-start açık',
+    kosul: 'JVM kapalı ama auto-start açık (trafik ne olursa olsun; R1 bunun trafiksiz, daha güçlü hâli).',
+    varsayilan: 'SUPHELI',
+    dogrulama: null,
+    kod: 'STOPPED_AUTOSTART_ON',
+  },
+  {
+    kural: 'R9',
+    tur: 'JVM',
+    ad: 'Kopyalar tutarsız',
+    kosul: 'Aynı ortamdaki eşlenik kopyalardan bu kopya kapalı ya da auto-start’ı farklı.',
+    varsayilan: 'SUPHELI',
+    dogrulama: null,
+    kod: 'KOPYA_TUTARSIZ',
+  },
+  {
+    kural: 'R10',
+    tur: 'JVM',
+    ad: 'Prod’da yok, test kopyası yaşıyor',
+    kosul: 'Uygulama prod’da çalışmıyor ama DEV / TEST / QA kopyası çalışıyor.',
+    varsayilan: 'SUPHELI',
+    dogrulama: null,
+    kod: 'ORTAM_KALINTISI',
+  },
+  {
+    kural: 'R11',
+    tur: 'JVM',
+    ad: 'OpenShift’e taşınmış olabilir',
+    kosul: 'Aynı uygulama OpenShift’te aynı ortamda var; JBoss kopyası kapalı ya da trafiksiz, ya da OpenShift kopyası istek alıyor.',
+    varsayilan: 'SUPHELI',
+    dogrulama: null,
+    kod: 'OCP_KOPYASI',
+  },
+  {
+    kural: 'R12',
+    tur: 'JVM',
+    ad: 'Retirement kaydıyla çelişiyor',
+    kosul: 'Retirement hedefi STOP edildi / silindi ama JVM çalışıyor, auto-start açık ya da paket özgün adıyla diskte.',
+    varsayilan: 'SUPHELI',
+    dogrulama: null,
+    kod: 'RETIRE_KAYDI_CELISKI',
   },
 ].map((k) => ({ ...k, dogrulama: k.dogrulama || KODLAR.get(k.kod).dogrulama }));
 
