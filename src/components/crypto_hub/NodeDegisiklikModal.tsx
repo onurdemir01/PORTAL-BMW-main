@@ -133,6 +133,9 @@ export function NodeDegisiklikModal({
   const [gerekce, setGerekce] = useState('');
   const [ocoNo, setOcoNo] = useState('');
   const [ocoBilgi, setOcoBilgi] = useState<OcoWindowInfo | null>(null);
+  // Pencere kararının saati: doğrulama anında alınır, pencere açıkken yarım dakikada bir yenilenir.
+  // Render sırasında Date.now() okunmaz (react-hooks/purity).
+  const [simdi, setSimdi] = useState(() => Date.now());
   const [ocoHata, setOcoHata] = useState('');
   const [ocoDogruluyor, setOcoDogruluyor] = useState(false);
   // Numara değiştiyse uçuştaki eski doğrulamanın sonucu yazılmaz.
@@ -151,7 +154,7 @@ export function NodeDegisiklikModal({
   const prod = tenant.production;
   const onaysiz = smartMod === 'kapali' && !prod;
   const ocoZorunlu = ocoGerekli || prod;
-  const ocoKarar = ocoBilgi ? ocoDurumu(ocoBilgi, onaysiz, Date.now()) : null;
+  const ocoKarar = ocoBilgi ? ocoDurumu(ocoBilgi, onaysiz, simdi) : null;
   const ocoTamam = !ocoZorunlu || !!ocoKarar?.gecerli;
   const ocoBilgiMetni = ocoKarar?.bekleyecek
     ? METIN.oco.bekleSmart
@@ -188,6 +191,12 @@ export function NodeDegisiklikModal({
     };
   }, [grup, secimAnahtari, yeni]);
 
+  useEffect(() => {
+    if (!ocoBilgi) return;
+    const t = window.setInterval(() => setSimdi(Date.now()), 30000);
+    return () => window.clearInterval(t);
+  }, [ocoBilgi]);
+
   const ileriAcik = (() => {
     if (bekle || !grup) return false;
     if (adim === 0) return secim.length > 0;
@@ -218,8 +227,10 @@ export function NodeDegisiklikModal({
     try {
       const r = await ansibleApi.ocoValidate(no);
       if (sira !== ocoSira.current) return;
-      if (r.ok && r.oco) setOcoBilgi(r.oco);
-      else setOcoHata(r.message || METIN.oco.dogrulanamadi);
+      if (r.ok && r.oco) {
+        setSimdi(Date.now());
+        setOcoBilgi(r.oco);
+      } else setOcoHata(r.message || METIN.oco.dogrulanamadi);
     } catch (e: unknown) {
       if (sira !== ocoSira.current) return;
       const i = (e && typeof e === 'object' ? e : {}) as { gatewayUnavailable?: boolean; nginxRed?: boolean };
