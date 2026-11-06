@@ -8,6 +8,10 @@
 // Liste sunucudaki TEK kaynaktan gelir (server/server-hub/kural-katalogu.cjs; bekçi onu assess.cjs
 // ile karşılaştırır). Seviye değişikliği yalnız SEVİYEYİ değiştirir: sunucu durumu, sayaçlar,
 // sıralama. Açılış Hazırlığı ve özet kartları koda bakar, değişmez — ekran bunu söyler.
+//
+// RETIREMENT (2026-11-06, kullanıcı: "retiere etiketi koyma kısmı vs de admin tarafından editlenebilir
+// olsun"): etiket kurallarının seviyesi (kesin / şüpheli / kapalı) ve kökte yok sayılan girdiler.
+// İkisinde de gerekçe zorunlu; geçmişte görünür.
 import React, { useMemo, useState } from 'react';
 import { ArrowPathIcon, MagnifyingGlassIcon, ArrowUturnLeftIcon } from '@heroicons/react/24/outline';
 import {
@@ -18,6 +22,8 @@ import {
   type ShLimit,
   type ShSeverity,
   type ShAyarGecmis,
+  type ShEtiketKurali,
+  type ShEtiketSeviye,
 } from '@/api/serverHubApi';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { toast } from '@/hooks/useToast';
@@ -80,6 +86,8 @@ export function SeviyeRozeti({ s, kucuk = false }: { s: ShSeverity; kucuk?: bool
 /** Geçmiş satırının okunur adı: 'seviye:REBOOT_RISK' → "REBOOT_RISK seviyesi". */
 function ayarAdi(anahtar: string, limitler: ShLimit[]): string {
   if (anahtar.startsWith('seviye:')) return `${anahtar.slice(7)} seviyesi`;
+  if (anahtar.startsWith('etiket:')) return `${anahtar.slice(7)} retirement etiketi`;
+  if (anahtar === 'liste:kok_yoksay') return 'Kökte yok sayılan girdiler';
   if (anahtar.startsWith('limit:')) {
     const l = limitler.find((x) => x.ad === anahtar.slice(6));
     return `${l ? l.etiket : anahtar.slice(6)} · tek seferde sunucu`;
@@ -187,6 +195,11 @@ export default function KurallarTab() {
       </section>
 
       <LimitlerBolumu limitler={veri.limitler} kilitli={veri.okunamadi} onKaydedildi={yenile} />
+
+      {veri.etiketKurallari && (
+        <EtiketKurallariBolumu kurallar={veri.etiketKurallari} kilitli={veri.okunamadi} onKaydedildi={yenile} />
+      )}
+      {veri.kokYoksay && <KokYoksayBolumu y={veri.kokYoksay} kilitli={veri.okunamadi} onKaydedildi={yenile} />}
 
       <section className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}>
         <div className="flex items-center gap-2 flex-wrap px-4 py-3 border-b" style={{ borderColor: 'var(--border-subtle)' }}>
@@ -322,7 +335,21 @@ function CiktiSatiri({ c, kilitli, onKaydedildi }: { c: ShKuralCikti; kilitli: b
   return (
     <>
       <tr className="border-t align-top" style={{ borderColor: 'var(--border-subtle)', background: degisti ? 'var(--bg-elevated)' : undefined }}>
-        <td className="px-3 py-1.5" style={{ color: 'var(--text-primary)' }}>{c.kosul}</td>
+        <td className="px-3 py-1.5" style={{ color: 'var(--text-primary)' }}>
+          {c.kosul}
+          {c.dogrulama && (
+            <details className="mt-1 text-[11px]" style={{ color: 'var(--text-secondary)' }}>
+              <summary className="cursor-pointer" style={{ color: 'var(--accent)' }}>nasıl doğrulanır?</summary>
+              <div className="mt-1 space-y-0.5">
+                <div><b>Neden:</b> {c.dogrulama.neden}</div>
+                <div><b>Ne eksik olabilir:</b> {c.dogrulama.eksik}</div>
+                {c.dogrulama.kontrol.map((k) => (
+                  <code key={k} className="block font-mono break-all px-1.5 py-0.5 rounded" style={{ background: 'var(--bg-elevated)' }}>{k}</code>
+                ))}
+              </div>
+            </details>
+          )}
+        </td>
         <td className="px-3 py-1.5 font-mono text-[11px]" style={{ color: 'var(--text-secondary)' }}>{c.kod}</td>
         <td className="px-3 py-1.5"><SeviyeRozeti s={c.varsayilan} kucuk /></td>
         <td className="px-3 py-1.5">
@@ -521,6 +548,184 @@ function LimitSatiri({ l, kilitli, onKaydedildi }: { l: ShLimit; kilitli: boolea
         )}
       </td>
     </tr>
+  );
+}
+
+const ETIKET: Record<ShEtiketSeviye, { etiket: string; renk: string }> = {
+  KESIN: { etiket: 'kesin', renk: 'var(--status-danger-text)' },
+  SUPHELI: { etiket: 'şüpheli', renk: 'var(--status-warning-text)' },
+  KAPALI: { etiket: 'kapalı (etiket üretmez)', renk: 'var(--text-muted)' },
+};
+
+function EtiketKurallariBolumu({ kurallar, kilitli, onKaydedildi }: { kurallar: ShEtiketKurali[]; kilitli: boolean; onKaydedildi: () => void }) {
+  return (
+    <section className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }} aria-label="Retirement etiket kuralları">
+      <div className="px-4 py-3 border-b" style={{ borderColor: 'var(--border-subtle)' }}>
+        <h2 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Retirement etiket kuralları</h2>
+        <p className="text-[12px] mt-0.5 max-w-3xl" style={{ color: 'var(--text-muted)' }}>
+          Etiket bulgudan ayrıdır: “retire edilebilir mi” sorusudur. <b style={{ color: 'var(--text-secondary)' }}>Kesin</b> etiket, eşlenik kopyalardan biri çalışıyorsa,
+          trafik ölçülemediyse ya da kanıt eksikse kendiliğinden şüpheliye iner ve nedeni yazılır. Yalnız kesin + elle “doğrulandı” etiketten Retirement kaydı açılır.
+          Değişiklik hemen uygulanır; gerekçe zorunlu.
+        </p>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-[12px]">
+          <thead>
+            <tr style={{ color: 'var(--text-muted)', background: 'var(--bg-elevated)' }}>
+              <th className="px-3 py-1.5 text-left font-medium">Kural</th>
+              <th className="px-3 py-1.5 text-left font-medium">Varsayılan</th>
+              <th className="px-3 py-1.5 text-left font-medium">Etiket</th>
+            </tr>
+          </thead>
+          <tbody>
+            {kurallar.map((k) => (
+              <EtiketKuraliSatiri key={k.kural} k={k} kilitli={kilitli} onKaydedildi={onKaydedildi} />
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+function EtiketKuraliSatiri({ k, kilitli, onKaydedildi }: { k: ShEtiketKurali; kilitli: boolean; onKaydedildi: () => void }) {
+  const [secim, setSecim] = useState<ShEtiketSeviye>(k.gecerli);
+  const [not, setNot] = useState('');
+  const [gonderiliyor, setGonderiliyor] = useState(false);
+  const kaydet = async () => {
+    setGonderiliyor(true);
+    try {
+      const r = await serverHubApi.etiketSeviyesi(k.kural, secim, not);
+      if (!r.ok) {
+        toast.error(r.message || 'Kaydedilemedi.');
+        return;
+      }
+      toast.success(`${k.kural}: ${ETIKET[k.gecerli].etiket} → ${ETIKET[secim].etiket}.`);
+      setNot('');
+      onKaydedildi();
+    } catch (e) {
+      toast.error(String(e));
+    } finally {
+      setGonderiliyor(false);
+    }
+  };
+  const degisecek = secim !== k.gecerli;
+  return (
+    <tr className="border-t align-top" style={{ borderColor: 'var(--border-subtle)', background: k.gecerli !== k.varsayilan ? 'var(--bg-elevated)' : undefined }}>
+      <td className="px-3 py-2">
+        <div className="font-semibold" style={{ color: 'var(--text-primary)' }}>
+          <span className="font-mono">{k.kural}</span> · {k.ad}
+        </div>
+        <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>{k.kosul}</div>
+        {k.degistiren && (
+          <div className="text-[10px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
+            değiştiren {k.degistiren}{k.zaman ? ` · ${fmtDateTime(k.zaman)}` : ''}{k.aciklama ? ` · “${k.aciklama}”` : ''}
+          </div>
+        )}
+      </td>
+      <td className="px-3 py-2" style={{ color: ETIKET[k.varsayilan].renk }}>{ETIKET[k.varsayilan].etiket}</td>
+      <td className="px-3 py-2">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <select
+            value={secim}
+            disabled={kilitli || gonderiliyor}
+            onChange={(e) => setSecim(e.target.value as ShEtiketSeviye)}
+            aria-label={`${k.kural} etiketi`}
+            className="h-7 px-1.5 text-[12px] rounded-lg border font-semibold"
+            style={{ borderColor: 'var(--border)', color: ETIKET[secim].renk, background: 'var(--bg-surface)' }}
+          >
+            {(Object.keys(ETIKET) as ShEtiketSeviye[]).map((s) => (
+              <option key={s} value={s}>
+                {ETIKET[s].etiket}
+                {s === k.varsayilan ? ' (varsayılan)' : ''}
+              </option>
+            ))}
+          </select>
+          {degisecek && (
+            <>
+              <input
+                value={not}
+                onChange={(e) => setNot(e.target.value)}
+                maxLength={500}
+                placeholder="Gerekçe (zorunlu)"
+                aria-label={`${k.kural} değişiklik gerekçesi`}
+                className="h-7 px-2 text-[12px] rounded-lg border w-56"
+                style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)' }}
+              />
+              <button type="button" className={BTN} style={btnStil(true)} disabled={kilitli || gonderiliyor || not.trim().length < 3} onClick={kaydet}>
+                Kaydet
+              </button>
+              <button type="button" className={BTN} style={btnStil()} disabled={gonderiliyor} onClick={() => { setSecim(k.gecerli); setNot(''); }}>
+                İptal
+              </button>
+            </>
+          )}
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+function KokYoksayBolumu({ y, kilitli, onKaydedildi }: { y: NonNullable<ShKurallar['kokYoksay']>; kilitli: boolean; onKaydedildi: () => void }) {
+  const [metin, setMetin] = useState(y.gecerli.join(', '));
+  const [not, setNot] = useState('');
+  const [gonderiliyor, setGonderiliyor] = useState(false);
+  const liste = [...new Set(metin.split(/[,\n]+/).map((x) => x.trim()).filter(Boolean))].sort();
+  const degisti = liste.join(',') !== [...y.gecerli].sort().join(',');
+  const kaydet = async (l: string[]) => {
+    setGonderiliyor(true);
+    try {
+      const r = await serverHubApi.kokYoksay(l, not);
+      if (!r.ok) {
+        toast.error(r.message || 'Kaydedilemedi.');
+        return;
+      }
+      toast.success('Yok sayma listesi kaydedildi; bulgular yeni listeyle hesaplanıyor.');
+      setNot('');
+      onKaydedildi();
+    } catch (e) {
+      toast.error(String(e));
+    } finally {
+      setGonderiliyor(false);
+    }
+  };
+  return (
+    <section className="rounded-xl border p-4 space-y-2" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }} aria-label="Kökte yok sayılan girdiler">
+      <h2 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Kökte yok sayılan girdiler</h2>
+      <p className="text-[12px] max-w-3xl" style={{ color: 'var(--text-muted)' }}>
+        /vhosting ve /vhosting8 kökünde .ear ile bitmeyen her girdi “retire şüphesi” bulgusu ve etiketi üretir. Buradaki adlar (büyük / küçük harf
+        fark etmez) yok sayılır. Varsayılan: <span className="font-mono">{y.varsayilan.join(', ')}</span>.
+        {y.degistiren && <> Son değiştiren {y.degistiren}{y.zaman ? ` · ${fmtDateTime(y.zaman)}` : ''}{y.not ? ` · “${y.not}”` : ''}.</>}
+      </p>
+      <textarea
+        value={metin}
+        onChange={(e) => setMetin(e.target.value)}
+        disabled={kilitli || gonderiliyor}
+        rows={2}
+        aria-label="Yok sayılan girdi adları (virgülle)"
+        className="w-full px-2 py-1 text-[12px] rounded-lg border font-mono"
+        style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)' }}
+      />
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <input
+          value={not}
+          onChange={(e) => setNot(e.target.value)}
+          maxLength={500}
+          placeholder="Gerekçe (zorunlu)"
+          aria-label="Yok sayma listesi gerekçesi"
+          className="h-7 px-2 text-[12px] rounded-lg border w-64"
+          style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)' }}
+        />
+        <button type="button" className={BTN} style={btnStil(true)} disabled={kilitli || gonderiliyor || !degisti || not.trim().length < 3} onClick={() => kaydet(liste)}>
+          Kaydet ({liste.length} ad)
+        </button>
+        {[...y.gecerli].sort().join(',') !== [...y.varsayilan].sort().join(',') && (
+          <button type="button" className={BTN} style={btnStil()} disabled={kilitli || gonderiliyor || not.trim().length < 3} onClick={() => { setMetin(y.varsayilan.join(', ')); kaydet(y.varsayilan); }}>
+            <ArrowUturnLeftIcon className="w-3.5 h-3.5" /> Varsayılana dön
+          </button>
+        )}
+      </div>
+    </section>
   );
 }
 

@@ -186,7 +186,8 @@ describe('SH5 kaynak kapıları', () => {
   const oku = (f: string) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
   it('Bulgular key ile yeniden kurulur; gizli sekme kapıları yerinde', () => {
     const sh = oku('ServerHubPage.tsx');
-    expect(sh).toMatch(/<FindingsTab key=\{bulguNo\} initial=\{findingsFilter\} \/>/);
+    // key zorunlu; sonradan eklenen proplar (onRetirementAc, 2026-11-06) bekciyi kirmasin.
+    expect(sh).toMatch(/<FindingsTab key=\{bulguNo\} initial=\{findingsFilter\}[^>]*\/>/);
     expect(sh).toMatch(/setBulguNo\(\(n\) => n \+ 1\);\s*sekmeAc\('findings'\);/);
     const rt = oku('RetirementTab.tsx');
     expect(rt).toMatch(/if \(!canliGerek \|\| !gorunur\) return;/);

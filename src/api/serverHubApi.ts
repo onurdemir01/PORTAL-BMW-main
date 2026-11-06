@@ -48,10 +48,14 @@ export interface ShFinding {
   severity: ShSeverity;
   /** Admin seviyeyi degistirdiyse kodun varsayilan seviyesi. */
   defaultSeverity?: ShSeverity;
-  area: 'init' | 'jboss' | 'jvm' | 'web' | 'ip' | 'ssh' | 'scan';
+  area: 'init' | 'jboss' | 'jvm' | 'web' | 'ip' | 'ssh' | 'scan' | 'ear';
   code: string;
   text: string;
   fix: ShFix | null;
+  /** Yalniz sunucu ayrintisinda: neden / eksik olabilir / nasil kontrol edilir (katalogdan). */
+  dogrulama?: ShDogrulama | null;
+  /** EAR alani bulgularinin konusu (Uygulama Envanteri). */
+  ear?: { kok?: string; ad?: string; jboss?: string; neden?: string; girdiler?: ShKokGirdisi[]; uygulamalar?: string[] };
   logs?: ShFindingLog[];
   scanDate?: string | null;
   matchKind?: string | null;
@@ -94,6 +98,13 @@ export interface ShJvm {
    *  tanimli degil - auto-start'i yok, /jvm-autostart 400). */
   cfgSrc?: string | null;
   autoStartSource?: string;
+  /** MWAppsInventory tier (2026-11-06; zincir: 2 katman ayni makine, 3 katman ayri web sunucusu). */
+  tier?: string | null;
+  /** Parametre farki isareti: 0 yok, 1 var, 2 olculemedi; eski semada yok. */
+  argFark?: number | null;
+  /** v3 esleme ve trafik (assess). */
+  mapping?: string | null;
+  trafficState?: string | null;
   invStatus?: string | null;
   invAutoStart?: string;
   invJvmCount?: number;
@@ -109,6 +120,9 @@ export interface ShJvm {
     req7d: number | null;
     hc24h: number | null;
     sampled: boolean;
+    kind?: string | null;
+    trafficState?: string | null;
+    trafficReason?: string | null;
   }[];
 }
 export interface ShVhost {
@@ -135,7 +149,39 @@ export interface ShVhost {
   /** v3 trafik sebebi (OK, CONF_UNREADABLE, LOCATION_LOG, CONDITIONAL_LOG, INCLUDE_UNRESOLVED, ...) */
   trafficReason?: string | null;
 }
+/** Katalogdaki dogrulama metni (2026-11-06): kontrol komutlarinda <JVM>, <EAR>, <GIRDI>, <ACCESS_LOG>. */
+export interface ShDogrulama {
+  neden: string;
+  eksik: string;
+  kontrol: string[];
+}
+export interface ShKokGirdisi {
+  kok: string;
+  ad: string;
+  tip: 'D' | 'F' | 'L' | '?';
+  boyut?: number | null;
+  mtime?: number | null;
+  hedef?: string | null;
+}
+/** Uygulama Envanteri'nin bu sunucudaki son durumu. VAR disindaki durumlarda EAR bulgusu uretilmez. */
+export interface ShEarDurumu {
+  durum: 'VAR' | 'ESKI' | 'YOK' | 'OKUNAMADI';
+  taranma?: string | null;
+  yasGun?: number | null;
+  kosuId?: number;
+  uygulamalar?: {
+    kok: string;
+    ad: string;
+    jboss: string;
+    durum: string;
+    warSayisi: number | null;
+    xml: { durum: 'VAR' | 'JVM_YOK' | 'OLCULEMEDI'; neden?: string | null; jvmler?: { ad: string; grup?: string; auto_start?: boolean }[] } | null;
+  }[];
+}
 export interface ShHostDetail extends Omit<ShHostRow, 'jvms' | 'vhosts'> {
+  /** Uygulama Envanteri durumu ve retirement adaylari (2026-11-06). */
+  ear?: ShEarDurumu | null;
+  retireAdaylari?: { kural: string; tur: ShEtiketTur; ad: string; host: string; gen?: number; kok?: string }[];
   /** C3: sys.columns okunamadi - tarayici sema surumu bilinmiyor, bu sunucuda eylem yok. */
   schemaUnknown?: boolean;
   findings: ShFinding[];
@@ -343,6 +389,7 @@ export interface ShJobStatus {
 export interface ShKuralCikti {
   kod: string | null;
   kosul: string;
+  dogrulama?: ShDogrulama | null;
   varsayilan: ShSeverity;
   gecerli: ShSeverity;
   degistiren?: string | null;
@@ -390,8 +437,108 @@ export interface ShKurallar {
   alanlar: Record<string, string>;
   maddeler: ShKuralMadde[];
   limitler: ShLimit[];
+  /** Retirement etiket kurallari ve kokte yok sayilan girdiler (2026-11-06). */
+  etiketKurallari?: ShEtiketKurali[];
+  kokYoksay?: { gecerli: string[]; varsayilan: string[]; degistiren: string | null; zaman: string | null; not: string };
   /** null = gecmis okunamadi */
   gecmis: ShAyarGecmis[] | null;
+}
+
+// ── Retirement etiketleri (2026-11-06) ── bulgudan ayri; KESIN / SUPHELI, Admin kural seviyesi,
+// kayitli manuel kontrol. Yalniz KESIN + DOGRULANDI retirement'a hazir.
+export type ShEtiketSeviye = 'KESIN' | 'SUPHELI' | 'KAPALI';
+export type ShEtiketTur = 'JVM' | 'EAR' | 'GIRDI';
+export type ShKontrolDurum = 'BEKLIYOR' | 'DOGRULANDI' | 'YANLIS_ALARM' | 'VERI_DEGISTI' | 'BILINMIYOR';
+export interface ShEtiketKurali {
+  kural: string;
+  tur: ShEtiketTur;
+  ad: string;
+  kosul: string;
+  varsayilan: ShEtiketSeviye;
+  gecerli: ShEtiketSeviye;
+  degistiren: string | null;
+  zaman: string | null;
+  aciklama: string;
+  dogrulama: ShDogrulama | null;
+}
+export interface ShEtiketKopyasi {
+  host: string;
+  kurallar: string[];
+  // JVM
+  gen?: number;
+  calisiyor?: boolean | null;
+  autoStart?: string;
+  trafik?: string | null;
+  esleme?: string;
+  tier?: string | null;
+  taze?: boolean;
+  taramaTarihi?: string | null;
+  web?: { host: string; vhost: string; trafik: string | null; istek7g: number | null; log: string; tur: string | null }[];
+  engel?: string | null;
+  // EAR / GIRDI
+  kok?: string;
+  durum?: string;
+  warSayisi?: number | null;
+  xml?: string | null;
+  xmlNeden?: string | null;
+  jvmler?: { ad: string; autoStart: boolean; calisiyor: boolean | null }[];
+  taranma?: string | null;
+  tip?: string;
+  hedef?: string | null;
+}
+export interface ShRetireEtiket {
+  anahtar: string;
+  tur: ShEtiketTur;
+  ad: string;
+  ortam: string;
+  gen: number | null;
+  nesil: string | null;
+  kok: string | null;
+  seviye: 'KESIN' | 'SUPHELI';
+  hamSeviye: 'KESIN' | 'SUPHELI';
+  kurallar: string[];
+  nedenler: string[];
+  notlar: string[];
+  tier: string[];
+  hostlar: string[];
+  kopyalar: ShEtiketKopyasi[];
+  imza: string;
+  kontrol: { sonuc: 'DOGRULANDI' | 'YANLIS_ALARM'; aciklama: string; isaretleyen: string | null; zaman: string | null } | null;
+  durum: ShKontrolDurum;
+  retirementHazir: boolean;
+}
+/** Liste ogesi: kopyalar (zincir) TASINMAZ, sayisi tasinir; ayrinti retireEtiketAyrinti ile tam gelir. */
+export type ShRetireEtiketOzet = Omit<ShRetireEtiket, 'kopyalar'> & { kopyaSayisi: number; kopyalar?: undefined };
+/** Ozet ya da tam etiket (yardimcilar ikisiyle de calisir). */
+export type ShRetireEtiketHer = ShRetireEtiketOzet | ShRetireEtiket;
+export interface ShRetireSonuc {
+  ok: boolean;
+  message?: string;
+  tableMissing?: boolean;
+  latestScan?: string | null;
+  ear?: { okunamadi: boolean; hata?: string; hostSayisi: number } | null;
+  kontrolOkunamadi?: boolean;
+  ayarOkunamadi?: boolean;
+  kurallar: ShEtiketKurali[];
+  etiketler: ShRetireEtiketOzet[];
+  ozet: {
+    toplam: number;
+    kesin: number;
+    supheli: number;
+    dusurulen: number;
+    bekliyor: number;
+    dogrulandi: number;
+    yanlisAlarm: number;
+    retirementHazir: number;
+  };
+}
+export interface ShKontrolYanit {
+  ok: boolean;
+  message?: string;
+  etiket?: ShRetireEtiket | null;
+  /** 409: etiketin GUNCEL imzasi */
+  imza?: string;
+  _httpStatus?: number;
 }
 export interface ShAyarYazim {
   ok: boolean;
@@ -477,4 +624,21 @@ export const serverHubApi = {
     fetch(`${BASE}/kurallar/seviye/${encodeURIComponent(kod)}`, put({ seviye, aciklama })).then(safeJson),
   limitDegistir: (ad: ShLimitAd, deger: number, aciklama: string): Promise<ShAyarYazim> =>
     fetch(`${BASE}/kurallar/limit/${encodeURIComponent(ad)}`, put({ deger, aciklama })).then(safeJson),
+  // RETIREMENT ETIKETLERI (2026-11-06)
+  retireEtiketleri: (fresh = false): Promise<ShRetireSonuc> =>
+    fetch(`${BASE}/retire-etiketleri${fresh ? '?fresh=1' : ''}`).then(safeJson),
+  retireEtiketAyrinti: (
+    anahtar: string,
+  ): Promise<{ ok: boolean; etiket?: ShRetireEtiket; message?: string; _httpStatus?: number }> =>
+    fetch(`${BASE}/retire-etiketleri/ayrinti?anahtar=${encodeURIComponent(anahtar)}`).then(safeJson),
+  retireKontrol: (p: {
+    anahtar: string;
+    sonuc: 'DOGRULANDI' | 'YANLIS_ALARM' | 'GERI_AL';
+    aciklama: string;
+    imza: string;
+  }): Promise<ShKontrolYanit> => fetch(`${BASE}/retire-kontrol`, put(p)).then(safeJson),
+  etiketSeviyesi: (kural: string, seviye: ShEtiketSeviye, aciklama: string): Promise<ShAyarYazim> =>
+    fetch(`${BASE}/kurallar/etiket/${encodeURIComponent(kural)}`, put({ seviye, aciklama })).then(safeJson),
+  kokYoksay: (liste: string[], aciklama: string): Promise<ShAyarYazim> =>
+    fetch(`${BASE}/kurallar/kok-yoksay`, put({ liste, aciklama })).then(safeJson),
 };

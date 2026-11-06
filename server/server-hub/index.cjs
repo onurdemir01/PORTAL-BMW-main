@@ -16,6 +16,7 @@ const { maskText, maskJvmArgs, maskJvmArgDiff } = require('./mask.cjs');
 const ayarlar = require('./ayarlar.cjs');
 // Uygulama Envanteri'nin son durumu (2026-11-06): EAR bulgulari ve retirement etiketleri.
 const { earSonDurum } = require('./ear-hub-verisi.cjs');
+const { KODLAR } = require('./kural-katalogu.cjs');
 
 // ── KOLON LISTELERI (sozlesme v3 P9) ───────────────────────────────────────────────
 // Yildizli (tum kolon) SELECT YOK. Her tablo icin BEKLENEN kolonlar (sozlesme kayit_tipleri + DDL) ile
@@ -447,7 +448,12 @@ function hostDetail(h, agir) {
     loadExcluded: !!h.loadExcluded,
     // C3: sema okunamadi -> bu sunucuda hicbir eylem yok, calisma durumlari bilinmiyor
     schemaUnknown: h.schemaUnknown === true,
-    findings: h.findings.map((f) => ({ ...f, text: maskText(f.text) })),
+    // Dogrulama (neden / eksik olabilir / nasil kontrol edilir) katalogdan: sunucu paneli gosterir.
+    findings: h.findings.map((f) => ({
+      ...f,
+      text: maskText(f.text),
+      dogrulama: (KODLAR.get(f.code) || {}).dogrulama || null,
+    })),
     init: h.init,
     jboss: h.jboss.map((b) => ({
       ...b,

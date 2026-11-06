@@ -458,12 +458,21 @@ function SilmeDurumu({ t, onListe }: { t: RtTarget; onListe: () => void }) {
   );
 }
 
-export default function RetirementTab() {
+export default function RetirementTab({ oneri = null }: { oneri?: { uygulama: string; not: string; no: number } | null } = {}) {
   const [rows, setRows] = useState<RtRecordRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
   const [openId, setOpenId] = useState<number | null>(null);
   const [creating, setCreating] = useState(false);
+  // Server Hub retirement etiketinden gelen oneri (2026-11-06): her yeni oneri (no) kayit formunu
+  // uygulama adi ve kontrol notu dolu acar; kaydi acmak yine kullanicinin elindedir.
+  const [oneriAcik, setOneriAcik] = useState<{ uygulama: string; not: string } | null>(null);
+  const [sonOneri, setSonOneri] = useState(0);
+  if (oneri && oneri.no !== sonOneri) {
+    setSonOneri(oneri.no);
+    setOneriAcik({ uygulama: oneri.uygulama, not: oneri.not });
+    setCreating(true);
+  }
   const [cfg, setCfg] = useState<{ defaultDays: number; sccMailConfigured: boolean; sccMailTo: string | null; sccMailCc?: string | null; sccKaynak?: SccKaynak; sccGuncelleyen?: string | null; sccGuncellendi?: string | null; sccDbHatasi?: string | null } | null>(null);
   // SCC ADRESI EKRANDAN (2026-10-08, kullanici: "bunu application retirement sayfasinda girmek
   // istiyorum"). Eskiden yalniz Portal sunucusunun ortam degiskeniydi.
@@ -609,21 +618,21 @@ export default function RetirementTab() {
           </tbody>
         </table>
       </div>
-      {creating && <CreateModal defaultDays={cfg?.defaultDays ?? 45} onClose={() => setCreating(false)} onCreated={(id) => { setCreating(false); load(); setOpenId(id); }} />}
+      {creating && <CreateModal defaultDays={cfg?.defaultDays ?? 45} baslangic={oneriAcik} onClose={() => { setCreating(false); setOneriAcik(null); }} onCreated={(id) => { setCreating(false); setOneriAcik(null); load(); setOpenId(id); }} />}
       {openId != null && <RecordModal id={openId} onClose={() => { setOpenId(null); load(); }} />}
     </div>
   );
 }
 
 // ── Yeni kayit: uygulama -> kesif -> alanlar ─────────────────────────────────────
-function CreateModal({ defaultDays, onClose, onCreated }: { defaultDays: number; onClose: () => void; onCreated: (id: number) => void }) {
+function CreateModal({ defaultDays, baslangic = null, onClose, onCreated }: { defaultDays: number; baslangic?: { uygulama: string; not: string } | null; onClose: () => void; onCreated: (id: number) => void }) {
   const [q, setQ] = useState('');
   const [apps, setApps] = useState<string[]>([]);
   const [app, setApp] = useState('');
   const [disc, setDisc] = useState<RtDiscovery | null>(null);
   const [discLoading, setDiscLoading] = useState(false);
   const [sel, setSel] = useState<Set<string>>(new Set());
-  const [f, setF] = useState({ smartNo: '', ocoNo: '', ownerEmail: '', deleteAfterDays: String(defaultDays), plannedDeleteAt: '', dnsReuse: false, lbReuse: false, notes: '' });
+  const [f, setF] = useState({ smartNo: '', ocoNo: '', ownerEmail: '', deleteAfterDays: String(defaultDays), plannedDeleteAt: '', dnsReuse: false, lbReuse: false, notes: baslangic ? baslangic.not.slice(0, 1000) : '' });
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -647,6 +656,9 @@ function CreateModal({ defaultDays, onClose, onCreated }: { defaultDays: number;
     }
     catch (e: unknown) { toast.error(e instanceof Error ? e.message : String(e)); } finally { setDiscLoading(false); }
   };
+  // Server Hub etiketinden gelen uygulama: form acilinca kesif kendiliginden baslar; hangi hedeflerin
+  // secilecegi ve kaydin acilmasi yine kullanicinin karari.
+  useAsyncEffect(async (alive) => { if (baslangic && alive()) await pick(baslangic.uygulama); }, [baslangic]);
   const key = (t: { host: string; appName: string; gen: number | null }) => `${t.host}|${t.appName}|${t.gen ?? ''}`;
   const selected = (disc?.targets || []).filter((t) => sel.has(key(t)));
   const surumler = [...new Set((disc?.targets || []).map((t) => t.gen ?? 0))].sort();
