@@ -5,10 +5,14 @@
 # bytecode birakilmaz, yalniz stdout'a tek blok basilir. Yalniz stdlib; Python 3.6+
 # (RHEL 8 platform-python 3.6, RHEL 9 3.9).
 #
-# YAPMADIKLARI: dosya icerigi okumaz (yalniz zip arsivlerinin MERKEZ DIZINI, salt okunur), dosya
-# yazmaz / silmez / izin degistirmez, uygulama ICINDE sembolik bag izlemez (yalniz kokteki
-# 'APP.ear -> surum dizini' bagi tek adim izlenir ve kayda yazilir), NSS sorgusu yapmaz
+# YAPMADIKLARI: uygulama dosyalarinin icerigini okumaz (yalniz zip arsivlerinin MERKEZ DIZINI, salt
+# okunur), dosya yazmaz / silmez / izin degistirmez, uygulama ICINDE sembolik bag izlemez (yalniz
+# kokteki 'APP.ear -> surum dizini' bagi tek adim izlenir ve kayda yazilir), NSS sorgusu yapmaz
 # (uid/gid sayisal).
+# TEK ICERIK ISTISNASI (2026-11-06): JBoss domain.xml / host.xml (salt okunur, 5 MB sinir, DOCTYPE /
+# ENTITY iceren dosya reddedilir). Yalniz deployment / server-group / server adlari, yollari ve
+# auto-start alinir; baska hicbir deger (parola, datasource, sistem ozelligi) pakete girmez.
+# Kokteki .ear ile bitmeyen girdiler (ad, tip, boyut, mtime) ayrica listelenir: retire supheleri.
 #
 # KIPLER: OZET - dosya basina stat YOK (scandir ad + tip), yalniz kutuphane jar'larinin boyutu;
 #         TAM  - her giris icin lstat (ls -lrtiR alanlari) ve agac satirlari.
@@ -17,7 +21,8 @@
 #   uygulama: TAM | KISMI_SINIR | KISMI_ZAMAN | KISMI_IZIN | ARSIV_ACILMADI | ATLANDI_ZAMAN | HATA
 #   host:     TAM | KISMI | KOK_YOK | ZAMAN_ASIMI
 # Ayarlar ortam degiskenleriyle (playbook verir): EAR_KIP, EAR_KOKLER, EAR_SINIR_UYGULAMA,
-# EAR_SINIR_HOST, EAR_SURE, EAR_ARSIV_MB, EAR_CIKTI (paket | insan).
+# EAR_SINIR_HOST, EAR_SURE, EAR_ARSIV_MB, EAR_CIKTI (paket | insan), EAR_JBOSS (JBoss kurulum
+# kokleri, ':' ayrili; varsayilan /usr/jboss/AppServer:/usr/jboss8/AppServer).
 import base64
 import hashlib
 import io
@@ -32,8 +37,9 @@ import time
 import zipfile
 import zlib
 from collections import deque
+from xml.etree import ElementTree
 
-SURUM = 1
+SURUM = 2
 BASLA = '@@EAR_ENVANTER_BASLA@@'
 BITTI = '@@EAR_ENVANTER_BITTI@@'
 
@@ -55,6 +61,11 @@ ARSIV_BAYT = ortam_sayi('EAR_ARSIV_MB', 64, 1, 512) * 1024 * 1024
 CIKTI = 'insan' if os.environ.get('EAR_CIKTI') == 'insan' else 'paket'
 UYARI_SINIRI = 20
 DERINLIK_SINIRI = 60
+JBOSS_KOKLERI = [k for k in os.environ.get('EAR_JBOSS', '/usr/jboss/AppServer:/usr/jboss8/AppServer').split(':') if k.startswith('/')]
+YAPILANDIRMA_ALTLARI = ('domain/configuration', 'jboss/domain/configuration')
+XML_SINIR = 5 * 1024 * 1024
+XML_KAYIT_SINIRI = 1000
+KOK_GIRDI_SINIRI = 500
 
 JAR_RE = re.compile(r'^(.+?)-(\d[^/]*)\.jar$', re.I)
 UCUCU_SEGMENT = set(['logs', 'log', 'tmp', 'temp', 'work'])
@@ -462,6 +473,204 @@ def arsiv_uygulama(u, tam):
     return yapi, kutuphane
 
 
+def kok_nesli(kok):
+    """'/vhosting8' -> '8', '/vhosting' -> '7', digeri '?' (alim.jbossOf ile ayni kural)."""
+    s = kok.rstrip('/')
+    if s.endswith('/vhosting8'):
+        return '8'
+    if s.endswith('/vhosting'):
+        return '7'
+    return '?'
+
+
+def kurulum_nesli(kurulum):
+    s = '/' + kurulum.strip('/') + '/'
+    if '/jboss8/' in s:
+        return '8'
+    if '/jboss/' in s:
+        return '7'
+    return '?'
+
+
+def yerel(etiket):
+    """'{urn:jboss:domain:1.7}server' -> 'server'; yorum / islem talimati -> ''."""
+    return etiket.rsplit('}', 1)[-1] if isinstance(etiket, str) else ''
+
+
+def xml_oku(yol):
+    """(kok eleman, 'OKUNDU') ya da (None, YOK | IZIN | DOSYA_DEGIL | BUYUK | REDDEDILDI | BOZUK | HATA)."""
+    try:
+        st = os.lstat(yol)
+    except FileNotFoundError:
+        return None, 'YOK'
+    except PermissionError:
+        return None, 'IZIN'
+    except OSError:
+        return None, 'HATA'
+    # FIFO / aygit acilirsa okuma bekler: yalniz duzenli dosya (ya da duzenli dosyaya bag).
+    if not (stat.S_ISREG(st.st_mode) or (stat.S_ISLNK(st.st_mode) and os.path.isfile(yol))):
+        return None, 'DOSYA_DEGIL'
+    try:
+        fd = os.open(yol, os.O_RDONLY)
+        with os.fdopen(fd, 'rb') as akis:
+            veri = akis.read(XML_SINIR + 1)
+    except PermissionError:
+        return None, 'IZIN'
+    except OSError:
+        return None, 'HATA'
+    if len(veri) > XML_SINIR:
+        return None, 'BUYUK'
+    # Varlik genisletme / dis varlik saldirisi: DOCTYPE ya da ENTITY tasiyan yapilandirma ayristirilmaz.
+    buyuk = veri.upper()
+    if b'<!DOCTYPE' in buyuk or b'<!ENTITY' in buyuk:
+        return None, 'REDDEDILDI'
+    try:
+        return ElementTree.fromstring(veri), 'OKUNDU'
+    except (ElementTree.ParseError, ValueError):
+        return None, 'BOZUK'
+
+
+def cocuklar_of(eleman, ad):
+    return [c for c in eleman if yerel(c.tag) == ad]
+
+
+def domain_ozeti(kok, k):
+    """domain.xml -> deployment'lar (ad, calisma adi, yol) ve server-group -> deployment listesi."""
+    for kap in cocuklar_of(kok, 'deployments'):
+        for d in cocuklar_of(kap, 'deployment'):
+            if len(k['deploymentlar']) >= XML_KAYIT_SINIRI:
+                k['kesildi'] = True
+                break
+            kayit = {'ad': (d.get('name') or '')[:256], 'calisma_adi': (d.get('runtime-name') or '')[:256],
+                     'tur': 'YONETILEN', 'yol': '', 'goreli': ''}
+            for c in d:
+                t = yerel(c.tag)
+                if t in ('fs-exploded', 'fs-archive'):
+                    kayit['tur'] = 'ACIK' if t == 'fs-exploded' else 'ARSIV'
+                    kayit['yol'] = (c.get('path') or '')[:400]
+                    kayit['goreli'] = (c.get('relative-to') or '')[:128]
+            k['deploymentlar'].append(kayit)
+    for kap in cocuklar_of(kok, 'server-groups'):
+        for g in cocuklar_of(kap, 'server-group'):
+            if len(k['gruplar']) >= XML_KAYIT_SINIRI:
+                k['kesildi'] = True
+                break
+            dlar = []
+            for dkap in cocuklar_of(g, 'deployments'):
+                for d in cocuklar_of(dkap, 'deployment'):
+                    if len(dlar) < XML_KAYIT_SINIRI:
+                        dlar.append({'ad': (d.get('name') or '')[:256],
+                                     'acik': (d.get('enabled') or 'true').lower() != 'false'})
+                    else:
+                        k['kesildi'] = True
+            k['gruplar'].append({'ad': (g.get('name') or '')[:128], 'deploymentlar': dlar})
+
+
+def host_ozeti(kok, k):
+    """host.xml -> sunucular (JVM adi, server-group, auto-start; yoksa JBoss varsayilani true)."""
+    k['host_adi'] = (kok.get('name') or '')[:128]
+    for kap in cocuklar_of(kok, 'servers'):
+        for s in cocuklar_of(kap, 'server'):
+            if len(k['sunucular']) >= XML_KAYIT_SINIRI:
+                k['kesildi'] = True
+                break
+            k['sunucular'].append({'ad': (s.get('name') or '')[:128], 'grup': (s.get('group') or '')[:128],
+                                   'auto_start': (s.get('auto-start') or 'true').lower() != 'false'})
+
+
+def yapilandirma_tara():
+    """Her JBoss kurulumu icin ilk bulunan yapilandirma dizini (domain.xml + host.xml)."""
+    sonuc = []
+    for kurulum in JBOSS_KOKLERI:
+        secilen = None
+        for alt in YAPILANDIRMA_ALTLARI:
+            dizin = kurulum.rstrip('/') + '/' + alt
+            d_kok, d_durum = xml_oku(dizin + '/domain.xml')
+            h_kok, h_durum = xml_oku(dizin + '/host.xml')
+            if d_durum == 'YOK' and h_durum == 'YOK':
+                continue
+            aday = (dizin, d_kok, d_durum, h_kok, h_durum)
+            if secilen is None or (d_durum == 'OKUNDU' and h_durum == 'OKUNDU'):
+                secilen = aday
+            if d_durum == 'OKUNDU' and h_durum == 'OKUNDU':
+                break
+        k = {'kurulum': kurulum, 'nesil': kurulum_nesli(kurulum), 'dizin': '', 'domain': 'YOK', 'host': 'YOK',
+             'host_adi': '', 'deploymentlar': [], 'gruplar': [], 'sunucular': [], 'kesildi': False}
+        if secilen is not None:
+            dizin, d_kok, d_durum, h_kok, h_durum = secilen
+            k['dizin'], k['domain'], k['host'] = dizin, d_durum, h_durum
+            if d_kok is not None:
+                domain_ozeti(d_kok, k)
+            if h_kok is not None:
+                host_ozeti(h_kok, k)
+        sonuc.append(k)
+    return sonuc
+
+
+def xml_eslestir(u, yapilandirmalar):
+    """Diskteki EAR -> domain.xml deployment -> server-group -> host.xml JVM.
+    durum: VAR (en az bir JVM) | JVM_YOK (neden TANIM_YOK / GRUPTA_YOK / SUNUCU_YOK) | OLCULEMEDI.
+    Yol eslesmesi her kurulumda aranir; ad eslesmesi yalniz ayni nesilde (ayni EAR iki kokte olabilir).
+    TANIM_YOK icin domain.xml yeter; JVM cozumu host.xml ister. Okunamayan yapilandirma asla
+    'JVM yok' sayilmaz."""
+    nesil = kok_nesli(u['kok'])
+    yollar = set([os.path.normpath(os.path.join(u['kok'], u['ad']))])
+    if u['bag_hedefi']:
+        yollar.add(os.path.normpath(os.path.join(u['kok'], u['bag_hedefi'])))
+    ad_k = u['ad'].lower()
+    ayni_nesil = [k for k in yapilandirmalar if nesil == '?' or k['nesil'] == nesil]
+    ayni = set(id(k) for k in ayni_nesil)
+    bulunan = []
+    for k in yapilandirmalar:
+        if k['domain'] != 'OKUNDU':
+            continue
+        for d in k['deploymentlar']:
+            yol_tutar = bool(d['yol']) and not d['goreli'] and os.path.normpath(d['yol']) in yollar
+            ad_tutar = id(k) in ayni and ad_k in (d['ad'].lower(), d['calisma_adi'].lower())
+            if yol_tutar or ad_tutar:
+                bulunan.append((k, d, 'YOL' if yol_tutar else 'AD'))
+    if not bulunan:
+        eksik = [k for k in ayni_nesil if k['domain'] != 'OKUNDU']
+        if not ayni_nesil or eksik:
+            neden = '; '.join('{} domain.xml {}'.format(k['kurulum'], k['domain']) for k in eksik)
+            return {'durum': 'OLCULEMEDI', 'neden': (neden or 'bu kok icin JBoss kurulumu tanimli degil')[:300]}
+        return {'durum': 'JVM_YOK', 'neden': 'TANIM_YOK', 'deploymentlar': [], 'jvmler': []}
+    deploymentlar, jvmler, gorulen, hostsuz = [], [], set(), []
+    for k, d, yontem in bulunan[:10]:
+        gruplar = [{'ad': g['ad'], 'acik': x['acik']} for g in k['gruplar'] for x in g['deploymentlar'] if x['ad'] == d['ad']]
+        deploymentlar.append({'kurulum': k['kurulum'], 'ad': d['ad'], 'tur': d['tur'], 'yol': d['yol'],
+                              'yontem': yontem, 'gruplar': gruplar[:20]})
+        if gruplar and k['host'] != 'OKUNDU':
+            hostsuz.append('{} host.xml {}'.format(k['kurulum'], k['host']))
+        for g in gruplar:
+            for s in k['sunucular']:
+                if s['grup'] == g['ad'] and (k['kurulum'], s['ad']) not in gorulen and len(jvmler) < 50:
+                    gorulen.add((k['kurulum'], s['ad']))
+                    jvmler.append({'ad': s['ad'], 'grup': s['grup'], 'auto_start': s['auto_start'],
+                                   'deployment_acik': g['acik'], 'kurulum': k['kurulum']})
+    if jvmler:
+        return {'durum': 'VAR', 'deploymentlar': deploymentlar, 'jvmler': jvmler}
+    if hostsuz:
+        return {'durum': 'OLCULEMEDI', 'neden': '; '.join(hostsuz)[:300], 'deploymentlar': deploymentlar}
+    neden = 'SUNUCU_YOK' if any(d['gruplar'] for d in deploymentlar) else 'GRUPTA_YOK'
+    return {'durum': 'JVM_YOK', 'neden': neden, 'deploymentlar': deploymentlar, 'jvmler': []}
+
+
+def kok_girdisi(kok, e):
+    """Kokteki .ear disi girdi: ad, tip, boyut, mtime (yalniz lstat), bag ise hedef."""
+    g = {'kok': kok, 'ad': e.name, 'tip': '?', 'boyut': None, 'mtime': None, 'hedef': ''}
+    try:
+        st = os.lstat(e.path)
+        g['tip'] = 'L' if stat.S_ISLNK(st.st_mode) else ('D' if stat.S_ISDIR(st.st_mode) else 'F')
+        g['boyut'] = st.st_size
+        g['mtime'] = int(st.st_mtime)
+        if g['tip'] == 'L':
+            g['hedef'] = os.readlink(e.path)[:300]
+    except OSError:
+        pass
+    return g
+
+
 def bitir(u, yapi, kutuphane):
     for w in u['warlar']:
         for kad, ksurum, boyut in sorted(w['kutuphaneler']):
@@ -509,6 +718,7 @@ def tara():
         'baslangic_utc': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
         'sinirlar': {'uygulama': SINIR_UYGULAMA, 'host': SINIR_HOST, 'sure_sn': SURE, 'arsiv_bayt': ARSIV_BAYT},
         'kokler': [], 'uygulamalar': [], 'durum': 'TAM', 'uyarilar': [],
+        'kok_girdileri': [], 'kok_girdisi_kesilen': 0, 'yapilandirma': [],
     }
     adaylar = []
     for kok in KOKLER:
@@ -524,6 +734,10 @@ def tara():
         yuk['kokler'].append({'yol': kok, 'durum': 'VAR'})
         for e in cocuklar:
             if not e.name.lower().endswith('.ear'):
+                if len(yuk['kok_girdileri']) < KOK_GIRDI_SINIRI:
+                    yuk['kok_girdileri'].append(kok_girdisi(kok, e))
+                else:
+                    yuk['kok_girdisi_kesilen'] += 1
                 continue
             try:
                 tip = 'L' if e.is_symlink() else ('D' if e.is_dir(follow_symlinks=False) else 'F')
@@ -531,6 +745,8 @@ def tara():
                 yuk['uyarilar'].append('tip okunamadi ' + e.path + ': ' + hata.__class__.__name__)
                 continue
             adaylar.append((kok, e.name, tip))
+    # Yapilandirma uygulamalardan ONCE: kucuk ve hizli; sure butcesi dolsa da olculmus olsun.
+    yuk['yapilandirma'] = yapilandirma_tara()
     for kok, ad, tip in adaylar:
         if sure_doldu():
             u = yeni_uygulama(kok, ad, {'D': 'ACIK', 'F': 'ARSIV', 'L': 'BAG'}[tip])
@@ -543,6 +759,8 @@ def tara():
             u = yeni_uygulama(kok, ad, 'BILINMIYOR')
             uyar(u, 'tarayici hatasi: ' + e.__class__.__name__ + ': ' + str(e)[:200], 'HATA')
             yuk['uygulamalar'].append(u)
+    for u in yuk['uygulamalar']:
+        u['xml_eslesme'] = xml_eslestir(u, yuk['yapilandirma'])
     var = [k for k in yuk['kokler'] if k['durum'] == 'VAR']
     if not var:
         yuk['durum'] = 'KOK_YOK' if all(k['durum'] == 'YOK' for k in yuk['kokler']) else 'KISMI'
@@ -562,6 +780,11 @@ def insan_metni(yuk):
         yuk['host'], yuk['kip'], yuk['durum'], yuk['python'], yuk['uid'], yuk['sure_sn'], yuk['giris'])]
     for k in yuk['kokler']:
         s.append('kok {} {}'.format(k['yol'], k['durum']))
+    for k in yuk['yapilandirma']:
+        s.append('jboss {} domain.xml={} host.xml={} deployment={} jvm={}'.format(
+            k['kurulum'], k['domain'], k['host'], len(k['deploymentlar']), len(k['sunucular'])))
+    for g in yuk['kok_girdileri']:
+        s.append('ear disi {}/{} {}{}'.format(g['kok'], g['ad'], g['tip'], (' -> ' + g['hedef']) if g['hedef'] else ''))
     for u in yuk['uygulamalar']:
         tek = lambda w, a: ','.join(sorted(set(v for kad, v, _ in w['kutuphaneler'] if kad == a))) or '-'
         s.append('{:<40} {:<6} {:<14} war={} jsp={} tld={} jar={} izi={}'.format(
@@ -571,6 +794,9 @@ def insan_metni(yuk):
                 w['ad'], w['bicim'], w['durum'], tek(w, 'spring-boot'), tek(w, 'spring-core'), w['jsp'], w['tld'],
                 'var' if w['tld_dizini'] else 'yok', ','.join(['web.xml'] if w['web_xml'] else []) +
                 ''.join(',web.' + v + '.xml' for v in w['web_varyantlari'])))
+        x = u.get('xml_eslesme') or {}
+        s.append('    xml={} {} jvm={}'.format(x.get('durum', '-'), x.get('neden', ''),
+                                             ','.join(j['ad'] for j in x.get('jvmler', [])) or '-'))
         for m in u['uyarilar'][:3]:
             s.append('    ! ' + m)
     return '\n'.join(s) + '\n'

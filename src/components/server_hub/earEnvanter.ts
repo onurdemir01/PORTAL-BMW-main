@@ -3,7 +3,7 @@
 // DURUM DİLİ (kabul ölçütü): eksik ya da ölçülemeyen hiçbir şey YEŞİL görünmez. Yeşil ("iyi") yalnız
 // TAM / TAMAMLANDI / AYNI'dır; kısmi tarama sarı, sonuç yok / okunamadı kırmızı, karşılaştırılamayan
 // eşlenik nötr. Renkler tasarım belirteçlerinden (koyu temada da okunur).
-import type { EarAgacSatiri, EarParti } from '@/api/earEnvanterApi';
+import type { EarAgacSatiri, EarParti, EarXmlEslesme } from '@/api/earEnvanterApi';
 
 export type Ton = 'iyi' | 'uyari' | 'kotu' | 'bilgi' | 'notr';
 export const TON: Record<Ton, { renk: string; zemin: string; metin: string }> = {
@@ -148,6 +148,74 @@ const PARTI: Record<string, DurumBilgisi> = {
   IPTAL: { etiket: 'iptal', ton: 'notr', aciklama: 'Koşu iptal edildi ya da durdu.' },
 };
 
+// JBoss eşlemesi (tarayıcı sürüm 2). JVM'e bağlı olmak "sağlıklı" demek değil (JVM kapalı olabilir):
+// yeşil değil, bilgi. Okunamayan yapılandırma "JVM yok" sayılmaz.
+const JBOSS: Record<string, DurumBilgisi> = {
+  VAR: { etiket: 'JVM’e bağlı', ton: 'bilgi', aciklama: 'domain.xml ve host.xml bu EAR’ı en az bir JVM’e bağlıyor.' },
+  TANIM_YOK: {
+    etiket: 'tanım yok',
+    ton: 'uyari',
+    aciklama: 'domain.xml’de bu EAR için deployment yok: diskte duruyor ama hiçbir JVM’e yüklenmiyor olabilir.',
+  },
+  GRUPTA_YOK: {
+    etiket: 'grupta yok',
+    ton: 'uyari',
+    aciklama: 'Deployment tanımlı ama hiçbir server-group’a atanmamış.',
+  },
+  SUNUCU_YOK: {
+    etiket: 'JVM yok',
+    ton: 'uyari',
+    aciklama: 'Atandığı server-group’ta bu sunucuda JVM yok (host.xml).',
+  },
+  OLCULEMEDI: {
+    etiket: 'okunamadı',
+    ton: 'uyari',
+    aciklama: 'JBoss yapılandırması okunamadı; bu “JVM yok” demek değil. Elle kontrol gerekir.',
+  },
+  OLCULMEDI: {
+    etiket: 'ölçülmedi',
+    ton: 'notr',
+    aciklama: 'Bu tarama JBoss yapılandırmasını okumayan eski tarayıcıyla yapıldı. Yeni tarama sonucu gösterir.',
+  },
+};
+
+const XML_DOSYA_DURUMU: Record<string, string> = {
+  YOK: 'dosya yok',
+  IZIN: 'okuma izni yok',
+  DOSYA_DEGIL: 'düzenli dosya değil',
+  BUYUK: '5 MB sınırının üstünde',
+  REDDEDILDI: 'DOCTYPE/ENTITY içerdiği için okunmadı',
+  BOZUK: 'XML bozuk',
+  HATA: 'okunurken hata',
+};
+
+/** xml_eslesme kolonu (JSON) -> nesne; boş / bozuk -> null (ölçülmedi). */
+export function xmlEslesmeOku(ham: string | null | undefined): EarXmlEslesme | null {
+  if (!ham) return null;
+  try {
+    const x = JSON.parse(ham) as EarXmlEslesme;
+    if (!x || typeof x !== 'object' || !['VAR', 'JVM_YOK', 'OLCULEMEDI'].includes(x.durum)) return null;
+    return { ...x, deploymentlar: x.deploymentlar || [], jvmler: x.jvmler || [] };
+  } catch {
+    return null;
+  }
+}
+
+/** Eşleme -> rozet; VAR / JVM_YOK alt nedeni / OLCULEMEDI / ölçülmedi. */
+export function jbossDurumu(x: EarXmlEslesme | null): DurumBilgisi {
+  if (!x) return JBOSS.OLCULMEDI;
+  if (x.durum === 'JVM_YOK') return JBOSS[x.neden || ''] || JBOSS.TANIM_YOK;
+  return JBOSS[x.durum] || bilinmeyen(x.durum);
+}
+
+/** "…/AppServer domain.xml IZIN; …" -> okunur metin ("domain.xml: okuma izni yok"). */
+export function xmlNedenMetni(neden: string | null | undefined): string {
+  return String(neden || '').replace(
+    /\b(domain|host)\.xml ([A-Z_]+)\b/g,
+    (_, ad: string, d: string) => `${ad}.xml: ${XML_DOSYA_DURUMU[d] || d.toLowerCase()}`,
+  );
+}
+
 export const uygulamaDurumu = (d: string | null | undefined) => (d && UYGULAMA[d]) || bilinmeyen(d);
 export const hostDurumu = (d: string | null | undefined) => (d && HOST[d]) || bilinmeyen(d);
 export const kosuDurumu = (d: string | null | undefined) => (d && KOSU[d]) || bilinmeyen(d);
@@ -155,7 +223,7 @@ export const kararDurumu = (d: string | null | undefined) => (d && KARAR[d]) || 
 export const partiDurumu = (d: string | null | undefined) => (d && PARTI[d]) || bilinmeyen(d);
 
 /** Testler için: her tablodaki bütün durumlar. */
-export const DURUM_TABLOLARI = { UYGULAMA, HOST, KOSU, KARAR, PARTI };
+export const DURUM_TABLOLARI = { UYGULAMA, HOST, KOSU, KARAR, PARTI, JBOSS };
 
 const HOST_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$/;
 

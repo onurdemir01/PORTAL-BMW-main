@@ -7,6 +7,10 @@
 //   3. kutuphane listelerinden teknoloji kolonlarini cikarir (Spring Boot / Framework, log4j ...),
 //   4. host basina TEK transaction ile yazar (yeniden alim ayni host satirlarini silip yeniden yazar).
 //
+// TARAYICI SURUM 2 (2026-11-06): kokteki .ear disi girdiler (host.kok_girdileri), JBoss domain.xml /
+// host.xml ozeti (host.xml_ozeti) ve uygulama basina EAR -> JVM eslemesi (uygulama.xml_eslesme).
+// Eski tarayicinin paketinde bu alanlar yoktur: kolon NULL = OLCULMEDI ("yok" DEGIL).
+//
 // KUTUPHANE SETLERI: ayni uygulamanin eslenik sunuculardaki WAR'lari ayni kutuphane listesini tasir.
 // Liste her WAR satirina yazilsa haftalik filo kosusu yuzlerce MB olurdu; liste parmak iziyle
 // (sha256, 32 hex) BIR KEZ yazilir, WAR satiri yalniz izi tasir.
@@ -28,6 +32,10 @@ const JSON_SINIR = 64 * 1024 * 1024;
 const SINIR_UYGULAMA = 2000;
 const SINIR_WAR = 200;
 const SINIR_KUTUPHANE = 2000;
+const SINIR_KOK_GIRDI = 500;
+const SINIR_XML_KAYIT = 300;
+const XML_DURUMLARI = Object.freeze(['OKUNDU', 'YOK', 'IZIN', 'DOSYA_DEGIL', 'BUYUK', 'REDDEDILDI', 'BOZUK', 'HATA']);
+const ESLESME_DURUMLARI = Object.freeze(['VAR', 'JVM_YOK', 'OLCULEMEDI']);
 const VARSAYILAN_DIZIN = '/sw/BMW_PORTAL/ear_envanter';
 const HOST_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$/;
 
@@ -56,6 +64,10 @@ const S = (v) => {
   return Number.isFinite(n) ? Math.max(0, Math.min(Math.trunc(n), 2147483647)) : 0;
 };
 const B = (v) => (v === true ? 1 : 0);
+const D = (v, liste, varsayilan) => (liste.includes(v) ? v : varsayilan);
+const N = (v) => (v == null || !Number.isFinite(Number(v)) ? null : Math.max(0, Math.trunc(Number(v))));
+const dizi = (v) => (Array.isArray(v) ? v : []);
+const nesne = (v) => (v && typeof v === 'object' ? v : {});
 
 /**
  * Cikti koku. Env (Admin > Sistem, EAR_ENVANTER_DIR) HER KULLANIMDA okunur; gecersizse varsayilan.
@@ -238,6 +250,107 @@ function kutuphaneSeti(liste) {
   };
 }
 
+/** Kokteki .ear disi girdiler -> JSON { girdiler, kesilen }. Alan yok (eski tarayici) -> null. */
+function kokGirdileri(p) {
+  if (!Array.isArray(p.kok_girdileri)) return null;
+  const girdiler = p.kok_girdileri.slice(0, SINIR_KOK_GIRDI).map((ham) => {
+    const g = nesne(ham);
+    return {
+      kok: M(g.kok, 128),
+      ad: M(g.ad, 256),
+      tip: D(g.tip, ['D', 'F', 'L'], '?'),
+      boyut: N(g.boyut),
+      mtime: N(g.mtime),
+      hedef: M(g.hedef, 300) || null,
+    };
+  });
+  const kesilen = S(p.kok_girdisi_kesilen) + Math.max(0, p.kok_girdileri.length - SINIR_KOK_GIRDI);
+  return JSON.stringify({ girdiler, kesilen });
+}
+
+/**
+ * JBoss yapilandirma ozeti (kurulum basina) -> JSON. Yalniz adlar, yollar, grup ve auto-start;
+ * tarayici baska deger gondermez, burada da yalniz bilinen alanlar secilir. Alan yok -> null.
+ */
+function xmlOzeti(p) {
+  if (!Array.isArray(p.yapilandirma)) return null;
+  return JSON.stringify(
+    p.yapilandirma.slice(0, 4).map((ham) => {
+      const k = nesne(ham);
+      const sunucular = dizi(k.sunucular);
+      const gruplar = dizi(k.gruplar);
+      const deploymentlar = dizi(k.deploymentlar);
+      return {
+        kurulum: M(k.kurulum, 200),
+        nesil: D(k.nesil, ['7', '8'], '?'),
+        dizin: M(k.dizin, 300),
+        domain: D(k.domain, XML_DURUMLARI, 'HATA'),
+        host: D(k.host, XML_DURUMLARI, 'HATA'),
+        host_adi: M(k.host_adi, 128),
+        sunucular: sunucular.slice(0, SINIR_XML_KAYIT).map((x) => ({
+          ad: M(nesne(x).ad, 128),
+          grup: M(nesne(x).grup, 128),
+          auto_start: nesne(x).auto_start !== false,
+        })),
+        gruplar: gruplar.slice(0, SINIR_XML_KAYIT).map((x) => ({
+          ad: M(nesne(x).ad, 128),
+          deploymentlar: dizi(nesne(x).deploymentlar)
+            .slice(0, 50)
+            .map((d) => ({ ad: M(nesne(d).ad, 256), acik: nesne(d).acik !== false })),
+        })),
+        deploymentlar: deploymentlar.slice(0, SINIR_XML_KAYIT).map((x) => ({
+          ad: M(nesne(x).ad, 256),
+          tur: D(nesne(x).tur, ['ACIK', 'ARSIV', 'YONETILEN'], 'YONETILEN'),
+          yol: M(nesne(x).yol, 400),
+        })),
+        kesildi:
+          k.kesildi === true ||
+          sunucular.length > SINIR_XML_KAYIT ||
+          gruplar.length > SINIR_XML_KAYIT ||
+          deploymentlar.length > SINIR_XML_KAYIT,
+      };
+    }),
+  );
+}
+
+/** Uygulama -> JVM eslemesi -> JSON. Alan yok (eski tarayici) -> null; bilinmeyen durum OLCULEMEDI. */
+function xmlEslesme(u) {
+  if (!u.xml_eslesme || typeof u.xml_eslesme !== 'object') return null;
+  const x = u.xml_eslesme;
+  const durum = D(x.durum, ESLESME_DURUMLARI, 'OLCULEMEDI');
+  return JSON.stringify({
+    durum,
+    neden: M(x.neden, 300) || null,
+    deploymentlar: dizi(x.deploymentlar)
+      .slice(0, 10)
+      .map((ham) => {
+        const d = nesne(ham);
+        return {
+          kurulum: M(d.kurulum, 200),
+          ad: M(d.ad, 256),
+          tur: D(d.tur, ['ACIK', 'ARSIV', 'YONETILEN'], 'YONETILEN'),
+          yol: M(d.yol, 400),
+          yontem: D(d.yontem, ['YOL', 'AD'], 'AD'),
+          gruplar: dizi(d.gruplar)
+            .slice(0, 20)
+            .map((g) => ({ ad: M(nesne(g).ad, 128), acik: nesne(g).acik !== false })),
+        };
+      }),
+    jvmler: dizi(x.jvmler)
+      .slice(0, 50)
+      .map((ham) => {
+        const j = nesne(ham);
+        return {
+          ad: M(j.ad, 128),
+          grup: M(j.grup, 128),
+          auto_start: j.auto_start !== false,
+          deployment_acik: j.deployment_acik !== false,
+          kurulum: M(j.kurulum, 200),
+        };
+      }),
+  });
+}
+
 const birlesik = (degerler, n) => {
   const s = new Set();
   for (const v of degerler) if (v) for (const p of String(v).split(', ')) s.add(p);
@@ -340,6 +453,7 @@ function hostKaydi(p, { host, kip, partiNo, ortam, playbookDurum, hamBayt }) {
       servlet: birlesik([earTek.servlet, ...wtek.map((w) => w.servlet)], 16),
       uyari_sayisi: S(u.uyari_sayisi) + kesilen.length,
       uyarilar: M(JSON.stringify(uyariListesi.slice(0, 20).map((x) => M(x, 300))), 8000),
+      xml_eslesme: xmlEslesme(u),
     });
   });
   kesilen = null;
@@ -370,6 +484,8 @@ function hostKaydi(p, { host, kip, partiNo, ortam, playbookDurum, hamBayt }) {
         ? p.baslangic_utc.slice(0, 19)
         : null,
       bildirilen_host: M(p.host, 128) || null,
+      kok_girdileri: kokGirdileri(p),
+      xml_ozeti: xmlOzeti(p),
     },
     uygulamalar,
     warlar,
@@ -399,6 +515,8 @@ function bosHostKaydi({ partiNo, ortam, durum, playbookDurum, hata, hamBayt }) {
       ham_bayt: hamBayt == null ? null : S(hamBayt),
       taranma_utc: null,
       bildirilen_host: null,
+      kok_girdileri: null,
+      xml_ozeti: null,
     },
     uygulamalar: [],
     warlar: [],
@@ -424,6 +542,8 @@ const HOST_KOLONLAR = [
   'ham_bayt INT',
   'taranma_utc DATETIME2',
   'bildirilen_host NVARCHAR(128)',
+  'kok_girdileri NVARCHAR(MAX)',
+  'xml_ozeti NVARCHAR(MAX)',
 ];
 const UYG_KOLONLAR = [
   'uyg_no INT',
@@ -451,6 +571,7 @@ const UYG_KOLONLAR = [
   'servlet NVARCHAR(16)',
   'uyari_sayisi INT',
   'uyarilar NVARCHAR(MAX)',
+  'xml_eslesme NVARCHAR(MAX)',
 ];
 const WAR_KOLONLAR = [
   'uyg_no INT',
@@ -567,6 +688,12 @@ module.exports = {
   surumIzi,
   SINIR_WAR,
   SINIR_KUTUPHANE,
+  SINIR_KOK_GIRDI,
+  XML_DURUMLARI,
+  ESLESME_DURUMLARI,
+  kokGirdileri,
+  xmlOzeti,
+  xmlEslesme,
   hostKaydi,
   bosHostKaydi,
   hostuYaz,
