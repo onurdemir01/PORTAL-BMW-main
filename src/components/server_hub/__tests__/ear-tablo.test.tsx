@@ -11,7 +11,17 @@
 //   ET8 yerel kip: arama anında; değer listesi satırlardan, öteki süzgeçlere göre
 //   ET9 okunamadı → tekrar dene (boş liste gösterilmez)
 //   ET10 çok değerli kolon (dizi): öğelerden biri uyarsa satır uyar, boş dizi boş değerdir; düz hâl " + "
+//   ET11 görünümler (2026-11-07): hazır görünüm süzgeç + sıralama + kolonları uygular, butonda adı; kişisel
+//        görünüm kaydedilir / uygulanır / silinir ve tarayıcıda kalır; süzgeçsiz görünüm
+//   ET12 yerel CSV: süzgeç + aramadan sonra kalan satırların TAMAMI (sayfa ötesi dahil), görünen kolonlarla
+//   ET13 satırlar dışarıdan daralınca sayfa konumu kırpılır (boş sayfa yok)
+//   ET14 açılır satır düğmesi: adlı, aria-expanded; düğme ve satır tıklaması aynı işi yapar
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+const csvM = vi.hoisted(() => vi.fn());
+vi.mock('@/utils/csv', async (orig) => ({
+  ...(await orig<typeof import('@/utils/csv')>()),
+  downloadCsv: csvM,
+}));
 import { screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { render } from '@/test/test-utils';
 import {
@@ -335,6 +345,117 @@ describe('EarTablo', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Sayı' }));
     fireEvent.click(screen.getByRole('button', { name: 'Sayı' }));
     expect(screen.getAllByRole('row')).toHaveLength(2);
+  });
+
+  it('ET11 görünümler: hazır ve kişisel', async () => {
+    const satirlar = [satir(1, { durum: 'KISMI' }), satir(2), satir(3, { durum: 'KISMI' })];
+    const ciz = () =>
+      render(
+        <EarTablo<Satir>
+          kimlik="gor"
+          kolonlar={KOLONLAR}
+          satirlar={satirlar}
+          satirAnahtari={(r) => String(r.id)}
+          gorunumler={[
+            {
+              ad: 'Kısmiler',
+              aciklama: 'kısmi olanlar, büyükten küçüğe',
+              f: [{ k: 'durum', op: 'in', v: ['KISMI'] }],
+              s: 'sayi:desc',
+              kolonlar: ['ad', 'sayi', 'not'],
+            },
+          ]}
+        />,
+      );
+    const { unmount } = ciz();
+    expect(screen.getByText('1–3 / 3')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Görünümler' }));
+    fireEvent.click(within(screen.getByRole('dialog', { name: 'Görünümler' })).getByRole('button', { name: /^Kısmiler/ }));
+    expect(screen.getByText('1–2 / 2')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Görünüm: Kısmiler' })).toBeInTheDocument();
+    const hucreler = screen.getAllByRole('row').slice(1).map((r) => r.textContent);
+    expect(hucreler[0]).toContain('A3');
+    expect(screen.getAllByRole('columnheader').map((h) => h.textContent)).toEqual(
+      expect.arrayContaining([expect.stringContaining('Not')]),
+    );
+    // Kişisel: mevcut süzgeci kaydet, temizle, geri uygula; yeniden kurulunca kalır; sil.
+    fireEvent.click(screen.getByRole('button', { name: 'Görünüm: Kısmiler' }));
+    fireEvent.change(screen.getByLabelText('Görünüm adı'), { target: { value: 'benim' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Kaydet' }));
+    fireEvent.click(screen.getByRole('button', { name: 'süzgeçsiz görünüm' }));
+    expect(screen.getByText('1–3 / 3')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Görünümler' })).toBeInTheDocument();
+    unmount();
+    ciz();
+    fireEvent.click(screen.getByRole('button', { name: 'Görünümler' }));
+    fireEvent.click(screen.getByRole('button', { name: 'benim' }));
+    expect(screen.getByText('1–2 / 2')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /^Görünüm: / }));
+    fireEvent.click(screen.getByRole('button', { name: 'benim görünümünü sil' }));
+    expect(screen.queryByRole('button', { name: 'benim' })).toBeNull();
+    expect(JSON.parse(window.localStorage.getItem('ear-tablo-gorunum:gor') || '[]')).toEqual([]);
+  });
+
+  it('ET12 yerel CSV: süzülenlerin tamamı, görünen kolonlar', async () => {
+    // 130 süzülmüş satır > sayfa boyu 100: CSV sayfayla sınırlı kalırsa yakalanır.
+    const satirlar = Array.from({ length: 260 }, (_, i) => satir(i + 1, { durum: i % 2 ? 'KISMI' : 'TAM' }));
+    render(
+      <EarTablo<Satir>
+        kimlik="csv"
+        kolonlar={KOLONLAR}
+        satirlar={satirlar}
+        satirAnahtari={(r) => String(r.id)}
+        yerelCsv="dosya"
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Durum süz' }));
+    fireEvent.click(await screen.findByLabelText('Durum: kısmi'));
+    fireEvent.click(screen.getByRole('button', { name: 'Uygula' }));
+    expect(screen.getByText('1–100 / 130')).toBeInTheDocument();
+    csvM.mockClear();
+    fireEvent.click(screen.getByRole('button', { name: /^CSV \(130\)/ }));
+    const [ad, basliklar, satirlarCsv] = csvM.mock.calls[0];
+    expect([ad, basliklar, satirlarCsv.length]).toEqual(['dosya', ['Ad', 'Sayı', 'Durum'], 130]);
+    fireEvent.change(screen.getByLabelText('ara'), { target: { value: 'a12' } });
+    fireEvent.click(screen.getByRole('button', { name: /^CSV \(/ }));
+    expect(csvM.mock.calls[1][2].map((r: string[]) => r[0])).toEqual(['A12', 'A120', 'A122', 'A124', 'A126', 'A128']);
+  });
+
+  it('ET13 satırlar daralınca sayfa konumu kırpılır', () => {
+    const cok = Array.from({ length: 150 }, (_, i) => satir(i + 1));
+    const { rerender } = render(
+      <EarTablo<Satir> kimlik="kirp" kolonlar={KOLONLAR} satirlar={cok} satirAnahtari={(r) => String(r.id)} />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Sonraki/ }));
+    expect(screen.getByText('101–150 / 150')).toBeInTheDocument();
+    rerender(
+      <EarTablo<Satir> kimlik="kirp" kolonlar={KOLONLAR} satirlar={cok.slice(0, 40)} satirAnahtari={(r) => String(r.id)} />,
+    );
+    expect(screen.getByText('1–40 / 40')).toBeInTheDocument();
+    expect(screen.getByText('A1')).toBeInTheDocument();
+  });
+
+  it('ET14 açılır satır düğmesi adlı ve aria-expanded taşır', () => {
+    render(
+      <EarTablo<Satir>
+        kimlik="ac"
+        kolonlar={KOLONLAR}
+        satirlar={[satir(1), satir(2)]}
+        satirAnahtari={(r) => String(r.id)}
+        satirEtiketi={(r) => `satır ${r.ad}`}
+        acilir={(r) => <div>ayrıntı {r.ad}</div>}
+      />,
+    );
+    const d = screen.getByRole('button', { name: 'satır A2 ayrıntısı' });
+    expect(d).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(d);
+    expect(d).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText('ayrıntı A2')).toBeInTheDocument();
+    fireEvent.click(d);
+    expect(screen.queryByText('ayrıntı A2')).toBeNull();
+    fireEvent.click(screen.getByText('A1'));
+    expect(screen.getByText('ayrıntı A1')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'satır A1 ayrıntısı' })).toHaveAttribute('aria-expanded', 'true');
   });
 
   it('ET9 okunamadı ve tekrar dene', async () => {

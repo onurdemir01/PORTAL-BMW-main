@@ -12,9 +12,11 @@
 //   * İki kip: SUNUCU (getir: sayfa + süzgeç + sıralama sunucuda; liste sessizce kesilmez) ve YEREL
 //     (satirlar: aynı süzgeç anlamı tarayıcıda).
 //   * Kolon seçimi, sayfa boyu ve süzgeçler görüntüleyen başına localStorage'da (okunamazsa varsayılan).
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
+  ArrowDownTrayIcon,
+  BookmarkIcon,
   ChevronDownIcon,
   ChevronRightIcon,
   ChevronUpIcon,
@@ -92,6 +94,35 @@ function kaliciYaz(kimlik: string, d: Kalici) {
     window.localStorage.setItem(`ear-tablo:${kimlik}`, JSON.stringify(d));
   } catch {
     /* gizli pencere / engelli depolama: görünüm yalnız bu oturumda kalır */
+  }
+}
+
+/**
+ * KAYITLI GÖRÜNÜM (2026-11-07): süzgeç + sıralama (+ isteğe bağlı kolonlar) adı ile. Hazır görünümler
+ * ekranın kendisinden gelir; kişisel görünümler tarayıcıda (en çok 20). Görünüm uygulanınca tablonun
+ * süzgeci olur: kullanıcı yine istediği gibi değiştirir.
+ */
+export interface EarGorunum {
+  ad: string;
+  aciklama?: string;
+  f: Suzgec[];
+  s?: string;
+  kolonlar?: string[];
+}
+const KISISEL_EN_COK = 20;
+function kisiselOku(kimlik: string): EarGorunum[] {
+  try {
+    const v = JSON.parse(window.localStorage.getItem(`ear-tablo-gorunum:${kimlik}`) || '[]');
+    return Array.isArray(v) ? v.filter((g) => g && typeof g.ad === 'string' && Array.isArray(g.f)) : [];
+  } catch {
+    return [];
+  }
+}
+function kisiselYaz(kimlik: string, l: EarGorunum[]) {
+  try {
+    window.localStorage.setItem(`ear-tablo-gorunum:${kimlik}`, JSON.stringify(l));
+  } catch {
+    /* depolama kapalı: kişisel görünüm yalnız bu oturumda */
   }
 }
 
@@ -443,6 +474,9 @@ export function EarTablo<T>({
   bosMetin = 'Süzgece uyan kayıt yok.',
   tazele = 0,
   ustSag,
+  gorunumler,
+  yerelCsv,
+  satirEtiketi,
 }: {
   kimlik: string;
   kolonlar: EarKolon<T>[];
@@ -460,6 +494,12 @@ export function EarTablo<T>({
   bosMetin?: string;
   tazele?: number;
   ustSag?: React.ReactNode;
+  /** Hazır görünümler; verilirse "Görünümler" menüsü (hazır + kişisel) çıkar. */
+  gorunumler?: EarGorunum[];
+  /** Yerel kipte süzülen satırların TAMAMININ CSV'si (dosya adı); görünen kolonlarla. */
+  yerelCsv?: string;
+  /** Açılır satırın düğme adı (ekran okuyucu); yoksa satır anahtarı. */
+  satirEtiketi?: (r: T) => string;
 }) {
   const [kalici] = useState(() => kaliciOku(kimlik));
   const varsayilanGorunur = kolonlar.filter((k) => k.varsayilan !== false).map((k) => k.anahtar);
@@ -483,6 +523,9 @@ export function EarTablo<T>({
   const [kolonPencere, setKolonPencere] = useState<{ sol: number; ust: number } | null>(null);
   const [secili, setSecili] = useState<Map<string, T>>(() => new Map());
   const [acikSatir, setAcikSatir] = useState<string | null>(null);
+  const [gorunumPencere, setGorunumPencere] = useState<{ sol: number; ust: number } | null>(null);
+  const [kisisel, setKisisel] = useState<EarGorunum[]>(() => (gorunumler ? kisiselOku(kimlik) : []));
+  const [yeniAd, setYeniAd] = useState('');
 
   const kaydet = (d: Partial<Kalici>) => kaliciYaz(kimlik, { gorunur, sayfaBoyu, f, s, ...d });
   const suzgecDegis = (yeni: Suzgec[]) => {
@@ -518,32 +561,41 @@ export function EarTablo<T>({
   const kolonOf = (a: string) => kolonlar.find((k) => k.anahtar === a);
   const hamDeger = (k: EarKolon<T> | undefined, r: T) => (k && k.deger ? k.deger(r) : undefined);
   const duz = (k: EarKolon<T> | undefined, r: T) => duzDeger(hamDeger(k, r));
-  // Yerel liste birkaç bin satırı geçmez (sunucular, koşular): her çizimde süzmek yeterince hızlı.
-  const yerel = (() => {
+  // Bulgular on binlerce satır olabilir (2026-11-07): süzme yalnız girdiler değişince (useMemo); açılan
+  // satır, seçim ya da pencere çizimleri yeniden süzmez.
+  const yerel = useMemo(() => {
     if (!yerelSatirlar) return null;
+    const kOf = (a: string) => kolonlar.find((k) => k.anahtar === a);
+    const ham = (k: EarKolon<T> | undefined, r: T) => (k && k.deger ? k.deger(r) : undefined);
     const qn = q.trim().toLowerCase();
     let l = yerelSatirlar.filter(
       (r) =>
-        f.every((x) => yerelUyar(hamDeger(kolonOf(x.k), r), x)) &&
+        f.every((x) => yerelUyar(ham(kOf(x.k), r), x)) &&
         (!qn ||
           kolonlar.some((k) =>
-            String(duz(k, r) ?? '')
+            String(duzDeger(ham(k, r)) ?? '')
               .toLowerCase()
               .includes(qn),
           )),
     );
     if (s) {
       const [a, yon] = s.split(':');
-      const k = kolonOf(a);
+      const k = kOf(a);
       l = [...l].sort(
-        (x, y) => karsilastir(duz(k, x), duz(k, y)) * (yon === 'desc' ? -1 : 1),
+        (x, y) =>
+          karsilastir(duzDeger(ham(k, x)), duzDeger(ham(k, y))) * (yon === 'desc' ? -1 : 1),
       );
     }
     return l;
-  })();
+  }, [yerelSatirlar, kolonlar, f, s, q]);
 
+  // Yerel satirlar disaridan daralinca (ust seciciler) sayfa konumu son gecerli sayfaya kirpilir: bos sayfa yok.
+  const ofs =
+    yerel && offset > 0 && offset >= yerel.length
+      ? Math.max(0, Math.floor((yerel.length - 1) / sayfaBoyu) * sayfaBoyu)
+      : offset;
   const sayfa: Sayfa<T> | null = yerel
-    ? { satirlar: yerel.slice(offset, offset + sayfaBoyu), toplam: yerel.length }
+    ? { satirlar: yerel.slice(ofs, ofs + sayfaBoyu), toplam: yerel.length }
     : veri
       ? veri.sayfa
       : null;
@@ -597,6 +649,43 @@ export function EarTablo<T>({
     );
   };
 
+  const tumCsv = () => {
+    if (!yerel) return;
+    downloadCsv(
+      yerelCsv || kimlik,
+      gorunenKolonlar.map((k) => k.baslik),
+      yerel.map((r) => gorunenKolonlar.map((k) => formulGuvenli(duz(k, r)))),
+    );
+  };
+
+  const ayni = (g: EarGorunum) =>
+    JSON.stringify(gecerli(g.f || [])) === JSON.stringify(f) && (g.s || '') === s;
+  const aktifGorunum = gorunumler ? [...gorunumler, ...kisisel].find(ayni) || null : null;
+  const gorunumUygula = (g: EarGorunum) => {
+    const yf = gecerli(g.f || []);
+    const ys = g.s || '';
+    const yg = (g.kolonlar || []).filter((a) => kolonlar.some((k) => k.anahtar === a));
+    setF(yf);
+    setS(ys);
+    if (yg.length) setGorunur(yg);
+    setOffset(0);
+    kaydet({ f: yf, s: ys, gorunur: yg.length ? yg : gorunur });
+    setGorunumPencere(null);
+  };
+  const kisiselKaydet = () => {
+    const ad = yeniAd.trim().slice(0, 60);
+    if (!ad) return;
+    const yeni = [...kisisel.filter((g) => g.ad !== ad), { ad, f, s, kolonlar: gorunur }].slice(-KISISEL_EN_COK);
+    setKisisel(yeni);
+    kisiselYaz(kimlik, yeni);
+    setYeniAd('');
+  };
+  const kisiselSil = (ad: string) => {
+    const yeni = kisisel.filter((g) => g.ad !== ad);
+    setKisisel(yeni);
+    kisiselYaz(kimlik, yeni);
+  };
+
   const etkinler = f.map((x) => ({ x, k: kolonOf(x.k) })).filter((x) => x.k);
   return (
     <div className="space-y-2">
@@ -639,10 +728,35 @@ export function EarTablo<T>({
           <ViewColumnsIcon className="w-3.5 h-3.5" aria-hidden /> Kolonlar ({gorunur.length}/
           {kolonlar.length})
         </button>
+        {gorunumler && (
+          <button
+            type="button"
+            className={BTN}
+            style={btnStil(!!aktifGorunum && aktifGorunum.f.length > 0)}
+            onClick={(e) => setGorunumPencere(konumOf(e))}
+            aria-haspopup="dialog"
+            title="Hazır ve kaydettiğiniz görünümler (süzgeç + sıralama + kolonlar)"
+          >
+            <BookmarkIcon className="w-3.5 h-3.5" aria-hidden />{' '}
+            {aktifGorunum ? `Görünüm: ${aktifGorunum.ad}` : 'Görünümler'}
+          </button>
+        )}
         {indirBag && (
           <a className={BTN} style={btnStil()} href={indirBag({ f, s, q })} download>
             Süzülenleri CSV
           </a>
+        )}
+        {yerelCsv && yerel && (
+          <button
+            type="button"
+            className={BTN}
+            style={btnStil()}
+            onClick={tumCsv}
+            disabled={!yerel.length}
+            title="Süzgeç ve aramaya uyan satırların tamamı, görünen kolonlarla"
+          >
+            <ArrowDownTrayIcon className="w-3.5 h-3.5" aria-hidden /> CSV ({fmtNumber(yerel.length)})
+          </button>
         )}
         <span className="ml-auto flex items-center gap-1">{ustSag}</span>
       </div>
@@ -803,11 +917,23 @@ export function EarTablo<T>({
                       >
                         {acilir && (
                           <td className={TD}>
-                            {ac ? (
-                              <ChevronDownIcon className="w-3.5 h-3.5" aria-hidden />
-                            ) : (
-                              <ChevronRightIcon className="w-3.5 h-3.5" aria-hidden />
-                            )}
+                            {/* Klavye ve ekran okuyucu: satır tıklaması yalnız fare içindi (2026-11-07). */}
+                            <button
+                              type="button"
+                              aria-expanded={ac}
+                              aria-label={`${satirEtiketi ? satirEtiketi(r) : a} ayrıntısı`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setAcikSatir(ac ? null : a);
+                              }}
+                              className="align-middle"
+                            >
+                              {ac ? (
+                                <ChevronDownIcon className="w-3.5 h-3.5" aria-hidden />
+                              ) : (
+                                <ChevronRightIcon className="w-3.5 h-3.5" aria-hidden />
+                              )}
+                            </button>
                           </td>
                         )}
                         {secimVar && (
@@ -859,13 +985,13 @@ export function EarTablo<T>({
           <span aria-live="polite">
             {sayfa.toplam === 0
               ? '0 kayıt'
-              : `${fmtNumber(offset + 1)}–${fmtNumber(Math.min(offset + sayfaBoyu, sayfa.toplam))} / ${fmtNumber(sayfa.toplam)}`}
+              : `${fmtNumber(ofs + 1)}–${fmtNumber(Math.min(ofs + sayfaBoyu, sayfa.toplam))} / ${fmtNumber(sayfa.toplam)}`}
           </span>
           <button
             type="button"
             className={BTN}
             style={btnStil()}
-            disabled={offset === 0}
+            disabled={ofs === 0}
             onClick={() => setOffset(0)}
             aria-label="ilk sayfa"
           >
@@ -875,8 +1001,8 @@ export function EarTablo<T>({
             type="button"
             className={BTN}
             style={btnStil()}
-            disabled={offset === 0}
-            onClick={() => setOffset(Math.max(0, offset - sayfaBoyu))}
+            disabled={ofs === 0}
+            onClick={() => setOffset(Math.max(0, ofs - sayfaBoyu))}
           >
             Önceki
           </button>
@@ -884,8 +1010,8 @@ export function EarTablo<T>({
             type="button"
             className={BTN}
             style={btnStil()}
-            disabled={offset + sayfaBoyu >= sayfa.toplam}
-            onClick={() => setOffset(offset + sayfaBoyu)}
+            disabled={ofs + sayfaBoyu >= sayfa.toplam}
+            onClick={() => setOffset(ofs + sayfaBoyu)}
           >
             Sonraki
           </button>
@@ -893,7 +1019,7 @@ export function EarTablo<T>({
             type="button"
             className={BTN}
             style={btnStil()}
-            disabled={offset + sayfaBoyu >= sayfa.toplam}
+            disabled={ofs + sayfaBoyu >= sayfa.toplam}
             onClick={() =>
               setOffset(Math.max(0, Math.floor((sayfa.toplam - 1) / sayfaBoyu) * sayfaBoyu))
             }
@@ -937,6 +1063,107 @@ export function EarTablo<T>({
           }}
         />
       )}
+      {gorunumPencere &&
+        gorunumler &&
+        createPortal(
+          <>
+            <div className="fixed inset-0 z-40" onClick={() => setGorunumPencere(null)} aria-hidden />
+            <div
+              role="dialog"
+              aria-label="Görünümler"
+              className="fixed z-50 w-72 max-h-[60vh] overflow-y-auto rounded-lg border shadow-lg p-2 space-y-2 text-xs"
+              style={{
+                left: gorunumPencere.sol,
+                top: gorunumPencere.ust,
+                background: 'var(--bg-surface)',
+                borderColor: 'var(--border)',
+                color: 'var(--text-primary)',
+              }}
+              onKeyDown={(e) => e.key === 'Escape' && setGorunumPencere(null)}
+            >
+              {gorunumler.length > 0 && (
+                <div>
+                  <div className="font-semibold mb-1" style={{ color: 'var(--text-muted)' }}>
+                    Hazır
+                  </div>
+                  {gorunumler.map((g) => (
+                    <button
+                      key={g.ad}
+                      type="button"
+                      aria-pressed={aktifGorunum === g}
+                      onClick={() => gorunumUygula(g)}
+                      className="block w-full text-left rounded px-1.5 py-1"
+                      style={{ background: aktifGorunum === g ? 'var(--bg-elevated)' : undefined }}
+                      title={g.aciklama}
+                    >
+                      {g.ad}
+                      {g.aciklama && (
+                        <span className="block text-[10px]" style={{ color: 'var(--text-muted)' }}>
+                          {g.aciklama}
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div>
+                <div className="font-semibold mb-1" style={{ color: 'var(--text-muted)' }}>
+                  Kaydettiklerim
+                </div>
+                {kisisel.length === 0 && (
+                  <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                    Henüz yok: süzgeci kurup aşağıdan kaydedin (yalnız bu tarayıcıda).
+                  </div>
+                )}
+                {kisisel.map((g) => (
+                  <div key={g.ad} className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      aria-pressed={aktifGorunum === g}
+                      onClick={() => gorunumUygula(g)}
+                      className="flex-1 text-left rounded px-1.5 py-1"
+                      style={{ background: aktifGorunum === g ? 'var(--bg-elevated)' : undefined }}
+                    >
+                      {g.ad}
+                    </button>
+                    <button type="button" aria-label={`${g.ad} görünümünü sil`} onClick={() => kisiselSil(g.ad)}>
+                      <XMarkIcon className="w-3 h-3" aria-hidden />
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <form
+                className="flex items-center gap-1 border-t pt-2"
+                style={{ borderColor: 'var(--border)' }}
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  kisiselKaydet();
+                }}
+              >
+                <input
+                  aria-label="Görünüm adı"
+                  placeholder="bu görünümü kaydet: ad"
+                  className={`${GIRDI} flex-1`}
+                  style={girdiStil}
+                  maxLength={60}
+                  value={yeniAd}
+                  onChange={(e) => setYeniAd(e.target.value)}
+                />
+                <button type="submit" className={BTN} style={btnStil(true)} disabled={!yeniAd.trim()}>
+                  Kaydet
+                </button>
+              </form>
+              <button
+                type="button"
+                className="underline"
+                onClick={() => gorunumUygula({ ad: '', f: [], s: '' })}
+              >
+                süzgeçsiz görünüm
+              </button>
+            </div>
+          </>,
+          document.body,
+        )}
       {kolonPencere &&
         createPortal(
           <>

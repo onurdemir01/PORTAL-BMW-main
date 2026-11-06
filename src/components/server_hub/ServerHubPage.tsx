@@ -48,6 +48,7 @@ import RetirementTab from './RetirementTab';
 import KurallarTab from './KurallarTab';
 import EarEnvanterTab from './EarEnvanterTab';
 import Uygulama360Tab from './Uygulama360Tab';
+import { EarTablo, type EarGorunum, type EarKolon } from './EarTablo';
 import { useSunucuLimiti, LimitNotu, sunucuAdlari, limitAsildi } from './sunucuLimiti';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
 import { SekmeKabi, useSekmeGorunur } from './sekmeGorunurlugu';
@@ -3572,6 +3573,209 @@ const AREA_TR: Record<string, string> = {
   ear: 'Uygulama (EAR)',
   capraz: 'Çapraz kontrol',
 };
+// ── BULGULAR TABLOSU (2026-11-07): EarTablo kolonlari ve hazir gorunumler ─────────────────────────
+// TOPLU ISLEM YOK: Islem kolonu her satirda TEK (host, jvm) auto-start duzeltmesi ister (ayri onay).
+const autoStartFix = (f: ShFindingRow) =>
+  !!f.fix && (f.fix.action === 'jboss_autostart_on' || f.fix.action === 'jboss_autostart_off');
+function bulguKolonlari(
+  autoStartDuzelt: (f: { host: string; fix?: ShFix | null }) => void,
+  asBusy: string | null,
+): EarKolon<ShFindingRow>[] {
+  const soluk: React.CSSProperties = { color: 'var(--text-muted)' };
+  return [
+    {
+      anahtar: 'host',
+      baslik: 'Sunucu',
+      aciklama: 'Satıra tıklayınca sunucu paneli açılır: ne yapmalı, zincir, etiketler.',
+      suzgec: 'metin',
+      sirala: true,
+      deger: (f) => f.host,
+      hucre: (f) => <span className="font-mono font-semibold">{f.host}</span>,
+    },
+    {
+      anahtar: 'ortam',
+      baslik: 'Ortam',
+      aciklama: 'Sunucunun ortamı (envanter ya da sunucu adından).',
+      suzgec: 'secim',
+      sirala: true,
+      deger: (f) => f.env || null,
+      hucre: (f) => (
+        <span className="text-[11px]" style={soluk}>
+          {f.env || f.envGroup || '—'}
+        </span>
+      ),
+    },
+    {
+      anahtar: 'onem',
+      baslik: 'Önem',
+      aciklama: 'Bulgunun seviyesi (Admin Kurallar & Limitler’den değiştirebilir).',
+      suzgec: 'secim',
+      secenekler: [
+        { deger: 'danger', etiket: 'kritik' },
+        { deger: 'warning', etiket: 'uyarı' },
+        { deger: 'info', etiket: 'bilgi' },
+        { deger: 'ok', etiket: 'sorun yok' },
+      ],
+      deger: (f) => f.severity,
+      hucre: (f) => (
+        <>
+          <SevPill s={f.severity} />
+          {f.defaultSeverity && (
+            <div>
+              <SeviyeDegistiIsareti d={f.defaultSeverity} />
+            </div>
+          )}
+        </>
+      ),
+    },
+    {
+      anahtar: 'alan',
+      baslik: 'Alan',
+      aciklama: 'Tarama maddesinin alanı.',
+      suzgec: 'secim',
+      secenekler: Object.entries(AREA_TR).map(([deger, etiket]) => ({ deger, etiket })),
+      deger: (f) => f.area,
+      hucre: (f) => AREA_TR[f.area] || f.area,
+    },
+    {
+      anahtar: 'kod',
+      baslik: 'Kod',
+      aciklama: 'Bulgu kodu ve okunur adı.',
+      suzgec: 'secim',
+      sirala: true,
+      deger: (f) => f.code,
+      hucre: (f) => (
+        <span className="font-mono text-[11px]" title={kodEtiketi(f.code)}>
+          {f.code}
+          {KOD_ETIKET[f.code] ? (
+            <span className="block font-sans text-[10px]" style={soluk}>
+              {KOD_ETIKET[f.code]}
+            </span>
+          ) : null}
+        </span>
+      ),
+    },
+    {
+      anahtar: 'bulgu',
+      baslik: 'Bulgu',
+      aciklama: 'Bulgu metni (tamamı üzerine gelince).',
+      suzgec: 'metin',
+      deger: (f) => f.text,
+      hucre: (f) => (
+        <div className="max-w-[40rem] truncate" title={f.text}>
+          {f.text}
+        </div>
+      ),
+    },
+    {
+      anahtar: 'urunler',
+      baslik: 'Ürünler',
+      aciklama: 'Sunucudaki ürünler (tarama).',
+      suzgec: 'secim',
+      deger: (f) => f.products,
+      hucre: (f) => (
+        <span className="text-[11px]" style={soluk}>
+          {f.products.join(' · ')}
+        </span>
+      ),
+    },
+    {
+      anahtar: 'sinif',
+      baslik: 'Sınıf',
+      aciklama: 'Genel envanter ya da GBEVM / GBPRV.',
+      suzgec: 'secim',
+      varsayilan: false,
+      secenekler: [
+        { deger: 'genel', etiket: 'genel envanter' },
+        { deger: 'ozel', etiket: 'GBEVM / GBPRV' },
+      ],
+      deger: (f) => f.hostClass || 'genel',
+      hucre: (f) => ((f.hostClass || 'genel') === 'ozel' ? 'GBEVM / GBPRV' : 'genel'),
+    },
+    {
+      anahtar: 'tarama',
+      baslik: 'Tarama',
+      aciklama: 'Sunucunun son tarama günü.',
+      suzgec: 'tarih',
+      sirala: true,
+      varsayilan: false,
+      deger: (f) => f.scanDate || null,
+      hucre: (f) => f.scanDate || '—',
+    },
+    {
+      anahtar: 'islem',
+      baslik: 'İşlem',
+      aciklama: 'Satır bazında auto-start düzeltmesi; her biri ayrı onay ister (toplu işlem yok).',
+      suzgec: 'bit',
+      deger: (f) => autoStartFix(f),
+      hucre: (f) => {
+        if (!autoStartFix(f) || !f.fix) return <span style={soluk}>—</span>;
+        const k = `${f.host}|${f.fix.gen}|${f.fix.jvm}`;
+        const ac = f.fix.action === 'jboss_autostart_on';
+        return (
+          <button
+            type="button"
+            onClick={(e) => {
+              // Satir acilimini tetiklemesin.
+              e.stopPropagation();
+              autoStartDuzelt(f);
+            }}
+            disabled={asBusy === k}
+            title={
+              ac
+                ? `${f.fix.jvm} için auto-start'ı AÇ (yalnız bu JVM)`
+                : `${f.fix.jvm} için auto-start'ı KAPAT (yalnız bu JVM)`
+            }
+            className="px-1.5 py-0.5 text-[10px] border rounded disabled:opacity-50"
+            style={{ borderColor: 'var(--border)' }}
+          >
+            {asBusy === k ? '…' : ac ? 'Auto-start AÇ' : 'Auto-start KAPAT'}
+          </button>
+        );
+      },
+    },
+  ];
+}
+/** Hazır görünümler (kişisel olanlar tarayıcıda; görünüm tablonun süzgeci olur). */
+const BULGU_GORUNUMLERI: EarGorunum[] = [
+  { ad: 'Kritikler', aciklama: 'Yalnız kritik bulgular.', f: [{ k: 'onem', op: 'in', v: ['danger'] }] },
+  {
+    ad: 'Prod kritikler',
+    aciklama: 'Production ortamındaki kritik bulgular.',
+    f: [
+      { k: 'onem', op: 'in', v: ['danger'] },
+      { k: 'ortam', op: 'in', v: ['PROD'] },
+    ],
+  },
+  {
+    ad: 'Auto-start uyumsuz',
+    aciklama: 'Çalışıyor + auto-start kapalı ya da kapalı + auto-start açık.',
+    f: [{ k: 'kod', op: 'in', v: ['REBOOT_RISK', 'STOPPED_AUTOSTART_ON'] }],
+  },
+  {
+    ad: 'Çapraz kontrol',
+    aciklama: 'Kopyalar, ortamlar, OpenShift ve Retirement kaydı.',
+    f: [{ k: 'alan', op: 'in', v: ['capraz'] }],
+  },
+  {
+    ad: 'Retire adayı ve Retirement çelişkisi',
+    aciklama: 'Kapalı + trafiksiz JVM’ler ve Retirement kaydıyla çelişenler.',
+    f: [{ k: 'kod', op: 'in', v: ['RETIRE_CANDIDATE', 'RETIRE_KAYDI_CELISKI'] }],
+  },
+  {
+    ad: 'Satırdan düzeltilebilir',
+    aciklama: 'Auto-start düzeltmesi satırdan yapılabilen bulgular.',
+    f: [{ k: 'islem', op: 'evet' }],
+  },
+];
+/** Açılan satırın içeriği ilk kez çizilince haber verir (etiket verisi o zaman iner). */
+function PanelAcildi({ onAcildi, children }: { onAcildi: () => void; children: React.ReactNode }) {
+  useAsyncEffect(async () => {
+    onAcildi();
+  }, []);
+  return <>{children}</>;
+}
+
 export function FindingsTab({
   initial,
   onRetirementAc,
@@ -3594,7 +3798,8 @@ export function FindingsTab({
   // RETIREMENT ETIKETLERI (2026-11-06, kullanici: "retiere etiketi ayri olsun bulgular ayri olsun"):
   // ayri gorunum; sunucuya tiklayinca acilan panel de ayni veriyi kullanir. Yalniz gerekince indirilir.
   const [gorunum, setGorunum] = useState<'bulgular' | 'etiketler'>('bulgular');
-  const [acikSatir, setAcikSatir] = useState<string | null>(null);
+  // Bir satirin sunucu paneli acildi mi: etiket verisi yalniz o zaman indirilir (satir acilimi EarTablo'da).
+  const [panelAcildi, setPanelAcildi] = useState(false);
   const [retire, setRetire] = useState<ShRetireSonuc | null>(null);
   const [retireYuk, setRetireYuk] = useState(false);
   const retireYukle = useCallback(async (fresh = false) => {
@@ -3609,7 +3814,7 @@ export function FindingsTab({
       setRetireYuk(false);
     }
   }, []);
-  const retireGerek = gorunum === 'etiketler' || acikSatir !== null;
+  const retireGerek = gorunum === 'etiketler' || panelAcildi;
   useAsyncEffect(async () => {
     if (gorunur && retireGerek && !retire) await retireYukle();
   }, [gorunur, retireGerek, retire, retireYukle]);
@@ -3620,7 +3825,7 @@ export function FindingsTab({
   // TOPLU ISLEM YOK (kullanici: "cok tehlikeli"): her satir kendi onayini ister, her tiklama
   // TEK (host, jvm) hedefler.
   const [asBusy, setAsBusy] = useState<string | null>(null);
-  const autoStartDuzelt = async (f: { host: string; fix?: ShFix | null }) => {
+  const autoStartDuzelt = useCallback(async (f: { host: string; fix?: ShFix | null }) => {
     const fix = f.fix;
     if (!fix || !fix.jvm || fix.gen == null) return;
     const ac = fix.action === 'jboss_autostart_on';
@@ -3650,7 +3855,7 @@ export function FindingsTab({
     } finally {
       setAsBusy(null);
     }
-  };
+  }, []);
 
   const load = useCallback(async (fresh = false) => {
     setLoading(true);
@@ -3691,43 +3896,17 @@ export function FindingsTab({
         (!n || f.host.toLowerCase().includes(n) || f.text.toLowerCase().includes(n)),
     );
   }, [all, qErtelenmis, area, code, sev, product, envGroup, fCls]);
-  const sinir = useCizimSiniri(JSON.stringify([qErtelenmis, area, code, sev, product, envGroup, fCls]));
+  // Satir anahtari: bulgunun tum listedeki sirasi (ayni sunucuda ayni kod birden cok kez olabilir).
+  const anahtarOf = useMemo(
+    () => new Map((data?.findings || []).map((f, i) => [f, `${f.host}|${f.code}|${i}`])),
+    [data],
+  );
+  const kolonlar = useMemo(() => bulguKolonlari(autoStartDuzelt, asBusy), [autoStartDuzelt, asBusy]);
   const byCode = useMemo(() => {
     const m = new Map<string, number>();
     for (const f of rows) m.set(f.code, (m.get(f.code) || 0) + 1);
     return [...m.entries()].sort((a, b) => b[1] - a[1]);
   }, [rows]);
-  const csv = () => {
-    const head = [
-      'sunucu',
-      'ortam',
-      'urunler',
-      'onem',
-      'alan',
-      'kod',
-      'bulgu',
-      'duzeltilebilir',
-      'tarama',
-    ];
-    const body = rows.map((f) => [
-      f.host,
-      f.env || '',
-      f.products.join(' '),
-      f.severity,
-      f.area,
-      f.code,
-      f.text,
-      f.fixable ? 'evet' : '',
-      f.scanDate || '',
-    ]);
-    const text = [head, ...body]
-      .map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(';'))
-      .join('\n');
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob(['\ufeff' + text], { type: 'text/csv;charset=utf-8' }));
-    a.download = `server_hub_bulgular_${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-  };
   const sel = 'h-8 px-2 text-xs border rounded-lg';
   const selStyle: React.CSSProperties = {
     borderColor: 'var(--border)',
@@ -3772,6 +3951,7 @@ export function FindingsTab({
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="sunucu ya da bulgu metni ara"
+          aria-label="ön süzgeç: sunucu ya da bulgu metni"
           className="h-8 px-3 text-xs border rounded-lg w-64"
           style={selStyle}
         />
@@ -3862,13 +4042,6 @@ export function FindingsTab({
         </span>
         <div className="ml-auto flex gap-2">
           <button
-            onClick={csv}
-            className="px-2.5 py-1.5 text-xs border rounded-lg"
-            style={{ borderColor: 'var(--border)' }}
-          >
-            <ArrowDownTrayIcon className="w-3.5 h-3.5 inline" /> CSV
-          </button>
-          <button
             onClick={() => load(true)}
             className="px-2.5 py-1.5 text-xs border rounded-lg"
             style={{ borderColor: 'var(--border)' }}
@@ -3897,135 +4070,42 @@ export function FindingsTab({
           ))}
         </div>
       )}
-      <div
-        className="overflow-x-auto rounded-xl border"
-        // Sunucu paneli bu kabin GORUNEN genisligine sigar (100cqw): genis tabloda yana tasmasin.
-        style={{ borderColor: 'var(--border-subtle)', containerType: 'inline-size' }}
-      >
-        <table className="w-full text-xs">
-          <thead>
-            <tr
-              className="text-left"
-              style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}
-            >
-              <th className="px-3 py-2">Sunucu</th>
-              <th className="px-3 py-2">Ortam</th>
-              <th className="px-3 py-2">Önem</th>
-              <th className="px-3 py-2">Alan</th>
-              <th className="px-3 py-2">Kod</th>
-              <th className="px-3 py-2">Bulgu</th>
-              <th className="px-3 py-2">Ürünler</th>
-              <th className="px-3 py-2">İşlem</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.slice(0, sinir.n).map((f, i) => {
-              const satirAnahtari = `${f.host}|${f.code}|${i}`;
-              const acik = acikSatir === satirAnahtari;
-              return (
-              <React.Fragment key={f.host + f.code + i}>
-              <tr
-                className="border-t"
-                style={{ borderColor: 'var(--border-subtle)', background: acik ? 'var(--bg-elevated)' : undefined }}
-              >
-                <td className="px-3 py-1.5 font-mono font-semibold">
-                  {/* SUNUCU PANELI (2026-11-06): tiklayinca satirin altinda acilir-kapanir. */}
-                  <button
-                    type="button"
-                    onClick={() => setAcikSatir(acik ? null : satirAnahtari)}
-                    aria-expanded={acik}
-                    title={acik ? 'Ayrıntıyı kapat' : 'Sunucu ayrıntısı: ne yapmalı, zincir, etiketler'}
-                    className="underline decoration-dotted whitespace-nowrap"
-                  >
-                    {acik ? '▾' : '▸'} {f.host}
-                  </button>
-                </td>
-                <td className="px-3 py-1.5 text-[11px]" style={{ color: 'var(--text-muted)' }}>
-                  {f.env || f.envGroup || '—'}
-                </td>
-                <td className="px-3 py-1.5">
-                  <SevPill s={f.severity} />
-                  {f.defaultSeverity && (
-                    <div>
-                      <SeviyeDegistiIsareti d={f.defaultSeverity} />
-                    </div>
-                  )}
-                </td>
-                <td className="px-3 py-1.5">{AREA_TR[f.area] || f.area}</td>
-                <td className="px-3 py-1.5 font-mono text-[11px]" title={kodEtiketi(f.code)}>
-                  {f.code}
-                  {KOD_ETIKET[f.code] ? (
-                    <div className="font-sans text-[10px]" style={{ color: 'var(--text-muted)' }}>
-                      {KOD_ETIKET[f.code]}
-                    </div>
-                  ) : null}
-                </td>
-                <td className="px-3 py-1.5">
-                  <div className="max-w-[40rem] truncate" title={f.text}>
-                    {f.text}
-                  </div>
-                </td>
-                <td className="px-3 py-1.5 text-[11px]" style={{ color: 'var(--text-muted)' }}>
-                  {f.products.join(' · ')}
-                </td>
-                <td className="px-3 py-1.5">
-                  {/* Yalniz auto-start bulgulari: oteki duzeltmeler plan/onay akisindan
-                      gecer (sunucu detayindaki "Duzelt" dugmesi). */}
-                  {f.fix &&
-                  (f.fix.action === 'jboss_autostart_on' || f.fix.action === 'jboss_autostart_off') ? (
-                    <button
-                      onClick={() => autoStartDuzelt(f)}
-                      disabled={asBusy === `${f.host}|${f.fix.gen}|${f.fix.jvm}`}
-                      title={
-                        f.fix.action === 'jboss_autostart_on'
-                          ? `${f.fix.jvm} için auto-start'ı AÇ (yalnız bu JVM)`
-                          : `${f.fix.jvm} için auto-start'ı KAPAT (yalnız bu JVM)`
-                      }
-                      className="px-1.5 py-0.5 text-[10px] border rounded disabled:opacity-50"
-                      style={{ borderColor: 'var(--border)' }}
-                    >
-                      {asBusy === `${f.host}|${f.fix.gen}|${f.fix.jvm}`
-                        ? '…'
-                        : f.fix.action === 'jboss_autostart_on'
-                          ? 'Auto-start AÇ'
-                          : 'Auto-start KAPAT'}
-                    </button>
-                  ) : (
-                    <span style={{ color: 'var(--text-muted)' }}>—</span>
-                  )}
-                </td>
-              </tr>
-              {acik && (
-                <tr>
-                  <td colSpan={8} className="px-3 py-3" style={{ background: 'var(--bg-base, var(--bg-surface))' }}>
-                    <div className="sticky left-3" style={{ width: 'calc(100cqw - 1.5rem)' }}>
-                    <SunucuPaneli
-                      host={f.host}
-                      retire={retire}
-                      onEtiketDegisti={() => retireYukle(false)}
-                      onRetirementAc={onRetirementAc}
-                      onAutoStart={autoStartDuzelt}
-                      asBusy={asBusy}
-                    />
-                    </div>
-                  </td>
-                </tr>
-              )}
-              </React.Fragment>
-              );
-            })}
-            {!loading && rows.length === 0 && (
-              <TableEmptyRow
-                colSpan={8}
-                title={all.length ? 'Süzgeçle eşleşen bulgu yok.' : 'Bulgu yok.'}
-                description={
-                  data?.tableMissing ? "server_hub_scan job'ı henüz koşmadı." : undefined
-                }
-              />
-            )}
-          </tbody>
-        </table>
-        <DahaFazla gosterilen={Math.min(rows.length, sinir.n)} toplam={rows.length} onDaha={sinir.daha} onTumu={sinir.tumu} />
+      {/* SUTUN SUZGECLI TABLO (2026-11-07): ustteki seciciler on suzgectir; kolon dropdown'lari, siralama,
+          kolon secici, sayfa, kayitli gorunumler ve CSV (suzulenlerin tamami) tabloda. Satira tiklayinca
+          sunucu paneli acilir. Sunucu paneli bu kabin GORUNEN genisligine sigar (100cqw). */}
+      <div style={{ containerType: 'inline-size' }}>
+        <EarTablo<ShFindingRow>
+          kimlik="server-hub-bulgular"
+          kolonlar={kolonlar}
+          satirlar={rows}
+          satirAnahtari={(f) => anahtarOf.get(f) || `${f.host}|${f.code}`}
+          satirEtiketi={(f) => `${f.host} · ${f.code}`}
+          gorunumler={BULGU_GORUNUMLERI}
+          yerelCsv={`server_hub_bulgular_${new Date().toISOString().slice(0, 10)}`}
+          csvAdi="server_hub_bulgular_secili"
+          araEtiketi="tabloda ara (sunucu, kod, bulgu)"
+          bosMetin={
+            all.length
+              ? 'Süzgeçle eşleşen bulgu yok.'
+              : data?.tableMissing
+                ? "Bulgu yok: server_hub_scan job'ı henüz koşmadı."
+                : 'Bulgu yok.'
+          }
+          acilir={(f) => (
+            <PanelAcildi onAcildi={() => setPanelAcildi(true)}>
+              <div className="sticky left-3 py-3" style={{ width: 'calc(100cqw - 1.5rem)' }}>
+                <SunucuPaneli
+                  host={f.host}
+                  retire={retire}
+                  onEtiketDegisti={() => retireYukle(false)}
+                  onRetirementAc={onRetirementAc}
+                  onAutoStart={autoStartDuzelt}
+                  asBusy={asBusy}
+                />
+              </div>
+            </PanelAcildi>
+          )}
+        />
       </div>
       </>
       )}
