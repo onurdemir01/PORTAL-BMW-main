@@ -14,6 +14,8 @@
 //   RA6 Kurallar: etiket seviyesi gerekçesiz kaydedilmez; yok sayma listesi kaydı
 //   RA7 Retirement: etiketten gelen öneri kayıt formunu uygulama adı ve notla açar, keşif başlar
 //   RA8 Faz 2: zincir kartında deployment satırı (kontrol kapalı / JVM kapalı / yok / FAILED / ölçülemedi)
+//   RA9 etiket tablosu: R1–R6 sözlüğü (ad + koşul + şu anki seviye), hızlı süzgeç (yanlış alarm varsayılan
+//       gizli, sayılar), sütun süzgeci dropdown'u (Etiket / Kural / Zincir), kopya tablosunda kural adı
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { render } from '@/test/test-utils';
@@ -319,6 +321,8 @@ beforeEach(() => {
   toastM.error.mockReset();
   shOnbellek._sifirlaForTest();
   TAM.clear();
+  // EarTablo sütun süzgeçlerini localStorage'da tutar: testler birbirine sızmasın.
+  window.localStorage.clear();
   m.retireEtiketAyrinti.mockImplementation(async (anahtar: string) =>
     TAM.has(anahtar)
       ? { ok: true, etiket: TAM.get(anahtar) }
@@ -409,7 +413,7 @@ describe('RA2 etiket listesi', () => {
       />,
     );
     const liste = screen.getByTestId('retire-etiketleri');
-    expect(within(liste).getAllByRole('row')).toHaveLength(3);
+    expect(within(liste).getByText('1–2 / 2')).toBeInTheDocument();
     fireEvent.click(within(liste).getByText('oldapp (JBoss 7)'));
     const d = await screen.findByTestId('etiket-ayrinti');
     expect(
@@ -825,5 +829,85 @@ describe('RA8 Faz 2 deployment satırı', () => {
       'Deployment (JBoss CLI): JVM kapalı — deployment okunmaz',
       'Deployment (JBoss CLI): YEREL.ear OK',
     ]);
+  });
+});
+
+describe('RA9 etiket tablosu: sözlük, hızlı süzgeç, sütun dropdownları', () => {
+  const ya = etiket({ anahtar: 'JVM|YA|PROD|7', ad: 'ya', durum: 'YANLIS_ALARM' });
+  const dusen = etiket({
+    anahtar: 'JVM|DUSEN|TEST|7',
+    ad: 'dusen',
+    ortam: 'TEST',
+    seviye: 'SUPHELI',
+    nedenler: ['GBCJAT02: eşlenik kopya çalışıyor'],
+  });
+  const ciz = () =>
+    render(
+      <RetireEtiketleriGorunum
+        veri={sonuc([etiket(), GIRDI, ya, dusen], {
+          ozet: {
+            toplam: 4,
+            kesin: 1,
+            supheli: 2,
+            dusurulen: 1,
+            bekliyor: 3,
+            dogrulandi: 0,
+            yanlisAlarm: 1,
+            retirementHazir: 0,
+          },
+        })}
+        yukleniyor={false}
+        onYenile={vi.fn()}
+      />,
+    );
+  it('R1–R6 sözlüğü kodu okunur adla ve şu anki seviyeyle verir', () => {
+    ciz();
+    const sz = screen.getByTestId('kural-sozlugu');
+    expect(within(sz).getByText(/Kurallar ne demek\?/)).toBeInTheDocument();
+    expect(within(sz).getByText('Kapalı + auto-start açık + trafik yok')).toBeInTheDocument();
+    expect(within(sz).getByText('Kökte .ear ile bitmeyen girdi')).toBeInTheDocument();
+    expect(within(sz).getAllByText('kesin').length).toBeGreaterThan(0);
+  });
+  it('hızlı süzgeç: yanlış alarm varsayılan gizli; düğmeler sayılı', () => {
+    ciz();
+    expect(screen.getByText('1–3 / 3')).toBeInTheDocument();
+    expect(screen.queryByText('ya (JBoss 7)')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /yanlış alarm 1/ }));
+    expect(screen.getByText('1–1 / 1')).toBeInTheDocument();
+    expect(screen.getByText('ya (JBoss 7)')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /kesinden şüpheliye inen 1/ }));
+    expect(screen.getByText('dusen (JBoss 7)')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /^hepsi/ }));
+    expect(screen.getByText('1–4 / 4')).toBeInTheDocument();
+  });
+  it('sütun dropdownları: Etiket, Kural (okunur ad), Zincir', async () => {
+    ciz();
+    fireEvent.click(screen.getByRole('button', { name: 'Etiket süz' }));
+    fireEvent.click(await screen.findByLabelText('Etiket: şüpheli'));
+    fireEvent.click(screen.getByRole('button', { name: 'Uygula' }));
+    expect(screen.getByText('1–2 / 2')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Kural süz' }));
+    const k = await screen.findByRole('dialog', { name: 'Kural süzgeci' });
+    fireEvent.click(await within(k).findByLabelText('Kural: R4 · Kökte .ear ile bitmeyen girdi'));
+    fireEvent.click(within(k).getByRole('button', { name: 'Uygula' }));
+    expect(screen.getByText('1–1 / 1')).toBeInTheDocument();
+    expect(screen.getByText('/vhosting/ESKI.war')).toBeInTheDocument();
+  });
+  it('zincir süzgeci: kesinden inenler', async () => {
+    ciz();
+    fireEvent.click(screen.getByRole('button', { name: 'Zincir süz' }));
+    fireEvent.click(await screen.findByLabelText('Zincir: kesinden şüpheliye indi'));
+    fireEvent.click(screen.getByRole('button', { name: 'Uygula' }));
+    expect(screen.getByText('1–1 / 1')).toBeInTheDocument();
+    expect(screen.getByText('dusen (JBoss 7)')).toBeInTheDocument();
+  });
+  it('kopya tablosunda kural kodu okunur adla', async () => {
+    ciz();
+    fireEvent.click(screen.getByText('oldapp (JBoss 7)'));
+    const d = await screen.findByTestId('etiket-ayrinti');
+    await within(d).findByText(/oldapp\.bmw\.local/);
+    expect(within(d).getAllByText('Kapalı + auto-start açık + trafik yok').length).toBeGreaterThan(
+      0,
+    );
   });
 });

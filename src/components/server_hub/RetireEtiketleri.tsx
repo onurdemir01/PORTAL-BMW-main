@@ -6,12 +6,7 @@
 // imzasına bağlıdır: kanıt değişirse sunucu 409 döner ve ekran yenileyip yeniden sorar. Yalnız
 // KESİN + DOĞRULANDI etiket Retirement kaydına gönderilebilir.
 import React, { useMemo, useState } from 'react';
-import {
-  ArrowPathIcon,
-  ChevronDownIcon,
-  ChevronRightIcon,
-  ClipboardDocumentIcon,
-} from '@heroicons/react/24/outline';
+import { ArrowPathIcon, ClipboardDocumentIcon } from '@heroicons/react/24/outline';
 import {
   serverHubApi,
   type ShEtiketKurali,
@@ -22,21 +17,23 @@ import {
 } from '@/api/serverHubApi';
 import { toast } from '@/hooks/useToast';
 import { fmtDateTime, fmtNumber } from '@/utils/datetime';
-import { TableEmptyRow } from '@/components/common/EmptyState';
+import { downloadCsv } from '@/utils/csv';
+import { EarTablo, formulGuvenli, type EarKolon } from './EarTablo';
 import LoadError from '@/components/common/LoadError';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import {
-  BOS_SUZGEC,
   ETIKET_SEVIYE,
+  HIZLI_SUZGECLER,
   KONTROL_DURUM,
   TUR_ETIKET,
-  etiketSuz,
+  hizliSuz,
   komutDoldur,
   konuMetni,
   retirementUygulamasi,
+  zincirDurumu,
   type EtiketBilgi,
-  type EtiketSuzgeci,
   type EtiketTon,
+  type HizliSuzgec,
 } from './retireEtiket';
 
 const TON: Record<EtiketTon, { zemin: string; metin: string; renk: string }> = {
@@ -234,7 +231,7 @@ export function KontrolFormu({ e, onDegisti }: { e: ShRetireEtiketHer; onDegisti
 }
 
 /** Kopyalar = zincir: sunucu → JVM durumu → web sunucusu / vhost → trafik (ya da EAR / girdi). */
-function KopyaTablosu({ e }: { e: ShRetireEtiket }) {
+function KopyaTablosu({ e, kAd }: { e: ShRetireEtiket; kAd: Map<string, string> }) {
   const th = 'px-2 py-1 text-left font-medium whitespace-nowrap';
   const td = 'px-2 py-1 align-top';
   const durum = (c: ShRetireEtiket['kopyalar'][number]) =>
@@ -365,7 +362,15 @@ function KopyaTablosu({ e }: { e: ShRetireEtiket }) {
                   <td className={td}>{c.taranma ? fmtDateTime(c.taranma) : '—'}</td>
                 </>
               )}
-              <td className={`${td} font-mono`}>{c.kurallar.join(', ') || '—'}</td>
+              <td className={td}>
+                {c.kurallar.length
+                  ? c.kurallar.map((r) => (
+                      <div key={r} className="text-[11px]">
+                        <span className="font-mono">{r}</span> {kAd.get(r) || ''}
+                      </div>
+                    ))
+                  : '—'}
+              </td>
             </tr>
           ))}
         </tbody>
@@ -449,7 +454,7 @@ export function EtiketAyrinti({
         </div>
       ))}
       {tam ? (
-        <KopyaTablosu e={tam} />
+        <KopyaTablosu e={tam} kAd={new Map(kurallar.map((k) => [k.kural, k.ad]))} />
       ) : ayrintiHata ? (
         <LoadError
           title="Eşlenik kopyalar okunamadı"
@@ -520,6 +525,253 @@ export function EtiketAyrinti({
 }
 
 /** Bulgular sekmesindeki ikinci görünüm: etiket listesi (süzgeçli, satır açılır). */
+/** R1–R6 ne demek: kural kodu, okunur adı, koşulu ve şu anki seviyesi (Admin değiştirir). */
+export function KuralSozlugu({ kurallar }: { kurallar: ShEtiketKurali[] }) {
+  return (
+    <details
+      className="rounded-lg border px-3 py-2 text-xs"
+      style={{ borderColor: 'var(--border-subtle)' }}
+      data-testid="kural-sozlugu"
+    >
+      <summary className="cursor-pointer font-semibold">
+        Kurallar ne demek? (R1–R{kurallar.length})
+      </summary>
+      <table className="w-full mt-2 text-[11px]">
+        <thead style={{ color: 'var(--text-muted)' }}>
+          <tr>
+            <th className="text-left pr-3 py-1">Kod</th>
+            <th className="text-left pr-3 py-1">Ne zaman konur</th>
+            <th className="text-left pr-3 py-1">Şu anki etiket</th>
+          </tr>
+        </thead>
+        <tbody>
+          {kurallar.map((k) => (
+            <tr key={k.kural} className="border-t" style={{ borderColor: 'var(--border-subtle)' }}>
+              <td className="pr-3 py-1 font-mono align-top">{k.kural}</td>
+              <td className="pr-3 py-1 align-top">
+                <b>{k.ad}</b>
+                <div style={{ color: 'var(--text-secondary)' }}>{k.kosul}</div>
+              </td>
+              <td className="pr-3 py-1 align-top">
+                {k.gecerli === 'KAPALI' ? (
+                  <span style={{ color: 'var(--text-muted)' }}>kapalı (etiket üretmez)</span>
+                ) : (
+                  <EtiketRozeti b={ETIKET_SEVIYE[k.gecerli]} kucuk />
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className="mt-1" style={{ color: 'var(--text-muted)' }}>
+        Seviyeleri Server Hub › Kurallar &amp; Limitler › “Retirement etiket kuralları”ndan Admin
+        değiştirir.
+      </div>
+    </details>
+  );
+}
+
+type E = ShRetireEtiketOzet;
+const ZINCIR: Record<'TAM' | 'DUSTU' | 'NEDENLI', string> = {
+  TAM: 'kanıt tam',
+  DUSTU: 'kesinden şüpheliye indi',
+  NEDENLI: 'şüpheli (nedenli)',
+};
+
+function kolonlarOf(kAd: Map<string, string>): EarKolon<E>[] {
+  const kuralMetni = (k: string) => `${k} · ${kAd.get(k) || ''}`;
+  return [
+    {
+      anahtar: 'seviye',
+      baslik: 'Etiket',
+      aciklama:
+        'kesin: kurallar retire edilebilir diyor (elle doğrulanmalı); şüpheli: inceleme gerekir.',
+      suzgec: 'secim',
+      secenekler: [
+        { deger: 'KESIN', etiket: 'kesin' },
+        { deger: 'SUPHELI', etiket: 'şüpheli' },
+      ],
+      sirala: true,
+      deger: (e) => e.seviye,
+      hucre: (e) => <EtiketRozeti b={ETIKET_SEVIYE[e.seviye]} />,
+    },
+    {
+      anahtar: 'konu',
+      baslik: 'Konu',
+      aciklama: 'Etiketin konusu: JVM / uygulama (nesil), diskteki EAR ya da kökteki girdi.',
+      suzgec: 'metin',
+      sirala: true,
+      deger: (e) => konuMetni(e),
+      hucre: (e) => (
+        <div>
+          <div className="font-mono text-[12px] font-semibold">{konuMetni(e)}</div>
+          <div className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
+            {TUR_ETIKET[e.tur]}
+            {e.tier.length ? ` · tier ${e.tier.join('/')}` : ''}
+          </div>
+        </div>
+      ),
+    },
+    {
+      anahtar: 'tur',
+      baslik: 'Tür',
+      aciklama: 'JVM / uygulama, EAR ya da kökteki girdi.',
+      suzgec: 'secim',
+      secenekler: (Object.keys(TUR_ETIKET) as (keyof typeof TUR_ETIKET)[]).map((t) => ({
+        deger: t,
+        etiket: TUR_ETIKET[t],
+      })),
+      sirala: true,
+      varsayilan: false,
+      deger: (e) => e.tur,
+      hucre: (e) => TUR_ETIKET[e.tur],
+    },
+    {
+      anahtar: 'ortam',
+      baslik: 'Ortam',
+      aciklama:
+        'Etiket ortam başına tektir; aynı ortamdaki eşlenik kopyalar birlikte değerlendirilir.',
+      suzgec: 'secim',
+      sirala: true,
+      deger: (e) => e.ortam,
+      hucre: (e) => e.ortam,
+    },
+    {
+      anahtar: 'kural',
+      baslik: 'Kural',
+      aciklama: 'Etiketi koyan kural(lar); R1–R6 açıklaması tablonun üstünde.',
+      suzgec: 'secim',
+      sirala: true,
+      deger: (e) => e.kurallar.map(kuralMetni).join(' + '),
+      hucre: (e) => (
+        <div>
+          {e.kurallar.map((r) => (
+            <div key={r} className="text-[11px]">
+              <span className="font-mono">{r}</span> {kAd.get(r) || ''}
+            </div>
+          ))}
+        </div>
+      ),
+    },
+    {
+      anahtar: 'sunucular',
+      baslik: 'Sunucular',
+      aciklama: 'Eşlenik kopyaların bulunduğu sunucular.',
+      suzgec: 'metin',
+      deger: (e) => e.hostlar.join(', '),
+      hucre: (e) => (
+        <span className="font-mono text-[11px]">
+          {e.hostlar.slice(0, 3).join(', ')}
+          {e.hostlar.length > 3 ? ` +${e.hostlar.length - 3}` : ''}
+        </span>
+      ),
+    },
+    {
+      anahtar: 'sunucuSayisi',
+      baslik: 'Sunucu sayısı',
+      aciklama: 'Kaç sunucuda kopya var.',
+      suzgec: 'sayi',
+      sirala: true,
+      varsayilan: false,
+      deger: (e) => e.hostlar.length,
+      hucre: (e) => fmtNumber(e.hostlar.length),
+    },
+    {
+      anahtar: 'zincir',
+      baslik: 'Zincir',
+      aciklama:
+        'kanıt tam / kesinden şüpheliye indi (eşlenik kopya çalışıyor, trafik ölçülemedi…) / şüpheli ve nedeni.',
+      suzgec: 'secim',
+      secenekler: (Object.keys(ZINCIR) as (keyof typeof ZINCIR)[]).map((z) => ({
+        deger: z,
+        etiket: ZINCIR[z],
+      })),
+      deger: (e) => zincirDurumu(e),
+      hucre: (e) =>
+        e.nedenler.length ? (
+          <span className="text-[11px]" style={{ color: 'var(--status-warning-text)' }}>
+            {e.nedenler[0]}
+            {e.nedenler.length > 1 ? ` +${e.nedenler.length - 1}` : ''}
+          </span>
+        ) : (
+          <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+            kanıt tam
+          </span>
+        ),
+    },
+    {
+      anahtar: 'nedenler',
+      baslik: 'Nedenler',
+      aciklama: 'Kesinden şüpheliye inme ya da şüphe nedenlerinin tamamı.',
+      suzgec: 'metin',
+      varsayilan: false,
+      deger: (e) => e.nedenler.join(' | ') || null,
+      hucre: (e) => <span className="text-[11px]">{e.nedenler.join(' · ') || '—'}</span>,
+    },
+    {
+      anahtar: 'tier',
+      baslik: 'Tier',
+      aciklama: 'MWAppsInventory tier (JVM etiketlerinde).',
+      suzgec: 'secim',
+      varsayilan: false,
+      deger: (e) => e.tier.join('/') || null,
+      hucre: (e) => e.tier.join('/') || '—',
+    },
+    {
+      anahtar: 'nesil',
+      baslik: 'JBoss',
+      aciklama: 'JBoss nesli (7 ya da 8).',
+      suzgec: 'secim',
+      varsayilan: false,
+      deger: (e) => (e.gen ? String(e.gen) : e.nesil && e.nesil !== '?' ? e.nesil : null),
+      hucre: (e) =>
+        e.gen ? `JBoss ${e.gen}` : e.nesil && e.nesil !== '?' ? `JBoss ${e.nesil}` : '—',
+    },
+    {
+      anahtar: 'durum',
+      baslik: 'Kontrol',
+      aciklama: 'Manuel kontrol: bekliyor, doğrulandı, yanlış alarm, veri değişti.',
+      suzgec: 'secim',
+      secenekler: (Object.keys(KONTROL_DURUM) as (keyof typeof KONTROL_DURUM)[]).map((d) => ({
+        deger: d,
+        etiket: KONTROL_DURUM[d].etiket,
+      })),
+      sirala: true,
+      deger: (e) => e.durum,
+      hucre: (e) => <EtiketRozeti b={KONTROL_DURUM[e.durum]} kucuk />,
+    },
+    {
+      anahtar: 'isaretleyen',
+      baslik: 'Kontrol eden',
+      aciklama: 'Manuel kontrolü işaretleyen kullanıcı.',
+      suzgec: 'metin',
+      varsayilan: false,
+      deger: (e) => e.kontrol?.isaretleyen || null,
+      hucre: (e) => e.kontrol?.isaretleyen || '—',
+    },
+    {
+      anahtar: 'kontrolZamani',
+      baslik: 'Kontrol zamanı',
+      aciklama: 'Manuel kontrolün işaretlendiği an.',
+      suzgec: 'tarih',
+      sirala: true,
+      varsayilan: false,
+      deger: (e) => e.kontrol?.zaman || null,
+      hucre: (e) => (e.kontrol?.zaman ? fmtDateTime(e.kontrol.zaman) : '—'),
+    },
+    {
+      anahtar: 'hazir',
+      baslik: 'Retirement’a hazır',
+      aciklama: 'Kesin + elle doğrulandı: Retirement kaydı açılabilir.',
+      suzgec: 'bit',
+      varsayilan: false,
+      deger: (e) => e.retirementHazir,
+      hucre: (e) => (e.retirementHazir ? 'evet' : 'hayır'),
+    },
+  ];
+}
+
+/** Bulgular sekmesindeki ikinci görünüm: etiket listesi (sütun süzgeçli, sıralı, sayfalı; satır açılır). */
 export default function RetireEtiketleriGorunum({
   veri,
   yukleniyor,
@@ -531,277 +783,120 @@ export default function RetireEtiketleriGorunum({
   onYenile: (fresh?: boolean) => void;
   onRetirementAc?: (uygulama: string, not: string) => void;
 }) {
-  const [s, setS] = useState<EtiketSuzgeci>(BOS_SUZGEC);
-  const [acik, setAcik] = useState<string | null>(null);
+  const [hizli, setHizli] = useState<HizliSuzgec>('acik');
   const etiketler = useMemo(() => veri?.etiketler || [], [veri]);
-  const satirlar = useMemo(() => etiketSuz(etiketler, s), [etiketler, s]);
-  const ortamlar = useMemo(() => [...new Set(etiketler.map((e) => e.ortam))].sort(), [etiketler]);
-  const kurallar = veri?.kurallar || [];
-  const kAd = new Map(kurallar.map((k) => [k.kural, k.ad]));
-  const set =
-    <K extends keyof EtiketSuzgeci>(k: K) =>
-    (x: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
-      setS((o) => ({ ...o, [k]: x.target.value }));
+  const satirlar = useMemo(() => hizliSuz(etiketler, hizli), [etiketler, hizli]);
+  const kurallar = useMemo(() => veri?.kurallar || [], [veri]);
+  const kolonlar = useMemo(
+    () => kolonlarOf(new Map(kurallar.map((k) => [k.kural, k.ad]))),
+    [kurallar],
+  );
   const oz = veri?.ozet;
+  const sayilar: Partial<Record<HizliSuzgec, number>> = oz
+    ? {
+        kesin: oz.kesin,
+        supheli: oz.supheli,
+        bekleyen: oz.bekliyor,
+        hazir: oz.retirementHazir,
+        dusen: oz.dusurulen,
+        yanlis: oz.yanlisAlarm,
+      }
+    : {};
+  const tumunuCsv = () =>
+    downloadCsv(
+      'retirement-etiketleri',
+      kolonlar.map((k) => k.baslik),
+      satirlar.map((e) => kolonlar.map((k) => formulGuvenli(k.deger ? k.deger(e) : ''))),
+    );
+  const bant = (metin: React.ReactNode) => (
+    <div
+      className="rounded-lg border px-3 py-2 text-xs"
+      style={{
+        borderColor: 'var(--status-warning)',
+        background: 'var(--status-warning-bg)',
+        color: 'var(--status-warning-text)',
+      }}
+    >
+      {metin}
+    </div>
+  );
   return (
     <div className="space-y-3" data-testid="retire-etiketleri">
-      {veri?.ear?.okunamadi && (
-        <div
-          className="rounded-lg border px-3 py-2 text-xs"
-          style={{
-            borderColor: 'var(--status-warning)',
-            background: 'var(--status-warning-bg)',
-            color: 'var(--status-warning-text)',
-          }}
-        >
-          Uygulama Envanteri okunamadı: EAR ve kök girdisi etiketleri listede YOK (“temiz” demek
-          değil). {veri.ear.hata || ''}
-        </div>
-      )}
-      {veri?.kontrolOkunamadi && (
-        <div
-          className="rounded-lg border px-3 py-2 text-xs"
-          style={{
-            borderColor: 'var(--status-warning)',
-            background: 'var(--status-warning-bg)',
-            color: 'var(--status-warning-text)',
-          }}
-        >
-          {KONTROL_DURUM.BILINMIYOR.aciklama}
-        </div>
-      )}
-      {oz && (
-        <div className="flex flex-wrap gap-2 text-xs">
-          {[
-            ['kesin', oz.kesin, () => setS((o) => ({ ...o, seviye: 'KESIN', durum: 'acik' }))],
-            [
-              'şüpheli',
-              oz.supheli,
-              () => setS((o) => ({ ...o, seviye: 'SUPHELI', durum: 'acik' })),
-            ],
-            [
-              'kontrol bekleyen',
-              oz.bekliyor,
-              () => setS((o) => ({ ...o, seviye: 'all', durum: 'BEKLIYOR' })),
-            ],
-            [
-              'retirement’a hazır',
-              oz.retirementHazir,
-              () => setS((o) => ({ ...o, seviye: 'KESIN', durum: 'DOGRULANDI' })),
-            ],
-            [
-              'yanlış alarm (gizli)',
-              oz.yanlisAlarm,
-              () => setS((o) => ({ ...o, seviye: 'all', durum: 'YANLIS_ALARM' })),
-            ],
-          ].map(([ad, n, f]) => (
-            <button
-              key={ad as string}
-              type="button"
-              onClick={f as () => void}
-              className="px-2.5 py-1 rounded-lg border"
-              style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}
-            >
-              {ad as string} <b className="tabular-nums">{fmtNumber(n as number)}</b>
-            </button>
-          ))}
-          {oz.dusurulen > 0 && (
-            <span className="self-center" style={{ color: 'var(--text-muted)' }}>
-              · {fmtNumber(oz.dusurulen)} etiket “kesin”den şüpheliye indi (nedeni satırda)
-            </span>
-          )}
-        </div>
-      )}
-      <div className="flex flex-wrap items-center gap-2">
-        <input
-          value={s.q}
-          onChange={set('q')}
-          placeholder="uygulama, sunucu ya da neden ara"
-          aria-label="Etiketlerde ara"
-          className={`${GIRDI} w-64`}
-          style={girdiStil}
-        />
-        <select
-          value={s.seviye}
-          onChange={set('seviye')}
-          className={GIRDI}
-          style={girdiStil}
-          aria-label="etiket"
-        >
-          <option value="all">tüm etiketler</option>
-          <option value="KESIN">kesin</option>
-          <option value="SUPHELI">şüpheli</option>
-        </select>
-        <select
-          value={s.durum}
-          onChange={set('durum')}
-          className={GIRDI}
-          style={girdiStil}
-          aria-label="kontrol durumu"
-        >
-          <option value="acik">açık (yanlış alarm hariç)</option>
-          <option value="all">hepsi</option>
-          {(Object.keys(KONTROL_DURUM) as (keyof typeof KONTROL_DURUM)[]).map((d) => (
-            <option key={d} value={d}>
-              {KONTROL_DURUM[d].etiket}
-            </option>
-          ))}
-        </select>
-        <select
-          value={s.tur}
-          onChange={set('tur')}
-          className={GIRDI}
-          style={girdiStil}
-          aria-label="konu türü"
-        >
-          <option value="all">tüm türler</option>
-          {(Object.keys(TUR_ETIKET) as (keyof typeof TUR_ETIKET)[]).map((t) => (
-            <option key={t} value={t}>
-              {TUR_ETIKET[t]}
-            </option>
-          ))}
-        </select>
-        <select
-          value={s.ortam}
-          onChange={set('ortam')}
-          className={GIRDI}
-          style={girdiStil}
-          aria-label="ortam"
-        >
-          <option value="all">tüm ortamlar</option>
-          {ortamlar.map((o) => (
-            <option key={o} value={o}>
-              {o}
-            </option>
-          ))}
-        </select>
-        <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-          {fmtNumber(satirlar.length)} / {fmtNumber(etiketler.length)} etiket
-        </span>
-        <button
-          type="button"
-          onClick={() => onYenile(true)}
-          className={`${BTN} ml-auto`}
-          style={btnStil()}
-        >
-          <ArrowPathIcon className={`w-3.5 h-3.5 ${yukleniyor ? 'animate-spin' : ''}`} /> Yenile
-        </button>
-      </div>
+      {veri?.ear?.okunamadi &&
+        bant(
+          <>
+            Uygulama Envanteri okunamadı: EAR ve kök girdisi etiketleri listede YOK (“temiz” demek
+            değil). {veri.ear.hata || ''}
+          </>,
+        )}
+      {veri?.kontrolOkunamadi && bant(KONTROL_DURUM.BILINMIYOR.aciklama)}
       <div
-        className="overflow-x-auto rounded-xl border"
-        style={{ borderColor: 'var(--border-subtle)' }}
+        className="flex flex-wrap items-center gap-2 text-xs"
+        role="group"
+        aria-label="Hızlı süzgeç"
       >
-        <table className="w-full text-xs">
-          <thead>
-            <tr
-              className="text-left"
-              style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}
-            >
-              <th className="px-3 py-2 w-6" aria-label="aç / kapa" />
-              <th className="px-3 py-2">Etiket</th>
-              <th className="px-3 py-2">Konu</th>
-              <th className="px-3 py-2">Ortam</th>
-              <th className="px-3 py-2">Kural</th>
-              <th className="px-3 py-2">Sunucular</th>
-              <th className="px-3 py-2">Zincir</th>
-              <th className="px-3 py-2">Kontrol</th>
-            </tr>
-          </thead>
-          <tbody>
-            {satirlar.map((e) => {
-              const ac = acik === e.anahtar;
-              return (
-                <React.Fragment key={e.anahtar}>
-                  <tr
-                    className="border-t cursor-pointer"
-                    style={{
-                      borderColor: 'var(--border-subtle)',
-                      background: ac ? 'var(--bg-elevated)' : undefined,
-                    }}
-                    onClick={() => setAcik(ac ? null : e.anahtar)}
-                    aria-expanded={ac}
-                  >
-                    <td className="px-3 py-1.5">
-                      {ac ? (
-                        <ChevronDownIcon className="w-3.5 h-3.5" />
-                      ) : (
-                        <ChevronRightIcon className="w-3.5 h-3.5" />
-                      )}
-                    </td>
-                    <td className="px-3 py-1.5">
-                      <EtiketRozeti b={ETIKET_SEVIYE[e.seviye]} />
-                    </td>
-                    <td className="px-3 py-1.5">
-                      <div className="font-mono text-[12px] font-semibold">{konuMetni(e)}</div>
-                      <div className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
-                        {TUR_ETIKET[e.tur]}
-                        {e.tier.length ? ` · tier ${e.tier.join('/')}` : ''}
-                      </div>
-                    </td>
-                    <td className="px-3 py-1.5">{e.ortam}</td>
-                    <td
-                      className="px-3 py-1.5"
-                      title={e.kurallar.map((r) => `${r}: ${kAd.get(r) || ''}`).join('\n')}
-                    >
-                      {e.kurallar.map((r) => (
-                        <div key={r} className="text-[11px]">
-                          <span className="font-mono">{r}</span> {kAd.get(r) || ''}
-                        </div>
-                      ))}
-                    </td>
-                    <td className="px-3 py-1.5 font-mono text-[11px]">
-                      {e.hostlar.slice(0, 3).join(', ')}
-                      {e.hostlar.length > 3 ? ` +${e.hostlar.length - 3}` : ''}
-                    </td>
-                    <td className="px-3 py-1.5 text-[11px]">
-                      {e.nedenler.length ? (
-                        <span style={{ color: 'var(--status-warning-text)' }}>
-                          {e.nedenler[0]}
-                          {e.nedenler.length > 1 ? ` +${e.nedenler.length - 1}` : ''}
-                        </span>
-                      ) : (
-                        <span style={{ color: 'var(--text-muted)' }}>kanıt tam</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-1.5">
-                      <EtiketRozeti b={KONTROL_DURUM[e.durum]} kucuk />
-                    </td>
-                  </tr>
-                  {ac && (
-                    <tr>
-                      <td
-                        colSpan={8}
-                        className="px-4 py-3"
-                        style={{ background: 'var(--bg-surface)' }}
-                      >
-                        <EtiketAyrinti
-                          e={e}
-                          kurallar={kurallar}
-                          onDegisti={() => onYenile(false)}
-                          onRetirementAc={onRetirementAc}
-                        />
-                      </td>
-                    </tr>
-                  )}
-                </React.Fragment>
-              );
-            })}
-            {!yukleniyor && satirlar.length === 0 && (
-              <TableEmptyRow
-                colSpan={8}
-                title={
-                  etiketler.length ? 'Süzgeçle eşleşen etiket yok.' : 'Retirement etiketi yok.'
-                }
-                description={
-                  veri?.ear?.okunamadi
-                    ? 'Uygulama Envanteri okunamadığı için EAR etiketleri hesaplanmadı.'
-                    : undefined
-                }
-              />
-            )}
-          </tbody>
-        </table>
+        {HIZLI_SUZGECLER.map((h) => (
+          <button
+            key={h.id}
+            type="button"
+            aria-pressed={hizli === h.id}
+            onClick={() => setHizli(h.id)}
+            className="px-2.5 py-1 rounded-lg border"
+            style={{
+              borderColor: hizli === h.id ? 'var(--accent)' : 'var(--border-subtle)',
+              background: hizli === h.id ? 'var(--bg-elevated)' : 'var(--bg-surface)',
+            }}
+          >
+            {h.etiket}
+            {sayilar[h.id] != null ? (
+              <>
+                {' '}
+                <b className="tabular-nums">{fmtNumber(sayilar[h.id] as number)}</b>
+              </>
+            ) : null}
+          </button>
+        ))}
       </div>
+      <KuralSozlugu kurallar={kurallar} />
+      <EarTablo<E>
+        kimlik="retire-etiketleri"
+        kolonlar={kolonlar}
+        satirlar={satirlar}
+        satirAnahtari={(e) => e.anahtar}
+        acilir={(e) => (
+          <EtiketAyrinti
+            e={e}
+            kurallar={kurallar}
+            onDegisti={() => onYenile(false)}
+            onRetirementAc={onRetirementAc}
+          />
+        )}
+        csvAdi="retirement-etiketleri_secili"
+        araEtiketi="uygulama, sunucu ya da neden ara"
+        bosMetin={
+          etiketler.length
+            ? 'Süzgeçle eşleşen etiket yok.'
+            : veri?.ear?.okunamadi
+              ? 'Retirement etiketi yok (Uygulama Envanteri okunamadığı için EAR etiketleri hesaplanmadı).'
+              : 'Retirement etiketi yok.'
+        }
+        ustSag={
+          <span className="flex items-center gap-2">
+            <button
+              type="button"
+              className={BTN}
+              style={btnStil()}
+              onClick={tumunuCsv}
+              disabled={!satirlar.length}
+            >
+              CSV ({fmtNumber(satirlar.length)})
+            </button>
+            <button type="button" onClick={() => onYenile(true)} className={BTN} style={btnStil()}>
+              <ArrowPathIcon className={`w-3.5 h-3.5 ${yukleniyor ? 'animate-spin' : ''}`} /> Yenile
+            </button>
+          </span>
+        }
+      />
     </div>
   );
 }

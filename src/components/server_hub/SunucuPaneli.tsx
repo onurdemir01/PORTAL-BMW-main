@@ -62,6 +62,10 @@ function Bolum({
   );
 }
 
+/** "R1 · Kapalı + auto-start açık + trafik yok" — kod tek başına anlamsız; adıyla birlikte. */
+const kurallarMetni = (kodlar: string[], kurallar: ShEtiketKurali[]) =>
+  kodlar.map((k) => `${k} · ${kurallar.find((x) => x.kural === k)?.ad || ''}`.trim()).join(' + ');
+
 /** Etiket satiri: ayrinti (eslenik kopyalar) YALNIZ acilinca cizilir ve indirilir. */
 function AcilirEtiket({
   e,
@@ -85,7 +89,7 @@ function AcilirEtiket({
         <EtiketRozeti b={ETIKET_SEVIYE[e.seviye]} kucuk />
         <span className="font-mono text-[11px]">{konuMetni(e)}</span>
         <span style={{ color: 'var(--text-muted)' }}>
-          {e.ortam} · {e.hostlar.length} sunucu
+          {kurallarMetni(e.kurallar, kurallar)} · {e.ortam} · {e.hostlar.length} sunucu
         </span>
         <EtiketRozeti b={KONTROL_DURUM[e.durum]} kucuk />
       </summary>
@@ -214,6 +218,9 @@ export default function SunucuPaneli({
             <div key={e.anahtar} className="flex flex-wrap items-center gap-2">
               <EtiketRozeti b={ETIKET_SEVIYE[e.seviye]} kucuk />
               <span className="font-mono text-[11px]">{konuMetni(e)}</span>
+              <span style={{ color: 'var(--text-muted)' }}>
+                {kurallarMetni(e.kurallar, retire?.kurallar || [])}
+              </span>
               <EtiketRozeti b={KONTROL_DURUM[e.durum]} kucuk />
               {e.retirementHazir && uyg && onRetirementAc ? (
                 <button
