@@ -385,7 +385,11 @@ describe('Yük Testi — kayıtlı test', () => {
     api.ipSinifi.mockImplementation(async () => ({ ok: false, code: 'envanter_bayat', message: 'envanter bayat', _httpStatus: 424 }));
     render(<YukTestiTab isAdmin />);
     fireEvent.click(await screen.findByRole('tab', { name: /Yeni koşu/ }));
-    fireEvent.change(await screen.findByLabelText('Kayıtlı test'), { target: { value: String(SABLON.id) } });
+    // Kayitli test listesi gelmeden deger atanirsa secim bos kalir ve "Yukle" hicbir sey yapmaz
+    // (aralikli kirmizi): acSec gibi once secenegin yuklenmesi beklenir.
+    const sec = await screen.findByLabelText('Kayıtlı test');
+    await within(sec).findByRole('option', { name: SABLON.ad });
+    fireEvent.change(sec, { target: { value: String(SABLON.id) } });
     fireEvent.click(screen.getByRole('button', { name: 'Yükle' }));
     await waitFor(() => expect(api.ipSinifi).toHaveBeenCalled(), { timeout: 3000 });
     expect(await screen.findByText(/Hedef türü belirlenmeden kaydedilemez/, undefined, { timeout: 3000 })).toBeTruthy();
