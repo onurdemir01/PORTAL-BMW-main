@@ -18,6 +18,7 @@ import {
 import { toast } from '@/hooks/useToast';
 import { fmtDateTime, fmtNumber } from '@/utils/datetime';
 import { EarTablo, type EarKolon } from './EarTablo';
+import { useOrtakGorunumler } from './ortakGorunumler';
 import LoadError from '@/components/common/LoadError';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import {
@@ -805,6 +806,7 @@ export default function RetireEtiketleriGorunum({
   onRetirementAc?: (uygulama: string, not: string) => void;
 }) {
   const [hizli, setHizli] = useState<HizliSuzgec>('acik');
+  const ortak = useOrtakGorunumler('retirement-etiketleri');
   const etiketler = useMemo(() => veri?.etiketler || [], [veri]);
   const satirlar = useMemo(() => hizliSuz(etiketler, hizli), [etiketler, hizli]);
   const kurallar = useMemo(() => veri?.kurallar || [], [veri]);
@@ -905,6 +907,7 @@ export default function RetireEtiketleriGorunum({
           />
         )}
         csvAdi="retirement-etiketleri_secili"
+        ortak={ortak}
         // Hızlı süzgeç + sütun süzgeci + arama sonrası satırların tamamı (eskiden sütun süzgeci uygulanmıyordu).
         yerelCsv="retirement-etiketleri"
         araEtiketi="uygulama, sunucu ya da neden ara"

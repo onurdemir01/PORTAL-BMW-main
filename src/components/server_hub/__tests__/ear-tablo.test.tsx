@@ -16,6 +16,8 @@
 //   ET12 yerel CSV: süzgeç + aramadan sonra kalan satırların TAMAMI (sayfa ötesi dahil), görünen kolonlarla
 //   ET13 satırlar dışarıdan daralınca sayfa konumu kırpılır (boş sayfa yok)
 //   ET14 açılır satır düğmesi: adlı, aria-expanded; düğme ve satır tıklaması aynı işi yapar
+//   ET15 ortak görünümler: menü yalnız ortakla da açılır; uygula; "Ortak kaydet" o anki süzgeç + sıralama +
+//        kolonlarla; sil hatası menüde; okunamadı metni ("yok" demez), kaydet yoksa düğme yok
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 const csvM = vi.hoisted(() => vi.fn());
 vi.mock('@/utils/csv', async (orig) => ({
@@ -385,6 +387,8 @@ describe('EarTablo', () => {
     fireEvent.click(screen.getByRole('button', { name: 'süzgeçsiz görünüm' }));
     expect(screen.getByText('1–3 / 3')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Görünümler' })).toBeInTheDocument();
+    // Kolonlar da varsayılana döner (görünümün "Not" kolonu gizlenir).
+    expect(screen.getAllByRole('columnheader').some((h) => (h.textContent || '').startsWith('Not'))).toBe(false);
     unmount();
     ciz();
     fireEvent.click(screen.getByRole('button', { name: 'Görünümler' }));
@@ -456,6 +460,53 @@ describe('EarTablo', () => {
     fireEvent.click(screen.getByText('A1'));
     expect(screen.getByText('ayrıntı A1')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'satır A1 ayrıntısı' })).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('ET15 ortak görünümler', async () => {
+    const kaydet = vi.fn(async () => {});
+    const sil = vi.fn(async () => {
+      throw new Error('artık yok');
+    });
+    const satirlar = [satir(1, { durum: 'KISMI' }), satir(2)];
+    const ciz = (ortak: React.ComponentProps<typeof EarTablo<Satir>>['ortak']) => (
+      <EarTablo<Satir>
+        kimlik="ortak"
+        kolonlar={KOLONLAR}
+        satirlar={satirlar}
+        satirAnahtari={(r) => String(r.id)}
+        ortak={ortak}
+      />
+    );
+    const { rerender } = render(
+      ciz({
+        gorunumler: [{ ad: 'Ekip: kısmi', aciklama: 'ortak · ayse', f: [{ k: 'durum', op: 'in', v: ['KISMI'] }] }],
+        kaydet,
+        sil,
+      }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Görünümler' }));
+    const d = screen.getByRole('dialog', { name: 'Görünümler' });
+    expect(within(d).getByText('Ortak (Admin)')).toBeInTheDocument();
+    fireEvent.click(within(d).getByRole('button', { name: 'Ekip: kısmi' }));
+    expect(screen.getByText('1–1 / 1')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Görünüm: Ekip: kısmi' }));
+    fireEvent.change(screen.getByLabelText('Görünüm adı'), { target: { value: 'herkes' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Ortak kaydet' }));
+    await waitFor(() =>
+      expect(kaydet).toHaveBeenCalledWith({
+        ad: 'herkes',
+        f: [{ k: 'durum', op: 'in', v: ['KISMI'] }],
+        s: '',
+        kolonlar: ['ad', 'sayi', 'durum'],
+      }),
+    );
+    await waitFor(() => expect(screen.getByLabelText('Görünüm adı')).toHaveValue(''));
+    fireEvent.click(screen.getByRole('button', { name: 'Ekip: kısmi ortak görünümünü sil' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('artık yok');
+    expect(sil).toHaveBeenCalledWith('Ekip: kısmi');
+    rerender(ciz({ gorunumler: [], okunamadi: true }));
+    expect(screen.getByText('Ortak görünümler okunamadı.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Ortak kaydet' })).toBeNull();
   });
 
   it('ET9 okunamadı ve tekrar dene', async () => {

@@ -192,8 +192,9 @@ describe('KT7 girdi ekranlarında tek seferde sunucu sayısı', () => {
     const sh = fs.readFileSync(path.join(kok, 'ServerHubPage.tsx'), 'utf8');
     const rk = fs.readFileSync(path.join(kok, 'RebootKontroluTab.tsx'), 'utf8');
     expect(sh).toMatch(/const taraLimiti = useSunucuLimiti\('tara'\)/);
-    expect(sh).toMatch(/limitAsildi\(taraLimiti, rows\.length\)/);
-    expect(sh).toMatch(/<LimitNotu limit=\{taraLimiti\} sayi=\{rows\.length\} \/>/);
+    // "Listedekileri tara" EKRANDA süzülen kümeyi tarar (2026-11-07: tablo sütun süzgeci de uygulanır).
+    expect(sh).toMatch(/limitAsildi\(taraLimiti, listedekiler\.length\)/);
+    expect(sh).toMatch(/<LimitNotu limit=\{taraLimiti\} sayi=\{listedekiler\.length\} \/>/);
     expect(sh).toMatch(/const hazirlikLimiti = useSunucuLimiti\('hazirlik'\)/);
     expect(sh).toMatch(/<LimitNotu limit=\{hazirlikLimiti\} sayi=\{girilen\} \/>/);
     expect(sh).not.toMatch(/rows\.length > 50/);

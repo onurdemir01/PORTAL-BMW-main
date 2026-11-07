@@ -982,6 +982,13 @@ test('RE10 uclar: etiket listesi, manuel kontrol (400 / 409 / 424 / 200), kural 
     assert.deepEqual([old.etiket.seviye, old.kapali, old.autostartUyumsuz], ['KESIN', 1, 1]);
     const u360a = await fetch(`${kok}/uygulama-360/oldapp`).then(J);
     assert.deepEqual([u360a.status, u360a.body.uygulama.kopyalar.length], [200, 1]);
+    // Ortak gorunumler (2026-11-07) ayni kapinin arkasinda; sahte DB tabloyu bilmez -> okunamadi (dusmez).
+    assert.equal(
+      (await fetch(`${kok}/gorunumler?ekran=server-hub-bulgular`, { headers: { 'x-rol': 'Operator' } })).status,
+      403,
+    );
+    const gor = await fetch(`${kok}/gorunumler?ekran=server-hub-bulgular`).then(J);
+    assert.deepEqual([gor.status, gor.body.okunamadi, gor.body.gorunumler], [200, true, []]);
     let r = await fetch(`${kok}/retire-etiketleri?fresh=1`).then(J);
     assert.equal(r.status, 200, JSON.stringify(r.body));
     assert.equal(r.body.kontrolOkunamadi, false);

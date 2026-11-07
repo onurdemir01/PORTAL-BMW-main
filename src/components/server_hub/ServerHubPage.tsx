@@ -49,6 +49,7 @@ import KurallarTab from './KurallarTab';
 import EarEnvanterTab from './EarEnvanterTab';
 import Uygulama360Tab from './Uygulama360Tab';
 import { EarTablo, type EarGorunum, type EarKolon } from './EarTablo';
+import { useOrtakGorunumler } from './ortakGorunumler';
 import { useSunucuLimiti, LimitNotu, sunucuAdlari, limitAsildi } from './sunucuLimiti';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
 import { SekmeKabi, useSekmeGorunur } from './sekmeGorunurlugu';
@@ -60,7 +61,8 @@ const SM_BTN =
   'inline-flex items-center gap-1 h-7 px-2.5 text-[11px] font-medium leading-none rounded-lg border whitespace-nowrap disabled:opacity-40';
 const smBtn = (primary = false): React.CSSProperties =>
   primary
-    ? { background: 'var(--accent)', borderColor: 'var(--accent)', color: 'var(--accent-fg, #fff)' }
+    ? // --accent-fg tanimsiz: #fff koyu temada acik mavi uzerinde 1.45:1 idi (gercek Chrome, 2026-11-07).
+      { background: 'var(--accent)', borderColor: 'var(--accent)', color: 'var(--text-on-accent)' }
     : {
         borderColor: 'var(--border)',
         background: 'var(--bg-surface)',
@@ -1457,49 +1459,6 @@ type SekmeId =
   | 'retirement'
   | 'envanter'
   | 'kurallar';
-// Buyuk listelerde ilk cizimde bu kadar satir; "daha fazla / tumu" ile acilir (sayac ve CSV hep TUM kume).
-const CIZIM_SINIRI = 300;
-
-/** Liste altinda "N / M gosteriliyor · 300 daha · tumu" (yalniz kesilmis listede). */
-function DahaFazla({
-  gosterilen,
-  toplam,
-  onDaha,
-  onTumu,
-}: {
-  gosterilen: number;
-  toplam: number;
-  onDaha: () => void;
-  onTumu: () => void;
-}) {
-  if (gosterilen >= toplam) return null;
-  return (
-    <div className="flex items-center gap-2 px-3 py-2 text-[11px]" style={{ color: 'var(--text-muted)' }}>
-      {nf(gosterilen)} / {nf(toplam)} gösteriliyor ·
-      <button type="button" className="underline" onClick={onDaha}>
-        {nf(Math.min(CIZIM_SINIRI, toplam - gosterilen))} daha
-      </button>
-      ·
-      <button type="button" className="underline" onClick={onTumu}>
-        tümü
-      </button>
-    </div>
-  );
-}
-
-/**
- * Cizim siniri: suzgec degisince (anahtar) CIZIM_SINIRI'na doner. Effect'te setState yok: sinir anahtarla
- * birlikte tutulur, anahtar degisince eski deger gecersiz sayilir.
- */
-function useCizimSiniri(anahtar: string) {
-  const [d, setD] = useState({ anahtar, n: CIZIM_SINIRI });
-  const n = d.anahtar === anahtar ? d.n : CIZIM_SINIRI;
-  return {
-    n,
-    daha: () => setD({ anahtar, n: n + CIZIM_SINIRI }),
-    tumu: () => setD({ anahtar, n: Number.POSITIVE_INFINITY }),
-  };
-}
 
 // ── Sayfa ────────────────────────────────────────────────────────────────────────────
 export default function ServerHubPage() {
@@ -1632,6 +1591,195 @@ export default function ServerHubPage() {
   );
 }
 
+// ── SUNUCULAR LISTESI (2026-11-07): EarTablo kolonlari ve hazir gorunumler ───────────────────────
+const sevSirasi: Record<ShSeverity, number> = { danger: 3, warning: 2, info: 1, ok: 0 };
+function sunucuKolonlari(
+  olcumMetni: string,
+  mesgul: boolean,
+  onTara: (host: string) => void,
+  onAyrinti: (host: string) => void,
+): EarKolon<ShHostRowV3>[] {
+  const soluk: React.CSSProperties = { color: 'var(--text-muted)' };
+  const sayi = (
+    anahtar: string,
+    baslik: string,
+    aciklama: string,
+    f: (h: ShHostRowV3) => number | null,
+    varsayilan = false,
+  ): EarKolon<ShHostRowV3> => ({
+    anahtar,
+    baslik,
+    aciklama,
+    suzgec: 'sayi',
+    sirala: true,
+    varsayilan,
+    deger: f,
+    hucre: (h) => {
+      const v = f(h);
+      return <span className="tabular-nums">{v == null ? '—' : v || '—'}</span>;
+    },
+  });
+  return [
+    {
+      anahtar: 'host',
+      baslik: 'Sunucu',
+      aciklama: 'Satıra tıklayınca sunucu paneli açılır.',
+      suzgec: 'metin',
+      sirala: true,
+      deger: (h) => h.host,
+      hucre: (h) => <span className="font-mono font-semibold">{h.host}</span>,
+    },
+    {
+      anahtar: 'ortam',
+      baslik: 'Ortam',
+      aciklama: 'Sunucunun ortamı (envanter ya da sunucu adından).',
+      suzgec: 'secim',
+      sirala: true,
+      deger: (h) => h.env || null,
+      hucre: (h) => <span style={soluk}>{h.env || h.envGroup || '—'}</span>,
+    },
+    {
+      anahtar: 'durum',
+      baslik: 'Durum',
+      aciklama: 'En kötü bulgunun seviyesi ve bulgu sayısı.',
+      suzgec: 'secim',
+      secenekler: [
+        { deger: 'danger', etiket: 'kritik' },
+        { deger: 'warning', etiket: 'uyarı' },
+        { deger: 'info', etiket: 'bilgi' },
+        { deger: 'ok', etiket: 'sorun yok' },
+      ],
+      deger: (h) => h.status,
+      hucre: (h) => (
+        <SevPill s={h.status} n={h.status === 'ok' ? undefined : h.counts.danger + h.counts.warning + h.counts.info} />
+      ),
+    },
+    sayi('kritik', 'Kritik', 'Kritik bulgu sayısı.', (h) => h.counts.danger),
+    sayi('uyari', 'Uyarı', 'Uyarı sayısı.', (h) => h.counts.warning),
+    sayi('bilgi', 'Bilgi', 'Bilgi sayısı.', (h) => h.counts.info),
+    {
+      anahtar: 'urunler',
+      baslik: 'Ürünler',
+      aciklama: 'Taramada bulunan ürünler.',
+      suzgec: 'secim',
+      deger: (h) => h.products,
+      hucre: (h) => (
+        <span className="text-[10px]" style={{ color: 'var(--text-secondary)' }}>
+          {h.products.join(' · ') || '—'}
+        </span>
+      ),
+    },
+    {
+      anahtar: 'jvm',
+      baslik: 'JVM',
+      aciklama: 'Çalışan / toplam JVM; "?" çalışma durumu ölçülemeyen (kapalı sayılmaz).',
+      suzgec: 'sayi',
+      sirala: true,
+      deger: (h) => h.jvms,
+      hucre: (h) => (
+        <span
+          className="tabular-nums"
+          title={
+            (h.jvmsUnmeasured || 0) > 0
+              ? `çalışan/toplam · ? ${h.jvmsUnmeasured} = çalışma durumu ölçülemeyen JVM (${olcumMetni}) — kapalı sayılmadı`
+              : undefined
+          }
+        >
+          {jvmSayimMetni(h)}
+        </span>
+      ),
+    },
+    sayi('olculemeyen', 'Ölçülemeyen JVM', 'Çalışma durumu ölçülemeyen JVM (hidepid / ps körlüğü).', (h) =>
+      sayiMi(h.jvmsUnmeasured) ? (h.jvmsUnmeasured as number) : null,
+    ),
+    sayi('vhost', 'vhost', 'Web sunucusu vhost sayısı.', (h) => h.vhosts, true),
+    sayi('bostaIp', 'Boşta IP', 'Hiçbir şeyin dinlemediği ikincil IP.', (h) => h.unusedIps, true),
+    {
+      anahtar: 'enOnemli',
+      baslik: 'En önemli bulgu',
+      aciklama: 'Sunucunun en yüksek seviyeli bulgusu.',
+      suzgec: 'metin',
+      deger: (h) => h.topFinding,
+      hucre: (h) => (
+        <div className="truncate max-w-[28rem]" title={h.topFinding || ''} style={{ color: 'var(--text-secondary)' }}>
+          {h.topFinding || <span style={{ color: SEV.ok.color }}>temiz</span>}
+        </div>
+      ),
+    },
+    {
+      anahtar: 'tarama',
+      baslik: 'Tarama',
+      aciklama: 'Son tarama günü ve taramanın CPU süresi.',
+      suzgec: 'tarih',
+      sirala: true,
+      deger: (h) => h.scanDate,
+      hucre: (h) => (
+        <span className="text-[10px]" style={soluk}>
+          {h.scanDate ? fmtDate(h.scanDate) : '—'}
+          {h.cpuS != null ? ` · ${h.cpuS.toFixed(1)}s cpu` : ''}
+        </span>
+      ),
+    },
+    {
+      anahtar: 'taze',
+      baslik: 'Taze',
+      aciklama: 'Tarama taze mi (bayat sunucuda eylem önerilmez).',
+      suzgec: 'bit',
+      varsayilan: false,
+      deger: (h) => h.fresh !== false,
+      hucre: (h) => (h.fresh === false ? <span style={{ color: 'var(--status-warning-text)' }}>bayat</span> : 'taze'),
+    },
+    {
+      anahtar: 'seviyeSira',
+      baslik: 'Önem sırası',
+      aciklama: 'Durumu sayıya çevirir (kritik 3 … sorun yok 0): sıralamak için.',
+      suzgec: 'sayi',
+      sirala: true,
+      varsayilan: false,
+      deger: (h) => sevSirasi[h.status],
+      hucre: (h) => sevSirasi[h.status],
+    },
+    {
+      anahtar: 'islem',
+      baslik: 'İşlem',
+      aciklama: 'Ayrıntı penceresi (JVM, web, init, IP) ve reboot öncesi tek sunucu tarama.',
+      hucre: (h) => (
+        <span className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+          <button type="button" onClick={() => onAyrinti(h.host)} className={SM_BTN} style={smBtn()} title="Sunucu ayrıntısı: JVM, web, init, IP sekmeleri">
+            Ayrıntı
+          </button>
+          <button
+            type="button"
+            disabled={mesgul}
+            onClick={() => onTara(h.host)}
+            className={SM_BTN}
+            style={smBtn()}
+            title="Reboot öncesi şimdi tara (geceden beri değişiklik olmuş olabilir)"
+          >
+            <BoltIcon className="w-3.5 h-3.5" /> Şimdi tara
+          </button>
+        </span>
+      ),
+    },
+  ];
+}
+/** Hazır görünümler (kişisel olanlar tarayıcıda). */
+const SUNUCU_GORUNUMLERI: EarGorunum[] = [
+  { ad: 'Kritik sunucular', aciklama: 'En az bir kritik bulgusu olan sunucular.', f: [{ k: 'durum', op: 'in', v: ['danger'] }] },
+  {
+    ad: 'Prod kritik',
+    aciklama: 'Production ortamında kritik bulgusu olan sunucular.',
+    f: [
+      { k: 'durum', op: 'in', v: ['danger'] },
+      { k: 'ortam', op: 'in', v: ['PROD'] },
+    ],
+  },
+  { ad: 'Bayat tarama', aciklama: 'Taraması bayat ya da son yüklemede dışarıda kalan sunucular.', f: [{ k: 'taze', op: 'hayir' }], kolonlar: ['host', 'ortam', 'durum', 'tarama', 'taze', 'islem'] },
+  { ad: 'Ölçülemeyen JVM', aciklama: 'Çalışma durumu ölçülemeyen JVM’i olan sunucular.', f: [{ k: 'olculemeyen', op: 'min', v: 1 }] },
+  { ad: 'Boşta IP', aciklama: 'Kullanılmayan ikincil IP’si olan sunucular.', f: [{ k: 'bostaIp', op: 'min', v: 1 }] },
+  { ad: 'En çok bulgu', aciklama: 'Önem sırasına, sonra kritik sayısına göre.', f: [], s: 'kritik:desc' },
+];
+
 function HostsTab({
   onGoFindings,
 }: {
@@ -1641,6 +1789,8 @@ function HostsTab({
   // Tek seferde taranabilecek sunucu (2026-10-20): Admin Kurallar & Limitler'den degistirir.
   const taraLimiti = useSunucuLimiti('tara');
   const gorunur = useSekmeGorunur();
+  // Admin'in kaydettigi ortak gorunumler (Gorunumler menusu).
+  const ortakSunucu = useOrtakGorunumler('server-hub-sunucular', gorunur);
   // Sayfaya donuste son yanit hemen gorunur (logo yok); eskiyse arkada sessizce tazelenir.
   const [data, setData] = useState<ShOverviewV3 | null>(() => shOnbellek.oku<ShOverviewV3>('overview'));
   const [loading, setLoading] = useState(() => !shOnbellek.oku('overview'));
@@ -1657,6 +1807,23 @@ function HostsTab({
   const [cls, setCls] = useState<'genel' | 'ozel'>('genel');
   const [openHost, setOpenHost] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  // Tablonun suzgec + aramasindan sonra EKRANDA kalan sunucular: "Listedekileri tara" bunlari alir.
+  const [listedekiler, setListedekiler] = useState<ShHostRowV3[]>([]);
+  // Satir acilinca sunucu paneli: etiket verisi yalniz bir panel acilinca iner (Bulgular ile ayni).
+  const [panelAcildi, setPanelAcildi] = useState(false);
+  const [retire, setRetire] = useState<ShRetireSonuc | null>(null);
+  const retireYukle = useCallback(async (fresh = false) => {
+    try {
+      const r = await serverHubApi.retireEtiketleri(fresh);
+      if (r.ok) setRetire(r);
+      else toast.error(r.message || 'Retirement etiketleri alınamadı.');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    }
+  }, []);
+  useAsyncEffect(async () => {
+    if (gorunur && panelAcildi && !retire) await retireYukle();
+  }, [gorunur, panelAcildi, retire, retireYukle]);
   const load = useCallback(async (fresh = false) => {
     setLoading(true);
     try {
@@ -1743,13 +1910,22 @@ function HostsTab({
         (!needle || h.host.includes(needle) || (h.topFinding || '').toUpperCase().includes(needle)),
     );
   }, [data, qErtelenmis, sev, product, cls]);
-  const sinir = useCizimSiniri(JSON.stringify([qErtelenmis, sev, product, cls]));
-  // Satir dugmesi icin KARARLI geri cagri: memo satirlar sunucu acilinca yeniden cizilmez.
-  const taraRef = useRef<(hosts: string[]) => void>(() => {});
-  useEffect(() => {
-    taraRef.current = (hosts) => void scanNow(hosts);
-  });
-  const satirTara = useCallback((host: string) => taraRef.current([host]), []);
+  // Satirdaki "Simdi tara" KARARLI bir setter'la istek birakir (kolonlar her cizimde yeniden kurulmasin:
+  // EarTablo suzulen kumeyi bildirir, kararsiz kolonlar dongu yapardi); taramayi effect baslatir.
+  const [taraIstegi, setTaraIstegi] = useState<string | null>(null);
+  useAsyncEffect(async () => {
+    if (!taraIstegi) return;
+    setTaraIstegi(null);
+    await scanNow([taraIstegi]);
+  }, [taraIstegi]);
+  // C3: sema okunamadiysa olculemeyen sayaclarin sebebi hidepid DEGIL sema (kart basliklari, liste).
+  // Kolonlar erken donuslerden once kurulur; bayrak da burada (tek tanim).
+  const sema = data?.schemaUnknown === true;
+  const mesgul = busy != null;
+  const kolonlar = useMemo(
+    () => sunucuKolonlari(olcumSebebi(sema), mesgul, setTaraIstegi, setOpenHost),
+    [sema, mesgul],
+  );
   const clsCounts = useMemo(() => {
     const all = data?.hosts || [];
     return {
@@ -1774,9 +1950,7 @@ function HostsTab({
     );
   if (!data) return null;
   const s = data.summary;
-  // C3: sema okunamadiysa olculemeyen sayaclarin sebebi hidepid DEGIL sema (kart basliklari).
-  const sema = data.schemaUnknown === true;
-  // Liste hucresinin sebebi de bu bayraktan (satir bileseni metni hazir alir).
+  // Kart basliklarinin olculemeyen sebebi (liste kolonu ayni bayraktan, sunucuKolonlari'na verilir).
   const olcumMetni = olcumSebebi(sema);
 
   return (
@@ -2367,6 +2541,7 @@ function HostsTab({
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="sunucu ya da bulgu ara"
+            aria-label="ön süzgeç: sunucu ya da bulgu"
             className="pl-8 pr-2.5 py-1.5 text-xs border rounded-lg w-64"
             style={{
               borderColor: 'var(--border)',
@@ -2394,6 +2569,7 @@ function HostsTab({
         <select
           value={product}
           onChange={(e) => setProduct(e.target.value)}
+          aria-label="ürün"
           className="text-xs border rounded-lg px-2 py-1.5"
           style={{
             borderColor: 'var(--border)',
@@ -2433,135 +2609,56 @@ function HostsTab({
             </button>
           ))}
         </div>
-        <span className="text-xs tabular-nums" style={{ color: 'var(--text-muted)' }}>
-          {nf(rows.length)} / {nf(cls === 'ozel' ? clsCounts.ozel : clsCounts.genel)} sunucu
+        <span
+          className="text-xs tabular-nums"
+          style={{ color: 'var(--text-muted)' }}
+          title="Tablonun sütun süzgeçleri ve araması da uygulanmış hâli; Listedekileri tara bunları tarar"
+        >
+          {nf(listedekiler.length)} / {nf(cls === 'ozel' ? clsCounts.ozel : clsCounts.genel)} sunucu
         </span>
         <div className="ml-auto flex items-center gap-2">
           <button
-            onClick={() => {
-              const header = [
-                'sunucu',
-                'tarama',
-                'urunler',
-                'durum',
-                'kritik',
-                'uyari',
-                'bilgi',
-                'jvm',
-                'calisan_jvm',
-                'olculemeyen_jvm',
-                'vhost',
-                'bosta_ip',
-                'tarama_cpu_s',
-                'en_onemli_bulgu',
-              ];
-              const body = [
-                header,
-                ...rows.map((h) => [
-                  h.host,
-                  h.scanDate || '',
-                  h.products.join(' '),
-                  SEV[h.status].label,
-                  h.counts.danger,
-                  h.counts.warning,
-                  h.counts.info,
-                  h.jvms,
-                  h.jvmsRunning,
-                  // alan yoksa bos hucre: "0 olculemeyen" UYDURULMAZ
-                  sayiMi(h.jvmsUnmeasured) ? h.jvmsUnmeasured : '',
-                  h.vhosts,
-                  h.unusedIps,
-                  h.cpuS ?? '',
-                  h.topFinding || '',
-                ]),
-              ]
-                .map((r) => r.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(','))
-                .join('\n');
-              const url = URL.createObjectURL(
-                new Blob(['﻿' + body], { type: 'text/csv;charset=utf-8;' }),
-              );
-              const a = document.createElement('a');
-              a.href = url;
-              a.download = `server_hub_${new Date().toISOString().slice(0, 10)}.csv`;
-              a.click();
-              URL.revokeObjectURL(url);
-            }}
-            className={SM_BTN}
-            style={smBtn()}
-          >
-            <ArrowDownTrayIcon className="w-3.5 h-3.5" /> CSV
-          </button>
-          <button
-            disabled={busy != null || rows.length === 0 || limitAsildi(taraLimiti, rows.length)}
-            onClick={() => scanNow(rows.map((h) => h.host))}
+            disabled={busy != null || listedekiler.length === 0 || limitAsildi(taraLimiti, listedekiler.length)}
+            onClick={() => scanNow(listedekiler.map((h) => h.host))}
             className={SM_BTN}
             style={smBtn(true)}
             title={`Listedeki sunucuları şimdi tara (tek seferde en fazla ${taraLimiti.enCok ?? '…'}; Admin Kurallar & Limitler'den değiştirir)`}
           >
             <BoltIcon className="w-3.5 h-3.5" /> Listedekileri tara
           </button>
-          <LimitNotu limit={taraLimiti} sayi={rows.length} />
+          <LimitNotu limit={taraLimiti} sayi={listedekiler.length} />
         </div>
       </div>
 
-      <div
-        className="overflow-auto rounded-xl border"
-        style={{ borderColor: 'var(--border-subtle)', maxHeight: '44rem' }}
-      >
-        <table className="w-full text-xs border-collapse">
-          <thead className="sticky top-0" style={{ background: 'var(--bg-elevated)' }}>
-            <tr>
-              {[
-                'Sunucu',
-                'Durum',
-                'Ürünler',
-                'JVM',
-                'vhost',
-                'Boşta IP',
-                'En önemli bulgu',
-                'Tarama',
-                '',
-              ].map((t, i) => (
-                <th
-                  key={t + i}
-                  className={`px-3 py-2 text-[11px] font-semibold ${i >= 3 && i <= 5 ? 'text-right' : 'text-left'}`}
-                  style={{ color: 'var(--text-muted)' }}
-                >
-                  {t}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.length === 0 ? (
-              <TableEmptyRow
-                colSpan={9}
-                title={
-                  data.hosts.length ? 'Süzgeçle eşleşen sunucu yok.' : 'Henüz tarama verisi yok.'
-                }
-                description={
-                  data.hosts.length
-                    ? undefined
-                    : 'server_hub_scan job’ı bir kez koşunca burası dolar.'
-                }
-              />
-            ) : (
-              rows
-                .slice(0, sinir.n)
-                .map((h) => (
-                  <SunucuSatiri
-                    key={h.host}
-                    h={h}
-                    olcumMetni={olcumMetni}
-                    mesgul={busy != null}
-                    onAc={setOpenHost}
-                    onTara={satirTara}
-                  />
-                ))
-            )}
-          </tbody>
-        </table>
-        <DahaFazla gosterilen={Math.min(rows.length, sinir.n)} toplam={rows.length} onDaha={sinir.daha} onTumu={sinir.tumu} />
+      {/* SUTUN SUZGECLI LISTE (2026-11-07): ustteki arama / onem / urun / sinif on suzgectir; kolon
+          dropdown'lari, siralama, sayfa (cizim siniri), kayitli gorunumler ve CSV tabloda. Satira tiklayinca
+          sunucu paneli; "Ayrinti" eski ayrinti penceresini acar. */}
+      <div style={{ containerType: 'inline-size' }}>
+        <EarTablo<ShHostRowV3>
+          kimlik="server-hub-sunucular"
+          kolonlar={kolonlar}
+          satirlar={rows}
+          satirAnahtari={(h) => h.host}
+          satirEtiketi={(h) => h.host}
+          onSuzuldu={setListedekiler}
+          gorunumler={SUNUCU_GORUNUMLERI}
+          ortak={ortakSunucu}
+          yerelCsv={`server_hub_${new Date().toISOString().slice(0, 10)}`}
+          csvAdi="server_hub_secili"
+          araEtiketi="tabloda ara (sunucu, ürün, bulgu)"
+          bosMetin={
+            data.hosts.length
+              ? 'Süzgeçle eşleşen sunucu yok.'
+              : 'Henüz tarama verisi yok: server_hub_scan job’ı bir kez koşunca burası dolar.'
+          }
+          acilir={(h) => (
+            <PanelAcildi onAcildi={() => setPanelAcildi(true)}>
+              <div className="sticky left-3 py-3" style={{ width: 'calc(100cqw - 1.5rem)' }}>
+                <SunucuPaneli host={h.host} retire={retire} onEtiketDegisti={() => retireYukle(false)} />
+              </div>
+            </PanelAcildi>
+          )}
+        />
       </div>
 
       {openHost && (
@@ -2577,92 +2674,6 @@ function HostsTab({
   );
 }
 
-/**
- * Sunucu tablosunun tek satiri. memo: sunucu acmak / mesgul durumu degismedikce satirlar yeniden
- * cizilmez (binlerce satirda tiklama gecikmesinin nedeni buydu).
- */
-const SunucuSatiri = memo(function SunucuSatiri({
-  h,
-  olcumMetni,
-  mesgul,
-  onAc,
-  onTara,
-}: {
-  h: ShHostRowV3;
-  /** Olculemeyen JVM'in sebebi (HostsTab sema bayragindan hesaplar). */
-  olcumMetni: string;
-  mesgul: boolean;
-  onAc: (host: string) => void;
-  onTara: (host: string) => void;
-}) {
-  return (
-    <tr
-                  key={h.host}
-                  className="border-t cursor-pointer hover:bg-[var(--bg-elevated)]"
-                  style={{ borderColor: 'var(--border-subtle)' }}
-                  onClick={() => onAc(h.host)}
-                >
-                  <td className="px-3 py-1.5 font-mono font-semibold">{h.host}</td>
-                  <td className="px-3 py-1.5">
-                    <SevPill
-                      s={h.status}
-                      n={
-                        h.status === 'ok'
-                          ? undefined
-                          : h.counts.danger + h.counts.warning + h.counts.info
-                      }
-                    />
-                  </td>
-                  <td className="px-3 py-1.5">
-                    <span className="text-[10px]" style={{ color: 'var(--text-secondary)' }}>
-                      {h.products.join(' · ') || '—'}
-                    </span>
-                  </td>
-                  <td
-                    className="px-3 py-1.5 text-right tabular-nums"
-                    title={
-                      (h.jvmsUnmeasured || 0) > 0
-                        ? `çalışan/toplam · ? ${h.jvmsUnmeasured} = çalışma durumu ölçülemeyen JVM (${olcumMetni}) — kapalı sayılmadı`
-                        : undefined
-                    }
-                  >
-                    {jvmSayimMetni(h)}
-                  </td>
-                  <td className="px-3 py-1.5 text-right tabular-nums">{h.vhosts || '—'}</td>
-                  <td
-                    className="px-3 py-1.5 text-right tabular-nums"
-                    style={h.unusedIps ? { color: SEV.info.color } : undefined}
-                  >
-                    {h.unusedIps || '—'}
-                  </td>
-                  <td className="px-3 py-1.5">
-                    <div
-                      className="truncate max-w-[28rem]"
-                      title={h.topFinding || ''}
-                      style={{ color: 'var(--text-secondary)' }}
-                    >
-                      {h.topFinding || <span style={{ color: SEV.ok.color }}>temiz</span>}
-                    </div>
-                  </td>
-                  <td className="px-3 py-1.5 text-[10px]" style={{ color: 'var(--text-muted)' }}>
-                    {h.scanDate ? fmtDate(h.scanDate) : '—'}
-                    {h.cpuS != null ? ` · ${h.cpuS.toFixed(1)}s cpu` : ''}
-                  </td>
-                  <td className="px-3 py-1.5" onClick={(e) => e.stopPropagation()}>
-                    <button
-                      disabled={mesgul}
-                      onClick={() => onTara(h.host)}
-                      className={SM_BTN}
-                      style={smBtn()}
-                      title="Reboot öncesi şimdi tara (geceden beri değişiklik olmuş olabilir)"
-                    >
-                      <BoltIcon className="w-3.5 h-3.5" /> Şimdi tara
-                    </button>
-                  </td>
-                </tr>
-              
-  );
-});
 
 function HostModal({
   host,
@@ -3785,6 +3796,8 @@ export function FindingsTab({
   onRetirementAc?: (uygulama: string, not: string) => void;
 }) {
   const gorunur = useSekmeGorunur();
+  // Admin'in kaydettigi ortak gorunumler (Gorunumler menusu).
+  const ortakBulgu = useOrtakGorunumler('server-hub-bulgular', gorunur);
   // Sayfaya / sekmeye donuste son yanit hemen gorunur; eskiyse arkada sessizce tazelenir.
   const [data, setData] = useState<ShFindingsResult | null>(() => shOnbellek.oku<ShFindingsResult>('findings'));
   const [loading, setLoading] = useState(() => !shOnbellek.oku('findings'));
@@ -4081,6 +4094,7 @@ export function FindingsTab({
           satirAnahtari={(f) => anahtarOf.get(f) || `${f.host}|${f.code}`}
           satirEtiketi={(f) => `${f.host} · ${f.code}`}
           gorunumler={BULGU_GORUNUMLERI}
+          ortak={ortakBulgu}
           yerelCsv={`server_hub_bulgular_${new Date().toISOString().slice(0, 10)}`}
           csvAdi="server_hub_bulgular_secili"
           araEtiketi="tabloda ara (sunucu, kod, bulgu)"

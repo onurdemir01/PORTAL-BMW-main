@@ -181,7 +181,7 @@ function Ayrinti({ k, onSonra, busy }: { k: RcKayit; onSonra: () => void; busy: 
           <DocumentTextIcon className="w-4 h-4" /> Durum raporu
         </a>
         <button type="button" disabled={!sonraHazir || busy} onClick={onSonra} className={BTN}
-          style={{ background: 'var(--accent)', borderColor: 'var(--accent)', color: 'var(--accent-fg, #fff)' }}
+          style={{ background: 'var(--accent)', borderColor: 'var(--accent)', color: 'var(--text-on-accent)' }}
           title={sonraHazir ? 'Reboot yapıldıktan sonra çalıştırın' : 'Önce görüntüsü hazır değil'}>
           <WrenchScrewdriverIcon className="w-4 h-4" /> Reboot sonrası kontrol et ve düzelt
         </button>
@@ -336,7 +336,7 @@ export default function RebootKontroluTab() {
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <button type="button" disabled={!hosts.length || limitAsildi(rebootLimiti, hosts.length) || busy} onClick={onceAl} className={BTN}
-            style={{ background: 'var(--accent)', borderColor: 'var(--accent)', color: 'var(--accent-fg, #fff)' }}>
+            style={{ background: 'var(--accent)', borderColor: 'var(--accent)', color: 'var(--text-on-accent)' }}>
             <CameraIcon className="w-4 h-4" /> Reboot öncesi görüntüyü al ({hosts.length})
           </button>
           <LimitNotu limit={rebootLimiti} sayi={hosts.length} />

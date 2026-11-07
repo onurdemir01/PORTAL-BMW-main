@@ -12,7 +12,7 @@
 //   * İki kip: SUNUCU (getir: sayfa + süzgeç + sıralama sunucuda; liste sessizce kesilmez) ve YEREL
 //     (satirlar: aynı süzgeç anlamı tarayıcıda).
 //   * Kolon seçimi, sayfa boyu ve süzgeçler görüntüleyen başına localStorage'da (okunamazsa varsayılan).
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   ArrowDownTrayIcon,
@@ -108,6 +108,13 @@ export interface EarGorunum {
   f: Suzgec[];
   s?: string;
   kolonlar?: string[];
+}
+/** Ortak (Admin) görünümler: liste + isteğe bağlı kaydet / sil (hata atarsa menüde yazılır). */
+export interface EarOrtakGorunumler {
+  gorunumler: EarGorunum[];
+  okunamadi?: boolean;
+  kaydet?: (g: EarGorunum) => Promise<void>;
+  sil?: (ad: string) => Promise<void>;
 }
 const KISISEL_EN_COK = 20;
 function kisiselOku(kimlik: string): EarGorunum[] {
@@ -477,6 +484,8 @@ export function EarTablo<T>({
   gorunumler,
   yerelCsv,
   satirEtiketi,
+  onSuzuldu,
+  ortak,
 }: {
   kimlik: string;
   kolonlar: EarKolon<T>[];
@@ -500,6 +509,13 @@ export function EarTablo<T>({
   yerelCsv?: string;
   /** Açılır satırın düğme adı (ekran okuyucu); yoksa satır anahtarı. */
   satirEtiketi?: (r: T) => string;
+  /**
+   * Yerel kipte süzgeç + aramadan sonra kalan satırlar (sayfadan bağımsız). "Listedekileri tara" gibi
+   * eylemler EKRANDA görünen kümeyi alsın diye. Verilen geri çağrı kararlı olmalı (setState gibi).
+   */
+  onSuzuldu?: (l: T[]) => void;
+  /** Ortak (Admin) görünümler; verilirse menüde "Ortak" bölümü ve "Ortak kaydet" çıkar. */
+  ortak?: EarOrtakGorunumler;
 }) {
   const [kalici] = useState(() => kaliciOku(kimlik));
   const varsayilanGorunur = kolonlar.filter((k) => k.varsayilan !== false).map((k) => k.anahtar);
@@ -524,8 +540,11 @@ export function EarTablo<T>({
   const [secili, setSecili] = useState<Map<string, T>>(() => new Map());
   const [acikSatir, setAcikSatir] = useState<string | null>(null);
   const [gorunumPencere, setGorunumPencere] = useState<{ sol: number; ust: number } | null>(null);
-  const [kisisel, setKisisel] = useState<EarGorunum[]>(() => (gorunumler ? kisiselOku(kimlik) : []));
+  const menuVar = !!(gorunumler || ortak);
+  const [kisisel, setKisisel] = useState<EarGorunum[]>(() => (gorunumler || ortak ? kisiselOku(kimlik) : []));
   const [yeniAd, setYeniAd] = useState('');
+  const [ortakHata, setOrtakHata] = useState('');
+  const [ortakMesgul, setOrtakMesgul] = useState(false);
 
   const kaydet = (d: Partial<Kalici>) => kaliciYaz(kimlik, { gorunur, sayfaBoyu, f, s, ...d });
   const suzgecDegis = (yeni: Suzgec[]) => {
@@ -588,6 +607,9 @@ export function EarTablo<T>({
     }
     return l;
   }, [yerelSatirlar, kolonlar, f, s, q]);
+  useEffect(() => {
+    if (onSuzuldu && yerel) onSuzuldu(yerel);
+  }, [onSuzuldu, yerel]);
 
   // Yerel satirlar disaridan daralinca (ust seciciler) sayfa konumu son gecerli sayfaya kirpilir: bos sayfa yok.
   const ofs =
@@ -660,7 +682,9 @@ export function EarTablo<T>({
 
   const ayni = (g: EarGorunum) =>
     JSON.stringify(gecerli(g.f || [])) === JSON.stringify(f) && (g.s || '') === s;
-  const aktifGorunum = gorunumler ? [...gorunumler, ...kisisel].find(ayni) || null : null;
+  const aktifGorunum = menuVar
+    ? [...(gorunumler || []), ...(ortak ? ortak.gorunumler : []), ...kisisel].find(ayni) || null
+    : null;
   const gorunumUygula = (g: EarGorunum) => {
     const yf = gecerli(g.f || []);
     const ys = g.s || '';
@@ -679,6 +703,26 @@ export function EarTablo<T>({
     setKisisel(yeni);
     kisiselYaz(kimlik, yeni);
     setYeniAd('');
+  };
+  const ortakIs = async (is: () => Promise<void>) => {
+    setOrtakMesgul(true);
+    setOrtakHata('');
+    try {
+      await is();
+    } catch (e) {
+      setOrtakHata(e instanceof Error ? e.message : String(e));
+    } finally {
+      setOrtakMesgul(false);
+    }
+  };
+  const ortakKaydet = () => {
+    const ad = yeniAd.trim().slice(0, 60);
+    if (!ad || !ortak || !ortak.kaydet) return;
+    const kaydet = ortak.kaydet;
+    void ortakIs(async () => {
+      await kaydet({ ad, f, s, kolonlar: gorunur });
+      setYeniAd('');
+    });
   };
   const kisiselSil = (ad: string) => {
     const yeni = kisisel.filter((g) => g.ad !== ad);
@@ -728,7 +772,7 @@ export function EarTablo<T>({
           <ViewColumnsIcon className="w-3.5 h-3.5" aria-hidden /> Kolonlar ({gorunur.length}/
           {kolonlar.length})
         </button>
-        {gorunumler && (
+        {menuVar && (
           <button
             type="button"
             className={BTN}
@@ -1064,7 +1108,7 @@ export function EarTablo<T>({
         />
       )}
       {gorunumPencere &&
-        gorunumler &&
+        menuVar &&
         createPortal(
           <>
             <div className="fixed inset-0 z-40" onClick={() => setGorunumPencere(null)} aria-hidden />
@@ -1081,7 +1125,7 @@ export function EarTablo<T>({
               }}
               onKeyDown={(e) => e.key === 'Escape' && setGorunumPencere(null)}
             >
-              {gorunumler.length > 0 && (
+              {gorunumler && gorunumler.length > 0 && (
                 <div>
                   <div className="font-semibold mb-1" style={{ color: 'var(--text-muted)' }}>
                     Hazır
@@ -1103,6 +1147,50 @@ export function EarTablo<T>({
                         </span>
                       )}
                     </button>
+                  ))}
+                </div>
+              )}
+              {ortak && (
+                <div>
+                  <div className="font-semibold mb-1" style={{ color: 'var(--text-muted)' }}>
+                    Ortak (Admin)
+                  </div>
+                  {ortak.okunamadi && (
+                    <div className="text-[11px]" style={{ color: 'var(--status-warning-text)' }}>
+                      Ortak görünümler okunamadı.
+                    </div>
+                  )}
+                  {!ortak.okunamadi && ortak.gorunumler.length === 0 && (
+                    <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                      Henüz yok: herkesin görmesi için süzgeci kurup “Ortak kaydet”.
+                    </div>
+                  )}
+                  {ortak.gorunumler.map((g) => (
+                    <div key={g.ad} className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        aria-pressed={aktifGorunum === g}
+                        onClick={() => gorunumUygula(g)}
+                        className="flex-1 text-left rounded px-1.5 py-1"
+                        style={{ background: aktifGorunum === g ? 'var(--bg-elevated)' : undefined }}
+                        title={g.aciklama}
+                      >
+                        {g.ad}
+                      </button>
+                      {ortak.sil && (
+                        <button
+                          type="button"
+                          aria-label={`${g.ad} ortak görünümünü sil`}
+                          disabled={ortakMesgul}
+                          onClick={() => {
+                            const sil = ortak.sil!;
+                            void ortakIs(() => sil(g.ad));
+                          }}
+                        >
+                          <XMarkIcon className="w-3 h-3" aria-hidden />
+                        </button>
+                      )}
+                    </div>
                   ))}
                 </div>
               )}
@@ -1133,7 +1221,7 @@ export function EarTablo<T>({
                 ))}
               </div>
               <form
-                className="flex items-center gap-1 border-t pt-2"
+                className="flex flex-wrap items-center gap-1 border-t pt-2"
                 style={{ borderColor: 'var(--border)' }}
                 onSubmit={(e) => {
                   e.preventDefault();
@@ -1143,7 +1231,7 @@ export function EarTablo<T>({
                 <input
                   aria-label="Görünüm adı"
                   placeholder="bu görünümü kaydet: ad"
-                  className={`${GIRDI} flex-1`}
+                  className={`${GIRDI} w-full`}
                   style={girdiStil}
                   maxLength={60}
                   value={yeniAd}
@@ -1152,11 +1240,29 @@ export function EarTablo<T>({
                 <button type="submit" className={BTN} style={btnStil(true)} disabled={!yeniAd.trim()}>
                   Kaydet
                 </button>
+                {ortak && ortak.kaydet && (
+                  <button
+                    type="button"
+                    className={BTN}
+                    style={btnStil()}
+                    disabled={!yeniAd.trim() || ortakMesgul}
+                    onClick={ortakKaydet}
+                    title="Server Hub'ı açan herkes görür"
+                  >
+                    Ortak kaydet
+                  </button>
+                )}
               </form>
+              {ortakHata && (
+                <div role="alert" className="text-[11px]" style={{ color: 'var(--status-danger-text)' }}>
+                  {ortakHata}
+                </div>
+              )}
               <button
                 type="button"
                 className="underline"
-                onClick={() => gorunumUygula({ ad: '', f: [], s: '' })}
+                // Süzgeç ve sıralama temizlenir, kolonlar varsayılana döner.
+                onClick={() => gorunumUygula({ ad: '', f: [], s: '', kolonlar: varsayilanGorunur })}
               >
                 süzgeçsiz görünüm
               </button>

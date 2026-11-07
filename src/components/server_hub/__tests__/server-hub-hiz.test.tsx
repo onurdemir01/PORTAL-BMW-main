@@ -3,7 +3,8 @@
 // Kullanıcı: "server hub çok yavaş her tıkladığımda bir şeyler yüklüyor".
 //   SH1 sekmeler açık kalır: gidip dönünce /overview YENİDEN istenmez, sekme içeriği yerinde (gizli)
 //   SH2 sayfaya dönüşte son yanıt hemen görünür (yükleme logosu yok, istek yok); 60 sn'den eskiyse sessizce tazelenir
-//   SH3 çizim sınırı: 300 satır, "300 daha", "tümü"; arama değişince yine 300 (sayaç TÜM kümeyi sayar)
+//   SH3 çizim sınırı (2026-11-07, Sunucular EarTablo): 700 sunucuda ilk çizim 100 satır (sayfa); sonraki sayfa;
+//       ön süzgeç daralınca sayfa konumu kırpılır; sayaç ekranda süzülen kümenin TAMAMINI sayar
 //   SH4 gizli sekmede yoklama yok: Uygulama Envanteri çalışan koşuyu gizliyken yoklamaz, görünür olunca yoklar
 //   SH5 karttan Bulgular'a geçiş: sekme açık kalsa da hazır süzgeç yeni bir kurulumla uygulanır (key);
 //       gizli sekmede yoklama / kendiliğinden pencere kapıları yerinde (kaynak)
@@ -108,24 +109,23 @@ describe('Server Hub hızı', () => {
     }
   });
 
-  // 700 satir cizer (tek basina ~1,5 sn); amac sure degil 300 satirlik sinir. Paralel suit yukunde 5 sn'lik
-  // varsayilan pay asiliyordu (2026-11-07): acik zaman asimi.
-  it('SH3 çizim sınırı', async () => {
+  // 700 sunucu: amac sure degil cizim siniri (sayfa). Paralel suit yukunde 5 sn'lik varsayilan pay
+  // asilabiliyordu (2026-11-07): acik zaman asimi.
+  it('SH3 çizim sınırı (sayfa)', async () => {
     m.overview.mockResolvedValue(overview(700));
     render(<ServerHubPage />);
     await screen.findByText('APPSRV0000');
-    expect(screen.queryByText('APPSRV0300')).toBeNull();
-    expect(screen.getByText(/300 \/ 700 gösteriliyor/)).toBeInTheDocument();
-    expect(screen.getByText(/700 \/ 700 sunucu/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '300 daha' }));
-    expect(screen.getByText('APPSRV0599')).toBeInTheDocument();
-    fireEvent.click(
-      within(screen.getByText(/600 \/ 700 gösteriliyor/)).getByRole('button', { name: 'tümü' }),
-    );
-    expect(screen.getByText('APPSRV0699')).toBeInTheDocument();
-    expect(screen.queryByText(/gösteriliyor/)).toBeNull();
-    fireEvent.change(screen.getByPlaceholderText(/sunucu/i), { target: { value: 'APPSRV0' } });
-    await waitFor(() => expect(screen.getByText(/300 \/ 700 gösteriliyor/)).toBeInTheDocument());
+    expect(screen.queryByText('APPSRV0100')).toBeNull();
+    expect(screen.getByText('1–100 / 700')).toBeInTheDocument();
+    // Sayaç tablonun bildirdiği süzülmüş kümeden: bir effect turu sonra gelir.
+    expect(await screen.findByText(/700 \/ 700 sunucu/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Sonraki/ }));
+    expect(screen.getByText('APPSRV0199')).toBeInTheDocument();
+    expect(screen.queryByText('APPSRV0000')).toBeNull();
+    fireEvent.change(screen.getByPlaceholderText('sunucu ya da bulgu ara'), { target: { value: 'APPSRV00' } });
+    await waitFor(() => expect(screen.getByText('1–100 / 100')).toBeInTheDocument());
+    expect(screen.getByText('APPSRV0000')).toBeInTheDocument();
+    expect(await screen.findByText(/100 \/ 700 sunucu/)).toBeInTheDocument();
   }, 20000);
 });
 

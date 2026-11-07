@@ -24,6 +24,7 @@ import { BTN, btnStil, EtiketRozeti } from './RetireEtiketleri';
 import { ETIKET_SEVIYE, KONTROL_DURUM, konuMetni, retirementMetni } from './retireEtiket';
 import SunucuPaneli from './SunucuPaneli';
 import { useSekmeGorunur } from './sekmeGorunurlugu';
+import { useOrtakGorunumler } from './ortakGorunumler';
 import {
   DEPLOYMENT_METNI,
   TRAFIK_METNI,
@@ -565,6 +566,7 @@ export default function Uygulama360Tab({
   onRetirementAc?: (uygulama: string, not: string) => void;
 }) {
   const gorunur = useSekmeGorunur();
+  const ortak = useOrtakGorunumler('uygulama-360', gorunur);
   const [veri, setVeri] = useState<Sh360Sonuc | null>(null);
   const [hata, setHata] = useState('');
   const [yuk, setYuk] = useState(false);
@@ -692,6 +694,7 @@ export default function Uygulama360Tab({
               />
             )}
             csvAdi="uygulama-360_secili"
+            ortak={ortak}
             yerelCsv="uygulama-360"
             araEtiketi="uygulama, ortam ya da kural ara"
             bosMetin={
