@@ -4,7 +4,9 @@
 // şekilde detay gösteren gerçek sonuç gösteren şekilde olsun". Bölümler açılır-kapanır; yalnız "Ne
 // yapmalı" açık başlar. Her değer kaynağıyla (Server Hub taraması / Uygulama Envanteri) ve tarihiyle.
 // Zincir: JVM → bağlı EAR (domain.xml / host.xml) → web sunucusu (aynı makine ya da ayrı) → trafik.
-import React, { useMemo, useState } from 'react';
+// 2026-11-07: üstte özet kartları (her kart kendi bölümünü açar), "Sonraki adım" düğmeleri, zincir kartı
+// önce tek satır rozet; Sunucular › Ayrıntı penceresinin "Özet" sekmesi de bu paneldir (detay verilir).
+import React, { useId, useMemo, useState } from 'react';
 import {
   serverHubApi,
   type ShEtiketKurali,
@@ -33,24 +35,32 @@ import {
   retirementUygulamasi,
   zincirKartlari,
 } from './retireEtiket';
+import DurumRozeti from './DurumRozeti';
+import { ozetKartlari, zincirRozetleri, type BolumId } from './sunucuOzet';
 
 const SIRA: Record<ShSeverity, number> = { danger: 3, warning: 2, info: 1, ok: 0 };
 
 function Bolum({
   baslik,
-  acik = false,
+  acik,
+  onAcik,
+  domId,
   children,
   testId,
 }: {
   baslik: React.ReactNode;
-  acik?: boolean;
+  acik: boolean;
+  onAcik: (acik: boolean) => void;
+  domId: string;
   children: React.ReactNode;
   testId?: string;
 }) {
   return (
     <details
+      id={domId}
       open={acik}
-      className="rounded-lg border"
+      onToggle={(e) => onAcik((e.currentTarget as HTMLDetailsElement).open)}
+      className="rounded-lg border scroll-mt-4"
       style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}
       data-testid={testId}
     >
@@ -107,9 +117,6 @@ function AcilirEtiket({
   );
 }
 
-const calisma = (j: { running: boolean; runningKnown?: boolean | null }) =>
-  j.runningKnown === false ? 'ölçülemedi' : j.running ? 'çalışıyor' : 'kapalı';
-
 export default function SunucuPaneli({
   host,
   retire,
@@ -117,6 +124,8 @@ export default function SunucuPaneli({
   onRetirementAc,
   onAutoStart,
   asBusy,
+  detay,
+  onTara,
 }: {
   host: string;
   retire: ShRetireSonuc | null;
@@ -124,12 +133,31 @@ export default function SunucuPaneli({
   onRetirementAc?: (uygulama: string, not: string) => void;
   onAutoStart?: (f: { host: string; code: string; fix: ShFix }) => void;
   asBusy?: string | null;
+  /** Ayrıntı zaten okunduysa (Ayrıntı penceresi): panel yeniden istemez. */
+  detay?: ShHostDetail | null;
+  /** "Yeniden tara" düğmesi (verilmezse düğme yok). */
+  onTara?: (host: string) => void;
 }) {
-  const [d, setD] = useState<ShHostDetail | null>(null);
+  const [yuklenen, setD] = useState<ShHostDetail | null>(null);
   const [hata, setHata] = useState('');
   const [tazele, setTazele] = useState(0);
+  // Bölümler kontrollü: özet kartı / sonraki adım bir bölümü açıp oraya kaydırır. Yalnız "Ne yapmalı" açık başlar.
+  const [acik, setAcik] = useState<Partial<Record<BolumId, boolean>>>({ neYapmali: true });
+  const kok = useId();
+  const domId = (b: BolumId) => `${kok}-${b}`;
+  const bolumProps = (b: BolumId) => ({
+    acik: !!acik[b],
+    onAcik: (v: boolean) => setAcik((a) => (!!a[b] === v ? a : { ...a, [b]: v })),
+    domId: domId(b),
+  });
+  const bolumeGit = (b: BolumId) => {
+    setAcik((a) => ({ ...a, [b]: true }));
+    document.getElementById(domId(b))?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
+  };
+  const d = detay ?? yuklenen;
   useAsyncEffect(
     async (alive) => {
+      if (detay) return;
       try {
         const r = await serverHubApi.host(host);
         if (!alive()) return;
@@ -140,7 +168,7 @@ export default function SunucuPaneli({
         if (alive()) setHata(e instanceof Error ? e.message : String(e));
       }
     },
-    [host, tazele],
+    [host, tazele, detay ? 1 : 0],
   );
   const etiketler = useMemo(() => hostEtiketleri(retire?.etiketler, host), [retire, host]);
   const bulgular = useMemo(
@@ -169,12 +197,52 @@ export default function SunucuPaneli({
   const kritik = bulgular.filter((f) => f.severity === 'danger');
   const adimlar = dogrulamaAdimlari(bulgular, etiketler, retire?.kurallar || [], bulgudanJvm);
   const kaynak = `Server Hub taraması ${d.scanDate || '?'}${d.fresh === false ? ' (bayat)' : ''}`;
+  const kartlarOzet = ozetKartlari(d, retire ? etiketler : null);
   return (
     <div className="space-y-2" data-testid="sunucu-paneli">
-      <Bolum baslik="Ne yapmalı" acik testId="bolum-ne-yapmali">
+      {/* OZET KARTLARI: her kart kendi bolumunu acar ve oraya kaydirir. */}
+      <div className="grid gap-2 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5" role="group" aria-label="Özet" data-testid="ozet-kartlari">
+        {kartlarOzet.map((k) => (
+          <button
+            key={k.id}
+            type="button"
+            onClick={() => bolumeGit(k.bolum)}
+            title={k.title}
+            aria-label={`${k.baslik}: ${k.deger}`}
+            className="text-left rounded-lg border px-2.5 py-1.5"
+            style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}
+          >
+            <span className="block text-[10px]" style={{ color: 'var(--text-muted)' }}>
+              {k.baslik}
+            </span>
+            <DurumRozeti metin={k.deger} ton={k.ton} />
+          </button>
+        ))}
+      </div>
+      <Bolum baslik="Ne yapmalı" {...bolumProps('neYapmali')} testId="bolum-ne-yapmali">
         <div style={{ color: 'var(--text-muted)' }}>
           {kaynak} · {earDurumMetni(d.ear)}
         </div>
+        {(onTara || adimlar.length > 0 || etiketler.length > 0) && (
+          <div className="flex flex-wrap items-center gap-2" data-testid="sonraki-adim">
+            <span style={{ color: 'var(--text-muted)' }}>Sonraki adım:</span>
+            {onTara && (
+              <button type="button" className={BTN} style={btnStil()} onClick={() => onTara(host)}>
+                Yeniden tara
+              </button>
+            )}
+            {adimlar.length > 0 && (
+              <button type="button" className={BTN} style={btnStil()} onClick={() => bolumeGit('dogrulama')}>
+                Elle kontrol et ({fmtNumber(adimlar.length)} adım)
+              </button>
+            )}
+            {etiketler.length > 0 && (
+              <button type="button" className={BTN} style={btnStil()} onClick={() => bolumeGit('etiketler')}>
+                Retirement etiketleri ({fmtNumber(etiketler.length)})
+              </button>
+            )}
+          </div>
+        )}
         {kritik.length === 0 && etiketler.length === 0 && autoStartlar.length === 0 && (
           <div>Bu sunucuda eylem gerektiren bulgu ya da retirement etiketi yok.</div>
         )}
@@ -248,7 +316,7 @@ export default function SunucuPaneli({
         })}
       </Bolum>
 
-      <Bolum baslik={`Uygulamalar (${kartlar.length} JVM)`} testId="bolum-uygulamalar">
+      <Bolum baslik={`Uygulamalar (${kartlar.length} JVM)`} {...bolumProps('uygulamalar')} testId="bolum-uygulamalar">
         <div style={{ color: 'var(--text-muted)' }}>
           kaynak: JVM ve web — {kaynak}; EAR —{' '}
           {d.ear?.taranma
@@ -263,26 +331,20 @@ export default function SunucuPaneli({
             style={{ borderColor: 'var(--border-subtle)' }}
             data-testid="zincir-karti"
           >
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-              <b className="font-mono text-[11px]">{j.name}</b>
-              <span>JBoss {j.gen || '?'}</span>
-              <span>{calisma(j)}</span>
-              <span>
-                auto-start{' '}
-                {j.autoStart === 'true'
-                  ? 'açık'
-                  : j.autoStart === 'false'
-                    ? 'kapalı'
-                    : 'bilinmiyor'}
-              </span>
-              {j.argFark === 1 && (
-                <span style={{ color: 'var(--status-danger-text)' }}>parametre farkı var</span>
-              )}
-              {j.argFark === 2 && (
-                <span style={{ color: 'var(--text-muted)' }}>parametre farkı ölçülemedi</span>
-              )}
+            {/* ILK SATIR: rozetler (JVM · EAR · web · trafik); ayrinti tiklayinca. */}
+            <div className="flex flex-wrap items-center gap-1.5">
+              <b className="font-mono text-[11px] mr-1">{j.name}</b>
+              <span style={{ color: 'var(--text-muted)' }}>JBoss {j.gen || '?'}</span>
+              {zincirRozetleri(d, j, earlar.length, katman).map((r) => (
+                <DurumRozeti key={r.metin} {...r} />
+              ))}
               {j.tier && <span style={{ color: 'var(--text-muted)' }}>tier {j.tier}</span>}
             </div>
+            <details>
+              <summary className="cursor-pointer text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                ayrıntı: EAR, deployment, web
+              </summary>
+              <div className="mt-1 space-y-1">
             <div>
               <span style={{ color: 'var(--text-muted)' }}>EAR: </span>
               {earlar.length === 0
@@ -328,6 +390,8 @@ export default function SunucuPaneli({
                     </span>
                   ))}
             </div>
+              </div>
+            </details>
           </div>
         ))}
         {bagsizEarlar.length > 0 && (
@@ -351,7 +415,7 @@ export default function SunucuPaneli({
         )}
       </Bolum>
 
-      <Bolum baslik={`Bulgular (${bulgular.length})`} testId="bolum-bulgular">
+      <Bolum baslik={`Bulgular (${bulgular.length})`} {...bolumProps('bulgular')} testId="bolum-bulgular">
         {bulgular.length === 0 && <div>Bulgu yok.</div>}
         {bulgular.map((f, i) => (
           <details
@@ -382,7 +446,7 @@ export default function SunucuPaneli({
         ))}
       </Bolum>
 
-      <Bolum baslik={`Retirement etiketleri (${etiketler.length})`} testId="bolum-etiketler">
+      <Bolum baslik={`Retirement etiketleri (${etiketler.length})`} {...bolumProps('etiketler')} testId="bolum-etiketler">
         {!retire && <div style={{ color: 'var(--text-muted)' }}>Etiketler yükleniyor…</div>}
         {retire && etiketler.length === 0 && <div>Bu sunucuda retirement etiketi yok.</div>}
         {etiketler.map((e) => (
@@ -396,7 +460,7 @@ export default function SunucuPaneli({
         ))}
       </Bolum>
 
-      <Bolum baslik={`Doğrulama adımları (${adimlar.length})`} testId="bolum-dogrulama">
+      <Bolum baslik={`Doğrulama adımları (${adimlar.length})`} {...bolumProps('dogrulama')} testId="bolum-dogrulama">
         {adimlar.length === 0 && <div>Elle kontrol gerektiren bulgu yok.</div>}
         {adimlar.map((a) => (
           <div key={a.baslik} className="space-y-1">
