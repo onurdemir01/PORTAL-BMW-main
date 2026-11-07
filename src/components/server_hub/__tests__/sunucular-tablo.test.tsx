@@ -5,7 +5,7 @@
 //       "Şimdi tara" tek sunucuyu tarar — ikisi de satırı açmaz
 //   ST3 ortak görünüm: liste sunucudan, "Ortak kaydet" bu ekranın adıyla gider, yanıt listeyi günceller
 //   ST4 hazır görünüm "Bayat tarama": taze olmayan sunucular ve kendi kolonları
-//   ST5 tanımsız --accent-fg Server Hub'da yok (koyu temada birincil düğme 1.45:1 idi)
+//   ST5 Server Hub'da --accent-fg değil --text-on-accent (eskiden tanımsızdı; koyu temada 1.45:1)
 //   ST6 Ayrıntı penceresi "Özet" sekmesiyle açılır: sunucu paneli okunmuş ayrıntıyla (ikinci istek yok),
 //       "Yeniden tara" pencerenin taramasını kullanır, etiket verisi Özet açıkken iner
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -196,7 +196,7 @@ describe('Sunucular listesi (EarTablo)', () => {
     ).toBe(true);
   });
 
-  it('ST5 tanımsız --accent-fg Server Hub bileşenlerinde yok', () => {
+  it('ST5 Server Hub bileşenleri --accent-fg değil --text-on-accent kullanır', () => {
     const kok = path.resolve(__dirname, '..');
     const kirli = fs
       .readdirSync(kok)
