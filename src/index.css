@@ -56,6 +56,11 @@
      marka rengi acik bir mavidir. Tek token oldugu icin `.btn-primary` bunu okur ve
      tema degistiginde metin rengi kendiliginden dogru tarafa gecer. */
   --text-on-accent: #ffffff;
+  /* `--accent-fg`: Crypto Hub / Nginx Hub / Denetim > Nginx dugmelerinde `var(--accent-fg, #fff)`
+     olarak yerlesik ad. Hic tanimlanmamisti: her yerde #fff'e dusuyor, koyu temada acik mavi
+     aksan uzerinde 1.45:1 veriyordu. Ayni token'in takma adidir; koyu tema yalniz
+     `--text-on-accent`i degistirir, bu ad onu izler (bekci: tema-kontrast TK10). */
+  --accent-fg: var(--text-on-accent);
   /* Aksan TINTI — `info` PF6'da MOR oldugu icin (asagiya bkz.) mavi tonlu yuzeyler
      artik `--status-info-bg`den DEGIL buradan beslenir. */
   --accent-bg:    #e0f0ff;   /* PF6 blue-10 */

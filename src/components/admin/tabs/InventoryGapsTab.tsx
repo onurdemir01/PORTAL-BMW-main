@@ -40,7 +40,7 @@ const STATUS_META: Record<InventoryGapStatus, { label: string; cls: string; hint
   },
   kontrol_edilemedi: {
     label: 'kontrol edilemedi',
-    cls: 'border-[var(--border-strong)] bg-[var(--surface-2)] text-[var(--text-muted)]',
+    cls: 'border-[var(--border-strong)] bg-[var(--status-neutral-bg)] text-[var(--text-secondary)]',
     hint: 'Envanter şu an okunamadı. Bu ad eksik OLMAYABİLİR — bilinmiyor.',
   },
 };
@@ -154,7 +154,7 @@ export default function InventoryGapsTab() {
       </div>
 
       {sayac.kontrol_edilemedi > 0 && (
-        <p className="rounded-xl border border-[var(--border-strong)] bg-[var(--surface-2)] p-3 text-xs text-[var(--text-muted)]">
+        <p className="rounded-xl border border-[var(--border-strong)] bg-[var(--bg-elevated)] p-3 text-xs text-[var(--text-secondary)]">
           <QuestionMarkCircleIcon
             aria-hidden="true"
             className="mr-1 inline w-4 h-4 align-text-bottom"
@@ -201,7 +201,7 @@ export default function InventoryGapsTab() {
       {!loading && rows !== null && rows.length > 0 && (
         <div className="overflow-x-auto rounded-xl border border-[var(--border)]">
           <table className="w-full text-sm">
-            <thead className="bg-[var(--surface-2)] text-left text-xs text-[var(--text-muted)]">
+            <thead className="bg-[var(--bg-elevated)] text-left text-xs text-[var(--text-secondary)]">
               <tr>
                 <th className="px-3 py-2">Ad</th>
                 <th className="px-3 py-2">Tür</th>
@@ -216,7 +216,7 @@ export default function InventoryGapsTab() {
               {gorunen.map((r) => {
                 const yas = gunFarki(r.firstSeen);
                 return (
-                  <tr key={`${r.kind}:${r.app}:${r.name}`} className="hover:bg-[var(--surface-2)]">
+                  <tr key={`${r.kind}:${r.app}:${r.name}`} className="hover:bg-[var(--bg-elevated)]">
                     <td className="px-3 py-2 font-mono">{r.name}</td>
                     <td className="px-3 py-2 text-[var(--text-muted)]">
                       {r.kind === 'app' ? 'uygulama' : 'sunucu'}

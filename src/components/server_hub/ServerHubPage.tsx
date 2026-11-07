@@ -61,7 +61,7 @@ const SM_BTN =
   'inline-flex items-center gap-1 h-7 px-2.5 text-[11px] font-medium leading-none rounded-lg border whitespace-nowrap disabled:opacity-40';
 const smBtn = (primary = false): React.CSSProperties =>
   primary
-    ? // --accent-fg tanimsiz: #fff koyu temada acik mavi uzerinde 1.45:1 idi (gercek Chrome, 2026-11-07).
+    ? // Eskiden tanimsiz --accent-fg -> #fff: koyu temada acik mavi uzerinde 1.45:1 idi (gercek Chrome, 2026-11-07).
       { background: 'var(--accent)', borderColor: 'var(--accent)', color: 'var(--text-on-accent)' }
     : {
         borderColor: 'var(--border)',

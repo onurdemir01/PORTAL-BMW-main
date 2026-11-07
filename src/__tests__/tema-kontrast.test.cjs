@@ -310,3 +310,63 @@ test('TK9 kapsam disi agaclar gercekten VAR (desen bayatlarsa bekci her seyi kap
     `kapsam ici dosya sayisi beklenenden az: ${KAPSAM_ICI.length}`,
   );
 });
+
+// ── TANIMSIZ TOKEN (2026-11-07) ──────────────────────────────────────────────────────────────
+// `var(--x)` tanimsizsa tarayici sessizce yedege (`var(--x, #fff)`) ya da devralinan / ilk
+// degere duser; hicbir test bunu gormez. `--accent-fg` aylarca tanimsiz kaldi: Crypto Hub,
+// Nginx Hub ve Server Hub birincil dugmelerinde #fff, koyu temada acik mavi aksan uzerinde
+// 1.45:1 (gercek Chrome). TK7 iki yerden kordu: yedekli yazimi (`var(--accent-fg, #fff)`)
+// tanimiyordu ve bu agaclar kapsam disiydi. Ayni sinif kapsam icinde de vardi:
+// `--surface-2` (seffaf tablo basligi), `--bg`, `--text`, `--bg-page` (koyu temada acik gri
+// sayfa).
+function kaynakDosyalari(dir, uzantilar, out = []) {
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (e.name === '__tests__' || e.name === 'node_modules') continue;
+    const p = path.join(dir, e.name);
+    if (e.isDirectory()) kaynakDosyalari(p, uzantilar, out);
+    else if (uzantilar.some((u) => e.name.endsWith(u)) && !/\.test\./.test(e.name)) out.push(p);
+  }
+  return out;
+}
+const KOD = kaynakDosyalari(SRC, ['.ts', '.tsx']).map((p) => [
+  path.relative(SRC, p).split(path.sep).join('/'),
+  fs.readFileSync(p, 'utf8'),
+]);
+// Tanim: herhangi bir .css'te `--x:`; kaynakta satir-ici CSS metni (`.sbs{--sbs-renk:...}`),
+// `style={{ '--x': ... }}` anahtari ya da Tailwind `[--x:...]`. Hepsi `--x` + `:` bicimidir;
+// `var(--x)` kullanimi ise `)` ya da `,` ile biter, tanim sanilmaz.
+const TANIMLI = new Set(
+  [
+    ...kaynakDosyalari(SRC, ['.css']).map((p) => fs.readFileSync(p, 'utf8')),
+    ...KOD.map(([, s]) => s),
+  ].flatMap((s) => [...s.matchAll(/(--[A-Za-z0-9-]+)['"\]]?\s*:/g)].map((m) => m[1])),
+);
+// `var(--yt-seri-${i})` gibi sablonla kurulan adlar onek olarak gecer; kontrol edilemez.
+const tokenKullanimlari = (s) =>
+  [...s.matchAll(/var\((--[A-Za-z0-9-]+)(?!\$\{)/g)].filter((m) => !m[1].endsWith('-'));
+
+test('TK10 kapsam icinde kullanilan her CSS token`i tanimli (yedekli yazim dahil)', () => {
+  const ihlal = [];
+  let sayi = 0;
+  for (const [f, s] of KOD) {
+    if (KAPSAM_DISI.test(f)) continue;
+    for (const m of tokenKullanimlari(s)) {
+      sayi++;
+      if (!TANIMLI.has(m[1])) ihlal.push(`${f}:${satirNo(s, m.index)} ${m[1]}`);
+    }
+  }
+  // Bos taramada (desen bayatlarsa) "ihlal yok" yesil gorunmesin.
+  assert.ok(sayi > 1000, `kapsam icinde yalniz ${sayi} var(--...) kullanimi bulundu`);
+  assert.ok(TANIMLI.has('--text-on-accent') && TANIMLI.has('--sbs-renk'));
+  assert.deepEqual(ihlal, []);
+});
+
+test('TK10 `--accent-fg` tanimli ve `--text-on-accent`in takma adi (kapsam disi agaclar onu kullanir)', () => {
+  // Kapsam disi agaclar bu adi `var(--accent-fg, #fff)` diye kullanmaya devam edebilir; o
+  // satirlar bekcilenmez (KAPSAM yorumu), dogrulugu buradan gelir: ad tanimli ve koyu tema
+  // onu AYRICA tanimlamaz, yani `--text-on-accent` / `--accent` cifti (TK1) neyse o.
+  assert.equal(ACIK['--accent-fg'], 'var(--text-on-accent)');
+  assert.ok(!('--accent-fg' in tokenlar(blok(':root[data-theme="dark"] {'))));
+  const kullanan = KOD.filter(([f, s]) => KAPSAM_DISI.test(f) && /var\(--accent-fg\b/.test(s));
+  assert.ok(kullanan.length > 0, 'kapsam disinda --accent-fg kullanan kalmadiysa takma ad silinebilir');
+});

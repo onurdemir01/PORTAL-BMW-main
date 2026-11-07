@@ -572,7 +572,7 @@ function Pivot({ source, sum }: { source: string; sum: EnvanterSummary }) {
                                 // Isi haritasi: karekok olcekleme, tek bir buyuk hucrenin
                                 // digerlerini gorunmez kilmasini onler.
                                 backgroundColor: `color-mix(in srgb, var(--accent) ${Math.round(Math.sqrt(n / max) * 78) + 8}%, transparent)`,
-                                color: n / max > 0.45 ? '#fff' : 'var(--text)',
+                                color: n / max > 0.45 ? 'var(--text-on-accent)' : 'var(--text-primary)',
                               }}
                             >
                               {nf(n)}

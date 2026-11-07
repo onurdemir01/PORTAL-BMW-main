@@ -2,7 +2,7 @@
 //
 // Ton = anlam; her tonun dort alani var: renk (yalniz nokta / ikon / kenar), zemin, METIN, kenar.
 // Metin HER ZAMAN `metin` alanindan: --status-warning / --status-danger beyaz zeminde AA altinda
-// (tema-kontrast TK2), metin icin -text tokenlari. Tanimsiz tokenlar (--accent-fg, --status-ok)
+// (tema-kontrast TK2), metin icin -text tokenlari. Tanimsiz tokenlar (o zaman --accent-fg, --status-ok)
 // ve sabit hex yok: koyu temada "Retirement'i baslat" 1.45:1'e dusuyordu.
 import type React from 'react';
 import type { RtTargetStatus } from '@/api/retirementApi';

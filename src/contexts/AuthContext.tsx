@@ -473,7 +473,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Sunucu (henuz) yanit vermiyor: buyuk olasilikla release. Oturum DB'de duruyor;
     // login ekranina DUSURMEDEN beklenir, sunucu gelince kaldigi yerden devam eder.
     return (
-      <div className="min-h-screen flex items-center justify-center px-6" style={{ background: 'var(--bg-page, #f4f4f4)' }}>
+      <div className="min-h-screen flex items-center justify-center px-6" style={{ background: 'var(--bg-base)' }}>
         <div className="max-w-md w-full rounded-2xl border px-6 py-5 text-center" style={{ borderColor: 'var(--border-subtle, #ddd)', background: 'var(--bg-surface, #fff)' }}>
           <div className="text-base font-semibold" style={{ color: 'var(--text-primary, #111)' }}>Portal şu an yanıt vermiyor</div>
           <p className="mt-1.5 text-sm" style={{ color: 'var(--text-secondary, #444)' }}>
