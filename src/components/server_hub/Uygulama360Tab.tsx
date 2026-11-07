@@ -25,6 +25,7 @@ import { ETIKET_SEVIYE, KONTROL_DURUM, konuMetni, retirementMetni } from './reti
 import SunucuPaneli from './SunucuPaneli';
 import { useSekmeGorunur } from './sekmeGorunurlugu';
 import { useOrtakGorunumler } from './ortakGorunumler';
+import Rozet from './DurumRozeti';
 import {
   DEPLOYMENT_METNI,
   TRAFIK_METNI,
@@ -36,32 +37,11 @@ import {
   u360Say,
   u360Suz,
   type U360Hizli,
-  type U360Ton,
 } from './uygulama360';
 
-const TON_STIL: Record<U360Ton, React.CSSProperties> = {
-  iyi: {
-    background: 'var(--status-success-bg)',
-    color: 'color-mix(in srgb, var(--status-success) 55%, var(--text-primary))',
-  },
-  uyari: { background: 'var(--status-warning-bg)', color: 'var(--status-warning-text)' },
-  kotu: { background: 'var(--status-danger-bg)', color: 'var(--status-danger-text)' },
-  notr: { background: 'var(--bg-elevated)', color: 'var(--text-secondary)' },
-};
 const MUTED: React.CSSProperties = { color: 'var(--text-muted)' };
 const AYRINTILI_ANAHTAR = 'uygulama-360:ayrintili';
 
-function Rozet({ metin, ton, title }: { metin: string; ton: U360Ton; title?: string }) {
-  return (
-    <span
-      title={title}
-      className="inline-flex items-center rounded-full px-2 text-[10px] font-semibold whitespace-nowrap"
-      style={TON_STIL[ton]}
-    >
-      {metin}
-    </span>
-  );
-}
 const Bos = () => <span style={MUTED}>—</span>;
 const riskTitle = (u: Sh360Ozet) =>
   `auto-start uyumsuz ${u.autostartUyumsuz} · kopyalardan farklı ${u.kopyaTutarsiz} · prod’da yok ${u.kalinti} · Retirement çelişkisi ${u.celiski}`;

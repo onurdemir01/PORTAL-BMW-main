@@ -6,6 +6,8 @@
 //   ST3 ortak görünüm: liste sunucudan, "Ortak kaydet" bu ekranın adıyla gider, yanıt listeyi günceller
 //   ST4 hazır görünüm "Bayat tarama": taze olmayan sunucular ve kendi kolonları
 //   ST5 tanımsız --accent-fg Server Hub'da yok (koyu temada birincil düğme 1.45:1 idi)
+//   ST6 Ayrıntı penceresi "Özet" sekmesiyle açılır: sunucu paneli okunmuş ayrıntıyla (ikinci istek yok),
+//       "Yeniden tara" pencerenin taramasını kullanır, etiket verisi Özet açıkken iner
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { render } from '@/test/test-utils';
@@ -32,7 +34,24 @@ vi.mock('@/api/serverHubApi', async (orig) => ({
   serverHubApi: m,
 }));
 vi.mock('@/components/server_hub/SunucuPaneli', () => ({
-  default: ({ host }: { host: string }) => <div data-testid="panel-taklit">panel {host}</div>,
+  default: ({
+    host,
+    detay,
+    onTara,
+  }: {
+    host: string;
+    detay?: unknown;
+    onTara?: (h: string) => void;
+  }) => (
+    <div data-testid="panel-taklit">
+      panel {host} {detay ? 'detaylı' : 'kendi okur'}
+      {onTara && (
+        <button type="button" onClick={() => onTara(host)}>
+          panel tara
+        </button>
+      )}
+    </div>
+  ),
 }));
 
 import fs from 'node:fs';
@@ -108,7 +127,11 @@ describe('Sunucular listesi (EarTablo)', () => {
     const d = await screen.findByRole('button', { name: 'GBCJAP02 ayrıntısı' });
     expect(m.retireEtiketleri).not.toHaveBeenCalled();
     fireEvent.click(d);
-    expect(await screen.findByTestId('panel-taklit')).toHaveTextContent('panel GBCJAP02');
+    const panel = await screen.findByTestId('panel-taklit');
+    expect(panel).toHaveTextContent('panel GBCJAP02 kendi okur');
+    // Satır içi panelin "Yeniden tara"sı satırdaki tarama isteğini kullanır.
+    fireEvent.click(within(panel).getByRole('button', { name: 'panel tara' }));
+    await waitFor(() => expect(m.scan).toHaveBeenCalledWith(['GBCJAP02']));
     await waitFor(() => expect(m.retireEtiketleri).toHaveBeenCalledTimes(1));
     fireEvent.click(d);
     expect(screen.queryByTestId('panel-taklit')).toBeNull();
@@ -180,5 +203,36 @@ describe('Sunucular listesi (EarTablo)', () => {
       .filter((f) => /\.tsx?$/.test(f))
       .filter((f) => /var\(--accent-fg/.test(fs.readFileSync(path.join(kok, f), 'utf8')));
     expect(kirli).toEqual([]);
+  });
+
+  it('ST6 Ayrıntı penceresi Özet sekmesiyle açılır', async () => {
+    m.host.mockResolvedValue({
+      ok: true,
+      host: {
+        host: 'GBCJAT01',
+        scanDate: '2026-11-07',
+        products: ['JBOSS7'],
+        cpuS: null,
+        findings: [],
+        jvms: [],
+        vhosts: [],
+        init: [],
+        ips: [],
+        web: [],
+        jboss: [],
+      },
+    });
+    render(<ServerHubPage />);
+    const satir = (await screen.findByRole('button', { name: 'GBCJAT01 ayrıntısı' })).closest(
+      'tr',
+    )!;
+    fireEvent.click(within(satir).getByRole('button', { name: 'Ayrıntı' }));
+    const panel = await screen.findByTestId('panel-taklit');
+    expect(panel).toHaveTextContent('panel GBCJAT01 detaylı');
+    expect(screen.getByRole('button', { name: 'Özet' })).toBeInTheDocument();
+    await waitFor(() => expect(m.retireEtiketleri).toHaveBeenCalledTimes(1));
+    fireEvent.click(within(panel).getByRole('button', { name: 'panel tara' }));
+    await waitFor(() => expect(m.scan).toHaveBeenCalledWith(['GBCJAT01']));
+    expect(m.host).toHaveBeenCalledTimes(1);
   });
 });

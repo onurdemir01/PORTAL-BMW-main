@@ -16,6 +16,9 @@
 //   RA8 Faz 2: zincir kartında deployment satırı (kontrol kapalı / JVM kapalı / yok / FAILED / ölçülemedi)
 //   RA9 etiket tablosu: kural sözlüğü (ad + koşul + şu anki seviye), hızlı süzgeç (yanlış alarm varsayılan
 //       gizli, sayılar), sütun süzgeci dropdown'u (Etiket / Kural / Zincir), kopya tablosunda kural adı
+//   RA12 sunucu paneli özeti (2026-11-07): beş kart, kart kendi bölümünü açar; sonraki adım (yeniden tara, elle
+//       kontrol, etiketler); elle kapatılan bölüm izlenir; zincir kartı önce rozet, ayrıntı kapalı; detay
+//       verilince ayrıntı yeniden istenmez
 //   RA11 Bulgular tablosu EarTablo (2026-11-07): üst seçiciler ön süzgeç, sütun süzgeci üstüne; hazır görünüm;
 //       CSV süzülenlerin tamamı; İşlem düğmesi satırı açmaz, tek (host, jvm) için onay ister
 //   RA10 çapraz kontrol (2026-11-06): çok kurallı etiket tek kurala göre süzülür (değer listesi her kuralı
@@ -1083,5 +1086,55 @@ describe('RA11 Bulgular tablosu (EarTablo)', () => {
       'false',
     );
     onay.mockRestore();
+  });
+});
+
+describe('RA12 sunucu paneli özeti', () => {
+  it('kart bölümünü açar; sonraki adım; zincir kartı rozet + ayrıntı', async () => {
+    m.host.mockResolvedValue({ ok: true, host: HOST() });
+    const onTara = vi.fn();
+    render(
+      <SunucuPaneli host={APP} retire={sonuc([etiket()])} onEtiketDegisti={vi.fn()} onTara={onTara} />,
+    );
+    const ozet = await screen.findByTestId('ozet-kartlari');
+    expect(within(ozet).getAllByRole('button')).toHaveLength(5);
+    expect(screen.getByTestId('bolum-bulgular')).not.toHaveAttribute('open');
+    fireEvent.click(within(ozet).getByRole('button', { name: /^Bulgular: \d+ kritik/ }));
+    expect(screen.getByTestId('bolum-bulgular')).toHaveAttribute('open');
+    expect(screen.getByTestId('bolum-ne-yapmali')).toHaveAttribute('open');
+    expect(screen.getByTestId('bolum-uygulamalar')).not.toHaveAttribute('open');
+    fireEvent.click(within(ozet).getByRole('button', { name: 'Retirement etiketi: kesin · 1' }));
+    expect(screen.getByTestId('bolum-etiketler')).toHaveAttribute('open');
+    fireEvent.click(within(ozet).getByRole('button', { name: /^Auto-start uyumsuz: / }));
+    expect(screen.getByTestId('bolum-uygulamalar')).toHaveAttribute('open');
+    const sa = screen.getByTestId('sonraki-adim');
+    fireEvent.click(within(sa).getByRole('button', { name: 'Yeniden tara' }));
+    expect(onTara).toHaveBeenCalledWith(APP);
+    fireEvent.click(within(sa).getByRole('button', { name: /^Elle kontrol et \(\d+ adım\)/ }));
+    expect(screen.getByTestId('bolum-dogrulama')).toHaveAttribute('open');
+    // Elle kapatılan bölüm izlenir; kart yeniden açar.
+    const bul = screen.getByTestId('bolum-bulgular') as HTMLDetailsElement;
+    bul.open = false;
+    fireEvent(bul, new Event('toggle'));
+    expect(bul).not.toHaveAttribute('open');
+    fireEvent.click(within(ozet).getByRole('button', { name: /^Bulgular: / }));
+    expect(bul).toHaveAttribute('open');
+    // Zincir kartı: ilk satır rozetler (kapalı + auto-start açık = uyumsuz), ayrıntı kapalı details içinde.
+    const kart = screen.getAllByTestId('zincir-karti')[0];
+    expect(within(kart).getByText('kapalı')).toBeInTheDocument();
+    expect(within(kart).getByText('auto-start açık')).toBeInTheDocument();
+    expect(kart.querySelector('details')).not.toHaveAttribute('open');
+  });
+
+  it('detay verilirse ayrıntıyı yeniden istemez; etiketler yüklenmeden "yükleniyor"', async () => {
+    render(<SunucuPaneli host={APP} detay={HOST()} retire={null} onEtiketDegisti={vi.fn()} />);
+    expect(screen.getByTestId('sunucu-paneli')).toBeInTheDocument();
+    // Yükleme ertelenen effect'te başlar (useAsyncEffect): bir tur beklemeden "istek yok" ölçülemez.
+    await new Promise((r) => setTimeout(r, 30));
+    expect(m.host).not.toHaveBeenCalled();
+    expect(
+      within(screen.getByTestId('ozet-kartlari')).getByRole('button', { name: 'Retirement etiketi: yükleniyor' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId('sonraki-adim')?.textContent || '').not.toContain('Yeniden tara');
   });
 });

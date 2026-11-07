@@ -2654,7 +2654,12 @@ function HostsTab({
           acilir={(h) => (
             <PanelAcildi onAcildi={() => setPanelAcildi(true)}>
               <div className="sticky left-3 py-3" style={{ width: 'calc(100cqw - 1.5rem)' }}>
-                <SunucuPaneli host={h.host} retire={retire} onEtiketDegisti={() => retireYukle(false)} />
+                <SunucuPaneli
+                  host={h.host}
+                  retire={retire}
+                  onEtiketDegisti={() => retireYukle(false)}
+                  onTara={setTaraIstegi}
+                />
               </div>
             </PanelAcildi>
           )}
@@ -2695,7 +2700,20 @@ function HostModal({
   // v3 alanlari (runningKnown, runningSrc) yerel tipte ve istege bagli; API tipi aynen atanir.
   const [d, setD] = useState<ShHostDetailV3 | null>(null);
   const [err, setErr] = useState('');
-  const [tab, setTab] = useState<'findings' | 'jvm' | 'web' | 'init' | 'ip'>('findings');
+  // "Ozet" (2026-11-07) Bulgular'daki sunucu panelinin aynisidir: tek kaynak, iki giris.
+  const [tab, setTab] = useState<'ozet' | 'findings' | 'jvm' | 'web' | 'init' | 'ip'>('ozet');
+  const [retire, setRetire] = useState<ShRetireSonuc | null>(null);
+  const retireYukle = useCallback(async (fresh = false) => {
+    try {
+      const r = await serverHubApi.retireEtiketleri(fresh);
+      if (r.ok) setRetire(r);
+    } catch {
+      /* panel "Etiketler yukleniyor" der; pencerenin oteki sekmeleri etkilenmez */
+    }
+  }, []);
+  useAsyncEffect(async () => {
+    if (tab === 'ozet' && !retire) await retireYukle();
+  }, [tab, retire, retireYukle]);
   const [fix, setFix] = useState<{
     f: ShFinding;
     phase: 'ask' | 'planning' | 'planned' | 'applying';
@@ -2814,6 +2832,7 @@ function HostModal({
   };
 
   const tabs = [
+    { id: 'ozet', label: 'Özet' },
     { id: 'findings', label: `Bulgular${d ? ` · ${d.findings.length}` : ''}` },
     { id: 'jvm', label: `JVM${d ? ` · ${d.jvms.length}` : ''}` },
     { id: 'web', label: `Web / vhost${d ? ` · ${d.vhosts.length}` : ''}` },
@@ -2881,6 +2900,15 @@ function HostModal({
             ))}
           </div>
 
+          {tab === 'ozet' && (
+            <SunucuPaneli
+              host={host}
+              detay={d as unknown as ShHostDetail}
+              retire={retire}
+              onEtiketDegisti={() => void retireYukle(true)}
+              onTara={() => onScan()}
+            />
+          )}
           {tab === 'findings' &&
             (d.findings.length === 0 ? (
               <div
