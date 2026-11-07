@@ -6,7 +6,7 @@
 // inceleme eslenik durumuna gore inceleme"; "Manuel kontrol de gerekecek".
 //
 // GIRDI: assess() sunuculari (h.retireAdaylari bulgudan ayri uretilir), Admin kural seviyeleri
-// (ayarlar.etiketler: R1..R5 -> KESIN | SUPHELI | KAPALI) ve kayitli manuel kontroller.
+// (ayarlar.etiketler: R1..R12 -> KESIN | SUPHELI | KAPALI) ve kayitli manuel kontroller.
 //
 // KONU + ORTAM BASINA TEK ETIKET. Konu:
 //   JVM   ad + JBoss nesli (7 ve 8 kopyasi ayri: 8'e tasinmis uygulamanin 7 kopyasi tam da retire
@@ -44,6 +44,8 @@ const nesilOfKok = (kok) =>
       ? '7'
       : '?';
 const iz = (v) => crypto.createHash('sha256').update(JSON.stringify(v)).digest('hex').slice(0, 32);
+// R10 R2'den sonra gelir (dizgi siralamasi 'R10' < 'R2' derdi).
+const kuralSirasi = (a, b) => Number(String(a).slice(1)) - Number(String(b).slice(1));
 
 /** Konu anahtari (manuel kontrolun anahtari da budur). */
 function anahtarOf(a, ortam) {
@@ -72,8 +74,10 @@ function jvmKopyasi(h, j, adaylar) {
       log: (m.v && m.v.accessLog) || '',
       tur: m.kind || null,
     })),
-    kurallar: adaylar.map((a) => a.kural).sort(),
+    kurallar: adaylar.map((a) => a.kural).sort(kuralSirasi),
     engel: (adaylar.find((a) => a.engel) || {}).engel || null,
+    // Retirement baglami (capraz.cjs): bu kopyanin acik / kapatilmis Retirement hedefleri.
+    retirement: j.retirement || [],
   };
 }
 
@@ -96,7 +100,7 @@ function earKopyasi(h, u, adaylar, jvmAdIndeksi) {
       };
     }),
     taranma: ear.taranma || null,
-    kurallar: adaylar.map((a) => a.kural).sort(),
+    kurallar: adaylar.map((a) => a.kural).sort(kuralSirasi),
   };
 }
 
@@ -164,9 +168,9 @@ function kopyalariTopla(konu, ix) {
 function zincirNedenleri(konu, kopyalar, kurallar) {
   const n = [];
   if (konu.tur === 'JVM') {
-    // R1 / R2 "JVM kapali" iddiasidir: calisan / olculemeyen kopya onu bozar. R6 (Faz 2) calisan JVM
-    // hakkindadir; orada calismak beklenen durumdur.
-    const kapaliIddiasi = kurallar.includes('R1') || kurallar.includes('R2');
+    // R1 / R2 / R8 "JVM kapali" iddiasidir: calisan / olculemeyen kopya onu bozar. R6 (Faz 2) ve R7
+    // calisan JVM hakkindadir; orada calismak beklenen durumdur.
+    const kapaliIddiasi = kurallar.includes('R1') || kurallar.includes('R2') || kurallar.includes('R8');
     for (const k of kopyalar) {
       if (kapaliIddiasi && k.calisiyor === null) n.push(`${k.host}: çalışma durumu ölçülemedi`);
       else if (kapaliIddiasi && k.calisiyor) n.push(`${k.host}: eşlenik kopya çalışıyor`);
@@ -193,6 +197,13 @@ function zincirNedenleri(konu, kopyalar, kurallar) {
     }
   }
   return [...new Set(n)];
+}
+
+/** Kopyalarin Retirement hedefleri (kayit, hedef, durum, host). Hedef (sunucu, uygulama, nesil) tek kopyaya duser. */
+function retirementOf(kopyalar) {
+  return kopyalar
+    .flatMap((k) => (k.retirement || []).map((r) => ({ ...r, host: k.host })))
+    .sort((a, b) => a.kayit - b.kayit || a.hedef - b.hedef);
 }
 
 /** Kanit imzasi: kopyalarin karar veren alanlari + kurallar (sayilar ve tarihler GIRMEZ). */
@@ -246,7 +257,7 @@ function etiketle({ hosts, kurallar = {}, kontroller = new Map() }) {
   }
   const etiketler = [];
   for (const konu of konular.values()) {
-    const kl = [...konu.kurallar].sort();
+    const kl = [...konu.kurallar].sort(kuralSirasi);
     const ham = kl.reduce((m, k) => (SIRA[seviyeOf(k)] > SIRA[m] ? seviyeOf(k) : m), 'KAPALI');
     const kopyalar = kopyalariTopla(konu, ix);
     const nedenler = zincirNedenleri(konu, kopyalar, kl);
@@ -281,6 +292,8 @@ function etiketle({ hosts, kurallar = {}, kontroller = new Map() }) {
       notlar: [...new Set(notlar)],
       tier: konu.tur === 'JVM' ? [...new Set(kopyalar.map((k) => k.tier).filter(Boolean))] : [],
       hostlar: [...new Set(kopyalar.map((k) => k.host))],
+      // Retirement baglami: kopyalarin hedefleri (hedef basina bir kez). Liste ozetinde de kalir.
+      retirement: retirementOf(kopyalar),
       kopyalar,
       imza,
       kontrol: kayit,

@@ -48,7 +48,11 @@ export interface EarKolon<T> {
   /** Varsayılan görünür mü (kolon seçici). */
   varsayilan?: boolean;
   hucre: (r: T) => React.ReactNode;
-  /** CSV / yerel süzgeç / yerel sıralama için ham değer. */
+  /**
+   * CSV / yerel süzgeç / yerel sıralama için ham değer. Dizi dönerse kolon ÇOK DEĞERLİDİR (yerel kip):
+   * süzgeç öğelerden biri uyarsa satırı alır, değer listesi her öğeyi ayrı sayar; arama, sıralama ve
+   * CSV birleşik metni (" + ") kullanır.
+   */
   deger?: (r: T) => unknown;
 }
 export interface Sayfa<T> {
@@ -121,8 +125,18 @@ export function suzgecMetni(s: Suzgec, etiket?: (d: string) => string): string {
   return s.op;
 }
 
+/** Çok değerli kolonun düz hâli (arama, sıralama, CSV): öğeler " + " ile; boş dizi boş değerdir. */
+export const duzDeger = (v: unknown): unknown =>
+  Array.isArray(v) ? (v.length ? v.map((x) => String(x ?? '')).join(' + ') : null) : v;
+
 /** Yerel süzgeç: sunucudaki işleçlerle aynı anlam. */
 export function yerelUyar(deger: unknown, s: Suzgec, simdi = Date.now()): boolean {
+  if (Array.isArray(deger)) {
+    // Çok değerli kolon: boş dizi boş değerdir; aksi halde öğelerden biri uyarsa satır uyar.
+    if (!deger.length) return yerelUyar(null, s, simdi);
+    if (s.op === 'bos') return false;
+    return deger.some((x) => yerelUyar(x, s, simdi));
+  }
   const bos = deger == null || deger === '';
   const metin = bos ? '' : String(deger);
   switch (s.op) {
@@ -503,6 +517,7 @@ export function EarTablo<T>({
   // YEREL KİP: aynı süzgeç / sıralama anlamı tarayıcıda.
   const kolonOf = (a: string) => kolonlar.find((k) => k.anahtar === a);
   const hamDeger = (k: EarKolon<T> | undefined, r: T) => (k && k.deger ? k.deger(r) : undefined);
+  const duz = (k: EarKolon<T> | undefined, r: T) => duzDeger(hamDeger(k, r));
   // Yerel liste birkaç bin satırı geçmez (sunucular, koşular): her çizimde süzmek yeterince hızlı.
   const yerel = (() => {
     if (!yerelSatirlar) return null;
@@ -512,7 +527,7 @@ export function EarTablo<T>({
         f.every((x) => yerelUyar(hamDeger(kolonOf(x.k), r), x)) &&
         (!qn ||
           kolonlar.some((k) =>
-            String(hamDeger(k, r) ?? '')
+            String(duz(k, r) ?? '')
               .toLowerCase()
               .includes(qn),
           )),
@@ -521,7 +536,7 @@ export function EarTablo<T>({
       const [a, yon] = s.split(':');
       const k = kolonOf(a);
       l = [...l].sort(
-        (x, y) => karsilastir(hamDeger(k, x), hamDeger(k, y)) * (yon === 'desc' ? -1 : 1),
+        (x, y) => karsilastir(duz(k, x), duz(k, y)) * (yon === 'desc' ? -1 : 1),
       );
     }
     return l;
@@ -544,9 +559,13 @@ export function EarTablo<T>({
         for (const r of yerelSatirlar) {
           if (!digerleri.every((x) => yerelUyar(hamDeger(kolonOf(x.k), r), x))) continue;
           const v = hamDeger(k, r);
-          const d = v == null || v === '' ? null : String(v);
-          if (ara && !(d ?? '').toLowerCase().includes(ara.toLowerCase())) continue;
-          say.set(d, (say.get(d) || 0) + 1);
+          // Çok değerli kolonda her öğe ayrı değerdir; satır aynı öğeyi bir kez sayar.
+          const ogeler = Array.isArray(v) ? (v.length ? [...new Set(v)] : [null]) : [v];
+          for (const o of ogeler) {
+            const d = o == null || o === '' ? null : String(o);
+            if (ara && !(d ?? '').toLowerCase().includes(ara.toLowerCase())) continue;
+            say.set(d, (say.get(d) || 0) + 1);
+          }
         }
         const l = [...say.entries()]
           .map(([deger, sayi]) => ({ deger, sayi }))
@@ -574,7 +593,7 @@ export function EarTablo<T>({
     downloadCsv(
       csvAdi || kimlik,
       gorunenKolonlar.map((k) => k.baslik),
-      l.map((r) => gorunenKolonlar.map((k) => formulGuvenli(hamDeger(k, r)))),
+      l.map((r) => gorunenKolonlar.map((k) => formulGuvenli(duz(k, r)))),
     );
   };
 

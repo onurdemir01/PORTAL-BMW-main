@@ -474,9 +474,23 @@ export interface ShEtiketKurali {
   aciklama: string;
   dogrulama: ShDogrulama | null;
 }
+/** Retirement baglami (2026-11-06): kopyanin Retirement hedefi; durum retirement_targets.status. */
+export interface ShRetirementBaglam {
+  kayit: number;
+  hedef: number;
+  durum: string;
+  host?: string;
+}
+/** Capraz kontrol kaynaklari: okunamayan kaynaga dayanan bulgu / etiket uretilmez. */
+export interface ShCaprazDurumu {
+  ocp: { okunamadi: boolean; hata?: string; uygulama: number };
+  kullanim: { okunamadi: boolean; hata?: string; olcum: number };
+  retirement: { okunamadi: boolean; hata?: string; hedef: number };
+}
 export interface ShEtiketKopyasi {
   host: string;
   kurallar: string[];
+  retirement?: ShRetirementBaglam[];
   // JVM
   gen?: number;
   calisiyor?: boolean | null;
@@ -519,6 +533,8 @@ export interface ShRetireEtiket {
   kontrol: { sonuc: 'DOGRULANDI' | 'YANLIS_ALARM'; aciklama: string; isaretleyen: string | null; zaman: string | null } | null;
   durum: ShKontrolDurum;
   retirementHazir: boolean;
+  /** Kopyalarin Retirement hedefleri (hedef basina bir kez); eski sunucuda yok. */
+  retirement?: ShRetirementBaglam[];
 }
 /** Liste ogesi: kopyalar (zincir) TASINMAZ, sayisi tasinir; ayrinti retireEtiketAyrinti ile tam gelir. */
 export type ShRetireEtiketOzet = Omit<ShRetireEtiket, 'kopyalar'> & { kopyaSayisi: number; kopyalar?: undefined };
@@ -530,6 +546,7 @@ export interface ShRetireSonuc {
   tableMissing?: boolean;
   latestScan?: string | null;
   ear?: { okunamadi: boolean; hata?: string; hostSayisi: number } | null;
+  capraz?: ShCaprazDurumu | null;
   kontrolOkunamadi?: boolean;
   ayarOkunamadi?: boolean;
   kurallar: ShEtiketKurali[];

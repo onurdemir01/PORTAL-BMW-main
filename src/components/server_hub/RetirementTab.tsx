@@ -20,7 +20,7 @@ import { retirementAdimi } from './retirementAdim';
 import OnKontrolListesi, { onKontrolHazir, OnKontrolGorunumu, geriAlHazir, geriAlinabilir, onKontrolSuruyor } from './RetirementOnKontrol';
 import { stopTrafikOzeti, stopOnayAcikMi, type TrafikIsDurumu } from './retirementTrafik';
 import { WebKaynak, WebVhostListesi, webKey } from './RetirementWebSatir';
-import { ACIK_ZEMIN, BTN_BASARI, BTN_BASARI_IKINCIL, BTN_TEHLIKE, BTN_UYARI, LINK, SECILI_ZEMIN, SM_BTN, TBL_BTN, TON, WEB_DURUM, smBtn, type Ton } from './retirementStil';
+import { ACIK_ZEMIN, BTN_BASARI, BTN_BASARI_IKINCIL, BTN_TEHLIKE, BTN_UYARI, HEDEF_DURUM, LINK, SECILI_ZEMIN, SM_BTN, TBL_BTN, TON, WEB_DURUM, smBtn, type Ton } from './retirementStil';
 import { Cip, Hap, OzetHucre, Sayac, SonucMetni, TabloIskelet, UyariKutusu, type Kolon } from './RetirementUi';
 import { InPlaceUyari, inPlaceAsamasi, inPlaceBilgisi, inPlaceHaritasi, inPlaceIpucu, inPlaceSatirNotu, type InPlaceHarita } from './RetirementInPlace';
 import { gecisAdimi, hedefteCanliIs, sonrakiAdim, webSonuclari } from './retirementSatir';
@@ -219,18 +219,8 @@ const INPUT = 'w-full px-2.5 py-1.5 text-xs border rounded-lg';
 const inputStyle: React.CSSProperties = { borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)' };
 
 // Durum -> ton (retirementStil.ts TON); metin rengi tondan gelir (Hap). Pill kalkti (2026-10-26).
-const TSTATUS: Record<RtTargetStatus, { label: string; ton: Ton }> = {
-  pending: { label: 'bekliyor', ton: 'notr' }, planning: { label: 'ön kontrol sürüyor', ton: 'bilgi' }, planned: { label: 'onay bekliyor', ton: 'aksan' },
-  stop_scheduled: { label: 'OCO penceresine zamanlandı', ton: 'bilgi' },
-  stopping: { label: 'durduruluyor', ton: 'uyari' }, stopped: { label: 'DURDURULDU', ton: 'basari' },
-  deleting: { label: 'siliniyor', ton: 'uyari' }, deleted: { label: 'SİLİNDİ', ton: 'notr' },
-  // GERI ALMA (2026-10-07). 'active' YESIL ve 'DURDURULDU'dan AYRI okunmali: ikisi de
-  // "basarili" ama biri uygulamanin kapali, oteki ACIK oldugu anlamina geliyor (hapta ikon).
-  rolling_back: { label: 'geri alınıyor', ton: 'uyari' },
-  active: { label: 'GERİ AKTİF', ton: 'basari' },
-  rollback_failed: { label: 'geri alma BAŞARISIZ', ton: 'hata' },
-  failed: { label: 'başarısız', ton: 'hata' }, skipped: { label: 'atlandı', ton: 'notr' },
-};
+// Sozluk retirementStil.ts'te (Server Hub etiketlerindeki Retirement baglami da kullanir).
+const TSTATUS = HEDEF_DURUM;
 const RSTATUS: Record<string, { label: string; ton: Ton }> = {
   open: { label: 'açık', ton: 'aksan' }, stopping: { label: 'stop sürüyor', ton: 'uyari' }, stopped: { label: 'durduruldu — silme bekliyor', ton: 'basari' },
   deleted: { label: 'silindi', ton: 'notr' }, cancelled: { label: 'iptal', ton: 'notr' },

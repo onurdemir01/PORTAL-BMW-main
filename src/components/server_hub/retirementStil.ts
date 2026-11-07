@@ -5,6 +5,7 @@
 // (tema-kontrast TK2), metin icin -text tokenlari. Tanimsiz tokenlar (--accent-fg, --status-ok)
 // ve sabit hex yok: koyu temada "Retirement'i baslat" 1.45:1'e dusuyordu.
 import type React from 'react';
+import type { RtTargetStatus } from '@/api/retirementApi';
 
 export type Ton = 'notr' | 'bilgi' | 'aksan' | 'uyari' | 'basari' | 'hata';
 const kenar = (v: string) => `color-mix(in srgb, ${v} 32%, transparent)`;
@@ -29,6 +30,22 @@ export const WEB_DURUM: Record<string, { etiket: string; ton: Ton; oncelik: numb
   skip: { etiket: 'yapılacak şey yoktu', ton: 'notr', oncelik: 2 },
   ok: { etiket: 'kaldırıldı', ton: 'basari', oncelik: 1 },
   restored: { etiket: 'geri açıldı', ton: 'basari', oncelik: 1 },
+};
+/**
+ * Retirement HEDEF durumu -> etiket + ton. Retirement listesi ve Server Hub etiketleri (Retirement
+ * baglami, 2026-11-06) ayni sozlugu kullanir. 'active' YESIL ve 'DURDURULDU'dan AYRI okunmali: ikisi
+ * de "basarili" ama biri uygulamanin kapali, oteki ACIK oldugu anlamina geliyor (hapta ikon).
+ */
+export const HEDEF_DURUM: Record<RtTargetStatus, { label: string; ton: Ton }> = {
+  pending: { label: 'bekliyor', ton: 'notr' }, planning: { label: 'ön kontrol sürüyor', ton: 'bilgi' }, planned: { label: 'onay bekliyor', ton: 'aksan' },
+  stop_scheduled: { label: 'OCO penceresine zamanlandı', ton: 'bilgi' },
+  stopping: { label: 'durduruluyor', ton: 'uyari' }, stopped: { label: 'DURDURULDU', ton: 'basari' },
+  deleting: { label: 'siliniyor', ton: 'uyari' }, deleted: { label: 'SİLİNDİ', ton: 'notr' },
+  // GERI ALMA (2026-10-07).
+  rolling_back: { label: 'geri alınıyor', ton: 'uyari' },
+  active: { label: 'GERİ AKTİF', ton: 'basari' },
+  rollback_failed: { label: 'geri alma BAŞARISIZ', ton: 'hata' },
+  failed: { label: 'başarısız', ton: 'hata' }, skipped: { label: 'atlandı', ton: 'notr' },
 };
 /** AWX isinin ekran durumu (is ciktisi listesi). */
 export const IS_DURUM: Record<string, { etiket: string; ton: Ton; canli?: boolean }> = {

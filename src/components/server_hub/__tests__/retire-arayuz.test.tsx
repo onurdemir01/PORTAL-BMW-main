@@ -14,8 +14,11 @@
 //   RA6 Kurallar: etiket seviyesi gerekçesiz kaydedilmez; yok sayma listesi kaydı
 //   RA7 Retirement: etiketten gelen öneri kayıt formunu uygulama adı ve notla açar, keşif başlar
 //   RA8 Faz 2: zincir kartında deployment satırı (kontrol kapalı / JVM kapalı / yok / FAILED / ölçülemedi)
-//   RA9 etiket tablosu: R1–R6 sözlüğü (ad + koşul + şu anki seviye), hızlı süzgeç (yanlış alarm varsayılan
+//   RA9 etiket tablosu: kural sözlüğü (ad + koşul + şu anki seviye), hızlı süzgeç (yanlış alarm varsayılan
 //       gizli, sayılar), sütun süzgeci dropdown'u (Etiket / Kural / Zincir), kopya tablosunda kural adı
+//   RA10 çapraz kontrol (2026-11-06): çok kurallı etiket tek kurala göre süzülür (değer listesi her kuralı
+//       ayrı sayar, CSV birleşik metin); Retirement kolonu (#kayıt · hedef durumu) süzülür; yeni hızlı
+//       çipler (auto-start uyumsuz, çapraz kontrol, Retirement kaydı var); okunamayan çapraz kaynak bandı
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { render } from '@/test/test-utils';
@@ -39,6 +42,11 @@ const m = vi.hoisted(() => ({
 }));
 const rt = vi.hoisted(() => ({ list: vi.fn(), config: vi.fn(), discover: vi.fn(), apps: vi.fn() }));
 const toastM = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
+const csvM = vi.hoisted(() => vi.fn());
+vi.mock('@/utils/csv', async (orig) => ({
+  ...(await orig<typeof import('@/utils/csv')>()),
+  downloadCsv: csvM,
+}));
 vi.mock('@/api/serverHubApi', async (orig) => ({
   ...(await orig<typeof import('@/api/serverHubApi')>()),
   serverHubApi: m,
@@ -860,7 +868,7 @@ describe('RA9 etiket tablosu: sözlük, hızlı süzgeç, sütun dropdownları',
         onYenile={vi.fn()}
       />,
     );
-  it('R1–R6 sözlüğü kodu okunur adla ve şu anki seviyeyle verir', () => {
+  it('kural sözlüğü kodu okunur adla ve şu anki seviyeyle verir', () => {
     ciz();
     const sz = screen.getByTestId('kural-sozlugu');
     expect(within(sz).getByText(/Kurallar ne demek\?/)).toBeInTheDocument();
@@ -909,5 +917,97 @@ describe('RA9 etiket tablosu: sözlük, hızlı süzgeç, sütun dropdownları',
     expect(within(d).getAllByText('Kapalı + auto-start açık + trafik yok').length).toBeGreaterThan(
       0,
     );
+  });
+});
+
+describe('RA10 çapraz kontrol: çok kurallı etiket, Retirement kolonu, yeni çipler, okunamayan kaynak', () => {
+  const kural = (k: string, ad: string) => ({
+    ...KURALLAR[0],
+    kural: k,
+    ad,
+    varsayilan: 'SUPHELI' as const,
+    gecerli: 'SUPHELI' as const,
+  });
+  const ek = [
+    kural('R8', 'Kapalı + auto-start açık'),
+    kural('R9', 'Kopyalar tutarsız'),
+    kural('R12', 'Retirement kaydıyla çelişiyor'),
+  ];
+  const pay = etiket({
+    anahtar: 'JVM|PAY|PROD|7',
+    ad: 'pay',
+    seviye: 'SUPHELI',
+    hamSeviye: 'SUPHELI',
+    kurallar: ['R8', 'R9', 'R12'],
+    retirement: [{ kayit: 4, hedef: 9, durum: 'stopped', host: 'GBCJAP02' }],
+  });
+  const ciz = (o: Partial<ShRetireSonuc> = {}) =>
+    render(
+      <RetireEtiketleriGorunum
+        veri={sonuc([etiket(), GIRDI, pay], { kurallar: [...KURALLAR, ...ek], ...o })}
+        yukleniyor={false}
+        onYenile={vi.fn()}
+      />,
+    );
+  it('kural süzgeci tek kurala göre seçer; değer listesi her kuralı ayrı sayar; CSV birleşik', async () => {
+    ciz();
+    fireEvent.click(screen.getByRole('button', { name: 'Kural süz' }));
+    const k = await screen.findByRole('dialog', { name: 'Kural süzgeci' });
+    expect(await within(k).findByLabelText('Kural: R9 · Kopyalar tutarsız')).toBeInTheDocument();
+    expect(within(k).queryByLabelText(/Kural: R8 · .* \+ R9/)).toBeNull();
+    fireEvent.click(within(k).getByLabelText('Kural: R12 · Retirement kaydıyla çelişiyor'));
+    fireEvent.click(within(k).getByRole('button', { name: 'Uygula' }));
+    expect(screen.getByText('1–1 / 1')).toBeInTheDocument();
+    expect(screen.getByText('pay (JBoss 7)')).toBeInTheDocument();
+    // "CSV (N)" hızlı süzgeçteki satırları verir (sütun süzgeci uygulanmaz).
+    csvM.mockClear();
+    fireEvent.click(screen.getByRole('button', { name: /^CSV \(3\)/ }));
+    const [, basliklar, satirlar] = csvM.mock.calls[0] as [string, string[], string[][]];
+    const satir = satirlar.find((x) => x.some((h) => String(h).startsWith('pay')))!;
+    expect(satir[basliklar.indexOf('Kural')]).toBe(
+      'R8 · Kapalı + auto-start açık + R9 · Kopyalar tutarsız + R12 · Retirement kaydıyla çelişiyor',
+    );
+    expect(satir[basliklar.indexOf('Retirement')]).toBe('#4 · DURDURULDU');
+  });
+  it('Retirement kolonu: kayıt ve hedef durumu; süzülür', async () => {
+    ciz();
+    expect(screen.getByText('#4 · DURDURULDU')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Retirement süz' }));
+    fireEvent.click(await screen.findByLabelText('Retirement: #4 · DURDURULDU'));
+    fireEvent.click(screen.getByRole('button', { name: 'Uygula' }));
+    expect(screen.getByText('1–1 / 1')).toBeInTheDocument();
+    expect(screen.getByText('pay (JBoss 7)')).toBeInTheDocument();
+  });
+  it('hızlı çipler: auto-start uyumsuz, çapraz kontrol, Retirement kaydı var (sayılı)', () => {
+    ciz();
+    expect(screen.getByText('1–3 / 3')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /auto-start uyumsuz \(R7\/R8\) 1/ }));
+    expect(screen.getByText('1–1 / 1')).toBeInTheDocument();
+    expect(screen.getByText('pay (JBoss 7)')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /çapraz kontrol \(R9–R12\) 1/ }));
+    expect(screen.getByText('1–1 / 1')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Retirement kaydı var 1/ }));
+    expect(screen.getByText('1–1 / 1')).toBeInTheDocument();
+    expect(screen.queryByText('oldapp (JBoss 7)')).toBeNull();
+  });
+  it('okunamayan çapraz kaynak bandı; hepsi okunduysa bant yok', () => {
+    const ok = { okunamadi: false, hata: '' };
+    const { unmount } = ciz({
+      capraz: {
+        ocp: { ...ok, uygulama: 3 },
+        kullanim: { okunamadi: true, hata: 'timeout', olcum: 0 },
+        retirement: { okunamadi: true, hata: 'x', hedef: 0 },
+      },
+    });
+    expect(
+      screen.getByText(
+        /Çapraz kontrol kaynağı okunamadı: Dynatrace kullanımı \(R11’de istek\), Retirement kayıtları \(R12, Retirement kolonu\)\./,
+      ),
+    ).toBeInTheDocument();
+    unmount();
+    ciz({
+      capraz: { ocp: { ...ok, uygulama: 3 }, kullanim: { ...ok, olcum: 1 }, retirement: { ...ok, hedef: 0 } },
+    });
+    expect(screen.queryByText(/Çapraz kontrol kaynağı okunamadı/)).toBeNull();
   });
 });

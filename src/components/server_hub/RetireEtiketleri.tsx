@@ -14,11 +14,13 @@ import {
   type ShRetireEtiketHer,
   type ShRetireEtiketOzet,
   type ShRetireSonuc,
+  type ShRetirementBaglam,
 } from '@/api/serverHubApi';
 import { toast } from '@/hooks/useToast';
 import { fmtDateTime, fmtNumber } from '@/utils/datetime';
 import { downloadCsv } from '@/utils/csv';
-import { EarTablo, formulGuvenli, type EarKolon } from './EarTablo';
+import { EarTablo, duzDeger, formulGuvenli, type EarKolon } from './EarTablo';
+import { HEDEF_DURUM } from './retirementStil';
 import LoadError from '@/components/common/LoadError';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import {
@@ -525,7 +527,7 @@ export function EtiketAyrinti({
 }
 
 /** Bulgular sekmesindeki ikinci görünüm: etiket listesi (süzgeçli, satır açılır). */
-/** R1–R6 ne demek: kural kodu, okunur adı, koşulu ve şu anki seviyesi (Admin değiştirir). */
+/** Kurallar (R1, R2 …) ne demek: kural kodu, okunur adı, koşulu ve şu anki seviyesi (Admin değiştirir). */
 export function KuralSozlugu({ kurallar }: { kurallar: ShEtiketKurali[] }) {
   return (
     <details
@@ -577,6 +579,10 @@ const ZINCIR: Record<'TAM' | 'DUSTU' | 'NEDENLI', string> = {
   DUSTU: 'kesinden şüpheliye indi',
   NEDENLI: 'şüpheli (nedenli)',
 };
+
+/** Retirement bağlamı: "#12 · DURDURULDU" (hedef durumu Retirement listesindeki adıyla). */
+const retirementMetni = (r: ShRetirementBaglam) =>
+  `#${r.kayit} · ${(HEDEF_DURUM as Record<string, { label: string }>)[r.durum]?.label || r.durum}`;
 
 function kolonlarOf(kAd: Map<string, string>): EarKolon<E>[] {
   const kuralMetni = (k: string) => `${k} · ${kAd.get(k) || ''}`;
@@ -639,10 +645,11 @@ function kolonlarOf(kAd: Map<string, string>): EarKolon<E>[] {
     {
       anahtar: 'kural',
       baslik: 'Kural',
-      aciklama: 'Etiketi koyan kural(lar); R1–R6 açıklaması tablonun üstünde.',
+      aciklama:
+        'Etiketi koyan kural(lar); açıklamaları tablonun üstünde. Süzgeç tek kurala göre seçer (birden çok kuralı olan etiket her kuralda görünür).',
       suzgec: 'secim',
       sirala: true,
-      deger: (e) => e.kurallar.map(kuralMetni).join(' + '),
+      deger: (e) => e.kurallar.map(kuralMetni),
       hucre: (e) => (
         <div>
           {e.kurallar.map((r) => (
@@ -697,6 +704,26 @@ function kolonlarOf(kAd: Map<string, string>): EarKolon<E>[] {
           <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
             kanıt tam
           </span>
+        ),
+    },
+    {
+      anahtar: 'retirement',
+      baslik: 'Retirement',
+      aciklama:
+        'Uygulamanın Retirement kaydı (kopyaların sunucusunda): kayıt numarası ve hedefin durumu.',
+      suzgec: 'secim',
+      deger: (e) => (e.retirement || []).map(retirementMetni),
+      hucre: (e) =>
+        (e.retirement || []).length ? (
+          <div>
+            {(e.retirement || []).map((r) => (
+              <div key={r.hedef} className="text-[11px] whitespace-normal min-w-[9rem]" title={r.host || ''}>
+                {retirementMetni(r)}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <span style={{ color: 'var(--text-muted)' }}>—</span>
         ),
     },
     {
@@ -799,14 +826,25 @@ export default function RetireEtiketleriGorunum({
         bekleyen: oz.bekliyor,
         hazir: oz.retirementHazir,
         dusen: oz.dusurulen,
+        autostart: hizliSuz(etiketler, 'autostart').length,
+        capraz: hizliSuz(etiketler, 'capraz').length,
+        retirementte: hizliSuz(etiketler, 'retirementte').length,
         yanlis: oz.yanlisAlarm,
       }
     : {};
+  // Okunamayan capraz kaynak: ona dayanan etiketler YOK ("temiz" demek degil).
+  const caprazOkunamayan = veri?.capraz
+    ? [
+        veri.capraz.ocp.okunamadi && 'OpenShift envanteri (R11, R10’daki OpenShift notu)',
+        veri.capraz.kullanim.okunamadi && 'Dynatrace kullanımı (R11’de istek)',
+        veri.capraz.retirement.okunamadi && 'Retirement kayıtları (R12, Retirement kolonu)',
+      ].filter(Boolean)
+    : [];
   const tumunuCsv = () =>
     downloadCsv(
       'retirement-etiketleri',
       kolonlar.map((k) => k.baslik),
-      satirlar.map((e) => kolonlar.map((k) => formulGuvenli(k.deger ? k.deger(e) : ''))),
+      satirlar.map((e) => kolonlar.map((k) => formulGuvenli(k.deger ? duzDeger(k.deger(e)) : ''))),
     );
   const bant = (metin: React.ReactNode) => (
     <div
@@ -827,6 +865,13 @@ export default function RetireEtiketleriGorunum({
           <>
             Uygulama Envanteri okunamadı: EAR ve kök girdisi etiketleri listede YOK (“temiz” demek
             değil). {veri.ear.hata || ''}
+          </>,
+        )}
+      {caprazOkunamayan.length > 0 &&
+        bant(
+          <>
+            Çapraz kontrol kaynağı okunamadı: {caprazOkunamayan.join(', ')}. Bu kaynağa dayanan
+            etiketler listede YOK (“temiz” demek değil).
           </>,
         )}
       {veri?.kontrolOkunamadi && bant(KONTROL_DURUM.BILINMIYOR.aciklama)}

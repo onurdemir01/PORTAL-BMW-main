@@ -110,6 +110,7 @@ const AREA: Record<string, string> = {
   ssh: 'SSH',
   scan: 'Tarama',
   ear: 'Uygulama (EAR)',
+  capraz: 'Çapraz kontrol',
 };
 
 // ── Sozlesme v3, dalga 1: "OLCULEMEDI" ILE "YOK / KAPALI / 0" AYRI ──────────────────────
@@ -614,6 +615,11 @@ const KOD_ETIKET: Record<string, string> = {
   DEPLOY_FAILED: 'deployment durumu FAILED — uygulama JVM’de çalışmıyor',
   DEPLOY_KAPALI: 'deployment tanımlı ama devre dışı (enabled=false)',
   DEPLOY_OLCULEMEDI: 'deployment durumu ölçülemedi (JBoss CLI) — "deployment yok" sayılmadı',
+  // Capraz kontrol (2026-11-06): kopyalar, ortamlar, OpenShift ve Retirement kaydi.
+  KOPYA_TUTARSIZ: 'aynı ortamdaki kopyalarla tutarsız — biri kapalı ya da auto-start farklı',
+  ORTAM_KALINTISI: "prod'da çalışmıyor ama DEV / TEST / QA kopyası çalışıyor",
+  OCP_KOPYASI: "OpenShift'te de var (aynı ortam) — taşınmış olabilir",
+  RETIRE_KAYDI_CELISKI: 'Retirement kaydıyla çelişiyor — STOP / silme yapıldı ama sunucu farklı',
   PRODUCT_NOT_IN_INVENTORY: 'taramada bulunan ürün envanterde (dbo.Inventory) yok',
   SSH_SESSIONS_NEAR: 'sshd açık oturum sayısı MaxSessions sınırına yakın (mux_client_request_session riski)',
   SSH_MAXSESSIONS_LOW: 'sshd MaxSessions düşük (10 ya da altı, varsayılan) — Ansible delegate/forks ile tıkanabilir',
@@ -1430,7 +1436,8 @@ function SevPill({ s, n }: { s: ShSeverity; n?: number }) {
   return (
     <span
       className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border whitespace-nowrap"
-      style={{ color: t.color, background: t.bg, borderColor: t.color }}
+      // --status-warning acik temada kendi zemininde ~2:1 (gercek Chrome olcumu, 2026-11-06): metin -text tokeni.
+      style={{ color: s === 'warning' ? 'var(--status-warning-text)' : t.color, background: t.bg, borderColor: t.color }}
     >
       <I className="w-3 h-3" />
       {t.label}
@@ -3546,6 +3553,7 @@ const AREA_TR: Record<string, string> = {
   ssh: 'SSH',
   scan: 'Tarama',
   ear: 'Uygulama (EAR)',
+  capraz: 'Çapraz kontrol',
 };
 export function FindingsTab({
   initial,
