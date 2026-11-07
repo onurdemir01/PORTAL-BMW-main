@@ -692,6 +692,7 @@ export default function Uygulama360Tab({
               />
             )}
             csvAdi="uygulama-360_secili"
+            yerelCsv="uygulama-360"
             araEtiketi="uygulama, ortam ya da kural ara"
             bosMetin={
               liste.length ? 'Süzgeçle eşleşen uygulama yok.' : 'Server Hub taramasında JVM yok.'

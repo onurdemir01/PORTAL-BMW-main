@@ -16,6 +16,8 @@
 //   RA8 Faz 2: zincir kartında deployment satırı (kontrol kapalı / JVM kapalı / yok / FAILED / ölçülemedi)
 //   RA9 etiket tablosu: kural sözlüğü (ad + koşul + şu anki seviye), hızlı süzgeç (yanlış alarm varsayılan
 //       gizli, sayılar), sütun süzgeci dropdown'u (Etiket / Kural / Zincir), kopya tablosunda kural adı
+//   RA11 Bulgular tablosu EarTablo (2026-11-07): üst seçiciler ön süzgeç, sütun süzgeci üstüne; hazır görünüm;
+//       CSV süzülenlerin tamamı; İşlem düğmesi satırı açmaz, tek (host, jvm) için onay ister
 //   RA10 çapraz kontrol (2026-11-06): çok kurallı etiket tek kurala göre süzülür (değer listesi her kuralı
 //       ayrı sayar, CSV birleşik metin); Retirement kolonu (#kayıt · hedef durumu) süzülür; yeni hızlı
 //       çipler (auto-start uyumsuz, çapraz kontrol, Retirement kaydı var); okunamayan çapraz kaynak bandı
@@ -657,15 +659,15 @@ describe('RA5 Bulgular', () => {
     m.host.mockResolvedValue({ ok: true, host: HOST() });
     m.retireEtiketleri.mockResolvedValue(sonuc([etiket(), GIRDI]));
     render(<FindingsTab />);
-    const dugme = await screen.findByRole('button', { name: `▸ ${APP}` });
+    // Bulgular tablosu EarTablo (2026-11-07): satır düğmesi adlı ve aria-expanded taşır.
+    const dugme = await screen.findByRole('button', { name: `${APP} · STOPPED_AUTOSTART_ON ayrıntısı` });
+    expect(dugme).toHaveAttribute('aria-expanded', 'false');
+    expect(m.retireEtiketleri).not.toHaveBeenCalled();
     fireEvent.click(dugme);
     expect(await screen.findByTestId('sunucu-paneli')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: `▾ ${APP}` })).toHaveAttribute(
-      'aria-expanded',
-      'true',
-    );
+    expect(dugme).toHaveAttribute('aria-expanded', 'true');
     await waitFor(() => expect(m.retireEtiketleri).toHaveBeenCalledTimes(1));
-    fireEvent.click(screen.getByRole('button', { name: `▾ ${APP}` }));
+    fireEvent.click(dugme);
     expect(screen.queryByTestId('sunucu-paneli')).toBeNull();
     fireEvent.click(screen.getByRole('tab', { name: /Retirement etiketleri \(2\)/ }));
     expect(await screen.findByTestId('retire-etiketleri')).toBeInTheDocument();
@@ -959,11 +961,13 @@ describe('RA10 çapraz kontrol: çok kurallı etiket, Retirement kolonu, yeni ç
     fireEvent.click(within(k).getByRole('button', { name: 'Uygula' }));
     expect(screen.getByText('1–1 / 1')).toBeInTheDocument();
     expect(screen.getByText('pay (JBoss 7)')).toBeInTheDocument();
-    // "CSV (N)" hızlı süzgeçteki satırları verir (sütun süzgeci uygulanmaz).
+    // "CSV (N)" ekrandaki süzgeçlerin TAMAMINDAN sonra kalan satırları verir (2026-11-07; eskiden sütun
+    // süzgeci uygulanmıyordu ve 1 satır görünürken 3 satır iniyordu).
     csvM.mockClear();
-    fireEvent.click(screen.getByRole('button', { name: /^CSV \(3\)/ }));
-    const [, basliklar, satirlar] = csvM.mock.calls[0] as [string, string[], string[][]];
-    const satir = satirlar.find((x) => x.some((h) => String(h).startsWith('pay')))!;
+    fireEvent.click(screen.getByRole('button', { name: /^CSV \(1\)/ }));
+    const [ad, basliklar, satirlar] = csvM.mock.calls[0] as [string, string[], string[][]];
+    expect([ad, satirlar.length]).toEqual(['retirement-etiketleri', 1]);
+    const satir = satirlar[0];
     expect(satir[basliklar.indexOf('Kural')]).toBe(
       'R8 · Kapalı + auto-start açık + R9 · Kopyalar tutarsız + R12 · Retirement kaydıyla çelişiyor',
     );
@@ -1009,5 +1013,75 @@ describe('RA10 çapraz kontrol: çok kurallı etiket, Retirement kolonu, yeni ç
       capraz: { ocp: { ...ok, uygulama: 3 }, kullanim: { ...ok, olcum: 1 }, retirement: { ...ok, hedef: 0 } },
     });
     expect(screen.queryByText(/Çapraz kontrol kaynağı okunamadı/)).toBeNull();
+  });
+});
+
+describe('RA11 Bulgular tablosu (EarTablo)', () => {
+  const B = (host: string, code: string, severity: 'danger' | 'warning' | 'info', area: string, ek = {}) => ({
+    host,
+    products: ['JBOSS7'],
+    env: host.includes('T') ? 'TEST' : 'PROD',
+    envGroup: host.includes('T') ? 'Non-Production' : 'Production',
+    scanDate: '2026-11-07',
+    severity,
+    area,
+    code,
+    text: `${code} metni ${host}`,
+    fixable: false,
+    fix: null,
+    ...ek,
+  });
+  const BULGULAR = [
+    B('GBCJAP01', 'REBOOT_RISK', 'danger', 'jvm', {
+      fixable: true,
+      fix: { action: 'jboss_autostart_on', gen: 7, jvm: 'pay' },
+    }),
+    B('GBCJAP02', 'KOPYA_TUTARSIZ', 'warning', 'capraz'),
+    B('GBCJAT01', 'STOPPED_AUTOSTART_ON', 'danger', 'jvm'),
+    B('GBCJAP01', 'SCAN_COST', 'info', 'scan'),
+  ];
+  beforeEach(() => {
+    m.findings.mockResolvedValue({ ok: true, tableMissing: false, latestScan: '2026-11-07', findings: BULGULAR });
+  });
+  it('üst seçici + sütun süzgeci + hazır görünüm + CSV', async () => {
+    render(<FindingsTab />);
+    expect(await screen.findByText('1–4 / 4')).toBeInTheDocument();
+    // Üst seçici ön süzgeç: alan JVM.
+    fireEvent.change(screen.getByLabelText('alan'), { target: { value: 'jvm' } });
+    expect(screen.getByText('1–2 / 2')).toBeInTheDocument();
+    // Sütun süzgeci üstüne: ortam PROD.
+    fireEvent.click(screen.getByRole('button', { name: 'Ortam süz' }));
+    fireEvent.click(await screen.findByLabelText('Ortam: PROD'));
+    fireEvent.click(screen.getByRole('button', { name: 'Uygula' }));
+    expect(screen.getByText('1–1 / 1')).toBeInTheDocument();
+    csvM.mockClear();
+    fireEvent.click(screen.getByRole('button', { name: /^CSV \(1\)/ }));
+    const [, bas, satir] = csvM.mock.calls[0] as [string, string[], string[][]];
+    expect(satir).toHaveLength(1);
+    expect(satir[0][bas.indexOf('Kod')]).toBe('REBOOT_RISK');
+    // Hazır görünüm: çapraz kontrol (alan seçicisi "tümü"ne dönünce).
+    fireEvent.change(screen.getByLabelText('alan'), { target: { value: 'all' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Görünümler' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Çapraz kontrol/ }));
+    expect(screen.getByRole('button', { name: 'Görünüm: Çapraz kontrol' })).toBeInTheDocument();
+    expect(screen.getByText('1–1 / 1')).toBeInTheDocument();
+    expect(screen.getByText('KOPYA_TUTARSIZ metni GBCJAP02')).toBeInTheDocument();
+  });
+  it('İşlem düğmesi satırı açmaz; tek JVM için onay ister', async () => {
+    const onay = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    m.jvmAutoStart.mockResolvedValue({ ok: true, jobId: 5 });
+    render(<FindingsTab />);
+    const d = await screen.findByRole('button', { name: 'Auto-start AÇ' });
+    fireEvent.click(d);
+    expect(onay).toHaveBeenCalledTimes(1);
+    await waitFor(() =>
+      expect(m.jvmAutoStart).toHaveBeenCalledWith({ host: 'GBCJAP01', gen: 7, jvm: 'pay', enable: true }),
+    );
+    expect(screen.queryByTestId('sunucu-paneli')).toBeNull();
+    expect(screen.getByRole('button', { name: 'GBCJAP01 · REBOOT_RISK ayrıntısı' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+    onay.mockRestore();
   });
 });

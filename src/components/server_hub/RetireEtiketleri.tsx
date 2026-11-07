@@ -17,8 +17,7 @@ import {
 } from '@/api/serverHubApi';
 import { toast } from '@/hooks/useToast';
 import { fmtDateTime, fmtNumber } from '@/utils/datetime';
-import { downloadCsv } from '@/utils/csv';
-import { EarTablo, duzDeger, formulGuvenli, type EarKolon } from './EarTablo';
+import { EarTablo, type EarKolon } from './EarTablo';
 import LoadError from '@/components/common/LoadError';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import {
@@ -835,12 +834,6 @@ export default function RetireEtiketleriGorunum({
         veri.capraz.retirement.okunamadi && 'Retirement kayıtları (R12, Retirement kolonu)',
       ].filter(Boolean)
     : [];
-  const tumunuCsv = () =>
-    downloadCsv(
-      'retirement-etiketleri',
-      kolonlar.map((k) => k.baslik),
-      satirlar.map((e) => kolonlar.map((k) => formulGuvenli(k.deger ? duzDeger(k.deger(e)) : ''))),
-    );
   const bant = (metin: React.ReactNode) => (
     <div
       className="rounded-lg border px-3 py-2 text-xs"
@@ -912,6 +905,8 @@ export default function RetireEtiketleriGorunum({
           />
         )}
         csvAdi="retirement-etiketleri_secili"
+        // Hızlı süzgeç + sütun süzgeci + arama sonrası satırların tamamı (eskiden sütun süzgeci uygulanmıyordu).
+        yerelCsv="retirement-etiketleri"
         araEtiketi="uygulama, sunucu ya da neden ara"
         bosMetin={
           etiketler.length
@@ -922,15 +917,6 @@ export default function RetireEtiketleriGorunum({
         }
         ustSag={
           <span className="flex items-center gap-2">
-            <button
-              type="button"
-              className={BTN}
-              style={btnStil()}
-              onClick={tumunuCsv}
-              disabled={!satirlar.length}
-            >
-              CSV ({fmtNumber(satirlar.length)})
-            </button>
             <button type="button" onClick={() => onYenile(true)} className={BTN} style={btnStil()}>
               <ArrowPathIcon className={`w-3.5 h-3.5 ${yukleniyor ? 'animate-spin' : ''}`} /> Yenile
             </button>
