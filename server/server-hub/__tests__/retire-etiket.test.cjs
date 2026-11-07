@@ -982,6 +982,19 @@ test('RE10 uclar: etiket listesi, manuel kontrol (400 / 409 / 424 / 200), kural 
     assert.deepEqual([old.etiket.seviye, old.kapali, old.autostartUyumsuz], ['KESIN', 1, 1]);
     const u360a = await fetch(`${kok}/uygulama-360/oldapp`).then(J);
     assert.deepEqual([u360a.status, u360a.body.uygulama.kopyalar.length], [200, 1]);
+    // Iliski grafigi (2026-11-07) ayni kapinin arkasinda; Uygulama Envanteri okunamasa da grafik kurulur.
+    for (const p of ['/iliski/durum', '/iliski/ara?q=old', '/iliski/varlik?anahtar=app:OLDAPP'])
+      assert.equal((await fetch(`${kok}${p}`, { headers: { 'x-rol': 'Operator' } })).status, 403, p);
+    const il = await fetch(`${kok}/iliski/durum?fresh=1`).then(J);
+    assert.equal(il.status, 200, JSON.stringify(il.body));
+    assert.ok(il.body.dugum > 0);
+    const ia = await fetch(`${kok}/iliski/ara?q=oldapp`).then(J);
+    assert.equal(ia.body.sonuclar[0].anahtar, 'app:OLDAPP');
+    const iv = await fetch(`${kok}/iliski/varlik?anahtar=${encodeURIComponent('app:OLDAPP')}`).then(J);
+    assert.equal(iv.status, 200, JSON.stringify(iv.body));
+    assert.ok(iv.body.kenarlar.some((e) => e.tur === 'kopya'));
+    assert.equal((await fetch(`${kok}/iliski/varlik?anahtar=app:YOKBOYLE`)).status, 409);
+    assert.equal((await fetch(`${kok}/iliski/varlik?anahtar=bozuk`)).status, 400);
     // Ortak gorunumler (2026-11-07) ayni kapinin arkasinda; sahte DB tabloyu bilmez -> okunamadi (dusmez).
     assert.equal(
       (await fetch(`${kok}/gorunumler?ekran=server-hub-bulgular`, { headers: { 'x-rol': 'Operator' } })).status,

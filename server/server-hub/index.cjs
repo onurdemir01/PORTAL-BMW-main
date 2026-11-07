@@ -949,6 +949,11 @@ function initServerHub(app) {
     }),
   });
 
+  // ── ILISKI GRAFIGI (2026-11-07) ── varlik indeksi, kanitli kenarlar, capraz dogrulama (iliski-uclar.cjs).
+  require('./iliski-uclar.cjs').mount(router, {
+    getAssessment: (fresh) => getAssessment(fresh === true),
+  });
+
   // ── RETIREMENT ETIKETLERI (2026-11-06) ── bulgudan AYRI; Admin kural seviyesi + manuel kontrol.
   require('./retire-uclar.cjs').mount(router, {
     ayarlar,
