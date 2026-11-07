@@ -114,7 +114,35 @@ async function filoHedefleri() {
 }
 
 /**
- * KAPSAM (2026-11-05): FILO | SORUNLU | ORTAM:A,B | SECILI (liste). Planlar ve elle tarama ayni cozucuyu
+ * WEB SUNUCULARI (2026-11-07, Faz W): Server Hub'in son taramasinda urunlerinde IHS ya da RHA olan sunucular
+ * (dbo.Server_Hub_Hosts, SALT OKUNUR). 3-tier web sunuculari JBoss envanterinde (MWAppsInventory) yoktur.
+ * Okunamazsa 424: "web sunucusu yok" denmez.
+ */
+async function webHedefleri() {
+  const { query } = require('../inventory/mssql.cjs');
+  let r;
+  try {
+    r = await query(
+      `SELECT h.host, h.products FROM dbo.Server_Hub_Hosts h
+         JOIN (SELECT host, MAX(scan_date) AS d FROM dbo.Server_Hub_Hosts GROUP BY host) m
+           ON m.host = h.host AND m.d = h.scan_date`,
+    );
+  } catch (e) {
+    throw hata(424, `Server Hub sunucu listesi okunamadı: ${M(maskele(e && e.message), 200)}`, 'web_listesi_okunamadi');
+  }
+  return hedefleriDuzle(
+    (r.recordset || [])
+      .filter((x) =>
+        String(x.products || '')
+          .split(/[\s,]+/)
+          .some((u) => /^(IHS|RHA)/i.test(u)),
+      )
+      .map((x) => ({ host: String(x.host || '').split('.')[0], ortam: '' })),
+  );
+}
+
+/**
+ * KAPSAM (2026-11-05): FILO | SORUNLU | ORTAM:A,B | WEB | FILO_WEB | SECILI (liste). Planlar ve elle tarama ayni cozucuyu
  * kullanir. SORUNLU: filodaki sunuculardan son denemesi TAM ya da KOK_YOK olmayanlar ve hic taranmamislar
  * (filodan cikmis sunucu taranmaz). ORTAM: sunucunun envanter ortamlarindan biri (normalize) listede.
  */
@@ -122,6 +150,12 @@ const SORUN_DEGIL = Object.freeze(['TAM', 'KOK_YOK']);
 
 async function kapsamHedefleri(kapsam, hostlar) {
   if (kapsam === 'SECILI') return hedefleriDuzle(hostlar);
+  if (kapsam === 'WEB') return webHedefleri();
+  if (kapsam === 'FILO_WEB') {
+    const [f, w] = await Promise.all([filoHedefleri(), webHedefleri()]);
+    const birlesik = hedefleriDuzle([...f.hedefler, ...w.hedefler]);
+    return { hedefler: birlesik.hedefler, gecersiz: f.gecersiz + w.gecersiz };
+  }
   const filo = await filoHedefleri();
   if (kapsam === 'FILO') return filo;
   if (String(kapsam).startsWith('ORTAM:')) {
@@ -148,7 +182,7 @@ async function kapsamHedefleri(kapsam, hostlar) {
     );
     return { hedefler: filo.hedefler.filter((h) => !iyi.has(h.host)), gecersiz: filo.gecersiz };
   }
-  throw hata(400, 'Kapsam FILO, SORUNLU, ORTAM ya da SECILI olmalı.', 'gecersiz_kapsam');
+  throw hata(400, 'Kapsam FILO, SORUNLU, ORTAM, WEB, FILO_WEB ya da SECILI olmalı.', 'gecersiz_kapsam');
 }
 
 /** Filodaki ortamlar ve sunucu sayilari (acilir liste; MWAppsInventory SALT OKUNUR). */
@@ -276,6 +310,11 @@ async function kosuOlustur({
     okuma_kullanicisi: a.okuma_kullanicisi,
     // Faz 2: kosu basladigi andaki ayar (sonradan degisse de partiler ayni davranir).
     deployment_kontrolu: a.deployment_kontrolu,
+    // Faz W: kosu basladigi andaki web ayarlari.
+    web_kontrolu: a.web_kontrolu,
+    web_okuma_kullanicisi: a.web_okuma_kullanicisi,
+    web_hc: a.web_hc,
+    web_kokler: a.web_kokler,
     dizin: alim.earDizin(),
     parti_boyutu: partiler[0].host_sayisi,
     gecersiz_host: gecersiz,
@@ -342,6 +381,15 @@ function extraVarsOf(kosu, parti) {
     ear_kokler: p.kokler || '/vhosting:/vhosting8',
     // Faz 2 yalniz aciksa gonderilir (kapaliyken extra_vars eskisiyle birebir).
     ...(p.deployment_kontrolu === 'ACIK' ? { ear_deployment_kontrol: true } : {}),
+    // Faz W yalniz aciksa (kapaliyken extra_vars eskisiyle birebir).
+    ...(p.web_kontrolu === 'ACIK'
+      ? {
+          ear_web_kontrol: true,
+          ...(p.web_hc ? { ear_web_hc: p.web_hc } : {}),
+          ...(p.web_kokler ? { ear_web_kokler: p.web_kokler } : {}),
+          ...(p.web_okuma_kullanicisi ? { ear_web_okuma_kullanicisi: p.web_okuma_kullanicisi } : {}),
+        }
+      : {}),
   };
 }
 
@@ -563,6 +611,7 @@ async function hostuAl(kosu, parti, hedef, statsHost, dizin, isNotu) {
       playbookDurum,
       hamBayt: buf.length,
       deployment: alim.deploymentCoz(buf),
+      web: alim.webCoz(buf),
     });
   } catch (e) {
     return alim.bosHostKaydi({

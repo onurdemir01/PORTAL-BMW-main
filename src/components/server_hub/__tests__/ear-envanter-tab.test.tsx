@@ -393,6 +393,23 @@ describe('EU4 Şimdi tara', () => {
     );
   });
 
+  it('web sunucuları ve filo + web kapsamı (Faz W)', async () => {
+    m.tara.mockReset();
+    m.tara.mockResolvedValue({ ok: true, id: 6, beklenen: 8, partiSayisi: 1 });
+    m.kapsamOnizleme.mockImplementation(async (k: string) => ({ ok: true, kapsam: k, sunucu: k === 'WEB' ? 8 : 60, parti: 1, ornek: [] }));
+    render(<TaraPenceresi onClose={vi.fn()} onBasladi={vi.fn()} />);
+    fireEvent.click(screen.getByLabelText(/Web sunucuları/));
+    expect(await screen.findByText('8 sunucu · 1 parti')).toBeInTheDocument();
+    expect(m.kapsamOnizleme).toHaveBeenCalledWith('WEB', [], 'TAM');
+    fireEvent.click(screen.getByLabelText(/Filo \+ web/));
+    expect(await screen.findByText('60 sunucu · 1 parti')).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText(/Web sunucuları/));
+    expect(await screen.findByText('8 sunucu · 1 parti')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('checkbox', { name: /Onaylıyorum/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Başlat/ }));
+    await waitFor(() => expect(m.tara).toHaveBeenCalledWith({ kip: 'TAM', kapsam: 'WEB' }));
+  });
+
   it('satır seçiminden gelen liste hazır açılır', () => {
     render(<TaraPenceresi onClose={vi.fn()} onBasladi={vi.fn()} baslangicListesi={['APPSRV01', 'APPSRV02']} />);
     expect(screen.getByLabelText('Sunucu listesi')).toHaveValue('APPSRV01\nAPPSRV02');

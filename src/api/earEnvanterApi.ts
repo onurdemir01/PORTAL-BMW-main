@@ -8,7 +8,7 @@ import { okJson } from './http';
 const BASE = '/api/server-hub/ear';
 
 export type EarKip = 'OZET' | 'TAM';
-export type EarKapsam = 'FILO' | 'SECILI' | 'ORTAM' | 'SORUNLU';
+export type EarKapsam = 'FILO' | 'SECILI' | 'ORTAM' | 'SORUNLU' | 'WEB' | 'FILO_WEB';
 
 /** Otomatik tarama planı (P1 / P2). kapsam: FILO | SORUNLU | ORTAM:A,B */
 export interface EarPlan {

@@ -22,19 +22,19 @@ const SIRALAR: [string, string][] = [
   ['DORDUNCU', 'dördüncü'],
   ['SON', 'son'],
 ];
-export type KapsamTuru = 'FILO' | 'SORUNLU' | 'ORTAM';
+export type KapsamTuru = 'FILO' | 'SORUNLU' | 'ORTAM' | 'WEB' | 'FILO_WEB';
 export interface KapsamDegeri {
   tur: KapsamTuru;
   ortamlar: string[];
 }
 
-/** Sunucunun kapsam dizgisi: FILO | SORUNLU | ORTAM:A,B */
+/** Sunucunun kapsam dizgisi: FILO | SORUNLU | ORTAM:A,B | WEB | FILO_WEB */
 export function kapsamDizgisi(k: KapsamDegeri): string {
   if (k.tur !== 'ORTAM') return k.tur;
   return `ORTAM:${[...new Set(k.ortamlar.map((o) => o.trim().toUpperCase()).filter(Boolean))].sort().join(',')}`;
 }
 export function kapsamAyristir(s: string | undefined): KapsamDegeri {
-  if (s === 'SORUNLU') return { tur: 'SORUNLU', ortamlar: [] };
+  if (s === 'SORUNLU' || s === 'WEB' || s === 'FILO_WEB') return { tur: s, ortamlar: [] };
   if (s && s.startsWith('ORTAM:'))
     return { tur: 'ORTAM', ortamlar: s.slice(6).split(',').filter(Boolean) };
   return { tur: 'FILO', ortamlar: [] };
@@ -44,6 +44,15 @@ const KAPSAM_ACIKLAMA: Record<KapsamTuru, string> = {
   FILO: 'JBoss uygulama envanterindeki bütün sunucular.',
   SORUNLU: 'Son taraması tam olmayan ya da hiç taranmamış sunucular (kök yok sorun sayılmaz).',
   ORTAM: 'Yalnız seçilen ortamlardaki sunucular.',
+  WEB: 'Server Hub taramasında IHS / Red Hat Apache bulunan sunucular (3-tier web sunucuları JBoss envanterinde yoktur).',
+  FILO_WEB: 'JBoss envanterindeki sunucular ve web sunucuları birlikte.',
+};
+const KAPSAM_AD: Record<KapsamTuru, string> = {
+  FILO: 'Tüm filo',
+  SORUNLU: 'Yalnız sorunlular',
+  ORTAM: 'Ortam seç',
+  WEB: 'Web sunucuları',
+  FILO_WEB: 'Filo + web',
 };
 
 /** Kapsam seçici: tür + (ORTAM için) envanterdeki ortamlar, sunucu sayısıyla. */
@@ -86,7 +95,7 @@ export function KapsamSecici({
   );
   return (
     <div className="space-y-1">
-      {(['FILO', 'SORUNLU', 'ORTAM'] as KapsamTuru[]).map((t) => (
+      {(['FILO', 'SORUNLU', 'ORTAM', 'WEB', 'FILO_WEB'] as KapsamTuru[]).map((t) => (
         <label key={t} className="flex items-start gap-2 text-xs">
           <input
             type="radio"
@@ -96,7 +105,7 @@ export function KapsamSecici({
             onChange={() => onChange({ tur: t, ortamlar: t === 'ORTAM' ? deger.ortamlar : [] })}
           />
           <span>
-            <b>{t === 'FILO' ? 'Tüm filo' : t === 'SORUNLU' ? 'Yalnız sorunlular' : 'Ortam seç'}</b>
+            <b>{KAPSAM_AD[t]}</b>
             <span style={{ color: 'var(--text-muted)' }}> — {KAPSAM_ACIKLAMA[t]}</span>
           </span>
         </label>

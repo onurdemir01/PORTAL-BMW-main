@@ -17,13 +17,23 @@
 #   ear_sinir_uygulama:    25000 / ear_sinir_host: 200000 / ear_arsiv_mb: 64
 #   ear_deployment_kontrol: false (FAZ 2: calisan JVM'lerin deployment durumu, JBoss CLI; Admin acar)
 #   ear_dep_zaman:         15    (CLI cagrisi basina sn) / ear_dep_sure: 180 (host butcesi, sn)
+#   ear_web_kontrol:       false (FAZ W: web katmani - Apache / IHS config, soketler, IP'ler, log ozeti; Admin acar)
+#   ear_web_okuma_kullanicisi: ""  (Faz W okuma kimligi, dzdo; bos -> ear_okuma_kullanicisi)
+#   ear_web_kokler:        "/usr/IBMIHS:/etc/httpd:..."  (aday kurulum kokleri; calisanlar ps'ten bulunur)
+#   ear_web_hc:            "hc.html,hc.jsp"  (saglik kontrolu dosya adlari: "gercek istek" sayilmaz)
+#   ear_web_gun:           7     (log penceresi, gun) / ear_web_log_mb: 256 (log okuma butcesi) / ear_web_sure: 240
 #   requester:             kullanici adi (gunluk)
 #
 # FAZ 2 (2026-11-06, istege bagli): ikinci `raw` files/deployment_oku.sh'i `bash -s` ile calistirir
 # (yalniz ps + JBoss CLI read-children-resources; salt okunur). Ciktisi ayni ham dosyaya tarama
 # paketinden SONRA eklenir. ear_deployment_kontrol verilmezse calismaz (her calisan JVM bir CLI sureci).
 #
-# HEDEFTE NE CALISIR: tek `raw` gorevi (Faz 2 aciksa ikinci, salt okunur `raw`). Yorumlayici aranir (python3, yoksa RHEL 8
+# FAZ W (2026-11-07, istege bagli): ucuncu `raw` files/web_tara.py'yi `python3 -B -` ile calistirir. httpd
+# ikilisini CALISTIRMAZ, calisan web sunucusuna istek ATMAZ; config / log dosyalarini okur, soketleri
+# /proc/net/tcp'den, IP'leri `ip -o addr show` ile alir. Ciktisi ayni ham dosyaya, onceki bloklardan SONRA
+# eklenir. ear_web_kontrol verilmezse calismaz.
+#
+# HEDEFTE NE CALISIR: tek `raw` gorevi (Faz 2 / Faz W aciksa onlar da, salt okunur `raw`). Yorumlayici aranir (python3, yoksa RHEL 8
 # platform-python), betik files/ear_tara.py ACIK METIN olarak heredoc ile stdin'den verilir
 # (`python3 -B -`): hedefe dosya kopyalanmaz, modul gonderilmez, bytecode yazilmaz.
 # Betik dosya icerigi okumaz (yalniz zip arsivlerinin merkez dizini), hicbir sey yazmaz/silmez.
@@ -68,7 +78,10 @@
           - (ear_kokler | default('/vhosting:/vhosting8')) is match('^(/[A-Za-z0-9._/-]+)(:/[A-Za-z0-9._/-]+)*$')
           - (ear_dizin | default('/sw/BMW_PORTAL/ear_envanter')) is match('^/[A-Za-z0-9_][A-Za-z0-9._/-]*$')
           - "'..' not in (ear_dizin | default('/sw/BMW_PORTAL/ear_envanter'))"
-        fail_msg: "Gecersiz girdi: hedefler / ear_kip / ear_kosu_no / ear_parti_no / ear_okuma_kullanicisi / ear_kokler / ear_dizin"
+          - (ear_web_okuma_kullanicisi | default('') | string) is match('^([a-z_][a-z0-9_-]{0,31})?$')
+          - (ear_web_kokler | default('/usr/IBMIHS') | string) is match('^(/[A-Za-z0-9._/-]+)(:/[A-Za-z0-9._/-]+)*$')
+          - (ear_web_hc | default('hc.html,hc.jsp') | string) is match('^[A-Za-z0-9._-]{1,64}(,[A-Za-z0-9._-]{1,64}){0,19}$')
+        fail_msg: "Gecersiz girdi: hedefler / ear_kip / ear_kosu_no / ear_parti_no / ear_okuma_kullanicisi / ear_kokler / ear_dizin / Faz W girdileri"
 
     - name: "--- [Task] Hedefleri ekle ---"
       ansible.builtin.add_host:
@@ -98,7 +111,10 @@
           - (ear_kokler | default('/vhosting:/vhosting8')) is match('^(/[A-Za-z0-9._/-]+)(:/[A-Za-z0-9._/-]+)*$')
           - (ear_dizin | default('/sw/BMW_PORTAL/ear_envanter')) is match('^/[A-Za-z0-9_][A-Za-z0-9._/-]*$')
           - "'..' not in (ear_dizin | default('/sw/BMW_PORTAL/ear_envanter'))"
-        fail_msg: "Gecersiz girdi (Limit kipi): awx_job_id (AWX disinda elle ver) / ear_kip / ear_okuma_kullanicisi / ear_kokler / ear_dizin"
+          - (ear_web_okuma_kullanicisi | default('') | string) is match('^([a-z_][a-z0-9_-]{0,31})?$')
+          - (ear_web_kokler | default('/usr/IBMIHS') | string) is match('^(/[A-Za-z0-9._/-]+)(:/[A-Za-z0-9._/-]+)*$')
+          - (ear_web_hc | default('hc.html,hc.jsp') | string) is match('^[A-Za-z0-9._-]{1,64}(,[A-Za-z0-9._-]{1,64}){0,19}$')
+        fail_msg: "Gecersiz girdi (Limit kipi): awx_job_id (AWX disinda elle ver) / ear_kip / ear_okuma_kullanicisi / ear_kokler / ear_dizin / Faz W girdileri"
       run_once: true
       when: hedefler is not defined
 
@@ -118,6 +134,7 @@
   strategy: free
   vars:
     ear_okuyan: "{{ ear_okuma_kullanicisi | default('was') }}"
+    ear_web_okuyan: "{{ ear_web_okuma_kullanicisi | default('', true) or ear_okuyan }}"
     ear_alt_dizin: "{{ ('kosu-' ~ ear_kosu_no) if hedefler is defined else ('awx-' ~ awx_job_id) }}"
     # Limit kipinde envanter adi FQDN olabilir: Portal (MWAppsInventory) kisa adi BUYUK harf bilir.
     ear_host_adi: "{{ (inventory_hostname if hedefler is defined else (inventory_hostname.split('.')[0] if inventory_hostname is match('[A-Za-z]') else inventory_hostname)) | regex_replace('[^A-Za-z0-9._-]', '_') | upper }}"
@@ -180,9 +197,27 @@
             - ear_deployment_kontrol | default(false) | bool
             - ear_ozet.paket | bool
 
+        - name: "--- [Task] Web katmani (Faz W; salt okunur config / soket / IP / log ozeti) ---"
+          become: "{{ (ear_web_okuyan | length) > 0 }}"
+          become_method: dzdo
+          become_user: "{{ ear_web_okuyan if (ear_web_okuyan | length) > 0 else omit }}"
+          ansible.builtin.raw: |
+            P=""; for c in python3 /usr/libexec/platform-python; do command -v "$c" >/dev/null 2>&1 && { P="$c"; break; }; done
+            [ -n "$P" ] || { echo "@@EAR_WEB_PYTHON_YOK@@"; exit 0; }
+            EAR_WEB_KOKLER={{ ear_web_kokler | default('/usr/IBMIHS:/opt/IBM/HTTPServer:/usr/IBM/HTTPServer:/etc/httpd:/opt/rh/httpd24/root/etc/httpd:/opt/jbcs-httpd24-2.4/httpd') | quote }} EAR_WEB_HC={{ ear_web_hc | default('hc.html,hc.jsp') | quote }} EAR_WEB_GUN={{ ear_web_gun | default(7) | int }} EAR_WEB_LOG_MB={{ ear_web_log_mb | default(256) | int }} EAR_WEB_SURE={{ ear_web_sure | default(240) | int }} LC_ALL=C PYTHONIOENCODING=utf-8:surrogateescape "$P" -B - <<'EAR_WEB_SON'
+            {{ lookup('ansible.builtin.file', 'files/web_tara.py') }}
+            EAR_WEB_SON
+          register: ear_web
+          timeout: "{{ (ear_web_sure | default(240) | int) + 120 }}"
+          changed_when: false
+          failed_when: false
+          no_log: true
+          when:
+            - ear_web_kontrol | default(false) | bool
+            - ear_ozet.paket | bool
         - name: "--- [Task] /sw'ye yaz (GBLABT02 uzerinden) ---"
           ansible.builtin.copy:
-            content: "{{ ear_tarama.stdout }}{{ ear_deployment.stdout | default('') }}"
+            content: "{{ ear_tarama.stdout }}{{ ear_deployment.stdout | default('') }}{{ ear_web.stdout | default('') }}"
             dest: "{{ ear_cikti_dosyasi }}"
             mode: '0644'
           delegate_to: "{{ ear_yazici_host | default('GBLABT02') }}"

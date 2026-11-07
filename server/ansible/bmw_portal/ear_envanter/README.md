@@ -22,6 +22,26 @@ Bu Ansible playbook'u Linux sunuculardaki `/vhosting` ve `/vhosting8` klasörler
   - Sonuç Server Hub'da “deployment yok”, “FAILED”, “devre dışı” bulguları ve “deployment adı diskteki EAR'la uyuşmuyor” etiketi olarak görünür.
   - Her çalışan JVM için bir CLI (Java) süreci başlatır. Önce tek sunucuda pilot yapın.
   - Portal'dan açmak için: **Uygulama Envanteri › Ayarlar › Deployment kontrolü = ACIK**. AWX'ten elle: Variables alanına `ear_deployment_kontrol: true`.
+- **Web kontrolü (Faz W, isteğe bağlı, varsayılan KAPALI):** Apache / IHS web katmanını yalnız okuyarak çıkarır:
+  - **Config ağacı:**
+    - `Include`, `VirtualHost`, `ServerName` / `ServerAlias`, `Listen`;
+    - `ProxyPass` / balancer üyeleri, `RewriteRule [P]`;
+    - `JkMount` + `workers.properties`;
+    - mod_cluster yönergeleri;
+    - WebSphere eklentisi (`plugin-cfg.xml`).
+  - **Config hataları:** eksik `Include`, döngü.
+  - **Soket ve IP:** dinlenen soketler (`/proc/net/tcp`), sunucunun IP'leri (`ip -o addr show`).
+  - **Log özeti:** access log'dan son 7 günün gerçek / sağlık kontrolü (`hc.html`, `hc.jsp`) / statik istek sayıları; error log'dan arka uca bağlanamama sayıları.
+  - **Yapmadıkları:**
+    - `httpd` / `apachectl` çalıştırılmaz;
+    - çalışan web sunucusuna istek atılmaz;
+    - SSL anahtarı okunmaz, sertifika dosyasının yalnız varlığına bakılır;
+    - sorgu dizesi ve URL'nin tamamı alınmaz.
+  - **Sınırlar:** Log okuma sunucu başına 256 MB ve 240 sn ile sınırlı. Sınıra takılan ya da 7 günden kısa log "kısmi" görünür; hiçbir zaman "istek yok" sayılmaz.
+  - **Kimlik:** Config ve log dosyaları okuma kimliğiyle (varsayılan `was`) okunur. Okunamayan dosya "okunamadı" görünür. IHS / Apache logları `root`'a aitse, **Web okuma kimliği** ayarına okuyabilen kullanıcıyı yazın (dzdo kuralı gerekir).
+  - **Açmak:**
+    - Portal'dan: **Uygulama Envanteri › Ayarlar › Web kontrolü = ACIK**. Kapsamda **Web sunucuları** (3-tier web sunucuları JBoss envanterinde yoktur) ya da **Filo + web** seçilebilir.
+    - AWX'ten elle: Variables alanına `ear_web_kontrol: true`.
 
 İki şekilde başlatılır:
 
@@ -58,6 +78,7 @@ Git projesinin `master` dalında şu dosyalar bulunmalı:
 bmw_portal/ear_envanter/ear_envanter.yml
 bmw_portal/ear_envanter/files/ear_tara.py
 bmw_portal/ear_envanter/files/deployment_oku.sh
+bmw_portal/ear_envanter/files/web_tara.py
 ```
 
 Dosyaları Git'e gönderdikten sonra AWX'te **Projects > `<PROJE_ADI>` > Sync** yap. Bilgisayarındaki yerel dosyalar tek başına yeterli değildir.
@@ -65,6 +86,8 @@ Dosyaları Git'e gönderdikten sonra AWX'te **Projects > `<PROJE_ADI>` > Sync** 
 > `ear_tara.py` değiştiğinde (örneğin JBoss yapılandırma okuması eklendiğinde) yalnız bu dosyayı kopyalayıp **Sync** yapman yeter. Playbook değişmediyse onu yeniden kopyalaman gerekmez.
 
 > Faz 2 (deployment kontrolü) için üç dosya birlikte kopyalanmalı: `ear_envanter.yml`, `files/ear_tara.py` ve yeni `files/deployment_oku.sh`.
+
+> Faz W (web kontrolü) için iki dosya birlikte kopyalanmalı: `ear_envanter.yml` ve yeni `files/web_tara.py`. Pilot: AWX'ten tek bir web sunucusunu Limit'e yazıp Variables alanına `ear_web_kontrol: true` ekle.
 
 ## 4. En kolay test: AWX ekranından
 

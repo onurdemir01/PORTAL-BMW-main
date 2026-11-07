@@ -48,7 +48,9 @@ const ORTAM_RE = /^[A-Z0-9][A-Z0-9 ._-]{0,63}$/;
 /** Kapsam: FILO | SORUNLU | ORTAM:A,B (1-20 ortam; normalize: trim, BUYUK, tekil, sirali). */
 function kapsamDogrula(v) {
   const s = String(v == null ? '' : v).trim();
-  if (s === 'FILO' || s === 'SORUNLU') return s;
+  // WEB (2026-11-07, Faz W): Server Hub'in son taramasinda web urunu (IHS / RHA) olan sunucular; 3-tier web
+  // sunuculari JBoss envanterinde yoktur. FILO_WEB: ikisinin birlesimi.
+  if (s === 'FILO' || s === 'SORUNLU' || s === 'WEB' || s === 'FILO_WEB') return s;
   const m = /^ORTAM:(.+)$/.exec(s);
   if (!m) return null;
   const l = [...new Set(m[1].split(',').map((x) => x.trim().toUpperCase()).filter(Boolean))].sort();
@@ -58,7 +60,10 @@ function kapsamDogrula(v) {
 
 /** Ust kapsam alttakini kapsar mi (TAM onceligi icin). */
 function kapsamKapsar(ust, alt) {
-  if (ust === 'FILO' || ust === alt) return true;
+  if (ust === alt || ust === 'FILO_WEB') return true;
+  // FILO web sunucularini (envanter disi 3-tier) KAPSAMAZ; WEB yalniz kendini.
+  if (alt === 'WEB' || alt === 'FILO_WEB' || ust === 'WEB') return false;
+  if (ust === 'FILO') return true;
   if (ust.startsWith('ORTAM:') && alt.startsWith('ORTAM:')) {
     const u = new Set(ust.slice(6).split(','));
     return alt
@@ -83,6 +88,16 @@ const saatDogrula = (v) =>
   /^([01]\d|2[0-3]):[0-5]\d$/.test(String(v).trim()) ? String(v).trim() : null;
 
 /** Kok listesi: mutlak yollar, ':' ayracli, en cok 4, '..' yok (playbook regex'inin ust kumesi degil, alt kumesi). */
+/** Web kurulum kok adaylari: ':' ayrili mutlak yollar, en cok 10. */
+function webKokDogrula(v) {
+  const s = String(v).trim();
+  const parcalar = s.split(':');
+  if (!s || parcalar.length > 10) return null;
+  for (const p of parcalar)
+    if (!/^\/[A-Za-z0-9._/-]{1,120}$/.test(p) || p.split('/').includes('..')) return null;
+  return s;
+}
+
 function kokDogrula(v) {
   const s = String(v).trim();
   const parcalar = s.split(':');
@@ -133,6 +148,30 @@ const AYARLAR = Object.freeze({
     ad: 'Deployment kontrolü (Faz 2, JBoss CLI)',
     varsayilan: 'KAPALI',
     dogrula: secenek(['ACIK', 'KAPALI']),
+  },
+  // FAZ W (2026-11-07): web katmani - Apache / IHS config agaci, soketler, IP'ler, access / error log ozeti.
+  // Varsayilan KAPALI: loglar okunur (host basina butceli); once tek sunucuda pilot, sonra Admin acar.
+  web_kontrolu: {
+    ad: 'Web kontrolü (Faz W: Apache / IHS config, soket, IP, log özeti)',
+    varsayilan: 'KAPALI',
+    dogrula: secenek(['ACIK', 'KAPALI']),
+  },
+  web_okuma_kullanicisi: {
+    ad: 'Web okuma kimliği (dzdo; boş = okuma kimliği)',
+    varsayilan: '',
+    dogrula: (v) =>
+      /^([a-z_][a-z0-9_-]{0,31})?$/.test(String(v).trim()) ? String(v).trim() : null,
+  },
+  web_hc: {
+    ad: 'Sağlık kontrolü dosyaları (gerçek istek sayılmaz)',
+    varsayilan: 'hc.html,hc.jsp',
+    dogrula: (v) =>
+      /^[A-Za-z0-9._-]{1,64}(,[A-Za-z0-9._-]{1,64}){0,19}$/.test(String(v).trim()) ? String(v).trim() : null,
+  },
+  web_kokler: {
+    ad: 'Web kurulum kök adayları (çalışanlar süreçten bulunur)',
+    varsayilan: '/usr/IBMIHS:/opt/IBM/HTTPServer:/usr/IBM/HTTPServer:/etc/httpd:/opt/rh/httpd24/root/etc/httpd:/opt/jbcs-httpd24-2.4/httpd',
+    dogrula: webKokDogrula,
   },
   // DB: son N FILO kosusu (ve onlardan yeni secili kosular). /sw: son N TAM kosusunun ham dosyalari
   // (agac goruntuleyici ve ZIP bunlari okur).
