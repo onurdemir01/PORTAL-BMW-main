@@ -8,8 +8,14 @@ import type {
   ShHostDetail,
   ShKontrolDurum,
   ShRetireEtiketHer,
+  ShRetirementBaglam,
   ShJvm,
 } from '@/api/serverHubApi';
+import { HEDEF_DURUM } from './retirementStil';
+
+/** Retirement bağlamı: "#12 · DURDURULDU" (hedef durumu Retirement listesindeki adıyla). */
+export const retirementMetni = (r: ShRetirementBaglam) =>
+  `#${r.kayit} · ${(HEDEF_DURUM as Record<string, { label: string }>)[r.durum]?.label || r.durum}`;
 
 export type EtiketTon = 'kesin' | 'supheli' | 'iyi' | 'notr' | 'uyari' | 'bilgi';
 export interface EtiketBilgi {

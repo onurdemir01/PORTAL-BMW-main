@@ -47,6 +47,7 @@ import RebootKontroluTab from './RebootKontroluTab';
 import RetirementTab from './RetirementTab';
 import KurallarTab from './KurallarTab';
 import EarEnvanterTab from './EarEnvanterTab';
+import Uygulama360Tab from './Uygulama360Tab';
 import { useSunucuLimiti, LimitNotu, sunucuAdlari, limitAsildi } from './sunucuLimiti';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
 import { SekmeKabi, useSekmeGorunur } from './sekmeGorunurlugu';
@@ -1446,7 +1447,15 @@ function SevPill({ s, n }: { s: ShSeverity; n?: number }) {
   );
 }
 
-type SekmeId = 'hosts' | 'findings' | 'readiness' | 'reboot' | 'retirement' | 'envanter' | 'kurallar';
+type SekmeId =
+  | 'hosts'
+  | 'findings'
+  | 'uygulama360'
+  | 'readiness'
+  | 'reboot'
+  | 'retirement'
+  | 'envanter'
+  | 'kurallar';
 // Buyuk listelerde ilk cizimde bu kadar satir; "daha fazla / tumu" ile acilir (sayac ve CSV hep TUM kume).
 const CIZIM_SINIRI = 300;
 
@@ -1546,6 +1555,8 @@ export default function ServerHubPage() {
                 ? '/vhosting (JBoss 7) ve /vhosting8 (JBoss 8) altındaki EAR/WAR uygulamaları: Spring / log4j sürümleri, JSP / TLD sayıları, tanımlayıcılar, eşlenik sunucu farkları ve dosya ağacı. Tarama salt okunurdur; otomatik planla (haftada / ayda bir) ya da elle.'
                 : tab === 'kurallar'
                 ? 'Hangi maddeler taranıyor, hangi çıktı kritik / uyarı / bilgi / sorun yok sayılıyor; seviyeleri ve tek seferde girilebilecek sunucu sayısını buradan değiştirin.'
+                : tab === 'uygulama360'
+                ? 'Uygulama bazında bakış: bir uygulamanın bütün ortam ve sunuculardaki kopyaları, auto-start uyumu, OpenShift karşılığı, Retirement kaydı ve etiketleri tek satırda.'
                 : 'Uygulama retirement: Smart silme kaydı → tüm ortam/site keşfi → STOP (auto-start kapat, durdur, paketi .old) → seçilen tarihte silme → IP/LB/DNS kayıtları.'}
           </p>
         </div>
@@ -1554,6 +1565,7 @@ export default function ServerHubPage() {
             [
               { id: 'hosts', label: 'Sunucular' },
               { id: 'findings', label: 'Bulgular' },
+              { id: 'uygulama360', label: 'Uygulama 360' },
               { id: 'readiness', label: 'Açılış Hazırlığı' },
               { id: 'reboot', label: 'Reboot Kontrolü' },
               { id: 'retirement', label: 'Retirement' },
@@ -1583,6 +1595,11 @@ export default function ServerHubPage() {
       {acilan.has('findings') && (
         <SekmeKabi id="findings" etkin={tab}>
           <FindingsTab key={bulguNo} initial={findingsFilter} onRetirementAc={retirementAc} />
+        </SekmeKabi>
+      )}
+      {acilan.has('uygulama360') && (
+        <SekmeKabi id="uygulama360" etkin={tab}>
+          <Uygulama360Tab onRetirementAc={retirementAc} />
         </SekmeKabi>
       )}
       {acilan.has('readiness') && (

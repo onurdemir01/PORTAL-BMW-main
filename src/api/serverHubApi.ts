@@ -487,6 +487,90 @@ export interface ShCaprazDurumu {
   kullanim: { okunamadi: boolean; hata?: string; olcum: number };
   retirement: { okunamadi: boolean; hata?: string; hedef: number };
 }
+// ── UYGULAMA 360 (2026-11-07): taban uygulama adi basina tek satir (uygulama-360.cjs) ──
+export interface Sh360Ortam {
+  ortam: string;
+  toplam: number;
+  acik: number;
+  kapali: number;
+  olculemedi: number;
+}
+export type Sh360Deployment = 'OK' | 'FAILED' | 'YOK' | 'KAPALI' | 'OLCULEMEDI';
+export interface Sh360Ocp {
+  yerler: { namespace: string; cluster: string; uygulama?: string }[];
+  yerSayisi: number;
+  istek: number | null;
+  tasinmisOlabilir: boolean;
+}
+export interface Sh360Ozet {
+  anahtar: string;
+  ad: string;
+  ortamlar: Sh360Ortam[];
+  kopyaSayisi: number;
+  sunucuSayisi: number;
+  nesiller: number[];
+  tier: string[];
+  calisan: number;
+  kapali: number;
+  olculemeyen: number;
+  autostartUyumsuz: number;
+  kopyaTutarsiz: number;
+  kalinti: number;
+  celiski: number;
+  riskliKopya: number;
+  trafik: 'ACTIVE' | 'NO_RECENT_TRAFFIC' | 'OLCULEMEDI';
+  istek7g: number | null;
+  ear: { sayi: number; war: number; olculmeyenKopya: number } | null;
+  deployment: Sh360Deployment | null;
+  ocp: Sh360Ocp | null;
+  retirement: ShRetirementBaglam[];
+  etiket: {
+    seviye: 'KESIN' | 'SUPHELI' | null;
+    kurallar: string[];
+    sayi: number;
+    bekleyen: number;
+    hazir: number;
+  } | null;
+  sonTarama: string | null;
+  bayatKopya: number;
+}
+export interface Sh360Kopya {
+  host: string;
+  ortam: string;
+  gen: number;
+  ad: string;
+  calisiyor: boolean | null;
+  autoStart: string;
+  autostartUyumsuz: 'REBOOT_RISK' | 'STOPPED_AUTOSTART_ON' | null;
+  trafik: string | null;
+  istek7g: number | null;
+  tier: string | null;
+  taze: boolean;
+  taramaTarihi: string | null;
+  hostClass: string;
+  retirement: ShRetirementBaglam[];
+  capraz: {
+    kopya: { nedenler: string[]; digerleri: { host: string; calisiyor: boolean | null; autoStart: string }[]; kopyaSayisi: number } | null;
+    kalinti: { neden: 'PROD_YOK' | 'PROD_KAPALI' | 'PROD_RETIRE'; taban: string } | null;
+    ocp: (Sh360Ocp & { eslesme: { namespace: string; cluster: string; uygulama: string }[]; ad: { jboss: string; taban: string; ocp: string } }) | null;
+    celiski: { kayit: number; hedef: number; durum: string; nedenler: string[] }[];
+  } | null;
+  ear: { ad: string; kok: string; warSayisi: number | null }[] | null;
+  deployment: Sh360Deployment | null;
+}
+export interface Sh360Ayrinti extends Sh360Ozet {
+  kopyalar: Sh360Kopya[];
+  etiketler: ShRetireEtiketOzet[];
+}
+export interface Sh360Sonuc {
+  ok: boolean;
+  message?: string;
+  tableMissing?: boolean;
+  latestScan?: string | null;
+  ear?: { okunamadi: boolean; hata?: string; hostSayisi: number } | null;
+  capraz?: ShCaprazDurumu | null;
+  uygulamalar: Sh360Ozet[];
+}
 export interface ShEtiketKopyasi {
   host: string;
   kurallar: string[];
@@ -655,6 +739,13 @@ export const serverHubApi = {
   limitDegistir: (ad: ShLimitAd, deger: number, aciklama: string): Promise<ShAyarYazim> =>
     fetch(`${BASE}/kurallar/limit/${encodeURIComponent(ad)}`, put({ deger, aciklama })).then(safeJson),
   // RETIREMENT ETIKETLERI (2026-11-06)
+  // UYGULAMA 360 (2026-11-07)
+  uygulamalar360: (fresh = false): Promise<Sh360Sonuc> =>
+    fetch(`${BASE}/uygulamalar-360${fresh ? '?fresh=1' : ''}`).then(safeJson),
+  uygulama360: (
+    ad: string,
+  ): Promise<{ ok: boolean; uygulama?: Sh360Ayrinti; message?: string; _httpStatus?: number }> =>
+    fetch(`${BASE}/uygulama-360/${encodeURIComponent(ad)}`).then(safeJson),
   retireEtiketleri: (fresh = false): Promise<ShRetireSonuc> =>
     fetch(`${BASE}/retire-etiketleri${fresh ? '?fresh=1' : ''}`).then(safeJson),
   retireEtiketAyrinti: (

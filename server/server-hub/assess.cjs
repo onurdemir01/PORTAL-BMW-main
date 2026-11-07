@@ -1540,6 +1540,9 @@ function assess(data, opts = {}) {
       // ── CAPRAZ KONTROLLER (capraz.cjs): her biri hem bulgu hem etiket adayi (R9-R12). ──
       const cx = capraz.jvm(h.host, j);
       if (cx && cx.retirement.length) j.retirement = cx.retirement;
+      // Uygulama 360 (uygulama-360.cjs) kopya basina capraz sonucu buradan okur (bulgu metnini ayristirmaz).
+      if (cx && (cx.kopya || cx.kalinti || cx.ocp || cx.celiski.length))
+        j.capraz = { kopya: cx.kopya, kalinti: cx.kalinti, ocp: cx.ocp, celiski: cx.celiski };
       const jAday = (kural) =>
         h.retireAdaylari.push({ kural, tur: 'JVM', ad: j.name, host: h.host, gen: j.gen, engel: null });
       if (cx && cx.kopya) {

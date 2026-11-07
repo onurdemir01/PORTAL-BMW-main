@@ -929,6 +929,15 @@ function initServerHub(app) {
     },
   });
 
+  // ── UYGULAMA 360 (2026-11-07) ── taban uygulama adi basina tek satir: kopyalar, EAR, capraz, etiketler.
+  require('./uygulama-360.cjs').mount(router, {
+    etiketHesabi: require('./retire-uclar.cjs').etiketHesabiKur({
+      ayarlar,
+      getAssessment: (fresh) => getAssessment(fresh === true),
+      kontrol: require('./retire-kontrol.cjs'),
+    }),
+  });
+
   // ── RETIREMENT ETIKETLERI (2026-11-06) ── bulgudan AYRI; Admin kural seviyesi + manuel kontrol.
   require('./retire-uclar.cjs').mount(router, {
     ayarlar,

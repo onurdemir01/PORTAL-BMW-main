@@ -31,10 +31,9 @@ function kurallarListesi(ayar) {
   });
 }
 
-function mount(router, { getAssessment, ayarlar, kontrol, audit }) {
-  const kim = (req) => (req.session && req.session.user && req.session.user.username) || 'unknown';
-
-  async function hesap(fresh) {
+/** Degerlendirme + Admin kural seviyeleri + manuel kontroller -> etiketler (Uygulama 360 da kullanir). */
+function etiketHesabiKur({ getAssessment, ayarlar, kontrol }) {
+  return async function hesap(fresh) {
     const [a, ayar, kontroller] = await Promise.all([
       getAssessment(fresh === true),
       ayarlar.oku(),
@@ -44,7 +43,12 @@ function mount(router, { getAssessment, ayarlar, kontrol, audit }) {
       ? etiketle({ hosts: [], kurallar: ayar.etiketler, kontroller })
       : etiketle({ hosts: a.hosts, kurallar: ayar.etiketler, kontroller });
     return { a, ayar, kontroller, sonuc };
-  }
+  };
+}
+
+function mount(router, { getAssessment, ayarlar, kontrol, audit }) {
+  const kim = (req) => (req.session && req.session.user && req.session.user.username) || 'unknown';
+  const hesap = etiketHesabiKur({ getAssessment, ayarlar, kontrol });
 
   router.get('/retire-etiketleri', async (req, res) => {
     try {
@@ -141,4 +145,4 @@ function mount(router, { getAssessment, ayarlar, kontrol, audit }) {
   });
 }
 
-module.exports = { mount, kurallarListesi };
+module.exports = { mount, kurallarListesi, etiketHesabiKur };

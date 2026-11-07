@@ -14,13 +14,11 @@ import {
   type ShRetireEtiketHer,
   type ShRetireEtiketOzet,
   type ShRetireSonuc,
-  type ShRetirementBaglam,
 } from '@/api/serverHubApi';
 import { toast } from '@/hooks/useToast';
 import { fmtDateTime, fmtNumber } from '@/utils/datetime';
 import { downloadCsv } from '@/utils/csv';
 import { EarTablo, duzDeger, formulGuvenli, type EarKolon } from './EarTablo';
-import { HEDEF_DURUM } from './retirementStil';
 import LoadError from '@/components/common/LoadError';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import {
@@ -31,6 +29,7 @@ import {
   hizliSuz,
   komutDoldur,
   konuMetni,
+  retirementMetni,
   retirementUygulamasi,
   zincirDurumu,
   type EtiketBilgi,
@@ -579,10 +578,6 @@ const ZINCIR: Record<'TAM' | 'DUSTU' | 'NEDENLI', string> = {
   DUSTU: 'kesinden şüpheliye indi',
   NEDENLI: 'şüpheli (nedenli)',
 };
-
-/** Retirement bağlamı: "#12 · DURDURULDU" (hedef durumu Retirement listesindeki adıyla). */
-const retirementMetni = (r: ShRetirementBaglam) =>
-  `#${r.kayit} · ${(HEDEF_DURUM as Record<string, { label: string }>)[r.durum]?.label || r.durum}`;
 
 function kolonlarOf(kAd: Map<string, string>): EarKolon<E>[] {
   const kuralMetni = (k: string) => `${k} · ${kAd.get(k) || ''}`;
