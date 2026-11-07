@@ -59,8 +59,44 @@ function iliskiHesabiKur({
   };
 }
 
-function mount(router, { getAssessment, iliskiVerisi }) {
+function mount(
+  router,
+  { getAssessment, iliskiVerisi, notDurumu = () => require('./notlar.cjs').notDurumu() },
+) {
   const hesap = iliskiHesabiKur({ getAssessment, ...(iliskiVerisi ? { iliskiVerisi } : {}) });
+  // Kalici notlar (notlar.cjs): kararlari zenginlestirir; okunamazsa notsuz devam (notOkunamadi: true).
+  const notBaglami = async (h) => {
+    const nd = await notDurumu().catch(() => ({ okunamadi: true, notlar: [], siniflar: [] }));
+    const { notlariIndeksle } = require('./notlar.cjs');
+    return {
+      nd,
+      indeks: notlariIndeksle(nd.notlar, h.grafik),
+      siniflar: nd.siniflar,
+      g: h.grafik,
+      kararlar: h.kararlar,
+    };
+  };
+  const notOzeti = (n) =>
+    n ? { id: n.id, sinif: n.sinif, metin: n.metin, konu: n.konu, dogrudan: n.dogrudan } : null;
+  /** Kopya / uygulama + notlari; BILINEN notun bastirdigi maddeler isaretlenir (karar DEGISMEZ). */
+  const notlu = (x, ctx) => {
+    if (!x) return x;
+    const { kararNotlari } = require('./notlar.cjs');
+    const kn = kararNotlari(x.anahtar, ctx);
+    return {
+      ...x,
+      notlar: kn.notlar,
+      bilinen: notOzeti(kn.tumuBilinen),
+      ...(x.maddeler
+        ? {
+            maddeler: x.maddeler.map((m) => ({
+              ...m,
+              bilinen: notOzeti(kn.bilinenKodlar.get(m.kod) || kn.tumuBilinen),
+            })),
+          }
+        : {}),
+    };
+  };
   const okunamadi = (res) =>
     res.status(424).json({
       ok: false,
@@ -150,19 +186,38 @@ function mount(router, { getAssessment, iliskiVerisi }) {
     try {
       const h = await hesap(req.query.fresh === '1');
       if (!h.grafik) return okunamadi(res);
-      const liste = [...h.kararlar.uygulamalar.values()].map((u) => ({
-        anahtar: u.anahtar,
-        ad: u.ad,
-        karar: u.karar,
-        kararMetni: u.kararMetni,
-        ozet: u.ozet,
-        sayilar: u.sayilar,
-      }));
+      const ctx = await notBaglami(h);
+      const { kararNotlari } = require('./notlar.cjs');
+      const liste = [...h.kararlar.uygulamalar.values()].map((u) => {
+        const kn = kararNotlari(u.anahtar, ctx);
+        return {
+          anahtar: u.anahtar,
+          ad: u.ad,
+          karar: u.karar,
+          kararMetni: u.kararMetni,
+          ozet: u.ozet,
+          sayilar: u.sayilar,
+          notSayisi: kn.notlar.length,
+          siniflar: [...new Set(kn.notlar.map((n) => n.sinif))],
+          veriDegisti: kn.notlar.some((n) => n.veriDegisti),
+          // BILINEN etkili not uygulamanin tamamina yaziliysa uygulama ana sayimdan dusup "Bilinen" bolumune gecer.
+          bilinen: notOzeti(kn.tumuBilinen),
+        };
+      });
       liste.sort((a, b) => a.ad.localeCompare(b.ad));
+      const ana = liste.filter((u) => !u.bilinen);
       const sayilar = Object.fromEntries(
-        KARARLAR.map((k) => [k, liste.filter((u) => u.karar === k).length]),
+        KARARLAR.map((k) => [k, ana.filter((u) => u.karar === k).length]),
       );
-      res.json({ ok: true, sayilar, uygulamalar: liste });
+      res.json({
+        ok: true,
+        sayilar,
+        bilinenSayisi: liste.length - ana.length,
+        notOkunamadi: ctx.nd.okunamadi === true,
+        siniflar: ctx.siniflar,
+        yetimNotSayisi: ctx.indeks.yetimler.length,
+        uygulamalar: liste,
+      });
     } catch (e) {
       res.status(500).json({ ok: false, message: e.message || 'Kararlar hesaplanamadı.' });
     }
@@ -178,6 +233,8 @@ function mount(router, { getAssessment, iliskiVerisi }) {
       const h = await hesap(false);
       if (!h.grafik) return okunamadi(res);
       const { uygulamalar, kopyalar } = h.kararlar;
+      const ctx = await notBaglami(h);
+      const ek = { siniflar: ctx.siniflar, notOkunamadi: ctx.nd.okunamadi === true };
       if (anahtar.startsWith('app:')) {
         const u = uygulamalar.get(anahtar);
         if (!u)
@@ -187,8 +244,9 @@ function mount(router, { getAssessment, iliskiVerisi }) {
         return res.json({
           ok: true,
           tur: 'app',
-          uygulama: u,
-          kopyalar: u.kopyalar.map((k) => kopyalar.get(k)).filter(Boolean),
+          ...ek,
+          uygulama: notlu(u, ctx),
+          kopyalar: u.kopyalar.map((k) => notlu(kopyalar.get(k), ctx)).filter(Boolean),
         });
       }
       if (anahtar.startsWith('sunucu:')) {
@@ -197,7 +255,7 @@ function mount(router, { getAssessment, iliskiVerisi }) {
         const kk = h.grafik
           .komsuKenarlar(anahtar)
           .filter((e) => e.kaynak === anahtar && e.tur === 'barindirir')
-          .map((e) => kopyalar.get(e.hedef))
+          .map((e) => notlu(kopyalar.get(e.hedef), ctx))
           .filter(Boolean);
         const web = h.grafik
           .komsuKenarlar(anahtar)
@@ -214,6 +272,8 @@ function mount(router, { getAssessment, iliskiVerisi }) {
         return res.json({
           ok: true,
           tur: 'sunucu',
+          ...ek,
+          notlar: require('./notlar.cjs').kararNotlari(anahtar, ctx).notlar,
           sunucu: h.grafik.dugumler.get(anahtar),
           kopyalar: kk,
           web,
@@ -221,11 +281,12 @@ function mount(router, { getAssessment, iliskiVerisi }) {
       }
       const k = kopyalar.get(anahtar);
       if (!k) return res.status(409).json({ ok: false, message: 'Kopya artık grafikte yok.' });
-      res.json({ ok: true, tur: 'kopya', kopya: k });
+      res.json({ ok: true, tur: 'kopya', ...ek, kopya: notlu(k, ctx) });
     } catch (e) {
       res.status(500).json({ ok: false, message: e.message || 'Karar okunamadı.' });
     }
   });
+  return hesap;
 }
 
 module.exports = { mount, iliskiHesabiKur, ANAHTAR_RE, VERI_MS };
