@@ -11,7 +11,7 @@
 // GET  /ear/ozet                       son kosu, calisan kosu ve partileri, zamanlayici, ayarlar, sayilar
 // GET  /ear/kosular                    son kosular
 // GET  /ear/kosu/:id                   kosu + partiler + hostlar
-// POST /ear/kosu                       { kip, kapsam: FILO | SECILI | ORTAM | SORUNLU, hostlar, ortamlar }
+// POST /ear/kosu                       { kip, kapsam: FILO | SECILI | ORTAM | SORUNLU | WEB | FILO_WEB, hostlar, ortamlar }
 // GET  /ear/ortamlar                   filodaki ortamlar + sunucu sayisi (acilir liste)
 // GET  /ear/kapsam-onizleme            ?kapsam&ortamlar&kip  -> { sunucu, parti, ornek } (kosu acmaz)
 // PUT  /ear/plan/:plan                 p1 | p2: { acik, birim, aralik, gun, sira, saat, kip, kapsam, baslangic }
@@ -85,17 +85,17 @@ function hostParam(v) {
   return h;
 }
 
-/** Istek kapsami -> FILO | SECILI | SORUNLU | ORTAM:A,B (ortamlar dizi ya da virgullu metin). */
+/** Istek kapsami -> FILO | SECILI | SORUNLU | WEB | FILO_WEB | ORTAM:A,B (ortamlar dizi ya da virgullu metin). */
 function kapsamParam(kapsam, ortamlarHam) {
   const k = String(kapsam || '').toUpperCase();
-  if (k === 'FILO' || k === 'SECILI' || k === 'SORUNLU') return k;
+  if (k === 'FILO' || k === 'SECILI' || k === 'SORUNLU' || k === 'WEB' || k === 'FILO_WEB') return k;
   if (k === 'ORTAM') {
     const l = Array.isArray(ortamlarHam) ? ortamlarHam : String(ortamlarHam || '').split(',');
     const d = ayar.kapsamDogrula(`ORTAM:${l.map((x) => String(x || '')).join(',')}`);
     if (!d) throw hata(400, 'Ortam listesi geçersiz (1-20 ortam).', 'gecersiz_kapsam');
     return d;
   }
-  throw hata(400, 'Kapsam FILO, SECILI, ORTAM ya da SORUNLU olmalı.', 'gecersiz_kapsam');
+  throw hata(400, 'Kapsam FILO, SECILI, ORTAM, SORUNLU, WEB ya da FILO_WEB olmalı.', 'gecersiz_kapsam');
 }
 
 /** Elle liste: metin (satir / bosluk / virgul ayracli) ya da dizi. */

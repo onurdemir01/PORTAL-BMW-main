@@ -16,6 +16,11 @@
 // read-children-resources(child-type=deployment) ciktisi (DMR metni) -> host.deployment_ozeti. Blok
 // yoksa NULL = olculmedi (kontrol kapali ya da eski playbook).
 //
+// FAZ W (2026-11-07): istege bagli web katmani blogu (files/web_tara.py; ear_web_kontrol), onceki bloklardan
+// SONRA. Apache / IHS config agaci (vhost, proxy / jk / balancer / mod_cluster / WAS eklentisi hedefleri,
+// config hatalari), soketler, IP'ler, access / error log ozetleri -> host.web_ozeti (beyaz liste, sinirli).
+// Blok yoksa NULL = olculmedi; python yoksa / blok kesikse durum o olur, "web yok" DEGIL.
+//
 // KUTUPHANE SETLERI: ayni uygulamanin eslenik sunuculardaki WAR'lari ayni kutuphane listesini tasir.
 // Liste her WAR satirina yazilsa haftalik filo kosusu yuzlerce MB olurdu; liste parmak iziyle
 // (sha256, 32 hex) BIR KEZ yazilir, WAR satiri yalniz izi tasir.
@@ -41,6 +46,12 @@ const SINIR_KOK_GIRDI = 500;
 const SINIR_XML_KAYIT = 300;
 const XML_DURUMLARI = Object.freeze(['OKUNDU', 'YOK', 'IZIN', 'DOSYA_DEGIL', 'BUYUK', 'REDDEDILDI', 'BOZUK', 'HATA']);
 const ESLESME_DURUMLARI = Object.freeze(['VAR', 'JVM_YOK', 'OLCULEMEDI']);
+const WEB_BASLA = Buffer.from('@@EAR_WEB_BASLA@@');
+const WEB_BITTI = Buffer.from('@@EAR_WEB_BITTI@@');
+const WEB_JSON_SINIR = 16 * 1024 * 1024;
+const WEB_OZET_SINIR = 4 * 1024 * 1024;
+const WEB_DURUMLARI = Object.freeze(['TAM', 'KISMI', 'WEB_YOK', 'OLCULEMEDI', 'ZAMAN_ASIMI']);
+const LOG_DURUMLARI = Object.freeze(['OLCULDU', 'KISMI', 'OLCULEMEDI', 'BOS']);
 const DEP_BASLA = Buffer.from('@@EAR_DEPLOYMENT_BASLA@@');
 const DEP_BITTI = Buffer.from('@@EAR_DEPLOYMENT_BITTI@@');
 // OK: CLI okundu; digerleri olculemedi. AYRISTIRILAMADI: CLI cevap verdi ama metin DMR degil.
@@ -527,6 +538,196 @@ function deploymentCoz(buf) {
   return out;
 }
 
+// ── FAZ W ────────────────────────────────────────────────────────────────────────────────────────
+const sinirli = (v, n, fn) => dizi(v).slice(0, n).map((x) => fn(nesne(x)));
+const ipNo = (v) => (v == null ? null : Math.min(N(v), 65535));
+const zaman = (v) => (v == null ? null : N(v));
+const hedefOf = (h) => ({
+  tur: M(h.tur, 16),
+  yol: M(h.yol, 300),
+  url: M(h.url, 300),
+  sema: h.sema == null ? null : M(h.sema, 16),
+  host: M(h.host, 256),
+  port: ipNo(h.port),
+  balancer_tanimli: typeof h.balancer_tanimli === 'boolean' ? h.balancer_tanimli : null,
+  dosya: M(h.dosya, 400),
+  satir: N(h.satir),
+});
+const sayilar = (o) => sinirli(o, 5, (x) => ({ ip: M(x.ip, 64), n: N(x.n) }));
+const logOf = (l) => ({
+  desen: M(l.desen, 400),
+  durum: D(l.durum, LOG_DURUMLARI, 'OLCULEMEDI'),
+  neden: M(l.neden, 200),
+  paylasilan: l.paylasilan === true,
+  miras: l.miras === true,
+  pencere_gun: N(l.pencere_gun),
+  kapsama_bas: zaman(l.kapsama_bas),
+  son_satir: zaman(l.son_satir),
+  son_gercek: zaman(l.son_gercek),
+  gercek_24s: N(l.gercek_24s),
+  gercek_7g: N(l.gercek_7g),
+  hc_24s: N(l.hc_24s),
+  hc_7g: N(l.hc_7g),
+  statik_7g: N(l.statik_7g),
+  durum_sinif: Object.fromEntries(['2xx', '3xx', '4xx', '5xx'].map((k) => [k, N(nesne(l.durum_sinif)[k])])),
+  istemci_sayisi: N(l.istemci_sayisi),
+  hc_istemcileri: sayilar(l.hc_istemcileri),
+  ilk_istemciler: sayilar(l.ilk_istemciler),
+  ilk_yollar: sinirli(l.ilk_yollar, 5, (x) => ({ yol: M(x.yol, 80), n: N(x.n) })),
+  ornek: l.ornek === true,
+  ayristirilamayan: N(l.ayristirilamayan),
+  satir: N(l.satir),
+  dosyalar: sinirli(l.dosyalar, 20, (x) => ({ yol: M(x.yol, 400), durum: M(x.durum, 32), bayt: N(x.bayt) })),
+});
+const vhostOf = (v) => ({
+  adres: dizi(v.adres).slice(0, 8).map((x) => M(x, 128)),
+  server_name: M(v.server_name, 256),
+  aliases: dizi(v.aliases).slice(0, 100).map((x) => M(x, 256)),
+  dosya: M(v.dosya, 400),
+  satir: N(v.satir),
+  belirsiz: v.belirsiz === true,
+  document_root: M(v.document_root, 400),
+  error_log: M(v.error_log, 400),
+  hedefler: sinirli(v.hedefler, 200, hedefOf),
+  ssl: v.ssl && typeof v.ssl === 'object' ? { sertifika: M(v.ssl.sertifika, 400), var: typeof v.ssl.var === 'boolean' ? v.ssl.var : null } : null,
+  jk_mount: sinirli(v.jk_mount, 200, (x) => ({ yol: M(x.yol, 300), worker: M(x.worker, 128), dosya: M(x.dosya, 400), satir: N(x.satir) })),
+  mcmp: v.mcmp === true,
+  loglar: sinirli(v.loglar, 5, logOf),
+});
+const kurulumOf = (k) => {
+  const jk = nesne(k.jk);
+  const w = jk.workers && typeof jk.workers === 'object' ? jk.workers : null;
+  const was = k.was && typeof k.was === 'object' ? k.was : null;
+  const mc = nesne(k.mod_cluster);
+  const grup = (o) =>
+    Object.fromEntries(
+      Object.entries(nesne(o))
+        .slice(0, 200)
+        .map(([a, l]) => [M(a, 256), dizi(l).slice(0, 200).map((x) => M(x, 300))]),
+    );
+  return {
+    kok: M(k.kok, 400),
+    conf: M(k.conf, 400),
+    urun: D(k.urun, ['IHS', 'RHA'], 'RHA'),
+    kaynak: D(k.kaynak, ['ps', 'aday'], 'aday'),
+    calisiyor: typeof k.calisiyor === 'boolean' ? k.calisiyor : null,
+    surec_sayisi: N(k.surec_sayisi),
+    tanimlar: dizi(k.tanimlar).slice(0, 50).map((x) => M(x, 64)),
+    moduller: dizi(k.moduller).slice(0, 300).map((x) => M(x, 128)),
+    dosya_sayisi: dizi(k.dosyalar).length,
+    okunamayan_dosyalar: sinirli(dizi(k.dosyalar).filter((x) => nesne(x).durum !== 'OKUNDU'), 100, (x) => ({ yol: M(x.yol, 400), durum: M(x.durum, 32) })),
+    hatalar: sinirli(k.hatalar, 500, (x) => ({ tur: M(x.tur, 32), dosya: M(x.dosya, 400), satir: N(x.satir), deger: M(x.deger, 300) })),
+    belirsiz_kararlar: dizi(k.if_kararlari).filter((x) => nesne(x).belirsiz === true).length,
+    dinle: sinirli(k.dinle, 500, (x) => ({ adres: M(x.adres, 128), port: ipNo(x.port), dosya: M(x.dosya, 400), satir: N(x.satir) })),
+    vhostlar: sinirli(k.vhostlar, 2000, vhostOf),
+    ana: (() => {
+      const a = nesne(k.ana);
+      return {
+        server_name: M(a.server_name, 256),
+        hedefler: sinirli(a.hedefler, 200, hedefOf),
+        access_log: dizi(a.access_log).slice(0, 10).map((x) => M(x, 400)),
+        error_log: M(a.error_log, 400),
+      };
+    })(),
+    balancerlar: sinirli(k.balancerlar, 500, (b) => ({
+      ad: M(b.ad, 128),
+      uyeler: sinirli(b.uyeler, 200, (u) => ({ url: M(u.url, 300), sema: u.sema == null ? null : M(u.sema, 16), host: M(u.host, 256), port: ipNo(u.port) })),
+      dosya: M(b.dosya, 400),
+      satir: N(b.satir),
+    })),
+    jk: {
+      workers: w
+        ? {
+            yol: M(w.yol, 400),
+            durum: M(w.durum, 32),
+            workerlar: sinirli(w.workerlar, 500, (x) => ({
+              ad: M(x.ad, 128), tur: M(x.tur, 16), host: M(x.host, 256), port: ipNo(x.port),
+              uyeler: dizi(x.uyeler).slice(0, 200).map((u) => M(u, 128)), listede: x.listede === true,
+            })),
+          }
+        : null,
+      mount_global: sinirli(jk.mount_global, 200, (x) => ({ yol: M(x.yol, 300), worker: M(x.worker, 128), dosya: M(x.dosya, 400), satir: N(x.satir) })),
+      log: M(jk.log, 400),
+    },
+    mod_cluster: {
+      yuklu: mc.yuklu === true,
+      yonergeler: Object.fromEntries(Object.entries(nesne(mc.yonergeler)).slice(0, 20).map(([a, b]) => [M(a, 40), M(b, 200)])),
+      mcmp_vhostlari: sinirli(mc.mcmp_vhostlari, 50, (x) => ({ adres: dizi(x.adres).slice(0, 8).map((y) => M(y, 128)), dosya: M(x.dosya, 400), satir: N(x.satir) })),
+    },
+    was: was
+      ? {
+          yol: M(was.yol, 400),
+          durum: M(was.durum, 32),
+          log: M(was.log, 400),
+          clusterlar: sinirli(was.clusterlar, 500, (c) => ({
+            ad: M(c.ad, 256),
+            sunucular: sinirli(c.sunucular, 200, (s) => ({ ad: M(s.ad, 256), host: M(s.host, 256), port: ipNo(s.port), protokol: M(s.protokol, 16) })),
+          })),
+          urigruplari: grup(was.urigruplari),
+          vhostgruplari: grup(was.vhostgruplari),
+          rotalar: sinirli(was.rotalar, 500, (r) => ({ cluster: M(r.cluster, 256), urigroup: M(r.urigroup, 256), vhostgroup: M(r.vhostgroup, 256) })),
+        }
+      : null,
+    error_loglari: sinirli(k.error_loglari, 50, (e) => ({
+      yol: M(e.yol, 400),
+      durum: M(e.durum, 32),
+      hatalar: sinirli(e.hatalar, 200, (x) => ({ tur: M(x.tur, 16), hedef: M(x.hedef, 300), n: N(x.n), son: zaman(x.son) })),
+    })),
+    kesildi: k.kesildi === true,
+  };
+};
+
+/**
+ * Faz W blogu -> web_ozeti nesnesi. null: blok yok (kontrol kapali / eski playbook). Python yoksa ya da
+ * blok BITTI'siz / bozuksa durum o olur (veri YOK, "web yok" de DEGIL).
+ */
+function webCoz(buf) {
+  const a = buf.indexOf(WEB_BASLA);
+  if (a < 0) return buf.includes('@@EAR_WEB_PYTHON_YOK@@') ? { durum: 'PYTHON_YOK', surum: null } : null;
+  const b = buf.indexOf(WEB_BITTI, a + WEB_BASLA.length);
+  if (b < 0) return { durum: 'KESIK', surum: null };
+  let p;
+  try {
+    const z = Buffer.from(buf.subarray(a + WEB_BASLA.length, b).toString('latin1'), 'base64');
+    p = JSON.parse(zlib.inflateSync(z, { maxOutputLength: WEB_JSON_SINIR }).toString('utf8'));
+  } catch (e) {
+    return { durum: 'BOZUK', surum: null, hata: M(e.code || e.message, 200) };
+  }
+  if (!p || typeof p !== 'object' || p.sema !== 1) return { durum: 'SEMA', surum: null };
+  const s = nesne(p.soketler);
+  const ip = nesne(p.ipler);
+  const oz = {
+    durum: D(p.durum, WEB_DURUMLARI, 'OLCULEMEDI'),
+    surum: N(p.surum),
+    baslangic_utc: /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/.test(String(p.baslangic_utc || '')) ? p.baslangic_utc : null,
+    python: M(p.python, 32) || null,
+    uid: N(p.uid),
+    ps_gorunur: p.ps_gorunur === true,
+    pencere_gun: N(p.pencere_gun),
+    hc_adlari: dizi(p.hc_adlari).slice(0, 20).map((x) => M(x, 64)),
+    sure_sn: Number.isFinite(Number(p.sure_sn)) ? Number(p.sure_sn) : null,
+    log_bayt: N(p.log_bayt),
+    kurulumlar: sinirli(p.kurulumlar, 8, kurulumOf),
+    soketler: {
+      durum: s.durum === 'OLCULDU' ? 'OLCULDU' : 'OLCULEMEDI',
+      dinlenen: sinirli(s.dinlenen, 500, (x) => ({ adres: M(x.adres, 64), port: ipNo(x.port), aile: x.aile === 6 ? 6 : 4 })),
+    },
+    ipler: {
+      durum: ip.durum === 'OLCULDU' ? 'OLCULDU' : 'OLCULEMEDI',
+      liste: sinirli(ip.liste, 500, (x) => ({ ip: M(x.ip, 64), onek: N(x.onek), iface: M(x.iface, 32), aile: x.aile === 6 ? 6 : 4 })),
+    },
+    uyarilar: dizi(p.uyarilar).slice(0, 50).map((x) => M(x, 300)),
+    kesildi: false,
+  };
+  // DB satiri sinirli: sigmazsa vhost'lar kirpilir ve bu ACIKCA isaretlenir (eksik liste "tam" gorunmez).
+  while (JSON.stringify(oz).length > WEB_OZET_SINIR && oz.kurulumlar.some((k) => k.vhostlar.length)) {
+    for (const k of oz.kurulumlar) k.vhostlar = k.vhostlar.slice(0, Math.floor(k.vhostlar.length / 2));
+    oz.kesildi = true;
+  }
+  if (oz.kesildi && oz.durum === 'TAM') oz.durum = 'KISMI';
+  return oz;
+}
+
 const birlesik = (degerler, n) => {
   const s = new Set();
   for (const v of degerler) if (v) for (const p of String(v).split(', ')) s.add(p);
@@ -537,7 +738,7 @@ const birlesik = (degerler, n) => {
  * Tarayici yuku -> DB'ye yazilacak duz kayitlar. Agac satirlari (satirlar) ALINMAZ.
  * @returns {{ host: object, uygulamalar: object[], warlar: object[], setler: Map<string, Array<[string, string, number]>> }}
  */
-function hostKaydi(p, { host, kip, partiNo, ortam, playbookDurum, hamBayt, deployment = null }) {
+function hostKaydi(p, { host, kip, partiNo, ortam, playbookDurum, hamBayt, deployment = null, web = null }) {
   const setler = new Map();
   // SESSIZ KESILME YOK (2026-11-05): sinirdan fazlasi alinmaz ama uygulama KISMI_SINIR olur ve
   // uyarisi yazilir; eksik liste eslenik karsilastirmasinda "ayni" ya da "farkli" sayilmaz.
@@ -663,6 +864,7 @@ function hostKaydi(p, { host, kip, partiNo, ortam, playbookDurum, hamBayt, deplo
       kok_girdileri: kokGirdileri(p),
       xml_ozeti: xmlOzeti(p),
       deployment_ozeti: deployment ? JSON.stringify(deployment) : null,
+      web_ozeti: web ? JSON.stringify(web) : null,
     },
     uygulamalar,
     warlar,
@@ -695,6 +897,7 @@ function bosHostKaydi({ partiNo, ortam, durum, playbookDurum, hata, hamBayt }) {
       kok_girdileri: null,
       xml_ozeti: null,
       deployment_ozeti: null,
+      web_ozeti: null,
     },
     uygulamalar: [],
     warlar: [],
@@ -723,6 +926,7 @@ const HOST_KOLONLAR = [
   'kok_girdileri NVARCHAR(MAX)',
   'xml_ozeti NVARCHAR(MAX)',
   'deployment_ozeti NVARCHAR(MAX)',
+  'web_ozeti NVARCHAR(MAX)',
 ];
 const UYG_KOLONLAR = [
   'uyg_no INT',
@@ -876,6 +1080,9 @@ module.exports = {
   dmrAyristir,
   deploymentCoz,
   DEP_JVM_DURUMLARI,
+  webCoz,
+  WEB_DURUMLARI,
+  WEB_OZET_SINIR,
   hostKaydi,
   bosHostKaydi,
   hostuYaz,
