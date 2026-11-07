@@ -407,16 +407,87 @@ async function siradakiPartiyiBaslat(kosu, req = null) {
     // Gecici hata: kosu acik kalir, poller yeniden dener; istek sahibine bu SOYLENIR (firlatilmaz).
     return { hata: mesaj, yenidenDenenecek: !son };
   }
-  await db().query(
-    `UPDATE ear_envanter_partileri SET awx_server_id = $2, awx_job_id = $3, awx_durum = $4 WHERE id = $1`,
-    [
-      parti.id,
-      Number(sonuc.awxServerId) || 0,
-      sonuc.jobId == null ? null : Number(sonuc.jobId),
-      M(sonuc.status, 16) || 'pending',
-    ],
+  const bag = await launchSonucunuBagla(kosu, parti, sonuc);
+  return { partiNo: parti.parti_no, jobId: sonuc.jobId ?? null, ...bag };
+}
+
+/**
+ * AWX launch dis yan etkidir. Job ID ancak parent kosu ve claim edilen parti hala bizimse normal
+ * yoldan baglanir. Arada Admin iptali veya DB yazim belirsizligi olursa isi fail-closed iptal et;
+ * job kimligini ve uzlasma notunu ikinci, dar bir yazimla koru ki dis is takipsiz kalmasin.
+ */
+async function launchSonucunuBagla(kosu, parti, sonuc) {
+  const awxServerId = Number(sonuc.awxServerId) || 0;
+  const jobId = sonuc.jobId == null ? null : Number(sonuc.jobId);
+  const awxDurum = M(sonuc.status, 16) || 'pending';
+  let yazimHatasi = null;
+  try {
+    const r = await db().query(
+      `UPDATE p
+          SET awx_server_id = $2, awx_job_id = $3, awx_durum = $4
+         FROM ear_envanter_partileri p
+        WHERE p.id = $1 AND p.kosu_id = $5 AND p.durum = 'CALISIYOR'
+          AND EXISTS (SELECT 1 FROM ear_envanter_kosulari k
+                       WHERE k.id = $5 AND k.durum = 'CALISIYOR')`,
+      [parti.id, awxServerId, jobId, awxDurum, kosu.id],
+      { tekrar: false },
+    );
+    if (r.rowCount === 1) return {};
+  } catch (e) {
+    yazimHatasi = e;
+  }
+
+  let iptalEdildi = false;
+  let iptalHatasi = null;
+  if (jobId != null) {
+    try {
+      await runner().cancelJobOnServer(awxServerId, jobId);
+      iptalEdildi = true;
+    } catch (e) {
+      iptalHatasi = e;
+    }
+  }
+  const neden = yazimHatasi
+    ? `AWX işi başladı; job kimliği normal yoldan yazılamadı: ${M(maskele(yazimHatasi.message), 500)}`
+    : 'AWX işi başladıktan sonra koşu/parti sahipliği kaybedildi';
+  let uzlasma = jobId == null
+    ? `${neden}; AWX job kimliği yok, iptal doğrulanamadı`
+    : iptalEdildi
+      ? `${neden}; AWX iptali istendi`
+      : `${neden}; AWX iptali başarısız: ${M(maskele(iptalHatasi && iptalHatasi.message), 300) || 'bilinmeyen hata'}`;
+  let uzlasmaKaydi = false;
+  try {
+    const kurtarma = await db().query(
+      `UPDATE ear_envanter_partileri
+          SET awx_server_id = $2, awx_job_id = $3, awx_durum = $4, hata = $5
+        WHERE id = $1
+          AND (awx_job_id IS NULL OR (COALESCE(awx_server_id, 0) = $2 AND awx_job_id = $3))`,
+      [parti.id, awxServerId, jobId, awxDurum, M(uzlasma, 1000)],
+      { tekrar: false },
+    );
+    uzlasmaKaydi = kurtarma.rowCount === 1;
+    if (!uzlasmaKaydi) {
+      uzlasma = `${uzlasma}; yeni AWX işi ${awxServerId}/${jobId == null ? 'bilinmiyor' : jobId}; farklı AWX job kimliği bulundu, mevcut kimlik ezilmedi`;
+      const cakisma = await db().query(
+        `UPDATE ear_envanter_partileri SET hata = $2 WHERE id = $1`,
+        [parti.id, M(uzlasma, 1000)],
+        { tekrar: false },
+      );
+      uzlasmaKaydi = cakisma.rowCount === 1;
+    }
+  } catch (e) {
+    console.error('[EarEnvanter] launch uzlasma kaydi yazilamadi:', maskele(e && e.message));
+  }
+  console.error(
+    `[EarEnvanter] kosu ${kosu.id} parti ${parti.parti_no} launch uzlasmasi${uzlasmaKaydi ? '' : ' KAYDEDILEMEDI'}:`,
+    uzlasma,
   );
-  return { partiNo: parti.parti_no, jobId: sonuc.jobId ?? null };
+  return {
+    sahiplikKaybi: true,
+    awxIptal: iptalEdildi,
+    uzlasmaKaydi,
+    hata: M(uzlasma, 1000),
+  };
 }
 
 // ── PARTI ALIMI ─────────────────────────────────────────────────────────────────────────────────
