@@ -1014,6 +1014,22 @@ const TABLES = [
       )`,
   },
   {
+    // Server Hub tablolarinin ORTAK kayitli gorunumleri (2026-11-07, server-hub/gorunumler.cjs): Admin
+    // kaydeder, Server Hub'i acan herkes gorur. ekran + ad tekil; gorunum JSON (suzgec + siralama +
+    // kolonlar), veri DEGIL.
+    name: 'server_hub_gorunumler',
+    sql: `
+      CREATE TABLE server_hub_gorunumler (
+        id        INT IDENTITY(1,1) PRIMARY KEY,
+        ekran     NVARCHAR(64)  NOT NULL,
+        ad        NVARCHAR(60)  NOT NULL,
+        gorunum   NVARCHAR(MAX) NOT NULL,
+        kaydeden  NVARCHAR(128) NOT NULL,
+        zaman     DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        CONSTRAINT UQ_server_hub_gorunumler UNIQUE (ekran, ad)
+      )`,
+  },
+  {
     // Server Hub > Uygulama Envanteri (2026-11-04): /vhosting + /vhosting8 EAR/WAR taramasi. KOSU = bir
     // tarama (filo ya da secili); hedefler PARTI'lere bolunup sirayla AWX'e gider. Ayni anda tek
     // CALISIYOR kosu (server/server-hub/ear-envanter-poller.cjs). zamanlayici_anahtari haftalik kosunun

@@ -487,6 +487,22 @@ export interface ShCaprazDurumu {
   kullanim: { okunamadi: boolean; hata?: string; olcum: number };
   retirement: { okunamadi: boolean; hata?: string; hedef: number };
 }
+/** Ortak kayitli gorunum (gorunumler.cjs): suzgec + siralama + kolonlar; Admin kaydeder. */
+export interface ShOrtakGorunum {
+  ad: string;
+  f: { k: string; op: string; v?: unknown }[];
+  s?: string;
+  kolonlar?: string[];
+  kaydeden?: string | null;
+  zaman?: string | null;
+}
+export interface ShOrtakGorunumYanit {
+  ok: boolean;
+  message?: string;
+  okunamadi?: boolean;
+  gorunumler?: ShOrtakGorunum[];
+  _httpStatus?: number;
+}
 // ── UYGULAMA 360 (2026-11-07): taban uygulama adi basina tek satir (uygulama-360.cjs) ──
 export interface Sh360Ortam {
   ortam: string;
@@ -739,6 +755,18 @@ export const serverHubApi = {
   limitDegistir: (ad: ShLimitAd, deger: number, aciklama: string): Promise<ShAyarYazim> =>
     fetch(`${BASE}/kurallar/limit/${encodeURIComponent(ad)}`, put({ deger, aciklama })).then(safeJson),
   // RETIREMENT ETIKETLERI (2026-11-06)
+  // ORTAK GORUNUMLER (2026-11-07): tablolarin Admin'in kaydettigi suzgec / siralama / kolonlari
+  gorunumler: (ekran: string): Promise<ShOrtakGorunumYanit> =>
+    fetch(`${BASE}/gorunumler?ekran=${encodeURIComponent(ekran)}`).then(safeJson),
+  gorunumKaydet: (
+    ekran: string,
+    ad: string,
+    gorunum: { f: unknown[]; s?: string; kolonlar?: string[] },
+  ): Promise<ShOrtakGorunumYanit> => fetch(`${BASE}/gorunumler`, put({ ekran, ad, gorunum })).then(safeJson),
+  gorunumSil: (ekran: string, ad: string): Promise<ShOrtakGorunumYanit> =>
+    fetch(`${BASE}/gorunumler?ekran=${encodeURIComponent(ekran)}&ad=${encodeURIComponent(ad)}`, {
+      method: 'DELETE',
+    }).then(safeJson),
   // UYGULAMA 360 (2026-11-07)
   uygulamalar360: (fresh = false): Promise<Sh360Sonuc> =>
     fetch(`${BASE}/uygulamalar-360${fresh ? '?fresh=1' : ''}`).then(safeJson),

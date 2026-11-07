@@ -929,6 +929,17 @@ function initServerHub(app) {
     },
   });
 
+  // ── ORTAK GORUNUMLER (2026-11-07) ── tablolarin Admin'in kaydettigi suzgec / siralama / kolonlari.
+  require('./gorunumler.cjs').mount(router, {
+    audit: (req, detail) => {
+      try {
+        require('../audit/index.cjs').auditPortal(req, 'server_hub', { detail: JSON.stringify(detail) });
+      } catch {
+        /* best-effort */
+      }
+    },
+  });
+
   // ── UYGULAMA 360 (2026-11-07) ── taban uygulama adi basina tek satir: kopyalar, EAR, capraz, etiketler.
   require('./uygulama-360.cjs').mount(router, {
     etiketHesabi: require('./retire-uclar.cjs').etiketHesabiKur({
