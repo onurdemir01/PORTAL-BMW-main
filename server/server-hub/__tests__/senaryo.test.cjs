@@ -442,6 +442,7 @@ test('SN4 uclar: /iliski/kararlar ve /iliski/karar', async () => {
     assert.deepEqual([s.status, s.body.tur, s.body.web[0].vhost], [200, 'sunucu', 1]);
     const kk = await J(`${kok}/iliski/karar?anahtar=${encodeURIComponent('jvm:APPSRV01|8|APP1')}`);
     assert.equal(kk.body.kopya.karar, 'RETIRE_ADAYI');
+    assert.deepEqual(kk.body.kopya.uygulamalar, ['app:APP1'], 'kopyadan uygulamaya gecis');
     assert.equal((await J(`${kok}/iliski/karar?anahtar=app:YOK`)).status, 409);
     assert.equal((await J(`${kok}/iliski/karar?anahtar=vhost:x`)).status, 400);
   } finally {
