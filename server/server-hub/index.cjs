@@ -950,8 +950,19 @@ function initServerHub(app) {
   });
 
   // ── ILISKI GRAFIGI (2026-11-07) ── varlik indeksi, kanitli kenarlar, capraz dogrulama (iliski-uclar.cjs).
-  require('./iliski-uclar.cjs').mount(router, {
+  const iliskiHesabi = require('./iliski-uclar.cjs').mount(router, {
     getAssessment: (fresh) => getAssessment(fresh === true),
+  });
+  // ── KALICI NOTLAR (2026-11-07) ── Admin notu / etiket / sinif; tarama silmez (notlar-uclar.cjs).
+  require('./notlar-uclar.cjs').mount(router, {
+    iliskiHesabi,
+    audit: (req, detail) => {
+      try {
+        require('../audit/index.cjs').auditPortal(req, 'server_hub', { detail: JSON.stringify(detail) });
+      } catch {
+        // denetim kaydi yazilamadi: islem yine tamam
+      }
+    },
   });
 
   // ── RETIREMENT ETIKETLERI (2026-11-06) ── bulgudan AYRI; Admin kural seviyesi + manuel kontrol.

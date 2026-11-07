@@ -995,6 +995,14 @@ test('RE10 uclar: etiket listesi, manuel kontrol (400 / 409 / 424 / 200), kural 
     assert.ok(iv.body.kenarlar.some((e) => e.tur === 'kopya'));
     assert.equal((await fetch(`${kok}/iliski/varlik?anahtar=app:YOKBOYLE`)).status, 409);
     assert.equal((await fetch(`${kok}/iliski/varlik?anahtar=bozuk`)).status, 400);
+    // Kalici notlar (2026-11-07) ayni kapinin arkasinda; sahte DB tabloyu bilmez -> okunamadi, varsayilan siniflar.
+    for (const [p, m] of [['/notlar', 'GET'], ['/siniflar', 'GET'], ['/notlar', 'POST']])
+      assert.equal((await fetch(`${kok}${p}`, { method: m, headers: { 'x-rol': 'Operator' } })).status, 403, `${m} ${p}`);
+    const nl = await fetch(`${kok}/notlar`).then(J);
+    assert.equal(nl.status, 200, JSON.stringify(nl.body));
+    assert.equal(nl.body.siniflar.length >= 5, true);
+    const kn = await fetch(`${kok}/iliski/kararlar`).then(J);
+    assert.equal(kn.status, 200, JSON.stringify(kn.body));
     // Ortak gorunumler (2026-11-07) ayni kapinin arkasinda; sahte DB tabloyu bilmez -> okunamadi (dusmez).
     assert.equal(
       (await fetch(`${kok}/gorunumler?ekran=server-hub-bulgular`, { headers: { 'x-rol': 'Operator' } })).status,

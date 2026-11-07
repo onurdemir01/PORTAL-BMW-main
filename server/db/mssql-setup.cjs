@@ -1030,6 +1030,56 @@ const TABLES = [
       )`,
   },
   {
+    // Server Hub kalici Admin notlari (2026-11-07, server-hub/notlar.cjs). konu = kanonik varlik anahtari
+    // (app: / sunucu: / jvm: / vhost: / ip: ...). Tarama notu SILMEZ; imza yazildigi anki kanit izi ("veri
+    // degisti" rozeti). durum AKTIF | ARSIV; surum iyimser kilit.
+    name: 'server_hub_notlar',
+    sql: `
+      CREATE TABLE server_hub_notlar (
+        id           INT IDENTITY(1,1) PRIMARY KEY,
+        konu         NVARCHAR(400)  NOT NULL,
+        supheli_kod  NVARCHAR(40)   NULL,
+        sinif        NVARCHAR(40)   NOT NULL,
+        etiketler    NVARCHAR(1000) NULL,
+        metin        NVARCHAR(2000) NOT NULL,
+        yayilim      NVARCHAR(8)    NOT NULL DEFAULT 'YALNIZ',
+        durum        NVARCHAR(8)    NOT NULL DEFAULT 'AKTIF',
+        imza         CHAR(32)       NULL,
+        surum        INT            NOT NULL DEFAULT 1,
+        olusturan    NVARCHAR(128)  NOT NULL,
+        olusturuldu  DATETIME2      NOT NULL DEFAULT SYSUTCDATETIME(),
+        guncelleyen  NVARCHAR(128)  NULL,
+        guncellendi  DATETIME2      NULL
+      )`,
+  },
+  {
+    name: 'server_hub_not_gecmisi',
+    sql: `
+      CREATE TABLE server_hub_not_gecmisi (
+        id      INT IDENTITY(1,1) PRIMARY KEY,
+        not_id  INT            NOT NULL,
+        islem   NVARCHAR(16)   NOT NULL,
+        onceki  NVARCHAR(MAX)  NULL,
+        kim     NVARCHAR(128)  NOT NULL,
+        zaman   DATETIME2      NOT NULL DEFAULT SYSUTCDATETIME()
+      )`,
+  },
+  {
+    // Not siniflari: varsayilanlar kodda (notlar.cjs SINIF_VARSAYILAN); ayni adla satir onu ezer.
+    name: 'server_hub_siniflar',
+    sql: `
+      CREATE TABLE server_hub_siniflar (
+        ad        NVARCHAR(40)   NOT NULL PRIMARY KEY,
+        baslik    NVARCHAR(80)   NOT NULL,
+        renk      NVARCHAR(16)   NOT NULL,
+        etki      NVARCHAR(16)   NOT NULL,
+        aciklama  NVARCHAR(300)  NULL,
+        sira      INT            NOT NULL DEFAULT 100,
+        kim       NVARCHAR(128)  NOT NULL,
+        zaman     DATETIME2      NOT NULL DEFAULT SYSUTCDATETIME()
+      )`,
+  },
+  {
     // Server Hub > Uygulama Envanteri (2026-11-04): /vhosting + /vhosting8 EAR/WAR taramasi. KOSU = bir
     // tarama (filo ya da secili); hedefler PARTI'lere bolunup sirayla AWX'e gider. Ayni anda tek
     // CALISIYOR kosu (server/server-hub/ear-envanter-poller.cjs). zamanlayici_anahtari haftalik kosunun
