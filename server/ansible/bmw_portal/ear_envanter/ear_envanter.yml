@@ -15,6 +15,9 @@
 #   ear_sure:              300   (betik ici yumusak butce, sn)
 #   ear_zaman_asimi:       600   (Ansible gorev zaman asimi, sn: kesin sinir)
 #   ear_sinir_uygulama:    25000 / ear_sinir_host: 200000 / ear_arsiv_mb: 64
+#   ear_baglanti_kontrol:  false (FAZ A: yapilandirilmis JVM / WAS portlarina ESTABLISHED baglanti goruntusu; Admin acar)
+#   ear_baglanti_ornek:    3     (ornek sayisi) / ear_baglanti_ara: 10 (ornekler arasi sn)
+#   ear_was_kokler:        "/opt/IBM/WebSphere/AppServer:/usr/IBM/WebSphere/AppServer"  (WebSphere serverindex.xml)
 #   ear_deployment_kontrol: false (FAZ 2: calisan JVM'lerin deployment durumu, JBoss CLI; Admin acar)
 #   ear_dep_zaman:         15    (CLI cagrisi basina sn) / ear_dep_sure: 180 (host butcesi, sn)
 #   ear_web_kontrol:       false (FAZ W: web katmani - Apache / IHS config, soketler, IP'ler, log ozeti; Admin acar)
@@ -81,6 +84,7 @@
           - (ear_web_okuma_kullanicisi | default('') | string) is match('^([a-z_][a-z0-9_-]{0,31})?$')
           - (ear_web_kokler | default('/usr/IBMIHS') | string) is match('^(/[A-Za-z0-9._/-]+)(:/[A-Za-z0-9._/-]+)*$')
           - (ear_web_hc | default('hc.html,hc.jsp') | string) is match('^[A-Za-z0-9._-]{1,64}(,[A-Za-z0-9._-]{1,64}){0,19}$')
+          - (ear_was_kokler | default('/opt/IBM/WebSphere/AppServer') | string) is match('^(/[A-Za-z0-9._/-]+)(:/[A-Za-z0-9._/-]+)*$')
         fail_msg: "Gecersiz girdi: hedefler / ear_kip / ear_kosu_no / ear_parti_no / ear_okuma_kullanicisi / ear_kokler / ear_dizin / Faz W girdileri"
 
     - name: "--- [Task] Hedefleri ekle ---"
@@ -114,6 +118,7 @@
           - (ear_web_okuma_kullanicisi | default('') | string) is match('^([a-z_][a-z0-9_-]{0,31})?$')
           - (ear_web_kokler | default('/usr/IBMIHS') | string) is match('^(/[A-Za-z0-9._/-]+)(:/[A-Za-z0-9._/-]+)*$')
           - (ear_web_hc | default('hc.html,hc.jsp') | string) is match('^[A-Za-z0-9._-]{1,64}(,[A-Za-z0-9._-]{1,64}){0,19}$')
+          - (ear_was_kokler | default('/opt/IBM/WebSphere/AppServer') | string) is match('^(/[A-Za-z0-9._/-]+)(:/[A-Za-z0-9._/-]+)*$')
         fail_msg: "Gecersiz girdi (Limit kipi): awx_job_id (AWX disinda elle ver) / ear_kip / ear_okuma_kullanicisi / ear_kokler / ear_dizin / Faz W girdileri"
       run_once: true
       when: hedefler is not defined
@@ -152,7 +157,7 @@
           ansible.builtin.raw: |
             P=""; for c in python3 /usr/libexec/platform-python; do command -v "$c" >/dev/null 2>&1 && { P="$c"; break; }; done
             [ -n "$P" ] || { echo "@@EAR_PYTHON_YOK@@"; exit 0; }
-            EAR_KIP={{ ear_kip | default('OZET') | quote }} EAR_KOKLER={{ ear_kokler | default('/vhosting:/vhosting8') | quote }} EAR_SURE={{ ear_sure | default(300) | int }} EAR_SINIR_UYGULAMA={{ ear_sinir_uygulama | default(25000) | int }} EAR_SINIR_HOST={{ ear_sinir_host | default(200000) | int }} EAR_ARSIV_MB={{ ear_arsiv_mb | default(64) | int }} LC_ALL=C PYTHONIOENCODING=utf-8:surrogateescape "$P" -B - <<'EAR_TARA_SON'
+            EAR_KIP={{ ear_kip | default('OZET') | quote }} EAR_KOKLER={{ ear_kokler | default('/vhosting:/vhosting8') | quote }} EAR_SURE={{ ear_sure | default(300) | int }} EAR_SINIR_UYGULAMA={{ ear_sinir_uygulama | default(25000) | int }} EAR_SINIR_HOST={{ ear_sinir_host | default(200000) | int }} EAR_ARSIV_MB={{ ear_arsiv_mb | default(64) | int }} EAR_WAS={{ ear_was_kokler | default('/opt/IBM/WebSphere/AppServer:/usr/IBM/WebSphere/AppServer') | quote }} EAR_BAGLANTI={{ '1' if (ear_baglanti_kontrol | default(false) | bool) else '0' }} EAR_BAGLANTI_ORNEK={{ ear_baglanti_ornek | default(3) | int }} EAR_BAGLANTI_ARA={{ ear_baglanti_ara | default(10) | int }} LC_ALL=C PYTHONIOENCODING=utf-8:surrogateescape "$P" -B - <<'EAR_TARA_SON'
             {{ lookup('ansible.builtin.file', 'files/ear_tara.py') }}
             EAR_TARA_SON
           register: ear_tarama

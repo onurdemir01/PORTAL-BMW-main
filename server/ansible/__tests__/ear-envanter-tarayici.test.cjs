@@ -28,6 +28,14 @@
 //        reddi; okunamayan yapilandirma ASLA 'JVM yok' degil; parola / ozellik degeri pakete girmez
 //   ET15 kokteki .ear disi girdiler: ad, tip, boyut, mtime, bag hedefi; .ear haric; 500 siniri
 //        sayilir ve kesilme yazilir
+//   ET16 FAZ A: profil mod_cluster (EAP 7.1+ proxy/proxies + outbound; EAP 6 mod-cluster-config proxy-list),
+//        AJP / HTTP dinleyici soketleri, socket-binding-group portlari (${...:varsayilan}), server-group
+//        profil / port grubu / ofset, server port-offset; deployment yolu VAR / YOK / relative-to -> null
+//   ET17 FAZ A baglanti goruntusu: yapilandirilmis portlar (grup ofseti, sunucu ofseti onceligi), sahte
+//        /proc/net/tcp'de LISTEN / ESTABLISHED, en cok eszamanli, uzak IP gozlemi; KAPALI varsayilan;
+//        okunamazsa OLCULEMEDI; port yoksa PORT_YOK
+//   ET18 FAZ A WebSphere serverindex.xml: sunucu, WC_ uc nokta portlari, kurulu uygulamalar; kok yok -> YOK;
+//        DOCTYPE reddi; WC portlari baglanti goruntusune girer
 'use strict';
 
 const { test } = require('node:test');
@@ -747,10 +755,12 @@ IZIN = {
     'os': {'O_RDONLY', 'SEEK_END', 'SEEK_SET', 'environ', 'fdopen', 'getuid', 'lstat', 'open', 'path', 'readlink', 'scandir'},
     'os.path': {'isdir', 'isfile', 'join', 'normpath', 'realpath'},
     'sys': {'stdout', 'version'},
-    'socket': {'gethostname'},
+    # Faz A (2026-11-07): /proc/net/tcp hex adresini metne cevirmek icin (ag baglantisi ACMAZ).
+    'socket': {'gethostname', 'inet_ntop', 'AF_INET', 'AF_INET6'},
     'zipfile': {'ZipFile', 'BadZipFile'},
     'io': {'BytesIO'},
-    'time': {'gmtime', 'mktime', 'monotonic', 'strftime'},
+    # sleep: baglanti goruntusunun ornekleri arasi bekleme (yalniz EAR_BAGLANTI=1).
+    'time': {'gmtime', 'mktime', 'monotonic', 'strftime', 'sleep'},
     'hashlib': {'sha256'},
     'base64': {'b64encode'},
     'zlib': {'compress'},
@@ -1075,3 +1085,212 @@ test('ET15 kokteki .ear disi girdiler: tip, boyut, mtime, bag; .ear haric; sinir
   assert.equal(y2.kok_girdileri.length, 500);
   assert.equal(y2.kok_girdisi_kesilen, 5, 'kesilen girdi sayilmali (sessiz kesilme yok)');
 });
+
+// --- FAZ A (2026-11-07) ---
+const NS8 = 'urn:jboss:domain:20.0';
+function faz8Domain({ proxies = 'web1 web2', ofset = '0' } = {}) {
+  return `<?xml version="1.0"?>
+<domain xmlns="${NS8}">
+<profiles>
+  <profile name="full-ha">
+    <subsystem xmlns="urn:jboss:domain:modcluster:6.0">
+      <proxy name="default" advertise="false" listener="ajp" proxies="${proxies}" balancer="mybal"/>
+    </subsystem>
+    <subsystem xmlns="urn:jboss:domain:undertow:14.0">
+      <server name="default-server"><ajp-listener name="ajp" socket-binding="ajp"/><http-listener name="default" socket-binding="http"/></server>
+    </subsystem>
+  </profile>
+</profiles>
+<socket-binding-groups>
+  <socket-binding-group name="full-ha-sockets" default-interface="public">
+    <socket-binding name="ajp" port="\${jboss.ajp.port:8009}"/>
+    <socket-binding name="http" port="\${jboss.http.port:8080}"/>
+    <socket-binding name="https" port="8443"/>
+    <socket-binding name="garip" port="\${tanimsiz}"/>
+    <outbound-socket-binding name="web1"><remote-destination host="websrv01" port="6666"/></outbound-socket-binding>
+    <outbound-socket-binding name="web2"><remote-destination host="websrv02" port="\${mc.port:6666}"/></outbound-socket-binding>
+  </socket-binding-group>
+  <socket-binding-group name="ozel-sockets" default-interface="public">
+    <socket-binding name="ajp" port="8909"/>
+  </socket-binding-group>
+</socket-binding-groups>
+<deployments>
+  <deployment name="APP8.ear" runtime-name="APP8.ear"><fs-exploded path="__YOL__"/></deployment>
+  <deployment name="KAYIP.ear" runtime-name="KAYIP.ear"><fs-archive path="__KAYIP__"/></deployment>
+  <deployment name="GORELI.ear" runtime-name="GORELI.ear"><fs-archive path="x.ear" relative-to="jboss.home.dir"/></deployment>
+</deployments>
+<server-groups>
+  <server-group name="grp8" profile="full-ha"><jvm name="default"/><socket-binding-group ref="full-ha-sockets" port-offset="${ofset}"/>
+    <deployments><deployment name="APP8.ear" runtime-name="APP8.ear"/></deployments></server-group>
+  <server-group name="bosgrup" profile="full-ha"><socket-binding-group ref="full-ha-sockets"/></server-group>
+</server-groups>
+</domain>
+`;
+}
+function faz8Host() {
+  return `<?xml version="1.0"?>
+<host name="primary" xmlns="${NS8}">
+<servers>
+  <server name="APP8-JVM1" group="grp8" auto-start="true"><socket-bindings port-offset="100"/></server>
+  <server name="APP8-JVM2" group="grp8"/>
+  <server name="APP8-JVM3" group="grp8"><socket-bindings socket-binding-group="ozel-sockets" port-offset="0"/></server>
+</servers>
+</host>
+`;
+}
+
+test('ET16 Faz A: mod_cluster proxies / proxy-list, soket portlari, ofsetler, deployment yolu', { skip: SKIP }, () => {
+  const kok = geciciKok('et16');
+  const v8 = path.join(kok, 'vhosting8');
+  fs.mkdirSync(path.join(v8, 'APP8.ear'), { recursive: true });
+  jbossYaz(kok, 'jboss8', {
+    domain: faz8Domain({ ofset: '\${grp.ofset:10}' })
+      .replace('__YOL__', path.join(v8, 'APP8.ear'))
+      .replace('__KAYIP__', path.join(v8, 'KAYIP.ear')),
+    host: faz8Host(),
+  });
+  // EAP 6: mod-cluster-config proxy-list + web connector AJP
+  jbossYaz(kok, 'jboss', {
+    domain: `<?xml version="1.0"?><domain xmlns="${NS}"><profiles><profile name="ha">
+      <subsystem xmlns="urn:jboss:domain:modcluster:1.2"><mod-cluster-config advertise-socket="modcluster" proxy-list="websrv07:6666,websrv08:6666" connector="ajp"/></subsystem>
+      <subsystem xmlns="urn:jboss:domain:web:2.2"><connector name="ajp" protocol="AJP/1.3" scheme="http" socket-binding="ajp"/></subsystem>
+      </profile></profiles></domain>`,
+    host: hostXml([]),
+  });
+  const y = tara(kokler2(kok), { EAR_JBOSS: jbossKokleri(kok) });
+  const k8 = y.yapilandirma.find((k) => k.nesil === '8');
+  const p = k8.profiller[0];
+  assert.deepEqual(p.modcluster, {
+    tur: 'proxy',
+    proxies: ['web1', 'web2'],
+    proxy_list: [],
+    balancer: 'mybal',
+    advertise: false,
+    advertise_soketi: '',
+    dinleyici: 'ajp',
+  });
+  assert.deepEqual([p.ajp, p.http], [['ajp'], ['http']]);
+  const sg = k8.soket_gruplari[0];
+  assert.deepEqual(sg.soketler, { ajp: 8009, http: 8080, https: 8443, garip: null });
+  assert.deepEqual(sg.outbound, [
+    { ad: 'web1', host: 'websrv01', port: 6666 },
+    { ad: 'web2', host: 'websrv02', port: 6666 },
+  ]);
+  const g = Object.fromEntries(k8.gruplar.map((x) => [x.ad, x]));
+  assert.deepEqual([g.grp8.profil, g.grp8.soket_grubu, g.grp8.port_ofseti], ['full-ha', 'full-ha-sockets', 10]);
+  assert.deepEqual(g.bosgrup.deploymentlar, [], 'bos grup listede');
+  const s = Object.fromEntries(k8.sunucular.map((x) => [x.ad, x]));
+  assert.equal(s['APP8-JVM1'].port_ofseti, 100);
+  assert.equal(s['APP8-JVM2'].port_ofseti, null, 'sunucu ofseti yoksa null (grup ofseti PORTAL tarafinda uygulanir)');
+  const d = Object.fromEntries(k8.deploymentlar.map((x) => [x.ad, x]));
+  assert.equal(d['APP8.ear'].yol_durumu, 'VAR');
+  assert.equal(d['KAYIP.ear'].yol_durumu, 'YOK', 'tanim var dosya yok');
+  assert.equal(d['GORELI.ear'].yol_durumu, null, 'relative-to: cozulmez, iddia kurulmaz');
+  // Izin reddi "yok" DEGIL: kilitli dizindeki yol OLCULEMEDI (root'ta izin uygulanmaz)
+  if (!ROOT) {
+    const kilitli = path.join(kok, 'kilitli');
+    fs.mkdirSync(path.join(kilitli, 'ic'), { recursive: true });
+    const d2 = faz8Domain().replace('__YOL__', path.join(kilitli, 'ic', 'APP8.ear')).replace('__KAYIP__', '/yok/x.ear');
+    jbossYaz(kok, 'jboss8', { domain: d2, host: faz8Host() });
+    fs.chmodSync(kilitli, 0o000);
+    try {
+      const yk = tara(kokler2(kok), { EAR_JBOSS: jbossKokleri(kok) });
+      const dk = yk.yapilandirma.find((k) => k.nesil === '8').deploymentlar.find((x) => x.ad === 'APP8.ear');
+      assert.equal(dk.yol_durumu, 'OLCULEMEDI');
+    } finally {
+      fs.chmodSync(kilitli, 0o755);
+    }
+  }
+  const k7 = y.yapilandirma.find((k) => k.nesil === '7');
+  assert.deepEqual(k7.profiller[0].modcluster.proxy_list, ['websrv07:6666', 'websrv08:6666']);
+  assert.deepEqual(k7.profiller[0].ajp, ['ajp']);
+  assert.deepEqual(y.baglanti, { durum: 'KAPALI' }, 'baglanti goruntusu varsayilan KAPALI');
+});
+
+/** Sahte /proc/net/tcp: [durum, yerelPort, uzakIp] satirlari. */
+function sahteTcp(dizin, satirlar) {
+  const hex = (ip) => ip.split('.').map((x) => Number(x).toString(16).padStart(2, '0')).reverse().join('').toUpperCase();
+  const govde = satirlar
+    .map(([d, port, uzak], i) => `  ${i}: 0500000A:${port.toString(16).toUpperCase().padStart(4, '0')} ${hex(uzak)}:D431 ${d} 00000000:00000000 00:00000000 00000000  1000 0 ${i}`)
+    .join('\n');
+  fs.mkdirSync(path.join(dizin, 'net'), { recursive: true });
+  fs.writeFileSync(path.join(dizin, 'net', 'tcp'), `  sl  local_address rem_address   st\n${govde}\n`);
+}
+
+test('ET17 Faz A baglanti goruntusu: ofsetli portlar, LISTEN / ESTABLISHED, uzak IP; OLCULEMEDI / PORT_YOK', { skip: SKIP }, () => {
+  const kok = geciciKok('et17');
+  jbossYaz(kok, 'jboss8', { domain: faz8Domain({ ofset: '0' }).replace(/__YOL__|__KAYIP__/g, '/yok'), host: faz8Host() });
+  const proc = path.join(kok, 'proc');
+  // JVM1: ofset 100 -> ajp 8109, http 8180; JVM2: grup ofseti 0 -> ajp 8009, http 8080
+  sahteTcp(proc, [
+    ['0A', 8109, '0.0.0.0'],
+    ['01', 8109, '10.0.0.21'],
+    ['01', 8109, '10.0.0.21'],
+    ['01', 8109, '10.0.0.22'],
+    ['0A', 8080, '0.0.0.0'],
+    ['01', 8080, '10.0.0.40'],
+    ['01', 22, '10.0.0.99'],
+    ['06', 8109, '10.0.0.77'],
+    ['08', 8109, '10.0.0.78'],
+  ]);
+  const ortam = { EAR_JBOSS: jbossKokleri(kok), EAR_BAGLANTI: '1', EAR_BAGLANTI_ORNEK: '2', EAR_BAGLANTI_ARA: '0', EAR_PROC: proc, EAR_WAS: path.join(kok, 'yok') };
+  const b = tara(kokler2(kok), ortam).baglanti;
+  assert.equal(b.durum, 'OLCULDU');
+  assert.equal(b.ornek, 2);
+  const p = Object.fromEntries(b.portlar.map((x) => [x.port, x]));
+  assert.deepEqual(Object.keys(p).map(Number).sort((a, c) => a - c), [8009, 8080, 8109, 8180, 8443, 8543, 8909]);
+  // Sunucunun kendi socket-binding-group'u grubunkini ezer (JVM3: ozel-sockets, ajp 8909)
+  assert.deepEqual(p[8909].sahipler.map((x) => [x.jvm, x.tur]), [['APP8-JVM3', 'ajp']]);
+  assert.deepEqual(p[8109].sahipler, [{ jvm: 'APP8-JVM1', kurulum: path.join(kok, 'usr', 'jboss8', 'AppServer'), tur: 'ajp' }]);
+  assert.equal(p[8109].dinleniyor, true);
+  assert.equal(p[8109].en_cok, 3, 'ornek basina en cok eszamanli');
+  // TIME_WAIT (06) / CLOSE_WAIT (08) ESTABLISHED degildir: sayilmaz
+  assert.deepEqual(p[8109].uzaklar, [{ ip: '10.0.0.21', gozlem: 4 }, { ip: '10.0.0.22', gozlem: 2 }]);
+  assert.deepEqual([p[8080].dinleniyor, p[8080].uzaklar[0].ip], [true, '10.0.0.40']);
+  assert.deepEqual([p[8009].dinleniyor, p[8009].en_cok], [false, 0], 'dinlenmeyen yapilandirilmis port ayri gorunur');
+  assert.ok(!p[22], 'yapilandirilmamis port sayilmaz');
+  // /proc/net okunamazsa OLCULEMEDI (asla "baglanti yok" degil)
+  fs.rmSync(path.join(proc, 'net'), { recursive: true });
+  assert.equal(tara(kokler2(kok), ortam).baglanti.durum, 'OLCULEMEDI');
+  // Yapilandirilmis port yoksa PORT_YOK
+  const bos = geciciKok('et17b');
+  assert.equal(tara(kokler2(bos), { ...ortam, EAR_JBOSS: jbossKokleri(bos) }).baglanti.durum, 'PORT_YOK');
+});
+
+test('ET18 Faz A WebSphere serverindex.xml: sunucu, WC uc noktalari, uygulamalar; DOCTYPE reddi', { skip: SKIP }, () => {
+  const kok = geciciKok('et18');
+  const was = path.join(kok, 'WebSphere', 'AppServer');
+  const dugum = path.join(was, 'profiles', 'AppSrv01', 'config', 'cells', 'hucre1', 'nodes', 'dugum1');
+  fs.mkdirSync(dugum, { recursive: true });
+  fs.writeFileSync(
+    path.join(dugum, 'serverindex.xml'),
+    `<?xml version="1.0" encoding="UTF-8"?>
+<serverindex:ServerIndex xmlns:serverindex="http://www.ibm.com/websphere/appserver/schemas/5.0/serverindex.xmi" hostName="wassrv01">
+  <serverEntries serverName="srv1" serverType="APPLICATION_SERVER">
+    <deployedApplications>cells/hucre1/applications/APP4.ear/deployments/APP4</deployedApplications>
+    <deployedApplications>cells/hucre1/applications/ikinci.ear/deployments/ikinci</deployedApplications>
+    <specialEndpoints endPointName="BOOTSTRAP_ADDRESS"><endPoint host="wassrv01" port="2809"/></specialEndpoints>
+    <specialEndpoints endPointName="WC_defaulthost"><endPoint host="*" port="9080"/></specialEndpoints>
+    <specialEndpoints endPointName="WC_defaulthost_secure"><endPoint host="*" port="9443"/></specialEndpoints>
+  </serverEntries>
+  <serverEntries serverName="nodeagent" serverType="NODE_AGENT"/>
+</serverindex:ServerIndex>`,
+  );
+  const proc = path.join(kok, 'proc');
+  sahteTcp(proc, [['0A', 9080, '0.0.0.0'], ['01', 9080, '10.0.0.50']]);
+  const y = tara(kokler2(kok), { EAR_JBOSS: path.join(kok, 'yok'), EAR_WAS: `${was}:${path.join(kok, 'yokwas')}`, EAR_BAGLANTI: '1', EAR_BAGLANTI_ORNEK: '1', EAR_PROC: proc });
+  assert.deepEqual(y.was.kokler.map((k) => k.durum), ['VAR', 'YOK']);
+  const s = y.was.sunucular.find((x) => x.ad === 'srv1');
+  assert.deepEqual([s.profil, s.hucre, s.dugum, s.tur], ['AppSrv01', 'hucre1', 'dugum1', 'APPLICATION_SERVER']);
+  assert.deepEqual(s.uygulamalar, ['APP4', 'ikinci']);
+  assert.deepEqual(s.uclar.map((u) => [u.ad, u.port]), [['WC_defaulthost', 9080], ['WC_defaulthost_secure', 9443]]);
+  const p = y.baglanti.portlar.find((x) => x.port === 9080);
+  assert.deepEqual([p.sahipler[0].tur, p.dinleniyor, p.uzaklar[0].ip], ['was_http', true, '10.0.0.50']);
+  assert.equal(y.baglanti.portlar.find((x) => x.port === 9443).sahipler[0].tur, 'was_https');
+  assert.ok(!y.baglanti.portlar.some((x) => x.port === 2809), 'BOOTSTRAP gibi WC_ disi uc noktalar alinmaz');
+  fs.writeFileSync(path.join(dugum, 'serverindex.xml'), '<?xml version="1.0"?><!DOCTYPE a [<!ENTITY x "y">]><a/>');
+  const y2 = tara(kokler2(kok), { EAR_JBOSS: path.join(kok, 'yok'), EAR_WAS: was });
+  assert.deepEqual(y2.was.dosyalar.map((d) => d.durum), ['REDDEDILDI']);
+  assert.deepEqual(y2.was.sunucular, []);
+});
+

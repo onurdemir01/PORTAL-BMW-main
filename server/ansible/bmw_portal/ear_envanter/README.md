@@ -14,6 +14,16 @@ Bu Ansible playbook'u Linux sunuculardaki `/vhosting` ve `/vhosting8` klasörler
   - Yalnız deployment, server-group ve JVM adları ile auto-start alınır. Parola, datasource gibi değerler alınmaz.
   - 5 MB'tan büyük ya da `DOCTYPE`/`ENTITY` içeren dosya okunmaz.
   - Okunamayan dosya "JVM yok" sayılmaz; Portal'da "okunamadı" ve nedeni görünür.
+- **Faz A (her taramada, yalnız okuma):** aynı `domain.xml` / `host.xml`'den web ↔ uygulama eşlemesi için gerekenler alınır:
+  - profil başına mod_cluster ayarı (`proxies` / `proxy-list` / balancer / advertise) ve AJP / HTTP dinleyicileri;
+  - socket-binding grupları: `ajp` / `http` / `https` portları ve outbound hedefleri (JBoss 8'in kaydolduğu Apache);
+  - server group profili / port grubu / ofseti ve sunucu `port-offset`'i;
+  - deployment yolunun diskte olup olmadığı (yalnız `lstat`).
+  WebSphere kurulu sunucularda `profiles/*/config/cells/*/nodes/*/serverindex.xml`'den sunucular, `WC_*` portları ve kurulu uygulamalar okunur.
+- **Bağlantı görüntüsü (Faz A, isteğe bağlı, varsayılan KAPALI):** yapılandırılmış JVM / WAS portlarına gelen ESTABLISHED bağlantılar `/proc/net/tcp`'den okunur. 10 sn arayla 3 örnek alınır, uzak IP'ye göre sayılır; sunucu başına ~20 sn sürer.
+  - Web katmanını atlayan servis-servis çağrısının kanıtıdır.
+  - Anlık görüntü olduğu için "kullanılmıyor" demeye tek başına yetmez.
+  - Portal'dan açmak için: **Ayarlar › Bağlantı görüntüsü = ACIK**. AWX'ten elle: `ear_baglanti_kontrol: true`.
 - `/vhosting` ve `/vhosting8` altında `.ear` ile bitmeyen girdileri de listeler (`APP.ear.bak`, `ESKI.war`, eski klasörler gibi). Bunlar retire şüphesi olarak değerlendirilir.
 - **Deployment kontrolü (Faz 2, isteğe bağlı, varsayılan KAPALI):** çalışan her JVM için JBoss CLI ile yalnız okuma komutu çalıştırır:
   `read-children-resources(child-type=deployment,include-runtime=true,recursive=false)`.

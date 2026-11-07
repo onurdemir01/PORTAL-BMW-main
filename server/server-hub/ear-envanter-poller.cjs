@@ -315,6 +315,9 @@ async function kosuOlustur({
     web_okuma_kullanicisi: a.web_okuma_kullanicisi,
     web_hc: a.web_hc,
     web_kokler: a.web_kokler,
+    // Faz A: kosu basladigi andaki baglanti / WAS ayarlari.
+    baglanti_kontrolu: a.baglanti_kontrolu,
+    was_kokler: a.was_kokler,
     dizin: alim.earDizin(),
     parti_boyutu: partiler[0].host_sayisi,
     gecersiz_host: gecersiz,
@@ -381,6 +384,8 @@ function extraVarsOf(kosu, parti) {
     ear_kokler: p.kokler || '/vhosting:/vhosting8',
     // Faz 2 yalniz aciksa gonderilir (kapaliyken extra_vars eskisiyle birebir).
     ...(p.deployment_kontrolu === 'ACIK' ? { ear_deployment_kontrol: true } : {}),
+    ...(p.baglanti_kontrolu === 'ACIK' ? { ear_baglanti_kontrol: true } : {}),
+    ...(p.was_kokler ? { ear_was_kokler: p.was_kokler } : {}),
     // Faz W yalniz aciksa (kapaliyken extra_vars eskisiyle birebir).
     ...(p.web_kontrolu === 'ACIK'
       ? {

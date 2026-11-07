@@ -13,6 +13,12 @@
 # ENTITY iceren dosya reddedilir). Yalniz deployment / server-group / server adlari, yollari ve
 # auto-start alinir; baska hicbir deger (parola, datasource, sistem ozelligi) pakete girmez.
 # Kokteki .ear ile bitmeyen girdiler (ad, tip, boyut, mtime) ayrica listelenir: retire supheleri.
+# FAZ A (2026-11-07, surum 3): ayni dosyalardan ek olarak profil (mod_cluster proxies / proxy-list /
+# balancer / advertise, AJP / HTTP dinleyici soket adlari), socket-binding-group (ajp / http / https
+# portlari, outbound remote-destination host:port), server-group profil / port grubu / ofset, server
+# port-offset ve deployment yolunun diskte olup olmadigi (yalniz lstat). WebSphere serverindex.xml
+# (sunucu, uc nokta portlari, kurulu uygulamalar). Istege bagli (EAR_BAGLANTI=1) yapilandirilmis portlara
+# ESTABLISHED baglantilarin anlik goruntusu /proc/net/tcp{,6}'dan (surec eslemesi yok, uzak IP sayilir).
 #
 # KIPLER: OZET - dosya basina stat YOK (scandir ad + tip), yalniz kutuphane jar'larinin boyutu;
 #         TAM  - her giris icin lstat (ls -lrtiR alanlari) ve agac satirlari.
@@ -22,7 +28,8 @@
 #   host:     TAM | KISMI | KOK_YOK | ZAMAN_ASIMI
 # Ayarlar ortam degiskenleriyle (playbook verir): EAR_KIP, EAR_KOKLER, EAR_SINIR_UYGULAMA,
 # EAR_SINIR_HOST, EAR_SURE, EAR_ARSIV_MB, EAR_CIKTI (paket | insan), EAR_JBOSS (JBoss kurulum
-# kokleri, ':' ayrili; varsayilan /usr/jboss/AppServer:/usr/jboss8/AppServer).
+# kokleri, ':' ayrili; varsayilan /usr/jboss/AppServer:/usr/jboss8/AppServer), EAR_WAS (WebSphere
+# kokleri), EAR_BAGLANTI (1: baglanti goruntusu), EAR_BAGLANTI_ORNEK, EAR_BAGLANTI_ARA (sn); testte EAR_PROC.
 import base64
 import hashlib
 import io
@@ -39,7 +46,7 @@ import zlib
 from collections import deque
 from xml.etree import ElementTree
 
-SURUM = 2
+SURUM = 3
 BASLA = '@@EAR_ENVANTER_BASLA@@'
 BITTI = '@@EAR_ENVANTER_BITTI@@'
 
@@ -66,6 +73,15 @@ YAPILANDIRMA_ALTLARI = ('domain/configuration', 'jboss/domain/configuration')
 XML_SINIR = 5 * 1024 * 1024
 XML_KAYIT_SINIRI = 1000
 KOK_GIRDI_SINIRI = 500
+WAS_KOKLERI = [k for k in os.environ.get('EAR_WAS', '/opt/IBM/WebSphere/AppServer:/usr/IBM/WebSphere/AppServer').split(':')
+               if k.startswith('/')]
+BAGLANTI = os.environ.get('EAR_BAGLANTI', '') == '1'
+BAGLANTI_ORNEK = ortam_sayi('EAR_BAGLANTI_ORNEK', 3, 1, 10)
+BAGLANTI_ARA = ortam_sayi('EAR_BAGLANTI_ARA', 10, 0, 60)
+PROC = os.environ.get('EAR_PROC', '/proc')
+SOKET_ADLARI = ('ajp', 'http', 'https')
+IFADE_RE = re.compile(r'^(?:\$\{[^:}]+:(-?\d+)\}|(-?\d+))$')
+WAS_UYGULAMA_RE = re.compile(r'applications/([^/]+?)(?:\.ear)?/')
 
 JAR_RE = re.compile(r'^(.+?)-(\d[^/]*)\.jar$', re.I)
 UCUCU_SEGMENT = set(['logs', 'log', 'tmp', 'temp', 'work'])
@@ -534,6 +550,73 @@ def cocuklar_of(eleman, ad):
     return [c for c in eleman if yerel(c.tag) == ad]
 
 
+def yol_durumu(yol):
+    """VAR | YOK | OLCULEMEDI (izin / hata: 'yok' sayilmaz)."""
+    try:
+        os.lstat(yol)
+        return 'VAR'
+    except FileNotFoundError:
+        return 'YOK'
+    except OSError:
+        return 'OLCULEMEDI'
+
+
+def ifade_sayi(deger):
+    """'8009' -> 8009; '${jboss.ajp.port:8009}' -> 8009 (ozelligin varsayilani); cozulemezse None."""
+    if deger is None:
+        return None
+    m = IFADE_RE.match(str(deger).strip())
+    return int(m.group(1) or m.group(2)) if m else None
+
+
+def profil_ozeti(p):
+    """Profil: mod_cluster ayari (proxies / proxy-list / balancer / advertise) ve AJP / HTTP dinleyici soketleri."""
+    out = {'ad': (p.get('name') or '')[:128], 'modcluster': None, 'ajp': [], 'http': []}
+    for alt in p:
+        ns = alt.tag.rsplit('}', 1)[0] if isinstance(alt.tag, str) else ''
+        if yerel(alt.tag) != 'subsystem':
+            continue
+        if ':modcluster:' in ns:
+            for c in alt.iter():
+                t = yerel(c.tag)
+                if t in ('mod-cluster-config', 'proxy'):
+                    out['modcluster'] = {
+                        'tur': t,
+                        'proxies': [x for x in (c.get('proxies') or '').split() if x][:50],
+                        'proxy_list': [x for x in (c.get('proxy-list') or '').split(',') if x.strip()][:50],
+                        'balancer': (c.get('balancer') or '')[:128],
+                        'advertise': (c.get('advertise') or 'true').lower() != 'false',
+                        'advertise_soketi': (c.get('advertise-socket') or '')[:128],
+                        'dinleyici': (c.get('listener') or c.get('connector') or '')[:128],
+                    }
+                    break
+        elif ':undertow:' in ns or ':web:' in ns:
+            for c in alt.iter():
+                t = yerel(c.tag)
+                proto = (c.get('protocol') or '').upper()
+                if t == 'ajp-listener' or (t == 'connector' and proto.startswith('AJP')):
+                    out['ajp'].append((c.get('socket-binding') or '')[:128])
+                elif t in ('http-listener', 'https-listener') or (t == 'connector' and proto.startswith('HTTP')):
+                    out['http'].append((c.get('socket-binding') or '')[:128])
+    out['ajp'], out['http'] = out['ajp'][:20], out['http'][:20]
+    return out
+
+
+def soket_grubu_ozeti(sg):
+    """socket-binding-group: bilinen soketlerin portlari ve outbound remote-destination hedefleri."""
+    out = {'ad': (sg.get('name') or '')[:128], 'soketler': {}, 'outbound': []}
+    for c in sg:
+        t = yerel(c.tag)
+        if t == 'socket-binding' and len(out['soketler']) < 100:
+            out['soketler'][(c.get('name') or '')[:64]] = ifade_sayi(c.get('port'))
+        elif t == 'outbound-socket-binding' and len(out['outbound']) < 50:
+            for r in c:
+                if yerel(r.tag) == 'remote-destination':
+                    out['outbound'].append({'ad': (c.get('name') or '')[:128], 'host': (r.get('host') or '')[:256],
+                                            'port': ifade_sayi(r.get('port'))})
+    return out
+
+
 def domain_ozeti(kok, k):
     """domain.xml -> deployment'lar (ad, calisma adi, yol) ve server-group -> deployment listesi."""
     for kap in cocuklar_of(kok, 'deployments'):
@@ -549,12 +632,24 @@ def domain_ozeti(kok, k):
                     kayit['tur'] = 'ACIK' if t == 'fs-exploded' else 'ARSIV'
                     kayit['yol'] = (c.get('path') or '')[:400]
                     kayit['goreli'] = (c.get('relative-to') or '')[:128]
+            # Tanim var dosya yok mu: yalniz mutlak ve relative-to'suz yol lstat ile (icerik okunmaz).
+            kayit['yol_durumu'] = yol_durumu(kayit['yol']) if kayit['yol'].startswith('/') and not kayit['goreli'] else None
             k['deploymentlar'].append(kayit)
+    for kap in cocuklar_of(kok, 'profiles'):
+        for p in cocuklar_of(kap, 'profile'):
+            if len(k['profiller']) < XML_KAYIT_SINIRI:
+                k['profiller'].append(profil_ozeti(p))
+    for kap in cocuklar_of(kok, 'socket-binding-groups'):
+        for sg in cocuklar_of(kap, 'socket-binding-group'):
+            if len(k['soket_gruplari']) < XML_KAYIT_SINIRI:
+                k['soket_gruplari'].append(soket_grubu_ozeti(sg))
     for kap in cocuklar_of(kok, 'server-groups'):
         for g in cocuklar_of(kap, 'server-group'):
             if len(k['gruplar']) >= XML_KAYIT_SINIRI:
                 k['kesildi'] = True
                 break
+            sbg = cocuklar_of(g, 'socket-binding-group')
+            sbg = sbg[0] if sbg else None
             dlar = []
             for dkap in cocuklar_of(g, 'deployments'):
                 for d in cocuklar_of(dkap, 'deployment'):
@@ -563,7 +658,10 @@ def domain_ozeti(kok, k):
                                      'acik': (d.get('enabled') or 'true').lower() != 'false'})
                     else:
                         k['kesildi'] = True
-            k['gruplar'].append({'ad': (g.get('name') or '')[:128], 'deploymentlar': dlar})
+            k['gruplar'].append({'ad': (g.get('name') or '')[:128], 'deploymentlar': dlar,
+                                 'profil': (g.get('profile') or '')[:128],
+                                 'soket_grubu': ((sbg.get('ref') or '') if sbg is not None else '')[:128],
+                                 'port_ofseti': ifade_sayi(sbg.get('port-offset')) if sbg is not None else None})
 
 
 def host_ozeti(kok, k):
@@ -574,8 +672,12 @@ def host_ozeti(kok, k):
             if len(k['sunucular']) >= XML_KAYIT_SINIRI:
                 k['kesildi'] = True
                 break
+            sb = cocuklar_of(s, 'socket-bindings')
+            sb = sb[0] if sb else None
             k['sunucular'].append({'ad': (s.get('name') or '')[:128], 'grup': (s.get('group') or '')[:128],
-                                   'auto_start': (s.get('auto-start') or 'true').lower() != 'false'})
+                                   'auto_start': (s.get('auto-start') or 'true').lower() != 'false',
+                                   'soket_grubu': ((sb.get('socket-binding-group') or '') if sb is not None else '')[:128],
+                                   'port_ofseti': ifade_sayi(sb.get('port-offset')) if sb is not None else None})
 
 
 def yapilandirma_tara():
@@ -595,7 +697,8 @@ def yapilandirma_tara():
             if d_durum == 'OKUNDU' and h_durum == 'OKUNDU':
                 break
         k = {'kurulum': kurulum, 'nesil': kurulum_nesli(kurulum), 'dizin': '', 'domain': 'YOK', 'host': 'YOK',
-             'host_adi': '', 'deploymentlar': [], 'gruplar': [], 'sunucular': [], 'kesildi': False}
+             'host_adi': '', 'deploymentlar': [], 'gruplar': [], 'sunucular': [], 'kesildi': False,
+             'profiller': [], 'soket_gruplari': []}
         if secilen is not None:
             dizin, d_kok, d_durum, h_kok, h_durum = secilen
             k['dizin'], k['domain'], k['host'] = dizin, d_durum, h_durum
@@ -654,6 +757,155 @@ def xml_eslestir(u, yapilandirmalar):
         return {'durum': 'OLCULEMEDI', 'neden': '; '.join(hostsuz)[:300], 'deploymentlar': deploymentlar}
     neden = 'SUNUCU_YOK' if any(d['gruplar'] for d in deploymentlar) else 'GRUPTA_YOK'
     return {'durum': 'JVM_YOK', 'neden': neden, 'deploymentlar': deploymentlar, 'jvmler': []}
+
+
+def alt_dizinler(yol):
+    """(sirali alt dizin adlari, durum) - durum VAR | YOK | IZIN | HATA."""
+    try:
+        with os.scandir(yol) as it:
+            return sorted(e.name for e in it if e.is_dir(follow_symlinks=False)), 'VAR'
+    except FileNotFoundError:
+        return [], 'YOK'
+    except PermissionError:
+        return [], 'IZIN'
+    except OSError:
+        return [], 'HATA'
+
+
+def was_tara():
+    """WebSphere: <kok>/profiles/<p>/config/cells/<c>/nodes/<n>/serverindex.xml -> sunucu, uc nokta, uygulama."""
+    out = {'kokler': [], 'dosyalar': [], 'sunucular': [], 'kesildi': False}
+    for kok in WAS_KOKLERI:
+        profiller, durum = alt_dizinler(kok.rstrip('/') + '/profiles')
+        out['kokler'].append({'yol': kok, 'durum': durum})
+        for prof in profiller[:20]:
+            hucre_kok = '/'.join([kok.rstrip('/'), 'profiles', prof, 'config', 'cells'])
+            for hucre in alt_dizinler(hucre_kok)[0][:20]:
+                for dugum in alt_dizinler(hucre_kok + '/' + hucre + '/nodes')[0][:50]:
+                    yol = '/'.join([hucre_kok, hucre, 'nodes', dugum, 'serverindex.xml'])
+                    x, d = xml_oku(yol)
+                    if d == 'YOK':
+                        continue
+                    if len(out['dosyalar']) < 100:
+                        out['dosyalar'].append({'yol': yol[:400], 'durum': d})
+                    if x is None:
+                        continue
+                    for se in x.iter():
+                        if yerel(se.tag) != 'serverEntries':
+                            continue
+                        if len(out['sunucular']) >= XML_KAYIT_SINIRI:
+                            out['kesildi'] = True
+                            break
+                        uclar, uygulamalar = [], []
+                        for c in se:
+                            t = yerel(c.tag)
+                            if t == 'deployedApplications' and c.text and len(uygulamalar) < 200:
+                                m = WAS_UYGULAMA_RE.search(c.text + '/')
+                                uygulamalar.append((m.group(1) if m else c.text)[:256])
+                            elif t == 'specialEndpoints' and (c.get('endPointName') or '').startswith('WC_') and len(uclar) < 20:
+                                for e in c:
+                                    if yerel(e.tag) == 'endPoint':
+                                        uclar.append({'ad': (c.get('endPointName') or '')[:64], 'host': (e.get('host') or '')[:256],
+                                                      'port': ifade_sayi(e.get('port'))})
+                        out['sunucular'].append({'profil': prof[:128], 'hucre': hucre[:128], 'dugum': dugum[:128],
+                                                 'ad': (se.get('serverName') or '')[:128],
+                                                 'tur': (se.get('serverType') or '')[:64],
+                                                 'uclar': uclar, 'uygulamalar': uygulamalar})
+    return out
+
+
+def hex_ip(h):
+    if len(h) == 8:
+        return socket.inet_ntop(socket.AF_INET, bytes.fromhex(h)[::-1])
+    b = bytes.fromhex(h)
+    return socket.inet_ntop(socket.AF_INET6, b''.join(b[i:i + 4][::-1] for i in range(0, 16, 4)))
+
+
+def tcp_satirlari():
+    """/proc/net/tcp{,6}: [(durum hex, yerel port, uzak ip)]; hicbiri okunamazsa None."""
+    out, okundu = [], False
+    for ad in ('tcp', 'tcp6'):
+        try:
+            fd = os.open(PROC + '/net/' + ad, os.O_RDONLY)
+            with os.fdopen(fd, 'rb') as akis:
+                veri = akis.read(64 * 1024 * 1024)
+        except OSError:
+            continue
+        okundu = True
+        for s in veri.decode('ascii', 'replace').split('\n')[1:]:
+            p = s.split()
+            if len(p) < 4:
+                continue
+            try:
+                yerel_port = int(p[1].split(':')[1], 16)
+                uzak_ip = hex_ip(p[2].split(':')[0])
+            except (ValueError, IndexError, OSError):
+                continue
+            out.append((p[3], yerel_port, uzak_ip))
+    return out if okundu else None
+
+
+def yapilandirilmis_portlar(yapilandirmalar, was):
+    """JVM / WAS sunucusu basina yapilandirilmis portlar: {port: [{jvm, kurulum, tur}]}.
+    JBoss domain: sunucunun socket-binding-group'u (yoksa grubun), ofset sunucunun port-offset'i (yoksa grubun)."""
+    portlar = {}
+    for k in yapilandirmalar:
+        gruplar = dict((g['ad'], g) for g in k['gruplar'])
+        soketler = dict((s['ad'], s) for s in k['soket_gruplari'])
+        for s in k['sunucular']:
+            g = gruplar.get(s['grup'], {})
+            sg = soketler.get(s.get('soket_grubu') or g.get('soket_grubu') or '')
+            if not sg:
+                continue
+            ofset = s['port_ofseti'] if s.get('port_ofseti') is not None else (g.get('port_ofseti') or 0)
+            for ad in SOKET_ADLARI:
+                taban = sg['soketler'].get(ad)
+                if taban is not None:
+                    portlar.setdefault(taban + ofset, []).append({'jvm': s['ad'], 'kurulum': k['kurulum'], 'tur': ad})
+    for s in was['sunucular']:
+        for u in s['uclar']:
+            if u['port'] is not None:
+                portlar.setdefault(u['port'], []).append({'jvm': s['ad'], 'kurulum': 'WAS:' + s['profil'],
+                                                          'tur': 'was_https' if 'secure' in u['ad'] else 'was_http'})
+    return portlar
+
+
+def baglanti_tara(yapilandirmalar, was):
+    """Yapilandirilmis portlara ESTABLISHED baglantilar: BAGLANTI_ORNEK ornek, BAGLANTI_ARA sn arayla.
+    'Kullaniliyor' icin guclu kanit; 'kullanilmiyor' icin tek basina YETMEZ (anlik goruntu)."""
+    portlar = yapilandirilmis_portlar(yapilandirmalar, was)
+    out = {'durum': 'OLCULDU', 'ornek': 0, 'ara_sn': BAGLANTI_ARA, 'portlar': []}
+    if not portlar:
+        out['durum'] = 'PORT_YOK'
+        return out
+    dinlenen, en_cok, uzaklar = set(), {}, {}
+    for i in range(BAGLANTI_ORNEK):
+        if i:
+            time.sleep(BAGLANTI_ARA)
+        satirlar = tcp_satirlari()
+        if satirlar is None:
+            out['durum'] = 'OLCULEMEDI'
+            break
+        out['ornek'] += 1
+        say = {}
+        for durum, port, uzak in satirlar:
+            if port not in portlar:
+                continue
+            if durum == '0A':
+                dinlenen.add(port)
+            elif durum == '01':
+                say[port] = say.get(port, 0) + 1
+                d = uzaklar.setdefault(port, {})
+                d[uzak] = d.get(uzak, 0) + 1
+        for port, n in say.items():
+            en_cok[port] = max(en_cok.get(port, 0), n)
+    for port in sorted(portlar)[:500]:
+        u = uzaklar.get(port, {})
+        out['portlar'].append({'port': port, 'sahipler': portlar[port][:10], 'dinleniyor': port in dinlenen,
+                               'en_cok': en_cok.get(port, 0),
+                               'uzaklar': [{'ip': ip, 'gozlem': n} for ip, n in
+                                           sorted(u.items(), key=lambda x: (-x[1], x[0]))[:10]]})
+    return out
 
 
 def kok_girdisi(kok, e):
@@ -747,6 +999,8 @@ def tara():
             adaylar.append((kok, e.name, tip))
     # Yapilandirma uygulamalardan ONCE: kucuk ve hizli; sure butcesi dolsa da olculmus olsun.
     yuk['yapilandirma'] = yapilandirma_tara()
+    yuk['was'] = was_tara()
+    yuk['baglanti'] = baglanti_tara(yuk['yapilandirma'], yuk['was']) if BAGLANTI else {'durum': 'KAPALI'}
     for kok, ad, tip in adaylar:
         if sure_doldu():
             u = yeni_uygulama(kok, ad, {'D': 'ACIK', 'F': 'ARSIV', 'L': 'BAG'}[tip])
