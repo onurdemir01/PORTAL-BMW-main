@@ -55,7 +55,7 @@ export const KARAR_KISA: Record<ShKarar, string> = {
   KARAR_VERILEMEZ: 'Karar verilemez',
   SORUN_YOK: 'Sorun yok',
 };
-const KARAR_SIRA: ShKarar[] = [
+export const KARAR_SIRA: ShKarar[] = [
   'RETIRE_ADAYI',
   'SUPHELI',
   'KARAR_VERILEMEZ',
@@ -1039,13 +1039,22 @@ function kolonlar(siniflar: ShSinif[]): EarKolon<ShKararOzet>[] {
 
 export default function RetirementAnaliziTab({
   onRetirementAc,
+  baslangic,
 }: {
   onRetirementAc?: (uygulama: string, not: string) => void;
+  /** Başka sekmeden "Analizde aç": her yeni `no` o kaydı seçer (sekme gizli kalsa da). */
+  baslangic?: { anahtar: string; no: number } | null;
 }) {
   const [liste, setListe] = useState<ShKararlarSonuc | null>(null);
   const [hata, setHata] = useState('');
   const [yukleniyor, setYukleniyor] = useState(false);
-  const [secili, setSecili] = useState<string | null>(null);
+  const [secili, setSecili] = useState<string | null>(baslangic ? baslangic.anahtar : null);
+  // Render sırasında ayar (effect yok): yalnız yeni bir istek seçimi değiştirir.
+  const [sonNo, setSonNo] = useState(baslangic ? baslangic.no : 0);
+  if (baslangic && baslangic.no !== sonNo) {
+    setSonNo(baslangic.no);
+    setSecili(baslangic.anahtar);
+  }
   const [kararSuzgec, setKararSuzgec] = useState<ShKarar | null>(null);
   const yukle = useCallback(async (fresh = false) => {
     setYukleniyor(true);

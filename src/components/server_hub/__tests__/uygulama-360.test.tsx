@@ -16,6 +16,7 @@ const m = vi.hoisted(() => ({
   uygulamalar360: vi.fn(),
   uygulama360: vi.fn(),
   retireEtiketleri: vi.fn(),
+  iliskiKarar: vi.fn(),
 }));
 vi.mock('@/api/serverHubApi', async (orig) => ({
   ...(await orig<typeof import('@/api/serverHubApi')>()),
@@ -128,6 +129,9 @@ beforeEach(() => {
   vi.clearAllMocks();
   m.uygulamalar360.mockResolvedValue(sonuc());
   m.retireEtiketleri.mockResolvedValue({ ok: true, kurallar: [], etiketler: [], ozet: {} });
+  m.iliskiKarar.mockRejectedValue(
+    Object.assign(new Error('Uygulama artık grafikte yok ya da kopyası yok.'), { status: 409 }),
+  );
 });
 
 describe('Uygulama 360', () => {
@@ -208,6 +212,11 @@ describe('Uygulama 360', () => {
     fireEvent.click(screen.getByText('pay'));
     const a = await screen.findByTestId('uygulama-360-ayrinti');
     expect(m.uygulama360).toHaveBeenCalledWith('PAY');
+    // Retirement Analizi rozeti: ayni taban ad anahtari; 409 "yok" diye yazilir (okunamadi degil)
+    expect(
+      await within(a).findByText('Uygulama artık grafikte yok ya da kopyası yok.'),
+    ).toBeInTheDocument();
+    expect(m.iliskiKarar).toHaveBeenCalledWith('app:PAY');
     const p2 = within(a).getByRole('button', { name: 'P2 sunucu paneli' });
     for (const t of [
       'kapalı',

@@ -49,6 +49,7 @@ import KurallarTab from './KurallarTab';
 import EarEnvanterTab from './EarEnvanterTab';
 import Uygulama360Tab from './Uygulama360Tab';
 import RetirementAnaliziTab from './RetirementAnaliziTab';
+import { AnalizAcContext } from './AnalizRozeti';
 import { EarTablo, type EarGorunum, type EarKolon } from './EarTablo';
 import { useOrtakGorunumler } from './ortakGorunumler';
 import { useSunucuLimiti, LimitNotu, sunucuAdlari, limitAsildi } from './sunucuLimiti';
@@ -1489,6 +1490,14 @@ export default function ServerHubPage() {
     setRetireOneri((o) => ({ uygulama, not, no: (o ? o.no : 0) + 1 }));
     sekmeAc('retirement');
   };
+  // RETIREMENT ANALIZI ROZETI (2026-11-07): Uygulama 360 / sunucu paneli "Analizde ac" -> analiz sekmesi
+  // o kayit secili (tek kaynak, iki giris). Context: rozet panelin icinde, prop zinciri gerekmez.
+  const [analizOneri, setAnalizOneri] = useState<{ anahtar: string; no: number } | null>(null);
+  const analizAc = useCallback((anahtar: string) => {
+    setAnalizOneri((o) => ({ anahtar, no: (o ? o.no : 0) + 1 }));
+    setTab('analiz');
+    setAcilan((s) => (s.has('analiz') ? s : new Set(s).add('analiz')));
+  }, []);
   const goFindings = (f: { area?: string; code?: string; product?: string; envGroup?: string }) => {
     setFindingsFilter(f);
     setBulguNo((n) => n + 1);
@@ -1552,6 +1561,7 @@ export default function ServerHubPage() {
           ))}
         </div>
       </div>
+      <AnalizAcContext.Provider value={analizAc}>
       {acilan.has('hosts') && (
         <SekmeKabi id="hosts" etkin={tab}>
           <HostsTab onGoFindings={goFindings} />
@@ -1569,7 +1579,7 @@ export default function ServerHubPage() {
       )}
       {acilan.has('analiz') && (
         <SekmeKabi id="analiz" etkin={tab}>
-          <RetirementAnaliziTab onRetirementAc={retirementAc} />
+          <RetirementAnaliziTab onRetirementAc={retirementAc} baslangic={analizOneri} />
         </SekmeKabi>
       )}
       {acilan.has('readiness') && (
@@ -1597,6 +1607,7 @@ export default function ServerHubPage() {
           <KurallarTab />
         </SekmeKabi>
       )}
+      </AnalizAcContext.Provider>
     </div>
   );
 }

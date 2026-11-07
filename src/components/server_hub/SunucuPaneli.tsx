@@ -36,6 +36,7 @@ import {
   zincirKartlari,
 } from './retireEtiket';
 import DurumRozeti from './DurumRozeti';
+import AnalizRozeti, { sunucuAnahtari } from './AnalizRozeti';
 import { ozetKartlari, zincirRozetleri, type BolumId } from './sunucuOzet';
 
 const SIRA: Record<ShSeverity, number> = { danger: 3, warning: 2, info: 1, ok: 0 };
@@ -219,6 +220,8 @@ export default function SunucuPaneli({
           </button>
         ))}
       </div>
+      {/* RETIREMENT ANALIZI: ayni karar, analiz sekmesiyle tek kaynak (salt okuma). */}
+      <AnalizRozeti anahtar={sunucuAnahtari(host)} />
       <Bolum baslik="Ne yapmalı" {...bolumProps('neYapmali')} testId="bolum-ne-yapmali">
         <div style={{ color: 'var(--text-muted)' }}>
           {kaynak} · {earDurumMetni(d.ear)}
