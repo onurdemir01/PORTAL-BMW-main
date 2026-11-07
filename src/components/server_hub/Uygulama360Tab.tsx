@@ -26,6 +26,7 @@ import SunucuPaneli from './SunucuPaneli';
 import { useSekmeGorunur } from './sekmeGorunurlugu';
 import { useOrtakGorunumler } from './ortakGorunumler';
 import Rozet from './DurumRozeti';
+import AnalizRozeti, { uygulamaAnahtari } from './AnalizRozeti';
 import {
   DEPLOYMENT_METNI,
   TRAFIK_METNI,
@@ -393,6 +394,7 @@ function UygulamaAyrinti({
   );
   return (
     <div className="space-y-3" data-testid="uygulama-360-ayrinti">
+      <AnalizRozeti anahtar={uygulamaAnahtari(anahtar)} />
       <section aria-label="Ortam × sunucu">
         <div className="text-xs font-semibold mb-1">
           Ortam × sunucu ({d.kopyaSayisi} kopya){' '}

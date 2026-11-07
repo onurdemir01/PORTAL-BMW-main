@@ -42,6 +42,7 @@ const m = vi.hoisted(() => ({
   kurallar: vi.fn(),
   etiketSeviyesi: vi.fn(),
   kokYoksay: vi.fn(),
+  iliskiKarar: vi.fn(),
   seviyeDegistir: vi.fn(),
   limitDegistir: vi.fn(),
 }));
@@ -565,6 +566,14 @@ describe('RA3 manuel kontrol', () => {
 describe('RA4 sunucu paneli', () => {
   it('yalnız "Ne yapmalı" açık; zincir, bağsız EAR, doğrulama, auto-start', async () => {
     m.host.mockResolvedValue({ ok: true, host: HOST() });
+    m.iliskiKarar.mockResolvedValue({
+      ok: true,
+      tur: 'sunucu',
+      siniflar: [],
+      notOkunamadi: false,
+      kopyalar: [],
+      notlar: [],
+    });
     const onAS = vi.fn();
     render(
       <SunucuPaneli
@@ -576,6 +585,11 @@ describe('RA4 sunucu paneli', () => {
     );
     const p = await screen.findByTestId('sunucu-paneli');
     expect(m.host).toHaveBeenCalledWith(APP);
+    // Retirement Analizi rozeti: ayni karar, grafik anahtari ile (Sunucular / Bulgular / pencere)
+    expect(
+      await within(p).findByText('Bu sunucuda karar verilecek uygulama kopyası yok.'),
+    ).toBeInTheDocument();
+    expect(m.iliskiKarar).toHaveBeenCalledWith(`sunucu:${APP}`);
     expect(screen.getByTestId('bolum-ne-yapmali')).toHaveAttribute('open');
     for (const id of ['bolum-uygulamalar', 'bolum-bulgular', 'bolum-etiketler', 'bolum-dogrulama'])
       expect(screen.getByTestId(id)).not.toHaveAttribute('open');
