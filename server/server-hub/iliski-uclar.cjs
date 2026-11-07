@@ -4,6 +4,9 @@
 // GET /iliski/ara?q=             uygulama / sunucu / vhost / DNS / IP adinda gecen varliklar (en cok 50)
 // GET /iliski/varlik?anahtar=    tek varlik: kenarlari (yontem + guven + durum), bagli bilesen, capraz
 //                                dogrulamalari (kendisi + komsulari)
+// GET /iliski/kararlar           uygulama basina retirement karari (ozet satirlar + karar sayilari)
+// GET /iliski/karar?anahtar=     app: | sunucu: | jvm: | was: icin karar ayrintisi (maddeler, eksikler,
+//                                celiskiler, yapilabilecekler); senaryo.cjs
 // Router zaten yalniz Admin ve gorunurluk kapisinin arkasinda (index.cjs). Kodlar proxy-guvenli: 400 gecersiz,
 // 409 varlik artik grafikte yok, 424 degerlendirme okunamadi.
 //
@@ -13,6 +16,7 @@
 
 const { grafikKur, ara, varlik } = require('./iliski-grafigi.cjs');
 const { dogrula } = require('./dogrulama.cjs');
+const { kararla, KARARLAR } = require('./senaryo.cjs');
 
 const VERI_MS = 60 * 1000;
 const ANAHTAR_RE = /^(sunucu|jvm|was|web|vhost|ip|dns|app):[^\s]{1,390}$/;
@@ -35,12 +39,14 @@ function iliskiHesabiKur({
       const veri = veriBayat ? await iliskiVerisi() : durum.veri;
       const grafik = grafikKur({ hosts: a.hosts, veri });
       const dogrulamalar = dogrula(grafik, { veri });
+      const kararlar = kararla({ g: grafik, dogrulamalar, hosts: a.hosts });
       durum = {
         a,
         veri,
         veriAt: veriBayat ? simdi() : durum.veriAt,
         grafik,
         dogrulamalar,
+        kararlar,
         sureMs: simdi() - t0,
       };
       return { a, ...durum };
@@ -56,12 +62,10 @@ function iliskiHesabiKur({
 function mount(router, { getAssessment, iliskiVerisi }) {
   const hesap = iliskiHesabiKur({ getAssessment, ...(iliskiVerisi ? { iliskiVerisi } : {}) });
   const okunamadi = (res) =>
-    res
-      .status(424)
-      .json({
-        ok: false,
-        message: 'Server Hub tabloları henüz yok ya da okunamadı; ilişki grafiği kurulamadı.',
-      });
+    res.status(424).json({
+      ok: false,
+      message: 'Server Hub tabloları henüz yok ya da okunamadı; ilişki grafiği kurulamadı.',
+    });
 
   router.get('/iliski/durum', async (req, res) => {
     try {
@@ -139,6 +143,87 @@ function mount(router, { getAssessment, iliskiVerisi }) {
       res.json({ ok: true, ...v, dogrulamalar });
     } catch (e) {
       res.status(500).json({ ok: false, message: e.message || 'Varlık okunamadı.' });
+    }
+  });
+
+  router.get('/iliski/kararlar', async (req, res) => {
+    try {
+      const h = await hesap(req.query.fresh === '1');
+      if (!h.grafik) return okunamadi(res);
+      const liste = [...h.kararlar.uygulamalar.values()].map((u) => ({
+        anahtar: u.anahtar,
+        ad: u.ad,
+        karar: u.karar,
+        kararMetni: u.kararMetni,
+        ozet: u.ozet,
+        sayilar: u.sayilar,
+      }));
+      liste.sort((a, b) => a.ad.localeCompare(b.ad));
+      const sayilar = Object.fromEntries(
+        KARARLAR.map((k) => [k, liste.filter((u) => u.karar === k).length]),
+      );
+      res.json({ ok: true, sayilar, uygulamalar: liste });
+    } catch (e) {
+      res.status(500).json({ ok: false, message: e.message || 'Kararlar hesaplanamadı.' });
+    }
+  });
+
+  router.get('/iliski/karar', async (req, res) => {
+    const anahtar = String(req.query.anahtar || '');
+    if (!/^(app|sunucu|jvm|was):[^\s]{1,390}$/.test(anahtar))
+      return res
+        .status(400)
+        .json({ ok: false, message: 'Anahtar app: / sunucu: / jvm: / was: ile başlamalı.' });
+    try {
+      const h = await hesap(false);
+      if (!h.grafik) return okunamadi(res);
+      const { uygulamalar, kopyalar } = h.kararlar;
+      if (anahtar.startsWith('app:')) {
+        const u = uygulamalar.get(anahtar);
+        if (!u)
+          return res
+            .status(409)
+            .json({ ok: false, message: 'Uygulama artık grafikte yok ya da kopyası yok.' });
+        return res.json({
+          ok: true,
+          tur: 'app',
+          uygulama: u,
+          kopyalar: u.kopyalar.map((k) => kopyalar.get(k)).filter(Boolean),
+        });
+      }
+      if (anahtar.startsWith('sunucu:')) {
+        if (!h.grafik.dugumler.has(anahtar))
+          return res.status(409).json({ ok: false, message: 'Sunucu artık grafikte yok.' });
+        const kk = h.grafik
+          .komsuKenarlar(anahtar)
+          .filter((e) => e.kaynak === anahtar && e.tur === 'barindirir')
+          .map((e) => kopyalar.get(e.hedef))
+          .filter(Boolean);
+        const web = h.grafik
+          .komsuKenarlar(anahtar)
+          .filter(
+            (e) => e.kaynak === anahtar && e.tur === 'barindirir' && e.hedef.startsWith('web:'),
+          )
+          .map((e) => h.grafik.dugumler.get(e.hedef))
+          .filter(Boolean)
+          .map((w) => ({
+            anahtar: w.anahtar,
+            ad: w.ad,
+            vhost: h.grafik.komsuKenarlar(w.anahtar).filter((e) => e.tur === 'sunar').length,
+          }));
+        return res.json({
+          ok: true,
+          tur: 'sunucu',
+          sunucu: h.grafik.dugumler.get(anahtar),
+          kopyalar: kk,
+          web,
+        });
+      }
+      const k = kopyalar.get(anahtar);
+      if (!k) return res.status(409).json({ ok: false, message: 'Kopya artık grafikte yok.' });
+      res.json({ ok: true, tur: 'kopya', kopya: k });
+    } catch (e) {
+      res.status(500).json({ ok: false, message: e.message || 'Karar okunamadı.' });
     }
   });
 }
