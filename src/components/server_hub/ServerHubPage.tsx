@@ -48,6 +48,7 @@ import RetirementTab from './RetirementTab';
 import KurallarTab from './KurallarTab';
 import EarEnvanterTab from './EarEnvanterTab';
 import Uygulama360Tab from './Uygulama360Tab';
+import RetirementAnaliziTab from './RetirementAnaliziTab';
 import { EarTablo, type EarGorunum, type EarKolon } from './EarTablo';
 import { useOrtakGorunumler } from './ortakGorunumler';
 import { useSunucuLimiti, LimitNotu, sunucuAdlari, limitAsildi } from './sunucuLimiti';
@@ -1454,6 +1455,7 @@ type SekmeId =
   | 'hosts'
   | 'findings'
   | 'uygulama360'
+  | 'analiz'
   | 'readiness'
   | 'reboot'
   | 'retirement'
@@ -1517,6 +1519,8 @@ export default function ServerHubPage() {
                 ? 'Hangi maddeler taranıyor, hangi çıktı kritik / uyarı / bilgi / sorun yok sayılıyor; seviyeleri ve tek seferde girilebilecek sunucu sayısını buradan değiştirin.'
                 : tab === 'uygulama360'
                 ? 'Uygulama bazında bakış: bir uygulamanın bütün ortam ve sunuculardaki kopyaları, auto-start uyumu, OpenShift karşılığı, Retirement kaydı ve etiketleri tek satırda.'
+                : tab === 'analiz'
+                ? 'Bir uygulama, sunucu, vhost ya da IP yazın: app + web + IP katmanları birlikte okunur, ne yapılabileceği ve şüphe sade bir kartta; neden ve kanıt ayrıntıda. Ekran hiçbir şey çalıştırmaz.'
                 : 'Uygulama retirement: Smart silme kaydı → tüm ortam/site keşfi → STOP (auto-start kapat, durdur, paketi .old) → seçilen tarihte silme → IP/LB/DNS kayıtları.'}
           </p>
         </div>
@@ -1526,6 +1530,7 @@ export default function ServerHubPage() {
               { id: 'hosts', label: 'Sunucular' },
               { id: 'findings', label: 'Bulgular' },
               { id: 'uygulama360', label: 'Uygulama 360' },
+              { id: 'analiz', label: 'Retirement Analizi' },
               { id: 'readiness', label: 'Açılış Hazırlığı' },
               { id: 'reboot', label: 'Reboot Kontrolü' },
               { id: 'retirement', label: 'Retirement' },
@@ -1560,6 +1565,11 @@ export default function ServerHubPage() {
       {acilan.has('uygulama360') && (
         <SekmeKabi id="uygulama360" etkin={tab}>
           <Uygulama360Tab onRetirementAc={retirementAc} />
+        </SekmeKabi>
+      )}
+      {acilan.has('analiz') && (
+        <SekmeKabi id="analiz" etkin={tab}>
+          <RetirementAnaliziTab onRetirementAc={retirementAc} />
         </SekmeKabi>
       )}
       {acilan.has('readiness') && (

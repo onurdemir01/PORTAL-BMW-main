@@ -281,7 +281,12 @@ function mount(
       }
       const k = kopyalar.get(anahtar);
       if (!k) return res.status(409).json({ ok: false, message: 'Kopya artık grafikte yok.' });
-      res.json({ ok: true, tur: 'kopya', ...ek, kopya: notlu(k, ctx) });
+      // Kopyanin ait oldugu uygulama(lar): ekran karttan uygulamaya gecer.
+      const sahipler = h.grafik
+        .komsuKenarlar(anahtar)
+        .filter((e) => e.tur === 'kopya' && e.hedef === anahtar)
+        .map((e) => e.kaynak);
+      res.json({ ok: true, tur: 'kopya', ...ek, kopya: { ...notlu(k, ctx), uygulamalar: sahipler } });
     } catch (e) {
       res.status(500).json({ ok: false, message: e.message || 'Karar okunamadı.' });
     }

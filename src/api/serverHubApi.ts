@@ -1,5 +1,5 @@
 // src/api/serverHubApi.ts — Server Hub (2026-09-21): reboot hazirligi / atil kaynak raporu.
-import { safeJson } from './http';
+import { okJson, safeJson } from './http';
 
 const BASE = '/api/server-hub';
 
@@ -691,6 +691,165 @@ const json = (body: unknown) => ({
 });
 
 
+// ── RETIREMENT ANALIZI (2026-11-07): iliski grafigi, karar motoru, kalici notlar ──────────────────
+export type ShKarar = 'KULLANIMDA' | 'RETIRE_ADAYI' | 'SUPHELI' | 'KARAR_VERILEMEZ' | 'SORUN_YOK';
+export type ShMaddeEtki = 'ENGELLER' | 'DESTEKLER' | 'NOTR' | 'EKSIK';
+export interface ShNotOzeti {
+  id: number;
+  sinif: string;
+  metin: string;
+  konu: string;
+  dogrudan: boolean;
+}
+export interface ShMadde {
+  kod: string;
+  katman: 'app' | 'web' | 'ip' | 'zincir' | 'dis';
+  etki: ShMaddeEtki;
+  baslik: string;
+  metin: string;
+  elle: string;
+  kanit: string | null;
+  bilinen?: ShNotOzeti | null;
+}
+export interface ShNot {
+  id: number;
+  konu: string;
+  konu_tur: string;
+  supheli_kod: string | null;
+  sinif: string;
+  etiketler: string[];
+  metin: string;
+  yayilim: 'YALNIZ' | 'ASAGI' | 'ZINCIR';
+  durum: 'AKTIF' | 'ARSIV';
+  surum: number;
+  olusturan: string | null;
+  olusturuldu: string | null;
+  guncelleyen: string | null;
+  guncellendi: string | null;
+  yol?: string[];
+  dogrudan?: boolean;
+  veriDegisti?: boolean;
+  yetim?: boolean | null;
+}
+export interface ShSinif {
+  ad: string;
+  baslik: string;
+  renk: 'notr' | 'bilgi' | 'aksan' | 'uyari' | 'basari' | 'hata';
+  etki: 'BILINEN' | 'BILGI';
+  aciklama: string;
+  sira: number;
+  varsayilan?: boolean;
+}
+export interface ShKararSayilari {
+  KULLANIMDA: number;
+  RETIRE_ADAYI: number;
+  SUPHELI: number;
+  KARAR_VERILEMEZ: number;
+  SORUN_YOK: number;
+}
+export interface ShKararOzet {
+  anahtar: string;
+  ad: string;
+  karar: ShKarar;
+  kararMetni: string;
+  ozet: string;
+  sayilar: ShKararSayilari;
+  notSayisi: number;
+  siniflar: string[];
+  veriDegisti: boolean;
+  bilinen: ShNotOzeti | null;
+}
+export interface ShKararlarSonuc {
+  ok: boolean;
+  sayilar: ShKararSayilari;
+  bilinenSayisi: number;
+  notOkunamadi: boolean;
+  siniflar: ShSinif[];
+  yetimNotSayisi: number;
+  uygulamalar: ShKararOzet[];
+}
+export interface ShYapilabilecek {
+  tur: 'yonlendir' | 'elle' | 'bilgi';
+  metin: string;
+  hedef?: string;
+}
+export interface ShKopyaKarar {
+  anahtar: string;
+  tur: 'jvm' | 'was';
+  ad: string;
+  host: string;
+  env: string | null;
+  calisiyor: boolean | null;
+  karar: ShKarar;
+  kararMetni: string;
+  maddeler: ShMadde[];
+  eksikler: { ne: string; nasil: string }[];
+  celiskiler: { anahtar: string; kod: string; metin: string }[];
+  notlar?: ShNot[];
+  bilinen?: ShNotOzeti | null;
+  uygulamalar?: string[];
+}
+export interface ShUygulamaKarar {
+  anahtar: string;
+  ad: string;
+  karar: ShKarar;
+  kararMetni: string;
+  ozet: string;
+  sayilar: ShKararSayilari;
+  kopyalar: string[];
+  yapilabilecekler: ShYapilabilecek[];
+  notlar?: ShNot[];
+  bilinen?: ShNotOzeti | null;
+}
+export interface ShKararAyrinti {
+  ok: boolean;
+  tur: 'app' | 'sunucu' | 'kopya';
+  siniflar: ShSinif[];
+  notOkunamadi: boolean;
+  uygulama?: ShUygulamaKarar;
+  kopyalar?: ShKopyaKarar[];
+  kopya?: ShKopyaKarar;
+  sunucu?: { anahtar: string; ad: string; veri: { env?: string | null; tarama?: string | null } };
+  web?: { anahtar: string; ad: string; vhost: number }[];
+  notlar?: ShNot[];
+}
+export interface ShAraSonuc {
+  anahtar: string;
+  tur: 'app' | 'sunucu' | 'vhost' | 'dns' | 'jvm' | 'was' | 'web' | 'ip';
+  ad: string;
+  host: string | null;
+}
+export interface ShKenarYontem {
+  ad: string;
+  aile: string;
+  guven: 'KESIN' | 'GUCLU' | 'ZAYIF';
+  kanit: string;
+}
+export interface ShVarlik {
+  ok: boolean;
+  dugum: { anahtar: string; tur: string; ad: string; veri: Record<string, unknown>; kaynaklar: string[] };
+  kenarlar: {
+    yon: 'giris' | 'cikis';
+    tur: string;
+    guven: 'KESIN' | 'GUCLU' | 'ZAYIF' | null;
+    durum: 'DOGRULANDI' | 'TEK_KAYNAK' | 'CELISKI' | null;
+    celiski: string | null;
+    yontemler: ShKenarYontem[];
+    karsi: { anahtar: string; tur: string; ad: string } | null;
+  }[];
+  bilesen: { boyut: number; kesildi: boolean };
+  dogrulamalar: Record<string, { kod: string; durum: 'UYUM' | 'CELISKI' | 'OLCULMEDI'; kaynaklar: string[]; metin: string }[]>;
+}
+export interface ShNotGovde {
+  konu: string;
+  supheli_kod?: string | null;
+  sinif: string;
+  etiketler: string[];
+  metin: string;
+  yayilim: 'YALNIZ' | 'ASAGI' | 'ZINCIR';
+  surum?: number;
+}
+
 export const serverHubApi = {
   /** Taranmis sunucu adlari (filo degerlendirmesini indirmeden). */
   hostAdlari: (): Promise<{ ok: boolean; hosts: string[]; message?: string }> =>
@@ -767,6 +926,23 @@ export const serverHubApi = {
     fetch(`${BASE}/gorunumler?ekran=${encodeURIComponent(ekran)}&ad=${encodeURIComponent(ad)}`, {
       method: 'DELETE',
     }).then(safeJson),
+  // RETIREMENT ANALIZI (2026-11-07). Okuma uclari okJson: hata "okunamadi" olarak yakalanir (bos sanilmaz).
+  iliskiKararlar: (fresh = false): Promise<ShKararlarSonuc> =>
+    fetch(`${BASE}/iliski/kararlar${fresh ? '?fresh=1' : ''}`).then((r) => okJson<ShKararlarSonuc>(r)),
+  iliskiKarar: (anahtar: string): Promise<ShKararAyrinti> =>
+    fetch(`${BASE}/iliski/karar?anahtar=${encodeURIComponent(anahtar)}`).then((r) => okJson<ShKararAyrinti>(r)),
+  iliskiAra: (q: string): Promise<{ ok: boolean; sonuclar: ShAraSonuc[] }> =>
+    fetch(`${BASE}/iliski/ara?q=${encodeURIComponent(q)}`).then((r) => okJson(r)),
+  iliskiVarlik: (anahtar: string): Promise<ShVarlik> =>
+    fetch(`${BASE}/iliski/varlik?anahtar=${encodeURIComponent(anahtar)}`).then((r) => okJson<ShVarlik>(r)),
+  notEkle: (g: ShNotGovde): Promise<{ ok: boolean; id: number; yetim: boolean | null }> =>
+    fetch(`${BASE}/notlar`, json(g)).then((r) => okJson(r)),
+  notGuncelle: (id: number, g: ShNotGovde): Promise<{ ok: boolean; id: number }> =>
+    fetch(`${BASE}/notlar/${id}`, put(g)).then((r) => okJson(r)),
+  notArsivle: (id: number): Promise<{ ok: boolean }> =>
+    fetch(`${BASE}/notlar/${id}`, { method: 'DELETE' }).then((r) => okJson(r)),
+  notGeriAl: (id: number): Promise<{ ok: boolean }> =>
+    fetch(`${BASE}/notlar/${id}/geri-al`, json({})).then((r) => okJson(r)),
   // UYGULAMA 360 (2026-11-07)
   uygulamalar360: (fresh = false): Promise<Sh360Sonuc> =>
     fetch(`${BASE}/uygulamalar-360${fresh ? '?fresh=1' : ''}`).then(safeJson),
