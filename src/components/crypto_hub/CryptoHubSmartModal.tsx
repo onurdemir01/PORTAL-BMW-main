@@ -7,10 +7,11 @@
 // Düğme kozmetik kapıdır; gerçek kapı sunucudaki requireAdmin. Smart'ı kapatma yalnız test
 // kiracılarında etkilidir ve sunucuda kiracının sabit listesinden hesaplanır. Bu pencere bu kararı
 // vermez, yalnız metin gösterir.
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { Modal } from '@/components/common/Modal';
 import { TextInput, Textarea } from '@/components/ui/Form';
 import { toast } from '@/hooks/useToast';
+import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { ansibleApi } from '@/api/ansibleApi';
 import { cryptoNodeApi, type CryptoSmartAyarYaniti } from '@/api/cryptoHubApi';
 import {
@@ -78,14 +79,17 @@ const CryptoHubSmartModal: React.FC<Props> = ({ open, onClose, onKaydedildi }) =
     }
   }, []);
 
-  useEffect(() => {
-    if (!open) return;
-    void yukle();
-    setAlanlar(null);
-    setAlanHata('');
-    setOnizleme(null);
-    setOnizlemeHata('');
-  }, [open, yukle]);
+  useAsyncEffect(
+    async (alive) => {
+      if (!open || !alive()) return;
+      setAlanlar(null);
+      setAlanHata('');
+      setOnizleme(null);
+      setOnizlemeHata('');
+      await yukle();
+    },
+    [open, yukle],
+  );
 
   const kapatiyor = !!meta?.smart?.enabled && !enabled;
   const kaydedilebilir = !!meta && !yukleniyor && !kaydediyor && (!kapatiyor || kapatOnay);

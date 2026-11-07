@@ -12,9 +12,10 @@
 //   U4 yapı: her tablo overflow-x-auto içinde; yeni dosyalarda sabit renk yok
 //   U7 Smart kapalı test yolu: sihirbaz ve takip metinleri, çift gönderim, belirsiz launch, bayat mod
 //   U8 Smart Onayı penceresi: yalnız Admin (Picker dahil), kaynak göstergesi, kapatma onayı, token,
-//      önizleme, kayıt sonrası /nodes yenileme, bayat pencere
+//      önizleme, kayıt sonrası /nodes yenileme, bayat pencere; kapalıyken okumaz, yeniden açılış sıfırlar
 //   U9 OCO (D8): Gerekçe adımında zorunlu alan, doğrulama, pencere özeti, engel metinleri, sunucu reddinde
-//      adıma dönüş; takipte "Onaylandı, pencere bekleniyor"; Smart penceresinde "Test ortamlarında OCO iste"
+//      adıma dönüş; takipte "Onaylandı, pencere bekleniyor"; Smart penceresinde "Test ortamlarında OCO iste";
+//      pencere kararı doğrulama anının saatiyle verilir, pencere açıkken saat yenilenir
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createHash } from 'node:crypto';
 import { act, render, screen, fireEvent, waitFor, within, cleanup } from '@testing-library/react';
@@ -1515,6 +1516,34 @@ describe('U9 OCO', () => {
     expect(btn('İleri').disabled).toBe(false);
   });
 
+  it('karar sihirbazın açıldığı saatle değil doğrulama anının saatiyle verilir; açıkken saat ilerler', async () => {
+    const gercek = Date.now.bind(Date);
+    let kaydir = 0;
+    vi.spyOn(Date, 'now').mockImplementation(() => gercek() + kaydir);
+    const tikler: Array<() => void> = [];
+    const asilAralik = window.setInterval.bind(window);
+    vi.spyOn(window, 'setInterval').mockImplementation(((fn: () => void, ms?: number) => {
+      if (ms === 30000) {
+        tikler.push(fn);
+        return 0;
+      }
+      return asilAralik(fn, ms);
+    }) as typeof window.setInterval);
+    await gerekceAdimi(yanit({ ocoGerekli: true, smartMod: 'kapali' }));
+    // Pencere açılıştan 60 dk sonra başlar; doğrulama 90 dk sonra yapılır.
+    const y = ocoYanit(60, 300);
+    kaydir = 90 * 60000;
+    await ocoGir(y);
+    expect(screen.getByText('Pencere açık: iş hemen başlar.')).toBeTruthy();
+    expect(btn('İleri').disabled).toBe(false);
+    // Sihirbaz açık kalırken pencere kapanır: yarım dakikalık tik kararı yeniler.
+    kaydir = 400 * 60000;
+    expect(tikler.length).toBeGreaterThan(0);
+    act(() => tikler[tikler.length - 1]());
+    expect(screen.getByText(/OCO penceresi kapandı/)).toBeTruthy();
+    expect(btn('İleri').disabled).toBe(true);
+  });
+
   it.each([
     ['kapanmış', -300, -60, /OCO penceresi kapandı/],
     ['ufuk dışı', 8 * 1440, 8 * 1440 + 240, /7 günden ileride/],
@@ -1957,5 +1986,31 @@ describe('U8 Smart Onayı penceresi', () => {
     fireEvent.click(btn('Önizle'));
     await waitFor(() => expect(m.smartAyarOnizle).toHaveBeenCalledWith(s.value));
     expect(await screen.findByText('metaco_das_test')).toBeTruthy();
+  });
+
+  it('kapalıyken ayar okunmaz; yeniden açılışta alan tablosu ve önizleme sıfırlanır, ayar yeniden okunur', async () => {
+    const ALAN_BASLIK = 'ElementName (gönderilecek "key" budur)';
+    m.flowMeta.mockResolvedValue({ ok: true, fields: [{ ElementName: 'KONU', Type: 'text', Label: 'Konu' }] });
+    m.smartAyarOnizle.mockResolvedValue({ ok: true, metadata: { KONU: 'metaco_das_test' } });
+    m.smartAyar.mockResolvedValue(ayar());
+    const onClose = vi.fn();
+    const { rerender } = render(<CryptoHubSmartModal open={false} onClose={onClose} />);
+    await act(async () => {});
+    expect(m.smartAyar).not.toHaveBeenCalled();
+    rerender(<CryptoHubSmartModal open onClose={onClose} />);
+    await screen.findByText('Smart onayı istensin');
+    expect(m.smartAyar).toHaveBeenCalledTimes(1);
+    fireEvent.change(screen.getByLabelText('Smart Flow Key'), { target: { value: 'FLOW_CRYPTO' } });
+    fireEvent.click(btn('Alanları Getir'));
+    expect(await screen.findByText(ALAN_BASLIK)).toBeTruthy();
+    fireEvent.click(btn('Otomatik Doldur'));
+    fireEvent.click(btn('Önizle'));
+    expect(await screen.findByText('metaco_das_test')).toBeTruthy();
+    rerender(<CryptoHubSmartModal open={false} onClose={onClose} />);
+    rerender(<CryptoHubSmartModal open onClose={onClose} />);
+    await waitFor(() => expect(m.smartAyar).toHaveBeenCalledTimes(2));
+    await screen.findByText('Smart onayı istensin');
+    expect(screen.queryByText(ALAN_BASLIK)).toBeNull();
+    expect(screen.queryByText('metaco_das_test')).toBeNull();
   });
 });
