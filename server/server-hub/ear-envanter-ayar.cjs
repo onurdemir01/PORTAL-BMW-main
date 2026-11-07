@@ -173,6 +173,18 @@ const AYARLAR = Object.freeze({
     varsayilan: '/usr/IBMIHS:/opt/IBM/HTTPServer:/usr/IBM/HTTPServer:/etc/httpd:/opt/rh/httpd24/root/etc/httpd:/opt/jbcs-httpd24-2.4/httpd',
     dogrula: webKokDogrula,
   },
+  // FAZ A (2026-11-07): yapilandirilmis JVM / WAS portlarina ESTABLISHED baglanti goruntusu (/proc/net/tcp,
+  // 3 ornek, 10 sn arayla; host basina ~20 sn). Varsayilan KAPALI: once pilot.
+  baglanti_kontrolu: {
+    ad: 'Bağlantı görüntüsü (Faz A: JVM / WAS portlarına gelen bağlantılar)',
+    varsayilan: 'KAPALI',
+    dogrula: secenek(['ACIK', 'KAPALI']),
+  },
+  was_kokler: {
+    ad: 'WebSphere kökleri (serverindex.xml)',
+    varsayilan: '/opt/IBM/WebSphere/AppServer:/usr/IBM/WebSphere/AppServer',
+    dogrula: webKokDogrula,
+  },
   // DB: son N FILO kosusu (ve onlardan yeni secili kosular). /sw: son N TAM kosusunun ham dosyalari
   // (agac goruntuleyici ve ZIP bunlari okur).
   saklama_kosu: { ad: "DB'de tutulan filo koşusu", varsayilan: '12', dogrula: tamSayi(2, 52) },

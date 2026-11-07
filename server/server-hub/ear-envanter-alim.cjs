@@ -21,6 +21,12 @@
 // config hatalari), soketler, IP'ler, access / error log ozetleri -> host.web_ozeti (beyaz liste, sinirli).
 // Blok yoksa NULL = olculmedi; python yoksa / blok kesikse durum o olur, "web yok" DEGIL.
 //
+// FAZ A (2026-11-07, tarayici surum 3): xml_ozeti'ne profil (mod_cluster proxies / proxy-list / balancer,
+// AJP / HTTP dinleyici soketleri), socket-binding-group (portlar, outbound hedefleri), grup profil / port
+// grubu / ofset, sunucu ofseti ve deployment yolunun diskte olup olmadigi eklenir. WebSphere serverindex.xml
+// -> host.was_ozeti; istege bagli baglanti goruntusu (EAR_BAGLANTI) -> host.baglanti_ozeti. Eski tarayicinin
+// paketinde bu alanlar yoktur: NULL / eksik alan = OLCULMEDI.
+//
 // KUTUPHANE SETLERI: ayni uygulamanin eslenik sunuculardaki WAR'lari ayni kutuphane listesini tasir.
 // Liste her WAR satirina yazilsa haftalik filo kosusu yuzlerce MB olurdu; liste parmak iziyle
 // (sha256, 32 hex) BIR KEZ yazilir, WAR satiri yalniz izi tasir.
@@ -196,6 +202,55 @@ function paketCoz(buf) {
   return p;
 }
 
+/** WebSphere serverindex.xml ozeti -> JSON (Faz A). Pakette yoksa null = olculmedi. */
+function wasOzeti(p) {
+  if (!p.was || typeof p.was !== 'object') return null;
+  const w = p.was;
+  return JSON.stringify({
+    kokler: dizi(w.kokler).slice(0, 10).map((k) => ({ yol: M(nesne(k).yol, 300), durum: D(nesne(k).durum, ['VAR', 'YOK', 'IZIN', 'HATA'], 'HATA') })),
+    dosyalar: dizi(w.dosyalar).slice(0, 100).map((d) => ({ yol: M(nesne(d).yol, 400), durum: D(nesne(d).durum, XML_DURUMLARI, 'HATA') })),
+    sunucular: dizi(w.sunucular)
+      .slice(0, SINIR_XML_KAYIT)
+      .map((ham) => {
+        const s = nesne(ham);
+        return {
+          profil: M(s.profil, 128),
+          hucre: M(s.hucre, 128),
+          dugum: M(s.dugum, 128),
+          ad: M(s.ad, 128),
+          tur: M(s.tur, 64),
+          uclar: dizi(s.uclar).slice(0, 20).map((u) => ({ ad: M(nesne(u).ad, 64), host: M(nesne(u).host, 256), port: tamsayi(nesne(u).port) })),
+          uygulamalar: dizi(s.uygulamalar).slice(0, 200).map((v) => M(v, 256)),
+        };
+      }),
+    kesildi: w.kesildi === true || dizi(w.sunucular).length > SINIR_XML_KAYIT,
+  });
+}
+
+const BAGLANTI_DURUMLARI = Object.freeze(['OLCULDU', 'OLCULEMEDI', 'KAPALI', 'PORT_YOK']);
+/** Baglanti goruntusu -> JSON (Faz A). KAPALI da yazilir (kontrol kapali bilgisi); pakette yoksa null. */
+function baglantiOzeti(p) {
+  if (!p.baglanti || typeof p.baglanti !== 'object') return null;
+  const b = p.baglanti;
+  return JSON.stringify({
+    durum: D(b.durum, BAGLANTI_DURUMLARI, 'OLCULEMEDI'),
+    ornek: N(b.ornek),
+    ara_sn: N(b.ara_sn),
+    portlar: dizi(b.portlar)
+      .slice(0, 500)
+      .map((ham) => {
+        const x = nesne(ham);
+        return {
+          port: tamsayi(x.port),
+          sahipler: dizi(x.sahipler).slice(0, 10).map((s) => ({ jvm: M(nesne(s).jvm, 128), kurulum: M(nesne(s).kurulum, 200), tur: M(nesne(s).tur, 16) })),
+          dinleniyor: x.dinleniyor === true,
+          en_cok: N(x.en_cok),
+          uzaklar: dizi(x.uzaklar).slice(0, 10).map((u) => ({ ip: M(nesne(u).ip, 64), gozlem: N(nesne(u).gozlem) })),
+        };
+      }),
+  });
+}
+
 /** '/vhosting8' -> '8', '/vhosting' -> '7', digeri '?'. Koke gore JBoss nesli (pilot: ayni EAR iki kokte). */
 function jbossOf(kok) {
   const s = String(kok || '').replace(/\/+$/, '');
@@ -299,6 +354,10 @@ function kokGirdileri(p) {
   return JSON.stringify({ girdiler, kesilen });
 }
 
+const tamsayi = (v) => (v == null || !Number.isFinite(Number(v)) ? null : Math.trunc(Number(v)));
+/** Faz A alani: pakette varsa (null dahil) yazilir; yoksa hic yazilmaz (eski tarayici = olculmedi). */
+const faz = (o, ad, fn) => (ad in o ? { [ad]: fn(o[ad]) } : {});
+
 /**
  * JBoss yapilandirma ozeti (kurulum basina) -> JSON. Yalniz adlar, yollar, grup ve auto-start;
  * tarayici baska deger gondermez, burada da yalniz bilinen alanlar secilir. Alan yok -> null.
@@ -322,18 +381,67 @@ function xmlOzeti(p) {
           ad: M(nesne(x).ad, 128),
           grup: M(nesne(x).grup, 128),
           auto_start: nesne(x).auto_start !== false,
+          ...faz(nesne(x), 'soket_grubu', (v) => M(v, 128)),
+          ...faz(nesne(x), 'port_ofseti', tamsayi),
         })),
         gruplar: gruplar.slice(0, SINIR_XML_KAYIT).map((x) => ({
           ad: M(nesne(x).ad, 128),
           deploymentlar: dizi(nesne(x).deploymentlar)
             .slice(0, 50)
             .map((d) => ({ ad: M(nesne(d).ad, 256), acik: nesne(d).acik !== false })),
+          ...faz(nesne(x), 'profil', (v) => M(v, 128)),
+          ...faz(nesne(x), 'soket_grubu', (v) => M(v, 128)),
+          ...faz(nesne(x), 'port_ofseti', tamsayi),
         })),
         deploymentlar: deploymentlar.slice(0, SINIR_XML_KAYIT).map((x) => ({
           ad: M(nesne(x).ad, 256),
           tur: D(nesne(x).tur, ['ACIK', 'ARSIV', 'YONETILEN'], 'YONETILEN'),
           yol: M(nesne(x).yol, 400),
+          ...faz(nesne(x), 'yol_durumu', (v) => (v == null ? null : D(v, ['VAR', 'YOK', 'OLCULEMEDI'], 'OLCULEMEDI'))),
         })),
+        // Faz A (surum 3); eski pakette alan yok -> alan YAZILMAZ (olculmedi).
+        ...(Array.isArray(k.profiller)
+          ? {
+              profiller: k.profiller.slice(0, 50).map((ham2) => {
+                const p2 = nesne(ham2);
+                const mc = p2.modcluster && typeof p2.modcluster === 'object' ? p2.modcluster : null;
+                return {
+                  ad: M(p2.ad, 128),
+                  modcluster: mc
+                    ? {
+                        tur: D(mc.tur, ['proxy', 'mod-cluster-config'], 'proxy'),
+                        proxies: dizi(mc.proxies).slice(0, 50).map((v) => M(v, 128)),
+                        proxy_list: dizi(mc.proxy_list).slice(0, 50).map((v) => M(v, 300)),
+                        balancer: M(mc.balancer, 128),
+                        advertise: mc.advertise !== false,
+                        advertise_soketi: M(mc.advertise_soketi, 128),
+                        dinleyici: M(mc.dinleyici, 128),
+                      }
+                    : null,
+                  ajp: dizi(p2.ajp).slice(0, 20).map((v) => M(v, 128)),
+                  http: dizi(p2.http).slice(0, 20).map((v) => M(v, 128)),
+                };
+              }),
+            }
+          : {}),
+        ...(Array.isArray(k.soket_gruplari)
+          ? {
+              soket_gruplari: k.soket_gruplari.slice(0, 50).map((ham2) => {
+                const sg = nesne(ham2);
+                return {
+                  ad: M(sg.ad, 128),
+                  soketler: Object.fromEntries(
+                    Object.entries(nesne(sg.soketler))
+                      .slice(0, 100)
+                      .map(([a, v]) => [M(a, 64), tamsayi(v)]),
+                  ),
+                  outbound: dizi(sg.outbound)
+                    .slice(0, 50)
+                    .map((o) => ({ ad: M(nesne(o).ad, 128), host: M(nesne(o).host, 256), port: tamsayi(nesne(o).port) })),
+                };
+              }),
+            }
+          : {}),
         kesildi:
           k.kesildi === true ||
           sunucular.length > SINIR_XML_KAYIT ||
@@ -865,6 +973,8 @@ function hostKaydi(p, { host, kip, partiNo, ortam, playbookDurum, hamBayt, deplo
       xml_ozeti: xmlOzeti(p),
       deployment_ozeti: deployment ? JSON.stringify(deployment) : null,
       web_ozeti: web ? JSON.stringify(web) : null,
+      baglanti_ozeti: baglantiOzeti(p),
+      was_ozeti: wasOzeti(p),
     },
     uygulamalar,
     warlar,
@@ -898,6 +1008,8 @@ function bosHostKaydi({ partiNo, ortam, durum, playbookDurum, hata, hamBayt }) {
       xml_ozeti: null,
       deployment_ozeti: null,
       web_ozeti: null,
+      baglanti_ozeti: null,
+      was_ozeti: null,
     },
     uygulamalar: [],
     warlar: [],
@@ -927,6 +1039,8 @@ const HOST_KOLONLAR = [
   'xml_ozeti NVARCHAR(MAX)',
   'deployment_ozeti NVARCHAR(MAX)',
   'web_ozeti NVARCHAR(MAX)',
+  'baglanti_ozeti NVARCHAR(MAX)',
+  'was_ozeti NVARCHAR(MAX)',
 ];
 const UYG_KOLONLAR = [
   'uyg_no INT',
@@ -1082,6 +1196,8 @@ module.exports = {
   DEP_JVM_DURUMLARI,
   webCoz,
   WEB_DURUMLARI,
+  wasOzeti,
+  baglantiOzeti,
   WEB_OZET_SINIR,
   hostKaydi,
   bosHostKaydi,

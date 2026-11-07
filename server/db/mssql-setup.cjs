@@ -1109,6 +1109,8 @@ const TABLES = [
         xml_ozeti        NVARCHAR(MAX)  NULL,
         deployment_ozeti NVARCHAR(MAX)  NULL,
         web_ozeti        NVARCHAR(MAX)  NULL,
+        baglanti_ozeti   NVARCHAR(MAX)  NULL,
+        was_ozeti        NVARCHAR(MAX)  NULL,
         alindi_at        DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
         CONSTRAINT UQ_eeh_kosu_host UNIQUE (kosu_id, host)
       )`,
@@ -4519,6 +4521,17 @@ async function setupTables() {
       table: 'ear_envanter_hostlari',
       col: 'web_ozeti',
       sql: `ALTER TABLE ear_envanter_hostlari ADD web_ozeti NVARCHAR(MAX) NULL`,
+    },
+    // Faz A (2026-11-07): baglanti goruntusu (istege bagli) ve WebSphere serverindex.xml ozeti. NULL = olculmedi.
+    {
+      table: 'ear_envanter_hostlari',
+      col: 'baglanti_ozeti',
+      sql: `ALTER TABLE ear_envanter_hostlari ADD baglanti_ozeti NVARCHAR(MAX) NULL`,
+    },
+    {
+      table: 'ear_envanter_hostlari',
+      col: 'was_ozeti',
+      sql: `ALTER TABLE ear_envanter_hostlari ADD was_ozeti NVARCHAR(MAX) NULL`,
     },
     {
       table: 'ear_envanter_uygulamalari',

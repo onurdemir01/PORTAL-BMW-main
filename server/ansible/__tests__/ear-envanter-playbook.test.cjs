@@ -238,6 +238,9 @@ function kabukKomutu(kokler) {
         fs.readFileSync(path.join(DIR, 'files', 'ear_tara.py'), 'utf8').replace(/\n$/, ''),
       )
       .replace(/EAR_KOKLER=\{\{[^}]*\}\}/, `EAR_KOKLER='${kokler}'`)
+      // Faz A: WAS kokleri test makinesinde yok; baglanti goruntusu varsayilan KAPALI (0).
+      .replace(/EAR_WAS=\{\{[^}]*\}\}/, "EAR_WAS='/yok/was'")
+      .replace(/EAR_BAGLANTI=\{\{ '1' if \(ear_baglanti_kontrol \| default\(false\) \| bool\) else '0' \}\}/, 'EAR_BAGLANTI=0')
       .replace(/\{\{ ear_kip[^}]*\}\}/, 'OZET')
       .replace(/\{\{ ([a-z_]+) \| default\((\d+)\) \| int \}\}/g, '$2')
   );
