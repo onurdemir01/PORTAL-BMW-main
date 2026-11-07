@@ -98,6 +98,10 @@
   /* Nginx Hub marka renkleri (nginx yesili #009639): sol menu cercevesi + parlayan "Hub".
      Acik zeminde koyu yesil okunur; koyu temada acik yesil (asagida). */
   --nginx-green:        #009639;
+  /* DOLU DUGME zemini (2026-11-07): beyaz metin #009639 uzerinde 3.87:1 (AA alti). Marka rengi
+     cizgi / ikon / ilerleme cubugunda kalir; uzerine METIN yazilan dolgu bu koyu tondur, metin
+     --text-on-dark (iki temada beyaz, 5.5:1). Koyu tema bunu yeniden tanimlamaz (bekci TK1). */
+  --nginx-green-dolgu:  #007a33;
   --nginx-green-bright: #8cf5b3;
   --nh-hub:             #007a2e;
   --nh-hub-bright:      #009639;
@@ -122,6 +126,8 @@
   --text-secondary: #4d4d4d;   /* gray-60 */
   --text-muted:     #707070;   /* gray-50 */
   --text-on-dark:   #ffffff;
+  /* Isi haritasi ust seviye hucre metni: iki temada KOYU (koyuda aksan acik mavi). isiHaritasi.ts */
+  --isi-metin-koyu: #151515;
 
   /* Kenarlik. `--border-subtle` PF6'nin `border--color--subtle`i: kart cercevesi
      gibi VARLIGI hissedilmesi ama dikkat cekmemesi gereken cizgiler icin. */
@@ -213,6 +219,7 @@
   --accent-light: #92c5f9;   /* blue-30 */
   --accent-glow:  rgba(185, 218, 252, 0.24);
   --text-on-accent: #1f1f1f; /* gray-90 */
+  --isi-metin-koyu: #1f1f1f;
   --accent-bg:    rgba(185, 218, 252, 0.16);
   --accent-rgb:   185 218 252;
 

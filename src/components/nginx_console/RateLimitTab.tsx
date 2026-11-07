@@ -234,23 +234,23 @@ export function RateLimitTab() {
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative">
           <MagnifyingGlassIcon className="h-4 w-4 absolute left-2 top-1.5" style={{ color: 'var(--text-muted)' }} />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="sunucu ya da oran ara"
+          <input value={q} onChange={(e) => setQ(e.target.value)} aria-label="Sunucu ya da oran ara" placeholder="sunucu ya da oran ara"
             className="h-7 pl-7 pr-2 text-[12px] rounded-lg border w-64"
             style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)' }} />
         </div>
-        <select value={env} onChange={(e) => setEnv(e.target.value)} className="h-7 text-[12px] rounded-lg border px-1.5"
+        <select value={env} onChange={(e) => setEnv(e.target.value)} aria-label="Ortam" className="h-7 text-[12px] rounded-lg border px-1.5"
           style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)' }}>
           <option value="all">tüm ortamlar</option>
           {envler.map((e) => <option key={e} value={e}>{e}</option>)}
         </select>
-        <select value={sira} onChange={(e) => setSira(e.target.value as Sira)} className="h-7 text-[12px] rounded-lg border px-1.5"
+        <select value={sira} onChange={(e) => setSira(e.target.value as Sira)} aria-label="Sıralama" className="h-7 text-[12px] rounded-lg border px-1.5"
           style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)' }}
           title="Sıralama">
           {(Object.keys(SIRA_ETIKET) as Sira[]).map((k) => (
             <option key={k} value={k}>sırala: {SIRA_ETIKET[k]}</option>
           ))}
         </select>
-        <select value={durum} onChange={(e) => setDurum(e.target.value as typeof durum)} className="h-7 text-[12px] rounded-lg border px-1.5"
+        <select value={durum} onChange={(e) => setDurum(e.target.value as typeof durum)} aria-label="Durum" className="h-7 text-[12px] rounded-lg border px-1.5"
           style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)' }}>
           <option value="all">tüm durumlar</option>
           <option value="eksik">yalnız eksik</option>

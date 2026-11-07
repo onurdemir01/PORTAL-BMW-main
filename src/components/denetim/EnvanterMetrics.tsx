@@ -19,6 +19,7 @@ import {
 import { denetimApi, type EnvanterSummary, type EnvanterPivot } from '@/api/denetimApi';
 import { Select } from '@/components/ui/Form';
 import { fmtNumber } from '@/utils/datetime';
+import { isiStili } from './isiHaritasi';
 import { downloadCsv as csvDownload } from '@/utils/csv';
 
 // Sunucu tarafiyla AYNI ayirici (bkz. envanter-metrics.cjs). Bosluk kullanilsaydi
@@ -568,12 +569,8 @@ function Pivot({ source, sum }: { source: string; sum: EnvanterSummary }) {
                           ) : (
                             <span
                               className="inline-block min-w-[2rem] rounded px-1.5 py-0.5 font-semibold"
-                              style={{
-                                // Isi haritasi: karekok olcekleme, tek bir buyuk hucrenin
-                                // digerlerini gorunmez kilmasini onler.
-                                backgroundColor: `color-mix(in srgb, var(--accent) ${Math.round(Math.sqrt(n / max) * 78) + 8}%, transparent)`,
-                                color: n / max > 0.45 ? 'var(--text-on-accent)' : 'var(--text-primary)',
-                              }}
+                              // Kademeli ton + iki temada AA metin (isiHaritasi.ts).
+                              style={isiStili(n, max)}
                             >
                               {nf(n)}
                             </span>

@@ -185,7 +185,7 @@ export function CisTab({ isAdmin, onOpenHost }: { isAdmin: boolean; onOpenHost: 
         </div>
         <div className="relative">
           <MagnifyingGlassIcon className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }} />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={view === 'hosts' ? 'sunucu ara' : 'madde no / başlık'} className="pl-8 pr-2 py-1.5 text-xs border rounded-lg w-56" style={{ borderColor: 'var(--border)' }} />
+          <input value={q} onChange={(e) => setQ(e.target.value)} aria-label={view === 'hosts' ? 'Sunucu ara' : 'Madde ara'} placeholder={view === 'hosts' ? 'sunucu ara' : 'madde no / başlık'} className="pl-8 pr-2 py-1.5 text-xs border rounded-lg w-56" style={{ borderColor: 'var(--border)' }} />
         </div>
         <select value={view === 'hosts' ? hostSort : itemSort} onChange={(e) => (view === 'hosts' ? setHostSort(e.target.value as typeof hostSort) : setItemSort(e.target.value as typeof itemSort))} className="h-8 px-2 text-xs border rounded-lg" style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)' }} aria-label="sıralama">
           {view === 'hosts'
