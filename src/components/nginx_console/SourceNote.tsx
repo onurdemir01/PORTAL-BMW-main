@@ -62,7 +62,7 @@ const SOURCES: Record<SourceKey, { job: string; what: string; refresh: string }>
 /**
  * `scanDate`:
  *   - string → "son tarama <tarih>"
- *   - null   → "tarama kaydı yok" (uyarı rengiyle)
+ *   - null   → "tarama kaydı yok" (uyarı METİN rengiyle; --status-warning ikon tonudur, 1.97:1 idi)
  *   - undefined → tarih hiç yazılmaz (sekmenin kendi özetinde zaten var)
  */
 export function SourceNote({ source, scanDate, extra }: { source: SourceKey; scanDate?: string | null; extra?: React.ReactNode }) {
@@ -75,7 +75,7 @@ export function SourceNote({ source, scanDate, extra }: { source: SourceKey; sca
       <InformationCircleIcon className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
       <div>
         <b style={{ color: 'var(--text-secondary)' }}>Kaynak:</b> <span className="font-mono">{s.job}</span> — {s.what}
-        {scanDate ? <> · <GuncellemeRozeti etiket="son tarama" tarih={scanDate} /></> : scanDate === null ? <> · <span style={{ color: 'var(--status-warning)' }}>tarama kaydı yok</span></> : null}
+        {scanDate ? <> · <GuncellemeRozeti etiket="son tarama" tarih={scanDate} /></> : scanDate === null ? <> · <span style={{ color: 'var(--status-warning-text)' }}>tarama kaydı yok</span></> : null}
         <span> · Tazelemek için: {s.refresh}</span>
         {extra ? <> · {extra}</> : null}
       </div>

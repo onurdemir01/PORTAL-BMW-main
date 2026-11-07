@@ -47,7 +47,7 @@ export function DriftTab({ onOpen }: { onOpen: (host: string) => void }) {
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative">
           <MagnifyingGlassIcon className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }} />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="servis ya da sunucu" className="pl-8 pr-2 py-1.5 text-xs border rounded-lg w-64" style={{ borderColor: 'var(--border)' }} />
+          <input value={q} onChange={(e) => setQ(e.target.value)} aria-label="Servis ya da sunucu ara" placeholder="servis ya da sunucu" className="pl-8 pr-2 py-1.5 text-xs border rounded-lg w-64" style={{ borderColor: 'var(--border)' }} />
         </div>
         <select value={service} onChange={(e) => setService(e.target.value)} className="h-8 px-2 text-xs border rounded-lg" style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)' }} aria-label="servis">
           <option value="">tüm servisler</option>

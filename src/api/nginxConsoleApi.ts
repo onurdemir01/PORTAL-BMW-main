@@ -124,6 +124,7 @@ export interface NcAggCert extends Omit<NcCert, 'path' | 'sha256' | 'size' | 'mt
 }
 export interface NcCertsResult {
   ok: boolean;
+  message?: string;
   hostsScanned: number;
   certs: NcAggCert[];
   summary: {
@@ -190,6 +191,7 @@ export interface NcDriftResult {
 }
 export interface NcOrphansResult {
   ok: boolean;
+  message?: string;
   hosts: NcOrphanHost[];
   summary: {
     hostsScanned: number;
@@ -678,6 +680,22 @@ export interface NgSpaCoverage {
   noData: number;
 }
 
+/**
+ * LISTE ALANI OLMAYAN "BASARI" DA HATADIR (2026-11-07). safeJson 4xx/5xx JSON'u reddetmez ve
+ * yanit `alan` dizisini (ve varsa `nesne` alanini) tasimayabilir (ara gecit, eski surum, hata
+ * govdesi). Ekran bunu veri sanip `.filter`/`.map` uzerinde cokuyordu ya da "yok" diyordu; donus
+ * ok=false + ne okunamadigi olur, ekran LoadError gosterir.
+ */
+function listeli<T extends { ok: boolean; message?: string }>(alan: string, ne: string, nesne?: string) {
+  return (r: T): T => {
+    const x = (r || {}) as unknown as Record<string, unknown>;
+    if (x.ok && Array.isArray(x[alan]) && (!nesne || (x[nesne] != null && typeof x[nesne] === 'object')))
+      return r;
+    const message = x.ok ? `${ne} beklenen biçimde değil.` : String(x.message || `${ne} alınamadı.`);
+    return { ...(x as object), ok: false, [alan]: [], message } as unknown as T;
+  };
+}
+
 export const nginxConsoleApi = {
   // Gercek SPA kesfi (2026-10-01): ad kalibina bakmadan, kabinde nginx kosan uygulamalar.
   // Sunucu 60 sn onbellekler; "Yenile" fresh=1 ile onbellegi atlar. Govdede yazilmayan
@@ -699,12 +717,18 @@ export const nginxConsoleApi = {
       safeJson,
     ),
 
+  // Yanitta liste yoksa (ara gecit / eski surum) basari SAYILMAZ: ekran "okunamadi" der, coker
+  // ya da "sunucu yok" demez (2026-11-07).
   hosts: (): Promise<{
     ok: boolean;
     hosts: NcHost[];
     consoleDir: string;
     inventoryError: string | null;
-  }> => fetch(`${BASE}/hosts`).then(safeJson),
+    message?: string;
+  }> =>
+    fetch(`${BASE}/hosts`)
+      .then(safeJson)
+      .then(listeli('hosts', 'Sunucu listesi')),
   tree: (host: string): Promise<NcTree> =>
     fetch(`${BASE}/tree/${encodeURIComponent(host)}`).then(safeJson),
   file: (host: string, path: string): Promise<NcFile> =>
@@ -730,7 +754,9 @@ export const nginxConsoleApi = {
       `${BASE}/compare?path=${encodeURIComponent(path)}${hosts?.length ? `&hosts=${encodeURIComponent(hosts.join(','))}` : ''}`,
     ).then(safeJson),
   certs: (host?: string): Promise<NcCertsResult> =>
-    fetch(`${BASE}/certs${host ? `?host=${encodeURIComponent(host)}` : ''}`).then(safeJson),
+    fetch(`${BASE}/certs${host ? `?host=${encodeURIComponent(host)}` : ''}`)
+      .then(safeJson)
+      .then(listeli('certs', 'Sertifika listesi', 'summary')),
   drift: (service?: string, env?: string): Promise<NcDriftResult> => {
     const u = new URLSearchParams();
     if (service) u.set('service', service);
@@ -739,7 +765,9 @@ export const nginxConsoleApi = {
     return fetch(`${BASE}/drift${qs ? '?' + qs : ''}`).then(safeJson);
   },
   orphans: (host?: string): Promise<NcOrphansResult> =>
-    fetch(`${BASE}/orphans${host ? `?host=${encodeURIComponent(host)}` : ''}`).then(safeJson),
+    fetch(`${BASE}/orphans${host ? `?host=${encodeURIComponent(host)}` : ''}`)
+      .then(safeJson)
+      .then(listeli('hosts', 'Kullanılmayan dosya listesi', 'summary')),
   /** Kullanılmayan dosyaları karantinaya alır. mode=plan hiçbir şeye dokunmaz. */
   orphansCleanup: (body: {
     host: string;

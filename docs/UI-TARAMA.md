@@ -37,6 +37,14 @@ hesaplamaz. 2026-10-07 taramasında bulunan hataların hiçbirini bir test görm
 | `ham JSON`        | Ekrana basılmış `{"ok":false…}`                              |
 | `konsol`          | Tarayıcı konsolundaki hata ve yakalanmamış istisnalar        |
 
+## Sekmeler ve boş yanıt şekilleri
+
+- `?tab=` ile adreslenen sekmeler (`SEKMELER`, `tarama.mjs`) açık ve koyu temada ayrı ölçümlerdir.
+  - Nginx Console: 14 sekme, `bos` ve `hata` durumunda.
+  - Denetim: 8 sekme, yalnız `hata` durumunda. Altı sekme genel boş gövdede (`{ok:true, items:[]}`), gerçek sunucunun her zaman döndüğü bir alanı bulamayıp sahte çökme verir.
+- `bos` durumunda bazı uçlara sunucunun **kendi** boş yanıt şekli verilir (`BOS_OZEL`). Bunlar Denetim > Nginx Envanter / API / Audit uçları; şekil sunucunun özetleyicileri boş satırla çağrılarak üretilir.
+- `=` ile başlayan sahte yanıt anahtarı **tam yol** eşlemesidir: `/nginx-api`, `/nginx-api-locations`'ı almaz.
+
 ## Kullanım
 
 ```bash

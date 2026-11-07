@@ -41,6 +41,7 @@ import { NginxAudit } from '@/components/denetim/NginxAudit';
 import HelpModal from '@/components/common/HelpModal';
 import { nginxConsoleApi, type NcHost, type NcTree, type NcTreeDir, type NcFile, type NcCertsResult, type NcAggCert, type NcCert, type NcChange } from '@/api/nginxConsoleApi';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
+import LoadError from '@/components/common/LoadError';
 
 type Tab = 'dashboard' | 'instances' | 'config' | 'certs' | 'changes' | 'orphans' | 'drift' | 'cis' | 'ratelimit' | 'rvpsecim' | 'yuktesti' | 'spadiscovery' | 'api' | 'envanter' | 'audit';
 const TABS: readonly Tab[] = ['dashboard', 'instances', 'config', 'changes', 'certs', 'orphans', 'drift', 'cis', 'ratelimit', 'rvpsecim', 'yuktesti', 'spadiscovery', 'api', 'envanter', 'audit'];
@@ -148,10 +149,16 @@ export default function NginxConsolePage() {
   const [focusHost, setFocusHost] = useState<string | null>(null);
   const [hosts, setHosts] = useState<NcHost[]>([]);
   const [hostsLoading, setHostsLoading] = useState(false);
+  // OKUNAMADI != YOK (2026-11-07): liste okunamazsa Dashboard "0 sunucu", Instances "Envanterde nginx
+  // sunucusu yok" diyordu; yanitta `hosts` yoksa da sayfa cokuyordu. Hata ayri gosterilir.
+  const [hostsErr, setHostsErr] = useState<string | null>(null);
   const { addJob } = useJobTracker();
   const loadHosts = useCallback(async () => {
     setHostsLoading(true);
-    try { const r = await nginxConsoleApi.hosts(); if (r.ok) setHosts(r.hosts); } catch { /* ekranda bos kalir */ } finally { setHostsLoading(false); }
+    try {
+      const r = await nginxConsoleApi.hosts();
+      if (r.ok) { setHosts(r.hosts); setHostsErr(null); } else setHostsErr(r.message || 'Sunucu listesi alınamadı.');
+    } catch (e) { setHostsErr(e instanceof Error ? e.message : String(e)); } finally { setHostsLoading(false); }
   }, []);
   useEffect(() => { if (tab === 'dashboard' || tab === 'instances') loadHosts(); }, [tab, loadHosts]);
   const refreshHosts = async (list: string[]) => {
@@ -236,10 +243,16 @@ export default function NginxConsolePage() {
         </div>
       )}
       {visibleIds.includes(tab) && (
-        <SourceNote source={SOURCE_OF[tab]} scanDate={SOURCE_OF[tab] === 'console' ? lastDump : undefined} />
+        <SourceNote source={SOURCE_OF[tab]} scanDate={SOURCE_OF[tab] === 'console' && !hostsErr ? lastDump : undefined} />
       )}
-      {tab === 'dashboard' && canSee('tab:nginx:dashboard') && <DashboardTab hosts={hosts} onGo={(t, h) => go(t, h)} />}
-      {tab === 'instances' && canSee('tab:nginx:instances') && <InstancesTab hosts={hosts} loading={hostsLoading} onRefreshHosts={isAdmin ? refreshHosts : undefined} onOpen={(h) => go('config', h)} onReload={loadHosts} />}
+      {(tab === 'dashboard' || tab === 'instances') && hostsErr ? (
+        <LoadError compact title="Nginx sunucu listesi okunamadı" message={hostsErr} onRetry={loadHosts} retrying={hostsLoading} testId="nc-hosts-hata" />
+      ) : (
+        <>
+          {tab === 'dashboard' && canSee('tab:nginx:dashboard') && <DashboardTab hosts={hosts} onGo={(t, h) => go(t, h)} />}
+          {tab === 'instances' && canSee('tab:nginx:instances') && <InstancesTab hosts={hosts} loading={hostsLoading} onRefreshHosts={isAdmin ? refreshHosts : undefined} onOpen={(h) => go('config', h)} onReload={loadHosts} />}
+        </>
+      )}
       {tab === 'config' && canSee('tab:nginx:config') && <ConfigTab isAdmin={isAdmin} initialHost={focusHost} />}
       {tab === 'changes' && canSee('tab:nginx:changes') && <ChangesTab />}
       {tab === 'certs' && canSee('tab:nginx:certs') && <CertsTab />}
@@ -292,7 +305,7 @@ function ConfigTab({ isAdmin, initialHost = null }: { isAdmin: boolean; initialH
     try {
       const r = await nginxConsoleApi.hosts();
       if (r.ok) { setHosts(r.hosts); setHostsErr(r.inventoryError ? `Envanter okunamadı (${r.inventoryError}); yalnız dokumu olan sunucular listelendi.` : ''); }
-      else setHostsErr('Sunucu listesi alınamadı.');
+      else setHostsErr(r.message || 'Sunucu listesi alınamadı.');
     } catch (e) { setHostsErr(e instanceof Error ? e.message : String(e)); }
   }, []);
   useAsyncEffect(async () => { await loadHosts(); }, [loadHosts]);
@@ -407,7 +420,7 @@ function ConfigTab({ isAdmin, initialHost = null }: { isAdmin: boolean; initialH
         <div className="p-2 space-y-2">
           <div className="relative">
             <MagnifyingGlassIcon className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }} />
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="sunucu / servis / ortam" className="w-full pl-8 pr-2 py-1.5 text-xs border rounded-lg" style={{ borderColor: 'var(--border)' }} />
+            <input value={q} onChange={(e) => setQ(e.target.value)} aria-label="Sunucu ara" placeholder="sunucu / servis / ortam" className="w-full pl-8 pr-2 py-1.5 text-xs border rounded-lg" style={{ borderColor: 'var(--border)' }} />
           </div>
           {/* Dokum araclari: baslik satirinda DEGIL, arama kutusunun altinda kendi satirinda */}
           {/* Dokum yenileme AWX isi baslatir: yalniz Admin (salt okunur erisimde gizli). */}
@@ -744,14 +757,14 @@ function ChangesTab() {
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative">
           <MagnifyingGlassIcon className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }} />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="sunucu / dosya / kim" className="pl-8 pr-2 py-1.5 text-xs border rounded-lg w-72" style={{ borderColor: 'var(--border)' }} />
+          <input value={q} onChange={(e) => setQ(e.target.value)} aria-label="Değişiklik ara" placeholder="sunucu / dosya / kim" className="pl-8 pr-2 py-1.5 text-xs border rounded-lg w-72" style={{ borderColor: 'var(--border)' }} />
         </div>
         <div className="flex gap-1 rounded-lg p-0.5" style={{ background: 'var(--bg-elevated)' }}>
           {([['all', 'Hepsi'], ['server', 'Sunucuda değişti'], ['portal-publish', 'Portal publish'], ['deleted', 'Silindi'], ['first-seen', 'İlk görülme']] as const).map(([id, label]) => (
             <button key={id} onClick={() => setSrc(id)} className={`px-2.5 py-1 text-xs rounded-md ${src === id ? 'shadow-sm' : ''}`} style={{ background: src === id ? 'var(--bg-surface)' : 'transparent', color: src === id ? 'var(--text-primary)' : 'var(--text-muted)' }}>{label}</button>
           ))}
         </div>
-        <select value={days} onChange={(e) => setDays(Number(e.target.value))} className="px-2 py-1 text-xs border rounded-lg" style={{ borderColor: 'var(--border)' }}>
+        <select value={days} onChange={(e) => setDays(Number(e.target.value))} aria-label="Zaman aralığı" className="px-2 py-1 text-xs border rounded-lg" style={{ borderColor: 'var(--border)' }}>
           {[1, 7, 30, 90, 365].map((d) => <option key={d} value={d}>son {d} gün</option>)}
         </select>
         <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{list.length} kayıt</span>
@@ -793,7 +806,15 @@ function CertsTab() {
   const [q, setQ] = useState('');
   const [only, setOnly] = useState<'all' | 'expiring' | 'expired' | 'missing' | 'self' | 'unused'>('all');
   const [sel, setSel] = useState<NcAggCert | null>(null);
-  const load = useCallback(async () => { setLoading(true); try { setData(await nginxConsoleApi.certs()); } finally { setLoading(false); } }, []);
+  // Hata govdesi veri sanilip `data.certs.filter`da cokuyordu (2026-11-07): okunamadi ayri.
+  const [err, setErr] = useState<string | null>(null);
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await nginxConsoleApi.certs();
+      if (r.ok) { setData(r); setErr(null); } else { setData(null); setErr(r.message || 'Sertifika listesi alınamadı.'); }
+    } catch (e) { setData(null); setErr(e instanceof Error ? e.message : String(e)); } finally { setLoading(false); }
+  }, []);
   useAsyncEffect(async () => { await load(); }, [load]);
 
   const rows = useMemo(() => {
@@ -834,7 +855,7 @@ function CertsTab() {
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative">
           <MagnifyingGlassIcon className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }} />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="CN / imzalayan / sunucu / server_name / dosya" className="pl-8 pr-2 py-1.5 text-xs border rounded-lg w-80" style={{ borderColor: 'var(--border)' }} />
+          <input value={q} onChange={(e) => setQ(e.target.value)} aria-label="Sertifika ara" placeholder="CN / imzalayan / sunucu / server_name / dosya" className="pl-8 pr-2 py-1.5 text-xs border rounded-lg w-80" style={{ borderColor: 'var(--border)' }} />
         </div>
         <div className="flex gap-1 rounded-lg p-0.5" style={{ background: 'var(--bg-elevated)' }}>
           {([['all', 'Hepsi'], ['expiring', '≤ 90 gün'], ['expired', 'Dolmuş'], ['missing', 'Dosyası yok'], ['self', 'Self-signed'], ['unused', 'Kullanılmayan']] as const).map(([id, label]) => (
@@ -847,6 +868,7 @@ function CertsTab() {
           <button onClick={load} className="px-2.5 py-1.5 text-xs border rounded-lg" style={{ borderColor: 'var(--border)' }}><ArrowPathIcon className={`w-3.5 h-3.5 inline ${loading ? 'animate-spin' : ''}`} /> Yenile</button>
         </div>
       </div>
+      {err && <LoadError compact title="Sertifikalar okunamadı" message={err} onRetry={load} retrying={loading} testId="nc-certs-hata" />}
       <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>Kaynak: sunucuların son dokumu (Konfigürasyon sekmesinde "Yenile"). Aynı sertifika = aynı SHA-256 parmak izi; farklı sunuculardaki kopyalar tek satırda toplanır. Liste conf'larda geçen sertifikalar + <code>ssl/</code> altındaki sertifika dosyalarıdır; "kullanılmıyor" = nginx'in yüklediği hiçbir conf'ta geçmiyor (ayrıntı: Kullanılmayan sekmesi).</div>
       <div className="overflow-x-auto rounded-xl border" style={{ borderColor: 'var(--border-subtle)' }}>
         <table className="w-full text-xs">
@@ -866,7 +888,7 @@ function CertsTab() {
                 <td className="px-3 py-1.5 text-right tabular-nums">{c.san?.length || 0}</td>
               </tr>
             ))}
-            {!loading && rows.length === 0 && <TableEmptyRow colSpan={8} title={data?.hostsScanned ? 'Eşleşen sertifika yok.' : 'Henüz dokum yok.'} description={data?.hostsScanned ? undefined : 'Konfigürasyon sekmesinden sunucuları yenileyin.'} />}
+            {!loading && !err && rows.length === 0 && <TableEmptyRow colSpan={8} title={data?.hostsScanned ? 'Eşleşen sertifika yok.' : 'Henüz dokum yok.'} description={data?.hostsScanned ? undefined : 'Konfigürasyon sekmesinden sunucuları yenileyin.'} />}
           </tbody>
         </table>
       </div>

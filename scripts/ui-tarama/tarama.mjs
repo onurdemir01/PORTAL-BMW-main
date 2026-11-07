@@ -20,6 +20,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 import { sekme, DENETIM, sleep } from './lib.mjs';
 
 const KOK = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -42,6 +43,30 @@ const ADIMLAR = {
   '/telnet': ['text=Legacy', 'text=Openshift'],
   '/logx': ['text=Legacy', 'text=OpenShift'],
 };
+// `?tab=` ile adreslenen sekmeler (2026-11-07): varsayilan sekme disindakiler hic taranmiyordu. Her
+// sekme acik + koyu temada, genis ekranda ayri bir olcumdur. Sayfa taranirken (TEK ya da tam) gezilir.
+// Denetim yalniz "hata" durumunda: alti sekmesi genel bos govdede ({ok:true, items:[]}) gercek
+// sunucunun HER ZAMAN dondugu bir alani bulamayip cokuyor (sahte cokme; hata yolu dogru calisiyor).
+const SEKMELER = {
+  '/nginx-console': { modlar: ['bos', 'hata'], sekmeler: ['instances', 'config', 'changes', 'certs', 'orphans', 'drift', 'cis', 'ratelimit', 'rvpsecim', 'yuktesti', 'spadiscovery', 'api', 'envanter', 'audit'] },
+  '/denetim': { modlar: ['hata'], sekmeler: ['ocp', 'ocproute', 'init', 'deploy', 'envanter', 'degisim', 'appenvs', 'webapp'] },
+};
+// "bos" durumunda genel sahte govde ({ok:true, items:[] ...}) bazi uclarin GERCEK bos yanitina
+// benzemiyor; ekran olmayan bir alan yuzunden cokuyor ve tarama sahte cokme raporluyordu (2026-11-07,
+// Denetim > Nginx Envanter / API / Audit). Bu uclara sunucunun KENDI bos yanit sekli verilir
+// (ozetleyiciler bos satirla cagrilir; sunucu sekli degisirse burasi da degisir).
+const sunucuRequire = createRequire(import.meta.url);
+function bosSekiller() {
+  const { summarizeNginxInventory } = sunucuRequire('../../server/audit/nginx-inventory-summary.cjs');
+  const { summarize } = sunucuRequire('../../server/audit/nginx-api-summary.cjs');
+  return {
+    '=/api/denetim/nginx-inventory': { ok: true, lastUpdate: null, ...summarizeNginxInventory([]) },
+    '=/api/denetim/nginx-api': { ok: true, scanDate: null, availableDates: [], ...summarize([]) },
+    '=/api/denetim/nginx-audit': { ok: true, schemaReady: true, filesReady: false, scanDate: null, hosts: [], totals: null },
+  };
+}
+const BOS_OZEL = bosSekiller();
+const ozelOf = (mod) => (mod === 'bos' ? BOS_OZEL : {});
 const GORUNUMLER = [
   ['light', 1440, 900],
   ['dark', 1440, 900],
@@ -106,18 +131,31 @@ for (const mod of ['bos', 'hata']) {
     for (const [tema, w, h] of GORUNUMLER) {
       const t = await sekme(CDP_PORT, TABAN);
       try {
-        await t.ac(yol, { tema, w, h, mod });
+        await t.ac(yol, { tema, w, h, mod, ozel: ozelOf(mod) });
         await olc(t, { mod, yol, adim: '', tema, w }, `${mod}-${ad(yol)}-${tema}-${w}`);
       } catch (e) {
         sonuclar.push({ mod, yol, adim: '', tema, w, aracHatasi: e.message });
       }
       await t.kapat();
     }
+    const sekmeli = SEKMELER[yol];
+    for (const sk of sekmeli && sekmeli.modlar.includes(mod) ? sekmeli.sekmeler : []) {
+      for (const tema of ['light', 'dark']) {
+        const t = await sekme(CDP_PORT, TABAN);
+        try {
+          await t.ac(`${yol}?tab=${sk}`, { tema, mod, ozel: ozelOf(mod) });
+          await olc(t, { mod, yol, adim: `?tab=${sk}`, tema, w: 1440 }, `${mod}-${ad(yol)}-${sk}-${tema}`);
+        } catch (e) {
+          sonuclar.push({ mod, yol, adim: `?tab=${sk}`, tema, w: 1440, aracHatasi: e.message });
+        }
+        await t.kapat();
+      }
+    }
     // Ilk adimlar: yalnizca acik tema / genis ekranda (amac cokme ve hata metni).
     for (const adim of ADIMLAR[yol] || []) {
       const t = await sekme(CDP_PORT, TABAN);
       try {
-        await t.ac(yol, { mod });
+        await t.ac(yol, { mod, ozel: ozelOf(mod) });
         if (await t.tikla(adim)) await olc(t, { mod, yol, adim, tema: 'light', w: 1440 }, `${mod}-${ad(yol)}-${ad(adim)}`);
       } catch (e) {
         sonuclar.push({ mod, yol, adim, tema: 'light', w: 1440, aracHatasi: e.message });
@@ -128,7 +166,7 @@ for (const mod of ['bos', 'hata']) {
     if (yol === '/admin') {
       const t = await sekme(CDP_PORT, TABAN);
       try {
-        await t.ac(yol, { mod, tema: mod === 'bos' ? 'dark' : 'light' });
+        await t.ac(yol, { mod, tema: mod === 'bos' ? 'dark' : 'light', ozel: ozelOf(mod) });
         const sekmeler = await t.eval(`[...document.querySelectorAll('nav[aria-label="Admin bölümleri"] button')].map((b) => b.textContent.trim())`);
         for (const s of sekmeler) {
           if (!(await t.tikla('text=' + s))) continue;

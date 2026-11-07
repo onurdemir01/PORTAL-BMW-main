@@ -23,7 +23,9 @@ export const enjekte = (mod, ozel = {}) => `(() => {
     const u = typeof girdi === 'string' ? girdi : girdi.url;
     if (!u.includes('/api/')) return asil(girdi, sec);
     window.__istekler.push((sec && sec.method ? sec.method : 'GET') + ' ' + u.replace(location.origin, ''));
-    for (const [k, v] of OZEL) if (u.includes(k)) return (v && v.__status) ? J(v.body, v.__status) : J(v);
+    // '=' ile baslayan anahtar TAM yol eslesmesidir ('/nginx-api' '/nginx-api-locations'i almasin).
+    const yolAdi = new URL(u, location.origin).pathname;
+    for (const [k, v] of OZEL) if (k.startsWith('=') ? yolAdi === k.slice(1) : u.includes(k)) return (v && v.__status) ? J(v.body, v.__status) : J(v);
     const simdi = Date.now();
     if (u.includes('/api/auth/me')) return J({ ok: true, user: { username: 'tarama', displayName: 'Tarama Kullanicisi', role: 'Admin', groups: [] } });
     if (u.includes('/api/auth/session-policy')) return J({ ok: true, rememberEnabled: true, rememberDays: 7 });

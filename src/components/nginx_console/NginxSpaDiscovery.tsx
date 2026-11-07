@@ -2413,6 +2413,7 @@ export default function NginxSpaDiscovery() {
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
+            aria-label="Uygulama, namespace ya da adres ara"
             placeholder="uygulama, namespace ya da adres"
             className="pl-8 pr-2.5 py-1.5 text-xs border rounded-lg w-56"
             style={{ borderColor: 'var(--border)' }}

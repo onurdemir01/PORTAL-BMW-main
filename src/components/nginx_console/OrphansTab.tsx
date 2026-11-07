@@ -12,6 +12,7 @@ import React, { useCallback, useMemo, useState } from 'react';
 import { ArrowPathIcon, MagnifyingGlassIcon, ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { TableEmptyRow } from '@/components/common/EmptyState';
+import LoadError from '@/components/common/LoadError';
 import { Pill } from '@/components/denetim/ui';
 import { fmtNumber } from '@/utils/datetime';
 import { nginxConsoleApi, type NcOrphansResult, type NcOrphanHost } from '@/api/nginxConsoleApi';
@@ -80,7 +81,15 @@ export function OrphansTab({ onOpen, isAdmin }: { onOpen: (host: string) => void
   const [q, setQ] = useState('');
   const [kind, setKind] = useState<Kind>('all');
   const [open, setOpen] = useState<Set<string>>(new Set());
-  const load = useCallback(async () => { setLoading(true); try { setData(await nginxConsoleApi.orphans()); } finally { setLoading(false); } }, []);
+  // Hata govdesi veri sanilip `data.hosts.filter`da cokuyordu (2026-11-07): okunamadi ayri.
+  const [err, setErr] = useState<string | null>(null);
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await nginxConsoleApi.orphans();
+      if (r.ok) { setData(r); setErr(null); } else { setData(null); setErr(r.message || 'Kullanılmayan dosya listesi alınamadı.'); }
+    } catch (e) { setData(null); setErr(e instanceof Error ? e.message : String(e)); } finally { setLoading(false); }
+  }, []);
   useAsyncEffect(async () => { await load(); }, [load]);
 
   const rows = useMemo(() => {
@@ -109,6 +118,7 @@ export function OrphansTab({ onOpen, isAdmin }: { onOpen: (host: string) => void
 
   return (
     <div className="space-y-3">
+      {err && <LoadError compact title="Kullanılmayan dosyalar okunamadı" message={err} onRetry={load} retrying={loading} testId="nc-orphans-hata" />}
       {data && (
         <div className="grid gap-3 md:grid-cols-6">
           <Tile n={data.summary.hostsScanned} l="taranan sunucu" active={kind === 'all'} onClick={() => setKind('all')} />
@@ -122,7 +132,7 @@ export function OrphansTab({ onOpen, isAdmin }: { onOpen: (host: string) => void
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative">
           <MagnifyingGlassIcon className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }} />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="sunucu / dosya yolu / CN" className="pl-8 pr-2 py-1.5 text-xs border rounded-lg w-80" style={{ borderColor: 'var(--border)' }} />
+          <input value={q} onChange={(e) => setQ(e.target.value)} aria-label="Dosya ya da sunucu ara" placeholder="sunucu / dosya yolu / CN" className="pl-8 pr-2 py-1.5 text-xs border rounded-lg w-80" style={{ borderColor: 'var(--border)' }} />
         </div>
         <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{rows.length} sunucu</span>
         <div className="ml-auto flex gap-2">
@@ -227,7 +237,7 @@ export function OrphansTab({ onOpen, isAdmin }: { onOpen: (host: string) => void
                 )}
               </React.Fragment>
             ))}
-            {!loading && rows.length === 0 && <TableEmptyRow colSpan={7} title={data?.summary.hostsScanned ? 'Süzgeçle eşleşen sunucu yok.' : 'Henüz dokum yok.'} description={data?.summary.hostsScanned ? 'Bu kümede kullanılmayan dosya bulunmadı.' : 'Instances sekmesinden sunucuları yenileyin.'} />}
+            {!loading && !err && rows.length === 0 && <TableEmptyRow colSpan={7} title={data?.summary.hostsScanned ? 'Süzgeçle eşleşen sunucu yok.' : 'Henüz dokum yok.'} description={data?.summary.hostsScanned ? 'Bu kümede kullanılmayan dosya bulunmadı.' : 'Instances sekmesinden sunucuları yenileyin.'} />}
           </tbody>
         </table>
       </div>

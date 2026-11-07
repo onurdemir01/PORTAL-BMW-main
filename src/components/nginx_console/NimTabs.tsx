@@ -368,7 +368,7 @@ export function InstancesTab({ hosts, loading, onRefreshHosts, onOpen, onReload 
         <span className="ml-auto" />
         <button onClick={onReload} className={btn} style={btnStyle}><ArrowPathIcon className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} /> Refresh</button>
         <button onClick={csv} className={btn} style={btnStyle}><ArrowDownTrayIcon className="w-3.5 h-3.5" /> Export</button>
-        {onRefreshHosts && <button disabled={checked.size === 0} onClick={() => { onRefreshHosts([...checked]); setChecked(new Set()); }} className={`${btn} disabled:opacity-40`} style={{ background: 'var(--nginx-green)', borderColor: 'var(--nginx-green)', color: 'var(--accent-fg, #fff)' }} title="Seçili sunucuların dokumunu Ansible ile yenile"><ArrowPathIcon className="w-3.5 h-3.5" /> Seçilileri yenile{checked.size ? ` (${checked.size})` : ''}</button>}
+        {onRefreshHosts && <button disabled={checked.size === 0} onClick={() => { onRefreshHosts([...checked]); setChecked(new Set()); }} className={`${btn} disabled:opacity-40`} style={{ background: 'var(--nginx-green-dolgu)', borderColor: 'var(--nginx-green-dolgu)', color: 'var(--text-on-dark)' }} title="Seçili sunucuların dokumunu Ansible ile yenile"><ArrowPathIcon className="w-3.5 h-3.5" /> Seçilileri yenile{checked.size ? ` (${checked.size})` : ''}</button>}
       </div>
       <div className="overflow-auto rounded-lg border" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}>
         <table className="w-full text-[13px] border-collapse">
@@ -409,7 +409,7 @@ export function InstancesTab({ hosts, loading, onRefreshHosts, onOpen, onReload 
           <select value={size} onChange={(e) => { setSize(Number(e.target.value)); setPage(1); }} className="h-7 px-2 border rounded-md text-[12px]" style={btnStyle}>{[10, 25, 50, 100].map((n) => <option key={n} value={n}>{n}</option>)}</select>
           <button disabled={cur <= 1} onClick={() => setPage(cur - 1)} className="p-1 rounded border disabled:opacity-40" style={btnStyle} aria-label="önceki"><ChevronLeftIcon className="w-4 h-4" /></button>
           <span className="tabular-nums">{cur} / {pages}</span>
-          <button disabled={cur >= pages} onClick={() => setPage(cur + 1)} className="p-1 rounded border disabled:opacity-40" style={{ ...btnStyle, background: 'var(--nginx-green)', color: 'var(--accent-fg, #fff)', borderColor: 'var(--nginx-green)' }} aria-label="sonraki"><ChevronRightIcon className="w-4 h-4" /></button>
+          <button disabled={cur >= pages} onClick={() => setPage(cur + 1)} className="p-1 rounded border disabled:opacity-40" style={{ ...btnStyle, background: 'var(--nginx-green-dolgu)', color: 'var(--text-on-dark)', borderColor: 'var(--nginx-green-dolgu)' }} aria-label="sonraki"><ChevronRightIcon className="w-4 h-4" /></button>
         </div>
       </div>
     </div>
