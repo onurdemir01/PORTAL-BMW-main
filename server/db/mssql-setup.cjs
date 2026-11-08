@@ -2457,8 +2457,8 @@ async function seedEnvSuffixMap(pool) {
 // burada yalnizca ilk kurulumda tabloyu doldurmak icin).
 const PAGE_VISIBILITY_SEED = [
   { page_name: 'Dashboard', roles: 'Admin,User' },
-  { page_name: 'Envanter', roles: 'Admin,User' },
-  { page_name: 'Denetim', roles: 'Admin,User' },
+  { page_name: 'Envanter', roles: 'Admin' },
+  { page_name: 'Denetim', roles: 'Admin' },
   { page_name: 'NginxConsole', roles: 'Admin' },
   { page_name: 'ServerHub', roles: 'Admin' },
   { page_name: 'CryptoHub', roles: 'Admin' },
@@ -2508,7 +2508,8 @@ const ELEMENT_SEED = [
   // idempotent seed INSERT deseni VAR OLAN satirlari GUNCELLEMEZ, bu yuzden ayri bir migration
   // adimi gerekiyor).
   { element_key: 'navgroup:genel', element_type: 'nav_group', label: 'Genel', sort_order: 1 },
-  { element_key: 'navgroup:envanter', element_type: 'nav_group', label: 'Envanter', sort_order: 2 },
+  // navgroup:envanter ve navgroup:operasyon (Nobetciler) 2026-11-08'de KALDIRILDI: sayfalari BMW Hub
+  // grubunda (kullanici). Mevcut kurulumlar icin moveToBmwHub() tasir ve bos gruplari siler.
   // Nginx Hub kendi basina bir sekme (kullanici, 2026-09-19): Envanter grubundan AYRILDI.
   {
     element_key: 'navgroup:nginxhub',
@@ -2560,12 +2561,6 @@ const ELEMENT_SEED = [
     sort_order: 4,
   },
   {
-    element_key: 'navgroup:operasyon',
-    element_type: 'nav_group',
-    label: 'Nöbetçiler',
-    sort_order: 5,
-  },
-  {
     element_key: 'navgroup:otomasyon',
     element_type: 'nav_group',
     label: 'Self Servis',
@@ -2586,16 +2581,17 @@ const ELEMENT_SEED = [
   {
     element_key: 'Envanter',
     element_type: 'page',
-    parent_key: 'navgroup:envanter',
+    parent_key: 'navgroup:bmwhub',
     label: 'Envanter',
     route: '/envanter',
     sort_order: 2,
-    roles: ['Admin', 'User'],
+    // 2026-11-08: YALNIZ Admin (kullanici: "genel erisime kapat, simdilik sadece Admin'ler").
+    roles: ['Admin'],
   },
   {
     element_key: 'Denetim',
     element_type: 'page',
-    parent_key: 'navgroup:envanter',
+    parent_key: 'navgroup:bmwhub',
     label: 'Middleware İç Denetim',
     route: '/denetim',
     sort_order: 3,
@@ -2661,7 +2657,7 @@ const ELEMENT_SEED = [
     element_key: 'BmwHub',
     element_type: 'page',
     parent_key: 'navgroup:bmwhub',
-    label: 'BMW Hub',
+    label: 'Açık İşler',
     route: '/bmw-hub',
     sort_order: 1,
     roles: ['Admin'],
@@ -2747,10 +2743,10 @@ const ELEMENT_SEED = [
     // takvimi gormek bir yetki degil, koordinasyon ihtiyacidir.
     element_key: 'OcoTakvimi',
     element_type: 'page',
-    parent_key: 'navgroup:operasyon',
+    parent_key: 'navgroup:bmwhub',
     label: 'OCO Takvimi',
     route: '/oco-takvimi',
-    sort_order: 4,
+    sort_order: 5,
     roles: ['Admin', 'User'],
   },
   {
@@ -2839,10 +2835,10 @@ const ELEMENT_SEED = [
   {
     element_key: 'Nöbet',
     element_type: 'page',
-    parent_key: 'navgroup:operasyon',
+    parent_key: 'navgroup:bmwhub',
     label: 'Nöbet',
     route: '/duty-roster',
-    sort_order: 9,
+    sort_order: 4,
     roles: ['Admin', 'User'],
   },
   // 'navgroup:kaynaklar' + 'Linkler' seed'leri 2026-09-19'da KALDIRILDI (menuden cikti);
@@ -4478,15 +4474,60 @@ async function removeKaynaklarNavGroup(pool) {
   }
 }
 
+// BMW HUB GRUBU (2026-11-08, kullanici): "Nobetciler ve OCO takvimini, Envanter ve Denetim'i BMW Hub'in
+// altina koy; Envanter'i genel erisime kapat, simdilik yalniz Admin'ler gorsun."
+// Seed yalniz EKSIK satiri ekler; mevcut kurulumda parent_key / etiket / default_visible eski kalirdi.
+// Tek seferlik (isaret portal_config_blobs). Envanter: default_visible=0 + role=User allow silinir
+// (Denetim'in 2026-09-17 kapanisiyla ayni). Admin'in tek tek verdigi kullanici / grup kurallari
+// DOKUNULMAZ. Bos kalan eski gruplar (envanter, operasyon) ve onlara bagli gorunurluk satirlari silinir.
+async function moveToBmwHub(pool) {
+  const MARK = 'migration:bmwhub-grubu-2026-11-08';
+  try {
+    const done = await pool.request().input('n', MARK).query(`SELECT 1 FROM portal_config_blobs WHERE name = @n`);
+    if (done.recordset.length) return;
+    const sira = { BmwHub: 1, Envanter: 2, Denetim: 3, 'Nöbet': 4, OcoTakvimi: 5 };
+    for (const [k, o] of Object.entries(sira)) {
+      await pool
+        .request()
+        .input('k', k)
+        .input('o', o)
+        .query(`UPDATE portal_elements SET parent_key = 'navgroup:bmwhub', sort_order = @o WHERE element_key = @k`);
+    }
+    await pool.request().query(`UPDATE portal_elements SET label = N'Açık İşler' WHERE element_key = 'BmwHub'`);
+    await pool.request().query(`UPDATE portal_elements SET default_visible = 0 WHERE element_key = 'Envanter'`);
+    await pool
+      .request()
+      .query(`DELETE FROM portal_element_visibility WHERE element_key = 'Envanter' AND principal_type = 'role' AND principal_id = 'User'`);
+    await pool.request().query(`UPDATE page_visibility SET roles = 'Admin' WHERE page_name IN ('Envanter', 'Denetim')`);
+    for (const g of ['navgroup:envanter', 'navgroup:operasyon']) {
+      const kalan = await pool.request().input('g', g).query(`SELECT COUNT(*) AS n FROM portal_elements WHERE parent_key = @g`);
+      if (Number(kalan.recordset[0].n) > 0) {
+        console.warn(`[DB] ${g} bos degil (admin tasimis olabilir); grup SILINMEDI.`);
+        continue;
+      }
+      await pool.request().input('g', g).query(`DELETE FROM portal_element_visibility WHERE element_key = @g`);
+      await pool.request().input('g', g).query(`DELETE FROM portal_elements WHERE element_key = @g`);
+    }
+    await pool
+      .request()
+      .input('n', MARK)
+      .input('d', JSON.stringify({ at: new Date().toISOString() }))
+      .query(`INSERT INTO portal_config_blobs (name, data) VALUES (@n, @d)`);
+    console.log('[DB] BMW Hub grubu: Envanter, Denetim, Nobet, OCO Takvimi tasindi; Envanter yalniz Admin.');
+  } catch (err) {
+    console.warn('[DB] BMW Hub grubu migration uygulanamadi:', err.message);
+  }
+}
+
 async function migratePageParentKeysToNavGroups(pool) {
   const pageToGroup = {
     Dashboard: 'navgroup:genel',
-    Envanter: 'navgroup:genel',
-    Denetim: 'navgroup:envanter',
+    Envanter: 'navgroup:bmwhub',
+    Denetim: 'navgroup:bmwhub',
     LogX: 'navgroup:otomasyon',
     OpsX: 'navgroup:otomasyon',
     FileX: 'navgroup:otomasyon',
-    Nöbet: 'navgroup:operasyon',
+    Nöbet: 'navgroup:bmwhub',
     Linkler: 'navgroup:kaynaklar',
     'Self Service': 'navgroup:otomasyon',
     Ansible: 'navgroup:otomasyon',
@@ -4559,6 +4600,7 @@ async function setupTables() {
   await migratePageParentKeysToNavGroups(pool);
   // 2026-09-19: Yardımcı Araçlar / Faydalı Linkler menuden kaldirildi (bkz. elements.ts)
   await removeKaynaklarNavGroup(pool);
+  await moveToBmwHub(pool);
   await removeMovedDenetimTabs(pool);
   await removeRetiredAdminTabs(pool);
   await allowMultipleCisOverrides(pool);

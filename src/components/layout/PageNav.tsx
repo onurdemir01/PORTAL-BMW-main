@@ -113,13 +113,18 @@ export default function PageNav({ onNavigate }: Props) {
             return (
               <li key={group.id}>
                 <button
-                  className="pf-nav-toggle"
+                  className={`pf-nav-toggle${group.id === "bmwhub" ? ` nginx-hub-link bmw-hub-link${groupActive ? " is-current" : ""}` : ""}`}
                   aria-expanded={isOpen}
                   onClick={() => setCollapsed((c) => ({ ...c, [group.id]: !c[group.id] }))}
                 >
-                  <span style={{ fontWeight: groupActive ? 700 : 400, color: groupActive ? "var(--nav-text)" : undefined }}>
-                    {group.label}
-                  </span>
+                  {/* BMW Hub (2026-11-08): cok sayfali grup; baslik diger Hub'larla ayni cerceve */}
+                  {group.id === "bmwhub" ? (
+                    <span className="nginx-hub-label"><ClipboardDocumentCheckIcon className="h-4 w-4 shrink-0" /><span>BMW</span> <span className="nginx-hub-word">Hub</span></span>
+                  ) : (
+                    <span style={{ fontWeight: groupActive ? 700 : 400, color: groupActive ? "var(--nav-text)" : undefined }}>
+                      {group.label}
+                    </span>
+                  )}
                   {isOpen ? <ChevronDownIcon className="h-3.5 w-3.5" /> : <ChevronRightIcon className="h-3.5 w-3.5" />}
                 </button>
                 {isOpen && (
