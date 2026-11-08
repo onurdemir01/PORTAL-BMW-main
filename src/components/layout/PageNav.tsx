@@ -88,7 +88,7 @@ export default function PageNav({ onNavigate }: Props) {
                   <NavLink
                     to={item.to}
                     className={({ isActive }) => `${linkClass({ isActive })}${isHub ? " nginx-hub-link" : ""}${isServerHub ? " nginx-hub-link server-hub-link" : ""}${isCryptoHub ? " nginx-hub-link crypto-hub-link" : ""}`}
-                    style={{ paddingLeft: "1rem" }}
+                    style={{ paddingLeft: "0.75rem" }}
                     onClick={onNavigate}
                   >
                     {isHub ? <span className="nginx-hub-label"><NginxIcon className="h-4 w-4 shrink-0" /><span>Nginx</span> <span className="nginx-hub-word">Hub</span></span>

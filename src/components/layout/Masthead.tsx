@@ -116,7 +116,9 @@ export default function Masthead({ onToggleNav }: Props) {
     return () => document.removeEventListener("keydown", onKey);
   }, [menuOpen]);
 
-  // Ctrl+K komut paletini acan mevcut global kisayolu tetikler.
+  // Ctrl+K komut paletini acan mevcut global kisayolu tetikler. Kisayol etiketi isletim sistemine
+  // gore (Mac'te Cmd); useCommandPalette ikisini de dinler.
+  const kisayol = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘K" : "Ctrl K";
   const openSearch = () =>
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", ctrlKey: true, bubbles: true }));
 
@@ -144,9 +146,20 @@ export default function Masthead({ onToggleNav }: Props) {
       <div className="flex-1" />
 
       <div className="flex items-center">
-        <button className="pf-masthead-btn" onClick={openSearch} aria-label="Ara (Ctrl+K)" title="Ara (Ctrl+K)">
-          <MagnifyingGlassIcon className="h-5 w-5" />
-        </button>
+        {/* Genis ekranda kutu gorunumlu arama (kisayol etiketiyle), dar ekranda ikon. Gizleme
+            sarmalayicida: `.pf-masthead-btn` / `.pf-masthead-ara` katmansiz, utility'yi ezerdi. */}
+        <span className="hidden md:inline-flex">
+          <button type="button" className="pf-masthead-ara" onClick={openSearch} aria-label={`Ara (${kisayol})`}>
+            <MagnifyingGlassIcon className="h-4 w-4" aria-hidden="true" />
+            <span>Ara…</span>
+            <kbd>{kisayol}</kbd>
+          </button>
+        </span>
+        <span className="inline-flex md:hidden">
+          <button className="pf-masthead-btn" onClick={openSearch} aria-label={`Ara (${kisayol})`} title={`Ara (${kisayol})`}>
+            <MagnifyingGlassIcon className="h-5 w-5" />
+          </button>
+        </span>
 
         <button
           className="pf-masthead-btn"

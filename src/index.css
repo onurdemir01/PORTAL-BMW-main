@@ -814,6 +814,39 @@ thead th {
   transition: background-color 0.1s ease, color 0.1s ease;
 }
 .pf-masthead-btn:hover { background: var(--nav-hover-bg); color: var(--nav-text); }
+/* ARAMA KUTUSU GORUNUMLU DUGME (2026-11-08). Komut paleti (Ctrl+K) yalniz bir ikonun arkasindaydi
+   ve kesfedilmiyordu. Genis ekranda kutu gorunumu + kisayol etiketi; tiklama ayni paleti acar.
+   Gosterme / gizleme sarmalayici span'da: bu sinif katmansiz oldugu icin ayni ogedeki
+   `hidden md:inline-flex` utility'sini ezerdi. */
+.pf-masthead-ara {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  height: 2.25rem;
+  min-width: 14rem;
+  margin-right: 0.5rem;
+  padding: 0 0.375rem 0 0.75rem;
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+  color: var(--nav-text-muted);
+  background: var(--bg-surface);
+  border: 1px solid var(--masthead-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: border-color 0.1s ease, color 0.1s ease;
+}
+.pf-masthead-ara:hover { border-color: var(--border-strong); color: var(--nav-text); }
+.pf-masthead-ara kbd {
+  margin-left: auto;
+  padding: 0 0.375rem;
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  line-height: 1.25rem;
+  color: var(--nav-text-muted);
+  background: var(--bg-elevated);
+  border: 1px solid var(--masthead-border);
+  border-radius: var(--radius-sm);
+}
 
 .pf-nav {
   width: var(--nav-w);
@@ -833,20 +866,26 @@ thead th {
   text-transform: uppercase;
   color: var(--nav-text-muted);
 }
+/* PF6 MENU OGESI (2026-11-08): hover / etkin zemin menu kenarina dayali serit degil, iceriden
+   8 px bosluklu ve 6 px koseli (Hub ogeleri zaten boyleydi; menu kendi icinde tutarli olur).
+   METIN YERI DEGISMEDI: eskiden 4 px kenarlik + 2rem dolgu = 36 px, simdi 0.5rem kenar bosluk +
+   1.75rem dolgu = 36 px; dikey bosluk eklenmedi (ogeler ayni satirda). Etkin ogenin aksan cizgisi
+   ogenin ICINDE 3 px kalir (inset golge). */
 .pf-nav-link {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.5rem 1rem 0.5rem 2rem;
+  margin: 0 0.5rem;
+  padding: 0.5rem 0.75rem 0.5rem 1.75rem;
   font-size: 0.875rem;
   color: var(--nav-text);
-  border-left: 4px solid transparent;
+  border-radius: var(--radius-md);
   transition: background-color 0.1s ease;
 }
 .pf-nav-link:hover { background: var(--nav-hover-bg); color: var(--nav-text); text-decoration: none; }
 .pf-nav-link.is-current {
   background: var(--nav-current-bg);
-  border-left-color: var(--accent);
+  box-shadow: inset 3px 0 0 var(--accent);
   color: var(--nav-text);
   font-weight: 700;
 }
@@ -892,7 +931,7 @@ thead th {
   border: 1px solid rgba(0, 150, 57, 0.45);
   pointer-events: none;
 }
-.nginx-hub-link.is-current { background: rgba(0, 150, 57, 0.12); }
+.nginx-hub-link.is-current { background: rgba(0, 150, 57, 0.12); box-shadow: none; }
 /* align-items: baseline IDI (2026-09-26): metin icin dogruydu ama satira bir SVG rozet
    eklendiginde simge tabanini yaziya oturtup yukari kaydiriyordu. Ortalama, hem simgeyi hem
    iki kelimeyi dogru hizalar. */
@@ -939,17 +978,20 @@ thead th {
   to { text-shadow: 0 0 10px var(--accent-light), 0 0 18px var(--accent-light); color: var(--accent); }
 }
 
+/* Bolum basligi ayni bicimde: metin 20 px'te (eskiden 4 + 16, simdi 8 + 12), ok isareti sagdan
+   16 px'te (eskiden 1rem dolgu, simdi 8 + 8) kalir. */
 .pf-nav-toggle {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  width: 100%;
-  padding: 0.5rem 1rem;
+  width: calc(100% - 1rem);
+  margin: 0 0.5rem;
+  padding: 0.5rem 0.5rem 0.5rem 0.75rem;
   font-size: 0.875rem;
   color: var(--nav-text);
   background: transparent;
   border: none;
-  border-left: 4px solid transparent;
+  border-radius: var(--radius-md);
   cursor: pointer;
   text-align: left;
 }
