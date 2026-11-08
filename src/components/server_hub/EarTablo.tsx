@@ -653,6 +653,17 @@ export function EarTablo<T>({
   const gorunenKolonlar = kolonlar.filter((k) => gorunur.includes(k.anahtar));
   const secimVar = !!secimEylemleri;
   const kolonSayisi = gorunenKolonlar.length + (secimVar ? 1 : 0) + (acilir ? 1 : 0);
+  // Açılır satır, tablo yatay kayarken kapsayıcının GÖRÜNEN genişliğinde ve solda sabit kalır: dar ekranda
+  // ayrıntının sağ yarısı (karar rozeti, sunucu kartları) ekran dışında kalmasın. ResizeObserver ilk ölçümü
+  // gözlem başlayınca kendisi verir; yoksa (eski tarayıcı / jsdom) eski davranış.
+  const [kapsayici, setKapsayici] = useState<HTMLDivElement | null>(null);
+  const [gorunurGenislik, setGorunurGenislik] = useState<number | null>(null);
+  useEffect(() => {
+    if (!kapsayici || !acilir || typeof ResizeObserver === 'undefined') return undefined;
+    const ro = new ResizeObserver(() => setGorunurGenislik(kapsayici.clientWidth));
+    ro.observe(kapsayici);
+    return () => ro.disconnect();
+  }, [kapsayici, acilir]);
   const sayfadakiler = sayfa ? sayfa.satirlar : [];
   const hepsiSecili =
     sayfadakiler.length > 0 && sayfadakiler.every((r) => secili.has(satirAnahtari(r)));
@@ -852,6 +863,7 @@ export function EarTablo<T>({
         />
       ) : (
         <div
+          ref={setKapsayici}
           className="overflow-auto rounded-lg border max-h-[70vh]"
           style={{ borderColor: 'var(--border)', opacity: bekliyor && sayfa ? 0.6 : 1 }}
           aria-busy={bekliyor}
@@ -1006,10 +1018,20 @@ export function EarTablo<T>({
                         <tr>
                           <td
                             colSpan={kolonSayisi}
-                            className="px-3"
-                            style={{ background: 'var(--bg-elevated)' }}
+                            className="p-0"
+                            // Soluk metin (--text-muted, PF6 gray-50) düz --bg-elevated üstünde açık temada
+                            // 4.42:1 (AA altı); yüzeyle karışık zemin 4.70 / koyu 5.23 (Nginx tablosu deseni).
+                            style={{
+                              background: 'color-mix(in srgb, var(--bg-elevated) 45%, var(--bg-surface))',
+                            }}
                           >
-                            {acilir(r)}
+                            <div
+                              className="sticky left-0 px-3"
+                              style={gorunurGenislik ? { width: gorunurGenislik } : undefined}
+                              data-testid="ear-tablo-acilir"
+                            >
+                              {acilir(r)}
+                            </div>
                           </td>
                         </tr>
                       )}

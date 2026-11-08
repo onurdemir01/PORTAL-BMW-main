@@ -190,7 +190,7 @@ describe('Retirement Analizi rozeti', () => {
   it('AR5 anahtar kuralı sunucunun grafik anahtarıyla birebir', () => {
     const req = createRequire(import.meta.url);
     const { A } = req('../../../../server/server-hub/iliski-grafigi.cjs');
-    for (const h of ['appsrv01.ornek.local', 'AppSrv01', ' appsrv01 '])
+    for (const h of ['appsrv01.ornek.local', 'AppSrv01', ' appsrv01 ', '10.1.1.5', ' 10.1.1.6 '])
       expect(sunucuAnahtari(h)).toBe(A.sunucu(h));
     for (const a of ['pay', ' Pay ', 'PAY']) expect(uygulamaAnahtari(a)).toBe(A.app(a));
   });

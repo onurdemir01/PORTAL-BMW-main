@@ -183,7 +183,8 @@ async function siniflariOku() {
         renk: RENKLER.includes(T(r.renk)) ? T(r.renk) : 'notr',
         etki: ETKILER.includes(T(r.etki)) ? T(r.etki) : 'BILGI',
         aciklama: String(r.aciklama || ''),
-        sira: Number(r.sira) || 100,
+        // 0 gecerli sira (sinifDogrula 0-999); yalniz bos / sayi olmayan 100.
+        sira: r.sira == null || !Number.isFinite(Number(r.sira)) ? 100 : Number(r.sira),
         varsayilan: SINIF_VARSAYILAN.some((s) => s.ad === ad),
       });
     }
@@ -267,12 +268,25 @@ async function notGetir(id) {
   return rows && rows[0] ? satirNot(rows[0]) : null;
 }
 
-/** durum: ARSIV | AKTIF (geri al) | SIL (kalici; gecmis kalir). */
+/**
+ * durum: ARSIV | AKTIF (geri al) | SIL (kalici; gecmis kalir). Ayni duruma gecis 409 (cift tik / iki Admin;
+ * gecmise bos kayit dusmesin). Geri alinan notun sinifi tanimli olmali: "aktif notu olan sinif silinmez"
+ * kurali arsivden donuste de gecerli (sinifi silinmis aktif not ne bastirir ne duzenlenebilir).
+ */
 async function notDurum(id, durum, { kim }) {
   const once = await notGetir(id).catch((e) => {
     throw hata(424, (e && e.message) || 'okunamadı');
   });
   if (!once) throw hata(409, 'Not artık yok.');
+  if (durum !== 'SIL' && once.durum === durum)
+    throw hata(409, durum === 'ARSIV' ? 'Not zaten arşivde.' : 'Not zaten aktif.');
+  if (durum === 'AKTIF') {
+    const s = await siniflariOku();
+    if (!s.siniflar.some((x) => x.ad === once.sinif))
+      throw s.okunamadi
+        ? hata(424, 'Sınıf tablosu okunamadı; notun sınıfı doğrulanamadı.')
+        : hata(409, `Notun sınıfı (${once.sinif}) artık yok; önce sınıfı yeniden ekleyin.`);
+  }
   try {
     if (durum === 'SIL') await db().query(`DELETE FROM server_hub_notlar WHERE id = $1`, [once.id]);
     else
@@ -350,11 +364,16 @@ async function sinifSil(ad) {
     throw hata(409, 'Bu sınıfta aktif not var; önce notları başka sınıfa taşıyın.');
   let r;
   try {
-    r = await db().query(`DELETE FROM server_hub_siniflar OUTPUT DELETED.ad WHERE ad = $1`, [a]);
+    // Sayim ile silme arasinda baska Admin bu sinifla not eklerse silme olmaz (tek ifadede kosul).
+    r = await db().query(
+      `DELETE FROM server_hub_siniflar OUTPUT DELETED.ad
+        WHERE ad = $1 AND NOT EXISTS (SELECT 1 FROM server_hub_notlar WHERE sinif = $1 AND durum = 'AKTIF')`,
+      [a],
+    );
   } catch (e) {
     throw hata(424, (e && e.message) || 'Sınıf silinemedi.');
   }
-  if (!r.rows || !r.rows.length) throw hata(409, 'Sınıf yok.');
+  if (!r.rows || !r.rows.length) throw hata(409, 'Sınıf yok ya da bu arada aktif not eklendi.');
 }
 
 // ── ONBELLEK ── notlar + siniflar her istekte DB'ye gitmesin (10 sn); her yazim onbellegi siler.

@@ -312,10 +312,18 @@ describe('Not ve sınıf yönetimi', () => {
     u2();
 
     m.notlarListe.mockResolvedValue(veri({ grafikYok: true }));
-    render(<NotYonetimi onKapat={vi.fn()} />);
+    const { unmount: u3 } = render(<NotYonetimi onKapat={vi.fn()} />);
     expect(await screen.findByText(/İlişki grafiği okunamadı/)).toBeInTheDocument();
     expect(dugme('Konusu bulunamayan ?')).toBeInTheDocument();
     expect(dugme('Veri değişti ?')).toBeInTheDocument();
+    expect(screen.queryByText('Sınıf tablosu okunamadı')).toBeNull();
+    u3();
+
+    // Sınıf tablosu okunamadı: yalnız varsayılanlar; eklenen sınıflar "silinmiş" sanılmasın.
+    m.notlarListe.mockResolvedValue(veri({ siniflarOkunamadi: true }));
+    render(<NotYonetimi baslangic="SINIFLAR" onKapat={vi.fn()} />);
+    expect(await screen.findByText('Sınıf tablosu okunamadı')).toBeInTheDocument();
+    expect(screen.getByText(/eklenen sınıflar silinmiş değil, okunamadı/)).toBeInTheDocument();
   });
 
   it('NY8 Analizde aç: kaydı seçer ve pencereyi kapatır', async () => {

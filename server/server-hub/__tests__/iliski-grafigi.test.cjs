@@ -14,6 +14,9 @@
 //        TAZELIK, IP_ENVANTERI; UYUM / CELISKI / OLCULMEDI
 //   IG10 HIZ: 3000 sunucu + Faz A / W verisi <= 1,5 sn (grafik + dogrulama)
 //   IG11 onbellek: ayni degerlendirmede yeniden kurulmaz; tek ucus; veri bayatlayinca yeniden okunur
+//   IG15 iliski verisi partili: (host, kosu, bayt) listesi + bayt butceli agir partiler (tepe bellek parti kadar)
+//   IG14 sunucu adi: UE FQDN / kisa ad ayni sunucu (en yeni tarama), IPv4 adi kisaltilmaz, IP tek sahip;
+//        UE sunucusu dugum + tarama ani (senaryo motorunun tazelik girdisi)
 'use strict';
 
 const { test } = require('node:test');
@@ -771,4 +774,165 @@ test('IG13 IP sahipligi yalniz Faz W ip addr listesinden de kurulur', () => {
     kenarlar(g, A.vhost('WEBX', 'IHS', 'x.ornek.local', 80)).map((e) => e.hedef),
     [A.jvm('APPX', 7, 'APPX1')],
   );
+});
+
+test('IG14 sunucu adi: UE FQDN / kisa ayni sunucu; IPv4 adi kisaltilmaz; UE sunucusu dugum ve tarama ani', async () => {
+  // IPv4 adli sunucular tek "sunucu:10" dugumune cokmez (assess shortHost ile ayni kural).
+  assert.equal(A.sunucu('10.1.1.5'), 'sunucu:10.1.1.5');
+  assert.notEqual(A.sunucu('10.1.1.5'), A.sunucu('10.1.1.6'));
+  assert.equal(A.sunucu('appsrv01.ornek.local'), 'sunucu:APPSRV01');
+
+  // Uygulama Envanteri satirlari: ayni sunucu FQDN ve kisa adla (en yeni kalir, sira fark etmez), IP adli iki sunucu.
+  const path = require('node:path');
+  const DB = path.join(__dirname, '..', '..', 'db', 'index.cjs');
+  const INV = path.join(__dirname, '..', '..', 'inventory', 'mssql.cjs');
+  const satir = (host, taranma_utc, ip = '10.0.1.1') => ({
+    host,
+    taranma_utc,
+    xml_ozeti: null,
+    web_ozeti: JSON.stringify({
+      durum: 'WEB_YOK',
+      ipler: { durum: 'OLCULDU', liste: [{ ip }] },
+      kurulumlar: [],
+    }),
+    baglanti_ozeti: null,
+    was_ozeti: null,
+  });
+  const oku = async (rows) => {
+    require.cache[DB] = {
+      id: DB,
+      filename: DB,
+      loaded: true,
+      exports: { query: async () => ({ rows }) },
+    };
+    require.cache[INV] = {
+      id: INV,
+      filename: INV,
+      loaded: true,
+      exports: {
+        query: async () => ({ recordset: [{ host: 'appsrv01.ornek.local', ip: '10.0.1.1' }] }),
+      },
+    };
+    delete require.cache[require.resolve('../iliski-verisi.cjs')];
+    try {
+      return await require('../iliski-verisi.cjs').iliskiVerisi();
+    } finally {
+      delete require.cache[DB];
+      delete require.cache[INV];
+    }
+  };
+  const eskiOnce = [
+    satir('appsrv01.ornek.local', '2026-11-05 01:00:00'),
+    satir('APPSRV01', '2026-11-07 01:00:00'),
+    satir('10.1.1.5', '2026-11-07 01:00:00', '10.1.1.5'),
+    satir('10.1.1.6', '2026-11-07 01:00:00', '10.1.1.6'),
+  ];
+  for (const rows of [eskiOnce, [...eskiOnce].reverse()]) {
+    const v = await oku(rows);
+    assert.deepEqual([...v.hostlar.keys()].sort(), ['10.1.1.5', '10.1.1.6', 'APPSRV01']);
+    assert.equal(v.hostlar.get('APPSRV01').taranma, '2026-11-07T01:00:00.000Z', 'en yeni tarama');
+    assert.deepEqual(v.ipEnvanteri.satirlar, [{ host: 'APPSRV01', ip: '10.0.1.1' }]);
+  }
+
+  // Server Hub FQDN, UE kisa ad, ayni IP: tek sahip (kayan degil); TAZELIK ve IP_ENVANTERI yazilir.
+  const v = await oku(eskiOnce);
+  const hosts = [sunucu('appsrv01.ornek.local', { ips: [{ ip: '10.0.1.1' }] })];
+  const g = grafikKur({ hosts, veri: v });
+  const ip = g.dugumler.get('ip:10.0.1.1');
+  assert.deepEqual([ip.veri.sahipSayisi, ip.veri.kayan], [1, false]);
+  const d = dogrula(g, { veri: v });
+  assert.equal((d.get('sunucu:APPSRV01') || []).find((x) => x.kod === 'TAZELIK').durum, 'UYUM');
+  assert.equal((d.get('ip:10.0.1.1') || []).find((x) => x.kod === 'IP_ENVANTERI').durum, 'UYUM');
+  // Server Hub'da olmayan UE sunucusu da dugum; tarama ani senaryo motorunun tazelik girdisi.
+  const ipAdli = g.dugumler.get('sunucu:10.1.1.5');
+  assert.ok(ipAdli && ipAdli.kaynaklar.includes('uygulama_envanteri'));
+  assert.equal(ipAdli.veri.ueTaranma, '2026-11-07T01:00:00.000Z');
+  assert.equal(g.dugumler.get('sunucu:APPSRV01').veri.ueTaranma, '2026-11-07T01:00:00.000Z');
+});
+
+test('IG15 iliski verisi partili okunur: once (host, kosu, bayt) listesi, agir kolonlar bayt butcesiyle', async () => {
+  const path = require('node:path');
+  const DB = path.join(__dirname, '..', '..', 'db', 'index.cjs');
+  const INV = path.join(__dirname, '..', '..', 'inventory', 'mssql.cjs');
+  const MB = 1024 * 1024;
+  const oku = async (liste, { agirHata = null } = {}) => {
+    const sorgular = [];
+    require.cache[DB] = {
+      id: DB,
+      filename: DB,
+      loaded: true,
+      exports: {
+        query: async (sql, params = []) => {
+          if (/DATALENGTH/.test(sql)) {
+            sorgular.push({ tur: 'liste', sql });
+            return { rows: liste };
+          }
+          if (agirHata) throw new Error(agirHata);
+          const istenen = JSON.parse(params[0]);
+          sorgular.push({ tur: 'agir', sql, istenen });
+          return {
+            rows: istenen.map((x) => ({
+              host: x.h,
+              taranma_utc: '2026-11-07 01:00:00',
+              xml_ozeti: null,
+              web_ozeti: null,
+              baglanti_ozeti: null,
+              was_ozeti: null,
+            })),
+          };
+        },
+      },
+    };
+    require.cache[INV] = {
+      id: INV,
+      filename: INV,
+      loaded: true,
+      exports: { query: async () => ({ recordset: [] }) },
+    };
+    delete require.cache[require.resolve('../iliski-verisi.cjs')];
+    try {
+      return { v: await require('../iliski-verisi.cjs').iliskiVerisi(), sorgular };
+    } finally {
+      delete require.cache[DB];
+      delete require.cache[INV];
+    }
+  };
+  const h = (i, bayt) => ({ host: `SRV${String(i).padStart(4, '0')}`, kosu_id: 7, bayt });
+
+  // Bes agir sunucu (20 MB): butce 32 MB -> her parti tek sunucu; liste sorgusu agir kolon okumaz.
+  const a = await oku([1, 2, 3, 4, 5].map((i) => h(i, 20 * MB)));
+  assert.equal(a.v.hostlar.size, 5);
+  const liste = a.sorgular.filter((s) => s.tur === 'liste');
+  const agir = a.sorgular.filter((s) => s.tur === 'agir');
+  assert.equal(liste.length, 1);
+  const listeKolonlari = liste[0].sql.replace(/DATALENGTH\(h\.\w+\)/g, '');
+  assert.ok(!/_ozeti/.test(listeKolonlari), 'liste sorgusu agir kolon cekmez (yalniz boyutu)');
+  assert.deepEqual(
+    agir.map((s) => s.istenen.length),
+    [1, 1, 1, 1, 1],
+  );
+  assert.match(agir[0].sql, /OPENJSON\(\$1\)/);
+  assert.deepEqual(agir[0].istenen[0], { h: 'SRV0001', k: 7 });
+
+  // Kucukler bir arada; butceyi tek basina asan sunucu kendi partisinde; parti en cok 500 satir.
+  const b = await oku([h(1, MB), h(2, MB), h(3, 40 * MB), h(4, MB)]);
+  assert.deepEqual(
+    b.sorgular.filter((s) => s.tur === 'agir').map((s) => s.istenen.map((x) => x.h)),
+    [['SRV0001', 'SRV0002'], ['SRV0003'], ['SRV0004']],
+  );
+  const c = await oku(Array.from({ length: 1200 }, (_, i) => h(i, 100)));
+  assert.deepEqual(
+    c.sorgular.filter((s) => s.tur === 'agir').map((s) => s.istenen.length),
+    [500, 500, 200],
+  );
+  assert.equal(c.v.hostlar.size, 1200);
+
+  // Agir parti okunamazsa okunamadi (bos liste "veri yok" sanilmasin).
+  const d = await oku([h(1, MB)], { agirHata: 'zaman asimi' });
+  assert.deepEqual([d.v.okunamadi, d.v.hata], [true, 'zaman asimi']);
+
+  // partile saf: bos liste, sayi olmayan bayt 0 sayilir.
+  const { partile } = require('../iliski-verisi.cjs');
+  assert.deepEqual(partile([]), []);
+  assert.deepEqual(partile([{ bayt: 'x' }, { bayt: null }], 10).length, 1);
 });

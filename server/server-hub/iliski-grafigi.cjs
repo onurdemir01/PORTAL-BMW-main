@@ -32,7 +32,11 @@ const L = (s) =>
   String(s == null ? '' : s)
     .trim()
     .toLowerCase();
-const kisa = (h) => U(String(h || '').split('.')[0]);
+// IPv4 adi kisaltilmaz ('10.1.1.5' -> '10' olur, farkli sunucular tek dugume coker); assess shortHost ile ayni.
+const kisa = (h) => {
+  const s = String(h == null ? '' : h).trim();
+  return /^\d+\.\d+\.\d+\.\d+$/.test(s) ? s : U(s.split('.')[0]);
+};
 
 const GUVEN = { KESIN: 3, GUCLU: 2, ZAYIF: 1 };
 const AILE = {
@@ -213,9 +217,11 @@ function grafikKur({ hosts = [], veri = null } = {}) {
 
   // ── IP sahipligi: Server Hub IP'leri + Faz W `ip addr` (IPInventory LB listesidir, sahiplik DEGIL) ──
   const ipSatir = [];
-  for (const h of hosts) for (const ip of h.ips || []) ipSatir.push({ host: h.host, ip: ip.ip });
+  // Sahip adi kisa ad: ayni sunucu iki kaynakta (FQDN / kisa) iki sahip sayilip IP "kayan" gorunmesin.
+  for (const h of hosts)
+    for (const ip of h.ips || []) ipSatir.push({ host: kisa(h.host), ip: ip.ip });
   for (const [host, v] of vh)
-    for (const ip of (v.web && v.web.ipler) || []) ipSatir.push({ host, ip });
+    for (const ip of (v.web && v.web.ipler) || []) ipSatir.push({ host: kisa(host), ip });
   const ipMap = ipSahipleri(ipSatir);
   for (const [ip, sahipler] of ipMap) {
     g.dugum(A.ip(ip), 'ip', ip, { sahipSayisi: sahipler.size, kayan: sahipler.size > 1 });
@@ -363,6 +369,17 @@ function grafikKur({ hosts = [], veri = null } = {}) {
     return k;
   }
 
+  // ── Uygulama Envanteri sunuculari: tarama ani (senaryo motoru Faz A / W / baglanti kanitinin tazeligini
+  // buradan okur). Server Hub'da olmayan sunucu da dugum olur; yoksa kenarlari sahipsiz kalirdi.
+  for (const [host, v] of vh)
+    g.dugum(
+      A.sunucu(host),
+      'sunucu',
+      kisa(host),
+      { ueTaranma: v.taranma || null },
+      'uygulama_envanteri',
+    );
+
   // ── Faz A: JBoss yapilandirilmis portlari, WAS uc noktalari ──────────────────────────────────────
   const fazA = new Map(); // host -> kurulumlar
   for (const [host, v] of vh) {
@@ -454,7 +471,7 @@ function grafikKur({ hosts = [], veri = null } = {}) {
       g.dugum(
         A.web(host, k.urun),
         'web',
-        `${host} ${k.urun}`,
+        `${kisa(host)} ${k.urun}`,
         { fazWCalisiyor: k.calisiyor, configHatasi: k.hata_sayisi },
         'faz_w',
       );

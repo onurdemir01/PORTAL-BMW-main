@@ -31,6 +31,16 @@ function mount(router, { iliskiHesabi, audit = () => {} }) {
       return null;
     }
   };
+  // Sinif tablosu okunamazsa varsayilanlar doner: varsayilan olmayan sinif "bilinmeyen" (422) degil 424.
+  const yazimSiniflari = async (b) => {
+    const s = await N.siniflariOku();
+    const ad = String((b && b.sinif) || '')
+      .trim()
+      .toUpperCase();
+    if (s.okunamadi && !s.siniflar.some((x) => x.ad === ad))
+      throw N.hata(424, 'Sınıf tablosu okunamadı; sınıf doğrulanamadı.');
+    return s.siniflar;
+  };
   const idAl = (req) => {
     if (!ID_RE.test(String(req.params.id))) throw N.hata(400, 'Geçersiz not kimliği.');
     return Number(req.params.id);
@@ -48,6 +58,7 @@ function mount(router, { iliskiHesabi, audit = () => {} }) {
       okunamadi: n.okunamadi,
       hata: n.hata || '',
       grafikYok: !h,
+      siniflarOkunamadi: s.okunamadi === true,
       siniflar: s.siniflar,
       notlar: n.notlar.map((x) => {
         const simdi = h ? N.imzaOf(h.grafik, h.kararlar, x.konu) : null;
@@ -77,8 +88,7 @@ function mount(router, { iliskiHesabi, audit = () => {} }) {
 
   router.post('/notlar', async (req, res) => {
     try {
-      const { siniflar } = await N.siniflariOku();
-      const n = N.notDogrula(req.body, siniflar);
+      const n = N.notDogrula(req.body, await yazimSiniflari(req.body));
       const h = await grafikCtx();
       const id = await N.notEkle(n, {
         kim: kim(req),
@@ -109,8 +119,7 @@ function mount(router, { iliskiHesabi, audit = () => {} }) {
       const b = req.body || {};
       if (b.konu != null && String(b.konu).trim() !== once.konu)
         throw N.hata(400, 'Notun konusu değiştirilemez; yeni not ekleyin.');
-      const { siniflar } = await N.siniflariOku();
-      const n = N.notDogrula({ ...b, konu: once.konu }, siniflar);
+      const n = N.notDogrula({ ...b, konu: once.konu }, await yazimSiniflari(b));
       if (!Number.isInteger(Number(b.surum))) throw N.hata(400, 'surum eksik.');
       const h = await grafikCtx();
       await N.notGuncelle(id, n, {

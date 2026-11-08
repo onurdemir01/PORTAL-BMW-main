@@ -8,6 +8,8 @@
 //   NT5 uclar: POST 201 (imza saklanir, yetim), 400 / 422, PUT konu degismez / eski surum 409, DELETE arsiv /
 //       kalici onay ister, geri al, gecmis, siniflar
 //   NT6 kararlar + notlar: BILINEN uygulama ana sayimdan duser; madde isareti; KARAR DEGISMEZ
+//   NT7 geri al sinifi dogrular (silinmis sinif 409, okunamayan tablo 424); ayni duruma gecis 409 (gecmis yok);
+//       sira 0 korunur; sinif silme aktif not kosulu DELETE'te; okunamayan sinif tablosu yazimda 424, listede bayrak
 'use strict';
 
 const { test, afterEach } = require('node:test');
@@ -86,7 +88,12 @@ function grafik() {
   ];
   const veri = { hostlar: new Map(), ipEnvanteri: { okunamadi: false, satirlar: [] } };
   const g = grafikKur({ hosts, veri });
-  const kararlar = kararla({ g, dogrulamalar: dogrula(g, { veri }), hosts });
+  const kararlar = kararla({
+    g,
+    dogrulamalar: dogrula(g, { veri }),
+    hosts,
+    simdi: () => Date.parse('2026-11-07T12:00:00Z'),
+  });
   return { hosts, veri, g, kararlar };
 }
 const not = (ek = {}) => ({
@@ -310,7 +317,9 @@ test('NT4 DB islemleri', async () => {
     ['SIL', 'SIL', /DELETE FROM server_hub_notlar/],
     ['AKTIF', 'GERI_AL', /UPDATE server_hub_notlar SET durum/],
   ]) {
-    s = sahte([[/SELECT id, konu/, () => ({ rows: [satir()] })]]);
+    s = sahte([
+      [/SELECT id, konu/, () => ({ rows: [satir(durum === 'AKTIF' ? { durum: 'ARSIV' } : {})] })],
+    ]);
     yukle();
     await N.notDurum(7, durum, { kim: 'ayse' });
     assert.ok(
@@ -369,6 +378,7 @@ async function sunucu(fn, { kurallar = [], notDurumu = null } = {}) {
   const hesap = require('../iliski-uclar.cjs').mount(router, {
     getAssessment: async () => ({ tableMissing: false, hosts: gr.hosts }),
     iliskiVerisi: async () => gr.veri,
+    simdi: () => Date.parse('2026-11-07T12:00:00Z'),
     ...(notDurumu ? { notDurumu } : {}),
   });
   require('../notlar-uclar.cjs').mount(router, {
@@ -394,6 +404,8 @@ async function sunucu(fn, { kurallar = [], notDurumu = null } = {}) {
 }
 
 test('NT5 uclar', async () => {
+  // Notun durumu yazimlari izler (arsivle -> ARSIV, geri al -> AKTIF): ayni duruma gecis 409.
+  let durumSimdi = 'AKTIF';
   await sunucu(
     async ({ J, s, audit, gr }) => {
       const r = await J('/notlar', 'POST', {
@@ -452,9 +464,12 @@ test('NT5 uclar', async () => {
       );
       assert.equal((await J('/notlar/7?kalici=1&onay=1', 'DELETE')).body.durum, 'SILINDI');
       assert.equal((await J('/notlar/7/geri-al', 'POST')).body.durum, 'AKTIF');
+      const iki = await J('/notlar/7/geri-al', 'POST');
+      assert.deepEqual([iki.status, iki.body.message], [409, 'Not zaten aktif.'], 'cift tik');
       assert.ok(Array.isArray((await J('/notlar/7/gecmis')).body.gecmis));
       const l = await J('/notlar');
       assert.equal(l.status, 200);
+      assert.equal(l.body.siniflarOkunamadi, false);
       assert.equal(l.body.notlar[0].yetim, false);
       assert.equal(l.body.siniflar.length, 5);
       assert.equal(
@@ -487,9 +502,13 @@ test('NT5 uclar', async () => {
         [/INSERT INTO server_hub_notlar/, () => ({ rows: [{ id: 7 }] })],
         [
           /SELECT id, konu, supheli_kod, sinif, etiketler, metin, yayilim, durum, imza, surum, olusturan, olusturuldu, guncelleyen, guncellendi\s+FROM server_hub_notlar WHERE id/,
-          () => ({ rows: [satir({ konu: A.jvm('APPSRV01', 8, 'APP1') })] }),
+          () => ({ rows: [satir({ konu: A.jvm('APPSRV01', 8, 'APP1'), durum: durumSimdi })] }),
         ],
         [/UPDATE server_hub_notlar\s+SET supheli_kod/, () => ({ rowCount: 1 })],
+        [
+          /UPDATE server_hub_notlar SET durum/,
+          (params) => ((durumSimdi = params[1]), { rowCount: 1 }),
+        ],
         [
           /FROM server_hub_notlar/,
           () => ({ rows: [satir({ konu: A.jvm('APPSRV01', 8, 'APP1') })] }),
@@ -569,5 +588,106 @@ test('NT6 kararlar + notlar: BILINEN ayri, madde isareti, karar degismez', async
       assert.equal(k.karar, gr.kararlar.kopyalar.get(jvm).karar);
     },
     { notDurumu },
+  );
+});
+
+test('NT7 geri al sinifi dogrular, ayni duruma gecis 409, sira 0, sinif silme tek ifadede, okunamayan sinif tablosu 424', async () => {
+  // geri al: sinifi silinmis not 409; sinif tablosu okunamaz ve sinif varsayilan degilse 424.
+  let s = sahte([
+    [/SELECT id, konu/, () => ({ rows: [satir({ durum: 'ARSIV', sinif: 'LB_CIKARILDI' })] })],
+    [/FROM server_hub_siniflar/, () => ({ rows: [] })],
+  ]);
+  yukle();
+  await assert.rejects(
+    N.notDurum(7, 'AKTIF', { kim: 'x' }),
+    (e) => e.status === 409 && /LB_CIKARILDI\) artık yok/.test(e.message),
+  );
+  assert.ok(!s.cagrilar.some((c) => /UPDATE server_hub_notlar SET durum/.test(c.sql)), 'yazim yok');
+  s = sahte([
+    [/SELECT id, konu/, () => ({ rows: [satir({ durum: 'ARSIV', sinif: 'LB_CIKARILDI' })] })],
+    [
+      /FROM server_hub_siniflar/,
+      () => {
+        throw new Error('tablo kilitli');
+      },
+    ],
+  ]);
+  yukle();
+  await assert.rejects(N.notDurum(7, 'AKTIF', { kim: 'x' }), (e) => e.status === 424);
+  // sinif yeniden eklenince geri alinir; varsayilan sinifli not tablo okunamasa da geri alinir.
+  s = sahte([
+    [/SELECT id, konu/, () => ({ rows: [satir({ durum: 'ARSIV', sinif: 'LB_CIKARILDI' })] })],
+    [
+      /FROM server_hub_siniflar/,
+      () => ({
+        rows: [{ ad: 'LB_CIKARILDI', baslik: 'LB', renk: 'bilgi', etki: 'BILGI', sira: 0 }],
+      }),
+    ],
+  ]);
+  yukle();
+  await N.notDurum(7, 'AKTIF', { kim: 'x' });
+  assert.ok(s.cagrilar.some((c) => /UPDATE server_hub_notlar SET durum/.test(c.sql)));
+  // ayni duruma gecis: yazim ve gecmis yok
+  s = sahte([[/SELECT id, konu/, () => ({ rows: [satir({ durum: 'ARSIV' })] })]]);
+  yukle();
+  await assert.rejects(
+    N.notDurum(7, 'ARSIV', { kim: 'x' }),
+    (e) => e.status === 409 && e.message === 'Not zaten arşivde.',
+  );
+  assert.ok(!s.cagrilar.some((c) => /server_hub_not_gecmisi/.test(c.sql)), 'bos gecmis kaydi yok');
+  // sira 0 okunurken 100'e donmez; sayi olmayan 100
+  sahte([
+    [
+      /FROM server_hub_siniflar/,
+      () => ({
+        rows: [
+          { ad: 'ILK', baslik: 'İlk', renk: 'bilgi', etki: 'BILGI', sira: 0 },
+          { ad: 'BOS', baslik: 'Boş', renk: 'bilgi', etki: 'BILGI', sira: null },
+        ],
+      }),
+    ],
+  ]);
+  yukle();
+  const so = await N.siniflariOku();
+  assert.equal(so.siniflar[0].ad, 'ILK', 'sira 0 en ustte');
+  assert.equal(so.siniflar.find((x) => x.ad === 'ILK').sira, 0);
+  assert.equal(so.siniflar.find((x) => x.ad === 'BOS').sira, 100);
+  // sinif silme: aktif not kosulu DELETE'in kendisinde (sayim ile silme arasindaki yaris)
+  s = sahte([
+    [/SELECT COUNT/, () => ({ rows: [{ n: 0 }] })],
+    [/DELETE FROM server_hub_siniflar/, () => ({ rows: [] })],
+  ]);
+  yukle();
+  await assert.rejects(N.sinifSil('LB_CIKARILDI'), (e) => e.status === 409);
+  const del = s.cagrilar.find((c) => /DELETE FROM server_hub_siniflar/.test(c.sql));
+  assert.match(
+    del.sql.replace(/\s+/g, ' '),
+    /NOT EXISTS \(SELECT 1 FROM server_hub_notlar WHERE sinif = \$1 AND durum = 'AKTIF'\)/,
+  );
+  // uc: sinif tablosu okunamaz -> varsayilan olmayan sinif 424 (422 "bilinmeyen" degil); varsayilan yazilir
+  await sunucu(
+    async ({ J }) => {
+      const r = await J('/notlar', 'POST', { konu: 'app:X', sinif: 'LB_CIKARILDI', metin: 'abc' });
+      assert.deepEqual(
+        [r.status, r.body.message],
+        [424, 'Sınıf tablosu okunamadı; sınıf doğrulanamadı.'],
+      );
+      assert.equal(
+        (await J('/notlar', 'POST', { konu: 'app:X', sinif: 'BILINEN', metin: 'abc' })).status,
+        201,
+      );
+      assert.equal((await J('/notlar?arsiv=1')).body.siniflarOkunamadi, true);
+    },
+    {
+      kurallar: [
+        [
+          /FROM server_hub_siniflar/,
+          () => {
+            throw new Error('tablo kilitli');
+          },
+        ],
+        [/INSERT INTO server_hub_notlar/, () => ({ rows: [{ id: 8 }] })],
+      ],
+    },
   );
 });

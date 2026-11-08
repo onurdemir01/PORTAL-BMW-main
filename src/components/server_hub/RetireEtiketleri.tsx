@@ -243,7 +243,8 @@ function KopyaTablosu({ e, kAd }: { e: ShRetireEtiket; kAd: Map<string, string> 
       style={{ borderColor: 'var(--border-subtle)' }}
     >
       <table className="w-full text-[11px]">
-        <thead style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}>
+        {/* Tablo başlığı TH_STIL gibi --text-secondary: --text-muted yükseltilmiş zeminde 4.42:1 (AA altı). */}
+        <thead style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}>
           {e.tur === 'JVM' ? (
             <tr>
               <th className={th}>Sunucu</th>

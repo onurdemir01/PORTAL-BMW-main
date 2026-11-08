@@ -5,9 +5,11 @@
 // ofset, mod_cluster), web_ozeti (vhost, proxy / jk / balancer / WAS hedefleri, log ozeti), baglanti_ozeti
 // (ESTABLISHED gozlemleri), was_ozeti (WebSphere uc noktalari). Ayrica dbo.IPInventory (LB listesi IP'leri).
 //
-// BELLEK (OOM sinifi): web_ozeti host basina 4 MB'a kadar olabilir. Satir satir okunur ve HEMEN kucuk
-// projeksiyona indirilir (yalniz grafigin kullandigi alanlar); ham JSON tutulmaz. Okunamayan kaynak
-// { okunamadi } doner: grafik kurulur ama o kaynaga dayanan kenar / dogrulama "olculmedi" kalir.
+// BELLEK (OOM sinifi): web_ozeti host basina 4 MB'a kadar olabilir ve db.query butun sonucu bellege alir.
+// Bu yuzden once yalniz (host, kosu, bayt) listesi okunur; agir kolonlar PARTI_BAYT butcesiyle partiler
+// halinde cekilir ve her parti HEMEN kucuk projeksiyona indirilir (yalniz grafigin kullandigi alanlar); ham
+// JSON tutulmaz. Tepe bellek = en buyuk parti (tek satir butceyi asarsa o satir), filo toplami degil.
+// Okunamayan kaynak { okunamadi } doner: grafik kurulur ama o kaynaga dayanan kenar / dogrulama "olculmedi".
 'use strict';
 
 const { jsonOku } = require('./ear-hub-verisi.cjs');
@@ -17,6 +19,12 @@ const U = (s) =>
   String(s == null ? '' : s)
     .trim()
     .toUpperCase();
+// Grafik anahtari kisa ad (iliski-grafigi kisa): Uygulama Envanteri hedef listesinde FQDN de olabilir.
+// Kisaltilmazsa dogrulama `vh.get(kisa ad)` ile sunucuyu bulamaz, TAZELIK / LISTEN_IP sessizce yazilmaz.
+const kisaAd = (h) => {
+  const s = String(h == null ? '' : h).trim();
+  return /^\d+\.\d+\.\d+\.\d+$/.test(s) ? s : U(s.split('.')[0]);
+};
 const dizi = (v) => (Array.isArray(v) ? v : []);
 const sayi = (v) => (v == null || !Number.isFinite(Number(v)) ? null : Number(v));
 const iso = (t) => {
@@ -174,6 +182,28 @@ function wasProjeksiyon(w) {
 }
 
 const SON = `son AS (SELECT host, MAX(kosu_id) AS kosu_id FROM ear_envanter_hostlari WHERE veri_var = 1 GROUP BY host)`;
+// DATALENGTH bayti (NVARCHAR: karakter basina 2). Parti en cok PARTI_SATIR satir (OPENJSON parametresi kucuk kalir).
+const PARTI_BAYT = 32 * 1024 * 1024;
+const PARTI_SATIR = 500;
+
+/** Ardisik satirlari bayt butcesine gore partiler; butceyi tek basina asan satir kendi partisinde. */
+function partile(liste, butce = PARTI_BAYT, enCok = PARTI_SATIR) {
+  const out = [];
+  let p = [];
+  let b = 0;
+  for (const r of liste) {
+    const n = Math.max(0, Number(r.bayt) || 0);
+    if (p.length && (b + n > butce || p.length >= enCok)) {
+      out.push(p);
+      p = [];
+      b = 0;
+    }
+    p.push(r);
+    b += n;
+  }
+  if (p.length) out.push(p);
+  return out;
+}
 
 /**
  * @returns {Promise<{ okunamadi: boolean, hata?: string, hostlar: Map<string, object>, ipEnvanteri: object }>}
@@ -184,24 +214,41 @@ async function iliskiVerisi() {
     hostlar: new Map(),
     ipEnvanteri: { okunamadi: false, satirlar: [] },
   };
+  const ekle = (r) => {
+    const host = kisaAd(r.host);
+    if (!host) return;
+    // Ayni sunucu iki adla (FQDN / kisa) taranmissa en yeni tarama kalir.
+    const taranma = iso(r.taranma_utc);
+    const onceki = out.hostlar.get(host);
+    if (onceki && String(onceki.taranma || '') >= String(taranma || '')) return;
+    out.hostlar.set(host, {
+      host,
+      taranma,
+      // Faz A/W kolonu NULL = olculmedi (kontrol kapali / eski kosu / eski tarayici).
+      jboss: r.xml_ozeti == null ? null : xmlProjeksiyon(jsonOku(r.xml_ozeti)),
+      web: webProjeksiyon(jsonOku(r.web_ozeti)),
+      baglanti: baglantiProjeksiyon(jsonOku(r.baglanti_ozeti)),
+      was: wasProjeksiyon(jsonOku(r.was_ozeti)),
+    });
+  };
   try {
-    const { rows } = await db().query(
+    const { rows: liste } = await db().query(
       `WITH ${SON}
-       SELECT h.host, h.taranma_utc, h.xml_ozeti, h.web_ozeti, h.baglanti_ozeti, h.was_ozeti
-         FROM ear_envanter_hostlari h JOIN son ON son.host = h.host AND son.kosu_id = h.kosu_id`,
+       SELECT h.host, h.kosu_id,
+              ISNULL(DATALENGTH(h.xml_ozeti), 0) + ISNULL(DATALENGTH(h.web_ozeti), 0)
+                + ISNULL(DATALENGTH(h.baglanti_ozeti), 0) + ISNULL(DATALENGTH(h.was_ozeti), 0) AS bayt
+         FROM ear_envanter_hostlari h JOIN son ON son.host = h.host AND son.kosu_id = h.kosu_id
+        ORDER BY h.host`,
     );
-    for (const r of rows || []) {
-      const host = U(r.host);
-      if (!host) continue;
-      out.hostlar.set(host, {
-        host,
-        taranma: iso(r.taranma_utc),
-        // Faz A/W kolonu NULL = olculmedi (kontrol kapali / eski kosu / eski tarayici).
-        jboss: r.xml_ozeti == null ? null : xmlProjeksiyon(jsonOku(r.xml_ozeti)),
-        web: webProjeksiyon(jsonOku(r.web_ozeti)),
-        baglanti: baglantiProjeksiyon(jsonOku(r.baglanti_ozeti)),
-        was: wasProjeksiyon(jsonOku(r.was_ozeti)),
-      });
+    for (const parti of partile(liste || [])) {
+      const { rows } = await db().query(
+        `SELECT h.host, h.taranma_utc, h.xml_ozeti, h.web_ozeti, h.baglanti_ozeti, h.was_ozeti
+           FROM ear_envanter_hostlari h
+           JOIN OPENJSON($1) WITH (host NVARCHAR(64) '$.h', kosu_id INT '$.k') j
+             ON j.host = h.host AND j.kosu_id = h.kosu_id`,
+        [JSON.stringify(parti.map((r) => ({ h: String(r.host), k: Number(r.kosu_id) })))],
+      );
+      for (const r of rows || []) ekle(r);
     }
   } catch (e) {
     out.okunamadi = true;
@@ -211,7 +258,7 @@ async function iliskiVerisi() {
     const { query } = require('../inventory/mssql.cjs');
     const r = await query(`SELECT host, ip FROM dbo.IPInventory`);
     out.ipEnvanteri.satirlar = (r.recordset || [])
-      .map((x) => ({ host: U(String(x.host || '').split('.')[0]), ip: String(x.ip || '').trim() }))
+      .map((x) => ({ host: kisaAd(x.host), ip: String(x.ip || '').trim() }))
       .filter((x) => x.host && x.ip);
   } catch (e) {
     out.ipEnvanteri = { okunamadi: true, hata: (e && e.message) || 'okunamadı', satirlar: [] };
@@ -221,6 +268,9 @@ async function iliskiVerisi() {
 
 module.exports = {
   iliskiVerisi,
+  kisaAd,
+  partile,
+  PARTI_BAYT,
   xmlProjeksiyon,
   webProjeksiyon,
   baglantiProjeksiyon,
